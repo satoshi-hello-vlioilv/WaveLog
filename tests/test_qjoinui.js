@@ -44,8 +44,7 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
   await page.waitForSelector('#masterMaintNav [data-master="dataSource"]',{timeout:20000});
   /* 更新者IDはマスタ更新の必須項目（requireMaintUser）。入れずに保存すると
      トーストが出るだけで**何も起きない**ので、先に入れておく。 */
-  await page.evaluate(()=>{const el=document.querySelector('#masterUserId');
-    if(el){el.value='test-qjoin';el.dispatchEvent(new Event('change',{bubbles:true}))}});
+  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'test-qjoin');
   await page.click('#masterMaintNav [data-master="dataSource"]');
   await page.waitForSelector('#masterMaintList .ds-rows .ds-row:not(.ds-row-head)',{timeout:20000});
   await raf2(page);
@@ -371,8 +370,7 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
   await page.waitForSelector('#openMasterMaint',{timeout:20000});
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintNav [data-master="queryJoin"]',{timeout:20000});
-  await page.evaluate(()=>{const el=document.querySelector('#masterUserId');
-    if(el){el.value='test-qjoin';el.dispatchEvent(new Event('change',{bubbles:true}))}});
+  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'test-qjoin');
   await page.click('#masterMaintNav [data-master="queryJoin"]');
   await page.waitForSelector('#qjBuiltinToggle',{timeout:20000});
   builtinTouched=true;

@@ -44,7 +44,8 @@ let b=null;
   await page.waitForSelector('#openMasterMaint',{timeout:20000});
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:15000});
-  await page.fill('#masterUserId','tests');
+  /* 更新者IDは打ち込む欄ではなくなった（§9.276 ③）。端末の覚え（localStorage）へ入れる。 */
+  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tests');
   await page.waitForFunction(()=>document.querySelectorAll('#masterMaintNav .mm-nav-group').length>=4,null,{timeout:20000});
 
   /* ---- 1) 呼び名が1行に収まる（§9.250 ①） ---- */

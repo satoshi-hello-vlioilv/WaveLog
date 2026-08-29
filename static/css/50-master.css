@@ -80,7 +80,6 @@
  padding:0 var(--ctl-pad-x-sm) 0 calc(var(--ctl-pad-x-sm) + 1.5em)}
 .mm-head .mm-btn-ghost{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border-radius:var(--radius-sm);font-size:var(--fs-sm)}
 .mm-head-user{display:flex;align-items:center;gap:var(--space-2);color:var(--muted);font-weight:700;font-size:var(--fs-sm);white-space:nowrap}
-.mm-head-user input{height:var(--ctl-h-sm);min-width:calc(180px * var(--ui-scale));padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;color:var(--ink);font-weight:700}
 /* 左の一覧の幅は**いちばん長い呼び名から決める**（§9.250 ①、利用者の指摘
    「記録した値の配置について文字が1行で収まっていない」）。
    以前は`200px * --ui-scale`の決め打ちで、**器だけが縮み、中のアイコン
@@ -844,8 +843,18 @@
 .mm-head-ico{font-size:var(--fs-sm);line-height:1;flex:none;opacity:.75}
 .mm-head-user{display:inline-flex;align-items:center;gap:var(--space-1);min-width:0}
 /* **器は中身の長さから決める**（§CLAUDE 画面基準 11）——社員番号なので
-   長くない。ここを伸ばすと絞り込みと再読込が2行目へ落ちる。 */
-.mm-head-user input{max-width:var(--w-md);min-width:0}
+   長くない。ここを伸ばすと絞り込みと再読込が2行目へ落ちる。
+   §9.276 ③で**打ち込む欄からボタンへ**（この端末のログインIDを名乗るだけ）。
+   **入力欄風の枠を付けない**（§CLAUDE 画面基準 10。読み取り専用の値に枠を
+   付けると押して直せるように見える）——押すと接続状況へ行くので、
+   ボタンだと分かる下線だけにする。 */
+.mm-head-user{max-width:var(--w-lg);padding:0 var(--space-1);
+  border:0;background:transparent;cursor:pointer}
+.mm-head-user>b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--ink);border-bottom:1px dotted var(--line-mid)}
+.mm-head-user:hover>b{color:var(--nav);border-bottom-color:var(--nav)}
+/* **取れていないことは色だけで伝えない**（§CLAUDE 3）——文字はJSが書く。 */
+.mm-head-user.is-unknown>b{color:var(--danger);border-bottom-style:dashed}
 .mm-head .mm-search input{max-width:var(--w-lg);min-width:0}
 /* 印だけのボタン。**中身なりの正方形**にして、名前はaria-labelが持つ。 */
 .mm-head-icobtn{flex:none;padding-inline:var(--space-2);font-size:var(--fs)}
@@ -1104,7 +1113,6 @@
    中身は**上に寄せる**（真ん中に置くと、低い形のときに宙に浮いて見える）。 */
 .op-prev-scroll{overflow-x:auto;overflow-y:hidden;padding-bottom:2px;
   min-height:var(--op-prev-h,9.8em);align-content:start}
-.op-prev-rest{margin:0;color:var(--ink-3);font-size:var(--fs-badge)}
 /* 「いまは作れない」理由（§9.250 ⑧）。**直す場所はこの窓**なので、
    測定画面ではなくここに出す。色は警告——押しても何も起きない設定を
    選んでいる状態で、そのまま保存できてしまうのを止めたいわけではない
@@ -1130,22 +1138,10 @@
 .op-prev-field .opf{display:grid;grid-auto-rows:min-content;gap:2px;min-width:0;font-size:var(--fs-sm)}
 .op-prev-field .opf select,.op-prev-field .opf input{width:100%;max-width:100%}
 .op-prev-note{margin:0;color:var(--ink-3);font-size:var(--fs-badge);line-height:1.6}
-/* **隣に並ぶものも一緒に見せる**（§9.219 ③）。幅は「12マスのうち何マス」
-   なので、1枚だけでは広いのか狭いのかが読めない。薄く置くだけで、押せない
-   （見本として本物なのは真ん中の1枚だけ）。 */
-/* 隣の欄（§9.250 ⑤）。**本物の部品をダミーの値つきで描く**ので、点線の箱
-   ではなく測定画面と同じ器を置く。**押せないようにする**——見本の隣を
-   触っても記録されないので、触れると壊れて見える（§4）。 */
-.op-prev-ghost{min-width:0}
-.op-prev-ghost>.opf{pointer-events:none;opacity:.72}
-.op-prev-ghost>.opf .opf-name{color:var(--muted)}
-/* 名前だけしか出せなかったとき（マスタから引けない）の受け皿。 */
-.op-prev-ghost:not(:has(>.opf)){
-  padding:var(--pad-row);border:1px dashed var(--line-soft);
-  border-radius:var(--radius-xs);background:var(--surface-2);
-  color:var(--muted);font-size:var(--fs-badge);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-}
+/* 隣の欄（§9.250 ⑤）は**やめた**（§9.276 ⑥、利用者の指示「変更中の対象項目
+   だけの再現で十分」）——マスタの行から自前で組み立てていたので単位の置き場も
+   高さも本物と揃わず、群が大きいと器に入りきらなかった。残りのマスは
+   `.op-prev-card`の格子だけを見せる。 */
 /* 見本の値を入れてみる札（§9.250 ⑤）。**押したときだけ入る**ので、
    「記録される値」の行と並べて置く（何が入ったのかが同じ行で読める）。 */
 .op-prev-fill{
@@ -2519,16 +2515,27 @@ html[data-hint="off"] .mm-field-hint,
 html[data-hint="off"] .mm-def-hint{display:none}
 /* 空の説明で1行ぶんの余白を残さない（`hintHtml()`が空を返しうる）。 */
 .mm-field-hint:empty,.mm-def-hint:empty{display:none}
-/* 説明の量の帯。**いまどれかを文字で出す**（§CLAUDE 3）。 */
-.mm-hintlv{display:inline-flex;align-items:center;gap:var(--gap-tight);flex:none}
-.mm-hintlv>i{font-style:normal;color:var(--muted);font-size:var(--fs-badge)}
-.mm-hintlv>button{
-  min-height:var(--ctl-h-xs);padding:0 var(--space-2);
-  border:1px solid var(--line-soft);border-radius:var(--radius-xs);
-  background:var(--surface);color:var(--ink-3);
-  font-size:var(--fs-badge);font-weight:700;cursor:pointer;
-}
-.mm-hintlv>button.is-on{background:var(--nav);border-color:var(--nav);color:#fff}
+/* 説明の階層（§9.276 ④）。**常時出すのはリード文だけ**で、詳しい話は
+   押したときだけ開く。欄の`?`（`.mm-more-box`）と同じ言語で揃える。 */
+.mm-hint-more{display:flex;flex-wrap:wrap;gap:var(--gap-tight);margin:var(--space-1) 0 var(--space-2)}
+.mm-hint-sec{flex:0 1 auto;max-width:100%;
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface-2)}
+.mm-hint-sec>summary{padding:var(--space-1) var(--space-2);
+  color:var(--ink-3);font-size:var(--fs-badge);font-weight:700;cursor:pointer;white-space:nowrap}
+.mm-hint-sec>summary:hover{color:var(--nav)}
+.mm-hint-sec[open]{flex-basis:100%}
+.mm-hint-sec[open]>summary{border-bottom:1px solid var(--line-soft)}
+.mm-hint-sec>div{padding:var(--space-2)}
+.mm-hint-sec p{margin:0 0 var(--space-1);color:var(--ink-2);font-size:var(--fs-sm);line-height:var(--lh)}
+.mm-hint-sec p:last-child{margin-bottom:0}
+/* 説明の量（§9.276 ②）。**帯ではなく1つのボタン＋浮きメニュー**——隣の
+   表示サイズ（`#uiSizeBadge`）と同じ言語で揃える。**いまどれかはボタンの
+   中に文字で出す**（§CLAUDE 3。畳んだだけで現在値が読めなくなるのでは、
+   隠した意味が無い）。 */
+.mm-hintbadge{display:inline-flex;align-items:center;gap:var(--gap-hair)}
+.mm-hintbadge .mm-hint-ico{font-size:var(--fs-badge);line-height:1}
+.mm-hintbadge b{font-size:var(--fs-badge);font-weight:700}
+.mm-hint-menu{min-width:calc(190px * var(--ui-scale))}
 .rb-paper-grid{position:absolute;inset:var(--space-2);display:grid;
  grid-template-columns:repeat(12,1fr);grid-auto-rows:1fr;gap:1px}
 .rb-paper-grid>i{background:var(--surface-2);border-radius:var(--radius-xs)}

@@ -411,39 +411,56 @@
   border:1px solid var(--warn-border);border-radius:var(--radius-pill);
   background:#fff;color:var(--warn-fg);font-size:var(--fs-micro);font-weight:800;cursor:pointer}
 .rp-sample-chip>button:hover{background:var(--warn-fg);border-color:var(--warn-fg);color:#fff}
-/* ---------- 出していない塊の置き場は1行（§9.255 ①） ----------
+/* ---------- 出していない塊の置き場は左サイドバー（§9.276 ①） ----------
    **紙の外**——紙の中へ入れると刷り上がりに混ざる（§9.217）。
-   以前は「見出し＋2行の説明＋札の並び」で実測70px。説明は札の形が既に
-   言っているので`title`へ落とし（§9.234 ①）、札は横1列にして足りないぶんは
-   **器の中で横へスクロール**させる（§CLAUDE 11「入れ物は中身の長さから」）。
+   §9.255 ①で上の帯へ1行に畳んでいたが、塊が増えるほど横スクロールになり
+   名前が省略記号で切れ、しかも紙の高さをそのぶん削っていた（紙が主役の
+   画面で面積の配り方が逆・§CLAUDE 1）。**縦に積む**と名前がそのまま読め、
+   削るのはロット一覧の高さだけで済む。
    **畳まない**——掴んで紙へ落とす道具そのものなので、隠すと組み換えの
-   主要動線が1つ消える。 */
-.rp-palette{display:flex;align-items:center;gap:var(--space-2);
+   主要動線が1つ消える（説明のほうを`?`の浮き出しへ落とした）。 */
+.rp-palette{display:flex;flex-direction:column;gap:var(--gap-tight);
+  flex:0 1 auto;min-height:0;
   padding:var(--pad-chip) var(--space-2);
-  background:var(--surface-2);border-bottom:1px solid var(--line-soft)}
+  background:var(--surface-2);border-top:1px solid var(--line-soft)}
 .rp-palette[hidden]{display:none}
 .rp-palette.is-target{background:rgba(8,124,137,.10);outline:2px dashed var(--teal);outline-offset:-2px}
-.rp-palette-head{flex:none;font-size:var(--fs-tiny);font-weight:800;color:var(--nav);
-  white-space:nowrap;cursor:help}
-.rp-palette-head>i{font-style:normal;margin-left:2px;padding:0 var(--space-1);
+.rp-palette-head{display:flex;align-items:center;justify-content:space-between;
+  gap:var(--gap-tight);flex:none}
+.rp-palette-head>b{font-size:var(--fs-tiny);font-weight:800;color:var(--nav);white-space:nowrap}
+.rp-palette-head i{font-style:normal;margin-left:2px;padding:0 var(--space-1);
   border-radius:var(--radius-pill);background:var(--nav);color:#fff;font-size:var(--fs-micro)}
-/* 説明と直前の一言（§9.255 ①）。**畳んでいるあいだは場所を取らない。** */
-.rp-arrange-note{flex:1 1 14em;min-width:0;color:var(--ink-3);font-size:var(--fs-micro)}
-.rp-palette-list{display:flex;gap:var(--gap-tight);flex:1 1 auto;min-width:0;
-  overflow-x:auto;overflow-y:hidden;scrollbar-gutter:stable}
+/* 使い方は押したときだけ（§9.276 ①）。**消さない**——札の形からは
+   「押すだけでも出せる」ことが読めない（§9.234 ①）。 */
+.rp-palette-help{flex:none;width:1.5em;height:1.5em;padding:0;
+  border:1px solid var(--line-mid);border-radius:var(--radius-pill);
+  background:#fff;color:var(--ink-3);font-size:var(--fs-micro);font-weight:800;
+  line-height:1;cursor:pointer}
+.rp-palette-help:hover,.rp-palette-help[aria-expanded="true"]{
+  border-color:var(--nav);color:var(--nav)}
+.rp-pal-help{position:fixed;z-index:var(--z-popover);max-width:var(--w-xl);
+  padding:var(--space-2) var(--space-3);
+  border:1px solid var(--line);border-radius:var(--radius-md);
+  background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.16);
+  color:var(--ink-2);font-size:var(--fs-tiny);line-height:var(--lh)}
+.rp-pal-help>b{display:block;margin-bottom:var(--space-1);color:var(--nav)}
+.rp-pal-help ul{margin:0;padding-left:1.2em}
+/* 直前の一言（§9.222 ④）。**畳んでいるあいだは場所を取らない**
+   （`[hidden]`の規則は上に1つある）。 */
+.rp-arrange-note{flex:none;min-width:0;color:var(--ink-3);font-size:var(--fs-micro)}
+/* 札は**縦に積む**。足りないぶんは器の中で縦へスクロールさせる。 */
+.rp-palette-list{display:flex;flex-direction:column;gap:var(--gap-tight);
+  flex:1 1 auto;min-height:0;max-height:calc(220px * var(--ui-scale));
+  overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}
 .rp-palette-list.is-empty{color:var(--muted);font-size:var(--fs-tiny);overflow:visible}
-.rp-palette-item{display:flex;align-items:baseline;gap:var(--gap-tight);flex:0 0 auto;
-  min-width:0;max-width:var(--w-md);cursor:grab;
+.rp-palette-item{display:flex;align-items:baseline;justify-content:space-between;
+  gap:var(--gap-tight);flex:0 0 auto;min-width:0;cursor:grab;
   padding:2px var(--ctl-pad-x-sm);border:1px solid var(--line-mid);
-  border-radius:var(--radius-xs);background:#fff;color:var(--ink-2)}
+  border-radius:var(--radius-xs);background:#fff;color:var(--ink-2);text-align:left}
 .rp-palette-item.is-dragging{opacity:.45}
 .rp-palette-name{font-size:var(--fs-tiny);font-weight:800;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:14em}
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .rp-palette-size{flex:none;font-size:var(--fs-micro);color:var(--muted);font-weight:700}
-/* できることの一覧（§9.255 ①の追補）。**1行に収める**——縮んでよいのは
-   ここだけで、札の並びは縮ませない（§9.229 ⑤）。 */
-.rp-palette-note{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
-  white-space:nowrap;color:var(--ink-3);font-size:var(--fs-micro);line-height:var(--lh)}
 .rp-arrange-bar b{font-size:var(--fs-sm)}
 /* 帯の中身は**塊ごとに折り返す**（塊の中は折り返さない・§9.199）。 */
 .rp-arrange-info{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;

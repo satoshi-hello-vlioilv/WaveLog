@@ -107,6 +107,14 @@
       </select>
      </div>
      <div class="rp-lot-list" id="reportLotList"></div>
+     <!-- 出していない塊の置き場（§9.217／§9.276 ①、利用者の指示
+          「帳票ブロックは上部ではなく左サイドバーに変更し、説明文は
+           ポップオーバーなど場所を取らない方法にしてください」）。
+          **紙の外**なのは今までどおり（紙の中へ入れると刷り上がりに混ざる）。
+          上の帯に横一列で置いていたときは、塊が増えるほど横スクロールに
+          なり、しかも紙の高さをそのぶん削っていた。縦に積めば名前が
+          そのまま読め、削るのは一覧の高さだけで済む。 -->
+     <div class="rp-palette" id="rpPalette" hidden></div>
      <div class="rp-nav-foot rp-bulk-foot">
       <label class="rp-foot-selectall" title="表示中のロットをすべて選択/解除します"><input type="checkbox" id="reportSelectAll">全選択</label>
       <button type="button" id="reportBulkPrintBtn" class="rp-foot-btn rp-foot-btn--primary" disabled title="チェックした帳票をまとめて1回の印刷で出力します(1ロット1ページ)">選択した帳票を印刷 (<span id="reportBulkCount">0</span>)</button>
@@ -133,10 +141,6 @@
            ——body直下へ出すと「帯の中に在るか」を見る網が空振りする。 -->
       <div class="rp-bar-menu" id="rpArrangeMenu" hidden></div>
      </div>
-     <!-- 出していない塊の置き場（§9.217）。**紙の外**に置く——紙の中へ
-          入れると刷り上がりに混ざる。掴んで紙へ落とすと出て、紙の塊を
-          ここへ落とすと外れる。 -->
-     <div class="rp-palette" id="rpPalette" hidden></div>
      <div class="rp-scroll" id="rpScroll">
       <div class="rp-page-box" id="rpPageBox">
        <div class="rp-report rp-page" id="reportContent"><div class="rp-empty">左の一覧からロットを選ぶと、帳票プレビューがここに表示されます。</div></div>
@@ -247,6 +251,9 @@
     変わらないが、余白が減って見やすくなる。 */
  const RP_NAV_KEY='WaveLogReportNavHiddenV1';
  let rpNavHidden=(()=>{try{return localStorage.getItem(RP_NAV_KEY)==='1'}catch(e){return false}})();
+ /* 組み換えのあいだだけこちらで開いたかどうか（§9.276 ①）。**覚え
+    （localStorage）は触らない**——利用者が畳んでいた状態を勝手に変えない。 */
+ let rpNavWasHidden=false;
  function applyNavVisibility(){
   const body=$id('reportPanel')?.querySelector('.rp-body');
   if(body)body.classList.toggle('rp-nav-hidden',rpNavHidden);
@@ -259,6 +266,10 @@
  }
  function toggleNav(){
   rpNavHidden=!rpNavHidden;
+  /* **利用者が自分で押したら、こちらの都合の控えは捨てる**（§9.276 ①）
+     ——組み換えのあいだにわざわざ畳んだ／開いた人に対して、抜けるときに
+     元へ戻すのは「押しても戻される」になる。 */
+  rpNavWasHidden=false;
   try{localStorage.setItem(RP_NAV_KEY,rpNavHidden?'1':'0')}catch(e){}
   applyNavVisibility();
  }
@@ -2904,6 +2915,10 @@
   try{await Promise.all([WL.columnLayout.load(rpTarget()),
                          rpLoadUserBlocks(rpEditEquipment)])}catch(e){}
   rpArranging=true;rpSeeded=false;
+  /* **置き場は左サイドバーの中**（§9.276 ①）なので、畳んだままだと
+     組み換えの主要動線が消える（§CLAUDE 4）。入るときだけ開く——
+     抜けたあとは利用者が選んだ状態へ戻す（覚えは触らない）。 */
+  if(rpNavHidden){rpNavWasHidden=true;rpNavHidden=false;applyNavVisibility()}
   document.body.classList.add('rp-arranging');
   updateArrangeBar();rpRepaint();
  }
@@ -2920,6 +2935,8 @@
   rpEditEquipment=null;
   rpUseEquipmentBlocks(rpEquipmentOf(rpCurrentLot())||'');
   rpArranging=false;rpPaperView=false;
+  /* 開いたのはこちらの都合なので、抜けるときに元へ戻す（§9.276 ①）。 */
+  if(rpNavWasHidden){rpNavWasHidden=false;rpNavHidden=true;applyNavVisibility()}
   closeBlockEditor();
   document.body.classList.remove('rp-arranging');
   updateArrangeBar();rpRepaint();
@@ -3403,34 +3420,31 @@
   rpStage(patch);
   updateArrangeBar();
  }
- /* ---------- 出していない塊の置き場（§9.217、利用者の指示） ----------
+ /* ---------- 出していない塊の置き場（§9.217／§9.276 ①、利用者の指示） ----------
     「これら帳票の項目は、規格化してブロック(カード)サイズとイメージと共に
      一覧で管理し、帳票内に表示させるときに項目からD&Dで表示…D&Dで非表示
      などできるようにしてください。」
-    **紙の外に置く**——紙の中へ入れると刷り上がりに混ざる。 */
+    「帳票ブロックは上部ではなく左サイドバーに変更し、説明文はポップオーバー
+     など場所を取らない方法にしてください」
+
+    **紙の外に置く**——紙の中へ入れると刷り上がりに混ざる。
+    §9.276 ①で置き場を**左サイドバー（`.rp-nav`）へ移し、縦に積む**:
+      ・上の帯だと塊が増えるほど横スクロールになり、名前は省略記号で切れる
+      ・そのぶん紙の高さを削っていた（紙が主役の画面で面積の配り方が逆）
+    **説明はポップオーバーへ**（`?`）——常時1行を占めていた案内は、
+    押したときだけ出せば足りる。**消さない**（§9.234 ①・§9.255 ①）——
+    「押すだけでも出せる」は札の形からは読めず、掴めない環境の唯一の道。 */
  function renderPalette(){
   const el=$id('rpPalette');if(!el)return;
   el.hidden=!rpArranging||rpPaperView;
-  if(el.hidden){el.innerHTML='';return}
+  if(el.hidden){el.innerHTML='';rpClosePaletteHelp();return}
   const hidden=rpHiddenSet();
   const items=rpBlockKeys().filter(k=>hidden.has(k));
-  /* ---------- 置き場は1行（§9.255 ①、利用者の指示「コンパクトに2行分くらい」） ----------
-     以前は「見出し＋2行の説明＋札の並び」で実測70px。説明は**同じことを
-     2度言っている**（掴めることは札の形が言う）ので`title`へ落とし（§9.234 ①）、
-     札は横1列で足りないぶんは器の中で横へスクロールさせる。
-     **消さないこと**——掴んで紙へ落とす道具そのものなので、畳むと
-     組み換えの主要動線が1つ消える。 */
-  el.innerHTML=`<b class="rp-palette-head"`
-   +` title="掴んで紙へ落とすと出ます（落ちる場所は枠で見えます）。`
-   +`紙の塊をここへ落とすと外れます。押すだけでも出せます。">`
-   +`出していない塊 <i>${items.length}</i></b>`
-   /* **できることは見える場所に1行で書く**（§CLAUDE 4）——「押すだけでも
-      出せる」は札の形からは読めない（掴めない環境の唯一の道でもある）。
-      §9.255 ①で帯を1行にしたときにここごと`title`へ落としていたが、
-      畳んでよいのは**言い回し**であって**できることの一覧**ではない。
-      長い説明は今までどおり見出しの`title`が持つ。 */
-   +`<span class="rp-palette-note">掴んで紙へ落とすと出ます／`
-   +`紙の塊をここへ落とすと外れます／押すだけでも出せます</span>`
+  el.innerHTML=`<div class="rp-palette-head">`
+   +`<b>出していない塊 <i>${items.length}</i></b>`
+   +`<button type="button" class="rp-palette-help" data-rp-pal-help`
+     +` aria-haspopup="true" aria-expanded="false" aria-label="置き場の使い方">?</button>`
+   +`</div>`
    +(items.length
      ?`<div class="rp-palette-list">`+items.map(k=>{
         const r=rpRows(k);
@@ -3443,8 +3457,8 @@
          +`<span class="rp-palette-size">${rpSpan(k)}マス×${r?r+'行':'自動'}</span></button>`;
        }).join('')+`</div>`
      :`<div class="rp-palette-list is-empty">全部の塊を紙に出しています。</div>`)
-   /* 操作の説明と直前の一言はここへ置く（§9.255 ①）——帯は1行にしたので、
-      文を出す場所は置き場の帯が持つ。`rpPaintNote()`がここへ書き足す。 */
+   /* 直前の一言（入りきらない・置けない）は**見えるところ**へ（§9.222 ④）。
+      `rpPaintNote()`がここへ書き足す。 */
    +`<span class="rp-arrange-note" id="rpArrangeNote"${rpHelpOpen?'':' hidden'}>`
      +`掴んで<b>置きたいマスへ</b>。<b>縁を引く</b>と大きさ（右＝幅・下＝高さ・右下＝両方）。`
      +`<b>ダブルクリック</b>で<b>帳票ブロックマスタ</b>の編集画面が開きます。`
@@ -3453,8 +3467,47 @@
   bindPalette();
   rpPaintNote();
  }
+ /* 使い方の浮き出し（§9.276 ①）。**器は`body`直下**——`.rp-nav`は
+    `overflow`を持つので、中で開くと切られる（§9.201）。**開いた器は必ず
+    控える**（§9.222 ①。控えないと外クリックでもEscでも閉じられない）。 */
+ let rpPalHelpEl=null;
+ function rpClosePaletteHelp(){
+  if(rpPalHelpEl){rpPalHelpEl.remove();rpPalHelpEl=null}
+  document.removeEventListener('mousedown',rpPalHelpOutside,true);
+  document.removeEventListener('keydown',rpPalHelpKey,true);
+  const b=document.querySelector('[data-rp-pal-help]');
+  if(b)b.setAttribute('aria-expanded','false');
+ }
+ function rpPalHelpOutside(e){
+  if(rpPalHelpEl&&!rpPalHelpEl.contains(e.target)&&!e.target.closest('[data-rp-pal-help]'))
+   rpClosePaletteHelp();
+ }
+ function rpPalHelpKey(e){
+  if(typeof escClosesModal==='function'?escClosesModal(e):e.key==='Escape')rpClosePaletteHelp();
+ }
+ function rpOpenPaletteHelp(anchor){
+  rpClosePaletteHelp();
+  const d=document.createElement('div');
+  d.className='rp-pal-help';d.id='rpPaletteHelp';
+  d.innerHTML=`<b>置き場の使い方</b>`
+   +`<ul><li>掴んで<b>紙へ落とす</b>と出ます（落ちる場所は枠で見えます）</li>`
+   +`<li><b>押すだけでも出せます</b>（掴めない環境でも行き止まりにしないため）</li>`
+   +`<li>紙の塊を<b>ここへ落とす</b>と外れます</li></ul>`;
+  document.body.appendChild(d);
+  rpPalHelpEl=d;
+  const r=anchor.getBoundingClientRect();
+  d.style.left=Math.round(Math.min(r.left,window.innerWidth-d.offsetWidth-8))+'px';
+  d.style.top=Math.round(Math.min(r.bottom+6,window.innerHeight-d.offsetHeight-8))+'px';
+  anchor.setAttribute('aria-expanded','true');
+  requestAnimationFrame(()=>{
+   document.addEventListener('mousedown',rpPalHelpOutside,true);
+   document.addEventListener('keydown',rpPalHelpKey,true);
+  });
+ }
  function bindPalette(){
   const el=$id('rpPalette');if(!el)return;
+  const help=el.querySelector('[data-rp-pal-help]');
+  if(help)help.onclick=()=>{if(rpPalHelpEl)rpClosePaletteHelp();else rpOpenPaletteHelp(help)};
   el.querySelectorAll('[data-rp-pal]').forEach(b=>{
    const k=b.dataset.rpPal;
    b.addEventListener('dragstart',ev=>{

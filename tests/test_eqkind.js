@@ -56,8 +56,8 @@ async function cleanup(){
   /* ---- 2) 画面から区分つきで登録する ---- */
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:10000});
-  await page.fill('#masterUserId','tester');
-  await page.evaluate(()=>document.querySelector('#masterUserId').dispatchEvent(new Event('change')));
+  /* 更新者IDは打ち込む欄ではなくなった（§9.276 ③）。端末の覚え（localStorage）へ入れる。 */
+  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tester');
   await page.evaluate(()=>{const b=[...document.querySelectorAll('#masterMaintNav [data-master]')]
     .find(x=>x.textContent.includes('設備'));if(b)b.click()});
   await page.waitForTimeout(1500);

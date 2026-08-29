@@ -51,8 +51,8 @@ const made={perm:[],cat:[]};
       (await page.$$('aside [data-db-key="MASTER"]')).length===0);
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:10000});
-  await page.fill('#masterUserId','tester');
-  await page.evaluate(()=>document.querySelector('#masterUserId').dispatchEvent(new Event('change')));
+  /* 更新者IDは打ち込む欄ではなくなった（§9.276 ③）。端末の覚え（localStorage）へ入れる。 */
+  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tester');
   await page.waitForTimeout(900);
   const integ=await page.evaluate(()=>({
     mmMode:document.body.classList.contains('mm-mode'),

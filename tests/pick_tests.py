@@ -32,8 +32,10 @@ TESTS = ROOT / 'tests'
 # 常に回す静的検査(サーバーもブラウザも要らない安い網)。
 # §9.275: どの`.py`を触っても走らせる（知らないエスケープは、書いた本人の
 # Pythonでは警告にならないことがある——利用者の端末で初めて出た）。
+# §9.276 ④: 説明文の生タグも同じ——**画面を開いて回らないと見えない**ので、
+# 開き忘れた1つが永久に残る。字を見るだけの網なら新しいマスタも自動で対象。
 ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
-          'test_docindex', 'test_pywarn']
+          'test_docindex', 'test_pywarn', 'test_hintlint']
 
 # 束ねた呼び名。右辺は実際のテスト名。
 G = {}

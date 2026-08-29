@@ -70,8 +70,8 @@ const SNAP=`(()=>{
    await page.waitForSelector('#openMasterMaint',{timeout:20000});
    await page.click('#openMasterMaint');
    await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:10000});
-   await page.fill('#masterUserId','tester');
-   await page.evaluate(()=>document.querySelector('#masterUserId').dispatchEvent(new Event('change')));
+   /* 更新者IDは打ち込む欄ではなくなった（§9.276 ③）。端末の覚え（localStorage）へ入れる。 */
+   await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tester');
    /* **ナビが出るまで待ってから押す**（§9.102。押す前に待たないと、
       速い実行では効いて遅い実行では空振りする——実際に通しで踏んだ）。 */
    await page.waitForSelector('#masterMaintNav [data-master="roll"]',{timeout:20000});

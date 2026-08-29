@@ -62,7 +62,9 @@ resetcontent(){
   # 生き延びる**——前の実行の置き土産が次の実行へ残る(§9.121)。
   # `report:<設備>`も戻す（§9.219 ②）。既定の帳票ブロックがマスタに載った
   # ので、幅・行数・出す/出さないを触ったテストの置き土産がここに残る。
-  for tg in 'timeline:テスト設備A' 'print:テスト設備A' 'report:テスト設備A' 'report:共通'; do
+  # `report:スリッター1号`は**見本のロットの設備**（§9.253）。test_rbcellsが
+  # 「一度配置を保存した紙」を作るので、戻さないと次の実行が引き継ぐ。
+  for tg in 'timeline:テスト設備A' 'print:テスト設備A' 'report:テスト設備A' 'report:共通' 'report:スリッター1号'; do
     curl -s -X POST $API/api/column-layout-master -H 'Content-Type: application/json' \
       -d "{\"target\":\"$tg\",\"clear\":true,\"order\":[],\"hidden\":[],\"widths\":{},\"names\":{},\"formats\":{},\"rules\":{},\"formulas\":{},\"locks\":[],\"sorts\":{},\"user_id\":\"test\"}" >/dev/null
   done
@@ -267,7 +269,7 @@ for t in test_cols test_listmodal test_split_layout test_sccols; do
 echo "--- サーバー側 ---"
 mode schedule
 for t in test_sclock test_scsession test_scwritespeed test_colscache test_colsripple test_colsave test_opdata test_modeguard test_noaccess test_pcname \
-         test_csslint test_dbopen test_error test_datasource test_dscap test_dskeylint test_dbmirror test_atomicio test_localwork test_displayrule test_eqstd test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_tabclose test_logs test_docindex test_sortpipe test_scwatch test_scowner test_qjoin test_workdate test_scload test_faststart test_rollio test_cleanup test_rawmaster test_recsplit test_colscope test_mastershare test_storage test_recmirror test_presence test_savechip test_rbcells test_pywarn test_pick; do run python3 $t.py; done
+         test_csslint test_dbopen test_error test_datasource test_dscap test_dskeylint test_dbmirror test_atomicio test_localwork test_displayrule test_eqstd test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_tabclose test_logs test_docindex test_sortpipe test_scwatch test_scowner test_qjoin test_workdate test_scload test_faststart test_rollio test_cleanup test_rawmaster test_recsplit test_colscope test_mastershare test_storage test_recmirror test_presence test_savechip test_rbcells test_pywarn test_hintlint test_pick; do run python3 $t.py; done
 
 echo
 echo "-- 時間のかかったテスト(上位10) --"

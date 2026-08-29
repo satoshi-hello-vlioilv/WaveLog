@@ -133,8 +133,8 @@ let b=null;
   const pressed=t=>t.getAttribute('aria-pressed')==='true';
   /* 更新者IDはマスタ更新の必須項目（requireMaintUser）。入れずに保存すると
      トーストが出るだけで**何も起きない**ので、先に入れておく。 */
-  const uid=document.querySelector('#masterUserId');
-  if(uid){uid.value='test-workable';uid.dispatchEvent(new Event('change',{bubbles:true}))}
+  /* 更新者IDは打ち込む欄ではなくなった（§9.276 ③）。 */
+  try{localStorage.setItem('AccessMeasurementUserId','test-workable')}catch(e){}
   document.querySelector('#shiftName').value='複数設備テスト2';
   document.querySelector('#shiftName').dispatchEvent(new Event('input',{bubbles:true}));
   cbs.slice(0,2).forEach(t=>{if(!pressed(t))t.click()});

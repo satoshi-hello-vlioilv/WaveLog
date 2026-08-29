@@ -160,17 +160,46 @@ let b=null,madeBlock=null;
   const pal=await page.evaluate(()=>({
    件数:document.querySelectorAll('#rpPalette [data-rp-pal]').length,
    見出し:(document.querySelector('.rp-palette-head')||{}).textContent||'',
-   案内:(document.querySelector('.rp-palette-note')||{}).textContent||'',
    大きさを書く:[...document.querySelectorAll('.rp-palette-size')].map(x=>x.textContent).slice(0,3),
    紙の外:!document.querySelector('.rp-page #rpPalette'),
+   /* §9.276 ①。**左サイドバーの中**（上の帯ではない）。 */
+   サイドバーの中:!!document.querySelector('.rp-nav #rpPalette'),
+   縦積み:(()=>{const l=document.querySelector('.rp-palette-list');
+     return l?getComputedStyle(l).flexDirection:''})(),
+   案内の入口:!!document.querySelector('[data-rp-pal-help]'),
+   浮き出しは閉じている:!document.getElementById('rpPaletteHelp'),
   }));
   rec('出していない塊がパレットに並ぶ',pal.件数>0,`${pal.件数}件 / ${pal.見出し}`);
   rec('パレットは紙の外に置く（刷り上がりに混ざらない）',pal.紙の外===true);
+  rec('パレットは左サイドバーの中に縦積みで置く（§9.276 ①）',
+      pal.サイドバーの中===true&&pal.縦積み==='column',JSON.stringify(pal));
   rec('規格の大きさを名前と一緒に書く',
       pal.大きさを書く.length>0&&pal.大きさを書く.every(t=>/マス×/.test(t)),
       JSON.stringify(pal.大きさを書く));
-  rec('できること（掴む／落とす／押す）を書く',
-      /掴んで/.test(pal.案内)&&/外れ/.test(pal.案内)&&/押すだけ/.test(pal.案内),pal.案内);
+  /* できること（掴む／落とす／押す）は**押したときだけ出す**（§9.276 ①）。
+     **消さないこと**——札の形からは「押すだけでも出せる」が読めない。
+     **「入口がある」だけを見ないこと**——押して中身まで見る。 */
+  rec('使い方の入口が置き場にある（常時1行を占めない）',
+      pal.案内の入口===true&&pal.浮き出しは閉じている===true,JSON.stringify(pal));
+  await page.evaluate(()=>document.querySelector('[data-rp-pal-help]').click());
+  await page.waitForSelector('#rpPaletteHelp',{timeout:5000});
+  const helpTxt=await page.evaluate(()=>{
+   const d=document.getElementById('rpPaletteHelp');
+   return {文:d.textContent||'',
+     /* **器の外へ出す**——`.rp-nav`は`overflow`を持つので中で開くと切れる。 */
+     body直下:d.parentElement===document.body,
+     画面の中:(()=>{const r=d.getBoundingClientRect();
+       return r.left>=0&&r.top>=0&&r.right<=window.innerWidth+1&&r.bottom<=window.innerHeight+1})()};
+  });
+  rec('できること（掴む／落とす／押す）は浮き出しに書く',
+      /掴んで/.test(helpTxt.文)&&/外れ/.test(helpTxt.文)&&/押すだけ/.test(helpTxt.文),helpTxt.文);
+  rec('浮き出しは器の外へ出し、画面の中に収める',
+      helpTxt.body直下===true&&helpTxt.画面の中===true,JSON.stringify(helpTxt));
+  /* **閉じられること**（§9.222 ①。控えないと外クリックでもEscでも閉じない）。 */
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  rec('浮き出しはEscで閉じる',
+      await page.evaluate(()=>!document.getElementById('rpPaletteHelp')));
   /* 押すだけでも出せる（§4。掴めない環境で行き止まりにしない）。 */
   const first=await page.evaluate(()=>document.querySelector('#rpPalette [data-rp-pal]').dataset.rpPal);
   await page.click(`#rpPalette [data-rp-pal="${first.replace(/"/g,'\\"')}"]`).catch(async()=>{

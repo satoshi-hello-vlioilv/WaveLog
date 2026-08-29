@@ -11,8 +11,8 @@ let b=null;
  await page.evaluate(()=>localStorage.setItem('MeasurementUserIdV1','tester'));
  await page.click('#openMasterMaint');
  await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:8000});
- await page.fill('#masterUserId','tester');
- await page.evaluate(()=>document.querySelector('#masterUserId').dispatchEvent(new Event('change')));
+ /* 更新者IDは打ち込む欄ではなくなった（§9.276 ③）。端末の覚え（localStorage）へ入れる。 */
+ await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tester');
  await page.evaluate(()=>{const b=[...document.querySelectorAll('#masterMaintNav [data-master]')].find(x=>x.textContent.includes('勤務形態'));if(b)b.click()});
  await page.waitForSelector('.shift-editor',{timeout:8000});
  await page.waitForTimeout(600);

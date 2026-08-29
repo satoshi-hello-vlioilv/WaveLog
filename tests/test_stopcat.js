@@ -66,11 +66,11 @@ let b=null;
  };
  await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openMasterMaint',{timeout:15000});
- await page.evaluate(()=>{const el=document.querySelector('#masterUserId');if(el)el.value='test'});
+ await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'test');
 
  // ---- (1) 分類マスタのタブが存在し、既定の分類が入っている ----
  await openTab('stopCategory');
- await page.evaluate(()=>{const el=document.querySelector('#masterUserId');if(el)el.value='test'});
+ await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'test');
  const cats=await page.$$eval('#masterMaintList .mm-row',rs=>rs.map(r=>r.innerText.split('\n')[0].trim()));
  rec('設備停止分類マスタのタブがある',cats.length>0,cats.join('/'));
  rec('既定の分類(保全・段取り・待ち・突発)が入っている',
@@ -78,7 +78,7 @@ let b=null;
 
  // ---- (2) 設備停止マスタの「分類」が分類マスタ連動の選択欄になっている ----
  await openTab('stopReason');
- await page.evaluate(()=>{const el=document.querySelector('#masterUserId');if(el)el.value='test'});
+ await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'test');
  await page.click('#masterMaintAdd');
  await page.waitForSelector('#maintEditorModal:not([hidden])',{timeout:5000});
  await page.waitForTimeout(900);

@@ -30,6 +30,7 @@
 開いている複数タブ間で共有される(単一端末単一サーバーの前提のため)。
 """
 from flask import request, jsonify
+import getpass
 import os
 import socket
 import threading
@@ -245,11 +246,30 @@ def _relayed_write_ok():
   return False
 
 def current_login_id():
+ """この端末を動かしている人のログインID。**答えるのはここ1箇所**（§9.163）。
+
+ アクセス権限マスタとの照合・監査列（誰が更新したか）・フィルタの持ち主が
+ すべてこの値を見る。**出どころを複数持ち、使えた最初のものを採る**
+ （§9.208 ⑧のPC名と同じ作法）——`os.getlogin()`は端末につながっていない
+ プロセス（サービス起動・コンテナ）では`OSError`を投げるので、それ1本だと
+ **IDが丸ごと空になり、マスタを1件も更新できない端末ができる**。
+ `getpass.getuser()`は環境変数→パスワードデータベースの順に見るので、
+ その穴を埋める。
+
+ **設定で名乗り直せるようにはしない**——PC名と違い、ここは権限の照合に
+ 使う値なので、自己申告できると区分（§9.272）を名乗れてしまう。
+ """
  who=_relayed_identity()
  if who and who[0]:return who[0]
- try:username=os.getlogin()
- except Exception:username=os.environ.get('USERNAME') or os.environ.get('USER') or os.environ.get('LOGNAME') or ''
- return str(username or '').strip()
+ for get in (lambda:os.getlogin(),
+             lambda:getpass.getuser(),
+             lambda:os.environ.get('USERNAME'),
+             lambda:os.environ.get('USER'),
+             lambda:os.environ.get('LOGNAME')):
+  try:v=str(get() or '').strip()
+  except Exception:v=''
+  if v:return v
+ return ''
 
 # ---------- この端末の呼び名（§9.208 ⑧、利用者の指示） ----------
 # 「PC名が取得できていないようなので工夫してください。起動時に取得して

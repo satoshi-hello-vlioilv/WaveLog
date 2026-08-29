@@ -352,20 +352,56 @@
    special:'presence',endpoint:'/api/presence',
    titleText:'接続状況 — 誰がいまこのシステムを使っているか',
    cols:[{k:'login',label:'ログインID'}],
-   hint:'この共有のマスタへ繋いでいる端末の一覧です。<b>区分が開発者・メンテナンス者の端末だけが切断できます</b>（メンテナンス者は開発者を切断できません）。区分はアクセス権限マスタで決めます。切断された端末は<b>書き込みだけが止まり</b>、開いている画面はそのまま残ります（別のPCの操作を横から消さないため）。一定時間で自動的に戻ります。'},
+   /* **強調は`**`で書く**（§9.276 ④）——`hintHtml()`はエスケープしてから
+      `**`だけを`<b>`へ変えるので、生のタグを書くと**画面に`<b>`という字が
+      出る**（マスタへ入れた文字列のHTMLがそのまま効かないようにするための
+      順番なので、この順番は変えない・§9.222 ⑧）。 */
+   hint:'この共有のマスタへ繋いでいる端末の一覧です。**区分が開発者・メンテナンス者の端末だけが切断できます**（メンテナンス者は開発者を切断できません）。区分はアクセス権限マスタで決めます。切断された端末は**書き込みだけが止まり**、開いている画面はそのまま残ります（別のPCの操作を横から消さないため）。一定時間で自動的に戻ります。'},
   {group:'system',key:'accessPermission',label:'アクセス権限',icon:'権',endpoint:'/api/access-permission-master',hasDelete:true,
    fields:[{k:'loginId',label:'ログインID',key:true},{k:'pcName',label:'PC名',key:true},
            /* **区分が先**（§9.272）。上位概念なので、細かい可否より前に決める。 */
            {k:'role',label:'権限区分',type:'select',options:['一般ユーザー','メンテナンス者','開発者'],
             more:'アプリそのものをどこまで管理できるかです。下の3つ（何を触れるか）とは別の軸で、掛け合わせません。'
-                 +'<b>開発者</b>＝制限なし。<b>メンテナンス者</b>＝接続状況を見て切断できる（ただし開発者は切断できません）。'
-                 +'<b>一般ユーザー</b>＝接続状況を見るだけ。登録の無い端末は一般ユーザーです。'},
+                 +'**開発者**＝制限なし。**メンテナンス者**＝接続状況を見て切断できる（ただし開発者は切断できません）。'
+                 +'**一般ユーザー**＝接続状況を見るだけ。登録の無い端末は一般ユーザーです。'},
            {k:'canEdit',label:'編集可否',type:'select',options:['編集可','閲覧のみ']},
            {k:'canSchedule',label:'スケジュール可否',type:'select',options:['不可','可']},
            {k:'canFieldReorder',label:'現場段取り可否',type:'select',options:['不可','可']},
            {k:'fieldReorderEquipment',label:'現場段取り対象設備',type:'equipment-multi-text'}],
    cols:[{k:'loginId',label:'ログインID',grow:2},{k:'pcName',label:'PC名',grow:2},{k:'role',label:'権限区分',grow:1},{k:'canEdit',label:'編集可否',grow:1},{k:'canSchedule',label:'スケジュール',grow:1},{k:'canFieldReorder',label:'現場段取り',grow:1},{k:'fieldReorderEquipment',label:'対象設備',grow:2,format:'equipmentTarget'}],
-   hint:'<b>権限区分</b>は「アプリそのものをどこまで管理できるか」の上位の軸で、その下の3つ「何を触れるか」とは掛け合わせません(閲覧のみの端末でも、開発者なら接続状況の管理はできます)。開発者=制限なし / メンテナンス者=接続状況を見て切断できる(開発者は切断できません) / 一般ユーザー=接続状況を見るだけ。<b>登録の無い端末は一般ユーザー</b>です——管理の権限を配らないためで、誰も切断できない状態になったら、この画面で開発者を1つ登録してください。接続状況は「マスタ管理 > 接続状況」で見られます。 ログインID・PC名はどちらか一方だけの登録もできます(汎用的な運用のため)。片方だけ登録した場合、もう一方は「問わない」という意味になります(例: ログインIDだけ登録すると、そのユーザーはどの端末からでもこの権限になります)。両方登録した組み合わせが最優先で一致し、次に片方だけの登録、両方空欄の登録(全端末共通の既定)の順に判定します。登録の無い組み合わせは既定で編集可能・スケジュール不可・現場段取り不可として扱われます。特定の端末を閲覧専用にしたい場合はその端末を「閲覧のみ」で、作業スケジュールを操作させたい場合は「スケジュール可否」を「可」で登録してください。「現場段取り可否」は編集モードの端末に限り、対象設備の並べ替えだけを追加で許可します。対象設備は複数選べます。「すべての設備」を選ぶと全設備の並べ替えを許可します（開発・保守用。設備が増えても権限行を足さずに済みます）。'},
+   /* ---------- 長い説明は畳んで階層にする（§9.276 ④、利用者の指示） ----------
+      「説明文長すぎてわかりにくくて読みにくいので、タブやアコーディオンなど
+       使ってわかりやすく階層化しながらコンパクトに表示・説明する方法も」
+
+      以前は**900字ちかい1段落**で、しかも生の`<b>`が字のまま出ていた。
+      画面に常時出すのは**1文だけ**にし、残りは「何を知りたいか」で3つに
+      割って畳む——読む側は当たりを付けて1つだけ開ける。
+      **説明の量（§9.276 ②）はリード文にだけ掛かる**——畳んである節は
+      押したときだけ開くので、短くする理由が無い（§9.234 ①の`?`と同じ）。 */
+   hint:'どの端末で・誰が・何をできるかを決めます。**登録の無い端末は「編集可能・一般ユーザー」**として扱われます。',
+   /* 窓では**いま決めることの一言**だけ（§CLAUDE 8）。詳しい話は各欄の`?`が持つ。 */
+   hintShort:'この端末（ログインID・PC名）に何を許すかを決めます。**空欄は「問わない」**という意味です。',
+   hintMore:[
+    {t:'権限区分（アプリをどこまで管理できるか）',
+     b:'**区分は上位の軸**で、下の3つ「何を触れるか」とは掛け合わせません'
+       +'（閲覧のみの端末でも、開発者なら接続状況の管理はできます）。\n'
+       +'**開発者**＝制限なし。\n'
+       +'**メンテナンス者**＝接続状況を見て切断できる（開発者は切断できません）。\n'
+       +'**一般ユーザー**＝接続状況を見るだけ。\n'
+       +'**登録の無い端末は一般ユーザー**です——管理の権限を配らないため。'
+       +'誰も切断できない状態になったら、この画面で開発者を1つ登録してください。'
+       +'接続状況は「マスタ管理 > 接続状況」で見られます。'},
+    {t:'ログインID・PC名の照合（どの行が効くか）',
+     b:'どちらか一方だけの登録もできます。片方だけ登録すると、もう一方は**「問わない」**という意味になります'
+       +'（例: ログインIDだけ登録すると、その人はどの端末からでもこの権限になります）。\n'
+       +'効く順は **両方一致 → 片方だけの登録 → 両方空欄（全端末共通の既定）**。\n'
+       +'どれにも当たらない組み合わせは、既定で**編集可能・スケジュール不可・現場段取り不可**です。'},
+    {t:'何を触れるか（編集／スケジュール／現場段取り）',
+     b:'**閲覧専用**にしたい端末は「編集可否」を『閲覧のみ』で登録します。\n'
+       +'**作業スケジュールを操作**させたい端末は「スケジュール可否」を『可』に。\n'
+       +'**現場段取り**は編集モードの端末に限り、対象設備の**並べ替えだけ**を追加で許可します。'
+       +'対象設備は複数選べ、「すべての設備」を選ぶと全設備が対象になります'
+       +'（開発・保守用。設備が増えても権限行を足さずに済みます）。'}]},
   {group:'schedule',key:'loadFactor',label:'換算係数',icon:'率',special:'load-factor',endpoint:'/api/schedule/load-factors'},
   {group:'schedule',key:'stopCategory',label:'設備停止分類',icon:'類',endpoint:'/api/schedule/stop-category-master',hasDelete:true,
    fields:[{k:'name',label:'分類名',required:true,key:true}],
@@ -642,11 +678,12 @@
          短い誘い文句、再読込は印とaria-labelにする。
          **この中にバッククォートを書かないこと**（§9.211 ③。テンプレート
          リテラルがそこで閉じ、以降がJSとして解釈されて画面が組み上がらない）。 -->
-    <label class="mm-head-user" title="マスタを更新した人として記録します">
+    <button type="button" id="masterUserId" class="mm-head-user"
+     title="この端末のログインIDです。マスタを更新した人として記録します（書き換えられません）。押すと「接続状況」を開きます">
      <span class="mm-head-ico" aria-hidden="true">👤</span>
-     <input id="masterUserId" type="text" autocomplete="off" placeholder="更新者ID"></label>
+     <b id="masterUserName">—</b></button>
     <div class="mm-search"><span class="mm-search-icon" aria-hidden="true">🔍</span><input id="masterMaintSearch" type="search" placeholder="絞り込み" autocomplete="off"></div>
-    ${hintLevelBarHtml()}
+    ${hintBadgeHtml()}
     <button id="reloadMasterMaint" type="button" class="mm-btn-ghost mm-head-icobtn"
      title="マスタを読み直します" aria-label="再読込"><span aria-hidden="true">↻</span></button>
    </div>
@@ -669,23 +706,24 @@
    </div>
   </div>`;
   const grid=$('#grid');grid?.parentNode?.insertBefore(panel,grid);
-  const uid=$('#masterUserId');if(uid){uid.value=currentUserId();uid.onchange=()=>setUserId(uid.value)}
-  /* 説明の量（§9.274）。**選んだらその場で描き直す**——次に開くまで
-     変わらないと、押しても何も起きないように見える（§4）。 */
+  /* ---------- 更新者IDは名乗るだけ（§9.276 ③、利用者の指示） ----------
+     「ユーザーIDを表示する上部のメニュー部分は、IDを書き換えられないように
+      してください。また、ボタン化して接続状況確認と配線してください」
+
+     ここは**この端末のログインID**（`/api/whoami`＝`current_login_id()`）で、
+     アクセス権限マスタの照合・監査列・フィルタの持ち主が見ている値。
+     打ち込めると**他人の名前で更新できてしまい、記録の意味が無くなる**。
+     押したときの行き先は「接続状況」——いま誰がどの端末で繋いでいるかを
+     見る画面で、自分の名乗りを確かめる場所でもある（§9.272）。 */
+  paintMaintUser();
+  /* 説明の量（§9.274・§9.276 ②）。**選んだらその場で描き直す**——次に開くまで
+     変わらないと、押しても何も起きないように見える（§4）。描き直しは
+     `refreshMaintScreen()`の1箇所（専用の画面を潰さない）。
+     **「出さない」だけはCSSでも効かせる**（`html[data-hint]`）——描き直しの
+     効かない場面でも消えるようにするため。 */
   document.documentElement.setAttribute('data-hint',hintLevel());
-  document.querySelectorAll('#mmHead [data-hint-lv]').forEach(b=>b.onclick=()=>{
-   setHintLevel(b.dataset.hintLv);
-   document.querySelectorAll('#mmHead [data-hint-lv]').forEach(x=>{
-    const on=x.dataset.hintLv===hintLevel();
-    x.classList.toggle('is-on',on);x.setAttribute('aria-pressed',on?'true':'false');
-   });
-   /* **いま出ているものを描き直す**（§4。押しても何も起きないを作らない）。
-      編集窓はこの帯を覆うので開いている最中に押せない＝次に開いたときに
-      効く。専用の画面（`special:*`）はタブを移ったときに効くので、
-      **「出さない」だけはCSSでも効かせる**（`html[data-hint]`）。 */
-   try{renderMaintForm()}catch(e){}
-   try{renderMaintList()}catch(e){}
-  });
+  const hb=$('#mmHintBadge');
+  if(hb)hb.onclick=()=>{if(mmHintMenu)closeHintMenu();else openHintMenu(hb)};
   $('#reloadMasterMaint').onclick=()=>loadMaint(true);
   const search=$('#masterMaintSearch');if(search){search.oninput=()=>{maintState.query=search.value;renderMaintList()}}
   renderMaintNav();
@@ -693,6 +731,9 @@
  }
  function exitMasterMaint(){
   if(!document.body.classList.contains('mm-mode'))return;
+  /* **開いた浮きメニューは器と一緒に畳む**（§9.222 ①）——残すと、画面を
+     出たあとも説明の量のメニューだけが宙に浮く。 */
+  closeHintMenu();
   document.body.classList.remove('mm-mode');
   const panel=$('#masterMaintPanel');if(panel)panel.hidden=true;
   closeMaintEditor();
@@ -708,7 +749,32 @@
   compactToolbar:true,
   header:['マスタ管理','登録内容の追加・編集・無効化（更新者IDとともに記録）'],exit:exitMasterMaint});
  function syncNav(){document.querySelectorAll('#masterMaintNav [data-master]').forEach(b=>b.classList.toggle('active',b.dataset.master===maintState.defKey))}
- function requireMaintUser(){const el=$('#masterUserId');const id=String(el?el.value:'').trim();if(!id){showToast('更新者IDを入力してください','マスタ更新には更新者IDが必要です。',4200);el&&el.focus();return null}setUserId(id);return id}
+ /* いまの更新者IDをボタンへ書く。**IDは`/api/whoami`から後から届く**
+    （§9.184と同じ罠）ので、届いていなければその場で取りに行く。 */
+ function paintMaintUser(){
+  const b=$('#masterUserId'),n=$('#masterUserName');
+  if(!b||!n)return;
+  const id=currentUserId();
+  n.textContent=id||'IDが取れていません';
+  b.classList.toggle('is-unknown',!id);
+  b.onclick=()=>openMasterMaint('presence');
+  if(!id&&typeof fetchWhoami==='function'){
+   fetchWhoami().then(v=>{if(v){setUserId(v);paintMaintUser()}}).catch(()=>{});
+  }
+ }
+ /* **打ち込ませない**（§9.276 ③）。取れていないときは、無言で断らずに
+    どこを見ればよいかまで言う（§4）——押せば接続状況へ行ける。 */
+ function requireMaintUser(){
+  const id=currentUserId();
+  if(!id){
+   showToast('更新者IDが分かりません',
+     'この端末のログインIDを読み取れませんでした。マスタの更新は「誰が直したか」を記録するので、'
+     +'IDが取れないうちは保存できません。上の👤を押すと接続状況を確認できます。',6000);
+   paintMaintUser();
+   return null;
+  }
+  return id;
+ }
 
  /* ---------- モーダル化の基準(ARCHITECTURE.md「マスタ管理の画面形態」) ----------
     「モーダルにする意味」をここ1箇所で定義する。
@@ -798,7 +864,10 @@
     **通すのは`hintHtml()`の1箇所**（§9.163）——説明を出す場所は十数箇所
     あるので、そこへ足すと**足し忘れた欄だけが長いまま残る**。 */
  const HINT_LEVEL_KEY='MasterHintLevelV1';
- const HINT_LEVELS=[{v:'full',label:'通常'},{v:'short',label:'短め'},{v:'off',label:'出さない'}];
+ const HINT_LEVELS=[
+  {v:'full',label:'通常',note:'説明を全部出す'},
+  {v:'short',label:'短め',note:'最初の1文だけ'},
+  {v:'off',label:'出さない',note:'「?」からは読める'}];
  function hintLevel(){
   try{
    const v=localStorage.getItem(HINT_LEVEL_KEY);
@@ -823,14 +892,112 @@
   const s=lv==='short'?hintShorten(String(t||'')):String(t||'');
   return esc(s).replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
  }
- /* 帯の選び方。**いまどれかを必ず文字で出す**（§CLAUDE 3）。 */
- function hintLevelBarHtml(){
+ /* ---------- 帯ではなくポップオーバー（§9.276 ②、利用者の指示） ----------
+    「このボタンは3つもエリアを使っているがそんなに頻繁に使うものでもないので、
+     隣の文字サイズ切り替えUIのように、ポップオーバーメニューなど場所を
+     使わない方法で切り替えできるようにしてください」
+
+    **隣の`#uiSizeBadge`と同じ言語で揃える**（小さなボタン→選択肢を並べた
+    浮きメニュー）——同じ役割のUIが画面ごとに違う形だと、押す前にどちらの
+    形か思い出すことになる。**いまどれかはボタンに文字で出す**（§CLAUDE 3。
+    畳んだだけで現在値が読めなくなるのでは、隠した意味が無い）。 */
+ function hintBadgeHtml(){
+  const cur=HINT_LEVELS.find(x=>x.v===hintLevel())||HINT_LEVELS[0];
+  return `<button type="button" id="mmHintBadge" class="mm-btn-ghost mm-head-icobtn mm-hintbadge"`
+   +` aria-haspopup="true" aria-expanded="false"`
+   +` title="欄の下に出る説明文の量を選びます（いまは「${esc(cur.label)}」）。`
+   +`「くわしい説明」（?）はどの段でも読めます">`
+   +`<span class="mm-hint-ico" aria-hidden="true">💬</span><b id="mmHintLabel">${esc(cur.label)}</b></button>`;
+ }
+ /* 浮きメニュー。**器は`body`直下**（`#mmHead`は`overflow`を持つ器の中に
+    あるので、中で開くと切られる・§9.201）。**開いた器は必ず控える**
+    （§9.222 ①——控えないと外クリックもEscも閉じられず、押すたびに積み上がる）。 */
+ let mmHintMenu=null;
+ function closeHintMenu(){
+  if(mmHintMenu){mmHintMenu.remove();mmHintMenu=null}
+  document.removeEventListener('click',onHintOutside,true);
+  document.removeEventListener('keydown',onHintKey,true);
+  const b=$('#mmHintBadge');if(b)b.setAttribute('aria-expanded','false');
+ }
+ function onHintOutside(e){
+  if(mmHintMenu&&!mmHintMenu.contains(e.target)&&!e.target.closest('#mmHintBadge'))closeHintMenu();
+ }
+ function onHintKey(e){if(escClosesModal(e))closeHintMenu()}
+ function openHintMenu(anchor){
+  closeHintMenu();
   const cur=hintLevel();
-  return `<span class="mm-hintlv" role="group" aria-label="説明の量">`
-   +`<i title="欄の下に出る説明文の量です。「くわしい説明」（?）はどの段でも読めます">説明</i>`
-   +HINT_LEVELS.map(x=>`<button type="button" data-hint-lv="${x.v}"`
-     +` class="${x.v===cur?'is-on':''}" aria-pressed="${x.v===cur?'true':'false'}">`
-     +`${esc(x.label)}</button>`).join('')+`</span>`;
+  const m=document.createElement('div');
+  m.className='access-mode-menu mm-hint-menu';m.id='mmHintMenu';
+  m.innerHTML=HINT_LEVELS.map(x=>`<button type="button" data-hint-lv="${esc(x.v)}"`
+    +` class="${x.v===cur?'is-current':''}"><span>${esc(x.label)}</span>`
+    +`<small>${esc(x.note||'')}</small></button>`).join('');
+  document.body.appendChild(m);
+  mmHintMenu=m;
+  m.querySelectorAll('[data-hint-lv]').forEach(b=>b.onclick=()=>{
+   setHintLevel(b.dataset.hintLv);
+   const lab=$('#mmHintLabel');
+   const cur2=HINT_LEVELS.find(x=>x.v===hintLevel())||HINT_LEVELS[0];
+   if(lab)lab.textContent=cur2.label;
+   const badge=$('#mmHintBadge');
+   if(badge)badge.title=`欄の下に出る説明文の量を選びます（いまは「${cur2.label}」）。`
+     +`「くわしい説明」（?）はどの段でも読めます`;
+   closeHintMenu();
+   refreshMaintScreen();
+  });
+  const r=anchor.getBoundingClientRect();
+  m.style.top=`${r.bottom+6}px`;
+  m.style.left=`${Math.max(8,Math.min(r.left,window.innerWidth-m.offsetWidth-8))}px`;
+  anchor.setAttribute('aria-expanded','true');
+  requestAnimationFrame(()=>{
+   document.addEventListener('click',onHintOutside,true);
+   document.addEventListener('keydown',onHintKey,true);
+  });
+ }
+ /* ---------- いま出ている画面を描き直す（§9.276 ②、利用者の報告） ----------
+    「マスタを確認しているときに説明文の長さを切り替えると、マスタ表示内容が
+     消えます。再読み込みすると表示されますが」
+
+    原因は`renderMaintList()`が**汎用の一覧**（`def.cols`から見出しを組む）を
+    無条件に書いていたこと——専用の画面（`special:*`）は`#masterMaintList`へ
+    自前の中身を描いているので、そこへ汎用の空表を書き込むと**丸ごと消える**。
+    **描き直しの入口は1つ**（§9.163）——専用の画面は`loadMaintInner()`が
+    既に唯一の受け口なので、そこへ戻す（2つ目の対応表を作らない）。 */
+ function refreshMaintScreen(){
+  const def=currentDef();
+  if(def&&def.special){loadMaintInner(false).catch(()=>{});return}
+  try{renderMaintForm()}catch(e){}
+  try{renderMaintList()}catch(e){}
+ }
+ /* ---------- 説明を階層にする（§9.276 ④、利用者の指示） ----------
+    「説明文長すぎてわかりにくくて読みにくいので、タブやアコーディオンなど
+     使ってわかりやすく階層化しながらコンパクトに表示・説明する方法も」
+
+    常時出すのは**リード文（`hint`）だけ**で、詳しい話は`hintMore`の節へ畳む
+    （`<details>`——欄の`?`と同じ言語・§9.250 ④）。**節は既定で閉じる**
+    ——開いておくと畳んだ意味が無い。
+    **`hintHtml()`を通す**（§9.163）ので、説明の量（通常／短め／出さない）が
+    リード文へそのまま効き、`**強調**`も同じ書き方でよい。
+    **「出さない」でも節は残す**——押したときだけ開く入口なので、消すと
+    短くした人が全文へ辿り着けなくなる（§9.234 ①・`?`と同じ約束）。 */
+ function hintSectionsHtml(def){
+  const secs=(def&&def.hintMore)||[];
+  if(!secs.length)return '';
+  return `<div class="mm-hint-more">`+secs.map(x=>
+    `<details class="mm-hint-sec"><summary>${esc(x.t)}</summary>`
+    +`<div>${String(x.b||'').split('\n').map(line=>
+        `<p>${esc(line).replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>')}</p>`).join('')}</div></details>`
+   ).join('')+`</div>`;
+ }
+ /* 一覧の上に出す説明。**通すのはここ1箇所**——`hint`だけを書いている
+    4箇所が同じ形になるので、`hintMore`を足したマスタは自動で階層になる。
+    **編集窓では節を出さない**（§CLAUDE 8「窓の説明は一覧の説明と同じに
+    しない」）——窓に要るのは「いま決めることの一言」で、マスタ全体の
+    説明は一覧の側が持つ。窓の中の細かい話は各欄の`?`が言う。 */
+ function defHintHtml(def,text){
+  const modal=text!==undefined;
+  const t=modal?text:(def&&def.hint);
+  const lead=t?`<p class="mm-def-hint">${hintHtml(t)}</p>`:'';
+  return modal?lead:(lead+hintSectionsHtml(def));
  }
  /* **消した説明は`title`へ落とす**（§9.234 ①）。欄の説明を短くすると
     読めるようになるが、消してしまうと調べようが無くなる。`more`を持つ欄は
@@ -1744,7 +1911,7 @@
         title="この表をマスタDBから丸ごと消します（取り消せません）">この表を削除</button>`:'';
    form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip">読み取り専用</span>
      <span class="mm-form-hint">この表は見るだけです。追加・編集はできません。</span>${drop}</div>
-    ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}`;
+    ${defHintHtml(def)}`;
    form.onsubmit=ev=>ev.preventDefault();
    const db=$('#mmDropTable');
    if(db)db.onclick=()=>dropRetiredTable(def);
@@ -1760,7 +1927,7 @@
      ${linkMasterHtml(def)}
      ${bulkDeleteHtml(def)}
     </div>
-    ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}
+    ${defHintHtml(def)}
     ${excelIoHtml(def)}`;
    form.onsubmit=ev=>ev.preventDefault();
    const ab=$('#masterMaintAdd');if(ab)ab.onclick=()=>openMaintEditor(null);
@@ -1771,7 +1938,7 @@
   const controls=buildFieldControls(def,editing);
   const chip=editing?`<span class="mm-mode-chip editing">編集中 <b>${esc(editing[def.cols[0].k]||'')}</b><small>ID:${esc(editing.id)}</small></span>`:`<span class="mm-mode-chip new">新規登録</span>`;
   form.innerHTML=`<div class="mm-form-head">${chip}${editing?'<button type="button" id="masterMaintNew" class="mm-btn-ghost sm">＋ 新規入力に切替</button>':''}${sampleReportHtml(def)}${linkMasterHtml(def)}${bulkDeleteHtml(def)}</div>
-   ${def.hint?`<p class="mm-def-hint">${hintHtml(def.hint)}</p>`:''}
+   ${defHintHtml(def)}
    <div class="mm-form-fields">${controls}${
     typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>
    <div class="mm-form-tail"><button type="submit" class="mm-btn-primary">${editing?'更新を保存':'追加登録'}</button><span class="mm-form-hint">${editing?'キー項目（名称・区分など）も変更できます。保存すると同じIDのまま更新（リネーム）されます。同名が既にある場合は更新できません。':'必須(*)を入力して追加登録します。'}</span></div>
@@ -1851,7 +2018,7 @@
      「このマスタは何か」を書くので長い。窓では**いま決めることの一言**だけを
      出し、詳しくは各欄の説明が言う（`hintShort`を持たないマスタは今までどおり）。 */
   const modalHint=def.hintShort||def.hint;
-  form.innerHTML=`${modalHint?`<p class="mm-def-hint">${hintHtml(modalHint)}</p>`:''}
+  form.innerHTML=`${defHintHtml(def,modalHint)}
    <div class="mm-form-fields">${buildFieldControls(def,editing)}${
     typeof def.extraHtml==='function'?def.extraHtml(editing):''}</div>
    ${typeof def.asideHtml==='function'?def.asideHtml(editing):''}`;
@@ -7548,7 +7715,7 @@
   const panel=ensureMaintPanel();
   WL.syncViewToolbar('master');   // 更新者ID(#mmHead)はパネル生成後にヘッダーへ載せる
   renderMaintNav();
-  const uid=$('#masterUserId');if(uid)uid.value=currentUserId();
+  paintMaintUser();
   if(!maintDefVisible(currentDef()))maintState.defKey=firstVisibleDefKey();
   maintState.editing=null;maintState.query='';
   const se=$('#masterMaintSearch');if(se)se.value='';
@@ -7556,7 +7723,9 @@
   /* 専用タブを持たないマスタ（§9.249 ②）。**画面は待たせない**——届いたら
      ナビを描き直す。読めなくても他のタブは今までどおり使える。 */
   loadMasterTableCatalog().catch(()=>{});
-  requestAnimationFrame(()=>{const u=$('#masterUserId');if(u&&!u.value){u.focus();return}const s=$('#masterMaintSearch');if(s)s.focus()});
+  /* 更新者IDは打ち込む欄では無くなった（§9.276 ③）ので、最初のフォーカスは
+     絞り込みへ渡す（打てない物へ当てると、そこで手が止まる）。 */
+  requestAnimationFrame(()=>{const s=$('#masterMaintSearch');if(s)s.focus()});
  }
  window.openMasterMaint=openMasterMaint;
 
@@ -9481,28 +9650,17 @@
   const groups=[...new Set(opState.items.map(i=>i.group||'その他'))];
   $('#opModalTitle').textContent=x.name;
   /* ---- 左: 実物 ---- */
-  /* **隣に並ぶものも一緒に描く**（§9.219 ③、利用者の指示「実際の挙動も
-     もう少しわかるように」）。幅は「12マスのうち何マス」なので、1枚だけを
-     見せても広いのか狭いのかが読めない——同じ群の前後を薄く置くと、
-     1行に何個並ぶかがそのまま見える。 */
-  const mates=opState.items.filter(i=>(i.place||'準備')===(x.place||'準備')
-    &&(i.group||'その他')===(x.group||'その他')&&String(i.id)!==String(x.id)
-    &&i.enabled!==false);
-  /* ---------- 隣の欄も本物で出す（§9.250 ⑤、利用者の指示） ----------
-     「データダミーをつかって…操業データがどうなるかといった結果を…
-      すぐに確認できる導線を準備してください」
+  /* ---------- 出すのは「いま触っている1つ」だけ（§9.276 ⑥、利用者の指示） ----------
+     「対象外で同一グループの時は単位の表示位置やUI配置がでたらめ。UIのサイズが
+      バラバラで再現されていない。UIもグループすべて並べたら入りきれないサイズに
+      なることも多いと思うので、変更中の対象項目だけの再現で十分」
 
-     以前は隣の欄を**名前だけの点線の箱**で置いていた。1枚のカードが
-     実際にどう見えるか——選ばせ方が混ざったときの高さのそろい・単位の
-     置き場・幅の釣り合い——は、それでは分からない。
-     **本物の部品を同じ口（`WL.opData.previewWidget`）で作る**ので、
-     設定画面と測定画面で形が食い違わない（§9.218 ①）。
-     **値はダミー**（サーバーの`sample`）——桁と文字数が実物に近いので、
-     幅が足りるかを確かめられる（§9.130）。
-     **押せないようにする**（`.is-ghost`）——見本の隣の欄を触っても
-     どこにも記録されないので、触れると壊れて見える（§4）。 */
-  const ghost=i=>`<div class="op-prev-ghost" data-op-ghost="${esc(i.name)}"`
-   +` style="grid-column:span ${opSpanOf(i)}"></div>`;
+     §9.250 ⑤では隣の欄も並べていた（1行に何個並ぶかを見るため）。ところが
+     隣の欄はマスタの行から**自前で組み立て**ていたので、単位の置き場も器の
+     高さも本物と揃わず、群が大きいと器に入りきらなかった——**確かめるための
+     絵が、確かめられない絵になっていた**（§9.226 ①で一度踏んだのと同じ形）。
+     いまは1つに絞り、そのぶんを再現度へ回す。何マスぶんの幅かは器の格子と
+     `<small>`の文字が言う。 */
   const rule=[];
   if(x.required)rule.push('必須');
   if(opFamilyOf(x)==='number'){
@@ -9543,13 +9701,6 @@
   const gap=6,pad=14;                       /* --gap-inline / --pad-row ぶん */
   const fits=Math.max(1,Math.floor((paneW-pad+gap)/(cell+gap)));
   const cols=Math.min(opState.gridCols,Math.max(span,fits));
-  /* 隣に並ぶものは**折り返して置く**（1行に詰め込まない）。器の幅で切ると、
-     この項目が4マス・器が7マスのときに1件も入らず、**広い空箱**になる
-     （実際にそうなった）。実物は12マスで折り返すので折り返し位置は違うが、
-     「何個ぶんの大きさか」を見るための絵なので、置けるだけ置くほうが役に立つ
-     ——**折り返しが実物と違うことは`<small>`が言っている**。 */
-  const room=mates.slice(0,5);
-  const restN=mates.length-room.length;
   $('#opModalPreview').innerHTML=`<div class="op-prev-head">測定画面での見え方`
    +`<small>${esc(x.place||'準備')}のカード・${esc(opSpanLabel(span))}`
    +`／1マス ${Math.round(cell)}px（実物と同じ大きさ）`
@@ -9560,10 +9711,9 @@
    +` style="--op-cols:${cols};--op-cell:${cell}px">`
    +`<div class="op-prev-band">${esc(x.group||'その他')}</div>`
    +`<div class="op-prev-field" id="opPrevField" style="grid-column:span ${span}"></div>`
-   +room.map(ghost).join('')
+   /* **残りのマスは空けておく**（§9.276 ⑥）——ここへ隣の欄を並べると、
+      本物と揃わない絵で幅を判断することになる。格子だけを見せる。 */
    +`</div></div>`
-   +(restN?`<p class="op-prev-rest">この群にはあと${restN}件あります`
-      +`（この幅に入らないので出していません）。</p>`:'')
    +`<p class="op-prev-note" id="opPrevNote" hidden></p>`
    +`<p class="op-prev-value" id="opPrevValue"></p>`
    +`<ul class="op-prev-facts">`
@@ -9852,85 +10002,74 @@
    +`<i class="op-form-note">${every?'すべての設備の測定画面に出ます（これから増える設備でも出ます）。'
      :`選んだ ${on.length} 設備だけに出ます: ${esc(on.join('、'))}`}</i>`;
  }
- /* 隣の欄をダミーの値つきで描く（§9.250 ⑤）。**マスタの行そのものから
-    作る**ので、項目を足せばここにも増える（コードへ項目名を書かない）。 */
- function opPaintGhosts(){
-  document.querySelectorAll('#opModalPreview [data-op-ghost]').forEach(box=>{
-   const name=box.dataset.opGhost;
-   const it=(opState.items||[]).find(y=>String(y.name||'')===name);
-   if(!it){box.textContent=name;return}
-   const fam=opFamilyOf(it);
-   const label=document.createElement('label');
-   label.className='opf opf-host is-ghost';
-   label.dataset.opfill='1';
-   label.innerHTML=`<span class="opf-name">${esc(it.name)}</span>`;
-   let ctl;
-   if(fam==='output'){ctl=document.createElement('output')}
-   else if(fam==='choice'){
-    ctl=document.createElement('select');
-    const vals=(opState.choices||[]).filter(c=>c.name===it.choice).map(c=>c.value);
-    ctl.innerHTML=['<option value="">-</option>']
-      .concat(vals.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)).join('');
-   }else{
-    ctl=document.createElement('input');ctl.type='text';
-    if(fam==='number'){ctl.className='numeric-input';ctl.inputMode='decimal';
-     const eff=opRuleDef(it);
-     if(eff.min!==null&&eff.min!==undefined&&eff.min!=='')ctl.min=eff.min;
-     if(eff.max!==null&&eff.max!==undefined&&eff.max!=='')ctl.max=eff.max;
-    }
-   }
-   label.appendChild(ctl);
-   box.innerHTML='';box.appendChild(label);
-   const def={name:it.name,unit:it.unit,type:it.type,decimals:it.decimals,step:it.step,
-     min:opRuleDef(it).min,max:opRuleDef(it).max,freeText:!!it.freeText,
-     unitPlace:opUnitPlaceOf(it),align:it.align,valueFormat:it.valueFormat,digits:it.digits,
-     look:opLookOf(it),layout:opLayoutOf(it),choices:opChoiceValues(it.choice),
-     noBlank:!!it.noBlank,preview:true};
-   const w=String(it.widget||'プルダウン');
-   if(window.WL&&WL.opData&&WL.opData.previewWidget){
-    const needs=fam!=='output'&&(w!=='プルダウン'||(def.freeText&&fam==='choice'));
-    if(needs)WL.opData.previewWidget(def,label,w);
-   }
-   if(window.WL&&WL.opData&&WL.opData.presentation)WL.opData.presentation(label,def);
-   /* ダミーの値（§9.250 ⑤）。**選択欄では候補へ足してから入れる**
-      ——`select.value`へ無い値を代入すると空になる（§9.204と同じ罠）。
-      組み込みの選択欄は候補を画面が持っているので、マスタからは引けない。 */
-   const v=String(it.sample==null?'':it.sample);
-   if(v&&ctl.tagName==='OUTPUT')ctl.textContent=v;
-   else if(v&&ctl.tagName==='SELECT'){
-    if(![...ctl.options].some(o=>o.value===v)){
-     const o=document.createElement('option');o.value=v;o.textContent=v;ctl.appendChild(o);
-    }
-    ctl.value=v;
-   }else if(v)ctl.value=v;
-   if(window.WL&&WL.opData&&WL.opData.syncWidgets)WL.opData.syncWidgets();
-  });
- }
+ /* ---------- 見本は「変更中の項目だけ」を実物どおりに（§9.276 ⑥、利用者の指示） ----------
+    「単位の表示位置が追従していないことと、変更対象の単位をプレビューする
+     ときの内部で表示するとき、単位が重複表示される。対象外で同一グループの
+     時は単位の表示位置やUI配置がでたらめ。UIのサイズがバラバラで再現されて
+     いない。UIもグループすべて並べたら入りきれないサイズになることも多いと
+     思うので、変更中の対象項目だけの再現で十分なので再現度をしっかり
+     上げてほしいです」
+
+    直したのは2つ。
+     ①**隣の欄（§9.250 ⑤のゴースト）をやめた**——マスタの行から自前で
+       組み立てていたので、単位の置き場も器の高さも本物と揃わず、しかも
+       群が大きいと器に入りきらなかった。**確かめたいのはいま触っている
+       1つ**なので、そこへ場所と手間を寄せる（面積は頻度×重要度・§CLAUDE 1）。
+     ②**欄そのものを`WL.opData.buildPreviewField()`で作る**——測定画面の
+       `layout()`と同じ手順を通る1本の口（§9.163）。以前はここで`<label>`を
+       自前で組み立てており、`placeholder`に単位を入れていたため
+       **「内部」にした単位が欄の中に二重に出て**いた（実物には`placeholder`が
+       無い）。組み立てが2箇所にあるかぎり、この食い違いは何度でも生まれる。 */
  function opRenderPreviewField(x,widget,usable){
   const host=$('#opPrevField');if(!host)return;
   const vals=(opState.choices||[]).filter(c=>c.name===x.choice).map(c=>c.value);
   const fam=opFamilyOf(x);
   host.innerHTML='';
-  const label=document.createElement('label');
-  /* `opf-host`＝マスタが差配している欄の印（§9.233 ③）。測定画面の欄と
-     **同じ印**を付けるので、単位の逃げ場も高さも意匠も同じCSSが当たる
-     ——器の名前ごとに書き分けると、見本だけ効かない設定ができる。 */
-  label.className='opf opf-host';
-  label.dataset.opfill='1';
-  label.innerHTML=`<span class="opf-name">${esc(x.name)}`
-   +(x.required?'<b class="opf-req">必須</b>':'')+`</span>`;
-  let ctl;
+  /* 見本へ渡す1行ぶんの定義。**測定画面が読むキーと同じ綴りで渡す**
+     ——別名を作ると、片方だけ直した状態ができる。 */
+  const previewDef={
+   name:x.name,unit:x.unit,required:!!x.required,
+   /* 組み込みの選択欄は`[型]`が`文字`のまま選択肢を持つ（§9.244）ので、
+      **族で決める**——型で見ると、見本だけ打ち込み欄になる。 */
+   type:fam==='choice'?'選択':x.type,
+   choices:fam==='choice'
+     ?((x.builtin&&!vals.length)?['（画面が持っている選択肢）']:vals)
+     :opChoiceValues(x.choice),
+   autoValue:x.autoValue||'',
+   /* §9.231 ②。**いま効いている上下限**を渡す（行に書いた数のままだと、
+      マスタから引く設定にした瞬間に見本だけ古い上限で描かれる）。 */
+   decimals:x.decimals,step:x.step,
+   min:opRuleDef(x).min,max:opRuleDef(x).max,
+   minFromLabel:opRuleDef(x).minFromLabel,maxFromLabel:opRuleDef(x).maxFromLabel,
+   freeText:!!x.freeText,
+   /* 単位を重ねられない選ばせ方では、サーバーと同じ規則でここでも外下左へ
+      落とす（§9.233 ④。判定は`opUnitInBlocked`の1箇所）。 */
+   unitPlace:(opUnitPlaceOf(x)==='内部'&&opUnitInBlocked(widget,!!x.freeText))?'外下左':opUnitPlaceOf(x),
+   align:x.align,valueFormat:x.valueFormat,digits:x.digits,
+   look:opLookOf(x),
+   layout:opLayoutUsable(widget)?opLayoutOf(x):'自動',
+   noBlank:!!x.noBlank,
+   choiceNotes:opState.notes[x.choice]||{},
+   /* 選ばせ方は**器の作り方そのもの**なので、口へも同じ綴りで渡す。
+      作れない選ばせ方（上下限が無いスライダー等）は素の欄へ落ちる。 */
+   widget:usable?widget:'プルダウン'};
+  const label=(window.WL&&WL.opData&&WL.opData.buildPreviewField)
+    ?WL.opData.buildPreviewField(previewDef):null;
+  if(!label){
+   /* **黙って欠かさない**（§CLAUDE「公開漏れは黙って素通しになる」）。 */
+   console.error('WL.opData.buildPreviewField が見つかりません（見本を描けません）');
+   host.innerHTML='<p class="op-prev-note">見本を描けませんでした。</p>';
+   return;
+  }
+  host.appendChild(label);
+  const ctl=label.querySelector(':scope>select,:scope>input:not([type=hidden])')
+    ||label.querySelector(':scope>output');
+  if(!ctl)return;
+  /* 自動で入る値の見本（§9.234 ②）。**いま引ける値があればそれ**——
+     ロット番号に`123.4`と出ていると、桁も文字種も確かめられない。 */
   if(fam==='output'){
-   /* ---------- 自動で入る値（§9.233 ①） ----------
-      見本も**同じ`<output>`**で描く——`<input>`で描くと、枠・寄せ・
-      「文字だけ／強調」の見え方が実物と食い違う（見本の値打ちが消える）。 */
-   ctl=document.createElement('output');
-   /* **いま引ける値があれば、それを見本にする**（§9.234 ②）——ロット番号に
-      `123.4`と出ていると、桁も文字種も確かめられない。測定を開いていない
-      ときだけ当たり障りのない数を置く。引けない鍵はそう書く（§4）。 */
    let sample='123.4';
    if(x.autoValue){
-    label.dataset.opauto=x.autoValue;
     const known=!(window.WL&&WL.opData&&WL.opData.autoKnown)||WL.opData.autoKnown(x.autoValue);
     if(!known)sample='（この版では引けません）';
     else{
@@ -9938,36 +10077,10 @@
      sample=(v===null||v==='')?'（測定を開くと入ります）':v;
     }
    }
-   ctl.textContent=sample;
-  }else if(fam==='choice'){
-   ctl=document.createElement('select');
-   ctl.innerHTML=['<option value="">-</option>']
-     .concat((x.builtin&&!vals.length?['（画面が持っている選択肢）']:vals)
-       .map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)).join('');
-  }else{
-   /* **数値の欄は`type=number`にしない**（§9.208 ③）。`.5`のような途中の
-      形が黙って消える。上下限は`min`/`max`で渡す——ステッパーの端の判定と
-      スライダーの目盛がここを見る（`syncWidget`）。 */
-   ctl=document.createElement('input');ctl.type='text';
-   if(fam==='number'){
-    ctl.className='numeric-input';ctl.inputMode='decimal';
-    /* **効いている上下限を渡す**（§9.231 ②）——ステッパーの端の判定と
-       スライダーの目盛がここを見るので、行に書いた数のままだと見本だけが
-       違う範囲で動く。 */
-    const eff=opRuleDef(x);
-    if(eff.min!==null&&eff.min!==undefined&&eff.min!=='')ctl.min=eff.min;
-    if(eff.max!==null&&eff.max!==undefined&&eff.max!=='')ctl.max=eff.max;
-   }
-   ctl.placeholder=x.unit?`0 ${x.unit}`:'';
+   if(ctl.tagName==='OUTPUT')ctl.textContent=sample;else ctl.value=sample;
   }
-  label.appendChild(ctl);
-  host.appendChild(label);
-  /* **本物の部品をそのまま被せる**（§9.218 ①）。数値・自由記述の器も
-     `measure-opdata.js`が作るので、設定画面と測定画面で形が食い違わない。 */
-  /* 初期値（§9.220 ②）は**見本にも入れる**——設定した値がどう見えるかを
-     確かめられないと、選択肢に無い値を打ったことに気づけない。 */
-  /* **組み込みの欄の初期値も見本に入れる**（§9.229 ③）——効く設定なのに
-     見本にだけ出ないと、確かめられない。 */
+  /* 初期値（§9.220 ②・§9.229 ③）は**見本にも入れる**——設定した値がどう
+     見えるかを確かめられないと、選択肢に無い値を打ったことに気づけない。 */
   if(x.initial&&ctl.tagName!=='OUTPUT'){
    if(ctl.tagName==='SELECT'&&![...ctl.options].some(o=>o.value===x.initial)){
     const o=document.createElement('option');
@@ -9975,67 +10088,16 @@
    }
    ctl.value=x.initial;
   }
-  /* **手打ち（§9.220 ③）はプルダウンのままでも器が要る**ので、被せる
-     判断は測定画面と同じ2つの事実の和にする（片方だけだと、設定画面で
-     確かめられない設定ができる）。 */
-  const previewDef={name:x.name,unit:x.unit,type:x.type,
-    /* §9.231 ②。**見本にも「いま効いている」上下限を渡す**——行に書いた
-       数のまま渡すと、マスタから引く設定にした瞬間に見本だけが古い上限で
-       描かれ、設定画面で確かめた形と測定画面が食い違う（§9.221 ⑦）。 */
-    /* 出どころの呼び名も渡す——`ruleText()`は測定画面と同じ1本なので、
-       渡さないと見本だけ数字だけになる（設定画面で確かめた形と食い違う）。 */
-    decimals:x.decimals,step:x.step,
-    min:opRuleDef(x).min,max:opRuleDef(x).max,
-    minFromLabel:opRuleDef(x).minFromLabel,maxFromLabel:opRuleDef(x).maxFromLabel,
-    /* **組み込みの欄でも手打ちは効く**（§9.229 ③）——値の持ち方を変えず、
-       選ぶ器そのものが打てるようになるだけ。見本で確かめられること。 */
-    freeText:!!x.freeText,
-    /* 見せ方（§9.221 ⑦）も**見本へそのまま渡す**——設定画面で見えた形と
-       測定画面の形が食い違わないように、当てるのは`measure-opdata.js`の
-       1本（`WL.opData.presentation`）だけにする。単位を重ねられない
-       選ばせ方のときは、サーバーと同じ規則でここでも外下左へ落とす。 */
-    unitPlace:(opUnitPlaceOf(x)==='内部'&&opUnitInBlocked(widget,!!x.freeText))?'外下左':opUnitPlaceOf(x),
-    align:x.align,valueFormat:x.valueFormat,digits:x.digits,
-    /* 意匠（§9.223 ③）も**見本へそのまま渡す**。渡さないと、色・形・
-       大きさのボタンだけが押しても何も起きない（見本は`previewDef`しか
-       見ていないので、`x`に載っているだけでは届かない）。 */
-    look:opLookOf(x),
-    /* 並べ方（§9.226 ①）も**見本へそのまま渡す**。渡さないと、並べ方の
-       ボタンだけが押しても何も起きない（意匠のときと同じ罠・§9.223 ③）。 */
-    layout:opLayoutUsable(widget)?opLayoutOf(x):'自動',
-    /* 定型文（§9.226 ①）はまとまりの値を語句として並べるので、見本にも
-       同じ値を渡す——渡さないと見本だけ「まとまりを選ぶと…」のまま。 */
-    choices:opChoiceValues(x.choice),
-    /* §9.228 ④。**見本にも効かせる**——設定窓で確かめた形と実物が
-       食い違わないようにする（§9.221 ⑦と同じ約束）。 */
-    noBlank:!!x.noBlank,
-    choiceNotes:opState.notes[x.choice]||{}};
-  if(window.WL&&WL.opData&&WL.opData.presentation)WL.opData.presentation(label,previewDef);
-  /* 値の整え方（§9.221 ⑦）も**見本へ配線する**——「3桁区切り」を選んでも
-     見本だけ素の数字のままだと、設定画面で見えた形と測定画面の形が
-     食い違う（§9.218 ①）。当てるのは`measure-opdata.js`の1本。 */
+  /* 値の整え方（§9.221 ⑦）も**見本へ配線する**——当てるのは
+     `measure-opdata.js`の1本（帳票と同じく2つ目の整形器を作らない）。 */
   if(window.WL&&WL.opData&&WL.opData.attachFormat){
    WL.opData.attachFormat(ctl,()=>WL.opData.settlePreview(ctl,previewDef));
   }
-  /* §9.233 ①。自動で入る値は器を被せない——印だけを器へ置いてCSSが読む
-     （測定画面の`layout()`と同じ判断）。 */
-  if(fam==='output'&&widget!=='プルダウン')label.dataset.opout=widget;
-  else delete label.dataset.opout;
-  const needsBox=fam!=='output'&&(widget!=='プルダウン'||(previewDef.freeText&&fam==='choice'));
-  if(usable&&needsBox&&window.WL&&WL.opData&&WL.opData.previewWidget){
-   WL.opData.previewWidget(previewDef,label,widget);
-   /* **器を被せたあとにもう一度当てる**（§9.233 ④）。単位の置き場は
-      「いま見えている操作面」を基準にするので、器が足される前に当てた
-      ままだと、見本だけ単位が器の上に出る（実物と食い違う）。 */
-   if(WL.opData.presentation)WL.opData.presentation(label,previewDef);
-  }
+  if(window.WL&&WL.opData&&WL.opData.syncWidgets)WL.opData.syncWidgets();
   /* ---------- 「いまは作れない」理由はここで言う（§9.250 ⑧） ----------
      スライダー・メーターは上下限が、早見ボタンは上下限と刻みが決まって
-     いないと作れない。以前はその案内を**測定画面の欄の下**へ1行足して
-     いたが、①直す場所はここ（マスタ）であって測定画面ではない
-     ②案内のほうが道具より場所を取っていた（実測45px）。
-     **押せるのに何も起きない道具は残さない**（§4）ので、道具は素の欄の
-     ままにして、理由と直し方は**選んでいるこの窓**に出す。 */
+     いないと作れない。**押せるのに何も起きない道具は残さない**ので、
+     道具は素の欄のままにして、理由と直し方は**選んでいるこの窓**に出す。 */
   const note=document.getElementById('opPrevNote');
   if(note){
    const box=label.querySelector('.opf-widget');
@@ -10043,18 +10105,10 @@
    note.textContent=why?`${why}。いまは打ち込みだけの欄になります（「② 何を記録するか」で決められます）。`:'';
    note.hidden=!why;
   }
-  /* 隣の欄をダミーの値つきで描く（§9.250 ⑤）。**同じ口を通す**ので、
-     選ばせ方・意匠・単位の置き場がそのまま出る。 */
-  opPaintGhosts();
-  /* **押した結果が何として記録されるか**を出す（§9.219 ③、利用者の指示
-     「実際の挙動ももう少しわかるように」）。見本が本物なので、押せば
-     そのまま値が変わる——記録に入るのはこの文字列。 */
+  /* **押した結果が何として記録されるか**を出す（§9.219 ③）。見本が本物なので、
+     押せばそのまま値が変わる——記録に入るのはこの文字列。 */
   const out=document.getElementById('opPrevValue');
   if(out){
-   /* 見本の値を入れてみる（§9.250 ⑤）。**押したときだけ入れる**——
-      黙って入れると`記録される値`が嘘になる（打っていない値が「記録される」
-      と読める）。桁と文字数が実物に近いので、**幅が足りるか**をその場で
-      確かめられる（§9.130）。 */
    const sample=String((x&&x.sample)||'');
    const show=()=>{
     const v=String(ctl.value==null?'':ctl.value);

@@ -53,8 +53,8 @@ const made=[];
   await page.waitForSelector('#openMasterMaint',{timeout:20000});
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:10000});
-  await page.fill('#masterUserId','tester');
-  await page.evaluate(()=>document.querySelector('#masterUserId').dispatchEvent(new Event('change')));
+  /* 更新者IDは打ち込む欄ではなくなった（§9.276 ③）。端末の覚え（localStorage）へ入れる。 */
+  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tester');
   await page.waitForSelector('#masterMaintNav [data-master="roll"]',{timeout:20000});
   await page.click('#masterMaintNav [data-master="roll"]');
   await page.waitForSelector('#mmXioMode',{timeout:20000});
