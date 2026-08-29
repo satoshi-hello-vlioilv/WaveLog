@@ -26,6 +26,8 @@ True／False／**None（確かめられなかった）** の3値で、Noneを「
 同じに扱わない（§CLAUDE「共有DBを開く前に Path.exists() を置かない」）。
 ============================================================
 """
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 
 from . import paths
@@ -162,6 +164,48 @@ def _master_share_mode():
 # ------------------------------------------------------------------
 # 置き場そのもの
 # ------------------------------------------------------------------
+# パス設定マスタは**1回の`items()`につき1回だけ開く**（§9.268の追補）。
+# 以前は行ごとに`_saved_of()`が開いており、`/api/storage-layout`1回で
+# **11回**開いて11回statしていた（9行＋`items()`の明示2回）。手元に置いて
+# いる端末では実害が出ないが、マスタを共有へ移すとそのぶん往復が増える。
+# **スレッドごとに持つ**——Flaskは`threaded=True`で動くので、モジュール変数に
+# 置くと別のリクエストの写しを読みうる。
+_tls = threading.local()
+
+
+def _read_path_config():
+    """パス設定マスタを1回読む。読めなければ空。
+
+    **開く前に`exists()`を置かない**（CLAUDE.md）——読みたいのはファイル
+    そのもので、確認は別のファイルアクセスになる。共有越しでは「開けるのに
+    statだけ失敗する」ことがあり、確認のつもりの1行が唯一の失敗原因になる。
+    **読めなくても送出しない**——置き場の一覧は「保存値が空」で出せるので、
+    ここで投げて画面ごと開けなくしない（§9.89）。
+    """
+    try:
+        from .db_access import DBS, connect, path_config_rows
+        with connect(DBS['MASTER']['path'], True) as c:
+            return dict(path_config_rows(c))
+    except Exception:
+        return {}
+
+
+@contextmanager
+def _path_config_once():
+    """このブロックのあいだ、パス設定マスタの読みを1回にまとめる。
+
+    **入れ子で二重に読まない**（外側が持っていればそれを使う）。
+    """
+    fresh = getattr(_tls, 'pathcfg', None) is None
+    if fresh:
+        _tls.pathcfg = _read_path_config()
+    try:
+        yield
+    finally:
+        if fresh:
+            _tls.pathcfg = None
+
+
 def _saved_of(field, store):
     """その欄の**保存値**（効いている値ではない）。
 
@@ -172,15 +216,10 @@ def _saved_of(field, store):
         return ''
     if store == 'local-json':
         return str(_local_config_raw().get(field) or '')
-    try:
-        from .db_access import DBS, connect, path_config_rows
-        path = DBS['MASTER']['path']
-        if not path.exists():
-            return ''
-        with connect(path, True) as c:
-            return str(path_config_rows(c).get(field, '') or '')
-    except Exception:
-        return ''
+    rows = getattr(_tls, 'pathcfg', None)
+    if rows is None:
+        rows = _read_path_config()
+    return str(rows.get(field, '') or '')
 
 
 def _planned_of(key, saved, active):
@@ -268,6 +307,16 @@ def items():
                             RECORDS_BACKUP_EXPORT_PATH, SCHEDULE_SHARE_PATH,
                             SCHEDULE_SHARE_FROM, PURPOSE_SCHEDULE)
     from . import records_export
+
+    with _path_config_once():
+        return _items_inner(records_export)
+
+
+def _items_inner(records_export):
+    from . import master_share
+    from .db_access import (DBS, MEAS_DB, RECORDS_SHARE_DIR,
+                            RECORDS_BACKUP_EXPORT_PATH, SCHEDULE_SHARE_PATH,
+                            SCHEDULE_SHARE_FROM, PURPOSE_SCHEDULE)
 
     out = []
 

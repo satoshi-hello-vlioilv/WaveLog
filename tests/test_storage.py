@@ -161,6 +161,62 @@ try:
         and 'path_config.storage_layout_local_config' in ms.NON_MASTER_ENDPOINTS,
         ','.join(sorted(ms.NON_MASTER_ENDPOINTS)))
 
+    # ---- マスタDBは1回しか開かない（§9.268の追補） -------------------
+    # 以前は行ごとに`_saved_of()`が開いており、`/api/storage-layout`1回で
+    # **11回**開いて11回statしていた（9行＋`items()`の明示2回）。手元に
+    # 置いている端末では実害が出ないが、共有へ移すとそのぶん往復が増える。
+    from backend import db_access as _da
+    _real_connect = _da.connect
+    opens = []
+
+    def _counting_connect(path, readonly=False, engine=None):
+        opens.append(str(path))
+        return _real_connect(path, readonly, engine)
+
+    _real_read = sl._read_path_config
+    reads = []
+
+    def _counting_read():
+        reads.append(1)
+        return _real_read()
+
+    sl._read_path_config = _counting_read
+    _da.connect = _counting_connect
+    try:
+        rows_n = len(sl.layout()['items'])
+    finally:
+        _da.connect = _real_connect
+        sl._read_path_config = _real_read
+    master_opens = [x for x in opens if x.endswith('master.sqlite3')
+                    or x.endswith('master.local.sqlite3')]
+    # **行の数だけ開かない**のが要点。以前は行ごとに開いており、9行＋明示2回で
+    # 11回だった。
+    rec('パス設定マスタを読むのは1回だけ（行の数だけ読まない）',
+        len(reads) == 1, f'{len(reads)}回 / 行{rows_n}件')
+    # 全体でも2回を超えない。もう1回は`rne_scheduler.assets_dir()`が呼ぶ
+    # `path_config_value`（あちらは「都度読み直す」設計で、この節の外の話）。
+    rec('マスタDBを開く回数が行の数で増えない',
+        len(master_opens) <= 2, f'{len(master_opens)}回 / 行{rows_n}件 / 全{len(opens)}回')
+    # **`exists()`を`connect()`の前に置かない**（CLAUDE.md）——共有越しでは
+    # statだけ失敗してopenは成功することがあり、確認のつもりの1行が唯一の
+    # 失敗原因になる。**ソースの字を見る網は当てにならない**ので
+    # （最初そう書いて、切り出す位置を1つ間違えたまま素通りした）、
+    # 実際に`exists()`が呼ばれるかで見る。
+    _real_exists = pathlib.Path.exists
+    seen = []
+
+    def _watched_exists(self):
+        seen.append(str(self))
+        return _real_exists(self)
+
+    pathlib.Path.exists = _watched_exists
+    try:
+        sl._read_path_config()
+    finally:
+        pathlib.Path.exists = _real_exists
+    rec('パス設定マスタは存在確認せずに開く（確認そのものが失敗原因になる）',
+        not seen, ','.join(seen[:3]))
+
     # ---- 環境変数で書ける（§9.268の追補、利用者の指摘） ---------------
     # 「%LOCALAPPDATA%\\WaveLog みたいな感じで考えていました」——書けなかった。
     # `Path('%LOCALAPPDATA%\\WaveLog')`は**相対パス扱いの文字列**で、
