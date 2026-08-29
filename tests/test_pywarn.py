@@ -17,14 +17,25 @@
  ② この環境のPythonが出す警告（SyntaxWarning）も0であること
  ③ **網そのものが素通りしないこと**（欠陥を注いで確かめる）
 
-**`compile()`だけに頼らないこと。** この判定はPythonの版で変わる——
-検証はいま3.11で走っており、`\\W`は**3.11では警告にならない**（実際、
-利用者の端末＝3.12で初めて出た）。`compile()`を並べただけの網は、
-**欠陥がそのまま入っていても通る**（§9.108・`is_network_path`と同じ理由で、
-「この環境では通らない道」を網が一度も通らない）。だから**判定を自前で持つ**。
+**警告の「種類」はPythonの版で変わる。** 同じ`\\W`が——
+
+  * 3.11 では `DeprecationWarning`（**既定では表示されない**ので手元では出ない）
+  * 3.12 では `SyntaxWarning`（**既定で表示される**ので現場で出た）
+
+つまり**手元でいくら普通に動かしても気づけない**。`compile()`を回す網も
+`SyntaxWarning`だけを見ていると、3.11では素通りする（実際に素通りした）。
+ここが§9.108（`is_network_path`がLinuxでは`%VAR%`の道を一度も通らない）と
+同じ形——**「この環境では通らない道」は網が守れない**。
+
+だから守りは2枚:
+  ① **判定を自前で持つ**（版に依らない。これが主）
+  ② `compile()`の警告は`SyntaxWarning`と`DeprecationWarning`の**両方**を見る
+     （②だけでも今回は捕まるが、版がまた種類を変えたときに主にはできない）
 
 **現場の運用では`.pyc`が新しいうちは出ない**（コンパイルのときだけ警告する）
 ので、更新のあと1回だけ出て消える——「たまに出る」の正体もこれ。
+`setup.bat`が版上げのときに`compileall`で全ファイルを作り直すので、
+**そこで一度に全部出る**（利用者はそちらでも見ている）。
 """
 import io
 import os
@@ -117,8 +128,12 @@ rec('① 知らないエスケープが1つも無い（将来SyntaxErrorにな�
     not hits, ' / '.join(hits[:6]))
 
 # ---- ② この環境のPythonが出す警告も0 ---------------------------------------
-# **①の代わりにはならない**（版によって出ない）が、①が知らない種類の警告
-# （将来足されるもの）はこちらが拾う。
+# **①の代わりにはならない**（版によって種類が変わる）が、①が知らない種類の
+# 警告（将来足されるもの）はこちらが拾う。
+# **`SyntaxWarning`だけを見ないこと**——同じ`\W`が 3.11 では
+# `DeprecationWarning`、3.12 では `SyntaxWarning`。片方だけ見る網は、
+# 検証を回すPythonの版によって素通りする（実際に素通りした）。
+COMPILE_WARNINGS = (SyntaxWarning, DeprecationWarning)
 warned = []
 for p in files:
     src = io.open(p, encoding='utf-8').read()
@@ -130,19 +145,24 @@ for p in files:
             warned.append(f'{p.relative_to(ROOT)}: SyntaxError {e}')
             continue
         for x in w:
-            if issubclass(x.category, SyntaxWarning):
+            if issubclass(x.category, COMPILE_WARNINGS):
                 warned.append(f'{p.relative_to(ROOT)}:{x.lineno} {x.message}')
 rec('② このPythonでコンパイルしても警告が出ない',
     not warned, ' / '.join(warned[:4]) + f'（Python {sys.version_info.major}.{sys.version_info.minor}）')
 
 # ---- ③ 網が素通りしないこと -------------------------------------------------
-# **`compile()`だけでは捕まらないことを、この場で見せる**——同じ欠陥を
-# 3.11 に食わせても警告は出ない。だから①の判定を自前で持っている。
+# **警告の種類が版で変わることを、この場で見せる**——同じ欠陥を食わせて、
+# このPythonが何と言うかを記録する（3.11: DeprecationWarning ／
+# 3.12: SyntaxWarning）。だから①の判定を自前で持ち、②は両方を見る。
 probe = 'x = "%LOCALAPPDATA%\\WaveLog"\n'
 with warnings.catch_warnings(record=True) as w:
     warnings.simplefilter('always')
     compile(probe, '<probe>', 'exec')
-    compile_saw = any(issubclass(x.category, SyntaxWarning) for x in w)
+    saw = [x.category.__name__ for x in w
+           if issubclass(x.category, (SyntaxWarning, DeprecationWarning))]
+    compile_saw = ', '.join(saw) or '（何も言わない）'
+rec('③ ②が見る種類に、このPythonの言い分が含まれている',
+    bool(saw), f'このPythonは {compile_saw} と言う')
 found = bad_escapes('%LOCALAPPDATA%\\WaveLog', '')
 rec('③ 自前の判定は欠陥を捕まえる', [c for _p, c in found] == ['W'], found)
 ok_escapes = 'a\\nb\\\\c\\x41\\N{BULLET}\\007\\t\\v'
@@ -155,9 +175,9 @@ rec('③ バイト列では \\N \\u \\U も知らないエスケープ',
 # このPythonへ食わせて警告が出るかどうかは版で変わるが、①の判定は
 # **どの版でも捕まえる**。「必ず通るassertion」を置かない（§CLAUDE）ので、
 # 見せるのは事実の突き合わせだけにする。
-rec('③ ①の判定は compile() が見逃す版でも捕まえる',
+rec('③ ①の判定は版に依らず捕まえる',
     [c for _p, c in found] == ['W'],
-    f'compile()が警告した={compile_saw} / Python '
+    f'compile()の言い分={compile_saw} / Python '
     f'{sys.version_info.major}.{sys.version_info.minor}')
 
 ng = [x for x in R if not x[1]]
