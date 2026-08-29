@@ -179,7 +179,7 @@ def _local_root_candidates():
 def local_root():
  """ユーザー別ローカル領域のルート。**実際に書ける場所**を返す。
 
- **健全な端末の答えは変えない**（`%LOCALAPPDATA%\WaveLog`）——書けたら
+ **健全な端末の答えは変えない**（`%LOCALAPPDATA%\\WaveLog`）——書けたら
  そこで止まるので、候補が増えても今までと同じ場所になる（§9.208 ⑧の
  端末名の解決と同じ作法）。"""
  global _LOCAL_ROOT
