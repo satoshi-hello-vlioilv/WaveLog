@@ -19,6 +19,8 @@
  9. 読み(GET)・設定系マスタ・編集セッションは中継しない
 """
 import json
+from http.server import ThreadingHTTPServer
+import threading
 import os
 import socket
 import sys
@@ -71,13 +73,63 @@ def main():
   rec('共有スケジュールの置き場が分かる（中継の検証に要る）',False,
       'WAVELOG_FIXTURE_SHARE も パス設定マスタ も空です')
  conf={'schedule_owner_enabled':'on','schedule_owner_port':str(port),'schedule_owner_ttl_sec':'60'}
+ # 受け口の読み待ちに上限があること（§9.269、利用者の指示）。
+ # `ThreadingHTTPServer`は接続ごとにスレッドを作り、既定は無期限——
+ # **合言葉を確かめるのは本文を読んだ後**なので、繋いで黙っている相手が
+ # 並ぶと認証の前にスレッドが積み上がる。依頼側の12秒より短いこと。
+ rec('受け口の読み待ちに上限がある（繋いで黙る相手にスレッドを握らせない）',
+     isinstance(so._Handler.timeout,(int,float)) and 0<so._Handler.timeout<12,
+     f'timeout={so._Handler.timeout}')
+ # **属性を見るだけで終わらせない**——`timeout`を持っていても、拾い方を
+ # 間違えれば接続は解放されない。実際に繋いで黙り、閉じられるまでを見る。
+ # **上限が無いときは繋ぎに行かない**（`None+6`で落ちると、以降の網が
+ # 1件も動かなくなる。落ちるより「試せなかった」と報告するほうがよい）。
+ _lim=so._Handler.timeout if isinstance(so._Handler.timeout,(int,float)) else None
+ if _lim is None:
+  rec('繋いで黙る相手は時間切れで閉じられる',False,'読み待ちの上限が無いので試せません')
+  rec('そのスレッドが解放される（積み上がらない）',False,'同上')
+ else:
+  _probe_srv=ThreadingHTTPServer(('127.0.0.1',0),so._Handler)
+  _probe_srv.daemon_threads=True
+  threading.Thread(target=_probe_srv.serve_forever,daemon=True).start()
+  try:
+   _before=threading.active_count()
+   _sock=socket.create_connection(('127.0.0.1',_probe_srv.server_address[1]))
+   time.sleep(0.4)
+   _during=threading.active_count()
+   _sock.settimeout(_lim+6)
+   _t0=time.time()
+   try:
+    _sock.recv(16)
+    _closed=time.time()-_t0
+   except socket.timeout:
+    _closed=None
+   _sock.close()
+   time.sleep(0.4)
+   _after=threading.active_count()
+   rec('繋いで黙る相手は時間切れで閉じられる',
+       _closed is not None and _closed<_lim+3,
+       f'{_closed:.1f}秒後に閉じられた' if _closed is not None else '閉じられなかった')
+   rec('そのスレッドが解放される（積み上がらない）',
+       _after<=_before and _during>_before,
+       f'接続前={_before} 接続中={_during} 解放後={_after}')
+  finally:
+   _probe_srv.shutdown()
  so.SCHEDULE_SHARE_PATH=tmp/'schedule.sqlite3'
  so.path_config_value=lambda k,d=None:conf.get(k,d)
  added=[]
  try:
-  # 1) 既定はoff
+  # 1) 既定はon（§9.269、利用者の指示「常にそれを正にしてください」）。
+  #    **設定が無いときの答え**を見る（空文字＝未設定を渡す）。
+  conf.pop('schedule_owner_enabled',None)
+  rec('既定は on（設定していなければ書き込み役を立てる）',so.enabled(),
+      'path_config に行が無いとき')
+  conf['schedule_owner_enabled']=''
+  rec('空欄も既定（on）として読む',so.enabled(),'空文字')
+  # **切る道は残す**——受け口のポートを開けない現場があるので、規程に
+  # 合わせる道を塞がない。切っても壊れない（各PCが自分で共有へ書く）。
   conf['schedule_owner_enabled']='off'
-  rec('既定(off)では持ち主にならない',not so.enabled() and so.claim() is False)
+  rec('offにすれば持ち主にならない',not so.enabled() and so.claim() is False)
   conf['schedule_owner_enabled']='on'
 
   # 2) 最初に入った1台が持ち主

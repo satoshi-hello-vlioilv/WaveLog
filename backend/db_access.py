@@ -309,7 +309,7 @@ PATH_CONFIG_STATIC_KEYS=('sikalot_source','sikalotnow_path','sikalotdef_path','r
 PATH_CONFIG_LIVE_KEYS=('rne_extract_interval_sec','rne_extract_enabled','schedule_lock_ttl_sec','schedule_lock_verify_delay_ms',
                        'rne_assets_dir','rne_conf_path','db_mirror_enabled','db_mirror_interval_sec',
                        'schedule_watch_enabled','schedule_watch_interval_sec','schedule_watch_pause_sec',
-                       # 共有スケジュールの持ち主(§9.192)。既定は off。
+                       # 共有スケジュールの持ち主(§9.192→§9.269)。既定は on。
                        'schedule_owner_enabled','schedule_owner_port','schedule_owner_ttl_sec',
                        # 既定の品質データ結合(§9.194)。'off'で解除。既定は on。
                        'builtin_quality_join',

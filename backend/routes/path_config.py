@@ -63,9 +63,9 @@ _PATH_CONFIG_DEFAULTS={
  'schedule_watch_enabled':'auto',
  'schedule_watch_interval_sec':str(SCHEDULE_WATCH_INTERVAL_SEC_DEFAULT),
  'schedule_watch_pause_sec':str(SCHEDULE_WATCH_PAUSE_SEC_DEFAULT),
- # 共有スケジュールの持ち主(§9.192)。**既定は off**——入れると決めた現場だけが
+ # 共有スケジュールの持ち主(§9.192→§9.269)。**既定は on**——共有へ書くのを
  # 1つのスイッチで入れる（LANへ小さな受け口を開くため）。
- 'schedule_owner_enabled':'off',
+ 'schedule_owner_enabled':'on',
  'schedule_owner_port':str(SCHEDULE_OWNER_PORT_DEFAULT),
  'schedule_owner_ttl_sec':str(SCHEDULE_OWNER_TTL_SEC_DEFAULT),
 }

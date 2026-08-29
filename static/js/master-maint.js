@@ -5163,7 +5163,7 @@
  /* 選択肢の綴り→画面の言葉。綴りをそのまま出すと`auto`としか読めない。 */
  const _PC_CHOICE_LABELS={
   schedule_watch_enabled:{auto:'auto: 見張る',on:'on: 見張る',off:'off: 見張らない'},
-  schedule_owner_enabled:{off:'off: 各PCが自分で書く',on:'on: 1台が書く'},
+  schedule_owner_enabled:{off:'off: 各PCが自分で書く',on:'on: 1台が書く（既定）'},
   db_mirror_enabled:{auto:'auto: 写して読む',on:'on: 写して読む',off:'off: 共有を直接読む'},
   rne_extract_enabled:{auto:'auto: localのときだけ',on:'on: 定期実行',off:'off: 手動のみ'},
  };
@@ -5242,13 +5242,15 @@
       'ロック'+esc(String(v.schedule_lock_ttl_sec||pathConfigState.defaults.schedule_lock_ttl_sec||''))+'秒',`
      ${numField('schedule_lock_ttl_sec','書込ロックの有効期限','秒',5,1)}
      ${numField('schedule_lock_verify_delay_ms','ロック確認までの待機時間','ミリ秒',100,0)}`)}
-    ${pageFoldHtml('書く役を1台に絞る',pcNowText('schedule_owner_enabled','off: 各PCが自分で書く'),`
+    ${pageFoldHtml('書く役を1台に絞る',pcNowText('schedule_owner_enabled','on: 1台が書く（既定）'),`
      <p class="mm-field-hint">共有へ<b>実際に書く役を1台に絞る</b>仕掛けです。他のPCは書き込みだけをその1台へLAN内のHTTPで頼み、
       <b>読みは今までどおり手元の写しから</b>読みます（画面のURLは全員 http://127.0.0.1:5029/ のまま）。
-      <b>持ち主が落ちていても止まりません</b>——頼めなかったPCは自分で共有へ書きます。</p>
+      <b>持ち主が落ちていても止まりません</b>——頼めなかったPCは自分で共有へ書きます。
+      <b>既定で入っています。</b>切ってよいのは、社内規程などで<b>受け口のポートを開けられない</b>ときです
+      （切っても動きます——各PCが自分で共有へ書く形に戻るだけです）。</p>
      ${pickField('schedule_owner_enabled','書き込み役を1台に絞る',
-       [['','（既定）off: 各PCが自分で共有へ書く'],['off','off: 各PCが自分で共有へ書く'],['on','on: 最初に入った1台が書き込み役になる']],
-       'onにすると、書き込み役になったPCだけが下のポートを<b>LANへ開きます</b>（合言葉つきの決められた書き込みしか受け付けません）。')}
+       [['','（既定）on: 最初に入った1台が書き込み役になる'],['on','on: 最初に入った1台が書き込み役になる'],['off','off: 各PCが自分で共有へ書く']],
+       '書き込み役になったPCだけが下のポートを<b>LANへ開きます</b>（合言葉つきの決められた書き込みしか受け付けません）。')}
      ${numField('schedule_owner_port','書き込み役の受け口ポート','',1,1025)}
      ${numField('schedule_owner_ttl_sec','書き込み役の目印の有効期限','秒',10,30)}
      <div id="scheduleOwnerStatus" class="pc-owner-status">状態を読み込んでいます…</div>`)}`);
