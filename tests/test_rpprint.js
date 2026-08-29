@@ -202,8 +202,10 @@ let b=null;
   await page.click('#reportArrange');
   await page.waitForTimeout(400);
   await page.evaluate(()=>{
-   const el=document.querySelector('[data-rp-block="品質情報（仕掛）"]');
-   el.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
+   /* この紙だけの見え方は**左上の「紙」ボタン**（§9.274。ダブルクリックは
+      帳票ブロックマスタへ移るようになった）。 */
+   const el=document.querySelector('[data-rp-block="品質情報（仕掛）"] [data-rp-paper]');
+   el.click();
   });
   await page.waitForFunction(()=>{
    const m=document.getElementById('rpBlockModal');return !!m&&!m.hidden;
@@ -242,8 +244,10 @@ let b=null;
      `rpFitRows()`が測る`scrollHeight`が器の高さになり、行数が
      「自分の高さで自分の高さを決める」形になって決まらない。 */
   await page.evaluate(()=>{
-   const el=document.querySelector('[data-rp-block="品質情報（仕掛）"]');
-   el.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
+   /* この紙だけの見え方は**左上の「紙」ボタン**（§9.274。ダブルクリックは
+      帳票ブロックマスタへ移るようになった）。 */
+   const el=document.querySelector('[data-rp-block="品質情報（仕掛）"] [data-rp-paper]');
+   el.click();
   });
   await page.waitForFunction(()=>{
    const m=document.getElementById('rpBlockModal');return !!m&&!m.hidden;

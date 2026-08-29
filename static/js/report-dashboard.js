@@ -52,11 +52,20 @@
  /* `keys()`はコードが持っている既定の塊の一覧（§9.219 ②）。マスタの種と
     **食い違っていないこと**を網が突き合わせる——片方だけ増えると、マスタに
     出ない塊／画面に無い塊が黙って生まれる。 */
- WL.reportBlocks={keys:()=>rpBlockKeys(),forget:()=>{rpUserBlocks=[];rpMasterRows=[];rpBuiltinOff=new Set();rpUserBlocksFor=null;
+ /* **`keys`を2つ書かない**（§9.274）——同じオブジェクトに同じ名前を2度書くと
+    後の方だけが残り、先に書いたほうは**一度も呼ばれない死んだコード**になる
+    （`rpBlockKeys()`がそれだった。網が`keys()`で「自作の塊が候補に並ぶ」を
+    見ていたので、**見ていたのはコードの既定の塊だけ**だった）。
+    ここが答えるのは**コードが持っている既定の塊**（マスタの種と食い違って
+    いないことを網が突き合わせる）。 */
+ WL.reportBlocks={
+  keys:()=>RP_BLOCKS.map(b=>b.k),
+  /* いま紙に出せる塊ぜんぶ（既定＋自作）。`keys()`と**役が違う**ので名前も分ける。 */
+  allKeys:()=>rpBlockKeys(),
+  forget:()=>{rpUserBlocks=[];rpMasterRows=[];rpBuiltinOff=new Set();rpUserBlocksFor=null;
    /* 設備ごとの写しも一緒に捨てる（§9.239 ③）。片方だけ捨てると
       「マスタで直したのに紙が変わらない」が残る。 */
-   rpBlocksByEq.clear()},
-                  keys:()=>RP_BLOCKS.map(b=>b.k)};
+   rpBlocksByEq.clear()}};
 
  function ensurePanel(){
   let panel=$id('reportPanel');if(panel)return panel;
@@ -494,17 +503,30 @@
   const n=Math.max(1,Math.min(12,Number(cols)||2));
   /* 「マトリクスとして組む」のは、1マスでない行か空きマスがあるときだけ。 */
   const matrix=rows.some(r=>r&&r[2]&&((Number(r[2].span)||1)>1
-    ||(Number(r[2].rows)||1)>1||r[2].blank));
+    ||(Number(r[2].rows)||1)>1||r[2].blank||r[2].head));
+  /* 寄せは`@layer utility`の`.al-*`（§9.239 ④）——一覧と同じ1組を使う
+     （帳票だけ別の綴りを作らない）。 */
+  const AL={left:' al-l',center:' al-c',right:' al-r'};
   const cell=([label,value,o])=>{
    const span=Math.max(1,Math.min(n,Number(o&&o.span)||1));
    const tall=Math.max(1,Math.min(12,Number(o&&o.rows)||1));
    const st=matrix?` style="grid-column:span ${span}${tall>1?`;grid-row:span ${tall}`:''}"`:'';
    /* 空きマスは**中身を持たない**（場所を取るのが役目）。 */
    if(o&&o.blank)return `<div class="rp-field rp-field-blank"${st} aria-hidden="true"></div>`;
+   const al=AL[(o&&o.align)||'']||'';
+   /* 見出しのマス（§9.274）。**値を持たず文字だけ**——表の軸はこれが無いと
+      組めない。既定は中央寄せ（軸の見出しは列の真ん中に来るのがふつう）。 */
+   if(o&&o.head)return `<div class="rp-field rp-field-head${al||' al-c'}"${st}>`
+    +`<span class="rp-field-headtext">${esc(label)}</span></div>`;
    /* **理由を渡せる**（§9.247 ②）——子ロットへ割り当てられない項目は`—`に
       なるので、なぜそうなのかを`title`で言う（黙って`—`だと壊れて見える）。 */
    const tip=(o&&o.title)||value||'-';
-   return `<div class="rp-field"${st}><span class="rp-field-label">${esc(label)}</span>`
+   /* 共通の軸で並べた表では、ラベルが見出しと二重になる（§9.274・§CLAUDE 8）。
+      **ラベルの箱ごと落とす**——空の`<span>`を残すと`min-content`の列が
+      そのぶん残り、値が右へずれる。 */
+   const bare=o&&o.showLabel===false;
+   return `<div class="rp-field${bare?' rp-field-bare':''}${al}"${st}>`
+    +(bare?'':`<span class="rp-field-label">${esc(label)}</span>`)
     +`<span class="rp-field-value" title="${esc(tip)}">${esc(value||'-')}</span></div>`;
   };
   const body=rows.map(cell).join('');
@@ -1274,6 +1296,16 @@
     **今までとまったく同じ1つの節**が出る（見え方を勝手に変えない）。
     繰り返すときは見出しに子ロット番号を添える——同じ名前の節が並ぶと、
     どれがどの子ロットのものか読めなくなる（§2）。 */
+ /* マスごとの書式（§9.274、利用者の指示「数値の桁数、日付の書式、文字列を
+    寄せる方向など一般的に対応できるものを準備して」）。
+    **整えるのは`WL.cellFormat`の1箇所**（`base.js`）——一覧・実績データ・
+    作業予定表と同じ道具を通す。帳票だけ2つ目の整形器を持つと、同じ
+    「小数2桁」が画面によって違う結果になる（§9.163）。
+    **整形に失敗したら生の値**（`value()`がそう作ってある）——空欄にしない。 */
+ function rpFormatCell(raw,spec){
+  if(!spec)return raw;
+  try{return WL.cellFormat.value(spec,raw)}catch(e){return raw}
+ }
  function rpFieldsSection(x,name,fields,cols,repeat){
   const live=fields.filter(f=>!f.blank);
   if(!live.length)return '';
@@ -1284,9 +1316,13 @@
      ?`${name}　${L.lot||'(番号なし)'}（${L.from+1}〜${L.to}条）`:name;
    const rows=fields.map(f=>{
     if(f.blank)return [f.label,'',{span:f.span,rows:f.rows,blank:true}];
-    const v=rpValueAt(x,f.path,{lot:L});
+    /* 見出しのマス（§9.274）。**値を引かない**——道を持たないので、
+       引きに行くと空文字を`-`として出すことになる。 */
+    if(f.kind==='head')return [f.label,'',{span:f.span,rows:f.rows,head:true,align:f.align}];
+    const v=rpFormatCell(rpValueAt(x,f.path,{lot:L}),f.format);
     /* 割り当てられない項目は`—`（`rpValueAt`が返す）。**理由を添える**（§4）。 */
-    return [f.label,v,{span:f.span,rows:f.rows,title:(v==='—'?RP_LOT_NA:'')}];
+    return [f.label,v,{span:f.span,rows:f.rows,title:(v==='—'?RP_LOT_NA:''),
+                       align:f.align,showLabel:f.showLabel!==false}];
    });
    return reportSection(title,rows,cols||0);
   }).join('');
@@ -1382,6 +1418,32 @@
  function rpInitialHidden(){
   const solo=RP_MEAS_GROUPS.map(gr=>rpMeasSoloKey(gr.g));
   return rpHasSplitLots(rpLotForDefaults())?solo:solo.concat([RP_STAT_BLOCK]);
+ }
+ /* ---------- 「紙に出す」は1箇所が答える（§9.274、利用者の報告） ----------
+    「帳票ブロックマスタをいじっても、帳票の紙レイアウトのところで見えている
+     データ、プレビューのデータは変わりません」
+
+    原因は**並びに載っていない自作の塊は必ず隠す**（下の`rpHiddenSet()`）と、
+    **並びを書き下ろすのは`order`が空のときだけ**（`rpStage()`）の組み合わせ。
+    一度でも配置を保存した紙では`order`が空でなくなるので、**あとから足した
+    塊は「出す」を押しても次に読むと消える**——押しても何も起きないボタン
+    （§4）そのもので、しかも黙って戻るので壊れているようにしか見えない。
+
+    **出すときは並びにも載せる**のが「並びに載るまで出さない」の裏返し。
+    出す・出さないの経路は3つ（塊の編集窓・組み換えの札・帳票レイアウト
+    マスタ）あるので、**判定も書き込みもここ1つ**を通す（§9.163）。 */
+ function rpShowBlock(k,on){
+  const set=new Set(rpHiddenSet());
+  const patch={};
+  if(on){
+   set.delete(k);
+   const order=[...(rpLayoutNow().order||[])];
+   /* **末尾へ足す**（§9.248 ③と同じ作法）——載っていない列を前へ挿すと、
+      利用者が並べた順が押し出される。 */
+   if(order.length&&order.indexOf(k)<0){order.push(k);patch.order=order}
+  }else set.add(k);
+  patch.hidden=[...set];
+  rpStage(patch);
  }
  function rpHiddenSet(){
   const l=WL.columnLayout.get(rpTarget());
@@ -1833,6 +1895,12 @@
     /* **縁を引いて大きさを変えられる**（§9.218 ⑥、利用者の指示「選択した
        ときに縦横のサイズ変更ができるように」）。右＝幅（マス）、下＝高さ
        （行）、右下＝両方。掴んでいるあいだ何マス×何行になるかを出す。 */
+    /* **この紙だけの見え方の入口**（§9.274）。縁の掴み（右・下・右下）と
+       重ならない**左上**へ置く——§9.226 ③で浮き帯を外したのは、掴む的の
+       上に帯が現れて的が消えたからで、位置が違えばその問題は起きない。 */
+    +((arranging&&!paper)?'<button type="button" class="rp-block-paper" data-rp-paper'
+      +' title="この紙（この設備）でだけの幅・高さ・列幅・行列入れ替えを決めます。'
+      +'塊そのもの（名前・載せる項目・書式）はダブルクリックで帳票ブロックマスタへ">紙</button>':'')
     +((arranging&&!paper)?'<span class="rp-size-grip rp-size-w" data-rp-grip="w" title="引くと幅（マス）が変わります"></span>'
       +'<span class="rp-size-grip rp-size-h" data-rp-grip="h" title="引くと高さ（行）が変わります"></span>'
       +'<span class="rp-size-grip rp-size-wh" data-rp-grip="wh" title="引くと幅と高さが変わります"></span>':'')
@@ -2074,7 +2142,9 @@
   let m=$id('rpBlockModal');if(m)return m;
   m=document.createElement('div');m.className='record-modal';m.id='rpBlockModal';m.hidden=true;
   m.innerHTML=`<div class="settings-dialog rp-block-dialog" role="dialog" aria-modal="true">
-    <header><div><small>REPORT BLOCK</small><h2 id="rpBlockTitle">塊</h2></div>
+    <header><div><small>この紙での見え方</small><h2 id="rpBlockTitle">塊</h2></div>
+     <button id="rpBlockToMaster" type="button" class="rp-to-master"
+      title="名前・載せる項目・書式・既定の幅と高さは帳票ブロックマスタで直します">帳票ブロックマスタで直す</button>
      <button id="rpBlockClose" type="button" aria-label="閉じる">×</button></header>
     <div class="rp-block-edit">
      <div class="rp-block-preview" id="rpBlockPreview"></div>
@@ -2082,6 +2152,9 @@
     </div></div>`;
   document.body.append(m);
   $id('rpBlockClose').onclick=()=>closeBlockEditor();
+  /* **どこで直すのかを言い、そこへ連れて行く**（§2）。ここが持つのは
+     「この紙（この設備）だけの見え方」で、塊そのものはマスタが持つ。 */
+  $id('rpBlockToMaster').onclick=()=>{const k=rpEditKey;closeBlockEditor();rpOpenBlockMaster(k)};
   WL.modal.keepOpen(m);
   document.addEventListener('keydown',e=>{if(WL.modal.escCloses(e)&&!m.hidden)closeBlockEditor()},true);
   return m;
@@ -2115,11 +2188,38 @@
  function openBlockEditor(k){
   rpEditKey=k;ensureBlockEditor().hidden=false;renderBlockEditor();
  }
+ /* この塊のマスタの行ID。**既定の塊は`[組み込みキー]`、自作の塊は名前が鍵**
+    （`rpAllBlocks()`と同じ引き当て方）。 */
+ function rpMasterRowOf(k){
+  return rpMasterRows.find(r=>String(r.builtin||r.name||'')===String(k))||null;
+ }
+ /* 帳票ブロックマスタのその行を開く（§9.274）。**行が無いことは黙らない**
+    ——「押しても何も起きない」を作らない（§4）。 */
+ function rpOpenBlockMaster(k){
+  const row=rpMasterRowOf(k);
+  if(!(window.WL&&WL.reportBlockMaster&&WL.reportBlockMaster.open)){
+   /* **公開漏れは黙って素通しにしない**（§CLAUDE）。 */
+   console.error('WL.reportBlockMaster が見つかりません（master-maint.js）');
+   showToast&&showToast('帳票ブロックマスタを開けません','マスタ管理の画面が読み込まれていません。',5000);
+   return;
+  }
+  if(!row){
+   showToast&&showToast('この塊はマスタに行がありません',
+     `「${k}」はこの端末のマスタにまだ登録されていません（マスタ管理 > 帳票ブロックを一度開くと作られます）。`,5600);
+   return;
+  }
+  WL.reportBlockMaster.open(row.id);
+ }
  function renderBlockEditor(){
   const k=rpEditKey,m=$id('rpBlockModal');if(!k||!m||m.hidden)return;
   const x=rpCurrentLot();if(!x)return;
   const bl=rpBlockOf(k)||{};
   $id('rpBlockTitle').textContent=k;
+  /* **どちらで直すのかを毎回思い出させない**（§2）。この窓が書き換えるのは
+     `report:<設備>`（紙1枚ぶん）で、塊そのものは帳票ブロックマスタ。 */
+  const toM=$id('rpBlockToMaster');
+  if(toM)toM.title=`「${k}」の名前・載せる項目・書式・既定の幅と高さは帳票ブロックマスタで直します`
+    +`（この窓で決まるのは「${rpEditEquipment||rpEquipmentOf(x)||'共通'}」の紙だけの見え方です）`;
   let body='';try{body=bl.html(x)||''}catch(e){body=''}
   $id('rpBlockPreview').innerHTML=body
    ||'<p class="rp-block-empty">このロットにはこの内容がありません。枠の大きさだけ決められます。</p>';
@@ -2286,9 +2386,8 @@
   };
   const vis=form.querySelector('[data-e-vis]');
   if(vis)vis.onclick=()=>{
-   const set=new Set(rpHiddenSet());
-   if(set.has(k))set.delete(k);else set.add(k);
-   rpStage({hidden:[...set]});updateArrangeBar();renderBlockEditor();
+   rpShowBlock(k,rpHiddenSet().has(k));
+   updateArrangeBar();renderBlockEditor();
   };
  }
 
@@ -3147,10 +3246,19 @@
    /* **ダブルクリックで大きく開く**（§9.174、利用者の指示）。狭い操作帯で
       高さ・列幅・行列まで触らせると、押し間違いと読み違いが増える。
       よく使う「幅・隠す・分解」だけ帯に残し、残りは開いた先で決める。 */
+   /* **ダブルクリックは帳票ブロックマスタへ**（§9.274、利用者の指示
+      「今のモーダルでできることは少ないのでマスタに繋いできちんと修正
+       できるようにしたい」）。塊そのもの（名前・載せる項目・書式・既定の
+      幅と高さ）を直せるのはあちらだけ。
+      **この紙だけの見え方**（この設備での幅・高さ・列幅・行列入れ替え）は
+      あちらが持てないので、左上の「この紙での見え方」から今までどおり開く
+      ——入口を消さない（§4）。 */
    el.addEventListener('dblclick',ev=>{
     if(ev.target.closest('button'))return;
-    ev.preventDefault();openBlockEditor(k);
+    ev.preventDefault();rpOpenBlockMaster(k);
    });
+   const pb=el.querySelector('[data-rp-paper]');
+   if(pb)pb.onclick=ev=>{ev.preventDefault();ev.stopPropagation();openBlockEditor(k)};
    rpBindSizeGrips(el,k);
    el.addEventListener('dragstart',ev=>{
     rpDragKey=k;rpDragFrom='sheet';el.classList.add('is-dragging');
@@ -3531,7 +3639,7 @@
    +`.rp-page.rp-landscape{width:297mm;min-height:210mm}`
    +`.rp-page+.rp-page{page-break-before:always}`
    /* 組み換え中の道具は紙に出さない（画面だけの道具）。 */
-   +`.rp-block-tools,.rp-free-layer,.rp-bar,.rp-nav{display:none!important}`
+   +`.rp-block-tools,.rp-block-paper,.rp-free-layer,.rp-bar,.rp-nav{display:none!important}`
    +`</style></head><body class="rp-print-doc">${pagesHtml}</body></html>`;
  }
  /* 刷り終わる（またはやめる）まで待って片付ける。**`afterprint`だけに
@@ -3601,7 +3709,7 @@
  function rpPageHtmlFor(el){
   if(!el)return '';
   const c=el.cloneNode(true);
-  c.querySelectorAll('.rp-block-tools,.rp-free-layer').forEach(x=>x.remove());
+  c.querySelectorAll('.rp-block-tools,.rp-block-paper,.rp-free-layer').forEach(x=>x.remove());
   return c.outerHTML;
  }
  async function rpPrintPages(pagesHtml,title){
@@ -3889,11 +3997,7 @@
   targetOf:rpLayoutTarget,
   info:rpLayoutInfo,
   /* 出す/出さない。**並びも一緒に書き下ろす**のは`rpStage()`の役目。 */
-  setShown:(eq,key,on)=>rpLayoutCommit(eq,()=>{
-   const set=new Set(rpHiddenSet());
-   if(on)set.delete(key);else set.add(key);
-   rpStage({hidden:[...set]});
-  }),
+  setShown:(eq,key,on)=>rpLayoutCommit(eq,()=>rpShowBlock(key,!!on)),
   setSpan:(eq,key,n)=>rpLayoutCommit(eq,()=>rpApplySpan(key,Number(n)||1)),
   setRows:(eq,key,n)=>rpLayoutCommit(eq,()=>{
    const v=Number(n)||0,wid={...rpLayoutNow().widths};

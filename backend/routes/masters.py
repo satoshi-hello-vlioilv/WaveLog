@@ -1530,6 +1530,13 @@ def report_block_list():
            # 繰り返しの選択肢（§9.247 ②）。**呼び名もサーバーが答える**。
            'repeats':[{'v':v,'label':lb} for v,lb in rb.REPEAT_LABELS],
            'contentEditable':sorted(rb.CONTENT_EDITABLE),
+           # 1つのマスが持てるもの（§9.274）。**語彙はサーバーが答える**
+           # ——画面へ写すと、選べる書式を1つ足すたびに2箇所直すことになる。
+           'cellKinds':[{'v':v,'label':lb} for v,lb in rb.CELL_KINDS],
+           'aligns':[{'v':v,'label':lb} for v,lb in rb.ALIGNS],
+           'formatKinds':[{'v':v,'label':lb} for v,lb in rb.FORMAT_KINDS],
+           'datePatterns':list(rb.DATE_PATTERNS),
+           'decimalMax':rb.DECIMAL_MAX,
            # **出どころの見本**。ここに無い道も書けるので、選択肢で塞がない。
            'fields':[{'label':a,'path':b} for a,b in rb.FIELD_CATALOG],
            # **選んで組み立てるための候補**（§9.226 ④）。操業データの項目も

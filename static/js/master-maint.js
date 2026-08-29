@@ -646,6 +646,7 @@
      <span class="mm-head-ico" aria-hidden="true">👤</span>
      <input id="masterUserId" type="text" autocomplete="off" placeholder="更新者ID"></label>
     <div class="mm-search"><span class="mm-search-icon" aria-hidden="true">🔍</span><input id="masterMaintSearch" type="search" placeholder="絞り込み" autocomplete="off"></div>
+    ${hintLevelBarHtml()}
     <button id="reloadMasterMaint" type="button" class="mm-btn-ghost mm-head-icobtn"
      title="マスタを読み直します" aria-label="再読込"><span aria-hidden="true">↻</span></button>
    </div>
@@ -669,6 +670,22 @@
   </div>`;
   const grid=$('#grid');grid?.parentNode?.insertBefore(panel,grid);
   const uid=$('#masterUserId');if(uid){uid.value=currentUserId();uid.onchange=()=>setUserId(uid.value)}
+  /* 説明の量（§9.274）。**選んだらその場で描き直す**——次に開くまで
+     変わらないと、押しても何も起きないように見える（§4）。 */
+  document.documentElement.setAttribute('data-hint',hintLevel());
+  document.querySelectorAll('#mmHead [data-hint-lv]').forEach(b=>b.onclick=()=>{
+   setHintLevel(b.dataset.hintLv);
+   document.querySelectorAll('#mmHead [data-hint-lv]').forEach(x=>{
+    const on=x.dataset.hintLv===hintLevel();
+    x.classList.toggle('is-on',on);x.setAttribute('aria-pressed',on?'true':'false');
+   });
+   /* **いま出ているものを描き直す**（§4。押しても何も起きないを作らない）。
+      編集窓はこの帯を覆うので開いている最中に押せない＝次に開いたときに
+      効く。専用の画面（`special:*`）はタブを移ったときに効くので、
+      **「出さない」だけはCSSでも効かせる**（`html[data-hint]`）。 */
+   try{renderMaintForm()}catch(e){}
+   try{renderMaintList()}catch(e){}
+  });
   $('#reloadMasterMaint').onclick=()=>loadMaint(true);
   const search=$('#masterMaintSearch');if(search){search.oninput=()=>{maintState.query=search.value;renderMaintList()}}
   renderMaintNav();
@@ -765,8 +782,55 @@
     いた**（実機のスクリーンショットで「**空欄＝すべての設備**」と読める）。
     **エスケープしてから印を`<b>`へ変える**——順番が逆だと、マスタへ入れた
     文字列の中のHTMLがそのまま効く。 */
+ /* ---------- 説明の量は選べる（§9.274、利用者の指示） ----------
+    「帳票ブロックマスタに説明書きみたいなものが出ているものがありますが、
+     ON/OFF、ONも短め、通常など調整できるようにしてほしいです。文章が
+     長すぎて影響が出ているものがあるので調整したいです」
+
+    3段（`full`＝通常／`short`＝短め／`off`＝出さない）。**置き場はこの端末**
+    （読み方の好みなのでPCごとに違ってよい・§9.199／§9.242 ⑥）。
+    **既定は今までどおり`full`**——わざわざ選んでいない人の見え方を変えない。
+
+    **`?`（くわしい説明）は消さない**——押したときだけ開く、場所を取らない
+    入口なので、消すと「短め」にした人が全文へ辿り着けなくなる（§9.234 ①
+    「消した説明は落とし先を用意する」）。だから`off`でも`?`は残す。
+
+    **通すのは`hintHtml()`の1箇所**（§9.163）——説明を出す場所は十数箇所
+    あるので、そこへ足すと**足し忘れた欄だけが長いまま残る**。 */
+ const HINT_LEVEL_KEY='MasterHintLevelV1';
+ const HINT_LEVELS=[{v:'full',label:'通常'},{v:'short',label:'短め'},{v:'off',label:'出さない'}];
+ function hintLevel(){
+  try{
+   const v=localStorage.getItem(HINT_LEVEL_KEY);
+   return HINT_LEVELS.some(x=>x.v===v)?v:'full';
+  }catch(e){return 'full'}
+ }
+ function setHintLevel(v){
+  try{localStorage.setItem(HINT_LEVEL_KEY,HINT_LEVELS.some(x=>x.v===v)?v:'full')}catch(e){}
+  document.documentElement.setAttribute('data-hint',hintLevel());
+ }
+ /* 短めは**最初の1文だけ**（`。`まで）。**文の途中で切らない**——途中で
+    切ると意味が反転しうる（「〜しないでください」の前半だけが残る）。
+    `。`が無ければ丸ごと残す（短い注記はそのままでよい）。 */
+ function hintShorten(t){
+  const s=String(t||'');
+  const i=s.indexOf('。');
+  return (i>=0&&i+1<s.length)?s.slice(0,i+1):s;
+ }
  function hintHtml(t){
-  return esc(String(t||'')).replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+  const lv=hintLevel();
+  if(lv==='off')return '';
+  const s=lv==='short'?hintShorten(String(t||'')):String(t||'');
+  return esc(s).replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+ }
+ /* 帯の選び方。**いまどれかを必ず文字で出す**（§CLAUDE 3）。 */
+ function hintLevelBarHtml(){
+  const cur=hintLevel();
+  return `<span class="mm-hintlv" role="group" aria-label="説明の量">`
+   +`<i title="欄の下に出る説明文の量です。「くわしい説明」（?）はどの段でも読めます">説明</i>`
+   +HINT_LEVELS.map(x=>`<button type="button" data-hint-lv="${x.v}"`
+     +` class="${x.v===cur?'is-on':''}" aria-pressed="${x.v===cur?'true':'false'}">`
+     +`${esc(x.label)}</button>`).join('')+`</span>`;
  }
  /* **消した説明は`title`へ落とす**（§9.234 ①）。欄の説明を短くすると
     読めるようになるが、消してしまうと調べようが無くなる。`more`を持つ欄は
@@ -1281,11 +1345,15 @@
        <div class="fb-chosen">
         <div class="fb-chosen-head"><b>紙での並び</b><span class="fb-count"></span>
          <span class="fb-cols" role="group" aria-label="列数"></span>
+         <button type="button" class="fb-head ghost" title="値を持たず文字だけを出すマスを1つ足します（表の軸の見出しに使います）">見出し</button>
          <button type="button" class="fb-blank ghost" title="何も出さずに場所だけ取るマスを1つ足します（区切りの良い並びに整えるため）">空きマス</button>
+         <button type="button" class="fb-table ghost" title="選んだ項目を、行と列の軸で表に組み直します">表に組む</button>
          <button type="button" class="fb-clear ghost">全部外す</button></div>
         <p class="fb-hint">下の枠が<b>紙のこの塊そのもの</b>です。掴んで動かすと並びが変わり、
-         各マスの<b>数字</b>で横に使うマス数を決められます。</p>
+         各マスの<b>数字</b>で横に使うマス数を決められます。<b>マスを押すと</b>下で
+         種別・寄せ・書式を決められます。</p>
         <div class="fb-rows"></div>
+        <div class="fb-insp" hidden></div>
        </div>
       </div>
       <input type="hidden" data-field="${f.k}" value="${esc(val)}">
@@ -1950,6 +2018,10 @@
      <div class="rb-paper-block" id="rbPaperBlock"><b id="rbPaperName">この塊</b></div>
     </div>
     <p class="rb-spill" id="rbSpill" hidden></p>
+    <!-- **どの紙に効くのかを画面に出す**（§9.274／§CLAUDE 6）。ここで決めるのは
+         「既定」で、設備ごとの紙が上書きしている——それが読めないと、幅を変えても
+         紙が変わらない理由が分からない（利用者の報告の半分がこれ）。 -->
+    <p class="rb-where" id="rbWhere"></p>
     <p class="rb-aside-note" id="rbNote">${hintHtml('**紙の中の四方どこでも掴んで**大きさを変えられます。置く場所は帳票画面の「配置を組み換え」で決めます。')}</p>
     <dl class="rb-facts">
      <dt>幅</dt><dd id="rbFactSpan">—</dd>
@@ -2032,17 +2104,100 @@
   const cols=colsEff;
   sec.className='rb-sec';
   sec.style.setProperty('--rb-cols',String(cols));
+  /* 寄せは紙と同じ`@layer utility`の`.al-*`（§9.239 ④／§9.274）。 */
+  const AL={left:' al-l',center:' al-c',right:' al-r'};
   sec.innerHTML=`<div class="rb-sec-head">${esc(v('name')||'（名前）')}</div>`
    +(rowsData.length
      ?`<div class="rb-sec-body">${rowsData.map(r=>{
         const sp=Math.min(cols,Math.max(1,Number(r.span)||1));
-        if(r.blank)return `<div class="rb-cell is-blank" style="grid-column:span ${sp}"></div>`;
-        const val=rbState.dummy?rbSampleOf(r.path):'値';
-        return `<div class="rb-cell" style="grid-column:span ${sp}">`
-         +`<span class="rb-cell-k" title="${esc(r.path)}">${esc(r.label||r.path)}</span>`
+        const tall=Math.max(1,Math.min(12,Number(r.rows)||1));
+        const st=` style="grid-column:span ${sp}${tall>1?`;grid-row:span ${tall}`:''}"`;
+        if(r.blank)return `<div class="rb-cell is-blank"${st}></div>`;
+        const al=AL[r.align||'']||'';
+        /* 見出しのマス（§9.274）。**値を引かない**——道を持たないので。 */
+        if(r.kind===FB_KIND_HEAD)
+         return `<div class="rb-cell is-head${al||' al-c'}"${st}>`
+          +`<span class="rb-cell-h">${esc(r.label)}</span></div>`;
+        /* **書式は紙と同じ`WL.cellFormat`を通す**（§9.274）——見本だけ
+           整形しないと、設定画面で確かめた形と刷り上がりが食い違う。 */
+        const raw=rbState.dummy?rbSampleOf(r.path):'値';
+        let val=raw;
+        if(r.format&&window.WL&&WL.cellFormat){
+         try{val=WL.cellFormat.value(r.format,raw)}catch(e){val=raw}
+        }
+        const bare=r.showLabel===false;
+        return `<div class="rb-cell${bare?' is-bare':''}${al}"${st}>`
+         +(bare?'':`<span class="rb-cell-k" title="${esc(r.path)}">${esc(r.label||r.path)}</span>`)
          +`<span class="rb-cell-v" title="${esc(r.path)}">${esc(val)}</span></div>`;
        }).join('')}</div>`
      :'<p class="rb-sec-empty">載せる項目がありません。<b>画面がもともと持っている中身</b>のまま刷られます。</p>');
+ }
+ /* ---------- 紙全体で見る（§9.250 ⑤、利用者の指示） ----------
+    「データダミーをつかって、帳票の表示が最終的にどうなるか…すぐに確認
+     できる導線を準備してください」
+
+    この塊だけを見ても、**紙のどこが空いているか・何ページ目に来るか**は
+    分からない。同じ設備の塊を**表示順に流し込んで**紙を組み、
+    **いま編集している塊はその流れの中で強調する**——除いて重ねると、
+    自分の塊が実際に来る場所とは違う絵になる（見本の値打ちが消える）。
+
+    **掴めることは変えない**（§4）——`#rbPaperBlock`（8方向のつまみを持つ）
+    を、流れの中の自分の席へ**測って重ねる**。席の位置はブラウザの自動配置が
+    決めるので、こちらで組み直さない（同じ並べ方を2つ持たない）。
+
+    **紙からはみ出したものは「次の紙へ」と数える**（§CLAUDE 4・6）
+    ——`.rb-paper`は`overflow:hidden`なので、黙って切ると「無い」と読まれる。 */
+ /* いま編集している塊が「どの紙」に置かれるか。**対象設備の先頭**——
+    紙は設備1つぶん（`report:<設備>`・§9.174）なので、複数設備を対象にした
+    塊は代表の1枚で見せ、そのことを画面に書く。 */
+ function rbPaperEq(form){
+  const el=form.querySelector('[data-equipment-all="equipment"]');
+  if(el&&el.checked)return '';                 /* すべての設備＝共通の紙で見る */
+  const on=[...form.querySelectorAll('[data-equipment-field="equipment"]:checked')];
+  return on.length?String(on[0].value||''):'';
+ }
+ /* 本物の紙を読む（§9.274）。**「紙全体で見る」は本物の紙で組む**
+    ——以前はマスタの行だけを表示順に流していたので、**出していない塊まで
+    並び、設備ごとに変えた幅も効かず**、刷り上がりとは別物だった
+    （利用者の報告「紙レイアウトのところで見えているデータは変わりません」）。
+    読めなければ今までどおりマスタの行で組む（fail-open）。 */
+ async function rbLoadPaper(form){
+  if(!(window.WL&&WL.reportLayout&&WL.reportLayout.info))return null;
+  const eq=rbPaperEq(form);
+  if(rbState.paperFor===eq&&rbState.paper)return rbState.paper;
+  try{
+   const info=await WL.reportLayout.info(eq);
+   rbState.paper=info;rbState.paperFor=eq;
+   return info;
+  }catch(e){rbState.paper=null;rbState.paperFor=null;return null}
+ }
+ /* 塊が「いまその紙に置かれているか」を文字で出す（§CLAUDE 3・§2）。
+    **置かれていなければ、置く場所まで言う**——ここで幅を決めても紙に出ない、
+    という食い違いがいちばん分かりにくい。 */
+ function rbPaintWhere(form){
+  const el=form.querySelector('#rbWhere');if(!el)return;
+  const v=k=>{const x=form.querySelector(`[data-field="${CSS.escape(k)}"]`);return x?String(x.value||''):''};
+  const me=String(v('name')||(maintState.editing&&maintState.editing.name)||'').trim();
+  const info=rbState.paper;
+  const eqName=rbState.paperFor?`「${rbState.paperFor}」`:'共通（設備の分からないロット）';
+  if(!info){
+   el.innerHTML=`<b>紙での見え方</b>この塊の<b>幅と高さはここが既定</b>で、`
+    +`設備ごとの紙で変えるとそちらが優先されます（帳票レイアウトで直せます）。`;
+   return;
+  }
+  const hit=(info.blocks||[]).find(x=>x.key===me);
+  if(!hit){
+   el.innerHTML=`<b>紙での見え方</b>${esc(eqName)}の紙には<b>まだ置かれていません</b>。`
+    +`保存したあと、<b>帳票レイアウト</b>（またはこの塊のある帳票の「配置を組み換え」）で`
+    +`「出す」にすると紙に出ます。`;
+   return;
+  }
+  el.innerHTML=`<b>紙での見え方</b>${esc(eqName)}の紙に`
+   +(hit.shown?`<b>出しています</b>`:`<b>置いてありますが出していません</b>`)
+   +`（幅 ${hit.span}/${info.grid} マス・高さ ${hit.rows?hit.rows+'段':'中身なり'}）。`
+   +(hit.span!==hit.defSpan||hit.rows!==hit.defRows
+     ?`<i>この紙では既定（幅 ${hit.defSpan}・高さ ${hit.defRows||'中身なり'}）と違う値が効いています。</i>`
+     :`<i>いまは下の既定がそのまま効いています。</i>`);
  }
  /* ---------- 紙全体で見る（§9.250 ⑤、利用者の指示） ----------
     「データダミーをつかって、帳票の表示が最終的にどうなるか…すぐに確認
@@ -2075,22 +2230,54 @@
   const me=String(v('name')||maintState.editing&&maintState.editing.name||'');
   const eq=v('equipment');
   const eqFirst=eq.split(/[,、]/)[0].trim();
-  const fits=x=>{
-   if(String(x.enabledText||'')==='無効')return false;
-   /* 対象設備は設備停止マスタと同じ書式（`'*'`＝すべて）。**同じ設備の
-      塊だけ**を流す——ほかの設備の塊を混ぜると、紙が実際より埋まって見える。 */
-   const t=String(x.equipment||'').trim();
-   if(!eq||eq==='*'||t==='*'||!t)return true;
-   return t.split(/[,、]/).map(y=>y.trim()).includes(eqFirst);
-  };
   const meSpan=Math.max(1,Math.min(12,Number(v('span'))||12));
   const meRows=(()=>{const r=rbRowsRaw(form);return r?Math.max(1,Math.min(RB_PAGE_ROWS,Number(r))):3})();
-  const list=(rbState.blocks||[]).filter(x=>String(x.name||'')!==me).filter(fits)
-    .map(x=>({name:String(x.name||''),order:Number(x.order)||0,
-      span:Math.max(1,Math.min(12,Number(x.span)||12)),
-      rows:Math.max(1,Math.min(RB_PAGE_ROWS,Number(x.rows)||2)),me:false}));
-  list.push({name:me||'この塊',order:Number(v('order'))||0,span:meSpan,rows:meRows,me:true});
-  list.sort((a,b)=>(a.order-b.order)||a.name.localeCompare(b.name,'ja'));
+  let list=null;
+  const info=rbState.paper;
+  /* **本物の紙で組むのは、この塊がその紙に置かれているときだけ**（§9.274）。
+     まだ置かれていない塊（＝新規作成中や、紙へ出していない塊）は**紙の上に
+     席が無い**ので、本物の流れへ混ぜると必ず末尾＝次の紙へ回る位置になり、
+     8方向のつまみが紙の外へ出て掴めなくなる（§9.250 ④の機能がそこだけ
+     失われる）。置かれていないことは`#rbWhere`が文字で言う（§CLAUDE 4）ので、
+     見本は今までどおり表示順の流れで「だいたいこの大きさ」を見せる。 */
+  const onPaper=!!(info&&Array.isArray(info.blocks)
+    &&info.blocks.some(x=>x.key===me&&x.shown));
+  if(onPaper){
+   /* **本物の紙**（`report:<設備>`）。出している塊だけを、効いている幅と
+      高さで並べる。マス数は紙の割り（12/24/…）なので、見本の12マスへ
+      **比で直す**（見本は12マス固定・§9.249 ③）。 */
+   const toSpan=n=>Math.max(1,Math.min(12,Math.round(Number(n||1)*12/(info.grid||12))));
+   const toRows=n=>Math.max(1,Math.min(RB_PAGE_ROWS,
+     Math.round(Number(n||0)*RB_PAGE_ROWS/(info.pageRows||RB_PAGE_ROWS))))||2;
+   /* **編集している塊は流れの中の自分の席に置く**——末尾へ足すと、紙が
+      埋まっている設備では必ず最後（＝次の紙へ回る側）に見えて、
+      「自分の塊が実際に来る場所」という見本の値打ちが消える。
+      幅と高さだけは**いま欄に入っている値**で描く（触った結果が出る）。 */
+   let placed=false;
+   list=info.blocks.filter(x=>x.shown).map(x=>{
+    if(x.key===me){placed=true;return {name:me,span:meSpan,rows:meRows,me:true}}
+    return {name:String(x.label||x.key||''),span:toSpan(x.span),
+            rows:x.rows?toRows(x.rows):2,me:false};
+   });
+   /* `onPaper`で絞ってあるので必ず席がある。念のため（設定が入れ替わる
+      隙で消えていたら）末尾へ置く。 */
+   if(!placed)list.push({name:me||'この塊',span:meSpan,rows:meRows,me:true});
+  }else{
+   /* 読めなかったとき、またはまだ紙に置いていない塊（fail-open）。
+      マスタの行を表示順に流す。 */
+   const fits=x=>{
+    if(String(x.enabledText||'')==='無効')return false;
+    const t=String(x.equipment||'').trim();
+    if(!eq||eq==='*'||t==='*'||!t)return true;
+    return t.split(/[,、]/).map(y=>y.trim()).includes(eqFirst);
+   };
+   list=(rbState.blocks||[]).filter(x=>String(x.name||'')!==me).filter(fits)
+     .map(x=>({name:String(x.name||''),order:Number(x.order)||0,
+       span:Math.max(1,Math.min(12,Number(x.span)||12)),
+       rows:Math.max(1,Math.min(RB_PAGE_ROWS,Number(x.rows)||2)),me:false}));
+   list.push({name:me||'この塊',order:Number(v('order'))||0,span:meSpan,rows:meRows,me:true});
+   list.sort((a,b)=>(a.order-b.order)||a.name.localeCompare(b.name,'ja'));
+  }
   layer.hidden=false;
   layer.innerHTML=list.map(x=>
    `<i style="--rb-span:${x.span};--rb-rows:${x.rows}"${x.me?' data-me="1" class="is-me"':''}`
@@ -2224,7 +2411,7 @@
     題が変わるので、どの塊を触っているのかを見失わない。 */
  const rbState={dummy:true,others:false,blocks:[]};
  function rbBindAside(form){
-  const paint=()=>{rbPaintPreview(form);rbPaintOthers(form)};
+  const paint=()=>{rbPaintPreview(form);rbPaintOthers(form);rbPaintWhere(form)};
   rbBindPaperDrag(form);
   const tglDummy=form.querySelector('#rbToggleDummy');
   if(tglDummy&&!tglDummy.dataset.wired){
@@ -2246,10 +2433,20 @@
     tglOthers.classList.toggle('is-on',rbState.others);
     tglOthers.setAttribute('aria-pressed',rbState.others?'true':'false');
     /* **重ねるものは開いたときに取る**（窓を開くたびに引くと、紙全体を
-       見ない人まで往復が1本増える）。 */
-    if(rbState.others&&!rbState.blocks.length){
-     try{const r=await api('/api/report-block-master');rbState.blocks=r.items||[]}
-     catch(_){rbState.blocks=[]}
+       見ない人まで往復が1本増える）。**本物の紙が読めればそちら**
+       （§9.274）——マスタの行だけで組むと、出していない塊まで並び、
+       設備ごとに変えた幅も効かない絵になる。 */
+    if(rbState.others){
+     await rbLoadPaper(form);
+     /* **マスタの行も必ず持っておく**——まだ紙に置いていない塊は本物の紙で
+        組めないので、そのときはこちらを流す（`rbPaintOthers`の後半）。
+        `rbState.paper`が読めたかどうかで取り分けると、**新規作成中だけ
+        顔ぶれが1件になる**（実際に踏んだ）。写しは保存・削除のたびに
+        `forgetReportCaches()`が捨てるので、古い顔ぶれは残らない。 */
+     if(!rbState.blocks.length){
+      try{const r=await api('/api/report-block-master');rbState.blocks=r.items||[]}
+      catch(_){rbState.blocks=[]}
+     }
     }
     paint();
    };
@@ -2259,6 +2456,9 @@
      残る（§9.234 ⑧と同じ罠）。**失敗しても黙って進む**（値が「（値）」に
      なるだけで、設定そのものは触れる）。 */
   fbLoadCatalog().then(()=>paint()).catch(()=>{});
+  /* **この塊がどの紙に置かれているか**は開いた時点で読む（§9.274）——
+     読めなくても窓は使える（fail-open）。 */
+  rbLoadPaper(form).then(()=>paint()).catch(()=>{});
   if(form.dataset.rbWired==='1'){paint();return}
   form.dataset.rbWired='1';
   form.addEventListener('change',paint);
@@ -2266,6 +2466,20 @@
   requestAnimationFrame(paint);
  }
 
+ /* ---------- 帳票まわりの写しを捨てる（§9.274、利用者の報告） ----------
+    「帳票ブロックマスタをいじっても、帳票の紙レイアウトのところで見えている
+     データ、プレビューのデータは変わりません」
+
+    写しは3つある——紙の側（`WL.reportBlocks`）・候補の一覧（`fbCatalog`）・
+    「紙全体で見る」の顔ぶれ（`rbState.blocks`）。**捨てるのは1箇所**
+    （§9.163）——**別々に捨てると必ず捨て漏れる**（実際、候補の一覧と
+    紙全体で見るは一度も捨てていなかったので、操業データの項目を足しても
+    候補に出ず、塊を足しても紙の見本に出なかった）。 */
+ function forgetReportCaches(){
+  if(window.WL&&WL.reportBlocks&&typeof WL.reportBlocks.forget==='function')WL.reportBlocks.forget();
+  fbCatalog.groups=[];fbCatalog.loadedFor=null;fbCatalog.loading=null;fbCatalog.vocab=null;
+  rbState.blocks=[];rbState.paper=null;rbState.paperFor=null;
+ }
  async function fbLoadCatalog(){
   const eq=String(maintState.equipment||'');
   if(fbCatalog.loadedFor===eq)return fbCatalog.groups;
@@ -2274,6 +2488,10 @@
    try{
     const r=await api('/api/report-block-master'+(eq?'?equipment='+encodeURIComponent(eq):''));
     fbCatalog.groups=Array.isArray(r.catalog)?r.catalog:[];
+    /* **語彙はサーバーが答える**（§9.163）——種別・寄せ・書式の呼び名を
+       画面へ写すと、選べる書式を1つ足すたびに2箇所直すことになる。 */
+    fbCatalog.vocab={cellKinds:r.cellKinds||null,aligns:r.aligns||null,
+                     formatKinds:r.formatKinds||null,datePatterns:r.datePatterns||null};
     /* 見本の値は**候補と一緒に届く**（§9.250 ⑤）。別の口で取りに行くと、
        候補にあるのに見本の値だけ無い道が作れる。 */
     rbNoteSamples(fbCatalog.groups);
@@ -2313,7 +2531,72 @@
     既に登録してある塊（`|2`だけ）はそのまま読める。読み方はサーバーの
     `parse_content`と**同じ約束**にすること（2通りあると、設定画面で組んだ
     形と紙が食い違う・§9.245）。 */
+ /* ---------- 1つのマス（セル）が持つもの（§9.274、利用者の指示） ----------
+    「縦にも項目を並べて、横も共通軸で並べたりすることでマトリクスも整形
+     できるようにしたいです」「配置したデータの書式変更もできるように」
+
+    種別は3つ（値／見出し／空き）。**見出し＝値を持たず文字だけ出すマス**で、
+    これが無いと共通の軸を持つ表が組めない。共通の軸で並べたときはラベルが
+    見出しと二重になるので、**ラベルを出さない**も要る。
+
+    **読み方はサーバー（`report_block_repo.parse_content`／`dump_content`）と
+    同じ約束にすること**——2通りあると、盤で組んだ形と紙が食い違う（§9.245）。
+    突き合わせは`tests/fixtures/report_cells.json`で両方を同じ例に通す。 */
+ const FB_KIND_VALUE='value',FB_KIND_HEAD='head',FB_KIND_BLANK='blank';
+ /* 語彙（呼び名・選べる書式）は**サーバーが答える**（§9.163）。届く前でも
+    盤は開けるので、綴りだけをここに持ち、**呼び名は持たない**。 */
+ function fbCell(o){
+  const x=o||{};
+  let kind=String(x.kind||'').trim();
+  if(kind!==FB_KIND_HEAD&&kind!==FB_KIND_BLANK)kind=x.blank?FB_KIND_BLANK:FB_KIND_VALUE;
+  let label=String(x.label==null?'':x.label).trim();
+  let path=String(x.path==null?'':x.path).trim();
+  if(kind===FB_KIND_HEAD)path='';
+  else if(kind===FB_KIND_BLANK){label='';path=''}
+  else if(!path){kind=FB_KIND_BLANK;label=''}
+  return {label,path,blank:kind===FB_KIND_BLANK,
+          span:fbSpan(x.span),rows:fbSpan(x.rows,FB_SPAN_MAX),kind,
+          showLabel:kind===FB_KIND_VALUE?(x.showLabel!==false):false,
+          align:fbAlign(x.align),format:fbFormat(x.format)};
+ }
+ const FB_ALIGNS=['','left','center','right'];
+ const fbAlign=v=>FB_ALIGNS.indexOf(String(v||''))>=0?String(v||''):'';
+ const FB_DECIMAL_MAX=6;
+ /* 書式の綴りは`WL.cellFormat`（`base.js`）と同じ——値を整えるのはあの1箇所で、
+    ここが持つのは「何を保存するか」だけ（2つ目の整形器を作らない）。 */
+ function fbFormat(spec){
+  if(!spec||typeof spec!=='object')return null;
+  const kind=String(spec.kind||'').trim();
+  if(['number','datetime','text'].indexOf(kind)<0)return null;
+  const pre=String(spec.prefix||'').slice(0,16),suf=String(spec.suffix||'').slice(0,16);
+  let out;
+  if(kind==='number'){
+   let dec=spec.decimals;
+   if(dec===''||dec==null||!Number.isFinite(Number(dec)))dec=null;
+   else dec=Math.max(0,Math.min(FB_DECIMAL_MAX,Math.floor(Number(dec))));
+   out={kind:'number',decimals:dec,thousands:!!spec.thousands};
+  }else if(kind==='datetime'){
+   out={kind:'datetime',pattern:String(spec.pattern||'').slice(0,40)||'yyyy/MM/dd'};
+  }else out={kind:'text'};
+  if(pre)out.prefix=pre;
+  if(suf)out.suffix=suf;
+  /* **既定だけの指定は持たない**——「そのまま」と同じ意味の指定を保存すると、
+     何も変えていない塊まで保存のたびに形が変わる。 */
+  if(kind==='text'&&!pre&&!suf)return null;
+  return out;
+ }
+ /* 行の形（`ラベル=道|横x縦`）では書けないマスか。 */
+ const fbRich=c=>c.kind===FB_KIND_HEAD||(c.kind===FB_KIND_VALUE&&!c.showLabel)
+   ||!!c.align||!!c.format;
  function fbParse(text){
+  const s=String(text==null?'':text).trim();
+  /* **JSONは`[`で始まるかどうかだけで見分ける**（サーバーと同じ約束）。
+     壊れたJSONは行の形として読み直す——黙って空にしない。 */
+  if(s.charAt(0)==='['){
+   let data=null;
+   try{data=JSON.parse(s)}catch(e){data=null}
+   if(Array.isArray(data))return data.filter(x=>x&&typeof x==='object').map(fbCell);
+  }
   return String(text||'').replace(/、/g,',').replace(/\r/g,'\n').replace(/,/g,'\n')
    .split('\n').map(x=>x.trim()).filter(Boolean).map(line=>{
     let s=line,span=1,rows=1;
@@ -2329,27 +2612,116 @@
     const label=i>=0?s.slice(0,i).trim():s;
     const path=i>=0?s.slice(i+1).trim():s;
     /* 空きマスは落とさない——場所を取ることが役目なので、消すと詰まる。 */
-    if(!path)return {label:'',path:'',blank:true,span,rows};
-    return {label:label||path,path,blank:false,span,rows};
+    if(!path)return fbCell({kind:FB_KIND_BLANK,span,rows});
+    return fbCell({label:label||path,path,span,rows});
    });
  }
  function fbText(rows){
   /* **1マスの項目は今までどおりの1行で書く**（`|1`を足さない）——書き足すと、
      何も変えていない塊まで保存のたびに形が変わる。
-     縦も1なら`x`を足さない（同じ理由）。 */
-  return rows.map(r=>{
+     縦も1なら`x`を足さない（同じ理由）。
+     **新しい持ちもの（見出し・ラベルを出さない・寄せ・書式）を1つでも
+     使っているときだけJSONへ切り替える**（§9.274）——こうすると、触って
+     いない塊の保存値は1バイトも変わらない。 */
+  const cells=(rows||[]).map(fbCell);
+  if(!cells.length)return '';
+  if(cells.some(fbRich)){
+   return JSON.stringify(cells.map(c=>({label:c.label,path:c.path,span:c.span,rows:c.rows,
+     kind:c.kind,showLabel:c.showLabel,align:c.align,format:c.format})));
+  }
+  return cells.map(r=>{
    const sp=fbSpan(r.span),tall=fbSpan(r.rows);
    const size=(tall>1?sp+'x'+tall:(sp>1?String(sp):''));
    if(r.blank)return '|'+(size||'1');
    return `${r.label||r.path}=${r.path}`+(size?'|'+size:'');
   }).join('\n');
  }
+ /* 種別・寄せ・書式の呼び名。**サーバーが答える**（§9.163）が、届く前でも
+    盤は開けるので**綴りだけの受け皿**を持つ（呼び名は綴りそのもの）。
+    受け皿を「日本語の写し」にしないこと——写した瞬間に2箇所になる。 */
+ function fbVocab(){
+  const v=fbCatalog.vocab||{};
+  return {
+   cellKinds:v.cellKinds||[{v:FB_KIND_VALUE,label:'value'},{v:FB_KIND_HEAD,label:'head'},
+                           {v:FB_KIND_BLANK,label:'blank'}],
+   aligns:v.aligns||FB_ALIGNS.map(x=>({v:x,label:x||'auto'})),
+   formatKinds:v.formatKinds||[{v:'',label:'-'},{v:'number',label:'number'},
+                               {v:'datetime',label:'datetime'},{v:'text',label:'text'}],
+   datePatterns:v.datePatterns||['yyyy/MM/dd','yyyy/MM/dd HH:mm','HH:mm']};
+ }
+ /* ---------- 表（マトリクス）に組む（§9.274、利用者の指示） ----------
+    「板厚MIN、板厚MAX、板幅MIN、板幅MAX、板丈MIN、板丈MAXをブロックに設定
+     して表示させると、すべて横方向に、2段のカラムで並べられます。縦にも
+     項目を並べて、横も共通軸で並べたりすることでマトリクスも整形できる
+     ようにしたいです」
+
+    **軸は候補が名乗る**（`field_catalog`の`row`/`col`）——ラベルを空白で
+    割って推測すると、名前に空白を含む項目で必ず崩れる。軸を名乗らない
+    候補は表に組めない、と**画面が言える**のもこの印があるから（§4）。
+
+    作るのはふつうのマスの並びだけ（見出し＋ラベルを出さない値）。
+    **組んだあとは手で直せる**——魔法の状態を作らない。 */
+ function fbAxisOf(path){
+  for(const g of (fbCatalog.groups||[]))
+   for(const it of (g.items||[]))
+    if(it.path===path&&it.row&&it.col)return {row:it.row,col:it.col};
+  return null;
+ }
+ /* いま選んでいる項目から作れる表。**作れないなら理由を返す**（§4）。 */
+ function fbTablePlan(rows){
+  const live=(rows||[]).filter(r=>r.kind===FB_KIND_VALUE&&r.path);
+  if(!live.length)return {err:'先に候補から項目を選んでください。'};
+  const axis=live.map(r=>({r,a:fbAxisOf(r.path)}));
+  const bad=axis.filter(x=>!x.a);
+  if(bad.length)return {err:'「'+esc(bad[0].r.label||bad[0].r.path)+'」は行と列の軸を持たない項目です'
+    +'（表に組めるのは「測定した値の統計」のように<b>項目＋集計</b>で決まる項目だけです）。'};
+  const rowsAx=[],colsAx=[];
+  axis.forEach(({a})=>{
+   if(rowsAx.indexOf(a.row)<0)rowsAx.push(a.row);
+   if(colsAx.indexOf(a.col)<0)colsAx.push(a.col);
+  });
+  const at=new Map(axis.map(({r,a})=>[a.row+' '+a.col,r]));
+  return {rowsAx,colsAx,at,cols:colsAx.length+1};
+ }
+ function fbMakeTable(box,state,sync){
+  const plan=fbTablePlan(state.rows);
+  const say=t=>{const el=box.querySelector('.fb-hint');if(el)el.innerHTML=t};
+  if(plan.err){say(plan.err);return}
+  const out=[];
+  /* 1行目＝列の軸。左上は空き（行の軸の見出しが入る列）。 */
+  out.push(fbCell({kind:FB_KIND_BLANK}));
+  plan.colsAx.forEach(c=>out.push(fbCell({kind:FB_KIND_HEAD,label:c})));
+  plan.rowsAx.forEach(rw=>{
+   out.push(fbCell({kind:FB_KIND_HEAD,label:rw,align:'left'}));
+   plan.colsAx.forEach(c=>{
+    const hit=plan.at.get(rw+' '+c);
+    /* **選んでいない組み合わせは空きマス**（詰めると軸がずれる）。 */
+    out.push(hit?fbCell({...hit,showLabel:false,align:'right'}):fbCell({kind:FB_KIND_BLANK}));
+   });
+  });
+  state.rows=out;state.sel=null;
+  /* 列数は「内訳の列数」の欄が持ち主（§CLAUDE 8）——ここは書き換えるだけ。 */
+  const ci=(box.closest('form')||document).querySelector('[data-field="cols"]');
+  if(ci){ci.value=String(Math.min(FB_COLS_MAX,plan.cols));
+         ci.dispatchEvent(new Event('change',{bubbles:true}))}
+  sync();
+  say('<b>行＝'+esc(plan.rowsAx.join('・'))+'／列＝'+esc(plan.colsAx.join('・'))
+   +'</b>で組みました（'+(plan.rowsAx.length+1)+'段 × '+plan.cols
+   +'列）。<b>このあと手で直せます。</b>');
+ }
+ /* **読み書きの約束を名前で出す**（§9.274）。サーバー（`parse_content`／
+    `dump_content`）と1対1で、`tests/test_rbcells.js`が同じ例で突き合わせる
+    ——公開していないと、網は盤のDOM越しにしか見られず、**盤が読み直さない
+    形でも通ってしまう**（実際にそうなった）。`window.*`ではなく`WL.*`へ出す
+    （§CLAUDE「新しく公開するものは名前空間へ」）。 */
+ window.WL=window.WL||{};
+ WL.reportCells={parse:t=>fbParse(t),text:c=>fbText(c),cell:o=>fbCell(o)};
  function bindFieldBuilders(form){
   form.querySelectorAll('[data-fb]').forEach(box=>{
    if(box.dataset.fbWired)return;
    box.dataset.fbWired='1';
    const hidden=box.querySelector('input[data-field]');
-   const state={rows:fbParse(hidden?hidden.value:''),cat:'',q:''};
+   const state={rows:fbParse(hidden?hidden.value:''),cat:'',q:'',sel:null};
    /* **隠し欄へ書いたら`change`を飛ばす**（§9.218 ②「`.value`への代入では
       `change`が飛ばない」）。飛ばさないと、同じフォームの中で値を見ている
       もの——刷り上がりの見本（§9.249 ③）・`data-when`の出し入れ——が
@@ -2360,8 +2732,16 @@
     hidden.dispatchEvent(new Event('change',{bubbles:true}));
    };
    const sync=()=>{
+    /* **マスの形を1つにそろえる**（§9.274）——候補から足したときは
+       `{label,path}`しか無いので、種別も寄せも書式も持たない。ここで
+       通しておかないと「表に組む」が値のマスを1つも見つけられない
+       （実際に踏んだ）。 */
+    state.rows=(state.rows||[]).map(fbCell);
     push();
-    drawCols();drawChosen();drawList();
+    /* **選んでいたマスが消えたら選択も外す**——残すと、別のマスの設定を
+       触っているように見える（§CLAUDE 3）。 */
+    if(state.sel!=null&&(state.sel<0||state.sel>=state.rows.length))state.sel=null;
+    drawCols();drawChosen();drawList();drawInsp();drawTableBtn();
    };
    /* 列数は**「内訳の列数」の欄が持つ**（§CLAUDE 8。同じ数を2箇所に置くと
       片方だけ直した状態が作れる）。空欄＝2列は`reportSection`の既定と同じ。 */
@@ -2419,20 +2799,41 @@
       /* **1マスの中は2段**（§CLAUDE 11）——名前・出どころ・マス数・×を横1列に
          並べると、3列のときに名前の欄が1文字ぶんまで潰れる（実機の見え方で
          確認）。上段＝掴む所と名前、下段＝出どころとマス数。 */
-      if(r.blank)return `<div class="fb-row fb-row-blank" draggable="true" data-fb-i="${i}"${st}>`
+      /* **選んでいるマスは印を付ける**（§CLAUDE 3）——下の設定欄がどのマスの
+         話なのかが読めないと、隣のマスを直してしまう。 */
+      const on=(state.sel===i)?' is-sel':'';
+      if(r.blank)return `<div class="fb-row fb-row-blank${on}" draggable="true" data-fb-i="${i}"${st}>`
        +`<div class="fb-row-top"><span class="fb-grip" aria-hidden="true">⠿</span>`
        +`<b class="fb-blank-name">空きマス</b>`
        +`<button type="button" class="fb-del" title="この空きマスを外します">×</button></div>`
        +`<div class="fb-row-bot">${size}</div></div>`;
-      return `<div class="fb-row" draggable="true" data-fb-i="${i}"${st}>`
+      /* 見出しのマス（§9.274）。**値の道を持たない**ので、下の段は
+         「見出し」であることとマス数だけ。 */
+      if(r.kind===FB_KIND_HEAD)
+       return `<div class="fb-row fb-row-head${on}" draggable="true" data-fb-i="${i}"${st}>`
+       +`<div class="fb-row-top"><span class="fb-grip" aria-hidden="true">⠿</span>`
+       +`<input type="text" class="fb-label" value="${esc(r.label)}" aria-label="見出しの文字"`
+       +` placeholder="見出しの文字">`
+       +`<button type="button" class="fb-del" title="この見出しを外します">×</button></div>`
+       +`<div class="fb-row-bot"><i class="fb-kindtag">見出し</i>${size}</div></div>`;
+      return `<div class="fb-row${on}${r.showLabel===false?' fb-row-bare':''}" draggable="true" data-fb-i="${i}"${st}>`
       +`<div class="fb-row-top"><span class="fb-grip" aria-hidden="true">⠿</span>`
-      +`<input type="text" class="fb-label" value="${esc(r.label)}" aria-label="紙に出す名前">`
+      +`<input type="text" class="fb-label" value="${esc(r.label)}" aria-label="紙に出す名前"`
+      +`${r.showLabel===false?' title="ラベルは紙に出しません（表の軸と二重にならないように）"':''}>`
       +`<button type="button" class="fb-del" title="この項目を外します">×</button></div>`
       +`<div class="fb-row-bot">`
       +`<code class="fb-path" title="${esc(r.path)}">${esc(r.path)}</code>`
       +size+`</div></div>`;
      }).join('')
       :`<p class="fb-empty">左の候補を押すと、ここへ増えます。<b>左上から順に紙へ並びます。</b></p>`;
+    /* **押しただけなら選ぶ**（掴んで動かしたときは並べ替え・§9.90と同じ分け方）。
+       つまみ・名前欄・×は自分の仕事があるので、そこを押したときは選ばない。 */
+    wrap.querySelectorAll('.fb-row').forEach(row=>{
+     row.addEventListener('mousedown',e=>{
+      if(e.target.closest('button,input,code'))return;
+      state.sel=Number(row.dataset.fbI);drawChosen();drawInsp();
+     });
+    });
     wrap.querySelectorAll('[data-fb-span]').forEach(b=>b.onclick=()=>{
      const [i,v]=b.dataset.fbSpan.split(':').map(Number);
      state.rows[i].span=v;sync();
@@ -2505,8 +2906,119 @@
      sync();
     });
    };
+   /* ---------- 選んだマスの設定（§9.274） ----------
+      種別・ラベルを出すか・寄せ・書式。**横/縦のマス数はここに出さない**
+      ——盤のマスが既に持っており、同じ数を2箇所に置くと片方だけ直した状態が
+      作れる（§CLAUDE 8）。
+      **選んでも盤が動かない**（§9.227 ②）ように、器は常に置いて中身だけ
+      入れ替える（選んでいないときは「マスを押してください」）。 */
+   const drawInsp=()=>{
+    const host=box.querySelector('.fb-insp');if(!host)return;
+    host.hidden=false;
+    const i=state.sel,r=(i!=null&&i>=0)?state.rows[i]:null;
+    if(!r){
+     host.innerHTML='<p class="fb-insp-empty">上のマスを押すと、'
+      +'<b>種別・ラベル・寄せ・書式</b>をここで決められます。</p>';
+     return;
+    }
+    const kinds=fbVocab().cellKinds;
+    const aligns=fbVocab().aligns;
+    const fmts=fbVocab().formatKinds;
+    const f=r.format||{};
+    const seg=(name,cur,list,attr)=>`<span class="fb-seg" role="group" aria-label="${esc(name)}">`
+     +list.map(o=>`<button type="button" class="${String(o.v)===String(cur)?'is-on':''}"`
+       +` ${attr}="${esc(String(o.v))}" aria-pressed="${String(o.v)===String(cur)?'true':'false'}">`
+       +`${esc(o.label)}</button>`).join('')+'</span>';
+    const who=r.kind===FB_KIND_BLANK?'空きマス'
+      :(r.kind===FB_KIND_HEAD?`見出し「${r.label||'（文字なし）'}」`:(r.label||r.path));
+    host.innerHTML=`<div class="fb-insp-head"><b>選んだマス</b>`
+     +`<span class="fb-insp-who" title="${esc(r.path||'')}">${esc(who)}</span>`
+     +`<span class="fb-insp-at">${i+1} / ${state.rows.length} マス目</span></div>`
+     +`<div class="fb-insp-body">`
+     +`<label class="fb-insp-row"><span>種別</span>${seg('種別',r.kind,kinds,'data-fb-kind')}</label>`
+     +(r.kind===FB_KIND_VALUE
+       ?`<label class="fb-insp-row"><span>ラベル</span>`
+        +`<span class="fb-seg" role="group" aria-label="ラベル">`
+        +`<button type="button" class="${r.showLabel!==false?'is-on':''}" data-fb-lab="1"`
+        +` aria-pressed="${r.showLabel!==false?'true':'false'}">出す</button>`
+        +`<button type="button" class="${r.showLabel===false?'is-on':''}" data-fb-lab="0"`
+        +` aria-pressed="${r.showLabel===false?'true':'false'}">出さない</button></span>`
+        +`<i class="fb-insp-note">表の軸で並べたときは、見出しと二重になるので「出さない」。</i></label>`
+       :'')
+     +`<label class="fb-insp-row"><span>寄せ</span>${seg('寄せ',r.align||'',aligns,'data-fb-align')}</label>`
+     +(r.kind===FB_KIND_VALUE
+       ?`<label class="fb-insp-row"><span>書式</span>${seg('書式',(f.kind||''),fmts,'data-fb-fmt')}</label>`
+        +(f.kind==='number'
+          ?`<label class="fb-insp-row"><span>小数の桁</span>`
+           +`<input type="number" class="fb-fnum" data-fb-dec min="0" max="${FB_DECIMAL_MAX}"`
+           +` value="${f.decimals==null?'':esc(String(f.decimals))}" placeholder="そのまま">`
+           +`<label class="fb-insp-chk"><input type="checkbox" data-fb-th`
+           +`${f.thousands?' checked':''}> 3桁区切り</label></label>`
+          :'')
+        +(f.kind==='datetime'
+          ?`<label class="fb-insp-row"><span>日付の書式</span>`
+           +`<input type="text" class="fb-ftext" data-fb-pat value="${esc(f.pattern||'')}"`
+           +` list="fbDatePatterns" placeholder="yyyy/MM/dd">`
+           +`<datalist id="fbDatePatterns">`
+           +fbVocab().datePatterns.map(x=>`<option value="${esc(x)}">`).join('')+`</datalist>`
+           +`<i class="fb-insp-note">yyyy 年／MM 月／dd 日／HH 時／mm 分。'文字'で囲むとそのまま出ます。</i></label>`
+          :'')
+        +(f.kind
+          ?`<label class="fb-insp-row"><span>前後の文字</span>`
+           +`<input type="text" class="fb-ftext" data-fb-pre value="${esc(f.prefix||'')}" placeholder="前" maxlength="16">`
+           +`<input type="text" class="fb-ftext" data-fb-suf value="${esc(f.suffix||'')}" placeholder="後（単位など）" maxlength="16">`
+           +`</label>`
+          :'')
+       :'')
+     +`</div>`;
+    const patch=o=>{Object.assign(state.rows[i],fbCell({...state.rows[i],...o}));sync();drawInsp()};
+    host.querySelectorAll('[data-fb-kind]').forEach(b=>b.onclick=e=>{
+     e.preventDefault();patch({kind:b.dataset.fbKind});
+    });
+    host.querySelectorAll('[data-fb-lab]').forEach(b=>b.onclick=e=>{
+     e.preventDefault();patch({showLabel:b.dataset.fbLab==='1'});
+    });
+    host.querySelectorAll('[data-fb-align]').forEach(b=>b.onclick=e=>{
+     e.preventDefault();patch({align:b.dataset.fbAlign});
+    });
+    host.querySelectorAll('[data-fb-fmt]').forEach(b=>b.onclick=e=>{
+     e.preventDefault();
+     const k=b.dataset.fbFmt;
+     patch({format:k?{...(state.rows[i].format||{}),kind:k}:null});
+    });
+    /* **打っている最中に組み直さない**（§9.117）——カーソルが飛ぶ。
+       値だけ控えて隠し欄へ書き、器はそのままにする。 */
+    const live=(sel,fn)=>{const el=host.querySelector(sel);if(!el)return;
+     el.oninput=()=>{const c=state.rows[i];c.format=fbFormat(fn({...(c.format||{})},el));push();drawChosen()}};
+    live('[data-fb-dec]',(f,el)=>({...f,decimals:el.value===''?null:Number(el.value)}));
+    live('[data-fb-pat]',(f,el)=>({...f,pattern:el.value}));
+    live('[data-fb-pre]',(f,el)=>({...f,prefix:el.value}));
+    live('[data-fb-suf]',(f,el)=>({...f,suffix:el.value}));
+    const th=host.querySelector('[data-fb-th]');
+    if(th)th.onchange=()=>patch({format:{...(state.rows[i].format||{}),thousands:th.checked}});
+   };
    const blank=box.querySelector('.fb-blank');
-   if(blank)blank.onclick=()=>{state.rows.push({label:'',path:'',blank:true,span:1});sync()};
+   if(blank)blank.onclick=()=>{state.rows.push(fbCell({kind:FB_KIND_BLANK}));state.sel=state.rows.length-1;sync()};
+   const headBtn=box.querySelector('.fb-head');
+   if(headBtn)headBtn.onclick=()=>{
+    state.rows.push(fbCell({kind:FB_KIND_HEAD,label:''}));state.sel=state.rows.length-1;sync();
+    /* 足したら**そこへ書ける状態にする**（§2「次にすることを1つだけ指す」）。 */
+    const inp=box.querySelector(`.fb-row[data-fb-i="${state.sel}"] .fb-label`);
+    if(inp)try{inp.focus()}catch(_){}
+   };
+   const tableBtn=box.querySelector('.fb-table');
+   if(tableBtn)tableBtn.onclick=()=>fbMakeTable(box,state,sync);
+   /* **押せるのに何も起きないボタンを残さない**（§4）。組める材料が
+      揃っていないときは押せなくし、理由を`title`ではなくボタンの隣へ
+      出す準備として`title`に入れる（押す前に読めるのは`title`だけ）。 */
+   const drawTableBtn=()=>{
+    if(!tableBtn)return;
+    const plan=fbTablePlan(state.rows);
+    tableBtn.disabled=!!plan.err;
+    tableBtn.title=plan.err
+      ? String(plan.err).replace(/<[^>]*>/g,'')
+      : `行＝${plan.rowsAx.join('・')}／列＝${plan.colsAx.join('・')} で組み直します`;
+   };
    /* 「内訳の列数」を欄から直したときも枠を組み直す（同じ数の2つの入口が
       食い違わないように）。 */
    const ci=colsInput();
@@ -2515,8 +3027,11 @@
    if(search)search.oninput=()=>{state.q=search.value;drawList()};
    const clr=box.querySelector('.fb-clear');
    if(clr)clr.onclick=()=>{state.rows=[];sync()};
-   drawCols();drawChosen();drawList();
-   fbLoadCatalog().then(()=>drawList());
+   drawCols();drawChosen();drawList();drawInsp();drawTableBtn();
+   /* 語彙（種別・寄せ・書式の呼び名）は候補と一緒に届く（§9.163）。
+      **届いたら描き直すこと**——投げっぱなしにすると、設定欄が綴りのまま
+      出たきり日本語にならない（§9.234 ⑧と同じ罠）。 */
+   fbLoadCatalog().then(()=>{drawList();drawInsp();drawTableBtn()});
   });
  }
  /* --- 数値: 上下ボタン・3桁区切り・右づめ --- */
@@ -2888,7 +3403,7 @@
       その画面を開くのがふつうの順番なので、写しを持ったままだと
       「登録したのに出てこない」になる。**「あれば使う」で呼ぶこと**
       （読み込み順に依存させない）。 */
-   if(def.key==='reportBlock'&&window.WL&&WL.reportBlocks)WL.reportBlocks.forget();
+   if(def.key==='reportBlock')forgetReportCaches();
    if((def.key==='opItem'||def.key==='opChoice')&&window.WL&&WL.opData)WL.opData.forget();
    /* ロールを足した直後に異常位置判定を開くのがふつうの順番なので、
       控えを持ったままだと「登録したのに候補に出ない」になる（§9.241 ④）。 */
@@ -2957,6 +3472,9 @@
   try{
    setMaintLoading(true,`${def.label}を${def.deleteWord||'無効化'}しています…`);
    await api(def.endpoint+'/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:item.id,user_id:uid})});
+   /* **消したら写しも捨てる**（§9.274）——持ったままだと「消したのに紙に
+      残っている」になる（足したときと同じ理由。§9.217）。 */
+   if(def.key==='reportBlock')forgetReportCaches();
    if(maintState.editing&&maintState.editing.id===item.id)maintState.editing=null;
    await loadMaint(true);showToast&&showToast(def.label+'を'+(def.deleteWord||'無効化')+'しました',nm,3600);
   }catch(e){showToast&&showToast('削除できませんでした',e.message,6500)}
@@ -6979,7 +7497,7 @@
   rlySay('保存しています…');
   try{
    await run();
-   if(WL.reportBlocks&&typeof WL.reportBlocks.forget==='function')WL.reportBlocks.forget();
+   forgetReportCaches();
    rlyState.papers=await rlyLoadPapers();
    rlyState.info=await WL.reportLayout.info(rlyState.picked);
    rlyState.err='';
@@ -6991,6 +7509,23 @@
  }
  /* 子（帳票ブロック）へ渡す。**開いていたタブごと移る**（§9.253と同じ
     作法）——「マスタ管理の先頭」へ落とすと、直したい塊をもう一度探すことになる。 */
+ /* ---------- 紙から帳票ブロックマスタへ（§9.274、利用者の指示） ----------
+    「帳票の紙レイアウトからブロックをダブルクリックしたら、帳票ブロック
+     マスタに移行するように配線してください。今のモーダルでできることは
+     少ないのでマスタに繋いできちんと修正できるようにしたいです」
+
+    **開き方は`rlyEditBlock()`の1本**（帳票レイアウトマスタからの行き来と
+    同じ道）——2つ持つと、片方だけ直したときに「紙からは開けるのに
+    レイアウトからは開けない」が作れる。 */
+ WL.reportBlockMaster={
+  open:async id=>{
+   if(id==null||id==='')  {showToast&&showToast('この塊はマスタに行がありません',
+     'この端末のマスタにまだ登録されていない塊です（マスタ管理 > 帳票ブロックを開くと作られます）。',5200);return}
+   /* **マスタ管理へ移ってから開く**——帳票の画面から呼ばれるので、
+      タブが出来上がるのを待つ必要がある（`rlyEditBlock`が待つ）。 */
+   if(typeof openMasterMaint==='function')openMasterMaint('reportBlock');
+   await rlyEditBlock(id);
+  }};
  async function rlyEditBlock(id){
   const nav=document.querySelector('#masterMaintNav [data-master="reportBlock"]');
   if(!nav){rlySay('帳票ブロックのタブが見つかりません。',true);return}
