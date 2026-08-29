@@ -22,6 +22,7 @@ from ..config import (RNE_EXTRACT_INTERVAL_SEC_DEFAULT, SCHEDULE_LOCK_TTL_SEC_DE
                       SCHEDULE_OWNER_PORT_DEFAULT, SCHEDULE_OWNER_TTL_SEC_DEFAULT,
                       RECORDS_BACKUP_EXPORT_INTERVAL_SEC)
 from .. import source_capability
+from .. import storage_layout
 from ..logging_setup import app_logger
 from ..db_access import (
  DBS, MEAS_DB, connect, request_user_id,
@@ -110,11 +111,16 @@ _PATH_CONFIG_TEXT_FIELDS=('records_backup_export_path','schedule_share_path',
                           'rne_assets_dir','rne_conf_path','pc_name')
 
 
-# ---- 共有の置き場を1枚にまとめて答える(§9.260) ----------------------------
-# 共有の設定は3つ（作業予定・測定データ・マスタ）あり、**直す場所も効く
-# タイミングも別々**。以前は画面の3箇所に散っていて、いま何がどこに置かれて
-# いるのかを1画面で確かめられなかった。**判定はサーバーが持つ**（§9.163）
-# ——画面で「UNCかどうか」「同じ根の下か」を推測すると答えが2通りになる。
+# ---- 置き場は`backend/storage_layout.py`が答える(§9.260→§9.267) ----------
+# §9.260では作業予定・測定データ・マスタの3つだけをここで組み立てていたが、
+# `config/local.json`の側（マスタDB自身の置き場を決める4つ）が入っていな
+# かった。**同じ問いに2つの答えを持たない**（§9.163）ので、組み立ては
+# `storage_layout.layout()`の1箇所へ移し、ここは口だけを持つ。
+# ---- 置き場は`backend/storage_layout.py`が答える(§9.260→§9.267) ----------
+# §9.260では作業予定・測定データ・マスタの3つだけをここで組み立てていたが、
+# `config/local.json`の側（マスタDB自身の置き場を決める4つ）が入っていな
+# かった。**同じ問いに2つの答えを持たない**（§9.163）ので、組み立ては
+# `storage_layout.layout()`の1箇所へ移し、ここは口だけを持つ。
 def _master_note():
  """マスタの行に添える一言。**共有に置いたときと置いていないときで違う**
  （§9.263）——置いていない端末に「共有で動いています」と書かない。"""
@@ -140,52 +146,6 @@ def _share_kind(path):
   if paths.cloud_sync_hint(Path(raw)):return 'cloud'
  except Exception:pass
  return 'local'
-
-def _share_layout():
- """作業予定・測定データ・マスタが**いまどこにあるか**を1枚で返す。
-
- `editable`は「この画面で直せるか」、`where`は直せる場所、`when`は効く
- タイミング。**直せないものは直せないと書く**(§4)ので、画面はこの答えを
- そのまま出すだけでよい。
- """
- sched=str(SCHEDULE_SHARE_PATH) if SCHEDULE_SHARE_PATH else ''
- recs=str(RECORDS_SHARE_DIR) if RECORDS_SHARE_DIR else str(MEAS_DB)
- # **共有に置いていれば共有側のパスを出す**——`DBS['MASTER']['path']`は
- # 手元の写しなので、そのまま出すと「共有に置いたのに手元のまま」に見える。
- from .. import master_share
- master=str(master_share.source_path() or DBS['MASTER']['path'])
- items=[
-  {'key':'schedule','label':'作業予定','file':'schedule.sqlite3','path':sched,
-   'kind':_share_kind(sched),'editable':True,'where':'この画面',
-   'when':'サーバー再起動後','note':'' if sched else 'まだ設定されていません（スケジュール機能は無効です）。'},
-  {'key':'records','label':'測定データ','file':'<設備>\\records.sqlite3','path':recs,
-   'kind':_share_kind(recs),'editable':False,'where':'マスタ管理 > 測定データの保存',
-   # 直す場所へ**その場から飛べる**ようにする（探させない）。
-   'jump':'measStorage','when':'サーバー再起動後',
-   'note':('' if RECORDS_SHARE_DIR else
-           'まだこの端末の中だけです。共有の置き場を決めると設備ごとに分けて置けます。')},
-  {'key':'master','label':'マスタ','file':'master.sqlite3','path':master,
-   'kind':_share_kind(master),'editable':False,'where':'config/local.json の master_db_path',
-   'when':'サーバー再起動後','note':_master_note(),
-   'shared':master_share_is_shared()},
- ]
- # 3つが同じ根の下にあるか。**揃っていることを画面が言えるように**する
- # （揃っていない置き方が悪いわけではないので、判定は「同じか違うか」だけ）。
- roots=[]
- for x in items:
-  raw=x['path']
-  # **1つでも決まっていなければ「揃っている」とは言わない**——2つだけを見て
-  # 同じ根だと言うと、まだ置いていないものまで置いた気にさせる。
-  if not raw:
-   roots=[];break
-  try:
-   pp=Path(raw)
-   roots.append(str(pp if x['key']=='records' and RECORDS_SHARE_DIR else pp.parent))
-  except Exception:
-   roots=[];break
- same=len(roots)==len(items) and len(set(roots))==1
- return {'items':items,'sameRoot':roots[0] if same else '',
-         'onShare':[x['key'] for x in items if x['kind'] in ('network','cloud')]}
 
 @bp.get('/api/path-config-master')
 def path_config_master_get():
@@ -262,8 +222,6 @@ def path_config_master_get():
    'master_db_path':str(DBS['MASTER']['path']),
    'records_db_path':str(MEAS_DB),
   }
-  # 共有の置き場を1枚にまとめた答え(§9.260)。画面はこれをそのまま出す。
-  active['share_layout']=_share_layout()
   for src in sources:
    values.setdefault(src['valueKey'],src['saved'])
    # **「いま効いている値」も登録されたデータソースぶんだけ作る**(§9.163)。
@@ -736,3 +694,66 @@ def data_source_master_delete():
                  message='無効にしました。一覧から消えるのはサーバー再起動後です。')
  except Exception as e:
   return jsonify(error=f'データソース削除失敗: {e}'),500
+
+
+# ========================================================================
+# 置き場を1枚で（§9.267、利用者の指示「マスタの置き場、スケジュールの置き場、
+# 測定データの置き場、バックアップの置き場などを含めた全ての設定を共通設定に
+# 視覚的に表現した上で…設定を簡単にわかりやすく」）
+# ========================================================================
+# **判定は`storage_layout`が持つ**（§9.163）。ここは口だけで、画面は
+# 返ってきた答えをそのまま並べる。
+@bp.get('/api/storage-layout')
+def storage_layout_get():
+ try:
+  return jsonify(ok=True,**storage_layout.layout())
+ except Exception as e:
+  app_logger().exception('置き場の一覧を作れませんでした')
+  return jsonify(error=f'置き場の一覧を作れませんでした: {e}'),500
+
+@bp.post('/api/storage-layout/local-config')
+def storage_layout_local_config():
+ """`config/local.json` を書き換える。
+
+ **鶏と卵なのは読む側だけ**——起動時にマスタDBの場所を知るために外の
+ ファイルが要る、という話であって、書く側を画面から塞ぐ理由は無い。
+ 塞いだままにしていたので、置き場の設定だけが画面の外に残っていた。
+ """
+ x=request.get_json(force=True) or {}
+ updates={k:x[k] for k in storage_layout.LOCAL_CONFIG_KEYS if k in x}
+ if not updates:
+  return jsonify(error='変える項目がありません。'),400
+ try:
+  values,backup=storage_layout.save_local_config(updates)
+ except storage_layout.LocalConfigError as e:
+  return jsonify(error=str(e)),400
+ except Exception as e:
+  app_logger().exception('config/local.json を書けませんでした')
+  return jsonify(error=f'config/local.json を書けませんでした: {e}'),500
+ app_logger().info('config/local.json を更新しました: %s',sorted(updates))
+ # **効くのは再起動から**（起動時に1回だけ読む値なので）。黙って
+ # 「保存しました」だけ返すと、直したのに変わらないと読まれる。
+ return jsonify(ok=True,values=values,backup=backup,
+                path=str(storage_layout.local_config_path()),
+                restartRequired=True,
+                layout=storage_layout.layout())
+
+@bp.post('/api/storage-layout/prepare')
+def storage_layout_prepare():
+ """置き場が無ければ作る。**既定は下見**（§9.193）。
+
+ 利用者の指示「設定さえ書いてあればフォルダやファイルが存在しない場合には
+ 強制的に作成して、ユーザーの操作を妨げないように。但し作成する前に
+ ユーザーに確認する方式にして欲しい」——確認できる材料（何を作るのか）を
+ 先に返し、`apply:true` で初めて作る。
+ """
+ x=request.get_json(force=True) or {}
+ try:
+  plan=storage_layout.prepare_path(x.get('path'),str(x.get('mode') or 'dir'),
+                                   apply=bool(x.get('apply')))
+ except storage_layout.LocalConfigError as e:
+  return jsonify(error=str(e)),400
+ except Exception as e:
+  app_logger().exception('置き場を用意できませんでした')
+  return jsonify(error=f'置き場を用意できませんでした: {e}'),500
+ return jsonify(ok=True,plan=plan)

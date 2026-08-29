@@ -125,7 +125,7 @@ G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'tes
                'test_gridhead']
 G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 'test_tabclose',
              'test_faststart']
-G['接続'] = ['test_pcshare', 'test_mastershare', 'test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
+G['接続'] = ['test_mastershare', 'test_storage', 'test_storageui', 'test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
              'test_atomicio', 'test_localwork', 'test_dscap',
              'test_qjoin', 'test_qjoinui',
              # §9.258: 測定データは設備ごとに1ファイル（置き場の解決）
@@ -254,8 +254,12 @@ RULES = [
     ('backend/routes/logs.py', g('ログ', 'test_modeguard')),
     ('backend/routes/path_config.py', g('test_setpage', 'test_datasource', 'test_dbopen',
                                         'test_crudroutes', 'test_modeguard', 'test_dscap',
-                                        # §9.260: 共有の置き場を1枚で見せる
-                                        'test_pcshare')),
+                                        # §9.267: 置き場を1枚で見せて、その場で直す
+                                        'test_storage', 'test_storageui')),
+    # §9.267: 置き場の判定は1箇所（storage_layout）。`config/local.json`の
+    # 書き換えもここが持つので、起動時の解決を見る網も一緒に回す。
+    ('backend/storage_layout.py', g('test_storage', 'test_storageui', 'test_setpage',
+                                    'test_measstore', 'test_localwork', 'test_mastershare')),
     ('backend/routes/rne.py', g('test_datasource', 'test_setpage', 'test_modeguard')),
     ('backend/routes/core.py', g('起動', 'test_error', 'test_nav')),
 

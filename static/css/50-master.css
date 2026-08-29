@@ -2720,4 +2720,17 @@
   background:var(--surface);color:var(--ink-2);
   font-size:var(--fs-micro);font-weight:700;cursor:pointer;white-space:nowrap}
 .op-formula-name:hover{border-color:var(--teal);color:var(--teal-dark)}
+
+/* 測定データの置き場は**共通設定の1箇所**が決める（§9.267・§9.207）。
+   ここは「いまどこか」を言って直す場所へ連れて行くだけなので、
+   **入力欄風の枠を付けない**（画面基準 10。押せそうに見える）。 */
+.ms-where{display:flex;flex-wrap:wrap;align-items:center;
+  gap:var(--space-1) var(--gap-inline);padding:var(--space-1) var(--space-2);
+  border-radius:var(--radius-xs);background:var(--surface-2);
+  border:1px solid var(--line-soft)}
+.ms-where.is-on{border-left:3px solid var(--teal)}
+.ms-where-label{font-size:var(--fs-micro);color:var(--ink-3);font-weight:700}
+.ms-where-path{flex:1 1 var(--w-lg);min-width:0;font-family:var(--font-mono,monospace);
+  font-size:var(--fs-micro);color:var(--ink-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }

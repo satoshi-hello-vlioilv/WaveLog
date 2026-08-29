@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 *.sqlite3
 config/local.json
+config/local.json.bak
+config/local.json.tmp
 
 # 仕掛/品質データのローカル運用(sikalot_source=local)用資材。PCごとの手動配置
 # (RNEファイル・SymNaviA.dll・接続パスワードを含むためコミットしない)。

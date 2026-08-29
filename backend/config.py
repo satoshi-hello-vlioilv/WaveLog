@@ -81,6 +81,10 @@ RNE_EXTRACT_INTERVAL_SEC_DEFAULT=900
 # で上書き可能にしてある(ここは未設定時の既定値)。
 SCHEDULE_LOCK_TTL_SEC_DEFAULT=30
 SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT=1500
+# ファイルサーバー(SMB)は書いた直後に読み返せるので、確認の待ちは短くてよい
+# (§9.267の追補。`master_share`のLOCK_VERIFY_DELAY_NETWORK_SECと同じ考え方)。
+# 上の1500msはクラウド同期(Box等。結果整合なので待たないと確かめにならない)向け。
+SCHEDULE_LOCK_VERIFY_DELAY_NETWORK_MS=300
 # 共有スケジュールの見張り(§9.188)。読むたびに共有から写し直すのをやめ、
 # 改訂番号だけを見て**変わったときだけ**写す。
 #   INTERVAL … 変化を見る間隔(秒)。写しはこの間隔のあいだ「新しい」とみなす。
