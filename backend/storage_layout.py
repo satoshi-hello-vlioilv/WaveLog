@@ -90,28 +90,45 @@ def local_config_fields():
     """
     raw = _local_config_raw()
     app_db = paths.APP_ROOT / 'db'
+    # 変数で書いてあるときは**展開後の姿も出す**（§6。書いたものと効くものが
+    # 違うので、片方だけ見せると確かめようがない）。
+    def expanded(key):
+        v = str(raw.get(key) or '')
+        got = paths.expand_path(v)
+        return got if (v and got != v) else ''
     return [
-        {'key': 'db_dir', 'label': 'データの置き場（まとめて）', 'mode': 'dir',
+        {'key': 'db_dir', 'label': 'この端末のDBフォルダ（まとめて指定）', 'mode': 'dir',
          'value': str(raw.get('db_dir') or ''),
+         'expanded': expanded('db_dir'),
          'effective': str(paths.db_dir()),
          'default': str(app_db),
-         'what': 'マスタと、この端末の測定データをまとめて置くフォルダ',
-         'hint': '空欄ならアプリの中の db フォルダです。'
-                 '下の2つで個別に指定した側が優先されます。'},
+         'what': 'この端末が持つ2つのDBファイル（master.sqlite3 / records.sqlite3）'
+                 'を置くフォルダ',
+         'hint': '<b>作業用のコピー置き場ではありません</b>——写しや作業コピーの'
+                 '置き場は下の「作り直せるファイル」で、こちらが決めます'
+                 '（設定は要りません）。空欄ならアプリの中の db フォルダ。'
+                 '下の2つで個別に指定した側が優先されます。'
+                 '<code>%LOCALAPPDATA%\\WaveLog</code> のように環境変数でも書けます。'},
         {'key': 'master_db_path', 'label': 'マスタDBだけ別の場所へ', 'mode': 'file',
          'value': str(raw.get('master_db_path') or ''),
+         'expanded': expanded('master_db_path'),
          'effective': _master_configured(),
          'default': str(app_db / 'master.sqlite3'),
          'what': 'master.sqlite3（設定・マスタの全部）',
-         'hint': '共有フォルダを指定すると、書込は順番待ちを通り、'
+         'hint': '<b>ファイル名まで</b>指定します（フォルダではありません）。'
+                 '共有フォルダを指定すると、書込は順番待ちを通り、'
                  '読みはこの端末の写しからになります。'},
-        {'key': 'records_db_path', 'label': 'この端末の測定データDBだけ別の場所へ',
+        {'key': 'records_db_path', 'label': 'records.sqlite3 だけ別の場所へ',
          'mode': 'file',
          'value': str(raw.get('records_db_path') or ''),
+         'expanded': expanded('records_db_path'),
          'effective': _records_configured(),
          'default': str(app_db / 'records.sqlite3'),
          'what': 'records.sqlite3（この端末で測ったぶんの控え）',
-         'hint': 'みんなで見る測定データの置き場は別です（下の「測定データ（共有）」）。'},
+         'hint': '<b>ファイル名まで</b>指定します（フォルダではありません）。'
+                 'みんなで見る測定データの置き場は<b>これではありません</b>——'
+                 '「② みんなで使う」の「測定データ（共有）」のほうです。'
+                 '<b>ふつうは空欄でかまいません。</b>'},
         {'key': 'master_share_mode', 'label': 'マスタの書込サイクル',
          'mode': 'choice',
          'choices': [['', '（既定）auto: 置き場の綴りで決める'],
@@ -436,8 +453,23 @@ def validate_local_config(updates):
             out[key] = raw
             continue
         raw = raw.rstrip('\\/') if len(raw.rstrip('\\/')) > 2 else raw
-        if raw and not _is_absolute(raw):
-            errors.append(f'{key} は絶対パスで指定してください（いまは「{raw}」）。')
+        # **展開してから確かめ、書くのは生のまま**（§9.268の追補）——
+        # `%LOCALAPPDATA%\WaveLog` のように変数で書けると、同じ
+        # `config/local.json` を全端末へ配れる。展開して保存すると端末ごとに
+        # 違う文字列になり、変数で書きたい理由そのものが消える。
+        shown = paths.expand_path(raw)
+        if raw and not _is_absolute(shown):
+            # **理由を言い分ける**（§4・§6）——「絶対パスにしてください」だけ
+            # だと、変数を書いたのに空だった場合に打つ手が分からない。
+            has_var = ('%' in raw) or ('$' in raw)
+            if shown != raw:
+                why = f'（「{raw}」は「{shown}」になります）'
+            elif has_var:
+                why = (f'（「{raw}」の環境変数がこの端末では空でした。'
+                       'システム環境変数を確かめるか、実際のパスを書いてください）')
+            else:
+                why = f'（いまは「{raw}」）'
+            errors.append(f'{key} は絶対パスで指定してください{why}。')
             continue
         out[key] = raw
     if errors:

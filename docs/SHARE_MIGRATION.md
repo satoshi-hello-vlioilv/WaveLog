@@ -71,23 +71,51 @@ copy "C:\...\WaveLog\db\master.sqlite3" "\\nlmsrvngy03\工場内共有\検査デ
 マスタの中に書くと、読みに行く先が分からなくなる）ので、端末を1台増やす
 たびにこの1行だけは手で入れる。直す前の内容は `local.json.bak` に控える。
 
-`config\local.json` を直接編集してもよい。書けるのは4つだけ:
+`config\local.json` を直接編集してもよい。**この移行で要るのは1行だけ**:
 
 ```json
 {
-  "db_dir": "D:\\WaveLogData",
-  "master_db_path": "\\\\nlmsrvngy03\\工場内共有\\検査データ\\Records\\master.sqlite3",
-  "records_db_path": "D:\\WaveLogData\\records.sqlite3",
-  "master_share_mode": "auto"
+  "master_db_path": "\\\\nlmsrvngy03\\工場内共有\\検査データ\\Records\\master.sqlite3"
 }
 ```
 
 > JSONなので `\` は2つ重ねる。UNCの先頭 `\\` は `\\\\` になる。
 
-**優先順位**は「個別指定 > `db_dir` > 既定（アプリの中の `db`）」。
-つまり `master_db_path` があればそれが勝ち、無ければ `db_dir\master.sqlite3`、
-それも無ければ `アプリの場所\db\master.sqlite3`。画面にも
-「出どころ」として、どの段で決まったかが出る。
+### 書ける4つの意味
+
+**どれも「この端末のファイルをどこに置くか」の話**で、みんなで使う置き場の
+設定ではない（そちらは共通設定 > 段「置き場」）。
+
+| キー | 何を指すか | 形 | ふつうは |
+|---|---|---|---|
+| `db_dir` | この端末が持つ**2つのDBファイル**（`master.sqlite3` / `records.sqlite3`）を置く**フォルダ** | フォルダ | 空欄 |
+| `master_db_path` | `master.sqlite3` **1ファイル**の場所 | **ファイル名まで** | 共有を指す |
+| `records_db_path` | この端末の `records.sqlite3` **1ファイル**の場所 | **ファイル名まで** | 空欄 |
+| `master_share_mode` | マスタを共有に置いたときの守り方 | `auto`/`on`/`off` | 空欄（=auto） |
+
+**優先順位**は「個別指定 > `db_dir` > 既定」:
+
+```
+master.sqlite3  … master_db_path  →  db_dir\master.sqlite3   →  アプリの場所\db\master.sqlite3
+records.sqlite3 … records_db_path →  db_dir\records.sqlite3  →  アプリの場所\db\records.sqlite3
+```
+
+画面にも「出どころ」として、どの段で決まったかが出る。
+
+### よくある取り違え
+
+- **`db_dir` は「作業用のコピー置き場」ではない。** 共有からの写し・
+  作業コピー・バイトコードの置き場は**アプリが自動で決める**（設定は無い）。
+  `db_dir` が手元ならそこを、共有・クラウド同期フォルダの上なら
+  `%LOCALAPPDATA%\WaveLog\work\<識別子>` を使う。いまどちらかは
+  段「置き場」の「作り直せるファイル」の行に出る。
+- **`records_db_path` は「測定データの置き場の大元」ではない。**
+  あれは**この端末1台ぶんの控え1ファイル**。みんなで見る測定データの
+  大元は `records_share_dir`（共通設定 > 段「置き場」 > 「測定データ（共有）」）で、
+  こちらはマスタの中に入るので `local.json` には書かない。
+- **環境変数が使える。** `%LOCALAPPDATA%\WaveLog` のように書ける。
+  **書いたまま保存され、使うときに展開される**ので、同じ `local.json` を
+  全端末へ配れる。中身が空の変数はエラーで断る（黙って変な場所へ書かない）。
 
 ### 1-3. 起動して確かめる
 

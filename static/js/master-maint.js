@@ -3494,6 +3494,17 @@
   if(min<60)return `${stamp}（${min}分前）`;
   return `${stamp}（${Math.round(min/60)}時間前）`;
  }
+ /* 閲覧が手元の写しから読めているか（§9.268）。**「写している」だけでなく、
+    実物のまま読んでいる本数も出す**——写しがまだ無いあいだは実物を読む
+    （fail-open）ので、そこを黙ると「もう写しから読んでいる」と誤解される。 */
+ function msMirrorText(m){
+  if(!m)return '—';
+  if(m.enabled===null)return '確かめられません';
+  if(m.enabled===false)return '共有を直接読む（写しは無効）';
+  const mins=Math.max(1,Math.round(Number(m.intervalSec||60)/60));
+  if(!m.mirrored)return `写しの用意中（あと${mins}分以内）`;
+  return `写し${m.mirrored}本`+(m.direct?` ／ 実物${m.direct}本`:'');
+ }
  function msSize(n){return (n===null||n===undefined)?'—':(n/1048576).toFixed(1)+'MB'}
  function renderMeasStorage(){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
@@ -3542,10 +3553,13 @@
       ['記録',msNum(loc.count)+(loc.count===null?'':'件')],
       ['最終書込',msWhen(loc.lastWriteAt)],
       ['大きさ',msSize(loc.size)],
-     ].concat(loc.perEquipment?[['読む先',(loc.readPaths||[]).length+'ファイル']]:[]),
+     ].concat(loc.perEquipment?[['読む先',(loc.readPaths||[]).length+'ファイル'],
+                                ['読み方',msMirrorText(loc.mirrored)]]:[]),
      loc.perEquipment
       ?`<b>設備ごとに1ファイル</b>に分けています——書くのはその設備の担当端末だけなので、同じファイルを2台が変えることがありません。
-        一覧は<b>全設備ぶん</b>を読みます。<br><code title="${esc(loc.shareDir||'')}">${esc(loc.shareDir||'—')}\\&lt;設備&gt;\\records.sqlite3</code>`
+        一覧は<b>全設備ぶん</b>を読みますが、<b>開くのは手元の写し</b>です——共有を直接開くと、
+        読んでいるあいだ測定端末の書き込みを待たせます（自分が書いたぶんだけは実物を読むので、
+        自分の記録はすぐ見えます）。<br><code title="${esc(loc.shareDir||'')}">${esc(loc.shareDir||'—')}\\&lt;設備&gt;\\records.sqlite3</code>`
       :`<b>他のPCから続きを開けるのはここ</b>です（データ一覧はここも読みます）。<br><code title="${esc(loc.path||'')}">${esc(loc.path||'—')}</code>`)}
     ${arrow(exp.retired?'使いません':`変わったら${mins}分ごと`,exp.retired?'—':(exp.configured?'自動':'未設定'))}
     ${stage('③','閲覧用の複製','Box等・読むだけ',[
@@ -5443,7 +5457,11 @@
  }
  /* 置き場の1行。**直せるものには欄と「参照…」を、無いものには「作る」を**
     その場に置く（§9.207。直す場所へ行かせない）。 */
- function pcStorageRowHtml(x){
+ function pcStorageRowHtml(x,lcFields){
+  /* `config/local.json`の行は、**その欄の説明も一緒に出す**（利用者の混乱の元
+     ——「フォルダなのかファイルなのか」「共有の置き場と何が違うのか」が
+     行だけからは読めなかった）。説明は`localConfig`が持っている。 */
+  const lcDef=(lcFields||[]).find(f=>f.key===x.field)||null;
   /* 種類と「在るか」は**別のこと**だが、置き場が未設定のときはどちらも
      「未設定」になり、同じ言葉が2つ並ぶ（§8）。そのときは種類を出さない。 */
   const kind=x.path?(PC_SHARE_KIND[x.kind||'']||''):'';
@@ -5491,10 +5509,20 @@
     ${x.section?`<button type="button" class="mm-btn-ghost" data-pc-jump="${esc(x.section)}">直す場所を開く</button>`:''}
    </div>
    ${x.note?`<small class="pc-store-note">${esc(x.note)}</small>`:''}
+   ${lcDef&&lcDef.hint?`<small class="pc-store-note">${hintHtml(lcDef.hint)}${
+     lcDef.expanded?` この端末では <code>${esc(lcDef.expanded)}</code> になります。`:''}</small>`:''}
   </div>`;
  }
  /* `config/local.json` の残り2つ（まとめて決める / 書込サイクル）。
     **優先順位はサーバーが言う**——段を1つ足したときに2箇所直さない。 */
+ /* 説明は**マスタと同じ書き方**を通す（`**強調**`が生で出ないように・§9.222 ⑧）。
+    変数で書いてあるときは**展開後の姿も出す**（§6。書いたものと効くものが
+    違うので、片方だけ見せると確かめようがない）。 */
+ function pcLcNow(f){
+  const exp=f.expanded?`<br>この端末では <code>${esc(f.expanded)}</code> になります。`:'';
+  return `<small class="mm-field-hint">${hintHtml(f.hint||'')}
+    いまは <b>${esc(f.effective||'')}</b> です。${exp}</small>`;
+ }
  function pcLocalExtraHtml(fields){
   const rows=(fields||[]).filter(f=>f.key==='db_dir'||f.key==='master_share_mode');
   if(!rows.length)return '';
@@ -5502,14 +5530,14 @@
    ? `<label class="mm-field"><span>${esc(f.label)}</span>
       <select data-lc-field="${esc(f.key)}">${(f.choices||[]).map(([v,t])=>
        `<option value="${esc(v)}"${(f.value||'')===v?' selected':''}>${esc(t)}</option>`).join('')}</select>
-      <small class="mm-field-hint">${esc(f.hint||'')} いまは <b>${esc(f.effective||'')}</b> です。</small></label>`
+      ${pcLcNow(f)}</label>`
    : `<div class="mm-field mm-field-wide mm-field-path"><span>${esc(f.label)}</span>
       <span class="mm-path" data-path-drop="${esc(f.key)}">
        <input data-lc-field="${esc(f.key)}" data-field="${esc(f.key)}" type="text" value="${esc(f.value||'')}"
         placeholder="未設定（既定: ${esc(f.default||'')}）" autocomplete="off" spellcheck="false">
        <button type="button" class="mm-path-browse" data-path-browse="${esc(f.key)}" data-path-mode="${esc(f.mode||'dir')}">参照…</button>
       </span>
-      <small class="mm-field-hint">${esc(f.hint||'')} いまは <b>${esc(f.effective||'')}</b> です。</small></div>`
+      ${pcLcNow(f)}</div>`
   ).join('');
  }
  /* 置き場を1枚で出す(§9.260→§9.267)。**判定はサーバーが持つ**（§9.163）ので、
@@ -5588,7 +5616,7 @@
    if(!list.length)return '';
    return `<section class="pc-store-group" data-store-group="${esc(g.id)}">
     <h5 class="pc-store-group-head">${esc(g.name)}<small>${g.why}</small></h5>
-    ${list.map(pcStorageRowHtml).join('')}
+    ${list.map(r=>pcStorageRowHtml(r,sl&&sl.localConfig)).join('')}
     ${g.id==='terminal'?`<div class="pc-store-extra">${pcLocalExtraHtml(sl&&sl.localConfig)}
      <small class="mm-field-hint">この3つは <code>${esc((sl&&sl.localConfigPath)||'config/local.json')}</code> に入ります。
       <b>マスタDB自身の置き場を決める値</b>なので、マスタの中には置けません（読みに行く先が分からなくなるため）。

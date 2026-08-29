@@ -406,15 +406,55 @@ def status():
 # ------------------------------------------------------------------
 # 対象と設定
 # ------------------------------------------------------------------
+RECORDS_KEY_PREFIX = 'records:'
+
+
+def records_targets():
+ """共有の測定データのうち、**この端末が書かないファイル**(§9.268)。
+
+ 測定データは設備ごとに1ファイルで、書くのはその設備の測定端末1台だけ
+ (§9.258)。ところが**閲覧は全設備を読む**ので、閲覧端末が増えるほど
+ 共有のファイルを直接開く回数が増える——SQLiteの読み手は読んでいるあいだ
+ SHAREDロックを持つので、測定端末の書込(EXCLUSIVEが要る)がそのぶん
+ 待たされる。SMB越しのロックは元々当てにならないので、閲覧が増えるほど
+ 書込が不利になる(利用者の指摘)。
+
+ 作業予定・仕掛/品質・マスタは既に「手元の写しから読む」形になっていて、
+ **測定データだけが取り残されていた**。ここで同じ形へ揃える。
+
+ **自分が書いたファイルは写さない**——写しから読むと自分の書込が写しの
+ 間隔ぶん見えない。判定は`db_access.records_written_here()`の1箇所。
+ """
+ from .db_access import (RECORDS_SHARE_DIR, RECORDS_BACKUP_EXPORT_PATH,
+                         records_share_files, records_dir_name,
+                         records_written_here)
+ if RECORDS_SHARE_DIR is None and RECORDS_BACKUP_EXPORT_PATH is None:
+  return []
+ mine = records_written_here()
+ out = []
+ for path in records_share_files():
+  if str(path) in mine:
+   continue
+  # 鍵は**フォルダ名**から作る(`records_dir_name`が使えない文字と
+  # ぶつかりを既に片付けている)。設備名から直に作ると、使えない文字を
+  # 落としたときに別の設備の写しが1つの鍵へ潰れうる。
+  out.append((RECORDS_KEY_PREFIX + path.parent.name, path))
+ if RECORDS_BACKUP_EXPORT_PATH is not None and str(RECORDS_BACKUP_EXPORT_PATH) not in mine:
+  out.append((RECORDS_KEY_PREFIX + '_export', Path(RECORDS_BACKUP_EXPORT_PATH)))
+ return out
+
+
 def targets():
- """写す対象。**読み取り専用のデータソースだけ**。
+ """写す対象。**読み取り専用のデータソースと、他の端末が書く測定データ**。
 
  マスタDB(自分が書く)と共有スケジュールDB(ロック手順付きで自分が書く)は
  対象外。書くものを写すと、写しへ書いて共有へ反映されない事故になる。
 
  **役割「スケジュール」のデータソースも対象外**(§9.193)。あれは一覧として
  見られるように登録するものだが、中身は自分が書く共有スケジュールDBそのもの
- ——写しを読ませると、他端末の予定が写しの間隔ぶん古いまま見え続ける。"""
+ ——写しを読ませると、他端末の予定が写しの間隔ぶん古いまま見え続ける。
+
+ 測定データは§9.268で足した(`records_targets`)。**自分が書くぶんは入らない。**"""
  from .db_access import DBS, PURPOSE_SCHEDULE
  out = []
  for key, cfg in DBS.items():
@@ -423,6 +463,12 @@ def targets():
   if (cfg or {}).get('purpose') == PURPOSE_SCHEDULE:
    continue
   out.append((key, Path(cfg['path'])))
+ try:
+  out.extend(records_targets())
+ except Exception as e:
+  # **写せなくても画面は動く**(§9.89)。測定データの置き場が未設定・
+  # 共有が不調でも、ここで送出して他のデータソースの写しまで止めない。
+  app_logger().warning('測定データの写す対象を作れませんでした: %s', e)
  return out
 
 

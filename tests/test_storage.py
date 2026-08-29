@@ -161,6 +161,36 @@ try:
         and 'path_config.storage_layout_local_config' in ms.NON_MASTER_ENDPOINTS,
         ','.join(sorted(ms.NON_MASTER_ENDPOINTS)))
 
+    # ---- 環境変数で書ける（§9.268の追補、利用者の指摘） ---------------
+    # 「%LOCALAPPDATA%\\WaveLog みたいな感じで考えていました」——書けなかった。
+    # `Path('%LOCALAPPDATA%\\WaveLog')`は**相対パス扱いの文字列**で、
+    # `%LOCALAPPDATA%`という名前のフォルダをアプリの隣に作りに行っていた。
+    import os as _os
+    _os.environ['WL_TEST_ROOT'] = str(tmp)
+    rec('%VAR% を展開する（Windowsの書き方。検証はLinuxで走る）',
+        sl.paths.expand_path(r'%WL_TEST_ROOT%\WaveLog') == str(tmp) + r'\WaveLog',
+        sl.paths.expand_path(r'%WL_TEST_ROOT%\WaveLog'))
+    rec('$VAR と ~ も展開する',
+        sl.paths.expand_path('$WL_TEST_ROOT/x') == str(tmp) + '/x'
+        and sl.paths.expand_path('~').startswith('/'),
+        sl.paths.expand_path('$WL_TEST_ROOT/x'))
+    # **未定義の変数は残す**——消すと「フォルダ名の一部が抜けたパス」に化けて、
+    # 身に覚えのない場所へ書きに行く。
+    rec('未定義の変数はそのまま残す（別の場所へ書きに行かない）',
+        sl.paths.expand_path(r'%WL_NO_SUCH_VAR%\x') == r'%WL_NO_SUCH_VAR%\x',
+        sl.paths.expand_path(r'%WL_NO_SUCH_VAR%\x'))
+    # **保存するのは書いたまま**——展開して保存すると端末ごとに違う文字列に
+    # なり、同じ config/local.json を全端末へ配れない（変数で書きたい理由）。
+    got = sl.validate_local_config({'db_dir': r'%WL_TEST_ROOT%\WaveLog'})
+    rec('保存するのは書いたまま（同じlocal.jsonを全端末へ配れる）',
+        got['db_dir'] == r'%WL_TEST_ROOT%\WaveLog', got['db_dir'])
+    try:
+        sl.validate_local_config({'db_dir': r'%WL_NO_SUCH_VAR%\x'})
+        rec('中身が空の変数は断る', False, '通ってしまった')
+    except sl.LocalConfigError as e:
+        rec('中身が空の変数は断る（理由を言い分ける）', '環境変数' in str(e), str(e))
+    _os.environ.pop('WL_TEST_ROOT', None)
+
     # ---- ロックの確認待ちは置き場の種類で変える（§9.267の追補） --------
     # 一律1.5秒だと、ファイルサーバーでも**予定を1本足すたびに1.2秒**
     # よけいに待つ（ロックは設備をまたいで1本なので、他の設備を触っている

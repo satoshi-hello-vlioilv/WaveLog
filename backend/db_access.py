@@ -829,6 +829,10 @@ def records_path_for(equipment,create=False):
    # 共有が不調でも**測定は続けられること**が最優先。手元へ落として理由を残す。
    app_logger().warning('測定データの置き場(%s)を作れませんでした: %s。この端末の%sへ保存します。',d,e,MEAS_DB)
    return MEAS_DB
+  # **書く先として渡した時点で覚える**(§9.268)。以後この端末はここを
+  # 写しではなく実物から読む——写しは間隔ぶん古いので、自分の書込が
+  # 自分に見えなくなる。`create=True`は書くときにしか来ない。
+  note_records_written(d/RECORDS_FILE_NAME)
  return d/RECORDS_FILE_NAME
 
 # 設備フォルダの一覧は共有越しの走査になるので、短いあいだ覚える
@@ -841,6 +845,11 @@ _records_dirs_lock=threading.Lock()
 def invalidate_records_dirs_cache():
  with _records_dirs_lock:
   _records_dirs_cache['paths']=None;_records_dirs_cache['ts']=0.0
+
+def records_share_files():
+ """共有に置かれている設備ごとの測定データファイル。**この名前で公開する**
+ のは`db_mirror`が写す対象を作るため（§9.268）。"""
+ return _records_share_files()
 
 def _records_share_files():
  if RECORDS_SHARE_DIR is None:return []
@@ -888,6 +897,63 @@ def records_paths_holding(ids):
    app_logger().warning('測定データ(%s)を確かめられませんでした: %s',path,e)
    continue
   if hit:out[path]=hit
+ return out
+
+# ---------- 閲覧は手元の写しから（§9.268、利用者の指摘） ----------
+# 「閲覧は複数人が同時にアクセスするため、直接閲覧はデータ書き込み更新を
+#  阻害する要因になるはず」——そのとおりだった。作業予定・仕掛/品質・マスタは
+# 既に手元の写しから読む形になっていて、**測定データだけが取り残されていた**。
+# SQLiteの読み手は読んでいるあいだSHAREDロックを持つので、閲覧端末が増える
+# ほど測定端末の書込(EXCLUSIVEが要る)が待たされる。SMB越しのロックは元々
+# 当てにならないので、なおさら重なりを減らすほうがよい。
+#
+# **自分が書いたファイルは写しから読まない。** 写しは間隔ぶん古いので、
+# 自分の書込が自分に見えなくなる。書いた先をこのプロセスが覚えておき、
+# そこだけは実物を読む(1ファイル1書き手なので、自分の書込と競合しない)。
+_records_written_here=set()
+_records_written_lock=threading.Lock()
+
+def note_records_written(path):
+ """このプロセスがそのファイルへ書いたことを覚える（§9.268）。"""
+ if path is None:return
+ with _records_written_lock:
+  if str(path) in _records_written_here:return
+  _records_written_here.add(str(path))
+ # 写す対象から外れるので、背景スレッドに知らせて台帳を作り直させる。
+ try:
+  from . import db_mirror
+  db_mirror.wake()
+ except Exception:pass
+
+def records_written_here():
+ with _records_written_lock:
+  return set(_records_written_here)
+
+def records_read_paths():
+ """測定データを**読む**ときに実際に開くファイル（§9.268）。
+
+ 共有のファイルは**手元の写し**を指す。写しがまだ無ければ実物
+ （fail-open。写しが出来た時点から手元を読むようになる）。
+ **自分が書いたぶんと、この端末のMEAS_DBは常に実物。**
+ """
+ mine=records_written_here()
+ out=[];seen=set()
+ try:
+  from . import db_mirror
+  by_path={str(remote):key for key,remote in db_mirror.records_targets()}
+ except Exception:
+  by_path={}
+ for real in records_paths_all():
+  use=real
+  key=by_path.get(str(real))
+  if key and str(real) not in mine:
+   try:
+    use=Path(db_mirror.read_path(key,real))
+   except Exception:
+    use=real
+  k=str(use)
+  if k in seen:continue
+  seen.add(k);out.append(use)
  return out
 
 def records_paths_all():
@@ -1058,8 +1124,11 @@ _backup_rows_cache={'rows':None,'ts':0.0,'sig':None}
 _backup_rows_lock=threading.Lock()
 
 def _backup_sources_signature():
+ # **読む先の署名**（§9.268）——写しから読むなら、変わったかどうかも写しで
+ # 見る。実物で見ると、写しがまだ古いのに「変わった」と判断して同じ写しを
+ # 読み直すことになる。
  sig=[]
- for path in records_paths_all():
+ for path in records_read_paths():
   try:
    st=path.stat();sig.append((str(path),st.st_mtime_ns,st.st_size))
   except Exception:
@@ -1108,7 +1177,7 @@ def _merged_backup_rows_uncached():
  # (書込端末そのもの/閲覧・スケジュール専用端末)から呼んでも同じ実績が
  # 見える。
  merged={}
- for path in records_paths_all():
+ for path in records_read_paths():
   for row in _backup_file_rows(path):
    rid=row.get('id')
    if not rid:continue
@@ -1130,6 +1199,13 @@ def merged_backup_rows(force=False):
    cached=_backup_rows_cache['rows']
    if cached is not None and (now-_backup_rows_cache['ts'])<BACKUP_ROWS_CACHE_TTL_SEC:
     return cached
+ # **写しを取り直す合図を送る**（§9.268）。ここは「20秒の覚えが切れた／
+ # 明示的に取り直したい」瞬間なので、背景スレッドを起こしておくと次の
+ # 読みでは新しい写しが読める（このリクエストは待たせない）。
+ try:
+  from . import db_mirror
+  db_mirror.wake()
+ except Exception:pass
  sig=_backup_sources_signature()
  if not force:
   with _backup_rows_lock:
