@@ -2733,4 +2733,39 @@
 .ms-where-path{flex:1 1 var(--w-lg);min-width:0;font-family:var(--font-mono,monospace);
   font-size:var(--fs-micro);color:var(--ink-2);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+
+/* ==================================================================
+   接続状況（§9.272）。誰がいま繋いでいるか／切断する。
+   **色だけで伝えない**（§3）——状態はバッジの文字が言い、色は補助。
+   寸法・色はトークンから取る（リテラルを新しく足さない・CLAUDE.md）。
+   ================================================================== */
+.pz-head{display:flex;flex-wrap:wrap;align-items:stretch;gap:var(--space-2);
+  margin-bottom:var(--space-2)}
+.pz-head>div{flex:1 1 var(--w-lg);min-width:0;padding:var(--space-2) var(--space-3);
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface-2)}
+.pz-head small{display:block;margin-top:var(--space-1);font-size:var(--fs-micro);
+  color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pz-count{flex:0 0 auto;text-align:center}
+.pz-count b{font-size:var(--fs-lg)}
+
+/* 1行=1端末。**見出しとセルは同じグリッド定義を共有する**（列がずれない）。 */
+.pz-table{border:1px solid var(--line-soft);border-radius:var(--radius-sm);overflow:hidden}
+.pz-row{display:grid;align-items:center;gap:var(--space-2);
+  grid-template-columns:var(--w-sm) var(--w-md) var(--w-md) var(--w-md)
+                        var(--w-sm) minmax(0,1fr) var(--w-sm) var(--w-lg);
+  padding:0 var(--space-2);min-height:var(--ctl-h);font-size:var(--fs-sm);
+  border-bottom:1px solid var(--line-soft)}
+.pz-row:last-child{border-bottom:0}
+.pz-row>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pz-headrow{background:var(--surface-3);color:var(--ink-3);font-weight:700;
+  font-size:var(--fs-micro)}
+.pz-row.is-me{background:var(--surface-2)}
+.pz-badge{display:inline-block;padding:0 var(--space-2);border-radius:var(--radius-pill);
+  font-size:var(--fs-micro);font-weight:700;border:1px solid var(--line-mid);color:var(--ink-2)}
+.pz-badge.is-on{border-color:var(--teal);color:var(--teal)}
+.pz-badge.is-me{border-color:var(--line-strong);color:var(--ink)}
+.pz-badge.is-cut{border-color:var(--danger,var(--line-strong));color:var(--danger,var(--ink))}
+/* **押せない理由はその場に書く**（§4）。ボタンの代わりに文字を置く。 */
+.pz-why{font-size:var(--fs-micro);color:var(--muted)}
 }

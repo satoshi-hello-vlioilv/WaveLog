@@ -130,7 +130,9 @@ G['接続'] = ['test_mastershare', 'test_storage', 'test_storageui', 'test_recmi
              'test_qjoin', 'test_qjoinui',
              # §9.258: 測定データは設備ごとに1ファイル（置き場の解決）
              'test_recsplit']
-G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm', 'test_pcname']
+G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm', 'test_pcname',
+             # §9.272: 権限区分（開発者/メンテナンス者/一般ユーザー）と接続の管理
+             'test_presence', 'test_presenceui']
 G['ログ'] = ['test_logs', 'test_logview', 'test_error']
 
 ALL = '*'  # 「全部回す」を表す印
@@ -306,7 +308,10 @@ RULES = [
                                     'test_recsplit')),
     ('backend/logging_setup.py', g('ログ')),
     ('backend/boot_status.py', g('起動')),
-    ('backend/watchdog.py', g('test_tabclose', 'test_boot')),
+    ('backend/watchdog.py', g('test_tabclose', 'test_boot', 'test_presence')),
+    # 在席（§9.272）。権限区分の判定は master_repo 側にあるので「権限」ごと。
+    ('backend/presence.py', g('権限')),
+    ('backend/routes/presence.py', g('権限')),
     ('backend/errors.py', g('test_error')),
     ('backend/paths.py', g('test_setpage', 'test_dbopen', 'test_datasource',
                            'test_localwork', 'test_dbmirror', 'test_cleanup', '起動')),

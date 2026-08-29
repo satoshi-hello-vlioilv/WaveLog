@@ -346,14 +346,26 @@
          {k:'standardMinutes',label:'標準時間',grow:1,format:'standardMinutes'},
          {k:'maxLineSpeed',label:'最大速度',grow:1,format:'maxLineSpeed'}],
    hint:'この工場のラインの一覧です。1行＝1つの設備で、**行を押すと編集の窓が開きます**。「区分」は扱う材料の形（コイル／板）、「最大条数」は幅分割で割れる条数の上限（空欄＝40条）、「標準時間」は実績が無いときの見積（空欄＝120分）、「最大ライン速度」は操業データの入力上限として参照できます（空欄＝上限なし）。'},
+  /* 接続状況（§9.272）。**汎用CRUDは持たない**（`special`で分岐する）。
+     一般ユーザーでも開ける——見るだけならどの区分でもできる。 */
+  {group:'system',key:'presence',label:'接続状況',icon:'席',
+   special:'presence',endpoint:'/api/presence',
+   titleText:'接続状況 — 誰がいまこのシステムを使っているか',
+   cols:[{k:'login',label:'ログインID'}],
+   hint:'この共有のマスタへ繋いでいる端末の一覧です。<b>区分が開発者・メンテナンス者の端末だけが切断できます</b>（メンテナンス者は開発者を切断できません）。区分はアクセス権限マスタで決めます。切断された端末は<b>書き込みだけが止まり</b>、開いている画面はそのまま残ります（別のPCの操作を横から消さないため）。一定時間で自動的に戻ります。'},
   {group:'system',key:'accessPermission',label:'アクセス権限',icon:'権',endpoint:'/api/access-permission-master',hasDelete:true,
    fields:[{k:'loginId',label:'ログインID',key:true},{k:'pcName',label:'PC名',key:true},
+           /* **区分が先**（§9.272）。上位概念なので、細かい可否より前に決める。 */
+           {k:'role',label:'権限区分',type:'select',options:['一般ユーザー','メンテナンス者','開発者'],
+            more:'アプリそのものをどこまで管理できるかです。下の3つ（何を触れるか）とは別の軸で、掛け合わせません。'
+                 +'<b>開発者</b>＝制限なし。<b>メンテナンス者</b>＝接続状況を見て切断できる（ただし開発者は切断できません）。'
+                 +'<b>一般ユーザー</b>＝接続状況を見るだけ。登録の無い端末は一般ユーザーです。'},
            {k:'canEdit',label:'編集可否',type:'select',options:['編集可','閲覧のみ']},
            {k:'canSchedule',label:'スケジュール可否',type:'select',options:['不可','可']},
            {k:'canFieldReorder',label:'現場段取り可否',type:'select',options:['不可','可']},
            {k:'fieldReorderEquipment',label:'現場段取り対象設備',type:'equipment-multi-text'}],
-   cols:[{k:'loginId',label:'ログインID',grow:2},{k:'pcName',label:'PC名',grow:2},{k:'canEdit',label:'編集可否',grow:1},{k:'canSchedule',label:'スケジュール',grow:1},{k:'canFieldReorder',label:'現場段取り',grow:1},{k:'fieldReorderEquipment',label:'対象設備',grow:2,format:'equipmentTarget'}],
-   hint:'ログインID・PC名はどちらか一方だけの登録もできます(汎用的な運用のため)。片方だけ登録した場合、もう一方は「問わない」という意味になります(例: ログインIDだけ登録すると、そのユーザーはどの端末からでもこの権限になります)。両方登録した組み合わせが最優先で一致し、次に片方だけの登録、両方空欄の登録(全端末共通の既定)の順に判定します。登録の無い組み合わせは既定で編集可能・スケジュール不可・現場段取り不可として扱われます。特定の端末を閲覧専用にしたい場合はその端末を「閲覧のみ」で、作業スケジュールを操作させたい場合は「スケジュール可否」を「可」で登録してください。「現場段取り可否」は編集モードの端末に限り、対象設備の並べ替えだけを追加で許可します。対象設備は複数選べます。「すべての設備」を選ぶと全設備の並べ替えを許可します（開発・保守用。設備が増えても権限行を足さずに済みます）。'},
+   cols:[{k:'loginId',label:'ログインID',grow:2},{k:'pcName',label:'PC名',grow:2},{k:'role',label:'権限区分',grow:1},{k:'canEdit',label:'編集可否',grow:1},{k:'canSchedule',label:'スケジュール',grow:1},{k:'canFieldReorder',label:'現場段取り',grow:1},{k:'fieldReorderEquipment',label:'対象設備',grow:2,format:'equipmentTarget'}],
+   hint:'<b>権限区分</b>は「アプリそのものをどこまで管理できるか」の上位の軸で、その下の3つ「何を触れるか」とは掛け合わせません(閲覧のみの端末でも、開発者なら接続状況の管理はできます)。開発者=制限なし / メンテナンス者=接続状況を見て切断できる(開発者は切断できません) / 一般ユーザー=接続状況を見るだけ。<b>登録の無い端末は一般ユーザー</b>です——管理の権限を配らないためで、誰も切断できない状態になったら、この画面で開発者を1つ登録してください。接続状況は「マスタ管理 > 接続状況」で見られます。 ログインID・PC名はどちらか一方だけの登録もできます(汎用的な運用のため)。片方だけ登録した場合、もう一方は「問わない」という意味になります(例: ログインIDだけ登録すると、そのユーザーはどの端末からでもこの権限になります)。両方登録した組み合わせが最優先で一致し、次に片方だけの登録、両方空欄の登録(全端末共通の既定)の順に判定します。登録の無い組み合わせは既定で編集可能・スケジュール不可・現場段取り不可として扱われます。特定の端末を閲覧専用にしたい場合はその端末を「閲覧のみ」で、作業スケジュールを操作させたい場合は「スケジュール可否」を「可」で登録してください。「現場段取り可否」は編集モードの端末に限り、対象設備の並べ替えだけを追加で許可します。対象設備は複数選べます。「すべての設備」を選ぶと全設備の並べ替えを許可します（開発・保守用。設備が増えても権限行を足さずに済みます）。'},
   {group:'schedule',key:'loadFactor',label:'換算係数',icon:'率',special:'load-factor',endpoint:'/api/schedule/load-factors'},
   {group:'schedule',key:'stopCategory',label:'設備停止分類',icon:'類',endpoint:'/api/schedule/stop-category-master',hasDelete:true,
    fields:[{k:'name',label:'分類名',required:true,key:true}],
@@ -459,7 +471,7 @@
   {key:'data',label:'データと接続',hint:'どこから読み、どこへ置くか',
    items:['dataSource','queryJoin','measStorage','importBackup','pathConfig']},
   {key:'system',label:'管理',hint:'権限・後片付け・生データ',
-   items:['accessPermission','cleanup','rawTable']},
+   items:['presence','accessPermission','cleanup','rawTable']},
   /* 専用タブを持たないマスタ（§9.249 ②、利用者の指示「テーブル生データ内で
      閲覧可能なマスタかつ、テーブル生データマスタの配置された階層にないものは、
      この階層に配置し、編集可能な形に実装してください」）。
@@ -3307,6 +3319,7 @@
   if(def.special==='op-choice'){setMaintSearchVisible(false);return loadOpChoiceMaint(force)}
   if(def.special==='cleanup'){setMaintSearchVisible(false);return loadCleanupMaint(force)}
   if(def.special==='raw-table'){setMaintSearchVisible(false);return loadRawTableMaint(force)}
+  if(def.special==='presence'){setMaintSearchVisible(false);return loadPresenceMaint(force)}
   setMaintSearchVisible(true);
   const list=$('#masterMaintList');if(list&&force)list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   // 一覧に「作業可能設備」を文章で出すのは配列で持つequipment-multiだけ
@@ -6481,6 +6494,151 @@
     パス設定マスタの実体など)も確認できる、最後の手段としての生データ閲覧。
     編集は各専用タブから行う前提のため、ここでは書込導線を一切出さない。 */
  let rawTableState={tables:[],table:'',columns:[],rows:[],loaded:false};
+
+ /* ==================================================================
+    接続状況（§9.272、利用者の指示「誰がアクセス中か見える化し、接続中の
+    ユーザーを視覚化し、強制的に接続切断したりする機能」）
+    ------------------------------------------------------------------
+    **できること（区分）の判定はサーバーが答える**（`can`／行ごとの
+    `canDisconnect`）。画面で書き写すと「ボタンは出るのに断られる」が作れる。
+    **押せない理由はその場に書く**（§4）。
+    ================================================================== */
+ const presenceState={data:null,err:'',timer:0,busy:''};
+
+ function pzAgo(sec){
+  const n=Math.max(0,Math.round(Number(sec)||0));
+  if(n<60)return `${n}秒前`;
+  if(n<3600)return `${Math.floor(n/60)}分前`;
+  return `${Math.floor(n/3600)}時間前`;
+ }
+ function pzModeLabel(m){
+  return {edit:'編集可能',view:'閲覧',schedule:'スケジュール'}[String(m||'')]||'—';
+ }
+ /* 画面の呼び名。**知らない鍵はそのまま出す**（黙って空欄にすると、
+    新しい画面が増えたときに「何もしていない」ように見える・§9.204）。 */
+ const PZ_VIEWS={list:'一覧',records:'データ一覧',schedule:'作業スケジュール',
+  master:'マスタ管理',report:'測定帳票',dashboard:'ダッシュボード',
+  calendar:'カレンダー',actuals:'実績データ',logs:'ログ'};
+ function pzViewLabel(v){const k=String(v||'');return k?(PZ_VIEWS[k]||k):'—'}
+ function pzStopTimer(){if(presenceState.timer){clearInterval(presenceState.timer);presenceState.timer=0}}
+
+ async function loadPresenceMaint(force){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  form.innerHTML='';
+  if(force||!presenceState.data)list.innerHTML='<div class="mm-empty">接続状況を調べています…</div>';
+  await pzFetch();
+  pzStopTimer();
+  /* **10秒ごとに読み直す**。人が入れ替わる画面なので、押して更新させると
+     古い一覧を見たまま切断することになる。**画面を離れたら止める**
+     （器が消えたことで気づく——専用の後始末を各所へ足さない）。 */
+  presenceState.timer=setInterval(()=>{
+   const el=document.getElementById('pzList');
+   if(!el||!document.body.contains(el)){pzStopTimer();return}
+   pzFetch();
+  },10000);
+ }
+
+ async function pzFetch(){
+  try{presenceState.data=await api('/api/presence');presenceState.err=''}
+  catch(e){presenceState.err=e.message||String(e)}
+  renderPresence();
+ }
+
+ function renderPresence(){
+  const list=$('#masterMaintList');if(!list)return;
+  const d=presenceState.data;
+  if(!d){
+   list.innerHTML=`<div class="mm-empty error">接続状況を読めませんでした: ${esc(presenceState.err||'原因不明')}</div>`;
+   return;
+  }
+  const can=d.can||{},me=d.me||{},items=d.items||[];
+  /* いまの自分の区分と、できることを**必ず文字で**出す（§3）。 */
+  const roleNote=can.canDisconnect
+   ?(can.canDisconnectDeveloper?'すべての端末を切断できます'
+     :'開発者以外の端末を切断できます')
+   :'切断はできません（見るだけです）';
+  /* 置き場が共有でなければ、**見えていないことをそう言う**——「1件だけ」を
+     「他に誰も居ない」と読まれないため。 */
+  const scope=d.shared
+   ?`共有の置き場を見ています（${esc(d.source==='master'?'マスタの隣':'作業予定の隣')}）`
+   :'<b>この端末しか出ません</b>。マスタか作業予定を共有に置くと、他のPCも並びます';
+  const mine=d.revoked;
+  const banner=mine?`<div class="mm-warn-note" id="pzRevoked"><b>この端末は接続を解除されています。</b>
+    ${esc(mine.by||'不明')}／${esc(mine.byPc||'不明')} により解除されました${mine.reason?`（理由: ${esc(mine.reason)}）`:''}。
+    <b>書き込みだけが止まっています</b>——開いている画面と入力中の内容はそのままです。
+    あと約${Math.max(1,Math.ceil((mine.remainingSec||0)/60))}分で自動的に戻ります。</div>`:'';
+
+  const rows=items.map(x=>{
+   const state=x.isMe?'<span class="pz-badge is-me">この端末</span>'
+    :x.revoked?'<span class="pz-badge is-cut">切断中</span>'
+    :'<span class="pz-badge is-on">接続中</span>';
+   let action='';
+   if(x.isMe)action='<span class="pz-why">自分自身は切断できません</span>';
+   else if(x.revoked)action=can.canDisconnect
+    ?`<button type="button" class="mm-btn-ghost sm" data-pz-allow="${esc(x.key)}">切断を取り消す</button>`
+    :`<span class="pz-why">あと約${Math.max(1,Math.ceil((x.revoked.remainingSec||0)/60))}分</span>`;
+   else if(x.canDisconnect)
+    action=`<button type="button" class="mm-btn-ghost sm danger" data-pz-cut="${esc(x.key)}">切断する</button>`;
+   else action=`<span class="pz-why">${can.canDisconnect?`「${esc(x.role)}」は切断できません`:'切断の権限がありません'}</span>`;
+   return `<div class="pz-row${x.isMe?' is-me':''}">
+     <span class="pz-c-state">${state}</span>
+     <span class="pz-c-login">${esc(x.login||'（不明）')}</span>
+     <span class="pz-c-pc">${esc(x.pc||'（不明）')}</span>
+     <span class="pz-c-role">${esc(x.role||'')}</span>
+     <span class="pz-c-mode">${esc(pzModeLabel(x.mode))}</span>
+     <span class="pz-c-view">${esc(pzViewLabel(x.view))}</span>
+     <span class="pz-c-seen">${esc(pzAgo(x.idleSec))}</span>
+     <span class="pz-c-act">${action}</span>
+   </div>`;
+  }).join('');
+
+  const empty=!items.length
+   ?`<div class="mm-empty">${d.readable?'接続している端末がありません（この端末の在席は次のハートビートで出ます）。'
+      :'在席の置き場を読めませんでした。共有フォルダへの接続を確認してください。'}</div>`:'';
+
+  list.innerHTML=`${banner}
+   <div class="pz-head">
+    <div class="pz-me">この端末は <b>${esc(me.role||'')}</b> です — ${esc(roleNote)}
+     <small>${esc(me.login||'（ログインID不明）')} ／ ${esc(me.pc||'（PC名不明）')}</small></div>
+    <div class="pz-scope">${scope}<small>${esc(d.dir||'')}</small></div>
+    <div class="pz-count">接続中 <b>${items.length}</b> 台<small>10秒ごとに読み直します</small></div>
+   </div>
+   <div class="pz-table" id="pzList">
+    <div class="pz-row pz-headrow">
+     <span class="pz-c-state">状態</span><span class="pz-c-login">ログインID</span>
+     <span class="pz-c-pc">PC名</span><span class="pz-c-role">権限区分</span>
+     <span class="pz-c-mode">モード</span><span class="pz-c-view">開いている画面</span>
+     <span class="pz-c-seen">最後の応答</span><span class="pz-c-act">操作</span>
+    </div>
+    ${rows}
+   </div>${empty}
+   ${presenceState.err?`<div class="mm-empty error">読み直しに失敗しました: ${esc(presenceState.err)}</div>`:''}`;
+
+  list.querySelectorAll('[data-pz-cut]').forEach(b=>b.addEventListener('click',()=>pzCut(b.dataset.pzCut)));
+  list.querySelectorAll('[data-pz-allow]').forEach(b=>b.addEventListener('click',()=>pzAllow(b.dataset.pzAllow)));
+ }
+
+ async function pzCut(key){
+  const x=(presenceState.data?.items||[]).find(r=>r.key===key);if(!x)return;
+  /* **危ない操作なので相手を名指しで1回だけ確認する**（§5・§9.211 ②）。 */
+  const reason=prompt(`${x.login||'（不明）'}／${x.pc||'（不明）'} の接続を解除します。\n`
+   +`相手の書き込みが止まります（開いている画面は残ります）。\n`
+   +`理由があれば書いてください（相手の画面に出ます）。`,'');
+  if(reason===null)return;
+  try{
+   const r=await api('/api/presence/disconnect',{method:'POST',body:JSON.stringify({key,reason})});
+   showToast('切断しました',`${x.login||''}／${x.pc||''} の書き込みを止めました（約${Math.round((r.cooldownSec||300)/60)}分）。`);
+  }catch(e){showToast('切断できませんでした',e.message||String(e),6000)}
+  pzFetch();
+ }
+
+ async function pzAllow(key){
+  try{await api('/api/presence/allow',{method:'POST',body:JSON.stringify({key})});
+      showToast('切断を取り消しました','その端末はすぐに書き込めるようになります。')}
+  catch(e){showToast('取り消せませんでした',e.message||String(e),6000)}
+  pzFetch();
+ }
+
  async function loadRawTableMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   form.classList.remove('mm-form-compact');

@@ -83,6 +83,20 @@ def install(app):
    # close→(すぐに)新しいIDのheartbeat、という順で届くため、
    # ここで戻さないと読み直しただけで終了してしまう。
    _closed_notice=False
+  # ---- 在席(§9.272) ----
+  # **ハートビートに相乗りさせる**——専用の周期を足すと、間隔・失敗時の
+  # 扱い・タブを閉じたときの後始末を2つ持つことになる。
+  # **書くのは裏のスレッド**で、ここは待たない(共有が遅いときに
+  # ハートビートを止めない)。失敗しても ok を返す——在席が出ないことより
+  # 「生きていると言えない」ことのほうが重い(§9.98)。
+  try:
+   from . import presence
+   from .access_mode import current_login_id,current_pc_name,current_permission_flags,get_mode
+   presence.touch_async(current_login_id(),current_pc_name(),get_mode(),
+                        current_permission_flags().get('role',''),
+                        str(request.args.get('view') or '')[:40])
+  except Exception:
+   pass
   return jsonify(ok=True)
 
  @app.post('/api/heartbeat/close')
@@ -91,6 +105,15 @@ def install(app):
   with _tabs_lock:
    _active_tabs.pop(_tab_key(),None)
    if not _active_tabs:_closed_notice=True
+  if not _active_tabs:
+   # 最後のタブが閉じた＝この端末はもう繋いでいない。**消せなくてもTTLで
+   # 消える**ので、失敗しても何もしない。
+   try:
+    from . import presence
+    from .access_mode import current_login_id,current_pc_name
+    presence.leave(current_login_id(),current_pc_name())
+   except Exception:
+    pass
   _wake.set()          # 寝て待たずに、すぐ数え始める
   return jsonify(ok=True)
 

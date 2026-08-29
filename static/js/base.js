@@ -1205,7 +1205,10 @@ function registerView(def){VIEW_REGISTRY.set(def.key,def);return def}
    ヘッダー表示・bodyクラスを新しい画面のものへ揃える。
    **画面を開く関数は、自分の描画を始める前にこれを1回呼ぶこと。**
    opts.header で見出しを差し替えられる(同じ画面で見出しが変わる場合)。 */
+/* いま開いている画面。ハートビートが在席と一緒に伝える（§9.272）。 */
+WL.currentView='';
 function enterView(key,opts){
+ WL.currentView=String(key||'');
  VIEW_REGISTRY.forEach((v,k)=>{
   if(k===key)return;
   // 1つの画面の終了処理が例外を投げても、残りの画面は必ず閉じる
@@ -1402,7 +1405,11 @@ function setConnectionLost(lost){
 }
 async function sendHeartbeat(){
  try{
-  const res=await fetch(`/api/heartbeat?tab=${encodeURIComponent(WATCHDOG_TAB_ID)}`,{method:'POST',cache:'no-store',keepalive:true});
+  /* いま開いている画面も一緒に伝える（§9.272）。接続状況の一覧が「誰が
+     何をしているか」まで出せる。**専用の周期は足さない**——間隔・失敗時の
+     扱い・タブを閉じたときの後始末を2つ持つことになる。 */
+  const res=await fetch(`/api/heartbeat?tab=${encodeURIComponent(WATCHDOG_TAB_ID)}`
+   +`&view=${encodeURIComponent(WL.currentView||'')}`,{method:'POST',cache:'no-store',keepalive:true});
   if(!res.ok)throw Error('HTTP '+res.status);
   heartbeatFailures=0;setConnectionLost(false);
  }catch(e){
