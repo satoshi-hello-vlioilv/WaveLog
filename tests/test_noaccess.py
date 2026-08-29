@@ -67,6 +67,20 @@ with tempfile.TemporaryDirectory() as d:
 # ---- 起動時の必須パッケージから pyodbc が外れている ---------------------
 rec('必須パッケージにpyodbcを含まない',
     'pyodbc' not in app_config.REQUIRED_PACKAGES, str(app_config.REQUIRED_PACKAGES))
+# **requirements.txt からも外れていること。** `REQUIRED_PACKAGES`は
+# `('flask',)`だけなので普段は誰も気づかないが、**flaskが入っていない端末では
+# `pip install -r requirements.txt` が走る**（`setup_check.ensure_packages`）
+# ——そこに残っていると、使っていないpyodbcまで入れに行く。まさに
+# 「依存を増やさない」で避けたかった失敗の芽で、実際に残っていた。
+_req = (Path(__file__).resolve().parent.parent / 'requirements.txt').read_text(encoding='utf-8')
+_req_names = [x.strip().split('==')[0].split('>=')[0].strip().lower()
+              for x in _req.splitlines()
+              if x.strip() and not x.strip().startswith('#')]
+rec('requirements.txt にもpyodbcを残さない',
+    'pyodbc' not in _req_names, ','.join(_req_names))
+# **一覧そのものが増えていないこと**（§CLAUDE「依存を足さない」）。
+# 増やすなら、この網を書き直すところまでが1組。
+rec('必要な部品はflaskだけ', _req_names == ['flask'], ','.join(_req_names))
 
 # ---- 既定の接続先はすべてSQLite ----------------------------------------
 engines = {k: v['engine'] for k, v in DBS.items()}

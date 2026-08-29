@@ -18322,3 +18322,27 @@ statだけ失敗する」ことがあり、確認のつもりの1行が唯一の
 読む回数も同じで、`_read_path_config`の呼ばれた回数と行数を並べて出す
 （行の数だけ増えていないことが見たいこと）。
 
+#### ⑥ `requirements.txt` に使っていない `pyodbc` が残っていた（追補）
+
+利用者の質問「Flaskだけでなく、waitressもつかったほうがよいですか？」を
+調べる過程で見つかった。**Access接続は廃止済みで、コードのどこも
+import していない**のに、`requirements.txt` に残っていた。
+
+`REQUIRED_PACKAGES`は`('flask',)`だけなので普段は誰も気づかない。しかし
+**flaskが入っていない端末では`pip install -r requirements.txt`が走る**
+（`setup_check.ensure_packages`）ので、そこに残っていると使っていない
+pyodbcまで入れに行く——まさに「依存を増やさない」で避けたかった失敗の芽。
+
+`tests/test_noaccess.py`は`REQUIRED_PACKAGES`しか見ておらず、
+**`requirements.txt`そのものを見ていなかった**のが素通りの理由。
+「pyodbcが無いこと」と「flaskだけであること」の2つを足した
+（後者があると、依存を足したときに**網を書き直すところまでが1組**になる）。
+
+**waitressは入れない。** 1台1プロセスで相手は同じPCのブラウザ1つ、
+`host='127.0.0.1'`でループバックのみ、同時要求はブラウザの接続上限
+（同一オリジンで6本程度）で頭打ちなので、`threaded=True`で足りる。
+LANへ開く唯一の口（§9.192の受け口、既定OFF）はFlaskですらなく
+stdlibの`ThreadingHTTPServer`で、合言葉つきの5経路だけを受ける。
+唯一の実質的な差は「werkzeugは要求ごとに無制限にスレッドを作る／waitressは
+固定プール＋キュー」だが、同時要求が頭打ちなので効かない。
+

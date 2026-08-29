@@ -1142,6 +1142,17 @@
   以外はコードの既定で刷られる）。自作の塊の写しも**設備ごとのMap**にし、
   **`openReportView()`では両方捨てる**（片方だけだと古い顔ぶれを拾う）。
   「他の設備へ当てる」の材料は**保存済み**（`saved()`）から取る（§9.212 ③）。
+- **`requirements.txt`は`flask`だけ。増やしたら網も書き直す**（§9.268 ⑥）:
+  `REQUIRED_PACKAGES`は`('flask',)`だけなので普段は誰も気づかないが、
+  **flaskが入っていない端末では`pip install -r requirements.txt`が走る**
+  （`setup_check.ensure_packages`）——余分な行があると、使っていない部品まで
+  入れに行く。Access接続を廃止したのに`pyodbc`が残っており、実際にこの状態
+  だった（コードのどこも import していない）。
+  **Webサーバーを`waitress`等へ替える必要も無い**——1台1プロセスで相手は同じ
+  PCのブラウザ1つ、`host='127.0.0.1'`でループバックのみ、同時要求はブラウザの
+  接続上限で頭打ち。`flask_app.run(threaded=True)`で足りる（LANへ開く唯一の口
+  ・§9.192の受け口はFlaskではなく stdlib の`ThreadingHTTPServer`）。
+  固定は`tests/test_noaccess.py`（`pyodbc`を戻す・別の依存を足す、の両方で落ちる）。
 - **Excelの読み書きは`backend/xlsx_io.py`の1箇所。依存を足さない**
   （§9.240、利用者の指示「ロールマスタについて EXCELでのインポート＆
   エクスポート機能を実装してください」）: `requirements.txt`は`flask`だけの
