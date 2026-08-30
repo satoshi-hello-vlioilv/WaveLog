@@ -2669,7 +2669,8 @@ html[data-hint="off"] .mm-def-hint{display:none}
 /* **中は紙そのもの**（`.rp-section`）なので手を入れない**（§9.163）——
    ここで見た目を足すと、盤で確かめた形と刷り上がりがまた食い違う。
    紙の文字は9px前後で、器も紙と同じ幅ではないので**倍率だけ**を当てる。 */
-.rb-sec>.rp-section{zoom:1.35}
+.rb-sec-fit{width:var(--rb-prev-w,100%);transform:scale(var(--rb-prev-scale,1));
+ transform-origin:top left}
 .rb-sec-empty{margin:0;padding:var(--pad-card);color:var(--muted);font-size:var(--fs-micro);line-height:1.6}
 
 /* --- 見て選ぶ欄（choice-card / span-grid / rows-pick） --- */

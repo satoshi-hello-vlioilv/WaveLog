@@ -2329,7 +2329,15 @@
   const repeat=(v('repeatText')==='分割後の子ロットごと')?'子ロット':'';
   const dir=(v('repeatDirText')==='横に並べる')?'横':'';
   try{
-   sec.innerHTML=WL.reportStat.sectionHtml(src,nameNow,rowsData,Number(v('cols'))||0,repeat,dir);
+   /* **紙と同じ幅で描いてから縮める**（§9.278）——器なりに描くと、器が
+      紙の塊より狭いぶんだけ列が痩せ、**紙では折り返さないロット番号が
+      見本だけ2行になる**（再現度がこの見本の値打ちなので、そこがずれると
+      見る意味が無い）。幅は紙の実寸から出す（A4 210mm − 余白8mm×2 を
+      96dpi換算＝`RB_PAPER_W`）ので、幅の札を押すとその場で変わる。 */
+   sec.innerHTML='<div class="rb-sec-fit">'
+    +WL.reportStat.sectionHtml(src,nameNow,rowsData,Number(v('cols'))||0,repeat,dir)
+    +'</div>';
+   rbFitPreview(sec,span);
   }catch(e){
    console.error('中身の見本を描けませんでした',e);
    sec.innerHTML='<p class="rb-sec-empty">中身の見本を描けませんでした。</p>';
@@ -2338,6 +2346,27 @@
   if(note)note.textContent=rbState.dummy
     ?(rec?'見本のロット1件で描いています（保存されません）':'見本のロットを取り込んでいます…')
     :'値を入れずに枠だけ出しています（「見本の値」で入ります）';
+ }
+ /* 紙の塊の実寸（§9.278）。A4の210mmから四辺8mmの余白を引いた194mmを
+    96dpi換算した値——紙を組む側（`.rp-page`）と同じ約束なので、ここで
+    別の数を持たない。 */
+ const RB_PAPER_W=Math.round(194/25.4*96);
+ function rbFitPreview(sec,span){
+  const fit=sec.querySelector('.rb-sec-fit');
+  if(!fit)return;
+  const w=Math.max(120,Math.round(RB_PAPER_W*Math.max(1,Math.min(12,span))/12));
+  fit.style.setProperty('--rb-prev-w',w+'px');
+  /* **測るのは描いたあと**（§9.221 ⑥）——`clientWidth`は組み直す前の幅を返す。
+     入るときは少し大きく見せる（紙の文字は9px前後で、そのままでは読めない）。 */
+  requestAnimationFrame(()=>{
+   const host=sec.clientWidth-8;
+   if(!host||!w)return;
+   const k=Math.max(.5,Math.min(1.6,host/w));
+   fit.style.setProperty('--rb-prev-scale',String(k));
+   /* 縮めたぶん器の高さも詰める（`transform`は場所を取り続ける）。 */
+   const inner=fit.firstElementChild;
+   fit.style.height=inner?Math.ceil(inner.getBoundingClientRect().height)+'px':'';
+  });
  }
  /* 見本のロット（§9.253）。**設備ごとに1回だけ取り、写しを持つ**——
     欄を1文字直すたびに往復すると、打っている最中に見本が止まる。
