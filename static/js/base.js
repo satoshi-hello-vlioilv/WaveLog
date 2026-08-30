@@ -1458,7 +1458,13 @@ enforceApplicationTitle();window.addEventListener('pageshow',enforceApplicationT
    あるか」しか見ておらず、リロードのpagehideで一瞬0件になっても直後の
    新しいIDのハートビートでEMPTY_GRACE_SEC以内に復帰する)ため、
    セッションをまたいだ永続化自体が不要だった。 */
-const WATCHDOG_TAB_ID=(crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random()}`);
+/* **IDは`index.html`の先頭で作って渡ってくる**（§9.284）。あちらは
+   HTMLを読んだ直後に1回名乗る——アプリのJSを読み終えるのを待っていると、
+   重い画面の読み直しで「タブが閉じた」の8秒を使い切ってアプリが終了する。
+   **同じIDを使うこと**——別々に作ると、閉じた通知が片方にしか当たらず
+   「開いたまま」の幽霊が残る。渡って来なければ今までどおりここで作る。 */
+const WATCHDOG_TAB_ID=(typeof window!=='undefined'&&window.__wlTabId)
+  ||(crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random()}`);
 /* ハートビートは「こちらが生きている」ことを伝えるだけでなく、その応答から
    「サーバーが生きているか」も分かる。応答が続けて途絶えたら画面最上部へ
    明示する。サーバーが終了していても画面は普通に見えてしまい、操作して

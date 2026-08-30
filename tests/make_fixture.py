@@ -92,6 +92,181 @@ def seed(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+# ---------------------------------------------------------------------------
+# マスタDB(db/master.sqlite3)を既知の状態へ戻す（§9.284）
+# ---------------------------------------------------------------------------
+# **なぜここでやるか。** 共有スケジュールDBと違い、マスタDBは
+# git が持っていない（`.gitignore`で`*.sqlite3`）。テストは全員この1つを
+# 共有して書き換えるので、**壊した1本が以降ずっと全部を巻き添えにする**。
+# 実測では、通しを何度か回しただけで
+#   * データソースの表示順が両方0になり、左メニューの先頭が「品質データ」に
+#     なった（`aside [data-db-key]`の先頭を押すテストが全部そちらを開き、
+#     「分割」「測定」の列も L9000 の分割ロットも無い一覧を見ていた）
+#   * 勤務体系「交替勤務(1,2,3直)」が無効になり、どの設備にも紐づかなくなった
+#     （直が引けず、現場日の補正・実績データ表・枠の直の候補が全部落ちた）
+#   * 操業データ選択肢の「オペレータ」「スプール」「板厚/板幅測定器」が
+#     消えた（旧マスタは§9.255 ③で作り直さないので、二度と戻らない）
+# という状態になっていた。**足りない行を戻し、テストが作った屑は片付ける。**
+# 触っていない行は消さない（テストが自分で作った行はそのテストのもの）。
+MASTER = ROOT / 'db' / 'master.sqlite3'
+
+# 左メニューの並び。`db_access._DEFAULT_DATA_SOURCES`の`order`と同じ値。
+# `RNEファイル`が空だと`rne_scheduler.jobs()`が1件も返さず、「今すぐ抽出」が
+# できない状態（`canRun=false`）になる。テストが空で上書きしていた。
+# **抽出テーブル・既定テーブルは触らない**——フィクスチャのDBが持つ表の名前
+# （`仕掛`／`品質データ`）はここでは分からず、書き換えると一覧が開けなくなる。
+_SOURCE_FIX = (
+    ('SIKALOTNOW', 10, '仕掛', 'SIKALOTNOW.RNE', 'sikalotnow.sqlite3',
+     'SIKALOTNOW.sqlite3'),
+    ('SIKALOTDEF', 20, '品質', 'SIKALOTDEF.RNE', 'sikalotdef.sqlite3',
+     'SIKALOTDEF.sqlite3'),
+)
+# 3直。`日付補正`は§9.195（跨いだ後の時間帯にだけ当てる）。
+_SHIFT_NAME = '交替勤務(1,2,3直)'
+_SHIFT_SEGMENTS = (('1直', '07:00', '15:00', 10, None),
+                   ('2直', '15:00', '23:00', 20, None),
+                   ('3直', '23:00', '07:00', 30, -1))
+_SHIFT_EQUIPMENT = ('テスト設備A', 'テスト設備B', 'テスト設備C', 'テスト設備D')
+# 旧マスタから移した選択肢（§9.221 ②）。旧マスタはもう作られないので、
+# 消えたら戻せるのはここだけ。**件数はテストが数える**（test_msteps）。
+_CHOICES = {
+    'オペレータ': ['作業者%02d' % i for i in range(1, 30)],
+    'スプール': ['大', '中', '小'],
+    '板厚測定器': ['マイクロメータ', 'ノギス', '非接触'],
+    '板幅測定器': ['ノギス', 'スケール', '非接触'],
+}
+# テストが作って片付けなかった行。**名前で見分けられるものだけ**片付ける
+# （反復のたびに増え、実測で設備131件・勤務体系140件まで育っていた）。
+_JUNK_EQUIPMENT = ("設備名 LIKE 'RT%新設備'", "設備名 LIKE 'RT%消える設備'",
+                   "設備名 LIKE '回帰_%'")
+_JUNK_SHIFT = ("名称 LIKE '回帰_%'", "名称 LIKE '複数設備テスト%'")
+
+
+def _tables(c) -> set:
+    return {r[0] for r in c.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+
+
+def fix_master(quiet: bool = False) -> None:
+    """マスタDBの「テストが当てにしている行」を戻す。**冪等**。"""
+    if not MASTER.exists():
+        return
+    note = (lambda *a: None) if quiet else print
+    with sqlite3.connect(MASTER) as c:
+        have = _tables(c)
+        # 1) 左メニューの並び（先頭が「仕掛」であること）
+        if 'データソースマスタ' in have:
+            for key, order, purpose, rne, out, share in _SOURCE_FIX:
+                c.execute('UPDATE [データソースマスタ] SET [表示順]=?,[有効]=-1,'
+                          '[一覧表示]=-1,[役割]=?,[RNEファイル]=?,[出力ファイル]=?,'
+                          '[共有パス]=?,[読み方]=? WHERE [キー]=?',
+                          [order, purpose, rne, out, share, '', key])
+        # 2) 設備（テストが主役に使う4つ）と、屑の片付け
+        if '設備マスタ' in have:
+            for nm in _SHIFT_EQUIPMENT:
+                if not c.execute('SELECT 1 FROM [設備マスタ] WHERE [設備名]=?',
+                                 [nm]).fetchone():
+                    c.execute('INSERT INTO [設備マスタ] ([設備名],[表示順],[有効],'
+                              '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                              "VALUES (?,10,-1,'fixture','fixture',"
+                              "datetime('now'),datetime('now'))", [nm])
+                else:
+                    c.execute('UPDATE [設備マスタ] SET [有効]=-1 WHERE [設備名]=?', [nm])
+            for w in _JUNK_EQUIPMENT:
+                c.execute('DELETE FROM [設備マスタ] WHERE ' + w)
+        # 3) 勤務体系＋勤務区分＋設備の紐づけ
+        if {'勤務体系マスタ', '勤務区分マスタ'} <= have:
+            for w in _JUNK_SHIFT:
+                c.execute('DELETE FROM [勤務区分マスタ] WHERE [勤務体系ID] IN '
+                          '(SELECT [勤務体系ID] FROM [勤務体系マスタ] WHERE ' + w + ')')
+                if '勤務体系設備マスタ' in have:
+                    c.execute('DELETE FROM [勤務体系設備マスタ] WHERE [勤務体系ID] IN '
+                              '(SELECT [勤務体系ID] FROM [勤務体系マスタ] WHERE ' + w + ')')
+                c.execute('DELETE FROM [勤務体系マスタ] WHERE ' + w)
+            # 同じ名前の体系が何本も積まれるので、**区分を持つ1本だけ残す**。
+            rows = [r[0] for r in c.execute(
+                'SELECT [勤務体系ID] FROM [勤務体系マスタ] WHERE [名称]=? '
+                'ORDER BY [勤務体系ID]', [_SHIFT_NAME])]
+            keep = None
+            for pid in rows:
+                n = c.execute('SELECT COUNT(*) FROM [勤務区分マスタ] WHERE [勤務体系ID]=?',
+                              [pid]).fetchone()[0]
+                if n >= len(_SHIFT_SEGMENTS):
+                    keep = pid
+                    break
+            if keep is None and rows:
+                keep = rows[0]
+            if keep is None:
+                c.execute('INSERT INTO [勤務体系マスタ] ([適用設備],[名称],[表示順],[有効],'
+                          '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                          "VALUES ('',?,10,-1,'fixture','fixture',"
+                          "datetime('now'),datetime('now'))", [_SHIFT_NAME])
+                keep = c.execute('SELECT last_insert_rowid()').fetchone()[0]
+            for pid in rows:
+                if pid != keep:
+                    c.execute('DELETE FROM [勤務区分マスタ] WHERE [勤務体系ID]=?', [pid])
+                    if '勤務体系設備マスタ' in have:
+                        c.execute('DELETE FROM [勤務体系設備マスタ] WHERE [勤務体系ID]=?', [pid])
+                    c.execute('DELETE FROM [勤務体系マスタ] WHERE [勤務体系ID]=?', [pid])
+            c.execute('UPDATE [勤務体系マスタ] SET [有効]=-1 WHERE [勤務体系ID]=?', [keep])
+            for nm, st, ed, od, off in _SHIFT_SEGMENTS:
+                hit = c.execute('SELECT [勤務区分ID] FROM [勤務区分マスタ] '
+                                'WHERE [勤務体系ID]=? AND [名称]=?', [keep, nm]).fetchone()
+                if hit:
+                    c.execute('UPDATE [勤務区分マスタ] SET [開始時刻]=?,[終了時刻]=?,'
+                              '[表示順]=?,[有効]=-1,[日付補正]=? WHERE [勤務区分ID]=?',
+                              [st, ed, od, off, hit[0]])
+                else:
+                    c.execute('INSERT INTO [勤務区分マスタ] ([勤務体系ID],[名称],[開始時刻],'
+                              '[終了時刻],[表示順],[有効],[日付補正],[登録者ID],[更新者ID],'
+                              '[登録日時],[更新日時]) '
+                              "VALUES (?,?,?,?,?,-1,?,'fixture','fixture',"
+                              "datetime('now'),datetime('now'))",
+                              [keep, nm, st, ed, od, off])
+            if '勤務体系設備マスタ' in have:
+                for nm in _SHIFT_EQUIPMENT:
+                    if not c.execute('SELECT 1 FROM [勤務体系設備マスタ] '
+                                     'WHERE [勤務体系ID]=? AND [設備名]=?',
+                                     [keep, nm]).fetchone():
+                        c.execute('INSERT INTO [勤務体系設備マスタ] ([勤務体系ID],[設備名],'
+                                  '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                                  "VALUES (?,?,'fixture','fixture',"
+                                  "datetime('now'),datetime('now'))", [keep, nm])
+        # 4) 旧マスタから移した選択肢（消えたら戻せるのはここだけ）
+        if '操業データ選択肢マスタ' in have:
+            for name, values in _CHOICES.items():
+                n = c.execute('SELECT COUNT(*) FROM [操業データ選択肢マスタ] '
+                              'WHERE [選択肢名]=? AND [有効]=-1', [name]).fetchone()[0]
+                if n:
+                    continue
+                for i, v in enumerate(values, 1):
+                    c.execute('INSERT INTO [操業データ選択肢マスタ] ([選択肢名],[値],[表示順],'
+                              '[有効],[対象設備],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                              "VALUES (?,?,?,-1,'','fixture','fixture',"
+                              "datetime('now'),datetime('now'))", [name, v, i * 10])
+                note(f'  選択肢「{name}」を{len(values)}件戻しました')
+        # 5) 「みんなのもの／自分だけ」の置き土産（§9.259・§9.274 追補）
+        # **行が有る＝その人はその一覧で個人設定を使う**ので、1行残るだけで
+        # 以降の全テストが「保存したのにマスタに入っていない」を見ることに
+        # なる（実測: `root`の`list:SIKALOTNOW:仕掛`が残っていて、
+        # test_collayout の7件・test_lcpanel の8件がそれで落ちていた）。
+        # **丸ごと空にする**——ここは「どちらを使うか」の覚えだけで、
+        # 中身（列の並び・幅）は列レイアウトマスタが持つ。
+        if '列レイアウト個人設定マスタ' in have:
+            c.execute('DELETE FROM [列レイアウト個人設定マスタ]')
+        # 6) 列の見せ方そのものの置き土産（§9.121）
+        # ランナーの`resetcontent`は`timeline:`／`print:`／`report:`だけを
+        # 戻していて、**一覧（`list:<DB>:<表>`）が抜けていた**。test_collayout は
+        # 毎回「2列目を非表示にする」ので、**回すたびに1列ずつ隠れていき**、
+        # やがて見出しが3つを切って`waitForFunction`が時間切れになる
+        # （実測: 10件まで進んで FATAL）。**保存は全置換なので消せば既定へ戻る。**
+        if '列レイアウトマスタ' in have:
+            c.execute("DELETE FROM [列レイアウトマスタ] WHERE [対象] LIKE 'list:%' "
+                      "OR [対象]='records:list' OR [対象] LIKE 'timeline:%' "
+                      "OR [対象] LIKE 'print:%' OR [対象] LIKE 'report:%'")
+        c.commit()
+
+
 def main() -> int:
     if not SHARE.exists():
         print(f'!! フィクスチャがありません: {SHARE}', file=sys.stderr)
@@ -106,6 +281,7 @@ def main() -> int:
         seed(conn)
         print('作り直した後:')
         show(conn)
+    fix_master()
     return 0
 
 

@@ -15,7 +15,21 @@
 <html class="app-booting boot-cold" lang="ja" style="background:#0d2029"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/><title>測定伝送システム</title><link rel="icon" href="{{url_for('static',filename='favicon.svg')}}" type="image/svg+xml"/><link href="{{url_for('core.boot_css')}}?t={{asset_token}}" rel="stylesheet"/><link id="appCss" href="{{url_for('core.app_css')}}?t={{asset_token}}" rel="stylesheet" media="print"/>
 <script>/* 保険。base.jsが読めない/例外で止まった場合でも、必ず本体を見せる。 */
 setTimeout(function(){var r=document.documentElement;r.classList.remove('app-booting');r.classList.remove('boot-cold');
- var o=document.getElementById('appBoot');if(o)o.remove()},12000);</script></head><body>
+ var o=document.getElementById('appBoot');if(o)o.remove()},12000);
+/* **開いていることは、いちばん先に名乗る**（§9.284）。
+   読み直し（F5）でも`pagehide`は発火するので、サーバーは「タブが閉じた」と
+   受け取り**8秒**だけ待つ（§9.98。ここを延ばすと、本当に閉じたときに
+   アプリが1分半残る）。名乗るのが`base.js`だと、アプリのJS（1.4MB）を
+   読み込んで実行し終えるまで名乗れず、**重い画面の読み直しでその8秒を
+   使い切ってアプリが終了する**ことがあった（実測: 回帰テストの仕掛一覧）。
+   ここはHTMLを読んだ直後に走るので、名乗りは数msで届く。
+   **IDはここで作って`base.js`へ渡す**——2つ作ると、閉じた通知が別のIDへ行き
+   「開いたまま」の幽霊が残る。 */
+try{window.__wlTabId=(self.crypto&&crypto.randomUUID)?crypto.randomUUID()
+  :(Date.now()+'-'+Math.random());
+ fetch('/api/heartbeat?tab='+encodeURIComponent(window.__wlTabId),
+   {method:'POST',cache:'no-store',keepalive:true}).catch(function(){});
+}catch(e){}</script></head><body>
 <!-- 起動オーバーレイ。起動待機画面(loading.html)から意匠と段階リストを
      そのまま引き継ぎ、7〜10段階目(ブラウザ側)を進める。 -->
 <div id="appBoot" role="status" aria-live="polite"><div class="boot-card">

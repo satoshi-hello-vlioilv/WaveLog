@@ -142,10 +142,23 @@ async function cleanup(){
   rec('もう一度自分だけにすると続きから使える',(kept.widths||{})[COMMON.col]===456,
       JSON.stringify((kept.widths||{})[COMMON.col]));
 
-  /* ========== 5) 利用者IDが分からない端末では押せない ========== */
+  /* ========== 5) 利用者IDが分からない端末では押せない ==========
+     **「空を送れば断られる」を期待しないこと。** 誰の操作かは
+     `request_user_id()`＝`current_login_id()`の1箇所が答える（§9.276 ③）ので、
+     ログインIDを持つ端末では空にならない——空を送っても**この端末のID**で
+     受ける。ここで守りたいのは§9.259の「**空を1つの入れ物にしない**」
+     （IDを名乗れない端末どうしが同じ個人設定を共有してしまう）ほうなので、
+     **空の持ち主の行ができないこと**を見る。IDを本当に持たない端末で断る
+     ことは、この下の網（`user=`で読んで「持てない」と答える）が見ている。 */
   const noUid=await post('/api/column-layout-master/scope',{target:TARGET,scope:'personal',user_id:''});
-  rec('IDが空のままでは切り替えを断る',noUid.code===400&&/利用者ID/.test(noUid.json.error||''),
-      noUid.code+' '+(noUid.json.error||'').slice(0,40));
+  const asEmpty=await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(TARGET)+'&user=')
+    .then(r=>r.json()).catch(()=>({}));
+  rec('空のIDでは「空の持ち主」を作らない',
+      (noUid.code===400&&/利用者ID/.test(noUid.json.error||''))
+      ||(noUid.code===200&&asEmpty.scope==='common'),
+      noUid.code+' '+JSON.stringify({scope:noUid.json&&noUid.json.scope,空で読むと:asEmpty.scope}));
+  /* この端末のIDで個人設定にしてしまったので共通へ戻す（§9.121）。 */
+  await post('/api/column-layout-master/scope',{target:TARGET,scope:'common'});
   await page.evaluate(()=>localStorage.removeItem('AccessMeasurementUserId'));
   await page.evaluate(()=>WL.columnLayout.forget&&WL.columnLayout.forget());
   const noUidUi=await page.evaluate(async()=>{

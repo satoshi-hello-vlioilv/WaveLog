@@ -113,8 +113,15 @@ const made={perm:[],cat:[]};
     k:x.dataset.navGroup,folded:x.classList.contains('is-folded'),
     count:x.querySelector('.mm-nav-count')?.textContent,
     items:x.querySelectorAll('[data-master]').length})));
+  /* **「移行済み」の群は、移行済みの表が1つでも実在するときだけ出る**
+     （§9.255 ③で旧マスタは無ければ作らなくなったので、まっさらな端末には
+     そもそも無い）。**在る群だけを見る**——`'internal,retired'`と決め打ちに
+     すると、旧マスタの無い環境では**製品が正しいのに必ず落ちる**（§9.200）。 */
+  const foldable=['internal','retired'];
   rec('内部データと移行済みは畳んだ状態が既定',
-      folds.filter(f=>f.folded).map(f=>f.k).sort().join(',')==='internal,retired',
+      folds.filter(f=>foldable.includes(f.k)).length>0
+      &&folds.filter(f=>foldable.includes(f.k)).every(f=>f.folded)
+      &&folds.filter(f=>f.folded).every(f=>foldable.includes(f.k)),
       JSON.stringify(folds.map(f=>f.k+':'+(f.folded?'畳':'開'))));
   rec('畳んでも件数は文字で出る（何を畳んでいるのか分かる）',
       folds.filter(f=>f.folded).every(f=>Number(f.count)>0&&f.items===0),JSON.stringify(folds));
@@ -278,9 +285,12 @@ const made={perm:[],cat:[]};
   rec('テーブル生データタブでmaster.sqlite3の表を閲覧できる',
       raw.sel&&raw.tables.length>0&&raw.table&&raw.cols>0,
       JSON.stringify({n:raw.tables.length,cols:raw.cols}));
-  rec('設備停止・勤務形態・稼働カレンダー・換算係数がmaster.sqlite3に統合された',
-    ['設備停止マスタ','勤務形態マスタ','稼働カレンダーマスタ','負荷率上書きマスタ']
-      .every(t=>raw.tables.includes(t)),raw.tables.join(','));
+  /* **勤務形態は「勤務体系＋勤務区分」の2枚になった**（フラットな
+     `勤務形態マスタ`は移行済みで、§9.255 ③により無ければ作らない）。
+     いま在る名前で見ること——旧い名前を待ち続ける網は永久に赤いまま残る。 */
+  rec('設備停止・勤務体系・勤務区分・稼働カレンダー・換算係数がmaster.sqlite3に統合された',
+    ['設備停止マスタ','勤務体系マスタ','勤務区分マスタ','稼働カレンダーマスタ',
+     '負荷率上書きマスタ'].every(t=>raw.tables.includes(t)),raw.tables.join(','));
 
   /* ---- ① 形: 他ナビへ移ると閉じる（旧 test_p11） ---- */
   await page.click('aside [data-db-key="SIKALOTNOW"]');

@@ -161,9 +161,27 @@ let b=null;
    await fetch('/api/schedule/shift-pattern-master/delete',{method:'POST',
      headers:{'Content-Type':'application/json'},body:JSON.stringify({id:x.id,user_id:'test-workable'})});
  });
+ /* **材料は自分で用意する**（§9.248 ⑥）。「設備を選んでいない勤務体系」が
+    たまたま残っているかどうかに頼ると、フィクスチャを整えた環境では
+    **製品が正しいのに落ちる**（実際に落ちた）。作って確かめて消す。 */
+ const noEq=await page.evaluate(async()=>{
+  const r=await fetch('/api/schedule/shift-pattern-master',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name:'全設備共通テスト',equipment:[],segments:[
+      {name:'日勤',start:'08:00',end:'17:00'}],user_id:'test-workable'})}).then(x=>x.json());
+  const all=await fetch('/api/schedule/shift-pattern-master?scope=all').then(x=>x.json());
+  const hit=(all.items||[]).find(i=>i.name==='全設備共通テスト');
+  return {ok:!!r&&!r.error,eq:hit?hit.equipment:null,text:hit?hit.equipmentText:'',id:hit?hit.id:null};
+ });
  rec('未選択は「全設備共通」として扱う',
-   api.some(i=>Array.isArray(i.eq)&&i.eq.length===0&&i.text==='全設備共通'),
-   JSON.stringify(api.filter(i=>i.eq.length===0).slice(0,1)));
+   Array.isArray(noEq.eq)&&noEq.eq.length===0&&noEq.text==='全設備共通',
+   JSON.stringify(noEq));
+ /* 後始末（マスタDBは実行をまたいで生き延びる。§9.121）。 */
+ if(noEq.id!=null)await page.evaluate(async id=>{
+  await fetch('/api/schedule/shift-pattern-master/delete',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({id,user_id:'test-workable'})});
+ },noEq.id);
 
  await b.close();
  const ng2=R.filter(x=>!x.ok);

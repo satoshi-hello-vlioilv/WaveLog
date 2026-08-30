@@ -127,7 +127,7 @@ def install(app):
  return app
 
 def _loop():
- global _empty_since
+ global _empty_since,_closed_notice
  while True:
   # 「閉じた」と告げられた直後だけ細かく見る(§9.98)。10秒間隔のままだと
   # 8秒の猶予を確かめるのが最大10秒後になり、結局18秒近くかかる。
@@ -141,6 +141,14 @@ def _loop():
    closed=_closed_notice
   if not empty:
    _empty_since=None
+   # **タブが戻ったら「閉じたと告げられた」は過去のこと**（§9.284）。
+   # 以前はこの旗が一度立つと二度と下りず、**次に0件になったときの意味に
+   # 関わらず8秒で終了**していた。リロードで一度立ってしまうと、以降は
+   # 「気づいたら0件だった」（通知が届かなかった・スリープ復帰・重い画面の
+   # 読み直し）まで8秒扱いになる——§9.98で「8秒へ揃えるとリロードや別ページへ
+   # の移動で終了してしまう」と書いた壊れ方そのものが、旗の消し忘れで
+   # 起きていた（実測: 回帰テストの重い一覧を読み直すとアプリが落ちた）。
+   _closed_notice=False
    continue
   if _empty_since is None:
    _empty_since=now
