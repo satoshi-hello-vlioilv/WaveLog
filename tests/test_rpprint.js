@@ -669,6 +669,51 @@ let b=null;
       piv.縦.器===0&&piv.横1件.器===0,JSON.stringify([piv.縦,piv.横1件]));
 
   /* ==========================================================
+     内訳の列数が空でも、表に組んだ形は崩れない（§9.279、利用者の報告）
+     ----------------------------------------------------------
+       「保存した設定と帳票レイアウト(プレビュー)が合っていません。
+        帳票ブロックでの表示が正です」
+
+     欄の説明は「空欄なら**中身の数から決まります**」と約束しているのに、
+     紙は`Number(cols)||2`でいつも2列に落ちていた。表に組んだ塊が2列に
+     潰れると、見出しと値が総崩れになる（利用者の画像がまさにこれ）。
+
+     **当てられるときだけ当てる**——「すき間なく埋まる」だけでは決まらない
+     （合計が3でも5でも割り切れる）。左上の空きマスの`縦`が2以上のときは
+     1段目の見出しの並びから一意に決まるので、そこだけ当てる。
+     ========================================================== */
+  const derived=await page.evaluate(()=>{
+   const c=(o)=>['',''].concat([o]);  /* [label,value,opt] の形 */
+   const cell=(label,value,o)=>[label,value,Object.assign({span:1,rows:1},o||{})];
+   /* 行＝対象／列＝項目（板厚・板幅）×集計（MAX・MIN）＝5列の形 */
+   const table=[
+    cell('','',{blank:true,span:1,rows:2}),
+    cell('板厚','',{head:true,span:2}),cell('板幅','',{head:true,span:2}),
+    cell('MAX','',{head:true}),cell('MIN','',{head:true}),
+    cell('MAX','',{head:true}),cell('MIN','',{head:true}),
+    cell('全体','',{head:true}),
+    cell('a','1',{showLabel:false}),cell('b','2',{showLabel:false}),
+    cell('c','3',{showLabel:false}),cell('d','4',{showLabel:false})];
+   const plain=[cell('ロット番号','L1'),cell('取引先','A'),
+                cell('用途','B'),cell('納入先','C')];
+   const cols=h=>{const d=document.createElement('div');d.innerHTML=h;
+     const g=d.querySelector('.rp-grid');
+     return g?(g.style.getPropertyValue('--rp-cols')||g.className):'(格子なし)'};
+   const S=WL.reportSectionHtml;
+   return {表_空:cols(S('T',table,0)),表_5:cols(S('T',table,5)),
+     表_指定3:cols(S('T',table,3)),ふつう_空:cols(S('T',plain,0))};
+  });
+  rec('§9.279 内訳の列数が空でも、表に組んだ形の列数を保つ',
+      derived.表_空==='5'&&derived.表_5==='5',JSON.stringify(derived));
+  /* **欄が持ち主**（§CLAUDE 8）——数が入っていればそれに従う（当て直さない）。 */
+  rec('§9.279 欄に数が入っていればそれが勝つ',derived.表_指定3==='3',derived.表_指定3);
+  /* **もう片側**——ふつうの「ラベル＝値」の並びは今までどおり2列
+     （現場の紙を勝手に変えない）。 */
+  rec('§9.279 ふつうの並びは今までどおり（当てに行かない）',
+      derived.ふつう_空.indexOf('rp-grid')>=0&&derived.ふつう_空.indexOf('rp-grid-m')<0,
+      derived.ふつう_空);
+
+  /* ==========================================================
      塊の中もグリッド（§9.255 ②、利用者の指示）
      ----------------------------------------------------------
        「帳票ブロックマスタも『紙での並び』の部分は単純に何列何行だけでなく、

@@ -467,6 +467,9 @@
  /* エリアの塊（§9.234 ⑤）。**帳票ブロックマスタの見本もここを通す**
     （§9.163。2つ目の組み立てを持つと、盤で見た枠と紙の枠が食い違う）。 */
  WL.reportStat.areaHtml=t=>rpAreaHtml(t==null?'':String(t));
+ /* 節そのものを組む1本（§9.279）。**網はここを直に呼ぶ**——内訳の列数を
+    空にしたときの形は、塊を保存しないと確かめられないでは網が重くなる。 */
+ WL.reportSectionHtml=(title,rows,cols)=>reportSection(title,rows||[],cols||0);
 
  function bulkPrintNow(items,area){
   area.innerHTML=items.map(x=>`<div class="rp-report rp-page${rpOrientation==='landscape'?' rp-landscape':''}">${reportHtml(x)}</div>`).join('');
@@ -513,11 +516,75 @@
     調整できるように」）。縦に伸ばした項目の隣が空くので、**詰め方は
     `dense`**——空いたマスへ後ろの1マスの項目が入る（そこも空けたいときは
     「空きマス」を置く）。 */
+ /* 内訳の列数が空のとき、**マスの並びから何列かを当てる**（§9.279、利用者の
+    報告「保存した設定と帳票レイアウト(プレビュー)が合っていません」）。
+    欄の説明は「空欄なら**中身の数から決まります**」と約束しているのに、紙は
+    いつも2列に落ちていた——**表に組んだ塊が2列に潰れる**ので、見出しと値が
+    総崩れになる（利用者の画像がまさにこれ）。
+    当て方は「その列数で**すき間なく敷き詰められるか**」を1つずつ試すだけ
+    ——表に組んだ形は必ずぴったり埋まるので、いちばん小さい列数が答え。
+    **埋まらなければ0を返す**（当てずっぽうで並べない。呼ぶ側が2列へ落とす）。 */
+ function rpPackFits(rows,n){
+  const occ=[];let r=0,c=0;
+  const at=(rr,cc)=>(occ[rr]&&occ[rr][cc])||0;
+  const put=(rr,cc)=>{occ[rr]=occ[rr]||[];occ[rr][cc]=1};
+  for(const row of rows){
+   const o=(row&&row[2])||{};
+   const sp=Math.max(1,Math.min(n,Number(o.span)||1));
+   const tall=Math.max(1,Math.min(12,Number(o.rows)||1));
+   let guard=0;
+   while(guard++<400){
+    while(c<n&&at(r,c))c++;
+    if(c+sp>n){r++;c=0;continue}
+    break;
+   }
+   if(guard>=400)return false;
+   for(let i=0;i<tall;i++)for(let j=0;j<sp;j++)put(r+i,c+j);
+   c+=sp;
+  }
+  /* **どの段もぴったり埋まっていること**——1つでも欠けていれば、その列数では
+     見出しと値がずれる（＝この形ではない）。 */
+  for(let rr=0;rr<occ.length;rr++){
+   let filled=0;
+   for(let cc=0;cc<n;cc++)if(at(rr,cc))filled++;
+   if(filled!==n)return false;
+  }
+  return occ.length>0;
+ }
+ /* **当てられるときだけ当てる**（§9.279）。「すき間なく埋まる」だけでは
+    決まらない——マスの合計が3でも5でも割り切れることがあり、**小さいほうを
+    選ぶと見出しがずれる**（実際に5列の表が3列と判定された）。
+    表に組んだ形は**左上が空きマス**で始まり、その`縦`が見出しの段数・
+    `横`が行の見出しの本数なので、**見出しが2段以上のとき**は1段目の
+    「同じ幅の見出しの並び」から列数が一意に決まる。
+    段が1つのときは body の行見出しと見分けが付かないので**当てない**
+    （当てずっぽうで並べるより、今までどおり2列のほうがまだ読める）。 */
+ function rpDeriveCols(rows){
+  const at=i=>(rows[i]&&rows[i][2])||{};
+  const head0=at(0);
+  if(!head0.blank)return 0;
+  const wide=Math.max(1,Number(head0.span)||1);
+  const deep=Math.max(1,Number(head0.rows)||1);
+  if(deep<2)return 0;
+  const sp=Math.max(1,Number(at(1).span)||1);
+  let k=0;
+  for(let i=1;i<rows.length;i++){
+   const x=at(i);
+   if(!x.head||Math.max(1,Number(x.span)||1)!==sp)break;
+   k++;
+  }
+  if(!k)return 0;
+  const n=wide+sp*k;
+  return (n>=2&&n<=12&&rpPackFits(rows,n))?n:0;
+ }
  function reportSection(title,rows,cols){
-  const n=Math.max(1,Math.min(12,Number(cols)||2));
   /* 「マトリクスとして組む」のは、1マスでない行か空きマスがあるときだけ。 */
   const matrix=rows.some(r=>r&&r[2]&&((Number(r[2].span)||1)>1
     ||(Number(r[2].rows)||1)>1||r[2].blank||r[2].head));
+  /* **欄に数が入っていればそれが持ち主**（§CLAUDE 8）。空のときだけ当てる
+     ——ふつうの「ラベル＝値」の並びは今までどおり2列（現場の紙を変えない）。 */
+  const want=Math.max(0,Math.min(12,Number(cols)||0));
+  const n=Math.max(1,want||(matrix?(rpDeriveCols(rows)||2):2));
   /* 寄せは`@layer utility`の`.al-*`（§9.239 ④）——一覧と同じ1組を使う
      （帳票だけ別の綴りを作らない）。 */
   const AL={left:' al-l',center:' al-c',right:' al-r'};
