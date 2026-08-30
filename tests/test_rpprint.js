@@ -691,7 +691,8 @@ let b=null;
     cell('板厚','',{head:true,span:2}),cell('板幅','',{head:true,span:2}),
     cell('MAX','',{head:true}),cell('MIN','',{head:true}),
     cell('MAX','',{head:true}),cell('MIN','',{head:true}),
-    cell('全体','',{head:true}),
+    /* 行の見出しには必ず`左`が付く（盤が出す形・§9.280） */
+    cell('全体','',{head:true,align:'left'}),
     cell('a','1',{showLabel:false}),cell('b','2',{showLabel:false}),
     cell('c','3',{showLabel:false}),cell('d','4',{showLabel:false})];
    const plain=[cell('ロット番号','L1'),cell('取引先','A'),
@@ -712,6 +713,68 @@ let b=null;
   rec('§9.279 ふつうの並びは今までどおり（当てに行かない）',
       derived.ふつう_空.indexOf('rp-grid')>=0&&derived.ふつう_空.indexOf('rp-grid-m')<0,
       derived.ふつう_空);
+
+  /* ==========================================================
+     列軸が1本でも、行軸が2本でも当てる（§9.280、利用者の報告）
+     ----------------------------------------------------------
+       「VER2.158.2でもまだ直っていません。帳票レイアウト(プレビュー)が
+        ２列で変わっていない」
+
+     §9.279は「左上の空きマスの**縦が2以上**のときだけ当てる」としていた。
+     ところが**列の軸が1本**なら縦は1で、これは`行＝項目／列＝集計`という
+     **いちばん多い形**そのもの——`行＝対象・項目／列＝集計`も同じ。
+     どちらも当てるのを諦めて2列へ落ち、表が総崩れになっていた。
+     さらに、段が2つでも**内側の軸が1個**だと段1と段2の幅が同じになるので、
+     「同じ幅の見出しが続くあいだ」で数える旧実装は数えすぎて外れる。
+
+     いまは**寄せ**で見分ける——盤は段の見出しに寄せを与えず（＝中央）、
+     行の見出しには必ず`左`を与えるので、
+     **n＝行の見出しの本数 ＋ 見出しの段の横幅の合計 ÷ 段数**で一意に決まる。
+     ========================================================== */
+  const derived2=await page.evaluate(()=>{
+   const cell=(label,value,o)=>[label,value,Object.assign({span:1,rows:1},o||{})];
+   const H=(t,o)=>cell(t,'',Object.assign({head:true},o||{}));      /* 段の見出し */
+   const RH=t=>cell(t,'',{head:true,align:'left'});                 /* 行の見出し */
+   const V=v=>cell('',v,{showLabel:false,align:'right'});
+   /* いちばん多い形: 行＝項目（板厚・板幅）／列＝集計（MIN・MAX）＝3列 */
+   const C=[cell('','',{blank:true,span:1,rows:1}),H('MIN'),H('MAX'),
+     RH('板厚'),V('1'),V('2'),RH('板幅'),V('3'),V('4')];
+   /* 行が2本: 行＝対象・項目／列＝集計＝4列（利用者の画像の形） */
+   const B=[cell('','',{blank:true,span:2,rows:1}),H('MIN'),H('MAX'),
+     cell('対象','L1',{showLabel:false,align:'left'}),RH('板厚'),V('1'),V('2'),
+     cell('','',{blank:true}),RH('板幅'),V('3'),V('4')];
+   /* 段が2つ・内側の軸が1個（段1と段2の幅が同じ）＝3列 */
+   const D=[cell('','',{blank:true,span:1,rows:2}),H('板厚'),H('板幅'),
+     H('MIN'),H('MIN'),RH('全体'),V('1'),V('2')];
+   /* 手で足し引きして**敷き詰まらなくなった**並び（見出し3・値2）。
+      当てた数(4)では埋まらないので、当てずに今までどおり2列へ落とす。 */
+   const X=[cell('','',{blank:true,span:1,rows:1}),H('MIN'),H('MAX'),H('AVE'),
+     V('1'),V('2')];
+   const cols=h=>{const d=document.createElement('div');d.innerHTML=h;
+     const g=d.querySelector('.rp-grid');
+     return g?(g.style.getPropertyValue('--rp-cols')||g.className):'(格子なし)'};
+   const S=WL.reportSectionHtml;
+   return {行1列1_空:cols(S('T',C,0)),行2列1_空:cols(S('T',B,0)),段2内側1_空:cols(S('T',D,0)),
+     /* 欄に数が入っていれば今までどおりそれが持ち主（§CLAUDE 8）。
+        盤の見本も紙もこの1本を通るので、欄に従うかぎり2つは必ず一致する。 */
+     行1列1_欄3:cols(S('T',C,3)),行1列1_欄2:cols(S('T',C,2)),
+     敷き詰まらない_空:cols(S('T',X,0))};
+  });
+  rec('§9.280 列の軸が1本でも当てる（行＝項目／列＝集計＝いちばん多い形）',
+      derived2.行1列1_空==='3',JSON.stringify(derived2));
+  rec('§9.280 行の軸が2本でも当てる（利用者の画像の形）',
+      derived2.行2列1_空==='4',derived2.行2列1_空);
+  rec('§9.280 段が2つで内側の軸が1個でも当てる（幅で数えない）',
+      derived2.段2内側1_空==='3',derived2.段2内側1_空);
+  /* **もう片側**——欄に数が入っていれば今までどおりそれが持ち主
+     （§CLAUDE 8）。当て直さないので、盤の見本と紙は必ず同じ形になる。 */
+  /* **当てずっぽうで並べない**——当てた数で敷き詰められないなら、その形では
+     ないので当てない（今までどおり2列。§4）。手で足し引きした並びが該当する。 */
+  rec('§9.280 当てた数で敷き詰められないなら当てない（今までどおり2列）',
+      derived2.敷き詰まらない_空==='2',derived2.敷き詰まらない_空);
+  rec('§9.280 欄に数が入っていれば今までどおりそれが効く（当て直さない）',
+      derived2.行1列1_欄3==='3'&&derived2.行1列1_欄2==='2',
+      JSON.stringify([derived2.行1列1_欄3,derived2.行1列1_欄2]));
 
   /* ==========================================================
      塊の中もグリッド（§9.255 ②、利用者の指示）
