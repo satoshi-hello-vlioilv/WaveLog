@@ -15,7 +15,8 @@
      3. 幅・行数をマスタで変えると**紙の既定**にも出る
      4. 「有効」を外すと`builtinOff`で名指しされ、**紙から消える**
      5. 内容を書き換えると紙に出て、**空にすると画面がもともと持つ形へ戻る**
-     6. 中身がコードの塊は`contentEditable:false`（書いても効かないと分かる）
+     6. `contentEditable`は「既定の中身をマスタに持っているか」の印
+        （**書けばどの塊でも紙に出る**・§9.278）
 
    後片付けは finally で必ず行う。**マスタは実行をまたいで生き延びる**
    （§9.121）ので、戻し忘れると次の実行が引き継ぐ。
@@ -82,7 +83,11 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
       JSON.stringify({基本情報:!!basic,異常位置判定:!!defect}));
   if(!basic||!defect)throw Error('種が入っていない');
   touched.push({...basic},{...defect});
-  rec('中身がコードの塊は「書き換えられない」と分かる',
+  /* `contentEditable`は「**既定の中身をマスタに持っているか**」の印（§9.278）。
+     **「書いても効かない」という意味ではない**——書けばどの塊でも紙に出る
+     （5bで確かめる）。ここが効くのは、開いたときに既定の並びが入っているか
+     どうかだけ。 */
+  rec('既定の中身を持つ塊と、持たない塊を見分けられる',
       basic.contentEditable===true&&defect.contentEditable===false,
       JSON.stringify({基本情報:basic.contentEditable,異常位置判定:defect.contentEditable}));
   rec('既定の塊は中身の並びを持っている（ラベル＝出どころ）',
@@ -164,6 +169,63 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   rec('内容を空にすると画面がもともと持つ形へ戻る',
       back.length>2&&back.includes('ロット番号')&&!back.includes(TAG),
       JSON.stringify(back.slice(0,4))+` /${back.length}件`);
+
+  /* ---- 5b) **中身がコードの塊でも、マスの並びを書けば紙に出る**
+     （§9.278、利用者の報告「帳票レイアウトの紙の表示では、組んだ通りの表で
+      ないだけでなく、指定してもいない項目も板丈として出ており…今までの表示と
+      変わらない」）
+
+     以前は`contentEditable`（＝既定の中身をマスタに持っているか）でも絞って
+     いたので、**盤では組めるのに紙はコードの既定のまま**という塊があった。
+     `測定値の統計`がまさにそれで、ピボットに組んでも紙は今までの横一列の表が
+     出ていた（押せるのに何も起きない・§4）。
+     **確かめるのは`contentEditable:false`の塊で**——`基本情報`（true）で試す
+     網は直す前でも通る。 */
+  /* **紙に出ている塊で試すこと**——`測定値の統計`は分割の無いロットでは
+     既定で隠れる（§9.248 ②）ので、そこで試すと「出ない」としか分からない。 */
+  const stat=(all.items||[]).find(x=>x.builtin==='品質等級');
+  rec('前提: 品質等級は「中身がコードの塊」（contentEditable:false）',
+      !!stat&&stat.contentEditable===false,
+      JSON.stringify(stat&&{n:stat.name,ce:stat.contentEditable}));
+  if(stat){
+   touched.push({...stat});
+   const before=await page.evaluate(()=>{
+    const s=document.querySelector('[data-rp-block="品質等級"]');
+    return {あり:!!s,表:!!(s&&s.querySelector('table')),
+      格子:!!(s&&s.querySelector('.rp-grid')),
+      ラベル:[...(s?s.querySelectorAll('.rp-field-label'):[])].length};
+   });
+   rec('前提: いまはコードが作る中身で出ている',
+       before.あり&&before.ラベル===0,JSON.stringify(before));
+   await post('/api/report-block-master/update',
+     {id:stat.id,equipment:stat.equipment,name:stat.name,order:stat.order,
+      span:stat.span,rows:stat.rows,note:stat.note,enabled:true,cols:2,
+      content:TAG+'幅MIN=stat.width.min\n'+TAG+'幅MAX=stat.width.max',user_id:TAG});
+   await page.evaluate(()=>WL.reportBlocks.forget());
+   await openReport(page);
+   const now=await page.evaluate(()=>{
+    const s=document.querySelector('[data-rp-block="品質等級"]');
+    return {表:!!(s&&s.querySelector('table')),
+      ラベル:[...(s?s.querySelectorAll('.rp-field-label'):[])].map(e=>e.textContent)};
+   });
+   rec('中身がコードの塊でも、マスの並びを書けば紙に出る',
+       now.ラベル.filter(t=>t.indexOf(TAG)===0).length===2,
+       JSON.stringify(now));
+   await post('/api/report-block-master/update',
+     {id:stat.id,equipment:stat.equipment,name:stat.name,order:stat.order,
+      span:stat.span,rows:stat.rows,note:stat.note,enabled:true,cols:stat.cols,
+      content:'',user_id:TAG});
+   await page.evaluate(()=>WL.reportBlocks.forget());
+   await openReport(page);
+   const back2=await page.evaluate(()=>{
+    const s=document.querySelector('[data-rp-block="品質等級"]');
+    return {あり:!!s,ラベル:[...(s?s.querySelectorAll('.rp-field-label'):[])].length};
+   });
+   /* **もう片側**——空にしたら今までどおりコードの中身へ戻る（`[内容]`を
+      触っていない現場の紙は1マスも変わらない）。 */
+   rec('空にすればコードの中身へ戻る（触っていない現場の紙は変わらない）',
+       back2.あり&&back2.ラベル===0,JSON.stringify(back2));
+  }
 
   /* ---- 6) 改名は**紙の見出しまで**変わる（§9.219 ②／§CLAUDE 8） ----
      組み換えの帯・パレット・ゴーストだけが新しい名前になり、紙の見出しは
