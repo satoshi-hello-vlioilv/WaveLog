@@ -139,14 +139,13 @@ const KEYS=['label','path','kind','span','rows','showLabel','align','format','lo
    const bar=document.querySelector('.fb-axes');
    if(!bar||bar.hidden)return {hidden:true};
    return {軸:[...bar.querySelectorAll('.fb-axis>b')].map(e=>e.textContent),
-     置き場:[...bar.querySelectorAll('.fb-axis')].map(a=>a.querySelector('b').textContent+'='
-       +[...a.querySelectorAll('button')].filter(x=>x.classList.contains('is-on'))
-         .map(x=>x.textContent).join('')),
+     置き場:[...bar.querySelectorAll('[data-fb-box]')].map(x=>x.dataset.fbBox+'='
+       +[...x.querySelectorAll('.fb-axis')].map(c=>c.dataset.fbAxis).join('・')),
      いま:(bar.querySelector('.fb-axes-now')||{}).textContent||''};
   });
-  rec('② 軸の帯が「どの軸をどこへ置くか」を出す（既定は1つ目が行・残りが列）',
+  rec('② 軸の箱が「どの軸をどこへ置くか」を出す（既定は1つ目が行・残りが列）',
       !bar0.hidden&&bar0.軸.join(',')==='項目,集計'
-      &&bar0.置き場.join(' / ')==='項目=行 / 集計=列'
+      &&bar0.置き場.join(' / ')==='行=項目 / 列=集計'
       &&/3列/.test(bar0.いま),
       JSON.stringify(bar0));
 
@@ -170,21 +169,21 @@ const KEYS=['label','path','kind','span','rows','showLabel','align','format','lo
 
      §9.274 の頃は候補が`row`/`col`という**置き場つきの名前**を名乗って
      おり、「板厚は行・MINは列」の**1通り**しか作れなかった。 */
+  /* **掴めない環境でも置き場を変えられること**（§9.278）——札は掴んで
+     動かせるが、`◯◯へ`のボタンでも同じことが起きる。片方だけの実装を
+     通さないため、網は**押す道**で確かめる（掴む道は⑧で別に見る）。 */
   const axAt=(name,at)=>page.evaluate(([n,a])=>{
-   const x=[...document.querySelectorAll('.fb-axes .fb-axis')]
-     .find(e=>e.querySelector('b').textContent===n);
-   const b=x&&[...x.querySelectorAll('button')].find(e=>e.textContent===a);
-   if(!b||b.disabled)return false;
+   const b=document.querySelector(`[data-fb-move="${n}"]`);
+   if(!b||b.disabled||b.dataset.fbTo!==a)return false;
    b.click();return true;
   },[name,at]);
   const axState=()=>page.evaluate(()=>{
    const bar=document.querySelector('.fb-axes');
    const t=document.querySelector('.fb-table');
    return {hidden:!bar||bar.hidden,
-     置き場:bar&&!bar.hidden?[...bar.querySelectorAll('.fb-axis')].map(a=>
-       a.querySelector('b').textContent+'='
-       +[...a.querySelectorAll('button')].filter(x=>x.classList.contains('is-on'))
-         .map(x=>x.textContent).join('')).join(' / '):'',
+     置き場:bar&&!bar.hidden?[...bar.querySelectorAll('[data-fb-box]')].map(x=>
+       x.dataset.fbBox+'='+[...x.querySelectorAll('.fb-axis')]
+         .map(c=>c.dataset.fbAxis).join('・')).join(' / '):'',
      bad:!!(bar&&bar.querySelector('.fb-axes-bad')),
      いま:(bar&&(bar.querySelector('.fb-axes-now')||{}).textContent)||'',
      組む:{dis:t.disabled,title:t.title}};
@@ -200,7 +199,7 @@ const KEYS=['label','path','kind','span','rows','showLabel','align','format','lo
   const bothCol=await axState();
   rec('②-b 行に置く軸が無くなったら押せなくして理由を書く（§4）',
       bothCol.bad&&bothCol.組む.dis&&/行/.test(bothCol.組む.title)
-      &&bothCol.置き場==='項目=列 / 集計=列',
+      &&bothCol.置き場==='行= / 列=集計・項目',
       JSON.stringify(bothCol));
   await axAt('集計','行');await page.waitForTimeout(250);
   await page.evaluate(()=>document.querySelector('.fb-table').click());
@@ -235,19 +234,29 @@ const KEYS=['label','path','kind','span','rows','showLabel','align','format','lo
   await page.waitForTimeout(500);
   const lotAx=await page.evaluate(()=>{
    const bar=document.querySelector('.fb-axes');
-   const a=bar&&[...bar.querySelectorAll('.fb-axis')]
-     .find(e=>e.querySelector('b').textContent==='対象');
-   const col=a&&[...a.querySelectorAll('button')].find(e=>e.textContent==='列');
-   const rowb=a&&[...a.querySelectorAll('button')].find(e=>e.textContent==='行');
-   return {あり:!!a,行:!!(rowb&&rowb.classList.contains('is-on')),
-     列:col?{dis:col.disabled,title:col.title}:null,
+   const rowBox=bar&&bar.querySelector('[data-fb-box="行"]');
+   const first=rowBox&&rowBox.querySelector('.fb-axis');
+   const mv=bar&&bar.querySelector('[data-fb-move="対象"]');
+   const chip=bar&&bar.querySelector('.fb-axis[data-fb-axis="対象"]');
+   return {あり:!!chip,
+     /* **行のいちばん外側**（§9.278）——内側だと、紙が複製する
+        ひとかたまりが途切れて行がばらける。 */
+     先頭:!!(first&&first.dataset.fbAxis==='対象'),
+     掴めない:!!(chip&&chip.getAttribute('draggable')!=='true'),
+     移す:mv?{dis:mv.disabled,title:mv.title}:null,
+     総計:[...bar.querySelectorAll('[data-fb-grand]')].map(c=>c.dataset.fbGrand+':'+c.checked),
      いま:(bar&&(bar.querySelector('.fb-axes-now')||{}).textContent)||''};
   });
-  rec('②-c 繰り返す塊では「対象」の軸が生える（行に固定）',
-      lotAx.あり&&lotAx.行&&/子ロットぶん/.test(lotAx.いま),JSON.stringify(lotAx));
-  rec('②-c 「対象」は列に置けない——押せなくして理由を書く（§4）',
-      !!lotAx.列&&lotAx.列.dis&&/行だけ/.test(lotAx.列.title),
-      JSON.stringify(lotAx.列));
+  rec('②-c 繰り返す塊では「対象」の軸が生え、行のいちばん外側に固定される',
+      lotAx.あり&&lotAx.先頭&&/子ロットぶん/.test(lotAx.いま),JSON.stringify(lotAx));
+  rec('②-c 「対象」は動かせない——押せなくして理由を書く（§4）',
+      !!lotAx.移す&&lotAx.移す.dis&&/行のいちばん外側/.test(lotAx.移す.title)
+      &&lotAx.掴めない,
+      JSON.stringify(lotAx.移す));
+  /* 総計（§9.278、利用者の指示「集計(小計や総計)のONOFF」）。**出せる軸に
+     だけ欄を出す**——MINとMAXは足し合わせても意味のある数にならない。 */
+  rec('②-c 総計（全体）の入切は「対象」にだけ出る（既定は出す）',
+      lotAx.総計.join(',')==='対象:true',JSON.stringify(lotAx.総計));
   await page.evaluate(()=>document.querySelector('.fb-table').click());
   await page.waitForTimeout(400);
   const lotBuilt=await page.evaluate(()=>{
@@ -270,6 +279,93 @@ const KEYS=['label','path','kind','span','rows','showLabel','align','format','lo
      一度組んだ表は二度と組み直せなくなる。 */
   rec('②-c 「対象」を含む表を組んだあとも軸の帯が残る',
       lotBuilt.帯&&lotBuilt.組み直せる,JSON.stringify(lotBuilt));
+
+  /* ---- ②-d 掴んで動かす・総計・階層ラベル（§9.278、利用者の指示） ----
+     「PIVOTももっとEXCELくらい簡単に軸単位のドラッグアンドドロップと
+      集計(小計や総計)のONOFF、軸毎に管理し、縦軸、横軸それぞれ項目が
+      ２つ以上あるときはその並びによってEXCELのピボットのように階層構造で
+      ラベル付け、表を作成してください」 */
+  /* 掴んで落とす。**`dragstart`→`drop`をそのまま流す**——`click`で代用すると
+     押す道しか通らず、掴む道が壊れていても通る。 */
+  const drop=(name,to)=>page.evaluate(([n,t])=>{
+   const chip=document.querySelector(`.fb-axis[data-fb-axis="${n}"]`);
+   const bx=document.querySelector(`[data-fb-box="${t}"]`);
+   if(!chip||!bx)return 'no-el';
+   const dt=new DataTransfer();
+   chip.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:dt}));
+   const r=bx.getBoundingClientRect();
+   bx.dispatchEvent(new DragEvent('dragover',
+     {bubbles:true,cancelable:true,dataTransfer:dt,clientX:r.right-2,clientY:r.top+r.height/2}));
+   bx.dispatchEvent(new DragEvent('drop',
+     {bubbles:true,cancelable:true,dataTransfer:dt,clientX:r.right-2,clientY:r.top+r.height/2}));
+   chip.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer:dt}));
+   return 'ok';
+  },[name,to]);
+  /* ②-cの続きなので、まず「行＝対象・項目／列＝集計」から始まる。
+     **2回落として入れ替える**——1回だけだと列が空になり、「組めない」の
+     道へ入って以降の節が何も確かめられない（実際にそうなった）。 */
+  await drop('項目','列');await page.waitForTimeout(300);
+  await drop('集計','行');await page.waitForTimeout(300);
+  const dragged=await axState();
+  rec('②-d 軸を掴んで別の箱へ落とせる',
+      dragged.置き場==='行=対象・集計 / 列=項目',JSON.stringify(dragged));
+  /* **対象は落とせない**（落とし先が列でも内側でも受けない）。 */
+  await drop('対象','列');await page.waitForTimeout(300);
+  const denied=await axState();
+  rec('②-d 「対象」は掴んでも列へ落ちない（行のいちばん外側のまま）',
+      denied.置き場==='行=対象・集計 / 列=項目',JSON.stringify(denied));
+  /* 階層ラベル——外側（対象）が同じ行は2行目以降を空きにする。 */
+  await page.evaluate(()=>document.querySelector('.fb-table').click());
+  await page.waitForTimeout(400);
+  const cellStat=()=>page.evaluate(()=>{
+   let j=null;try{j=JSON.parse(document.querySelector('#maintEditorForm [data-field="content"]').value)}catch(e){}
+   const c=j||[];
+   return {全体:c.filter(x=>x.kind==='head'&&x.label==='全体').length,
+     対象:c.filter(x=>x.path==='lot.no').length,
+     空き:c.filter(x=>x.kind==='blank').length,
+     並び:c.map(x=>(x.kind==='blank'?'□':(x.kind==='head'?'['+x.label+']':x.label))
+       +(x.lot?'*':'')).join(' ')};
+  });
+  const nest=await cellStat();
+  /* 行＝対象（全体＋子ロット）・集計（MIN/MAX）なので本体は4段。
+     **外側が同じ2段目は空き**になるので、「全体」も子ロット番号も**1つずつ**。 */
+  rec('②-d 外側のラベルは繰り返さず、階層に見せる（EXCELの既定と同じ）',
+      nest.全体===1&&nest.対象===1&&nest.空き>=3,
+      JSON.stringify({全体:nest.全体,対象:nest.対象,空き:nest.空き})
+      +' / '+nest.並び.slice(0,140));
+  /* 「毎行くり返す」に切り替えると空きが減る（切り替えが効いていること）。 */
+  await page.evaluate(()=>{const c=document.querySelector('[data-fb-replab]');
+   c.checked=true;c.dispatchEvent(new Event('change',{bubbles:true}))});
+  await page.waitForTimeout(250);
+  await page.evaluate(()=>document.querySelector('.fb-table').click());
+  await page.waitForTimeout(400);
+  const flat=await cellStat();
+  rec('②-d 「ラベルを毎行くり返す」にすると空きにせず毎行出す',
+      flat.全体===2&&flat.対象===2&&flat.空き<nest.空き,
+      JSON.stringify({全体:flat.全体,対象:flat.対象,空き:flat.空き}));
+  await page.evaluate(()=>{const c=document.querySelector('[data-fb-replab]');
+   c.checked=false;c.dispatchEvent(new Event('change',{bubbles:true}))});
+  await page.waitForTimeout(250);
+  /* 総計を切ると「全体」が消え、本体の段が減る。 */
+  await page.evaluate(()=>{const c=document.querySelector('[data-fb-grand="対象"]');
+   c.checked=false;c.dispatchEvent(new Event('change',{bubbles:true}))});
+  await page.waitForTimeout(300);
+  const grandOff=await axState();
+  await page.evaluate(()=>document.querySelector('.fb-table').click());
+  await page.waitForTimeout(400);
+  const noGrand=await cellStat();
+  rec('②-d 総計を切ると「全体」の行が消える（案内も言い直す）',
+      noGrand.全体===0&&noGrand.対象>0&&/子ロットぶん/.test(grandOff.いま)
+      &&grandOff.いま.indexOf('全体＋')<0,
+      JSON.stringify(noGrand)+' / '+grandOff.いま);
+  await page.evaluate(()=>{const c=document.querySelector('[data-fb-grand="対象"]');
+   c.checked=true;c.dispatchEvent(new Event('change',{bubbles:true}))});
+  await page.waitForTimeout(250);
+  /* **置き場も元へ戻す**——`state.axes`は掴んだ順を覚えているので、
+     戻さないと以降の節が別の形の表を見ることになる。 */
+  await axAt('集計','列');await page.waitForTimeout(200);
+  await axAt('項目','行');await page.waitForTimeout(200);
+
   /* 以降の節は「1回だけ」の塊で確かめる（紙の見え方を変えない）。 */
   await card('1回だけ');await page.waitForTimeout(400);
   await page.evaluate(()=>document.querySelector('.fb-table').click());

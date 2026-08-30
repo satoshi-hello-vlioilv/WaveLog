@@ -334,12 +334,56 @@ let b=null,page=null;
   /* ---- 6c) ダミーの値と紙全体（§9.250 ⑤、利用者の指示） ----
      「データダミーをつかって、帳票の表示が最終的にどうなるか…すぐに確認
       できる導線を準備してください」 */
-  const dummy=await page.evaluate(()=>{
-   const vs=[...document.querySelectorAll('#rbSection .rb-cell-v')].map(x=>x.textContent.trim());
-   return {n:vs.length,vals:vs.slice(0,4),plain:vs.filter(v=>v==='値').length};
+  /* **中身の見本は紙と同じ組み立て**（§9.278、利用者の指示「帳票ブロックでの
+     中身の作り込みが重要なのでダミーデータで中身の表示プレビューができる
+     ように」）。以前はここに**2つ目の組み立て**（`.rb-cell`）があり、
+     子ロットの繰り返しも「全体」の行も統計の値も出せず、大きさを見る以外の
+     役に立っていなかった（§9.163）。 */
+  /* **中身を入れてから見る**——空の塊で見ると「載せる項目がありません」が
+     出るだけで、見本が紙と同じ組み立てかどうかを一度も通らない。 */
+  await tab('何を載せるか');
+  await page.evaluate(()=>{
+   const c=[...document.querySelectorAll('[data-fb-cat]')].find(b=>/仕掛/.test(b.textContent||''));
+   c&&c.click();
   });
-  rec('見本の値の場所にダミーが入る（桁と文字数が実物に近い）',
-      dummy.n===0||(dummy.plain===0&&dummy.vals.some(v=>v&&v!=='（値）')),JSON.stringify(dummy));
+  await page.waitForTimeout(250);
+  await page.evaluate(()=>{
+   const b=document.querySelector('[data-fb-add="basic.lotNo"]')
+     ||document.querySelector('[data-fb-add]');
+   b&&b.click();
+  });
+  await page.waitForTimeout(400);
+  await page.waitForFunction(()=>{
+   const s=document.querySelector('#rbSection');
+   return s&&s.querySelector('.rp-section');
+  },null,{timeout:20000}).catch(()=>{});
+  const dummy=await page.evaluate(()=>{
+   const s=document.querySelector('#rbSection');
+   return {節:s.querySelectorAll('.rp-section').length,
+     旧:s.querySelectorAll('.rb-cell').length,
+     値:[...s.querySelectorAll('.rp-field-value')].map(x=>x.textContent.trim()).slice(0,6),
+     note:(document.querySelector('#rbPreviewNote')||{}).textContent||''};
+  });
+  rec('中身の見本は紙と同じ組み立てで描く（2つ目の組み立てを持たない）',
+      dummy.節===1&&dummy.旧===0,JSON.stringify(dummy));
+  rec('見本の値の場所に見本のロットの値が入る（桁と文字数が実物に近い）',
+      dummy.値.length>0&&dummy.値.some(v=>v&&v!=='-'),JSON.stringify(dummy.値));
+  /* **どこから来た値かを書く**（§CLAUDE 6）——書かないと「見本に値が出て
+     いる＝もう記録されている」と読まれる。 */
+  rec('見本のロットで描いていること・保存されないことを書く',
+      /見本のロット/.test(dummy.note)&&/保存されません/.test(dummy.note),dummy.note);
+  /* **もう片側**——「見本の値」を切ると枠だけになる（片側だけを見る網は、
+     いつも値を入れる実装でも通る）。 */
+  await page.evaluate(()=>document.querySelector('#rbToggleDummy').click());
+  await page.waitForTimeout(500);
+  const bare=await page.evaluate(()=>({
+   値:[...document.querySelectorAll('#rbSection .rp-field-value')].map(x=>x.textContent.trim()),
+   note:(document.querySelector('#rbPreviewNote')||{}).textContent||''}));
+  rec('「見本の値」を切ると枠だけになる（理由も言い直す）',
+      bare.値.length>0&&bare.値.every(v=>v==='-')&&/値を入れずに/.test(bare.note),
+      JSON.stringify(bare.値.slice(0,4))+' / '+bare.note);
+  await page.evaluate(()=>document.querySelector('#rbToggleDummy').click());
+  await page.waitForTimeout(400);
   const whole=await page.evaluate(async()=>{
    document.querySelector('#rbToggleOthers').click();
    await new Promise(r=>setTimeout(r,1200));

@@ -1859,6 +1859,41 @@
   font-size:var(--fs-micro);font-weight:700;cursor:pointer}
 .fb-axis>button.is-on{background:var(--nav);border-color:var(--nav);color:#fff}
 .fb-axis>button:disabled{opacity:.45;cursor:not-allowed}
+/* 軸を落とす箱（§9.278、利用者の指示「軸単位のドラッグアンドドロップ」）。
+   **箱は2つ**——「使わない」を作ると、その軸の値どうしが同じマスへ重なって
+   どの値を出すのか決まらない。 */
+/* 中身の見本（§9.278、利用者の指示）。**紙と同じ組み立て**（`.rp-section`）を
+   そのまま入れる器なので、ここでは枠と余白だけを持つ——中の見た目に手を
+   入れると、盤で見た形と刷り上がりがまた食い違う（§9.163）。 */
+.rb-preview{display:flex;flex-direction:column;gap:var(--gap-hair);min-width:0}
+.rb-preview-head{display:flex;align-items:baseline;gap:var(--gap-inline);min-width:0}
+.rb-preview-head>b{font-size:var(--fs-sm);font-weight:800;color:var(--nav);flex:none}
+.rb-preview-head>small{color:var(--muted);font-size:var(--fs-micro);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fb-axboxes{display:flex;flex:1 1 100%;min-width:0;gap:var(--gap-tight);flex-wrap:wrap}
+.fb-axbox{display:flex;align-items:center;gap:var(--gap-hair);
+  flex:1 1 var(--w-lg);min-width:0;min-height:var(--ctl-h-sm);
+  padding:var(--space-1);border:1px dashed var(--line-mid);
+  border-radius:var(--radius-xs);background:var(--surface)}
+.fb-axbox.is-over{border-color:var(--nav);border-style:solid;background:var(--surface-3)}
+.fb-axbox.is-deny{border-color:var(--danger);border-style:solid}
+.fb-axbox-cap{flex:none;color:var(--nav);font-size:var(--fs-badge);font-weight:800}
+.fb-axbox-list{display:flex;align-items:center;gap:var(--gap-hair);
+  flex:1 1 auto;min-width:0;flex-wrap:wrap}
+.fb-axbox-none{font-style:normal;color:var(--muted);font-size:var(--fs-micro)}
+.fb-axis[draggable="true"]{cursor:grab}
+.fb-axis.is-dragging{opacity:.5}
+.fb-axis-grip{font-style:normal;color:var(--line-strong);font-size:var(--fs-micro);
+  letter-spacing:-.1em}
+.fb-axis.is-fixed>.fb-axis-grip{visibility:hidden}
+/* 総計とラベルの切り替え（§9.278）。**出せない軸には欄を出さず理由を書く**。 */
+.fb-axes-opt{display:flex;flex:1 1 100%;min-width:0;align-items:center;
+  gap:var(--gap-inline);flex-wrap:wrap}
+.fb-axes-chk{display:inline-flex;align-items:center;gap:var(--gap-hair);
+  color:var(--ink-3);font-size:var(--fs-micro);cursor:pointer}
+.fb-axes-chk input{margin:0}
+.fb-axes-note{color:var(--muted);font-size:var(--fs-micro);
+  border-bottom:1px dotted var(--line-mid);cursor:help}
 /* いまの形。**軸の位置と数を文字で出す**（§9.277）。 */
 .fb-axes-now{flex:1 1 100%;min-width:0;color:var(--ink-3);font-size:var(--fs-badge);line-height:var(--lh)}
 .fb-axes-bad{font-style:normal;color:var(--danger)}
@@ -2629,28 +2664,13 @@ html[data-hint="off"] .mm-def-hint{display:none}
 .rb-facts>dt{color:var(--muted);font-size:var(--fs-micro);font-weight:700}
 .rb-facts>dd{margin:0;min-width:0;color:var(--ink-2);font-size:var(--fs-badge)}
 /* 節そのもの（紙に出る形）。列数と載せた項目をそのまま並べる。 */
-.rb-sec{border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;overflow:hidden}
-.rb-sec-head{padding:var(--pad-row);background:var(--surface-2);
- border-bottom:1px solid var(--line-soft);
- font-size:var(--fs-badge);font-weight:800;color:var(--nav);
- overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rb-sec-body{display:grid;grid-template-columns:repeat(var(--rb-cols,2),minmax(0,1fr));
- gap:1px;padding:var(--space-1)}
-.rb-cell{display:flex;align-items:baseline;gap:var(--gap-tight);min-width:0;
- padding:1px var(--space-1);border-bottom:1px dotted var(--line-soft)}
-.rb-cell-k{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
- color:var(--muted);font-size:var(--fs-micro)}
-.rb-cell-v{flex:0 0 auto;margin-left:auto;color:var(--ink-3);font-size:var(--fs-micro)}
-.rb-cell.is-blank{border-bottom-style:none;background:var(--surface)}
-/* 見本も紙と同じ形（§9.274）。**見出しは値を持たない**ので1つの箱、
-   ラベルを出さないマスはラベルの箱ごと落とす（残すと値の左端がずれる）。 */
-.rb-cell.is-head{justify-content:center;background:var(--surface-2)}
-.rb-cell-h{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  color:var(--ink-2);font-size:var(--fs-micro);font-weight:800}
-.rb-cell.is-bare .rb-cell-v{margin-left:0}
-.rb-sec-area{min-height:4em;margin:var(--space-1);padding:var(--space-2);
- border:1px dashed var(--line-mid);border-radius:var(--radius-xs);
- color:var(--ink-2);font-size:var(--fs-micro);line-height:1.7}
+.rb-sec{min-width:0;max-height:var(--w-xl);overflow:auto;padding:var(--space-2);
+ border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
+/* **中は紙そのもの**（`.rp-section`）なので手を入れない**（§9.163）——
+   ここで見た目を足すと、盤で確かめた形と刷り上がりがまた食い違う。
+   紙の文字は9px前後で、器も紙と同じ幅ではないので**倍率だけ**を当てる。 */
+.rb-sec-fit{width:var(--rb-prev-w,100%);transform:scale(var(--rb-prev-scale,1));
+ transform-origin:top left}
 .rb-sec-empty{margin:0;padding:var(--pad-card);color:var(--muted);font-size:var(--fs-micro);line-height:1.6}
 
 /* --- 見て選ぶ欄（choice-card / span-grid / rows-pick） --- */

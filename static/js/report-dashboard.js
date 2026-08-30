@@ -464,6 +464,9 @@
  WL.reportStat.repeatLots=(x,on)=>rpRepeatLots(x,!!on);
  WL.reportStat.sectionHtml=(x,name,fields,cols,repeat,repeatDir)=>
    rpFieldsSection(x,name,fields||[],cols||0,repeat||'',repeatDir||'');
+ /* エリアの塊（§9.234 ⑤）。**帳票ブロックマスタの見本もここを通す**
+    （§9.163。2つ目の組み立てを持つと、盤で見た枠と紙の枠が食い違う）。 */
+ WL.reportStat.areaHtml=t=>rpAreaHtml(t==null?'':String(t));
 
  function bulkPrintNow(items,area){
   area.innerHTML=items.map(x=>`<div class="rp-report rp-page${rpOrientation==='landscape'?' rp-landscape':''}">${reportHtml(x)}</div>`).join('');
@@ -996,7 +999,15 @@
  }
  function rpMergeBuiltin(b,r){
   const name=r.name||b.k;
-  const fields=(r.contentEditable&&(r.fields||[]).length)?r.fields:null;
+  /* **マスの並びがあれば、それが紙の正**（§9.278、利用者の指示「帳票ブロックの
+     表の形を正としてそれが、紙帳票レイアウトの方にそのまま表示されるように」）。
+     以前は`r.contentEditable`（＝既定の中身をマスタに持っている塊か）でも
+     絞っていたため、**盤では組めるのに紙はコードの既定のまま**という塊が
+     あった——`測定値の統計`がまさにそれで、ピボットに組んでも紙は今までの
+     横一列の表が出ていた（押せるのに何も起きない・§4）。
+     **空なら今までどおりコードの中身**（`[内容]`を触っていない現場の紙は
+     1マスも変わらない）。 */
+  const fields=(r.fields||[]).length?r.fields:null;
   const renamed=name!==b.k;
   /* **種別が先**（§9.234 ⑤）。マスタで「エリア」にした既定の塊も、
      コードの側で`area:true`の塊も、同じ`rpAreaHtml()`を通す。
