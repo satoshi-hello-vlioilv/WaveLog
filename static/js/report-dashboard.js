@@ -236,6 +236,51 @@
     **色は指定しない**——紙を透かして`.rp-scroll`の地をそのまま見せるので、
     背景色が変わっても必ず同じ色になる（2箇所に色を書かない）。 */
  const RP_SHEET_GAP_MM=10;
+ /* ページに割ったときの**ずらし量を答えるのは1箇所**（§9.282）。
+    塊・空きマスの印・落とし先のゴースト・カーソルの座標が同じ答えを見る
+    ——別々に持つと「掴んだ場所と落ちる場所がずれる」が作れる。
+    単位は**拡大前のpx**（`--rp-scale`を掛ける前）。割っていなければ0。 */
+ let rpPageGapPx=0,rpPageSheetPx=0,rpPageGridTop=0,rpPageRowStep=0,rpPageSheets=1;
+ /* ずらす前のy（紙の上端から） → 何枚目の紙か × 余白 */
+ const rpShiftAtPage=y=>(rpPageGapPx>0&&rpPageSheetPx>0)
+   ?Math.max(0,Math.floor(y/rpPageSheetPx+1e-6))*rpPageGapPx:0;
+ /* 描かれているy（紙の上端から） → ずらす前のy */
+ const rpUngapPage=y=>{
+  if(!(rpPageGapPx>0&&rpPageSheetPx>0))return y;
+  const step=rpPageSheetPx+rpPageGapPx;
+  const k=Math.max(0,Math.floor(y/step+1e-6));
+  return Math.max(0,y-k*rpPageGapPx);
+ };
+ /* グリッドの中のyで同じことをする（グリッドは紙の上端から`rpPageGridTop`下） */
+ const rpShiftAtGrid=gy=>rpShiftAtPage(gy+rpPageGridTop);
+ /* **ずらすのは「行」の単位**（§9.282）。塊もゴーストも空きマスの印も
+    グリッドの行の頭から始まるので、**行がどの紙に乗るか**で決めれば
+    3つとも必ず同じ答えになる。カーソルの座標だけを紙で割ると、
+    **紙をまたぐ行**（頭は1枚目・裾は2枚目）で答えが食い違い、
+    掴んだ場所と落ちる場所がずれる（実測: 指した312.6mmに対して枠は295.2mm）。 */
+ const rpRowShift=r=>rpShiftAtPage(rpPageGridTop+Math.max(0,r)*rpPageRowStep);
+ /* 描かれているグリッド内のy → その位置に見えている「行」（0から数える）。
+    **行の見た目の上端で数える**——`r*行の高さ + その行のずらし量`は`r`に対して
+    必ず増えるので、そこから逆に辿れば必ず1つに決まる。
+    **「ずらす前のyへ直してから割る」で数えないこと**（§9.282）——紙と紙の
+    あいだ（**どの行も無い場所**）に落ちた点は、直した先が1つ手前の行の中に
+    なり、**戻した行のずらし量と食い違う**（実測: 指した312.6mmに対して枠が
+    295.2mm。1pxの差で出るので、境目を狙わない網では捕まらない）。
+    余白の中は**次の紙の先頭の行へ寄せる**——手前へ寄せると、枠がカーソルより
+    紙1枚ぶん上に出る。 */
+ const rpRowTop=r=>Math.max(0,r)*rpPageRowStep+rpRowShift(r);
+ function rpRowAtGrid(gy){
+  const step=rpPageRowStep;
+  if(!(rpPageGapPx>0&&step>0))return Math.max(0,Math.floor(gy/Math.max(1,step)));
+  let r=Math.max(0,Math.floor(gy/step));          /* ずらしぶん必ず本物以上 */
+  while(r>0&&rpRowTop(r)>gy)r--;
+  while(rpRowTop(r+1)<=gy)r++;
+  /* 行の裾より下＝紙と紙のあいだ。次の紙の頭へ。 */
+  if(gy>=rpRowTop(r)+step&&rpRowTop(r+1)>rpRowTop(r)+step)r++;
+  return r;
+ }
+ /* 描かれているグリッド内のy → ずらす前のy（行の中の位置は保つ） */
+ const rpUngapGrid=gy=>(rpPageGapPx>0&&rpPageRowStep>0)?gy-rpRowShift(rpRowAtGrid(gy)):gy;
  function updatePageSizeStyle(){
   let el=document.getElementById('rpPageSizeStyle');
   if(!el){el=document.createElement('style');el.id='rpPageSizeStyle';document.head.appendChild(el)}
@@ -1125,13 +1170,40 @@
  function rpAllBlocks(){
   const code=new Map(RP_BLOCKS.map(b=>[b.k,b]));
   const out=[],used=new Set();
+  /* **同じ名前の塊を2つ並べない**（§9.282、利用者の報告「帳票ブロックマスタ
+     では正しく表示するのに紙は全然違う表を持ってくる」）。塊は**名前が鍵**で、
+     並び・幅・高さ・出す出さないは列レイアウトマスタへその名前で入る
+     （§9.113 と同じ理由）。既定の塊と同じ名前の自作ブロックが1行あるだけで、
+     紙はどちらを出すか決められない——実測では、ふつうのプレビューから
+     既定の塊が消えて自作のほうが出た（利用者の「全然違う表」の正体）。
+     **入口で1回だけ落とす**（散らばった場所で気を付けるのではなく）。
+     残すのは**設備を名指ししている行**——`*`より具体的なほうが、その設備の
+     紙のために作られたものだから。 */
+  const seen=new Map();
+  const pick=(k,def,row)=>{
+   const hit=seen.get(k);
+   const eq=String((row&&row.equipment)||'').trim();
+   const strong=!!(eq&&eq!=='*');
+   if(hit){
+    /* 既に採ってある。より具体的な行が来たときだけ差し替える。 */
+    if(strong&&!hit.strong){out[hit.i]=def;seen.set(k,{i:hit.i,strong});}
+    return;
+   }
+   seen.set(k,{i:out.length,strong});
+   out.push(def);
+  };
   rpMasterRows.forEach(r=>{
    if(r.builtin){
     const b=code.get(r.builtin);
-    if(!b||used.has(r.builtin))return;
+    if(!b)return;
     used.add(r.builtin);
-    out.push(rpMergeBuiltin(b,r));
-   }else out.push(rpUserBlockDef(r));
+    pick(r.builtin,rpMergeBuiltin(b,r),r);
+   }else{
+    const d=rpUserBlockDef(r);
+    /* 既定の塊と名前がぶつかる行は`rpApplyUserBlocks()`が既に落としている。
+       ここは**同じ名前の自作どうし**（設備別と`*`）の畳み込みだけ。 */
+    pick(d.k,d,r);
+   }
   });
   /* **マスタに無い既定の塊は今までどおり出す**（移行前・読めなかったとき）。
      ただし「出さない」と名指しされたものは出さない——伝わっていないと、
@@ -1517,7 +1589,18 @@
  }
  /* いま効かせる設備を切り替えるだけ（取得はしない）。 */
  function rpApplyUserBlocks(eq,got){
-  rpMasterRows=got.rows;
+  /* **既定の塊と同じ名前の自作の塊は、入口で1回だけ落とす**（§9.282、
+     利用者の報告「紙は全然違う表を持ってくる」）。塊は**名前が鍵**なので、
+     同じ名前が2つあると`rpHiddenSet()`が「並びに載っていない自作の塊」として
+     **既定の塊のほうを隠してしまう**——実測では、盤で正しく組んだ
+     `測定値の統計`が紙から丸ごと消えた。サーバーは新しく作らせないが、
+     **現場に既に保存されている行**が残りうるので読む側でも落とす。
+     散らばった場所で気を付けるのではなく、ここ1箇所で。 */
+  const builtinKeys=new Set(RP_BLOCKS.map(b=>b.k));
+  const bad=got.rows.filter(r=>!r.builtin&&builtinKeys.has(r.name));
+  if(bad.length)console.warn('帳票ブロックマスタに、既定の塊と同じ名前の行があります（紙には出しません）:',
+    bad.map(r=>`${r.equipment}/${r.name}`).join(', '));
+  rpMasterRows=got.rows.filter(r=>!(!r.builtin&&builtinKeys.has(r.name)));
   rpBuiltinOff=got.off;
   rpUserBlocks=rpMasterRows.filter(b=>!b.builtin).map(rpUserBlockDef);
   rpUserBlocksFor=eq;
@@ -2142,6 +2225,7 @@
   page.classList.remove('rp-paged');
   page.style.removeProperty('--rp-sheets');
   page.style.removeProperty('--rp-gap');
+  rpPageGapPx=0;rpPageSheetPx=0;rpPageGridTop=0;rpPageRowStep=0;rpPageSheets=1;
   const lay=page.querySelector(':scope > .rp-sheets');
   if(lay)lay.remove();
   page.querySelectorAll('.rp-block[data-rp-shift]').forEach(b=>{
@@ -2186,7 +2270,12 @@
     **落とす先が余白のぶんずれる**。組み換えは1枚のキャンバスの上で行い、
     どこで紙が変わるかは点線が言う（帯にも書く）。 */
  function rpPaintPages(page,f){
-  const paged=!rpArranging;
+  /* **組み換え中でも割る**（§9.282、利用者の報告「点線が引かれるだけ」）。
+     以前はここで`!rpArranging`にしていたが、利用者が紙を見るのは
+     組み換え中の画面なので、いちばん見たいところで割れていなかった。
+     掴んで置く座標は`rpLocal()`が余白を差し引き、空きマスの印と
+     ゴーストは同じだけずらすので、落とす先はずれない。 */
+  const paged=true;
   page.classList.toggle('rp-paged',paged);
   page.style.setProperty('--rp-gap',(paged?RP_SHEET_GAP_MM:0)+'mm');
   const lay=document.createElement('div');
@@ -2204,6 +2293,13 @@
   const S=f.sheetMm*f.pxPerMm;                 /* 拡大前の1枚ぶん(px) */
   const G=RP_SHEET_GAP_MM*f.pxPerMm;           /* 拡大前の余白(px) */
   const pr=page.getBoundingClientRect();
+  /* **ずらし量の材料を控える**（§9.282）——カーソルの座標とゴーストは
+     描いたあとに何度も引くので、そのつど測り直さない。 */
+  rpPageGapPx=G;rpPageSheetPx=S;rpPageSheets=f.sheets;
+  const gridEl=page.querySelector('.rp-blocks');
+  rpPageGridTop=gridEl?(gridEl.getBoundingClientRect().top-pr.top)/sc:0;
+  rpPageRowStep=gridEl
+    ?(rpRowPx(gridEl)+(parseFloat(getComputedStyle(gridEl).rowGap)||0)):0;
   page.querySelectorAll('.rp-block').forEach(b=>{
    const r=b.getBoundingClientRect();
    const bt=(r.top-pr.top)/sc,bb=(r.bottom-pr.top)/sc;
@@ -2236,6 +2332,13 @@
     c.style.setProperty('--rp-clip-b',Math.max(0,bb-y1)+'px');
     lay.appendChild(c);
    }
+  });
+  /* **空きマスの印も同じだけずらす**（§9.282）——ずらさないと、組み換え中に
+     「ここが空いています」の枠だけが紙をまたいで残る。印は`rpFreeCells()`が
+     グリッドの中へpxで置いているので、その`top`へ足すだけでよい。 */
+  page.querySelectorAll('.rp-free-layer > i').forEach(i=>{
+   const t=parseFloat(i.style.top)||0;
+   i.style.top=(t+rpShiftAtGrid(t))+'px';
   });
  }
  /* ---------- 収まりは短く言い、続きは`title`（§9.255 ①） ----------
@@ -2523,6 +2626,10 @@
   let body='';try{body=bl.html(x)||''}catch(e){body=''}
   $id('rpBlockPreview').innerHTML=body
    ||'<p class="rp-block-empty">このロットにはこの内容がありません。枠の大きさだけ決められます。</p>';
+  /* **表かどうかは紙自身に答えさせる**（§9.282）。`reportSection()`が
+     表として組んだときだけ`.rp-grid-m`を貼るので、ここを見れば
+     「表かどうか」の2つ目の判定を持たずに済む（§9.163）。 */
+  const matrixBlock=!!$id('rpBlockPreview').querySelector('.rp-grid-m');
   const grid=rpGrid(),span=rpSpan(k),rows=rpRows(k),def=(rpBlockOf(k)||{}).rows||0;
   const cols=rpBlockColumns(k);
   const canTurn=cols.length>0;
@@ -2560,9 +2667,14 @@
    ${bl.area?'':`<div class="rp-form-row"><span class="rp-form-label">中の並べ方</span>
     <span class="rp-form-ctl">
      ${RP_FLOWS.map(f=>`<button type="button" data-e-flow="${esc(f.v)}" class="${f.v===rpFlow(k)?'is-on':''}"`
-       +` title="${esc(String(f.note).replace(/<[^>]+>/g,''))}">${esc(f.label)}</button>`).join('')}
-     <i class="rp-form-note">${(RP_FLOWS.find(f=>f.v===rpFlow(k))||RP_FLOWS[0]).note}
-      ${rpFlow(k)==='高さなり'&&!rpRows(k)?'<b>いまは高さが「中身なり」なので1列のままです。</b>上の「高さ」で行数を決めてください。':''}</i>
+       +(matrixBlock&&f.v?' disabled':'')
+       +` title="${esc(matrixBlock&&f.v?'この塊は表に組んであるので選べません':String(f.note).replace(/<[^>]+>/g,''))}">${esc(f.label)}</button>`).join('')}
+     <i class="rp-form-note">${matrixBlock
+       ?'<b>この塊は表（マトリクス）に組んであるので、並べ方は選べません。</b>'
+        +'表の形は帳票ブロックマスタで組んだ軸（行と列）がそのまま紙に出ます'
+        +'——段組へ変えると軸のマスがばらけて別の表になるので、当てていません。'
+       :(RP_FLOWS.find(f=>f.v===rpFlow(k))||RP_FLOWS[0]).note
+        +(rpFlow(k)==='高さなり'&&!rpRows(k)?'<b>いまは高さが「中身なり」なので1列のままです。</b>上の「高さ」で行数を決めてください。':'')}</i>
     </span></div>`}
    <div class="rp-form-row"><span class="rp-form-label">枠</span>
     <span class="rp-form-ctl">
@@ -2769,6 +2881,15 @@
   if(!g){g=document.createElement('div');g.id='rpGhost';g.className='rp-ghost'}
   return g;
  }
+ /* 落とし先の枠も**塊と同じだけ下へずらす**（§9.282）。**行の番号で決める**
+    ——描いたあとに測ると、紙をまたぐ行では「枠の頭」と「指した場所」が
+    別の紙になり、掴んだ場所と落ちる場所がずれる。`row`は1から数える。 */
+ function rpFitGhost(g,row){
+  if(!g)return;
+  g.style.removeProperty('--rp-shift');
+  if(!(rpPageGapPx>0))return;
+  g.style.setProperty('--rp-shift',rpRowShift(Math.max(0,(row||1)-1))+'px');
+ }
  /* ---------- 落ちる先はマスで示す（§9.221 ⑨） ----------
     置き場所を利用者が決める形にしたので、ゴーストも**そのマスへ実寸で**
     出す。**置けないときは赤くして理由を書く**——置いてから断られるのでは
@@ -2786,6 +2907,7 @@
   g.innerHTML=`<b>${esc(rpBlockLabel(k))}</b><small>${col}列目・${row}行目／${span}×${rows}マス</small>`
    +(ok?'':'<small class="rp-ghost-why">ここには別の塊が置かれています</small>');
   if(g.parentElement!==grid)grid.appendChild(g);
+  rpFitGhost(g,row);
  }
  function rpShowGhost(grid,ref,after){
   if(!grid||!rpDragKey)return;
@@ -2799,6 +2921,16 @@
      枠の大きさだけでは、隣とくらべて「1マス多いのか少ないのか」が読めない。 */
   g.innerHTML=`<b>${esc(rpBlockLabel(k))}</b><small>${span}/${rpGrid()}マス×${rows}行</small>`;
   if(ref){if(after)ref.after(g);else ref.before(g)}else grid.appendChild(g);
+  /* 並べ替えのゴーストはマスを指定しないので、置いてから測って決める。 */
+  if(rpPageGapPx>0){
+   g.style.removeProperty('--rp-shift');
+   const pg=$id('reportContent');
+   if(pg&&g.parentElement){
+    const sc=rpScaleOf(g.parentElement)||1;
+    const pr=pg.getBoundingClientRect(),r0=g.getBoundingClientRect();
+    g.style.setProperty('--rp-shift',rpShiftAtPage((r0.top-pr.top)/sc)+'px');
+   }
+  }
  }
  /* ゴーストの行数。**「中身なり」の塊は今そこに描かれている高さを借りる**
     ——決め打ちの2行だと、測定表のような背の高い塊が実際の1/5で出て、
@@ -3034,8 +3166,15 @@
   const sc=rpScaleOf(grid),gr=grid.getBoundingClientRect();
   const inner=gr.width/sc;                       /* 拡大前の器の幅 */
   const colW=(inner-gapX*(cols-1))/cols;
-  return {cols,rowPx,gapX,gapY,sc,colW,
-          x:(clientX-gr.left)/sc,y:(clientY-gr.top)/sc};
+  /* **ページに割った余白ぶんを差し引く**（§9.282）——割ると塊が1枚ぶんずつ
+     下へずれているので、そのまま読むと**落とす先が余白のぶんずれる**。
+     窓口はここ1箇所（`rpCellAt`・`rpResize`・空きマスの計算が全部通る）。 */
+  const raw=(clientY-gr.top)/sc;                  /* 描かれている座標 */
+  /* **行はここで1度だけ数える**（§9.282）。`y`（ずらす前の座標）から
+     もう一度割り算すると、余白に落ちた点で1行ずれる——数える場所が
+     2つあると、掴んだ場所と落ちる場所が食い違う。`row`は1から数える。 */
+  return {cols,rowPx,gapX,gapY,sc,colW,row:rpRowAtGrid(raw)+1,
+          x:(clientX-gr.left)/sc,y:rpUngapGrid(raw)};
  }
  /* カーソルの座標 → マスの番号。**掴んだところのぶんを引いて、塊の左上が
     来るマス**を返す（§9.222 ②）。以前はカーソルの真下のマスを左上にして
@@ -3047,7 +3186,7 @@
   const L=rpLocal(grid,clientX,clientY);
   if(!(L.colW>0))return null;
   const c=Math.floor(L.x/(L.colW+L.gapX))+1-(rpDragGrab.dc||0);
-  const r=Math.floor(L.y/(L.rowPx+L.gapY))+1-(rpDragGrab.dr||0);
+  const r=L.row-(rpDragGrab.dr||0);
   return {col:Math.max(1,Math.min(L.cols,c)),
           row:Math.max(1,Math.min(rpRowCap(),r))};
  }
@@ -3066,7 +3205,7 @@
   const L=rpLocal(grid,clientX,clientY);
   if(!(L.colW>0))return;
   rpDragGrab={dc:Math.max(0,Math.floor(L.x/(L.colW+L.gapX))+1-at.col),
-              dr:Math.max(0,Math.floor(L.y/(L.rowPx+L.gapY))+1-at.row)};
+              dr:Math.max(0,L.row-at.row)};
  }
  /* ---------- 器に合わせて中身を縮める（§9.221 ⑨） ----------
     「設計したカードのサイズに合わせてコンテンツ貼り付け」。器の大きさは
@@ -3620,8 +3759,12 @@
      const q=px(e);
      if(kind!=='h')span=Math.max(1,Math.min(at?cols-at.col+1:cols,
        Math.round((q.x-br.left+gapX)/(colW+gapX))));
+     /* **行の数え方は`rpRowAtGrid()`の1箇所**（§9.282）。ページに割ると
+        紙と紙のあいだに余白が入るので、見た目の差を行の高さで割ると
+        **紙をまたいで引いたときだけ1行ぶん多く数える**。 */
      if(kind!=='w')rows=Math.max(1,Math.min(at?rpRowCap()-at.row+1:rpRowCap(),
-       Math.round((q.y-br.top+gapY)/(rowPx+gapY))));
+       at?(rpRowAtGrid(q.y)+1-at.row+1)
+         :Math.round((q.y-br.top+gapY)/(rowPx+gapY))));
      /* **他の塊の上へは広げない**（§9.221 ⑨）。広げてから断るのでは、
         どこまで広げられるのかが分からない。 */
      if(at){

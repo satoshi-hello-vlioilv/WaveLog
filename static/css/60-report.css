@@ -164,6 +164,8 @@
 /* **ずらす・切るはCSSが持つ**（`tests/test_csslint.py`）。JSが渡すのは
    計算した数だけ（`--rp-shift`／`--rp-clip-*`）。 */
 .rp-page.rp-paged .rp-block[data-rp-shift]{transform:translateY(var(--rp-shift,0px))}
+/* 落とし先の枠も同じだけずらす（§9.282）。数はJSが測って渡す。 */
+.rp-page.rp-paged .rp-ghost{transform:translateY(var(--rp-shift,0px))}
 .rp-page.rp-paged .rp-block[data-rp-clip],.rp-page .rp-blk-tail{
   clip-path:inset(var(--rp-clip-t,0px) 0 var(--rp-clip-b,0px) 0)}
 /* 切れ目にかかった塊の**続き**（次の紙の頭に出る写し）。中身の上に置く。 */
@@ -558,19 +560,26 @@
      `幅なり`   … 入るだけ横へ（列数はカードの幅で決まる）
      `高さなり` … 段組＋`column-fill:auto`。**高さを決めた塊だけ**効く
                   （高さが中身なりだと段が1本になる。設定窓に書いてある）
-   詳細度は`.rp-block.rp-flow-*`（0,2,1）で`.rp-grid-4`（0,1,0）に勝つ。 */
-.rp-block.rp-flow-col .rp-grid{display:block;column-count:2;column-gap:8px}
+   詳細度は`.rp-block.rp-flow-*`（0,3,0）で`.rp-grid-4`（0,1,0）に勝つ。
+   **表（`.rp-grid-m`）には当てないこと**（§9.282、利用者の報告「帳票ブロック
+   マスタでは正しく再現して表示もするのに、紙の帳票レイアウトだと、全然違う表を
+   持ってくる」）——`display:block`や`auto-fill`はグリッドそのものを解くので、
+   マスの`grid-column:span N`も`--rp-cols`も一度に無効になり、**軸のマスが
+   ばらけて縦にだらだら流れる**。しかもこの印は紙だけ（列レイアウトマスタの
+   `formats`）なので、**盤の「中身の見本」には原理的に当たらない**＝
+   「見本は正しいのに紙だけ別物」がそのまま作れる。 */
+.rp-block.rp-flow-col .rp-grid:not(.rp-grid-m){display:block;column-count:2;column-gap:8px}
 .rp-block.rp-flow-col .rp-grid-1{column-count:1}
 .rp-block.rp-flow-col .rp-grid-4{column-count:4}
 .rp-block.rp-flow-col .rp-field,
 .rp-block.rp-flow-tall .rp-field{break-inside:avoid}
-.rp-block.rp-flow-fit .rp-grid{
+.rp-block.rp-flow-fit .rp-grid:not(.rp-grid-m){
   grid-template-columns:repeat(auto-fill,minmax(var(--rp-field-min,120px),1fr));
 }
 /* 高さなりは**器の高さが要る**ので、鎖を1段も抜かない（§9.222 ⑤）。 */
 .rp-block.rp-flow-tall .rp-block-fit,
 .rp-block.rp-flow-tall .rp-section{display:flex;flex-direction:column;height:100%;min-height:0}
-.rp-block.rp-flow-tall .rp-grid{
+.rp-block.rp-flow-tall .rp-grid:not(.rp-grid-m){
   display:block;flex:1 1 auto;min-height:0;
   column-width:var(--rp-field-min,120px);column-gap:8px;column-fill:auto;
 }

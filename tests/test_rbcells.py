@@ -187,6 +187,45 @@ try:
 finally:
     c2.close()
 
+# ==========================================================
+# ⑦ 同じ名前の塊を2つ置かせない（§9.282、利用者の報告「帳票ブロック
+#    マスタでは正しく再現して表示もするのに、紙の帳票レイアウトだと、
+#    全然違う表を持ってくる」）
+# ----------------------------------------------------------
+# 紙は塊を**名前で**引く（並び・幅・高さ・出す/出さないが全部その鍵）。
+# 自作の行に既定の塊と同じ名前が入ると、紙はどちらを出すか決められず、
+# 先に見つけたほうを出して**もう片方を隠す**。しかも`/api/report-block-master`
+# は`組み込みキー`を渡さないので、既定の名前でPOSTすると**空の組み込みキーを
+# 持つ別の行**ができる——盤ではその行を編集していて正しく見えるのに、紙は
+# 既定の塊のほうを出す（＝「盤は合っているのに紙が別物」）。入口で断る。
+# ==========================================================
+c3 = sqlite3.connect(db)
+c3.create_function('Now', 0, lambda: '2026-01-01 00:00:00')
+try:
+    dup = rb.BUILTIN_KEYS[0]
+    err = ''
+    try:
+        rb.block_upsert(c3, 'tester', equipment='テスト設備A', name=dup,
+                        content='[{"kind":"value","path":"basic.lotNo","label":"ロット"}]')
+    except ValueError as e:
+        err = str(e)
+    rows = [r for r in rb.block_rows(c3, '') if r['name'] == dup and not r['builtin']]
+    rec('⑦ 既定の塊と同じ名前では新しい行を作れない', bool(err) and not rows,
+        (err[:40], len(rows)))
+    rec('⑦ 断り方は「なぜ」と「どうすれば」を言う（§4）',
+        ('画面がもともと持っている' in err) and ('違う名前' in err), err[:80])
+    # 既定の行そのものは今までどおり編集できる（名前を鍵にした引き当て）
+    ok_edit = True
+    try:
+        rb.block_upsert(c3, 'tester', equipment='*', name=dup, builtin=dup, span=6)
+    except Exception as e:
+        ok_edit = False
+        err2 = str(e)
+    rec('⑦ 既定の塊そのもの（組み込みキーつき）は今までどおり直せる', ok_edit,
+        '' if ok_edit else err2)
+finally:
+    c3.close()
+
 ng = [x for x in R if not x[1]]
 print('\n=== SUMMARY ===')
 print('%d/%d passed' % (len(R) - len(ng), len(R)))
