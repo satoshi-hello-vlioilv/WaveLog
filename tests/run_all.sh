@@ -68,6 +68,36 @@ resetcontent(){
     curl -s -X POST $API/api/column-layout-master -H 'Content-Type: application/json' \
       -d "{\"target\":\"$tg\",\"clear\":true,\"order\":[],\"hidden\":[],\"widths\":{},\"names\":{},\"formats\":{},\"rules\":{},\"formulas\":{},\"locks\":[],\"sorts\":{},\"user_id\":\"test\"}" >/dev/null
   done
+  # §9.278 で「マスの並びがあればそれが紙の正」になったので、**既定の中身を
+  # 持たない組み込みの塊**（`contentEditable:false`）に`[内容]`が残ると、
+  # 以降のテストの紙がまるごと別物になる（§9.121。実際に`測定値の統計`の
+  # 置き土産で`test_rpprint`が4件落ちた）。**既定の中身を持つ塊は触らない**
+  # ——あちらは空にすると「並びを持っている」という約束が壊れる。
+  python3 - "$API" <<'PY' >/dev/null 2>&1
+import json, sys, urllib.request
+api = sys.argv[1]
+try:
+    d = json.load(urllib.request.urlopen(api + '/api/report-block-master?equipment=', timeout=10))
+except Exception:
+    sys.exit(0)
+for r in (d.get('items') or []):
+    if not r.get('builtin') or r.get('contentEditable'):
+        continue
+    if not (r.get('content') or ''):
+        continue
+    body = json.dumps({'id': r['id'], 'equipment': r.get('equipment', ''),
+                       'name': r.get('name', ''), 'order': r.get('order', 0),
+                       'span': r.get('span', 0), 'rows': r.get('rows', 0),
+                       'note': r.get('note', ''), 'enabled': True, 'cols': 0,
+                       'content': '', 'repeat': '', 'repeatDir': '',
+                       'user_id': 'test'}).encode()
+    try:
+        urllib.request.urlopen(urllib.request.Request(
+            api + '/api/report-block-master/update', data=body,
+            headers={'Content-Type': 'application/json'}), timeout=10).read()
+    except Exception:
+        pass
+PY
 }
 
 server_up(){ curl -s -m 3 -o /dev/null "$API/" 2>/dev/null; }
