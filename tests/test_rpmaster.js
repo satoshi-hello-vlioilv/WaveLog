@@ -225,6 +225,50 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
       触っていない現場の紙は1マスも変わらない）。 */
    rec('空にすればコードの中身へ戻る（触っていない現場の紙は変わらない）',
        back2.あり&&back2.ラベル===0,JSON.stringify(back2));
+
+   /* ---- 5c) **内訳の列数が空でも、表に組んだ形のまま紙に出る**
+      （§9.280、利用者の報告「VER2.158.2でもまだ直っていません。
+       帳票レイアウト(プレビュー)が２列で変わっていない」）
+
+      盤の「表に組む」は列数を欄へ書き込むが、**欄が空のまま保存されている
+      塊**（既定の塊は0で始まる）では紙が2列へ落ち、見出しと値が総崩れに
+      なっていた。§9.279で当てるようにしたが「左上の空きマスの縦が2以上」の
+      ときだけで、**列の軸が1本の形**——`行＝項目／列＝集計`という
+      いちばん多い形——は当てられないままだった。
+      **サーバーからの往復で確かめる**こと（`WL.reportSectionHtml`を直に
+      呼ぶ網は、保存の道もマスの読み直しも一度も通らない）。 */
+   const cell=(o)=>Object.assign({label:'',path:'',span:1,rows:1,kind:'value',
+     showLabel:true,align:'',format:null,lot:false},o);
+   /* 行＝項目（板厚・板幅）／列＝集計（MIN・MAX）＝3列 */
+   const pivot=[cell({kind:'blank'}),
+     cell({kind:'head',label:'MIN'}),cell({kind:'head',label:'MAX'}),
+     cell({kind:'head',label:'板厚',align:'left'}),
+     cell({label:'板厚 MIN',path:'stat.thickness.min',showLabel:false,align:'right'}),
+     cell({label:'板厚 MAX',path:'stat.thickness.max',showLabel:false,align:'right'}),
+     cell({kind:'head',label:'板幅',align:'left'}),
+     cell({label:'板幅 MIN',path:'stat.width.min',showLabel:false,align:'right'}),
+     cell({label:'板幅 MAX',path:'stat.width.max',showLabel:false,align:'right'})];
+   await post('/api/report-block-master/update',
+     {id:stat.id,equipment:stat.equipment,name:stat.name,order:stat.order,
+      span:stat.span,rows:stat.rows,note:stat.note,enabled:true,cols:0,
+      content:JSON.stringify(pivot),user_id:TAG});
+   await page.evaluate(()=>WL.reportBlocks.forget());
+   await openReport(page);
+   const piv=await page.evaluate(()=>{
+    const g=document.querySelector('[data-rp-block="品質等級"] .rp-grid');
+    return g?{列:getComputedStyle(g).getPropertyValue('--rp-cols').trim(),
+      見出し:[...g.querySelectorAll('.rp-field-head')].map(e=>e.textContent.trim())}
+      :{列:'(格子なし)',見出し:[]};
+   });
+   rec('§9.280 内訳の列数が空でも、表に組んだ形の列数のまま紙に出る',
+       piv.列==='3',JSON.stringify(piv));
+   rec('§9.280 見出しのマスもそのまま紙に出る',
+       piv.見出し.join(',')==='MIN,MAX,板厚,板幅',JSON.stringify(piv.見出し));
+   await post('/api/report-block-master/update',
+     {id:stat.id,equipment:stat.equipment,name:stat.name,order:stat.order,
+      span:stat.span,rows:stat.rows,note:stat.note,enabled:true,cols:stat.cols,
+      content:'',user_id:TAG});
+   await page.evaluate(()=>WL.reportBlocks.forget());
   }
 
   /* ---- 6) 改名は**紙の見出しまで**変わる（§9.219 ②／§CLAUDE 8） ----
