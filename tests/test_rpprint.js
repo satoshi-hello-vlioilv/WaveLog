@@ -980,26 +980,111 @@ let b=null;
    const fit=document.getElementById('rpPageFit');
    return {紙高mm:mmOf(pr.height),
      枚数:cs.getPropertyValue('--rp-sheets').trim(),
+     余白mm:parseFloat(cs.getPropertyValue('--rp-gap'))||0,
+     割った:pg.classList.contains('rp-paged'),
+     器の背景:cs.backgroundColor,
+     地の色:getComputedStyle(document.getElementById('rpScroll')).backgroundColor,
+     紙の位置mm:[...pg.querySelectorAll('.rp-sheet')]
+       .map(e=>mmOf(e.getBoundingClientRect().top-pr.top)),
+     紙の高さmm:[...pg.querySelectorAll('.rp-sheet')]
+       .map(e=>mmOf(e.getBoundingClientRect().height)),
+     紙の色:[...pg.querySelectorAll('.rp-sheet')]
+       .map(e=>getComputedStyle(e).backgroundColor)[0]||'',
      切れ目mm:[...pg.querySelectorAll('.rp-sheet-cut')]
        .map(e=>mmOf(e.getBoundingClientRect().top-pr.top)),
      紙の枠:pg.querySelectorAll('.rp-sheet').length,
+     続きの写し:pg.querySelectorAll('.rp-blk-tail').length,
+     ずらした塊:pg.querySelectorAll('.rp-block[data-rp-shift]').length,
      札:[...pg.querySelectorAll('.rp-sheet-no')].map(e=>e.textContent.trim()),
      切れる塊:[...pg.querySelectorAll('.rp-block.is-cut')].map(e=>e.dataset.rpBlock),
      切れる塊のtitle:(pg.querySelector('.rp-block.is-cut')||{}).title||'',
+     /* **実際に描かれている位置**で見る（§9.281 の追補）——`data-rp-shift`が
+        付いていることだけを見る網は、ずらす数を0にしても通ってしまう
+        （実際に素通りした）。どの塊も**どれか1枚の紙の中**に収まっている
+        こと＝余白の帯に中身が居ないことを見る。 */
+     紙からはみ出た塊:(()=>{
+      const N=Number(cs.getPropertyValue('--rp-sheets'))||1;
+      const G=parseFloat(cs.getPropertyValue('--rp-gap'))||0;
+      const out=[];
+      pg.querySelectorAll('.rp-block:not([data-rp-clip])').forEach(e=>{
+       const r=e.getBoundingClientRect();
+       const t=mmOf(r.top-pr.top),bo=mmOf(r.bottom-pr.top);
+       let ok=false;
+       for(let k=0;k<N;k++){const s0=k*(297+G);
+        if(t>=s0-0.6&&bo<=s0+297+0.6){ok=true;break}}
+       if(!ok)out.push((e.dataset.rpBlock||'?')+`(${t}〜${bo}mm)`);
+      });
+      return out;
+     })(),
+     /* **ずらした量が紙の番号と合っているか**（§9.281 の追補）。
+        紙は297mmで余白は10mmしかないので、「どれかの紙に入っている」だけ
+        では**ずらしていない実装でも通る**（実際に素通りした）。
+        ずらす前の位置＝描かれた位置−ずらした量、から紙の番号を出し、
+        `ずらした量 ÷ 余白`と一致することを見る。 */
+     ずれた塊:(()=>{
+      const G=parseFloat(cs.getPropertyValue('--rp-gap'))||0;
+      const out=[];
+      if(!G)return out;
+      pg.querySelectorAll('.rp-block[data-rp-shift]').forEach(e=>{
+       const sh=+(((parseFloat(e.style.getPropertyValue('--rp-shift'))||0)/MM).toFixed(1));
+       const t=mmOf(e.getBoundingClientRect().top-pr.top);
+       const k=Math.round(sh/G), want=Math.floor((t-sh)/297+1e-6);
+       if(k!==want)out.push(`${e.dataset.rpBlock||'?'} ずらし${sh}mm→${k}枚目 / 位置は${want}枚目`);
+      });
+      return out;
+     })(),
+     /* 続きの写しは**次の紙の頭**から見える（上を切った位置＝紙の上端）。 */
+     写しの見え始めmm:[...pg.querySelectorAll('.rp-blk-tail')].map(e=>
+       +(parseFloat(e.style.getPropertyValue('--ty'))
+         +parseFloat(e.style.getPropertyValue('--rp-clip-t'))).toFixed(0)),
      帯:fit?fit.textContent:null};
   });
   const S1=await sheets();
   rec('§9.281 前提: 見本のロットの紙は1枚に収まらない',
       Number(S1.枚数)>=2,JSON.stringify(S1.枚数));
-  /* **紙は1枚ぶんの倍数まで伸ばす**——最後の紙の余りもそのまま見えるので、
-     「あとどれだけ置けるか」が読める。 */
-  rec('§9.281 紙はA4何枚ぶんかで区切られる（半端な長さにしない）',
-      Math.abs(S1.紙高mm-Number(S1.枚数)*297)<=1.5,
-      `${S1.紙高mm}mm / ${S1.枚数}枚`);
-  rec('§9.281 切れ目が297mmごとに出る（枚数−1本）',
-      S1.切れ目mm.length===Number(S1.枚数)-1
-      &&S1.切れ目mm.every((v,i)=>Math.abs(v-(i+1)*297)<=1.5),
-      JSON.stringify(S1.切れ目mm));
+  /* ==========================================================
+     ページ間は「背景と同じ色の余白」（§9.281 の追補、利用者の指示）
+     ----------------------------------------------------------
+       「ページ毎に表示するようにみたい事もあるので、各ページ間は完全な
+        背景と同じ色の余白が欲しいです。よくある印刷プレビューの作りです」
+
+     紙を1枚ずつに割り、あいだへ本物の余白を空ける。**紙の器は透かして
+     地をそのまま見せる**ので、余白の色は必ず背景と同じ（色を2箇所に
+     書かない）。最後の紙の余りもそのまま見えるので「あとどれだけ置けるか」
+     が読める。 */
+  const N=Number(S1.枚数),GAP=S1.余白mm;
+  rec('§9.281 ページ毎に割って出す（つなげない）',
+      S1.割った===true&&GAP>0,JSON.stringify({割った:S1.割った,余白mm:GAP}));
+  rec('§9.281 紙は1枚ぶんずつ・あいだは余白（器の高さ＝枚数×297＋余白）',
+      Math.abs(S1.紙高mm-(N*297+(N-1)*GAP))<=1.5
+      &&S1.紙の高さmm.every(h=>Math.abs(h-297)<=1.5),
+      `${S1.紙高mm}mm / ${N}枚+余白${GAP}mm / 各紙 ${JSON.stringify(S1.紙の高さmm)}`);
+  rec('§9.281 紙は297mm＋余白ごとに置かれる',
+      S1.紙の位置mm.length===N
+      &&S1.紙の位置mm.every((v,i)=>Math.abs(v-i*(297+GAP))<=1.5),
+      JSON.stringify(S1.紙の位置mm));
+  /* **色は2箇所に書かない**——器を透かして地を見せているので、
+     背景色を変えても余白の色は必ず追随する。 */
+  rec('§9.281 余白の色は背景そのもの（器を透かす・紙だけ白い）',
+      /rgba\(0, 0, 0, 0\)|transparent/.test(S1.器の背景)
+      &&S1.紙の色==='rgb(255, 255, 255)'&&S1.地の色!=='rgb(255, 255, 255)',
+      JSON.stringify({器:S1.器の背景,紙:S1.紙の色,地:S1.地の色}));
+  /* **中身は1枚ぶんずつ下へずらす**ので、各紙の中での位置は変わらない
+     （＝刷り上がりと食い違わない）。切れ目にかかる塊は切って、続きを
+     次の紙の頭へ出す。 */
+  rec('§9.281 中身を1枚ぶんずつ下へずらす（余白の帯に中身が残らない）',
+      S1.ずらした塊>0&&S1.紙からはみ出た塊.length===0,
+      JSON.stringify({ずらし:S1.ずらした塊,はみ出た:S1.紙からはみ出た塊.slice(0,3)}));
+  rec('§9.281 ずらす量は「その塊が乗る紙の番号×余白」と一致する',
+      S1.ずれた塊.length===0,JSON.stringify(S1.ずれた塊.slice(0,3)));
+  /* 続きの写しは**次の紙の頭ちょうど**から見え始める（1枚目の続きなので、
+     ずれると同じ行が2度出たり抜けたりする）。 */
+  const sheetTops=Array.from({length:N},(_,k)=>Math.round(k*(297+GAP)*96/25.4));
+  rec('§9.281 切れ目にかかる塊は切って、続きが次の紙の頭ちょうどに出る',
+      S1.続きの写し>=1&&S1.続きの写し>=S1.切れる塊.length
+      &&S1.写しの見え始めmm.every(v=>sheetTops.some(t=>Math.abs(v-t)<=2)),
+      JSON.stringify({写し:S1.続きの写し,見え始め:S1.写しの見え始めmm,
+                      紙の頭:sheetTops,切れる塊:S1.切れる塊}));
   /* **枚数は決め打ちにしない**——見本のロットの中身は設定で変わるので、
      数を書くと「直っていても落ちる網」になる（§9.222 ②と同じ理由）。 */
   const want=Array.from({length:Number(S1.枚数)},(_,i)=>`${i+1}枚目`).join(',');
@@ -1016,6 +1101,14 @@ let b=null;
   await settle(page);
   await page.waitForTimeout(800);
   const S2=await sheets();
+  /* **組み換え中はつなげたまま**——掴んで置く座標は`rpLocal()`と
+     `rpFreeCells()`が`getBoundingClientRect()`から解いているので、
+     塊をずらすと落とす先が余白のぶんずれる。切れ目は点線が言う。 */
+  rec('§9.281 組み換え中はつなげたまま出し、切れ目は点線で言う',
+      S2.割った===false&&S2.ずらした塊===0&&S2.続きの写し===0
+      &&S2.切れ目mm.length===Number(S2.枚数)-1
+      &&S2.切れ目mm.every((v,i)=>Math.abs(v-(i+1)*297)<=1.5),
+      JSON.stringify({割った:S2.割った,ずらし:S2.ずらした塊,切れ目:S2.切れ目mm}));
   rec('§9.281 収まりの帯が枚数を正しく言う（「1枚」と言わない）',
       (S2.帯||'').indexOf(`${S1.枚数}枚`)>=0&&!/1枚（残り/.test(S2.帯||''),
       `${S2.帯} / 実際は${S1.枚数}枚`);
@@ -1026,7 +1119,8 @@ let b=null;
   const printed2=await page.evaluate(()=>new Promise(resolve=>{
    const give=w=>{
     const pg=w.document.querySelector('.rp-page');
-    resolve({層:w.document.querySelectorAll('.rp-sheets,.rp-sheet-cut,.rp-sheet').length,
+    resolve({層:w.document.querySelectorAll('.rp-sheets,.rp-sheet-cut,.rp-sheet,.rp-blk-tail').length,
+      割った:w.document.querySelectorAll('.rp-paged,.rp-block[data-rp-shift]').length,
       伸ばした高さ:pg?(pg.style.getPropertyValue('--rp-sheets')||''):'(紙なし)',
       紙高mm:pg?+(pg.getBoundingClientRect().height/(96/25.4)).toFixed(1):0});
    };
@@ -1045,8 +1139,9 @@ let b=null;
   /* **伸ばした高さも持ち込まない**——刷る側は`min-height:297mm`で、
      あとはブラウザが1枚ずつ切る。プレビュー用に伸ばした指定を持ち込むと、
      中身より背の高い紙を刷ることになる（最後に白紙が1枚増える）。 */
-  rec('§9.281 刷る書類へ「伸ばした高さ」を持ち込まない',
-      !!printed2&&printed2.伸ばした高さ==='',JSON.stringify(printed2));
+  rec('§9.281 刷る書類へページ割り（伸ばした高さ・余白・ずらし）を持ち込まない',
+      !!printed2&&printed2.伸ばした高さ===''&&printed2.割った===0,
+      JSON.stringify(printed2));
 
   /* ---- もう片側: 1枚に収まるなら切れ目も枠も出さない ---- */
   const S3=await page.evaluate(()=>{
@@ -1056,14 +1151,17 @@ let b=null;
    const f=WL.reportSheets();
    const cs=getComputedStyle(pg);
    return {枚数:cs.getPropertyValue('--rp-sheets').trim(),
+     割った:pg.classList.contains('rp-paged'),
+     ずらし:pg.querySelectorAll('.rp-block[data-rp-shift]').length,
      切れ目:pg.querySelectorAll('.rp-sheet-cut').length,
      枠:pg.querySelectorAll('.rp-sheet').length,
      札:pg.querySelectorAll('.rp-sheet-no').length,
      印:pg.querySelectorAll('.rp-block.is-cut').length,
      帯:(document.getElementById('rpPageFit')||{}).textContent||''};
   });
-  rec('§9.281 1枚に収まるときは切れ目も枠も札も出さない（今までの見え方）',
-      S3.枚数==='1'&&S3.切れ目===0&&S3.枠===0&&S3.札===0&&S3.印===0,
+  rec('§9.281 1枚に収まるときは割らない（切れ目も枠も札も出さない）',
+      S3.枚数==='1'&&S3.切れ目===0&&S3.枠===0&&S3.札===0&&S3.印===0
+      &&S3.割った===false&&S3.ずらし===0,
       JSON.stringify(S3));
   rec('§9.281 1枚に収まれば帯は「1枚（残り○mm）」へ戻る',
       /^A4縦 1枚（残り\d+mm）$/.test(S3.帯),String(S3.帯));

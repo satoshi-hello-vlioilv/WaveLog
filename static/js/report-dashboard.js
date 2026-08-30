@@ -231,6 +231,11 @@
  /* 紙の余白（`.rp-page{padding:8mm}`と同じ数）。**2箇所に書かない**
     ——収まりの判定（§9.281）が中身の下端へ足すのはこのぶん。 */
  const RP_PAGE_PAD_MM=8;
+ /* 紙と紙のあいだの余白（§9.281 の追補、利用者の指示「各ページ間は完全な
+    背景と同じ色の余白が欲しいです。よくある印刷プレビューの作りです」）。
+    **色は指定しない**——紙を透かして`.rp-scroll`の地をそのまま見せるので、
+    背景色が変わっても必ず同じ色になる（2箇所に色を書かない）。 */
+ const RP_SHEET_GAP_MM=10;
  function updatePageSizeStyle(){
   let el=document.getElementById('rpPageSizeStyle');
   if(!el){el=document.createElement('style');el.id='rpPageSizeStyle';document.head.appendChild(el)}
@@ -2120,9 +2125,33 @@
    const r=b.getBoundingClientRect();
    return at(mmOf(r.top-top))!==at(Math.max(0,mmOf(r.bottom-top)-0.4));
   });
-  return {sheets,sheetMm,contentMm,land,cut,
+  return {sheets,sheetMm,contentMm,land,cut,scale,pxPerMm,
     overMm:Math.max(0,contentMm-sheetMm),
     restMm:Math.max(0,sheets*sheetMm-contentMm)};
+ }
+ /* 紙の切れ目を描き、収まりを帯へ出す（§9.281、利用者の指示「印刷プレビュー
+    らしくどこで用紙が区切られて表示が切れるかわかるように」）。
+    **描くのはプレビューだけ**——刷る側のDOM（`#reportBulkPrintArea`と
+    `rpPageHtmlFor()`の写し）からは外す（紙に線が出る）。 */
+ /* **測る前に前回の割り当てを外す**（§9.217と同じ作法）。ページに割ると
+    塊へ`transform`が付くので、外さずに測ると**ずらしたぶんだけ紙が伸び続ける**
+    ——`rpFitRows()`など`getBoundingClientRect()`で測る処理も同じ理由でここを
+    先に通す（`rpFitAll`／`rpMarkOverflow`の頭）。 */
+ function rpClearSheets(page){
+  if(!page||!page.classList)return;
+  page.classList.remove('rp-paged');
+  page.style.removeProperty('--rp-sheets');
+  page.style.removeProperty('--rp-gap');
+  const lay=page.querySelector(':scope > .rp-sheets');
+  if(lay)lay.remove();
+  page.querySelectorAll('.rp-block[data-rp-shift]').forEach(b=>{
+   b.removeAttribute('data-rp-shift');b.removeAttribute('data-rp-clip');
+   b.style.removeProperty('--rp-shift');
+   b.style.removeProperty('--rp-clip-t');b.style.removeProperty('--rp-clip-b');
+  });
+  page.querySelectorAll('.rp-block[data-rp-cut]').forEach(b=>{
+   b.removeAttribute('data-rp-cut');b.classList.remove('is-cut');b.removeAttribute('title');
+  });
  }
  /* 紙の切れ目を描き、収まりを帯へ出す（§9.281、利用者の指示「印刷プレビュー
     らしくどこで用紙が区切られて表示が切れるかわかるように」）。
@@ -2133,28 +2162,12 @@
      `#reportContent .rp-page`と書くと1つも見つからない。 */
   const page=$id('reportContent');
   if(!page||!page.classList.contains('rp-page')){rpPaintPageFit(null);return null}
-  /* **測る前に前回の割り当てを外す**（§9.217と同じ作法）——付いたままだと
-     伸ばした紙の高さで測り直すことになり、枚数が減らなくなる。 */
-  page.style.removeProperty('--rp-sheets');
-  const old=page.querySelector(':scope > .rp-sheets');
-  if(old)old.remove();
-  page.querySelectorAll('.rp-block[data-rp-cut]').forEach(b=>{
-   b.removeAttribute('data-rp-cut');b.classList.remove('is-cut');b.removeAttribute('title');
-  });
+  rpClearSheets(page);
   const f=rpSheetFacts(page);
   if(!f)return null;
   page.style.setProperty('--rp-sheets',String(f.sheets));
   if(f.sheets>1){
-   const h=[];
-   for(let k=0;k<f.sheets;k++){
-    h.push(`<span class="rp-sheet" style="--k:${k}"></span>`
-          +`<span class="rp-sheet-no" style="--k:${k}">${k+1}枚目</span>`);
-    if(k)h.push(`<span class="rp-sheet-cut" style="--k:${k}"></span>`);
-   }
-   const lay=document.createElement('div');
-   lay.className='rp-sheets';lay.setAttribute('aria-hidden','true');
-   lay.innerHTML=h.join('');
-   page.appendChild(lay);
+   rpPaintPages(page,f);
    f.cut.forEach(b=>{
     b.classList.add('is-cut');b.dataset.rpCut='1';
     b.title='この塊は用紙の切れ目にかかっています（途中で切れて次の紙へ続きます）。';
@@ -2162,6 +2175,68 @@
   }
   rpPaintPageFit(f);
   return f;
+ }
+ /* 紙を1枚ずつに割る（§9.281 の追補）。
+    **ページのあいだへ本物の余白を空け、中身を1枚ぶんずつ下へずらす**
+    ——各紙の中での位置は1mmも変わらないので、刷り上がりとは食い違わない
+    （§9.242 ⑦「プレビューどおりに刷る」）。よくある印刷プレビューと同じ形。
+
+    **組み換え中はつなげたまま**にする——掴んで置く座標は`rpLocal()`と
+    `rpFreeCells()`が`getBoundingClientRect()`から解いており、塊をずらすと
+    **落とす先が余白のぶんずれる**。組み換えは1枚のキャンバスの上で行い、
+    どこで紙が変わるかは点線が言う（帯にも書く）。 */
+ function rpPaintPages(page,f){
+  const paged=!rpArranging;
+  page.classList.toggle('rp-paged',paged);
+  page.style.setProperty('--rp-gap',(paged?RP_SHEET_GAP_MM:0)+'mm');
+  const lay=document.createElement('div');
+  lay.className='rp-sheets';lay.setAttribute('aria-hidden','true');
+  let h='';
+  for(let k=0;k<f.sheets;k++)
+   h+=`<span class="rp-sheet" style="--k:${k}"></span>`
+     +`<span class="rp-sheet-no" style="--k:${k}">${k+1}枚目</span>`;
+  /* つなげて出すときだけ切れ目の線が要る（割ってあれば余白がそれを言う）。 */
+  if(!paged)for(let k=1;k<f.sheets;k++)h+=`<span class="rp-sheet-cut" style="--k:${k}"></span>`;
+  lay.innerHTML=h;
+  page.appendChild(lay);
+  if(!paged)return;
+  const sc=f.scale||1;
+  const S=f.sheetMm*f.pxPerMm;                 /* 拡大前の1枚ぶん(px) */
+  const G=RP_SHEET_GAP_MM*f.pxPerMm;           /* 拡大前の余白(px) */
+  const pr=page.getBoundingClientRect();
+  page.querySelectorAll('.rp-block').forEach(b=>{
+   const r=b.getBoundingClientRect();
+   const bt=(r.top-pr.top)/sc,bb=(r.bottom-pr.top)/sc;
+   const bl=(r.left-pr.left)/sc,bw=r.width/sc,bh=r.height/sc;
+   const k0=Math.floor(bt/S+1e-6);
+   const k1=Math.max(k0,Math.floor(Math.max(0,bb-0.4)/S+1e-6));
+   /* **計算した数はカスタムプロパティで渡す**（`tests/test_csslint.py`）
+      ——`transform`のような見た目をインラインで直書きすると、どのレイヤからも
+      打ち消せなくなる。使い方（ずらす・切る）はCSSに残す。 */
+   b.dataset.rpShift='1';
+   b.style.setProperty('--rp-shift',(k0*G)+'px');
+   if(k1===k0)return;
+   /* **切れ目にかかる塊は切って、続きを次の紙の頭へ置く**（紙の上で
+      起きることと同じ）。元は1枚目に残るぶんだけ見せ、続きは写しで出す
+      ——写しは`data-rp-block`を持たないので、置き場所を数える処理
+      （`rpFreeCells`等）からは見えない。 */
+   b.dataset.rpClip='1';
+   b.style.setProperty('--rp-clip-t','0px');
+   b.style.setProperty('--rp-clip-b',Math.max(0,bb-(k0+1)*S)+'px');
+   for(let k=k0+1;k<=k1;k++){
+    const y0=k*S,y1=Math.min(bb,(k+1)*S);
+    const c=b.cloneNode(true);
+    c.removeAttribute('id');c.removeAttribute('data-rp-block');
+    c.removeAttribute('data-rp-shift');
+    c.querySelectorAll('[id]').forEach(e=>e.removeAttribute('id'));
+    c.classList.add('rp-blk-tail');
+    c.style.setProperty('--tx',bl+'px');c.style.setProperty('--ty',(bt+k*G)+'px');
+    c.style.setProperty('--tw',bw+'px');c.style.setProperty('--th',bh+'px');
+    c.style.setProperty('--rp-clip-t',(y0-bt)+'px');
+    c.style.setProperty('--rp-clip-b',Math.max(0,bb-y1)+'px');
+    lay.appendChild(c);
+   }
+  });
  }
  /* ---------- 収まりは短く言い、続きは`title`（§9.255 ①） ----------
     帯を1行にした（利用者の指示「コンパクトに2行分くらいに」）ので、
@@ -2185,7 +2260,12 @@
   el.className='rp-page-fit is-over';
   el.textContent=`A4${dir} ${f.sheets}枚（${mm(f.overMm)}mm超過`+(n?`・切れる塊${n}件`:'')+'）';
   el.title=`いまの配置はA4${dir}1枚に収まりません（約${mm(f.overMm)}mm超過するので${f.sheets}枚になります）。`
-   +(n?`用紙の切れ目にかかる塊が${n}件あり、途中で切れて次の紙へ続きます（紙の上に点線で出しています）。`:'')
+   +(n?`用紙の切れ目にかかる塊が${n}件あり、途中で切れて次の紙へ続きます。`:'')
+   /* **見え方が場面で違うことは書く**（§4）——組み換え中だけ紙をつなげて
+      出しているので、黙っていると「さっきまで割れていたのに」と読まれる。 */
+   +(rpArranging
+     ?'組み換え中は1枚のキャンバスとしてつなげて出しています（切れ目は点線）。'
+     :'プレビューはページごとに割って出しています。')
    +'塊の高さを下げるか、要らない塊を「出していない塊」へ落としてください。';
  }
  /* **既定の高さは中身から測る**（§9.217）。
@@ -2316,6 +2396,9 @@
   return n;
  }
  function rpMarkOverflow(host){
+  /* **測る前に片付ける**（§9.281 の追補）——ページに割ると塊へ`transform`が
+     付くので、外さずに`getBoundingClientRect()`で測ると位置を読み違える。 */
+  rpClearSheets($id('reportContent'));
   rpFitRows(host);
   /* **中身を器へ合わせる**（§9.221 ⑨）。行を測って器を伸ばす（`rpFitRows`）
      のは置き場所の決まっていない塊だけで、決まっている塊はこちらが縮める。
@@ -3761,6 +3844,8 @@
   try{rpFreeCells(h)}catch(e){console.warn('帳票の空きマスの計算に失敗',e)}
  }
  function rpFitAll(){
+  /* **測る前に片付ける**（§9.281 の追補。理由は`rpMarkOverflow`と同じ）。 */
+  rpClearSheets($id('reportContent'));
   document.querySelectorAll('#reportContent,#reportBulkPrintArea .rp-page').forEach(h=>{
    try{rpFitRows(h)}catch(e){console.warn('帳票の行の割り付けに失敗',e)}
    /* **紙にも中身の合わせ込みが要る**（§9.221 ⑨）。器は`overflow:hidden`で
@@ -3776,6 +3861,20 @@
      組み換えに入らないと分からない。刷る側（`#reportBulkPrintArea`）には
      描かない（紙に線が出る）。 */
   try{rpUpdateSheets()}catch(e){console.warn('用紙の切れ目の計算に失敗',e)}
+  /* **高さが決まってから倍率を合わせ直す**（§9.281 の追補）。`fitPage()`は
+     描いた直後＝**行の割り付けもページ割りも済む前**に測るので、
+     「全体」が1枚目しか映さないことがあった（実測 85% → 押し直すと42%）。
+     **変わったときだけ**合わせ直す（毎回だとちらつく）。倍率は`transform`
+     なので`offsetHeight`は動かず、ここが回り続けることはない。 */
+  try{rpRefitZoom()}catch(e){}
+ }
+ let rpFitHeight=0;
+ function rpRefitZoom(){
+  const page=$id('reportContent');if(!page)return;
+  const h=page.offsetHeight;
+  if(!h||h===rpFitHeight)return;
+  rpFitHeight=h;
+  if(rpZoom==='fit')fitPage();else if(rpZoom==='width')fitWidth();
  }
  function rpLoadLayoutFor(x){
   const t=rpTargetOf(x),eq=rpEquipmentOf(x)||'';
@@ -3977,8 +4076,15 @@
      （§9.281）なので、残すと紙に点線が刷られる。 */
   c.querySelectorAll('.rp-block-tools,.rp-block-paper,.rp-free-layer,.rp-sheets').forEach(x=>x.remove());
   /* 伸ばした紙の高さも持ち込まない（刷る側は`min-height:297mm`で1枚ずつ切る）。 */
-  c.querySelectorAll('.rp-page').forEach(x=>x.style.removeProperty('--rp-sheets'));
-  if(c.classList&&c.classList.contains('rp-page'))c.style.removeProperty('--rp-sheets');
+  /* ページ割り（伸ばした高さ・余白・塊のずらし）も持ち込まない——刷る側は
+     `min-height:297mm`で、あとはブラウザが1枚ずつ切る。 */
+  const unpage=x=>{x.classList.remove('rp-paged');
+   x.style.removeProperty('--rp-sheets');x.style.removeProperty('--rp-gap')};
+  c.querySelectorAll('.rp-page').forEach(unpage);
+  if(c.classList&&c.classList.contains('rp-page'))unpage(c);
+  c.querySelectorAll('.rp-block[data-rp-shift]').forEach(b=>{
+   b.removeAttribute('data-rp-shift');b.removeAttribute('data-rp-clip');
+  });
   return c.outerHTML;
  }
  async function rpPrintPages(pagesHtml,title){
