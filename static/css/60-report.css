@@ -785,4 +785,12 @@
   background:var(--card-bg);color:var(--nav);
   font-size:var(--fs-badge);font-weight:700;cursor:pointer}
 .rp-to-master:hover{background:var(--pale)}
+/* 子ロットを横に並べる（§9.277、利用者の指示「縦に積むが標準で横に積むか」）。
+   **繰り返しが1回のときは器を作らない**（`rpFieldsSection`）ので、ここは
+   2件以上のときだけ当たる。等分に割って、狭くなることは中身が自分で言う
+   （入りきらなければ`rpFitBlockBodies`が縮め、それでも足りなければ
+   「入りきりません」が出る・§9.222 ④）。 */
+.rp-repeat-row{display:grid;grid-template-columns:repeat(var(--rp-repeat,2),minmax(0,1fr));
+  gap:0 3px;align-items:start}
+.rp-repeat-row>.rp-section{min-width:0}
 }

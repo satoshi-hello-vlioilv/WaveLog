@@ -462,8 +462,8 @@
     `repeatLots`は「何回・どの子ロットで描くか」の答えで、
     `sectionHtml`は塊1つぶんの紙。 */
  WL.reportStat.repeatLots=(x,on)=>rpRepeatLots(x,!!on);
- WL.reportStat.sectionHtml=(x,name,fields,cols,repeat)=>
-   rpFieldsSection(x,name,fields||[],cols||0,repeat||'');
+ WL.reportStat.sectionHtml=(x,name,fields,cols,repeat,repeatDir)=>
+   rpFieldsSection(x,name,fields||[],cols||0,repeat||'',repeatDir||'');
 
  function bulkPrintNow(items,area){
   area.innerHTML=items.map(x=>`<div class="rp-report rp-page${rpOrientation==='landscape'?' rp-landscape':''}">${reportHtml(x)}</div>`).join('');
@@ -1011,7 +1011,7 @@
      :(fields
        /* §9.247 ②。**既定の塊でも繰り返せる**（中身を差し替えてある塊は
           自作の塊と同じ「ラベル＝出どころ」の並びなので、道を分けない）。 */
-       ?(x=>rpFieldsSection(x,name,fields,r.cols,r.repeat))
+       ?(x=>rpFieldsSection(x,name,fields,r.cols,r.repeat,r.repeatDir))
        :(x=>{const h=b.html(x);return renamed?rpRetitle(h,name):h}))});
  }
  function rpAllBlocks(){
@@ -1317,26 +1317,63 @@
   if(!spec)return raw;
   try{return WL.cellFormat.value(spec,raw)}catch(e){return raw}
  }
- function rpFieldsSection(x,name,fields,cols,repeat){
+ /* ---------- 塊の中身を1回ぶん描く（§9.247 ②／§9.277） ----------
+    子ロットとの噛み合わせは2通りある。
+
+     ①**塊ごと繰り返す**（今までどおり）——子ロットの数だけ節を出す。
+       並べる向きは`repeatDir`（既定は縦に積む・§9.277）。
+     ②**1つの表の中で繰り返す**（§9.277）——`lot:true`の印が付いたマスだけを
+       子ロットの数だけ複製する。盤の「表に組む」で「対象」の軸を**行**へ
+       置くとこの形になり、`測定値の統計`の既定の塊と同じ絵になる。
+
+    **どちらかは印が決める**（`lot:true`のマスが在るか）——設定を2つ持つと、
+    「繰り返すのに表にもする」という決まらない状態が作れる。 */
+ function rpCellTuple(x,f,L){
+  if(f.blank)return [f.label,'',{span:f.span,rows:f.rows,blank:true}];
+  /* 見出しのマス（§9.274）。**値を引かない**——道を持たないので、
+     引きに行くと空文字を`-`として出すことになる。 */
+  if(f.kind==='head')return [f.label,'',{span:f.span,rows:f.rows,head:true,align:f.align}];
+  const v=rpFormatCell(rpValueAt(x,f.path,{lot:L}),f.format);
+  /* 割り当てられない項目は`—`（`rpValueAt`が返す）。**理由を添える**（§4）。 */
+  return [f.label,v,{span:f.span,rows:f.rows,title:(v==='—'?RP_LOT_NA:''),
+                     align:f.align,showLabel:f.showLabel!==false}];
+ }
+ function rpFieldsSection(x,name,fields,cols,repeat,repeatDir){
   const live=fields.filter(f=>!f.blank);
   if(!live.length)return '';
   const on=repeat==='子ロット';
   const lots=rpRepeatLots(x,on);
-  return lots.map(L=>{
+  /* ---- ② 表の中で繰り返す（§9.277） ---- */
+  if(on&&fields.some(f=>f.lot)){
+   const rows=[];
+   let put=false;
+   /* **印の無いマスは「全体」**（§9.277）——盤は「対象」の軸に`全体`と
+      子ロットの2つを並べるので、印の無い側はロット全体の統計で埋める。
+      `lots[0]`を使わないこと——1本目の子ロットの値が「全体」の欄に出る。 */
+   const whole=rpRepeatLots(x,false)[0];
+   fields.forEach(f=>{
+    if(!f.lot){rows.push(rpCellTuple(x,f,whole));return}
+    /* **印の付いた並びはひとかたまり**（盤が行として作る）。最初に出て
+       きたところで、そのかたまりを子ロットの数だけ展開する。 */
+    if(put)return;
+    put=true;
+    const run=fields.filter(y=>y.lot);
+    lots.forEach(L=>run.forEach(y=>rows.push(rpCellTuple(x,y,L))));
+   });
+   return reportSection(name,rows,cols||0);
+  }
+  /* ---- ① 塊ごと繰り返す（今までどおり） ---- */
+  const html=lots.map(L=>{
    const title=(on&&L.split)
      ?`${name}　${L.lot||'(番号なし)'}（${L.from+1}〜${L.to}条）`:name;
-   const rows=fields.map(f=>{
-    if(f.blank)return [f.label,'',{span:f.span,rows:f.rows,blank:true}];
-    /* 見出しのマス（§9.274）。**値を引かない**——道を持たないので、
-       引きに行くと空文字を`-`として出すことになる。 */
-    if(f.kind==='head')return [f.label,'',{span:f.span,rows:f.rows,head:true,align:f.align}];
-    const v=rpFormatCell(rpValueAt(x,f.path,{lot:L}),f.format);
-    /* 割り当てられない項目は`—`（`rpValueAt`が返す）。**理由を添える**（§4）。 */
-    return [f.label,v,{span:f.span,rows:f.rows,title:(v==='—'?RP_LOT_NA:''),
-                       align:f.align,showLabel:f.showLabel!==false}];
-   });
-   return reportSection(title,rows,cols||0);
+   return reportSection(title,fields.map(f=>rpCellTuple(x,f,L)),cols||0);
   }).join('');
+  /* 横に並べる（§9.277、利用者の指示「縦に積むが標準で横に積むか」）。
+     **繰り返しが1回のときは器を作らない**——1件しかないのに横並びの器で
+     包むと、幅の計算だけが変わって見え方が微妙にずれる。 */
+  return (repeatDir==='横'&&lots.length>1)
+    ? `<div class="rp-repeat-row" style="--rp-repeat:${lots.length}">${html}</div>`
+    : html;
  }
  function rpUserBlockDef(b){
   const fields=b.fields||[];
@@ -1349,7 +1386,7 @@
      /* マス数と空きマスは**そのまま渡す**（§9.245）——ここで潰すと、
         設定画面で組んだマトリクスが紙では1列ずつの並びに戻る。
         **空きマスだけの塊は「中身なし」**（紙には出さない）。 */
-     :(x=>rpFieldsSection(x,b.name,fields,b.cols,b.repeat))};
+     :(x=>rpFieldsSection(x,b.name,fields,b.cols,b.repeat,b.repeatDir))};
  }
  /* その設備の自作ブロックを読む。**読めなくても帳票は出す**（fail-open）。 */
  /* 設備ごとの写し（§9.239 ③）。1設備ぶんしか持たないと、一括印刷で

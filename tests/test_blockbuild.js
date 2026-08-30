@@ -185,9 +185,15 @@ let b=null,page=null;
   });
   rec('「紙での並び」はマトリクスで出る',grid.格子==='grid',grid.格子);
   rec('各マスに「横に何マス使うか」のつまみが付く',grid.つまみ>0,String(grid.つまみ));
-  /* §9.255 ② 列数はサーバーが受ける上限（6）まで。**盤で選べない列数を
-     紙が受け入れる状態を作らない**（片方だけ直すとそうなる）。 */
-  rec('列数は1〜6から選べる（サーバーの上限と同じ）',grid.列ボタン===6,String(grid.列ボタン));
+  /* §9.255 ②／§9.277 列数はサーバーが受ける上限まで。**盤で選べない列数を
+     紙が受け入れる状態を作らない**（片方だけ直すとそうなる）——数を書き写さず
+     サーバーの答え（`contentColsMax`）と突き合わせる（§9.163）。
+     下限を12に取ってあるのは**紙（`reportSection`）が12まで受ける**からで、
+     盤がそれ未満だと「表に組む」で組んだ形が黙って丸められる（§9.277）。 */
+  const colsMax=await page.evaluate(async()=>{
+   const d=await api('/api/report-block-master?equipment=');return d.contentColsMax});
+  rec('列数はサーバーが受ける上限まで選べる（盤と紙で同じ数）',
+      grid.列ボタン===colsMax&&colsMax>=12,grid.列ボタン+' / '+colsMax);
   /* 列数を変えると**枠のほうも変わる**（設定と見た目が別々に動かない）。 */
   await page.click('.fb-cols [data-fb-cols="3"]');
   await page.waitForTimeout(200);

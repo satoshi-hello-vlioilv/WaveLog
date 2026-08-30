@@ -38,7 +38,7 @@ def rec(name, ok, detail=''):
 HERE = os.path.dirname(os.path.abspath(__file__))
 CASES = json.load(open(os.path.join(HERE, 'fixtures', 'report_cells.json'), encoding='utf-8'))
 
-KEYS = ('label', 'path', 'kind', 'span', 'rows', 'showLabel', 'align', 'format')
+KEYS = ('label', 'path', 'kind', 'span', 'rows', 'showLabel', 'align', 'format', 'lot')
 
 
 def shape(c):
@@ -145,23 +145,45 @@ labels = [lb for _v, lb in rb.CELL_KINDS] + ['日付・時刻']
 leaked = [lb for lb in labels if lb in js]
 rec('⑤ 呼び名を画面へ書き写していない（語彙はサーバーが答える）', not leaked, leaked)
 
-# ---- ⑥ 統計の候補は軸を名乗る ------------------------------------------------
-rec('⑥ 統計の候補は行と列の軸を持つ（盤の「表に組む」がこれを見る）',
-    rb.STAT_AXIS.get('stat.thickness.min') == ('板厚', 'MIN')
-    and len(rb.STAT_AXIS) == len(rb.STAT_CATALOG),
-    len(rb.STAT_AXIS))
+# ---- ⑥ 候補は「軸の名前と値」だけを名乗る（§9.277）-----------------------------
+# §9.274 では `row`/`col` という**置き場つきの名前**を名乗っており、
+# 「板厚は行・MINは列」という**決め打ちの1通り**しか作れなかった。
+# いまは `axes`（軸の名前→値）だけを返し、**置き場は盤が決める**。
+rec('⑥ 統計の候補は軸を「名前→値」で名乗る（盤の「表に組む」がこれを見る）',
+    rb.STAT_AXES.get('stat.thickness.min') == {rb.AXIS_ITEM: '板厚', rb.AXIS_AGG: 'MIN'}
+    and len(rb.STAT_AXES) == len(rb.STAT_CATALOG),
+    len(rb.STAT_AXES))
+# 軸の並び順が**既定の置き場**を決める（1つ目が行・残りが列）。
+rec('⑥ 軸の語彙と並び順はサーバーが持つ',
+    rb.PIVOT_AXES == (rb.AXIS_LOT, rb.AXIS_ITEM, rb.AXIS_AGG)
+    and rb.AXIS_LOT == '対象',
+    rb.PIVOT_AXES)
+# 繰り返しの**向き**（縦に積む／横に並べる）。**既定は縦**——これまでの
+# 見え方を黙って変えない。
+rec('⑥ 繰り返しの向きは2つで、既定は縦に積む',
+    [v for v, _ in rb.REPEAT_DIRS] == ['', rb.REPEAT_DIR_ROW]
+    and rb.REPEAT_DIRS[0][0] == '',
+    rb.REPEAT_DIRS)
 
 c2 = sqlite3.connect(db)
 c2.create_function('Now', 0, lambda: '2026-01-01 00:00:00')
 try:
     groups = rb.field_catalog(c2, '')
     st = [g for g in groups if g['group'] == '測定した値の統計']
-    ok = bool(st) and all(x.get('row') and x.get('col') for x in st[0]['items'])
+    names = set(rb.PIVOT_AXES)
+    ok = bool(st) and all(
+        isinstance(x.get('axes'), dict) and x['axes'] and set(x['axes']) <= names
+        for x in st[0]['items'])
     # 軸を名乗らない群もある（そこは表に組めない、と画面が言える）
     other = [g for g in groups if g['group'] != '測定した値の統計']
-    plain = all(not x.get('row') for g in other for x in g['items'])
+    plain = all(not x.get('axes') for g in other for x in g['items'])
     rec('⑥ 候補の一覧でも軸が届く／軸を持たない群と見分けが付く', ok and plain,
         (ok, plain))
+    # **置き場は候補が持たない**（§9.277）——`row`/`col`を返していた頃は
+    # 行と列を入れ替えられず、3つ目の軸（対象）も足せなかった。
+    placed = [x['path'] for g in groups for x in g['items']
+              if x.get('row') or x.get('col')]
+    rec('⑥ 候補は置き場（行／列）を持たない——決めるのは盤', not placed, placed[:3])
 finally:
     c2.close()
 

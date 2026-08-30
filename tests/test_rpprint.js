@@ -587,6 +587,88 @@ let b=null;
       rep.回数.あり===2&&rep.回数.なし===1,JSON.stringify(rep.回数));
 
   /* ==========================================================
+     表に組んだ塊は「1つの表」の中で子ロットぶんへ広がる（§9.277、利用者の報告）
+     ----------------------------------------------------------
+       「紙での見え方は表に組んだ後も…実際に帳票を見ると今までの表示と
+        変わらない状態です。子ロット分縦に積む形が今までなので縦に積むが
+        標準で横に積むか表を組むときに、EXCELのピボットテーブルのように
+        自由に組めるように」
+
+     §9.247 ②の繰り返しは**塊ごと**（子ロットの数だけ節が出る）。
+     盤で「表に組む」と、`lot:true`の印が付いた**ひとかたまり**だけを
+     子ロットの数だけ複製する形になり、既定の`測定値の統計`と同じ絵になる。
+
+     ここで固定するのは:
+      1. 印のあるマスがあれば**節は1つ**（塊ごとの繰り返しへ落ちない）
+      2. 印の付いた並びが**子ロットの数だけ**複製される
+      3. **印の無いマスは「全体」**（`lots[0]`＝1本目の子ロットではない）
+      4. 印が1つも無ければ今までどおり（片側だけ見る網にしない）
+      5. 繰り返しの向き`横`で**横並びの器**に入る（既定の縦は器を作らない）
+     ========================================================== */
+  const piv=await page.evaluate(()=>{
+   const x={basic:{lotNo:'PARENT-1'},
+    settings:{verticalCount:2,horizontalCount:5,
+     splitGroups:[{lot:'CHILD-A',count:2},{lot:'CHILD-B',count:3}]},
+    measurements:{
+     width:[['50.0','50.2','60.0','60.4','60.8'],
+            ['50.1','50.2','60.1','60.4','60.9']],
+     thickness:[['1.000','1.010','1.020'],['1.030','1.040','1.050']]},
+    product:{rows:[]}};
+   /* 盤が組む形（対象＝行／集計＝列）を手で書き下ろしたもの。
+      1段目＝見出し、2段目＝「全体」の行（印なし）、3段目＝対象の型（印あり）。 */
+   const cell=(o)=>Object.assign({label:'',path:'',span:1,rows:1,blank:false,
+     kind:'value',showLabel:false,align:'',format:null,lot:false},o);
+   const table=[
+    cell({kind:'blank',blank:true,label:''}),
+    cell({kind:'head',label:'MIN'}),cell({kind:'head',label:'MAX'}),
+    cell({kind:'head',label:'全体',align:'left'}),
+    cell({label:'MIN',path:'stat.width.min',align:'right'}),
+    cell({label:'MAX',path:'stat.width.max',align:'right'}),
+    cell({label:'子ロット',path:'lot.no',align:'left',lot:true}),
+    cell({label:'MIN',path:'stat.width.min',align:'right',lot:true}),
+    cell({label:'MAX',path:'stat.width.max',align:'right',lot:true})];
+   const plain=[cell({label:'幅MIN',path:'stat.width.min',showLabel:true}),
+                cell({label:'幅MAX',path:'stat.width.max',showLabel:true})];
+   const wrap=h=>{const d=document.createElement('div');d.innerHTML=h;return d};
+   /* **マスの並び順のまま読む**——見出しのマスと値のマスが混ざるので、
+      `.rp-field`を順に見て種類ごとの文字を拾う（別々に集めると、
+      「全体の行の下に子ロットが来る」という並びそのものを確かめられない）。 */
+   const secs=h=>[...wrap(h).querySelectorAll('.rp-section')].map(sec=>({
+     見出し:sec.querySelector('h3').textContent.replace(/\s+/g,' ').trim(),
+     並び:[...sec.querySelectorAll('.rp-grid>.rp-field')].map(f=>
+       f.classList.contains('rp-field-blank')?'□'
+       :(f.querySelector('.rp-field-headtext')||f.querySelector('.rp-field-value')||f)
+          .textContent.trim())}));
+   const H=WL.reportStat.sectionHtml;
+   const row=h=>{const d=wrap(h);const r=d.querySelector('.rp-repeat-row');
+     return r?{器:1,節:r.querySelectorAll('.rp-section').length,
+               列:r.style.getPropertyValue('--rp-repeat')}:{器:0}};
+   return {
+    ピボット:secs(H(x,'幅の表',table,3,'子ロット')),
+    印なし:secs(H(x,'幅の表',plain,0,'子ロット')),
+    横:row(H(x,'幅の表',plain,0,'子ロット','横')),
+    縦:row(H(x,'幅の表',plain,0,'子ロット','')),
+    横1件:row(H(x,'幅の表',plain,0,'','横'))};
+  });
+  rec('§9.277 表に組んだ塊は節が1つ（塊ごとの繰り返しへ落ちない）',
+      piv.ピボット.length===1,JSON.stringify(piv.ピボット.map(s=>s.見出し)));
+  /* **本丸**——「全体」の行は全体の値、その下に子ロットが2本ぶん。 */
+  rec('§9.277 印の無いマスは「全体」（1本目の子ロットの値を出さない）',
+      ((piv.ピボット[0]||{}).並び||[]).slice(0,6).join('/')
+        ==='□/MIN/MAX/全体/50.0/60.9',
+      JSON.stringify(((piv.ピボット[0]||{}).並び||[]).slice(0,6)));
+  rec('§9.277 印の付いた並びが子ロットの数だけ複製される',
+      ((piv.ピボット[0]||{}).並び||[]).slice(6).join('/')
+        ==='CHILD-A/50.0/50.2/CHILD-B/60.0/60.9',
+      JSON.stringify(((piv.ピボット[0]||{}).並び||[]).slice(6)));
+  rec('§9.277 印が1つも無ければ今までどおり塊ごとに繰り返す',
+      piv.印なし.length===2,JSON.stringify(piv.印なし.map(s=>s.見出し)));
+  rec('§9.277 繰り返しの向き「横」で横並びの器に入る',
+      piv.横.器===1&&piv.横.節===2&&piv.横.列==='2',JSON.stringify(piv.横));
+  rec('§9.277 既定（縦に積む）は器を作らない／1回だけの繰り返しも作らない',
+      piv.縦.器===0&&piv.横1件.器===0,JSON.stringify([piv.縦,piv.横1件]));
+
+  /* ==========================================================
      塊の中もグリッド（§9.255 ②、利用者の指示）
      ----------------------------------------------------------
        「帳票ブロックマスタも『紙での並び』の部分は単純に何列何行だけでなく、
