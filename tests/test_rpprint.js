@@ -950,6 +950,124 @@ let b=null;
   }else rec('押すと統計の節が紙に出て、案内は引っ込む',false,'案内が出ていません');
 
 
+
+  /* ==========================================================
+     用紙の切れ目をプレビューに出す（§9.281、利用者の指示）
+     ----------------------------------------------------------
+       「帳票レイアウトのプレビューで基準A4サイズ単位でどこで切れ目になるか
+        わかることは重要なので、シームレスに繋いで表示するのではなく
+        印刷プレビューらしくどこで用紙が区切られて表示が切れるかわかるように」
+
+     プレビューは1枚の長い紙として繋がって出ており、実測516mm＝A4 1.74枚
+     （刷ると2ページ）なのに、収まりの帯は**「1枚（残り4mm）」と言っていた**
+     ——比べる相手が「伸びた紙自身の高さ」だったので、どれだけ溢れても
+     必ず収まったことになる。**物差しは紙の幅（210mm固定）から作る。**
+
+     **見本のロットで確かめる**——検証用のレコードは1枚に収まるので、
+     そのままでは切れ目の道を一度も通らない。
+     ========================================================== */
+  await page.evaluate(()=>WL.reportSample.open({returnTo:'blocks'}));
+  await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
+  await settle(page);
+  await page.waitForTimeout(600);
+  const sheets=()=>page.evaluate(()=>{
+   const MM=96/25.4;
+   const pg=document.getElementById('reportContent');
+   const cs=getComputedStyle(pg);
+   const sc=Number(cs.getPropertyValue('--rp-scale'))||1;
+   const pr=pg.getBoundingClientRect();
+   const mmOf=px=>+((px/sc)/MM).toFixed(1);
+   const fit=document.getElementById('rpPageFit');
+   return {紙高mm:mmOf(pr.height),
+     枚数:cs.getPropertyValue('--rp-sheets').trim(),
+     切れ目mm:[...pg.querySelectorAll('.rp-sheet-cut')]
+       .map(e=>mmOf(e.getBoundingClientRect().top-pr.top)),
+     紙の枠:pg.querySelectorAll('.rp-sheet').length,
+     札:[...pg.querySelectorAll('.rp-sheet-no')].map(e=>e.textContent.trim()),
+     切れる塊:[...pg.querySelectorAll('.rp-block.is-cut')].map(e=>e.dataset.rpBlock),
+     切れる塊のtitle:(pg.querySelector('.rp-block.is-cut')||{}).title||'',
+     帯:fit?fit.textContent:null};
+  });
+  const S1=await sheets();
+  rec('§9.281 前提: 見本のロットの紙は1枚に収まらない',
+      Number(S1.枚数)>=2,JSON.stringify(S1.枚数));
+  /* **紙は1枚ぶんの倍数まで伸ばす**——最後の紙の余りもそのまま見えるので、
+     「あとどれだけ置けるか」が読める。 */
+  rec('§9.281 紙はA4何枚ぶんかで区切られる（半端な長さにしない）',
+      Math.abs(S1.紙高mm-Number(S1.枚数)*297)<=1.5,
+      `${S1.紙高mm}mm / ${S1.枚数}枚`);
+  rec('§9.281 切れ目が297mmごとに出る（枚数−1本）',
+      S1.切れ目mm.length===Number(S1.枚数)-1
+      &&S1.切れ目mm.every((v,i)=>Math.abs(v-(i+1)*297)<=1.5),
+      JSON.stringify(S1.切れ目mm));
+  /* **枚数は決め打ちにしない**——見本のロットの中身は設定で変わるので、
+     数を書くと「直っていても落ちる網」になる（§9.222 ②と同じ理由）。 */
+  const want=Array.from({length:Number(S1.枚数)},(_,i)=>`${i+1}枚目`).join(',');
+  rec('§9.281 1枚ずつが枠で囲われ、何枚目かを文字で言う（§3）',
+      S1.紙の枠===Number(S1.枚数)&&S1.札.join(',')===want,
+      JSON.stringify({枠:S1.紙の枠,札:S1.札,期待:want}));
+  /* **切れる塊は名指しする**——点線だけでは、どれが切れるのか探すことになる。 */
+  rec('§9.281 切れ目にかかる塊に印と理由が付く',
+      S1.切れる塊.length>=1&&/切れ目/.test(S1.切れる塊のtitle),
+      JSON.stringify({塊:S1.切れる塊,title:S1.切れる塊のtitle.slice(0,40)}));
+
+  /* ---- 収まりの帯（利用者の症状の本体） ---- */
+  await page.click('#reportArrange');
+  await settle(page);
+  await page.waitForTimeout(800);
+  const S2=await sheets();
+  rec('§9.281 収まりの帯が枚数を正しく言う（「1枚」と言わない）',
+      (S2.帯||'').indexOf(`${S1.枚数}枚`)>=0&&!/1枚（残り/.test(S2.帯||''),
+      `${S2.帯} / 実際は${S1.枚数}枚`);
+  rec('§9.281 帯は超過mmと切れる塊の件数も文字で出す（§6）',
+      /mm超過/.test(S2.帯||'')&&/切れる塊\d+件/.test(S2.帯||''),String(S2.帯));
+
+  /* ---- 刷る書類には切れ目を持ち込まない（紙に線が出る） ---- */
+  const printed2=await page.evaluate(()=>new Promise(resolve=>{
+   const give=w=>{
+    const pg=w.document.querySelector('.rp-page');
+    resolve({層:w.document.querySelectorAll('.rp-sheets,.rp-sheet-cut,.rp-sheet').length,
+      伸ばした高さ:pg?(pg.style.getPropertyValue('--rp-sheets')||''):'(紙なし)',
+      紙高mm:pg?+(pg.getBoundingClientRect().height/(96/25.4)).toFixed(1):0});
+   };
+   let hooked=false;
+   const iv=setInterval(()=>{
+    const f=document.getElementById('rpPrintFrame');
+    const w=f&&f.contentWindow;
+    if(!w||!w.document||!w.document.body||hooked)return;
+    hooked=true;w.print=()=>{clearInterval(iv);give(w)};
+   },15);
+   setTimeout(()=>{clearInterval(iv);resolve(null)},8000);
+   document.getElementById('reportPrint').click();
+  }));
+  rec('§9.281 刷る書類には切れ目の層を持ち込まない（紙に線が出る）',
+      !!printed2&&printed2.層===0,JSON.stringify(printed2));
+  /* **伸ばした高さも持ち込まない**——刷る側は`min-height:297mm`で、
+     あとはブラウザが1枚ずつ切る。プレビュー用に伸ばした指定を持ち込むと、
+     中身より背の高い紙を刷ることになる（最後に白紙が1枚増える）。 */
+  rec('§9.281 刷る書類へ「伸ばした高さ」を持ち込まない',
+      !!printed2&&printed2.伸ばした高さ==='',JSON.stringify(printed2));
+
+  /* ---- もう片側: 1枚に収まるなら切れ目も枠も出さない ---- */
+  const S3=await page.evaluate(()=>{
+   const pg=document.getElementById('reportContent');
+   /* 背の高い塊を外して測り直す（`WL.reportSheets()`が引き直す）。 */
+   [...pg.querySelectorAll('.rp-block')].slice(3).forEach(e=>e.remove());
+   const f=WL.reportSheets();
+   const cs=getComputedStyle(pg);
+   return {枚数:cs.getPropertyValue('--rp-sheets').trim(),
+     切れ目:pg.querySelectorAll('.rp-sheet-cut').length,
+     枠:pg.querySelectorAll('.rp-sheet').length,
+     札:pg.querySelectorAll('.rp-sheet-no').length,
+     印:pg.querySelectorAll('.rp-block.is-cut').length,
+     帯:(document.getElementById('rpPageFit')||{}).textContent||''};
+  });
+  rec('§9.281 1枚に収まるときは切れ目も枠も札も出さない（今までの見え方）',
+      S3.枚数==='1'&&S3.切れ目===0&&S3.枠===0&&S3.札===0&&S3.印===0,
+      JSON.stringify(S3));
+  rec('§9.281 1枚に収まれば帯は「1枚（残り○mm）」へ戻る',
+      /^A4縦 1枚（残り\d+mm）$/.test(S3.帯),String(S3.帯));
+
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
   console.log('\n=== SUMMARY ===');

@@ -120,10 +120,51 @@
 .rp-page-box{overflow:visible;width:var(--rp-box-w,auto);height:var(--rp-box-h,auto)}
 /* A4実寸。画面プレビューは印刷と同じ密度のCSSで組み、実際に印刷
    される見た目そのままをページ枠内に収める（WYSIWYG）。 */
-.rp-page{width:210mm;min-height:297mm;background:#fff;box-shadow:0 6px 24px #00000030;padding:8mm;box-sizing:border-box;font-size:10px;transform-origin:top left;transform:scale(var(--rp-scale,1))}
+.rp-page{--rp-sheet-h:297mm;position:relative;width:210mm;min-height:calc(var(--rp-sheets,1) * var(--rp-sheet-h));background:#fff;box-shadow:0 6px 24px #00000030;padding:8mm;box-sizing:border-box;font-size:10px;transform-origin:top left;transform:scale(var(--rp-scale,1))}
 /* A4横。用紙寸法を入れ替えるだけで、倍率計算(fitPage/applyScale)は実寸を
    読むため自動で追従する。印刷側の@pageはJS(updatePageSizeStyle)が差し替える。 */
-.rp-page.rp-landscape{width:297mm;min-height:210mm}
+.rp-page.rp-landscape{--rp-sheet-h:210mm;width:297mm}
+/* ---- 用紙の切れ目（§9.281、利用者の指示「基準A4サイズ単位でどこで
+   切れ目になるかわかることは重要…シームレスに繋いで表示するのではなく
+   印刷プレビューらしくどこで用紙が区切られて表示が切れるかわかるように」）----
+   紙は必ず**1枚ぶんの倍数まで伸ばす**（`--rp-sheets`）ので、最後の紙の
+   余りもそのまま見える。切れ目には**紙の縁を2本**描く（上の紙の下端と
+   下の紙の上端）。
+   **中身は動かさない**——実際の紙は切れ目でずれるわけではないので、
+   隙間を空けるとプレビューと刷り上がりが食い違う（§9.242 ⑦の
+   「プレビューどおりに刷る」が崩れる）。ずらす代わりに、**縁と枚数の札と
+   切れる塊の印**の3つで読ませる。 */
+.rp-page .rp-sheets{position:absolute;inset:0;pointer-events:none;z-index:2}
+/* **1枚ずつを枠で囲う**——枠と縁の影が切れ目で二重になるので、
+   「2枚の紙が接している」ことが一目で読める。中身は覆わない
+   （縁の内向きの影だけ・`pointer-events:none`）。 */
+.rp-page .rp-sheet{position:absolute;left:0;right:0;
+  top:calc(var(--k) * var(--rp-sheet-h));height:var(--rp-sheet-h);
+  border:1px solid #00000026;
+  box-shadow:inset 0 7px 9px -9px #00000077,inset 0 -7px 9px -9px #00000077}
+/* 切れ目は**紙の端から端まで**。上の紙の下端と下の紙の上端が合わさって
+   いるので、影を上下へ落として「2枚が接している」ことを出す。
+   `.rp-scroll`が`overflow:auto`なので、**紙の外へはみ出させない**
+   （はみ出すと窓が狭いときに切り落とされ、印だけが消える）。 */
+.rp-page .rp-sheet-cut{position:absolute;left:0;right:0;height:0;
+  top:calc(var(--k) * var(--rp-sheet-h));
+  border-top:0.4mm dashed var(--danger);
+  box-shadow:0 -5px 9px -4px #0000006e,0 5px 9px -4px #0000006e}
+/* 断ち切りの印（トンボ）。左右の余白（8mm）の中に立てるので中身を覆わない。 */
+.rp-page .rp-sheet-cut::before,.rp-page .rp-sheet-cut::after{content:'';
+  position:absolute;top:-3.5mm;height:7mm;width:0;border-left:0.4mm solid var(--danger)}
+.rp-page .rp-sheet-cut::before{left:1.5mm}
+.rp-page .rp-sheet-cut::after{right:1.5mm}
+/* 枚数の札は**左の余白（8mm）の中**へ縦書きで置く——紙の中身は左右とも
+   8mmの余白の内側にしか無いので、どの紙でも文字を覆わない。 */
+.rp-page .rp-sheet-no{font-size:8px;position:absolute;left:1mm;
+  top:calc(var(--k) * var(--rp-sheet-h) + 3.5mm);
+  writing-mode:vertical-rl;font-weight:800;letter-spacing:.1em;
+  color:#8497a0;white-space:nowrap}
+/* 切れ目にかかる塊。**色だけで伝えない**（§3）ので、帯が件数を文字で言い、
+   ここは印だけ（`title`に理由）。 */
+.rp-page .rp-block.is-cut{outline:1px dashed var(--danger);outline-offset:1px}
+@media print{.rp-page .rp-sheets{display:none}}
 /* A4横の測定データ表は1〜20条/21〜40条を左右に分けて高さを半減させる。 */
 .rp-wide-split{display:grid;grid-template-columns:1fr 1fr;gap:0 4px;align-items:start}
 .rp-empty{padding:40px;text-align:center;color:var(--muted);background:#fff;border:1px dashed var(--muted-border);border-radius:var(--radius-md)}

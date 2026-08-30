@@ -228,6 +228,9 @@
     後ろに読まれた側が黙って勝つ——2枚あることが問題なのではなく、
     **違う値の2枚がある**ことが問題（`tests/test_rpprint.js`が突き合わせる）。 */
  const RP_PAGE_MARGIN='0';
+ /* 紙の余白（`.rp-page{padding:8mm}`と同じ数）。**2箇所に書かない**
+    ——収まりの判定（§9.281）が中身の下端へ足すのはこのぶん。 */
+ const RP_PAGE_PAD_MM=8;
  function updatePageSizeStyle(){
   let el=document.getElementById('rpPageSizeStyle');
   if(!el){el=document.createElement('style');el.id='rpPageSizeStyle';document.head.appendChild(el)}
@@ -470,6 +473,9 @@
  /* 節そのものを組む1本（§9.279）。**網はここを直に呼ぶ**——内訳の列数を
     空にしたときの形は、塊を保存しないと確かめられないでは網が重くなる。 */
  WL.reportSectionHtml=(title,rows,cols)=>reportSection(title,rows||[],cols||0);
+ /* 用紙の切れ目を引き直す（§9.281）。**網はここを直に呼ぶ**——塊を減らした
+    ときに「1枚へ戻る」ことは、実際に測り直させないと確かめられない。 */
+ WL.reportSheets=()=>rpUpdateSheets();
 
  function bulkPrintNow(items,area){
   area.innerHTML=items.map(x=>`<div class="rp-report rp-page${rpOrientation==='landscape'?' rp-landscape':''}">${reportHtml(x)}</div>`).join('');
@@ -1793,7 +1799,7 @@
   return out;
  }
  /* 紙の下端よりどこまで下へ置けるか。**紙1.8枚ぶん**（旧: 12段の紙に対して
-    22段まで）。溢れたぶんは紙が2枚になることを`rpUpdatePageFit()`が言う。 */
+    22段まで）。溢れたぶんは紙が2枚になることを`rpUpdateSheets()`が言う。 */
  const RP_ROW_OVER=22/12;
  const rpRowCap=()=>Math.max(1,Math.round(rpPageRows()*RP_ROW_OVER));
  const rpRowCapBase=()=>Math.max(1,Math.round(RP_ROW_BASE*RP_ROW_OVER));
@@ -2080,41 +2086,107 @@
     中身の高さと刷れる高さを比べれば何枚になるかまで言える。**見た目の
     拡大率(--rp-scale)を打ち消してから測る**——倍率を掛けたまま比べると、
     表示を縮めただけで「収まった」ことになる。 */
- function rpUpdatePageFit(){
-  const el=$id('rpPageFit');if(!el)return;
-  const page=document.querySelector('.rp-page');
-  if(!page){el.textContent='';return}
-  /* **中身の下端で測る。** 用紙は`min-height:297mm`なので`scrollHeight`は
-     常に用紙いっぱいになり、「残り0mm」としか言えない（実際にそうなった）。 */
-  const scale=Number(getComputedStyle(page).getPropertyValue('--rp-scale'))||1;
-  const blocks=page.querySelector('.rp-blocks');
+ /* **紙が何枚になるかは`rpSheetFacts()`の1箇所が答える**（§9.281）。
+    切れ目の描画・収まりの帯・切れる塊の印が同じ答えを見る——別々に数えると
+    「帯は1枚と言うのに紙は2枚ぶん出ている」が作れる（実際にそうなっていた）。
+
+    **物差しは紙の「幅」から作る**（§9.281）——高さは中身が溢れるとそのぶん
+    伸びるので、高さを基準にすると**自分自身と比べる**ことになり、
+    どれだけ溢れても必ず「1枚（残り0mm）」になる。幅は210mm（横向きは297mm）で
+    動かないので、`px/mm`はここからしか作れない。 */
+ function rpSheetFacts(page){
+  if(!page)return null;
+  const cs=getComputedStyle(page);
+  const scale=Number(cs.getPropertyValue('--rp-scale'))||1;
+  const land=page.classList.contains('rp-landscape');
+  const sheetMm=land?210:297, wideMm=land?297:210;
   const pr=page.getBoundingClientRect();
-  const last=[...page.querySelectorAll('.rp-block')].reduce((m,b)=>Math.max(m,b.getBoundingClientRect().bottom),
-    blocks?blocks.getBoundingClientRect().top:pr.top);
-  const padPx=(pr.height/ (rpOrientation==='landscape'?210:297))*8;   /* padding 8mm */
-  const inner=(last-pr.top)/(scale||1)+padPx/(scale||1);
-  const avail=(pr.height/(scale||1));
-  if(!avail){el.textContent='';return}
-  const over=inner-avail;
-  const mm=v=>Math.round(v/(avail/(rpOrientation==='landscape'?210:297)));
-  /* ---------- 収まりは短く言い、続きは`title`（§9.255 ①） ----------
-     帯を1行にした（利用者の指示「コンパクトに2行分くらいに」）ので、
-     ここの文が長いと**帯だけで折り返す**（実測: この1文で約380px）。
-     **数は落とさない**（§CLAUDE 6「暗算をさせない」）——枚数と残り／超過の
-     mmは短い形で必ず出し、言い回しは`title`が持つ。 */
-  const dir=rpOrientation==='landscape'?'横':'縦';
-  if(over<=1){
-   const rest=Math.max(0,mm(avail-inner));
-   el.className='rp-page-fit is-ok';
-   el.textContent=`A4${dir} 1枚（残り${rest}mm）`;
-   el.title=`いまの配置はA4${dir}1枚に収まっています（残り約${rest}mm）。`;
-  }else{
-   const sheets=Math.ceil(inner/avail);
-   el.className='rp-page-fit is-over';
-   el.textContent=`A4${dir} ${sheets}枚（${mm(over)}mm超過）`;
-   el.title=`いまの配置はA4${dir}1枚に収まりません（約${mm(over)}mm超過するので${sheets}枚になります）。`
-     +'塊の高さを下げるか、要らない塊を「出していない塊」へ落としてください。';
+  const pxPerMm=(pr.width/(scale||1))/wideMm;
+  if(!(pxPerMm>0))return null;
+  const top=pr.top;
+  const blocks=[...page.querySelectorAll('.rp-block')];
+  const body=page.querySelector('.rp-blocks');
+  /* **中身の下端で測る**（§9.174）。紙は`min-height`を持つので、
+     `scrollHeight`は常に紙いっぱいになり「残り0mm」としか言えない。 */
+  const bottom=blocks.reduce((m,b)=>Math.max(m,b.getBoundingClientRect().bottom),
+    body?body.getBoundingClientRect().bottom:top);
+  const mmOf=px=>(px/(scale||1))/pxPerMm;
+  const contentMm=mmOf(bottom-top)+RP_PAGE_PAD_MM;   /* 下の余白ぶんも要る */
+  const sheets=Math.max(1,Math.ceil((contentMm-0.5)/sheetMm));
+  /* 切れ目にかかる塊。**下端は少しだけ内側で見る**——罫線の丸めで
+     ちょうど境目に接している塊まで「切れる」と数えてしまう。 */
+  const at=mm=>Math.floor(mm/sheetMm+1e-6);
+  const cut=blocks.filter(b=>{
+   const r=b.getBoundingClientRect();
+   return at(mmOf(r.top-top))!==at(Math.max(0,mmOf(r.bottom-top)-0.4));
+  });
+  return {sheets,sheetMm,contentMm,land,cut,
+    overMm:Math.max(0,contentMm-sheetMm),
+    restMm:Math.max(0,sheets*sheetMm-contentMm)};
+ }
+ /* 紙の切れ目を描き、収まりを帯へ出す（§9.281、利用者の指示「印刷プレビュー
+    らしくどこで用紙が区切られて表示が切れるかわかるように」）。
+    **描くのはプレビューだけ**——刷る側のDOM（`#reportBulkPrintArea`と
+    `rpPageHtmlFor()`の写し）からは外す（紙に線が出る）。 */
+ function rpUpdateSheets(){
+  /* **紙は`#reportContent`そのもの**（`.rp-report.rp-page`）。
+     `#reportContent .rp-page`と書くと1つも見つからない。 */
+  const page=$id('reportContent');
+  if(!page||!page.classList.contains('rp-page')){rpPaintPageFit(null);return null}
+  /* **測る前に前回の割り当てを外す**（§9.217と同じ作法）——付いたままだと
+     伸ばした紙の高さで測り直すことになり、枚数が減らなくなる。 */
+  page.style.removeProperty('--rp-sheets');
+  const old=page.querySelector(':scope > .rp-sheets');
+  if(old)old.remove();
+  page.querySelectorAll('.rp-block[data-rp-cut]').forEach(b=>{
+   b.removeAttribute('data-rp-cut');b.classList.remove('is-cut');b.removeAttribute('title');
+  });
+  const f=rpSheetFacts(page);
+  if(!f)return null;
+  page.style.setProperty('--rp-sheets',String(f.sheets));
+  if(f.sheets>1){
+   const h=[];
+   for(let k=0;k<f.sheets;k++){
+    h.push(`<span class="rp-sheet" style="--k:${k}"></span>`
+          +`<span class="rp-sheet-no" style="--k:${k}">${k+1}枚目</span>`);
+    if(k)h.push(`<span class="rp-sheet-cut" style="--k:${k}"></span>`);
+   }
+   const lay=document.createElement('div');
+   lay.className='rp-sheets';lay.setAttribute('aria-hidden','true');
+   lay.innerHTML=h.join('');
+   page.appendChild(lay);
+   f.cut.forEach(b=>{
+    b.classList.add('is-cut');b.dataset.rpCut='1';
+    b.title='この塊は用紙の切れ目にかかっています（途中で切れて次の紙へ続きます）。';
+   });
   }
+  rpPaintPageFit(f);
+  return f;
+ }
+ /* ---------- 収まりは短く言い、続きは`title`（§9.255 ①） ----------
+    帯を1行にした（利用者の指示「コンパクトに2行分くらいに」）ので、
+    ここの文が長いと**帯だけで折り返す**。**数は落とさない**
+    （§CLAUDE 6「暗算をさせない」）——枚数と残り／超過のmmは短い形で必ず
+    出し、言い回しは`title`が持つ。 */
+ function rpPaintPageFit(f){
+  const el=$id('rpPageFit');if(!el)return;
+  if(!f){el.textContent='';el.removeAttribute('title');return}
+  const dir=f.land?'横':'縦';
+  const mm=v=>Math.round(v);
+  if(f.sheets<=1){
+   el.className='rp-page-fit is-ok';
+   el.textContent=`A4${dir} 1枚（残り${mm(f.restMm)}mm）`;
+   el.title=`いまの配置はA4${dir}1枚に収まっています（残り約${mm(f.restMm)}mm）。`;
+   return;
+  }
+  /* **切れる塊は件数を文字で出す**（§3。紙の上の点線だけでは、いくつが
+     切れるのか数えることになる）。 */
+  const n=f.cut.length;
+  el.className='rp-page-fit is-over';
+  el.textContent=`A4${dir} ${f.sheets}枚（${mm(f.overMm)}mm超過`+(n?`・切れる塊${n}件`:'')+'）';
+  el.title=`いまの配置はA4${dir}1枚に収まりません（約${mm(f.overMm)}mm超過するので${f.sheets}枚になります）。`
+   +(n?`用紙の切れ目にかかる塊が${n}件あり、途中で切れて次の紙へ続きます（紙の上に点線で出しています）。`:'')
+   +'塊の高さを下げるか、要らない塊を「出していない塊」へ落としてください。';
  }
  /* **既定の高さは中身から測る**（§9.217）。
     **測る前に前回の割り当てを外すこと**——付いたまま測ると、一度低くなった
@@ -2251,7 +2323,7 @@
      見えるのに紙で切れる、という形で食い違う。 */
   const cramped=rpFitBlockBodies(host);
   rpFreeCells(host);
-  rpUpdatePageFit();
+  rpUpdateSheets();
   /* **直ったら消す。** 「入りきらない」が0件になっても文字が残ると、
      直前の操作が通ったのかどうかが読めない（§CLAUDE 2）。 */
   rpSay(cramped?`${cramped}件は器に入りきりませんでした（縮めきれない大きさです）。行数を増やすか、中身を減らしてください。`:'',!!cramped,'fit');
@@ -2780,7 +2852,7 @@
     /* **必ず見つかるところまで探す**（下へは何段でも伸ばせる）。見つから
        ないまま置くと重なってしまい、下の塊のボタンが押せなくなる。
        `rpRowCap()`は**紙の下へどこまで置けるか**（紙1.8枚ぶん）であって、
-       置ける段の上限ではない——溢れたぶんは`rpUpdatePageFit()`が言う。 */
+       置ける段の上限ではない——溢れたぶんは`rpUpdateSheets()`が言う。 */
     let found=false;
     for(let r=row;r<=row+rpRowCap()*2&&!found;r++)
      for(let c=(r===row?col:1);c<=cols-span+1;c++)
@@ -3354,7 +3426,7 @@
      `#rpArrangeNote`はこの`innerHTML`の中なので、入れ直さないと次に
      `rpMarkOverflow()`が走るまで空欄のまま——マス数を変えた直後こそ
      「収まるか」を知りたいし、断りの文は書いた瞬間に消えてしまう。 */
-  try{rpUpdatePageFit()}catch(e){}
+  try{rpUpdateSheets()}catch(e){}
   rpPaintNote();
  }
  function bindArrangeHandlers(){
@@ -3699,6 +3771,11 @@
       空いているマスも変わるので、忘れると前の形の空きが残る。 */
    try{rpFreeCells(h)}catch(e){console.warn('帳票の空きマスの計算に失敗',e)}
   });
+  /* **切れ目は組み換え中でなくても描く**（§9.281）——ふだん見ているのは
+     ただのプレビューなので、ここで描かないと「どこで紙が変わるか」は
+     組み換えに入らないと分からない。刷る側（`#reportBulkPrintArea`）には
+     描かない（紙に線が出る）。 */
+  try{rpUpdateSheets()}catch(e){console.warn('用紙の切れ目の計算に失敗',e)}
  }
  function rpLoadLayoutFor(x){
   const t=rpTargetOf(x),eq=rpEquipmentOf(x)||'';
@@ -3896,7 +3973,12 @@
  function rpPageHtmlFor(el){
   if(!el)return '';
   const c=el.cloneNode(true);
-  c.querySelectorAll('.rp-block-tools,.rp-block-paper,.rp-free-layer').forEach(x=>x.remove());
+  /* **画面だけの道具は写しから外す**——`.rp-sheets`は用紙の切れ目の目印
+     （§9.281）なので、残すと紙に点線が刷られる。 */
+  c.querySelectorAll('.rp-block-tools,.rp-block-paper,.rp-free-layer,.rp-sheets').forEach(x=>x.remove());
+  /* 伸ばした紙の高さも持ち込まない（刷る側は`min-height:297mm`で1枚ずつ切る）。 */
+  c.querySelectorAll('.rp-page').forEach(x=>x.style.removeProperty('--rp-sheets'));
+  if(c.classList&&c.classList.contains('rp-page'))c.style.removeProperty('--rp-sheets');
   return c.outerHTML;
  }
  async function rpPrintPages(pagesHtml,title){
