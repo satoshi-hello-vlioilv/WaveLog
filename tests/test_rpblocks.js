@@ -116,12 +116,13 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   await settle(page);
   const arr=await page.evaluate(()=>({
    bar:!document.getElementById('rpArrangeBar').hidden,
-   /* **道具は塊の中ではなく縁と窓**（§9.226 ⑤）。縁が3方向とも在ること。 */
+   /* **道具は塊の中ではなく縁と窓**（§9.226 ⑤）。縁が**8方向**とも在ること
+      （§9.283、四辺＋四隅。以前は右・下・右下の3つだけだった）。 */
    縁:document.querySelectorAll('.rp-block [data-rp-grip]').length,
    n:document.querySelectorAll('[data-rp-block]').length,
    empty:document.querySelectorAll('.rp-block.is-empty').length}));
   rec('組み換え中は下の帯と、塊の縁の取っ手が出る',
-      arr.bar&&arr.n>0&&arr.縁===arr.n*3,JSON.stringify(arr));
+      arr.bar&&arr.n>0&&arr.縁===arr.n*8,JSON.stringify(arr));
   /* このロットに中身が無い塊も**組み換え中は見える**（黙って消えると、
      自分で隠したのかデータが無いのかが分からない）。 */
   const after=await blocks(page);

@@ -239,26 +239,46 @@
  /* ページに割ったときの**ずらし量を答えるのは1箇所**（§9.282）。
     塊・空きマスの印・落とし先のゴースト・カーソルの座標が同じ答えを見る
     ——別々に持つと「掴んだ場所と落ちる場所がずれる」が作れる。
-    単位は**拡大前のpx**（`--rp-scale`を掛ける前）。割っていなければ0。 */
- let rpPageGapPx=0,rpPageSheetPx=0,rpPageGridTop=0,rpPageRowStep=0,rpPageSheets=1;
+    単位は**拡大前のpx**（`--rp-scale`を掛ける前）。割っていなければ0。
+
+    **控えないこと**（§9.283、利用者の報告「D&Dすると位置座標が無茶苦茶で
+    とんでもない場所にいってしまいます」）——以前は塗ったとき（`rpPaintPages`）の
+    値をモジュール変数へ控えていた。控えると、**上の帯の高さ・段数・マス数・
+    紙の向きが変わった瞬間に古くなる**（そのどれも塗り直しを伴わない経路がある）。
+    古い物差しで数えた行は本物と何行でもずれうるので、**そのつど測る**。
+    塗る側も同じここを通るので、塗った位置と数えた位置が食い違わない（§9.163）。 */
+ function rpPageMetrics(){
+  const z={gap:0,sheet:0,gridTop:0,rowStep:0,paged:false};
+  const page=$id('reportContent');
+  if(!page||!page.classList)return z;
+  const grid=page.querySelector('.rp-blocks');
+  if(!grid)return z;
+  const cs=getComputedStyle(page),gcs=getComputedStyle(grid);
+  const sc=Number(cs.getPropertyValue('--rp-scale'))||1;
+  const pr=page.getBoundingClientRect();
+  /* **1行ぶんの高さと器の位置は、割っていなくても答える**（§9.283）
+     ——ここを0で返すと、呼ぶ側が`step||1`のような受けをして
+     **座標がそのまま行の番号になる**（実測: 空きマスの枠が44→1620個）。
+     割っているかどうかで変わるのは`gap`／`sheet`だけ。 */
+  const rowStep=(parseFloat(gcs.gridAutoRows)||0)+(parseFloat(gcs.rowGap)||0);
+  if(!(rowStep>0))return z;
+  const gridTop=(grid.getBoundingClientRect().top-pr.top)/sc;
+  const land=page.classList.contains('rp-landscape');
+  const pxPerMm=(pr.width/(sc||1))/(land?297:210);
+  if(!page.classList.contains('rp-paged')||!(pxPerMm>0))
+   return {gap:0,sheet:0,gridTop,rowStep,paged:false};
+  return {gap:RP_SHEET_GAP_MM*pxPerMm,sheet:(land?210:297)*pxPerMm,
+    gridTop,rowStep,paged:true};
+ }
  /* ずらす前のy（紙の上端から） → 何枚目の紙か × 余白 */
- const rpShiftAtPage=y=>(rpPageGapPx>0&&rpPageSheetPx>0)
-   ?Math.max(0,Math.floor(y/rpPageSheetPx+1e-6))*rpPageGapPx:0;
- /* 描かれているy（紙の上端から） → ずらす前のy */
- const rpUngapPage=y=>{
-  if(!(rpPageGapPx>0&&rpPageSheetPx>0))return y;
-  const step=rpPageSheetPx+rpPageGapPx;
-  const k=Math.max(0,Math.floor(y/step+1e-6));
-  return Math.max(0,y-k*rpPageGapPx);
- };
- /* グリッドの中のyで同じことをする（グリッドは紙の上端から`rpPageGridTop`下） */
- const rpShiftAtGrid=gy=>rpShiftAtPage(gy+rpPageGridTop);
+ const rpShiftAt=(m,y)=>(m.gap>0&&m.sheet>0)
+   ?Math.max(0,Math.floor(y/m.sheet+1e-6))*m.gap:0;
  /* **ずらすのは「行」の単位**（§9.282）。塊もゴーストも空きマスの印も
     グリッドの行の頭から始まるので、**行がどの紙に乗るか**で決めれば
     3つとも必ず同じ答えになる。カーソルの座標だけを紙で割ると、
     **紙をまたぐ行**（頭は1枚目・裾は2枚目）で答えが食い違い、
     掴んだ場所と落ちる場所がずれる（実測: 指した312.6mmに対して枠は295.2mm）。 */
- const rpRowShift=r=>rpShiftAtPage(rpPageGridTop+Math.max(0,r)*rpPageRowStep);
+ const rpRowShiftM=(m,r)=>rpShiftAt(m,m.gridTop+Math.max(0,r)*m.rowStep);
  /* 描かれているグリッド内のy → その位置に見えている「行」（0から数える）。
     **行の見た目の上端で数える**——`r*行の高さ + その行のずらし量`は`r`に対して
     必ず増えるので、そこから逆に辿れば必ず1つに決まる。
@@ -268,19 +288,33 @@
     295.2mm。1pxの差で出るので、境目を狙わない網では捕まらない）。
     余白の中は**次の紙の先頭の行へ寄せる**——手前へ寄せると、枠がカーソルより
     紙1枚ぶん上に出る。 */
- const rpRowTop=r=>Math.max(0,r)*rpPageRowStep+rpRowShift(r);
- function rpRowAtGrid(gy){
-  const step=rpPageRowStep;
-  if(!(rpPageGapPx>0&&step>0))return Math.max(0,Math.floor(gy/Math.max(1,step)));
+ const rpRowTopM=(m,r)=>Math.max(0,r)*m.rowStep+rpRowShiftM(m,r);
+ function rpRowAtGridM(m,gy){
+  const step=m.rowStep;
+  if(!(m.gap>0&&step>0))return Math.max(0,Math.floor(gy/Math.max(1,step)));
   let r=Math.max(0,Math.floor(gy/step));          /* ずらしぶん必ず本物以上 */
-  while(r>0&&rpRowTop(r)>gy)r--;
-  while(rpRowTop(r+1)<=gy)r++;
+  while(r>0&&rpRowTopM(m,r)>gy)r--;
+  while(rpRowTopM(m,r+1)<=gy)r++;
   /* 行の裾より下＝紙と紙のあいだ。次の紙の頭へ。 */
-  if(gy>=rpRowTop(r)+step&&rpRowTop(r+1)>rpRowTop(r)+step)r++;
+  if(gy>=rpRowTopM(m,r)+step&&rpRowTopM(m,r+1)>rpRowTopM(m,r)+step)r++;
   return r;
  }
- /* 描かれているグリッド内のy → ずらす前のy（行の中の位置は保つ） */
- const rpUngapGrid=gy=>(rpPageGapPx>0&&rpPageRowStep>0)?gy-rpRowShift(rpRowAtGrid(gy)):gy;
+ /* **「行の頭に置かれている座標」から行を出すのは別の関数**（§9.283）。
+    カーソルは「その点を含む行」なので切り捨てでよいが、塊や印の上端は
+    **その行の頭ちょうど**なので、切り捨てると端数で1行上に落ちる
+    （実測: 4行目の塊が`3.9998`で3行目と数えられ、**下の1行が空きに見えて
+    「空き」の枠が1619個**出た）。近い行へ丸めてから、ずらしぶんを戻す。 */
+ function rpRowOfTop(m,gy){
+  const step=m.rowStep;
+  if(!(step>0))return 0;
+  if(!(m.gap>0))return Math.max(0,Math.round(gy/step));
+  let r=Math.max(0,Math.round(gy/step));           /* ずらしぶん必ず本物以上 */
+  while(r>0&&rpRowTopM(m,r)>gy+0.5)r--;
+  return r;
+ }
+ /* **呼ぶ側は`rpPageMetrics()`を1回取って`*M`へ渡すこと。** 引数無しの
+    薄い包み（`rpRowShift(r)`のような形）は置かない——1行数えるたびに
+    測り直すことになり、`rpRowAtGridM()`の中の走査で何十回も測る。 */
  function updatePageSizeStyle(){
   let el=document.getElementById('rpPageSizeStyle');
   if(!el){el=document.createElement('style');el.id='rpPageSizeStyle';document.head.appendChild(el)}
@@ -2132,17 +2166,24 @@
     +(body||((arranging&&!paper)?'<p class="rp-block-empty">このロットにはこの内容がありません（紙には出ません）。</p>':''))
     +'</div>'
     /* **縁を引いて大きさを変えられる**（§9.218 ⑥、利用者の指示「選択した
-       ときに縦横のサイズ変更ができるように」）。右＝幅（マス）、下＝高さ
-       （行）、右下＝両方。掴んでいるあいだ何マス×何行になるかを出す。 */
-    /* **この紙だけの見え方の入口**（§9.274）。縁の掴み（右・下・右下）と
-       重ならない**左上**へ置く——§9.226 ③で浮き帯を外したのは、掴む的の
-       上に帯が現れて的が消えたからで、位置が違えばその問題は起きない。 */
+       ときに縦横のサイズ変更ができるように」）。掴んでいるあいだ何マス×何行に
+       なるかを出す。
+       **四辺と四隅の8方向すべてで変えられる**（§9.283、利用者の指示「左、
+       左下、左上、上、右上の部分でもすべての頂点、辺でサイズ変更できるように」）
+       ——以前は右・下・右下の3つだけで、**紙の右下へ寄せた塊は左や上へ
+       広げる手立てが無かった**（いったん動かしてから広げて戻す、という
+       3手が要る）。左・上を引いたときは**置き場所も一緒に動かす**
+       （引いた辺だけが動き、反対の辺は釘で留まったように見えるのが正しい）。
+       綴りは`t/b/l/r`＋四隅で、**`w`を「幅」の意味で使わない**——方角の
+       `west`と読み違える（旧`w`＝右辺・`h`＝下辺・`wh`＝右下）。 */
+    /* **この紙だけの見え方の入口**（§9.274）。左上の隅の取っ手と重なるので
+       **取っ手より手前に出す**（`z-index`。§9.226 ③で浮き帯を外したのは、
+       掴む的の上に帯が現れて的が消えたからで、こちらは的が小さく固定）。 */
     +((arranging&&!paper)?'<button type="button" class="rp-block-paper" data-rp-paper'
       +' title="この紙（この設備）でだけの幅・高さ・列幅・行列入れ替えを決めます。'
       +'塊そのもの（名前・載せる項目・書式）はダブルクリックで帳票ブロックマスタへ">紙</button>':'')
-    +((arranging&&!paper)?'<span class="rp-size-grip rp-size-w" data-rp-grip="w" title="引くと幅（マス）が変わります"></span>'
-      +'<span class="rp-size-grip rp-size-h" data-rp-grip="h" title="引くと高さ（行）が変わります"></span>'
-      +'<span class="rp-size-grip rp-size-wh" data-rp-grip="wh" title="引くと幅と高さが変わります"></span>':'')
+    +((arranging&&!paper)?RP_GRIPS.map(g=>
+        `<span class="rp-size-grip rp-size-${g.k}" data-rp-grip="${g.k}" title="${esc(g.t)}"></span>`).join(''):'')
     +'</div>';
   }).join('');
   /* **マスの目盛を器が持つ**（§9.218 ⑥、利用者の指摘「横がそろっていても
@@ -2151,6 +2192,19 @@
   return `<div class="rp-blocks${(arranging&&!paper)?' is-arranging':''}"`
    +` style="--rp-grid:${rpGrid()};--rp-page-rows:${rpPageRows()}">${cells}</div>`;
  }
+ /* 大きさを変える取っ手は**四辺＋四隅の8つ**（§9.283）。**辺を先・隅を後**に
+    並べること——同じ`z-index`なので、後に書いたほうが手前に来る（隅は辺の
+    上に重なるので、先に書くと角が掴めない）。 */
+ const RP_GRIPS=[
+  {k:'t',t:'上の辺。引くと高さ（行）が変わり、上へ広げると置き場所も上がります'},
+  {k:'b',t:'下の辺。引くと高さ（行）が変わります'},
+  {k:'l',t:'左の辺。引くと幅（マス）が変わり、左へ広げると置き場所も左へ動きます'},
+  {k:'r',t:'右の辺。引くと幅（マス）が変わります'},
+  {k:'tl',t:'左上の角。引くと幅と高さが変わり、置き場所も動きます'},
+  {k:'tr',t:'右上の角。引くと幅と高さが変わります（上へ広げると置き場所も上がります）'},
+  {k:'bl',t:'左下の角。引くと幅と高さが変わります（左へ広げると置き場所も左へ動きます）'},
+  {k:'br',t:'右下の角。引くと幅と高さが変わります'},
+ ];
  /* 組み換え中だけ出る操作帯。**押した結果がその場の紙に出る**のがこの機能の
     値打ちなので、確認を挟まず即座に当てる（保存するまでは戻せる）。 */
  /* この塊が測定データなら、どの群を持っているか。まとめは載っている群ぜんぶ、
@@ -2225,7 +2279,6 @@
   page.classList.remove('rp-paged');
   page.style.removeProperty('--rp-sheets');
   page.style.removeProperty('--rp-gap');
-  rpPageGapPx=0;rpPageSheetPx=0;rpPageGridTop=0;rpPageRowStep=0;rpPageSheets=1;
   const lay=page.querySelector(':scope > .rp-sheets');
   if(lay)lay.remove();
   page.querySelectorAll('.rp-block[data-rp-shift]').forEach(b=>{
@@ -2290,16 +2343,25 @@
   page.appendChild(lay);
   if(!paged)return;
   const sc=f.scale||1;
-  const S=f.sheetMm*f.pxPerMm;                 /* 拡大前の1枚ぶん(px) */
-  const G=RP_SHEET_GAP_MM*f.pxPerMm;           /* 拡大前の余白(px) */
   const pr=page.getBoundingClientRect();
-  /* **ずらし量の材料を控える**（§9.282）——カーソルの座標とゴーストは
-     描いたあとに何度も引くので、そのつど測り直さない。 */
-  rpPageGapPx=G;rpPageSheetPx=S;rpPageSheets=f.sheets;
-  const gridEl=page.querySelector('.rp-blocks');
-  rpPageGridTop=gridEl?(gridEl.getBoundingClientRect().top-pr.top)/sc:0;
-  rpPageRowStep=gridEl
-    ?(rpRowPx(gridEl)+(parseFloat(getComputedStyle(gridEl).rowGap)||0)):0;
+  /* **組み換え中は塊を切らない**（§9.283、利用者の報告「今までできていた
+     ドラッグアンドドロップによる紙帳票レイアウト修正のところができなくなる」）。
+     `clip-path`は**当たり判定まで切る**ので、紙をまたぐ塊は切れ目から下が
+     掴めなくなり、大きさを変えるつまみ（右・下・右下）が**1つも押せなくなる**
+     ——しかもいちばん直したい塊（紙からはみ出している塊）でだけ起きる。
+     続きの写し（`.rp-blk-tail`）は`.rp-sheets`の中＝`pointer-events:none`
+     なので、そちらを掴んでも何も起きない。
+     組み換え中は**丸ごと出して**余白をまたがせ、切れることは
+     `is-cut`の印と帯の件数が言う（§3）。ふだんのプレビューは今までどおり
+     切って、続きを次の紙の頭へ置く（刷り上がりと同じ絵）。 */
+  const keepWhole=rpArranging;
+  /* **物差しは`rpPageMetrics()`の1箇所**（§9.283）。塗る側と数える側が
+     同じ答えを見るので、「掴んだ場所と落ちる場所がずれる」を作れない
+     ——`f`から別に計算し直すと、同じ数を2箇所で作ることになる。 */
+  const M0=rpPageMetrics();
+  const S=M0.sheet;                            /* 拡大前の1枚ぶん(px) */
+  const G=M0.gap;                              /* 拡大前の余白(px) */
+  if(!(S>0))return;
   page.querySelectorAll('.rp-block').forEach(b=>{
    const r=b.getBoundingClientRect();
    const bt=(r.top-pr.top)/sc,bb=(r.bottom-pr.top)/sc;
@@ -2311,7 +2373,7 @@
       打ち消せなくなる。使い方（ずらす・切る）はCSSに残す。 */
    b.dataset.rpShift='1';
    b.style.setProperty('--rp-shift',(k0*G)+'px');
-   if(k1===k0)return;
+   if(k1===k0||keepWhole)return;
    /* **切れ目にかかる塊は切って、続きを次の紙の頭へ置く**（紙の上で
       起きることと同じ）。元は1枚目に残るぶんだけ見せ、続きは写しで出す
       ——写しは`data-rp-block`を持たないので、置き場所を数える処理
@@ -2335,10 +2397,14 @@
   });
   /* **空きマスの印も同じだけずらす**（§9.282）——ずらさないと、組み換え中に
      「ここが空いています」の枠だけが紙をまたいで残る。印は`rpFreeCells()`が
-     グリッドの中へpxで置いているので、その`top`へ足すだけでよい。 */
+     グリッドの中へpxで置いているので、その`top`へ足すだけでよい。
+     **元の位置を覚えてから足すこと**（§9.283）——`style.top`へ足し込む形だと
+     `rpUpdateSheets()`が2回走っただけで**印だけが1枚ぶんずつ下へ流れていく**
+     （印は`rpFreeCells()`が作り直したときしか元に戻らない）。 */
   page.querySelectorAll('.rp-free-layer > i').forEach(i=>{
-   const t=parseFloat(i.style.top)||0;
-   i.style.top=(t+rpShiftAtGrid(t))+'px';
+   const t=(i.dataset.rpTop!==undefined)?Number(i.dataset.rpTop):(parseFloat(i.style.top)||0);
+   i.dataset.rpTop=String(t);
+   i.style.top=(t+rpShiftAt(M0,t+M0.gridTop))+'px';
   });
  }
  /* ---------- 収まりは短く言い、続きは`title`（§9.255 ①） ----------
@@ -2445,10 +2511,17 @@
   const gr=grid.getBoundingClientRect();
   const used=new Set();
   let maxRow=0;
+  /* **行はずらしを外して数える**（§9.283）——ページに割ると塊は`transform`で
+     1枚ぶんずつ下へ動いており、`getBoundingClientRect()`はその**動かしたあと**を
+     返す。素直に行の高さで割ると、2枚目以降の塊が1〜2行ぶん下に居ることに
+     なり、**埋まっているマスに「空き」の枠が出る**。塊の上端は「行の頭
+     ちょうど」なので`rpRowOfTop()`のほう（切り捨てだと端数で1行上に落ちる）。
+     高さはずらしの影響を受けない。 */
+  const M=L.m||rpPageMetrics();
   grid.querySelectorAll('[data-rp-block]').forEach(el=>{
    const r=el.getBoundingClientRect();
    const c0=Math.max(0,Math.round(((r.left-gr.left)/sc)/(colW+gapX)));
-   const r0=Math.max(0,Math.round(((r.top-gr.top)/sc)/(rowH+gapY)));
+   const r0=Math.max(0,rpRowOfTop(M,(r.top-gr.top)/sc));
    const cn=Math.max(1,Math.round((r.width/sc+gapX)/(colW+gapX)));
    const rn=Math.max(1,Math.round((r.height/sc+gapY)/(rowH+gapY)));
    for(let i=0;i<rn;i++)for(let j=0;j<cn;j++)used.add((r0+i)+':'+(c0+j));
@@ -2887,8 +2960,9 @@
  function rpFitGhost(g,row){
   if(!g)return;
   g.style.removeProperty('--rp-shift');
-  if(!(rpPageGapPx>0))return;
-  g.style.setProperty('--rp-shift',rpRowShift(Math.max(0,(row||1)-1))+'px');
+  const m=rpPageMetrics();
+  if(!m.paged)return;
+  g.style.setProperty('--rp-shift',rpRowShiftM(m,Math.max(0,(row||1)-1))+'px');
  }
  /* ---------- 落ちる先はマスで示す（§9.221 ⑨） ----------
     置き場所を利用者が決める形にしたので、ゴーストも**そのマスへ実寸で**
@@ -2922,13 +2996,14 @@
   g.innerHTML=`<b>${esc(rpBlockLabel(k))}</b><small>${span}/${rpGrid()}マス×${rows}行</small>`;
   if(ref){if(after)ref.after(g);else ref.before(g)}else grid.appendChild(g);
   /* 並べ替えのゴーストはマスを指定しないので、置いてから測って決める。 */
-  if(rpPageGapPx>0){
+  const m=rpPageMetrics();
+  if(m.paged){
    g.style.removeProperty('--rp-shift');
    const pg=$id('reportContent');
    if(pg&&g.parentElement){
     const sc=rpScaleOf(g.parentElement)||1;
     const pr=pg.getBoundingClientRect(),r0=g.getBoundingClientRect();
-    g.style.setProperty('--rp-shift',rpShiftAtPage((r0.top-pr.top)/sc)+'px');
+    g.style.setProperty('--rp-shift',rpShiftAt(m,(r0.top-pr.top)/sc)+'px');
    }
   }
  }
@@ -2975,6 +3050,11 @@
      自動高さの塊は全部`span 1`のまま。段数が12だった頃は1行が88pxあって
      たまたま入っていたが、48段（1行22px）にした瞬間に**全部の塊が
      「入りきりません」になる**（実測）。 */
+  /* **測る前に片付ける**（§9.283、`rpMarkOverflow`と同じ作法）——ページに
+     割ると塊へ`transform`が付くので、外さずに`getBoundingClientRect()`で
+     測ると**2枚目以降の塊だけ1〜2行ぶん下**として書き下ろしてしまう。
+     書き下ろしはマスタへ入るので、読み違えるとそのまま残る。 */
+  try{rpClearSheets($id('reportContent'))}catch(e){}
   try{rpFitRows(host)}catch(e){}
   /* **書き下ろしも拡大前で測る**（§9.222 ②）。`getBoundingClientRect()`は
      拡大後、`gap`／`gridAutoRows`は拡大前なので、混ぜると**書き下ろした
@@ -3166,15 +3246,17 @@
   const sc=rpScaleOf(grid),gr=grid.getBoundingClientRect();
   const inner=gr.width/sc;                       /* 拡大前の器の幅 */
   const colW=(inner-gapX*(cols-1))/cols;
-  /* **ページに割った余白ぶんを差し引く**（§9.282）——割ると塊が1枚ぶんずつ
-     下へずれているので、そのまま読むと**落とす先が余白のぶんずれる**。
-     窓口はここ1箇所（`rpCellAt`・`rpResize`・空きマスの計算が全部通る）。 */
-  const raw=(clientY-gr.top)/sc;                  /* 描かれている座標 */
-  /* **行はここで1度だけ数える**（§9.282）。`y`（ずらす前の座標）から
-     もう一度割り算すると、余白に落ちた点で1行ずれる——数える場所が
-     2つあると、掴んだ場所と落ちる場所が食い違う。`row`は1から数える。 */
-  return {cols,rowPx,gapX,gapY,sc,colW,row:rpRowAtGrid(raw)+1,
-          x:(clientX-gr.left)/sc,y:rpUngapGrid(raw)};
+  /* **ページに割った余白ぶんは`rpRowAtGridM()`が引き受ける**（§9.282）——
+     割ると塊が1枚ぶんずつ下へずれているので、素直に行の高さで割ると
+     **落とす先が余白のぶんずれる**。
+     **行はここで1度だけ数える**——数える場所が2つあると、掴んだ場所と
+     落ちる場所が食い違う。`row`は1から数える。`y`は**描かれているまま**
+     （割っていないときの値と同じ）で、行を数えるのに使わないこと。
+     物差し(`m`)も返すので、続けて何度も引く側は測り直さなくてよい。 */
+  const m=rpPageMetrics();
+  const y=(clientY-gr.top)/sc;                    /* 描かれている座標 */
+  return {cols,rowPx,gapX,gapY,sc,colW,m,row:rpRowAtGridM(m,y)+1,
+          x:(clientX-gr.left)/sc,y};
  }
  /* カーソルの座標 → マスの番号。**掴んだところのぶんを引いて、塊の左上が
     来るマス**を返す（§9.222 ②）。以前はカーソルの真下のマスを左上にして
@@ -3730,8 +3812,13 @@
    g.addEventListener('pointerdown',ev=>{
     ev.preventDefault();ev.stopPropagation();
     const grid=el.parentElement;if(!grid)return;
-    const kind=g.dataset.rpGrip;
-    const cols=rpGrid();
+    /* 綴りは方角（`t`上／`b`下／`l`左／`r`右と四隅）。文字が重ならないので
+       含まれるかで見る——**向きの表を2つ持たない**（§9.163）。 */
+    const kind=String(g.dataset.rpGrip||'');
+    const north=kind.includes('t'),south=kind.includes('b');
+    const west=kind.includes('l'),east=kind.includes('r');
+    const wide=west||east,tall=north||south;
+    const cols=rpGrid(),cap=rpRowCap();
     /* **拡大前の座標で数える**（§9.222 ②）。`getBoundingClientRect()`は
        拡大後、`gap`／`gridAutoRows`は拡大前なので、混ぜると引くほどずれる。 */
     const L=rpLocal(grid,0,0);
@@ -3741,37 +3828,78 @@
     const br={left:(brRaw.left-gr.left)/sc,top:(brRaw.top-gr.top)/sc,
               height:brRaw.height/sc};
     const px=e=>({x:(e.clientX-gr.left)/sc,y:(e.clientY-gr.top)/sc});
-    let span=rpSpan(k);
-    let rows=rpRows(k)||Math.max(1,Math.round((br.height+gapY)/(rowPx+gapY)));
-    el.setAttribute('draggable','false');
-    const tip=document.createElement('div');
-    tip.className='rp-size-tip';document.body.appendChild(tip);
-    const show=(x,y)=>{
-     tip.textContent=`${span}/${cols}マス × ${rows}行`;
-     tip.style.left=(x+14)+'px';tip.style.top=(y+14)+'px';
-    };
     /* **置き場所が決まっている塊は、その位置に留めたまま大きさだけ変える**
        （§9.221 ⑨）。`span`だけを書き換えると自動配置へ戻ってしまい、
        引いた瞬間に別の場所へ飛ぶ。 */
     const at=rpSpotOf(k);
     const used=rpOccupied(k);
+    /* 掴んでいない側の辺は**釘で留める**（§9.283）。左を引けば右端が、
+       上を引けば下端が動かないのが「辺を掴んでいる」ということ。 */
+    const b0={col:at?at.col:1,row:at?at.row:1,
+              span:Math.max(1,(at&&at.span)||rpSpan(k)),
+              rows:Math.max(1,(at&&at.rows)||rpRows(k)
+                    ||Math.round((br.height+gapY)/(rowPx+gapY)))};
+    const rightEdge=b0.col+b0.span-1, bottomEdge=b0.row+b0.rows-1;
+    let col=b0.col,row=b0.row,span=b0.span,rows=b0.rows;
+    el.setAttribute('draggable','false');
+    const tip=document.createElement('div');
+    tip.className='rp-size-tip';document.body.appendChild(tip);
+    const show=(x,y)=>{
+     /* **動いた側は位置も出す**（§6。数字が無いと、辺が動いたのか塊ごと
+        動いたのかが読めない）。 */
+     tip.textContent=`${span}/${cols}マス × ${rows}行`
+      +(at&&(col!==b0.col||row!==b0.row)?`（${col}列目・${row}行目）`:'');
+     tip.style.left=(x+14)+'px';tip.style.top=(y+14)+'px';
+    };
     const move=e=>{
      const q=px(e);
-     if(kind!=='h')span=Math.max(1,Math.min(at?cols-at.col+1:cols,
-       Math.round((q.x-br.left+gapX)/(colW+gapX))));
-     /* **行の数え方は`rpRowAtGrid()`の1箇所**（§9.282）。ページに割ると
+     /* **行の数え方は`rpRowAtGridM()`の1箇所**（§9.282）。ページに割ると
         紙と紙のあいだに余白が入るので、見た目の差を行の高さで割ると
-        **紙をまたいで引いたときだけ1行ぶん多く数える**。 */
-     if(kind!=='w')rows=Math.max(1,Math.min(at?rpRowCap()-at.row+1:rpRowCap(),
-       at?(rpRowAtGrid(q.y)+1-at.row+1)
-         :Math.round((q.y-br.top+gapY)/(rowPx+gapY))));
+        **紙をまたいで引いたときだけ1行ぶん多く数える**。物差しはそのつど
+        測る（§9.283）——控えると帯や段数が変わった瞬間に古くなる。 */
+     const m=rpPageMetrics();
+     const cc=Math.max(1,Math.min(cols,Math.floor(q.x/(colW+gapX))+1));
+     const rr=Math.max(1,Math.min(cap,rpRowAtGridM(m,q.y)+1));
+     if(east){col=b0.col;span=Math.max(1,Math.min(cols-col+1,cc-col+1))}
+     else if(west){
+      if(at){col=Math.max(1,Math.min(rightEdge,cc));span=rightEdge-col+1}
+      /* 置き場所を持たない塊は左へ広げられない（動かす先が無い）。 */
+      else span=Math.max(1,Math.min(cols,rightEdge-Math.max(1,Math.min(rightEdge,cc))+1));
+     }
+     if(south){row=b0.row;rows=Math.max(1,Math.min(cap-row+1,rr-row+1))}
+     else if(north){
+      if(at){row=Math.max(1,Math.min(bottomEdge,rr));rows=bottomEdge-row+1}
+      else rows=Math.max(1,bottomEdge-Math.max(1,Math.min(bottomEdge,rr))+1);
+     }
      /* **他の塊の上へは広げない**（§9.221 ⑨）。広げてから断るのでは、
-        どこまで広げられるのかが分からない。 */
+        どこまで広げられるのかが分からない。**戻すのは引いている辺**
+        ——反対側を動かすと、掴んでいない辺が勝手に動いて見える。
+        **どちらを戻せば入るかを見て決めること**（§9.283）——「幅を1マスに
+        なるまで潰してから高さへ移る」形にすると、**当たっているのが行
+        なのに幅が潰れる**（実測: 右上の角を引いたら幅11マス→1マス）。 */
+     if(at&&!rpFits(col,row,span,rows,used)){
+      /* **戻し方を2通り試して、広いほうを採る**（§9.283）。片方の軸を
+         1マスまで潰してからもう片方へ移る形にすると、**当たっているのが
+         行なのに幅が潰れる**（実測: 幅24マスの塊を下へ引いたら幅が1マスに
+         なった）。1手ずつ「どちらを戻せば入るか」を見る形も、**1手では
+         入らない**（何手も要る）ので同じところへ落ちる。 */
+      const back=widthFirst=>{
+       let c=col,r=row,sp=span,ro=rows,n=0;
+       while(!rpFits(c,r,sp,ro,used)&&n++<cols+cap+8){
+        if(widthFirst&&wide&&sp>1){if(west)c++;sp--;continue}
+        if(tall&&ro>1){if(north)r++;ro--;continue}
+        if(wide&&sp>1){if(west)c++;sp--;continue}
+        break;
+       }
+       return {c,r,sp,ro,ok:rpFits(c,r,sp,ro,used)};
+      };
+      const hi=back(false),wi=back(true);
+      const pick=!hi.ok?wi:(!wi.ok?hi:((hi.sp*hi.ro>=wi.sp*wi.ro)?hi:wi));
+      col=pick.c;row=pick.r;span=pick.sp;rows=pick.ro;
+     }
      if(at){
-      while(span>1&&!rpFits(at.col,at.row,span,rows,used))span--;
-      while(rows>1&&!rpFits(at.col,at.row,span,rows,used))rows--;
-      el.style.gridColumn=at.col+'/span '+span;
-      el.style.gridRow=at.row+'/span '+rows;
+      el.style.gridColumn=col+'/span '+span;
+      el.style.gridRow=row+'/span '+rows;
      }else{
       el.style.gridColumn='span '+span;
       el.style.gridRowEnd='span '+rows;
@@ -3785,13 +3913,17 @@
      tip.remove();
      el.removeAttribute('draggable');
      const wid={...rpLayoutNow().widths};
-     if(kind!=='h')wid[k]=rpSpanStore(rpSpanFromGrid(span));
-     if(kind!=='w'){
+     if(wide)wid[k]=rpSpanStore(rpSpanFromGrid(span));
+     if(tall){
       /* 旧いpxの高さは**捨てる**（§9.217）——両方残すと「どちらが効いて
          いるのか」が決まらない。行数を触った時点でそちらが正。 */
       delete wid[rpHeightKey(k)];
       wid[rpRowsKey(k)]=rpRowsStore(rpRowsFromGrid(rows));
      }
+     /* **左・上を引くと置き場所も動く**（§9.283）。書き忘れると、離した
+        瞬間に元の位置へ戻り「幅だけ増えて反対側へ伸びた」ように見える。 */
+     if(at&&west&&col!==b0.col)wid[rpColKey(k)]=rpColStore(rpColToBase(col));
+     if(at&&north&&row!==b0.row)wid[rpRowPosKey(k)]=rpRowStore(rpRowToBase(row));
      rpStage({widths:wid});
     };
     window.addEventListener('pointermove',move);

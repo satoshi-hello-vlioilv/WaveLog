@@ -317,9 +317,18 @@
    数えるだけ）。内側にあっても**上に載った塊に覆われる**ので、下記の
    `is-overlap`／hoverで手前へ出す。 */
 .rp-size-grip{position:absolute;z-index:4;background:transparent}
-.rp-size-w{top:0;bottom:10px;right:0;width:8px;cursor:ew-resize}
-.rp-size-h{left:0;right:10px;bottom:0;height:8px;cursor:ns-resize}
-.rp-size-wh{right:0;bottom:0;width:12px;height:12px;cursor:nwse-resize}
+/* **四辺と四隅の8方向**（§9.283、利用者の指示「左、左下、左上、上、右上の
+   部分でもすべての頂点、辺でサイズ変更できるように」）。辺は隅のぶんを
+   空けて置く（隅を先に掴ませるため。JS側も隅を後に書いて手前へ出す）。
+   綴りは方角（t上/b下/l左/r右）で、**`w`を「幅」の意味で使わない**。 */
+.rp-size-t{top:0;left:10px;right:10px;height:8px;cursor:ns-resize}
+.rp-size-b{bottom:0;left:10px;right:10px;height:8px;cursor:ns-resize}
+.rp-size-l{left:0;top:10px;bottom:10px;width:8px;cursor:ew-resize}
+.rp-size-r{right:0;top:10px;bottom:10px;width:8px;cursor:ew-resize}
+.rp-size-tl{left:0;top:0;width:10px;height:10px;cursor:nwse-resize}
+.rp-size-tr{right:0;top:0;width:10px;height:10px;cursor:nesw-resize}
+.rp-size-bl{left:0;bottom:0;width:10px;height:10px;cursor:nesw-resize}
+.rp-size-br{right:0;bottom:0;width:12px;height:12px;cursor:nwse-resize}
 /* 取っ手も**触れているあいだだけ**見せる（§9.223 ①）。当たり判定は
    出しっぱなし——見えないから掴めない、では引けない部品になる。 */
 .rp-blocks.is-arranging .rp-block:hover>.rp-size-grip,
@@ -827,7 +836,12 @@
    ——縁の掴み（右・下・右下）と重ならない位置でないと、掴む的が消える
    （§9.226 ③で浮き帯を外したのと同じ理由）。組み換え中しか出ない。 */
 .rp-block-paper{
-  position:absolute;left:2px;top:2px;z-index:2;
+  /* **左上の取っ手（`.rp-size-tl`）を避けて右へ寄せる**（§9.283）。角の
+     取っ手は10px四方なので、左を12pxにすれば角は素通しのまま押せる。
+     上の辺の取っ手とはこのボタンのぶんだけ重なる（そこは掴めない）ので、
+     **取っ手より手前**に置く——後ろにすると押しても何も起きないボタンに
+     なる（§4）。辺は塊の幅いっぱいにあるので、22pxぶんは他で掴める。 */
+  position:absolute;left:12px;top:2px;z-index:5;
   min-width:1.6em;min-height:1.6em;padding:0 var(--space-1);
   border:1px solid var(--line-mid);border-radius:var(--radius-xs);
   background:var(--card-bg);color:var(--ink-3);
