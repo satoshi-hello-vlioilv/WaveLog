@@ -275,11 +275,16 @@
             fieldGroup:'③ 紙のどこへ出すか',
             hint:'1行＝24px。**「中身なり」は描いてから測ります。**',
             more:'行数を決めると、下の段へ跨いで置けます。エリアは中身なりだと1行に潰れるので行数を決めてください。'},
-           {k:'cols',label:'内訳の列数',type:'select',options:['','1','2','3','4','5','6'],
+           /* 内訳の列数（§9.255 ②／§9.277）。**紙が受ける12まで並べる**
+              ——「表に組む」は「行の軸の数＋列の組み合わせ」を書き込むので、
+              選択肢に無い数だと`<select>`の値が空になり、**組んだ表が
+              既定の2列で刷られる**（実際にそうなった。7列で踏んだ）。 */
+           {k:'cols',label:'内訳の列数',type:'select',
+            options:['','1','2','3','4','5','6','7','8','9','10','11','12'],
             when:{kindText:'項目の並び'},
             fieldGroup:'③ 紙のどこへ出すか',
             hint:'空欄なら**中身の数から決まります**。',
-            more:'節の中で「ラベル＝値」を何列に並べるかです。並べ方が「幅なり」「高さなり」のときは使いません（カードの大きさで決まります）。'},
+            more:'節の中で「ラベル＝値」を何列に並べるかです。並べ方が「幅なり」「高さなり」のときは使いません（カードの大きさで決まります）。「表に組む」を押すと、組んだ表に合う数がここへ入ります。'},
            /* 繰り返し（§9.247 ②）。**分割の無いロットでは1回だけ**出る。 */
            {k:'repeatText',label:'繰り返し',type:'choice-card',
             when:{kindText:'項目の並び'},
@@ -288,6 +293,16 @@
                    {v:'分割後の子ロットごと',icon:'⋮',label:'子ロットごと',note:'異幅分割の子ロットの数だけ出す'}],
             hint:'**幅分割していないロットでは1回だけ**です。',
             more:'「子ロットごと」にすると、異幅分割で子ロット番号が複数あるロットで、この塊が子ロットの数だけ出ます。見出しに子ロット番号と条の範囲が付き、載せた「測定した値の統計」はその子ロットの条だけから数え直されます。板厚・板丈・肉厚は丈ごとに測るので子ロットに割り当てられず「—」になります。'},
+           /* 繰り返しの向き（§9.277、利用者の指示「子ロット分縦に積む形が
+              今までなので縦に積むが標準で横に積むか」）。**繰り返す塊の
+              ときだけ出す**（§4。効かない設定を並べない）。 */
+           {k:'repeatDirText',label:'繰り返しの向き',type:'choice-card',
+            when:{repeatText:'分割後の子ロットごと'},
+            fieldGroup:'③ 紙のどこへ出すか',
+            cards:[{v:'縦に積む（既定）',icon:'↓',label:'縦に積む',note:'今までどおり上から順に'},
+                   {v:'横に並べる',icon:'→',label:'横に並べる',note:'子ロットを左から右へ'}],
+            hint:'**表に「対象」の軸を置いたときは使いません**（1つの表にまとまるため）。',
+            more:'子ロットごとに描いた塊を、上から順に積むか、左から右へ並べるかです。横に並べると1件あたりの幅が狭くなるので、項目の少ない塊向きです。②で「表に組む」の軸に「対象」を行として入れた場合は、子ロットが1つの表の行になるのでこの設定は効きません。'},
            {k:'enabledText',label:'紙に出す',type:'choice-card',
             fieldGroup:'④ 出す・並び',
             cards:[{v:'有効',icon:'✓',label:'出す',note:'配置に置けば紙へ出る'},
@@ -1516,6 +1531,9 @@
          <button type="button" class="fb-blank ghost" title="何も出さずに場所だけ取るマスを1つ足します（区切りの良い並びに整えるため）">空きマス</button>
          <button type="button" class="fb-table ghost" title="選んだ項目を、行と列の軸で表に組み直します">表に組む</button>
          <button type="button" class="fb-clear ghost">全部外す</button></div>
+        <!-- 軸の置き場（§9.277）。**組める材料があるときだけ中身が入る**
+             （押せるのに何も起きない帯を置かない・§4）。 -->
+        <div class="fb-axes" hidden></div>
         <p class="fb-hint">下の枠が<b>紙のこの塊そのもの</b>です。掴んで動かすと並びが変わり、
          各マスの<b>数字</b>で横に使うマス数を決められます。<b>マスを押すと</b>下で
          種別・寄せ・書式を決められます。</p>
@@ -2658,7 +2676,10 @@
     /* **語彙はサーバーが答える**（§9.163）——種別・寄せ・書式の呼び名を
        画面へ写すと、選べる書式を1つ足すたびに2箇所直すことになる。 */
     fbCatalog.vocab={cellKinds:r.cellKinds||null,aligns:r.aligns||null,
-                     formatKinds:r.formatKinds||null,datePatterns:r.datePatterns||null};
+                     formatKinds:r.formatKinds||null,datePatterns:r.datePatterns||null,
+                     /* 表に組むときの軸と列数の上限（§9.277）。 */
+                     pivotAxes:Array.isArray(r.pivotAxes)?r.pivotAxes:null,
+                     axisLot:r.axisLot||null,colsMax:r.contentColsMax||null};
     /* 見本の値は**候補と一緒に届く**（§9.250 ⑤）。別の口で取りに行くと、
        候補にあるのに見本の値だけ無い道が作れる。 */
     rbNoteSamples(fbCatalog.groups);
@@ -2681,11 +2702,15 @@
     **読み方はサーバー（`parse_content`）と同じにすること**——2通りあると、
     設定画面で組んだ形と紙が食い違う。 */
  const FB_SPAN_MAX=12;
- /* 内訳の列数（§9.255 ②）。**サーバーが受ける上限（6）に合わせる**
-    ——ここだけ4のままだと、盤で選べない列数を紙が受け入れることになる。
+ /* 内訳の列数（§9.255 ②／§9.277）。**サーバーが受ける上限に合わせる**
+    ——ここだけ小さいと、盤で選べない列数を紙が受け入れることになる。
+    §9.277で12まで（紙の`reportSection`が受ける数）——ピボットに組むと
+    「1＋項目×集計」で簡単に6を超えるので、6のままだと**組んだ表が保存で
+    黙って丸められて**いた。**上限そのものはサーバーが答える**
+    （`fbVocab().colsMax`）ので、ここは届く前の受け皿。
     縦のマス数は器の高さで決まるので、選ばせるのは4段まで（それ以上は
     塊の高さのほうを③で決める話になる・§CLAUDE 11）。 */
- const FB_COLS_MAX=6,FB_COL_CHOICES=[1,2,3,4,5,6],FB_ROWS_MAX=4;
+ const FB_COLS_MAX=12,FB_COL_CHOICES=[1,2,3,4,5,6,7,8,9,10,11,12],FB_ROWS_MAX=4;
  function fbSpan(v,max){
   const n=Math.floor(Number(v));
   return Number.isFinite(n)?Math.max(1,Math.min(max||FB_SPAN_MAX,n)):1;
@@ -2724,7 +2749,11 @@
   return {label,path,blank:kind===FB_KIND_BLANK,
           span:fbSpan(x.span),rows:fbSpan(x.rows,FB_SPAN_MAX),kind,
           showLabel:kind===FB_KIND_VALUE?(x.showLabel!==false):false,
-          align:fbAlign(x.align),format:fbFormat(x.format)};
+          align:fbAlign(x.align),format:fbFormat(x.format),
+          /* **対象（子ロット）の軸のマス**（§9.277）。印の付いた並びだけを
+             紙が**1つの表の中で**子ロットの数だけ複製する——子ロットの数は
+             レコードごとに違うので、設計のときは1つぶんの型だけを置く。 */
+          lot:!!x.lot};
  }
  const FB_ALIGNS=['','left','center','right'];
  const fbAlign=v=>FB_ALIGNS.indexOf(String(v||''))>=0?String(v||''):'';
@@ -2754,7 +2783,7 @@
  }
  /* 行の形（`ラベル=道|横x縦`）では書けないマスか。 */
  const fbRich=c=>c.kind===FB_KIND_HEAD||(c.kind===FB_KIND_VALUE&&!c.showLabel)
-   ||!!c.align||!!c.format;
+   ||!!c.align||!!c.format||!!c.lot;
  function fbParse(text){
   const s=String(text==null?'':text).trim();
   /* **JSONは`[`で始まるかどうかだけで見分ける**（サーバーと同じ約束）。
@@ -2794,7 +2823,7 @@
   if(!cells.length)return '';
   if(cells.some(fbRich)){
    return JSON.stringify(cells.map(c=>({label:c.label,path:c.path,span:c.span,rows:c.rows,
-     kind:c.kind,showLabel:c.showLabel,align:c.align,format:c.format})));
+     kind:c.kind,showLabel:c.showLabel,align:c.align,format:c.format,lot:c.lot})));
   }
   return cells.map(r=>{
    const sp=fbSpan(r.span),tall=fbSpan(r.rows);
@@ -2814,67 +2843,213 @@
    aligns:v.aligns||FB_ALIGNS.map(x=>({v:x,label:x||'auto'})),
    formatKinds:v.formatKinds||[{v:'',label:'-'},{v:'number',label:'number'},
                                {v:'datetime',label:'datetime'},{v:'text',label:'text'}],
-   datePatterns:v.datePatterns||['yyyy/MM/dd','yyyy/MM/dd HH:mm','HH:mm']};
+   datePatterns:v.datePatterns||['yyyy/MM/dd','yyyy/MM/dd HH:mm','HH:mm'],
+   /* 表に組むときの軸（§9.277）。**既定の置き方はこの並びが決める**——
+      1つ目を行、残りを列。届く前でも盤は開けるので受け皿を持つ。 */
+   pivotAxes:v.pivotAxes||['対象','項目','集計'],
+   axisLot:v.axisLot||'対象',
+   /* 節の中の列数の上限。**紙が受ける数と同じ**（サーバーが答える）。 */
+   colsMax:Number(v.colsMax)||FB_COLS_MAX};
  }
- /* ---------- 表（マトリクス）に組む（§9.274、利用者の指示） ----------
-    「板厚MIN、板厚MAX、板幅MIN、板幅MAX、板丈MIN、板丈MAXをブロックに設定
-     して表示させると、すべて横方向に、2段のカラムで並べられます。縦にも
-     項目を並べて、横も共通軸で並べたりすることでマトリクスも整形できる
-     ようにしたいです」
+ /* ---------- 表は「ピボット」で組む（§9.277、利用者の指示） ----------
+    「EXCELのピボットテーブルのように自由に組めるように、表にしたときには
+     選んだ項目の中に必要な共通軸を抽出してそれを置く場所を自動もしくは
+     その後ユーザーに修正させる形で作成することで最終形の表の形をしっかり
+     固定できるはずです。軸の位置と数がわかれば表の形状がわからずに最終形の
+     出力に困らないのでそのように対応してください」
 
-    **軸は候補が名乗る**（`field_catalog`の`row`/`col`）——ラベルを空白で
-    割って推測すると、名前に空白を含む項目で必ず崩れる。軸を名乗らない
-    候補は表に組めない、と**画面が言える**のもこの印があるから（§4）。
+    §9.274では候補が`row`/`col`という**置き場つきの名前**を名乗っており、
+    「板厚は行・MINは列」という**決め打ちの1通り**しか作れなかった。
+    行と列を入れ替えることも、3つ目の軸（対象＝子ロット）を足すこともできない。
 
-    作るのはふつうのマスの並びだけ（見出し＋ラベルを出さない値）。
-    **組んだあとは手で直せる**——魔法の状態を作らない。 */
- function fbAxisOf(path){
+    いまは候補が`axes`（**名前と値だけ**）を名乗り、**置き場は盤が決める**。
+      ・軸を抽出する            … `fbAxes(rows)`
+      ・置き場の既定を決める    … サーバーの並び順の1つ目を行・残りを列
+      ・利用者が直せる          … 軸ごとの「行／列」の切り替え
+      ・いまの形を文字で出す    … 「行＝対象／列＝項目・集計（7列×3段）」
+
+    **対象（子ロット）は行だけ**——子ロットの数はレコードごとに違うので、
+    設計のときに置けるのは**1つぶんの型**（`lot:true`のマス）だけで、数は
+    紙が決める。行なら型は**連続したひとかたまり**になるので複製できるが、
+    列だと1行ごとに飛び飛びになる。**できないことは画面に書く**（§4）。 */
+ const FB_AXIS_ROW='行',FB_AXIS_COL='列';
+ /* 候補が名乗る軸。**綴りはサーバーが持つ**ので、ここでは引くだけ。 */
+ function fbAxesOf(path){
   for(const g of (fbCatalog.groups||[]))
    for(const it of (g.items||[]))
-    if(it.path===path&&it.row&&it.col)return {row:it.row,col:it.col};
+    if(it.path===path&&it.axes&&typeof it.axes==='object')return it.axes;
   return null;
  }
- /* いま選んでいる項目から作れる表。**作れないなら理由を返す**（§4）。 */
- function fbTablePlan(rows){
+ function fbAxisVal(a,n){return (a&&a[n]!=null)?a[n]:''}
+ /* いま選んでいる値のマスから軸を抜き出す。→ {live,known,bad,axes}
+    **サーバーの並び順で返す**（既定の置き場がその順で決まる）。 */
+ function fbAxes(rows){
   const live=(rows||[]).filter(r=>r.kind===FB_KIND_VALUE&&r.path);
-  if(!live.length)return {err:'先に候補から項目を選んでください。'};
-  const axis=live.map(r=>({r,a:fbAxisOf(r.path)}));
-  const bad=axis.filter(x=>!x.a);
-  if(bad.length)return {err:'「'+esc(bad[0].r.label||bad[0].r.path)+'」は行と列の軸を持たない項目です'
-    +'（表に組めるのは「測定した値の統計」のように<b>項目＋集計</b>で決まる項目だけです）。'};
-  const rowsAx=[],colsAx=[];
-  axis.forEach(({a})=>{
-   if(rowsAx.indexOf(a.row)<0)rowsAx.push(a.row);
-   if(colsAx.indexOf(a.col)<0)colsAx.push(a.col);
+  const known=[],bad=[];
+  live.forEach(r=>{
+   const a=fbAxesOf(r.path);
+   /* **組んだ表の足場は軸を名乗らなくてよい**（§9.277）——「対象」の行の
+      見出し（子ロット番号）は盤が作ったマスで、利用者が選んだ項目ではない。
+      ここで`bad`へ入れると、**一度組んだ表は二度と組み直せなくなる**
+      （軸の帯が消え、「表に組む」も理由の分からない断り書きで固まる）。 */
+   if(!a&&r.lot)return;
+   if(!a)bad.push(r);else known.push({r,a});
   });
-  const at=new Map(axis.map(({r,a})=>[a.row+' '+a.col,r]));
-  return {rowsAx,colsAx,at,cols:colsAx.length+1};
+  const order=fbVocab().pivotAxes;
+  const names=[];
+  known.forEach(k=>Object.keys(k.a).forEach(n=>{if(names.indexOf(n)<0)names.push(n)}));
+  names.sort((x,y)=>{
+   const i=order.indexOf(x),j=order.indexOf(y);
+   return (i<0?99:i)-(j<0?99:j);
+  });
+  const axes=names.map(n=>{
+   const values=[];
+   known.forEach(k=>{const v=k.a[n];if(v!=null&&values.indexOf(v)<0)values.push(v)});
+   return {name:n,values};
+  });
+  return {live,known,bad,axes};
+ }
+ /* 対象（子ロット）の軸は**繰り返しの設定から生える**——候補の項目ではなく
+    「この塊を子ロットごとに描くか」という塊の設定なので、そちらを見る。 */
+ function fbLotAxisOn(box){
+  const form=box.closest('form')||document;
+  const el=form.querySelector('[data-field="repeatText"],[data-field="repeat"]');
+  return /子ロット/.test(String((el&&el.value)||''));
+ }
+ /* 置き場。**既定は「1つ目を行・残りを列」**（サーバーの並び順）。
+    利用者が触った軸だけ`state.place`に残す（触っていない軸は既定のまま）。 */
+ function fbPlacement(box,state){
+  const ax=fbAxes(state.rows).axes;
+  const lot=fbVocab().axisLot;
+  const list=fbLotAxisOn(box)
+    ? [{name:lot,values:null,lot:true}].concat(ax.filter(a=>a.name!==lot))
+    : ax.filter(a=>a.name!==lot);
+  const put=state.place||{};
+  return list.map((a,i)=>({
+   name:a.name,values:a.values,lot:!!a.lot,
+   /* **対象は行だけ**（型が連続したかたまりになる置き方でしか複製できない）。 */
+   at:a.lot?FB_AXIS_ROW:((put[a.name]===FB_AXIS_COL||put[a.name]===FB_AXIS_ROW)
+      ?put[a.name]:(i===0?FB_AXIS_ROW:FB_AXIS_COL)),
+   fixed:!!a.lot}));
+ }
+ /* いま組める表。**組めないなら理由を返す**（§4）。 */
+ function fbTablePlan(box,state){
+  const found=fbAxes(state.rows);
+  if(!found.live.length)return {err:'先に候補から項目を選んでください。'};
+  if(found.bad.length)return {err:'「'+esc(found.bad[0].label||found.bad[0].path)
+    +'」は軸を名乗らない項目です'
+    +'（表に組めるのは「測定した値の統計」のように<b>項目＋集計</b>で決まる項目だけです）。'};
+  const place=fbPlacement(box,state);
+  const rowAx=place.filter(a=>a.at===FB_AXIS_ROW);
+  const colAx=place.filter(a=>a.at===FB_AXIS_COL);
+  if(!rowAx.length)return {place,err:'<b>行</b>に置く軸がありません（どれか1つを「行」にしてください）。'};
+  if(!colAx.length)return {place,err:'<b>列</b>に置く軸がありません（どれか1つを「列」にしてください）。'};
+  /* 対象の軸は**「全体」＋1つぶんの型**（子ロットの数は紙が決める）。 */
+  const size=a=>a.lot?2:Math.max(1,(a.values||[]).length);
+  /* 列に対象は来ない（行だけ）。来ても型1つぶんで数える。 */
+  const colN=colAx.reduce((n,a)=>n*(a.lot?1:size(a)),1);
+  const cols=rowAx.length+colN;
+  const max=fbVocab().colsMax;
+  if(cols>max)return {place,err:'この置き方だと<b>'+cols+'列</b>になり、1つの塊に入る'
+    +max+'列を超えます（軸をどれか「行」へ移してください）。'};
+  return {place,rowAx,colAx,cols,colN,
+    heads:colAx.length,
+    bodyRows:rowAx.reduce((n,a)=>n*size(a),1)};
+ }
+ /* 対象の軸が持つもの。**「全体」と「子ロットぶんの型」の2つ**（§9.277）
+    ——`測定値の統計`の既定の塊と同じで、全体の1行があってこそ子ロットの
+    値と見比べられる（要らなければ組んだあとに手で消せる）。 */
+ const FB_LOT_WHOLE='全体';
+ function fbAxisMembers(a){
+  if(!a.lot)return (a.values||[]).map(v=>({value:v}));
+  return [{value:FB_LOT_WHOLE,whole:true},{value:null,lot:true}];
+ }
+ /* 組み合わせを作る（先の軸が外側）。 */
+ function fbCombos(axes){
+  let out=[[]];
+  axes.forEach(a=>{
+   const next=[];
+   out.forEach(pre=>fbAxisMembers(a).forEach(m=>next.push(pre.concat([
+     {axis:a,value:m.value,whole:!!m.whole,lot:!!m.lot}]))));
+   out=next;
+  });
+  return out;
  }
  function fbMakeTable(box,state,sync){
-  const plan=fbTablePlan(state.rows);
+  const plan=fbTablePlan(box,state);
   const say=t=>{const el=box.querySelector('.fb-hint');if(el)el.innerHTML=t};
   if(plan.err){say(plan.err);return}
+  const rowAx=plan.rowAx,colAx=plan.colAx;
+  const known=fbAxes(state.rows).known;
+  /* 軸の値の組み合わせ → 元の項目。**選んでいない組み合わせは空きマス**
+     （詰めると軸がずれる）。 */
+  const keyAx=rowAx.concat(colAx).filter(x=>!x.lot);
+  const at=new Map();
+  known.forEach(k=>at.set(keyAx.map(x=>fbAxisVal(k.a,x.name)).join(String.fromCharCode(31)),k.r));
+  const lotName=fbVocab().axisLot;
   const out=[];
-  /* 1行目＝列の軸。左上は空き（行の軸の見出しが入る列）。 */
-  out.push(fbCell({kind:FB_KIND_BLANK}));
-  plan.colsAx.forEach(c=>out.push(fbCell({kind:FB_KIND_HEAD,label:c})));
-  plan.rowsAx.forEach(rw=>{
-   out.push(fbCell({kind:FB_KIND_HEAD,label:rw,align:'left'}));
-   plan.colsAx.forEach(c=>{
-    const hit=plan.at.get(rw+' '+c);
-    /* **選んでいない組み合わせは空きマス**（詰めると軸がずれる）。 */
-    out.push(hit?fbCell({...hit,showLabel:false,align:'right'}):fbCell({kind:FB_KIND_BLANK}));
+  /* ---- 見出しの段（列の軸のぶん）---- */
+  colAx.forEach((a,li)=>{
+   /* 左上の角。**行の軸のぶんの幅**をまとめて空ける。 */
+   if(li===0)out.push(fbCell({kind:FB_KIND_BLANK,span:rowAx.length,rows:colAx.length}));
+   const inner=colAx.slice(li+1).reduce((n,x)=>n*Math.max(1,(x.values||[]).length),1);
+   const outer=colAx.slice(0,li).reduce((n,x)=>n*Math.max(1,(x.values||[]).length),1);
+   for(let k=0;k<outer;k++)
+    (a.values||[]).forEach(v=>out.push(fbCell({kind:FB_KIND_HEAD,label:v,span:inner})));
+  });
+  /* ---- 本体 ---- */
+  const rowCombos=fbCombos(rowAx);
+  const colCombos=fbCombos(colAx);
+  rowCombos.forEach(rc=>{
+   const isLot=rc.some(x=>x.lot);
+   rc.forEach(x=>{
+    if(x.lot){
+     /* 対象の行の見出しは**子ロット番号**（`lot.no`）。値のマスなので、
+        紙がその回の子ロットで埋める。 */
+     out.push(fbCell({label:lotName,path:'lot.no',showLabel:false,align:'left',lot:true}));
+    }else out.push(fbCell({kind:FB_KIND_HEAD,label:x.value,align:'left',lot:isLot}));
+    /* **対象の行に居るマスは、見出しも含めて全部に印を付ける**（§9.277）
+       ——紙は「印の付いた**ひとかたまり**」を子ロットの数だけ複製するので、
+       途中に印の無いマスが挟まると、そのマスだけが先頭へ抜け出して
+       行がばらける（行の軸を2本にした瞬間に起きる）。 */
+   });
+   colCombos.forEach(cc=>{
+    const pick=rc.concat(cc);
+    const key=keyAx.map(x=>{
+     const hit=pick.find(y=>y.axis.name===x.name);
+     return hit?(hit.value||''):'';
+    }).join(String.fromCharCode(31));
+    /* **鍵に対象は入らない**（`keyAx`が除いてある）——全体の行も子ロットの
+       行も、引く道は同じ`stat.*`で、違うのは紙が渡す文脈だけ。 */
+    const src=at.get(key);
+    out.push(src?fbCell(Object.assign({},src,{showLabel:false,align:'right',lot:isLot}))
+                :fbCell({kind:FB_KIND_BLANK,lot:isLot}));
    });
   });
   state.rows=out;state.sel=null;
   /* 列数は「内訳の列数」の欄が持ち主（§CLAUDE 8）——ここは書き換えるだけ。 */
   const ci=(box.closest('form')||document).querySelector('[data-field="cols"]');
-  if(ci){ci.value=String(Math.min(FB_COLS_MAX,plan.cols));
-         ci.dispatchEvent(new Event('change',{bubbles:true}))}
+  const want=String(Math.min(fbVocab().colsMax,plan.cols));
+  if(ci){
+   /* **選択肢に無い数を黙って捨てない**（§9.277）——`<select>`は知らない値を
+      代入すると空になり、`cols=0`＝既定の2列で刷られる（実際に7列で踏んだ）。
+      無ければ候補へ足してから入れる（§9.204と同じ罠）。 */
+   if(ci.tagName==='SELECT'&&![...ci.options].some(o=>o.value===want)){
+    const o=document.createElement('option');o.value=want;o.textContent=want;ci.appendChild(o);
+   }
+   ci.value=want;
+   ci.dispatchEvent(new Event('change',{bubbles:true}));
+  }
   sync();
-  say('<b>行＝'+esc(plan.rowsAx.join('・'))+'／列＝'+esc(plan.colsAx.join('・'))
-   +'</b>で組みました（'+(plan.rowsAx.length+1)+'段 × '+plan.cols
-   +'列）。<b>このあと手で直せます。</b>');
+  say(fbPlanText(plan)+'で組みました。<b>このあと手で直せます。</b>');
+ }
+ /* いまの表の形を文字で出す（§9.277）。**軸の位置と数が読めれば最終形が
+    決まる**——「押せるから、まだ組めていない」と読まれないための1行でもある。 */
+ function fbPlanText(plan){
+  const nm=a=>esc(a.name)+(a.lot?'（子ロットぶん）':'');
+  return '<b>行＝'+plan.rowAx.map(nm).join('・')
+    +'／列＝'+plan.colAx.map(nm).join('・')+'</b>'
+    +'（'+plan.cols+'列 × 見出し'+plan.heads+'段＋本体'+plan.bodyRows+'段）';
  }
  /* **読み書きの約束を名前で出す**（§9.274）。サーバー（`parse_content`／
     `dump_content`）と1対1で、`tests/test_rbcells.js`が同じ例で突き合わせる
@@ -2888,7 +3063,10 @@
    if(box.dataset.fbWired)return;
    box.dataset.fbWired='1';
    const hidden=box.querySelector('input[data-field]');
-   const state={rows:fbParse(hidden?hidden.value:''),cat:'',q:'',sel:null};
+   /* `place`＝軸の置き場（§9.277）。**触った軸だけ覚える**——触っていない
+      軸は既定（サーバーの並び順の1つ目を行・残りを列）のままにする。
+      **保存の対象ではない**（組んだ結果はマスの並びが持っている）。 */
+   const state={rows:fbParse(hidden?hidden.value:''),cat:'',q:'',sel:null,place:{}};
    /* **隠し欄へ書いたら`change`を飛ばす**（§9.218 ②「`.value`への代入では
       `change`が飛ばない」）。飛ばさないと、同じフォームの中で値を見ている
       もの——刷り上がりの見本（§9.249 ③）・`data-when`の出し入れ——が
@@ -3175,21 +3353,62 @@
    };
    const tableBtn=box.querySelector('.fb-table');
    if(tableBtn)tableBtn.onclick=()=>fbMakeTable(box,state,sync);
-   /* **押せるのに何も起きないボタンを残さない**（§4）。組める材料が
-      揃っていないときは押せなくし、理由を`title`ではなくボタンの隣へ
-      出す準備として`title`に入れる（押す前に読めるのは`title`だけ）。 */
+   /* ---------- 軸の置き場を見せる（§9.277、利用者の指示） ----------
+      「軸の位置と数がわかれば表の形状がわからずに最終形の出力に困らない」
+
+      **押せるのに何も起きないボタンを残さない**（§4）ので、組める材料が
+      揃っていないときは押せなくして理由を出す。そのうえで、
+      **いまどの軸をどこへ置くのか**を帯に出す——出さないと「押せるから
+      まだ組めていない」と読まれる（利用者の報告「何回でも『表に組む』
+      ボタンを押せるので表に組める状態」がそれ）。 */
    const drawTableBtn=()=>{
-    if(!tableBtn)return;
-    const plan=fbTablePlan(state.rows);
-    tableBtn.disabled=!!plan.err;
-    tableBtn.title=plan.err
-      ? String(plan.err).replace(/<[^>]*>/g,'')
-      : `行＝${plan.rowsAx.join('・')}／列＝${plan.colsAx.join('・')} で組み直します`;
+    const bar=box.querySelector('.fb-axes');
+    const plan=fbTablePlan(box,state);
+    if(tableBtn){
+     /* **組めないなら押せなくして理由を出す**（§4）——置き方が決まって
+        いないのに押せると、押しても何も起きないボタンになる。直し方は
+        帯の「行／列」なので、**帯は出したまま**にする。 */
+     tableBtn.disabled=!!plan.err;
+     tableBtn.title=plan.err
+       ? String(plan.err).replace(/<[^>]*>/g,'')
+       : String(fbPlanText(plan)).replace(/<[^>]*>/g,'')+' で組み直します';
+    }
+    if(!bar)return;
+    const place=plan.place||[];
+    if(!place.length){bar.hidden=true;bar.innerHTML='';return}
+    bar.hidden=false;
+    bar.innerHTML='<i class="fb-axes-cap">軸の置き場</i>'
+     +place.map(a=>'<span class="fb-axis'+(a.fixed?' is-fixed':'')+'">'
+       +'<b>'+esc(a.name)+'</b>'
+       +[FB_AXIS_ROW,FB_AXIS_COL].map(at=>'<button type="button" data-fb-axis="'+esc(a.name)+'"'
+          +' data-fb-at="'+esc(at)+'" class="'+(a.at===at?'is-on':'')+'"'
+          +(a.fixed&&at!==a.at?' disabled title="対象（子ロット）は行だけです。'
+            +'子ロットの数はロットごとに違うので、置けるのは1行ぶんの型だけ——'
+            +'列にすると型が1行ごとに飛び飛びになり、複製できません。"':'')
+          +' aria-pressed="'+(a.at===at?'true':'false')+'">'+esc(at)+'</button>').join('')
+       +'<small>'+(a.lot?'子ロットぶん':esc((a.values||[]).join('・')))+'</small></span>').join('')
+     +'<span class="fb-axes-now">'+(plan.err
+        ? '<em class="fb-axes-bad">'+plan.err+'</em>'
+        : 'この形で組みます: '+fbPlanText(plan))+'</span>';
+    bar.querySelectorAll('[data-fb-axis]').forEach(b=>b.onclick=()=>{
+     if(b.disabled)return;
+     state.place=Object.assign({},state.place||{},{[b.dataset.fbAxis]:b.dataset.fbAt});
+     drawTableBtn();
+    });
    };
    /* 「内訳の列数」を欄から直したときも枠を組み直す（同じ数の2つの入口が
       食い違わないように）。 */
    const ci=colsInput();
    if(ci&&!ci.dataset.fbWired){ci.dataset.fbWired='1';ci.addEventListener('change',()=>{drawCols();drawChosen()})}
+   /* 繰り返しを切り替えたら軸の帯を描き直す（§9.277）——「対象（子ロット）」の
+      軸は**候補の項目ではなく塊の設定から生える**ので、切り替えたときに
+      描き直さないと**軸がいつまでも現れない**（利用者から見れば「子ロット
+      ごとにしたのに表に組めない」）。欄は別の段（③）にあり、その段を触っても
+      ②の盤は組み直されないので、`change`を1つ拾う。 */
+   const rpf=(box.closest('form')||document)
+     .querySelector('[data-field="repeatText"],[data-field="repeat"]');
+   if(rpf&&!rpf.dataset.fbWired){rpf.dataset.fbWired='1';
+    rpf.addEventListener('change',()=>drawTableBtn())}
    const search=box.querySelector('.fb-search');
    if(search)search.oninput=()=>{state.q=search.value;drawList()};
    const clr=box.querySelector('.fb-clear');

@@ -1,139 +1,477 @@
 {
   "_note": "帳票ブロックの[内容]（§9.274）の突き合わせ用。サーバー(backend/repositories/report_block_repo.py の parse_content/dump_content)と画面(static/js/master-maint.js の fbParse/fbText)は同じ約束を別々に持っているので、同じ例で両方を確かめる。tests/test_rbcells.py と tests/test_rbcells.js が読む。**片方だけ直さないこと**——2通りあると、盤で組んだ形と紙が食い違う（§9.245）。",
-
-  "_parse_note": "text を読んだ結果が cells。cells は label/path/kind/span/rows/showLabel/align/format の7つで比べる（blank は kind から決まるので比べない）。",
+  "_parse_note": "text を読んだ結果が cells。cells は label/path/kind/span/rows/showLabel/align/format/lot の9つで比べる（blank は kind から決まるので比べない）。lot は §9.277 の「対象（子ロット）の軸のマス」の印で、**紙が1つの表の中で子ロットの数だけ複製する並び**を指す。",
   "parse": [
     {
       "why": "今までの1行1件。**足したのは任意の後置きだけ**なので、既に登録してある塊はそのまま読める",
       "text": "ロット番号=basic.lotNo\n検査番号=basic.inspectionNo",
       "cells": [
-        {"label": "ロット番号", "path": "basic.lotNo", "kind": "value", "span": 1, "rows": 1, "showLabel": true, "align": "", "format": null},
-        {"label": "検査番号", "path": "basic.inspectionNo", "kind": "value", "span": 1, "rows": 1, "showLabel": true, "align": "", "format": null}
+        {
+          "label": "ロット番号",
+          "path": "basic.lotNo",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": true,
+          "align": "",
+          "format": null,
+          "lot": false
+        },
+        {
+          "label": "検査番号",
+          "path": "basic.inspectionNo",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": true,
+          "align": "",
+          "format": null,
+          "lot": false
+        }
       ]
     },
     {
       "why": "`=`が無い行はラベルも道も同じ／カンマ・読点でも区切れる",
       "text": "basic.lotNo、取引先=basic.customer",
       "cells": [
-        {"label": "basic.lotNo", "path": "basic.lotNo", "kind": "value", "span": 1, "rows": 1, "showLabel": true, "align": "", "format": null},
-        {"label": "取引先", "path": "basic.customer", "kind": "value", "span": 1, "rows": 1, "showLabel": true, "align": "", "format": null}
+        {
+          "label": "basic.lotNo",
+          "path": "basic.lotNo",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": true,
+          "align": "",
+          "format": null,
+          "lot": false
+        },
+        {
+          "label": "取引先",
+          "path": "basic.customer",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": true,
+          "align": "",
+          "format": null,
+          "lot": false
+        }
       ]
     },
     {
       "why": "§9.245 横のマス数／§9.255 ② 横x縦。`x`が無ければ縦1（古い保存値がそのまま読める）",
       "text": "A=basic.lotNo|2\nB=basic.customer|3x2",
       "cells": [
-        {"label": "A", "path": "basic.lotNo", "kind": "value", "span": 2, "rows": 1, "showLabel": true, "align": "", "format": null},
-        {"label": "B", "path": "basic.customer", "kind": "value", "span": 3, "rows": 2, "showLabel": true, "align": "", "format": null}
+        {
+          "label": "A",
+          "path": "basic.lotNo",
+          "kind": "value",
+          "span": 2,
+          "rows": 1,
+          "showLabel": true,
+          "align": "",
+          "format": null,
+          "lot": false
+        },
+        {
+          "label": "B",
+          "path": "basic.customer",
+          "kind": "value",
+          "span": 3,
+          "rows": 2,
+          "showLabel": true,
+          "align": "",
+          "format": null,
+          "lot": false
+        }
       ]
     },
     {
       "why": "空きマスは落とさない（場所を取ることが役目。消すとマトリクスが1マスずつ詰まって崩れる）",
       "text": "|1\nA=basic.lotNo\n|2",
       "cells": [
-        {"label": "", "path": "", "kind": "blank", "span": 1, "rows": 1, "showLabel": false, "align": "", "format": null},
-        {"label": "A", "path": "basic.lotNo", "kind": "value", "span": 1, "rows": 1, "showLabel": true, "align": "", "format": null},
-        {"label": "", "path": "", "kind": "blank", "span": 2, "rows": 1, "showLabel": false, "align": "", "format": null}
+        {
+          "label": "",
+          "path": "",
+          "kind": "blank",
+          "span": 1,
+          "rows": 1,
+          "showLabel": false,
+          "align": "",
+          "format": null,
+          "lot": false
+        },
+        {
+          "label": "A",
+          "path": "basic.lotNo",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": true,
+          "align": "",
+          "format": null,
+          "lot": false
+        },
+        {
+          "label": "",
+          "path": "",
+          "kind": "blank",
+          "span": 2,
+          "rows": 1,
+          "showLabel": false,
+          "align": "",
+          "format": null,
+          "lot": false
+        }
       ]
     },
     {
       "why": "マス数は範囲へ丸める（1〜12）。壊れた数は1",
       "text": "A=basic.lotNo|99\nB=basic.customer|0\nC=basic.delivery|あ",
       "cells": [
-        {"label": "A", "path": "basic.lotNo", "kind": "value", "span": 12, "rows": 1, "showLabel": true, "align": "", "format": null},
-        {"label": "B", "path": "basic.customer", "kind": "value", "span": 1, "rows": 1, "showLabel": true, "align": "", "format": null},
-        {"label": "C", "path": "basic.delivery", "kind": "value", "span": 1, "rows": 1, "showLabel": true, "align": "", "format": null}
+        {
+          "label": "A",
+          "path": "basic.lotNo",
+          "kind": "value",
+          "span": 12,
+          "rows": 1,
+          "showLabel": true,
+          "align": "",
+          "format": null,
+          "lot": false
+        },
+        {
+          "label": "B",
+          "path": "basic.customer",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": true,
+          "align": "",
+          "format": null,
+          "lot": false
+        },
+        {
+          "label": "C",
+          "path": "basic.delivery",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": true,
+          "align": "",
+          "format": null,
+          "lot": false
+        }
       ]
     },
     {
       "why": "§9.274 見出しのマス（文字だけ・値の道を持たない）と、ラベルを出さないマス。JSONは`[`で始まるかどうかだけで見分ける",
       "text": "[{\"kind\":\"blank\",\"span\":1,\"rows\":1},{\"kind\":\"head\",\"label\":\"MIN\",\"span\":1,\"rows\":1},{\"kind\":\"value\",\"label\":\"板厚\",\"path\":\"stat.thickness.min\",\"span\":1,\"rows\":1,\"showLabel\":false,\"align\":\"right\"}]",
       "cells": [
-        {"label": "", "path": "", "kind": "blank", "span": 1, "rows": 1, "showLabel": false, "align": "", "format": null},
-        {"label": "MIN", "path": "", "kind": "head", "span": 1, "rows": 1, "showLabel": false, "align": "", "format": null},
-        {"label": "板厚", "path": "stat.thickness.min", "kind": "value", "span": 1, "rows": 1, "showLabel": false, "align": "right", "format": null}
+        {
+          "label": "",
+          "path": "",
+          "kind": "blank",
+          "span": 1,
+          "rows": 1,
+          "showLabel": false,
+          "align": "",
+          "format": null,
+          "lot": false
+        },
+        {
+          "label": "MIN",
+          "path": "",
+          "kind": "head",
+          "span": 1,
+          "rows": 1,
+          "showLabel": false,
+          "align": "",
+          "format": null,
+          "lot": false
+        },
+        {
+          "label": "板厚",
+          "path": "stat.thickness.min",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": false,
+          "align": "right",
+          "format": null,
+          "lot": false
+        }
       ]
     },
     {
       "why": "§9.274 書式は`WL.cellFormat`と同じ綴り。既定だけの`text`は持たない（何も変えていない塊まで保存のたびに形が変わる）",
       "text": "[{\"kind\":\"value\",\"label\":\"厚み\",\"path\":\"stat.thickness.avg\",\"format\":{\"kind\":\"number\",\"decimals\":3,\"thousands\":true,\"suffix\":\"mm\"}},{\"kind\":\"value\",\"label\":\"日\",\"path\":\"workTime.startAt\",\"format\":{\"kind\":\"datetime\",\"pattern\":\"MM/dd\"}},{\"kind\":\"value\",\"label\":\"素\",\"path\":\"basic.lotNo\",\"format\":{\"kind\":\"text\"}}]",
       "cells": [
-        {"label": "厚み", "path": "stat.thickness.avg", "kind": "value", "span": 1, "rows": 1, "showLabel": true, "align": "", "format": {"kind": "number", "decimals": 3, "thousands": true, "suffix": "mm"}},
-        {"label": "日", "path": "workTime.startAt", "kind": "value", "span": 1, "rows": 1, "showLabel": true, "align": "", "format": {"kind": "datetime", "pattern": "MM/dd"}},
-        {"label": "素", "path": "basic.lotNo", "kind": "value", "span": 1, "rows": 1, "showLabel": true, "align": "", "format": null}
+        {
+          "label": "厚み",
+          "path": "stat.thickness.avg",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": true,
+          "align": "",
+          "format": {
+            "kind": "number",
+            "decimals": 3,
+            "thousands": true,
+            "suffix": "mm"
+          },
+          "lot": false
+        },
+        {
+          "label": "日",
+          "path": "workTime.startAt",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": true,
+          "align": "",
+          "format": {
+            "kind": "datetime",
+            "pattern": "MM/dd"
+          },
+          "lot": false
+        },
+        {
+          "label": "素",
+          "path": "basic.lotNo",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": true,
+          "align": "",
+          "format": null,
+          "lot": false
+        }
       ]
     },
     {
       "why": "知らない種別・知らない寄せ・知らない書式は倒す（例外にすると塊が丸ごと開けなくなる・§9.215）",
       "text": "[{\"kind\":\"なぞ\",\"label\":\"A\",\"path\":\"basic.lotNo\",\"align\":\"ななめ\",\"format\":{\"kind\":\"色\"}}]",
       "cells": [
-        {"label": "A", "path": "basic.lotNo", "kind": "value", "span": 1, "rows": 1, "showLabel": true, "align": "", "format": null}
+        {
+          "label": "A",
+          "path": "basic.lotNo",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": true,
+          "align": "",
+          "format": null,
+          "lot": false
+        }
       ]
     },
     {
       "why": "道を持たない「値」のマスは空きへ落とす（値の場所に`-`だけが並ぶのを防ぐ）",
       "text": "[{\"kind\":\"value\",\"label\":\"名前だけ\",\"path\":\"\"}]",
       "cells": [
-        {"label": "", "path": "", "kind": "blank", "span": 1, "rows": 1, "showLabel": false, "align": "", "format": null}
+        {
+          "label": "",
+          "path": "",
+          "kind": "blank",
+          "span": 1,
+          "rows": 1,
+          "showLabel": false,
+          "align": "",
+          "format": null,
+          "lot": false
+        }
       ]
     },
     {
       "why": "壊れたJSONは行の形として読み直す（黙って空にしない）",
       "text": "[これはJSONではない",
       "cells": [
-        {"label": "[これはJSONではない", "path": "[これはJSONではない", "kind": "value", "span": 1, "rows": 1, "showLabel": true, "align": "", "format": null}
+        {
+          "label": "[これはJSONではない",
+          "path": "[これはJSONではない",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": true,
+          "align": "",
+          "format": null,
+          "lot": false
+        }
       ]
     },
     {
       "why": "空は空",
       "text": "",
       "cells": []
+    },
+    {
+      "why": "§9.277 「対象」の軸のマス。印は往復する（`lot`を落とすと、紙が子ロットぶんに展開すべき並びを見失って1回しか出さない）",
+      "text": "[{\"label\":\"子ロット\",\"path\":\"lot.no\",\"showLabel\":false,\"align\":\"left\",\"lot\":true},{\"label\":\"MIN\",\"path\":\"stat.width.min\",\"showLabel\":false,\"align\":\"right\",\"lot\":true},{\"label\":\"全体\",\"path\":\"stat.width.min\",\"showLabel\":false,\"align\":\"right\"}]",
+      "cells": [
+        {
+          "label": "子ロット",
+          "path": "lot.no",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": false,
+          "align": "left",
+          "format": null,
+          "lot": true
+        },
+        {
+          "label": "MIN",
+          "path": "stat.width.min",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": false,
+          "align": "right",
+          "format": null,
+          "lot": true
+        },
+        {
+          "label": "全体",
+          "path": "stat.width.min",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": false,
+          "align": "right",
+          "format": null,
+          "lot": false
+        }
+      ]
     }
   ],
-
   "_dump_note": "cells を書き出した結果が text。**新しい持ちものを1つも使っていなければ今までの行の形**（触っていない塊の保存値は1バイトも変わらない）。",
   "dump": [
     {
       "why": "1マス・ラベルありは今までどおりの1行（`|1`を足さない）",
       "cells": [
-        {"label": "A", "path": "basic.lotNo", "kind": "value", "span": 1, "rows": 1, "showLabel": true, "align": "", "format": null}
+        {
+          "label": "A",
+          "path": "basic.lotNo",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": true,
+          "align": "",
+          "format": null,
+          "lot": false
+        }
       ],
       "text": "A=basic.lotNo"
     },
     {
       "why": "縦が1なら`x`を足さない（同じ理由）",
       "cells": [
-        {"label": "A", "path": "basic.lotNo", "kind": "value", "span": 2, "rows": 1, "showLabel": true, "align": "", "format": null},
-        {"label": "B", "path": "basic.customer", "kind": "value", "span": 2, "rows": 3, "showLabel": true, "align": "", "format": null},
-        {"label": "", "path": "", "kind": "blank", "span": 1, "rows": 1, "showLabel": false, "align": "", "format": null}
+        {
+          "label": "A",
+          "path": "basic.lotNo",
+          "kind": "value",
+          "span": 2,
+          "rows": 1,
+          "showLabel": true,
+          "align": "",
+          "format": null,
+          "lot": false
+        },
+        {
+          "label": "B",
+          "path": "basic.customer",
+          "kind": "value",
+          "span": 2,
+          "rows": 3,
+          "showLabel": true,
+          "align": "",
+          "format": null,
+          "lot": false
+        },
+        {
+          "label": "",
+          "path": "",
+          "kind": "blank",
+          "span": 1,
+          "rows": 1,
+          "showLabel": false,
+          "align": "",
+          "format": null,
+          "lot": false
+        }
       ],
       "text": "A=basic.lotNo|2\nB=basic.customer|2x3\n|1"
     },
     {
       "why": "見出しが1つでもあればJSONへ切り替える（行の形では書けない）",
       "cells": [
-        {"label": "MIN", "path": "", "kind": "head", "span": 1, "rows": 1, "showLabel": false, "align": "", "format": null}
+        {
+          "label": "MIN",
+          "path": "",
+          "kind": "head",
+          "span": 1,
+          "rows": 1,
+          "showLabel": false,
+          "align": "",
+          "format": null,
+          "lot": false
+        }
       ],
       "json": true
     },
     {
       "why": "ラベルを出さないマスもJSON",
       "cells": [
-        {"label": "A", "path": "basic.lotNo", "kind": "value", "span": 1, "rows": 1, "showLabel": false, "align": "", "format": null}
+        {
+          "label": "A",
+          "path": "basic.lotNo",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": false,
+          "align": "",
+          "format": null,
+          "lot": false
+        }
       ],
       "json": true
     },
     {
       "why": "寄せだけでもJSON",
       "cells": [
-        {"label": "A", "path": "basic.lotNo", "kind": "value", "span": 1, "rows": 1, "showLabel": true, "align": "right", "format": null}
+        {
+          "label": "A",
+          "path": "basic.lotNo",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": true,
+          "align": "right",
+          "format": null,
+          "lot": false
+        }
       ],
       "json": true
     },
     {
       "why": "書式だけでもJSON",
       "cells": [
-        {"label": "A", "path": "stat.width.avg", "kind": "value", "span": 1, "rows": 1, "showLabel": true, "align": "", "format": {"kind": "number", "decimals": 2}}
+        {
+          "label": "A",
+          "path": "stat.width.avg",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": true,
+          "align": "",
+          "format": {
+            "kind": "number",
+            "decimals": 2
+          },
+          "lot": false
+        }
       ],
       "json": true
     },
@@ -141,6 +479,23 @@
       "why": "空は空（`[]`という文字列にしない）",
       "cells": [],
       "text": ""
+    },
+    {
+      "why": "§9.277 `lot`の印だけでもJSONへ切り替える（行の形では書けない）",
+      "json": true,
+      "cells": [
+        {
+          "label": "子ロット",
+          "path": "lot.no",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": true,
+          "align": "",
+          "format": null,
+          "lot": true
+        }
+      ]
     }
   ]
 }

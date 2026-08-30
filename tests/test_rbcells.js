@@ -23,7 +23,7 @@ const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+
 let b=null,page=null;
 
 const CASES=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures','report_cells.json'),'utf8'));
-const KEYS=['label','path','kind','span','rows','showLabel','align','format'];
+const KEYS=['label','path','kind','span','rows','showLabel','align','format','lot'];
 
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
@@ -129,9 +129,26 @@ const KEYS=['label','path','kind','span','rows','showLabel','align','format'];
   }
   const ready=await page.evaluate(()=>{
    const b=document.querySelector('.fb-table');return {dis:b.disabled,title:b.title}});
-  rec('② 軸を名乗る項目がそろうと押せる（行と列を先に言う）',
-      !ready.dis&&/行＝板厚/.test(ready.title)&&/列＝MIN/.test(ready.title),
+  rec('② 軸を名乗る項目がそろうと押せる（いまどの軸をどこへ置くかを先に言う）',
+      !ready.dis&&/行＝項目/.test(ready.title)&&/列＝集計/.test(ready.title)
+      &&/3列/.test(ready.title),
       JSON.stringify(ready));
+  /* **軸の帯**（§9.277、利用者の指示「軸の位置と数がわかれば表の形状が
+     わからずに最終形の出力に困らない」）。押す前に形が読めることが要件。 */
+  const bar0=await page.evaluate(()=>{
+   const bar=document.querySelector('.fb-axes');
+   if(!bar||bar.hidden)return {hidden:true};
+   return {軸:[...bar.querySelectorAll('.fb-axis>b')].map(e=>e.textContent),
+     置き場:[...bar.querySelectorAll('.fb-axis')].map(a=>a.querySelector('b').textContent+'='
+       +[...a.querySelectorAll('button')].filter(x=>x.classList.contains('is-on'))
+         .map(x=>x.textContent).join('')),
+     いま:(bar.querySelector('.fb-axes-now')||{}).textContent||''};
+  });
+  rec('② 軸の帯が「どの軸をどこへ置くか」を出す（既定は1つ目が行・残りが列）',
+      !bar0.hidden&&bar0.軸.join(',')==='項目,集計'
+      &&bar0.置き場.join(' / ')==='項目=行 / 集計=列'
+      &&/3列/.test(bar0.いま),
+      JSON.stringify(bar0));
 
   await page.evaluate(()=>document.querySelector('.fb-table').click());
   await page.waitForTimeout(400);
@@ -147,6 +164,116 @@ const KEYS=['label','path','kind','span','rows','showLabel','align','format'];
       JSON.stringify(built));
   rec('② 列数は「内訳の列数」の欄が持ち主（同じ数を2箇所に置かない）',
       built.cols==='3');
+
+  /* ---- ②-b 軸は入れ替えられる（§9.277、利用者の指示） ----
+     「EXCELのピボットテーブルのように自由に組めるように」
+
+     §9.274 の頃は候補が`row`/`col`という**置き場つきの名前**を名乗って
+     おり、「板厚は行・MINは列」の**1通り**しか作れなかった。 */
+  const axAt=(name,at)=>page.evaluate(([n,a])=>{
+   const x=[...document.querySelectorAll('.fb-axes .fb-axis')]
+     .find(e=>e.querySelector('b').textContent===n);
+   const b=x&&[...x.querySelectorAll('button')].find(e=>e.textContent===a);
+   if(!b||b.disabled)return false;
+   b.click();return true;
+  },[name,at]);
+  const axState=()=>page.evaluate(()=>{
+   const bar=document.querySelector('.fb-axes');
+   const t=document.querySelector('.fb-table');
+   return {hidden:!bar||bar.hidden,
+     置き場:bar&&!bar.hidden?[...bar.querySelectorAll('.fb-axis')].map(a=>
+       a.querySelector('b').textContent+'='
+       +[...a.querySelectorAll('button')].filter(x=>x.classList.contains('is-on'))
+         .map(x=>x.textContent).join('')).join(' / '):'',
+     bad:!!(bar&&bar.querySelector('.fb-axes-bad')),
+     いま:(bar&&(bar.querySelector('.fb-axes-now')||{}).textContent)||'',
+     組む:{dis:t.disabled,title:t.title}};
+  });
+  /* **組んだあとも軸の帯は残る**（§9.277）——盤が作ったマス（「対象」の行の
+     見出し）を「軸を名乗らない項目」と数えると、**一度組んだ表は二度と
+     組み直せなくなる**（帯が消え、ボタンが理由の分からない断りで固まる。
+     利用者の報告「何回でも『表に組む』ボタンを押せる」の裏返し）。 */
+  rec('②-b 組んだあとも軸の帯が残り、組み直せる',
+      !(await axState()).hidden&&!(await axState()).組む.dis,
+      JSON.stringify(await axState()));
+  await axAt('項目','列');await page.waitForTimeout(250);
+  const bothCol=await axState();
+  rec('②-b 行に置く軸が無くなったら押せなくして理由を書く（§4）',
+      bothCol.bad&&bothCol.組む.dis&&/行/.test(bothCol.組む.title)
+      &&bothCol.置き場==='項目=列 / 集計=列',
+      JSON.stringify(bothCol));
+  await axAt('集計','行');await page.waitForTimeout(250);
+  await page.evaluate(()=>document.querySelector('.fb-table').click());
+  await page.waitForTimeout(400);
+  const swapped=await page.evaluate(()=>({
+   rows:document.querySelectorAll('.fb-row').length,
+   heads:[...document.querySelectorAll('.fb-row-head .fb-label')].map(e=>e.value).join(','),
+   cols:(document.querySelector('#maintEditorForm [data-field="cols"]')||{}).value}));
+  rec('②-b 入れ替えると表の形が変わる（行＝集計・列＝項目）',
+      swapped.heads==='板厚,板幅,板丈,MIN,MAX'&&swapped.cols==='4'
+      &&swapped.rows===12,
+      JSON.stringify(swapped));
+  /* 元へ戻して、以降の節は既定の形で確かめる。 */
+  await axAt('集計','列');await page.waitForTimeout(200);
+  await axAt('項目','行');await page.waitForTimeout(200);
+  await page.evaluate(()=>document.querySelector('.fb-table').click());
+  await page.waitForTimeout(400);
+
+  /* ---- ②-c 「対象（子ロット）」の軸（§9.277、利用者の報告の本体） ----
+     「子ロット分縦に積む形が今までなので縦に積むが標準で横に積むか
+      表を組むときに…選んだ項目の中に必要な共通軸を抽出してそれを置く場所を
+      自動もしくはその後ユーザーに修正させる形で」
+
+     対象の軸は**候補の項目ではなく塊の設定（繰り返し）から生える**。
+     子ロットの数はレコードごとに違うので、盤に置けるのは**1行ぶんの型**
+     だけで、数は紙が決める——だから**行にしか置けない**（§4で理由を書く）。 */
+  const card=t=>page.evaluate(x=>{
+   const b=[...document.querySelectorAll('#maintEditorModal .mm-card-opt')]
+     .find(e=>(e.textContent||'').indexOf(x)>=0);
+   if(!b)return false;b.click();return true;},t);
+  rec('②-c 繰り返しを「子ロットごと」にできる',await card('子ロットごと'));
+  await page.waitForTimeout(500);
+  const lotAx=await page.evaluate(()=>{
+   const bar=document.querySelector('.fb-axes');
+   const a=bar&&[...bar.querySelectorAll('.fb-axis')]
+     .find(e=>e.querySelector('b').textContent==='対象');
+   const col=a&&[...a.querySelectorAll('button')].find(e=>e.textContent==='列');
+   const rowb=a&&[...a.querySelectorAll('button')].find(e=>e.textContent==='行');
+   return {あり:!!a,行:!!(rowb&&rowb.classList.contains('is-on')),
+     列:col?{dis:col.disabled,title:col.title}:null,
+     いま:(bar&&(bar.querySelector('.fb-axes-now')||{}).textContent)||''};
+  });
+  rec('②-c 繰り返す塊では「対象」の軸が生える（行に固定）',
+      lotAx.あり&&lotAx.行&&/子ロットぶん/.test(lotAx.いま),JSON.stringify(lotAx));
+  rec('②-c 「対象」は列に置けない——押せなくして理由を書く（§4）',
+      !!lotAx.列&&lotAx.列.dis&&/行だけ/.test(lotAx.列.title),
+      JSON.stringify(lotAx.列));
+  await page.evaluate(()=>document.querySelector('.fb-table').click());
+  await page.waitForTimeout(400);
+  const lotBuilt=await page.evaluate(()=>{
+   let j=null;try{j=JSON.parse((document.querySelector('#maintEditorForm [data-field="content"]')||{}).value)}catch(e){}
+   const cells=(j||[]).map(c=>!!c.lot);
+   const first=cells.indexOf(true),last=cells.lastIndexOf(true);
+   const bar=document.querySelector('.fb-axes'),t=document.querySelector('.fb-table');
+   return {n:cells.length,印:cells.filter(Boolean).length,
+     /* **ひとかたまり**——最初と最後のあいだに印の無いマスがあると、紙は
+        そのマスだけを先頭へ抜き出してしまい、行がばらける。 */
+     連続:first>=0&&cells.slice(first,last+1).every(Boolean),
+     全体:(j||[]).some(c=>c.kind==='head'&&c.label==='全体'),
+     帯:!!(bar&&!bar.hidden),組み直せる:!!(t&&!t.disabled),
+     cols:(document.querySelector('#maintEditorForm [data-field="cols"]')||{}).value};
+  });
+  rec('②-c 「対象」の行は見出しも値もまとめて印が付き、ひとかたまりになる',
+      lotBuilt.連続&&lotBuilt.印>=3&&lotBuilt.全体,JSON.stringify(lotBuilt));
+  /* **組んだあとも組み直せる**（§9.277）——盤が作ったマス（子ロット番号）は
+     軸を名乗らないが、それを「軸を名乗らない項目」と数えると、
+     一度組んだ表は二度と組み直せなくなる。 */
+  rec('②-c 「対象」を含む表を組んだあとも軸の帯が残る',
+      lotBuilt.帯&&lotBuilt.組み直せる,JSON.stringify(lotBuilt));
+  /* 以降の節は「1回だけ」の塊で確かめる（紙の見え方を変えない）。 */
+  await card('1回だけ');await page.waitForTimeout(400);
+  await page.evaluate(()=>document.querySelector('.fb-table').click());
+  await page.waitForTimeout(400);
 
   // 書式を1つ当てる（板厚MINを小数3桁＋単位）
   await page.evaluate(()=>{
@@ -361,10 +488,10 @@ const KEYS=['label','path','kind','span','rows','showLabel','align','format'];
      **専用の画面で試すこと**——ふつうのマスタ（設備）で切り替える網は、
      直す前でも通る（あちらは汎用の一覧そのものなので描き直せば戻る）。 */
   await page.evaluate(()=>document.querySelector('#masterMaintNav [data-master="presence"]')?.click());
-  await page.waitForFunction(()=>{
-   const l=document.getElementById('masterMaintList');
-   return l&&l.textContent.replace(/\s+/g,'').length>10;
-  },null,{timeout:20000});
+  /* **待つのは「その画面の実物」**（§9.102）——「文字が10字を超えた」で
+     待つと、読み込み中の一言でも通ってしまい、まだ描けていない画面を
+     測ることになる（実際にそれで落ちた）。 */
+  await page.waitForSelector('#pzList',{timeout:20000});
   const before=await page.evaluate(()=>({
    len:document.getElementById('masterMaintList').textContent.replace(/\s+/g,'').length,
    pz:!!document.getElementById('pzList')}));

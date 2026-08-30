@@ -162,7 +162,24 @@ STAT_CATALOG = tuple(
 # これを候補に添えておくと**盤の「表に組む」が綴りを知らずに表を作れる**
 # ——画面がラベルを空白で割って推測すると、名前に空白を含む項目で必ず崩れる。
 # 軸を名乗らない候補は表に組めない、と画面が言えるのもこの印があるから。
-STAT_AXIS = {f'stat.{ik}.{ak}': (il, al)
+# ---------------------------------------------------------------------------
+# 軸（§9.277、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「EXCELのピボットテーブルのように自由に組めるように、表にしたときには
+#  選んだ項目の中に必要な共通軸を抽出してそれを置く場所を自動もしくはその後
+#  ユーザーに修正させる形で作成することで最終形の表の形をしっかり固定できる
+#  はずです。軸の位置と数がわかれば表の形状がわからずに最終形の出力に困らない」
+#
+# §9.274では`row`/`col`という**置き場つきの名前**で持っていた。それだと
+# 「板厚は行、MINは列」と**決め打ちの1通り**しか作れず、行と列を入れ替える
+# ことも、3つ目の軸（対象＝子ロット）を足すこともできない。
+# **軸は「名前と値」だけを持ち、置き場（行／列）は画面が決める。**
+AXIS_ITEM, AXIS_AGG, AXIS_LOT = '項目', '集計', '対象'
+# **既定の置き方はこの並びが決める**——1つ目を行、残りを列（§9.277）。
+# `対象`を先頭に置いてあるので、子ロットごとに繰り返す塊では
+# 「行＝対象／列＝項目・集計」という**今までの縦積みと同じ形**が既定になる。
+PIVOT_AXES = (AXIS_LOT, AXIS_ITEM, AXIS_AGG)
+STAT_AXES = {f'stat.{ik}.{ak}': {AXIS_ITEM: il, AXIS_AGG: al}
              for ik, il in STAT_ITEMS for ak, al in STAT_AGGS}
 
 # ---------------------------------------------------------------------------
@@ -739,7 +756,9 @@ def field_catalog(c, equipment=''):
                            '板厚・板丈・肉厚は丈ごとに測るので子ロットには割り当てられず、'
                            '「—」になります。',
                    'items': [{'label': l, 'path': p, 'sample': sample_for(p),
-                              'row': STAT_AXIS[p][0], 'col': STAT_AXIS[p][1]}
+                              # **軸は名前と値だけ**（§9.277）。置き場（行／列）を
+                              # ここで決めないので、行と列を入れ替えられる。
+                              'axes': dict(STAT_AXES[p])}
                              for l, p in STAT_CATALOG]})
     # 子ロットそのものの値（§9.247 ②）。**繰り返していない塊では親ロットへ
     # 落ちる**ので、どちらに置いても空欄にならない。
@@ -824,6 +843,22 @@ _REPEAT_BY_LABEL = {lb: v for v, lb in REPEAT_LABELS}
 _LABEL_BY_REPEAT = {v: lb for v, lb in REPEAT_LABELS}
 
 
+# 繰り返しの向き（§9.277、利用者の指示「子ロット分縦に積む形が今までなので
+# 縦に積むが標準で横に積むか」）。**既定は縦**——今までの見え方を変えない。
+REPEAT_DIR_ROW = '横'
+REPEAT_DIRS = (('', '縦に積む（既定）'), (REPEAT_DIR_ROW, '横に並べる'))
+_REPEAT_DIR_BY_LABEL = {lb: v for v, lb in REPEAT_DIRS}
+_LABEL_BY_REPEAT_DIR = {v: lb for v, lb in REPEAT_DIRS}
+
+
+def normalize_repeat_dir(v):
+    """繰り返しの向き。**知らない値は「縦」へ倒す**（`normalize_repeat`と同じ）。"""
+    s = str(v or '').strip()
+    if s in _REPEAT_DIR_BY_LABEL:
+        s = _REPEAT_DIR_BY_LABEL[s]
+    return s if s == REPEAT_DIR_ROW else ''
+
+
 def normalize_repeat(v):
     """繰り返しの保存形。**知らない値は「1回だけ」へ倒す**（`normalize_kind`と
     同じ作法——例外にすると帳票ブロックマスタが丸ごと開けなくなる）。
@@ -891,6 +926,10 @@ SPAN_MIN, SPAN_MAX = 1, 12
 # ようにしてください」）。**横と同じ数え方**——器の中のマス目の話なので、
 # 上限も同じにしておく（紙そのものの段数＝`RP_PAGE_ROW_CHOICES`とは別物）。
 ROWSPAN_MIN, ROWSPAN_MAX = 1, 12
+# 節の中を何列で並べるか。**紙（`reportSection`）が受ける上限と同じ数**
+# （§9.277）——以前はここだけ6で、ピボットに組むと列が足りずに黙って
+# 6へ丸められていた（`対象`を行にすると「1＋項目×集計」で簡単に超える）。
+CONTENT_COLS_MAX = 12
 
 
 # ---------------------------------------------------------------------------
@@ -974,7 +1013,7 @@ def normalize_format(spec):
 
 
 def _cell(label='', path='', span=1, rows=1, kind=CELL_VALUE,
-          show_label=True, align='', fmt=None):
+          show_label=True, align='', fmt=None, lot=False):
     span = max(SPAN_MIN, min(SPAN_MAX, int(span or 1)))
     rows = max(ROWSPAN_MIN, min(ROWSPAN_MAX, int(rows or 1)))
     label, path = str(label or '').strip(), str(path or '').strip()
@@ -989,7 +1028,13 @@ def _cell(label='', path='', span=1, rows=1, kind=CELL_VALUE,
     return {'label': label, 'path': path, 'blank': kind == CELL_BLANK,
             'span': span, 'rows': rows, 'kind': kind,
             'showLabel': bool(show_label) if kind == CELL_VALUE else False,
-            'align': normalize_align(align), 'format': normalize_format(fmt)}
+            'align': normalize_align(align), 'format': normalize_format(fmt),
+            # **対象（子ロット）の軸のマス**（§9.277）。ここに印が付いた
+            # 並びだけを、紙が**1つの表の中で**子ロットの数だけ複製する
+            # ——塊ごと繰り返す（縦に積む）今までの形と別の道。
+            # 子ロットの数は**レコードごとに違う**ので、設計のときには
+            # 1つぶんの型だけを置いておき、数は紙が決める。
+            'lot': bool(lot)}
 
 
 def _cell_from_json(x):
@@ -1002,13 +1047,13 @@ def _cell_from_json(x):
     return _cell(label=x.get('label'), path=x.get('path'),
                  span=x.get('span'), rows=x.get('rows'), kind=kind,
                  show_label=x.get('showLabel', True),
-                 align=x.get('align'), fmt=x.get('format'))
+                 align=x.get('align'), fmt=x.get('format'), lot=x.get('lot'))
 
 
 def _rich(c):
     """行の形（`ラベル=道|横x縦`）では書けないマスか。"""
     return (c['kind'] == CELL_HEAD or (c['kind'] == CELL_VALUE and not c['showLabel'])
-            or c['align'] or c['format'])
+            or c['align'] or c['format'] or c.get('lot'))
 
 
 def _cell_line(c):
@@ -1154,7 +1199,12 @@ def _row(r):
             'repeat': ('' if normalize_kind(r[11] if len(r) > 11 else '') == AREA_KIND
                        else normalize_repeat(r[13] if len(r) > 13 else '')),
             'repeatText': _LABEL_BY_REPEAT.get(
-                normalize_repeat(r[13] if len(r) > 13 else ''), _LABEL_BY_REPEAT[''])}
+                normalize_repeat(r[13] if len(r) > 13 else ''), _LABEL_BY_REPEAT['']),
+            # 繰り返しの向き（§9.277）。**繰り返さない塊では効かない**ので、
+            # 画面は欄ごと出さずに理由を書く（§4）。
+            'repeatDir': normalize_repeat_dir(r[14] if len(r) > 14 else ''),
+            'repeatDirText': _LABEL_BY_REPEAT_DIR.get(
+                normalize_repeat_dir(r[14] if len(r) > 14 else ''), _LABEL_BY_REPEAT_DIR[''])}
 
 
 # 後から足した列（§9.180「無ければ足す」で移行する。共有DBは現場で動いて
@@ -1165,6 +1215,7 @@ _ADDED_COLUMNS = (
     ('種別', 'TEXT'),              # ''＝項目の並び／'エリア'＝場所を空けるだけ
     ('文字', 'TEXT'),              # エリアに置く文字（改行できる）
     ('繰返', 'TEXT'),              # ''＝1回だけ／'子ロット'＝分割後の子ロットごと
+    ('繰返方向', 'TEXT'),          # ''＝縦に積む／'横'＝横に並べる（§9.277）
 )
 
 
@@ -1243,7 +1294,7 @@ def ensure_table(c):
 
 
 _SELECT = ('SELECT [ブロックID],[設備名],[ブロック名],[表示順],[幅],[行数],[内容],[備考],[有効],'
-           '[組み込みキー],[内訳列数],[種別],[文字],[繰返] '
+           '[組み込みキー],[内訳列数],[種別],[文字],[繰返],[繰返方向] '
            f'FROM [{TABLE}] ORDER BY [表示順],[ブロックID]')
 
 
@@ -1289,7 +1340,8 @@ def builtin_off(c, equipment):
 
 def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
                  content='', note='', enabled=True, block_id=None,
-                 builtin=None, cols=None, kind=None, text=None, repeat=None):
+                 builtin=None, cols=None, kind=None, text=None, repeat=None,
+                 repeat_dir=None):
     ensure_table(c)
     name = str(name or '').strip()
     if not name:
@@ -1305,15 +1357,17 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
     cur_kind = ''
     cur_text = ''
     cur_repeat = ''
+    cur_repeat_dir = ''
     if block_id is not None:
-        cur.execute(f'SELECT [組み込みキー],[内訳列数],[種別],[文字],[繰返] FROM [{TABLE}] '
-                    'WHERE [ブロックID]=?', [int(block_id)])
-        hit = cur.fetchone() or ['', 0, '', '', '']
+        cur.execute(f'SELECT [組み込みキー],[内訳列数],[種別],[文字],[繰返],[繰返方向] '
+                    f'FROM [{TABLE}] WHERE [ブロックID]=?', [int(block_id)])
+        hit = cur.fetchone() or ['', 0, '', '', '', '']
         cur_builtin = str(hit[0] or '').strip()
         cur_cols = int(hit[1] or 0)
         cur_kind = normalize_kind(hit[2])
         cur_text = str(hit[3] or '')
         cur_repeat = normalize_repeat(hit[4] if len(hit) > 4 else '')
+        cur_repeat_dir = normalize_repeat_dir(hit[5] if len(hit) > 5 else '')
     if builtin is None:
         builtin = cur_builtin
     builtin = str(builtin or '').strip()
@@ -1324,8 +1378,10 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
     kind = cur_kind if kind is None else normalize_kind(kind)
     text = cur_text if text is None else str(text or '')
     repeat = cur_repeat if repeat is None else normalize_repeat(repeat)
+    repeat_dir = (cur_repeat_dir if repeat_dir is None
+                  else normalize_repeat_dir(repeat_dir))
     try:
-        cols = max(0, min(6, int(cols or 0)))
+        cols = max(0, min(CONTENT_COLS_MAX, int(cols or 0)))
     except (TypeError, ValueError):
         cols = 0
     # **並び順を渡していないときは今の値を残す**（§9.212 ②と同じ約束）。
@@ -1343,11 +1399,11 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
     # SET・VALUES・argsの**4箇所**（UPDATE2本＋INSERT1本＋この行）を同じ順に。
     args = [equipment, name, order, normalize_span(span), normalize_rows(rows),
             str(content or ''), str(note or ''), -1 if enabled else 0, builtin, cols,
-            kind, text, repeat]
+            kind, text, repeat, repeat_dir]
     if block_id is not None:
         cur.execute('UPDATE [帳票ブロックマスタ] SET [設備名]=?,[ブロック名]=?,[表示順]=?,[幅]=?,'
                     '[行数]=?,[内容]=?,[備考]=?,[有効]=?,[組み込みキー]=?,[内訳列数]=?,'
-                    '[種別]=?,[文字]=?,[繰返]=?,'
+                    '[種別]=?,[文字]=?,[繰返]=?,[繰返方向]=?,'
                     '[更新者ID]=?,[更新日時]=Now() '
                     'WHERE [ブロックID]=?', args + [uid, int(block_id)])
         c.commit()
@@ -1361,7 +1417,7 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
     if hit:
         cur.execute('UPDATE [帳票ブロックマスタ] SET [表示順]=?,[幅]=?,[行数]=?,[内容]=?,[備考]=?,'
                     '[有効]=?,[組み込みキー]=?,[内訳列数]=?,[種別]=?,[文字]=?,[繰返]=?,'
-                    '[更新者ID]=?,[更新日時]=Now() '
+                    '[繰返方向]=?,[更新者ID]=?,[更新日時]=Now() '
                     'WHERE [ブロックID]=?', args[2:] + [uid, hit[0]])
         c.commit()
         return int(hit[0])
@@ -1372,9 +1428,9 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
         args[2] = order
     cur.execute('INSERT INTO [帳票ブロックマスタ] '
                 '([設備名],[ブロック名],[表示順],[幅],[行数],[内容],[備考],[有効],'
-                '[組み込みキー],[内訳列数],[種別],[文字],[繰返],'
+                '[組み込みキー],[内訳列数],[種別],[文字],[繰返],[繰返方向],'
                 '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())', args + [uid, uid])
+                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())', args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)
 

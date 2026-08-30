@@ -1529,6 +1529,16 @@ def report_block_list():
            'kinds':[{'v':v,'label':lb} for v,lb in rb.KIND_LABELS],
            # 繰り返しの選択肢（§9.247 ②）。**呼び名もサーバーが答える**。
            'repeats':[{'v':v,'label':lb} for v,lb in rb.REPEAT_LABELS],
+           # 繰り返しの向き（§9.277）。**呼び名もサーバーが答える**。
+           'repeatDirs':[{'v':v,'label':lb} for v,lb in rb.REPEAT_DIRS],
+           # 表に組むときの軸（§9.277）。**既定の置き方はこの並びが決める**
+           # ——1つ目を行、残りを列。画面へ写すと、軸を1つ足したときに
+           # 「既定の並び」が2箇所になる（§9.163）。
+           'pivotAxes':list(rb.PIVOT_AXES),
+           'axisLot':rb.AXIS_LOT,
+           # 節の中の列数の上限（§9.277）。**紙が受ける数と同じ**——画面が
+           # 別に持つと、組んだ表が保存で黙って丸められる。
+           'contentColsMax':rb.CONTENT_COLS_MAX,
            'contentEditable':sorted(rb.CONTENT_EDITABLE),
            # 1つのマスが持てるもの（§9.274）。**語彙はサーバーが答える**
            # ——画面へ写すと、選べる書式を1つ足すたびに2箇所直すことになる。
@@ -1575,6 +1585,10 @@ def _report_block_save(x):
                           # （`kindText`／`enabledText`とまったく同じ作法）。
                           repeat=(x.get('repeatText') if x.get('repeatText') is not None
                                   else x.get('repeat')),
+                          # 繰り返しの向き（§9.277）。**呼び名でも受ける**。
+                          repeat_dir=(x.get('repeatDirText')
+                                      if x.get('repeatDirText') is not None
+                                      else x.get('repeatDir')),
                           block_id=(int(x['id']) if x.get('id') not in (None,'') else None))
   return jsonify(ok=True,id=_op_read(fn),message='帳票ブロックを保存しました。')
  except ValueError as e:return jsonify(error=str(e)),400
