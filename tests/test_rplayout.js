@@ -464,19 +464,22 @@ let b=null,madeBlock=null;
   await page.waitForTimeout(200);
   await page.evaluate(()=>{const c=document.getElementById('rpBlockClose');if(c)c.click()});
   await page.waitForTimeout(300);
-  /* 縁を引くと大きさが変わる。**取っ手は3つ**（幅・高さ・両方）。 */
+  /* 縁を引くと大きさが変わる。**取っ手は四辺＋四隅の8つ**（§9.283、
+     利用者の指示「左、左下、左上、上、右上の部分でもすべての頂点、辺で
+     サイズ変更できるように」）。綴りは方角（t/b/l/r と四隅）。 */
   const grips=await page.evaluate(t=>{
    const el=document.querySelector(`[data-rp-block="${CSS.escape(t)}"]`);
    return el?[...el.querySelectorAll('[data-rp-grip]')].map(g=>g.dataset.rpGrip):null;
   },A);
-  rec('縁に大きさを変える取っ手が付く',
-      !!grips&&grips.join('/')==='w/h/wh',JSON.stringify(grips));
+  rec('縁に大きさを変える取っ手が8方向とも付く',
+      !!grips&&['t','b','l','r','tl','tr','bl','br'].every(k=>grips.includes(k))
+      &&grips.length===8,JSON.stringify(grips));
   /* **実際に引いて確かめる**——取っ手が在ることだけを見る網は、掴んでも
      何も起きない実装でも通る（§9.213と同じ約束）。 */
   const before=await page.evaluate(t=>{
    const el=document.querySelector(`[data-rp-block="${CSS.escape(t)}"]`);
    const r=el.getBoundingClientRect();
-   const grip=el.querySelector('[data-rp-grip="w"]');
+   const grip=el.querySelector('[data-rp-grip="r"]');
    const g=grip.getBoundingClientRect();
    /* **画面に出ている場所を狙う。** 紙は`--rp-scale`で縮めて縦に長いので、
       背の高い塊は下端が画面の外へ出る——取っ手の「まん中」を計算すると
@@ -510,6 +513,220 @@ let b=null,madeBlock=null;
   rec('引いている最中に何マス×何行かを出す',!!tip&&/マス ×/.test(tip),String(tip));
   rec('縁を引くと幅が実際に狭くなる',after>0&&after<before.w-40,
       JSON.stringify({前:before.w,後:after}));
+
+  /* ==========================================================
+     §9.283 紙をまたぐ塊も掴めて、取っ手も押せる
+     ----------------------------------------------------------
+     利用者の報告「今までできていたドラッグアンドドロップによる紙帳票
+     レイアウト修正のところができなくなる／位置座標が無茶苦茶でとんでもない
+     場所にいってしまいます」。§9.282 で組み換え中もページに割ったところ、
+     `clip-path`が**当たり判定まで切る**ため、切れ目にかかる塊は切れ目より
+     下が掴めず、大きさを変える取っ手が**1つも押せなくなっていた**
+     ——しかも紙からはみ出している塊＝いちばん直したい塊でだけ起きる。
+     続きの写し（`.rp-blk-tail`）は`pointer-events:none`の層の中なので、
+     そちらを掴んでも何も起きない。
+     **切れ目にかかる塊を自分で作ること**——検証用のロットがたまたま1枚に
+     収まっていると、この道を一度も通らないまま通ってしまう。
+     ========================================================== */
+  const pageRows=await page.evaluate(()=>Number(getComputedStyle(
+    document.querySelector('#reportContent .rp-blocks')).getPropertyValue('--rp-page-rows'))||48);
+  await page.evaluate(([eq,k,n])=>WL.reportLayout.setRows(eq,k,n),[EQ,A,Math.round(pageRows*1.2)]);
+  await page.waitForTimeout(700);await settle(page);
+  const cut=await page.evaluate(()=>{
+   const pg=document.getElementById('reportContent');
+   const el=pg.querySelector('.rp-block.is-cut[data-rp-block]');
+   const 枚数=getComputedStyle(pg).getPropertyValue('--rp-sheets').trim();
+   if(!el)return {前提なし:true,枚数};
+   const r=el.getBoundingClientRect();
+   /* 塊の中の点。**画面の外は見ない**（`elementFromPoint`は器を返す）。 */
+   const pt=f=>{
+    const x=Math.round(r.left+r.width/2),y=Math.round(r.top+r.height*f);
+    if(y<4||y>window.innerHeight-4)return null;
+    const e=document.elementFromPoint(x,y);
+    const own=e&&e.closest?e.closest('[data-rp-block]'):null;
+    return own?own.dataset.rpBlock:('×'+(e?(e.className||e.tagName):'なし'));
+   };
+   const grips=[...el.querySelectorAll('[data-rp-grip]')].map(g=>{
+    const gr=g.getBoundingClientRect();
+    const x=Math.round(gr.left+gr.width/2);
+    const lo=Math.max(gr.top+2,4),hi=Math.min(gr.bottom-2,window.innerHeight-4);
+    if(!(gr.width>0)||!(hi>lo))return {g:g.dataset.rpGrip,可:'画面の外'};
+    const e=document.elementFromPoint(x,Math.round((lo+hi)/2));
+    return {g:g.dataset.rpGrip,可:e===g?true:('×'+((e&&e.className)||''))};
+   });
+   return {k:el.dataset.rpBlock,枚数,切った:!!el.dataset.rpClip,
+     写し:pg.querySelectorAll('.rp-blk-tail').length,
+     中:[pt(0.5),pt(0.8)],
+     押せない:grips.filter(x=>x.可!==true&&x.可!=='画面の外').map(x=>x.g+x.可)};
+  });
+  rec('紙をまたぐ塊を作れている（この網の前提）',!cut.前提なし,JSON.stringify(cut));
+  rec('組み換え中は塊を切らない（切ると当たり判定まで切れる）',
+      !cut.前提なし&&cut.切った===false&&cut.写し===0,JSON.stringify(cut));
+  rec('紙をまたぐ塊は切れ目より下でも掴める',
+      !cut.前提なし&&cut.中.every(v=>v===null||v===cut.k),JSON.stringify(cut));
+  rec('紙をまたぐ塊の取っ手が押せる',
+      !cut.前提なし&&cut.押せない.length===0,JSON.stringify(cut));
+  await page.evaluate(([eq,k,n])=>WL.reportLayout.setRows(eq,k,n),[EQ,A,12]);
+  await page.waitForTimeout(700);await settle(page);
+
+  /* ==========================================================
+     §9.283 8方向の取っ手——引いた辺だけが動く
+     ----------------------------------------------------------
+     利用者の指示「左、左下、左上、上、右上の部分でもすべての頂点、辺で
+     サイズ変更できるようにしてください」。**左・上を引くときは置き場所も
+     動かす**（書き忘れると、離した瞬間に元の位置へ戻り「幅だけ増えて反対側へ
+     伸びた」ように見える）。**掴んでいない辺は釘で留まっていること**まで見る
+     ——片側だけを見る網は、塊ごと動く実装でも通る。
+     ========================================================== */
+  const spotOf=key=>page.evaluate(k=>{
+   const el=document.querySelector(`#reportContent [data-rp-block="${CSS.escape(k)}"]`);
+   if(!el)return null;
+   const c=/^(\d+)\s*\/\s*span\s*(\d+)/.exec(el.style.gridColumn||'');
+   const r=/^(\d+)\s*\/\s*span\s*(\d+)/.exec(el.style.gridRow||'');
+   return c&&r?{col:+c[1],span:+c[2],row:+r[1],rows:+r[2]}:null;
+  },key);
+  const gripDrag=async(key,kind,dc,dr)=>{
+   const geo=await page.evaluate(([k,g])=>{
+    const pg=document.getElementById('reportContent'),grid=pg.querySelector('.rp-blocks');
+    const el=pg.querySelector(`[data-rp-block="${CSS.escape(k)}"]`);
+    const gp=el&&el.querySelector(`[data-rp-grip="${g}"]`);
+    if(!gp)return null;
+    const r=gp.getBoundingClientRect();
+    const gcs=getComputedStyle(grid),gr=grid.getBoundingClientRect();
+    const sc=Number(getComputedStyle(pg).getPropertyValue('--rp-scale'))||1;
+    const cols=Number(gcs.getPropertyValue('--rp-grid'))||24;
+    const gapX=parseFloat(gcs.columnGap)||0;
+    const cw=(((gr.width/sc)-gapX*(cols-1))/cols+gapX)*sc;
+    const rh=((parseFloat(gcs.gridAutoRows)||0)+(parseFloat(gcs.rowGap)||0))*sc;
+    /* **画面の中の点を狙う**（縦に長い塊は下端が画面の外）。 */
+    const x=Math.round(r.left+r.width/2);
+    const lo=Math.max(r.top+2,4),hi=Math.min(r.bottom-2,window.innerHeight-4);
+    if(!(hi>lo))return null;
+    return {x,y:Math.round((lo+hi)/2),cw,rh};
+   },[key,kind]);
+   if(!geo)return false;
+   await page.mouse.move(geo.x,geo.y);
+   await page.mouse.down();
+   await page.mouse.move(geo.x+geo.cw*dc,geo.y+geo.rh*dr,{steps:6});
+   await page.mouse.up();
+   await page.waitForTimeout(600);await settle(page);
+   return true;
+  };
+  const g0=await spotOf(A);
+  const okL1=await gripDrag(A,'l',1,0);            /* 左の辺を右へ＝縮める */
+  const g1=await spotOf(A);
+  rec('左の辺を引くと置き場所が動き、右端は動かない',
+      okL1&&!!g0&&!!g1&&g1.col===g0.col+1&&g1.span===g0.span-1
+      &&g1.row===g0.row&&g1.rows===g0.rows,JSON.stringify({前:g0,後:g1}));
+  await gripDrag(A,'l',-1,0);                      /* 左の辺を左へ＝広げ戻す */
+  const g2=await spotOf(A);
+  rec('左の辺は広げる向きにも効く（元の幅へ戻る）',
+      !!g2&&g2.col===g0.col&&g2.span===g0.span,JSON.stringify({前:g1,後:g2}));
+  const okT1=await gripDrag(A,'t',0,1);            /* 上の辺を下へ＝縮める */
+  const g3=await spotOf(A);
+  rec('上の辺を引くと行の位置が動き、下端は動かない',
+      okT1&&!!g3&&g3.row===g0.row+1&&g3.rows===g0.rows-1
+      &&g3.col===g0.col&&g3.span===g0.span,JSON.stringify({前:g2,後:g3}));
+  await gripDrag(A,'t',0,-1);
+  const g4=await spotOf(A);
+  rec('上の辺は広げる向きにも効く（元の高さへ戻る）',
+      !!g4&&g4.row===g0.row&&g4.rows===g0.rows,JSON.stringify({前:g3,後:g4}));
+  /* **動かした置き場所が設定に書かれていること**——書かないと、次に
+     描き直した瞬間に元の位置へ戻る（幅だけ変わったように見える）。 */
+  const moved=await page.evaluate(async([t,k])=>{
+   const lay=await Promise.resolve(WL.columnLayout.get(t));
+   const w=(lay&&lay.widths)||{};
+   return {列:w['列:'+k]!==undefined,行:w['行:'+k]!==undefined};
+  },[TARGET,A]);
+  rec('左・上を引いたら置き場所も設定へ書く',moved.列===true&&moved.行===true,
+      JSON.stringify(moved));
+  /* **当たったときに戻すのは引いている辺だけ**（§9.283）。「幅を1マスに
+     なるまで潰してから高さへ移る」形にすると、**当たっているのが行なのに
+     幅が潰れる**（実測: 右上の角を引いたら幅11マス→1マス）。
+     幅を目一杯にしてから下へ大きく引き、幅が保たれることを見る。 */
+  const c0=await spotOf(A);
+  await gripDrag(A,'br',0,40);                     /* 右下の角を**真下へ**大きく */
+  const c1=await spotOf(A);
+  rec('引いた先が別の塊に当たっている（この網の前提）',
+      !!c0&&!!c1&&c1.rows<c0.rows+40,JSON.stringify({前:c0,後:c1}));
+  rec('角を真下へ引いて行が当たっても、幅まで潰さない',
+      !!c0&&!!c1&&c1.span===c0.span&&c1.col===c0.col,JSON.stringify({前:c0,後:c1}));
+  /* **後片付け**（§9.121）——ここで変えた高さを戻さないと、以降の
+     「重ねて置く」の網が別の形の紙を見ることになる。 */
+  await page.evaluate(([eq,k,r])=>WL.reportLayout.setRows(eq,k,r),[EQ,A,12]);
+  await page.waitForTimeout(700);await settle(page);
+
+  /* ==========================================================
+     §9.283 「行の頭」は切り捨てで数えない
+     ----------------------------------------------------------
+     `grid-auto-rows`の計算値（22.126px）と実測は0.0002行ぶんずれるので、
+     塊の上端を素直に切り捨てると**1行上に居る**ことになり、その塊の下の
+     1行が「空き」に見える（実測: 空きマスの枠が44個→1620個で画面が方眼紙に
+     なった）。**1行目では端数が出ない**ので、**下のほうの行へ塊を運んでから**
+     確かめること——上のほうだけを見る網は、切り捨てに戻しても通る。
+     ========================================================== */
+  const dropAtRow=async(key,want)=>page.evaluate(([k,w])=>{
+   const pg=document.getElementById('reportContent'),grid=pg.querySelector('.rp-blocks');
+   const el=pg.querySelector(`[data-rp-block="${CSS.escape(k)}"]`);
+   if(!el)return false;
+   const r=el.getBoundingClientRect(),gr=grid.getBoundingClientRect();
+   el.dispatchEvent(new DragEvent('dragstart',{bubbles:true,clientX:r.left+5,clientY:r.top+4}));
+   const x=Math.round(gr.left+8);
+   let hit=null;
+   for(let y=Math.round(gr.top);y<Math.round(gr.bottom);y++){
+    grid.dispatchEvent(new DragEvent('dragover',{bubbles:true,clientX:x,clientY:y}));
+    const g=document.getElementById('rpGhost');if(!g)continue;
+    if(Number((/^(\d+)/.exec(g.style.gridRow)||[])[1])===w){hit=y;break}
+   }
+   if(hit!=null){
+    grid.dispatchEvent(new DragEvent('dragover',{bubbles:true,clientX:x,clientY:hit}));
+    grid.dispatchEvent(new DragEvent('drop',{bubbles:true,clientX:x,clientY:hit}));
+   }
+   el.dispatchEvent(new DragEvent('dragend',{bubbles:true}));
+   return hit!=null;
+  },[key,want]);
+  await dropAtRow(A,6);
+  await page.waitForTimeout(800);await settle(page);
+  const frac=await page.evaluate(t=>{
+   const pg=document.getElementById('reportContent'),grid=pg.querySelector('.rp-blocks');
+   const el=pg.querySelector(`[data-rp-block="${CSS.escape(t)}"]`);
+   if(!el)return null;
+   const gcs=getComputedStyle(grid);
+   const sc=Number(getComputedStyle(pg).getPropertyValue('--rp-scale'))||1;
+   const step=(parseFloat(gcs.gridAutoRows)||0)+(parseFloat(gcs.rowGap)||0);
+   const top=(el.getBoundingClientRect().top-grid.getBoundingClientRect().top)/sc;
+   const v=top/step;
+   return {行:(/^(\d+)/.exec(el.style.gridRow)||[])[1],割った:+v.toFixed(5),
+     端数:+Math.abs(v-Math.round(v)).toFixed(5),切り捨て:Math.floor(v),四捨五入:Math.round(v)};
+  },A);
+  rec('下のほうの行では「行の頭」に端数が出る（この網の前提）',
+      !!frac&&frac.切り捨て!==frac.四捨五入,JSON.stringify(frac));
+  const overlapLow=await page.evaluate(()=>{
+   const g=document.querySelector('#reportContent .rp-blocks');
+   const bs=[...g.querySelectorAll('[data-rp-block]')].map(e=>({
+     k:e.dataset.rpBlock,r:e.getBoundingClientRect()}));
+   const fs=[...g.querySelectorAll('.rp-free')].map(e=>e.getBoundingClientRect());
+   const hit=[];const M=3;
+   fs.forEach((f,i)=>bs.forEach(b=>{
+    const w=Math.min(f.right,b.r.right)-Math.max(f.left,b.r.left);
+    const h=Math.min(f.bottom,b.r.bottom)-Math.max(f.top,b.r.top);
+    if(w>M&&h>M)hit.push({塊:b.k,重なり:Math.round(w)+'x'+Math.round(h)});
+   }));
+   return {印:fs.length,塊:bs.length,件数:hit.length,例:hit.slice(0,3)};
+  });
+  rec('端数の出る行でも空きマスの印が塊に重ならない',
+      overlapLow.印>0&&overlapLow.塊>0&&overlapLow.件数===0,JSON.stringify(overlapLow));
+  /* **後片付け**（§9.121）——元の場所へ戻す。戻さないと、以降の「重ねて
+     置く」の網が別の配置を見るうえ、ここで出た一言（重なり・入りきらない）が
+     案内の帯に残ったままになり、あちらの「畳んだ状態から出る」が成り立たない。 */
+  await dropAtRow(A,1);
+  await page.waitForTimeout(800);await settle(page);
+  const noteLeft=await page.evaluate(()=>{
+   const n=document.getElementById('rpArrangeNote');
+   return {畳んでいる:!!(n&&n.hidden),文:(n?n.textContent:'').slice(0,40)};
+  });
+  rec('§9.283の確認のあと、案内の帯は畳んだ状態へ戻っている',
+      noteLeft.畳んでいる===true,JSON.stringify(noteLeft));
   /* 組み換え中はマスの線が引かれる（**要素ではなく背景**——グリッドの子に
      すると位置の決まった子が先に置かれて塊が押し出される）。 */
   const guide=await page.evaluate(()=>{
@@ -661,8 +878,8 @@ let b=null,madeBlock=null;
       !asPrint.前提なし&&Math.abs(asPrint.ずれ)<=1,JSON.stringify(asPrint));
   rec('マウスオーバーの浮き帯は無い（縁を掴む的を覆わない）',
       !asPrint.前提なし&&asPrint.帯===false&&asPrint.道具===0,JSON.stringify(asPrint));
-  rec('大きさを変える縁は3方向とも残っている',
-      !asPrint.前提なし&&asPrint.縁===3,JSON.stringify(asPrint));
+  rec('大きさを変える縁は8方向とも残っている',
+      !asPrint.前提なし&&asPrint.縁===8,JSON.stringify(asPrint));
 
   /* **空きは紙の地と違う色**（§9.223 ②、利用者の指摘「他のエリアと色が同じで
      空欄の場所が認識しにくい」）。塊は白なので、白との差が付いているかを
