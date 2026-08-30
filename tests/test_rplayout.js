@@ -259,7 +259,31 @@ let b=null,madeBlock=null;
     grid.dispatchEvent(new DragEvent('dragover',{bubbles:true,clientX:x,clientY:y}));
     const g=document.getElementById('rpGhost');
     const r=g?g.getBoundingClientRect():null;
-    out.push({fx,fy,中に居る:!!r&&x>=r.left-1&&x<=r.right+1&&y>=r.top-1&&y<=r.bottom+1,
+    /* **紙の切れ目には「どの行も無い帯」がある**（§9.282）。行は紙の高さで
+       割り切れないので、1枚目の最後の行の裾から2枚目の先頭の行の頭までは
+       ——紙と紙のあいだの余白ぶんに加えて1行ぶんまで——どの行も始まらない。
+       そこを指したときだけは「枠の中に居る」が原理的に成り立たないので、
+       **次の行の頭へ寄せたこと**——枠はカーソルと同じか下、しかも余白＋
+       1行ぶん以内——で見る。**手前へ寄せるのは駄目**（枠が紙1枚ぶん上に出て、
+       置いた結果が見えているものと違う。「ずらす前の座標へ直してから割る」で
+       数えるとまさにそうなる）。
+       それ以外の場所では今までどおり**枠の中**を要求する——倍率の取り違えは
+       器の下ほど大きく効くので、この緩めでは隠れない。
+       紙の在り処は`.rp-sheet`の実寸から数える（ずらし方の式を写して比べると、
+       同じ間違いをした式どうしで一致してしまう）。 */
+    const sheets=[...document.querySelectorAll('.rp-page .rp-sheet')]
+      .map(e=>e.getBoundingClientRect());
+    const nrows=Number((/span\s+(\d+)/.exec((g&&g.style.gridRow)||'')||[])[1])||1;
+    const rowH=r?r.height/nrows:0;
+    const 余白=sheets.length>1?Math.max(0,sheets[1].top-sheets[0].bottom):0;
+    const 切れ目のそば=sheets.slice(0,-1).some((b,i)=>
+      y>=b.bottom-rowH-1&&y<=sheets[i+1].top+rowH+1);
+    const 横は中=!!r&&x>=r.left-1&&x<=r.right+1;
+    const 中に居る=横は中&&y>=r.top-1&&y<=r.bottom+1;
+    const 次の行の頭へ=横は中&&r.top>=y-2&&r.top-y<=rowH+余白+1;
+    out.push({fx,fy,切れ目のそば,中に居る,
+      合う:切れ目のそば?次の行の頭へ:中に居る,
+      余白:Math.round(余白),行高:Math.round(rowH),
       ずれ:r?{dx:Math.round(x-r.left),dy:Math.round(y-r.top),h:Math.round(r.height)}:null});
    }
    pal.dispatchEvent(new DragEvent('dragend',{bubbles:true}));
@@ -268,7 +292,7 @@ let b=null,madeBlock=null;
   rec('前提: 紙は縮めて出ている（等倍だと倍率の取り違えが出ない）',
       !drift.前提なし&&drift.倍率<0.95,JSON.stringify({倍率:drift.倍率}));
   rec('掴んだ先のゴーストの中にカーソルが居る（紙の下のほうでも）',
-      !drift.前提なし&&drift.out.every(o=>o.中に居る),JSON.stringify(drift.out));
+      !drift.前提なし&&drift.out.every(o=>o.合う),JSON.stringify(drift.out));
 
   /* 塊の**右下**を掴んで同じ場所へ持っていくと、ゴーストはその塊の位置の
      まま——掴んだところのぶんを引かないと、掴んだぶんだけ塊が飛ぶ。 */

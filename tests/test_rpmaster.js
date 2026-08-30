@@ -264,12 +264,100 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
        piv.列==='3',JSON.stringify(piv));
    rec('§9.280 見出しのマスもそのまま紙に出る',
        piv.見出し.join(',')==='MIN,MAX,板厚,板幅',JSON.stringify(piv.見出し));
+
+   /* ---- 5d) **「中の並べ方」で表を壊さない**（§9.282、利用者の報告
+      「帳票ブロックマスタでは正しく再現して表示もするのに、紙の帳票
+       レイアウトだと、全然違う表を持ってくる」）
+
+      `流:`（この紙だけの設定）は塊に`rp-flow-*`を貼り、CSSが
+      `display:block; column-count:2`でグリッドそのものを解いていた
+      ——`grid-column:span N`も`--rp-cols`も一度に無効になり、軸のマスが
+      ばらけて縦に流れる（＝「入りきらない別の表」）。しかもこの印は
+      **紙だけ**なので、盤の「中身の見本」には原理的に当たらない
+      ＝「見本は正しいのに紙だけ別物」がそのまま作れる。
+      守りは2枚——①表には当てない（保存済みの設定でも壊れない）
+      ②窓では押せなくして理由を書く（§4）。 */
+   const flowed=await page.evaluate(()=>{
+    const e=document.querySelector('[data-rp-block="品質等級"]');
+    const g=e&&e.querySelector('.rp-grid');
+    if(!g)return {格子なし:true};
+    const read=()=>({disp:getComputedStyle(g).display,
+      列:getComputedStyle(g).gridTemplateColumns.split(' ').length,
+      段組:getComputedStyle(g).columnCount});
+    const 前=read();
+    const out={};
+    for(const c of ['rp-flow-col','rp-flow-fit','rp-flow-tall']){
+     e.classList.add(c);out[c]=read();e.classList.remove(c);
+    }
+    return {前,...out};
+   });
+   rec('§9.282 「中の並べ方」を当てても表のグリッドは解けない',
+       !flowed.格子なし&&['rp-flow-col','rp-flow-fit','rp-flow-tall']
+         .every(c=>flowed[c].disp==='grid'&&flowed[c].列===flowed.前.列),
+       JSON.stringify(flowed));
+
+   await page.click('#reportArrange');
+   await page.waitForTimeout(500);
+   const flowUi=await page.evaluate(()=>{
+    const pb=document.querySelector('[data-rp-block="品質等級"] .rp-block-paper');
+    if(!pb)return {入口なし:true};
+    pb.click();
+    const rows=[...document.querySelectorAll('#rpBlockForm .rp-form-row')];
+    const row=rows.find(r=>(r.querySelector('.rp-form-label')||{}).textContent==='中の並べ方');
+    if(!row)return {欄なし:true};
+    const bs=[...row.querySelectorAll('button[data-e-flow]')];
+    return {既定:bs.filter(b=>!b.dataset.eFlow).every(b=>!b.disabled),
+      他:bs.filter(b=>b.dataset.eFlow).map(b=>b.disabled),
+      文:(row.querySelector('.rp-form-note')||{}).textContent||''};
+   });
+   rec('§9.282 表に組んだ塊では「中の並べ方」を押せなくする（§4）',
+       !flowUi.入口なし&&!flowUi.欄なし&&flowUi.既定===true
+       &&flowUi.他.length>0&&flowUi.他.every(Boolean),JSON.stringify(flowUi.他));
+   rec('§9.282 押せない理由を文字で書く',
+       !!flowUi.文&&flowUi.文.indexOf('表（マトリクス）に組んである')>=0,
+       String(flowUi.文).slice(0,60));
+   await page.evaluate(()=>{const m=document.getElementById('rpBlockModal');if(m)m.hidden=true});
+   await page.click('#reportArrange');
+   await page.waitForTimeout(300);
    await post('/api/report-block-master/update',
      {id:stat.id,equipment:stat.equipment,name:stat.name,order:stat.order,
       span:stat.span,rows:stat.rows,note:stat.note,enabled:true,cols:stat.cols,
       content:'',user_id:TAG});
    await page.evaluate(()=>WL.reportBlocks.forget());
   }
+
+  /* ---- 5e) **古い版が作った「同じ名前の行」でも紙は既定の塊を出す**
+     （§9.282）。入口（`block_upsert`）で断るようにしたので新しくは作れないが、
+     **既に作ってしまったマスタが現場にある**。塊は名前が鍵なので、同じ名前が
+     2つあると紙はどちらを出すか決められず、実測では**既定の塊が紙から消えた**
+     （＝「盤では出るのに紙に無い／別物が出る」）。応答を差し替えて、その状態を
+     わざと作って確かめる。 */
+  await page.route('**/api/report-block-master*',async route=>{
+   const res=await route.fetch();
+   let body;try{body=await res.json()}catch(e){return route.fulfill({response:res})}
+   if(body&&Array.isArray(body.items)){
+    const seed=body.items.find(x=>x.builtin==='品質等級');
+    if(seed)body.items.push(Object.assign({},seed,
+      {id:987654,builtin:'',equipment:'*',name:'品質等級',
+       content:'[{"kind":"value","path":"basic.lotNo","label":"にせもの","span":1,"rows":1,"showLabel":true,"align":"","format":null,"lot":false}]',
+       cols:1,fields:[{label:'にせもの',path:'basic.lotNo'}],contentEditable:true}));
+   }
+   return route.fulfill({json:body});
+  });
+  await page.evaluate(()=>WL.reportBlocks.forget());
+  await openReport(page);
+  const dup=await page.evaluate(()=>{
+   const es=[...document.querySelectorAll('[data-rp-block="品質等級"]')];
+   return {枚数:es.length,
+     にせもの:es.some(e=>e.textContent.indexOf('にせもの')>=0)};
+  });
+  rec('§9.282 同じ名前の行がマスタに残っていても、紙から既定の塊が消えない',
+      dup.枚数===1,JSON.stringify(dup));
+  rec('§9.282 同じ名前の行の中身は紙に出さない（どちらを出すか決められないため）',
+      dup.にせもの===false,JSON.stringify(dup));
+  await page.unroute('**/api/report-block-master*');
+  await page.evaluate(()=>WL.reportBlocks.forget());
+  await openReport(page);
 
   /* ---- 6) 改名は**紙の見出しまで**変わる（§9.219 ②／§CLAUDE 8） ----
      組み換えの帯・パレット・ゴーストだけが新しい名前になり、紙の見出しは
