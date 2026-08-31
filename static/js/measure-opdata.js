@@ -507,7 +507,10 @@
    if(!def.preview)label.dataset.opauto=def.autoValue;
    control=`<output id="${id}"${opAttr(def)}></output>`;
   }else if(def.type==='選択'){
-   const opts=['<option value=""></option>']
+   /* 「選ばない」の札の字は**`WL.optionBlankLabel`の1箇所**（§9.287-I）。
+      以前はここだけ空で、組み込みの欄は`-`——同じ「選んでいない」が欄の
+      作られ方で別の顔になっていた。 */
+   const opts=[`<option value="">${esc(WL.optionBlankLabel)}</option>`]
      .concat((def.choices||[]).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)).join('');
    control=`<select id="${id}"${opAttr(def)}>${opts}</select>`;
   }else if(isNumeric(def.type)){
@@ -953,9 +956,14 @@
   });
   const cur=box.querySelector('.opf-pick-now');
   if(cur){
+   /* **空の札は「選んでいない」**（§9.287-I）。以前は`hit.text`をそのまま
+      出していたので、組み込みの欄では閉じた状態に`-`が出っぱなしになり、
+      同じ欄を開くと浮き窓には`（選ばない）`と出る、という食い違いになって
+      いた。値が空なら促し（「選ぶ」）を出す。 */
    const hit=[...sel.options].find(o=>o.value===v);
-   cur.textContent=(hit?hit.text:v)||'選ぶ';
-   cur.classList.toggle('is-empty',!v||v==='-');
+   const blank=isBlankVal(v)||(hit&&isBlankOpt({v:hit.value,t:hit.text}));
+   cur.textContent=blank?'選ぶ':((hit?hit.text:v)||'選ぶ');
+   cur.classList.toggle('is-empty',!!blank);
   }
   /* ---- 手打ち（§9.226 ①、利用者の指示） ----
      「選択肢から選べるタイプの例外処理の候補にない値を入力するパターンは、
@@ -1960,7 +1968,7 @@
   const draw=()=>{
    const v=String(sel.value==null?'':sel.value);
    el.innerHTML='<div class="opf-menu-list">'+(opts.length?opts.map(o=>{
-    const label=(o.v===''||o.t==='-')?'（選ばない）':o.t;
+    const label=isBlankOpt(o)?WL.optionBlankLabel:o.t;
     const note=noteOf(def,o.v);
     const on=o.v===v;
     return '<button type="button" role="menuitemradio" aria-checked="'+(on?'true':'false')+'"'
@@ -2066,7 +2074,7 @@
   const draw=()=>{
    const v=String(sel.value==null?'':sel.value);
    grid.innerHTML=opts.length?opts.map(o=>{
-    const label=(o.v===''||o.t==='-')?'（選ばない）':o.t;
+    const label=isBlankOpt(o)?WL.optionBlankLabel:o.t;
     const note=noteOf(def,o.v);
     return '<button type="button" class="opf-panel-item'+(o.v===v?' is-on':'')+'"'
      +' data-opv="'+esc(o.v)+'"><b>'+esc(label)+'</b>'
@@ -2149,7 +2157,7 @@
       +'<b>「'+esc(raw)+'」をこのまま使う</b><small>候補にない値として記録します</small></button>'
      :'';
    list.innerHTML=own+(hit.length?hit.map(o=>{
-    const label=(o.v===''||o.t==='-')?'（選ばない）':o.t;
+    const label=isBlankOpt(o)?WL.optionBlankLabel:o.t;
     const note=noteOf(def,o.v);
     return '<button type="button" class="opf-picker-item'+(o.v===sel.value?' is-on':'')+'"'
      +' data-opv="'+esc(o.v)+'"><b>'+esc(label)+'</b>'

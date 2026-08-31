@@ -114,11 +114,20 @@ let b=null;
    await page.waitForFunction(()=>!document.querySelector('#grid .loading'),{timeout:20000}).catch(()=>{});
    await page.waitForTimeout(800);
   };
-  const shot=()=>page.evaluate(()=>({
-   rows:document.querySelectorAll('#grid tbody tr').length,
-   count:(document.querySelector('#filterCount')||{}).textContent||'',
-   tag:(document.querySelector('#filterTokenInput .filter-tag')||{}).textContent||'',
-   eq:WL.equipment.get()}));
+  /* 効いている条件は**アイコンと件数の1バッジ**に畳んだ（§9.287、利用者の指示
+     「条件式はボタンには長すぎるのでアイコンだけに。その代わりポップオーバーで
+      しっかり中身を確認できるように」）。**いまの値（`（=LS4）`）の置き場も
+     そこ**——バッジの`title`と、押して開くポップオーバーの本文の両方で読める。 */
+  const shot=()=>page.evaluate(()=>{
+   const btn=document.querySelector('#filterCondBtn');
+   const pop=document.querySelector('#filterCondMenu');
+   return {
+    rows:document.querySelectorAll('#grid tbody tr').length,
+    count:(document.querySelector('#filterCount')||{}).textContent||'',
+    tag:(btn&&btn.title)||'',
+    pop:pop?[...pop.querySelectorAll('.fb-cond-text')].map(x=>x.textContent).join(' / '):'',
+    eq:WL.equipment.get()};
+  });
   await applyVarFilter();
   const before=await shot();
   rec('変数の条件が効いている（自設備の行が出る）',before.rows>0&&before.eq===EQ,JSON.stringify(before));
@@ -127,8 +136,8 @@ let b=null;
   /* **設備を切り替える。読み直しは`WL.equipment.onChange`が起こす。** */
   await page.evaluate(e=>WL.equipment.set(e),OTHER);
   await page.waitForFunction(e=>{
-   const t=(document.querySelector('#filterTokenInput .filter-tag')||{}).textContent||'';
-   return t.includes(e);
+   const b=document.querySelector('#filterCondBtn');
+   return !!b&&(b.title||'').includes(e);
   },OTHER,{timeout:15000}).catch(()=>{});
   await page.waitForTimeout(1200);
   const after=await shot();
@@ -136,6 +145,13 @@ let b=null;
       after.eq===OTHER&&after.rows!==before.rows,
       JSON.stringify({前:before.rows,後:after.rows}));
   rec('絞り込みバーも新しい設備を名乗る',after.tag.includes(OTHER),after.tag);
+  /* **ポップオーバーでも読めること**（§9.287。`title`は触る画面では読めない
+     ので、それだけを見る網では「見える場所にある」ことを確かめていない）。 */
+  await page.evaluate(()=>document.querySelector('#filterCondBtn')?.click());
+  await page.waitForSelector('#filterCondMenu',{timeout:5000}).catch(()=>{});
+  const popped=await shot();
+  rec('ポップオーバーでいまの値まで読める',popped.pop.includes(OTHER),popped.pop.slice(0,80));
+  await page.keyboard.press('Escape');
 
   /* 戻したら元へ戻る（片道にしない）。 */
   await page.evaluate(e=>WL.equipment.set(e),EQ);

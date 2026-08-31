@@ -1565,6 +1565,14 @@
 .op-look-赤>i{background:var(--look-red)}
 .op-look-紫>i{background:var(--look-violet)}
 .op-look-灰>i{background:var(--look-slate)}
+/* 足した6色（§9.287-G）。**見本の丸は実物の`--opf-hue`と同じ色**を引く
+   ——見本と実物が違う色だと、選んだ結果を確かめられない（§CLAUDE 6）。 */
+.op-look-水>i{background:var(--rs-cyan)}
+.op-look-藍>i{background:var(--rs-indigo)}
+.op-look-黄緑>i{background:var(--rs-lime)}
+.op-look-黄>i{background:var(--rs-yellow)}
+.op-look-茶>i{background:var(--rs-brown)}
+.op-look-桃>i{background:var(--rs-pink)}
 .op-look-row{display:flex;gap:var(--gap-tight);flex-wrap:wrap;min-width:0}
 .op-look-btn{
   min-height:var(--ctl-h-xs);padding:0 var(--space-2);

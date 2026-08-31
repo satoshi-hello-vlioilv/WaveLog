@@ -31,7 +31,6 @@
      捨てると貯まり直すまで提案が空になる。 */
   const USAGE_STORE='MeasurementFilterCondUsageV3';
   const USAGE_STORE_V2='MeasurementFilterCondUsageV2';
-  const QUICK_OPEN_STORE='MeasurementFilterQuickOpenV1';
   /* ---------- その場フィルタ(§9.238 ⑤、利用者の指示) ----------
      「フィルタ枠はあるが、基本的に登録して使う形になっている。このフィルタの
      下に折りたたんだもう1つのフィルタを実装して、カラムを選択しておき、条件を
@@ -227,9 +226,6 @@
 
   function readLocalPresets(){try{return JSON.parse(localStorage.getItem(FILTER_STORE)||'[]')}catch(_){return []}}
   function writeLocalPresets(){try{localStorage.setItem(FILTER_STORE,JSON.stringify((S.filterPresets||[]).slice(0,120)))}catch(_){}}
-  // よく使う条件の開閉状態(既定=閉じる)。端末ごとに覚える。
-  let quickOpen=(()=>{try{return localStorage.getItem(QUICK_OPEN_STORE)==='1'}catch(_){return false}})();
-  function writeQuickOpen(){try{localStorage.setItem(QUICK_OPEN_STORE,quickOpen?'1':'0')}catch(_){}}
   function readUsage(){
     let all={};
     try{all=JSON.parse(localStorage.getItem(USAGE_STORE)||'{}')}catch(_){all={}}
@@ -783,30 +779,51 @@
     S.page=1;renderGenericFilterBar();load();
   }
 
-  /* ================= 登録フィルタの群（§9.286 ①、利用者の指示） =================
-     「登録フィルタのグループ化登録及びグループごとの一括切り替え機能」
-     「最終的にプリセット登録したフィルタの切り替えだけで使えるようにしつつ、
-      その場フィルタでスポットのフィルタを組み合わせて使う形が運用の形」
+  /* ================= プリセット（§9.287、利用者の指示） =================
+     「プリセットフィルタは登録一覧から作るが、登録した条件の組み合わせで
+      名前を付けて管理したいです」
+     「プリセットフィルタは1つのボタンでポップオーバーメニューで切り替え」
+     「組み合わせて使わず切り替えて使うので、ボタン1つにして、切り替えられる
+      のが理想です」
+     「プリセットフィルタと今までのフィルタ登録条件は重複させず、どちらかを
+      使うようにしたいです（プリセットがそもそも登録フィルタの組み合わせのため）」
 
-     群は**登録フィルタの1列**（`フィルタプリセットマスタ`の`[グループ]`）。
-     **新しいマスタを作らない**——並び・持ち主・印は既にこの行が持っている
-     （§9.172）。空欄＝「分類なし」で、**既存の登録はそのまま使える**。
+     §9.286 ① では登録条件を札で横に並べ、群を「表示を絞る器」にしていた。
+     そのため**同じ条件が2つの言語で同時に画面へ出て**いた——濃い札
+     「残仕掛設備ｺｰｽ 前方一致」と、そのすぐ右のトークン「ロット番号
+     startswith L0001」が同じ1件（実機で確認）。§CLAUDE 画面基準 8 の
+     「同じ情報を2箇所に出さない」に真正面から反する。
 
-     いま選んでいる群の置き場は**この端末×利用者×一覧**（読み方の好みなので
-     PCごとに違ってよい。共有マスタへ入れると全員が同じ群に縛られる・§9.199）。 */
-  const GROUP_STORE='MeasurementFilterGroupV1';
-  const GROUP_ALL='\u001fall';  // 「すべて」を表す印（群名と衝突しない）
-  const GROUP_NONE_LABEL='分類なし';
-  let groupAll=(()=>{try{const m=JSON.parse(localStorage.getItem(GROUP_STORE)||'{}');
-                        return (m&&typeof m==='object')?m:{}}catch(_){return {}}})();
-  function writeGroupAll(){try{localStorage.setItem(GROUP_STORE,JSON.stringify(groupAll))}catch(_){}}
+     いまは**2層**で持つ:
+       ・**登録した条件** … `フィルタプリセットマスタ`の1行。組み合わせの部品。
+                            置き場は登録一覧（バーには出さない）。
+       ・**プリセット**   … その組み合わせに名前を付けたもの。実体は同じ行の
+                            `[グループ]`列（**新しいマスタを作らない**）。
+     **組み合わせに入れていない条件は「条件1件のプリセット」として同じ列に
+     並べる**——そうしないと、組み合わせを作るまでボタンが空という崖ができる
+     （プリセットは「1件以上の条件の集まり」で、1件はその特別な場合）。
+
+     **当てるのではなく切り替える**（利用者の指示）。選ぶと、前に選んでいた
+     プリセットの条件が外れ、選んだプリセットの条件が入る。**手で足した条件と
+     「いつも適用」は残す**——スポットで打った条件がプリセットの切り替えで
+     消えるのは、いちばん驚く壊れ方。
+
+     置き場は**この端末×利用者×一覧**（読み方の好みなので端末ごとに違って
+     よい・§9.199）。**鍵はV2**——V1は「どの群を表示するか」であって
+     「どのプリセットを当てるか」ではない。同じ鍵で読むと、前の版で群を
+     選んでいた端末が**一覧を開いた瞬間にその群の条件で絞られる**（§9.204）。 */
+  const PRESET_STORE='MeasurementFilterPresetV2';
+  const PRESET_NONE='';           // 「なし」＝プリセットの条件を入れない
+  let presetSelAll=(()=>{try{const m=JSON.parse(localStorage.getItem(PRESET_STORE)||'{}');
+                             return (m&&typeof m==='object')?m:{}}catch(_){return {}}})();
+  function writePresetSel(){try{localStorage.setItem(PRESET_STORE,JSON.stringify(presetSelAll))}catch(_){}}
   /* **利用者IDは呼ぶたびに引く**（`/api/whoami`から後から届く・§9.184）。 */
-  function groupBucket(who){
+  function presetSelBucket(who){
     const k=(who===undefined?filterUserId():who)||'';
-    if(!groupAll[k]||typeof groupAll[k]!=='object')groupAll[k]={};
-    return groupAll[k];
+    if(!presetSelAll[k]||typeof presetSelAll[k]!=='object')presetSelAll[k]={};
+    return presetSelAll[k];
   }
-  /* 登録フィルタの呼び名。**`presetName()`と混ぜないこと**——あちらは
+  /* 登録した条件の呼び名。**`presetName()`と混ぜないこと**——あちらは
      「1件の条件」から名前を作る関数（`f.column`/`f.op`/`f.value`を読む）で、
      登録フィルタそのものを渡すと`op`が無く`opShort(undefined)`で落ちる
      （実際に踏んだ。一覧が丸ごと出なくなる）。 */
@@ -815,39 +832,55 @@
     return n||((p&&p.filters)||[]).map(condLabel).join(' / ')||'（名前なし）';
   }
   function presetGroupOf(p){return String((p&&p.group)||'').trim()}
-  /* 群の顔ぶれは**いま開いている一覧の登録フィルタ**から作る。
-     「分類なし」は必ず最後（まだ分けていないものが先頭に来ると、
-      分けた群のほうが埋もれる）。 */
+  /* 組み合わせの名前の顔ぶれ。**いま開いている一覧の登録条件から作る。** */
   function presetGroups(){
     const seen=new Set();
-    currentTablePresets().forEach(p=>seen.add(presetGroupOf(p)));
-    return [...seen].sort((a,b)=>(a===''?1:b===''?-1:a.localeCompare(b,'ja')));
+    currentTablePresets().forEach(p=>{const g=presetGroupOf(p);if(g)seen.add(g)});
+    return [...seen].sort((a,b)=>a.localeCompare(b,'ja'));
   }
-  function groupLabel(g){return g===GROUP_ALL?'すべて':(g||GROUP_NONE_LABEL)}
-  function currentGroup(){
-    const v=groupBucket()[defaultMapKey(S.db,S.table)];
-    if(v===undefined)return GROUP_ALL;
-    /* **消えた群を覚えたままにしない**——群を消したり付け替えたりすると
-       「1件も無い群」が選ばれたままになり、札が丸ごと消える（§9.204と同じ罠）。 */
-    return (v===GROUP_ALL||presetGroups().includes(v))?v:GROUP_ALL;
-  }
-  function setCurrentGroup(g){
-    const b=groupBucket();
-    if(g===GROUP_ALL)delete b[defaultMapKey(S.db,S.table)];
-    else b[defaultMapKey(S.db,S.table)]=g;
-    writeGroupAll();
-  }
-  function presetsInGroup(g){
+  /* ---------- 切り替えの候補（プリセット）を1箇所で作る ----------
+     組み合わせ（`[グループ]`が同じ登録条件の集まり）が先、まだ組み合わせに
+     入れていない単独の条件が後（分けたものが埋もれない）。**鍵は名前そのもの
+     ではなく種別の印を付けた文字列**——同名の組み合わせと登録IDがぶつからない。 */
+  function presetEntries(){
     const list=currentTablePresets();
-    return g===GROUP_ALL?list:list.filter(p=>presetGroupOf(p)===g);
+    const byGroup=new Map();
+    const singles=[];
+    list.forEach(p=>{
+      const g=presetGroupOf(p);
+      if(!g){singles.push(p);return}
+      if(!byGroup.has(g))byGroup.set(g,[]);
+      byGroup.get(g).push(p);
+    });
+    const combos=[...byGroup.keys()].sort((a,b)=>a.localeCompare(b,'ja')).map(g=>({
+      key:'g:'+g,name:g,kind:'combo',group:g,presets:byGroup.get(g),
+    }));
+    const ones=singles.map(p=>({
+      key:'p:'+p.id,name:presetTitle(p),kind:'single',group:'',presets:[p],
+    }));
+    /* 条件は登録の並びのまま畳む。**同じ条件を2度入れない**——同じ条件を
+       持つ登録が1つの組み合わせに2つあると、トークンが二重になる。 */
+    return [...combos,...ones].map(e=>{
+      const seen=new Set(),conds=[];
+      e.presets.forEach(p=>(p.filters||[]).forEach(f=>{
+        const k=filterKey(f);if(seen.has(k))return;seen.add(k);conds.push(f);
+      }));
+      return Object.assign(e,{conds});
+    });
   }
-  /* その登録フィルタが**いま全部効いているか**。条件単位で登録されるので
-     （§9.172）、1つでも欠けていれば「効いていない」。 */
-  function presetApplied(p){
-    const keys=(p.filters||[]).map(filterKey);
-    if(!keys.length)return false;
-    const now=new Set(S.genericFilters.map(filterKey));
-    return keys.every(k=>now.has(k));
+  function presetEntryOf(key){return key?(presetEntries().find(e=>e.key===key)||null):null}
+  /* いま選んでいるプリセット。**消えた候補を覚えたままにしない**——組み合わせを
+     消したり付け替えたりすると、「1件も無いプリセット」が選ばれたままになり、
+     ボタンが名乗る名前と実際に効いている条件が食い違う（§9.204）。 */
+  function selectedPresetKey(){
+    const v=presetSelBucket()[defaultMapKey(S.db,S.table)];
+    if(!v)return PRESET_NONE;
+    return presetEntryOf(v)?v:PRESET_NONE;
+  }
+  function setSelectedPresetKey(key){
+    const b=presetSelBucket(),k=defaultMapKey(S.db,S.table);
+    if(!key)delete b[k];else b[k]=key;
+    writePresetSel();
   }
   /* 外す側。**「いつも適用」の条件と、他の登録が要る条件は外さない**
      （§9.190。外しても次に開いた瞬間に戻ってくるので、押しても効かない
@@ -863,148 +896,132 @@
     });
     return kept;
   }
-  function togglePreset(p){
-    if(!presetApplied(p)){applyPreset(p);return}
-    const kept=removePresetFilters(p);
-    S.page=1;renderGenericFilterBar();load();
+  /* ---------- 切り替え（この改良の主動線） ----------
+     **前のプリセットの条件を外してから、選んだプリセットの条件を入れる。**
+     外す対象を「前に選んでいたもの」に限るのが要——`S.genericFilters`を
+     丸ごと空にすると、**その場で打った条件も一緒に消える**。 */
+  function switchPreset(key,{reload=true}={}){
+    const prev=presetEntryOf(selectedPresetKey());
+    let kept=0;
+    if(prev)prev.presets.forEach(p=>{kept+=removePresetFilters(p)});
+    const next=presetEntryOf(key);
+    if(next){
+      const seen=new Set(S.genericFilters.map(filterKey));
+      next.presets.forEach(p=>{
+        markPresetUsed(p);
+        structuredClone(p.filters||[]).forEach(f=>{
+          if(!seen.has(filterKey(f))){S.genericFilters.push(f);seen.add(filterKey(f))}
+        });
+      });
+      S.genericFilters.forEach(bumpCondUsage);
+    }
+    setSelectedPresetKey(next?next.key:PRESET_NONE);
+    S.page=1;renderGenericFilterBar();
+    if(reload)load();
+    /* **外せなかったことを黙らない**（§4）——「切り替えたのに前の条件が
+       残っている」ようにしか見えない。 */
     if(kept&&typeof showToast==='function')
       showToast('外せない条件が残りました',
-        `${presetTitle(p)} のうち ${kept}件は「いつも適用」か、他の登録フィルタが使っています。`,6000);
+        `${kept}件は「いつも適用（固定）」なので、切り替えても入ったままです。`,6000);
   }
-  /* 群ごとの一括切り替え。**当てる／外すを対で持つ**（§9.170）——当てるのが
-     一度にできて外すのが1枚ずつでは釣り合わない。 */
-  function setGroupApplied(g,on){
-    let kept=0;
-    presetsInGroup(g).forEach(p=>{
-      if(!on){kept+=removePresetFilters(p);return}
-      markPresetUsed(p);
-      const seen=new Set(S.genericFilters.map(filterKey));
-      structuredClone(p.filters||[]).forEach(f=>{
-        if(!seen.has(filterKey(f))){S.genericFilters.push(f);seen.add(filterKey(f))}
-      });
-    });
-    if(on)S.genericFilters.forEach(bumpCondUsage);
-    S.page=1;renderGenericFilterBar();load();
-    if(!on&&kept&&typeof showToast==='function')
-      showToast('外せない条件が残りました',
-        `${kept}件は「いつも適用」か、他の登録フィルタが使っています。`,6000);
+  /* ボタンが名乗る中身。**「選んでいる」と「効いている」を分けて言う**
+     （§3）——条件はトークンから手で外せるので、選んだままずれうる。 */
+  function presetButtonState(){
+    const entries=presetEntries();
+    const cur=presetEntryOf(selectedPresetKey());
+    if(!cur)return {name:'なし',note:'',off:0,total:0,empty:!entries.length};
+    const now=new Set(S.genericFilters.map(filterKey));
+    const off=cur.conds.filter(f=>!now.has(filterKey(f))).length;
+    return {name:cur.name,note:off?`${off}件外しています`:'',off,total:cur.conds.length,empty:false};
   }
-  /* 群の札（主動線）。**押すだけで当たる／外れる**——目当ての絞り込みへ
-     2手（群を選ぶ→札を押す）で届くのがこの改良の目的（§CLAUDE 画面基準 2）。 */
-  function renderPresetChips(){
-    const box=$('#filterPresetChips');if(!box)return;
-    const g=currentGroup(),list=presetsInGroup(g);
-    const btn=$('#filterGroupBtn'),name=$('#filterGroupName');
-    const on=list.filter(presetApplied).length;
-    if(name)name.textContent=groupLabel(g);
-    if(btn)btn.title=`登録フィルタの群を選びます（いま「${groupLabel(g)}」${list.length}件中 ${on}件が効いています）。`
-      +`\n群ごとにまとめて当てる／外すこともできます。`;
-    if(!currentTablePresets().length){
-      box.innerHTML='<span class="fb-presets-empty">登録フィルタはまだありません。'
-        +'条件を作って「登録」すると、ここに札で並びます。</span>';
-      return;
-    }
-    if(!list.length){
-      box.innerHTML=`<span class="fb-presets-empty">「${esc(groupLabel(g))}」の登録フィルタはありません。</span>`;
-      return;
-    }
-    box.innerHTML=list.map((p,i)=>{
-      const applied=presetApplied(p);
-      const lock=isAlwaysOnPreset(p,S.db,S.table);
-      const label=(p.filters||[]).map(condLabel).join(' / ');
-      const why=lock?'いつも適用（一覧を開くたびに効きます）':applied?'クリックで外す':'クリックで当てる';
-      return `<button type="button" class="fb-chip${applied?' is-on':''}${lock?' is-lock':''}" `
-        +`data-preset-i="${i}" aria-pressed="${applied?'true':'false'}" `
-        +`title="${esc(presetTitle(p)+'\n'+label+'\n'+why)}">`
-        +`${lock?'<i aria-hidden="true">\u{1F512}</i>':''}<span>${esc(presetTitle(p))}</span></button>`;
-    }).join('');
-    box.querySelectorAll('[data-preset-i]').forEach(b=>{
-      b.onclick=()=>togglePreset(list[+b.dataset.presetI]);
-    });
+  /* プリセットの1ボタン。**主動線はここだけ**——札を横に並べる行は廃した
+     （利用者の指示「1つのボタンでポップオーバーメニューで切り替え」）。 */
+  function renderPresetButton(){
+    const btn=$('#filterPresetBtn');if(!btn)return;
+    const name=$('#filterPresetName'),note=$('#filterPresetNote');
+    const st=presetButtonState();
+    if(name)name.textContent=st.name;
+    if(note){note.textContent=st.note;note.hidden=!st.note}
+    btn.classList.toggle('is-on',st.total>0&&!st.off);
+    btn.classList.toggle('is-partial',st.total>0&&st.off>0);
+    btn.title=st.empty
+      ? 'プリセット（登録した条件の組み合わせ）はまだありません。\n条件を登録して、登録一覧で組み合わせに名前を付けると、ここで切り替えられます。'
+      : st.total
+        ? `プリセット「${st.name}」（条件${st.total}件${st.off?`／うち${st.off}件は外しています`:''}）\n押すと別のプリセットへ切り替えます。`
+        : 'プリセットを当てていません。押すと切り替えられます。';
   }
-  /* 群を選ぶ浮きメニュー。**器の外（body直下）へ`position:fixed`で出す**
+  /* 切り替えの浮きメニュー。**器の外（body直下）へ`position:fixed`で出す**
      ——`#genericFilterBar`は`overflow`を持ちうるので、中に置くと切られる
      （§9.201）。**開いた器は必ず控える**（§9.222 ①）。 */
-  let groupMenuEl=null;
-  function closeGroupMenu(){
-    groupMenuEl?.remove();groupMenuEl=null;
-    $('#filterGroupBtn')?.setAttribute('aria-expanded','false');
-    document.removeEventListener('click',onGroupOutside,true);
-    document.removeEventListener('keydown',onGroupEsc,true);
+  let presetMenuEl=null;
+  function closePresetMenu(){
+    presetMenuEl?.remove();presetMenuEl=null;
+    $('#filterPresetBtn')?.setAttribute('aria-expanded','false');
+    document.removeEventListener('click',onPresetOutside,true);
+    document.removeEventListener('keydown',onPresetEsc,true);
   }
-  function onGroupOutside(e){
-    if(groupMenuEl&&!groupMenuEl.contains(e.target)&&!e.target.closest('#filterGroupBtn'))closeGroupMenu();
+  function onPresetOutside(e){
+    if(presetMenuEl&&!presetMenuEl.contains(e.target)&&!e.target.closest('#filterPresetBtn'))closePresetMenu();
   }
-  function onGroupEsc(e){if(WL.modal.escCloses(e))closeGroupMenu()}
-  function openGroupMenu(anchor){
-    if(groupMenuEl){closeGroupMenu();return}
-    const groups=[GROUP_ALL,...presetGroups()];
-    const cur=currentGroup();
+  function onPresetEsc(e){if(WL.modal.escCloses(e))closePresetMenu()}
+  function presetPickHtml(key,label,sub,on){
+    return `<button type="button" role="menuitemradio" class="fb-preset-pick${on?' is-current':''}" `
+      +`aria-checked="${on?'true':'false'}" data-preset-key="${esc(key)}">`
+      +'<i class="fb-preset-mark" aria-hidden="true"></i>'
+      +`<span class="fb-preset-label">${esc(label)}</span>`
+      +`<small class="fb-preset-sub">${esc(sub)}</small></button>`;
+  }
+  function openPresetMenu(anchor){
+    if(presetMenuEl){closePresetMenu();return}
+    const entries=presetEntries();
+    const cur=selectedPresetKey();
     const menu=document.createElement('div');
-    menu.className='access-mode-menu fb-group-menu';menu.id='filterGroupMenu';
-    menu.innerHTML=groups.map((g,i)=>{
-      const list=presetsInGroup(g);
-      const on=list.filter(presetApplied).length;
-      return `<div class="fb-group-item${g===cur?' is-current':''}">`
-        +`<button type="button" class="fb-group-pick" data-group-i="${i}">`
-        +`<span>${esc(groupLabel(g))}</span><small>${list.length}件中 ${on}件が効いています</small></button>`
-        +`<span class="fb-group-bulk">`
-        +`<button type="button" data-group-on="${i}"${list.length?'':' disabled'} `
-        +`title="${list.length?'この群の登録フィルタをまとめて当てます':'この群に登録フィルタがありません'}">全部当てる</button>`
-        +`<button type="button" data-group-off="${i}"${on?'':' disabled'} `
-        +`title="${on?'この群の登録フィルタをまとめて外します':'この群で効いている条件はありません'}">全部外す</button>`
-        +`</span></div>`;
-    }).join('')
-      +'<p class="fb-group-note">群は「⋯ → 登録一覧」で付け替えられます。</p>';
+    menu.className='access-mode-menu fb-preset-menu';menu.id='filterPresetMenu';
+    menu.setAttribute('role','menu');
+    const combos=entries.filter(e=>e.kind==='combo');
+    const ones=entries.filter(e=>e.kind==='single');
+    const sub=e=>`${e.conds.length}条件 ／ `+e.conds.map(condLabel).join(' ・ ');
+    let body='<p class="fb-preset-head">プリセット<small>登録した条件の組み合わせ。'
+      +'押すと切り替わります（足すのではなく入れ替え）</small></p>'
+      +presetPickHtml(PRESET_NONE,'なし','プリセットの条件を入れません',!cur);
+    if(combos.length)
+      body+='<p class="fb-preset-sec">組み合わせ</p>'
+        +combos.map(e=>presetPickHtml(e.key,e.name,sub(e),e.key===cur)).join('');
+    if(ones.length)
+      body+='<p class="fb-preset-sec">まだ組み合わせに入れていない条件</p>'
+        +ones.map(e=>presetPickHtml(e.key,e.name,sub(e),e.key===cur)).join('');
+    if(!entries.length)
+      body+='<p class="fb-preset-empty">登録した条件がまだありません。'
+        +'条件を作って「登録」すると、ここに並びます。</p>';
+    body+='<div class="fb-preset-foot">'
+      +'<button type="button" id="fbPresetManage">登録一覧で組み合わせを作る／直す</button>'
+      +'<small>「いつも適用（固定）」の条件は、切り替えても入ったままです。</small></div>';
+    menu.innerHTML=body;
     document.body.append(menu);
-    groupMenuEl=menu;
+    presetMenuEl=menu;
     const r=anchor.getBoundingClientRect();
     menu.style.top=`${r.bottom+6}px`;
     menu.style.left=`${Math.max(8,Math.min(r.left,innerWidth-menu.offsetWidth-8))}px`;
-    menu.querySelectorAll('[data-group-i]').forEach(b=>b.onclick=()=>{
-      setCurrentGroup(groups[+b.dataset.groupI]);closeGroupMenu();renderPresetChips();
+    menu.querySelectorAll('[data-preset-key]').forEach(b=>b.onclick=()=>{
+      const k=b.dataset.presetKey;closePresetMenu();switchPreset(k);
     });
-    menu.querySelectorAll('[data-group-on]').forEach(b=>b.onclick=()=>{
-      closeGroupMenu();setGroupApplied(groups[+b.dataset.groupOn],true);
-    });
-    menu.querySelectorAll('[data-group-off]').forEach(b=>b.onclick=()=>{
-      closeGroupMenu();setGroupApplied(groups[+b.dataset.groupOff],false);
-    });
+    menu.querySelector('#fbPresetManage').onclick=()=>{closePresetMenu();openFilterPresetModal()};
     anchor.setAttribute('aria-expanded','true');
     requestAnimationFrame(()=>{
-      document.addEventListener('click',onGroupOutside,true);
-      document.addEventListener('keydown',onGroupEsc,true);
+      document.addEventListener('click',onPresetOutside,true);
+      document.addEventListener('keydown',onPresetEsc,true);
     });
   }
-  /* 新しい群の名前を聞く小さな窓。**`prompt()`は使わない**（見た目を合わせ
+  /* 組み合わせの名前を聞く小さな窓。**`prompt()`は使わない**（見た目を合わせ
      られず、タブ全体を止める）。 */
-  async function askGroupName(){
-    const ok=await confirmModal({title:'群を作る',confirmLabel:'決める',
-      bodyHtml:'<label class="mm-field mm-w-md"><span>群の名前</span>'
-        +'<input type="text" id="fbGroupNameInput" autocomplete="off" placeholder="例: 今日の担当"></label>'
-        +'<small class="mm-field-hint">同じ群の登録フィルタは、絞り込みバーの「絞り込み」から'
-        +'まとめて当てる／外せます。</small>'});
+  async function askGroupName(seed){
+    const ok=await confirmModal({title:'組み合わせに名前を付ける',confirmLabel:'決める',
+      bodyHtml:'<label class="mm-field mm-w-lg"><span>プリセットの名前</span>'
+        +`<input type="text" id="fbGroupNameInput" autocomplete="off" placeholder="例: 今日の担当" value="${esc(seed||'')}"></label>`
+        +'<small class="mm-field-hint">同じ名前を付けた条件がひとまとまりのプリセットになり、'
+        +'絞り込みバーの「プリセット」から切り替えられます。</small>'});
     const el=document.getElementById('fbGroupNameInput');
     return ok?String(el&&el.value||'').trim():'';
-  }
-  /* 群の付け替え。**送るのは群だけ**（`/api/filter-presets/group`）——
-     登録の本体（条件・名前・持ち主）を送り直すと、触っていない設定まで
-     上書きしうる（§9.212 ②）。 */
-  async function setPresetGroup(preset,group){
-    try{
-      await api('/api/filter-presets/group',{method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({id:preset.id,group})});
-      preset.group=group;
-      writeLocalPresets();
-      renderFilterPresetList();renderGenericFilterBar();
-      showToast&&showToast('群を変えました',`${presetTitle(preset)} → ${group||GROUP_NONE_LABEL}`,3000);
-    }catch(e){
-      /* **失敗を黙らない**（§9.212 ④）——次の読み直しで元へ戻るだけなので、
-         黙ると「勝手に戻った」としか見えない。 */
-      showToast&&showToast('群を変えられませんでした',e?.message||String(e),7000);
-      renderFilterPresetList();
-    }
   }
   /* たまにしか使わない入口（条件を作る・登録一覧・よく使う条件・全解除）は
      `⋯`の中へ畳む。**要素はDOMに置いたまま**にして`hidden`だけを入切する
@@ -1067,13 +1084,14 @@
        画面が組み上がらない。 */
     bar.innerHTML=`
       <div class="filter-search-row">
-        <button id="filterGroupBtn" class="fb-group-btn" type="button"
-                aria-haspopup="true" aria-expanded="false"
-                title="登録フィルタの群を選びます。群ごとにまとめて当てる／外すこともできます">
-          <span class="fb-group-key">絞り込み</span><b id="filterGroupName">すべて</b><i aria-hidden="true">▾</i>
+        <button id="filterPresetBtn" class="fb-preset-btn" type="button"
+                aria-haspopup="true" aria-expanded="false">
+          <span class="fb-preset-key">プリセット</span><b id="filterPresetName">なし</b><em id="filterPresetNote" hidden></em><i aria-hidden="true">▾</i>
         </button>
-        <div class="fb-presets" id="filterPresetChips" role="group" aria-label="登録フィルタ"></div>
-        <span class="filter-count" id="filterCount">0件</span>
+        <button id="filterCondBtn" class="fb-cond-btn" type="button" aria-haspopup="true" aria-expanded="false">
+          <svg class="fb-cond-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M1.6 2.6h12.8L9.4 8.2v4.3l-2.8 1.6V8.2z"/></svg>
+          <b id="filterCount">0件</b><i aria-hidden="true">▾</i>
+        </button>
         <div class="filter-token-input" id="filterTokenInput">
           <input class="filter-token-search" id="filterTokenSearch" autocomplete="off" placeholder="検索して条件を追加">
         </div>
@@ -1082,15 +1100,14 @@
         <div class="filter-search-row-actions">
           <button id="filterAdhocToggle" class="filter-adhoc-toggle" type="button" aria-expanded="false" aria-controls="filterAdhocRow">その場フィルタ</button>
           <button id="filterMoreBtn" class="fb-more-btn" type="button" aria-haspopup="true" aria-expanded="false"
-                  aria-controls="filterMoreMenu" title="条件を作る・登録一覧・よく使う条件・全解除">⋯</button>
+                  aria-controls="filterMoreMenu" title="条件を作る・登録一覧・全解除">⋯</button>
         </div>
         <!-- 畳んだ先（§9.199「畳んだ先の設定はボタンに書く」）。**要素はここに
              置いたまま**にして、開閉は hidden の入切だけにする——浮きメニューを
              開くたびに作り直すと、ここで1度だけ張った配線が効かなくなる。 -->
         <div class="fb-more-menu" id="filterMoreMenu" hidden role="menu" aria-label="フィルタの設定">
           <button id="filterToggle" type="button" role="menuitem">条件を作る<small>列・比較・値を選んで、今の一覧へ足す／登録する</small></button>
-          <button id="openFilterPresets" type="button" role="menuitem">登録一覧<small>登録フィルタの追加・削除・群分け・持ち出し</small></button>
-          <button id="filterQuickToggle" type="button" role="menuitem" aria-expanded="false" aria-controls="filterQuickRow" hidden>よく使う条件<small>この一覧で使った回数の多い条件</small></button>
+          <button id="openFilterPresets" type="button" role="menuitem">登録一覧<small>条件の追加・削除と、組み合わせ（プリセット）作り</small></button>
           <button id="clearGenericFilters" type="button" role="menuitem">全解除<small>いま効いている条件を全部外します</small></button>
         </div>
       </div>
@@ -1123,7 +1140,6 @@
         <button id="filterAdhocClear" type="button" title="入力を消して、この絞り込みを解除します">解除</button>
         <span class="filter-adhoc-state" id="filterAdhocState"></span>
       </div>
-      <div class="filter-quick-row" id="filterQuickRow" hidden></div>
       <div class="filter-body" id="filterBody" hidden>
         <div class="filter-builder">
           <label>カラム<select id="filterColumn"></select></label>
@@ -1141,7 +1157,6 @@
     $('#filterToggle').onclick=()=>{const body=$('#filterBody');body.hidden=!body.hidden;$('#filterToggle').textContent=body.hidden?'条件を作る':'閉じる'};
     // よく使う条件は既定で折りたたむ(段階的開示)。以前は該当条件があれば
     // 常時1行を占有しており、狭い分割表示では一覧の縦幅を圧迫していた。
-    $('#filterQuickToggle').onclick=()=>{quickOpen=!quickOpen;writeQuickOpen();renderQuickFilters()};
     /* その場フィルタ(§9.238 ⑤)。**配線はここで1度だけ**——描き直しのたびに
        付け替えると、打っている最中に欄ごと作り替えることになる(§9.117)。 */
     $('#filterAdhocToggle').onclick=()=>{adhocOpen=!adhocOpen;writeAdhocOpen();renderAdhocRow();
@@ -1220,7 +1235,8 @@
       const el=$(sel);if(el)el.addEventListener('input',()=>note(NOTE_DEFAULT));
     });
     /* 群を選ぶ／たまにしか使わない入口を畳む（§9.286 ①）。 */
-    $('#filterGroupBtn').onclick=e=>openGroupMenu(e.currentTarget);
+    $('#filterPresetBtn').onclick=e=>openPresetMenu(e.currentTarget);
+    $('#filterCondBtn').onclick=e=>openCondMenu(e.currentTarget);
     $('#filterMoreBtn').onclick=toggleMoreMenu;
     /* 浮きメニューの中の項目は**押したら畳む**——開いたままだと、次に何を
        するかを選ぶ前に一覧が変わって場所を見失う。 */
@@ -1228,18 +1244,25 @@
       if(e.target.closest('button'))closeMoreMenu();
     });
     $('#openFilterPresets').onclick=openFilterPresetModal;
-    $('#clearGenericFilters').onclick=async()=>{
-      const lockedList=S.genericFilters.filter(isLockedFilter);
-      if(lockedList.length){
-        if(await confirmRemoveAllLocked(lockedList))S.genericFilters=[];
-        else S.genericFilters=S.genericFilters.filter(isLockedFilter);
-      }else{
-        S.genericFilters=[];
-      }
-      S.page=1;renderGenericFilterBar();load();
-    };
+    $('#clearGenericFilters').onclick=clearAllFilters;
     bindTokenSearch();
     return bar;
+  }
+  /* 全解除。**入口は2つ（`⋯`の「全解除」と、条件のポップオーバーの
+     「全部外す」）だが、処理は1箇所**（§9.163）——2つ持つと片方だけ
+     「いつも適用」の確認を落とした状態が作れる。
+     **`clearGenericFilters`という名前にしないこと**——同じ綴りのidを持つ
+     ボタンがあり、ブラウザは`window.<id>`でその要素を公開するので、
+     関数のつもりで呼ぶと**要素を呼び出してTypeError**になる（実際に踏んだ）。 */
+  async function clearAllFilters(){
+    const lockedList=S.genericFilters.filter(isLockedFilter);
+    if(lockedList.length){
+      if(await confirmRemoveAllLocked(lockedList))S.genericFilters=[];
+      else S.genericFilters=S.genericFilters.filter(isLockedFilter);
+    }else{
+      S.genericFilters=[];
+    }
+    S.page=1;renderGenericFilterBar();load();
   }
   function updateFilterColumns(){
     ensureGenericFilterBar();const select=$('#filterColumn');if(!select)return;const current=select.value;
@@ -1266,55 +1289,124 @@
     bumpCondUsage(f);S.page=1;renderGenericFilterBar();load();
   }
 
-  /* アクティブ条件トークンを検索窓の中に描画（近接・同一面） */
+  /* ================= 効いている条件（§9.287、利用者の指示） =================
+     「バッジとして追加されるボタンに表示されているフィルタの条件式は、
+      ボタンの部分には基本的に長すぎて記述しきれないので最初から記載せず
+      シンプルにアイコンだけにしてください。その代わり、ポップオーバーで
+      しっかり条件式の中身を確認できるようにしてください」
+
+     以前は条件1件につき1つの札（`.filter-tag`）を横に並べ、その中へ
+     「列名・演算子・値・展開値・★・×」を全部詰めていた。実データの列名は
+     `残仕掛設備ｺｰｽ`のように長く、値も`{使用設備}（=LS4）`と2段になるため、
+     **札は必ず器からあふれるか切り詰められる**——読めない字を並べるくらい
+     なら最初から並べない。
+
+     いまは**件数の1バッジ**だけを出し、中身はポップオーバーが持つ。
+     §CLAUDE 8 の「同じ情報を2箇所に出さない」もこれで片付く——以前は
+     件数（`1件`）と札が並んで**同じことを2通りで**言っていた。
+
+     **0件でもバッジは消さない**（§9.227 ②）——出入りするとバーの幅が動き、
+     隣のボタンが逃げる。押せないことと理由は`title`が言う（§4）。 */
+  function condRows(){
+    /* **その場フィルタも1件として数える**（§9.238 ⑤）。効いているのに
+       数えないと「絞り込んでいないのに件数が合わない」としか見えない。 */
+    const rows=S.genericFilters.map((f,i)=>({kind:'cond',f,i,locked:isLockedFilter(f)}));
+    if(adhocActive())rows.push({kind:'adhoc',label:adhocLabel()});
+    return rows;
+  }
+  /* 変数はいまの値も併記する（§9.285 ①／§CLAUDE 3）——`{使用設備}`とだけ
+     出ていると、設備を切り替えたときに**画面のどこを見ても効いている値が
+     読めない**。**未設定は「未設定」と書く**（空にすると0件の理由が読めない）。 */
+  function condVarNote(f){
+    if(!filterVarFor(f.value))return '';
+    const va=expandFilterVars(f.value);
+    return `（=${va||'未設定'}）`;
+  }
+  function condFullText(f){
+    return `${f.column} ${opLabel(f.op)}${noValueOp(f.op)?'':' '+f.value+condVarNote(f)}`;
+  }
   function renderActiveTokens(){
-    const box=$('#filterTokenInput');if(!box)return;const input=$('#filterTokenSearch');
-    box.querySelectorAll('.filter-tag').forEach(x=>x.remove());
-    S.genericFilters.forEach((f,i)=>{
-      const locked=isLockedFilter(f);
-      const tag=document.createElement('span');tag.className='filter-tag'+(locked?' filter-tag-locked':'');
-      /* **変数はいまの値も併記する**（§9.285 ①／§CLAUDE 3）——`{使用設備}`と
-         だけ出ていると、設備を切り替えたときに**画面のどこを見ても効いている
-         値が読めない**（利用者の報告「切り替えた瞬間に反映されない」）。
-         **未設定は「未設定」と書く**——空にすると0件の理由が読めない。 */
-      const va=filterVarFor(f.value)?expandFilterVars(f.value):'';
-      const vnote=filterVarFor(f.value)?`（=${va||'未設定'}）`:'';
-      tag.title=locked?`必須条件: ${lockedFilterDescription(f)}（一覧を開くたびに既定で適用されます）`:`${f.column} ${opLabel(f.op)}${noValueOp(f.op)?'':' '+f.value+vnote}`;
-      /* 条件ごとに「登録済みかどうか」を出し、その場で登録できるようにする
-         (§9.80)。候補やよく使う条件から足した条件も、作り直さずに次回へ
-         残せる。★=登録済み / ☆=未登録。以前はバーの「マスタへ保存」で
-         アクティブな条件を全部まとめて個別登録する作りで、何が登録された
-         のか・何が既に登録済みなのかが分からなかった。 */
-      const known=!!registeredPreset(f);
-      const star=locked?'':`<u data-filter-save="${i}" tabindex="0" role="button" `
-        +`class="${known?'is-saved':''}" `
-        +`aria-label="${known?'登録済みの条件です':'この条件を登録する'}" `
-        +`title="${known?'登録済み（登録一覧にあります）':'クリックで登録フィルタとして保存します'}">${known?'★':'☆'}</u>`;
-      tag.innerHTML=`${locked?'<span class="filter-tag-lock-icon" aria-hidden="true">🔒</span>':''}<span>${esc(f.column)}</span><b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':`<em>${esc(f.value)}${vnote?`<u class="filter-tag-var">${esc(vnote)}</u>`:''}</em>`}${star}<i data-filter-index="${i}" tabindex="0" role="button" aria-label="この条件を解除" title="解除">×</i>`;
-      const removeThis=async e=>{
-        e.stopPropagation();
-        if(locked&&!(await confirmRemoveLockedFilter(f)))return;
-        S.genericFilters.splice(i,1);S.page=1;renderGenericFilterBar();load();
-      };
-      const removeIcon=tag.querySelector('i');
-      removeIcon.onclick=removeThis;
-      removeIcon.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();removeThis(e)}};
-      const saveIcon=tag.querySelector('u[data-filter-save]');
-      if(saveIcon){
-        const doSave=async e=>{e.stopPropagation();if(registeredPreset(f))return;await saveOneToMaster(f)};
-        saveIcon.onclick=doSave;
-        saveIcon.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();doSave(e)}};
-      }
-      box.insertBefore(tag,input);
+    const btn=$('#filterCondBtn'),count=$('#filterCount');if(!btn)return;
+    const rows=condRows();
+    const n=rows.length;
+    if(count)count.textContent=`${n}件`;
+    btn.classList.toggle('is-on',n>0);
+    btn.disabled=!n;
+    btn.title=n
+      ? '効いている条件 '+n+'件\n'
+        +rows.map(r=>r.kind==='adhoc'?`その場フィルタ: ${r.label}`:condFullText(r.f)).join('\n')
+        +'\n押すと中身を確かめたり、外したりできます。'
+      : '効いている条件はありません。右の「検索して条件を追加」か「その場フィルタ」で絞り込めます。';
+    if(condMenuEl)openCondMenu($('#filterCondBtn'),{keep:true});
+  }
+  /* 中身を確かめる浮きメニュー。**器の外（body直下）へ`position:fixed`で
+     出す**（§9.201）。**開いた器は必ず控える**（§9.222 ①）。 */
+  let condMenuEl=null;
+  function closeCondMenu(){
+    condMenuEl?.remove();condMenuEl=null;
+    $('#filterCondBtn')?.setAttribute('aria-expanded','false');
+    document.removeEventListener('click',onCondOutside,true);
+    document.removeEventListener('keydown',onCondEsc,true);
+  }
+  function onCondOutside(e){
+    if(condMenuEl&&!condMenuEl.contains(e.target)&&!e.target.closest('#filterCondBtn'))closeCondMenu();
+  }
+  function onCondEsc(e){if(WL.modal.escCloses(e))closeCondMenu()}
+  function openCondMenu(anchor,{keep=false}={}){
+    if(condMenuEl&&!keep){closeCondMenu();return}
+    if(!anchor)return;
+    const rows=condRows();
+    /* **中身が無くなったら閉じる**——最後の1件を外したあと、空の器が
+       開いたまま残るのは「壊れた」ようにしか見えない。 */
+    if(!rows.length){closeCondMenu();return}
+    const first=!condMenuEl;
+    const menu=condMenuEl||document.createElement('div');
+    menu.className='access-mode-menu fb-cond-menu';menu.id='filterCondMenu';
+    const line=r=>{
+      if(r.kind==='adhoc')
+        return '<div class="fb-cond-row is-adhoc">'
+          +'<span class="fb-cond-badge">その場</span>'
+          +`<span class="fb-cond-text">${esc(r.label)}</span>`
+          +'<button type="button" class="fb-cond-x" data-adhoc-clear title="その場フィルタの入力を消して解除します">×</button></div>';
+      const known=!!registeredPreset(r.f);
+      return `<div class="fb-cond-row${r.locked?' is-locked':''}">`
+        +(r.locked?'<span class="fb-cond-badge is-lock" title="いつも適用（固定）。一覧を開くたびに入ります">\u{1F512} 固定</span>':'')
+        +`<span class="fb-cond-text">${esc(r.f.column)} <b>${esc(opLabel(r.f.op))}</b>`
+        +(noValueOp(r.f.op)?'':` <em>${esc(r.f.value)}</em>`)
+        +(condVarNote(r.f)?`<u class="fb-cond-var">${esc(condVarNote(r.f))}</u>`:'')
+        +'</span>'
+        +(r.locked?'':`<button type="button" class="fb-cond-save${known?' is-saved':''}" data-cond-save="${r.i}" `
+          +`title="${known?'登録済み（登録一覧にあります）':'この条件を登録します。登録すると組み合わせ（プリセット）に入れられます'}">${known?'★':'☆'}</button>`)
+        +`<button type="button" class="fb-cond-x" data-cond-x="${r.i}" title="この条件を外します">×</button></div>`;
+    };
+    menu.innerHTML='<p class="fb-cond-head">効いている条件'
+      +`<small>${rows.length}件。この一覧に当てている絞り込みです</small></p>`
+      +rows.map(line).join('')
+      +'<div class="fb-cond-foot"><button type="button" id="fbCondClear">全部外す</button>'
+      +'<small>「固定」の条件は外れません（登録一覧で外せます）。</small></div>';
+    if(first){document.body.append(menu);condMenuEl=menu}
+    const r=anchor.getBoundingClientRect();
+    menu.style.top=`${r.bottom+6}px`;
+    menu.style.left=`${Math.max(8,Math.min(r.left,innerWidth-menu.offsetWidth-8))}px`;
+    menu.querySelectorAll('[data-cond-x]').forEach(b=>b.onclick=async()=>{
+      const i=+b.dataset.condX,f=S.genericFilters[i];
+      if(!f)return;
+      if(isLockedFilter(f)&&!(await confirmRemoveLockedFilter(f)))return;
+      S.genericFilters.splice(i,1);S.page=1;renderGenericFilterBar();load();
     });
-    /* 件数には**その場フィルタも数える**(§9.238 ⑤)。効いているのに数えないと、
-       「絞り込んでいないのに件数が合わない」としか見えない。内訳は`title`へ。 */
-    const count=$('#filterCount');
-    if(count){
-      const extra=adhocActive()?1:0;
-      count.textContent=`${S.genericFilters.length+extra}件`;
-      count.title=extra?`登録・適用中の条件 ${S.genericFilters.length}件 ＋ その場フィルタ 1件（${adhocLabel()}）`
-                       :`登録・適用中の条件 ${S.genericFilters.length}件`;
+    menu.querySelectorAll('[data-cond-save]').forEach(b=>b.onclick=async()=>{
+      const f=S.genericFilters[+b.dataset.condSave];
+      if(!f||registeredPreset(f))return;
+      await saveOneToMaster(f);renderGenericFilterBar();
+    });
+    menu.querySelector('[data-adhoc-clear]')?.addEventListener('click',()=>clearAdhoc());
+    menu.querySelector('#fbCondClear').onclick=()=>{closeCondMenu();clearAllFilters()};
+    if(first){
+      anchor.setAttribute('aria-expanded','true');
+      requestAnimationFrame(()=>{
+        document.addEventListener('click',onCondOutside,true);
+        document.addEventListener('keydown',onCondEsc,true);
+      });
     }
   }
   /* ================= その場フィルタ(§9.238 ⑤) =================
@@ -1470,35 +1562,9 @@
     }
   }
 
-  /* クイックフィルタ: 詳細ビルダーを開かなくても、よく使う条件をワンクリックで
-     追加できるチップを検索バー直下へ常時表示する(既存のfrequentConditions()
-     ―保存フィルタ利用回数×2+個別条件の適用履歴―をそのまま流用)。
-     アクティブな条件は既にfrequentConditions()側で除外されるため、
-     追加すると自動的にチップから消える。 */
-  function renderQuickFilters(){
-    const row=$('#filterQuickRow'),toggle=$('#filterQuickToggle');if(!row)return;
-    const top=frequentConditions().slice(0,6);
-    if(!top.length){
-      row.hidden=true;row.innerHTML='';
-      if(toggle)toggle.hidden=true;
-      return;
-    }
-    if(toggle){
-      toggle.hidden=false;
-      toggle.textContent=`よく使う条件 ${top.length}`;
-      toggle.classList.toggle('active',quickOpen);
-      toggle.setAttribute('aria-expanded',quickOpen?'true':'false');
-    }
-    if(!quickOpen){row.hidden=true;row.innerHTML='';return}
-    row.hidden=false;
-    row.innerHTML=`<span class="filter-quick-label">よく使う条件</span>`+top.map(f=>
-      `<button type="button" class="suggest-chip quick"><span>${esc(f.column)}</span><b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':`<em>${esc(f.value)}</em>`}</button>`
-    ).join('');
-    [...row.querySelectorAll('.suggest-chip')].forEach((btn,i)=>btn.onclick=()=>addGenericFilter(top[i]));
-  }
   function renderGenericFilterBar(){
-    ensureGenericFilterBar();updateFilterColumns();renderPresetChips();
-    renderActiveTokens();renderQuickFilters();renderAdhocRow();
+    ensureGenericFilterBar();updateFilterColumns();renderPresetButton();
+    renderActiveTokens();renderAdhocRow();
     /* 条件が変わる経路は多い(追加・削除・全解除・登録フィルタの適用・
        設定画面からのやり直し)。**全部がここを通る**ので、覚えるのも1箇所で
        済ませる——経路ごとに書くと必ずどれかを書き忘れる。 */
@@ -1511,8 +1577,17 @@
     // どちらも「今見ているDB+テーブル」のものだけを対象にする
     // (プリセットはcurrentTablePresets、利用履歴はscopedUsage)。
     const map=new Map();
-    currentTablePresets().forEach(p=>(p.filters||[]).forEach(f=>{const k=filterKey(f);const e=map.get(k)||{f,count:0,at:0};e.count+=Math.max(1,p.uses||1);map.set(k,e)}));
-    Object.values(scopedUsage()).forEach(u=>{if(!u.f)return;const k=filterKey(u.f);const e=map.get(k)||{f:u.f,count:0,at:0};e.count+=(u.count||0)*2;e.at=Math.max(e.at,u.at||0);map.set(k,e)});
+    /* **登録済みの条件は「よく使う条件」に出さない**（§9.287、§CLAUDE 8）。
+       候補の窓は上段が「よく使うフィルタ（マスタ）＝登録した条件」なので、
+       登録の中身をここでも1件ずつ並べると**同じものが上下に二重に出る**。
+       利用者の報告「昔のデザインと新しいデザインが混在して重複状態」の
+       もう半分がこれだった（バーの2行目に出ていた旧「よく使う条件」は、
+       登録した条件を分解して並べ直しただけのものだった）。
+       ここに残すのは**登録していない、履歴だけの条件**——上段には出ないので
+       ここでしか拾えない。 */
+    const registered=new Set();
+    currentTablePresets().forEach(p=>(p.filters||[]).forEach(f=>registered.add(filterKey(f))));
+    Object.values(scopedUsage()).forEach(u=>{if(!u.f)return;const k=filterKey(u.f);if(registered.has(k))return;const e=map.get(k)||{f:u.f,count:0,at:0};e.count+=(u.count||0)*2;e.at=Math.max(e.at,u.at||0);map.set(k,e)});
     const active=new Set(S.genericFilters.map(filterKey));
     // 同じテーブルでも列構成は変わり得る(表示マスタでの非表示指定、
     // スケジュールモードの品質データ結合で増える列など)。今の一覧に無い列の
@@ -2055,6 +2130,68 @@
     await countOtherScene();
     setPanelLoading(list,false);renderFilterPresetList();renderGenericFilterBar();
   }
+  /* ---------- 選んで組み合わせを作る（§9.287-D、利用者の指示） ----------
+     「プリセットフィルタは登録一覧から作るが、登録した条件の組み合わせで
+      名前を付けて管理したいです」「登録一覧からプリセット作るときのUIも
+      直感的に使えるものを」
+
+     決め方は**2手**——①条件を選ぶ ②名前を付ける。一覧は組み合わせごとの
+     節に分かれているので、いまどれがどの組み合わせに入っているかは
+     **見れば分かる**（§CLAUDE 画面基準 2）。
+     **行ごとの選択欄は廃した**——同じことをする入口を2つ置かない（§9.207）。
+     あれが一覧でいちばん幅を食い、名前と「分類なし」を見切れさせていた。 */
+  let fpPicked=new Set();
+  function fpPickedList(){
+    const byId=new Map(currentTablePresets().map(p=>[String(p.id),p]));
+    return [...fpPicked].map(id=>byId.get(id)).filter(Boolean);
+  }
+  /* 群の付け替えをまとめて行う。**描き直しは最後に1回**——1件ずつ描き直すと
+     選択が消え、進んだのか失敗したのかも読めない。 */
+  async function setPresetGroupMany(list,group){
+    if(!list.length)return;
+    try{
+      /* **1回で送る**（口は`items`を受ける）——1件ずつ往復すると、途中で
+         失敗したときに半分だけ移った状態が残る。
+         **持ち主を名乗ること**（§9.172）——付けないとサーバーは端末の
+         ログインIDで見え方を判定し、**自分だけの登録が黙って弾かれる**
+         （`denied`。画面は色が変わらないだけなので気づけない）。 */
+      const r=await api('/api/filter-presets/group',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(withUserId({items:list.map(p=>p.id),group,user:filterUserId()}))});
+      list.forEach(p=>{p.group=group});
+      writeLocalPresets();
+      fpPicked.clear();
+      renderFilterPresetList();renderGenericFilterBar();
+      /* **できなかった件数も言う**（§4。黙って一部だけ効くのがいちばん
+         分からない）。 */
+      if(r&&r.denied&&typeof showToast==='function')
+        showToast('変えられなかった条件があります',
+          `${r.denied}件は他の人のものです（自分だけの登録は本人しか動かせません）。`,7000);
+      else if(typeof showToast==='function')
+        showToast(group?'組み合わせに入れました':'組み合わせから外しました',
+          group?`${list.length}件 → ${group}`:`${list.length}件`,3000);
+    }catch(e){
+      /* **失敗を黙らない**（§9.212 ④）——次の読み直しで元へ戻るだけなので、
+         黙ると「勝手に戻った」としか見えない。 */
+      showToast&&showToast('組み合わせを変えられませんでした',e?.message||String(e),7000);
+      renderFilterPresetList();
+    }
+  }
+  async function setPresetGroup(preset,group){return setPresetGroupMany([preset],group)}
+  /* 節の見出し（＝1つのプリセット）。名前を変える・解くをここに置く
+     ——組み合わせそのものへの操作なので、行ではなく節が持つ。 */
+  function fpSectionHtml(title,note,kind,key){
+    return `<div class="fp-sec" data-sec-kind="${esc(kind)}" data-sec-key="${esc(key||'')}">`
+      +`<span class="fp-sec-name">${esc(title)}</span>`
+      +`<small class="fp-sec-note">${esc(note)}</small>`
+      +(kind==='combo'
+        ?'<span class="fp-sec-acts">'
+          +'<button type="button" data-sec-rename title="この組み合わせの名前を変えます（中の条件はそのまま）">名前を変える</button>'
+          +'<button type="button" data-sec-unbind title="この組み合わせを解きます（条件そのものは消えません）">解く</button>'
+          +'</span>'
+        :'')
+      +'</div>';
+  }
   function renderFilterPresetList(){
     const list=$('#filterPresetList');if(!list)return;
     const forThis=currentTablePresets();
@@ -2098,9 +2235,14 @@
         summary.append(btn);
       }
     }
-    const ordered=forThis;
+    /* **消えた行を選んだままにしない**（§9.204）。 */
+    const alive=new Set(forThis.map(p=>String(p.id)));
+    [...fpPicked].forEach(id=>{if(!alive.has(id))fpPicked.delete(id)});
     const loading=list.querySelector(':scope > .panel-loading');
-    list.querySelectorAll(':scope > .filter-preset-item, :scope > .record-empty, :scope > .fp-other-scene').forEach(x=>x.remove());
+    list.querySelectorAll(':scope > .filter-preset-item, :scope > .record-empty,'
+      +' :scope > .fp-other-scene, :scope > .fp-sec, :scope > .fp-bulk').forEach(x=>x.remove());
+    const put=el=>{if(loading)list.insertBefore(el,loading);else list.appendChild(el)};
+    const html=s=>{const d=document.createElement('div');d.innerHTML=s;return d.firstElementChild};
     if(otherScene.count){
       /* **どちらの場面の話かを書く。** 「登録が消えた」と読まれないように、
          件数・場面の名前・打つ手を1つの帯にまとめる。 */
@@ -2112,60 +2254,122 @@
       note.querySelector('.fp-other-copy').onclick=copyOtherScene;
       list.appendChild(note);
     }
-    if(!ordered.length){const e=document.createElement('div');e.className='record-empty';e.textContent='この場面の登録フィルタはありません。「マスタへ保存」で登録できます。';list.appendChild(e);return}
-    ordered.forEach(p=>{
-      const item=document.createElement('div');item.className='filter-preset-item';
-      const conds=(p.filters||[]).map(f=>`<span class="fp-cond">${esc(f.column)} <b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':' '+esc(f.value)}</span>`).join('');
-      const applicable=forThis.includes(p);
-      const always=isAlwaysOnPreset(p,S.db,S.table);
-      /* **色だけで持ち主を伝えない**(§9.172)。「自分だけ」「みんな」という
-         言葉をそのまま出し、押せば入れ替わることをtitleで言う。 */
-      const ownLabel=p.owner?'自分だけ':'みんな';
-      const ownBtn=`<button type="button" class="fp-own${p.owner?' is-mine':''}" `
-        +`title="${p.owner?'あなただけに見えている登録です。押すと、みんなで使えるようになります。':'みんなに見えている登録です。押すと、自分だけのものになります（ほかの人の一覧から消えます）。'}">`
-        +`${ownLabel}</button>`;
-      /* **印は1つ**(§9.190)。「デフォルト」と「鍵」を分けていたのをやめ、
-         「いつも適用（固定）」だけにした。言葉は利用者の言い方に合わせる。 */
-      const defaultToggle=applicable?`<label class="fp-always${always?' is-on':''}" title="この一覧を開くたびに必ず入ります。手で外そうとすると確認し、再読み込み・再起動のあとも入ったままになります。この印は${esc(filterUserLabel())}だけのもので、ほかの人には付きません。"><input type="checkbox" class="fp-default-check"${always?' checked':''}> いつも適用<b>（固定）</b></label>`:'';
-      const lockToggle='';
-      /* 群（§9.286 ①）。**選ぶだけで付け替わる**——「保存」を別に押させると、
-         押し忘れた行だけが分類されないまま残る。**新しい群はその場で作れる**
-         （マスタ管理へ行かせない・§9.181と同じ作法）。 */
-      const gNow=presetGroupOf(p);
-      const gOpts=[...new Set([...presetGroups(),gNow])].filter(x=>x!=='');
-      const gSel=`<select class="fp-group" title="${esc('この登録フィルタの群です。'
-        +'絞り込みバーの「絞り込み」から群ごとにまとめて当てる／外せます。')}">`
-        +`<option value=""${gNow?'':' selected'}>${GROUP_NONE_LABEL}</option>`
-        +gOpts.map(g=>`<option value="${esc(g)}"${g===gNow?' selected':''}>${esc(g)}</option>`).join('')
-        +`<option value="\u001fnew">＋ 新しい群…</option></select>`;
-      item.innerHTML=`<div class="fp-name" title="${esc(p.name)}">${esc(p.name)}${p.uses?`<small>使用 ${p.uses}回</small>`:''}</div><div class="fp-own-cell">${ownBtn}</div><div class="fp-group-cell">${gSel}</div><div class="fp-target">${esc((p.db||'全DB')+' / '+(p.table||'全テーブル'))}</div><div class="fp-conds">${conds||'<span class="fp-cond">条件なし</span>'}</div><div class="fp-actions">${defaultToggle}${lockToggle}<button class="apply" type="button">適用</button><button class="danger" type="button">削除</button></div>`;
-      item.querySelector('.apply').onclick=()=>{applyPreset(p);$('#filterPresetModal').hidden=true};
-      item.querySelector('.fp-group').onchange=async e=>{
-        const sel=e.target;
-        let g=sel.value;
-        if(g==='\u001fnew'){
+    if(!forThis.length){
+      const e=document.createElement('div');e.className='record-empty';
+      /* **窓の題（「登録フィルタ一覧」）と同じ言葉で言うこと**——ここだけ
+         「登録条件」と呼ぶと、探しものの名前が画面の中で2通りになる。 */
+      e.textContent='この場面の登録フィルタはありません。'
+        +'絞り込みバーの「⋯ → 条件を作る」で条件を作って「登録」すると、ここに並びます。';
+      put(e);return;
+    }
+    /* ---- 選択の帯。**0件でも出す**（§9.227 ②。出入りすると下の一覧が跳ねる） ---- */
+    const picked=fpPickedList();
+    const bulk=html('<div class="fp-bulk"></div>');
+    if(!picked.length){
+      bulk.classList.add('is-idle');
+      bulk.innerHTML='<span class="fp-bulk-hint">条件の左のチェックを入れると、'
+        +'<b>組み合わせ（プリセット）</b>を作れます。作った組み合わせは、'
+        +'絞り込みバーの「プリセット」から切り替えられます。</span>';
+    }else{
+      const gs=presetGroups();
+      bulk.innerHTML=`<span class="fp-bulk-count"><b>${picked.length}件</b>選択中</span>`
+        +'<label class="fp-bulk-to"><span>組み合わせへ入れる</span>'
+        +'<select id="fpBulkGroup"><option value="">— 選んでください —</option>'
+        +gs.map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join('')
+        +'<option value="＋new">＋ 新しい組み合わせを作る…</option></select></label>'
+        +'<button type="button" id="fpBulkOut" title="選んだ条件を、いまの組み合わせから外します（条件そのものは消えません）">組み合わせから外す</button>'
+        +'<button type="button" id="fpBulkNone" title="選択を解除します">選択をやめる</button>';
+    }
+    put(bulk);
+    if(picked.length){
+      bulk.querySelector('#fpBulkGroup').onchange=async e=>{
+        const sel=e.target;let g=sel.value;
+        if(!g)return;
+        if(g==='＋new'){
           g=await askGroupName();
-          if(!g){sel.value=gNow;return}
+          sel.value='';
+          if(!g)return;
         }
-        await setPresetGroup(p,g);
+        await setPresetGroupMany(picked,g);
       };
-      item.querySelector('.fp-own').onclick=()=>togglePresetOwner(p);
-      item.querySelector('.danger').onclick=()=>deletePreset(p);
-      item.querySelector('.fp-default-check')?.addEventListener('change',async e=>{
-        const on=!!e.target.checked;
-        /* 外すときは確認する——「いつも適用」は外れないことに値打ちがあるので、
-           うっかり外れないようにする（§9.190）。 */
-        if(!on&&!(await confirmModal(
-          `「${p.name}」の「いつも適用（固定）」を外します。\n`
-          +`この一覧を開いても自動では入らなくなります。よろしいですか？`))){
-          e.target.checked=true;return;
-        }
-        await setAlwaysOnPreset(p,S.db,S.table,on);
-        syncActiveFiltersForPreset(p);
-        renderFilterPresetList();
-      });
-      if(loading)list.insertBefore(item,loading);else list.appendChild(item);
+      bulk.querySelector('#fpBulkOut').onclick=()=>setPresetGroupMany(picked,'');
+      bulk.querySelector('#fpBulkNone').onclick=()=>{fpPicked.clear();renderFilterPresetList()};
+    }
+    /* ---- 節（＝組み合わせ）ごとに並べる ---- */
+    const groups=presetGroups();
+    const rowsOf=g=>forThis.filter(p=>presetGroupOf(p)===g);
+    const blocks=groups.map(g=>({kind:'combo',key:g,title:g,rows:rowsOf(g)}))
+      .concat([{kind:'none',key:'',title:'まだ組み合わせに入れていない条件',rows:rowsOf('')}])
+      .filter(b=>b.rows.length);
+    blocks.forEach(b=>{
+      const sec=html(fpSectionHtml(b.title,
+        b.kind==='combo'?`${b.rows.length}件の条件をまとめたプリセット`
+                        :`${b.rows.length}件。1件だけでもプリセットとして切り替えられます`,
+        b.kind,b.key));
+      if(b.kind==='combo'){
+        sec.querySelector('[data-sec-rename]').onclick=async()=>{
+          const g=await askGroupName(b.key);
+          if(!g||g===b.key)return;
+          await setPresetGroupMany(b.rows,g);
+        };
+        sec.querySelector('[data-sec-unbind]').onclick=async()=>{
+          if(!(await confirmModal(`組み合わせ「${b.key}」を解きますか？\n`
+            +`中の条件 ${b.rows.length}件はそのまま残り、「まだ組み合わせに入れていない条件」へ移ります。`)))return;
+          await setPresetGroupMany(b.rows,'');
+        };
+      }
+      put(sec);
+      b.rows.forEach(p=>put(fpItemEl(p,forThis)));
     });
+  }
+  /* 1行＝1つの登録した条件。**名前は折り返してよい**（§9.287-E、利用者の
+     報告「文字の見切れが無いように」）——1行に押し込む理由が無く、切ると
+     「残仕掛設備ｺｰｽ 前方…」で何の条件か読めなくなる。
+     **DB/表の列は廃した**——この一覧はいま開いている一覧のぶんだけなので、
+     全部の行に同じ文字が並んでいた（§CLAUDE 8）。上の帯が1度だけ言う。 */
+  function fpItemEl(p,forThis){
+    const item=document.createElement('div');item.className='filter-preset-item';
+    const conds=(p.filters||[]).map(f=>`<span class="fp-cond">${esc(f.column)} <b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':' '+esc(f.value)}</span>`).join('');
+    const applicable=forThis.includes(p);
+    const always=isAlwaysOnPreset(p,S.db,S.table);
+    /* **色だけで持ち主を伝えない**(§9.172)。「自分だけ」「みんな」という
+       言葉をそのまま出し、押せば入れ替わることをtitleで言う。 */
+    const ownLabel=p.owner?'自分だけ':'みんな';
+    const ownBtn=`<button type="button" class="fp-own${p.owner?' is-mine':''}" `
+      +`title="${p.owner?'あなただけに見えている登録です。押すと、みんなで使えるようになります。':'みんなに見えている登録です。押すと、自分だけのものになります（ほかの人の一覧から消えます）。'}">`
+      +`${ownLabel}</button>`;
+    /* **印は1つ**(§9.190)。「デフォルト」と「鍵」を分けていたのをやめ、
+       「いつも適用（固定）」だけにした。言葉は利用者の言い方に合わせる。 */
+    const defaultToggle=applicable?`<label class="fp-always${always?' is-on':''}" title="この一覧を開くたびに必ず入ります。手で外そうとすると確認し、再読み込み・再起動のあとも入ったままになります。この印は${esc(filterUserLabel())}だけのもので、ほかの人には付きません。"><input type="checkbox" class="fp-default-check"${always?' checked':''}> いつも適用<b>（固定）</b></label>`:'';
+    const on=fpPicked.has(String(p.id));
+    item.innerHTML=`<label class="fp-pick" title="組み合わせ（プリセット）を作るときに選びます"><input type="checkbox" class="fp-pick-check"${on?' checked':''}></label>`
+      +`<div class="fp-name">${esc(presetTitle(p))}${p.uses?`<small>使用 ${p.uses}回</small>`:''}</div>`
+      +`<div class="fp-own-cell">${ownBtn}</div>`
+      +`<div class="fp-conds">${conds||'<span class="fp-cond">条件なし</span>'}</div>`
+      +`<div class="fp-actions">${defaultToggle}<button class="apply" type="button" title="この条件だけを今の一覧へ足します">適用</button><button class="danger" type="button">削除</button></div>`;
+    item.classList.toggle('is-picked',on);
+    item.querySelector('.fp-pick-check').onchange=e=>{
+      const id=String(p.id);
+      if(e.target.checked)fpPicked.add(id);else fpPicked.delete(id);
+      renderFilterPresetList();
+    };
+    item.querySelector('.apply').onclick=()=>{applyPreset(p);$('#filterPresetModal').hidden=true};
+    item.querySelector('.fp-own').onclick=()=>togglePresetOwner(p);
+    item.querySelector('.danger').onclick=()=>deletePreset(p);
+    item.querySelector('.fp-default-check')?.addEventListener('change',async e=>{
+      const on2=!!e.target.checked;
+      /* 外すときは確認する——「いつも適用」は外れないことに値打ちがあるので、
+         うっかり外れないようにする（§9.190）。 */
+      if(!on2&&!(await confirmModal(
+        `「${presetTitle(p)}」の「いつも適用（固定）」を外します。\n`
+        +`この一覧を開いても自動では入らなくなります。よろしいですか？`))){
+        e.target.checked=true;return;
+      }
+      await setAlwaysOnPreset(p,S.db,S.table,on2);
+      syncActiveFiltersForPreset(p);
+      renderFilterPresetList();
+    });
+    return item;
   }
 
   /* /api/table へ絞り込み条件を送る。

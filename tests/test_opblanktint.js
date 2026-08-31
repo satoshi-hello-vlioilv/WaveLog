@@ -195,6 +195,78 @@ let b=null;
   rec('「なし」のときは空でも塗らない',noneShot.ある&&noneShot.tint==='',
       JSON.stringify(noneShot));
 
+  /* ==========================================================
+     5) **窓から保存できる**（§9.287-H、利用者の報告「未入力の色については
+        保存がききません」）
+
+        直す前は`opSaveItem()`の`body`に`blankTint`が無かった。`item_upsert`は
+        `None`を「触っていない」と読んで今の値を残すので、**押した瞬間は
+        見本の色が変わるのに、開き直すと元へ戻る**——いちばん気づきにくい形。
+        **APIを直接叩くだけの網では捕まらない**（サーバーは最初から受け付けて
+        いた・§9.228 ①と同じ教訓）ので、**必ず窓を通す**。
+     ========================================================== */
+  await put(TARGET,{blankTint:''});
+  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
+  await page.waitForSelector('#openMasterMaint',{timeout:30000});
+  await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
+  await page.evaluate(()=>{try{localStorage.setItem('AccessMeasurementUserId','tests')}catch(e){}});
+  await page.click('#openMasterMaint');
+  await page.waitForSelector('#masterMaintNav [data-master="opItem"]',{timeout:20000});
+  await page.click('#masterMaintNav [data-master="opItem"]');
+  await page.waitForSelector('.op-board',{timeout:20000});
+  await page.waitForTimeout(900);
+  const opened=await page.evaluate(nm=>{
+   const t=[...document.querySelectorAll('.op-tile')].find(e=>e.textContent.indexOf(nm)>=0);
+   if(!t)return false;t.click();return true;
+  },TARGET);
+  if(!opened){rec('前提: 盤にオペレータのカードがある',false,TARGET)}
+  else{
+   await page.waitForFunction(()=>{
+    const m=document.getElementById('opItemModal');return !!m&&!m.hidden;
+   },null,{timeout:10000});
+   await page.evaluate(()=>{
+    const t=[...document.querySelectorAll('.op-tab')].find(x=>/見せる/.test(x.textContent));
+    if(t)t.click();
+   });
+   await page.waitForTimeout(400);
+   /* ---- 意匠の「色」も同じ画面（§9.287-G、利用者の指示「色の部分も
+          もっとたくさんの色を選べるように」） ----
+      **見本の丸は実物と同じ色を引く**（見本が嘘をつかない・§CLAUDE 6）ので、
+      札が並ぶだけでなく**実際に違う色になる**ことまで見る。 */
+   const hues=await page.evaluate(()=>{
+    const bs=[...document.querySelectorAll('.op-look-swatch')];
+    const seen=bs.map(b=>{
+     const i=b.querySelector('i');
+     return {name:(b.querySelector('span')?.textContent||'').trim(),
+             bg:i?getComputedStyle(i).backgroundColor:'',
+             note:b.title||''};
+    });
+    return {n:bs.length,seen};
+   });
+   rec('意匠の色が増えている（既定＋13色）',hues.n>=14,`${hues.n}色`);
+   rec('どの色も実際に違う面になる（トークンが解ける）',
+       new Set(hues.seen.map(x=>x.bg)).size===hues.n,
+       JSON.stringify([...new Set(hues.seen.map(x=>x.bg))].length+'/'+hues.n));
+   rec('どの色にも意味が書いてある（名前だけの色を増やさない）',
+       hues.seen.every(x=>x.note&&x.note!==x.name),
+       JSON.stringify(hues.seen.filter(x=>!x.note||x.note===x.name).map(x=>x.name)));
+
+   const clicked=await page.evaluate(()=>{
+    const b=document.querySelector('[data-op-btint="purple"]');
+    if(!b)return false;b.click();return true;
+   });
+   rec('「未入力の色」の札が窓にある',clicked,String(clicked));
+   await page.click('#opdSave');
+   await page.waitForTimeout(1800);
+   const savedUi=await byName(TARGET);
+   rec('窓から選んだ色がマスタに残る（画面の保存経路）',
+       savedUi.blankTint==='purple',String(savedUi.blankTint));
+   /* **触っていない設定を巻き添えにしない**（§9.113）。 */
+   rec('窓から保存しても群・選択肢は変わらない',
+       savedUi.group===before.group&&savedUi.choice===before.choice,
+       `${savedUi.group}/${savedUi.choice}`);
+  }
+
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
   console.log('FATAL: '+(e&&e.stack||e));

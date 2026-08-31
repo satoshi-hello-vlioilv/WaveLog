@@ -3363,7 +3363,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 /* ---------- 意匠: 色・形・大きさ（§9.223 ③） ----------
    **印を持つのは器（`<label>`）1箇所**で、ここから下って当てる。部品ごとに
    付けると、形を足すたびに付け忘れが出る（§9.210 ④と同じ罠）。
-   **色は8つから選ばせ、16進を選ばせない**——自由に選べると淡すぎて読めない
+   **色は決まった数から選ばせ、16進を選ばせない**——自由に選べると淡すぎて読めない
    色や、画面ごとに違う赤が増える（§9.198の行の色と同じ判断）。
    色が語るのは「この欄はどの仲間か」だけなので、**選択の有無は面と文字の
    太さでも示す**（色だけで伝えない・§3）。 */
@@ -3374,6 +3374,18 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 .opf-c-red{--opf-hue:var(--look-red);--opf-hue-dark:var(--look-red-dark);--opf-hue-pale:var(--look-red-pale)}
 .opf-c-violet{--opf-hue:var(--look-violet);--opf-hue-dark:var(--look-violet-dark);--opf-hue-pale:var(--look-violet-pale)}
 .opf-c-slate{--opf-hue:var(--look-slate);--opf-hue-dark:var(--look-slate-dark);--opf-hue-pale:var(--look-slate-pale)}
+/* ---------- 足した6色（§9.287-G、利用者の指示） ----------
+   「色の部分ももっとたくさんの色を選べるようにしてください」
+   **既にある7色は1バイトも触らない**（§9.132。わざわざ選んだ人ほど設定が
+   黙って変わるのは避ける）。足すぶんは行の色・未入力の配色と**同じ
+   `--rs-*`トークン**から引く——同じ画面で色の言葉を2つ持たない（§9.286 ⑥）。
+   濃い側は`color-mix`で作る（トークンを18本増やさない）。 */
+.opf-c-cyan{--opf-hue:var(--rs-cyan);--opf-hue-dark:color-mix(in srgb,var(--rs-cyan) 76%,#000);--opf-hue-pale:var(--rs-cyan-bg)}
+.opf-c-indigo{--opf-hue:var(--rs-indigo);--opf-hue-dark:color-mix(in srgb,var(--rs-indigo) 76%,#000);--opf-hue-pale:var(--rs-indigo-bg)}
+.opf-c-lime{--opf-hue:var(--rs-lime);--opf-hue-dark:color-mix(in srgb,var(--rs-lime) 76%,#000);--opf-hue-pale:var(--rs-lime-bg)}
+.opf-c-yellow{--opf-hue:var(--rs-yellow);--opf-hue-dark:color-mix(in srgb,var(--rs-yellow) 76%,#000);--opf-hue-pale:var(--rs-yellow-bg)}
+.opf-c-brown{--opf-hue:var(--rs-brown);--opf-hue-dark:color-mix(in srgb,var(--rs-brown) 76%,#000);--opf-hue-pale:var(--rs-brown-bg)}
+.opf-c-pink{--opf-hue:var(--rs-pink);--opf-hue-dark:color-mix(in srgb,var(--rs-pink) 76%,#000);--opf-hue-pale:var(--rs-pink-bg)}
 /* 色を選んだ器の中だけ、teal を使っていた箇所を差し替える。
    **色が語るのは「どの仲間か」だけ**（§3）なので、**色を選んでも
    選び方の見え方（メタファー）は変えない**。以前はセグメントだけが

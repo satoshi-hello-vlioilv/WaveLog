@@ -77,19 +77,37 @@ let b=null;
   },TAG);
   const before=(await presetNames('')).length;
   await page.click('#addGenericFilter');await settle(1400);
+  /* 効いている条件は**アイコンと件数の1バッジ**へ畳んだ（§9.287）。条件式と
+     登録の印（★／☆）はポップオーバーが持つ——バッジに書くと必ず切れる。 */
+  const openConds=async()=>{
+   await page.evaluate(()=>{
+    if(!document.querySelector('#filterCondMenu'))document.querySelector('#filterCondBtn')?.click();
+   });
+   await page.waitForSelector('#filterCondMenu',{timeout:5000}).catch(()=>{});
+  };
+  const closeConds=()=>page.evaluate(()=>{
+   if(document.querySelector('#filterCondMenu'))document.querySelector('#filterCondBtn')?.click();
+  });
+  await openConds();
   rec('「適用」で条件が一覧へ効く（登録はしない）',
-      await page.evaluate(t=>[...document.querySelectorAll('.filter-tag')].some(x=>x.textContent.includes(t)),TAG)
+      await page.evaluate(t=>[...document.querySelectorAll('#filterCondMenu .fb-cond-text')]
+        .some(x=>x.textContent.includes(t)),TAG)
       && (await presetNames('')).length===before,
       `登録件数 ${before}→${(await presetNames('')).length}`);
   rec('未登録の条件は☆で示される',
-      await page.evaluate(()=>{const u=document.querySelector('.filter-tag u');return !!u&&!u.classList.contains('is-saved')}));
+      await page.evaluate(()=>{const u=document.querySelector('#filterCondMenu .fb-cond-save');
+        return !!u&&!u.classList.contains('is-saved')}));
+  await closeConds();
 
   await page.click('#registerGenericFilter');await settle(2500);
   const after=await presetNames('');
   rec('「登録」でマスタへ保存される',after.length===before+1&&after.some(n=>n.includes(TAG)),
       `${before}→${after.length}`);
+  await openConds();
   rec('登録済みの条件は★で示される',
-      await page.evaluate(()=>{const u=document.querySelector('.filter-tag u');return !!u&&u.classList.contains('is-saved')}));
+      await page.evaluate(()=>{const u=document.querySelector('#filterCondMenu .fb-cond-save');
+        return !!u&&u.classList.contains('is-saved')}));
+  await closeConds();
   /* 変数はトークンのまま名前に入れる(今の値を焼き込むと、設備が変わる
      たびに同じ条件が別名で増える)。 */
   rec('登録名に今の値を焼き込まない',after.every(n=>!n.includes('（=')),after.slice(-1)[0]||'');

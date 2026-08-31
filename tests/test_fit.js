@@ -142,8 +142,17 @@ let b=null;
   await visit('フィルタ詳細',async()=>{
    await page.evaluate(()=>document.querySelector('#filterToggle')?.click());
   });
-  await visit('よく使う条件',async()=>{
-   await page.evaluate(()=>{const t=document.querySelector('#filterQuickToggle');if(t&&!t.hidden)t.click()});
+  /* §9.287。旧「よく使う条件」の行は廃した（登録した条件を分解して並べ直した
+     だけのもので、プリセットの札と二重になっていた）。代わりに、いま効いて
+     いる条件を出すポップオーバーを見る——中身が長いのはこちらなので、
+     溢れを見張る値打ちがある。 */
+  await visit('効いている条件のポップオーバー',async()=>{
+   await page.evaluate(()=>{const b=document.querySelector('#filterCondBtn');if(b&&!b.disabled)b.click()});
+   await page.waitForSelector('#filterCondMenu',{timeout:3000}).catch(()=>{});
+  });
+  await visit('プリセットのポップオーバー',async()=>{
+   await page.evaluate(()=>document.querySelector('#filterPresetBtn')?.click());
+   await page.waitForSelector('#filterPresetMenu',{timeout:3000}).catch(()=>{});
   });
   await visit('登録フィルタ一覧',async()=>{
    await page.evaluate(()=>document.querySelector('#openFilterPresets')?.click());

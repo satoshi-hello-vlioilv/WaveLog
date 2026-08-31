@@ -26,8 +26,12 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   await page.waitForSelector('#grid tbody tr',{timeout:25000});
   await page.waitForTimeout(1500);
  };
+ /* 効いている条件は**アイコンと件数の1バッジ**へ畳んだ（§9.287）ので、
+    中身は`S.genericFilters`とバッジの`title`から読む——条件式をバッジへ
+    書かないことがこの改良の目的なので、DOMの札を数える網は成り立たない。 */
  const snap=()=>page.evaluate(()=>({
-  tags:[...document.querySelectorAll('#filterTokenInput .filter-tag')].map(t=>t.textContent.replace(/\s+/g,'').replace(/[☆★×]/g,'')),
+  tags:(typeof S!=='undefined'?(S.genericFilters||[]):[])
+    .map(f=>`${f.column}${f.op}${f.value}`.replace(/\s+/g,'')),
   rows:document.querySelectorAll('#grid tbody tr').length,
   store:localStorage.getItem('MeasurementFilterActiveV1')}));
  try{
