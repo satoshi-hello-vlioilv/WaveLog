@@ -121,11 +121,21 @@ let b=null;
   rec('枠自身は時間を食っていない（次の予定と同じ時刻に居る）',
       !!fr&&!!next&&fr.plannedStart===next.plannedStart,
       JSON.stringify({枠:fr&&fr.plannedStart,次:next&&next.plannedStart}));
-  /* ---- 4) 枠の手前の予定は動かない ---- */
+  /* ---- 4) 枠の手前の予定は動かない ----
+     **時刻の一致で見ないこと**（§9.284）。予定の起点は展開のたびに「いま」から
+     引き直す（§9.198）ので、2回の`plan()`のあいだに**壁時計のぶんだけ必ず動く**。
+     しかも起点は5分刻みへ切り上げるので、5分の境目をまたぐと**5分跳ぶ**。
+     分まで（`slice(0,16)`）で比べていたため、**秒の境目をまたいだ実行だけが
+     落ちて**いた（実測: `23:25:59.294` と `23:26:00.020`＝0.73秒差）。
+     いっぽう枠が誤って押し出したなら、行き先は枠の日＝**9日後**。
+     **1時間の幅で見れば、ゆらぎ（最大5分）と本物（216時間）を取り違えない。** */
   const aheadNow=after.find(e=>String(e.id)===String(ahead.id));
-  rec('枠より前の予定は動かない',
-      !!aheadNow&&String(aheadNow.plannedStart||'').slice(0,16)===String(aheadStart0||'').slice(0,16),
-      JSON.stringify({前:aheadStart0,後:aheadNow&&aheadNow.plannedStart}));
+  const drift=(aheadNow&&aheadNow.plannedStart&&aheadStart0)
+    ?Math.abs(new Date(aheadNow.plannedStart)-new Date(aheadStart0)):null;
+  rec('枠より前の予定は動かない（枠の日へ飛ばされない）',
+      drift!=null&&drift<3600*1000,
+      JSON.stringify({前:aheadStart0,後:aheadNow&&aheadNow.plannedStart,
+                      ずれ秒:drift==null?null:Math.round(drift/1000),枠の日:day}));
 
   /* ---- 5) 起点が追い越していたら何もしない（押し出しで自然に埋まる） ---- */
   const past=isoDay(new Date(Date.now()-3*24*3600*1000));

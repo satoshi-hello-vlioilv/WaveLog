@@ -98,7 +98,11 @@ let b=null;
   await page.waitForTimeout(1200);
   const empty=await page.evaluate(()=>({uid:currentUserId(),
     n:(S.genericFilters||[]).length}));
-  rec('IDが分からないうちは、その人の印は当たらない',empty.uid===''&&empty.n===0,JSON.stringify(empty));
+  /* **「IDが空になること」は見ない**——`/api/whoami`がこの端末のログインIDを
+     返す環境では空にならない（§9.276 ③）。守りたいのは「**別の人の印が
+     当たらない**」ことなので、そちらを見る。 */
+  rec('その人でないうちは、その人の印は当たらない',
+      empty.uid!=='tester'&&empty.n===0,JSON.stringify(empty));
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementUserId','tester'));
   await page.evaluate(()=>load());
   await page.waitForFunction(()=>(S.genericFilters||[]).some(f=>f.locked),null,{timeout:20000})
