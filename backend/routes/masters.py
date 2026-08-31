@@ -273,6 +273,10 @@ def filter_preset_list():
     mk=marks.get(int(r[0]),{})
     items.append({'id':r[0],'name':str(r[1] or '').strip(),'db':str(r[2] or '').strip(),'table':str(r[3] or '').strip(),'filters':filters,'uses':int(r[5] or 0),'last_used':r[6].isoformat() if r[6] else None,'updated_at':r[8].isoformat() if r[8] else None,'updated_by':(str(r[9]).strip() if len(r)>9 and r[9] else ''),'mode':(str(r[10]).strip() if len(r)>10 and r[10] else ''),
                   'owner':owner,'mine':bool(owner) and owner==uid,'shared':not owner,
+                  # グループ(§9.286 ①)。**空欄＝未分類**をそのまま返す
+                  # ——「未分類」という名前をサーバーが作らないこと（画面の
+                  # 呼び名であって、保存値ではない）。
+                  'group':(str(r[12]).strip() if len(r)>12 and r[12] else ''),
                   'isDefault':bool(mk.get('isDefault')),'isLocked':bool(mk.get('isLocked'))})
   # ファイル(DB)＆テーブルごとに個別管理するため、対象DB/対象テーブルが
   # 空欄のプリセット(=以前の実装が汎用として扱っていたもの)であっても、
@@ -308,6 +312,10 @@ def filter_preset_register():
   # 書き換えてしまう(個人単位にした意味が無くなるどころか、実害が出る)。
   requester=_filter_preset_user(x) or uid
   owner=('' if x.get('shared') else str(x.get('owner') if x.get('owner') is not None else requester or '').strip()[:50])
+  # グループ(§9.286 ①)。**渡していなければ今の値を残す**(§9.212 ②)——
+  # 条件だけを送り直す経路（登録済みの上書き）で群が消えないように。
+  has_group='group' in x
+  group=str(x.get('group') or '').strip()[:50]
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    ensure_filter_preset_table(c);cur=c.cursor()
@@ -315,13 +323,17 @@ def filter_preset_register():
    target=normalize_equipment_name(name)
    existing=next((r for r in rows if normalize_equipment_name(r[1])==target and str(r[2] or '')==db_key and str(r[3] or '')==table and str(r[4] or '')==mode and str(r[5] or '')==owner),None)
    if existing:
-    cur.execute('UPDATE [フィルタプリセットマスタ] SET [条件JSON]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [プリセットID]=?',[payload,uid,existing[0]]);registered=False;preset_id=existing[0]
+    if has_group:
+     cur.execute('UPDATE [フィルタプリセットマスタ] SET [条件JSON]=?,[グループ]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [プリセットID]=?',[payload,group,uid,existing[0]])
+    else:
+     cur.execute('UPDATE [フィルタプリセットマスタ] SET [条件JSON]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [プリセットID]=?',[payload,uid,existing[0]])
+    registered=False;preset_id=existing[0]
    else:
     cur.execute('SELECT Max([表示順]) FROM [フィルタプリセットマスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-    cur.execute('INSERT INTO [フィルタプリセットマスタ] ([名称],[対象DB],[対象テーブル],[対象モード],[条件JSON],[使用回数],[表示順],[有効],[所有者ID],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,0,?,-1,?,?,?,Now(),Now())',[name,db_key,table,mode,payload,order,owner,uid,uid]);registered=True
+    cur.execute('INSERT INTO [フィルタプリセットマスタ] ([名称],[対象DB],[対象テーブル],[対象モード],[条件JSON],[使用回数],[表示順],[有効],[所有者ID],[グループ],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,0,?,-1,?,?,?,?,Now(),Now())',[name,db_key,table,mode,payload,order,owner,group,uid,uid]);registered=True
     preset_id=cur.lastrowid
    c.commit()
-  return jsonify(ok=True,name=name,id=preset_id,registered=registered,owner=owner,mine=bool(owner),updated_by=uid,message=('フィルタマスタへ新規登録しました。' if registered else '登録済みフィルタを更新しました。'))
+  return jsonify(ok=True,name=name,id=preset_id,registered=registered,owner=owner,mine=bool(owner),group=group,updated_by=uid,message=('フィルタマスタへ新規登録しました。' if registered else '登録済みフィルタを更新しました。'))
  except Exception as e:return jsonify(error=f'フィルタプリセット登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
 @bp.post('/api/filter-presets/use')
@@ -408,6 +420,41 @@ def filter_preset_owner():
    c.commit()
   return jsonify(ok=True,id=pid,owner=owner,mine=bool(owner))
  except Exception as e:return jsonify(error=f'フィルタの持ち主変更に失敗: {e}'),500
+
+@bp.post('/api/filter-presets/group')
+def filter_preset_group():
+ """登録フィルタの群を付け替える（§9.286 ①、利用者の指示「登録フィルタの
+ グループ化登録及びグループごとの一括切り替え機能」）。
+
+ **条件を送り直させない**——`POST /api/filter-presets`は条件が要る（空だと
+ 断る）ので、名札を付け替えるだけの操作をあの口に通すと、画面が条件を
+ 持っていないと群を変えられない。持ち主の判定は`/owner`と同じ。
+
+ **まとめて付け替えられる**（`items`）——一覧から複数選んで1つの群へ移す
+ のが実際の使い方で、1件ずつ往復すると途中で失敗した状態が残る。"""
+ try:
+  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  requester=_filter_preset_user(x) or uid
+  group=str(x.get('group') or '').strip()[:50]
+  items=x.get('items')
+  ids=[x.get('id')] if items is None else [it.get('id') if isinstance(it,dict) else it for it in (items or [])]
+  ids=[i for i in ids if i is not None]
+  if not ids:return jsonify(error='対象のプリセットIDがありません。'),400
+  path=DBS['MASTER']['path']
+  saved=0;denied=0
+  with connect(path,False) as c:
+   ensure_filter_preset_table(c);cur=c.cursor()
+   for pid in ids:
+    cur.execute('SELECT [所有者ID] FROM [フィルタプリセットマスタ] WHERE [プリセットID]=?',[pid])
+    row=cur.fetchone()
+    if row is None:continue
+    if not _preset_visible_to(row[0],requester):denied+=1;continue
+    cur.execute('UPDATE [フィルタプリセットマスタ] SET [グループ]=?,[更新者ID]=?,[更新日時]=Now() WHERE [プリセットID]=?',[group,uid,pid])
+    saved+=1
+   c.commit()
+  # **できなかった件数も返す**（§4。黙って一部だけ効くのがいちばん分からない）
+  return jsonify(ok=True,group=group,saved=saved,denied=denied)
+ except Exception as e:return jsonify(error=f'フィルタの群の変更に失敗: {e}'),500
 
 @bp.get('/api/schedule-column-master')
 def schedule_column_master_get():
@@ -1151,6 +1198,11 @@ def operation_item_list():
            # 順番が変わると、同じ欄なのに押す場所が毎回動く（§4）。
            'choiceOrders':list(op.CHOICE_ORDERS),
            'choiceOrderWidgets':list(op.CHOICE_ORDER_WIDGETS),
+           # §9.286 ⑥ 未入力・未選択のときの配色。**語彙はサーバーが答える**
+           # ——色の鍵は`WL.columnTint.PALETTE`と揃える約束なので、画面へ
+           # 書き写すと片方だけ増えた状態が作れる（§9.163）。
+           'blankTints':list(op.BLANK_TINTS),
+           'blankTintNone':op.BLANK_TINT_NONE,
            # §9.248 ① 選ばせ方のまとまり（盤の見出しと並び）。**サーバーが
            # 答える**——画面へ写すと、種類を足したときに2箇所直すことになる。
            'widgetGroups':[{'label':l,'note':n,'items':list(i)}
@@ -1267,6 +1319,10 @@ def _operation_item_save(x):
                          record_show=x.get('recordShow'),
                          # §9.248 ⑤ 選択肢の並び（''＝表示順／'よく使う順'）。
                          choice_order=x.get('choiceOrder'),
+                         # §9.286 ⑥ 未入力・未選択のときの配色
+                         # （''＝既定／'なし'／色の鍵）。**送っていないときは
+                         # 今の値を残す**（`None`のまま渡す・§9.212 ②）。
+                         blank_tint=x.get('blankTint'),
                          report=ref)
   saved=_op_read(fn)
   # **付け替えたことは黙って済ませない**（§9.226 ①）。名前を変えると

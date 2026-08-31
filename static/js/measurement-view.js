@@ -184,13 +184,13 @@ function applyInnerDiameterPreset(row){
  return preset;
 }
 window.WL.innerDiameter={preset:innerDiameterPreset,apply:applyInnerDiameterPreset,refresh:updateInnerDiameterHint};
-function blankMeasure(row){return{id:crypto.randomUUID(),status:'編集中',updatedAt:new Date().toISOString(),...measureStarter(),source:row,basic:Object.fromEntries(Object.keys(aliases).map(k=>[k,pick(row,k)])),settings:{operator:'-',inspector:'-',lengthPos:'1(頭)',measureType:WL.measureItem.MATERIAL,verticalCount:defaultVerticalCount(row),horizontalCount:defaultHorizontalCount(row),unwind:'上出し',innerDiameter:defaultInnerDiameter(row),spool:'-',thicknessGauge:'-',widthGauge:'-',widthOrder:'通常',widthDirection:'昇順',inputMode:'auto',tStep:0,wStep:0,burrFirst:null,ngCount:0,burr:'指定なし',coilStop:'指定なし',crewSize:'-'},mother:{},qualityInfo:'異常情報なし',measurements:{thickness:Array.from({length:LENGTH_SLOTS},()=>Array(3).fill('')),width:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),lateral:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),burr:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),telescope:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),offset:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),flatness:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),comments:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill(''))}}}
+function blankMeasure(row){return{id:crypto.randomUUID(),status:'編集中',updatedAt:new Date().toISOString(),...measureStarter(),source:row,basic:Object.fromEntries(Object.keys(aliases).map(k=>[k,pick(row,k)])),settings:{operator:'',inspector:'',lengthPos:'1(頭)',measureType:WL.measureItem.MATERIAL,verticalCount:defaultVerticalCount(row),horizontalCount:defaultHorizontalCount(row),unwind:'上出し',innerDiameter:defaultInnerDiameter(row),spool:'',thicknessGauge:'',widthGauge:'',widthOrder:'通常',widthDirection:'昇順',inputMode:'auto',tStep:0,wStep:0,burrFirst:null,ngCount:0,burr:'指定なし',coilStop:'指定なし',crewSize:''},mother:{},qualityInfo:'異常情報なし',measurements:{thickness:Array.from({length:LENGTH_SLOTS},()=>Array(3).fill('')),width:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),lateral:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),burr:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),telescope:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),offset:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),flatness:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),comments:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill(''))}}}
 /* 保存データ/新規データを最新スキーマへ整形する。旧実装は多層ラップ
    (基本形状→製品丈→登録設備→作業時間)だったものを一本化した。 */
 function ensureMeasureShape(m){
  if(!m)return m;
  {
-m.basic=m.basic||{};m.settings={operator:'-',inspector:'-',lengthPos:'1(頭)',measureType:WL.measureItem.MATERIAL,verticalCount:1,horizontalCount:1,unwind:'上出し',innerDiameter:'-',spool:'-',thicknessGauge:'-',widthGauge:'-',widthOrder:'通常',widthDirection:'昇順',inputMode:'auto',tStep:0,wStep:0,burrFirst:null,ngCount:0,burr:'指定なし',coilStop:'指定なし',...(m.settings||{})};
+m.basic=m.basic||{};m.settings={operator:'',inspector:'',lengthPos:'1(頭)',measureType:WL.measureItem.MATERIAL,verticalCount:1,horizontalCount:1,unwind:'上出し',innerDiameter:'',spool:'',thicknessGauge:'',widthGauge:'',widthOrder:'通常',widthDirection:'昇順',inputMode:'auto',tStep:0,wStep:0,burrFirst:null,ngCount:0,burr:'指定なし',coilStop:'指定なし',...(m.settings||{})};
 /* コイル止めは以前「内巻両面テープ」チェックボックス1個(真偽値innerTape)
    だった。マスタ化して選択欄になったので、過去のデータは真偽値から
    名称へ読み替える(旧レコードを開いたときに「指定なし」へ化けないように)。
@@ -1365,7 +1365,9 @@ WL.masterDiff=(function(){
    ['innerDiameter','inner_diameters'],['spool','spools']];
  const CHECK_MS=120000;
  let timer=null;
- const listOf=id=>[...($('#'+id)?.options||[])].map(o=>o.value).filter(v=>v!=='-');
+ /* 「選ばない」の札は候補ではない（§9.286 ⑤。値は空文字になった）。
+    **`'-'`も落とす**——古い記録・古い保存値がまだ持っている。 */
+ const listOf=id=>[...($('#'+id)?.options||[])].map(o=>o.value).filter(v=>!WL.optionBlank(v));
  function mark(id,on){
   const box=document.querySelector(`.selectors [data-f="${id}"]`);
   if(!box)return;

@@ -76,6 +76,21 @@ const api=async(u,o)=>{
    出るので、中身に使ったときの見え方は1文字も変わらない。 */
 esc=v=>String(v??'').replace(/[&<>"']/g,c=>(
   {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/* ---------- 説明文の印は1箇所で解く（§9.286 ⑦、利用者の報告） ----------
+   「更新履歴の<b>みたいなタグが出ているので修正をお願いします」
+
+   `esc()`を通した文字列に**印だけ**を戻す。**必ずエスケープしてから**印を
+   置き換えること（§9.222 ⑧）——順番が逆だと、マスタや更新履歴へ書いた
+   文字列の中のHTMLがそのまま効く。
+   印は2つだけ: `**強調**`→`<b>` と バッククォート囲み→`<code>`。
+   **生のHTMLタグを説明文へ書かないこと**（§9.276 ④）——`esc()`で字のまま
+   画面に出る。更新履歴は186個の`<b>`が字のまま並んでいた（実機で報告）。
+   見張りは`tests/test_hintlint.py`（マスタの説明文）と
+   `tests/test_changelog.py`（更新履歴）。 */
+window.WL=window.WL||{};
+WL.markup=t=>esc(t)
+  .replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>')
+  .replace(/`([^`]+)`/g,'<code>$1</code>');
 const aliases={lotNo:['ロット番号','ﾛｯﾄ番号','LTNO'],inspectionNo:['検査番号','KNNO'],orderNo:['オーダー番号','JUON','JUNO'],castingNo:['鋳造番号','CYNO'],allocationNo:['引当番号','HKNO'],orderMaterial:['オーダー材質','JUA'],orderTemper:['オーダー調質','JUB'],orderThickness:['オーダー板厚','JUX'],orderWidth:['オーダー板幅','JUY'],orderLength:['オーダー板丈','JUZ'],mfgMaterial:['製造材質','LTA'],mfgTemper:['製造調質','LTB'],mfgThickness:['製造板厚','LTX'],mfgWidth:['製造板幅','LTY'],mfgLength:['製造板丈','LTZ'],purposeCode:['用途コード','用途ｺｰﾄﾞ','YOTOC'],purposeName:['用途名','YOTON'],customer:['取引先','TOKUNA'],delivery:['納入先','NONNA'],designCourse:['設計_設備ｺｰｽ','設計_設備コース'],course:['実績_設備ｺｰｽ','実績_設備コース','実績コース'],residualCourse:['残仕掛設備ｺｰｽ','残仕掛設備コース','ZANMC'],equipment:['BOX設計_設備名','設備'],originalWidth:['BOX実績_板幅'],boxHorizontalCount:['BOX設計_横割数'],boxVerticalCount:['BOX設計_縦割数']};
 function pick(row,key){for(const n of aliases[key]||[])if(row[n]!==undefined&&row[n]!==null)return String(row[n]);return ''}
 function lotKey(r){return [pick(r,'equipment'),pick(r,'lotNo'),pick(r,'inspectionNo'),pick(r,'castingNo')].join('|')}
@@ -186,7 +201,29 @@ WL.choiceUsage={
   }catch(e){}
  },
 };
-function optionFill(id,items,current='-'){const el=$('#'+id);if(!el)return;const vals=['-',...WL.choiceUsage.order(id,[...new Set(items||[])])];el.innerHTML=vals.map(v=>`<option>${esc(v)}</option>`).join('');if(vals.includes(current))el.value=current}
+/* ---------- 「選ばない」は札であって値ではない（§9.286 ⑤、利用者の指示） ----------
+   「初期値を`-`でハードコーディングしているものが残っており…初期値も含めて
+    汎用化対応しているので、ハードコーディング部分を除去してきれいに
+    汎用部品のみで対応できるようにしてください」
+
+   以前は先頭に`<option>-</option>`を置き、**値としても`-`**を持たせていた。
+   そのため記録に`operator:'-'`が入り、`applyInitials()`（マスタの`[初期値]`を
+   入れる仕組み）が見る「まだ何も選ばれていない」の判定を**画面の側が
+   先に埋めてしまって**いた——マスタで初期値を決めても効かない。
+   いまは**値は空文字**で、`-`は札の字だけ。**古い記録の`-`は空として読む**
+   （`OPTION_BLANK_VALUES`）ので、開き直しても選択が消えない。
+   札を出すかどうかは`[空欄なし]`が決める（§9.246 ①。`applyBlankPolicy`）。 */
+const OPTION_BLANK_LABEL='-';
+const OPTION_BLANK_VALUES=['','-'];
+function optionBlank(v){return OPTION_BLANK_VALUES.includes(String(v??'').trim())}
+window.WL=window.WL||{};WL.optionBlank=optionBlank;   /* 新しい公開は名前空間へ */
+function optionFill(id,items,current=''){
+ const el=$('#'+id);if(!el)return;
+ const vals=WL.choiceUsage.order(id,[...new Set(items||[])]).filter(v=>!optionBlank(v));
+ el.innerHTML=`<option value="">${esc(OPTION_BLANK_LABEL)}</option>`
+   +vals.map(v=>`<option>${esc(v)}</option>`).join('');
+ el.value=optionBlank(current)?'':(vals.includes(current)?current:'');
+}
 /* optionFillの「先頭に'-'(未選択)を足す」をしない版。バリ揃え・コイル止めの
    ように「指定なし」という選択肢そのものがマスタ側にある項目で使う
    ('-'と「指定なし」が並ぶと、どちらを選べばよいのか分からなくなる)。
@@ -772,14 +809,26 @@ window.WL.columnAlign=columnAlign;
 const columnTint=(()=>{
  const STORE='WaveLogColumnTintV1';
  const STYLE_ID='wlColumnTintStyle';
- /* 鍵→トークンの表は**ここ1つだけ**。CSSへ書くと画面ごとに増える。 */
+ /* 鍵→トークンの表は**ここ1つだけ**。CSSへ書くと画面ごとに増える。
+    §9.286 ⑥（利用者の指示「選択肢やこの背景色の選択で使う色のパレットの
+    種類をさらに増やしてほしいです」）で7色→14色。**意味を割り当ててから
+    足すこと**——名前だけの色が増えると、選ぶ側は「どれを使うか」を毎回
+    決め直すことになる（§CLAUDE 画面基準 3。色だけで伝えないので、
+    呼び名と意味は必ず文字で出す）。 */
  const PALETTE={
   gray  :{label:'灰',   note:'目立たせない', bg:'var(--surface-2)',    ink:'var(--ink-3)',      line:'var(--line-mid)'},
+  slate :{label:'石',   note:'締め・基準',   bg:'var(--rs-slate-bg)',  ink:'var(--rs-slate)',   line:'var(--rs-slate-border)'},
   teal  :{label:'青緑', note:'基準・進行',   bg:'var(--pale)',         ink:'var(--teal-dark)',  line:'var(--teal)'},
+  cyan  :{label:'水',   note:'確認・検査',   bg:'var(--rs-cyan-bg)',   ink:'var(--rs-cyan)',    line:'var(--rs-cyan-border)'},
   blue  :{label:'青',   note:'情報・待ち',   bg:'var(--rs-blue-bg)',   ink:'var(--rs-blue)',    line:'var(--rs-blue-border)'},
+  indigo:{label:'藍',   note:'分類・区分',   bg:'var(--rs-indigo-bg)', ink:'var(--rs-indigo)',  line:'var(--rs-indigo-border)'},
   green :{label:'緑',   note:'完了・良',     bg:'var(--success-bg)',   ink:'var(--success)',    line:'var(--success-border)'},
+  lime  :{label:'黄緑', note:'進行中',       bg:'var(--rs-lime-bg)',   ink:'var(--rs-lime)',    line:'var(--rs-lime-border)'},
+  yellow:{label:'黄',   note:'確認待ち',     bg:'var(--rs-yellow-bg)', ink:'var(--rs-yellow)',  line:'var(--rs-yellow-border)'},
   amber :{label:'橙',   note:'注意・段取り', bg:'var(--warn-bg)',      ink:'var(--warn-fg)',    line:'var(--warn-border)'},
+  brown :{label:'茶',   note:'資材・素材',   bg:'var(--rs-brown-bg)',  ink:'var(--rs-brown)',   line:'var(--rs-brown-border)'},
   red   :{label:'赤',   note:'停止・異常',   bg:'var(--danger-bg)',    ink:'var(--danger)',     line:'var(--danger-border)'},
+  pink  :{label:'桃',   note:'目印・個人',   bg:'var(--rs-pink-bg)',   ink:'var(--rs-pink)',    line:'var(--rs-pink-border)'},
   purple:{label:'紫',   note:'臨時・特別',   bg:'var(--rs-purple-bg)', ink:'var(--rs-purple)',  line:'var(--rs-purple-border)'},
  };
  const KEYS=Object.keys(PALETTE);
@@ -1634,7 +1683,18 @@ window.addEventListener('unload',notifyTabClosed);
  aside.addEventListener('focusout',hideNavTip);
  /* 押したら消す（行き先が変わるので、前の画面の名前が残らない）。 */
  aside.addEventListener('click',hideNavTip);
- window.addEventListener('scroll',hideNavTip,true);
+ /* **関係のない器のスクロールで消さないこと**（§9.286 ②）。
+    消す目的は「持ち主のボタンが動いたら位置が嘘になる」なので、
+    消すのは**持ち主を含む器がスクロールしたとき**だけ。
+    以前は素通しで、一覧のツールバーのような`overflow-x:auto`の器が
+    組み直された拍子に飛ぶ`scroll`でも消えていた——出したばかりの
+    浮き出しが一瞬で消え、`test_nav`が「浮き出しが出ない」で落ちた。 */
+ window.addEventListener('scroll',e=>{
+  if(!navTipFor)return;
+  const t=e.target;
+  if(t===document||t===document.documentElement||t===document.body
+     ||(t&&t.contains&&t.contains(navTipFor)))hideNavTip();
+ },true);
  const toggle=document.createElement('button');
  toggle.type='button';toggle.id='navCollapseToggle';toggle.className='nav-collapse-toggle';
  toggle.innerHTML='<span aria-hidden="true"></span>';

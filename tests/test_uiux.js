@@ -60,8 +60,11 @@ let b=null;
  const navCur=await page.evaluate(()=>getComputedStyle(document.querySelector('#openSchedule')).cursor);
  rec('左ナビが押せる形に見える',navCur==='pointer',navCur);
 
- // 一覧のページ送りは1ページ目で押せないと分かる
+ /* 一覧のページ送りは1ページ目で押せないと分かる。
+    §9.286 ②: 置き場は画面下の`<footer>`から**一覧ツールバー**へ移した
+    （分割表示ではfooterが`display:none`で、ページを繰る手立てが無かった）。 */
  await page.click('[data-db-key="SIKALOTNOW"]');await page.waitForTimeout(2500);
+ await page.waitForSelector('#listToolbar #prev',{timeout:10000});
  const prev=await page.evaluate(()=>{const e=document.querySelector('#prev');
    const cs=getComputedStyle(e);return {dis:e.disabled,cur:cs.cursor,op:+cs.opacity,title:e.title}});
  rec('1ページ目の「前へ」は押せないと見た目で分かる',

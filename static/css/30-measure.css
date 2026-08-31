@@ -22,6 +22,54 @@
  padding:var(--space-1) var(--space-2);border:1px solid var(--line-soft);
  border-radius:var(--radius-sm);background:var(--surface-2)}
 .list-toolbar .list-join-chip{margin-left:auto}
+/* ============================================================
+   「どこを見ているか」と「いつのデータか」（§9.286 ②③④）
+   ------------------------------------------------------------
+   表示件数・ページめくり・元データの鮮度は**一覧と一緒に運ぶ**ので、
+   ヘッダーやフッターではなくこのツールバーに置く（`#listToolbar`は
+   `#grid`と一緒に分割表示・ポップアップへ移る）。
+   右端へ寄せる——読むのは左の「見せ方・並び」が先で、ここは
+   「いま何を見ているか」の答え（§CLAUDE 画面基準 14）。
+   ============================================================ */
+/* **右端へ寄せる。** `~`（後続の兄弟）で上書きする規則を足さないこと——
+   隠れている`.list-join-chip`にも当たり、`margin-left:auto`が効かなくなる
+   （実測: 1920pxで右端まで268px余ったまま左寄りに止まった）。 */
+.list-toolbar .lt-data{margin-left:auto}
+.list-pagesize{display:inline-flex;align-items:center;gap:var(--gap-tight);min-width:0}
+.list-pagesize>span{color:var(--ink-3);font-size:var(--fs-badge);font-weight:700;white-space:nowrap}
+.list-pagesize>select{height:var(--ctl-h-xs);padding:0 var(--space-1);
+  border:1px solid var(--line);border-radius:var(--radius-xs);background:var(--surface);
+  font-size:var(--fs-badge);max-width:var(--w-sm)}
+/* ページめくりは**1つのまとまり**（近接でひと固まりに見せる）。
+   真ん中が「いま何件目から何件目か」で、両脇が前後。 */
+.list-pager{display:inline-flex;align-items:center;gap:2px;
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
+  padding:1px}
+.list-pager>b{min-width:var(--w-sm);padding:0 var(--space-1);text-align:center;
+  font-size:var(--fs-badge);font-weight:800;color:var(--ink);white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+.list-page-btn{min-width:var(--ctl-h-xs);height:var(--ctl-h-xs);padding:0;
+  border:0;border-radius:var(--radius-xs);background:transparent;cursor:pointer;
+  font-size:var(--fs-sm);font-weight:800;color:var(--nav);line-height:1}
+.list-page-btn:hover:not(:disabled){background:var(--surface-3)}
+/* **押せないことは形で言う**（§CLAUDE 4）——最後のページで「次へ」が
+   押せるのに何も起きない、を作らない。理由は`title`が持つ。 */
+.list-page-btn:disabled{color:var(--muted);cursor:not-allowed;opacity:.5}
+.list-count{color:var(--ink-3);font-size:var(--fs-badge);white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+/* 元データの鮮度＝押すと再読込のメニューが開くボタン（§9.286 ④）。
+   **状態と打つ手を同じ場所に**置く（§CLAUDE 画面基準 2）。 */
+.list-fresh-chip{display:inline-flex;align-items:center;gap:var(--gap-tight);
+  height:var(--ctl-h-xs);padding:var(--pad-chip);cursor:pointer;
+  border:1px solid var(--line-soft);border-radius:var(--radius-md);
+  background:var(--surface-2);white-space:nowrap;font-size:var(--fs-micro)}
+.list-fresh-chip:hover{border-color:var(--teal);background:var(--surface)}
+.list-fresh-chip .lf-key{color:var(--muted);font-weight:700}
+.list-fresh-chip .lf-val{color:var(--ink);font-weight:800;font-variant-numeric:tabular-nums}
+.list-fresh-chip .lf-act{color:var(--teal);font-weight:800}
+/* 読み取れなかったことは**色だけで伝えない**（§CLAUDE 3）。文字は
+   「時刻不明」と出したうえで、控えめな色にする。 */
+.list-fresh-chip.is-unknown .lf-val{color:var(--muted)}
 /* id付きセレクタで書くこと。分割/ポップアップ表示の再表示ルール
    (body.sc-mode.sc-split #listToolbar{display:flex!important})より詳細度を
    高くしないと、出す中身が無いときでも空のツールバーが表示されてしまう。 */
@@ -185,7 +233,6 @@ th.col-sorted:hover{background:#c7e7ea}
 /* ページャ(一覧の下端)。要素セレクタのままだと**モーダルの操作列まで巻き込む**
    ため、<main>直下のページ下端だけに絞る(実際に異常位置判定モーダルの
    フッターが各モードで display:none にされ、印刷ボタンが消えていた)。 */
-main>footer{height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 15px;background:#fff;border-top:1px solid var(--line)}
 /* ---------- 4. 測定モーダル 骨格 ---------- */
 .modal[hidden]{display:none}
 .modal{position:fixed;inset:0;z-index:100}
@@ -3136,6 +3183,37 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
    帯のぶんまで含めて持ち、当てるのは共有の1本（上の`.opf-host>input`）。 */
 .opf-host[data-op-num]>input:not([type=checkbox]):not([type=radio]),
 .opf-host[data-op-num]>output{width:100%;max-width:100%}
+/* ---------- 未入力・未選択の配色（§9.286 ⑥、利用者の指示） ----------
+   「未入力・未選択の場合にオレンジ色の着色をするというものも汎用設計前の
+    ものなので、この機能も未選択、未入力の場合、配色するという機能を実装して
+    ください。選択肢やこの背景色の選択で使う色のパレットの種類をさらに
+    増やしてほしいです」
+
+   印は器の2つだけ——`data-op-blank-tint`（その欄に選んだ色の鍵）と
+   `is-blank`（**いま**空かどうか）。色を1つ足しても画面のJSは触らない。
+   **色の鍵は`WL.columnTint.PALETTE`と同じ**（§9.286 ⑥。食い違うと、
+   盤では選べるのに測定画面では色が付かない札ができる）。
+   **既定（設定していない欄）はここに来ない**ので、今までどおり
+   「必須の欄だけ橙」（`.validation-required`）のまま。
+   ここが持つのは**色トークンの割り当てだけ**——実際に塗るのは
+   `90-state.css`（`@layer state`）。**component のままだと、必須の欄で
+   `.validation-required`（state）に負けて色が出ない**（レイヤは詳細度より
+   強い。§9.206と同じ「どちらが勝つかを数える」話）。 */
+.opf-host[data-op-blank-tint="gray"]  {--opb-bg:var(--surface-2);      --opb-line:var(--line-mid)}
+.opf-host[data-op-blank-tint="slate"] {--opb-bg:var(--rs-slate-bg);    --opb-line:var(--rs-slate-border)}
+.opf-host[data-op-blank-tint="teal"]  {--opb-bg:var(--pale);           --opb-line:var(--teal)}
+.opf-host[data-op-blank-tint="cyan"]  {--opb-bg:var(--rs-cyan-bg);     --opb-line:var(--rs-cyan-border)}
+.opf-host[data-op-blank-tint="blue"]  {--opb-bg:var(--rs-blue-bg);     --opb-line:var(--rs-blue-border)}
+.opf-host[data-op-blank-tint="indigo"]{--opb-bg:var(--rs-indigo-bg);   --opb-line:var(--rs-indigo-border)}
+.opf-host[data-op-blank-tint="green"] {--opb-bg:var(--success-bg);     --opb-line:var(--success-border)}
+.opf-host[data-op-blank-tint="lime"]  {--opb-bg:var(--rs-lime-bg);     --opb-line:var(--rs-lime-border)}
+.opf-host[data-op-blank-tint="yellow"]{--opb-bg:var(--rs-yellow-bg);   --opb-line:var(--rs-yellow-border)}
+.opf-host[data-op-blank-tint="amber"] {--opb-bg:var(--warn-bg);        --opb-line:var(--warn-border)}
+.opf-host[data-op-blank-tint="brown"] {--opb-bg:var(--rs-brown-bg);    --opb-line:var(--rs-brown-border)}
+.opf-host[data-op-blank-tint="red"]   {--opb-bg:var(--danger-bg);      --opb-line:var(--danger-border)}
+.opf-host[data-op-blank-tint="pink"]  {--opb-bg:var(--rs-pink-bg);     --opb-line:var(--rs-pink-border)}
+.opf-host[data-op-blank-tint="purple"]{--opb-bg:var(--rs-purple-bg);   --opb-line:var(--rs-purple-border)}
+
 /* ▲▼は矢印なので小さめ、−／＋は数字と同じ大きさ（上で当てている）。 */
 .opf-num-strip>.opf-spin-btn{font-size:calc(var(--fs-micro) - 1px)}
 /* --- 切替: ボタン1つ。**押すたびに次へ**。いま何番目かと次を文字で出す --- */

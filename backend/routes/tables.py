@@ -21,6 +21,15 @@ from ..errors import os_error_hint
 
 bp=Blueprint('tables',__name__)
 
+# 1ページの件数（§9.286 ③、利用者の指示「200,500,1000,2000,3000,5000を準備し、
+# 1000件としたい」）。**画面の選択肢とそろえること**——以前ここは500で
+# 頭打ちにしていたので、画面が1000を選んでも**500件しか返らなかった**
+# （画面だけ増やしても効かない。実測で頭打ちを確認）。
+# 上限は画面のいちばん大きい選択肢と同じ。**下限は1**——`columns=`で1列だけ
+# 引く内部の問い合わせ（§9.94）は少量でよく、50へ切り上げると余分に運ぶ。
+PAGE_SIZE_MAX=5000
+PAGE_SIZE_DEFAULT=1000
+
 def _numeric_value(value):
  # SQLiteのVal(?)相当。先頭の数値部分を取り出す(見つからなければ0)。
  m=re.match(r'^\s*[+-]?\d+(\.\d+)?',str(value or ''))
@@ -370,7 +379,7 @@ def api_table():
  def lap(name,since):
   timing[name]=round((time.perf_counter()-since)*1000)
  try:
-  k=request.args['db'];t=request.args['table'];page=max(1,int(request.args.get('page',1)));size=min(500,max(50,int(request.args.get('page_size',200))));q=request.args.get('search','').strip();cf=cfg(k)
+  k=request.args['db'];t=request.args['table'];page=max(1,int(request.args.get('page',1)));size=min(PAGE_SIZE_MAX,max(1,int(request.args.get('page_size',PAGE_SIZE_DEFAULT))));q=request.args.get('search','').strip();cf=cfg(k)
   filter_payload=request.args.get('filters','').strip()
   def safe_filters(text,columns):
    if not text:return []
@@ -528,9 +537,15 @@ def api_table():
   # 手元の写し(§9.89)を読んでいるのかで、遅さの意味がまったく違う。
   timing['source']='mirror' if cf.get('mirrored') else ('share' if cf.get('role')=='readonly' else 'local')
   timing['rows']=len(row_dicts);timing['columns']=len(visible_cs)
+  # **その一覧が読んだデータは「いつのものか」**（§9.286 ④）。この応答に
+  # 添えるのは、**いま画面に出ている行と同じ問い合わせの答え**にするため
+  # ——別の口で取りに行くと、一覧と鮮度が別のタイミングの話になりうる。
+  from .. import db_mirror as _dbm
+  try:src_info=_dbm.source_info(k,cf.get('path'))
+  except Exception:src_info=None
   resp=jsonify(columns=visible_cs,rows=row_dicts,count=count,
                filters_applied=len(filters),joinQuality=join_info,joins=join_list,
-               timing=timing,sortNote=sort_note)
+               timing=timing,sortNote=sort_note,source=src_info)
   # 開発者ツールのネットワーク欄でも同じ内訳が読めるようにする。
   resp.headers['Server-Timing']=','.join(
    f'{n};dur={v}' for n,v in timing.items() if isinstance(v,int))

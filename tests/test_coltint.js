@@ -59,7 +59,10 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
    器に印:!!document.querySelector('#grid')?.dataset.lt,
   }));
   rec('WL.columnTint が公開されている',api.有る,JSON.stringify(api));
-  rec('選べるのは7色',api.色数===7,String(api.色数));
+  /* §9.286 ⑥で7色→14色。**数を決め打ちにしない**——色を足すたびにここが
+     落ちるのでは、増やすこと自体が面倒になる。見るのは「色の表が1箇所に
+     あって、下限の色数がある」ことと、**メニューの見本が表と一致する**こと。 */
+  rec('色の表が1箇所にあり、十分な数がある',api.色数>=14,String(api.色数));
   rec('一覧の器に対象が刻まれている（別の一覧へ色が漏れない）',api.器に印,JSON.stringify(api));
 
   /* ---- 1) 見出しの右クリックに色の段がある ---- */
@@ -85,9 +88,10 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
            解除:!!m.querySelector('.chm-tint-off'),
            全解除:!!m.querySelector('.chm-tint-clear')};
   });
-  rec('右クリックのメニューに7色の見本がある',menu.色の数===7,JSON.stringify(menu.色名));
+  rec('右クリックのメニューの見本が色の表と一致する',menu.色の数===api.色数,
+      `${menu.色の数}/${api.色数} ${JSON.stringify(menu.色名)}`);
   rec('見本には色名が文字で添えてある（色だけで伝えない）',
-      menu.色名.length===7&&menu.色名.every(t=>t.length>0),JSON.stringify(menu.色名));
+      menu.色名.length===api.色数&&menu.色名.every(t=>t.length>0),JSON.stringify(menu.色名));
   rec('いまの色を文字で出す',/^色: なし/.test(menu.いまの色),menu.いまの色);
   rec('「この端末だけ・一時的」と書いてある',menu.断り,String(menu.断り));
   rec('まだ色が無いときは「この列の色を外す」を出さない',!menu.解除,String(menu.解除));

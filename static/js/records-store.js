@@ -119,16 +119,26 @@ function applyContextChoices(x){
  const keep=(list,cur)=>{
   const out=[...(list||[])];
   const v=String(cur==null?'':cur).trim();
-  if(v&&v!=='-'&&!out.includes(v))out.push(v);
+  if(v&&!WL.optionBlank(v)&&!out.includes(v))out.push(v);
   return out;
  };
- optionFill('operator',keep(x.operators,m.settings.operator),m.settings.operator);
- optionFill('inspector',keep(x.inspectors||x.operators,m.settings.inspector),m.settings.inspector);
- optionFill('thicknessGauge',keep(x.thickness_gauges,m.settings.thicknessGauge),m.settings.thicknessGauge);
- optionFill('widthGauge',keep(x.width_gauges,m.settings.widthGauge),m.settings.widthGauge);
+ /* **いま画面に入っている値を落とさない**（§9.286 ⑤、利用者の指示）。
+    `applyInitials()`（マスタの`[初期値]`）は**組み込みの欄では画面へ入れる
+    だけで`settings`へ書かない**約束（§9.229 ③。保存は`collect()`が`#<キー>`
+    から拾う）なので、`settings`だけを見て候補を作り直すと**入れたばかりの
+    初期値が消える**——これが「マスタで初期値を決めても効かない」の正体で、
+    `-`を値として持っていたことと合わせて2つで一組の原因だった。
+    記録された値があればそちらが勝つ（順番が決まっている・§9.204と同じ）。 */
+ const now=id=>{const el=document.getElementById(id);return el?String(el.value||''):''};
+ const cur=(id,v)=>{const s=String(v==null?'':v).trim();return WL.optionBlank(s)?now(id):s};
+ const fill=(id,list,v)=>{const c=cur(id,v);optionFill(id,keep(list,c),c)};
+ fill('operator',x.operators,m.settings.operator);
+ fill('inspector',x.inspectors||x.operators,m.settings.inspector);
+ fill('thicknessGauge',x.thickness_gauges,m.settings.thicknessGauge);
+ fill('widthGauge',x.width_gauges,m.settings.widthGauge);
  /* 内径は**仕掛由来のプリセット**(§9.204)が入りうる。 */
- optionFill('innerDiameter',keep(x.inner_diameters,m.settings.innerDiameter),m.settings.innerDiameter);
- optionFill('spool',keep(x.spools,m.settings.spool),m.settings.spool);
+ fill('innerDiameter',x.inner_diameters,m.settings.innerDiameter);
+ fill('spool',x.spools,m.settings.spool);
  if(WL.innerDiameter)WL.innerDiameter.refresh();
  /* バリ揃え・コイル止めはマスタ化前まで画面へ直接書かれていた選択肢なので、
     マスタが空(未作成・全件無効化)でも選べる値が消えないよう既定を持つ。

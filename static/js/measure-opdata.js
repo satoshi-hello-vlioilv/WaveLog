@@ -567,6 +567,12 @@
      定義を持ち歩かずに当て直せる。 */
   if(def&&def.noBlank)host.dataset.opNoblank='1';else delete host.dataset.opNoblank;
   applyBlankPolicy(host);
+  /* 未入力・未選択の配色（§9.286 ⑥）。**当てるのもここ1本**——測定画面と
+     設定窓の見本が同じ道を通るので、見本と実物が食い違わない。
+     空（既定）と`なし`は印を持たない＝今までどおり（必須の欄だけ橙）。 */
+  const bt=String((def&&def.blankTint)||'');
+  if(bt&&bt!=='なし')host.dataset.opBlankTint=bt;else delete host.dataset.opBlankTint;
+  paintBlankTint(host);
   /* 選択肢のまとまり名を器へ刻む（§9.248 ⑤）。**数えるのは1箇所**——
      組み込みの欄と自由項目で配線が別なので、どちらも通るこの器の上で
      `change`を受ける（`bind()`は自由項目しか配線しない）。
@@ -792,6 +798,39 @@
     素のプルダウン（`.opf-plain`）は器が空で`<select>`が見えているため、
     そちらを返す。**単位の置き場も逃げ場の幅もこの1箇所を基準にする**
     ——別々に引くと「セグメントだけ単位が出ない」という穴が残る。 */
+ /* ---------- 未入力・未選択の配色（§9.286 ⑥、利用者の指示） ----------
+    「未入力・未選択の場合にオレンジ色の着色をするというものも汎用設計前の
+     ものなので、この機能も未選択、未入力の場合、配色するという機能を実装して
+     ください」
+
+    直す前は`updateValidationVisuals()`が**必須の欄だけ**に橙を当てていた
+    ——①必須でない欄は空でも何も出ない ②色は橙で固定、で「未入力なら色を
+    付ける」という設定そのものが無かった。
+
+    印は器へ（`data-op-blank-tint`＝色の鍵／`is-blank`＝いま空）。
+    **CSSが読むのはこの2つだけ**なので、色を1つ足しても画面のJSは触らない。
+    **値の判定は`isBlankVal()`の1箇所**（`''`と`'-'`。§9.246 ①と同じ約束で、
+    古い記録の`-`も「空」として読む）。 */
+ function blankTintOf(host){return String(host&&host.dataset.opBlankTint||'')}
+ function paintBlankTint(host){
+  if(!host||!blankTintOf(host))return;
+  const el=valueEl(host)||outputEl(host);
+  host.classList.toggle('is-blank',isBlankVal(el&&el.value));
+ }
+ function paintBlankTints(root){
+  (root||document).querySelectorAll('[data-op-blank-tint]').forEach(paintBlankTint);
+ }
+ /* **値が変わる経路は多い**（打つ・選ぶ・器の札を押す・記録から戻す）ので、
+    `document`で1つ受ける。器ごとに配線すると、器を1つ足したときに
+    足し忘れた欄だけが塗り変わらない（§9.233 ③と同じ理由）。 */
+ document.addEventListener('input',e=>{
+  const host=e.target&&e.target.closest&&e.target.closest('[data-op-blank-tint]');
+  if(host)paintBlankTint(host);
+ },true);
+ document.addEventListener('change',e=>{
+  const host=e.target&&e.target.closest&&e.target.closest('[data-op-blank-tint]');
+  if(host)paintBlankTint(host);
+ },true);
  function displayEl(host){
   return host.querySelector(':scope>.opf-widget:not(.opf-plain)')
     ||valueEl(host)||outputEl(host);
@@ -2642,6 +2681,10 @@
      プリセット・マスタの取り直しが全部ここを通る）。 */
   document.querySelectorAll('[data-op-noblank="1"]').forEach(applyBlankPolicy);
   document.querySelectorAll('.selectors>.opf-alt').forEach(syncWidget);
+  /* 未入力の配色も塗り直す（§9.286 ⑥）。**`.value`への代入では`change`が
+     飛ばない**ので、記録の復元・プリセットの当て込みのあとはここから
+     当てに行く（`syncWidget`と同じ理由）。 */
+  paintBlankTints();
  }
 
  /* 保存のときにまとめて回収する。**打った時点でも入れている**ので、

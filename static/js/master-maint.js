@@ -906,11 +906,12 @@
   const i=s.indexOf('。');
   return (i>=0&&i+1<s.length)?s.slice(0,i+1):s;
  }
+ /* 印の解き方は`WL.markup()`の1箇所（§9.286 ⑦）——エスケープしてから
+    `**強調**`とバッククォート囲みを戻す。ここが持つのは**量の段**だけ。 */
  function hintHtml(t){
   const lv=hintLevel();
   if(lv==='off')return '';
-  const s=lv==='short'?hintShorten(String(t||'')):String(t||'');
-  return esc(s).replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+  return WL.markup(lv==='short'?hintShorten(String(t||'')):String(t||''));
  }
  /* ---------- 帯ではなくポップオーバー（§9.276 ②、利用者の指示） ----------
     「このボタンは3つもエリアを使っているがそんなに頻繁に使うものでもないので、
@@ -8287,6 +8288,8 @@
                 valueFormats:['そのまま','3桁区切り','ゼロ埋め'],
                 unitInBlocked:[],unitInFreeTextBlocked:[],freeTextBlocked:[],
                 choiceOrders:[],choiceOrderWidgets:[],widgetGroups:[],
+                /* §9.286 ⑥ 未入力の配色の語彙。ここは届くまでの受け皿。 */
+                blankTints:[],blankTintNone:'なし',
                 /* 並べ方の選択肢と、それが効く入力方法（§9.226 ①）。
                    **サーバーが答える**——ここは届くまでの受け皿。 */
                 layouts:['自動'],layoutWidgets:[],
@@ -9965,6 +9968,41 @@
     セグメント・ボタン群…）で順番が変わると、**同じ欄なのに押す場所が
     毎回動く**（手が場所を覚えられない）。効かない形では押せなくして
     理由を書く（§4）。**どの形で効くかはサーバーが答える**（§9.163）。 */
+ /* ---------- 未入力・未選択の配色（§9.286 ⑥、利用者の指示） ----------
+    「未入力・未選択の場合にオレンジ色の着色をするというものも汎用設計前の
+     ものなので、この機能も未選択、未入力の場合、配色するという機能を実装
+     してください。選択肢やこの背景色の選択で使う色のパレットの種類をさらに
+     増やしてほしいです」
+
+    **語彙も色の呼び名もサーバー／`WL.columnTint`が答える**（§9.163）
+    ——画面へ書き写すと、色を1つ足したときに2箇所直すことになる。
+    **色だけで伝えない**（§3）ので、札には呼び名と意味を文字で出す。 */
+ function opBlankTintRowHtml(x){
+  const now=String(x.blankTint||'');
+  const none=opState.blankTintNone||'なし';
+  const tint=(window.WL&&WL.columnTint)||null;
+  const keys=(opState.blankTints||[]).filter(k=>k&&k!==none);
+  const chip=(k,label,note,on)=>`<button type="button" data-op-btint="${esc(k)}"`
+    +` class="op-mini op-btint${on?' is-on':''}"`
+    +(k&&tint?` style="--btint:${tint.PALETTE[k]?tint.PALETTE[k].bg:'transparent'};`
+              +`--btint-line:${tint.PALETTE[k]?tint.PALETTE[k].line:'transparent'}"`:'')
+    +` title="${esc(note||'')}">${esc(label)}</button>`;
+  return `<div class="op-form-row is-fixed-layout"><span class="op-form-label">未入力の色</span>
+    <span class="op-form-ctl">
+     <span class="op-look-row op-btint-row">
+      ${chip('','既定','必須の欄だけ橙になります（今までどおり）',!now)}
+      ${chip(none,'なし','空でも色を付けません',now===none)}
+      ${keys.map(k=>chip(k,(tint?tint.label(k):k),
+         (tint?tint.label(k)+'：'+tint.note(k):k),now===k)).join('')}
+     </span>
+     <i class="op-form-note">${now&&now!==none
+       ?`空のあいだ<b>${esc(tint?tint.label(now):now)}</b>で塗ります。値が入ると色は消えます。`
+       :now===none?'空でも色を付けません。'
+       :'<b>必須</b>にした欄だけが橙になります（今までどおり）。'
+         +'色を選ぶと、必須でない欄も空のあいだ塗れます。'}
+      　色の意味は行表示マスタ・列の色と<b>同じ呼び名</b>です。</i>
+    </span></div>`;
+ }
  function opChoiceOrderRowHtml(x,widget){
   if(!opIsChoiceLike(x))return '';
   const usable=(opState.choiceOrderWidgets||[]).includes(widget);
@@ -10458,6 +10496,7 @@
     </span></div>
    ${opLayoutRowHtml(x,widget)}
    ${opBlankRowHtml(x,widget)}
+   ${opBlankTintRowHtml(x)}
    ${opChoiceOrderRowHtml(x,widget)}
    ${opLookPickHtml(x)}
    ${opLookRowHtml(x,widget)}
@@ -10565,6 +10604,9 @@
    look:opLookOf(x),
    layout:opLayoutUsable(widget)?opLayoutOf(x):'自動',
    noBlank:!!x.noBlank,
+   /* 未入力の配色（§9.286 ⑥）。**見本にも当てる**——設定窓で選んだ色が
+      その場で見えないと、測定画面を開き直して確かめることになる。 */
+   blankTint:String(x.blankTint||''),
    choiceNotes:opState.notes[x.choice]||{},
    /* 選ばせ方は**器の作り方そのもの**なので、口へも同じ綴りで渡す。
       作れない選ばせ方（上下限が無いスライダー等）は素の欄へ落ちる。 */
@@ -10676,6 +10718,9 @@
   /* §9.228 ④ 空欄（選ばない）の札と、その場で直せる初期値。 */
   form.querySelectorAll('[data-op-blank]').forEach(b=>b.onclick=()=>
     touch({noBlank:b.dataset.opBlank==='1'}));
+  /* §9.286 ⑥ 未入力・未選択の配色。 */
+  form.querySelectorAll('[data-op-btint]').forEach(b=>b.onclick=()=>
+    touch({blankTint:b.dataset.opBtint}));
   /* §9.248 ⑤ 選択肢の並び。 */
   form.querySelectorAll('[data-op-corder]').forEach(b=>b.onclick=()=>{
    if(b.disabled)return;touch({choiceOrder:b.dataset.opCorder});
@@ -11523,6 +11568,11 @@
    /* §9.248 ⑤ 選択肢の並びの語彙と、それが効く入力方法。 */
    opState.choiceOrders=it.choiceOrders||opState.choiceOrders;
    opState.choiceOrderWidgets=it.choiceOrderWidgets||opState.choiceOrderWidgets;
+   /* §9.286 ⑥ 未入力・未選択の配色の語彙。**サーバーが答える**——色の鍵は
+      `WL.columnTint.PALETTE`と揃える約束なので、画面へ写すと片方だけ
+      増えた状態が作れる（§9.163）。 */
+   opState.blankTints=it.blankTints||opState.blankTints;
+   opState.blankTintNone=it.blankTintNone||opState.blankTintNone;
    /* §9.248 ① 選ばせ方のまとまり（盤の見出しと並び）。 */
    opState.widgetGroups=it.widgetGroups||opState.widgetGroups;
    /* §9.231 ②。**いまの値も一緒に来る**（選んだ設備で引き直した結果）。 */

@@ -265,7 +265,7 @@ function renderSortBar(){
      title="クリックで昇順／降順を入れ替え、×でこのキーを外します">${
      keys.length>1?`<b>${i+1}</b>`:''}${esc(WL.columnLayout.label(target,k.column))}${
      k.dir==='desc'?' ▼':' ▲'}<i class="list-sort-x" data-col="${esc(k.column)}" title="このキーを外す">×</i></button>`
-  ).join(''):'<span class="list-sort-none">指定なし（見出しをクリック／Shift+クリックで2つ目）</span>';
+  ).join(''):'<span class="list-sort-none" title="見出しをクリックすると並べ替えます。Shift+クリックで2つ目のキーを足せます。">指定なし</span>';
   chips.querySelectorAll('.list-sort-chip').forEach(el=>{
    el.onclick=e=>{
     const col=el.dataset.col;
@@ -931,22 +931,141 @@ function renderRestartPendingNote(nav,after){
 // 新しく公開するものは名前空間へ入れる(CLAUDE.md「window.*への新規公開」)。
 WL.renderDbNav=renderDbNav;
 
-/* バージョンバッジをクリックすると更新履歴の一覧を表示する。 */
-let changelogLoaded=false;
+/* ---------- 更新履歴（§9.286 ⑦、利用者の報告） ----------
+   「更新履歴の<b>みたいなタグが出ているので修正をお願いします。更新履歴は
+    モーダルを大きくし読みやすくわかりやすいように再構成してください」
+
+   タグが出ていたのは、説明文に**生のHTMLを書いていた**から（§9.276 ④）。
+   `esc()`は字のまま出すのが正しいので、直すのは**書くほうの綴り**
+   ——`**強調**`とバッククォート囲みへ寄せ、解くのは`WL.markup()`の1箇所
+   （§9.163。`hintHtml()`も同じここを通る）。
+
+   窓の作りは「左＝版のレール／右＝中身」。389版・1292行あるので、
+   **探す・跳ぶ手立てが無いと縦に送るしかない**（§CLAUDE 画面基準 2）。
+   レールには版と**その版の一言**（先頭の強調）を出す——番号だけでは
+   どれが目当ての版か読めない。**いま動いている版には文字で印を付ける**
+   （§CLAUDE 画面基準 3）。 */
+let changelogLoaded=false,clEntries=[],clNow='';
+/* 先頭の強調（`**…**`）＝その版の見出し。無ければ最初の1文。
+   **レールにしか出さない**（中身にも出すと同じ文が2箇所に並ぶ・§CLAUDE 8）。 */
+function clLead(entry){
+ const first=String((entry.notes||[])[0]||'');
+ const m=first.match(/\*\*([^*]+)\*\*/);
+ const t=(m?m[1]:first).replace(/`/g,'');
+ const i=t.indexOf('。');
+ return (i>=0?t.slice(0,i):t).trim();
+}
+function clMatches(entry,q){
+ if(!q)return true;
+ if(String(entry.version||'').toLowerCase().includes(q))return true;
+ return (entry.notes||[]).some(n=>String(n).toLowerCase().includes(q));
+}
+/* 当たった言葉を光らせる。**印を解いたあとのHTMLへ当てない**——タグの中の
+   文字にも当たってHTMLが壊れる。`WL.markup()`が作るのは`<b>`/`<code>`だけ
+   なので、**タグの外側だけ**を対象にする。 */
+function clHighlight(html,q){
+ if(!q)return html;
+ const needle=esc(q).toLowerCase();
+ if(!needle)return html;
+ return html.split(/(<[^>]*>)/).map(part=>{
+  if(part.startsWith('<'))return part;
+  let out='',rest=part;
+  for(;;){
+   const at=rest.toLowerCase().indexOf(needle);
+   if(at<0){out+=rest;break}
+   out+=rest.slice(0,at)+'<mark>'+rest.slice(at,at+needle.length)+'</mark>';
+   rest=rest.slice(at+needle.length);
+  }
+  return out;
+ }).join('');
+}
+function clRender(){
+ const list=$('#changelogList'),rail=$('#changelogRail');if(!list||!rail)return;
+ const q=String($('#changelogSearch')?.value||'').trim().toLowerCase();
+ const hit=clEntries.filter(e=>clMatches(e,q));
+ const notes=hit.reduce((n,e)=>n+(e.notes||[]).length,0);
+ rail.innerHTML=hit.length?hit.map(e=>{
+  const now=e.version===clNow;
+  return `<button type="button" class="cl-rail-row" data-cl-ver="${esc(e.version)}"
+    title="${esc('VER'+e.version+'　'+clLead(e))}"><b>VER${esc(e.version)}${
+    now?' <em>いま</em>':''}</b><small>${esc(clLead(e))||'&nbsp;'}</small></button>`;
+ }).join(''):'<p class="cl-rail-empty">当たる版がありません。</p>';
+ list.innerHTML=hit.length?hit.map(e=>{
+  const now=e.version===clNow;
+  return `<article class="changelog-entry${now?' is-now':''}" data-cl-entry="${esc(e.version)}">
+   <h3>VER${esc(e.version)}${now?'<i class="cl-now">いま動いている版</i>':''}
+    <span>${(e.notes||[]).length}件</span></h3>
+   <ul>${(e.notes||[]).map(n=>`<li>${clHighlight(WL.markup(n),q)}</li>`).join('')}</ul>
+  </article>`;
+ }).join(''):`<p class="changelog-loading">「${esc(q)}」に当たる更新履歴はありませんでした。</p>`;
+ const hits=$('#changelogHits');
+ if(hits)hits.textContent=q?`${hit.length}版 / ${notes}件が当たりました（全${clEntries.length}版）`
+                          :`全${clEntries.length}版 / ${notes}件`;
+ const clr=$('#changelogClear');if(clr)clr.hidden=!q;
+ rail.querySelectorAll('[data-cl-ver]').forEach(b=>{
+  b.onclick=()=>clJumpTo(b.dataset.clVer);
+ });
+ clMarkActive(hit[0]?.version||'');
+}
+function clMarkActive(version){
+ $('#changelogRail')?.querySelectorAll('[data-cl-ver]').forEach(b=>{
+  b.classList.toggle('is-active',b.dataset.clVer===version);
+ });
+}
+function clJumpTo(version){
+ const main=$('#changelogList');
+ const el=main?.querySelector(`[data-cl-entry="${CSS.escape(version)}"]`);
+ if(!el||!main)return;
+ main.scrollTop+=el.getBoundingClientRect().top-main.getBoundingClientRect().top;
+ clMarkActive(version);
+ const row=$('#changelogRail')?.querySelector(`[data-cl-ver="${CSS.escape(version)}"]`);
+ row?.scrollIntoView({block:'nearest'});
+}
+/* いま画面に出ている版をレールで示す（読んでいる場所が分かる）。
+   **1フレームに1回へまとめる**——スクロールのたびに389行を触ると重い。 */
+let clSpy=0;
+function clOnScroll(){
+ if(clSpy)return;
+ clSpy=requestAnimationFrame(()=>{
+  clSpy=0;
+  const main=$('#changelogList');if(!main)return;
+  const top=main.getBoundingClientRect().top+2;
+  const found=[...main.querySelectorAll('[data-cl-entry]')]
+    .find(el=>el.getBoundingClientRect().bottom>top);
+  if(found)clMarkActive(found.dataset.clEntry);
+ });
+}
 async function openChangelog(){
  const modal=$('#changelogModal'),list=$('#changelogList');if(!modal||!list)return;
  modal.hidden=false;
- requestAnimationFrame(()=>$('#closeChangelog')?.focus());
+ requestAnimationFrame(()=>$('#changelogSearch')?.focus());
  if(changelogLoaded)return;
  try{
   const data=await api('/api/changelog');
-  list.innerHTML=(data.entries||[]).map(e=>`<article class="changelog-entry"><h3>VER${esc(e.version)}</h3><ul>${(e.notes||[]).map(n=>`<li>${esc(n)}</li>`).join('')}</ul></article>`).join('')||'<p class="changelog-loading">更新履歴はまだありません。</p>';
+  clEntries=(data.entries||[]).filter(e=>e&&e.version);
+  clNow=String(data.version||'');
+  const sub=$('#changelogSub');
+  if(sub)sub.textContent=clNow?`いま動いているのは VER${clNow} です。左の一覧から版へ跳べます。`
+                              :'左の一覧から版へ跳べます。';
+  if(!clEntries.length){
+   list.innerHTML='<p class="changelog-loading">更新履歴はまだありません。</p>';
+   changelogLoaded=true;return;
+  }
+  clRender();
   changelogLoaded=true;
  }catch(error){
   list.innerHTML=`<p class="changelog-loading">更新履歴を読み込めませんでした: ${esc(error?.message||String(error))}</p>`;
  }
 }
 $('#closeChangelog').onclick=()=>{$('#changelogModal').hidden=true};
+/* 打っている最中に器を作り直さない（§9.117）——検索欄は最初から在り、
+   描き直すのはレールと中身だけ。 */
+$('#changelogSearch')?.addEventListener('input',()=>{if(changelogLoaded)clRender()});
+$('#changelogClear')?.addEventListener('click',()=>{
+ const el=$('#changelogSearch');if(!el)return;
+ el.value='';clRender();el.focus();
+});
+$('#changelogList')?.addEventListener('scroll',clOnScroll);
 function renderTabs(){$('#tabs').innerHTML='';S.tables.forEach(t=>{const b=document.createElement('button');b.className='tab'+(t===S.table?' active':'');b.textContent=t;b.onclick=()=>selectTable(t);$('#tabs').append(b)})}
 /* 一覧データの取得。待機表示を出してから読み込む。 */
 /* ---------- 一覧データのキャッシュ(docs/ARCHITECTURE.md「共有ファイルを読む
@@ -979,21 +1098,66 @@ function invalidateTableCache(){
  if(typeof window.invalidateSplitQueryCache==='function')window.invalidateSplitQueryCache();
 }
 window.invalidateTableCache=invalidateTableCache;
-/* 「いつ時点の一覧か」をヘッダーへ出す。キャッシュから描いたときだけ意味が
-   あるので、取り立てのときは非表示にする。 */
+/* ---------- 「いま見ているのはいつのデータか」（§9.286 ④） ----------
+   利用者の指示「任意で更新を掛けたいというのと、今見ているのがいつのデータか
+   わかるような表示も一覧表確認時に見えるようにお願いしたいです」
+
+   以前ここに出ていたのは**この端末の写し（tableCache）の古さ**で、しかも
+   キャッシュから描いたときだけ出ていた——取り立てのときは何も出ず、
+   元データがいつのものかは**どこにも書いていなかった**。
+
+   出すのは**元データの更新時刻**（サーバーの`source.at`）。手元の写しを
+   読んでいるかどうか・いつ取り込んだかは`title`へ落とす（§9.234 ①）。
+   **分からないときは「不明」と書く**——「たった今」に倒すと嘘になる（§3）。
+   押すと再読込のメニューが開く（読む場所と打つ手を同じ場所に置く）。 */
+let listSourceInfo=null;      // 直近の /api/table が答えた元データの素性
+function fmtStamp(sec){
+ if(!sec)return '';
+ const d=new Date(sec*1000);
+ if(Number.isNaN(d.getTime()))return '';
+ const p=n=>String(n).padStart(2,'0');
+ return `${d.getMonth()+1}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function agoText(ms){
+ const min=Math.floor(ms/60000);
+ if(min<1)return 'たった今';
+ if(min<60)return `${min}分前`;
+ const h=Math.floor(min/60);
+ return h<24?`${h}時間前`:`${Math.floor(h/24)}日前`;
+}
 function updateListFreshness(at){
  const el=document.querySelector('#listFreshness');if(!el)return;
- // 鮮度は一覧画面の情報。スケジュール画面では一覧は一区画でしかないので、
- // ヘッダー(=作業スケジュール)の隣に出すと何の鮮度か分からない(§9.60)。
- if(!at||document.body.classList.contains('sc-mode')){el.hidden=true;return}
- const min=Math.floor((Date.now()-at)/60000);
+ const info=listSourceInfo||null;
+ const stamp=fmtStamp(info&&info.at);
  el.hidden=false;
- el.textContent=min<1?'たった今の内容':`${min}分前の内容`;
- el.title='「再読込」で最新を取り直します。';
+ /* **本文は「元データ ◯/◯ ◯◯:◯◯」だけ**（§CLAUDE 画面基準 3・8）。
+    写しかどうか・取込時刻・画面の写しの古さは説明へ回す。 */
+ el.innerHTML=`<span class="lf-key">元データ</span>`
+   +`<b class="lf-val">${esc(stamp||'時刻不明')}</b>`
+   +`<span class="lf-act" aria-hidden="true">⟳</span>`;
+ el.classList.toggle('is-unknown',!stamp);
+ const lines=[];
+ lines.push(stamp?`いま出している行は、元データの ${stamp} 時点の内容です。`
+                 :'元データの更新時刻を読み取れませんでした。');
+ if(info&&info.mirrored){
+  lines.push(`共有の元ファイルを手元へ写して読んでいます`
+    +(info.copiedAt?`（取り込み ${fmtStamp(info.copiedAt)}）`:'')+'。');
+  if(info.checkedAt)lines.push(`最後に共有を確かめたのは ${agoText(Date.now()-info.checkedAt*1000)}。`);
+ }else if(info){
+  lines.push('置き場のファイルをそのまま読んでいます。');
+ }
+ /* 画面の写し（`tableCache`）から描いたときは、そのことも言う——同じ
+    「古さ」でも打つ手が違う（§CLAUDE 6）。 */
+ if(at)lines.push(`画面に出ているのは ${agoText(Date.now()-at)}に読み込んだ内容です。`);
+ lines.push('押すと取り直せます。');
+ el.title=lines.join('\n');
 }
 window.updateListFreshness=updateListFreshness;
 /* 取得結果を画面状態へ流し込む共通処理(list-view.jsとfilters.jsのload()が共用)。 */
 function applyTableData(d){
+ /* 元データの素性（§9.286 ④）。**一覧と同じ応答から取る**——別の口で
+    取りに行くと、一覧と鮮度が別のタイミングの話になりうる。 */
+ if(d&&Object.prototype.hasOwnProperty.call(d,'source'))listSourceInfo=d.source||null;
  Object.assign(S,{columns:d.columns,rows:d.rows,count:d.count});
  S.joinQuality=d.joinQuality||null;
  const info=(S.catalog||[]).find(x=>x.key===S.db)||{};
@@ -1059,6 +1223,36 @@ let allRowsRun=0;
 function stopAllRowsLoad(){allRowsRun++}
 /* 件数の表示。全件で**まだ途中**のときだけ、どこまで読めたかを添える
    (「全2,003件」とだけ出ていると、下まで見たつもりで見落とす)。 */
+/* ---------- ページめくり（§9.286 ②） ----------
+   利用者の報告「表示件数制限がある場合は…フィルタした後に他のデータに
+   アクセスできないことがある不具合です」。
+
+   出すのは**いま何件目から何件目か**の1つだけ（§CLAUDE 8）——「2ページ目」と
+   「1,001〜2,000件」は同じことを2通りで言っているので、**探している行が
+   この範囲に居るか**が直に読める後者を採る。ページ番号と総ページ数は
+   `title`へ落とす（§9.234 ①）。
+   **全件はページの概念が無い**ので押せなくして理由を書く（§4）。 */
+function renderPager(){
+ const page=$('#page'),prev=$('#prev'),next=$('#next');
+ if(!page||!prev||!next)return;
+ const size=effectivePageSize(),total=S.count|0;
+ if(isAllRows()){
+  page.textContent='全件';
+  page.title='「全件」ではページに分けません。表示件数を選ぶとページめくりが使えます。';
+  prev.disabled=next.disabled=true;
+  prev.title=next.title='「全件」ではページに分けません';
+  return;
+ }
+ const from=total?((S.page-1)*size+1):0;
+ const to=Math.min(total,S.page*size);
+ const pages=Math.max(1,Math.ceil(total/size));
+ page.textContent=total?`${from.toLocaleString()}–${to.toLocaleString()}`:'0';
+ page.title=`${S.page} / ${pages}ページ（1ページ ${size.toLocaleString()}件）`;
+ prev.disabled=S.page<=1;
+ next.disabled=S.page>=pages;
+ prev.title=prev.disabled?'これが最初のページです':`前のページ（${Math.max(1,S.page-1)} / ${pages}）`;
+ next.title=next.disabled?'これが最後のページです':`次のページ（${Math.min(pages,S.page+1)} / ${pages}）`;
+}
 function allRowsProgress(loaded,total){
  const el=$('#count');if(!el)return;
  el.textContent=(isAllRows()&&total&&loaded<total)
@@ -1171,14 +1365,20 @@ function runListHooks(kind,arg){
    ので、**全件は「500件ずつ最後まで取り続ける」**という意味にする。
    最初の500件はいつもどおり出し、残りは裏で読む。 */
 const ALL_ROWS='all';
+/* 1ページの件数（§9.286 ③、利用者の指示「200,500,1000,2000,3000,5000を準備し、
+   1000件としたい」）。**サーバーの上限とそろえること**——`/api/table`は
+   `page_size`を丸めるので、片方だけ増やすと「5000を選んだのに500しか出ない」
+   （実際に上限500で頭打ちだった）。 */
+const PAGE_SIZES=[200,500,1000,2000,3000,5000];
+const DEFAULT_PAGE_SIZE='1000';
 /* 1回に取る件数。**大きいほど往復は減るが、1回ぶんの解読が長くなる**。
    実データ(214列)では500件で1回4.5MB・解読に1.3秒かかり、そのあいだ
    画面が止まる。250件なら0.5秒級まで下がり、往復も倍にしかならない。 */
 const ALL_BATCH=250;
-function pageSizeValue(){return $('#pageSize')?.value||'200'}
+function pageSizeValue(){return $('#pageSize')?.value||DEFAULT_PAGE_SIZE}
 function isAllRows(){return pageSizeValue()===ALL_ROWS}
 /* 1ページの件数。全件のときは1回ぶんの取得単位を返す(ページ番号の計算にも使う)。 */
-function effectivePageSize(){return isAllRows()?ALL_BATCH:(+pageSizeValue()||200)}
+function effectivePageSize(){return isAllRows()?ALL_BATCH:(+pageSizeValue()||Number(DEFAULT_PAGE_SIZE))}
 function listQuery(){
  /* 全件でも**サーバーへ送るのは1回ぶん**。`all=1`は「この問い合わせは
     全件の1ページ目」という目印で、サーバーは見ない(キャッシュのキーと、
@@ -1997,9 +2197,7 @@ function renderGridInner(){
  /* 全件はページの概念が無い(1枚に全部出す)。ページ送りは押せなくする
     ——押せるのに何も起きないボタンは「壊れている」と受け取られる。 */
  allRowsProgress(S.rows.length,S.count);
- $('#page').textContent=isAllRows()?'全件':`${S.page}ページ`;
- $('#prev').disabled=isAllRows()||S.page===1;
- $('#next').disabled=isAllRows()||S.page*effectivePageSize()>=S.count;
+ renderPager();
  if(canPlan){
   const selectAll=$('#planSelectAll');
   if(selectAll){
@@ -2116,6 +2314,22 @@ WL.listChildFold={
    直前の兄弟として一緒に動かす。以前は「表示する列の選択」が作業スケジュール
    画面のヘッダーにあり、操作対象(仕掛一覧)から離れていて何に効くのか
    分かりにくかった。 */
+/* ---------- 一覧の「どこを見ているか／いつのデータか」（§9.286 ②③④） ----------
+   利用者の指示②「表示件数制限がある場合は、ページめくりボタンを付けてください。
+   フィルタした後に他のデータにアクセスできないことがある不具合です」
+   ④「読み取り専用の元データの再読み込み(更新)機能…今見ているのがいつの
+   データかわかるような表示も一覧表確認時に見えるようにお願いしたいです」
+
+   **一覧に属する操作は一覧と一緒に運ぶ。** 以前は表示件数と再読込がヘッダー
+   （`.hd-actions.global-actions`）、ページャが`<footer>`に居たが、**どちらも
+   `body.sc-mode`で伏せられる**——作業スケジュールの仕掛一覧では、絞り込んだ
+   あと2ページ目へ行く手立ても、元データを取り直す手立ても無かった。
+   ツールバー（`#listToolbar`）は`#grid`と一緒に分割表示・ポップアップへ移る
+   （§9.10の`moveGridTo`）ので、ここへ置けば3つの置き場すべてで使える。
+
+   **IDは変えない**——`#pageSize`/`#prev`/`#page`/`#next`/`#count`/
+   `#listFreshness`は既存の配線と網がそのまま効く。
+   並びは決める順（§CLAUDE 14）: いつのデータか → 何件ずつ → 何ページ目。 */
 function ensureListToolbar(){
  let bar=document.getElementById('listToolbar');
  const grid=$('#grid');
@@ -2153,11 +2367,43 @@ function ensureListToolbar(){
    <span class="list-load-chip" id="listLoadChip" title="読み込みにかかった時間の内訳" hidden></span>
    <span class="list-child-chip" id="listChildChip" hidden></span>
    <button type="button" class="list-tint-chip" id="listTintChip" hidden></button>
-   <span class="list-join-chip" id="listJoinChip" hidden></span>`;
+   <span class="list-join-chip" id="listJoinChip" hidden></span>
+   <!-- 「どこを見ているか」と「いつのデータか」（§9.286 ②③④）。
+        **バッククォートを書かないこと**（§9.211 ③。ここはテンプレート
+        リテラルの中なので、文字列がそこで閉じて画面が組み上がらなくなる）。
+        説明は下の ensureListToolbar のコメントにある。 -->
+   <span class="lt-group lt-data" role="group" aria-label="表示する範囲と元データ">
+    <button type="button" class="list-fresh-chip" id="listFreshness"
+     aria-haspopup="true" aria-expanded="false" hidden></button>
+    <label class="list-pagesize" title="1ページに出す件数です（多くすると1回の読み込みが重くなります）">
+     <span>表示</span>
+     <select id="pageSize" aria-label="表示件数">${PAGE_SIZES.map(n=>
+       `<option value="${n}"${String(n)===DEFAULT_PAGE_SIZE?' selected':''}>${Number(n).toLocaleString()}</option>`).join('')}
+      <option value="${ALL_ROWS}">全件</option></select></label>
+    <span class="list-pager" id="listPager">
+     <button type="button" id="prev" class="list-page-btn" aria-label="前のページ" title="前のページ">‹</button>
+     <b id="page">1</b>
+     <button type="button" id="next" class="list-page-btn" aria-label="次のページ" title="次のページ">›</button>
+    </span>
+    <span class="list-count" id="count"></span>
+   </span>`;
   grid.parentNode.insertBefore(bar,grid);
   /* 列の設定はこの一覧の設定パネルへ集約する(§9.88 段2)。名前・並び・幅・
      表示を1箇所で決められるので、ボタンの行き先もここ1つでよい。 */
   bar.querySelector('#listColumnBtn').onclick=()=>WL.listColumns?.toggle();
+  /* 表示件数・ページめくり・元データの鮮度は**ここで配線する**（§9.286 ②）
+     ——器をJSで作るようになったので、読み込み時に`$('#pageSize')`を探す形の
+     配線は成り立たない（欄を作った側から配る・§9.257 ②と同じ理由）。 */
+  bar.querySelector('#pageSize').onchange=()=>{S.page=1;load()};
+  bar.querySelector('#prev').onclick=()=>{if(S.page>1){S.page--;load()}};
+  bar.querySelector('#next').onclick=()=>{S.page++;load()};
+  /* 鮮度のチップは**押すと再読込のメニューが開く**（§9.286 ④）。
+     「いつのデータか」と「取り直す」は同じ関心事なので、読む場所と
+     打つ手を同じ場所に置く（§CLAUDE 画面基準 2）。 */
+  bar.querySelector('#listFreshness').onclick=e=>{
+   if(document.getElementById('reloadMenu')){closeReloadMenu();return}
+   openReloadMenu(e.currentTarget);
+  };
   const gap=bar.querySelector('#listRowGap');
   gap.addEventListener('input',()=>applyRowGap(Number(gap.value)));
   bindSortControls(bar);
@@ -2464,7 +2710,6 @@ function checkParentLookupRows(targets){
 /* 検索・ページャ。ボタンは常に最新のload実装を呼ぶ(旧実装は初期のload関数を
    参照し続ける潜在不具合があった)。 */
 $('#search').oninput=()=>{clearTimeout(S.t);S.t=setTimeout(()=>{S.page=1;load()},300)};
-$('#pageSize').onchange=()=>{S.page=1;load()};
 /* ---------- RNE抽出の実行と進捗表示（§9.78） ----------
    抽出は数十秒かかる背景処理。画面は覆わず(操作を止めない)、ヘッダーの下に
    細い進捗帯を出す。**終わったジョブ数で数える**ので、バーは実際の進み方を
@@ -2549,12 +2794,12 @@ async function reloadList(){
 
 function closeReloadMenu(){
  document.getElementById('reloadMenu')?.remove();
- $('#reload')?.setAttribute('aria-expanded','false');
+ $('#listFreshness')?.setAttribute('aria-expanded','false');
  document.removeEventListener('click',onReloadOutside,true);
 }
 function onReloadOutside(e){
  const menu=document.getElementById('reloadMenu');
- if(menu&&!menu.contains(e.target)&&!e.target.closest('#reload'))closeReloadMenu();
+ if(menu&&!menu.contains(e.target)&&!e.target.closest('#listFreshness'))closeReloadMenu();
 }
 async function openReloadMenu(anchor){
  closeReloadMenu();
@@ -2571,7 +2816,7 @@ async function openReloadMenu(anchor){
  };
  place();
  menu.querySelector('[data-reload-action="list"]').onclick=()=>{closeReloadMenu();reloadList()};
- $('#reload').setAttribute('aria-expanded','true');
+ $('#listFreshness')?.setAttribute('aria-expanded','true');
  requestAnimationFrame(()=>document.addEventListener('click',onReloadOutside,true));
 
  /* RNEからの作成は、この一覧が対象で、かつ抽出資材が置いてある端末だけ。
@@ -2597,9 +2842,6 @@ async function openReloadMenu(anchor){
  small.textContent='Navigatorから抽出し直してから読み込みます（数十秒）';
  btn.onclick=async()=>{closeReloadMenu();await WL.rne.runWithProgress();reloadList()};
 }
-$('#reload').onclick=e=>{
- if(document.getElementById('reloadMenu')){closeReloadMenu();return}
- openReloadMenu(e.currentTarget);
-};
-$('#prev').onclick=()=>{if(S.page>1){S.page--;load()}};
-$('#next').onclick=()=>{S.page++;load()};
+/* 「再読込」の入口は**一覧のツールバーの鮮度チップ1つ**（§9.286 ④）。
+   ヘッダーのボタンは外した——`body.sc-mode`で伏せられるため、分割表示の
+   仕掛一覧からは押せなかった（入口を2つにしない・§9.207）。 */

@@ -43,25 +43,35 @@ let b=null;
  const backDef=mark();
  rec('品質データへ戻るときも再取得しない',backDef.length===0,JSON.stringify(backDef));
 
- // --- 2. キャッシュ表示中は「いつ時点か」を必ず出す ---
+ /* --- 2. いま見ているのがいつのデータかを必ず出す（§9.286 ④） ---
+    以前は**この端末の写しの古さ**を、キャッシュから描いたときだけ出して
+    いた（取り立てのときは何も出ない＝元データの時刻はどこにも無い）。
+    いまは**元データの更新時刻**を常に出し、写しの話は`title`へ落とす。 */
  const fresh=await page.evaluate(()=>{const e=document.querySelector('#listFreshness');
-   return {hidden:e?.hidden,text:e?.textContent}});
- rec('キャッシュ表示中はヘッダーに鮮度(「たった今の内容」等)が出る',
-   fresh.hidden===false&&/内容$/.test(fresh.text||''),JSON.stringify(fresh));
+   return {hidden:e?.hidden,text:(e?.textContent||'').trim(),title:e?.title||''}});
+ rec('いつのデータかが一覧の上に常に出ている',
+   fresh.hidden===false&&/元データ/.test(fresh.text),JSON.stringify(fresh));
+ rec('写しから描いていることは説明で読める',
+   /読み込んだ内容です|元データの/.test(fresh.title),fresh.title.slice(0,80));
 
  // --- 3. 再読込は必ずサーバーへ取りに行き、鮮度表示を消す ---
  // 「再読込」は読み直し方を選ばせるポップオーバーになった(§9.78)。
  // 単に取り直すのは、その中の「一覧を再読込」。
  mark=since();
- await page.click('#reload');
+ await page.click('#listFreshness');
  await page.waitForSelector('#reloadMenu [data-reload-action="list"]',{timeout:5000});
  await page.click('#reloadMenu [data-reload-action="list"]');
  await page.waitForTimeout(2500);
  const reloaded=mark();
  rec('「再読込」は必ずサーバーから取り直す',
    reloaded.filter(x=>x==='table').length>=1,JSON.stringify(reloaded));
- const fresh2=await page.evaluate(()=>document.querySelector('#listFreshness')?.hidden);
- rec('取り立てのときは鮮度表示を消す(古いと誤解させない)',fresh2===true,'hidden='+fresh2);
+ /* 取り直しても**消さない**——消すと「元データがいつのものか」が読めなく
+    なる（それがこの改良の目的）。消えるのは「画面の写しは◯分前」の一行だけ。 */
+ const fresh2=await page.evaluate(()=>{const e=document.querySelector('#listFreshness');
+   return {hidden:e?.hidden,title:e?.title||''}});
+ rec('取り直しても元データの時刻は出たまま',fresh2.hidden===false,JSON.stringify(fresh2));
+ rec('取り立てのときは「画面の写しは◯前」を言わない',
+   !/画面に出ているのは/.test(fresh2.title),fresh2.title.slice(0,80));
 
  // --- 4. 検索語やページを変えたら別内容なので取り直す ---
  mark=since();

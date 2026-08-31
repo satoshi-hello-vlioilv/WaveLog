@@ -39,6 +39,12 @@ let b=null;
   // ---- 1. 選べること ----
   const opts=await page.evaluate(()=>[...document.querySelectorAll('#pageSize option')].map(o=>o.value));
   rec('表示件数に「全件」がある',opts.includes('all'),JSON.stringify(opts));
+  /* §9.286 ③（利用者の指示「200,500,1000,2000,3000,5000を準備し、1000件としたい」）。
+     **既定まで見ること**——選択肢が並ぶだけを見る網は、既定が200のままでも通る。 */
+  rec('表示件数の選択肢が6段そろっている',
+    ['200','500','1000','2000','3000','5000'].every(v=>opts.includes(v)),JSON.stringify(opts));
+  const defSize=await page.evaluate(()=>document.querySelector('#pageSize').value);
+  rec('表示件数の既定は1000件',defSize==='1000',defSize);
 
   const mark=tableCalls.length;
   await page.selectOption('#pageSize','all');
@@ -95,7 +101,9 @@ let b=null;
 
   // ---- 6. 途中で戻したら続きの読み込みは止まる ----
   await page.selectOption('#pageSize','200');
-  await page.waitForFunction(()=>document.querySelector('#page')?.textContent==='1ページ',{timeout:20000});
+  /* §9.286 ②: ページの札は「1–200」のように**何件目から何件目か**を出す
+     （ページ番号は`title`。同じことを2通りで言わない・§CLAUDE 8）。 */
+  await page.waitForFunction(()=>/^1[–-]/.test(document.querySelector('#page')?.textContent||''),{timeout:20000});
   await page.waitForTimeout(2500);
   const back=await page.evaluate(()=>({rows:S.rows.length,dom:document.querySelectorAll('#grid tbody tr').length,
     prev:document.querySelector('#prev').disabled,next:document.querySelector('#next').disabled}));

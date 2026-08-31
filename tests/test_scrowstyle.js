@@ -157,7 +157,12 @@ let b=null;
   rec('区分6つが並ぶ',['cat:planned','cat:doing','cat:done','cat:cancel','cat:stop','cat:comment']
       .every(k=>panel.rows.includes(k)),JSON.stringify(panel.rows));
   /* §9.201で横並びのボタン8個から**プルダウン**へ（利用者の指示）。 */
-  rec('色は決められた8つから選ぶ（プルダウン）',panel.colors===8,String(panel.colors));
+  /* **16進を選ばせない**（§9.198）ための決め打ちの色。§9.286 ⑥で7色→14色に
+     増やしたので、数は`WL.columnTint`（**色の表は1箇所**）と突き合わせる
+     ——ここに数を書くと、色を足すたびに落ちる。先頭は「既定」の1枚。 */
+  const palN=await page.evaluate(()=>((window.WL&&WL.columnTint)?WL.columnTint.keys().length:0));
+  rec('色は決められた色から選ぶ（プルダウン）',panel.colors===palN+1,
+      `${panel.colors} / 期待=${palN+1}（既定＋${palN}色）`);
   rec('設備停止の分類ごとにも決められる',panel.rows.some(k=>k.startsWith('stopcat:')),JSON.stringify(panel.rows));
 
   await page.selectOption('.sc-rs-row[data-rs="cat:planned"] [data-rs-color]','blue');

@@ -29,7 +29,12 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
  const errs=[];page.on('pageerror',e=>errs.push(e.message));
  /* 行数が落ち着くまで待つ。**固定待ちにしないこと**(§9.102)——遅い画面では
     足りず、速い画面では無駄に待つ。 */
- const rows=()=>page.evaluate(()=>document.querySelectorAll('#grid tbody tr').length);
+ /* **DOMの行数で数えないこと**（§9.286 ③）——表示件数の既定が1000件に
+    なったので、検証用データ（2,003行）では**仮想行**が効く（§9.95。600行を
+    超えるとDOMへ置くのは画面の前後だけ）。同じ絞り込みでもスクロール位置と
+    丸めで53/54と揺れる。絞り込みの効きは**サーバーが数えた件数**で見る。 */
+ const rows=()=>page.evaluate(()=>(typeof S!=='undefined'&&Number.isFinite(S.count))
+   ?S.count:document.querySelectorAll('#grid tbody tr').length);
  const settle=async()=>{
   let last=-1,same=0;
   for(let i=0;i<60&&same<3;i++){
@@ -207,6 +212,8 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('移したらその場の入力は空になる（同じ条件が2つ効かない）',kept.その場==='',JSON.stringify(kept));
   rec('移しても絞り込みの結果は変わらない',kept.行===after,JSON.stringify({after,now:kept.行}));
   /* 後片付け（次のテストへ条件を持ち越さない） */
+  /* §9.286 ①: たまにしか使わない入口は`⋯`の浮きメニューへ畳んだ。**消していない**ので、開いてから押す。 */
+  await page.click('#filterMoreBtn');
   await page.click('#clearGenericFilters');
   await settle();
 

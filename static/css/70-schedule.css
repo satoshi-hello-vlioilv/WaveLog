@@ -1534,6 +1534,15 @@
 .sc-rs-amber {--rs-fg:var(--warn-fg); --rs-bg:var(--warn-bg);        --rs-line:var(--warn-border)}
 .sc-rs-red   {--rs-fg:var(--danger);  --rs-bg:var(--danger-bg);      --rs-line:var(--danger-border)}
 .sc-rs-purple{--rs-fg:var(--rs-purple);--rs-bg:var(--rs-purple-bg);  --rs-line:var(--rs-purple-border)}
+/* §9.286 ⑥で足した7色。**`WL.columnTint.PALETTE`と同じ鍵**で並べること
+   ——鍵が食い違うと、選べるのに色が付かない札ができる。 */
+.sc-rs-slate {--rs-fg:var(--rs-slate); --rs-bg:var(--rs-slate-bg);   --rs-line:var(--rs-slate-border)}
+.sc-rs-cyan  {--rs-fg:var(--rs-cyan);  --rs-bg:var(--rs-cyan-bg);    --rs-line:var(--rs-cyan-border)}
+.sc-rs-indigo{--rs-fg:var(--rs-indigo);--rs-bg:var(--rs-indigo-bg);  --rs-line:var(--rs-indigo-border)}
+.sc-rs-lime  {--rs-fg:var(--rs-lime);  --rs-bg:var(--rs-lime-bg);    --rs-line:var(--rs-lime-border)}
+.sc-rs-yellow{--rs-fg:var(--rs-yellow);--rs-bg:var(--rs-yellow-bg);  --rs-line:var(--rs-yellow-border)}
+.sc-rs-brown {--rs-fg:var(--rs-brown); --rs-bg:var(--rs-brown-bg);   --rs-line:var(--rs-brown-border)}
+.sc-rs-pink  {--rs-fg:var(--rs-pink);  --rs-bg:var(--rs-pink-bg);    --rs-line:var(--rs-pink-border)}
 /* 区分のセルは面まで塗る。行の地はごく淡く(色相だけが分かればよい)。 */
 .sc-row-cat[class*="sc-rs-"]{background:var(--rs-bg);color:var(--rs-fg);border-left-color:var(--rs-line)}
 .sc-row-line[class*="sc-rs-"]{background:color-mix(in srgb, var(--rs-bg) 55%, var(--surface))}

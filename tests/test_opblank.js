@@ -48,8 +48,10 @@ let b=null;
     idと名前だけで呼ぶと、送らなかった`[群]`が空で上書きされる（§9.244で
     実際にやらかした）。 */
  let target=null,saved=null;
- const put=async patch=>{
-  const r=await byName(target);
+ /* 既定は「いま試している欄」だが、名前を渡せば別の行も直せる
+    （§9.286 ⑤は**仕掛由来のプリセットが無い欄**で確かめたい）。 */
+ const put=async(patch,name)=>{
+  const r=await byName(name||target);
   const body={};
   ['id','name','group','place','type','unit','choice','decimals','min','max',
    'widget','order','required','enabled','initial','noBlank','freeText','layout',
@@ -199,6 +201,65 @@ let b=null;
        choices.every(v=>picked.items.includes(v)),JSON.stringify(picked.items));
   }
 
+  /* ==========================================================
+     5) 初期値のハードコーディングが無い（§9.286 ⑤、利用者の指示）
+        「初期値を『-』でハードコーディングしているものが残っており…
+         初期値も含めて汎用化対応しているので、ハードコーディング部分を
+         除去してきれいに汎用部品のみで対応できるように」
+
+        `-`は**札の字**であって値ではない。値として持っていたせいで、
+        `applyInitials()`が見る「まだ何も選ばれていない」を画面の側が先に
+        埋めてしまい、**マスタの`[初期値]`が組み込みの欄で一度も効かなかった**。
+     ========================================================== */
+  await put({noBlank:false,widget:'プルダウン',initial:''});
+  await openMeasure();
+  const blank=await page.evaluate(key=>{
+   const sel=document.getElementById(key);
+   const st=(typeof S!=='undefined'&&S.measure&&S.measure.settings)||{};
+   const dash=Object.entries(st).filter(([k,v])=>v==='-').map(([k])=>k);
+   return {value:sel?sel.value:null,
+           blankOptValue:sel?[...sel.options].find(o=>o.textContent.trim()==='-')?.value:null,
+           setting:st[key],dash};
+  },domId);
+  rec('「選ばない」の札は値を持たない（値は空文字）',blank.blankOptValue==='',
+      JSON.stringify(blank));
+  rec('初期値を決めていない欄は空で始まる（`-`という値を作らない）',
+      blank.value===''&&(blank.setting===undefined||blank.setting===''),
+      JSON.stringify(blank));
+  rec('記録のどの欄にも`-`が入っていない',blank.dash.length===0,JSON.stringify(blank.dash));
+
+  /* マスタで初期値を決めると、**組み込みの欄でも**入る（§9.229 ③）。
+     直す前は`-`が先に入っていたため、ここが必ず落ちる。
+     **確かめるのはオペレータ**——内径は仕掛由来のプリセットが勝つ約束
+     （§9.204）なので、初期値の道を通ったかどうかを見分けられない。
+     **選択肢に無い値でよい**（`applyInitials()`は`addOption()`で足してから
+     入れる。選択肢がマスタに1件も無い設備でも確かめられる）。 */
+  const OPER='オペレータ',INIT='初期値'+Date.now().toString(36).slice(-4);
+  const oper=await byName(OPER);
+  if(oper&&oper.builtin){
+   const operSaved=String(oper.initial||'');
+   try{
+    await put({initial:INIT},OPER);
+    await openMeasure();
+    const got=await page.evaluate(v=>{
+     const sel=document.getElementById('operator');
+     return {value:sel?sel.value:null,
+             /* **「いまの値が候補にある」では確かめたことにならない**——
+                「選ばない」の札（値は空文字）が必ず在るので、何も入って
+                いなくても真になる。**初期値そのもの**を探すこと。 */
+             足した:sel?[...sel.options].some(o=>o.value===v):null,
+             setting:((typeof S!=='undefined'&&S.measure&&S.measure.settings)||{}).operator};
+    },INIT);
+    rec('マスタの初期値が組み込みの欄にも入る',got.value===INIT,
+        `${JSON.stringify(got)} / 期待=${INIT}`);
+    rec('選択肢に無い初期値でも欄へ足してから入れる',got.足した===true,JSON.stringify(got));
+   }finally{
+    try{await put({initial:operSaved},OPER)}catch(e){}
+   }
+  }else{
+   rec('マスタの初期値が組み込みの欄にも入る',false,'オペレータの行が見つかりません');
+  }
+
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
   console.log('FATAL: '+(e&&e.stack||e));
@@ -213,7 +274,7 @@ let b=null;
      それを「元の値」として拾って固定し、**関係の無い`test_scale`が
      『コントロールの高さがトークンに収まる』で落ちた**）。
      `noBlank`は拾った値へ戻してよい（既定=Falseで、種にも無い）。 */
-  try{if(target)await put({noBlank:!!saved,widget:'プルダウン'})}catch(e){}
+  try{if(target)await put({noBlank:!!saved,widget:'プルダウン',initial:''})}catch(e){}
   try{await post('/api/access-mode',{mode:'edit'})}catch(e){}
   if(b)await b.close();
  }

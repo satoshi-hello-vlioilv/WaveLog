@@ -591,6 +591,12 @@ _FILTER_PRESET_MODE_COLUMN=('対象モード','TEXT')
 # 共有として、そのまま全員に見え続ける(個人単位を後から入れたからといって、
 # 既にある登録が誰かの持ち物になったり見えなくなったりしてはいけない)。
 _FILTER_PRESET_OWNER_COLUMN=('所有者ID','TEXT')
+# グループ(§9.286 ①、利用者の指示「登録フィルタのグループ化登録及びグループ
+# ごとの一括切り替え機能」)。**空欄＝未分類**——今まで登録された分は
+# どの群にも属さないまま、今までどおり全部見え続ける(所有者IDと同じ約束)。
+# **群そのものの表は作らない**——群は「この登録に付けた名札」でしかなく、
+# 別表にすると「行が1つも無い群」という決まらない状態が生まれる。
+_FILTER_PRESET_GROUP_COLUMN=('グループ','TEXT')
 
 def _add_missing_column(c,table,name,decl):
  if name not in {r[1] for r in c.cursor().execute(f'PRAGMA table_info([{table}])')}:
@@ -606,7 +612,8 @@ def ensure_filter_preset_table(c):
   c.commit();created=True
  ensure_audit_columns(c,FILTER_PRESET_TABLE)
  # 既存DBには無い列なので、他のマスタと同じ「無ければALTER TABLEで足す」方式。
- for name,decl in (_FILTER_PRESET_MODE_COLUMN,_FILTER_PRESET_OWNER_COLUMN):
+ for name,decl in (_FILTER_PRESET_MODE_COLUMN,_FILTER_PRESET_OWNER_COLUMN,
+                   _FILTER_PRESET_GROUP_COLUMN):
   _add_missing_column(c,FILTER_PRESET_TABLE,name,decl)
  return created
 
@@ -614,7 +621,7 @@ def filter_preset_rows(c):
  ensure_filter_preset_table(c)
  cur=c.cursor()
  # 全行取得後にPython側で有効判定する(使用回数の多い順で返す)。
- cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル],[条件JSON],[使用回数],[最終使用日時],[有効],[更新日時],[更新者ID],[対象モード],[所有者ID] FROM [フィルタプリセットマスタ] ORDER BY [使用回数] DESC,[表示順],[名称]')
+ cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル],[条件JSON],[使用回数],[最終使用日時],[有効],[更新日時],[更新者ID],[対象モード],[所有者ID],[グループ] FROM [フィルタプリセットマスタ] ORDER BY [使用回数] DESC,[表示順],[名称]')
  rows=[]
  for r in cur.fetchall():
   active=True if r[7] is None else bool(r[7])

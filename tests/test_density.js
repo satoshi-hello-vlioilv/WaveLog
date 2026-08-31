@@ -47,7 +47,9 @@ let b=null;
       `${listPitch}px (上限${MAX_ROW_PITCH})`);
 
   /* ---- 2) 再読込は読み直し方を選べる ---- */
-  await page.click('#reload');await settle(900);
+  /* §9.286 ④: 入口はヘッダーの`#reload`から**一覧ツールバーの鮮度チップ**へ
+     移した——「いつのデータか」と「取り直す」を同じ場所に置く。 */
+  await page.click('#listFreshness');await settle(900);
   const menu=await page.evaluate(()=>{
    const m=document.getElementById('reloadMenu');if(!m)return null;
    return [...m.querySelectorAll('button')].map(x=>({
@@ -69,7 +71,7 @@ let b=null;
       await page.evaluate(()=>!document.getElementById('reloadMenu')));
 
   /* 「一覧を再読込」が実際に効く(押しても何も起きない、にしない) */
-  await page.click('#reload');await settle(600);
+  await page.click('#listFreshness');await settle(600);
   await page.evaluate(()=>document.querySelector('[data-reload-action="list"]').click());
   await settle(1500);
   rec('「一覧を再読込」で一覧が出ている',
