@@ -61,6 +61,8 @@ let b=null;
   return (await r.json()).items||[];
  },user);
  const openPresets=async page=>{
+  /* §9.286 ①: たまにしか使わない入口は`⋯`の浮きメニューへ畳んだ。**消していない**ので、開いてから押す。 */
+  await page.click('#filterMoreBtn');
   await page.click('#openFilterPresets');
   await page.waitForSelector('#filterPresetModal:not([hidden])',{timeout:10000});
   await page.waitForTimeout(900);

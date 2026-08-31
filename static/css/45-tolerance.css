@@ -173,6 +173,75 @@
 /* 「よく使う条件」の開閉トグル(ARCHITECTURE.md「フィルタのよく使う条件」)。既定は閉じており、該当条件が
    1件も無いときはボタン自体を出さない(JS側でhidden)。 */
 .filter-search-row-actions #filterQuickToggle.active{background:var(--pale);border-color:var(--teal);color:#0a6570;font-weight:700}
+/* ---------- プリセット中心の1行（§9.286 ①、利用者の指示） ----------
+   「フィルタ機能がモリモリでゴチャついてきたので、コンパクトかつ分かり
+    やすく…最終的にプリセット登録したフィルタの切り替えだけで使えるように
+    しつつ、その場フィルタでスポットのフィルタを組み合わせて使う形」
+
+   並びは**決める順**（§CLAUDE 画面基準 14）——
+   「どの群か → その群の札 → いま何件効いているか → その場で足す → ⋯」。
+   縮む役は**札の帯と条件の欄だけ**（§9.229 ⑤）。群のボタン・件数・
+   ボタン類は`flex:0 0 auto`で中身なりのまま。 */
+.fb-group-btn{flex:0 0 auto;display:inline-flex;align-items:center;gap:var(--gap-tight);
+  height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line-strong);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--ink);font-weight:800;white-space:nowrap}
+.fb-group-btn:hover{border-color:var(--teal)}
+.fb-group-btn[aria-expanded="true"]{border-color:var(--teal);background:var(--pale)}
+.fb-group-key{color:var(--ink-soft);font-size:var(--fs-micro);font-weight:700}
+.fb-group-btn b{max-width:var(--w-md);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fb-group-btn i{font-style:normal;color:var(--ink-soft);font-size:var(--fs-micro)}
+/* 登録フィルタの札。**横に流れる1本の帯**（縦に積むと一覧が短くなる）。 */
+.fb-presets{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:var(--gap-tight);
+  flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden}
+.fb-presets-empty{color:var(--ink-soft);font-size:var(--fs-micro);white-space:nowrap}
+/* 選んだ札のほうが濃い（§9.229 ②）。**合図は面と文字の2つまで**。 */
+.fb-chip{flex:0 0 auto;display:inline-flex;align-items:center;gap:var(--space-1);
+  height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
+  border:1px solid var(--line-mid);border-radius:var(--radius-pill);
+  background:var(--surface);color:var(--muted);font-size:var(--fs-sm);white-space:nowrap}
+.fb-chip>span{max-width:var(--w-md);overflow:hidden;text-overflow:ellipsis}
+.fb-chip:hover{border-color:var(--teal);color:var(--ink)}
+.fb-chip.is-on{background:var(--teal);border-color:var(--teal);color:var(--surface);font-weight:800}
+.fb-chip.is-lock{border-style:dashed}
+.fb-chip i{font-style:normal;font-size:var(--fs-micro)}
+/* たまにしか使わない入口を畳む先（§9.234 ①。**消さずに畳む**）。 */
+.fb-more-btn{flex:0 0 auto;min-width:var(--ctl-h-sm);font-weight:800}
+.fb-more-btn[aria-expanded="true"]{background:var(--pale);border-color:var(--teal)}
+/* **`position:fixed`で出すこと**（§9.201）——器（`.generic-filter-bar`）は
+   角丸のため`overflow:hidden`を持つので、`absolute`だと**メニューが丸ごと
+   切り落とされる**（実機のキャプチャで判明。押した印は付くのに何も出ない）。
+   座標は開くときにボタンの位置から入れる。 */
+.fb-more-menu{position:fixed;z-index:var(--z-popover);
+  display:flex;flex-direction:column;gap:var(--gap-hair);min-width:var(--w-xl);
+  padding:var(--space-2);border:1px solid var(--line-strong);border-radius:var(--radius-md);
+  background:var(--surface);box-shadow:0 8px 24px #17384226}
+.fb-more-menu[hidden]{display:none}
+.fb-more-menu>button{display:flex;flex-direction:column;align-items:flex-start;gap:0;
+  width:100%;height:auto;padding:var(--space-2);border:0;border-radius:var(--radius-sm);
+  background:transparent;color:var(--ink);font-weight:700;text-align:left}
+.fb-more-menu>button:hover{background:var(--surface-2)}
+.fb-more-menu>button[hidden]{display:none}
+.fb-more-menu>button small{color:var(--ink-soft);font-size:var(--fs-tiny);font-weight:400}
+/* 群を選ぶ浮きメニュー（body直下・position:fixed。§9.201）。
+   **行ごとに件数と、まとめて当てる／外すを対で置く**（§9.170）。 */
+.fb-group-menu{min-width:var(--w-xl)}
+.fb-group-item{display:flex;align-items:center;gap:var(--gap-inline);
+  padding:var(--space-1) var(--space-2);border-radius:var(--radius-sm)}
+.fb-group-item.is-current{background:var(--pale)}
+.fb-group-pick{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;align-items:flex-start;
+  height:auto;padding:var(--space-1) var(--space-2);border:0;background:transparent;
+  color:var(--ink);font-weight:800;text-align:left}
+.fb-group-pick:hover{background:var(--surface-2)}
+.fb-group-pick small{color:var(--ink-soft);font-size:var(--fs-tiny);font-weight:400}
+.fb-group-bulk{flex:0 0 auto;display:flex;gap:var(--gap-hair)}
+.fb-group-bulk button{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
+  font-size:var(--fs-micro);white-space:nowrap}
+.fb-group-note{margin:var(--space-2) var(--space-2) 0;color:var(--ink-soft);font-size:var(--fs-tiny)}
+/* 登録一覧の群の欄（§9.286 ①）。**選ぶだけで付け替わる。** */
+.filter-preset-item .fp-group-cell{display:flex;align-items:center;min-width:0}
+.filter-preset-item .fp-group{max-width:var(--w-md);height:var(--ctl-h-xs);
+  font-size:var(--fs-sm);min-width:0}
 /* アクティブ条件タグ（トークン） */
 .filter-tag{display:inline-flex;align-items:center;gap:var(--space-1);flex:0 0 auto;max-width:100%;min-height:var(--ctl-h-xs);padding:2px 4px 2px 8px;border-radius:var(--radius-md);border:1px solid #8bbbc1;background:#eafafa;color:#173842}
 .filter-tag>span{font-weight:800;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -256,7 +325,7 @@
 .filter-preset-toolbar span{color:#40606a;font-size:var(--fs-sm)}
 .filter-preset-toolbar button{background:var(--teal);color:#fff;border-color:var(--teal)}
 .filter-preset-list{flex:1;min-height:0;overflow:auto;padding:var(--pad-card);display:grid;gap:var(--space-2);align-content:start;position:relative}
-.filter-preset-item{display:grid;grid-template-columns:minmax(130px,1.1fr) auto minmax(110px,.9fr) minmax(0,2.2fr) auto;gap:var(--gap-section);align-items:center;padding:9px 11px;background:#fff;border:1px solid #d6e0e3;border-radius:var(--radius-sm)}
+.filter-preset-item{display:grid;grid-template-columns:minmax(130px,1.1fr) auto auto minmax(110px,.9fr) minmax(0,2.2fr) auto;gap:var(--gap-section);align-items:center;padding:9px 11px;background:#fff;border:1px solid #d6e0e3;border-radius:var(--radius-sm)}
 .filter-preset-item .fp-name{font-weight:800;color:#173842;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .filter-preset-item .fp-name small{display:block;margin-top:2px;color:#7b8e95;font-weight:700;font-size:var(--fs-tiny)}
 .filter-preset-item .fp-target{color:#526970;font-size:var(--fs-sm);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -304,7 +373,7 @@
 .fp-always:hover{border-color:#9fc3c8}
 .fp-cond{display:inline-flex;align-items:center;gap:var(--gap-tight);padding:var(--pad-chip);border-radius:var(--radius-md);border:1px solid #cddbde;background:#f7fafb;font-size:var(--fs-micro);white-space:nowrap}
 .fp-cond b{color:#075e67}
-@media(max-width:820px){.filter-preset-item{grid-template-columns:1fr auto auto;gap:var(--gap-inline)}.filter-preset-item .fp-conds{grid-column:1/-1}}
+@media(max-width:820px){.filter-preset-item{grid-template-columns:1fr auto auto auto;gap:var(--gap-inline)}.filter-preset-item .fp-conds{grid-column:1/-1}}
 /* ---------- 登録フィルタの持ち出し・取り込み(§9.171) ----------
    モーダルを増やさず、登録フィルタの一覧の**上へ差し込む**。何が出て行く
    のか・何が入ってくるのかを、実物の一覧を見たまま確かめられるようにする。 */

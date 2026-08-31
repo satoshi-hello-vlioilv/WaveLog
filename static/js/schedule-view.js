@@ -3416,16 +3416,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
        （このアプリは社内で閉じて動く）ので、同じ見え方の**線画アイコンを
        同梱**する。1つ12〜14pxで読めるよう、線幅2の単純な形にしてある。
      ・**効く順は「分類の指定 → 区分の指定 → 既定」**。判定はここ1箇所。 */
- const SC_ROW_PALETTE=[
-  {key:'',      label:'既定', note:'区分ごとの元の色'},
-  {key:'gray',  label:'灰',   note:'目立たせない'},
-  {key:'teal',  label:'青緑', note:'基準・進行'},
-  {key:'blue',  label:'青',   note:'情報・待ち'},
-  {key:'green', label:'緑',   note:'完了・良'},
-  {key:'amber', label:'橙',   note:'注意・段取り'},
-  {key:'red',   label:'赤',   note:'停止・異常'},
-  {key:'purple',label:'紫',   note:'臨時・特別'},
- ];
+ /* 行の色（§9.198）。**色の表は`WL.columnTint.PALETTE`の1箇所**
+    （§9.239 ⑤-3／§9.286 ⑥）——ここへ写すと、色を1つ足すたびに2箇所直す
+    ことになり、片方だけ増えた状態が作れる。先頭の「既定」だけがこの画面の
+    もの（区分ごとの元の色へ戻す、という行の見せ方だけの選択肢）。 */
+ const SC_ROW_PALETTE=[{key:'',label:'既定',note:'区分ごとの元の色'}].concat(
+  ((window.WL&&WL.columnTint&&WL.columnTint.keys())||[]).map(k=>({
+   key:k,label:WL.columnTint.label(k),note:WL.columnTint.note(k)})));
  /* 同梱の線画アイコン(24×24、線幅2)。**外部から取りに行かない**——
     社内で閉じて動くアプリなので、CDNのアイコンフォントは読めない。 */
  const SC_ICON_SVG={

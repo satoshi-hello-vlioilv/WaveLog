@@ -58,9 +58,14 @@ let b=null;
   await openList();
 
   /* ---- 1) 適用と登録が別々に効く ---- */
+  /* §9.286 ①: たまにしか使わない入口は`⋯`の浮きメニューへ畳んだ。**消していない**ので、開いてから押す。 */
+  await page.click('#filterMoreBtn');await settle(200);
   await page.click('#filterToggle');await settle(600);
   rec('条件を作るビルダーに「適用」と「登録」がある',
       await page.evaluate(()=>!!document.querySelector('#addGenericFilter')&&!!document.querySelector('#registerGenericFilter')));
+  /* §9.80で外した「マスタへ保存」は戻さない（何が登録されたのか・何が
+     既に登録済みなのかが読めなくなる）。§9.286 ①の整理で、呼ばれていな
+     かった`saveCurrentFiltersToMaster()`も消した。 */
   rec('バーから「マスタへ保存」は無くなっている',
       await page.evaluate(()=>!document.querySelector('#saveFilterPreset')));
 

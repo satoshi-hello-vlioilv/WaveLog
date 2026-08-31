@@ -44,7 +44,8 @@ let b=null;
   /* ---- 2) 表示サイズを変えると測定画面の文字も全部変わる ---- */
   const sizes=await page.evaluate(async()=>{
    const pick=()=>{
-    const ids=['#search','#pageSize'];
+    /* §9.286 ②③: 表示件数は一覧ツールバーへ移った。ヘッダーに残るのは検索欄。 */
+    const ids=['#search','#pageSize','.list-count'];
     const els=[...document.querySelectorAll('.nav-item span'),...ids.map(s=>document.querySelector(s))].filter(Boolean);
     return els.slice(0,6).map(e=>parseFloat(getComputedStyle(e).fontSize));
    };
@@ -244,7 +245,9 @@ let b=null;
     const vis=e=>e.offsetParent!==null;
     const ctls=[...document.querySelectorAll('#headerViewBar button,#headerViewBar select,#headerViewBar input')].filter(vis);
     out[name]={title,mounted:bar?bar.children.length:-1,dupes,
-      listActions:g?[...g.querySelectorAll('.hd-search,.hd-field,#reload')].filter(vis).length:-1,
+      /* §9.286 ④: 再読込は一覧ツールバーの鮮度チップへ移した（読む場所と
+         打つ手を同じ場所に置く）。ヘッダーに残るのは検索欄だけ。 */
+      listActions:g?[...g.querySelectorAll('.hd-search,.hd-field')].filter(vis).length:-1,
       sizeBtn:!!document.getElementById('uiSizeBadge')?.offsetParent,
       ctlH:[...new Set(ctls.map(e=>Math.round(e.getBoundingClientRect().height)))].sort((a,b)=>a-b),
       ctlFs:[...new Set(ctls.filter(e=>!e.classList.contains('rp-btn-icon'))

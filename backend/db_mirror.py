@@ -397,6 +397,54 @@ def _record(key, result):
   _state[key] = result
 
 
+def source_info(key, path=None):
+ """その一覧が読んでいるデータは「いつのものか」（§9.286 ④、利用者の指示
+ 「今見ているのがいつのデータかわかるような表示も一覧表確認時に見えるように」）。
+
+ **共有をここでstatしない。** 写しの仕組みは「共有へ触るのは背景スレッドだけ」
+ という約束の上に立っている（§9.89）ので、一覧を出すリクエストから共有を
+ 見に行くと、共有が不調なときに**一覧そのものが止まる**——鮮度を出すために
+ 一覧が出なくなるのでは本末転倒。元ファイルの更新時刻は、写しを作ったときに
+ 台帳へ控えてある印（`signature.mtime_ns`）から読む。
+
+ 戻り値:
+   at        … その中身がいつのものか（元ファイルの更新時刻。epoch秒）
+   mirrored  … 手元の写しを読んでいるか
+   copiedAt  … その写しをいつ取り込んだか（写しファイル自身の更新時刻）
+   checkedAt … 最後に共有を確かめたのはいつか（背景スレッドの周回）
+   **取れないものはNone**——「分からない」を0や「たった今」にしない（§3）。
+ """
+ out = {'at': None, 'mirrored': False, 'copiedAt': None, 'checkedAt': None}
+ key = str(key or '')
+ entry = _entry(key) or {}
+ sig = entry.get('signature') or {}
+ local = mirror_path(key)
+ try:
+  mirrored = bool(entry.get('file')) and local.exists()
+ except OSError:
+  mirrored = False
+ out['mirrored'] = mirrored
+ if mirrored:
+  ns = sig.get('mtime_ns')
+  if isinstance(ns, (int, float)):
+   out['at'] = float(ns) / 1e9
+  try:
+   out['copiedAt'] = local.stat().st_mtime
+  except OSError:
+   pass
+ elif path:
+  # 写していない置き場（手元のファイル）。こちらは手元なのでstatしてよい。
+  try:
+   out['at'] = Path(path).stat().st_mtime
+  except OSError:
+   pass
+ with _lock:
+  st = _state.get(key)
+ if st and isinstance(st.get('at'), (int, float)):
+  out['checkedAt'] = float(st['at'])
+ return out
+
+
 def status():
  """画面・診断用。キーごとの直近の結果。"""
  with _lock:

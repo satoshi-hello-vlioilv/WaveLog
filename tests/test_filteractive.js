@@ -39,6 +39,8 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   await openList();
 
   // ---- 条件を1つ作る
+  /* §9.286 ①: たまにしか使わない入口は`⋯`の浮きメニューへ畳んだ。**消していない**ので、開いてから押す。 */
+  await page.click('#filterMoreBtn');await page.waitForTimeout(200);
   await page.click('#filterToggle');await page.waitForTimeout(400);
   const col=await page.evaluate(()=>{const s=document.querySelector('#filterColumn');
    const o=[...s.options].map(x=>x.value);return o.find(v=>/ロット番号/.test(v))||o[1]||o[0]});
@@ -65,6 +67,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('開き直しても件数が同じ',c.rows===a.rows,`${a.rows} -> ${c.rows}`);
 
   // ---- 登録一覧に「覚えている」と書いてある / 消せる
+  await page.click('#filterMoreBtn');
   await page.click('#openFilterPresets');
   await page.waitForTimeout(1200);
   const memo=await page.evaluate(()=>{
@@ -77,6 +80,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   // ---- 全解除すると覚えも消える
   await page.evaluate(()=>{const m=document.querySelector('#filterPresetModal');if(m)m.hidden=true;
    document.querySelectorAll('.sc-float-win').forEach(x=>{if(x.querySelector('.filter-preset-toolbar'))x.hidden=true})});
+  await page.click('#filterMoreBtn');
   await page.click('#clearGenericFilters');
   await page.waitForTimeout(2200);
   const d=await snap();

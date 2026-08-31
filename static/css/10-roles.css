@@ -54,7 +54,7 @@
 .mm-btn-danger.sm,
 .sc-float-foot button,.record-sync-bar button,.rp-back-btn,
 .split-ghost-btn,.qa-v7 .qa-seg button,.sc-stop-button,.sc-column-actions button,
-.split-recheck-btn,.rp-foot-btn,main>footer #prev,main>footer #next{
+.split-recheck-btn,.rp-foot-btn{
   height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
   font-size:var(--fs-sm);border-radius:var(--radius-sm);
 }

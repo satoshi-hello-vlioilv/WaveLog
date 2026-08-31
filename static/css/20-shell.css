@@ -19,17 +19,65 @@
 .build-badge-clickable{cursor:pointer;border:0;font:inherit}
 .build-badge-clickable:hover{background:#28a88f}
 .build-badge-clickable:focus-visible{outline:2px solid var(--nav);outline-offset:2px}
-/* 更新履歴モーダル: 設定モーダルと同じ構造(.record-modal/.settings-dialog)を
-   流用し、中身だけバージョンごとの箇条書きリストにする。 */
-.changelog-dialog{width:min(560px,94vw);max-height:86vh;display:flex;flex-direction:column}
-.changelog-dialog .settings-body{overflow-y:auto}
-.changelog-entry{padding:14px 0;border-bottom:1px solid var(--line)}
+/* 更新履歴モーダル(§9.286 ⑦、利用者の指示「更新履歴はモーダルを大きくし
+   読みやすくわかりやすいように再構成してください」)。
+   以前は560pxの窓に389版・1292行が1本の帯で縦に並ぶだけで、目当ての版へ
+   行く手立ても、いま動いている版がどれかの印も無かった。
+   左＝版のレール(探す・跳ぶ)／右＝中身、の2列にし、器の高さを与えて
+   `flex:1;min-height:0`の鎖を通す(§9.254 ①。`max-height`だけでは
+   「これ以上大きくならない」であって「ここまで大きくする」ではない)。 */
+/* **詳細度を数えること**（§9.206）——`.settings-dialog`（40-records.css）は
+   同じ(0,1,0)で**後に読まれる**ので、素の`.changelog-dialog`では負けて
+   幅620pxのままだった（実測）。両方を書いて(0,2,0)にする。 */
+.settings-dialog.changelog-dialog{width:min(1180px,96vw);height:min(880px,92vh);
+  max-height:92vh;display:flex;flex-direction:column}
+.cl-sub{margin:2px 0 0;color:#8fd4d4;font-size:var(--fs-sm);font-weight:400}
+.cl-tools{flex:0 0 auto;display:flex;align-items:center;gap:var(--gap-inline);
+  padding:var(--space-2) var(--space-5);border-bottom:1px solid var(--line-soft);
+  background:var(--surface-2)}
+.cl-search{display:flex;align-items:center;gap:var(--gap-inline);flex:1 1 auto;min-width:0}
+.cl-search>span{flex:0 0 auto;color:var(--ink-3);font-size:var(--fs-sm);font-weight:700}
+.cl-search input{flex:1 1 auto;min-width:0;max-width:var(--w-xl,32em)}
+.cl-hits{flex:0 0 auto;color:var(--ink-3);font-size:var(--fs-sm)}
+.cl-clear{flex:0 0 auto}
+/* 2列。左のレールは版の一覧、右が中身。**どちらも別々にスクロールする**
+   ——1本にすると、レールを見るために中身を送ることになる。 */
+.changelog-dialog .cl-body{flex:1 1 auto;min-height:0;display:grid;
+  grid-template-columns:minmax(0,var(--cl-rail-w,260px)) minmax(0,1fr);
+  gap:0;padding:0;overflow:hidden}
+.cl-rail{min-height:0;overflow:auto;border-right:1px solid var(--line-soft);
+  background:var(--surface-2);padding:var(--space-2)}
+.cl-rail-row{display:block;width:100%;text-align:left;border:0;background:transparent;
+  border-radius:var(--radius-sm);padding:var(--space-1) var(--space-2);
+  color:var(--ink-2);font:inherit;cursor:pointer}
+.cl-rail-row:hover{background:var(--surface-3)}
+.cl-rail-row.is-active{background:var(--surface);box-shadow:inset 0 0 0 1px var(--line-mid);
+  color:var(--ink)}
+.cl-rail-row b{display:block;font-size:var(--fs-sm);color:var(--ink)}
+.cl-rail-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--ink-soft);font-size:var(--fs-tiny)}
+.cl-rail-row em{font-style:normal;color:var(--teal);font-weight:800}
+.cl-rail-empty{padding:var(--space-3);color:var(--muted);font-size:var(--fs-sm)}
+.cl-main{min-height:0;overflow:auto;padding:var(--space-5)}
+.changelog-entry{padding:var(--space-4) 0;border-bottom:1px solid var(--line-soft);
+  scroll-margin-top:var(--space-2)}
 .changelog-entry:first-child{padding-top:0}
 .changelog-entry:last-child{border-bottom:0;padding-bottom:0}
-.changelog-entry h3{margin:0 0 8px;color:#0b5e68;font-size:var(--fs-title)}
-.changelog-entry ul{margin:0;padding-left:20px;color:#3a4b50;line-height:1.7}
-.changelog-entry li+li{margin-top:4px}
-.changelog-loading{color:#60747b}
+.changelog-entry h3{margin:0 0 var(--space-2);display:flex;align-items:baseline;
+  gap:var(--gap-inline);color:var(--ink);font-size:var(--fs-title)}
+.changelog-entry h3 span{color:var(--ink-soft);font-size:var(--fs-tiny);font-weight:400}
+/* いま動いている版(§CLAUDE 3。色だけで伝えず、必ず文字を添える)。 */
+.cl-now{border-radius:var(--radius-pill);padding:var(--pad-chip);
+  background:var(--teal);color:var(--surface);font-size:var(--fs-badge);font-weight:800}
+.changelog-entry.is-now{background:var(--surface-2);border-radius:var(--radius-md);
+  padding-left:var(--space-3);padding-right:var(--space-3)}
+.changelog-entry ul{margin:0;padding-left:var(--space-5);color:var(--ink-2);line-height:1.8}
+.changelog-entry li{max-width:76ch}
+.changelog-entry li+li{margin-top:var(--space-2)}
+.changelog-entry code{border-radius:var(--radius-xs);padding:0 var(--space-1);
+  background:var(--surface-3);font-size:var(--fs-sm)}
+.changelog-entry mark{border-radius:var(--radius-xs);background:var(--warn-bg);color:inherit}
+.changelog-loading{color:var(--muted)}
 .measure-build-badge{font-size:var(--fs-sm);vertical-align:middle}
 /* 更新は届いたが再起動していない(§9.200)。**左メニューの版数のすぐ下**へ
    出す——気づく場所と打つ手を同じ場所に置く(§9.183と同じ作法)。

@@ -367,7 +367,11 @@
          「自分のもの」だけで、印(デフォルト・鍵)もその人のぶんが載って来る。 */
       q.set('user',filterUserId());
       const r=await api('/api/filter-presets?'+q);
+      /* **サーバーが返す持ちものは1つも落とさないこと**（§9.286 ①）——
+         `group`を写し忘れていたため、付け替えは保存されているのに画面では
+         いつまでも「分類なし」だった（保存の口を見る網では捕まらない）。 */
       const fromMaster=(r.items||[]).map(x=>({id:x.id,name:x.name,db:x.db,table:x.table,mode:x.mode||'',filters:Array.isArray(x.filters)?x.filters:[],uses:x.uses||0,lastUsed:x.last_used,updatedAt:x.updated_at,master:true,
+        group:x.group||'',
         owner:x.owner||'',mine:!!x.mine,shared:!!x.shared,isDefault:!!x.isDefault,isLocked:!!x.isLocked}));
       /* 端末ごとの古い印を、一度だけこの人の印へ移す。**移してから写す**
          ——先に写すと、移行で付いた印がその場では反映されない。 */
@@ -437,31 +441,11 @@
     }
   }
 
-  async function saveCurrentFiltersToMaster(){
-    const savable=S.genericFilters.filter(f=>!isLockedFilter(f));
-    if(!savable.length){showToast?.('保存する条件がありません','条件を追加してから保存してください（使用設備の必須条件は保存対象外です）。',4200);return}
-    if(savable.length>1&&!(await confirmModal(`現在アクティブな${savable.length}件の条件を、それぞれ個別の登録フィルタとして保存します。よろしいですか？`)))return;
-    if(canWait())showWaiting('フィルタをマスタへ保存しています','master.sqlite3 のフィルタプリセットマスタへ書き込み中','条件を1件ずつ登録しています');
-    let saved=0,skipped=0,failed=0;
-    for(const f of savable){
-      const dup=(S.filterPresets||[]).some(p=>(p.filters||[]).length===1&&filterKey(p.filters[0])===filterKey(f)&&p.db===S.db&&p.table===S.table);
-      if(dup){skipped++;continue}
-      const payload={name:presetName(f),db:S.db,table:S.table,mode:presetMode(),filters:[f],user:filterUserId()};
-      try{
-        await api('/api/filter-presets',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId(payload))});
-        saved++;
-      }catch(e){
-        const preset={id:crypto.randomUUID(),name:payload.name,db:S.db,table:S.table,mode:presetMode(),filters:[f],updatedAt:new Date().toISOString(),master:false,owner:filterUserId(),mine:true};
-        S.filterPresets=[preset,...(S.filterPresets||[])].slice(0,120);writeLocalPresets();S.filterPresetSource='local';
-        failed++;
-      }
-    }
-    try{await loadMasterPresets({inline:false})}catch(_){}
-    if(canWait())hideSaveOverlay();
-    const parts=[];if(saved)parts.push(`新規${saved}件`);if(skipped)parts.push(`登録済み${skipped}件`);if(failed)parts.push(`この端末のみ${failed}件`);
-    showToast?.('条件をマスタへ登録しました',parts.join(' / ')||'変更はありません',4200);
-    renderGenericFilterBar();renderFilterPresetList();
-  }
+  /* `saveCurrentFiltersToMaster()`は§9.80でバーの入口（「マスタへ保存」）を
+     外して以来どこからも呼ばれていなかったので、§9.286 ①の整理で消した。
+     いまの登録の道は**条件の札の☆**（1件ずつ・登録済みかが読める）と、
+     ビルダーの「登録」の2つ。**まとめて登録の入口を戻さないこと**——
+     何が登録されたのか・何が既に登録済みなのかが読めなくなる（§9.80）。 */
   async function deletePreset(preset){
     if(!(await confirmModal(`登録フィルタ「${preset.name}」を削除しますか？`)))return;
     const listEl=$('#filterPresetList');
@@ -799,26 +783,315 @@
     S.page=1;renderGenericFilterBar();load();
   }
 
+  /* ================= 登録フィルタの群（§9.286 ①、利用者の指示） =================
+     「登録フィルタのグループ化登録及びグループごとの一括切り替え機能」
+     「最終的にプリセット登録したフィルタの切り替えだけで使えるようにしつつ、
+      その場フィルタでスポットのフィルタを組み合わせて使う形が運用の形」
+
+     群は**登録フィルタの1列**（`フィルタプリセットマスタ`の`[グループ]`）。
+     **新しいマスタを作らない**——並び・持ち主・印は既にこの行が持っている
+     （§9.172）。空欄＝「分類なし」で、**既存の登録はそのまま使える**。
+
+     いま選んでいる群の置き場は**この端末×利用者×一覧**（読み方の好みなので
+     PCごとに違ってよい。共有マスタへ入れると全員が同じ群に縛られる・§9.199）。 */
+  const GROUP_STORE='MeasurementFilterGroupV1';
+  const GROUP_ALL='\u001fall';  // 「すべて」を表す印（群名と衝突しない）
+  const GROUP_NONE_LABEL='分類なし';
+  let groupAll=(()=>{try{const m=JSON.parse(localStorage.getItem(GROUP_STORE)||'{}');
+                        return (m&&typeof m==='object')?m:{}}catch(_){return {}}})();
+  function writeGroupAll(){try{localStorage.setItem(GROUP_STORE,JSON.stringify(groupAll))}catch(_){}}
+  /* **利用者IDは呼ぶたびに引く**（`/api/whoami`から後から届く・§9.184）。 */
+  function groupBucket(who){
+    const k=(who===undefined?filterUserId():who)||'';
+    if(!groupAll[k]||typeof groupAll[k]!=='object')groupAll[k]={};
+    return groupAll[k];
+  }
+  /* 登録フィルタの呼び名。**`presetName()`と混ぜないこと**——あちらは
+     「1件の条件」から名前を作る関数（`f.column`/`f.op`/`f.value`を読む）で、
+     登録フィルタそのものを渡すと`op`が無く`opShort(undefined)`で落ちる
+     （実際に踏んだ。一覧が丸ごと出なくなる）。 */
+  function presetTitle(p){
+    const n=String((p&&p.name)||'').trim();
+    return n||((p&&p.filters)||[]).map(condLabel).join(' / ')||'（名前なし）';
+  }
+  function presetGroupOf(p){return String((p&&p.group)||'').trim()}
+  /* 群の顔ぶれは**いま開いている一覧の登録フィルタ**から作る。
+     「分類なし」は必ず最後（まだ分けていないものが先頭に来ると、
+      分けた群のほうが埋もれる）。 */
+  function presetGroups(){
+    const seen=new Set();
+    currentTablePresets().forEach(p=>seen.add(presetGroupOf(p)));
+    return [...seen].sort((a,b)=>(a===''?1:b===''?-1:a.localeCompare(b,'ja')));
+  }
+  function groupLabel(g){return g===GROUP_ALL?'すべて':(g||GROUP_NONE_LABEL)}
+  function currentGroup(){
+    const v=groupBucket()[defaultMapKey(S.db,S.table)];
+    if(v===undefined)return GROUP_ALL;
+    /* **消えた群を覚えたままにしない**——群を消したり付け替えたりすると
+       「1件も無い群」が選ばれたままになり、札が丸ごと消える（§9.204と同じ罠）。 */
+    return (v===GROUP_ALL||presetGroups().includes(v))?v:GROUP_ALL;
+  }
+  function setCurrentGroup(g){
+    const b=groupBucket();
+    if(g===GROUP_ALL)delete b[defaultMapKey(S.db,S.table)];
+    else b[defaultMapKey(S.db,S.table)]=g;
+    writeGroupAll();
+  }
+  function presetsInGroup(g){
+    const list=currentTablePresets();
+    return g===GROUP_ALL?list:list.filter(p=>presetGroupOf(p)===g);
+  }
+  /* その登録フィルタが**いま全部効いているか**。条件単位で登録されるので
+     （§9.172）、1つでも欠けていれば「効いていない」。 */
+  function presetApplied(p){
+    const keys=(p.filters||[]).map(filterKey);
+    if(!keys.length)return false;
+    const now=new Set(S.genericFilters.map(filterKey));
+    return keys.every(k=>now.has(k));
+  }
+  /* 外す側。**「いつも適用」の条件と、他の登録が要る条件は外さない**
+     （§9.190。外しても次に開いた瞬間に戻ってくるので、押しても効かない
+     ボタンに見える）。外せなかった件数を返す——**黙って残さない**（§4）。 */
+  function removePresetFilters(p){
+    let kept=0;
+    (p.filters||[]).forEach(f=>{
+      const key=filterKey(f);
+      const i=S.genericFilters.findIndex(x=>filterKey(x)===key);
+      if(i<0)return;
+      if(isLockedFilter(S.genericFilters[i])||presetFilterRequiredElsewhere(p,key)){kept++;return}
+      S.genericFilters.splice(i,1);
+    });
+    return kept;
+  }
+  function togglePreset(p){
+    if(!presetApplied(p)){applyPreset(p);return}
+    const kept=removePresetFilters(p);
+    S.page=1;renderGenericFilterBar();load();
+    if(kept&&typeof showToast==='function')
+      showToast('外せない条件が残りました',
+        `${presetTitle(p)} のうち ${kept}件は「いつも適用」か、他の登録フィルタが使っています。`,6000);
+  }
+  /* 群ごとの一括切り替え。**当てる／外すを対で持つ**（§9.170）——当てるのが
+     一度にできて外すのが1枚ずつでは釣り合わない。 */
+  function setGroupApplied(g,on){
+    let kept=0;
+    presetsInGroup(g).forEach(p=>{
+      if(!on){kept+=removePresetFilters(p);return}
+      markPresetUsed(p);
+      const seen=new Set(S.genericFilters.map(filterKey));
+      structuredClone(p.filters||[]).forEach(f=>{
+        if(!seen.has(filterKey(f))){S.genericFilters.push(f);seen.add(filterKey(f))}
+      });
+    });
+    if(on)S.genericFilters.forEach(bumpCondUsage);
+    S.page=1;renderGenericFilterBar();load();
+    if(!on&&kept&&typeof showToast==='function')
+      showToast('外せない条件が残りました',
+        `${kept}件は「いつも適用」か、他の登録フィルタが使っています。`,6000);
+  }
+  /* 群の札（主動線）。**押すだけで当たる／外れる**——目当ての絞り込みへ
+     2手（群を選ぶ→札を押す）で届くのがこの改良の目的（§CLAUDE 画面基準 2）。 */
+  function renderPresetChips(){
+    const box=$('#filterPresetChips');if(!box)return;
+    const g=currentGroup(),list=presetsInGroup(g);
+    const btn=$('#filterGroupBtn'),name=$('#filterGroupName');
+    const on=list.filter(presetApplied).length;
+    if(name)name.textContent=groupLabel(g);
+    if(btn)btn.title=`登録フィルタの群を選びます（いま「${groupLabel(g)}」${list.length}件中 ${on}件が効いています）。`
+      +`\n群ごとにまとめて当てる／外すこともできます。`;
+    if(!currentTablePresets().length){
+      box.innerHTML='<span class="fb-presets-empty">登録フィルタはまだありません。'
+        +'条件を作って「登録」すると、ここに札で並びます。</span>';
+      return;
+    }
+    if(!list.length){
+      box.innerHTML=`<span class="fb-presets-empty">「${esc(groupLabel(g))}」の登録フィルタはありません。</span>`;
+      return;
+    }
+    box.innerHTML=list.map((p,i)=>{
+      const applied=presetApplied(p);
+      const lock=isAlwaysOnPreset(p,S.db,S.table);
+      const label=(p.filters||[]).map(condLabel).join(' / ');
+      const why=lock?'いつも適用（一覧を開くたびに効きます）':applied?'クリックで外す':'クリックで当てる';
+      return `<button type="button" class="fb-chip${applied?' is-on':''}${lock?' is-lock':''}" `
+        +`data-preset-i="${i}" aria-pressed="${applied?'true':'false'}" `
+        +`title="${esc(presetTitle(p)+'\n'+label+'\n'+why)}">`
+        +`${lock?'<i aria-hidden="true">\u{1F512}</i>':''}<span>${esc(presetTitle(p))}</span></button>`;
+    }).join('');
+    box.querySelectorAll('[data-preset-i]').forEach(b=>{
+      b.onclick=()=>togglePreset(list[+b.dataset.presetI]);
+    });
+  }
+  /* 群を選ぶ浮きメニュー。**器の外（body直下）へ`position:fixed`で出す**
+     ——`#genericFilterBar`は`overflow`を持ちうるので、中に置くと切られる
+     （§9.201）。**開いた器は必ず控える**（§9.222 ①）。 */
+  let groupMenuEl=null;
+  function closeGroupMenu(){
+    groupMenuEl?.remove();groupMenuEl=null;
+    $('#filterGroupBtn')?.setAttribute('aria-expanded','false');
+    document.removeEventListener('click',onGroupOutside,true);
+    document.removeEventListener('keydown',onGroupEsc,true);
+  }
+  function onGroupOutside(e){
+    if(groupMenuEl&&!groupMenuEl.contains(e.target)&&!e.target.closest('#filterGroupBtn'))closeGroupMenu();
+  }
+  function onGroupEsc(e){if(WL.modal.escCloses(e))closeGroupMenu()}
+  function openGroupMenu(anchor){
+    if(groupMenuEl){closeGroupMenu();return}
+    const groups=[GROUP_ALL,...presetGroups()];
+    const cur=currentGroup();
+    const menu=document.createElement('div');
+    menu.className='access-mode-menu fb-group-menu';menu.id='filterGroupMenu';
+    menu.innerHTML=groups.map((g,i)=>{
+      const list=presetsInGroup(g);
+      const on=list.filter(presetApplied).length;
+      return `<div class="fb-group-item${g===cur?' is-current':''}">`
+        +`<button type="button" class="fb-group-pick" data-group-i="${i}">`
+        +`<span>${esc(groupLabel(g))}</span><small>${list.length}件中 ${on}件が効いています</small></button>`
+        +`<span class="fb-group-bulk">`
+        +`<button type="button" data-group-on="${i}"${list.length?'':' disabled'} `
+        +`title="${list.length?'この群の登録フィルタをまとめて当てます':'この群に登録フィルタがありません'}">全部当てる</button>`
+        +`<button type="button" data-group-off="${i}"${on?'':' disabled'} `
+        +`title="${on?'この群の登録フィルタをまとめて外します':'この群で効いている条件はありません'}">全部外す</button>`
+        +`</span></div>`;
+    }).join('')
+      +'<p class="fb-group-note">群は「⋯ → 登録一覧」で付け替えられます。</p>';
+    document.body.append(menu);
+    groupMenuEl=menu;
+    const r=anchor.getBoundingClientRect();
+    menu.style.top=`${r.bottom+6}px`;
+    menu.style.left=`${Math.max(8,Math.min(r.left,innerWidth-menu.offsetWidth-8))}px`;
+    menu.querySelectorAll('[data-group-i]').forEach(b=>b.onclick=()=>{
+      setCurrentGroup(groups[+b.dataset.groupI]);closeGroupMenu();renderPresetChips();
+    });
+    menu.querySelectorAll('[data-group-on]').forEach(b=>b.onclick=()=>{
+      closeGroupMenu();setGroupApplied(groups[+b.dataset.groupOn],true);
+    });
+    menu.querySelectorAll('[data-group-off]').forEach(b=>b.onclick=()=>{
+      closeGroupMenu();setGroupApplied(groups[+b.dataset.groupOff],false);
+    });
+    anchor.setAttribute('aria-expanded','true');
+    requestAnimationFrame(()=>{
+      document.addEventListener('click',onGroupOutside,true);
+      document.addEventListener('keydown',onGroupEsc,true);
+    });
+  }
+  /* 新しい群の名前を聞く小さな窓。**`prompt()`は使わない**（見た目を合わせ
+     られず、タブ全体を止める）。 */
+  async function askGroupName(){
+    const ok=await confirmModal({title:'群を作る',confirmLabel:'決める',
+      bodyHtml:'<label class="mm-field mm-w-md"><span>群の名前</span>'
+        +'<input type="text" id="fbGroupNameInput" autocomplete="off" placeholder="例: 今日の担当"></label>'
+        +'<small class="mm-field-hint">同じ群の登録フィルタは、絞り込みバーの「絞り込み」から'
+        +'まとめて当てる／外せます。</small>'});
+    const el=document.getElementById('fbGroupNameInput');
+    return ok?String(el&&el.value||'').trim():'';
+  }
+  /* 群の付け替え。**送るのは群だけ**（`/api/filter-presets/group`）——
+     登録の本体（条件・名前・持ち主）を送り直すと、触っていない設定まで
+     上書きしうる（§9.212 ②）。 */
+  async function setPresetGroup(preset,group){
+    try{
+      await api('/api/filter-presets/group',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({id:preset.id,group})});
+      preset.group=group;
+      writeLocalPresets();
+      renderFilterPresetList();renderGenericFilterBar();
+      showToast&&showToast('群を変えました',`${presetTitle(preset)} → ${group||GROUP_NONE_LABEL}`,3000);
+    }catch(e){
+      /* **失敗を黙らない**（§9.212 ④）——次の読み直しで元へ戻るだけなので、
+         黙ると「勝手に戻った」としか見えない。 */
+      showToast&&showToast('群を変えられませんでした',e?.message||String(e),7000);
+      renderFilterPresetList();
+    }
+  }
+  /* たまにしか使わない入口（条件を作る・登録一覧・よく使う条件・全解除）は
+     `⋯`の中へ畳む。**要素はDOMに置いたまま**にして`hidden`だけを入切する
+     ——浮きメニューを開くたびに作り直すと、`ensureGenericFilterBar()`で
+     1度だけ張った配線が効かなくなる（§9.222 ①と同じ理由）。 */
+  function closeMoreMenu(){
+    const m=$('#filterMoreMenu');if(!m)return;
+    m.hidden=true;
+    $('#filterMoreBtn')?.setAttribute('aria-expanded','false');
+    document.removeEventListener('click',onMoreOutside,true);
+    document.removeEventListener('keydown',onMoreEsc,true);
+  }
+  function onMoreOutside(e){
+    const m=$('#filterMoreMenu');
+    if(m&&!m.hidden&&!m.contains(e.target)&&!e.target.closest('#filterMoreBtn'))closeMoreMenu();
+  }
+  function onMoreEsc(e){if(WL.modal.escCloses(e))closeMoreMenu()}
+  function toggleMoreMenu(){
+    const m=$('#filterMoreMenu');if(!m)return;
+    if(!m.hidden){closeMoreMenu();return}
+    m.hidden=false;
+    /* 座標はボタンから入れる（§9.201。器`.generic-filter-bar`は角丸のため
+       `overflow:hidden`を持つので、`absolute`だと**メニューが丸ごと切り
+       落とされる**——実機のキャプチャで判明。押した印は付くのに何も出ない）。
+       **開いてから測る**——`hidden`のあいだは幅が0で、右端にそろえられない。 */
+    const btn=$('#filterMoreBtn');
+    if(btn){
+      const r=btn.getBoundingClientRect();
+      m.style.top=`${Math.round(r.bottom+4)}px`;
+      m.style.left=`${Math.round(Math.max(8,Math.min(r.right-m.offsetWidth,innerWidth-m.offsetWidth-8)))}px`;
+    }
+    $('#filterMoreBtn')?.setAttribute('aria-expanded','true');
+    requestAnimationFrame(()=>{
+      document.addEventListener('click',onMoreOutside,true);
+      document.addEventListener('keydown',onMoreEsc,true);
+    });
+  }
+
   /* ---- 汎用フィルタ バー本体 ---- */
   function ensureGenericFilterBar(){
     let bar=$('#genericFilterBar');if(bar)return bar;
     bar=document.createElement('section');bar.id='genericFilterBar';bar.className='generic-filter-bar';
     const grid=$('#grid');grid?.parentNode?.insertBefore(bar,grid);
+    /* ---------- 1行に収める（§9.286 ①、利用者の指示） ----------
+       「フィルタ機能がモリモリでゴチャついてきたので、コンパクトかつ分かり
+        やすくタブ、アコーディオン、ポップオーバーメニューなど駆使して
+        わかりやすく使いやすいメニューに再構成してください。最終的に
+        プリセット登録したフィルタの切り替えだけで使えるようにしつつ、
+        その場フィルタでスポットのフィルタを組み合わせて使う形が運用の形」
+
+       **主動線は「群を選ぶ → 札を押す」の2手**（§CLAUDE 画面基準 1・2）。
+       以前は入口が5つ横に並び、開くと4段（実測208px）になっていた。
+       たまにしか使わないもの（条件を作る・登録一覧・よく使う条件・全解除）は
+       ⋯の浮きメニューへ畳む——**消さずに畳む**（§9.234 ①）。
+       左から「どの群か → その群の札 → その場 → いま効いている条件」で、
+       読む順と決める順を合わせる（§CLAUDE 画面基準 14）。
+
+       **このコメントをテンプレートリテラルの中へ入れないこと**（§9.211 ③）
+       ——バッククォートでその場で文字列が閉じ、以降がJSとして解釈されて
+       画面が組み上がらない。 */
     bar.innerHTML=`
       <div class="filter-search-row">
-        <b>フィルタ</b>
+        <button id="filterGroupBtn" class="fb-group-btn" type="button"
+                aria-haspopup="true" aria-expanded="false"
+                title="登録フィルタの群を選びます。群ごとにまとめて当てる／外すこともできます">
+          <span class="fb-group-key">絞り込み</span><b id="filterGroupName">すべて</b><i aria-hidden="true">▾</i>
+        </button>
+        <div class="fb-presets" id="filterPresetChips" role="group" aria-label="登録フィルタ"></div>
         <span class="filter-count" id="filterCount">0件</span>
         <div class="filter-token-input" id="filterTokenInput">
-          <input class="filter-token-search" id="filterTokenSearch" autocomplete="off" placeholder="検索して条件を追加（列名・値・保存フィルタ）">
+          <input class="filter-token-search" id="filterTokenSearch" autocomplete="off" placeholder="検索して条件を追加">
         </div>
         <div class="filter-suggest" id="filterSuggest" hidden></div>
         <span class="filter-inline-loading" id="filterInlineLoading" hidden><span class="mini-spinner"></span><span id="filterInlineLoadingText">読込中</span></span>
         <div class="filter-search-row-actions">
-          <button id="filterQuickToggle" type="button" aria-expanded="false" aria-controls="filterQuickRow" hidden>よく使う条件</button>
           <button id="filterAdhocToggle" class="filter-adhoc-toggle" type="button" aria-expanded="false" aria-controls="filterAdhocRow">その場フィルタ</button>
-          <button id="filterToggle" type="button">条件を作る</button>
-          <button id="openFilterPresets" type="button">登録一覧</button>
-          <button id="clearGenericFilters" type="button">全解除</button>
+          <button id="filterMoreBtn" class="fb-more-btn" type="button" aria-haspopup="true" aria-expanded="false"
+                  aria-controls="filterMoreMenu" title="条件を作る・登録一覧・よく使う条件・全解除">⋯</button>
+        </div>
+        <!-- 畳んだ先（§9.199「畳んだ先の設定はボタンに書く」）。**要素はここに
+             置いたまま**にして、開閉は hidden の入切だけにする——浮きメニューを
+             開くたびに作り直すと、ここで1度だけ張った配線が効かなくなる。 -->
+        <div class="fb-more-menu" id="filterMoreMenu" hidden role="menu" aria-label="フィルタの設定">
+          <button id="filterToggle" type="button" role="menuitem">条件を作る<small>列・比較・値を選んで、今の一覧へ足す／登録する</small></button>
+          <button id="openFilterPresets" type="button" role="menuitem">登録一覧<small>登録フィルタの追加・削除・群分け・持ち出し</small></button>
+          <button id="filterQuickToggle" type="button" role="menuitem" aria-expanded="false" aria-controls="filterQuickRow" hidden>よく使う条件<small>この一覧で使った回数の多い条件</small></button>
+          <button id="clearGenericFilters" type="button" role="menuitem">全解除<small>いま効いている条件を全部外します</small></button>
         </div>
       </div>
       <!-- その場フィルタ(§9.238 ⑤、利用者の指示)。**登録しない絞り込み**。
@@ -945,6 +1218,14 @@
     };
     ['#filterColumn','#filterOp','#filterValue'].forEach(sel=>{
       const el=$(sel);if(el)el.addEventListener('input',()=>note(NOTE_DEFAULT));
+    });
+    /* 群を選ぶ／たまにしか使わない入口を畳む（§9.286 ①）。 */
+    $('#filterGroupBtn').onclick=e=>openGroupMenu(e.currentTarget);
+    $('#filterMoreBtn').onclick=toggleMoreMenu;
+    /* 浮きメニューの中の項目は**押したら畳む**——開いたままだと、次に何を
+       するかを選ぶ前に一覧が変わって場所を見失う。 */
+    $('#filterMoreMenu').addEventListener('click',e=>{
+      if(e.target.closest('button'))closeMoreMenu();
     });
     $('#openFilterPresets').onclick=openFilterPresetModal;
     $('#clearGenericFilters').onclick=async()=>{
@@ -1216,7 +1497,8 @@
     [...row.querySelectorAll('.suggest-chip')].forEach((btn,i)=>btn.onclick=()=>addGenericFilter(top[i]));
   }
   function renderGenericFilterBar(){
-    ensureGenericFilterBar();updateFilterColumns();renderActiveTokens();renderQuickFilters();renderAdhocRow();
+    ensureGenericFilterBar();updateFilterColumns();renderPresetChips();
+    renderActiveTokens();renderQuickFilters();renderAdhocRow();
     /* 条件が変わる経路は多い(追加・削除・全解除・登録フィルタの適用・
        設定画面からのやり直し)。**全部がここを通る**ので、覚えるのも1箇所で
        済ませる——経路ごとに書くと必ずどれかを書き忘れる。 */
@@ -1846,8 +2128,27 @@
          「いつも適用（固定）」だけにした。言葉は利用者の言い方に合わせる。 */
       const defaultToggle=applicable?`<label class="fp-always${always?' is-on':''}" title="この一覧を開くたびに必ず入ります。手で外そうとすると確認し、再読み込み・再起動のあとも入ったままになります。この印は${esc(filterUserLabel())}だけのもので、ほかの人には付きません。"><input type="checkbox" class="fp-default-check"${always?' checked':''}> いつも適用<b>（固定）</b></label>`:'';
       const lockToggle='';
-      item.innerHTML=`<div class="fp-name" title="${esc(p.name)}">${esc(p.name)}${p.uses?`<small>使用 ${p.uses}回</small>`:''}</div><div class="fp-own-cell">${ownBtn}</div><div class="fp-target">${esc((p.db||'全DB')+' / '+(p.table||'全テーブル'))}</div><div class="fp-conds">${conds||'<span class="fp-cond">条件なし</span>'}</div><div class="fp-actions">${defaultToggle}${lockToggle}<button class="apply" type="button">適用</button><button class="danger" type="button">削除</button></div>`;
+      /* 群（§9.286 ①）。**選ぶだけで付け替わる**——「保存」を別に押させると、
+         押し忘れた行だけが分類されないまま残る。**新しい群はその場で作れる**
+         （マスタ管理へ行かせない・§9.181と同じ作法）。 */
+      const gNow=presetGroupOf(p);
+      const gOpts=[...new Set([...presetGroups(),gNow])].filter(x=>x!=='');
+      const gSel=`<select class="fp-group" title="${esc('この登録フィルタの群です。'
+        +'絞り込みバーの「絞り込み」から群ごとにまとめて当てる／外せます。')}">`
+        +`<option value=""${gNow?'':' selected'}>${GROUP_NONE_LABEL}</option>`
+        +gOpts.map(g=>`<option value="${esc(g)}"${g===gNow?' selected':''}>${esc(g)}</option>`).join('')
+        +`<option value="\u001fnew">＋ 新しい群…</option></select>`;
+      item.innerHTML=`<div class="fp-name" title="${esc(p.name)}">${esc(p.name)}${p.uses?`<small>使用 ${p.uses}回</small>`:''}</div><div class="fp-own-cell">${ownBtn}</div><div class="fp-group-cell">${gSel}</div><div class="fp-target">${esc((p.db||'全DB')+' / '+(p.table||'全テーブル'))}</div><div class="fp-conds">${conds||'<span class="fp-cond">条件なし</span>'}</div><div class="fp-actions">${defaultToggle}${lockToggle}<button class="apply" type="button">適用</button><button class="danger" type="button">削除</button></div>`;
       item.querySelector('.apply').onclick=()=>{applyPreset(p);$('#filterPresetModal').hidden=true};
+      item.querySelector('.fp-group').onchange=async e=>{
+        const sel=e.target;
+        let g=sel.value;
+        if(g==='\u001fnew'){
+          g=await askGroupName();
+          if(!g){sel.value=gNow;return}
+        }
+        await setPresetGroup(p,g);
+      };
       item.querySelector('.fp-own').onclick=()=>togglePresetOwner(p);
       item.querySelector('.danger').onclick=()=>deletePreset(p);
       item.querySelector('.fp-default-check')?.addEventListener('change',async e=>{

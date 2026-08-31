@@ -1097,6 +1097,41 @@ def normalize_choice_order(v):
     return s if s in CHOICE_ORDERS else CHOICE_ORDER_DEFAULT
 
 
+# ---------------------------------------------------------------------------
+# 未入力・未選択の配色（§9.286 ⑥、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「未入力・未選択の場合にオレンジ色の着色をするというものも汎用設計前のもの
+#  なので、この機能も未選択、未入力の場合、配色するという機能を実装して
+#  ください。選択肢やこの背景色の選択で使う色のパレットの種類をさらに
+#  増やしてほしいです。」
+#
+# 直す前は`updateValidationVisuals()`が**必須の欄だけ**に`validation-required`
+# （橙）を当てており、①必須でない欄は空でも何も出ない ②色は橙で固定
+# ——「未入力なら色を付ける」という設定そのものが無かった。
+#
+# 語彙は**ここ1箇所**（§9.163）。画面へ写さない。
+#   ''      … 既定（今までどおり。**必須の欄だけ**が橙になる）
+#   'なし'  … 空でも色を付けない
+#   色の鍵  … その色で配色する（`WL.columnTint.PALETTE`と**同じ鍵**）
+# **鍵は画面のパレットと必ず揃えること**——食い違うと、盤では選べるのに
+# 測定画面では色が付かない札ができる（§4）。
+BLANK_TINT_DEFAULT = ''
+BLANK_TINT_NONE = 'なし'
+# `WL.columnTint.PALETTE`の鍵（`static/js/base.js`）。**並びも合わせる**
+# ——盤の札の並びが画面ごとに違うと、同じ色を探す場所が変わる。
+BLANK_TINT_COLORS = ('gray', 'slate', 'teal', 'cyan', 'blue', 'indigo',
+                     'green', 'lime', 'yellow', 'amber', 'brown', 'red',
+                     'pink', 'purple')
+BLANK_TINTS = (BLANK_TINT_DEFAULT, BLANK_TINT_NONE) + BLANK_TINT_COLORS
+
+
+def normalize_blank_tint(v):
+    """未入力の配色。**知らない綴りは既定へ落とす**（§9.204とは逆で、
+    ここは見た目だけの設定なので、保存値を残しても打つ手が無い）。"""
+    s = str(v or '').strip()
+    return s if s in BLANK_TINTS else BLANK_TINT_DEFAULT
+
+
 def choice_order_usable(widget):
     """その入力方法で「よく使う順」が効くか。**判定はここ1箇所**。"""
     return str(widget or '') in CHOICE_ORDER_WIDGETS
@@ -1581,6 +1616,9 @@ _ITEM_ADDED_COLUMNS = (
     # 群の幅（マス）。**0/空＝横いっぱい**＝今までどおり。1つでも横いっぱい
     # でない群があるときだけ、割り付けが「列でも区切る」形に切り替わる。
     ('群幅', 'INTEGER'),
+    # --- §9.286 ⑥（利用者の指示「未選択、未入力の場合、配色するという機能」）---
+    # 空欄のときの配色。空＝既定（必須の欄だけ橙）／`なし`／色の鍵。
+    ('未入力配色', 'TEXT'),
     # --- §9.227 ③（利用者の指示）---
     # ダミー（空き）の群。**測定画面では見出しも枠も出さず、幅ぶんの空白
     # だけを置く**——「区切りの良い並びに整列させるためのダミーカード」。
@@ -1881,6 +1919,27 @@ def seed_mother_builtins(c):
     return made
 
 
+# ---------------------------------------------------------------------------
+# 組み込みの欄の初期値（§9.286 ⑤、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「操業データのカスタム機能ができる前から入力値としてあった項目で、途中から
+#  汎用仕様に落とし込んだものの中に、初期値を『-』でハードコーディングして
+#  いるものが残っており、『オペレータ』や『検査員』や『板厚測定器』など他にも
+#  同様に存在しています。初期値も含めて汎用化対応しているので、
+#  ハードコーディング部分を除去してきれいに汎用部品のみで対応できるように
+#  してください。」
+#
+# **直したのはサーバーではなく画面のほう**（`base.js`の`optionFill()`と
+# `measurement-view.js`の`blankMeasure()`）。`-`は「選ばない」の**札の字**で
+# あって値ではないのに、画面が値として`operator:'-'`を書き込んでいたため、
+# `applyInitials()`が見る「まだ何も選ばれていない」の判定を画面の側が先に
+# 埋めてしまい、**マスタの`[初期値]`が一度も効かなかった**。
+#
+# **`上出し`・`指定なし`のような「値として意味のある既定」は触っていない**
+# ——あれは「選んでいない」ではなく1つの選択肢なので、空にすると
+# 設定を触っていない現場の見え方が黙って変わる（§9.132）。
+
+
 def ensure_item_table(c):
     names = tables(c)
     if ITEM_TABLE not in names:
@@ -2064,7 +2123,10 @@ def _row_to_item(r):
             'choiceOrder': (normalize_choice_order(r[41]) if len(r) > 41
                             else CHOICE_ORDER_DEFAULT),
             # §9.256 式で作る自動値。**列の無い古いDBでも動く**。
-            'autoFormula': (str(r[42] or '').strip() if len(r) > 42 else '')}
+            'autoFormula': (str(r[42] or '').strip() if len(r) > 42 else ''),
+            # §9.286 ⑥。空欄のときの配色。**古いDB（列が無い）でも動く**。
+            'blankTint': (normalize_blank_tint(r[43]) if len(r) > 43
+                          else BLANK_TINT_DEFAULT)}
 
 
 _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],'
@@ -2077,7 +2139,9 @@ _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[�
                 '[記録群],[記録順],[選択肢の並び],'
                 # §9.256。**末尾へ足す**——上の並びは`_row_to_item`が位置で
                 # 読んでいるので、途中へ挿すと全部の項目が1つずれる。
-                '[自動計算式] '
+                '[自動計算式],'
+                # §9.286 ⑥。**末尾へ足す**（同上）。
+                '[未入力配色] '
                 'FROM [操業データ項目マスタ] ORDER BY [表示順],[項目ID]')
 
 
@@ -2196,7 +2260,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 role=None, look=None, layout=None, group_span=None, report=None,
                 dummy=None, no_blank=None, min_from=None, max_from=None,
                 source_note=None, auto_value=None, record_show=None,
-                choice_order=None, auto_formula=None):
+                choice_order=None, auto_formula=None, blank_tint=None):
     ensure_item_table(c)
     name = str(name or '').strip()
     if not name:
@@ -2212,7 +2276,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
     if item_id is not None:
         cur.execute('SELECT [組み込みキー],[項目名],[ダミー],[空欄なし],'
                     '[最小の出どころ],[最大の出どころ],[出どころ表示],[自動値],[記録表示],'
-                    '[選択肢の並び],[自動計算式] '
+                    '[選択肢の並び],[自動計算式],[未入力配色] '
                     'FROM [操業データ項目マスタ] WHERE [項目ID]=?', [int(item_id)])
         hit = cur.fetchone()
         cur_builtin = str((hit or ['', '', 0, 0, '', '', '', '', None, ''])[0] or '').strip()
@@ -2246,6 +2310,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
         # 書いた式が黙って消えては困る（§9.223 ②と同じ形）。
         if auto_formula is None and hit is not None and len(hit) > 10:
             auto_formula = hit[10]
+        # §9.286 ⑥。未入力の配色も同じ約束（送らない呼び出しで消さない）。
+        if blank_tint is None and hit is not None and len(hit) > 11:
+            blank_tint = hit[11]
     if builtin is None:
         builtin = cur_builtin
     builtin = str(builtin or '').strip()
@@ -2299,7 +2366,10 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
             normalize_choice_order(choice_order),
             # §9.256 式で作る自動値の式。**列は末尾へ足す**——2本目のUPDATEが
             # `args[1:2]+args[3:]`で位置を数えている。
-            str(auto_formula or '').strip()]
+            str(auto_formula or '').strip(),
+            # §9.286 ⑥ 未入力の配色。**列は末尾へ足す**——2本目のUPDATEが
+            # `args[1:2]+args[3:]`で位置を数えている。
+            normalize_blank_tint(blank_tint)]
     if item_id is not None:
         cur.execute('UPDATE [操業データ項目マスタ] SET [設備名]=?,[群]=?,[項目名]=?,[表示順]=?,'
                     '[型]=?,[小数桁]=?,[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,'
@@ -2308,7 +2378,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
                     '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
                     '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,[自動値]=?,'
-                    '[記録表示]=?,[選択肢の並び]=?,[自動計算式]=?,'
+                    '[記録表示]=?,[選択肢の並び]=?,[自動計算式]=?,[未入力配色]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args + [uid, int(item_id)])
         c.commit()
@@ -2331,7 +2401,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
                     '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
                     '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,[自動値]=?,'
-                    '[記録表示]=?,[選択肢の並び]=?,[自動計算式]=?,'
+                    '[記録表示]=?,[選択肢の並び]=?,[自動計算式]=?,[未入力配色]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args[1:2] + args[3:] + [uid, hit[0]])
         c.commit()
@@ -2348,8 +2418,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
                 '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ],'
                 '[出どころ表示],[自動値],[記録表示],[選択肢の並び],[自動計算式],'
+                '[未入力配色],'
                 '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (' + ','.join(['?'] * 41) + ',Now(),Now())',
+                'VALUES (' + ','.join(['?'] * 42) + ',Now(),Now())',
                 args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)

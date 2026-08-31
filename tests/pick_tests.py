@@ -128,6 +128,8 @@ G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 't
                # §9.285 ②③④: 既定の中身を写す・書式・候補に無い道の印
                'test_rbcatalog']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
+             # §9.286 ⑥: 未入力・未選択の配色と、増やした色
+             'test_opblanktint',
              'test_master', 'test_waiting', 'test_mcore', 'test_msteps',
              # §9.242 ③: バリの2段（1回目の受付・2回目の計算式）
              # §9.242 ⑤⑥: 公差／基準の言い分けと、確認カードの強調・NGの記録
@@ -146,7 +148,15 @@ G['接続'] = ['test_mastershare', 'test_storage', 'test_storageui', 'test_recmi
 G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm', 'test_pcname',
              # §9.272: 権限区分（開発者/メンテナンス者/一般ユーザー）と接続の管理
              'test_presence', 'test_presenceui']
+# §9.286 ①: 登録フィルタの群・プリセット中心のバー
+G['フィルタ'] = ['test_filter', 'test_adhoc', 'test_filterio', 'test_filteruser',
+                 'test_filteractive', 'test_filterkeep', 'test_filterlock',
+                 'test_filtergroup']
 G['ログ'] = ['test_logs', 'test_logview', 'test_error']
+# §9.286 ⑦: 更新履歴の書き方（印は `**`／バッククォート）と窓の作り。
+# 説明文の印を解くのは `WL.markup()` の1箇所なので、マスタの説明文を
+# 出す画面（test_hintlint / test_maint）も一緒に回す。
+G['更新履歴'] = ['test_changelog', 'test_changelogui', 'test_hintlint']
 # §9.273: 遅い書き込みに「保存しています…」を出す（api()と保存の帯）
 G['保存の帯'] = ['test_savechip']
 
@@ -178,15 +188,15 @@ RULES = [
     ('backend/config.py', [ALL]),
 
     # --- 画面(JS) ----------------------------------------------------
-    ('static/js/list-view.js', g('一覧', '列', 'test_fit', 'test_uiux')),
+    ('static/js/list-view.js', g('一覧', '列', 'test_fit', 'test_uiux', '更新履歴')),
     ('static/js/list-columns.js', g('列', 'test_sccontent',
                                     'test_sccols', 'test_cols', 'test_lcpanel')),
     ('static/js/list-rules.js', g('列')),
     # §9.256 式で作る自動値も同じ評価器を使う（片方だけ直した状態を作らない）
     ('static/js/list-formula.js', g('test_formula', 'test_colpreset', 'test_lcpanel',
                                     'test_opformula')),
-    ('static/js/filters.js', g('モーダル', 'test_filter', 'test_filterio', 'test_filteruser',
-                               'test_listcache', 'test_allrows', 'test_nav', 'test_adhoc')),
+    ('static/js/filters.js', g('モーダル', 'フィルタ',
+                               'test_listcache', 'test_allrows', 'test_nav')),
     ('static/js/schedule-view.js', g('スケジュール', 'モーダル', 'test_listmodal')),
     ('static/js/schedule-print.js', g('モーダル', 'test_scprint')),
     # 実績データリストは列の設定パネル・帳票・アクセスモードへつながる。
@@ -198,7 +208,9 @@ RULES = [
                                     'test_headbar', 'test_datasource',
                                      'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal',
                                      # §9.254 (3): 帳票レイアウトマスタ（親子の行き来）
-                                     'test_rlmaster')),
+                                     'test_rlmaster',
+                                     # §9.286 (7): 説明文の印は WL.markup() の1箇所
+                                     '更新履歴')),
     ('static/js/calendar-view.js', g('test_uisize', 'test_histdel', 'test_headbar')),
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
     ('static/js/report-dashboard.js', g('モーダル', 'test_screport', 'test_headbar', 'test_uisize',
@@ -340,7 +352,7 @@ RULES = [
     ('backend/errors.py', g('test_error')),
     ('backend/paths.py', g('test_setpage', 'test_dbopen', 'test_datasource',
                            'test_localwork', 'test_dbmirror', 'test_cleanup', '起動')),
-    ('backend/changelog_data.py', g('test_docindex', 'test_boot')),
+    ('backend/changelog_data.py', g('test_docindex', 'test_boot', '更新履歴')),
     ('backend/rne_', g('test_datasource', 'test_setpage', 'test_atomicio')),
     ('backend/navigator_api.py', g('test_datasource')),
     ('backend/launcher/', g('起動')),

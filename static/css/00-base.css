@@ -105,7 +105,7 @@
   --danger:#a32424;
   --danger-bg:#fdeaea;
   --danger-border:#e0a3a3;
-  /* 行の見せ方(§9.198)の配色。**利用者に16進を選ばせない**ための8色で、
+  /* 行の見せ方(§9.198)の配色。**利用者に16進を選ばせない**ための色で、
      意味を割り当ててある(灰=目立たせない/青緑=基準/青=情報・待ち/
      緑=完了・良/橙=注意/赤=停止・異常/紫=臨時)。青と紫だけ既存の
      トークンに無いのでここで足す。面は淡く、文字と縁だけ濃く——
@@ -116,6 +116,33 @@
   --rs-purple:#68409c;
   --rs-purple-bg:#f2ecfa;
   --rs-purple-border:#c5b0e2;
+  /* --- 色を増やす（§9.286 ⑥、利用者の指示「選択肢やこの背景色の選択で使う
+     色のパレットの種類をさらに増やしてほしいです」）---
+     **意味を割り当ててから足す**——名前だけの色が増えると、選ぶ側は
+     「どれを使えばいいか」を毎回決め直すことになる。面は淡く・文字と縁だけ
+     濃く、という上と同じ作りにする（行の地にも欄の地にも敷くので、面が
+     濃いと文字が読めなくなる）。 */
+  --rs-cyan:#0f6f86;
+  --rs-cyan-bg:#e6f4f8;
+  --rs-cyan-border:#a3cfdd;
+  --rs-indigo:#3a4a9e;
+  --rs-indigo-bg:#eceffa;
+  --rs-indigo-border:#b0bae4;
+  --rs-pink:#a83a6e;
+  --rs-pink-bg:#fbecf3;
+  --rs-pink-border:#e2b0c8;
+  --rs-brown:#7a5232;
+  --rs-brown-bg:#f6efe8;
+  --rs-brown-border:#d8c1a8;
+  --rs-lime:#4f7a1e;
+  --rs-lime-bg:#eff6e4;
+  --rs-lime-border:#bcd79a;
+  --rs-yellow:#7d6208;
+  --rs-yellow-bg:#fdf6dd;
+  --rs-yellow-border:#ddc766;
+  --rs-slate:#41535c;
+  --rs-slate-bg:#eceff1;
+  --rs-slate-border:#b3bfc5;
   --warn-fg:#7a2f00;
   /* 警告色の「塗り」版(白文字を載せられる濃さ)。完了できない状態の主要ボタン等。 */
   --warn-solid:#9b6a2d;

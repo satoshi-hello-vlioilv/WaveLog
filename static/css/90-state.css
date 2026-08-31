@@ -51,6 +51,21 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
    視覚的な合図。activeRequiredControlsの必須判定とは独立） *//* 面を淡くした分、左端のアクセントバーで「まだ選んでいない」を示す(.validation-requiredと同じ言語)。 */
 .choice-pending{background:var(--required-bg);border-color:var(--required);box-shadow:inset 3px 0 0 var(--required)}
 .choice-made{background:#fff}
+/* ---------- 未入力・未選択の配色（§9.286 ⑥、利用者の指示） ----------
+   項目ごとに色を選べる（操業データ項目マスタの`[未入力配色]`）。
+   **塗るのは中の欄**——`.validation-required`と同じ言語（面＋左端の帯）に
+   そろえる。器（`<label>`）ごと塗ると、名前の文字まで色の上に乗って
+   同じ「未入力」なのに欄によって見え方が変わる（実機のキャプチャで判明）。
+   **`.validation-required`より後に置くこと**——項目ごとに選んだ色は、
+   必須の欄でも既定の橙より優先する（選んだのに効かないのでは§4）。
+   色トークンの割り当ては`30-measure.css`（`.opf-host[data-op-blank-tint=…]`）。 */
+.opf-host[data-op-blank-tint].is-blank>select,
+.opf-host[data-op-blank-tint].is-blank>input,
+.opf-host[data-op-blank-tint].is-blank>output,
+.opf-host[data-op-blank-tint].is-blank>.opf-widget .opf-shape{
+  background:var(--opb-bg);border-color:var(--opb-line);
+  box-shadow:inset 4px 0 0 var(--opb-line);
+}
 #complete.validation-blocked{background:var(--warn-solid);border-color:var(--warn-solid)}
 .dimension-locked{
   background:#e3ebee;
@@ -141,25 +156,29 @@ body.view-mode #openMasterMaint{opacity:.45;pointer-events:none}
 - ツールバー折り返し＋最小幅で見切れ解消 / 一覧は最大エリア表示
 ============================================================ *//* 元データ(#grid)・フッター・汎用フィルタは元データビューのみ表示 */
 body.qa-mode #grid{display:none}
-body.qa-mode main>footer{display:none}
 body.qa-mode #genericFilterBar{display:none}
+/* 一覧のツールバー（表示列・行間・並び・表示件数・ページめくり・件数）は
+   **`#grid`の道具**なので、元データを出していないあいだは一緒に伏せる
+   （§4。押しても何も起きない操作を残さない）。§9.286 ②でページめくりと
+   件数がここへ移ったので、伏せ忘れると「行が無いのに 1–1,000」と出る。 */
+body.qa-mode #listToolbar{display:none}
 body.qa-mode.qa-view-raw #grid{display:block}
-body.qa-mode.qa-view-raw main>footer{display:flex}
 body.qa-mode.qa-view-raw #genericFilterBar{display:block}
+body.qa-mode.qa-view-raw #listToolbar{display:flex}
 /* 測定帳票・ダッシュボードもモーダルではなくメイン画面の表示切り替え
    とし、qa-modeと同様に他の要素を隠して表示エリアを最大化する。 */
-body.rp-mode #grid,body.rp-mode #listToolbar,body.rp-mode main>footer,body.rp-mode #tabs,body.rp-mode #genericFilterBar,body.rp-mode .qa-v7{display:none}
-body.db-mode #grid,body.db-mode #listToolbar,body.db-mode main>footer,body.db-mode #tabs,body.db-mode #genericFilterBar,body.db-mode .qa-v7{display:none}
+body.rp-mode #grid,body.rp-mode #listToolbar,body.rp-mode #tabs,body.rp-mode #genericFilterBar,body.rp-mode .qa-v7{display:none}
+body.db-mode #grid,body.db-mode #listToolbar,body.db-mode #tabs,body.db-mode #genericFilterBar,body.db-mode .qa-v7{display:none}
 /* 編集中/完了データ一覧も同様にモーダルではなくメイン画面表示にする。 */
-body.rec-mode #grid,body.rec-mode #listToolbar,body.rec-mode main>footer,body.rec-mode #tabs,body.rec-mode #genericFilterBar,body.rec-mode .qa-v7{display:none}
+body.rec-mode #grid,body.rec-mode #listToolbar,body.rec-mode #tabs,body.rec-mode #genericFilterBar,body.rec-mode .qa-v7{display:none}
 /* 実績カレンダーも同様にメイン画面表示にする。 */
-body.cal-mode #grid,body.cal-mode #listToolbar,body.cal-mode main>footer,body.cal-mode #tabs,body.cal-mode #genericFilterBar,body.cal-mode .qa-v7{display:none}
+body.cal-mode #grid,body.cal-mode #listToolbar,body.cal-mode #tabs,body.cal-mode #genericFilterBar,body.cal-mode .qa-v7{display:none}
 /* 作業スケジュール(スケジュールモード等)も同様にメイン画面表示にする。 */
-body.sc-mode #grid,body.sc-mode #listToolbar,body.sc-mode main>footer,body.sc-mode #tabs,body.sc-mode #genericFilterBar,body.sc-mode .qa-v7{display:none}
+body.sc-mode #grid,body.sc-mode #listToolbar,body.sc-mode #tabs,body.sc-mode #genericFilterBar,body.sc-mode .qa-v7{display:none}
 /* マスタ管理(ARCHITECTURE.md「マスタ管理の画面形態」)も同様にメイン画面表示にする(旧: 全画面シェード付きモーダル)。 */
-body.mm-mode #grid,body.mm-mode #listToolbar,body.mm-mode main>footer,body.mm-mode #tabs,body.mm-mode #genericFilterBar,body.mm-mode .qa-v7{display:none}
+body.mm-mode #grid,body.mm-mode #listToolbar,body.mm-mode #tabs,body.mm-mode #genericFilterBar,body.mm-mode .qa-v7{display:none}
 /* ログ・診断(§9.99)も同様にメイン画面表示にする。 */
-body.lg-mode #grid,body.lg-mode #listToolbar,body.lg-mode main>footer,body.lg-mode #tabs,body.lg-mode #genericFilterBar,body.lg-mode .qa-v7{display:none}
+body.lg-mode #grid,body.lg-mode #listToolbar,body.lg-mode #tabs,body.lg-mode #genericFilterBar,body.lg-mode .qa-v7{display:none}
 /* 保険: 他のメイン画面統合ビューが開いている間はマスタ管理パネルを必ず隠す。
    各ビューのopenXxxがwindow.exitMasterMaint()を呼ぶのが本筋だが、呼び忘れても
    画面が重なって見えないようにしておく(実際に、データ一覧へ移動したときだけ
@@ -180,12 +199,12 @@ body.sc-mode.sc-list-modal-open #listToolbar{display:flex}
    db-mode/rec-mode/cal-mode/sc-modeの詳細度2のルールより優先されてしまい、品質データ表示中に
    帳票・ダッシュボード・編集中/完了一覧・実績カレンダー・作業スケジュールを開くと元の#gridが透けて見える
    不具合があった。詳細度を合わせて確実に上書きする。 */
-body.rp-mode.qa-mode.qa-view-raw #grid,body.rp-mode.qa-mode.qa-view-raw main>footer,body.rp-mode.qa-mode.qa-view-raw #genericFilterBar,
-body.db-mode.qa-mode.qa-view-raw #grid,body.db-mode.qa-mode.qa-view-raw main>footer,body.db-mode.qa-mode.qa-view-raw #genericFilterBar,
-body.rec-mode.qa-mode.qa-view-raw #grid,body.rec-mode.qa-mode.qa-view-raw main>footer,body.rec-mode.qa-mode.qa-view-raw #genericFilterBar,
-body.cal-mode.qa-mode.qa-view-raw #grid,body.cal-mode.qa-mode.qa-view-raw main>footer,body.cal-mode.qa-mode.qa-view-raw #genericFilterBar,
-body.mm-mode.qa-mode.qa-view-raw #grid,body.mm-mode.qa-mode.qa-view-raw main>footer,body.mm-mode.qa-mode.qa-view-raw #genericFilterBar,
-body.sc-mode.qa-mode.qa-view-raw #grid,body.sc-mode.qa-mode.qa-view-raw main>footer,body.sc-mode.qa-mode.qa-view-raw #genericFilterBar{display:none}
+body.rp-mode.qa-mode.qa-view-raw #grid,body.rp-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.db-mode.qa-mode.qa-view-raw #grid,body.db-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.rec-mode.qa-mode.qa-view-raw #grid,body.rec-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.cal-mode.qa-mode.qa-view-raw #grid,body.cal-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.mm-mode.qa-mode.qa-view-raw #grid,body.mm-mode.qa-mode.qa-view-raw #genericFilterBar,
+body.sc-mode.qa-mode.qa-view-raw #grid,body.sc-mode.qa-mode.qa-view-raw #genericFilterBar{display:none}
 /* ============================================================
  2026-07-21 測定帳票（ロット別レポート）
  モーダルではなくメイン画面の表示切り替え（qa-v7と同じ形式）。
@@ -296,7 +315,7 @@ body.sc-mode .hd-status .hd-chip-equip{display:none}
 @layer print {
 /* 印刷 */
 @media print{
- body.qa-mode #grid,body.qa-mode main>footer,body.qa-mode #genericFilterBar,.qa-v7 .qa-step-tabs,.qa-v7 .qa-recipe,.qa-v7 .qa-chart-toolbar .qa-chart-options,.qa-v7 .qa-actions{display:none}
+ body.qa-mode #grid,body.qa-mode #genericFilterBar,.qa-v7 .qa-step-tabs,.qa-v7 .qa-recipe,.qa-v7 .qa-chart-toolbar .qa-chart-options,.qa-v7 .qa-actions{display:none}
  .qa-v7{display:block;margin:0;border:0;box-shadow:none;overflow:visible}
  .qa-v7 .qa-design-pane{display:block;padding:0}
  .qa-v7 .qa-chart-main{display:block}
