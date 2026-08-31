@@ -59,13 +59,33 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
    **`.validation-required`より後に置くこと**——項目ごとに選んだ色は、
    必須の欄でも既定の橙より優先する（選んだのに効かないのでは§4）。
    色トークンの割り当ては`30-measure.css`（`.opf-host[data-op-blank-tint=…]`）。 */
-.opf-host[data-op-blank-tint].is-blank>select,
-.opf-host[data-op-blank-tint].is-blank>input,
-.opf-host[data-op-blank-tint].is-blank>output,
-.opf-host[data-op-blank-tint].is-blank>.opf-widget .opf-shape{
+/* **当てるのは`.opf-face`の1規則だけ**（§9.288 ①、利用者の報告「未入力の色
+   …結局入力画面では反映されないです。プルダウンの時だけ効くような感じです」）
+   ——以前はここに器の名前を4つ並べており、あとから足した形（一覧・パネル・
+   メニュー・切替・入切・コンボ・メモ）には1つも当たっていなかった。
+   印を付けるのは`markFace()`の1箇所（§9.233 ③）。 */
+.opf-host[data-op-blank-tint].is-blank .opf-face{
   background:var(--opb-bg);border-color:var(--opb-line);
+  border-radius:var(--opf-radius,var(--radius-sm));
   box-shadow:inset 4px 0 0 var(--opb-line);
 }
+/* **面の中で自前の地を持つ部分も一緒に塗る**（§9.288 ①、利用者の報告
+   「UIによっては背景というか裏に色が回っていてUIの内部に着色されない
+    ものが見受けられます」）——札（`.opf-chip-btn`／`.opf-card-btn`／
+   `.opf-stage-btn`）と仕切りの印（▾・☰・▦）は白い地を持つので、面だけを
+   塗ると**色が札の裏へ回り、隙間だけが色づいて見える**。
+   札は`[data-opv]`で generic に拾える（選ばせ方を足しても付いてくる）。
+   **入切のつまみ（`.opf-switch-track`）は塗らない**——形そのものが入/切の
+   意味を持つ部品（§9.227 ①）で、地を消すとどちらか読めなくなる。 */
+.opf-host[data-op-blank-tint].is-blank .opf-face [data-opv],
+.opf-host[data-op-blank-tint].is-blank .opf-face .opf-other-btn,
+.opf-host[data-op-blank-tint].is-blank .opf-face .opf-pick-caret,
+.opf-host[data-op-blank-tint].is-blank .opf-face .opf-panel-mark,
+.opf-host[data-op-blank-tint].is-blank .opf-face .opf-index-mark,
+.opf-host[data-op-blank-tint].is-blank .opf-face .opf-combo-open{
+  background:transparent;border-color:var(--opb-line);
+}
+.opf-host[data-op-blank-tint].is-blank .opf-face .opf-dot{border-color:var(--opb-line)}
 #complete.validation-blocked{background:var(--warn-solid);border-color:var(--warn-solid)}
 .dimension-locked{
   background:#e3ebee;
@@ -165,20 +185,24 @@ body.qa-mode #listToolbar{display:none}
 body.qa-mode.qa-view-raw #grid{display:block}
 body.qa-mode.qa-view-raw #genericFilterBar{display:block}
 body.qa-mode.qa-view-raw #listToolbar{display:flex}
-/* 測定帳票・ダッシュボードもモーダルではなくメイン画面の表示切り替え
-   とし、qa-modeと同様に他の要素を隠して表示エリアを最大化する。 */
-body.rp-mode #grid,body.rp-mode #listToolbar,body.rp-mode #tabs,body.rp-mode #genericFilterBar,body.rp-mode .qa-v7{display:none}
-body.db-mode #grid,body.db-mode #listToolbar,body.db-mode #tabs,body.db-mode #genericFilterBar,body.db-mode .qa-v7{display:none}
-/* 編集中/完了データ一覧も同様にモーダルではなくメイン画面表示にする。 */
-body.rec-mode #grid,body.rec-mode #listToolbar,body.rec-mode #tabs,body.rec-mode #genericFilterBar,body.rec-mode .qa-v7{display:none}
-/* 実績カレンダーも同様にメイン画面表示にする。 */
-body.cal-mode #grid,body.cal-mode #listToolbar,body.cal-mode #tabs,body.cal-mode #genericFilterBar,body.cal-mode .qa-v7{display:none}
-/* 作業スケジュール(スケジュールモード等)も同様にメイン画面表示にする。 */
-body.sc-mode #grid,body.sc-mode #listToolbar,body.sc-mode #tabs,body.sc-mode #genericFilterBar,body.sc-mode .qa-v7{display:none}
-/* マスタ管理(ARCHITECTURE.md「マスタ管理の画面形態」)も同様にメイン画面表示にする(旧: 全画面シェード付きモーダル)。 */
-body.mm-mode #grid,body.mm-mode #listToolbar,body.mm-mode #tabs,body.mm-mode #genericFilterBar,body.mm-mode .qa-v7{display:none}
-/* ログ・診断(§9.99)も同様にメイン画面表示にする。 */
-body.lg-mode #grid,body.lg-mode #listToolbar,body.lg-mode #tabs,body.lg-mode #genericFilterBar,body.lg-mode .qa-v7{display:none}
+/* ---------- 一覧の道具は、一覧を出していない画面では伏せる（§9.288 ⑥） ----------
+   利用者の報告「実績データ確認時に、フィルタバーが下部に落ちている不具合を
+   発見しました」。
+
+   メイン画面へ統合したビュー（帳票・ダッシュボード・データ一覧・カレンダー・
+   作業スケジュール・マスタ管理・ログ・**実績データ**）は、どれも一覧の器を
+   使わずに自分の面を出す。ところが**モードごとに同じ行を書き写して**いた
+   ため、`ac-mode`（実績データ）だけ`#grid`と`.pager`しか伏せておらず、
+   仕掛一覧の絞り込みバーと一覧ツールバーが**実績の表の下に残って**いた
+   （§9.233 ③「器の名前ごとに書き分けると、足し忘れた1つだけが静かに壊れる」
+   のCSS版。画面を1つ足すたびにこの行を書き足す作りだった）。
+
+   **モードは1本の`:is()`にまとめる**——新しいビューはここへ綴りを1つ足すだけ。
+   `qa-mode`（元データビュー）だけは上で個別に扱う（`qa-view-raw`のときは
+   一覧の道具を**出す**ので、伏せる側の一覧に入れられない）。
+   固定は`tests/test_actuals.js`（実際に開いて、器の外へ出ていないことを見る）。 */
+body:is(.rp-mode,.db-mode,.rec-mode,.cal-mode,.sc-mode,.mm-mode,.lg-mode,.ac-mode)
+ :is(#grid,#listToolbar,#tabs,#genericFilterBar,.qa-v7){display:none}
 /* 保険: 他のメイン画面統合ビューが開いている間はマスタ管理パネルを必ず隠す。
    各ビューのopenXxxがwindow.exitMasterMaint()を呼ぶのが本筋だが、呼び忘れても
    画面が重なって見えないようにしておく(実際に、データ一覧へ移動したときだけ

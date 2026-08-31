@@ -75,7 +75,7 @@ let b=null;
   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
  };
  const TARGET='オペレータ',KEY='operator';
- let saved=null;
+ let saved=null,savedWidget0='';
 
  try{
   await post('/api/access-mode',{mode:'edit'});
@@ -267,12 +267,117 @@ let b=null;
        `${savedUi.group}/${savedUi.choice}`);
   }
 
+  /* ==========================================================
+     6) **どの選ばせ方でも、UIの内部が塗られる**（§9.288 ①、利用者の報告）
+
+        「未入力の色については保存は効くようになりましたが、結局入力画面では
+         反映されないです。プルダウンの時だけ効くような感じです。」
+        「UIによっては背景というか裏に色が回っていてUIの内部に着色されない
+         ものが見受けられます。」
+
+        直す前のCSSは器の名前を4つ並べていた（`>select` `>input` `>output`
+        `>.opf-widget .opf-shape`）ので、あとから足した形——一覧・パネル・
+        メニュー・切替・入切・コンボ・メモ——には**1つも当たっていなかった**。
+        当たっていた札の形も、札が白い地を持つ（`.opf-chip-btn`など）ため
+        **色が札の裏へ回り、隙間だけが色づいて**いた。
+
+        **クラスや属性が付くだけでは絵は変わらない**（§9.229 ⑥）ので、
+        `elementFromPoint`で**実際に描かれている色**を拾い、
+        「面の色」と「札の真ん中の色」が一致することまで見る。
+        見本は測定画面と同じ1本（`buildPreviewField`・§9.276 ⑥）を通る。
+     ========================================================== */
+  /* **まず実機の測定画面で1つ**（利用者の報告は入力画面のこと）。
+     見本（`buildPreviewField`）は同じ1本を通る（§9.276 ⑥）が、
+     「見本では出るのに実データでは出ない」を作らないために、
+     器を被せる形をひとつ本物の画面で確かめる。 */
+  savedWidget0=String(before.widget||'');
+  await put(TARGET,{blankTint:'pink',widget:'パネル'});
+  await openMeasure();
+  const real=await page.evaluate(key=>{
+   const sel=document.getElementById(key);
+   const host=sel&&sel.closest('.opf-host');
+   if(!host)return {ある:false};
+   const face=host.querySelector('.opf-face');
+   if(!face)return {ある:true,面の印:false};
+   const r=face.getBoundingClientRect();
+   let e=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2),bg='';
+   while(e){const v=getComputedStyle(e).backgroundColor;
+           if(v&&v!=='rgba(0, 0, 0, 0)'&&v!=='transparent'){bg=v;break}e=e.parentElement}
+   return {ある:true,面の印:true,面:getComputedStyle(face).backgroundColor,中:bg,
+           器:face.className,空:host.classList.contains('is-blank')};
+  },KEY);
+  rec('実機の測定画面でも、パネルの面が塗られる',
+      real.ある&&real.面の印&&real.空===true
+      &&!/^rgba?\(255, ?255, ?255/.test(String(real.面||''))
+      &&real.中===real.面,
+      JSON.stringify(real));
+  await put(TARGET,{blankTint:'pink',widget:savedWidget0||'プルダウン'});
+
+  const KINDS=['プルダウン','ラジオ','セグメント','タブ','ボタン群','カード',
+               'トグル','段階','一覧','パネル','メニュー','切替','入切','索引','ダイヤル'];
+  const sweep=await page.evaluate(kinds=>{
+   const box=document.createElement('div');
+   box.id='__facesweep';
+   box.style.cssText='position:fixed;left:0;top:0;width:360px;z-index:99999;background:#fff';
+   document.body.appendChild(box);
+   const effBg=(x,y)=>{
+    let e=document.elementFromPoint(x,y);
+    while(e){
+     const bg=getComputedStyle(e).backgroundColor;
+     if(bg&&bg!=='rgba(0, 0, 0, 0)'&&bg!=='transparent')return bg;
+     e=e.parentElement;
+    }
+    return '';
+   };
+   const out=[];
+   kinds.forEach(kind=>{
+    box.innerHTML='';
+    const def={name:'見本',unit:'',required:false,type:'選択',
+               choices:['甲','乙','丙'],widget:kind,blankTint:'pink',
+               unitPlace:'外下左',align:'自動',valueFormat:'そのまま',
+               look:{},layout:'自動',noBlank:false,choiceNotes:{}};
+    let host=null;
+    try{host=WL.opData.buildPreviewField(def)}catch(e){out.push({kind,err:String(e).slice(0,80)});return}
+    if(!host){out.push({kind,err:'欄を作れません'});return}
+    box.appendChild(host);
+    const faces=host.querySelectorAll('.opf-face');
+    const face=faces[0];
+    if(!face){out.push({kind,faces:faces.length,err:'面の印が無い'});return}
+    const fr=face.getBoundingClientRect();
+    const faceBg=getComputedStyle(face).backgroundColor;
+    /* 札があれば**その真ん中**も見る（裏へ回っていないか）。 */
+    const btn=face.querySelector('[data-opv]')
+      ||face.querySelector('.opf-pick-caret,.opf-panel-mark,.opf-index-mark,.opf-combo-open');
+    const br=btn?btn.getBoundingClientRect():null;
+    out.push({kind,faces:faces.length,
+              tint:host.dataset.opBlankTint||'',空:host.classList.contains('is-blank'),
+              w:Math.round(fr.width),h:Math.round(fr.height),
+              faceBg,
+              面:(fr.width>2&&fr.height>2)?effBg(fr.left+fr.width/2,fr.top+2):'',
+              札:br&&br.width>2&&br.height>2
+                 ?effBg(br.left+br.width/2,br.top+br.height/2):'-'});
+   });
+   box.remove();
+   return out;
+  },KINDS);
+  const bad=sweep.filter(x=>x.err||x.faces!==1);
+  rec('どの選ばせ方にも「面」の印がちょうど1つ付く',bad.length===0,
+      JSON.stringify(bad).slice(0,300));
+  const WHITE=/^rgba?\(255, ?255, ?255/;
+  const notPainted=sweep.filter(x=>!x.err&&(!x.面||WHITE.test(x.面)));
+  rec('どの選ばせ方でも面が実際に塗られる（プルダウン以外も）',notPainted.length===0,
+      JSON.stringify(notPainted.map(x=>[x.kind,x.面])).slice(0,300));
+  const behind=sweep.filter(x=>!x.err&&x.札!=='-'&&x.札!==x.面);
+  rec('札や▾の裏へ色が回らない（UIの内部が塗られる）',behind.length===0,
+      JSON.stringify(behind.map(x=>[x.kind,x.面,x.札])).slice(0,300));
+
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
   console.log('FATAL: '+(e&&e.stack||e));
   R.push({n:'FATAL',ok:false});
  }finally{
-  try{if(saved!==null)await put(TARGET,{blankTint:saved})}catch(e){}
+  /* **選ばせ方も戻す**（§9.121。置き土産は次の実行を巻き添えにする）。 */
+  try{if(saved!==null)await put(TARGET,{blankTint:saved,widget:savedWidget0||'プルダウン'})}catch(e){}
   try{await post('/api/access-mode',{mode:'edit'})}catch(e){}
   if(b)await b.close();
  }

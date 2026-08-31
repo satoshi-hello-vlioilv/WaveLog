@@ -33,6 +33,7 @@ from ..repositories.master_repo import (
  ensure_operator_equipment_table, OPERATOR_EQUIPMENT_TABLE,
  rename_equipment_references,
  FILTER_PRESET_TABLE, ensure_filter_preset_table, filter_preset_rows,
+ filter_preset_members,
  FILTER_PERSONAL_TABLE, ensure_filter_personal_table, filter_personal_marks,
  filter_personal_set, filter_personal_has_any,
  SCHEDULE_COLUMN_TABLE, ensure_schedule_column_table, schedule_columns_for, set_schedule_columns,
@@ -277,6 +278,10 @@ def filter_preset_list():
                   # ——「未分類」という名前をサーバーが作らないこと（画面の
                   # 呼び名であって、保存値ではない）。
                   'group':(str(r[12]).strip() if len(r)>12 and r[12] else ''),
+                  # メンバー(§9.288 ②)。**空＝ふつうの「登録した条件」**、
+                  # 1件以上＝「組み合わせ（プリセット）」。同じ条件のIDは
+                  # 何本の組み合わせにも現れてよい＝使い回せる。
+                  'members':filter_preset_members(r[13] if len(r)>13 else None),
                   'isDefault':bool(mk.get('isDefault')),'isLocked':bool(mk.get('isLocked'))})
   # ファイル(DB)＆テーブルごとに個別管理するため、対象DB/対象テーブルが
   # 空欄のプリセット(=以前の実装が汎用として扱っていたもの)であっても、
@@ -303,7 +308,12 @@ def filter_preset_register():
   x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();uid=request_user_id(x)
   if not name:return jsonify(error='フィルタ名を入力してください。'),400
   filters=x.get('filters') or []
-  if not isinstance(filters,list) or not filters:return jsonify(error='保存する条件がありません。'),400
+  # 組み合わせ(§9.288 ②)は条件を持たない行なので、**メンバーがあれば
+  # 条件が空でも通す**。どちらも空のときだけ断る(中身の無い登録は作れない)。
+  members=x.get('members')
+  members=[int(v) for v in members if str(v).lstrip('-').isdigit()] if isinstance(members,list) else None
+  if not isinstance(filters,list) or (not filters and not members):
+   return jsonify(error='保存する条件がありません。'),400
   db_key=str(x.get('db') or '').strip();table=str(x.get('table') or '').strip();payload=json.dumps(filters,ensure_ascii=False)
   mode=_filter_preset_mode(x.get('mode'))
   # 所有者(§9.172)。指定が無ければ**その人のもの**として登録する。共有したい
@@ -322,18 +332,19 @@ def filter_preset_register():
    cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル],[対象モード],[所有者ID] FROM [フィルタプリセットマスタ]');rows=cur.fetchall()
    target=normalize_equipment_name(name)
    existing=next((r for r in rows if normalize_equipment_name(r[1])==target and str(r[2] or '')==db_key and str(r[3] or '')==table and str(r[4] or '')==mode and str(r[5] or '')==owner),None)
+   mem_json=json.dumps(members) if members is not None else None
    if existing:
-    if has_group:
-     cur.execute('UPDATE [フィルタプリセットマスタ] SET [条件JSON]=?,[グループ]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [プリセットID]=?',[payload,group,uid,existing[0]])
-    else:
-     cur.execute('UPDATE [フィルタプリセットマスタ] SET [条件JSON]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [プリセットID]=?',[payload,uid,existing[0]])
+    sets='[条件JSON]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now()';args=[payload,uid]
+    if has_group:sets='[条件JSON]=?,[グループ]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now()';args=[payload,group,uid]
+    if mem_json is not None:sets+=',[メンバーJSON]=?';args.append(mem_json)
+    cur.execute(f'UPDATE [フィルタプリセットマスタ] SET {sets} WHERE [プリセットID]=?',args+[existing[0]])
     registered=False;preset_id=existing[0]
    else:
     cur.execute('SELECT Max([表示順]) FROM [フィルタプリセットマスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-    cur.execute('INSERT INTO [フィルタプリセットマスタ] ([名称],[対象DB],[対象テーブル],[対象モード],[条件JSON],[使用回数],[表示順],[有効],[所有者ID],[グループ],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,0,?,-1,?,?,?,?,Now(),Now())',[name,db_key,table,mode,payload,order,owner,group,uid,uid]);registered=True
+    cur.execute('INSERT INTO [フィルタプリセットマスタ] ([名称],[対象DB],[対象テーブル],[対象モード],[条件JSON],[メンバーJSON],[使用回数],[表示順],[有効],[所有者ID],[グループ],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,0,?,-1,?,?,?,?,Now(),Now())',[name,db_key,table,mode,payload,mem_json or '[]',order,owner,group,uid,uid]);registered=True
     preset_id=cur.lastrowid
    c.commit()
-  return jsonify(ok=True,name=name,id=preset_id,registered=registered,owner=owner,mine=bool(owner),group=group,updated_by=uid,message=('フィルタマスタへ新規登録しました。' if registered else '登録済みフィルタを更新しました。'))
+  return jsonify(ok=True,name=name,id=preset_id,registered=registered,owner=owner,mine=bool(owner),group=group,members=members or [],updated_by=uid,message=('フィルタマスタへ新規登録しました。' if registered else '登録済みフィルタを更新しました。'))
  except Exception as e:return jsonify(error=f'フィルタプリセット登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
 @bp.post('/api/filter-presets/use')
@@ -421,40 +432,89 @@ def filter_preset_owner():
   return jsonify(ok=True,id=pid,owner=owner,mine=bool(owner))
  except Exception as e:return jsonify(error=f'フィルタの持ち主変更に失敗: {e}'),500
 
-@bp.post('/api/filter-presets/group')
-def filter_preset_group():
- """登録フィルタの群を付け替える（§9.286 ①、利用者の指示「登録フィルタの
- グループ化登録及びグループごとの一括切り替え機能」）。
+@bp.post('/api/filter-presets/combo')
+def filter_preset_combo():
+ """組み合わせ（プリセット）を作る・直す（§9.288 ②、利用者の指示「登録した
+ データを使いまわせるような形が良い…フィルタ登録したデータを何回でも使える
+ という組み合わせのプリセット登録」）。
 
- **条件を送り直させない**——`POST /api/filter-presets`は条件が要る（空だと
- 断る）ので、名札を付け替えるだけの操作をあの口に通すと、画面が条件を
- 持っていないと群を変えられない。持ち主の判定は`/owner`と同じ。
+ §9.286 ①／§9.287 の`[グループ]`は**名札**なので、1つの条件は1つの群にしか
+ 属せなかった。ここは**組み合わせのほうを1行**にする——`[メンバーJSON]`に
+ 条件のIDを並べるので、**同じ条件を何本の組み合わせにも入れられる**。
 
- **まとめて付け替えられる**（`items`）——一覧から複数選んで1つの群へ移す
- のが実際の使い方で、1件ずつ往復すると途中で失敗した状態が残る。"""
+ 受ける形は2つ:
+   新規 … {name, members:[id...], db, table, mode}
+   変更 … {id, name?, members?}   （送った項目だけ書く・§9.212 ②）
+
+ **組み合わせの中に組み合わせを入れない**——入れ子にすると「いま効いて
+ いる条件」を辿らないと読めなくなる。落としたものは件数と理由を返す（§4）。
+ **持ち主の判定は`/owner`と同じ**（他人の個人フィルタは動かせない）。"""
  try:
   x=request.get_json(force=True) or {};uid=request_user_id(x)
   requester=_filter_preset_user(x) or uid
-  group=str(x.get('group') or '').strip()[:50]
-  items=x.get('items')
-  ids=[x.get('id')] if items is None else [it.get('id') if isinstance(it,dict) else it for it in (items or [])]
-  ids=[i for i in ids if i is not None]
-  if not ids:return jsonify(error='対象のプリセットIDがありません。'),400
+  pid=x.get('id')
+  name=str(x.get('name') or '').strip()
+  raw=x.get('members')
+  members=None
+  if isinstance(raw,list):
+   members=[]
+   for v in raw:
+    try:n=int(v)
+    except (TypeError,ValueError):continue
+    if n not in members:members.append(n)
+  db_key=str(x.get('db') or '').strip();table=str(x.get('table') or '').strip()
+  mode=_filter_preset_mode(x.get('mode'))
   path=DBS['MASTER']['path']
-  saved=0;denied=0
+  dropped={'missing':0,'other':0,'combo':0}
   with connect(path,False) as c:
    ensure_filter_preset_table(c);cur=c.cursor()
-   for pid in ids:
+   if members is not None:
+    keep=[]
+    for n in members:
+     cur.execute('SELECT [所有者ID],[メンバーJSON],[有効],[名称] FROM [フィルタプリセットマスタ] WHERE [プリセットID]=?',[n])
+     row=cur.fetchone()
+     if row is None or (row[2] is not None and not bool(row[2])) or not str(row[3] or '').strip():
+      dropped['missing']+=1;continue
+     if not _preset_visible_to(row[0],requester):dropped['other']+=1;continue
+     if filter_preset_members(row[1]):dropped['combo']+=1;continue
+     keep.append(n)
+    members=keep
+   if pid is None:
+    if not name:return jsonify(error='組み合わせの名前を入力してください。'),400
+    if not members:return jsonify(error='組み合わせに入れる条件を選んでください。'),400
+    owner=('' if x.get('shared') else str(requester or '')[:50])
+    # **同じ場面・同じ持ち主で同じ名前は1つ**（登録の口と同じ約束）。
+    cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル],[対象モード],[所有者ID] FROM [フィルタプリセットマスタ]')
+    target=normalize_equipment_name(name)
+    hit=next((r for r in cur.fetchall()
+              if normalize_equipment_name(r[1])==target and str(r[2] or '')==db_key
+              and str(r[3] or '')==table and str(r[4] or '')==mode and str(r[5] or '')==owner),None)
+    if hit:
+     cur.execute('UPDATE [フィルタプリセットマスタ] SET [メンバーJSON]=?,[条件JSON]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [プリセットID]=?',
+                 [json.dumps(members),'[]',uid,hit[0]])
+     pid=hit[0];created=False
+    else:
+     cur.execute('SELECT Max([表示順]) FROM [フィルタプリセットマスタ]')
+     order=int((cur.fetchone() or [0])[0] or 0)+10
+     cur.execute('INSERT INTO [フィルタプリセットマスタ] ([名称],[対象DB],[対象テーブル],[対象モード],[条件JSON],[メンバーJSON],[使用回数],[表示順],[有効],[所有者ID],[グループ],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,0,?,-1,?,?,?,?,Now(),Now())',
+                 [name,db_key,table,mode,'[]',json.dumps(members),order,owner,'',uid,uid])
+     pid=cur.lastrowid;created=True
+   else:
     cur.execute('SELECT [所有者ID] FROM [フィルタプリセットマスタ] WHERE [プリセットID]=?',[pid])
     row=cur.fetchone()
-    if row is None:continue
-    if not _preset_visible_to(row[0],requester):denied+=1;continue
-    cur.execute('UPDATE [フィルタプリセットマスタ] SET [グループ]=?,[更新者ID]=?,[更新日時]=Now() WHERE [プリセットID]=?',[group,uid,pid])
-    saved+=1
+    if row is None:return jsonify(error='その組み合わせは見つかりません。'),404
+    if not _preset_visible_to(row[0],requester):
+     return jsonify(error='この組み合わせは別の人のものです。持ち主だけが変えられます。'),403
+    sets=[];args=[]
+    if name:sets.append('[名称]=?');args.append(name)
+    if members is not None:sets.append('[メンバーJSON]=?');args.append(json.dumps(members))
+    if not sets:return jsonify(error='変えるものがありません。'),400
+    sets.append('[更新者ID]=?');args.append(uid)
+    cur.execute(f'UPDATE [フィルタプリセットマスタ] SET {",".join(sets)},[更新日時]=Now() WHERE [プリセットID]=?',args+[pid])
+    created=False
    c.commit()
-  # **できなかった件数も返す**（§4。黙って一部だけ効くのがいちばん分からない）
-  return jsonify(ok=True,group=group,saved=saved,denied=denied)
- except Exception as e:return jsonify(error=f'フィルタの群の変更に失敗: {e}'),500
+  return jsonify(ok=True,id=pid,name=name,members=members or [],created=created,dropped=dropped)
+ except Exception as e:return jsonify(error=f'組み合わせの保存に失敗: {e}'),500
 
 @bp.get('/api/schedule-column-master')
 def schedule_column_master_get():

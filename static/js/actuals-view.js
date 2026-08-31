@@ -39,6 +39,9 @@
  const acState={equipment:'',from:'',to:'',basis:'work',days:AC_DEFAULT_DAYS,
                 items:[],total:0,truncated:false,limit:0,loading:false,error:'',
                 lotFields:[],opKeys:[],opDefs:[],equipments:[],selected:new Set(),
+                /* 記録した値の候補（§9.288 ⑧）。**サーバーが答える**——
+                   帳票の候補と同じ1箇所（`report_block_repo.field_catalog()`）。 */
+                fieldCatalog:[],fieldNote:'',
                 query:'',gen:0};
 
  function loadPref(){
@@ -130,19 +133,67 @@
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
  }
 
- /* 仕掛の列と操業データの列は**読んだデータから作る**（設備で中身が違う）。
-    仕掛の呼び名はサーバーが返す`lotFields`、操業データは項目マスタの並び。 */
- function lotColumns(){
-  return (acState.lotFields||[]).map(f=>({
-   k:f.label+(f.unit?`(${f.unit})`:''),track:'minmax(84px,1fr)',origin:'lot',
-   get:x=>((x.basic||{})[f.key]??'')}));
+ /* ---------- 記録した値ぜんぶを列にする（§9.288 ⑧、利用者の指示） ----------
+    「実績データについては、一覧としてのリストは記録したすべてを対象に出力
+     可能にしたいです。表示列についても対応できるように、実績として記録した
+     すべてを一覧に出せるように、さらに表示列の機能で扱えるようにしてください。」
+
+    以前は**仕掛の23件（`lotFields`）と操業データの項目名**だけだった。
+    いまは**帳票と同じ候補**（`report_block_repo.field_catalog()`）をサーバーが
+    返し、そこから列を作る——準備で決めた値・母材・揃い・品質等級・品質情報・
+    仕掛の生の200列・作業時間・計算した値まで、記録に残っているものは全部
+    選べる。**候補の一覧を画面へ写さない**（§9.163。操業データ項目を足せば
+    帳票にも一覧にも同時に増える）。
+
+    **値はサーバーが道で引く**（`actuals.field_values()`）——記録の中の置き場
+    （母材は`mother.*`、生の列は`source.*`…）を知っているのはあちらだけで、
+    ここへ写すと道を1本足したときに2箇所直すことになる（§9.285 ②と同じ）。
+    **頼むのはいま出す列の道だけ**（§9.94）——1件で数百項目あるので、
+    全部返すと一覧1回で数MBになる。 */
+ function catalogColumns(){
+  const out=[];
+  (acState.fieldCatalog||[]).forEach(g=>{
+   (g.items||[]).forEach(it=>{
+    const label=String(it.label||'').trim();
+    const path=String(it.path||'').trim();
+    if(!label||!path)return;
+    out.push({k:label,path,track:'minmax(84px,1fr)',origin:'rec',group:g.group||'',
+              /* **どの群の項目かを説明に出す**（§6。同じ「板厚」でも
+                 準備で決めた値と仕掛の生の列では出どころが違う）。 */
+              note:(g.group?g.group+'：':'')+(it.note||g.note||''),
+              /* **サーバーが引いた値だけを見る**——道の読み方（`source.`は
+                 `.`で割らない等・§9.285 ④）を画面へ写さない。頼んでいない
+                 道は`undefined`なので空欄になる。 */
+              get:x=>((x&&x.fields)?(x.fields[path]??''):'')});
+   });
+  });
+  return out;
  }
- function opColumns(){
-  return (acState.opKeys||[]).map(name=>({
-   k:name,track:'minmax(84px,1fr)',origin:'op',
-   get:x=>((x.opData||{})[name]??'')}));
+ /* 道 → 列名。**引くのは1箇所**（設定パネルの説明も一覧のセルもここを見る）。 */
+ function pathOf(k){const c=columnOf(k);return (c&&c.path)||''}
+ /* サーバーへ頼む道。**いま出す列＋保存済みの並びに載っている列**——
+    出す列だけだと、1列出すたびに往復が要る（§9.94の「要る列だけ頼む」は
+    「次に要る列も含めて1回で」の意味）。**上限はサーバー側が400で切る。** */
+ function wantedPaths(){
+  const seen=new Set(),out=[];
+  const add=k=>{const p=pathOf(k);if(p&&!seen.has(p)){seen.add(p);out.push(p)}};
+  try{visibleColumnKeys().forEach(add)}catch(e){}
+  const layout=WL.columnLayout.get(AC_TARGET)||{};
+  (layout.order||[]).forEach(add);
+  return out;
  }
- function allColumns(){return AC_COLUMNS.concat(lotColumns(),opColumns())}
+ /* **同じ名前を2つ並べない**（§9.113）。**入口で1回だけ落とす**——
+    固定の列（ロット番号・検査番号…）と候補の項目（`basic.lotNo`…）は
+    同じ呼び名になりうる。落とさないと`rowView()`が**後から来たほうで
+    上書き**し、値の入っている列が空になる（実際に踏んだ：一覧の行は
+    出ているのにロット番号が空欄）。**最初に出てきた位置を残す。** */
+ function allColumns(){
+  const seen=new Set(),out=[];
+  AC_COLUMNS.concat(catalogColumns()).forEach(c=>{
+   if(!c||!c.k||seen.has(c.k))return;seen.add(c.k);out.push(c);
+  });
+  return out;
+ }
  function columnOf(k){return allColumns().find(c=>c.k===k)||null}
  /* **同じ名前を2つ並べない**（§9.113）——仕掛の呼び名と操業データの項目名が
     ぶつかりうるので、入口で1回だけ落とす。最初に出てきた位置を残す。 */
@@ -326,6 +377,11 @@
   if(acState.to)q.set('to',acState.to);
   q.set('basis',acState.basis);
   try{
+   /* **いま出す列の道だけ頼む**（§9.94／§9.288 ⑧）。**保存済みの並びに
+      載っている列も入れる**——次に出す列を先に持っておかないと、列を
+      1つ出すたびに往復が要る。候補が未着（初回）のときは何も頼まない。 */
+   const want=wantedPaths();
+   if(want.length)q.set('fields',JSON.stringify(want));
    const [r]=await Promise.all([api('/api/measurement/actuals?'+q.toString()),
                                 force?loadOpDefs():Promise.resolve()]);
    /* **いつの分かで捨てる**（§9.200）——設備を続けて切り替えると、前の
@@ -336,7 +392,19 @@
    acState.truncated=!!(r&&r.truncated);
    acState.limit=(r&&r.limit)||0;
    acState.lotFields=(r&&r.lotFields)||[];
+   /* 候補（§9.288 ⑧）。**落とした群の理由もそのまま持つ**（§4）。 */
+   const cat=(r&&r.fieldCatalog)||[];
+   const had=(acState.fieldCatalog||[]).length;
+   acState.fieldCatalog=cat;
+   acState.fieldNote=(r&&r.fieldNote)||'';
    rebuildOpKeys();
+   /* **候補が初めて届いたら、その道ぶんを取り直す**——1回目は「どの列が
+      あるか」を知らないので値を頼めない。**列が増えたときだけ**取り直す
+      （毎回だと往復が倍になる）。 */
+   if(!had&&cat.length&&wantedPaths().length){
+    acState.loading=false;
+    return load(false);
+   }
    /* 消えた行のidを選んだまま持たない（§9.170）。 */
    const live=new Set(acState.items.map(x=>x.id));
    [...acState.selected].forEach(id=>{if(!live.has(id))acState.selected.delete(id)});
@@ -518,7 +586,11 @@
    key:'actuals',eyebrow:'実績データ',
    title:()=>`表示列の設定（実績データリスト${acState.equipment?'：'+acState.equipment:''}）`,
    lead:'左で<b>出す列と並び</b>を決め、右で<b>選んだ1列の見え方</b>を整えます。'
-       +'設備や期間を変えても同じ設定が使われます（<b>保存するまでは元に戻せます</b>）。',
+       +'設備や期間を変えても同じ設定が使われます（<b>保存するまでは元に戻せます</b>）。'
+       /* **出せないものは名前で言う**（§4／§9.288 ⑧）——統計と子ロットは
+          測定値から**その場で計算する**値なので一覧では扱わない。黙って
+          候補から落とすと「探しても無い」になり、打つ手を持てない。 */
+       +(acState.fieldNote?'<br>'+acState.fieldNote:''),
    target:()=>AC_TARGET,
    savedToast:'実績データリストの表示列を保存しました',
    savedNote:'次に開いたときも同じ形で出ます',

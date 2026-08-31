@@ -118,14 +118,24 @@ let b=null;
   });
   const vals=await page.evaluate(c=>[...new Set((S.rows||[]).map(r=>String(r[c]??'').trim()).filter(Boolean))].slice(0,3),col);
   rec('検証の前提: 絞れる列と値がある',!!col&&vals.length>=2,`${col} / ${vals.join(',')}`);
-  const mk=async(name,value,group)=>{
+  const mk=async(name,value)=>{
    const r=await post('/api/filter-presets',{name,db:DB,table:TBL,mode:'',user:USER,
-     group:group||'',filters:[{column:col,op:'contains',value}]});
+     filters:[{column:col,op:'contains',value}]});
    made.push(name);return r;
   };
-  await mk(TAG+'-A',vals[0],GA);
-  await mk(TAG+'-B',vals[1],GA);
-  await mk(TAG+'-C',vals[0],'');
+  /* §9.288 ②：**条件と組み合わせは別の行**。条件を3件作ってから、
+     そのうち2件で組み合わせを1つ作る（`/combo`）。 */
+  /* **`post()`は`{status,body}`を返す**——`.id`を直に読むと`undefined`が
+     メンバーへ入り、サーバーは「入れる条件がありません」で断る（実際に踏んだ）。 */
+  const idA=(await mk(TAG+'-A',vals[0])).body.id;
+  const idB=(await mk(TAG+'-B',vals[1])).body.id;
+  await mk(TAG+'-C',vals[0]);
+  const mkCombo=await post('/api/filter-presets/combo',{name:GA,db:DB,table:TBL,mode:'',
+    user:USER,members:[idA,idB]});
+  rec('前提: 組み合わせを作れる（サーバーの口）',
+      mkCombo.status===200&&(mkCombo.body.members||[]).length===2,
+      JSON.stringify(mkCombo).slice(0,160));
+  made.push(GA);
   await page.evaluate(()=>window.location.reload());
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
   await page.click('aside [data-db-key="SIKALOTNOW"]',{timeout:20000});
@@ -184,9 +194,12 @@ let b=null;
   rec('組み合わせの中身（条件数と条件式）を名乗る',
       /2条件/.test(menu.items.find(x=>x.label===GA)?.sub||''),
       menu.items.find(x=>x.label===GA)?.sub);
-  rec('まだ組み合わせに入れていない条件も切り替えられる',
-      menu.items.some(x=>x.label===TAG+'-C'),JSON.stringify(menu.items.map(x=>x.label)));
-  rec('節で分けてある（組み合わせ／まだ入れていない条件）',
+  /* §9.288 ②：**組み合わせに入っている条件も1件で当てられる**——使い回せる
+     ようになった以上、どの条件も単独のプリセットとして並ぶ。 */
+  rec('登録した条件は1件ずつでも切り替えられる（組み合わせに入っていても）',
+      menu.items.some(x=>x.label===TAG+'-C')&&menu.items.some(x=>x.label===TAG+'-A'),
+      JSON.stringify(menu.items.map(x=>x.label)));
+  rec('節で分けてある（組み合わせ／登録した条件）',
       menu.secs.length>=2,JSON.stringify(menu.secs));
   rec('登録一覧への入口が同じ場所にある',menu.manage,String(menu.manage));
   await page.keyboard.press('Escape');
@@ -311,11 +324,15 @@ let b=null;
   await page.waitForSelector('#filterPresetModal:not([hidden])',{timeout:8000});
   await settle(700);
   const list=await page.evaluate(()=>({
-   secs:[...document.querySelectorAll('#filterPresetList .fp-sec')].map(x=>({
-     name:(x.querySelector('.fp-sec-name')?.textContent||'').trim(),
-     kind:x.dataset.secKind,
-     acts:[...x.querySelectorAll('.fp-sec-acts button')].map(b=>b.textContent.trim()),
+   secs:[...document.querySelectorAll('#filterPresetList .fp-sec')]
+     .map(x=>(x.querySelector('.fp-sec-name')?.textContent||'').trim()),
+   combos:[...document.querySelectorAll('#filterPresetList .fp-combo')].map(x=>({
+     name:(x.querySelector('.fp-name')?.textContent||'').trim(),
+     mems:[...x.querySelectorAll('.fp-mem')].map(m=>m.textContent.replace('×','').trim()),
+     acts:[...x.querySelectorAll('.fp-actions button')].map(b=>b.textContent.trim()),
    })),
+   /* 使い回しが見えること（§9.288 ②）。 */
+   used:[...document.querySelectorAll('#filterPresetList .fp-used')].map(x=>x.textContent.trim()),
    picks:document.querySelectorAll('#filterPresetList .fp-pick-check').length,
    bulk:(document.querySelector('.fp-bulk')?.textContent||'').trim(),
    /* **見切れが無いこと**（利用者の指示）——名前は折り返してよい。 */
@@ -323,18 +340,22 @@ let b=null;
      .map(x=>Math.round(x.scrollWidth-x.clientWidth)),
    groupSelects:document.querySelectorAll('#filterPresetList .fp-group').length,
   }));
-  rec('一覧は組み合わせごとの節に分かれている',
-      list.secs.some(s=>s.name===GA&&s.kind==='combo'),JSON.stringify(list.secs));
-  rec('まだ組み合わせに入れていない条件の節がある',
-      list.secs.some(s=>s.kind==='none'),JSON.stringify(list.secs.map(s=>s.kind)));
-  rec('節から名前を変える／解くができる',
-      (list.secs.find(s=>s.name===GA)?.acts||[]).length===2,
-      JSON.stringify(list.secs.find(s=>s.name===GA)?.acts));
+  rec('一覧は「組み合わせ」と「登録した条件」の2つの節',
+      list.secs.some(t=>t.includes('組み合わせ'))&&list.secs.some(t=>t.includes('登録した条件')),
+      JSON.stringify(list.secs));
+  rec('組み合わせは1行として並び、中身の条件が札で読める',
+      list.combos.some(c=>c.name.includes(GA)&&c.mems.length===2),
+      JSON.stringify(list.combos));
+  rec('組み合わせの行から切り替える・名前・削除ができる',
+      (list.combos.find(c=>c.name.includes(GA))?.acts||[]).length===3,
+      JSON.stringify(list.combos.find(c=>c.name.includes(GA))?.acts));
+  rec('条件の行に「どの組み合わせで使っているか」が出る（使い回しが見える）',
+      list.used.some(t=>t.includes(GA)),JSON.stringify(list.used.slice(0,4)));
   rec('行ごとの群の選択欄は廃した（入口を2つ持たない）',list.groupSelects===0,
       `${list.groupSelects}件`);
   rec('条件を選ぶチェックがある',list.picks>=3,`${list.picks}件`);
-  rec('選ぶ前は「何ができるか」を書く（帯は消さない）',
-      list.bulk.includes('組み合わせ'),list.bulk.slice(0,50));
+  rec('選ぶ前は「何回でも使える」ことを書く（帯は消さない）',
+      list.bulk.includes('何本の組み合わせにも'),list.bulk.slice(0,60));
   rec('名前が見切れていない（折り返す）',list.cutNames.every(c=>c<=1),
       JSON.stringify(list.cutNames));
 
@@ -347,13 +368,10 @@ let b=null;
   },TAG);
   await settle(400);
   const picked=await page.evaluate(()=>(document.querySelector('.fp-bulk')?.textContent||'').trim());
-  rec('選ぶと件数と次にすることが出る',/1件/.test(picked)&&/組み合わせへ入れる/.test(picked),
+  rec('選ぶと件数と次にすることが出る',/1件/.test(picked)&&/新しい組み合わせを作る/.test(picked),
       picked.slice(0,60));
   const NEW=TAG+'新組';
-  await page.evaluate(()=>{
-   const sel=document.querySelector('#fpBulkGroup');
-   sel.value='＋new';sel.dispatchEvent(new Event('change',{bubbles:true}));
-  });
+  await page.evaluate(()=>document.querySelector('#fpBulkNew').click());
   await page.waitForSelector('#fbGroupNameInput',{timeout:5000});
   await page.fill('#fbGroupNameInput',NEW);
   /* 確認窓の「決める」は`#appConfirmOk`（`confirmModal()`が使い回す1枚）。
@@ -361,11 +379,23 @@ let b=null;
      瞬間に網だけが古い約束のまま残る。 */
   await page.click('#appConfirmOk');
   await settle(2000);
+  made.push(NEW);
   const after=await listPresets();
-  const inNew=after.filter(p=>String(p.group||'').trim()===NEW);
+  const newRow=after.find(p=>p.name===NEW);
+  const cId=(after.find(p=>p.name===TAG+'-C')||{}).id;
   rec('選んだ条件から名前付きの組み合わせができる（サーバーに残る）',
-      inNew.length===1&&inNew[0].name===TAG+'-C',
-      JSON.stringify(after.map(p=>({n:p.name,g:p.group}))));
+      !!newRow&&Array.isArray(newRow.members)&&newRow.members.length===1
+      &&String(newRow.members[0])===String(cId),
+      JSON.stringify({members:newRow&&newRow.members,c:cId}));
+  /* ---- **同じ条件を2つ目の組み合わせにも入れられる**（この改良の核心） ---- */
+  const aId=(after.find(p=>p.name===TAG+'-A')||{}).id;
+  const r2=await post('/api/filter-presets/combo',{id:newRow&&newRow.id,user:USER,
+    members:[cId,aId]});
+  const after2=await listPresets();
+  const both=after2.filter(p=>Array.isArray(p.members)
+    &&p.members.some(m=>String(m)===String(aId)));
+  rec('同じ条件を何本の組み合わせにも入れられる（使い回せる）',
+      both.length===2,JSON.stringify({st:r2.status,combos:both.map(x=>x.name)}));
   const menu2=await page.evaluate(()=>{
    document.querySelector('#closeFilterPresets')?.click();
    document.querySelector('#filterPresetBtn').click();

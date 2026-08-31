@@ -184,14 +184,28 @@ const restore=[];
     束:[...document.querySelectorAll('.op-widget-group-head>b')].map(x=>x.textContent.trim()),
     いる束:[...document.querySelectorAll('.op-widget-group.is-here .op-widget-group-head>b')]
       .map(x=>x.textContent.trim())}));
-  /* §9.226 ①で`段階`と`入切`、§9.247 ①で`メニュー`と`切替`、§9.248 ①で
-     `パネル`を足した（選択肢を持つ型では13）。**数だけでなく綴りまで見る**
-     ——名前が変わるとマスタの保存値が「知らない値」になってプルダウンへ
-     倒れる（保存済みの設定が黙って消える）。
-     **並びは束ごとの並び**（§9.248 ①）なので、平らだった頃とは順番が違う。 */
-  rec('選ばせ方は13から選ぶ（パネルを足した）',
-      lookPane.選ばせ方.join('/')==='プルダウン/メニュー/一覧/パネル/ラジオ/セグメント/タブ/ボタン群/カード/トグル/入切/段階/切替',
-      JSON.stringify(lookPane.選ばせ方));
+  /* **顔ぶれと並びはサーバーの語彙どおり**（§9.163。画面へ写さない）。
+     ここで数と綴りを直に書いていたので、選ばせ方を1つ足すたびにこの網が
+     落ちていた（§9.288 ③で実際に落ちた）——**足すのは自由、名前を変えるのは
+     不可**、という約束のほうを固定する。並びは束ごと（§9.248 ①）。 */
+  const vocab=await fetch(B+'/api/operation-item-master').then(r=>r.json());
+  const famChoice=(vocab.widgetFamilies||{}).choice||[];
+  const wantOrder=(vocab.widgetGroups||[])
+    .flatMap(g=>(g.items||[]).filter(w=>famChoice.indexOf(w)>=0));
+  rec('選ばせ方の顔ぶれと並びはサーバーの語彙どおり（画面へ写さない）',
+      wantOrder.length>0&&lookPane.選ばせ方.join('/')===wantOrder.join('/'),
+      JSON.stringify({画面:lookPane.選ばせ方,語彙:wantOrder}));
+  /* **今までの綴りは変えない**（§9.204）——名前を変えるとマスタの保存値が
+     「知らない値」になってプルダウンへ倒れ、保存済みの設定が黙って消える。 */
+  const MUST13=['プルダウン','メニュー','一覧','パネル','ラジオ','セグメント','タブ',
+                'ボタン群','カード','トグル','入切','段階','切替'];
+  rec('今までの13の綴りは1つも変わっていない',
+      MUST13.every(w=>lookPane.選ばせ方.indexOf(w)>=0),
+      JSON.stringify(MUST13.filter(w=>lookPane.選ばせ方.indexOf(w)<0)));
+  /* §9.288 ③で足した2つ（選択肢を持つ型）。 */
+  rec('§9.288 ③の索引・ダイヤルが選べる',
+      ['索引','ダイヤル'].every(w=>lookPane.選ばせ方.indexOf(w)>=0),
+      JSON.stringify(lookPane.選ばせ方.slice(-3)));
   /* **束ねてあること**（§9.248 ①、利用者の指示「UIの選択自体もUIでもう少し
      グルーピングや階層を持たせて似たようなものをまとめ…」）。選択肢を持つ型
      なので「数を入れる」「文字を書く」の束はそもそも出ない（§4）。 */

@@ -8377,6 +8377,13 @@
      ——押せる部品にすると、押しても何も起きない（§4）。 */
   '文字だけ':{icon:'⌁',note:'枠も地も持たず、値だけを置く（読むだけの値）'},
   '強調':{icon:'❖',note:'色つきの枠で目立たせる（見落とせない参考値）'},
+  /* §9.288 ③（利用者の指示「選べるUIの種類をさらに増やしたい。今ないような
+     新しさを感じる種類のものも欲しいし、複数選択になったときに探しやすいUIも
+     欲しくて、パネルの派生や上位版みたいなものも」）。**それぞれ「他とどう
+     違うか」を一言に書く**——名前だけでは、窓が開く形は全部同じに読める。 */
+  '索引':{icon:'あ',note:'パネルの上位版。頭文字（あ/か/さ…A/0）で辿る窓。選択肢が数十〜数百のとき'},
+  'ダイヤル':{icon:'⇕',note:'前後を見ながら回して選ぶ。順番のある十数個を狭いマスで（切替と違い次が見える）'},
+  'サジェスト':{icon:'⌕',note:'打ちながら候補が垂れる。定型文と違い、語句が何個あっても場所を取らない'},
  };
  /* 並べ方の一言（§9.226 ①）。**「自動」が何になるかは形ごとに違う**ので、
     そこは触らずに「決めたときだけ」変わることを書く。 */
@@ -9563,6 +9570,46 @@
     右に**決めること**。触った結果がその場で見えないと、幅も選ばせ方も
     「当たっているか」が分からない（列の設定パネルと同じ作法・§9.105）。
     ================================================================ */
+ /* ---------- 素性は`?`の浮き出しへ（§9.288 ④、利用者の指示） ----------
+    「左側のエリアは死にエリアになっています。左側で有益なのは実際の見た目の
+     プレビューくらいでそれ以外はほぼ役に立っていません。」
+
+    **消さずに畳む**（§9.234 ①）——1回読めば足りる説明を、画面のいちばん
+    広い場所へ毎回置かない。**器の外（body直下）へ`position:fixed`**（§9.201。
+    見本の帯は`overflow:auto`なので、中に置くと切られる）。
+    **開いた器は必ず控える**（§9.222 ①）。 */
+ let opPrevInfoEl=null;
+ function opClosePrevInfo(){
+  opPrevInfoEl?.remove();opPrevInfoEl=null;
+  $('#opPrevInfoBtn')?.setAttribute('aria-expanded','false');
+  document.removeEventListener('click',opPrevInfoOutside,true);
+  document.removeEventListener('keydown',opPrevInfoEsc,true);
+ }
+ function opPrevInfoOutside(e){
+  if(opPrevInfoEl&&!opPrevInfoEl.contains(e.target)&&!e.target.closest('#opPrevInfoBtn'))opClosePrevInfo();
+ }
+ function opPrevInfoEsc(e){if(WL.modal.escCloses(e)){e.stopPropagation();opClosePrevInfo()}}
+ function opBindPrevInfo(html){
+  opClosePrevInfo();
+  const btn=$('#opPrevInfoBtn');if(!btn)return;
+  btn.onclick=e=>{
+   e.preventDefault();
+   if(opPrevInfoEl){opClosePrevInfo();return}
+   const pop=document.createElement('div');
+   pop.className='access-mode-menu op-prev-info-pop';pop.id='opPrevInfoPop';
+   pop.innerHTML='<p class="op-prev-info-head">この項目の素性<small>1回読めば足りる話です</small></p>'+html;
+   document.body.append(pop);
+   opPrevInfoEl=pop;
+   const r=btn.getBoundingClientRect();
+   pop.style.top=`${Math.min(r.bottom+6,innerHeight-pop.offsetHeight-8)}px`;
+   pop.style.left=`${Math.max(8,Math.min(r.left,innerWidth-pop.offsetWidth-8))}px`;
+   btn.setAttribute('aria-expanded','true');
+   requestAnimationFrame(()=>{
+    document.addEventListener('click',opPrevInfoOutside,true);
+    document.addEventListener('keydown',opPrevInfoEsc,true);
+   });
+  };
+ }
  function ensureOpModal(){
   let m=$('#opItemModal');if(m)return m;
   m=document.createElement('div');m.className='record-modal';m.id='opItemModal';m.hidden=true;
@@ -9607,6 +9654,9 @@
  }
  function closeOpModal(){
   const m=$('#opItemModal');if(!m)return;
+  /* **浮き出しも一緒に畳む**（§9.222 ①）——残ると、どの欄のものか
+     分からない説明が画面に浮いたままになる。 */
+  opClosePrevInfo();
   m.hidden=true;opState.picked=null;renderOpItem();
  }
  function openOpModal(id){
@@ -10154,6 +10204,17 @@
      あるか」「色が付くか」が一目で読めないと、名前だけで選ばせることになる。 */
   if(w==='文字だけ')return `<span class="opd opd-bare">123.4</span>`;
   if(w==='強調')return `<span class="opd opd-strong">123.4</span>`;
+  /* §9.288 ③で足した3つ。**絵でも違いが分かること**——`索引`は窓の上に
+     頭文字の帯（`パネル`との違いはそこ）、`ダイヤル`は前後が薄く見える3行、
+     `サジェスト`は打った文字の下に垂れる候補。 */
+  if(w==='索引')return `<span class="opd opd-index"><u>${esc(vs[0])}<b>あ</b></u>`
+   +`<em class="opd-index-rail"><b>あ</b><b>か</b><b>さ</b></em>`
+   +`<em><i class="opd-on">${esc(vs[0])}</i><i>${esc(vs[1]||'')}</i></em></span>`;
+  if(w==='ダイヤル')return `<span class="opd opd-dial"><b>▲</b>`
+   +`<u>${esc(vs[1]||'')}</u><i class="opd-on">${esc(vs[0])}</i><u>${esc(vs[2]||'')}</u>`
+   +`<b>▼</b></span>`;
+  if(w==='サジェスト')return `<span class="opd opd-sug"><u>${esc(String(vs[0]).slice(0,1))}</u>`
+   +`<em><i class="opd-on">${esc(vs[0])}</i><i>${esc(vs[1]||'')}</i></em></span>`;
   return '';
  }
  /* ---------- 選ばせ方の盤は「まとまり」で束ねる（§9.248 ①、利用者の指示） ----------
@@ -10260,12 +10321,34 @@
   const gap=6,pad=14;                       /* --gap-inline / --pad-row ぶん */
   const fits=Math.max(1,Math.floor((paneW-pad+gap)/(cell+gap)));
   const cols=Math.min(opState.gridCols,Math.max(span,fits));
-  $('#opModalPreview').innerHTML=`<div class="op-prev-head">測定画面での見え方`
+  /* ---------- 見本は「実物」だけ。素性はポップオーバーへ（§9.288 ④） ----------
+     利用者の指示「左側のエリアは死にエリアになっています。左側で有益なのは
+     実際の見た目のプレビューくらいでそれ以外はほぼ役に立っていません。」
+
+     以前はここに「入力の決まり／出るとき／記録の鍵」の3行と、組み込みの欄の
+     長い散文が**常に**並んでいた。どれも**1回読めば足りる**説明なのに、
+     画面のいちばん広い場所を毎回占めていた（面積は頻度×重要度・§CLAUDE 1）。
+     **消さずに畳む**（§9.234 ①）——`?`を押すと出る。 */
+  const facts='<ul class="op-prev-facts">'
+   +`<li><b>入力の決まり</b>${esc(rule.join('／'))}</li>`
+   +`<li><b>出るとき</b>${openWhen}</li>`
+   +`<li><b>記録の鍵</b>${x.builtin?'画面がもともと持っている置き場（測定データの中）'
+       :`測定データの <code>settings.opData.${esc(x.name)}</code>`}</li>`
+   +'</ul>'
+   +`<p class="op-prev-note">${x.builtin
+      ?'この欄は画面がもともと持っています（内径のプリセット・条数の上限など、それぞれの仕掛けがあるため）。'
+       +'それ以外は<b>自由項目と同じように</b>決められます——名前・選択肢のまとまり・初期値・手打ち・単位・並び・群・幅・必須・出す/出さない・置き場・選ばせ方・意匠。'
+       +'<b>変えられないのは型だけ</b>で、行そのものも消せません（②の「この項目」に外し方があります）。'
+      :'記録は<b>項目名を鍵</b>にして測定データへ入ります。名前を変えると、それまでの記録は前の名前のまま残ります。'}</p>`;
+  $('#opModalPreview').innerHTML=`<div class="op-prev-head"><b>測定画面での見え方</b>`
    +`<small>${esc(x.place||'準備')}のカード・${esc(opSpanLabel(span))}`
    +`／1マス ${Math.round(cell)}px（実物と同じ大きさ）`
    +(cols<opState.gridCols
-      ?`／<b>${opState.gridCols}マス中 ${cols}マスぶん</b>を表示（器に入るところまで）`
-      :`／${opState.gridCols}マス全部を表示`)+`</small></div>`
+      ?`／<b>${opState.gridCols}マス中 ${cols}マスぶん</b>`
+      :`／${opState.gridCols}マス全部`)+`</small>`
+   +`<button type="button" class="op-prev-info" id="opPrevInfoBtn" aria-haspopup="true"`
+   +` aria-expanded="false" title="この項目の素性（入力の決まり・出るとき・記録の鍵）">?</button>`
+   +`<span class="op-prev-value" id="opPrevValue"></span></div>`
    +`<div class="op-prev-scroll"><div class="op-prev-card"`
    +` style="--op-cols:${cols};--op-cell:${cell}px">`
    +`<div class="op-prev-band">${esc(x.group||'その他')}</div>`
@@ -10273,19 +10356,8 @@
    /* **残りのマスは空けておく**（§9.276 ⑥）——ここへ隣の欄を並べると、
       本物と揃わない絵で幅を判断することになる。格子だけを見せる。 */
    +`</div></div>`
-   +`<p class="op-prev-note" id="opPrevNote" hidden></p>`
-   +`<p class="op-prev-value" id="opPrevValue"></p>`
-   +`<ul class="op-prev-facts">`
-   +`<li><b>入力の決まり</b>${esc(rule.join('／'))}</li>`
-   +`<li><b>出るとき</b>${openWhen}</li>`
-   +`<li><b>記録の鍵</b>${x.builtin?'画面がもともと持っている置き場（測定データの中）'
-       :`測定データの <code>settings.opData.${esc(x.name)}</code>`}</li>`
-   +`</ul>`
-   +`<p class="op-prev-note">${x.builtin
-      ?'この欄は画面がもともと持っています（内径のプリセット・条数の上限など、それぞれの仕掛けがあるため）。'
-       +'それ以外は<b>自由項目と同じように</b>決められます——名前・選択肢のまとまり・初期値・手打ち・単位・並び・群・幅・必須・出す/出さない・置き場・選ばせ方・意匠。'
-       +'<b>変えられないのは型だけ</b>で、行そのものも消せません（②の「この項目」に外し方があります）。'
-      :'記録は<b>項目名を鍵</b>にして測定データへ入ります。名前を変えると、それまでの記録は前の名前のまま残ります。'}</p>`;
+   +`<p class="op-prev-note" id="opPrevNote" hidden></p>`;
+  opBindPrevInfo(facts);
   opRenderPreviewField(x,widget,usable);
   /* ---- 右: 決めること ---- */
   const seg=(name,list,cur,attr,noteOf)=>`<span class="op-seg" role="group" aria-label="${esc(name)}">`
@@ -10488,7 +10560,7 @@
     </span></div>`);
   /* ---------- ③ どう見せるか ---------- */
   const paneLook=sec('どう見せるか','選ばせ方・意匠・単位の置き場（記録の中身は変わりません）',`
-   <div class="op-form-row"><span class="op-form-label">選ばせ方</span>
+   <div class="op-form-row is-wide"><span class="op-form-label">選ばせ方</span>
     <span class="op-form-ctl">
      ${opWidgetPickerHtml(x,widget,usable)}
      <i class="op-form-note">${opIsOutput(x)

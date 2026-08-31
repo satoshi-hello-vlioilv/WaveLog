@@ -668,6 +668,12 @@
     ので、毎回入れ替えると読んでいる最中に単位が瞬く。 */
  function placeUnit(host,def){
   if(!host)return;
+  /* **面の印もここで付ける**（§9.288 ①）——単位の置き場と同じ「いま見えて
+     いる操作面はどれか」という問いなので、答える場所を2つ持たない。
+     `placeUnit()`は`buildWidget()`/`stripWidget()`の直後に必ず通る約束
+     （§9.233 ④）なので、器を足したときに付け忘れる道が無い。
+     **下の早い戻り道より前**に置くこと（単位が同じでも器は変わりうる）。 */
+  markFace(host);
   const u=unitParts(def);
   const want=u.top+u.inside+u.bottom;
   const anchor=displayEl(host);
@@ -837,6 +843,44 @@
  function displayEl(host){
   return host.querySelector(':scope>.opf-widget:not(.opf-plain)')
     ||valueEl(host)||outputEl(host);
+ }
+ /* ---------- 「枠と地を描いている面」の印（§9.288 ①、利用者の報告） ----------
+    「未入力の色については保存は効くようになりましたが、結局入力画面では
+     反映されないです。プルダウンの時だけ効くような感じです。」
+
+    直す前のCSSは器の名前を並べていた——`>select` `>input` `>output`
+    `>.opf-widget .opf-shape`の4つ。素のプルダウンと、`.opf-shape`を持つ
+    ボタン系（ラジオ・セグメント・タブ・ボタン群・カード・トグル・段階）
+    にしか当たらず、**あとから足した形は1つも塗られていなかった**
+    ——一覧・パネル・メニュー・切替・入切・手打ちのプルダウン（コンボ）・
+    メモ。§9.233 ③で「器を1つ足すたびにCSSを書き足す作りに戻さないこと
+    ——足し忘れた器だけが静かに壊れる」と書いたその形の再発。
+
+    いまは**面に印（`.opf-face`）を付けるのはここ1箇所**で、CSSは1規則。
+    未入力の配色も必須の橙も公差外の赤も、同じ印を見る。
+    面の見分け方は2段で、**素の欄が見えているならそれが面**
+    （1行・定型文・数の道具・素のプルダウン・自動で入る値）。器を被せて
+    `<select>`が1pxの裏方（`.opf-native-off`）になっている形だけ、器の中の
+    どれが面かを`FACE_SEL`が答える。
+    **選ばせ方を足したら`FACE_SEL`にも足すこと**——`tests/test_opblanktint.js`が
+    全部の選ばせ方について面が1つ在ることを数えるので、忘れると落ちる
+    （黙って塗られないままにはならない）。 */
+ const FACE_SEL='.opf-shape,.opf-combo,.opf-pick-btn,.opf-panel-btn,.opf-index-btn,'
+   +'.opf-menu-btn,.opf-cycle-btn,.opf-switch-btn,.opf-dial-face,.opf-memo-in';
+ function faceEl(host){
+  const el=valueEl(host)||outputEl(host);
+  if(el&&!el.classList.contains('opf-native-off'))return el;
+  const box=host.querySelector(':scope>.opf-widget');
+  if(!box)return el;
+  return (box.matches(FACE_SEL)?box:box.querySelector(FACE_SEL))||box||el;
+ }
+ function markFace(host){
+  if(!host)return;
+  const now=faceEl(host);
+  /* **古い印は必ず外す**——器を入れ替えても`<select>`は残るので、
+     外し忘れると「前の形の面」と2つ塗られる。 */
+  host.querySelectorAll('.opf-face').forEach(e=>{if(e!==now)e.classList.remove('opf-face')});
+  if(now)now.classList.add('opf-face');
  }
  /* ---------- 単位を重ねる「面」（§9.255 ③、利用者の指示） ----------
     「UIのテキストボックスの内部に入れられない(「内部」を選べない)ものがあり、
@@ -1021,6 +1065,23 @@
     const to=arr.length>1?arr[(at<0?0:(at+1)%arr.length)][1]:'';
     nx.textContent=to?`次 ${to}`:'';
    }
+  }
+  /* ダイヤル（§9.288 ③）。**前後を必ず文字で出す**——回した先が見えないと
+     `切替`と同じ「押すまで分からない」に戻る。**端では前後を空にする**
+     （一巡しないので、無い方向を書くと押せるように読める・§4）。 */
+  const dNow=box.querySelector('.opf-dial-now');
+  if(dNow){
+   let arr=[];try{arr=JSON.parse(box.dataset.opDial||'[]')}catch(_){}
+   const at=arr.findIndex(o=>o[0]===v);
+   const pv=box.querySelector('.opf-dial-prev'),nx=box.querySelector('.opf-dial-next');
+   if(pv)pv.textContent=(at>0)?arr[at-1][1]:'';
+   if(nx)nx.textContent=(at>=0&&at<arr.length-1)?arr[at+1][1]:(at<0&&arr.length?arr[0][1]:'');
+   const pos=box.querySelector('.opf-dial-pos');
+   if(pos)pos.textContent=arr.length?(at>=0?`${at+1}/${arr.length}`:`—/${arr.length}`):'';
+   box.querySelectorAll('[data-opdial]').forEach(b=>{
+    const d=Number(b.dataset.opdial);
+    b.disabled=!arr.length||(at>=0&&((d<0&&at===0)||(d>0&&at===arr.length-1)));
+   });
   }
   /* 入切（§9.226 ①）。**入＝先頭の値／切＝空**の1つのスイッチ。 */
   const sw=box.querySelector('.opf-switch-btn');
@@ -1428,9 +1489,13 @@
      入力欄なので、写しを作ると打つ場所が2つになる。意匠だけを当てる。 */
   const one=kind==='1行';
   const phrase=kind==='定型文';
-  const words=phrase?(def.choices||[]).filter(Boolean):[];
+  /* サジェスト（§9.288 ③）。**打つ場所は素の欄のまま**で、候補は浮き窓が
+     持つ（`定型文`のように札を並べないので、語句が何個あっても場所を取らない）。 */
+  const sug=kind==='サジェスト';
+  const words=(phrase||sug)?(def.choices||[]).filter(Boolean):[];
   const box=widgetHost(host);
-  const sig=one?'one':(phrase?'phrase|'+String(def.layout||'')+'|'+words.join('\u0002'):'memo');
+  const sig=one?'one':(sug?'sug|'+words.join('\u0002')
+    :(phrase?'phrase|'+String(def.layout||'')+'|'+words.join('\u0002'):'memo'));
   if(box.dataset.sig===sig){syncWidget(host);return true}
   box.dataset.sig=sig;
   host.classList.add('opf-alt');
@@ -1438,6 +1503,34 @@
    el.classList.remove('opf-native-off');el.removeAttribute('tabindex');
    box.className='opf-widget opf-oneline';
    box.innerHTML='';
+   applyLook(host,def);
+   syncWidget(host);
+   return true;
+  }
+  if(sug){
+   /* 器は被せない（`1行`と同じ）——打つ場所が2つになる。 */
+   el.classList.remove('opf-native-off');el.removeAttribute('tabindex');
+   box.className='opf-widget opf-suggest';
+   box.innerHTML=words.length?''
+     :'<small class="opf-widget-note">「選択肢のまとまり」を選ぶと、その値が候補として出ます</small>';
+   el.setAttribute('autocomplete','off');
+   /* **配線は1度だけ**（`el`は作り直されないので、毎回足すと候補の窓が
+      押すたびに何度も開こうとする）。 */
+   if(!el.dataset.opSugWired){
+    el.dataset.opSugWired='1';
+    const defOf=()=>host.__opSugDef||def;
+    el.addEventListener('input',()=>{openSug(defOf(),host,el);syncWidget(host)});
+    el.addEventListener('focus',()=>openSug(defOf(),host,el));
+    el.addEventListener('blur',()=>setTimeout(closeSug,120));
+    el.addEventListener('keydown',e=>{
+     if(e.key==='ArrowDown'&&sugEl&&!sugEl.hidden){
+      const f=sugEl.querySelector('[data-opw]');
+      if(f&&f.focus){e.preventDefault();f.focus()}
+     }
+    });
+   }
+   /* **最新の定義を持ち歩かせる**——候補はマスタで増える。 */
+   host.__opSugDef=def;
    applyLook(host,def);
    syncWidget(host);
    return true;
@@ -1725,6 +1818,64 @@
     +'<span class="opf-pick-now">選ぶ</span>'
     +'<span class="opf-panel-mark" aria-hidden="true" title="押すと大きな札の窓が開きます">▦</span></button>';
    box.querySelector('.opf-panel-btn').onclick=e=>{e.preventDefault();openPanel(def,host,sel)};
+  }else if(kind==='索引'){
+   /* 索引（§9.288 ③、利用者の指示「複数選択になったときに探しやすいUIも
+      欲しくて、パネルの派生や上位版みたいなものも何か作ってほしい」）。
+      **`パネル`の上位版**——札を並べた窓に**頭文字の索引**と絞り込みを
+      添える。`一覧`は「名前を知っていて打てる」とき向きで、**知らない名前は
+      辿れない**（オペレータ171人で「さ行のどこか」までしか覚えていない、が
+      現場では普通に起きる）。合図も分ける（`一覧`＝仕切った`☰`／`パネル`＝
+      `▦`／こちら＝**索引そのもの**の`あ`）。 */
+   box.className='opf-widget opf-index';
+   box.innerHTML='<button type="button" class="opf-index-btn">'
+    +'<span class="opf-pick-now">選ぶ</span>'
+    +'<span class="opf-index-mark" aria-hidden="true" title="押すと頭文字で辿る窓が開きます">あ</span></button>';
+   box.querySelector('.opf-index-btn').onclick=e=>{e.preventDefault();openIndex(def,host,sel)};
+  }else if(kind==='ダイヤル'){
+   /* ダイヤル（§9.288 ③、利用者の指示「今ないような新しさを感じる種類の
+      ものも欲しい」）。**前後を見ながら回して選ぶ**——`切替`は次が1つも
+      見えないので、行き過ぎたかどうかが押すまで分からない。順番に意味の
+      ある十数個を、狭いマスで選ぶとき向き。
+      **候補の並びは器が控える**（`data-op-dial`。`切替`と同じ理由——
+      `（選ばない）`を出さない設定があるので`<select>`の全部とは違う）。 */
+   const dl=pickableOpts(opts,def);
+   box.className='opf-widget opf-dial';
+   box.dataset.opDial=JSON.stringify(dl.map(o=>[o.v,isBlankOpt(o)?WL.optionBlankLabel:o.t]));
+   box.innerHTML='<div class="opf-dial-face" role="listbox" tabindex="0"'
+    +' aria-label="'+esc(def.name)+'（上下の矢印・↑↓キー・ホイールで選びます）"'
+    +' title="↑↓キーとホイールでも回せます">'
+    +'<button type="button" class="opf-dial-arrow" data-opdial="-1" tabindex="-1" aria-label="1つ前へ">▲</button>'
+    +'<span class="opf-dial-win">'
+    +'<i class="opf-dial-prev" aria-hidden="true"></i>'
+    +'<b class="opf-pick-now opf-dial-now">選ぶ</b>'
+    +'<i class="opf-dial-next" aria-hidden="true"></i></span>'
+    +'<i class="opf-dial-pos" aria-hidden="true"></i>'
+    +'<button type="button" class="opf-dial-arrow" data-opdial="1" tabindex="-1" aria-label="1つ次へ">▼</button>'
+    +'</div>';
+   const face=box.querySelector('.opf-dial-face');
+   /* **一巡させない**（`切替`との違い）——前後が見えている形で端から端へ
+      飛ぶと、いま何番目かが読めなくなる。端では止める。 */
+   const step=d=>{
+    let arr=[];try{arr=JSON.parse(box.dataset.opDial||'[]')}catch(_){}
+    if(!arr.length)return;
+    const at=arr.findIndex(o=>o[0]===String(sel.value==null?'':sel.value));
+    const nx=at<0?(d>0?0:arr.length-1):Math.max(0,Math.min(arr.length-1,at+d));
+    if(nx===at)return;
+    pickValue(sel,arr[nx][0]);syncWidget(host);
+   };
+   box.querySelectorAll('[data-opdial]').forEach(b=>{
+    b.onclick=e=>{e.preventDefault();step(Number(b.dataset.opdial));face.focus()};
+   });
+   face.onkeydown=e=>{
+    if(['ArrowUp','ArrowLeft'].indexOf(e.key)>=0){e.preventDefault();step(-1)}
+    else if(['ArrowDown','ArrowRight'].indexOf(e.key)>=0){e.preventDefault();step(1)}
+   };
+   /* **ホイールは「その欄を選んでいるとき」だけ**——素通しで受けると、
+      一覧をスクロールしただけで値が変わる（いちばん驚く壊れ方）。 */
+   face.addEventListener('wheel',e=>{
+    if(document.activeElement!==face)return;
+    e.preventDefault();step(e.deltaY>0?1:-1);
+   },{passive:false});
   }else if(kind==='メニュー'){
    /* メニュー（§9.247 ①、利用者の指示「フローティングメニューみたいなもの」）。
       **`一覧`とは開く場所が違う**——あちらは画面のまん中に開く大きな窓＋
@@ -1866,6 +2017,10 @@
      残ると、どの欄のものか分からないメニューが画面に残る。 */
   if(box&&menuBack&&box.contains(menuBack))closeMenu();
   if(box&&panelBack&&box.contains(panelBack))closePanel();
+  /* §9.288 ③ 足した2つも同じ作法で畳む（残ると、どの欄のものか分からない
+     窓が浮いたままになる）。 */
+  if(box&&indexBack&&box.contains(indexBack))closeIndex();
+  if(sugBack&&host.contains(sugBack))closeSug();
   if(box)box.remove();
   host.classList.remove('opf-alt');
   /* **`<input>`の欄も元へ戻す**（§9.219 ③）。`select`だけを見ていると、
@@ -2100,6 +2255,199 @@
   if(first&&first.focus){try{first.focus()}catch(e){}}
  }
 
+ /* ---------- 索引つきの窓（§9.288 ③、利用者の指示） ----------
+    「複数選択になったときに探しやすいUIも欲しくて、パネルの派生や上位版
+     みたいなものも何か作ってほしいです。」
+
+    **`パネル`の上位版**——札の窓に「頭文字の索引」と絞り込みを添える。
+    `一覧`の絞り込みは**名前を知っている**前提で、知らなければ辿れない。
+    索引なら「さ行のどこか」までしか覚えていなくても辿り着ける。
+
+    **頭文字は「よみ」を先に見る**（`choiceReadings`）——漢字の名前は1文字目
+    からは行が決まらない。よみが無い値は「他」へ入れ、**そのことを窓に書く**
+    （§4。黙って「他」へ落とすと、探している人は永久に見つけられない）。
+    **空の索引は出さない**（押しても何も起きない札を並べない）。 */
+ const INDEX_ROWS=[
+  ['あ','あいうえおぁぃぅぇぉ'],['か','かきくけこがぎぐげご'],
+  ['さ','さしすせそざじずぜぞ'],['た','たちつてとだぢづでどっ'],
+  ['な','なにぬねの'],['は','はひふへほばびぶべぼぱぴぷぺぽ'],
+  ['ま','まみむめも'],['や','やゆよゃゅょ'],['ら','らりるれろ'],
+  ['わ','わをんゔ']];
+ const INDEX_ORDER=INDEX_ROWS.map(r=>r[0]).concat(['A-Z','0-9','他']);
+ function indexKeyOf(text){
+  const t=String(text||'').trim();
+  if(!t)return '他';
+  let ch=t.normalize('NFKC')[0];
+  const code=ch.codePointAt(0);
+  /* カタカナはひらがなへ寄せる（同じ行のものを2つに割らない）。 */
+  if(code>=0x30A1&&code<=0x30F6)ch=String.fromCodePoint(code-0x60);
+  if(/[0-9]/.test(ch))return '0-9';
+  if(/[A-Za-z]/.test(ch))return 'A-Z';
+  const row=INDEX_ROWS.find(r=>r[1].indexOf(ch)>=0);
+  return row?row[0]:'他';
+ }
+ /* 索引に使う文字。**よみが有ればそちら**（漢字の名前のため）。 */
+ function indexTextOf(def,o){
+  const r=(def&&def.choiceReadings)||{};
+  return String(r[o.v]||o.t||'');
+ }
+ let indexEl=null,indexBack=null,indexPick='';
+ function ensureIndexWin(){
+  if(indexEl)return indexEl;
+  indexEl=document.createElement('div');
+  indexEl.className='opf-picker opf-index-win';indexEl.id='opfIndex';indexEl.hidden=true;
+  indexEl.innerHTML='<div class="opf-picker-box" role="dialog" aria-modal="true">'
+   +'<header><b id="opfIndexName"></b>'
+   +'<button type="button" id="opfIndexClose" aria-label="閉じる">×</button></header>'
+   +'<input type="search" id="opfIndexFind" placeholder="絞り込む" autocomplete="off">'
+   +'<div class="opf-index-rail" id="opfIndexRail" role="tablist" aria-label="頭文字"></div>'
+   +'<p class="opf-index-note" id="opfIndexNote"></p>'
+   +'<div class="opf-panel-grid opf-index-grid" id="opfIndexGrid"></div>'
+   +'<div class="opf-panel-free" id="opfIndexFree" hidden>'
+   +'<input type="text" class="opf-menu-free-in" id="opfIndexFreeIn" autocomplete="off"'
+   +' placeholder="候補にない値を打つ" aria-label="候補にない値を打つ"></div></div>';
+  document.body.appendChild(indexEl);
+  WL.modal.keepOpen(indexEl);
+  indexEl.querySelector('#opfIndexClose').onclick=closeIndex;
+  document.addEventListener('keydown',e=>{
+   if(indexEl&&!indexEl.hidden&&WL.modal.escCloses(e)){e.stopPropagation();closeIndex()}
+  },true);
+  return indexEl;
+ }
+ function closeIndex(){
+  if(!indexEl||indexEl.hidden)return;
+  indexEl.hidden=true;
+  const back=indexBack;indexBack=null;
+  if(back&&back.focus){try{back.focus()}catch(e){}}
+ }
+ function openIndex(def,host,sel){
+  const el=ensureIndexWin();
+  carryLook(host,el);
+  indexBack=host.querySelector('.opf-index-btn');
+  indexPick='';                                  /* 開くたびに「すべて」から */
+  el.hidden=false;
+  el.querySelector('#opfIndexName').textContent=def.name;
+  const grid=el.querySelector('#opfIndexGrid');
+  applyLayout(grid,def);                         /* 並べ方（§9.226 ①） */
+  const find=el.querySelector('#opfIndexFind');
+  const rail=el.querySelector('#opfIndexRail');
+  const note=el.querySelector('#opfIndexNote');
+  const opts=pickableOpts(optionsOf(sel),def);
+  const keyed=opts.map(o=>({o,k:indexKeyOf(indexTextOf(def,o)),
+                            hasReading:!!((def.choiceReadings||{})[o.v])}));
+  const count={};keyed.forEach(x=>{count[x.k]=(count[x.k]||0)+1});
+  /* **よみが無くて「他」へ落ちた件数**を言う（§4）。 */
+  const noRead=keyed.filter(x=>x.k==='他'&&!x.hasReading).length;
+  const drawRail=()=>{
+   rail.innerHTML='<button type="button" role="tab" class="opf-index-key'
+    +(indexPick?'':' is-on')+'" data-ikey="">すべて<i>'+opts.length+'</i></button>'
+    +INDEX_ORDER.filter(k=>count[k]).map(k=>
+      '<button type="button" role="tab" class="opf-index-key'+(indexPick===k?' is-on':'')
+      +'" data-ikey="'+esc(k)+'">'+esc(k)+'<i>'+count[k]+'</i></button>').join('');
+   rail.querySelectorAll('[data-ikey]').forEach(b=>{
+    b.onclick=e=>{e.preventDefault();indexPick=b.dataset.ikey;drawRail();draw()};
+   });
+  };
+  const draw=()=>{
+   const raw=String(find.value||'').trim(),q=raw.toLowerCase();
+   const hit=keyed.filter(x=>(!indexPick||x.k===indexPick)
+     &&(!q||(x.o.t+' '+indexTextOf(def,x.o)+' '+noteOf(def,x.o.v)).toLowerCase().indexOf(q)>=0));
+   const v=String(sel.value==null?'':sel.value);
+   grid.innerHTML=hit.length?hit.map(({o})=>{
+    const label=isBlankOpt(o)?WL.optionBlankLabel:o.t;
+    const tip=noteOf(def,o.v);
+    return '<button type="button" class="opf-panel-item'+(o.v===v?' is-on':'')+'"'
+     +' data-opv="'+esc(o.v)+'"><b>'+esc(label)+'</b>'
+     +(tip?'<small>'+esc(tip)+'</small>':'')+'</button>';
+   }).join('')
+    :'<p class="opf-picker-empty">'+(indexPick?'「'+esc(indexPick)+'」':'')
+     +(raw?'「'+esc(raw)+'」':'')+'に当たる選択肢はありません。</p>';
+   grid.querySelectorAll('[data-opv]').forEach(b=>{
+    b.onclick=e=>{e.preventDefault();pickValue(sel,b.dataset.opv);syncWidget(host);closeIndex()};
+   });
+   note.textContent=`${hit.length}件`
+    +(indexPick?`（頭文字「${indexPick}」）`:'（すべての頭文字）')
+    +(noRead?`　※ よみが登録されていない ${noRead}件は「他」に入っています`:'');
+  };
+  /* **入力中に一覧だけを描き直す**（§9.117）。 */
+  find.value='';find.oninput=draw;
+  find.placeholder=def.freeText?'絞り込む／候補にない値は下の欄へ':'絞り込む';
+  const free=el.querySelector('#opfIndexFree'),fi=el.querySelector('#opfIndexFreeIn');
+  free.hidden=!def.freeText;
+  if(def.freeText&&fi){
+   fi.value=isFreeValue(sel,sel.value)?String(sel.value||''):'';
+   fi.oninput=()=>{
+    const t=fi.value.trim();
+    if(t)setFree(sel,t);else setValue(sel,'');
+    syncWidget(host);draw();
+   };
+  }
+  drawRail();draw();
+  try{find.focus()}catch(e){}
+ }
+
+ /* ---------- 打ちながら候補が垂れる（§9.288 ③、利用者の指示） ----------
+    `定型文`は語句を札で並べるので、語句が増えるほど場所を取る。こちらは
+    **0個の場所**で同じことができる——打った文字で候補を絞り、選ぶとその値に
+    なる。**打つ場所は今までどおり素の欄1つ**（§9.226 ①）。 */
+ let sugEl=null,sugBack=null,sugOff=null;
+ function ensureSug(){
+  if(sugEl)return sugEl;
+  sugEl=document.createElement('div');
+  sugEl.className='opf-menu-pop opf-sug-pop';sugEl.id='opfSug';sugEl.hidden=true;
+  sugEl.setAttribute('role','listbox');
+  document.body.appendChild(sugEl);
+  WL.modal.keepOpen(sugEl);
+  document.addEventListener('mousedown',e=>{
+   if(!sugEl||sugEl.hidden)return;
+   if(sugEl.contains(e.target))return;
+   if(sugBack&&sugBack.contains&&sugBack.contains(e.target))return;
+   closeSug();
+  },true);
+  document.addEventListener('keydown',e=>{
+   if(sugEl&&!sugEl.hidden&&WL.modal.escCloses(e)){e.stopPropagation();closeSug()}
+  },true);
+  return sugEl;
+ }
+ function closeSug(){
+  if(!sugEl||sugEl.hidden)return;
+  sugEl.hidden=true;
+  if(sugOff){sugOff();sugOff=null}
+  sugBack=null;
+ }
+ function openSug(def,host,el){
+  const words=(def.choices||[]).filter(Boolean);
+  if(!words.length){closeSug();return}
+  const q=String(el.value||'').trim().toLowerCase();
+  /* **打った文字を含むものだけ**。全部出すなら`定型文`と同じなので、
+     0文字のときは「よく使う語句」として先頭から少しだけ出す。 */
+  const hit=words.filter(w=>!q||w.toLowerCase().indexOf(q)>=0).slice(0,40);
+  if(!hit.length){closeSug();return}
+  const pop=ensureSug();
+  carryLook(host,pop);
+  sugBack=el;
+  pop.hidden=false;
+  pop.innerHTML='<div class="opf-menu-list">'+hit.map(w=>
+    '<button type="button" role="option" class="opf-menu-item" data-opw="'+esc(w)+'">'
+    +'<span class="opf-menu-text"><b>'+esc(w)+'</b></span></button>').join('')
+   +'</div><p class="opf-sug-note">'+hit.length+'件'
+   +(q?'（「'+esc(String(el.value||'').trim())+'」を含むもの）':'（よく使う語句）')
+   +'。選ぶとこの欄の値になります</p>';
+  pop.querySelectorAll('[data-opw]').forEach(b=>{
+   /* **`click`ではなく`mousedown`**——欄からフォーカスが外れる前に受ける
+      （`blur`で閉じる作りと押し合いにならない）。 */
+   b.onmousedown=e=>{
+    e.preventDefault();
+    setValue(el,b.dataset.opw);syncWidget(host);closeSug();
+    try{el.focus()}catch(_){}
+   };
+  });
+  placeMenu(pop,el);
+  const onScroll=()=>closeSug();
+  window.addEventListener('scroll',onScroll,true);
+  sugOff=()=>window.removeEventListener('scroll',onScroll,true);
+ }
+
  /* ---------- 説明つきで選ぶ浮き窓 ----------
     **器の外（body直下）へ`position:fixed`で出す**（§9.201）。`.selectors`は
     `overflow`を持つ器の中にあるので、中に置くと下半分が切れる。 */
@@ -2269,10 +2617,22 @@
   return p===undefined?defaultFolded(g):!!p;
  }
 
+ /* ---------- 「選ばない」の札の字を値として読まない（§9.288 ⑨） ----------
+    §9.287-Iで札の字を`（選ばない）`へそろえたが、**選ばれている札の字を
+    そのまま値として読んでいる箇所**が2つ残っていた（畳んだ群の要約と、
+    ③確認の「記録した値」）。以前の字が`-`／空だったので、どちらも
+    `v!=='-'`のような**字での除け方**で辻褄が合っていた——札の綴りを1つ
+    変えた瞬間に、未選択の欄が「（選ばない）」という値として並ぶ
+    （実測: ③のカードで`dd`が32pxはみ出し、群の件数`3/9`も未選択を
+    「入っている」と数えていた）。
+    **見るのは値**（`WL.optionBlank`）——字で見ると、次に札の綴りを変える
+    ときにまた同じ置き土産ができる（§9.163）。 */
+ const selectBlank=el=>!!(el&&el.tagName==='SELECT'&&WL.optionBlank(el.value));
+
  /* 畳んだままでも値は読めること（§9.125）。見出しに現在値を並べる。 */
  function summaryOf(g){
   return g.items.map(d=>{
-   const el=controlOf(d);if(!el)return '';
+   const el=controlOf(d);if(!el||selectBlank(el))return '';
    const v=(el.selectedOptions&&el.selectedOptions[0]?el.selectedOptions[0].text:el.value)||'';
    return String(v).trim();
   }).filter(v=>v&&v!=='-').join('・');
@@ -2724,6 +3084,9 @@
  function shownValue(el){
   if(!el)return '';
   if(el.tagName==='SELECT'){
+   /* **未選択は空**（§9.288 ⑨）——札の字を返すと、③のカードに
+      「（選ばない）」が値として並び、群の件数も未選択を数えてしまう。 */
+   if(selectBlank(el))return '';
    const o=el.selectedOptions&&el.selectedOptions[0];
    return String((o?o.textContent:el.value)??'').trim();
   }

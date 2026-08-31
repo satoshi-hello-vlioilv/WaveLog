@@ -1066,7 +1066,80 @@ $('#changelogClear')?.addEventListener('click',()=>{
  el.value='';clRender();el.focus();
 });
 $('#changelogList')?.addEventListener('scroll',clOnScroll);
-function renderTabs(){$('#tabs').innerHTML='';S.tables.forEach(t=>{const b=document.createElement('button');b.className='tab'+(t===S.table?' active':'');b.textContent=t;b.onclick=()=>selectTable(t);$('#tabs').append(b)})}
+/* ---------- 表の切り替えはバッジ1つ（§9.288 ⑤、利用者の指示） ----------
+   「『仕掛』と『_更新情報』というテーブルを別に読んでいますが、実質『仕掛』
+    しか使いません。…ファイル名など書いてある部分の横にバッジ型のポップ
+    オーバーボタンとしてテーブル名を表示し、必要なら表示テーブルを
+    切り替えられるように…タブを消し…1行節約してください」
+   「品質情報も全く同じで1行節約したいです。」
+   「汎用のデータ読み出し機能もあるので、その場合もテーブル名はバッジ型
+    ポップオーバーメニューで対応するように。」
+
+   **器（`#tabs`）はそのまま**にして、置き場だけヘッダーのタイトル帯へ移した
+   （`templates/index.html`）——`body.xx-mode #tabs{display:none}`という
+   既存の約束（§9.288 ⑥）がそのまま効くので、画面ごとの書き分けが増えない。
+   **1つしか無いときは押せなくして理由を書く**（§4）——押しても何も起きない
+   ボタンを残さない。 */
+let tableMenuEl=null;
+function closeTableMenu(){
+ tableMenuEl?.remove();tableMenuEl=null;
+ document.getElementById('tableBadge')?.setAttribute('aria-expanded','false');
+ document.removeEventListener('click',onTableOutside,true);
+ document.removeEventListener('keydown',onTableEsc,true);
+}
+function onTableOutside(e){
+ if(tableMenuEl&&!tableMenuEl.contains(e.target)&&!e.target.closest('#tableBadge'))closeTableMenu();
+}
+function onTableEsc(e){if(WL.modal.escCloses(e))closeTableMenu()}
+function openTableMenu(anchor){
+ if(tableMenuEl){closeTableMenu();return}
+ const list=S.tables||[];
+ const menu=document.createElement('div');
+ menu.className='access-mode-menu hd-table-menu';menu.id='tableMenu';
+ menu.setAttribute('role','menu');
+ menu.innerHTML='<p class="hd-table-head">表を選ぶ<small>'
+  +`${esc(databaseLabel(S.db))} の中の表 ${list.length}件。ふだんは変える必要はありません</small></p>`
+  +list.map(t=>'<button type="button" role="menuitemradio" class="hd-table-pick'
+    +(t===S.table?' is-current':'')+`" aria-checked="${t===S.table?'true':'false'}" data-table="${esc(t)}">`
+    +'<i class="hd-table-mark" aria-hidden="true"></i>'
+    +`<span>${esc(t)}</span></button>`).join('');
+ document.body.append(menu);
+ tableMenuEl=menu;
+ /* **器の外（body直下）へ`position:fixed`**（§9.201）。画面の外へ出さない。 */
+ const r=anchor.getBoundingClientRect();
+ menu.style.top=`${r.bottom+6}px`;
+ menu.style.left=`${Math.max(8,Math.min(r.left,innerWidth-menu.offsetWidth-8))}px`;
+ menu.querySelectorAll('[data-table]').forEach(b=>b.onclick=()=>{
+  const t=b.dataset.table;closeTableMenu();
+  if(t!==S.table)selectTable(t);
+ });
+ anchor.setAttribute('aria-expanded','true');
+ requestAnimationFrame(()=>{
+  document.addEventListener('click',onTableOutside,true);
+  document.addEventListener('keydown',onTableEsc,true);
+ });
+}
+function renderTabs(){
+ const box=document.getElementById('tabs');if(!box)return;
+ closeTableMenu();
+ const list=S.tables||[];
+ box.innerHTML='';
+ /* **表がまだ無いときは出さない**——「—」のバッジは何も語らない。 */
+ if(!list.length){box.hidden=true;return}
+ box.hidden=false;
+ const one=list.length<2;
+ const b=document.createElement('button');
+ b.type='button';b.id='tableBadge';b.className='hd-table-badge';
+ b.setAttribute('aria-haspopup','true');b.setAttribute('aria-expanded','false');
+ b.innerHTML='<span class="hd-table-key">表</span><b>'+esc(S.table||list[0])+'</b>'
+  +(one?'':'<i aria-hidden="true">▾</i>');
+ b.disabled=one;
+ b.title=one
+  ? `この接続先の表は「${S.table||list[0]}」の1つだけです。`
+  : `この接続先の表 ${list.length}件から選べます（いまは「${S.table}」）。押すと切り替えられます。`;
+ b.onclick=e=>{e.preventDefault();openTableMenu(b)};
+ box.append(b);
+}
 /* 一覧データの取得。待機表示を出してから読み込む。 */
 /* ---------- 一覧データのキャッシュ(docs/ARCHITECTURE.md「共有ファイルを読む
    処理は回数が効く」) ----------

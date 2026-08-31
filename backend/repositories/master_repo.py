@@ -597,11 +597,32 @@ _FILTER_PRESET_OWNER_COLUMN=('所有者ID','TEXT')
 # **群そのものの表は作らない**——群は「この登録に付けた名札」でしかなく、
 # 別表にすると「行が1つも無い群」という決まらない状態が生まれる。
 _FILTER_PRESET_GROUP_COLUMN=('グループ','TEXT')
+# メンバー(§9.288 ②、利用者の指示「フィルタプリセットについては登録したデータを
+# 使いまわせるような形が良いです。今だとグループのどこかに属するような使い方
+# ですが、やりたいのはフィルタ登録したデータを何回でも使えるという組み合わせの
+# プリセット登録です」)。
+#
+# `[グループ]`は**1つの条件が1つの群にしか属せない**——名札なので当然だが、
+# それでは「この条件を3つのプリセットで使い回す」が書けない。そこで
+# **組み合わせのほうを1行にする**: `[メンバーJSON]`にプリセットIDの配列を
+# 持つ行が「組み合わせ（プリセット）」で、`[条件JSON]`を持つ行が
+# 「登録した条件」。同じ条件のIDは何本の組み合わせにも現れてよい。
+# **新しいマスタは作らない**——所有者・並び・対象DB/表/モードという
+# 「どの場面のものか」は条件と組み合わせで同じなので、同じ表に置いたほうが
+# 絞り込みも持ち主の判定も1つで済む(§9.287と同じ理由)。
+#
+# **IDで持つ**——名前で持つと、①同じ名前の個人フィルタと共有フィルタが
+# 区別できない ②条件の名前を変えた瞬間にリンクが切れる。**持ち出し
+# (§9.171)だけは名前へ直して運ぶ**(IDはマスタの連番なので別PCで食い違う)。
+_FILTER_PRESET_MEMBERS_COLUMN=('メンバーJSON','TEXT')
 
 def _add_missing_column(c,table,name,decl):
+ """無ければ足す。**足したときだけTrue**——「この列を初めて作った」を
+ 一度きりの移行の合図に使える(§9.288 ②)。"""
  if name not in {r[1] for r in c.cursor().execute(f'PRAGMA table_info([{table}])')}:
   c.cursor().execute(f'ALTER TABLE [{table}] ADD COLUMN [{name}] {decl}')
-  c.commit()
+  c.commit();return True
+ return False
 
 def ensure_filter_preset_table(c):
  names=tables(c);created=False
@@ -615,13 +636,58 @@ def ensure_filter_preset_table(c):
  for name,decl in (_FILTER_PRESET_MODE_COLUMN,_FILTER_PRESET_OWNER_COLUMN,
                    _FILTER_PRESET_GROUP_COLUMN):
   _add_missing_column(c,FILTER_PRESET_TABLE,name,decl)
+ # **列を初めて作ったときだけ**、旧`[グループ]`を組み合わせの行へ移す
+ # (§9.288 ②)。目印を別に持たないのは、`ALTER TABLE`が一度しか起きない
+ # ことそのものが「まだ移していない」の合図だから(§9.255 ③の「移行済みの
+ # 目印が永久に立たない」罠を避ける)。**旧列は消さない**——読まなくなる
+ # だけにしておけば、取り違えたときに元の名札を見て直せる。
+ if _add_missing_column(c,FILTER_PRESET_TABLE,*_FILTER_PRESET_MEMBERS_COLUMN):
+  _migrate_groups_to_combos(c)
  return created
+
+def _migrate_groups_to_combos(c):
+ """旧`[グループ]`→組み合わせの行(§9.288 ②)。同じ群でも**場面と持ち主が
+ 違えば別の組み合わせ**(対象DB/表/モード/所有者は条件の側の絞り込みと
+ 揃える)。中身が1件でも作る——「群に入れた」という利用者の意思なので、
+ こちらの都合で畳まない。"""
+ cur=c.cursor()
+ cur.execute('SELECT [プリセットID],[グループ],[対象DB],[対象テーブル],[対象モード],[所有者ID],[有効],[名称] FROM [フィルタプリセットマスタ]')
+ buckets={}
+ for pid,grp,db,tbl,mode,owner,active,name in cur.fetchall():
+  g=str(grp or '').strip()
+  if not g or not str(name or '').strip():continue
+  if active is not None and not bool(active):continue
+  buckets.setdefault((g,str(db or ''),str(tbl or ''),str(mode or ''),str(owner or '')),[]).append(pid)
+ if not buckets:return 0
+ cur.execute('SELECT Max([表示順]) FROM [フィルタプリセットマスタ]')
+ order=int((cur.fetchone() or [0])[0] or 0)
+ for (g,db,tbl,mode,owner),ids in buckets.items():
+  order+=10
+  cur.execute('INSERT INTO [フィルタプリセットマスタ] ([名称],[対象DB],[対象テーブル],[対象モード],[条件JSON],[メンバーJSON],[使用回数],[表示順],[有効],[所有者ID],[グループ],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,0,?,-1,?,?,?,?,Now(),Now())',
+              [g,db,tbl,mode,'[]',json.dumps(ids),order,owner,'','migrate','migrate'])
+ c.commit()
+ return len(buckets)
+
+def filter_preset_members(raw):
+ """`[メンバーJSON]`→プリセットIDの配列。**壊れていたら空**(＝ふつうの
+ 条件行として扱う)——例外にすると一覧が丸ごと出なくなる。"""
+ try:ids=json.loads(raw or '[]')
+ except Exception:return []
+ if not isinstance(ids,list):return []
+ out=[]
+ for v in ids:
+  try:
+   n=int(v)
+  except (TypeError,ValueError):
+   continue
+  if n not in out:out.append(n)
+ return out
 
 def filter_preset_rows(c):
  ensure_filter_preset_table(c)
  cur=c.cursor()
  # 全行取得後にPython側で有効判定する(使用回数の多い順で返す)。
- cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル],[条件JSON],[使用回数],[最終使用日時],[有効],[更新日時],[更新者ID],[対象モード],[所有者ID],[グループ] FROM [フィルタプリセットマスタ] ORDER BY [使用回数] DESC,[表示順],[名称]')
+ cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル],[条件JSON],[使用回数],[最終使用日時],[有効],[更新日時],[更新者ID],[対象モード],[所有者ID],[グループ],[メンバーJSON] FROM [フィルタプリセットマスタ] ORDER BY [使用回数] DESC,[表示順],[名称]')
  rows=[]
  for r in cur.fetchall():
   active=True if r[7] is None else bool(r[7])
