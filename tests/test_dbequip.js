@@ -98,6 +98,71 @@ let b=null;
   });
   rec('ボタンを押すと値欄へ変数が入る',typed==='{使用設備}',typed);
 
+  /* ---- 使用設備を切り替えたら、その瞬間に効く（§9.285 ①） ----
+     利用者の報告「フィルタの変数『使用設備』が、使用設備を切り替えても
+     その切り替えた瞬間に反映されない」。展開は送信直前なので**値は最初から
+     正しかった**——足りなかったのは「もう一度引く人」。
+     **素通りに注意**: `WL.expandFilterVars`だけを見る網は直す前でも通る
+     （あれは最初から新しい値を返す）。**一覧の件数**と**絞り込みバーの
+     文字**が実際に変わることまで見る。 */
+  const applyVarFilter=async()=>{
+   await page.evaluate(()=>{
+    S.genericFilters=[{column:'BOX設計_設備名',op:'eq',value:'{使用設備}'}];
+    S.page=1;
+   });
+   await page.evaluate(()=>load());
+   await page.waitForFunction(()=>!document.querySelector('#grid .loading'),{timeout:20000}).catch(()=>{});
+   await page.waitForTimeout(800);
+  };
+  const shot=()=>page.evaluate(()=>({
+   rows:document.querySelectorAll('#grid tbody tr').length,
+   count:(document.querySelector('#filterCount')||{}).textContent||'',
+   tag:(document.querySelector('#filterTokenInput .filter-tag')||{}).textContent||'',
+   eq:WL.equipment.get()}));
+  await applyVarFilter();
+  const before=await shot();
+  rec('変数の条件が効いている（自設備の行が出る）',before.rows>0&&before.eq===EQ,JSON.stringify(before));
+  rec('いまの値を絞り込みバーが文字で出す',before.tag.includes(EQ),before.tag);
+
+  /* **設備を切り替える。読み直しは`WL.equipment.onChange`が起こす。** */
+  await page.evaluate(e=>WL.equipment.set(e),OTHER);
+  await page.waitForFunction(e=>{
+   const t=(document.querySelector('#filterTokenInput .filter-tag')||{}).textContent||'';
+   return t.includes(e);
+  },OTHER,{timeout:15000}).catch(()=>{});
+  await page.waitForTimeout(1200);
+  const after=await shot();
+  rec('切り替えた瞬間に一覧が引き直される',
+      after.eq===OTHER&&after.rows!==before.rows,
+      JSON.stringify({前:before.rows,後:after.rows}));
+  rec('絞り込みバーも新しい設備を名乗る',after.tag.includes(OTHER),after.tag);
+
+  /* 戻したら元へ戻る（片道にしない）。 */
+  await page.evaluate(e=>WL.equipment.set(e),EQ);
+  await page.waitForFunction(n=>document.querySelectorAll('#grid tbody tr').length===n,
+                             before.rows,{timeout:15000}).catch(()=>{});
+  const back=await shot();
+  rec('戻すと元の件数に戻る',back.rows===before.rows&&back.eq===EQ,
+      JSON.stringify({戻り:back.rows,元:before.rows}));
+
+  /* **変数を使っていない一覧は読み直さない**——関係の無い一覧まで引き直すと、
+     重い一覧では設備を選び直しただけで数秒止まる。 */
+  await page.evaluate(()=>{S.genericFilters=[];S.page=1});
+  await page.evaluate(()=>load());
+  await page.waitForTimeout(800);
+  const quiet=await page.evaluate(async(other)=>{
+   let n=0;
+   const orig=window.load;
+   window.load=function(){n++;return orig.apply(this,arguments)};
+   WL.equipment.set(other);
+   await new Promise(r=>setTimeout(r,600));
+   window.load=orig;
+   return n;
+  },OTHER);
+  rec('変数を使っていないときは引き直さない',quiet===0,String(quiet));
+  await page.evaluate(e=>WL.equipment.set(e),EQ);
+  await page.waitForTimeout(300);
+
   // 後始末: 入れた実績を消す
   await page.evaluate(async list=>{
    for(const id of list)if(typeof reliableDelete==='function')await reliableDelete(id);

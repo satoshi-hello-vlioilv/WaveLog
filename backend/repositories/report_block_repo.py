@@ -40,6 +40,86 @@ SPANS = (3, 4, 6, 8, 12)
 ROWS = (2, 3, 4, 5, 6, 8, 12)
 
 
+def _dc(label, path, **kw):
+    """既定の中身を書き下ろすときの1マス（`default_cells`のための短縮）。"""
+    return _cell(label=label, path=path, **kw)
+
+
+def default_cells(builtin):
+    """既定の塊の中身を「マスの並び」で書き下ろす（§9.285 ②、利用者の指示）。
+
+    「汎用化できていない部分を汎用表現を追加し編集可能範囲に取り込む」
+
+    `寸法（オーダー／製造）`などはコードが表を組み立てているので、
+    `[内容]`を白紙のまま渡すと**いま見えている形が押した瞬間に消えたように
+    見える**（§9.259の「個人にするときは共通を写してから切り替える」と同じ
+    理由）。ここが**いま紙に出ている形と同じ並び**を答え、画面の
+    「既定の中身を写す」がそれを入れる。
+
+    **答えるのはここ1箇所**——画面へ書き写すと、既定の絵を直したときに
+    2箇所直すことになる（§9.163）。知らないキーは空（写す口を出さない）。
+
+    **書式もここで付ける**（§9.285 ③）——コードの表は`fmtDimSafe(x,3)`の
+    ように桁を決めて描いているので、書式なしで写すと**写した瞬間に桁が
+    変わる**（板厚が`0.3`になる）。写したあとは1マスずつ自由に変えられる。"""
+    key = str(builtin or '').strip()
+    num = lambda d: {'kind': 'number', 'decimals': d}
+    if key == '寸法（オーダー／製造）':
+        # (見出し, 道の尾, 書式)。**桁はコードの表と同じ**（`fmtDimSafe`）。
+        cols = (('材質', 'Material', None), ('調質', 'Temper', None),
+                ('板厚', 'Thickness', num(3)), ('板幅', 'Width', num(1)),
+                ('板丈', 'Length', num(1)))
+        cells = [_cell(kind=CELL_BLANK)]
+        cells += [_cell(label=h, kind=CELL_HEAD) for h, _s, _f in cols]
+        for lb, pre in (('オーダー', 'order'), ('製造', 'mfg')):
+            cells.append(_cell(label=lb, kind=CELL_HEAD, align='left'))
+            for head, suf, fmt in cols:
+                # **ラベルは日本語で**——紙には出さない（見出しと二重になる）
+                # が、盤の一覧にはこの名前が並ぶ（§2「いまの値を名乗る」）。
+                cells.append(_dc('%s %s' % (lb, head), 'basic.%s%s' % (pre, suf),
+                                 show_label=False,
+                                 align='right' if fmt else '', fmt=fmt))
+        return cells
+    if key == '品質等級':
+        return [_dc(lb, 'qualityGrades.' + lb) for lb in QUALITY_GRADE_LABELS]
+    if key == '品質情報（仕掛）':
+        return [_dc('品質情報', 'qualityInfo', span=1, show_label=False)]
+    if key == '母材実績／カード指示':
+        heads = ('元幅', '手計算', '全長', '前オフ', '後オフ')
+        cells = [_cell(kind=CELL_BLANK)]
+        cells += [_cell(label=h, kind=CELL_HEAD) for h in heads]
+        cells.append(_cell(label='実績', kind=CELL_HEAD, align='left'))
+        # 元幅は2段ぶん（実績とカード指示で同じ値・コードの`rowspan=2`と同じ）。
+        cells.append(_dc('元幅（実績）', 'basic.originalWidth', rows=2,
+                         show_label=False, align='right', fmt=num(1)))
+        for lb, k in (('実績 手計算', 'manual'), ('実績 全長', 'fullLength'),
+                      ('実績 前オフ', 'front'), ('実績 後オフ', 'rear')):
+            cells.append(_dc(lb, 'mother.' + k, show_label=False, align='right'))
+        cells.append(_cell(label='カード指示', kind=CELL_HEAD, align='left'))
+        for lb, k in (('カード MIN', 'minCard'), ('カード MAX', 'maxCard'),
+                      ('カード 前オフ', 'frontCard'), ('カード 後オフ', 'rearCard')):
+            cells.append(_dc(lb, 'mother.' + k, show_label=False, align='right'))
+        return cells
+    return []
+
+
+# 既定の中身を写せる塊と、そのときの列数。**列数もここが答える**
+# ——写した並びが別の列数で組まれると、いま見えている形と違う絵になる。
+DEFAULT_CELL_COLS = {'寸法（オーダー／製造）': 6, '品質等級': 4,
+                     '品質情報（仕掛）': 1, '母材実績／カード指示': 6}
+
+
+def default_cell_map():
+    """写せる塊 → {'content': 保存形, 'cols': 列数}（§9.285 ②）。"""
+    out = {}
+    for key in DEFAULT_CELL_COLS:
+        cells = default_cells(key)
+        if cells:
+            out[key] = {'content': dump_content(cells),
+                        'cols': DEFAULT_CELL_COLS[key]}
+    return out
+
+
 def normalize_span(v):
     try:
         n = int(v)
@@ -183,6 +263,103 @@ STAT_AXES = {f'stat.{ik}.{ak}': {AXIS_ITEM: il, AXIS_AGG: al}
              for ik, il in STAT_ITEMS for ak, al in STAT_AGGS}
 
 # ---------------------------------------------------------------------------
+# 品質等級・品質情報・母材（§9.285 ②、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「帳票ブロックの部分で汎用化できていない部分を汎用表現を追加し編集可能範囲に
+#  取り込む改良」
+#
+# `品質等級`／`品質情報（仕掛）`／`母材実績／カード指示`／`寸法（オーダー／製造）`は
+# **中身がラベルと値の並びでしかない**のに、候補にその道が1つも無かったので
+# マスの並びで組み直せなかった（＝コードが持つ形のまま、書式も寄せも列数も
+# 触れない）。道を候補へ出せば、既にある仕組み（§9.274のマス・§9.277の
+# ピボット・書式）がそのまま効く。
+#
+# **等級の呼び名は画面（`measurement-view.js`の`QUALITY_GRADE_SOURCE`）と
+# そろえること**——記録は`qualityGrades[<呼び名>]`なので、綴りがずれると
+# 候補から選んでも必ず空欄になる。`tests/test_rbcells.py`が機械で突き合わせる。
+QUALITY_GRADE_LABELS = ('生地外観', 'アルマイト', '表面処理', '付着油',
+                        '方向性', '強度', 'ラテラルボー', '直角度',
+                        '切断面', '板厚公差', '幅丈公差', 'フラットネス')
+LOT_INFO_CATALOG = (('品質情報（仕掛）', 'qualityInfo'),)
+
+# 母材の欄は**操業データ項目の組み込み行**（§9.232）だが、記録の置き場は
+# `settings.<組み込みキー>`ではなく`mother.<キー>`（`collect()`が
+# `[data-mother]`を見て書く）。候補が`settings.motherManual`を答えていたため、
+# **選んでも実データでは必ず空**だった（見本だけが値を持つ・§CLAUDE 6の
+# 「見本が嘘をつく」。§9.254 ④で`basic.material`が踏んだのと同じ形）。
+# **道の答えはここ1箇所**——`field_catalog`が組み込みキーをこれで読み替える。
+BUILTIN_PATHS = {
+    'motherManual': 'mother.manual',
+    'motherFullLength': 'mother.fullLength',
+    'motherMinCard': 'mother.minCard',
+    'motherMaxCard': 'mother.maxCard',
+    'motherFront': 'mother.front',
+    'motherRear': 'mother.rear',
+    'motherFrontCard': 'mother.frontCard',
+    'motherRearCard': 'mother.rearCard',
+    # 元幅は仕掛から写した値（`basic`）。母材の欄は同じ数を出しているだけ。
+    'motherOriginalWidth': 'basic.originalWidth',
+}
+# **記録に残らない欄**（画面で計算して`<output>`へ出すだけ。`[data-op]`も
+# `[data-opauto]`も持たないので`collect()`が拾わない）。候補へ出すと
+# **押せるのに必ず空欄**になるので出さない——ただし**出さない理由は書く**
+# （§4。黙って消すと「探しても無い」になる）。
+UNRECORDED_BUILTINS = ('motherScrapWidth', 'motherCalcLength')
+
+
+def builtin_path(key):
+    """操業データの組み込みキー → 記録の中の本当の置き場（§9.285 ②）。
+
+    **答えるのはここだけ**——読み替えを画面へ書き写すと、道を1本足したときに
+    2箇所直すことになる（§9.163）。知らないキーは今までどおり
+    `settings.<キー>`。"""
+    k = str(key or '').strip()
+    if not k:
+        return ''
+    return BUILTIN_PATHS.get(k) or ('settings.' + k)
+
+
+# ---------------------------------------------------------------------------
+# 仕掛の生の行（§9.285 ④、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「帳票ブロックマスタで仕掛情報などリンクしているデータのうち、直接アプリで
+#  使用していないデータでも元データからなくなれば出ないという制限付きで出す
+#  ことができるようにひっぱれるデータ範囲の拡張をしてほしい」
+#
+# 測定レコードは**仕掛の行をまるごと控えている**（`blankMeasure()`の
+# `source: row`、保存時に`snapshot.source`へも凍らせる）。ところが候補が
+# 出していたのは`aliases`で名前を付けた23件だけで、残りの200列は
+# **記録の中に在るのに紙へ出す手立てが無かった**。
+#
+# 道は`source.<列名>`。**列名はそのまま1つの鍵**（`.`で割らない）——
+# 実データの列名に`.`が入っていても壊れないようにする。
+#
+# **「元データからなくなれば出ない」**のは、この道が記録の中の写しを
+# 素直に引くだけだから——列が消えれば空欄になる。**空欄と「無い」を
+# 区別しない**のはこの道の約束で、そのことを候補の説明に書く。
+SOURCE_PREFIX = 'source.'
+# 見本の1行を引くときの上限。**全列を返す**（列を選べることが値打ちなので
+# 絞らない）が、極端に横長な表で画面が固まらないよう頭は打っておく。
+SOURCE_COLUMN_MAX = 400
+
+
+def source_columns(limit=SOURCE_COLUMN_MAX):
+    """仕掛の生の列名と、見本の値を1行ぶん（§9.285 ④）。
+
+    **表の選び方は`source_capability`の1箇所**——一覧が読んでいる表と
+    同じものを読まないと、「一覧に出ている列」と「紙で選べる列」が
+    食い違う（§9.163）。読めなければ空（fail-open）。"""
+    try:
+        from .. import db_access as db
+        from .. import source_capability as sc
+        if not db.WORK_DB_KEY:
+            return []
+        return sc.sample_columns(db.WORK_DB_KEY, limit)
+    except Exception:
+        return []
+
+
+# ---------------------------------------------------------------------------
 # 子ロット（幅分割）そのものの値（§9.247 ②）
 # ---------------------------------------------------------------------------
 # 繰り返し（`[繰返]='子ロット'`）にした塊では、**その回の子ロット**を指す。
@@ -286,20 +463,33 @@ SAMPLE_VALUES = {
     # 梱包員（作業班構成が読む道）。**空のままにしない**（§9.254 ④）。
     'settings.packer': '鈴木 一郎',
     # 母材の欄（§9.232）。単位はmmで、桁も実物に寄せる。
-    'settings.motherOriginalWidth': '1224.5',
-    'settings.motherScrapWidth': '18.0',
-    'settings.motherCalcLength': '1980',
-    'settings.motherManual': '1985',
-    'settings.motherFullLength': '1980',
-    'settings.motherMinCard': '1975',
-    'settings.motherMaxCard': '1990',
-    'settings.motherFront': '3.0',
-    'settings.motherRear': '2.5',
-    'settings.motherFrontCard': '3.0',
-    'settings.motherRearCard': '2.5',
+    # 母材（§9.285 ②）。**記録の鍵は`mother.<キー>`**——以前はここが
+    # `settings.mother*`で、**見本だけが値を持ち実データでは必ず空**だった
+    # （§CLAUDE 6「見本が嘘をつく」）。道の答えは`builtin_path()`の1箇所。
+    'mother.manual': '1985',
+    'mother.fullLength': '1980',
+    'mother.minCard': '1975',
+    'mother.maxCard': '1990',
+    'mother.front': '3.0',
+    'mother.rear': '2.5',
+    'mother.frontCard': '3.0',
+    'mother.rearCard': '2.5',
+    # 品質等級（§9.285 ②）。**切断面は等級を入れる**——揃いの合否がここから
+    # 出る（§9.204）ので、空だと丈別データの合否欄を紙で確かめられない。
+    'qualityGrades.生地外観': 'A', 'qualityGrades.アルマイト': 'A',
+    'qualityGrades.表面処理': 'なし', 'qualityGrades.付着油': '有',
+    'qualityGrades.方向性': '指定なし', 'qualityGrades.強度': 'A',
+    'qualityGrades.ラテラルボー': 'A', 'qualityGrades.直角度': 'A',
+    'qualityGrades.切断面': '3級', 'qualityGrades.板厚公差': 'A',
+    'qualityGrades.幅丈公差': 'A', 'qualityGrades.フラットネス': 'A',
     'workTime.startAt': '2026-08-27 08:15',
     'workTime.endAt': '2026-08-27 11:40',
-    'updatedAt': '2026-08-27 11:42',
+    # **記録と同じ形（ISO・末尾Z）で持つ**（§9.285 ③）——実データの
+    # `updatedAt`は`new Date().toISOString()`なので、見本だけ`'2026-08-27 11:42'`
+    # のような地方時の文字列にしていると、**書式（`HH:mm:ss`・時差）が
+    # 見本では確かめられない**（§CLAUDE 6「見本が嘘をつく」）。
+    # 画面は`fmtDT()`で地方時へ直してから出す（§9.162）。
+    'updatedAt': '2026-08-27T02:42:37.000Z',
     'calc.equipment': 'スリッター1号',
     'calc.coilStop': 'テープ止め',
     'calc.crewSize': '2名班',
@@ -552,34 +742,37 @@ def sample_record(c=None, equipment=''):
     st['defectRoll'] = {'pitch': 314.2, 'tol': 3, 'face': '上面', 'harmonics': 3,
                         'memo': '打痕の繰り返し間隔（実測3点の平均）',
                         'updatedAt': SAMPLE_VALUES.get('updatedAt', '')}
-    # 母材は記録の鍵が `mother.<キー>`（§9.232。`settings.mother*`は
-    # 操業データ項目としての道で、**どちらの道で組んだ塊もある**ので両方入れる）。
-    rec['mother'] = {
-        'fullLength': SAMPLE_VALUES.get('settings.motherFullLength', ''),
-        'manual': SAMPLE_VALUES.get('settings.motherManual', ''),
-        'minCard': SAMPLE_VALUES.get('settings.motherMinCard', ''),
-        'maxCard': SAMPLE_VALUES.get('settings.motherMaxCard', ''),
-        'front': SAMPLE_VALUES.get('settings.motherFront', ''),
-        'rear': SAMPLE_VALUES.get('settings.motherRear', ''),
-        'frontCard': SAMPLE_VALUES.get('settings.motherFrontCard', ''),
-        'rearCard': SAMPLE_VALUES.get('settings.motherRearCard', ''),
-    }
-    # 品質等級（既定の塊が`x.qualityGrades`から読む）。**切断面は等級を入れる**
-    # ——揃いの合否がここから出る（§9.204）ので、空だと「基準なし」になり、
-    # 丈別データの合否欄が紙で確かめられない。
-    rec['qualityGrades'] = {
-        '生地外観': 'A', 'アルマイト': 'A', '表面処理': 'なし', '付着油': '有',
-        '方向性': '指定なし', '強度': 'A', 'ラテラルボー': 'A', '直角度': 'A',
-        '切断面': '3級', '板厚公差': 'A', '幅丈公差': 'A', 'フラットネス': 'A',
-    }
+    # 母材・品質等級（§9.285 ②）。**見本も記録と同じ道から作る**
+    # ——`SAMPLE_VALUES`と別に値を並べると、候補の見本と紙の見本が
+    # 食い違いうる（§9.163）。
+    rec['mother'] = {k.split('.', 1)[1]: v for k, v in SAMPLE_VALUES.items()
+                     if k.startswith('mother.')}
+    rec['qualityGrades'] = {k.split('.', 1)[1]: v
+                            for k, v in SAMPLE_VALUES.items()
+                            if k.startswith('qualityGrades.')}
     # 仕掛の生の行。**公差はここから読む**（`toleranceRangeLocal`）ので、
     # 入れないと測定値の表に公差の範囲が出ず、幅が実物と違って見える。
-    rec['source'] = {
+    #
+    # **実データの1行を土台にする**（§9.285 ④）——`source.<列名>`で200列を
+    # 選べるようにした以上、見本が8列しか持たないと**選んだ列がほとんど空欄**
+    # になり、紙に入るかどうかを確かめられない（§CLAUDE 6「見本が嘘をつく」の
+    # 裏返し。実データでは値があるのに見本だけ空）。読めなければ今までどおり。
+    src = {}
+    try:
+        for x in source_columns():
+            if x.get('sample') != '':
+                src[x['name']] = x['sample']
+    except Exception:
+        src = {}
+    # 公差は**見本の値で上書きする**——測定値の表の範囲がここで決まるので、
+    # 現場のデータ次第で見本の絵が変わると、幅の確かめに使えない。
+    src.update({
         '板厚公差_製造_プラス': 0.005, '板厚公差_製造_マイナス': 0.005,
         '板幅公差_製造_プラス': 0.05, '板幅公差_製造_マイナス': 0.05,
         '板厚公差_オーダー_プラス': 0.008, '板厚公差_オーダー_マイナス': 0.008,
         '板幅公差_オーダー_プラス': 0.08, '板幅公差_オーダー_マイナス': 0.08,
-    }
+    })
+    rec['source'] = src
     # **異常情報も「有る」ほうで持つ**（§9.254 ④、利用者の指示「異常情報も
     # あるものとして設定を」）——「異常情報なし」だと、その欄が紙で何行に
     # なるのか確かめられない（§9.130）。
@@ -696,7 +889,7 @@ def field_catalog(c, equipment=''):
          'items': [{'label': l, 'path': p, 'sample': sample_for(p)}
                    for l, p in FIELD_CATALOG if p.startswith('basic.')]},
     ]
-    prep, opdata = [], []
+    prep, opdata, skipped = [], [], []
     try:
         from . import operation_repo as op
         # **設備を指定していないときは全部の項目**（マスタ管理の一覧から
@@ -716,8 +909,15 @@ def field_catalog(c, equipment=''):
             row = {'label': name, 'unit': unit,
                    'note': (it.get('group') or '') + (f'／{unit}' if unit else '')}
             if builtin:
-                # 組み込みの欄は画面がもともと持っている置き場（`settings.<キー>`）。
-                row['path'] = 'settings.' + builtin
+                # **記録に残らない欄は候補へ出さない**（§9.285 ②）——画面で
+                # 計算して`<output>`へ出すだけなので、選んでも紙は必ず空欄。
+                # 出さない理由は群の説明に書く（§4）。
+                if builtin in UNRECORDED_BUILTINS:
+                    skipped.append(name)
+                    continue
+                # 組み込みの欄の置き場は`builtin_path()`が答える（§9.285 ②）
+                # ——母材は`settings.<キー>`ではなく`mother.<キー>`。
+                row['path'] = builtin_path(builtin)
                 prep.append(row)
             else:
                 # 自由項目は**項目名が鍵**（§9.215）。
@@ -729,13 +929,44 @@ def field_catalog(c, equipment=''):
     except Exception:
         pass
     if prep:
-        groups.append({'group': '準備で決めた値',
-                       'note': '測定画面がもともと持っている入力欄です。',
-                       'items': prep})
+        note = '測定画面がもともと持っている入力欄です。'
+        if skipped:
+            # **出せないものは名前で言う**（§4／§CLAUDE 6）——黙って候補から
+            # 落とすと「探しても無い」になり、打つ手を持てない。
+            note += ('（' + '・'.join(skipped)
+                     + ' は画面で計算して出すだけで記録に残らないため、'
+                       '紙には出せません）')
+        groups.append({'group': '準備で決めた値', 'note': note, 'items': prep})
     if opdata:
         groups.append({'group': '操業データ（現場で足した項目）',
                        'note': '操業データ項目マスタで足した入力欄です。項目を足すとここにも増えます。',
                        'items': opdata})
+    # 品質等級・品質情報（§9.285 ②）。**記録の中にあるのに道が無かった**
+    # ので、既定の塊の形（コードが持つ表）から動かせなかった。
+    groups.append({'group': '品質等級（仕掛）',
+                   'note': '仕掛データの品質グレードです。'
+                           '**値が入っていない等級は空欄になります。**',
+                   'items': [{'label': lb, 'path': 'qualityGrades.' + lb,
+                              'sample': sample_for('qualityGrades.' + lb)}
+                             for lb in QUALITY_GRADE_LABELS]})
+    groups.append({'group': '品質情報（仕掛）',
+                   'note': '仕掛データの異常情報です。改行を含む長い文になる'
+                           'ことがあるので、**幅と高さに余裕を持たせてください**。',
+                   'items': [{'label': lb, 'path': p, 'sample': sample_for(p)}
+                             for lb, p in LOT_INFO_CATALOG]})
+    # 仕掛の生の行（§9.285 ④）。**列が多い**ので、群を選んでから絞り込む。
+    src = source_columns()
+    if src:
+        groups.append(
+            {'group': '仕掛の生データ（%d列）' % len(src),
+             'note': 'アプリが名前を付けていない列も含めて、**測定を始めた'
+                     'ときの仕掛の行をそのまま**引きます。'
+                     '**元データにその列が無くなれば空欄になります**'
+                     '（名前の付け替え・列の削除に追随しません）。'
+                     '見本は仕掛データの先頭1件の値です。',
+             'items': [{'label': x['name'], 'path': SOURCE_PREFIX + x['name'],
+                        'sample': x['sample'] or '（空）'}
+                       for x in src]})
     groups.append({'group': '作業時間',
                    'note': '測定の開始・終了の記録です。',
                    'items': [{'label': l, 'path': p, 'sample': sample_for(p)}
@@ -913,9 +1144,25 @@ BUILTIN_SEEDS = (
     ('測定値の統計', 6, 0, 0, '', '', ''),
 )
 BUILTIN_KEYS = tuple(x[0] for x in BUILTIN_SEEDS)
+# 組み込みキー → 種の`[内容]`と`[内訳列数]`（§9.285 ②）。
+# **検証の後片付けがここを見る**（`tests/make_fixture.py`の`fix_master()`）
+# ——既定の塊の中身は実行をまたいで残る（`db/master.sqlite3`はgit管理外）ので、
+# 1本のテストが書き換えたまま落ちると、以降の紙がまるごと別物になる（§9.121）。
+# **「触ってよいか」で絞らないこと**——§9.285 ②で`寸法（オーダー／製造）`等が
+# 編集できるようになったため、`contentEditable`で絞る形では**新しく編集可能に
+# した塊の置き土産だけが残る**（実際に残った）。
+BUILTIN_CONTENT = {k: (content, cols)
+                   for k, _s, _r, cols, content, _kd, _tx in BUILTIN_SEEDS}
 # **中身をマスタで書き換えてよい塊**（＝ラベルと出どころを並べただけのもの）。
 # ここに無い塊の`[内容]`は効かないので、画面は欄ごと出さずに理由を書く（§4）。
-CONTENT_EDITABLE = frozenset(k for k, _s, _r, _c, content, _kd, _tx in BUILTIN_SEEDS if content)
+#
+# **既定の中身を写せる塊も入る**（§9.285 ②）——`寸法（オーダー／製造）`
+# などはコードが表を組み立てているので種を持てないが、`default_cells()`が
+# 同じ形をマスの並びで答えられる。写した時点からはふつうの「ラベル＝
+# 出どころ」の塊と同じように並び・書式・列数を触れる。
+CONTENT_EDITABLE = (
+    frozenset(k for k, _s, _r, _c, content, _kd, _tx in BUILTIN_SEEDS if content)
+    | frozenset(DEFAULT_CELL_COLS))
 
 
 # 1つの項目が横に何マス使うか（§9.245）。**1〜12**——内訳の列数は最大6だが、

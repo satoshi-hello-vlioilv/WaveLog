@@ -226,6 +226,35 @@ try:
 finally:
     c3.close()
 
+# ==========================================================
+# ⑧ 品質等級の呼び名は画面とそろっている（§9.285 ②）
+# ==========================================================
+# 記録は`qualityGrades[<呼び名>]`（`measurement-view.js`の
+# `QUALITY_GRADE_SOURCE`が書く）。候補の綴りがずれると、**選んでも必ず空欄**に
+# なる（§CLAUDE 6「見本が嘘をつく」の裏返し）。**目で数えないこと**——
+# 呼び名は12個あり、片方だけ直した状態が作れる。
+import re as _re
+from pathlib import Path as _Path
+ROOT = _Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_js = (ROOT / 'static' / 'js' / 'measurement-view.js').read_text(encoding='utf-8')
+_m = _re.search(r'const QUALITY_GRADE_SOURCE=\{(.*?)\n\};', _js, _re.S)
+_screen = set(_re.findall(r"'([^']+)':\[", _m.group(1))) if _m else set()
+rec('⑧ 品質等級の呼び名がサーバーと画面でそろっている',
+    _screen == set(rb.QUALITY_GRADE_LABELS),
+    (sorted(_screen - set(rb.QUALITY_GRADE_LABELS)),
+     sorted(set(rb.QUALITY_GRADE_LABELS) - _screen)))
+# 母材の道（§9.285 ②）。**記録の置き場は`mother.<キー>`**——組み込みキーの
+# 綴りは`motherManual`だが、`collect()`は`[data-mother]`を見て`mother.manual`へ
+# 書く。候補が`settings.motherManual`を答えていたため、実データでは必ず空だった。
+_html = (ROOT / 'templates' / 'index.html').read_text(encoding='utf-8')
+_keys = set(_re.findall(r'data-mother="([^"]+)"', _html))
+_mapped = {v.split('.', 1)[1] for k, v in rb.BUILTIN_PATHS.items() if v.startswith('mother.')}
+rec('⑧ 母材の組み込みキーは記録の置き場（mother.<キー>）へ読み替える',
+    _keys and _keys == _mapped, (sorted(_keys), sorted(_mapped)))
+rec('⑧ 記録に残らない欄は読み替えの表にも候補にも出さない',
+    all(k not in rb.BUILTIN_PATHS for k in rb.UNRECORDED_BUILTINS),
+    rb.UNRECORDED_BUILTINS)
+
 ng = [x for x in R if not x[1]]
 print('\n=== SUMMARY ===')
 print('%d/%d passed' % (len(R) - len(ng), len(R)))

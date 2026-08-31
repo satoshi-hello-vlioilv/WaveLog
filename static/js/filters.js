@@ -992,7 +992,13 @@
     S.genericFilters.forEach((f,i)=>{
       const locked=isLockedFilter(f);
       const tag=document.createElement('span');tag.className='filter-tag'+(locked?' filter-tag-locked':'');
-      tag.title=locked?`必須条件: ${lockedFilterDescription(f)}（一覧を開くたびに既定で適用されます）`:`${f.column} ${opLabel(f.op)}${noValueOp(f.op)?'':' '+f.value}`;
+      /* **変数はいまの値も併記する**（§9.285 ①／§CLAUDE 3）——`{使用設備}`と
+         だけ出ていると、設備を切り替えたときに**画面のどこを見ても効いている
+         値が読めない**（利用者の報告「切り替えた瞬間に反映されない」）。
+         **未設定は「未設定」と書く**——空にすると0件の理由が読めない。 */
+      const va=filterVarFor(f.value)?expandFilterVars(f.value):'';
+      const vnote=filterVarFor(f.value)?`（=${va||'未設定'}）`:'';
+      tag.title=locked?`必須条件: ${lockedFilterDescription(f)}（一覧を開くたびに既定で適用されます）`:`${f.column} ${opLabel(f.op)}${noValueOp(f.op)?'':' '+f.value+vnote}`;
       /* 条件ごとに「登録済みかどうか」を出し、その場で登録できるようにする
          (§9.80)。候補やよく使う条件から足した条件も、作り直さずに次回へ
          残せる。★=登録済み / ☆=未登録。以前はバーの「マスタへ保存」で
@@ -1003,7 +1009,7 @@
         +`class="${known?'is-saved':''}" `
         +`aria-label="${known?'登録済みの条件です':'この条件を登録する'}" `
         +`title="${known?'登録済み（登録一覧にあります）':'クリックで登録フィルタとして保存します'}">${known?'★':'☆'}</u>`;
-      tag.innerHTML=`${locked?'<span class="filter-tag-lock-icon" aria-hidden="true">🔒</span>':''}<span>${esc(f.column)}</span><b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':`<em>${esc(f.value)}</em>`}${star}<i data-filter-index="${i}" tabindex="0" role="button" aria-label="この条件を解除" title="解除">×</i>`;
+      tag.innerHTML=`${locked?'<span class="filter-tag-lock-icon" aria-hidden="true">🔒</span>':''}<span>${esc(f.column)}</span><b>${esc(opShort(f.op))}</b>${noValueOp(f.op)?'':`<em>${esc(f.value)}${vnote?`<u class="filter-tag-var">${esc(vnote)}</u>`:''}</em>`}${star}<i data-filter-index="${i}" tabindex="0" role="button" aria-label="この条件を解除" title="解除">×</i>`;
       const removeThis=async e=>{
         e.stopPropagation();
         if(locked&&!(await confirmRemoveLockedFilter(f)))return;
@@ -1882,6 +1888,27 @@
     if(list.length)q.set('filters',JSON.stringify(expandFilterList(list)));
   });
   WL.listHooks.onAfter(()=>renderGenericFilterBar());
+  /* ---------- 使用設備が変わったら、変数の条件は別の条件（§9.285 ①） ----------
+     利用者の報告「フィルタの変数『使用設備』が、使用設備を切り替えても
+     その切り替えた瞬間に反映されない」。
+
+     展開は送信直前（上の`onQuery`）なので**値は最初から正しかった**——
+     足りなかったのは「もう一度引く人」。いま出ている行は前の設備で絞った
+     ものだし、絞り込みバーの「（=◯◯）」も前の設備を名乗っている。
+
+     **変数を使っていないときは読み直さない**——関係の無い一覧まで
+     読み直すと、重い一覧では設備を選び直しただけで数秒止まる。
+     **黙って入れ替えない**（§3）——件数が変わる理由を文字で言う。 */
+  WL.equipment.onChange(now=>{
+    const list=S.genericFilters.concat(adhocFilters());
+    const uses=list.filter(f=>filterVarFor(f.value));
+    renderGenericFilterBar();
+    if(!uses.length||!S.db||!S.table)return;
+    S.page=1;
+    if(typeof load==='function')load();
+    if(typeof showToast==='function')showToast('使用設備を切り替えました',
+      `変数を使っている絞り込み ${uses.length}件 を「${now||'未登録'}」で当て直しました。`,5000);
+  });
   if(typeof renderTabs==='function'){
     const baseRenderTabs=renderTabs;renderTabs=function(){baseRenderTabs();ensureGenericFilterBar();renderGenericFilterBar();};
   }

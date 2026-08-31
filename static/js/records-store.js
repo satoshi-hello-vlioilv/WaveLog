@@ -1612,7 +1612,10 @@ async function loadEquipmentMaster(force=false){
 /* reuseExisting:trueを明示し、過去に削除された同名設備があっても常に復元する
    (従来どおりの挙動)。この入口は使用設備を選ぶだけの軽い操作のため、
    「新しい設備として登録」の選択肢はマスタ管理画面(設備タブ)側のみで扱う。 */
-async function registerAndSelectEquipment(name){const result=await api('/api/equipment-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId({name,reuseExisting:true}))});localStorage.setItem(APP_EQUIPMENT_KEY,result.name);await loadEquipmentMaster(true);return result}
+/* **書き込みは`WL.equipment.set()`を通す**（§9.285 ①）——`localStorage`へ
+   直に書くと、フィルタの`{使用設備}`も一覧の絞り込みも「変わったこと」を
+   知る手立てが無い（実機で「切り替えた瞬間に反映されない」と報告された）。 */
+async function registerAndSelectEquipment(name){const result=await api('/api/equipment-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(withUserId({name,reuseExisting:true}))});WL.equipment.set(result.name);await loadEquipmentMaster(true);return result}
 /* 候補を並べる。**「＋ 設備マスタへ新規登録」を選んでも窓の高さは動かない**
    （§9.227 ②）——`hidden`で行ごと消すと、選んだ拍子に下のボタンが上下して
    狙いが外れる。場所は常に空けておき、伏せるのは中身だけ（CSSが
@@ -1754,7 +1757,8 @@ async function openEquipmentSettingsFinal(reason='manual',suggested=''){
    const result=await registerAndSelectEquipment(name);
    paintEquipmentNow(name,'saved');
    say(result.message||'保存しました。','is-ok');
-   updateEquipmentEntryPoints();updateCourseGuard();
+   /* 画面の描き直しは`WL.equipment.onChange`が受け持つ（§9.285 ①）——
+      ここで呼び直すと、同じことを2箇所でやることになる（§CLAUDE 8）。 */
    const row=pendingMeasurementRow;pendingMeasurementRow=null;
    setTimeout(close,450);
    if(row){
@@ -1801,6 +1805,20 @@ function updateCourseGuard(){
 document.addEventListener('click',event=>{const trigger=event.target.closest('[data-open-equipment-settings],#registeredEquipmentBadge');if(!trigger)return;event.preventDefault();event.stopImmediatePropagation();openEquipmentSettingsFinal('manual')},true);
 document.addEventListener('keydown',event=>{if(WL.modal.escCloses(event)&&!$('#appSettingsModal')?.hidden){$('#appSettingsModal').hidden=true}},true);
 document.addEventListener('keydown',event=>{if(WL.modal.escCloses(event)&&!$('#changelogModal')?.hidden){$('#changelogModal').hidden=true}},true);
+/* ---------- 使用設備が変わったら、この端末の見え方も変わる（§9.285 ①） ----------
+   ヘッダーの印・案内の帯・コース警告・データ一覧の「この設備のみ」は、
+   どれも**使用設備の名前を読んで描いている**。以前は設定窓の保存処理が
+   その場で呼び直していたが、設備を書き換える経路が増えるたびに
+   「呼び忘れた画面だけが古いまま」を作れる（実際にフィルタがそうなった）。
+   **知らせを受ける側がここで名乗る。** */
+WL.equipment.onChange(()=>{
+ updateEquipmentEntryPoints();
+ updateCourseGuard();
+ /* データ一覧を開いていれば、絞っている範囲もその設備の話になる（§9.248 ⑥）。
+    **開いていなければ触らない**——次に開くときに読み直される。 */
+ const modal=$('#recordModal');
+ if(modal&&!modal.hidden&&typeof renderRecordListRows==='function')renderRecordListRows();
+});
 queueMicrotask(()=>{ensureEquipmentSettingsModal();updateEquipmentEntryPoints()});
 // 前回サーバーへ届かなかったバックアップ削除を片付ける(§9.52)。残したままだと
 // 作業スケジュールに実体の無い「作業中」が出続ける。

@@ -68,36 +68,12 @@ resetcontent(){
     curl -s -X POST $API/api/column-layout-master -H 'Content-Type: application/json' \
       -d "{\"target\":\"$tg\",\"clear\":true,\"order\":[],\"hidden\":[],\"widths\":{},\"names\":{},\"formats\":{},\"rules\":{},\"formulas\":{},\"locks\":[],\"sorts\":{},\"user_id\":\"test\"}" >/dev/null
   done
-  # §9.278 で「マスの並びがあればそれが紙の正」になったので、**既定の中身を
-  # 持たない組み込みの塊**（`contentEditable:false`）に`[内容]`が残ると、
-  # 以降のテストの紙がまるごと別物になる（§9.121。実際に`測定値の統計`の
-  # 置き土産で`test_rpprint`が4件落ちた）。**既定の中身を持つ塊は触らない**
-  # ——あちらは空にすると「並びを持っている」という約束が壊れる。
-  python3 - "$API" <<'PY' >/dev/null 2>&1
-import json, sys, urllib.request
-api = sys.argv[1]
-try:
-    d = json.load(urllib.request.urlopen(api + '/api/report-block-master?equipment=', timeout=10))
-except Exception:
-    sys.exit(0)
-for r in (d.get('items') or []):
-    if not r.get('builtin') or r.get('contentEditable'):
-        continue
-    if not (r.get('content') or ''):
-        continue
-    body = json.dumps({'id': r['id'], 'equipment': r.get('equipment', ''),
-                       'name': r.get('name', ''), 'order': r.get('order', 0),
-                       'span': r.get('span', 0), 'rows': r.get('rows', 0),
-                       'note': r.get('note', ''), 'enabled': True, 'cols': 0,
-                       'content': '', 'repeat': '', 'repeatDir': '',
-                       'user_id': 'test'}).encode()
-    try:
-        urllib.request.urlopen(urllib.request.Request(
-            api + '/api/report-block-master/update', data=body,
-            headers={'Content-Type': 'application/json'}), timeout=10).read()
-    except Exception:
-        pass
-PY
+  # 既定の帳票ブロックの`[内容]`の後片付けは**`tests/make_fixture.py`の
+  # `fix_master()`が持つ**（§9.285 ②）。以前はここでも消していたが、
+  # `contentEditable`が偽の塊だけを対象にしていたため、§9.285 ②で
+  # `寸法（オーダー／製造）`等が編集できるようになった瞬間に**その4つの
+  # 置き土産だけが残る**ようになった。**同じ後片付けを2箇所に置かない**
+  # （§CLAUDE 8）——`reseed`は1本ごとに走るので、あちらのほうが強い。
 }
 
 server_up(){ curl -s -m 3 -o /dev/null "$API/" 2>/dev/null; }
@@ -284,7 +260,7 @@ sleep 3
 echo "--- 一般UI (editモード) ---"
 mode edit
 for t in test_stopcat test_workable test_wkbg test_mcore test_burr test_ngcard test_recvalues test_reclayout test_msteps test_orphan test_audit test_sub test_maint test_setpage test_nav test_uiux test_histdel test_uisize test_master test_mmtable test_shift test_measstore test_waiting \
-         test_listcache test_ttlcache test_flows test_dbequip test_course test_tolscale test_defect test_theme test_scale test_fit test_bootui test_density test_filter test_adhoc test_stopeq test_eqkind test_bootflash test_dsnav test_opui test_collayout test_colformat test_colrule test_colsort test_typescale test_lcpanel test_colmenu test_colpreset test_formula test_share test_listperf test_allrows test_logview test_headbar test_gridhead test_reccols test_rpblocks test_rpprint test_rplayout test_rpmaster test_filterio test_filteruser test_filteractive test_colio test_multidrag test_sortcustom test_filterkeep test_filterlock test_dsrestart test_qjoinui test_modalkeep test_opchoice test_recdel test_blockbuild test_rbmodal test_rbsample test_rlmaster test_oppad test_oplimit test_opmother test_opunit test_opauto test_opformula test_opblank test_opwidget test_colkeep test_eqscope test_coltint test_gridchild test_roll test_mmfold test_actuals test_opsheet test_rollload test_rollwipe test_eqsetup test_colscopeui test_storageui test_presenceui test_savechip test_rbcells; do run $NODE $t.js; done
+         test_listcache test_ttlcache test_flows test_dbequip test_course test_tolscale test_defect test_theme test_scale test_fit test_bootui test_density test_filter test_adhoc test_stopeq test_eqkind test_bootflash test_dsnav test_opui test_collayout test_colformat test_colrule test_colsort test_typescale test_lcpanel test_colmenu test_colpreset test_formula test_share test_listperf test_allrows test_logview test_headbar test_gridhead test_reccols test_rpblocks test_rpprint test_rplayout test_rpmaster test_filterio test_filteruser test_filteractive test_colio test_multidrag test_sortcustom test_filterkeep test_filterlock test_dsrestart test_qjoinui test_modalkeep test_opchoice test_recdel test_blockbuild test_rbmodal test_rbsample test_rlmaster test_oppad test_oplimit test_opmother test_opunit test_opauto test_opformula test_opblank test_opwidget test_colkeep test_eqscope test_coltint test_gridchild test_roll test_mmfold test_actuals test_opsheet test_rollload test_rollwipe test_eqsetup test_colscopeui test_storageui test_presenceui test_savechip test_rbcells test_rbcatalog; do run $NODE $t.js; done
 
 echo "--- スケジュール (テスト側でモードを切り替える) ---"
 for t in test_screport test_startwork test_scsync test_sccat test_scbalance test_scbatch \
