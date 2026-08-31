@@ -134,8 +134,14 @@ let b=null;
   await openMeasure();
   const on=await shot(domId);
   if(!on){rec('前提: その欄が測定画面に出ている',false,domId);throw Error('欄が無い')}
-  rec('「出す」のときは「—」の札が在る',
-      on.札.some(t=>t==='—'||t==='-'),`札=${JSON.stringify(on.札)}`);
+  /* 札の字は**`WL.optionBlankLabel`の1箇所**（§9.287-I）。ここへ直に
+     `-`や`（選ばない）`と書くと、字を変えたときに網だけが古い約束のまま
+     残る（しかも「同じ字が2箇所にある」ことこそが直した相手）。 */
+  const BLANK_LABEL=await page.evaluate(()=>window.WL&&WL.optionBlankLabel);
+  rec('「選ばない」の札の字は1箇所（WL.optionBlankLabel）が答える',
+      !!BLANK_LABEL,String(BLANK_LABEL));
+  rec('「出す」のときは「選ばない」の札が在る',
+      on.札.some(t=>t===BLANK_LABEL||t==='—'||t==='-'),`札=${JSON.stringify(on.札)}`);
 
   /* ==========================================================
      2) 「出さない」…セグメントで「—」が消える（本題）
@@ -145,8 +151,8 @@ let b=null;
   await openMeasure();
   const seg=await shot(domId);
   rec('器に「空欄なし」の印が届いている',seg.印==='1',`data-op-noblank=${seg.印||'(なし)'}`);
-  rec('セグメントで「—」の札が出ない（本題）',
-      !seg.札.some(t=>t==='—'||t==='-'),`札=${JSON.stringify(seg.札)}`);
+  rec('セグメントで「選ばない」の札が出ない（本題）',
+      !seg.札.some(t=>t===BLANK_LABEL||t==='—'||t==='-'),`札=${JSON.stringify(seg.札)}`);
   rec('マスタの値は1つも落ちない',
       choices.every(v=>seg.札.includes(v)),
       `札=${JSON.stringify(seg.札)} / マスタ=${JSON.stringify(choices)}`);
@@ -213,20 +219,48 @@ let b=null;
      ========================================================== */
   await put({noBlank:false,widget:'プルダウン',initial:''});
   await openMeasure();
-  const blank=await page.evaluate(key=>{
+  const blank=await page.evaluate(([key,lb])=>{
    const sel=document.getElementById(key);
    const st=(typeof S!=='undefined'&&S.measure&&S.measure.settings)||{};
    const dash=Object.entries(st).filter(([k,v])=>v==='-').map(([k])=>k);
    return {value:sel?sel.value:null,
-           blankOptValue:sel?[...sel.options].find(o=>o.textContent.trim()==='-')?.value:null,
+           blankOptValue:sel?[...sel.options].find(o=>o.textContent.trim()===lb)?.value:null,
+           blankText:sel?[...sel.options].find(o=>o.value==='')?.textContent.trim():null,
            setting:st[key],dash};
-  },domId);
+  },[domId,BLANK_LABEL]);
   rec('「選ばない」の札は値を持たない（値は空文字）',blank.blankOptValue==='',
       JSON.stringify(blank));
   rec('初期値を決めていない欄は空で始まる（`-`という値を作らない）',
       blank.value===''&&(blank.setting===undefined||blank.setting===''),
       JSON.stringify(blank));
   rec('記録のどの欄にも`-`が入っていない',blank.dash.length===0,JSON.stringify(blank.dash));
+
+  /* ---- 「選ばない」の字は1箇所（§9.287-I、利用者の報告） ----
+     「オペレータ（元ハードコーディングを汎用設計で作り直した欄）は初期値
+      未入力のとき『-』が出っぱなし。オペレータ2（ゼロから汎用設計で作った欄）は
+      正しく初期値を持っている」
+
+     §9.286 ⑤で**値**としての`-`は外したが、**字**は3通りに分かれたままだった
+     ——組み込み（`optionFill()`）が`-`、汎用（`measure-opdata.js`）が空、
+     器の浮き窓が`（選ばない）`。同じ「選んでいない」が**その欄の作られ方で
+     別の顔になる**（§CLAUDE 8）。 */
+  rec('組み込みの欄の「選ばない」の札も1箇所の字を使う（`-`ではない）',
+      blank.blankText===BLANK_LABEL,JSON.stringify(blank.blankText));
+  /* **閉じた欄は空の札を「選んでいない」として扱う**——`hit.text`をそのまま
+     出していたので、同じ欄なのに閉じると`-`・開くと`（選ばない）`だった。 */
+  await put({noBlank:false,widget:'一覧',initial:''});
+  await openMeasure();
+  const shut=await page.evaluate(key=>{
+   const sel=document.getElementById(key);
+   const host=sel&&sel.closest('.opf-host');
+   const now=host&&host.querySelector('.opf-pick-now');
+   return {value:sel?sel.value:null,now:now?now.textContent.trim():null,
+           empty:now?now.classList.contains('is-empty'):null};
+  },domId);
+  rec('選んでいない欄は閉じた状態で「-」を出さない（促しを出す）',
+      shut.now!==null&&shut.now!=='-'&&shut.now!=='—',JSON.stringify(shut));
+  rec('選んでいない印が付く（色だけでなく状態として持つ）',shut.empty===true,
+      JSON.stringify(shut));
 
   /* マスタで初期値を決めると、**組み込みの欄でも**入る（§9.229 ③）。
      直す前は`-`が先に入っていたため、ここが必ず落ちる。

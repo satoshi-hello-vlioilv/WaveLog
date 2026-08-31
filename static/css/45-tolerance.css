@@ -111,10 +111,6 @@
 .filter-search-row{position:relative;display:flex;align-items:center;gap:var(--space-2);min-height:var(--ctl-h-lg);padding:var(--pad-row);background:#edf7f8}
 .filter-search-row>b{flex:0 0 auto;color:#173842;white-space:nowrap}
 .filter-count{flex:0 0 auto;padding:var(--pad-chip);border-radius:var(--radius-md);background:#fff;border:1px solid #9fc3c8;color:#075e67;font-weight:800;font-size:var(--fs-micro);white-space:nowrap}
-/* クイックフィルタ行: 詳細ビルダーを開かず、よく使う条件をワンクリックで
-   追加できる。詳細ビルダー(.filter-body)は従来通り既定で折りたたんだまま
-   にし、こちらは常時見える簡易な代替導線として検索バー直下に置く。 */
-.filter-quick-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);padding:var(--pad-row);background:#f7fafb;border-top:1px solid #dbe7ea}
 /* ---------- その場フィルタ(§9.238 ⑤、利用者の指示) ----------
    登録フィルタとは別の、**登録しない絞り込み**。カラムと条件を決めておき、
    入力欄へ打つとその場で効く。既定は折りたたみ（段階的開示）。
@@ -160,8 +156,6 @@
   .filter-adhoc-col{flex:0 1 auto;max-width:var(--w-sm)}
 }
 
-.filter-quick-label{flex:0 0 auto;color:#526970;font-size:var(--fs-micro);font-weight:800;white-space:nowrap}
-.suggest-chip.quick{min-height:var(--ctl-h-xs);padding:var(--pad-chip)}
 /* トークン入力: アクティブ条件タグ＋入力欄を1つの入力面に見せる（近接・グルーピング） */
 .filter-token-input{position:relative;flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:var(--gap-tight);flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;min-height:32px;padding:3px 8px;border:1px solid var(--teal);border-radius:var(--radius-sm);background:#fff}
 .filter-token-input.focus-within{box-shadow:0 0 0 3px #087c8928}
@@ -170,41 +164,105 @@
 .filter-search-row-actions{flex:0 0 auto;display:flex;gap:var(--gap-inline);align-items:center}
 .filter-search-row-actions button{white-space:nowrap}
 .filter-search-row-actions #saveFilterPreset{background:var(--teal);color:#fff;border-color:var(--teal);font-weight:700}
-/* 「よく使う条件」の開閉トグル(ARCHITECTURE.md「フィルタのよく使う条件」)。既定は閉じており、該当条件が
-   1件も無いときはボタン自体を出さない(JS側でhidden)。 */
-.filter-search-row-actions #filterQuickToggle.active{background:var(--pale);border-color:var(--teal);color:#0a6570;font-weight:700}
-/* ---------- プリセット中心の1行（§9.286 ①、利用者の指示） ----------
-   「フィルタ機能がモリモリでゴチャついてきたので、コンパクトかつ分かり
-    やすく…最終的にプリセット登録したフィルタの切り替えだけで使えるように
-    しつつ、その場フィルタでスポットのフィルタを組み合わせて使う形」
+/* ---------- プリセット中心の1行（§9.287、利用者の指示） ----------
+   「プリセットフィルタは1つのボタンでポップオーバーメニューで切り替え」
+   「バッジとして追加されるボタンに表示されているフィルタの条件式は…
+    最初から記載せずシンプルにアイコンだけに。その代わりポップオーバーで
+    しっかり条件式の中身を確認できるように」
 
+   §9.286 ① の「群のボタン＋登録条件の札を横に並べる帯」は廃した——札と
+   トークンが**同じ条件を2つの言語で同時に**言っていた（§CLAUDE 8）。
    並びは**決める順**（§CLAUDE 画面基準 14）——
-   「どの群か → その群の札 → いま何件効いているか → その場で足す → ⋯」。
-   縮む役は**札の帯と条件の欄だけ**（§9.229 ⑤）。群のボタン・件数・
-   ボタン類は`flex:0 0 auto`で中身なりのまま。 */
-.fb-group-btn{flex:0 0 auto;display:inline-flex;align-items:center;gap:var(--gap-tight);
+   「どのプリセットか → いま何件効いているか → その場で足す → ⋯」。
+   縮む役は**条件を足す欄だけ**（§9.229 ⑤）。ボタン類は中身なりのまま。 */
+.fb-preset-btn{flex:0 0 auto;display:inline-flex;align-items:center;gap:var(--gap-tight);
   height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
   border:1px solid var(--line-strong);border-radius:var(--radius-sm);
   background:var(--surface);color:var(--ink);font-weight:800;white-space:nowrap}
-.fb-group-btn:hover{border-color:var(--teal)}
-.fb-group-btn[aria-expanded="true"]{border-color:var(--teal);background:var(--pale)}
-.fb-group-key{color:var(--ink-soft);font-size:var(--fs-micro);font-weight:700}
-.fb-group-btn b{max-width:var(--w-md);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fb-group-btn i{font-style:normal;color:var(--ink-soft);font-size:var(--fs-micro)}
-/* 登録フィルタの札。**横に流れる1本の帯**（縦に積むと一覧が短くなる）。 */
-.fb-presets{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:var(--gap-tight);
-  flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden}
-.fb-presets-empty{color:var(--ink-soft);font-size:var(--fs-micro);white-space:nowrap}
-/* 選んだ札のほうが濃い（§9.229 ②）。**合図は面と文字の2つまで**。 */
-.fb-chip{flex:0 0 auto;display:inline-flex;align-items:center;gap:var(--space-1);
-  height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
-  border:1px solid var(--line-mid);border-radius:var(--radius-pill);
-  background:var(--surface);color:var(--muted);font-size:var(--fs-sm);white-space:nowrap}
-.fb-chip>span{max-width:var(--w-md);overflow:hidden;text-overflow:ellipsis}
-.fb-chip:hover{border-color:var(--teal);color:var(--ink)}
-.fb-chip.is-on{background:var(--teal);border-color:var(--teal);color:var(--surface);font-weight:800}
-.fb-chip.is-lock{border-style:dashed}
-.fb-chip i{font-style:normal;font-size:var(--fs-micro)}
+.fb-preset-btn:hover{border-color:var(--teal)}
+.fb-preset-btn[aria-expanded="true"]{border-color:var(--teal);background:var(--pale)}
+/* 当たっているときは面で示す。**選んだだけで条件が欠けているときは別の顔**
+   （§3。「選んでいる」と「効いている」は違うことなので、同じ絵にしない）。 */
+.fb-preset-btn.is-on{border-color:var(--teal);background:var(--pale);color:var(--nav)}
+.fb-preset-btn.is-partial{border-color:var(--warn-border);background:var(--warn-bg);color:var(--ink)}
+.fb-preset-key{color:var(--ink-soft);font-size:var(--fs-micro);font-weight:700}
+.fb-preset-btn b{max-width:var(--w-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fb-preset-btn em{font-style:normal;color:var(--warn-border);font-size:var(--fs-micro);font-weight:700}
+.fb-preset-btn em[hidden]{display:none}
+.fb-preset-btn i{font-style:normal;color:var(--ink-soft);font-size:var(--fs-micro)}
+/* 切り替えの浮きメニュー（body直下・position:fixed。§9.201）。
+   **1列のラジオ**——「足す」ではなく「切り替える」ので、押せるのは1つ。 */
+.fb-preset-menu{min-width:var(--w-2xl);max-width:min(92vw,760px);max-height:70vh;overflow:auto}
+.fb-preset-head{margin:0 0 var(--space-2);color:var(--ink);font-weight:800}
+.fb-preset-head small{display:block;color:var(--ink-soft);font-size:var(--fs-tiny);font-weight:400}
+.fb-preset-sec{margin:var(--space-2) 0 var(--space-1);color:var(--ink-soft);
+  font-size:var(--fs-tiny);font-weight:800;letter-spacing:.04em}
+.fb-preset-menu .fb-preset-pick{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 var(--gap-inline);
+  width:100%;height:auto;padding:var(--space-1) var(--space-2);border:0;
+  border-radius:var(--radius-sm);background:transparent;color:var(--ink);
+  font-weight:800;text-align:left}
+.fb-preset-menu .fb-preset-pick:hover{background:var(--surface-2)}
+.fb-preset-menu .fb-preset-pick.is-current{background:var(--pale)}
+/* 選んでいる印は丸ぽち。**形が意味を持つ部品**なので丸のまま（§9.227 ①）。 */
+.fb-preset-mark{grid-column:1;grid-row:1/span 2;align-self:center;width:12px;height:12px;border-radius:var(--radius-round);
+  border:2px solid var(--line-strong);background:var(--surface)}
+.fb-preset-menu .fb-preset-pick.is-current .fb-preset-mark{border-color:var(--teal);
+  box-shadow:inset 0 0 0 2px var(--surface),inset 0 0 0 12px var(--teal)}
+.fb-preset-menu .fb-preset-label{grid-column:2;min-width:0;overflow-wrap:anywhere}
+.fb-preset-menu .fb-preset-sub{grid-column:2;min-width:0;color:var(--ink-soft);font-size:var(--fs-tiny);font-weight:400;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fb-preset-empty{margin:var(--space-2);color:var(--ink-soft);font-size:var(--fs-sm)}
+.fb-preset-foot{margin-top:var(--space-2);padding-top:var(--space-2);border-top:1px solid var(--line-soft)}
+.fb-preset-menu .fb-preset-foot button{width:100%;height:var(--ctl-h-sm);border:1px solid var(--teal);
+  border-radius:var(--radius-sm);background:var(--surface);color:var(--teal-dark);font-weight:700}
+.fb-preset-foot small{display:block;margin-top:var(--space-1);color:var(--ink-soft);font-size:var(--fs-tiny)}
+/* **詳細度を数えること**（§9.206）——器の`.access-mode-menu button`は
+   (0,1,1)で`display:flex;flex-direction:column;align-items:flex-start;
+   width:100%`を当てる。素のクラス(0,1,0)で書くと**同点ではなく負ける**ので、
+   実機では×と☆が横幅いっぱいに伸びて条件式が1文字ずつ折り返し、丸ぽちは
+   ラベルの上へ積まれていた（キャプチャで判明）。器の名前で包んで(0,2,0)にする。 */
+/* ---------- 効いている条件は1バッジ（§9.287、利用者の指示） ----------
+   条件式は器に入りきらないので**バッジには書かない**。アイコンと件数だけを
+   出し、中身はポップオーバーが持つ。**0件でも消さない**（§9.227 ②）。 */
+.fb-cond-btn{flex:0 0 auto;display:inline-flex;align-items:center;gap:var(--gap-tight);
+  height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line-strong);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--ink-soft);font-weight:800;white-space:nowrap}
+.fb-cond-btn:hover:not(:disabled){border-color:var(--teal)}
+.fb-cond-btn:disabled{opacity:.55;cursor:default}
+.fb-cond-btn.is-on{border-color:var(--teal);background:var(--pale);color:var(--nav)}
+.fb-cond-btn[aria-expanded="true"]{border-color:var(--teal);background:var(--pale)}
+.fb-cond-icon{width:14px;height:14px;fill:currentColor;flex:0 0 auto}
+.fb-cond-btn i{font-style:normal;color:var(--ink-soft);font-size:var(--fs-micro)}
+.fb-cond-menu{min-width:var(--w-2xl);max-width:min(92vw,720px);max-height:70vh;overflow:auto}
+.fb-cond-head{margin:0 0 var(--space-2);color:var(--ink);font-weight:800}
+.fb-cond-head small{display:block;color:var(--ink-soft);font-size:var(--fs-tiny);font-weight:400}
+.fb-cond-row{display:flex;align-items:center;gap:var(--gap-inline);
+  padding:var(--space-1) var(--space-2);border-radius:var(--radius-sm)}
+.fb-cond-row:hover{background:var(--surface-2)}
+.fb-cond-row.is-locked{background:var(--warn-bg)}
+.fb-cond-badge{flex:0 0 auto;padding:var(--pad-chip);border-radius:var(--radius-md);
+  border:1px solid var(--line-mid);background:var(--surface);
+  color:var(--ink-soft);font-size:var(--fs-tiny);font-weight:800;white-space:nowrap}
+.fb-cond-badge.is-lock{border-color:var(--warn-border);color:var(--ink-2)}
+/* **条件式はここで全部読める**（切らない。折り返す）。 */
+.fb-cond-text{flex:1 1 auto;min-width:0;color:var(--ink);font-size:var(--fs-sm);overflow-wrap:anywhere}
+.fb-cond-text b{color:var(--teal-dark);font-weight:800}
+.fb-cond-text em{font-style:normal;color:var(--ink-2)}
+.fb-cond-var{text-decoration:none;color:var(--muted);font-size:var(--fs-micro);margin-left:var(--space-1)}
+.fb-cond-menu .fb-cond-save,.fb-cond-menu .fb-cond-x{flex:0 0 auto;display:grid;place-items:center;
+  width:var(--ctl-h-xs);height:var(--ctl-h-xs);padding:0;
+  border:1px solid var(--line);border-radius:var(--radius-xs);
+  background:var(--surface);font-size:var(--fs-sm);line-height:1;color:var(--ink-soft)}
+.fb-cond-menu .fb-cond-save:hover{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-border)}
+.fb-cond-menu .fb-cond-save.is-saved{color:var(--warn-border);cursor:default}
+.fb-cond-menu .fb-cond-x{color:var(--danger)}
+.fb-cond-menu .fb-cond-x:hover{background:var(--danger-bg);border-color:var(--danger-border)}
+.fb-cond-foot{margin-top:var(--space-2);padding-top:var(--space-2);border-top:1px solid var(--line-soft)}
+.fb-cond-menu .fb-cond-foot button{width:100%;height:var(--ctl-h-sm);border:1px solid var(--line);
+  border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);font-weight:700}
+.fb-cond-menu .fb-cond-foot button:hover{border-color:var(--danger-border);color:var(--danger)}
+.fb-cond-foot small{display:block;margin-top:var(--space-1);color:var(--ink-soft);font-size:var(--fs-tiny)}
 /* たまにしか使わない入口を畳む先（§9.234 ①。**消さずに畳む**）。 */
 .fb-more-btn{flex:0 0 auto;min-width:var(--ctl-h-sm);font-weight:800}
 .fb-more-btn[aria-expanded="true"]{background:var(--pale);border-color:var(--teal)}
@@ -223,48 +281,6 @@
 .fb-more-menu>button:hover{background:var(--surface-2)}
 .fb-more-menu>button[hidden]{display:none}
 .fb-more-menu>button small{color:var(--ink-soft);font-size:var(--fs-tiny);font-weight:400}
-/* 群を選ぶ浮きメニュー（body直下・position:fixed。§9.201）。
-   **行ごとに件数と、まとめて当てる／外すを対で置く**（§9.170）。 */
-.fb-group-menu{min-width:var(--w-xl)}
-.fb-group-item{display:flex;align-items:center;gap:var(--gap-inline);
-  padding:var(--space-1) var(--space-2);border-radius:var(--radius-sm)}
-.fb-group-item.is-current{background:var(--pale)}
-.fb-group-pick{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;align-items:flex-start;
-  height:auto;padding:var(--space-1) var(--space-2);border:0;background:transparent;
-  color:var(--ink);font-weight:800;text-align:left}
-.fb-group-pick:hover{background:var(--surface-2)}
-.fb-group-pick small{color:var(--ink-soft);font-size:var(--fs-tiny);font-weight:400}
-.fb-group-bulk{flex:0 0 auto;display:flex;gap:var(--gap-hair)}
-.fb-group-bulk button{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
-  font-size:var(--fs-micro);white-space:nowrap}
-.fb-group-note{margin:var(--space-2) var(--space-2) 0;color:var(--ink-soft);font-size:var(--fs-tiny)}
-/* 登録一覧の群の欄（§9.286 ①）。**選ぶだけで付け替わる。** */
-.filter-preset-item .fp-group-cell{display:flex;align-items:center;min-width:0}
-.filter-preset-item .fp-group{max-width:var(--w-md);height:var(--ctl-h-xs);
-  font-size:var(--fs-sm);min-width:0}
-/* アクティブ条件タグ（トークン） */
-.filter-tag{display:inline-flex;align-items:center;gap:var(--space-1);flex:0 0 auto;max-width:100%;min-height:var(--ctl-h-xs);padding:2px 4px 2px 8px;border-radius:var(--radius-md);border:1px solid #8bbbc1;background:#eafafa;color:#173842}
-.filter-tag>span{font-weight:800;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.filter-tag b{font-size:var(--fs-micro);color:#075e67;white-space:nowrap}
-.filter-tag em{font-style:normal;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#3a565d}
-/* 変数のいまの値（§9.285 ①）。**値そのものより控えめに**——読むのは
-   「何で絞っているか」が先で、いまの値はその補足（§CLAUDE 画面基準 3）。 */
-.filter-tag-var{text-decoration:none;color:var(--muted);font-size:var(--fs-micro)}
-.filter-tag i{display:grid;place-items:center;width:18px;height:18px;border-radius:var(--radius-round);font-style:normal;color:#9b1b1b;font-weight:900;cursor:pointer}
-/* 条件ごとの登録ボタン(★=登録済み / ☆=未登録)。押せることと今の状態を
-   同じ場所で示す(§9.80)。 */
-.filter-tag u{display:grid;place-items:center;width:18px;height:18px;border-radius:var(--radius-round);
-  text-decoration:none;font-size:var(--fs-sm);line-height:1;color:var(--ink-soft);cursor:pointer}
-.filter-tag u:hover{background:var(--warn-bg);color:var(--warn-border)}
-.filter-tag u.is-saved{color:var(--warn-border);cursor:default}
-.filter-tag u.is-saved:hover{background:transparent}
-.filter-tag u:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
-.filter-tag i:hover{background:#ffe1e1}
-.filter-tag i:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
-.filter-tag-locked{background:#fff2cc;border-color:#e0b23d;color:#6b5200}
-.filter-tag-locked b{color:#6b5200}
-.filter-tag-locked em{color:#6b5200}
-.filter-tag-lock-icon{font-size:var(--fs-micro)}
 .filter-empty{color:#6d7e84;font-size:var(--fs-micro);white-space:nowrap}
 /* サジェスト・ドロップダウン（認知負荷を下げる: 再認＞想起 / チャンク化 / 段階的開示） */
 /* 器(.generic-filter-bar)は角丸のため overflow:hidden を持つので、中に
@@ -325,12 +341,17 @@
 .filter-preset-toolbar span{color:#40606a;font-size:var(--fs-sm)}
 .filter-preset-toolbar button{background:var(--teal);color:#fff;border-color:var(--teal)}
 .filter-preset-list{flex:1;min-height:0;overflow:auto;padding:var(--pad-card);display:grid;gap:var(--space-2);align-content:start;position:relative}
-.filter-preset-item{display:grid;grid-template-columns:minmax(130px,1.1fr) auto auto minmax(110px,.9fr) minmax(0,2.2fr) auto;gap:var(--gap-section);align-items:center;padding:9px 11px;background:#fff;border:1px solid #d6e0e3;border-radius:var(--radius-sm)}
-.filter-preset-item .fp-name{font-weight:800;color:#173842;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.filter-preset-item{display:grid;grid-template-columns:auto minmax(var(--w-lg),1.2fr) auto minmax(0,2fr) auto;gap:var(--gap-section);align-items:center;padding:9px 11px;background:#fff;border:1px solid #d6e0e3;border-radius:var(--radius-sm)}
+.filter-preset-item.is-picked{border-color:var(--teal);background:var(--pale)}
+/* 組み合わせを作るときの選択（§9.287-D）。 */
+.filter-preset-item .fp-pick{display:flex;align-items:center;cursor:pointer}
+.filter-preset-item .fp-pick input{margin:0;width:16px;height:16px;min-width:0}
+/* **名前は折り返す**（§9.287-E、利用者の報告「文字の見切れが無いように」）
+   ——1行に押し込む理由が無く、切ると何の条件か読めなくなる。 */
+.filter-preset-item .fp-name{font-weight:800;color:#173842;min-width:0;overflow-wrap:anywhere}
 .filter-preset-item .fp-name small{display:block;margin-top:2px;color:#7b8e95;font-weight:700;font-size:var(--fs-tiny)}
-.filter-preset-item .fp-target{color:#526970;font-size:var(--fs-sm);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 持ち主は**独立した列**にする(§9.172)。対象と同じマスへ入れると、
-   「SIKALOTNO…」のように出どころのほうが切れる（列は縦にそろえる）。 */
+/* 持ち主は**独立した列**にする(§9.172)。名前と同じマスへ入れると、
+   長い条件名のほうが切れる（列は縦にそろえる）。 */
 .filter-preset-item .fp-own-cell{display:flex;align-items:center}
 /* 持ち主(§9.172)。**色だけで伝えない**ので言葉をそのまま出す。押すと入れ替わる
    ことが分かるよう、ボタンの形にしてある(読み取り専用の印にしない)。 */
@@ -373,7 +394,40 @@
 .fp-always:hover{border-color:#9fc3c8}
 .fp-cond{display:inline-flex;align-items:center;gap:var(--gap-tight);padding:var(--pad-chip);border-radius:var(--radius-md);border:1px solid #cddbde;background:#f7fafb;font-size:var(--fs-micro);white-space:nowrap}
 .fp-cond b{color:#075e67}
-@media(max-width:820px){.filter-preset-item{grid-template-columns:1fr auto auto auto;gap:var(--gap-inline)}.filter-preset-item .fp-conds{grid-column:1/-1}}
+@media(max-width:820px){.filter-preset-item{grid-template-columns:auto 1fr auto;gap:var(--gap-inline)}.filter-preset-item .fp-conds,.filter-preset-item .fp-actions{grid-column:1/-1}}
+/* ---------- 節（＝プリセット）と選択の帯（§9.287-D、利用者の指示） ----------
+   「登録一覧からプリセット作るときのUIも直感的に使えるものを」
+   決め方は**2手**——①条件を選ぶ ②名前を付ける。一覧を組み合わせごとの節に
+   分けてあるので、**いまどれがどの組み合わせに入っているかは見れば分かる**
+   （§CLAUDE 画面基準 2）。 */
+.fp-sec{display:flex;align-items:baseline;gap:var(--gap-inline);flex-wrap:wrap;
+  margin-top:var(--space-2);padding:var(--space-1) var(--space-2);
+  border-left:3px solid var(--teal);background:var(--surface-2);
+  border-radius:var(--radius-xs)}
+.fp-sec[data-sec-kind="none"]{border-left-color:var(--line-mid)}
+.fp-sec-name{color:var(--ink);font-weight:800;overflow-wrap:anywhere}
+.fp-sec-note{flex:1 1 auto;min-width:0;color:var(--ink-soft);font-size:var(--fs-tiny)}
+.fp-sec-acts{flex:0 0 auto;display:flex;gap:var(--gap-hair)}
+.fp-sec-acts button{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
+  border:1px solid var(--line);border-radius:var(--radius-xs);
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-micro);white-space:nowrap}
+.fp-sec-acts button:hover{border-color:var(--teal);color:var(--nav)}
+/* **0件でも出す**（§9.227 ②。出入りすると下の一覧が跳ねる）。 */
+.fp-bulk{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap;
+  padding:var(--pad-row);border:1px solid var(--teal);border-radius:var(--radius-sm);
+  background:var(--pale)}
+.fp-bulk.is-idle{border-style:dashed;border-color:var(--line-mid);background:var(--surface-2)}
+.fp-bulk-hint{color:var(--ink-soft);font-size:var(--fs-sm)}
+.fp-bulk-hint b{color:var(--ink-2)}
+.fp-bulk-count{color:var(--nav);font-size:var(--fs-sm)}
+.fp-bulk-count b{font-size:var(--fs);font-weight:800}
+.fp-bulk-to{display:flex;align-items:center;gap:var(--gap-tight);
+  color:var(--ink-2);font-size:var(--fs-sm)}
+.fp-bulk-to select{height:var(--ctl-h-sm);max-width:var(--w-xl);font-size:var(--fs-sm)}
+.fp-bulk button{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);white-space:nowrap}
+.fp-bulk button:hover{border-color:var(--teal);color:var(--nav)}
 /* ---------- 登録フィルタの持ち出し・取り込み(§9.171) ----------
    モーダルを増やさず、登録フィルタの一覧の**上へ差し込む**。何が出て行く
    のか・何が入ってくるのかを、実物の一覧を見たまま確かめられるようにする。 */

@@ -213,10 +213,17 @@ WL.choiceUsage={
    いまは**値は空文字**で、`-`は札の字だけ。**古い記録の`-`は空として読む**
    （`OPTION_BLANK_VALUES`）ので、開き直しても選択が消えない。
    札を出すかどうかは`[空欄なし]`が決める（§9.246 ①。`applyBlankPolicy`）。 */
-const OPTION_BLANK_LABEL='-';
+/* 「選ばない」の札の**字**（§9.287-I、利用者の報告「オペレータは初期値
+   未入力のとき『-』が出っぱなし。オペレータ2は正しく初期値を持っている」）。
+   §9.286 ⑤で**値**としての`-`は外したが、**字**は組み込みの欄（`optionFill()`）
+   が`-`、汎用の欄（`measure-opdata.js`）が空、器の浮き窓が`（選ばない）`と
+   **3通りに分かれたまま**だった。同じ「選んでいない」がその欄の作られ方で
+   別の顔になる（§CLAUDE 8）。**綴りはここ1箇所**——写さずにここを引く。 */
+const OPTION_BLANK_LABEL='（選ばない）';
 const OPTION_BLANK_VALUES=['','-'];
 function optionBlank(v){return OPTION_BLANK_VALUES.includes(String(v??'').trim())}
 window.WL=window.WL||{};WL.optionBlank=optionBlank;   /* 新しい公開は名前空間へ */
+WL.optionBlankLabel=OPTION_BLANK_LABEL;
 function optionFill(id,items,current=''){
  const el=$('#'+id);if(!el)return;
  const vals=WL.choiceUsage.order(id,[...new Set(items||[])]).filter(v=>!optionBlank(v));
