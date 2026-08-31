@@ -1101,8 +1101,13 @@
   gap:var(--space-3);padding:var(--space-3);
 }
 .op-modal-preview{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
-.op-prev-head{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm);font-weight:800;color:var(--nav)}
-.op-prev-head small{font-weight:400;color:var(--ink-3);font-size:var(--fs-badge)}
+/* 見本の帯の1行目（§9.288 ④）。**1行**——「何を見ているか／マスの説明／
+   `?`／いまの値」。縦に積むと、固定した高さのうち見本そのものの取り分が減る。 */
+.op-prev-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);
+  flex:0 0 auto;font-size:var(--fs-sm);font-weight:800;color:var(--nav)}
+.op-prev-head small{font-weight:400;color:var(--ink-3);font-size:var(--fs-badge);
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
+.op-prev-head .op-prev-value{margin-left:auto;flex:0 0 auto}
 /* **見本は実物と同じ大きさ**（§9.226 ①）。1マスの実寸はJSが
    `--op-cell`で渡す（`measure-opdata.js`が測定画面で実測した値）。
    器に入らないときは**横へ流す**——縮めると文字だけが実物と違う比率に
@@ -1184,7 +1189,20 @@
    見出し（番号＋1行の要約）で「何を決める場所か」を先に読ませる。
    **枠は「まとまり」だけに使う**（§CLAUDE 10）ので、塊の境目は上の罫線
    1本だけ——中の行に枠を足さない。 */
-.op-form-sec{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
+/* **器の幅なりに多段組み**（§9.288 ④）——20行を1列に積むと「まとまり
+   切らない」。1列ぶんの下限は`26em`（ラベル列`--w-sm`＋操作が入る幅）で、
+   **入らない窓では今までどおり1列**になる（`auto-fill`）。
+   **既定は器いっぱい**（`>*`）にして、ふつうの行だけ1マスに置く
+   ——見出し・畳み・説明・長い行を1列に閉じ込めない。 */
+.op-form-sec{display:grid;grid-template-columns:repeat(auto-fill,minmax(26em,1fr));
+  gap:var(--gap-inline) var(--space-3);align-content:start;min-width:0}
+.op-form-sec>*{grid-column:1/-1;min-width:0}
+.op-form-sec>.op-form-row{grid-column:auto}
+/* 器いっぱいを使う行（選ばせ方の盤・自由記述・危ない操作）。 */
+.op-form-sec>.op-form-row.is-wide,
+.op-form-sec>.op-form-row.is-block,
+.op-form-sec>.op-form-row.is-danger,
+.op-form-sec>.op-form-row-formula{grid-column:1/-1}
 .op-form-sec+.op-form-sec{padding-top:var(--space-3);border-top:1px solid var(--line-soft)}
 .op-form-sec-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline);
   margin:0;font-size:var(--fs-base-sm);font-weight:800;color:var(--teal-dark)}
@@ -1325,7 +1343,30 @@
    ③**保存は右上の端**。危ない操作（削除）は同じ場所へ置かない（§CLAUDE 5）。
    ④説明は`<details>`へ落として**階層を分ける**。
    ================================================================ */
-.op-dialog{width:min(1560px,97vw);height:min(940px,94vh);max-height:94vh;
+/* ================================================================
+   窓を組み直す（§9.288 ④、利用者の指示）
+   ----------------------------------------------------------------
+   「データの設定モーダルの設定項目が増えてまとまり切らなくなってきています。
+    さらに左側のエリアは死にエリアになっています。左側で有益なのは実際の
+    見た目のプレビューくらいでそれ以外はほぼ役に立っていません。
+    モーダル全体大きさは極限まで最大化したうえで、モーダル内のコンテンツの
+    構成や配置をゼロベースで再検討しタブ、アコーディオン、ポップオーバー
+    メニューなど、階層化構造をうまく使って、今の機能を損なわず、さらに
+    わかりやすく使いやすくまとめてください。」
+
+   直したのは3つ。
+    ①**窓を極限まで**（1560×940 → 98vw×96vh）。
+    ②**左右2枚をやめて縦積みに**。左は「実物の見本」だけを残し、素性の
+      3行と散文は`?`の浮き出しへ落とした（§9.234 ①。消さずに畳む）。
+      **見本の帯は高さを固定**する——選ばせ方で見本の背が変わっても、
+      下の設定が1pxも動かないため（§9.227 ②。左右2枚だったのはこの揺れを
+      避けるためだったので、縦積みにする以上ここで受ける）。
+    ③**設定は器の幅なりに多段組み**（`auto-fill`）。20行を1列に積むと
+      「まとまり切らない」——横に置ける幅があるのに縦へ伸ばさない
+      （面積は頻度×重要度・§CLAUDE 1）。段（タブ）と畳み（`<details>`）は
+      今までどおり。
+   ================================================================ */
+.op-dialog{width:98vw;height:96vh;max-height:96vh;
   display:flex;flex-direction:column}
 .op-modal-head{display:flex;align-items:center;gap:var(--space-3)}
 .op-modal-id{display:flex;align-items:baseline;gap:var(--space-2);min-width:0;flex:1 1 auto}
@@ -1340,17 +1381,41 @@
    なって、窓の外側がスクロールする。 */
 .op-modal-body{
   flex:1 1 auto;min-height:0;overflow:hidden;
-  /* 左（見本）は**実物の幅**を出したいので広く取る（§9.226 ①）。
-     12マス×94px＝1128pxが実物なので、半分でも6マスぶんは素で入る。 */
-  display:grid;grid-template-columns:minmax(420px,1.05fr) minmax(380px,1fr);
-  gap:var(--space-3);padding:var(--space-3);
+  /* **縦積み**（§9.288 ④）——見本が上、決めることが下。見本は器の幅を
+     まるごと使えるので、12マス×94px＝1128pxの**実物の幅がそのまま入る**
+     （左右2枚のときは半分しか出せなかった）。 */
+  display:flex;flex-direction:column;
+  gap:var(--space-2);padding:var(--space-3);
 }
 /* **スクロールバーの場所を先に空けておく**（§9.227 ②）。`overflow:auto`は
    中身が器を越えた瞬間にバーを出すので、そのぶん**器の内側が15px狭くなる**
    ——選ばせ方を変えて見本の高さが1行ぶん変わっただけで、右のタイルの
    折り返し位置が動く。`stable`なら出ても出なくても幅が同じ。 */
-.op-modal-preview{overflow:auto;scrollbar-gutter:stable}
-.op-modal-right{display:flex;flex-direction:column;min-width:0;min-height:0;gap:var(--gap-inline)}
+/* **高さを固定する**（§9.288 ④／§9.227 ②）——選ばせ方を変えると見本の背が
+   変わる（メモは3行、段階は1行）。縦積みにした以上、ここで受けないと下の
+   設定が丸ごと上下する。いちばん背の高い形（メモ＋単位の行）が入る高さ。 */
+.op-modal-preview{
+  flex:0 0 auto;height:var(--op-prev-h);min-height:var(--op-prev-h);
+  display:flex;flex-direction:column;gap:var(--gap-tight);
+  overflow:auto;scrollbar-gutter:stable;
+  padding:var(--space-2);border:1px solid var(--line-soft);
+  border-radius:var(--radius-sm);background:var(--surface-2);
+}
+.op-dialog{--op-prev-h:15em}
+/* 見本の帯の1行目は「何を見ているか＋`?`＋いまの値」。**説明は`?`の中**。 */
+.op-prev-info{
+  flex:0 0 auto;display:inline-grid;place-items:center;
+  width:var(--ctl-h-xs);height:var(--ctl-h-xs);padding:0;
+  border:1px solid var(--line);border-radius:var(--radius-round);
+  background:var(--surface);color:var(--ink-3);font-size:var(--fs-sm);font-weight:800;
+}
+.op-prev-info:hover{border-color:var(--teal);color:var(--teal-dark)}
+.op-prev-info[aria-expanded="true"]{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
+.op-prev-info-pop{min-width:var(--w-2xl);max-width:min(92vw,640px);max-height:60vh;overflow:auto}
+.op-prev-info-head{margin:0 0 var(--space-2);color:var(--ink);font-weight:800}
+.op-prev-info-head small{display:block;color:var(--ink-soft);font-size:var(--fs-tiny);font-weight:400}
+.op-modal-right{display:flex;flex-direction:column;min-width:0;min-height:0;flex:1 1 auto;
+  gap:var(--gap-inline)}
 .op-modal-form{flex:1 1 auto;min-height:0;overflow:auto;scrollbar-gutter:stable;
   display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
 /* --- タブ: 4段。**番号と要約を両方出す**（あと何段かを数えさせない） --- */
@@ -1505,6 +1570,38 @@
 .opd-panel>em>i{min-height:7px;padding:0 2px;border:1px solid var(--line-soft);
   border-radius:var(--radius-xs);background:var(--surface)}
 .opd-panel>em .opd-on{background:var(--pale);color:var(--teal-dark);border-color:var(--teal)}
+/* §9.288 ③で足した3つ。**絵でも違いが読めること**——`索引`は窓の上に
+   頭文字の帯（`パネル`との違いはそこ1つ）、`ダイヤル`は前後が薄く見える
+   3つの行、`サジェスト`は打った文字の下に垂れる候補。 */
+.opd-index{position:relative;display:flex;flex-direction:column;gap:2px;width:100%}
+.opd-index>u{display:flex;align-items:center;justify-content:space-between;
+  padding:1px 3px;border:1px solid var(--line);border-radius:var(--radius-xs);
+  background:var(--surface);text-decoration:none}
+.opd-index>em{display:flex;gap:1px;padding:2px;
+  border:1px solid var(--line-mid);border-radius:var(--radius-xs);
+  background:var(--surface);box-shadow:0 2px 4px #0000001f;font-style:normal}
+/* 帯は「窓ではない」ので浮かせない（§9.206。器の名前で詳細度を上げる）。 */
+.opd-index>em.opd-index-rail{box-shadow:none;border-style:dashed}
+.opd-index-rail>b{padding:0 2px;border-radius:var(--radius-pill);
+  background:var(--surface-2);color:var(--ink-3);font-size:var(--fs-micro);font-weight:700}
+.opd-index-rail>b:first-child{background:var(--pale);color:var(--teal-dark)}
+.opd-index>em>i{flex:1 1 0;min-height:7px;padding:0 2px;border:1px solid var(--line-soft);
+  border-radius:var(--radius-xs);background:var(--surface)}
+.opd-index>em .opd-on{background:var(--pale);color:var(--teal-dark);border-color:var(--teal)}
+.opd-dial{gap:2px;padding:1px 3px;border:1px solid var(--line);
+  border-radius:var(--radius-xs);background:var(--surface)}
+.opd-dial>b{color:var(--ink-3);font-size:var(--fs-micro);line-height:.8}
+.opd-dial>u{flex:0 1 auto;min-width:0;overflow:hidden;color:var(--muted);
+  text-decoration:none;font-size:var(--fs-micro)}
+.opd-dial>i{flex:1 1 auto;text-align:center}
+.opd-sug{position:relative;display:flex;flex-direction:column;gap:2px;width:100%}
+.opd-sug>u{padding:1px 3px;border:1px solid var(--line);border-radius:var(--radius-xs);
+  background:var(--surface);text-decoration:none;text-align:left}
+.opd-sug>em{display:flex;flex-direction:column;gap:1px;padding:2px;
+  border:1px solid var(--line-mid);border-radius:var(--radius-xs);
+  background:var(--surface);box-shadow:0 2px 4px #0000001f;font-style:normal}
+.opd-sug>em>i{padding:0 3px;border-radius:var(--radius-xs);background:none}
+.opd-sug>em .opd-on{background:var(--pale);color:var(--teal-dark)}
 .opd-spin{gap:2px;padding:1px 3px;border:1px solid var(--line);
   border-radius:var(--radius-xs);background:var(--surface)}
 .opd-spin>i{flex:1 1 auto;background:none;padding:0}

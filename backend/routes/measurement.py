@@ -2,6 +2,7 @@
 
 app.pyから移設。ロジックは変更していない(移動のみ)。
 """
+import json
 from flask import Blueprint, request, jsonify
 
 from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, merged_backup_rows, records_path_for, records_dir_name, records_paths_all, records_read_paths, records_paths_holding, note_records_written, invalidate_backup_rows_cache, request_user_id, request_pc_name, QUALITY_DB_KEY, path_exists_safe
@@ -327,11 +328,30 @@ def measurement_actuals():
   # **黙って切らない**(§CLAUDE「no silent caps」)。切ったことと件数を返し、
   # 画面が「期間を狭めてください」と書けるようにする。
   truncated=total>limit
-  return jsonify(ok=True,items=items[:limit],count=min(total,limit),total=total,
+  items=items[:limit]
+  # ---- 記録した値のうち、頼まれた道ぶんだけ(§9.288 ⑧) ----
+  # **全部返さない**(§9.94)——1件の記録は数百項目あり、全件ぶんを返すと
+  # 一覧を開くたびに数MBになる。画面はいま出す列の道だけを送る。
+  # **壊れた指定は無視して一覧は出す**(fail-open)。
+  paths=[]
+  try:
+   raw=request.args.get('fields') or ''
+   if raw:
+    got=json.loads(raw)
+    if isinstance(got,list):paths=[str(x) for x in got if str(x or '')][:400]
+  except Exception:paths=[]
+  if paths:
+   items=[dict(x,fields=actuals.field_values(x,paths)) for x in items]
+  cat=actuals.catalog(eq)
+  return jsonify(ok=True,items=items,count=len(items),total=total,
                  truncated=truncated,limit=limit,basis=basis,
                  # **列の呼び名はサーバーが答える**(§9.163)。画面が英字キーへ
                  # 日本語を当てる表を持つと、項目が増えたときに2箇所直すことになる。
                  lotFields=actuals.lot_fields(),
+                 # 記録した値の候補(§9.288 ⑧)。**帳票と同じ1箇所**から作り、
+                 # 派生値の群(統計・子ロット)だけ落として理由を添える。
+                 fieldCatalog=cat.get('groups') or [],
+                 fieldNote=cat.get('droppedNote') or '',
                  equipment=eq,**{'from':frm,'to':to})
  except Exception as e:
   app_logger().warning('/api/measurement/actuals で失敗: %s',e)

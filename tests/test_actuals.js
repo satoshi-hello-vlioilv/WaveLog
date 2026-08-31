@@ -173,6 +173,91 @@ async function mk(o){
       s3.列設定===false,String(s3.列設定));
   await post('/api/access-mode',{mode:'edit'});
 
+  /* ---------- 記録した全部を列にできる（§9.288 ⑧、利用者の指示） ----------
+     「実績データについては、一覧としてのリストは記録したすべてを対象に出力
+      可能にしたいです。表示列についても対応できるように…」
+
+     以前は仕掛の23件＋操業データの項目名だけだった。いまは**帳票と同じ候補**
+     （`report_block_repo.field_catalog()`）から作る。
+     **「候補に在る」だけを見ないこと**——実際にその列を出して**値が入る**
+     ことまで見る（サーバーが道で引けていないと空欄のまま並ぶ）。 */
+  const cat=await page.evaluate(()=>{
+   const s=WL.actuals&&WL.actuals.state;
+   return {groups:((s&&s.fieldCatalog)||[]).map(g=>g.group),
+           note:String((s&&s.fieldNote)||''),
+           keys:(WL.actuals?WL.actuals.columnKeys():[]).length};
+  });
+  rec('記録した値の候補がサーバーから届く（帳票と同じ1箇所）',
+      cat.groups.length>=5&&cat.keys>40,JSON.stringify({g:cat.groups,keys:cat.keys}));
+  rec('準備で決めた値・仕掛の生データも候補に出る',
+      cat.groups.some(g=>/準備で決めた値/.test(g))&&cat.groups.some(g=>/生データ/.test(g)),
+      JSON.stringify(cat.groups));
+  /* **出せないものは名前で言う**（§4）——統計と子ロットは派生値なので扱わない。 */
+  rec('扱えない群は理由を文字で言う（黙って落とさない）',
+      /統計/.test(cat.note)&&/帳票では出せます/.test(cat.note),cat.note.slice(0,80));
+  /* 実際に1列出して値が入るか。**記録した`製造板厚`**（`basic.mfgThickness`）。 */
+  const label=await page.evaluate(()=>{
+   const s=WL.actuals.state;
+   for(const g of (s.fieldCatalog||[]))
+    for(const it of (g.items||[]))
+     if(it.path==='basic.mfgThickness')return it.label;
+   return '';
+  });
+  if(!label)rec('前提: 製造板厚が候補にある',false,'見つかりません');
+  else{
+   await post('/api/column-layout-master',{target:'actuals:list',user_id:'test',
+     order:['ロット番号',label],hidden:[]});
+   await page.evaluate(()=>{try{WL.columnLayout.forget()}catch(e){}});
+   await openList();
+   await setRange();
+   await page.waitForTimeout(2500);
+   const cell=await page.evaluate(l=>{
+    const heads=[...document.querySelectorAll('#acList .ac-row.head>span')].map(x=>x.dataset.col);
+    const at=heads.indexOf(l);
+    const rows=[...document.querySelectorAll('#acList .ac-row:not(.head)')];
+    const hit=rows.find(r=>r.textContent.includes('L1'));
+    return {at,heads,v:(at>=0&&hit)?(hit.children[at]?hit.children[at].textContent.trim():''):''};
+   },label);
+   rec('選んだ記録の項目が列として出て、値も入る',cell.at>=0&&cell.v==='0.5',
+       JSON.stringify(cell).slice(0,220));
+  }
+
+  /* ---------- 一覧の道具が残っていないこと（§9.288 ⑥、利用者の報告） ----------
+     「実績データ確認時に、フィルタバーが下部に落ちている不具合を発見しました」
+
+     `body.ac-mode`が`#grid`と`.pager`しか伏せておらず、仕掛一覧の
+     **絞り込みバー・一覧ツールバー・表のタブ**が実績の表の下に残っていた。
+     **「在るかどうか」ではなく実際に見えているかで見る**——要素はいつでも
+     DOMに在るので、`display:none`が効いているかは寸法で確かめる。
+     **他のメイン画面ビューも一緒に見る**——同じ形の書き写しなので、
+     1つ直しても次に足す画面でまた起きる（§9.233 ③）。 */
+  await post('/api/access-mode',{mode:'edit'});
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
+  const chrome=()=>page.evaluate(()=>{
+   const vis=id=>{
+    const e=document.getElementById(id)||document.querySelector(id);
+    if(!e)return false;
+    const r=e.getBoundingClientRect();
+    return !!(r.width>1&&r.height>1&&getComputedStyle(e).display!=='none');
+   };
+   return {mode:document.body.className,
+           grid:vis('grid'),tabs:vis('tabs'),
+           bar:vis('genericFilterBar'),tool:vis('listToolbar')};
+  });
+  const views=[['実績データ','#openActuals'],['データ一覧','#openDrafts'],
+               ['作業スケジュール','#openSchedule'],['マスタ管理','#openMasterMaint']];
+  const left=[];
+  for(const [name,sel] of views){
+   const ok=await page.evaluate(s=>{const b=document.querySelector(s);if(!b)return false;b.click();return true},sel);
+   if(!ok)continue;
+   await page.waitForTimeout(900);
+   const c=await chrome();
+   if(c.grid||c.tabs||c.bar||c.tool)left.push(name+':'+JSON.stringify(c));
+  }
+  rec('メイン画面ビューでは一覧の道具（表・タブ・絞り込みバー・ツールバー）が残らない',
+      left.length===0,left.join(' / ').slice(0,300));
+
   rec('画面の例外が出ていない',errs.length===0,errs.join(' / '));
  }catch(e){
   console.log('FATAL '+(e&&e.message||e));R.push({ok:false});

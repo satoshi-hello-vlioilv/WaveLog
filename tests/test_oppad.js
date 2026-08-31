@@ -88,7 +88,15 @@ let b=null;
     });
    return out;
   });
+  /* **測る前にスクロールを戻す**（§9.288 ③）——`page.click()`は押す札を
+     画面へ入れるためにスクロールするので、盤の下のほうの札を押した回だけ
+     全部の行が同じだけ上へずれる（実測129px）。それは「揺れ」ではないので、
+     器の中の座標で見る。**戻さずに見ると、札を1つ足しただけでこの網が
+     落ちる**（実際に落ちた）。 */
   const geo=()=>page.evaluate(()=>{
+   const sc=document.querySelector('.op-modal-form,.mm-tabpanel.is-fill,.op-form-scroll')
+     ||[...document.querySelectorAll('#opItemModal *')].find(e=>e.scrollHeight>e.clientHeight+8);
+   if(sc)sc.scrollTop=0;
    const lab=s=>[...document.querySelectorAll('.op-form-label')].find(e=>e.textContent.trim()===s);
    const y=s=>{const l=lab(s);return l?Math.round(l.getBoundingClientRect().y):-1};
    const g=document.querySelector('.op-widget-grid');

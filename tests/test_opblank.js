@@ -294,6 +294,95 @@ let b=null;
    rec('マスタの初期値が組み込みの欄にも入る',false,'オペレータの行が見つかりません');
   }
 
+  /* ---- ⑥ 札の字を「値」として読まない（§9.288 ⑨） ----
+     §9.287-Iで札の字を`（選ばない）`へそろえたところ、**選ばれている札の字を
+     そのまま値として読んでいた2箇所**（③確認の「記録した値」と、畳んだ群の
+     要約）に、未選択の欄が`（選ばない）`という値として並ぶようになった。
+     以前の字が`-`／空だったので、どちらも「`-`なら除ける」という**字での
+     除け方**で辻褄が合っていた（実測: ③のカードで`dd`が32pxはみ出し、
+     群の件数`3/9`も未選択を「入っている」と数えていた）。
+     **札の綴りは画面から引く**——ここへ字を書き写すと、次に綴りを変えた
+     ときに網だけが古い約束のまま残る（§9.287-Iと同じ理由）。 */
+  await openMeasure();
+  const rv=await page.evaluate(()=>{
+   /* 未選択の欄を1つ作る（組み込みの選択欄）。**`change`まで飛ばす**
+      ——器を被せた形では印の同期がそこにぶら下がっている。 */
+   const sel=document.getElementById('operator');
+   if(sel){sel.value='';sel.dispatchEvent(new Event('change',{bubbles:true}))}
+   if(typeof renderRecordedValues==='function')renderRecordedValues();
+   const label=(window.WL&&WL.optionBlankLabel)||'';
+   const dds=[...document.querySelectorAll('#recordedList .rv-group dd')]
+     .map(d=>d.textContent.trim());
+   const sums=[...document.querySelectorAll('.prep-sum')].map(s=>s.textContent.trim());
+   return {label,dds,sums,
+           /* 「オペレータ」の行が`—`（未入力）で出ていること。 */
+           oper:(()=>{
+            const box=[...document.querySelectorAll('#recordedList .rv-group div')]
+              .find(d=>{const t=d.querySelector('dt');return t&&t.textContent.trim()==='オペレータ'});
+            const dd=box&&box.querySelector('dd');
+            return dd?dd.textContent.trim():null;
+           })()};
+  });
+  rec('前提: ③の「記録した値」に行が出ている',rv.dds.length>0,`${rv.dds.length}行`);
+  rec('未選択の欄が「選ばない」の札の字で埋まらない',
+      !!rv.label&&!rv.dds.some(t=>t.includes(rv.label)),
+      `札=${rv.label} / ${rv.dds.filter(t=>rv.label&&t.includes(rv.label)).slice(0,3).join(' / ')}`);
+  rec('未選択の欄は「—」で出る',rv.oper==='—'||rv.oper===null,JSON.stringify(rv.oper));
+  /* 畳んだ群の要約（`summaryOf()`）も同じ道。**材料は自分で注ぎ込む**
+     ——検証用データはどの群も畳まれていないので、そのまま`.prep-sum`を
+     見る網は**文字が1つも無いまま通る**（実際に素通りした。欠陥を戻しても
+     26/26 PASSだった）。群を畳めるようにしてから、実際に畳んで測る。 */
+  const oper2=await byName('オペレータ');
+  const grp=String(oper2.group||'').trim(),plc=String(oper2.place||'準備').trim();
+  let folded=null;
+  if(grp){
+   try{
+    await post('/api/operation-item-master/group',
+      {user_id:'tests',group:grp,place:plc,fold:true});
+    await openMeasure();
+    folded=await page.evaluate(async g=>{
+     const head=()=>[...document.querySelectorAll('.prep-fold')].find(h=>h.dataset.opgroup===g);
+     const raf=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+     /* **畳むのは押して**——`[群折りたたみ]`だけでは既定で開いたまま
+        （`isFolded()`は「開く条件を持つ群」しか既定で畳まない）。 */
+     const fold=async on=>{
+      const h=head();if(!h)return null;
+      if((h.getAttribute('aria-expanded')==='false')!==on)h.click();
+      await raf();
+      const now=head();
+      const sum=now?now.querySelector('.prep-sum'):null;
+      return {畳んだ:now?now.getAttribute('aria-expanded')==='false':null,
+              文:sum?sum.textContent.trim():''};
+     };
+     const set=v=>{const s=document.getElementById('operator');
+       if(!s)return null;s.value=v;s.dispatchEvent(new Event('change',{bubbles:true}));return s.value};
+     /* ① 値が入っていれば要約に出る＝**この欄の要約は生きている**
+        （これを見ないと、次の②は「要約がいつも空」でも通る）。 */
+     const pick=[...(document.getElementById('operator')||{options:[]}).options]
+       .map(o=>o.value).filter(Boolean)[0]||'';
+     await fold(false);set(pick);
+     const 値あり=await fold(true);
+     /* ② 未選択なら札の字は出ない（本題）。 */
+     await fold(false);set('');
+     const 値なし=await fold(true);
+     return {ある:!!head(),選んだ値:pick,値あり,値なし};
+    },grp);
+   }catch(e){folded={ある:false,err:String(e&&e.message||e)}}
+   finally{
+    /* **置き土産を残さない**（§9.121）——群の設定はマスタに残る。 */
+    try{await post('/api/operation-item-master/group',
+      {user_id:'tests',group:grp,place:plc,fold:false})}catch(e){}
+   }
+  }
+  rec('前提: 畳んだ群の要約は生きている（値を入れるとその値が出る）',
+      !!(folded&&folded.ある&&folded.選んだ値&&folded.値あり&&folded.値あり.畳んだ
+         &&String(folded.値あり.文||'').includes(folded.選んだ値)),
+      JSON.stringify(folded).slice(0,220));
+  rec('畳んだ群の要約にも札の字が出ない',
+      !!(folded&&folded.値なし&&folded.値なし.畳んだ)&&!!rv.label
+      &&!String((folded.値なし||{}).文||'').includes(rv.label),
+      JSON.stringify(folded&&folded.値なし));
+
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
   console.log('FATAL: '+(e&&e.stack||e));

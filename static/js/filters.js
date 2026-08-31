@@ -368,6 +368,9 @@
          いつまでも「分類なし」だった（保存の口を見る網では捕まらない）。 */
       const fromMaster=(r.items||[]).map(x=>({id:x.id,name:x.name,db:x.db,table:x.table,mode:x.mode||'',filters:Array.isArray(x.filters)?x.filters:[],uses:x.uses||0,lastUsed:x.last_used,updatedAt:x.updated_at,master:true,
         group:x.group||'',
+        /* メンバー(§9.288 ②)。**1件以上＝組み合わせ（プリセット）の行**。
+           写し忘れると、組み合わせが「条件0件の登録」として並ぶ。 */
+        members:Array.isArray(x.members)?x.members.slice():[],
         owner:x.owner||'',mine:!!x.mine,shared:!!x.shared,isDefault:!!x.isDefault,isLocked:!!x.isLocked}));
       /* 端末ごとの古い印を、一度だけこの人の印へ移す。**移してから写す**
          ——先に写すと、移行で付いた印がその場では反映されない。 */
@@ -831,32 +834,52 @@
     const n=String((p&&p.name)||'').trim();
     return n||((p&&p.filters)||[]).map(condLabel).join(' / ')||'（名前なし）';
   }
-  function presetGroupOf(p){return String((p&&p.group)||'').trim()}
-  /* 組み合わせの名前の顔ぶれ。**いま開いている一覧の登録条件から作る。** */
-  function presetGroups(){
-    const seen=new Set();
-    currentTablePresets().forEach(p=>{const g=presetGroupOf(p);if(g)seen.add(g)});
-    return [...seen].sort((a,b)=>a.localeCompare(b,'ja'));
+  /* ---------- 「組み合わせ」は行そのもの（§9.288 ②、利用者の指示） ----------
+     「フィルタプリセットについては登録したデータを使いまわせるような形が
+      良いです。今だとグループのどこかに属するような使い方ですが、やりたいのは
+      フィルタ登録したデータを何回でも使えるという組み合わせのプリセット登録
+      です。」
+
+     §9.286 ①／§9.287 の`[グループ]`は**名札**だった——1つの条件は1つの群に
+     しか属せないので、「この条件を3つのプリセットで使う」が書けない。
+     いまは**組み合わせのほうが1行**（`[メンバーJSON]`に条件のIDを並べる）で、
+     同じ条件のIDは何本の組み合わせにも現れてよい＝**使い回せる**。
+     旧`[グループ]`は列を足した1回だけ組み合わせの行へ移してある（サーバー）。 */
+  function presetMembersOf(p){return Array.isArray(p&&p.members)?p.members:[]}
+  function isComboPreset(p){return presetMembersOf(p).length>0}
+  function condPresets(){return currentTablePresets().filter(p=>!isComboPreset(p))}
+  function comboPresets(){return currentTablePresets().filter(isComboPreset)}
+  /* 組み合わせの中身。**消えた条件は数えて返す**（§4）——黙って抜けると、
+     「入れたはずの条件が効かない」としか見えない。 */
+  function comboParts(combo){
+    const byId=new Map(condPresets().map(p=>[String(p.id),p]));
+    const found=[],missing=[];
+    presetMembersOf(combo).forEach(id=>{
+      const p=byId.get(String(id));
+      if(p)found.push(p);else missing.push(id);
+    });
+    return {found,missing};
+  }
+  /* この条件を使っている組み合わせ。**使い回しが目に見えること**がこの改良の
+     値打ちなので、一覧の行にも必ず出す（§3）。 */
+  function combosUsing(p){
+    const id=String(p&&p.id);
+    return comboPresets().filter(c=>presetMembersOf(c).some(m=>String(m)===id));
   }
   /* ---------- 切り替えの候補（プリセット）を1箇所で作る ----------
-     組み合わせ（`[グループ]`が同じ登録条件の集まり）が先、まだ組み合わせに
-     入れていない単独の条件が後（分けたものが埋もれない）。**鍵は名前そのもの
-     ではなく種別の印を付けた文字列**——同名の組み合わせと登録IDがぶつからない。 */
+     組み合わせが先、登録した条件が後（分けたものが埋もれない）。
+     **登録した条件は「入っていないもの」に絞らない**——使い回せるように
+     なった以上、どの条件も単独で当てられるのが筋（§9.287で「1件はその
+     特別な場合」と決めたことの続き）。**鍵は種別の印を付けた文字列**
+     ——組み合わせの行と条件の行でIDがぶつからない。 */
   function presetEntries(){
-    const list=currentTablePresets();
-    const byGroup=new Map();
-    const singles=[];
-    list.forEach(p=>{
-      const g=presetGroupOf(p);
-      if(!g){singles.push(p);return}
-      if(!byGroup.has(g))byGroup.set(g,[]);
-      byGroup.get(g).push(p);
+    const combos=comboPresets().map(c=>{
+      const part=comboParts(c);
+      return {key:'c:'+c.id,name:presetTitle(c),kind:'combo',combo:c,
+              presets:part.found,missing:part.missing.length};
     });
-    const combos=[...byGroup.keys()].sort((a,b)=>a.localeCompare(b,'ja')).map(g=>({
-      key:'g:'+g,name:g,kind:'combo',group:g,presets:byGroup.get(g),
-    }));
-    const ones=singles.map(p=>({
-      key:'p:'+p.id,name:presetTitle(p),kind:'single',group:'',presets:[p],
+    const ones=condPresets().map(p=>({
+      key:'p:'+p.id,name:presetTitle(p),kind:'single',combo:null,presets:[p],missing:0,
     }));
     /* 条件は登録の並びのまま畳む。**同じ条件を2度入れない**——同じ条件を
        持つ登録が1つの組み合わせに2つあると、トークンが二重になる。 */
@@ -980,7 +1003,11 @@
     menu.setAttribute('role','menu');
     const combos=entries.filter(e=>e.kind==='combo');
     const ones=entries.filter(e=>e.kind==='single');
-    const sub=e=>`${e.conds.length}条件 ／ `+e.conds.map(condLabel).join(' ・ ');
+    /* **消えた条件は数えて言う**（§9.288 ②・§4）——黙って抜けると、
+       「入れたはずの条件が効かない」としか見えない。 */
+    const sub=e=>`${e.conds.length}条件`
+      +(e.missing?`（${e.missing}件は消えた条件）`:'')
+      +' ／ '+e.conds.map(condLabel).join(' ・ ');
     let body='<p class="fb-preset-head">プリセット<small>登録した条件の組み合わせ。'
       +'押すと切り替わります（足すのではなく入れ替え）</small></p>'
       +presetPickHtml(PRESET_NONE,'なし','プリセットの条件を入れません',!cur);
@@ -988,7 +1015,10 @@
       body+='<p class="fb-preset-sec">組み合わせ</p>'
         +combos.map(e=>presetPickHtml(e.key,e.name,sub(e),e.key===cur)).join('');
     if(ones.length)
-      body+='<p class="fb-preset-sec">まだ組み合わせに入れていない条件</p>'
+      /* **「まだ組み合わせに入れていない」ではない**（§9.288 ②）——条件は
+         何本の組み合わせにも入れられるようになったので、入っていても
+         そのまま1件で当てられる。 */
+      body+='<p class="fb-preset-sec">登録した条件（1件ずつ当てる）</p>'
         +ones.map(e=>presetPickHtml(e.key,e.name,sub(e),e.key===cur)).join('');
     if(!entries.length)
       body+='<p class="fb-preset-empty">登録した条件がまだありません。'
@@ -2145,39 +2175,83 @@
     const byId=new Map(currentTablePresets().map(p=>[String(p.id),p]));
     return [...fpPicked].map(id=>byId.get(id)).filter(Boolean);
   }
-  /* 群の付け替えをまとめて行う。**描き直しは最後に1回**——1件ずつ描き直すと
-     選択が消え、進んだのか失敗したのかも読めない。 */
-  async function setPresetGroupMany(list,group){
-    if(!list.length)return;
+  /* ---------- 組み合わせを作る・直す（§9.288 ②、利用者の指示） ----------
+     「登録したデータを使いまわせるような形が良いです…フィルタ登録した
+      データを何回でも使えるという組み合わせのプリセット登録です」
+
+     口は`POST /api/filter-presets/combo`の1本（新規＝name+members／
+     変更＝id+name?+members?）。**描き直しは最後に1回**——1件ずつ描き直すと
+     選択が消え、進んだのか失敗したのかも読めない。
+     **入れられなかった件数と理由は必ず言う**（§4）。 */
+  async function saveCombo(body,okMsg){
     try{
-      /* **1回で送る**（口は`items`を受ける）——1件ずつ往復すると、途中で
-         失敗したときに半分だけ移った状態が残る。
-         **持ち主を名乗ること**（§9.172）——付けないとサーバーは端末の
-         ログインIDで見え方を判定し、**自分だけの登録が黙って弾かれる**
-         （`denied`。画面は色が変わらないだけなので気づけない）。 */
-      const r=await api('/api/filter-presets/group',{method:'POST',
+      const r=await api('/api/filter-presets/combo',{method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(withUserId({items:list.map(p=>p.id),group,user:filterUserId()}))});
-      list.forEach(p=>{p.group=group});
-      writeLocalPresets();
+        body:JSON.stringify(withUserId(Object.assign({user:filterUserId(),
+          db:S.db,table:S.table,mode:presetMode()},body)))});
+      const d=(r&&r.dropped)||{};
+      const lost=(d.missing||0)+(d.other||0)+(d.combo||0);
       fpPicked.clear();
+      /* **読み直す**——メンバーの並びはサーバーが正（落とした件があるので、
+         画面で組み立て直すと画面とマスタが食い違う）。 */
+      presetsLoadedFor=null;
+      await loadMasterPresets({inline:false});
       renderFilterPresetList();renderGenericFilterBar();
-      /* **できなかった件数も言う**（§4。黙って一部だけ効くのがいちばん
-         分からない）。 */
-      if(r&&r.denied&&typeof showToast==='function')
-        showToast('変えられなかった条件があります',
-          `${r.denied}件は他の人のものです（自分だけの登録は本人しか動かせません）。`,7000);
-      else if(typeof showToast==='function')
-        showToast(group?'組み合わせに入れました':'組み合わせから外しました',
-          group?`${list.length}件 → ${group}`:`${list.length}件`,3000);
+      if(lost&&typeof showToast==='function')
+        showToast('入れられなかった条件があります',
+          [d.missing?`${d.missing}件は消えた条件`:'',
+           d.other?`${d.other}件は他の人のもの`:'',
+           d.combo?`${d.combo}件は組み合わせ（入れ子にはできません）`:''
+          ].filter(Boolean).join('／'),7000);
+      else if(okMsg&&typeof showToast==='function')showToast(okMsg.t,okMsg.d,3000);
+      return r;
     }catch(e){
       /* **失敗を黙らない**（§9.212 ④）——次の読み直しで元へ戻るだけなので、
          黙ると「勝手に戻った」としか見えない。 */
-      showToast&&showToast('組み合わせを変えられませんでした',e?.message||String(e),7000);
+      showToast&&showToast('組み合わせを保存できませんでした',e?.message||String(e),7000);
       renderFilterPresetList();
+      return null;
     }
   }
-  async function setPresetGroup(preset,group){return setPresetGroupMany([preset],group)}
+  const comboIds=c=>presetMembersOf(c).map(Number);
+  async function createCombo(list){
+    const name=await askGroupName();
+    if(!name)return;
+    await saveCombo({name,members:list.map(p=>p.id)},
+      {t:'組み合わせを作りました',d:`${name}（条件${list.length}件）`});
+  }
+  async function addToCombo(combo,list){
+    const now=comboIds(combo);
+    const add=list.map(p=>Number(p.id)).filter(id=>now.indexOf(id)<0);
+    /* **もう入っているものを黙って握り潰さない**（§4）——「足したのに
+       件数が増えない」としか見えない。 */
+    if(!add.length){
+      showToast&&showToast('もう入っています',
+        `選んだ ${list.length}件はすべて「${presetTitle(combo)}」に入っています。`,4500);
+      return;
+    }
+    await saveCombo({id:combo.id,members:now.concat(add)},
+      {t:'組み合わせへ足しました',d:`${presetTitle(combo)} ← ${add.length}件`});
+  }
+  async function removeFromCombo(combo,p){
+    const now=comboIds(combo).filter(id=>String(id)!==String(p.id));
+    /* **0件の組み合わせは作らない**（中身の無い登録＝押しても何も起きない
+       プリセット・§4）。消すかどうかは聞いてから。 */
+    if(!now.length){
+      if(!(await confirmModal(`「${presetTitle(p)}」を外すと、組み合わせ「${presetTitle(combo)}」は条件が0件になります。\n`
+        +`組み合わせごと削除しますか？（条件そのものは消えません）`)))return;
+      await deletePreset(combo);return;
+    }
+    await saveCombo({id:combo.id,members:now},
+      {t:'組み合わせから外しました',d:`${presetTitle(combo)} → ${presetTitle(p)}`});
+  }
+  async function renameCombo(combo){
+    const was=presetTitle(combo);
+    const name=await askGroupName(was);
+    if(!name||name===was)return;
+    await saveCombo({id:combo.id,name},{t:'名前を変えました',d:`${was} → ${name}`});
+  }
+
   /* 節の見出し（＝1つのプリセット）。名前を変える・解くをここに置く
      ——組み合わせそのものへの操作なので、行ではなく節が持つ。 */
   function fpSectionHtml(title,note,kind,key){
@@ -2264,65 +2338,93 @@
     }
     /* ---- 選択の帯。**0件でも出す**（§9.227 ②。出入りすると下の一覧が跳ねる） ---- */
     const picked=fpPickedList();
+    const combos=comboPresets();
+    const conds=condPresets();
     const bulk=html('<div class="fp-bulk"></div>');
     if(!picked.length){
       bulk.classList.add('is-idle');
       bulk.innerHTML='<span class="fp-bulk-hint">条件の左のチェックを入れると、'
-        +'<b>組み合わせ（プリセット）</b>を作れます。作った組み合わせは、'
-        +'絞り込みバーの「プリセット」から切り替えられます。</span>';
+        +'<b>組み合わせ（プリセット）</b>を作れます。'
+        /* **使い回せることを最初に書く**（§9.288 ②。これがこの改良の
+           値打ちで、書かないと「1つの群に入れる」と読まれる）。 */
+        +'同じ条件は<b>何本の組み合わせにも</b>入れられます。'
+        +'作った組み合わせは、絞り込みバーの「プリセット」から切り替えられます。</span>';
     }else{
-      const gs=presetGroups();
       bulk.innerHTML=`<span class="fp-bulk-count"><b>${picked.length}件</b>選択中</span>`
-        +'<label class="fp-bulk-to"><span>組み合わせへ入れる</span>'
-        +'<select id="fpBulkGroup"><option value="">— 選んでください —</option>'
-        +gs.map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join('')
-        +'<option value="＋new">＋ 新しい組み合わせを作る…</option></select></label>'
-        +'<button type="button" id="fpBulkOut" title="選んだ条件を、いまの組み合わせから外します（条件そのものは消えません）">組み合わせから外す</button>'
+        +'<button type="button" id="fpBulkNew" title="選んだ条件で新しい組み合わせ（プリセット）を作ります">新しい組み合わせを作る</button>'
+        +(combos.length
+          ?'<label class="fp-bulk-to"><span>いまある組み合わせへ足す</span>'
+           +'<select id="fpBulkAdd"><option value="">— 選んでください —</option>'
+           +combos.map(c=>`<option value="${esc(String(c.id))}">${esc(presetTitle(c))}</option>`).join('')
+           +'</select></label>'
+          :'')
         +'<button type="button" id="fpBulkNone" title="選択を解除します">選択をやめる</button>';
     }
     put(bulk);
     if(picked.length){
-      bulk.querySelector('#fpBulkGroup').onchange=async e=>{
-        const sel=e.target;let g=sel.value;
-        if(!g)return;
-        if(g==='＋new'){
-          g=await askGroupName();
-          sel.value='';
-          if(!g)return;
-        }
-        await setPresetGroupMany(picked,g);
+      bulk.querySelector('#fpBulkNew').onclick=()=>createCombo(picked);
+      const addSel=bulk.querySelector('#fpBulkAdd');
+      if(addSel)addSel.onchange=async e=>{
+        const c=combos.find(x=>String(x.id)===e.target.value);
+        e.target.value='';
+        if(c)await addToCombo(c,picked);
       };
-      bulk.querySelector('#fpBulkOut').onclick=()=>setPresetGroupMany(picked,'');
       bulk.querySelector('#fpBulkNone').onclick=()=>{fpPicked.clear();renderFilterPresetList()};
     }
-    /* ---- 節（＝組み合わせ）ごとに並べる ---- */
-    const groups=presetGroups();
-    const rowsOf=g=>forThis.filter(p=>presetGroupOf(p)===g);
-    const blocks=groups.map(g=>({kind:'combo',key:g,title:g,rows:rowsOf(g)}))
-      .concat([{kind:'none',key:'',title:'まだ組み合わせに入れていない条件',rows:rowsOf('')}])
-      .filter(b=>b.rows.length);
-    blocks.forEach(b=>{
-      const sec=html(fpSectionHtml(b.title,
-        b.kind==='combo'?`${b.rows.length}件の条件をまとめたプリセット`
-                        :`${b.rows.length}件。1件だけでもプリセットとして切り替えられます`,
-        b.kind,b.key));
-      if(b.kind==='combo'){
-        sec.querySelector('[data-sec-rename]').onclick=async()=>{
-          const g=await askGroupName(b.key);
-          if(!g||g===b.key)return;
-          await setPresetGroupMany(b.rows,g);
-        };
-        sec.querySelector('[data-sec-unbind]').onclick=async()=>{
-          if(!(await confirmModal(`組み合わせ「${b.key}」を解きますか？\n`
-            +`中の条件 ${b.rows.length}件はそのまま残り、「まだ組み合わせに入れていない条件」へ移ります。`)))return;
-          await setPresetGroupMany(b.rows,'');
-        };
-      }
-      put(sec);
-      b.rows.forEach(p=>put(fpItemEl(p,forThis)));
-    });
+    /* ---- ① 組み合わせ（プリセット） ---- */
+    put(html(fpSectionHtml('組み合わせ（プリセット）',
+      combos.length
+        ?`${combos.length}件。絞り込みバーの「プリセット」から切り替えます`
+        :'まだありません。下の条件を選んで「新しい組み合わせを作る」で作れます')));
+    combos.forEach(c=>put(fpComboEl(c)));
+    /* ---- ② 登録した条件 ---- */
+    put(html(fpSectionHtml('登録した条件',
+      `${conds.length}件。1件だけでもプリセットとして切り替えられます`
+      +'（同じ条件を何本の組み合わせにも入れられます）')));
+    conds.forEach(p=>put(fpItemEl(p,forThis)));
   }
-  /* 1行＝1つの登録した条件。**名前は折り返してよい**（§9.287-E、利用者の
+  /* 1行＝1つの組み合わせ（§9.288 ②）。**中身は札で見せ、札の`×`で外す**
+     ——「どの条件で出来ているか」が読めないと、切り替えたときに何が起きるのか
+     推測することになる（§2）。列は登録した条件の行と**同じグリッド**を使う
+     ので、左端がそろう（§CLAUDE 画面基準 9）。 */
+  function fpComboEl(c){
+    const item=document.createElement('div');
+    item.className='filter-preset-item fp-combo';
+    const part=comboParts(c);
+    const chips=part.found.map(p=>`<span class="fp-mem">${esc(presetTitle(p))}`
+      +`<button type="button" class="fp-mem-x" data-mem="${esc(String(p.id))}"`
+      +' title="この条件を組み合わせから外します（条件そのものは消えません）">×</button></span>').join('')
+      +(part.missing.length
+        ?`<span class="fp-mem is-missing" title="登録が消えています。組み合わせから外してください">消えた条件 ${part.missing.length}件</span>`
+        :'');
+    const ownLabel=c.owner?'自分だけ':'みんな';
+    const ownBtn=`<button type="button" class="fp-own${c.owner?' is-mine':''}" `
+      +`title="${c.owner?'あなただけに見えている組み合わせです。押すと、みんなで使えるようになります。':'みんなに見えている組み合わせです。押すと、自分だけのものになります。'}">`
+      +`${ownLabel}</button>`;
+    item.innerHTML='<span class="fp-pick fp-pick-none" aria-hidden="true"></span>'
+      +`<div class="fp-name"><b class="fp-combo-mark">組み合わせ</b>${esc(presetTitle(c))}`
+      +`<small>条件 ${part.found.length}件</small></div>`
+      +`<div class="fp-own-cell">${ownBtn}</div>`
+      +`<div class="fp-conds fp-mems">${chips||'<span class="fp-cond">条件なし</span>'}</div>`
+      +'<div class="fp-actions">'
+      +'<button class="apply" type="button" title="この組み合わせへ切り替えます（前のプリセットの条件は外れます）">切り替える</button>'
+      +'<button class="fp-rename" type="button" title="この組み合わせの名前を変えます（中の条件はそのまま）">名前</button>'
+      +'<button class="danger" type="button" title="組み合わせだけを消します（中の条件は残ります）">削除</button>'
+      +'</div>';
+    item.querySelector('.apply').onclick=()=>{
+      switchPreset('c:'+c.id);
+      const m=$('#filterPresetModal');if(m)m.hidden=true;
+    };
+    item.querySelector('.fp-rename').onclick=()=>renameCombo(c);
+    item.querySelector('.fp-own').onclick=()=>togglePresetOwner(c);
+    item.querySelector('.danger').onclick=()=>deletePreset(c);
+    item.querySelectorAll('[data-mem]').forEach(b=>{
+      const m=part.found.find(x=>String(x.id)===b.dataset.mem);
+      if(m)b.onclick=()=>removeFromCombo(c,m);
+    });
+    return item;
+  }
+  /* 1行＝1つの登録した条件
      報告「文字の見切れが無いように」）——1行に押し込む理由が無く、切ると
      「残仕掛設備ｺｰｽ 前方…」で何の条件か読めなくなる。
      **DB/表の列は廃した**——この一覧はいま開いている一覧のぶんだけなので、
@@ -2342,8 +2444,15 @@
        「いつも適用（固定）」だけにした。言葉は利用者の言い方に合わせる。 */
     const defaultToggle=applicable?`<label class="fp-always${always?' is-on':''}" title="この一覧を開くたびに必ず入ります。手で外そうとすると確認し、再読み込み・再起動のあとも入ったままになります。この印は${esc(filterUserLabel())}だけのもので、ほかの人には付きません。"><input type="checkbox" class="fp-default-check"${always?' checked':''}> いつも適用<b>（固定）</b></label>`:'';
     const on=fpPicked.has(String(p.id));
+    /* **使い回しが目に見えること**（§9.288 ②）——「この条件はどの組み合わせで
+       使われているか」が読めないと、消したときに何が壊れるのか分からない。 */
+    const used=combosUsing(p);
+    const usedHtml=used.length
+      ?`<small class="fp-used" title="${esc(used.map(presetTitle).join(' / '))}">`
+       +`使用中 ${used.map(c=>esc(presetTitle(c))).join('・')}</small>`
+      :'<small class="fp-used is-none" title="どの組み合わせにも入っていません（1件だけでも切り替えられます）">どの組み合わせにも未使用</small>';
     item.innerHTML=`<label class="fp-pick" title="組み合わせ（プリセット）を作るときに選びます"><input type="checkbox" class="fp-pick-check"${on?' checked':''}></label>`
-      +`<div class="fp-name">${esc(presetTitle(p))}${p.uses?`<small>使用 ${p.uses}回</small>`:''}</div>`
+      +`<div class="fp-name">${esc(presetTitle(p))}${p.uses?`<small>使用 ${p.uses}回</small>`:''}${usedHtml}</div>`
       +`<div class="fp-own-cell">${ownBtn}</div>`
       +`<div class="fp-conds">${conds||'<span class="fp-cond">条件なし</span>'}</div>`
       +`<div class="fp-actions">${defaultToggle}<button class="apply" type="button" title="この条件だけを今の一覧へ足します">適用</button><button class="danger" type="button">削除</button></div>`;

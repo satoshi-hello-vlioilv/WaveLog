@@ -11,7 +11,10 @@
 /* ---------- 実績データリスト（画面） ---------- */
 .ac-panel{display:none;flex-direction:column;flex:1;min-height:0;background:var(--surface)}
 body.ac-mode .ac-panel:not([hidden]){display:flex}
-body.ac-mode #grid,body.ac-mode .pager{display:none}
+/* 一覧の道具（`#grid`・`#tabs`・`#genericFilterBar`・`#listToolbar`）を
+   伏せるのは`90-state.css`の1本（§9.288 ⑥）——ここで書き足すと、また
+   モードごとの書き写しに戻る。ここが持つのは`.pager`だけ。 */
+body.ac-mode .pager{display:none}
 
 .ac-head{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap;min-width:0}
 .ac-field{display:flex;align-items:center;gap:var(--space-1);

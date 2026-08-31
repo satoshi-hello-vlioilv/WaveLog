@@ -154,9 +154,24 @@ let b=null;
   rec('案内に出どころ・設備名・いまの値・単位が出る（§CLAUDE 6）',
       /設備マスタ 最大ライン速度/.test(picked.案内)&&picked.案内.includes(EQ)
       &&/350/.test(picked.案内)&&/m\/min/.test(picked.案内),picked.案内);
+  /* 決まり書きは**`?`の浮き出しへ畳んだ**（§9.288 ④、利用者の指示「左側の
+     エリアは死にエリアになっています。左側で有益なのは実際の見た目の
+     プレビューくらい」）。**消したのではなく畳んだ**（§9.234 ①）ので、
+     網も畳んだ先を開いて見る——「見本の帯に文字がある」を見る網に戻すと、
+     ④で決めた「1回読めば足りる説明は広い場所を占めない」が守れない。 */
+  const facts=await page.evaluate(async()=>{
+   document.getElementById('opPrevInfoBtn')?.click();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const pop=document.getElementById('opPrevInfoPop');
+   const t=pop?pop.textContent:'';
+   document.getElementById('opPrevInfoBtn')?.click();      /* 畳んでおく */
+   return {ある:!!pop,文:t};
+  });
+  rec('見本の素性は`?`で開ける（消さずに畳んである・§9.234 ①）',facts.ある,
+      picked.見本全体.slice(0,120));
   rec('見本の決まり書きにも出どころつきで出る（測定画面と同じ1本を通る）',
-      /350 以下（設備マスタ 最大ライン速度）/.test(picked.見本全体),
-      picked.見本全体.slice(0,160));
+      /350 以下（設備マスタ 最大ライン速度）/.test(facts.文),
+      facts.文.slice(0,160));
 
   await page.click('#opdSave');
   await page.waitForFunction(()=>{const m=document.getElementById('opItemModal');return !m||m.hidden},

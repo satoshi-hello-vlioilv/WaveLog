@@ -78,6 +78,15 @@ def _slim_settings(settings):
     return out, op
 
 
+def _flat(v):
+    """1階の辞書だけ写す（値が辞書・配列のものは落とす）。
+    **測定値の本体を抱え込まないため**——`mother`/`product`/`qualityGrades`/
+    `source`はどれも「名前→値」の1階なので、これで足りる。"""
+    if not isinstance(v, dict):
+        return {}
+    return {k: x for k, x in v.items() if not isinstance(x, (dict, list))}
+
+
 def _extract(row):
     """1件の抜粋（直・現場日はまだ入れない。設備ごとの勤務行が要るため）。"""
     p = _payload(row) or {}
@@ -109,6 +118,23 @@ def _extract(row):
         'basic': basic,
         'settings': settings,
         'opData': op,
+        # ---- 記録に残っている値ぜんぶ（§9.288 ⑧、利用者の指示「実績として
+        # 記録したすべてを一覧に出せるように、さらに表示列の機能で扱える
+        # ようにしてください」）。**候補の一覧は帳票と同じ1箇所**
+        # （`report_block_repo.field_catalog()`）なので、ここは**その道が
+        # 指す入れ物**を抜粋へ足すだけ。
+        # **測定値の本体（`measurements`）は持たない**——1件で数百KBになり、
+        # 一覧の全件ぶんを端末のメモリへ載せることになる（§9.91）。
+        # 統計（`stat.*`）と子ロット（`lot.*`）は**そこから作る派生値**なので
+        # 一覧の候補には出さない（`_derived_groups()`が落とし、理由を書く）。
+        'mother': _flat(p.get('mother')),
+        'product': _flat(p.get('product')),
+        'qualityGrades': _flat(p.get('qualityGrades')),
+        # 仕掛の生の行（§9.285 ④）。**開いているほうが先、無ければ凍らせた写し**
+        # ——`rpDig()`と同じ順（画面と一覧で違う値を出さない）。
+        'source': (_flat(p.get('source'))
+                   or _flat((p.get('snapshot') or {}).get('source')
+                            if isinstance(p.get('snapshot'), dict) else None)),
         # ペイロードが解けたかどうか。**「操業データが無い」と「読めなかった」を
         # 混ぜない**——紙で空欄が続いたときに、どちらなのかを画面が言えるように。
         'readable': bool(p),
@@ -259,6 +285,120 @@ def lot_fields():
         if not key.startswith('lot.'):
             continue
         out.append({'key': key[4:], 'label': label, 'unit': unit or ''})
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 記録した値の候補と、その値（§9.288 ⑧、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「実績データについては、一覧としてのリストは記録したすべてを対象に出力可能に
+#  したいです。表示列についても対応できるように、実績として記録したすべてを
+#  一覧に出せるように、さらに表示列の機能で扱えるようにしてください。」
+#
+# **候補の一覧は帳票と同じ1箇所**（`report_block_repo.field_catalog()`）。
+# 「何を記録したか」の答えを2つ持たない（§9.163）——操業データ項目を足せば
+# 帳票にも一覧にも同時に増える。
+#
+# **落とすのは「派生値」の2群だけ**——`stat.*`（測定値の統計）と`lot.*`
+# （子ロット）は、測定値の本体や分割の控えから**作る**値で、その作り方は
+# 測定画面（`report-dashboard.js`の`rpStat`）にしか無い。サーバーへ写すと
+# 同じ計算が2つになり、「紙と一覧で数が違う」を作れる（§9.163）。
+# **黙って落とさない**（§4）——落とした理由は`catalog()`の注記が言う。
+_DERIVED_GROUP_MARKS = ('測定した値の統計', '子ロット')
+
+
+def catalog(equipment=''):
+    """実績の一覧に出せる項目の候補（群ごと）。**帳票の候補と同じ1箇所**から
+    作り、派生値の群だけ落として理由を添える。"""
+    from .repositories import report_block_repo as rb
+    from .repositories import schedule_repo as sr2
+    groups = []
+    conn = None
+    try:
+        conn = sr2.config_master_conn()
+        groups = rb.field_catalog(conn, equipment)
+    except Exception:
+        groups = []
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    out, dropped = [], []
+    for g in groups:
+        name = str(g.get('group') or '')
+        if any(m in name for m in _DERIVED_GROUP_MARKS):
+            dropped.append(name)
+            continue
+        out.append(g)
+    return {'groups': out, 'dropped': dropped,
+            'droppedNote': ('・'.join(dropped) + ' は測定値そのものから'
+                            '**その場で計算する値**なので、一覧では扱いません'
+                            '（帳票では出せます）。') if dropped else ''}
+
+
+def _dig(item, path):
+    """道 → 記録の中の値。**`report-dashboard.js`の`rpDig()`と同じ約束**——
+    `source.` / `qualityGrades.` / `settings.opData.` は「頭を落とした残り
+    全部で1つの鍵」（`.`で割らない。列名に`.`が入っていても壊れない・§9.285 ④）。"""
+    p = str(path or '')
+    for flat in ('source.', 'qualityGrades.', 'settings.opData.'):
+        if not p.startswith(flat):
+            continue
+        bag = item
+        for k in flat[:-1].split('.'):
+            if not isinstance(bag, dict):
+                return None
+            bag = bag.get(k)
+        return bag.get(p[len(flat):]) if isinstance(bag, dict) else None
+    v = item
+    for part in p.split('.'):
+        if not isinstance(v, dict):
+            return None
+        v = v.get(part)
+    return v
+
+
+def _calc(item, key):
+    """`calc.*`。**いくつかの値から作るもの**（`CALC_CATALOG`）。
+    抜粋から作れるものだけで、測定値は使わない。"""
+    st = item.get('settings') or {}
+    if key == 'equipment':
+        return item.get('equipment') or ''
+    if key == 'coilStop':
+        return st.get('coilStop') or st.get('innerTape') or ''
+    if key == 'crewSize':
+        n = st.get('crewSize')
+        return (f'{n}名班' if n not in (None, '') else '')
+    if key == 'workStart':
+        return item.get('workStart') or ''
+    if key == 'workEnd':
+        return item.get('workEnd') or ''
+    if key == 'workDuration':
+        n = item.get('durationMin')
+        return ('' if n in (None, '') else f'{n}分')
+    if key == 'status':
+        return item.get('status') or ''
+    if key == 'updatedAt':
+        return item.get('updatedAt') or ''
+    return ''
+
+
+def field_values(item, paths):
+    """その行の、頼まれた道ぶんの値だけ。**頼まれたぶんだけ返す**（§9.94）
+    ——記録の中身は1件で数百項目あるので、全部返すと一覧1回で数MBになる。
+    **知らない道は空**（黙って別の値を出さない）。"""
+    out = {}
+    for path in (paths or []):
+        p = str(path or '')
+        if not p:
+            continue
+        if p.startswith('calc.'):
+            v = _calc(item, p[5:])
+        else:
+            v = _dig(item, p)
+        out[p] = '' if v is None or isinstance(v, (dict, list)) else v
     return out
 
 

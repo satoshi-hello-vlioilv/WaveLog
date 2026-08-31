@@ -146,10 +146,14 @@
 .nav-item:hover{background:#22434d;border-color:#2c4750;color:#fff}
 .nav-item b{flex:none;display:grid;place-items:center;min-width:22px;height:22px;padding:0 5px;border-radius:var(--radius-md);background:#2c4750;color:#cfe6ea;font-size:var(--fs-micro)}
 /* 測定データ（自分の記録を開く＝一覧ダイアログを開く操作） */
-.nav-item--primary{background:#0a8993;color:#fff;font-weight:800}
-.nav-item--primary .nav-icon{opacity:1}
-.nav-item--primary b{background:#fff;color:var(--teal)}
-.nav-item--primary:hover{background:var(--teal-dark);border-color:transparent;color:#fff}
+/* `.nav-item--primary`は廃した（§9.288 ⑦、利用者の指示「左のメインメニューで
+   『データ一覧』だけ常に色が変わっているので、選択時ではないときは選択中と
+   同じ色やそれっぽい色にしないようにしてほしい。未選択なら未選択と同じ
+   配色にしたい」）——teal系のベタ塗りを常時当てていたので、**開いていない
+   のに現在地に見えた**（`.nav-item--view.active`が同じteal）。色は
+   「いまどこに居るか」だけを語るべきで、「よく使う入口」の意味を重ねると
+   合図が2つの意味を持つ（§3）。データ一覧は他のビューと同じ
+   `nav-item--view`にした。 */
 /* 表示切替（メイン画面の表示内容を切り替える＝排他選択） */
 .nav-item--view{border-color:#2c4750}
 .nav-item--view.active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:800;box-shadow:inset 3px 0 0 #6be0d6}
@@ -166,7 +170,6 @@
 .nav-item--admin.active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:800}
 .nav-item--admin.active .nav-icon{opacity:1}
 .nav-item--admin.active:hover{background:var(--teal);color:#fff}
-.nav-item--primary.active{background:var(--teal-dark)}
 #nav{margin-top:0}
 main{display:flex;min-width:0;min-height:0;flex-direction:column}
 /* ヘッダーは2段のグリッド。1段目は「画面名 / 状態チップ / 全体操作」で、
