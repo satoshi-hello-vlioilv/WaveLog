@@ -1467,6 +1467,40 @@
  /* 条に紐づかない項目（板厚・板丈・肉厚）を子ロットへ割り当てられない理由。
     **文字で言う**（§4）——空欄にすると「測っていない」と読める。 */
  const RP_LOT_NA='この項目は丈ごとに測るので、条で分かれる子ロットには割り当てられません';
+ /* ---------- 「1つの鍵」で持っている入れ物（§9.285 ④） ----------
+    `source.<列名>`（仕掛の生の行）・`qualityGrades.<等級名>`・
+    `settings.opData.<項目名>`は、**中の名前を現場やデータが決める**。
+    `.`で機械的に割ると、名前に`.`が1つ入っただけで**その項目だけが黙って
+    空になる**（列名は200を超えるので、気づける見込みが薄い）。
+    ここに並べた入れ物では、頭を落とした**残り全部を1つの鍵**として引く。 */
+ const RP_FLAT_ROOTS=['source.','qualityGrades.','settings.opData.'];
+ function rpDig(x,path){
+  const p=String(path||'');
+  const flat=RP_FLAT_ROOTS.find(r=>p.indexOf(r)===0);
+  if(flat){
+   let bag=x;
+   for(const k of flat.slice(0,-1).split('.')){
+    if(bag==null||typeof bag!=='object')return null;
+    bag=bag[k];
+   }
+   const key=p.slice(flat.length);
+   let v=(bag&&typeof bag==='object')?bag[key]:undefined;
+   /* 仕掛の生の行は保存のときに凍らせた写しも持つ（`snapshot.source`）。
+      **開いているほうが先**——測定中は`source`が最新。
+      **どちらにも無ければ空**（§9.285 ④の「元データからなくなれば出ない」）。 */
+   if(v==null&&flat==='source.'){
+    const snap=x&&x.snapshot&&x.snapshot.source;
+    if(snap&&typeof snap==='object')v=snap[key];
+   }
+   return v==null?null:v;
+  }
+  let v=x;
+  for(const part of p.split('.')){
+   if(v==null||typeof v!=='object')return null;
+   v=v[part];
+  }
+  return v==null?null:v;
+ }
  function rpValueAt(x,path,ctx){
   const p=String(path||'');
   if(p.indexOf('calc.')===0){
@@ -1502,15 +1536,13 @@
    const v=bag?bag[part[1]]:'';
    return v==null?'':String(v);
   }
-  let v=x;
-  for(const part of String(path||'').split('.')){
-   if(v==null||typeof v!=='object')return '';
-   v=v[part];
-  }
-  if(v==null)return '';
-  if(typeof v==='object')return '';
+  const v=rpDig(x,p);
+  if(v==null||typeof v==='object')return '';
   const t=String(v);
-  /* ISOの日時はそのまま出すと読めない（末尾Z）。他は素のまま。 */
+  /* ISOの日時はそのまま出すと読めない（末尾Z）。他は素のまま。
+     **書式より先にここを通すこと**（§9.285 ③）——`fmtDT`は地方時へ直して
+     **秒まで**返すので、`yyyy/MM/dd HH:mm:ss`もここから作れる。生のISOを
+     書式へ渡すとUTCの成分が読まれ、時差ぶんずれる（§9.162と同じ罠）。 */
   return /^\d{4}-\d{2}-\d{2}T/.test(t)?fmtDT(t):t;
  }
  /* ---------- 塊の中身を「子ロットごとに繰り返して」描く（§9.247 ②） ----------
@@ -1527,6 +1559,10 @@
     作業予定表と同じ道具を通す。帳票だけ2つ目の整形器を持つと、同じ
     「小数2桁」が画面によって違う結果になる（§9.163）。
     **整形に失敗したら生の値**（`value()`がそう作ってある）——空欄にしない。 */
+ /* **書式へ渡すのは「地方時へ直した値」**（§9.285 ③）。生のISO（末尾Z）を
+    渡すとUTCの成分がそのまま読まれ、**書式を付けた欄だけ時差ぶんずれる**
+    （§9.162でデータ一覧が踏んだのと同じ罠。実測: JSTで9時間ずれる）。
+    `rpValueAt`がISOを`fmtDT`で秒まで直してから返すので、そのまま渡す。 */
  function rpFormatCell(raw,spec){
   if(!spec)return raw;
   try{return WL.cellFormat.value(spec,raw)}catch(e){return raw}

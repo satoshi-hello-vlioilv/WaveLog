@@ -83,6 +83,8 @@ G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 
            'test_rlmaster',
            # §9.274: 帳票ブロックの中身を「セル」で持つ（マトリクス・書式・見出し）
            'test_rbcells',
+           # §9.285 ②③④: 引ける範囲（品質等級・母材・仕掛の生データ）と書式
+           'test_rbcatalog',
            # §9.239 ④⑤: 揃えと列の一時的な色
            'test_coltint', 'test_gridchild',
            # §9.248 ③④: 表示列が消えない／表示中・非表示中の札
@@ -122,7 +124,9 @@ G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 't
                # §9.253: 帳票ブロックマスタから見本のロットで帳票を見る
                'test_rbsample',
                # §9.274: セルの組み立て盤・説明の量・紙からマスタへの配線
-               'test_rbcells']
+               'test_rbcells',
+               # §9.285 ②③④: 既定の中身を写す・書式・候補に無い道の印
+               'test_rbcatalog']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
              'test_master', 'test_waiting', 'test_mcore', 'test_msteps',
              # §9.242 ③: バリの2段（1回目の受付・2回目の計算式）
@@ -244,7 +248,7 @@ RULES = [
                                      'test_eqscope')),
     ('static/css/50-master.css', g('見た目', 'マスタ', '操業意匠', 'test_rbmodal',
                                    'test_dscap', 'test_qjoinui',
-                                    'test_blockbuild', 'test_rbcells')),
+                                    'test_blockbuild', 'test_rbcells', 'test_rbcatalog')),
     ('static/css/60-report.css', g('見た目', 'test_screport', 'test_rpblocks', 'test_rplayout',
                                    'test_rpprint',
                                    # §9.274: 見出しのマス・ラベル無しのマス・紙への入口
@@ -256,7 +260,9 @@ RULES = [
                                                     # §9.253: 見本のロット1件
                                                     'test_rbsample',
                                                     # §9.274: セルの読み書き（画面と同じ約束）
-                                                    'test_rbcells')),
+                                                    'test_rbcells',
+                                                    # §9.285 ②④: 候補・既定の中身・生の列
+                                                    'test_rbcatalog')),
     # §9.274: サーバーと画面が同じ例を通る（片方だけ直さないための突き合わせ）
     ('tests/fixtures/report_cells.json', g('test_rbcells')),
     ('static/css/88-logs.css', g('見た目', 'test_logview')),
@@ -290,7 +296,9 @@ RULES = [
     # ここが持つので、品質結合(/api/table)の網も回す。
     ('backend/query_join.py', g('接続', '列', 'test_dsnav', 'test_sccontent')),
     ('backend/source_capability.py', g('test_dscap', 'test_datasource', 'test_dsnav',
-                                       'test_tablequery', 'test_uiux')),
+                                       'test_tablequery', 'test_uiux',
+                                       # §9.285 ④: 仕掛の生の列を帳票の候補へ
+                                       'test_rbcatalog')),
     ('backend/db_mirror.py', g('test_dbmirror', 'test_dbopen', 'test_listcache',
                                'test_atomicio', 'test_cleanup')),
     # 不要ファイルの掃除(§9.249 (1))。置き場の判定を触ると対象が変わるので、

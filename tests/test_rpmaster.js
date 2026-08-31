@@ -39,6 +39,10 @@ const restore=async()=>{
      content:r.content,note:r.note,enabled:r.enabled,cols:r.cols,user_id:TAG})}catch(e){}
  }
 };
+/* **「中身の作り方がコードの塊」を1つ選ぶ**（§9.285 ②）。編集可能になった
+   塊を選ぶと、この節が確かめたい「盤で組めるのに紙はコードのまま」という
+   道を一度も通らない。**紙に出ている塊であること**も要る（§9.248 ②）。 */
+const CODE_BLOCK='丈別データ';
 const openReport=async page=>{
  await page.evaluate(()=>{if(typeof exitReportView==='function')exitReportView()});
  await page.evaluate(()=>openRecordsSafe('編集中'));
@@ -182,19 +186,23 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
      **確かめるのは`contentEditable:false`の塊で**——`基本情報`（true）で試す
      網は直す前でも通る。 */
   /* **紙に出ている塊で試すこと**——`測定値の統計`は分割の無いロットでは
-     既定で隠れる（§9.248 ②）ので、そこで試すと「出ない」としか分からない。 */
-  const stat=(all.items||[]).find(x=>x.builtin==='品質等級');
-  rec('前提: 品質等級は「中身がコードの塊」（contentEditable:false）',
+     既定で隠れる（§9.248 ②）ので、そこで試すと「出ない」としか分からない。
+     **編集できるようになった塊は使えない**（§9.285 ②で`品質等級`・
+     `寸法（オーダー／製造）`・`品質情報（仕掛）`・`母材実績／カード指示`の
+     4つが`contentEditable:true`になった）——ここで見たいのは「中身がコードの
+     塊でも紙はマスの並びを正とするか」なので、**選ぶのは`false`の側**。 */
+  const stat=(all.items||[]).find(x=>x.builtin===CODE_BLOCK);
+  rec(`前提: ${CODE_BLOCK}は「中身がコードの塊」（contentEditable:false）`,
       !!stat&&stat.contentEditable===false,
       JSON.stringify(stat&&{n:stat.name,ce:stat.contentEditable}));
   if(stat){
    touched.push({...stat});
-   const before=await page.evaluate(()=>{
-    const s=document.querySelector('[data-rp-block="品質等級"]');
+   const before=await page.evaluate(K=>{
+    const s=document.querySelector(`[data-rp-block="${K}"]`);
     return {あり:!!s,表:!!(s&&s.querySelector('table')),
       格子:!!(s&&s.querySelector('.rp-grid')),
       ラベル:[...(s?s.querySelectorAll('.rp-field-label'):[])].length};
-   });
+   },CODE_BLOCK);
    rec('前提: いまはコードが作る中身で出ている',
        before.あり&&before.ラベル===0,JSON.stringify(before));
    await post('/api/report-block-master/update',
@@ -203,11 +211,11 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
       content:TAG+'幅MIN=stat.width.min\n'+TAG+'幅MAX=stat.width.max',user_id:TAG});
    await page.evaluate(()=>WL.reportBlocks.forget());
    await openReport(page);
-   const now=await page.evaluate(()=>{
-    const s=document.querySelector('[data-rp-block="品質等級"]');
+   const now=await page.evaluate(K=>{
+    const s=document.querySelector(`[data-rp-block="${K}"]`);
     return {表:!!(s&&s.querySelector('table')),
       ラベル:[...(s?s.querySelectorAll('.rp-field-label'):[])].map(e=>e.textContent)};
-   });
+   },CODE_BLOCK);
    rec('中身がコードの塊でも、マスの並びを書けば紙に出る',
        now.ラベル.filter(t=>t.indexOf(TAG)===0).length===2,
        JSON.stringify(now));
@@ -217,10 +225,10 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
       content:'',user_id:TAG});
    await page.evaluate(()=>WL.reportBlocks.forget());
    await openReport(page);
-   const back2=await page.evaluate(()=>{
-    const s=document.querySelector('[data-rp-block="品質等級"]');
+   const back2=await page.evaluate(K=>{
+    const s=document.querySelector(`[data-rp-block="${K}"]`);
     return {あり:!!s,ラベル:[...(s?s.querySelectorAll('.rp-field-label'):[])].length};
-   });
+   },CODE_BLOCK);
    /* **もう片側**——空にしたら今までどおりコードの中身へ戻る（`[内容]`を
       触っていない現場の紙は1マスも変わらない）。 */
    rec('空にすればコードの中身へ戻る（触っていない現場の紙は変わらない）',
@@ -254,12 +262,12 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
       content:JSON.stringify(pivot),user_id:TAG});
    await page.evaluate(()=>WL.reportBlocks.forget());
    await openReport(page);
-   const piv=await page.evaluate(()=>{
-    const g=document.querySelector('[data-rp-block="品質等級"] .rp-grid');
+   const piv=await page.evaluate(K=>{
+    const g=document.querySelector(`[data-rp-block="${K}"] .rp-grid`);
     return g?{列:getComputedStyle(g).getPropertyValue('--rp-cols').trim(),
       見出し:[...g.querySelectorAll('.rp-field-head')].map(e=>e.textContent.trim())}
       :{列:'(格子なし)',見出し:[]};
-   });
+   },CODE_BLOCK);
    rec('§9.280 内訳の列数が空でも、表に組んだ形の列数のまま紙に出る',
        piv.列==='3',JSON.stringify(piv));
    rec('§9.280 見出しのマスもそのまま紙に出る',
@@ -277,8 +285,8 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
       ＝「見本は正しいのに紙だけ別物」がそのまま作れる。
       守りは2枚——①表には当てない（保存済みの設定でも壊れない）
       ②窓では押せなくして理由を書く（§4）。 */
-   const flowed=await page.evaluate(()=>{
-    const e=document.querySelector('[data-rp-block="品質等級"]');
+   const flowed=await page.evaluate(K=>{
+    const e=document.querySelector(`[data-rp-block="${K}"]`);
     const g=e&&e.querySelector('.rp-grid');
     if(!g)return {格子なし:true};
     const read=()=>({disp:getComputedStyle(g).display,
@@ -290,7 +298,7 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
      e.classList.add(c);out[c]=read();e.classList.remove(c);
     }
     return {前,...out};
-   });
+   },CODE_BLOCK);
    rec('§9.282 「中の並べ方」を当てても表のグリッドは解けない',
        !flowed.格子なし&&['rp-flow-col','rp-flow-fit','rp-flow-tall']
          .every(c=>flowed[c].disp==='grid'&&flowed[c].列===flowed.前.列),
@@ -298,8 +306,8 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
 
    await page.click('#reportArrange');
    await page.waitForTimeout(500);
-   const flowUi=await page.evaluate(()=>{
-    const pb=document.querySelector('[data-rp-block="品質等級"] .rp-block-paper');
+   const flowUi=await page.evaluate(K=>{
+    const pb=document.querySelector(`[data-rp-block="${K}"] .rp-block-paper`);
     if(!pb)return {入口なし:true};
     pb.click();
     const rows=[...document.querySelectorAll('#rpBlockForm .rp-form-row')];
@@ -309,7 +317,7 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
     return {既定:bs.filter(b=>!b.dataset.eFlow).every(b=>!b.disabled),
       他:bs.filter(b=>b.dataset.eFlow).map(b=>b.disabled),
       文:(row.querySelector('.rp-form-note')||{}).textContent||''};
-   });
+   },CODE_BLOCK);
    rec('§9.282 表に組んだ塊では「中の並べ方」を押せなくする（§4）',
        !flowUi.入口なし&&!flowUi.欄なし&&flowUi.既定===true
        &&flowUi.他.length>0&&flowUi.他.every(Boolean),JSON.stringify(flowUi.他));
@@ -336,9 +344,9 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
    const res=await route.fetch();
    let body;try{body=await res.json()}catch(e){return route.fulfill({response:res})}
    if(body&&Array.isArray(body.items)){
-    const seed=body.items.find(x=>x.builtin==='品質等級');
+    const seed=body.items.find(x=>x.builtin===CODE_BLOCK);
     if(seed)body.items.push(Object.assign({},seed,
-      {id:987654,builtin:'',equipment:'*',name:'品質等級',
+      {id:987654,builtin:'',equipment:'*',name:CODE_BLOCK,
        content:'[{"kind":"value","path":"basic.lotNo","label":"にせもの","span":1,"rows":1,"showLabel":true,"align":"","format":null,"lot":false}]',
        cols:1,fields:[{label:'にせもの',path:'basic.lotNo'}],contentEditable:true}));
    }
@@ -346,11 +354,11 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   });
   await page.evaluate(()=>WL.reportBlocks.forget());
   await openReport(page);
-  const dup=await page.evaluate(()=>{
-   const es=[...document.querySelectorAll('[data-rp-block="品質等級"]')];
+  const dup=await page.evaluate(K=>{
+   const es=[...document.querySelectorAll(`[data-rp-block="${K}"]`)];
    return {枚数:es.length,
      にせもの:es.some(e=>e.textContent.indexOf('にせもの')>=0)};
-  });
+  },CODE_BLOCK);
   rec('§9.282 同じ名前の行がマスタに残っていても、紙から既定の塊が消えない',
       dup.枚数===1,JSON.stringify(dup));
   rec('§9.282 同じ名前の行の中身は紙に出さない（どちらを出すか決められないため）',
@@ -362,27 +370,28 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   /* ---- 6) 改名は**紙の見出しまで**変わる（§9.219 ②／§CLAUDE 8） ----
      組み換えの帯・パレット・ゴーストだけが新しい名前になり、紙の見出しは
      コードの題のまま、では**同じ塊に2つの名前**が出る。中身の作り方が
-     コードの塊（品質等級）でも、題は文字なので揃えられる。 */
-  const grade=(all.items||[]).find(x=>x.builtin==='品質等級');
-  rec('前提: 品質等級の行がある（中身はコードの塊）',
+     コードの塊でも、題は文字なので揃えられる。**編集できるようになった塊は
+     使わない**（§9.285 ②。`CODE_BLOCK`の説明を参照）。 */
+  const grade=(all.items||[]).find(x=>x.builtin===CODE_BLOCK);
+  rec(`前提: ${CODE_BLOCK}の行がある（中身はコードの塊）`,
       !!grade&&grade.contentEditable===false,JSON.stringify(grade&&{n:grade.name,ce:grade.contentEditable}));
   if(grade){
    touched.push({...grade});
    await post('/api/report-block-master/update',
-     {id:grade.id,equipment:grade.equipment,name:TAG+'等級',order:grade.order,
+     {id:grade.id,equipment:grade.equipment,name:TAG+'改名',order:grade.order,
       span:grade.span,rows:grade.rows,content:grade.content,note:grade.note,
       enabled:true,cols:grade.cols,user_id:TAG});
    await page.evaluate(()=>WL.reportBlocks.forget());
    await openReport(page);
-   const named=await page.evaluate(()=>{
-    const e=document.querySelector('[data-rp-block="品質等級"]');
+   const named=await page.evaluate(K=>{
+    const e=document.querySelector(`[data-rp-block="${K}"]`);
     const h=e?e.querySelector('.rp-section>h3'):null;
     return {題:h?h.textContent:'(無い)',
       /* 組み換え中の呼び名も同じであること（2つの名前を出さない）。 */
       在る:!!e};
-   });
+   },CODE_BLOCK);
    rec('改名すると紙の見出しも変わる（呼び名を2つ出さない）',
-       named.在る&&named.題===TAG+'等級',JSON.stringify(named));
+       named.在る&&named.題===TAG+'改名',JSON.stringify(named));
   }
 
   /* ---- 7) 導出のある値も「道」で引ける（calc.*） ---- */

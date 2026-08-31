@@ -1535,6 +1535,7 @@
          <button type="button" class="fb-head ghost" title="値を持たず文字だけを出すマスを1つ足します（表の軸の見出しに使います）">見出し</button>
          <button type="button" class="fb-blank ghost" title="何も出さずに場所だけ取るマスを1つ足します（区切りの良い並びに整えるため）">空きマス</button>
          <button type="button" class="fb-table ghost" title="選んだ項目を、行と列の軸で表に組み直します">表に組む</button>
+         <button type="button" class="fb-seed ghost" hidden>既定の中身を写す</button>
          <button type="button" class="fb-clear ghost">全部外す</button></div>
         <!-- 軸の置き場（§9.277）。**組める材料があるときだけ中身が入る**
              （押せるのに何も起きない帯を置かない・§4）。 -->
@@ -2745,7 +2746,11 @@
                      formatKinds:r.formatKinds||null,datePatterns:r.datePatterns||null,
                      /* 表に組むときの軸と列数の上限（§9.277）。 */
                      pivotAxes:Array.isArray(r.pivotAxes)?r.pivotAxes:null,
-                     axisLot:r.axisLot||null,colsMax:r.contentColsMax||null};
+                     axisLot:r.axisLot||null,colsMax:r.contentColsMax||null,
+                     /* 既定の中身を写すための並び（§9.285 ②）。**塊ごと**に
+                        「保存形の文字列」と「列数」が入る。 */
+                     defaultCells:(r.defaultCells&&typeof r.defaultCells==='object')
+                       ?r.defaultCells:null};
     /* 見本の値は**候補と一緒に届く**（§9.250 ⑤）。別の口で取りに行くと、
        候補にあるのに見本の値だけ無い道が作れる。 */
     rbNoteSamples(fbCatalog.groups);
@@ -2898,6 +2903,32 @@
    return `${r.label||r.path}=${r.path}`+(size?'|'+size:'');
   }).join('\n');
  }
+ /* 効いている書式を**文字で出す**（§9.285 ③／§CLAUDE 3）。1マスずつ押して
+    確かめないと、どのマスに書式が付いているのか分からない——「設定したのに
+    効いていない」と読まれる原因になる。 */
+ function fbFmtLabel(f){
+  if(!f||!f.kind)return '';
+  const bits=[];
+  if(f.kind==='number'){
+   bits.push(f.decimals==null?'数値':`小数${f.decimals}桁`);
+   if(f.thousands)bits.push('3桁区切り');
+  }else if(f.kind==='datetime')bits.push(f.pattern||'yyyy/MM/dd');
+  else bits.push('文字');
+  if(f.prefix)bits.push(`前「${f.prefix}」`);
+  if(f.suffix)bits.push(`後「${f.suffix}」`);
+  return bits.join('・');
+ }
+ /* いま候補に在る道（§9.285 ④）。**候補に無い道も書ける**（サーバーは
+    選択肢で塞いでいない）ので、これは**間違いの合図ではなく事実の合図**
+    ——項目名が変わった・元データからその列が消えた塊は紙で空欄になるので、
+    盤の時点でそう分かるようにする（§4「できないことは、できないと書く」）。
+    **候補が届いていないうちは何も言わない**（読めなかったことを
+    「無い」と言わない・§CLAUDE 3）。 */
+ function fbKnownPaths(){
+  const set=new Set();
+  (fbCatalog.groups||[]).forEach(g=>(g.items||[]).forEach(i=>{if(i&&i.path)set.add(i.path)}));
+  return set;
+ }
  /* 種別・寄せ・書式の呼び名。**サーバーが答える**（§9.163）が、届く前でも
     盤は開けるので**綴りだけの受け皿**を持つ（呼び名は綴りそのもの）。
     受け皿を「日本語の写し」にしないこと——写した瞬間に2箇所になる。 */
@@ -2915,7 +2946,10 @@
    pivotAxes:v.pivotAxes||['対象','項目','集計'],
    axisLot:v.axisLot||'対象',
    /* 節の中の列数の上限。**紙が受ける数と同じ**（サーバーが答える）。 */
-   colsMax:Number(v.colsMax)||FB_COLS_MAX};
+   colsMax:Number(v.colsMax)||FB_COLS_MAX,
+   /* 既定の中身を写せる塊（§9.285 ②）。届く前は空——写す口を出さない
+      （押せるのに何も起きないボタンを作らない・§4）。 */
+   defaultCells:v.defaultCells||{}};
  }
  /* ---------- 表は「ピボット」で組む（§9.277、利用者の指示） ----------
     「EXCELのピボットテーブルのように自由に組めるように、表にしたときには
@@ -3210,7 +3244,11 @@
        触っているように見える（§CLAUDE 3）。 */
     if(state.sel!=null&&(state.sel<0||state.sel>=state.rows.length))state.sel=null;
     drawCols();drawChosen();drawList();drawInsp();drawTableBtn();
+    if(typeof drawSeedRef.fn==='function')drawSeedRef.fn();
    };
+   /* `drawSeed`は下で定義するので、呼ぶ側は入れ物越しに見る（巻き上げの
+      効かない`const`を上から参照しない）。 */
+   const drawSeedRef={fn:null};
    /* 列数は**「内訳の列数」の欄が持つ**（§CLAUDE 8。同じ数を2箇所に置くと
       片方だけ直した状態が作れる）。空欄＝2列は`reportSection`の既定と同じ。 */
    const colsInput=()=>form.querySelector('[data-field="cols"]');
@@ -3245,6 +3283,8 @@
        なるのか・どこで折り返すのかが読めない。 */
     wrap.style.setProperty('--fb-cols',n);
     wrap.classList.toggle('is-matrix',true);
+    /* 1行ごとに数え直さない（候補は200列を超えうる）。 */
+    const known=fbKnownPaths();
     wrap.innerHTML=state.rows.length?state.rows.map((r,i)=>{
       const sp=Math.min(n,fbSpan(r.span,n));
       const tall=fbSpan(r.rows,FB_ROWS_MAX);
@@ -3284,6 +3324,10 @@
        +` placeholder="見出しの文字">`
        +`<button type="button" class="fb-del" title="この見出しを外します">×</button></div>`
        +`<div class="fb-row-bot"><i class="fb-kindtag">見出し</i>${size}</div></div>`;
+      const fmt=fbFmtLabel(r.format);
+      /* **候補に無い道は印を出す**（§9.285 ④）——元データからその列が
+         無くなれば紙は空欄になる。候補が1件も届いていないうちは言わない。 */
+      const unknown=known.size&&r.path&&!known.has(r.path);
       return `<div class="fb-row${on}${r.showLabel===false?' fb-row-bare':''}" draggable="true" data-fb-i="${i}"${st}>`
       +`<div class="fb-row-top"><span class="fb-grip" aria-hidden="true">⠿</span>`
       +`<input type="text" class="fb-label" value="${esc(r.label)}" aria-label="紙に出す名前"`
@@ -3291,6 +3335,8 @@
       +`<button type="button" class="fb-del" title="この項目を外します">×</button></div>`
       +`<div class="fb-row-bot">`
       +`<code class="fb-path" title="${esc(r.path)}">${esc(r.path)}</code>`
+      +(fmt?`<i class="fb-fmttag" title="この欄に効いている書式です（マスを押すと変えられます）">${esc(fmt)}</i>`:'')
+      +(unknown?`<i class="fb-warn" title="いまの候補にこの道がありません。項目名が変わったか、元データからその列が無くなった可能性があります。紙では空欄になります。">候補に無い</i>`:'')
       +size+`</div></div>`;
      }).join('')
       :`<p class="fb-empty">左の候補を押すと、ここへ増えます。<b>左上から順に紙へ並びます。</b></p>`;
@@ -3624,11 +3670,51 @@
    if(search)search.oninput=()=>{state.q=search.value;drawList()};
    const clr=box.querySelector('.fb-clear');
    if(clr)clr.onclick=()=>{state.rows=[];sync()};
-   drawCols();drawChosen();drawList();drawInsp();drawTableBtn();
+   /* ---------- 既定の中身を写す（§9.285 ②、利用者の指示） ----------
+      「汎用化できていない部分を汎用表現を追加し編集可能範囲に取り込む」
+
+      `寸法（オーダー／製造）`のようにコードが表を組み立てている塊は、
+      `[内容]`が空のあいだは今までどおりコードの中身で刷られる（§9.278）。
+      そこを触りたいとき、**白紙から組み直させると、いま見えている形が
+      押した瞬間に消えたように見える**（§9.259の「共通を写してから個人へ」と
+      同じ理由）。ここが**いま紙に出ているのと同じ並び**を入れる。
+
+      **並びも列数もサーバーが答える**（§9.163）ので、画面は入れるだけ。
+      **写せない塊ではボタンごと出さない**（§4）。 */
+   const seed=box.querySelector('.fb-seed');
+   const seedOf=()=>{
+    const key=String((maintState.editing||{}).builtin||'').trim();
+    return key?(fbVocab().defaultCells||{})[key]||null:null;
+   };
+   const drawSeed=drawSeedRef.fn=()=>{
+    if(!seed)return;
+    const d=seedOf();
+    seed.hidden=!d;
+    if(!d)return;
+    /* **何が起きるかをボタンが名乗る**（§CLAUDE 2）——「写す」だけでは
+       いまの並びが消えるのかどうかが読めない。 */
+    /* **短く**（§9.234 ①）——帯は列数の札と並ぶので、長い文言を入れると
+       器が足りずに縦書きへ折り返す（実機のキャプチャで確認）。全文は`title`。 */
+    seed.textContent=state.rows.length?'既定へ戻す':'既定を写す';
+    seed.title=state.rows.length
+      ?'いま並べているマスを捨てて、画面がもともと持っている中身と同じ並びに戻します。'
+      :'画面がもともと持っている中身と同じ並びを入れます。ここから1マスずつ直せます。';
+   };
+   if(seed)seed.onclick=()=>{
+    const d=seedOf();if(!d)return;
+    if(state.rows.length&&!confirm('いま並べているマスを捨てて、既定の中身に戻します。よろしいですか。'))return;
+    state.rows=fbParse(d.content||'');
+    /* **列数も一緒に入れる**——並びだけ写すと、既定は6列なのに欄が2列の
+       ままで、写した瞬間に別の絵になる（§9.280と同じ食い違い）。 */
+    const ci=colsInput();
+    if(ci&&d.cols){ci.value=String(d.cols);ci.dispatchEvent(new Event('change',{bubbles:true}))}
+    sync();
+   };
+   drawCols();drawChosen();drawList();drawInsp();drawTableBtn();drawSeed();
    /* 語彙（種別・寄せ・書式の呼び名）は候補と一緒に届く（§9.163）。
       **届いたら描き直すこと**——投げっぱなしにすると、設定欄が綴りのまま
       出たきり日本語にならない（§9.234 ⑧と同じ罠）。 */
-   fbLoadCatalog().then(()=>{drawList();drawInsp();drawTableBtn()});
+   fbLoadCatalog().then(()=>{drawList();drawInsp();drawTableBtn();drawSeed()});
   });
  }
  /* --- 数値: 上下ボタン・3桁区切り・右づめ --- */

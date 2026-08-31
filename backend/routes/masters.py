@@ -1540,6 +1540,10 @@ def report_block_list():
            # 別に持つと、組んだ表が保存で黙って丸められる。
            'contentColsMax':rb.CONTENT_COLS_MAX,
            'contentEditable':sorted(rb.CONTENT_EDITABLE),
+           # **既定の中身をマスの並びで写せる塊**（§9.285 ②）。白紙から
+           # 組み直させると、いま見えている形が押した瞬間に消えたように
+           # 見える（§9.259と同じ理由）。並びも列数もサーバーが答える。
+           'defaultCells':rb.default_cell_map(),
            # 1つのマスが持てるもの（§9.274）。**語彙はサーバーが答える**
            # ——画面へ写すと、選べる書式を1つ足すたびに2箇所直すことになる。
            'cellKinds':[{'v':v,'label':lb} for v,lb in rb.CELL_KINDS],

@@ -95,6 +95,43 @@ def _read_columns(key, path=None, preferred=''):
   return table, list(cols(c, table, source=entry['path'])), names, ''
 
 
+def sample_columns(key, limit=400):
+ """既定テーブルの列名と、見本の1行（§9.285 ④、利用者の指示）。
+
+ 「仕掛情報などリンクしているデータのうち、直接アプリで使用していない
+  データでも…ひっぱれるデータ範囲の拡張をしてほしい」
+
+ **どの表を読むかの答えはここ1箇所**——`_read_columns()`と同じ選び方
+ （既定テーブル→無ければ先頭）を通す。帳票ブロックの候補が自前で表を
+ 選ぶと、「一覧に出ている列」と「紙で選べる列」が食い違いうる。
+
+ **読めなければ空**（fail-open）——仕掛DBが開けないだけで帳票ブロックの
+ 候補が丸ごと空になると、塊を作る手立てが消える。
+ **開く前に存在確認をしない**（CLAUDE.md。共有越しではstatだけ失敗する
+ ことがあり、確認のつもりの1行が唯一の失敗原因になる）。
+
+ 戻り値: [{'name': 列名, 'sample': 見本の値}, ...]"""
+ try:
+  entry = _entry_of(key, None, '')
+  with connect(entry['path'], entry.get('role') == 'readonly') as c:
+   names = tables(c)
+   if not names:
+    return []
+   preferred = entry.get('preferred') or ''
+   table = preferred if preferred in names else names[0]
+   cur = c.cursor()
+   cur.execute(f'SELECT * FROM [{table}] LIMIT 1')
+   heads = [str(d[0]) for d in (cur.description or [])][:int(limit)]
+   row = cur.fetchone()
+  vals = list(row) if row else []
+  return [{'name': n, 'sample': ('' if i >= len(vals) or vals[i] is None
+                                 else str(vals[i]))}
+          for i, n in enumerate(heads)]
+ except Exception as e:
+  app_logger().info('sample_columns(%s) skipped: %s', key, e)
+  return []
+
+
 def _quality_key_table(key, all_tables, entry_preferred, path=None):
  """品質データ側で「3つのキー列がすべて揃っているテーブル」を探す。
  /api/table の結合と**同じ選び方**（preferredを先頭に、無ければ全部試す）。"""

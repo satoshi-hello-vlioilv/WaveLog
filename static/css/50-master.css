@@ -1897,7 +1897,8 @@
 /* いまの形。**軸の位置と数を文字で出す**（§9.277）。 */
 .fb-axes-now{flex:1 1 100%;min-width:0;color:var(--ink-3);font-size:var(--fs-badge);line-height:var(--lh)}
 .fb-axes-bad{font-style:normal;color:var(--danger)}
-.fb-pick-head,.fb-chosen-head{display:flex;align-items:center;gap:var(--gap-inline);min-width:0}
+.fb-pick-head,.fb-chosen-head{display:flex;align-items:center;gap:var(--gap-inline);
+  min-width:0;flex-wrap:wrap;row-gap:var(--space-1)}
 .fb-pick-head>b,.fb-chosen-head>b{font-size:var(--fs-sm);font-weight:800;color:var(--nav);flex:none}
 .fb-search{flex:1 1 auto;min-width:0;height:var(--ctl-h-xs);padding:0 var(--space-2);
   border:1px solid var(--line-mid);border-radius:var(--radius-xs);background:var(--surface)}
@@ -1949,6 +1950,17 @@
   border:1px solid var(--line-soft);border-radius:var(--radius-xs);background:var(--surface)}
 .fb-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   color:var(--ink-3);font-size:var(--fs-micro)}
+/* 効いている書式と「候補に無い道」の印（§9.285 ③④）。**縮む役は出どころ
+   だけ**（§9.229 ⑤）なので、印は中身なりの幅で固定する。
+   **色だけで伝えない**（§CLAUDE 3）ので、どちらも文字を持つ。 */
+.fb-fmttag,.fb-warn{
+  flex:0 0 auto;white-space:nowrap;font-style:normal;
+  font-size:var(--fs-micro);line-height:1.5;
+  padding:0 var(--space-1);border-radius:var(--radius-xs);
+}
+.fb-fmttag{color:var(--nav);background:var(--surface-2);border:1px solid var(--line-soft)}
+.fb-warn{color:var(--warn-fg);background:var(--warn-bg);
+  border:1px solid var(--warn-border);font-weight:700}
 .fb-del{
   min-width:var(--ctl-h-xs);min-height:var(--ctl-h-xs);padding:0;
   border:1px solid var(--line-soft);border-radius:var(--radius-xs);
@@ -2227,8 +2239,12 @@
 .fb-seg>button:hover{background:var(--surface)}
 .fb-seg>button.is-on{background:var(--nav);color:#fff}
 /* 「表に組む」は材料が揃うまで押せない（§4）。理由は`title`が言う。 */
-.fb-head,.fb-blank,.fb-table{flex:none;min-height:var(--ctl-h-xs);
-  padding:0 var(--space-2);font-size:var(--fs-badge)}
+.fb-head,.fb-blank,.fb-table,.fb-seed{flex:none;min-height:var(--ctl-h-xs);
+  padding:0 var(--space-2);font-size:var(--fs-badge);
+  /* **縦書きにしない**（§9.285 ②）——器が足りないときにflexが折り返すと
+     1文字ずつ縦に並び、何のボタンか読めなくなる（実機のキャプチャで確認）。
+     入らないぶんは帯そのものが折り返す（`flex-wrap`）。 */
+  white-space:nowrap}
 .fb-table[disabled]{opacity:.5;cursor:not-allowed}
 
 /* ============================================================

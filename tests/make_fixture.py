@@ -147,6 +147,50 @@ def _tables(c) -> set:
         "SELECT name FROM sqlite_master WHERE type='table'")}
 
 
+def _builtin_block_seeds() -> dict:
+    """既定の帳票ブロックの種（組み込みキー → (`[内容]`, `[内訳列数]`)）。
+
+    **`backend`をimportしないこと**（§9.285 の追補）——`backend.db_access`は
+    **import しただけで**`config/local.json`の移行や接続先の解決といった
+    処理を走らせる（モジュールの一番下で`_migrate_legacy_path_config()`を
+    呼んでいる）。`fix_master()`は**マスタDBへの書き込みトランザクションを
+    開いたまま**走るので、そこへ別の接続が割り込むと**検証用の設定が
+    中途半端な状態になり、左メニューから仕掛のボタンが消える**（実測:
+    `test_maint`が`[data-db-key="SIKALOTNOW"]`を30秒待って落ちた）。
+
+    そこで**ソースの`BUILTIN_SEEDS`を構文木で読む**。種は
+    `(組み込みキー, 幅, 行数, 内訳列数, 内容, 種別, 文字)`の並びで、
+    ここで要るのは0・3・4番目——どれも素のリテラルなので`ast`で取れる
+    （5番目の`AREA_KIND`は名前なので`literal_eval`では読めない。**要る所だけ**
+    読むこと）。**形が変わったら黙って読み飛ばす**——間違った位置を読んで
+    別の値を書き戻すより、何もしないほうが安全。"""
+    import ast
+    src_path = ROOT / 'backend' / 'repositories' / 'report_block_repo.py'
+    try:
+        tree = ast.parse(src_path.read_text(encoding='utf-8'))
+    except Exception:
+        return {}
+    out = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(getattr(t, 'id', '') == 'BUILTIN_SEEDS' for t in node.targets):
+            continue
+        for row in getattr(node.value, 'elts', []):
+            elts = getattr(row, 'elts', [])
+            if len(elts) != 7:
+                continue
+            try:
+                key = ast.literal_eval(elts[0])
+                cols = ast.literal_eval(elts[3])
+                content = ast.literal_eval(elts[4])
+            except Exception:
+                continue
+            if isinstance(key, str) and isinstance(cols, int) and isinstance(content, str):
+                out[key] = (content, cols)
+    return out
+
+
 def fix_master(quiet: bool = False) -> None:
     """マスタDBの「テストが当てにしている行」を戻す。**冪等**。"""
     if not MASTER.exists():
@@ -264,6 +308,19 @@ def fix_master(quiet: bool = False) -> None:
             c.execute("DELETE FROM [列レイアウトマスタ] WHERE [対象] LIKE 'list:%' "
                       "OR [対象]='records:list' OR [対象] LIKE 'timeline:%' "
                       "OR [対象] LIKE 'print:%' OR [対象] LIKE 'report:%'")
+        # 7) 既定の帳票ブロックの中身の置き土産（§9.285 ②）
+        # 塊の`[内容]`は**種の値へ戻す**。ランナーの`resetcontent`は
+        # `contentEditable`が偽の塊だけを空にしていたので、§9.285 ②で
+        # `寸法（オーダー／製造）`等が編集できるようになった瞬間に
+        # **その4つの置き土産だけが残る**ようになった（実際に残り、盤を
+        # 開くといきなり18マス入っていた）。**「触ってよいか」ではなく
+        # 「種は何か」で戻すこと**——判定はサーバーの1箇所が持つ。
+        if '帳票ブロックマスタ' in have:
+            for key, (content, cols) in _builtin_block_seeds().items():
+                c.execute('UPDATE [帳票ブロックマスタ] SET [内容]=?,[内訳列数]=? '
+                          'WHERE [組み込みキー]=? AND ([内容] IS NOT ? OR '
+                          'COALESCE([内訳列数],0) IS NOT ?)',
+                          [content, cols, key, content, cols])
         c.commit()
 
 

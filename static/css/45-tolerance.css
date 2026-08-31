@@ -178,6 +178,9 @@
 .filter-tag>span{font-weight:800;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .filter-tag b{font-size:var(--fs-micro);color:#075e67;white-space:nowrap}
 .filter-tag em{font-style:normal;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#3a565d}
+/* 変数のいまの値（§9.285 ①）。**値そのものより控えめに**——読むのは
+   「何で絞っているか」が先で、いまの値はその補足（§CLAUDE 画面基準 3）。 */
+.filter-tag-var{text-decoration:none;color:var(--muted);font-size:var(--fs-micro)}
 .filter-tag i{display:grid;place-items:center;width:18px;height:18px;border-radius:var(--radius-round);font-style:normal;color:#9b1b1b;font-weight:900;cursor:pointer}
 /* 条件ごとの登録ボタン(★=登録済み / ☆=未登録)。押せることと今の状態を
    同じ場所で示す(§9.80)。 */

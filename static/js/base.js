@@ -1195,6 +1195,39 @@ function databaseLabel(key){
 // Application equipment setting and design-course guard.
 const APP_EQUIPMENT_KEY='AccessMeasurementConfiguredEquipment';
 function currentConfiguredEquipment(){return String(localStorage.getItem(APP_EQUIPMENT_KEY)||'').trim()}
+/* ---------- 使用設備は「1箇所で書き、変わったら知らせる」（§9.285 ①） ----------
+   利用者の報告「フィルタの変数『使用設備』が、使用設備を切り替えてもその
+   切り替えた瞬間に反映されない」。
+
+   `{使用設備}`は**送信直前に展開する**（§9.74）ので、次に問い合わせれば
+   新しい設備で絞られる。ところが**次の問い合わせを起こす人が居なかった**
+   ——設定窓は`localStorage`へ書くだけで、いま出ている一覧も絞り込みバーの
+   「（=◯◯）」も古い設備のまま残っていた（値は正しいのに画面が嘘をつく）。
+
+   **書き込みは`set()`の1箇所**にして、そこから知らせる。散らばった場所で
+   「設備を変えたら◯◯も直す」を気を付けるのではなく、**気にする側が
+   名乗り出る**（`onChange`）。読み方は今までどおり
+   `currentConfiguredEquipment()`——70箇所の呼び出しは1つも変えない。
+
+   **同じ値なら知らせない**——押し直しただけで一覧が読み直されると、
+   触っていないのに画面がちらつく（§9.131「同じ値なら触らない」）。 */
+(()=>{
+ const subs=[];
+ window.WL=window.WL||{};
+ WL.equipment={
+  get:currentConfiguredEquipment,
+  set(name){
+   const prev=currentConfiguredEquipment(),next=String(name||'').trim();
+   localStorage.setItem(APP_EQUIPMENT_KEY,next);
+   if(next===prev)return next;
+   /* **1人が落ちても残りへ届ける**——知らせは片道なので、途中で止まると
+      「設備によって直る画面と直らない画面がある」が作れる。 */
+   subs.forEach(fn=>{try{fn(next,prev)}catch(e){console.error('equipment onChange failed',e)}});
+   return next;
+  },
+  onChange(fn){if(typeof fn==='function')subs.push(fn);return fn}
+ };
+})();
 /* 更新対象者（ユーザーID）の管理。マスタ更新時にサーバーへ送信し記録する。 */
 const USER_ID_KEY='AccessMeasurementUserId';
 function currentUserId(){return String(localStorage.getItem(USER_ID_KEY)||'').trim()}
