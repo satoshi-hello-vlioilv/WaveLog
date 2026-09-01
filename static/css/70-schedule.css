@@ -13,9 +13,37 @@
    **overflow:hiddenのまま**——帯は器の中に出したいので、はみ出させない。 */
 .sc-body{flex:1;min-height:0;display:flex;gap:0;overflow:hidden;position:relative}
 .sc-timeline{flex:1;min-width:0;overflow-y:auto;overflow-x:auto;padding:var(--space-1) var(--space-2);display:flex;flex-direction:column;gap:0;
+ /* 縦のバーが出た瞬間に中身が狭くなると、行が折り返して`fitTailSpace()`の
+    測り直しが振動する（§9.227 ②／§9.250 ⑨）。場所は先に空けておく。 */
+ scrollbar-gutter:stable;
  /* カーソル位置の隙間(§9.179)を、**この器の座標**で置けるようにする
     （relativeでないと .sc-body が基準になり、スクロールぶんだけずれる）。 */
  position:relative}
+/* 同期の状態の浮きメニュー（§9.292 ③）。器は`.access-mode-menu`と共通で、
+   中身は「ラベル : 値 : 補足」の3行組み。**ラベル列は固定幅**にする
+   （CLAUDE.md 画面基準 9。autoだと行ごとに値の左端がずれる）。
+   `.access-mode-menu button`は(0,1,1)で`width:100%`を当てるので、
+   ここは`button`を使わずdivで組む——素のクラスでは同点で負ける（§9.206）。 */
+.sc-sync-menu{min-width:min(420px,86vw);max-width:min(460px,90vw)}
+.sc-sync-body{display:grid;gap:var(--gap-hair);padding:var(--space-1) var(--pad-card)}
+.sc-sync-row{display:grid;grid-template-columns:var(--w-md) minmax(0,1fr);
+ align-items:baseline;gap:var(--gap-inline);padding:var(--space-1) 0}
+.sc-sync-row+.sc-sync-row{border-top:1px solid var(--line-soft)}
+.sc-sync-k{font-size:var(--fs-micro);color:var(--muted)}
+.sc-sync-v{font-size:var(--fs-sm);font-weight:700;color:var(--ink);min-width:0;
+ overflow-wrap:anywhere}
+.sc-sync-n{grid-column:2;font-size:var(--fs-micro);color:var(--muted);font-weight:400}
+/* 一覧の下の余白（§9.292 ②）。**高さはJSが測って入れる**（`fitTailSpace()`）
+   ——「最後の行の上端が器の上端まで上がれる」ぶんが要るので、器の高さと
+   最後の行の位置から決まる（CSSの定数では書けない）。
+   ここは**「いちばん後ろへ入れる」の的**なので、境目を破線で言い、
+   何が起きるかを文字で書く（§3・§4）。縮ませないこと——`.sc-timeline`は
+   縦積みのflexなので、既定の`flex-shrink:1`だと入れた高さが潰れる。 */
+.sc-tail-space{flex:0 0 auto;position:relative;display:flex;align-items:flex-start;
+ justify-content:center;padding-top:var(--space-2);
+ border-top:1px dashed var(--line-soft);color:var(--muted);font-size:var(--fs-micro)}
+.sc-tail-space span{opacity:.75}
+.sc-tail-space b{font-weight:700;color:var(--ink-3)}
 .sc-side{width:300px;flex-shrink:0;border-left:1px solid var(--line);background:#fff;overflow-y:auto;padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-4)}
 /* .sc-body/.sc-mode-toggle/.sc-board-windowと同じ既知の落とし穴(§9.9参照):
    自身のクラスでdisplay:flexを指定しているため、hidden属性だけでは隠れない
@@ -1203,6 +1231,15 @@
 .sp-opt-group{display:grid;gap:var(--space-1)}
 .sp-opt-group+.sp-opt-group{margin-top:var(--space-2)}
 .sp-opt-group h4{margin:0;font-size:var(--fs-sm);font-weight:800;color:var(--ink-2)}
+/* 印刷範囲の日付（§9.292 ①）。ラベルは幅を固定して**左端をそろえる**
+   （CLAUDE.md 画面基準 9。autoだと「この日から」「この日まで」で値の左端が
+   ずれる）。欄は残りいっぱい——日付の文字列は「2026年8月26日（水）（12件）」
+   と長く、中身なりだと必ず切れる。 */
+.sp-range-days{display:grid;gap:var(--gap-hair)}
+.sp-range-days label{display:grid;grid-template-columns:var(--w-xs) minmax(0,1fr);
+  align-items:center;gap:var(--gap-hair)}
+.sp-range-days label>span{font-size:var(--fs-micro);color:var(--muted)}
+.sp-range-day{min-width:0;width:100%;font-size:var(--fs-sm);height:var(--ctl-h-sm)}
 /* 記入欄のパターン。**選んだものが面で分かる**ようにする（色だけに頼らず、
    説明の文も添える）。 */
 .sp-pats{display:grid;gap:var(--gap-hair)}
@@ -1324,11 +1361,24 @@
    画面では1行の見出し「用途コード」が紙では2行に割れていた。画面と同じ
    「入らなければ省略記号」にし、収まらないときは`--sp-fit`で**文字ごと
    縮める**（`withMm()`。幅の比だけを詰めると同じ文字が入らなくなる）。 */
-.sp-table th,.sp-table td{padding:1.2mm 1.4mm;vertical-align:middle;
+/* ---------- 文字の大きさとセルの余白（§9.292 ⑥、利用者の指示） ----------
+   「枠に対して文字が小さすぎて非常に見にくい…できるだけぎりぎりまで
+    大きくしたい。ベースサイズを大きめの設定で変更したうえで、印刷時の
+    文字サイズやセル内の余白の調整＆設定保存ができるように」
+
+   **地の大きさをひと回り上げた**（見出し 9→10.5px／本文 11→12.5px）。
+   そのうえで`--sp-fit`が「紙の余りぶん」で幅と文字を**一緒に**伸縮させ
+   （`withMm()`）、`--sp-pad`がセルの内側の余白を伸縮させる。
+   **2つは別の軸**——文字を大きくしたいのと、1枚に多く載せたいのは別の話。
+   どちらも既定のときは変数が付かないので、**触っていない紙は今までどおり**
+   （ただし地の大きさは上げてあるので、そのぶんは全部の紙で大きくなる）。 */
+.sp-table th,.sp-table td{padding:calc(1.2mm * var(--sp-pad,1)) calc(1.4mm * var(--sp-pad,1));
+ vertical-align:middle;
  overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.sp-table th{background:var(--surface-2);font-size:calc(9px * var(--sp-fit,1));font-weight:800;
+.sp-table th{background:var(--surface-2);font-size:calc(10.5px * var(--sp-fit,1));font-weight:800;
  color:var(--muted);text-align:center;border-bottom:0.3mm solid var(--line-mid)}
-.sp-table td{font-size:calc(11px * var(--sp-fit,1));color:var(--ink);height:calc(8mm * var(--sp-fit,1));
+.sp-table td{font-size:calc(12.5px * var(--sp-fit,1));color:var(--ink);
+ height:calc(8mm * var(--sp-fit,1) * var(--sp-pad,1));
  border-bottom:0.15mm solid var(--line-soft)}
 /* 列の区切りは画面と同じ「隙間の細い線」(§9.197)。**最初の列には引かない**
    ——引くと器の枠と二重になる。 */
@@ -1362,7 +1412,7 @@
    可否(可/不可)・区分(予定/作業中/設備停止…)は画面では色の付いた小さな札で、
    そこが一覧の読みやすさの肝になっている。**色だけで伝えない**(§3)ので、
    札の中の文字は画面と同じものを必ず出す。 */
-.sp-badge{display:inline-block;max-width:100%;padding:0 1.2mm;font-size:calc(10px * var(--sp-fit,1));
+.sp-badge{display:inline-block;max-width:100%;padding:0 1.2mm;font-size:calc(11px * var(--sp-fit,1));
  border-radius:var(--radius-pill);border:0.15mm solid transparent;
  font-weight:800;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sp-b-wk-ok{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
@@ -1382,7 +1432,7 @@
 .sp-est-prov{color:var(--muted);font-style:italic}
 /* 行の印(計画外・固定・遅れ…)。画面(`.sc-flag-*`)と同じ色で、1つずつ札。 */
 .sp-c-chips{overflow:hidden;white-space:nowrap}
-.sp-chip{display:inline-block;padding:0 1mm;font-size:calc(9px * var(--sp-fit,1));
+.sp-chip{display:inline-block;padding:0 1mm;font-size:calc(10px * var(--sp-fit,1));
  border-radius:var(--radius-xs);font-weight:800;white-space:nowrap}
 .sp-chip+.sp-chip{margin-left:0.8mm}
 .sp-chip-unplanned{background:var(--warn-bg);border:0.15mm solid var(--warn-border);color:var(--warn-fg)}
@@ -1391,7 +1441,7 @@
 .sp-chip-overdue{color:var(--danger)}
 .sp-chip-spans{color:var(--muted)}
 /* 親ロットの印(子N／親。§9.199)。紙では押せないので**ただの印**。 */
-.sp-kid{display:inline-block;margin-left:1mm;padding:0 1mm;font-size:calc(9px * var(--sp-fit,1));
+.sp-kid{display:inline-block;margin-left:1mm;padding:0 1mm;font-size:calc(10px * var(--sp-fit,1));
  border:0.12mm solid var(--line-mid);border-radius:var(--radius-pill);
  background:var(--surface-2);color:var(--ink-2);font-weight:700}
 /* ---------- 子ロットの内訳(§9.235③、利用者の指示「分割後の子ロットの
@@ -1407,7 +1457,8 @@
    （現場歴／太陽暦）・件数。以前は濃い灰色(#d8d8d8)の帯に名前と件数だけで、
    「カラーが無くグレー」と指摘された部分がここ。 */
 .sp-row-group td{background:var(--surface-2);border-left:0.7mm solid var(--line);
- font-size:calc(10px * var(--sp-fit,1));text-align:left;padding:1.2mm 1.4mm;
+ font-size:calc(11.5px * var(--sp-fit,1));text-align:left;
+ padding:calc(1.2mm * var(--sp-pad,1)) calc(1.4mm * var(--sp-pad,1));
  border-bottom:0.15mm solid var(--line-soft)}
 .sp-group-label{font-weight:800;color:var(--ink)}
 .sp-group-basis{display:inline-block;margin-left:2mm;padding:0 1.2mm;
@@ -1421,7 +1472,7 @@
 .sp-row-group[data-tone="cancel"] td{border-left-color:var(--danger)}
 .sp-row-group[data-tone="stop"] td{border-left-color:var(--warn-border)}
 /* 申し送り(コメント)の行。**横いっぱい**にして読める幅を確保する。 */
-.sp-row-comment td{background:var(--surface);font-size:calc(11px * var(--sp-fit,1));
+.sp-row-comment td{background:var(--surface);font-size:calc(12.5px * var(--sp-fit,1));
  text-align:left;font-style:italic;color:var(--ink-2);white-space:normal}
 /* 紙の下の申し送り欄。**罫線だけの空白**にする(手書きするための場所)。 */
 .sp-note{display:flex;align-items:stretch;gap:2mm;margin-top:2mm;

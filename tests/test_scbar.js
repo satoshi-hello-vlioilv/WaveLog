@@ -274,6 +274,145 @@ let b=null;
       !!overlap&&overlap.draggable===true&&overlap.cursor==='grab',
       JSON.stringify({cursor:overlap&&overlap.cursor,draggable:overlap&&overlap.draggable}));
 
+  /* ---- 3b) 一覧の下の余白（§9.292 ②、利用者の指示） ----
+     「スケジュールの下側に余白を常に設けておき、スクロールで最後の
+      スケジュールも上方向に押し上げられるように」。
+     **確かめるのは「余白の箱がある」ことではなく、実際に最後の行が
+     上まで上がること**——箱だけを見る網は高さ0の実装でも通る。 */
+  const tail=await page.evaluate(()=>{
+   const tl=document.getElementById('scTimeline');
+   const sp=document.getElementById('scTailSpace');
+   if(!tl||!sp)return null;
+   const rows=[...tl.querySelectorAll('.sc-row-line')];
+   const last=rows[rows.length-1];
+   const before=tl.scrollTop;
+   tl.scrollTop=tl.scrollHeight;                 // いちばん下まで送る
+   const top=last.getBoundingClientRect().top-tl.getBoundingClientRect().top;
+   const rest={h:Math.round(sp.getBoundingClientRect().height),
+               rowH:Math.round(last.getBoundingClientRect().height),
+               clientH:tl.clientHeight,
+               lastTopAtBottom:Math.round(top),
+               text:(sp.textContent||'').trim()};
+   tl.scrollTop=before;
+   return rest;
+  });
+  rec('一覧の下に余白があり、最後の行が上まで押し上がる',
+      !!tail&&tail.h>0&&tail.lastTopAtBottom<=tail.rowH+2,JSON.stringify(tail));
+  rec('余白は「いちばん後ろへ入る」場所だと文字で書いてある',
+      !!tail&&/いちばん後ろ/.test(tail.text),(tail&&tail.text||'').slice(0,60));
+  /* **余白のどこでも「いちばん後ろ」の的**（行と行のあいだの±8pxは広げない）。 */
+  const tailSlot=await page.evaluate(()=>{
+   const tl=document.getElementById('scTimeline');
+   const sp=document.getElementById('scTailSpace');
+   const before=tl.scrollTop;tl.scrollTop=tl.scrollHeight;
+   const r=sp.getBoundingClientRect();
+   const y=Math.round(r.top+r.height/2);
+   const x=Math.round(tl.getBoundingClientRect().left+40);
+   const el=document.elementFromPoint(x,y);
+   tl.scrollTop=before;
+   return {inTail:!!(el&&el.closest&&el.closest('#scTailSpace')),y,h:Math.round(r.height)};
+  });
+  rec('余白のまん中は余白そのものが受ける（下の行に吸われない）',
+      !!tailSlot&&tailSlot.inTail,JSON.stringify(tailSlot));
+
+  /* ---- 3c) 同期のタイミングが読める（§9.292 ③、利用者の指示） ----
+     「定期的にスケジュールの同期をしないといけないのでスケジュールデータの
+      同期タイミングについてわかるようにしてください」。
+     以前は「12秒前に取込」の1つだけで、**次はいつか・見張りは動いているか・
+     間隔はいくつか**は`title`の中にしか無かった（触る画面では読めない・§4）。 */
+  const chip=await page.evaluate(()=>{
+   const el=document.getElementById('scSyncChip');
+   return {exists:!!el,hidden:!!(el&&el.hidden),text:(el&&el.textContent||'').trim()};
+  });
+  if(chip.exists&&!chip.hidden){
+   await page.click('#scSyncChip');
+   await page.waitForSelector('#scSyncMenu',{timeout:5000});
+   const menu=await page.evaluate(()=>{
+    const m=document.getElementById('scSyncMenu');
+    const keys=[...m.querySelectorAll('.sc-sync-k')].map(x=>x.textContent.trim());
+    const vals=[...m.querySelectorAll('.sc-sync-v')].map(x=>x.textContent.trim());
+    const r=m.getBoundingClientRect();
+    return {keys,vals,now:!!m.querySelector('#scSyncNowBtn'),
+            inView:r.left>=0&&r.right<=innerWidth+1&&r.top>=0,
+            /* ラベル列がそろっているか（幅が1種類）。 */
+            kw:[...new Set([...m.querySelectorAll('.sc-sync-k')]
+                 .map(x=>Math.round(x.getBoundingClientRect().width)))],
+            over:[...m.querySelectorAll('.sc-sync-v')]
+                 .filter(x=>x.getBoundingClientRect().right>r.right-4).length};
+   });
+   rec('同期のチップを押すと「いつ・次はいつ・間隔」が開く',
+       menu.keys.includes('見張り')&&menu.keys.includes('次の確認')
+       &&menu.keys.includes('最後に取り込んだ'),JSON.stringify(menu.keys));
+   rec('「次の確認」に値が入っている（—のままにしない）',
+       (menu.vals[menu.keys.indexOf('次の確認')]||'').length>0
+       &&menu.vals[menu.keys.indexOf('次の確認')]!=='—',
+       JSON.stringify(menu.vals.slice(0,3)));
+   rec('同じ場所に「いま取り込む」がある（読む場所と打つ手を分けない）',menu.now);
+   rec('浮きメニューは画面の中に収まり、ラベル列がそろう',
+       menu.inView&&menu.kw.length===1&&menu.over===0,JSON.stringify(menu));
+   /* **外を押すと閉じる**（開いた器を控えていないと二度と閉じない・§9.222 ①）。 */
+   await page.mouse.click(5,300);
+   await page.waitForTimeout(300);
+   rec('外を押すと同期のメニューは閉じる',
+       await page.evaluate(()=>!document.getElementById('scSyncMenu')));
+  }else{
+   rec('同期のチップを押すと「いつ・次はいつ・間隔」が開く',false,
+       '同期チップが出ていない: '+JSON.stringify(chip));
+  }
+
+  /* ---- 3d) 一覧を広く使う（§9.292 ⑦、利用者の指示） ----
+     「スケジュール作成時に、とにかく仕掛のデータを多く表示したいです。
+      その時上部のメニューのほぼすべてを畳んで最大限広いスペースで仕掛の
+      一覧表を表示できるような機能を実装してください」
+
+     **確かめるのは「クラスが付く」ことではなく、一覧が実際に広くなること**
+     ——印だけを見る網は、CSSが1行も効いていなくても通る。 */
+  {
+   const before=await page.evaluate(()=>({
+    tl:Math.round(document.getElementById('scTimeline').clientHeight),
+    head:Math.round((document.querySelector('main>header')||{getBoundingClientRect:()=>({height:0})})
+      .getBoundingClientRect().height),
+    btn:!!document.querySelector('#scWideBtn:not([hidden])'),
+    pill:!!document.querySelector('#scWideExit:not([hidden])'),
+   }));
+   rec('「広く」の入口がある（畳む前は戻り道の札を出さない）',
+       before.btn&&!before.pill&&before.head>0,JSON.stringify(before));
+   await page.click('#scWideBtn');
+   await page.waitForTimeout(400);
+   const after=await page.evaluate(()=>{
+    const h=document.querySelector('main>header');
+    const pill=document.getElementById('scWideExit');
+    const r=pill?pill.getBoundingClientRect():null;
+    return {tl:Math.round(document.getElementById('scTimeline').clientHeight),
+            headShown:!!(h&&h.getBoundingClientRect().height>0),
+            toolShown:!!(document.getElementById('scHead')||{}).getBoundingClientRect
+              &&document.getElementById('scHead').getBoundingClientRect().height>0,
+            pill:!!(pill&&!pill.hidden&&r.width>0&&r.top>=0&&r.bottom<=innerHeight+1),
+            pillText:(pill&&pill.textContent||'').trim(),
+            kept:(()=>{try{return !!JSON.parse(localStorage.getItem('scLayoutPrefsV1')||'{}').wide}catch(e){return false}})()};
+   });
+   rec('上の帯を畳むと一覧が実際に広くなる',after.tl>before.tl+40,
+       JSON.stringify({before:before.tl,after:after.tl}));
+   rec('上の帯（画面名・状態・操作列）と道具列が畳まれる',
+       !after.headShown&&!after.toolShown,JSON.stringify(after));
+   rec('戻り道の札が常に見えていて、戻し方を書いてある',
+       after.pill&&/元の表示に戻す/.test(after.pillText)&&/Esc/.test(after.pillText),
+       JSON.stringify({pill:after.pill,text:after.pillText}));
+   rec('広く使う設定はこの端末に残る（毎回選び直させない）',after.kept,String(after.kept));
+   /* **Escで戻せる**（畳んだ先から戻れない状態を作らない・§4）。 */
+   await page.keyboard.press('Escape');
+   await page.waitForTimeout(400);
+   const back=await page.evaluate(()=>({
+    tl:Math.round(document.getElementById('scTimeline').clientHeight),
+    headShown:!!(document.querySelector('main>header')||{}).getBoundingClientRect
+      &&document.querySelector('main>header').getBoundingClientRect().height>0,
+    pill:!!document.querySelector('#scWideExit:not([hidden])'),
+    kept:(()=>{try{return !!JSON.parse(localStorage.getItem('scLayoutPrefsV1')||'{}').wide}catch(e){return false}})(),
+   }));
+   rec('Escで元の表示に戻る',back.headShown&&!back.pill&&!back.kept
+       &&Math.abs(back.tl-before.tl)<=2,JSON.stringify({before:before.tl,back:back.tl,...back}));
+  }
+
   /* ---- 4) 中身が無い場面では入口ごと消える ---- */
   await page.evaluate(()=>{const b=document.getElementById('scModeBoard');if(b)b.click()});
   await page.waitForTimeout(1500);
@@ -292,7 +431,7 @@ let b=null;
       body:JSON.stringify({id:i,user_id:'test-scbar'})});
    },id);
    await page.evaluate(()=>{try{const p=JSON.parse(localStorage.getItem('scLayoutPrefsV1')||'{}');
-     delete p.childBadge;delete p.childBadgeCol;
+     delete p.childBadge;delete p.childBadgeCol;delete p.wide;
      localStorage.setItem('scLayoutPrefsV1',JSON.stringify(p))}catch(e){}});
    await setMode('edit');
   }catch(e){}

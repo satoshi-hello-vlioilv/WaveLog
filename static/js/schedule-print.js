@@ -328,6 +328,77 @@
     スクロールせずに見えている列**だけ**を紙にする——列数が絞られるぶん、
     下のwithMm()が「設定した幅をそのまま使える」場面が増え、画面の見た目に
     近い、余白のある紙になる。 */
+ /* ---------- 印刷範囲(§9.292 ①、利用者の指示「スケジュール印刷範囲の指定が
+    できるようにしてください」) ----------
+    §9.291 ②で稼働カレンダーが足りなくなったら伸びるようにしたので、予定は
+    何ヶ月先まででも並ぶ。そのまま刷ると**紙が何十枚にもなる**——現場が
+    配りたいのは「今日から3日ぶん」「この直ぶん」であって全部ではない。
+
+    絞り方は3つで、**既定は`all`＝今までどおり全部**（設定を触っていない
+    現場の刷り上がりを黙って変えない）:
+      all    今の表示範囲ぜんぶ（既定）
+      date   現場歴の日付で from〜to
+      picked 画面で選んでいる予定だけ（§9.170／§9.177の`#scPickBar`）
+
+    **日付は`workDayKey()`で数える**——紙のページ分けと同じ関数を通す。
+    別に数えると「範囲は18日までなのに、18日の紙に19日の行が混じる」が
+    起きる（§9.115・§9.197と同じ理由）。
+
+    **日付の決まっていない予定は範囲に入れられない**（比べる値が無い）。
+    落とすのは正しいが、**黙って落とさない**（§4）——何件はじいたかを
+    その場に書く。 */
+ const RANGE_MODES=[
+  {key:'all',   label:'いまの表示範囲ぜんぶ',note:'画面に出ている予定をすべて刷ります（既定）'},
+  {key:'date',  label:'日付で絞る',          note:'現場歴の日付で「この日から・この日まで」を決めます'},
+  {key:'picked',label:'選んだ予定だけ',      note:'一覧のチェックで選んでいる予定だけを刷ります'},
+ ];
+ const DATE_RE=/^\d{4}-\d{2}-\d{2}$/;
+ function rangeOf(opt){
+  const k=String(opt&&opt.range||'');
+  return RANGE_MODES.some(r=>r.key===k)?k:'all';
+ }
+ /* 画面が選んでいる予定のid（文字列）。**`scState`を直に覗かない**——
+    選べる行の条件（未着手の親だけ）は画面の1箇所が持っている。 */
+ function pickedIdSet(){
+  const view=WL.scheduleView;
+  let ids=[];
+  try{if(typeof view?.pickedIds==='function')ids=view.pickedIds()||[]}catch(_){ids=[]}
+  return new Set(ids.map(String));
+ }
+ /* 1件の予定が乗る「現場歴の日付」。**buildPages と同じ取り方**（実績が
+    あればその開始、無ければ予定の開始）。 */
+ function entryDayKey(e){
+  const useActual=(e.state==='完了'||e.state==='着手')&&e.actual&&e.actual.startAt;
+  return workDayKey(e,useActual?e.actual.startAt:e.plannedStart);
+ }
+ /* 印刷範囲を当てる。**親を絞り、残った親の子だけを残す**——子だけを
+    落とすと内訳が消え、子だけを残すと親の無い行が紙に出る。
+    `isCurrent`＝いま画面で開いている設備か（「選んだ予定だけ」はこの端末が
+    開いている設備の選択なので、他の設備には当てられない）。 */
+ function applyRange(entries,opt,isCurrent){
+  const list=entries||[];
+  const mode=rangeOf(opt);
+  if(mode==='all')return list.slice();
+  let keep;
+  if(mode==='picked'){
+   if(!isCurrent)return [];
+   const set=pickedIdSet();
+   keep=e=>set.has(String(e.id));
+  }else{
+   const from=String(opt&&opt.dateFrom||''),to=String(opt&&opt.dateTo||'');
+   keep=e=>{
+    const k=entryDayKey(e);
+    if(!k)return false;                       // 日付未定は範囲に入れられない
+    if(from&&k<from)return false;
+    if(to&&k>to)return false;
+    return true;
+   };
+  }
+  const alive=new Set();
+  list.forEach(e=>{if(e.parentId==null&&keep(e))alive.add(String(e.id))});
+  return list.filter(e=>e.parentId==null?alive.has(String(e.id)):alive.has(String(e.parentId)));
+ }
+
  const COLUMN_SCOPES=[
   {key:'all',    label:'すべての列',      note:'横スクロールしないと見えない列も含めて全部載せます（既定）'},
   {key:'visible',label:'見える範囲の列だけ',note:'いま画面をスクロールせずに見えている列だけを、画面に近い余白で載せます'},
@@ -370,6 +441,44 @@
     紙でもそのまま**になる。下限を切ったら（読めない大きさになるなら）
     そこで止めて、収まらないことをプレビューに文字で出す（§4）。 */
  const MIN_FIT=.62;
+ /* ---------- 文字は枠いっぱいまで大きく（§9.292 ⑥、利用者の指示） ----------
+    「作業スケジュールの印刷において、枠に対して文字が小さすぎて非常に
+     見にくいです。カラムも含めて、枠のサイズに対してはみ出さない程度に
+     文字サイズをできるだけぎりぎりまで大きくしたいです。ベースサイズを
+     大きめの設定で変更したうえで、印刷時の文字サイズやセル内の余白の
+     調整＆設定保存ができるようにしてください」
+
+    §9.236の「収まるならそのまま使う」は**撤回した**——列の少ない設備では
+    紙の右に何十mmも余り、そのぶん文字が小さいままだった。いまは
+    **余っているぶんだけ幅も文字も一緒に大きくする**（縮めるときと同じ比率で、
+    向きが逆になっただけ）。**幅と文字を必ず同じ比率で動かすこと**——
+    片方だけ動かすと「画面で決めたこの列に何文字入るか」が紙で変わる
+    （§9.237で縮める側について決めたのと同じ理由）。
+    **上限を置く**（`MAX_FIT`）——1列しか出さない紙で文字だけが巨大になる。 */
+ const MAX_FIT=1.35;
+ /* 利用者が選ぶ文字の大きさ。`auto`＝枠いっぱいまで（既定）。
+    **綴りと呼び名は1箇所**（テストも画面もここを見る）。 */
+ const FONT_SCALES=[
+  {key:'auto',label:'自動（枠いっぱい）',note:'紙の余りぶんだけ、幅と文字を一緒に大きくします（既定）'},
+  {key:'0.85',label:'小',  note:'1枚により多くの行を載せたいとき'},
+  {key:'1',   label:'標準',note:'画面と同じ大きさの比率で刷ります'},
+  {key:'1.15',label:'大',  note:'少し大きめ'},
+  {key:'1.3', label:'特大',note:'いちばん大きく（列が多い設備では紙に合わせて縮みます）'},
+ ];
+ /* セルの内側の余白。文字の大きさとは**別の軸**（詰めれば1枚に多く入る）。 */
+ const CELL_PADS=[
+  {key:'0.6',label:'詰める',note:'行が薄くなり、1枚により多く入ります'},
+  {key:'1',   label:'標準',  note:'既定'},
+  {key:'1.5', label:'広め',  note:'手で書き込む欄が広くなります'},
+ ];
+ function fontScaleOf(opt){
+  const k=String(opt&&opt.fontScale||'');
+  return FONT_SCALES.some(x=>x.key===k)?k:'auto';
+ }
+ function cellPadOf(opt){
+  const k=String(opt&&opt.cellPad||'');
+  return CELL_PADS.some(x=>x.key===k)?k:'1';
+ }
  const MIN_COL_MM=4;      // これ以下の列は文字が1つも入らない
  const FRAME_MM=.5;       // 表を囲む器(.sp-table-wrap)の枠のぶん
  /* ---------- 下限のある比例配分（§9.237） ----------
@@ -414,19 +523,24 @@
   }
   return mm;
  }
- function withMm(cols,usableMm){
+ function withMm(cols,usableMm,opt){
   const budget=Math.max(1,usableMm-FRAME_MM);
   const natural=cols.map(c=>Math.max(MIN_COL_MM,(c.w||60)*MM_PER_PX));
   const total=natural.reduce((s,w)=>s+w,0)||1;
-  if(total<=budget)
-   return {cols:cols.map((c,i)=>({...c,mm:Math.round(natural[i]*10)/10})),fit:1,over:0};
-  const scale=budget/total;
+  /* どこまで大きくしたいか（§9.292 ⑥）。`auto`は上限まで、数を選んで
+     いればその倍率まで。**紙に入る範囲で**（`room`）頭打ちにする。 */
+  const want=fontScaleOf(opt);
+  const target=want==='auto'?MAX_FIT:Number(want);
+  const room=budget/total;
   /* 幅は今までどおり**必ず**用紙に収める（はみ出す組み合わせを原理的に
      作らない、という既存の保証は変えない）。文字だけ下限で止める。 */
-  const fit=Math.max(MIN_FIT,scale);
-  const mm=shareMm(natural,budget);
+  const fit=Math.max(MIN_FIT,Math.min(target,room));
+  const scaled=natural.map(w=>w*fit);
+  const tot=scaled.reduce((s,w)=>s+w,0);
+  const mm=tot<=budget?scaled.map(v=>Math.round(v*10)/10):shareMm(scaled,budget);
   return {cols:cols.map((c,i)=>({...c,mm:mm[i]})),
-          fit:Math.round(fit*1000)/1000,over:Math.round((total-budget)*10)/10};
+          fit:Math.round(fit*1000)/1000,
+          over:Math.round(Math.max(0,tot-budget)*10)/10};
  }
 
  /* 記入欄。**空のまま罫線だけ**にする(薄い下線を入れると書きにくい)。 */
@@ -598,7 +712,7 @@
  }
 
  function pageHtml(page,opt,pageNo,pageCount){
-  const fitted=withMm(page.cols||printColumns(opt),paperUsableMm(opt.paper).w);
+  const fitted=withMm(page.cols||printColumns(opt),paperUsableMm(opt.paper).w,opt);
   const cols=fitted.cols;
   /* 幅は**colgroupで与える**（CSSのクラスに書くと利用者が変えられない）。 */
   const group=`<colgroup>${cols.map(c=>`<col style="width:${c.mm}mm">`).join('')}</colgroup>`;
@@ -669,9 +783,15 @@
    : page.total;
   const parts=page.parts||1;
   const cont=parts>1?`（${page.part||1}枚目 / 全${parts}枚）`:'';
-  /* 収まらないときは**文字も一緒に縮める**（§9.237）。`--sp-fit`は
+  /* 収まらないときは**文字も一緒に縮める**（§9.237）。余っているときは
+     **一緒に大きくする**（§9.292 ⑥）。`--sp-fit`は
      `.sp-table`の中の文字サイズにだけ掛かる（用紙・余白はmmのまま）。 */
-  const fitVar=fitted.fit<1?` style="--sp-fit:${fitted.fit}"`:'';
+  /* セルの余白は文字とは別の軸（§9.292 ⑥）。**既定のときは書かない**
+     ——書かない紙は今までと1pxも変わらない。 */
+  const pad=cellPadOf(opt);
+  const vars=[fitted.fit!==1?`--sp-fit:${fitted.fit}`:'',
+              pad!=='1'?`--sp-pad:${pad}`:''].filter(Boolean);
+  const fitVar=vars.length?` style="${vars.join(';')}"`:'';
   return `<section class="sp-page" data-paper="${esc(opt.paper||'a4-portrait')}"${
     opt.borders===false?' data-borders="off"':''}${fitVar}>
    <header class="sp-head">
@@ -745,6 +865,10 @@
                  useGroups:true,commentBox:true,writePattern:'actual',
                  includeChildren:false,paper:'a4-portrait',
                  columnScope:'all',borders:true,
+                 /* 印刷範囲(§9.292 ①)。**既定は`all`＝今までどおり全部**。 */
+                 range:'all',dateFrom:'',dateTo:'',
+                 /* 紙の文字とセルの余白(§9.292 ⑥)。既定は「枠いっぱい」。 */
+                 fontScale:'auto',cellPad:'1',
                  zoomMode:'fit',zoomPct:100};
  function loadPref(){
   try{
@@ -755,6 +879,14 @@
    if(!PAPER_SIZES.some(p=>p.key===v.paper))v.paper='a4-portrait';
    if(!COLUMN_SCOPES.some(s=>s.key===v.columnScope))v.columnScope='all';
    v.borders=v.borders!==false;
+   /* 印刷範囲(§9.292 ①)。知らない綴り・壊れた日付は既定へ倒す
+      （**「絞れない値でこっそり0件」を作らない**）。 */
+   v.range=rangeOf(v);
+   v.dateFrom=DATE_RE.test(String(v.dateFrom||''))?String(v.dateFrom):'';
+   v.dateTo=DATE_RE.test(String(v.dateTo||''))?String(v.dateTo):'';
+   /* 紙の文字とセルの余白(§9.292 ⑥)。知らない綴りは既定へ倒す。 */
+   v.fontScale=fontScaleOf(v);
+   v.cellPad=cellPadOf(v);
    /* 倍率(§9.238 ③)。知らない値は既定へ倒す（壊れた保存値で
       プレビューが開けなくならないように）。 */
    v.zoomMode=zoomModeOf(v);
@@ -810,22 +942,26 @@
      }
      otherEntries.set(name,entries);
     }
+    /* 印刷範囲(§9.292 ①)。**設備ごとに当てる**——「選んだ予定だけ」は
+       この端末が開いている設備の選択なので、他の設備には当てられない。 */
+    const rows=applyRange(entries,opt,name===here);
     if(name===here){
      /* いま開いている設備は成り代わる必要が無い(scStateがそのまま正しい)。 */
-     pages=pages.concat(buildPages(name,entries,opt));
+     pages=pages.concat(buildPages(name,rows,opt));
     }else{
      /* **紙の列は`timeline:<設備>`から引く**(§9.235)ので、成り代わる前に
         読んでおく(`WL.columnLayout`はターゲットごとのキャッシュなので、
         読み込みは1回だけで済む)。 */
      try{await WL.columnLayout.load('timeline:'+name)}catch(_){}
      const built=(typeof view.withEquipment==='function')
-       ?await view.withEquipment(name,entries,()=>buildPages(name,entries,opt))
-       :buildPages(name,entries,opt);
+       ?await view.withEquipment(name,rows,()=>buildPages(name,rows,opt))
+       :buildPages(name,rows,opt);
      pages=pages.concat(built);
     }
    }
   }else{
-   pages=pages.concat(buildPages(view.equipment(),view.entries(),opt));
+   pages=pages.concat(buildPages(view.equipment(),
+                                 applyRange(view.entries(),opt,true),opt));
   }
   return pages;
  }
@@ -1002,10 +1138,15 @@
    const st=e.state||'予定';
    return (st==='完了'||st==='取消')?!!(pref&&pref.includeDone):true;
   });
-  const days=new Set(shown.map(e=>{
-   const useActual=(e.state==='完了'||e.state==='着手')&&e.actual&&e.actual.startAt;
-   return workDayKey(e,useActual?e.actual.startAt:e.plannedStart);
-  }));
+  const days=new Set(shown.map(e=>entryDayKey(e)));
+  /* 印刷範囲(§9.292 ①)。**「載せるもの」の他のチェックを当てたあと**の
+     顔ぶれで数える——完了を載せない設定なら、その日は範囲の候補にも
+     出ない（画面に出ていない日を選ばせない）。 */
+  const dayKeys=[...days].filter(Boolean).sort();
+  const undated=shown.filter(e=>!entryDayKey(e)).length;
+  const picked=pickedIdSet();
+  const pickedCount=shown.filter(e=>picked.has(String(e.id))).length;
+  const ranged=applyRange(shown,pref,true).filter(e=>e.parentId==null).length;
   const names=(typeof view?.equipmentNames==='function')?view.equipmentNames():[];
   const allCols=(typeof view?.printColumnKeys==='function')?view.printColumnKeys().length:0;
   let visCols=allCols;
@@ -1021,6 +1162,21 @@
    grouped:(typeof view?.groupMode==='function')&&view.groupMode()!=='none',
    groupLabel:(typeof view?.groupModeLabel==='function')?view.groupModeLabel():'',
    allCols,visCols,
+   /* いま効いている文字の倍率(§9.292 ⑥)。**紙を組み立てるのと同じ
+      `withMm()`に聞く**——画面で別に計算すると、案内と刷り上がりが
+      食い違う（§9.163）。 */
+   fit:(()=>{
+    try{
+     const cols=printColumns(pref&&pref.columnScope?pref:{...(pref||{}),columnScope:'all'});
+     return withMm(cols,paperUsableMm((pref&&pref.paper)||'a4-portrait').w,pref).fit;
+    }catch(_){return 1}
+   })(),
+   /* 印刷範囲(§9.292 ①)。`shownCount`は範囲を当てる前・`rangedCount`は
+      当てたあと。**両方出す**——「12件中3件」と書けないと、絞れているのか
+      そもそも予定が3件なのかが読めない。 */
+   shownCount:shown.length,rangedCount:ranged,
+   dayKeys,firstDay:dayKeys[0]||'',lastDay:dayKeys[dayKeys.length-1]||'',
+   undatedCount:undated,pickedCount,
   };
  }
 
@@ -1034,10 +1190,66 @@
         :(note?`<small>${esc(note)}</small>`:''))
    +`</span></label>`;
  }
+ /* ---------- ① 載せるもの / 印刷範囲(§9.292 ①) ----------
+    **日付は打たせず、実際にある日から選ばせる**——打つ形にすると
+    ①1文字ごとに欄が作り直されてカーソルが飛び(§9.117) ②予定の無い日や
+    逆さまの範囲を作れてしまう。選択欄なら「どこからどこまで選べるのか」が
+    開いた時点で読める（§CLAUDE 画面基準: 探させない・推測させない）。 */
+ function dayPickHtml(id,cur,facts,counts){
+  const opts=facts.dayKeys.map(k=>
+   `<option value="${esc(k)}"${cur===k?' selected':''}>${esc(dayLabel(k))}（${counts.get(k)||0}件）</option>`).join('');
+  return `<select class="sp-range-day" id="${id}" data-sprange="${id}"${facts.dayKeys.length?'':' disabled'}>${opts}</select>`;
+ }
+ function rangeRows(pref,facts){
+  const cur=rangeOf(pref);
+  /* 「選んだ予定だけ」は画面のチェックが要る。**押せるのに何も起きない
+     ようにしない**（§4）——選んでいなければ理由を書いて押せなくする。 */
+  const pickBlock=facts.pickedCount>0?''
+   :'一覧のチェックで予定を選んでから使えます（実施中・完了は選べません）';
+  const dateBlock=facts.dayKeys.length?'':'日付の決まっている予定がありません';
+  const rows=RANGE_MODES.map(r=>{
+   const off=(r.key==='picked'&&!!pickBlock)||(r.key==='date'&&!!dateBlock);
+   const why=r.key==='picked'?pickBlock:(r.key==='date'?dateBlock:'');
+   const note=r.key==='picked'&&!off?`いま ${facts.pickedCount} 件を選んでいます`:r.note;
+   return `<label class="sp-pat${cur===r.key?' is-on':''}${off?' is-off':''}" title="${esc(off?why:r.note)}">
+     <input type="radio" name="spRange" value="${r.key}"${cur===r.key?' checked':''}${off?' disabled':''}>
+     <span><b>${esc(r.label)}</b><small>${esc(off?why:note)}</small></span></label>`;
+  }).join('');
+  /* 日ごとの件数（選ばせる欄に添える）。 */
+  const view=WL.scheduleView;
+  const list=(typeof view?.entries==='function'?view.entries():[])||[];
+  const counts=new Map();
+  list.filter(e=>e.parentId==null&&!e.__pending).forEach(e=>{
+   const st=e.state||'予定';
+   if((st==='完了'||st==='取消')&&!(pref&&pref.includeDone))return;
+   const k=entryDayKey(e);if(!k)return;
+   counts.set(k,(counts.get(k)||0)+1);
+  });
+  const pick=cur==='date'
+   ?`<div class="sp-range-days">
+      <label><span>この日から</span>${dayPickHtml('spRangeFrom',pref.dateFrom||facts.firstDay,facts,counts)}</label>
+      <label><span>この日まで</span>${dayPickHtml('spRangeTo',pref.dateTo||facts.lastDay,facts,counts)}</label>
+     </div>`:'';
+  /* **絞れていることは必ず文字で出す**（§3）。「12件中3件」と書けないと、
+     絞れているのか予定が3件しかないのかが読めない。 */
+  const note=cur==='all'
+   ?`この設備の予定 ${facts.shownCount} 件をすべて刷ります。`
+   :`この設備の予定 ${facts.shownCount} 件のうち <b>${facts.rangedCount} 件</b>を刷ります。`;
+  const warn=(cur==='date'&&facts.undatedCount)
+   ?`<br>日付の決まっていない予定 ${facts.undatedCount} 件は、比べる日付が無いので範囲に入りません。`:'';
+  const other=(cur==='picked'&&pref.allEquipment)
+   ?'<br>「選んだ予定だけ」はこの端末が開いている設備の選択なので、ほかの設備は1件も出ません。':'';
+  return `<div class="sp-opt-group"><h4>印刷範囲</h4>
+   <div class="sp-pats" id="spRange">${rows}</div>${pick}
+   <p class="sp-opt-note" id="spRangeNote">${note}${warn}${other}</p>
+  </div>`;
+ }
  /* ---------- ① 載せるもの ----------
     「この紙に何が出るか」だけ。見え方(列・枠線・記入欄)は②へ移した。 */
  function optionRows(pref,facts){
-  return `${cb(pref,'allEquipment','すべての設備を続けて印刷する','設備ごとにページを分けます',
+  return `${rangeRows(pref,facts)}
+  <div class="sp-opt-group"><h4>載せる予定</h4>
+   ${cb(pref,'allEquipment','すべての設備を続けて印刷する','設備ごとにページを分けます',
       facts.equipments>1?'':(facts.equipments?'この画面に設備が1台しかありません':'設備の一覧を読めていません'))}
    ${cb(pref,'includeDone','完了・取消も載せる','ふだんは載せません（これから流すものだけ配るため）',
       (facts.unknown||facts.doneCount>0)?'':'この設備に完了・取消の予定がありません')}
@@ -1048,7 +1260,8 @@
       '画面と同じまとまりで区切ります',
       facts.grouped?'':'画面が「まとめない」なので、入れる見出しがありません')}
    ${cb(pref,'pageByDate','日付ごとにページを分ける','日ごとに配る場合はこのまま',
-      (facts.unknown||facts.dayCount>1)?'':`載せる予定が${facts.dayCount===0?'ありません':'1日ぶんしかありません'}`)}`;
+      (facts.unknown||facts.dayCount>1)?'':`載せる予定が${facts.dayCount===0?'ありません':'1日ぶんしかありません'}`)}
+  </div>`;
  }
  /* ---------- ② 見せ方 ----------
     「同じ中身をどう刷るか」。列の範囲・枠線・記入欄はどれもここ。 */
@@ -1070,9 +1283,40 @@
   const patRows=WRITE_PATTERNS.map(p=>`<label class="sp-pat${cur===p.key?' is-on':''}" title="${esc(p.note)}">
      <input type="radio" name="spWritePattern" value="${p.key}"${cur===p.key?' checked':''}>
      <span><b>${esc(p.label)}</b><small>${esc(p.note)}</small></span></label>`).join('');
+  /* 紙の文字とセルの余白（§9.292 ⑥）。**効いている大きさを文字で出す**
+     （§3・§6）——「自動」を選んでいると倍率が場面で変わるので、いま何倍で
+     刷られるのかが読めないと選びようが無い。 */
+  const fsCur=fontScaleOf(pref),padCur=cellPadOf(pref);
+  const fsRows=FONT_SCALES.map(x=>`<label class="sp-pat${fsCur===x.key?' is-on':''}" title="${esc(x.note)}">
+     <input type="radio" name="spFontScale" value="${x.key}"${fsCur===x.key?' checked':''}>
+     <span><b>${esc(x.label)}</b><small>${esc(x.note)}</small></span></label>`).join('');
+  const padRows=CELL_PADS.map(x=>`<label class="sp-pat${padCur===x.key?' is-on':''}" title="${esc(x.note)}">
+     <input type="radio" name="spCellPad" value="${x.key}"${padCur===x.key?' checked':''}>
+     <span><b>${esc(x.label)}</b><small>${esc(x.note)}</small></span></label>`).join('');
+  const fit=facts.fit||1;
+  /* **床に着いたら打つ手を書く**（§4）——「縮めています」だけでは、
+     大きさを選び直しても変わらない理由と、次にすることが読めない
+     （列が多い設備ではここが既定の状態になる）。 */
+  const floored=fit<=MIN_FIT+0.001;
+  const fitNote=`いまの刷り上がりは <b>${Math.round(fit*100)}%</b>（本文 約${(12.5*fit).toFixed(1)}px 相当）。`
+   +(floored
+     ?'列が多く、これ以上は小さくできないところまで縮めています。'
+      +'<b>大きくするには、②の「列の範囲」を狭めるか、③で用紙を大きく（A3）／横向きにしてください。</b>'
+     :(fsCur==='auto'
+       ?'紙に余っているぶんだけ、幅と文字を一緒に大きくしています。'
+       :(fit<Number(fsCur)-0.001
+         ?'列が多いので、紙に収まるところまで縮めています。'
+         :'選んだ大きさで刷ります。')));
   return `<div class="sp-opt-group"><h4>列の範囲</h4>
    <div class="sp-pats" id="spColumnScope">${scopeRows}</div>
    <p class="sp-opt-note">画面に出ている ${facts.allCols} 列のうち、スクロールせずに見えているのは ${facts.visCols} 列です。</p>
+  </div>
+  <div class="sp-opt-group"><h4>文字の大きさ</h4>
+   <div class="sp-pats" id="spFontScale">${fsRows}</div>
+   <p class="sp-opt-note" id="spFitNote">${fitNote}</p>
+  </div>
+  <div class="sp-opt-group"><h4>セルの余白</h4>
+   <div class="sp-pats" id="spCellPad">${padRows}</div>
   </div>
   <div class="sp-opt-group"><h4>枠線</h4>
    ${cb(pref,'borders','枠線（表の格子）を出す',
@@ -1211,9 +1455,41 @@
   [box,look].forEach(host=>host.querySelectorAll('[data-opt]').forEach(inp=>inp.onclick=()=>{
    pv.pref[inp.dataset.opt]=!!inp.checked;savePref(pv.pref);paintOptions();renderPreview();
   }));
+  /* 印刷範囲(§9.292 ①)。**選んだらその場で刷り上がりが変わる**（同じ作法）。
+     日付で絞るへ切り替えたときは、**いま画面に出ている最初と最後の日**を
+     入れておく——空欄のまま「絞る」を選ばせると、押しても何も変わらない
+     （＝壊れて見える）。そこから狭めてもらう。 */
+  box.querySelectorAll('input[name="spRange"]').forEach(inp=>inp.onclick=()=>{
+   pv.pref.range=inp.value;
+   if(inp.value==='date'){
+    if(!pv.pref.dateFrom||!facts.dayKeys.includes(pv.pref.dateFrom))pv.pref.dateFrom=facts.firstDay;
+    if(!pv.pref.dateTo||!facts.dayKeys.includes(pv.pref.dateTo))pv.pref.dateTo=facts.lastDay;
+   }
+   savePref(pv.pref);paintOptions();renderPreview();
+  });
+  /* 日付の欄。**逆さまの範囲を作らせない**——掴んだほうを正として、
+     もう一方が追い越していたら合わせる（断って戻すと、なぜ動かないのかを
+     考えることになる）。 */
+  box.querySelectorAll('.sp-range-day').forEach(sel=>sel.onchange=()=>{
+   if(sel.id==='spRangeFrom'){
+    pv.pref.dateFrom=sel.value;
+    if(pv.pref.dateTo&&pv.pref.dateTo<sel.value)pv.pref.dateTo=sel.value;
+   }else{
+    pv.pref.dateTo=sel.value;
+    if(pv.pref.dateFrom&&pv.pref.dateFrom>sel.value)pv.pref.dateFrom=sel.value;
+   }
+   savePref(pv.pref);paintOptions();renderPreview();
+  });
   /* 列の範囲(§9.236)。**選んだらその場で刷り上がりが変わる**（同じ作法）。 */
   look.querySelectorAll('input[name="spColumnScope"]').forEach(inp=>inp.onclick=()=>{
    pv.pref.columnScope=inp.value;savePref(pv.pref);paintOptions();renderPreview();
+  });
+  /* 紙の文字とセルの余白(§9.292 ⑥)。**選んだらその場で刷り上がりが変わる**。 */
+  look.querySelectorAll('input[name="spFontScale"]').forEach(inp=>inp.onclick=()=>{
+   pv.pref.fontScale=inp.value;savePref(pv.pref);paintOptions();renderPreview();
+  });
+  look.querySelectorAll('input[name="spCellPad"]').forEach(inp=>inp.onclick=()=>{
+   pv.pref.cellPad=inp.value;savePref(pv.pref);paintOptions();renderPreview();
   });
   /* 記入欄のパターン(§9.191)。**選んだらその場で刷り上がりが変わる**。 */
   look.querySelectorAll('input[name="spWritePattern"]').forEach(inp=>inp.onclick=()=>{
@@ -1232,7 +1508,13 @@
     pv.pref.paper=paperKeyWith(pv.pref.paper,inp.value);
     savePref(pv.pref);paintOptions();renderPreview();
    });
-  if(keepOpt){
+  const keepRange=focused&&focused.dataset?focused.dataset.sprange:'';
+  if(keepRange){
+   /* 日付の欄は選び直すたびに作り直されるので、**同じ欄へ戻す**
+      （戻さないと、続けて絞り込むのにマウスで拾い直すことになる）。 */
+   const back=el.querySelector(`.sp-pv-side [data-sprange="${keepRange}"]:not([disabled])`);
+   if(back)back.focus();
+  }else if(keepOpt){
    const back=el.querySelector(`.sp-pv-side [data-opt="${keepOpt}"]:not([disabled])`);
    if(back)back.focus();
   }else if(keepName){
@@ -1334,6 +1616,20 @@
                    /* 列の範囲(§9.236)。名前と並びは画面の文言と同じものを
                       1箇所から出す（テストも同じ表を見る）。 */
                    columnScopes:()=>COLUMN_SCOPES.map(s=>({...s})),
+                   /* 紙の文字とセルの余白(§9.292 ⑥)。名前と並びは画面の文言と
+                      同じものを1箇所から出す（テストも同じ表を見る）。 */
+                   fontScales:()=>FONT_SCALES.map(x=>({...x})),
+                   cellPads:()=>CELL_PADS.map(x=>({...x})),
+                   /* 効いている倍率。**紙を組むのと同じ関数に聞ける**ように
+                      しておく——別に数えると案内と刷り上がりが食い違う。 */
+                   fitOf:(cols,usableMm,opt)=>withMm(cols,usableMm,opt).fit,
+                   /* 印刷範囲(§9.292 ①)。名前と並びは画面の文言と同じものを
+                      1箇所から出す（テストも同じ表を見る）。 */
+                   rangeModes:()=>RANGE_MODES.map(r=>({...r})),
+                   /* 範囲を当てた結果。**紙になる行そのもの**を外から数え
+                      られるようにしておく——「札が並ぶ」だけを見る網は、
+                      1件も絞らない実装でも通る。 */
+                   applyRange:(entries,opt,isCurrent)=>applyRange(entries,opt,isCurrent!==false),
                    /* プレビューは**中身を見て確かめられる**ようにしておく
                       （テストが「何枚になったか」を画面から読むため）。 */
                    openPreview,closePreview,previewSheets:()=>pv.sheets.slice()};

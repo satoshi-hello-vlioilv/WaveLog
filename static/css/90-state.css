@@ -203,6 +203,29 @@ body.qa-mode.qa-view-raw #listToolbar{display:flex}
    固定は`tests/test_actuals.js`（実際に開いて、器の外へ出ていないことを見る）。 */
 body:is(.rp-mode,.db-mode,.rec-mode,.cal-mode,.sc-mode,.mm-mode,.lg-mode,.ac-mode)
  :is(#grid,#listToolbar,#tabs,#genericFilterBar,.qa-v7){display:none}
+/* ---------- 一覧を広く使う（§9.292 ⑦、利用者の指示） ----------
+   「スケジュール作成時に、とにかく仕掛のデータを多く表示したいです。
+    その時上部のメニューのほぼすべてを畳んで最大限広いスペースで仕掛の
+    一覧表を表示できるような機能を実装してください」
+
+   畳むのは**上の帯**（アプリのヘッダー＝画面名・状態・全体操作・操作列と、
+   スケジュールの道具列）。実測でこの2つが縦に約110px使っており、そのぶんが
+   そのまま一覧の行数になる。**左メニューは触らない**——あちらは自分の
+   畳み（§9.58）を持っており、同じことをする入口を2つ置かない（§9.207）。
+
+   印は`body.sc-wide`の1つ。**画面ごとの書き分けを増やさない**（§9.288 ⑥）。
+   戻り道（`.sc-wide-exit`）は**常に見えている**（§4）。 */
+body.sc-mode.sc-wide>.layout>main>header,
+body.sc-mode.sc-wide main>header{display:none}
+body.sc-mode.sc-wide #scHead{display:none}
+/* 戻り道の札。器の右上へ浮かせる（一覧の行を1行も食わない）。 */
+.sc-wide-exit{position:absolute;top:var(--space-1);right:var(--space-2);
+ z-index:var(--z-popover);display:inline-flex;align-items:center;gap:var(--gap-hair);
+ height:var(--ctl-h-xs);padding:0 var(--space-2);
+ border:1px solid var(--teal);border-radius:var(--radius-pill);
+ background:var(--pale);color:var(--computed-fg);
+ font-size:var(--fs-micro);font-weight:800;cursor:pointer}
+.sc-wide-exit:hover{background:var(--teal);color:#fff}
 /* 保険: 他のメイン画面統合ビューが開いている間はマスタ管理パネルを必ず隠す。
    各ビューのopenXxxがwindow.exitMasterMaint()を呼ぶのが本筋だが、呼び忘れても
    画面が重なって見えないようにしておく(実際に、データ一覧へ移動したときだけ

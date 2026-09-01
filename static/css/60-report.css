@@ -613,6 +613,13 @@
 }
 .rp-field{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:var(--space-1);padding:1px 2px;border-bottom:1px solid #eef2f4;font-size:8.5px}
 .rp-field-label{color:#60747b;font-size:8px;font-weight:700;white-space:nowrap}
+/* ラベルを**値の上**へ置く（§9.292 ⑤、利用者の指示「上下にラベルと内容が
+   組み合わさるパターンでレイアウトできるように」）。1列にして縦へ積むだけ
+   ——**ラベルの折り返しは許す**（横並びのときは`nowrap`で幅を食わせない
+   のが正しいが、上下では自分の行なので切る理由が無い）。
+   印は**マスが持つ**ので、盤の見本と紙は同じ規則で描かれる。 */
+.rp-field-stack{grid-template-columns:minmax(0,1fr);gap:0}
+.rp-field-stack .rp-field-label{white-space:normal}
 /* 以前はwhite-space:nowrap+ellipsisで1行に切り詰めていたため、特に
    測定条件など項目数の多いセクションで値の文字が見切れていた不具合が
    あった。省略せず折り返して全文を表示するようにする(行が必要な分だけ

@@ -1536,6 +1536,11 @@
          <button type="button" class="fb-head ghost" title="値を持たず文字だけを出すマスを1つ足します（表の軸の見出しに使います）">見出し</button>
          <button type="button" class="fb-blank ghost" title="何も出さずに場所だけ取るマスを1つ足します（区切りの良い並びに整えるため）">空きマス</button>
          <button type="button" class="fb-table ghost" title="選んだ項目を、行と列の軸で表に組み直します">表に組む</button>
+         <!-- ラベルと値の並べ方をまとめて変える（§9.292 ⑤）。**設定は
+              マス側の1つだけ**で、これは「全部のマスへ同じ値を書く」操作
+              （「既定の中身を写す」と同じ立ち位置。設定を2つ持たない）。 -->
+         <button type="button" class="fb-stack ghost"
+           title="ラベルを出しているマスを、まとめて「上下（ラベルの下に値）」／「横（ラベル：値）」へ切り替えます">ラベルを上下に</button>
          <button type="button" class="fb-seed ghost" hidden>既定の中身を写す</button>
          <button type="button" class="fb-clear ghost">全部外す</button></div>
         <!-- 軸の置き場（§9.277）。**組める材料があるときだけ中身が入る**
@@ -2823,6 +2828,12 @@
   return {label,path,blank:kind===FB_KIND_BLANK,
           span:fbSpan(x.span),rows:fbSpan(x.rows,FB_SPAN_MAX),kind,
           showLabel:kind===FB_KIND_VALUE?(x.showLabel!==false):false,
+          /* ラベルを**値の上**へ置く（§9.292 ⑤、利用者の指示「上下にラベルと
+             内容が組み合わさるパターンでレイアウトできるように」）。
+             ラベルを出さないマス・見出し・空きでは意味を持たないので落とす
+             ——**サーバーと同じ落とし方**にすること（片方だけが持つと、
+             盤の見本と紙が食い違う）。 */
+          stack:kind===FB_KIND_VALUE&&x.showLabel!==false&&!!x.stack,
           align:fbAlign(x.align),format:fbFormat(x.format),
           /* **対象（子ロット）の軸のマス**（§9.277）。印の付いた並びだけを
              紙が**1つの表の中で**子ロットの数だけ複製する——子ロットの数は
@@ -2857,7 +2868,7 @@
  }
  /* 行の形（`ラベル=道|横x縦`）では書けないマスか。 */
  const fbRich=c=>c.kind===FB_KIND_HEAD||(c.kind===FB_KIND_VALUE&&!c.showLabel)
-   ||!!c.align||!!c.format||!!c.lot;
+   ||!!c.align||!!c.format||!!c.lot||!!c.stack;
  function fbParse(text){
   const s=String(text==null?'':text).trim();
   /* **JSONは`[`で始まるかどうかだけで見分ける**（サーバーと同じ約束）。
@@ -2897,7 +2908,7 @@
   if(!cells.length)return '';
   if(cells.some(fbRich)){
    return JSON.stringify(cells.map(c=>({label:c.label,path:c.path,span:c.span,rows:c.rows,
-     kind:c.kind,showLabel:c.showLabel,align:c.align,format:c.format,lot:c.lot})));
+     kind:c.kind,showLabel:c.showLabel,stack:c.stack,align:c.align,format:c.format,lot:c.lot})));
   }
   return cells.map(r=>{
    const sp=fbSpan(r.span),tall=fbSpan(r.rows);
@@ -3248,10 +3259,13 @@
     if(state.sel!=null&&(state.sel<0||state.sel>=state.rows.length))state.sel=null;
     drawCols();drawChosen();drawList();drawInsp();drawTableBtn();
     if(typeof drawSeedRef.fn==='function')drawSeedRef.fn();
+    if(typeof drawStackRef.fn==='function')drawStackRef.fn();
    };
    /* `drawSeed`は下で定義するので、呼ぶ側は入れ物越しに見る（巻き上げの
       効かない`const`を上から参照しない）。 */
    const drawSeedRef={fn:null};
+   /* ラベルと値の並べ方のボタンも同じ作法（§9.292 ⑤）。 */
+   const drawStackRef={fn:null};
    /* 列数は**「内訳の列数」の欄が持つ**（§CLAUDE 8。同じ数を2箇所に置くと
       片方だけ直した状態が作れる）。空欄＝2列は`reportSection`の既定と同じ。 */
    const colsInput=()=>form.querySelector('[data-field="cols"]');
@@ -3461,6 +3475,19 @@
         +`<button type="button" class="${r.showLabel===false?'is-on':''}" data-fb-lab="0"`
         +` aria-pressed="${r.showLabel===false?'true':'false'}">出さない</button></span>`
         +`<i class="fb-insp-note">表の軸で並べたときは、見出しと二重になるので「出さない」。</i></label>`
+        /* ラベルと値の並べ方（§9.292 ⑤、利用者の指示「上下にラベルと内容が
+           組み合わさるパターンでレイアウトできるように」）。
+           **ラベルを出さないマスでは欄ごと出さない**——並べる相手が無いのに
+           選ばせると、押しても何も起きない設定になる（§4）。 */
+        +(r.showLabel!==false
+          ?`<label class="fb-insp-row"><span>並べ方</span>`
+           +`<span class="fb-seg" role="group" aria-label="ラベルと値の並べ方">`
+           +`<button type="button" class="${r.stack?'':'is-on'}" data-fb-stack="0"`
+           +` aria-pressed="${r.stack?'false':'true'}">横（ラベル：値）</button>`
+           +`<button type="button" class="${r.stack?'is-on':''}" data-fb-stack="1"`
+           +` aria-pressed="${r.stack?'true':'false'}">上下（ラベルの下に値）</button></span>`
+           +`<i class="fb-insp-note">上下にすると、狭いマスでも値の幅を目いっぱい使えます。</i></label>`
+          :'')
        :'')
      +`<label class="fb-insp-row"><span>寄せ</span>${seg('寄せ',r.align||'',aligns,'data-fb-align')}</label>`
      +(r.kind===FB_KIND_VALUE
@@ -3494,6 +3521,9 @@
     });
     host.querySelectorAll('[data-fb-lab]').forEach(b=>b.onclick=e=>{
      e.preventDefault();patch({showLabel:b.dataset.fbLab==='1'});
+    });
+    host.querySelectorAll('[data-fb-stack]').forEach(b=>b.onclick=e=>{
+     e.preventDefault();patch({stack:b.dataset.fbStack==='1'});
     });
     host.querySelectorAll('[data-fb-align]').forEach(b=>b.onclick=e=>{
      e.preventDefault();patch({align:b.dataset.fbAlign});
@@ -3673,6 +3703,34 @@
    if(search)search.oninput=()=>{state.q=search.value;drawList()};
    const clr=box.querySelector('.fb-clear');
    if(clr)clr.onclick=()=>{state.rows=[];sync()};
+   /* ---------- ラベルと値をまとめて上下／横へ（§9.292 ⑤、利用者の指示） ----------
+      「帳票ブロックマスタを組み立てていくと、ラベルと内容が横並びになった
+       状態でレイアウトされますが、上下のパターンも欲しいです」
+
+      **設定はマスの`stack`1つだけ**で、これはそこへ同じ値を書く操作
+      （「既定の中身を写す」と同じ立ち位置。設定を2つ持たない・§9.207）。
+      **ラベルを出していないマスは触らない**——並べる相手が無い。
+      **いまどちらかをボタンが名乗る**（§CLAUDE 2・§3）。
+      **触れるマスが1つも無ければ押せなくして理由を書く**（§4）。 */
+   const stackBtn=box.querySelector('.fb-stack');
+   const stackable=()=>state.rows.filter(r=>r.kind===FB_KIND_VALUE&&r.showLabel!==false);
+   const drawStackBtn=drawStackRef.fn=()=>{
+    if(!stackBtn)return;
+    const t=stackable();
+    const on=t.length>0&&t.every(r=>r.stack);
+    stackBtn.disabled=!t.length;
+    stackBtn.textContent=on?'ラベルを横に':'ラベルを上下に';
+    stackBtn.title=!t.length
+      ?'ラベルを出しているマスがありません（見出し・空き・「ラベル出さない」のマスには並べ方がありません）。'
+      :(on?`いま ${t.length}マスが「上下」です。押すと「横（ラベル：値）」へ戻します。`
+          :`ラベルを出している ${t.length}マスを、まとめて「上下（ラベルの下に値）」にします。`);
+   };
+   if(stackBtn)stackBtn.onclick=()=>{
+    const t=stackable();if(!t.length)return;
+    const on=t.every(r=>r.stack);
+    state.rows=state.rows.map(r=>fbCell({...r,stack:(r.kind===FB_KIND_VALUE&&r.showLabel!==false)?!on:false}));
+    sync();
+   };
    /* ---------- 既定の中身を写す（§9.285 ②、利用者の指示） ----------
       「汎用化できていない部分を汎用表現を追加し編集可能範囲に取り込む」
 

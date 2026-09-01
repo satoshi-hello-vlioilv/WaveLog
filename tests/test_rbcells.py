@@ -38,7 +38,8 @@ def rec(name, ok, detail=''):
 HERE = os.path.dirname(os.path.abspath(__file__))
 CASES = json.load(open(os.path.join(HERE, 'fixtures', 'report_cells.json'), encoding='utf-8'))
 
-KEYS = ('label', 'path', 'kind', 'span', 'rows', 'showLabel', 'align', 'format', 'lot')
+KEYS = ('label', 'path', 'kind', 'span', 'rows', 'showLabel', 'stack',
+        'align', 'format', 'lot')
 
 
 def shape(c):

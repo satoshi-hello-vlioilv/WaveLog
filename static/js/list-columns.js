@@ -27,6 +27,9 @@
    ============================================================ */
 (function(){
  const PANEL_ID='listColumnPanel';
+ /* 位置と大きさを預けている浮きウィンドウ。**出すたびに引き戻す**ために
+    控えておく（§9.292 ④。前より小さい画面で開くと画面の外に出うる）。 */
+ let panelWin=null;
  /* **開いた時点の写し(`original`)は持たない**(§9.212 ③)——戻すのは
     `WL.columnLayout.discard()`の役目で、控えを2箇所に持つと必ず食い違う
     （保存済みの幅まで巻き戻す／未保存の下書きまで保存する、を両方やった）。 */
@@ -335,7 +338,7 @@
      **保存キーも変える**——既に小さい値を覚えている端末があるので、
      同じキーのままだと新しい既定が誰にも見えない。 */
   if(typeof WL.makeFloatingWindow==='function')
-   WL.makeFloatingWindow(el,{storageKey:'listColumnPanelRectV5',defaultWidth:1440,defaultHeight:880,
+   panelWin=WL.makeFloatingWindow(el,{storageKey:'listColumnPanelRectV5',defaultWidth:1440,defaultHeight:880,
                              defaultTop:40,minWidth:860,minHeight:560});
   else console.error('列の設定パネル: WL.makeFloatingWindow が見つかりません');
   return el;
@@ -357,14 +360,22 @@
      非表示の列もパネルには出す(チェックの外れた行として)ので、
      **非表示を落とさない`healedColumnOrder`のほう**を借りる。 */
   const order=panelSrc.healed(target)||[...known,...keys.filter(k=>!known.includes(k))];
+  const seedHidden=(typeof panelSrc.initialHidden==='function')
+    ? panelSrc.initialHidden(keys,l) : null;
   draft={
    order,
    /* **「出す/出さない」の出どころが別のこともある**(§9.120)。内容欄は
       スケジュール内容表示マスタが持つので、差し替え口が答える。
       指定が無ければ従来どおり列レイアウトマスタのhidden。 */
-   hidden:new Set((typeof panelSrc.initialHidden==='function'
-                    ? panelSrc.initialHidden(keys,l)
-                    : (l.hidden||[])).filter(k=>keys.includes(k))),
+   /* **`null`は「保存値が正」の意味**（§9.292 ④）。差し替え口の
+      `initialHidden`は「まだ一度も保存していないときの既定」を答える口で、
+      保存済みなら`null`を返す約束（`actuals-view.js`／`records-store.js`の
+      `initialHidden`にそう書いてある）。ところがここは戻りをそのまま
+      `.filter`していたので、**一度でも列の設定を保存した一覧では
+      `Cannot read properties of null`で組み立てが止まり、窓が出なかった**
+      ——利用者の報告「実績データの表示列ボタンが使えません。モーダル起動
+      しないので使えない状態です」の正体がこれ。 */
+   hidden:new Set((seedHidden||l.hidden||[]).filter(k=>keys.includes(k))),
    widths:{...(l.widths||{})},
    names:{...(l.names||{})},
    formats:JSON.parse(JSON.stringify(l.formats||{})),
@@ -1627,12 +1638,8 @@
  }
 
  /* source を渡すと別の対象へ同じパネルを使う(§9.120)。省略＝仕掛一覧。 */
- function open(source){
-  panelSrc=source||LIST_SOURCE;
-  target=panelSrc.target();
-  if(!target){showToast&&showToast(panelSrc.noTargetToast||'一覧を先に開いてください',
-                                   panelSrc.noTargetNote||'列の設定はその一覧ごとに保存します',3200);return}
-  ensurePanel();
+ /* 中身を組み立てる。**窓を出したあとに呼ぶ**（下の`open()`を参照）。 */
+ function fillPanel(){
   /* 閉じたときは下書きを捨てるだけでよい(§9.212 ③)ので、控えは持たない。 */
   marked.clear();
   closeIo();
@@ -1661,11 +1668,48 @@
   stateFilter='';
   loadDraft();
   renderOrigins();renderList();renderDetail();
-  document.getElementById(PANEL_ID).hidden=false;
   /* 保存済みの設定は**開くたびに取り直す**——他のPCで登録されたものが
      あるので、覚えたままだと出てこない(それが登録先をマスタにした理由)。
      一覧の描画は待たせない。 */
   loadPresets();
+ }
+ /* ---------- 開く（§9.292 ④、利用者の報告「実績データについて 表示列ボタンが
+    使えません。モーダル起動しないので使えない状態です」） ----------
+    以前は**中身を全部組み立ててから最後に`hidden=false`**にしていた。
+    そのため、組み立てのどこか1つ（読み替えの一覧・保存済みの並び・
+    実データ1件の見え方…）で例外が出ると、**窓はいつまでも出ない**
+    ——押しても何も起きないボタンになる（§4）。しかも例外は`console`に
+    しか出ないので、現場からは「壊れている」としか見えない。
+
+    いまは**先に窓を出してから中身を組み立てる**。組み立てが転んでも
+    ①窓は出ている ②何が起きたのかを窓の中に書く ③閉じられる、の3つが
+    残る。**握り潰さない**——`console.error`にも残す（§4）。
+
+    対象(target)が決まらないときだけは今までどおり開かない（開いても
+    何も設定できない窓になる。理由はトーストが言う）。 */
+ function open(source){
+  panelSrc=source||LIST_SOURCE;
+  target=(()=>{try{return panelSrc.target()}catch(e){console.error('列の設定: 対象を決められません',e);return ''}})();
+  if(!target){showToast&&showToast(panelSrc.noTargetToast||'一覧を先に開いてください',
+                                   panelSrc.noTargetNote||'列の設定はその一覧ごとに保存します',3200);return}
+  const el=ensurePanel();
+  el.hidden=false;
+  /* **画面の中へ引き戻す**——窓の位置と大きさは端末に覚えてあるので、
+     前より小さい画面で開くと画面の外に出うる（そのときも「出ない」と
+     しか見えない）。`makeFloatingWindow`が持っている引き戻しを、
+     **出すたびに**通す。 */
+  if(typeof panelWin?.applyRect==='function')panelWin.applyRect();
+  try{
+   fillPanel();
+  }catch(e){
+   console.error('列の設定パネルを組み立てられませんでした',e);
+   const list=document.getElementById('lcList');
+   if(list)list.innerHTML='<div class="lc-empty">列の一覧を組み立てられませんでした（'
+    +esc(e&&e.message||String(e))+'）。<br>この一覧の設定は開けませんが、'
+    +'ほかの一覧の設定は使えます。</div>';
+   showToast&&showToast('列の設定を組み立てられませんでした',
+     (e&&e.message)||String(e),7000);
+  }
  }
  /* 保存せずに閉じたら、後ろの一覧を開いたときの形へ戻す。**触った結果が
     そのまま残ると「保存」の意味が無くなる**(何が保存済みか分からなくなる)。

@@ -23,7 +23,7 @@ const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+
 let b=null,page=null;
 
 const CASES=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures','report_cells.json'),'utf8'));
-const KEYS=['label','path','kind','span','rows','showLabel','align','format','lot'];
+const KEYS=['label','path','kind','span','rows','showLabel','stack','align','format','lot'];
 
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
@@ -458,6 +458,72 @@ const KEYS=['label','path','kind','span','rows','showLabel','align','format','lo
       &&again.見出し.join(',')==='MIN,MAX,板厚,板幅,板丈',
       JSON.stringify(again));
   rec('②-b 開き直しても「表に組む」を押せる',again.表に組む===true,JSON.stringify(again));
+
+  /* ---- ②-c ラベルと値を上下に組む（§9.292 ⑤、利用者の指示） ----
+     「帳票ブロックマスタを組み立てていくと、ラベルと内容が横並びになった
+      状態でレイアウトされますが、上下のパターンも欲しいです」
+
+     **確かめるのは札が並ぶことではなく、紙の1マスが実際に縦積みになること**
+     ——`stack`が保存されるだけを見る網は、紙が読んでいなくても通る（§9.289）。
+     ラベルを出しているマスを1つ作ってから見る（表に組んだマスは
+     `showLabel:false`なので、並べ方の欄が出ないのが正しい）。 */
+  await page.evaluate(()=>{
+   const cat=[...document.querySelectorAll('[data-fb-cat]')].find(b=>/基本|仕掛|準備/.test(b.textContent||''));
+   cat&&cat.click();
+  });
+  await page.waitForTimeout(200);
+  await page.evaluate(()=>{
+   const b=document.querySelector('[data-fb-add]');b&&b.click();
+  });
+  await page.waitForTimeout(200);
+  const stackUi=await page.evaluate(()=>{
+   /* **いま足したマスを選ぶ**（末尾）——表に組んだマスは`showLabel:false`や
+      見出し・空きなので、そこには並べ方の欄が出ないのが正しい。 */
+   const rows=[...document.querySelectorAll('.fb-row')];
+   const at=rows.length-1;
+   if(at<0)return {err:'マスがありません'};
+   /* **`mousedown`で選ぶ**——盤は「押しただけなら選ぶ・少しでも動かしたら
+      並べ替え」としきい値で分けているので（§9.90）、`.click()`だけでは
+      選択が始まらない。 */
+   rows[at].dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+   const seg=[...document.querySelectorAll('.fb-insp [data-fb-stack]')];
+   return {at,total:rows.length,
+           cls:rows[at].className,
+           seg:seg.map(b=>b.textContent.trim()),
+           bulk:(()=>{const b=document.querySelector('.fb-stack');
+                      return b?{t:b.textContent.trim(),dis:b.disabled}:null})()};
+  });
+  rec('②-c ラベルを出すマスには「並べ方（横／上下）」の欄が出る',
+      !stackUi.err&&stackUi.seg.length===2&&/上下/.test(stackUi.seg[1]),
+      JSON.stringify(stackUi));
+  rec('②-c まとめて切り替える操作もある（設定は1つ・操作が2つ）',
+      !!stackUi.bulk&&!stackUi.bulk.dis&&/上下/.test(stackUi.bulk.t),
+      JSON.stringify(stackUi.bulk));
+  await page.waitForTimeout(250);
+  const stacked=await page.evaluate(()=>{
+   const b=document.querySelector('.fb-insp [data-fb-stack="1"]');b&&b.click();
+   const raw=String((document.querySelector('#maintEditorForm [data-field="content"]')||{}).value);
+   let cells=[];try{cells=JSON.parse(raw)}catch(e){cells=[]}
+   /* **紙の1マスを実際に描いて測る**（宣言ではなく解決値・§9.289）。 */
+   const one=cells.find(c=>c&&c.stack)
+     ||{label:'見本',path:'basic.lotNo',kind:'value',span:1,rows:1,showLabel:true};
+   const host=document.createElement('div');
+   host.className='rp-page';host.style.position='fixed';host.style.left='-9999px';
+   document.body.appendChild(host);
+   const html=k=>WL.reportSectionHtml
+     ?WL.reportSectionHtml('見本',[[one.label,'値',{...one,stack:k}]],1)
+     :'';
+   host.innerHTML=html(true);
+   const up=host.querySelector('.rp-field');
+   const upN=up?getComputedStyle(up).gridTemplateColumns.trim().split(/\s+/).length:0;
+   host.innerHTML=html(false);
+   const side=host.querySelector('.rp-field');
+   const sideN=side?getComputedStyle(side).gridTemplateColumns.trim().split(/\s+/).length:0;
+   host.remove();
+   return {saved:!!(one&&one.stack),upN,sideN};
+  });
+  rec('②-c 「上下」にするとマスに保存され、紙は1列（ラベルが値の上）になる',
+      stacked.saved&&stacked.upN===1&&stacked.sideN===2,JSON.stringify(stacked));
   await page.evaluate(()=>{const c=document.getElementById('maintEditorCancel');if(c)c.click()});
   await page.waitForTimeout(400);
 
