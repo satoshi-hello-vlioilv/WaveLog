@@ -45,7 +45,9 @@
   document.body.classList.remove('rp-mode');
   const panel=$id('reportPanel');if(panel)panel.hidden=true;
  }
- WL.registerView({key:'report',bodyClass:'rp-mode',header:['測定帳票',''],exit:exitReportView});
+ /* `ownPrint`＝専用の印刷を持つ画面（§9.300 ①）。ヘッダーの汎用の
+    「画面を印刷」と二重にしない。 */
+ WL.registerView({key:'report',bodyClass:'rp-mode',header:['測定帳票',''],ownPrint:true,exit:exitReportView});
  /* 自作の塊の写しを捨てる口（§9.217）。マスタ管理で足した・直した直後に
     呼ぶ——**「あれば使う」で呼ぶこと**（読み込み順に依存させない）。 */
  window.WL=window.WL||{};

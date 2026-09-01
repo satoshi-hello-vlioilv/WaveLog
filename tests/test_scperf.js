@@ -54,9 +54,11 @@ let b=null;
  await page.evaluate(()=>{const r=[...document.querySelectorAll('.sc-board-row')].find(x=>x.dataset.equipment==='テスト設備A');if(r)r.click()});
  await untilRows();
  rec('設備を開くと予定を1回取得する',api.plan===1,`plan=${api.plan}`);
+ /* 読込時点は`#scSyncChip`が言う（§9.300 ①。§9.42の`#scFreshness`と
+    §9.188の同期チップは同じ問いの2つの答えだったので1つに畳んだ）。 */
  rec('読込時点がヘッダーに出る',
-  await page.evaluate(()=>{const e=document.querySelector('#scFreshness');return !!e&&!e.hidden&&/時点/.test(e.textContent)}),
-  await page.evaluate(()=>document.querySelector('#scFreshness')?.textContent));
+  await page.evaluate(()=>{const e=document.querySelector('#scSyncChip');return !!e&&!e.hidden&&/時点/.test(e.textContent)}),
+  await page.evaluate(()=>document.querySelector('#scSyncChip')?.textContent));
 
  // --- 画面を離れて戻る(ここが遅かった) ---
  reset();

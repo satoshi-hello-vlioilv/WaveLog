@@ -189,18 +189,29 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }
   btn.title=lines.join('\n');
  }
- function updateFreshnessUi(ts){
-  const el=$('#scFreshness');if(!el)return;
-  el.hidden=!ts;
-  if(!ts)return;
-  const t=scLastTimings;
-  const slow=!!(t&&t.total!=null&&t.total>=SC_SLOW_MS);
-  el.textContent=fmtFetchedAt(ts)+(slow?` / 読み込み ${(t.total/1000).toFixed(1)}秒`:'');
-  el.classList.toggle('is-slow',slow);
-  const lines=['この時点で読み込んだ内容です。「再計算」で最新を取り直します。'];
-  if(t){lines.push('',...timingLines(t));const a=timingAdvice(t);if(a)lines.push('',a)}
-  el.title=lines.join('\n');
- }
+ /* ---------- 「いつのデータか」に答えるチップは1つ ----------
+    （§9.300 ①、利用者の指示「一番上の表示も含めて冗長な重複した表示内容や
+    やたら長い説明のコメントがそのままボタンになっているものなど見直し、
+    主要機能を1行にまとめてください」）
+
+    以前は**同じ問いに2つのチップ**が並んでいた——`#scFreshness`
+    「21:36 時点(たった今)」（この画面が読み込んだ時刻）と、`#scSyncChip`
+    「共有: 1秒前に取込 ・ 書込役: このPC」（サーバーが共有を写した時刻と
+    書く役）。実測で操作列1424pxのうち**353px＝25%**をこの2つが占めており、
+    しかも読む側からは「どちらを見ればよいのか」が分からない
+    （§CLAUDE 8「同じ情報を2箇所に出さない」——似た数字が並ぶと、読む側は
+    違うものかもしれないと数え直すことになる）。
+
+    いまは**チップは1つ**（`#scSyncChip`）。文字に出すのは
+    **この画面が読んだ時刻**だけで、共有の取り込み・書込役・改訂番号は
+    **押すと開く浮きメニュー**が持つ——§9.292 ③でメニュー側は既に全部
+    答えていたので、足りなかったのは「畳むこと」だけだった。
+    **打つ手はメニューの足元に2つ**（「読み直す」＝この画面／
+    「いま取り込む」＝共有）。読む場所と打つ手を同じところに置く（§4）。
+
+    **異常だけは文字にも出す**（§3。色だけで伝えない）。 */
+ let scFetchedAt=null;
+ function updateFreshnessUi(ts){scFetchedAt=ts||null;renderSyncChip()}
  /* 画面の外から内訳を見る口（DOMを掘らずに確かめられるようにしておく）。 */
  WL.scheduleLoadTimings=()=>(scLastTimings?Object.assign({},scLastTimings):null);
  /* ---------- 共有の見張り(§9.188) ----------
@@ -283,6 +294,26 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const left=Math.max(0,Math.round((st.intervalSec||0)-(st.verifiedAgeSec||0)));
   return left<=1?'まもなく確かめます':`およそ ${left}秒後`;
  }
+ /* この画面が読み込んだ時刻。**共有の取り込みとは別のこと**——サーバーが
+    共有を写した時刻と、この画面がサーバーから受け取った時刻は違う（写した
+    あとに画面を開いていなければ、画面のほうが古い）。打つ手も別で、
+    こちらは「読み直す」・あちらは「いま取り込む」。 */
+ function screenReadRows(){
+  const t=scLastTimings;
+  const rows=[syncMenuRow('この画面の読込',
+    scFetchedAt?fmtFetchedAt(scFetchedAt):'まだ読み込んでいません',
+    t&&t.total!=null
+      ?`読み込み ${(t.total/1000).toFixed(1)}秒`+(t.rowCount!=null?`（${t.rowCount}件）`:'')
+      :'「読み直す」で最新を取り直します')];
+  /* **遅かったときだけ内訳を出す**（§9.198。速いときに毎回ミリ秒を
+     並べても読まれない）。打つ手は`timingAdvice()`の1箇所が言う。 */
+  if(t&&t.total!=null&&t.total>=SC_SLOW_MS){
+   const adv=timingAdvice(t);
+   rows.push(syncMenuRow('読み込みの内訳',
+     timingLines(t).slice(1).map(x=>x.trim()).join(' / ')||'—',adv||''));
+  }
+  return rows;
+ }
  function syncMenuRow(label,value,note){
   return `<div class="sc-sync-row"><span class="sc-sync-k">${esc(label)}</span>`
    +`<span class="sc-sync-v">${esc(value)}</span>`
@@ -290,9 +321,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  function syncMenuHtml(st,own){
   if(!st||!st.configured)
-   return `<div class="sc-sync-body">${syncMenuRow('共有スケジュール','置き場が未設定です',
+   return `<div class="sc-sync-body">${screenReadRows().join('')}${syncMenuRow(
+     '共有スケジュール','置き場が未設定です',
      'マスタ管理 > 共通設定 の「置き場」で決めます')}</div>`;
   const rows=[
+   ...screenReadRows(),
    syncMenuRow('見張り',
      !st.enabled?'使わない設定':(st.running?'動いています':'止まっています'),
      st.enabled?`${st.intervalSec}秒ごとに共有の改訂番号を確かめ、変わっていたら取り込みます`
@@ -330,7 +363,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   closeSyncMenu();
   const menu=document.createElement('div');
   menu.className='access-mode-menu sc-sync-menu';menu.id='scSyncMenu';
+  /* **打つ手は読む場所と同じところに置く**（§9.300 ①）。読み直す先が
+     2つある（この画面／共有）ので、ボタンも2つ並べて**どちらが何を
+     やり直すのかを書く**。 */
   menu.innerHTML=syncMenuHtml(scSyncState,scOwnerState)
+   +`<button type="button" id="scSyncReloadBtn"><span>読み直す</span>`
+   +`<small>この画面の予定・実績を取り直します</small></button>`
    +`<button type="button" id="scSyncNowBtn"><span>いま取り込む</span>`
    +`<small>共有を見にいって、変わっていれば取り込みます</small></button>`;
   /* **器の外へ出す**（§9.201）——上部の道具列は`overflow`を持つので、
@@ -340,22 +378,38 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   menu.style.top=`${r.bottom+6}px`;
   menu.style.left=`${Math.max(8,Math.min(window.innerWidth-menu.offsetWidth-8,r.left))}px`;
   menu.querySelector('#scSyncNowBtn').onclick=()=>{closeSyncMenu();syncNow()};
+  menu.querySelector('#scSyncReloadBtn').onclick=()=>{closeSyncMenu();refreshCurrentMode(true)};
   anchor.setAttribute('aria-expanded','true');
   requestAnimationFrame(()=>document.addEventListener('click',onSyncMenuOutside,true));
  }
  function renderSyncChip(){
   const el=$('#scSyncChip');if(!el)return;
-  const st=scSyncState;
-  const text=syncChipText(st),own=ownerChipText(scOwnerState);
-  el.hidden=!text&&!own;
+  const st=scSyncState,own=scOwnerState;
+  const t=scLastTimings;
+  const slow=!!(t&&t.total!=null&&t.total>=SC_SLOW_MS);
+  const err=!!((st&&st.lastError)||(own&&own.lastError&&own.relayFail));
+  /* **文字に出すのは「いつのデータか」1つ**（§9.300 ①）。共有の取り込みと
+     書込役はメニューが持つ。**まだ読み込んでいないうちだけ**共有の状態を
+     代わりに出す（何も言わないチップにしない）。 */
+  const parts=[];
+  const when=fmtFetchedAt(scFetchedAt);
+  if(when)parts.push(when);
+  else{const s0=syncChipText(st);if(s0)parts.push(s0)}
+  if(slow)parts.push(`読み込み ${(t.total/1000).toFixed(1)}秒`);
+  if(err)parts.push('同期エラー');
+  el.hidden=!parts.length;
   if(el.hidden){closeSyncMenu();return}
-  el.textContent=[text,own].filter(Boolean).join(' ・ ');
-  el.title=[st&&st.configured?`${st.intervalSec}秒ごとに共有の改訂番号を確かめ、変わっていたら取り込みます。`:'',
-            st&&st.configured?`次の確認: ${nextCheckText(st)}`:'',
-            st&&st.revision!=null?`いまの改訂番号: ${st.revision}`:'',
+  el.innerHTML=`<i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>`
+   +`<span class="sc-sync-txt">${esc(parts.join(' ・ '))}</span>`
+   +`<span class="hd-caret" aria-hidden="true">▾</span>`;
+  el.classList.toggle('is-slow',slow);
+  el.title=['この時点で読み込んだ内容です。',
+            ...(t?timingLines(t):[]),
+            st&&st.configured?`共有は${st.intervalSec}秒ごとに確かめ、変わっていたら取り込みます。`:'',
+            st&&st.configured?`最後の取込: ${st.snapshotAgeSec==null?'まだありません':agoOf(st.snapshotAgeSec)}`:'',
             st&&st.lastError?`最後のエラー: ${st.lastError}`:'',
-            ...ownerChipTitle(scOwnerState),
-            '押すと同期の状態が開きます（そこから今すぐ取り込めます）。'].filter(Boolean).join('\n');
+            ...ownerChipTitle(own),
+            '押すと同期の状態が開きます（そこから読み直し・取り込みができます）。'].filter(Boolean).join('\n');
   el.classList.toggle('is-error',!!((st&&st.lastError)||(scOwnerState&&scOwnerState.lastError&&scOwnerState.relayFail)));
   el.setAttribute('aria-expanded',document.getElementById('scSyncMenu')?'true':'false');
   el.onclick=()=>{document.getElementById('scSyncMenu')?closeSyncMenu():openSyncMenu(el)};
@@ -526,11 +580,18 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       <button type="button" class="sc-board-window-btn" data-hours="48">48時間</button>
      </div>
      <div class="sc-tools" data-tools="state" id="scToolsState">
-      <span class="sc-freshness" id="scFreshness" hidden></span>
-      <!-- 共有の見張り(§9.188)。いつ取り込んだか・見張っているかを常に出す。
-           押すとその場で取り込む。 -->
-      <button type="button" class="sc-sync-chip" id="scSyncChip" hidden></button>
-      <span class="sc-field-reorder-note" id="scFieldReorderNote" hidden>現場段取り: 並べ替えのみ可能</span>
+      <!-- 「いま見ているのはいつのデータか」に答えるチップ(§9.300 ①)。
+           §9.188の共有の見張りと§9.42の読込時点は**同じ問いの2つの答え**
+           だったので1つに畳んだ。文字は読込時点だけで、共有の取り込み・
+           書込役・改訂番号・打つ手（読み直す／いま取り込む）は押すと開く
+           浮きメニューが持つ。 -->
+      <button type="button" class="sc-sync-chip" id="scSyncChip" hidden aria-expanded="false"></button>
+      <!-- 現場段取りの注記は**直せることがあるときだけ**(§9.300 ①)。
+           一致しているときの「並べ替えのみ可能」はヘッダーのバッジ
+           (#fieldReorderBadge)がまったく同じことを言っており、読む側は
+           同じ文を2度読むことになっていた(§CLAUDE 8)。対象設備が違う／
+           未設定のときだけ、その設備名と直す場所を書く(§4)。 -->
+      <span class="sc-field-reorder-note" id="scFieldReorderNote" hidden></span>
      </div>
      <div class="sc-tools" data-tools="add" id="scToolsAdd">
       <span class="sc-tools-label" title="予定へ足す（共有スケジュールに書き込みます）">追加</span>
@@ -1743,7 +1804,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
 
  /* 操作列(#scHead)はヘッダーの#headerViewBarへ移す。画面名はヘッダーが持ち、
     パネルは本文だけを持つ(WL.enterViewのmountViewToolbar参照)。 */
- WL.registerView({key:'schedule',bodyClass:'sc-mode',nav:'openSchedule',toolbar:'#scHead',
+ /* `ownPrint`＝この画面は自分の印刷（#scPrintBtn）を持つので、ヘッダーの
+    汎用の「画面を印刷」は出さない（§9.300 ①）。 */
+ WL.registerView({key:'schedule',bodyClass:'sc-mode',nav:'openSchedule',toolbar:'#scHead',ownPrint:true,
   header:['作業スケジュール','設備ごとの作業予定と実績'],exit:exitScheduleView});
 
  async function openScheduleView(){
@@ -1849,9 +1912,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const note=$('#scFieldReorderNote');
   if(!note)return;
   if(matched){
-   note.hidden=false;note.classList.remove('is-warn');
-   note.textContent='現場段取り: 並べ替えのみ可能';
-   note.title='この設備の未着手の予定を並べ替えられます。';
+   /* **一致しているときは出さない**(§9.300 ①)。ヘッダーのバッジ
+      (#fieldReorderBadge)が「現場段取り 並べ替え可」と同じことを言って
+      いるので、ここに出すと同じ文が2つ並ぶ(§CLAUDE 8)。 */
+   note.hidden=true;note.classList.remove('is-warn');note.textContent='';
   }else if(scState.fieldReorderGranted){
    note.hidden=false;note.classList.add('is-warn');
    const label=WL.fieldReorderLabel?.(scState.fieldReorderTarget)||'';
@@ -3608,13 +3672,36 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     明細JSONを開かない場所(帳票・監査ログ)のための控えで、画面はいつでも
     今の設定から作る。**何が起きているかも一緒に書く**(§6・§3)——
     「もう埋まった」のか「まだN時間空けている」のかで、次にすることが違う。 */
+ /* 材料は`frameParts()`の1箇所（§9.300 ②）。**画面は箱として2段に組み、
+    紙と`title`と監査は1行に繋ぐ**——同じ文字を2通りに組み立てると、
+    箱に出ている言葉と紙に刷られる言葉が食い違う（§9.163）。 */
+ function frameParts(e){
+  const f=(e&&e.frame)||{};
+  const d=String(f.date||(e&&e.detail&&e.detail.frameDate)||'').trim();
+  const sh=String(f.shift||(e&&e.detail&&e.detail.frameShift)||'').trim();
+  return {dated:!!d,kind:SC_CATEGORIES.frame.label,
+          head:d?`${frameDateLabel(d)}${sh?' '+sh:''} から`:'（日付が未設定）',
+          state:frameStateText(e),
+          note:String(f.note||(e&&e.detail&&e.detail.frameNote)||'').trim()};
+ }
+ /* **区分の名前を頭に付ける**（§3、§9.300 ②）——行いっぱいにすると区分の列が
+    出なくなるので、この1行が「何の行か」を自分で名乗る必要がある。
+    画面の箱は`kind`と`head`を別の段に置くので、二重にはならない。 */
  function frameText(e){
-  const f=e.frame||{};
-  const d=String(f.date||(e.detail&&e.detail.frameDate)||'').trim();
-  const sh=String(f.shift||(e.detail&&e.detail.frameShift)||'').trim();
-  const head=d?`${frameDateLabel(d)}${sh?' '+sh:''} から`:'枠（日付が未設定）';
-  const note=String(f.note||(e.detail&&e.detail.frameNote)||'').trim();
-  return [head,frameStateText(e),note].filter(Boolean).join(' ／ ');
+  const p=frameParts(e);
+  return [`${p.kind} ${p.head}`,p.state,p.note].filter(Boolean).join(' ／ ');
+ }
+ /* 箱の中身（§9.300 ②）。**見出しは`.sc-nw-face`を兼ねる**——題名の
+    見せ方（バッジ）を選んだときに、枠だけ設定が効かない状態にしない（§4）。 */
+ function frameBoxHtml(e,look){
+  const p=frameParts(e);
+  const sub=[p.state,p.note].filter(Boolean).join(' ／ ');
+  /* 3段（区分／行き先／状態）。**区分の名前は必ず文字で出す**（§3）
+     ——行いっぱいにすると区分の列が出なくなるため。呼び名とアイコンは
+     `categoryOf()`と`rowStyleOf()`の答えをそのまま使う（§9.163）。 */
+  return `<span class="sc-frame-kind">${rowStyleOf(e).html}${esc(p.kind)}</span>`
+   +`<b class="sc-frame-head${look?' sc-nw-face':''}">${esc(p.head)}</b>`
+   +(sub?`<span class="sc-frame-sub">${esc(sub)}</span>`:'');
  }
  function frameStateText(e){
   const f=e.frame;
@@ -4004,10 +4091,32 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      ——画面と紙で違う答えが出る（§9.163）。 */
   return {colorKey:hit?String(hit.colorKey||''):'',
           titleLook:hit?String(hit.titleLook||''):'',
-          titlePlace:hit?String(hit.titlePlace||''):'',
+          titlePlace:rowTitlePlaceOf(e,hit),
           titleAlign:hit?String(hit.titleAlign||''):'',
           titleTime:hit?String(hit.titleTime||''):'',
           icon:iconValueOf(hit),html:rowIconHtml(iconValueOf(hit))};
+ }
+ /* 効いている「題名の位置」。**枠の既定は行いっぱい**（§9.300 ②、利用者の
+    指示「日付、直の枠については、3ロット分くらいの大きめの枠だけのものを
+    作って箱として使う感じのものに変更してほしいです。…上位階層に日付・直と
+    いう箱を1つ作っておくようなイメージです」）。
+
+    §9.294 ①で「日付・時刻・区分・見積は残す」と決めたのは**設備停止**の話で、
+    理由は「いつ何分止まるのかが列から読めなくなる」ことだった。
+    **枠では同じ列が別のことを言っている**——実測（行き先が8/29の枠）で
+    日付列は`09/04`（＝起点がいま居る日）、時刻は`04:11〜04:11`、見積は`0分`、
+    実績は`-`で、**1つの行に違う日付が2つ**並んでいた。どれも
+    「空のスケジュールらしきもの」にしか見えない（利用者の言葉そのもの）。
+    行いっぱいにすれば、枠自身の事実（行き先の日・直と状態）だけが残る。
+
+    **判定はここ1箇所**（§9.163）——`rowStyleOf()`が効いている値を返すので、
+    画面（`nonWorkSpanOf`）も紙（`contentRunOf`）も同じ答えを見る。
+    **マスタで明示していればそちらが勝つ**（§9.132。わざわざ選んだ人の
+    見え方を変えない）。 */
+ function rowTitlePlaceOf(e,hit){
+  const v=hit?String(hit.titlePlace||''):'';
+  if(v)return v;
+  return (e&&e.kind==='枠')?'全幅':'';
  }
  /* 題名の見せ方が効くのは**作業以外の行だけ**（§9.295）。作業の行には
     束ねた題名のマスが無いので、盤では欄ごと出さずに理由を書く（§4）。 */
@@ -5228,7 +5337,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     /* 題名を札／帯にしたときは**行の地を塗らない**（§9.295）——同じ色が
        行の地と札の両方に出ると、どちらが印なのか読めなくなる（§3・§8）。
        印は行に付けて、地を消すのはCSSが受ける。 */
-    +(e.kind!=='作業'&&rowStyleOf(e).titleLook?' sc-row-nw-face':'');
+    /* 枠は**箱**（§9.300 ②）。3ロットぶんの高さは`.sc-row-frame-box`が持つ。
+       `sc-row-nw-face`も一緒に付ける——色を持つのは箱のほうなので、行の地まで
+       塗ると同じ色が2箇所に出る（§9.295「札／帯にしたら行の地は塗らない」）。 */
+    +(e.kind==='枠'?' sc-row-frame-box sc-row-nw-face':'')
+    +(e.kind!=='作業'&&e.kind!=='枠'&&rowStyleOf(e).titleLook?' sc-row-nw-face':'');
    row.dataset.id=e.id;
    row.__scEntry=e;   // 作業可否だけ後から差し替えるときの参照(§9.51)
    // ロック(§9.38)された行はその日時に釘付けなので、並べ替えても時刻が
@@ -5319,8 +5432,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
          監査に残る名前は名前のまま。添えるのは見せるときだけ。 */
       const nwTime=nonWorkTimeText(e);
       const body=esc(nwTitle)+(nwTime?`<span class="sc-nw-time">${esc(nwTime)}</span>`:'');
-      const inner=look?`<b class="sc-nw-face">${body}</b>`:body;
-      return `<span class="sc-row-title sc-row-nonwork" data-col="${esc(k)}"`
+      /* 日付・直の枠は**箱**（§9.300 ②）。区分・行き先・状態を3段に組む
+         ——1行に`／`で繋いだ文字列は「空のスケジュールらしきもの」にしか
+         見えなかった。**文字の材料は`frameParts()`の1箇所**なので、
+         紙・`title`・監査に出る1行と食い違わない。 */
+      const inner=e.kind==='枠'?frameBoxHtml(e,look)
+                 :(look?`<b class="sc-nw-face">${body}</b>`:body);
+      return `<span class="sc-row-title sc-row-nonwork${e.kind==='枠'?' sc-frame-box':''}" data-col="${esc(k)}"`
        +(look?` data-nw-look="${esc(look)}"`:'')+(align?` data-nw-align="${esc(align)}"`:'')
        +(nwSpan.span>1?` style="grid-column:span ${nwSpan.span}"`:'')
        +` title="${esc(nwTitle)}${esc(nwTime)}">${inner}</span>`;

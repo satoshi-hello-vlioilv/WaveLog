@@ -1391,6 +1391,16 @@ function enterView(key,opts){
  const def=VIEW_REGISTRY.get(key);
  if(!def)return null;
  if(def.bodyClass)document.body.classList.add(def.bodyClass);
+ /* **「印刷」は画面ごとに1つだけ**（§9.300 ①、利用者の指示「一番上の表示も
+    含めて冗長な重複した表示内容…見直し」）。ヘッダーの「画面を印刷」
+    （`#printCurrentView`。品質データ分析が作って`.global-actions`へ置いたまま
+    残る汎用の操作）は、専用の印刷を持つ画面では重複する——実機の作業
+    スケジュールでは上の行に「画面を印刷」・操作列に「印刷」が並んでいた。
+    **判定は画面が名乗る**（`ownPrint`）——以前はCSS側で
+    `body.rp-mode,body.qa-mode`と**画面の名前を並べて**おり、あとから
+    専用の印刷を持った画面（作業スケジュール）だけが静かに二重になった
+    （§9.233 ③と同じ形）。名乗る形なら、画面を足す人が自分の登録で完結する。 */
+ document.body.classList.toggle('view-own-print',!!def.ownPrint);
  if(def.nav)document.getElementById(def.nav)?.classList.add('active');
  const h=opts?.header||def.header;
  if(h)setHeaderContext(h[0],h[1]);

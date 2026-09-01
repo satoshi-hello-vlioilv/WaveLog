@@ -279,7 +279,9 @@
       +` style="--sw-bg:${pal[k].bg};--sw-line:${pal[k].line};--sw-ink:${pal[k].ink}"`
       +` title="${esc(pal[k].label+'（'+pal[k].note+'）')}">${esc(pal[k].label)}</button>`).join('')
    +`</div></div>`
-   +`<p class="fc-alert-note">この端末だけの設定です。色は行の色・列の色と同じ7色から選びます。</p>`;
+   /* **色の数を文に書かないこと**——表は`WL.columnTint.PALETTE`の1箇所で、
+      §9.286 ⑥で7色から14色へ増えたときにこの文だけが古いまま残っていた。 */
+   +`<p class="fc-alert-note">この端末だけの設定です。色は行の色・列の色と同じ表から選びます。</p>`;
   document.body.appendChild(pop);
   alertPop=pop;
   const r=btn.getBoundingClientRect(),pr=pop.getBoundingClientRect();

@@ -168,12 +168,19 @@ let b=null,page=null;
    return{見える:r.width>0&&r.height>0,
      画面内:r.left>=0&&r.top>=0&&r.right<=window.innerWidth+1&&r.bottom<=window.innerHeight+1,
      しかた:[...p.querySelectorAll('[data-fc-mode]')].map(x=>x.dataset.fcMode),
-     色:[...p.querySelectorAll('[data-fc-color]')].map(x=>x.dataset.fcColor)};
+     色:[...p.querySelectorAll('[data-fc-color]')].map(x=>x.dataset.fcColor),
+     /* **色の顔ぶれを網へ書き写さないこと**（§9.288 ③）。§9.242 ⑥では7色
+        だったが§9.286 ⑥で14色になり、数を直に書いていたこの網だけが
+        **約束が変わったあとも古いまま赤く残っていた**（§9.200）。
+        表は`WL.columnTint.PALETTE`の1箇所なので、画面から引いて比べる。 */
+     語彙:Object.keys((window.WL&&WL.columnTint&&WL.columnTint.PALETTE)||{})};
   });
   rec('強調の設定を開ける',popped.見える===true,JSON.stringify(popped));
   rec('浮き窓が画面の外へ出ない',popped.画面内===true,JSON.stringify(popped));
   rec('「強調しない」も選べる',popped.しかた.includes('off'),JSON.stringify(popped.しかた));
-  rec('色は7色から選ぶ（16進を選ばせない）',popped.色.length===7,JSON.stringify(popped.色));
+  rec('色は`WL.columnTint.PALETTE`から選ぶ（16進を選ばせない）',
+      popped.語彙.length>0&&JSON.stringify(popped.色)===JSON.stringify(popped.語彙),
+      JSON.stringify({札:popped.色,語彙:popped.語彙}));
 
   await page.click('[data-fc-color="amber"]');
   await page.waitForTimeout(400);

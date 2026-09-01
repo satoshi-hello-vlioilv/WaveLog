@@ -109,6 +109,82 @@ let b=null;
       fa.loaded===true&&fa.n>=6&&fa.bad.length===0,JSON.stringify(fa));
   rec('操作列に生の絵文字を残していない',fa.絵文字.length===0,JSON.stringify(fa.絵文字));
 
+  /* ---- 1c) 「いつのデータか」に答えるチップは1つ（§9.300 ①、利用者の指示
+       「一番上の表示も含めて冗長な重複した表示内容ややたら長い説明の
+        コメントがそのままボタンになっているものなど見直し、主要機能を
+        1行にまとめてください」） -----------------------------------
+     以前は`#scFreshness`「21:36 時点(たった今)」と`#scSyncChip`
+     「共有: 1秒前に取込 ・ 書込役: このPC」が**同じ問いに並んで答えて**
+     おり、実測で操作列1424pxのうち353px＝25%を占めていた。
+     **「チップが在ること」だけを見ないこと**——2つ並んでいても通る。
+     操作列の中で「時点／取込」を名乗る**見えている要素の数**を数える。 */
+  const when=await page.evaluate(()=>{
+   const box=document.getElementById('scToolsState');
+   const vis=el=>el&&!el.hidden&&el.getBoundingClientRect().width>0;
+   const says=[...box.querySelectorAll('*')].filter(el=>vis(el)
+     &&!el.querySelector('*')&&/時点|取込/.test(el.textContent||''));
+   return {n:says.length,txt:says.map(e=>e.textContent.trim()),
+           freshness:!!document.getElementById('scFreshness'),
+           chip:(document.getElementById('scSyncChip')||{}).hidden===false};
+  });
+  rec('「いつのデータか」に答えるチップは操作列に1つだけ',
+      when.n===1&&when.chip&&!when.freshness,JSON.stringify(when));
+
+  /* 畳んだ先が読めること。**打つ手を読む場所と同じところに置く**（§4）ので、
+     メニューには「読み直す」（この画面）と「いま取り込む」（共有）の
+     2つが並ぶ。 */
+  await page.click('#scSyncChip');
+  await page.waitForSelector('#scSyncMenu',{timeout:8000});
+  const menu=await page.evaluate(()=>{
+   const m=document.getElementById('scSyncMenu');
+   return {keys:[...m.querySelectorAll('.sc-sync-k')].map(e=>e.textContent.trim()),
+           acts:[...m.querySelectorAll('button')].map(e=>e.querySelector('span')?.textContent.trim())};
+  });
+  rec('畳んだ先に「この画面の読込」がある',menu.keys.includes('この画面の読込'),
+      JSON.stringify(menu.keys));
+  rec('打つ手は「読み直す」と「いま取り込む」の2つ',
+      menu.acts.includes('読み直す')&&menu.acts.includes('いま取り込む'),
+      JSON.stringify(menu.acts));
+  await page.evaluate(()=>document.body.click());
+  await page.waitForFunction(()=>!document.getElementById('scSyncMenu'),null,{timeout:8000});
+
+  /* ---- 1d) 画面名の説明は畳んで`title`へ落とす（§9.300 ①・§9.234 ①）
+     「設備ごとの作業予定と実績」は1回読めば足りる文なのに、いちばん上の
+     行に常時居座っていた。**消さずに畳む**ので、読む手立ては残っている
+     ことまで見る。 */
+  const desc=await page.evaluate(()=>{
+   const s=document.getElementById('headerContextSource');
+   const t=document.getElementById('fileName');
+   return {見えている:!!(s&&!s.hidden&&s.getBoundingClientRect().width>0),
+           文:(s&&s.textContent||'').trim(),題:(t&&t.textContent||'').trim(),
+           title:(t&&t.title)||''};
+  });
+  rec('画面名の説明は上の行に出していない',!desc.見えている,JSON.stringify(desc));
+  rec('説明は消さずにtitleへ残す',/設備ごとの作業予定と実績/.test(desc.title),desc.title);
+
+  /* ---- 1e) 「印刷」はこの画面に1つだけ（§9.300 ①） ------------------
+     ヘッダーの「画面を印刷」（#printCurrentView。品質データ分析が作って
+     `.global-actions`へ置いたまま残る汎用の操作）と、操作列の「印刷」
+     （#scPrintBtn）が実機で並んでいた。**その端末で品質データ分析を
+     開いていなければボタン自体が無い**ので、無ければテストが作ってから
+     測る——「無いから通った」を作らない。 */
+  const prints=await page.evaluate(()=>{
+   if(!document.getElementById('printCurrentView')){
+    const b=document.createElement('button');
+    b.id='printCurrentView';b.type='button';b.className='print-button';
+    b.textContent='画面を印刷';document.querySelector('.global-actions').append(b);
+   }
+   const vis=el=>!!el&&!el.hidden&&el.offsetParent!==null&&el.getBoundingClientRect().width>0;
+   const generic=document.getElementById('printCurrentView');
+   return {出ている:[...document.querySelectorAll('main>header button')]
+             .filter(el=>vis(el)&&/印刷/.test(el.textContent||''))
+             .map(el=>({id:el.id,txt:(el.textContent||'').replace(/\s+/g,' ').trim()})),
+           汎用が在る:!!generic,汎用が見えている:vis(generic)};
+  });
+  rec('「印刷」はこの画面に1つだけ（汎用の「画面を印刷」は出さない）',
+      prints.出ている.length===1&&prints.出ている[0].id==='scPrintBtn'
+      &&prints.汎用が在る&&!prints.汎用が見えている,JSON.stringify(prints));
+
   /* ---- 2) 「表示」の入口にいまの設定が出る ---- */
   const vm=await page.evaluate(()=>{
    const btn=document.getElementById('scViewMenuBtn');
