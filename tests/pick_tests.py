@@ -335,17 +335,20 @@ RULES = [
     ('backend/schedule_watch.py', g('スケジュール')),
     # 共有スケジュールの持ち主(§9.192)。書込の入口(routes/schedule.py)と
     # 書込ガード(access_mode.py)の両方に手が入るので、権限の網も回す。
-    ('backend/schedule_owner.py', g('test_scowner', 'test_modeguard', 'スケジュール')),
+    ('backend/schedule_owner.py', g('test_scowner', 'test_modeguard', 'test_appquit',
+                                    'スケジュール')),
     ('tests/fixtures/sort_cases.json', g('test_sortpipe', 'test_sortcustom')),
     ('backend/schedule_sync.py', g('test_sclock', 'test_scsync', 'test_scwritespeed',
                                    'test_screorder', 'test_atomicio', 'test_scsession',
-                                   'test_scwho')),
+                                   'test_scwho', 'test_scowner')),
     ('backend/load_factor.py', g('test_scbalance', 'test_sccat', 'test_screport', 'test_eqstd')),
     ('backend/records_export.py', g('test_share', 'test_flows', 'test_measstore',
                                     'test_recsplit')),
     ('backend/logging_setup.py', g('ログ')),
     ('backend/boot_status.py', g('起動')),
-    ('backend/watchdog.py', g('test_tabclose', 'test_boot', 'test_presence')),
+    # 終わる前の片付けと終了ボタン（§9.301 ②）も watchdog が持つ。
+    ('backend/watchdog.py', g('test_tabclose', 'test_boot', 'test_presence',
+                              'test_appquit', 'test_scowner')),
     # 在席（§9.272）。権限区分の判定は master_repo 側にあるので「権限」ごと。
     ('backend/presence.py', g('権限')),
     ('backend/routes/presence.py', g('権限')),

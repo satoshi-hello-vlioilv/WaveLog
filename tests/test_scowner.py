@@ -329,6 +329,157 @@ def main():
    so.should_relay=real_should2
    so._state['owner']=True
 
+  # ==================================================================
+  # §9.301 ① 書込役が応答しないときの切り分けと引き取り
+  # ------------------------------------------------------------------
+  # 利用者の指示「書き込み役が自分ではない場合に、書き込み失敗するような
+  # 場合、相手のPCが落ちている可能性があります…PC落ちか、スリープ中？
+  # サーバー落ちを判断して書き込み権限を執行する機能などを実装しておく
+  # 必要もありそうです」。
+  #
+  # **こちらから見分けられるのはTCPが届くかどうかまで**なので、それ以上
+  # （電源断かスリープか）は「見分けられません」と書く（§3・§4）。
+  # ==================================================================
+  # 10a) 自分が書込役なら引き取る必要は無い
+  so._state['owner']=True
+  p=so.probe_owner()
+  rec('自分が書込役なら「引き取る必要はありません」',
+      p['state']==so.PROBE_SELF and p['canTake'] is False,json.dumps(p,ensure_ascii=False)[:120])
+  # 10b) 書込役が居ない（目印が無い）なら、引き取りではなく巡回に任せる
+  so._state['owner']=False
+  so._state['marker']=None
+  mk=so.marker_path()
+  bak=mk.read_text(encoding='utf-8') if mk.exists() else None
+  try:
+   if mk.exists():mk.unlink()
+   p=so.probe_owner()
+   rec('書込役が居なければ引き取らせない（巡回で決まる）',
+       p['state']==so.PROBE_NONE and p['canTake'] is False,json.dumps(p,ensure_ascii=False)[:120])
+   # 10c) **応答しない書込役は引き取れる。** 期限内（目印は生きている）でも、
+   #      受け口が居ないなら待っても無駄——ここが「執行」の入口。
+   dead=free_port()          # 掴まずに使う＝接続は即座に拒否される
+   so._write_marker({'id':'ghost','app_id':'x','token':'t','pc':'GHOST-PC',
+                     'login':'ghost','urls':[f'http://127.0.0.1:{dead}'],
+                     'beat':time.time(),'since':time.time()})
+   so._state['marker']=so.read_marker()
+   p=so.probe_owner(timeout=1.5)
+   rec('応答しない書込役は理由つきで「引き取れる」と答える',
+       p['canTake'] is True and p['state'] in (so.PROBE_REFUSED,so.PROBE_TIMEOUT,
+                                               so.PROBE_UNREACHABLE),
+       f"{p['state']} / {p['label']}")
+   # **文言もサーバーが持つ**（§9.163）——画面はこれをそのまま出す。
+   rec('「PCは動いているがアプリが落ちた」を言い分ける',
+       p['state']!=so.PROBE_REFUSED or 'アプリ' in p['note'],p['note'])
+   rec('見分けられないことは見分けられないと書く（§3）',
+       p['state']!=so.PROBE_TIMEOUT or '見分けられません' in p['note'],p['note'])
+   # 10d) **応答する書込役からは引き取らせない。** 相手はまだ書けるので、
+   #      二重に書ける状態をわざわざ作らない。
+   live=ThreadingHTTPServer(('127.0.0.1',0),so._Handler)
+   live.daemon_threads=True
+   threading.Thread(target=live.serve_forever,daemon=True).start()
+   try:
+    so._write_marker({'id':'other','app_id':'x','token':'t','pc':'LIVE-PC',
+                      'login':'live','urls':[f'http://127.0.0.1:{live.server_address[1]}'],
+                      'beat':time.time(),'since':time.time()})
+    so._state['marker']=so.read_marker()
+    p=so.probe_owner(timeout=2.0)
+    rec('応答する書込役は「引き取れません」',
+        p['state']==so.PROBE_OK and p['canTake'] is False,f"{p['state']} / {p['label']}")
+    ok,_p=so.take_over('tester','TEST-PC')
+    rec('応答する書込役からは引き取らない（口も断る）',ok is False,str(ok))
+   finally:
+    live.shutdown()
+   # 10e) **届かなかった書込役をしばらく信じない。** 目印は期限まで生きて
+   #      いるので、これが無いと**書き込みのたびに届かない相手を待つ**
+   #      （実測の最悪で12秒×URLの数）。利用者の言う「書き込み失敗するような
+   #      場合」の待ち時間そのもの。
+   so._state['relay_down_until']=0.0
+   so._write_marker({'id':'ghost2','app_id':'x','token':'t','pc':'GHOST-PC',
+                     'login':'ghost','urls':[f'http://127.0.0.1:{dead}'],
+                     'beat':time.time(),'since':time.time()})
+   so._state['marker']=so.read_marker()
+   rec('前提: 目印は生きているので、ふだんなら中継する',so.should_relay() is True,
+       f"alive={so._alive(so._state['marker'])}")
+   st,_out=so.relay('/api/schedule/plan/add',{},'tester','TEST-PC','schedule',timeout=1.5)
+   rec('届かなければ中継は失敗を返す（握り潰さない）',st is None,str(st))
+   rec('届かなかった書込役はしばらく信じない（次の書き込みを待たせない）',
+       so.should_relay() is False,
+       f"down={so.status().get('relayDownSec')}秒 why={so.status().get('relayDownWhy')}")
+   rec('休んでいることを画面へ出せる（理由つき）',
+       float(so.status().get('relayDownSec') or 0)>0 and bool(so.status().get('relayDownWhy')),
+       json.dumps({k:so.status().get(k) for k in ('relayDownSec','relayDownWhy')},ensure_ascii=False))
+   # 10f) **応答しない書込役は本当に引き取れる**（口まで通す）。
+   so._state['relay_down_until']=0.0
+   ok,p=so.take_over('tester','TEST-PC')
+   rec('応答しない書込役は引き取れる（このPCが書込役になる）',
+       ok is True and so.is_owner() is True,f'ok={ok} owner={so.is_owner()}')
+   m=so.read_marker() or {}
+   rec('誰から引き取ったかを目印に残す（理由の分からない入れ替わりを作らない）',
+       isinstance(m.get('taken_from'),dict) and m['taken_from'].get('pc')=='GHOST-PC',
+       json.dumps(m.get('taken_from'),ensure_ascii=False))
+  finally:
+   so._state['owner']=True
+   if bak is not None:
+    try:mk.write_text(bak,encoding='utf-8')
+    except Exception:pass
+  # 10g) **切り分けの語彙は全部が文言を持つ**（§9.163・§4）——1つ足して
+  #      文言を書き忘れると、画面には空の帯が出る。
+  states=[v for k,v in vars(so).items() if k.startswith('PROBE_') and isinstance(v,str)]
+  rec('切り分けの語彙は全部が文言を持つ',
+      all(x in so._PROBE_TEXT for x in states),
+      str([x for x in states if x not in so._PROBE_TEXT]))
+
+  # ==================================================================
+  # §9.301 ② 終わる前の片付け
+  # ------------------------------------------------------------------
+  # 利用者の指示「そういう意味で安全なアプリの終了ボタンも欲しいです」。
+  # 「安全」の中身は**片付け**——共有の目印を残したまま落ちると、他の端末が
+  # 期限（既定90秒）まで待たされる（それが§9.301 ①の待ち時間の元）。
+  # **`_exit()`から呼ぶ1箇所**なので、タブを閉じたときも`stop.bat`のときも
+  # 終了ボタンのときも同じ片付けが走る。
+  # ==================================================================
+  from backend import watchdog, schedule_sync as _ss
+  so._state['owner']=True
+  so._write_marker(so._me())
+  so._state['marker']=so.read_marker()
+  rec('前提: このPCが書込役の目印を持っている',bool(so.read_marker() or {}),'')
+  # 編集セッションは**別の一時ファイル**で試す（フィクスチャの共有を汚さない）。
+  _share_bak=_ss.SCHEDULE_SHARE_PATH
+  _ss.SCHEDULE_SHARE_PATH=tmp/'schedule.sqlite3'
+  try:
+   from backend.access_mode import current_login_id,current_pc_name
+   _ss.acquire_session('片付け設備',current_login_id(),current_pc_name())
+   held=[x['equipment'] for x in (_ss.sessions_all(current_login_id(),current_pc_name())
+                                  .get('sessions') or []) if x.get('mine')]
+   rec('前提: 編集セッションを持っている','片付け設備' in held,str(held))
+   done=watchdog.teardown()
+   rec('終わる前に書込役をやめる（次のPCが期限を待たずに引き継げる）',
+       done.get('owner') is True and not (so.read_marker() or {}).get('id'),
+       json.dumps(done,ensure_ascii=False)[:160])
+   rec('終わる前に編集セッションを手放す（他のPCを読み取り専用のままにしない）',
+       '片付け設備' in (done.get('sessions') or []),str(done.get('sessions')))
+   left=[x['equipment'] for x in (_ss.sessions_all(current_login_id(),current_pc_name())
+                                  .get('sessions') or []) if x.get('mine')]
+   rec('手放したセッションは共有からも消えている','片付け設備' not in left,str(left))
+   rec('片付けの結果を返す（終了ボタンが何をしたか書ける・§4）',
+       set(['owner','sessions','presence','errors'])<=set(done.keys()),str(sorted(done.keys())))
+   # **`teardown()`を直に呼ぶ網では足りない**——`_exit()`が通していなくても
+   # 通る（§9.290「説明だけが先にあって実物が無い」と同じ形）。終了そのものを
+   # 差し替えて、**落ちる道が本当に片付けを通るか**を見る。
+   called={'n':0}
+   real_td,real_exit=watchdog.teardown,os._exit
+   watchdog.teardown=lambda:(called.__setitem__('n',called['n']+1),{'owner':False,
+     'sessions':[],'presence':False,'errors':[]})[1]
+   os._exit=lambda code=0:None
+   try:
+    watchdog._exit('検証: 片付けを通るか')
+   finally:
+    watchdog.teardown,os._exit=real_td,real_exit
+   rec('終了する道は必ず片付けを通る（タブを閉じても stop.bat でも同じ）',
+       called['n']==1,f"teardown={called['n']}回")
+  finally:
+   _ss.SCHEDULE_SHARE_PATH=_share_bak
+
   # 9) 中継するのは共有DBを書く5本だけ
   rec('中継するのは共有DBを書く5本だけ',
       set(so.RELAY_PATHS)=={'/api/schedule/plan/add','/api/schedule/plan/update',

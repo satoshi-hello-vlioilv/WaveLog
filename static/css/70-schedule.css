@@ -1252,6 +1252,24 @@
 /* 遅かったときだけ色を付ける(§9.198)。**色だけで伝えない**——文字でも
    「読み込み◯秒」と出し、内訳と打つ手はメニューとtitleに入れてある。 */
 .sc-sync-chip.is-slow{border-color:var(--warn-border);color:var(--warn-fg);font-weight:700}
+/* 書込役の切り分けと引き取り（§9.301 ①）。**押す前に理由が読める**ように、
+   調べた結果は同じ塊の中へ出す（読む場所と打つ手を同じところに・§4）。 */
+.sc-owner-act{display:flex;flex-direction:column;gap:var(--gap-tight);
+ padding:var(--space-2) var(--space-3);border-top:1px solid var(--line-soft)}
+.sc-owner-act>small{color:var(--muted);font-size:var(--fs-sm);line-height:1.6}
+.sc-owner-act button{align-self:flex-start;height:var(--ctl-h-sm);
+ padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line);border-radius:var(--radius-sm);
+ background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm)}
+.sc-owner-act button:hover:not([disabled]){border-color:var(--teal);color:var(--ink)}
+.sc-owner-probe{display:flex;flex-direction:column;gap:var(--gap-hair);
+ padding:var(--space-2);border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+ background:var(--surface-2)}
+/* 引き取れる＝相手が応答していない。**色だけで伝えない**（§3）ので、
+   `label`と`note`が理由を文字で書いている。色はその補助。 */
+.sc-owner-probe.is-warn{border-color:var(--warn-border);background:var(--warn-bg)}
+.sc-owner-probe.is-warn>b{color:var(--warn-fg)}
+.sc-owner-probe>small{color:var(--ink-2);font-size:var(--fs-sm);line-height:1.6}
+.sc-owner-probe>button{margin-top:var(--gap-tight)}
 /* 他のPCが書き換えたときの帯。**触っている最中は勝手に読み直さない**ので、
    読み直す手立てを文字とボタンで置く。 */
 .sc-sync-banner{display:flex;align-items:center;gap:var(--gap-inline);padding:var(--pad-row);

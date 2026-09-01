@@ -343,21 +343,106 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    syncMenuRow('改訂番号',st.revision==null?'—':String(st.revision),
      `確かめた ${st.checks||0}回 / 取り込んだ ${st.fetches||0}回`),
   ];
-  if(own&&own.enabled&&own.configured)
+  if(own&&own.enabled&&own.configured){
    rows.push(syncMenuRow('書込役',ownerChipText(own).replace('書込役: ',''),
      ownerChipTitle(own)[1]||''));
+   /* **中継を休んでいることを言う**（§9.301 ①）——休んでいるあいだは自分で
+      書いているので、「書込役が居るのに自分で書いている」理由が読めないと、
+      利用者からは「書き込みに失敗している」ようにしか見えない（§4）。 */
+   if(Number(own.relayDownSec)>0)
+    rows.push(syncMenuRow('いまの書き込み','このPCが自分で書いています',
+      `書込役へ届かなかったので、あと約${Math.round(own.relayDownSec)}秒は`
+      +`直接書きます${own.relayDownWhy?`（${own.relayDownWhy}）`:''}`));
+   if(own.takenFrom&&own.takenFrom.pc)
+    rows.push(syncMenuRow('引き取り',`${own.takenFrom.pc} から引き取りました`,
+      `${own.takenFrom.by_pc||''}が実行`));
+   rows.push(ownerActionHtml(own));
+  }
   if(st.lastError)rows.push(syncMenuRow('最後のエラー',st.lastError,
     '取り込めていないあいだは、前に取り込んだ内容が出ています'));
   return `<div class="sc-sync-body">${rows.join('')}</div>`;
  }
+ /* 書込役が応答しないときの切り分けと引き取り（§9.301 ①、利用者の指示
+    「書き込み役が自分ではない場合に、書き込み失敗するような場合、相手のPCが
+    落ちている可能性があります…PC落ちか、スリープ中？サーバー落ちを判断して
+    書き込み権限を執行する機能などを実装しておく必要もありそうです」）。
+
+    **判定と文言はサーバーの`probe_owner()`の1箇所**（§9.163）——画面は
+    返ってきた`label`/`note`をそのまま出す。ここで言い直すと、切り分けを
+    1つ足したときに直す場所が2つになる。 */
+ let scOwnerProbe=null;
+ function ownerActionHtml(own){
+  if(!own||!own.enabled||!own.configured)return '';
+  if(own.isOwner)
+   return `<div class="sc-owner-act"><small>このPCが書込役です。他のPCの書き込みを受けています。</small></div>`;
+  const p=scOwnerProbe;
+  return `<div class="sc-owner-act">`
+   +`<button type="button" id="scOwnerProbeBtn">書込役を調べる</button>`
+   +(p?`<div class="sc-owner-probe${p.canTake?' is-warn':''}">`
+        +`<b>${esc(p.label||'')}</b><small>${esc(p.note||'')}</small>`
+        +(p.canTake?`<button type="button" id="scOwnerTakeBtn">このPCが引き取る</button>`:'')
+        +`</div>`:'')
+   +`</div>`;
+ }
+ /* 開いたメニューの中の配線。**10秒ごとの塗り直しのあとにも通す**
+    （§9.222 ①と同じ理由——中身を差し替えると配線が切れ、押しても何も
+    起きないボタンになる）。 */
+ function wireSyncMenu(menu){
+  const probe=menu.querySelector('#scOwnerProbeBtn');
+  if(probe)probe.onclick=async()=>{
+   probe.disabled=true;probe.textContent='調べています…';
+   try{
+    const r=await api('/api/schedule/owner-probe',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:'{}'});
+    scOwnerProbe=r.probe||null;
+   }catch(e){
+    scOwnerProbe={label:'調べられませんでした',note:String(e&&e.message||e),canTake:false};
+   }
+   renderSyncChip();
+  };
+  const take=menu.querySelector('#scOwnerTakeBtn');
+  if(take)take.onclick=async()=>{
+   const p=scOwnerProbe||{};
+   /* **危ない操作は確認する**（§CLAUDE 5）。誰から引き取るのか・なぜ
+      引き取れるのかを書く（§6。理由の分からない入れ替わりを作らない）。 */
+   const ok=await confirmModal({title:'書込役をこのPCが引き取りますか？',
+     eyebrow:'OWNER',confirmLabel:'引き取る',cancelLabel:'やめる',danger:true,
+     bodyHtml:`<p class="confirm-modal-message">${esc(p.label||'')}</p>`
+      +`<ul class="confirm-modal-list"><li>${esc(p.note||'')}</li>`
+      +`<li>引き取ると、このPCが共有スケジュールへ書く役になります（他のPCは`
+      +`このPCへ書き込みを頼みます）</li>`
+      +`<li>元の書込役が戻ってきたら、そのPCは書き込みを頼む側になります</li></ul>`});
+   if(!ok)return;
+   take.disabled=true;take.textContent='引き取っています…';
+   try{
+    await api('/api/schedule/owner-take',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:'{}'});
+    scOwnerProbe=null;
+    showToast&&showToast('書込役を引き取りました','このPCが共有スケジュールへ書きます',4000);
+   }catch(e){
+    showToast&&showToast('引き取れませんでした',String(e&&e.message||e),6000);
+   }
+   try{scOwnerState=await api('/api/schedule/owner-status')}catch(e){}
+   renderSyncChip();
+  };
+ }
  function closeSyncMenu(){
+  /* **調べた結果は開いているあいだだけ**——次に開いたときに古い判定が
+     出ていると、そのつもりで引き取ってしまう。 */
+  scOwnerProbe=null;
   document.getElementById('scSyncMenu')?.remove();
   $('#scSyncChip')?.setAttribute('aria-expanded','false');
   document.removeEventListener('click',onSyncMenuOutside,true);
  }
  function onSyncMenuOutside(e){
   const menu=document.getElementById('scSyncMenu');
-  if(menu&&!menu.contains(e.target)&&!e.target.closest('#scSyncChip'))closeSyncMenu();
+  if(!menu)return;
+  /* **上に開いた確認は「外」ではない**（§9.301 ①）——「引き取る」は確認を
+     挟むので（§CLAUDE 5）、確認のボタンを押した瞬間に後ろのメニューが
+     畳まれると、答えたあとに戻る場所が消える（実際にそうなった）。
+     §9.221 ①「モーダルは背景クリックで閉じない」と同じ考え方。 */
+  if(e.target.closest('.record-modal'))return;
+  if(!menu.contains(e.target)&&!e.target.closest('#scSyncChip'))closeSyncMenu();
  }
  function openSyncMenu(anchor){
   closeSyncMenu();
@@ -379,6 +464,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   menu.style.left=`${Math.max(8,Math.min(window.innerWidth-menu.offsetWidth-8,r.left))}px`;
   menu.querySelector('#scSyncNowBtn').onclick=()=>{closeSyncMenu();syncNow()};
   menu.querySelector('#scSyncReloadBtn').onclick=()=>{closeSyncMenu();refreshCurrentMode(true)};
+  wireSyncMenu(menu);
   anchor.setAttribute('aria-expanded','true');
   requestAnimationFrame(()=>document.addEventListener('click',onSyncMenuOutside,true));
  }
@@ -417,7 +503,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const open=document.getElementById('scSyncMenu');
   if(open){
    const body=open.querySelector('.sc-sync-body');
-   if(body)body.outerHTML=syncMenuHtml(scSyncState,scOwnerState);
+   /* **塗り直したら配線し直す**（§9.222 ①）——`outerHTML`で差し替えると、
+      中のボタンのハンドラは一緒に捨てられる（押しても何も起きない・§4）。 */
+   if(body){body.outerHTML=syncMenuHtml(scSyncState,scOwnerState);wireSyncMenu(open)}
   }
  }
  /* いま読み直してよいか。**途中の操作を壊さない**ことだけを見る。 */

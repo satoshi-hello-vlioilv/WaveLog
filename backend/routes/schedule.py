@@ -63,6 +63,39 @@ def owner_status():
  except Exception as e:
   return jsonify(error=str(e)),500
 
+@bp.post('/api/schedule/owner-probe')
+def owner_probe():
+ """書込役が応答するか、しないなら**なぜか**（§9.301 ①）。**確かめるだけ**
+ なので閲覧モードからも通す（`_READ_ONLY_POST_ENDPOINTS`へ登録済み）。
+
+ 判定と文言は`schedule_owner.probe_owner()`の1箇所（§9.163）——画面は
+ 返ってきた`label`/`note`をそのまま出す。ここで言い直さない。"""
+ try:
+  from .. import schedule_owner
+  return jsonify(ok=True,probe=schedule_owner.probe_owner())
+ except Exception as e:
+  return jsonify(error=str(e)),500
+
+@bp.post('/api/schedule/owner-take')
+def owner_take():
+ """書込役を引き取る（§9.301 ①、利用者の指示「PC落ちか、スリープ中？
+ サーバー落ちを判断して書き込み権限を執行する機能」）。
+
+ **応答しないときだけ**通す（生きている相手から奪う意味は無い）。断るときは
+ 理由をそのまま返す（§4）。"""
+ try:
+  from .. import schedule_owner
+  ok,probe=schedule_owner.take_over(current_login_id(),current_pc_name())
+  if not ok and not probe.get('canTake'):
+   return jsonify(error=probe.get('label') or '引き取れません',
+                  probe=probe),409
+  if not ok:
+   return jsonify(error='引き取れませんでした（共有の目印を書けません）',
+                  probe=probe),503
+  return jsonify(ok=True,probe=probe,**schedule_owner.status())
+ except Exception as e:
+  return jsonify(error=str(e)),500
+
 @bp.post('/api/schedule/sync-now')
 def sync_now():
  # いま取り込む。**読むだけ**なので閲覧モードからも通す

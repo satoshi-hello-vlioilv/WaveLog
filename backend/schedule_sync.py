@@ -410,6 +410,28 @@ def release_session(equipment,login_id,pc_name):
   app_logger().warning('スケジュール編集セッションの解放に失敗しました: %s',e)
 
 
+def release_my_sessions(login_id,pc_name):
+ """自分が持っている編集セッションを**全部**手放す（§9.301 ②）。
+
+ 終わるときの片付け用。**1回の書き込みでまとめて消す**——設備ごとに
+ `release_session()`を呼ぶと、共有への書き込みが設備の数だけ増える
+ （終了は待たせたくない場面なので、往復は1回に抑える）。
+ 戻り値は手放した設備名。**ベストエフォート**——消せなくても期限で消える。
+ """
+ if SCHEDULE_SHARE_PATH is None:return []
+ try:
+  sessions=_prune_expired(_read_sessions_raw())
+  mine=[eq for eq,v in sessions.items()
+        if v.get('login')==login_id and v.get('pc')==pc_name]
+  if not mine:return []
+  for eq in mine:del sessions[eq]
+  _write_sessions(sessions)
+  return sorted(mine)
+ except Exception as e:
+  app_logger().warning('編集セッションの一括解放に失敗しました: %s',e)
+  return []
+
+
 def require_session(equipment,login_id,pc_name):
  """書込系ハンドラの入口用: このequipmentの編集セッションを自分が保持して
  いる(または誰も保持していない)ことを確認する。他端末が保持中なら

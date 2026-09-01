@@ -1586,6 +1586,9 @@ async function sendHeartbeat(){
   if(!res.ok)throw Error('HTTP '+res.status);
   heartbeatFailures=0;setConnectionLost(false);
  }catch(e){
+  /* **自分で終了したときは「接続が切れました」を出さない**（§9.301 ②）
+     ——事故のように見せない（§3）。終了した画面は`#appQuitDone`が言う。 */
+  if(WL.quitting)return;
   heartbeatFailures++;
   if(heartbeatFailures>=HEARTBEAT_FAIL_LIMIT)setConnectionLost(true);
  }
@@ -1594,6 +1597,60 @@ sendHeartbeat();setInterval(sendHeartbeat,HEARTBEAT_INTERVAL_MS);
 WL.onReady(()=>{
  const btn=document.getElementById('connectionLostReload');
  if(btn)btn.onclick=()=>location.reload();
+});
+/* ---------- 安全な終了（§9.301 ②、利用者の指示「そういう意味で安全な
+   アプリの終了ボタンも欲しいです」） ----------
+   ただ落とすだけなら`stop.bat`が既にある。「安全」の中身は**片付け**で、
+   共有の目印を残したまま落ちると他の端末が期限（既定90秒）まで待たされる:
+    ・書込役の目印……その間、書き込みのたびに届かない相手を待つ（§9.301 ①）
+    ・編集セッション……その設備が読み取り専用のまま（§9.211 ②）
+    ・在席……接続状況に幽霊が残る（§9.272）
+   **片付けそのものはサーバーの`watchdog.teardown()`の1箇所**（§9.163）——
+   タブを閉じたときも`stop.bat`のときもここを通るので、手順を2つ持たない。
+   画面がするのは「押す前に何が起きるかを見せる」ことと「押したあとに
+   終わったと言う」ことだけ。
+
+   **未保存の測定は画面しか知らない**（端末のブラウザの中にある・§9.202）
+   ので、確認の文はこちらが添える。 */
+WL.quitting=false;
+WL.quitApp=async function(){
+ if(WL.quitting)return;
+ let facts={tabs:0,isOwner:false,sessions:[]};
+ try{facts=await api('/api/app/quit-check')}catch(e){/* 分からなくても閉じられる */}
+ const lines=[];
+ if(typeof measureDirty!=='undefined'&&measureDirty)
+  lines.push('<p class="confirm-modal-message"><b>保存されていない測定があります。</b>'
+   +'閉じるとこの画面の変更は失われます（保存済みのデータは残ります）。</p>');
+ const what=[];
+ if(facts.isOwner)what.push('このPCは<b>共有への書込役</b>です。役を降りてから閉じるので、他のPCはすぐ次の書込役を立てられます');
+ if((facts.sessions||[]).length)what.push('編集中の設備（'+esc(facts.sessions.join('、'))+'）を手放します');
+ what.push('接続状況からこのPCを消します');
+ if(Number(facts.tabs)>1)what.push('<b>このアプリのタブが'+esc(String(facts.tabs))+'つ開いています。</b>すべて使えなくなります');
+ lines.push('<ul class="confirm-modal-list">'+what.map(x=>'<li>'+x+'</li>').join('')+'</ul>');
+ const ok=await confirmModal({title:'このPCのWaveLogを終了しますか？',
+   eyebrow:'QUIT',confirmLabel:'終了する',cancelLabel:'やめる',danger:true,
+   bodyHtml:lines.join('')});
+ if(!ok)return;
+ WL.quitting=true;
+ setConnectionLost(false);
+ const box=document.getElementById('appQuitDone');
+ const note=document.getElementById('appQuitWhat');
+ try{
+  await api('/api/app/quit',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+ }catch(e){
+  /* **失敗したら終了したと言わない**（§3）。押しても何も起きない状態を
+     残さないよう、理由と次の手立て（stop.bat）を出す。 */
+  WL.quitting=false;
+  showToast&&showToast('終了できませんでした',String(e&&e.message||e)+' / stop.bat から止められます',6000);
+  return;
+ }
+ if(note)note.innerHTML='<ul class="confirm-modal-list">'+what.map(x=>'<li>'+x+'</li>').join('')+'</ul>';
+ if(box)box.hidden=false;
+};
+WL.onReady(()=>{
+ const q=document.getElementById('appQuit');
+ if(q)q.onclick=()=>WL.quitApp();
+ else console.error('終了ボタン(#appQuit)が見つかりません');
 });
 /* pagehideが本来カバーする範囲(bfcache入りも含む)の方が広いはずだが、
    実機でタブを閉じてもサーバーが終了しない事例があったため、念のため
