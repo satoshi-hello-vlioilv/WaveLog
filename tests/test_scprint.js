@@ -47,6 +47,7 @@ let b=null;
    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mm})})},m);
  let savedLayout=null;   // timeline:テスト設備A の保存済みの写し(復元用)
  const made=[];          // 予定へ入れたロット(あとで削除)
+ const madeStops=[];     // 足した停止理由マスタ(あとで削除。§9.121)
 
  try{
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
@@ -208,8 +209,14 @@ let b=null;
   /* ---- 5) 日付ごとに分けても引き伸ばさない ---- */
   const byDay=await build({includeDone:false,pageByDate:true,paper:'a4-portrait'});
   rec('日付ごとに紙が分かれる',byDay.groups.length>1,JSON.stringify(byDay.groups));
-  rec('件数の少ない紙でも行の基準の高さは変わらない（ページの割り方で伸び縮みしない）',
-      Math.min(...byDay.rowH)===baseRowH&&byDay.rowH.every(h=>h<=baseRowH*1.6),
+  /* **紙をまたいだ同値比較はやめた**（§9.294 ④）——列の幅を文字に合わせる
+     ようになったので、載る行が違えば列の要る幅も違い、そのぶん倍率＝行の
+     高さも変わる（それが「余ったぶんを文字へ回す」の中身）。固定したいのは
+     **器を伸ばしていないこと**（以前は7件の日で30px→140pxへ4.7倍）なので、
+     同じ紙の中で高さが揃っていることと、まとめた紙と桁が違わないことを見る。 */
+  const byDayBase=Math.min(...byDay.rowH);
+  rec('件数の少ない紙でも行を引き伸ばさない（ページの割り方で倍にならない）',
+      byDay.rowH.every(h=>h<=byDayBase*1.6)&&byDayBase<=baseRowH*1.6&&byDayBase>=baseRowH*0.6,
       JSON.stringify({日付ごと:byDay.rowH,まとめての基準:baseRowH}));
   rec('日付ごとでも用紙に収まる',byDay.over===0&&byDay.clipped===0,JSON.stringify(byDay.heights));
   await clear();
@@ -385,7 +392,16 @@ let b=null;
      ============================================================ */
   /* 列が少なく(見える範囲)用紙が広い(A3横)ときは、画面の実効px幅の比のまま
      `--sp-fit`ぶんだけ拡大される（用紙いっぱいへ「配り直す」のではない）。 */
-  const naturalOpt={includeDone:true,pageByDate:false,paper:'a3-landscape',columnScope:'visible'};
+  /* **`colFit:'screen'`で見る**（§9.294 ④）——「画面の幅の比のまま」は
+     いまや画面の幅を使うと選んだときの約束で、既定（文字に合わせる）では
+     成り立たない（列ごとに要る幅が違うので比は変わる。それが目的）。
+     文字に合わせる側の約束は下の §9.294 ④ の節が見る。 */
+  /* **`padX:'1'`で見る**——ここが確かめたいのは「画面の幅の比のまま倍率ぶん
+     だけ」で、左右の余白（既定は「詰める」）は列の必要量から引かれるぶん
+     （§9.293 ④）。余白を中立にしておかないと、比の話に余白の話が混ざる
+     （余白そのものは上の §9.294 ② の節が見る）。 */
+  const naturalOpt={includeDone:true,pageByDate:false,paper:'a3-landscape',columnScope:'visible',
+                    colFit:'screen',padX:'1'};
   const naturalBuild=await build(naturalOpt);
   const naturalInfo=await page.evaluate(o=>{
    const pg=document.querySelector('#schedulePrintArea .sp-page');
@@ -1309,15 +1325,31 @@ let b=null;
    await page.evaluate(()=>localStorage.removeItem('SchedulePrintPrefV1'));
    const seam=await page.evaluate(()=>({
     fs:(WL.schedulePrint.fontScales?.()||[]).map(x=>x.key),
-    pads:(WL.schedulePrint.cellPads?.()||[]).map(x=>x.key),
+    padX:(WL.schedulePrint.padXs?.()||[]).map(x=>x.key),
+    padY:(WL.schedulePrint.padYs?.()||[]).map(x=>x.key),
+    day:(WL.schedulePrint.dayGaps?.()||[]).map(x=>x.key),
+    colFit:(WL.schedulePrint.colFits?.()||[]).map(x=>x.key),
     fit:typeof WL.schedulePrint.fitOf,font:typeof WL.schedulePrint.fontOf,
+    /* 既定（§9.294 ⑤⑥、利用者の指示「文字サイズ『大』がベースにしたい」
+       「余白『詰める』＋文字サイズ『大』が最も理想に近い」）。 */
+    def:(()=>{localStorage.removeItem('SchedulePrintPrefV1');
+      const d=WL.schedulePrint.defaults?.();return d?
+       {fontScale:d.fontScale,padX:d.padX,padY:d.padY,dayGap:d.dayGap,colFit:d.colFit,bold:d.bold}:null})(),
    }));
    /* §9.293 ④で「極大」「最大」を足した（利用者の指示「おじいちゃんも見るので
       文字はもっと限界まで大きく」）。**今までの綴りは1つも変えない**
       （変えると保存値が「知らない値」になる・§9.204）。 */
-   rec('文字の大きさは自動＋6段、セルの余白は3段（語彙は1箇所から）',
-       seam.fs.join(',')==='auto,0.85,1,1.15,1.3,1.7,2.2'&&seam.pads.join(',')==='0.6,1,1.5'
+   rec('文字の大きさは自動＋6段、余白は左右4段・上下3段・区切り4段（語彙は1箇所から）',
+       seam.fs.join(',')==='auto,0.85,1,1.15,1.3,1.7,2.2'
+       &&seam.padX.join(',')==='0.3,0.6,1,1.5'&&seam.padY.join(',')==='0.6,1,1.5'
+       &&seam.day.join(',')==='0.6,1,1.5,2.2'&&seam.colFit.join(',')==='text,screen'
        &&seam.fit==='function'&&seam.font==='function',JSON.stringify(seam));
+   /* **既定そのものを固定する**（§9.294 ⑤⑥）——札が並ぶだけを見る網は、
+      既定が変わっていなくても通る。 */
+   rec('既定は 文字「大」＋左右「詰める」＋行間「標準」＋区切り「広め」＋文字に合わせる',
+       !!seam.def&&seam.def.fontScale==='1.15'&&seam.def.padX==='0.6'&&seam.def.padY==='1'
+       &&seam.def.dayGap==='1.5'&&seam.def.colFit==='text'&&seam.def.bold===false,
+       JSON.stringify(seam.def));
    /* ---- §9.293 ② 文字は幅の圧縮に引きずられない（利用者の報告） ----
       「文字のサイズ変更機能は印刷で見てもプレビューで見ても全く変化して
        いるように感じません」
@@ -1340,10 +1372,15 @@ let b=null;
                下限(MIN_FIT)に張り付いて、直す前でも同じ数になる。 */
             余白:(()=>{
              const few=Array.from({length:6},(_,i)=>({key:'f'+i,label:'F',w:100}));
-             const g=o=>WL.schedulePrint.fontOf(few,190,o);
-             return {標準:g({fontScale:'auto',cellPad:'1'}),
-                     詰める:g({fontScale:'auto',cellPad:'0.6'}),
-                     広め:g({fontScale:'auto',cellPad:'1.5'})};
+             const g=o=>WL.schedulePrint.fontOf(few,190,{colFit:'screen',...o});
+             return {標準:g({fontScale:'auto',padX:'1'}),
+                     詰める:g({fontScale:'auto',padX:'0.6'}),
+                     最小:g({fontScale:'auto',padX:'0.3'}),
+                     広め:g({fontScale:'auto',padX:'1.5'}),
+                     /* **上下は文字に効かない**（§9.294 ②）——行が薄くなる
+                        だけ。同じ軸に戻すと「詰めたのに変わらない」か
+                        「大きくしたら行間まで詰まる」のどちらかになる。 */
+                     行間詰め:g({fontScale:'auto',padX:'1',padY:'0.6'})};
             })()};
    });
    rec('列が多くて幅が床に着いても、文字の大きさは選んだとおりに効く',
@@ -1351,9 +1388,12 @@ let b=null;
        &&split.文字.特大===1.3,JSON.stringify(split.文字));
    rec('幅は選び直しても紙に収める側のまま（はみ出させない）',
        split.幅.小===split.幅.標準&&split.幅.標準===split.幅.特大,JSON.stringify(split.幅));
-   rec('セルの余白を詰めると、そのぶん「自動」の文字が大きくなる（§9.293 ④）',
-       split.余白.詰める>split.余白.標準&&split.余白.広め<split.余白.標準,
+   rec('左右の余白を詰めると、そのぶん「自動」の文字が大きくなる（§9.293 ④／§9.294 ②）',
+       split.余白.最小>split.余白.詰める&&split.余白.詰める>split.余白.標準
+       &&split.余白.広め<split.余白.標準,
        JSON.stringify(split.余白));
+   rec('行間（上下）は文字の大きさに効かない（左右とは別の軸・§9.294 ②）',
+       split.余白.行間詰め===split.余白.標準,JSON.stringify(split.余白));
    /* **余っているぶんだけ大きくする**（幅も文字も同じ比率で）。 */
    const grow=await page.evaluate(()=>{
     const cols=[{key:'a',label:'A',w:100},{key:'b',label:'B',w:100}];
@@ -1380,7 +1420,11 @@ let b=null;
               area.className='sp-print-area';document.body.appendChild(area)}
     area.innerHTML=WL.schedulePrint.pageHtml(sheets[0],o,1,sheets.length);
     area.style.display='block';
-    const td=area.querySelector('.sp-table tbody td');
+    /* **ふつうの行のセルで測る**——`tbody td`の先頭はまとまりの帯
+       （`.sp-row-group td`）になりうるので、そこを測ると「区切りだけ
+       変えたのに本文まで変わった」と読める（実際に踏んだ）。 */
+    const td=area.querySelector('.sp-table tbody tr[data-row] td')
+      ||area.querySelector('.sp-table tbody td');
     const cs=getComputedStyle(td);
     const page=area.querySelector('.sp-page');
     const wrap=area.querySelector('.sp-table-wrap');
@@ -1388,6 +1432,21 @@ let b=null;
       -parseFloat(cs.getPropertyValue('padding-left')||0);
     const r={fs:Math.round(parseFloat(cs.fontSize)*10)/10,
              pad:Math.round(parseFloat(cs.paddingTop)*10)/10,
+             padX:Math.round(parseFloat(cs.paddingLeft)*10)/10,
+             bold:Number(cs.fontWeight)||0,
+             /* 区切りの帯の上下（§9.294 ③）。**帯そのものを測る**
+                ——設定が在るだけを見る網は、CSSが読んでいなくても通る。 */
+             dayPad:(()=>{const g=area.querySelector('.sp-row-group td');
+               return g?Math.round(parseFloat(getComputedStyle(g).paddingTop)*10)/10:null})(),
+             /* 作業以外の行（§9.294 ①）。束ねた1マスの列数と、切れていないか。 */
+             nonWork:(()=>{const td=area.querySelector('.sp-c-nonwork');
+               return td?{span:Number(td.getAttribute('colspan')||1),
+                          text:(td.textContent||'').trim(),
+                          cut:td.scrollWidth>td.clientWidth+1}:null})(),
+             /* 値が切れている列の数（§9.294 ④）。 */
+             clipped:[...area.querySelectorAll('.sp-table tbody td')]
+               .filter(t=>t.scrollWidth>t.clientWidth+1).length,
+             colMm:[...area.querySelectorAll('colgroup col')].map(c=>parseFloat(c.style.width)),
              over:wrap.getBoundingClientRect().right>page.getBoundingClientRect().right
                   -parseFloat(getComputedStyle(page).paddingRight)+1};
     area.innerHTML='';area.style.display='';
@@ -1418,11 +1477,51 @@ let b=null;
        wideAuto.fs<std.fs,JSON.stringify({自動:wideAuto.fs,標準:std.fs}));
    rec('文字を大きくしても紙からはみ出さない（幅は収める側のまま）',
        !wideBig.over,String(wideBig.over));
-   const tight=await fontOf({...base,cellPad:'0.6'},4);
-   const wide=await fontOf({...base,cellPad:'1.5'},4);
-   rec('セルの余白を選ぶと、実際にセルの余白が変わる',
+   /* ---- §9.294 ② 余白は上下と左右で別の軸（利用者の指示） ----
+      **文字の大きさを揃えて比べること**——余白は`--sp-fit`でも伸縮する
+      （§9.294 ④。幅・文字・余白の3つが同じ比率で動いて初めて「測った幅に
+      必ず収まる」が成り立つ）ので、倍率が違う紙どうしを比べると
+      「詰めたのに広い」という無関係な差を見ることになる。 */
+   const padBase={...base,fontScale:'1'};
+   const tight=await fontOf({...padBase,padY:'0.6'},4);
+   const wide=await fontOf({...padBase,padY:'1.5'},4);
+   rec('行間（上下）を選ぶと、実際にセルの上下の余白が変わる',
        tight.pad<std.pad&&std.pad<wide.pad,
        JSON.stringify({tight:tight.pad,std:std.pad,wide:wide.pad}));
+   const xMin=await fontOf({...padBase,padX:'0.3'},4);
+   const xStd=await fontOf({...padBase,padX:'1'},4);
+   const xWide=await fontOf({...padBase,padX:'1.5'},4);
+   rec('左右を選ぶと、実際にセルの左右の余白が変わる',
+       xMin.padX<xStd.padX&&xStd.padX<xWide.padX,
+       JSON.stringify({最小:xMin.padX,標準:xStd.padX,広め:xWide.padX}));
+   /* **上下を触っても左右は動かない／左右を触っても上下は動かない**
+      ——1つの軸へ戻すと、この2つのどちらかが必ず落ちる。 */
+   rec('上下と左右は互いに動かさない（1つの軸へ戻していない）',
+       tight.padX===std.padX&&wide.padX===std.padX&&xMin.pad===std.pad&&xWide.pad===std.pad,
+       JSON.stringify({上下を触ったときの左右:[tight.padX,std.padX,wide.padX],
+                       左右を触ったときの上下:[xMin.pad,std.pad,xWide.pad]}));
+   /* ---- §9.294 ③ 区切り（日付）の行間だけ別に空ける（利用者の指示） ----
+      **まとまりの帯を実際に出してから測る**——既定の「まとめない」のままだと
+      帯が1本も出ず、`null`同士を比べて何も確かめないまま通る。 */
+   const grouped=await page.evaluate(()=>{
+    const g=document.getElementById('scGroupSelect');
+    if(!g)return false;
+    const prev=g.value;g.value='date';g.dispatchEvent(new Event('change',{bubbles:true}));
+    return prev;
+   });
+   const dayNarrow=await fontOf({...padBase,useGroups:true,pageByDate:false,dayGap:'0.6'},4);
+   const dayWide=await fontOf({...padBase,useGroups:true,pageByDate:false,dayGap:'2.2'},4);
+   await page.evaluate(p2=>{const g=document.getElementById('scGroupSelect');
+    if(g&&p2!==false){g.value=p2;g.dispatchEvent(new Event('change',{bubbles:true}))}},grouped);
+   rec('区切りの行間を選ぶと、まとまりの帯の上下だけが変わる',
+       dayNarrow.dayPad!=null&&dayWide.dayPad!=null&&dayWide.dayPad>dayNarrow.dayPad
+       &&dayNarrow.pad===dayWide.pad,
+       JSON.stringify({詰める:dayNarrow.dayPad,とても広め:dayWide.dayPad,
+                       ふつうの行:[dayNarrow.pad,dayWide.pad]}));
+   /* ---- §9.294 ⑤ 太字（利用者の指示「文字を太字にしたりする機能も」） ---- */
+   const boldOn=await fontOf({...padBase,bold:true},4);
+   rec('太字を選ぶと、刷り上がりの本文が実際に太くなる',
+       boldOn.bold>=700&&std.bold<700,JSON.stringify({太字:boldOn.bold,既定:std.bold}));
 
    /* **設定が端末に残る**（毎回選び直させない）。 */
    await page.evaluate(e=>WL.schedulePrint.openPreview(e),EQ);
@@ -1432,15 +1531,19 @@ let b=null;
    await page.click('[data-pv-tab="look"]');
    await page.waitForSelector('#spFontScale',{state:'visible',timeout:8000});
    await page.click('#spFontScale label:has(input[value="1.3"])');
-   await page.click('#spCellPad label:has(input[value="0.6"])');
+   await page.click('#spCellPad label:has(input[name="spPadX"][value="0.3"])');
+   await page.click('#spCellPad label:has(input[name="spPadY"][value="1.5"])');
+   await page.click('#spCellPad label:has(input[name="spDayGap"][value="2.2"])');
    await page.waitForTimeout(800);
    const kept=await page.evaluate(()=>{
     const p=JSON.parse(localStorage.getItem('SchedulePrintPrefV1')||'{}');
-    return {fs:p.fontScale,pad:p.cellPad,
+    return {fs:p.fontScale,padX:p.padX,padY:p.padY,day:p.dayGap,legacy:p.cellPad,
             note:(document.getElementById('spFitNote')||{}).textContent||''};
    });
-   rec('選んだ文字の大きさ・余白はこの端末に残る',
-       kept.fs==='1.3'&&kept.pad==='0.6',JSON.stringify(kept));
+   rec('選んだ文字の大きさ・余白（左右・上下・区切り）はこの端末に残る',
+       kept.fs==='1.3'&&kept.padX==='0.3'&&kept.padY==='1.5'&&kept.day==='2.2'
+       /* **読まない鍵は残さない**（§9.294 ②）——どちらが効くのか分からなくなる。 */
+       &&kept.legacy===undefined,JSON.stringify(kept));
    /* **本文が何pxで刷られるか**を文字で出す（§3・§6）。列幅の%は足元の
       「刷り上がり」が言うので、ここでは繰り返さない（§CLAUDE 8）。 */
    rec('いま本文が何pxで刷られるかを文字で出す（§3・§6）',
@@ -1483,6 +1586,160 @@ let b=null;
 
   await page.evaluate(()=>WL.schedulePrint.closePreview());
 
+  /* ============================================================
+     §9.294 ① 作業以外の行は「題名だけ」（利用者の指示）
+     「作業スケジュール表の設備停止名はカラムに関係なく表示できるように
+      してほしいです。一番左に配置した基準のカラムに所属させた形で文字が
+      見切れたりしてしまうので…」
+     「設備停止を入れた行は、ロットの情報と全く関係ないので、設備停止名
+      以外表示させたくない…組み込み条件も含めて設備停止は無関係情報に
+      なるので行での処理を除外するようにしてください」
+
+     **材料は自分で注ぎ込む**——検証用の予定に設備停止がある保証は無く、
+     「無ければ素通り」の書き方だと直す前でも通る。
+     ============================================================ */
+  {
+   const STOP_NAME='RT印刷_停止'+Date.now();
+   const stopId=await page.evaluate(async ([e,name])=>{
+    const j=async(u,b)=>(await (await fetch(u,{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})).json());
+    const m=await j('/api/schedule/stop-reason-master',
+      {equipment:e,category:'その他',name,standardMinutes:20,user_id:'test-scprint'});
+    await j('/api/schedule/session/acquire',{equipment:e});
+    const a=await j('/api/schedule/plan/add',{equipment:e,kind:'設備停止',
+      stopReasonId:m&&m.id,user_id:'test-scprint'});
+    return {plan:a&&a.id,reason:m&&m.id};
+   },[EQ,STOP_NAME]);
+   if(stopId&&stopId.plan)made.push(stopId.plan);
+   /* **後始末を必ず足す**（§9.121）——停止理由マスタは`db/master.sqlite3`に
+      残り、実行のたびに1行ずつ増える。 */
+   if(stopId&&stopId.reason)madeStops.push(stopId.reason);
+   rec('前提: 設備停止の予定を1件足せた',!!(stopId&&stopId.plan),JSON.stringify(stopId));
+
+   /* ---- 画面（タイムライン）側 ---- */
+   /* **足した予定が画面に載るまで待つ**（固定待ちだと、まだ届いていない
+      画面を測って通る・§9.102）。開き直しはtest_scdropと同じ作法。 */
+   await page.reload({waitUntil:'domcontentloaded'});
+   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
+   await page.waitForSelector('#openSchedule',{timeout:25000});
+   await page.click('#openSchedule');
+   await page.waitForSelector('.sc-board-row',{timeout:25000});
+   await page.evaluate(e=>{const r=[...document.querySelectorAll('.sc-board-row')]
+     .find(x=>x.dataset.equipment===e);if(r)r.click()},EQ);
+   await page.waitForSelector('.sc-row-line',{timeout:30000});
+   await page.waitForFunction(n=>[...document.querySelectorAll('.sc-row-line')]
+     .some(r=>(r.textContent||'').includes(n)),STOP_NAME,{timeout:30000});
+   const scr=await page.evaluate(name=>{
+    const row=[...document.querySelectorAll('.sc-row-line')]
+      .find(r=>(r.textContent||'').includes(name));
+    if(!row)return null;
+    const t=row.querySelector('.sc-row-nonwork');
+    const fixed=[...row.querySelectorAll('[data-col]')]
+      .filter(x=>String(x.dataset.col||'').startsWith('__'));
+    return {found:true,
+            /* 題名が1マスに束ねられ、その中で切れていない。 */
+            span:t?getComputedStyle(t).gridColumn:'',
+            text:t?(t.textContent||'').trim():'',
+            cut:t?t.scrollWidth>t.clientWidth+1:true,
+            /* 内容・計算の列（`__`で始まらない）は**1つも中身を持たない**
+               （題名の1マスを除く）。表示ルールの既定行が書き込んでいたら
+               ここで落ちる。 */
+            leftover:[...row.querySelectorAll('[data-col]')]
+              .filter(x=>!String(x.dataset.col||'').startsWith('__')
+                         &&!x.classList.contains('sc-row-nonwork')
+                         &&(x.textContent||'').trim()!=='').length,
+            /* 作業可否はロットの話なので落とす。 */
+            workable:!!row.querySelector('.sc-row-workable'),
+            /* 日付・時刻・区分は残す（停止そのものの事実）。 */
+            keptFixed:fixed.filter(x=>(x.textContent||'').trim()!=='').length};
+   },STOP_NAME);
+   rec('画面: 設備停止の題名は内容の列を束ねた1マスに出る',
+       !!scr&&scr.text.includes(STOP_NAME)&&/span/.test(scr.span),JSON.stringify(scr));
+   rec('画面: 束ねたので題名が見切れない',!!scr&&!scr.cut,JSON.stringify(scr&&scr.text));
+   rec('画面: 内容・計算の列にロットと無関係な値が残らない',
+       !!scr&&scr.leftover===0,JSON.stringify(scr&&scr.leftover));
+   rec('画面: 作業可否（ロットの話）は出さない',!!scr&&!scr.workable,JSON.stringify(scr&&scr.workable));
+   rec('画面: 日付・時刻・区分（停止そのものの事実）は残す',
+       !!scr&&scr.keptFixed>=3,JSON.stringify(scr&&scr.keptFixed));
+
+   /* ---- 紙側 ---- */
+   const paper=await build({includeDone:true,pageByDate:false,columnScope:'all'});
+   const pinfo=await page.evaluate(name=>{
+    const td=[...document.querySelectorAll('#schedulePrintArea .sp-c-nonwork')]
+      .find(x=>(x.textContent||'').includes(name));
+    if(!td)return null;
+    const tr=td.closest('tr');
+    const cols=tr.closest('table').querySelectorAll('colgroup col').length;
+    return {span:Number(td.getAttribute('colspan')||1),cols,
+            cut:td.scrollWidth>td.clientWidth+1,
+            /* 題名以外のセルに中身が残っていないこと（区分・日付などの
+               固定列は残ってよいので、内容の列だけを見る）。 */
+            cells:[...tr.children].length};
+   },STOP_NAME);
+   rec('紙: 設備停止の題名は内容の列を束ねた1マスに出る',
+       !!pinfo&&pinfo.span>1,JSON.stringify(pinfo));
+   rec('紙: 束ねたので題名が切れない',!!pinfo&&!pinfo.cut,JSON.stringify(pinfo));
+   /* **セルの数＋束ねたぶん−1＝列の数**（束ねて列がずれていない）。 */
+   rec('紙: 束ねても列がずれない（colspanと列数が合う）',
+       !!pinfo&&pinfo.cells+pinfo.span-1===pinfo.cols,JSON.stringify(pinfo));
+   await clear();
+   void paper;
+
+   /* ============================================================
+      §9.294 ④ カラム幅の自動調整（利用者の指示「カラムの文字列は
+      見切れないようにしたいのでカラム幅の自動調整機能も欲しいです」）
+      ============================================================ */
+   /* **宣言ではなく刷り上がりで見る**——「文字に合わせる」を選んでも
+      `withMm`が実測を渡していなければ何も変わらない（§9.289と同じ罠）。 */
+   const fitCmp=await page.evaluate(async ()=>{
+    const of=async o=>{
+     const groups=WL.schedulePrint.buildPages('テスト設備A',WL.scheduleView.entries(),o);
+     const sheets=WL.schedulePrint.splitToSheets(groups,o);
+     let area=document.getElementById('schedulePrintArea');
+     if(!area){area=document.createElement('div');area.id='schedulePrintArea';
+               area.className='sp-print-area';document.body.appendChild(area)}
+     area.innerHTML=WL.schedulePrint.pageHtml(sheets[0],o,1,sheets.length);
+     area.style.display='block';
+     const cols=[...area.querySelectorAll('colgroup col')].map(c=>parseFloat(c.style.width));
+     const td=area.querySelector('.sp-table tbody td');
+     const fs=Math.round(parseFloat(getComputedStyle(td).fontSize)*10)/10;
+     const clipped=[...area.querySelectorAll('.sp-table tbody td:not(.sp-c-nonwork)')]
+       .filter(t=>t.scrollWidth>t.clientWidth+1).length;
+     const wrap=area.querySelector('.sp-table-wrap'),pg=area.querySelector('.sp-page');
+     const over=wrap.getBoundingClientRect().right>pg.getBoundingClientRect().right
+       -parseFloat(getComputedStyle(pg).paddingRight)+1;
+     area.innerHTML='';area.style.display='';
+     return {cols,fs,clipped,over,sum:Math.round(cols.reduce((a,b)=>a+b,0)*10)/10};
+    };
+    const base={includeDone:true,pageByDate:false,paper:'a4-portrait',columnScope:'all',
+                borders:true,range:'all',useGroups:true,commentBox:true,writePattern:'actual',
+                fontScale:'auto',padX:'0.6',padY:'1',dayGap:'1.5'};
+    return {text:await of({...base,colFit:'text'}),screen:await of({...base,colFit:'screen'})};
+   });
+   /* **列ごとの幅が変わる**（比が保たれない＝要る幅に合わせて配り直した）。 */
+   const changed=fitCmp.text.cols.filter((v,i)=>Math.abs(v-fitCmp.screen.cols[i])>0.5).length;
+   rec('列の幅を「文字に合わせる」と、刷り上がりの列幅が実際に配り直される',
+       changed>=3,JSON.stringify({変わった列:changed,
+         文字:fitCmp.text.cols.slice(0,6),画面:fitCmp.screen.cols.slice(0,6)}));
+   /* **余ったぶんが文字へ回る**——これが「見切れさせずに大きくする」の中身。 */
+   rec('文字に合わせると、そのぶん「自動」の文字が大きくなる',
+       fitCmp.text.fs>fitCmp.screen.fs,
+       JSON.stringify({文字に合わせる:fitCmp.text.fs,画面のまま:fitCmp.screen.fs}));
+   /* **「自動」＋「文字に合わせる」なら1つも切れない**（§9.294 ④）——これが
+      利用者の「カラムの文字列は見切れないように」への答え。**減ることでは
+      なく0であること**を見る（減るだけの網は、余白が文字と一緒に縮まない
+      実装＝実測で31セル切れていた形を素通りさせる）。 */
+   rec('「自動」＋「文字に合わせる」なら、切れるセルが1つも無い',
+       fitCmp.text.clipped===0,
+       JSON.stringify({文字:fitCmp.text.clipped,画面:fitCmp.screen.clipped}));
+   rec('文字に合わせても紙からはみ出さない',!fitCmp.text.over&&fitCmp.text.sum<=194+0.5,
+       JSON.stringify({はみ出し:fitCmp.text.over,合計:fitCmp.text.sum}));
+   /* この節で画面を読み直したので、プレビューの器も作り直されている。
+      最後の「閉じても刷らない」は器が在る前提なので、1度開いておく。 */
+   await page.evaluate(e=>WL.schedulePrint.openPreview(e),EQ);
+   await page.waitForSelector('#spPvTabs',{timeout:15000});
+  }
+
   await page.evaluate(()=>WL.schedulePrint.closePreview());
   rec('閉じても刷らない（プレビューだけ消える）',
       await page.evaluate(()=>document.getElementById('schedulePrintPreview').hidden
@@ -1509,6 +1766,13 @@ let b=null;
   try{
    for(const id of made)await page.evaluate(async i=>{
     await fetch('/api/schedule/plan/delete',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:i,user_id:'test-scprint'})});
+   },id);
+  }catch(e){}
+  try{
+   for(const id of madeStops)await page.evaluate(async i=>{
+    await fetch('/api/schedule/stop-reason-master/delete',{method:'POST',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({id:i,user_id:'test-scprint'})});
    },id);
   }catch(e){}

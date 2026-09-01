@@ -217,13 +217,25 @@
    if(typeof view.rowStyleOf==='function'){try{rowStyle=view.rowStyleOf(e)}catch(_){rowStyle=null}}
    /* 子ロットの件数は**内訳を載せるかどうかとは別**（§9.237）。画面は
       ロット番号のお尻に「子N」の印を出しているので、紙でも出す。 */
+   /* 作業以外の行の題名（§9.294 ①）。**紙は内容の列を束ねてここへ置く**
+      ので、どの列が残ったかに関わらず読める1つの文字列として持つ。 */
+   const nonWorkTitle=(e.kind!=='作業'&&typeof view.nonWorkTitle==='function')
+     ?String(view.nonWorkTitle(e)||''):'';
    index.get(key).rows.push({e,start,end:useActual?e.actual.endAt:e.plannedEnd,group,cells,kids,
-                             kidCount:allKids.length,rowStyle});
+                             kidCount:allKids.length,rowStyle,nonWorkTitle});
   });
   /* 紙の列は**1つの紙の中で変えない**ので、まとめて1回だけ決める。 */
   const cols=printColumns(opt);
+  /* 列の幅を文字から決めるための実測（§9.294 ④）。**1回の印刷で1つの答え**
+     ——紙ごとに測ると、同じ日の2枚目で列幅が変わって別の表に見える。
+     測れなければ`null`＝画面の幅へ倒す（fail-open）。 */
+  let textMm=null;
+  if(colFitOf(opt)==='text'){
+   const all=[];groups.forEach(g=>g.rows.forEach(r=>all.push(r)));
+   try{textMm=measureColsMm(cols,all,opt)}catch(_){textMm=null}
+  }
   return groups.map(g=>({
-   cols,
+   cols,textMm,
    /* 日付で分けないときは、束ねた中身の**実際の範囲**を書く。
       キーが空だからと「日付未定」にすると、日付を持っている予定まで
       日付不明の紙として配られてしまう。 */
@@ -487,20 +499,73 @@
   {key:'1.7', label:'極大',note:'遠目でも読める大きさ。列が窮屈だと長い値は「…」で切れます'},
   {key:'2.2', label:'最大',note:'いちばん大きく。列の数が少ない紙向き'},
  ];
- /* セルの内側の余白。文字の大きさとは**別の軸**（詰めれば1枚に多く入る）。 */
- const CELL_PADS=[
+ /* ---------- セルの余白は「上下」と「左右」で別の軸（§9.294 ②、利用者の指示
+    「セルの余白は上下だけでなく左右を分けてもう少し調整できるようにしたうえで、
+     特に左右を詰められるようにしたいです。左右の余白は、今の設定で言う
+     『詰める』が標準にしたいです」） ----------
+    §9.292 ⑥で足した`cellPad`は**1つの値で上下と左右を同時に動かして**いた。
+    ところが2つは打つ手が正反対で——**左右**を詰めると空いたぶんが文字の
+    大きさへ回る（列の必要量が減る＝`withMm`の`room`が増える）が、**上下**を
+    詰めると行が薄くなるだけで文字は1pxも大きくならない。1つの軸だと
+    「文字を大きくしたいので詰めたら、行間まで詰まって読みにくくなった」に
+    なる（利用者の理想が「詰める＋大」で止まっていたのはこの形）。 */
+ /* 行間（上下）。**既定は標準**——ロットの並びは詰めない（利用者の指示）。 */
+ const PAD_YS=[
   {key:'0.6',label:'詰める',note:'行が薄くなり、1枚により多く入ります'},
-  {key:'1',   label:'標準',  note:'既定'},
+  {key:'1',   label:'標準',  note:'既定。ロットの並びはこの間隔です'},
   {key:'1.5', label:'広め',  note:'手で書き込む欄が広くなります'},
+ ];
+ /* 左右。**既定は「詰める」**（利用者の指示）——ここを詰めたぶんが
+    そのまま文字の大きさへ回る（`withMm`が余白を列の必要量へ織り込む）。
+    「最小」は「さらにタイトに」への答え（§9.294 ②）。 */
+ const PAD_XS=[
+  {key:'0.3',label:'最小',  note:'いちばん詰めます。文字を最大まで大きくしたいとき'},
+  {key:'0.6',label:'詰める',note:'既定。文字と枠のあいだを詰めて、そのぶん文字を大きくします'},
+  {key:'1',   label:'標準',  note:'画面と同じくらいの余白'},
+  {key:'1.5', label:'広め',  note:'ゆったり'},
+ ];
+ /* 日付（まとまり）の切り替わりだけ空ける（§9.294 ③、利用者の指示
+    「日付の切り替わりは、行間の余白のみ『広め』くらい空けたい」）。
+    **行間とは別の軸**——ここが同じ値だと、区切りが「1行ぶん濃い帯」でしか
+    分からない。既定は広め。 */
+ const DAY_GAPS=[
+  {key:'0.6',label:'詰める',note:'区切りも他の行と同じ薄さにします'},
+  {key:'1',   label:'標準',  note:'他の行と同じ間隔'},
+  {key:'1.5', label:'広め',  note:'既定。日付が変わったことが目で分かります'},
+  {key:'2.2', label:'とても広め',note:'紙を折って配るときなど、はっきり切りたいとき'},
+ ];
+ /* ---------- 列の幅の決め方（§9.294 ④、利用者の指示「カラムの文字列は
+    見切れないようにしたいのでカラム幅の自動調整機能も欲しいです」） ----------
+    `screen`＝画面の実効px幅をそのまま使う（§9.236。今までの唯一の道）。
+    `text`＝**実際に刷る文字を測って**、その列に要るぶんだけ配る。
+    値が短い列（区分・条数）は痩せ、余ったぶんは`room`＝文字の倍率へ回る
+    ——「見切れさせずに文字を大きくする」に効く唯一の外側の手立て。 */
+ const COL_FITS=[
+  {key:'text',  label:'文字に合わせる',note:'既定。見出しと値を実際に測って、切れない幅を配ります。余ったぶんは文字の大きさへ回ります'},
+  {key:'screen',label:'画面のまま',    note:'画面で決めた列幅の比をそのまま紙へ写します'},
  ];
  function fontScaleOf(opt){
   const k=String(opt&&opt.fontScale||'');
   return FONT_SCALES.some(x=>x.key===k)?k:'auto';
  }
- function cellPadOf(opt){
-  const k=String(opt&&opt.cellPad||'');
-  return CELL_PADS.some(x=>x.key===k)?k:'1';
+ /* **知らない綴りは既定へ倒す**（§9.204）。綴りと呼び名はここが1箇所。 */
+ function padYOf(opt){
+  const k=String(opt&&opt.padY||'');
+  return PAD_YS.some(x=>x.key===k)?k:'1';
  }
+ function padXOf(opt){
+  const k=String(opt&&opt.padX||'');
+  return PAD_XS.some(x=>x.key===k)?k:'0.6';
+ }
+ function dayGapOf(opt){
+  const k=String(opt&&opt.dayGap||'');
+  return DAY_GAPS.some(x=>x.key===k)?k:'1.5';
+ }
+ function colFitOf(opt){
+  const k=String(opt&&opt.colFit||'');
+  return COL_FITS.some(x=>x.key===k)?k:'text';
+ }
+ function boldOf(opt){return !!(opt&&opt.bold)}
  const MIN_COL_MM=4;      // これ以下の列は文字が1つも入らない
  const FRAME_MM=.5;       // 表を囲む器(.sp-table-wrap)の枠のぶん
  /* ---------- 下限のある比例配分（§9.237） ----------
@@ -532,9 +597,14 @@
    });
    if(!hit)break;
   }
-  /* 0.1mm へ丸めた誤差で合計が予算を超えることがある。**いちばん広い列から
-     引く**（狭い列から引くと下限を割る）。 */
-  const mm=out.map(v=>Math.round(v*10)/10);
+  return trimRound(out,usableMm,floor);
+ }
+ /* 0.1mm へ丸めた誤差で合計が予算を超えることがある。**いちばん広い列から
+    引く**（狭い列から引くと下限を割る）。 */
+ function trimRound(values,usableMm,floorMm){
+  const n=values.length;
+  const floor=floorMm!=null?floorMm:Math.min(MIN_COL_MM,usableMm/(n||1));
+  const mm=values.map(v=>Math.round(v*10)/10);
   let over=Math.round((mm.reduce((s,v)=>s+v,0)-usableMm)*10)/10;
   while(over>0.001){
    let at=0;for(let i=1;i<n;i++)if(mm[i]>mm[at])at=i;
@@ -565,16 +635,97 @@
  /* セルの左右の余白（mm）。**CSSの`1.4mm × --sp-pad`と同じ数**——ここと
     CSSが食い違うと、幅の見積もりが実際の刷り上がりとずれる（§9.163）。 */
  const CELL_PAD_MM=1.4;
- function withMm(cols,usableMm,opt){
+ /* ---------- 列の幅を「実際に刷る文字」から決める（§9.294 ④、利用者の指示
+    「カラムの文字列は見切れないようにしたいのでカラム幅の自動調整機能も
+     欲しいです」） ----------
+    画面の実効px幅（§9.237 ④b）は**画面で読むための幅**で、紙とは条件が違う
+    ——画面は横スクロールできるので余裕を持たせてあるし、逆に狭く詰めた列は
+    紙でも狭いまま。**紙は1行に全部を並べる**ので、値の短い列に画面ぶんの
+    幅を配ると、そのぶん文字の倍率(`room`)が食われて全部が小さくなる。
+
+    測るのは**見出しと、その紙に実際に出る値の最長**。`canvas`の
+    `measureText`で、刷るのと同じ書体・同じ太さ・同じ地の大きさ（倍率1）で
+    測る（§9.130の`fitControlWidths()`と同じ作法）。**倍率は掛けない**
+    ——幅も文字も`fit`で一緒に伸縮するので、倍率1で測っておけば比が保たれる。
+
+    **測れなければ画面の幅へ倒す**（fail-open）——`canvas`が使えない場面で
+    紙が出なくなるほうが困る。 */
+ /* ---------- 測るのは「実際に描いた表」（§9.294 ④） ----------
+    最初は`canvas`の`measureText`で見積もっていたが、**ちょうどの幅では必ず
+    どこかが足りなくなった**（実測: 切れるセルが14→46件）。書体の指定だけでは
+    再現できない要素が多すぎる——`tabular-nums`（数字の列は等幅で広い）・
+    札(`.sp-badge`)と印(`.sp-chip`)の余白と枠・暫定見積の斜体・「子N」の印・
+    セルの余白と罫線。**紙と同じCSSで一度描いて、列ごとの実寸を読む**のが
+    唯一ずれない答え（§9.237 ④b「実際に描かれている見出しを測る」と同じ）。
+
+    描くのは`table-layout:auto; width:max-content`の写しなので、ブラウザが
+    列ごとに「折り返さずに要る幅」を解いてくれる。**倍率は掛けない**
+    （`--sp-fit`を書かない＝1。幅も文字も`fit`で一緒に動くので、地の大きさで
+    測っておけば比が保たれる）。**セルの余白と太字は掛ける**（どちらも列の
+    必要量を変える）。 */
+ /* **実寸ちょうどでは切れる**——0.1mmへ丸める段と、倍率を掛けたときの端数で
+    必ずどこかが足りなくなる。0.3mmの遊びを持たせる（これ以上取ると、
+    余りを文字へ回すという目的が薄れる）。 */
+ const TEXT_SLACK_MM=0.3;
+ let colMmCache={sig:'',val:null};
+ function measureSig(cols,rows,opt){
+  let n=0;(rows||[]).forEach(r=>((r&&r.cells)||[]).forEach(c=>{n+=(c.text||'').length}));
+  return [cols.map(c=>c.key).join('\u0001'),padXOf(opt),boldOf(opt)?1:0,
+          (rows||[]).length,n].join('|');
+ }
+ function measureColsMm(cols,rows,opt){
+  if(!cols||!cols.length)return null;
+  /* **同じ材料なら測り直さない**（§9.198）——設定を1つ触るたびに表を
+     もう1枚描くことになる。 */
+  const sig=measureSig(cols,rows,opt);
+  if(colMmCache.sig===sig)return colMmCache.val;
+  let area=null,keep='';
+  try{
+   area=ensureArea();
+   keep=area.innerHTML;
+   area.classList.add('is-measuring');
+   const head=cols.map(c=>`<th class="${esc(fixedAlignClass(c.key))}">${esc(c.label||'')}</th>`).join('');
+   /* 全幅の行（申し送り・設備停止の題名）は列の幅を決めない。 */
+   const body=(rows||[]).filter(r=>!fullWidthTitle(r)&&!(r&&r.nonWorkTitle))
+     .map((item,i)=>`<tr>${cellsOf(item,i+1,cols)}</tr>`).join('');
+   area.innerHTML=`<section class="sp-page sp-measure-page"${boldOf(opt)?' data-bold="on"':''}`
+     +` style="--sp-pad-x:${padXOf(opt)}"><div class="sp-table-wrap">`
+     +`<table class="sp-table sp-measure">`
+     +`<thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div></section>`;
+   const ths=[...area.querySelectorAll('.sp-measure thead th')];
+   if(ths.length!==cols.length)return null;
+   const out={};
+   ths.forEach((th,i)=>{out[cols[i].key]=th.getBoundingClientRect().width*MM_PER_PX});
+   colMmCache={sig,val:out};
+   return out;
+  }catch(_){return null}
+  finally{if(area){area.innerHTML=keep;area.classList.remove('is-measuring')}}
+ }
+ function withMm(cols,usableMm,opt,textMm){
   const budget=Math.max(1,usableMm-FRAME_MM);
   /* **セルの余白は列の幅の一部**（§9.293 ④）。以前は幅を配ってから CSS が
      内側に余白を足していたので、「余白を詰める」を選んでも**文字は1pxも
      大きくならなかった**（空いた場所が誰にも配られない）。余白を列の
      必要量へ織り込むと、詰めたぶんがそのまま文字の大きさになる
-     ——利用者の「限界まで大きく」に効く唯一の内側の手立て。 */
-  const pad=Number(cellPadOf(opt))||1;
+     ——利用者の「限界まで大きく」に効く唯一の内側の手立て。
+     **左右だけ**が幅に効く（§9.294 ②）——上下を詰めても文字は大きく
+     ならないので、同じ軸にすると「詰めたのに変わらない」が作れる。 */
+  const pad=Number(padXOf(opt))||1;
   const padDelta=2*CELL_PAD_MM*(pad-1);
-  const natural=cols.map(c=>Math.max(MIN_COL_MM,(c.w||60)*MM_PER_PX+padDelta));
+  /* 文字に合わせるとき、1列が紙を食い尽くさないよう頭打ちにする
+     （長い備考が1本あるだけで他の列が全部潰れる）。切れることは
+     プレビューが数えて言う（§3）。 */
+  const capMm=budget*0.42;
+  const fitMode=colFitOf(opt);
+  const natural=cols.map(c=>{
+   /* **記入欄は測らない**（§9.294 ④）——空のまま刷って現場が手で書く場所
+      なので、「文字に合わせる」と見出しの幅まで痩せて書けなくなる。 */
+   /* 測った幅は**セルの余白と罫線を含む実寸**なので、そのまま使う
+      （足し引きすると、測った意味が無くなる）。 */
+   if(fitMode==='text'&&!c.write&&textMm&&textMm[c.key]!=null)
+    return Math.max(MIN_COL_MM,Math.min(capMm,textMm[c.key]+TEXT_SLACK_MM));
+   return Math.max(MIN_COL_MM,(c.w||60)*MM_PER_PX+padDelta);
+  });
   const total=natural.reduce((s,w)=>s+w,0)||1;
   const want=fontScaleOf(opt);
   const room=budget/total;
@@ -585,7 +736,11 @@
   const fit=Math.max(MIN_FIT,Math.min(target,room));
   const scaled=natural.map(w=>w*fit);
   const tot=scaled.reduce((s,w)=>s+w,0);
-  const mm=tot<=budget?scaled.map(v=>Math.round(v*10)/10):shareMm(scaled,budget);
+  /* **丸めの端数で`shareMm`へ落とさないこと**（§9.294 ④）——あちらは
+     「下限つきの比例配分」なので、狭い列を`MIN_COL_MM`へ持ち上げたぶんを
+     他の列から取る＝**文字と幅の比が崩れて切れる**。予算をわずかに超えた
+     だけなら、いちばん広い列から削って丸めるだけでよい。 */
+  const mm=tot<=budget+0.06?trimRound(scaled,budget):shareMm(scaled,budget);
   /* **文字**は利用者が決めた値をそのまま使う（幅の圧縮に引きずられない）。 */
   const font=want==='auto'?fit:Number(want);
   return {cols:cols.map((c,i)=>({...c,mm:mm[i]})),
@@ -692,10 +847,40 @@
   if(k&&cols.some(c=>c.key===k))return k;
   return cols.some(c=>c.key==='lotNo')?'lotNo':'';
  }
+ /* 申し送り(コメント)は**行まるごと横いっぱい**（§9.191）。他の作業以外の
+    行（設備停止・枠）は、**内容の列だけを束ねて**題名を置く（§9.294 ①）
+    ——日付・時刻・見積は停止そのものの事実なので残す。 */
+ function fullWidthTitle(item){return !!(item&&item.e&&item.e.kind==='コメント')}
+ /* 束ねる範囲は**実際に刷る列**から決める（§9.294 ①）。画面の並びで決めた
+    束をそのまま使うと、「見える範囲の列だけ」で削られたときに範囲が
+    紙の列とずれる。どれが内容の列かは**画面が答える**（`fixed`。§9.163）。 */
+ function contentRunOf(item,cols){
+  const map=new Map((item.cells||[]).map(c=>[c.key,c]));
+  const isContent=c=>{const v=map.get(c.key);return !!v&&v.fixed===false};
+  const at=cols.findIndex(isContent);
+  if(at<0)return null;
+  let span=1;
+  while(at+span<cols.length&&isContent(cols[at+span]))span++;
+  return {at,span};
+ }
  function cellsOf(item,no,cols){
   const map=new Map((item.cells||[]).map(c=>[c.key,c]));
   const kidKey=item.kidCount?kidBadgeKey(cols):'';
-  return cols.map(c=>{
+  /* 作業以外の行は、内容の列をひとかたまりにして題名を置く（§9.294 ①）。 */
+  const run=item.nonWorkTitle?contentRunOf(item,cols):null;
+  return cols.map((c,ci)=>{
+   if(run){
+    if(ci===run.at)
+     return `<td class="sp-c-nonwork"${run.span>1?` colspan="${run.span}"`:''}`
+      +` title="${esc(item.nonWorkTitle)}">${esc(item.nonWorkTitle)}</td>`;
+    if(ci>run.at&&ci<run.at+run.span)return '';
+   }
+   return cellOne(item,no,cols,c,kidKey,map);
+  }).join('');
+ }
+ /* セル1つ。**内容の列を束ねる判定とは分ける**——束ねるかどうかは行の話、
+    ここは列の話（1つの関数に混ぜると分岐がもう一段深くなる）。 */
+ function cellOne(item,no,cols,c,kidKey,map){
    if(c.key==='no')return `<td class="sp-al-c">${esc(String(no))}</td>`;
    if(c.key==='state'){
     const st=item.e.state||'';
@@ -727,7 +912,6 @@
    if(c.key===kidKey)
     return `<td class="${esc(cls)}"${title}><span class="sp-cell-in">${esc(text)}</span>${kidBadgeHtml(item.kidCount)}</td>`;
    return `<td class="${esc(cls)}"${title}>${esc(text)}</td>`;
-  }).join('');
  }
 
  /* ---------- 子ロットの内訳の1行(§9.235③、利用者の指示「分割後の子ロット
@@ -763,7 +947,7 @@
  }
 
  function pageHtml(page,opt,pageNo,pageCount){
-  const fitted=withMm(page.cols||printColumns(opt),paperUsableMm(opt.paper).w,opt);
+  const fitted=withMm(page.cols||printColumns(opt),paperUsableMm(opt.paper).w,opt,page.textMm);
   const cols=fitted.cols;
   /* 幅は**colgroupで与える**（CSSのクラスに書くと利用者が変えられない）。 */
   const group=`<colgroup>${cols.map(c=>`<col style="width:${c.mm}mm">`).join('')}</colgroup>`;
@@ -839,13 +1023,18 @@
      `.sp-table`の中の文字サイズにだけ掛かる（用紙・余白はmmのまま）。 */
   /* セルの余白は文字とは別の軸（§9.292 ⑥）。**既定のときは書かない**
      ——書かない紙は今までと1pxも変わらない。 */
-  const pad=cellPadOf(opt);
-  /* `--sp-fit`は**文字**の倍率（§9.293 ②）。幅はもう mm へ入っている。 */
+  const padY=padYOf(opt),padX=padXOf(opt),dayGap=dayGapOf(opt);
+  /* `--sp-fit`は**文字**の倍率（§9.293 ②）。幅はもう mm へ入っている。
+     余白は**上下と左右で別の変数**（§9.294 ②）——1つにすると「文字を
+     大きくしたくて詰めたら行間まで詰まった」になる。**既定のときは
+     書かない**ので、触っていない設定は今までどおりの見え方になる。 */
   const vars=[fitted.font!==1?`--sp-fit:${fitted.font}`:'',
-              pad!=='1'?`--sp-pad:${pad}`:''].filter(Boolean);
+              padY!=='1'?`--sp-pad-y:${padY}`:'',
+              padX!=='1'?`--sp-pad-x:${padX}`:'',
+              dayGap!=='1'?`--sp-pad-day:${dayGap}`:''].filter(Boolean);
   const fitVar=vars.length?` style="${vars.join(';')}"`:'';
   return `<section class="sp-page" data-paper="${esc(opt.paper||'a4-portrait')}"${
-    opt.borders===false?' data-borders="off"':''}${fitVar}>
+    opt.borders===false?' data-borders="off"':''}${boldOf(opt)?' data-bold="on"':''}${fitVar}>
    <header class="sp-head">
     <div class="sp-head-main">
      <span class="sp-title">作業予定表</span>
@@ -942,8 +1131,16 @@
                  columnScope:'all',borders:true,
                  /* 印刷範囲(§9.292 ①)。**既定は`all`＝今までどおり全部**。 */
                  range:'all',dateFrom:'',dateTo:'',
-                 /* 紙の文字とセルの余白(§9.292 ⑥)。既定は「枠いっぱい」。 */
-                 fontScale:'auto',cellPad:'1',
+                 /* ---------- 紙の文字とセルの余白 ----------
+                    **既定は「大」＋左右「詰める」＋列は文字に合わせる**
+                    （§9.294 ⑤⑥、利用者の指示「文字サイズ『大』がベースに
+                     したいです」「今の設定で最も理想に近いのが余白『詰める』
+                     ＋文字サイズ『大』です」）。§9.292 ⑥の既定「自動（枠
+                     いっぱい）」は撤回した——`auto`は**紙の余りで決まる**ので
+                     設備や列数で刷り上がりが変わり、「いつもこの大きさ」に
+                     できなかった。 */
+                 fontScale:'1.15',padY:'1',padX:'0.6',dayGap:'1.5',
+                 colFit:'text',bold:false,
                  /* 印刷専用の「#」「状態」の列(§9.293 ①)。**既定は足さない**
                     ＝画面と同じ列だけ（利用者の報告「表示していない内容まで
                     出ています」）。 */
@@ -966,9 +1163,20 @@
    v.range=rangeOf(v);
    v.dateFrom=DATE_RE.test(String(v.dateFrom||''))?String(v.dateFrom):'';
    v.dateTo=DATE_RE.test(String(v.dateTo||''))?String(v.dateTo):'';
-   /* 紙の文字とセルの余白(§9.292 ⑥)。知らない綴りは既定へ倒す。 */
+   /* 紙の文字とセルの余白(§9.292 ⑥／§9.294 ②)。知らない綴りは既定へ倒す。 */
    v.fontScale=fontScaleOf(v);
-   v.cellPad=cellPadOf(v);
+   /* ---------- 旧`cellPad`は1度だけ上下・左右の両方へ移す（§9.294 ②） ----------
+      **わざわざ選んだ人の見え方を変えない**（§9.132）——「詰める」を選んで
+      いた端末は上下も左右も詰めたまま。**触っていない端末には新しい既定**
+      （左右＝詰める）が届く。移したら旧い鍵は捨てる（読まない鍵を残すと、
+      次に触ったときどちらが効くのか分からなくなる）。 */
+   const raw=JSON.parse(localStorage.getItem(PREF_KEY)||'{}')||{};
+   const had=k=>Object.prototype.hasOwnProperty.call(raw,k);
+   if(had('cellPad')&&!had('padY'))v.padY=String(raw.cellPad);
+   if(had('cellPad')&&!had('padX'))v.padX=String(raw.cellPad);
+   delete v.cellPad;
+   v.padY=padYOf(v);v.padX=padXOf(v);v.dayGap=dayGapOf(v);
+   v.colFit=colFitOf(v);v.bold=!!v.bold;
    v.printExtras=!!v.printExtras;
    v.tab=PV_TABS.some(t=>t.key===v.tab)?v.tab:'load';
    /* 倍率(§9.238 ③)。知らない値は既定へ倒す（壊れた保存値で
@@ -1255,7 +1463,16 @@
    ...(()=>{
     try{
      const cols=printColumns(pref||{});
-     const r=withMm(cols,paperUsableMm((pref&&pref.paper)||'a4-portrait').w,pref);
+     /* 列の幅を文字から決めるとき（§9.294 ④）は**紙と同じ材料で測る**
+        ——`withMm`へ実測を渡さないと、案内だけが画面の幅で計算した倍率を
+        言うことになる（§9.163）。材料はいま組み上がっている紙の行。
+        まだ1枚も組んでいなければ渡さない＝画面の幅へ倒す（fail-open）。 */
+     let textMm=null;
+     if(colFitOf(pref)==='text'&&pv.sheets&&pv.sheets.length){
+      const all=[];pv.sheets.forEach(p2=>(p2.rows||[]).forEach(r2=>all.push(r2)));
+      textMm=measureColsMm(cols,all,pref);
+     }
+     const r=withMm(cols,paperUsableMm((pref&&pref.paper)||'a4-portrait').w,pref,textMm);
      return {fit:r.fit,font:r.font,printCols:cols.length};
     }catch(_){return {fit:1,font:1,printCols:0}}
    })(),
@@ -1374,7 +1591,8 @@
   /* 紙の文字とセルの余白（§9.292 ⑥）。**効いている大きさを文字で出す**
      （§3・§6）——「自動」を選んでいると倍率が場面で変わるので、いま何倍で
      刷られるのかが読めないと選びようが無い。 */
-  const fsCur=fontScaleOf(pref),padCur=cellPadOf(pref);
+  const fsCur=fontScaleOf(pref);
+  const padYCur=padYOf(pref),padXCur=padXOf(pref),dayCur=dayGapOf(pref),fitCur=colFitOf(pref);
   /* **段数の多い選択は札を積まない**（§9.293 ③）——7枚の縦積みだと段の
      中がそれだけで1画面になる。呼び名の短い「大きさ」は横に並べ、
      選んだものの説明だけを下に1行出す（同じことを7回書かない・§CLAUDE 8）。 */
@@ -1384,8 +1602,19 @@
       <span>${esc(x.label)}</span></label>`).join('')+'</div>';
   const fsRows=seg('spFontScale',FONT_SCALES,fsCur)
    +`<p class="sp-opt-note">${esc((FONT_SCALES.find(x=>x.key===fsCur)||{}).note||'')}</p>`;
-  const padRows=seg('spCellPad',CELL_PADS,padCur)
-   +`<p class="sp-opt-note">${esc((CELL_PADS.find(x=>x.key===padCur)||{}).note||'')}</p>`;
+  /* 余白は3つとも同じ形の帯で並べる（§9.294 ②③）——**同じ語彙**
+     （詰める／標準／広め）なので、並べて置けば覚えることが増えない。 */
+  const padRow=(name,list,cur,head,note)=>`<div class="sp-opt-row"><span class="sp-opt-k">${esc(head)}</span>`
+   +`<span class="sp-opt-v">${seg(name,list,cur)}</span></div>`
+   +`<p class="sp-opt-note">${esc(note)}</p>`;
+  const padRows=padRow('spPadX',PAD_XS,padXCur,'左右',
+     (PAD_XS.find(x=>x.key===padXCur)||{}).note||'')
+   +padRow('spPadY',PAD_YS,padYCur,'行間（上下）',
+     (PAD_YS.find(x=>x.key===padYCur)||{}).note||'')
+   +padRow('spDayGap',DAY_GAPS,dayCur,'区切りの行間',
+     (DAY_GAPS.find(x=>x.key===dayCur)||{}).note||'');
+  const fitRows=seg('spColFit',COL_FITS,fitCur)
+   +`<p class="sp-opt-note">${esc((COL_FITS.find(x=>x.key===fitCur)||{}).note||'')}</p>`;
   const fit=facts.fit||1,font=facts.font||1;
   /* **文字が幅より大きいと値が切れる**（§9.293 ②）。選んだ結果なので
      止めはしないが、**そうなることを先に書く**（§4）。 */
@@ -1399,7 +1628,8 @@
      ①セルの余白を詰める ②列を減らす ③紙を大きくする、のどれかで
      場所を作るしかない——そのことを画面に書く（黙っていると
      「これ以上大きくならない」としか見えない）。 */
-  const bigger=[cellPadOf(pref)!=='0.6'?'セルの余白を「詰める」に':'',
+  const bigger=[padXOf(pref)!=='0.3'?'左右の余白を「最小」に':'',
+                colFitOf(pref)!=='text'?'列の幅を「文字に合わせる」に':'',
                 scopeCur!=='visible'?'列の範囲を「見える範囲の列だけ」に':'',
                 String(pref&&pref.paper||'').indexOf('a3')!==0?'用紙をA3／横向きに':''
                ].filter(Boolean);
@@ -1413,8 +1643,11 @@
       +'（「極大」「最大」を選べばさらに大きくできますが、長い値は「…」で切れます）'
      :(tight
        ?'<b>列の幅より文字が大きいので、長い値は「…」で切れます。</b>'
+        /* **確実に切れない道を必ず挙げる**（§4）——他の手立ては場所を作る
+           だけで、入りきる保証は無い。「自動」は入る限界まで大きくする。 */
         +(bigger.length?`切らずに大きくするには、${bigger.join('／')}。`
-                       :'切りたくないときは「自動」に戻してください。')
+                       +'それでも入らなければ「自動（枠いっぱい）」に戻してください。'
+                       :'切りたくないときは「自動（枠いっぱい）」に戻してください。')
        :'選んだ大きさで刷ります。'));
   return `<div class="sp-opt-group"><h4>列の範囲</h4>
    <div class="sp-pats" id="spColumnScope">${scopeRows}</div>
@@ -1424,12 +1657,17 @@
    ${cb(pref,'printExtras','印刷用の「#」「状態」の列を足す',
         '紙だけの2列です。通し番号は現場で行を指すため、状態は白黒コピーで色分けが消えるためのものです（既定は足さない＝画面と同じ列）')}
   </div>
-  <div class="sp-opt-group"><h4>文字の大きさ</h4>
-   <div id="spFontScale">${fsRows}</div>
-   <p class="sp-opt-note" id="spFitNote">${fitNote}</p>
+  <div class="sp-opt-group"><h4>列の幅</h4>
+   <div id="spColFit">${fitRows}</div>
   </div>
   <div class="sp-opt-group"><h4>セルの余白</h4>
    <div id="spCellPad">${padRows}</div>
+  </div>
+  <div class="sp-opt-group"><h4>文字の大きさ</h4>
+   <div id="spFontScale">${fsRows}</div>
+   ${cb(pref,'bold','文字を太くする',
+        '本文を太字で刷ります。白黒コピーやFAXで薄くなるとき、遠目で読むときに効きます（見出しはもともと太字です）')}
+   <p class="sp-opt-note" id="spFitNote">${fitNote}</p>
   </div>
   <div class="sp-opt-group"><h4>枠線</h4>
    ${cb(pref,'borders','枠線（表の格子）を出す',
@@ -1566,8 +1804,11 @@
   }
   if(key==='look'){
    const fs=(FONT_SCALES.find(x=>x.key===fontScaleOf(pref))||{}).label||'';
-   const pad=(CELL_PADS.find(x=>x.key===cellPadOf(pref))||{}).label||'';
-   return [`${facts.printCols}列`,`文字 ${fs}`,pad!=='標準'?`余白 ${pad}`:'',
+   const px=(PAD_XS.find(x=>x.key===padXOf(pref))||{}).label||'';
+   const py=(PAD_YS.find(x=>x.key===padYOf(pref))||{}).label||'';
+   return [`${facts.printCols}列`,`文字 ${fs}`,boldOf(pref)?'太字':'',
+           colFitOf(pref)==='screen'?'幅は画面のまま':'',
+           px!=='詰める'?`左右 ${px}`:'',py!=='標準'?`行間 ${py}`:'',
            pref.borders===false?'枠線なし':''].filter(Boolean).join('・');
   }
   const cur=paperSizeOf(pref&&pref.paper);
@@ -1641,9 +1882,11 @@
   look.querySelectorAll('input[name="spFontScale"]').forEach(inp=>inp.onclick=()=>{
    pv.pref.fontScale=inp.value;savePref(pv.pref);paintOptions();renderPreview();
   });
-  look.querySelectorAll('input[name="spCellPad"]').forEach(inp=>inp.onclick=()=>{
-   pv.pref.cellPad=inp.value;savePref(pv.pref);paintOptions();renderPreview();
-  });
+  /* セルの余白は3つの軸（§9.294 ②③）。**書き込む先が違うだけ**で作法は同じ。 */
+  [['spPadX','padX'],['spPadY','padY'],['spDayGap','dayGap'],['spColFit','colFit']]
+   .forEach(([name,key])=>look.querySelectorAll(`input[name="${name}"]`).forEach(inp=>inp.onclick=()=>{
+    pv.pref[key]=inp.value;savePref(pv.pref);paintOptions();renderPreview();
+   }));
   /* 記入欄のパターン(§9.191)。**選んだらその場で刷り上がりが変わる**。 */
   look.querySelectorAll('input[name="spWritePattern"]').forEach(inp=>inp.onclick=()=>{
    pv.pref.writePattern=inp.value;
@@ -1774,9 +2017,17 @@
                    /* 紙の文字とセルの余白(§9.292 ⑥)。名前と並びは画面の文言と
                       同じものを1箇所から出す（テストも同じ表を見る）。 */
                    fontScales:()=>FONT_SCALES.map(x=>({...x})),
-                   cellPads:()=>CELL_PADS.map(x=>({...x})),
+                   padYs:()=>PAD_YS.map(x=>({...x})),
+                   padXs:()=>PAD_XS.map(x=>({...x})),
+                   dayGaps:()=>DAY_GAPS.map(x=>({...x})),
+                   colFits:()=>COL_FITS.map(x=>({...x})),
+                   measureColsMm:(cols,rows,opt)=>measureColsMm(cols,rows,opt),
                    /* 効いている倍率。**紙を組むのと同じ関数に聞ける**ように
                       しておく——別に数えると案内と刷り上がりが食い違う。 */
+                   /* 既定は**1箇所**（§9.163）。網も画面もここを見る
+                      ——書き写すと「既定を変えたのに網が古い約束のまま」に
+                      なる（§9.294 ⑤⑥で既定を動かしたので必ず要る）。 */
+                   defaults:()=>({...DEFAULTS}),
                    fitOf:(cols,usableMm,opt)=>withMm(cols,usableMm,opt).fit,
                    /* 文字の倍率は**幅とは別の答え**（§9.293 ②）。 */
                    fontOf:(cols,usableMm,opt)=>withMm(cols,usableMm,opt).font,
