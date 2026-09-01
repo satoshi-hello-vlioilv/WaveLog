@@ -3396,7 +3396,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      可否・区分・見積を何度も引き直すことになる。 */
   let info=null;
   try{info=entryCellInfo(e)}catch(_){info=null}
-  return keys.map(k=>{
+  const out=keys.map(k=>{
    if(SC_FIXED_TEXT[k]){
     const v=info?String(SC_FIXED_TEXT[k](info)||''):'';
     /* 紙でもバッジで見せる列は**状態の名前**を添える（§9.237）。
@@ -3405,11 +3405,28 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     /* 印（計画外・固定・遅れ…）は**1つずつ**渡す——紙は画面と同じチップで
        並べるので、連結した1本の文字列では分けられない。 */
     const chips=(k==='__flags__'&&info)?(info.flagList||[]).map(f=>({...f})):null;
-    return {key:k,label:scColLabel(k),text:v,raw:v,color:'',tone,chips};
+    /* **その列が固定列かどうかを紙へ渡す**（§9.294 ①）——紙は「内容の列を
+       束ねて題名を置く」ので、どれが内容の列かを知る必要がある。
+       **紙の側で綴りから当てないこと**（§9.163。列を1つ足すたびに
+       両方直すことになる）。 */
+    return {key:k,label:scColLabel(k),text:v,raw:v,color:'',tone,chips,fixed:true};
    }
    const dyn=dynamicCellValue(e,k,ctx);
-   return {key:k,label:scColLabel(k),text:dyn.text,raw:dyn.raw||dyn.text,color:dyn.color,tone:'',chips:null};
+   return {key:k,label:scColLabel(k),text:dyn.text,raw:dyn.raw||dyn.text,color:dyn.color,tone:'',chips:null,fixed:false};
   });
+  /* 作業以外は**題名だけ**（§9.294 ①）。束ねるのは紙の側（実際に刷る列は
+     「見える範囲だけ」で削られうるので、画面の並びで決めた束がそのまま
+     使えるとは限らない）。ここでするのは**値を落とすこと**だけ。 */
+  if(e.kind!=='作業'){
+   out.forEach(c=>{
+    if(c.fixed){
+     if(NON_WORK_BLANK_FIXED.has(c.key)){c.text='';c.raw='';c.tone='';c.chips=null}
+     return;
+    }
+    c.text='';c.raw='';c.color='';c.tone='';c.chips=null;
+   });
+  }
+  return out;
  }
  /* 印刷が並べる列（`__actions__`を除いた、いま画面に出ている並び）。 */
  function printColumnKeys(){return timelineColumnKeys().filter(k=>k!=='__actions__')}
@@ -3490,6 +3507,38 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }
   return out.length?out:keys.slice(0,1);
  }
+ /* ---------- 作業以外の行は「題名だけ」にする（§9.294 ①、利用者の指示
+    「作業スケジュール表の設備停止名はカラムに関係なく表示できるように
+     してほしいです。一番左に配置した基準のカラムに所属させた形で文字が
+     見切れたりしてしまう」「設備停止を入れた行は、ロットの情報と全く
+     関係ないので、設備停止名以外表示させたくない」） ----------
+    以前は題名を**内容欄の先頭の1列へ押し込んで**いた（`timelineContentCells`が
+    `i===0`にだけ入れる）。列の幅はロット番号に合わせてあるので、
+    「定期点検（ロール交換）」のような名前は必ず切れる——しかも紙では
+    `overflow:hidden`で黙って切り落とされる。
+
+    いまは**内容の列をひとかたまりに束ねて**そこへ題名を置く。束ねるのは
+    「固定列でない列の、先頭からの連続した並び」——固定列（区分・日付・
+    時刻・見積…）は**停止そのものの事実**なので残す（消すと、いつ何分
+    止まるのかが読めなくなる）。
+
+    束の外に散っている内容・計算の列は**空にする**（§9.294 ①の後段）。
+    計算式と表示ルールは行の材料が無くても走る（§9.234 ⑥「素の値が空でも
+    ルールは走らせる」）ので、**条件が空の既定行を持つルールはロットと
+    無関係な文字を停止の行にも書き込む**。ここで落とさないと、束ねただけ
+    では消えない。**作業可否も落とす**——あれはロットが仕掛かっているかの
+    話で、停止には意味が無い（`—`の札が出るだけ）。 */
+ function nonWorkSpanOf(keys){
+  const at=keys.findIndex(k=>!scIsFixedCol(k));
+  if(at<0)return {key:'',span:0,inRun:()=>false};
+  let span=1;
+  while(at+span<keys.length&&!scIsFixedCol(keys[at+span]))span++;
+  const run=new Set(keys.slice(at,at+span));
+  return {key:keys[at],span,inRun:k=>run.has(k)};
+ }
+ /* 作業以外の行で**空にする固定列**。ここに挙げたものだけ落とす
+    （残りは停止そのものの事実なので残す）。 */
+ const NON_WORK_BLANK_FIXED=new Set(['__workable__']);
  /* ---------- 作業以外の行の題名は1箇所で作る(§9.238 ②) ----------
     以前は「コメントか、そうでなければ設備停止」という2択を3箇所へ書き写して
     いた。3つ目(枠)が増えた時点で、書き写した数だけ直す場所ができる
@@ -5157,7 +5206,25 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      ${canDeleteHistory?`<button type="button" class="sc-row-btn sc-row-btn-danger sc-row-delete-history" title="このロットの測定データ（実績）を削除します。取り消せません">削除</button>`:''}
     </span>`,
    };
+   /* 作業以外の行（設備停止・コメント・枠）は**題名だけ**（§9.294 ①）。
+      内容の列を束ねてそこへ置き、束の外の内容・計算の列と作業可否は空に
+      する。**`cellOf`より先に見る**——`cellOf`が持つ固定列（作業可否）も
+      落とす必要があるため。 */
+   const nwSpan=e.kind!=='作業'?nonWorkSpanOf(timelineColumnKeys()):null;
+   const nwTitle=nwSpan?nonWorkTitleText(e,'（ダブルクリックで書けます）'):'';
    const cellHtml=k=>{
+    if(nwSpan){
+     if(k===nwSpan.key)
+      /* **`grid-column:span N`で束ねる**——器は`--sc-cols`のグリッドなので、
+         続く列のセルを出さなければ後ろの固定列はそのまま次のトラックへ
+         流れる（列がずれない）。 */
+      return `<span class="sc-row-title sc-row-nonwork" data-col="${esc(k)}"`
+       +(nwSpan.span>1?` style="grid-column:span ${nwSpan.span}"`:'')
+       +` title="${esc(nwTitle)}">${esc(nwTitle)}</span>`;
+     if(nwSpan.inRun(k))return '';
+     if(!scIsFixedCol(k)||NON_WORK_BLANK_FIXED.has(k))
+      return `<span data-col="${esc(k)}"></span>`;
+    }
     if(cellOf[k]!==undefined)return cellOf[k];
     /* 文字だけの固定列(登録者・登録端末など。§9.180)は**同じ表から引く**
        ——ここに書き写すと、設定パネルの見本と行の中身が食い違う。 */
@@ -7474,6 +7541,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   printColumnKeys:()=>printColumnKeys(),
   columnLabelOf:k=>scColLabel(k),
   printRowCells:e=>printRowCells(e),
+  /* 作業以外の行の題名（§9.294 ①）。紙は内容の列を束ねてここへ置く。
+     **紙が組み立て直さない**——題名は`nonWorkTitleText()`の1箇所（§9.238 ②）。 */
+  nonWorkTitle:e=>(e&&e.kind!=='作業')?nonWorkTitleText(e,'（コメント）'):'',
+
   columnEffWidthPx:k=>columnEffWidthPx(k),
   /* 「見える範囲の列」（§9.236）——画面をスクロールせずに見えている列だけ。 */
   visibleColumnKeys:()=>visibleColumnKeys(),

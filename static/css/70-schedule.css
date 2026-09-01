@@ -497,6 +497,11 @@
 .sc-row-shift{font-size:var(--tbl-fs);color:#3a565d;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sc-row-rel{font-size:var(--tbl-fs);color:#8a9aa0;white-space:nowrap;overflow:hidden}
 .sc-row-title{font-size:var(--tbl-fs);font-weight:700;color:#173842;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+/* 作業以外の行（設備停止・枠）の題名（§9.294 ①、利用者の指示「設備停止名は
+   カラムに関係なく表示できるようにしてほしい」「設備停止名以外表示させたく
+   ない」）。内容の列を`grid-column:span N`で束ねた1マスなので、**切らずに
+   最後まで出す**（切れることが直したかった不具合そのもの）。 */
+.sc-row-nonwork{overflow:visible;text-overflow:clip;color:var(--ink-2)}
 .sc-row-est{font-size:var(--tbl-fs);color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
 .sc-row-est.sc-est-default{color:#8a9aa0;font-style:italic}
 .sc-row-actual{font-size:var(--tbl-fs);color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;overflow:hidden}
@@ -1196,6 +1201,12 @@
   border:1px solid var(--teal);border-radius:var(--radius-sm);background:var(--teal);color:#fff;
   font-size:var(--fs-sm);font-weight:700}
 .sp-print-area{display:none}
+/* 列の幅を測るあいだだけ器を出す（§9.294 ④）。**`display`をJSで直に書かない**
+   （インラインはどのレイヤより強く、CSSから打ち消せなくなる・`test_csslint`）
+   ——印のクラスを付け外しし、**画面の外へ逃がして**測る（`display:none`では
+   寸法が0で測れない・§9.244「器は`display:none`にしない」と同じ理由）。 */
+.sp-print-area.is-measuring{display:block;position:fixed;left:-10000px;top:0;
+ width:max-content;pointer-events:none;visibility:hidden}
 /* ---------- 印刷プレビュー(§9.186) ----------
    **聞く前に見せる。** 左に決めること、右に刷り上がり。並びは実際にする順
    （何を載せる→紙の列→枚数→印刷）。紙は実寸(mm)のまま組み、`transform`で
@@ -1283,6 +1294,13 @@
 .sp-seg-btn:hover{color:var(--ink)}
 .sp-seg-btn.is-on{background:var(--surface);color:var(--computed-fg);
  box-shadow:0 1px 2px rgba(23,56,66,.18)}
+/* 余白の3つの軸（§9.294 ②③）。**ラベル列は固定幅**（§CLAUDE 画面基準 9）
+   ——`auto`だと「左右」「行間（上下）」「区切りの行間」で帯の左端がずれ、
+   3本が別々のものに見える。 */
+.sp-opt-row{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);
+ align-items:center;gap:var(--gap-hair)}
+.sp-opt-k{font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
+.sp-opt-v{min-width:0}
 .sp-pats{display:grid;gap:var(--gap-hair)}
 .sp-pat{display:flex;align-items:flex-start;gap:var(--gap-hair);padding:var(--pad-row);
   border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface);
@@ -1409,18 +1427,38 @@
 
    **地の大きさをひと回り上げた**（見出し 9→10.5px／本文 11→12.5px）。
    そのうえで`--sp-fit`が「紙の余りぶん」で幅と文字を**一緒に**伸縮させ
-   （`withMm()`）、`--sp-pad`がセルの内側の余白を伸縮させる。
+   （`withMm()`）、`--sp-pad-x`/`--sp-pad-y`がセルの内側の余白を伸縮させる
+   （§9.294 ②で1つの軸から2つへ分けた）。
    **2つは別の軸**——文字を大きくしたいのと、1枚に多く載せたいのは別の話。
    どちらも既定のときは変数が付かないので、**触っていない紙は今までどおり**
    （ただし地の大きさは上げてあるので、そのぶんは全部の紙で大きくなる）。 */
-.sp-table th,.sp-table td{padding:calc(1.2mm * var(--sp-pad,1)) calc(1.4mm * var(--sp-pad,1));
+/* ---------- 余白は「上下」と「左右」で別の軸（§9.294 ②、利用者の指示
+   「セルの余白は上下だけでなく左右を分けて…特に左右を詰められるように」） ----------
+   **左右だけが文字の大きさに効く**（`withMm()`が余白を列の必要量へ織り込む
+   ので、詰めたぶんが`room`＝倍率へ回る）。上下は行の薄さだけを決める。
+   1つの変数だと「文字を大きくしたくて詰めたら行間まで詰まった」になる。
+   **既定は左右＝詰める(0.6)・上下＝標準(1)**（利用者の指示）。ここでの
+   フォールバックは「変数が書かれていないとき＝中立の1」で、既定値そのものは
+   `schedule-print.js`の`DEFAULTS`が持つ（§9.163。2箇所に既定を置かない）。 */
+/* **余白も`--sp-fit`で一緒に伸縮させる**（§9.294 ④）——文字だけが縮んで
+   余白が固定だと、「列の幅＝文字＋余白」で測った幅が縮めたときに足りなくなる
+   （実測: 用途名の31セルが0.25mm足りずに切れていた）。幅・文字・余白の3つが
+   同じ比率で動いて初めて「測った幅に必ず収まる」が成り立つ。 */
+.sp-table th,.sp-table td{padding:calc(1.2mm * var(--sp-pad-y,1) * var(--sp-fit,1)) calc(1.4mm * var(--sp-pad-x,1) * var(--sp-fit,1));
  vertical-align:middle;
  overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .sp-table th{background:var(--surface-2);font-size:calc(10.5px * var(--sp-fit,1));font-weight:800;
  color:var(--muted);text-align:center;border-bottom:0.3mm solid var(--line-mid)}
 .sp-table td{font-size:calc(12.5px * var(--sp-fit,1));color:var(--ink);
- height:calc(8mm * var(--sp-fit,1) * var(--sp-pad,1));
+ height:calc(8mm * var(--sp-fit,1) * var(--sp-pad-y,1));
  border-bottom:0.15mm solid var(--line-soft)}
+/* 太字（§9.294 ⑤、利用者の指示「文字を太字にしたりする機能も追加して」）。
+   白黒コピー・FAXで薄くなる現場と、遠目で読む現場のためのもの。
+   **見出しはもともと800**なので触らない（両方太くすると差が消える）。 */
+.sp-page[data-bold="on"] .sp-table td{font-weight:700}
+/* 作業以外の行（設備停止・枠）の題名（§9.294 ①）。内容の列を束ねた1マスで、
+   **折り返してよい**——ここが切れることが直したかった不具合そのもの。 */
+.sp-c-nonwork{text-align:left;font-weight:700;color:var(--ink);white-space:normal}
 /* 列の区切りは画面と同じ「隙間の細い線」(§9.197)。**最初の列には引かない**
    ——引くと器の枠と二重になる。 */
 .sp-table th+th,.sp-table td+td{border-left:0.12mm solid var(--line-soft)}
@@ -1438,6 +1476,18 @@
    揃え方は画面と同じキー(`fixedAlignClass`)で決まる汎用クラスにした
    (§9.235)——固定列ごとにクラスを持つと、画面側で列が増減するたびに
    ここへも書き足すことになる。 */
+/* ---------- 列の幅を測るための写し（§9.294 ④） ----------
+   `table-layout:auto; width:max-content`にすると、ブラウザが列ごとに
+   「折り返さずに要る幅」を解く。**紙と同じクラスのまま**測るのが要点で、
+   セルの余白・罫線・札・印・`tabular-nums`・斜体が全部込みの実寸になる
+   （見積もりでは必ずどこかがずれる）。器の幅で切られないよう`max-width`と
+   `overflow`も外す。**画面には出ない**（`.sp-print-area`は画面の外）。 */
+.sp-table.sp-measure{table-layout:auto;width:max-content;min-width:0}
+.sp-measure-page{width:auto;min-height:0;padding:0}
+.sp-measure-page .sp-table-wrap{overflow:visible;width:max-content}
+.sp-measure th,.sp-measure td{overflow:visible;text-overflow:clip;
+ white-space:nowrap;max-width:none}
+.sp-measure .sp-badge,.sp-measure .sp-chip{max-width:none;overflow:visible}
 .sp-al-c{text-align:center}
 .sp-al-r{text-align:right;font-variant-numeric:tabular-nums}
 .sp-c-lot{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
@@ -1453,7 +1503,7 @@
    可否(可/不可)・区分(予定/作業中/設備停止…)は画面では色の付いた小さな札で、
    そこが一覧の読みやすさの肝になっている。**色だけで伝えない**(§3)ので、
    札の中の文字は画面と同じものを必ず出す。 */
-.sp-badge{display:inline-block;max-width:100%;padding:0 1.2mm;font-size:calc(11px * var(--sp-fit,1));
+.sp-badge{display:inline-block;max-width:100%;padding:0 calc(1.2mm * var(--sp-fit,1));font-size:calc(11px * var(--sp-fit,1));
  border-radius:var(--radius-pill);border:0.15mm solid transparent;
  font-weight:800;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sp-b-wk-ok{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
@@ -1473,7 +1523,7 @@
 .sp-est-prov{color:var(--muted);font-style:italic}
 /* 行の印(計画外・固定・遅れ…)。画面(`.sc-flag-*`)と同じ色で、1つずつ札。 */
 .sp-c-chips{overflow:hidden;white-space:nowrap}
-.sp-chip{display:inline-block;padding:0 1mm;font-size:calc(10px * var(--sp-fit,1));
+.sp-chip{display:inline-block;padding:0 calc(1mm * var(--sp-fit,1));font-size:calc(10px * var(--sp-fit,1));
  border-radius:var(--radius-xs);font-weight:800;white-space:nowrap}
 .sp-chip+.sp-chip{margin-left:0.8mm}
 .sp-chip-unplanned{background:var(--warn-bg);border:0.15mm solid var(--warn-border);color:var(--warn-fg)}
@@ -1482,7 +1532,7 @@
 .sp-chip-overdue{color:var(--danger)}
 .sp-chip-spans{color:var(--muted)}
 /* 親ロットの印(子N／親。§9.199)。紙では押せないので**ただの印**。 */
-.sp-kid{display:inline-block;margin-left:1mm;padding:0 1mm;font-size:calc(10px * var(--sp-fit,1));
+.sp-kid{display:inline-block;margin-left:calc(1mm * var(--sp-fit,1));padding:0 calc(1mm * var(--sp-fit,1));font-size:calc(10px * var(--sp-fit,1));
  border:0.12mm solid var(--line-mid);border-radius:var(--radius-pill);
  background:var(--surface-2);color:var(--ink-2);font-weight:700}
 /* ---------- 子ロットの内訳(§9.235③、利用者の指示「分割後の子ロットの
@@ -1497,9 +1547,12 @@
    **画面(`.sc-group-head`)と同じ3つ**——名前・どの日付で数えているか
    （現場歴／太陽暦）・件数。以前は濃い灰色(#d8d8d8)の帯に名前と件数だけで、
    「カラーが無くグレー」と指摘された部分がここ。 */
+/* 区切り（日付など）の帯だけ**別の行間**（§9.294 ③、利用者の指示「日付の
+   切り替わりは、行間の余白のみ『広め』くらい空けたい」）。行間と同じ値だと、
+   区切りが「1行ぶん濃い帯」でしか分からない。 */
 .sp-row-group td{background:var(--surface-2);border-left:0.7mm solid var(--line);
  font-size:calc(11.5px * var(--sp-fit,1));text-align:left;
- padding:calc(1.2mm * var(--sp-pad,1)) calc(1.4mm * var(--sp-pad,1));
+ padding:calc(1.2mm * var(--sp-pad-day,1) * var(--sp-fit,1)) calc(1.4mm * var(--sp-pad-x,1) * var(--sp-fit,1));
  border-bottom:0.15mm solid var(--line-soft)}
 .sp-group-label{font-weight:800;color:var(--ink)}
 .sp-group-basis{display:inline-block;margin-left:2mm;padding:0 1.2mm;
