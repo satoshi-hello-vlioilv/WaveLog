@@ -247,7 +247,10 @@
 }
 /* 帳票。画面では隠し、印刷時だけ本文と入れ替える(帳票一括印刷と同じ方式)。 */
 .df-print-area{display:none}
-.df-page{padding:8mm;box-sizing:border-box;font-size:11px;color:#111}
+/* 判定書も同じ（§9.290）——この1枚に載るのは`.rp-page`と**同じ図**
+   （`visualHtml()`の1本）なので、片方だけ直すと「帳票は直ったのに
+   判定書だけ条が消える」が残る。**`:root`／`body`へは付けない。** */
+.df-page{padding:8mm;box-sizing:border-box;font-size:11px;color:#111;print-color-adjust:exact;-webkit-print-color-adjust:exact}
 .df-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding-bottom:4px;border-bottom:2px solid #333}
 .df-head h2{margin:0;font-size:16px}
 .df-section{margin-top:8px;break-inside:avoid}
