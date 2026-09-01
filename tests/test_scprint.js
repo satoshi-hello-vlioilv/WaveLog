@@ -88,6 +88,14 @@ let b=null;
    const hidden=getComputedStyle(el).display==='none';el.remove();return hidden;
   }));
 
+  /* 設定の段（§9.293 ③）。**段の名前で開く**——番号で探すと、段が1つ
+     増えただけで直していない網が落ちる。 */
+  const openTab=async key=>{
+   const bar=await page.$('#spPvTabs');
+   if(!bar)return;                       // プレビューを開いていない場面
+   await page.click(`[data-pv-tab="${key}"]`);
+   await page.waitForTimeout(120);
+  };
   /* 紙を組み立てて器へ入れる（測るために一時的に出す）。 */
   const build=(opt)=>page.evaluate(o=>{
    const groups=WL.schedulePrint.buildPages('テスト設備A',WL.scheduleView.entries(),o);
@@ -139,7 +147,9 @@ let b=null;
                                      if(a){a.style.display='';a.innerHTML=''}});
 
   /* ---- 2) まとめて1つの紙にすると、用紙の高さで切れる ---- */
-  const all=await build({includeDone:true,pageByDate:false,paper:'a4-portrait'});
+  /* **通し番号を見る節なので「#」を足した状態で組む**（§9.293 ①で
+     印刷専用の列は既定で足さなくなった。番号の約束そのものは変えていない）。 */
+  const all=await build({includeDone:true,pageByDate:false,paper:'a4-portrait',printExtras:true});
   const total=all.groups.reduce((s,n)=>s+n,0);
   rec('A4の高さで測れている',all.sheetH>1000&&all.sheetH<1200,'297mm='+all.sheetH+'px');
   rec('1つのまとまりが複数枚へ切れる',all.groups.length===1&&all.sheets.length>1,
@@ -222,16 +232,21 @@ let b=null;
   /* ---- 7) 何も触っていなければ、画面の列とそのまま同じ ---- */
   const mirror=await page.evaluate(()=>{
    const screenKeys=WL.scheduleView.printColumnKeys();
-   const printKeys=WL.schedulePrint.printColumns({includeDone:true,pageByDate:false}).map(c=>c.key);
-   return {screenKeys,printKeys,
-           // 先頭2つは印刷専用の「#」「状態」。そのあとが画面の列とそのまま同じ並び。
-           tail:printKeys.slice(2,2+screenKeys.length)};
+   const o={includeDone:true,pageByDate:false,writePattern:'none'};
+   const printKeys=WL.schedulePrint.printColumns(o).map(c=>c.key);
+   const withExtra=WL.schedulePrint.printColumns({...o,printExtras:true}).map(c=>c.key);
+   return {screenKeys,printKeys,withExtra,
+           /* §9.293 ①で「#」「状態」は**既定では足さない**（画面と同じ列）。
+              足したときだけ先頭に立つ。 */
+           tail:withExtra.slice(2,2+screenKeys.length)};
   });
-  rec('印刷専用の「#」「状態」が先頭に立つ',
-      mirror.printKeys[0]==='no'&&mirror.printKeys[1]==='state',JSON.stringify(mirror.printKeys.slice(0,2)));
-  rec('残りは画面の列とそのまま同じ並び（紙だけの列選択を持たない）',
-      JSON.stringify(mirror.tail)===JSON.stringify(mirror.screenKeys),
-      JSON.stringify({画面:mirror.screenKeys,紙:mirror.tail}));
+  rec('既定では紙の列が画面の列とそのまま同じ（§9.293 ①）',
+      JSON.stringify(mirror.printKeys)===JSON.stringify(mirror.screenKeys),
+      JSON.stringify({画面:mirror.screenKeys,紙:mirror.printKeys}));
+  rec('印刷専用の「#」「状態」は足したときだけ先頭に立つ',
+      mirror.withExtra[0]==='no'&&mirror.withExtra[1]==='state'
+      &&JSON.stringify(mirror.tail)===JSON.stringify(mirror.screenKeys),
+      JSON.stringify(mirror.withExtra.slice(0,4)));
 
   /* ---- 8) 画面で列を隠す/表示名を変える/並べ替えると、紙もそのまま変わる ---- */
   const keysBefore=mirror.screenKeys;
@@ -253,9 +268,11 @@ let b=null;
   rec('画面で変えた表示名がそのまま紙の見出しに出る',
       mutated.cols.some(c=>c.key==='lotNo'&&c.label===customLabel),
       JSON.stringify(mutated.cols.find(c=>c.key==='lotNo')));
+  /* §9.293 ①で印刷専用の列は既定で足さなくなったので、**先頭がそのまま
+     画面の先頭のデータ列**になる。 */
   rec('画面で動かした列の並びが紙にもそのまま出る',
-      mutated.cols[2]&&mutated.cols[2].key===moveKey,
-      `先頭のデータ列=${mutated.cols[2]&&mutated.cols[2].key} / 動かした列=${moveKey}`);
+      mutated.cols[0]&&mutated.cols[0].key===moveKey,
+      `先頭のデータ列=${mutated.cols[0]&&mutated.cols[0].key} / 動かした列=${moveKey}`);
   /* 元へ戻す（このあとの検査へ影響を残さない。§9.121と同じ理由）。 */
   await page.evaluate(a=>WL.columnLayout.save(a.t,a.orig),{t:TARGET,orig:savedLayout});
   await page.waitForTimeout(300);
@@ -317,18 +334,19 @@ let b=null;
    既定:WL.schedulePrint.printColumns({}).map(c=>c.key),
    全て:WL.schedulePrint.printColumns({columnScope:'all'}).map(c=>c.key),
    見える範囲:WL.schedulePrint.printColumns({columnScope:'visible'}).map(c=>c.key),
-   /* `printColumns()`は印刷専用の「#」「状態」を先頭へ、記入欄を末尾へ
-      足すので、その2つを比べても「途中の列が抜けているか」は分からない
-      （見える範囲でも記入欄は今までどおり無条件で末尾に付く）。
-      画面の列だけを見るには`WL.scheduleView`側の素の値で比べる。 */
+   /* `printColumns()`は記入欄を末尾へ足すので、その2つを比べても
+      「途中の列が抜けているか」は分からない（見える範囲でも記入欄は
+      今までどおり無条件で末尾に付く）。画面の列だけを見るには
+      `WL.scheduleView`側の素の値で比べる。
+      **印刷専用の「#」「状態」は既定で足さない**（§9.293 ①）。 */
    画面の全て:WL.scheduleView.printColumnKeys(),
    画面の見える範囲:WL.scheduleView.visibleColumnKeys(),
   }));
   rec('columnScope未指定の既定は「全ての列」と同じ（既定は今までの見え方のまま）',
       JSON.stringify(wide.既定)===JSON.stringify(wide.全て),JSON.stringify(wide));
   rec('printColumns()のcolumnScopeは画面の列(visibleColumnKeys/printColumnKeys)をそのまま使っている',
-      JSON.stringify(wide.全て.slice(2,2+wide.画面の全て.length))===JSON.stringify(wide.画面の全て)&&
-      JSON.stringify(wide.見える範囲.slice(2,2+wide.画面の見える範囲.length))===JSON.stringify(wide.画面の見える範囲),
+      JSON.stringify(wide.全て.slice(0,wide.画面の全て.length))===JSON.stringify(wide.画面の全て)&&
+      JSON.stringify(wide.見える範囲.slice(0,wide.画面の見える範囲.length))===JSON.stringify(wide.画面の見える範囲),
       JSON.stringify(wide));
   rec('見える範囲の列は、画面の並びの先頭からの一部（全ての列の件数以下）',
       wide.画面の見える範囲.length<=wide.画面の全て.length&&
@@ -777,33 +795,39 @@ let b=null;
   /* ---- 14b) 列の範囲・枠線もその場でプレビューに効く(§9.236) ---- */
   const colsBefore=await page.evaluate(()=>
     (document.querySelector('.sp-pv-sheet .sp-page')||{}).querySelectorAll?.('thead th').length||0);
+  await openTab('look');
   await page.click('#spColumnScope input[value="visible"]');
   await page.waitForTimeout(700);
   const colsAfterVisible=await page.evaluate(()=>
     (document.querySelector('.sp-pv-sheet .sp-page')||{}).querySelectorAll?.('thead th').length||0);
   rec('「見える範囲の列だけ」を選ぶとその場で列数が減る',
       colsAfterVisible<colsBefore&&colsAfterVisible>0,`${colsBefore}列 → ${colsAfterVisible}列`);
+  await openTab('look');
   await page.click('#spColumnScope input[value="all"]');      // 元へ戻す
   await page.waitForTimeout(700);
   const bordersBefore=await page.evaluate(()=>
     (document.querySelector('.sp-pv-sheet .sp-page')||{}).dataset?.borders||'');
+  await openTab('look');
   await page.click('.sp-pv-side [data-opt="borders"]');
   await page.waitForTimeout(700);
   const bordersAfter=await page.evaluate(()=>
     (document.querySelector('.sp-pv-sheet .sp-page')||{}).dataset?.borders||'');
   rec('「枠線を出す」を外すとその場でdata-borders="off"になる',
       bordersBefore===''&&bordersAfter==='off',JSON.stringify({前:bordersBefore,後:bordersAfter}));
+  await openTab('look');
   await page.click('.sp-pv-side [data-opt="borders"]');      // 元へ戻す
   await page.waitForTimeout(700);
 
   /* ---- 15) 「分割後の子ロットの情報も載せる」もプレビューへその場で効く ---- */
   const kidsOff=await page.evaluate(()=>document.querySelectorAll('.sp-page .sp-row-child').length);
   rec('既定ではプレビューにも子ロットの行が出ない',kidsOff===0,String(kidsOff));
+  await openTab('load');
   await page.click('.sp-pv-side [data-opt="includeChildren"]');
   await page.waitForFunction(()=>document.querySelectorAll('.sp-page .sp-row-child').length>0,
     null,{timeout:15000}).catch(()=>{});
   const kidsOn=await page.evaluate(()=>document.querySelectorAll('.sp-page .sp-row-child').length);
   rec('チェックすると子ロットの行がその場で出る',kidsOn>0,String(kidsOn));
+  await openTab('load');
   await page.click('.sp-pv-side [data-opt="includeChildren"]');
   await page.waitForTimeout(400);
 
@@ -821,6 +845,7 @@ let b=null;
    const pg=document.querySelector('.sp-pv-sheet .sp-page');
    return {paper:pg?pg.dataset.paper:'',minH:pg?parseFloat(getComputedStyle(pg).minHeight):0};
   });
+  await openTab('paper');
   await page.click('#spPaperKinds input[value="a3"]');
   await waitPaper('a3-portrait');
   const afterPaper=await paperNow();
@@ -839,6 +864,7 @@ let b=null;
       turned.paper==='a3-landscape',JSON.stringify(turned));
   /* **B4も実際に紙が変わる**——選択肢が並ぶだけでは、CSSの規則を足し忘れて
      いても通る（幅がA4のまま出る）。 */
+  await openTab('paper');
   await page.click('#spPaperKinds input[value="b4"]');
   await waitPaper('b4-landscape');
   const b4Now=await page.evaluate(()=>{
@@ -856,6 +882,7 @@ let b=null;
       /B4 横/.test(b4Now.note)&&/364×257mm/.test(b4Now.note)&&/348×241mm/.test(b4Now.note),
       b4Now.note.replace(/\s+/g,' ').slice(0,120));
   // A4縦へ戻す(このあとの検査・後片付けを素直にするため)
+  await openTab('paper');
   await page.click('#spPaperKinds input[value="a4"]');
   await page.click('#spPaperOrients input[value="portrait"]');
   await waitPaper('a4-portrait');
@@ -908,7 +935,7 @@ let b=null;
   await page.waitForFunction(()=>document.querySelectorAll('.sp-pv-sheet').length>0,null,{timeout:20000});
   const wasByDate=await page.evaluate(()=>
     !!document.querySelector('#spPvOptions [data-opt="pageByDate"]')?.checked);
-  if(wasByDate){await page.click('#spPvOptions [data-opt="pageByDate"]');await page.waitForTimeout(900)}
+  if(wasByDate){await openTab('load');await page.click('#spPvOptions [data-opt="pageByDate"]');await page.waitForTimeout(900)}
   const basis=await page.evaluate(()=>{
    const g=document.querySelector('.sp-pv-sheet .sp-row-group');
    return {basis:((g&&g.querySelector('.sp-group-basis'))||{}).textContent||'',
@@ -917,7 +944,7 @@ let b=null;
   });
   rec('日付でまとめたときは「現場歴／太陽暦」の印も紙に出る(§9.237)',
       /現場歴|太陽暦/.test(basis.basis),JSON.stringify(basis));
-  if(wasByDate){await page.click('#spPvOptions [data-opt="pageByDate"]');await page.waitForTimeout(700)}
+  if(wasByDate){await openTab('load');await page.click('#spPvOptions [data-opt="pageByDate"]');await page.waitForTimeout(700)}
   await page.evaluate(()=>{const sel=document.getElementById('scGroupSelect');
    sel.value='category';sel.dispatchEvent(new Event('change',{bubbles:true}))});
   await page.waitForTimeout(1000);
@@ -928,10 +955,12 @@ let b=null;
      予定が紙から抜け落ちる。 */
   rec('見出しを行として数えていない（予定が抜けない）',gp.行===gp.件数,`${gp.行} / ${gp.件数}`);
   rec('申し送りの欄が紙ごとに付く',gp.申し送り===gp.紙,`${gp.申し送り} / ${gp.紙}枚`);
+  await openTab('look');
   await page.click('.sp-pv-side [data-opt="commentBox"]');
   await page.waitForTimeout(900);
   rec('外すと申し送りの欄は消える',
       (await page.evaluate(()=>document.querySelectorAll('.sp-note').length))===0);
+  await openTab('look');
   await page.click('.sp-pv-side [data-opt="commentBox"]');
   await page.waitForTimeout(700);
   await page.evaluate(()=>{const s=document.getElementById('scGroupSelect');
@@ -1013,16 +1042,36 @@ let b=null;
       (await page.evaluate(()=>{try{return JSON.parse(localStorage.getItem('SchedulePrintPrefV1')||'{}').zoomMode}
         catch(e){return null}}))==='fit');
 
-  /* ---- 19) メニューは決める理由ごとに分かれている(§9.238 ④) ---- */
+  /* ---- 19) メニューは決める理由ごとの段になっている(§9.238 ④ → §9.293 ③) ----
+     利用者の指示「印刷のメニューがかなり複雑になってきたので、タブ、
+     アコーディオン、ポップオーバーメニューなどを駆使して階層化し
+     わかりやすく使いやすく改良再構築してほしい」。
+     §9.238 ④の4節を縦に積むと2画面ぶんになったので、3段（タブ）へ。
+     **確かめるのは札が並ぶことではなく、開いている段だけが見えること**と、
+     **段の見出しにいまの値が出ていること**（開かないと分からない段を作らない）。 */
   const menu=await page.evaluate(()=>{
-   const secs=[...document.querySelectorAll('.sp-pv-side .sp-pv-sec h3')].map(h=>h.textContent.trim());
-   const inOpts=[...document.querySelectorAll('#spPvOptions [data-opt]')].map(i=>i.dataset.opt);
-   const inLook=[...document.querySelectorAll('#spPvLook [data-opt]')].map(i=>i.dataset.opt);
-   return {節:secs,載せるもの:inOpts,見せ方:inLook,
+   const tabs=[...document.querySelectorAll('#spPvTabs .sp-pv-tab')].map(b=>({
+    key:b.dataset.pvTab,name:(b.querySelector('b')||{}).textContent||'',
+    now:(b.querySelector('small')||{}).textContent||'',on:b.classList.contains('is-on')}));
+   const vis=id=>{const e=document.getElementById(id);
+    return !!(e&&e.getBoundingClientRect().height>0)};
+   return {段:tabs,
+           載せるもの:[...document.querySelectorAll('#spPvOptions [data-opt]')].map(i=>i.dataset.opt),
+           見せ方:[...document.querySelectorAll('#spPvLook [data-opt]')].map(i=>i.dataset.opt),
            用紙:!!document.querySelector('#spPvSize .sp-pat'),
-           既定へ戻す:!!document.getElementById('spPvReset')};
+           見えている:{load:vis('spPvOptions'),look:vis('spPvLook'),paper:vis('spPvSize')},
+           既定へ戻す:!!document.getElementById('spPvReset'),
+           枚数:!!document.getElementById('spPvFacts')};
   });
-  rec('節は「載せるもの／見せ方／用紙／刷り上がり」の4つ',menu.節.length===4,JSON.stringify(menu.節));
+  rec('段は「載せるもの／見せ方／用紙」の3つ',
+      menu.段.map(t=>t.key).join(',')==='load,look,paper',JSON.stringify(menu.段.map(t=>t.name)));
+  /* **`undefined`が混ざっていないこと**まで見る（一言が壊れていても
+     「文字がある」だけの網は通る。実際に`undefined列`と出ていた）。 */
+  rec('段の見出しにいまの値が出ている（開かないと分からない段を作らない）',
+      menu.段.every(t=>t.now.trim().length>0&&!/undefined|NaN/.test(t.now)),
+      JSON.stringify(menu.段.map(t=>t.now)));
+  rec('開いている段だけが見えている（縦に積まない）',
+      Object.values(menu.見えている).filter(Boolean).length===1,JSON.stringify(menu.見えている));
   /* 見出しと中身が合っていること——以前は「何を載せるか」の中に用紙以外の
      すべて（列・枠線・記入欄）が入っており、見出しが嘘をついていた。 */
   rec('「載せるもの」には中身の話だけが入っている',
@@ -1030,11 +1079,28 @@ let b=null;
       &&menu.載せるもの.length===5,JSON.stringify(menu.載せるもの));
   rec('「見せ方」には枠線と申し送り欄が入っている',
       menu.見せ方.includes('borders')&&menu.見せ方.includes('commentBox'),JSON.stringify(menu.見せ方));
-  rec('設定を既定へ戻す手立てがある',menu.既定へ戻す,JSON.stringify(menu));
+  /* 枚数と「既定へ戻す」は**段の外**（どの段からでも読める・触れる）。 */
+  rec('枚数と「既定へ戻す」はどの段からでも見える',
+      menu.既定へ戻す&&menu.枚数&&!!(await page.evaluate(()=>{
+       const s=document.querySelector('.sp-pv-sum');
+       return !!(s&&s.getBoundingClientRect().height>0);
+      })),JSON.stringify({既定へ戻す:menu.既定へ戻す,枚数:menu.枚数}));
+  /* 段を切り替えたら中身も入れ替わり、覚えている。 */
+  await openTab('paper');
+  const swapped=await page.evaluate(()=>({
+   look:!!(document.getElementById('spPvLook')||{}).getBoundingClientRect
+     &&document.getElementById('spPvLook').getBoundingClientRect().height>0,
+   paper:document.getElementById('spPvSize').getBoundingClientRect().height>0,
+   kept:(()=>{try{return JSON.parse(localStorage.getItem('SchedulePrintPrefV1')||'{}').tab}catch(e){return ''}})(),
+  }));
+  rec('段を切り替えると中身が入れ替わり、開いていた段を覚える',
+      swapped.paper&&!swapped.look&&swapped.kept==='paper',JSON.stringify(swapped));
+  await openTab('load');
 
   /* ---- 20) いま効かない設定は押せなくして理由を書く(§4) ---- */
   /* 「すべての設備」は、検証用フィクスチャの設備が1台なら押せない。
      **押せる/押せないの一方だけを見ないこと**——どちらの道も通す。 */
+  await openTab('load');
   const offs=await page.evaluate(()=>[...document.querySelectorAll('.sp-pv-side .sp-opt.is-off')]
     .map(l=>({key:(l.querySelector('[data-opt]')||{}).dataset?.opt||'',
               理由:(l.querySelector('.sp-opt-why')||{}).textContent||'',
@@ -1045,6 +1111,7 @@ let b=null;
   rec('画面が「まとめない」なら、まとめの見出しは押せず理由が出る',
       offs.some(o=>o.key==='useGroups'),JSON.stringify(offs.map(o=>o.key)));
   /* 逆に、効く設定は押せたまま（全部を塞いでいない）。 */
+  /* **段をまたいで数える**——`borders`と`commentBox`は「見せ方」の段に居る。 */
   const live=await page.evaluate(()=>[...document.querySelectorAll('.sp-pv-side [data-opt]')]
     .filter(i=>!i.disabled).map(i=>i.dataset.opt));
   rec('効く設定は今までどおり押せる',live.includes('borders')&&live.includes('commentBox'),
@@ -1086,6 +1153,7 @@ let b=null;
 
    /* 日付で絞る。**空欄のまま「絞る」にしない**——押しても何も変わらない
       のは壊れて見えるので、いま出ている最初と最後の日を入れておく。 */
+   await openTab('load');
    await page.click('#spRange input[value="date"]');
    await page.waitForSelector('#spRangeFrom',{timeout:8000});
    await page.waitForFunction(n=>(WL.schedulePrint.previewSheets()||[])
@@ -1111,7 +1179,8 @@ let b=null;
       日が1つしか無いフィクスチャでも確かめられるよう、日が2つ以上の
       ときだけ日付で狭め、そうでなければ「選んだ予定だけ」で確かめる。 */
    if(full.opts.length>1){
-    await page.selectOption('#spRangeTo',full.opts[0]);
+    await openTab('load');
+   await page.selectOption('#spRangeTo',full.opts[0]);
     await page.waitForFunction(n=>(WL.schedulePrint.previewSheets()||[])
       .reduce((s,x)=>s+x.rows.length,0)<n,base,{timeout:15000}).catch(()=>{});
     const narrowed=await rowsOf();
@@ -1154,7 +1223,8 @@ let b=null;
     await page.evaluate(e=>WL.schedulePrint.openPreview(e),EQ);
     await page.waitForSelector('#spRange',{timeout:15000});
     await page.waitForFunction(()=>(WL.schedulePrint.previewSheets()||[]).length>0,null,{timeout:20000});
-    await page.click('#spRange input[value="picked"]');
+    await openTab('load');
+   await page.click('#spRange input[value="picked"]');
     await page.waitForFunction(()=>(WL.schedulePrint.previewSheets()||[])
       .reduce((s,x)=>s+x.rows.length,0)===1,null,{timeout:15000}).catch(()=>{});
     const one=await rowsOf();
@@ -1183,7 +1253,49 @@ let b=null;
    await page.evaluate(()=>{localStorage.removeItem('SchedulePrintPrefV1')});
   }
 
-  /* ---- 22) 紙の文字を枠ぎりぎりまで大きく／セルの余白（§9.292 ⑥） ----
+  /* ---- 21b) 紙の列は画面と同じ（§9.293 ①、利用者の報告） ----
+     「作業スケジュールの表示内容と印刷内容が違います。設定は今の表示内容
+      全部にしていますが、表示していない内容まで出ています」
+
+     §9.235で「#」「状態」を紙にだけ足していた。理由（現場が番号で行を指す・
+     白黒コピーで色分けが消える）はいまも正しいが、**既定で足すのは間違い**
+     ——「画面の見た目が正」（§9.237）と言いながら画面に無い列を黙って
+     2本増やしていた。いまは入切でき、**既定は足さない**。
+
+     **確かめるのは札ではなく、紙の見出しそのもの**——設定が在るだけを見る
+     網は、紙が変わらなくても通る。 */
+  {
+   await page.evaluate(()=>localStorage.removeItem('SchedulePrintPrefV1'));
+   const headsOf=o=>page.evaluate(x=>{
+    const groups=WL.schedulePrint.buildPages('テスト設備A',WL.scheduleView.entries(),x);
+    const sheets=WL.schedulePrint.splitToSheets(groups,x);
+    let area=document.getElementById('schedulePrintArea');
+    if(!area){area=document.createElement('div');area.id='schedulePrintArea';
+              area.className='sp-print-area';document.body.appendChild(area)}
+    area.innerHTML=WL.schedulePrint.pageHtml(sheets[0],x,1,sheets.length);
+    area.style.display='block';
+    const h=[...area.querySelectorAll('.sp-page thead th')].map(t=>t.textContent.trim());
+    area.innerHTML='';area.style.display='';
+    return h;
+   },o);
+   const base={includeDone:true,pageByDate:false,paper:'a4-portrait',columnScope:'all',
+               writePattern:'none',range:'all'};
+   const plain=await headsOf(base);
+   const extra=await headsOf({...base,printExtras:true});
+   const screen=await page.evaluate(()=>({
+    keys:WL.scheduleView.printColumnKeys(),
+    labels:WL.scheduleView.printColumnKeys().map(k=>WL.scheduleView.columnLabelOf(k)),
+   }));
+   rec('既定では紙の列が画面の列とそのまま同じ（#・状態を足さない）',
+       plain.join('|')===screen.labels.join('|'),
+       JSON.stringify({紙:plain.slice(0,6),画面:screen.labels.slice(0,6),
+                       紙の数:plain.length,画面の数:screen.labels.length}));
+   rec('「#」「状態」は足したいときだけ足せる（理由があるので消さない）',
+       extra.length===plain.length+2&&extra[0]==='#'&&extra[1]==='状態',
+       JSON.stringify(extra.slice(0,4)));
+  }
+
+  /* ---- 22) 紙の文字を枠ぎりぎりまで大きく／セルの余白（§9.292 ⑥・§9.293 ②） ----
      利用者の指示「枠に対して文字が小さすぎて非常に見にくいです。カラムも
      含めて、枠のサイズに対してはみ出さない程度に文字サイズをできるだけ
      ぎりぎりまで大きくしたいです。ベースサイズを大きめの設定で変更した
@@ -1198,11 +1310,50 @@ let b=null;
    const seam=await page.evaluate(()=>({
     fs:(WL.schedulePrint.fontScales?.()||[]).map(x=>x.key),
     pads:(WL.schedulePrint.cellPads?.()||[]).map(x=>x.key),
-    fit:typeof WL.schedulePrint.fitOf,
+    fit:typeof WL.schedulePrint.fitOf,font:typeof WL.schedulePrint.fontOf,
    }));
-   rec('文字の大きさは自動＋4段、セルの余白は3段（語彙は1箇所から）',
-       seam.fs.join(',')==='auto,0.85,1,1.15,1.3'&&seam.pads.join(',')==='0.6,1,1.5'
-       &&seam.fit==='function',JSON.stringify(seam));
+   /* §9.293 ④で「極大」「最大」を足した（利用者の指示「おじいちゃんも見るので
+      文字はもっと限界まで大きく」）。**今までの綴りは1つも変えない**
+      （変えると保存値が「知らない値」になる・§9.204）。 */
+   rec('文字の大きさは自動＋6段、セルの余白は3段（語彙は1箇所から）',
+       seam.fs.join(',')==='auto,0.85,1,1.15,1.3,1.7,2.2'&&seam.pads.join(',')==='0.6,1,1.5'
+       &&seam.fit==='function'&&seam.font==='function',JSON.stringify(seam));
+   /* ---- §9.293 ② 文字は幅の圧縮に引きずられない（利用者の報告） ----
+      「文字のサイズ変更機能は印刷で見てもプレビューで見ても全く変化して
+       いるように感じません」
+
+      §9.292 ⑥は幅と文字を同じ比率で動かしたため、列の多い設備では比率が
+      下限に張り付き、**どの大きさを選んでも同じ絵**になっていた。
+      幅（紙に必ず収める）と文字（利用者が決める）は**別の答え**にする。 */
+   const split=await page.evaluate(()=>{
+    /* 紙に入りきらない列数を作る（実機の18列と同じ状況）。 */
+    const many=Array.from({length:30},(_,i)=>({key:'c'+i,label:'C',w:120}));
+    const of=(o,k)=>WL.schedulePrint[k](many,190,o);
+    return {幅:{小:of({fontScale:'0.85'},'fitOf'),標準:of({fontScale:'1'},'fitOf'),
+                特大:of({fontScale:'1.3'},'fitOf')},
+            文字:{自動:of({fontScale:'auto'},'fontOf'),小:of({fontScale:'0.85'},'fontOf'),
+                  標準:of({fontScale:'1'},'fontOf'),特大:of({fontScale:'1.3'},'fontOf'),
+                  最大:of({fontScale:'2.2'},'fontOf')},
+            /* セルの余白を詰めると、そのぶんが**文字の大きさになる**
+               （§9.293 ④）——以前は空いた場所が誰にも配られなかった。
+               **床に着いていない列数で見ること**——30列だとどちらも
+               下限(MIN_FIT)に張り付いて、直す前でも同じ数になる。 */
+            余白:(()=>{
+             const few=Array.from({length:6},(_,i)=>({key:'f'+i,label:'F',w:100}));
+             const g=o=>WL.schedulePrint.fontOf(few,190,o);
+             return {標準:g({fontScale:'auto',cellPad:'1'}),
+                     詰める:g({fontScale:'auto',cellPad:'0.6'}),
+                     広め:g({fontScale:'auto',cellPad:'1.5'})};
+            })()};
+   });
+   rec('列が多くて幅が床に着いても、文字の大きさは選んだとおりに効く',
+       split.文字.小<split.文字.標準&&split.文字.標準<split.文字.特大
+       &&split.文字.特大===1.3,JSON.stringify(split.文字));
+   rec('幅は選び直しても紙に収める側のまま（はみ出させない）',
+       split.幅.小===split.幅.標準&&split.幅.標準===split.幅.特大,JSON.stringify(split.幅));
+   rec('セルの余白を詰めると、そのぶん「自動」の文字が大きくなる（§9.293 ④）',
+       split.余白.詰める>split.余白.標準&&split.余白.広め<split.余白.標準,
+       JSON.stringify(split.余白));
    /* **余っているぶんだけ大きくする**（幅も文字も同じ比率で）。 */
    const grow=await page.evaluate(()=>{
     const cols=[{key:'a',label:'A',w:100},{key:'b',label:'B',w:100}];
@@ -1257,10 +1408,16 @@ let b=null;
        auto.fs>=big.fs,JSON.stringify({auto:auto.fs,big:big.fs}));
    rec('どの大きさでも紙からはみ出さない',!small.over&&!std.over&&!big.over&&!auto.over,
        JSON.stringify({small:small.over,std:std.over,big:big.over,auto:auto.over}));
-   /* 列が多くて床に着いたときは、**打つ手を書く**（§4）。 */
-   const floored=await fontOf({...base,fontScale:'1.3'});
-   rec('列が多いときは床で止まり、今までより大きい（11px×0.62→12.5px×0.62）',
-       floored.fs>=7.5&&floored.fs<std.fs,String(floored.fs));
+   /* **列が多い設備でも、選んだ大きさがそのまま紙に出る**（§9.293 ②）
+      ——ここが「全く変化しない」と報告された箇所。 */
+   const wideAuto=await fontOf({...base,fontScale:'auto'});
+   const wideBig=await fontOf({...base,fontScale:'1.3'});
+   rec('列が多い設備でも、文字の大きさを選ぶと紙の文字が実際に変わる',
+       wideBig.fs>wideAuto.fs+1,JSON.stringify({自動:wideAuto.fs,特大:wideBig.fs}));
+   rec('「自動」は今までどおり幅なり（列が多ければ小さいまま）',
+       wideAuto.fs<std.fs,JSON.stringify({自動:wideAuto.fs,標準:std.fs}));
+   rec('文字を大きくしても紙からはみ出さない（幅は収める側のまま）',
+       !wideBig.over,String(wideBig.over));
    const tight=await fontOf({...base,cellPad:'0.6'},4);
    const wide=await fontOf({...base,cellPad:'1.5'},4);
    rec('セルの余白を選ぶと、実際にセルの余白が変わる',
@@ -1269,9 +1426,13 @@ let b=null;
 
    /* **設定が端末に残る**（毎回選び直させない）。 */
    await page.evaluate(e=>WL.schedulePrint.openPreview(e),EQ);
-   await page.waitForSelector('#spFontScale',{timeout:15000});
-   await page.click('#spFontScale input[value="1.3"]');
-   await page.click('#spCellPad input[value="0.6"]');
+   await page.waitForSelector('#spPvTabs',{timeout:15000});
+   /* 設定は段に分かれた（§9.293 ③）ので、**段の名前で開く**
+      （番号で探すと段が1つ増えただけで落ちる）。 */
+   await page.click('[data-pv-tab="look"]');
+   await page.waitForSelector('#spFontScale',{state:'visible',timeout:8000});
+   await page.click('#spFontScale label:has(input[value="1.3"])');
+   await page.click('#spCellPad label:has(input[value="0.6"])');
    await page.waitForTimeout(800);
    const kept=await page.evaluate(()=>{
     const p=JSON.parse(localStorage.getItem('SchedulePrintPrefV1')||'{}');
@@ -1280,14 +1441,44 @@ let b=null;
    });
    rec('選んだ文字の大きさ・余白はこの端末に残る',
        kept.fs==='1.3'&&kept.pad==='0.6',JSON.stringify(kept));
-   rec('いま何倍で刷られるかを文字で出す（§3・§6）',/%/.test(kept.note)&&/px/.test(kept.note),
-       kept.note.slice(0,90));
-   /* この設備は列が多いので床に着く。**そのときは打つ手まで書く**（§4）
-      ——「縮めています」だけだと、選び直しても変わらない理由が読めない。 */
-   rec('これ以上小さくできないときは、次にすることを書く',
-       /列の範囲/.test(kept.note)&&/A3/.test(kept.note),kept.note.slice(0,160));
+   /* **本文が何pxで刷られるか**を文字で出す（§3・§6）。列幅の%は足元の
+      「刷り上がり」が言うので、ここでは繰り返さない（§CLAUDE 8）。 */
+   rec('いま本文が何pxで刷られるかを文字で出す（§3・§6）',
+       /px/.test(kept.note)&&/刷り上がり/.test(kept.note),kept.note.slice(0,90));
+   rec('列幅の%は足元の「刷り上がり」が1箇所で言う（同じ数字を2度出さない）',
+       !/%/.test(kept.note)&&/%/.test(await page.evaluate(()=>
+         (document.getElementById('spPvFacts')||{}).innerText||'')),kept.note.slice(0,90));
+   /* この設備は列が多いので、特大にすると**文字が列より大きくなる**。
+      **そうなることを先に書く**（§4）——黙って「…」で切ると壊れて見える。 */
+   rec('文字が列より大きいときは、値が切れることを先に書く',
+       /切れます/.test(kept.note),kept.note.slice(0,160));
    await page.evaluate(()=>WL.schedulePrint.closePreview());
    await page.evaluate(()=>localStorage.removeItem('SchedulePrintPrefV1'));
+  }
+
+  /* ---- 23) 左の欄が縦に伸びず、いちばん内側だけがスクロールする(§9.293 ③) ----
+     段に分けた値打ちは「探すのに毎回スクロールしなくていい」ことなので、
+     **左の欄そのものが画面より高くならない**ことまで見る（§9.254 ①）。 */
+  {
+   await page.evaluate(e=>WL.schedulePrint.openPreview(e),EQ);
+   await page.waitForSelector('#spPvTabs',{timeout:15000});
+   await page.waitForTimeout(400);
+   const fit=await page.evaluate(()=>{
+    const side=document.querySelector('.sp-pv-side');
+    const box=document.querySelector('.sp-pv-box');
+    const pane=[...document.querySelectorAll('.sp-pv-pane')].find(p=>!p.hidden);
+    const sum=document.querySelector('.sp-pv-sum');
+    const r=side.getBoundingClientRect(),b=box.getBoundingClientRect();
+    return {側の溢れ:side.scrollHeight>side.clientHeight+1,
+            窓から出た:r.bottom>b.bottom+1,
+            段が伸びる:!!(pane&&pane.clientHeight>0),
+            /* 枚数と「既定へ戻す」は段の外なので、どの段でも見えている。 */
+            足元:!!(sum&&sum.getBoundingClientRect().height>0
+                    &&sum.getBoundingClientRect().bottom<=b.bottom+1)};
+   });
+   rec('左の欄は窓に収まり、スクロールするのは開いている段だけ',
+       !fit.側の溢れ&&!fit.窓から出た&&fit.段が伸びる&&fit.足元,JSON.stringify(fit));
+   await page.evaluate(()=>WL.schedulePrint.closePreview());
   }
 
   await page.evaluate(()=>WL.schedulePrint.closePreview());

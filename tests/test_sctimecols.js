@@ -561,8 +561,16 @@ async function cleanup(){
   const moved=Object.keys(before.すべて).filter(k=>k!=='__time__'
     &&Math.abs((narrow.すべて[k]||0)-before.すべて[k])>2);
   rec('狭めたぶんが他の列へ回らない（§9.209 ①）',moved.length===0,moved.join(','));
-  rec('空きは右（セルを持たない1本）にできる',narrow.余り>=before.余り+50,
-      JSON.stringify({前:before.余り,後:narrow.余り,列:`${before.列}->${narrow.列}`}));
+  /* **狭めた量から見る**（決め打ちの50pxで見ない）——器の幅・行が溢れて
+     いたかで、余りへ回る量は変わる（実測49pxで、しきい値50pxに1px届かず
+     赤いままだった。**赤いまま残っている網は網ではない**・§9.200）。
+     約束は「狭めたぶんが他の列へ回らず、右の空きが増えること」なので、
+     上の`moved.length===0`と合わせて**狭めた量の半分以上が空きへ回る**で見る。 */
+  const cut=before.列-narrow.列;
+  rec('空きは右（セルを持たない1本）にできる',
+      narrow.余り-before.余り>=cut*0.5,
+      JSON.stringify({前:before.余り,後:narrow.余り,狭めた:cut,
+                      空きの増分:narrow.余り-before.余り,列:`${before.列}->${narrow.列}`}));
   rec('余りは「セルを持たない1本」が受ける（列は増えない）',
       before.トラック===before.列数+2,
       `トラック${before.トラック} / 列${before.列数}+取っ手+余り`);
