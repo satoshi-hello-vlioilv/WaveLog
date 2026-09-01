@@ -25,7 +25,24 @@ from .repositories import schedule_repo as sr
 from .repositories.master_repo import normalize_equipment_name
 from .db_access import merged_backup_rows, connect as _sqlite_connect
 
+# 稼働カレンダーを**最初に**組み立てる日数。ここで足りなければ
+# `SlotTimeline`が伸ばす（§9.291 ②、利用者の指示「枠いっぱいになったら、
+# それ以上のロットを受け付けてくれない。制限なく、スケジュールを作成できる
+# ようにしてください」）。
+#
+# 以前はこれが**上限そのもの**で、60日ぶんの稼働帯を1回組んだら終わりだった。
+# 予定がそこを超えると`snap_to_working()`／`consume_minutes()`が`None`を返し、
+# その予定から先は`plannedStart=None`（＝画面では「未定」）になる——**行は
+# 足せているのに時刻が付かない**ので、利用者からは「受け付けてくれない」と
+# しか見えない。
 MAX_HORIZON_DAYS=60
+# 伸ばすときの倍率と、これ以上は伸ばさない上限。**上限は残す**——稼働帯が
+# 1つも無いカレンダー（全部休みなど）では、いくら伸ばしても置き場所は
+# 見つからないので、際限なく組み立て続けると応答が返らなくなる。
+# 5年ぶんあれば「制限なく」と実質同じで、しかも組み立ては1日ぶんずつの
+# 積み上げなので、伸びた回数だけ線形にしか増えない。
+HORIZON_GROW_FACTOR=4
+HORIZON_CAP_DAYS=1830
 DEFAULT_ESTIMATE_MINUTES=120.0
 PLAN_TERMINAL_STATES=('完了','取消')
 
@@ -156,6 +173,41 @@ def build_slot_timeline(specific_rows,global_rows,from_date,horizon_days=MAX_HOR
    merged.append((s,e))
  return merged
 
+class SlotTimeline:
+ """稼働帯の並び。**足りなくなったら自分で伸びる**（§9.291 ②）。
+
+    `build_slot_timeline()`はそのまま残してある（1回ぶんを組む道具）。
+    ここはそれを持ち、`grow()`で日数を増やして組み直すだけの薄い器。
+    **並びとしても振る舞う**ので、`for s,e in timeline`と書いている
+    既存の呼び出しは1行も変えなくてよい。
+
+    伸ばすのは`snap_to_working()`／`consume_minutes()`の中——「この先に
+    稼働帯が無い」と分かるのはそこだけで、呼ぶ側は伸びたことを知らなくてよい。
+    **上限に達したら伸ばさない**（`grow()`がFalse）ので、そのときは今までと
+    同じ「打ち切り」になる。"""
+ def __init__(self,specific_rows,global_rows,from_date,
+              horizon_days=MAX_HORIZON_DAYS,cap_days=HORIZON_CAP_DAYS):
+  self._specific=specific_rows;self._global=global_rows;self._from=from_date
+  self.cap_days=max(int(horizon_days or 0),int(cap_days or 0))
+  self.days=max(1,int(horizon_days or MAX_HORIZON_DAYS))
+  self.grown=0
+  self.slots=build_slot_timeline(specific_rows,global_rows,from_date,self.days)
+ def grow(self):
+  """日数を増やして組み直す。伸ばせたらTrue。"""
+  if self.days>=self.cap_days:return False
+  self.days=min(self.cap_days,max(self.days+1,self.days*HORIZON_GROW_FACTOR))
+  self.slots=build_slot_timeline(self._specific,self._global,self._from,self.days)
+  self.grown+=1
+  return True
+ def __iter__(self):return iter(self.slots)
+ def __len__(self):return len(self.slots)
+ def __bool__(self):return True
+
+def _grow(slots):
+ """渡された並びが伸びられるなら伸ばす（素のlistならFalse）。"""
+ g=getattr(slots,'grow',None)
+ return bool(g and g())
+
 # 予定の起点を丸める単位(分)。§9.198。**0や負にしないこと**——`_round_up`が
 # そのまま返すだけになる(丸めない、と同じ)。
 ANCHOR_ROUND_MIN=5
@@ -172,11 +224,15 @@ def _round_up(dt,minutes):
 
 def snap_to_working(cursor,slots):
  """cursorが稼働帯の中ならそのまま、非稼働ならその時点以降で最も早い稼働
- 開始時刻へ繰り上げる。戻り値: (新cursor or None(打ち切り), 待ちが発生したか)。"""
- for s,e in slots:
-  if s<=cursor<e:return cursor,False
-  if s>cursor:return s,True
- return None,True
+ 開始時刻へ繰り上げる。戻り値: (新cursor or None(打ち切り), 待ちが発生したか)。
+
+ **並びの終わりまで来たら伸ばして探し直す**（§9.291 ②）——`SlotTimeline`を
+ 渡したときだけ。素のlistなら今までどおり`None`（打ち切り）。"""
+ while True:
+  for s,e in slots:
+   if s<=cursor<e:return cursor,False
+   if s>cursor:return s,True
+  if not _grow(slots):return None,True
 
 def consume_minutes(cursor,minutes,slots):
  """cursorからminutes分の稼働時間を消費して進める(§7.3のwhileループに相当)。
@@ -190,7 +246,10 @@ def consume_minutes(cursor,minutes,slots):
   if waited:spans=True
   cur=cur2
   slot=next(((s,e) for s,e in slots if s<=cur<e),None)
-  if slot is None:return None,spans,True
+  if slot is None:
+   # 伸ばせるなら伸ばして探し直す（§9.291 ②）。
+   if _grow(slots):continue
+   return None,spans,True
   s,e=slot
   avail=(e-cur).total_seconds()/60.0
   if remaining<=avail+1e-9:
@@ -512,7 +571,9 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
  est_memo={}
  # アンカー決定(§7.2): 展開対象(完了/取消を除く)の先頭を見る
  active=[e for e in entries if e['state'] not in PLAN_TERMINAL_STATES]
- timeline=build_slot_timeline(specific_cal,global_cal,now.date())
+ # **足りなくなったら伸びる**（§9.291 ②）。60日ぶんで組んで、予定が
+ # そこを超えたら`snap_to_working()`／`consume_minutes()`が伸ばす。
+ timeline=SlotTimeline(specific_cal,global_cal,now.date())
  # 着手中(§9.37): まだ終わっていない作業。予定終了は「現在時刻」とし、
  # 後続の予定はそこから並べる。以前は「残り見積(見積-経過、下限5分)」を
  # 足した時刻を予定終了にしていたが、見積を超過した瞬間から
@@ -587,7 +648,7 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
      # 稼働カレンダーの見える範囲(MAX_HORIZON_DAYS)より先。**打ち切らず
      # そのまま置く**——後続は次の周回で truncated として理由が出る。
      at=target
-     warnings.append(f"予定ID {e['id']} の枠は稼働カレンダー上、{MAX_HORIZON_DAYS}日以内に収まりません。")
+     warnings.append(f"予定ID {e['id']} の枠は稼働カレンダー上、{timeline.days}日先までに置ける稼働帯がありません。")
     else:
      at=snapped
    gap=max(0.0,_minutes_between(cursor,at))
@@ -665,7 +726,7 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
    e['estimate']=dict(est,minutes=minutes)
    e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
    e['spansNonWorking']=False;e['overdueMinutes']=0;e['shift']=None
-   warnings.append(f"予定ID {e['id']} は稼働カレンダー上、{MAX_HORIZON_DAYS}日以内に収まりません。")
+   warnings.append(f"予定ID {e['id']} は稼働カレンダー上、{timeline.days}日先までに置ける稼働帯がありません。")
    continue
   planned_start=cursor
   end_cursor,spans,trunc=consume_minutes(cursor,minutes,timeline)
@@ -676,7 +737,7 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
    e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
    e['spansNonWorking']=spans;e['overdueMinutes']=round(overdue,1)
    e['shift']=resolve_shift_label(specific_shift,global_shift,planned_start)
-   warnings.append(f"予定ID {e['id']} は稼働カレンダー上、{MAX_HORIZON_DAYS}日以内に収まりません。")
+   warnings.append(f"予定ID {e['id']} は稼働カレンダー上、{timeline.days}日先までに置ける稼働帯がありません。")
    continue
   # この予定自身の終了はend_cursor。後続を進めるカーソルだけ、ロックで
   # 巻き戻した分(resume_from)まで戻す(この行のplannedEndには混ぜない)。
