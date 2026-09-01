@@ -508,9 +508,7 @@ let b=null;
    if(el&&!el.disabled){el.click();return true}
    return false;
   },at);
-  await page.evaluate(()=>{
-   const t=[...document.querySelectorAll('.op-tab')].find(x=>/見せ/.test(x.textContent));
-   if(t)t.click()});
+  await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="look"]',{timeout:8000});
   await page.waitForTimeout(400);
   const pv={};
   for(const at of ['内部','外下左','外上左']){

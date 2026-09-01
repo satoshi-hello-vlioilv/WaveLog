@@ -39,19 +39,37 @@ const restore=[];
  const errs=[];
  page.on('pageerror',e=>errs.push(e.message));
  page.on('dialog',d=>d.accept());
+ /* 大きい選び物は浮き出しの中（§9.299）。**一度開けば描き直しても開いたまま**
+    なので、窓を開くたびに1回でよい（`opState.pop`が覚えている）。 */
+ /* **浮き出しは他の欄を覆う**（`position:fixed`）。実機では外側を1回押せば
+    畳まれるが、`page.click()`は押す前に当たり判定をするので、開いたまま
+    別の列を押すと「覆われている」で必ず失敗する。**塊を移る前に畳む**。 */
+ const closePop=async()=>{
+  await page.evaluate(()=>{
+   const b=document.querySelector('#opItemModal [data-op-pop][aria-expanded="true"]');
+   if(b)b.click();
+  });
+  await page.waitForFunction(()=>!document.querySelector(
+    '#opItemModal [data-op-pop-panel]:not([hidden])'),null,{timeout:8000});
+ };
+ const openPop=async k=>{
+  await page.evaluate(key=>{
+   const b=document.querySelector(`#opItemModal [data-op-pop="${key}"]`);
+   if(!b)throw Error('浮き出しの入口が無い: '+key);
+   if(b.getAttribute('aria-expanded')!=='true')b.click();
+  },k);
+  await page.waitForSelector(`#opItemModal [data-op-pop-panel="${k}"]:not([hidden])`,{timeout:8000});
+ };
  /* タイルを押して設定の窓が開くのを待つ。**窓が開くまで待つこと**——
     開く前に中を読むと、直っていても落ちる網になる。 */
- /* 決めることは**タブで4段**（§9.223 ②）。段を開いてから中を見る。 */
+ /* 決めることは**3つの塊を横に並べる**（§9.299。段（タブ）は廃止した）。
+    開いた時点で全部見えているので、ここでするのは**その塊が在ること**の
+    確認だけ——`if(b)b.click()`のような素通りにすると、塊ごと消えても
+    網が通ってしまう。 */
  const tab=async k=>{
-  await page.evaluate(key=>{
-   const b=document.querySelector(`#opModalTabs [data-op-tab="${key}"]`);
-   if(!b)throw Error('タブが無い: '+key);
-   b.click();
-  },k);
-  await page.waitForFunction(key=>{
-   const b=document.querySelector(`#opModalTabs [data-op-tab="${key}"]`);
-   return !!b&&b.classList.contains('is-on');
-  },k,{timeout:8000});
+  await closePop();
+  await page.waitForFunction(key=>!!document.querySelector(
+    `#opModalForm .op-form-sec[data-op-sec="${key}"]`),k,{timeout:8000});
  };
  const openTile=async id=>{
   await page.evaluate(i=>{
@@ -172,6 +190,7 @@ const restore=[];
   /* §9.223 ③（利用者の指示「6種類しかないので…バリエーションを増やして」）。
      選択肢の型では8つ。**見本つき**であることも見る——名前だけで選ばせない。 */
   await tab('look');
+  await openPop('widget');
   const lookPane=await page.evaluate(()=>({
     選ばせ方:[...document.querySelectorAll('[data-op-widget]')].map(x=>x.dataset.opWidget),
     見本:document.querySelectorAll('.op-widget-demo .opd').length,
@@ -279,6 +298,7 @@ const restore=[];
   await tab('data');
   const hasBox=await page.evaluate(()=>!!document.getElementById('opdNewChoiceValue'));
   rec('「選択」の項目では選択肢の値をその場で足せる',hasBox===true);
+  await openPop('choice');
   await page.fill('#opdNewChoiceValue','金');
   await page.fill('#opdNewChoiceNote','いちばん明るい色');
   await page.click('#opdAddChoiceValue');
@@ -304,6 +324,7 @@ const restore=[];
 
   /* ---- 6) 選ばせ方を変えると測定画面の定義に出る（§9.218 ②） ---- */
   await tab('look');
+  await openPop('widget');
   await page.click('[data-op-widget="タブ"]');
   await page.waitForTimeout(200);
   await page.click('#opdSave');
@@ -325,6 +346,7 @@ const restore=[];
   await page.click('[data-op-type="文字"]');
   await page.waitForTimeout(250);
   await tab('look');
+  await openPop('widget');
   const textW=await page.evaluate(()=>
     [...document.querySelectorAll('[data-op-widget]')].map(b=>b.dataset.opWidget));
   rec('自由記述の型では「メモ」が選べ、選択肢向けの形は並ばない',
@@ -334,6 +356,7 @@ const restore=[];
   await page.click('[data-op-type="正の整数"]');
   await page.waitForTimeout(250);
   await tab('look');
+  await openPop('widget');
   const numW=await page.evaluate(()=>
     [...document.querySelectorAll('[data-op-widget]')].map(b=>b.dataset.opWidget));
   rec('数値の型ではステッパー・スライダー・キーパッドが選べる',
@@ -353,6 +376,7 @@ const restore=[];
   await page.click('[data-op-type="選択"]');
   await page.waitForTimeout(200);
   await tab('look');
+  await openPop('widget');
   await page.click('[data-op-widget="タブ"]');
   await page.waitForTimeout(200);
 
@@ -507,6 +531,7 @@ const restore=[];
   await page.waitForTimeout(600);
   await openTile(mkj.id);
   await tab('look');
+  await openPop('widget');
   const shapes={};
   for(const w of ['ラジオ','セグメント','タブ','ボタン群']){
    await page.click(`[data-op-widget="${w}"]`);
@@ -550,6 +575,7 @@ const restore=[];
      いる。手打ちの見せ方は形ごとに違う（プルダウン＝器そのものが打てる、
      ボタン系＝末尾の「その他」）ので、どちらを見ているかを決めてから測る。 */
   await tab('look');
+  await openPop('widget');
   await page.click('[data-op-widget="プルダウン"]');
   await page.waitForTimeout(400);
   /* **打つ場所は「選ぶ器そのもの」**（§9.226 ①、利用者の指示）。以前は
@@ -621,6 +647,7 @@ const restore=[];
      **段をまたいでも消えないこと**（§9.223 ②）——決めることは4段に分かれた
      ので、②で打ってから③のボタンを押すのが普通の道筋になった。 */
   await tab('look');
+  await openPop('widget');
   await page.click('[data-op-widget="ラジオ"]');
   await page.waitForTimeout(300);
   await tab('data');
@@ -630,6 +657,7 @@ const restore=[];
      いるのは1段ぶんだけなので、DOMだけを見て保存を組み立てると、②の設定が
      まるごと空で上書きされる（`item_upsert`は全列を書く）。 */
   await tab('look');
+  await openPop('widget');
   await page.click('[data-op-widget="セグメント"]');
   await page.waitForTimeout(250);
   await page.click('#opdSave');
@@ -921,10 +949,11 @@ const restore=[];
       !!lf&&lf.name===TAG_+' 巻取り'&&lf.type==='選択'&&lf.choice===TAG_+'-色',
       JSON.stringify(lf&&{name:lf.name,type:lf.type,choice:lf.choice}));
 
-  /* ---- ④ メモは広い（利用者の指示「メモ欄狭すぎる」） ----
-     **実寸で見る**——`rows`だけを見ると、CSSが高さを潰していても通る。 */
+  /* ---- メモは①の末尾（§9.299で④の段は廃止した） ----
+     **実寸で見る**——`rows`だけを見ると、CSSが高さを潰していても通る。
+     **段（タブ）を押す形へ戻さないこと**（§9.200。塊は最初から見えている）。 */
   await openTile(mkrj.id);
-  await tab('note');
+  await tab('place');
   const memo=await page.evaluate(()=>{
    const el=document.getElementById('opdNote');
    if(!el)return null;
@@ -934,8 +963,10 @@ const restore=[];
    return {高さ:Math.round(r.height),幅:Math.round(r.width),
            行数:Math.round(r.height/line),tag:el.tagName};
   });
-  rec('メモは複数行の広い欄',
-      !!memo&&memo.tag==='TEXTAREA'&&memo.行数>=6&&memo.幅>=280,JSON.stringify(memo));
+  /* 4行ぶん見えて、足りなければ縁で伸ばせる（§9.299。窓を1画面へ収める
+     ために8行→4行にした。**行数の下限は残す**——潰れたら気づけるように）。 */
+  rec('メモは複数行の欄（①の末尾）',
+      !!memo&&memo.tag==='TEXTAREA'&&memo.行数>=4&&memo.幅>=200,JSON.stringify(memo));
   await closeModal();
 
   /* ================================================================
@@ -964,6 +995,7 @@ const restore=[];
   await page.waitForTimeout(600);
   await openTile(mkSj.id);
   await tab('look');
+  await openPop('widget');
   const scale=await page.evaluate(()=>{
    const card=document.querySelector('.op-prev-card');
    if(!card)return null;

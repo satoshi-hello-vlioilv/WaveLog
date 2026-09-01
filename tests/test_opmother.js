@@ -31,6 +31,27 @@ let b=null;
  const page=await b.newPage({viewport:{width:1920,height:1080}});
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  page.on('dialog',d=>d.accept());
+ /* 大きい選び物は浮き出しの中（§9.299）。**一度開けば描き直しても開いたまま**
+    なので、窓を開くたびに1回でよい（`opState.pop`が覚えている）。 */
+ /* **浮き出しは他の欄を覆う**（`position:fixed`）。実機では外側を1回押せば
+    畳まれるが、`page.click()`は押す前に当たり判定をするので、開いたまま
+    別の列を押すと「覆われている」で必ず失敗する。**塊を移る前に畳む**。 */
+ const closePop=async()=>{
+  await page.evaluate(()=>{
+   const b=document.querySelector('#opItemModal [data-op-pop][aria-expanded="true"]');
+   if(b)b.click();
+  });
+  await page.waitForFunction(()=>!document.querySelector(
+    '#opItemModal [data-op-pop-panel]:not([hidden])'),null,{timeout:8000});
+ };
+ const openPop=async k=>{
+  await page.evaluate(key=>{
+   const b=document.querySelector(`#opItemModal [data-op-pop="${key}"]`);
+   if(!b)throw Error('浮き出しの入口が無い: '+key);
+   if(b.getAttribute('aria-expanded')!=='true')b.click();
+  },k);
+  await page.waitForSelector(`#opItemModal [data-op-pop-panel="${k}"]:not([hidden])`,{timeout:8000});
+ };
  /* 触った行は**丸ごと控えて丸ごと戻す**（§9.121）——`item_upsert`は全列を
     書くので、1項目だけ送り返すと他の設定が消える。 */
  const backup=[];
@@ -99,8 +120,8 @@ let b=null;
     String(auto.id));
   await page.waitForFunction(()=>{const m=document.getElementById('opItemModal');return !!m&&!m.hidden},
     null,{timeout:10000});
-  await page.evaluate(()=>{const t=[...document.querySelectorAll('.op-tab')]
-    .find(x=>/見せ/.test(x.textContent));if(t)t.click()});
+  await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="look"]',{timeout:8000});
+  await openPop('widget');
   await page.waitForTimeout(500);
   const look=await page.evaluate(()=>({
    形の数:document.querySelectorAll('[data-op-widget]').length,
@@ -116,8 +137,7 @@ let b=null;
   rec('打ち込む部品が要らない理由を文字で書く（§4）',
       /画面が値を入れます/.test(look.文)&&/見せ方/.test(look.文),
       look.文.slice(0,120));
-  await page.evaluate(()=>{const t=[...document.querySelectorAll('.op-tab')]
-    .find(x=>/記録/.test(x.textContent));if(t)t.click()});
+  await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="data"]',{timeout:8000});
   await page.waitForTimeout(400);
   const what=await page.evaluate(()=>({
    初期値欄:!!document.getElementById('opdInitial'),
