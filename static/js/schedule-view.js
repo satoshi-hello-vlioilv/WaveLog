@@ -1745,18 +1745,38 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  // 固まって見える点が特に悪い)。データ本体の整合性はwith_write()側の
  // ロック+改訂番号チェックが最終防御として引き続き機能するため、この
  // セッション機構が失敗してもデータが壊れることはない。
+ /* **編集セッションは「名乗る役」で、操作は止めない**（§9.291 ③、利用者との
+    確認「書き込みの主導権は最初のユーザーにして、依頼を受けて編集権を持つ
+    ものが代理で書き込む形という意味では READONLY である必要はない」）。
+
+    データの整合を守っているのはREADONLYではない——
+      ①共有ファイルを触るのは持ち主1台（§9.192の代理書き込み）
+      ②書くときは必ずロック→取り直し→適用→改訂番号（§4.2）
+      ③並べ替えは「送ったIDの集合が今の未着手予定と完全一致」しないと断る
+    の3枚。READONLYが防いでいたのは**人の意図の衝突**だけで、そのうち本当に
+    残るのは「同じ顔ぶれのまま2人が同時に並べ替える」1件——そこは
+    `baseOrderedIds`（§9.291 ③）が受け、**黙って上書きせず読み直す**。
+
+    厳密に「1設備1人」で運用したい現場のために、共通設定の
+    `schedule_session_block`='on' で今までどおり止められる（**既定はoff**）。
+    値はサーバーが答える（`/api/schedule/session/acquire`の`blocking`）
+    ——画面に既定を書き写すと、設定を変えたときに片方だけ古くなる。 */
+ function sessionBlocking(){return scState.sessionBlocking===true}
  function sessionBlocked(){
-  return sessionApplicable()&&!scState.sessionHeld&&!!scState.sessionHolder;
+  return sessionBlocking()&&sessionApplicable()&&!scState.sessionHeld&&!!scState.sessionHolder;
  }
  async function acquireSessionOnce(){
   const eq=scState.equipment;
   try{
-   await api('/api/schedule/session/acquire',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({equipment:eq})});
+   const r=await api('/api/schedule/session/acquire',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({equipment:eq})});
    if(scState.equipment!==eq)return; // 応答が届く前に設備が切り替わっていたら結果を捨てる
+   /* **止めるかどうかはサーバーが答える**（§9.291 ③）。既定を画面へ写さない。 */
+   scState.sessionBlocking=(r&&r.blocking===true);
    scState.sessionHeld=true;scState.sessionHolder=null;scState.sessionError=null;
   }catch(e){
    if(scState.equipment!==eq)return;
    scState.sessionHeld=false;
+   if(e.blocking!==undefined)scState.sessionBlocking=(e.blocking===true);
    if(e.sessionLockedBy&&(e.sessionLockedBy.loginId||e.sessionLockedBy.pcName)){
     // 明確に他端末が保持中と判定できた場合だけブロック対象にする。
     scState.sessionHolder=e.sessionLockedBy;scState.sessionError=null;
@@ -1849,6 +1869,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    return;
   }
   if(scState.sessionHolder){
+   /* **止めない設定なら帯を出さない**（§9.291 ③）——誰が主担当かは
+      タイトル帯の在席表示(`#scWho`)が1箇所で言う（§CLAUDE 8「同じ情報を
+      2箇所に出さない」）。操作できるのに読み取り専用の帯が出ていると、
+      「保存できませんでした」と同じで**嘘の合図**になる。 */
+   if(!sessionBlocking()){
+    box.hidden=true;box.innerHTML='';box.className='sc-session-banner';
+    applyWriteControlsEnabled(true);
+    return;
+   }
    /* 他端末が保持中と確定できた場合だけ操作を止める(sessionBlocked()と同じ判定)。
       **誰が編集中かはここには書かない**——タイトル帯の在席表示(`#scWho`)が
       1箇所で言う（§CLAUDE 8「同じ情報を2箇所に出さない」）。ここに残すのは
@@ -1901,6 +1930,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    scState.sessions=r.sessions||[];
    scState.me=r.me||null;
    scState.sessionsConfigured=r.configured!==false;
+   /* **止めるかどうかもここで受け取る**（§9.291 ③）。ハートビートは25秒
+      ごとなので、それだけに任せると設定を変えても最大25秒は古い見せ方の
+      まま。10秒ごとのこの巡回で拾う。 */
+   if(r.blocking!==undefined)scState.sessionBlocking=(r.blocking===true);
   }catch(e){
    if(scState.equipment!==eq)return;
    /* 読めなかったことと「誰も居ない」は違う（§CLAUDE）。控えは触らず、
@@ -1995,10 +2028,27 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    tip(`${scState.equipment} は ${whoLabel(h)} が編集中です。この端末（${meLabel()}）は読み取り専用です。`);
    return;
   }
+  /* **止めない設定で、ほかの端末が主担当のとき**（§9.291 ③）。
+     操作はできるので「読み取り専用」とは言わない——言うと嘘の合図になる。
+     出すのは「誰と一緒に触っているか」と、**同時に並べ替えたときどうなるか**
+     （後から保存したほうが残る＝§9.291 ③の唯一の衝突）。 */
+  if(scState.sessionHolder&&!scState.sessionHeld){
+   const h=scState.sessionHolder||{};
+   box.className='sc-who sc-who-info';
+   box.innerHTML=`<b class="sc-who-state">主担当</b>`
+    +`<span class="sc-who-holder">${esc(whoLabel(h))}（この端末も操作できます）</span>`;
+   tip(`${scState.equipment} は ${whoLabel(h)} が主担当ですが、この端末（${meLabel()}）でも`
+     +'追加・並べ替え・作業開始ができます。\n'
+     +'同じ顔ぶれのまま2人が並べ替えたときは、後から保存したほうの並びが残ります'
+     +'（先に変わっていたら、上書きせずに読み直します）。');
+   return;
+  }
   if(scState.sessionHeld||(mine&&mine.mine)){
    box.className='sc-who sc-who-mine';
    box.innerHTML=`<b class="sc-who-state">編集中</b><span class="sc-who-holder">自分（${esc(meLabel())}）</span>`;
-   tip(`${scState.equipment} はこの端末が編集しています。ほかの端末は読み取り専用になります。`);
+   tip(`${scState.equipment} はこの端末が編集しています。`
+     +(sessionBlocking()?'ほかの端末は読み取り専用になります。'
+       :'ほかの端末も操作できます（主担当としてこの端末が名乗っています）。'));
    return;
   }
   if(list===null){
@@ -5684,12 +5734,28 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const equipment=scState.equipment;
   // 失敗したときに元へ戻せるよう、書き換える前の並びを控えておく。
   const previousOrder=previousEntries;
-  queuePlanOp({op:'reorder',equipment,orderedIds:ids,
+  /* **掴む前に見ていた並び**も送る（§9.291 ③）。編集セッションで操作を
+     止めるのをやめたので、同じ顔ぶれのまま2人が並べ替えると後から保存した
+     ほうで丸ごと上書きされる——それだけは行ごとの書き込みでは受けられない。
+     サーバーが今の並びと突き合わせて、違えば409（`reorderStale`）で断る。
+     **顔ぶれが違うとき**（他の端末が足した/消した）は今までどおり先に
+     「一致しません」で断られる。 */
+  const baseIds=planOrder.map(e=>e.id);
+  queuePlanOp({op:'reorder',equipment,orderedIds:ids,baseOrderedIds:baseIds,
    onFailure:e=>{
     // 通知は諦めた時に1回だけ(runWriteQueueのリトライ中に出すと同じ文言が
     // 回数ぶん並ぶ)。サーバーが受け付けなかった並びを画面に残さないよう、
     // 元の順序へ戻してから知らせる。
     if(scState.equipment===equipment){scState.entries=previousOrder;renderTimeline()}
+    if(e&&e.code==='reorderStale'){
+     /* **黙って上書きしない**（§9.291 ③）。読み直して、誰が動かしたかを言う。 */
+     const who=[e.byLogin,e.byPc].filter(Boolean).join('／');
+     showToast&&showToast('ほかの端末が先に並べ替えました',
+       (who?who+'が':'')+'並び順を変えたので、最新を読み直しました。'
+       +'もう一度並べ替えてください。',8000);
+     if(scState.equipment===equipment)loadPlan(true).catch(()=>{});
+     return;
+    }
     showToast&&showToast('並べ替えできませんでした',(e&&e.message)||'',7000);
    }});
  }

@@ -9,10 +9,21 @@
      空白エリアを利用してください）、かつ強制的に編集権を奪うように
      切り替える機能も実装してください」
 
+   **§9.291 ③で「止める役」をやめた**（利用者との確認「書き込みの主導権は
+   最初のユーザーにして、依頼を受けて編集権を持つものが代理で書き込む形と
+   いう意味では READONLY である必要はない」）。データの整合は
+   ①書く役を1台に絞る（§9.192）②ロック→取り直し→適用→改訂番号（§4.2）
+   ③並べ替えは顔ぶれの一致を要求＋土台の並びを突き合わせる（§9.291 ③）
+   の3枚が守っており、READONLYが防いでいたのは人の意図の衝突だけだった。
+
+   なので**両方を見る**——`schedule_session_block`が
+    ・`off`（**既定**）… 主担当は文字で出るが**操作は止まらない**
+    ・`on`            … 今までどおり読み取り専用（下の1〜5はこちら）
+
    ここで固定すること:
     1. 自分が編集権を持っているとき、タイトル帯に「編集中／自分」と**文字で**出る
     2. 他端末が持っているとき「読み取り専用」と**誰が**を文字で出し、
-       **奪うボタン**が同じ場所に出る
+       **奪うボタン**が同じ場所に出る（`on`のとき）
     3. 読み取り専用の間は書く操作が止まる（`sc-session-locked`）が、
        **読むための操作は死なない**（行が丸ごと`pointer-events:none`に
        ならない。§9.211 ②で直した罠）
@@ -68,6 +79,31 @@ let b=null;
  page.on('pageerror',e=>console.log('[pageerror]',e.message));
  const setMode=m=>page.evaluate(async mm=>{await fetch('/api/access-mode',{method:'POST',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mm})})},m);
+ /* 編集セッションで操作を止めるか（§9.291 ③）。**既定は`off`＝止めない**ので、
+    今までどおりの読み取り専用を確かめるところだけ`on`にする。
+    **必ず`finally`で戻すこと**——パス設定マスタは実行をまたいで残る（§9.121）。 */
+ const setSessionBlock=async v=>{
+  /* **送るのはこの1つだけ**——`/api/path-config-master`は「送られてきた項目
+     だけを書く」（§9.212 ②と同じ作法）ので、丸ごと送り返すと他の欄の検証で
+     落ちて**1つも保存されない**（実際に踏んだ）。 */
+  /* **パス設定マスタの保存はeditモードだけ**（書込ガード）。この節は
+     scheduleモードで走るので、**保存の間だけeditへ寄せて必ず戻す**。 */
+  const r=await page.evaluate(async val=>{
+   const cur=await (await fetch('/api/access-mode')).json().catch(()=>({}));
+   const was=String(cur.mode||'edit');
+   const setM=async m=>fetch('/api/access-mode',{method:'POST',
+     headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
+   if(was!=='edit')await setM('edit');
+   const res=await fetch('/api/path-config-master',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({schedule_session_block:val,user_id:'tests'})});
+   const out={st:res.status,body:await res.json().catch(()=>({})),was};
+   if(was!=='edit')await setM(was);
+   return out;
+  },v);
+  if(r.st!==200)console.log('[setSessionBlock]',v,JSON.stringify(r).slice(0,200));
+  return r;
+ };
  const who=()=>page.evaluate(()=>{
   const el=document.getElementById('scWho');
   const panel=document.getElementById('schedulePanel');
@@ -173,6 +209,28 @@ let b=null;
      共有の在席ファイルへ**別人の行**を書き、ハートビートを1回叩いて
      423を受け取らせる（25秒待たない）。 */
   holdAsOther();
+  await page.evaluate(()=>WL.scheduleView.refreshSession());
+  /* ---- 2a) **既定（止めない）では読み取り専用にならない**（§9.291 ③） ---- */
+  await page.waitForFunction(()=>{
+   const el=document.getElementById('scWho');
+   return el&&/主担当/.test(el.textContent||'');
+  },null,{timeout:20000}).catch(()=>{});
+  const advisory=await who();
+  const advOps=await page.evaluate(()=>({
+   書ける:WL.scheduleView.sessionBlocked()===false,
+   掴める:[...document.querySelectorAll('.sc-row-line')]
+      .some(r=>r.getAttribute('draggable')==='true'),
+  }));
+  rec('既定では「読み取り専用」と出さない（主担当を名乗るだけ）',
+      /主担当/.test(advisory.文)&&!/読み取り専用/.test(advisory.文),JSON.stringify(advisory.文));
+  rec('既定では誰が主担当かは文字で出る',
+      advisory.文.includes(OTHER.login)&&advisory.文.includes(OTHER.pc),advisory.文);
+  rec('既定では書く操作が止まらない（並べ替え・作業開始ができる）',
+      advOps.書ける===true&&advOps.掴める===true,JSON.stringify(advOps));
+  rec('既定では読み取り専用の印を付けない',advisory.ロック===false,String(advisory.ロック));
+
+  /* ---- 2b) `on`にすると今までどおり読み取り専用（1〜5はこちら） ---- */
+  await setSessionBlock('on');
   await page.evaluate(()=>WL.scheduleView.refreshSession());
   await page.waitForFunction(()=>{
    const el=document.getElementById('scWho');
@@ -328,6 +386,9 @@ let b=null;
 
  }catch(e){rec('FATAL',false,e.message)}
  finally{
+  /* **設定を戻す**（§9.121。パス設定マスタは実行をまたいで残るので、
+     `on`のままにすると後続のスケジュール系が全部読み取り専用で落ちる）。 */
+  try{await setSessionBlock('')}catch(e){}
   /* **掴んだまま終わらない**（§CLAUDE。残すと後続が全部「編集中です」で落ちる）。 */
   try{await page.evaluate(async e=>{await fetch('/api/schedule/session/release',{method:'POST',
     headers:{'Content-Type':'application/json'},body:JSON.stringify({equipment:e})})},EQ)}catch(e){}

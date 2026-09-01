@@ -349,7 +349,26 @@ def plan_delete(c_share,plan_id,uid,pc=''):
  cur.execute('UPDATE [作業予定] SET [有効]=0,[更新者ID]=?,[更新端末名]=?,[更新日時]=Now() WHERE [親予定ID]=? AND ([有効] IS NULL OR [有効]<>0)',[uid,pc,plan_id])
  return n
 
-def plan_reorder(c_share,equipment,ordered_ids,uid,reorderable_ids=None,pc=''):
+class ReorderStaleError(Exception):
+ """並べ替えの土台が古い（§9.291 ③）。**顔ぶれは同じだが並びが変わっている**
+ ——他の端末が先に並べ替えたということ。
+
+ 編集セッションで操作を止めるのをやめた（§9.291 ③）ので、同時に触れるように
+ なった。データが壊れることは無い（書く役は1台・ロック＋改訂番号・全置換）が、
+ **同じ顔ぶれのまま2人が並べ替えると、後から保存したほうの並びで丸ごと
+ 上書きされる**——これだけは行ごとの書き込みでは受けられない唯一の衝突。
+ **黙って上書きしない**で、呼び出し側が読み直せるように投げる（§4）。
+
+ 顔ぶれが違う（他の端末が足した/消した）ときは、今までどおり
+ 「並べ替え対象が現在の未着手予定と一致しません」で断る（そちらが先に当たる）。
+ """
+ def __init__(self,current_ids,by_login='',by_pc=''):
+  self.current_ids=list(current_ids or [])
+  self.by_login=str(by_login or '');self.by_pc=str(by_pc or '')
+  super().__init__('この設備の並び順は、ほかの端末が先に変更しています。'
+                   '最新の並びを読み直してから、もう一度お願いします。')
+
+def plan_reorder(c_share,equipment,ordered_ids,uid,reorderable_ids=None,pc='',base_ids=None):
  # §5.1.1・§7.5。未着手(実質的に「予定」状態)の予定だけが並べ替え対象。
  # 着手中・完了・取消の予定は物理的な作業順序として既に確定しているため
  # 動かせない(実運用では常に「これから」の作業が「済み」の後ろに来る)。
@@ -385,6 +404,19 @@ def plan_reorder(c_share,equipment,ordered_ids,uid,reorderable_ids=None,pc=''):
  given=list(ordered_ids or [])
  if len(set(given))!=len(given):raise ValueError('並べ替え対象に重複があります。')
  if set(given)!=reorderable:raise ValueError('並べ替え対象が現在の未着手予定と一致しません(追加・削除の直後は最新の一覧を取得し直してください)。')
+ # **掴んだときの並びと、いまの並びを突き合わせる**（§9.291 ③）。
+ # `base_ids`は「画面が掴む前に見ていた順」。渡されたときだけ見るので、
+ # 送らない古い呼び出し（テスト・他の経路）は今までどおり通る。
+ if base_ids is not None:
+  now_order=[r[0] for r in sorted(parent_rows,key=lambda r:((r[1] or 0),r[0])) if r[0] in reorderable]
+  base=[pid for pid in (base_ids or []) if pid in reorderable]
+  if base and base!=now_order:
+   # 誰が動かしたかも返す（**黙って上書きしない**・§4）。
+   cur.execute('SELECT [更新者ID],[更新端末名] FROM [作業予定] '
+               'WHERE [設備名]=? AND ([有効] IS NULL OR [有効]<>0) '
+               'ORDER BY [更新日時] DESC',[equipment])
+   who=cur.fetchone() or ('','')
+   raise ReorderStaleError(now_order,who[0] or '',who[1] or '')
  base=max(fixed_orders) if fixed_orders else 0
  for idx,pid in enumerate(given,start=1):
   cur.execute('UPDATE [作業予定] SET [表示順]=?,[更新者ID]=?,[更新端末名]=?,[更新日時]=Now() WHERE [予定ID]=?',[base+idx,uid,pc,pid])

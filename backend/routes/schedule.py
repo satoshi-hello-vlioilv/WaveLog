@@ -27,7 +27,7 @@ from .. import schedule_calc
 from .. import load_factor
 from ..repositories import schedule_repo as sr
 from ..repositories.master_repo import normalize_equipment_name, equipment_master_rows, field_reorder_equipment_allows
-from ..db_access import connect, request_user_id, request_pc_name, DBS
+from ..db_access import connect, request_user_id, request_pc_name, path_config_value, DBS
 from ..access_mode import current_login_id, current_pc_name, get_mode, current_permission_flags
 from ..logging_setup import app_logger
 
@@ -95,11 +95,16 @@ def session_acquire():
  x=request.get_json(force=True) or {}
  equipment=str(x.get('equipment') or '').strip()
  if not equipment:return jsonify(error='どの設備か指定してください(equipment)。'),400
+ # **止めるかどうかはサーバーが答える**（§9.291 ③）——画面へ既定を書き写すと、
+ # 設定を変えたときに片方だけ古くなる（§9.163）。取れた場合も取れなかった
+ # 場合も返すので、画面は「主担当は誰か」と「止まるのか」を必ず知れる。
+ blocking=_session_block_on()
  try:
   expires_at=schedule_sync.acquire_session(equipment,current_login_id(),current_pc_name())
-  return jsonify(ok=True,equipment=equipment,expiresAt=expires_at)
+  return jsonify(ok=True,equipment=equipment,expiresAt=expires_at,blocking=blocking)
  except schedule_sync.SessionHeldError as e:
-  return jsonify(error=str(e),sessionLockedBy={'loginId':e.holder_login,'pcName':e.holder_pc},retryAfterSec=e.retry_after_sec),423
+  return jsonify(error=str(e),sessionLockedBy={'loginId':e.holder_login,'pcName':e.holder_pc},
+                 retryAfterSec=e.retry_after_sec,blocking=blocking),423
  except schedule_sync.ScheduleNotConfigured as e:
   return jsonify(error=str(e)),400
  except ValueError as e:
@@ -115,7 +120,11 @@ def sessions_list():
  「誰が入っているか」を帯へ出すにはこちらが要る。
  """
  try:
-  return jsonify(ok=True,**schedule_sync.sessions_all(current_login_id(),current_pc_name()))
+  # **止めるかどうかもここで答える**（§9.291 ③）。在席の巡回は10秒ごとなので、
+  # 設定を変えたら画面を開いたままでも次の巡回で効く（ハートビートの25秒を
+  # 待たない）。**画面へ既定を書き写さない**（§9.163）。
+  return jsonify(ok=True,blocking=_session_block_on(),
+                 **schedule_sync.sessions_all(current_login_id(),current_pc_name()))
  except Exception as e:
   return jsonify(error=str(e)),500
 
@@ -233,6 +242,14 @@ def _write_response(apply_fn):
   return jsonify(error=str(e),sessionLockedBy={'loginId':e.holder_login,'pcName':e.holder_pc},retryAfterSec=e.retry_after_sec),423
  except schedule_sync.RevisionConflictError as e:
   return jsonify(error=str(e),revision=e.revision),409
+ except sr.ReorderStaleError as e:
+  # 並べ替えの土台が古い(§9.291 ③)。**黙って上書きしない**——顔ぶれは同じ
+  # なのに並びが違う＝ほかの端末が先に並べ替えたということ。画面は読み直して
+  # 「◯◯さんが並べ替えました」と言えるように、誰が動かしたかも返す。
+  # **`_write_response()`の中で受けること**——ここは下の`except Exception`で
+  # 500に化ける（呼び出し側でtryしても届かない）。
+  return jsonify(error=str(e),code='reorderStale',
+                 currentIds=e.current_ids,byLogin=e.by_login,byPc=e.by_pc),409
  except PermissionError as e:
   # まとめ書込(§9.45)の中で権限不足を検出した場合。個別エンドポイントの
   # 403と同じ扱いにする(4xxはフロント側でリトライされない)。
@@ -294,6 +311,11 @@ def _request_mode():
  except Exception:pass
  return get_mode()
 
+def _session_block_on():
+ """編集セッションで操作を止めるか（§9.291 ③）。**既定は止めない。**
+ 呼び出しのたびに読み直す（`PATH_CONFIG_LIVE_KEYS`）ので再起動は要らない。"""
+ return str(path_config_value('schedule_session_block','off') or '').strip().lower()=='on'
+
 def _check_session(equipment):
  # 編集セッション(§9.11)を強制する。
  # **editモード(現場段取り)も対象**(§9.211 ②、利用者の指示「スケジュール
@@ -306,7 +328,24 @@ def _check_session(equipment):
  # **順番を逆にしないこと**——取得口を開ける前にここを一律にすると、
  # 現場段取りの並べ替えだけが静かに423で止まる。
  # 閲覧モードはそもそも書込ガード(_guard_write)で弾かれるのでここへ来ない。
- if _request_mode() in ('schedule','edit'):
+ # **既定は止めない**（§9.291 ③、利用者との確認）。
+ #
+ #   「代理書き込みができるということを教えてもらってから仕様変更したつもり
+ #    でした。…書き込みの主導権は最初のユーザーにして、依頼を受けて編集権を
+ #    持つものが代理で書き込む形という意味では READONLY である必要はないと
+ #    思いますがどうでしょうか？」
+ #
+ # そのとおりで、**データの整合はREADONLYが守っていたのではない**——
+ #   ①共有ファイルを触るのは持ち主1台（§9.192の代理書き込み）
+ #   ②書くときは必ずロック→取り直し→適用→改訂番号（§4.2 `with_write()`）
+ #   ③並べ替えは「送ったIDの集合が今の未着手予定と完全一致」しないと断る
+ # の3枚で守られている。READONLYが防いでいたのは**人の意図の衝突**だけで、
+ # そのうち本当に残るのは「同じ顔ぶれのまま2人が同時に並べ替える」1件——
+ # そこは`plan_reorder`の`base_ids`（§9.291 ③）が受ける。
+ #
+ # 厳密に「1設備1人」で運用したい現場のために`schedule_session_block`='on'
+ # を残す。**既定は'off'＝止めない。**
+ if _session_block_on() and _request_mode() in ('schedule','edit'):
   schedule_sync.require_session(equipment,current_login_id(),current_pc_name())
 
 # ========================================================================
@@ -475,7 +514,12 @@ def _apply_plan_op(c,op,uid,pc=''):
   _check_session(equipment)
   expanded=schedule_calc.expand_plan(c,equipment)
   reorderable_ids={e['id'] for e in expanded['entries'] if e.get('reorderable')}
-  n=sr.plan_reorder(c,equipment,op.get('orderedIds') or [],uid,reorderable_ids=reorderable_ids,pc=pc)
+  # **まとめ書込でも土台の並びを見る**（§9.291 ③）——ここを渡し忘れると、
+  # scheduleモード（まとめる側）だけ黙って上書きされる。
+  base=op.get('baseOrderedIds')
+  if base is not None and not isinstance(base,list):base=None
+  n=sr.plan_reorder(c,equipment,op.get('orderedIds') or [],uid,reorderable_ids=reorderable_ids,
+                    pc=pc,base_ids=base)
   return {'reordered':n}
  raise ValueError(f'不明な操作です: {kind}')
 
@@ -498,9 +542,11 @@ def plan_batch():
   for op in ops:
    try:
     results.append({'ok':True,**(_apply_plan_op(c,op,uid,pc) or {})})
-   except (PermissionError,schedule_sync.SessionHeldError):
-    # 権限不足・他端末が編集中は、1件でもあればサイクルごと止める
-    # (個別エンドポイントと同じく「やる前に弾く」挙動)。
+   except (PermissionError,schedule_sync.SessionHeldError,sr.ReorderStaleError):
+    # 権限不足・他端末が編集中・並べ替えの土台が古い(§9.291 ③)は、
+    # 1件でもあればサイクルごと止める(個別エンドポイントと同じく
+    # 「やる前に弾く」挙動)。**その1件だけの失敗として飲み込まないこと**
+    # ——飲み込むと画面は成功と読み、古い並びのまま残る。
     raise
    except Exception as e:
     # それ以外(対象が見つからない等)は、その1件だけ失敗として記録し
@@ -523,6 +569,10 @@ def plan_reorder():
   if not flags['canFieldReorder'] or not field_reorder_equipment_allows(flags['fieldReorderEquipment'],equipment):
    return jsonify(error='この端末には、この設備の現場段取り(並べ替え)権限がありません。'),403
  ordered_ids=x.get('orderedIds') or x.get('planIds') or []
+ # 掴む前に画面が見ていた並び（§9.291 ③）。**送られたときだけ見る**ので、
+ # 送らない古い呼び出しは今までどおり通る。
+ base_ids=x.get('baseOrderedIds')
+ if base_ids is not None and not isinstance(base_ids,list):base_ids=None
  def fn(c):
   _check_session(equipment)
   # §7.5手順1〜2: 実績突合込みで導出した状態から「実質的に予定」なIDだけを
@@ -530,7 +580,8 @@ def plan_reorder():
   # 相当になっている予定を誤って動かせてしまう)。
   expanded=schedule_calc.expand_plan(c,equipment)
   reorderable_ids={e['id'] for e in expanded['entries'] if e.get('reorderable')}
-  n=sr.plan_reorder(c,equipment,ordered_ids,request_user_id(x),reorderable_ids=reorderable_ids,pc=request_pc_name(x))
+  n=sr.plan_reorder(c,equipment,ordered_ids,request_user_id(x),reorderable_ids=reorderable_ids,
+                    pc=request_pc_name(x),base_ids=base_ids)
   return {'equipment':equipment,'reordered':n}
  return _write_response(fn)
 

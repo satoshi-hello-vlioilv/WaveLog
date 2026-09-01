@@ -6381,6 +6381,7 @@
  const _PC_CHOICE_LABELS={
   schedule_watch_enabled:{auto:'auto: 見張る',on:'on: 見張る',off:'off: 見張らない'},
   schedule_owner_enabled:{off:'off: 各PCが自分で書く',on:'on: 1台が書く（既定）'},
+  schedule_session_block:{off:'off: 止めない（既定）',on:'on: 後から入った端末は読み取り専用'},
   db_mirror_enabled:{auto:'auto: 写して読む',on:'on: 写して読む',off:'off: 共有を直接読む'},
   rne_extract_enabled:{auto:'auto: localのときだけ',on:'on: 定期実行',off:'off: 手動のみ'},
  };
@@ -6470,7 +6471,18 @@
        '書き込み役になったPCだけが下のポートを<b>LANへ開きます</b>（合言葉つきの決められた書き込みしか受け付けません）。')}
      ${numField('schedule_owner_port','書き込み役の受け口ポート','',1,1025)}
      ${numField('schedule_owner_ttl_sec','書き込み役の目印の有効期限','秒',10,30)}
-     <div id="scheduleOwnerStatus" class="pc-owner-status">状態を読み込んでいます…</div>`)}`);
+     <div id="scheduleOwnerStatus" class="pc-owner-status">状態を読み込んでいます…</div>`)}
+    ${pageFoldHtml('同じ設備を2人で触るとき',pcNowText('schedule_session_block','off: 止めない（既定）'),`
+     <p class="mm-field-hint"><b>編集セッション</b>は「この設備の主担当は誰か」を見せる仕掛けです。
+      <b>既定では操作を止めません</b>——データの整合は、上の<b>書く役を1台に絞る</b>のと、
+      書き込みのたびの<b>ロック→取り直し→適用→改訂番号</b>で守られており、
+      並べ替えは<b>顔ぶれが変わっていたら断り</b>、<b>先に並べ替えられていたら上書きせず読み直します</b>。
+      <b>on</b> にすると以前の動きに戻り、後から入った端末は読み取り専用になります
+      （追加・削除・並べ替え・設備停止・申し送りができなくなります）。</p>
+     ${pickField('schedule_session_block','編集セッションで操作を止める',
+       [['','（既定）off: 止めない（主担当を表示するだけ）'],['off','off: 止めない（主担当を表示するだけ）'],
+        ['on','on: 後から入った端末は読み取り専用にする']],
+       '止めない場合でも、同じ顔ぶれのまま2人が同時に並べ替えたときは<b>後から保存したほうの並びが残ります</b>。')}`)}`);
   const SEC_RNE=group('rne','RNE抽出','保存後すぐ反映','is-live',`
     <p class="mm-field-hint">RNE（Navigator問い合わせ定義）から <code>.sqlite3</code> を作り、それを一覧として読む仕組みです。
      取得元が <b>local</b> のデータソースだけが、ここで作ったファイルを読みます。</p>

@@ -331,6 +331,8 @@ PATH_CONFIG_LIVE_KEYS=('rne_extract_interval_sec','rne_extract_enabled','schedul
                        'schedule_watch_enabled','schedule_watch_interval_sec','schedule_watch_pause_sec',
                        # 共有スケジュールの持ち主(§9.192→§9.269)。既定は on。
                        'schedule_owner_enabled','schedule_owner_port','schedule_owner_ttl_sec',
+                       # 編集セッションで操作を止めるか(§9.291 ③)。既定は off。
+                       'schedule_session_block',
                        # 既定の品質データ結合(§9.194)。'off'で解除。既定は on。
                        'builtin_quality_join',
                        # 測定データの閲覧用複製を見に行く間隔(§9.202)。複製先の

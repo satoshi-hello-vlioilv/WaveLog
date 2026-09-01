@@ -68,6 +68,12 @@ _PATH_CONFIG_DEFAULTS={
  'schedule_owner_enabled':'on',
  'schedule_owner_port':str(SCHEDULE_OWNER_PORT_DEFAULT),
  'schedule_owner_ttl_sec':str(SCHEDULE_OWNER_TTL_SEC_DEFAULT),
+ # 編集セッションで**操作を止めるか**(§9.291 ③、利用者との確認)。
+ # **既定は off＝止めない**——データの整合は「書く役を1台に絞る(§9.192)＋
+ # ロック→取り直し→適用→改訂番号(§4.2)＋並べ替えは集合の一致を要求」で
+ # 守られており、READONLYが防いでいたのは**人の意図の衝突**だけだった。
+ # 厳密に「1設備1人」で運用したい現場のために'on'を残す。
+ 'schedule_session_block':'off',
 }
 _PATH_CONFIG_NUMERIC_FIELDS={
  'rne_extract_interval_sec':('RNE抽出間隔(秒)',60),
@@ -101,6 +107,7 @@ _PATH_CONFIG_CHOICE_FIELDS={
  'db_mirror_enabled':('共有DBの写し',('auto','on','off')),
  'schedule_watch_enabled':('共有スケジュールの見張り',('auto','on','off')),
  'schedule_owner_enabled':('共有スケジュールの書き込み役',('on','off')),
+ 'schedule_session_block':('編集セッションで操作を止める',('on','off')),
  'builtin_quality_join':('既定の品質データ結合',('on','off')),
  'cleanup_auto_enabled':('不要ファイルの定期掃除',('on','off')),
 }
