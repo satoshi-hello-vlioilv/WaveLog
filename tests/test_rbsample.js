@@ -204,6 +204,58 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('刷る書類に見本の値が載っている（白紙ではない）',
       !!printed&&printed.中身.indexOf(LOT)>=0,printed?printed.中身.slice(0,120):'');
 
+  /* ---- 7) 異常位置判定の図は**面ごと紙に出る**（§9.290、利用者の報告） ----
+     「帳票ブロックマスタの異常位置判定結果の表示について、実際に印刷をすると、
+      条の表示が消えたり見た目に変化があります。紙のレイアウトで表示している
+      見た目通りの印刷結果にしたいので修正をお願いします」
+
+     この図は**面だけで出来ている**——条は`background-color`、屑は縞の
+     グラデーション、欠陥の帯と位置の旗は赤い面。ブラウザは印刷時に背景色を
+     落とすのが既定（`print-color-adjust:economy`）なので、`.rp-page`に
+     `exact`が無いと**条がまるごと消え**、条の番号と旗の文字（どちらも白）が
+     白地に白で残る。
+
+     **「指定が在る」だけを見ない**——実際に「背景画像を刷らない」設定
+     （`printBackground:false`＝印刷ダイアログの既定）でPDFにして、
+     **条の色が中身として出てくるか**を見る。直す前は 条=0（実測）。 */
+  const laneHex=await page.evaluate(()=>{
+   const l=document.querySelector('.rp-defect-lane');
+   return l?getComputedStyle(l).getPropertyValue('--defect-lane-bg').trim():'';
+  });
+  rec('前提: 紙に条の帯が出ている（色は画面から引く）',/^#[0-9a-f]{6}$/i.test(laneHex),laneHex);
+  if(/^#[0-9a-f]{6}$/i.test(laneHex)){
+   await page.emulateMedia({media:'print'});
+   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+   const pdf=await page.pdf({preferCSSPageSize:true,printBackground:false});
+   await page.emulateMedia({media:null});
+   /* PDFの中身（Flate）を解いて、塗りつぶし（`r g b rg`）を探す。 */
+   const zlib=require('zlib');
+   const parts=[];
+   for(let i=0;;){
+    const at=pdf.indexOf('stream',i);
+    if(at<0)break;
+    let s0=at+6;
+    if(pdf[s0]===13)s0++;
+    if(pdf[s0]===10)s0++;
+    const e0=pdf.indexOf('endstream',s0);
+    if(e0<0)break;
+    try{parts.push(zlib.inflateSync(pdf.slice(s0,e0)))}catch(_){}
+    i=e0+9;
+   }
+   const blob=Buffer.concat(parts).toString('latin1');
+   /* Chromeは小数4桁・先頭の0を落として書く（`#a32424`→`.6392 .1412 .1412 rg`）。
+      端の0と1はそのまま`0`／`1`。**3桁の前置き**で見る（丸めの1桁ぶんを許す）。 */
+   const comp=v=>{const n=Math.round(v/255*1e4);
+    if(n===0)return '0';
+    if(n===10000)return '1';
+    return '\\.'+String(n).padStart(4,'0').slice(0,3)+'\\d*';};
+   const rgb=[1,3,5].map(i=>parseInt(laneHex.slice(i,i+2),16));
+   const src=rgb.map(comp).join(' ')+' rg';
+   const hit=(blob.match(new RegExp(src,'g'))||[]).length;
+   rec('刷ると条の面がそのまま出る（背景を切っていても）',hit>0,
+       `${laneHex} → /${src}/ ／ ${hit}箇所 ／ PDF ${pdf.length}B`);
+  }
+
   /* ---- 5b) 実際に帳票ブロックマスタへ帰る ---- */
   await page.click('#reportBack');
   await page.waitForFunction(()=>document.body.classList.contains('mm-mode'),null,{timeout:20000});

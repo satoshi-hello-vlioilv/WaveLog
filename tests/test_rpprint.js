@@ -357,7 +357,12 @@ let b=null;
       倍率:getComputedStyle(w.document.body).getPropertyValue('--rp-scale').trim(),
       表示サイズ:de.getAttribute('data-ui-size'),
       /* 組み換えの道具は紙に出さない。 */
-      道具:w.document.querySelectorAll('.rp-block-tools,.rp-free-layer').length});
+      道具:w.document.querySelectorAll('.rp-block-tools,.rp-free-layer').length,
+      /* 背景色を紙にも刷る指定（§9.290）。**紙にだけ付ける。** */
+      紙の色指定:pgs[0]?(w.getComputedStyle(pgs[0]).printColorAdjust
+                       ||w.getComputedStyle(pgs[0]).webkitPrintColorAdjust||''):'',
+      地の色指定:(w.getComputedStyle(w.document.body).printColorAdjust
+                ||w.getComputedStyle(w.document.body).webkitPrintColorAdjust||'')});
    };
    let hooked=false;
    const iv=setInterval(()=>{
@@ -392,6 +397,17 @@ let b=null;
        printed.表示サイズ===await page.evaluate(()=>document.documentElement.getAttribute('data-ui-size')),
        printed.表示サイズ);
    rec('組み換えの道具は紙に出さない',printed.道具===0,String(printed.道具));
+   /* **背景色を紙にも刷る指定**（§9.290、利用者の報告「実際に印刷をすると、
+      条の表示が消えたり見た目に変化があります」）。無いとブラウザは印刷時に
+      背景色を落とす（既定は`economy`）ので、面だけで出来ている図——異常位置
+      判定の条・屑・欠陥の帯、表の軸の面、バッジ——が**白紙になる**。
+      §9.237 ②で作業予定表（`.sp-page`）について決めたのと同じ約束。
+      **`body`（＝`:root`）へは付けないこと**——`<html>`の濃紺が紙全面に
+      刷られる。紙の器にだけ付ける。 */
+   rec('紙は背景色も刷る（print-color-adjust:exact）',
+       /exact/.test(printed.紙の色指定||''),JSON.stringify(printed.紙の色指定));
+   rec('書類の地には付けない（濃紺を紙全面に刷らない）',
+       !/exact/.test(printed.地の色指定||''),JSON.stringify(printed.地の色指定));
   }
 
   /* ==========================================================

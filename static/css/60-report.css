@@ -120,7 +120,21 @@
 .rp-page-box{overflow:visible;width:var(--rp-box-w,auto);height:var(--rp-box-h,auto)}
 /* A4実寸。画面プレビューは印刷と同じ密度のCSSで組み、実際に印刷
    される見た目そのままをページ枠内に収める（WYSIWYG）。 */
-.rp-page{--rp-sheet-h:297mm;--rp-gap:0mm;position:relative;width:210mm;min-height:calc(var(--rp-sheets,1) * var(--rp-sheet-h) + (var(--rp-sheets,1) - 1) * var(--rp-gap));background:#fff;box-shadow:0 6px 24px #00000030;padding:8mm;box-sizing:border-box;font-size:10px;transform-origin:top left;transform:scale(var(--rp-scale,1))}
+/* ---- 背景色を紙にも刷る（§9.290、利用者の報告「帳票ブロックマスタの異常位置
+   判定結果の表示について、実際に印刷をすると、条の表示が消えたり見た目に変化が
+   あります。紙のレイアウトで表示している見た目通りの印刷結果にしたい」）----
+   **付けないとブラウザは印刷時に背景色を落とす**（既定は`economy`）。
+   異常位置判定の図は**面だけで出来ている**——条は`background-color`、屑は
+   縞のグラデーション、欠陥の帯と位置の旗は赤い面——ので、落とされると
+   **条がまるごと消え**、しかも条の番号（`color:#fff`）と旗の文字（同じく白）が
+   白地に白で残る。表の軸の面・バッジも同じ。§9.237 ②で作業予定表（`.sp-page`）
+   について書いたことがそのまま当てはまるのに、**帳票側だけ付いていなかった**
+   （下の`.rp-field-head`の注記は「`.rp-page`が持っている」と書いてあり、
+   **説明だけが先にあって実物が無い**状態だった）。
+   **`:root`や`body`へは付けないこと**——`<html style="background:#0d2029">`の
+   濃紺が紙全面に刷られる（§9.237 ②）。紙の器にだけ付ける。
+   固定は`tests/test_rpprint.js`。 */
+.rp-page{--rp-sheet-h:297mm;--rp-gap:0mm;position:relative;width:210mm;min-height:calc(var(--rp-sheets,1) * var(--rp-sheet-h) + (var(--rp-sheets,1) - 1) * var(--rp-gap));background:#fff;box-shadow:0 6px 24px #00000030;padding:8mm;box-sizing:border-box;font-size:10px;transform-origin:top left;transform:scale(var(--rp-scale,1));print-color-adjust:exact;-webkit-print-color-adjust:exact}
 /* A4横。用紙寸法を入れ替えるだけで、倍率計算(fitPage/applyScale)は実寸を
    読むため自動で追従する。印刷側の@pageはJS(updatePageSizeStyle)が差し替える。 */
 .rp-page.rp-landscape{--rp-sheet-h:210mm;width:297mm}
