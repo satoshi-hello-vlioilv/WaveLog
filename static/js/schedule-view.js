@@ -244,21 +244,127 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(o.lastError)lines.push(`最後のエラー: ${o.lastError}（届かないあいだは自分で書きます）`);
   return lines;
  }
+ /* ---------- 同期のタイミング(§9.292 ③、利用者の指示「定期的にスケジュールの
+    同期をしないといけないのでスケジュールデータの同期タイミングについて
+    わかるようにしてください」) ----------
+    仕組みは§9.188で既にあり、`/api/schedule/sync-status`が全部答えている
+    ——足りなかったのは**届く範囲**だった。チップに出ていたのは「12秒前に
+    取込」の1つだけで、**次はいつなのか・見張りは動いているのか・間隔は
+    いくつか**は`title`の中にしか無かった（触る画面では読めない・§4）。
+
+    出し方は**一覧の鮮度チップと同じ言語**にそろえる（§9.286 ④「押すと
+    再読込のメニューが開く」）——同じ「いつのデータか」を、画面ごとに違う
+    出し方にしない。押すと開くのは浮きメニューで、そこに
+    「見張り・間隔・次の確認・最後の取込・最後の確認・改訂番号・書込役」を
+    **時刻と経過の両方**で並べ、いちばん下に「いま取り込む」を置く。
+
+    **秒読みはしない**——巡回は10秒ごとなので1秒刻みの数字は必ずずれる。
+    「およそ◯秒後」と幅で言う（§3。嘘の精度を出さない）。 */
+ const clockOf=age=>{
+  if(age==null)return '';
+  const d=new Date(Date.now()-age*1000);
+  const two=n=>String(n).padStart(2,'0');
+  return `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
+ };
+ const agoOf=age=>{
+  if(age==null)return '—';
+  const s=Math.round(age);
+  if(s<60)return `${s}秒前`;
+  if(s<3600)return `${Math.round(s/60)}分前`;
+  return `${Math.round(s/3600)}時間前`;
+ };
+ /* 次に確かめるまで。**見張りが動いているときだけ答える**——止まっている
+    のに「30秒後」と書くと、待てば来ると読まれる（来ない）。 */
+ function nextCheckText(st){
+  if(!st||!st.configured)return '';
+  if(!st.enabled)return '見張りを使わない設定です（読むたびに共有を見にいきます）';
+  if(!st.running)return '見張りがまだ動いていません（次の書き込み・再読込のときに取り込みます）';
+  if(st.pausedForSec)return `取り込んだ直後の休み中です（およそ ${Math.round(st.pausedForSec)}秒後 に再開）`;
+  const left=Math.max(0,Math.round((st.intervalSec||0)-(st.verifiedAgeSec||0)));
+  return left<=1?'まもなく確かめます':`およそ ${left}秒後`;
+ }
+ function syncMenuRow(label,value,note){
+  return `<div class="sc-sync-row"><span class="sc-sync-k">${esc(label)}</span>`
+   +`<span class="sc-sync-v">${esc(value)}</span>`
+   +(note?`<small class="sc-sync-n">${esc(note)}</small>`:'')+`</div>`;
+ }
+ function syncMenuHtml(st,own){
+  if(!st||!st.configured)
+   return `<div class="sc-sync-body">${syncMenuRow('共有スケジュール','置き場が未設定です',
+     'マスタ管理 > 共通設定 の「置き場」で決めます')}</div>`;
+  const rows=[
+   syncMenuRow('見張り',
+     !st.enabled?'使わない設定':(st.running?'動いています':'止まっています'),
+     st.enabled?`${st.intervalSec}秒ごとに共有の改訂番号を確かめ、変わっていたら取り込みます`
+               :'読むたびに共有を見にいきます（そのぶん共有を掴む時間が増えます）'),
+   syncMenuRow('次の確認',nextCheckText(st)||'—',
+     st.enabled?`取り込んだ直後は${st.pauseSec}秒休みます（更新が続くときに共有を掴み続けないため）`:''),
+   syncMenuRow('最後に取り込んだ',
+     st.snapshotAgeSec==null?'まだありません':`${clockOf(st.snapshotAgeSec)}（${agoOf(st.snapshotAgeSec)}）`,
+     'いま画面に出ているのは、この時点の共有の中身です'),
+   syncMenuRow('最後に確かめた',
+     st.verifiedAgeSec==null?'まだありません':`${clockOf(st.verifiedAgeSec)}（${agoOf(st.verifiedAgeSec)}）`,
+     '確かめただけで変わっていなければ取り込みません'),
+   syncMenuRow('共有が最後に変わった',
+     st.lastChangeAgeSec==null?'この画面を開いてからはありません':`${clockOf(st.lastChangeAgeSec)}（${agoOf(st.lastChangeAgeSec)}）`),
+   syncMenuRow('改訂番号',st.revision==null?'—':String(st.revision),
+     `確かめた ${st.checks||0}回 / 取り込んだ ${st.fetches||0}回`),
+  ];
+  if(own&&own.enabled&&own.configured)
+   rows.push(syncMenuRow('書込役',ownerChipText(own).replace('書込役: ',''),
+     ownerChipTitle(own)[1]||''));
+  if(st.lastError)rows.push(syncMenuRow('最後のエラー',st.lastError,
+    '取り込めていないあいだは、前に取り込んだ内容が出ています'));
+  return `<div class="sc-sync-body">${rows.join('')}</div>`;
+ }
+ function closeSyncMenu(){
+  document.getElementById('scSyncMenu')?.remove();
+  $('#scSyncChip')?.setAttribute('aria-expanded','false');
+  document.removeEventListener('click',onSyncMenuOutside,true);
+ }
+ function onSyncMenuOutside(e){
+  const menu=document.getElementById('scSyncMenu');
+  if(menu&&!menu.contains(e.target)&&!e.target.closest('#scSyncChip'))closeSyncMenu();
+ }
+ function openSyncMenu(anchor){
+  closeSyncMenu();
+  const menu=document.createElement('div');
+  menu.className='access-mode-menu sc-sync-menu';menu.id='scSyncMenu';
+  menu.innerHTML=syncMenuHtml(scSyncState,scOwnerState)
+   +`<button type="button" id="scSyncNowBtn"><span>いま取り込む</span>`
+   +`<small>共有を見にいって、変わっていれば取り込みます</small></button>`;
+  /* **器の外へ出す**（§9.201）——上部の道具列は`overflow`を持つので、
+     中に置くと下半分が切られる。 */
+  document.body.append(menu);
+  const r=anchor.getBoundingClientRect();
+  menu.style.top=`${r.bottom+6}px`;
+  menu.style.left=`${Math.max(8,Math.min(window.innerWidth-menu.offsetWidth-8,r.left))}px`;
+  menu.querySelector('#scSyncNowBtn').onclick=()=>{closeSyncMenu();syncNow()};
+  anchor.setAttribute('aria-expanded','true');
+  requestAnimationFrame(()=>document.addEventListener('click',onSyncMenuOutside,true));
+ }
  function renderSyncChip(){
   const el=$('#scSyncChip');if(!el)return;
   const st=scSyncState;
   const text=syncChipText(st),own=ownerChipText(scOwnerState);
   el.hidden=!text&&!own;
-  if(el.hidden)return;
+  if(el.hidden){closeSyncMenu();return}
   el.textContent=[text,own].filter(Boolean).join(' ・ ');
   el.title=[st&&st.configured?`${st.intervalSec}秒ごとに共有の改訂番号を確かめ、変わっていたら取り込みます。`:'',
-            st&&st.configured?`取り込んだ直後は${st.pauseSec}秒休みます（更新が続いているときに共有を掴み続けないため）。`:'',
+            st&&st.configured?`次の確認: ${nextCheckText(st)}`:'',
             st&&st.revision!=null?`いまの改訂番号: ${st.revision}`:'',
             st&&st.lastError?`最後のエラー: ${st.lastError}`:'',
             ...ownerChipTitle(scOwnerState),
-            '押すといま取り込みます。'].filter(Boolean).join('\n');
+            '押すと同期の状態が開きます（そこから今すぐ取り込めます）。'].filter(Boolean).join('\n');
   el.classList.toggle('is-error',!!((st&&st.lastError)||(scOwnerState&&scOwnerState.lastError&&scOwnerState.relayFail)));
-  el.onclick=syncNow;
+  el.setAttribute('aria-expanded',document.getElementById('scSyncMenu')?'true':'false');
+  el.onclick=()=>{document.getElementById('scSyncMenu')?closeSyncMenu():openSyncMenu(el)};
+  /* 開いたままなら中身も書き直す（10秒ごとの巡回で数字が古くならないように）。 */
+  const open=document.getElementById('scSyncMenu');
+  if(open){
+   const body=open.querySelector('.sc-sync-body');
+   if(body)body.outerHTML=syncMenuHtml(scSyncState,scOwnerState);
+  }
  }
  /* いま読み直してよいか。**途中の操作を壊さない**ことだけを見る。 */
  function canAutoReload(){
@@ -449,6 +555,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
         aria-expanded="false" title="この画面の見え方（まとめ・さかのぼり・行の色・配置）をまとめて設定します。予定そのものは変わりません">
        <i>⚙</i><span class="sc-vm-txt">表示</span><b class="sc-vm-state" id="scViewState"></b><span class="hd-caret">▾</span>
       </button>
+      <!-- 広く使う（§9.292 ⑦、利用者の指示「スケジュール作成時に、とにかく
+           仕掛のデータを多く表示したいです。その時上部のメニューのほぼ
+           すべてを畳んで最大限広いスペースで仕掛の一覧表を表示できるような
+           機能を実装してください」）。**戻る道は必ず1つ見えている**
+           （§4）——広いあいだは画面の右上に「元に戻す」の札を出す。 -->
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scWideBtn" hidden
+        aria-pressed="false"
+        title="上の帯（画面名・状態・操作列）を畳んで、一覧をいちばん広く使います。&#10;・戻すときは右上の札を押すか Esc&#10;・この端末に覚えます"><i>⤢</i><span>広く</span></button>
      </div>
      <div class="sc-tools" data-tools="act" id="scToolsAct">
       <button type="button" class="sc-split-toggle sc-ico-btn" id="scPrintBtn" title="いま表示している予定を、現場へ配る形（用紙サイズ・向きは選べます）で印刷します"><i>🖨</i><span>印刷</span></button>
@@ -473,6 +587,16 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    <div class="sc-board" id="scBoard" hidden></div>
    <div class="sc-body" id="scSingleBody">
     <div class="sc-timeline" id="scTimeline"></div>
+    <!-- 広く使っているあいだの戻り道（§9.292 ⑦）。**常に見えている1つ**
+         （§4。畳んだ先から戻れない状態を作らない）。
+         **この器（sc-body）の中へ置く**——位置の基準になる position:relative
+         を持っているのはここで、sc-panel へ relative を足すと sc-view-pop
+         など既に浮いているものの基準まで動く。
+         **このテンプレートリテラルの中にバッククォートを書かないこと**
+         （§9.211 ③。そこで文字列が閉じて画面が組み上がらない）。 -->
+    <button type="button" class="sc-wide-exit" id="scWideExit" hidden
+      title="上の帯（画面名・状態・操作列）を戻します。Escでも戻せます">
+     <i aria-hidden="true">⤡</i><span>元の表示に戻す（Esc）</span></button>
     <!-- 予定から外す受け皿(§9.116)。**掴んでいる間だけ出す**——常設すると
          「消す場所」が画面に居座り、押し間違いの的になる。掴んで初めて
          現れるので、外す意思があるときにしか目に入らない。
@@ -569,6 +693,22 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    else console.error('作業スケジュールの印刷: WL.schedulePrint が見つかりません');
   };
   $('#scViewMenuBtn').onclick=e=>{e.stopPropagation();toggleViewPop()};
+  /* 一覧を広く使う（§9.292 ⑦）。**入口と戻り道は同じことをする**
+     （判定は`setWide()`の1箇所）。 */
+  const wideBtn=$('#scWideBtn');
+  if(wideBtn)wideBtn.onclick=()=>setWide(!scLayout.wide);
+  const wideExit=$('#scWideExit');
+  if(wideExit)wideExit.onclick=()=>setWide(false);
+  /* **Escで戻す**（§4。畳んだ先から戻れない状態を作らない）。
+     浮き窓・モーダルが開いているときは**そちらが先**——ここで戻すと、
+     窓を閉じたつもりが帯まで戻る。 */
+  document.addEventListener('keydown',e=>{
+   if(e.key!=='Escape'||!scLayout.wide)return;
+   if(e.isComposing||e.keyCode===229)return;      // 変換中は取らない（§9.221 ①）
+   if(document.querySelector('.modal:not([hidden]),.sc-float-win:not([hidden]),'
+     +'#listColumnPanel:not([hidden]),#schedulePrintPreview:not([hidden])'))return;
+   setWide(false);
+  });
   $('#scLayoutBtn').onclick=e=>{e.stopPropagation();toggleLayoutPop()};
   $('#scRowStyleBtn').onclick=e=>{e.stopPropagation();toggleRowStylePop()};
   /* 外を押したら畳む。**パネルの中を押しても閉じない**——ラジオを続けて
@@ -743,11 +883,46 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
               **空欄＝自動**（`childBadgeTargetKey()`がロット番号→内容欄の
               先頭→先頭列の順に落とす）。保存値は文字列のキーのみ有効にする
               ——型が違う値が紛れ込んでも自動へ倒す。 */
-           childBadgeCol:(v&&typeof v.childBadgeCol==='string')?v.childBadgeCol:''};
-  }catch(e){return {swap:false,open:'last',tip:true,childBadge:'count',childBadgeCol:''}}
+           childBadgeCol:(v&&typeof v.childBadgeCol==='string')?v.childBadgeCol:'',
+           /* 上の帯を畳んで一覧を広く使う（§9.292 ⑦）。**既定はoff**
+              ——わざわざ選んでいない人の見え方を変えない。 */
+           wide:!!(v&&v.wide)};
+  }catch(e){return {swap:false,open:'last',tip:true,childBadge:'count',childBadgeCol:'',wide:false}}
  })();
  function saveScLayout(){
   try{localStorage.setItem(SC_LAYOUT_KEY,JSON.stringify(scLayout))}catch(e){/* 保存できなくても表示は続く */}
+ }
+ /* ---------- 一覧を広く使う（§9.292 ⑦、利用者の指示） ----------
+    「スケジュール作成時に、とにかく仕掛のデータを多く表示したいです。
+     その時上部のメニューのほぼすべてを畳んで最大限広いスペースで仕掛の
+     一覧表を表示できるような機能を実装してください」
+
+    畳むのは**上の帯**（アプリのヘッダー＝画面名・状態・全体操作・操作列と、
+    スケジュールの道具列）で、実測でその2つが縦に約110px使っている。
+    左メニューは**触らない**——あちらは既に自分の畳みを持っており（§9.58）、
+    同じことをする入口を2つ置かない（§9.207）。
+
+    **戻る道は必ず1つ見えている**（§4）——広いあいだは器の右上に
+    「元に戻す」の札を出し、Escでも戻せる。**畳んだ先の状態はボタンに
+    出す**（`aria-pressed`＋札）ので、どちらの状態かは画面から読める（§3）。
+
+    印は`body.sc-wide`の1つ（§9.288 ⑥と同じ作法）——CSSはここを見る規則を
+    1本持つだけで、画面ごとの書き分けを増やさない。 */
+ function applyWide(){
+  const on=!!scLayout.wide&&document.body.classList.contains('sc-mode');
+  document.body.classList.toggle('sc-wide',on);
+  const btn=$('#scWideBtn');
+  if(btn){
+   btn.setAttribute('aria-pressed',String(on));
+   const t=btn.querySelector('span');if(t)t.textContent=on?'元に戻す':'広く';
+  }
+  const pill=$('#scWideExit');
+  if(pill)pill.hidden=!on;
+ }
+ function setWide(on){
+  scLayout.wide=!!on;saveScLayout();applyWide();
+  /* 器の高さが変わるので、下の余白を測り直す（§9.292 ②）。 */
+  fitTailSpace();
  }
  /* 「分割で開く」/「スケジュールだけで開く」を今の画面へ当てる。畳んだ状態は
     今までどおり端末に覚える(`last`で開いたときに戻せるように)。 */
@@ -1290,6 +1465,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const rsBtn=$('#scRowStyleBtn');
   if(rsBtn){rsBtn.hidden=!colApplicable;if(rsBtn.hidden)closeRowStylePop()}
   const accRs=$('#scViewAccRowStyle');if(accRs)accRs.hidden=!colApplicable;
+  /* 一覧を広く使う（§9.292 ⑦）は**個別のスケジュール画面のときだけ**
+     ——全体俯瞰では畳む相手（道具列）がそもそも小さい。 */
+  const wideBtn=$('#scWideBtn');
+  if(wideBtn)wideBtn.hidden=!(scState.boardMode==='single'&&!!scState.equipment);
+  applyWide();
   updateViewMenuUi();
  }
  /* 中身が1つも出ていない塊は、見出しごと消す(§9.198)。「表示」とだけ書かれた
@@ -1509,6 +1689,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      ——一覧を見ているのに「編集中 自分」が出ていたら、何の話か分からない。 */
   const who=document.getElementById('scWho');
   if(who){who.hidden=true;who.innerHTML='';who.className='sc-who';who.title=''}
+  /* 広く使う印は**この画面のもの**（§9.292 ⑦）——外へ持ち出すと、
+     他の画面でヘッダーが消えたまま戻せなくなる。設定（`scLayout.wide`）は
+     残すので、次にスケジュールを開けばまた広いまま。 */
+  document.body.classList.remove('sc-wide');
+  const pill=document.getElementById('scWideExit');
+  if(pill)pill.hidden=true;
  }
  window.exitScheduleView=exitScheduleView;
 
@@ -1745,18 +1931,38 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  // 固まって見える点が特に悪い)。データ本体の整合性はwith_write()側の
  // ロック+改訂番号チェックが最終防御として引き続き機能するため、この
  // セッション機構が失敗してもデータが壊れることはない。
+ /* **編集セッションは「名乗る役」で、操作は止めない**（§9.291 ③、利用者との
+    確認「書き込みの主導権は最初のユーザーにして、依頼を受けて編集権を持つ
+    ものが代理で書き込む形という意味では READONLY である必要はない」）。
+
+    データの整合を守っているのはREADONLYではない——
+      ①共有ファイルを触るのは持ち主1台（§9.192の代理書き込み）
+      ②書くときは必ずロック→取り直し→適用→改訂番号（§4.2）
+      ③並べ替えは「送ったIDの集合が今の未着手予定と完全一致」しないと断る
+    の3枚。READONLYが防いでいたのは**人の意図の衝突**だけで、そのうち本当に
+    残るのは「同じ顔ぶれのまま2人が同時に並べ替える」1件——そこは
+    `baseOrderedIds`（§9.291 ③）が受け、**黙って上書きせず読み直す**。
+
+    厳密に「1設備1人」で運用したい現場のために、共通設定の
+    `schedule_session_block`='on' で今までどおり止められる（**既定はoff**）。
+    値はサーバーが答える（`/api/schedule/session/acquire`の`blocking`）
+    ——画面に既定を書き写すと、設定を変えたときに片方だけ古くなる。 */
+ function sessionBlocking(){return scState.sessionBlocking===true}
  function sessionBlocked(){
-  return sessionApplicable()&&!scState.sessionHeld&&!!scState.sessionHolder;
+  return sessionBlocking()&&sessionApplicable()&&!scState.sessionHeld&&!!scState.sessionHolder;
  }
  async function acquireSessionOnce(){
   const eq=scState.equipment;
   try{
-   await api('/api/schedule/session/acquire',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({equipment:eq})});
+   const r=await api('/api/schedule/session/acquire',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({equipment:eq})});
    if(scState.equipment!==eq)return; // 応答が届く前に設備が切り替わっていたら結果を捨てる
+   /* **止めるかどうかはサーバーが答える**（§9.291 ③）。既定を画面へ写さない。 */
+   scState.sessionBlocking=(r&&r.blocking===true);
    scState.sessionHeld=true;scState.sessionHolder=null;scState.sessionError=null;
   }catch(e){
    if(scState.equipment!==eq)return;
    scState.sessionHeld=false;
+   if(e.blocking!==undefined)scState.sessionBlocking=(e.blocking===true);
    if(e.sessionLockedBy&&(e.sessionLockedBy.loginId||e.sessionLockedBy.pcName)){
     // 明確に他端末が保持中と判定できた場合だけブロック対象にする。
     scState.sessionHolder=e.sessionLockedBy;scState.sessionError=null;
@@ -1849,6 +2055,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    return;
   }
   if(scState.sessionHolder){
+   /* **止めない設定なら帯を出さない**（§9.291 ③）——誰が主担当かは
+      タイトル帯の在席表示(`#scWho`)が1箇所で言う（§CLAUDE 8「同じ情報を
+      2箇所に出さない」）。操作できるのに読み取り専用の帯が出ていると、
+      「保存できませんでした」と同じで**嘘の合図**になる。 */
+   if(!sessionBlocking()){
+    box.hidden=true;box.innerHTML='';box.className='sc-session-banner';
+    applyWriteControlsEnabled(true);
+    return;
+   }
    /* 他端末が保持中と確定できた場合だけ操作を止める(sessionBlocked()と同じ判定)。
       **誰が編集中かはここには書かない**——タイトル帯の在席表示(`#scWho`)が
       1箇所で言う（§CLAUDE 8「同じ情報を2箇所に出さない」）。ここに残すのは
@@ -1901,6 +2116,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    scState.sessions=r.sessions||[];
    scState.me=r.me||null;
    scState.sessionsConfigured=r.configured!==false;
+   /* **止めるかどうかもここで受け取る**（§9.291 ③）。ハートビートは25秒
+      ごとなので、それだけに任せると設定を変えても最大25秒は古い見せ方の
+      まま。10秒ごとのこの巡回で拾う。 */
+   if(r.blocking!==undefined)scState.sessionBlocking=(r.blocking===true);
   }catch(e){
    if(scState.equipment!==eq)return;
    /* 読めなかったことと「誰も居ない」は違う（§CLAUDE）。控えは触らず、
@@ -1995,10 +2214,27 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    tip(`${scState.equipment} は ${whoLabel(h)} が編集中です。この端末（${meLabel()}）は読み取り専用です。`);
    return;
   }
+  /* **止めない設定で、ほかの端末が主担当のとき**（§9.291 ③）。
+     操作はできるので「読み取り専用」とは言わない——言うと嘘の合図になる。
+     出すのは「誰と一緒に触っているか」と、**同時に並べ替えたときどうなるか**
+     （後から保存したほうが残る＝§9.291 ③の唯一の衝突）。 */
+  if(scState.sessionHolder&&!scState.sessionHeld){
+   const h=scState.sessionHolder||{};
+   box.className='sc-who sc-who-info';
+   box.innerHTML=`<b class="sc-who-state">主担当</b>`
+    +`<span class="sc-who-holder">${esc(whoLabel(h))}（この端末も操作できます）</span>`;
+   tip(`${scState.equipment} は ${whoLabel(h)} が主担当ですが、この端末（${meLabel()}）でも`
+     +'追加・並べ替え・作業開始ができます。\n'
+     +'同じ顔ぶれのまま2人が並べ替えたときは、後から保存したほうの並びが残ります'
+     +'（先に変わっていたら、上書きせずに読み直します）。');
+   return;
+  }
   if(scState.sessionHeld||(mine&&mine.mine)){
    box.className='sc-who sc-who-mine';
    box.innerHTML=`<b class="sc-who-state">編集中</b><span class="sc-who-holder">自分（${esc(meLabel())}）</span>`;
-   tip(`${scState.equipment} はこの端末が編集しています。ほかの端末は読み取り専用になります。`);
+   tip(`${scState.equipment} はこの端末が編集しています。`
+     +(sessionBlocking()?'ほかの端末は読み取り専用になります。'
+       :'ほかの端末も操作できます（主担当としてこの端末が名乗っています）。'));
    return;
   }
   if(list===null){
@@ -4201,6 +4437,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const tl=$('#scTimeline');if(!tl)return null;
   const rows=[...tl.querySelectorAll('.sc-row-line')].filter(r=>reorderableEntry(r.dataset.id));
   if(!rows.length)return null;
+  /* 一覧の下の余白(§9.292 ②)は**まるごと「いちばん後ろ」の的**。
+     最後の行の下端より下（＝余白の中）はここで答える——行と行のあいだの
+     判定（§9.199の±8px）はそのままなので、行の中央は掴めるまま。 */
+  const lastRow=rows[rows.length-1];
+  const tail=tailSpaceRect();
+  if(tail&&clientY>=tail.top&&clientY<=tail.bottom)
+   return {beforeId:'',row:lastRow,after:true};
   if(edgeOnly){
    /* 行の上端＝その行の前の境目。連続する行では下の行の上端が兼ねるので、
       これで内側の境目は全部見られる。最後の1本だけ下端で見る。 */
@@ -4208,9 +4451,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     const b=r.getBoundingClientRect();
     if(Math.abs(clientY-b.top)<=insertEdgeBand(b.height))return {beforeId:String(r.dataset.id),row:r};
    }
-   const last=rows[rows.length-1],lb=last.getBoundingClientRect();
+   const lb=lastRow.getBoundingClientRect();
    if(Math.abs(clientY-lb.bottom)<=insertEdgeBand(lb.height))
-    return {beforeId:'',row:last,after:true};
+    return {beforeId:'',row:lastRow,after:true};
    return null;
   }
   /* 掴んで運んでいる最中は**いちばん近い境目**へ寄せる(今までどおり)。
@@ -4220,6 +4463,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    if(clientY<b.top+b.height/2)return {beforeId:String(r.dataset.id),row:r};
   }
   return {beforeId:'',row:rows[rows.length-1],after:true};
+ }
+ /* 下の余白の矩形（無ければnull）。**高さ0のときは的にしない**
+    ——`fitTailSpace()`が0にするのは行が1つも無いときなので、
+    そこを「いちばん後ろ」と答えても入れる相手が居ない。 */
+ function tailSpaceRect(){
+  const sp=document.getElementById('scTailSpace');
+  if(!sp)return null;
+  const r=sp.getBoundingClientRect();
+  return r.height>1?r:null;
  }
  /* 境目の座標(器の中のy)。**器はスクロールするので scrollTop を足す**
     ——足さないと、少しスクロールしただけで帯が別の行の境目に出る。 */
@@ -4414,11 +4666,72 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    });
    timeline.append(box);
   });
+  appendTailSpace(timeline);
   renderPickBar(timeline);
   restoreInsertGhost();
   renderUndecided();
   openPendingCommentEdit();
   refreshScheduledLotFilter();
+ }
+ /* ---------- 一覧の下の余白(§9.292 ②、利用者の指示「スケジュールの下側に
+    余白を常に設けておき、スクロールで最後のスケジュールも上方向に押し上げ
+    られるようにして、スケジュール作成時に任意のところに追加しやすいように
+    してください」) ----------
+    以前は最後の行が器の下端に貼り付いており、**末尾へ入れる境目が画面の
+    いちばん下**にあった——そこは`#scDropRemove`（予定から外す受け皿・§9.116）
+    が出る帯でもあるので、いちばん使う「最後に足す」がいちばん狙いにくかった。
+
+    **空けた場所には役目を持たせる**（§CLAUDE 画面基準 12。意味のない余白を
+    作らない）——この帯は「ここへ落とすと、いちばん後ろに入る」の的で、
+    そう書いてある（§3・§4）。的として働かせているのは`insertSlotAt()`の
+    1箇所で、**行と行のあいだの当たり判定（§9.199の±8px）は広げない**
+    ——広げると行の中央が掴めなくなる。
+
+    高さは**測って決める**（§9.130）。狙いは「最後の行の上端が器の上端まで
+    上がれる」ことなので、要るのは`器の高さ −（最後の行の上端から中身の
+    下端まで）`。**器の高さより大きくしない**（それ以上あっても押し上がる
+    量は増えず、空白だけが増える）。 */
+ const TAIL_MIN_ROWS=2;         // 予定が少なくても、いつもこれだけは空ける
+ function appendTailSpace(timeline){
+  const box=document.createElement('div');
+  box.className='sc-tail-space';box.id='scTailSpace';
+  /* **何のための場所かを書く**（§4）。入れられない場面（閲覧・編集モードの
+     一覧・読み取り専用）では的にならないので、案内も出さない。 */
+  if(insertGhostAllowed())
+   box.innerHTML='<span>この下は予定の終わりです。ここへ落とす（クリックする）と、'
+    +'<b>いちばん後ろ</b>へ入ります。</span>';
+  timeline.append(box);
+  fitTailSpace();
+  watchTailSpace();
+ }
+ /* 器の大きさが変わったら測り直す（窓の大きさ・仕掛一覧の開閉・表示サイズ）。
+    **`renderTimeline()`だけに任せない**——どれも表を組み直さずに器の高さだけを
+    変えるので、そのままだと余白が前の高さのまま残る。 */
+ let tailRO=null;
+ function watchTailSpace(){
+  const tl=$('#scTimeline');
+  if(!tl||tailRO||typeof ResizeObserver!=='function')return;
+  tailRO=new ResizeObserver(()=>fitTailSpace());
+  tailRO.observe(tl);
+ }
+ function fitTailSpace(){
+  const tl=$('#scTimeline');if(!tl)return;
+  const sp=tl.querySelector('.sc-tail-space');if(!sp)return;
+  const rows=[...tl.querySelectorAll('.sc-row-line')];
+  if(!rows.length){sp.style.height='0px';return}
+  /* **測る前に必ず0へ戻す**（前回入れた高さが混ざると、描くたびに伸びる）。 */
+  sp.style.height='0px';
+  const last=rows[rows.length-1];
+  const rowH=last.getBoundingClientRect().height||0;
+  const min=Math.round(rowH*TAIL_MIN_ROWS);
+  /* **収まっている一覧は帯だけ**——押し上げる必要が無いのに1画面ぶんの
+     空白を置くと、2件しかない設備で画面のほとんどが空になる
+     （§CLAUDE 画面基準 12「意味のない余白を作らない」）。
+     溢れている一覧だけ、最後の行が上端まで上がるぶんへ伸ばす。 */
+  if(tl.scrollHeight<=tl.clientHeight){sp.style.height=min+'px';return}
+  const tail=Math.max(0,tl.scrollHeight-last.offsetTop);  // 最後の行の上端〜中身の下端
+  const need=tl.clientHeight-tail;
+  sp.style.height=Math.round(Math.max(min,Math.min(need,tl.clientHeight)))+'px';
  }
  /* 落として入れた枠を、描き終わったところで開く(§9.191)。**1回で消す**
     ——残すと、次に描き直すたびに勝手に編集へ入る。 */
@@ -5684,12 +5997,28 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const equipment=scState.equipment;
   // 失敗したときに元へ戻せるよう、書き換える前の並びを控えておく。
   const previousOrder=previousEntries;
-  queuePlanOp({op:'reorder',equipment,orderedIds:ids,
+  /* **掴む前に見ていた並び**も送る（§9.291 ③）。編集セッションで操作を
+     止めるのをやめたので、同じ顔ぶれのまま2人が並べ替えると後から保存した
+     ほうで丸ごと上書きされる——それだけは行ごとの書き込みでは受けられない。
+     サーバーが今の並びと突き合わせて、違えば409（`reorderStale`）で断る。
+     **顔ぶれが違うとき**（他の端末が足した/消した）は今までどおり先に
+     「一致しません」で断られる。 */
+  const baseIds=planOrder.map(e=>e.id);
+  queuePlanOp({op:'reorder',equipment,orderedIds:ids,baseOrderedIds:baseIds,
    onFailure:e=>{
     // 通知は諦めた時に1回だけ(runWriteQueueのリトライ中に出すと同じ文言が
     // 回数ぶん並ぶ)。サーバーが受け付けなかった並びを画面に残さないよう、
     // 元の順序へ戻してから知らせる。
     if(scState.equipment===equipment){scState.entries=previousOrder;renderTimeline()}
+    if(e&&e.code==='reorderStale'){
+     /* **黙って上書きしない**（§9.291 ③）。読み直して、誰が動かしたかを言う。 */
+     const who=[e.byLogin,e.byPc].filter(Boolean).join('／');
+     showToast&&showToast('ほかの端末が先に並べ替えました',
+       (who?who+'が':'')+'並び順を変えたので、最新を読み直しました。'
+       +'もう一度並べ替えてください。',8000);
+     if(scState.equipment===equipment)loadPlan(true).catch(()=>{});
+     return;
+    }
     showToast&&showToast('並べ替えできませんでした',(e&&e.message)||'',7000);
    }});
  }
@@ -7202,6 +7531,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      置く（畳んだ中の欄を触りたい側が、入口の名前を知らずに済む）。 */
   openViewPop:()=>{const pop=$('#scViewPop');if(pop&&pop.hidden)toggleViewPop();return !!(pop&&!pop.hidden)},
   closeViewPop:()=>closeViewPop(),
+  /* いま一覧で選んでいる予定のid（§9.170／§9.177の`#scPickBar`）。
+     印刷範囲(§9.292 ①)が「選んだ予定だけ」を数えるのに使う。
+     **`scState.picked`を外へ出さない**——選べる行の条件（まとめて動かせる／
+     外せる＝未着手の親だけ）はこのファイルの1箇所が持っている。
+     渡すのは写しで、書き換えられても画面の選択は動かない。 */
+  pickedIds:()=>[...(scState.picked||[])].map(String),
   /* 親ロットの印('count'=子N / 'parent'=親)。 */
   childBadgeMode:()=>scLayout.childBadge||'count',
   /* まとまり1つ。`tone`は**画面の帯と同じ色分け**（§9.237）——画面は

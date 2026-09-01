@@ -34,24 +34,32 @@
    const saved=o.storageKey&&JSON.parse(localStorage.getItem(o.storageKey)||'null');
    if(saved&&typeof saved==='object')rect=Object.assign(rect,saved);
   }catch(e){/* 保存値が壊れていても既定値で開始する */}
+  /* **画面の中へ引き戻した写しを返す**（§9.292 ④）。ウィンドウ全体
+     (右下角の抽出ハンドル・閉じるボタン含む)が画面外へ出てしまうと、
+     以後リサイズも移動もできなくなり実質操作不能になる。固定マージンでは
+     なく実際の幅・高さを差し引いて上限を決める。
+
+     **`rect`そのものを書き換えないこと**——`rect`は「利用者が決めた形」で、
+     引き戻しは「いまの画面へどう出すか」。書き換えると、窓を小さくして
+     開いたあと元の大きさへ戻しても**縮んだままになる**（決めた形が
+     画面の大きさで黙って書き換わる）。 */
   function clampToViewport(){
-   // ウィンドウ全体(右下角の抽出ハンドル・閉じるボタン含む)が画面外へ
-   // 出てしまうと、以後リサイズも移動もできなくなり実質操作不能になる。
-   // 固定マージンではなく実際の幅・高さを差し引いて上限を決める。
-   rect.width=Math.min(rect.width,Math.max(o.minWidth,window.innerWidth-20));
-   rect.height=Math.min(rect.height,Math.max(o.minHeight,window.innerHeight-20));
-   const maxLeft=Math.max(0,window.innerWidth-rect.width);
-   const maxTop=Math.max(0,window.innerHeight-rect.height);
-   if(rect.left!=null)rect.left=Math.min(Math.max(0,rect.left),maxLeft);
-   rect.top=Math.min(Math.max(0,rect.top),maxTop);
+   const r=Object.assign({},rect);
+   r.width=Math.min(r.width,Math.max(o.minWidth,window.innerWidth-20));
+   r.height=Math.min(r.height,Math.max(o.minHeight,window.innerHeight-20));
+   const maxLeft=Math.max(0,window.innerWidth-r.width);
+   const maxTop=Math.max(0,window.innerHeight-r.height);
+   if(r.left!=null)r.left=Math.min(Math.max(0,r.left),maxLeft);
+   r.top=Math.min(Math.max(0,r.top),maxTop);
+   return r;
   }
   function applyRect(){
-   clampToViewport();
-   el.style.width=rect.width+'px';
-   el.style.height=rect.height+'px';
-   el.style.top=rect.top+'px';
-   if(rect.left==null){el.style.left='';el.style.right=o.defaultRight+'px'}
-   else{el.style.left=rect.left+'px';el.style.right=''}
+   const r=clampToViewport();
+   el.style.width=r.width+'px';
+   el.style.height=r.height+'px';
+   el.style.top=r.top+'px';
+   if(r.left==null){el.style.left='';el.style.right=o.defaultRight+'px'}
+   else{el.style.left=r.left+'px';el.style.right=''}
   }
   function save(){try{if(o.storageKey)localStorage.setItem(o.storageKey,JSON.stringify(rect))}catch(e){/* 保存できなくても表示自体は継続する */}}
   function dragToMove(startEvent){
@@ -107,6 +115,12 @@
   if(resizeHandle)resizeHandle.addEventListener('mousedown',e=>dragToResize(e,'se'));
   window.addEventListener('resize',()=>applyRect());
   applyRect();
+  /* **窓を出す側が「引き戻し」を呼べるようにして返す**（§9.292 ④）。
+     `resize`だけでは足りない——`hidden`にしているあいだに端末を
+     別の画面へ移した・表示倍率を変えた、のような経路では`resize`が
+     飛ばないことがあり、そのときは**画面の外に開いたまま**になる
+     （押しても何も起きないボタンにしか見えない）。 */
+  return {applyRect,el};
  };
 
  /* 使う側はここだけを見る。**公開しないと黙って素通しになる**——

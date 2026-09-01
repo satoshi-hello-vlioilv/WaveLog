@@ -354,18 +354,29 @@ let b=null;
       narrow.見える範囲.length>=1,String(narrow.見える範囲.length));
 
   /* ============================================================
-     §9.236 ② 列幅は自然なサイズを優先し、はみ出す時だけ圧縮する
-     利用者の指示「列幅も設定したものを活かして」
+     §9.236 ② → §9.292 ⑥ 列幅は画面の比のまま、紙の余りぶんだけ一緒に伸縮
+     利用者の指示「列幅も設定したものを活かして」（§9.236）
+     利用者の指示「枠のサイズに対してはみ出さない程度に文字サイズを
+       できるだけぎりぎりまで大きくしたい」（§9.292 ⑥）
+
+     **§9.236の「収まるならそのまま使う」は撤回した**——列の少ない設備では
+     紙の右に何十mmも余り、そのぶん文字が小さいままだった。いまは
+     **余っているぶんだけ幅も文字も同じ比率で大きくする**（縮めるときと
+     向きが逆になっただけ）。**画面で決めた「この列に何文字入るか」は
+     変わらない**——列どうしの比は保たれ、はみ出さないことも変わらない。
      ============================================================ */
-  /* 列が少なく(見える範囲)用紙が広い(A3横)ときは、画面の実効px幅を
-     そのままmmへ換算した値になる——用紙いっぱいへ引き伸ばさない。 */
+  /* 列が少なく(見える範囲)用紙が広い(A3横)ときは、画面の実効px幅の比のまま
+     `--sp-fit`ぶんだけ拡大される（用紙いっぱいへ「配り直す」のではない）。 */
   const naturalOpt={includeDone:true,pageByDate:false,paper:'a3-landscape',columnScope:'visible'};
   const naturalBuild=await build(naturalOpt);
   const naturalInfo=await page.evaluate(o=>{
    const pg=document.querySelector('#schedulePrintArea .sp-page');
    const cols=WL.schedulePrint.printColumns(o);
    const mmCols=[...pg.querySelectorAll('colgroup col')].map(c=>parseFloat(c.style.width));
-   const naturalMm=cols.map(c=>Math.round((c.w||60)*25.4/96*10)/10);
+   /* **効いている倍率は紙を組むのと同じ関数に聞く**（§9.163／§9.292 ⑥）
+      ——ここで別に計算すると、網が製品と違う約束を固定することになる。 */
+   const fit=WL.schedulePrint.fitOf(cols,420-8*2,o);
+   const naturalMm=cols.map(c=>Math.round((c.w||60)*25.4/96*fit*10)/10);
    /* **刷り上がりの幅で見る**（§9.237）。宣言した`<col style>`だけを見ると、
       `.sp-table{width:100%}`が余りを各列へ配り直していても素通りする
       ——実際にそうなっており、利用者から「設定した列幅が印刷に反映され
@@ -373,22 +384,37 @@ let b=null;
    const row=pg.querySelector('tbody tr[data-row]:not(.sp-row-child)');
    const realMm=row?[...row.children].map(td=>
      Math.round(td.getBoundingClientRect().width*25.4/96*10)/10):[];
-   return {mmCols,naturalMm,realMm,
+   const raw=cols.map(c=>(c.w||60)*25.4/96);
+   return {mmCols,naturalMm,realMm,fit:Math.round(fit*1000)/1000,
+           /* 列どうしの比（1.0なら画面のまま）。狭い列は丸めの影響が大きいので
+              広い順の上位だけを見る。 */
+           ratios:mmCols.map((v,i)=>raw[i]>10?(v/raw[i])/fit:1)
+             .map(r=>Math.round(r*1000)/1000),
            sum:Math.round(mmCols.reduce((s,v)=>s+v,0)*10)/10,usableMm:420-8*2,
            /* 画面の実効px幅と、刷り上がりのpx幅の比（1.0なら設定どおり） */
            ratio:realMm.length&&naturalMm.length
              ?Math.round(realMm.reduce((s,v)=>s+v,0)/naturalMm.reduce((s,v)=>s+v,0)*100)/100:0};
   },naturalOpt);
-  rec('列が少なく用紙が広いときは、設定した幅(px)をそのままmmへ換算した値になる（引き伸ばさない）',
-      JSON.stringify(naturalInfo.mmCols)===JSON.stringify(naturalInfo.naturalMm),
-      JSON.stringify({宣言:naturalInfo.mmCols,期待:naturalInfo.naturalMm}));
-  /* 宣言だけでなく**刷り上がりの1列ずつ**が設定どおりであること（許容0.5mm）。 */
-  rec('刷り上がりの列幅そのものが設定どおり（表を用紙いっぱいへ引き伸ばさない）',
+  /* **許容0.3mm**——「余りいっぱいまで」の倍率では合計がちょうど予算に
+     なるので、0.1mm へ丸めた誤差ぶんを`shareMm()`がいちばん広い列から
+     引く（紙からはみ出させない保証が優先・§9.237）。0.1mm単位の丸めと
+     その引き算を足しても0.3mmを超えない。 */
+  rec('列が少なく用紙が広いときは、画面の幅の比のまま倍率ぶんだけ大きくなる（配り直さない）',
+      naturalInfo.mmCols.length===naturalInfo.naturalMm.length
+      &&naturalInfo.mmCols.every((v,i)=>Math.abs(v-naturalInfo.naturalMm[i])<=.3),
+      JSON.stringify({宣言:naturalInfo.mmCols,期待:naturalInfo.naturalMm,倍率:naturalInfo.fit}));
+  /* 宣言だけでなく**刷り上がりの1列ずつ**が同じであること（許容0.5mm）。 */
+  rec('刷り上がりの列幅そのものが設定どおり（表を用紙いっぱいへ配り直さない）',
       naturalInfo.realMm.length===naturalInfo.naturalMm.length
       &&naturalInfo.realMm.every((v,i)=>Math.abs(v-naturalInfo.naturalMm[i])<=.5),
       JSON.stringify({実測:naturalInfo.realMm,期待:naturalInfo.naturalMm,比:naturalInfo.ratio}));
-  rec('引き伸ばさないので、表の幅は用紙の使える幅より狭いままでよい',
-      naturalInfo.sum<naturalInfo.usableMm,
+  /* **列どうしの比は変わらない**——これが「画面で決めた幅を活かす」の中身
+     （§9.236）。全体の倍率が変わっても、隣り合う列の幅の比は同じ。 */
+  rec('列どうしの幅の比は画面のまま（大きくしても痩せる列を作らない）',
+      naturalInfo.ratios.every(r=>Math.abs(r-1)<=.03),
+      JSON.stringify(naturalInfo.ratios));
+  rec('大きくしても用紙の使える幅を超えない',
+      naturalInfo.sum<=naturalInfo.usableMm,
       `表=${naturalInfo.sum}mm / 用紙=${naturalInfo.usableMm}mm`);
   rec('自然な幅でも紙からはみ出さない',naturalBuild.over===0&&naturalBuild.clipped===0&&naturalBuild.wide===0);
   await clear();
@@ -539,8 +565,10 @@ let b=null;
            td:parseFloat(getComputedStyle(pg.querySelector('tbody td')).fontSize)};
   });
   await clear();
-  rec('収まる組み合わせでは文字を縮めない（設定どおりの幅）',
-      roomy.fit===1,JSON.stringify(roomy));
+  /* **§9.292 ⑥で向きが増えた**——収まる組み合わせでは「縮めない」だけでなく
+     **余っているぶんだけ大きくする**。縮むことだけは起きない。 */
+  rec('収まる組み合わせでは文字を縮めない（余っていれば大きくする）',
+      roomy.fit>=1,JSON.stringify(roomy));
   /* **縮めるときは幅だけでなく文字も**（§9.237）。幅の比だけ詰めると、
      同じ文字が入らずに折り返し/切り落としになる（実機で見出しが2行に割れた）。
      ここは「収まらない組み合わせ」でだけ効くので、そうならない環境では
@@ -1021,6 +1049,246 @@ let b=null;
     .filter(i=>!i.disabled).map(i=>i.dataset.opt));
   rec('効く設定は今までどおり押せる',live.includes('borders')&&live.includes('commentBox'),
       JSON.stringify(live));
+
+  /* ---- 21) 印刷範囲を指定できる(§9.292 ①) ----
+     利用者の指示「スケジュール印刷範囲の指定ができるようにしてください」。
+     §9.291 ②で予定が何ヶ月先まででも並ぶようになったので、全部刷ると紙が
+     何十枚にもなる。**確かめるのは札が並ぶことではなく、紙になる行が
+     実際に減ること**——札だけを見る網は、1件も絞らない実装でも通る。 */
+  {
+   const seam=await page.evaluate(()=>({
+    modes:(WL.schedulePrint.rangeModes?.()||[]).map(r=>r.key),
+    apply:typeof WL.schedulePrint.applyRange,
+    picked:typeof WL.scheduleView.pickedIds,
+   }));
+   rec('印刷範囲は3つ（すべて／日付／選んだぶん）で、画面から数えられる',
+       seam.modes.join(',')==='all,date,picked'&&seam.apply==='function'
+       &&seam.picked==='function',JSON.stringify(seam));
+
+   /* 素の状態で開く。**既定は`all`＝今までどおり全部**（設定を触っていない
+      現場の刷り上がりを黙って変えない）。 */
+   await page.evaluate(()=>localStorage.removeItem('SchedulePrintPrefV1'));
+   await page.evaluate(e=>WL.schedulePrint.openPreview(e),EQ);
+   await page.waitForSelector('#spRange',{timeout:15000});
+   await page.waitForFunction(()=>(WL.schedulePrint.previewSheets()||[]).length>0,null,{timeout:20000});
+   const rowsOf=()=>page.evaluate(()=>(WL.schedulePrint.previewSheets()||[])
+     .reduce((s,x)=>s+x.rows.length,0));
+   const base=await rowsOf();
+   const first=await page.evaluate(()=>({
+    on:document.querySelector('#spRange input:checked')?.value,
+    note:document.getElementById('spRangeNote')?.textContent||'',
+    days:!document.getElementById('spRangeFrom'),
+   }));
+   rec('既定は「いまの表示範囲ぜんぶ」で、日付の欄は出ていない',
+       first.on==='all'&&first.days&&base>0,JSON.stringify({...first,base}));
+   rec('刷る件数を文字で出す（絞れているのか予定が少ないのかが読める）',
+       /\d+\s*件/.test(first.note),first.note.slice(0,80));
+
+   /* 日付で絞る。**空欄のまま「絞る」にしない**——押しても何も変わらない
+      のは壊れて見えるので、いま出ている最初と最後の日を入れておく。 */
+   await page.click('#spRange input[value="date"]');
+   await page.waitForSelector('#spRangeFrom',{timeout:8000});
+   await page.waitForFunction(n=>(WL.schedulePrint.previewSheets()||[])
+     .reduce((s,x)=>s+x.rows.length,0)===n,base,{timeout:15000}).catch(()=>{});
+   const full=await page.evaluate(()=>({
+    from:document.getElementById('spRangeFrom').value,
+    to:document.getElementById('spRangeTo').value,
+    opts:[...document.getElementById('spRangeFrom').options].map(o=>o.value),
+   }));
+   rec('「日付で絞る」へ切り替えると、実際にある日が入っている',
+       !!full.from&&!!full.to&&full.opts.length>0&&full.opts.includes(full.from)
+       &&full.opts.includes(full.to),JSON.stringify(full));
+   rec('日付は打たせず、予定のある日から選ぶ（無い日・逆さまの範囲を作れない）',
+       await page.evaluate(()=>{
+        const f=document.getElementById('spRangeFrom');
+        return f&&f.tagName==='SELECT';
+       }));
+   const rowsFull=await rowsOf();
+   rec('範囲を目いっぱいにすると「ぜんぶ」と同じ件数',rowsFull===base,
+       JSON.stringify({base,rowsFull}));
+
+   /* **狭めたら紙の行が減ること**——ここがこの機能の本体。
+      日が1つしか無いフィクスチャでも確かめられるよう、日が2つ以上の
+      ときだけ日付で狭め、そうでなければ「選んだ予定だけ」で確かめる。 */
+   if(full.opts.length>1){
+    await page.selectOption('#spRangeTo',full.opts[0]);
+    await page.waitForFunction(n=>(WL.schedulePrint.previewSheets()||[])
+      .reduce((s,x)=>s+x.rows.length,0)<n,base,{timeout:15000}).catch(()=>{});
+    const narrowed=await rowsOf();
+    const note=await page.evaluate(()=>document.getElementById('spRangeNote')?.textContent||'');
+    rec('日付を狭めると紙になる行が実際に減る',narrowed>0&&narrowed<base,
+        JSON.stringify({base,narrowed}));
+    rec('絞ったことは「N件中M件」と文字で出る',note.includes(String(narrowed)),
+        note.slice(0,90));
+    /* **逆さまの範囲は作らせない**（掴んだほうを正として、もう一方を合わせる）。 */
+    const flipped=await page.evaluate(()=>({
+     from:document.getElementById('spRangeFrom').value,
+     to:document.getElementById('spRangeTo').value,
+    }));
+    rec('「この日から」が「この日まで」を追い越さない',flipped.from<=flipped.to,
+        JSON.stringify(flipped));
+   }else{
+    rec('日付を狭めると紙になる行が実際に減る',true,'この設備の予定が1日ぶんしかないので、選んだ予定だけで確かめる');
+    rec('絞ったことは「N件中M件」と文字で出る',true,'同上');
+    rec('「この日から」が「この日まで」を追い越さない',true,'同上');
+   }
+
+   /* 「選んだ予定だけ」。**選んでいなければ押せなくして理由を書く**（§4）。 */
+   const noPick=await page.evaluate(()=>{
+    const i=document.querySelector('#spRange input[value="picked"]');
+    return {off:!!i.disabled,why:(i.closest('.sp-pat')?.querySelector('small')?.textContent||'')};
+   });
+   rec('何も選んでいなければ「選んだ予定だけ」は押せず、理由が出る',
+       noPick.off&&noPick.why.length>0,JSON.stringify(noPick));
+
+   /* 実際に1件選んでから、その1件だけが紙になることを見る。 */
+   const pickable=await page.evaluate(()=>{
+    const boxes=[...document.querySelectorAll('.sc-row-line .sc-pick-check')];
+    return boxes.length;
+   });
+   if(pickable>0){
+    await page.evaluate(()=>{
+     const box=document.querySelector('.sc-row-line .sc-pick-check');
+     if(box&&!box.checked)box.click();
+    });
+    await page.evaluate(e=>WL.schedulePrint.openPreview(e),EQ);
+    await page.waitForSelector('#spRange',{timeout:15000});
+    await page.waitForFunction(()=>(WL.schedulePrint.previewSheets()||[]).length>0,null,{timeout:20000});
+    await page.click('#spRange input[value="picked"]');
+    await page.waitForFunction(()=>(WL.schedulePrint.previewSheets()||[])
+      .reduce((s,x)=>s+x.rows.length,0)===1,null,{timeout:15000}).catch(()=>{});
+    const one=await rowsOf();
+    rec('「選んだ予定だけ」にすると、選んだ1件だけが紙になる',one===1,
+        JSON.stringify({one,base}));
+    await page.evaluate(()=>{
+     const box=document.querySelector('.sc-row-line .sc-pick-check:checked');
+     if(box)box.click();
+    });
+   }else{
+    rec('「選んだ予定だけ」にすると、選んだ1件だけが紙になる',true,
+        'この画面に選べる予定（未着手の親）がない');
+   }
+
+   /* **左の欄からはみ出さない**（日付の文字列は長い）。 */
+   const fit=await page.evaluate(()=>{
+    const side=document.querySelector('.sp-pv-side');
+    const sels=[...document.querySelectorAll('.sp-range-day')];
+    return {sideOver:side.scrollWidth>side.clientWidth+1,
+            selOver:sels.filter(s=>s.getBoundingClientRect().right
+              >side.getBoundingClientRect().right+1).length};
+   });
+   rec('印刷範囲の欄が左のペインからはみ出さない',!fit.sideOver&&!fit.selOver,
+       JSON.stringify(fit));
+
+   await page.evaluate(()=>{localStorage.removeItem('SchedulePrintPrefV1')});
+  }
+
+  /* ---- 22) 紙の文字を枠ぎりぎりまで大きく／セルの余白（§9.292 ⑥） ----
+     利用者の指示「枠に対して文字が小さすぎて非常に見にくいです。カラムも
+     含めて、枠のサイズに対してはみ出さない程度に文字サイズをできるだけ
+     ぎりぎりまで大きくしたいです。ベースサイズを大きめの設定で変更した
+     うえで、印刷時の文字サイズやセル内の余白の調整＆設定保存ができる
+     ようにしてください」
+
+     **確かめるのは札が並ぶことではなく、刷り上がりの文字が実際に大きく
+     なること**——`--sp-fit`の宣言値だけを見る網は、CSSが読んでいなくても通る
+     （§9.289と同じ罠）。描いた`<td>`の解決値を測る。 */
+  {
+   await page.evaluate(()=>localStorage.removeItem('SchedulePrintPrefV1'));
+   const seam=await page.evaluate(()=>({
+    fs:(WL.schedulePrint.fontScales?.()||[]).map(x=>x.key),
+    pads:(WL.schedulePrint.cellPads?.()||[]).map(x=>x.key),
+    fit:typeof WL.schedulePrint.fitOf,
+   }));
+   rec('文字の大きさは自動＋4段、セルの余白は3段（語彙は1箇所から）',
+       seam.fs.join(',')==='auto,0.85,1,1.15,1.3'&&seam.pads.join(',')==='0.6,1,1.5'
+       &&seam.fit==='function',JSON.stringify(seam));
+   /* **余っているぶんだけ大きくする**（幅も文字も同じ比率で）。 */
+   const grow=await page.evaluate(()=>{
+    const cols=[{key:'a',label:'A',w:100},{key:'b',label:'B',w:100}];
+    return {auto:WL.schedulePrint.fitOf(cols,190,{fontScale:'auto'}),
+            std:WL.schedulePrint.fitOf(cols,190,{fontScale:'1'}),
+            /* 列が多くて入らないときは今までどおり縮む。 */
+            tight:WL.schedulePrint.fitOf(
+              Array.from({length:30},(_,i)=>({key:'c'+i,label:'C',w:120})),190,{fontScale:'auto'})};
+   });
+   rec('紙が余っていれば「自動」で1倍より大きくなる',grow.auto>1.05,JSON.stringify(grow));
+   rec('「標準」を選べば1倍のまま（自動で勝手に伸ばさない）',grow.std===1,JSON.stringify(grow));
+   rec('列が多いときは今までどおり縮む（紙からはみ出させない）',grow.tight<1,JSON.stringify(grow));
+
+   /* 実際の紙で測る。**選ぶ前と後で本文の文字が変わること**まで見る。 */
+   /* **列を絞って測る**——検証用の設備は列が多く、どの大きさを選んでも
+      床（`MIN_FIT`）に着いて同じ絵になる（＝何も確かめられない）。
+      紙が余っている形でだけ、選んだ大きさが効くことを見る。 */
+   const fontOf=async(pref,narrow)=>page.evaluate(([o,n])=>{
+    const groups=WL.schedulePrint.buildPages('テスト設備A',WL.scheduleView.entries(),o);
+    const sheets=WL.schedulePrint.splitToSheets(groups,o);
+    if(n)sheets.forEach(s=>{s.cols=(s.cols||WL.schedulePrint.printColumns(o)).slice(0,n)});
+    let area=document.getElementById('schedulePrintArea');
+    if(!area){area=document.createElement('div');area.id='schedulePrintArea';
+              area.className='sp-print-area';document.body.appendChild(area)}
+    area.innerHTML=WL.schedulePrint.pageHtml(sheets[0],o,1,sheets.length);
+    area.style.display='block';
+    const td=area.querySelector('.sp-table tbody td');
+    const cs=getComputedStyle(td);
+    const page=area.querySelector('.sp-page');
+    const wrap=area.querySelector('.sp-table-wrap');
+    const inner=page.getBoundingClientRect().width
+      -parseFloat(cs.getPropertyValue('padding-left')||0);
+    const r={fs:Math.round(parseFloat(cs.fontSize)*10)/10,
+             pad:Math.round(parseFloat(cs.paddingTop)*10)/10,
+             over:wrap.getBoundingClientRect().right>page.getBoundingClientRect().right
+                  -parseFloat(getComputedStyle(page).paddingRight)+1};
+    area.innerHTML='';area.style.display='';
+    return r;
+   },[pref,narrow||0]);
+   const base={...(await page.evaluate(()=>JSON.parse(JSON.stringify(
+     {includeDone:false,actualColumns:true,pageByDate:true,allEquipment:false,useGroups:true,
+      commentBox:true,writePattern:'actual',includeChildren:false,paper:'a4-portrait',
+      columnScope:'all',borders:true,range:'all'}))))};
+   const small=await fontOf({...base,fontScale:'0.85'},4);
+   const std=await fontOf({...base,fontScale:'1'},4);
+   const big=await fontOf({...base,fontScale:'1.3'},4);
+   const auto=await fontOf({...base,fontScale:'auto'},4);
+   rec('文字の大きさを選ぶと、刷り上がりの本文の文字が実際に変わる',
+       small.fs<std.fs&&std.fs<big.fs,JSON.stringify({small:small.fs,std:std.fs,big:big.fs}));
+   rec('地の大きさをひと回り上げた（標準で本文12px以上）',std.fs>=12,String(std.fs));
+   rec('「自動」は紙の余りぶんまで大きくする（既定でいちばん大きい）',
+       auto.fs>=big.fs,JSON.stringify({auto:auto.fs,big:big.fs}));
+   rec('どの大きさでも紙からはみ出さない',!small.over&&!std.over&&!big.over&&!auto.over,
+       JSON.stringify({small:small.over,std:std.over,big:big.over,auto:auto.over}));
+   /* 列が多くて床に着いたときは、**打つ手を書く**（§4）。 */
+   const floored=await fontOf({...base,fontScale:'1.3'});
+   rec('列が多いときは床で止まり、今までより大きい（11px×0.62→12.5px×0.62）',
+       floored.fs>=7.5&&floored.fs<std.fs,String(floored.fs));
+   const tight=await fontOf({...base,cellPad:'0.6'},4);
+   const wide=await fontOf({...base,cellPad:'1.5'},4);
+   rec('セルの余白を選ぶと、実際にセルの余白が変わる',
+       tight.pad<std.pad&&std.pad<wide.pad,
+       JSON.stringify({tight:tight.pad,std:std.pad,wide:wide.pad}));
+
+   /* **設定が端末に残る**（毎回選び直させない）。 */
+   await page.evaluate(e=>WL.schedulePrint.openPreview(e),EQ);
+   await page.waitForSelector('#spFontScale',{timeout:15000});
+   await page.click('#spFontScale input[value="1.3"]');
+   await page.click('#spCellPad input[value="0.6"]');
+   await page.waitForTimeout(800);
+   const kept=await page.evaluate(()=>{
+    const p=JSON.parse(localStorage.getItem('SchedulePrintPrefV1')||'{}');
+    return {fs:p.fontScale,pad:p.cellPad,
+            note:(document.getElementById('spFitNote')||{}).textContent||''};
+   });
+   rec('選んだ文字の大きさ・余白はこの端末に残る',
+       kept.fs==='1.3'&&kept.pad==='0.6',JSON.stringify(kept));
+   rec('いま何倍で刷られるかを文字で出す（§3・§6）',/%/.test(kept.note)&&/px/.test(kept.note),
+       kept.note.slice(0,90));
+   /* この設備は列が多いので床に着く。**そのときは打つ手まで書く**（§4）
+      ——「縮めています」だけだと、選び直しても変わらない理由が読めない。 */
+   rec('これ以上小さくできないときは、次にすることを書く',
+       /列の範囲/.test(kept.note)&&/A3/.test(kept.note),kept.note.slice(0,160));
+   await page.evaluate(()=>WL.schedulePrint.closePreview());
+   await page.evaluate(()=>localStorage.removeItem('SchedulePrintPrefV1'));
+  }
 
   await page.evaluate(()=>WL.schedulePrint.closePreview());
 

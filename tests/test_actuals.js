@@ -222,6 +222,91 @@ async function mk(o){
        JSON.stringify(cell).slice(0,220));
   }
 
+  /* ---------- 表示列ボタンで窓が開く（§9.292 ④、利用者の報告） ----------
+     「実績データについて 表示列ボタンが使えません。モーダル起動しないので
+      使えない状態です」
+
+     原因は**窓を最後に出していた**こと——`WL.listColumns.open()`は中身を
+     全部組み立ててから`hidden=false`にしていたので、組み立てのどこか1つで
+     例外が出ると**窓はいつまでも出ない**（押しても何も起きないボタン・§4）。
+     いまは**先に出してから組み立てる**。
+
+     **確かめるのは「押せる」ことではなく、窓が実際に画面に見えること**
+     ——`hidden`だけを見る網は、画面の外に開いていても通る。 */
+  {
+   /* **編集できる端末で見ること**——直前の節が閲覧モードを試しており、
+      閲覧モードでは列の設定ボタンごと出さない（§9.162）。モードは
+      サーバー側で戻してあるが、画面は読み直すまで前のモードのまま。 */
+   await post('/api/access-mode',{mode:'edit'});
+   await page.reload({waitUntil:'domcontentloaded'});
+   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
+   await openList();
+   await setRange();
+   await page.waitForTimeout(1200);
+   await page.waitForSelector('#acColumns:not([hidden])',{timeout:15000});
+   await page.click('#acColumns');
+   await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:8000});
+   const win=await page.evaluate(()=>{
+    const el=document.getElementById('listColumnPanel');
+    const r=el.getBoundingClientRect();
+    return {w:Math.round(r.width),h:Math.round(r.height),
+            left:Math.round(r.left),top:Math.round(r.top),
+            inView:r.left>=-1&&r.top>=-1&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1,
+            title:(document.getElementById('lcTitle')||{}).textContent||'',
+            items:document.querySelectorAll('#lcList .lc-item').length,
+            keys:(WL.actuals&&WL.actuals.columnKeys()||[]).length,
+            err:/組み立てられません/.test((document.getElementById('lcList')||{}).textContent||'')};
+   });
+   rec('実績データの「表示列」で窓が開く',win.w>0&&win.h>0,JSON.stringify(win));
+   rec('窓は画面の中に開く（前より小さい画面でも外へ出ない）',win.inView,JSON.stringify(win));
+   rec('その一覧の設定だと見出しで分かる',/実績データリスト/.test(win.title),win.title);
+   rec('候補の列が並ぶ（空の窓を出して終わりにしない）',win.items>10,JSON.stringify(win).slice(0,220));
+   /* **真因はここ**（§9.292 ④）——差し替え口の`initialHidden`は
+      「まだ一度も保存していないときの既定」を答える口で、**保存済みなら
+      `null`**を返す約束。パネルがその`null`をそのまま`.filter`していたため、
+      **一度でも列の設定を保存した一覧では組み立てが止まり窓が出なかった**。
+      この節は既に`order`を保存した状態で開いている（上の節が保存する）ので、
+      直す前は必ず0件になる。念のため保存し直して開き直しても見る。 */
+   await page.evaluate(()=>{try{WL.listColumns.close()}catch(e){}});
+   await post('/api/column-layout-master',{target:'actuals:list',user_id:'test',
+     order:['ロット番号','現場日'],hidden:['直']});
+   await page.evaluate(()=>{try{WL.columnLayout.forget()}catch(e){}});
+   await page.evaluate(()=>WL.columnLayout.load('actuals:list'));
+   await page.click('#acColumns');
+   await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:8000});
+   const again=await page.evaluate(()=>({
+    items:document.querySelectorAll('#lcList .lc-item').length,
+    off:[...document.querySelectorAll('#lcList .lc-item.is-off')].map(e=>e.dataset.key),
+    err:/組み立てられません/.test((document.getElementById('lcList')||{}).textContent||''),
+   }));
+   rec('列の設定を保存したあとでも窓が開く（保存済み＝initialHiddenがnull）',
+       again.items>10&&!again.err,JSON.stringify(again).slice(0,200));
+   rec('保存した「出さない」列がチェックの外れた行として出る',
+       again.off.includes('直'),JSON.stringify(again.off).slice(0,120));
+
+   /* **組み立てが転んでも窓は出る**（そこで初めて「何が起きたか」を書ける）。
+      口の1つをわざと壊して、窓が出ること・理由が出ることを見る。 */
+   await page.evaluate(()=>{
+    const el=document.getElementById('listColumnPanel');if(el)el.hidden=true;
+   });
+   const broke=await page.evaluate(()=>{
+    /* 口の1つ（列の顔ぶれ）がわざと転ぶ差し替え口で開く。 */
+    WL.listColumns.open({
+     key:'zz-broken',eyebrow:'検証',title:()=>'わざと壊した口',
+     target:()=>'actuals:list',
+     keys:()=>{throw new Error('わざと壊した')},
+     rows:()=>[],valueOf:()=>'',joined:()=>new Set(),
+     afterApply:()=>{},save:null,
+    });
+    const el=document.getElementById('listColumnPanel');
+    return {shown:!!(el&&!el.hidden&&el.getBoundingClientRect().width>0),
+            note:((document.getElementById('lcList')||{}).textContent||'').slice(0,60)};
+   });
+   rec('組み立てが転んでも窓は出て、理由が書いてある',
+       broke.shown&&/組み立てられません/.test(broke.note),JSON.stringify(broke));
+   await page.evaluate(()=>{try{WL.listColumns.close()}catch(e){}});
+  }
+
   /* ---------- 一覧の道具が残っていないこと（§9.288 ⑥、利用者の報告） ----------
      「実績データ確認時に、フィルタバーが下部に落ちている不具合を発見しました」
 

@@ -231,11 +231,38 @@ def main():
   except Exception as e:
    print('（セッションを取れませんでした:',e,'）')
   if held:
+   # **既定では止めない**（§9.291 ③、利用者との確認）。編集セッションは
+   # 「主担当は誰か」を見せるだけになったので、他の人が編集中でも通る。
    st,sbody=post(base+'/owner/relay',{'path':'/api/schedule/plan/add',
      'body':{'equipment':eq,'kind':'コメント','title':'排他テスト','user_id':'owner_test_uid'},
      'login':'relay_login','pc':'RELAY-PC','mode':'schedule'},token=token)
    if st==200 and sbody.get('id') is not None:added.append(sbody['id'])
-   rec('頼んだ端末のモードで判定する（他の人が編集中なら断る）',st==423,f'status={st} {sbody}')
+   rec('既定では他の人が編集中でも中継の書き込みは通る（§9.291 ③）',
+       st==200,f'status={st} {sbody}')
+   # **`on`にすれば今までどおり止まる**。ここで確かめるのは
+   # 「**頼んだ端末のモードで判定している**」こと——運ばないと、持ち主
+   # （たいていedit）のモードで判定され、**持ち主を経由した書き込みだけ
+   # 排他が外れる**。設定を戻すのは`finally`で必ず。
+   from backend.db_access import DBS, connect as _conn
+   def _set_block(v):
+    c=_conn(DBS['MASTER']['path'],False)
+    try:
+     cur=c.cursor()
+     cur.execute('DELETE FROM [パス設定マスタ] WHERE [設定キー]=?',['schedule_session_block'])
+     if v:cur.execute('INSERT INTO [パス設定マスタ] ([設定キー],[設定値]) VALUES (?,?)',
+                      ['schedule_session_block',v])
+     c.commit()
+    finally:c.close()
+   try:
+    _set_block('on')
+    st2,sbody2=post(base+'/owner/relay',{'path':'/api/schedule/plan/add',
+      'body':{'equipment':eq,'kind':'コメント','title':'排他テスト2','user_id':'owner_test_uid'},
+      'login':'relay_login','pc':'RELAY-PC','mode':'schedule'},token=token)
+    if st2==200 and sbody2.get('id') is not None:added.append(sbody2['id'])
+    rec('onにすると頼んだ端末のモードで判定して断る（持ち主のモードで判定しない）',
+        st2==423,f'status={st2} {sbody2}')
+   finally:
+    _set_block(None)
    try:schedule_sync.release_session(eq,'別の人','OTHER-PC')
    except Exception:pass
 

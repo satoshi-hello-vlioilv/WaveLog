@@ -1,6 +1,6 @@
 {
   "_note": "帳票ブロックの[内容]（§9.274）の突き合わせ用。サーバー(backend/repositories/report_block_repo.py の parse_content/dump_content)と画面(static/js/master-maint.js の fbParse/fbText)は同じ約束を別々に持っているので、同じ例で両方を確かめる。tests/test_rbcells.py と tests/test_rbcells.js が読む。**片方だけ直さないこと**——2通りあると、盤で組んだ形と紙が食い違う（§9.245）。",
-  "_parse_note": "text を読んだ結果が cells。cells は label/path/kind/span/rows/showLabel/align/format/lot の9つで比べる（blank は kind から決まるので比べない）。lot は §9.277 の「対象（子ロット）の軸のマス」の印で、**紙が1つの表の中で子ロットの数だけ複製する並び**を指す。",
+  "_parse_note": "text を読んだ結果が cells。cells は label/path/kind/span/rows/showLabel/stack/align/format/lot の10つで比べる（blank は kind から決まるので比べない）。lot は §9.277 の「対象（子ロット）の軸のマス」の印で、**紙が1つの表の中で子ロットの数だけ複製する並び**を指す。 stack は §9.292 ⑤ の「ラベルを値の上へ置く」印で、**ラベルを出さないマス・見出し・空きでは必ず false**（並べる相手が無い）。",
   "parse": [
     {
       "why": "今までの1行1件。**足したのは任意の後置きだけ**なので、既に登録してある塊はそのまま読める",
@@ -15,7 +15,8 @@
           "showLabel": true,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         },
         {
           "label": "検査番号",
@@ -26,7 +27,8 @@
           "showLabel": true,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         }
       ]
     },
@@ -43,7 +45,8 @@
           "showLabel": true,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         },
         {
           "label": "取引先",
@@ -54,7 +57,8 @@
           "showLabel": true,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         }
       ]
     },
@@ -71,7 +75,8 @@
           "showLabel": true,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         },
         {
           "label": "B",
@@ -82,7 +87,8 @@
           "showLabel": true,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         }
       ]
     },
@@ -99,7 +105,8 @@
           "showLabel": false,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         },
         {
           "label": "A",
@@ -110,7 +117,8 @@
           "showLabel": true,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         },
         {
           "label": "",
@@ -121,7 +129,8 @@
           "showLabel": false,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         }
       ]
     },
@@ -138,7 +147,8 @@
           "showLabel": true,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         },
         {
           "label": "B",
@@ -149,7 +159,8 @@
           "showLabel": true,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         },
         {
           "label": "C",
@@ -160,7 +171,8 @@
           "showLabel": true,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         }
       ]
     },
@@ -177,7 +189,8 @@
           "showLabel": false,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         },
         {
           "label": "MIN",
@@ -188,7 +201,8 @@
           "showLabel": false,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         },
         {
           "label": "板厚",
@@ -199,7 +213,8 @@
           "showLabel": false,
           "align": "right",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         }
       ]
     },
@@ -221,7 +236,8 @@
             "thousands": true,
             "suffix": "mm"
           },
-          "lot": false
+          "lot": false,
+          "stack": false
         },
         {
           "label": "日",
@@ -235,7 +251,8 @@
             "kind": "datetime",
             "pattern": "MM/dd"
           },
-          "lot": false
+          "lot": false,
+          "stack": false
         },
         {
           "label": "素",
@@ -246,7 +263,8 @@
           "showLabel": true,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         }
       ]
     },
@@ -263,7 +281,8 @@
           "showLabel": true,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         }
       ]
     },
@@ -280,7 +299,8 @@
           "showLabel": false,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         }
       ]
     },
@@ -297,7 +317,8 @@
           "showLabel": true,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         }
       ]
     },
@@ -319,7 +340,8 @@
           "showLabel": false,
           "align": "left",
           "format": null,
-          "lot": true
+          "lot": true,
+          "stack": false
         },
         {
           "label": "MIN",
@@ -330,7 +352,8 @@
           "showLabel": false,
           "align": "right",
           "format": null,
-          "lot": true
+          "lot": true,
+          "stack": false
         },
         {
           "label": "全体",
@@ -340,6 +363,49 @@
           "rows": 1,
           "showLabel": false,
           "align": "right",
+          "format": null,
+          "lot": false,
+          "stack": false
+        }
+      ]
+    },
+    {
+      "why": "ラベルを上下に置くマス（§9.292 ⑤）。**JSONの形でだけ書ける**——行の形（`ラベル=道`）には書けない持ちもの",
+      "text": "[{\"label\":\"ロット番号\",\"path\":\"basic.lotNo\",\"kind\":\"value\",\"span\":2,\"rows\":1,\"showLabel\":true,\"stack\":true,\"align\":\"\",\"format\":null,\"lot\":false},{\"label\":\"見出し\",\"path\":\"\",\"kind\":\"head\",\"span\":1,\"rows\":1,\"showLabel\":false,\"stack\":true,\"align\":\"\",\"format\":null,\"lot\":false},{\"label\":\"取引先\",\"path\":\"basic.customer\",\"kind\":\"value\",\"span\":1,\"rows\":1,\"showLabel\":false,\"stack\":true,\"align\":\"\",\"format\":null,\"lot\":false}]",
+      "cells": [
+        {
+          "label": "ロット番号",
+          "path": "basic.lotNo",
+          "kind": "value",
+          "span": 2,
+          "rows": 1,
+          "showLabel": true,
+          "stack": true,
+          "align": "",
+          "format": null,
+          "lot": false
+        },
+        {
+          "label": "見出し",
+          "path": "",
+          "kind": "head",
+          "span": 1,
+          "rows": 1,
+          "showLabel": false,
+          "stack": false,
+          "align": "",
+          "format": null,
+          "lot": false
+        },
+        {
+          "label": "取引先",
+          "path": "basic.customer",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": false,
+          "stack": false,
+          "align": "",
           "format": null,
           "lot": false
         }
@@ -360,7 +426,8 @@
           "showLabel": true,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         }
       ],
       "text": "A=basic.lotNo"
@@ -377,7 +444,8 @@
           "showLabel": true,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         },
         {
           "label": "B",
@@ -388,7 +456,8 @@
           "showLabel": true,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         },
         {
           "label": "",
@@ -399,7 +468,8 @@
           "showLabel": false,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         }
       ],
       "text": "A=basic.lotNo|2\nB=basic.customer|2x3\n|1"
@@ -416,7 +486,8 @@
           "showLabel": false,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         }
       ],
       "json": true
@@ -433,7 +504,8 @@
           "showLabel": false,
           "align": "",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         }
       ],
       "json": true
@@ -450,7 +522,8 @@
           "showLabel": true,
           "align": "right",
           "format": null,
-          "lot": false
+          "lot": false,
+          "stack": false
         }
       ],
       "json": true
@@ -470,7 +543,8 @@
             "kind": "number",
             "decimals": 2
           },
-          "lot": false
+          "lot": false,
+          "stack": false
         }
       ],
       "json": true
@@ -493,9 +567,28 @@
           "showLabel": true,
           "align": "",
           "format": null,
-          "lot": true
+          "lot": true,
+          "stack": false
         }
       ]
+    },
+    {
+      "why": "ラベルを上下に置くマスが1つでもあればJSONへ切り替わる（§9.274と同じ約束）",
+      "cells": [
+        {
+          "label": "ロット番号",
+          "path": "basic.lotNo",
+          "kind": "value",
+          "span": 1,
+          "rows": 1,
+          "showLabel": true,
+          "stack": true,
+          "align": "",
+          "format": null,
+          "lot": false
+        }
+      ],
+      "json": true
     }
   ]
 }

@@ -722,7 +722,10 @@
       **ラベルの箱ごと落とす**——空の`<span>`を残すと`min-content`の列が
       そのぶん残り、値が右へずれる。 */
    const bare=o&&o.showLabel===false;
-   return `<div class="rp-field${bare?' rp-field-bare':''}${al}"${st}>`
+   /* ラベルを**値の上**へ置く（§9.292 ⑤）。印はマスが持つので、
+      **紙も盤の見本も同じここを通る**（見本と紙が食い違わない・§9.279）。 */
+   const stack=!bare&&!!(o&&o.stack);
+   return `<div class="rp-field${bare?' rp-field-bare':''}${stack?' rp-field-stack':''}${al}"${st}>`
     +(bare?'':`<span class="rp-field-label">${esc(label)}</span>`)
     +`<span class="rp-field-value" title="${esc(tip)}">${esc(value||'-')}</span></div>`;
   };

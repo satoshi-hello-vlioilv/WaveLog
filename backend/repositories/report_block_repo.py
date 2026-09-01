@@ -1260,7 +1260,7 @@ def normalize_format(spec):
 
 
 def _cell(label='', path='', span=1, rows=1, kind=CELL_VALUE,
-          show_label=True, align='', fmt=None, lot=False):
+          show_label=True, align='', fmt=None, lot=False, stack=False):
     span = max(SPAN_MIN, min(SPAN_MAX, int(span or 1)))
     rows = max(ROWSPAN_MIN, min(ROWSPAN_MAX, int(rows or 1)))
     label, path = str(label or '').strip(), str(path or '').strip()
@@ -1275,6 +1275,13 @@ def _cell(label='', path='', span=1, rows=1, kind=CELL_VALUE,
     return {'label': label, 'path': path, 'blank': kind == CELL_BLANK,
             'span': span, 'rows': rows, 'kind': kind,
             'showLabel': bool(show_label) if kind == CELL_VALUE else False,
+            # ラベルを**値の上**へ置く（§9.292 ⑤、利用者の指示「上下に
+            # ラベルと内容が組み合わさるパターンでレイアウトできるように」）。
+            # **マスの持ちもの**にしてある——紙だけの設定（列レイアウトの
+            # `formats`）にすると、盤の見本には原理的に当たらず
+            # 「見本は正しいのに紙だけ別物」が作れる（§9.282）。
+            # ラベルを出さないマス・見出し・空きでは意味を持たないので落とす。
+            'stack': bool(stack) and kind == CELL_VALUE and bool(show_label),
             'align': normalize_align(align), 'format': normalize_format(fmt),
             # **対象（子ロット）の軸のマス**（§9.277）。ここに印が付いた
             # 並びだけを、紙が**1つの表の中で**子ロットの数だけ複製する
@@ -1294,13 +1301,14 @@ def _cell_from_json(x):
     return _cell(label=x.get('label'), path=x.get('path'),
                  span=x.get('span'), rows=x.get('rows'), kind=kind,
                  show_label=x.get('showLabel', True),
-                 align=x.get('align'), fmt=x.get('format'), lot=x.get('lot'))
+                 align=x.get('align'), fmt=x.get('format'), lot=x.get('lot'),
+                 stack=x.get('stack'))
 
 
 def _rich(c):
     """行の形（`ラベル=道|横x縦`）では書けないマスか。"""
     return (c['kind'] == CELL_HEAD or (c['kind'] == CELL_VALUE and not c['showLabel'])
-            or c['align'] or c['format'] or c.get('lot'))
+            or c['align'] or c['format'] or c.get('lot') or c.get('stack'))
 
 
 def _cell_line(c):
