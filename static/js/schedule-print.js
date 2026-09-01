@@ -407,13 +407,26 @@
   const k=String(opt&&opt.columnScope||'');
   return COLUMN_SCOPES.some(s=>s.key===k)?k:'all';
  }
+ /* 印刷専用の列（§9.293 ①、利用者の報告「作業スケジュールの表示内容と
+    印刷内容が違います。設定は今の表示内容全部にしていますが、表示して
+    いない内容まで出ています」）。
+
+    §9.235で「#」「状態」を紙にだけ足していた（通し番号は現場が番号で
+    呼び合うため、状態は白黒コピーで色分けが消えるため）。**理由はいまも
+    正しいが、既定で足すのは間違いだった**——「画面の見た目が正」（§9.237）
+    と言いながら、画面に無い列を黙って2本増やしていた。しかも列が2本
+    増えるぶん他の列が痩せるので、**文字の大きさの見当も付かなくなる**
+    （まさにそう報告された）。
+
+    いまは**入切できる設定**で、**既定は「足さない」＝画面と同じ**。
+    足したい現場はチェック1つで戻せる（何が増えるのかを説明に書く）。 */
+ const PRINT_EXTRA_COLS=[{key:'no',label:'#',w:30},{key:'state',label:'状態',w:50}];
  function printColumns(opt){
   const view=WL.scheduleView;
   const visible=columnScopeOf(opt)==='visible';
   const keys=visible&&typeof view.visibleColumnKeys==='function'?view.visibleColumnKeys()
     :(typeof view.printColumnKeys==='function'?view.printColumnKeys():[]);
-  const base=[{key:'no',   label:'#', w:30},
-              {key:'state',label:'状態',w:50},
+  const base=[...(opt&&opt.printExtras?PRINT_EXTRA_COLS.map(c=>({...c})):[]),
               ...keys.map(k=>({key:k,
                 label:(typeof view.columnLabelOf==='function')?view.columnLabelOf(k):k,
                 w:(typeof view.columnEffWidthPx==='function')?view.columnEffWidthPx(k):110}))];
@@ -455,15 +468,24 @@
     片方だけ動かすと「画面で決めたこの列に何文字入るか」が紙で変わる
     （§9.237で縮める側について決めたのと同じ理由）。
     **上限を置く**（`MAX_FIT`）——1列しか出さない紙で文字だけが巨大になる。 */
- const MAX_FIT=1.35;
+ /* **上限は「1〜2列しか刷らない紙で字だけ巨大にならない」ための歯止め**で、
+    ふつうは`room`（紙の余り）が先に効く。利用者の指示「おじいちゃんも見るので、
+    文字はもっと限界まで大きくしてほしい。バキバキの限界まで、文字どうしが
+    ぶつかったり隣のカラムの文字と被ったりしないところを限界として」
+    （§9.293 ④）を受けて 1.35 → 2.6（本文 12.5px → 32.5px 相当）へ広げた。
+    **列どうしの比は変わらない**ので、大きくしても隣の列の文字とは被らない
+    （はみ出した文字は列の中で切られる）。 */
+ const MAX_FIT=2.6;
  /* 利用者が選ぶ文字の大きさ。`auto`＝枠いっぱいまで（既定）。
     **綴りと呼び名は1箇所**（テストも画面もここを見る）。 */
  const FONT_SCALES=[
-  {key:'auto',label:'自動（枠いっぱい）',note:'紙の余りぶんだけ、幅と文字を一緒に大きくします（既定）'},
+  {key:'auto',label:'自動（枠いっぱい）',note:'紙の余りぶんだけ、幅と文字を一緒に大きくします。列の文字は切れません（既定）'},
   {key:'0.85',label:'小',  note:'1枚により多くの行を載せたいとき'},
   {key:'1',   label:'標準',note:'画面と同じ大きさの比率で刷ります'},
   {key:'1.15',label:'大',  note:'少し大きめ'},
-  {key:'1.3', label:'特大',note:'いちばん大きく（列が多い設備では紙に合わせて縮みます）'},
+  {key:'1.3', label:'特大',note:'かなり大きめ'},
+  {key:'1.7', label:'極大',note:'遠目でも読める大きさ。列が窮屈だと長い値は「…」で切れます'},
+  {key:'2.2', label:'最大',note:'いちばん大きく。列の数が少ない紙向き'},
  ];
  /* セルの内側の余白。文字の大きさとは**別の軸**（詰めれば1枚に多く入る）。 */
  const CELL_PADS=[
@@ -523,23 +545,52 @@
   }
   return mm;
  }
+ /* ---------- 幅と文字は別の答え（§9.293 ②、利用者の報告「文字のサイズ変更
+    機能は印刷で見てもプレビューで見ても全く変化しているように感じません」）
+    ----------
+    §9.292 ⑥では「幅も文字も同じ比率」で動かしたが、**幅は紙に必ず収める**
+    という制約があるので、列の多い設備では比率が下限（`MIN_FIT`）に張り付き、
+    **どの大きさを選んでも同じ絵**になっていた（実機の18列がまさにそれ）。
+    「縮めています」と書いてはいたが、**選べるのに一度も効かない設定**は
+    押しても何も起きないボタンと同じ（§4）。
+
+    いまは2つの答えを返す:
+      `fit`  … **幅**の倍率。紙に必ず収める（利用者は決められない）
+      `font` … **文字**の倍率。`auto`なら`fit`と同じ（今までどおり幅なり）、
+               大きさを選んでいれば**その値そのもの**
+
+    文字が幅より大きいと、窮屈な列の値は「…」で切れる——**それは利用者が
+    選んだこと**なので、切れる件数を数えて画面に出す（§3・§4）。切らずに
+    折り返す道は採らない（§9.237で画面と同じ`nowrap`に決めた）。 */
+ /* セルの左右の余白（mm）。**CSSの`1.4mm × --sp-pad`と同じ数**——ここと
+    CSSが食い違うと、幅の見積もりが実際の刷り上がりとずれる（§9.163）。 */
+ const CELL_PAD_MM=1.4;
  function withMm(cols,usableMm,opt){
   const budget=Math.max(1,usableMm-FRAME_MM);
-  const natural=cols.map(c=>Math.max(MIN_COL_MM,(c.w||60)*MM_PER_PX));
+  /* **セルの余白は列の幅の一部**（§9.293 ④）。以前は幅を配ってから CSS が
+     内側に余白を足していたので、「余白を詰める」を選んでも**文字は1pxも
+     大きくならなかった**（空いた場所が誰にも配られない）。余白を列の
+     必要量へ織り込むと、詰めたぶんがそのまま文字の大きさになる
+     ——利用者の「限界まで大きく」に効く唯一の内側の手立て。 */
+  const pad=Number(cellPadOf(opt))||1;
+  const padDelta=2*CELL_PAD_MM*(pad-1);
+  const natural=cols.map(c=>Math.max(MIN_COL_MM,(c.w||60)*MM_PER_PX+padDelta));
   const total=natural.reduce((s,w)=>s+w,0)||1;
-  /* どこまで大きくしたいか（§9.292 ⑥）。`auto`は上限まで、数を選んで
-     いればその倍率まで。**紙に入る範囲で**（`room`）頭打ちにする。 */
   const want=fontScaleOf(opt);
-  const target=want==='auto'?MAX_FIT:Number(want);
   const room=budget/total;
-  /* 幅は今までどおり**必ず**用紙に収める（はみ出す組み合わせを原理的に
-     作らない、という既存の保証は変えない）。文字だけ下限で止める。 */
+  /* **幅**は「余っていれば上限まで広げ、足りなければ縮める」。
+     `auto`以外を選んでいても、幅はその値までしか広げない（大きい文字を
+     選んだからといって紙からはみ出させない）。 */
+  const target=want==='auto'?MAX_FIT:Math.min(MAX_FIT,Number(want));
   const fit=Math.max(MIN_FIT,Math.min(target,room));
   const scaled=natural.map(w=>w*fit);
   const tot=scaled.reduce((s,w)=>s+w,0);
   const mm=tot<=budget?scaled.map(v=>Math.round(v*10)/10):shareMm(scaled,budget);
+  /* **文字**は利用者が決めた値をそのまま使う（幅の圧縮に引きずられない）。 */
+  const font=want==='auto'?fit:Number(want);
   return {cols:cols.map((c,i)=>({...c,mm:mm[i]})),
           fit:Math.round(fit*1000)/1000,
+          font:Math.round(font*1000)/1000,
           over:Math.round(Math.max(0,tot-budget)*10)/10};
  }
 
@@ -789,7 +840,8 @@
   /* セルの余白は文字とは別の軸（§9.292 ⑥）。**既定のときは書かない**
      ——書かない紙は今までと1pxも変わらない。 */
   const pad=cellPadOf(opt);
-  const vars=[fitted.fit!==1?`--sp-fit:${fitted.fit}`:'',
+  /* `--sp-fit`は**文字**の倍率（§9.293 ②）。幅はもう mm へ入っている。 */
+  const vars=[fitted.font!==1?`--sp-fit:${fitted.font}`:'',
               pad!=='1'?`--sp-pad:${pad}`:''].filter(Boolean);
   const fitVar=vars.length?` style="${vars.join(';')}"`:'';
   return `<section class="sp-page" data-paper="${esc(opt.paper||'a4-portrait')}"${
@@ -847,6 +899,29 @@
   requestAnimationFrame(()=>requestAnimationFrame(()=>window.print()));
  }
 
+ /* ---------- 設定の段（§9.293 ③、利用者の指示「印刷のメニューがかなり
+    複雑になってきたので、タブ、アコーディオン、ポップオーバーメニューなどを
+    駆使して階層化しわかりやすく使いやすく改良再構築してほしい」） ----------
+    §9.238 ④で「載せるもの／見せ方／用紙／刷り上がり」の4節へ分けたが、
+    §9.292 ①⑥で印刷範囲・文字の大きさ・セルの余白が増え、**縦に積むと
+    2画面ぶん**になった（目当ての設定を探すのに毎回スクロールする）。
+
+    **決める理由で3つの段**にする。並びは実際にする順（何を刷る → どう
+    見せる → どの紙に）で、**4つ目の「刷り上がり」は段にしない**
+    ——枚数と「既定へ戻す」はどの段からでも読めるべきなので、段の外
+    （足元）へ据える（§CLAUDE 8。同じことを段ごとに書かない）。
+
+    **開いていた段を覚える**（毎回①から辿らせない）。段の見出しには
+    **いまの値の一言**を出す（§9.250 ④。開かないと分からない段を作らない）。 */
+ const PV_TABS=[
+  {key:'load',label:'載せるもの',icon:'▤'},
+  {key:'look',label:'見せ方',    icon:'✎'},
+  {key:'paper',label:'用紙',     icon:'▭'},
+ ];
+ function pvTabOf(pref){
+  const k=String(pref&&pref.tab||'');
+  return PV_TABS.some(t=>t.key===k)?k:'load';
+ }
  /* ---------- 設定 ----------
     既定は「現場へ配る」ときの形。**毎回選び直させない**ので、選んだ内容は
     この端末に覚える(紙の運用は現場ごとに決まっていて、毎回は変わらない)。 */
@@ -869,6 +944,13 @@
                  range:'all',dateFrom:'',dateTo:'',
                  /* 紙の文字とセルの余白(§9.292 ⑥)。既定は「枠いっぱい」。 */
                  fontScale:'auto',cellPad:'1',
+                 /* 印刷専用の「#」「状態」の列(§9.293 ①)。**既定は足さない**
+                    ＝画面と同じ列だけ（利用者の報告「表示していない内容まで
+                    出ています」）。 */
+                 printExtras:false,
+                 /* 設定の段(§9.293 ③)。**開いていた段を覚える**——毎回
+                    ①から辿らせない。 */
+                 tab:'load',
                  zoomMode:'fit',zoomPct:100};
  function loadPref(){
   try{
@@ -887,6 +969,8 @@
    /* 紙の文字とセルの余白(§9.292 ⑥)。知らない綴りは既定へ倒す。 */
    v.fontScale=fontScaleOf(v);
    v.cellPad=cellPadOf(v);
+   v.printExtras=!!v.printExtras;
+   v.tab=PV_TABS.some(t=>t.key===v.tab)?v.tab:'load';
    /* 倍率(§9.238 ③)。知らない値は既定へ倒す（壊れた保存値で
       プレビューが開けなくならないように）。 */
    v.zoomMode=zoomModeOf(v);
@@ -1063,32 +1147,34 @@
      <button type="button" id="spPvClose" title="閉じる（刷りません）">×</button>
     </header>
     <div class="sp-pv-body">
+     <!-- 設定は段（タブ）で階層化する(§9.293 ③)。**段の見出しにいまの値**を
+          出すので、開かないと分からない段を作らない。刷り上がり（枚数）と
+          「既定へ戻す」は**段の外**（どの段からでも読める・触れる）。
+          **この中にバッククォートを書かないこと**(§9.211 ③)——ここは
+          テンプレートリテラルの中なので、コメントの中でも文字列が閉じ、
+          以降がJSとして解釈されて画面が組み上がらない(node --check は
+          通るので構文検査では捕まらない。実際にここで踏んだ)。 -->
      <aside class="sp-pv-side">
-      <section class="sp-pv-sec">
-       <h3>① 載せるもの</h3>
-       <div class="sp-options" id="spPvOptions"></div>
-      </section>
-      <section class="sp-pv-sec">
-       <h3>② 見せ方</h3>
-       <div class="sp-options" id="spPvLook"></div>
-      </section>
-      <section class="sp-pv-sec">
-       <h3>③ 用紙</h3>
-       <!-- 大きさと向きは別の欄(§9.252)。器は②見せ方と同じ sp-options に
-            する——中に「大きさ」「向き」の2つの群が入るので、sp-pats を
-            直に置くと群の見出しが札と同じ並びに混ざる。
-            **この中にバッククォートを書かないこと**(§9.211 ③)——ここは
-            テンプレートリテラルの中なので、コメントの中でも文字列が閉じ、
-            以降がJSとして解釈されて画面が組み上がらない(node --check は
-            通るので構文検査では捕まらない。実際にここで踏んだ)。 -->
-       <div class="sp-options" id="spPvSize"></div>
-      </section>
-      <section class="sp-pv-sec">
-       <h3>④ 刷り上がり</h3>
+      <div class="sp-pv-tabs" id="spPvTabs" role="tablist"></div>
+      <div class="sp-pv-panes" id="spPvPanes">
+       <section class="sp-pv-pane" data-pane="load">
+        <div class="sp-options" id="spPvOptions"></div>
+       </section>
+       <section class="sp-pv-pane" data-pane="look" hidden>
+        <div class="sp-options" id="spPvLook"></div>
+       </section>
+       <section class="sp-pv-pane" data-pane="paper" hidden>
+        <!-- 大きさと向きは別の欄(§9.252)。器は見せ方と同じ sp-options に
+             する——中に「大きさ」「向き」の2つの群が入るので、sp-pats を
+             直に置くと群の見出しが札と同じ並びに混ざる。 -->
+        <div class="sp-options" id="spPvSize"></div>
+       </section>
+      </div>
+      <div class="sp-pv-sum">
        <p class="sp-pv-facts" id="spPvFacts"></p>
        <button type="button" id="spPvReset" class="sp-pv-reset"
         title="この画面の設定（載せるもの・見せ方・用紙）を、はじめの形へ戻します。表示倍率は変えません">設定を既定へ戻す</button>
-      </section>
+      </div>
      </aside>
      <div class="sp-pv-view">
       <!-- 表示倍率と紙送り(§9.238 ③)。**刷り上がりの設定とは分けて紙の側へ
@@ -1162,14 +1248,16 @@
    grouped:(typeof view?.groupMode==='function')&&view.groupMode()!=='none',
    groupLabel:(typeof view?.groupModeLabel==='function')?view.groupModeLabel():'',
    allCols,visCols,
-   /* いま効いている文字の倍率(§9.292 ⑥)。**紙を組み立てるのと同じ
+   /* いま効いている倍率（§9.292 ⑥／§9.293 ②）。**紙を組み立てるのと同じ
       `withMm()`に聞く**——画面で別に計算すると、案内と刷り上がりが
-      食い違う（§9.163）。 */
-   fit:(()=>{
+      食い違う（§9.163）。`fit`は幅・`font`は文字で、**別の答え**。
+      `printCols`は**実際に紙へ出る列の数**（記入欄・印刷専用の列を含む）。 */
+   ...(()=>{
     try{
-     const cols=printColumns(pref&&pref.columnScope?pref:{...(pref||{}),columnScope:'all'});
-     return withMm(cols,paperUsableMm((pref&&pref.paper)||'a4-portrait').w,pref).fit;
-    }catch(_){return 1}
+     const cols=printColumns(pref||{});
+     const r=withMm(cols,paperUsableMm((pref&&pref.paper)||'a4-portrait').w,pref);
+     return {fit:r.fit,font:r.font,printCols:cols.length};
+    }catch(_){return {fit:1,font:1,printCols:0}}
    })(),
    /* 印刷範囲(§9.292 ①)。`shownCount`は範囲を当てる前・`rangedCount`は
       当てたあと。**両方出す**——「12件中3件」と書けないと、絞れているのか
@@ -1287,36 +1375,61 @@
      （§3・§6）——「自動」を選んでいると倍率が場面で変わるので、いま何倍で
      刷られるのかが読めないと選びようが無い。 */
   const fsCur=fontScaleOf(pref),padCur=cellPadOf(pref);
-  const fsRows=FONT_SCALES.map(x=>`<label class="sp-pat${fsCur===x.key?' is-on':''}" title="${esc(x.note)}">
-     <input type="radio" name="spFontScale" value="${x.key}"${fsCur===x.key?' checked':''}>
-     <span><b>${esc(x.label)}</b><small>${esc(x.note)}</small></span></label>`).join('');
-  const padRows=CELL_PADS.map(x=>`<label class="sp-pat${padCur===x.key?' is-on':''}" title="${esc(x.note)}">
-     <input type="radio" name="spCellPad" value="${x.key}"${padCur===x.key?' checked':''}>
-     <span><b>${esc(x.label)}</b><small>${esc(x.note)}</small></span></label>`).join('');
-  const fit=facts.fit||1;
-  /* **床に着いたら打つ手を書く**（§4）——「縮めています」だけでは、
-     大きさを選び直しても変わらない理由と、次にすることが読めない
-     （列が多い設備ではここが既定の状態になる）。 */
+  /* **段数の多い選択は札を積まない**（§9.293 ③）——7枚の縦積みだと段の
+     中がそれだけで1画面になる。呼び名の短い「大きさ」は横に並べ、
+     選んだものの説明だけを下に1行出す（同じことを7回書かない・§CLAUDE 8）。 */
+  const seg=(name,list,cur)=>`<div class="sp-seg" role="radiogroup" aria-label="${esc(name)}">`
+   +list.map(x=>`<label class="sp-seg-btn${cur===x.key?' is-on':''}" title="${esc(x.label)}: ${esc(x.note)}">
+      <input type="radio" name="${name}" value="${x.key}"${cur===x.key?' checked':''}>
+      <span>${esc(x.label)}</span></label>`).join('')+'</div>';
+  const fsRows=seg('spFontScale',FONT_SCALES,fsCur)
+   +`<p class="sp-opt-note">${esc((FONT_SCALES.find(x=>x.key===fsCur)||{}).note||'')}</p>`;
+  const padRows=seg('spCellPad',CELL_PADS,padCur)
+   +`<p class="sp-opt-note">${esc((CELL_PADS.find(x=>x.key===padCur)||{}).note||'')}</p>`;
+  const fit=facts.fit||1,font=facts.font||1;
+  /* **文字が幅より大きいと値が切れる**（§9.293 ②）。選んだ結果なので
+     止めはしないが、**そうなることを先に書く**（§4）。 */
+  const tight=font>fit+0.001;
+  /* **床に着いたら打つ手を書く**（§4）——列が多い設備では幅がここで
+     止まる。文字は別に選べるので、そのことも一緒に言う。 */
   const floored=fit<=MIN_FIT+0.001;
-  const fitNote=`いまの刷り上がりは <b>${Math.round(fit*100)}%</b>（本文 約${(12.5*fit).toFixed(1)}px 相当）。`
-   +(floored
-     ?'列が多く、これ以上は小さくできないところまで縮めています。'
-      +'<b>大きくするには、②の「列の範囲」を狭めるか、③で用紙を大きく（A3）／横向きにしてください。</b>'
-     :(fsCur==='auto'
-       ?'紙に余っているぶんだけ、幅と文字を一緒に大きくしています。'
-       :(fit<Number(fsCur)-0.001
-         ?'列が多いので、紙に収まるところまで縮めています。'
-         :'選んだ大きさで刷ります。')));
+  /* **もっと大きくする手立てを、効く順に並べて書く**（§4／§9.293 ④、
+     利用者の指示「バキバキの限界まで…本当にできるだけ大きく見やすく」）。
+     「自動」は**文字を切らずに入る限界**まで大きくするので、そこから先は
+     ①セルの余白を詰める ②列を減らす ③紙を大きくする、のどれかで
+     場所を作るしかない——そのことを画面に書く（黙っていると
+     「これ以上大きくならない」としか見えない）。 */
+  const bigger=[cellPadOf(pref)!=='0.6'?'セルの余白を「詰める」に':'',
+                scopeCur!=='visible'?'列の範囲を「見える範囲の列だけ」に':'',
+                String(pref&&pref.paper||'').indexOf('a3')!==0?'用紙をA3／横向きに':''
+               ].filter(Boolean);
+  /* **同じ数字を2箇所に出さない**（§CLAUDE 8）——列幅の%は足元の
+     「刷り上がり」がすでに言っているので、ここは本文の大きさだけ。 */
+  const fitNote=`いまの刷り上がりは 本文 <b>約${(12.5*font).toFixed(1)}px</b>。`
+   +(fsCur==='auto'
+     ?'<b>文字が切れない限界まで大きくしています。</b>'
+      +(bigger.length?`もっと大きくするには、${bigger.join('／')}。`
+                     :'これ以上は、列そのものを減らすしかありません。')
+      +'（「極大」「最大」を選べばさらに大きくできますが、長い値は「…」で切れます）'
+     :(tight
+       ?'<b>列の幅より文字が大きいので、長い値は「…」で切れます。</b>'
+        +(bigger.length?`切らずに大きくするには、${bigger.join('／')}。`
+                       :'切りたくないときは「自動」に戻してください。')
+       :'選んだ大きさで刷ります。'));
   return `<div class="sp-opt-group"><h4>列の範囲</h4>
    <div class="sp-pats" id="spColumnScope">${scopeRows}</div>
-   <p class="sp-opt-note">画面に出ている ${facts.allCols} 列のうち、スクロールせずに見えているのは ${facts.visCols} 列です。</p>
+   <p class="sp-opt-note">画面に出ている ${facts.allCols} 列のうち、スクロールせずに見えているのは ${facts.visCols} 列です。
+    <b>いま紙に出るのは ${facts.printCols} 列</b>（画面の列 ${scopeCur==='visible'?facts.visCols:facts.allCols} ＋ 記入欄など ${
+      Math.max(0,facts.printCols-(scopeCur==='visible'?facts.visCols:facts.allCols))} 列）。</p>
+   ${cb(pref,'printExtras','印刷用の「#」「状態」の列を足す',
+        '紙だけの2列です。通し番号は現場で行を指すため、状態は白黒コピーで色分けが消えるためのものです（既定は足さない＝画面と同じ列）')}
   </div>
   <div class="sp-opt-group"><h4>文字の大きさ</h4>
-   <div class="sp-pats" id="spFontScale">${fsRows}</div>
+   <div id="spFontScale">${fsRows}</div>
    <p class="sp-opt-note" id="spFitNote">${fitNote}</p>
   </div>
   <div class="sp-opt-group"><h4>セルの余白</h4>
-   <div class="sp-pats" id="spCellPad">${padRows}</div>
+   <div id="spCellPad">${padRows}</div>
   </div>
   <div class="sp-opt-group"><h4>枠線</h4>
    ${cb(pref,'borders','枠線（表の格子）を出す',
@@ -1437,6 +1550,46 @@
  /* 左の欄を描いて配線する。**押せない理由はデータで変わる**ので、
     設定を触るたびに描き直す（子ロットを載せると日数が変わる、など）。
     **`renderPreview()`は呼ばない**——呼び出し側が続けて呼ぶ。 */
+ /* 段の見出しに添える「いまの値の一言」（§9.293 ③）。**畳んだ先の値が
+    読めないと、開くまで思い出せない**（§9.199と同じ約束）。
+    **触っていない設定は数えない**——既定のままの項目まで並べると、
+    どこを変えたのかが読めなくなる。 */
+ function tabSummary(key,pref,facts){
+  if(key==='load'){
+   const r=rangeOf(pref);
+   const head=r==='all'?`${facts.shownCount}件`
+     :(r==='date'?`日付で ${facts.rangedCount}/${facts.shownCount}件`
+                 :`選んだ ${facts.rangedCount}件`);
+   const on=[pref.allEquipment?'全設備':'',pref.includeDone?'完了も':'',
+             pref.includeChildren?'子ロット':'',pref.pageByDate?'':'日付で分けない'].filter(Boolean);
+   return [head,...on].join('・');
+  }
+  if(key==='look'){
+   const fs=(FONT_SCALES.find(x=>x.key===fontScaleOf(pref))||{}).label||'';
+   const pad=(CELL_PADS.find(x=>x.key===cellPadOf(pref))||{}).label||'';
+   return [`${facts.printCols}列`,`文字 ${fs}`,pad!=='標準'?`余白 ${pad}`:'',
+           pref.borders===false?'枠線なし':''].filter(Boolean).join('・');
+  }
+  const cur=paperSizeOf(pref&&pref.paper);
+  return `${cur.label} ${cur.w}×${cur.h}mm`;
+ }
+ function paintTabs(){
+  const el=document.getElementById(PREVIEW_ID);if(!el)return;
+  const box=el.querySelector('#spPvTabs');if(!box)return;
+  const cur=pvTabOf(pv.pref);
+  const facts=previewFacts(pv.pref);
+  box.innerHTML=PV_TABS.map(t=>{
+   const sum=tabSummary(t.key,pv.pref,facts);
+   return `<button type="button" class="sp-pv-tab${cur===t.key?' is-on':''}"
+     role="tab" aria-selected="${cur===t.key?'true':'false'}" data-pv-tab="${t.key}"
+     title="${esc(t.label)}: ${esc(sum)}"><i aria-hidden="true">${t.icon}</i>
+     <span><b>${esc(t.label)}</b><small>${esc(sum)}</small></span></button>`;
+  }).join('');
+  box.querySelectorAll('[data-pv-tab]').forEach(b=>b.onclick=()=>{
+   pv.pref.tab=b.dataset.pvTab;savePref(pv.pref);paintTabs();
+  });
+  el.querySelectorAll('.sp-pv-pane').forEach(p=>{p.hidden=p.dataset.pane!==cur});
+ }
  function paintOptions(){
   const el=document.getElementById(PREVIEW_ID);if(!el)return;
   /* **触っていた欄へ戻す**——押せない理由はデータで変わるので描き直すが、
@@ -1508,6 +1661,8 @@
     pv.pref.paper=paperKeyWith(pv.pref.paper,inp.value);
     savePref(pv.pref);paintOptions();renderPreview();
    });
+  /* 段の帯は**最後に**描く（中身の値を読んで一言を作るため）。 */
+  paintTabs();
   const keepRange=focused&&focused.dataset?focused.dataset.sprange:'';
   if(keepRange){
    /* 日付の欄は選び直すたびに作り直されるので、**同じ欄へ戻す**
@@ -1623,6 +1778,8 @@
                    /* 効いている倍率。**紙を組むのと同じ関数に聞ける**ように
                       しておく——別に数えると案内と刷り上がりが食い違う。 */
                    fitOf:(cols,usableMm,opt)=>withMm(cols,usableMm,opt).fit,
+                   /* 文字の倍率は**幅とは別の答え**（§9.293 ②）。 */
+                   fontOf:(cols,usableMm,opt)=>withMm(cols,usableMm,opt).font,
                    /* 印刷範囲(§9.292 ①)。名前と並びは画面の文言と同じものを
                       1箇所から出す（テストも同じ表を見る）。 */
                    rangeModes:()=>RANGE_MODES.map(r=>({...r})),
