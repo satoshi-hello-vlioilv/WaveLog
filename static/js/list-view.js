@@ -2668,13 +2668,29 @@ function setupVirtualRows({gen,grid,tbody,rows,colCount,overscan,buildRow,reset,
   const td=document.createElement('td');td.colSpan=colCount;td.style.height=h+'px';
   tr.appendChild(td);return tr;
  };
+ /* ---------- 速いスクロールに追いつく（§9.297、利用者の指摘「仕掛データなどの
+    一覧のスクロールの速度が速いと描画が間に合わないケースがあります。少しだけ
+    描画範囲を広くしてスクロールに確実に追従するように」） ----------
+    組み直しは`requestAnimationFrame`にまとめてあるので、**1フレームぶんは
+    必ず遅れる**。その1フレームで画面より多く動くと、上下の空行（スペーサ）が
+    そのまま見える。前後に**画面1つぶんくらい**を先に作っておけば、
+    ふつうの速さのホイールでは空きが見えない。
+
+    **固定の行数にしないこと**——器の高さは表示サイズと窓の大きさで変わるので、
+    14行では小さい画面で余りすぎ、大きい画面で足りない。**画面に入る行数から
+    決める**（`overscan`は下限として効かせる）。上限を置くのは、行が多いほど
+    1回の組み直しが重くなるから（§9.94。8,000セルを超えると目に見えて止まる）。 */
+ const VIEW_BUFFER=0.9;          // 画面の何倍を前後に先取りするか
+ const OVERSCAN_MAX=60;          // これ以上は1回の組み直しが重くなる
  let start=-1;
  const draw=()=>{
   if(gen!==gridGeneration)return true;                 // 描き直された: 降りる
-  const view=Math.ceil(grid.clientHeight/rowH)+overscan*2;
-  const want=Math.max(0,Math.floor(grid.scrollTop/rowH)-overscan);
+  const viewRows=Math.ceil(grid.clientHeight/rowH);
+  const pad=Math.min(OVERSCAN_MAX,Math.max(overscan,Math.ceil(viewRows*VIEW_BUFFER)));
+  const view=viewRows+pad*2;
+  const want=Math.max(0,Math.floor(grid.scrollTop/rowH)-pad);
   // 窓の中に収まっているうちは組み直さない
-  if(start>=0&&want>=start&&want+Math.ceil(grid.clientHeight/rowH)<=start+view)return false;
+  if(start>=0&&want>=start&&want+viewRows<=start+view)return false;
   start=Math.min(want,Math.max(0,rows.length-view));
   const end=Math.min(rows.length,start+view);
   reset&&reset();

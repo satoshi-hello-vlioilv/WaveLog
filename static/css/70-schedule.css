@@ -502,6 +502,38 @@
    ない」）。内容の列を`grid-column:span N`で束ねた1マスなので、**切らずに
    最後まで出す**（切れることが直したかった不具合そのもの）。 */
 .sc-row-nonwork{overflow:visible;text-overflow:clip;color:var(--ink-2)}
+/* ---------- 題名の見せ方（§9.295、利用者の指示「設備停止の部分に色や
+   バッジみたいなデザインを付けたいのと、左寄せにしたり文字の位置を
+   変更できるように」） ----------
+   **色は行に付く`sc-rs-*`の`--rs-fg`/`--rs-bg`/`--rs-line`をそのまま読む**
+   （§9.198。バッジのために色表をもう1つ作らない）。設定していない行は
+   属性が付かないので、**今までの見え方から1pxも動かない**。
+   **札／帯にしたら行の地は塗らない**（同じ色が2箇所に出ると、どちらが印
+   なのか読めなくなる・§3）。 */
+.sc-row-nonwork[data-nw-align="中央"]{text-align:center}
+.sc-row-nonwork[data-nw-align="右"]{text-align:right}
+/* 題名の横の（所要時間）（§9.295 ④）。**名前より弱く**——主役は名前で、
+   時間は添え物（同じ濃さだと2つの名前が並んでいるように読める）。 */
+.sc-nw-time{margin-left:2px;font-weight:600;opacity:.75}
+.sp-nw-time{margin-left:0.6mm;font-weight:600;opacity:.75}
+.sc-nw-face{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;
+ white-space:nowrap;vertical-align:middle;font-weight:800}
+.sc-row-nonwork[data-nw-look="バッジ"] .sc-nw-face{
+ padding:0 var(--space-2);border-radius:var(--radius-pill);
+ border:1px solid var(--rs-line,var(--line-mid));
+ background:var(--rs-bg,var(--surface-2));color:var(--rs-fg,var(--ink-2))}
+/* 帯は**束ねたマスぜんぶ**を面にする（いちばん目立つ）。行の高さは変えない
+   ——変えると設備停止の行だけ背が高くなり、行を追う目が引っかかる。 */
+.sc-row-nonwork[data-nw-look="帯"]{align-self:stretch;display:flex;align-items:center;
+ padding:0 var(--space-2);border-radius:var(--radius-xs);
+ border:1px solid var(--rs-line,var(--line-mid));
+ background:var(--rs-bg,var(--surface-2));color:var(--rs-fg,var(--ink-2))}
+.sc-row-nonwork[data-nw-look="帯"][data-nw-align="中央"]{justify-content:center}
+.sc-row-nonwork[data-nw-look="帯"][data-nw-align="右"]{justify-content:flex-end}
+.sc-row-nonwork[data-nw-look="帯"] .sc-nw-face{flex:0 1 auto;min-width:0}
+/* 札／帯にした行は地を塗らない（上の約束）。`.sc-row-line`側の
+   `sc-rs-*`より**詳細度を1つ上げる**（同点だと書き順に頼ることになる）。 */
+.sc-row-line.sc-row-nw-face[class*="sc-rs-"]{background:var(--surface)}
 .sc-row-est{font-size:var(--tbl-fs);color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
 .sc-row-est.sc-est-default{color:#8a9aa0;font-style:italic}
 .sc-row-actual{font-size:var(--tbl-fs);color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;overflow:hidden}
@@ -1459,6 +1491,23 @@
 /* 作業以外の行（設備停止・枠）の題名（§9.294 ①）。内容の列を束ねた1マスで、
    **折り返してよい**——ここが切れることが直したかった不具合そのもの。 */
 .sp-c-nonwork{text-align:left;font-weight:700;color:var(--ink);white-space:normal}
+/* 紙も**画面と同じ属性**で受ける（§9.295）——判定を紙側でやり直さない。
+   色は`.sc-rs-*`が行に配る`--rs-*`をそのまま読む（§9.237 ⑥と同じ作法）。 */
+.sp-c-nonwork[data-nw-align="中央"]{text-align:center}
+.sp-c-nonwork[data-nw-align="右"]{text-align:right}
+.sp-nw-face{display:inline-block;max-width:100%;font-weight:800}
+.sp-c-nonwork[data-nw-look="バッジ"] .sp-nw-face{
+ padding:0 calc(1.2mm * var(--sp-fit,1));border-radius:var(--radius-pill);
+ border:0.15mm solid var(--rs-line,var(--line-mid));
+ background:var(--rs-bg,var(--surface-2));color:var(--rs-fg,var(--ink))}
+.sp-c-nonwork[data-nw-look="帯"]{
+ background:var(--rs-bg,var(--surface-2));color:var(--rs-fg,var(--ink));
+ box-shadow:inset 0 0 0 0.15mm var(--rs-line,var(--line-mid))}
+/* 札／帯にした行は地を塗らない。`tr[class*="sc-rs-"] td`（§9.237 ⑥）より
+   **詳細度を1つ上げる**——同点だと書き順に頼ることになる。 */
+.sp-table tbody tr.sp-row-nw-face[class*="sc-rs-"] td{background:var(--surface)}
+.sp-table tbody tr.sp-row-nw-face[class*="sc-rs-"] td.sp-c-nonwork[data-nw-look="帯"]{
+ background:var(--rs-bg,var(--surface-2))}
 /* 列の区切りは画面と同じ「隙間の細い線」(§9.197)。**最初の列には引かない**
    ——引くと器の枠と二重になる。 */
 .sp-table th+th,.sp-table td+td{border-left:0.12mm solid var(--line-soft)}
@@ -1488,14 +1537,22 @@
 .sp-measure th,.sp-measure td{overflow:visible;text-overflow:clip;
  white-space:nowrap;max-width:none}
 .sp-measure .sp-badge,.sp-measure .sp-chip{max-width:none;overflow:visible}
+/* 日付が変わる行（§9.295 ②）。**まとまりの帯が無い紙でも区切りが分かる**
+   ——既定（まとめない・日付ごとにページを分ける）では帯が1本も出ないので、
+   帯にだけ効かせていた §9.294 ③ は一度も効かなかった。空きは
+   `--sp-pad-day`（行間とは別の軸）で、上に太い罫を引いて特別感を出す。 */
+.sp-table tbody tr.is-day-start>td{
+ padding-top:calc(1.2mm * var(--sp-pad-day,1) * var(--sp-fit,1));
+ border-top:0.5mm solid var(--line-strong)}
 .sp-al-c{text-align:center}
 .sp-al-r{text-align:right;font-variant-numeric:tabular-nums}
 .sp-c-lot{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
 /* 記入欄は**空のまま罫線だけ**にする。薄い下線を入れると書きにくい。 */
 .sp-c-check{text-align:center}
-/* 設備停止の行は面で区別する。区分のバッジが文字でも言うので**淡く**
-   （以前は#f0f0f0の灰色で、白黒コピーだと記入欄まで沈んで見えた）。 */
-.sp-row-stop td{background:var(--surface-2)}
+/* 設備停止の行（§9.295 ③）。**ふつうのロットとほぼ同じ地**にする
+   ——区切りの帯と同じ濃さだと、枠線を消したときに見分けが付かない。
+   見分けは区分の札と題名の見せ方が持つ（§3。色だけで伝えない）。 */
+.sp-row-stop td{background:color-mix(in srgb, var(--surface-2) 35%, var(--surface))}
 /* 行表示マスタの色(§9.198)。**色の定義は画面と同じ`.sc-rs-*`が持つ**
    （`--rs-bg`等）ので、紙のためにもう1つ色表を作らない。 */
 .sp-table tbody tr[class*="sc-rs-"] td{background:color-mix(in srgb, var(--rs-bg) 55%, var(--surface))}
@@ -1547,10 +1604,17 @@
    **画面(`.sc-group-head`)と同じ3つ**——名前・どの日付で数えているか
    （現場歴／太陽暦）・件数。以前は濃い灰色(#d8d8d8)の帯に名前と件数だけで、
    「カラーが無くグレー」と指摘された部分がここ。 */
-/* 区切り（日付など）の帯だけ**別の行間**（§9.294 ③、利用者の指示「日付の
-   切り替わりは、行間の余白のみ『広め』くらい空けたい」）。行間と同じ値だと、
-   区切りが「1行ぶん濃い帯」でしか分からない。 */
-.sp-row-group td{background:var(--surface-2);border-left:0.7mm solid var(--line);
+/* ---------- 区切り（日付など）は「特別」に見せる（§9.295 ③、利用者の報告
+   「枠線なしの時に日付の区切りの色と設備停止の色が一緒になってしまう…
+    差をつけてわかりやすくしたい」） ----------
+   どちらも`--surface-2`だったので、枠線を消すと**同じ帯**に見えた。
+   区切りは**一段濃い面＋上の太い罫**にして、設備停止のほうは
+   **ふつうのロットとほぼ同じ地**まで薄くする（利用者の指示）。設備停止の
+   見分けは**区分の札と題名の見せ方**（§9.295）が持つ——色だけで伝えない
+   （§3）ので、地を薄くしても読めなくならない。
+   行間は**別の軸**（§9.294 ③）。 */
+.sp-row-group td{background:var(--surface-3);border-left:0.7mm solid var(--line);
+ border-top:0.5mm solid var(--line-strong);
  font-size:calc(11.5px * var(--sp-fit,1));text-align:left;
  padding:calc(1.2mm * var(--sp-pad-day,1) * var(--sp-fit,1)) calc(1.4mm * var(--sp-pad-x,1) * var(--sp-fit,1));
  border-bottom:0.15mm solid var(--line-soft)}
@@ -1593,6 +1657,13 @@
 .sp-page[data-borders="off"] .sp-table td{border:0}
 .sp-page[data-borders="off"] .sp-c-write,
 .sp-page[data-borders="off"] .sp-c-check{border-bottom:0.2mm solid var(--line-soft)}
+/* **日付の区切りの罫は枠線を消しても残す**（§9.295 ③、利用者の報告
+   「枠線なしの時に日付の区切りの色と設備停止の色が一緒になってしまう」）。
+   消しているのは**格子**であって区切りではない（§9.237 ①でも、面と記入欄の
+   下線は残すと決めてある）。ここが消えると、枠線なしの紙では日付の
+   変わり目が地の色の差だけになる。 */
+.sp-page[data-borders="off"] .sp-table tbody tr.is-day-start>td,
+.sp-page[data-borders="off"] .sp-row-group td{border-top:0.5mm solid var(--line-strong)}
 .sp-page[data-borders="off"] .sp-note,
 .sp-page[data-borders="off"] .sp-note-label{border-color:var(--line-soft)}
 /* ---------- 印刷の設定（プレビューの左側に出る） ---------- */
@@ -1717,6 +1788,26 @@
  align-items:center;gap:var(--space-2);padding:var(--space-1) 0;
  border-bottom:1px solid var(--line-soft);
 }
+/* ---------- 題名の見せ方（§9.295、利用者の指示） ----------
+   作業以外の区分にだけ出る**2段目**。行の5列を横断するので`1 / -1`で敷く
+   ——1列目へ入れると、色・アイコンの列幅に押し込まれて札が折り返す。
+   ラベル列は**固定幅**（§CLAUDE 画面基準 9。`auto`だと3行の左端がずれる）。 */
+.sc-rs-title{grid-column:1 / -1;display:grid;gap:2px;
+ padding:var(--space-1) 0 var(--space-1) var(--space-3);
+ border-left:2px solid var(--line-soft)}
+.sc-rs-tl-row{display:grid;grid-template-columns:var(--w-xs) minmax(0,1fr);
+ align-items:center;gap:var(--space-2)}
+.sc-rs-tl-k{font-size:var(--fs-micro);font-weight:700;color:var(--ink-2)}
+.sc-rs-tl-v{display:flex;flex-wrap:wrap;gap:var(--gap-hair);min-width:0}
+/* 選ばせ方は**印刷プレビューの帯と同じ形**（§9.229 ②。選んだ札のほうが濃い）
+   ——同じ役の部品を画面ごとに違う形にしない。 */
+.sc-rs-tl-btn{display:inline-flex;align-items:center;height:var(--ctl-h-xs);
+ padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line);border-radius:var(--radius-xs);
+ background:var(--surface);font-size:var(--fs-micro);font-weight:700;color:var(--muted);
+ cursor:pointer;white-space:nowrap}
+.sc-rs-tl-btn input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.sc-rs-tl-btn:hover{color:var(--ink);border-color:var(--teal)}
+.sc-rs-tl-btn.is-on{background:var(--pale);border-color:var(--teal);color:var(--computed-fg)}
 /* 列の見出し。**何の列かを字で言う**(§3)——色だけ・形だけでは伝わらない。 */
 .sc-rs-cols{
  display:grid;grid-template-columns:var(--w-md) var(--w-md) 9.5em minmax(0,1fr) auto;

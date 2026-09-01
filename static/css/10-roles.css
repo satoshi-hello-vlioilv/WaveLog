@@ -113,13 +113,19 @@
    | バッジ           | --fs-badge  10  | 800  | 件数・状態の最小表示           |
 
    下は**その役割にいる部品の一覧**。個別ルールには配色と並びだけを書く。 */
-.qa-v7 .qa-tab-title b,.mm-head h2,.sc-panel-title{
+/* **`.qa-v7 .qa-tab-title b`はここから外した**（§9.296 ②、利用者の指摘
+   「文字や表示エリアが広く大きいので周りのサイズや余白感に合わせて」）
+   ——マスタ管理やスケジュールの見出しは**画面そのものの題**だが、
+   品質データ分析は**一覧の上に載る1枚のカード**で、格が違う。下の
+   「準見出し」の役へ移した。 */
+.mm-head h2,.sc-panel-title{
   font-size:var(--fs-title);font-weight:800;color:var(--ink);
 }
 /* **データ一覧の見出し行はここに入れない**（§9.161）。表の見出しは
    「カードの小見出し」ではなく**表の一部**で、大きさは器が宣言する
    `--tbl-fs`（#grid th と同じ）。13pxのままだと、同じ表の中で見出し13・
    値14という不揃いが残る。 */
+.qa-v7 .qa-tab-title b,
 .qa-v7 .qa-acc-title,.split-candidate-head b,.disclosure-title,.wtb-title,
 .split-tolerance-legend>b{
   font-size:var(--fs-base-sm);font-weight:800;color:var(--ink);

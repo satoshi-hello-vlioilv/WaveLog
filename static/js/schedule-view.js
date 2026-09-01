@@ -1148,6 +1148,34 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    };
   });
  }
+ /* 題名の見せ方の3つ（§9.295、利用者の指示「色やバッジみたいなデザインを
+    付けたい／左寄せにしたり文字の位置を変更できるように」）。
+    **作業以外の区分にだけ出す**——作業の行には束ねた題名のマスが無いので、
+    出しておいて何も起きないのは押せないボタンと同じ（§4）。
+    **語彙はサーバーから**（`scRowTitleVocab`）。届いていなければ何も出さない
+    （綴りを画面で推測しない・§9.163）。 */
+ function titleRowHtml(t,cur){
+  if(!rowTitleSettable(t.key))return '';
+  const v=scRowTitleVocab;
+  if(!(v.looks||[]).length)return '';
+  const seg=(name,list,now,label,hint)=>`<div class="sc-rs-tl-row">
+    <span class="sc-rs-tl-k" title="${esc(hint)}">${esc(label)}</span>
+    <span class="sc-rs-tl-v">${list.map(x=>
+     `<label class="sc-rs-tl-btn${now===x.key?' is-on':''}" title="${esc(x.label)}${x.note?'：'+esc(x.note):''}">
+       <input type="radio" name="${esc(name)}-${esc(t.key)}" value="${esc(x.key)}"
+         data-rs-title="${esc(name)}"${now===x.key?' checked':''}>
+       <span>${esc(x.label)}</span></label>`).join('')}</span></div>`;
+  const look=cur?String(cur.titleLook||''):'',
+        place=cur?String(cur.titlePlace||''):'',
+        align=cur?String(cur.titleAlign||''):'';
+  return `<div class="sc-rs-title">
+   ${seg('titleLook',v.looks,look,'見せ方','名前を文字だけで出すか、札や帯にするか')}
+   ${seg('titlePlace',v.places,place,'位置','内容の列だけを束ねるか、行いっぱいに使うか')}
+   ${seg('titleAlign',v.aligns,align,'揃え','束ねたマスの中で、名前をどこへ寄せるか')}
+   ${(v.times||[]).length?seg('titleTime',v.times,cur?String(cur.titleTime||''):'',
+      '時間','所要時間を（ ）で名前の横に添えるか（既定は出す）'):''}
+  </div>`;
+ }
  function renderRowStylePop(){
   const pop=$('#scRowStylePop');if(!pop)return;
   const rows=rowStyleTargets();
@@ -1172,6 +1200,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     <div class="sc-rs-sample">${rowStyleSampleHtml(t)}</div>
     <button type="button" class="sc-rs-reset" data-rs-reset${cur?'':' disabled'}
       title="${cur?'この区分の設定を消して、元の色（アイコンなし）へ戻します':'この区分はまだ設定していません（いまが元のままです）'}">⟲ 戻す</button>
+    ${titleRowHtml(t,cur)}
    </div>`;
   };
   const cats=rows.filter(r=>!r.group).map(cell).join('');
@@ -1205,6 +1234,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   pop.querySelectorAll('[data-rs-reset]').forEach(b=>{
    b.onclick=()=>resetRowStyle(b.closest('.sc-rs-row').dataset.rs);
   });
+  /* 題名の3つ（§9.295）。**選んだ瞬間に下の表へ当たり、そのまま保存される**
+     ——色・アイコンと同じ作法（覚えることを増やさない）。 */
+  pop.querySelectorAll('[data-rs-title]').forEach(inp=>{
+   inp.onclick=()=>saveRowStyle(inp.closest('.sc-rs-row').dataset.rs,
+     {[inp.dataset.rsTitle]:inp.value});
+  });
  }
  /* 1件だけ書く。**失敗したら画面に出す**——黙って握り潰すと「効かない」に
     しか見えない（§9.190で実際にそうなった）。 */
@@ -1213,13 +1248,21 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const next={key,
    colorKey:patch.colorKey!==undefined?patch.colorKey:String(cur.colorKey||''),
    icon:patch.icon!==undefined?patch.icon:String(cur.icon||''),
+   /* **触っていない設定も必ず運ぶ**（§9.212 ②／§9.113）——1つ書き漏らすと
+      その設定だけが黙って消える（同じ形で4度踏んでいる）。 */
+   titleLook:patch.titleLook!==undefined?patch.titleLook:String(cur.titleLook||''),
+   titlePlace:patch.titlePlace!==undefined?patch.titlePlace:String(cur.titlePlace||''),
+   titleAlign:patch.titleAlign!==undefined?patch.titleAlign:String(cur.titleAlign||''),
+   titleTime:patch.titleTime!==undefined?patch.titleTime:String(cur.titleTime||''),
   };
   next.showIcon=next.icon!=='none';
   /* 利用者IDは送らない——サーバーが端末のログインIDで埋める
      (`request_user_id`)。画面が空文字を送るとそちらが優先されて
      「誰が変えたか」が残らない。 */
   const body={key:next.key,colorKey:next.colorKey,icon:next.icon==='none'?'':next.icon,
-              showIcon:next.showIcon};
+              showIcon:next.showIcon,titleLook:next.titleLook,
+              titlePlace:next.titlePlace,titleAlign:next.titleAlign,
+              titleTime:next.titleTime};
   if(cur.id)body.id=cur.id;
   try{
    await api('/api/schedule/row-style-master'+(cur.id?'/update':''),
@@ -3528,7 +3571,18 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     無関係な文字を停止の行にも書き込む**。ここで落とさないと、束ねただけ
     では消えない。**作業可否も落とす**——あれはロットが仕掛かっているかの
     話で、停止には意味が無い（`—`の札が出るだけ）。 */
- function nonWorkSpanOf(keys){
+ /* 束ねる範囲。**「行いっぱい」も選べる**（§9.295、利用者の指示「左寄せに
+    したり文字の位置を変更できるように」）——内容の列は行のまん中から
+    始まるので、名前を行の頭から出したい現場がある。**操作の列は残す**
+    （外す・詳細への入口が消える）。 */
+ function nonWorkSpanOf(keys,place){
+  if(String(place||'')==='全幅'){
+   const last=keys.reduce((n,k,i)=>k==='__actions__'?n:i+1,0);
+   if(last>0){
+    const run=new Set(keys.slice(0,last));
+    return {key:keys[0],span:last,inRun:k=>run.has(k)};
+   }
+  }
   const at=keys.findIndex(k=>!scIsFixedCol(k));
   if(at<0)return {key:'',span:0,inRun:()=>false};
   let span=1;
@@ -3912,6 +3966,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  /* 保存済みの設定。**行が無い＝既定**（空文字を保存すると「空という設定」に
     なり、既定を変えても追随しなくなる。§9.99と同じ約束）。 */
  let scRowStyles=null,scRowStylesAt=0;
+ /* 題名の見せ方の語彙（§9.295）。**サーバーが答える**ので画面へ綴りを
+    書き写さない（§9.163）。届くまでは空＝選ばせない（推測で並べない）。 */
+ let scRowTitleVocab={looks:[],places:[],aligns:[],times:[]};
  async function loadRowStyles(force){
   if(!force&&scRowStyles)return scRowStyles;
   try{
@@ -3919,6 +3976,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const m=new Map();
    (r.items||[]).forEach(x=>{if(x&&x.key)m.set(String(x.key),x)});
    scRowStyles=m;scRowStylesAt=Date.now();
+   scRowTitleVocab={looks:r.titleLooks||[],places:r.titlePlaces||[],
+                    aligns:r.titleAligns||[],times:r.titleTimes||[]};
   }catch(_){if(!scRowStyles)scRowStyles=new Map()}
   return scRowStyles;
  }
@@ -3939,8 +3998,36 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   /* **既定はアイコンなし**(§9.201)。以前は区分・分類ごとに元の絵を
      当てていたが、利用者の指示で「既定はすべてアイコンなし」にした
      ——付けたい行にだけ付けるほうが、印としての意味が強くなる。 */
+  /* 題名の見せ方（§9.295、利用者の指示「設備停止の部分に色やバッジみたいな
+     デザインを付けたい／左寄せにしたり文字の位置を変更できるように」）。
+     **効く順は色と同じ**（分類 → 区分 → 既定）で、判定をここ以外に置かない
+     ——画面と紙で違う答えが出る（§9.163）。 */
   return {colorKey:hit?String(hit.colorKey||''):'',
+          titleLook:hit?String(hit.titleLook||''):'',
+          titlePlace:hit?String(hit.titlePlace||''):'',
+          titleAlign:hit?String(hit.titleAlign||''):'',
+          titleTime:hit?String(hit.titleTime||''):'',
           icon:iconValueOf(hit),html:rowIconHtml(iconValueOf(hit))};
+ }
+ /* 題名の見せ方が効くのは**作業以外の行だけ**（§9.295）。作業の行には
+    束ねた題名のマスが無いので、盤では欄ごと出さずに理由を書く（§4）。 */
+ const ROW_TITLE_KEYS=new Set(['cat:stop','cat:comment','cat:frame']);
+ function rowTitleSettable(key){
+  const k=String(key||'');
+  return ROW_TITLE_KEYS.has(k)||k.indexOf('stopcat:')===0;
+ }
+ /* 題名の横の（所要時間）（§9.295 ④、利用者の指示「設備停止名の横に()書きで
+    時間を表示するように。デフォルト表示ONでOFFにもできるように」）。
+    **既定は出す**（空欄＝出す）。時間が分からない行では何も出さない
+    ——「（-）」と書くと、0分の停止があるように読める（§9.114）。
+    書き方は`fmtMinutes`（「45分」「2時間30分」）——見出しが単位を言わない
+    場所なので、`fmtCompact`の`0:45`ではなくこちら（§9.3改訂の使い分け）。 */
+ function nonWorkTimeText(e){
+  if(!e||e.kind==='作業')return '';
+  if(String(rowStyleOf(e).titleTime||'')==='なし')return '';
+  const m=e.estimate&&e.estimate.minutes;
+  if(m===null||m===undefined||!Number.isFinite(Number(m))||Number(m)<=0)return '';
+  return `（${fmtMinutes(Number(m))}）`;
  }
  function rowStyleClass(e){
   const c=rowStyleOf(e).colorKey;
@@ -5137,7 +5224,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     +(e.__pending?' sc-row-pending':'')+(locked?' sc-row-locked':'')+(e.ongoing?' sc-row-ongoing':'')
     /* 行の地の色(§9.198)。区分のセルだけでなく行全体に淡く敷く——設備停止の
        ように「作業ではない行」を、行を追う目のまま見分けられるようにする。 */
-    +rowStyleClass(e);
+    +rowStyleClass(e)
+    /* 題名を札／帯にしたときは**行の地を塗らない**（§9.295）——同じ色が
+       行の地と札の両方に出ると、どちらが印なのか読めなくなる（§3・§8）。
+       印は行に付けて、地を消すのはCSSが受ける。 */
+    +(e.kind!=='作業'&&rowStyleOf(e).titleLook?' sc-row-nw-face':'');
    row.dataset.id=e.id;
    row.__scEntry=e;   // 作業可否だけ後から差し替えるときの参照(§9.51)
    // ロック(§9.38)された行はその日時に釘付けなので、並べ替えても時刻が
@@ -5210,17 +5301,30 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       内容の列を束ねてそこへ置き、束の外の内容・計算の列と作業可否は空に
       する。**`cellOf`より先に見る**——`cellOf`が持つ固定列（作業可否）も
       落とす必要があるため。 */
-   const nwSpan=e.kind!=='作業'?nonWorkSpanOf(timelineColumnKeys()):null;
+   const nwStyle=e.kind!=='作業'?rowStyleOf(e):null;
+   const nwSpan=e.kind!=='作業'?nonWorkSpanOf(timelineColumnKeys(),nwStyle&&nwStyle.titlePlace):null;
    const nwTitle=nwSpan?nonWorkTitleText(e,'（ダブルクリックで書けます）'):'';
    const cellHtml=k=>{
     if(nwSpan){
-     if(k===nwSpan.key)
+     if(k===nwSpan.key){
       /* **`grid-column:span N`で束ねる**——器は`--sc-cols`のグリッドなので、
          続く列のセルを出さなければ後ろの固定列はそのまま次のトラックへ
-         流れる（列がずれない）。 */
+         流れる（列がずれない）。
+         見せ方・揃えは**属性で渡す**（§9.295）——CSSが受けるので、選択肢を
+         1つ足しても画面のJSは触らない。色は行に付く`sc-rs-*`の
+         `--rs-fg`/`--rs-bg`/`--rs-line`をそのまま読む（色表を2つ持たない）。 */
+      const look=String((nwStyle&&nwStyle.titleLook)||'');
+      const align=String((nwStyle&&nwStyle.titleAlign)||'');
+      /* （所要時間）は**題名の一部ではない**（§9.295 ④）——`title`属性と
+         監査に残る名前は名前のまま。添えるのは見せるときだけ。 */
+      const nwTime=nonWorkTimeText(e);
+      const body=esc(nwTitle)+(nwTime?`<span class="sc-nw-time">${esc(nwTime)}</span>`:'');
+      const inner=look?`<b class="sc-nw-face">${body}</b>`:body;
       return `<span class="sc-row-title sc-row-nonwork" data-col="${esc(k)}"`
+       +(look?` data-nw-look="${esc(look)}"`:'')+(align?` data-nw-align="${esc(align)}"`:'')
        +(nwSpan.span>1?` style="grid-column:span ${nwSpan.span}"`:'')
-       +` title="${esc(nwTitle)}">${esc(nwTitle)}</span>`;
+       +` title="${esc(nwTitle)}${esc(nwTime)}">${inner}</span>`;
+     }
      if(nwSpan.inRun(k))return '';
      if(!scIsFixedCol(k)||NON_WORK_BLANK_FIXED.has(k))
       return `<span data-col="${esc(k)}"></span>`;
@@ -5260,6 +5364,18 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       組み上がってから`data-col`で引いて1度だけ当てる（判定は
       `WL.columnAlign`の1箇所）。 */
    WL.columnAlign.applyCells(row,timelineTarget());
+   /* 題名の揃え（§9.295）は**列の揃えより後に当てる**——`applyCells`は
+      `@layer utility`の`.al-*`を貼るので（§9.239 ④）、素のCSSで
+      `text-align`を書いても必ず負ける（実測: 紙は中央なのに画面だけ左）。
+      **同じ語彙（`.al-*`）で上書きする**——詳細度を数える勝負にしない。 */
+   if(nwSpan){
+    const cell=row.querySelector('.sc-row-nonwork');
+    if(cell){
+     const a=cell.getAttribute('data-nw-align')||'';
+     cell.classList.remove('al-l','al-c','al-r');
+     cell.classList.add(a==='中央'?'al-c':(a==='右'?'al-r':'al-l'));
+    }
+   }
    row.classList.toggle('sc-row-not-workable',workable.state==='ng');
    if(canDrag)wireDrag(row);
    /* 選ばれている行は面でも分かるようにするが、**色だけで伝えない**
@@ -7544,6 +7660,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   /* 作業以外の行の題名（§9.294 ①）。紙は内容の列を束ねてここへ置く。
      **紙が組み立て直さない**——題名は`nonWorkTitleText()`の1箇所（§9.238 ②）。 */
   nonWorkTitle:e=>(e&&e.kind!=='作業')?nonWorkTitleText(e,'（コメント）'):'',
+  /* 題名の横の（所要時間）（§9.295 ④）。**出すかどうかの判定も含めてここ**
+     ——紙で判定をやり直すと、画面と刷り上がりが食い違う（§9.163）。 */
+  nonWorkTime:e=>nonWorkTimeText(e),
+  /* 行の見せ方を取り直して描き直す（§9.295）。**同じ1本を通す**——
+     別のPCが色を変えたときも、盤で選んだときも、ここを通って画面が揃う。 */
+  reloadRowStyles:async()=>{await loadRowStyles(true);renderRowStylePop();renderTimeline()},
 
   columnEffWidthPx:k=>columnEffWidthPx(k),
   /* 「見える範囲の列」（§9.236）——画面をスクロールせずに見えている列だけ。 */

@@ -510,8 +510,13 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
    const host=document.createElement('div');
    host.className='rp-page';host.style.position='fixed';host.style.left='-9999px';
    document.body.appendChild(host);
-   const html=k=>WL.reportSectionHtml
-     ?WL.reportSectionHtml('見本',[[one.label,'値',{...one,stack:k}]],1)
+   /* **`rpCellTuple`を通す1本で描くこと**（§9.296 ③）——`reportSectionHtml`へ
+      手で組んだタプルを渡す網は、**マスの持ちものを紙へ運ぶ口**（`rpCellTuple`）が
+      `stack`を落としていても通る。実際に落としており、利用者から
+      「ボタンを押しても変化が全くなく、プレビューも横のまま」と報告された。
+      `sectionHtml`は**マスの配列**を受けて紙の節を組む1本。 */
+   const html=k=>WL.reportStat&&WL.reportStat.sectionHtml
+     ?WL.reportStat.sectionHtml({},'見本',[{...one,stack:k,blank:false,kind:'value'}],1,'','')
      :'';
    host.innerHTML=html(true);
    const up=host.querySelector('.rp-field');

@@ -674,24 +674,43 @@ def stop_category_delete():
 # 変えられるようにすると色が何も語らなくなる(設備停止分類マスタと同じ理由)。
 # ========================================================================
 def _row_style_entry(r):
- # r: 行表示ID,区分キー,色キー,アイコン,アイコン表示,有効,更新日時,更新者ID
+ # r: 行表示ID,区分キー,色キー,アイコン,アイコン表示,有効,更新日時,更新者ID,
+ #    題名の見せ方,題名の位置,題名の揃え(§9.295)
  return {'id':r[0],'key':str(r[1] or ''),'colorKey':str(r[2] or ''),'icon':str(r[3] or ''),
          'showIcon':(True if r[4] is None else bool(r[4])),
+         'titleLook':sr.normalize_row_title_look(r[8] if len(r)>8 else ''),
+         'titlePlace':sr.normalize_row_title_place(r[9] if len(r)>9 else ''),
+         'titleAlign':sr.normalize_row_title_align(r[10] if len(r)>10 else ''),
+         'titleTime':sr.normalize_row_title_time(r[11] if len(r)>11 else ''),
          'updatedAt':r[6].isoformat() if r[6] else None,'updatedBy':str(r[7] or '')}
+
+def _choice_list(table):
+ return [{'key':k,'label':l,'note':n} for k,l,n in table]
 
 @bp.get('/api/schedule/row-style-master')
 def row_style_list():
  items=_cfg_read(lambda mc:[_row_style_entry(r) for r in sr.row_style_rows(mc)])
- return jsonify(ok=True,configured=True,items=items,stale=False)
+ # **語彙はサーバーが答える**（§9.163／§9.295）——画面へ綴りを書き写すと、
+ # 見せ方を1つ足したときに2箇所直すことになる。
+ return jsonify(ok=True,configured=True,items=items,stale=False,
+                titleLooks=_choice_list(sr.ROW_TITLE_LOOKS),
+                titlePlaces=_choice_list(sr.ROW_TITLE_PLACES),
+                titleAligns=_choice_list(sr.ROW_TITLE_ALIGNS),
+                titleTimes=_choice_list(sr.ROW_TITLE_TIMES))
 
 def _row_style_save(x):
  rid=x.get('id')
  def fn(mc):
+  # **送っていない項目は今の値を残す**（§9.212 ②）——`None`が「触っていない」。
   gid,created=sr.row_style_upsert(mc,x.get('key'),request_user_id(x),
                                   color_key=str(x.get('colorKey') or ''),
                                   icon=str(x.get('icon') or ''),
                                   show_icon=x.get('showIcon') is not False,
-                                  row_style_id=int(rid) if rid not in (None,'') else None)
+                                  row_style_id=int(rid) if rid not in (None,'') else None,
+                                  title_look=x.get('titleLook'),
+                                  title_place=x.get('titlePlace'),
+                                  title_align=x.get('titleAlign'),
+                                  title_time=x.get('titleTime'))
   return {'id':gid,'created':created}
  return _cfg_write_response(fn)
 
