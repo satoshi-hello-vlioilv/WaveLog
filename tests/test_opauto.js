@@ -141,10 +141,7 @@ let b=null;
    if(t)t.click();
   },NM_LOT);
   await page.waitForSelector('#opItemModal:not([hidden])',{timeout:8000});
-  await page.evaluate(()=>{
-   const t=[...document.querySelectorAll('#opModalTabs button')].find(b=>/何を記録/.test(b.textContent));
-   if(t)t.click();
-  });
+  await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="data"]',{timeout:8000});
   await page.waitForTimeout(300);
   const dlg=await page.evaluate(()=>{
    const f=document.getElementById('opItemModal');

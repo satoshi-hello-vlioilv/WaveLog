@@ -224,10 +224,7 @@ let b=null;
    await page.waitForFunction(()=>{
     const m=document.getElementById('opItemModal');return !!m&&!m.hidden;
    },null,{timeout:10000});
-   await page.evaluate(()=>{
-    const t=[...document.querySelectorAll('.op-tab')].find(x=>/見せる/.test(x.textContent));
-    if(t)t.click();
-   });
+   await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="look"]',{timeout:8000});
    await page.waitForTimeout(400);
    /* ---- 意匠の「色」も同じ画面（§9.287-G、利用者の指示「色の部分も
           もっとたくさんの色を選べるように」） ----

@@ -1116,14 +1116,20 @@
   display:grid;grid-template-columns:minmax(280px,var(--w-2xl)) minmax(0,1fr);
   gap:var(--space-3);padding:var(--space-3);
 }
-.op-modal-preview{display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
+/* 見本は**横1本の帯**（§9.299）。縦に積むと、1つの欄しか出さないのに
+   高さだけが増える。左＝何を見ているか／中＝実物／右＝記録される値。 */
+.op-modal-preview{display:flex;flex-direction:row;align-items:center;
+  gap:var(--space-3);min-width:0;flex-wrap:nowrap}
 /* 見本の帯の1行目（§9.288 ④）。**1行**——「何を見ているか／マスの説明／
    `?`／いまの値」。縦に積むと、固定した高さのうち見本そのものの取り分が減る。 */
-.op-prev-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);
-  flex:0 0 auto;font-size:var(--fs-sm);font-weight:800;color:var(--nav)}
+.op-prev-head{display:flex;flex-wrap:nowrap;align-items:center;gap:var(--gap-inline);
+  flex:0 0 auto;max-width:38%;font-size:var(--fs-sm);font-weight:800;color:var(--nav)}
 .op-prev-head small{font-weight:400;color:var(--ink-3);font-size:var(--fs-badge);
   min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
-.op-prev-head .op-prev-value{margin-left:auto;flex:0 0 auto}
+/* 記録される値は**帯の右端**（§9.299。見出しの行から出したので、
+   ここで場所を持つ）。 */
+.op-modal-preview>.op-prev-value{margin-left:auto;flex:0 1 auto;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* **見本は実物と同じ大きさ**（§9.226 ①）。1マスの実寸はJSが
    `--op-cell`で渡す（`measure-opdata.js`が測定画面で実測した値）。
    器に入らないときは**横へ流す**——縮めると文字だけが実物と違う比率に
@@ -1132,8 +1138,10 @@
    117〜136pxと動く（実測）ので、そのままだと下の「記録される値」以下が
    上下し、左右の釣り合いも変わる。いちばん高い形に合わせて器が持つ。
    中身は**上に寄せる**（真ん中に置くと、低い形のときに宙に浮いて見える）。 */
-.op-prev-scroll{overflow-x:auto;overflow-y:hidden;padding-bottom:2px;
-  min-height:var(--op-prev-h,9.8em);align-content:start}
+/* 帯の中では**高さは中身なり**（§9.299）。器の高さは`.op-modal-preview`が
+   `--op-prev-h`で持つので、ここで下限を持つと帯が伸びる。 */
+.op-prev-scroll{flex:1 1 auto;min-width:0;overflow-x:auto;overflow-y:hidden;
+  padding-bottom:2px;align-content:start}
 /* 「いまは作れない」理由（§9.250 ⑧）。**直す場所はこの窓**なので、
    測定画面ではなくここに出す。色は警告——押しても何も起きない設定を
    選んでいる状態で、そのまま保存できてしまうのを止めたいわけではない
@@ -1382,6 +1390,29 @@
       （面積は頻度×重要度・§CLAUDE 1）。段（タブ）と畳み（`<details>`）は
       今までどおり。
    ================================================================ */
+/* ================================================================
+   §9.299 設定窓を組み直す（利用者の指示）
+   ----------------------------------------------------------------
+   「サンプルは今の3分の1くらいで十分だし、3分割の3段構成になっているが、
+     最下段のエリアは死んでいる。メニューはコンパクトにしたり、メニュー構造を
+     改良してポップオーバーの入れ子メニューなども工夫して使うことで…
+     メインコンテンツである部分は広いエリアをしっかり使って…
+     スクロールレス設計をベースに長ったらしい説明は抜きにして、必要な項目を
+     最小限の手数でチェック、選択でき…」
+
+   実測（1920×1080）: 見本の帯が200px・段の帯が44px、そのあと本体が
+   210pxで終わり、**その下に450pxの空白**が残っていた。決めることは3つの
+   塊に分かれているのに、段（タブ）で1つずつしか見せていなかったので、
+   広い窓を持ちながら1/3しか使えていなかった。
+     ①**段（タブ）を廃止**して3つの塊を**横に並べる**（面積は頻度×重要度
+       ・§CLAUDE 1。手数も3クリック→0）
+     ②**見本は1/3**（15em→5em）。器の中で1つの欄を出すだけなので、
+       それ以上は空白にしかならない
+     ③**大きい選び物は浮き出し**（選ばせ方24枚・選択肢の値・意匠）。
+       **DOMには置いたまま`hidden`だけを入切する**（§9.222 ①）——
+       body直下へ作ると`bindOpModal()`の配線が届かない
+     ④**状態は見出しの行**（段の下の1行を廃止）
+   ================================================================ */
 .op-dialog{width:98vw;height:96vh;max-height:96vh;
   display:flex;flex-direction:column}
 .op-modal-head{display:flex;align-items:center;gap:var(--space-3)}
@@ -1412,12 +1443,18 @@
    設定が丸ごと上下する。いちばん背の高い形（メモ＋単位の行）が入る高さ。 */
 .op-modal-preview{
   flex:0 0 auto;height:var(--op-prev-h);min-height:var(--op-prev-h);
-  display:flex;flex-direction:column;gap:var(--gap-tight);
-  overflow:auto;scrollbar-gutter:stable;
-  padding:var(--space-2);border:1px solid var(--line-soft);
+  overflow:hidden;
+  padding:var(--space-1) var(--space-2);border:1px solid var(--line-soft);
   border-radius:var(--radius-sm);background:var(--surface-2);
 }
-.op-dialog{--op-prev-h:15em}
+/* 「いまは作れない」理由（§9.250 ⑧）は帯の外へ出す——帯の高さは固定なので、
+   中に置くと出た瞬間に見本が押し出される。 */
+.op-modal-body>.op-prev-note{flex:0 0 auto}
+/* 見本は**1/3**（§9.299、利用者の指示「サンプルは今の3分の1くらいで十分」）。
+   出しているのは**1つの欄**（§9.276 ⑥で隣の欄をやめた）ので、それ以上の
+   高さは空白にしかならない。**高さは固定する**（§9.227 ②）——選ばせ方で
+   背が変わると、下の3列が丸ごと上下する。 */
+.op-dialog{--op-prev-h:5em}
 /* 見本の帯の1行目は「何を見ているか＋`?`＋いまの値」。**説明は`?`の中**。 */
 .op-prev-info{
   flex:0 0 auto;display:inline-grid;place-items:center;
@@ -1430,39 +1467,67 @@
 .op-prev-info-pop{min-width:var(--w-2xl);max-width:min(92vw,640px);max-height:60vh;overflow:auto}
 .op-prev-info-head{margin:0 0 var(--space-2);color:var(--ink);font-weight:800}
 .op-prev-info-head small{display:block;color:var(--ink-soft);font-size:var(--fs-tiny);font-weight:400}
-.op-modal-right{display:flex;flex-direction:column;min-width:0;min-height:0;flex:1 1 auto;
-  gap:var(--gap-inline)}
-.op-modal-form{flex:1 1 auto;min-height:0;overflow:auto;scrollbar-gutter:stable;
+/* 本体は**器いっぱい**。列の中だけが必要なら流れる（§9.299。窓ごと
+   スクロールさせない——見出しと保存が流れて消えるため）。 */
+.op-modal-form{flex:1 1 auto;min-height:0;overflow:hidden;
   display:flex;flex-direction:column;gap:var(--gap-inline);min-width:0}
-/* --- タブ: 4段。**番号と要約を両方出す**（あと何段かを数えさせない） --- */
-.op-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px;flex:none;
-  padding:2px;background:var(--surface-2);border-radius:var(--radius-sm)}
-.op-tab{
-  display:flex;flex-direction:column;align-items:flex-start;gap:0;min-width:0;
-  padding:var(--space-1) var(--space-2);border:0;border-radius:var(--radius-xs);
-  background:none;color:var(--ink-3);cursor:pointer;text-align:left;
-}
-.op-tab>b{font-size:var(--fs-sm);font-weight:800;white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis;max-width:100%}
-.op-tab>span{font-size:var(--fs-micro);white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis;max-width:100%}
-.op-tab:hover{background:var(--surface)}
-.op-tab.is-on{background:var(--surface);color:var(--nav);
-  box-shadow:inset 0 -2px 0 var(--teal),0 1px 2px rgba(15,32,39,.10)}
-/* --- 説明のアコーディオン: 決める文と、知っておくとよい文を分ける --- */
-.op-help{grid-column:1/-1;border:1px solid var(--line-soft);border-radius:var(--radius-xs);
-  background:var(--surface-2)}
-.op-help>summary{padding:2px var(--space-2);color:var(--ink-3);font-size:var(--fs-badge);
-  font-weight:700;cursor:pointer;list-style:revert}
-.op-help-body{padding:0 var(--space-2) var(--space-1);color:var(--ink-2);font-size:var(--fs-badge)}
-.op-help-body p{margin:0}
+/* ---- 決めることは3つの塊を**横に並べる**（§9.299） ---- */
+.op-cols{flex:1 1 auto;min-height:0;display:grid;gap:0 var(--space-3);
+  grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch}
+.op-cols.is-one{grid-template-columns:minmax(0,1fr)}
+.op-cols>.op-form-sec{display:flex;flex-direction:column;gap:var(--gap-inline);
+  min-width:0;min-height:0;overflow:auto;scrollbar-gutter:stable;
+  padding:0 var(--space-3) 0 0;border-right:1px solid var(--line-soft);border-top:0}
+.op-cols>.op-form-sec:last-child{border-right:0;padding-right:0}
+/* 塊の見出しは**列の頭に貼り付ける**（流れても「いまどの塊か」を見失わない）。 */
+.op-cols>.op-form-sec>.op-form-sec-head{position:sticky;top:0;z-index:1;
+  padding-bottom:var(--space-1);background:var(--surface)}
+/* 列の中は1列に積む（§9.299。列そのものが塊なので、中で更に折り返さない）。 */
+.op-cols .op-form-row{grid-column:auto}
+/* ---- 浮き出し（§9.299。**DOMには置いたまま**hiddenを入切する・§9.222 ①） ---- */
+.op-pop-btn{display:inline-flex;align-items:center;gap:var(--gap-tight);
+  height:var(--ctl-h-sm);max-width:100%;white-space:nowrap;padding:0 var(--space-2);
+  border:1px solid var(--line-mid);border-radius:var(--radius-xs);
+  background:var(--surface);color:var(--ink);font-size:var(--fs-sm);font-weight:700;cursor:pointer}
+.op-pop-btn:hover{border-color:var(--teal);color:var(--teal-dark)}
+.op-pop-btn[aria-expanded="true"]{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
+.op-pop-btn>b{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.op-pop-btn>small{min-width:0;overflow:hidden;text-overflow:ellipsis;
+  color:var(--ink-3);font-weight:400;font-size:var(--fs-micro)}
+/* **覆う面積は小さく**（§9.299）——浮き出しは他の列の上に出るので、
+   外側を1回押して畳むまで下の欄が押せない。4枚×約200pxが入る幅で足りる。 */
+.op-pop{position:fixed;z-index:var(--z-popover);
+  min-width:var(--w-2xl);max-width:min(92vw,880px);max-height:68vh;overflow:auto;
+  padding:var(--space-3);border:1px solid var(--line);border-radius:var(--radius-md);
+  background:var(--surface);box-shadow:0 10px 28px rgba(15,32,39,.18)}
+.op-pop[hidden]{display:none}
+.op-pop-head{display:flex;align-items:baseline;gap:var(--space-2);margin:0 0 var(--space-2);
+  font-size:var(--fs-base-sm);font-weight:800;color:var(--teal-dark)}
+.op-pop-head small{font-weight:400;color:var(--ink-3);font-size:var(--fs-micro)}
+/* 塊の`?`（§9.299。長い説明は**消さずに畳む**・§9.234 ①）。 */
+.op-sec-info{margin-left:auto;display:inline-grid;place-items:center;
+  width:var(--ctl-h-xs);height:var(--ctl-h-xs);padding:0;
+  border:1px solid var(--line);border-radius:var(--radius-round);
+  background:var(--surface);color:var(--ink-3);font-size:var(--fs-sm);font-weight:800;cursor:pointer}
+.op-sec-info:hover{border-color:var(--teal);color:var(--teal-dark)}
+.op-sec-info[aria-expanded="true"]{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
+.op-help-pop p{margin:0 0 var(--space-2);color:var(--ink-2);font-size:var(--fs-sm);line-height:1.7}
+.op-help-pop p:last-child{margin-bottom:0}
+/* 段（タブ）と説明のアコーディオンは**§9.299で廃止した**——塊は横に並べ、
+   長い説明は塊の見出しの`?`（`.op-sec-info`／`.op-help-pop`）へ畳んである。 */
 /* 状態はタブの下の1行（閉じない窓なので窓の中に出す・§9.222 ⑦の裏返し）。 */
-.op-modal-state{flex:none;min-height:1.2em;font-size:var(--fs-sm);font-weight:700;color:var(--ok-fg)}
+/* 状態は**見出しの行**（§9.299。段の下に1行を持つと、何も無いときは
+   ただの空白になる）。 */
+.op-modal-state{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:var(--fs-sm);font-weight:700;color:var(--ok-fg)}
 .op-modal-state.is-bad{color:var(--danger)}
 /* メモは広く（§9.223 ④、利用者の指摘「メモ欄狭すぎる」）。 */
 .op-form-row.is-block{grid-template-columns:minmax(0,1fr)}
-.op-note-in{width:100%;min-width:0;min-height:8em;resize:vertical;
-  font-size:var(--fs);line-height:1.5}
+/* メモは①の末尾（§9.299）。**畳みすぎない**——利用者の指摘「メモ欄狭すぎる」
+   （§9.223 ④）は生きているので、4行ぶんは見えるようにして、足りなければ
+   縁を引いて伸ばせるままにする。 */
+.op-note-in{width:100%;min-width:0;min-height:6.5em;resize:vertical;
+  font-size:var(--fs-sm);line-height:1.5}
 .op-form-row.is-danger{border-top:1px solid var(--line-soft);padding-top:var(--space-2)}
 .op-locked-chip{
   padding:1px var(--space-2);border-radius:var(--radius-xs);

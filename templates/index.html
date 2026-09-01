@@ -12,7 +12,7 @@
      ため、そこだけが白く光って「覆いが一度消えてまた出た」ように見える
      (§9.92)。CSSの到着を待たずに効かせる必要があるので属性で持つ。
      色は loading.html の背景の起点と同じ値。 -->
-<html class="app-booting boot-cold" lang="ja" style="background:#0d2029"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/><title>測定伝送システム</title><link rel="icon" href="{{url_for('static',filename='favicon.svg')}}" type="image/svg+xml"/><link href="{{url_for('core.boot_css')}}?t={{asset_token}}" rel="stylesheet"/><link id="appCss" href="{{url_for('core.app_css')}}?t={{asset_token}}" rel="stylesheet" media="print"/>
+<html class="app-booting boot-cold" lang="ja" style="background:#0d2029"><head><meta charset="utf-8"/><meta content="width=device-width,initial-scale=1" name="viewport"/><title>測定伝送システム</title><link rel="icon" href="{{url_for('static',filename='favicon.svg')}}" type="image/svg+xml"/><link href="{{url_for('core.boot_css')}}?t={{asset_token}}" rel="stylesheet"/><link id="appCss" href="{{url_for('core.app_css')}}?t={{asset_token}}" rel="stylesheet" media="print"/><link class="faCss" href="{{url_for('static',filename='vendor/fontawesome/css/fontawesome.min.css')}}?t={{asset_token}}" rel="stylesheet" media="print"/><link class="faCss" href="{{url_for('static',filename='vendor/fontawesome/css/solid.min.css')}}?t={{asset_token}}" rel="stylesheet" media="print"/><link class="faCss" href="{{url_for('static',filename='vendor/fontawesome/css/regular.min.css')}}?t={{asset_token}}" rel="stylesheet" media="print"/>
 <script>/* 保険。base.jsが読めない/例外で止まった場合でも、必ず本体を見せる。 */
 setTimeout(function(){var r=document.documentElement;r.classList.remove('app-booting');r.classList.remove('boot-cold');
  var o=document.getElementById('appBoot');if(o)o.remove()},12000);
@@ -185,7 +185,14 @@ try{window.__wlTabId=(self.crypto&&crypto.randomUUID)?crypto.randomUUID()
  var css=document.getElementById('appCss'),painted=false,cssReady=false;
  /* media="print" で読ませておき、読み終わってから "all" へ移す。
     こうすると規則は既に解析済みなので、切り替えは即座に効く。 */
- function useCss(){ if(css&&css.media!=='all')css.media='all' }
+ /* アイコンのフォント（同梱のFont Awesome・§9.298）も同じ扱い。
+    **描画をブロックする束へ入れない**——268KBを最初の描画の前に待つと
+    白い時間が戻る（§9.86）。読み終わってから all へ移す。 */
+ function useCss(){
+  if(css&&css.media!=='all')css.media='all';
+  var fa=document.querySelectorAll('link.faCss');
+  for(var i=0;i<fa.length;i++)if(fa[i].media!=='all')fa[i].media='all';
+ }
  function ready(){ if(painted&&cssReady)inject() }
  if(css){
   css.addEventListener('load',function(){useCss();cssReady=true;ready()});

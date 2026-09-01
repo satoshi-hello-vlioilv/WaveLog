@@ -36,6 +36,27 @@ let b=null;
  const errs=[];
  page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
  page.on('dialog',d=>d.accept());
+ /* 大きい選び物は浮き出しの中（§9.299）。**一度開けば描き直しても開いたまま**
+    なので、窓を開くたびに1回でよい（`opState.pop`が覚えている）。 */
+ /* **浮き出しは他の欄を覆う**（`position:fixed`）。実機では外側を1回押せば
+    畳まれるが、`page.click()`は押す前に当たり判定をするので、開いたまま
+    別の列を押すと「覆われている」で必ず失敗する。**塊を移る前に畳む**。 */
+ const closePop=async()=>{
+  await page.evaluate(()=>{
+   const b=document.querySelector('#opItemModal [data-op-pop][aria-expanded="true"]');
+   if(b)b.click();
+  });
+  await page.waitForFunction(()=>!document.querySelector(
+    '#opItemModal [data-op-pop-panel]:not([hidden])'),null,{timeout:8000});
+ };
+ const openPop=async k=>{
+  await page.evaluate(key=>{
+   const b=document.querySelector(`#opItemModal [data-op-pop="${key}"]`);
+   if(!b)throw Error('浮き出しの入口が無い: '+key);
+   if(b.getAttribute('aria-expanded')!=='true')b.click();
+  },k);
+  await page.waitForSelector(`#opItemModal [data-op-pop-panel="${k}"]:not([hidden])`,{timeout:8000});
+ };
  const madeIds=[],madeChoiceIds=[];let renamed=null,renamedCoil=null,layoutBackup=null;
  try{
   await post('/api/access-mode',{mode:'edit'});
@@ -61,10 +82,8 @@ let b=null;
    const m=document.getElementById('opItemModal');return !!m&&!m.hidden;
   },null,{timeout:10000});
   await page.waitForTimeout(500);
-  await page.evaluate(()=>{
-   const t=[...document.querySelectorAll('.op-tab')].find(x=>/見せ/.test(x.textContent));
-   if(t)t.click();
-  });
+  await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="look"]',{timeout:8000});
+  await openPop('widget');
   await page.waitForTimeout(600);
   const kinds=await page.$$eval('[data-op-widget]',es=>es.map(e=>e.dataset.opWidget));
   rec('前提: 選ばせ方が2つ以上ある（切り替えて比べられる）',kinds.length>=5,String(kinds.length));
@@ -154,7 +173,11 @@ let b=null;
      どちらの文字が濃いか。実機の壊れ方はここに全部出ていた。
      ========================================================== */
   const lookOf=async k=>{
-   await page.click(`[data-op-widget="${k}"]`).catch(()=>{});
+   /* **見本を押すと浮き出しは畳まれる**（外側を押したのと同じ・§9.299）。
+      次の形を選ぶ前に開き直す——`.catch()`で握り潰すと、押せていないのに
+      前の形のまま測り続けて「タブなのにラジオの数字」が出る（実際に出た）。 */
+   await openPop('widget');
+   await page.click(`[data-op-widget="${k}"]`);
    await page.waitForTimeout(320);
    /* **「—」を選んだままにしない**——選ばれているのが空欄の札だと、
       文字が短すぎて差が出ているかどうかを測れない。 */
@@ -226,7 +249,8 @@ let b=null;
   const hs={};
   for(const k of kinds){
    if(HEIGHT_KINDS.indexOf(k)<0)continue;
-   await page.click(`[data-op-widget="${k}"]`).catch(()=>{});
+   await openPop('widget');                 /* 見本を押すと畳まれる（§9.299） */
+   await page.click(`[data-op-widget="${k}"]`);
    await page.waitForTimeout(300);
    hs[k]=await page.evaluate(()=>{
     const host=document.querySelector('.op-prev-field .opf');
@@ -306,10 +330,7 @@ let b=null;
    await page.waitForFunction(()=>{
     const m=document.getElementById('opItemModal');return !!m&&!m.hidden;
    },null,{timeout:10000});
-   await page.evaluate(()=>{
-    const t=[...document.querySelectorAll('.op-tab')].find(x=>/記録/.test(x.textContent));
-    if(t)t.click();
-   });
+   await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="data"]',{timeout:8000});
    await page.waitForTimeout(500);
    const ids=await page.$$eval('#opModalForm [id^="opd"]',es=>es.map(e=>e.id));
    /* **判定は族（family）**。`[型]`で見ていたため、`文字`型の組み込み選択欄
@@ -327,10 +348,8 @@ let b=null;
      いま:document.activeElement&&document.activeElement.id}));
    rec('外し方のボタンは①の「測定画面に出す」へ連れて行く',
        jumped.ある===true&&jumped.いま==='opdEnabled',JSON.stringify(jumped));
-   await page.evaluate(()=>{
-    const t=[...document.querySelectorAll('.op-tab')].find(x=>/見せ/.test(x.textContent));
-    if(t)t.click();
-   });
+   await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="look"]',{timeout:8000});
+   await openPop('widget');
    await page.waitForTimeout(500);
    const blanks=(await page.$$('[data-op-blank]')).length;
    rec('組み込みの選択欄でも「空欄の札」を決められる',blanks===2,String(blanks));
@@ -342,10 +361,7 @@ let b=null;
      .find(i=>i.builtin==='coilStop');
    if(coilBefore){
     renamedCoil=coilBefore;
-    await page.evaluate(()=>{
-     const t=[...document.querySelectorAll('.op-tab')].find(x=>/記録/.test(x.textContent));
-     if(t)t.click();
-    });
+    await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="data"]',{timeout:8000});
     await page.waitForTimeout(400);
     await page.fill('#opdName',TAG+'-止め');
     await page.click('#opdSave');
@@ -369,10 +385,7 @@ let b=null;
     await page.waitForFunction(()=>{
      const m=document.getElementById('opItemModal');return !!m&&!m.hidden;
     },null,{timeout:10000}).catch(()=>{});
-    await page.evaluate(()=>{
-     const t=[...document.querySelectorAll('.op-tab')].find(x=>/記録/.test(x.textContent));
-     if(t)t.click();
-    });
+    await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="data"]',{timeout:8000});
     await page.waitForTimeout(500);
     const roleTxt=await page.evaluate(()=>{
      const sel=document.getElementById('opdRole');
@@ -481,7 +494,8 @@ let b=null;
   const padModal=await page.evaluate(()=>{
    const m=document.getElementById('opItemModal');
    if(!m||m.hidden)return null;
-   return {tabs:[...document.querySelectorAll('.op-tab')].map(t=>t.textContent.replace(/\s+/g,'')),
+   return {tabs:[...document.querySelectorAll('#opModalForm .op-form-sec')]
+             .map(t=>(t.querySelector('.op-form-sec-head')||t).textContent.replace(/\s+/g,'')),
            幅:!!document.querySelector('#opModalForm [data-op-span]'),
            削除:!!document.getElementById('opdDelete'),
            戻す:!!document.getElementById('opdPadOff')};
@@ -489,7 +503,7 @@ let b=null;
   rec('空きのカードもクリックで設定窓が開く',!!padModal,JSON.stringify(padModal));
   rec('空きの窓で幅・削除・ふつうの項目へ戻すができる',
       !!padModal&&padModal.幅&&padModal.削除&&padModal.戻す,JSON.stringify(padModal));
-  /* **決めることが無い段は出さない**（§4）——空きは名前も型も選ばせ方も持たない。 */
+  /* **決めることが無い列は出さない**（§4）——空きは名前も型も選ばせ方も持たない。 */
   rec('空きの窓に「何を記録するか」「どう見せるか」は出さない',
       !!padModal&&!padModal.tabs.some(t=>/記録|見せ/.test(t)),
       JSON.stringify(padModal&&padModal.tabs));

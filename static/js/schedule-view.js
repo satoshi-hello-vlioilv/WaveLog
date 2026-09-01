@@ -487,8 +487,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    <div class="sc-head" id="scHead">
     <div class="sc-head-left">
      <div class="sc-mode-toggle" id="scModeToggle" hidden>
-      <button type="button" class="sc-mode-toggle-btn" id="scModeBoard" data-mode="board">▦ 全体</button>
-      <button type="button" class="sc-mode-toggle-btn" id="scModeSingle" data-mode="single">☰ 個別</button>
+      <button type="button" class="sc-mode-toggle-btn" id="scModeBoard" data-mode="board"><i class="fa-solid fa-table-cells" aria-hidden="true"></i> 全体</button>
+      <button type="button" class="sc-mode-toggle-btn" id="scModeSingle" data-mode="single"><i class="fa-solid fa-list" aria-hidden="true"></i> 個別</button>
      </div>
      <select class="sc-equipment-select" id="scEquipmentSelect" hidden></select>
      <span class="sc-equipment-fixed" id="scEquipmentFixed" hidden></span>
@@ -534,13 +534,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      </div>
      <div class="sc-tools" data-tools="add" id="scToolsAdd">
       <span class="sc-tools-label" title="予定へ足す（共有スケジュールに書き込みます）">追加</span>
-      <button type="button" class="sc-split-toggle sc-ico-btn" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します"><i>⧉</i><span>仕掛一覧</span></button>
-      <button type="button" class="sc-split-toggle sc-ico-btn" id="scStopModalBtn" hidden title="設備停止をポップアップから追加します"><i>⛔</i><span>設備停止</span></button>
-      <button type="button" class="sc-split-toggle sc-ico-btn" id="scCommentBtn" draggable="true" hidden title="申し送り（コメント）を予定の列へ挟みます。時間は取りません。&#10;・掴んで予定の間へ落とすと、空の枠だけが入ります（あとでダブルクリックして書けます）&#10;・押すとその場で書いて入れられます"><i>💬</i><span>コメント</span></button>
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します"><i class="fa-solid fa-table-list" aria-hidden="true"></i><span>仕掛一覧</span></button>
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scStopModalBtn" hidden title="設備停止をポップアップから追加します"><i class="fa-solid fa-ban" aria-hidden="true"></i><span>設備停止</span></button>
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scCommentBtn" draggable="true" hidden title="申し送り（コメント）を予定の列へ挟みます。時間は取りません。&#10;・掴んで予定の間へ落とすと、空の枠だけが入ります（あとでダブルクリックして書けます）&#10;・押すとその場で書いて入れられます"><i class="fa-solid fa-comment-dots" aria-hidden="true"></i><span>コメント</span></button>
       <!-- 空の日付・直の枠(§9.238 ②、利用者の指示「予定を少し飛ばして設定
            する場合に、何も予定がない領域にセットできる、空の日付や直の枠を
            登録できるようにしたい」)。コメントと同じく掴んでも押しても入る。 -->
-      <button type="button" class="sc-split-toggle sc-ico-btn" id="scFrameBtn" draggable="true" hidden title="空の日付・直の枠を挟みます。ここから先の予定を、その日・その直の頭から並べ直します。&#10;・日にちや直を飛ばして、先の予定を先に決められます&#10;・手前に予定を足していくと、空いた時間へ自然に入っていきます&#10;・掴んで予定の間へ落とすと、その位置に入ります"><i>📅</i><span>日付・直の枠</span></button>
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scFrameBtn" draggable="true" hidden title="空の日付・直の枠を挟みます。ここから先の予定を、その日・その直の頭から並べ直します。&#10;・日にちや直を飛ばして、先の予定を先に決められます&#10;・手前に予定を足していくと、空いた時間へ自然に入っていきます&#10;・掴んで予定の間へ落とすと、その位置に入ります"><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i><span>枠</span></button>
      </div>
      <!-- 見え方の入口は1つ(§9.199)。**いまの設定を文字で連れて出す**
           ——畳んだ先の値が読めないと、開くまで思い出せない。 -->
@@ -550,10 +550,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
            1枚のパネルへ集めたが、表示列だけは触る回数が桁違いに多く、
            「開く→探す→押す」の3手が毎回かかっていた。 -->
       <button type="button" class="sc-split-toggle sc-ico-btn" id="scContentModalBtn" hidden
-        title="この表に出す列・並び・幅・書式を設定します（設備ごとに保存）"><i>▦</i><span>表示列</span></button>
+        title="この表に出す列・並び・幅・書式を設定します（設備ごとに保存）"><i class="fa-solid fa-table-columns" aria-hidden="true"></i><span>表示列</span></button>
       <button type="button" class="sc-split-toggle sc-view-menu-btn" id="scViewMenuBtn" hidden
         aria-expanded="false" title="この画面の見え方（まとめ・さかのぼり・行の色・配置）をまとめて設定します。予定そのものは変わりません">
-       <i>⚙</i><span class="sc-vm-txt">表示</span><b class="sc-vm-state" id="scViewState"></b><span class="hd-caret">▾</span>
+       <i class="fa-solid fa-sliders" aria-hidden="true"></i><span class="sc-vm-txt">表示</span><b class="sc-vm-state" id="scViewState"></b><span class="hd-caret">▾</span>
       </button>
       <!-- 広く使う（§9.292 ⑦、利用者の指示「スケジュール作成時に、とにかく
            仕掛のデータを多く表示したいです。その時上部のメニューのほぼ
@@ -562,11 +562,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
            （§4）——広いあいだは画面の右上に「元に戻す」の札を出す。 -->
       <button type="button" class="sc-split-toggle sc-ico-btn" id="scWideBtn" hidden
         aria-pressed="false"
-        title="上の帯（画面名・状態・操作列）を畳んで、一覧をいちばん広く使います。&#10;・戻すときは右上の札を押すか Esc&#10;・この端末に覚えます"><i>⤢</i><span>広く</span></button>
+        title="上の帯（画面名・状態・操作列）を畳んで、一覧をいちばん広く使います。&#10;・戻すときは右上の札を押すか Esc&#10;・この端末に覚えます"><i class="fa-solid fa-up-right-and-down-left-from-center" aria-hidden="true"></i><span>広く</span></button>
      </div>
      <div class="sc-tools" data-tools="act" id="scToolsAct">
-      <button type="button" class="sc-split-toggle sc-ico-btn" id="scPrintBtn" title="いま表示している予定を、現場へ配る形（用紙サイズ・向きは選べます）で印刷します"><i>🖨</i><span>印刷</span></button>
-      <button type="button" class="sc-refresh" id="scRefresh">再計算</button>
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scPrintBtn" title="いま表示している予定を、現場へ配る形（用紙サイズ・向きは選べます）で印刷します"><i class="fa-solid fa-print" aria-hidden="true"></i><span>印刷</span></button>
+      <button type="button" class="sc-refresh sc-ico-btn" id="scRefresh" title="予定の時刻を計算し直します"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span>再計算</span></button>
      </div>
     </div>
    </div>
@@ -596,7 +596,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
          （§9.211 ③。そこで文字列が閉じて画面が組み上がらない）。 -->
     <button type="button" class="sc-wide-exit" id="scWideExit" hidden
       title="上の帯（画面名・状態・操作列）を戻します。Escでも戻せます">
-     <i aria-hidden="true">⤡</i><span>元の表示に戻す（Esc）</span></button>
+     <i class="fa-solid fa-down-left-and-up-right-to-center" aria-hidden="true"></i><span>元の表示に戻す（Esc）</span></button>
     <!-- 予定から外す受け皿(§9.116)。**掴んでいる間だけ出す**——常設すると
          「消す場所」が画面に居座り、押し間違いの的になる。掴んで初めて
          現れるので、外す意思があるときにしか目に入らない。

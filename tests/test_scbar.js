@@ -79,6 +79,36 @@ let b=null;
       `上端=${bar.tops.join('/')} 幅=${bar.items.map(i=>i.id+':'+i.w).join(' ')}`);
   rec('操作列が器からはみ出していない',bar.overflow<=1,`はみ出し=${bar.overflow}px 器=${bar.headW}px`);
 
+  /* ---- 1b) アイコンは同梱のFont Awesome（§9.298、利用者の指示
+       「絵文字は控えて、認知心理学に基づき、FONTAWESOMEのアイコンを
+        ボタン化するなど、コンパクトに」） ----------------------------
+     **宣言（クラスが付いていること）だけを見ないこと**——フォントを
+     取りに行けなければ字形は出ず、豆腐か空白になる（それが同梱した理由）。
+     `document.fonts.check()`で**字形が使えること**と、`::before`の中身が
+     **1文字**（プライベート領域の合字）であること、そして絵が実際に
+     場所を取っていることまで見る。 */
+  const fa=await page.evaluate(async()=>{
+   try{await document.fonts.ready}catch(e){}
+   const host=document.getElementById('scHead');
+   const icons=[...host.querySelectorAll('i.fa-solid')]
+     .filter(el=>el.offsetParent!==null);
+   const bad=[];
+   icons.forEach(el=>{
+    const cs=getComputedStyle(el,'::before');
+    const ch=(cs.content||'').replace(/^["']|["']$/g,'');
+    const r=el.getBoundingClientRect();
+    if(!/Font Awesome/.test(getComputedStyle(el).fontFamily))bad.push(el.className+':font');
+    else if(ch.length!==1)bad.push(el.className+':content='+JSON.stringify(ch));
+    else if(r.width<6||r.height<6)bad.push(el.className+':size='+Math.round(r.width));
+   });
+   return {n:icons.length,bad,
+     loaded:document.fonts.check('900 1em "Font Awesome 6 Free"'),
+     絵文字:[...host.querySelectorAll('i:not([class])')].map(e=>e.textContent.trim()).filter(Boolean)};
+  });
+  rec('操作列のアイコンは同梱のFont Awesome（字形まで出ている）',
+      fa.loaded===true&&fa.n>=6&&fa.bad.length===0,JSON.stringify(fa));
+  rec('操作列に生の絵文字を残していない',fa.絵文字.length===0,JSON.stringify(fa.絵文字));
+
   /* ---- 2) 「表示」の入口にいまの設定が出る ---- */
   const vm=await page.evaluate(()=>{
    const btn=document.getElementById('scViewMenuBtn');

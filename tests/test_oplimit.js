@@ -125,8 +125,7 @@ let b=null;
      String(itemId));
    await page.waitForFunction(()=>{const m=document.getElementById('opItemModal');return !!m&&!m.hidden},
      null,{timeout:10000});
-   await page.evaluate(()=>{const t=[...document.querySelectorAll('.op-tab')]
-     .find(x=>/記録/.test(x.textContent));if(t)t.click()});
+   await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="data"]',{timeout:8000});
    await page.waitForSelector('#opdMaxFrom',{timeout:10000});
   };
   await openModal();
@@ -190,8 +189,7 @@ let b=null;
    打てる:!document.getElementById('opdMax').disabled}));
   rec('開き直しても出どころが選ばれたまま',reopened.出どころ===SRC&&!reopened.打てる,
       JSON.stringify(reopened));
-  await page.evaluate(()=>{const t=[...document.querySelectorAll('.op-tab')]
-    .find(x=>/メモ/.test(x.textContent));if(t)t.click()});
+  /* 覚え書きは①の末尾（§9.299。段は廃止した）。 */
   await page.waitForSelector('#opdNote',{timeout:10000});
   await page.fill('#opdNote','出どころの巻き添えを見るためのメモ');
   await page.click('#opdSave');
