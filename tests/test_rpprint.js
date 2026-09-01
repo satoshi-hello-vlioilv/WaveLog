@@ -701,18 +701,21 @@ let b=null;
      const g=d.querySelector('.rp-grid');
      return g?(g.style.getPropertyValue('--rp-cols')||g.className):'(格子なし)'};
    const S=WL.reportSectionHtml;
+   const isMx=h=>{const d=document.createElement('div');d.innerHTML=h;
+     return !!d.querySelector('.rp-grid-m')};
    return {表_空:cols(S('T',table,0)),表_5:cols(S('T',table,5)),
-     表_指定3:cols(S('T',table,3)),ふつう_空:cols(S('T',plain,0))};
+     表_指定3:cols(S('T',table,3)),ふつう_空:cols(S('T',plain,0)),
+     ふつう_表:isMx(S('T',plain,0))};
   });
   rec('§9.279 内訳の列数が空でも、表に組んだ形の列数を保つ',
       derived.表_空==='5'&&derived.表_5==='5',JSON.stringify(derived));
   /* **欄が持ち主**（§CLAUDE 8）——数が入っていればそれに従う（当て直さない）。 */
   rec('§9.279 欄に数が入っていればそれが勝つ',derived.表_指定3==='3',derived.表_指定3);
   /* **もう片側**——ふつうの「ラベル＝値」の並びは今までどおり2列
-     （現場の紙を勝手に変えない）。 */
+     （現場の紙を勝手に変えない）。**表としては組まない**ことも一緒に見る。 */
   rec('§9.279 ふつうの並びは今までどおり（当てに行かない）',
-      derived.ふつう_空.indexOf('rp-grid')>=0&&derived.ふつう_空.indexOf('rp-grid-m')<0,
-      derived.ふつう_空);
+      derived.ふつう_空==='2'&&derived.ふつう_表===false,
+      JSON.stringify([derived.ふつう_空,derived.ふつう_表]));
 
   /* ==========================================================
      列軸が1本でも、行軸が2本でも当てる（§9.280、利用者の報告）
@@ -775,6 +778,72 @@ let b=null;
   rec('§9.280 欄に数が入っていれば今までどおりそれが効く（当て直さない）',
       derived2.行1列1_欄3==='3'&&derived2.行1列1_欄2==='2',
       JSON.stringify([derived2.行1列1_欄3,derived2.行1列1_欄2]));
+
+  /* ==========================================================
+     内訳の列数は**実際にその列数で並ぶ**（§9.289、利用者の報告）
+     ----------------------------------------------------------
+       「帳票ブロックマスタで調整する列数が全く効いておらず…5列にしよう
+        としたところ、プレビューは2列、紙レイアウトの方のプレビューも2列に
+        なってしまいました」
+
+     ここまでの網（§9.279／§9.280）は`--rp-cols`という**宣言**か
+     クラス名しか見ていなかったので、**CSSに規則が無い**ことを1つも
+     捕まえられなかった——欄は1〜12から選ばせるのに、規則が在るのは
+     `.rp-grid-1`と`.rp-grid-4`だけで、`3`と`5`〜`12`は既定の2列で
+     刷られていた（§9.237 ④a「宣言値だけを見る網は素通りする」の再発）。
+
+     **描いたあとの`grid-template-columns`を数える**こと。ついでに
+     「表として組んだ塊」でも同じことを見る（同じ1本を通るので、
+     片方だけ壊れる形は作れないが、壊れたときにどちらの道か分かる）。
+     ========================================================== */
+  const laid=await page.evaluate(()=>{
+   const cell=(label,value,o)=>[label,value,Object.assign({span:1,rows:1},o||{})];
+   /* 利用者の塊と同じ形——10項目・全部1マス（＝ふつうの「ラベル＝値」）。 */
+   const plain=Array.from({length:10},(_,i)=>cell('項目'+i,'値'+i));
+   /* 表に組んだ形（行＝項目／列＝集計＝3列）。 */
+   const table=[cell('','',{blank:true,span:1,rows:1}),
+     cell('MIN','',{head:true}),cell('MAX','',{head:true}),
+     cell('板厚','',{head:true,align:'left'}),
+     cell('1','1',{showLabel:false}),cell('2','2',{showLabel:false})];
+   /* **画面に付けてから測る**（`getComputedStyle`はDOMに居ないと解けない）。
+      紙と同じ土俵で測るため`.rp-page > .rp-block`の中へ置き、
+      測り終わったら必ず片付ける（§9.121）。 */
+   const host=document.createElement('div');
+   host.className='rp-page';
+   host.style.cssText='position:fixed;left:-10000px;top:0;width:210mm';
+   document.body.appendChild(host);
+   const count=(rows,cols,flow)=>{
+    host.innerHTML=`<div class="rp-block${flow?' '+flow:''}"><div class="rp-block-fit">`
+      +WL.reportSectionHtml('T',rows,cols)+'</div></div>';
+    const g=host.querySelector('.rp-grid');
+    if(!g)return -1;
+    const cs=getComputedStyle(g);
+    /* 段組（`縦`）はグリッドを解くので`column-count`が列数を持つ。 */
+    return cs.display==='grid'
+      ? cs.gridTemplateColumns.split(' ').filter(Boolean).length
+      : Number(cs.columnCount)||-1;
+   };
+   const out={};
+   for(const n of [1,2,3,4,5,6,7,8,9,10,11,12])out['列'+n]=count(plain,n);
+   out.空=count(plain,0);
+   out.表3=count(table,0);
+   out.表指定5=count(table,5);
+   /* 「中の並べ方＝縦」（段組）でも欄の数どおりに割る（§9.226 ③）。 */
+   out.縦5=count(plain,5,'rp-flow-col');
+   host.remove();
+   return out;
+  });
+  const colsBad=[1,2,3,4,5,6,7,8,9,10,11,12].filter(n=>laid['列'+n]!==n);
+  rec('§9.289 欄で選んだ列数（1〜12）で実際に並ぶ',
+      colsBad.length===0,'合わない列数: '+JSON.stringify(colsBad)+' / '+JSON.stringify(laid));
+  /* **もう片側**——空欄のふつうの並びは今までどおり2列（現場の紙を変えない）。 */
+  rec('§9.289 空欄なら今までどおり2列で並ぶ',laid.空===2,String(laid.空));
+  rec('§9.289 表に組んだ塊も当てた列数どおりに並ぶ',
+      laid.表3===3&&laid.表指定5===5,JSON.stringify([laid.表3,laid.表指定5]));
+  /* 段組（`縦`）も同じ数で割る——ここも`.rp-grid-1`/`.rp-grid-4`だけの
+     決め打ちで、5列にしても2段しか作らなかった。 */
+  rec('§9.289 「中の並べ方＝縦」でも欄の列数どおりに段を作る',
+      laid.縦5===5,String(laid.縦5));
 
   /* ==========================================================
      塊の中もグリッド（§9.255 ②、利用者の指示）

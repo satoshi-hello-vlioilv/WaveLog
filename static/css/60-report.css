@@ -552,9 +552,15 @@
 .rp-area-text{color:#60747b;font-size:8.5px;white-space:pre-wrap;overflow-wrap:break-word;text-align:right}
 .rp-section{margin:0;break-inside:avoid}
 .rp-section h3{margin:0 0 2px;padding:1.5px 6px;background:#eef2f4;border-left:4px solid var(--teal);color:#173842;font-size:9px}
-.rp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 8px}
-.rp-grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
-.rp-grid-1{grid-template-columns:minmax(0,1fr)}
+/* 節の中の列数（§9.289、利用者の報告「帳票ブロックマスタで調整する列数が
+   全く効いておらず…プレビューは2列、紙レイアウトの方のプレビューも2列」）。
+   **JSが`--rp-cols`で渡す**——以前は`.rp-grid-N`という決め打ちのクラスで、
+   規則が在るのは`1`と`4`だけだった。欄は1〜12から選ばせるので、
+   `3`と`5`〜`12`は**規則がどこにも無く、既定の2列で刷られていた**
+   （§9.233 ③と同じ「選択肢を1つ足すたびにCSSを書き足す」作り。書き足し忘れた
+   側だけが静かに壊れ、しかも盤の見本も紙も同じここを通るので**両方2列**に
+   なって「設定が全く効かない」ように見える）。**クラスへ数を戻さないこと。** */
+.rp-grid{display:grid;grid-template-columns:repeat(var(--rp-cols,2),minmax(0,1fr));gap:0 8px}
 /* ---------- カードの中のデータの並べ方（§9.226 ③、利用者の指示） ----------
    「横にある程度並べて次の行に行く形…その並び方を縦を先に並べていく
     パターンや幅方向長さが許す限り並べていくパターン、縦方向高さが許す限り
@@ -564,12 +570,12 @@
    4つとも**CSSだけで組む**。段組（multi-column）は「縦へ流して次の列へ」
    そのものなので、行数をJSで数えなくてよい——数えると、中身が増えるたびに
    測り直す仕掛けが要る（§9.174の「実寸で測る」を余計な場所へ持ち込まない）。
-     既定       … 今までどおりのグリッド（列数は`.rp-grid-N`）
+     既定       … 今までどおりのグリッド（列数は`--rp-cols`）
      `縦`       … 段組。列数は同じで、上から下へ埋める
      `幅なり`   … 入るだけ横へ（列数はカードの幅で決まる）
      `高さなり` … 段組＋`column-fill:auto`。**高さを決めた塊だけ**効く
                   （高さが中身なりだと段が1本になる。設定窓に書いてある）
-   詳細度は`.rp-block.rp-flow-*`（0,3,0）で`.rp-grid-4`（0,1,0）に勝つ。
+   詳細度は`.rp-block.rp-flow-*`（0,3,0）で`.rp-grid`（0,1,0）に勝つ。
    **表（`.rp-grid-m`）には当てないこと**（§9.282、利用者の報告「帳票ブロック
    マスタでは正しく再現して表示もするのに、紙の帳票レイアウトだと、全然違う表を
    持ってくる」）——`display:block`や`auto-fill`はグリッドそのものを解くので、
@@ -577,9 +583,8 @@
    ばらけて縦にだらだら流れる**。しかもこの印は紙だけ（列レイアウトマスタの
    `formats`）なので、**盤の「中身の見本」には原理的に当たらない**＝
    「見本は正しいのに紙だけ別物」がそのまま作れる。 */
-.rp-block.rp-flow-col .rp-grid:not(.rp-grid-m){display:block;column-count:2;column-gap:8px}
-.rp-block.rp-flow-col .rp-grid-1{column-count:1}
-.rp-block.rp-flow-col .rp-grid-4{column-count:4}
+.rp-block.rp-flow-col .rp-grid:not(.rp-grid-m){display:block;
+  column-count:var(--rp-cols,2);column-gap:8px}
 .rp-block.rp-flow-col .rp-field,
 .rp-block.rp-flow-tall .rp-field{break-inside:avoid}
 .rp-block.rp-flow-fit .rp-grid:not(.rp-grid-m){
@@ -806,13 +811,14 @@
 .rp-stat-table tbody th small{margin-left:.4em;font-weight:400;color:#666}
 .rp-stat-table .rp-stat-na{color:#999;text-align:center}
 
-/* マトリクス配置（§9.245）。列数はJSが`--rp-cols`で渡す——項目ごとに
-   何マス使うかを持つので、`rp-grid-N`の決め打ちでは表せない。
+/* マトリクス配置（§9.245）。**列数はここでは持たない**（§9.289）——
+   `--rp-cols`は上の`.rp-grid`が読むので、同じ宣言を2箇所に置かない。
+   この印が担うのは「表として組んだ」ことと詰め方だけ（§9.282。紙自身に
+   答えさせるための印でもある）。
    §9.255 ②で**縦のマス数**も持てるようにした。縦に伸ばした項目の隣が
    空くので、**詰め方は`dense`**——空いたマスへ後ろの1マスの項目が入る
    （そこも空けたいときは「空きマス」を置く）。 */
-.rp-grid-m{grid-template-columns:repeat(var(--rp-cols,2),minmax(0,1fr));
-  grid-auto-flow:row dense}
+.rp-grid-m{grid-auto-flow:row dense}
 /* 縦に伸ばした項目は**器いっぱい**に広がる（値を下へ寄せない）。 */
 .rp-grid-m>.rp-field{align-content:start}
 /* 空きマスは**場所を取るだけ**（枠も文字も持たない）。 */

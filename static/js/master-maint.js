@@ -2288,7 +2288,9 @@
   /* **空欄でも「いま何列で出るか」を言う**（§CLAUDE 6）。`reportSection`の
      既定は2列なので、「中身の数から決まります」だけだと何列になるか読めない。 */
   const colsRaw=v('cols');
-  const colsEff=Math.max(1,Math.min(4,Number(colsRaw)||2));
+  /* 頭打ちは**欄の選択肢と同じ12**（§9.289）——ここが4のままだったのは、
+     CSSに`.rp-grid-1`と`.rp-grid-4`しか無かった頃の名残り。 */
+  const colsEff=Math.max(1,Math.min(12,Number(colsRaw)||2));
   setText('#rbFactCols',area?'—（エリアは値を出しません）'
     :(colsRaw?`${colsRaw}列`:`未指定（いまは${colsEff}列）`));
   setText('#rbFactRepeat',area?'—':(v('repeatText')==='分割後の子ロットごと'?'子ロットの数だけ':'1回だけ'));
