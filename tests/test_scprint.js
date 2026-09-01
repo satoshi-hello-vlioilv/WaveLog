@@ -48,6 +48,7 @@ let b=null;
  let savedLayout=null;   // timeline:テスト設備A の保存済みの写し(復元用)
  const made=[];          // 予定へ入れたロット(あとで削除)
  const madeStops=[];     // 足した停止理由マスタ(あとで削除。§9.121)
+ const madeStyles=[];    // 足した行表示マスタ(あとで削除。§9.121)
 
  try{
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
@@ -1518,6 +1519,64 @@ let b=null;
        &&dayNarrow.pad===dayWide.pad,
        JSON.stringify({詰める:dayNarrow.dayPad,とても広め:dayWide.dayPad,
                        ふつうの行:[dayNarrow.pad,dayWide.pad]}));
+   /* ---- §9.295 ② 区切りの行間は「日付が変わる行」に効く（利用者の報告
+      「区切りの行間の余白は変更しても変化がない」「行間（上下）に変更で
+       区切りの行間の方も一緒に変化してしまう」） ----
+      §9.294 ③は**まとまりの帯にだけ**効かせていたが、帯が出るのは
+      「まとめ」を日付にしているときだけで、**既定の紙には帯が1本も無い**
+      ——選べるのに一度も効かない設定だった（§4）。
+      **まとめずに測ること**が要点（帯があると、直す前でも通る）。 */
+   const dayOf=async o=>page.evaluate(o2=>{
+    const groups=WL.schedulePrint.buildPages('テスト設備A',WL.scheduleView.entries(),o2);
+    const sheets=WL.schedulePrint.splitToSheets(groups,o2);
+    let area=document.getElementById('schedulePrintArea');
+    if(!area){area=document.createElement('div');area.id='schedulePrintArea';
+              area.className='sp-print-area';document.body.appendChild(area)}
+    /* **全部の紙を描く**——1枚目に設備停止もまとまりの帯も無いことがあり、
+       そこだけ見ると「色が空同士で一致」という何も確かめない網になる。 */
+    area.innerHTML=sheets.map((p2,i)=>WL.schedulePrint.pageHtml(p2,o2,i+1,sheets.length)).join('');
+    area.classList.add('is-measuring');
+    const marks=[...area.querySelectorAll('.sp-table tbody tr.is-day-start')];
+    const first=marks[0];
+    const plain=area.querySelector('.sp-table tbody tr[data-row]:not(.is-day-start) td');
+    const r={marks:marks.length,
+             /* 区切りの行の上の空きと、ふつうの行の上の空き。 */
+             dayPad:first?Math.round(parseFloat(getComputedStyle(first.querySelector('td')).paddingTop)*10)/10:null,
+             rowPad:plain?Math.round(parseFloat(getComputedStyle(plain).paddingTop)*10)/10:null,
+             /* 枠線を消しても区切りの罫は残る（§9.295 ③）。 */
+             rule:first?getComputedStyle(first.querySelector('td')).borderTopWidth:'',
+             /* 区切りの帯と設備停止の地の色（枠線なしで見分けが付くこと）。 */
+             stopBg:(()=>{const t=area.querySelector('.sp-row-stop td');
+               return t?getComputedStyle(t).backgroundColor:''})(),
+             groupBg:(()=>{const t=area.querySelector('.sp-row-group td');
+               return t?getComputedStyle(t).backgroundColor:''})()};
+    area.innerHTML='';area.classList.remove('is-measuring');
+    return r;
+   },o);
+   /* **まとめない・日付ごとにページを分けない**＝帯が1本も出ない紙で見る。 */
+   const dayBase={...padBase,useGroups:false,pageByDate:false,includeDone:true};
+   const dNarrow=await dayOf({...dayBase,dayGap:'0.6'});
+   const dWide=await dayOf({...dayBase,dayGap:'2.2'});
+   rec('まとまりの帯が無くても、日付が変わる行に印が付く',
+       dNarrow.marks>0,JSON.stringify({印:dNarrow.marks}));
+   rec('区切りの行間を選ぶと、日付が変わる行の上の空きが実際に変わる',
+       dNarrow.dayPad!=null&&dWide.dayPad!=null&&dWide.dayPad>dNarrow.dayPad+1,
+       JSON.stringify({詰める:dNarrow.dayPad,とても広め:dWide.dayPad}));
+   /* **行間（上下）を触っても区切りは動かない**（利用者の報告の2件目）。 */
+   const dRowNarrow=await dayOf({...dayBase,dayGap:'1.5',padY:'0.6'});
+   const dRowWide=await dayOf({...dayBase,dayGap:'1.5',padY:'1.5'});
+   rec('行間（上下）を変えても、区切りの空きは変わらない（別の軸）',
+       dRowNarrow.dayPad===dRowWide.dayPad&&dRowNarrow.rowPad<dRowWide.rowPad,
+       JSON.stringify({区切り:[dRowNarrow.dayPad,dRowWide.dayPad],
+                       ふつうの行:[dRowNarrow.rowPad,dRowWide.rowPad]}));
+   /* ---- §9.295 ③ 枠線なしでも区切りと設備停止を見分けられる（利用者の報告
+      「枠線なしの時に日付の区切りの色と設備停止の色が一緒になってしまう」） ---- */
+   const noBorder=await dayOf({...dayBase,dayGap:'1.5',borders:false});
+   rec('枠線を消しても、日付の区切りの罫は残る',
+       parseFloat(noBorder.rule)>0,JSON.stringify(noBorder.rule));
+   /* **設備停止の行が在る場所で比べる**（この節の時点ではまだ足していない）
+      ——空同士を比べる網は何も確かめない。下の §9.295 ① の節が受け持つ。 */
+
    /* ---- §9.294 ⑤ 太字（利用者の指示「文字を太字にしたりする機能も」） ---- */
    const boldOn=await fontOf({...padBase,bold:true},4);
    rec('太字を選ぶと、刷り上がりの本文が実際に太くなる',
@@ -1686,6 +1745,174 @@ let b=null;
    void paper;
 
    /* ============================================================
+      §9.295 ① 設備停止の題名に色・バッジ・揃えを付ける（利用者の指示
+      「設備停止の部分に色やバッジみたいなデザインを付けたいのと、左寄せに
+       したり文字の位置を変更できるようにしてほしいです」）
+      ============================================================ */
+   /* **語彙はサーバーが答える**（§9.163）——画面へ綴りを書き写していないこと。 */
+   const vocab=await page.evaluate(async()=>{
+    const r=await fetch('/api/schedule/row-style-master');
+    const j=await r.json();
+    return {looks:(j.titleLooks||[]).map(x=>x.key),
+            places:(j.titlePlaces||[]).map(x=>x.key),
+            aligns:(j.titleAligns||[]).map(x=>x.key)};
+   });
+   rec('題名の見せ方・位置・揃えの語彙をサーバーが答える',
+       vocab.looks.join(',')===',バッジ,帯'&&vocab.places.join(',')===',全幅'
+       &&vocab.aligns.join(',')===',中央,右',JSON.stringify(vocab));
+   /* 設定して、**画面と紙の両方が実際に変わること**まで見る（札が在るだけを
+      見る網は、CSSが読んでいなくても通る・§9.289）。 */
+   const setStyle=body=>page.evaluate(async b2=>{
+    const r=await fetch('/api/schedule/row-style-master',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(b2)});
+    return (await r.json());
+   },body);
+   /* **名前を`made`にしないこと**——このファイルの外側に`const made=[]`
+      （予定のID）があり、同じ塊の中で先に`made.push()`しているので
+      TDZ（初期化前アクセス）で丸ごと落ちる。実際に踏んだ。 */
+   const madeStyle=await setStyle({key:'cat:stop',colorKey:'amber',
+     titleLook:'バッジ',titlePlace:'全幅',titleAlign:'中央'});
+   madeStyles.push(madeStyle&&madeStyle.id);
+   await page.evaluate(()=>WL.scheduleView.reloadRowStyles&&WL.scheduleView.reloadRowStyles());
+   await page.waitForTimeout(1500);
+   const styled=await page.evaluate(name=>{
+    const row=[...document.querySelectorAll('.sc-row-line')]
+      .find(r=>(r.textContent||'').includes(name));
+    if(!row)return null;
+    const t=row.querySelector('.sc-row-nonwork');
+    const face=t&&t.querySelector('.sc-nw-face');
+    const cs=face?getComputedStyle(face):null;
+    return {look:t?t.getAttribute('data-nw-look'):'',
+            align:t?t.getAttribute('data-nw-align'):'',
+            span:t?getComputedStyle(t).gridColumn:'',
+            textAlign:t?getComputedStyle(t).textAlign:'',
+            /* 札は**丸めた面と枠**を持つ（色だけで伝えない・§3。文字は残る）。 */
+            faceBg:cs?cs.backgroundColor:'',faceRadius:cs?cs.borderTopLeftRadius:'',
+            faceText:face?(face.textContent||'').trim():'',
+            /* 札にしたら**行の地は塗らない**（同じ色が2箇所に出ない）。 */
+            rowFace:row.classList.contains('sc-row-nw-face'),
+            rowBg:getComputedStyle(row).backgroundColor};
+   },STOP_NAME);
+   rec('画面: バッジを選ぶと題名が札になる（面と丸みが付く）',
+       !!styled&&styled.look==='バッジ'&&styled.faceText.includes(STOP_NAME)
+       &&styled.faceBg!=='rgba(0, 0, 0, 0)'&&parseFloat(styled.faceRadius)>0,
+       JSON.stringify(styled));
+   /* `gridColumn`は`"span 4"`という**文字列**。数へ直してから比べること
+      （直に比べるとNaNで必ず落ちる。実際に踏んだ）。 */
+   const spanNum=v=>{const m=/span (\d+)/.exec(String(v||''));return m?Number(m[1]):0};
+   rec('画面: 「行いっぱい」にすると束ねる列が増える',
+       !!styled&&spanNum(styled.span)>spanNum(scr&&scr.span)&&spanNum(scr&&scr.span)>0,
+       JSON.stringify({いっぱい:styled&&styled.span,内容の列:scr&&scr.span}));
+   rec('画面: 「中央」にすると題名が中央へ寄る',
+       !!styled&&styled.textAlign==='center',JSON.stringify(styled&&styled.textAlign));
+   rec('画面: 札にしたら行の地は塗らない（同じ色が2箇所に出ない）',
+       !!styled&&styled.rowFace===true,JSON.stringify(styled&&styled.rowBg));
+   const paper2=await build({includeDone:true,pageByDate:false,columnScope:'all'});
+   const pstyled=await page.evaluate(name=>{
+    const td=[...document.querySelectorAll('#schedulePrintArea .sp-c-nonwork')]
+      .find(x=>(x.textContent||'').includes(name));
+    if(!td)return null;
+    const face=td.querySelector('.sp-nw-face');
+    return {look:td.getAttribute('data-nw-look'),align:td.getAttribute('data-nw-align'),
+            span:Number(td.getAttribute('colspan')||1),
+            textAlign:getComputedStyle(td).textAlign,
+            faceBg:face?getComputedStyle(face).backgroundColor:'',
+            rowFace:td.closest('tr').classList.contains('sp-row-nw-face')};
+   },STOP_NAME);
+   rec('紙: 画面と同じ見せ方・揃えがそのまま出る（紙で判定をやり直さない）',
+       !!pstyled&&pstyled.look==='バッジ'&&pstyled.align==='中央'
+       &&pstyled.textAlign==='center'&&pstyled.faceBg!=='rgba(0, 0, 0, 0)'
+       &&pstyled.rowFace===true,JSON.stringify(pstyled));
+   rec('紙: 「行いっぱい」でも記入欄は潰さない（手で書く場所を残す）',
+       !!pstyled&&pstyled.span<(paper2.cols&&paper2.cols[0]||99),
+       JSON.stringify({束ねた列:pstyled&&pstyled.span,紙の列:paper2.cols&&paper2.cols[0]}));
+   await clear();
+   /* **触っていない設定を消さない**（§9.212 ②）——色だけ変えても題名の
+      3つが残ること。同じ形で4度踏んでいる。 */
+   await setStyle({id:madeStyle&&madeStyle.id,key:'cat:stop',colorKey:'red'});
+   const kept2=await page.evaluate(async()=>{
+    const j=await (await fetch('/api/schedule/row-style-master')).json();
+    return (j.items||[]).find(x=>x.key==='cat:stop')||null;
+   });
+   rec('色だけ変えても題名の見せ方は消えない（送っていない設定を残す）',
+       !!kept2&&kept2.colorKey==='red'&&kept2.titleLook==='バッジ'
+       &&kept2.titlePlace==='全幅'&&kept2.titleAlign==='中央',JSON.stringify(kept2));
+
+   /* ---- §9.295 ④ 題名の横に（所要時間）（利用者の指示「設備停止名の横に
+      ()書きで時間を表示するように。デフォルト表示ONでOFFにもできるように」） ---- */
+   const timeOf=async()=>{
+    await page.evaluate(()=>WL.scheduleView.reloadRowStyles());
+    await page.waitForTimeout(1200);
+    return page.evaluate(name=>{
+     const row=[...document.querySelectorAll('.sc-row-line')]
+       .find(r=>(r.textContent||'').includes(name));
+     const t=row&&row.querySelector('.sc-row-nonwork');
+     const tm=t&&t.querySelector('.sc-nw-time');
+     return {screen:tm?(tm.textContent||'').trim():'',
+             all:t?(t.textContent||'').trim():''};
+    },STOP_NAME);
+   };
+   /* **既定は出す**——設定を触っていない状態で出ること。 */
+   await setStyle({id:madeStyle&&madeStyle.id,key:'cat:stop',colorKey:'',titleLook:'',
+                   titlePlace:'',titleAlign:'',titleTime:''});
+   const tOn=await timeOf();
+   rec('既定で、設備停止名の横に（所要時間）が出る',
+       /^（.+）$/.test(tOn.screen)&&/分|時間/.test(tOn.screen),JSON.stringify(tOn));
+   await setStyle({id:madeStyle&&madeStyle.id,key:'cat:stop',titleTime:'なし'});
+   const tOff=await timeOf();
+   rec('「出さない」にすると（所要時間）が消える（名前は残る）',
+       tOff.screen===''&&tOff.all.includes(STOP_NAME),JSON.stringify(tOff));
+   await setStyle({id:madeStyle&&madeStyle.id,key:'cat:stop',titleTime:''});
+   await timeOf();
+   /* 紙にも同じものが出る（判定を紙でやり直さない・§9.163）。 */
+   await build({includeDone:true,pageByDate:false,columnScope:'all'});
+   const pTime=await page.evaluate(name=>{
+    const td=[...document.querySelectorAll('#schedulePrintArea .sp-c-nonwork')]
+      .find(x=>(x.textContent||'').includes(name));
+    const tm=td&&td.querySelector('.sp-nw-time');
+    return tm?(tm.textContent||'').trim():'';
+   },STOP_NAME);
+   rec('紙にも同じ（所要時間）が出る',pTime===tOn.screen,JSON.stringify({紙:pTime,画面:tOn.screen}));
+   await clear();
+
+   /* ---- §9.295 ③ 枠線なしでも区切りと設備停止を見分けられる（利用者の報告
+      「枠線なしの時に日付の区切りの色と設備停止の色が一緒になってしまう」） ----
+      **設備停止の行が在る状態で比べること**——上の節の時点ではまだ足して
+      いないので、空同士を比べて何も確かめないまま通る（実際に踏んだ）。 */
+   const back2=await page.evaluate(()=>{
+    const g=document.getElementById('scGroupSelect');
+    if(!g)return false;
+    const prev=g.value;g.value='date';g.dispatchEvent(new Event('change',{bubbles:true}));
+    return prev;
+   });
+   /* **この節のスコープで測る**——上の`dayOf`は別の塊の中の`const`で、
+      ここからは見えない（実際にFATALで落ちた）。 */
+   const bg=await page.evaluate(o2=>{
+    const groups=WL.schedulePrint.buildPages('テスト設備A',WL.scheduleView.entries(),o2);
+    const sheets=WL.schedulePrint.splitToSheets(groups,o2);
+    const area=document.getElementById('schedulePrintArea');
+    area.innerHTML=sheets.map((p2,i)=>WL.schedulePrint.pageHtml(p2,o2,i+1,sheets.length)).join('');
+    area.classList.add('is-measuring');
+    const pick=sel=>{const t=area.querySelector(sel);return t?getComputedStyle(t).backgroundColor:''};
+    const r={groupBg:pick('.sp-row-group td'),stopBg:pick('.sp-row-stop td'),
+             plainBg:pick('.sp-table tbody tr[data-row]:not(.sp-row-stop):not(.is-day-start) td')};
+    area.innerHTML='';area.classList.remove('is-measuring');
+    return r;
+   },{includeDone:true,pageByDate:false,paper:'a4-portrait',columnScope:'all',range:'all',
+      useGroups:true,commentBox:true,writePattern:'actual',fontScale:'1',
+      padX:'0.6',padY:'1',dayGap:'1.5',borders:false});
+   await page.evaluate(p2=>{const g=document.getElementById('scGroupSelect');
+    if(g&&p2!==false){g.value=p2;g.dispatchEvent(new Event('change',{bubbles:true}))}},back2);
+   rec('枠線なしでも、区切りの帯と設備停止の地の色が違う',
+       !!bg.groupBg&&!!bg.stopBg&&bg.groupBg!==bg.stopBg,
+       JSON.stringify({区切り:bg.groupBg,設備停止:bg.stopBg}));
+   /* 設備停止は**ふつうのロットとほぼ同じ地**（利用者の指示）——区切りより
+      ずっと弱いこと。見分けは区分の札と題名の見せ方が持つ（§3）。 */
+   rec('設備停止の地は、区切りの帯よりふつうの行に近い',
+       !!bg.plainBg&&bg.stopBg!==bg.groupBg,
+       JSON.stringify({ふつう:bg.plainBg,設備停止:bg.stopBg,区切り:bg.groupBg}));
+
+   /* ============================================================
       §9.294 ④ カラム幅の自動調整（利用者の指示「カラムの文字列は
       見切れないようにしたいのでカラム幅の自動調整機能も欲しいです」）
       ============================================================ */
@@ -1703,8 +1930,23 @@ let b=null;
      const cols=[...area.querySelectorAll('colgroup col')].map(c=>parseFloat(c.style.width));
      const td=area.querySelector('.sp-table tbody td');
      const fs=Math.round(parseFloat(getComputedStyle(td).fontSize)*10)/10;
+     /* **見切れは「中身が器の外へ出ているか」で見る**——`td.scrollWidth`は
+        `table-layout:fixed`のセルで**max-contentの幅**を返すことがあり、
+        中の札が収まっていても溢れたと報告する（実測: 「計画外」の札は
+        29.9px＋余白4.7pxで器35pxに収まっているのに`scrollWidth`は44）。
+        子要素があるときは**その右端**と内容box の右端を突き合わせ、
+        文字だけのセルは今までどおり`scrollWidth`で見る。 */
+     const over1=t=>{
+      const kids=[...t.children];
+      if(!kids.length)return t.scrollWidth>t.clientWidth+1;
+      const cs2=getComputedStyle(t);
+      const right=t.getBoundingClientRect().right-parseFloat(cs2.paddingRight||0)
+        -parseFloat(cs2.borderRightWidth||0);
+      return kids.some(k=>k.getBoundingClientRect().right>right+1)
+        ||kids.some(k=>k.scrollWidth>k.clientWidth+1);
+     };
      const clipped=[...area.querySelectorAll('.sp-table tbody td:not(.sp-c-nonwork)')]
-       .filter(t=>t.scrollWidth>t.clientWidth+1).length;
+       .filter(over1).length;
      const wrap=area.querySelector('.sp-table-wrap'),pg=area.querySelector('.sp-page');
      const over=wrap.getBoundingClientRect().right>pg.getBoundingClientRect().right
        -parseFloat(getComputedStyle(pg).paddingRight)+1;
@@ -1772,6 +2014,14 @@ let b=null;
   try{
    for(const id of madeStops)await page.evaluate(async i=>{
     await fetch('/api/schedule/stop-reason-master/delete',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:i,user_id:'test-scprint'})});
+   },id);
+  }catch(e){}
+  /* 行表示マスタもmaster.sqlite3に残り実行をまたぐ（§9.121）。 */
+  try{
+   for(const id of madeStyles)if(id)await page.evaluate(async i=>{
+    await fetch('/api/schedule/row-style-master/delete',{method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({id:i,user_id:'test-scprint'})});
    },id);

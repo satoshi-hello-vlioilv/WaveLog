@@ -199,7 +199,13 @@
   rows.forEach(e=>{
    const useActual=(e.state==='完了'||e.state==='着手')&&e.actual&&e.actual.startAt;
    const start=useActual?e.actual.startAt:e.plannedStart;
-   const key=opt.pageByDate?workDayKey(e,start):'';
+   /* **日付は常に数えておく**（§9.295 ②）——「区切りの行間」は日付が
+      変わる行に効くので、日付ごとにページを分けない紙でも要る。
+      数え方は**紙のページ分けと同じ`workDayKey()`**（別に数えると
+      「区切りの空きは入ったのに、その行は前の日の紙に載る」が起きる・
+      §9.115／§9.197）。 */
+   const dayKey=workDayKey(e,start);
+   const key=opt.pageByDate?dayKey:'';
    if(!index.has(key)){const g={key,label:dayLabel(key),rows:[]};index.set(key,g);groups.push(g)}
    let group=null;
    if(grouping){try{group=view.groupOf(e)}catch(_){group=null}}
@@ -221,8 +227,12 @@
       ので、どの列が残ったかに関わらず読める1つの文字列として持つ。 */
    const nonWorkTitle=(e.kind!=='作業'&&typeof view.nonWorkTitle==='function')
      ?String(view.nonWorkTitle(e)||''):'';
+   /* 題名の横の（所要時間）（§9.295 ④）。**出すかどうかも画面が答える**
+      ——紙で判定をやり直さない（§9.163）。 */
+   const nonWorkTime=(nonWorkTitle&&typeof view.nonWorkTime==='function')
+     ?String(view.nonWorkTime(e)||''):'';
    index.get(key).rows.push({e,start,end:useActual?e.actual.endAt:e.plannedEnd,group,cells,kids,
-                             kidCount:allKids.length,rowStyle,nonWorkTitle});
+                             kidCount:allKids.length,rowStyle,nonWorkTitle,nonWorkTime,dayKey});
   });
   /* 紙の列は**1つの紙の中で変えない**ので、まとめて1回だけ決める。 */
   const cols=printColumns(opt);
@@ -599,19 +609,29 @@
   }
   return trimRound(out,usableMm,floor);
  }
- /* 0.1mm へ丸めた誤差で合計が予算を超えることがある。**いちばん広い列から
-    引く**（狭い列から引くと下限を割る）。 */
+ /* 0.1mm へ丸めた誤差で合計が予算を超えることがある。**広い列から順に
+    0.1mmずつ散らして引く**（狭い列から引くと下限を割る）。
+    **1本にまとめて引かないこと**（§9.295）——文字に合わせた幅は遊びが
+    0.3mmしか無いので、いちばん広い列だけから 16列ぶんの端数（最大0.8mm）を
+    引くと**その列が必ず切れる**（実測で1セル）。散らせば1列あたり0.1mmで
+    済み、遊びの中に収まる。 */
  function trimRound(values,usableMm,floorMm){
   const n=values.length;
   const floor=floorMm!=null?floorMm:Math.min(MIN_COL_MM,usableMm/(n||1));
   const mm=values.map(v=>Math.round(v*10)/10);
   let over=Math.round((mm.reduce((s,v)=>s+v,0)-usableMm)*10)/10;
-  while(over>0.001){
-   let at=0;for(let i=1;i<n;i++)if(mm[i]>mm[at])at=i;
-   const cut=Math.min(over,Math.max(0,mm[at]-floor))||over;
-   mm[at]=Math.round((mm[at]-cut)*10)/10;
-   over=Math.round((over-cut)*10)/10;
-   if(cut<=0)break;
+  const order=mm.map((v,i)=>i).sort((a,b)=>mm[b]-mm[a]);
+  let guard=n*40;
+  while(over>0.001&&guard-->0){
+   let moved=false;
+   for(const i of order){
+    if(over<=0.001)break;
+    if(mm[i]-0.1<floor-0.001)continue;
+    mm[i]=Math.round((mm[i]-0.1)*10)/10;
+    over=Math.round((over-0.1)*10)/10;
+    moved=true;
+   }
+   if(!moved)break;
   }
   return mm;
  }
@@ -663,10 +683,12 @@
     （`--sp-fit`を書かない＝1。幅も文字も`fit`で一緒に動くので、地の大きさで
     測っておけば比が保たれる）。**セルの余白と太字は掛ける**（どちらも列の
     必要量を変える）。 */
- /* **実寸ちょうどでは切れる**——0.1mmへ丸める段と、倍率を掛けたときの端数で
-    必ずどこかが足りなくなる。0.3mmの遊びを持たせる（これ以上取ると、
-    余りを文字へ回すという目的が薄れる）。 */
- const TEXT_SLACK_MM=0.3;
+ /* **実寸ちょうどでは切れる**——0.1mmへ丸める段・倍率を掛けたときの端数・
+    札や印の枠（`border`はmm固定で倍率に追随しない）で、必ずどこかが
+    足りなくなる。0.5mmの遊びを持たせる（0.3mmでは、札の入るセルが
+    通しの実行で1件だけ切れた。これ以上取ると、余りを文字へ回すという
+    目的が薄れる——16列で0.2mm増やすと本文が1.6%小さくなる）。 */
+ const TEXT_SLACK_MM=0.5;
  let colMmCache={sig:'',val:null};
  function measureSig(cols,rows,opt){
   let n=0;(rows||[]).forEach(r=>((r&&r.cells)||[]).forEach(c=>{n+=(c.text||'').length}));
@@ -685,9 +707,14 @@
    keep=area.innerHTML;
    area.classList.add('is-measuring');
    const head=cols.map(c=>`<th class="${esc(fixedAlignClass(c.key))}">${esc(c.label||'')}</th>`).join('');
-   /* 全幅の行（申し送り・設備停止の題名）は列の幅を決めない。 */
-   const body=(rows||[]).filter(r=>!fullWidthTitle(r)&&!(r&&r.nonWorkTitle))
-     .map((item,i)=>`<tr>${cellsOf(item,i+1,cols)}</tr>`).join('');
+   /* 申し送り（行まるごと全幅）は列の幅を決めない。**作業以外の行は
+      「束ねない形」で測る**（§9.296）——束ねた題名は列の幅を決めないが、
+      **固定列（区分・日付・時刻…）は実際に刷られる**ので、行ごと外すと
+      その列が痩せる（実測: 「設備停止」の札が入らず1セル切れた。「予定」より
+      2文字長い）。題名だけ外して、残りはふつうの行として測る。 */
+   const body=(rows||[]).filter(r=>!fullWidthTitle(r))
+     .map((item,i)=>`<tr>${cellsOf(item.nonWorkTitle?{...item,nonWorkTitle:''}:item,i+1,cols)}</tr>`)
+     .join('');
    area.innerHTML=`<section class="sp-page sp-measure-page"${boldOf(opt)?' data-bold="on"':''}`
      +` style="--sp-pad-x:${padXOf(opt)}"><div class="sp-table-wrap">`
      +`<table class="sp-table sp-measure">`
@@ -855,6 +882,13 @@
     束をそのまま使うと、「見える範囲の列だけ」で削られたときに範囲が
     紙の列とずれる。どれが内容の列かは**画面が答える**（`fixed`。§9.163）。 */
  function contentRunOf(item,cols){
+  /* **「行いっぱい」も選べる**（§9.295）。紙では**記入欄を残す**
+     ——空のまま刷って現場が手で書く場所なので、名前で潰さない。 */
+  const place=String((item.rowStyle&&item.rowStyle.titlePlace)||'');
+  if(place==='全幅'){
+   const last=cols.reduce((n,c,i)=>c.write?n:i+1,0);
+   if(last>0)return {at:0,span:last};
+  }
   const map=new Map((item.cells||[]).map(c=>[c.key,c]));
   const isContent=c=>{const v=map.get(c.key);return !!v&&v.fixed===false};
   const at=cols.findIndex(isContent);
@@ -870,9 +904,20 @@
   const run=item.nonWorkTitle?contentRunOf(item,cols):null;
   return cols.map((c,ci)=>{
    if(run){
-    if(ci===run.at)
+    if(ci===run.at){
+     /* 見せ方・揃えは**画面と同じ答えを運ぶだけ**（§9.295）——紙で
+        判定をやり直すと、画面と刷り上がりが食い違う（§9.163）。
+        色は行に貼る`sc-rs-*`の`--rs-*`を読むので、紙のための色表を
+        もう1つ作らない（§9.237 ⑥と同じ作法）。 */
+     const look=String((item.rowStyle&&item.rowStyle.titleLook)||'');
+     const align=String((item.rowStyle&&item.rowStyle.titleAlign)||'');
+     const time=String(item.nonWorkTime||'');
+     const body=esc(item.nonWorkTitle)+(time?`<span class="sp-nw-time">${esc(time)}</span>`:'');
+     const inner=look?`<b class="sp-nw-face">${body}</b>`:body;
      return `<td class="sp-c-nonwork"${run.span>1?` colspan="${run.span}"`:''}`
-      +` title="${esc(item.nonWorkTitle)}">${esc(item.nonWorkTitle)}</td>`;
+      +(look?` data-nw-look="${esc(look)}"`:'')+(align?` data-nw-align="${esc(align)}"`:'')
+      +` title="${esc(item.nonWorkTitle)}${esc(time)}">${inner}</td>`;
+    }
     if(ci>run.at&&ci<run.at+run.span)return '';
    }
    return cellOne(item,no,cols,c,kidKey,map);
@@ -968,12 +1013,22 @@
      `data-row`が付いているのが実際の予定の行で、**枚数を測る側は
      この印で数える**(splitToSheets)。 */
   let lastGroup=null;
+  /* 日付の変わり目（§9.295 ②、利用者の報告「区切りの行間の余白は変更しても
+     変化がない」）。§9.294 ③では**まとまりの帯にだけ**効かせていたが、
+     帯が出るのは「まとめ」を日付にしているときだけで、**既定（まとめない・
+     日付ごとにページを分ける）の紙には帯が1本も無い**——選べるのに一度も
+     効かない設定になっていた（§4）。印は**行そのもの**に付ける。
+     紙の1行目には付けない（紙の頭は区切りではない）。 */
+  let lastDay=null;
   /* まとまりの見出しに添える「現場歴／太陽暦」（§9.237）。**紙の中で
      変わらない**ので1回だけ引く。 */
   let basisLabel='';
   try{if(typeof WL.scheduleView?.groupBasisLabel==='function')basisLabel=WL.scheduleView.groupBasisLabel()||''}catch(_){basisLabel=''}
   const body=page.rows.map((item,i)=>{
    const g=item.group;
+   const day=String(item.dayKey||'');
+   const dayStart=i>0&&day&&lastDay!==null&&day!==lastDay;
+   if(day)lastDay=day;else if(lastDay===null)lastDay='';
    let head2='';
    if(g&&g.key!==lastGroup){
     lastGroup=g.key;
@@ -992,15 +1047,20 @@
    }
    /* 申し送り(コメント)は**横いっぱいの1行**にする——列に押し込むと
       読めない幅になり、書いた意味が無くなる（§9.191、利用者の指示）。 */
+   const dayCls=dayStart?' is-day-start':'';
    if(item.e.kind==='コメント'){
-    return head2+`<tr class="sp-row-comment" data-row="${i}">`
+    return head2+`<tr class="sp-row-comment${dayCls}" data-row="${i}">`
    +`<td colspan="${head.length}"><b>申し送り</b> ${esc((item.e.title||'').trim())}</td></tr>`;
    }
    /* 行の地の色は**画面と同じクラス**（`sc-rs-<色>`）を貼る（§9.237）——
       色の定義（`--rs-fg`/`--rs-bg`/`--rs-line`）は行表示マスタの1箇所が
       持っているので、紙のためにもう1つ色表を作らない。 */
    const rsKey=item.rowStyle&&item.rowStyle.colorKey?String(item.rowStyle.colorKey):'';
-   const rowCls=[item.e.kind!=='作業'?'sp-row-stop':'',rsKey?'sc-rs-'+rsKey:''].filter(Boolean).join(' ');
+   /* 題名を札／帯にした行は**地を塗らない**（§9.295。同じ色が2箇所に出ると
+      どちらが印なのか読めなくなる）。画面と同じ印を貼るだけ。 */
+   const nwFace=item.nonWorkTitle&&item.rowStyle&&item.rowStyle.titleLook?'sp-row-nw-face':'';
+   const rowCls=[item.e.kind!=='作業'?'sp-row-stop':'',rsKey?'sc-rs-'+rsKey:'',nwFace,
+                 dayStart?'is-day-start':''].filter(Boolean).join(' ');
    const mainRow=head2+`<tr class="${esc(rowCls)}" data-row="${i}">`
      +`${cellsOf(item,from+i,cols)}</tr>`;
    /* 子ロットの内訳(§9.235③)。**「載せる」を選んだときだけ**——分割の
@@ -1479,6 +1539,10 @@
    /* 印刷範囲(§9.292 ①)。`shownCount`は範囲を当てる前・`rangedCount`は
       当てたあと。**両方出す**——「12件中3件」と書けないと、絞れているのか
       そもそも予定が3件なのかが読めない。 */
+   /* 日付の変わり目が**紙の中に**何回あるか（§9.295 ②）。日付ごとに
+      ページを分けているなら0（1枚＝1日）。**数え方は紙と同じ`entryDayKey`**
+      ——別に数えると「効くと書いたのに効かない」が作れる（§9.163）。 */
+   dayBreaks:(pref&&pref.pageByDate)?0:Math.max(0,dayKeys.length-1),
    shownCount:shown.length,rangedCount:ranged,
    dayKeys,firstDay:dayKeys[0]||'',lastDay:dayKeys[dayKeys.length-1]||'',
    undatedCount:undated,pickedCount,
@@ -1607,12 +1671,22 @@
   const padRow=(name,list,cur,head,note)=>`<div class="sp-opt-row"><span class="sp-opt-k">${esc(head)}</span>`
    +`<span class="sp-opt-v">${seg(name,list,cur)}</span></div>`
    +`<p class="sp-opt-note">${esc(note)}</p>`;
+  /* **効く場面が無いときは、そう書く**（§4／§9.295 ②、利用者の報告
+     「区切りの行間の余白は変更しても変化がない」）——日付ごとにページを
+     分けていて、まとまりの帯も出していない紙には**日付の変わり目が1つも
+     無い**。押せるのに何も起きない設定を黙って残さない。 */
+  const dayBreaks=facts.dayBreaks;
+  const dayNote=dayBreaks===0
+    ?'いまの紙には日付の変わり目がありません'
+      +(pref.pageByDate?'（日付ごとにページを分けているため）。'
+                       :'（この範囲が1日ぶんのため）。')
+      +'「① 載せるもの」で日付ごとのページ分けを外すか、範囲を広げると効きます。'
+    :(DAY_GAPS.find(x=>x.key===dayCur)||{}).note||'';
   const padRows=padRow('spPadX',PAD_XS,padXCur,'左右',
      (PAD_XS.find(x=>x.key===padXCur)||{}).note||'')
    +padRow('spPadY',PAD_YS,padYCur,'行間（上下）',
      (PAD_YS.find(x=>x.key===padYCur)||{}).note||'')
-   +padRow('spDayGap',DAY_GAPS,dayCur,'区切りの行間',
-     (DAY_GAPS.find(x=>x.key===dayCur)||{}).note||'');
+   +padRow('spDayGap',DAY_GAPS,dayCur,'区切りの行間',dayNote);
   const fitRows=seg('spColFit',COL_FITS,fitCur)
    +`<p class="sp-opt-note">${esc((COL_FITS.find(x=>x.key===fitCur)||{}).note||'')}</p>`;
   const fit=facts.fit||1,font=facts.font||1;

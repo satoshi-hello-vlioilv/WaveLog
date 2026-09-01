@@ -98,6 +98,28 @@ let b=null;
     +deep.first>+firstTop+100&&deep.n>0,`先頭の行番号 ${firstTop} → ${deep.first}（${deep.n}行）`);
   const scrollDom=await page.evaluate(()=>document.querySelectorAll('#grid tbody tr').length);
   rec('スクロールしてもDOMの行数は増え続けない',scrollDom<total/2,`${scrollDom}行`);
+  /* ---- §9.297 速いスクロールでも空きが見えない（利用者の指摘） ----
+     組み直しは`requestAnimationFrame`にまとめてあるので**1フレームは必ず
+     遅れる**。前後に画面1つぶんを先取りしておけば、その1フレームで画面より
+     多く動いても空行（スペーサ）が見えない。
+     **「前後に何行あるか」で見ること**——`overscan`の定数を読む網は、
+     器の高さから決める作りになっていても通らない（実測で数える）。 */
+  const buffer=await page.evaluate(()=>{
+   const g=document.querySelector('#grid');
+   const rows=[...g.querySelectorAll('tbody tr:not(.grid-virtual-spacer)')];
+   if(!rows.length)return null;
+   const rowH=rows[0].getBoundingClientRect().height||24;
+   const view=g.getBoundingClientRect();
+   const above=rows.filter(r=>r.getBoundingClientRect().bottom<=view.top).length;
+   const below=rows.filter(r=>r.getBoundingClientRect().top>=view.bottom).length;
+   return {above,below,viewRows:Math.ceil(g.clientHeight/rowH),dom:rows.length};
+  });
+  rec('画面の前後に「画面1つぶんに近い」行を先に作ってある（速いスクロールで空きが出ない）',
+      !!buffer&&buffer.above>=Math.floor(buffer.viewRows*0.6)
+      &&buffer.below>=Math.floor(buffer.viewRows*0.6),JSON.stringify(buffer));
+  /* **先取りしすぎない**——1回の組み直しが重くなる（§9.94）。 */
+  rec('先取りは画面3つぶんまで（組み直しを重くしない）',
+      !!buffer&&buffer.dom<=buffer.viewRows*3+4,JSON.stringify(buffer));
 
   // ---- 6. 途中で戻したら続きの読み込みは止まる ----
   await page.selectOption('#pageSize','200');

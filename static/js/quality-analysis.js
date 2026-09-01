@@ -60,7 +60,21 @@
 
  function setPeriod(kind){const s=$id('qaStart'),e=$id('qaEnd');if(!s||!e)return;const now=new Date(),pad=n=>String(n).padStart(2,'0'),d0=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T00:00`,d1=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T23:59`;let a=new Date(now),b=new Date(now);if(kind==='7d')a.setDate(now.getDate()-6);else if(kind==='30d')a.setDate(now.getDate()-29);else if(kind==='90d')a.setDate(now.getDate()-89);else if(kind==='thisMonth'){a=new Date(now.getFullYear(),now.getMonth(),1);b=new Date(now.getFullYear(),now.getMonth()+1,0)}else if(kind==='lastMonth'){a=new Date(now.getFullYear(),now.getMonth()-1,1);b=new Date(now.getFullYear(),now.getMonth(),0)}else if(kind==='ytd')a=new Date(now.getFullYear(),0,1);s.value=d0(a);e.value=d1(b);const seg=$id('qaPeriodKind');if(seg)seg.value=kind;setSeg('qaPeriodSeg',kind);updateSummaries()}
 
- /* ---------- パネル生成 ---------- */
+ /* ---------- 畳む（§9.296 ②、利用者の指示「折りたためるようにしてください」）
+   ----------
+   置き場は**この端末**（読み方の好み。§9.199）。**いまどちらかはボタンの
+   文字が言う**（§3。畳んだあと帯だけが残るので、開き直す入口は消えない）。 */
+ const FOLD_KEY='QualityAnalysisFoldV1';
+ function foldGet(){try{return localStorage.getItem(FOLD_KEY)==='1'}catch(_){return false}}
+ function applyFold(on){
+  const p=$id('qualityAnalysisPanel');if(!p)return;
+  p.dataset.fold=on?'1':'0';
+  const b=$id('qaFold');
+  if(b){b.textContent=on?'▼ 開く':'▲ 畳む';
+        b.title=on?'このカードを開いて、グラフの設定を出します':'このカードを畳んで、下の一覧を広く使います'}
+  try{localStorage.setItem(FOLD_KEY,on?'1':'0')}catch(_){}
+ }
+/* ---------- パネル生成 ---------- */
  function ensurePanel(){
   let p=$id('qualityAnalysisPanel');
   if(!p){p=document.createElement('section');p.id='qualityAnalysisPanel';document.getElementById('grid')?.parentNode?.insertBefore(p,document.getElementById('grid'))}
@@ -71,7 +85,7 @@
   p.innerHTML=`
    <div class="qa-head">
     <div class="qa-tab-title"><b>品質データ分析</b><small>元データを確認し、グラフタブで 軸・値・凡例 を指定してグラフ化できます。</small></div>
-    <div class="qa-actions"><button type="button" id="qaRefresh" class="qa-primary">グラフを作成／更新</button><button type="button" id="qaPrint" class="qa-secondary">印刷</button></div>
+    <div class="qa-actions"><button type="button" id="qaRefresh" class="qa-primary">グラフを作成／更新</button><button type="button" id="qaPrint" class="qa-secondary">印刷</button><button type="button" id="qaFold" class="qa-secondary" title="このカードを畳んで、下の一覧を広く使います">▲ 畳む</button></div>
    </div>
    <div class="qa-step-tabs">
     <button type="button" class="active" data-qa-tab="raw">元データ</button>
@@ -172,6 +186,9 @@
   p.querySelector('#qaRefresh').onclick=()=>{setView('graph');run()};
   p.querySelector('#qaRunLarge').onclick=run;
   p.querySelector('#qaPrint').onclick=()=>window.print();
+  /* 畳む（§9.296 ②）。**開いていた形を覚える**——毎回畳み直させない。 */
+  p.querySelector('#qaFold').onclick=()=>applyFold(p.dataset.fold!=='1');
+  applyFold(foldGet());
   /* 見た目の変更はクライアント側で即時再描画（同サイズ） */
   ['qaChartType','qaBarWidth','qaBarMetric','qaLineMetric','qaSort','qaLimit','qaColor','qaShowValues'].forEach(id=>{const el=p.querySelector('#'+id);if(el)el.addEventListener('change',()=>{updateColor();updateToolbarDisclosure();if(last)render(last)})});
   applyDisclosure();updateColor();

@@ -28,7 +28,7 @@ with_write(login_id,pc_name,uid,apply_fn)のapply_fn内から
 import json as _json
 import re as _re
 
-from ..db_access import tables
+from ..db_access import tables, cols, qi
 from .master_repo import normalize_equipment_name
 
 # ========================================================================
@@ -570,6 +570,52 @@ def stop_category_upsert(c_master,name,uid,color_key='',category_id=None):
 # 効く順は「分類の指定 → 区分の指定 → 既定」で、判定は画面の1箇所が持つ。
 # ========================================================================
 ROW_STYLE_TABLE='行表示マスタ'
+# ---------------------------------------------------------------------------
+# 作業以外の行（設備停止・コメント・枠）の題名の見せ方（§9.295、利用者の指示
+# 「作業スケジュールの設備停止の部分に色やバッジみたいなデザインを付けたいのと、
+#  左寄せにしたり文字の位置を変更できるようにしてほしいです」）
+# ---------------------------------------------------------------------------
+# §9.294 ①で題名は「内容の列を束ねた1マス」になった。そこへ**見せ方**を足す。
+# **綴りと呼び名はここが1箇所**（§9.163）——画面へ写すと、増やしたときに
+# 2箇所直すことになる。**既定はどれも空＝いまの見え方**（§9.132。設定を
+# 触っていない現場の紙と画面が1pxも変わらない）。
+#
+# 色は**既にある`[色キー]`をそのまま使う**（`--rs-fg`/`--rs-bg`/`--rs-line`）
+# ——バッジのために色表をもう1つ作らない。効く順も今までどおり
+# 「分類の指定 → 区分の指定 → 既定」。
+ROW_TITLE_LOOK_COLUMN='題名の見せ方'
+ROW_TITLE_PLACE_COLUMN='題名の位置'
+ROW_TITLE_ALIGN_COLUMN='題名の揃え'
+ROW_TITLE_LOOKS=(
+ ('',      '文字だけ','いまの見え方。色は行の地に出ます（既定）'),
+ ('バッジ','バッジ',  '名前を札にして、色を札に乗せます。行の地は塗りません'),
+ ('帯',    '帯',      '束ねたマスぜんぶを色の面にします。いちばん目立ちます'),
+)
+ROW_TITLE_PLACES=(
+ ('',    '内容の列','日付・時刻・区分はそのまま残ります（既定）'),
+ ('全幅','行いっぱい','操作の列を除いて、行の左端から端まで使います'),
+)
+ROW_TITLE_ALIGNS=(
+ ('',    '左',  '既定'),
+ ('中央','中央','紙で目立たせたいとき'),
+ ('右',  '右',  ''),
+)
+# 題名の横の（所要時間）（§9.295 ④、利用者の指示「設備停止名の横に()書きで
+# 時間を表示するように。デフォルト表示ONでOFFにもできるように」）。
+# **既定＝出す**なので、空欄が「出す」。OFFにするときだけ値が入る
+# （§9.99「行が無い＝既定」と同じ約束で、既定を変えても追随する）。
+ROW_TITLE_TIME_COLUMN='題名に時間'
+ROW_TITLE_TIMES=(
+ ('',    '出す',  '所要時間を（ ）で名前の横に添えます（既定）'),
+ ('なし','出さない','名前だけにします'),
+)
+def normalize_row_title_time(v):return _norm_choice(v,ROW_TITLE_TIMES)
+def _norm_choice(value,table):
+ v=str(value or '').strip()
+ return v if any(v==k for k,_l,_n in table) else ''
+def normalize_row_title_look(v):return _norm_choice(v,ROW_TITLE_LOOKS)
+def normalize_row_title_place(v):return _norm_choice(v,ROW_TITLE_PLACES)
+def normalize_row_title_align(v):return _norm_choice(v,ROW_TITLE_ALIGNS)
 
 def ensure_row_style_table(c_master):
  names=tables(c_master);created=False
@@ -578,15 +624,28 @@ def ensure_row_style_table(c_master):
   cur.execute('CREATE TABLE [行表示マスタ] ([行表示ID] INTEGER PRIMARY KEY AUTOINCREMENT, [区分キー] TEXT, [色キー] TEXT, [アイコン] TEXT, [アイコン表示] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE UNIQUE INDEX [UX_行表示マスタ_区分キー] ON [行表示マスタ] ([区分キー])')
   c_master.commit();created=True
+ # 既存環境には題名の3列が無い。**空のまま足して「未設定＝既定」**で扱う
+ # （他マスタと同じ互換ポリシー。値を入れ直させない）。
+ try:
+  have=set(cols(c_master,ROW_STYLE_TABLE))
+  for name in (ROW_TITLE_LOOK_COLUMN,ROW_TITLE_PLACE_COLUMN,ROW_TITLE_ALIGN_COLUMN,
+               ROW_TITLE_TIME_COLUMN):
+   if name not in have:
+    cur=c_master.cursor()
+    cur.execute(f'ALTER TABLE {qi(ROW_STYLE_TABLE)} ADD COLUMN {qi(name)} TEXT')
+    c_master.commit()
+ except Exception:pass
  return created
 
 def row_style_rows(c_master):
  ensure_row_style_table(c_master)
  cur=c_master.cursor()
- cur.execute('SELECT [行表示ID],[区分キー],[色キー],[アイコン],[アイコン表示],[有効],[更新日時],[更新者ID] FROM [行表示マスタ] ORDER BY [区分キー]')
+ cur.execute('SELECT [行表示ID],[区分キー],[色キー],[アイコン],[アイコン表示],[有効],[更新日時],[更新者ID],'
+             '[題名の見せ方],[題名の位置],[題名の揃え],[題名に時間] FROM [行表示マスタ] ORDER BY [区分キー]')
  return [r for r in cur.fetchall() if (True if r[5] is None else bool(r[5]))]
 
-def row_style_upsert(c_master,key,uid,color_key='',icon='',show_icon=True,row_style_id=None):
+def row_style_upsert(c_master,key,uid,color_key='',icon='',show_icon=True,row_style_id=None,
+                     title_look=None,title_place=None,title_align=None,title_time=None):
  """1件の登録・更新。区分キーが自然キー。**既定へ戻すのは行を消すこと**
  （空文字を保存すると「空という設定」になり、あとから既定を変えても
  追随しなくなる。§9.99の「行が無い＝既定」と同じ約束）。"""
@@ -595,21 +654,46 @@ def row_style_upsert(c_master,key,uid,color_key='',icon='',show_icon=True,row_st
  if not key:raise ValueError('どの区分の見せ方かを指定してください。')
  flag=-1 if show_icon else 0
  cur=c_master.cursor()
- cur.execute('SELECT [行表示ID],[区分キー] FROM [行表示マスタ]')
+ cur.execute('SELECT [行表示ID],[区分キー],[題名の見せ方],[題名の位置],[題名の揃え],[題名に時間] FROM [行表示マスタ]')
  rows=cur.fetchall()
  same=next((r for r in rows if str(r[1] or '').strip()==key),None)
+ # **送られてこなかった項目は今の値を残す**（§9.212 ②）——呼び出し側が
+ # 1つ書き漏らすと、その設定だけが黙って消える形にしない。
+ def keep(row,idx,given,norm):
+  if given is not None:return norm(given)
+  return norm(row[idx]) if row else ''
  if row_style_id is not None:
   if same and same[0]!=row_style_id:raise ValueError(f'区分「{key}」の設定は既にあります。')
-  cur.execute('UPDATE [行表示マスタ] SET [区分キー]=?,[色キー]=?,[アイコン]=?,[アイコン表示]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [行表示ID]=?',
-              [key,color_key,icon,flag,uid,row_style_id])
+  cur.execute('SELECT [行表示ID],[区分キー],[題名の見せ方],[題名の位置],[題名の揃え],[題名に時間] FROM [行表示マスタ] WHERE [行表示ID]=?',[row_style_id])
+  cur_row=cur.fetchone()
+  cur.execute('UPDATE [行表示マスタ] SET [区分キー]=?,[色キー]=?,[アイコン]=?,[アイコン表示]=?,'
+              '[題名の見せ方]=?,[題名の位置]=?,[題名の揃え]=?,[題名に時間]=?,'
+              '[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [行表示ID]=?',
+              [key,color_key,icon,flag,
+               keep(cur_row,2,title_look,normalize_row_title_look),
+               keep(cur_row,3,title_place,normalize_row_title_place),
+               keep(cur_row,4,title_align,normalize_row_title_align),
+               keep(cur_row,5,title_time,normalize_row_title_time),
+               uid,row_style_id])
   if cur.rowcount==0:raise ValueError('指定の設定が見つかりません。')
   return row_style_id,False
  if same:
-  cur.execute('UPDATE [行表示マスタ] SET [色キー]=?,[アイコン]=?,[アイコン表示]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [行表示ID]=?',
-              [color_key,icon,flag,uid,same[0]])
+  cur.execute('UPDATE [行表示マスタ] SET [色キー]=?,[アイコン]=?,[アイコン表示]=?,'
+              '[題名の見せ方]=?,[題名の位置]=?,[題名の揃え]=?,[題名に時間]=?,'
+              '[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [行表示ID]=?',
+              [color_key,icon,flag,
+               keep(same,2,title_look,normalize_row_title_look),
+               keep(same,3,title_place,normalize_row_title_place),
+               keep(same,4,title_align,normalize_row_title_align),
+               keep(same,5,title_time,normalize_row_title_time),
+               uid,same[0]])
   return same[0],False
- cur.execute('INSERT INTO [行表示マスタ] ([区分キー],[色キー],[アイコン],[アイコン表示],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,-1,?,?,Now(),Now())',
-             [key,color_key,icon,flag,uid,uid])
+ cur.execute('INSERT INTO [行表示マスタ] ([区分キー],[色キー],[アイコン],[アイコン表示],'
+             '[題名の見せ方],[題名の位置],[題名の揃え],[題名に時間],'
+             '[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,-1,?,?,Now(),Now())',
+             [key,color_key,icon,flag,
+              normalize_row_title_look(title_look),normalize_row_title_place(title_place),
+              normalize_row_title_align(title_align),normalize_row_title_time(title_time),uid,uid])
  return cur.lastrowid,True
 
 def row_style_delete(c_master,row_style_id,uid):

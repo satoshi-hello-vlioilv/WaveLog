@@ -1597,8 +1597,13 @@
   if(f.kind==='head')return [f.label,'',{span:f.span,rows:f.rows,head:true,align:f.align}];
   const v=rpFormatCell(rpValueAt(x,f.path,{lot:L}),f.format);
   /* 割り当てられない項目は`—`（`rpValueAt`が返す）。**理由を添える**（§4）。 */
+  /* **マスの持ちものは1つも落とさない**（§9.113／§9.212 ②で5度踏んだ形）
+     ——ここが`cell()`へ渡す唯一の口なので、書き漏らした設定は
+     **保存も盤の札も効いているのに、見本も紙も1pxも変わらない**（§9.292 ⑤の
+     `stack`が実際にそれで、利用者から「ボタンを押しても変化が全くなく、
+     プレビューも横のまま」と報告された）。 */
   return [f.label,v,{span:f.span,rows:f.rows,title:(v==='—'?RP_LOT_NA:''),
-                     align:f.align,showLabel:f.showLabel!==false}];
+                     align:f.align,showLabel:f.showLabel!==false,stack:!!f.stack}];
  }
  function rpFieldsSection(x,name,fields,cols,repeat,repeatDir){
   const live=fields.filter(f=>!f.blank);
