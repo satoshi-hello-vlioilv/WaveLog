@@ -1936,7 +1936,9 @@
 /* **盤は段の余りを全部取る**（§9.254 ①）。`.mm-field`は縦積みのflexなので、
    自分が伸びる（`flex:1 1 100%`＋`min-height:0`）と中の`.fb-body`へ高さが
    届く（§9.222 ⑤の鎖）。 */
-.mm-editor-body .mm-field.fb{flex:1 1 100%;width:100%;max-width:100%;min-height:0}
+/* **`flex-basis`は`auto`**（§9.291 ①）——段が縦積みになったので、`100%`は
+   「高さの100%」になってしまう（§9.253 ①）。幅は`width:100%`が持つ。 */
+.mm-editor-body .mm-field.fb{flex:1 1 auto;width:100%;max-width:100%;min-height:0}
 .mm-editor-body .mm-field.fb>.fb-body{flex:1 1 auto;min-height:0}
 .fb{grid-column:1/-1}
 /* 組み立ての盤がある窓は広く取る——候補と載せる項目を**左右に並べて
@@ -2633,8 +2635,22 @@
    **すぐ上の`align-content:flex-start`より詳細度を上げること**——同じ数だと
    後から読まれる側が勝ち、伸びない（§9.206と同じ罠。実測で盤が445px、
    段が709pxのまま264px空いていた）。 */
+/* **盤の段は縦積み（折り返さない）**（§9.291 ①、利用者の報告「ブロック
+   マスタの選べる項目がスクロールしないので、選べません」）。
+   パネルの既定は「欄を規格幅で並べる**折り返す横並び**」（§9.221 ④）で、
+   その形のまま盤を入れていたため`.mm-field.fb{flex:1 1 100%}`の`100%`は
+   **行の幅**の意味にしかならず、**高さは中身なり**になっていた。候補が
+   194件ある実データでは盤が3,905pxまで伸び、パネル（709px・
+   `overflow:hidden`）に**切り落とされる**——`.fb-list`は`overflow:auto`を
+   持っているのに、器のほうが伸びるのでスクロールが出ない
+   （実測: panel h=709 / sh=3,905 / はみ出し3,196px、list h=3,673 はみ出し0）。
+   §9.253 ①・§9.254 ①で「縦積みでは`flex-basis:100%`は高さの100%」と
+   書いたのと**同じ罠の1段深いところ**で、こちらは逆に「横並びのままなので
+   高さが決まらない」形。**盤の段だけ縦積みにして、余りを盤へ渡す。**
+   `.is-fill`が付くのは`field-builder`を持つ段だけ（`master-maint.js`）。 */
 .mm-editor-dialog.is-builder .mm-tabpanel.is-fill,
-.mm-tabpanel.is-fill{align-items:stretch;align-content:stretch;overflow:hidden}
+.mm-tabpanel.is-fill{align-items:stretch;align-content:stretch;overflow:hidden;
+  flex-direction:column;flex-wrap:nowrap}
 /* **見本の柱も器いっぱい**。`position:sticky`＋`align-self:start`は
    「外側が流れる」前提の書き方で、器の高さが決まった今は要らない
    （残すと柱が中身なりの高さで止まり、紙が小さいままになる）。 */

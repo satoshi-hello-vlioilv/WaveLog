@@ -204,6 +204,46 @@ finally:
     schedule_owner.local_urls = real_urls
     schedule_owner.enabled = real_enabled
 
+# ---- 7) 稼働カレンダーは足りなくなったら伸びる（§9.291 ②） --------------
+# 利用者の報告「枠いっぱいになったら、それ以上のロットを受け付けてくれない。
+# 制限なく、スケジュールを作成できるようにしてください」。
+#
+# 以前は`MAX_HORIZON_DAYS`（60日）ぶんの稼働帯を1回組んで終わりで、そこを
+# 超える予定は`plannedStart=None`（画面では「未定」）になっていた——行は
+# 足せているのに時刻が付かないので「受け付けてくれない」としか見えない。
+#
+# **時間ではなく形を見る**——「伸びたか」「上限で止まるか」「素のlistは
+# 今までどおりか」の3つ。
+import datetime as _dt
+
+_d = _dt.date(2026, 1, 1)
+_cur = _dt.datetime(2026, 1, 1, 0, 0)
+# 稼働カレンダーが1件も無ければ24時間稼働（`working_slots_for_date`）。
+_tl = schedule_calc.SlotTimeline([], [], _d)
+rec('はじめは60日ぶんで組む（今までと同じ）',
+    _tl.days == schedule_calc.MAX_HORIZON_DAYS, str(_tl.days))
+_end, _spans, _trunc = schedule_calc.consume_minutes(_cur, 200 * 1440, _tl)
+rec('60日を超える予定でも置ける（足りなければ伸ばす）',
+    (not _trunc) and _end is not None and _tl.grown >= 1,
+    f'打ち切り={_trunc} 伸ばした={_tl.grown} 日数={_tl.days}')
+# **上限は残す**——稼働帯が1つも無いカレンダーで際限なく組み立て続けると
+# 応答が返らなくなる。
+_tl2 = schedule_calc.SlotTimeline([], [], _d)
+_e2, _s2, _t2 = schedule_calc.consume_minutes(_cur, 5000 * 1440, _tl2)
+rec('上限（5年）に達したら打ち切る（無限には伸ばさない）',
+    _t2 and _tl2.days == schedule_calc.HORIZON_CAP_DAYS,
+    f'打ち切り={_t2} 日数={_tl2.days} 上限={_tl2.cap_days}')
+# **素のlistを渡す道は今までどおり**（`build_slot_timeline()`は残してある）。
+_plain = schedule_calc.build_slot_timeline([], [], _d)
+rec('素のlistなら今までどおり打ち切る（伸ばす口を持たない）',
+    schedule_calc.consume_minutes(_cur, 200 * 1440, _plain)[2] is True, '')
+# 稼働帯を探す側も伸びること（`snap_to_working`）。
+_tl3 = schedule_calc.SlotTimeline([], [], _d)
+_far = _dt.datetime(2026, 1, 1) + _dt.timedelta(days=300)
+_got, _w = schedule_calc.snap_to_working(_far, _tl3)
+rec('先の時刻を指しても稼働帯を見つける（探す側も伸びる）',
+    _got is not None and _tl3.grown >= 1, f'{_got} 伸ばした={_tl3.grown}')
+
 print('\n=== SUMMARY ===')
 ng = [x for x in R if not x[1]]
 print('%d/%d passed' % (len(R) - len(ng), len(R)))

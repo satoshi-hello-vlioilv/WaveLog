@@ -108,6 +108,36 @@ let b=null,page=null;
         比:(fb.pickW/(fb.pickW+fb.chosenW)).toFixed(2)}));
   rec('候補も並びも縦を使い切る（頭打ちで止まらない）',
       fb.listH>=fb.bodyH*0.6&&fb.rowsH>=fb.bodyH*0.6,JSON.stringify(fb));
+  /* ---- 候補が多いときは**器の中でスクロールする**（§9.291 ①、利用者の報告
+     「ブロックマスタの選べる項目がスクロールしないので、選べません」） ----
+     段のパネルは「欄を規格幅で並べる**折り返す横並び**」が既定なので、
+     盤を入れたままだと`.mm-field.fb{flex:1 1 100%}`の`100%`は**行の幅**の
+     意味にしかならず、**高さは中身なり**になる。実データの候補は194件
+     （仕掛の生データ）あるため盤が3,900px近くまで伸び、パネル
+     （`overflow:hidden`）に**切り落とされて**下の項目へ辿り着けなかった。
+     **材料は自分で注ぎ込む**——検証用の仕掛は34列しかなく、そのままでは
+     器に収まってしまい、この道を一度も通らない（直す前でも通る）。 */
+  const many=await page.evaluate(()=>{
+   const l=document.querySelector('.fb-list');
+   if(!l)return null;
+   for(let i=0;i<200;i++){
+    const b=document.createElement('button');
+    b.type='button';b.className='fb-item';
+    b.innerHTML='<span>ダミー'+i+'</span><small>source.dummy'+i+'</small>';
+    l.appendChild(b);
+   }
+   const m=e=>e?{h:e.clientHeight,sh:e.scrollHeight,of:getComputedStyle(e).overflowY}:null;
+   return {list:m(l),panel:m(document.querySelector('.mm-tabpanel:not([hidden])')),
+           field:m(document.querySelector('.mm-field.fb')),
+           札:l.querySelectorAll('.fb-item').length};
+  });
+  rec('前提: 候補を実データ相当まで増やせた',!!many&&many.札>=200,JSON.stringify(many&&many.札));
+  rec('候補が多くても器の中でスクロールする（切り落とさない）',
+      !!many&&many.list.sh>many.list.h+50&&many.list.of==='auto',
+      JSON.stringify(many&&many.list));
+  rec('段のパネルは伸びない（盤が段からはみ出さない）',
+      !!many&&many.panel.sh<=many.panel.h+1&&many.field.h<=many.panel.h+1,
+      JSON.stringify(many&&{panel:many.panel,field:many.field}));
   /* 見本の紙は**A4の比**（§9.254 ①。`max-height`で切ると比が崩れ、
      「紙に入るか」を確かめる道具にならない）。 */
   const paper=await page.evaluate(()=>{
