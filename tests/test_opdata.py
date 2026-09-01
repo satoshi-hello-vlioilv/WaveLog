@@ -705,6 +705,55 @@ try:
     # §9.248 ① 足した2つが語彙に入っていること（綴りまで見る）。
     rec('パネル・スピナーが選べる',
         'パネル' in widgets and 'スピナー' in widgets, str(len(widgets)))
+
+    # ------------------------------------------------------------------
+    # §9.300 ③ 組み込みキーと同じ役割は保存しない
+    # ------------------------------------------------------------------
+    # §9.223 ①の約束は「組み込みの欄はその役割を**暫定で**担っているだけで、
+    # 利用者が別のカードへ同じ役割を与えたら下がる」。ところが設定窓の役割の
+    # `<select>`は**効いている役割**（＝組み込みキー由来の暫定値）を選んだ
+    # 状態で開くので、**組み込みの欄を1回開いて保存しただけで**暫定が明示に
+    # 化け、以降その欄は二度と下がらなくなっていた。
+    #
+    # **`stored_role()`を直に呼ぶ網では足りない**——`item_upsert`が通して
+    # いなくても通る。**保存の口を往復させて**、そのあとで実際に役割を
+    # 引き取れることまで見る。
+    builtin_row = next((x for x in get('/api/operation-item-master?equipment='
+                                       + urllib.parse.quote(EQ)).get('items', [])
+                        if x.get('builtin') == 'spool'), None)
+    rec('前提: 組み込みの「スプール」がマスタに居る', builtin_row is not None,
+        str(builtin_row and builtin_row.get('name')))
+    if builtin_row:
+        # 設定窓が送るのと同じ形——効いている役割をそのまま送り返す。
+        code, _ = post('/api/operation-item-master/update',
+                       {'id': builtin_row['id'], 'name': builtin_row['name'],
+                        'equipment': builtin_row.get('equipment') or '*',
+                        'type': builtin_row.get('type') or '文字',
+                        'role': builtin_row.get('roleLive') or 'spool',
+                        'user_id': 'tests'})
+        again = next((x for x in get('/api/operation-item-master?equipment='
+                                     + urllib.parse.quote(EQ)).get('items', [])
+                      if x.get('builtin') == 'spool'), None)
+        rec('組み込みの欄を開いて保存しても役割は暫定のまま（明示にしない）',
+            code == 200 and again is not None and not (again.get('role') or ''),
+            'HTTP %s / role=%r' % (code, again and again.get('role')))
+        rec('暫定のままでも効いている役割は変わらない',
+            again is not None and again.get('roleLive') == 'spool',
+            str(again and again.get('roleLive')))
+        # 保存のあとでも役割を引き取れること（これが直したかったこと）。
+        code2, mk = post('/api/operation-item-master',
+                         {'equipment': EQ, 'group': TAG, 'name': TAG + ' 巻取り',
+                          'type': '文字', 'role': 'spool', 'user_id': 'tests'})
+        if isinstance(mk, dict) and mk.get('id'):
+            made_items.append(mk['id'])
+        rep = get('/api/operation-item-master?equipment='
+                  + urllib.parse.quote(EQ)).get('roleReport') or {}
+        form = get('/api/operation-form?equipment=' + urllib.parse.quote(EQ))
+        rec('保存のあとでも役割を引き取れる（組み込みの欄が下がる）',
+            'spool' not in (rep.get('duplicated') or [])
+            and 'spool' in (form.get('builtinOff') or []),
+            json.dumps({'duplicated': rep.get('duplicated'),
+                        'builtinOff': form.get('builtinOff')}, ensure_ascii=False))
 finally:
     # **後始末**。db/master.sqlite3は実行をまたいで生き延びる(§9.121)。
     for i in made_blocks:
