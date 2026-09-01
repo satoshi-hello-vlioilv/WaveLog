@@ -772,6 +772,82 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
        parseFloat(kept.エリア)===0&&parseFloat(kept.基本)>0,JSON.stringify(kept));
   }
 
+
+  /* ==========================================================
+     §9.298 表は「縮める前に余白を詰める」
+     ----------------------------------------------------------
+     利用者の指示は「帳票ブロックマスタの『丈別データ(長さ、肉厚、揃い)』に
+     関して、横方向の幅を小さくしたときに他の表と同じように余白を詰めて
+     データの文字サイズを極力キープするような変化をするように」。
+
+     直す前は`rpFitBlockBodies()`がいきなり`--rp-fit`で**丸ごと縮めて**おり、
+     6/24マスで0.55倍＝本文7.5pxが4.1pxになっていた（実測）。
+     ここで固定するのは3点。
+       1. **入っている塊は1pxも変わらない**（広いマスでは詰めない）
+       2. 狭くすると**余白が実際に小さくなる**（文字サイズは据え置き）
+       3. 詰めを止めると**縮む倍率が下がる**＝詰めが効いている
+     3つ目がこの網の背骨。**「余白が小さい」だけを見る網は素通りする**
+     ——CSSが効いていても、縮める側が詰めた結果を見ていなければ意味が無い。
+     ========================================================== */
+  try{
+   await page.click('#reportArrange');
+   await page.waitForSelector('.rp-blocks.is-arranging',{timeout:8000});
+   await settle(page);
+   const placed=await page.evaluate(()=>{
+    const p=[...document.querySelectorAll('#rpPalette [data-rp-pal]')]
+      .find(e=>e.dataset.rpPal==='丈別データ');
+    if(p){p.click();return 'placed'}
+    return document.querySelector('[data-rp-block="丈別データ"]')?'already':'missing';
+   });
+   await settle(page);await page.waitForTimeout(300);
+   rec('前提: 丈別データの塊が紙に出ている',placed!=='missing',placed);
+   const picks=await inDlg(page,'丈別データ',()=>page.evaluate(()=>
+     [...document.querySelectorAll('#rpBlockForm [data-e-span]')]
+       .map(b=>Number(b.dataset.eSpan)).filter(Boolean).sort((a,b)=>a-b)));
+   /* セルの見え方は**描画後の解決値**で見る（§9.289。宣言を見る網は
+      `calc()`の中身が間違っていても通る）。 */
+   const look=()=>page.evaluate(()=>{
+    const el=document.querySelector('[data-rp-block="丈別データ"]');if(!el)return null;
+    const t=el.querySelector('.rp-product-table');if(!t)return null;
+    const td=t.querySelector('tbody td'),cs=getComputedStyle(td);
+    const fit=el.querySelector(':scope>.rp-block-fit');
+    return{px:parseFloat(cs.paddingLeft),py:parseFloat(cs.paddingTop),
+      fs:parseFloat(cs.fontSize),lh:parseFloat(cs.lineHeight),
+      fit:Number(fit&&fit.style.getPropertyValue('--rp-fit'))||1,
+      dense:Number(fit&&fit.style.getPropertyValue('--rp-dense'))||1};
+   });
+   const wide=picks[picks.length-1],narrow=picks[0];
+   await inDlg(page,'丈別データ',()=>page.click(`#rpBlockForm [data-e-span="${wide}"]`));
+   await settle(page);await page.waitForTimeout(250);
+   const W=await look();
+   /* **入っている塊は詰めない。** 既定の見え方（余白2px/1px・行送り1.15）を
+      1pxも変えないこと（§9.132。わざわざ設定していない現場の紙が黙って
+      変わらない）。 */
+   rec('広いマスでは余白を詰めない（今までの見え方のまま）',
+       !!W&&W.dense===1&&W.px===2&&W.py===1&&Math.abs(W.lh-W.fs*1.15)<0.05,
+       JSON.stringify(W));
+   await inDlg(page,'丈別データ',()=>page.click(`#rpBlockForm [data-e-span="${narrow}"]`));
+   await settle(page);await page.waitForTimeout(250);
+   const N=await look();
+   rec('狭くすると余白が詰まる（左右・上下・行送りとも）',
+       !!N&&N.dense<1&&N.px<W.px&&N.py<W.py&&N.lh<W.lh,JSON.stringify(N));
+   /* **文字サイズそのものは据え置き**（詰めるのは余白だけ）。実際に見える
+      大きさは`--rp-fit`が掛かるので、そちらは次で見る。 */
+   rec('詰めても文字サイズ（font-size）は変えない',
+       !!N&&N.fs===W.fs,`広${W&&W.fs} / 狭${N&&N.fs}`);
+   /* ---- 詰めを止めると縮む倍率が下がる（＝文字が小さくなる） ----
+      inline の `--rp-dense` を `!important` で打ち消してから測り直す。
+      **A/Bで見ること**——「狭いと縮む」だけを見る網は、詰めが1pxも
+      効いていない実装でも通る。 */
+   await page.addStyleTag({content:'.rp-block-fit{--rp-dense:1 !important}'});
+   await page.evaluate(()=>WL.reportFit());
+   await settle(page);await page.waitForTimeout(150);
+   const OFF=await look();
+   rec('詰めを止めると、そのぶん文字を縮めることになる（＝詰めが効いている）',
+       !!OFF&&!!N&&OFF.fit<N.fit-0.001,
+       `詰めるとき ${N&&N.fit} / 詰めないとき ${OFF&&OFF.fit}`);
+  }catch(e){rec('FATAL(§9.298)',false,e.message)}
+
   rec('コンソールに例外を出さない',errs.length===0,errs.slice(0,2).join(' / '));
  }catch(e){rec('FATAL',false,e.message)}
  finally{

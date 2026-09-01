@@ -565,7 +565,10 @@
   display:flex;align-items:flex-end;justify-content:flex-end;break-inside:avoid}
 .rp-area-text{color:#60747b;font-size:8.5px;white-space:pre-wrap;overflow-wrap:break-word;text-align:right}
 .rp-section{margin:0;break-inside:avoid}
-.rp-section h3{margin:0 0 2px;padding:1.5px 6px;background:#eef2f4;border-left:4px solid var(--teal);color:#173842;font-size:9px}
+/* 見出しと注記の余白も「詰める」対象（§9.298）。**表のセルだけを詰めても
+   足りない**——1丈しか無いロットでは、塊の高さの半分以上を見出しと注記が
+   占めている（実測: 表32px／見出し＋注記が残り）。**文字サイズは掛けない**。 */
+.rp-section h3{margin:0 0 calc(2px * var(--rp-dense,1));padding:calc(1.5px * var(--rp-dense,1)) 6px;background:#eef2f4;border-left:4px solid var(--teal);color:#173842;font-size:9px}
 /* 節の中の列数（§9.289、利用者の報告「帳票ブロックマスタで調整する列数が
    全く効いておらず…プレビューは2列、紙レイアウトの方のプレビューも2列」）。
    **JSが`--rp-cols`で渡す**——以前は`.rp-grid-N`という決め打ちのクラスで、
@@ -625,8 +628,19 @@
    あった。省略せず折り返して全文を表示するようにする(行が必要な分だけ
    高くなる)。 */
 .rp-field-value{color:#17272d;font-weight:700;overflow-wrap:break-word;white-space:normal}
-.rp-dim-table{width:100%;border-collapse:collapse;margin-top:2px}
-.rp-dim-table th,.rp-dim-table td{height:auto;padding:1.5px 3px;border:1px solid #d6e0e3;text-align:center;font-size:8.5px}
+/* ---------- 表の余白は「詰める」ほうが先（§9.298、利用者の指示） ----------
+   「横方向の幅を小さくしたときに他の表と同じように余白を詰めてデータの
+     文字サイズを極力キープするような変化をするように変更してください」
+
+   器に入らない塊は`rpFitBlockBodies()`が`--rp-fit`で**丸ごと縮めて**いた
+   （実測: 丈別データを6/24マスにすると0.55倍＝本文7.5px→4.1px）。
+   縮める前に**余白から先に削る**ようにしたので、ここは倍率（`--rp-dense`）を
+   掛けた式で書く。**1（＝詰めない）が既定**なので、入っている塊の見え方は
+   1pxも変わらない。倍率を決めるのは`rpFitBlockBodies()`の1箇所（§9.163）。
+   **文字サイズには掛けないこと**——「文字を極力キープする」のがこの仕組みの
+   目的で、掛けると`--rp-fit`と同じことをするだけになる。 */
+.rp-dim-table{width:100%;border-collapse:collapse;margin-top:calc(2px * var(--rp-dense,1));--rp-pd-y:1.5px;--rp-pd-x:3px}
+.rp-dim-table th,.rp-dim-table td{height:auto;padding:calc(var(--rp-pd-y) * var(--rp-dense,1)) calc(var(--rp-pd-x) * var(--rp-dense,1));border:1px solid #d6e0e3;text-align:center;font-size:8.5px}
 .rp-dim-table thead th{background:#eef2f4;color:#173842}
 .rp-dim-table tbody th{background:#f7fafb;text-align:left}
 /* 品質等級: ラベル(th)と値(td)を交互に並べた4ペア構成（コンパクト化） */
@@ -653,10 +667,10 @@
   display:flex;flex-direction:column;height:100%;min-height:0}
 .rp-section-fill>.rp-info-box{flex:1 1 auto}
 /* 頭/尾を1枚に収める測定データ表。列数が多いため小さめのフォントで密に配置する */
-.rp-note{margin:0 0 2px;color:#60747b;font-size:7.5px}
+.rp-note{margin:0 0 calc(2px * var(--rp-dense,1));color:#60747b;font-size:7.5px}
 .rp-wide-wrap{overflow:visible}
-.rp-wide-table{min-width:0;width:100%}
-.rp-wide-table th,.rp-wide-table td{padding:1px 2px;font-size:7.5px;line-height:1.15}
+.rp-wide-table{min-width:0;width:100%;--rp-pd-y:1px;--rp-pd-x:2px}
+.rp-wide-table th,.rp-wide-table td{font-size:7.5px;line-height:calc(1 + .15 * var(--rp-dense,1))}
 /* 条番号: 見切れない範囲でできるだけ幅を絞り、数字は右パディング付きの
    右寄せにする。空いた分の幅は隣のロット№列(幅ロット分割対応)へ回す。 */
 .rp-wide-table th.rp-colno{width:8mm;max-width:8mm;padding-right:3px;text-align:right}
@@ -665,8 +679,8 @@
    固定。table-layout:fixedで列幅を固定し、長い備考テキストが隣接する
    測定データ(板厚)の領域まではみ出さないよう、はみ出す分は省略記号で
    切り詰める(丈数が増えるのは行方向のみ)。 */
-.rp-product-table{min-width:0;width:100%;table-layout:fixed}
-.rp-product-table th,.rp-product-table td{padding:1px 2px;font-size:7.5px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rp-product-table{min-width:0;width:100%;table-layout:fixed;--rp-pd-y:1px;--rp-pd-x:2px}
+.rp-product-table th,.rp-product-table td{font-size:7.5px;line-height:calc(1 + .15 * var(--rp-dense,1));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rp-product-table tbody th{white-space:nowrap}
 /* 揃いの内訳(§9.205、利用者の指示「内訳と合否両方(デフォルト)と内訳のみ、
    合否のみを切り替えほしい」)。**この欄だけ折り返す**——他の列はnowrap＋
@@ -676,10 +690,13 @@
 .rp-product-table td.rp-product-cell{white-space:normal;overflow:visible;text-overflow:clip}
 /* 内訳と並ぶときのバッジは小さくする（測定画面の32px幅のままだと、内訳の
    1行目が丸ごと押し出される）。合否だけの紙は今までのまま。 */
-.rp-product-table td.rp-product-cell .product-judge{min-width:0;margin-right:3px;padding:0 2px;border-radius:2px;font-size:7px}
-.rp-pb{display:inline-block;margin-right:4px;white-space:nowrap}
+/* **札と内訳のあいだの隙間も同じ倍率で詰める**（§9.298）——この欄だけは
+   折り返すので、隙間が1行ぶんの文字数を決めている。詰めれば行が減り、
+   塊が器に収まる＝文字を縮めずに済む。 */
+.rp-product-table td.rp-product-cell .product-judge{min-width:0;margin-right:calc(3px * var(--rp-dense,1));padding:0 calc(2px * var(--rp-dense,1));border-radius:2px;font-size:7px}
+.rp-pb{display:inline-block;margin-right:calc(4px * var(--rp-dense,1));white-space:nowrap}
 /* ラベルは**色で下げる。大きさは変えない**（同じ表の中は同じ文字サイズ）。 */
-.rp-pb>i{margin-right:2px;color:#60747b;font-style:normal;font-weight:700}
+.rp-pb>i{margin-right:calc(2px * var(--rp-dense,1));color:#60747b;font-style:normal;font-weight:700}
 /* ---------- 異常位置判定（参考） ----------
    モーダルで**保存された場合だけ**帳票へ載せる参考情報(オペレータの
    シミュレーション結果であり、測定値ではない)。板幅の実測表は条番号で

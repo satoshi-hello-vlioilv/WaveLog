@@ -560,6 +560,10 @@
  /* 用紙の切れ目を引き直す（§9.281）。**網はここを直に呼ぶ**——塊を減らした
     ときに「1枚へ戻る」ことは、実際に測り直させないと確かめられない。 */
  WL.reportSheets=()=>rpUpdateSheets();
+ /* 余白の詰めと縮めを測り直す（§9.298）。**網はここを直に呼ぶ**——
+    「詰めを止めたら文字が小さくなる」は、実際に測り直させないと
+    確かめられない（宣言を見るだけの網は素通りする・§9.289）。 */
+ WL.reportFit=()=>rpFitAll();
 
  function bulkPrintNow(items,area){
   area.innerHTML=items.map(x=>`<div class="rp-report rp-page${rpOrientation==='landscape'?' rp-landscape':''}">${reportHtml(x)}</div>`).join('');
@@ -2511,7 +2515,9 @@
    if(fixed>0)return;
    el.style.gridRowEnd='';el.style.minHeight='';
    const fit=el.querySelector(':scope>.rp-block-fit');
-   if(fit)fit.style.removeProperty('--rp-fit');   /* 前回の縮小を外してから測る */
+   /* 前回の縮小と**詰め**を外してから測る（§9.298。詰めたまま測ると、
+      その塊に要る段数を少なく見積もる）。 */
+   if(fit){fit.style.removeProperty('--rp-fit');fit.style.removeProperty('--rp-dense')}
    auto.push(el);
   });
   if(!auto.length)return;
@@ -3350,16 +3356,39 @@
     **測る前に前回の倍率を外すこと**——付いたまま測ると、一度縮んだ塊は
     二度と元へ戻らない（§9.210 ④・§9.217で踏んだのと同じ罠）。 */
  const RP_FIT_MIN=.55;
+ /* **縮める前に余白を詰める**（§9.298、利用者の指示「横方向の幅を小さく
+    したときに他の表と同じように余白を詰めてデータの文字サイズを極力
+    キープするような変化をするように」）。
+    以前はいきなり`--rp-fit`で丸ごと縮めており、丈別データを6/24マスに
+    すると0.55倍＝本文7.5pxが4.1pxになっていた（実測）。段は3つで、
+    **1段目は「詰めない」**——入っている塊の見え方を1pxも変えない。
+    段の中身（どの余白をどれだけ詰めるか）は`60-report.css`が持ち、
+    ここが決めるのは**どの段まで進むか**だけ。 */
+ const RP_DENSE_STEPS=[1,.55,.25];
  function rpFitBlockBodies(host){
   const grid=host&&host.querySelector('.rp-blocks');if(!grid)return 0;
   const boxes=[...grid.querySelectorAll('[data-rp-block].is-placed>.rp-block-fit')];
   if(!boxes.length)return 0;
   /* **倍率はカスタムプロパティで渡す**（`--rp-fit`）。インラインの
      `style.transform`はどのレイヤより強く、CSSから打ち消せなくなる
-     （帳票の`--rp-scale`と同じ約束）。 */
-  boxes.forEach(b=>{b.style.removeProperty('--rp-fit');b.parentElement.classList.remove('is-cramped')});
+     （帳票の`--rp-scale`と同じ約束）。
+     **測る前に前回の詰めと縮めを両方外すこと**——片方だけ外すと、一度
+     詰まった塊は二度と元へ戻らない（§9.210 ④・§9.217で踏んだ罠）。 */
+  boxes.forEach(b=>{b.style.removeProperty('--rp-fit');b.style.removeProperty('--rp-dense');
+    b.parentElement.classList.remove('is-cramped')});
+  const overflows=b=>{const room=b.parentElement.clientHeight;
+    return !!room&&b.scrollHeight>room+1};
+  /* **段ごとにまとめて測る**（塊を1つずつ試すと、その都度グリッド全体が
+     組み直されて遅い・`rpFitRows()`と同じ理由）。入りきらないものだけが
+     次の段へ進み、入った段でそのまま止まる。 */
+  let over=boxes.filter(overflows);
+  for(let i=1;i<RP_DENSE_STEPS.length&&over.length;i++){
+   over.forEach(b=>b.style.setProperty('--rp-dense',String(RP_DENSE_STEPS[i])));
+   over=over.filter(overflows);
+  }
   let cramped=0;
-  boxes.forEach(b=>{
+  /* 余白を全部詰めても入らないものだけ縮める（今までどおり）。 */
+  over.forEach(b=>{
    const room=b.parentElement.clientHeight;
    const need=b.scrollHeight;
    if(!room||need<=room+1)return;
