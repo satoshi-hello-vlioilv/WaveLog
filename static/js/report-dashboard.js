@@ -599,8 +599,15 @@
  }
 
  /* 節の中身。`rows`は`[ラベル,値]`か`[ラベル,値,{span,rows,blank}]`（§9.245）。
-    **マス数を持つ行が1つでもあれば**グリッドを`--rp-cols`で組み、無ければ
-    今までどおり`rp-grid-N`のまま——**既に登録してある塊の見え方を変えない**。
+    **列数はいつも`--rp-cols`で渡す**（§9.289、利用者の報告「帳票ブロック
+    マスタで調整する列数が全く効いておらず…5列にしようとしたところ、
+    プレビューは2列、紙レイアウトの方のプレビューも2列」）。以前は
+    マス数を持つ行があるときだけ`--rp-cols`で、無ければ`rp-grid-N`という
+    クラスに落としていたが、**CSSには`1`と`4`の規則しか無かった**ので、
+    選べる12通りのうち`3`と`5`〜`12`は**既定の2列で刷られていた**
+    （§9.233 ③と同じ「選択肢を1つ足すたびにCSSを書き足す」作り。
+    足し忘れた側だけが静かに壊れる）。数を答えるのは下の`n`の1箇所で、
+    **クラスへ数を焼き込まないこと**。
     §9.255 ②で**縦のマス数**（`rows`）も持てるようにした（利用者の指示
     「単純に何列何行だけでなく、データ内もグリッドに対応する形で細かく
     調整できるように」）。縦に伸ばした項目の隣が空くので、**詰め方は
@@ -720,8 +727,10 @@
     +`<span class="rp-field-value" title="${esc(tip)}">${esc(value||'-')}</span></div>`;
   };
   const body=rows.map(cell).join('');
-  const cls=matrix?'rp-grid rp-grid-m':('rp-grid'+(cols?' rp-grid-'+cols:''));
-  const st=matrix?` style="--rp-cols:${n}"`:'';
+  /* `rp-grid-m`は**表として組んだという印**（§9.282。紙自身に答えさせる）で、
+     列数はここでは持たない。列数は`--rp-cols`が1本で運ぶ。 */
+  const cls=matrix?'rp-grid rp-grid-m':'rp-grid';
+  const st=` style="--rp-cols:${n}"`;
   return `<section class="rp-section"><h3>${esc(title)}</h3><div class="${cls}"${st}>${body}</div></section>`;
  }
  function dimensionSection(b){
