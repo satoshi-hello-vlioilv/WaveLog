@@ -256,6 +256,73 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
        `${laneHex} → /${src}/ ／ ${hit}箇所 ／ PDF ${pdf.length}B`);
   }
 
+  /* ==========================================================
+     8) 異常位置判定（§9.305 ②、利用者の指示）
+     ----------------------------------------------------------
+     ①「『内容』のコメント欄の折り返し方が変で2行目が右寄せになっている」
+       → **折り返す値は左づめ**。数は右づめのまま（欄が縦にそろう）。
+     ②「長手方向のデータがある場合はそれも表示したり、しなかったり選べる」
+       → 既定は出す。設定で出さないにできる。
+
+     **素通りに注意**: 「クラスが付いた」だけを見る網は絵が変わっていなくても
+     通る（§9.229 ⑥）。**解決した`text-align`**と、**紙に出ている文字**で見る。
+     ========================================================== */
+  const alignOf=await page.evaluate(()=>{
+   const box=document.querySelector('.rp-defect-facts');
+   if(!box)return null;
+   const pick=lb=>[...box.querySelectorAll('.rp-defect-fact')]
+     .find(f=>(f.querySelector('span')?.textContent||'').trim()===lb);
+   const memo=pick('内容'),base=pick('基準');
+   return {内容:memo?getComputedStyle(memo.querySelector('b')).textAlign:'',
+           基準:base?getComputedStyle(base.querySelector('b')).textAlign:'',
+           内容の字:memo?(memo.querySelector('b').textContent||'').trim():''};
+  });
+  rec('前提: 異常位置判定の「内容」が紙に出ている',
+      !!alignOf&&alignOf.内容の字.length>0,JSON.stringify(alignOf));
+  rec('折り返す「内容」は左づめ（2行目が右寄せにならない）',
+      !!alignOf&&alignOf.内容==='left',alignOf?alignOf.内容:'');
+  /* **片側だけ見ない**——全部を左づめにしてしまうと欄が縦にそろわなくなる。 */
+  rec('数の欄は右づめのまま（欄が縦にそろう）',
+      !!alignOf&&alignOf.基準==='right',alignOf?alignOf.基準:'');
+
+  const rollOn=await page.evaluate(()=>{
+   const el=document.querySelector('.rp-defect-roll');
+   if(!el)return null;
+   const t=el.textContent||'';
+   return {見出し:!!el.querySelector('h4'),
+           ピッチ:/314\.2/.test(t),
+           径:/合うロール径/.test(t),
+           判定:!!el.querySelector('.rp-defect-roll-answer')};
+  });
+  rec('長手方向（ピッチ）が既定で紙に出る',
+      !!rollOn&&rollOn.見出し&&rollOn.ピッチ&&rollOn.判定,JSON.stringify(rollOn));
+  rec('合うロール径（ピッチ÷π）も紙に出る',!!rollOn&&rollOn.径,JSON.stringify(rollOn));
+
+  /* 出す／出さないを切り替える。**紙の文字が実際に変わること**まで見る。 */
+  const setRoll=async v=>{
+   await page.evaluate(()=>document.querySelector('[data-rp-block="異常位置判定"] [data-rp-paper]').click());
+   await page.waitForFunction(()=>{const m=document.getElementById('rpBlockModal');return !!m&&!m.hidden},null,{timeout:8000});
+   await page.click(`#rpBlockForm [data-e-droll="${v}"]`);
+   await page.evaluate(()=>{const c=document.getElementById('rpBlockClose');if(c)c.click()});
+   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+   await page.waitForTimeout(300);
+   return page.evaluate(()=>({
+     長手:!!document.querySelector('.rp-defect-roll'),
+     幅方向:!!document.querySelector('.rp-defect-figure')}));
+  };
+  await page.click('#reportArrange');
+  await page.waitForTimeout(400);
+  const off=await setRoll('なし');
+  rec('「出さない」にすると長手方向が紙から消える',
+      !!off&&off.長手===false,JSON.stringify(off));
+  /* **幅方向は消さない**——切り替えたのは長手だけ（§4）。 */
+  rec('「出さない」でも幅方向（どの条か）は残る',!!off&&off.幅方向===true,JSON.stringify(off));
+  const on=await setRoll('');
+  rec('「出す」に戻すと長手方向がまた出る',!!on&&on.長手===true,JSON.stringify(on));
+  /* 組み換えを閉じてから先へ（触ったぶんは自動で保存される・§9.303 ③）。 */
+  await page.evaluate(()=>{const c=document.getElementById('rpArrangeCancel');if(c&&!document.getElementById('rpArrangeBar')?.hidden)c.click()});
+  await page.waitForTimeout(400);
+
   /* ---- 5b) 実際に帳票ブロックマスタへ帰る ---- */
   await page.click('#reportBack');
   await page.waitForFunction(()=>document.body.classList.contains('mm-mode'),null,{timeout:20000});

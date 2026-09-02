@@ -211,9 +211,28 @@
  /* 異常位置判定(参考)。描画は defect-locator.js が持つ(モーダルの図と
     同じ計算・同じ配色を1箇所に置き、帳票側で作り直さないため)。
     保存されていないロットでは空文字が返るので、そのまま連結してよい。 */
+ /* ---------- 長手方向（ピッチ）を紙に載せるか（§9.305 ②-2、利用者の指示
+    「長手方向のデータがある場合はそれも表示したり、しなかったり選べるように」） ----------
+    **既定は出す**——記録が無いロットでは1行も増えないので、いま刷っている紙は
+    変わらない（§9.132）。設定は他の見せ方と同じ`|`区切りの印（§9.226 ③）。 */
+ const RP_DEFECT_KEY='異常位置判定';
+ const RP_DEFECT_ROLLS=[
+  {v:'',    label:'出す',  note:'長手方向（ピッチ）を記録したロットでは、ロールの判定も紙に出します。'},
+  {v:'なし',label:'出さない',note:'幅方向（どの条に掛かるか）だけを紙に出します。'},
+ ];
+ function rpDefectRoll(){return rpToken(RP_DEFECT_KEY,'長手:')==='なし'?'なし':''}
  function defectSection(x){
   if(!rpShowDefect)return '';
-  return (window.WL&&WL.defect&&WL.defect.reportSectionHtml)?WL.defect.reportSectionHtml(x)||'':'';
+  const d=window.WL&&WL.defect;
+  if(!d||!d.reportSectionHtml)return '';
+  const width=d.reportSectionHtml(x)||'';
+  /* **長手だけでも出す**——幅方向を保存していないロットでもピッチは記録
+     されうる（別のタブ・別の鍵）。片方が空でも、もう片方は紙に出す。 */
+  const roll=(rpDefectRoll()==='なし'||!d.rollSectionHtml)?'':(d.rollSectionHtml(x)||'');
+  if(!width&&!roll)return '';
+  if(!width)return `<section class="rp-section"><h3>異常位置判定（参考）</h3>${roll}</section>`;
+  /* 幅方向の節の中へ差し込む（見出しを2つ出さない・CLAUDE 画面基準 8）。 */
+  return roll?width.replace('</section>',roll+'</section>'):width;
  }
  /* ---------- 用紙の向き（A4縦 / A4横） ----------
     横向きは列の多い測定データ表(板幅ほか15列)に効く。用紙寸法はCSSの
@@ -2855,6 +2874,12 @@
     <span class="rp-form-ctl">
      ${RP_PRODUCT_MODES.map(m=>`<button type="button" data-e-pmode="${esc(m.v)}" class="${m.v===rpProductMode()?'is-on':''}">${esc(m.label)}${m.v===''?'（既定）':''}</button>`).join('')}
      <i class="rp-form-note">${esc((RP_PRODUCT_MODES.find(m=>m.v===rpProductMode())||RP_PRODUCT_MODES[0]).note)}</i></span></div>`:''}
+   ${k===RP_DEFECT_KEY?`<div class="rp-form-row"><span class="rp-form-label">長手方向</span>
+    <span class="rp-form-ctl">
+     ${RP_DEFECT_ROLLS.map(m=>`<button type="button" data-e-droll="${esc(m.v)}" class="${m.v===rpDefectRoll()?'is-on':''}">${esc(m.label)}${m.v===''?'（既定）':''}</button>`).join('')}
+     <i class="rp-form-note">${esc((RP_DEFECT_ROLLS.find(m=>m.v===rpDefectRoll())||RP_DEFECT_ROLLS[0]).note)}
+      ピッチを記録していないロットでは、どちらを選んでも<b>1行も増えません</b>。
+      候補のロールはロールマスタから毎回引き直すので、径を直せば紙の候補も直ります。</i></span></div>`:''}
    <div class="rp-form-row"><span class="rp-form-label">紙に出す</span>
     <span class="rp-form-ctl">
      <button type="button" data-e-vis>${rpHiddenSet().has(k)?'出す':'出さない'}</button>
@@ -2896,6 +2921,10 @@
    const t=rpTokens(RP_PRODUCT_KEY).filter(x=>x!=='内訳'&&x!=='合否');
    if(b.dataset.ePmode)t.push(b.dataset.ePmode);
    rpStage({formats:rpPatternPatch(RP_PRODUCT_KEY,t.join('|'))});renderBlockEditor();
+  });
+  /* 長手方向の入切（§9.305 ②-2）。**印は1つずつ差し替える**（§9.226 ③）。 */
+  form.querySelectorAll('[data-e-droll]').forEach(b=>b.onclick=()=>{
+   rpStage({formats:rpTokenPatch(k,'長手:',b.dataset.eDroll)});renderBlockEditor();
   });
   form.querySelectorAll('[data-e-turn]').forEach(b=>b.onclick=()=>{
    rpStage({formats:rpFlagPatch(k,'転置',b.dataset.eTurn==='転置')});renderBlockEditor();
@@ -4366,6 +4395,18 @@
    .then(()=>{if(rpCurrentLot()&&rpTargetOf(rpCurrentLot())===t)rpRepaint()})
    .catch(()=>{});
  }
+ /* 長手方向の候補に要るロールを先に読む。**この関数だけが取りに行く**
+    （紙を描く側は控えを見るだけ・§9.163）。 */
+ function rpWarmRolls(x){
+  const d=window.WL&&WL.defect;
+  if(!d||!d.ensureRolls||!d.hasRoll||!d.hasRoll(x))return;
+  if(rpDefectRoll()==='なし')return;
+  const eq=d.rollEquipmentOf?d.rollEquipmentOf(x):'';
+  const id=x&&x.id;
+  d.ensureRolls(eq).then(got=>{
+   if(got&&rpState.selectedId===id&&rpState.items.some(i=>i.id===id))selectLot(id);
+  }).catch(()=>{});
+ }
  function renderReport(x){
   rpLoadLayoutFor(x);                /* その設備ぶんの設定を読む（届いたら描き直す） */
   $id('reportContent').innerHTML=reportHtml(x,rpArranging);
@@ -4384,6 +4425,11 @@
   renderReport(x);
   fitPage();fitWidth();
   renderSplitHint(x);
+  /* 長手方向の候補は**ロールマスタから引く**（§9.305 ②-2）。紙は同期で
+     描くので、控えが無ければ**取りに行って、取れたら描き直す**（§9.278の
+     見本と同じ作法）。**取れたときだけ描き直す**——毎回描き直すと止まらない。
+     失敗は黙って捨てる（候補が出ないだけで、幅方向の判定は紙に出る）。 */
+  rpWarmRolls(x);
   /* 見本の帯（§9.253）。**選び直したら必ず消す**——実データを開いたのに
      「見本です」と出たままだと、本物を見本と読み違える。 */
   renderSampleBar(x);

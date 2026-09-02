@@ -765,8 +765,34 @@
 .rp-defect-fact{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:4px;padding:.5px 2px;border-bottom:1px solid #eef2f4;font-size:8px}
 .rp-defect-fact span{color:#60747b;font-weight:700;white-space:nowrap}
 .rp-defect-fact b{color:#17272d;font-weight:800;text-align:right;overflow-wrap:break-word;white-space:normal}
+/* **折り返す値は左づめ**（§9.305 ②-1、利用者の報告「『内容』のコメント欄の
+   折り返し方が変で2行目が右寄せになっている」）。数は右づめのままにする——
+   欄が縦にそろって読みやすい（CLAUDE 画面基準 9）。**欄の名前で書き分けない**
+   （§9.233 ③）——`rp-defect-fact-text`を貼るのは「自由記述・並び」の側だけで、
+   貼るかどうかは値を組み立てる1箇所が決める。 */
+.rp-defect-fact-text b{text-align:left}
 .rp-defect-fact-hit b{color:#a32424}
 .rp-defect-foot{margin-top:1px;color:#8a9a97;font-size:7px}
+/* ---------- 長手方向（ピッチ）（§9.305 ②-2） ----------
+   幅方向の節の中へ差し込むので、**見出しは`h4`**（節の`h3`と2つ並べない・
+   CLAUDE 画面基準 8）。A4帳票配下なのでpx・16進が正しい例外。 */
+.rp-defect-roll{margin-top:2px;padding-top:2px;border-top:1px solid #e2ebee}
+.rp-defect-roll>h4{margin:0 0 1px;color:#17272d;font-size:8px;font-weight:800}
+.rp-defect-roll-answer{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;padding:1px 3px;border-radius:3px;background:#eef5f6;font-size:8px}
+.rp-defect-roll-answer>b{color:#17272d;font-weight:800}
+.rp-defect-roll-answer>span{color:#60747b}
+.rp-defect-roll-answer.is-empty{background:#f6f2ea}
+.rp-defect-roll-answer.is-empty>b{color:#8a6d3b}
+/* 候補の欄は**幅方向の欄と同じ形**（`.rp-defect-fact`）を使い回す。ただし
+   節の中では横に流したほうが場所を使い切れるので、器だけ2列にする。 */
+.rp-defect-roll-facts{grid-template-columns:repeat(2,minmax(0,1fr));gap:0 6px;margin-top:1px}
+.rp-defect-roll-table{width:100%;border-collapse:collapse;margin-top:1px;font-size:7.5px}
+.rp-defect-roll-table th,.rp-defect-roll-table td{padding:.5px 2px;border-bottom:1px solid #eef2f4;text-align:left}
+.rp-defect-roll-table th{color:#60747b;font-weight:700;white-space:nowrap}
+.rp-defect-roll-table td.num,.rp-defect-roll-table th.num{text-align:right}
+.rp-defect-roll-table tr.is-direct td{color:#17272d;font-weight:800}
+.rp-defect-roll-more{margin:1px 0 0;color:#60747b;font-size:7px}
+.rp-defect-roll-foot{margin:1px 0 0;color:#8a9a97;font-size:7px}
 @media(max-width:1000px){.rp-body{grid-template-columns:1fr}.rp-nav{max-height:220px}}
 /* ============================================================
  2026-07-21 生産管理ダッシュボード（KPI集計）
