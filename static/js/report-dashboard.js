@@ -2035,10 +2035,10 @@
       項目間の余白や、項目内の余白も詰める余地があります」
 
     §9.303 ①の**詰める段は「溢れたときだけ」動く**ので、余っている塊では
-    一度も走らない（実測: どの塊も`--rp-dense`も`rp-pack-*`も持っておらず、
-    器と中身の差は0px）。足りなかったのは**利用者が詰めると言える手立て**で、
-    仕組みそのものは既にある——`--rp-dense`を紙(`.rp-page`)へ与えて
-    **下限を決める**だけにした（掛ける先はCSSが持つ・§9.163）。
+    一度も走らない（実測: どの塊も詰めの印を持っておらず、器と中身の差は
+    0px）。足りなかったのは**利用者が詰めると言える手立て**で、仕組みその
+    ものは既にある——紙(`.rp-page`)へ余白の倍率を与えるだけにした
+    （掛ける先はCSSが持つ・§9.163）。
     **既定は`ふつう`＝1**（詰めていない紙の見え方は1pxも変わらない・§9.132）。
     溢れた塊はこれより**さらに**詰まる（段は今までどおり）。 */
  /* ---------- 余白は「横」と「縦」の別の軸（§9.311 C、利用者の指示） ----------
@@ -2052,7 +2052,7 @@
       一番左側に表示しているロット№が**文字列折り返している**ので、そこを
       **1行で表示するような状態**に持っていきたいです」
 
-    §9.308の`--rp-dense`は1つで両方を動かしていたが、**打つ手が正反対**
+    §9.308の余白の倍率は1つで両方を動かしていたが、**打つ手が正反対**
     （§9.294 ②で作業予定表について一度出した結論と同じ）——**縦**を詰めても
     行が薄くなるだけだが、**横**を詰めると空いたぶんが**文字の表示領域**へ回り、
     折り返していた文字列が1行に収まる。1つの軸だと「横を詰めたくて押したら
@@ -2101,13 +2101,16 @@
  const rpPackYLevel=()=>rpPackLevelOf(RP_PACK_Y_KEY,RP_PACK_Y_LEVELS);
  const rpPackX=()=>RP_PACK_X_LEVELS[rpPackXLevel()];
  const rpPackY=()=>RP_PACK_Y_LEVELS[rpPackYLevel()];
- /* 塊ごとの段（`rpApplyPack`）が下限として使う。**縦のほうを使う**——
-    あちらは「高さが入らないので詰める」ための段なので、横の設定と混ぜない。 */
- const rpPackDense=()=>rpPackY().v;
+/* 塊ごとの段（`rpApplyPack`）は`--rp-pack`という**別の変数**で持ち、CSSが
+    紙の軸へ掛ける（§9.313）。以前ここにあった`rpPackDense()`（＝縦の段を
+    下限として使う）は**廃した**——1つの値で両軸を決めることが、そもそも
+    「横と縦を別々に」と食い違っていた。 */
  const rpPackStore=(i,levels)=>rpEnc(Math.max(1,Math.min(levels.length,i+1)));
- /* 紙へ与える。**CSSが読むのは`--rp-dense-x`／`--rp-dense-y`の2本**なので、
-    塊ごとの段（`rpApplyPack`）はこれより下へしか行かない（`Math.min`）
-    ——上書きで緩めると、詰めると言ったのに緩む塊ができる。 */
+ /* 紙へ与える。**CSSが読むのは`--rp-dense-x`／`--rp-dense-y`の2本**で、
+    塊ごとの段（`rpApplyPack`）は`--rp-pack`という**別の1本**。CSSが
+    `軸 × 段`と掛けるので（§9.313）、段はこれより**詰める方向にしか
+    動けない**——以前は`Math.min`で気を付けていたが、フォールバックで
+    読んでいたぶん「軸が未設定なら段がその軸になる」という抜け道があった。 */
  function rpApplyPaperPack(){
   const page=$id('reportContent');if(!page)return;
   const x=rpPackX(),y=rpPackY();
@@ -2698,7 +2701,7 @@
    const fit=el.querySelector(':scope>.rp-block-fit');
    /* 前回の縮小と**詰め**を外してから測る（§9.298。詰めたまま測ると、
       その塊に要る段数を少なく見積もる）。 */
-   if(fit){fit.style.removeProperty('--rp-fit');fit.style.removeProperty('--rp-dense');
+   if(fit){fit.style.removeProperty('--rp-fit');fit.style.removeProperty('--rp-pack');
            fit.classList.remove(...RP_PACK_CLASSES)}
    auto.push(el);
   });
@@ -3635,8 +3638,8 @@
     段は5つ:
      ① そのまま           … **今までどおり**。入る塊の見え方は1pxも変えない（§9.132）
      ② 1行に戻す           … 折り返しで伸びた高さを畳む（`rp-pack-nowrap`）
-     ③ 列内の全体余白      … `--rp-dense` .55
-     ④ 余力のある列を回す  … `--rp-dense` .25 ＋ `rp-pack-share`
+     ③ 列内の全体余白      … `--rp-pack` .55
+     ④ 余力のある列を回す  … `--rp-pack` .25 ＋ `rp-pack-share`
                              （`table-layout:fixed`の等分をやめ、中身の短い列が
                                余らせている幅を、詰まった列へ配り直す）
      ⑤ 折り返す            … ここで初めて高さ方向へ逃がす（文字はまだ縮めない）
@@ -3654,11 +3657,24 @@
  ];
  const RP_PACK_CLASSES=['rp-pack-nowrap','rp-pack-share'];
  function rpApplyPack(b,st){
-  /* **紙で決めた余白より緩めない**（§9.308）。段の`dense`は1のこともあるので、
-     そのまま入れると「詰める」と言った紙で塊だけが緩む。 */
-  const d=Math.min(st.dense,rpPackDense());
-  if(d>=1)b.style.removeProperty('--rp-dense');
-  else b.style.setProperty('--rp-dense',String(d));
+  /* ---------- 塊ごとの段は「紙の余白に掛ける」（§9.313） ----------
+     以前はこの段が`--rp-dense`という**1つの値**で、CSS側は
+     `var(--rp-dense-x,var(--rp-dense,1))`と**フォールバックで**読んでいた。
+     つまり紙の軸が「ふつう」で未設定のとき、**塊の段がその軸の値そのものに
+     化ける**——横は「ふつう」のままなのに、縦を押して段が変わると左右の
+     余白まで動いた（実測: 縦ふつう→詰める→もっと詰めるで、欄の左右が
+     2 → 1.1 → 0.5 → 2 と動いた）。逆に紙の軸を決めると塊の段を**置き換えて
+     しまう**ので、「横＝詰める」を押したのに左右が1.1→1.2と**緩む**という
+     ことも起きていた。利用者の報告「縦横の余白変更ボタンは別々に機能させ
+     たいのに、どちらを押しても両方反応して別々に機能してくれません」。
+     いまは**別の変数を掛け算する**（CSSが`× var(--rp-pack,1)`で掛ける）。
+     ①紙の軸（利用者が決める）は軸ごとにそのまま効く
+     ②塊の段（入りきらないときの自動の詰め）は、その上から**さらに詰める
+       方向にしか動かない**——`Math.min`で紙より緩めない配慮も要らなくなる
+       （掛け算なので構造として緩められない）。 */
+  const d=st.dense;
+  if(d>=1)b.style.removeProperty('--rp-pack');
+  else b.style.setProperty('--rp-pack',String(d));
   b.classList.toggle('rp-pack-nowrap',!!st.nowrap);
   b.classList.toggle('rp-pack-share',!!st.share);
  }
@@ -3671,7 +3687,7 @@
      （帳票の`--rp-scale`と同じ約束）。
      **測る前に前回の段と縮めを全部外すこと**——1つでも残すと、一度詰まった
      塊は二度と元へ戻らない（§9.210 ④・§9.217で踏んだ罠）。 */
-  boxes.forEach(b=>{b.style.removeProperty('--rp-fit');b.style.removeProperty('--rp-dense');
+  boxes.forEach(b=>{b.style.removeProperty('--rp-fit');b.style.removeProperty('--rp-pack');
     b.classList.remove(...RP_PACK_CLASSES);
     b.parentElement.classList.remove('is-cramped')});
   const tooTall=b=>{const room=b.parentElement.clientHeight;
@@ -3797,8 +3813,17 @@
     往復すると、掴んでいる最中に画面が止まる。 */
  const RP_AUTOSAVE_MS=400;
  let rpSaveTimer=null,rpSaveChain=Promise.resolve(),rpSaveDirty=false,rpSaveErr='';
+ /* ---------- 往復のあいだに触ったぶんを捨てない（§9.312） ----------
+    利用者の報告「サイズ変更した際にその近くにある帳票ブロックのサイズも
+    一緒に変更される／なんとなく位置が戻されるような感覚がある」。
+
+    **触った回数**。保存の往復のあいだに触ったかどうかは、これでしか
+    見分けられない——`rpSaveDirty`は真偽1つなので、往復の**始まりで**
+    立った旗と**途中で**立った旗が同じものになり、往復を終えた側が
+    「自分の保存は済んだ」つもりで**新しく立った旗まで下ろす**。 */
+ let rpEditSeq=0;
  function rpQueueSave(){
-  rpSaveDirty=true;rpSaveErr='';
+  rpSaveDirty=true;rpSaveErr='';rpEditSeq++;
   if(rpSaveTimer)clearTimeout(rpSaveTimer);
   rpSaveTimer=setTimeout(()=>{rpSaveTimer=null;rpSaveNow()},RP_AUTOSAVE_MS);
   rpPaintAutoSave();
@@ -3815,15 +3840,37 @@
    const now=rpLayoutNow();
    if(!(now.order||[]).length)now.hidden=[...new Set([...(now.hidden||[]),...rpInitialHidden()])];
    if(!(now.order||[]).length)now.order=rpBlockKeys();
+   /* **いつの形を送るのかを控えてから投げる**（§9.312）。 */
+   const seq=rpEditSeq;
    await WL.columnLayout.save(target,now);
-   rpSaveDirty=false;rpSaveErr='';
-   /* 保存済みと同じ形になったので**下書きは捨てる**（§9.212 ③。残すと
-      他の画面がこの重ねを見たまま描く）。 */
-   WL.columnLayout.discard(target);
+   rpSaveErr='';
+   /* ---------- ここで下書きを捨てないこと（§9.312） ----------
+      `WL.columnLayout.save()`は**投げる前に**下書きを捨て、保存済み(saved)へ
+      当ててから網へ出る（`base.js`）。だから往復のあいだに触ったぶんは
+      **新しい下書き**に載っている——ここで`discard()`すると、その新しい
+      下書きごと捨てることになる。捨てるのはデータだけで画面はそのままなので、
+      **利用者が次に別の塊を触った瞬間**（`rpRepaint()`）に、さっき触った塊が
+      元の大きさ・元の場所へ戻る。これが報告された「別の塊を触ったら近くの
+      塊のサイズも変わった」「位置が戻される感覚」の実体（実測: 幅10マスに
+      した塊が、別の塊を1マス引いただけで12マスへ戻った）。
+      マスタが共有にあると1回の保存に数秒かかる（§9.263／§9.273）ので、
+      **往復のあいだに次を触るのがふつう**——手元にマスタがある端末では
+      往復が一瞬なので、この道をほとんど通らずに見過ごされていた。
+      **旗を下ろすのも「触った回数が変わっていないとき」だけ。**
+      下ろしてしまうと、後ろに並んでいる保存が`if(!rpSaveDirty)return`で
+      取り下げられ、触ったぶんが**どこへも書かれない**（実測: 往復中に
+      変えた幅がマスタに1バイトも入らなかった）。 */
+   if(rpEditSeq===seq)rpSaveDirty=false;
+   /* 往復のあいだに触っていたら、追いかけの保存が要る。ふつうは
+      `rpQueueSave()`の待ちが控えているが、**待ちが既に使われていた場合**
+      （`rpFlushSave()`が流したあとに触った等）に取りこぼさないよう、
+      無ければここで置く。 */
+   else if(!rpSaveTimer)rpSaveTimer=setTimeout(()=>{rpSaveTimer=null;rpSaveNow()},RP_AUTOSAVE_MS);
    rpPaintAutoSave();
   }).catch(e=>{
-   /* **黙って捨てない**（§9.212 ④）。**下書きは残す**——捨てると、保存に
-      失敗したのに画面から変更だけが消える（直す手立ても消える）。 */
+   /* **黙って捨てない**（§9.212 ④）。旗は下ろさない——次に触ったとき、
+      あるいは画面を離れるときの`rpFlushSave()`でもう一度書きに行く。
+      画面の値は`save()`が保存済み(saved)へ当てているのでそのまま残る。 */
    rpSaveErr=String((e&&e.message)||e||'保存できませんでした');
    rpPaintAutoSave();
   });

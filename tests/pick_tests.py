@@ -228,6 +228,10 @@ RULES = [
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
     ('static/js/report-dashboard.js', g('モーダル', 'test_screport', 'test_headbar', 'test_uisize',
                                         'test_rpblocks', 'test_rplayout', 'test_rpmaster',
+                                        # §9.312: 触ったら裏で保存（往復中に触ったぶんを捨てない）
+                                        'test_rpsave',
+                                        # §9.313: 紙の余白は横と縦の別の軸
+                                        'test_rppack',
                                         # §9.302: 設備の候補（ロットの無い設備だけ絞る）
                                         'test_eqfeature',
                                         # §9.254 (3): 帳票レイアウトマスタの口（WL.reportLayout）
@@ -280,6 +284,8 @@ RULES = [
                                     'test_blockbuild', 'test_rbcells', 'test_rbcatalog')),
     ('static/css/60-report.css', g('見た目', 'test_screport', 'test_rpblocks', 'test_rplayout',
                                    'test_rpprint',
+                                   # §9.313: 余白の横・縦は別の変数（掛け算）
+                                   'test_rppack',
                                    # §9.274: 見出しのマス・ラベル無しのマス・紙への入口
                                    'test_rbcells')),
     ('static/css/62-actuals.css', g('見た目', '実績')),
