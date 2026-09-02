@@ -1020,6 +1020,16 @@ _CHOICE_ADDED_COLUMNS = (
     # 端末ごとの好みではなく**その現場の事実**なので、§9.172で
     # 「共有すべきものが端末にあった」と直したのと同じ向き。
     ('使用回数', 'INTEGER'),
+    # --- §9.306（利用者の指示「選択肢の値マスタ同士を親子関係として紐づけ…
+    #     子となったマスタは登録内容毎、どの親か親マスタから選ぶことが
+    #     できるように」）---
+    # その値が**親のどの値のときに出るか**。書式は`[対象設備]`と同じ
+    # （`'A'` / `'A,B'` / `'*'` / 空＝すべての親）——**同じ意味の書式を
+    # 2つ作らない**（§9.239 ⑥は「意味が違うのに借りるな」であって、
+    # ここは意味が同じ：どれかに当たれば出る・空欄はすべて）。
+    # **空欄＝どの親でも出る**にしてあるので、リンクを張るまでは
+    # 既存の登録が1つも変わらない（§9.132）。
+    ('親の値', 'TEXT'),
 )
 
 
@@ -1077,18 +1087,23 @@ def choice_rows(c, include_disabled=False):
     cur = c.cursor()
     try:
         cur.execute('SELECT [選択肢ID],[選択肢名],[値],[表示順],[有効],[説明],[よみ],[対象設備],'
-                    '[使用回数] '
+                    '[使用回数],[親の値] '
                     'FROM [操業データ選択肢マスタ] ORDER BY [選択肢名],[表示順],[選択肢ID]')
         raw = cur.fetchall()
     except Exception:
         try:
+            cur.execute('SELECT [選択肢ID],[選択肢名],[値],[表示順],[有効],[説明],[よみ],'
+                        '[対象設備],[使用回数] '
+                        'FROM [操業データ選択肢マスタ] ORDER BY [選択肢名],[表示順],[選択肢ID]')
+            raw = [tuple(r) + ('',) for r in cur.fetchall()]
+        except Exception:
             cur.execute('SELECT [選択肢ID],[選択肢名],[値],[表示順],[有効],[説明],[よみ],[対象設備] '
                         'FROM [操業データ選択肢マスタ] ORDER BY [選択肢名],[表示順],[選択肢ID]')
-            raw = [tuple(r) + (0,) for r in cur.fetchall()]
+            raw = [tuple(r) + (0, '') for r in cur.fetchall()]
         except Exception:
             cur.execute('SELECT [選択肢ID],[選択肢名],[値],[表示順],[有効],[説明] '
                         'FROM [操業データ選択肢マスタ] ORDER BY [選択肢名],[表示順],[選択肢ID]')
-            raw = [tuple(r) + ('', '', 0) for r in cur.fetchall()]
+            raw = [tuple(r) + ('', '', 0, '') for r in cur.fetchall()]
     out = []
     for r in raw:
         on = True if r[4] is None else bool(r[4])
@@ -1099,7 +1114,9 @@ def choice_rows(c, include_disabled=False):
                     'note': str(r[5] or ''),
                     'reading': str(r[6] or ''), 'equipment': str(r[7] or ''),
                     # §9.248 ⑤ 使われた回数。**無い列は0**（古い端末でも読める）。
-                    'used': int(r[8] or 0) if len(r) > 8 and r[8] is not None else 0})
+                    'used': int(r[8] or 0) if len(r) > 8 and r[8] is not None else 0,
+                    # §9.306 親のどの値のときに出るか。**無い列は空＝すべての親**。
+                    'parentValue': str(r[9] or '') if len(r) > 9 and r[9] is not None else ''})
     return out
 
 
@@ -1349,7 +1366,165 @@ def choice_used_bump(c, name, value, n=1):
     return cur.rowcount
 
 
-def choice_values(c, name, equipment=None, order=CHOICE_ORDER_DEFAULT):
+# ---------------------------------------------------------------------------
+# 選択肢リンクマスタ（§9.306、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「選択肢の値マスタ同士を親子関係として紐づけるためにリンクさせ、リンク
+#  させた場合、子となったマスタは登録内容毎、どの親か親マスタから選ぶことが
+#  できるようにしたい」
+#
+# **1行＝1つの親子**（親のまとまり → 子のまとまり）。**子で一意**——子の
+# まとまりに親が2つあると「どちらの欄で絞るのか」が決まらない（§9.239 ⑥の
+# 1ロール1設備と同じ理由で、索引で構造として止める）。
+#
+# **1段だけ**（利用者の指示）。あるまとまりが**親と子を兼ねられない**ように
+# 断ることで、孫が構造として作れなくなる——「1段だけ」を後から画面の判定で
+# 守ろうとすると、既に保存された2段を読んだときの振る舞いが決まらない。
+#
+# **どの値がどの親に属すかは選択肢の値の`[親の値]`**。空欄＝どの親でも出るので、
+# リンクを張っただけでは候補は1つも減らない（§9.132。絞りたい値にだけ
+# 親の値を入れていけば、途中の状態でも現場が止まらない）。
+CHOICE_LINK_TABLE = '選択肢リンクマスタ'
+
+
+def ensure_choice_link_table(c):
+    if CHOICE_LINK_TABLE not in tables(c):
+        cur = c.cursor()
+        cur.execute('CREATE TABLE [選択肢リンクマスタ] ('
+                    '[リンクID] INTEGER PRIMARY KEY AUTOINCREMENT, '
+                    '[親まとまり] TEXT, [子まとまり] TEXT, [説明] TEXT, [有効] INTEGER, '
+                    '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+        # **子で一意**——1つの子に親は1つ。
+        cur.execute('CREATE UNIQUE INDEX [UX_選択肢リンクマスタ_子] '
+                    'ON [選択肢リンクマスタ] ([子まとまり])')
+        c.commit()
+        return True
+    return False
+
+
+def choice_links(c, include_disabled=False):
+    """**読み取り専用の接続からも読めること**（§9.221 ③）——測定画面は
+    `connect(path,True)`で開く。表が無ければ空。"""
+    try:
+        ensure_choice_link_table(c)
+    except Exception:
+        pass
+    if CHOICE_LINK_TABLE not in tables(c):
+        return []
+    cur = c.cursor()
+    try:
+        cur.execute('SELECT [リンクID],[親まとまり],[子まとまり],[説明],[有効] '
+                    'FROM [選択肢リンクマスタ] ORDER BY [親まとまり],[子まとまり]')
+        raw = cur.fetchall()
+    except Exception:
+        return []
+    out = []
+    for r in raw:
+        on = True if r[4] is None else bool(r[4])
+        if not on and not include_disabled:
+            continue
+        parent = str(r[1] or '').strip()
+        child = str(r[2] or '').strip()
+        if not parent or not child:
+            continue
+        out.append({'id': r[0], 'parent': parent, 'child': child,
+                    'note': str(r[3] or ''), 'enabled': on})
+    return out
+
+
+def choice_parent_of(c, child_name):
+    """その子のまとまりの**親のまとまり名**（無ければ空）。
+    **判定はここ1箇所**（§9.163）——画面もサーバーもこの答えを見る。"""
+    n = str(child_name or '').strip()
+    if not n:
+        return ''
+    for link in choice_links(c):
+        if link['child'] == n:
+            return link['parent']
+    return ''
+
+
+def choice_children_of(c, parent_name):
+    n = str(parent_name or '').strip()
+    return [x['child'] for x in choice_links(c) if n and x['parent'] == n]
+
+
+def choice_matches_parent(stored, parent_value):
+    """その値が**この親の値のときに出るか**。**空欄は「すべての親」**
+    （`choice_matches_equipment`と同じ約束——同じ意味の判定を2通り書かない）。"""
+    from . import schedule_repo as sr
+    if not str(stored or '').strip():
+        return True
+    return sr.stop_equipment_matches(stored, parent_value)
+
+
+def choice_link_upsert(c, parent, child, uid, note=None, enabled=None, link_id=None):
+    """親子を1本張る。**断るときは理由と打つ手を返す**（§4）。"""
+    ensure_choice_link_table(c)
+    p = str(parent or '').strip()
+    ch = str(child or '').strip()
+    if not p or not ch:
+        raise ValueError('親と子のまとまりを両方選んでください。')
+    if p == ch:
+        raise ValueError('同じまとまりを親と子にはできません（自分で自分を絞ることになります）。')
+    names = set(choice_names(c))
+    for n in (p, ch):
+        if n not in names:
+            raise ValueError(f'「{n}」という選択肢のまとまりがありません'
+                             '（マスタ管理 > 測定と記録 > 選択肢の値 で作ってください）。')
+    # **1段だけ**（利用者の指示）。親と子を兼ねられないようにして、孫を
+    # 構造として作れなくする。**理由は名指しで書く**——「できません」だけでは
+    # どのリンクを外せばよいのか分からない（§4）。
+    for link in choice_links(c, include_disabled=True):
+        if link['id'] == link_id:
+            continue
+        if link['child'] == p:
+            raise ValueError(f'「{p}」はすでに「{link["parent"]}」の子です。'
+                             '親子は1段だけなので、親にはできません'
+                             f'（先に「{link["parent"]} → {p}」を外してください）。')
+        if link['parent'] == ch:
+            raise ValueError(f'「{ch}」はすでに「{link["child"]}」の親です。'
+                             '親子は1段だけなので、子にはできません'
+                             f'（先に「{ch} → {link["child"]}」を外してください）。')
+    cur = c.cursor()
+    if link_id:
+        cur.execute('SELECT [リンクID] FROM [選択肢リンクマスタ] WHERE [リンクID]=?', [link_id])
+    else:
+        cur.execute('SELECT [リンクID] FROM [選択肢リンクマスタ] WHERE [子まとまり]=?', [ch])
+    hit = cur.fetchone()
+    on = -1 if enabled is None else (-1 if enabled else 0)
+    if hit:
+        sets = ['[親まとまり]=?', '[子まとまり]=?', '[有効]=?', '[更新者ID]=?', '[更新日時]=Now()']
+        args = [p, ch, on, uid]
+        if note is not None:
+            sets.insert(2, '[説明]=?')
+            args.insert(2, str(note))
+        cur.execute('UPDATE [選択肢リンクマスタ] SET ' + ','.join(sets) + ' WHERE [リンクID]=?',
+                    args + [hit[0]])
+        c.commit()
+        return hit[0]
+    cur.execute('INSERT INTO [選択肢リンクマスタ] '
+                '([親まとまり],[子まとまり],[説明],[有効],'
+                '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                'VALUES (?,?,?,?,?,?,Now(),Now())',
+                [p, ch, str(note or ''), on, uid, uid])
+    c.commit()
+    cur.execute('SELECT [リンクID] FROM [選択肢リンクマスタ] WHERE [子まとまり]=?', [ch])
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
+def choice_link_delete(c, link_id):
+    """リンクを外す。**値の`[親の値]`は消さない**——また繋げば続きから使える
+    （§9.259の「共通へ戻しても個人の行は消さない」と同じ作法）。"""
+    ensure_choice_link_table(c)
+    cur = c.cursor()
+    cur.execute('DELETE FROM [選択肢リンクマスタ] WHERE [リンクID]=?', [link_id])
+    c.commit()
+
+
+def choice_values(c, name, equipment=None, order=CHOICE_ORDER_DEFAULT,
+                  parent_value=None):
     """まとまり名から**選べる値の並び**を返す(§9.221 ③)。有効な行だけを
     表示順で、`[対象設備]`が合うものに絞る。
 
@@ -1365,6 +1540,11 @@ def choice_values(c, name, equipment=None, order=CHOICE_ORDER_DEFAULT):
         if r['name'] != name or not r['value']:
             continue
         if equipment and not choice_matches_equipment(r['equipment'], equipment):
+            continue
+        # §9.306 親の値で絞る。**親を選んでいないときは絞らない**（利用者の
+        # 指示「全部出す（今までどおり）」）——`parent_value`が空／None なら
+        # ここは素通りするので、リンクを張っただけでは候補が1つも減らない。
+        if parent_value and not choice_matches_parent(r.get('parentValue'), parent_value):
             continue
         key = r['value'].casefold()
         if key in seen:
@@ -1498,7 +1678,7 @@ def migrate_legacy_choice_masters(c):
 
 
 def choice_upsert(c, name, value, uid, order=None, choice_id=None, enabled=None, note=None,
-                  reading=None, equipment=None):
+                  reading=None, equipment=None, parent_value=None):
     """選択肢を1件書く。**`enabled=None`は「送っていない」で、今の値を残す**
        （§9.212 ②）——`True`を既定にすると、説明だけを直す呼び出しが
        「出さない」にしてあった行を毎回「出す」へ戻す。新規のときだけ`True`。"""
@@ -1520,9 +1700,9 @@ def choice_upsert(c, name, value, uid, order=None, choice_id=None, enabled=None,
             order = hit[0] if hit else None
         # **送っていない項目は今の値を残す**（§9.212 ②）。1つ書き漏らすと
         # その設定だけが保存のたびに消える。
-        cur.execute('SELECT [説明],[よみ],[対象設備],[有効] FROM [操業データ選択肢マスタ] '
+        cur.execute('SELECT [説明],[よみ],[対象設備],[有効],[親の値] FROM [操業データ選択肢マスタ] '
                     'WHERE [選択肢ID]=?', [int(choice_id)])
-        hit = cur.fetchone() or ['', '', '', -1]
+        hit = cur.fetchone() or ['', '', '', -1, '']
         if note is None:
             note = hit[0] or ''
         if reading is None:
@@ -1531,26 +1711,34 @@ def choice_upsert(c, name, value, uid, order=None, choice_id=None, enabled=None,
             equipment = hit[2] or ''
         if enabled is None:
             enabled = bool(hit[3])
+        # §9.306 **送っていない親の値は今の値を残す**（§9.212 ②）——1つ
+        # 書き漏らすと、他の欄を直しただけで親子の割り当てが消える。
+        if parent_value is None:
+            parent_value = (hit[4] if len(hit) > 4 else '') or ''
         cur.execute('UPDATE [操業データ選択肢マスタ] SET [選択肢名]=?,[値]=?,[説明]=?,[表示順]=?,'
-                    '[有効]=?,[よみ]=?,[対象設備]=?,[更新者ID]=?,[更新日時]=Now() '
+                    '[有効]=?,[よみ]=?,[対象設備]=?,[親の値]=?,[更新者ID]=?,[更新日時]=Now() '
                     'WHERE [選択肢ID]=?',
                     [name, value, str(note or ''), order, -1 if enabled else 0,
-                     str(reading or ''), _norm_equipment(equipment), uid, int(choice_id)])
+                     str(reading or ''), _norm_equipment(equipment),
+                     _norm_equipment(parent_value), uid, int(choice_id)])
         c.commit()
         return int(choice_id)
     # 自然キーは(選択肢名,値)。同じ値を2つ並べない——どちらを選んでも同じ。
-    cur.execute('SELECT [選択肢ID],[表示順],[説明],[よみ],[対象設備],[有効] '
+    cur.execute('SELECT [選択肢ID],[表示順],[説明],[よみ],[対象設備],[有効],[親の値] '
                 'FROM [操業データ選択肢マスタ] '
                 'WHERE [選択肢名]=? AND [値]=?', [name, value])
     hit = cur.fetchone()
     if hit:
         cur.execute('UPDATE [操業データ選択肢マスタ] SET [表示順]=?,[説明]=?,[有効]=?,'
-                    '[よみ]=?,[対象設備]=?,[更新者ID]=?,[更新日時]=Now() WHERE [選択肢ID]=?',
+                    '[よみ]=?,[対象設備]=?,[親の値]=?,[更新者ID]=?,[更新日時]=Now() '
+                    'WHERE [選択肢ID]=?',
                     [hit[1] if order is None else order,
                      str((hit[2] if note is None else note) or ''),
                      -1 if (bool(hit[5]) if enabled is None else enabled) else 0,
                      str((hit[3] if reading is None else reading) or ''),
                      _norm_equipment(hit[4] if equipment is None else equipment),
+                     _norm_equipment((hit[6] if len(hit) > 6 else '')
+                                     if parent_value is None else parent_value),
                      uid, hit[0]])
         c.commit()
         return int(hit[0])
@@ -1559,12 +1747,13 @@ def choice_upsert(c, name, value, uid, order=None, choice_id=None, enabled=None,
         top = cur.fetchone()[0] or 0
         order = int(top) + 10
     cur.execute('INSERT INTO [操業データ選択肢マスタ] '
-                '([選択肢名],[値],[説明],[表示順],[有効],[よみ],[対象設備],'
+                '([選択肢名],[値],[説明],[表示順],[有効],[よみ],[対象設備],[親の値],'
                 '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (?,?,?,?,?,?,?,?,?,Now(),Now())',
+                'VALUES (?,?,?,?,?,?,?,?,?,?,Now(),Now())',
                 [name, value, str(note or ''), order,
                  -1 if (True if enabled is None else enabled) else 0,
-                 str(reading or ''), _norm_equipment(equipment), uid, uid])
+                 str(reading or ''), _norm_equipment(equipment),
+                 _norm_equipment(parent_value), uid, uid])
     c.commit()
     return int(cur.lastrowid)
 
@@ -2769,6 +2958,20 @@ def form_for_equipment(c, equipment):
     # 同じまとまりが欄によって違う中身になる。
     cmap = choice_map(c, equipment)
     notes = choice_notes(c, equipment)
+    # ---------- 親子（§9.306、利用者の指示） ----------
+    # **「この親の値のときに出る値」はサーバーが先に解いて渡す**（§9.163）。
+    # 親の欄は打つたびに変わるので画面が絞ることになるが、カンマ区切り・
+    # `'*'`・空欄の読み方まで画面へ写すと、**同じ書式の読み方が2通りになる**
+    # （`[対象設備]`で一度そうしかけた形）。親の値ごとの答えを先に配れば、
+    # 画面は引くだけで済む。親の値は数個なので、配る量も知れている。
+    links = {x['child']: x['parent'] for x in choice_links(c)}
+    # どの欄が親の値を持つか。**同じまとまりを使う欄が複数あれば表示順で先の
+    # ものが親**——決めないと「どの欄で絞るのか」が端末ごとに変わる。
+    holder = {}
+    for it in items:
+        g = it.get('choice') or ''
+        if g and g not in holder:
+            holder[g] = {'name': it['name'], 'builtin': it.get('builtin') or ''}
     # §9.288 ③ `索引`が頭文字で束ねるのに使う。**説明と同じ作法**——
     # 有るものだけ渡す（無いのか読めていないのかを画面が区別できるように）。
     readings = choice_readings(c, equipment)
@@ -2786,6 +2989,22 @@ def form_for_equipment(c, equipment):
         row['choiceNotes'] = dict(notes.get(it['choice'], {})) if it['choice'] else {}
         row['choiceReadings'] = dict(readings.get(it['choice'], {})) if it['choice'] else {}
         row['choiceMissing'] = bool(it['choice']) and it['choice'] not in cmap
+        # --- §9.306 親子 ---
+        # `choiceParent`＝親のまとまり名／`parentField`＝その値を持つ欄／
+        # `choicesByParent`＝親の値ごとに出る値の並び。
+        # **親を選んでいないときは絞らない**（利用者の指示）ので、画面は
+        # 親が空なら`choices`をそのまま使う——ここには`''`の鍵を入れない。
+        pg = links.get(it['choice']) if it['choice'] else ''
+        row['choiceParent'] = pg or ''
+        row['parentField'] = holder.get(pg) if pg else None
+        row['choicesByParent'] = {}
+        if pg and it['choice']:
+            for pv in choice_list(cmap, pg, CHOICE_ORDER_DEFAULT):
+                row['choicesByParent'][pv] = choice_values(
+                    c, it['choice'], equipment,
+                    it['choiceOrder'] if choice_order_usable(it['widgetLive'])
+                    else CHOICE_ORDER_DEFAULT,
+                    parent_value=pv)
         # --- §9.231 ② 上下限をマスタから引き直す ---
         # **解決するのはここ1箇所**——測定画面は`min`/`max`をそのまま使うので、
         # 画面側に「出どころを引く」処理を書かない（§9.163）。

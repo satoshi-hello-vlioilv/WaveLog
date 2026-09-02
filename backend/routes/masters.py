@@ -1524,8 +1524,21 @@ def operation_choice_list():
                    'hasEquipment':any(r['equipment'] for r in vals),
                    'hasReading':any(r['reading'] for r in vals),
                    'legacy':nm in [g for g,_ in op.LEGACY_CHOICE_GROUPS]})
+   # ---------- 親子（§9.306、利用者の指示） ----------
+   # **リンクと「その親のまとまりの値」はサーバーが答える**（§9.163）——
+   # 画面で「このまとまりの親は誰か」を数え直すと、盤と値の欄で答えが
+   # 食い違いうる。`parentValues`は**親の値の欄が選ばせる候補**そのもの。
+   links=op.choice_links(c)
+   parent_of={x['child']:x['parent'] for x in links}
+   for r in rows:
+    r['parent']=parent_of.get(r['name'],'')
+   for g in groups:
+    g['parent']=parent_of.get(g['name'],'')
+    g['children']=[x['child'] for x in links if x['parent']==g['name']]
    return {'items':rows,'names':op.choice_names(c),'usage':usage,'groups':groups,
-           'legacyGroups':[g for g,_ in op.LEGACY_CHOICE_GROUPS]}
+           'legacyGroups':[g for g,_ in op.LEGACY_CHOICE_GROUPS],
+           'links':links,
+           'parentValues':{ch:op.choice_values(c,pa) for ch,pa in parent_of.items()}}
   return jsonify(ok=True,**_op_read(fn))
  except Exception as e:return jsonify(error=f'操業データ選択肢マスタの読込に失敗しました: {e}'),500
 
@@ -1553,7 +1566,10 @@ def _operation_choice_save(x):
                            note=x.get('note'),
                            # §9.221 ③。よみ＝探すための読み、対象設備＝
                            # その設備のときだけ出す（空＝すべて）。
-                           reading=x.get('reading'),equipment=x.get('equipment'))
+                           reading=x.get('reading'),equipment=x.get('equipment'),
+                           # §9.306 親のどの値のときに出るか（空＝すべての親）。
+                           # **`None`は「送っていない」**なので今の値が残る。
+                           parent_value=x.get('parentValue'))
   return jsonify(ok=True,id=_op_read(fn),message='操業データの選択肢を保存しました。')
  except ValueError as e:return jsonify(error=str(e)),400
  except Exception as e:return jsonify(error=f'操業データ選択肢マスタの保存に失敗しました: {e}'),500
@@ -2013,4 +2029,76 @@ def measure_item_master_delete():
  except Exception as e:
   return jsonify(error=f'測定項目マスタ削除失敗: {e}',
                  master_path=str(DBS['MASTER']['path'])),500
+
+# ---------------------------------------------------------------------
+# 選択肢リンクマスタ（§9.306）。汎用CRUDの4本セット。
+# **語彙（まとまりの一覧）と判定はサーバーが答える**（§9.163）——盤は
+# 返ってきた木を描くだけで、1段だけの規則を画面に書き写さない。
+# ---------------------------------------------------------------------
+@bp.get('/api/choice-link-master')
+def choice_link_list():
+ try:
+  from ..repositories import operation_repo as op
+  def fn(c):
+   links=op.choice_links(c,True)
+   names=op.choice_names(c)
+   child_of={x['child'] for x in links}
+   parent_of={x['parent'] for x in links}
+   rows=[]
+   for x in links:
+    rows.append({**x,
+                 # **件数はサーバーが数える**（盤で数え直さない）。
+                 'parentCount':len(op.choice_values(c,x['parent'])),
+                 'childCount':len(op.choice_values(c,x['child']))})
+   return {'items':rows,'names':names,
+           # **繋げるかどうかもサーバーが答える**——1段だけの規則は
+           # `choice_link_upsert()`が持っているので、盤は理由を出すだけ。
+           'groups':[{'name':n,'isChild':n in child_of,'isParent':n in parent_of,
+                      'count':len(op.choice_values(c,n))} for n in names]}
+  return jsonify(ok=True,**_op_read(fn))
+ except Exception as e:
+  return jsonify(error=f'選択肢リンクマスタの読込に失敗しました: {e}'),500
+
+def _choice_link_save(x):
+ from ..repositories import operation_repo as op
+ uid=request_user_id(x)
+ try:
+  def fn(c):
+   return op.choice_link_upsert(c,x.get('parent'),x.get('child'),uid,
+                                note=x.get('note'),
+                                enabled=_choice_on(x.get('enabledText')
+                                                   if x.get('enabledText') is not None
+                                                   else x.get('enabled')),
+                                link_id=(int(x['id']) if x.get('id') not in (None,'') else None))
+  return jsonify(ok=True,id=_op_read(fn),message='親子を保存しました。')
+ except ValueError as e:
+  # **断る理由と打つ手を返す**（§4）——「できません」だけでは、どのリンクを
+  # 外せばよいのか分からない。
+  return jsonify(error=str(e)),400
+ except Exception as e:
+  return jsonify(error=f'選択肢リンクマスタの保存に失敗しました: {e}'),500
+
+@bp.post('/api/choice-link-master')
+def choice_link_register():
+ return _choice_link_save(request.get_json(force=True) or {})
+
+@bp.post('/api/choice-link-master/update')
+def choice_link_update():
+ x=request.get_json(force=True) or {}
+ if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
+ return _choice_link_save(x)
+
+@bp.post('/api/choice-link-master/delete')
+def choice_link_delete_route():
+ try:
+  from ..repositories import operation_repo as op
+  x=request.get_json(force=True) or {}
+  if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
+  def fn(c):
+   op.choice_link_delete(c,int(x['id']));return True
+  _op_read(fn)
+  # **値の`[親の値]`は消さない**（また繋げば続きから使える）ので、そのことを言う。
+  return jsonify(ok=True,message='親子を外しました（値に入れた「親の値」は残しています）。')
+ except Exception as e:
+  return jsonify(error=f'選択肢リンクマスタの削除に失敗しました: {e}'),500
 
