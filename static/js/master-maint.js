@@ -125,6 +125,37 @@
             消してよいのか判断できず、消すと項目側は黙って空の欄になる。 */
          {k:'usedBy',label:'使っている項目',grow:3}],
    hint:'操業データの「選択」型の項目で選ばせる値です。1行＝1つの値で、同じまとまり名の行がまとまって1つの選択肢になります。**同じまとまりを複数の項目が参照できます**（大径リング色と小径リング色はどちらも「リング色」を見ています）。ここで値を足すと、参照しているすべての項目の選択肢に増えます。**値を足すだけなら「操業データ項目」の設定の窓からもできます**（項目を作る手を止めなくて済みます）。'},
+  /* ---------- 選択肢の親子（リンクマスタ・§9.306、利用者の指示） ----------
+     「選択肢の値マスタ同士を親子関係として紐づけるためにリンクさせ、リンク
+      させた場合、子となったマスタは登録内容毎、どの親か親マスタから選ぶことが
+      できるようにしたいです。したがって、汎用性を向上させるために『リンクマスタ』の
+      追加に伴い『選択肢の値マスタ』にはカテゴリを追加できるようにし、親マスタの
+      選択肢から選んで登録することができるように改良が必要になります」
+
+     **専用画面**（汎用CRUDでは親子が見えない）。1行＝1本の親子だが、
+     読みたいのは「どのまとまりがどのまとまりの子か」という**木**なので、
+     行の表ではなく**左右に並べて結ぶ盤**にする（§9.197の突合キーと同じ作法
+     ——同じことをする画面は同じ形にする）。
+     `fields`/`cols`は残す——編集モーダルの部品としてではなく、
+     `tests/test_crudroutes.py`が4本のCRUDを見張る材料になる。 */
+  {group:'measure',key:'choiceLink',label:'選択肢の親子',icon:'絆',
+   endpoint:'/api/choice-link-master',hasDelete:true,
+   special:'choice-link',
+   titleText:'選択肢の親子 — どのまとまりがどのまとまりで絞られるか',
+   fields:[{k:'parent',label:'親のまとまり',required:true,key:true,
+            hint:'絞る側のまとまり名です。'},
+           {k:'child',label:'子のまとまり',required:true,key:true,
+            hint:'絞られる側のまとまり名です。**1つの子に親は1つだけ**です。'},
+           {k:'note',label:'メモ'},
+           {k:'enabledText',label:'使う',type:'select',options:['出す','出さない']}],
+   cols:[{k:'parent',label:'親',grow:2},{k:'child',label:'子',grow:2},
+         {k:'note',label:'メモ',grow:2}],
+   hint:'選択肢のまとまりどうしを**親子**で結びます。結ぶと、'
+       +'子のまとまりの値を「選択肢の値」で**どの親の値のときに出すか**まで'
+       +'決められるようになり、測定画面では**親の欄で選んだ値に合わせて子の候補が絞られます**。'
+       +'**親をまだ選んでいないときは今までどおり全部出ます。**'
+       +'親子は**1段だけ**です（親→子。孫は作りません）。',
+  },
   /* ---------- ロールマスタ（§9.239 ⑥、利用者の指示） ----------
      「ロールマスタは『設備／入出位置／接触面／ロール径MAX／ロール径MIN／
       ロール面長／材質／硬度／本数／ロール名／ロール使用条件／駆動方式／
@@ -551,7 +582,7 @@
      指摘「並びが不規則」）。**ここに載っていないマスタは末尾**へ回るので、
      足し忘れても消えない。載せ忘れは`tests/test_master.js`が数える。 */
   {key:'measure',label:'測定と記録',hint:'測定画面に出す入力欄と、記録した値の見せ方',
-   items:['opItem','opChoice','recordLayout']},
+   items:['opItem','opChoice','choiceLink','recordLayout']},
   {key:'report',label:'帳票',hint:'紙に刷る内容と、その割り付け',
    items:['reportLayout','reportBlock']},
   {key:'equip',label:'設備',hint:'設備そのものと、設備に付くもの',
@@ -2216,6 +2247,7 @@
   if(currentDef().special==='record-layout'){renderRecordLayout();return}
   if(currentDef().special==='report-layout'){renderReportLayout();return}
   if(currentDef().special==='op-choice'){renderOpChoice();return}
+  if(currentDef().special==='choice-link'){renderChoiceLink();return}
   renderMaintList();
  }
  /* 入力支援の配線(§9.49)。buildFieldControls()が出した各型を動かす。
@@ -4817,6 +4849,7 @@
   if(def.special==='record-layout'){setMaintSearchVisible(false);return loadRecordLayoutMaint(force)}
   if(def.special==='report-layout'){setMaintSearchVisible(false);return loadReportLayoutMaint(force)}
   if(def.special==='op-choice'){setMaintSearchVisible(false);return loadOpChoiceMaint(force)}
+  if(def.special==='choice-link'){setMaintSearchVisible(false);return loadChoiceLinkMaint(force)}
   if(def.special==='cleanup'){setMaintSearchVisible(false);return loadCleanupMaint(force)}
   if(def.special==='raw-table'){setMaintSearchVisible(false);return loadRawTableMaint(force)}
   if(def.special==='presence'){setMaintSearchVisible(false);return loadPresenceMaint(force)}
@@ -11664,6 +11697,262 @@
    renderOpModal();
   }catch(e){opModalSay('消せませんでした: '+e.message,true)}
  }
+ /* ============================================================
+    選択肢の親子（リンクマスタ）(§9.306、利用者の指示)
+    ------------------------------------------------------------
+    「選択肢の値マスタ同士を親子関係として紐づけるためにリンクさせ、リンク
+     させた場合、子となったマスタは登録内容毎、どの親か親マスタから選ぶことが
+     できるようにしたいです。したがって、汎用性を向上させるために『リンクマスタ』の
+     追加に伴い『選択肢の値マスタ』にはカテゴリを追加できるようにし、親マスタの
+     選択肢から選んで登録することができるように改良が必要になります」
+
+    **行の表にしない**——読みたいのは「どのまとまりがどのまとまりの子か」と
+    いう**木**で、1行＝1本の表では**まだ親子を持っていないまとまり**が画面に
+    出ない（＝繋ぐ相手を探せない）。
+
+    **左右に同じ一覧を2枚並べない**（§CLAUDE 8・1）——最初は§9.197の突合キーに
+    倣って「親にする一覧／子にする一覧」を並べたが、実機で見ると**同じ22行が
+    左右に並び**、いちばん読みたい木は下端の帯に押し込まれていた。親子を張るのは
+    たまにで、木は毎回読む（面積は頻度×重要度）。いまは**左＝まとまりの入れ物／
+    右＝親子の木**で、木のほうが広い。
+
+    **向きは位置が語る**——子は**親の箱の中**へ落とす。左右2枚をやめた代わりに
+    ここで向きを担保する（掴んだものが親なのか子なのかを覚えさせない）。
+
+    **押す道と掴む道の両方を残す**（§9.278）——掴めない環境で親子を1本も
+    張れなくなる。押す道は「左で選ぶ→箱のボタンを押す」。
+
+    **繋げるかどうかはサーバーが答える**（§9.163）——1段だけの規則は
+    `choice_link_upsert()`が持つ。盤は`groups`の`isParent`/`isChild`から
+    **押せなくして理由を書く**（§4）だけで、規則をここへ書き写さない。
+    ============================================================ */
+ const clState={items:[],groups:[],pick:'',newParent:'',q:'',busy:false};
+ function clGroup(name){return (clState.groups||[]).find(g=>g.name===name)||null}
+ /* このまとまりを**その役に置けるか**。置けないときは理由を返す（§4）。
+    材料はサーバーの`isParent`/`isChild`だけ——規則そのものは持たない。 */
+ function clBlock(name,role){
+  const g=clGroup(name);if(!g)return 'このまとまりは今ありません。';
+  if(role==='parent'){
+   if(g.isChild)return '親子は1段だけです。このまとまりは既に別のまとまりの子なので、親にはできません（先に子から外してください）。';
+   if(g.isParent)return 'このまとまりは既に親です。下の箱へ子を足してください。';
+   return '';
+  }
+  if(g.isParent)return '親子は1段だけです。このまとまりは既に別のまとまりの親なので、子にはできません（先に親から外してください）。';
+  if(g.isChild)return 'このまとまりには既に親があります（1つの子に親は1つだけ）。先に今の親子を外してください。';
+  return '';
+ }
+ function clSay(text,bad){
+  const el=$('#clState');if(!el)return;
+  el.textContent=text||'';el.classList.toggle('is-bad',!!bad);
+ }
+ async function loadChoiceLinkMaint(force){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  form.classList.remove('mm-form-compact');
+  if(!list.querySelector('.cl-edit'))list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
+  try{
+   const d=await api('/api/choice-link-master');
+   clState.items=d.items||[];
+   clState.groups=d.groups||[];
+   /* 消えたまとまりを選んだままにしない（§9.204と同じ作法）。 */
+   if(clState.pick&&!clGroup(clState.pick))clState.pick='';
+   if(clState.newParent&&(!clGroup(clState.newParent)||clBlock(clState.newParent,'parent')))clState.newParent='';
+   renderChoiceLink();
+  }catch(e){
+   list.innerHTML=`<div class="mm-empty">選択肢の親子を読み込めませんでした: ${esc(e.message||String(e))}</div>`;
+  }
+ }
+ /* 左＝まとまりの入れ物。**押しても掴んでも同じもの**を選ぶ。 */
+ function clPoolHtml(){
+  const q=String(clState.q||'').trim().toLowerCase();
+  const all=(clState.groups||[]).filter(g=>!q||String(g.name).toLowerCase().includes(q));
+  const body=all.length
+   ?all.map(g=>{
+      const on=clState.pick===g.name;
+      const role=g.isParent?'親':(g.isChild?'子':'');
+      return `<button type="button" class="cl-item${on?' is-pick':''}"`
+       +` data-cl-name="${esc(g.name)}" draggable="true"`
+       +` title="${esc(g.name)}\n値 ${g.count}件\n押して選び、右の箱へ入れます（掴んで落としても同じです）">`
+       +`<span class="cl-item-name">${esc(g.name)}</span>`
+       +`<span class="cl-item-count">値 ${g.count}件</span>`
+       +(role?`<i class="cl-item-role">${role}</i>`:'')
+       +`</button>`;
+     }).join('')
+   :`<p class="cl-empty">${q?`「${esc(q)}」に当てはまるまとまりがありません。`
+       :'まとまりがまだありません。「選択肢の値」で作ってください。'}</p>`;
+  return `<section class="cl-pool">`
+   +`<h4 class="cl-pane-head">まとまり<small>右の箱へ入れると親子になります。</small></h4>`
+   +`<input type="search" id="clSearch" class="cl-search" value="${esc(clState.q||'')}"`
+   +` placeholder="まとまり名で絞る" autocomplete="off">`
+   +`<div class="cl-list">${body}</div></section>`;
+ }
+ /* 「◯◯を子にする」ボタン。**押せないときは理由をその場に書く**（§4）。 */
+ function clAddBtnHtml(parent){
+  const p=clState.pick;
+  if(!p)return `<span class="cl-hint">左でまとまりを選ぶと、ここへ足せます（掴んで落としても同じです）。</span>`;
+  const why=(p===parent)?'同じまとまりを親と子にはできません。':clBlock(p,'child');
+  if(why)return `<span class="cl-hint is-bad">${esc(p)}は子にできません — ${esc(why)}</span>`;
+  return `<button type="button" class="cl-add" data-cl-addchild="${esc(parent)}">`
+   +`${esc(p)}を子にする</button>`;
+ }
+ /* 1つの親の箱。**子は箱の中**——向きを位置が語る。 */
+ function clBoxHtml(parent,children,pending){
+  const g=clGroup(parent);
+  const kids=children.map(x=>`<span class="cl-chip" data-cl-link="${x.id}">`
+   +`<b>${esc(x.child)}</b><i class="cl-chip-count">値 ${x.childCount}件</i>`
+   +`<button type="button" class="cl-chip-del" data-cl-del="${x.id}"`
+   +` title="この親子を外す（値に入れた「親の値」は残ります）">×</button></span>`).join('');
+  return `<section class="cl-box${pending?' is-pending':''}" data-cl-parent="${esc(parent)}">`
+   +`<h5 class="cl-box-head"><i class="cl-box-role">親</i><b>${esc(parent)}</b>`
+   +`<span class="cl-box-count">値 ${g?g.count:0}件</span>`
+   +(pending?`<span class="cl-box-pending">まだ保存していません</span>`
+            +`<button type="button" class="cl-box-cancel" id="clNewCancel">やめる</button>`:'')
+   +`</h5>`
+   +`<div class="cl-kids">${kids||'<span class="cl-hint">子がまだありません。</span>'}</div>`
+   +`<div class="cl-box-foot">${clAddBtnHtml(parent)}</div></section>`;
+ }
+ function clTreeHtml(){
+  const rows=clState.items||[];
+  const parents=[];
+  rows.forEach(x=>{if(parents.indexOf(x.parent)<0)parents.push(x.parent)});
+  const boxes=parents.map(p=>clBoxHtml(p,rows.filter(x=>x.parent===p),false));
+  if(clState.newParent&&parents.indexOf(clState.newParent)<0)
+   boxes.push(clBoxHtml(clState.newParent,[],true));
+  /* **新しい親をつくる受け皿**。押す道はボタン、掴む道はこの箱そのもの。 */
+  const p=clState.pick;
+  const why=p?clBlock(p,'parent'):'';
+  const btn=!p
+   ?`<span class="cl-hint">左でまとまりを選んでから押してください（掴んで落としても同じです）。</span>`
+   :(why?`<span class="cl-hint is-bad">${esc(p)}は親にできません — ${esc(why)}</span>`
+        :`<button type="button" class="cl-add" id="clNewParent">${esc(p)}を親にする</button>`);
+  return boxes.join('')
+   +`<section class="cl-box cl-box-new" data-cl-newparent="1">`
+   +`<h5 class="cl-box-head"><b>新しい親をつくる</b></h5>`
+   +`<div class="cl-box-foot">${btn}</div></section>`;
+ }
+ function renderChoiceLink(){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  /* **器の高さを中まで届ける**（§9.222 ⑤）。印を外すのは`loadMaintInner()`。 */
+  list.classList.add('is-fill');
+  list.parentElement&&list.parentElement.classList.add('is-fill');
+  const n=(clState.items||[]).length;
+  form.innerHTML=`<div class="op-bar">`
+   +`<span class="op-bar-note">まとまりどうしを<b>親子</b>で結びます。`
+   +`結ぶと「選択肢の値」で<b>どの親の値のときに出すか</b>を決められ、`
+   +`測定画面では<b>親で選んだ値に合わせて子の候補が絞られます</b>`
+   +`（親をまだ選んでいないときは全部出ます）。</span>`
+   +`<span class="op-bar-state" id="clState"></span></div>`;
+  list.innerHTML=`<div class="cl-edit">${clPoolHtml()}`
+   +`<section class="cl-tree"><h4 class="cl-pane-head">いまの親子`
+   +`<small>${n?`${n}本`:'まだ1本もありません'}。親子は<b>1段だけ</b>です（親→子。孫は作りません）。</small></h4>`
+   +`<div class="cl-tree-body">${clTreeHtml()}</div></section></div>`;
+  bindChoiceLink();
+ }
+ /* 木と一覧だけを差し替える（絞り込み・選び直しで欄を作り直さない・§9.117）。 */
+ function clRepaint(){
+  const list=$('#masterMaintList');if(!list)return;
+  const pool=list.querySelector('.cl-pool'),tree=list.querySelector('.cl-tree-body');
+  if(!pool||!tree){renderChoiceLink();return}
+  const el=$('#clSearch'),pos=el?el.selectionStart:null,focused=el&&document.activeElement===el;
+  pool.outerHTML=clPoolHtml();
+  tree.innerHTML=clTreeHtml();
+  bindChoiceLink();
+  if(focused){const q=$('#clSearch');if(q){q.focus();if(pos!=null)q.setSelectionRange(pos,pos)}}
+ }
+ async function clConnect(parent,child){
+  if(clState.busy||!parent||!child)return;
+  if(parent===child){clSay('同じまとまりを親と子にはできません。',true);return}
+  const why=clBlock(parent,'parent')&&clGroup(parent)&&!clGroup(parent).isParent
+    ?clBlock(parent,'parent'):clBlock(child,'child');
+  if(why){clSay(why,true);return}
+  clState.busy=true;clSay('保存しています…');
+  try{
+   await api('/api/choice-link-master',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({parent,child,user_id:currentUserId()})});
+   clState.pick='';clState.newParent='';
+   await loadChoiceLinkMaint(true);
+   clSay(`${parent} → ${child} を結びました。`);
+  }catch(e){
+   /* **断る理由はサーバーが書いている**（§4）。言い換えない。 */
+   clSay(e.message||String(e),true);
+  }finally{clState.busy=false}
+ }
+ async function clUnlink(id){
+  if(clState.busy)return;
+  const row=(clState.items||[]).find(x=>String(x.id)===String(id));
+  if(!row)return;
+  if(!confirm(`${row.parent} → ${row.child} の親子を外しますか？\n`
+    +'値に入れた「親の値」は残すので、また結べば続きから使えます。'))return;
+  clState.busy=true;clSay('外しています…');
+  try{
+   const r=await api('/api/choice-link-master/delete',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({id:row.id,user_id:currentUserId()})});
+   await loadChoiceLinkMaint(true);
+   clSay(r&&r.message||'外しました。');
+  }catch(e){clSay(e.message||String(e),true)}
+  finally{clState.busy=false}
+ }
+ /* 選ぶ。**同じものをもう一度押したら選び直し**（やめる場所を別に作らない）。 */
+ function clPick(name){
+  clState.pick=(clState.pick===name)?'':name;
+  clSay('');
+  clRepaint();
+ }
+ function clMakeParent(name){
+  const why=clBlock(name,'parent');
+  if(why){clSay(why,true);return}
+  clState.newParent=name;clState.pick='';clSay('');
+  clRepaint();
+  clSay(`${name}を親にしました。次に子にするまとまりを選んで「子にする」を押してください（まだ保存していません）。`);
+ }
+ function bindChoiceLink(){
+  const list=$('#masterMaintList');if(!list)return;
+  const q=$('#clSearch');
+  if(q&&!q.dataset.wired){
+   q.dataset.wired='1';
+   q.addEventListener('input',()=>{clState.q=q.value;clRepaint()});
+  }
+  list.querySelectorAll('[data-cl-name]').forEach(b=>{
+   b.onclick=()=>clPick(b.dataset.clName);
+   b.ondragstart=e=>{
+    clState.pick=b.dataset.clName;
+    try{e.dataTransfer.setData('text/plain',b.dataset.clName)}catch(err){}
+    e.dataTransfer.effectAllowed='link';
+    clRepaint();
+   };
+  });
+  /* 落とし先は**親の箱**（中＝子）と**新しい親の受け皿**。 */
+  list.querySelectorAll('[data-cl-parent],[data-cl-newparent]').forEach(box=>{
+   box.ondragover=e=>{
+    if(!clState.pick)return;
+    e.preventDefault();e.dataTransfer.dropEffect='link';
+    box.classList.add('is-over');
+   };
+   box.ondragleave=()=>box.classList.remove('is-over');
+   box.ondrop=e=>{
+    e.preventDefault();e.stopPropagation();box.classList.remove('is-over');
+    const p=clState.pick;if(!p)return;
+    if(box.dataset.clNewparent){clMakeParent(p);return}
+    const parent=box.dataset.clParent;
+    if(parent===clState.newParent&&!(clState.items||[]).some(x=>x.parent===parent)){
+     clConnect(parent,p);return;
+    }
+    clConnect(parent,p);
+   };
+  });
+  const np=$('#clNewParent');
+  if(np)np.onclick=()=>clMakeParent(clState.pick);
+  const cancel=$('#clNewCancel');
+  if(cancel)cancel.onclick=()=>{clState.newParent='';clSay('');clRepaint()};
+  list.querySelectorAll('[data-cl-addchild]').forEach(b=>{
+   b.onclick=()=>clConnect(b.dataset.clAddchild,clState.pick);
+  });
+  list.querySelectorAll('[data-cl-del]').forEach(b=>{
+   b.onclick=()=>clUnlink(b.dataset.clDel);
+  });
+ }
+
  /* ============================================================
     選択肢の値 — まとまり（親）とその中の値（子）の2階層（§9.221 ②）
     ------------------------------------------------------------
