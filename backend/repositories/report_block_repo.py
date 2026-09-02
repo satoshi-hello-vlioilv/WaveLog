@@ -1082,6 +1082,40 @@ _REPEAT_DIR_BY_LABEL = {lb: v for v, lb in REPEAT_DIRS}
 _LABEL_BY_REPEAT_DIR = {v: lb for v, lb in REPEAT_DIRS}
 
 
+# ---------- 行・列を「最大」で出す（§9.309、利用者の指示） ----------
+# 「帳票ブロックマスタで余白が大きい時になることも多いので、データが最大に
+#   入ったときの行や列の表示になるような設定を追加してほしいです。行や列は
+#   データが入ったときのように出るがデータはないので空で表示するイメージ
+#   です。板幅表示が40条まで常時表示しているのと同じ形です」
+#
+# 紙の高さがロットごとに変わると、置き場所を決め直すことになる。**入れ物を
+# 最大に固定して、足りないぶんは空欄で出す**のがいちばん短い道——測定データの
+# 表は元からそう組んである（40条ぶんを常に出し、横割数を超える行は空欄）。
+#
+# ''＝その塊の今までの出し方（**既定**。§9.132）／'最大'＝いつも最大数で出す／
+# 'データなり'＝記録された数だけ出す。**3つ目が要る**のは、測定データが
+# 今まで常に最大だったから——「最大／データなり」の2択にすると、既定を
+# どちらにしても**どちらかの塊の見え方が黙って変わる**。
+# **語彙はここだけが持つ**（§9.163。画面へ書き写さない）。
+FULL_MAX = '最大'
+FULL_ACTUAL = 'データなり'
+FULL_LABELS = (('', 'この塊のふつうの出し方（既定）'),
+               (FULL_MAX, 'いつも最大数で出す（足りないぶんは空欄）'),
+               (FULL_ACTUAL, '記録された数だけ出す'))
+_FULL_BY_LABEL = {lb: v for v, lb in FULL_LABELS}
+_LABEL_BY_FULL = {v: lb for v, lb in FULL_LABELS}
+
+
+def normalize_full(v):
+    """行・列の出し方。**知らない値は既定へ倒す**（`normalize_repeat`と同じ
+    作法——例外にすると帳票ブロックマスタが丸ごと開けなくなる）。
+    画面は文字列の選択欄しか持たないので、**呼び名でも受ける**。"""
+    s = str(v or '').strip()
+    if s in _FULL_BY_LABEL:
+        s = _FULL_BY_LABEL[s]
+    return s if s in (FULL_MAX, FULL_ACTUAL) else ''
+
+
 def normalize_repeat_dir(v):
     """繰り返しの向き。**知らない値は「縦」へ倒す**（`normalize_repeat`と同じ）。"""
     s = str(v or '').strip()
@@ -1459,7 +1493,13 @@ def _row(r):
             # 画面は欄ごと出さずに理由を書く（§4）。
             'repeatDir': normalize_repeat_dir(r[14] if len(r) > 14 else ''),
             'repeatDirText': _LABEL_BY_REPEAT_DIR.get(
-                normalize_repeat_dir(r[14] if len(r) > 14 else ''), _LABEL_BY_REPEAT_DIR[''])}
+                normalize_repeat_dir(r[14] if len(r) > 14 else ''), _LABEL_BY_REPEAT_DIR['']),
+            # 行・列を最大で出すか（§9.309）。**エリアの塊では効かない**
+            # （値を出さない塊に「行の数」が無い）ので既定へ倒す（§4）。
+            'full': ('' if normalize_kind(r[11] if len(r) > 11 else '') == AREA_KIND
+                     else normalize_full(r[15] if len(r) > 15 else '')),
+            'fullText': _LABEL_BY_FULL.get(
+                normalize_full(r[15] if len(r) > 15 else ''), _LABEL_BY_FULL[''])}
 
 
 # 後から足した列（§9.180「無ければ足す」で移行する。共有DBは現場で動いて
@@ -1471,6 +1511,7 @@ _ADDED_COLUMNS = (
     ('文字', 'TEXT'),              # エリアに置く文字（改行できる）
     ('繰返', 'TEXT'),              # ''＝1回だけ／'子ロット'＝分割後の子ロットごと
     ('繰返方向', 'TEXT'),          # ''＝縦に積む／'横'＝横に並べる（§9.277）
+    ('最大表示', 'TEXT'),          # ''＝ふつう／'最大'／'データなり'（§9.309）
 )
 
 
@@ -1549,7 +1590,7 @@ def ensure_table(c):
 
 
 _SELECT = ('SELECT [ブロックID],[設備名],[ブロック名],[表示順],[幅],[行数],[内容],[備考],[有効],'
-           '[組み込みキー],[内訳列数],[種別],[文字],[繰返],[繰返方向] '
+           '[組み込みキー],[内訳列数],[種別],[文字],[繰返],[繰返方向],[最大表示] '
            f'FROM [{TABLE}] ORDER BY [表示順],[ブロックID]')
 
 
@@ -1596,7 +1637,7 @@ def builtin_off(c, equipment):
 def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
                  content='', note='', enabled=True, block_id=None,
                  builtin=None, cols=None, kind=None, text=None, repeat=None,
-                 repeat_dir=None):
+                 repeat_dir=None, full=None):
     ensure_table(c)
     name = str(name or '').strip()
     if not name:
@@ -1613,16 +1654,18 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
     cur_text = ''
     cur_repeat = ''
     cur_repeat_dir = ''
+    cur_full = ''
     if block_id is not None:
-        cur.execute(f'SELECT [組み込みキー],[内訳列数],[種別],[文字],[繰返],[繰返方向] '
-                    f'FROM [{TABLE}] WHERE [ブロックID]=?', [int(block_id)])
-        hit = cur.fetchone() or ['', 0, '', '', '', '']
+        cur.execute(f'SELECT [組み込みキー],[内訳列数],[種別],[文字],[繰返],[繰返方向],'
+                    f'[最大表示] FROM [{TABLE}] WHERE [ブロックID]=?', [int(block_id)])
+        hit = cur.fetchone() or ['', 0, '', '', '', '', '']
         cur_builtin = str(hit[0] or '').strip()
         cur_cols = int(hit[1] or 0)
         cur_kind = normalize_kind(hit[2])
         cur_text = str(hit[3] or '')
         cur_repeat = normalize_repeat(hit[4] if len(hit) > 4 else '')
         cur_repeat_dir = normalize_repeat_dir(hit[5] if len(hit) > 5 else '')
+        cur_full = normalize_full(hit[6] if len(hit) > 6 else '')
     if builtin is None:
         builtin = cur_builtin
     builtin = str(builtin or '').strip()
@@ -1648,6 +1691,7 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
     repeat = cur_repeat if repeat is None else normalize_repeat(repeat)
     repeat_dir = (cur_repeat_dir if repeat_dir is None
                   else normalize_repeat_dir(repeat_dir))
+    full = cur_full if full is None else normalize_full(full)
     try:
         cols = max(0, min(CONTENT_COLS_MAX, int(cols or 0)))
     except (TypeError, ValueError):
@@ -1667,11 +1711,11 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
     # SET・VALUES・argsの**4箇所**（UPDATE2本＋INSERT1本＋この行）を同じ順に。
     args = [equipment, name, order, normalize_span(span), normalize_rows(rows),
             str(content or ''), str(note or ''), -1 if enabled else 0, builtin, cols,
-            kind, text, repeat, repeat_dir]
+            kind, text, repeat, repeat_dir, full]
     if block_id is not None:
         cur.execute('UPDATE [帳票ブロックマスタ] SET [設備名]=?,[ブロック名]=?,[表示順]=?,[幅]=?,'
                     '[行数]=?,[内容]=?,[備考]=?,[有効]=?,[組み込みキー]=?,[内訳列数]=?,'
-                    '[種別]=?,[文字]=?,[繰返]=?,[繰返方向]=?,'
+                    '[種別]=?,[文字]=?,[繰返]=?,[繰返方向]=?,[最大表示]=?,'
                     '[更新者ID]=?,[更新日時]=Now() '
                     'WHERE [ブロックID]=?', args + [uid, int(block_id)])
         c.commit()
@@ -1685,7 +1729,7 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
     if hit:
         cur.execute('UPDATE [帳票ブロックマスタ] SET [表示順]=?,[幅]=?,[行数]=?,[内容]=?,[備考]=?,'
                     '[有効]=?,[組み込みキー]=?,[内訳列数]=?,[種別]=?,[文字]=?,[繰返]=?,'
-                    '[繰返方向]=?,[更新者ID]=?,[更新日時]=Now() '
+                    '[繰返方向]=?,[最大表示]=?,[更新者ID]=?,[更新日時]=Now() '
                     'WHERE [ブロックID]=?', args[2:] + [uid, hit[0]])
         c.commit()
         return int(hit[0])
@@ -1696,9 +1740,9 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
         args[2] = order
     cur.execute('INSERT INTO [帳票ブロックマスタ] '
                 '([設備名],[ブロック名],[表示順],[幅],[行数],[内容],[備考],[有効],'
-                '[組み込みキー],[内訳列数],[種別],[文字],[繰返],[繰返方向],'
+                '[組み込みキー],[内訳列数],[種別],[文字],[繰返],[繰返方向],[最大表示],'
                 '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())', args + [uid, uid])
+                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())', args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)
 

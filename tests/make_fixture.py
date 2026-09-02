@@ -399,6 +399,12 @@ def fix_master(quiet: bool = False) -> None:
         # マスタを直せるように見える**（§4）。
         if '測定項目マスタ' in have:
             c.execute('DROP TABLE [測定項目マスタ]')
+        # 8d) 行・列の出し方（§9.309）。既定へ戻す。
+        if '帳票ブロックマスタ' in have:
+            try:
+                c.execute("UPDATE [帳票ブロックマスタ] SET [最大表示]=''")
+            except Exception:
+                pass
         # 9) 自作の帳票ブロックの置き土産（§9.304）
         # 塊が1つ残るだけで**紙の中身がまるごと変わる**——並びに載っていない
         # 自作の塊は末尾へ回るので、紙がA4を超えて2枚ぶんに伸びる（実測:

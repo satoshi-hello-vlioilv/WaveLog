@@ -1688,6 +1688,9 @@ def report_block_list():
            'repeats':[{'v':v,'label':lb} for v,lb in rb.REPEAT_LABELS],
            # 繰り返しの向き（§9.277）。**呼び名もサーバーが答える**。
            'repeatDirs':[{'v':v,'label':lb} for v,lb in rb.REPEAT_DIRS],
+           # 行・列を最大で出すか（§9.309）。**語彙はサーバーが答える**
+           # ——画面へ綴りを書き写すと、増やしたときに2箇所直すことになる。
+           'fulls':[{'v':v,'label':lb} for v,lb in rb.FULL_LABELS],
            # 表に組むときの軸（§9.277）。**既定の置き方はこの並びが決める**
            # ——1つ目を行、残りを列。画面へ写すと、軸を1つ足したときに
            # 「既定の並び」が2箇所になる（§9.163）。
@@ -1750,6 +1753,9 @@ def _report_block_save(x):
                           repeat_dir=(x.get('repeatDirText')
                                       if x.get('repeatDirText') is not None
                                       else x.get('repeatDir')),
+                          # 行・列の出し方（§9.309）。**呼び名でも受ける**。
+                          full=(x.get('fullText') if x.get('fullText') is not None
+                                else x.get('full')),
                           block_id=(int(x['id']) if x.get('id') not in (None,'') else None))
   return jsonify(ok=True,id=_op_read(fn),message='帳票ブロックを保存しました。')
  except ValueError as e:return jsonify(error=str(e)),400

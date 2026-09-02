@@ -895,6 +895,32 @@
  }
  /* 条番号を軸にした表を1枚組み立てる。**まとめも分解も同じ関数**が書く
     ——別々に持つと、片方だけ直した状態が作れる（実際に何度も踏んだ罠）。 */
+ /* ---------- 行・列を「最大」で出す（§9.309、利用者の指示） ----------
+    「データが最大に入ったときの行や列の表示になるような設定を追加してほしい
+      です。行や列はデータが入ったときのように出るがデータはないので空で
+      表示するイメージです。**板幅表示が40条まで常時表示しているのと同じ形**
+      です。この表示方法にするかどうか切り替えられるように、この項目の設定も
+      ブロックマスタに足してください」
+
+    紙の高さがロットごとに変わると置き場所を決め直すことになるので、
+    **入れ物を最大に固定して足りないぶんは空欄で出す**。測定データの表は
+    元からそう組んである（40条ぶんを常に出す）ので、足したのは
+    **切り替えられること**と、丈のように今までデータなりだった塊への適用。
+
+    **既定（`''`）はその塊の今までの出し方**（§9.132）——測定データは最大、
+    丈別データはデータなり。2択にすると、既定をどちらにしても片方の塊の
+    見え方が黙って変わる。**語彙はサーバーが持つ**（§9.163）ので、ここは
+    綴りを2つ見るだけ。 */
+ function rpFullMode(k){return String((rpBlockOf(k)||{}).full||'')}
+ function rpShowFull(k,def){
+  const m=rpFullMode(k);
+  return m==='最大'?true:(m==='データなり'?false:!!def);
+ }
+ /* その塊がいま何行ぶん出すか。**最大と実データの両方を渡す**——呼ぶ側で
+    `Math.min`を書くと、片方だけ直した状態が作れる。 */
+ function rpFullCount(k,def,max,actual){
+  return rpShowFull(k,def)?max:Math.max(1,Math.min(max,actual));
+ }
  function measTableHtml(x,groups,from,to,blockKey){
   const s=x.settings||{},actual=Math.max(1,Math.min(40,+s.horizontalCount||1));
   const {headIdx,tailIdx,headLabel,tailLabel}=lengthLabels(s),tol=toleranceRangeLocal(x,'width');
@@ -962,9 +988,14 @@
   /* 行列を入れ替えたときは左右に割らない（横に40条ぶん並ぶので、割ると
      かえって読みにくい）。 */
   const landscape=rpOrientation==='landscape'&&!rpTransposed(blockKey);
+  /* **何条ぶん出すか**（§9.309）。既定は`true`＝今までどおり40条ぶん。
+     「データなり」にすると記録された条数だけになる。 */
+  const n=rpFullCount(blockKey,true,40,
+    Math.max(1,Math.min(40,+((x.settings||{}).horizontalCount)||1)));
+  const half=Math.ceil(n/2);
   const tables=landscape
-   ?`<div class="rp-wide-split">${measTableHtml(x,groups,0,20,blockKey)}${measTableHtml(x,groups,20,40,blockKey)}</div>`
-   :measTableHtml(x,groups,0,40,blockKey);
+   ?`<div class="rp-wide-split">${measTableHtml(x,groups,0,half,blockKey)}${measTableHtml(x,groups,half,n,blockKey)}</div>`
+   :measTableHtml(x,groups,0,n,blockKey);
   return `<section class="rp-section"><h3>${esc(title)}</h3>`
    +(note?`<p class="rp-note">${note}</p>`:'')
    +`<div class="rp-wide-wrap">${tables}</div></section>`;
@@ -975,7 +1006,15 @@
   const s=x.settings||{},actual=Math.max(1,Math.min(40,+s.horizontalCount||1));
   const {tailLabel}=lengthLabels(s);
   const landscape=rpOrientation==='landscape';
-  const note=`巻ずれ・テレスコープは ${esc(tailLabel)} のデータのみ対象です。横割数（${actual}条）を超える行は控え欄として空欄にしています。幅ロット分割時は条ごとのロット№・目標幅(公差)を条番号の右に表示します。${landscape?'A4横のため1〜20条と21〜40条を左右に分けています。':''}`;
+  /* **書いてあることと起きていることを合わせる**（§3）。「データなり」に
+     すると空欄の控え行は出ないので、その一文は書かない。 */
+  const full=rpShowFull(RP_MEAS_COMBINED,true);
+  const shown=full?40:actual;
+  const note=`巻ずれ・テレスコープは ${esc(tailLabel)} のデータのみ対象です。`
+   +(full?`横割数（${actual}条）を超える行は控え欄として空欄にしています。`
+         :`記録された ${actual}条ぶんだけ出しています（控え欄は出しません）。`)
+   +`幅ロット分割時は条ごとのロット№・目標幅(公差)を条番号の右に表示します。`
+   +(landscape?`A4横のため1〜${Math.ceil(shown/2)}条と${Math.ceil(shown/2)+1}〜${shown}条を左右に分けています。`:'');
   return measSectionHtml(x,`測定データ（${groups.map(g=>g.g).join('・')}）`,note,groups,RP_MEAS_COMBINED);
  }
  function measSoloSection(x,g){
@@ -1011,12 +1050,15 @@
  }
  function productRowsSection(x){
   const rows=x.product?.rows||[],actual=Math.max(1,Math.min(9,+x.settings?.verticalCount||1));
+  /* **何丈ぶん出すか**（§9.309）。既定は`false`＝今までどおり記録された丈だけ。
+     「最大」にすると9丈ぶんの枠を空欄で出す（測定データの40条と同じ形）。 */
+  const shownRows=rpFullCount(RP_PRODUCT_KEY,false,9,actual);
   const mode=rpProductMode(),showJudge=mode!=='内訳',showBreak=mode!=='合否';
   /* **等級はこの紙のレコードから引く**（§9.205）。渡さないと`S.measure`＝
      いま開いている測定の等級で判定してしまい、一括印刷では途中から全部
      同じ基準になる。 */
   const grades=x.qualityGrades||{};
-  const body=Array.from({length:actual},(_,i)=>{
+  const body=Array.from({length:shownRows},(_,i)=>{
    /* 揃いの判定は`judgeProductRow`の1箇所が答える(§9.203)。
       4桁コードを廃止したので、`alignmentCode`だけを見ると新しい記録が
       すべて空欄になる（旧データはあちらが面倒を見る）。 */
@@ -1235,7 +1277,7 @@
      `<h3>`を持たない塊に届かないので、以前は名前を変えても紙は元のままだった）。 */
   const area=(r.kind==='エリア')||b.area===true;
   return Object.assign({},b,{
-   k:b.k,name,master:true,area,
+   k:b.k,name,master:true,area,full:r.full||'',
    span:r.span||b.span,rows:r.rows||b.rows||0,
    html:area
      ?(()=>rpAreaHtml(r.kind==='エリア'&&r.text!=null&&r.text!==''?r.text:name))
@@ -1681,6 +1723,9 @@
      （§9.174「枠だけの塊は既定の高さを持つ」と同じ理由）。 */
   const area=b.kind==='エリア';
   return {k:b.k||b.name,name:b.name,span:b.span||6,rows:b.rows||(area?5:0),user:true,area,
+   /* **設定は1つも落とさない**（§9.113）。自作の塊は表に組めるので、
+      行・列の出し方（§9.309）もここを通らないと紙へ届かない。 */
+   full:b.full||'',
    html:area?(()=>rpAreaHtml(b.text))
      /* マス数と空きマスは**そのまま渡す**（§9.245）——ここで潰すと、
         設定画面で組んだマトリクスが紙では1列ずつの並びに戻る。

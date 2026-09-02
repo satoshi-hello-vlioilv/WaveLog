@@ -1015,6 +1015,66 @@ const endArrange=async page=>{
    await page.waitForTimeout(400);
   }catch(e){rec('FATAL(§9.308)',false,e.message)}
 
+  /* ==========================================================
+     §9.309 行・列を「最大」で出す（利用者の指示）
+     ----------------------------------------------------------
+     「帳票ブロックマスタで余白が大きい時になることも多いので、データが最大に
+      入ったときの行や列の表示になるような設定を追加してほしいです。行や列は
+      データが入ったときのように出るがデータはないので空で表示するイメージ
+      です。**板幅表示が40条まで常時表示しているのと同じ形**です」
+
+     **実データのロットで見る**——見本のロットは40条・9丈まで埋めてある
+     （§9.254 ④）ので、「最大」と「データなり」が同じ数になり**何も
+     確かめられない**。ここのロットは丈が3本なので差が出る。
+     **既定はその塊の今までの出し方**（§9.132。丈別データは記録された丈だけ）
+     なので、**3つとも見る**（最大／データなり／既定へ戻す）。
+     ========================================================== */
+  try{
+   await cleanup();
+   await page.evaluate(t=>WL.columnLayout.forget(t),TARGET);
+   const rowsOf=async()=>{
+    await page.evaluate(()=>WL.reportBlocks.forget&&WL.reportBlocks.forget());
+    await page.evaluate(()=>window.exitReportView&&window.exitReportView());
+    await page.evaluate(()=>openRecordsSafe('編集中'));
+    await page.waitForSelector('.record-list-row',{timeout:25000});
+    await page.click('.record-list-row .report');
+    await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
+    await settle(page);await page.waitForTimeout(800);
+    return page.evaluate(()=>{
+     const t=document.querySelector('.rp-product-table');
+     return t?t.querySelectorAll('tbody tr').length:0;
+    });
+   };
+   const setFull=async label=>{
+    const l=await (await fetch(B+'/api/report-block-master')).json();
+    const r=(l.items||[]).find(x=>x.name==='丈別データ');
+    if(!r)return null;
+    await post('/api/report-block-master',{id:r.id,equipment:r.equipment,name:r.name,
+      span:r.span,rows:r.rows,content:r.content,note:r.note,enabledText:r.enabledText,
+      cols:r.cols,kindText:r.kindText,text:r.text,repeatText:r.repeatText,
+      repeatDirText:r.repeatDirText,fullText:label,user_id:'test'});
+    return r;
+   };
+   const R0=await rowsOf();
+   rec('§9.309 の前提: このロットは丈が最大より少ない',R0>0&&R0<9,`${R0}丈`);
+   await setFull('いつも最大数で出す（足りないぶんは空欄）');
+   const R1=await rowsOf();
+   rec('§9.309 「最大で出す」で丈9本ぶんの枠が空欄で出る',R1===9,
+       JSON.stringify({前:R0,後:R1}));
+   /* **語彙どおりに保存されること**（呼び名でも受ける・§9.219 ②）。 */
+   const saved=await (await fetch(B+'/api/report-block-master')).json()
+     .then(d=>(d.items||[]).find(x=>x.name==='丈別データ'));
+   rec('§9.309 選んだ出し方がマスタへ保存される',
+       saved&&saved.full==='最大',JSON.stringify(saved&&{full:saved.full,text:saved.fullText}));
+   await setFull('記録された数だけ出す');
+   const R2=await rowsOf();
+   rec('§9.309 「データなり」は記録された丈だけ',R2===R0,JSON.stringify({既定:R0,データなり:R2}));
+   await setFull('この塊のふつうの出し方（既定）');
+   const R3=await rowsOf();
+   rec('§9.309 「ふつう」へ戻すと今までの紙へ戻る（§9.132）',R3===R0,
+       JSON.stringify({前:R0,後:R3}));
+  }catch(e){rec('FATAL(§9.309)',false,e.message)}
+
   rec('コンソールに例外を出さない',errs.length===0,errs.slice(0,2).join(' / '));
  }catch(e){rec('FATAL',false,e.message)}
  finally{

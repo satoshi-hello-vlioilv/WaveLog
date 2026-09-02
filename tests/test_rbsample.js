@@ -172,6 +172,59 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('子ロットごとの統計が出る（分割が効いている）',
       kids.length>=2&&view.本文.indexOf(kids[0])>=0&&view.本文.indexOf(kids[kids.length-1])>=0,
       view.本文.slice(view.本文.indexOf('測定値の統計'),view.本文.indexOf('測定値の統計')+80));
+  /* ==========================================================
+     §9.309 「データなり」にすると注記も言い直す（§3）
+     ----------------------------------------------------------
+     利用者の指示「データが最大に入ったときの行や列の表示になるような設定」。
+     **行数そのものは見本では確かめられない**——見本は40条・9丈まで埋めて
+     ある（§9.254 ④）ので「最大」と「データなり」が同じ数になる。数のほうは
+     実データのロットで`tests/test_rpblocks.js`が見る。
+     ここで見るのは、**書いてあることと起きていることが合っていること**
+     ——控え欄を出していないのに「空欄にしています」と書いてあると紙が嘘を
+     つく。測定データの表が在るのは見本のロットだけなので、ここで見る。
+     ========================================================== */
+  const noteNow=async()=>await page.evaluate(()=>
+    [...document.querySelectorAll('.rp-note')].map(e=>e.textContent).join(' '));
+  const setFull=async(name,label)=>{
+   const l=await getj('/api/report-block-master');
+   const r=(l.items||[]).find(x=>x.name===name);
+   if(!r)return null;
+   await post('/api/report-block-master',{id:r.id,equipment:r.equipment,name:r.name,
+     span:r.span,rows:r.rows,content:r.content,note:r.note,enabledText:r.enabledText,
+     cols:r.cols,kindText:r.kindText,text:r.text,repeatText:r.repeatText,
+     repeatDirText:r.repeatDirText,fullText:label,user_id:'test'});
+   return r;
+  };
+  const reopenSample=async()=>{
+   await page.evaluate(()=>WL.reportBlocks.forget&&WL.reportBlocks.forget());
+   /* **帰り道は「戻る」**（§9.253。帰り先を名乗り、開いていたタブまで戻す）
+      ——`exitReportView()`はデータ一覧へ抜けるので、帳票ブロックマスタの
+      「見本で帳票を見る」がどこにも無くなる。 */
+   await page.click('#reportBack');
+   await page.waitForSelector('#mmSampleView',{timeout:20000});
+   await page.click('#mmSampleView');
+   await page.waitForFunction(()=>{
+    const c=document.getElementById('reportContent');
+    return c&&c.textContent.length>500;
+   },null,{timeout:20000});
+   await page.waitForTimeout(700);
+   return noteNow();
+  };
+  try{
+   const N0=await noteNow();
+   rec('§9.309 の前提: 既定では控え欄のことが書いてある',
+       N0.indexOf('控え欄として空欄')>=0,N0.slice(0,90));
+   await setFull('板幅ほかの測定データ','記録された数だけ出す');
+   const N1=await reopenSample();
+   rec('§9.309 「データなり」にすると注記も言い直す（控え欄の話を書かない）',
+       N1.indexOf('控え欄は出しません')>=0&&N1.indexOf('控え欄として空欄')<0,
+       N1.slice(0,120));
+   await setFull('板幅ほかの測定データ','この塊のふつうの出し方（既定）');
+   const N2=await reopenSample();
+   rec('§9.309 「ふつう」へ戻すと注記も元へ戻る',
+       N2.indexOf('控え欄として空欄')>=0,N2.slice(0,90));
+  }catch(e){rec('FATAL(§9.309)',false,e.message)}
+
   rec('保存済みの異常位置判定が紙に載る',
       /異常位置判定/.test(view.本文)&&view.本文.indexOf('該当条')>=0,
       view.本文.slice(view.本文.indexOf('異常位置判定'),view.本文.indexOf('異常位置判定')+90));
