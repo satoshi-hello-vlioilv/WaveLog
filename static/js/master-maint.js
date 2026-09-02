@@ -1394,7 +1394,9 @@
    'master-combo':'md','master-suggest':'md','equipment-select':'md',
    textarea:'full',path:'full','equipment-multi':'full','equipment-multi-text':'full',
    /* 見て選ぶ欄は横いっぱい（札が折り返さないように・§9.249 ③）。 */
-   'choice-card':'full','span-grid':'full','rows-pick':'full','tag-set':'full'};
+   /* §9.311 D/E 幅・高さは「− 数 ＋」1つに畳んだので、行を丸ごと使わない
+      （利用者の指示「無駄にスペースを使っている部分は節約」）。 */
+   'choice-card':'full','span-grid':'md','rows-pick':'md','tag-set':'full'};
  function mmFieldSize(f){
   if(f.size)return f.size;
   const t=String(f.type||'text');
@@ -1650,34 +1652,42 @@
    }
    /* 紙の12マスをそのまま出して、**押した幅がそのまま見える**ようにする。
       「6＝1/2」を頭の中で割り算させない（§CLAUDE 6）。 */
-   if(f.type==='span-grid'){
-    const max=f.max||12,cur=Math.max(1,Math.min(max,Number(val)||max));
-    const allow=(f.options||[]).map(Number).filter(n=>n>0);
-    const cells=[];
-    for(let i=1;i<=max;i++){
-     const pick=allow.length?allow.find(n=>n>=i)||allow[allow.length-1]:i;
-     cells.push(`<button type="button" class="mm-span-cell${i<=cur?' is-on':''}"`
-      +` data-span="${f.k}" data-span-v="${pick}" title="${pick}マス（12マス中）にします">${i}</button>`);
-    }
-    return `<div class="mm-field mm-field-area mm-spanfield">${fieldLabelHtml(f)}
-      <div class="mm-span-grid" role="group" aria-label="幅（12マス中）">${cells.join('')}</div>
-      <div class="mm-span-read"><b data-span-read="${f.k}">${cur}</b> / ${max} マス
-       <em data-span-frac="${f.k}">${esc(mmFracText(cur,max))}</em></div>
-      <input type="hidden" data-field="${f.k}" value="${esc(val)}">
-      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
-   }
-   /* 高さ。**「中身なり」を1つ目の札にする**——既定がどれかを最初に見せる。 */
-   if(f.type==='rows-pick'){
-    const opts=f.options||[''];
-    const cur=String(val||'');
-    return `<div class="mm-field mm-field-area mm-rowsfield">${fieldLabelHtml(f)}
-      <div class="mm-rows-pick" role="group" aria-label="高さ（行数）">${opts.map(o=>{
-       const on=String(o)===cur;
-       const label=o===''?'中身なり':o+'行';
-       return `<button type="button" class="mm-rows-opt${on?' is-on':''}" data-rows="${f.k}" data-rows-v="${esc(o)}"`
-        +` aria-pressed="${on?'true':'false'}" title="${o===''?'描いてから測って、中身の高さに合わせます':o+'行ぶん（1行＝24px）の高さで固定します'}">`
-        +`<i aria-hidden="true" style="--mm-rows:${o===''?1:Number(o)}"></i><span>${esc(label)}</span></button>`;
-      }).join('')}</div>
+   /* ---------- 数で決まるものは「− 数 ＋」の1つに畳む（§9.311 D/E） ----------
+      利用者の指示「各項目のサイズを決めるボタンは**小さくなった時に見切れる**
+      ので、**数字をトグルボタンとセットでコンパクトに**表示できるように」
+      「列数を指定する部分もボタンでたくさんあるので、数字を決めればよい部分
+      なので、ここもコンパクトにトグルボタンをつけて**決めた数値1つが見えれば
+      よい**」「それ以外のボタンも多い部分なので無駄にスペースを使っている部分は
+      節約してすっきりシンプルに」。
+      幅は12マスぶんの札、高さは8枚、列数は12枚——**選べる段しか作れない**のに
+      段の数だけボタンを並べていた（幅は12枚あって選べるのは5段）。
+      **いま決めた数だけを出し、前後は−／＋で動かす**（§9.247 ①の`切替`と
+      同じ作法。値は隠し欄が持つので`submitMaint`は型を知らなくてよい・§9.250 ④）。
+      **選べる値は器が持つ**（`data-allow`）——紙の見本の縁を掴む処理が
+      ここから読むので、一覧を2箇所に書かない（§9.250 ④・§9.163）。 */
+   if(f.type==='span-grid'||f.type==='rows-pick'){
+    const isSpan=f.type==='span-grid';
+    const max=f.max||12;
+    /* 幅は数の並び、高さは`''`（中身なり）を先頭に持つ並び。 */
+    const opts=isSpan
+      ?((f.options||[]).map(Number).filter(n=>n>0).sort((a,b)=>a-b))
+      :(f.options||['']).map(String);
+    const cur=isSpan?Math.max(1,Math.min(max,Number(val)||max)):String(val||'');
+    const at=isSpan
+      ?Math.max(0,opts.reduce((bi,x,i)=>Math.abs(x-cur)<Math.abs(opts[bi]-cur)?i:bi,0))
+      :Math.max(0,opts.indexOf(cur));
+    const label=v=>isSpan?`${v} / ${max} マス`:(String(v)===''?'中身なり':`${v} 行`);
+    const sub=isSpan?esc(mmFracText(cur,max))
+      :(String(cur)===''?'描いてから測って、中身の高さに合わせます'
+                        :`1行＝紙の1/${RB_PAGE_ROWS}`);
+    return `<div class="mm-field mm-field-num mm-stepfield">${fieldLabelHtml(f)}
+      <div class="mm-step" data-step-field="${f.k}" data-step-kind="${isSpan?'span':'rows'}"
+        data-allow="${esc(opts.join(','))}" role="group" aria-label="${esc(f.label||'')}">
+       <button type="button" class="mm-step-btn" data-step="-1" title="1つ小さく">−</button>
+       <b class="mm-step-val" data-step-read="${f.k}">${esc(label(cur))}</b>
+       <button type="button" class="mm-step-btn" data-step="1" title="1つ大きく">＋</button>
+      </div>
+      <em class="mm-step-sub" data-step-sub="${f.k}">${sub}</em>
       <input type="hidden" data-field="${f.k}" value="${esc(val)}">
       ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
    }
@@ -2330,57 +2340,71 @@
    paint();
   });
  }
- function bindSpanGrids(form){
-  form.querySelectorAll('.mm-spanfield').forEach(box=>{
-   if(box.dataset.spanWired)return;
-   box.dataset.spanWired='1';
-   const cells=[...box.querySelectorAll('[data-span]')];
-   if(!cells.length)return;
-   const key=cells[0].dataset.span;
-   const paint=v=>{
-    const n=Number(v)||0;
-    cells.forEach((c,i)=>c.classList.toggle('is-on',i+1<=n));
-    const read=box.querySelector(`[data-span-read="${CSS.escape(key)}"]`);
-    if(read)read.textContent=String(n);
-    const frac=box.querySelector(`[data-span-frac="${CSS.escape(key)}"]`);
-    if(frac)frac.textContent=mmFracText(n,cells.length);
-   };
-   cells.forEach(c=>c.onclick=()=>{paint(c.dataset.spanV);mmSetHidden(form,key,c.dataset.spanV)});
-   const hidden=form.querySelector(`[data-field="${CSS.escape(key)}"]`);
-   if(hidden)hidden.addEventListener('change',()=>paint(hidden.value));
-  });
- }
- function bindRowsPicks(form){
-  form.querySelectorAll('.mm-rowsfield').forEach(box=>{
-   const opts=[...box.querySelectorAll('[data-rows]')];
+ /* ---------- 「− 数 ＋」の配線（§9.311 D/E） ----------
+    **値は隠し欄が持つ**（§9.250 ④）ので、ここがするのは
+    ①押したら選べる並びの1つ隣へ ②隠し欄の`change`で文字を塗り直す、の2つ。
+    **`change`でも塗ること**——紙の見本の縁を掴んで大きさを変えたときに
+    文字が追随しないと、出ている数と実際の値が食い違う（§CLAUDE 6）。
+    **端で止める**（一巡させない）——幅や行数は大小の並びなので、
+    12の次が1へ戻ると「増やしたのに縮んだ」になる（§9.288 ③の`ダイヤル`と
+    同じ理由）。押せないことは`disabled`で言う（§4）。 */
+ function bindSteppers(form){
+  form.querySelectorAll('.mm-stepfield').forEach(box=>{
+   const step=box.querySelector('.mm-step');if(!step)return;
+   const key=step.dataset.stepField;
+   const isSpan=step.dataset.stepKind==='span';
+   const opts=String(step.dataset.allow||'').split(',');
    if(!opts.length)return;
-   const key=opts[0].dataset.rows;
-   /* 押した印を値から塗り直す。**隠し欄の`change`でも塗ること**——
-      紙の見本を掴んで高さを変えたときに札が追随しないと、押した札と
-      実際の値が食い違う（`bindSpanGrids`は最初からそうしている）。 */
+   const hidden=form.querySelector(`[data-field="${CSS.escape(key)}"]`);
+   const read=box.querySelector(`[data-step-read="${CSS.escape(key)}"]`);
+   const sub=box.querySelector(`[data-step-sub="${CSS.escape(key)}"]`);
+   const max=12;
+   /* **`0`は「中身なり」**（§9.250 ④）——保存済みの塊が`0`を持っているので、
+      素で比べるとどの段にも当たらない。 */
+   const norm=v=>{
+    const t=String(v==null?'':v);
+    if(isSpan)return String(Math.max(1,Math.min(max,Number(t)||max)));
+    return (t==='0')?'':t;
+   };
+   const indexOf=v=>{
+    const t=norm(v);
+    const i=opts.indexOf(t);
+    if(i>=0)return i;
+    if(!isSpan)return 0;
+    const n=Number(t)||0;
+    return opts.reduce((bi,x,k)=>Math.abs(Number(x)-n)<Math.abs(Number(opts[bi])-n)?k:bi,0);
+   };
+   const label=v=>isSpan?`${v} / ${max} マス`
+                        :(String(v)===''?'中身なり':`${v} 行`);
+   const subText=v=>isSpan?mmFracText(Number(v)||0,max)
+     :(String(v)===''?'描いてから測って、中身の高さに合わせます'
+                     :`1行＝紙の1/${RB_PAGE_ROWS}`);
    const paint=v=>{
-    /* **`0`は「中身なり」**（§9.250 ④）。保存済みの塊が`0`を持っているので、
-       素で比べると**どの札も押されていない**状態になる。 */
-    const cur=(String(v||'')==='0')?'':String(v||'');
-    opts.forEach(x=>{
-     const on=String(x.dataset.rowsV||'')===cur;
-     x.classList.toggle('is-on',on);x.setAttribute('aria-pressed',on?'true':'false');
+    const i=indexOf(v),cur=opts[i];
+    if(read)read.textContent=label(cur);
+    if(sub)sub.textContent=subText(cur);
+    step.querySelectorAll('[data-step]').forEach(b=>{
+     const d=Number(b.dataset.step)||0;
+     const at=i+d;
+     b.disabled=at<0||at>=opts.length;
+     b.title=b.disabled?(d<0?'これ以上小さくできません':'これ以上大きくできません')
+                       :`${label(opts[at])}にします`;
     });
    };
-   opts.forEach(b=>{
-    if(b.dataset.rowsWired)return;
-    b.dataset.rowsWired='1';
-    b.onclick=()=>{paint(b.dataset.rowsV);mmSetHidden(form,key,b.dataset.rowsV)};
-   });
-   const hidden=form.querySelector(`[data-field="${CSS.escape(key)}"]`);
-   if(hidden&&!hidden.dataset.rowsSync){
-    hidden.dataset.rowsSync='1';
-    hidden.addEventListener('change',()=>paint(hidden.value));
+   if(!box.dataset.stepWired){
+    box.dataset.stepWired='1';
+    step.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{
+     const i=indexOf(hidden?hidden.value:''),d=Number(b.dataset.step)||0;
+     const at=Math.max(0,Math.min(opts.length-1,i+d));
+     paint(opts[at]);mmSetHidden(form,key,opts[at]);
+    });
+    if(hidden)hidden.addEventListener('change',()=>paint(hidden.value));
    }
+   paint(hidden?hidden.value:'');
   });
  }
  function bindInputHelpers(form){
-  bindChoiceCards(form);bindCheckSets(form);bindSpanGrids(form);bindRowsPicks(form);
+  bindChoiceCards(form);bindCheckSets(form);bindSteppers(form);
   bindNumberFields(form);
   bindDateFields(form);
   bindComboFields(form);
@@ -2814,15 +2838,16 @@
        （1/4・1/3・1/2・2/3・全幅）しか無く、サーバーの`normalize_span()`が
        いちばん近い段へ丸める——掴んで5マスにできてしまうと、**見本は5マス
        なのに保存は4マス**になり、見本が嘘をつく（§CLAUDE 6）。
-       **選べる値は札から読む**（`data-span-v`／`data-rows-v`）ので、
+       **選べる値は「− 数 ＋」の器が持つ**（§9.311 D/E。`data-allow`）ので、
        マスタ側で段を増減しても付いてくる（一覧を書き写さない）。 */
-    const allowOf=(sel,attr)=>{
-     const vs=[...form.querySelectorAll(sel)].map(x=>Number(x.dataset[attr]))
+    const allowList=key=>{
+     const el=form.querySelector(`.mm-step[data-step-field="${CSS.escape(key)}"]`);
+     const vs=String((el&&el.dataset.allow)||'').split(',').map(Number)
        .filter(n=>Number.isFinite(n)&&n>0);
      return [...new Set(vs)].sort((a,b)=>a-b);
     };
-    const spanAllow=allowOf('.mm-span-grid [data-span-v]','spanV');
-    const rowsAllow=allowOf('.mm-rows-pick [data-rows-v]','rowsV');
+    const spanAllow=allowList('span');
+    const rowsAllow=allowList('rows');
     const snap=(n,list)=>{
      if(!list.length)return n;
      return list.reduce((best,x)=>Math.abs(x-n)<Math.abs(best-n)?x:best,list[0]);
@@ -2851,7 +2876,6 @@
     document.addEventListener('pointermove',move,true);
     document.addEventListener('pointerup',up,true);
    };
-   /* **キーボードでも変えられること**（掴めるのに辿れない部品を作らない）。 */
    /* **キーボードでも変えられること**（掴めるのに辿れない部品を作らない）。
       1回で**選べる段を1つ**進む——ドラッグと同じ値しか作らない。 */
    g.onkeydown=e=>{
@@ -2863,8 +2887,9 @@
     else if(e.key==='ArrowLeft'||e.key==='ArrowDown')d=-1;
     else return;
     e.preventDefault();
-    const stepIn=(sel,attr,cur)=>{
-     const vs=[...new Set([...form.querySelectorAll(sel)].map(x=>Number(x.dataset[attr]))
+    const stepIn=(key,cur)=>{
+     const el=form.querySelector(`.mm-step[data-step-field="${CSS.escape(key)}"]`);
+     const vs=[...new Set(String((el&&el.dataset.allow)||'').split(',').map(Number)
        .filter(n=>Number.isFinite(n)&&n>0))].sort((a,b)=>a-b);
      if(!vs.length)return cur+d;
      let i=vs.indexOf(cur);
@@ -2873,12 +2898,12 @@
     };
     if(wide){
      const el=form.querySelector('[data-field="span"]');
-     mmSetHidden(form,'span',String(stepIn('.mm-span-grid [data-span-v]','spanV',
+     mmSetHidden(form,'span',String(stepIn('span',
        Math.max(1,Math.min(12,Number(el&&el.value)||12)))));
     }
     if(tall){
      const raw=rbRowsRaw(form);
-     mmSetHidden(form,'rows',String(stepIn('.mm-rows-pick [data-rows-v]','rowsV',raw?Number(raw):3)));
+     mmSetHidden(form,'rows',String(stepIn('rows',raw?Number(raw):3)));
     }
    };
   });
@@ -3541,16 +3566,26 @@
     const n=Math.floor(Number(el&&el.value));
     return Number.isFinite(n)&&n>=1?Math.min(FB_COLS_MAX,n):2;
    };
+   /* 列数も「− 数 ＋」の1つへ（§9.311 D/E、利用者の指示「列数を指定する
+      部分もボタンでたくさんあるので、数字を決めればよい部分なので、ここも
+      コンパクトにトグルボタンをつけて**決めた数値1つが見えればよい**」）。
+      12枚並べていたが、読みたいのは**いま何列か**の1つだけ。 */
    const drawCols=()=>{
     const host=box.querySelector('.fb-cols');if(!host)return;
     const cur=colCount();
-    host.innerHTML=`<i>列数</i>`+FB_COL_CHOICES.map(n=>
-      `<button type="button" data-fb-cols="${n}" class="${n===cur?'is-on':''}"`
-      +` aria-pressed="${n===cur?'true':'false'}">${n}</button>`).join('');
-    host.querySelectorAll('[data-fb-cols]').forEach(b=>b.onclick=()=>{
+    const at=FB_COL_CHOICES.indexOf(cur);
+    host.innerHTML=`<i>列数</i>`
+     +`<button type="button" class="fb-cols-btn" data-fb-cols-step="-1"`
+     +` ${at<=0?'disabled title="これ以上減らせません"':'title="1列減らします"'}>−</button>`
+     +`<b class="fb-cols-val">${cur}</b>`
+     +`<button type="button" class="fb-cols-btn" data-fb-cols-step="1"`
+     +` ${at>=FB_COL_CHOICES.length-1?'disabled title="これ以上増やせません"':'title="1列増やします"'}>＋</button>`;
+    host.querySelectorAll('[data-fb-cols-step]').forEach(b=>b.onclick=()=>{
      const el=colsInput();
      if(!el)return;
-     el.value=b.dataset.fbCols;
+     const i=Math.max(0,FB_COL_CHOICES.indexOf(colCount()));
+     const to=Math.max(0,Math.min(FB_COL_CHOICES.length-1,i+(Number(b.dataset.fbColsStep)||0)));
+     el.value=String(FB_COL_CHOICES[to]);
      el.dispatchEvent(new Event('change',{bubbles:true}));
      drawCols();drawChosen();
     });
@@ -3572,21 +3607,27 @@
     wrap.innerHTML=state.rows.length?state.rows.map((r,i)=>{
       const sp=Math.min(n,fbSpan(r.span,n));
       const tall=fbSpan(r.rows,FB_ROWS_MAX);
-      /* **横と縦は別の群にして、どちらか分かる形にする**（§9.255 ②）——
-         数字だけを並べると「4」が4列なのか4段なのか読めない。 */
-      const spans=[];
-      for(let v=1;v<=n;v++)spans.push(
-       `<button type="button" class="fb-span${v===sp?' is-on':''}" data-fb-span="${i}:${v}"`
-       +` title="横に${v}マス使います">${v}</button>`);
-      const talls=[];
-      for(let v=1;v<=FB_ROWS_MAX;v++)talls.push(
-       `<button type="button" class="fb-span${v===tall?' is-on':''}" data-fb-rows="${i}:${v}"`
-       +` title="縦に${v}マス使います">${v}</button>`);
+      /* **マス数は「− 数 ＋」の1つに畳む**（§9.311 D/E、利用者の指示
+         「各項目のサイズを決めるボタンは**小さくなった時に見切れる**ので、
+          数字をトグルボタンとセットでコンパクトに表示できるように」）。
+         以前は横12枚＋縦4枚＝16個の札を1マスの下段に並べており、列数を
+         増やすと**折り返して下のマスへ重なっていた**（§9.303 ②で高さを
+         測り直して受けていたが、そもそも並べる数のほうが多すぎた）。
+         **横と縦はどちらか分かる形にする**（§9.255 ②）——数字だけだと
+         「4」が4列なのか4段なのか読めないので、印（横／縦）は残す。
+         **端では押せなくして理由を書く**（§4）。 */
+      const stepper=(kind,cur,mx,at)=>`<span class="fb-step" data-fb-step-kind="${kind}">`
+       +`<i class="fb-size-tag" title="${kind==='span'?'横':'縦'}に使うマス数">${kind==='span'?'横':'縦'}</i>`
+       +`<button type="button" class="fb-step-btn" data-fb-${at}="${i}:${Math.max(1,cur-1)}"`
+       +(cur<=1?' disabled title="これ以上減らせません"':` title="${kind==='span'?'横':'縦'}に${cur-1}マスにします"`)
+       +`>−</button>`
+       +`<b class="fb-step-val">${cur}</b>`
+       +`<button type="button" class="fb-step-btn" data-fb-${at}="${i}:${Math.min(mx,cur+1)}"`
+       +(cur>=mx?' disabled title="これ以上増やせません"':` title="${kind==='span'?'横':'縦'}に${cur+1}マスにします"`)
+       +`>＋</button></span>`;
       const size=`<span class="fb-size">`
-       +`<i class="fb-size-tag" title="横に使うマス数">横</i>`
-       +`<span class="fb-spans">${spans.join('')}</span>`
-       +`<i class="fb-size-tag" title="縦に使うマス数">縦</i>`
-       +`<span class="fb-spans">${talls.join('')}</span></span>`;
+       +stepper('span',sp,n,'span')
+       +stepper('rows',tall,FB_ROWS_MAX,'rows')+`</span>`;
       const st=` style="grid-column:span ${sp}${tall>1?`;grid-row:span ${tall}`:''}"`;
       /* **1マスの中は2段**（§CLAUDE 11）——名前・出どころ・マス数・×を横1列に
          並べると、3列のときに名前の欄が1文字ぶんまで潰れる（実機の見え方で

@@ -2411,24 +2411,25 @@
 .fb-rows.is-matrix .fb-empty{grid-column:1/-1}
 .fb-cols{display:inline-flex;align-items:center;gap:var(--gap-tight);margin-left:auto}
 .fb-cols>i{color:var(--muted);font-style:normal;font-size:var(--fs-badge)}
-.fb-cols>button{
-  min-width:var(--ctl-h-xs);min-height:var(--ctl-h-xs);padding:0 var(--space-1);
-  border:1px solid var(--line-soft);border-radius:var(--radius-xs);
-  background:var(--surface);color:var(--ink-3);
-  font-size:var(--fs-badge);font-weight:700;cursor:pointer;
-}
-.fb-cols>button.is-on{background:var(--nav);border-color:var(--nav);color:#fff}
 .fb-hint{margin:0 0 var(--space-1);color:var(--ink-3);font-size:var(--fs-badge)}
-/* マスの中の「横に何マス使うか」。**選んだものだけ濃い**（§9.229 ②）。 */
-.fb-spans{display:inline-flex;gap:1px;border-radius:var(--radius-xs);
-  background:var(--surface-3);overflow:hidden;flex:0 0 auto}
-.fb-spans>button{
-  min-width:calc(var(--ctl-h-xs) - 4px);min-height:var(--ctl-h-xs);
-  padding:0;border:0;border-radius:0;background:none;
-  color:var(--muted);font-size:var(--fs-micro);font-weight:700;cursor:pointer;
-}
-.fb-spans>button:hover{background:var(--surface)}
-.fb-spans>button.is-on{background:var(--nav);color:#fff}
+/* ---------- マスの大きさも「− 数 ＋」（§9.311 D/E） ----------
+   横12枚＋縦4枚＝16個の札を1マスの下段に並べていたので、列数を増やすと
+   **折り返して下のマスへ重なっていた**（§9.303 ②）。並べるのをやめる。 */
+.fb-step{display:inline-flex;align-items:center;gap:1px}
+.fb-step-btn{width:1.5em;height:1.5em;padding:0;border:1px solid var(--line);
+ border-radius:var(--radius-xs);background:var(--surface-2);color:var(--ink-2);
+ font-size:var(--fs-micro);font-weight:800;line-height:1;cursor:pointer}
+.fb-step-btn:hover:not(:disabled){background:var(--pale);color:var(--teal-dark)}
+.fb-step-btn:disabled{opacity:.4;cursor:not-allowed}
+.fb-step-val{min-width:1.4em;text-align:center;color:var(--teal-dark);
+ font-size:var(--fs-micro);font-weight:800}
+.fb-cols-btn{width:1.6em;height:1.6em;padding:0;border:1px solid var(--line);
+ border-radius:var(--radius-xs);background:var(--surface-2);color:var(--ink-2);
+ font-size:var(--fs-micro);font-weight:800;line-height:1;cursor:pointer}
+.fb-cols-btn:hover:not(:disabled){background:var(--pale);color:var(--teal-dark)}
+.fb-cols-btn:disabled{opacity:.4;cursor:not-allowed}
+.fb-cols-val{min-width:1.4em;text-align:center;color:var(--teal-dark);
+ font-size:var(--fs-badge);font-weight:800}
 /* 空きマスは**斜線の地**（§9.222 ③の空きマスと同じ見せ方にそろえる）。 */
 .fb-row-blank{
   border-style:dashed;color:var(--ink-3);
@@ -2452,7 +2453,7 @@
 }
 /* **縮んでよいのは出どころだけ**（§9.229 ⑤）——マス数のつまみと×まで
    一緒に縮むと、押せない大きさになって折り返す。 */
-.fb-rows.is-matrix .fb-spans,
+.fb-rows.is-matrix .fb-step,
 .fb-rows.is-matrix .fb-size,
 .fb-rows.is-matrix .fb-del,
 .fb-rows.is-matrix .fb-grip{flex:0 0 auto}
@@ -2496,7 +2497,7 @@
 .fb-ftext{width:var(--w-sm);height:var(--ctl-h-xs);padding:0 var(--space-1);
   border:1px solid var(--line);border-radius:var(--radius-xs);
   background:var(--card-bg);font-size:var(--fs-badge)}
-/* 選ばせ方は**選んだ札のほうが濃い**（§9.229 ②）。`.fb-spans`と同じ作法。 */
+/* 選ばせ方は**選んだ札のほうが濃い**（§9.229 ②）。 */
 .fb-seg{display:inline-flex;gap:1px;border-radius:var(--radius-xs);
   background:var(--surface-3);overflow:hidden;flex:0 0 auto}
 .fb-seg>button{
@@ -2991,31 +2992,23 @@ html[data-hint="off"] .mm-def-hint{display:none}
 .mm-card-opt>b,.mm-card-opt>small,.mm-card-txt>b,.mm-card-txt>small{
  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* 紙の12マスをそのまま押す。**押した幅がそのまま見える**。 */
-.mm-span-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:2px;
- max-width:var(--w-2xl)}
-.mm-span-cell{height:var(--ctl-h-sm);min-width:0;padding:0;
- border:1px solid var(--line);border-radius:var(--radius-xs);
- background:#fff;color:var(--muted);font-size:var(--fs-micro);cursor:pointer}
-.mm-span-cell:hover{border-color:var(--teal-soft)}
-.mm-span-cell.is-on{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:800}
-.mm-span-read{margin-top:var(--space-1);color:var(--ink-2);font-size:var(--fs-badge)}
-.mm-span-read>b{font-size:var(--fs);color:var(--teal-dark)}
-.mm-span-read>em{margin-left:var(--space-2);padding:var(--pad-chip);border-radius:var(--radius-pill);
- background:var(--pale);color:var(--teal-dark);font-style:normal;font-size:var(--fs-micro);font-weight:800}
-/* 高さ。札の中の縦棒がそのまま「何行ぶんか」を言う。 */
-.mm-rows-pick{display:flex;flex-wrap:wrap;gap:var(--gap-tight)}
-.mm-rows-opt{display:flex;align-items:flex-end;gap:var(--gap-tight);
- min-height:var(--ctl-h-sm);padding:var(--pad-chip);
+/* ---------- 数で決まるものは「− 数 ＋」の1つ（§9.311 D/E） ----------
+   利用者の指示「各項目のサイズを決めるボタンは**小さくなった時に見切れる**
+   ので、数字をトグルボタンとセットでコンパクトに」「決めた数値1つが見えれば
+   よい」。幅の12マス・高さの8枚を並べるのをやめ、**いまの数だけを出す**。 */
+.mm-step{display:inline-flex;align-items:center;gap:1px;
  border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;
- color:var(--ink-3);font-size:var(--fs-micro);cursor:pointer}
-.mm-rows-opt:hover{border-color:var(--teal-soft)}
-.mm-rows-opt.is-on{border-color:var(--teal);background:var(--pale);color:var(--teal-dark);font-weight:800}
-.mm-rows-opt>i{display:block;width:var(--space-2);
- height:calc(var(--space-1) + var(--mm-rows,1) * 2px);
- border-radius:var(--radius-xs);background:var(--line-mid)}
-.mm-rows-opt.is-on>i{background:var(--teal)}
-
+ overflow:hidden}
+.mm-step-btn{width:calc(var(--ctl-h-sm) + var(--space-1));height:var(--ctl-h-sm);
+ padding:0;border:0;background:var(--surface-2);color:var(--ink-2);
+ font-size:var(--fs);font-weight:800;cursor:pointer}
+.mm-step-btn:hover:not(:disabled){background:var(--pale);color:var(--teal-dark)}
+/* **押せないことは見た目でも言う**（§4。理由は`title`が持つ）。 */
+.mm-step-btn:disabled{opacity:.4;cursor:not-allowed}
+.mm-step-val{min-width:var(--w-sm);padding:0 var(--space-2);text-align:center;
+ color:var(--teal-dark);font-size:var(--fs-sm);font-weight:800;white-space:nowrap}
+.mm-step-sub{display:block;margin-top:var(--space-1);color:var(--muted);
+ font-style:normal;font-size:var(--fs-micro)}
 
 /* 短くした説明の続きは見出しの `?` から読む（§9.249 (3)）。 */
 .mm-more{display:inline-grid;place-items:center;width:1.3em;height:1.3em;

@@ -247,19 +247,79 @@ let b=null,page=null;
   });
   await tab('紙のどこへ出すか');
   const m0=await measure();
-  await page.click('#maintEditorForm .mm-span-cell:nth-child(6)');
-  await page.waitForTimeout(150);
+  /* §9.311 D/E 幅・高さは**「− 数 ＋」の1つ**になった（利用者の指示
+     「サイズを決めるボタンは小さくなった時に見切れるので、数字をトグル
+      ボタンとセットでコンパクトに」）。**選べる段まで押して**確かめる。 */
+  const stepTo=async(key,want)=>{
+   for(let i=0;i<12;i++){
+    /* **効いている値は「− 数 ＋」の数**（隠し欄は未設定なら空）。 */
+    const now=await page.evaluate(k=>{
+     const e=document.querySelector(`.mm-step[data-step-field="${k}"] .mm-step-val`);
+     return e?(parseInt(e.textContent,10)||0):0;
+    },key);
+    const hid=await page.evaluate(k=>
+      document.querySelector(`#maintEditorForm [data-field="${k}"]`).value,key);
+    if(String(hid)===String(want))return true;
+    const dir=now<Number(want)?'1':'-1';
+    const ok=await page.evaluate(([k,d])=>{
+     const b=document.querySelector(`.mm-step[data-step-field="${k}"] [data-step="${d}"]`);
+     if(!b||b.disabled)return false;b.click();return true;
+    },[key,dir]);
+    if(!ok)return false;
+    await page.waitForTimeout(120);
+   }
+   return false;
+  };
+  const okSpan=await stepTo('span',6);
   const m1=await measure();
-  rec('紙のマス目を押すと幅が決まる',m1.span==='6',JSON.stringify(m1));
+  rec('§9.311 D 幅は「− 数 ＋」で決まる（札を並べない）',okSpan&&m1.span==='6',
+      JSON.stringify(m1));
   rec('見本の塊の幅が実際に変わる',m1.w!==m0.w&&Math.abs(m1.w-50)<=2,
       JSON.stringify({before:m0.w,after:m1.w}));
   rec('何マス中の何分かを文字で出す',/6 \/ 12/.test(m1.read)&&/1\/2/.test(m1.read),m1.read);
-  await page.click('#maintEditorForm .mm-rows-opt:nth-child(4)');
-  await page.waitForTimeout(150);
+  /* **いま決めた数がボタンの隣に1つ出ている**（利用者の指示
+     「決めた数値1つが見えればよい」）。 */
+  const stepRead=await page.evaluate(()=>{
+   const q=k=>{const e=document.querySelector(`.mm-step[data-step-field="${k}"] .mm-step-val`);
+     return e?e.textContent.trim():''};
+   return {幅:q('span'),高さ:q('rows'),
+     札の数:document.querySelectorAll('.mm-span-cell,.mm-rows-opt').length};
+  });
+  rec('§9.311 D 決めた数が1つだけ出る（旧い札は並べない）',
+      /^6 \/ 12/.test(stepRead.幅)&&stepRead.札の数===0,JSON.stringify(stepRead));
+  const okRows=await stepTo('rows',4);
   const m2=await measure();
-  rec('高さを押すと見本の高さが変わる',m2.rows==='4'&&m2.h!==m1.h&&Math.abs(m2.h-33)<=2,
+  rec('高さも「− 数 ＋」で決まり、見本の高さが変わる',
+      okRows&&m2.rows==='4'&&m2.h!==m1.h&&Math.abs(m2.h-33)<=2,
       JSON.stringify({rows:m2.rows,before:m1.h,after:m2.h}));
   rec('高さも文字で言う（中身なりか固定か）',/4行/.test(m2.rowsRead),m2.rowsRead);
+  /* **端では押せなくして理由を書く**（§4）——押せるのに何も起きないボタンは
+     壊れて見える。**「押しても値が変わらない」だけを見る網では捕まらない**
+     （中で丸めていれば値は正しいまま）ので、`disabled`と`title`の両方を見る。 */
+  const ends=await page.evaluate(async()=>{
+   const val=k=>{const e=document.querySelector(`.mm-step[data-step-field="${k}"] .mm-step-val`);
+     return e?(parseInt(e.textContent,10)||0):0};
+   const btn=(k,d)=>document.querySelector(`.mm-step[data-step-field="${k}"] [data-step="${d}"]`);
+   const push=async(k,d)=>{
+    for(let i=0;i<20;i++){
+     const b=btn(k,d);
+     if(!b||b.disabled)break;
+     b.click();await new Promise(r=>setTimeout(r,60));
+    }
+    const b=btn(k,d);
+    return {止まる:!!(b&&b.disabled),理由:(b&&b.title)||'',値:val(k)};
+   };
+   const 上=await push('span','1');
+   const 下=await push('span','-1');
+   return {上,下};
+  });
+  rec('§9.311 D 端では押せなくする（押せるのに効かないボタンを残さない）',
+      ends.上.止まる&&ends.下.止まる,JSON.stringify(ends));
+  rec('§9.311 D 押せない理由をその場に書く（§4）',
+      /これ以上/.test(ends.上.理由)&&/これ以上/.test(ends.下.理由),
+      JSON.stringify({上:ends.上.理由,下:ends.下.理由}));
+  /* 次の節のために選べる幅へ戻す（置き土産を残さない・§9.121）。 */
+  await stepTo('span',6);
 
   /* ---- 5) 種別を変えると②の中身が入れ替わり、見本も変わる ---- */
   await tab('これは何の塊か');
@@ -331,19 +391,24 @@ let b=null,page=null;
    const span0=document.querySelector('[data-field="span"]').value;
    await pull('e',-cw*3,0);
    const span1=document.querySelector('[data-field="span"]').value;
-   const cells1=document.querySelectorAll('.mm-span-cell.is-on').length;
+   /* §9.311 D 札の代わりに「− 数 ＋」の数を読む（先頭の数だけ）。 */
+   const stepNum=k=>{const e=document.querySelector(`.mm-step[data-step-field="${k}"] .mm-step-val`);
+     return e?(parseInt(e.textContent,10)||0):0};
+   const cells1=stepNum('span');
    const w1=Math.round(document.querySelector('#rbPaperBlock').getBoundingClientRect().width/grid.width*100);
    await pull('w',-cw*2,0);
    const span2=document.querySelector('[data-field="span"]').value;
    const rows0=document.querySelector('[data-field="rows"]').value;
    await pull('s',0,ch*2);
    const rows1=document.querySelector('[data-field="rows"]').value;
-   const allow=(sel,attr)=>[...new Set([...document.querySelectorAll(sel)]
-     .map(x=>Number(x.dataset[attr])).filter(n=>n>0))].sort((a,b)=>a-b);
+   /* 選べる段は**器の`data-allow`**が持つ（§9.311 D。札を並べるのをやめた）。 */
+   const allow=sel=>{const e=document.querySelector(sel);
+     return [...new Set(String((e&&e.dataset.allow)||'').split(',').map(Number)
+       .filter(n=>n>0))].sort((a,b)=>a-b)};
    return {n,span0,span1,span2,cells1,w1,rows0,rows1,
-     spanAllow:allow('.mm-span-grid [data-span-v]','spanV'),
-     rowsAllow:allow('.mm-rows-pick [data-rows-v]','rowsV'),
-     rowsOn:document.querySelector('.mm-rows-opt.is-on')?.dataset.rowsV};
+     spanAllow:allow('.mm-step[data-step-field="span"]'),
+     rowsAllow:allow('.mm-step[data-step-field="rows"]'),
+     rowsOn:(document.querySelector('#maintEditorForm [data-field="rows"]')||{}).value};
   });
   rec('紙の見本に四方＋四隅の8つのつまみが出る',grip.n===8,JSON.stringify({n:grip.n}));
   rec('右の辺を引くと幅が縮み、マス目の札もそろう',
@@ -476,7 +541,7 @@ let b=null,page=null;
     const on=k=>{const e=document.querySelector(`[data-card="${k}"].is-on`);return e?e.dataset.cardV:''};
     return {kind:on('kindText'),repeat:on('repeatText'),
             span:document.querySelector('#maintEditorForm [data-field="span"]')?.value,
-            spanOn:document.querySelectorAll('.mm-span-cell.is-on').length,
+            spanOn:parseInt((document.querySelector('.mm-step[data-step-field="span"] .mm-step-val')||{}).textContent||'0',10)||0,
             name:document.querySelector('#rbPaperName')?.textContent};
    });
    rec('開き直すと保存した値が札とマス目に出ている',
