@@ -3161,13 +3161,30 @@
      拡大後、`gap`／`gridAutoRows`は拡大前なので、混ぜると**書き下ろした
      大きさが倍率のぶん小さくなる**——初めて組み換えに入った瞬間に、全部の
      塊が「入りきりません」になる。 */
+  /* **紙に出ない札を外してから測る**（§9.310）。中身なしの塊は組み換え中
+     だけ流れの中に居るので、そのまま測ると**その札のぶんだけ下がった位置**を
+     書き下ろすことになる（実測: 触っただけで作業時間・登録状態が157px下へ
+     動き、その隙間がマスタへ焼き付いた）。外した状態＝刷り上がりの並び
+     そのものなので、**測り終えたら必ず戻すこと**（`finally`）。 */
+  const ghosts=[...grid.querySelectorAll('[data-rp-block].is-empty')];
+  /* **中身なしの塊は「外す前」に測る**——外したまま測ると矩形が0になり、
+     紙の左上へ1マスに潰れて書き下ろされる。書き下ろさない（位置を持たせない）
+     形も試したが、そうすると描くたびに空いているマスを探して紙の下へ伸び、
+     **刷り上がりがA4を超えた**（実測 210×336.7mm）。中身なしの塊にも
+     いま見えている場所をそのまま持たせるのが正しい。 */
+  const ghostRect=new Map(ghosts.map(el=>[el,el.getBoundingClientRect()]));
+  /* **伏せるのは`hidden`属性で**（インラインの`style.display`を書かない・
+     `tests/test_csslint.py`）。`[hidden]{display:none}`はutilityレイヤなので
+     コンポーネント側の`display`に必ず勝つ（§9.131）。 */
+  ghosts.forEach(el=>{el.hidden=true});
+  try{
   const L=rpLocal(grid,0,0);
   const cols=L.cols,rowPx=L.rowPx,gapX=L.gapX,gapY=L.gapY,colW=L.colW,sc=L.sc;
   const gr=grid.getBoundingClientRect();
   if(!(colW>0)||!(rowPx>0))return false;
   const wid={...rpLayoutNow().widths};
   els.forEach(el=>{
-   const k=el.dataset.rpBlock,rr=el.getBoundingClientRect();
+   const k=el.dataset.rpBlock,rr=ghostRect.get(el)||el.getBoundingClientRect();
    const r={left:(rr.left-gr.left)/sc,top:(rr.top-gr.top)/sc,
             width:rr.width/sc,height:rr.height/sc};
    const col=Math.max(1,Math.min(cols,Math.round(r.left/(colW+gapX))+1));
@@ -3177,13 +3194,26 @@
    wid[rpColKey(k)]=rpColStore(rpColToBase(col));
    wid[rpRowPosKey(k)]=rpRowStore(rpRowToBase(row));
    wid[k]=rpSpanStore(rpSpanFromGrid(span));
-   wid[rpRowsKey(k)]=rpRowsStore(rpRowsFromGrid(rows));
+   /* **「中身なり」の塊に高さを書き込まない**（§9.310、§9.222 ②）。
+      同じ禁止事項が`rpRelayout()`には書いてあるのに、書き下ろし側だけが
+      無条件に書いていた——**組み換えに入って1マス引いただけで、触っても
+      いない塊の高さが全部そのときの見た目で凍る**（実測: 引く前は`行数:`が
+      0件、1回引いたら15件）。凍ると`.is-sized`が付いて中の枠が器いっぱいへ
+      伸びる（§9.242 ⑧）ので、**触っていない塊の見た目が変わる**（実測:
+      丈別データの中の枠が52→74pxで42%大きくなった）。これが利用者の報告
+      「初めて触ったときに、隣とは限らずどこかのブロックが共にサイズ変更
+      される」の実体で、**凍るのは1回だけ**だから2回目以降は再現しない
+      ——原因に辿り着きにくいのはこのため。
+      流れ直しを止めるのに要るのは位置（`列:`／`行:`）だけ。高さは
+      `rpFitRows()`が毎回中身から入れ直す。 */
+   if(rpRows(k))wid[rpRowsKey(k)]=rpRowsStore(rpRowsFromGrid(rows));
   });
   /* **書き下ろしは保存しない**（§9.303 ③）——利用者が触っていないので、
      開いて閉じただけで紙の設定が確定してしまう。次に何か触った時点で、
      この書き下ろしごと保存される（下書きに載っている）。 */
   rpStage({widths:wid},{persist:false});
   return true;
+  }finally{ghosts.forEach(el=>{el.hidden=false})}
  }
 /* ---------- 置き場所を重ならないように解く（§9.221 ⑨） ----------
     保存されている`列:`/`行:`は**希望**。マス数・段数を変えたときの丸めや、
@@ -4077,6 +4107,8 @@
                     ||Math.round((br.height+gapY)/(rowPx+gapY)))};
     const rightEdge=b0.col+b0.span-1, bottomEdge=b0.row+b0.rows-1;
     let col=b0.col,row=b0.row,span=b0.span,rows=b0.rows;
+    /* いま重なっているか。**縮めずに言う**ので、言うための控えだけ持つ。 */
+    let over=false;
     el.setAttribute('draggable','false');
     const tip=document.createElement('div');
     tip.className='rp-size-tip';document.body.appendChild(tip);
@@ -4084,7 +4116,8 @@
      /* **動いた側は位置も出す**（§6。数字が無いと、辺が動いたのか塊ごと
         動いたのかが読めない）。 */
      tip.textContent=`${span}/${cols}マス × ${rows}行`
-      +(at&&(col!==b0.col||row!==b0.row)?`（${col}列目・${row}行目）`:'');
+      +(at&&(col!==b0.col||row!==b0.row)?`（${col}列目・${row}行目）`:'')
+      +(over?'　ほかの塊と重なります':'');
      tip.style.left=(x+14)+'px';tip.style.top=(y+14)+'px';
     };
     const move=e=>{
@@ -4107,32 +4140,20 @@
       if(at){row=Math.max(1,Math.min(bottomEdge,rr));rows=bottomEdge-row+1}
       else rows=Math.max(1,bottomEdge-Math.max(1,Math.min(bottomEdge,rr))+1);
      }
-     /* **他の塊の上へは広げない**（§9.221 ⑨）。広げてから断るのでは、
-        どこまで広げられるのかが分からない。**戻すのは引いている辺**
-        ——反対側を動かすと、掴んでいない辺が勝手に動いて見える。
-        **どちらを戻せば入るかを見て決めること**（§9.283）——「幅を1マスに
-        なるまで潰してから高さへ移る」形にすると、**当たっているのが行
-        なのに幅が潰れる**（実測: 右上の角を引いたら幅11マス→1マス）。 */
-     if(at&&!rpFits(col,row,span,rows,used)){
-      /* **戻し方を2通り試して、広いほうを採る**（§9.283）。片方の軸を
-         1マスまで潰してからもう片方へ移る形にすると、**当たっているのが
-         行なのに幅が潰れる**（実測: 幅24マスの塊を下へ引いたら幅が1マスに
-         なった）。1手ずつ「どちらを戻せば入るか」を見る形も、**1手では
-         入らない**（何手も要る）ので同じところへ落ちる。 */
-      const back=widthFirst=>{
-       let c=col,r=row,sp=span,ro=rows,n=0;
-       while(!rpFits(c,r,sp,ro,used)&&n++<cols+cap+8){
-        if(widthFirst&&wide&&sp>1){if(west)c++;sp--;continue}
-        if(tall&&ro>1){if(north)r++;ro--;continue}
-        if(wide&&sp>1){if(west)c++;sp--;continue}
-        break;
-       }
-       return {c,r,sp,ro,ok:rpFits(c,r,sp,ro,used)};
-      };
-      const hi=back(false),wi=back(true);
-      const pick=!hi.ok?wi:(!wi.ok?hi:((hi.sp*hi.ro>=wi.sp*wi.ro)?hi:wi));
-      col=pick.c;row=pick.r;span=pick.sp;rows=pick.ro;
-     }
+     /* ---------- 重なっても縮めない（§9.310、§9.223 ③の利用者の指示） ----------
+        「重なっても配置でき、重なった部分を強調表示など視覚表示で修正を
+          うながす」。以前はここで**入るところまで戻して**おり、
+        **既に重なっている塊の縁を掴んだ瞬間に、1px動かしただけでめちゃくちゃ
+        縮んだ**（利用者の報告）——掴んだ時点で`rpFits()`が偽なので、戻し
+        （`back()`）が最初の一手から全力で走る。しかもどこへ戻しても入らない
+        配置では**幅も高さも1マス**まで潰れる。
+        `rpApplySpan()`（幅のボタン）と`rpDropCell()`（落とす）は既に
+        「重なることは**言う**だけ」で揃っているのに、縁だけが黙って直す側に
+        残っていた（§9.163。同じ問いに2つ目の答えを持っていた）。
+        紙の外へは出さない（物理的な限界）——それは上の`Math.min`が受ける。
+        §9.283の「戻し方を2通り試して広いほうを採る」は、戻しそのものを
+        廃したので要らない。 */
+     over=!!at&&!rpFits(col,row,span,rows,used);
      if(at){
       el.style.gridColumn=col+'/span '+span;
       el.style.gridRow=row+'/span '+rows;
@@ -4160,6 +4181,11 @@
         瞬間に元の位置へ戻り「幅だけ増えて反対側へ伸びた」ように見える。 */
      if(at&&west&&col!==b0.col)wid[rpColKey(k)]=rpColStore(rpColToBase(col));
      if(at&&north&&row!==b0.row)wid[rpRowPosKey(k)]=rpRowStore(rpRowToBase(row));
+     /* **重なったことは必ず言う**（§3・§9.223 ③）。縮めなくなったぶん、
+        言わないと「はみ出したまま気づかない」になる。種類は`overlap`で、
+        `rpApplySpan()`／`rpDropCell()`と同じ場所に同じ言い方で出す。 */
+     rpSay(over?'ほかの塊と重ねました（重なったマスを赤い網で出しています）。そのままでも保存できますが、刷ると重なって出ます。':'',
+           over,'overlap');
      rpStage({widths:wid});
     };
     window.addEventListener('pointermove',move);

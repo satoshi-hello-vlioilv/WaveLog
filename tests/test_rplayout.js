@@ -640,17 +640,23 @@ let b=null,madeBlock=null;
   },[TARGET,A]);
   rec('左・上を引いたら置き場所も設定へ書く',moved.列===true&&moved.行===true,
       JSON.stringify(moved));
-  /* **当たったときに戻すのは引いている辺だけ**（§9.283）。「幅を1マスに
-     なるまで潰してから高さへ移る」形にすると、**当たっているのが行なのに
-     幅が潰れる**（実測: 右上の角を引いたら幅11マス→1マス）。
-     幅を目一杯にしてから下へ大きく引き、幅が保たれることを見る。 */
+  /* **当たっても縮めない**（§9.310、§9.223 ③の利用者の指示「重なっても
+     配置でき、重なった部分を強調表示など視覚表示で修正をうながす」）。
+     §9.283の「戻し方を2通り試して広いほうを採る」は**撤回した**——戻しが
+     在るかぎり、**既に重なっている塊の縁を掴んだ瞬間に1px動かしただけで
+     めちゃくちゃ縮む**（利用者の報告）。掴んだ時点で`rpFits()`が偽なので、
+     戻しが最初の一手から全力で走るため。いまは重なりとして受け、縮めるのは
+     紙の外へ出るときだけ。**幅が潰れないこと**は引き続き固定する。 */
   const c0=await spotOf(A);
   await gripDrag(A,'br',0,40);                     /* 右下の角を**真下へ**大きく */
   const c1=await spotOf(A);
-  rec('引いた先が別の塊に当たっている（この網の前提）',
-      !!c0&&!!c1&&c1.rows<c0.rows+40,JSON.stringify({前:c0,後:c1}));
-  rec('角を真下へ引いて行が当たっても、幅まで潰さない',
+  rec('角を真下へ引くと、当たりで止まらずカーソルなりに伸びる',
+      !!c0&&!!c1&&c1.rows>c0.rows,JSON.stringify({前:c0,後:c1}));
+  rec('角を真下へ引いても、幅は1マスも潰れない',
       !!c0&&!!c1&&c1.span===c0.span&&c1.col===c0.col,JSON.stringify({前:c0,後:c1}));
+  /* 重なったことを画面に出す約束は、**本物の重なりを自分で作る**§9.310 ②の
+     節で見る（ここは塊の並び次第で当たらないこともあり、当たりを前提にすると
+     「何も確かめていないのに通る／落ちる」網になる）。 */
   /* **後片付け**（§9.121）——ここで変えた高さを戻さないと、以降の
      「重ねて置く」の網が別の形の紙を見ることになる。 */
   await page.evaluate(([eq,k,r])=>WL.reportLayout.setRows(eq,k,r),[EQ,A,12]);
@@ -941,6 +947,175 @@ let b=null,madeBlock=null;
     rec('組み換えを開き直すとこのロットの設備へ戻る',back!==other||other==='',
         JSON.stringify({閉じる前:other,開き直し:back}));
    }else rec('設備の選択肢が2つ以上ある',false,'1つしかない');
+  }
+
+  /* ==========================================================
+     §9.310 初めて組み換えを触っただけで、触っていない塊が変わらない
+     ----------------------------------------------------------
+     利用者の報告「帳票ブロックのサイズ変更をすると、その近くにある帳票
+     ブロックのサイズも一緒に変更される」「複数回やると1回起きたあとは
+     再現せず、**初めて触ったときに発生しがち**で隣というわけではなく
+     **どこかのブロック**が共にサイズ変更される」。
+     実体は`rpSeedPositions()`（書き下ろし）が
+      ① **「中身なり」の塊にも高さ（`行数:`）を書いていた**
+         ——`rpRelayout()`には同じ禁止事項が書いてあるのに、こちらだけが
+         無条件だった。1マス引いた瞬間に全部の塊の高さがそのときの見た目で
+         凍る（実測: 引く前は`行数:`が0件、1回引いたら15件。丈別データは
+         52→74pxで42%大きくなった）。**凍るのは1回だけ**なので2回目以降は
+         再現しない＝原因に辿り着きにくい。
+      ② **このロットに中身が無い塊（`.is-empty`）まで書き下ろしていた**
+         ——あれは紙に出ない札なので、書き下ろすと紙に出ない塊のぶんだけ
+         後ろが下がる（実測157px）。
+     **確かめるのは「引いた塊」ではなく「触っていない塊」**——引いた塊が
+     変わるのは当たり前なので、そこだけを見る網はこの欠陥を素通りする。
+     ========================================================== */
+  await cleanup();
+  await page.evaluate(t=>WL.columnLayout.forget(t),TARGET);
+  await page.evaluate(()=>window.exitReportView&&window.exitReportView());
+  await openReport();
+  const seedSnap=async()=>await page.evaluate(()=>{
+   const g=document.querySelector('.rp-blocks');if(!g)return {};
+   const gr=g.getBoundingClientRect();
+   const sc=Number(getComputedStyle(document.querySelector('.rp-page')).getPropertyValue('--rp-scale'))||1;
+   const o={};
+   document.querySelectorAll('[data-rp-block]').forEach(el=>{
+    const r=el.getBoundingClientRect();
+    o[el.dataset.rpBlock]={高:Math.round(r.height/sc),幅:Math.round(r.width/sc),
+      Y:Math.round((r.top-gr.top)/sc),空:el.classList.contains('is-empty')};
+   });
+   return o;
+  });
+  const seedBefore=await seedSnap();
+  await page.click('#reportArrange');
+  await page.waitForSelector('#rpArrangeBar:not([hidden])',{timeout:8000});
+  await settle(page);await page.waitForTimeout(800);
+  /* 中身のある塊を1つだけ、1マスぶん引く（＝「初めて触る」）。 */
+  const seedTarget=await page.evaluate(()=>{
+   const el=[...document.querySelectorAll('[data-rp-block]:not(.is-empty)')]
+     .find(e=>e.querySelector('[data-rp-grip="r"]'));
+   return el?el.dataset.rpBlock:null;
+  });
+  const seedGrip=seedTarget&&await page.evaluate(n=>{
+   const el=document.querySelector(`[data-rp-block="${CSS.escape(n)}"]`);
+   const grip=el.querySelector('[data-rp-grip="r"]');const r=grip.getBoundingClientRect();
+   const lo=Math.max(r.top+4,6),hi=Math.min(r.bottom-4,window.innerHeight-6);
+   const y=Math.round(hi>lo?(lo+hi)/2:lo);
+   const x=Math.round(r.left+r.width/2);
+   return {x,y,掴める:document.elementFromPoint(x,y)===grip};
+  },seedTarget);
+  if(seedGrip&&seedGrip.掴める){
+   await page.mouse.move(seedGrip.x,seedGrip.y);await page.mouse.down();
+   await page.mouse.move(seedGrip.x-40,seedGrip.y,{steps:5});
+   await page.mouse.up();await page.waitForTimeout(1200);await settle(page);
+   /* **「中身なり」の塊の高さを書き込まない**（§9.222 ②と同じ禁止事項）。
+      引いた塊だけは書いてよい（縁を引くのは高さを決める操作）。凍らせると
+      `.is-sized`が付いて中の枠が器いっぱいへ伸びる（§9.242 ⑧）ので、
+      **触っていない塊の見た目が変わる**。 */
+   const rowKeys=await getj('/api/column-layout-master?target='+encodeURIComponent(TARGET))
+     .then(d=>Object.keys(d.widths||{}).filter(k=>k.startsWith('行数:')));
+   const frozen=rowKeys.filter(k=>k.slice(3)!==seedTarget);
+   rec('§9.310 初めて触っても、触っていない塊の高さを凍らせない',
+       frozen.length===0,`書かれた行数: ${frozen.join('／')||'なし'}`);
+   /* **紙に出ない塊（中身なし）も、いま見えている場所のまま書き下ろす。**
+      書き下ろさない形も試したが、そうすると描くたびに空いているマスを探して
+      紙の下へ伸び、**刷り上がりがA4を超えた**（実測 210×336.7mm）。
+      いっぽう外した状態のまま測ると矩形が0になり、**紙の左上へ1マスに潰れる**
+      ——ここで見るのはそちら（潰れていないこと）。 */
+   const ghostSpots=await page.evaluate(()=>{
+    const o=[];
+    document.querySelectorAll('[data-rp-block].is-empty').forEach(el=>{
+     const c=/(\d+)\s*\/\s*span\s+(\d+)/.exec(el.style.gridColumn||'');
+     const r=/(\d+)\s*\/\s*span\s+(\d+)/.exec(el.style.gridRow||'');
+     o.push({名:el.dataset.rpBlock,列:c?Number(c[1]):0,幅:c?Number(c[2]):0,
+       行:r?Number(r[1]):0});
+    });
+    return o;
+   });
+   const crushed=ghostSpots.filter(x=>x.幅<=1||(x.列===1&&x.行===1&&x.幅<=1));
+   await page.click('#rpArrangeCancel');
+   await page.waitForTimeout(1200);await settle(page);
+   const seedAfter=await seedSnap();
+   const moved=Object.keys(seedBefore).filter(k=>k!==seedTarget&&seedAfter[k]
+     &&(Math.abs(seedAfter[k].高-seedBefore[k].高)>2||Math.abs(seedAfter[k].Y-seedBefore[k].Y)>2))
+     .map(k=>`${k} 高${seedBefore[k].高}→${seedAfter[k].高} Y${seedBefore[k].Y}→${seedAfter[k].Y}`);
+   rec('§9.310 初めて触っても、紙の見え方が動かない（触っていない塊）',
+       moved.length===0,moved.slice(0,4).join(' / ')||'動かず');
+   rec('§9.310 中身が無い塊が紙の左上へ潰れない（外したまま測らない）',
+       ghostSpots.length>0&&crushed.length===0,
+       ghostSpots.length?JSON.stringify(ghostSpots).slice(0,220)
+                        :'このロットには中身なしの塊が無い（前提が立たない）');
+  }else rec('§9.310 の前提: 中身のある塊の右縁が掴める',false,JSON.stringify({seedTarget,seedGrip}));
+
+  /* ==========================================================
+     §9.310 ② 重なっている塊の縁を掴んでも、めちゃくちゃ縮まない
+     ----------------------------------------------------------
+     利用者の報告「ブロックが重なっているときにサイズ変更を触るとめちゃ
+     縮みます」。掴んだ時点で既に`rpFits()`が偽なので、当たりを避ける戻し
+     （`back()`）が最初の一手から全力で走り、どこへ戻しても入らない配置では
+     **幅も高さも1マス**まで潰れていた。§9.223 ③の利用者の指示は
+     「重なっても配置でき、重なった部分を強調表示で修正をうながす」なので、
+     **縮めずに言う**（`rpApplySpan()`／`rpDropCell()`と同じ約束）。
+     **重なりを自分で作ること**——検証用の配置は重なっていないので、
+     そのまま見ると戻しの道を一度も通らずに通ってしまう。
+     ========================================================== */
+  await cleanup();
+  /* **半分だけ重ねる**——丸かぶりにすると、印が付いた側（後から置かれた
+     ほう）の縁が相手の塊に覆われて`pointerdown`が届かず、「幅が変わらない」
+     としか出ない（§9.221 ⑨と同じ罠）。A は 1〜12列、C1 は 7〜18列に置いて
+     7〜12列だけ重ね、C1 の右の縁（18列目）を空けておく。
+     位置の保存値は**古い形（`列:`／`行:`は×40）**で書く——読む側の
+     `rpNum(key,'col',40)`が同じ換算を通るので、40→1列目・160→4列目
+     （24マスでは7列目）・280→7行目（48段では25行目）になる。 */
+  await post('/api/column-layout-master',{target:TARGET,user_id:'test',
+    order:[A,C1,C2],hidden:rest,
+    widths:{[A]:6*UNIT,[C1]:6*UNIT,[C2]:6*UNIT,
+            [`行数:${A}`]:4*CUNIT,[`行数:${C1}`]:4*CUNIT,[`行数:${C2}`]:2*CUNIT,
+            [`列:${A}`]:40,[`列:${C1}`]:160,[`列:${C2}`]:40,
+            [`行:${A}`]:40,[`行:${C1}`]:40,[`行:${C2}`]:280}});
+  await page.evaluate(t=>WL.columnLayout.forget(t),TARGET);
+  await page.evaluate(()=>window.exitReportView&&window.exitReportView());
+  await openReport();
+  await page.click('#reportArrange');
+  await page.waitForSelector('#rpArrangeBar:not([hidden])',{timeout:8000});
+  await settle(page);await page.waitForTimeout(800);
+  /* **印が付くのは「後から置かれた側」**——`rpResolvePlacement()`は先に
+     置いた塊を正として、入らなかったほうを`rpOverlaps`へ入れる。名指しで
+     見ると、たまたま先に置かれた側を見て「重なっていない」で落ちる。 */
+  const ovBefore=await page.evaluate(()=>{
+   const els=[...document.querySelectorAll('.rp-block.is-overlap[data-rp-block]')];
+   for(const el of els){
+    const grip=el.querySelector('[data-rp-grip="r"]');
+    if(!grip)continue;
+    const r=grip.getBoundingClientRect();
+    const lo=Math.max(r.top+4,6),hi=Math.min(r.bottom-4,window.innerHeight-6);
+    const y=Math.round(hi>lo?(lo+hi)/2:lo);
+    const x=Math.round(r.left+r.width/2);
+    const m=/(\d+)\s*\/\s*span\s+(\d+)/.exec(el.style.gridColumn||'');
+    const 掴める=document.elementFromPoint(x,y)===grip;
+    if(!掴める&&el!==els[els.length-1])continue;
+    return {名:el.dataset.rpBlock,span:m?Number(m[2]):0,重なり:true,x,y,掴める,
+      印の数:els.length};
+   }
+   return {印の数:els.length,重なり:els.length>0,掴める:false,span:0};
+  });
+  rec('§9.310 ② の前提: 塊が重なっていて、その縁が掴める',
+      !!ovBefore&&ovBefore.重なり===true&&ovBefore.掴める===true,JSON.stringify(ovBefore));
+  if(ovBefore&&ovBefore.span&&ovBefore.掴める){
+   await page.mouse.move(ovBefore.x,ovBefore.y);await page.mouse.down();
+   /* **ほとんど動かさない**（1px）。ここで縮むなら、それは利用者の操作では
+      なく当たり避けが勝手にやっている。 */
+   await page.mouse.move(ovBefore.x-1,ovBefore.y,{steps:2});
+   const ovTip=await page.evaluate(()=>{
+    const t=document.querySelector('.rp-size-tip');return t?t.textContent.trim():''});
+   const ovMid=await page.evaluate(t=>{
+    const el=document.querySelector(`[data-rp-block="${CSS.escape(t)}"]`);
+    const m=/(\d+)\s*\/\s*span\s+(\d+)/.exec(el.style.gridColumn||'');
+    return m?Number(m[2]):0;
+   },ovBefore.名);
+   await page.mouse.up();await page.waitForTimeout(900);await settle(page);
+   rec('§9.310 ② 重なっていても、掴んだ瞬間に勝手に縮まない',
+       ovMid>=ovBefore.span-1,JSON.stringify({掴む前:ovBefore.span,動かした直後:ovMid}));
+   rec('§9.310 ② 重なることは吹き出しの文字で言う',/重なり/.test(ovTip),ovTip||'(空)');
   }
 
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
