@@ -38,10 +38,11 @@
     の直接導線は廃止)。 */
  function exitReportView(){
   if(!document.body.classList.contains('rp-mode'))return;
-  /* **組み換え中に画面を離れたら、開いた時点へ戻す**（§9.169）。保存せずに
-     当てている状態のまま抜けると、他の画面が触ったつもりの無い設定で
-     描かれる（列レイアウトマスタは画面をまたいで共有のキャッシュ）。 */
-  closeArrange(false);
+  /* **組み換え中に画面を離れたら、まだ投げていない保存を流してから閉じる**
+     （§9.303 ③）。触っていなければ下書きを捨てる——保存せずに当てている
+     状態のまま抜けると、他の画面が触ったつもりの無い設定で描かれる
+     （列レイアウトマスタは画面をまたいで共有のキャッシュ・§9.169）。 */
+  closeArrange();
   document.body.classList.remove('rp-mode');
   const panel=$id('reportPanel');if(panel)panel.hidden=true;
  }
@@ -128,15 +129,21 @@
      </div>
     </nav>
     <section class="rp-main">
-     <!-- 組み換え中だけ出る帯。**やめる/保存を紙の外に置く**——紙の中に
-          置くと印刷物に混ざる危険があるうえ、A4の割り付けを崩す。 -->
+     <!-- 組み換え中だけ出る帯。**帯を紙の外に置く**——紙の中に置くと
+          印刷物に混ざる危険があるうえ、A4の割り付けを崩す。 -->
      <div class="rp-arrange-bar" id="rpArrangeBar" hidden>
       <span class="rp-arrange-info"></span>
-      <!-- 決める2つだけを帯へ残す（§9.255 ①）。「既定に戻す」は取り消せない
-           操作なので、主要動線から離して「⋯」の中へ置く（§CLAUDE 5）。 -->
+      <!-- **保存ボタンは持たない**（§9.303 ③、利用者の指示「保存ボタンは
+           無くしバックグラウンドで常に保存するタイプに変更してほしい…
+           帳票ブロックマスタに頻繁に移動…移動するたびに修正していた内容が
+           飛ぶので現在の都度保存ボタンは使いづらい」）。触ったら裏で保存する
+           ので、残すのは**終える**だけ。**黙って保存しない**（§3）——
+           いまどうなっているかを隣に文字で出す。
+           「既定に戻す」は取り消せない操作なので、主要動線から離して
+           「⋯」の中へ置く（§CLAUDE 5）。 -->
       <span class="rp-arrange-act">
-       <button type="button" id="rpArrangeCancel" class="rp-bar-btn">やめる</button>
-       <button type="button" id="rpArrangeSave" class="rp-bar-btn rp-bar-btn--primary">保存</button>
+       <b class="rp-arrange-auto" id="rpArrangeAuto" title="組み換えの内容は触るたびに自動で保存します。帳票ブロックマスタへ移っても消えません。">自動で保存します</b>
+       <button type="button" id="rpArrangeCancel" class="rp-bar-btn">組み換えを終える</button>
       </span>
       <!-- 「⋯」で開く小さな面。**帯の子のまま position:fixed で浮かせる**
            （テンプレートリテラルの中なのでバッククォートは書かない・§9.211 ③）
@@ -169,8 +176,8 @@
   panel.querySelectorAll('[data-seg="rpOrientSeg"] button').forEach(b=>b.onclick=()=>setOrientation(b.dataset.orient));
   $id('reportNavToggle').onclick=toggleNav;
   $id('reportArrange').onclick=toggleArrange;
-  $id('rpArrangeSave').onclick=saveArrange;
-  $id('rpArrangeCancel').onclick=()=>closeArrange(false);
+  /* **保存ボタンは無い**（§9.303 ③）——触ったら`rpStage()`が裏で保存する。 */
+  $id('rpArrangeCancel').onclick=()=>closeArrange();
   /* 「既定に戻す」は「⋯」の中（`updateArrangeBar`が組み立てて配線する）。 */
   applyOrientation();applyNavVisibility();
   window.addEventListener('resize',()=>{if(rpZoom==='fit')fitPage();else if(rpZoom==='width')fitWidth()});
@@ -2519,7 +2526,8 @@
    const fit=el.querySelector(':scope>.rp-block-fit');
    /* 前回の縮小と**詰め**を外してから測る（§9.298。詰めたまま測ると、
       その塊に要る段数を少なく見積もる）。 */
-   if(fit){fit.style.removeProperty('--rp-fit');fit.style.removeProperty('--rp-dense')}
+   if(fit){fit.style.removeProperty('--rp-fit');fit.style.removeProperty('--rp-dense');
+           fit.classList.remove(...RP_PACK_CLASSES)}
    auto.push(el);
   });
   if(!auto.length)return;
@@ -2745,6 +2753,9 @@
      `「${k}」はこの端末のマスタにまだ登録されていません（マスタ管理 > 帳票ブロックを一度開くと作られます）。`,5600);
    return;
   }
+  /* **移る前に保存を流す**（§9.303 ③、利用者の指示）——ここが
+     「移動するたびに修正していた内容が飛ぶ」の入口だった。 */
+  rpFlushSave();
   WL.reportBlockMaster.open(row.id);
  }
  function renderBlockEditor(){
@@ -3139,7 +3150,10 @@
    wid[k]=rpSpanStore(rpSpanFromGrid(span));
    wid[rpRowsKey(k)]=rpRowsStore(rpRowsFromGrid(rows));
   });
-  rpStage({widths:wid});
+  /* **書き下ろしは保存しない**（§9.303 ③）——利用者が触っていないので、
+     開いて閉じただけで紙の設定が確定してしまう。次に何か触った時点で、
+     この書き下ろしごと保存される（下書きに載っている）。 */
+  rpStage({widths:wid},{persist:false});
   return true;
  }
 /* ---------- 置き場所を重ならないように解く（§9.221 ⑨） ----------
@@ -3358,15 +3372,44 @@
     **測る前に前回の倍率を外すこと**——付いたまま測ると、一度縮んだ塊は
     二度と元へ戻らない（§9.210 ④・§9.217で踏んだのと同じ罠）。 */
  const RP_FIT_MIN=.55;
- /* **縮める前に余白を詰める**（§9.298、利用者の指示「横方向の幅を小さく
-    したときに他の表と同じように余白を詰めてデータの文字サイズを極力
-    キープするような変化をするように」）。
-    以前はいきなり`--rp-fit`で丸ごと縮めており、丈別データを6/24マスに
-    すると0.55倍＝本文7.5pxが4.1pxになっていた（実測）。段は3つで、
-    **1段目は「詰めない」**——入っている塊の見え方を1pxも変えない。
-    段の中身（どの余白をどれだけ詰めるか）は`60-report.css`が持ち、
-    ここが決めるのは**どの段まで進むか**だけ。 */
- const RP_DENSE_STEPS=[1,.55,.25];
+ /* ---------- 詰める順序（§9.303 ①、利用者の指示） ----------
+    「列内の全体余白の調整→個別に余力のあるもの余白調整→改行による文字
+      表示エリア確保(高さ方向への逃げ)→文字サイズ調整による表示用量アップ
+      といったような順序でできる限り大きな文字で効率よく表示する」
+
+    §9.298では「余白を詰める（3段）→丸ごと縮める」の2手だったが、
+    **折り返しが制御できていなかった**——幅が足りなくなると表のセルは
+    その場で折り返すので、**1行で収まるはずのものが2行になり**、増えた高さで
+    余白詰めと文字縮小が起きていた（利用者の報告「ある一定程度以上に小さく
+    縮めると改行してしまうので1行で納めたいところ2行になってしまったりする」）。
+
+    段は5つ:
+     ① そのまま           … **今までどおり**。入る塊の見え方は1pxも変えない（§9.132）
+     ② 1行に戻す           … 折り返しで伸びた高さを畳む（`rp-pack-nowrap`）
+     ③ 列内の全体余白      … `--rp-dense` .55
+     ④ 余力のある列を回す  … `--rp-dense` .25 ＋ `rp-pack-share`
+                             （`table-layout:fixed`の等分をやめ、中身の短い列が
+                               余らせている幅を、詰まった列へ配り直す）
+     ⑤ 折り返す            … ここで初めて高さ方向へ逃がす（文字はまだ縮めない）
+    そのうえで、どうしても入らないものだけ`--rp-fit`で文字を縮める。
+
+    **段の中身（どの余白をどれだけ詰めるか・何を1行にするか）は
+    `60-report.css`が持ち**、ここが決めるのは**どの段まで進むか**だけ（§9.163）。
+    **文字サイズには掛けないこと**——文字を保つのがこの仕組みの目的。 */
+ const RP_PACK_STEPS=[
+  {dense:1,   nowrap:false,share:false},
+  {dense:1,   nowrap:true, share:false},
+  {dense:.55, nowrap:true, share:false},
+  {dense:.25, nowrap:true, share:true },
+  {dense:.25, nowrap:false,share:true },
+ ];
+ const RP_PACK_CLASSES=['rp-pack-nowrap','rp-pack-share'];
+ function rpApplyPack(b,st){
+  if(st.dense===1)b.style.removeProperty('--rp-dense');
+  else b.style.setProperty('--rp-dense',String(st.dense));
+  b.classList.toggle('rp-pack-nowrap',!!st.nowrap);
+  b.classList.toggle('rp-pack-share',!!st.share);
+ }
  function rpFitBlockBodies(host){
   const grid=host&&host.querySelector('.rp-blocks');if(!grid)return 0;
   const boxes=[...grid.querySelectorAll('[data-rp-block].is-placed>.rp-block-fit')];
@@ -3374,22 +3417,30 @@
   /* **倍率はカスタムプロパティで渡す**（`--rp-fit`）。インラインの
      `style.transform`はどのレイヤより強く、CSSから打ち消せなくなる
      （帳票の`--rp-scale`と同じ約束）。
-     **測る前に前回の詰めと縮めを両方外すこと**——片方だけ外すと、一度
-     詰まった塊は二度と元へ戻らない（§9.210 ④・§9.217で踏んだ罠）。 */
+     **測る前に前回の段と縮めを全部外すこと**——1つでも残すと、一度詰まった
+     塊は二度と元へ戻らない（§9.210 ④・§9.217で踏んだ罠）。 */
   boxes.forEach(b=>{b.style.removeProperty('--rp-fit');b.style.removeProperty('--rp-dense');
+    b.classList.remove(...RP_PACK_CLASSES);
     b.parentElement.classList.remove('is-cramped')});
-  const overflows=b=>{const room=b.parentElement.clientHeight;
+  const tooTall=b=>{const room=b.parentElement.clientHeight;
     return !!room&&b.scrollHeight>room+1};
+  const tooWide=b=>b.clientWidth>0&&b.scrollWidth>b.clientWidth+1;
+  /* **①から出る理由は高さだけ**（§9.303 ①）。横溢れは「1行に揃えた結果」
+     なので、まだ①（今までどおり）に居る塊を横溢れで動かすと、
+     **切り詰めて出す作りの表まで詰め直す**——`table-layout:fixed`＋省略記号の
+     表は常に横へ溢れているので、全部が最後の段（折り返す）まで進み、
+     そのぶん背が伸びて**刷り上がりがA4に収まらなくなった**（実測 329.8mm）。
+     ②以降は「1行に揃えているのに幅が足りない」＝次の段へ進む理由になる。 */
   /* **段ごとにまとめて測る**（塊を1つずつ試すと、その都度グリッド全体が
      組み直されて遅い・`rpFitRows()`と同じ理由）。入りきらないものだけが
      次の段へ進み、入った段でそのまま止まる。 */
-  let over=boxes.filter(overflows);
-  for(let i=1;i<RP_DENSE_STEPS.length&&over.length;i++){
-   over.forEach(b=>b.style.setProperty('--rp-dense',String(RP_DENSE_STEPS[i])));
-   over=over.filter(overflows);
+  let over=boxes.filter(tooTall);
+  for(let i=1;i<RP_PACK_STEPS.length&&over.length;i++){
+   over.forEach(b=>rpApplyPack(b,RP_PACK_STEPS[i]));
+   over=over.filter(b=>tooTall(b)||tooWide(b));
   }
   let cramped=0;
-  /* 余白を全部詰めても入らないものだけ縮める（今までどおり）。 */
+  /* 段を全部使っても入らないものだけ縮める（今までどおり）。 */
   over.forEach(b=>{
    const room=b.parentElement.clientHeight;
    const need=b.scrollHeight;
@@ -3470,7 +3521,78 @@
   return out;
  }
  /* **渡す設定を1つでも書き漏らさない**（§9.113。保存もstageも全置換）。 */
- function rpStage(patch){
+ /* ---------- 紙の配置は「触ったら裏で保存」（§9.303 ③） ----------
+    利用者の指示「帳票の紙のレイアウトを触るとき、保存ボタンがありますが、
+    保存ボタンは無くしバックグラウンドで常に保存するタイプに変更してほしい
+    …帳票ブロックマスタに頻繁に移動したりする…移動するたびに修正していた
+    内容が飛ぶので現在の都度保存ボタンは使いづらい」。
+
+    以前は下書き（`stage`）へ溜めて「保存」で確定していたので、**塊の
+    ダブルクリックで帳票ブロックマスタへ移る・設備を切り替える・画面を
+    離れる**のどれでも触ったぶんが消えた（`closeArrange(false)`が
+    `discard()`する）。**書き込みの入口は`rpStage()`の1箇所**なので、
+    そこで落ち着いてから1回保存する（§9.113）。
+
+    **保存は直列に流すこと**（`rpSaveChain`）——掴んで動かすと連続で
+    呼ばれるので、前の保存の途中で次を投げると、どちらが最後に書いたのかが
+    決まらない（§9.197の列幅と同じ作法）。
+    **落ち着いてから**（`RP_AUTOSAVE_MS`）——1マス動かすたびに共有へ
+    往復すると、掴んでいる最中に画面が止まる。 */
+ const RP_AUTOSAVE_MS=400;
+ let rpSaveTimer=null,rpSaveChain=Promise.resolve(),rpSaveDirty=false,rpSaveErr='';
+ function rpQueueSave(){
+  rpSaveDirty=true;rpSaveErr='';
+  if(rpSaveTimer)clearTimeout(rpSaveTimer);
+  rpSaveTimer=setTimeout(()=>{rpSaveTimer=null;rpSaveNow()},RP_AUTOSAVE_MS);
+  rpPaintAutoSave();
+ }
+ function rpSaveNow(){
+  /* **どの紙へ書くかは投げる時点で決める**——設備を切り替えると`rpTarget()`が
+     変わるので、後から読むと別の設備の紙へ書きうる（切り替えの側も
+     `rpFlushSave()`を通す）。 */
+  const target=rpTarget();
+  rpSaveChain=rpSaveChain.then(async()=>{
+   if(!rpSaveDirty)return;
+   /* **初めて保存する瞬間に既定を書き下ろす**（§9.162と同じ）。忘れると、
+      幅を1回変えただけで分解した1枚ずつが全部紙に出る。 */
+   const now=rpLayoutNow();
+   if(!(now.order||[]).length)now.hidden=[...new Set([...(now.hidden||[]),...rpInitialHidden()])];
+   if(!(now.order||[]).length)now.order=rpBlockKeys();
+   await WL.columnLayout.save(target,now);
+   rpSaveDirty=false;rpSaveErr='';
+   /* 保存済みと同じ形になったので**下書きは捨てる**（§9.212 ③。残すと
+      他の画面がこの重ねを見たまま描く）。 */
+   WL.columnLayout.discard(target);
+   rpPaintAutoSave();
+  }).catch(e=>{
+   /* **黙って捨てない**（§9.212 ④）。**下書きは残す**——捨てると、保存に
+      失敗したのに画面から変更だけが消える（直す手立ても消える）。 */
+   rpSaveErr=String((e&&e.message)||e||'保存できませんでした');
+   rpPaintAutoSave();
+  });
+  return rpSaveChain;
+ }
+ /* 画面を離れる・設備を切り替える・マスタへ移るときは**待たずに投げる**。
+    返すのは直列の鎖なので、待ちたい側は`await`できる。 */
+ function rpFlushSave(){
+  if(rpSaveTimer){clearTimeout(rpSaveTimer);rpSaveTimer=null;return rpSaveNow()}
+  return rpSaveChain;
+ }
+ /* **いまどうなっているかを文字で出す**（§3）。黙って保存すると、
+    保存されたのか消えたのかが読めない。 */
+ function rpPaintAutoSave(){
+  const el=$id('rpArrangeAuto');if(!el)return;
+  el.classList.toggle('is-bad',!!rpSaveErr);
+  el.textContent=rpSaveErr?'保存できませんでした'
+    :(rpSaveDirty||rpSaveTimer)?'保存しています…':'自動で保存します';
+  el.title=rpSaveErr
+    ?`${rpSaveErr}\n直したところは画面に残しています。もう一度触ると保存し直します。`
+    :'組み換えの内容は触るたびに自動で保存します。帳票ブロックマスタへ移っても消えません。';
+ }
+ /* `opts.persist===false`は**利用者が触っていない書き込み**（組み換えに
+    入った時点の書き下ろし・`rpSeedPositions`）。ここまで保存すると、
+    **開いて閉じただけで紙の設定が確定してしまう**（§9.132）。 */
+ function rpStage(patch,opts){
   const base=rpLayoutNow();                 /* 既に新しい形へ直してある */
   /* 書いたものが新しい形であることを**刻む**。読み替えは`rpLayoutNow()`が
      済ませているので、ここでするのは印だけ（2箇所で直すと、どちらが先かで
@@ -3489,6 +3611,7 @@
    base.order=rpBlockKeys();
   }
   WL.columnLayout.stage(rpTarget(),{...base,...patch});
+  if(!(opts&&opts.persist===false))rpQueueSave();
   rpRepaint();
   /* **設定を触ったら帯も言い直す**（§CLAUDE 2/8）。重なり件数・外している
      件数・残りmmは全部この帯にあるので、置き直し・幅・高さ・出し入れの
@@ -3497,7 +3620,7 @@
   if(rpArranging)updateArrangeBar();
  }
  async function toggleArrange(){
-  if(rpArranging){closeArrange(false);return}
+  if(rpArranging){closeArrange();return}
   if(!rpState.selectedId){showToast&&showToast('先にロットを選んでください','左の一覧から選ぶと、その帳票を見ながら組み換えられます',4000);return}
   /* 開いた時点では**そのロットの設備**を編集対象にする（§9.239 ③）。 */
   rpEditEquipment=rpEquipmentOf(rpCurrentLot())||'';
@@ -3516,14 +3639,15 @@
   document.body.classList.add('rp-arranging');
   updateArrangeBar();rpRepaint();
  }
- /* 閉じるときは**開いた時点へ戻す**（保存したときだけ残す）。戻さないと、
-    何が保存済みで何が触っただけなのか分からなくなる。 */
- function closeArrange(saved){
+ /* 閉じる。**触ったぶんは既に保存されている**（§9.303 ③）ので、
+    ここでするのは**まだ投げていない保存を流すこと**だけ。
+    触っていなければ下書き（＝組み換えに入った時点の書き下ろし）を捨てる
+    ——残すと、開いて閉じただけの紙が他の画面でその重ねのまま描かれる
+    （§9.212 ③）。 */
+ function closeArrange(){
   if(!rpArranging)return;
-  /* **戻すのは下書きを捨てるだけ**(§9.212 ③)。組み換え中の変更は下書きの
-     重ねに載っているので、捨てれば保存済みがそのまま出る——控えを当て直すと
-     組み換え中に別経路で保存されたぶんまで巻き戻る。 */
-  if(!saved)WL.columnLayout.discard(rpTarget());
+  if(rpSaveTimer||rpSaveDirty)rpFlushSave();      /* 保存が下書きを片付ける */
+  else WL.columnLayout.discard(rpTarget());
   /* **選んだ設備は組み換えを抜けたら戻す**（§9.239 ③）。戻さないと、
      通常表示のプレビューまで別設備の設定で描かれる。 */
   rpEditEquipment=null;
@@ -3534,18 +3658,6 @@
   closeBlockEditor();
   document.body.classList.remove('rp-arranging');
   updateArrangeBar();rpRepaint();
- }
- async function saveArrange(){
-  try{
-   /* **初めて保存する瞬間に既定を書き下ろす**（§9.162と同じ）。忘れると、
-      幅を1回変えただけで分解した1枚ずつが全部紙に出る。 */
-   const now=rpLayoutNow();
-   if(!(now.order||[]).length)now.hidden=[...new Set([...(now.hidden||[]),...rpInitialHidden()])];
-   if(!(now.order||[]).length)now.order=rpBlockKeys();
-   await WL.columnLayout.save(rpTarget(),now);
-   showToast&&showToast('帳票の配置を保存しました','次に開いたときも同じ形で出ます',4000);
-   closeArrange(true);
-  }catch(e){showToast&&showToast('配置を保存できませんでした',e.message,6000)}
  }
  function resetArrange(){
   /* 既定へ戻す＝設定を空にする（登録順・登録幅・全部出す）。 */
@@ -3558,7 +3670,7 @@
   const btn=$id('reportArrange');if(!btn)return;
   const mode=(window.accessMode&&window.accessMode.mode)||'edit';
   btn.hidden=(mode==='view');
-  if(btn.hidden&&rpArranging)closeArrange(false);
+  if(btn.hidden&&rpArranging)closeArrange();
  }
 /* 組み換え中の一言（§9.221 ⑨）。**黙って何も起きないのがいちばん悪い**
     ——置けなかった・縮めた・入りきらない、はその場で文字にする。 */
@@ -3689,6 +3801,10 @@
   const sel=root.querySelector('[data-rp-eq]');if(!sel)return;
   sel.onchange=async()=>{
    const eq=String(sel.value||'');
+   /* **切り替える前に、いまの設備ぶんの保存を流し切る**（§9.303 ③）——
+      投げ残したまま`rpTarget()`が変わると、直したぶんが**別の設備の紙**へ
+      書かれる（自動保存にした以上、ここは待ってから進む）。 */
+   try{await rpFlushSave()}catch(e){}
    /* **読み終えてから切り替える**（§9.239 ③）。読む前に`rpStage()`が走ると
       `order`が空＝既定と見なして書き下ろし、その設備の保存済みの配置を
       空だと思って上書きする（§9.173の罠）。 */

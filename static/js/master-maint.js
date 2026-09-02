@@ -2907,6 +2907,57 @@
  const FB_KIND_VALUE='value',FB_KIND_HEAD='head',FB_KIND_BLANK='blank';
  /* 語彙（呼び名・選べる書式）は**サーバーが答える**（§9.163）。届く前でも
     盤は開けるので、綴りだけをここに持ち、**呼び名は持たない**。 */
+ /* ---------- マスの高さは実測して決める（§9.303 ②） ----------
+    利用者の報告「表を組み、多段になってくると、調整用のブロックが重なったり
+    して乱れる」。盤のマスの下段（出どころ＋横N・縦M のつまみ）は列数が増える
+    と折り返すが、**グリッドの行高はその折り返しを見込まない**——
+    `grid-auto-rows:minmax(3.4em,auto)`の`auto`（max-content）は
+    **「折り返さない前提」**で高さを見積もるので、実際に列幅へ置いて折り返した
+    ぶんは行に入らず、**中身がマスの枠から溢れて下のマスへ重なる**
+    （実測: 中身83px／マスの内寸75px）。1マスぶんに要る高さを測って
+    `--fb-cell-h`へ入れる。
+
+    **測る前に前の値を外すこと**（§9.210 ④・§9.217の罠）——付いたまま測ると、
+    一度伸びた高さが二度と縮まない。
+    **器の高さ（stretchされた箱）ではなく中身を測ること**——マスはトラックの
+    高さまで引き伸ばされるので、`clientHeight`から測ると「いま与えられている
+    高さ」を測り直すだけになり、縮む方向へ動かない。 */
+ function fbFitCellHeight(wrap){
+  if(!wrap||!wrap.classList.contains('is-matrix'))return;
+  wrap.style.removeProperty('--fb-cell-h');
+  const rows=[...wrap.querySelectorAll('.fb-row')];
+  if(!rows.length)return;
+  const gapY=parseFloat(getComputedStyle(wrap).rowGap)||0;
+  let need=0;
+  rows.forEach(el=>{
+   /* 縦Nマスの札は N 行ぶん＋そのあいだの隙間を使うので、1マスぶんへ均す。 */
+   const tall=Math.max(1,Number((/span\s+(\d+)/.exec(el.style.gridRow||'')||[])[1])||1);
+   const inner=[...el.children].reduce((h,c)=>{
+    const cm=getComputedStyle(c);
+    return h+c.getBoundingClientRect().height
+           +(parseFloat(cm.marginTop)||0)+(parseFloat(cm.marginBottom)||0);
+   },0);
+   const cs=getComputedStyle(el);
+   const box=inner+(parseFloat(cs.paddingTop)||0)+(parseFloat(cs.paddingBottom)||0)
+             +(parseFloat(cs.borderTopWidth)||0)+(parseFloat(cs.borderBottomWidth)||0);
+   const one=(box-(tall-1)*gapY)/tall;
+   if(one>need)need=one;
+  });
+  /* 端数の切り上げぶんだけ余分に取る（0.5pxの差でも溢れると重なって見える）。 */
+  if(need>0)wrap.style.setProperty('--fb-cell-h',(Math.ceil(need)+1)+'px');
+ }
+ /* 窓の大きさが変わると列幅＝折り返しの回数が変わるので測り直す（§9.130）。
+    **見張りは1つだけ**——描き直すたびに付けると器の数だけ積み上がる。 */
+ function fbWatchCellHeight(wrap){
+  if(!wrap||wrap.__fbRo||typeof ResizeObserver!=='function')return;
+  let busy=false;
+  wrap.__fbRo=new ResizeObserver(()=>{
+   if(busy)return;                       /* 自分が高さを変えたぶんで回らない */
+   busy=true;
+   requestAnimationFrame(()=>{try{fbFitCellHeight(wrap)}finally{busy=false}});
+  });
+  try{wrap.__fbRo.observe(wrap)}catch(e){}
+ }
  function fbCell(o){
   const x=o||{};
   let kind=String(x.kind||'').trim();
@@ -3491,6 +3542,9 @@
       state.rows.splice(to,0,m);from=-1;sync();
      });
     });
+    /* **マスの高さは実測して入れる**（§9.303 ②）——列数と折り返しで
+       変わるので、描き直すたびに測る。 */
+    fbFitCellHeight(wrap);fbWatchCellHeight(wrap);
    };
    const drawList=()=>{
     const cats=box.querySelector('.fb-cats'),list=box.querySelector('.fb-list');

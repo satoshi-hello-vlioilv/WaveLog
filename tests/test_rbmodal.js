@@ -485,6 +485,92 @@ let b=null,page=null;
        JSON.stringify({back,want}));
    rec('見本の題が編集中の塊の名前になる',String(back.name).indexOf(TAG)>=0,String(back.name));
   }
+  /* ==========================================================
+     §9.303 ② 盤のマスが多段で重なる（利用者の報告）
+     ----------------------------------------------------------
+     「表を組み、多段になってくると、調整用のブロックが重なったりして
+      乱れる」。盤のマスの下段（出どころ＋横N・縦M のつまみ）は列数が
+     増えると折り返すが、**グリッドの行高はその折り返しを見込まない**
+     ——`grid-auto-rows:minmax(3.4em,auto)`の`auto`（max-content）は
+     「折り返さない前提」で高さを見積もるので、はみ出したぶんが**下のマスへ
+     重なる**（実測: 中身83px／マスの内寸75px）。
+
+     **材料は自分で注ぎ込むこと**（§9.291 ①）——検証用の塊は縦1列の
+     少数なので、そのまま見ると折り返しが一度も起きずに通る。
+     画像と同じ形（4列・見出し2段・縦2マスの札あり）をAPIで作って開く。
+     ========================================================== */
+  try{
+   const cells=[];
+   const put=o=>cells.push(Object.assign(
+     {label:'',path:'',kind:'value',span:1,rows:1,showLabel:false},o));
+   put({kind:'blank',span:2});
+   put({kind:'head',label:'MIN'});put({kind:'head',label:'MAX'});
+   put({kind:'head',label:'全体'});put({kind:'head',label:'板厚'});
+   put({label:'板厚 MIN',path:'stat.thickness.min'});
+   put({label:'板厚 MAX',path:'stat.thickness.max'});
+   put({kind:'blank'});put({kind:'head',label:'板幅'});
+   put({label:'板幅 MIN',path:'stat.width.min'});
+   put({label:'板幅 MAX',path:'stat.width.max'});
+   put({kind:'head',label:'対象',rows:2});
+   put({kind:'head',label:'板厚'});
+   put({label:'板厚 MIN',path:'stat.thickness.min'});
+   put({label:'板厚 MAX',path:'stat.thickness.max'});
+   put({kind:'blank'});put({kind:'head',label:'板幅'});
+   put({label:'板幅 MIN',path:'stat.width.min'});
+   put({label:'板幅 MAX',path:'stat.width.max'});
+   const mx=await (await post('/api/report-block-master',
+     {name:TAG+'マトリクス',equipment:'*',span:6,rows:0,cols:4,
+      content:JSON.stringify(cells),user_id:'tests'})).json();
+   if(mx&&mx.id)made.push(mx.id);
+   rec('前提: 4列のマトリクスをマスタに作れた',!!(mx&&mx.ok&&mx.id),JSON.stringify(mx));
+   await page.evaluate(()=>document.querySelector('#masterMaintNav [data-master="reportBlock"]')?.click());
+   await page.waitForSelector('#masterMaintList .mm-row',{timeout:20000});
+   await page.evaluate(n=>{
+    const row=[...document.querySelectorAll('#masterMaintList .mm-row:not(.head)')]
+      .find(r=>(r.textContent||'').indexOf(n)>=0);
+    if(row)row.click();
+   },TAG+'マトリクス');
+   await page.waitForSelector('#maintEditorModal',{state:'visible',timeout:20000});
+   await tab('何を載せるか');
+   await page.waitForSelector('#maintEditorModal .fb-rows .fb-row',{timeout:20000});
+   await page.waitForTimeout(900);
+   const fb=await page.evaluate(()=>{
+    const wrap=document.querySelector('#maintEditorModal .fb-rows');
+    const rows=[...wrap.querySelectorAll('.fb-row')];
+    /* **枠から中身が出ていないか**を見る（これが「重なり」の実体——
+       `.fb-row`は`overflow`を持たないので、溢れた下段が次のマスの上に
+       描かれる）。 */
+    const over=rows.filter(el=>el.scrollHeight>el.clientHeight+1)
+      .map(el=>({i:el.dataset.fbI,sh:el.scrollHeight,ch:el.clientHeight}));
+    /* 矩形どうしの重なりも数える（同じ段のマスは左右で分かれる）。 */
+    const R=rows.map(el=>el.getBoundingClientRect());
+    let hit=0;
+    for(let a=0;a<R.length;a++)for(let c=a+1;c<R.length;c++){
+     const ox=Math.min(R[a].right,R[c].right)-Math.max(R[a].left,R[c].left);
+     const oy=Math.min(R[a].bottom,R[c].bottom)-Math.max(R[a].top,R[c].top);
+     if(ox>1&&oy>1)hit++;
+    }
+    return {rows:rows.length,over,hit,
+            cellH:wrap.style.getPropertyValue('--fb-cell-h'),
+            /* 下段が本当に折り返している状態で見ているか（前提）。 */
+            wrapped:rows.some(el=>{
+             const b=el.querySelector('.fb-row-bot');
+             return !!b&&b.getBoundingClientRect().height>20;
+            })};
+   });
+   rec('前提: マスの下段が折り返す形で見ている（4列＋横/縦のつまみ）',
+       fb.rows>=15&&fb.wrapped===true,JSON.stringify({rows:fb.rows,wrapped:fb.wrapped}));
+   rec('マスの中身が枠からはみ出さない（下のマスへ重ならない）',
+       fb.over.length===0,JSON.stringify(fb.over.slice(0,4)));
+   rec('マスどうしの矩形が重ならない',fb.hit===0,String(fb.hit));
+   /* **実測した高さを入れていること**——`minmax(3.4em,auto)`のままでは
+      折り返しを見込めない（§9.303 ②）。 */
+   rec('マスの高さを実測して入れている（--fb-cell-h）',
+       /^\d+(\.\d+)?px$/.test(fb.cellH||''),String(fb.cellH));
+   await page.evaluate(()=>{const b=document.getElementById('maintEditorClose');if(b)b.click()});
+   await page.waitForTimeout(300);
+  }catch(e){rec('FATAL(§9.303 ②)',false,e.message)}
+
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
   rec('FATAL',false,e.message);

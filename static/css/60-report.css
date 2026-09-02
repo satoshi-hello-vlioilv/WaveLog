@@ -454,6 +454,11 @@
   background:var(--teal);color:#fff;font-size:var(--fs-micro);font-weight:800;white-space:nowrap}
 /* 決める2つは右端。**塊の中は折り返さない**（§9.199）。 */
 .rp-arrange-act{margin-left:auto;display:inline-flex;align-items:center;gap:var(--gap-tight);flex:none}
+/* 自動保存の状態（§9.303 ③）。**黙って保存しない**（§3）——保存ボタンを
+   無くしたぶん、いまどうなっているかはここが文字で言う。失敗は色ではなく
+   文字が変わる（`保存できませんでした`）ので、色は補助。 */
+.rp-arrange-auto{color:var(--muted);font-size:var(--fs-badge);font-weight:700;white-space:nowrap}
+.rp-arrange-auto.is-bad{color:var(--danger)}
 .rp-bar-btn--primary{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:800}
 .rp-bar-btn--primary:hover{background:#0a95a4;border-color:#0a95a4;color:#fff}
 .rp-bar-more{min-width:var(--ctl-h-xs);padding:0 var(--space-1);font-weight:800}
@@ -628,6 +633,31 @@
    あった。省略せず折り返して全文を表示するようにする(行が必要な分だけ
    高くなる)。 */
 .rp-field-value{color:#17272d;font-weight:700;overflow-wrap:break-word;white-space:normal}
+/* ---------- 詰める順序（§9.303 ①、利用者の指示） ----------
+   「列内の全体余白の調整→個別に余力のあるもの余白調整→改行による文字表示
+     エリア確保(高さ方向への逃げ)→文字サイズ調整による表示用量アップ」
+
+   段を決めるのは`rpFitBlockBodies()`（§9.163）。ここが持つのは
+   **その段で何が起きるか**だけ。
+
+   ② 1行に戻す。**器や値の名前で書き分けない**（§9.233 ③）——塊の中の文字を
+      まとめて1行にし、入らなければ次の段で折り返す。書き分けると、あとから
+      足した表だけが静かに折り返したままになる。
+      **自由記述（`.rp-info-box`）だけは外す**——1行にすると横へ延々と伸びる
+      だけで、畳める高さが無い。
+      `*:not(.rp-info-box)`は(0,3,0)なので、`.rp-product-table td.rp-product-cell`
+      (0,2,1)のような「この欄だけ折り返す」指定にも勝つ（そこも1行に揃える）。 */
+.rp-block-fit.rp-pack-nowrap,
+.rp-block-fit.rp-pack-nowrap *:not(.rp-info-box){white-space:nowrap}
+/* ④ 余力のある列の幅を、詰まった列へ回す。
+   `table-layout:fixed`は列を**等分**するので、中身の短い列が幅を余らせたまま
+   長い列だけが溢れる。詰める段では`auto`へ切り替えて**要るところへ要るだけ**
+   配る（これが利用者の言う「他の列の余白が残っている場合はそこを先に詰める」）。
+   固定幅を書いてある列も、この段では幅を手放す。 */
+.rp-block-fit.rp-pack-share .rp-product-table{table-layout:auto}
+.rp-block-fit.rp-pack-share .rp-wide-table th.rp-colno,
+.rp-block-fit.rp-pack-share .rp-wide-table td.rp-collot{width:auto;max-width:none}
+
 /* ---------- 表の余白は「詰める」ほうが先（§9.298、利用者の指示） ----------
    「横方向の幅を小さくしたときに他の表と同じように余白を詰めてデータの
      文字サイズを極力キープするような変化をするように変更してください」
