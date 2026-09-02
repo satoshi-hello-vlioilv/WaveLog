@@ -2895,6 +2895,14 @@
      **名前空間付きで呼ぶこと**——素の`fitControlWidths`は`measure-steps.js`の
      IIFEの中なので、外からは見えない。 */
   syncWidgets();
+  /* 親子の絞り込みを当て直す（§9.306）。**`syncWidgets()`の直後**——
+     候補を入れ直す経路（記録の復元・マスタの取り直し・プリセット）は
+     全部そこを通るので、ここへ置けば足し忘れる経路が無い（§9.246 ①の
+     「選ばない」の札を当て直すのと同じ場所・同じ理由）。
+     **幅を測る前に**当てること——器を作り直すので、あとから当てると
+     `fitWidths()`が前の候補の幅を測る。 */
+  try{applyAllChildFilters()}
+  catch(e){console.warn('measure-opdata: 親子の絞り込みを当てられませんでした',e)}
   if(window.WL&&WL.measureSteps&&WL.measureSteps.fitWidths)WL.measureSteps.fitWidths();
   /* 1マスの実寸は**①準備のカード**で測る（§9.226 ①）。設定窓の見本は
      あの器の中の見え方を写すので、母材の器（`.material-grid`）で測ると
@@ -2963,7 +2971,37 @@
   return 94;                                 /* 実測の既定（1920幅・12マス） */
  }
 
+ /* 親の欄が変わったら子を絞り直す。**`document`で1つ受ける**（§9.233 ③）
+    ——欄ごとに配線すると、器を1つ足したときに足し忘れた欄だけが絞られない。
+    親は組み込みの欄のこともある（オペレータ等）ので、`[data-op]`だけを
+    見る形にしない——`.opf`の`data-opfield`から名前を引く。 */
+ /* この器はどの項目か。**組み込みの欄は`data-opfield`を持たない**
+    （`index.html`の`data-f="coilStop"`のまま置かれる・`hostOf()`と対）ので、
+    そちらだけを見ると**親が組み込みの欄（オペレータ等）のときに一度も
+    絞られない**——親になりやすいのはむしろ組み込みの欄。 */
+ function defOfHost(host){
+  const name=host.dataset.opfield||'';
+  if(name)return defs.find(d=>d.name===name)||null;
+  const f=host.dataset.f||'';
+  return f?(defs.find(d=>String(d.builtin||'')===f)||null):null;
+ }
+ let parentWired=false;
+ function wireParentFilter(){
+  if(parentWired)return;parentWired=true;
+  document.addEventListener('change',e=>{
+   /* **`.opf`だけを見ない**——組み込みの欄は`index.html`の`<label data-f=…>`
+      のまま置かれるので、そのクラスを持たない（§9.233 ③の印は`.opf-host`）。 */
+   const host=e.target&&e.target.closest&&e.target.closest('[data-opfield],[data-f]');
+   if(!host)return;
+   const d=defOfHost(host);
+   if(!d)return;
+   const kids=childrenOfField(d.name);
+   if(!kids.length)return;
+   kids.forEach(applyChildFilter);
+  },true);
+ }
  function bind(){
+  wireParentFilter();
   defs.forEach(def=>{
    if(def.builtin)return;                 // 組み込みの欄は元の配線のまま
    /* 自動で入る値（§9.234 ②）は`<output>`＝打ち込めない欄。整形の配線を
@@ -3055,6 +3093,87 @@
     記録の復元・仕掛由来のプリセット（§9.204の内径）のあとは、こちらから
     印を合わせに行く。忘れると**値は入っているのにボタンがどれも選ばれて
     いない**という、いちばん分かりにくい形で壊れる。 */
+ /* ---------- 親子で候補を絞る（§9.306、利用者の指示） ----------
+    「選択肢の値マスタ同士を親子関係として紐づけるためにリンクさせ、
+      リンクさせた場合、子となったマスタは登録内容毎、どの親か親マスタから
+      選ぶことができるようにしたい」
+
+    **絞り込みの表はサーバーが答える**（`choicesByParent`。§9.163）——
+    「この値はどの親のものか」の判定を画面へ書き写すと、盤・値の欄・測定画面で
+    答えが3つになる。ここが持つのは**親の欄から今の値を読んで当てること**だけ。
+
+    **親を選んでいないときは全部出す**（利用者の指示）——絞ると、親を決める前に
+    子を1つも選べなくなる。`choicesByParent`に`''`の鍵は入っていない。
+    **黙って減らさない**（§3）——絞っているあいだは欄の下に親と件数を出す。
+    **記録済みの値は候補へ残す**（§9.204／§9.229 ④と同じ罠）——`select.value`へ
+    候補に無い値を入れると空文字になり、**記録が黙って消える**。 */
+ const opParentFilterNote=(def,pv,n)=>
+   `${def.parentField.name}「${pv}」で絞り込み中（${n}件）`;
+ function parentValueOf(def){
+  if(!def||!def.parentField)return '';
+  const host=hostOf({name:def.parentField.name,builtin:def.parentField.builtin||''});
+  const el=host&&valueEl(host);
+  return el?String(el.value||''):'';
+ }
+ /* いま出してよい候補。**親が空／知らない親の値なら今までどおり全部**。 */
+ function allowedChoices(def){
+  const pv=parentValueOf(def);
+  const by=(def&&def.choicesByParent)||{};
+  if(!pv||!Object.prototype.hasOwnProperty.call(by,pv))return {list:(def&&def.choices)||[],pv:''};
+  return {list:by[pv]||[],pv};
+ }
+ /* 1つの子の欄へ当てる。**器も作り直す**——`<select>`だけ書き換えると、
+    札・一覧・メニューの器は前の候補のまま残る（§9.218 ②の器は
+    `buildWidget()`が`<select>`から組み立てるので、必ず通す）。 */
+ function applyChildFilter(def){
+  const host=hostOf(def);if(!host)return;
+  const sel=valueEl(host);
+  if(!sel||sel.tagName!=='SELECT')return;
+  const {list,pv}=allowedChoices(def);
+  const keep=String(sel.value||'');
+  /* 記録済みの値が絞り込みから外れたときは**候補へ足して残す**（消さない）。 */
+  const orphan=keep&&list.indexOf(keep)<0;
+  /* **同じ候補なら作り直さない**（§9.117／§9.222 ①）。`layout()`は何度も
+     走るので、素直に組み直すと**開いている一覧・メニューが押した拍子に
+     消える**し、器を作り直すたびに幅も測り直すことになる。 */
+  const sig=list.join('\u0000')+(orphan?'\u0001'+keep:'');
+  if(sel.dataset.opFilterSig!==sig){
+   const opts=[`<option value="">${esc(WL.optionBlankLabel)}</option>`]
+     .concat(list.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`));
+   if(orphan)opts.push(`<option value="${esc(keep)}">${esc(keep)}（この親では選べません）</option>`);
+   sel.innerHTML=opts.join('');
+   sel.value=keep;
+   sel.dataset.opFilterSig=sig;
+   applyPresentation(host,def);
+   const kind=widgetOf(def);
+   const needsBox=kind!==WIDGET_SELECT||(def.freeText&&host.querySelector(':scope>select'));
+   if(needsBox&&valueEl(host))buildWidget(def,host,kind);
+   else stripWidget(host);
+   placeUnit(host,def);
+  }
+  /* **絞っていることを文字で言う**（§3）。絞っていないときは何も出さない
+     ——「絞り込みなし」と書くと、書いてある行が常時1本増えるだけになる。 */
+  /* **組み込みの欄には行が無い**（`fieldEl()`が作る`.opf-note`は自作の欄
+     だけ）ので、無ければ足す——親になりやすいのは組み込みの欄で、子にも
+     なりうる。足さないと**絞っているのに何も書かれない**（§3）。 */
+  let note=host.querySelector(':scope>.opf-note');
+  if(!note&&pv){
+   note=document.createElement('small');note.className='opf-note';host.appendChild(note);
+  }
+  if(note){
+   if(pv){note.hidden=false;note.textContent=opParentFilterNote(def,pv,list.length)}
+   else{note.hidden=true;note.textContent=''}
+  }
+ }
+ /* 親の欄が変わったら、その子を当て直す。**親ごとにまとめて引く**——
+    子は複数ありうる（同じ親を持つまとまりが2つ以上あってよい）。 */
+ function childrenOfField(name){
+  return defs.filter(d=>d.parentField&&d.parentField.name===name);
+ }
+ /* 全部当て直す。記録の復元・候補の取り直しのあとに通す。 */
+ function applyAllChildFilters(){
+  defs.forEach(d=>{if(d.parentField)applyChildFilter(d)});
+ }
  function syncWidgets(){
   /* **候補を入れ直すと「選ばない」の札が戻る**（§9.246 ①）。
      `applyContextChoices()`（`records-store.js`）は`optionFill()`で
@@ -3352,6 +3471,10 @@
                項目が増えるたびに同じ判定が増える。 */
             sourceNotePlace,
             syncAutoOpen,syncWidgets,previewWidget,ruleText,
+            /* 親子の絞り込み（§9.306）。**網から通せるように出す**
+               ——`change`は器の中の`<select>`から飛ぶので、実機と同じ道
+               （親を選ぶ→子が絞られる）を1本で確かめられるようにする。 */
+            applyChildFilter,applyAllChildFilters,allowedChoices,
             /* 見本の欄まるごと（§9.276 ⑥）。**設定窓はこれを使う**——
                `<label>`から組み立てを写すと、測定画面に1手足したときに
                見本だけ古い形のまま残る。 */

@@ -59,8 +59,11 @@ G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint',
                    'test_opwidget',
                    # §9.305 ①: 入力値の丸め（測定項目マスタ）
                    'test_mround',
-                   # §9.306: 選択肢の親子（リンクマスタ）
-                   'test_choicelink']
+                   # §9.306: 選択肢の親子（リンクマスタ）。サーバーは
+                   # `test_choicelink`、**測定画面で実際に絞られるか**は
+                   # `test_opparent`——どちらか片方だけでは、サーバーが
+                   # 正しく答えていても画面が引かない実装が素通りする。
+                   'test_choicelink', 'test_opparent']
 # 異常位置判定と条の設計の連携(§9.226 ④)。どちらを触っても両方を回す。
 G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_scsplit',
                  # §9.239 ⑥: ピッチ→ロール判定とロールマスタ
