@@ -2824,6 +2824,28 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   na:{text:'—',cls:'is-na',title:'作業以外の予定です。'},
  };
 
+/* 開始ボタンは**作る場所が2つある**（§9.302 の追補）——表を描くとき
+    （`renderEntryRow`）と、作業可否があとから「可」に変わってボタンを足すとき
+    （`applyWorkableFlags`）。可否は仕掛データを読まないと分からず、共有越しでは
+    時間がかかるので**待たずに先に予定を描く**作りだから、この2つは必ず両方使われる。
+    **だから文字・説明・「押せるか」は1箇所が答える**（§9.163）——片方だけ直すと
+    **仕掛データが最初の描画に間に合ったかどうかで見た目が変わる**。実機では
+    `開始`と`▶ 開始`が同じ表に並んでいた（押したときの動きは同じなので、
+    合図が嘘をついている状態・§3）。しかも`applyWorkableFlags`は
+    「ボタンが無ければ作る」だけなので、一度描かれた行は**そのまま固定**され、
+    読み直すまで直らない。 */
+ const SC_START_BTN={text:'開始',title:'この予定の測定画面を開いて作業を開始します'};
+ function canStartEntry(e,workable){
+  return !!(scState.canStartWork&&e&&e.kind==='作業'&&e.state==='予定'
+            &&!e.__pending&&!e.unplanned
+            &&(workable||workableOf(e)).state==='ok');
+ }
+ /* **HTMLも1箇所**。DOMで組み立てる側（`applyWorkableFlags`）も
+    `insertAdjacentHTML`でこれを通す——クラス名を2箇所に書くと、CSSを直したときに
+    片方だけ当たらない状態が作れる。 */
+ function startBtnHtml(){
+  return `<button type="button" class="sc-row-btn sc-row-start" title="${esc(SC_START_BTN.title)}">${esc(SC_START_BTN.text)}</button>`;
+ }
 /* 可否の反映は**画面を作り直さない**。renderTimeline()を呼ぶと行が総入れ替えに
     なり、ドラッグ中・詳細を開いている最中・スクロール位置がすべて飛ぶ。
     既にある行の可否セルと開始ボタンだけを差し替える。 */
@@ -2840,16 +2862,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    }
    row.classList.toggle('sc-row-not-workable',w.state==='ng');
    // 可否が変わったら開始ボタンの有無も合わせる(可になったらすぐ着手できる)
-   const canStart=scState.canStartWork&&e.kind==='作業'&&e.state==='予定'
-                  &&!e.__pending&&!e.unplanned&&w.state==='ok';
+   const canStart=canStartEntry(e,w);
    const actions=row.querySelector('.sc-row-actions');
    const existing=row.querySelector('.sc-row-start');
    if(canStart&&!existing&&actions){
-    const btn=document.createElement('button');
-    btn.type='button';btn.className='sc-row-btn sc-row-start';
-    btn.title='この予定の測定画面を開いて作業を開始します';btn.textContent='▶ 開始';
-    btn.onclick=ev=>{ev.stopPropagation();startWorkFromEntry(e)};
-    actions.prepend(btn);
+    /* **表を描くときと同じHTMLを差し込む**（先頭＝`renderEntryRow`と同じ位置）。
+       ここで自前に組み立てると、文字も並びも2通りになる。 */
+    actions.insertAdjacentHTML('afterbegin',startBtnHtml());
+    const btn=actions.querySelector('.sc-row-start');
+    if(btn)btn.onclick=ev=>{ev.stopPropagation();startWorkFromEntry(e)};
    }else if(!canStart&&existing){
     existing.remove();
    }
@@ -5462,8 +5483,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    // 開始時刻を打刻すると実績突合(§7.4)でこの行が「実施中」へ移る。
    // §9.51: 作業可否フラグが立っている(残仕掛設備ｺｰｽがこの設備で始まる)
    // 予定だけ開始できる。まだこの設備に来ていないロットを開始させない。
-   const canStart=scState.canStartWork&&e.kind==='作業'&&e.state==='予定'&&!e.__pending&&!e.unplanned
-                  &&workable.state==='ok';
+   const canStart=canStartEntry(e,workable);
    // §9.38: 日時で固定する(ロック)。予定を動かせるモードでのみ操作できる。
    /* 枠(§9.238 ②)は固定開始日時を使わないので、鍵の入口も出さない（§4）。 */
    const canLock=scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned&&e.kind!=='枠';
@@ -5499,7 +5519,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     '__actual__':`<span class="sc-row-actual" data-col="__actual__">${esc(actualText)}</span>`,
     '__flags__':`<span class="sc-row-flags" data-col="__flags__">${flags}</span>`,
     '__actions__':`<span class="sc-row-actions" data-col="__actions__">
-     ${canStart?`<button type="button" class="sc-row-btn sc-row-start" title="この予定の測定画面を開いて作業を開始します">開始</button>`:''}
+     ${canStart?startBtnHtml():''}
      ${canLock?`<button type="button" class="sc-row-btn sc-row-lock${locked?' active':''}" title="${locked?'固定を解除して通常の並びへ戻します':'今の予定日時でこの行を固定します(以降ずれません)'}">${locked?'解除':'固定'}</button>`:''}
      ${canResume?`<button type="button" class="sc-row-btn sc-row-resume" title="測定画面を開いて続きから再開します(行のダブルクリックでも開けます)">再開</button>`:''}
      ${canReport?`<button type="button" class="sc-row-btn sc-row-report" title="このロットの帳票を表示します">帳票</button>`:''}
