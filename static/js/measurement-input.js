@@ -308,7 +308,10 @@ function processDeviceInputCore(raw){
      どちらも1桁へ丸めてから渡していたため、**ノギスの2桁目は必ず0**だった
      （設定としては2桁なのに一度も効いていない）。桁数は`measurementDigits()`
      の1箇所が答える。 */
-  const j=st.wStep||0;m.measurements.width[li][j]=fixedMeasurementValue('width',p.value);st.pendingDevice='width';advanceWidth()
+  /* **転送された値にも丸めが効く**（§9.305 ①）——板幅に刻みを設定した
+     現場では、手入力と転送で違う値になるほうが分かりにくい。設定していな
+     ければ`settle`は今までどおり桁だけをそろえる。 */
+  const j=st.wStep||0;m.measurements.width[li][j]=WL.measureRound.settle('width',p.value);st.pendingDevice='width';advanceWidth()
  }else if(type==='バリ'){
   /* 段の案内は**見出しのバッジ**が出す（§9.242 ③）。`setState()`へ書いて
      いた頃は、この関数の末尾の`markDirty()`が保存状態で上書きするため
@@ -329,7 +332,13 @@ function processDeviceInputCore(raw){
   }
  }else if(type==='テレスコープ'){
   if(!['depth','manual'].includes(p.device))return inputError('テレスコープはデプスゲージを使用してください');m.measurements.telescope[li][st.wStep||0]=p.value.toFixed(2);advanceWidth()
- }else{const key=activeMeasureKey();m.measurements[key][li][st.wStep||0]=type==='ラテラルボー'?(Math.ceil(p.value*2)/2).toFixed(1):p.value.toFixed(1);advanceWidth()}
+ /* **ラテラルボーの0.5刻み切り上げはここに焼き付けない**（§9.305 ①）——
+    以前は`type==='ラテラルボー'`のときだけ`Math.ceil(p.value*2)/2`と書いて
+    あり、**転送のときしか効かず、手入力では効かなかった**（しかも刻みを
+    変える手立てが無い）。いまは測定項目マスタの決まりを`WL.measureRound`が
+    1箇所で当てる——既定の種として`lateral`に0.5/切り上げが入るので、
+    **転送の見え方は今までと1文字も変わらない**（§9.132）。 */
+ }else{const key=activeMeasureKey();m.measurements[key][li][st.wStep||0]=Number(WL.measureRound.apply(key,p.value)).toFixed(1);advanceWidth()}
  /* 自動で記録する時刻（§9.143）。**転送は「転送」として数える**——
     手入力と混ぜると「転送を受け始めた時刻」が作れない。 */
  WL.workStamp.note('transfer');
@@ -495,9 +504,16 @@ function bindMeasureInputs(){
   });
   x.oninput=()=>{m.measurements[x.dataset.mkey][+x.dataset.i][+x.dataset.j]=x.value;judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);renderStats();WL.workStamp.note('manual');markDirty()};x.onkeydown=e=>{if(S.measure.settings.inputMode!=='manual'){e.preventDefault();return}if(e.key==='Delete'){x.value='';x.oninput()}if(e.key==='Enter'){e.preventDefault();advanceSlot();focusCurrent()}}})
 
- document.querySelectorAll('[data-mkey="thickness"],[data-mkey="width"]').forEach(el=>{
+ /* 打ち終わった値を**丸めてから桁をそろえる**（§9.305 ①）。
+    **全部の項目に付ける**——以前は板厚・板幅だけで、ラテラルボー・
+    テレスコープ・巻ずれには`blur`の手当てが1つも無かった（利用者が
+    切り上げを設定したい欄がまさにそこ）。桁の決まりを持たない項目では
+    `fixedMeasurementValue()`が生の値を返すので、**丸めだけが効く**。
+    **描くときには当てない**（`makeMeasureInput`）——開いただけで記録が
+    書き換わったように見える（§9.15）。 */
+ document.querySelectorAll('[data-mkey]').forEach(el=>{
   const previousBlur=el.onblur;
-  el.onblur=event=>{if(previousBlur)previousBlur.call(el,event);const formatted=fixedMeasurementValue(el.dataset.mkey,el.value);if(el.value!==formatted){el.value=formatted;S.measure.measurements[el.dataset.mkey][+el.dataset.i][+el.dataset.j]=formatted;judgeInput(el,el.dataset.mkey,Number(formatted),+el.dataset.j);renderStats();markDirty()}}
+  el.onblur=event=>{if(previousBlur)previousBlur.call(el,event);const formatted=WL.measureRound.settle(el.dataset.mkey,el.value);if(el.value!==formatted){el.value=formatted;S.measure.measurements[el.dataset.mkey][+el.dataset.i][+el.dataset.j]=formatted;judgeInput(el,el.dataset.mkey,Number(formatted),+el.dataset.j);renderStats();markDirty()}}
  });
 }
 function toleranceInfoFor(key,index,value){

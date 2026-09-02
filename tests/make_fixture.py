@@ -147,6 +147,40 @@ def _tables(c) -> set:
         "SELECT name FROM sqlite_master WHERE type='table'")}
 
 
+def _builtin_item_groups() -> dict:
+    """組み込みの操業データ項目の**群**（組み込みキー → 群名）。
+
+    **`backend`をimportしないこと**（§9.285 の追補）——`_builtin_block_seeds()`
+    と同じ理由で、ソースの`BUILTIN_SEEDS`を構文木で読む。種は
+    `(組み込みキー, 群, 項目名, 列幅, 必須, 置き場, 群折りたたみ, 表示条件)`で、
+    要るのは0・1番目（どちらも素の文字列）。**形が変わったら読み飛ばす**。"""
+    import ast
+    src_path = ROOT / 'backend' / 'repositories' / 'operation_repo.py'
+    try:
+        tree = ast.parse(src_path.read_text(encoding='utf-8'))
+    except Exception:
+        return {}
+    out = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(getattr(t, 'id', '') == 'BUILTIN_SEEDS' for t in node.targets):
+            continue
+        if not isinstance(node.value, ast.Tuple):
+            continue
+        for el in node.value.elts:
+            if not isinstance(el, ast.Tuple) or len(el.elts) < 2:
+                continue
+            try:
+                key = ast.literal_eval(el.elts[0])
+                grp = ast.literal_eval(el.elts[1])
+            except Exception:
+                continue
+            if isinstance(key, str) and isinstance(grp, str) and key:
+                out[key] = grp
+    return out
+
+
 def _builtin_block_seeds() -> dict:
     """既定の帳票ブロックの種（組み込みキー → (`[内容]`, `[内訳列数]`)）。
 
@@ -338,6 +372,39 @@ def fix_master(quiet: bool = False) -> None:
         for t in ('フィルタプリセットマスタ', 'フィルタ個人設定マスタ'):
             if t in have:
                 c.execute(f'DELETE FROM [{t}]')
+        # 4c) 群が空になった組み込みの操業データ項目（§9.305 ①の追補）
+        # 盤は掴んで群を移せるので、**途中で落ちた回のぶんは群が空のまま残る**。
+        # 群が空の項目は測定画面で「その他」に落ちるので、**見出しの並びが
+        # 1つずれる**——実測: `スプール`の群が空になっていて、test_msteps の
+        # 「見出しの先頭は誰が→形→機材→いつもと同じの順」が落ちた
+        # （壊れ方が遠く、原因はマスタの1セル。§9.284と同じ形）。
+        # **戻すのは組み込みの項目だけ**——現場が作った項目の群まで
+        # 決め打ちで書くと、意図して空にした行を上書きしてしまう。
+        if '操業データ項目マスタ' in have:
+            for key, grp in _builtin_item_groups().items():
+                c.execute("UPDATE [操業データ項目マスタ] SET [群]=? "
+                          "WHERE [組み込みキー]=? AND COALESCE([群],'')=''",
+                          [grp, key])
+        # 8b) 入力値の丸め（§9.305 ①）。**種の値へ戻す**——刻みや向きが
+        # 残ると、測定の網がどれも「打った値がそのまま」を見られなくなる
+        # （しかも壊れ方が遠い：落ちるのは丸めと無関係な入力の網）。
+        # 判定はサーバーの1箇所が持つので、ここは行の中身をそろえるだけ。
+        if '測定項目マスタ' in have:
+            seeds = {'lateral': 0.5, 'telescope': 0.5,
+                     'offset': 0.5, 'alignValue': 0.5}
+            c.execute("DELETE FROM [測定項目マスタ] WHERE [項目キー] NOT IN (%s)"
+                      % ','.join('?' * len(seeds)), list(seeds))
+            for k, u in seeds.items():
+                c.execute('UPDATE [測定項目マスタ] SET [丸め単位]=?,[丸め方]=?,[有効]=-1 '
+                          'WHERE [項目キー]=?', [u, '切り上げ', k])
+                if not c.execute('SELECT 1 FROM [測定項目マスタ] WHERE [項目キー]=?',
+                                 [k]).fetchone():
+                    c.execute('INSERT INTO [測定項目マスタ] '
+                              '([項目キー],[丸め単位],[丸め方],[有効],'
+                              '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                              "VALUES (?,?,?,-1,'fixture','fixture',"
+                              "datetime('now'),datetime('now'))",
+                              [k, u, '切り上げ'])
         # 9) 自作の帳票ブロックの置き土産（§9.304）
         # 塊が1つ残るだけで**紙の中身がまるごと変わる**——並びに載っていない
         # 自作の塊は末尾へ回るので、紙がA4を超えて2枚ぶんに伸びる（実測:

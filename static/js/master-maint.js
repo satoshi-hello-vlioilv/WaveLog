@@ -70,6 +70,37 @@
      ここは「どう並べるか」。1枚に混ぜると盤の1枚のカードが2つの並びを
      同時に表すことになる。書くのは`[記録表示]`／`[記録群]`／`[記録順]`の
      3列だけで、汎用CRUDは持たない（`endpoint`はGETの読み口）。 */
+  /* ---------- 入力値の丸め（§9.305 ①、利用者の指示） ----------
+     「0.5単位切り上げなど、入力値の切り上げ機能を実装してください。
+      導入したい項目は ①ラテラルボー ②テレスコープ ③巻ズレ ④揃いの値。
+      可能であれば他の入力項目についても、汎用的に設定できるように」
+
+     **1行＝1つの入力の決まり**（刻みと向きだけ）。**行を消せば丸めない**。
+     選べる入力も向きも**サーバーが答える**（`targets`／`modes`）ので、
+     画面には綴りを書き写さない（§9.163）。 */
+  {group:'measure',key:'measureItem',label:'入力値の丸め',icon:'丸',
+   endpoint:'/api/measure-item-master',hasDelete:true,editorModal:true,
+   titleText:'入力値の丸め — どの入力を、いくつ刻みで',
+   fields:[{k:'key',label:'どの入力',type:'choice-card',source:{key:'targets'},
+            required:true,key:true,fieldGroup:'① どの入力を丸めるか',
+            hint:'**1つの入力につき決まりは1つ**です（同じ入力をもう一度登録すると上書きになります）。'},
+           {k:'unit',label:'刻み',type:'number',unit:'mm',step:0.1,min:0,required:true,
+            fieldGroup:'② いくつ刻みで・どちら向きに',
+            hint:'**0.5**なら 0.5・1.0・1.5… の段へそろえます。**打ち終わって欄を離れたとき**に効きます（打っている最中は変わりません）。',
+            more:'測定器から転送された値にも同じ決まりが効きます（板厚・板幅を選んだ場合）。'},
+           {k:'mode',label:'向き',type:'choice-card',source:{key:'modes'},
+            fieldGroup:'② いくつ刻みで・どちら向きに',
+            hint:'**切り上げ**が既定です。'},
+           {k:'note',label:'メモ',fieldGroup:'③ 覚え書き',
+            hint:'なぜこの刻みなのかを書いておくと、あとで見直すときに助かります。'}],
+   cols:[{k:'label',label:'どの入力',grow:2},{k:'unit',label:'刻み',grow:1,format:'roundUnit'},
+         {k:'mode',label:'向き',grow:1},{k:'note',label:'メモ',grow:2}],
+   hint:'測定画面で**打ち終わった値**を、決めた刻みの段へそろえます（例: 0.5刻みで切り上げ→`1.2`は`1.5`）。'
+     +'**登録した入力だけ**が対象で、行を消せば今までどおり打った値がそのまま残ります。'
+     +'ラテラルボー・テレスコープ・巻ずれ・揃いの値には、はじめから0.5刻みの切り上げが入っています。',
+   hintMore:'<p>効くのは<b>欄を離れたとき</b>だけです。打っている最中に丸めると、`0.2`を打つ途中の`0.`で値が飛んでしまうためです。</p>'
+     +'<p>板厚・板幅を選んだ場合は<b>測定器から転送された値にも</b>効きます——手入力と転送で違う値になるほうが分かりにくいためです。</p>'
+     +'<p>保存済みの記録は書き換えません。開き直しても、記録された値はそのまま出ます。</p>'},
   {group:'measure',key:'recordLayout',label:'記録した値の配置',icon:'記',
    special:'record-layout',endpoint:'/api/operation-item-master',
    titleText:'記録した値 — ③確認のカードの並べ方',
@@ -528,7 +559,7 @@
      指摘「並びが不規則」）。**ここに載っていないマスタは末尾**へ回るので、
      足し忘れても消えない。載せ忘れは`tests/test_master.js`が数える。 */
   {key:'measure',label:'測定と記録',hint:'測定画面に出す入力欄と、記録した値の見せ方',
-   items:['opItem','opChoice','recordLayout']},
+   items:['opItem','opChoice','measureItem','recordLayout']},
   {key:'report',label:'帳票',hint:'紙に刷る内容と、その割り付け',
    items:['reportLayout','reportBlock']},
   {key:'equip',label:'設備',hint:'設備そのものと、設備に付くもの',
@@ -1118,6 +1149,10 @@
   // 区分(§9.85)。空欄は「まだ決めていない」であって「無い」ではないので、
   // 「—」ではなくそう書く(既存の設備は空のまま動く)。
   if(col.format==='equipmentKind')return v.trim()===''?'未設定':v;
+  /* 入力値の丸めの刻み（§9.305 ①）。**空欄は「丸めない」と書き切る**
+     ——空のままだと「まだ決めていない」と読めるが、この行の意味は
+     「刻みが無い＝この入力は丸めない」（§4）。単位も必ず添える（§6）。 */
+  if(col.format==='roundUnit')return v.trim()===''?'丸めない':`${v} mm 刻み`;
   /* 使える機能（§9.302）。**残る側を並べる**——保存値は「使わない機能」だが、
      一覧で知りたいのは「どこに出るか」。全部使えるのがふつうなので、そこは
      1語で済ませて（「すべて」）、外してある行だけが目に留まるようにする。
@@ -1497,8 +1532,16 @@
        最初から選ばれている。札にした途端に「どれも選ばれていない」状態が
        生まれると、②の欄が`data-when`で消えて**決めることが1つ消える**
        （新規登録で実際にそうなった）。 */
-    const cur=String(val||'')||String(((f.cards||[])[0]||{}).v||'');
-    const cards=(f.cards||[]).map(c=>{
+    /* **語彙をサーバーから取れるようにする**（§9.305 ①）——`source.key`を
+       書いたときは`maintState.meta[key]`（`{key,label,note}`の並び）を札に
+       する。画面へ綴りを書き写さないための口で、静的な`cards`は今までどおり。 */
+    const srcKey=(f.source&&f.source.key)||'';
+    const list=srcKey
+      ?((maintState.meta&&Array.isArray(maintState.meta[srcKey])?maintState.meta[srcKey]:[])
+         .map(o=>({v:o.key,label:o.label||o.key,note:o.note||''})))
+      :(f.cards||[]);
+    const cur=String(val||'')||String((list[0]||{}).v||'');
+    const cards=list.map(c=>{
      const on=cur===String(c.v);
      return `<button type="button" class="mm-card-opt${on?' is-on':''}" data-card="${f.k}" data-card-v="${esc(c.v)}"`
       +` aria-pressed="${on?'true':'false'}" title="${esc(c.note||c.label)}">`
@@ -1509,6 +1552,7 @@
     return `<div class="mm-field mm-field-area mm-cards">${fieldLabelHtml(f)}
       <div class="mm-card-row">${cards}</div>
       <input type="hidden" data-field="${f.k}" value="${esc(cur)}">
+      ${list.length?'':'<small class="mm-field-hint">選べる候補をこの端末では読めませんでした。</small>'}
       ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
    }
    /* ---------- いくつでも入切できる札（§9.302） ----------

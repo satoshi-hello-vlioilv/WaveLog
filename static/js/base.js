@@ -1532,6 +1532,80 @@ function formatDuration(ms){if(ms===null||ms===undefined)return '-';const min=Ma
    1箇所**にして、転送・手入力・読み直しが同じ答えを見る。 */
 function measurementDigits(key){return key==='thickness'?3:key==='width'?2:null}
 function fixedMeasurementValue(key,value){const raw=String(value??'').trim(),digits=measurementDigits(key);if(raw===''||digits===null)return raw;const n=Number(raw);return Number.isFinite(n)?n.toFixed(digits):raw}
+/* ---------- 入力値の丸め（§9.305 ①、利用者の指示） ----------
+   「0.5単位切り上げなど、入力値の切り上げ機能を実装してください。
+    導入したい項目は ①ラテラルボー ②テレスコープ ③巻ズレ ④揃いの値。
+    可能であれば他の入力項目についても、汎用的に設定できるように」
+
+   **決まりはマスタが持つ**（測定項目マスタ。刻みと向きだけ）。**行を作らない
+   かぎり丸めない**ので、設定していない現場の入力は1文字も変わらない（§9.132）。
+   **語彙（どの項目・どの向き）はサーバーが答える**（§9.163）——ここは
+   引いて当てるだけで、綴りの一覧を持たない。
+
+   **効かせるのは「打ち終わったとき」だけ**（`settleMeasurementValue`）。
+   保存済みの値を描くとき（`makeMeasureInput`）に当てると、**開いただけで
+   記録が書き換わったように見える**（§9.15。履歴を黙って直さない）。 */
+const MEASURE_ROUND_TTL=5*60*1000;
+let measureRoundRules=null,measureRoundPending=null;
+/* 刻みの小数桁。`0.5`→1、`0.05`→2、`1`→0。**指数表記も読む**
+   （`1e-2`を`String()`すると小数点が無く、素朴に数えると0桁になる）。 */
+function roundUnitDecimals(unit){
+ const t=String(unit);
+ if(/e-/i.test(t)){const n=Number(t.split(/e-/i)[1])||0;const f=(t.split(/e-/i)[0].split('.')[1]||'').length;return n+f}
+ const d=t.split('.')[1];
+ return d?d.length:0;
+}
+/* 丸めそのもの。**段数を出すときに誤差を吸う**——`1.5/0.5`は
+   `3.0000000000000004`なので、素の`Math.ceil`だと**ちょうどの値が1段上がる**
+   （1.5 → 2.0）。段数×刻みも誤差を持つので、刻みの桁で丸め直して返す。 */
+function roundToUnit(n,unit,mode){
+ if(!Number.isFinite(n)||!(unit>0))return n;
+ const q=n/unit,eps=1e-9;
+ const k=mode==='切り捨て'?Math.floor(q+eps)
+        :mode==='四捨五入'?Math.round(q)
+        :Math.ceil(q-eps);
+ return Number((k*unit).toFixed(Math.min(10,roundUnitDecimals(unit)+2)));
+}
+/* いま効いている決まり（`{key:{unit,mode}}`）。**読めなければ丸めない**
+   （fail-open。マスタが読めない端末で入力そのものを止めない）。 */
+function measureRoundRulesNow(){return measureRoundRules||{}}
+function loadMeasureRoundRules(force){
+ if(!force&&measureRoundRules)return Promise.resolve(measureRoundRules);
+ if(measureRoundPending)return measureRoundPending;
+ measureRoundPending=api('/api/measure-item-master').then(r=>{
+  const out={};
+  (r&&r.items||[]).forEach(x=>{
+   if(x&&x.enabled!==false&&x.key&&Number(x.unit)>0)
+    out[x.key]={unit:Number(x.unit),mode:String(x.mode||'切り上げ')};
+  });
+  measureRoundRules=out;measureRoundPending=null;return out;
+ }).catch(()=>{measureRoundRules=measureRoundRules||{};measureRoundPending=null;return measureRoundRules});
+ setTimeout(()=>{measureRoundRules=null},MEASURE_ROUND_TTL);
+ return measureRoundPending;
+}
+function forgetMeasureRoundRules(){measureRoundRules=null;measureRoundPending=null}
+/* 打ち終わった値を決まりどおりに丸める。**空欄と数でないものはそのまま**
+   （打ち間違いを黙って0にしない・§9.114）。 */
+function roundMeasureValue(key,value){
+ const raw=String(value??'').trim();
+ if(raw==='')return raw;
+ const rule=measureRoundRulesNow()[key];
+ if(!rule)return raw;
+ const n=Number(raw);
+ if(!Number.isFinite(n))return raw;
+ /* **刻みの桁でそろえる**——0.5刻みなら`2`ではなく`2.0`。丸めたことが
+    値の形からも読めるし、転送側（`.toFixed(1)`）と食い違わない。 */
+ return roundToUnit(n,rule.unit,rule.mode).toFixed(roundUnitDecimals(rule.unit));
+}
+/* 「丸めてから桁をそろえる」1本。**入力の確定はここを通す**——2つに
+   分けると、丸めが効く欄と効かない欄ができる（§9.233 ③）。 */
+function settleMeasurementValue(key,value){
+ return fixedMeasurementValue(key,roundMeasureValue(key,value));
+}
+window.WL=window.WL||{};
+window.WL.measureRound={rules:measureRoundRulesNow,load:loadMeasureRoundRules,
+ forget:forgetMeasureRoundRules,apply:roundMeasureValue,settle:settleMeasurementValue,
+ toUnit:roundToUnit};
 /* 公差・基準の表示桁は**測定値と同じ**（§9.242 ②）。値だけ2桁にして範囲を
    1桁のままにすると、`1234.55`が`1233.5 ～ 1234.5`の中に見えてしまう
    （実際の判定は生の範囲で行うので、**画面だけが嘘をつく**）。 */

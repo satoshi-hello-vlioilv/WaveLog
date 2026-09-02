@@ -378,6 +378,10 @@ function blankProductRow(){return{productLength:'',wallThickness:'',alignmentCod
    持ったままで、判定はそちらから作り、画面にも「旧 1234」と出す
    （コードを廃止したからといって、記録されたものが読めなくなってはいけない）。 */
 const PRODUCT_EDGE_OK='揃い綺麗';
+/* 丈別データの欄と、測定項目マスタの項目キーの対応（§9.305 ①）。
+   **綴りはサーバーの語彙（`ROUND_TARGETS`）と合わせる**——ここに無い欄は
+   丸めない（対応表に足すことが「その欄も丸められるようにする」ことになる）。 */
+const PRODUCT_ROUND_KEYS={alignmentValue:'alignValue',pitch:'pitch'};
 /* ---------- 切断面等級から出す基準(§9.204、利用者の指示) ----------
    「品質規格の『切断面』の項目の数値を見て、基準を出してください。
      丈毎に判定することになります。
@@ -661,6 +665,17 @@ function renderProductPanel(){
      気にせず1本にまとめる（同じ値なら2度目は何も変わらない）。 */
   el.oninput=apply;
   if(el.tagName==='SELECT')el.onchange=apply;
+  /* 打ち終わったら**丸める**（§9.305 ①、利用者の指示「④揃いの項目のうち、
+     値の入力値」）。決まりは測定項目マスタが持ち、当てるのは
+     `WL.measureRound`の1箇所（§9.163）。**打っている最中は当てない**
+     ——`0.2`を打つ途中の`0.`で丸めると、次の文字が入る前に値が飛ぶ。
+     鍵は測定表の項目名とそろえてある（`alignValue`／`pitch`）。 */
+  if(PRODUCT_ROUND_KEYS[el.dataset.productField])el.onblur=()=>{
+   const key=PRODUCT_ROUND_KEYS[el.dataset.productField];
+   const v=WL.measureRound.apply(key,el.value);
+   if(String(v)===String(el.value))return;
+   el.value=v;apply();
+  };
  });
  body.querySelectorAll('[data-prt-fold]').forEach(btn=>btn.onclick=()=>{
   const i=+btn.dataset.prtFold;
@@ -813,6 +828,10 @@ function renderMeasurement(){
  /* 操業データの入力欄は**設備ごと**なので、開いた時点で用意して値を戻す
     （§9.215）。読めなくても測定は開ける（fail-open）。 */
  if(window.WL&&WL.opData)WL.opData.refresh().catch(()=>{});
+ /* 入力値の丸めの決まり（§9.305 ①）。**読めなくても測定は開ける**
+    （fail-open。読めなければ丸めないだけ）。控えは5分持つので、開くたびに
+    共有へ往復しない。 */
+ if(window.WL&&WL.measureRound)WL.measureRound.load().catch(()=>{});
  setState('IndexedDB読込済み')
  {const mode=S.measure.settings.inputMode||'auto';document.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('active',x.dataset.mode===mode))}
  activateWorkspace(rightLayoutFor($('#measureType').value));
