@@ -71,6 +71,37 @@ let b=null;
    '不可の予定'+plannedNg.length+'件 うち開始あり'+plannedNg.filter(r=>r.start).length+'件');
  rec('作業不可の行は薄く表示して見分けられる',plannedNg.every(r=>r.dim));
 
+ /* ---- (3b) 開始ボタンの文字は1種類（§9.302の追補） ----
+    ボタンを作る場所は2つある——表を描くときと、可否があとから「可」に変わって
+    **足すとき**（`applyWorkableFlags`）。可否は待たずに先に予定を描く作りなので
+    どちらも必ず使われるが、以前は前者が`開始`・後者が`▶ 開始`で食い違っており、
+    **仕掛データが最初の描画に間に合ったかどうかだけで見た目が変わって**いた
+    （押したときの動きは同じなので、合図が嘘をついている・§3）。
+    **「足す」道を自分で通すこと**——最初の描画で出た状態を見るだけの網は、
+    足す側が何を書いていても通る。 */
+ const startLabels=async()=>page.$$eval('.sc-row-start',
+   ns=>ns.map(n=>({t:n.textContent.trim(),title:n.title})));
+ const before=await startLabels();
+ const removed=await page.evaluate(()=>{
+  const b=document.querySelector('.sc-row-start');
+  if(!b)return false;
+  b.remove();return true;
+ });
+ if(removed&&typeof page.evaluate==='function'){
+  await page.evaluate(()=>window.refreshScheduleWorkable&&window.refreshScheduleWorkable(true,true));
+  await page.waitForFunction(n=>document.querySelectorAll('.sc-row-start').length===n,
+    before.length,{timeout:15000}).catch(()=>{});
+ }
+ const after=await startLabels();
+ rec('可否を取り直すと消した開始ボタンが戻る（足す道を通した）',
+   removed&&after.length===before.length,
+   `消す前${before.length}件 / 取り直し後${after.length}件`);
+ const texts=[...new Set(after.map(x=>x.t))],titles=[...new Set(after.map(x=>x.title))];
+ rec('開始ボタンの文字は1種類（描いた行と、あとから足した行で違わない）',
+   after.length>0&&texts.length===1,JSON.stringify(texts));
+ rec('開始ボタンの説明も1種類',
+   after.length>0&&titles.length===1,JSON.stringify(titles));
+
  // ---- (4) 別経路(直接呼び出し)でも開始できない ----
  alertMsg='';
  const blocked=await page.evaluate(()=>{
