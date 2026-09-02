@@ -1985,6 +1985,38 @@
   return RP_PAGE_ROWS_DEFAULT;
  }
  const rpPageRowsStore=v=>rpEnc(v);
+ /* ---------- 紙ぜんたいの余白（§9.308、利用者の指摘） ----------
+    「帳票ブロックマスタの余白詰めはうまくいっていないように見えます。
+      項目間の余白や、項目内の余白も詰める余地があります」
+
+    §9.303 ①の**詰める段は「溢れたときだけ」動く**ので、余っている塊では
+    一度も走らない（実測: どの塊も`--rp-dense`も`rp-pack-*`も持っておらず、
+    器と中身の差は0px）。足りなかったのは**利用者が詰めると言える手立て**で、
+    仕組みそのものは既にある——`--rp-dense`を紙(`.rp-page`)へ与えて
+    **下限を決める**だけにした（掛ける先はCSSが持つ・§9.163）。
+    **既定は`ふつう`＝1**（詰めていない紙の見え方は1pxも変わらない・§9.132）。
+    溢れた塊はこれより**さらに**詰まる（段は今までどおり）。 */
+ const RP_PACK_KEY='__余白__';
+ const RP_PACK_LEVELS=[
+  {v:1,   label:'ふつう',      hint:'今までどおりの余白です'},
+  {v:.6,  label:'詰める',      hint:'項目の上下・表のセル・行送りを6割まで詰めます'},
+  {v:.35, label:'もっと詰める',hint:'限界まで詰めます。文字の大きさは変わりません'},
+ ];
+ function rpPackLevel(){
+  const i=rpNum(RP_PACK_KEY,'count',1);
+  return (i>=1&&i<=RP_PACK_LEVELS.length)?i-1:0;   /* 保存は1始まり（0＝未設定） */
+ }
+ const rpPackDense=()=>RP_PACK_LEVELS[rpPackLevel()].v;
+ const rpPackStore=i=>rpEnc(Math.max(1,Math.min(RP_PACK_LEVELS.length,i+1)));
+ /* 紙へ与える。**`--rp-dense`はCSSが読む1本**なので、塊ごとの段（`rpApplyPack`）は
+    これより下へしか行かない（`Math.min`）——上書きで緩めると、詰めると言った
+    のに緩む塊ができる。 */
+ function rpApplyPaperPack(){
+  const page=$id('reportContent');if(!page)return;
+  const d=rpPackDense();
+  if(d>=1)page.style.removeProperty('--rp-dense');
+  else page.style.setProperty('--rp-dense',String(d));
+ }
  /* 1行のpx。**CSSが紙から計算した値を読む**（`grid-auto-rows`の使用値）
     ——JSで紙のmmからpxを起こすと、表示倍率と紙の向きで必ずずれる。 */
  function rpRowPx(grid){
@@ -3464,8 +3496,11 @@
  ];
  const RP_PACK_CLASSES=['rp-pack-nowrap','rp-pack-share'];
  function rpApplyPack(b,st){
-  if(st.dense===1)b.style.removeProperty('--rp-dense');
-  else b.style.setProperty('--rp-dense',String(st.dense));
+  /* **紙で決めた余白より緩めない**（§9.308）。段の`dense`は1のこともあるので、
+     そのまま入れると「詰める」と言った紙で塊だけが緩む。 */
+  const d=Math.min(st.dense,rpPackDense());
+  if(d>=1)b.style.removeProperty('--rp-dense');
+  else b.style.setProperty('--rp-dense',String(d));
   b.classList.toggle('rp-pack-nowrap',!!st.nowrap);
   b.classList.toggle('rp-pack-share',!!st.share);
  }
@@ -3570,6 +3605,9 @@
   Object.keys(src).forEach(key=>{
    if(key===RP_GRID_KEY){out[key]=rpEnc(rpGrid());return}
    if(key===RP_PAGE_ROWS_KEY){out[key]=rpEnc(rpPageRows());return}
+   /* 余白は新しい形でしか書かれないが、**紙ぜんたいの設定はここに並べる**
+      ——一覧から漏れると、次に読み替えが走ったとき塊の幅として扱われる。 */
+   if(key===RP_PACK_KEY){out[key]=rpPackStore(rpPackLevel());return}
    if(key.startsWith('列:')){out[key]=rpEnc(rpNum(key,'col',40));return}
    if(key.startsWith('行:')){out[key]=rpEnc(rpNum(key,'row',40));return}
    if(key.startsWith('行数:')){out[key]=rpEnc(rpNum(key,'rowspan',30));return}
@@ -3957,6 +3995,12 @@
        +`<b class="rp-seg-x">×</b>`
        +RP_PAGE_ROW_CHOICES.map(v=>`<button type="button" data-rp-prow="${v}" class="${v===rpPageRows()?'is-on':''}"`
         +` title="紙の縦を${v}段で割ります（1マスが紙の1/${v}）">${v}</button>`).join(''))
+    /* **余白は「割り」の隣**（§9.308）——どちらも紙ぜんたいの見え方で、
+       決める順も「何マスに割るか → どれだけ詰めるか」。段が足りない塊は
+       これより**さらに**詰まる（今までどおり）。 */
+    +seg('余白','紙ぜんたいの余白。項目の上下・表のセル・行送りが詰まります（文字の大きさは変わりません）',
+       RP_PACK_LEVELS.map((x,i)=>`<button type="button" data-rp-pack="${i}" class="${i===rpPackLevel()?'is-on':''}"`
+        +` title="${esc(x.hint)}">${esc(x.label)}</button>`).join(''))
     +`<span class="rp-bar-state">`
       +`<span class="rp-page-fit" id="rpPageFit"></span>`
       +(over?`<b class="rp-chip is-bad" title="場所が重なっている塊です。「並べ直す」で整えられます">重なり ${over}</b>`
@@ -3981,6 +4025,10 @@
    });
    info.querySelectorAll('[data-rp-prow]').forEach(b=>b.onclick=()=>{
     rpStage({widths:{...rpLayoutNow().widths,[RP_PAGE_ROWS_KEY]:rpPageRowsStore(Number(b.dataset.rpProw))}});
+    updateArrangeBar();
+   });
+   info.querySelectorAll('[data-rp-pack]').forEach(b=>b.onclick=()=>{
+    rpStage({widths:{...rpLayoutNow().widths,[RP_PACK_KEY]:rpPackStore(Number(b.dataset.rpPack))}});
     updateArrangeBar();
    });
    rpBindEqPick(info);
@@ -4376,11 +4424,16 @@
  /* 1枚ぶんの割り付け。**設備を差し替えて呼べるように切り出してある**
     （§9.239 ③）——`rpFitAll()`は今までどおり画面ぶんをまとめて回す。 */
  function rpFitPage(h){
+  try{rpApplyPaperPack()}catch(e){}
   try{rpFitRows(h)}catch(e){console.warn('帳票の行の割り付けに失敗',e)}
   try{rpFitBlockBodies(h)}catch(e){console.warn('帳票の中身の合わせ込みに失敗',e)}
   try{rpFreeCells(h)}catch(e){console.warn('帳票の空きマスの計算に失敗',e)}
  }
  function rpFitAll(){
+  /* **紙の余白は行を測る前に与える**（§9.308）——あとから与えると、
+     `rpFitRows()`が詰める前の中身で行数を数えてしまい、詰めたぶんが
+     そのまま空きになる（詰めたのに紙が縮まない、という見え方）。 */
+  try{rpApplyPaperPack()}catch(e){}
   /* **測る前に片付ける**（§9.281 の追補。理由は`rpMarkOverflow`と同じ）。 */
   rpClearSheets($id('reportContent'));
   document.querySelectorAll('#reportContent,#reportBulkPrintArea .rp-page').forEach(h=>{
