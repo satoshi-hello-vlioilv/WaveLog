@@ -2041,26 +2041,93 @@
     **下限を決める**だけにした（掛ける先はCSSが持つ・§9.163）。
     **既定は`ふつう`＝1**（詰めていない紙の見え方は1pxも変わらない・§9.132）。
     溢れた塊はこれより**さらに**詰まる（段は今までどおり）。 */
- const RP_PACK_KEY='__余白__';
- const RP_PACK_LEVELS=[
-  {v:1,   label:'ふつう',      hint:'今までどおりの余白です'},
-  {v:.6,  label:'詰める',      hint:'項目の上下・表のセル・行送りを6割まで詰めます'},
-  {v:.35, label:'もっと詰める',hint:'限界まで詰めます。文字の大きさは変わりません'},
+ /* ---------- 余白は「横」と「縦」の別の軸（§9.311 C、利用者の指示） ----------
+    「縦横余白をコントロールする部分は分けたいです。また、横をメインで詰めたい
+      ところ縦ばっかりでした」
+    「『余白を詰める』＝**有効な文字の表示領域を増やす**と言い換えてもよい…
+      同じ横幅のうち、**文字が折り返している部分**に特に注目する必要があります…
+      セル内の余白、表の枠線に該当する部分の余白や、その枠線自体の太さ…
+      **セル外の項目間の余白**が目立つ作りになっていてそこが詰まっていかない…
+      「板厚」「板幅」と書いてある部分の**ラベル内の空白**も目立ちます…
+      一番左側に表示しているロット№が**文字列折り返している**ので、そこを
+      **1行で表示するような状態**に持っていきたいです」
+
+    §9.308の`--rp-dense`は1つで両方を動かしていたが、**打つ手が正反対**
+    （§9.294 ②で作業予定表について一度出した結論と同じ）——**縦**を詰めても
+    行が薄くなるだけだが、**横**を詰めると空いたぶんが**文字の表示領域**へ回り、
+    折り返していた文字列が1行に収まる。1つの軸だと「横を詰めたくて押したら
+    行間ばかり詰まった」になる。
+    `--rp-dense-x`／`--rp-dense-y`に分け、**掛ける先はCSSが持つ**（§9.163）。
+    旧`__余白__`は**1度だけ両方へ移し、鍵は捨てる**（§9.294 ②／§9.132。
+    わざわざ選んだ人の見え方を変えず、触っていない紙には新しい既定が届く）。
+
+    **横は「余白を細くする」だけでは足りない**——表（`.rp-grid`）の列は
+    `1fr`＝等分なので、余っている列が幅を抱えたまま詰まった列だけが折り返す。
+    詰める段では**中身なりの列**へ切り替えて余力を要るところへ回す
+    （§9.303 ①④の`rp-pack-share`と同じ考え方を`.rp-grid`へ広げたもの）。
+    **合格の物差しは「折り返しが減ること」**（利用者の言葉「改行している状況で
+    あれば余白の最適化はできていない」）——札が並ぶことではない。 */
+ const RP_PACK_KEY='__余白__';                  /* 旧・1つで両方（移行用に読むだけ） */
+ const RP_PACK_X_KEY='__余白横__';
+ const RP_PACK_Y_KEY='__余白縦__';
+ /* 横の段。**`share`＝列を中身なりにする**（等分をやめる）／**`thin`＝枠線を細く**。 */
+ const RP_PACK_X_LEVELS=[
+  {v:1,   share:false,thin:false,label:'ふつう',
+   hint:'今までどおりの左右の余白です'},
+  {v:.6,  share:true, thin:false,label:'詰める',
+   hint:'項目間・セル内・ラベルの左右を6割へ。表の列を中身なりにして、余っている列の幅を詰まった列へ回します'},
+  {v:.25, share:true, thin:true, label:'もっと詰める',
+   hint:'左右を限界まで詰め、表の枠線も細くします。文字の大きさは変わりません'},
  ];
- function rpPackLevel(){
+ const RP_PACK_Y_LEVELS=[
+  {v:1,   label:'ふつう',      hint:'今までどおりの上下の余白・行送りです'},
+  {v:.6,  label:'詰める',      hint:'項目の上下・表のセル・行送りを6割まで詰めます'},
+  {v:.35, label:'もっと詰める',hint:'上下を限界まで詰めます。文字の大きさは変わりません'},
+ ];
+ /* 旧`__余白__`の段（1始まり。0＝未設定）。**読むだけ**——書き戻さない。
+    `rpNum`の第3引数は**古い形の単位**（既定値ではない）ので1。 */
+ function rpPackLegacyLevel(){
   const i=rpNum(RP_PACK_KEY,'count',1);
-  return (i>=1&&i<=RP_PACK_LEVELS.length)?i-1:0;   /* 保存は1始まり（0＝未設定） */
+  return (i>=1&&i<=RP_PACK_Y_LEVELS.length)?i-1:-1;
  }
- const rpPackDense=()=>RP_PACK_LEVELS[rpPackLevel()].v;
- const rpPackStore=i=>rpEnc(Math.max(1,Math.min(RP_PACK_LEVELS.length,i+1)));
- /* 紙へ与える。**`--rp-dense`はCSSが読む1本**なので、塊ごとの段（`rpApplyPack`）は
-    これより下へしか行かない（`Math.min`）——上書きで緩めると、詰めると言った
-    のに緩む塊ができる。 */
+ function rpPackLevelOf(key,levels){
+  const i=rpNum(key,'count',1);
+  if(i>=1&&i<=levels.length)return i-1;
+  /* まだ分けていない紙は、旧`__余白__`をそのまま両方の段として読む。 */
+  const old=rpPackLegacyLevel();
+  return old>=0?Math.min(old,levels.length-1):0;
+ }
+ const rpPackXLevel=()=>rpPackLevelOf(RP_PACK_X_KEY,RP_PACK_X_LEVELS);
+ const rpPackYLevel=()=>rpPackLevelOf(RP_PACK_Y_KEY,RP_PACK_Y_LEVELS);
+ const rpPackX=()=>RP_PACK_X_LEVELS[rpPackXLevel()];
+ const rpPackY=()=>RP_PACK_Y_LEVELS[rpPackYLevel()];
+ /* 塊ごとの段（`rpApplyPack`）が下限として使う。**縦のほうを使う**——
+    あちらは「高さが入らないので詰める」ための段なので、横の設定と混ぜない。 */
+ const rpPackDense=()=>rpPackY().v;
+ const rpPackStore=(i,levels)=>rpEnc(Math.max(1,Math.min(levels.length,i+1)));
+ /* 紙へ与える。**CSSが読むのは`--rp-dense-x`／`--rp-dense-y`の2本**なので、
+    塊ごとの段（`rpApplyPack`）はこれより下へしか行かない（`Math.min`）
+    ——上書きで緩めると、詰めると言ったのに緩む塊ができる。 */
  function rpApplyPaperPack(){
   const page=$id('reportContent');if(!page)return;
-  const d=rpPackDense();
-  if(d>=1)page.style.removeProperty('--rp-dense');
-  else page.style.setProperty('--rp-dense',String(d));
+  const x=rpPackX(),y=rpPackY();
+  const set=(name,v)=>{if(v>=1)page.style.removeProperty(name);
+                       else page.style.setProperty(name,String(v))};
+  set('--rp-dense-x',x.v);
+  set('--rp-dense-y',y.v);
+  /* **印はCSSが読む**（掛け算はCSSが持つ・§9.163）。`share`＝列を中身なりに、
+     `thin`＝表の枠線を細く。 */
+  page.classList.toggle('rp-packx-share',!!x.share);
+  page.classList.toggle('rp-packx-thin',!!x.thin);
+ }
+ /* 巡回ボタン1枚（§9.247 ①）。**いま選んでいるものは文字で出す**（§3）——
+    畳んだだけでは「思い出させない」に反する。次の値と何番目かは`title`。 */
+ function rpPackCycleHtml(axis,name,levels,now){
+  const cur=levels[now],next=levels[(now+1)%levels.length];
+  return `<button type="button" class="rp-cycle" data-rp-pack="${axis}"`
+   +` title="${esc(name)}の余白: ${esc(cur.label)}（${now+1}/${levels.length}）`
+   +`&#10;${esc(cur.hint)}&#10;押すと「${esc(next.label)}」になります">`
+   +`<i>${esc(name)}</i>${esc(cur.label)}</button>`;
  }
  /* 1行のpx。**CSSが紙から計算した値を読む**（`grid-auto-rows`の使用値）
     ——JSで紙のmmからpxを起こすと、表示倍率と紙の向きで必ずずれる。 */
@@ -2112,6 +2179,15 @@
     変わらない**——以前は「絶対の行数」で持っていたので、段数を12から24へ
     変えると全部の塊が紙の半分の高さになっていた。 */
  const rpRowsStore=v=>rpEnc(Math.max(1,Math.min(rpRowCapBase(),Math.round(v))));
+ /* **マスタに書いてある高さか**（§9.311 ④）。`rpRows()`は**コードの既定**
+    （`rpBlockOf(k).rows`。ラベル貼付スペースのような枠だけの塊が持つ・§9.174）
+    や旧いpxの高さも答えるので、「書き込んでよいか」の判定には使えない
+    ——既定で立っている塊にも書いてしまい、**そのときの実測の高さが既定の
+    代わりに焼き付く**（利用者の報告「この余白を詰めるボタンを押すと、また
+    ブロックのサイズが勝手に変わる」の実体。実測: 押しただけで
+    `行数:ラベル貼付スペース`が0件→1件）。書き戻してよいのは**利用者が
+    自分で高さを決めた塊だけ**。 */
+ const rpRowsSet=k=>rpNum(rpRowsKey(k),'rowspan',30)>0;
  function rpRows(k){
   const stored=rpNum(rpRowsKey(k),'rowspan',30);
   const toNow=v=>Math.max(1,Math.min(rpRowCap(),Math.round(v*rpPageRows()/RP_ROW_BASE)));
@@ -3244,11 +3320,18 @@
      動き、その隙間がマスタへ焼き付いた）。外した状態＝刷り上がりの並び
      そのものなので、**測り終えたら必ず戻すこと**（`finally`）。 */
   const ghosts=[...grid.querySelectorAll('[data-rp-block].is-empty')];
-  /* **中身なしの塊は「外す前」に測る**——外したまま測ると矩形が0になり、
-     紙の左上へ1マスに潰れて書き下ろされる。書き下ろさない（位置を持たせない）
-     形も試したが、そうすると描くたびに空いているマスを探して紙の下へ伸び、
-     **刷り上がりがA4を超えた**（実測 210×336.7mm）。中身なしの塊にも
-     いま見えている場所をそのまま持たせるのが正しい。 */
+  const ghostSet=new Set(ghosts);
+  /* **中身なしの塊から借りるのは「大きさ」だけ**（§9.311 A）。伏せたまま
+     測ると矩形が0になり紙の左上へ1マスに潰れるので、大きさは伏せる前に
+     控える。**ただし「場所」は借りないこと**——控えた矩形は
+     *中身なしの塊が流れに居る並び*（画面）のもので、他の塊は
+     *伏せた並び*（刷り上がり）で測る。**2つの並びを混ぜると重なる**
+     （実測: `板厚の測定データ`と`作業時間`が同じマス`1,21`に書き下ろされた。
+     利用者の報告「D&Dで位置ずれがかなりひどくなりました」の実体で、
+     重なった2枚のうち下が掴めなくなる）。
+     場所は**伏せた並びの空いているマス**から探す（下の`later`）。
+     **位置を持たせない形は採らない**——描くたびに空きを探して紙の下へ伸び、
+     刷り上がりがA4を超える（§9.310。実測 210×336.7mm）。 */
   const ghostRect=new Map(ghosts.map(el=>[el,el.getBoundingClientRect()]));
   /* **伏せるのは`hidden`属性で**（インラインの`style.display`を書かない・
      `tests/test_csslint.py`）。`[hidden]{display:none}`はutilityレイヤなので
@@ -3260,14 +3343,14 @@
   const gr=grid.getBoundingClientRect();
   if(!(colW>0)||!(rowPx>0))return false;
   const wid={...rpLayoutNow().widths};
-  els.forEach(el=>{
-   const k=el.dataset.rpBlock,rr=ghostRect.get(el)||el.getBoundingClientRect();
-   const r={left:(rr.left-gr.left)/sc,top:(rr.top-gr.top)/sc,
-            width:rr.width/sc,height:rr.height/sc};
-   const col=Math.max(1,Math.min(cols,Math.round(r.left/(colW+gapX))+1));
-   const row=Math.max(1,Math.min(rpRowCap(),Math.round(r.top/(rowPx+gapY))+1));
-   const span=Math.max(1,Math.min(cols-col+1,Math.round((r.width+gapX)/(colW+gapX))));
-   const rows=Math.max(1,Math.min(rpRowCap(),Math.round((r.height+gapY)/(rowPx+gapY))));
+  /* 埋まったマス。**中身なしの塊を置く場所を探すのに使う**ので、
+     `rpFits()`と同じ`行:列`の形で持つ（判定を2通り書かない・§9.163）。 */
+  const used=new Set();
+  const mark=(col,row,span,rows)=>{
+   for(let r=0;r<rows;r++)for(let c=0;c<span;c++)used.add((row+r)+':'+(col+c));
+  };
+  const later=[];
+  const put=(k,col,row,span,rows)=>{
    wid[rpColKey(k)]=rpColStore(rpColToBase(col));
    wid[rpRowPosKey(k)]=rpRowStore(rpRowToBase(row));
    wid[k]=rpSpanStore(rpSpanFromGrid(span));
@@ -3283,7 +3366,37 @@
       ——原因に辿り着きにくいのはこのため。
       流れ直しを止めるのに要るのは位置（`列:`／`行:`）だけ。高さは
       `rpFitRows()`が毎回中身から入れ直す。 */
-   if(rpRows(k))wid[rpRowsKey(k)]=rpRowsStore(rpRowsFromGrid(rows));
+   if(rpRowsSet(k))wid[rpRowsKey(k)]=rpRowsStore(rpRowsFromGrid(rows));
+   mark(col,row,span,rows);
+  };
+  /* 大きさは矩形から。**中身なしの塊だけ大きさを控えから取る**（伏せてある）。 */
+  const sizeOf=el=>{
+   const rr=(ghostSet.has(el)&&ghostRect.get(el))||el.getBoundingClientRect();
+   return {left:(rr.left-gr.left)/sc,top:(rr.top-gr.top)/sc,
+           width:rr.width/sc,height:rr.height/sc};
+  };
+  els.forEach(el=>{
+   const k=el.dataset.rpBlock,r=sizeOf(el);
+   const span=Math.max(1,Math.min(cols,Math.round((r.width+gapX)/(colW+gapX))));
+   const rows=Math.max(1,Math.min(rpRowCap(),Math.round((r.height+gapY)/(rowPx+gapY))));
+   if(ghostSet.has(el)){later.push({k,span,rows});return}
+   const col=Math.max(1,Math.min(cols,Math.round(r.left/(colW+gapX))+1));
+   const row=Math.max(1,Math.min(rpRowCap(),Math.round(r.top/(rowPx+gapY))+1));
+   put(k,col,row,Math.min(span,cols-col+1),rows);
+  });
+  /* **中身なしの塊は、刷り上がりの並びの空いているマスへ置く**（§9.311 A）。
+     画面での場所をそのまま持たせると、他の塊（伏せた並びで測った）と
+     重なる。上から左へ順に最初に入るところ——`rpFits()`を通すので
+     「入るかどうか」の判定は1箇所のまま（§9.163）。 */
+  later.forEach(({k,span,rows})=>{
+   const cap=rpRowCap();
+   let col=1,row=1,found=false;
+   for(let r=1;r+rows-1<=cap&&!found;r++){
+    for(let c=1;c+span-1<=cols;c++){
+     if(rpFits(c,r,span,rows,used,cap)){col=c;row=r;found=true;break}
+    }
+   }
+   put(k,col,row,Math.min(span,cols-col+1),rows);
   });
   /* **書き下ろしは保存しない**（§9.303 ③）——利用者が触っていないので、
      開いて閉じただけで紙の設定が確定してしまう。次に何か触った時点で、
@@ -3652,7 +3765,9 @@
    if(key===RP_PAGE_ROWS_KEY){out[key]=rpEnc(rpPageRows());return}
    /* 余白は新しい形でしか書かれないが、**紙ぜんたいの設定はここに並べる**
       ——一覧から漏れると、次に読み替えが走ったとき塊の幅として扱われる。 */
-   if(key===RP_PACK_KEY){out[key]=rpPackStore(rpPackLevel());return}
+   if(key===RP_PACK_KEY){out[key]=rpEnc(0);return}   /* 旧鍵は捨てる（§9.311 C） */
+   if(key===RP_PACK_X_KEY){out[key]=rpPackStore(rpPackXLevel(),RP_PACK_X_LEVELS);return}
+   if(key===RP_PACK_Y_KEY){out[key]=rpPackStore(rpPackYLevel(),RP_PACK_Y_LEVELS);return}
    if(key.startsWith('列:')){out[key]=rpEnc(rpNum(key,'col',40));return}
    if(key.startsWith('行:')){out[key]=rpEnc(rpNum(key,'row',40));return}
    if(key.startsWith('行数:')){out[key]=rpEnc(rpNum(key,'rowspan',30));return}
@@ -3878,7 +3993,7 @@
       場所を詰めるだけの操作なので、ここで行数を書くと**押しただけで
       全部の塊の高さが固定される**（そのときの見た目のまま凍り、以降
       中身が増えても伸びない）。高さを決めるのは縁を引いたときだけ。 */
-   if(rpRows(k))wid[rpRowsKey(k)]=rpRowsStore(rpRowsFromGrid(rows));
+   if(rpRowsSet(k))wid[rpRowsKey(k)]=rpRowsStore(rpRowsFromGrid(rows));
   });
   rpStage({widths:wid});
   rpSay('左上から詰め直しました。');
@@ -4043,9 +4158,13 @@
     /* **余白は「割り」の隣**（§9.308）——どちらも紙ぜんたいの見え方で、
        決める順も「何マスに割るか → どれだけ詰めるか」。段が足りない塊は
        これより**さらに**詰まる（今までどおり）。 */
-    +seg('余白','紙ぜんたいの余白。項目の上下・表のセル・行送りが詰まります（文字の大きさは変わりません）',
-       RP_PACK_LEVELS.map((x,i)=>`<button type="button" data-rp-pack="${i}" class="${i===rpPackLevel()?'is-on':''}"`
-        +` title="${esc(x.hint)}">${esc(x.label)}</button>`).join(''))
+    /* **余白は横と縦の2つの巡回ボタン**（§9.311 C／D。利用者の指示
+       「無駄にスペースを使っている部分は節約してすっきりシンプルに」）——
+       3段×2軸を札で並べると6個になる。**押すたびに次へ進み、いま選んで
+       いるものをボタンの文字が言う**（§9.247 ①の`切替`と同じ作法）。 */
+    +seg('余白','紙ぜんたいの余白。横は文字の表示領域が広がり、縦は行が薄くなります（文字の大きさは変わりません）',
+       rpPackCycleHtml('x','横',RP_PACK_X_LEVELS,rpPackXLevel())
+      +rpPackCycleHtml('y','縦',RP_PACK_Y_LEVELS,rpPackYLevel()))
     +`<span class="rp-bar-state">`
       +`<span class="rp-page-fit" id="rpPageFit"></span>`
       +(over?`<b class="rp-chip is-bad" title="場所が重なっている塊です。「並べ直す」で整えられます">重なり ${over}</b>`
@@ -4072,8 +4191,17 @@
     rpStage({widths:{...rpLayoutNow().widths,[RP_PAGE_ROWS_KEY]:rpPageRowsStore(Number(b.dataset.rpProw))}});
     updateArrangeBar();
    });
+   /* **押すたびに次の段へ**（一巡する）。**両方の鍵を必ず書き、旧鍵は捨てる**
+      ——片方だけ書くと、もう片方が旧`__余白__`を読み続けて食い違う（§9.294 ②）。 */
    info.querySelectorAll('[data-rp-pack]').forEach(b=>b.onclick=()=>{
-    rpStage({widths:{...rpLayoutNow().widths,[RP_PACK_KEY]:rpPackStore(Number(b.dataset.rpPack))}});
+    const ax=b.dataset.rpPack;
+    const lv=ax==='x'?RP_PACK_X_LEVELS:RP_PACK_Y_LEVELS;
+    const now=ax==='x'?rpPackXLevel():rpPackYLevel();
+    const next=(now+1)%lv.length;
+    rpStage({widths:{...rpLayoutNow().widths,
+      [RP_PACK_KEY]:rpEnc(0),
+      [RP_PACK_X_KEY]:rpPackStore(ax==='x'?next:rpPackXLevel(),RP_PACK_X_LEVELS),
+      [RP_PACK_Y_KEY]:rpPackStore(ax==='y'?next:rpPackYLevel(),RP_PACK_Y_LEVELS)}});
     updateArrangeBar();
    });
    rpBindEqPick(info);

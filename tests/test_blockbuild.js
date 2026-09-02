@@ -180,11 +180,12 @@ let b=null,page=null;
    const w=document.querySelector('.fb-rows');
    return {格子:getComputedStyle(w).display,
      列:getComputedStyle(w).gridTemplateColumns.split(' ').length,
-     つまみ:document.querySelectorAll('.fb-row .fb-spans').length,
-     列ボタン:document.querySelectorAll('.fb-cols [data-fb-cols]').length};
+     つまみ:document.querySelectorAll('.fb-row .fb-step').length,
+     列ボタン:document.querySelectorAll('.fb-cols [data-fb-cols-step]').length,
+     列数:parseInt((document.querySelector('.fb-cols-val')||{}).textContent||'0',10)||0};
   });
   rec('「紙での並び」はマトリクスで出る',grid.格子==='grid',grid.格子);
-  rec('各マスに「横に何マス使うか」のつまみが付く',grid.つまみ>0,String(grid.つまみ));
+  rec('各マスに「横／縦に何マス使うか」のつまみが付く',grid.つまみ>0,String(grid.つまみ));
   /* §9.255 ②／§9.277 列数はサーバーが受ける上限まで。**盤で選べない列数を
      紙が受け入れる状態を作らない**（片方だけ直すとそうなる）——数を書き写さず
      サーバーの答え（`contentColsMax`）と突き合わせる（§9.163）。
@@ -192,26 +193,113 @@ let b=null,page=null;
      盤がそれ未満だと「表に組む」で組んだ形が黙って丸められる（§9.277）。 */
   const colsMax=await page.evaluate(async()=>{
    const d=await api('/api/report-block-master?equipment=');return d.contentColsMax});
+  /* §9.311 E 札を並べるのをやめたので、**押して行ける上限**で見る
+     （ボタンの数を数える網は、畳んだ瞬間に「上限が2になった」と読む）。 */
+  const colsTop=await page.evaluate(async()=>{
+   const val=()=>parseInt((document.querySelector('.fb-cols-val')||{}).textContent||'0',10)||0;
+   for(let i=0;i<40;i++){
+    const b=document.querySelector('.fb-cols [data-fb-cols-step="1"]');
+    if(!b||b.disabled)break;
+    b.click();await new Promise(r=>setTimeout(r,40));
+   }
+   return val();
+  });
   rec('列数はサーバーが受ける上限まで選べる（盤と紙で同じ数）',
-      grid.列ボタン===colsMax&&colsMax>=12,grid.列ボタン+' / '+colsMax);
+      colsTop===colsMax&&colsMax>=12,colsTop+' / '+colsMax);
+  rec('§9.311 E 列数のボタンは「− ＋」の2つだけ（数は1つ出る）',
+      grid.列ボタン===2&&grid.列数>0,JSON.stringify({ボタン:grid.列ボタン,数:grid.列数}));
   /* 列数を変えると**枠のほうも変わる**（設定と見た目が別々に動かない）。 */
-  await page.click('.fb-cols [data-fb-cols="3"]');
+  /* §9.311 E 列数は「− 数 ＋」の1つになった（利用者の指示「決めた数値1つが
+     見えればよい」）。3列になるまで押す。 */
+  for(let i=0;i<12;i++){
+   const now=await page.evaluate(()=>parseInt((document.querySelector('.fb-cols-val')||{}).textContent||'0',10)||0);
+   if(now===3)break;
+   const ok=await page.evaluate(d=>{
+    const b=document.querySelector(`.fb-cols [data-fb-cols-step="${d}"]`);
+    if(!b||b.disabled)return false;b.click();return true;
+   },now<3?'1':'-1');
+   if(!ok)break;
+   await page.waitForTimeout(120);
+  }
   await page.waitForTimeout(200);
   const c3=await page.evaluate(()=>({
    列:getComputedStyle(document.querySelector('.fb-rows')).gridTemplateColumns.split(' ').length,
    欄:document.querySelector('[data-field="cols"]').value,
-   /* 横のつまみは**1つ目の群**（2つ目は縦）。混ぜて数えると、軸が
-      増えた時点で落ちる（§9.248 ④で3本まとめて落ちたのと同じ形）。 */
-   つまみ:document.querySelectorAll('.fb-row:first-child .fb-spans:nth-of-type(1) button').length,
-   縦つまみ:document.querySelectorAll('.fb-row:first-child .fb-spans:nth-of-type(2) button').length}));
+   /* §9.311 D 札を並べるのをやめたので、**押して行ける上限**で見る
+      （ボタンの数を数える網は、畳んだ瞬間に「選べるのは2つ」と読む）。
+      横は`data-fb-span`、縦は`data-fb-rows`で見分ける（混ぜない）。 */
+   つまみ:0,縦つまみ:0}));
+  const topOf=async(kind,attr)=>await page.evaluate(async([k,a])=>{
+   const val=()=>{const e=document.querySelector(
+     `.fb-row:first-child .fb-step[data-fb-step-kind="${k}"] .fb-step-val`);
+    return e?(parseInt(e.textContent,10)||0):0};
+   for(let i=0;i<20;i++){
+    const bs=document.querySelectorAll(
+      `.fb-row:first-child .fb-step[data-fb-step-kind="${k}"] [data-fb-${a}]`);
+    const b=bs[1];                       /* [0]=− / [1]=＋ */
+    if(!b||b.disabled)break;
+    b.click();await new Promise(r=>setTimeout(r,60));
+   }
+   return val();
+  },[kind,attr]);
+  /* **測ったら戻すこと**——上限まで押した状態を残すと、以降の節が
+     「縦4マス」から始まって`|2`の確認が`|2x4`になる（置き土産・§9.121）。 */
+  const stepTo=async(kind,attr,want)=>{
+   await page.evaluate(async([k,a,w])=>{
+    for(let i=0;i<24;i++){
+     const e=document.querySelector(
+       `.fb-row:first-child .fb-step[data-fb-step-kind="${k}"] .fb-step-val`);
+     const v=e?(parseInt(e.textContent,10)||0):0;
+     if(v===w)return;
+     const bs=document.querySelectorAll(
+       `.fb-row:first-child .fb-step[data-fb-step-kind="${k}"] [data-fb-${a}]`);
+     const b=bs[v<w?1:0];                /* [0]=− / [1]=＋ */
+     if(!b||b.disabled)return;
+     b.click();await new Promise(r=>setTimeout(r,60));
+    }
+   },[kind,attr,want]);
+   await page.waitForTimeout(150);
+  };
+  c3.つまみ=await topOf('span','span');
+  c3.縦つまみ=await topOf('rows','rows');
+  await stepTo('rows','rows',1);
   rec('列数を変えると枠も変わる',c3.列===3,String(c3.列));
   /* **同じ数を2箇所に持たない**（§CLAUDE 8）——「内訳の列数」の欄が持ち主。 */
   rec('列数は「内訳の列数」の欄が持つ',c3.欄==='3',JSON.stringify(c3.欄));
-  rec('横のマス数の選択肢は列数まで',c3.つまみ===3,String(c3.つまみ));
-  rec('縦のマス数も選べる（§9.255 ②）',c3.縦つまみ>=2,String(c3.縦つまみ));
+  rec('横のマス数は列数まで増やせる',c3.つまみ===3,String(c3.つまみ));
+  /* ---- §9.311 D/E 盤のボタンも「− 数 ＋」の1つへ（利用者の指示
+     「各項目のサイズを決めるボタンは小さくなった時に見切れる」「列数を指定
+      する部分もボタンでたくさんあるので…決めた数値1つが見えればよい」）。
+     **数える対象は「押せるボタンの数」**——以前は列数12枚＋横12枚＋縦4枚を
+     1マスの下段に並べており、列を増やすと折り返して下のマスへ重なっていた。 */
+  const compact=await page.evaluate(()=>{
+   const row=document.querySelector('.fb-row:first-child');
+   const num=sel=>{const e=document.querySelector(sel);
+     return e?(parseInt(e.textContent,10)||0):-1};
+   return {
+    列ボタン:document.querySelectorAll('.fb-cols button').length,
+    列数字:num('.fb-cols-val'),
+    マスボタン:row?row.querySelectorAll('.fb-step button').length:-1,
+    横数字:num('.fb-row:first-child .fb-step[data-fb-step-kind="span"] .fb-step-val'),
+    縦数字:num('.fb-row:first-child .fb-step[data-fb-step-kind="rows"] .fb-step-val'),
+    /* 端では押せなくして理由を書く（§4）。いま横は上限なので＋が止まる。 */
+    上端:(()=>{const bs=document.querySelectorAll(
+      '.fb-row:first-child .fb-step[data-fb-step-kind="span"] [data-fb-span]');
+      const b=bs[1];return {止:!!(b&&b.disabled),理由:(b&&b.title)||''}})()};
+  });
+  rec('§9.311 D 列数は「− 数 ＋」の3つだけ（12枚並べない）',
+      compact.列ボタン===2&&compact.列数字===3,JSON.stringify(compact));
+  rec('§9.311 D マス数も横・縦それぞれ「− 数 ＋」だけ（16枚並べない）',
+      compact.マスボタン===4&&compact.横数字===3&&compact.縦数字===1,
+      JSON.stringify(compact));
+  rec('§9.311 D 端では押せなくして理由を書く（§4）',
+      compact.上端.止&&/これ以上/.test(compact.上端.理由),
+      JSON.stringify(compact.上端));
+  rec('縦のマス数も増やせる（§9.255 ②）',c3.縦つまみ>=2,String(c3.縦つまみ));
   /* 1つ目の項目を「横2マス」にする。 */
-  await page.click('.fb-row:first-child .fb-spans button:nth-child(2)');
-  await page.waitForTimeout(200);
+  /* 押せない（上限）ことがあるので`evaluate`で押す。上限まで押したあとなので
+     まず1つ戻して2マスにする。 */
+  await stepTo('span','span',2);
   const spanned=await page.evaluate(()=>({
    値:document.querySelector('[data-fb] input[data-field="content"]').value,
    幅:document.querySelector('.fb-row:first-child').style.gridColumn}));
@@ -222,8 +310,8 @@ let b=null,page=null;
      「『紙での並び』の部分は単純に何列何行だけでなく、データ内もグリッドに
       対応する形で細かく調整できるようにしてください」
      **「つまみが在る」だけを見ない**——保存の形と枠の両方が変わることまで。 */
-  await page.click('.fb-row:first-child .fb-spans:nth-of-type(2) button:nth-child(3)');
-  await page.waitForTimeout(200);
+  /* 縦は2回押して3マスへ（1回で1つ進む）。 */
+  await stepTo('rows','rows',3);
   const tall=await page.evaluate(()=>({
    値:document.querySelector('[data-fb] input[data-field="content"]').value.split('\n')[0],
    幅:document.querySelector('.fb-row:first-child').style.gridColumn,
@@ -235,8 +323,7 @@ let b=null,page=null;
   rec('空いたマスは後ろの項目で詰める（紙と同じdense）',
       /dense/.test(tall.詰め),tall.詰め);
   /* 縦1へ戻したら`x`も消える（触っていない塊まで形が変わらないように）。 */
-  await page.click('.fb-row:first-child .fb-spans:nth-of-type(2) button:nth-child(1)');
-  await page.waitForTimeout(200);
+  await stepTo('rows','rows',1);
   const back=await page.evaluate(()=>
    document.querySelector('[data-fb] input[data-field="content"]').value.split('\n')[0]);
   rec('縦1へ戻すと「x」は書かない（|2のまま）',/\|2$/.test(back),JSON.stringify(back));
