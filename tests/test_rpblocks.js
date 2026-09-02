@@ -834,7 +834,7 @@ const endArrange=async page=>{
     return{px:parseFloat(cs.paddingLeft),py:parseFloat(cs.paddingTop),
       fs:parseFloat(cs.fontSize),lh:parseFloat(cs.lineHeight),
       fit:Number(fit&&fit.style.getPropertyValue('--rp-fit'))||1,
-      dense:Number(fit&&fit.style.getPropertyValue('--rp-dense'))||1,
+      dense:Number(fit&&fit.style.getPropertyValue('--rp-pack'))||1,
       /* 段の印（§9.303 ①）。どこまで進んだかを見る。 */
       pack:[...(fit?fit.classList:[])].filter(c=>c.indexOf('rp-pack-')===0).sort(),
       tl:getComputedStyle(t).tableLayout};
@@ -859,10 +859,10 @@ const endArrange=async page=>{
    rec('詰めても文字サイズ（font-size）は変えない',
        !!N&&N.fs===W.fs,`広${W&&W.fs} / 狭${N&&N.fs}`);
    /* ---- 詰めを止めると縮む倍率が下がる（＝文字が小さくなる） ----
-      inline の `--rp-dense` を `!important` で打ち消してから測り直す。
+      inline の `--rp-pack`（塊ごとの段・§9.313）を `!important` で打ち消してから測り直す。
       **A/Bで見ること**——「狭いと縮む」だけを見る網は、詰めが1pxも
       効いていない実装でも通る。 */
-   await page.addStyleTag({content:'.rp-block-fit{--rp-dense:1 !important}'});
+   await page.addStyleTag({content:'.rp-block-fit{--rp-pack:1 !important}'});
    await page.evaluate(()=>WL.reportFit());
    await settle(page);await page.waitForTimeout(150);
    const OFF=await look();
@@ -890,7 +890,7 @@ const endArrange=async page=>{
       ========================================================== */
    await page.evaluate(()=>{
     document.querySelectorAll('style').forEach(s=>{
-     if((s.textContent||'').indexOf('--rp-dense:1 !important')>=0)s.remove();
+     if((s.textContent||'').indexOf('--rp-pack:1 !important')>=0)s.remove();
     });
    });
    await page.evaluate(()=>WL.reportFit());
@@ -927,9 +927,9 @@ const endArrange=async page=>{
      利用者の指摘「帳票ブロックマスタの余白詰めはうまくいっていないように
      見えます。項目間の余白や、項目内の余白も詰める余地があります」。
      §9.303 ①の**詰める段は「溢れたときだけ」動く**ので、余っている塊では
-     一度も走らない（実測: どの塊も`--rp-dense`も`rp-pack-*`も持たず、器と
+     一度も走らない（実測: どの塊も`--rp-pack`も`rp-pack-*`も持たず、器と
      中身の差は0px）。仕組みは既にあったので、足したのは**詰めると言える
-     手立て**だけ——`--rp-dense`を紙へ与えて下限を決める。
+     手立て**だけ——紙へ余白の倍率を与える（塊ごとの段はそこへ掛かる・§9.313）。
      **見るのは宣言ではなく実測の高さ**（§9.289と同じ約束）——札が並ぶ
      ことだけを見る網は、どこにも掛かっていない実装でも通る。
      **既定は1pxも変えない**（§9.132）ことも一緒に見る。
@@ -940,7 +940,7 @@ const endArrange=async page=>{
       ままにする。残したまま測ると、詰めたのか止めたのか見分けられない。 */
    await page.evaluate(()=>{document.querySelectorAll('style').forEach(x=>{
     const t=x.textContent||'';
-    if(t.indexOf('rp-pack-')>=0||t.indexOf('--rp-dense')>=0)x.remove();
+    if(t.indexOf('rp-pack-')>=0||t.indexOf('--rp-pack')>=0||t.indexOf('--rp-dense')>=0)x.remove();
    })});
    await cleanup();
    await page.evaluate(t=>WL.columnLayout.forget(t),TARGET);
@@ -970,9 +970,11 @@ const endArrange=async page=>{
       表:h(document.querySelector('.rp-dim-table td')),
       見出し:h(document.querySelector('.rp-section h3')),
       中身:fit.reduce((a,e)=>a+e.scrollHeight,0),
-      /* 塊ごとの`--rp-dense`。紙で詰めたら**塊はそれより緩まない**。 */
-      緩い:fit.filter(e=>{const v=parseFloat(getComputedStyle(e).getPropertyValue('--rp-dense'));
-              return Number.isFinite(v)&&v>0.61}).length};
+      /* 塊ごとの段（`--rp-pack`）。**紙の軸へ掛かる**ので（§9.313）、
+         段そのものは1以下＝紙より緩められない。1を超える段が付いていたら
+         「紙で詰めたのに塊だけ緩む」に戻っている。 */
+      緩い:fit.filter(e=>{const v=parseFloat(getComputedStyle(e).getPropertyValue('--rp-pack'));
+              return Number.isFinite(v)&&v>1.0001}).length};
    });
    /* §9.311 C 余白は**横と縦の2つの巡回ボタン**になった（押すたびに次の段）。
       ここが見るのは**縦**（項目の上下・行送り・表のセルの高さ）。 */

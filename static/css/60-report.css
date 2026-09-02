@@ -558,7 +558,7 @@
    測定データ(板厚、行=OS/CL/DS)はいずれも列数が少なく高さで内容量が
    変わる表のため、ほぼ等幅で並べる。 */
 .rp-zone-length{grid-template-columns:.9fr 1.2fr .9fr}
-.rp-stack{display:flex;flex-direction:column;gap:calc(3px * var(--rp-dense-y,var(--rp-dense,1)));min-width:0}
+.rp-stack{display:flex;flex-direction:column;gap:calc(3px * var(--rp-dense-y,1) * var(--rp-pack,1));min-width:0}
 /* ---------- エリアの塊（§9.234 ⑤） ----------
    ラベル貼付・手書き・確認印のように、**何も書いていないこと**が中身の塊。
    **枠は持たない**——枠は`.rp-block.is-framed`が描く（二重に出さない＝
@@ -573,7 +573,7 @@
 /* 見出しと注記の余白も「詰める」対象（§9.298）。**表のセルだけを詰めても
    足りない**——1丈しか無いロットでは、塊の高さの半分以上を見出しと注記が
    占めている（実測: 表32px／見出し＋注記が残り）。**文字サイズは掛けない**。 */
-.rp-section h3{margin:0 0 calc(2px * var(--rp-dense-y,var(--rp-dense,1)));padding:calc(1.5px * var(--rp-dense-y,var(--rp-dense,1))) calc(6px * var(--rp-dense-x,var(--rp-dense,1)));background:#eef2f4;border-left:4px solid var(--teal);color:#173842;font-size:9px;line-height:calc(1 + .35 * var(--rp-dense-y,var(--rp-dense,1)))}
+.rp-section h3{margin:0 0 calc(2px * var(--rp-dense-y,1) * var(--rp-pack,1));padding:calc(1.5px * var(--rp-dense-y,1) * var(--rp-pack,1)) calc(6px * var(--rp-dense-x,1) * var(--rp-pack,1));background:#eef2f4;border-left:4px solid var(--teal);color:#173842;font-size:9px;line-height:calc(1 + .35 * var(--rp-dense-y,1) * var(--rp-pack,1))}
 /* 節の中の列数（§9.289、利用者の報告「帳票ブロックマスタで調整する列数が
    全く効いておらず…プレビューは2列、紙レイアウトの方のプレビューも2列」）。
    **JSが`--rp-cols`で渡す**——以前は`.rp-grid-N`という決め打ちのクラスで、
@@ -615,7 +615,20 @@
    その枠線の自体の太さ」）。**`border-collapse:collapse`なので内側は1本**
    ——列の数だけ効く。0にはしない（表として読めなくなる）。 */
 .rp-packx-thin{--rp-line-w:.5px}
-.rp-grid{display:grid;grid-template-columns:repeat(var(--rp-cols,2),minmax(0,1fr));gap:0 calc(8px * var(--rp-dense-x,var(--rp-dense,1)))}
+/* ---------- 余白は「紙の軸 × 塊の段」の掛け算（§9.313） ----------
+   `--rp-dense-x`／`--rp-dense-y` … **紙ぜんたいの余白**（利用者が帯のボタンで
+     決める。軸ごとに独立。未設定＝1＝ふつう）
+   `--rp-pack`                    … **塊ごとの段**（`rpFitBlockBodies()`が
+     紙に入りきらない塊にだけ与える自動の詰め。1以下）
+   **フォールバックで代用させないこと**——以前は
+   `var(--rp-dense-x,var(--rp-dense,1))`と書いており、紙の軸が「ふつう」で
+   未設定のとき**塊の段がその軸の値そのものに化けて**いた。横は触っていない
+   のに縦を押すと左右の余白が動き（実測: 欄の左右が 2→1.1→0.5→2）、逆に
+   紙の軸を決めると段を**置き換える**ので「横＝詰める」を押したのに左右が
+   緩んだ（実測 1.1→1.2）。掛け算なら①押した軸だけが動き②段は**さらに
+   詰める方向にしか動けない**。**新しく余白を書くときも必ず両方を掛ける。**
+   固定は`tests/test_rppack.js`。 */
+.rp-grid{display:grid;grid-template-columns:repeat(var(--rp-cols,2),minmax(0,1fr));gap:0 calc(8px * var(--rp-dense-x,1) * var(--rp-pack,1))}
 /* ---------- カードの中のデータの並べ方（§9.226 ③、利用者の指示） ----------
    「横にある程度並べて次の行に行く形…その並び方を縦を先に並べていく
     パターンや幅方向長さが許す限り並べていくパターン、縦方向高さが許す限り
@@ -660,7 +673,7 @@
    **余白だけ詰めても足りない**——8.5pxの文字が11.475pxの行箱に入っており、
    詰められる高さの半分は行送りだった（実測: 余白だけだと11.6→11.0px、
    行送りも入れて9.5px）。**文字サイズには掛けない**（§9.303 ①）。 */
-.rp-field{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:calc(var(--space-1) * var(--rp-dense-x,var(--rp-dense,1)));padding:calc(1px * var(--rp-dense-y,var(--rp-dense,1))) calc(2px * var(--rp-dense-x,var(--rp-dense,1)));border-bottom:1px solid #eef2f4;font-size:8.5px;line-height:calc(1 + .35 * var(--rp-dense-y,var(--rp-dense,1)))}
+.rp-field{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:calc(var(--space-1) * var(--rp-dense-x,1) * var(--rp-pack,1));padding:calc(1px * var(--rp-dense-y,1) * var(--rp-pack,1)) calc(2px * var(--rp-dense-x,1) * var(--rp-pack,1));border-bottom:1px solid #eef2f4;font-size:8.5px;line-height:calc(1 + .35 * var(--rp-dense-y,1) * var(--rp-pack,1))}
 .rp-field-label{color:#60747b;font-size:8px;font-weight:700;white-space:nowrap}
 /* ラベルを**値の上**へ置く（§9.292 ⑤、利用者の指示「上下にラベルと内容が
    組み合わさるパターンでレイアウトできるように」）。1列にして縦へ積むだけ
@@ -710,11 +723,11 @@
    1pxも変わらない。倍率を決めるのは`rpFitBlockBodies()`の1箇所（§9.163）。
    **文字サイズには掛けないこと**——「文字を極力キープする」のがこの仕組みの
    目的で、掛けると`--rp-fit`と同じことをするだけになる。 */
-.rp-dim-table{width:100%;border-collapse:collapse;margin-top:calc(2px * var(--rp-dense-y,var(--rp-dense,1)));--rp-pd-y:1.5px;--rp-pd-x:3px}
+.rp-dim-table{width:100%;border-collapse:collapse;margin-top:calc(2px * var(--rp-dense-y,1) * var(--rp-pack,1));--rp-pd-y:1.5px;--rp-pd-x:3px}
 /* **行送りも詰める対象**（§9.308）。ここだけ`--lh`(1.35)を継いでいたので、
    8.5pxの文字に11.475pxの行箱＝**余白の半分は行送り**だった（広い表は
    1.15で組んである）。式は広い表と同じ形にし、**1で1.35**＝今までどおり。 */
-.rp-dim-table th,.rp-dim-table td{height:auto;padding:calc(var(--rp-pd-y) * var(--rp-dense-y,var(--rp-dense,1))) calc(var(--rp-pd-x) * var(--rp-dense-x,var(--rp-dense,1)));border:var(--rp-line-w,1px) solid #d6e0e3;text-align:center;font-size:8.5px;line-height:calc(1 + .35 * var(--rp-dense-y,var(--rp-dense,1)))}
+.rp-dim-table th,.rp-dim-table td{height:auto;padding:calc(var(--rp-pd-y) * var(--rp-dense-y,1) * var(--rp-pack,1)) calc(var(--rp-pd-x) * var(--rp-dense-x,1) * var(--rp-pack,1));border:var(--rp-line-w,1px) solid #d6e0e3;text-align:center;font-size:8.5px;line-height:calc(1 + .35 * var(--rp-dense-y,1) * var(--rp-pack,1))}
 .rp-dim-table thead th{background:#eef2f4;color:#173842}
 .rp-dim-table tbody th{background:#f7fafb;text-align:left}
 /* 品質等級: ラベル(th)と値(td)を交互に並べた4ペア構成（コンパクト化） */
@@ -722,11 +735,11 @@
 .rp-grade-table td{font-weight:800;color:#173842}
 /* 品質情報・板幅測定データなど、ゾーン(グリッド)に属さず全幅で単独配置する
    セクション同士の縦間隔。ゾーンの外に出た分、明示的に余白を持たせる。 */
-#reportContent>.rp-section{margin-bottom:calc(3px * var(--rp-dense-y,var(--rp-dense,1)))}
+#reportContent>.rp-section{margin-bottom:calc(3px * var(--rp-dense-y,1) * var(--rp-pack,1))}
 /* 品質情報: 仕掛の別ファイルから取得した異常/保留情報。文字量が多くなる
    ことが多いため、狭い列に押し込めず全幅の専用行として常時確保する。
    短文の場合でも面積が安定するよう最小高さを確保する。 */
-.rp-info-box{min-height:calc(26px * var(--rp-dense-y,var(--rp-dense,1)));padding:calc(1px * var(--rp-dense-y,var(--rp-dense,1))) calc(5px * var(--rp-dense-x,var(--rp-dense,1)));border:1px solid #d6e0e3;border-radius:0 0 6px 6px;background:#ffffff;color:#173842;font-size:7.5px;line-height:1.25;white-space:normal;word-break:break-word}
+.rp-info-box{min-height:calc(26px * var(--rp-dense-y,1) * var(--rp-pack,1));padding:calc(1px * var(--rp-dense-y,1) * var(--rp-pack,1)) calc(5px * var(--rp-dense-x,1) * var(--rp-pack,1));border:1px solid #d6e0e3;border-radius:0 0 6px 6px;background:#ffffff;color:#173842;font-size:7.5px;line-height:1.25;white-space:normal;word-break:break-word}
 /* ---------- 中の枠はカードいっぱい（§9.242 ⑧、利用者の指摘） ----------
    「品質情報のカードのサイズの枠に合わせて中の情報表示領域の枠を確保して
     ください」——「異常情報なし」の1行しか無いときに枠が26pxまで縮み、
@@ -741,10 +754,10 @@
   display:flex;flex-direction:column;height:100%;min-height:0}
 .rp-section-fill>.rp-info-box{flex:1 1 auto}
 /* 頭/尾を1枚に収める測定データ表。列数が多いため小さめのフォントで密に配置する */
-.rp-note{margin:0 0 calc(2px * var(--rp-dense-y,var(--rp-dense,1)));color:#60747b;font-size:7.5px}
+.rp-note{margin:0 0 calc(2px * var(--rp-dense-y,1) * var(--rp-pack,1));color:#60747b;font-size:7.5px}
 .rp-wide-wrap{overflow:visible}
 .rp-wide-table{min-width:0;width:100%;--rp-pd-y:1px;--rp-pd-x:2px}
-.rp-wide-table th,.rp-wide-table td{font-size:7.5px;line-height:calc(1 + .15 * var(--rp-dense-y,var(--rp-dense,1)))}
+.rp-wide-table th,.rp-wide-table td{font-size:7.5px;line-height:calc(1 + .15 * var(--rp-dense-y,1) * var(--rp-pack,1))}
 /* 条番号: 見切れない範囲でできるだけ幅を絞り、数字は右パディング付きの
    右寄せにする。空いた分の幅は隣のロット№列(幅ロット分割対応)へ回す。 */
 .rp-wide-table th.rp-colno{width:8mm;max-width:8mm;padding-right:3px;text-align:right}
@@ -754,7 +767,7 @@
    測定データ(板厚)の領域まではみ出さないよう、はみ出す分は省略記号で
    切り詰める(丈数が増えるのは行方向のみ)。 */
 .rp-product-table{min-width:0;width:100%;table-layout:fixed;--rp-pd-y:1px;--rp-pd-x:2px}
-.rp-product-table th,.rp-product-table td{font-size:7.5px;line-height:calc(1 + .15 * var(--rp-dense-y,var(--rp-dense,1)));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rp-product-table th,.rp-product-table td{font-size:7.5px;line-height:calc(1 + .15 * var(--rp-dense-y,1) * var(--rp-pack,1));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rp-product-table tbody th{white-space:nowrap}
 /* 揃いの内訳(§9.205、利用者の指示「内訳と合否両方(デフォルト)と内訳のみ、
    合否のみを切り替えほしい」)。**この欄だけ折り返す**——他の列はnowrap＋
@@ -767,10 +780,10 @@
 /* **札と内訳のあいだの隙間も同じ倍率で詰める**（§9.298）——この欄だけは
    折り返すので、隙間が1行ぶんの文字数を決めている。詰めれば行が減り、
    塊が器に収まる＝文字を縮めずに済む。 */
-.rp-product-table td.rp-product-cell .product-judge{min-width:0;margin-right:calc(3px * var(--rp-dense-x,var(--rp-dense,1)));padding:0 calc(2px * var(--rp-dense-x,var(--rp-dense,1)));border-radius:2px;font-size:7px}
-.rp-pb{display:inline-block;margin-right:calc(4px * var(--rp-dense-x,var(--rp-dense,1)));white-space:nowrap}
+.rp-product-table td.rp-product-cell .product-judge{min-width:0;margin-right:calc(3px * var(--rp-dense-x,1) * var(--rp-pack,1));padding:0 calc(2px * var(--rp-dense-x,1) * var(--rp-pack,1));border-radius:2px;font-size:7px}
+.rp-pb{display:inline-block;margin-right:calc(4px * var(--rp-dense-x,1) * var(--rp-pack,1));white-space:nowrap}
 /* ラベルは**色で下げる。大きさは変えない**（同じ表の中は同じ文字サイズ）。 */
-.rp-pb>i{margin-right:calc(2px * var(--rp-dense-x,var(--rp-dense,1)));color:#60747b;font-style:normal;font-weight:700}
+.rp-pb>i{margin-right:calc(2px * var(--rp-dense-x,1) * var(--rp-pack,1));color:#60747b;font-style:normal;font-weight:700}
 /* ---------- 異常位置判定（参考） ----------
    モーダルで**保存された場合だけ**帳票へ載せる参考情報(オペレータの
    シミュレーション結果であり、測定値ではない)。板幅の実測表は条番号で
