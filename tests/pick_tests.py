@@ -56,7 +56,9 @@ G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint',
                    # §9.246 ①: 「空欄の札」は組み込みの選択欄でも効く
                    'test_opblank',
                    # §9.247 ①: トグルの作り直しと、足した2つの選ばせ方
-                   'test_opwidget']
+                   'test_opwidget',
+                   # §9.305 ①: 入力値の丸め（測定項目マスタ）
+                   'test_mround']
 # 異常位置判定と条の設計の連携(§9.226 ④)。どちらを触っても両方を回す。
 G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_scsplit',
                  # §9.239 ⑥: ピッチ→ロール判定とロールマスタ

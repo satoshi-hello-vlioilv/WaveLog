@@ -55,6 +55,9 @@ from ..repositories.master_repo import (
  field_reorder_terminal_count,
  QUERY_JOIN_TABLE, QUERY_JOIN_MULTI, ensure_query_join_table, query_joins,
  query_join_save, query_join_delete,
+ MEASURE_ITEM_TABLE, ROUND_TARGETS, ROUND_MODES, ROUND_MODE_DEFAULT,
+ ensure_measure_item_table, measure_item_rows, measure_item_upsert,
+ measure_item_delete,
 )
 from ..db_access import cols, tables, cfg
 from .. import schedule_calc
@@ -1944,3 +1947,70 @@ def operation_form():
   return jsonify(ok=True,equipment=str(request.args.get('equipment') or ''),items=[],
                  builtinOff=[],gridCols=op.GRID_COLS,
                  error=f'操業データの項目を読めませんでした: {e}')
+
+# ---------------------------------------------------------------------
+# 測定項目マスタ（§9.305 ①）。汎用CRUDの4本セット（GET/POST/update/delete）。
+# **語彙はサーバーが答える**（`targets`/`modes`）——画面へ綴りを書き写さない
+# （§9.163。項目を1つ足したときに直す場所が2つになる）。
+# ---------------------------------------------------------------------
+@bp.get('/api/measure-item-master')
+def measure_item_master_list():
+ try:
+  path=DBS['MASTER']['path']
+  with connect(path,False) as c:
+   before=MEASURE_ITEM_TABLE in tables(c)
+   items=measure_item_rows(c)
+  return jsonify(ok=True,items=items,table=MEASURE_ITEM_TABLE,created=not before,
+                 empty=len(items)==0,
+                 targets=[{'key':k,'label':l,'note':n} for k,l,n in ROUND_TARGETS],
+                 modes=[{'key':k,'label':k,'note':n} for k,n in ROUND_MODES],
+                 defaultMode=ROUND_MODE_DEFAULT,
+                 master_path=str(path))
+ except Exception as e:
+  return jsonify(error=f'測定項目マスタ読込失敗: {e}',
+                 master_path=str(DBS['MASTER']['path'])),500
+
+def _measure_item_save(item_id=None):
+ x=request.get_json(force=True) or {}
+ uid=request_user_id(x)
+ key=str(x.get('key') or '').strip()
+ try:
+  with connect(DBS['MASTER']['path'],False) as c:
+   iid=measure_item_upsert(c,key,x.get('unit'),x.get('mode'),uid,
+                           note=x.get('note'),
+                           enabled=(None if 'enabled' not in x else bool(x.get('enabled'))),
+                           item_id=item_id or x.get('id'))
+  return jsonify(ok=True,id=iid,updated_by=uid)
+ except ValueError as e:
+  # **理由と打つ手を返す**（§4）。知らないキーは断るが、何が選べるかを言う。
+  return jsonify(error=str(e)),400
+
+@bp.post('/api/measure-item-master')
+def measure_item_master_register():
+ try:return _measure_item_save()
+ except Exception as e:
+  return jsonify(error=f'測定項目マスタ登録失敗: {e}',
+                 master_path=str(DBS['MASTER']['path'])),500
+
+@bp.post('/api/measure-item-master/update')
+def measure_item_master_update():
+ try:
+  x=request.get_json(force=True) or {}
+  if x.get('id') is None:return jsonify(error='更新対象IDがありません。'),400
+  return _measure_item_save(x.get('id'))
+ except Exception as e:
+  return jsonify(error=f'測定項目マスタ更新失敗: {e}',
+                 master_path=str(DBS['MASTER']['path'])),500
+
+@bp.post('/api/measure-item-master/delete')
+def measure_item_master_delete():
+ try:
+  x=request.get_json(force=True) or {}
+  if x.get('id') is None:return jsonify(error='削除対象IDがありません。'),400
+  with connect(DBS['MASTER']['path'],False) as c:
+   ensure_measure_item_table(c);measure_item_delete(c,x.get('id'))
+  return jsonify(ok=True)
+ except Exception as e:
+  return jsonify(error=f'測定項目マスタ削除失敗: {e}',
+                 master_path=str(DBS['MASTER']['path'])),500
+

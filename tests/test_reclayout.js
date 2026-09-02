@@ -162,11 +162,19 @@ let b=null;
       left.length?`${left.length}件残った（例: ${left[0].name}）`:'0件');
   const followAll=await page.evaluate(()=>{
    const on=WL.recordBoard.rows().on;
+   const ls=[...document.querySelectorAll('.rl-legend')];
    return {follow:on.filter(r=>r.follow).length,total:on.length,
-           legend:document.querySelector('.rl-legend')?.textContent||''};
+           枚数:ls.length,legend:ls.map(x=>x.textContent||'').join(' / ')};
   });
   rec('戻したことが画面にも出る', followAll.follow===followAll.total&&/表示順/.test(followAll.legend),
-      followAll.legend.slice(0,40));
+      followAll.legend.slice(0,60));
+  /* **案内は1行にまとめる**（§9.304）——2段落に分けると、先に読まれる側だけが
+     目に入り「戻した」ことを言う文が下に隠れる（実際に隠れていた）。 */
+  rec('盤の案内は1つの段落にまとまっている', followAll.枚数<=1, `${followAll.枚数}段落`);
+  /* **保存が何を書くかで言い方を変える**——全部が表示順に従っているとき、
+     保存が書くのは空なので「この形で確定します」は嘘になる（§9.243 ②）。 */
+  rec('全部が表示順に従うときは「確定します」と言わない',
+      !/確定します/.test(followAll.legend), followAll.legend.slice(0,60));
 
   /* ==========================================================
      6) 落とす場所の印は流れの中へ入れない（§9.218 ④）

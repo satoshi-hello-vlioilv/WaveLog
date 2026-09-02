@@ -66,6 +66,27 @@ const inDlg=async(page,key,fn)=>{
 };
 const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-block]')].map(e=>e.dataset.rpBlock));
 
+/* 自動保存（§9.303 ③）が落ち着くのを待つ。**時間で待たないこと**
+   （§9.102）——速い端末では保存前を見て通り、遅い端末では足りない。
+   帯の`#rpArrangeAuto`が「保存しています…」でなくなるまで待つ。 */
+const settleSave=async page=>{
+ await page.waitForFunction(()=>{
+  const e=document.getElementById('rpArrangeAuto');
+  return !e||(e.textContent||'').indexOf('保存しています')<0;
+ },null,{timeout:20000});
+};
+/* 保存を待ってから組み換えを終える（旧`#rpArrangeSave`の置き換え）。
+   **既に閉じているときは押さない**——帯ごと伏せてあるので、押しに行くと
+   「見えるまで」待って落ちる。 */
+const endArrange=async page=>{
+ await settleSave(page);
+ const open=await page.evaluate(()=>{
+  const bar=document.getElementById('rpArrangeBar');return !!bar&&!bar.hidden;
+ });
+ if(open)await page.click('#rpArrangeCancel');
+ await page.waitForTimeout(300);
+};
+
 (async()=>{
  await cleanup();
  b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
@@ -199,35 +220,38 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
       !!placed&&placed.placed===true&&/^\d+\s*\/\s*span/.test(placed.grid||''),
       JSON.stringify({...placed,...moved}));
 
-  /* ---- 4) やめる＝開いた時点へ戻る ---- */
+  /* ---- 4) 触ったら裏で保存する（§9.303 ③、利用者の指示） ----
+     「保存ボタンは無くしバックグラウンドで常に保存するタイプに変更して
+      ほしい…帳票ブロックマスタに頻繁に移動…移動するたびに修正していた
+      内容が飛ぶ」。**「やめる＝開いた時点へ戻る」は撤回した**（§9.200）
+     ——保存ボタンが無い以上、閉じて戻ったら触ったぶんが消える。
+     **帯の文字で「保存し終えた」ことまで見る**（`#rpArrangeAuto`）
+     ——時間で待つ網は、速い端末では保存前を見て通ってしまう。 */
+  rec('組み換えの帯に保存ボタンが無い',
+      await page.evaluate(()=>!document.getElementById('rpArrangeSave')));
+  /* **触った直後は「保存しています…」**（§3。黙って保存しない）。落ち着いたら
+     「自動で保存します」へ戻る——**先に待たないこと**（待ってから見ると、
+     保存中を一度も通らないまま通る）。 */
+  const sav1=await page.evaluate(()=>{const e=document.getElementById('rpArrangeAuto');
+    return e?(e.textContent||'').trim():null});
+  rec('触った直後は「保存しています…」と文字で出す（§3）',/保存しています/.test(sav1||''),
+      JSON.stringify(sav1));
+  await settleSave(page);
+  const sav2=await page.evaluate(()=>{const e=document.getElementById('rpArrangeAuto');
+    return e?(e.textContent||'').trim():null});
+  rec('保存し終えると「自動で保存します」へ戻る',/自動で保存/.test(sav2||''),JSON.stringify(sav2));
   await page.click('#rpArrangeCancel');
   await settle(page);
   const back=await page.evaluate(()=>({
    bars:document.querySelectorAll('.rp-block [data-rp-grip]').length,
    span:document.querySelector('[data-rp-block="基本情報"]').style.gridColumn,
-   quality:!!document.querySelector('[data-rp-block="品質等級"]'),
-   order:[...document.querySelectorAll('[data-rp-block]')].map(e=>e.dataset.rpBlock)}));
-  rec('「やめる」で開いた時点の配置へ戻る',
-      back.bars===0&&spanOf(back.span)===spanOf(w0)&&back.quality===true,
-      JSON.stringify({span:back.span,期待:w0,quality:back.quality}));
-  rec('「やめる」で並びも戻る',JSON.stringify(back.order)===JSON.stringify(before),
-      back.order.slice(0,4).join('／'));
-
-  /* ---- 5) 保存＝サーバーに残り、マスの数として往復する ---- */
-  await page.click('#reportArrange');
-  await page.waitForSelector('.rp-blocks.is-arranging',{timeout:8000});
-  await inDlg(page,'基本情報',()=>page.click(`#rpBlockForm [data-e-span="${narrow}"]`));
-  await inDlg(page,'品質等級',()=>page.click('#rpBlockForm [data-e-vis]'));
-  await settle(page);
-  await page.click('#rpArrangeSave');
-  await page.waitForTimeout(1200);
-  const saved=await page.evaluate(()=>({
-   bars:document.querySelectorAll('.rp-block [data-rp-grip]').length,
-   span:document.querySelector('[data-rp-block="基本情報"]').style.gridColumn,
    quality:!!document.querySelector('[data-rp-block="品質等級"]')}));
-  rec('保存すると組み換えを抜けて、結果が紙に残る',
-      saved.bars===0&&spanOf(saved.span)===narrow&&saved.quality===false,
-      JSON.stringify(saved)+` 期待=span ${narrow}`);
+  rec('「組み換えを終える」で抜けても、触ったぶんは紙に残る（戻らない）',
+      back.bars===0&&spanOf(back.span)===narrow&&back.quality===false,
+      JSON.stringify({span:back.span,期待:'span '+narrow,quality:back.quality}));
+
+  /* ---- 5) 保存はサーバーに残り、マスの数として往復する ---- */
+  const saved=back;
   const srv=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(TARGET))).json();
   rec('サーバーに「出さない塊」が残る',(srv.hidden||[]).includes('品質等級'),JSON.stringify(srv.hidden));
   /* **ここが要点**。`widths`はpxとして40〜900へ丸められるので、マスの数
@@ -341,8 +365,7 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
      サーバーから読み直して、同じ24段で描かれることを確かめる。 */
   await page.click('[data-rp-prow="96"]');
   await settle(page);
-  await page.click('#rpArrangeSave');
-  await page.waitForTimeout(1200);
+  await endArrange(page);
   const roundTrip=await page.evaluate(async t=>{
    WL.columnLayout.forget(t);
    await WL.columnLayout.load(t);
@@ -384,7 +407,7 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
    戻す:document.querySelectorAll('#rpBlockForm [data-rp-restore]').length})));
   rec('落とせる列の一覧を設定の窓が持っている（測定データの塊だけ）',
       guide.drops>0&&guide.戻す===1,JSON.stringify(guide));
-  await page.click('#rpArrangeCancel');
+  await endArrange(page);
   await settle(page);
   rec('紙には絞り込みの案内を出さない',
       await page.evaluate(()=>document.querySelectorAll('.rp-block-cols,[data-rp-drop]').length===0));
@@ -525,8 +548,7 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   rec('内訳だけのときは基準の一文を出さない',!!brk&&brk.note==='',brk?brk.note:'');
 
   await page.click('#rpBlockClose');
-  await page.click('#rpArrangeSave');
-  await page.waitForTimeout(1200);
+  await endArrange(page);
   const srv2=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(TARGET))).json();
   /* **文字列のまま保存しない**（§9.205）。サーバーの`normalize_format()`は
      辞書以外をNoneへ落とすので、`formats[k]='内訳'`と書くと画面では効くのに
@@ -546,8 +568,7 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   await page.click('#rpBlockForm [data-e-pmode=""]');
   await settle(page);
   await page.click('#rpBlockClose');
-  await page.click('#rpArrangeSave');
-  await page.waitForTimeout(1200);
+  await endArrange(page);
   const srv3=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(TARGET))).json();
   rec('既定へ戻すと設定の行ごと消える',!((srv3.formats||{})['丈別データ']),
       JSON.stringify(srv3.formats));
@@ -560,7 +581,7 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
      真になり、塊を名指しする判定は全部「組み換え中」で走る
      （`if(off&&(!arranging||paper))return ''`のため隠した塊も描かれる）。
      ここは**組み換えを閉じた紙**で、件数が0より大きいことを見る。 */
-  await page.evaluate(()=>{const b=document.getElementById('rpArrangeCancel');if(b)b.click()});
+  await endArrange(page);
   await settle(page);
   const paper=await page.evaluate(()=>{
    const on=document.querySelector('#reportContent .rp-blocks.is-arranging');
@@ -753,8 +774,7 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
    rec('エリアの塊の枠を外せる',parseFloat(off2)===0,off2);
    /* **保存して開き直しても残る**（§9.205の罠。`formats[k]`へ文字列を入れる
       実装は、当てた直後だけは効いて保存で黙って消える）。 */
-   await page.click('#rpArrangeSave');
-   await page.waitForTimeout(1200);
+   await endArrange(page);
    await page.evaluate(t=>{if(WL.columnLayout.forget)WL.columnLayout.forget(t)},TARGET);
    await page.evaluate(()=>openRecordsSafe('編集中'));
    await page.waitForSelector('.record-list-row',{timeout:25000});
@@ -814,7 +834,10 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
     return{px:parseFloat(cs.paddingLeft),py:parseFloat(cs.paddingTop),
       fs:parseFloat(cs.fontSize),lh:parseFloat(cs.lineHeight),
       fit:Number(fit&&fit.style.getPropertyValue('--rp-fit'))||1,
-      dense:Number(fit&&fit.style.getPropertyValue('--rp-dense'))||1};
+      dense:Number(fit&&fit.style.getPropertyValue('--rp-dense'))||1,
+      /* 段の印（§9.303 ①）。どこまで進んだかを見る。 */
+      pack:[...(fit?fit.classList:[])].filter(c=>c.indexOf('rp-pack-')===0).sort(),
+      tl:getComputedStyle(t).tableLayout};
    });
    const wide=picks[picks.length-1],narrow=picks[0];
    await inDlg(page,'丈別データ',()=>page.click(`#rpBlockForm [data-e-span="${wide}"]`));
@@ -846,6 +869,56 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
    rec('詰めを止めると、そのぶん文字を縮めることになる（＝詰めが効いている）',
        !!OFF&&!!N&&OFF.fit<N.fit-0.001,
        `詰めるとき ${N&&N.fit} / 詰めないとき ${OFF&&OFF.fit}`);
+
+   /* ==========================================================
+      §9.303 ① 詰める順序（利用者の指示）
+      ----------------------------------------------------------
+      「列内の全体余白の調整→個別に余力のあるもの余白調整→改行による文字
+        表示エリア確保(高さ方向への逃げ)→文字サイズ調整による表示用量アップ」
+
+      §9.298は「余白→文字」の2手だったので、**折り返しが制御できていな
+      かった**——幅が足りなくなると表のセルはその場で折り返し、伸びた高さで
+      詰めと文字縮小が起きていた（利用者の報告「1行で納めたいところ2行に
+      なってしまったりする」）。
+
+      ここで固定するのは3点。
+        1. **広いマスでは段に入らない**（今までの見え方のまま・§9.132）
+        2. 狭くすると**文字より先に**余白と「余力のある列の配り直し」が起きる
+        3. **段を止めると、そのぶん文字を縮めることになる**（＝段が効いている）
+      3つ目が背骨。**「クラスが付いた」だけを見る網は素通りする**——
+      印が付いても縮める側がその結果を見ていなければ意味が無い。
+      ========================================================== */
+   await page.evaluate(()=>{
+    document.querySelectorAll('style').forEach(s=>{
+     if((s.textContent||'').indexOf('--rp-dense:1 !important')>=0)s.remove();
+    });
+   });
+   await page.evaluate(()=>WL.reportFit());
+   await settle(page);await page.waitForTimeout(150);
+   const W2=await look(),wideSpan=wide;
+   await inDlg(page,'丈別データ',()=>page.click(`#rpBlockForm [data-e-span="${wideSpan}"]`));
+   await settle(page);await page.waitForTimeout(250);
+   const WP=await look();
+   rec('広いマスでは詰めの段に入らない（印も付かない）',
+       !!WP&&WP.pack.length===0&&WP.dense===1&&WP.fit===1,JSON.stringify(WP&&{pack:WP.pack,dense:WP.dense,fit:WP.fit}));
+   await inDlg(page,'丈別データ',()=>page.click(`#rpBlockForm [data-e-span="${narrow}"]`));
+   await settle(page);await page.waitForTimeout(250);
+   const NP=await look();
+   /* **余白を使い切ってから列を回す**——`share`が付いているのに余白が
+      詰まっていなければ、順序が入れ替わっている。 */
+   rec('狭いマスでは余白を詰め、余力のある列を詰まった列へ回す（table-layout:auto）',
+       !!NP&&NP.pack.indexOf('rp-pack-share')>=0&&NP.dense<1&&NP.tl==='auto',
+       JSON.stringify(NP&&{pack:NP.pack,dense:NP.dense,tl:NP.tl,fit:NP.fit}));
+   /* ---- 段を止めると、そのぶん文字を縮めることになる（A/B） ---- */
+   await page.addStyleTag({content:
+     '.rp-block-fit.rp-pack-share .rp-product-table{table-layout:fixed !important}'
+    +'.rp-block-fit.rp-pack-nowrap,.rp-block-fit.rp-pack-nowrap *:not(.rp-info-box){white-space:normal !important}'});
+   await page.evaluate(()=>WL.reportFit());
+   await settle(page);await page.waitForTimeout(150);
+   const NOFF=await look();
+   rec('段（1行を保つ・余力のある列を回す）を止めると、そのぶん文字を縮めることになる',
+       !!NOFF&&!!NP&&NOFF.fit<NP.fit-0.001,
+       `段あり ${NP&&NP.fit} / 段なし ${NOFF&&NOFF.fit}`);
   }catch(e){rec('FATAL(§9.298)',false,e.message)}
 
   rec('コンソールに例外を出さない',errs.length===0,errs.slice(0,2).join(' / '));

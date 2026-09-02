@@ -572,18 +572,126 @@
     </div>
     <div class="rp-defect-facts">
      ${fact('該当条',answer,'rp-defect-fact-hit')}
-     ${fact('対象ロット',lotsLabel(lots))}
+     ${fact('対象ロット',lotsLabel(lots),'rp-defect-fact-text')}
      ${fact('基準',`${BASIS_LABEL[sv.basis]||''} ${fmt(sv.distance)}mm`)}
      ${fact('基準幅',`${fmt(sv.baseWidth)}（${sv.widthBasis==='original'?'元幅':'製品幅合計'}）`)}
      ${fact('欠陥の幅',`${fmt(sv.defectWidth)}mm`)}
      ${fact('製品座標',`${fmt(sv.pos)}mm`)}
-     ${fact('内容',sv.memo)}
+     ${/* **自由記述と並びは左づめ**（§9.305 ②-1）——右づめのまま折り返すと
+          2行目の左端がばらけて読めない（利用者の報告）。 */''}
+     ${fact('内容',sv.memo,'rp-defect-fact-text')}
     </div>
    </div>
    <div class="rp-defect-foot">オペレータが算出した参考値です（測定値ではありません）。屑幅は${r.scrapBiased?`片寄せ（OS ${fmt(r.scrapOs)}／DS ${fmt(r.scrapDs)}）`:'左右均等'}・条幅は判定時の条割にもとづきます。判定 ${esc(new Date(sv.savedAt).toLocaleString('ja-JP'))}</div>
   </section>`;
  }
  const hasSavedDefect=x=>!!x?.settings?.defectLocation?.saved?.lanes?.length;
+
+ /* ---------- ② 長手方向も紙に載せる（§9.305 ②-2、利用者の指示
+    「長手方向のデータがある場合はそれも表示したり、しなかったり選べるように」） ----------
+    **記録に在るのは入力だけ**（`settings.defectRoll`＝ピッチ・許容差・接触面・
+    何周まで見るか・内容）。候補のロールはロールマスタから毎回引き直す
+    ——マスタが正で、径を直せば紙の候補も直る（§9.239 ⑥）。
+    **判定は`rollMatches()`の1箇所**（画面と紙で2つ持たない・§9.163）。
+    **引けないときは引けないと書く**（§4）——黙って「候補なし」と言うと、
+    登録されているのに読めていないのか、本当に無いのかが読めない。 */
+ function rollEquipmentOf(x){
+  return String(x?.settings?.registeredEquipment||x?.snapshot?.registeredEquipment
+    ||x?.remoteEquipment||x?.basic?.equipment||'').trim();
+ }
+ /* 記録された長手方向の入力（ピッチが入っているときだけ）。 */
+ function rollInputOf(x){
+  const d=x?.settings?.defectRoll;
+  if(!d)return null;
+  const p=num(d.pitch);
+  if(!Number.isFinite(p)||p<=0)return null;
+  const tol=num(d.tol);
+  const h=num(d.harmonics);
+  return {pitch:p,tol:(Number.isFinite(tol)&&tol>=0)?tol:ROLL_TOL_DEFAULT,
+          face:String(d.face||''),
+          harmonics:Math.max(1,Math.min(9,Number.isFinite(h)?h:ROLL_HARMONICS_DEFAULT)),
+          memo:String(d.memo||''),updatedAt:d.updatedAt||''};
+ }
+ const hasRollJudge=x=>!!rollInputOf(x);
+ /* 設備ごとの控えを**見るだけ**の口（紙は同期で描くので取りに行かない）。 */
+ function rollRowsFor(eq){
+  const e=String(eq||'').trim();
+  if(!e||!rollCache)return null;
+  const v=rollCache.get('roll:'+e);
+  return (v&&Array.isArray(v.items))?v.items:null;
+ }
+ /* 控えが無ければ取りに行く。**取れたかどうかを返す**——呼ぶ側は
+    取れたときだけ描き直す（毎回描き直すと止まらない）。 */
+ async function ensureRolls(eq){
+  const e=String(eq||'').trim();
+  if(!e||!rollCache)return false;
+  if(rollRowsFor(e))return false;
+  try{
+   await rollCache.fetch('roll:'+e,()=>api('/api/roll-master?equipment='+encodeURIComponent(e)));
+  }catch(err){return false}
+  return !!rollRowsFor(e);
+ }
+ function rollSectionHtml(x){
+  const input=rollInputOf(x);
+  if(!input)return '';
+  const eq=rollEquipmentOf(x);
+  const rows=rollRowsFor(eq);
+  const fact=(label,value,cls)=>`<div class="rp-defect-fact${cls?' '+cls:''}"><span>${esc(label)}</span><b>${esc(value||'－')}</b></div>`;
+  const need=fmt(input.pitch/PI,1);
+  let head,list='';
+  if(!rows){
+   /* **読めていないことを書く**（§4）。「候補なし」と言い切らない。 */
+   head=`<div class="rp-defect-roll-answer is-empty"><b>候補は出せません</b>`
+    +`<span>${esc(eq||'設備が分かりません')}のロールマスタをこの端末でまだ読めていません。`
+    +`このピッチに合うロール径は <b>${esc(need)} mm</b> です。</span></div>`;
+  }else{
+   const r=rollMatches(input,rows);
+   const top=r.hits&&r.hits[0];
+   if(!r.total)
+    head=`<div class="rp-defect-roll-answer is-empty"><b>この設備のロールが登録されていません</b>`
+     +`<span>このピッチに合うロール径は <b>${esc(need)} mm</b> です。</span></div>`;
+   else if(!top)
+    head=`<div class="rp-defect-roll-answer is-empty"><b>当てはまるロールが見つかりません</b>`
+     +`<span>登録 ${r.total}本の中に、径 <b>${esc(need)} mm</b> のロールはありませんでした`
+     +`（許容差 ±${esc(String(r.tolPct))}%）。</span></div>`;
+   else{
+    const direct=r.hits.filter(h=>h.kind==='direct').length;
+    head=`<div class="rp-defect-roll-answer"><b>${esc(top.roll.name||'（名前なし）')}</b>`
+     +`<span>${esc(ROLL_KIND_LABEL[top.kind])}（${esc(top.note)}）／ずれ ${esc((top.dev*100).toFixed(2))}%`
+     +`・候補 ${r.hits.length}本（うち直接一致 ${direct}本）</span></div>`;
+    /* 紙は狭いので**上位5本まで**。**落とした件数は必ず書く**（§4）。 */
+    const show=r.hits.slice(0,5);
+    list=`<table class="rp-defect-roll-table"><thead><tr>`
+     +`<th>ロール名</th><th>接触面</th><th>径(mm)</th><th>一致</th><th>ずれ</th></tr></thead><tbody>`
+     +show.map(h=>{const b=h.band;
+       const dia=b.worn?`${fmt(b.dHi,1)}〜${fmt(b.dLo,1)}`:fmt(b.dHi,1);
+       return `<tr class="${h.kind==='direct'?'is-direct':''}">`
+        +`<td>${esc(h.roll.name||'（名前なし）')}</td>`
+        +`<td>${esc(h.roll.contactFace||'—')}</td>`
+        +`<td class="num">${esc(dia)}</td>`
+        +`<td>${esc(ROLL_KIND_LABEL[h.kind])}</td>`
+        +`<td class="num">${esc((h.dev*100).toFixed(2))}%</td></tr>`}).join('')
+     +`</tbody></table>`
+     +(r.hits.length>show.length
+       ?`<p class="rp-defect-roll-more">ほかに ${r.hits.length-show.length}本の候補があります（画面の「長手方向」で全部見られます）。</p>`:'');
+   }
+  }
+  return `<div class="rp-defect-roll">
+   <h4>長手方向（ピッチ）</h4>
+   ${head}
+   <div class="rp-defect-facts rp-defect-roll-facts">
+    ${fact('ピッチ',`${fmt(input.pitch,1)}mm`)}
+    ${fact('合うロール径',`${need}mm（ピッチ÷π）`)}
+    ${fact('許容差',`±${input.tol}%`)}
+    ${fact('接触面',input.face||'指定なし')}
+    ${fact('何周まで見るか',`${input.harmonics}`)}
+    ${fact('内容',input.memo,'rp-defect-fact-text')}
+   </div>
+   ${list}
+   <p class="rp-defect-roll-foot">欠陥のピッチ＝ロールの周長（π×径）。候補は${esc(eq||'（設備不明）')}のロールマスタから引いた参考値で、
+    「倍の間隔」「1周に複数」は<b>直接一致ではありません</b>。</p>
+  </div>`;
+ }
 
  /* ---------- 条の設計へ渡す（§9.226 ②、利用者の指示） ----------
     「条の設計（幅の割り付け）と異常位置判定をより連携させたい。欠陥判定
@@ -828,7 +936,8 @@
    +`ロール径MINも入っていれば、摩耗の範囲として幅を持たせて比べます。`
    +`「倍の間隔」「1周に複数」は<b>直接一致ではありません</b>——`
    +`数え落とし・傷が複数あるときの候補として出しています。`
-   +`この判定は記録に残しますが、帳票には出しません（①と同じ扱いの一時データです）。</p>`;
+   +`この判定は記録に残り、<b>帳票にも出せます</b>（帳票の「異常位置判定」の紙ボタン &gt; 長手方向）。`
+   +`候補のロールはロールマスタから毎回引き直すので、径を直せば紙の候補も直ります。</p>`;
  }
  /* 前提（左下）。**出どころを画面に出す**（§6）。 */
  function rollBasisHtml(){
@@ -1003,5 +1112,10 @@
                    /* ② 長手方向（§9.239 ⑥）。**判定は1箇所**なので、
                       画面の外から確かめるときもこの関数を通す。 */
                    setTab,rollMatches,rollEquipment,forgetRolls,
+                   /* 紙にも載せる（§9.305 ②-2）。**引くのは控えだけ**で、
+                      取りに行くのは`ensureRolls()`（呼ぶ側が取れたときだけ
+                      描き直す）。 */
+                   rollSectionHtml,hasRoll:hasRollJudge,
+                   rollEquipmentOf,rollRowsFor,ensureRolls,
                    rollRows:()=>((rollState.rows||[]).slice())};
 })();

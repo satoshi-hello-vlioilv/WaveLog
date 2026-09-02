@@ -70,6 +70,37 @@
      ここは「どう並べるか」。1枚に混ぜると盤の1枚のカードが2つの並びを
      同時に表すことになる。書くのは`[記録表示]`／`[記録群]`／`[記録順]`の
      3列だけで、汎用CRUDは持たない（`endpoint`はGETの読み口）。 */
+  /* ---------- 入力値の丸め（§9.305 ①、利用者の指示） ----------
+     「0.5単位切り上げなど、入力値の切り上げ機能を実装してください。
+      導入したい項目は ①ラテラルボー ②テレスコープ ③巻ズレ ④揃いの値。
+      可能であれば他の入力項目についても、汎用的に設定できるように」
+
+     **1行＝1つの入力の決まり**（刻みと向きだけ）。**行を消せば丸めない**。
+     選べる入力も向きも**サーバーが答える**（`targets`／`modes`）ので、
+     画面には綴りを書き写さない（§9.163）。 */
+  {group:'measure',key:'measureItem',label:'入力値の丸め',icon:'丸',
+   endpoint:'/api/measure-item-master',hasDelete:true,editorModal:true,
+   titleText:'入力値の丸め — どの入力を、いくつ刻みで',
+   fields:[{k:'key',label:'どの入力',type:'choice-card',source:{key:'targets'},
+            required:true,key:true,fieldGroup:'① どの入力を丸めるか',
+            hint:'**1つの入力につき決まりは1つ**です（同じ入力をもう一度登録すると上書きになります）。'},
+           {k:'unit',label:'刻み',type:'number',unit:'mm',step:0.1,min:0,required:true,
+            fieldGroup:'② いくつ刻みで・どちら向きに',
+            hint:'**0.5**なら 0.5・1.0・1.5… の段へそろえます。**打ち終わって欄を離れたとき**に効きます（打っている最中は変わりません）。',
+            more:'測定器から転送された値にも同じ決まりが効きます（板厚・板幅を選んだ場合）。'},
+           {k:'mode',label:'向き',type:'choice-card',source:{key:'modes'},
+            fieldGroup:'② いくつ刻みで・どちら向きに',
+            hint:'**切り上げ**が既定です。'},
+           {k:'note',label:'メモ',fieldGroup:'③ 覚え書き',
+            hint:'なぜこの刻みなのかを書いておくと、あとで見直すときに助かります。'}],
+   cols:[{k:'label',label:'どの入力',grow:2},{k:'unit',label:'刻み',grow:1,format:'roundUnit'},
+         {k:'mode',label:'向き',grow:1},{k:'note',label:'メモ',grow:2}],
+   hint:'測定画面で**打ち終わった値**を、決めた刻みの段へそろえます（例: 0.5刻みで切り上げ→`1.2`は`1.5`）。'
+     +'**登録した入力だけ**が対象で、行を消せば今までどおり打った値がそのまま残ります。'
+     +'ラテラルボー・テレスコープ・巻ずれ・揃いの値には、はじめから0.5刻みの切り上げが入っています。',
+   hintMore:'<p>効くのは<b>欄を離れたとき</b>だけです。打っている最中に丸めると、`0.2`を打つ途中の`0.`で値が飛んでしまうためです。</p>'
+     +'<p>板厚・板幅を選んだ場合は<b>測定器から転送された値にも</b>効きます——手入力と転送で違う値になるほうが分かりにくいためです。</p>'
+     +'<p>保存済みの記録は書き換えません。開き直しても、記録された値はそのまま出ます。</p>'},
   {group:'measure',key:'recordLayout',label:'記録した値の配置',icon:'記',
    special:'record-layout',endpoint:'/api/operation-item-master',
    titleText:'記録した値 — ③確認のカードの並べ方',
@@ -528,7 +559,7 @@
      指摘「並びが不規則」）。**ここに載っていないマスタは末尾**へ回るので、
      足し忘れても消えない。載せ忘れは`tests/test_master.js`が数える。 */
   {key:'measure',label:'測定と記録',hint:'測定画面に出す入力欄と、記録した値の見せ方',
-   items:['opItem','opChoice','recordLayout']},
+   items:['opItem','opChoice','measureItem','recordLayout']},
   {key:'report',label:'帳票',hint:'紙に刷る内容と、その割り付け',
    items:['reportLayout','reportBlock']},
   {key:'equip',label:'設備',hint:'設備そのものと、設備に付くもの',
@@ -1118,6 +1149,10 @@
   // 区分(§9.85)。空欄は「まだ決めていない」であって「無い」ではないので、
   // 「—」ではなくそう書く(既存の設備は空のまま動く)。
   if(col.format==='equipmentKind')return v.trim()===''?'未設定':v;
+  /* 入力値の丸めの刻み（§9.305 ①）。**空欄は「丸めない」と書き切る**
+     ——空のままだと「まだ決めていない」と読めるが、この行の意味は
+     「刻みが無い＝この入力は丸めない」（§4）。単位も必ず添える（§6）。 */
+  if(col.format==='roundUnit')return v.trim()===''?'丸めない':`${v} mm 刻み`;
   /* 使える機能（§9.302）。**残る側を並べる**——保存値は「使わない機能」だが、
      一覧で知りたいのは「どこに出るか」。全部使えるのがふつうなので、そこは
      1語で済ませて（「すべて」）、外してある行だけが目に留まるようにする。
@@ -1497,8 +1532,16 @@
        最初から選ばれている。札にした途端に「どれも選ばれていない」状態が
        生まれると、②の欄が`data-when`で消えて**決めることが1つ消える**
        （新規登録で実際にそうなった）。 */
-    const cur=String(val||'')||String(((f.cards||[])[0]||{}).v||'');
-    const cards=(f.cards||[]).map(c=>{
+    /* **語彙をサーバーから取れるようにする**（§9.305 ①）——`source.key`を
+       書いたときは`maintState.meta[key]`（`{key,label,note}`の並び）を札に
+       する。画面へ綴りを書き写さないための口で、静的な`cards`は今までどおり。 */
+    const srcKey=(f.source&&f.source.key)||'';
+    const list=srcKey
+      ?((maintState.meta&&Array.isArray(maintState.meta[srcKey])?maintState.meta[srcKey]:[])
+         .map(o=>({v:o.key,label:o.label||o.key,note:o.note||''})))
+      :(f.cards||[]);
+    const cur=String(val||'')||String((list[0]||{}).v||'');
+    const cards=list.map(c=>{
      const on=cur===String(c.v);
      return `<button type="button" class="mm-card-opt${on?' is-on':''}" data-card="${f.k}" data-card-v="${esc(c.v)}"`
       +` aria-pressed="${on?'true':'false'}" title="${esc(c.note||c.label)}">`
@@ -1509,6 +1552,7 @@
     return `<div class="mm-field mm-field-area mm-cards">${fieldLabelHtml(f)}
       <div class="mm-card-row">${cards}</div>
       <input type="hidden" data-field="${f.k}" value="${esc(cur)}">
+      ${list.length?'':'<small class="mm-field-hint">選べる候補をこの端末では読めませんでした。</small>'}
       ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
    }
    /* ---------- いくつでも入切できる札（§9.302） ----------
@@ -2907,6 +2951,57 @@
  const FB_KIND_VALUE='value',FB_KIND_HEAD='head',FB_KIND_BLANK='blank';
  /* 語彙（呼び名・選べる書式）は**サーバーが答える**（§9.163）。届く前でも
     盤は開けるので、綴りだけをここに持ち、**呼び名は持たない**。 */
+ /* ---------- マスの高さは実測して決める（§9.303 ②） ----------
+    利用者の報告「表を組み、多段になってくると、調整用のブロックが重なったり
+    して乱れる」。盤のマスの下段（出どころ＋横N・縦M のつまみ）は列数が増える
+    と折り返すが、**グリッドの行高はその折り返しを見込まない**——
+    `grid-auto-rows:minmax(3.4em,auto)`の`auto`（max-content）は
+    **「折り返さない前提」**で高さを見積もるので、実際に列幅へ置いて折り返した
+    ぶんは行に入らず、**中身がマスの枠から溢れて下のマスへ重なる**
+    （実測: 中身83px／マスの内寸75px）。1マスぶんに要る高さを測って
+    `--fb-cell-h`へ入れる。
+
+    **測る前に前の値を外すこと**（§9.210 ④・§9.217の罠）——付いたまま測ると、
+    一度伸びた高さが二度と縮まない。
+    **器の高さ（stretchされた箱）ではなく中身を測ること**——マスはトラックの
+    高さまで引き伸ばされるので、`clientHeight`から測ると「いま与えられている
+    高さ」を測り直すだけになり、縮む方向へ動かない。 */
+ function fbFitCellHeight(wrap){
+  if(!wrap||!wrap.classList.contains('is-matrix'))return;
+  wrap.style.removeProperty('--fb-cell-h');
+  const rows=[...wrap.querySelectorAll('.fb-row')];
+  if(!rows.length)return;
+  const gapY=parseFloat(getComputedStyle(wrap).rowGap)||0;
+  let need=0;
+  rows.forEach(el=>{
+   /* 縦Nマスの札は N 行ぶん＋そのあいだの隙間を使うので、1マスぶんへ均す。 */
+   const tall=Math.max(1,Number((/span\s+(\d+)/.exec(el.style.gridRow||'')||[])[1])||1);
+   const inner=[...el.children].reduce((h,c)=>{
+    const cm=getComputedStyle(c);
+    return h+c.getBoundingClientRect().height
+           +(parseFloat(cm.marginTop)||0)+(parseFloat(cm.marginBottom)||0);
+   },0);
+   const cs=getComputedStyle(el);
+   const box=inner+(parseFloat(cs.paddingTop)||0)+(parseFloat(cs.paddingBottom)||0)
+             +(parseFloat(cs.borderTopWidth)||0)+(parseFloat(cs.borderBottomWidth)||0);
+   const one=(box-(tall-1)*gapY)/tall;
+   if(one>need)need=one;
+  });
+  /* 端数の切り上げぶんだけ余分に取る（0.5pxの差でも溢れると重なって見える）。 */
+  if(need>0)wrap.style.setProperty('--fb-cell-h',(Math.ceil(need)+1)+'px');
+ }
+ /* 窓の大きさが変わると列幅＝折り返しの回数が変わるので測り直す（§9.130）。
+    **見張りは1つだけ**——描き直すたびに付けると器の数だけ積み上がる。 */
+ function fbWatchCellHeight(wrap){
+  if(!wrap||wrap.__fbRo||typeof ResizeObserver!=='function')return;
+  let busy=false;
+  wrap.__fbRo=new ResizeObserver(()=>{
+   if(busy)return;                       /* 自分が高さを変えたぶんで回らない */
+   busy=true;
+   requestAnimationFrame(()=>{try{fbFitCellHeight(wrap)}finally{busy=false}});
+  });
+  try{wrap.__fbRo.observe(wrap)}catch(e){}
+ }
  function fbCell(o){
   const x=o||{};
   let kind=String(x.kind||'').trim();
@@ -3491,6 +3586,9 @@
       state.rows.splice(to,0,m);from=-1;sync();
      });
     });
+    /* **マスの高さは実測して入れる**（§9.303 ②）——列数と折り返しで
+       変わるので、描き直すたびに測る。 */
+    fbFitCellHeight(wrap);fbWatchCellHeight(wrap);
    };
    const drawList=()=>{
     const cats=box.querySelector('.fb-cats'),list=box.querySelector('.fb-list');
@@ -12035,6 +12133,30 @@
   });
   return order.map(g=>({name:g,rows:bag.get(g)}));
  }
+ /* 盤の並びについての案内。**1つの段落にまとめる**（§9.304）——
+    「まとめ直した」と「誰が並びを決めているか」は、どちらも
+    **「この盤に出ている並びは何なのか」**という同じ問いへの答えなので、
+    2段落に分けると先に読まれる側だけが目に入る（実際に「既定へ戻す」を
+    押しても、戻ったことを言う文が下に隠れていた）。
+    **どちらも言うことが無いときは段落ごと出さない**（自明な文は読まれない・§9.127）。 */
+ function rlLegendHtml(fixed,follows){
+  const parts=[];
+  if(rlState.healed)
+   /* **保存が何を書くかで言い方を変える**——掴んで決めた項目が1つも無ければ
+      保存は`[記録順]`を**空で**書く（＝表示順へ帰す・§9.243 ②）ので、
+      「この形で確定します」は嘘になる。まとめて見せているのは表示だけで、
+      ③確認のカードも同じ「出てきた順に束ねる」で描く。 */
+   parts.push('同じ群がばらばらの位置にあるので、盤では<b>群ごとにまとめて</b>出しています'
+     +(fixed?'（<b>保存を押すと、この形で確定します</b>）':'（③確認のカードも同じようにまとめます）')+'。');
+  if(fixed&&follows)
+   parts.push(`<b>${fixed}件</b>はこの盤で並びを決めています（実線）。`
+     +`<b>${follows}件</b>は項目の「表示順」に従います（点線）。`
+     +'「既定へ戻す」で全部を表示順へ帰せます。');
+  else if(follows)
+   parts.push('並びは<b>それぞれの項目の「表示順」</b>に従っています。'
+     +'掴んで動かした項目だけが、この盤の並びで固定されます。');
+  return parts.length?`<p class="rl-hint rl-legend">${parts.join('')}</p>`:'';
+ }
  function rlSay(text,bad){
   const el=$('#rlState');if(!el)return;
   el.textContent=text||'';el.classList.toggle('is-bad',!!bad);
@@ -12104,14 +12226,15 @@
    +`${total}件・${groups.length}群</small></h4>`
    /* **状態は色だけで伝えない**（§3）——点線の印が何なのかを件数つきの文で言う。
       **どちらも0のときは書かない**（自明な文は読まれない・§9.127）。 */
-   /* **まとめ直したことを画面に書く**（§9.219 ③）。 */
-   +(rlState.healed?`<p class="rl-hint rl-legend">同じ群がばらばらの位置に保存されていたので、`
-     +`盤ではまとめて出しています（<b>保存を押すと、この形で確定します</b>）。</p>`:'')
-   +((fixed&&follows)?`<p class="rl-hint rl-legend"><b>${fixed}件</b>はこの盤で並びを決めています`
-     +`（実線）。<b>${follows}件</b>は項目の「表示順」に従います（点線）。`
-     +`「既定へ戻す」で全部を表示順へ帰せます。</p>`
-     :(follows?`<p class="rl-hint rl-legend">並びは<b>それぞれの項目の「表示順」</b>に従っています。`
-       +`掴んで動かした項目だけが、この盤の並びで固定されます。</p>`:''))
+   /* **案内は1行にまとめる**（§9.304、CLAUDE 画面基準 8）。以前は
+      「まとめ直した」（§9.219 ③）と「誰が並びを決めているか」を**別々の
+      段落**で出しており、どちらも「この盤に出ている並びは何なのか」という
+      **同じ問い**に答えていた。しかも上の段落だけが常に先に読まれるので、
+      「既定へ戻す」を押しても**戻ったことが読める文が下に隠れた**。
+      **まとめ直したことの言い方は、保存が何を書くかで変える**——掴んで
+      決めた項目が1つも無いときに保存が書くのは**空**（＝表示順へ帰す・
+      §9.243 ②）なので、「この形で確定します」は嘘になる。 */
+   +(rlLegendHtml(fixed,follows))
    +(groups.length?groups.map(g=>`<div class="rl-group" data-rl-group="${esc(g.name)}">`
      +`<b><span class="rl-group-name" data-rl-rename="${esc(g.name)}"`
      +` title="押すと見出しの名前を変えられます">${esc(g.name)}</span>`

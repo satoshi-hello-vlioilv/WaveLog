@@ -224,6 +224,14 @@ run(){
   # (「開いているタブが0件」の正しい振る舞い)。以前は90秒あったので偶然
   # 間に合っていただけで、テストを1本足すだけで崩れる。curl 1回で防ぐ。
   server_up || restart_server || echo "!! サーバーを起動できないまま $2 を実行します" >&2
+  # **見せ方の設定は1本ごとに戻す**（§9.303 ③の追補）。紙の配置は
+  # 「触ったら裏で保存」になったので、**組み換えを開いて何か触ったテストは
+  # 必ず`report:<設備>`を残す**——以前は「やめる」で下書きが捨てられたので
+  # 残らなかった。開始時に1回だけ戻す形では、前のテストの置き土産が次の
+  # テストへそのまま渡る（実測: `test_rbcatalog`が別の塊の紙を読んで4件落ち、
+  # `test_rpblocks`が組み換えの待ちで落ちた）。**実行のたびに結果が変わるので
+  # は安全網にならない**ので、1本ごとに白紙から始める（§9.121）。
+  resetcontent
   t0=$(date +%s)
   out=$($1 "$2" 2>&1); rc=$?
   # 1本ぶんの生ログを残したいときだけ（既定は残さない）。落ちた場所を
@@ -260,7 +268,7 @@ sleep 3
 echo "--- 一般UI (editモード) ---"
 mode edit
 for t in test_stopcat test_workable test_wkbg test_mcore test_burr test_ngcard test_recvalues test_reclayout test_msteps test_orphan test_audit test_sub test_maint test_setpage test_nav test_uiux test_histdel test_uisize test_master test_mmtable test_shift test_measstore test_waiting \
-         test_listcache test_ttlcache test_flows test_dbequip test_course test_tolscale test_defect test_theme test_scale test_fit test_bootui test_density test_filter test_adhoc test_stopeq test_eqkind test_eqfeature test_bootflash test_dsnav test_opui test_collayout test_colformat test_colrule test_colsort test_typescale test_lcpanel test_colmenu test_colpreset test_formula test_share test_listperf test_allrows test_logview test_headbar test_gridhead test_reccols test_rpblocks test_rpprint test_rplayout test_rpmaster test_filterio test_filteruser test_filteractive test_colio test_multidrag test_sortcustom test_filterkeep test_filterlock test_dsrestart test_qjoinui test_modalkeep test_opchoice test_recdel test_blockbuild test_rbmodal test_rbsample test_rlmaster test_oppad test_oplimit test_opmother test_opunit test_opauto test_opformula test_opblank test_opwidget test_colkeep test_eqscope test_coltint test_gridchild test_roll test_mmfold test_actuals test_opsheet test_rollload test_rollwipe test_eqsetup test_colscopeui test_storageui test_presenceui test_savechip test_rbcells test_rbcatalog test_changelogui test_filtergroup test_opblanktint; do run $NODE $t.js; done
+         test_listcache test_ttlcache test_flows test_dbequip test_course test_tolscale test_defect test_theme test_scale test_fit test_bootui test_density test_filter test_adhoc test_stopeq test_eqkind test_eqfeature test_bootflash test_dsnav test_opui test_collayout test_colformat test_colrule test_colsort test_typescale test_lcpanel test_colmenu test_colpreset test_formula test_share test_listperf test_allrows test_logview test_headbar test_gridhead test_reccols test_rpblocks test_rpprint test_rplayout test_rpmaster test_filterio test_filteruser test_filteractive test_colio test_multidrag test_sortcustom test_filterkeep test_filterlock test_dsrestart test_qjoinui test_modalkeep test_opchoice test_recdel test_blockbuild test_rbmodal test_rbsample test_rlmaster test_oppad test_oplimit test_opmother test_opunit test_opauto test_opformula test_opblank test_opwidget test_mround test_colkeep test_eqscope test_coltint test_gridchild test_roll test_mmfold test_actuals test_opsheet test_rollload test_rollwipe test_eqsetup test_colscopeui test_storageui test_presenceui test_savechip test_rbcells test_rbcatalog test_changelogui test_filtergroup test_opblanktint; do run $NODE $t.js; done
 
 echo "--- スケジュール (テスト側でモードを切り替える) ---"
 for t in test_screport test_startwork test_scsync test_sccat test_scbalance test_scbatch \
