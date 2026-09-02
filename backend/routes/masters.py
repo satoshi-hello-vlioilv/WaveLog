@@ -55,9 +55,6 @@ from ..repositories.master_repo import (
  field_reorder_terminal_count,
  QUERY_JOIN_TABLE, QUERY_JOIN_MULTI, ensure_query_join_table, query_joins,
  query_join_save, query_join_delete,
- MEASURE_ITEM_TABLE, ROUND_TARGETS, ROUND_MODES, ROUND_MODE_DEFAULT,
- ensure_measure_item_table, measure_item_rows, measure_item_upsert,
- measure_item_delete,
 )
 from ..db_access import cols, tables, cfg
 from .. import schedule_calc
@@ -1250,6 +1247,9 @@ def operation_item_list():
            # **画面へ書き写さない**——増減したときに2箇所を直すことになる。
            'places':list(op.PLACES),'spans':list(op.SPANS),'gridCols':op.GRID_COLS,
            'spanUnit':op.SPAN_UNIT,'widgets':list(op.WIDGETS),
+           # §9.307 入力値の丸めの向き。**サーバーが答える**——
+           # 画面へ写すと、増やしたときに2箇所直すことになる。
+           'roundModes':list(op.ROUND_MODES),
            # §9.231 ② 上下限の出どころの語彙。**サーバーが答える**
            # ——画面へ書き写すと、増やしたときに2箇所直すことになる。
            # **いまの値も一緒に返す**（§CLAUDE 6「出どころ・単位・根拠を
@@ -1406,6 +1406,8 @@ def _operation_item_save(x):
                          # （''＝既定／'なし'／色の鍵）。**送っていないときは
                          # 今の値を残す**（`None`のまま渡す・§9.212 ②）。
                          blank_tint=x.get('blankTint'),
+                         # §9.307 入力値の丸めの向き（単位は「刻み」）。
+                         round_mode=x.get('roundMode'),
                          report=ref)
   saved=_op_read(fn)
   # **付け替えたことは黙って済ませない**（§9.226 ①）。名前を変えると
@@ -1524,8 +1526,21 @@ def operation_choice_list():
                    'hasEquipment':any(r['equipment'] for r in vals),
                    'hasReading':any(r['reading'] for r in vals),
                    'legacy':nm in [g for g,_ in op.LEGACY_CHOICE_GROUPS]})
+   # ---------- 親子（§9.306、利用者の指示） ----------
+   # **リンクと「その親のまとまりの値」はサーバーが答える**（§9.163）——
+   # 画面で「このまとまりの親は誰か」を数え直すと、盤と値の欄で答えが
+   # 食い違いうる。`parentValues`は**親の値の欄が選ばせる候補**そのもの。
+   links=op.choice_links(c)
+   parent_of={x['child']:x['parent'] for x in links}
+   for r in rows:
+    r['parent']=parent_of.get(r['name'],'')
+   for g in groups:
+    g['parent']=parent_of.get(g['name'],'')
+    g['children']=[x['child'] for x in links if x['parent']==g['name']]
    return {'items':rows,'names':op.choice_names(c),'usage':usage,'groups':groups,
-           'legacyGroups':[g for g,_ in op.LEGACY_CHOICE_GROUPS]}
+           'legacyGroups':[g for g,_ in op.LEGACY_CHOICE_GROUPS],
+           'links':links,
+           'parentValues':{ch:op.choice_values(c,pa) for ch,pa in parent_of.items()}}
   return jsonify(ok=True,**_op_read(fn))
  except Exception as e:return jsonify(error=f'操業データ選択肢マスタの読込に失敗しました: {e}'),500
 
@@ -1553,7 +1568,10 @@ def _operation_choice_save(x):
                            note=x.get('note'),
                            # §9.221 ③。よみ＝探すための読み、対象設備＝
                            # その設備のときだけ出す（空＝すべて）。
-                           reading=x.get('reading'),equipment=x.get('equipment'))
+                           reading=x.get('reading'),equipment=x.get('equipment'),
+                           # §9.306 親のどの値のときに出るか（空＝すべての親）。
+                           # **`None`は「送っていない」**なので今の値が残る。
+                           parent_value=x.get('parentValue'))
   return jsonify(ok=True,id=_op_read(fn),message='操業データの選択肢を保存しました。')
  except ValueError as e:return jsonify(error=str(e)),400
  except Exception as e:return jsonify(error=f'操業データ選択肢マスタの保存に失敗しました: {e}'),500
@@ -1670,6 +1688,9 @@ def report_block_list():
            'repeats':[{'v':v,'label':lb} for v,lb in rb.REPEAT_LABELS],
            # 繰り返しの向き（§9.277）。**呼び名もサーバーが答える**。
            'repeatDirs':[{'v':v,'label':lb} for v,lb in rb.REPEAT_DIRS],
+           # 行・列を最大で出すか（§9.309）。**語彙はサーバーが答える**
+           # ——画面へ綴りを書き写すと、増やしたときに2箇所直すことになる。
+           'fulls':[{'v':v,'label':lb} for v,lb in rb.FULL_LABELS],
            # 表に組むときの軸（§9.277）。**既定の置き方はこの並びが決める**
            # ——1つ目を行、残りを列。画面へ写すと、軸を1つ足したときに
            # 「既定の並び」が2箇所になる（§9.163）。
@@ -1732,6 +1753,9 @@ def _report_block_save(x):
                           repeat_dir=(x.get('repeatDirText')
                                       if x.get('repeatDirText') is not None
                                       else x.get('repeatDir')),
+                          # 行・列の出し方（§9.309）。**呼び名でも受ける**。
+                          full=(x.get('fullText') if x.get('fullText') is not None
+                                else x.get('full')),
                           block_id=(int(x['id']) if x.get('id') not in (None,'') else None))
   return jsonify(ok=True,id=_op_read(fn),message='帳票ブロックを保存しました。')
  except ValueError as e:return jsonify(error=str(e)),400
@@ -1949,68 +1973,74 @@ def operation_form():
                  error=f'操業データの項目を読めませんでした: {e}')
 
 # ---------------------------------------------------------------------
-# 測定項目マスタ（§9.305 ①）。汎用CRUDの4本セット（GET/POST/update/delete）。
-# **語彙はサーバーが答える**（`targets`/`modes`）——画面へ綴りを書き写さない
-# （§9.163。項目を1つ足したときに直す場所が2つになる）。
+# 選択肢リンクマスタ（§9.306）。汎用CRUDの4本セット。
+# **語彙（まとまりの一覧）と判定はサーバーが答える**（§9.163）——盤は
+# 返ってきた木を描くだけで、1段だけの規則を画面に書き写さない。
 # ---------------------------------------------------------------------
-@bp.get('/api/measure-item-master')
-def measure_item_master_list():
+@bp.get('/api/choice-link-master')
+def choice_link_list():
  try:
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   before=MEASURE_ITEM_TABLE in tables(c)
-   items=measure_item_rows(c)
-  return jsonify(ok=True,items=items,table=MEASURE_ITEM_TABLE,created=not before,
-                 empty=len(items)==0,
-                 targets=[{'key':k,'label':l,'note':n} for k,l,n in ROUND_TARGETS],
-                 modes=[{'key':k,'label':k,'note':n} for k,n in ROUND_MODES],
-                 defaultMode=ROUND_MODE_DEFAULT,
-                 master_path=str(path))
+  from ..repositories import operation_repo as op
+  def fn(c):
+   links=op.choice_links(c,True)
+   names=op.choice_names(c)
+   child_of={x['child'] for x in links}
+   parent_of={x['parent'] for x in links}
+   rows=[]
+   for x in links:
+    rows.append({**x,
+                 # **件数はサーバーが数える**（盤で数え直さない）。
+                 'parentCount':len(op.choice_values(c,x['parent'])),
+                 'childCount':len(op.choice_values(c,x['child']))})
+   return {'items':rows,'names':names,
+           # **繋げるかどうかもサーバーが答える**——1段だけの規則は
+           # `choice_link_upsert()`が持っているので、盤は理由を出すだけ。
+           'groups':[{'name':n,'isChild':n in child_of,'isParent':n in parent_of,
+                      'count':len(op.choice_values(c,n))} for n in names]}
+  return jsonify(ok=True,**_op_read(fn))
  except Exception as e:
-  return jsonify(error=f'測定項目マスタ読込失敗: {e}',
-                 master_path=str(DBS['MASTER']['path'])),500
+  return jsonify(error=f'選択肢リンクマスタの読込に失敗しました: {e}'),500
 
-def _measure_item_save(item_id=None):
- x=request.get_json(force=True) or {}
+def _choice_link_save(x):
+ from ..repositories import operation_repo as op
  uid=request_user_id(x)
- key=str(x.get('key') or '').strip()
  try:
-  with connect(DBS['MASTER']['path'],False) as c:
-   iid=measure_item_upsert(c,key,x.get('unit'),x.get('mode'),uid,
-                           note=x.get('note'),
-                           enabled=(None if 'enabled' not in x else bool(x.get('enabled'))),
-                           item_id=item_id or x.get('id'))
-  return jsonify(ok=True,id=iid,updated_by=uid)
+  def fn(c):
+   return op.choice_link_upsert(c,x.get('parent'),x.get('child'),uid,
+                                note=x.get('note'),
+                                enabled=_choice_on(x.get('enabledText')
+                                                   if x.get('enabledText') is not None
+                                                   else x.get('enabled')),
+                                link_id=(int(x['id']) if x.get('id') not in (None,'') else None))
+  return jsonify(ok=True,id=_op_read(fn),message='親子を保存しました。')
  except ValueError as e:
-  # **理由と打つ手を返す**（§4）。知らないキーは断るが、何が選べるかを言う。
+  # **断る理由と打つ手を返す**（§4）——「できません」だけでは、どのリンクを
+  # 外せばよいのか分からない。
   return jsonify(error=str(e)),400
-
-@bp.post('/api/measure-item-master')
-def measure_item_master_register():
- try:return _measure_item_save()
  except Exception as e:
-  return jsonify(error=f'測定項目マスタ登録失敗: {e}',
-                 master_path=str(DBS['MASTER']['path'])),500
+  return jsonify(error=f'選択肢リンクマスタの保存に失敗しました: {e}'),500
 
-@bp.post('/api/measure-item-master/update')
-def measure_item_master_update():
+@bp.post('/api/choice-link-master')
+def choice_link_register():
+ return _choice_link_save(request.get_json(force=True) or {})
+
+@bp.post('/api/choice-link-master/update')
+def choice_link_update():
+ x=request.get_json(force=True) or {}
+ if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
+ return _choice_link_save(x)
+
+@bp.post('/api/choice-link-master/delete')
+def choice_link_delete_route():
  try:
+  from ..repositories import operation_repo as op
   x=request.get_json(force=True) or {}
-  if x.get('id') is None:return jsonify(error='更新対象IDがありません。'),400
-  return _measure_item_save(x.get('id'))
+  if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
+  def fn(c):
+   op.choice_link_delete(c,int(x['id']));return True
+  _op_read(fn)
+  # **値の`[親の値]`は消さない**（また繋げば続きから使える）ので、そのことを言う。
+  return jsonify(ok=True,message='親子を外しました（値に入れた「親の値」は残しています）。')
  except Exception as e:
-  return jsonify(error=f'測定項目マスタ更新失敗: {e}',
-                 master_path=str(DBS['MASTER']['path'])),500
-
-@bp.post('/api/measure-item-master/delete')
-def measure_item_master_delete():
- try:
-  x=request.get_json(force=True) or {}
-  if x.get('id') is None:return jsonify(error='削除対象IDがありません。'),400
-  with connect(DBS['MASTER']['path'],False) as c:
-   ensure_measure_item_table(c);measure_item_delete(c,x.get('id'))
-  return jsonify(ok=True)
- except Exception as e:
-  return jsonify(error=f'測定項目マスタ削除失敗: {e}',
-                 master_path=str(DBS['MASTER']['path'])),500
+  return jsonify(error=f'選択肢リンクマスタの削除に失敗しました: {e}'),500
 

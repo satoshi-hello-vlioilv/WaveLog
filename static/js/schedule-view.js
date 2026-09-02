@@ -392,7 +392,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(probe)probe.onclick=async()=>{
    probe.disabled=true;probe.textContent='調べています…';
    try{
-    const r=await api('/api/schedule/owner-probe',{method:'POST',
+    /* **読むだけのPOST**（§9.273）。`quiet`を付けないと「保存しています…」の
+       帯が出て、確かめただけなのに書き込んだように読める（§3）。
+       サーバー側も`_READ_ONLY_POST_ENDPOINTS`に入れてある（§9.301 ①）。 */
+    const r=await api('/api/schedule/owner-probe',{method:'POST',quiet:true,
       headers:{'Content-Type':'application/json'},body:'{}'});
     scOwnerProbe=r.probe||null;
    }catch(e){

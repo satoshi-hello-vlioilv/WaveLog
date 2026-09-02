@@ -921,6 +921,160 @@ const endArrange=async page=>{
        `段あり ${NP&&NP.fit} / 段なし ${NOFF&&NOFF.fit}`);
   }catch(e){rec('FATAL(§9.298)',false,e.message)}
 
+  /* ==========================================================
+     §9.308 紙ぜんたいの余白を選べる（余っていても詰まる）
+     ----------------------------------------------------------
+     利用者の指摘「帳票ブロックマスタの余白詰めはうまくいっていないように
+     見えます。項目間の余白や、項目内の余白も詰める余地があります」。
+     §9.303 ①の**詰める段は「溢れたときだけ」動く**ので、余っている塊では
+     一度も走らない（実測: どの塊も`--rp-dense`も`rp-pack-*`も持たず、器と
+     中身の差は0px）。仕組みは既にあったので、足したのは**詰めると言える
+     手立て**だけ——`--rp-dense`を紙へ与えて下限を決める。
+     **見るのは宣言ではなく実測の高さ**（§9.289と同じ約束）——札が並ぶ
+     ことだけを見る網は、どこにも掛かっていない実装でも通る。
+     **既定は1pxも変えない**（§9.132）ことも一緒に見る。
+     ========================================================== */
+  try{
+   /* **前の節の置き土産を片付けてから測る**（§9.121）——§9.303 ①の節は
+      `!important`のスタイルを注いで段を止め、丈別データを狭いマスへ寄せた
+      ままにする。残したまま測ると、詰めたのか止めたのか見分けられない。 */
+   await page.evaluate(()=>{document.querySelectorAll('style').forEach(x=>{
+    const t=x.textContent||'';
+    if(t.indexOf('rp-pack-')>=0||t.indexOf('--rp-dense')>=0)x.remove();
+   })});
+   await cleanup();
+   await page.evaluate(t=>WL.columnLayout.forget(t),TARGET);
+   await page.evaluate(()=>window.exitReportView&&window.exitReportView());
+   await page.evaluate(()=>openRecordsSafe('編集中'));
+   await page.waitForSelector('.record-list-row',{timeout:25000});
+   await page.click('.record-list-row .report');
+   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
+   await settle(page);await page.waitForTimeout(600);
+   /* **開いているとは限らない**——前の節が組み換えを開いたままなので、
+      素直に押すと閉じてしまう（帯が出ないまま待って落ちる）。 */
+   if(await page.evaluate(()=>!!document.getElementById('rpArrangeBar').hidden)){
+    await page.click('#reportArrange');
+   }
+   await page.waitForSelector('#rpArrangeBar:not([hidden])',{timeout:8000});
+   await settle(page);await page.waitForTimeout(500);
+   const packLook=async()=>await page.evaluate(()=>{
+    /* **倍率を割り戻して実寸で比べる**（§9.174）。紙は`--rp-scale`で縮めて
+       出しているので、そのまま測ると差が半分以下に見えて判定が際どくなる。 */
+    const sc=Number(getComputedStyle(document.getElementById('reportContent'))
+              .getPropertyValue('--rp-scale'))||1;
+    const h=e=>e?Math.round(e.getBoundingClientRect().height/sc*100)/100:0;
+    const fit=[...document.querySelectorAll('[data-rp-block]>.rp-block-fit')];
+    return {dense:getComputedStyle(document.getElementById('reportContent'))
+              .getPropertyValue('--rp-dense').trim()||'',
+      行:h(document.querySelector('.rp-field')),
+      表:h(document.querySelector('.rp-dim-table td')),
+      見出し:h(document.querySelector('.rp-section h3')),
+      中身:fit.reduce((a,e)=>a+e.scrollHeight,0),
+      /* 塊ごとの`--rp-dense`。紙で詰めたら**塊はそれより緩まない**。 */
+      緩い:fit.filter(e=>{const v=parseFloat(getComputedStyle(e).getPropertyValue('--rp-dense'));
+              return Number.isFinite(v)&&v>0.61}).length};
+   });
+   const pick=async i=>{
+    await page.evaluate(n=>{const b=document.querySelector(`[data-rp-pack="${n}"]`);if(b)b.click()},i);
+    await settle(page);await page.waitForTimeout(700);
+    return packLook();
+   };
+   const labels=await page.evaluate(()=>
+     [...document.querySelectorAll('[data-rp-pack]')].map(b=>b.textContent.trim()));
+   rec('§9.308 紙の帯で余白を選べる（ふつう／詰める／もっと詰める）',
+       labels.length===3&&labels[0]==='ふつう',JSON.stringify(labels));
+   const P0=await packLook();
+   const P1=await pick(1), P2=await pick(2);
+   /* **項目間・項目内**（利用者の言葉）＝ラベル＝値の1行。 */
+   rec('§9.308 「詰める」で項目の行が実際に低くなる',
+       P1.行>0&&P1.行<P0.行-0.5,JSON.stringify({ふつう:P0.行,詰める:P1.行}));
+   rec('§9.308 「詰める」で表のセルも見出しも低くなる',
+       P1.表<P0.表-0.5&&P1.見出し<P0.見出し-0.5,
+       JSON.stringify({表:[P0.表,P1.表],見出し:[P0.見出し,P1.見出し]}));
+   rec('§9.308 「もっと詰める」はさらに詰まる',
+       P2.行<P1.行-0.5&&P2.中身<P1.中身,
+       JSON.stringify({行:[P0.行,P1.行,P2.行],中身:[P0.中身,P1.中身,P2.中身]}));
+   /* **紙で詰めたら塊はそれより緩まない**（段の`dense`は1のこともある）。 */
+   rec('§9.308 紙で詰めたら、塊の段が緩める側へ戻さない',
+       P2.緩い===0,`紙より緩い塊: ${P2.緩い}件`);
+   const back=await pick(0);
+   rec('§9.308 「ふつう」へ戻すと既定の見え方へ完全に戻る（§9.132）',
+       back.dense===''&&Math.abs(back.行-P0.行)<0.1&&Math.abs(back.表-P0.表)<0.1
+       &&Math.abs(back.中身-P0.中身)<2,
+       JSON.stringify({前:[P0.行,P0.表,P0.中身],後:[back.行,back.表,back.中身],dense:back.dense||'(未設定)'}));
+   /* **保存されること**——紙の設定なので、開き直しても効いていなければ
+      「押した瞬間だけ」になる（§9.205と同じ壊れ方）。 */
+   await pick(1);
+   await page.waitForTimeout(900);
+   const saved=(await (await fetch(B+'/api/column-layout-master?target='
+     +encodeURIComponent(TARGET))).json()).widths['__余白__'];
+   rec('§9.308 選んだ余白がマスタへ保存される',
+       Number(saved)>0,`__余白__=${saved}`);
+   await pick(0);
+   await page.click('#reportArrange');
+   await page.waitForTimeout(400);
+  }catch(e){rec('FATAL(§9.308)',false,e.message)}
+
+  /* ==========================================================
+     §9.309 行・列を「最大」で出す（利用者の指示）
+     ----------------------------------------------------------
+     「帳票ブロックマスタで余白が大きい時になることも多いので、データが最大に
+      入ったときの行や列の表示になるような設定を追加してほしいです。行や列は
+      データが入ったときのように出るがデータはないので空で表示するイメージ
+      です。**板幅表示が40条まで常時表示しているのと同じ形**です」
+
+     **実データのロットで見る**——見本のロットは40条・9丈まで埋めてある
+     （§9.254 ④）ので、「最大」と「データなり」が同じ数になり**何も
+     確かめられない**。ここのロットは丈が3本なので差が出る。
+     **既定はその塊の今までの出し方**（§9.132。丈別データは記録された丈だけ）
+     なので、**3つとも見る**（最大／データなり／既定へ戻す）。
+     ========================================================== */
+  try{
+   await cleanup();
+   await page.evaluate(t=>WL.columnLayout.forget(t),TARGET);
+   const rowsOf=async()=>{
+    await page.evaluate(()=>WL.reportBlocks.forget&&WL.reportBlocks.forget());
+    await page.evaluate(()=>window.exitReportView&&window.exitReportView());
+    await page.evaluate(()=>openRecordsSafe('編集中'));
+    await page.waitForSelector('.record-list-row',{timeout:25000});
+    await page.click('.record-list-row .report');
+    await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
+    await settle(page);await page.waitForTimeout(800);
+    return page.evaluate(()=>{
+     const t=document.querySelector('.rp-product-table');
+     return t?t.querySelectorAll('tbody tr').length:0;
+    });
+   };
+   const setFull=async label=>{
+    const l=await (await fetch(B+'/api/report-block-master')).json();
+    const r=(l.items||[]).find(x=>x.name==='丈別データ');
+    if(!r)return null;
+    await post('/api/report-block-master',{id:r.id,equipment:r.equipment,name:r.name,
+      span:r.span,rows:r.rows,content:r.content,note:r.note,enabledText:r.enabledText,
+      cols:r.cols,kindText:r.kindText,text:r.text,repeatText:r.repeatText,
+      repeatDirText:r.repeatDirText,fullText:label,user_id:'test'});
+    return r;
+   };
+   const R0=await rowsOf();
+   rec('§9.309 の前提: このロットは丈が最大より少ない',R0>0&&R0<9,`${R0}丈`);
+   await setFull('いつも最大数で出す（足りないぶんは空欄）');
+   const R1=await rowsOf();
+   rec('§9.309 「最大で出す」で丈9本ぶんの枠が空欄で出る',R1===9,
+       JSON.stringify({前:R0,後:R1}));
+   /* **語彙どおりに保存されること**（呼び名でも受ける・§9.219 ②）。 */
+   const saved=await (await fetch(B+'/api/report-block-master')).json()
+     .then(d=>(d.items||[]).find(x=>x.name==='丈別データ'));
+   rec('§9.309 選んだ出し方がマスタへ保存される',
+       saved&&saved.full==='最大',JSON.stringify(saved&&{full:saved.full,text:saved.fullText}));
+   await setFull('記録された数だけ出す');
+   const R2=await rowsOf();
+   rec('§9.309 「データなり」は記録された丈だけ',R2===R0,JSON.stringify({既定:R0,データなり:R2}));
+   await setFull('この塊のふつうの出し方（既定）');
+   const R3=await rowsOf();
+   rec('§9.309 「ふつう」へ戻すと今までの紙へ戻る（§9.132）',R3===R0,
+       JSON.stringify({前:R0,後:R3}));
+  }catch(e){rec('FATAL(§9.309)',false,e.message)}
+
   rec('コンソールに例外を出さない',errs.length===0,errs.slice(0,2).join(' / '));
  }catch(e){rec('FATAL',false,e.message)}
  finally{

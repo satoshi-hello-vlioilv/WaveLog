@@ -895,6 +895,32 @@
  }
  /* 条番号を軸にした表を1枚組み立てる。**まとめも分解も同じ関数**が書く
     ——別々に持つと、片方だけ直した状態が作れる（実際に何度も踏んだ罠）。 */
+ /* ---------- 行・列を「最大」で出す（§9.309、利用者の指示） ----------
+    「データが最大に入ったときの行や列の表示になるような設定を追加してほしい
+      です。行や列はデータが入ったときのように出るがデータはないので空で
+      表示するイメージです。**板幅表示が40条まで常時表示しているのと同じ形**
+      です。この表示方法にするかどうか切り替えられるように、この項目の設定も
+      ブロックマスタに足してください」
+
+    紙の高さがロットごとに変わると置き場所を決め直すことになるので、
+    **入れ物を最大に固定して足りないぶんは空欄で出す**。測定データの表は
+    元からそう組んである（40条ぶんを常に出す）ので、足したのは
+    **切り替えられること**と、丈のように今までデータなりだった塊への適用。
+
+    **既定（`''`）はその塊の今までの出し方**（§9.132）——測定データは最大、
+    丈別データはデータなり。2択にすると、既定をどちらにしても片方の塊の
+    見え方が黙って変わる。**語彙はサーバーが持つ**（§9.163）ので、ここは
+    綴りを2つ見るだけ。 */
+ function rpFullMode(k){return String((rpBlockOf(k)||{}).full||'')}
+ function rpShowFull(k,def){
+  const m=rpFullMode(k);
+  return m==='最大'?true:(m==='データなり'?false:!!def);
+ }
+ /* その塊がいま何行ぶん出すか。**最大と実データの両方を渡す**——呼ぶ側で
+    `Math.min`を書くと、片方だけ直した状態が作れる。 */
+ function rpFullCount(k,def,max,actual){
+  return rpShowFull(k,def)?max:Math.max(1,Math.min(max,actual));
+ }
  function measTableHtml(x,groups,from,to,blockKey){
   const s=x.settings||{},actual=Math.max(1,Math.min(40,+s.horizontalCount||1));
   const {headIdx,tailIdx,headLabel,tailLabel}=lengthLabels(s),tol=toleranceRangeLocal(x,'width');
@@ -962,9 +988,14 @@
   /* 行列を入れ替えたときは左右に割らない（横に40条ぶん並ぶので、割ると
      かえって読みにくい）。 */
   const landscape=rpOrientation==='landscape'&&!rpTransposed(blockKey);
+  /* **何条ぶん出すか**（§9.309）。既定は`true`＝今までどおり40条ぶん。
+     「データなり」にすると記録された条数だけになる。 */
+  const n=rpFullCount(blockKey,true,40,
+    Math.max(1,Math.min(40,+((x.settings||{}).horizontalCount)||1)));
+  const half=Math.ceil(n/2);
   const tables=landscape
-   ?`<div class="rp-wide-split">${measTableHtml(x,groups,0,20,blockKey)}${measTableHtml(x,groups,20,40,blockKey)}</div>`
-   :measTableHtml(x,groups,0,40,blockKey);
+   ?`<div class="rp-wide-split">${measTableHtml(x,groups,0,half,blockKey)}${measTableHtml(x,groups,half,n,blockKey)}</div>`
+   :measTableHtml(x,groups,0,n,blockKey);
   return `<section class="rp-section"><h3>${esc(title)}</h3>`
    +(note?`<p class="rp-note">${note}</p>`:'')
    +`<div class="rp-wide-wrap">${tables}</div></section>`;
@@ -975,7 +1006,15 @@
   const s=x.settings||{},actual=Math.max(1,Math.min(40,+s.horizontalCount||1));
   const {tailLabel}=lengthLabels(s);
   const landscape=rpOrientation==='landscape';
-  const note=`巻ずれ・テレスコープは ${esc(tailLabel)} のデータのみ対象です。横割数（${actual}条）を超える行は控え欄として空欄にしています。幅ロット分割時は条ごとのロット№・目標幅(公差)を条番号の右に表示します。${landscape?'A4横のため1〜20条と21〜40条を左右に分けています。':''}`;
+  /* **書いてあることと起きていることを合わせる**（§3）。「データなり」に
+     すると空欄の控え行は出ないので、その一文は書かない。 */
+  const full=rpShowFull(RP_MEAS_COMBINED,true);
+  const shown=full?40:actual;
+  const note=`巻ずれ・テレスコープは ${esc(tailLabel)} のデータのみ対象です。`
+   +(full?`横割数（${actual}条）を超える行は控え欄として空欄にしています。`
+         :`記録された ${actual}条ぶんだけ出しています（控え欄は出しません）。`)
+   +`幅ロット分割時は条ごとのロット№・目標幅(公差)を条番号の右に表示します。`
+   +(landscape?`A4横のため1〜${Math.ceil(shown/2)}条と${Math.ceil(shown/2)+1}〜${shown}条を左右に分けています。`:'');
   return measSectionHtml(x,`測定データ（${groups.map(g=>g.g).join('・')}）`,note,groups,RP_MEAS_COMBINED);
  }
  function measSoloSection(x,g){
@@ -1011,12 +1050,15 @@
  }
  function productRowsSection(x){
   const rows=x.product?.rows||[],actual=Math.max(1,Math.min(9,+x.settings?.verticalCount||1));
+  /* **何丈ぶん出すか**（§9.309）。既定は`false`＝今までどおり記録された丈だけ。
+     「最大」にすると9丈ぶんの枠を空欄で出す（測定データの40条と同じ形）。 */
+  const shownRows=rpFullCount(RP_PRODUCT_KEY,false,9,actual);
   const mode=rpProductMode(),showJudge=mode!=='内訳',showBreak=mode!=='合否';
   /* **等級はこの紙のレコードから引く**（§9.205）。渡さないと`S.measure`＝
      いま開いている測定の等級で判定してしまい、一括印刷では途中から全部
      同じ基準になる。 */
   const grades=x.qualityGrades||{};
-  const body=Array.from({length:actual},(_,i)=>{
+  const body=Array.from({length:shownRows},(_,i)=>{
    /* 揃いの判定は`judgeProductRow`の1箇所が答える(§9.203)。
       4桁コードを廃止したので、`alignmentCode`だけを見ると新しい記録が
       すべて空欄になる（旧データはあちらが面倒を見る）。 */
@@ -1235,7 +1277,7 @@
      `<h3>`を持たない塊に届かないので、以前は名前を変えても紙は元のままだった）。 */
   const area=(r.kind==='エリア')||b.area===true;
   return Object.assign({},b,{
-   k:b.k,name,master:true,area,
+   k:b.k,name,master:true,area,full:r.full||'',
    span:r.span||b.span,rows:r.rows||b.rows||0,
    html:area
      ?(()=>rpAreaHtml(r.kind==='エリア'&&r.text!=null&&r.text!==''?r.text:name))
@@ -1681,6 +1723,9 @@
      （§9.174「枠だけの塊は既定の高さを持つ」と同じ理由）。 */
   const area=b.kind==='エリア';
   return {k:b.k||b.name,name:b.name,span:b.span||6,rows:b.rows||(area?5:0),user:true,area,
+   /* **設定は1つも落とさない**（§9.113）。自作の塊は表に組めるので、
+      行・列の出し方（§9.309）もここを通らないと紙へ届かない。 */
+   full:b.full||'',
    html:area?(()=>rpAreaHtml(b.text))
      /* マス数と空きマスは**そのまま渡す**（§9.245）——ここで潰すと、
         設定画面で組んだマトリクスが紙では1列ずつの並びに戻る。
@@ -1985,6 +2030,38 @@
   return RP_PAGE_ROWS_DEFAULT;
  }
  const rpPageRowsStore=v=>rpEnc(v);
+ /* ---------- 紙ぜんたいの余白（§9.308、利用者の指摘） ----------
+    「帳票ブロックマスタの余白詰めはうまくいっていないように見えます。
+      項目間の余白や、項目内の余白も詰める余地があります」
+
+    §9.303 ①の**詰める段は「溢れたときだけ」動く**ので、余っている塊では
+    一度も走らない（実測: どの塊も`--rp-dense`も`rp-pack-*`も持っておらず、
+    器と中身の差は0px）。足りなかったのは**利用者が詰めると言える手立て**で、
+    仕組みそのものは既にある——`--rp-dense`を紙(`.rp-page`)へ与えて
+    **下限を決める**だけにした（掛ける先はCSSが持つ・§9.163）。
+    **既定は`ふつう`＝1**（詰めていない紙の見え方は1pxも変わらない・§9.132）。
+    溢れた塊はこれより**さらに**詰まる（段は今までどおり）。 */
+ const RP_PACK_KEY='__余白__';
+ const RP_PACK_LEVELS=[
+  {v:1,   label:'ふつう',      hint:'今までどおりの余白です'},
+  {v:.6,  label:'詰める',      hint:'項目の上下・表のセル・行送りを6割まで詰めます'},
+  {v:.35, label:'もっと詰める',hint:'限界まで詰めます。文字の大きさは変わりません'},
+ ];
+ function rpPackLevel(){
+  const i=rpNum(RP_PACK_KEY,'count',1);
+  return (i>=1&&i<=RP_PACK_LEVELS.length)?i-1:0;   /* 保存は1始まり（0＝未設定） */
+ }
+ const rpPackDense=()=>RP_PACK_LEVELS[rpPackLevel()].v;
+ const rpPackStore=i=>rpEnc(Math.max(1,Math.min(RP_PACK_LEVELS.length,i+1)));
+ /* 紙へ与える。**`--rp-dense`はCSSが読む1本**なので、塊ごとの段（`rpApplyPack`）は
+    これより下へしか行かない（`Math.min`）——上書きで緩めると、詰めると言った
+    のに緩む塊ができる。 */
+ function rpApplyPaperPack(){
+  const page=$id('reportContent');if(!page)return;
+  const d=rpPackDense();
+  if(d>=1)page.style.removeProperty('--rp-dense');
+  else page.style.setProperty('--rp-dense',String(d));
+ }
  /* 1行のpx。**CSSが紙から計算した値を読む**（`grid-auto-rows`の使用値）
     ——JSで紙のmmからpxを起こすと、表示倍率と紙の向きで必ずずれる。 */
  function rpRowPx(grid){
@@ -3161,13 +3238,30 @@
      拡大後、`gap`／`gridAutoRows`は拡大前なので、混ぜると**書き下ろした
      大きさが倍率のぶん小さくなる**——初めて組み換えに入った瞬間に、全部の
      塊が「入りきりません」になる。 */
+  /* **紙に出ない札を外してから測る**（§9.310）。中身なしの塊は組み換え中
+     だけ流れの中に居るので、そのまま測ると**その札のぶんだけ下がった位置**を
+     書き下ろすことになる（実測: 触っただけで作業時間・登録状態が157px下へ
+     動き、その隙間がマスタへ焼き付いた）。外した状態＝刷り上がりの並び
+     そのものなので、**測り終えたら必ず戻すこと**（`finally`）。 */
+  const ghosts=[...grid.querySelectorAll('[data-rp-block].is-empty')];
+  /* **中身なしの塊は「外す前」に測る**——外したまま測ると矩形が0になり、
+     紙の左上へ1マスに潰れて書き下ろされる。書き下ろさない（位置を持たせない）
+     形も試したが、そうすると描くたびに空いているマスを探して紙の下へ伸び、
+     **刷り上がりがA4を超えた**（実測 210×336.7mm）。中身なしの塊にも
+     いま見えている場所をそのまま持たせるのが正しい。 */
+  const ghostRect=new Map(ghosts.map(el=>[el,el.getBoundingClientRect()]));
+  /* **伏せるのは`hidden`属性で**（インラインの`style.display`を書かない・
+     `tests/test_csslint.py`）。`[hidden]{display:none}`はutilityレイヤなので
+     コンポーネント側の`display`に必ず勝つ（§9.131）。 */
+  ghosts.forEach(el=>{el.hidden=true});
+  try{
   const L=rpLocal(grid,0,0);
   const cols=L.cols,rowPx=L.rowPx,gapX=L.gapX,gapY=L.gapY,colW=L.colW,sc=L.sc;
   const gr=grid.getBoundingClientRect();
   if(!(colW>0)||!(rowPx>0))return false;
   const wid={...rpLayoutNow().widths};
   els.forEach(el=>{
-   const k=el.dataset.rpBlock,rr=el.getBoundingClientRect();
+   const k=el.dataset.rpBlock,rr=ghostRect.get(el)||el.getBoundingClientRect();
    const r={left:(rr.left-gr.left)/sc,top:(rr.top-gr.top)/sc,
             width:rr.width/sc,height:rr.height/sc};
    const col=Math.max(1,Math.min(cols,Math.round(r.left/(colW+gapX))+1));
@@ -3177,13 +3271,26 @@
    wid[rpColKey(k)]=rpColStore(rpColToBase(col));
    wid[rpRowPosKey(k)]=rpRowStore(rpRowToBase(row));
    wid[k]=rpSpanStore(rpSpanFromGrid(span));
-   wid[rpRowsKey(k)]=rpRowsStore(rpRowsFromGrid(rows));
+   /* **「中身なり」の塊に高さを書き込まない**（§9.310、§9.222 ②）。
+      同じ禁止事項が`rpRelayout()`には書いてあるのに、書き下ろし側だけが
+      無条件に書いていた——**組み換えに入って1マス引いただけで、触っても
+      いない塊の高さが全部そのときの見た目で凍る**（実測: 引く前は`行数:`が
+      0件、1回引いたら15件）。凍ると`.is-sized`が付いて中の枠が器いっぱいへ
+      伸びる（§9.242 ⑧）ので、**触っていない塊の見た目が変わる**（実測:
+      丈別データの中の枠が52→74pxで42%大きくなった）。これが利用者の報告
+      「初めて触ったときに、隣とは限らずどこかのブロックが共にサイズ変更
+      される」の実体で、**凍るのは1回だけ**だから2回目以降は再現しない
+      ——原因に辿り着きにくいのはこのため。
+      流れ直しを止めるのに要るのは位置（`列:`／`行:`）だけ。高さは
+      `rpFitRows()`が毎回中身から入れ直す。 */
+   if(rpRows(k))wid[rpRowsKey(k)]=rpRowsStore(rpRowsFromGrid(rows));
   });
   /* **書き下ろしは保存しない**（§9.303 ③）——利用者が触っていないので、
      開いて閉じただけで紙の設定が確定してしまう。次に何か触った時点で、
      この書き下ろしごと保存される（下書きに載っている）。 */
   rpStage({widths:wid},{persist:false});
   return true;
+  }finally{ghosts.forEach(el=>{el.hidden=false})}
  }
 /* ---------- 置き場所を重ならないように解く（§9.221 ⑨） ----------
     保存されている`列:`/`行:`は**希望**。マス数・段数を変えたときの丸めや、
@@ -3434,8 +3541,11 @@
  ];
  const RP_PACK_CLASSES=['rp-pack-nowrap','rp-pack-share'];
  function rpApplyPack(b,st){
-  if(st.dense===1)b.style.removeProperty('--rp-dense');
-  else b.style.setProperty('--rp-dense',String(st.dense));
+  /* **紙で決めた余白より緩めない**（§9.308）。段の`dense`は1のこともあるので、
+     そのまま入れると「詰める」と言った紙で塊だけが緩む。 */
+  const d=Math.min(st.dense,rpPackDense());
+  if(d>=1)b.style.removeProperty('--rp-dense');
+  else b.style.setProperty('--rp-dense',String(d));
   b.classList.toggle('rp-pack-nowrap',!!st.nowrap);
   b.classList.toggle('rp-pack-share',!!st.share);
  }
@@ -3540,6 +3650,9 @@
   Object.keys(src).forEach(key=>{
    if(key===RP_GRID_KEY){out[key]=rpEnc(rpGrid());return}
    if(key===RP_PAGE_ROWS_KEY){out[key]=rpEnc(rpPageRows());return}
+   /* 余白は新しい形でしか書かれないが、**紙ぜんたいの設定はここに並べる**
+      ——一覧から漏れると、次に読み替えが走ったとき塊の幅として扱われる。 */
+   if(key===RP_PACK_KEY){out[key]=rpPackStore(rpPackLevel());return}
    if(key.startsWith('列:')){out[key]=rpEnc(rpNum(key,'col',40));return}
    if(key.startsWith('行:')){out[key]=rpEnc(rpNum(key,'row',40));return}
    if(key.startsWith('行数:')){out[key]=rpEnc(rpNum(key,'rowspan',30));return}
@@ -3927,6 +4040,12 @@
        +`<b class="rp-seg-x">×</b>`
        +RP_PAGE_ROW_CHOICES.map(v=>`<button type="button" data-rp-prow="${v}" class="${v===rpPageRows()?'is-on':''}"`
         +` title="紙の縦を${v}段で割ります（1マスが紙の1/${v}）">${v}</button>`).join(''))
+    /* **余白は「割り」の隣**（§9.308）——どちらも紙ぜんたいの見え方で、
+       決める順も「何マスに割るか → どれだけ詰めるか」。段が足りない塊は
+       これより**さらに**詰まる（今までどおり）。 */
+    +seg('余白','紙ぜんたいの余白。項目の上下・表のセル・行送りが詰まります（文字の大きさは変わりません）',
+       RP_PACK_LEVELS.map((x,i)=>`<button type="button" data-rp-pack="${i}" class="${i===rpPackLevel()?'is-on':''}"`
+        +` title="${esc(x.hint)}">${esc(x.label)}</button>`).join(''))
     +`<span class="rp-bar-state">`
       +`<span class="rp-page-fit" id="rpPageFit"></span>`
       +(over?`<b class="rp-chip is-bad" title="場所が重なっている塊です。「並べ直す」で整えられます">重なり ${over}</b>`
@@ -3951,6 +4070,10 @@
    });
    info.querySelectorAll('[data-rp-prow]').forEach(b=>b.onclick=()=>{
     rpStage({widths:{...rpLayoutNow().widths,[RP_PAGE_ROWS_KEY]:rpPageRowsStore(Number(b.dataset.rpProw))}});
+    updateArrangeBar();
+   });
+   info.querySelectorAll('[data-rp-pack]').forEach(b=>b.onclick=()=>{
+    rpStage({widths:{...rpLayoutNow().widths,[RP_PACK_KEY]:rpPackStore(Number(b.dataset.rpPack))}});
     updateArrangeBar();
    });
    rpBindEqPick(info);
@@ -4077,6 +4200,8 @@
                     ||Math.round((br.height+gapY)/(rowPx+gapY)))};
     const rightEdge=b0.col+b0.span-1, bottomEdge=b0.row+b0.rows-1;
     let col=b0.col,row=b0.row,span=b0.span,rows=b0.rows;
+    /* いま重なっているか。**縮めずに言う**ので、言うための控えだけ持つ。 */
+    let over=false;
     el.setAttribute('draggable','false');
     const tip=document.createElement('div');
     tip.className='rp-size-tip';document.body.appendChild(tip);
@@ -4084,7 +4209,8 @@
      /* **動いた側は位置も出す**（§6。数字が無いと、辺が動いたのか塊ごと
         動いたのかが読めない）。 */
      tip.textContent=`${span}/${cols}マス × ${rows}行`
-      +(at&&(col!==b0.col||row!==b0.row)?`（${col}列目・${row}行目）`:'');
+      +(at&&(col!==b0.col||row!==b0.row)?`（${col}列目・${row}行目）`:'')
+      +(over?'　ほかの塊と重なります':'');
      tip.style.left=(x+14)+'px';tip.style.top=(y+14)+'px';
     };
     const move=e=>{
@@ -4107,32 +4233,20 @@
       if(at){row=Math.max(1,Math.min(bottomEdge,rr));rows=bottomEdge-row+1}
       else rows=Math.max(1,bottomEdge-Math.max(1,Math.min(bottomEdge,rr))+1);
      }
-     /* **他の塊の上へは広げない**（§9.221 ⑨）。広げてから断るのでは、
-        どこまで広げられるのかが分からない。**戻すのは引いている辺**
-        ——反対側を動かすと、掴んでいない辺が勝手に動いて見える。
-        **どちらを戻せば入るかを見て決めること**（§9.283）——「幅を1マスに
-        なるまで潰してから高さへ移る」形にすると、**当たっているのが行
-        なのに幅が潰れる**（実測: 右上の角を引いたら幅11マス→1マス）。 */
-     if(at&&!rpFits(col,row,span,rows,used)){
-      /* **戻し方を2通り試して、広いほうを採る**（§9.283）。片方の軸を
-         1マスまで潰してからもう片方へ移る形にすると、**当たっているのが
-         行なのに幅が潰れる**（実測: 幅24マスの塊を下へ引いたら幅が1マスに
-         なった）。1手ずつ「どちらを戻せば入るか」を見る形も、**1手では
-         入らない**（何手も要る）ので同じところへ落ちる。 */
-      const back=widthFirst=>{
-       let c=col,r=row,sp=span,ro=rows,n=0;
-       while(!rpFits(c,r,sp,ro,used)&&n++<cols+cap+8){
-        if(widthFirst&&wide&&sp>1){if(west)c++;sp--;continue}
-        if(tall&&ro>1){if(north)r++;ro--;continue}
-        if(wide&&sp>1){if(west)c++;sp--;continue}
-        break;
-       }
-       return {c,r,sp,ro,ok:rpFits(c,r,sp,ro,used)};
-      };
-      const hi=back(false),wi=back(true);
-      const pick=!hi.ok?wi:(!wi.ok?hi:((hi.sp*hi.ro>=wi.sp*wi.ro)?hi:wi));
-      col=pick.c;row=pick.r;span=pick.sp;rows=pick.ro;
-     }
+     /* ---------- 重なっても縮めない（§9.310、§9.223 ③の利用者の指示） ----------
+        「重なっても配置でき、重なった部分を強調表示など視覚表示で修正を
+          うながす」。以前はここで**入るところまで戻して**おり、
+        **既に重なっている塊の縁を掴んだ瞬間に、1px動かしただけでめちゃくちゃ
+        縮んだ**（利用者の報告）——掴んだ時点で`rpFits()`が偽なので、戻し
+        （`back()`）が最初の一手から全力で走る。しかもどこへ戻しても入らない
+        配置では**幅も高さも1マス**まで潰れる。
+        `rpApplySpan()`（幅のボタン）と`rpDropCell()`（落とす）は既に
+        「重なることは**言う**だけ」で揃っているのに、縁だけが黙って直す側に
+        残っていた（§9.163。同じ問いに2つ目の答えを持っていた）。
+        紙の外へは出さない（物理的な限界）——それは上の`Math.min`が受ける。
+        §9.283の「戻し方を2通り試して広いほうを採る」は、戻しそのものを
+        廃したので要らない。 */
+     over=!!at&&!rpFits(col,row,span,rows,used);
      if(at){
       el.style.gridColumn=col+'/span '+span;
       el.style.gridRow=row+'/span '+rows;
@@ -4160,6 +4274,11 @@
         瞬間に元の位置へ戻り「幅だけ増えて反対側へ伸びた」ように見える。 */
      if(at&&west&&col!==b0.col)wid[rpColKey(k)]=rpColStore(rpColToBase(col));
      if(at&&north&&row!==b0.row)wid[rpRowPosKey(k)]=rpRowStore(rpRowToBase(row));
+     /* **重なったことは必ず言う**（§3・§9.223 ③）。縮めなくなったぶん、
+        言わないと「はみ出したまま気づかない」になる。種類は`overlap`で、
+        `rpApplySpan()`／`rpDropCell()`と同じ場所に同じ言い方で出す。 */
+     rpSay(over?'ほかの塊と重ねました（重なったマスを赤い網で出しています）。そのままでも保存できますが、刷ると重なって出ます。':'',
+           over,'overlap');
      rpStage({widths:wid});
     };
     window.addEventListener('pointermove',move);
@@ -4350,11 +4469,16 @@
  /* 1枚ぶんの割り付け。**設備を差し替えて呼べるように切り出してある**
     （§9.239 ③）——`rpFitAll()`は今までどおり画面ぶんをまとめて回す。 */
  function rpFitPage(h){
+  try{rpApplyPaperPack()}catch(e){}
   try{rpFitRows(h)}catch(e){console.warn('帳票の行の割り付けに失敗',e)}
   try{rpFitBlockBodies(h)}catch(e){console.warn('帳票の中身の合わせ込みに失敗',e)}
   try{rpFreeCells(h)}catch(e){console.warn('帳票の空きマスの計算に失敗',e)}
  }
  function rpFitAll(){
+  /* **紙の余白は行を測る前に与える**（§9.308）——あとから与えると、
+     `rpFitRows()`が詰める前の中身で行数を数えてしまい、詰めたぶんが
+     そのまま空きになる（詰めたのに紙が縮まない、という見え方）。 */
+  try{rpApplyPaperPack()}catch(e){}
   /* **測る前に片付ける**（§9.281 の追補。理由は`rpMarkOverflow`と同じ）。 */
   rpClearSheets($id('reportContent'));
   document.querySelectorAll('#reportContent,#reportBulkPrintArea .rp-page').forEach(h=>{

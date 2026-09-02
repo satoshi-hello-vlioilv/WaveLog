@@ -1,20 +1,23 @@
-/* test_mround.js: 入力値の丸め（§9.305 ①、利用者の指示）
+/* test_mround.js: 入力値の丸め（§9.305 ①／§9.307、利用者の指示）
    ============================================================
    「0.5単位切り上げなど、入力値の切り上げ機能を実装してください。
-    導入したい項目は以下です。可能であれば他の入力項目についても、汎用的に
-    設定できるように配慮してもらえると助かります。
-     ①ラテラルボーの入力値 ②テレスコープの入力値 ③巻ズレの入力値
-     ④揃いの項目のうち、値の入力値」
+    導入したい項目は ①ラテラルボーの入力値 ②テレスコープの入力値
+    ③巻ズレの入力値 ④揃いの項目のうち、値の入力値」
+
+   **専用のマスタは作らない**（§9.307、利用者の指摘）:
+    「『入力値の丸め』マスタが『操業データ項目』マスタと被っており、この
+     やり方であれば『操業データ項目』の編集内容の中に数値データが選ばれた
+     ときにステップを決めるところで編集可能なので、今のままなら『入力値の
+     丸め』マスタは特に必要ないです。必要なのは指示したラテラルボー／
+     テレスコープ／巻ズレ／揃いの値の部分の入力の丸めです」
 
    ここで固定すること:
-    1. 決まりは**測定項目マスタ**が持ち、語彙（どの入力・どの向き）は
-       **サーバーが答える**（§9.163。画面へ綴りを書き写さない）
-    2. **種**として①〜④に0.5刻みの切り上げが入っている——ラテラルボーの
-       「0.5刻み切り上げ」は`measurement-input.js`に焼き付いており、しかも
-       **転送のときしか効いていなかった**。移したので手入力にも効く
-    3. **打ち終わって欄を離れたとき**に効く（打っている最中は変わらない）
-    4. 刻みも向きも設定で変わる／行を消せば丸めない
-    5. **保存済みの記録は書き換えない**（開いただけで値が変わらない）
+    1. **4つは組み込みの決まり**（0.5刻みで切り上げ）——測定表と丈別データは
+       操業データ項目ではないので「刻み」では届かない
+    2. **打ち終わって欄を離れたとき**に効く（打っている最中は変わらない）
+    3. 汎用の設定は**操業データ項目マスタの「刻み」＋「丸め方」**
+       ——刻みが空なら丸めない（＝今までどおり打った値がそのまま残る）
+    4. **測定項目マスタは無い**（口ごと消えていること）
 
    **素通りに注意**: 計算関数だけを見る網は、画面のどこにも配線されていない
    実装でも通る。**実際に欄へ打って、離して、配列に入った値**まで見る。
@@ -23,30 +26,13 @@ const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_m
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
+/* 実行ごとに一意（§CLAUDE tests/README）——同じ名前の行が積み上がらない。 */
+const TAG='MR'+process.pid;
 const post=(p,body)=>fetch(API+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(body)}).then(r=>r.json().catch(()=>({})));
 const getj=p=>fetch(API+p).then(r=>r.json());
 const setMode=m=>post('/api/access-mode',{mode:m});
 let b=null,page=null;
-
-/* 後始末（§9.121）。**db/master.sqlite3は実行をまたいで生き延びる**ので、
-   触った行は種の値へ戻す。 */
-const SEED=[['lateral',0.5,'切り上げ'],['telescope',0.5,'切り上げ'],
-            ['offset',0.5,'切り上げ'],['alignValue',0.5,'切り上げ']];
-async function restoreSeeds(){
- try{
-  const d=await getj('/api/measure-item-master');
-  const byKey=new Map((d.items||[]).map(x=>[x.key,x]));
-  for(const [k,u,m] of SEED){
-   const cur=byKey.get(k);
-   if(cur&&Number(cur.unit)===u&&cur.mode===m&&cur.enabled!==false)continue;
-   await post('/api/measure-item-master',{key:k,unit:u,mode:m,enabled:true,user_id:'tests'});
-  }
-  /* 種に無いキーを作っていたら消す（この網が作ったものだけ）。 */
-  for(const x of (d.items||[]))
-   if(!SEED.some(s=>s[0]===x.key))await post('/api/measure-item-master/delete',{id:x.id,user_id:'tests'});
- }catch(e){}
-}
 
 (async()=>{
  b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
@@ -57,36 +43,13 @@ async function restoreSeeds(){
  page.on('dialog',d=>d.accept());
  try{
   await setMode('edit');
-  await restoreSeeds();
 
   /* ==========================================================
-     1) 語彙はサーバーが答える／種が入っている
+     1) 4つは**組み込みの決まり**（マスタは作らない・§9.307）
      ========================================================== */
-  const d0=await getj('/api/measure-item-master');
-  const keys=(d0.targets||[]).map(t=>t.key);
-  rec('選べる入力の語彙をサーバーが返す',
-      ['lateral','telescope','offset','alignValue'].every(k=>keys.indexOf(k)>=0),
-      JSON.stringify(keys));
-  rec('丸め方の語彙もサーバーが返す（既定は切り上げ）',
-      (d0.modes||[]).some(m=>m.key==='切り上げ')&&d0.defaultMode==='切り上げ',
-      JSON.stringify((d0.modes||[]).map(m=>m.key)));
-  const seeded=k=>(d0.items||[]).find(x=>x.key===k);
-  rec('①〜④に0.5刻みの切り上げが種として入っている',
-      ['lateral','telescope','offset','alignValue'].every(k=>{
-        const x=seeded(k);return x&&Number(x.unit)===0.5&&x.mode==='切り上げ'}),
-      JSON.stringify((d0.items||[]).map(x=>`${x.key}:${x.unit}:${x.mode}`)));
-  /* **呼び名もサーバーが返す**——一覧は生のキーを出さない。 */
-  rec('項目の呼び名もサーバーが返す（生のキーを画面に出さない）',
-      !!(seeded('lateral')||{}).label&&(seeded('lateral')||{}).label!=='lateral',
-      (seeded('lateral')||{}).label||'');
-  /* **知らないキーは断る**（§4。押しても一度も効かない行を作らない）。 */
-  const bad=await fetch(API+'/api/measure-item-master',{method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({key:'nosuchitem',unit:0.5,user_id:'tests'})});
-  const badJson=await bad.json().catch(()=>({}));
-  rec('知らない入力キーは理由を添えて断る',
-      bad.status===400&&/測定項目ではありません/.test(String(badJson.error||'')),
-      `${bad.status} ${String(badJson.error||'').slice(0,50)}`);
+  const gone=await fetch(API+'/api/measure-item-master').then(r=>r.status).catch(()=>0);
+  rec('「入力値の丸め」マスタの口は無い（重複していたので廃止）',
+      gone===404||gone===0,String(gone));
 
   /* ==========================================================
      2) 丸めそのもの（画面の1箇所を通す）
@@ -99,6 +62,14 @@ async function restoreSeeds(){
   await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
+  const table=await page.evaluate(()=>WL.measureRound.rules());
+  rec('ラテラルボー・テレスコープ・巻ずれ・揃いの値が0.5刻みの切り上げ',
+      ['lateral','telescope','offset','alignValue'].every(k=>
+        table[k]&&table[k].unit===0.5&&table[k].mode==='切り上げ'),
+      JSON.stringify(table));
+  /* **表に無い鍵は丸めない**（板厚・板幅は今までどおり）。 */
+  rec('板厚・板幅は丸めない（表に無い）',!table.thickness&&!table.width,
+      JSON.stringify(Object.keys(table)));
   const calc=await page.evaluate(()=>{
    const f=WL.measureRound.toUnit;
    return {切上_1_2:f(1.2,.5,'切り上げ'),切上_1_5:f(1.5,.5,'切り上げ'),
@@ -204,31 +175,56 @@ async function restoreSeeds(){
   rec('揃いの値も打っている最中は丸めない',align.途中==='1.2',String(align.途中));
 
   /* ==========================================================
-     5) 設定を変えると効き方が変わる／消せば丸めない
+     5) 汎用の設定は**操業データ項目マスタの「刻み」＋「丸め方」**（§9.307）
+     ----------------------------------------------------------
+     利用者の指摘どおり、数値の項目は既に「刻み」を持っている。丸めは
+     その隣の向きだけで済む——**専用のマスタは要らない**。
      ========================================================== */
-  await post('/api/measure-item-master',{key:'lateral',unit:1,mode:'切り捨て',user_id:'tests'});
-  await page.evaluate(()=>WL.measureRound.forget());
-  await page.evaluate(()=>WL.measureRound.load());
-  await page.waitForFunction(()=>((WL.measureRound.rules()||{}).lateral||{}).mode==='切り捨て',
-    null,{timeout:10000}).catch(()=>{});
-  const lat2=await typeInto('ラテラルボー','1.9');
-  rec('刻みと向きを変えると効き方が変わる（1刻み切り捨て: 1.9→1）',
-      lat2.欄==='1'&&String(lat2.記録)==='1',JSON.stringify(lat2));
-  const row=(await getj('/api/measure-item-master')).items.find(x=>x.key==='lateral');
-  await post('/api/measure-item-master/delete',{id:row.id,user_id:'tests'});
-  await page.evaluate(()=>WL.measureRound.forget());
-  await page.evaluate(()=>WL.measureRound.load());
-  await page.waitForFunction(()=>!(WL.measureRound.rules()||{}).lateral,null,{timeout:10000}).catch(()=>{});
-  const lat3=await typeInto('ラテラルボー','1.2');
-  rec('行を消すと丸めない（打った値がそのまま残る）',
-      lat3.欄==='1.2'&&String(lat3.記録)==='1.2',JSON.stringify(lat3));
+  const ITEM=TAG+'丸め';
+  let itemId=null;
+  try{
+   const mk=async(step,mode)=>{
+    const r=await (await fetch(API+'/api/operation-item-master',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:itemId,name:ITEM,equipment:EQ,group:TAG,kind:'数値',
+        decimals:1,step,roundMode:mode,user_id:'tests'})})).json();
+    if(r&&r.id)itemId=r.id;
+    return r;
+   };
+   await mk(0.5,'切り上げ');
+   const back=await getj('/api/operation-item-master?equipment='+encodeURIComponent(EQ));
+   const row=(back.items||[]).find(x=>x.name===ITEM)||{};
+   rec('操業データ項目に「刻み」と「丸め方」が保存される',
+       Number(row.step)===0.5&&row.roundMode==='切り上げ',
+       JSON.stringify({step:row.step,mode:row.roundMode}));
+   /* **語彙はサーバーが答える**（画面へ綴りを書き写さない・§9.163）。 */
+   rec('丸め方の語彙をサーバーが返す',
+       (back.roundModes||[]).indexOf('切り上げ')>=0&&(back.roundModes||[]).indexOf('四捨五入')>=0,
+       JSON.stringify(back.roundModes));
+   /* **他の設定だけを保存しても丸め方が消えない**（§9.212 ②・§9.287-H）。 */
+   await (await fetch(API+'/api/operation-item-master',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({id:itemId,name:ITEM,equipment:EQ,group:TAG,kind:'数値',
+       decimals:1,step:0.5,note:'メモだけ直す',user_id:'tests'})})).json();
+   const back2=await getj('/api/operation-item-master?equipment='+encodeURIComponent(EQ));
+   const row2=(back2.items||[]).find(x=>x.name===ITEM)||{};
+   rec('丸め方を送らない保存では今の値が残る（設定だけ消えない）',
+       row2.roundMode==='切り上げ',JSON.stringify({mode:row2.roundMode}));
+   /* **刻みが空なら丸めない**（＝今までどおり打った値がそのまま）。 */
+   await mk(null,'切り上げ');
+   const back3=await getj('/api/operation-item-master?equipment='+encodeURIComponent(EQ));
+   const row3=(back3.items||[]).find(x=>x.name===ITEM)||{};
+   rec('刻みが空なら丸めようが無い（設定は残るが効かない）',
+       row3.step==null,JSON.stringify({step:row3.step,mode:row3.roundMode}));
+  }catch(e){rec('FATAL(§9.307 操業データ項目)',false,e.message)}
+  finally{
+   if(itemId)await post('/api/operation-item-master/delete',{id:itemId,user_id:'tests'});
+  }
 
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
   rec('FATAL',false,e.message);
  }finally{
-  /* **後始末**（§9.121）。種の値へ戻す。 */
-  await restoreSeeds();
   if(b)await b.close();
  }
  const ok=R.filter(x=>x.ok).length;
