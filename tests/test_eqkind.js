@@ -92,8 +92,13 @@ async function cleanup(){
   });
   rec('区分の選択欄がある',modalForm.exists);
   rec('選択肢は 未選択／コイル／板',modalForm.exists&&modalForm.options.join('|')==='|コイル|板',JSON.stringify(modalForm.options));
-  rec('決めることが束ねてある（①どの設備か／②数の決まり）',
-      modalForm.groups.length===2,JSON.stringify(modalForm.groups));
+  /* 束は「決める順」（§9.249 ③）。**数を決め打ちにしないこと**——§9.302で
+     「③ 使える機能」を足した時点で落ちた。見たいのは**番号付きで並んで
+     いること**なので、そこを見る（束を1つ足すたびに書き換える網にしない）。 */
+  rec('決めることが番号付きの束にまとまっている',
+      modalForm.groups.length>=2
+      &&modalForm.groups.every((t,i)=>t.startsWith('①②③④⑤'[i]||'')),
+      JSON.stringify(modalForm.groups));
   await page.fill('#maintEditorForm [data-field="name"]',NAME);
   await page.selectOption('#maintEditorForm select[data-field="kind"]','コイル');
   await page.click('#maintEditorSave');

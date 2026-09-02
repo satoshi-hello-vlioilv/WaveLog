@@ -84,6 +84,9 @@ MAX_RELAY_BYTES=8*1024*1024
 # 受け口の1接続あたりの読み待ち上限(§9.269)。**依頼側の12秒より短くする**
 # ——長くしても、頼んだ側はもう諦めて自分で書いているので誰も待っていない。
 RELAY_SOCKET_TIMEOUT_SEC=10
+# 届かなかった書込役を信じない時間（§9.301 ①）。**目印の期限より短くする**
+# ——長くすると、相手が戻ってきても中継へ帰れない時間が伸びる。
+RELAY_DOWN_SEC=30
 
 _state={
  'id':uuid.uuid4().hex,      # このプロセスの札
@@ -94,6 +97,13 @@ _state={
  'last_error':'',
  'checked_at':0.0,
  'relays':0,'relay_fail':0,
+ # **届かなかった書込役を、しばらく信じない**（§9.301 ①）。この時刻までは
+ # `should_relay()`が偽になり、書き込みは即座に自分で書く道へ落ちる
+ # ——目印は期限（既定90秒）まで「生きている」ままなので、これが無いと
+ # **その90秒のあいだ、書き込みのたびに12秒×URLの数だけ待たされる**
+ # （実測の最悪で36秒。利用者の報告「書き込み失敗するような場合」の正体）。
+ 'relay_down_until':0.0,
+ 'relay_down_why':'',
  'server':None,
  'bound_port':0,            # 受け口が実際に掴んでいるポート(設定変更に追従する)
  'running':False,
@@ -292,6 +302,12 @@ def status():
   'ttlSec':ttl_sec(),'port':relay_port(),
   'relays':st['relays'],'relayFail':st['relay_fail'],
   'lastError':st['last_error'],
+  # **いま中継を休んでいるか**（§9.301 ①）。休んでいるあいだは自分で書くので、
+  # 「書込役が居るのに自分で書いている」理由を画面が言えるようにする（§4）。
+  'relayDownSec':(round(st.get('relay_down_until',0.0)-_now(),1)
+                  if st.get('relay_down_until',0.0)>_now() else 0),
+  'relayDownWhy':st.get('relay_down_why') or '',
+  'takenFrom':(m.get('taken_from') or None),
   'myUrls':local_urls() if on else [],
  }
 
@@ -454,14 +470,183 @@ def relay(path,body,login,pc,mode='',timeout=12.0,_retry=True):
    return e.code,out
   except Exception as e:
    last=f'{base}: {e}'
- with _lock:_state['relay_fail']+=1;_state['last_error']=last or '持ち主へ届きません'
- return None,(last or '持ち主へ届きません')
+ why=last or '持ち主へ届きません'
+ with _lock:
+  _state['relay_fail']+=1;_state['last_error']=why
+  # **次の書き込みは待たせない**（§9.301 ①）。届かないことが分かったので、
+  # しばらくは自分で書く（ロックと改訂番号の砦はそのまま・§9.192）。
+  _state['relay_down_until']=_now()+RELAY_DOWN_SEC
+  _state['relay_down_why']=why
+ _wake.set()   # 見張りを起こす（期限切れならすぐ引き継げる）
+ return None,why
+
+
+# ------------------------------------------------------------------
+# 書込役が応答しないときの切り分け（§9.301 ①、利用者の指示「書き込み役が
+# 自分ではない場合に、書き込み失敗するような場合、相手のPCが落ちている
+# 可能性があります…PC落ちか、スリープ中？サーバー落ちを判断して書き込み権限を
+# 執行する機能などを実装しておく必要もありそうです」）
+# ------------------------------------------------------------------
+# **こちらから見分けられるのはTCPが届くかどうかまで。** それ以上（電源断か
+# スリープか無線が切れたか）は**分からない**ので、分からないと書く（§3・§4。
+# 「スリープです」と言い切ると、電源が落ちている端末を待たせることになる）。
+#  ・つながって受け口が答えた            → 生きている（引き取らせない）
+#  ・つながるが受け口が居ない(refused)    → **PCは動いていてアプリだけ落ちた**
+#  ・そのポートに別のものが居る           → アプリは居ない
+#  ・返事が無い(timeout)/経路が無い/名前が引けない
+#                                        → PCが落ちている・スリープ・網が届かない
+PROBE_SELF='self'
+PROBE_NONE='none'
+PROBE_OK='ok'
+PROBE_REFUSED='refused'
+PROBE_OTHER_APP='other-app'
+PROBE_TIMEOUT='timeout'
+PROBE_UNREACHABLE='unreachable'
+PROBE_UNKNOWN_HOST='unknown-host'
+PROBE_ERROR='error'
+PROBE_NO_URL='no-url'
+# **文言もここが持つ**（§9.163）——画面へ書き写すと、切り分けを1つ足したときに
+# 直す場所が2つになる。`take`＝引き取ってよいか。
+_PROBE_TEXT={
+ PROBE_SELF:('このPCが書込役です','引き取る必要はありません',False),
+ PROBE_NONE:('書込役はまだ決まっていません',
+             '次の巡回（最大%d秒）でどれかの端末が名乗り出ます',False),
+ PROBE_OK:('書込役は動いています','応答があるので引き取れません',False),
+ PROBE_REFUSED:('書込役のPCは動いていますが、アプリが終了しています',
+                'アプリだけが落ちた（または閉じられた）状態です。引き取れます',True),
+ PROBE_OTHER_APP:('書込役の受け口に別のものが応答しています',
+                  'WaveLogの受け口ではありません。引き取れます',True),
+ PROBE_TIMEOUT:('書込役から返事がありません',
+                'PCが落ちているか、スリープ中か、ネットワークが届いていません'
+                '（こちらからは見分けられません）。引き取れます',True),
+ PROBE_UNREACHABLE:('書込役への経路がありません',
+                    'PCが落ちているか、ネットワークが切れています。引き取れます',True),
+ PROBE_UNKNOWN_HOST:('書込役の名前が引けません',
+                     'その端末がネットワークに居ません。引き取れます',True),
+ PROBE_ERROR:('書込役へ届きません','理由は下に出ています。引き取れます',True),
+ PROBE_NO_URL:('書込役の受け口が分かりません',
+               '目印に受け口のURLが入っていません。引き取れます',True),
+}
+
+
+def _probe_one(base,timeout):
+ """1つのURLを試して (状態, 詳細) を返す。**接続と`/owner/ping`まで**——
+ 書き込みは投げない（確かめるだけの操作で共有を触らない）。"""
+ url=str(base or '').rstrip('/')+'/owner/ping'
+ try:
+  req=urllib.request.Request(url,method='GET')
+  with _OPENER.open(req,timeout=timeout) as r:
+   body=json.loads(r.read().decode('utf-8','replace') or '{}')
+  if str(body.get('app_id') or '')==APP_ID:
+   return PROBE_OK,f'{base}: 応答あり'
+  return PROBE_OTHER_APP,f'{base}: 別のものが応答しました'
+ except urllib.error.HTTPError:
+  # 何かが答えている＝待ち受けは居る。受け口の版が違うだけかもしれない。
+  return PROBE_OTHER_APP,f'{base}: HTTPで応答（受け口ではありません）'
+ except urllib.error.URLError as e:
+  err=e.reason
+ except Exception as e:
+  err=e
+ if isinstance(err,socket.gaierror):return PROBE_UNKNOWN_HOST,f'{base}: {err}'
+ if isinstance(err,ConnectionRefusedError):return PROBE_REFUSED,f'{base}: {err}'
+ if isinstance(err,(socket.timeout,TimeoutError)):return PROBE_TIMEOUT,f'{base}: 時間切れ'
+ if isinstance(err,OSError):
+  import errno as _errno
+  # WindowsのWSAEHOSTUNREACH/WSAENETUNREACHもここへ来る。
+  if err.errno in (_errno.EHOSTUNREACH,_errno.ENETUNREACH,10065,10051):
+   return PROBE_UNREACHABLE,f'{base}: {err}'
+  if err.errno in (_errno.ECONNREFUSED,10061):
+   return PROBE_REFUSED,f'{base}: {err}'
+  if err.errno in (_errno.ETIMEDOUT,10060):
+   return PROBE_TIMEOUT,f'{base}: 時間切れ'
+ return PROBE_ERROR,f'{base}: {err}'
+
+
+# 悪いほうを採る順（**1つでも「生きている」が出たら生きている**）。
+_PROBE_RANK=(PROBE_OK,PROBE_OTHER_APP,PROBE_REFUSED,PROBE_UNREACHABLE,
+             PROBE_UNKNOWN_HOST,PROBE_TIMEOUT,PROBE_ERROR)
+
+
+def probe_owner(timeout=2.5):
+ """書込役が応答するか、しないなら**なぜか**。
+
+ **判定と文言はここ1箇所**（§9.163）——画面はこの答えをそのまま出す。
+ **短く試す**（既定2.5秒×URLの数）——これは「確かめる」ための操作なので、
+ 書き込みの12秒とは別。落ちているPCなら数秒で分かる。
+ """
+ if not enabled() or not SCHEDULE_SHARE_PATH:
+  return {'state':PROBE_NONE,'label':'書込役を使わない設定です',
+          'note':'マスタ管理 > 共通設定で入れられます','canTake':False,'tried':[]}
+ if _state['owner']:
+  return _probe_result(PROBE_SELF,[])
+ marker=read_marker()
+ if isinstance(marker,dict) and marker:
+  with _lock:_state['marker']=marker
+ if not isinstance(marker,dict) or not marker.get('id'):
+  return _probe_result(PROBE_NONE,[])
+ urls=_candidate_urls(marker)
+ if not urls:
+  return _probe_result(PROBE_NO_URL,[],marker)
+ tried=[];worst=PROBE_OK
+ for base in urls:
+  st,detail=_probe_one(base,timeout)
+  tried.append({'url':base,'state':st,'detail':detail})
+  if st==PROBE_OK:
+   worst=PROBE_OK
+   break
+  if _PROBE_RANK.index(st)>_PROBE_RANK.index(worst) or worst==PROBE_OK:
+   worst=st
+ return _probe_result(worst,tried,marker)
+
+
+def _probe_result(state,tried,marker=None):
+ label,note,take=_PROBE_TEXT.get(state,_PROBE_TEXT[PROBE_ERROR])
+ if state==PROBE_NONE and '%d' in note:
+  note=note % max(10,ttl_sec()//3)
+ m=marker if isinstance(marker,dict) else (_state.get('marker') or {})
+ beat=m.get('beat')
+ return {'state':state,'label':label,'note':note,'canTake':bool(take),
+         'ownerPc':m.get('pc') or '','ownerLogin':m.get('login') or '',
+         'aliveSec':(round(_now()-float(beat),1) if beat else None),
+         'ttlSec':ttl_sec(),'tried':tried}
+
+
+def take_over(login='',pc=''):
+ """書込役を引き取る（§9.301 ①）。**応答しないときだけ**。
+
+ 生きている相手から奪う意味は無い（相手はまだ書けるので、二重に書ける状態を
+ わざわざ作ることになる）。`probe_owner()`が「引き取れる」と言ったときだけ
+ 進み、**誰から引き取ったかを目印に残す**（§9.211 ②の`taken_from`と同じ作法
+ ——理由の分からない入れ替わりを作らない）。
+ """
+ p=probe_owner()
+ if not p.get('canTake'):
+  return False,p
+ prev=dict(_state.get('marker') or {})
+ with _lock:
+  _state['relay_down_until']=0.0;_state['relay_down_why']=''
+ ok=claim(force=True)
+ if ok:
+  data=dict(_state.get('marker') or {})
+  data['taken_from']={'pc':prev.get('pc') or '','login':prev.get('login') or '',
+                      'state':p.get('state'),'by_login':login,'by_pc':pc,'at':_now()}
+  _write_marker(data)
+  with _lock:_state['marker']=data
+  _wake.set()
+  app_logger().info('書込役を引き取りました（%s → このPC / 理由: %s）',
+                    prev.get('pc') or '不明',p.get('state'))
+ return bool(ok),p
 
 
 def should_relay():
  """書き込みを転送すべきか。**持ち主が生きているときだけ**。"""
  if not enabled() or not SCHEDULE_SHARE_PATH:return False
  if _state['owner']:return False
+ # **届かなかった書込役をしばらく信じない**（§9.301 ①）。目印は期限まで
+ # 「生きている」ままなので、これが無いとその間ずっと、書き込みのたびに
+ # 届かない相手を待つことになる。期限が切れれば`claim()`が引き継ぐので、
+ # 待たない時間は短くてよい。
+ if _now()<_state.get('relay_down_until',0.0):return False
  m=_state['marker']
  return isinstance(m,dict) and bool(m.get('token')) and _alive(m)
 

@@ -126,7 +126,9 @@ G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 't
                # §9.274: セルの組み立て盤・説明の量・紙からマスタへの配線
                'test_rbcells',
                # §9.285 ②③④: 既定の中身を写す・書式・候補に無い道の印
-               'test_rbcatalog']
+               'test_rbcatalog',
+               # §9.302: 設備の有効・無効を機能別に（測定・作業予定・帳票）
+               'test_eqfeature']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
              # §9.286 ⑥: 未入力・未選択の配色と、増やした色
              'test_opblanktint',
@@ -197,7 +199,9 @@ RULES = [
                                     'test_opformula')),
     ('static/js/filters.js', g('モーダル', 'フィルタ',
                                'test_listcache', 'test_allrows', 'test_nav')),
-    ('static/js/schedule-view.js', g('スケジュール', 'モーダル', 'test_listmodal')),
+    # §9.302: 設備の使える機能で予定の設備の候補を絞る
+    ('static/js/schedule-view.js', g('スケジュール', 'モーダル', 'test_listmodal',
+                                     'test_eqfeature')),
     ('static/js/schedule-print.js', g('モーダル', 'test_scprint')),
     # 実績データリストは列の設定パネル・帳票・アクセスモードへつながる。
     ('static/js/actuals-view.js', g('実績', 'モーダル', '列', 'test_recperm', 'test_nav')),
@@ -215,6 +219,8 @@ RULES = [
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
     ('static/js/report-dashboard.js', g('モーダル', 'test_screport', 'test_headbar', 'test_uisize',
                                         'test_rpblocks', 'test_rplayout', 'test_rpmaster',
+                                        # §9.302: 設備の候補（ロットの無い設備だけ絞る）
+                                        'test_eqfeature',
                                         # §9.254 (3): 帳票レイアウトマスタの口（WL.reportLayout）
                                         'test_rlmaster',
                                         # §9.242 ⑦⑧: 刷るときの紙の箱・品質情報の枠
@@ -238,6 +244,8 @@ RULES = [
     # データ一覧の表示列(§9.162)も持つので、列の網も回す。
     ('static/js/records-store.js', g('モーダル', 'test_share', 'test_flows', 'test_master',
                                      'test_recperm', 'test_reccols', 'test_lcpanel',
+                                     # §9.302: 使用設備の候補を「測定」で絞る
+                                     'test_eqfeature',
                                      'test_audittrail', 'test_recdel',
                                      # §9.248 ⑥: 見せる範囲を設備で絞る
                                      'test_eqscope',
@@ -335,17 +343,20 @@ RULES = [
     ('backend/schedule_watch.py', g('スケジュール')),
     # 共有スケジュールの持ち主(§9.192)。書込の入口(routes/schedule.py)と
     # 書込ガード(access_mode.py)の両方に手が入るので、権限の網も回す。
-    ('backend/schedule_owner.py', g('test_scowner', 'test_modeguard', 'スケジュール')),
+    ('backend/schedule_owner.py', g('test_scowner', 'test_modeguard', 'test_appquit',
+                                    'スケジュール')),
     ('tests/fixtures/sort_cases.json', g('test_sortpipe', 'test_sortcustom')),
     ('backend/schedule_sync.py', g('test_sclock', 'test_scsync', 'test_scwritespeed',
                                    'test_screorder', 'test_atomicio', 'test_scsession',
-                                   'test_scwho')),
+                                   'test_scwho', 'test_scowner')),
     ('backend/load_factor.py', g('test_scbalance', 'test_sccat', 'test_screport', 'test_eqstd')),
     ('backend/records_export.py', g('test_share', 'test_flows', 'test_measstore',
                                     'test_recsplit')),
     ('backend/logging_setup.py', g('ログ')),
     ('backend/boot_status.py', g('起動')),
-    ('backend/watchdog.py', g('test_tabclose', 'test_boot', 'test_presence')),
+    # 終わる前の片付けと終了ボタン（§9.301 ②）も watchdog が持つ。
+    ('backend/watchdog.py', g('test_tabclose', 'test_boot', 'test_presence',
+                              'test_appquit', 'test_scowner')),
     # 在席（§9.272）。権限区分の判定は master_repo 側にあるので「権限」ごと。
     ('backend/presence.py', g('権限')),
     ('backend/routes/presence.py', g('権限')),

@@ -45,7 +45,9 @@
   document.body.classList.remove('rp-mode');
   const panel=$id('reportPanel');if(panel)panel.hidden=true;
  }
- WL.registerView({key:'report',bodyClass:'rp-mode',header:['測定帳票',''],exit:exitReportView});
+ /* `ownPrint`＝専用の印刷を持つ画面（§9.300 ①）。ヘッダーの汎用の
+    「画面を印刷」と二重にしない。 */
+ WL.registerView({key:'report',bodyClass:'rp-mode',header:['測定帳票',''],ownPrint:true,exit:exitReportView});
  /* 自作の塊の写しを捨てる口（§9.217）。マスタ管理で足した・直した直後に
     呼ぶ——**「あれば使う」で呼ぶこと**（読み込み順に依存させない）。 */
  window.WL=window.WL||{};
@@ -3649,7 +3651,14 @@
      **常にundefined**になり、設備マスタの設備が1つも候補に出ない
      （実際にそうなり、`test_rplayout`が「選択肢が1つしかない」で捕まえた）。 */
   const master=(typeof equipmentMasterState!=='undefined'&&equipmentMasterState.items)||[];
-  master.forEach(e=>{const n=String(e.name||'').trim();if(n&&!seen.has(n))seen.set(n,0)});
+  /* **絞るのは「ロットが1件も無い設備」だけ**（§9.302）——記録のある設備は
+     使える機能を外しても候補に残す（履歴なので、外した瞬間にその設備の紙が
+     開けなくなるのは行き過ぎ・§9.15）。 */
+  master.forEach(e=>{
+   const n=String(e.name||'').trim();if(!n||seen.has(n))return;
+   if(typeof equipmentUsableFor==='function'&&!equipmentUsableFor(e,'report'))return;
+   seen.set(n,0);
+  });
   const out=[...seen.entries()].map(([eq,n])=>({eq,n,label:eq||'共通（設備の分からないロット）'}));
   out.sort((a,b)=>(a.eq?1:0)-(b.eq?1:0)||a.eq.localeCompare(b.eq,'ja'));
   return out;

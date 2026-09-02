@@ -63,6 +63,39 @@ def owner_status():
  except Exception as e:
   return jsonify(error=str(e)),500
 
+@bp.post('/api/schedule/owner-probe')
+def owner_probe():
+ """書込役が応答するか、しないなら**なぜか**（§9.301 ①）。**確かめるだけ**
+ なので閲覧モードからも通す（`_READ_ONLY_POST_ENDPOINTS`へ登録済み）。
+
+ 判定と文言は`schedule_owner.probe_owner()`の1箇所（§9.163）——画面は
+ 返ってきた`label`/`note`をそのまま出す。ここで言い直さない。"""
+ try:
+  from .. import schedule_owner
+  return jsonify(ok=True,probe=schedule_owner.probe_owner())
+ except Exception as e:
+  return jsonify(error=str(e)),500
+
+@bp.post('/api/schedule/owner-take')
+def owner_take():
+ """書込役を引き取る（§9.301 ①、利用者の指示「PC落ちか、スリープ中？
+ サーバー落ちを判断して書き込み権限を執行する機能」）。
+
+ **応答しないときだけ**通す（生きている相手から奪う意味は無い）。断るときは
+ 理由をそのまま返す（§4）。"""
+ try:
+  from .. import schedule_owner
+  ok,probe=schedule_owner.take_over(current_login_id(),current_pc_name())
+  if not ok and not probe.get('canTake'):
+   return jsonify(error=probe.get('label') or '引き取れません',
+                  probe=probe),409
+  if not ok:
+   return jsonify(error='引き取れませんでした（共有の目印を書けません）',
+                  probe=probe),503
+  return jsonify(ok=True,probe=probe,**schedule_owner.status())
+ except Exception as e:
+  return jsonify(error=str(e)),500
+
 @bp.post('/api/schedule/sync-now')
 def sync_now():
  # いま取り込む。**読むだけ**なので閲覧モードからも通す
@@ -1021,7 +1054,11 @@ def overview():
  # (_read()、§4.2の「取得」のみ)、設備マスタから取れる有効設備の数だけ
  # expand_plan()をメモリ上で繰り返し呼ぶ(設備ごとにファイルを取り直さない)。
  with connect(DBS['MASTER']['path'],False) as mc:
-  equipment_names=[str(r[1]).strip() for r in equipment_master_rows(mc) if str(r[1] or '').strip()]
+  # **「作業予定」で使う設備だけ**（§9.302）。予定を組まなくなったラインを
+  # 俯瞰ボードに並べ続けると、いつまでも「0件・稼働なし」の行が居座る。
+  # 過去のデータを見る・刷るほうは切っていないので、そちらには出続ける。
+  equipment_names=[str(r[1]).strip() for r in equipment_master_rows(mc,feature='schedule')
+                   if str(r[1] or '').strip()]
  now=datetime.now()
  # 実績突合の索引は設備によらず同じ。設備ごとに作り直すと、実績バックアップ
  # (共有上の閲覧用複製を含む)を設備数ぶん読み直すことになる(§9.41)。

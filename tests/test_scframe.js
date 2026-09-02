@@ -173,16 +173,63 @@ let b=null;
       !!entry&&entry.出ている&&entry.コメントのとなり,JSON.stringify(entry));
   rec('枠の入口は掴んで落とせる',!!entry&&entry.掴める,JSON.stringify(entry));
 
+  /* ---- 枠は「上位階層の箱」（§9.300 ②、利用者の指示「日付、直の枠に
+       ついては、3ロット分くらいの大きめの枠だけのものを作って箱として使う
+       感じのものに変更してほしい…上位階層に日付・直という箱を1つ作って
+       おくようなイメージです」） ----------------------------------
+     直す前の枠は**ふつうの1行**で、実測すると日付列に`09/04`（起点がいま
+     居る日）・時刻`04:11〜04:11`・見積`0分`・実績`-`が並び、題名だけが
+     `8/29（土） から`——**1つの行に違う日付が2つ**あった。利用者の言う
+     「空のスケジュール的な何かを入れるような感じ」がまさにこれ。
+     **「箱のクラスが付いた」だけを見ないこと**——高さと、束ねた幅と、
+     箱が名乗る文字まで実測する。 */
   const rowInfo=await page.evaluate(id=>{
-   const row=[...document.querySelectorAll('.sc-row-line')].find(r=>String(r.dataset.id)===String(id));
+   const rows=[...document.querySelectorAll('.sc-row-line')];
+   const row=rows.find(r=>String(r.dataset.id)===String(id));
    if(!row)return null;
-   const cat=row.querySelector('[data-col="__cat__"]');
-   return {区分:cat?cat.textContent.trim():'',
+   const other=rows.find(r=>r!==row&&!r.classList.contains('sc-row-frame-box'));
+   const box=row.querySelector('.sc-frame-box');
+   const cells=[...row.querySelectorAll('[data-col]')].map(c=>c.dataset.col);
+   const w=el=>el?Math.round(el.getBoundingClientRect().width):0;
+   return {箱:!!box,
+           区分:box?(box.querySelector('.sc-frame-kind')||{}).textContent||'':'',
+           行き先:box?(box.querySelector('.sc-frame-head')||{}).textContent||'':'',
+           状態:box?(box.querySelector('.sc-frame-sub')||{}).textContent||'':'',
+           高さ:Math.round(row.getBoundingClientRect().height),
+           ふつうの行の高さ:other?Math.round(other.getBoundingClientRect().height):0,
+           箱の幅:w(box),行の幅:w(row),列:cells,
            文字:row.innerText.replace(/\s+/g,' ').slice(0,120),
            直せる印:row.classList.contains('sc-row-frame-edit'),
            title:row.title};
   },frameId);
-  rec('行の区分が「枠」と文字で出る',!!rowInfo&&/枠/.test(rowInfo.区分),JSON.stringify(rowInfo));
+  rec('枠は箱として出る（ふつうの行ではない）',!!rowInfo&&rowInfo.箱,JSON.stringify(rowInfo));
+  rec('箱の高さはロット3行ぶん',
+      !!rowInfo&&rowInfo.ふつうの行の高さ>0
+      &&Math.abs(rowInfo.高さ-rowInfo.ふつうの行の高さ*3)<=2,
+      `枠=${rowInfo&&rowInfo.高さ}px ふつう=${rowInfo&&rowInfo.ふつうの行の高さ}px`);
+  /* 行いっぱい（§9.300 ②）——枠の日付・時刻・見積の列は「起点がいま居る
+     場所」であって枠の事実ではないので、束ねて箱にする。操作の列は残す
+     （外す手立てを消さない・§4）。 */
+  rec('箱は行いっぱいを束ねる（操作の列は残す）',
+      !!rowInfo&&rowInfo.箱の幅>rowInfo.行の幅*0.7
+      &&rowInfo.列.includes('__actions__')&&!rowInfo.列.includes('__date__'),
+      JSON.stringify({箱:rowInfo&&rowInfo.箱の幅,行:rowInfo&&rowInfo.行の幅,列:rowInfo&&rowInfo.列}));
+  rec('箱が「何の行か」を文字で名乗る（§3）',!!rowInfo&&/枠/.test(rowInfo.区分),
+      JSON.stringify(rowInfo&&rowInfo.区分));
+  rec('行き先（日付・直）が箱の見出しに出る',
+      !!rowInfo&&/から/.test(rowInfo.行き先),JSON.stringify(rowInfo&&rowInfo.行き先));
+  /* **紙と画面は同じ答えを見る**（§9.163）——紙(`schedule-print.js`の
+     `contentRunOf`)は`rowStyle.titlePlace`をそのまま読むので、効いている値を
+     返すのが`rowStyleOf()`の役目。**枠だけ**が全幅で、設備停止・コメントの
+     既定は今までどおり（§9.132。わざわざ選んでいない人の見え方を変えない）。 */
+  const places=await page.evaluate(()=>{
+   const v=WL.scheduleView;
+   const at=k=>String((v.rowStyleOf({kind:k})||{}).titlePlace||'');
+   return {枠:at('枠'),設備停止:at('設備停止'),コメント:at('コメント'),作業:at('作業')};
+  });
+  rec('効いている「題名の位置」は枠だけ全幅（紙も同じ答えを見る）',
+      places.枠==='全幅'&&places.設備停止===''&&places.コメント===''&&places.作業==='',
+      JSON.stringify(places));
   rec('行に「いつから」と状態が文字で出る',
       !!rowInfo&&/埋まりました|空き/.test(rowInfo.文字),JSON.stringify(rowInfo&&rowInfo.文字));
   rec('ダブルクリックで直せる印が付く',!!rowInfo&&rowInfo.直せる印,JSON.stringify(rowInfo&&rowInfo.title));

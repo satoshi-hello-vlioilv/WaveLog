@@ -64,7 +64,10 @@ let b=null;
  await open();
  st=await state();
  rec('対象設備が一致すればドラッグできる',st.drag,JSON.stringify(st));
- rec('注記は通常表示に戻る',!!st.note&&/並べ替えのみ可能/.test(st.note.txt)&&!st.note.warn,JSON.stringify(st.note));
+ /* **一致しているときは注記を出さない**（§9.300 ①）。ヘッダーのバッジが
+    「現場段取り 並べ替え可」とまったく同じことを言うので、操作列にも出すと
+    同じ文が2つ並ぶ（§CLAUDE 8）。直せることがあるとき＝(A)(B)だけ出す。 */
+ rec('一致しているときは注記を出さない（バッジが言う）',!st.note,JSON.stringify(st.note));
  rec('バッジも「並べ替え可」に戻る',!!st.badge&&/並べ替え可/.test(st.badge.txt)&&!st.badge.warn,JSON.stringify(st.badge));
  const ids=await planIds();
  posts=0;

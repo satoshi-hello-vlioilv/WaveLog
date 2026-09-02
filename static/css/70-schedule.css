@@ -534,6 +534,36 @@
 /* 札／帯にした行は地を塗らない（上の約束）。`.sc-row-line`側の
    `sc-rs-*`より**詳細度を1つ上げる**（同点だと書き順に頼ることになる）。 */
 .sc-row-line.sc-row-nw-face[class*="sc-rs-"]{background:var(--surface)}
+/* ---------- 日付・直の枠は「箱」（§9.300 ②、利用者の指示「日付、直の枠に
+   ついては、3ロット分くらいの大きめの枠だけのものを作って箱として使う感じの
+   ものに変更してほしいです。今は空のスケジュール的な何かを入れるような感じに
+   なっていますがそうではなく、上位階層に日付・直という箱を1つ作っておくような
+   イメージです」） ----------
+   **高さは3行ぶん**——「3ロット分くらい」がそのまま器の大きさになる。
+   `--row-h`は行の**外寸**（§9.112）なので、3倍がちょうど3行に見える。
+   中身は3段（区分＝小／行き先＝大／状態＝小）で、残りは**わざと空ける**
+   ——箱として読ませるのが目的なので、埋めない。
+   **器はグリッドにする**（flexにしないこと）——`WL.columnAlign`と題名の揃えが
+   `@layer utility`の`.al-*`で`justify-content`も当てる（§9.239 ④）ので、
+   縦積みのflexだと**横の揃えの設定が縦位置を動かす**。グリッドなら
+   `align-content`が縦を持ち、`.al-*`の`text-align`が横を持つ。
+   詳細度は`.sc-row-title.sc-row-nonwork.sc-frame-box`(0,3,0)——
+   `data-nw-look="帯"`の(0,2,0)に確実に勝たせる（同点だと書き順に頼る）。 */
+.sc-row-line.sc-row-frame-box{height:calc(var(--row-h) * 3)}
+.sc-row-title.sc-row-nonwork.sc-frame-box{
+ align-self:stretch;display:grid;align-content:center;gap:var(--gap-hair);
+ margin:var(--space-1) 0;padding:0 var(--space-3);
+ border:1px dashed var(--rs-line,var(--line-mid));border-radius:var(--radius-sm);
+ background:var(--rs-bg,var(--surface-2));color:var(--rs-fg,var(--ink-2))}
+/* 区分の名前（§3。行いっぱいでは区分の列が出ないので、箱が自分で名乗る）。
+   行き先（日付・直）が主役で、区分と状態は添え物——§9.295 ④の（所要時間）と
+   同じ強弱にする。 */
+.sc-frame-kind{font-size:var(--fs-badge);font-weight:800;letter-spacing:.04em;opacity:.7;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-frame-head{font-size:var(--fs-base-sm);font-weight:800;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-frame-sub{font-size:var(--fs-sm);opacity:.8;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sc-row-est{font-size:var(--tbl-fs);color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
 .sc-row-est.sc-est-default{color:#8a9aa0;font-style:italic}
 .sc-row-actual{font-size:var(--tbl-fs);color:#3a565d;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;overflow:hidden}
@@ -1082,16 +1112,9 @@
 /* 作業中は予定終了が常に現在時刻(継続中)。進行中であることを時刻欄でも示す。 */
 .sc-row-line.sc-row-ongoing .sc-row-time{font-weight:800;color:var(--success)}
 .sc-row-line.sc-row-ongoing .sc-row-rel{color:var(--success);font-weight:700}
-/* 読込時点の表示(§9.42)。画面を開き直しても読み直さない設計なので、
-   「いつ時点か」を必ず見せる(古い情報を黙って見せない)。 */
-.sc-freshness{
- font-size:var(--fs-sm);color:#8a9aa0;white-space:nowrap;
- padding:0 var(--ctl-pad-x-xs);border-left:1px solid var(--line);
-}
-.sc-freshness[hidden]{display:none}
-/* 遅かったときだけ色を付ける(§9.198)。**色だけで伝えない**——文字でも
-   「読み込み◯秒」と出し、内訳と打つ手はtitleに入れてある。 */
-.sc-freshness.is-slow{color:var(--warn-fg);font-weight:700}
+/* 読込時点の表示(§9.42)は`.sc-sync-chip`へ畳んだ(§9.300 ①)——同じ
+   「いつのデータか」に2つのチップが答えていたため。規則は下の
+   「共有の見張り」の節が持つ。 */
 /* 作業中の行はダブルクリックで再開できる(§9.43) */
 .sc-row-line.sc-row-resumable{cursor:pointer}
 .sc-row-resume{background:var(--success-bg);border-color:var(--success-border);color:var(--success);font-weight:800;white-space:nowrap}
@@ -1219,11 +1242,34 @@
    共有(Box等)のschedule.sqlite3は他の端末も書く。**いつ取り込んだかを常に
    出す**——黙って手元の写しを見せると、他のPCの変更が来ていないのか、
    まだ確かめていないのかを利用者が区別できない。 */
-.sc-sync-chip{flex:none;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+.sc-sync-chip{flex:none;display:inline-flex;align-items:center;gap:var(--gap-tight);
+  height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
   border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);
   color:var(--ink-2);font-size:var(--fs-sm);white-space:nowrap;box-shadow:none}
+.sc-sync-chip>i{font-style:normal;line-height:1}
 .sc-sync-chip:hover{border-color:var(--teal);color:var(--ink)}
 .sc-sync-chip.is-error{border-color:var(--warn-border);background:var(--warn-bg);color:var(--warn-fg)}
+/* 遅かったときだけ色を付ける(§9.198)。**色だけで伝えない**——文字でも
+   「読み込み◯秒」と出し、内訳と打つ手はメニューとtitleに入れてある。 */
+.sc-sync-chip.is-slow{border-color:var(--warn-border);color:var(--warn-fg);font-weight:700}
+/* 書込役の切り分けと引き取り（§9.301 ①）。**押す前に理由が読める**ように、
+   調べた結果は同じ塊の中へ出す（読む場所と打つ手を同じところに・§4）。 */
+.sc-owner-act{display:flex;flex-direction:column;gap:var(--gap-tight);
+ padding:var(--space-2) var(--space-3);border-top:1px solid var(--line-soft)}
+.sc-owner-act>small{color:var(--muted);font-size:var(--fs-sm);line-height:1.6}
+.sc-owner-act button{align-self:flex-start;height:var(--ctl-h-sm);
+ padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line);border-radius:var(--radius-sm);
+ background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm)}
+.sc-owner-act button:hover:not([disabled]){border-color:var(--teal);color:var(--ink)}
+.sc-owner-probe{display:flex;flex-direction:column;gap:var(--gap-hair);
+ padding:var(--space-2);border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+ background:var(--surface-2)}
+/* 引き取れる＝相手が応答していない。**色だけで伝えない**（§3）ので、
+   `label`と`note`が理由を文字で書いている。色はその補助。 */
+.sc-owner-probe.is-warn{border-color:var(--warn-border);background:var(--warn-bg)}
+.sc-owner-probe.is-warn>b{color:var(--warn-fg)}
+.sc-owner-probe>small{color:var(--ink-2);font-size:var(--fs-sm);line-height:1.6}
+.sc-owner-probe>button{margin-top:var(--gap-tight)}
 /* 他のPCが書き換えたときの帯。**触っている最中は勝手に読み直さない**ので、
    読み直す手立てを文字とボタンで置く。 */
 .sc-sync-banner{display:flex;align-items:center;gap:var(--gap-inline);padding:var(--pad-row);

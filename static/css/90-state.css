@@ -286,10 +286,16 @@ body.sc-mode.sc-split .sc-split-wrap.sc-list-collapsed #grid{display:none}
 body.connection-lost .layout{padding-top:52px}
 /* ---------- 23. ナビゲーションと印刷導線の整理 ----------
    「印刷」は画面ごとに1つだけにする。ヘッダの「画面を印刷」は今の画面を
-   そのまま出す汎用操作だが、専用の印刷を持つ画面では重複するため隠す
-   (帳票=rp-mode は専用の印刷アイコン、品質データ分析=qa-mode はツールバーの
-   印刷ボタンを持つ)。 */
-body.rp-mode #printCurrentView,body.qa-mode #printCurrentView{display:none}
+   そのまま出す汎用操作だが、専用の印刷を持つ画面では重複するため隠す。
+   **画面の名前をここへ並べないこと**(§9.300 ①)——以前は
+   `body.rp-mode,body.qa-mode`と書いており、あとから専用の印刷を持った
+   作業スケジュールだけが静かに二重になった（上の行に「画面を印刷」、
+   操作列に「印刷」）。判定は**画面が登録で名乗る**(`ownPrint:true`)ので、
+   ここは名乗った結果の1本だけを見る。 */
+body.view-own-print #printCurrentView{display:none}
+/* 品質データ分析だけは画面の登録簿に載っていない（一覧の中の状態として
+   `qa-mode`を立てている）ので、ここで名指しする。 */
+body.qa-mode #printCurrentView{display:none}
 /* ---- 畳んだメニューの浮き出し（§9.265） ----
    素の`title`は出るまで1秒近くかかり、見た目も揃わず、触る画面では読めない。
    **器はbody直下**（`aside`は幅54pxで`overflow`を持つので中に置くと切れる・§9.201）。
@@ -353,6 +359,12 @@ body.rec-mode .global-actions .hd-search,body.rec-mode .global-actions .hd-field
 /* ---- ヘッダー相乗り時の整理（重複する情報・使わない操作を出さない） ---- *//* 使用設備は画面ごとの操作列(スケジュールの設備選択)が持つので、ヘッダーの
    チップと二重にしない。モード・現場段取りは画面に関係なく効く状態なので残す。 */
 body.sc-mode .hd-status .hd-chip-equip{display:none}
+/* 画面名の説明は畳んで`title`へ落とす(§9.300 ①、§9.234 ①「消さずに畳む」)。
+   「設備ごとの作業予定と実績」は**1回読めば足りる文**なのに、いちばん上の
+   行に常時居座っていた（利用者の指示「一番上の表示も含めて…やたら長い説明の
+   コメント…見直し」）。`setHeaderContext()`が`#fileName`のtitleへ同じ文を
+   入れているので、読む手立ては残る。 */
+body.sc-mode #headerContextSource{display:none}
 }
 
 

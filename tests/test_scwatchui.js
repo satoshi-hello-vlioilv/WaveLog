@@ -53,9 +53,31 @@ let b=null;
    const el=document.getElementById('scSyncChip');
    return {text:el.textContent,title:el.title};
   });
-  rec('いつ取り込んだかを出す',/共有:/.test(chip.text),chip.text);
-  rec('何をしているかを説明に書く',/確かめ/.test(chip.title)&&/休み/.test(chip.title),
-      chip.title.split('\n')[0]);
+  /* §9.300 ①で**チップは1つ**になった（`#scFreshness`と2つで同じ「いつの
+     データか」に答えていた）。文字に出るのは**この画面が読んだ時刻**で、
+     共有の取り込み・書込役・改訂番号は**押すと開くメニュー**が持つ。
+     `title`には今までどおり間隔と最後の取込を書く（§9.200。約束が変わったら
+     網は消さずに書き直す）。 */
+  rec('いつのデータかを文字で出す',/時点/.test(chip.text),chip.text);
+  rec('共有の取り込みの間隔と最後の取込を説明に書く',
+      /確かめ/.test(chip.title)&&/最後の取込/.test(chip.title),
+      chip.title.replace(/\n/g,' | ').slice(0,140));
+  /* 畳んだ先（浮きメニュー）に共有の状態が全部あること——「短くした」だけで
+     読めなくなっていないかを見る（§9.234 ①「消さずに畳む」）。 */
+  await page.click('#scSyncChip');
+  await page.waitForSelector('#scSyncMenu',{timeout:8000});
+  const syncMenu=await page.evaluate(()=>{
+   const m=document.getElementById('scSyncMenu');
+   return {keys:[...m.querySelectorAll('.sc-sync-k')].map(x=>x.textContent.trim()),
+           acts:[...m.querySelectorAll('button')].map(x=>x.querySelector('span')?.textContent.trim())};
+  });
+  rec('畳んだ先に共有の見張り・次の確認・最後の取込がある',
+      ['見張り','次の確認','最後に取り込んだ'].every(k=>syncMenu.keys.includes(k)),
+      JSON.stringify(syncMenu.keys));
+  rec('畳んだ先に「いま取り込む」がある',syncMenu.acts.includes('いま取り込む'),
+      JSON.stringify(syncMenu.acts));
+  await page.evaluate(()=>document.body.click());
+  await page.waitForFunction(()=>!document.getElementById('scSyncMenu'),null,{timeout:8000});
 
   /* ---- 2) 押すとその場で取り込む ---- */
   const now=await page.evaluate(async()=>await (await fetch('/api/schedule/sync-now',

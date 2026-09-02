@@ -263,6 +263,9 @@
   color:var(--ink-3);font-size:var(--fs-sm);line-height:1.6}
 .eqset-help b{color:var(--ink-2)}
 .eqset-help.is-warn{color:var(--warn-fg)}
+/* 伏せた候補の件数（§9.302）。**助けの一言より弱く**——次にすることは
+   その前半が言っており、こちらは「なぜ一覧に出ていないか」の注記。 */
+.eqset-note{color:var(--muted)}
 /* 足の一言。**なぜここに居るか**と保存の結果を出す（§CLAUDE 6）。 */
 .eqset-foot{margin-right:auto;color:var(--ink-3);font-size:var(--fs-sm);line-height:1.5}
 .eqset-foot.is-warn{color:var(--warn-fg);font-weight:700}
@@ -285,6 +288,10 @@
 /* 共通確認モーダル(confirmModal)のメッセージ本文。confirm()の改行表現を
    引き継ぐため、\nをそのまま改行として表示する。 */
 .confirm-modal-message{margin:0;padding:var(--pad-card);border-left:4px solid var(--teal);background:#eef8f9;color:#3a565d;line-height:1.7;white-space:pre-line}
+/* 確認の中の「何が起きるか」の箇条書き（§9.301 ②）。**先に文章、次に箇条書き**
+   ——起きることを1行ずつ並べたほうが、押す前に数えられる（§6）。 */
+.confirm-modal-list{margin:var(--space-2) 0 0;padding-left:var(--space-4);color:var(--ink-2);line-height:1.7}
+.confirm-modal-list li{margin:0 0 var(--gap-hair)}
 /* 取り消せない操作の確認で「何が起きるか」を箇条書きにする(§9.61)。
    本文を長い一段落にすると読み飛ばされるため、影響範囲を1行1件で示す。 */
 .confirm-modal-points{margin:10px 0 0;padding:0 0 0 20px;color:#3a565d;

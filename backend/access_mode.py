@@ -203,6 +203,14 @@ _READ_ONLY_POST_ENDPOINTS={'rne.rne_extract_run','tables.api_db_mirror_refresh',
                            # 共有スケジュールを手元へ取り込むだけ(§9.188)。
                            # 作業予定は書き換えないので全モードから通す。
                            'schedule.sync_now',
+                           # 書込役が応答するかを**確かめるだけ**(§9.301 ①)。
+                           # 共有には一切触らず、目印に書いてあるURLへ
+                           # `/owner/ping`を投げて返事を見るだけ。POSTなのは
+                           # 数秒かかりうる能動的な確認だから（GETだと
+                           # 画面の10秒巡回に混ざって毎回待たされる）。
+                           # **`owner-take`はここへ入れない**——あちらは共有の
+                           # 目印を書き換える本物の書込。
+                           'schedule.owner_probe',
                            # 選択肢が選ばれた回数を1つ増やすだけ(§9.248 ⑤)。
                            # **現場の設定は1つも変わらない**——数えているのは
                            # 「選ばれた」という事実だけ。ここをeditへ絞ると、
@@ -212,6 +220,13 @@ _READ_ONLY_POST_ENDPOINTS={'rne.rne_extract_run','tables.api_db_mirror_refresh',
 # editモードで許可する際、さらに「現場段取り可否」を要求するエンドポイント。
 # 作業予定を実際に動かす操作だけが対象で、設定系マスタの保存は含めない。
 _FIELD_REORDER_ENDPOINTS={'schedule.plan_reorder'}
+# **自分のアプリを閉じる操作は、いつでも通す**（§9.301 ②）。切断（§9.272）は
+# 「共有への**書き込み**を止める」仕組みで、**別のPCのプロセスを殺さない**の
+# と同じ理由で、その端末が自分を閉じることまで止める意味は無い（閉じられない
+# ほうが、書きかけの測定を抱えたまま居座ることになる）。
+# app直付けなので`request.blueprint`はNone＝モードのガードは元から素通し。
+# ここで外すのは切断の判定だけ。
+_SELF_LIFECYCLE_ENDPOINTS={'app_quit','shutdown'}
 
 def _relayed_identity():
  """持ち主へ中継されてきたリクエストか(§9.192)。そうなら、**頼んだ端末の**
@@ -479,6 +494,7 @@ def install(app):
   # **読みは止めない**。開いている画面を消すのではなく、書き込みだけを
   # 落として理由を出す（別のPCのプロセスを外から殺さない、という方針）。
   # 冷却時間で自然に解けるので、間違えても直せる。
+  if request.endpoint in _SELF_LIFECYCLE_ENDPOINTS:return None  # 自分を閉じる(§9.301 ②)
   rev=revocation_now()
   if rev is not None and request.blueprint!='presence':
    return jsonify(error=('この端末は接続を解除されています'

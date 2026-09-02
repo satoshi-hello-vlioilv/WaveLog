@@ -25,6 +25,13 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
  if(typeof $!=='function')return;
 
  const MODE_LABELS={edit:'編集モード',view:'閲覧モード',schedule:'スケジュールモード'};
+ /* チップの中だけの短い呼び名（§9.300 ①、利用者の指示「一番上の表示も含めて
+    冗長な重複した表示内容…見直し」）。チップは
+    `<span>モード</span><b>◯◯</b>`という形なので、値まで「モード」で終わると
+    **1つのチップの中に同じ語が2回**出る（「モード スケジュールモード」）。
+    文章の中（確認・通知・title）は今までどおり`MODE_LABELS`——「スケジュール
+    へ切り替えますか？」では何のスケジュールか読めない。 */
+ const MODE_SHORT={edit:'編集',view:'閲覧',schedule:'スケジュール'};
  const MODE_DESC={edit:'測定データ・マスタを書き込めます',view:'すべて読み取り専用です',schedule:'作業予定を書き込めます(測定データ・マスタは読み取り専用)'};
 
  let accessMode={mode:'edit',canEdit:true,canSchedule:false,canFieldReorder:false,fieldReorderEquipment:'',loginId:'',pcName:'',pcNameSource:''};
@@ -112,7 +119,7 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
    const canSwitch=allowedModes().length>1;
    badge.disabled=!canSwitch;
    badge.title=`${MODE_LABELS[mode]||mode}です(${accessMode.loginId||'?'}@${accessMode.pcName||'?'})。${canSwitch?'クリックでモードを切り替えられます。':'この端末には他のモードへ切り替える権限がありません。'}`;
-   const label=$('#accessModeLabel');if(label)label.textContent=MODE_LABELS[mode]||mode;
+   const label=$('#accessModeLabel');if(label)label.textContent=MODE_SHORT[mode]||MODE_LABELS[mode]||mode;
    // モードは状態そのものが意味を持つので、色でも区別する(§9.48)
    const chip=$('#accessModeBadge');
    if(chip){chip.classList.toggle('is-view',mode==='view');chip.classList.toggle('is-schedule',mode==='schedule')}

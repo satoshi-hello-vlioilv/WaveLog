@@ -92,6 +92,31 @@
 .restart-needed[hidden]{display:none}
 .restart-needed b{font-size:var(--fs-sm)}
 .restart-needed small{color:var(--warn-fg);opacity:.9}
+/* ---------- 安全な終了（§9.301 ②、利用者の指示「安全なアプリの終了ボタンも
+   欲しいです」） ----------
+   **足元に置き、行き先の並びからは離す**（§CLAUDE 5「危ない操作を主要動線に
+   置かない」）。押す頻度は低いが重要度は高いので、消さずに弱く出す
+   ——普段は補助文字の色で、触れたときだけ危険の色になる（§3。色だけで
+   伝えないので、文字は「アプリを終了」と書いてある）。 */
+.nav-foot{margin-top:auto;padding-top:var(--space-3);border-top:1px solid #2c4750}
+.nav-foot .nav-item--quit{color:var(--muted)}
+.nav-foot .nav-item--quit:hover{background:var(--danger-bg,#5b2b2b);color:#ffd7d7}
+/* 終了したあとの覆い。**事故のように見せない**（§3）——自分で終了したので、
+   「接続が切れました」の帯は出さずにこちらを出す。 */
+.app-quit-done{
+ position:fixed;inset:0;z-index:var(--z-alert);
+ display:flex;align-items:center;justify-content:center;padding:var(--space-4);
+ background:rgba(13,32,41,.86);
+}
+.app-quit-done[hidden]{display:none}
+.app-quit-done .aq-card{
+ max-width:var(--w-2xl);width:100%;
+ padding:var(--pad-dialog);border-radius:var(--radius-lg);
+ background:var(--surface);color:var(--ink);box-shadow:0 20px 60px #0005;
+}
+.app-quit-done .aq-card>b{display:block;font-size:var(--fs-title);margin-bottom:var(--space-2)}
+.app-quit-done .aq-note{margin:0;color:var(--ink-2);font-size:var(--fs-sm);line-height:1.7}
+.app-quit-done .aq-what{margin-top:var(--space-3);font-size:var(--fs-sm)}
 /* ---------- 3a. サイドバー: ブランド ---------- */
 .layout>aside .brand{padding:0 6px 14px;margin-bottom:12px;border-bottom:1px solid #2c4750;display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
 .layout>aside .brand h2{margin:0;font-size:var(--fs-title);letter-spacing:.01em}

@@ -58,6 +58,75 @@ STANDARD_MINUTES_MAX=1440.0
 MAX_LINE_SPEED_COLUMN='最大ライン速度'
 MAX_LINE_SPEED_MAX=100000.0
 
+# ---------------------------------------------------------------------------
+# 使える機能（§9.302、利用者の指示「設備マスタの有効・無効機能を実装して
+# ください。有効無効の範囲については機能別に分けて変更できるようにしたい」）
+# ---------------------------------------------------------------------------
+# これまでの`[有効]`は**全部か無か**だった（マスタ画面の「削除」が0を書く）。
+# ところが現場でいちばん多いのは「もうこのラインでは測らないし予定も組まない
+# が、**過去のデータは見たいし帳票も刷りたい**」——全部か無かでは表せない。
+#
+# **保存するのは「使わない機能」のほう**（`[無効機能]`。カンマ区切り）。
+# 空欄＝すべて使える、が既定になるので:
+#  ・**触っていない現場は1つも変わらない**（§9.132）
+#  ・**あとで機能を1つ足しても、既存の設備で黙って無効にならない**
+#    （「使う機能」を保存する形だと、足した機能が全設備で最初から無効になる）
+#
+# `[有効]=0`（マスタ画面の「削除」）は**今までどおり全部無効**。機能別は
+# その上に乗る2段目で、置き換えではない。
+EQUIPMENT_DISABLED_COLUMN='無効機能'
+# **並びは決める順**（測る → 予定を組む → 見る・刷る）。綴りは保存値なので
+# 変えないこと（変えると保存済みの設定が「知らない機能」になる・§9.204）。
+EQUIPMENT_FEATURES=(
+ ('measure','測定','測定画面の「使用設備」に選べます'),
+ ('schedule','作業予定','作業スケジュールの設備に出ます'),
+ # **記録から出てくる設備は絞らない**——実績データの一覧・データ一覧は
+ # 「何が起きたか」の履歴なので、外した設備の記録が読めなくなるのは行き過ぎ
+ # （§9.15。隠すと直す手立てまで消える）。ここで絞るのは
+ # 「これから紙の配置を作る設備」の候補だけ。
+ ('report','帳票','帳票の配置を編集する設備の候補に出ます'),
+)
+EQUIPMENT_FEATURE_KEYS=tuple(k for k,_l,_n in EQUIPMENT_FEATURES)
+
+
+def normalize_equipment_features(value):
+ """入力を保存値（**使わない機能**のカンマ区切り）へ。
+
+ 受けるのは「使わない機能の並び」（リストでもカンマ区切りでも）。
+ **知らない綴りは捨てる**——保存値が語彙から外れると、画面のチェックに
+ 現れないまま効き続ける（押しても外せない設定になる）。
+ 全部を無効にするのは**許す**——「この設備はもうどこにも出さない」は
+ 現場が選べてよい（そのことは画面が文字で書く・§4）。
+ """
+ if value is None:return ''
+ if isinstance(value,(list,tuple,set)):items=list(value)
+ else:items=str(value).replace('、',',').split(',')
+ out=[]
+ for x in items:
+  k=str(x or '').strip()
+  if k in EQUIPMENT_FEATURE_KEYS and k not in out:out.append(k)
+ return ','.join(k for k in EQUIPMENT_FEATURE_KEYS if k in out)
+
+
+def equipment_disabled_features(value):
+ """保存値 → 無効な機能の集合。"""
+ return set(normalize_equipment_features(value).split(',')) - {''}
+
+
+def equipment_allows(disabled_value,feature):
+ """この設備をその機能で使ってよいか。**判定はここ1箇所**（§9.163）
+ ——画面もルートもこの答えを見るだけで、綴りから自分で判断しない。
+
+ `feature`が空（＝機能を指定しない問い合わせ）は**常に真**——設備マスタの
+ 編集画面や、名前の綴り寄せ・改名の追跡は「使えるかどうか」とは別の話で、
+ ここで絞ると**無効にした設備のロールや過去の設定が引けなくなる**。
+ """
+ f=str(feature or '').strip()
+ if not f:return True
+ if f not in EQUIPMENT_FEATURE_KEYS:return True   # 知らない機能では絞らない
+ return f not in equipment_disabled_features(disabled_value)
+
+
 def normalize_max_line_speed(value):
  """入力を保存値へ。空欄・数にならないもの・0以下はNone(=未設定)。"""
  s=str(value if value is not None else '').strip()
@@ -124,7 +193,8 @@ def ensure_equipment_master_table(c):
  try:
   have=set(cols(c,EQUIPMENT_MASTER_TABLE))
   for name,decl in ((MAX_STRIPS_COLUMN,'INTEGER'),(EQUIPMENT_KIND_COLUMN,'TEXT'),
-                    (STANDARD_MINUTES_COLUMN,'REAL'),(MAX_LINE_SPEED_COLUMN,'REAL')):
+                    (STANDARD_MINUTES_COLUMN,'REAL'),(MAX_LINE_SPEED_COLUMN,'REAL'),
+                    (EQUIPMENT_DISABLED_COLUMN,'TEXT')):
    if name not in have:
     cur=c.cursor();cur.execute(f'ALTER TABLE {qi(EQUIPMENT_MASTER_TABLE)} ADD COLUMN {qi(name)} {decl}');c.commit()
  except Exception:pass
@@ -169,16 +239,24 @@ def normalize_equipment_name(value):
  import unicodedata
  return unicodedata.normalize('NFKC',str(value or '')).strip().upper()
 
-def equipment_master_rows(c):
+def equipment_master_rows(c,feature=None):
+ """有効な設備の行。**`feature`を渡すのは「人に選ばせる候補」を作るときだけ**
+ （§9.302）——名前の綴り寄せ・改名の追跡・存在確認では渡さないこと。
+ 絞ると、その機能を切った設備のロールや過去の設定が引けなくなる。
+
+ 戻り値の末尾に`[無効機能]`が付く（既存の添字は1つも動かさない）。"""
  ensure_equipment_master_table(c)
  cur=c.cursor()
  # 全行取得後にPython側で有効判定する。
  cur.execute('SELECT [設備ID],[設備名],[表示順],[有効],[更新日時],[更新者ID],[最大条数],[区分],[標準時間分],'
-             '[最大ライン速度] FROM [設備マスタ] ORDER BY [表示順],[設備名]')
+             '[最大ライン速度],[無効機能] FROM [設備マスタ] ORDER BY [表示順],[設備名]')
  rows=[]
  for r in cur.fetchall():
   active=True if r[3] is None else bool(r[3])
-  if active and str(r[1] or '').strip():rows.append(r)
+  if not (active and str(r[1] or '').strip()):continue
+  # **`[有効]=0`は今までどおり全部無効**。機能別はその上に乗る2段目。
+  if not equipment_allows(r[10] if len(r)>10 else '',feature):continue
+  rows.append(r)
  return rows
 
 # ========================================================================
