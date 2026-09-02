@@ -965,7 +965,7 @@ const endArrange=async page=>{
     const h=e=>e?Math.round(e.getBoundingClientRect().height/sc*100)/100:0;
     const fit=[...document.querySelectorAll('[data-rp-block]>.rp-block-fit')];
     return {dense:getComputedStyle(document.getElementById('reportContent'))
-              .getPropertyValue('--rp-dense').trim()||'',
+              .getPropertyValue('--rp-dense-y').trim()||'',
       行:h(document.querySelector('.rp-field')),
       表:h(document.querySelector('.rp-dim-table td')),
       見出し:h(document.querySelector('.rp-section h3')),
@@ -974,17 +974,36 @@ const endArrange=async page=>{
       緩い:fit.filter(e=>{const v=parseFloat(getComputedStyle(e).getPropertyValue('--rp-dense'));
               return Number.isFinite(v)&&v>0.61}).length};
    });
-   const pick=async i=>{
-    await page.evaluate(n=>{const b=document.querySelector(`[data-rp-pack="${n}"]`);if(b)b.click()},i);
-    await settle(page);await page.waitForTimeout(700);
+   /* §9.311 C 余白は**横と縦の2つの巡回ボタン**になった（押すたびに次の段）。
+      ここが見るのは**縦**（項目の上下・行送り・表のセルの高さ）。 */
+   const pick=async n=>{
+    for(let i=0;i<n;i++){
+     await page.evaluate(()=>{const b=document.querySelector('[data-rp-pack="y"]');if(b)b.click()});
+     await settle(page);await page.waitForTimeout(700);
+    }
     return packLook();
    };
    const labels=await page.evaluate(()=>
-     [...document.querySelectorAll('[data-rp-pack]')].map(b=>b.textContent.trim()));
-   rec('§9.308 紙の帯で余白を選べる（ふつう／詰める／もっと詰める）',
-       labels.length===3&&labels[0]==='ふつう',JSON.stringify(labels));
+     [...document.querySelectorAll('[data-rp-pack]')].map(b=>b.dataset.rpPack+':'+b.textContent.trim()));
+   rec('§9.311 C 紙の帯の余白は「横」と「縦」の2つ（いまの段を文字で言う）',
+       labels.length===2&&/^x:横/.test(labels[0])&&/^y:縦/.test(labels[1])
+       &&/ふつう$/.test(labels[0])&&/ふつう$/.test(labels[1]),JSON.stringify(labels));
    const P0=await packLook();
-   const P1=await pick(1), P2=await pick(2);
+   /* §9.311 ④ 利用者の報告「この余白を詰めるボタンを押すと、また**ブロックの
+      サイズが勝手に変わる**不具合が発生しました」。§9.310と同じ形——押しただけで
+      触っていない塊の高さが`行数:`として凍ると、`.is-sized`が付いて中の枠が
+      器いっぱいへ伸びる（§9.242 ⑧）。**余白は紙ぜんたいの設定**なので、
+      塊の高さを1つも書いてはいけない。 */
+   const rowKeysNow=async()=>Object.keys(((await (await fetch(B
+     +'/api/column-layout-master?target='+encodeURIComponent(TARGET))).json()).widths)||{})
+     .filter(k=>k.startsWith('行数:')).sort();
+   const rowsBefore=await rowKeysNow();
+   const P1=await pick(1), P2=await pick(1);
+   const rowsAfter=await rowKeysNow();
+   rec('§9.311 ④ 余白を押しても塊の高さ（行数:）を凍らせない',
+       rowsAfter.join()===rowsBefore.join(),
+       JSON.stringify({前:rowsBefore.length,後:rowsAfter.length,
+         増えた:rowsAfter.filter(k=>rowsBefore.indexOf(k)<0).slice(0,4)}));
    /* **項目間・項目内**（利用者の言葉）＝ラベル＝値の1行。 */
    rec('§9.308 「詰める」で項目の行が実際に低くなる',
        P1.行>0&&P1.行<P0.行-0.5,JSON.stringify({ふつう:P0.行,詰める:P1.行}));
@@ -997,7 +1016,7 @@ const endArrange=async page=>{
    /* **紙で詰めたら塊はそれより緩まない**（段の`dense`は1のこともある）。 */
    rec('§9.308 紙で詰めたら、塊の段が緩める側へ戻さない',
        P2.緩い===0,`紙より緩い塊: ${P2.緩い}件`);
-   const back=await pick(0);
+   const back=await pick(1);       /* もう1回押すと一巡して「ふつう」へ */
    rec('§9.308 「ふつう」へ戻すと既定の見え方へ完全に戻る（§9.132）',
        back.dense===''&&Math.abs(back.行-P0.行)<0.1&&Math.abs(back.表-P0.表)<0.1
        &&Math.abs(back.中身-P0.中身)<2,
@@ -1006,11 +1025,42 @@ const endArrange=async page=>{
       「押した瞬間だけ」になる（§9.205と同じ壊れ方）。 */
    await pick(1);
    await page.waitForTimeout(900);
-   const saved=(await (await fetch(B+'/api/column-layout-master?target='
-     +encodeURIComponent(TARGET))).json()).widths['__余白__'];
-   rec('§9.308 選んだ余白がマスタへ保存される',
-       Number(saved)>0,`__余白__=${saved}`);
-   await pick(0);
+   /* **本物の帯のボタンを通して見る**（§9.311 C）——上の合成の器は
+      `--rp-dense-*`を直に置くので、`rpApplyPaperPack()`が2つの軸を
+      混ぜていても素通りする（実際に素通りした）。 */
+   const axis=await page.evaluate(()=>{
+    const cs=getComputedStyle(document.getElementById('reportContent'));
+    return {x:cs.getPropertyValue('--rp-dense-x').trim(),
+            y:cs.getPropertyValue('--rp-dense-y').trim(),
+            share:document.getElementById('reportContent').classList.contains('rp-packx-share')};
+   });
+   rec('§9.311 C 帯の「縦」を押しても横の軸は動かない（混ぜない）',
+       axis.y!==''&&axis.x===''&&axis.share===false,JSON.stringify(axis));
+   const savedW=(await (await fetch(B+'/api/column-layout-master?target='
+     +encodeURIComponent(TARGET))).json()).widths||{};
+   /* §9.311 C **両方の鍵を必ず書き、旧`__余白__`は捨てる**（§9.294 ②）
+      ——片方だけ書くと、もう片方が旧鍵を読み続けて食い違う。 */
+   rec('§9.308/§9.311 C 選んだ余白が横・縦の両方の鍵でマスタへ保存される',
+       Number(savedW['__余白横__'])>40&&Number(savedW['__余白縦__'])>40,
+       JSON.stringify({横:savedW['__余白横__'],縦:savedW['__余白縦__']}));
+   /* **旧鍵が入っている紙から始める**（§9.311 C）——まっさらな紙で見ると、
+      そもそも書かれていないので「捨てた」ことを一度も確かめないまま通る
+      （実際に素通りした）。入れてから押して、消えることを見る。 */
+   await page.evaluate(async t=>{
+    const now=WL.columnLayout.get(t)||{};
+    await WL.columnLayout.save(t,{...now,widths:{...(now.widths||{}),'__余白__':43}});
+    WL.columnLayout.forget(t);
+    await WL.columnLayout.load(t);
+   },TARGET);
+   await pick(1);
+   await page.waitForTimeout(900);
+   const savedW2=(await (await fetch(B+'/api/column-layout-master?target='
+     +encodeURIComponent(TARGET))).json()).widths||{};
+   rec('§9.311 C 旧「__余白__」は捨てる（読む鍵を2つ残さない）',
+       !(Number(savedW2['__余白__'])>40)
+       &&Number(savedW2['__余白横__'])>40&&Number(savedW2['__余白縦__'])>40,
+       JSON.stringify({旧:savedW2['__余白__'],横:savedW2['__余白横__'],縦:savedW2['__余白縦__']}));
+   await pick(2);       /* 一巡して「ふつう」へ戻す */
    await page.click('#reportArrange');
    await page.waitForTimeout(400);
   }catch(e){rec('FATAL(§9.308)',false,e.message)}
@@ -1074,6 +1124,94 @@ const endArrange=async page=>{
    rec('§9.309 「ふつう」へ戻すと今までの紙へ戻る（§9.132）',R3===R0,
        JSON.stringify({前:R0,後:R3}));
   }catch(e){rec('FATAL(§9.309)',false,e.message)}
+
+  /* ==========================================================
+     §9.311 C 余白は横と縦の別の軸。横は「文字の表示領域」を広げる
+     ----------------------------------------------------------
+     利用者の指示「縦横余白をコントロールする部分は分けたいです。また、
+     横をメインで詰めたいところ縦ばっかりでした」
+     「『余白を詰める』＝**有効な文字の表示領域を増やす**…同じ横幅のうち、
+      **文字が折り返している部分**に特に注目…一番左側に表示している
+      ロット№が文字列折り返しているので、そこを**1行で表示するような状態**に
+      持っていきたいです…改行している状況であれば余白の最適化はできていない」
+
+     **合格の物差しは「折り返しが減ること」**（札が並ぶことではない・§9.289）。
+     しかも**余白を細くするだけでは1件も減らない**ことまで見る——実測で
+     `--rp-dense-x:.6`だけでは5件が5件のまま（列が等分なので、余ったぶんは
+     短い列にも同じだけ配られる）。効くのは**等分をやめて余力を詰まった列へ
+     回す**ほう（`.rp-packx-share`）。片方だけを見る網は、余白しか動かない
+     実装を「効いている」と読む。
+     **本物の紙のCSSの中で測る**（`.rp-page`の中に器を置く）——切り出した
+     器で測ると`.rp-page`配下の規則が当たらず、何も確かめられない（§9.289）。
+     ========================================================== */
+  try{
+   const packed=await page.evaluate(()=>{
+    const host=document.createElement('div');
+    host.className='rp-page';
+    host.style.cssText='position:fixed;left:-4000px;top:0;width:210mm';
+    const box=document.createElement('div');
+    box.className='rp-block-fit';
+    box.style.width='150px';                    /* 利用者の画像と同じくらい狭い枠 */
+    const lots=['L2408166','L2408167','L2408168','L2408169','L2408170'];
+    const bare=v=>`<div class="rp-field rp-field-bare"><span class="rp-field-value">${v}</span></div>`;
+    let html='<section class="rp-section"><div class="rp-grid rp-grid-m" style="--rp-cols:4">'
+      +'<div class="rp-field rp-field-blank"></div>'
+      +['項目','MIN','MAX'].map(t=>`<div class="rp-field rp-field-head">`
+        +`<span class="rp-field-headtext">${t}</span></div>`).join('');
+    lots.forEach(l=>{html+=bare(l)+bare('板厚')+bare('0.296')+bare('0.304')});
+    html+='</div></section>';
+    box.innerHTML=html;host.appendChild(box);document.body.appendChild(host);
+    const count=()=>{
+     let lot=0,w=0;
+     box.querySelectorAll('.rp-field-value').forEach(el=>{
+      const t=el.textContent.trim();if(!/^L\d/.test(t))return;
+      const rg=document.createRange();rg.selectNodeContents(el);
+      if(rg.getClientRects().length>1)lot++;
+      w=Math.round(el.parentElement.getBoundingClientRect().width*10)/10;
+     });
+     const gcs=getComputedStyle(box.querySelector('.rp-grid'));
+     const tr=gcs.gridTemplateColumns.split(' ').map(v=>Math.round(parseFloat(v)*10)/10);
+     /* 利用者が名指しした「**セル外の項目間の余白**」＝この`column-gap`。 */
+     return {折返:lot,幅:w,列:tr,項目間:Math.round(parseFloat(gcs.columnGap)*100)/100,
+       セル内:Math.round(parseFloat(getComputedStyle(
+         box.querySelector('.rp-field')).paddingLeft)*100)/100};
+    };
+    const o={};
+    o.ふつう=count();
+    host.style.setProperty('--rp-dense-x','0.6');
+    o.余白だけ=count();                          /* ← ここが「効かない」ほう */
+    host.classList.add('rp-packx-share');
+    o.詰める=count();
+    host.style.removeProperty('--rp-dense-x');host.classList.remove('rp-packx-share');
+    host.style.setProperty('--rp-dense-y','0.6');
+    o.縦だけ=count();                            /* 縦は横に効かない（軸が別） */
+    host.remove();
+    return o;
+   });
+   rec('§9.311 C 前提: 狭い枠ではロット№が折り返している',
+       packed.ふつう.折返>0,JSON.stringify(packed.ふつう));
+   rec('§9.311 C 余白を細くするだけでは折り返しは減らない（列が等分のまま）',
+       packed.余白だけ.折返===packed.ふつう.折返
+       &&new Set(packed.余白だけ.列).size===1,JSON.stringify(packed.余白だけ));
+   rec('§9.311 C 横を詰めるとロット№が1行に収まる（余力を詰まった列へ回す）',
+       packed.詰める.折返===0&&packed.詰める.幅>packed.ふつう.幅,
+       JSON.stringify(packed.詰める));
+   rec('§9.311 C 縦を詰めても横は変わらない（軸が別）',
+       packed.縦だけ.折返===packed.ふつう.折返
+       &&Math.abs(packed.縦だけ.幅-packed.ふつう.幅)<=1,JSON.stringify(packed.縦だけ));
+   /* **利用者が名指しした余白そのもの**（§9.311 C）——「セル外の項目間の
+      余白が目立つ作りになっていてそこが詰まっていかない」。折り返しの件数
+      だけを見る網は、`gap`が8pxのままでも列の配り直しだけで通ってしまう。 */
+   rec('§9.311 C 項目間（セル外）の余白も詰まる',
+       packed.余白だけ.項目間<packed.ふつう.項目間-0.5,
+       JSON.stringify({ふつう:packed.ふつう.項目間,詰める:packed.余白だけ.項目間}));
+   rec('§9.311 C セル内（ラベルの左右）の余白も詰まる',
+       packed.余白だけ.セル内<packed.ふつう.セル内-0.1,
+       JSON.stringify({ふつう:packed.ふつう.セル内,詰める:packed.余白だけ.セル内}));
+   rec('§9.311 C 縦を詰めても項目間の余白は変わらない（軸が別）',
+       Math.abs(packed.縦だけ.項目間-packed.ふつう.項目間)<0.1,
+       JSON.stringify({ふつう:packed.ふつう.項目間,縦だけ:packed.縦だけ.項目間}));
+  }catch(e){rec('FATAL(§9.311 C)',false,e.message)}
 
   rec('コンソールに例外を出さない',errs.length===0,errs.slice(0,2).join(' / '));
  }catch(e){rec('FATAL',false,e.message)}

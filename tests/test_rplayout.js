@@ -1032,6 +1032,36 @@ let b=null,madeBlock=null;
     return o;
    });
    const crushed=ghostSpots.filter(x=>x.幅<=1||(x.列===1&&x.行===1&&x.幅<=1));
+   /* ---- §9.311 A 書き下ろしで塊どうしを重ねない ----
+      §9.310 で「中身なしの塊を伏せてから測る」を入れたが、**大きさを控える
+      ために伏せる前の矩形も使っていた**ので、
+        中身なしの塊 … 画面の並び（伏せる前）の場所
+        それ以外の塊 … 刷り上がりの並び（伏せた後）の場所
+      という**2つの並びが混ざった**状態が書き下ろされ、**別々の塊が同じマスへ
+      重なって**書き込まれた（実測: `板厚の測定データ`と`作業時間`が`1,21`）。
+      重なった2枚は上下に描かれるので下の1枚が掴めず、掴んだつもりが上の塊を
+      動かす——利用者の報告「D&Dで位置ずれがかなりひどくなりました」の実体。
+      **重なりは矩形どうしで見ること**——左上が同じかどうかだけを見る網は、
+      1マスずれて重なっている形を素通りする。 */
+   const seedOverlaps=await page.evaluate(()=>{
+    const box=[];
+    document.querySelectorAll('[data-rp-block]').forEach(el=>{
+     const c=/(\d+)\s*\/\s*span\s+(\d+)/.exec(el.style.gridColumn||'');
+     const r=/(\d+)\s*\/\s*span\s+(\d+)/.exec(el.style.gridRow||'');
+     if(!c||!r)return;
+     box.push({名:el.dataset.rpBlock,c:+c[1],cs:+c[2],r:+r[1],rs:+r[2]});
+    });
+    const bad=[];
+    for(let i=0;i<box.length;i++)for(let j=i+1;j<box.length;j++){
+     const a=box[i],b=box[j];
+     if(a.c<b.c+b.cs&&b.c<a.c+a.cs&&a.r<b.r+b.rs&&b.r<a.r+a.rs)
+      bad.push(`${a.名}(${a.c},${a.r}) と ${b.名}(${b.c},${b.r})`);
+    }
+    return {数:box.length,重なり:bad};
+   });
+   rec('§9.311 A 書き下ろしで塊どうしが重ならない（2つの並びを混ぜない）',
+       seedOverlaps.数>1&&seedOverlaps.重なり.length===0,
+       seedOverlaps.重なり.slice(0,3).join(' / ')||`${seedOverlaps.数}件・重なりなし`);
    await page.click('#rpArrangeCancel');
    await page.waitForTimeout(1200);await settle(page);
    const seedAfter=await seedSnap();
