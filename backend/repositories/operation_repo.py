@@ -1314,6 +1314,19 @@ def choice_hints(c):
     return out
 
 
+# 入力値の丸めの向き（§9.307）。**単位は`[ステップ量]`**なので、ここは
+# 向きだけ。空欄＝丸めない（既定）。
+ROUND_MODES = ('切り上げ', '切り捨て', '四捨五入')
+
+
+def normalize_round_mode(value):
+    """知らない綴りは**空（丸めない）**へ倒す。**捨てずに倒す**のは、
+    保存値が語彙から外れたときに「効いているのに画面から外せない設定」を
+    作らないため（§9.204と同じ向き）。"""
+    t = str(value or '').strip()
+    return t if t in ROUND_MODES else ''
+
+
 def _norm_equipment(v):
     """対象設備の保存形。**書式は設備停止マスタと同じ**（`schedule_repo`の
     1箇所が答える）——ここで書き起こすと、同じ`'A,B'`の読み方が2通りになる。
@@ -1882,6 +1895,11 @@ _ITEM_ADDED_COLUMNS = (
     # --- §9.286 ⑥（利用者の指示「未選択、未入力の場合、配色するという機能」）---
     # 空欄のときの配色。空＝既定（必須の欄だけ橙）／`なし`／色の鍵。
     ('未入力配色', 'TEXT'),
+    # --- §9.307（利用者の指摘「『操業データ項目』の編集内容の中に数値
+    #     データが選ばれたときにステップを決めるところで編集可能」）---
+    # **刻み（`[ステップ量]`）が単位**で、ここはその向きだけを持つ。
+    # 空欄＝丸めない（＝今までどおり打った値がそのまま残る・§9.132）。
+    ('丸め方', 'TEXT'),
     # --- §9.227 ③（利用者の指示）---
     # ダミー（空き）の群。**測定画面では見出しも枠も出さず、幅ぶんの空白
     # だけを置く**——「区切りの良い並びに整列させるためのダミーカード」。
@@ -2388,6 +2406,8 @@ def _row_to_item(r):
             # §9.256 式で作る自動値。**列の無い古いDBでも動く**。
             'autoFormula': (str(r[42] or '').strip() if len(r) > 42 else ''),
             # §9.286 ⑥。空欄のときの配色。**古いDB（列が無い）でも動く**。
+            # §9.307 入力値の丸めの向き（単位は`step`）。**空欄＝丸めない**。
+            'roundMode': (normalize_round_mode(r[44]) if len(r) > 44 else ''),
             'blankTint': (normalize_blank_tint(r[43]) if len(r) > 43
                           else BLANK_TINT_DEFAULT)}
 
@@ -2404,7 +2424,9 @@ _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[�
                 # 読んでいるので、途中へ挿すと全部の項目が1つずれる。
                 '[自動計算式],'
                 # §9.286 ⑥。**末尾へ足す**（同上）。
-                '[未入力配色] '
+                '[未入力配色],'
+                # §9.307。**末尾へ足す**（同上）。
+                '[丸め方] '
                 'FROM [操業データ項目マスタ] ORDER BY [表示順],[項目ID]')
 
 
@@ -2523,7 +2545,8 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 role=None, look=None, layout=None, group_span=None, report=None,
                 dummy=None, no_blank=None, min_from=None, max_from=None,
                 source_note=None, auto_value=None, record_show=None,
-                choice_order=None, auto_formula=None, blank_tint=None):
+                choice_order=None, auto_formula=None, blank_tint=None,
+                round_mode=None):
     ensure_item_table(c)
     name = str(name or '').strip()
     if not name:
@@ -2539,7 +2562,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
     if item_id is not None:
         cur.execute('SELECT [組み込みキー],[項目名],[ダミー],[空欄なし],'
                     '[最小の出どころ],[最大の出どころ],[出どころ表示],[自動値],[記録表示],'
-                    '[選択肢の並び],[自動計算式],[未入力配色] '
+                    '[選択肢の並び],[自動計算式],[未入力配色],[丸め方] '
                     'FROM [操業データ項目マスタ] WHERE [項目ID]=?', [int(item_id)])
         hit = cur.fetchone()
         cur_builtin = str((hit or ['', '', 0, 0, '', '', '', '', None, ''])[0] or '').strip()
@@ -2576,6 +2599,10 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
         # §9.286 ⑥。未入力の配色も同じ約束（送らない呼び出しで消さない）。
         if blank_tint is None and hit is not None and len(hit) > 11:
             blank_tint = hit[11]
+        # §9.307。丸め方も同じ約束——設定窓の他の段から保存したときに、
+        # 決めた向きが黙って消えては困る（§9.287-H と同じ形で6度目）。
+        if round_mode is None and hit is not None and len(hit) > 12:
+            round_mode = hit[12]
     if builtin is None:
         builtin = cur_builtin
     builtin = str(builtin or '').strip()
@@ -2635,7 +2662,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
             str(auto_formula or '').strip(),
             # §9.286 ⑥ 未入力の配色。**列は末尾へ足す**——2本目のUPDATEが
             # `args[1:2]+args[3:]`で位置を数えている。
-            normalize_blank_tint(blank_tint)]
+            normalize_blank_tint(blank_tint),
+            # §9.307 入力値の丸めの向き（単位は`[ステップ量]`）。
+            normalize_round_mode(round_mode)]
     if item_id is not None:
         cur.execute('UPDATE [操業データ項目マスタ] SET [設備名]=?,[群]=?,[項目名]=?,[表示順]=?,'
                     '[型]=?,[小数桁]=?,[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,'
@@ -2645,6 +2674,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
                     '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,[自動値]=?,'
                     '[記録表示]=?,[選択肢の並び]=?,[自動計算式]=?,[未入力配色]=?,'
+                    '[丸め方]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args + [uid, int(item_id)])
         c.commit()
@@ -2668,6 +2698,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
                     '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,[自動値]=?,'
                     '[記録表示]=?,[選択肢の並び]=?,[自動計算式]=?,[未入力配色]=?,'
+                    '[丸め方]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args[1:2] + args[3:] + [uid, hit[0]])
         c.commit()
@@ -2684,9 +2715,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
                 '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ],'
                 '[出どころ表示],[自動値],[記録表示],[選択肢の並び],[自動計算式],'
-                '[未入力配色],'
+                '[未入力配色],[丸め方],'
                 '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (' + ','.join(['?'] * 42) + ',Now(),Now())',
+                'VALUES (' + ','.join(['?'] * 43) + ',Now(),Now())',
                 args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)

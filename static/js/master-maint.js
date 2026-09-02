@@ -70,37 +70,6 @@
      ここは「どう並べるか」。1枚に混ぜると盤の1枚のカードが2つの並びを
      同時に表すことになる。書くのは`[記録表示]`／`[記録群]`／`[記録順]`の
      3列だけで、汎用CRUDは持たない（`endpoint`はGETの読み口）。 */
-  /* ---------- 入力値の丸め（§9.305 ①、利用者の指示） ----------
-     「0.5単位切り上げなど、入力値の切り上げ機能を実装してください。
-      導入したい項目は ①ラテラルボー ②テレスコープ ③巻ズレ ④揃いの値。
-      可能であれば他の入力項目についても、汎用的に設定できるように」
-
-     **1行＝1つの入力の決まり**（刻みと向きだけ）。**行を消せば丸めない**。
-     選べる入力も向きも**サーバーが答える**（`targets`／`modes`）ので、
-     画面には綴りを書き写さない（§9.163）。 */
-  {group:'measure',key:'measureItem',label:'入力値の丸め',icon:'丸',
-   endpoint:'/api/measure-item-master',hasDelete:true,editorModal:true,
-   titleText:'入力値の丸め — どの入力を、いくつ刻みで',
-   fields:[{k:'key',label:'どの入力',type:'choice-card',source:{key:'targets'},
-            required:true,key:true,fieldGroup:'① どの入力を丸めるか',
-            hint:'**1つの入力につき決まりは1つ**です（同じ入力をもう一度登録すると上書きになります）。'},
-           {k:'unit',label:'刻み',type:'number',unit:'mm',step:0.1,min:0,required:true,
-            fieldGroup:'② いくつ刻みで・どちら向きに',
-            hint:'**0.5**なら 0.5・1.0・1.5… の段へそろえます。**打ち終わって欄を離れたとき**に効きます（打っている最中は変わりません）。',
-            more:'測定器から転送された値にも同じ決まりが効きます（板厚・板幅を選んだ場合）。'},
-           {k:'mode',label:'向き',type:'choice-card',source:{key:'modes'},
-            fieldGroup:'② いくつ刻みで・どちら向きに',
-            hint:'**切り上げ**が既定です。'},
-           {k:'note',label:'メモ',fieldGroup:'③ 覚え書き',
-            hint:'なぜこの刻みなのかを書いておくと、あとで見直すときに助かります。'}],
-   cols:[{k:'label',label:'どの入力',grow:2},{k:'unit',label:'刻み',grow:1,format:'roundUnit'},
-         {k:'mode',label:'向き',grow:1},{k:'note',label:'メモ',grow:2}],
-   hint:'測定画面で**打ち終わった値**を、決めた刻みの段へそろえます（例: 0.5刻みで切り上げ→`1.2`は`1.5`）。'
-     +'**登録した入力だけ**が対象で、行を消せば今までどおり打った値がそのまま残ります。'
-     +'ラテラルボー・テレスコープ・巻ずれ・揃いの値には、はじめから0.5刻みの切り上げが入っています。',
-   hintMore:'<p>効くのは<b>欄を離れたとき</b>だけです。打っている最中に丸めると、`0.2`を打つ途中の`0.`で値が飛んでしまうためです。</p>'
-     +'<p>板厚・板幅を選んだ場合は<b>測定器から転送された値にも</b>効きます——手入力と転送で違う値になるほうが分かりにくいためです。</p>'
-     +'<p>保存済みの記録は書き換えません。開き直しても、記録された値はそのまま出ます。</p>'},
   {group:'measure',key:'recordLayout',label:'記録した値の配置',icon:'記',
    special:'record-layout',endpoint:'/api/operation-item-master',
    titleText:'記録した値 — ③確認のカードの並べ方',
@@ -137,11 +106,20 @@
             hint:'探すための読みです（例: サトウ）。まとまりの絞り込みで使います。'},
            {k:'equipment',label:'出る設備',type:'equipment-multi-text',
             tagHint:'この値を出す設備です。**空欄＝すべての設備**（オペレータの「割当が無ければ制限なし」と同じ）。「すべての設備」を選ぶと、これから増える設備でも出ます。'},
+           /* §9.306（利用者の指示「『選択肢の値マスタ』にはカテゴリを追加
+              できるようにし、親マスタの選択肢から選んで登録することが
+              できるように」）。**このまとまりに親が張ってあるときだけ出る**
+              ——候補が無ければ`tag-set`が理由を書く（§4）。 */
+           {k:'parentValue',label:'親の値',type:'tag-set',
+            source:{key:'parentValues',by:'name'},
+            emptyHint:'このまとまりには**親がありません**。親子を張ると、ここで**どの親の値のときに出すか**を選べるようになります。',
+            hint:'**空欄＝どの親でも出ます。**選んだ親の値のときだけ出したいときに絞ります（複数選べます）。親の欄を**まだ選んでいないときは全部出ます**。'},
            {k:'enabledText',label:'出す',type:'select',options:['出す','出さない'],
             hint:'「出さない」にすると選択肢に出なくなります。**記録は消えません**（過去のデータはそのまま読めます）。'},
            {k:'order',label:'表示順',type:'number',min:0,step:10,
             hint:'小さいほど先に出ます。空欄で保存すると今の並びのままです。'}],
    cols:[{k:'name',label:'まとまり名',grow:2},{k:'value',label:'値',grow:1},
+         {k:'parentValue',label:'親の値',grow:2,format:'parentValue'},
          {k:'note',label:'説明',grow:2},{k:'order',label:'表示順',grow:1},
          /* **どの項目が使っているか**(§9.216 ④)。使い道の見えない選択肢は
             消してよいのか判断できず、消すと項目側は黙って空の欄になる。 */
@@ -559,7 +537,7 @@
      指摘「並びが不規則」）。**ここに載っていないマスタは末尾**へ回るので、
      足し忘れても消えない。載せ忘れは`tests/test_master.js`が数える。 */
   {key:'measure',label:'測定と記録',hint:'測定画面に出す入力欄と、記録した値の見せ方',
-   items:['opItem','opChoice','measureItem','recordLayout']},
+   items:['opItem','opChoice','recordLayout']},
   {key:'report',label:'帳票',hint:'紙に刷る内容と、その割り付け',
    items:['reportLayout','reportBlock']},
   {key:'equip',label:'設備',hint:'設備そのものと、設備に付くもの',
@@ -1149,10 +1127,14 @@
   // 区分(§9.85)。空欄は「まだ決めていない」であって「無い」ではないので、
   // 「—」ではなくそう書く(既存の設備は空のまま動く)。
   if(col.format==='equipmentKind')return v.trim()===''?'未設定':v;
-  /* 入力値の丸めの刻み（§9.305 ①）。**空欄は「丸めない」と書き切る**
-     ——空のままだと「まだ決めていない」と読めるが、この行の意味は
-     「刻みが無い＝この入力は丸めない」（§4）。単位も必ず添える（§6）。 */
-  if(col.format==='roundUnit')return v.trim()===''?'丸めない':`${v} mm 刻み`;
+  /* 親の値（§9.306）。**空欄は「どの親でも」と書き切る**——空のままだと
+     「まだ決めていない」と読めるが、この行の意味は「すべての親で出る」（§4）。
+     **親が張られていない行には何も書かない**（意味を持たない欄なので）。 */
+  if(col.format==='parentValue'){
+   if(!(col.row&&col.row.parent))return '';
+   return v.trim()===''?'どの親でも':v.replace(/、/g,',').split(',')
+     .map(x=>x.trim()).filter(Boolean).join(' / ');
+  }
   /* 使える機能（§9.302）。**残る側を並べる**——保存値は「使わない機能」だが、
      一覧で知りたいのは「どこに出るか」。全部使えるのがふつうなので、そこは
      1語で済ませて（「すべて」）、外してある行だけが目に留まるようにする。
@@ -1367,7 +1349,7 @@
    'master-combo':'md','master-suggest':'md','equipment-select':'md',
    textarea:'full',path:'full','equipment-multi':'full','equipment-multi-text':'full',
    /* 見て選ぶ欄は横いっぱい（札が折り返さないように・§9.249 ③）。 */
-   'choice-card':'full','span-grid':'full','rows-pick':'full'};
+   'choice-card':'full','span-grid':'full','rows-pick':'full','tag-set':'full'};
  function mmFieldSize(f){
   if(f.size)return f.size;
   const t=String(f.type||'text');
@@ -1553,6 +1535,41 @@
       <div class="mm-card-row">${cards}</div>
       <input type="hidden" data-field="${f.k}" value="${esc(cur)}">
       ${list.length?'':'<small class="mm-field-hint">選べる候補をこの端末では読めませんでした。</small>'}
+      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
+   }
+   /* ---------- 選んだ側を保存する札（§9.306） ----------
+      利用者の指示「親マスタの選択肢から選んで登録することができるように」。
+      `check-set`（§9.302）と**箱も配線も同じ**で、違うのは
+      **保存するのが「入」の側**であることだけ——あちらは「空欄＝すべて
+      使える」を保つために裏返していたが、こちらは「親の値」なので
+      素直に選んだものを書く（**空欄＝すべての親**は同じ約束）。
+      候補は`f.source.key`（＋`f.source.by`＝行のどの欄で引くか）で
+      **サーバーの戻りから**取る（§9.163。画面に値を書き写さない）。
+      **候補が無いときは欄を出さず理由を書く**（§4）——親を張っていない
+      まとまりで空の札を並べても、押しても何も起きない。 */
+   if(f.type==='tag-set'){
+    const src=f.source||{};
+    const table=(maintState.meta&&maintState.meta[src.key])||null;
+    const list=Array.isArray(table)?table
+      :(table&&src.by?(table[String((editing&&editing[src.by])||'')]||[]):[]);
+    if(!list.length)
+     return `<div class="mm-field mm-field-area">${fieldLabelHtml(f)}
+       <small class="mm-field-hint">${hintHtml(f.emptyHint||'いまは選べる候補がありません。')}</small></div>`;
+    const raw=String(editing?(editing[f.k]??''):'').trim();
+    /* **空欄＝すべて**（`[対象設備]`と同じ約束）。全部入で描く。 */
+    const on=raw?new Set(raw.replace(/、/g,',').split(',').map(x=>x.trim()).filter(Boolean))
+      :new Set(list);
+    const cards=list.map(v=>{
+     const yes=on.has(v);
+     return `<button type="button" class="mm-card-opt${yes?' is-on':''}" data-checkset="${f.k}"`
+      +` data-checkset-v="${esc(v)}" aria-pressed="${yes?'true':'false'}">`
+      +`<span class="mm-card-ico" aria-hidden="true">${yes?'✓':'—'}</span>`
+      +`<span class="mm-card-txt"><b>${esc(v)}</b></span></button>`;
+    }).join('');
+    return `<div class="mm-field mm-field-area mm-cards" data-checkset-box="${f.k}" data-checkset-mode="on">${fieldLabelHtml(f)}
+      <div class="mm-card-row">${cards}</div>
+      <input type="hidden" data-field="${f.k}" value="${esc(raw)}">
+      <small class="mm-field-hint" data-checkset-note="${f.k}"></small>
       ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
    }
    /* ---------- いくつでも入切できる札（§9.302） ----------
@@ -2218,16 +2235,34 @@
  function bindCheckSets(form){
   form.querySelectorAll('[data-checkset-box]').forEach(box=>{
    const k=box.dataset.checksetBox;
+   /* §9.306 **保存するのがどちら側か**は箱が言う（`on`＝選んだ側）。
+      配線は同じなので、ここだけ分ければ済む。 */
+   const keepOn=box.dataset.checksetMode==='on';
    const paint=()=>{
     const btns=[...box.querySelectorAll('[data-checkset]')];
     const off=btns.filter(b=>b.getAttribute('aria-pressed')!=='true');
+    const names=a=>a.map(b=>b.querySelector('b')?.textContent||'').filter(Boolean).join('・');
+    if(keepOn){
+     const yes=btns.filter(b=>b.getAttribute('aria-pressed')==='true');
+     /* **全部選んでいれば空で保存**——「すべての親」は空欄で表す
+        （`[対象設備]`と同じ。行を作るたびに全部を書かせない）。 */
+     mmSetHidden(form,k,off.length?yes.map(b=>b.dataset.checksetV).join(','):'');
+     const note0=box.querySelector(`[data-checkset-note="${CSS.escape(k)}"]`);
+     if(note0){
+      note0.textContent=!btns.length?''
+       :!off.length?'どの親でも出ます（既定）。'
+       :!yes.length?'どの親でも出ません（この値は選べなくなります）。'
+       :`${names(yes)}のときだけ出ます。`;
+      note0.classList.toggle('is-warn',!!btns.length&&!yes.length);
+     }
+     return;
+    }
     mmSetHidden(form,k,off.map(b=>b.dataset.checksetV).join(','));
     const note=box.querySelector(`[data-checkset-note="${CSS.escape(k)}"]`);
     if(note){
      const on=btns.length-off.length;
      /* **呼び名は札から読む**（§9.163）——文言へ書き写すと、機能を1つ
         足したり呼び名を変えたときに、ここだけ古いことを言い続ける。 */
-     const names=a=>a.map(b=>b.querySelector('b')?.textContent||'').filter(Boolean).join('・');
      note.textContent=!btns.length?''
       :on===btns.length?'すべての機能で使えます（既定）。'
       :on===0?`どの機能でも使いません。設備マスタには残りますが、${names(btns)}のどこにも出ません。`
@@ -10797,8 +10832,21 @@
      <label>小数桁<input type="number" id="opdDecimals" min="0" max="4" value="${x.decimals==null?'':esc(x.decimals)}"></label>
      <label>最小<input type="number" id="opdMin" step="any" value="${x.min==null?'':esc(x.min)}"${x.minFrom?' disabled':''}></label>
      <label>最大<input type="number" id="opdMax" step="any" value="${x.max==null?'':esc(x.max)}"${x.maxFrom?' disabled':''}></label>
-     <label title="ステッパーの−／＋1回ぶん、スライダーの目盛の幅">刻み<input type="number" id="opdStep" min="0" step="any" value="${x.step==null?'':esc(x.step)}"></label>
-    </span></div>
+     <label title="ステッパーの−／＋1回ぶん、スライダーの目盛の幅。**入力値の丸めの単位にもなります**">刻み<input type="number" id="opdStep" min="0" step="any" value="${x.step==null?'':esc(x.step)}"></label>
+     ${/* §9.307（利用者の指摘「『操業データ項目』の編集内容の中に数値データが
+          選ばれたときにステップを決めるところで編集可能」）。**単位は左の
+          「刻み」**なので、ここは向きだけ。**語彙はサーバーの戻り**
+          （`opState.roundModes`）から作る——画面へ綴りを書き写さない（§9.163）。
+          **刻みが空なら丸めようが無い**ので押せなくして理由を書く（§4）。 */''}
+     <label title="${esc(x.step==null?'左の「刻み」を入れると選べます':'打ち終わって欄を離れたときに、左の「刻み」の段へそろえます')}">丸め<select id="opdRound"${x.step==null?' disabled':''}>
+      <option value="">しない</option>
+      ${(opState.roundModes||[]).map(m=>`<option value="${esc(m)}"${x.roundMode===m?' selected':''}>${esc(m)}</option>`).join('')}
+     </select></label>
+    </span>
+    <i class="op-form-note">${x.step==null
+      ?'「刻み」を入れると、打ち終わった値をその段へそろえられます。'
+      :(x.roundMode?`打ち終わって欄を離れると <b>${esc(x.step)}</b> 刻みで<b>${esc(x.roundMode)}</b>ます（打っている最中は変わりません）。`
+        :`いまは丸めません（打った値がそのまま残ります）。`)}</i></div>
    <div class="op-form-row"><span class="op-form-label">上下限の出どころ</span>
     <span class="op-form-ctl op-form-froms">
      ${opLimitFromHtml(x,'min')}
@@ -11261,6 +11309,9 @@
   t('opdGroup','group');t('opdInitial','initial');
   n('opdDecimals','decimals');n('opdMin','min');n('opdMax','max');n('opdStep','step');
   n('opdDigits','digits');
+  /* §9.307。丸めの向きも控えへ（§9.223 ②。ここで拾わないと、別の段から
+     保存したときに向きだけ空で上書きされる）。 */
+  t('opdRound','roundMode');
   /* §9.231 ②。**控えにも載せる**——タブを移った先で保存されるので、
      ここで拾わないと出どころだけが空で上書きされる（§9.223 ②）。 */
   t('opdMinFrom','minFrom');t('opdMaxFrom','maxFrom');
@@ -11395,6 +11446,9 @@
           /* §9.220 ②③⑤。**打ち込む欄の値はここで読む**——`touch()`で
              書き戻すと1文字ごとに描き直してカーソルが飛ぶ（§9.117）。 */
           initial:v('opdInitial','initial'),step:num(v('opdStep','step')),
+          /* §9.307。**必ず送る**——`item_upsert`は全列を書くので、
+             落とすとこの設定だけが保存のたびに消える（同じ形で6度目）。 */
+          roundMode:v('opdRound','roundMode'),
           freeText:!!x.freeText,
           /* §9.221 ⑦。**4つとも必ず送る**——`item_upsert`は全列を書くので、
              1つでも落とすとその設定だけが保存のたびに既定へ戻る
@@ -12018,6 +12072,8 @@
    opState.widgetGroups=it.widgetGroups||opState.widgetGroups;
    /* §9.231 ②。**いまの値も一緒に来る**（選んだ設備で引き直した結果）。 */
    opState.limitSources=it.limitSources||opState.limitSources;
+   /* §9.307 入力値の丸めの向き。**サーバーの語彙をそのまま持つ**（§9.163）。 */
+   opState.roundModes=it.roundModes||opState.roundModes;
    /* §9.233 ⑤ */
    opState.sourceNotePlaces=it.sourceNotePlaces||opState.sourceNotePlaces;
    opState.sourceNoteKeys=it.sourceNoteKeys||opState.sourceNoteKeys;

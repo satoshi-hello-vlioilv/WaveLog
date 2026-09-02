@@ -234,6 +234,18 @@
   if(!Number.isFinite(n)){el.value='';keep('');say(note,'数字として読めなかったので消しました');return}
   const msgs=[];
   if(isPositive(def.type)&&n<0){n=Math.abs(n);msgs.push('マイナスは入りません')}
+  /* ---------- 入力値の丸め（§9.307、利用者の指摘） ----------
+     「『操業データ項目』の編集内容の中に数値データが選ばれたときに
+      ステップを決めるところで編集可能」——**単位は「刻み」（`def.step`）**で、
+     向きだけを`[丸め方]`が持つ。**専用のマスタは作らない**（重複していた）。
+     **計算は`WL.measureRound`の1箇所**（§9.163。測定表・丈別データと同じ）。
+     **直したことは画面に書く**（§CLAUDE 6）——黙って値が変わると打ち間違いに
+     気づけない。**打っている最中は当てない**（ここは欄を離れたときの道）。 */
+  if(def.roundMode&&Number(def.step)>0&&window.WL&&WL.measureRound){
+   const r=Number(WL.measureRound.by(n,Number(def.step),def.roundMode));
+   if(Number.isFinite(r)&&r!==n){n=r;msgs.push(`${def.step} 刻みで${def.roundMode}ました`)}
+   else if(Number.isFinite(r))n=r;
+  }
   const dec=isInteger(def.type)?0:(Number.isFinite(Number(def.decimals))?Number(def.decimals):1);
   const fixed=isInteger(def.type)?String(Math.round(n)):n.toFixed(dec);
   if(def.min!==null&&def.min!==undefined&&Number(fixed)<Number(def.min)){
@@ -277,8 +289,11 @@
   const from=k=>{const l=def[k+'FromLabel'];return l?`（${l}）`:''};
   if(def.min!==null&&def.min!==undefined&&def.min!=='')range.push(`${def.min} 以上${from('min')}`);
   if(def.max!==null&&def.max!==undefined&&def.max!=='')range.push(`${def.max} 以下${from('max')}`);
+  /* §9.307 丸めるなら**打つ前に書く**（§CLAUDE 6「打ってから断られるより、
+     打つ前に分かるほうが速い」）。 */
+  const round=(def.roundMode&&Number(def.step)>0)?`・${def.step} 刻みで${def.roundMode}`:'';
   return (isInteger(def.type)?'整数':`小数${def.decimals==null?1:def.decimals}桁`)
-    +(isPositive(def.type)?'・0以上':'')+(range.length?`・${range.join('／')}`:'');
+    +(isPositive(def.type)?'・0以上':'')+(range.length?`・${range.join('／')}`:'')+round;
  }
  /* ---------- 自動で入る値・計算値（§9.234 ②、利用者の指示） ----------
     「自動で入る値、計算値についても、現在使っているものは、そのリストから
