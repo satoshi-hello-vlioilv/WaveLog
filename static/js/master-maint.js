@@ -360,12 +360,23 @@
            {k:'maxLineSpeed',label:'最大ライン速度',type:'number',min:1,max:100000,step:1,unit:'m/min',
             fieldGroup:'② 数の決まり',
             hint:'空欄なら**上限なし**。',
-            more:'このラインで出せる速度の上限です。操業データ項目の「数の決まり」からこの値を上限として参照できます（マスタを直せば入力欄の上限も変わります）。'}],
+            more:'このラインで出せる速度の上限です。操業データ項目の「数の決まり」からこの値を上限として参照できます（マスタを直せば入力欄の上限も変わります）。'},
+           /* §9.302（利用者の指示「設備マスタの有効・無効機能を実装してください。
+              有効無効の範囲については機能別に分けて変更できるようにしたい」）。
+              **札は「使う機能」・保存値は「使わない機能」**——裏返しなのは
+              「空欄＝すべて使える」を既定にするため（あとで機能を1つ足したときに、
+              触っていない設備が黙って無効にならない・§9.132）。語彙は
+              サーバー（`equipmentFeatures`）が答える（§9.163）。 */
+           {k:'disabledFeatures',label:'使える機能',type:'check-set',
+            source:{key:'equipmentFeatures'},fieldGroup:'③ 使える機能',
+            hint:'外した機能では、この設備が**選択肢に出なくなります**。既に記録したデータは消えません。',
+            more:'ラインを止めた・別の工程へ移した設備を、記録を消さずに選択肢から下げるための設定です。外しても設備マスタの行は残り、過去の測定データ・作業予定・実績データはそのまま読めます。**記録のある設備は帳票の候補に残ります**——履歴なので、外した瞬間にその設備の紙が開けなくなるのは行き過ぎです。ロールマスタ・設備停止・勤務形態など、設備マスタの側から設備を選ぶ欄も絞りません（無効にした設備の設定を直せなくなるため）。'}],
    cols:[{k:'name',label:'設備名',grow:2},{k:'kind',label:'区分',grow:1,format:'equipmentKind'},
          {k:'maxStrips',label:'最大条数',grow:1,format:'maxStrips'},
          {k:'standardMinutes',label:'標準時間',grow:1,format:'standardMinutes'},
-         {k:'maxLineSpeed',label:'最大速度',grow:1,format:'maxLineSpeed'}],
-   hint:'この工場のラインの一覧です。1行＝1つの設備で、**行を押すと編集の窓が開きます**。「区分」は扱う材料の形（コイル／板）、「最大条数」は幅分割で割れる条数の上限（空欄＝40条）、「標準時間」は実績が無いときの見積（空欄＝120分）、「最大ライン速度」は操業データの入力上限として参照できます（空欄＝上限なし）。'},
+         {k:'maxLineSpeed',label:'最大速度',grow:1,format:'maxLineSpeed'},
+         {k:'disabledFeatures',label:'使える機能',grow:2,format:'equipmentFeatures'}],
+   hint:'この工場のラインの一覧です。1行＝1つの設備で、**行を押すと編集の窓が開きます**。「区分」は扱う材料の形（コイル／板）、「最大条数」は幅分割で割れる条数の上限（空欄＝40条）、「標準時間」は実績が無いときの見積（空欄＝120分）、「最大ライン速度」は操業データの入力上限として参照できます（空欄＝上限なし）。「使える機能」を外すと、その機能の設備の選択肢に出なくなります（記録は消えません）。'},
   /* 接続状況（§9.272）。**汎用CRUDは持たない**（`special`で分岐する）。
      一般ユーザーでも開ける——見るだけならどの区分でもできる。 */
   {group:'system',key:'presence',label:'接続状況',icon:'席',
@@ -1107,6 +1118,18 @@
   // 区分(§9.85)。空欄は「まだ決めていない」であって「無い」ではないので、
   // 「—」ではなくそう書く(既存の設備は空のまま動く)。
   if(col.format==='equipmentKind')return v.trim()===''?'未設定':v;
+  /* 使える機能（§9.302）。**残る側を並べる**——保存値は「使わない機能」だが、
+     一覧で知りたいのは「どこに出るか」。全部使えるのがふつうなので、そこは
+     1語で済ませて（「すべて」）、外してある行だけが目に留まるようにする。
+     **0個は「なし」と書き切る**（空欄にすると「まだ決めていない」と読める・§4）。 */
+  if(col.format==='equipmentFeatures'){
+   const all=(maintState.meta&&Array.isArray(maintState.meta.equipmentFeatures))?maintState.meta.equipmentFeatures:[];
+   if(!all.length)return '';
+   const off=new Set(Array.isArray(col.row&&col.row.disabledFeatures)?col.row.disabledFeatures
+    :String(v).split(',').map(t=>t.trim()).filter(Boolean));
+   const on=all.filter(o=>!off.has(o.key));
+   return !on.length?'なし（どこにも出ません）':on.length===all.length?'すべて':on.map(o=>o.label).join(' / ');
+  }
   /* 設定した場所に実物があるか。設定と実態のずれは、値だけ眺めていても
      気づけない(「登録したのに動かない」の大半がこれ)。 */
   if(col.format==='rneState'){
@@ -1486,6 +1509,37 @@
     return `<div class="mm-field mm-field-area mm-cards">${fieldLabelHtml(f)}
       <div class="mm-card-row">${cards}</div>
       <input type="hidden" data-field="${f.k}" value="${esc(cur)}">
+      ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
+   }
+   /* ---------- いくつでも入切できる札（§9.302） ----------
+      利用者の指示「有効無効の範囲については機能別に分けて変更できるように」。
+      `choice-card`は1つしか選べないので、**入切を並べる型**を1つ足す。
+      **語彙はサーバーの戻り**（`maintState.meta[f.source.key]`）から取る
+      ——画面へ綴りを書き写すと、機能を1つ足したときに直す場所が2つになる
+      （§9.163。`master-suggest`と同じ作法）。
+
+      **画面は「使う機能」を出し、保存値は「使わない機能」**（§9.302）。
+      裏返しなのは保存の側に理由があって——空欄＝すべて使える、にしないと
+      **あとで機能を足したときに既存の設備で黙って無効になる**。裏返す場所は
+      この型の描画と入切の2箇所だけで、規則（空欄の意味・知らない綴りの扱い）は
+      サーバーが持つ。 */
+   if(f.type==='check-set'){
+    const key=(f.source&&f.source.key)||'';
+    const opts=(maintState.meta&&Array.isArray(maintState.meta[key]))?maintState.meta[key]:[];
+    const off=new Set(String(Array.isArray(val)?val.join(','):(val||'')).split(',').filter(Boolean));
+    const cards=opts.map(o=>{
+     const on=!off.has(o.key);
+     return `<button type="button" class="mm-card-opt${on?' is-on':''}" data-checkset="${f.k}"`
+      +` data-checkset-v="${esc(o.key)}" aria-pressed="${on?'true':'false'}"`
+      +` title="${esc(o.note||o.label)}">`
+      +`<span class="mm-card-ico" aria-hidden="true">${on?'✓':'—'}</span>`
+      +`<span class="mm-card-txt"><b>${esc(o.label)}</b>`
+      +`${o.note?`<small>${esc(o.note)}</small>`:''}</span></button>`;
+    }).join('');
+    return `<div class="mm-field mm-field-area mm-cards" data-checkset-box="${f.k}">${fieldLabelHtml(f)}
+      <div class="mm-card-row">${cards}</div>
+      <input type="hidden" data-field="${f.k}" value="${esc([...off].join(','))}">
+      <small class="mm-field-hint" data-checkset-note="${f.k}"></small>
       ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
    }
    /* 紙の12マスをそのまま出して、**押した幅がそのまま見える**ようにする。
@@ -2114,6 +2168,43 @@
    };
   });
  }
+ /* 入切の札（§9.302）。**いま何が起きるかを文字で書く**（§4）——0個に
+    したら「どの機能でも使いません」と言い切る（黙って一覧から消えると、
+    設定したことと画面で起きたことが結び付かない）。 */
+ function bindCheckSets(form){
+  form.querySelectorAll('[data-checkset-box]').forEach(box=>{
+   const k=box.dataset.checksetBox;
+   const paint=()=>{
+    const btns=[...box.querySelectorAll('[data-checkset]')];
+    const off=btns.filter(b=>b.getAttribute('aria-pressed')!=='true');
+    mmSetHidden(form,k,off.map(b=>b.dataset.checksetV).join(','));
+    const note=box.querySelector(`[data-checkset-note="${CSS.escape(k)}"]`);
+    if(note){
+     const on=btns.length-off.length;
+     /* **呼び名は札から読む**（§9.163）——文言へ書き写すと、機能を1つ
+        足したり呼び名を変えたときに、ここだけ古いことを言い続ける。 */
+     const names=a=>a.map(b=>b.querySelector('b')?.textContent||'').filter(Boolean).join('・');
+     note.textContent=!btns.length?''
+      :on===btns.length?'すべての機能で使えます（既定）。'
+      :on===0?`どの機能でも使いません。設備マスタには残りますが、${names(btns)}のどこにも出ません。`
+      :`${names(off)}では使いません。`;
+     note.classList.toggle('is-warn',on===0);
+    }
+   };
+   box.querySelectorAll('[data-checkset]').forEach(b=>{
+    if(b.dataset.checksetWired)return;
+    b.dataset.checksetWired='1';
+    b.onclick=()=>{
+     const on=b.getAttribute('aria-pressed')!=='true';
+     b.setAttribute('aria-pressed',on?'true':'false');
+     b.classList.toggle('is-on',on);
+     const ico=b.querySelector('.mm-card-ico');if(ico)ico.textContent=on?'✓':'—';
+     paint();
+    };
+   });
+   paint();
+  });
+ }
  function bindSpanGrids(form){
   form.querySelectorAll('.mm-spanfield').forEach(box=>{
    if(box.dataset.spanWired)return;
@@ -2164,7 +2255,7 @@
   });
  }
  function bindInputHelpers(form){
-  bindChoiceCards(form);bindSpanGrids(form);bindRowsPicks(form);
+  bindChoiceCards(form);bindCheckSets(form);bindSpanGrids(form);bindRowsPicks(form);
   bindNumberFields(form);
   bindDateFields(form);
   bindComboFields(form);

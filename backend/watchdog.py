@@ -159,13 +159,22 @@ def install(app):
  """Flaskアプリへハートビート関連のルートを登録する。"""
  @app.post('/api/heartbeat')
  def heartbeat():
-  global _closed_notice
+  global _closed_notice,_empty_since
   with _tabs_lock:
    _active_tabs[_tab_key()]=time.monotonic()
    # 1件でも生きているなら「閉じた」の記憶は捨てる。リロードは
    # close→(すぐに)新しいIDのheartbeat、という順で届くため、
    # ここで戻さないと読み直しただけで終了してしまう。
    _closed_notice=False
+   # **「0件になった時刻」も同時に捨てる**（§9.302の追補）。
+   # `_empty_since`は起動時にセットされ、監視が**次に起きたとき**にしか
+   # 消えない。そのため「起動 → 10秒未満で画面を開く → すぐリロード」を
+   # すると、閉じた通知で監視が起こされた時点でまだ起動時の値が入っており、
+   # `now - _empty_since` が既に8秒を超えていて**その場で終了する**
+   # （実測: サーバー起動の7秒後に開いてリロードしたら1秒未満で落ちた）。
+   # §9.98で禁じた「リロードで終了してしまう」が、§9.284の旗の消し忘れとは
+   # **別の道**で起きていた形。**タブが名乗った時点で0件ではない。**
+   _empty_since=None
   # ---- 在席(§9.272) ----
   # **ハートビートに相乗りさせる**——専用の周期を足すと、間隔・失敗時の
   # 扱い・タブを閉じたときの後始末を2つ持つことになる。
@@ -271,12 +280,16 @@ def _loop():
    # 起きていた（実測: 回帰テストの重い一覧を読み直すとアプリが落ちた）。
    _closed_notice=False
    continue
-  if _empty_since is None:
+  # **写しへ取ってから使うこと**——`heartbeat()`が別スレッドから
+  # `_empty_since=None`を書きうるので、判定の途中で読み直すと
+  # `now-None`でTypeErrorになる（そのときは終了の判定そのものが落ちる）。
+  since=_empty_since
+  if since is None:
    _empty_since=now
    continue
   # 閉じたと分かっているなら短く、気づいたら0件だったなら長く待つ。
   grace=CLOSED_GRACE_SEC if closed else EMPTY_GRACE_SEC
-  if now-_empty_since>grace:
+  if now-since>grace:
    _exit(f'開いているタブが{grace}秒以上存在しない'
          +('(タブが閉じられた通知を受け取った)' if closed else '(ブラウザを閉じたと判断)'))
 

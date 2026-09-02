@@ -1631,9 +1631,27 @@ async function registerAndSelectEquipment(name){const result=await api('/api/equ
    狙いが外れる。場所は常に空けておき、伏せるのは中身だけ（CSSが
    `visibility`で受ける）。 */
 const EQ_NEW='__new__';
+/* 使える機能で候補を絞る（§9.302）。**判定はサーバーの`features`**を見るだけ
+   （綴りも規則も`master_repo.equipment_allows()`が持つ・§9.163）。
+   **いま選んでいる設備は落とさない**——落とすと、外した設備を選んでいた端末で
+   選択欄が空になり、直す手立てまで画面から消える（§9.15と同じ作法）。
+   **`features`が届かない古い応答では絞らない**（fail-open）。 */
+function equipmentUsableFor(item,feature){
+ const f=item&&item.features;
+ return !f||typeof f!=='object'||f[feature]!==false;
+}
+function equipmentNamesFor(feature,keep=''){
+ const kp=String(keep||'').trim();
+ return equipmentMasterState.items
+  .filter(x=>equipmentUsableFor(x,feature)||(kp&&normalizeCourseText(x.name)===normalizeCourseText(kp)))
+  .map(x=>x.name);
+}
+function equipmentHiddenCount(feature,keep=''){
+ return equipmentMasterState.items.length-equipmentNamesFor(feature,keep).length;
+}
 function fillEquipmentSelect(selected='',suggested=''){
  const select=$('#configuredEquipment');if(!select)return;
- const names=equipmentMasterState.items.map(x=>x.name),
+ const names=equipmentNamesFor('measure',selected||currentConfiguredEquipment()),
        preset=suggested&&names.find(x=>normalizeCourseText(x)===normalizeCourseText(suggested)),
        current=selected&&names.find(x=>normalizeCourseText(x)===normalizeCourseText(selected));
  select.innerHTML='<option value="">選んでください</option>'
@@ -1692,11 +1710,19 @@ function paintEquipmentNow(name,kind){
 function updateEquipmentMasterHelp(){
  const select=$('#configuredEquipment'),help=$('#equipmentMasterHelp');
  if(!select||!help)return;
- const n=equipmentMasterState.items.length;
+ /* **数えるのは候補に出ている件数**（§9.302）——「登録済み 8件」と言いながら
+    一覧に3件しか無いと、残りを探すことになる。伏せた件数は別に言う（§4）。 */
+ const keep=select.value===EQ_NEW?'':(select.value||currentConfiguredEquipment());
+ const n=equipmentNamesFor('measure',keep).length,
+       off=equipmentHiddenCount('measure',keep);
+ const offNote=off?`　<span class="eqset-note">測定で使わない設定の設備 ${off}件は出していません（設備マスタ＞使える機能）。</span>`:'';
  const set=(cls,html)=>{help.className='eqset-help'+(cls?' '+cls:'');help.innerHTML=html};
  if(!n){
-  set('is-warn','設備マスタに<b>まだ1件も登録がありません</b>。'
-    +'「＋ 設備マスタへ新規登録」を選んで、この端末で使う設備名を入れてください。');
+  set('is-warn',(equipmentMasterState.items.length
+     ?`登録済みの設備はありますが、<b>測定で使える設備が1件もありません</b>（${off}件とも「使える機能」から測定を外しています）。`
+      +'設備マスタ＞設備で戻すか、「＋ 設備マスタへ新規登録」で新しく登録してください。'
+     :'設備マスタに<b>まだ1件も登録がありません</b>。'
+      +'「＋ 設備マスタへ新規登録」を選んで、この端末で使う設備名を入れてください。'));
   return;
  }
  if(select.value===EQ_NEW){
@@ -1706,10 +1732,10 @@ function updateEquipmentMasterHelp(){
  }
  if(!select.value){
   set('is-warn',`登録済みの設備 <b>${n}件</b> から選んでください。`
-    +'無ければ「＋ 設備マスタへ新規登録」です。');
+    +'無ければ「＋ 設備マスタへ新規登録」です。'+offNote);
   return;
  }
- set('',`あとは下の<b>「使用設備を保存」</b>を押すだけです（登録済み ${n}件）。`);
+ set('',`あとは下の<b>「使用設備を保存」</b>を押すだけです（登録済み ${n}件）。`+offNote);
 }
 /* 窓を開く。**なぜ開いたか（`reason`）で足の一言が変わる**——測定を
    開こうとして止められたのか、自分で開いたのかで、次にすることが違う

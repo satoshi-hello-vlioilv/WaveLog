@@ -1054,7 +1054,11 @@ def overview():
  # (_read()、§4.2の「取得」のみ)、設備マスタから取れる有効設備の数だけ
  # expand_plan()をメモリ上で繰り返し呼ぶ(設備ごとにファイルを取り直さない)。
  with connect(DBS['MASTER']['path'],False) as mc:
-  equipment_names=[str(r[1]).strip() for r in equipment_master_rows(mc) if str(r[1] or '').strip()]
+  # **「作業予定」で使う設備だけ**（§9.302）。予定を組まなくなったラインを
+  # 俯瞰ボードに並べ続けると、いつまでも「0件・稼働なし」の行が居座る。
+  # 過去のデータを見る・刷るほうは切っていないので、そちらには出続ける。
+  equipment_names=[str(r[1]).strip() for r in equipment_master_rows(mc,feature='schedule')
+                   if str(r[1] or '').strip()]
  now=datetime.now()
  # 実績突合の索引は設備によらず同じ。設備ごとに作り直すと、実績バックアップ
  # (共有上の閲覧用複製を含む)を設備数ぶん読み直すことになる(§9.41)。

@@ -263,6 +263,9 @@
   color:var(--ink-3);font-size:var(--fs-sm);line-height:1.6}
 .eqset-help b{color:var(--ink-2)}
 .eqset-help.is-warn{color:var(--warn-fg)}
+/* 伏せた候補の件数（§9.302）。**助けの一言より弱く**——次にすることは
+   その前半が言っており、こちらは「なぜ一覧に出ていないか」の注記。 */
+.eqset-note{color:var(--muted)}
 /* 足の一言。**なぜここに居るか**と保存の結果を出す（§CLAUDE 6）。 */
 .eqset-foot{margin-right:auto;color:var(--ink-3);font-size:var(--fs-sm);line-height:1.5}
 .eqset-foot.is-warn{color:var(--warn-fg);font-weight:700}

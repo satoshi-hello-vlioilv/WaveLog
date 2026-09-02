@@ -2052,9 +2052,19 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(scState.pickerEnabled){
    fixed.hidden=true;sel.hidden=false;
    if(typeof loadEquipmentMaster==='function')await loadEquipmentMaster();
-   const items=(typeof equipmentMasterState!=='undefined'?equipmentMasterState.items:[])||[];
+   const all=(typeof equipmentMasterState!=='undefined'?equipmentMasterState.items:[])||[];
+   /* 使える機能で絞る（§9.302）。**いま開いている設備は落とさない**——
+      落とすと、その設備の予定を開いたまま設備名が選択欄から消え、
+      別の設備へ移る以外の道が無くなる（§9.15と同じ作法）。
+      **絞ったことは`title`で言う**（§4。器は狭いので本文には出せない）。 */
+   const cur=String(scState.equipment||'');
+   const items=(typeof equipmentUsableFor==='function')
+    ?all.filter(x=>equipmentUsableFor(x,'schedule')||x.name===cur):all;
+   const off=all.length-items.length;
    sel.innerHTML='<option value="">設備を選択...</option>'+items.map(x=>`<option value="${esc(x.name)}">${esc(x.name)}</option>`).join('');
-   sel.value=scState.equipment||'';
+   sel.value=cur||'';
+   sel.title=off?`作業予定で使う設備 ${items.length}件。作業予定で使わない設定の設備 ${off}件は出していません（マスタ管理＞設備＞使える機能）。`
+    :'この予定表で開く設備を選びます。';
   }else{
    sel.hidden=true;fixed.hidden=false;
    fixed.textContent=`設備: ${scState.equipment}(使用設備)`;
