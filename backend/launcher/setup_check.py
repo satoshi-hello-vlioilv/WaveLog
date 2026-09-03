@@ -123,23 +123,55 @@ def waiting_page():
     return runtime_dir() / 'loading.html'
 
 
+def staged_waiting_page():
+    """次の起動で使う写しの**置き場**（§9.314）。
+
+    **ブラウザへ渡したファイルを、その起動のあいだ差し替えないため**にある。
+    以前は`copy_waiting_page()`が`waiting_page()`（＝いま開いたばかりの
+    ファイル）をそのまま置き換えており、本体が遅い端末では**ブラウザが
+    立ち上がっている最中**にその差し替えが起きていた（実測: 渡した1ms後では
+    なく1.2秒後）。手元にアプリを置いている端末では読み出しが一瞬で終わるので
+    差し替えはブラウザが起動する前に済み、**開発機では一度も再現しない**。
+    §9.108/§9.270の「自分が読んでいるファイルは名前を差し替えない」と同じ話。"""
+    return runtime_dir() / 'loading.next.html'
+
+
 def copy_waiting_page(say=None):
     """本体の`loading.html`を手元へ写す。**意匠の出どころはあれ1つ**（§9.225）。
 
-    **置き換えは一時ファイル→`atomic_io.replace()`**（§9.255 ③）。写しは
-    ブラウザが開いている最中に上書きされうる（起動のたびに裏で写し直す）ので、
-    素の`write_bytes`だと**読んでいる途中の半分だけの画面**を見せうるし、
+    **写す先は「次の起動用」**（`staged_waiting_page()`・§9.314）——いま
+    ブラウザが開いているファイルには触らない。実際に使う名前へ移すのは
+    `promote_waiting_page()`で、**起動のいちばん最初**（まだ誰も開いて
+    いない時点）に1回だけ行う。
+
+    **中身が同じなら何もしない**——毎回書いて毎回置き換えると、差し替えの
+    機会だけが増える（開発機では写しが常に最新なので、ここで止まる）。
+
+    **置き換えは一時ファイル→`atomic_io.replace()`**（§9.255 ③）。素の
+    `write_bytes`だと**読んでいる途中の半分だけの画面**を見せうるし、
     Windowsでは掴まれている置き換えが`WinError 5`になる（§9.108）。"""
     from .. import atomic_io
     src = APP_ROOT / 'loading.html'
-    dst = waiting_page()
+    dst = staged_waiting_page()
     tmp = dst.with_suffix(dst.suffix + '.tmp')
     try:
         data = src.read_bytes()
+        try:
+            if waiting_page().read_bytes() == data:
+                # 既に最新。**差し替えを1回減らす**のがここの値打ち。
+                try:
+                    dst.unlink()
+                except Exception:
+                    pass
+                if say:
+                    say('起動待機画面の写しは最新です: %s' % waiting_page())
+                return waiting_page()
+        except Exception:
+            pass                      # 読めない＝写しが無い/壊れている。写す。
         tmp.write_bytes(data)
-        atomic_io.replace(tmp, dst, label='loading.html')
+        atomic_io.replace(tmp, dst, label='loading.next.html')
         if say:
-            say('起動待機画面を手元へ写しました: %s' % dst)
+            say('起動待機画面を手元へ写しました（次の起動から使います）: %s' % dst)
         return dst
     except Exception as e:
         try:
@@ -147,7 +179,32 @@ def copy_waiting_page(say=None):
         except Exception:
             pass
         if say:
-            say('起動待機画面を写せませんでした（共有側をそのまま開きます）: %s' % e, bad=True)
+            say('起動待機画面を写せませんでした（いまの写しのまま開きます）: %s' % e, bad=True)
+        return None
+
+
+def promote_waiting_page(say=None):
+    """次の起動用の写しを、実際に使う名前へ移す（§9.314）。
+
+    **呼ぶのは起動のいちばん最初、待機画面を開くより前**——その時点なら
+    このファイルを開いている者はいないので、差し替えがブラウザとぶつからない。
+    **失敗しても何も起きない**（前の写しのまま開ける。次の起動でまた試す）。"""
+    from .. import atomic_io
+    src = staged_waiting_page()
+    dst = waiting_page()
+    try:
+        if not src.exists():
+            return None
+    except Exception:
+        return None
+    try:
+        atomic_io.replace(src, dst, label='loading.html(promote)')
+        if say:
+            say('起動待機画面の写しを新しくしました: %s' % dst)
+        return dst
+    except Exception as e:
+        if say:
+            say('起動待機画面の写しを新しくできませんでした（いまの写しで開きます）: %s' % e, bad=True)
         return None
 
 
