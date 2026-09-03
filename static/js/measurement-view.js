@@ -1207,6 +1207,20 @@ WL.onReady(()=>{
 function paintQualityInfo(){
  const box=document.querySelector('.quality-info-block'),badge=$('#qualityInfoBadge'),ta=$('#qualityInfo');
  if(!box||!badge||!ta)return;
+ /* **読めなかったときは「異常なし」と言わない**（§9.317、§CLAUDE 6）。
+    共有の品質データが開けないだけなのに「異常なし」と出すと、画面が嘘を
+    つく。理由と**測定は続けられること**を注記で書く（§4）。
+    **本文（textarea）へは書かない**——`collect()`がその中身をそのまま
+    記録へ入れるので、エラー文が品質情報として保存され帳票にも刷られる。 */
+ const note=$('#qualityInfoNote'),why=String(S.measureContextError||'');
+ if(note){note.hidden=!why;note.textContent=why}
+ if(why){
+  badge.textContent='読めません';
+  badge.classList.remove('qi-some','qi-none');badge.classList.add('qi-warn');
+  box.classList.remove('qi-has');
+  return;
+ }
+ badge.classList.remove('qi-warn');
  const n=(String(ta.value||'').match(/^\(\d+\)/gm)||[]).length;
  badge.textContent=n?`異常 ${n}件`:'異常なし';
  badge.classList.toggle('qi-some',!!n);

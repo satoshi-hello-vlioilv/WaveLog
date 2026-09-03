@@ -1231,6 +1231,16 @@ th.col-sorted:hover{background:#c7e7ea}
 }
 .qi-badge.qi-none{background:var(--pale);color:var(--teal-dark)}
 .qi-badge.qi-some{background:#f6d9d9;color:#8c1f1f}
+/* **読めなかったこと**は「異常なし」と区別する（§9.317）。同じ淡い緑で
+   出すと、共有が読めていないだけなのに「異常は無い」と読まれる。
+   **色だけで伝えない**（§3）ので、札の字も注記も出す。 */
+.qi-badge.qi-warn{background:var(--warn-bg);color:var(--warn-fg)}
+.qi-note{
+  margin-bottom:var(--space-1);padding:var(--space-1) var(--space-2);
+  border-left:3px solid var(--warn-border);border-radius:0 var(--radius-sm) var(--radius-sm) 0;
+  background:var(--warn-bg);color:var(--ink-2);
+  font-size:var(--fs-sm);line-height:var(--lh);
+}
 .quality-info-block textarea{
   width:100%;min-width:0;resize:none;
   border:0;border-left:3px solid var(--line-mid);border-radius:0 var(--radius-md) var(--radius-md) 0;
