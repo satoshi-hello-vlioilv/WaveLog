@@ -94,6 +94,48 @@
  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:var(--fs-sm);line-height:var(--lh)}
 .lg-empty{padding:var(--pad-dialog);color:var(--ink-soft);text-align:center}
 
+/* ---- 起動の状況(§9.316、利用者の指示) --------------------------------
+   「ログの保存場所が難しい…ログをアプリ上からコピーできるようにして、
+     起動時の状況もアプリ上から取得できるようにしてください」
+   **既定は開いておく**——接続の診断(下)と違って共有へは触らず、しかも
+   この画面へ来る理由がまさにこれなので、探させない(§CLAUDE 2)。
+   意匠は診断と同じ器に乗せ、**2つ目の見た目を作らない**。 */
+.lg-boot{border:1px solid var(--line-soft);border-radius:var(--radius-md);
+ background:var(--surface-2);margin-bottom:var(--space-2)}
+.lg-boot>summary{display:flex;align-items:baseline;gap:var(--gap-inline);padding:var(--pad-row);
+ cursor:pointer;list-style:none}
+.lg-boot>summary::-webkit-details-marker{display:none}
+.lg-boot>summary::before{content:'';flex:0 0 auto;width:.5em;height:.5em;align-self:center;
+ border-right:2px solid var(--ink-soft);border-bottom:2px solid var(--ink-soft);
+ transform:rotate(-45deg);transition:transform .15s ease}
+.lg-boot[open]>summary::before{transform:rotate(45deg)}
+.lg-boot>summary b{color:var(--ink);font-size:var(--fs-base-sm)}
+.lg-boot>summary span{color:var(--ink-soft);font-size:var(--fs-sm)}
+/* **主要な一手は1つだけ**(§CLAUDE 2)。押すのは「まとめてコピー」。 */
+.lg-diag-bar button.lg-primary{background:var(--teal);border-color:var(--teal);color:#ffffff}
+.lg-diag-bar button.lg-primary:hover{filter:brightness(1.06)}
+.lg-boot-hint{color:var(--ink-soft);font-size:var(--fs-sm)}
+.lg-boot-body{padding:0 var(--space-2) var(--space-2)}
+.lg-boot-env{display:flex;flex-wrap:wrap;gap:var(--gap-section);align-items:baseline;
+ padding:var(--pad-row);background:var(--surface);border:1px solid var(--line-soft);
+ border-radius:var(--radius-sm);margin-bottom:var(--space-2)}
+.lg-boot-env b{color:var(--ink);font-size:var(--fs-base-sm)}
+.lg-boot-env span{color:var(--ink-2);font-size:var(--fs-sm)}
+.lg-boot-table{width:100%;border-collapse:collapse;background:var(--surface);
+ border:1px solid var(--line-soft);border-radius:var(--radius-sm)}
+.lg-boot-table th,.lg-boot-table td{padding:var(--pad-cell);border-bottom:1px solid var(--line-soft);
+ font-size:var(--fs-sm);text-align:left;vertical-align:top}
+.lg-boot-table th{color:var(--ink-3);font-weight:800;background:var(--surface-2)}
+.lg-boot-table td.lg-boot-path{overflow-wrap:anywhere;color:var(--ink-2)}
+.lg-boot-table tr.is-bad td{background:var(--surface-3)}
+/* **色だけで伝えない**(§CLAUDE 3)——状態は必ず文字で出す。 */
+.lg-boot-mark{display:inline-block;padding:0 var(--space-1);border-radius:var(--radius-xs);
+ font-size:var(--fs-sm);font-weight:800;white-space:nowrap}
+.lg-boot-ok{color:var(--teal)}
+.lg-boot-ng{color:var(--danger)}
+.lg-boot-warn{color:var(--ink-3)}
+.lg-boot-note{margin-top:var(--space-2);color:var(--ink-soft);font-size:var(--fs-sm)}
+
 /* ---- 接続の診断(§9.101) --------------------------------------------
    既定は畳んでおく。**開くまで共有へ触らない**——画面を開いただけで
    応答の遅い共有フォルダを叩くと、ログを読みに来ただけの人を待たせる。 */

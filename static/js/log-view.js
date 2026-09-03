@@ -336,6 +336,66 @@
   if(keep&&[...sel.options].some(o=>o.value===keep))sel.value=keep;
  };
 
+ /* ---------- 起動の状況（§9.316、利用者の指示） ----------
+    「ログの保存場所が難しいので、毎回htmlを手動クリックで起動しています。
+      ログをアプリ上からコピーできるようにして、起動時の状況もアプリ上から
+      取得できるようにしてください」
+
+    起動の不具合は**起動した端末でしか分からない**のに、材料は
+    `%LOCALAPPDATA%`の奥にある。**1回押せば、そのまま貼れる1つの文章**にする。
+    中身を作るのは`/api/boot-report`の1箇所（§9.163）——画面はそれを出して
+    コピーするだけで、判断も組み立ても持たない。 */
+ const bootState={last:null,busy:false};
+ const bootMark=v=>v===true?{t:'あり',c:'ok'}:v===false?{t:'無い',c:'ng'}
+                          :{t:'確かめられず',c:'warn'};
+ const bootHtml=d=>{
+  if(!d)return '<div class="lg-empty">「取得」を押すと、いまの置き場と直近の起動のログをまとめます。</div>';
+  const e=d.env||{};
+  const rows=(d.places||[]).map(p=>{
+   const m=bootMark(p.exists);
+   /* **「在る」だけでは足りない**（§9.314）——隔離されて0バイト・読めない、が
+      起こりうる。読めなかったものは在っても赤で言う。 */
+   const bad=p.exists===false||p.readable===false;
+   const size=p.size==null?'':`${Number(p.size).toLocaleString()} バイト`;
+   return `<tr class="${bad?'is-bad':''}">
+     <td><span class="lg-boot-mark lg-boot-${bad?'ng':m.c}">${esc(bad&&p.exists!==false?'読めない':m.t)}</span></td>
+     <td>${esc(p.label||'')}</td>
+     <td class="lg-boot-path">${esc(p.path||'')}</td>
+     <td>${esc(size)}</td><td>${esc(p.mtime||'')}</td>
+     <td>${esc(p.error||p.note||'')}</td></tr>`;
+  }).join('');
+  const mism=(e.readyMismatch||[]);
+  return `<div class="lg-boot-env">
+    <b>VER${esc(e.version||'?')}</b>
+    <span>端末 ${esc(e.pcName||'?')} / ${esc(e.loginId||'?')}</span>
+    <span>起動 ${esc(e.startedAt||'?')}</span>
+    <span>Python ${esc(e.pythonVersion||'?')}</span>
+    <span>ポート ${esc(e.port||'?')}</span>
+    <span>${mism.length?'起動前確認: 要確認':'起動前確認: 済み'}</span>
+   </div>
+   <table class="lg-boot-table"><thead><tr>
+     <th>状態</th><th>置き場</th><th>実際のパス</th><th>大きさ</th><th>更新</th><th>備考</th>
+    </tr></thead><tbody>${rows}</tbody></table>
+   <div class="lg-boot-note">直近の起動のログ ${(d.records||[]).length}件`
+   +`${d.bootMarkFound?'':'（起動の区切りが見つからないので末尾を出しています）'}`
+   +'　※「まとめてコピー」で、この表と起動のログを1つの文章にして写します。</div>';
+ };
+ const runBoot=async()=>{
+  if(bootState.busy)return;
+  bootState.busy=true;
+  const body=$id('lgBootBody');
+  if(body)body.innerHTML='<div class="lg-empty">まとめています…</div>';
+  try{
+   bootState.last=await api('/api/boot-report');
+  }catch(err){
+   bootState.last=null;
+   if(body)body.innerHTML=`<div class="lg-empty">まとめられませんでした: ${esc(err.message||err)}</div>`;
+   bootState.busy=false;return;
+  }
+  bootState.busy=false;
+  if(body)body.innerHTML=bootHtml(bootState.last);
+ };
+
  /* ---------- 画面の組み立て ---------- */
  const wire=()=>{
   $id('lgReload').onclick=()=>load();
@@ -357,6 +417,14 @@
   $id('lgCollapse').onclick=()=>document.querySelectorAll('#lgTree details').forEach(d=>d.open=false);
   $id('lgRotate').onclick=rotate;
   $id('lgDownload').onclick=()=>{location.href='/api/logs/download?file='+encodeURIComponent(currentFile().split(',')[0])};
+  $id('lgBootRun').onclick=runBoot;
+  /* **文章はサーバーが作る**（§9.163）——画面で組み立て直すと、貼られた
+     内容と画面の見え方が食い違う。 */
+  $id('lgBootCopy').onclick=()=>{
+   const t=(bootState.last||{}).text;
+   if(!t){showToast('まだまとめていません','「取得」を押してからコピーしてください。');return}
+   copyLines(t.split('\n'),'起動の状況をコピーしました（そのまま貼れます）');
+  };
   $id('lgDiagRun').onclick=runDiag;
   $id('lgDiagCopy').onclick=()=>copyLines(diagText(diagState.last).split('\n'),'診断の結果をコピーしました');
   // 開いた時点で1回だけ試す(開くまでは何もしない=画面を開くだけで共有を叩かない)
@@ -400,6 +468,15 @@
      <button type="button" id="lgRotate" title="いまのログを1つ古い世代へ送り、新しいログを始めます">ここで区切る</button>
      <button type="button" id="lgDownload" title="このログをファイルとして保存します">保存</button></span>
    </div>
+   <details class="lg-boot" id="lgBoot" open>
+    <summary><b>起動の状況</b><span>いま見に行っている置き場と、直近の起動のログをまとめます（読むだけ）</span></summary>
+    <div class="lg-diag-bar">
+     <button type="button" id="lgBootRun">取得</button>
+     <button type="button" id="lgBootCopy" class="lg-primary">まとめてコピー</button>
+     <span class="lg-boot-hint">起動できないときは、これを押して貼り付けてください</span>
+    </div>
+    <div class="lg-boot-body" id="lgBootBody"></div>
+   </details>
    <details class="lg-diag" id="lgDiag">
     <summary><b>接続の診断</b><span>データベースを開くまでを1段ずつ試します（読むだけ）</span></summary>
     <div class="lg-diag-bar">
@@ -430,6 +507,9 @@
   WL.syncViewToolbar('logs');       // 操作列(#lgHead)はパネル生成後にヘッダーへ載せる
   await loadFiles();
   await load();
+  /* **開いた時点でまとめておく**（§CLAUDE 2「探させない」）——起動の不具合で
+     ここへ来た人に、もう一度ボタンを探させない。読むだけなので安い。 */
+  runBoot();
  };
  const ensureNavButton=()=>{
   const nav=document.querySelector('#adminNav');if(!nav||$id('openLogView'))return;
@@ -444,7 +524,7 @@
   header:['ログ・診断','この端末の記録を読み、絞り込み・コピー・整理します'],exit:exitLogView});
 
  window.WL=window.WL||{};
- WL.logView={open:openLogView,load,groupByBoot,state};
+ WL.logView={open:openLogView,load,groupByBoot,state,bootState,runBoot};
 
  queueMicrotask(()=>{ensureNavButton()});
 })();

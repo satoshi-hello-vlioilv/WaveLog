@@ -60,6 +60,7 @@ launcher側の `--- 起動 ---` 行で、画面はこれでまとめて表示す
 import logging
 import os
 import re
+import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -70,6 +71,10 @@ from ..logging_setup import app_logger, launcher_logger
 from ..paths import logs_dir
 
 bp=Blueprint('logs',__name__)
+
+# このプロセスが立ち上がった時刻。起動の状況（§9.316）で「いつの起動か」を
+# 言うのに使う——ログの区切りと突き合わせると、見ているのが今の起動かが分かる。
+_PROCESS_STARTED=time.time()
 
 # 系統(ストリーム)の定義。キー→(表示名, 実ファイル名, ロガーを返す関数)。
 # ロガーを取りに行くのは、書き換えの前にハンドラを掴む必要があるため。
@@ -193,6 +198,196 @@ def _matches(rec,q,level,since):
   hay=(rec['text']+' '+' '.join(rec['extra'])+' '+rec['logger']).lower()
   if q not in hay:return False
  return True
+
+
+# ========================================================================
+# 起動の状況をまとめて1つに（§9.316、利用者の指示）
+# ------------------------------------------------------------------------
+# 「ログの保存場所が難しいので、毎回htmlを手動クリックで起動しています。
+#   ログをアプリ上からコピーできるようにして、起動時の状況もアプリ上から
+#   取得できるようにしてください」
+#
+# 起動の不具合は**起動した端末でしか分からない**のに、調べるための材料は
+# `%LOCALAPPDATA%` の奥にある。電話越しにエクスプローラーを操作してもらうのは
+# 現実的ではない——**1回押せば、そのまま貼れる1つの文章**にする。
+#
+# 集めるのは「どこを見て・何が在って・何が起きたか」の3つ。
+#   ① いまの版・Python・端末（どのコードが動いているのか）
+#   ② 置き場（**解決した実際のパス**と、在るか・大きさ・更新時刻・読めるか）
+#   ③ 直近の起動1回ぶんのログ（`--- 起動 ---` から後ろ）
+#
+# **読むだけ**（GETなのでどのモードからも取れる）。**失敗しても部分的に返す**
+# ——1つ読めないだけで「何も分からない」にしない（§4）。
+# ========================================================================
+def _place(label, path, note=''):
+ """置き場1つぶんの事実。**存在確認で送出しない**（§9.108）——共有・クラウド
+    越しの`exists()`はWinError 59等を送出しうるので、`path_exists_safe()`の
+    True/False/**None（確かめられなかった）**をそのまま持つ。"""
+ from ..db_access import path_exists_safe
+ out={'label':label,'path':str(path) if path is not None else '',
+      'exists':None,'size':None,'mtime':'','readable':None,'note':note,'error':''}
+ if path is None:
+  out['error']='解決できませんでした';return out
+ try:out['exists']=path_exists_safe(path)
+ except Exception as e:out['error']=f'{type(e).__name__}: {e}'
+ try:
+  st=Path(path).stat()
+  out['size']=st.st_size
+  out['mtime']=datetime.fromtimestamp(st.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+  out['isDir']=Path(path).is_dir()
+ except Exception as e:
+  if not out['error']:out['error']=f'{type(e).__name__}: {e}'
+ # **「在る」だけでは足りない**（§9.314）——隔離されて0バイト・読めない、が
+ # 起こりうる。フォルダーは中身が読めるかで見る。
+ try:
+  if out.get('isDir'):
+   next(iter(Path(path).iterdir()),None);out['readable']=True
+  else:
+   with open(str(path),'rb') as f:out['readable']=bool(f.read(1))
+ except Exception:
+  out['readable']=False
+ return out
+
+
+def boot_places():
+ """調べるときに見る置き場を、**解決した実際のパス**で並べる（§9.316）。
+
+ 綴りではなく「いまこのプロセスが使っている値」を出す——設定に何と書いて
+ あるかではなく、**どこを見に行っているか**が知りたいことなので。"""
+ from .. import paths as P
+ from ..config import APP_ID
+ from ..launcher import ready, setup_check
+ from ..db_access import DBS
+ out=[]
+ def add(label,fn,note=''):
+  try:out.append(_place(label,fn(),note))
+  except Exception as e:out.append({'label':label,'path':'','exists':None,'size':None,
+                                    'mtime':'','readable':None,'note':note,
+                                    'error':f'{type(e).__name__}: {e}'})
+ add('アプリ本体',lambda:P.APP_ROOT,'start_app.py などの置き場')
+ add('本体の待機画面',lambda:P.APP_ROOT/'loading.html','意匠の出どころ（写しの元）')
+ add('ローカル領域',lambda:P.local_root(),'%LOCALAPPDATA%\\'+APP_ID+' 相当。書ける場所を順に探した結果')
+ add('ログ',lambda:P.logs_dir())
+ add('runtime',lambda:P.runtime_dir(),'待機画面の写し・進捗・刻印の置き場')
+ add('待機画面の写し',lambda:setup_check.waiting_page(),'起動時にブラウザへ渡すファイル')
+ add('待機画面（次の起動用）',lambda:setup_check.staged_waiting_page(),'§9.314。裏で作り直す先')
+ add('起動の進捗',lambda:__import__('backend.boot_status',fromlist=['x']).status_path())
+ add('起動前確認の刻印',lambda:ready.stamp_file())
+ add('作業用フォルダ',lambda:P.work_dir(),P.work_dir_reason() or '')
+ add('config/local.json',lambda:P.local_config_path(),P.local_config_error() or '')
+ for key in ('MASTER','MEAS'):
+  entry=DBS.get(key) or {}
+  if entry.get('path'):
+   add(f"DB: {entry.get('label') or key}",lambda e=entry:Path(e['path']))
+ return out
+
+
+def boot_environment():
+ """いま動いているものの素性（§9.316）。**版とPythonが最初の分かれ道**
+    ——「直したはずの版が実際に動いているか」はここでしか分からない。"""
+ import platform
+ from ..changelog_data import APP_VERSION
+ from ..config import APP_ID, PORT
+ from ..launcher import ready
+ env={'version':APP_VERSION,'appId':APP_ID,'port':PORT,
+      'python':sys.executable,'pythonVersion':sys.version.split()[0],
+      'platform':platform.platform(),'cwd':os.getcwd(),
+      'startedAt':datetime.fromtimestamp(_PROCESS_STARTED).strftime('%Y-%m-%d %H:%M:%S'),
+      'now':datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+ try:
+  from ..access_mode import current_login_id, current_pc_name, get_mode
+  env['loginId']=current_login_id();env['pcName']=current_pc_name();env['mode']=get_mode()
+ except Exception as e:
+  env['identityError']=f'{type(e).__name__}: {e}'
+ try:env['readyMismatch']=list(ready.mismatch() or [])
+ except Exception as e:env['readyMismatch']=[f'確かめられませんでした: {e}']
+ return env
+
+
+def last_boot_records(limit=400):
+ """直近の起動1回ぶん（§9.316）。`launcher.log`の`--- 起動 ---`から後ろを
+    `app.log`と合わせて1本の時間軸へ並べる（この画面の既定と同じ扱い）。
+
+ **区切りが見つからなければ末尾から**返す——「区切りが無いから何も出せない」
+ のでは、いちばん知りたい初回起動で使えない。"""
+ recs=[]
+ for key,(label,filename,_logger) in STREAMS.items():
+  path=logs_dir()/filename
+  lines,_size,_cut=_tail_lines(path,READ_BYTES)
+  if lines:recs.extend(parse_records(lines,key,filename))
+ recs.sort(key=_sort_key)
+ marks=[i for i,r in enumerate(recs) if r.get('boot')]
+ picked=recs[marks[-1]:] if marks else recs[-limit:]
+ return picked[:limit],bool(marks)
+
+
+def boot_report_text(env,places,records,found_mark):
+ """そのまま貼れる1つの文章（§9.316）。**画面の見た目ではなく中身を運ぶ**
+    ——受け取る側（相談する相手）はテキストしか見ないので、ここで完結させる。"""
+ L=[]
+ L.append('==== WaveLog 起動の状況 ====')
+ L.append(f"版        : VER{env.get('version','?')}   （{env.get('now','')} 時点）")
+ L.append(f"起動時刻  : {env.get('startedAt','')}")
+ L.append(f"端末      : {env.get('pcName','?')} / ログインID {env.get('loginId','?')}"
+          f" / モード {env.get('mode','?')}")
+ L.append(f"Python    : {env.get('pythonVersion','?')}  {env.get('python','')}")
+ L.append(f"OS        : {env.get('platform','')}")
+ L.append(f"ポート    : {env.get('port','')}   作業フォルダ: {env.get('cwd','')}")
+ mism=env.get('readyMismatch') or []
+ L.append('起動前確認: ' + ('済み（刻印あり）' if not mism else '要確認: '+' / '.join(map(str,mism))))
+ L.append('')
+ L.append('---- 置き場（いま見に行っている先） ----')
+ for p in places:
+  mark={True:'あり',False:'**無い**',None:'確かめられず'}.get(p.get('exists'),'?')
+  size='' if p.get('size') is None else f" {p['size']}バイト"
+  read='' if p.get('readable') is None else ('' if p.get('readable') else ' **読めない**')
+  L.append(f"  [{mark}]{size}{read} {p['label']}: {p['path']}")
+  if p.get('mtime'):L.append(f"        更新 {p['mtime']}")
+  if p.get('note'):L.append(f"        {p['note']}")
+  if p.get('error'):L.append(f"        ！ {p['error']}")
+ L.append('')
+ # **次にすることを書く**（§4）——待機画面が「ファイルが見つかりません」に
+ # なった端末では、**ブラウザのアドレス欄のパス**と上の「待機画面の写し」が
+ # 同じかどうかが最初の分かれ道になる（別のタブ・別のファイルを見ていないか）。
+ L.append('※ 待機画面が「ファイルが見つかりません」になったときは、'
+          'ブラウザのアドレス欄のパスと、上の「待機画面の写し」のパスが'
+          '同じかを見てください（違っていれば、開いているのは別のファイルです）。')
+ L.append('')
+ L.append('---- 直近の起動のログ ----'
+          + ('' if found_mark else '（起動の区切りが見つからないので末尾を出しています）'))
+ for r in records:
+  head=f"{r.get('ts','')}.{r.get('ms','')} {r.get('levelRaw','') or '-':7s} [{r.get('logger','')}] {r.get('text','')}"
+  L.append('  '+head.rstrip())
+  for x in r.get('extra') or []:
+   L.append('      '+x)
+ L.append('==== ここまで ====')
+ return '\n'.join(L)
+
+
+@bp.get('/api/boot-report')
+def boot_report():
+ """起動の状況を1つにまとめて返す（§9.316）。**部分的にでも返す**——
+    どれか1つが読めなくても、残りは調べる役に立つ。"""
+ try:
+  env=boot_environment()
+ except Exception as e:
+  env={'error':f'{type(e).__name__}: {e}'}
+ try:
+  places=boot_places()
+ except Exception as e:
+  places=[{'label':'置き場を並べられませんでした','path':'','exists':None,'size':None,
+           'mtime':'','readable':None,'note':'','error':f'{type(e).__name__}: {e}'}]
+ try:
+  records,found=last_boot_records()
+ except Exception as e:
+  records,found=[],False
+  env['logError']=f'{type(e).__name__}: {e}'
+ try:
+  text=boot_report_text(env,places,records,found)
+ except Exception as e:
+  text=f'まとめを作れませんでした: {type(e).__name__}: {e}'
+ return jsonify(ok=True,env=env,places=places,records=records,
+                bootMarkFound=found,text=text)
 
 
 @bp.get('/api/logs/files')
