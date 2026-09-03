@@ -624,6 +624,13 @@ async function runAutoSave(){
  try{
   do{
    autoSaveAgain=false;
+   /* **触った回数を控えてから写す**（§9.320-G の追補、§9.312と同じ数え方）
+      ——旗だけで見ると、往復から戻った側が「往復のあいだに打たれた1文字」の
+      旗まで下ろし、**まだ書けていないのに「DBへ保存済み」と出る**
+      （画面が嘘をつく・§CLAUDE 6）。**値そのものは落ちない**——写しは
+      測定値の配列を実体で共有し、`backupAndTrackSync()`の`finally`が
+      もう一度書くため（実測。`base.js`の`measureEditSeq`の注記）。 */
+   const seq=measureEditSeq;
    const m=collect();
    /* **状態は変えない**——完了済みのデータを開いて直しているときに
       「編集中」へ落とすと、一覧の分類が押した覚えなく変わる。 */
@@ -633,13 +640,18 @@ async function runAutoSave(){
    /* **開いている記録が変わったら止める**（§9.229 ④と同じ罠）——往復の
       あいだに別のロットへ移っていたら、そのロットの状態を上書きしない。 */
    if(!S.measure||S.measure.id!==id)return;
-   measureDirty=false;
+   /* 往復のあいだに打たれていたら**旗は下ろさない**。打った側が
+      `markDirty()`で次の保存を必ず予約しているので、そちらが書く。 */
+   if(measureEditSeq===seq)measureDirty=false;
    const ok=await backupAndTrackSync(m);
    if(!S.measure||S.measure.id!==id)return;
    refreshSyncStatusUI();
    /* **どこまで入ったかを書く**（§9.202の3か所のうち①②）。失敗も
-      黙らない——「後で再送します」まで書けば、打つ手が無いことも読める。 */
-   setState(ok?'DBへ保存済み':'この端末に保存済み（DBへは後で自動的に再送します）');
+      黙らない——「後で再送します」まで書けば、打つ手が無いことも読める。
+      **触られていたら「保存済み」と言わない**——`markDirty()`が出した
+      「未保存（画面の中だけ）」を、まだ書けていない値の上から塗り替えない。 */
+   if(measureEditSeq===seq)
+    setState(ok?'DBへ保存済み':'この端末に保存済み（DBへは後で自動的に再送します）');
   }while(autoSaveAgain);
  }catch(e){
   /* **画面の値は消えない**ことを書く（§4）。次の入力でまた試す。 */

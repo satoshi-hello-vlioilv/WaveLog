@@ -155,6 +155,50 @@ let b=null;
    return ((d.items||d.rows||[]).some(x=>String(x.id||x.recordId||'')===id));
   },lotId);
   rec('ボタンを押していないのにDBへ入っている',inDb===true,String(inDb));
+
+  /* ---- ⑦-b 書き込みの往復中に打っても取りこぼさない（§9.320-G 追補） ----
+     裏の保存は「落ち着いてから1回」なので、**書き込みの最中に次の1文字が
+     来る**のがふつう。ここで見るのは、そのとき打った値が
+     **端末内の記録まで届くこと**と、**旗（未保存）が残らないこと**。
+
+     **実測して分かったこと**（推測で書かない）: `collect()`が返す写しは
+     測定値の配列を**実体で共有**しており、さらに`backupAndTrackSync()`が
+     `finally`でもう一度`reliablePut(m)`する。だから往復中の1文字は
+     取りこぼされない——**この網はその成り立ちを固定する**もので、
+     `collect()`を深い写しへ変えるような直しが入れば落ちる。
+
+     **遅らせるのは端末内への書き込み（`reliablePut`）**——共有DBへの送信を
+     遅らせても`autoSaveAgain`が拾うので、窓が開かない（実際に空振りした）。 */
+  await page.evaluate(ms=>{
+   window.__origPut=reliablePut;
+   reliablePut=async m=>{await new Promise(s=>setTimeout(s,ms));return window.__origPut(m)};
+   S.measure.settings.wStep=0;
+  },1200);
+  await page.evaluate(()=>{const el=document.getElementById('deviceInput');
+    el.value='DT110+1201.00';processDeviceInput('DT110+1201.00')});
+  /* 書き込みが始まった（＝`collect()`は済んだ）ところで、もう1つ打つ。 */
+  await page.waitForFunction(()=>/保存しています/
+    .test(document.getElementById('localState').textContent||''),null,{timeout:20000});
+  await page.waitForTimeout(200);
+  await page.evaluate(()=>{const el=document.getElementById('deviceInput');
+    el.value='DT110+1202.00';processDeviceInput('DT110+1202.00')});
+  /* 落ち着くまで待つ。**時間で決め打ちにしない**（§9.102）。 */
+  await page.waitForFunction(()=>!measureDirty&&/保存済み|再送します/
+    .test(document.getElementById('localState').textContent||''),null,{timeout:30000}).catch(()=>{});
+  await page.waitForTimeout(600);
+  const late=await page.evaluate(async()=>{
+   reliablePut=window.__origPut;
+   const saved=await reliableGet(S.measure.id).catch(()=>null);
+   const row=((saved&&saved.measurements&&saved.measurements.width)||[])[lengthIndex()]||[];
+   return {画面:(S.measure.measurements.width[lengthIndex()]||[]).slice(0,3),
+     端末内:row.slice(0,3),旗:measureDirty,
+     バッジ:document.getElementById('localState').textContent||''};
+  });
+  /* **端末内の記録まで見る**（画面の配列だけを見る網は、どこへも書いて
+     いない実装でも通る・§9.289）。 */
+  rec('書き込みの往復中に打った値も端末内の記録へ入る',
+      late.端末内[1]==='1202.00',JSON.stringify(late));
+  rec('書き終えたあとは「未保存」が残らない',late.旗===false,JSON.stringify(late));
   rec('画面のエラーが出ていない',true,'');
  }catch(e){
   rec('FATAL',false,String(e&&e.message||e));

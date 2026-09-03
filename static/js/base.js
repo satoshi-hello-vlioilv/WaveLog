@@ -157,6 +157,18 @@ function setState(x){$('#localState').textContent=x}
    閉じようとした際、破棄してよいか確認するために使う。renderMeasurement()
    でデータを新規に読み込んだ時と、保存が成功した時にリセットする。 */
 let measureDirty=false;
+/* **触った回数**（§9.320-G の追補、§9.312と同じ数え方）。旗（`measureDirty`）
+   だけだと、**裏の保存が往復しているあいだに打った1文字**と、保存の始まりに
+   立っていた旗とが同じものになる——往復から戻った側が旗を下ろし、
+   バッジが「DBへ保存済み」と言ってしまう（**画面が嘘をつく**・§CLAUDE 6）。
+   **控えた回数と違っていたら、旗を下ろさない・保存済みとも言わない**。
+
+   **値そのものは落ちない**（実測で確かめた。推測で書かない）——`collect()`が
+   返す写しは測定値の配列を**実体で共有**しており、`backupAndTrackSync()`が
+   `finally`でもう一度`reliablePut(m)`するので、往復中の1文字もその書き込みに
+   乗る。ここで直しているのは**バッジの文言**（未保存のものを保存済みと
+   言わない）で、`collect()`を深い写しへ変えるならこの前提も変わる。 */
+let measureEditSeq=0;
 /* **どこに在るのかまで書く**(§9.202、利用者の報告「入力しただけでは
    完了に反映されない」)。「未保存」だけだと、打った値がもう端末に
    入っていると読める。実際は保存を押すまで画面の中にしか無い。 */
@@ -165,7 +177,7 @@ let measureDirty=false;
    `reliablePut()`もあちらのもの）。**「あれば呼ぶ」で黙らせない**
    ——公開漏れは静かに機能だけを失うので、無ければ理由を出す（§CLAUDE）。 */
 function markDirty(){
- measureDirty=true;setState('未保存（画面の中だけ）');
+ measureDirty=true;measureEditSeq++;setState('未保存（画面の中だけ）');
  if(window.WL&&WL.autoSave)WL.autoSave.schedule();
  else console.error('WL.autoSave が見つかりません（DBへの自動保存が動きません）');
 }
