@@ -59,7 +59,7 @@ from backend.paths import APP_ROOT, configured_path, ensure_local_dirs, is_netwo
 #      開ける待機画面が1つも無くなる。
 #
 # 方針(§9.225「開けないより遅いほうがまし」を、別端末でも成立させる):
-#   1. 置き場所の特定・存在確認は**例外を送出しない**(`_exists_safe`)。
+#   1. 置き場所の特定・存在確認は**例外を送出しない**(`_readable_safe`)。
 #   2. まず本来の写し(`setup_check`。意匠の唯一の出どころ)を使う/作る。
 #   3. Box が届かず写しも作れないときだけ、**手元へ書き出す組み込みの簡易待機
 #      画面**を最後の砦にする。これは loading.html と同じ深い紺・同じ
@@ -130,18 +130,9 @@ _EMERGENCY_WAITING_HTML = r"""<!doctype html>
 """
 
 
-def _exists_safe(path):
- """`Path.exists()` を**例外を送出せず**に確かめる。共有・クラウド(Box)越しの
-    存在確認は WinError 59 等を送出し得るため、待機画面を開く処理を巻き添えに
-    しない。確かめられない場合は False を返す——ここでの帰結は「作り直す」で
-    あって「無いから諦める」ではないので、不明を False として安全(§9.108の
-    path_exists_safe とは用途が違い、Noneを区別する必要がない)。"""
- if path is None:
-  return False
- try:
-  return Path(path).exists()
- except Exception:
-  return False
+# （`_exists_safe`は§9.316で廃した。**存在だけでは足りない**——隔離されて
+#   0バイト・読めない、が起こりうるので、判断は`_readable_safe()`の1箇所へ
+#   寄せてある。存在確認をもう1つ足さないこと。）
 
 
 def _readable_safe(path):
@@ -261,9 +252,13 @@ def _ensure_local_waiting_page(log):
   local=setup_check.waiting_page()
  except Exception as e:
   log.warning('待機画面: 写しの置き場所を特定できませんでした(%s)',e)
- # ① 手元の写しが在ればそれを開く。**本物でも簡易版でも開く**
- #    ——ここで本体を読みに行かないのが要点（下の説明）。
- if _exists_safe(local):
+ # ---------- 判断は1手ずつ残す（§9.316、利用者の指示） ----------
+ # 「起動時の状況もアプリ上から取得できるように」。**どこを見て・何が在って・
+ # どれを開いたか**が1回の起動のログだけで読めないと、別端末の起動不良は
+ # 何度でも推測で終わる。ここは起動の最初の数msなので、書く量は数行に留める。
+ ok,why=_readable_safe(local)
+ log.info('待機画面: 写しを探しました: %s（%s）',local,'読める' if ok else why)
+ if ok:
   _refresh_waiting_page_later(log)
   return local
  # ② 無ければ**組み込みの簡易画面を手元へ書いて開く**（本体を読まない）。
@@ -329,18 +324,46 @@ def open_waiting_screen(log):
  log.info('待機画面を開きます: %s%s',page,
           '（組み込みの簡易画面。本来の写しは裏で作り直します）' if _is_emergency_page(page) else '')
  uri=Path(page).as_uri()
+ # **渡した瞬間の事実を残す**（§9.316）。ブラウザが「ファイルが見つかりません」
+ # と出したとき、**こちらが渡した時点で在ったのか**が最初の分かれ道になる。
+ try:
+  st=Path(page).stat()
+  log.info('待機画面: 渡す直前の状態: %sバイト / 更新 %s / URI %s',st.st_size,
+           time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(st.st_mtime)),uri)
+ except Exception as e:
+  log.warning('待機画面: 渡す直前の状態を読めませんでした(%s)',e)
  # 既定ブラウザで file:// を開く。失敗(.html の関連付け無し・権限)しても
  # 握り潰さず、webbrowser 経由へ切り替える(「1つもブラウザが開かない」を残さない)。
+ opened=''
  if sys.platform=='win32':
   try:
    os.startfile(str(page))               # 既定のブラウザで開く
-   return
+   opened='os.startfile'
   except Exception as e:
    log.warning('待機画面: 既定の方法で開けませんでした(%s)。別の方法を試します',e)
- try:
-  webbrowser.open(uri)
- except Exception as e:
-  log.error('待機画面を開けませんでした: %s',e)
+ if not opened:
+  try:
+   webbrowser.open(uri)
+   opened='webbrowser.open'
+  except Exception as e:
+   log.error('待機画面を開けませんでした: %s',e)
+   return
+ log.info('待機画面: ブラウザへ渡しました（%s）',opened)
+ # **渡した「後」も一度だけ確かめる**（§9.316）。ここで消えていれば、
+ # 消しているのは**こちらではない**（ウイルス対策の隔離・同期・掃除）と
+ # 言い切れる——推測せずに次の一手を選べるようにするための1行。
+ def _watch():
+  try:
+   time.sleep(3.0)
+   ok2,why2=_readable_safe(page)
+   if ok2:log.info('待機画面: 渡した3秒後も写しは読めています')
+   else:log.error('待機画面: 渡した3秒後には写しが読めません(%s)。'
+                  'このアプリは触っていないので、ウイルス対策の隔離・フォルダーの同期・'
+                  '掃除ツールなど**外側**が消している可能性があります: %s',why2,page)
+  except Exception:
+   pass
+ try:threading.Thread(target=_watch,daemon=True,name='watch-waiting-page').start()
+ except Exception:pass
 
 
 def run_full_check(log,why):

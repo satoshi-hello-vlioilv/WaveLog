@@ -166,7 +166,9 @@ G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm',
 G['フィルタ'] = ['test_filter', 'test_adhoc', 'test_filterio', 'test_filteruser',
                  'test_filteractive', 'test_filterkeep', 'test_filterlock',
                  'test_filtergroup']
-G['ログ'] = ['test_logs', 'test_logview', 'test_error']
+# §9.316: 起動の状況をアプリから取れる（`/api/boot-report`＋ログ・診断の帯）。
+# 置き場は`paths`が解決した実物を出すので、起動まわりを触ったら一緒に回す。
+G['ログ'] = ['test_logs', 'test_logview', 'test_error', 'test_bootreport']
 # §9.286 ⑦: 更新履歴の書き方（印は `**`／バッククォート）と窓の作り。
 # 説明文の印を解くのは `WL.markup()` の1箇所なので、マスタの説明文を
 # 出す画面（test_hintlint / test_maint）も一緒に回す。
@@ -387,7 +389,7 @@ RULES = [
     ('backend/launcher/', g('起動')),
 
     # --- 起動まわりの直接実行スクリプト --------------------------------
-    ('start_app.py', g('起動')),
+    ('start_app.py', g('起動', 'test_bootreport')),
     ('setup_app.py', g('起動')),
     ('setup.bat', g('起動')),
     ('loading.html', g('起動')),
