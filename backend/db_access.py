@@ -221,18 +221,60 @@ def cfg(k):
  return out
 
 # ========================================================================
+# 後から足した列を「無ければ足す」（§9.315、利用者の報告）
+# ------------------------------------------------------------------------
+# 「起動時に *読み込みに失敗しました: … duplicate column name: 丸め方* と
+#   出る。リロードすると正しく読める」
+#
+# 現場では**マスタを作り直さず「無ければ足す」で移行する**（§9.216 ②）。
+# その処理はどこも `PRAGMA table_info` で今ある列を読み、無い列だけ
+# `ALTER TABLE ADD COLUMN` する形だった——**読んでから足すまでのあいだに
+# 別のリクエストが同じ列を足せる**。`flask_app.run(threaded=True)`（§9.98で
+# 外さないと決めてある）なので、画面を開いた瞬間に走る何本かの問い合わせが
+# 素直に重なる。2本とも「無い」と見て2本とも足しに行き、後の1本が
+# `duplicate column name` で落ちる。
+#
+# **その版へ上げた最初の1回にしか起きない**（次からは列が在るのでALTERを
+# 通らない）ので、**リロードすると直る**——原因に辿り着きにくいのはこのため。
+#
+# ここが唯一の窓口。**散らばった場所で気を付けるのではなく、入口で1回だけ
+# 落とす**（§9.113）。「足そうとしたら既に在った」は**失敗ではない**
+# ——他の誰かが今まさに足したということなので、そのまま先へ進む。
+# ========================================================================
+def _already_added(exc):
+ """その失敗は「誰かが今足したところだった」か。**綴りで見るしかない**
+    ——SQLiteはこれを専用のエラー番号で返さない。"""
+ return 'duplicate column name' in str(exc).lower()
+
+def add_missing_columns(c,table,columns,commit=True):
+ """`columns`（(列名, 型) の並び）のうち**まだ無いものだけ**足す。
+
+    戻り値は**実際に足した列名のリスト**（呼び出し側の「足したか」の判定に
+    使う）。同時に走った別のリクエストが先に足していた場合は、その列は
+    戻り値に入らない（足したのはこちらではない）。
+
+    **例外は握り潰さない**——「既に在った」以外の失敗（権限・読み取り専用・
+    ディスク）は呼び出し側へそのまま返す。黙って進むと、列が無いまま
+    SELECTして別の場所で落ちる。"""
+ try:existing=set(cols(c,table))
+ except Exception:return []
+ cur=c.cursor();added=[]
+ for name,decl in columns:
+  if name in existing:continue
+  try:
+   cur.execute(f'ALTER TABLE {qi(table)} ADD COLUMN {qi(name)} {decl}')
+   added.append(name)
+  except Exception as e:
+   if not _already_added(e):raise
+ if added and commit:c.commit()
+ return added
+
+# ========================================================================
 # 更新対象者（ユーザーID）の管理
 # ========================================================================
 AUDIT_COLUMNS=(('登録者ID','TEXT'),('更新者ID','TEXT'))
 def ensure_audit_columns(c,table):
- try:existing=set(cols(c,table))
- except Exception:return False
- cur=c.cursor();changed=False
- for name,typ in AUDIT_COLUMNS:
-  if name not in existing:
-   cur.execute(f'ALTER TABLE {qi(table)} ADD COLUMN {qi(name)} {typ}');changed=True
- if changed:c.commit()
- return changed
+ return bool(add_missing_columns(c,table,AUDIT_COLUMNS))
 
 # db/ 導入以前に使われていた置き場所とファイル名(新しい順)。db/に無い場合の
 # 移行先探索にのみ使う(過去バージョンからの引き継ぎ用で、新規環境では未使用)。
@@ -504,8 +546,8 @@ def ensure_data_source_table(c):
   c.commit();created=True
  elif '役割' not in {n for n in cols(c,DATA_SOURCE_TABLE)}:
   # 既存環境への追加(§9.87)。今までどおり動くよう、役割を補ってから使う。
+  add_missing_columns(c,DATA_SOURCE_TABLE,(('役割','TEXT'),))
   cur=c.cursor()
-  cur.execute('ALTER TABLE [データソースマスタ] ADD COLUMN [役割] TEXT')
   for key,purpose in _LEGACY_PURPOSE_BY_KEY.items():
    cur.execute('UPDATE [データソースマスタ] SET [役割]=? WHERE [キー]=?',[purpose,key])
   # キーを既定から変えている環境では、上の対応表が1件も当たらない。
@@ -528,15 +570,13 @@ def ensure_data_source_table(c):
  # `sikalot_source`(network/local)という**全体の1つのスイッチ**しか無く、
  # 「このソースだけ共有、あのソースだけRNE」が表現できなかった。
  # 空欄＝今までどおり全体設定に従う（既存環境の動きを変えない）。
- if DATA_SOURCE_TABLE in tables(c) and '読み方' not in {n for n in cols(c,DATA_SOURCE_TABLE)}:
-  c.cursor().execute('ALTER TABLE [データソースマスタ] ADD COLUMN [読み方] TEXT')
-  c.commit()
+ if DATA_SOURCE_TABLE in tables(c):
+  add_missing_columns(c,DATA_SOURCE_TABLE,(('読み方','TEXT'),))
  # 一覧に出すかどうか(§9.193)。**「使う/使わない」と「一覧に出す/出さない」は
  # 別のこと**——結合の相手としてだけ読みたいデータ（品質・単価表など）は、
  # 左メニューに並べても押す用が無い。空欄＝出す（既存の行の見え方を変えない）。
- if DATA_SOURCE_TABLE in tables(c) and '一覧表示' not in {n for n in cols(c,DATA_SOURCE_TABLE)}:
-  c.cursor().execute('ALTER TABLE [データソースマスタ] ADD COLUMN [一覧表示] INTEGER')
-  c.commit()
+ if DATA_SOURCE_TABLE in tables(c):
+  add_missing_columns(c,DATA_SOURCE_TABLE,(('一覧表示','INTEGER'),))
  # 役割の呼び名を今のものへ寄せる(§9.193)。**保存値を1つに保つ**——
  # 読む側の別名(_PURPOSE_ALIASES)だけで済ませると、役割の重なりを見る
  # SQL(`WHERE [役割]=?`)が旧い値の行を見落とし、「仕掛」が2件付いた状態を
@@ -1052,13 +1092,7 @@ def ensure_backup_table(c):
   c.cursor().execute('CREATE TABLE [Web測定バックアップ] ([記録ID] TEXT, [設備] TEXT, [ロット番号] TEXT, [検査番号] TEXT, [鋳造番号] TEXT, [状態] TEXT, [更新日時] DATETIME, [圧縮形式] TEXT, [ペイロード] TEXT, [登録者ID] TEXT, [登録端末名] TEXT, [更新者ID] TEXT, [更新端末名] TEXT, [登録日時] DATETIME)')
   c.commit()
   return
- have={x for x in cols(c,'Web測定バックアップ')}
- added=False
- for name,decl in BACKUP_AUDIT_COLUMNS:
-  if name in have:continue
-  c.cursor().execute(f'ALTER TABLE [Web測定バックアップ] ADD COLUMN [{name}] {decl}')
-  added=True
- if added:c.commit()
+ add_missing_columns(c,'Web測定バックアップ',BACKUP_AUDIT_COLUMNS)
 
 def request_user_id(x):
  x=x or {}

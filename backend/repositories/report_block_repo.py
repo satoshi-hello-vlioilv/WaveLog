@@ -26,6 +26,7 @@
 import copy as _copy
 import json
 
+from ..db_access import add_missing_columns
 from .master_repo import tables
 
 TABLE = '帳票ブロックマスタ'
@@ -1518,11 +1519,9 @@ _ADDED_COLUMNS = (
 def _ensure_columns(c):
     cur = c.cursor()
     have = {r[1] for r in cur.execute(f'PRAGMA table_info([{TABLE}])')}
-    added = False
-    for name, kind in _ADDED_COLUMNS:
-        if name not in have:
-            cur.execute(f'ALTER TABLE [{TABLE}] ADD COLUMN [{name}] {kind}')
-            added = True
+    # **足すのは`add_missing_columns()`の1箇所**（§9.315。同時に走っても
+    # 壊れない）。下の移行は**足した列の名前**ではなく`have`で見分ける。
+    added = bool(add_missing_columns(c, TABLE, _ADDED_COLUMNS))
     # **`[種別]`を足したその場だけ**、既にあるラベル貼付スペースの行を
     # エリアへ移す（§9.234 ⑤）。列は二度と追加されないので別の目印は要らない
     # ——**どの列を足したかを`added`の1つのboolで見分けないこと**（`[文字]`

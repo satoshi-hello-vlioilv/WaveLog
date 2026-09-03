@@ -35,7 +35,10 @@ TESTS = ROOT / 'tests'
 # §9.276 ④: 説明文の生タグも同じ——**画面を開いて回らないと見えない**ので、
 # 開き忘れた1つが永久に残る。字を見るだけの網なら新しいマスタも自動で対象。
 ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
-          'test_docindex', 'test_pywarn', 'test_hintlint']
+          'test_docindex', 'test_pywarn', 'test_hintlint',
+          # §9.315: 後から足した列を「無ければ足す」のは1箇所。マスタを1つ
+          # 足した人がここを通さずに書くと、同じ不具合が別の列で戻る。
+          'test_ddllint']
 
 # 束ねた呼び名。右辺は実際のテスト名。
 G = {}
