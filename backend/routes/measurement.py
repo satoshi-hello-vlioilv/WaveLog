@@ -5,7 +5,7 @@ app.pyから移設。ロジックは変更していない(移動のみ)。
 import json
 from flask import Blueprint, request, jsonify
 
-from ..db_access import DBS, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, merged_backup_rows, records_path_for, records_dir_name, records_paths_all, records_read_paths, records_paths_holding, note_records_written, invalidate_backup_rows_cache, request_user_id, request_pc_name, QUALITY_DB_KEY, path_exists_safe
+from ..db_access import DBS, cfg, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, merged_backup_rows, records_path_for, records_dir_name, records_paths_all, records_read_paths, records_paths_holding, note_records_written, invalidate_backup_rows_cache, request_user_id, request_pc_name, QUALITY_DB_KEY, path_exists_safe
 # 選択肢の読み取りは §9.221 ③ で op.choice_values() の1本になった。
 # **読み取り関数と表名の定数は import ごと外す**——残すと grep で
 # read_operator_names が今もここに当たり、廃止した経路が現役だと誤読される
@@ -22,7 +22,7 @@ bp=Blueprint('measurement',__name__)
 def measurement_context():
  try:
   lot=request.args.get('lot','').strip();equipment=request.args.get('equipment','').strip()
-  result={'quality':[],'operators':[],'inspectors':[],'packers':[],'thickness_gauges':[],'width_gauges':[],'inner_diameters':[],'spools':[],'burr_types':[],'coil_stops':[],'max_strips':DEFAULT_MAX_STRIPS,'strip_limit':STRIP_LIMIT,'equipment_kind':'','diagnostics':{'master_path':str(DBS['MASTER']['path']),'master_exists':DBS['MASTER']['path'].exists(),'tables':[],'matches':{}}}
+  result={'quality':[],'operators':[],'inspectors':[],'packers':[],'thickness_gauges':[],'width_gauges':[],'inner_diameters':[],'spools':[],'burr_types':[],'coil_stops':[],'max_strips':DEFAULT_MAX_STRIPS,'strip_limit':STRIP_LIMIT,'equipment_kind':'','diagnostics':{'master_path':str(DBS['MASTER']['path']),'master_exists':path_exists_safe(DBS['MASTER']['path']),'tables':[],'matches':{}}}
   def norm(v):return str(v or '').strip()
   def matching_table(ts,aliases):
    for a in aliases:
@@ -38,21 +38,44 @@ def measurement_context():
    return None
   # 品質データは役割で引く(§9.87)。キーの綴りで探すと、マスタでキーを
   # 変えた端末で KeyError になり測定画面ごと開けなくなる。
-  qcfg=DBS.get(QUALITY_DB_KEY or '') or {}
+  # **`cfg()`で引くこと**（§9.317・§9.198）。`DBS`が持っているのは設定に
+  # 書いてある元のパス＝**共有そのもの**で、`cfg()`が`db_mirror`の写しへ
+  # 差し替える。ここが`DBS`のままだったため、**測定画面を開くたびに共有の
+  # 品質データを直接開いて**いた（一覧は`cfg()`を通るので、同じ端末でも
+  # 一覧は出るのに測定画面だけ開けない、という分かりにくい形になる）。
+  # **登録が消えていても測定画面ごと落とさない**（§9.87）——`cfg()`は
+  # 知らないキーで送出するので、`DBS`に居ることを先に見る。
+  qcfg=(cfg(QUALITY_DB_KEY) if (QUALITY_DB_KEY and QUALITY_DB_KEY in DBS) else {})
   qpath=qcfg.get('path')
-  if lot and qpath and qpath.exists():
-   with connect(qpath,True) as c:
-    ts=tables(c);t=matching_table(ts,['仕掛','品質情報','品質','保留'])
-    if t:
-     cs=cols(c,t,source=qpath);lot_col=matching_col(cs,['ロット番号','ﾛｯﾄ番号','ロット№','LTNO'])
-     if lot_col:
-      cur=c.cursor()
-      cur.execute(f'SELECT * FROM {qi(t)} WHERE CStr({qi(lot_col)})=? LIMIT 50',[lot])
-      rows=cur.fetchall()
-      for row in rows:
-       d=dict(zip(cs,row));result['quality'].append({k:norm(d.get(matching_col(cs,[k]) or k)) for k in ['発生設備','登録日時','異常内容','コメント','最終処置','保留設定日','保留解除']})
+  # **開く前に存在確認をしない**（§9.108・§9.317）。`Path.exists()`が
+  # 「無い」と読み替えるのは ENOENT/ENOTDIR/EBADF/ELOOP と WinError
+  # 21/123/1921 だけで、**WinError 5（アクセスが拒否されました）は送出する**。
+  # 読み取り専用の共有では、ファイルは読めるのに属性の問い合わせだけが5で
+  # 断られることがあり、**確認のつもりの1行が唯一の失敗原因**になっていた
+  # （実機で「測定画面を開けません: [WinError 5]」）。まず開き、失敗したら
+  # `connect()`が理由を切り分ける。**品質情報が読めなくても測定は続ける**
+  # ——公差もマスタもこの後ろにあるので、ここで諦めると画面ごと開けない。
+  if lot and qpath:
+   try:
+    with connect(qpath,True) as c:
+     ts=tables(c);t=matching_table(ts,['仕掛','品質情報','品質','保留'])
+     if t:
+      cs=cols(c,t,source=qpath);lot_col=matching_col(cs,['ロット番号','ﾛｯﾄ番号','ロット№','LTNO'])
+      if lot_col:
+       cur=c.cursor()
+       cur.execute(f'SELECT * FROM {qi(t)} WHERE CStr({qi(lot_col)})=? LIMIT 50',[lot])
+       rows=cur.fetchall()
+       for row in rows:
+        d=dict(zip(cs,row));result['quality'].append({k:norm(d.get(matching_col(cs,[k]) or k)) for k in ['発生設備','登録日時','異常内容','コメント','最終処置','保留設定日','保留解除']})
+   except Exception as qe:
+    # **品質情報が読めなくても測定は続ける**（§9.317）。公差もマスタも
+    # この後ろにあるので、ここで諦めると**測定画面ごと開けない**。
+    # 黙って0件にはせず、理由を診断へ残してログにも書く（§4）。
+    result['diagnostics']['quality_error']=str(qe)
+    result['diagnostics']['quality_path']=str(qpath)
+    app_logger().warning('品質情報を読めませんでした（測定は続けます）: %s (%s)',qpath,qe)
   master=DBS['MASTER']['path']
-  if master.exists():
+  if path_exists_safe(master) is not False:
    # ---------- 移行済みの6マスタはもう用意しない（§9.255 ①、利用者の報告） ----------
    # 「移行済みデータをすべて消したはずが、復活しました。
    #   旧マスタは無ければ表示しない形にしたいです」
@@ -172,8 +195,11 @@ def measurement_choice_usage():
 @bp.get('/api/measurement/master-diagnostics')
 def master_diagnostics():
  try:
-  p=DBS['MASTER']['path'];out={'path':str(p),'exists':p.exists(),'size':p.stat().st_size if p.exists() else 0,'tables':{}}
-  if p.exists():
+  p=DBS['MASTER']['path'];found=path_exists_safe(p)
+  out={'path':str(p),'exists':found,'size':0,'tables':{}}
+  try:out['size']=p.stat().st_size
+  except OSError:pass
+  if found is not False:
    with connect(p,True) as c:
     for t in tables(c):out['tables'][t]=cols(c,t)
   return jsonify(out)

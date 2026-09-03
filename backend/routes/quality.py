@@ -54,7 +54,11 @@ def _quality_parse_datetime(value):
 def quality_analysis():
  try:
   # 品質データがどのデータソースかは役割で決まる(§9.87)。
-  qcfg=DBS.get(QUALITY_DB_KEY or '')
+  # **`cfg()`で引くこと**（§9.317・§9.198）。`DBS`が持っているのは設定に
+  # 書いてある元のパス＝**共有そのもの**。ここが`DBS`のままだったので、
+  # 品質データ分析を開くたびに**共有の品質DBを直接走査**していた
+  # （閲覧が増えるほど書き手が待たされる・§9.268）。
+  qcfg=(cfg(QUALITY_DB_KEY) if (QUALITY_DB_KEY and QUALITY_DB_KEY in DBS) else None)
   if not qcfg:
    return jsonify(error='役割が「品質」のデータソースが登録されていません。'
                         'マスタ管理 > データソースで役割を選んでください。'),400

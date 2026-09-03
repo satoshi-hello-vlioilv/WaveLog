@@ -163,11 +163,23 @@ function applyContextChoices(x){
 const CONTEXT_CHOICE_KEYS=['choice_usage','operators','inspectors','packers',
   'thickness_gauges','width_gauges','inner_diameters','spools','burr_types',
   'coil_stops','max_strips','equipment_kind'];
+/* 参照データの不足を**画面に出るところで1箇所**が覚える（§9.317）。
+   記録（`S.measure`）へは入れない——`collect()`が保存するので、その場限りの
+   事情がロットの記録として残ってしまう。 */
+function noteContextProblem(msg){
+ S.measureContextError=String(msg||'');
+ if(typeof paintQualityInfo==='function')paintQualityInfo();
+}
 function applyContextSnapshot(x){
  const m=S.measure;if(!m||!x)return;
  applyContextChoices(x);
  if(x.quality?.length){m.qualityInfo=qualityText(x.quality)}
- $('#qualityInfo').value=m.qualityInfo||'異常情報なし';paintQualityInfo();
+ $('#qualityInfo').value=m.qualityInfo||'異常情報なし';
+ /* **品質だけ読めなかった場合をここで受ける**（§9.317）。サーバーは
+    測定を止めないために0件で返し、理由を`diagnostics.quality_error`へ
+    残す。黙って「異常情報なし」にすると画面が嘘をつく。 */
+ const qe=x.diagnostics&&x.diagnostics.quality_error;
+ noteContextProblem(qe?`品質情報を読み込めませんでした（測定は続けられます）: ${qe}`:'');
  $('#masterDiagnostic').textContent=JSON.stringify(x.diagnostics||{},null,2);
 }
 /* 控えで開いたあと、**候補だけ**を今のマスタで取り直す（§9.229 ④）。
@@ -204,7 +216,18 @@ async function loadMeasurementContext(force=false){
   m.snapshot=m.snapshot||{};m.snapshot.context=structuredClone(x);m.snapshot.source=structuredClone(m.source||{});m.snapshot.basic=structuredClone(m.basic||{});
   m.snapshot.loadedAt=new Date().toISOString();m.snapshot.schema='v32-full';
   applyContextSnapshot(x);setState(`初期参照データを格納済み / 品質情報 ${x.quality?.length||0}件`);return x;
- }catch(e){setState('参照データ読込エラー');$('#masterDiagnostic').textContent=e.stack||e.message;throw e}
+ }catch(e){
+  /* **参照データが読めなくても測定は始められる**（§9.317、利用者の指示
+     「いずれにしても編集モードでの測定作業に影響がないようにしてほしい」）。
+     以前はここで投げており、`openMeasurementCore()`の続き——**記録の初回
+     保存（`reliablePut`）と共有への登録**——が丸ごと走らなかった。
+     つまり共有が一瞬読めないだけで、測定そのものが始められなかった。
+     **黙って続けない**（§4）——理由を画面に残し、1度だけ知らせる。 */
+  setState('参照データ読込エラー');$('#masterDiagnostic').textContent=e.stack||e.message;
+  noteContextProblem(`参照データを読み込めませんでした（測定は続けられます。公差・品質情報・選択肢が出ないことがあります）: ${e&&e.message||e}`);
+  showToast('参照データを読み込めませんでした','測定は続けられます。公差・品質情報・選択肢が出ないことがあります。',9000);
+  return null;
+ }
 }
 function encodePayload(m){return JSON.stringify(m)}
 /* 共有DBから受け取った1件を元の形へ戻す(§9.91)。encodePayloadと対で、

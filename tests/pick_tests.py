@@ -148,7 +148,9 @@ G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'tes
              # §9.242 ③: バリの2段（1回目の受付・2回目の計算式）
              # §9.242 ⑤⑥: 公差／基準の言い分けと、確認カードの強調・NGの記録
              # §9.242 ④: ③「記録した値」は操業データ項目マスタが決める
-             'test_burr', 'test_ngcard', 'test_recvalues', 'test_reclayout']
+             'test_burr', 'test_ngcard', 'test_recvalues', 'test_reclayout',
+             # §9.317: 参照データ（品質など）が読めなくても測定は始められる
+             'test_ctxfail']
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',
                'test_uiux', 'test_headbar', 'test_uisize', 'test_bootui',
                'test_gridhead']
@@ -158,7 +160,9 @@ G['接続'] = ['test_mastershare', 'test_storage', 'test_storageui', 'test_recmi
              'test_atomicio', 'test_localwork', 'test_dscap',
              'test_qjoin', 'test_qjoinui',
              # §9.258: 測定データは設備ごとに1ファイル（置き場の解決）
-             'test_recsplit']
+             'test_recsplit',
+             # §9.317: 読み取り専用のデータソースは写しから読む（cfg()を通す）
+             'test_srcread']
 G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm', 'test_pcname',
              # §9.272: 権限区分（開発者/メンテナンス者/一般ユーザー）と接続の管理
              'test_presence', 'test_presenceui']
@@ -265,6 +269,8 @@ RULES = [
                                      # §9.302: 使用設備の候補を「測定」で絞る
                                      'test_eqfeature',
                                      'test_audittrail', 'test_recdel',
+                                     # §9.317: 参照データが読めなくても測定は始められる
+                                     'test_ctxfail',
                                      # §9.248 ⑥: 見せる範囲を設備で絞る
                                      'test_eqscope',
                                      # §9.257 ②: 使用設備の設定モーダル（作りはここ1箇所）
@@ -313,9 +319,10 @@ RULES = [
     ('backend/routes/masters.py', g('マスタ', '列', 'test_modeguard')),
     ('backend/routes/schedule.py', g('スケジュール', 'test_modeguard', 'test_crudroutes')),
     ('backend/routes/measurement.py', g('測定', 'test_modeguard', 'test_measstore',
-                                        'test_recsplit')),
+                                        # §9.317: 参照データが読めなくても測定は始められる
+                                        'test_recsplit', 'test_srcread', 'test_ctxfail')),
     ('backend/routes/quality.py', g('test_uiux', 'test_headbar', 'test_tablequery',
-                                    'test_modeguard')),
+                                    'test_modeguard', 'test_srcread')),
     ('backend/routes/logs.py', g('ログ', 'test_modeguard')),
     ('backend/routes/path_config.py', g('test_setpage', 'test_datasource', 'test_dbopen',
                                         'test_crudroutes', 'test_modeguard', 'test_dscap',
@@ -340,7 +347,7 @@ RULES = [
                                        # §9.285 ④: 仕掛の生の列を帳票の候補へ
                                        'test_rbcatalog')),
     ('backend/db_mirror.py', g('test_dbmirror', 'test_dbopen', 'test_listcache',
-                               'test_atomicio', 'test_cleanup')),
+                               'test_atomicio', 'test_cleanup', 'test_srcread')),
     # 不要ファイルの掃除(§9.249 (1))。置き場の判定を触ると対象が変わるので、
     # 写し・置き場の網も一緒に回す。
     ('backend/file_cleanup.py', g('test_cleanup', 'test_dbmirror', 'test_localwork',
