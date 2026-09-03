@@ -269,7 +269,8 @@ def boot_places():
  add('ローカル領域',lambda:P.local_root(),'%LOCALAPPDATA%\\'+APP_ID+' 相当。書ける場所を順に探した結果')
  add('ログ',lambda:P.logs_dir())
  add('runtime',lambda:P.runtime_dir(),'待機画面の写し・進捗・刻印の置き場')
- add('待機画面の写し',lambda:setup_check.waiting_page(),'起動時にブラウザへ渡すファイル')
+ add('待機画面の写し',lambda:setup_check.waiting_page(),
+     '起動時にブラウザへ渡すファイル。'+(P.browser_dir_reason() or ''))
  add('待機画面（次の起動用）',lambda:setup_check.staged_waiting_page(),'§9.314。裏で作り直す先')
  add('起動の進捗',lambda:__import__('backend.boot_status',fromlist=['x']).status_path())
  add('起動前確認の刻印',lambda:ready.stamp_file())
@@ -289,6 +290,7 @@ def boot_environment():
  from ..changelog_data import APP_VERSION
  from ..config import APP_ID, PORT
  from ..launcher import ready
+ from .. import paths as P
  env={'version':APP_VERSION,'appId':APP_ID,'port':PORT,
       'python':sys.executable,'pythonVersion':sys.version.split()[0],
       'platform':platform.platform(),'cwd':os.getcwd(),
@@ -299,6 +301,18 @@ def boot_environment():
   env['loginId']=current_login_id();env['pcName']=current_pc_name();env['mode']=get_mode()
  except Exception as e:
   env['identityError']=f'{type(e).__name__}: {e}'
+ # **このアプリからしか見えない写しになっていないか**（§9.318）。
+ # Microsoft Store 版のPythonは`%LOCALAPPDATA%`への書き込みを私的な写しへ
+ # 回すので、**こちらは読めるのにブラウザは読めない**——「在ると書いてあるのに
+ # ファイルが見つかりません」の唯一の説明になりうる。**実測で言う**（推測しない）。
+ try:
+  from ..launcher import setup_check as _sc
+  hidden=P.msix_private_copy(_sc.waiting_page())
+  env['waitingPagePrivateCopy']=str(hidden) if hidden else ''
+  env['browserDir']=str(P.browser_dir())
+  env['browserDirReason']=P.browser_dir_reason()
+ except Exception as e:
+  env['browserDirError']=f'{type(e).__name__}: {e}'
  try:env['readyMismatch']=list(ready.mismatch() or [])
  except Exception as e:env['readyMismatch']=[f'確かめられませんでした: {e}']
  return env
@@ -335,6 +349,12 @@ def boot_report_text(env,places,records,found_mark):
  L.append(f"ポート    : {env.get('port','')}   作業フォルダ: {env.get('cwd','')}")
  mism=env.get('readyMismatch') or []
  L.append('起動前確認: ' + ('済み（刻印あり）' if not mism else '要確認: '+' / '.join(map(str,mism))))
+ priv=env.get('waitingPagePrivateCopy') or ''
+ if priv:
+  L.append('！ 待機画面はこのアプリからしか見えない写しです（実体: '+priv+'）。'
+           'ブラウザは元の場所を見るので「ファイルが見つかりません」になります。')
+ if env.get('browserDirReason'):
+  L.append('ブラウザが読む置き場: '+str(env.get('browserDir',''))+'（'+str(env['browserDirReason'])+'）')
  L.append('')
  L.append('---- 置き場（いま見に行っている先） ----')
  for p in places:

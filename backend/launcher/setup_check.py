@@ -27,7 +27,7 @@ import subprocess
 import sys
 
 from ..config import REQUIRED_PACKAGES
-from ..paths import APP_ROOT, ensure_local_dirs, runtime_dir
+from ..paths import APP_ROOT, browser_dir, ensure_local_dirs
 from . import ready
 
 # 旧配置(リポジトリ直下 / data フォルダ)に残っているDBファイルの取り込み先。
@@ -119,8 +119,13 @@ def waiting_page():
     (`boot_status.js`)を共有へ書くと**全台が同じ1つを取り合う**——他の端末の
     進捗が自分の画面に出る。写しの隣へ書けば端末ごとに分かれる。
     `loading.html`は`<script src="boot_status.js">`と**相対で**読むので、
-    写しを開くだけで置き場が切り替わる(画面側の変更は要らない)。"""
-    return runtime_dir() / 'loading.html'
+    写しを開くだけで置き場が切り替わる(画面側の変更は要らない)。
+
+    置き場は`paths.browser_dir()`が答える（§9.318）——**ブラウザが読む**
+    ファイルなので、`%LOCALAPPDATA%`への書き込みがこのアプリからしか
+    見えない写しへ回される端末では、見える場所へ移る。健全な端末では
+    `runtime_dir()`のままで、今までと1バイトも変わらない。"""
+    return browser_dir() / 'loading.html'
 
 
 def staged_waiting_page():
@@ -133,7 +138,7 @@ def staged_waiting_page():
     なく1.2秒後）。手元にアプリを置いている端末では読み出しが一瞬で終わるので
     差し替えはブラウザが起動する前に済み、**開発機では一度も再現しない**。
     §9.108/§9.270の「自分が読んでいるファイルは名前を差し替えない」と同じ話。"""
-    return runtime_dir() / 'loading.next.html'
+    return browser_dir() / 'loading.next.html'
 
 
 def copy_waiting_page(say=None):

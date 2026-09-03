@@ -357,3 +357,122 @@ def reset_work_dir_cache():
  """検証用。判定をやり直させる。"""
  global _work_dir
  _work_dir=None
+
+
+# ===========================================================================
+# ブラウザが読むファイルの置き場（§9.318、利用者の報告）
+# ---------------------------------------------------------------------------
+# 「起動時、うまくいかなくてhtmlを後から直接クリックして起動している」
+#
+# 実機のログでは、待機画面の写しは**在って・読めて・ブラウザへ渡した**のに、
+# ブラウザは「ファイルが見つかりません」と出していた。この食い違いが起こる
+# 道が1つある——**Microsoft Store 版のPython**（`\WindowsApps\` の下）は
+# MSIXの入れ物の中で動くので、`%LOCALAPPDATA%` への書き込みが
+# `%LOCALAPPDATA%\Packages\<パッケージ>\LocalCache\Local\…` の**私的な写し**
+# へ回される。**このアプリからは読める**（読みは元の場所へ落ちる）が、
+# **ブラウザは別のプロセス**なので元の場所を見に行き、そこには何も無い。
+#
+# **推測で場所を変えないこと。** 1つ書いてみて、私的な写しの側に**実際に
+# 現れたときだけ**移す——Linuxや通常のPythonでは何も起きず、健全な端末の
+# 置き場は1バイトも変わらない。
+# ===========================================================================
+def msix_private_copy(path):
+    """`path`が**このアプリからしか見えない写し**になっていれば、その写しの
+    実際の場所を返す（なっていなければNone）。
+
+    見るのは`%LOCALAPPDATA%\\Packages\\<パッケージ>\\LocalCache\\Local\\`の下に
+    **同じ相対パスのファイルが実在するか**だけ。**存在確認で送出しない**
+    （§9.108）——共有・ポリシーで失敗しうるので、分からなければNone。"""
+    try:
+        base=os.environ.get('LOCALAPPDATA')
+        if not base:return None
+        base=Path(base)
+        rel=Path(path).relative_to(base)
+    except Exception:
+        return None
+    parts=rel.parts
+    if not parts or parts[0].lower()=='packages':
+        return None                       # 写しの側そのもの。潜らない
+    pkgs=base/'Packages'
+    # **いま動いているPythonのパッケージを先に見る**（`sys.executable`の親の
+    # フォルダ名がそのままパッケージ名）。当たれば1回のstatで済む。
+    names=[]
+    try:
+        exe=Path(sys.executable)
+        if any(p.lower()=='windowsapps' for p in exe.parts):
+            names.append(exe.parent.name)
+    except Exception:
+        pass
+    try:
+        for entry in pkgs.iterdir():
+            if entry.name not in names:names.append(entry.name)
+    except Exception:
+        pass
+    for name in names:
+        cand=pkgs/name/'LocalCache'/'Local'/rel
+        try:
+            if cand.is_file():return cand
+        except OSError:
+            continue
+    return None
+
+
+_BROWSER_DIR=None
+
+def _browser_dir_candidates():
+    """ブラウザからも見える置き場の候補。**`%LOCALAPPDATA%`の外**を選ぶ
+    ——MSIXが写しへ回すのは`AppData\\Local`・`AppData\\Roaming`なので、
+    ホーム直下とアプリ本体の隣はその外側にある。"""
+    out=[]
+    try:out.append(Path.home()/('.'+LOCAL_DIR_NAME.lower())/'runtime')
+    except Exception:pass
+    out.append(APP_ROOT/'runtime')
+    return out
+
+def _visible_probe(path):
+    """そこへ1つ書いてみて、**ブラウザからも見える場所か**を確かめる。
+    書けない／私的な写しになる場所ならFalse。"""
+    try:
+        path.mkdir(parents=True,exist_ok=True)
+        probe=path/'.visible'
+        probe.write_text('',encoding='utf-8')
+        hidden=msix_private_copy(probe)
+        try:probe.unlink()
+        except Exception:pass
+        return hidden is None
+    except Exception:
+        return False
+
+def browser_dir():
+    """**ブラウザが読むファイル**（起動待機画面と、その進捗）の置き場。
+
+    既定は`runtime_dir()`——**健全な端末では今までと同じ**。書いたものが
+    私的な写しになる端末でだけ、ブラウザからも見える場所へ移す。
+    どこにも移せなければ`runtime_dir()`のまま（開けないより、いまの場所で
+    開いてみるほうがまし）。決めた場所は覚える。"""
+    global _BROWSER_DIR
+    if _BROWSER_DIR is not None:return _BROWSER_DIR[0]
+    default=runtime_dir()
+    if _visible_probe(default):
+        _BROWSER_DIR=(default,'')
+        return default
+    for cand in _browser_dir_candidates():
+        if _visible_probe(cand):
+            _BROWSER_DIR=(cand,
+                f'{default} はこのアプリからしか見えない写しになるため、'
+                f'ブラウザからも見える {cand} へ置きます')
+            return cand
+    _BROWSER_DIR=(default,
+        f'{default} はこのアプリからしか見えない写しになる可能性がありますが、'
+        '代わりの置き場が見つかりませんでした')
+    return default
+
+def browser_dir_reason():
+    """既定から移した理由（移していなければ空文字）。画面・ログの説明用。"""
+    if _BROWSER_DIR is None:browser_dir()
+    return _BROWSER_DIR[1]
+
+def reset_browser_dir_cache():
+    """検証用。判定をやり直させる。"""
+    global _BROWSER_DIR
+    _BROWSER_DIR=None
