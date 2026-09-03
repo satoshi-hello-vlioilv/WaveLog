@@ -108,7 +108,10 @@ try:
 
     # ---- 5) 待機画面の写しは中身が同じ ----
     src = (APP_ROOT / 'loading.html').read_bytes()
+    # 写す先は**次の起動用**（§9.314）なので、実際に使う名前へは
+    # `promote_waiting_page()`で移る。2つで1組。
     setup_check.copy_waiting_page()
+    setup_check.promote_waiting_page()
     rec('待機画面の写しは元と同じ中身',
         setup_check.waiting_page().read_bytes() == src,
         f'{len(src)}バイト')
@@ -205,6 +208,136 @@ try:
     rec('本体の写し直しは裏で走らせる（起動の直列路に置かない）',
         '_refresh_waiting_page_later' in _starter_src
         and 'daemon=True' in _starter_src)
+
+    # ---- 5c) 開いた写しを、その起動のあいだ差し替えない（§9.314） ----
+    # 利用者の報告「他のPCでは起動に失敗して、待機画面が
+    # `ERR_FILE_NOT_FOUND`。**直接そのhtmlをクリックすると正しく起動する**」。
+    # 以前は裏の写し直しが`waiting_page()`＝**いまブラウザへ渡したばかりの
+    # ファイル**を置き換えており、本体（クラウド同期フォルダー）の読み出しが
+    # 遅い端末では、ブラウザが立ち上がっている最中に差し替えが起きていた
+    # （実測: 渡した1ms後ではなく1.2秒後）。手元にアプリを置いた開発機では
+    # 読み出しが一瞬で終わり、差し替えはブラウザが起動する前に済むので
+    # **開発機では一度も再現しない**——これが「自分のPCでは起きない」の正体。
+    # **本体の読み出しをわざと遅くして測ること**——速いままだと、直す前でも
+    # 差し替えが先に終わって通ってしまう（§9.108と同じ「Linuxでは何も
+    # 起きない」の罠）。
+    from backend import atomic_io as _aio  # noqa: E402
+    _page = setup_check.waiting_page()
+    _staged = setup_check.staged_waiting_page()
+    _backup = _page.read_bytes() if _page.exists() else None
+    _real_aio_replace, _real_os_replace = _aio.replace, os.replace
+    _real_read_bytes = Path.read_bytes
+    _real_wb = _start.webbrowser
+    _replaced, _opened = [], {}
+    try:
+        def _slow_read(self):
+            # 本体（共有・クラウド）側の読み出しだけ遅くする。
+            if self.name == 'loading.html' and 'runtime' not in str(self):
+                time.sleep(0.8)
+            return _real_read_bytes(self)
+
+        def _watch_aio(src_, dst_, **kw):
+            _replaced.append((time.monotonic(), str(dst_)))
+            return _real_aio_replace(src_, dst_, **kw)
+
+        def _watch_os(src_, dst_):
+            _replaced.append((time.monotonic(), str(dst_)))
+            return _real_os_replace(src_, dst_)
+
+        class _Browser:
+            @staticmethod
+            def open(uri):
+                _opened['at'] = time.monotonic()
+                _opened['path'] = uri.replace('file://', '')
+                _opened['exists'] = Path(_opened['path']).exists()
+                return True
+
+        Path.read_bytes = _slow_read
+        _aio.replace = _watch_aio
+        setup_check.atomic_io = _aio
+        os.replace = _watch_os
+        _start.webbrowser = _Browser
+
+        class _Log2:
+            def info(self, *a, **k):
+                pass
+            warning = error = info
+        _start.open_waiting_screen(_Log2())
+        time.sleep(2.0)                      # 裏の写し直しが終わるまで
+    finally:
+        Path.read_bytes = _real_read_bytes
+        _aio.replace = _real_aio_replace
+        setup_check.atomic_io = _aio
+        os.replace = _real_os_replace
+        _start.webbrowser = _real_wb
+    rec('待機画面を開いた時点で、そのファイルが在る',
+        bool(_opened.get('exists')), str(_opened.get('path')))
+    _after = [d for t_, d in _replaced
+              if t_ >= _opened.get('at', 0) and d == str(_opened.get('path', ''))]
+    rec('開いた写しは、その起動のあいだ差し替えない（§9.314）',
+        not _after, '差し替え: ' + (' / '.join(_after) or 'なし'))
+    rec('裏の写し直しは「次の起動用」の名前へ書く（§9.314）',
+        any(d == str(_staged) for _t, d in _replaced)
+        or setup_check.waiting_page().read_bytes() == (APP_ROOT / 'loading.html').read_bytes(),
+        '書いた先: ' + (' / '.join(sorted({Path(d).name for _t, d in _replaced})) or 'なし'))
+
+    # 開く直前に消えていても、書き直して開く（外の掃除・ウイルス対策の隔離）。
+    # **アプリは動いているのに利用者からは起動失敗にしか見えない**のがこの
+    # 不具合の質の悪さなので、最後にもう一度確かめる。
+    _real_ensure = _start._ensure_local_waiting_page
+    _opened2 = {}
+    try:
+        _gone = setup_check.waiting_page().with_name('loading.gone.html')
+        try:
+            _gone.unlink()
+        except Exception:
+            pass
+        _start._ensure_local_waiting_page = lambda log: _gone
+
+        class _Browser2:
+            @staticmethod
+            def open(uri):
+                _opened2['path'] = uri.replace('file://', '')
+                _opened2['exists'] = Path(_opened2['path']).exists()
+                return True
+        _start.webbrowser = _Browser2
+        _start.open_waiting_screen(_Log2())
+    finally:
+        _start._ensure_local_waiting_page = _real_ensure
+        _start.webbrowser = _real_wb
+    rec('開く直前に写しが消えていたら、書き直して開く（§9.314）',
+        bool(_opened2.get('exists')), str(_opened2.get('path')))
+    # **「在る」だけでは足りない**——隔離されて0バイトになった写しは
+    # `exists()`を通るのにブラウザからは開けない。読めるかで見る。
+    _real_ensure2 = _start._ensure_local_waiting_page
+    _opened3 = {}
+    try:
+        _empty = setup_check.waiting_page().with_name('loading.empty.html')
+        _empty.write_bytes(b'')
+        _start._ensure_local_waiting_page = lambda log: _empty
+
+        class _Browser3:
+            @staticmethod
+            def open(uri):
+                _opened3['path'] = uri.replace('file://', '')
+                try:
+                    _opened3['size'] = Path(_opened3['path']).stat().st_size
+                except Exception:
+                    _opened3['size'] = -1
+                return True
+        _start.webbrowser = _Browser3
+        _start.open_waiting_screen(_Log2())
+    finally:
+        _start._ensure_local_waiting_page = _real_ensure2
+        _start.webbrowser = _real_wb
+        try:
+            _empty.unlink()
+        except Exception:
+            pass
+    rec('中身が空の写しは「開ける」と数えない（§9.314）',
+        _opened3.get('size', 0) > 0, str(_opened3))
+    if _backup is not None:
+        _page.write_bytes(_backup)
 
     # ---- 6) 確認の実処理は1箇所（起動側に写しを作らない） ----
     starter = (ROOT / 'start_app.py').read_text(encoding='utf-8')
