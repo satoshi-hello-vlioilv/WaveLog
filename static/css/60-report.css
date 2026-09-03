@@ -784,43 +784,53 @@
 .rp-pb{display:inline-block;margin-right:calc(4px * var(--rp-dense-x,1) * var(--rp-pack,1));white-space:nowrap}
 /* ラベルは**色で下げる。大きさは変えない**（同じ表の中は同じ文字サイズ）。 */
 .rp-pb>i{margin-right:calc(2px * var(--rp-dense-x,1) * var(--rp-pack,1));color:#60747b;font-style:normal;font-weight:700}
-/* ---------- 異常位置判定（参考） ----------
+/* ---------- 異常位置判定 ／ ピッチ判定 ----------
    モーダルで**保存された場合だけ**帳票へ載せる参考情報(オペレータの
    シミュレーション結果であり、測定値ではない)。板幅の実測表は条番号で
    引くので、その**直後**に置くと視線を戻さずに条を突き合わせられる。
-   高さは条数によらず一定(帯の高さ固定・該当条は右の要点欄に文字で出す)。
-   要点欄はラベルを折り返さず値だけを折り返して、見切れを起こさない。 */
-.rp-defect-body{display:grid;grid-template-columns:minmax(0,1fr) 54mm;gap:0 6px;align-items:start;margin-top:2px}
+   高さは条数によらず一定(帯の高さ固定・該当条は図の下の欄に文字で出す)。
+   欄はラベルを折り返さず値だけを折り返して、見切れを起こさない。 */
+/* ---------- 図を最大化し、文字は帳票並みに（§9.319-C、利用者の指示） ----------
+   「異常位置判定の文字の項目は必要な範囲でコンパクトに条の分割の図を最大化
+     したい」「文字が小さいので他の項目並みに大きくしてほしい」
+
+   以前は右へ54mmの欄を立てて図と横に並べていた（紙194mmの28%）。欄は7行
+   しかないので、**図を全幅にして欄は下へ横に流す**——毎回読むのは図のほう
+   （§CLAUDE 1「面積は頻度×重要度で配る」）。
+   **文字は`.rp-field`（本文8.5px／ラベル8px）へそろえる**——ここだけ
+   6.5〜8pxで、同じ紙の中で読める大きさが2通りあった。 */
+.rp-defect-body{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;align-items:start;margin-top:2px}
 .rp-defect-figure{display:flex;flex-direction:column;min-width:0}
 .rp-defect-row{display:flex;align-items:center;gap:3px;min-width:0}
-.rp-defect-end{flex:0 0 auto;width:6mm;align-self:stretch;display:flex;align-items:center;justify-content:center;border:1px solid #d6e0e3;border-radius:3px;background:#f7fafb;color:#60747b;font-size:7px;font-weight:800}
+.rp-defect-end{flex:0 0 auto;width:7mm;align-self:stretch;display:flex;align-items:center;justify-content:center;border:1px solid #d6e0e3;border-radius:3px;background:#f7fafb;color:#60747b;font-size:8px;font-weight:800}
 .rp-defect-measure{flex:1;min-width:0;display:flex;flex-direction:column}
-.rp-defect-flags{position:relative;height:11px;min-width:0}
-.rp-defect-strip{position:relative;height:11mm;min-width:0;border:1px solid #9caeb4;border-radius:3px;background:#eef2f4;overflow:hidden}
-.rp-defect-ruler{position:relative;height:11px;min-width:0}
+.rp-defect-flags{position:relative;height:13px;min-width:0}
+.rp-defect-strip{position:relative;height:15mm;min-width:0;border:1px solid #9caeb4;border-radius:3px;background:#eef2f4;overflow:hidden}
+.rp-defect-ruler{position:relative;height:13px;min-width:0}
 .rp-defect-lane{position:absolute;top:0;bottom:0;background-color:var(--defect-lane-bg,#8a9a97);border-right:1px solid #ffffff8c;color:#fff;overflow:hidden}
-.rp-defect-lane-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;font-size:6.5px;font-weight:800}
+.rp-defect-lane-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;font-size:8px;font-weight:800}
 .rp-defect-scrap{position:absolute;top:0;bottom:0;overflow:hidden;background:repeating-linear-gradient(45deg,#dde5e7,#dde5e7 3px,#eef2f4 3px,#eef2f4 6px)}
 .rp-defect-scrap span{display:none}
 .rp-defect-centerline{position:absolute;top:0;bottom:0;left:50%;width:0;border-left:1px dashed #ffffffcc}
 .rp-defect-mark{position:absolute;top:0;bottom:0;min-width:2px;box-sizing:border-box;border-left:1px solid #a32424;border-right:1px solid #a32424}
 .rp-defect-mark::before{content:"";position:absolute;inset:0;background:#a32424;opacity:.32}
 .rp-defect-flag{position:absolute;bottom:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;white-space:nowrap}
-.rp-defect-flag b{padding:0 3px;border-radius:6px;background:#a32424;color:#fff;font-size:6.5px;font-weight:800}
+.rp-defect-flag b{padding:0 3px;border-radius:6px;background:#a32424;color:#fff;font-size:8px;font-weight:800}
 .rp-defect-flag i{width:0;height:0;border-left:3px solid transparent;border-right:3px solid transparent;border-top:3px solid #a32424}
 .rp-defect-flag.at-start{align-items:flex-start;transform:translateX(-4px)}
 .rp-defect-flag.at-end{align-items:flex-end;transform:translateX(calc(-100% + 4px))}
 .rp-defect-tick{position:absolute;top:0;width:0;height:3px;border-left:1px solid #9caeb4}
-.rp-defect-tick-label{position:absolute;top:3px;transform:translateX(-50%);color:#60747b;font-size:6.5px;white-space:nowrap}
+.rp-defect-tick-label{position:absolute;top:3px;transform:translateX(-50%);color:#60747b;font-size:8px;white-space:nowrap}
 .rp-defect-tick-label.at-start{transform:translateX(0)}
 .rp-defect-tick-label.at-end{transform:translateX(-100%)}
 .rp-defect-legend{display:flex;flex-wrap:wrap;gap:1px 8px;margin-top:1px}
-.rp-defect-legend span{display:inline-flex;align-items:center;gap:3px;color:#60747b;font-size:7px;font-weight:700}
+.rp-defect-legend span{display:inline-flex;align-items:center;gap:3px;color:#60747b;font-size:8px;font-weight:700}
 .rp-defect-legend i{width:6px;height:6px;border-radius:1px;background:var(--defect-lane-bg,#8a9a97)}
 .rp-defect-legend b{color:#17272d}
-.rp-defect-facts{display:grid;align-content:start;min-width:0}
-.rp-defect-fact{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:4px;padding:.5px 2px;border-bottom:1px solid #eef2f4;font-size:8px}
-.rp-defect-fact span{color:#60747b;font-weight:700;white-space:nowrap}
+/* 欄は**下へ横に流す**（§9.319-C）。4列で7行ぶんが2段に収まり、図へ全幅を渡せる。 */
+.rp-defect-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-content:start;gap:0 6px;min-width:0}
+.rp-defect-fact{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:4px;padding:.5px 2px;border-bottom:1px solid #eef2f4;font-size:8.5px}
+.rp-defect-fact span{color:#60747b;font-size:8px;font-weight:700;white-space:nowrap}
 .rp-defect-fact b{color:#17272d;font-weight:800;text-align:right;overflow-wrap:break-word;white-space:normal}
 /* **折り返す値は左づめ**（§9.305 ②-1、利用者の報告「『内容』のコメント欄の
    折り返し方が変で2行目が右寄せになっている」）。数は右づめのままにする——
@@ -829,27 +839,35 @@
    貼るかどうかは値を組み立てる1箇所が決める。 */
 .rp-defect-fact-text b{text-align:left}
 .rp-defect-fact-hit b{color:#a32424}
-.rp-defect-foot{margin-top:1px;color:#8a9a97;font-size:7px}
-/* ---------- 長手方向（ピッチ）（§9.305 ②-2） ----------
-   幅方向の節の中へ差し込むので、**見出しは`h4`**（節の`h3`と2つ並べない・
-   CLAUDE 画面基準 8）。A4帳票配下なのでpx・16進が正しい例外。 */
-.rp-defect-roll{margin-top:2px;padding-top:2px;border-top:1px solid #e2ebee}
-.rp-defect-roll>h4{margin:0 0 1px;color:#17272d;font-size:8px;font-weight:800}
-.rp-defect-roll-answer{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;padding:1px 3px;border-radius:3px;background:#eef5f6;font-size:8px}
+.rp-defect-foot{margin-top:1px;color:#8a9a97;font-size:7.5px}
+/* ---------- ピッチ判定（§9.305 ②-2 → §9.319-C で独立した塊へ） ----------
+   以前は幅方向の節の中へ差し込んでいたので見出しは`h4`だったが、塊を
+   分けたので**題は他の塊と同じ`h3`**（`.rp-section h3`が持つ）。
+   A4帳票配下なのでpx・16進が正しい例外。 */
+/* ピッチは**独立した節**（§9.319-C）。節の題は他の塊と同じ`h3`が持つので、
+   ここでは中身だけを整える。**見切れの元は「幅方向に合わせた高さ」**だった
+   ので、塊を分けた時点で構造としては解けている。 */
+.rp-defect-roll .rp-defect-facts{margin-top:1px}
+.rp-defect-roll-answer{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;padding:1px 3px;border-radius:3px;background:#eef5f6;font-size:8.5px}
 .rp-defect-roll-answer>b{color:#17272d;font-weight:800}
 .rp-defect-roll-answer>span{color:#60747b}
 .rp-defect-roll-answer.is-empty{background:#f6f2ea}
 .rp-defect-roll-answer.is-empty>b{color:#8a6d3b}
 /* 候補の欄は**幅方向の欄と同じ形**（`.rp-defect-fact`）を使い回す。ただし
    節の中では横に流したほうが場所を使い切れるので、器だけ2列にする。 */
+/* ピッチの塊は幅6マス（紙の半分）が既定なので、欄は2列で足りる。 */
 .rp-defect-roll-facts{grid-template-columns:repeat(2,minmax(0,1fr));gap:0 6px;margin-top:1px}
-.rp-defect-roll-table{width:100%;border-collapse:collapse;margin-top:1px;font-size:7.5px}
-.rp-defect-roll-table th,.rp-defect-roll-table td{padding:.5px 2px;border-bottom:1px solid #eef2f4;text-align:left}
+/* **切れないように組む**（§9.319-C、利用者の報告「見切れが生じる」）——
+   ロール名・接触面は現場が決める文字なので、固定割りにして折り返させる。 */
+.rp-defect-roll-table{width:100%;table-layout:fixed;border-collapse:collapse;margin-top:1px;font-size:8px}
+.rp-defect-roll-table th,.rp-defect-roll-table td{padding:.5px 2px;border-bottom:1px solid #eef2f4;text-align:left;overflow-wrap:anywhere}
 .rp-defect-roll-table th{color:#60747b;font-weight:700;white-space:nowrap}
+.rp-defect-roll-table col.w-face{width:18%}.rp-defect-roll-table col.w-dia{width:20%}
+.rp-defect-roll-table col.w-kind{width:20%}.rp-defect-roll-table col.w-dev{width:14%}
 .rp-defect-roll-table td.num,.rp-defect-roll-table th.num{text-align:right}
 .rp-defect-roll-table tr.is-direct td{color:#17272d;font-weight:800}
-.rp-defect-roll-more{margin:1px 0 0;color:#60747b;font-size:7px}
-.rp-defect-roll-foot{margin:1px 0 0;color:#8a9a97;font-size:7px}
+.rp-defect-roll-more{margin:1px 0 0;color:#60747b;font-size:7.5px}
+.rp-defect-roll-foot{margin:1px 0 0;color:#8a9a97;font-size:7.5px}
 @media(max-width:1000px){.rp-body{grid-template-columns:1fr}.rp-nav{max-height:220px}}
 /* ============================================================
  2026-07-21 生産管理ダッシュボード（KPI集計）

@@ -342,21 +342,21 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
    const el=document.querySelector('.rp-defect-roll');
    if(!el)return null;
    const t=el.textContent||'';
-   return {見出し:!!el.querySelector('h4'),
+   return {見出し:(el.querySelector('h3')||{}).textContent==='ピッチ判定',
            ピッチ:/314\.2/.test(t),
            径:/合うロール径/.test(t),
            判定:!!el.querySelector('.rp-defect-roll-answer')};
   });
-  rec('長手方向（ピッチ）が既定で紙に出る',
+  rec('ピッチ判定が独立した塊として既定で紙に出る（§9.319-C）',
       !!rollOn&&rollOn.見出し&&rollOn.ピッチ&&rollOn.判定,JSON.stringify(rollOn));
   rec('合うロール径（ピッチ÷π）も紙に出る',!!rollOn&&rollOn.径,JSON.stringify(rollOn));
 
-  /* 出す／出さないを切り替える。**紙の文字が実際に変わること**まで見る。 */
-  const setRoll=async v=>{
-   await page.evaluate(()=>document.querySelector('[data-rp-block="異常位置判定"] [data-rp-paper]').click());
-   await page.waitForFunction(()=>{const m=document.getElementById('rpBlockModal');return !!m&&!m.hidden},null,{timeout:8000});
-   await page.click(`#rpBlockForm [data-e-droll="${v}"]`);
-   await page.evaluate(()=>{const c=document.getElementById('rpBlockClose');if(c)c.click()});
+  /* 出す／出さないを切り替える。**紙の文字が実際に変わること**まで見る。
+     §9.319-Cで塊を分けたので、入切は**ふつうの塊と同じ「紙に出す」**
+     （`長手:`の専用の印は廃した——同じことをする入口を2つ置かない・§9.207）。
+     **消す道と出す道は別々に通す**（塊の編集窓／置き場の札）——片方だけを
+     見る網は、もう片方が壊れていても通る（§9.278と同じ理由）。 */
+  const settleRp=async()=>{
    await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
    await page.waitForTimeout(300);
    return page.evaluate(()=>({
@@ -365,13 +365,23 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   };
   await page.click('#reportArrange');
   await page.waitForTimeout(400);
-  const off=await setRoll('なし');
-  rec('「出さない」にすると長手方向が紙から消える',
+  await page.evaluate(()=>document.querySelector('[data-rp-block="ピッチ判定"] [data-rp-paper]').click());
+  await page.waitForFunction(()=>{const m=document.getElementById('rpBlockModal');return !!m&&!m.hidden},null,{timeout:8000});
+  await page.click('#rpBlockForm [data-e-vis]');
+  await page.evaluate(()=>{const c=document.getElementById('rpBlockClose');if(c)c.click()});
+  const off=await settleRp();
+  rec('「出さない」にするとピッチ判定が紙から消える',
       !!off&&off.長手===false,JSON.stringify(off));
-  /* **幅方向は消さない**——切り替えたのは長手だけ（§4）。 */
+  /* **幅方向は消さない**——切り替えたのはピッチの塊だけ（§4）。 */
   rec('「出さない」でも幅方向（どの条か）は残る',!!off&&off.幅方向===true,JSON.stringify(off));
-  const on=await setRoll('');
-  rec('「出す」に戻すと長手方向がまた出る',!!on&&on.長手===true,JSON.stringify(on));
+  /* 置き場の札は**押すだけでも出せる**（§4）。ここも`rpShowBlock()`を通る。 */
+  const palette=await page.evaluate(()=>{
+   const b=document.querySelector('[data-rp-pal="ピッチ判定"]');
+   if(!b)return false;b.click();return true;
+  });
+  rec('出していない塊は置き場の札から押して出せる',palette===true,String(palette));
+  const on=await settleRp();
+  rec('「出す」に戻すとピッチ判定がまた出る',!!on&&on.長手===true,JSON.stringify(on));
   /* 組み換えを閉じてから先へ（触ったぶんは自動で保存される・§9.303 ③）。 */
   await page.evaluate(()=>{const c=document.getElementById('rpArrangeCancel');if(c&&!document.getElementById('rpArrangeBar')?.hidden)c.click()});
   await page.waitForTimeout(400);

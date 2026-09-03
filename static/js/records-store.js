@@ -391,18 +391,37 @@ async function withWaiting(opts,fn){
  }
 }
 window.withWaiting=withWaiting;
-/* 保存/完了登録。完了時は必須項目・公差NGの検証を通過した場合のみ登録する。 */
+/* **公差外のまま完了したことは記録に残す**（§9.319）。画面で確認しただけでは
+   後から読めない——帳票にもデータ一覧にも「ふつうの完了」としか出なくなる。
+   中身は`WL.measureReview.outOfTolerance()`の1箇所から作る（§9.163。③確認の
+   カードと同じ数を出す。ここで数え直すと、画面と記録が食い違いうる）。
+   **直したら消す**——外れていた記録が残り続けると、直した完了まで疑わせる。 */
+function noteCompletedWithNg(m){
+ if(!m)return;
+ let ng=null;
+ try{ng=window.WL&&WL.measureReview&&WL.measureReview.outOfTolerance()}catch(e){}
+ m.settings=m.settings||{};
+ if(!ng||!ng.total){delete m.settings.completedWithNg;return}
+ m.settings.completedWithNg={at:new Date().toISOString(),total:ng.total,
+   items:ng.items.map(x=>({name:x.name,count:x.hits.length}))};
+}
+/* 保存/完了登録。**完了で止めるのはオペレータ/検査員の未選択だけ**（§9.319）。
+   公差外は完了前の確認（measure-progress.js）で1回聞いてから通す。 */
 async function persistAndTransition(status){
  updateValidationVisuals();
- /* 完了の可否は2段構え。ここで止めるのは「製品に依らず必ず不正なもの」だけ:
-      - 公差外(ng): 値が範囲外。測り直すかNGとして記録する必要がある
-      - オペレータ/検査員の未選択: どの製品でも必須
-    測定項目の未入力は、必要な項目が製品の材質・用途・規格で変わるため
-    ここでは止めず、measure-progress.js が全項目・全丈位置をまとめて提示して
-    確認する(意図的に測らない項目があるため、一律のブロックは作業を止める)。 */
+ /* **止めるのは「誰が測ったか」だけ**（§9.319、利用者の指示「測定値のエラーで
+    NGがあっても測定は完了できるようにしてください」）。
+    以前は公差外があると完了そのものを断っていたが、**公差外は測った事実**で
+    あって入力の誤りとは限らない——外れたまま完了して次の工程へ渡す判断は
+    現場のものなので、アプリが握ってはいけない（§4の「できないと書く」は
+    **本当にできないとき**の話で、ここは「してよいか」の判断）。
+    **止める代わりに、黙って通さない**——完了前の確認（measure-progress.js の
+    ラッパー）が件数と項目を出して1回だけ聞き、通したら`completedWithNg`として
+    記録に残す。オペレータ/検査員は**どの製品でも必須**なので今までどおり止める
+    （誰が測ったか分からない記録は、あとから意味を持てない）。
+    測定項目の未入力も止めない——必要な項目は製品の材質・用途・規格で変わる。 */
  if(status==='完了'){
   const result=updateValidationVisuals();
-  if(result.ng.length){showValidationMessage(result);return}
   const identity=result.missing.filter(x=>x.el&&(x.el.id==='operator'||x.el.id==='inspector'));
   if(identity.length){showValidationMessage({missing:identity,ng:[]});return}
  }
@@ -410,12 +429,17 @@ async function persistAndTransition(status){
  try{
   const m=collect();m.status=status;m.updatedAt=new Date().toISOString();m.snapshot=m.snapshot||{};
   m.snapshot.source=structuredClone(m.source||{});m.snapshot.basic=structuredClone(m.basic||{});m.snapshot.savedAt=m.updatedAt;m.snapshot.schema='v32-full';
+  if(status==='完了')noteCompletedWithNg(m);
   const result=await reliablePut(m);
   const accessOK=await backupAndTrackSync(m);
   if(!accessOK)console.warn('Access backup failed',m.syncState?.lastError);
   measureDirty=false;
   await refreshDraftCount();refreshSyncStatusUI();$('#measureModal').hidden=true;hideSaveOverlay();
-  showToast(status==='完了'?'完了登録しました':'一時保存しました',`${m.basic.lotNo||''} / IndexedDB ${result.idbOK?'OK':'代替保存'} / バックアップ ${accessOK?'OK':'未送信（後で自動的に再送します）'}`,6500);
+  /* **公差外のまま完了したなら、そう言う**（§9.319・§3）。「完了登録しました」
+     だけだと、外れていた事実が押した瞬間に画面から消える。 */
+  const withNg=(m.settings&&m.settings.completedWithNg)||null;
+  showToast(status==='完了'?(withNg?`完了登録しました（公差外・基準外 ${withNg.total}件を含みます）`:'完了登録しました'):'一時保存しました',
+            `${m.basic.lotNo||''} / IndexedDB ${result.idbOK?'OK':'代替保存'} / バックアップ ${accessOK?'OK':'未送信（後で自動的に再送します）'}`,6500);
   await openRecords(status==='完了'?'履歴':'編集中');
  }catch(e){hideSaveOverlay();setState('保存エラー');alert('保存できませんでした: '+e.message)}
 }
@@ -1074,6 +1098,15 @@ const RECORD_COLUMNS=[
   note:'測定画面の①準備で決めた条数です。'},
  {k:'NG回数',get:x=>{const n=Number(x.settings?.ngCount||0);return n>0?String(n):''},
   fmt:{kind:'text',suffix:'回'}},
+ /* **通した完了は、あとからも読めること**（§9.319-A）。押した瞬間のトーストは
+    消えるので、記録へ残した印をここへ出す——読める場所が無い印は、残して
+    いないのと同じ（§4）。**既定では出さない**（`def`を付けない）——いま見て
+    いる一覧を勝手に1列増やさない（§9.132）。 */
+ {k:'完了時の公差外',track:'minmax(140px,1fr)',origin:'calc',
+  get:x=>{const w=x.settings?.completedWithNg;
+   return w&&w.total?`${w.total}件（${(w.items||[]).map(i=>i.name).filter(Boolean).join('、')}）`:''},
+  note:'公差・基準の外に出ている値があることを確認したうえで完了した記録です。'
+       +'直してから完了し直すと消えます。'},
  {k:'同期',origin:'calc',get:x=>(x.syncState?.status==='synced'?'送信済み':'未送信'),
   note:'バックアップDB（db/records.sqlite3）へ送れているかです。'},
  {k:'データID',track:'minmax(150px,0)',get:x=>x.id,
