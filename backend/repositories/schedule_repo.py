@@ -28,7 +28,7 @@ with_write(login_id,pc_name,uid,apply_fn)のapply_fn内から
 import json as _json
 import re as _re
 
-from ..db_access import tables, cols, qi
+from ..db_access import add_missing_columns, tables
 from .master_repo import normalize_equipment_name
 
 # ========================================================================
@@ -65,19 +65,13 @@ def ensure_plan_table(c_share):
   cur.execute('CREATE INDEX [IX_作業予定_設備順] ON [作業予定] ([設備名],[表示順])')
   c_share.commit();created=True
   return created
- cur=c_share.cursor()
- cols={str(r[1]) for r in cur.execute('PRAGMA table_info([作業予定])').fetchall()}
- if PLAN_PARENT_COLUMN not in cols:
-  cur.execute('ALTER TABLE [作業予定] ADD COLUMN [親予定ID] INTEGER')
-  c_share.commit()
  # 端末名(§9.180)も「無ければ足す」で移行する。**共有DBは既に現場で動いて
  # いるので作り直さない**(古い版のアプリが書いた行はNULLのまま読める)。
- changed=False
- for name in (PLAN_CREATED_PC_COLUMN,PLAN_UPDATED_PC_COLUMN):
-  if name in cols:continue
-  cur.execute(f'ALTER TABLE [作業予定] ADD COLUMN [{name}] TEXT')
-  changed=True
- if changed:c_share.commit()
+ # **足すのは`add_missing_columns()`の1箇所**（§9.315）——共有DBは
+ # なおさら「別の端末が今まさに足した」が起こりうる。
+ add_missing_columns(c_share,'作業予定',
+                     ((PLAN_PARENT_COLUMN,'INTEGER'),
+                      (PLAN_CREATED_PC_COLUMN,'TEXT'),(PLAN_UPDATED_PC_COLUMN,'TEXT')))
  return created
 
 def plan_rows(c_share,equipment=None,include_inactive=False):
@@ -627,13 +621,10 @@ def ensure_row_style_table(c_master):
  # 既存環境には題名の3列が無い。**空のまま足して「未設定＝既定」**で扱う
  # （他マスタと同じ互換ポリシー。値を入れ直させない）。
  try:
-  have=set(cols(c_master,ROW_STYLE_TABLE))
-  for name in (ROW_TITLE_LOOK_COLUMN,ROW_TITLE_PLACE_COLUMN,ROW_TITLE_ALIGN_COLUMN,
-               ROW_TITLE_TIME_COLUMN):
-   if name not in have:
-    cur=c_master.cursor()
-    cur.execute(f'ALTER TABLE {qi(ROW_STYLE_TABLE)} ADD COLUMN {qi(name)} TEXT')
-    c_master.commit()
+  add_missing_columns(c_master,ROW_STYLE_TABLE,
+                      tuple((n,'TEXT') for n in
+                            (ROW_TITLE_LOOK_COLUMN,ROW_TITLE_PLACE_COLUMN,
+                             ROW_TITLE_ALIGN_COLUMN,ROW_TITLE_TIME_COLUMN)))
  except Exception:pass
  return created
 
@@ -1046,9 +1037,7 @@ def ensure_shift_pattern_tables(c_master):
   c_master.commit();created=True
  # 日付補正(§9.195)は後から足した列。現場で動いているDBを作り直さないため
  # 「無ければALTER TABLEで足す」方式にする(他のマスタと同じ)。
- if SHIFT_SEGMENT_DAYOFF_COLUMN[0] not in {r[1] for r in c_master.cursor().execute(f'PRAGMA table_info([{SHIFT_SEGMENT_TABLE}])')}:
-  c_master.cursor().execute(f'ALTER TABLE [{SHIFT_SEGMENT_TABLE}] ADD COLUMN [{SHIFT_SEGMENT_DAYOFF_COLUMN[0]}] {SHIFT_SEGMENT_DAYOFF_COLUMN[1]}')
-  c_master.commit()
+ add_missing_columns(c_master,SHIFT_SEGMENT_TABLE,(SHIFT_SEGMENT_DAYOFF_COLUMN,))
  _migrate_shift_pattern_equipment(c_master)
  return created
 

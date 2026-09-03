@@ -12,7 +12,8 @@ backend/routes/masters.py が持つ。
 """
 import json
 
-from ..db_access import DBS, connect, ensure_audit_columns, tables, cols, qi
+from ..db_access import (DBS, add_missing_columns, connect, ensure_audit_columns,
+                         tables, cols, qi)
 
 EQUIPMENT_MASTER_TABLE='設備マスタ'
 MAX_STRIPS_COLUMN='最大条数'
@@ -191,12 +192,10 @@ def ensure_equipment_master_table(c):
  # 既存環境には[最大条数]・[区分]が無い。空のまま足して「未設定＝既定値」で
  # 扱う(他マスタと同じ互換ポリシー。値を入れ直させない)。
  try:
-  have=set(cols(c,EQUIPMENT_MASTER_TABLE))
-  for name,decl in ((MAX_STRIPS_COLUMN,'INTEGER'),(EQUIPMENT_KIND_COLUMN,'TEXT'),
-                    (STANDARD_MINUTES_COLUMN,'REAL'),(MAX_LINE_SPEED_COLUMN,'REAL'),
-                    (EQUIPMENT_DISABLED_COLUMN,'TEXT')):
-   if name not in have:
-    cur=c.cursor();cur.execute(f'ALTER TABLE {qi(EQUIPMENT_MASTER_TABLE)} ADD COLUMN {qi(name)} {decl}');c.commit()
+  add_missing_columns(c,EQUIPMENT_MASTER_TABLE,
+                      ((MAX_STRIPS_COLUMN,'INTEGER'),(EQUIPMENT_KIND_COLUMN,'TEXT'),
+                       (STANDARD_MINUTES_COLUMN,'REAL'),(MAX_LINE_SPEED_COLUMN,'REAL'),
+                       (EQUIPMENT_DISABLED_COLUMN,'TEXT')))
  except Exception:pass
  ensure_audit_columns(c,EQUIPMENT_MASTER_TABLE)
  return created
@@ -696,11 +695,10 @@ _FILTER_PRESET_MEMBERS_COLUMN=('メンバーJSON','TEXT')
 
 def _add_missing_column(c,table,name,decl):
  """無ければ足す。**足したときだけTrue**——「この列を初めて作った」を
- 一度きりの移行の合図に使える(§9.288 ②)。"""
- if name not in {r[1] for r in c.cursor().execute(f'PRAGMA table_info([{table}])')}:
-  c.cursor().execute(f'ALTER TABLE [{table}] ADD COLUMN [{name}] {decl}')
-  c.commit();return True
- return False
+ 一度きりの移行の合図に使える(§9.288 ②)。実処理は
+ `add_missing_columns()`の1箇所（§9.315。同時に走っても壊れない——
+ 同時に足された場合は「こちらが足したのではない」ので False）。"""
+ return bool(add_missing_columns(c,table,((name,decl),)))
 
 def ensure_filter_preset_table(c):
  names=tables(c);created=False
@@ -904,11 +902,8 @@ def ensure_access_permission_table(c):
   cur.execute('CREATE UNIQUE INDEX [UX_アクセス権限マスタ] ON [アクセス権限マスタ] ([ログインID],[PC名])')
   c.commit();created=True
  ensure_audit_columns(c,ACCESS_PERMISSION_TABLE)
- existing=set(cols(c,ACCESS_PERMISSION_TABLE));cur=c.cursor();changed=False
- for name,typ in _SCHEDULE_PERMISSION_COLUMNS+_ROLE_COLUMNS:
-  if name not in existing:
-   cur.execute(f'ALTER TABLE [{ACCESS_PERMISSION_TABLE}] ADD COLUMN [{name}] {typ}');changed=True
- if changed:c.commit()
+ add_missing_columns(c,ACCESS_PERMISSION_TABLE,
+                     _SCHEDULE_PERMISSION_COLUMNS+_ROLE_COLUMNS)
  return created
 
 def normalize_identity_part(value):
@@ -1180,8 +1175,7 @@ def ensure_column_layout_table(c):
   cur.execute('CREATE UNIQUE INDEX [UX_列レイアウトマスタ] ON [列レイアウトマスタ] ([対象],[列名])')
   c.commit();created=True
  ensure_audit_columns(c,COLUMN_LAYOUT_TABLE)
- # 既存DBへの追加(他マスタと同じ「無ければALTER TABLEで足す」方式)。
- have={r[1] for r in c.cursor().execute(f'PRAGMA table_info([{COLUMN_LAYOUT_TABLE}])')}
+ # 既存DBへの追加(他マスタと同じ「無ければ足す」方式)。
  # 計算式(§9.111 ⑦): データ側に無い列を、既にある列から作る。**列の1行**
  # として持つので、並び・幅・書式・読み替えはそのまま効く。
  # 幅固定(§9.119): 幅を「自動(内容に合わせる)/手で決めた幅/固定」の3つで持つ。
@@ -1191,23 +1185,21 @@ def ensure_column_layout_table(c):
  # 生の値/変換後のどちらで並べるか。**1列ぶんをJSONで持つ**——中身は
  # 3つで、増えるたびに列を足すと移行が要る（表示だけの設定なので、
  # SQLで絞り込む相手にはならない）。
- for name,decl in (('表示','INTEGER'),('表示名','TEXT'),
-                   ('書式種別','TEXT'),('書式パターン','TEXT'),('小数桁','INTEGER'),
-                   ('桁区切り','INTEGER'),('単位前','TEXT'),('単位後','TEXT'),
-                   ('読み替えルール','TEXT'),('計算式','TEXT'),('幅固定','INTEGER'),
-                   ('並べ替え','TEXT'),
+ add_missing_columns(c,COLUMN_LAYOUT_TABLE,
+                    (('表示','INTEGER'),('表示名','TEXT'),
+                     ('書式種別','TEXT'),('書式パターン','TEXT'),('小数桁','INTEGER'),
+                     ('桁区切り','INTEGER'),('単位前','TEXT'),('単位後','TEXT'),
+                     ('読み替えルール','TEXT'),('計算式','TEXT'),('幅固定','INTEGER'),
+                     ('並べ替え','TEXT'),
                    # 揃え(§9.239 ④)。**2列に分ける**——値と見出しは別の設定で、
                    # 「見出しだけ中央」「見出しは値に追従」を1つの値では書けない。
-                   ('値揃え','TEXT'),('見出し揃え','TEXT'),
-                   # 所有者(§9.259): **空欄＝みんなのもの**。既存の行はそのまま
+                     ('値揃え','TEXT'),('見出し揃え','TEXT'),
+                     # 所有者(§9.259): **空欄＝みんなのもの**。既存の行はそのまま
                    # 共通の設定として効き続ける（フィルタの[所有者ID]・§9.172と
                    # 同じ約束）。**NULLにしないこと**——SQLiteの一意索引は
                    # NULL同士を「違う」と見るので、同じ列の行を何本でも作れて
                    # しまう。NOT NULL DEFAULT '' で必ず値を持たせる。
-                   ('所有者ID',"TEXT NOT NULL DEFAULT ''")):
-  if name not in have:
-   c.cursor().execute(f'ALTER TABLE [{COLUMN_LAYOUT_TABLE}] ADD COLUMN [{name}] {decl}')
-   c.commit()
+                     ('所有者ID',"TEXT NOT NULL DEFAULT ''")))
  # 鍵は(対象,列名)から(対象,列名,所有者ID)へ張り直す。所有者を足した以上、
  # 古い鍵のままでは**同じ列の個人設定を1つも作れない**。
  cur=c.cursor()

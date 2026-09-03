@@ -65,7 +65,7 @@
 増やしたときに2箇所直すことになる）。**知らない値も保存できる**
 （現場の呼び名は選択肢で塞げない）。
 """
-from ..db_access import ensure_audit_columns, tables
+from ..db_access import add_missing_columns, ensure_audit_columns, tables
 
 TABLE = 'ロールマスタ'
 # 設備停止マスタが「すべての設備」に使う印。**ロールでは受け付けない**が、
@@ -428,16 +428,9 @@ def ensure_table(c):
         c.commit()
         ensure_audit_columns(c, TABLE)
         return True
-    # 既存DBへの追加は他マスタと同じ「無ければ ALTER TABLE で足す」方式。
-    cur = c.cursor()
-    have = {r[1] for r in cur.execute(f'PRAGMA table_info([{TABLE}])')}
-    added = False
-    for name, kind in _ADDED_COLUMNS:
-        if name not in have:
-            cur.execute(f'ALTER TABLE [{TABLE}] ADD COLUMN [{name}] {kind}')
-            added = True
-    if added:
-        c.commit()
+    # 既存DBへの追加は他マスタと同じ「無ければ足す」方式。**足すのは
+    # `add_missing_columns()`の1箇所**（§9.315。同時に走っても壊れない）。
+    add_missing_columns(c, TABLE, _ADDED_COLUMNS)
     ensure_audit_columns(c, TABLE)
     _migrate_once(c)
     return False

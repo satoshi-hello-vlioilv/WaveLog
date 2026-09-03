@@ -25,6 +25,7 @@
 入れない——1ロット1枚の記録なので、レコードと一緒に運ばれるのが正しい
 （子ロットデータと同じ扱い・§9.91）。
 """
+from ..db_access import add_missing_columns
 from .master_repo import tables
 
 ITEM_TABLE = '操業データ項目マスタ'
@@ -1034,16 +1035,9 @@ _CHOICE_ADDED_COLUMNS = (
 
 
 def _ensure_choice_columns(c):
-    cur = c.cursor()
-    have = {r[1] for r in cur.execute(f'PRAGMA table_info([{CHOICE_TABLE}])')}
-    added = False
-    for name, kind in _CHOICE_ADDED_COLUMNS:
-        if name not in have:
-            cur.execute(f'ALTER TABLE [{CHOICE_TABLE}] ADD COLUMN [{name}] {kind}')
-            added = True
-    if added:
-        c.commit()
-    return added
+    # **足すのは`add_missing_columns()`の1箇所**（§9.315）——同時に読みに
+    # 来た2本が両方足しに行くと、後の1本が`duplicate column name`で落ちる。
+    return bool(add_missing_columns(c, CHOICE_TABLE, _CHOICE_ADDED_COLUMNS))
 
 
 def ensure_choice_table(c):
@@ -2111,23 +2105,22 @@ def resolve_limit(c, key, equipment):
 def _ensure_item_columns(c):
     cur = c.cursor()
     have = {r[1] for r in cur.execute(f'PRAGMA table_info([{ITEM_TABLE}])')}
-    added = False
     # **マスの数え方が変わったことの目印は「列そのもの」**（§9.218 ②）。
     # 6マス→12マスにしたので、保存済みの`[列幅]`は倍にしないと**全部が
     # 半分の幅になる**。専用の目印を別に持つと、それを消したときに二重に
     # 掛かる——`[入力方法]`が無い＝12マスへ移る前の行、という1つの事実で
     # 判断する（列を足す作業そのものが1度きりなので、目印として確実）。
     grow = '入力方法' not in have and '列幅' in have
-    for name, kind in _ITEM_ADDED_COLUMNS:
-        if name not in have:
-            cur.execute(f'ALTER TABLE [{ITEM_TABLE}] ADD COLUMN [{name}] {kind}')
-            added = True
+    # **足すのは`add_missing_columns()`の1箇所**（§9.315）。ここが
+    # 「読んでから足すまでに別のリクエストが足す」で落ちていた
+    # （利用者の報告『duplicate column name: 丸め方』。その版へ上げた
+    # 最初の1回だけ起き、リロードすると直る）。
+    added = add_missing_columns(c, ITEM_TABLE, _ITEM_ADDED_COLUMNS)
     if grow:
         cur.execute(f'UPDATE [{ITEM_TABLE}] SET [列幅]=[列幅]*{SPAN_UNIT} '
                     'WHERE [列幅] IS NOT NULL AND [列幅]>0')
-    if added:
         c.commit()
-    return added
+    return bool(added)
 
 
 def _seed_builtins(c):
