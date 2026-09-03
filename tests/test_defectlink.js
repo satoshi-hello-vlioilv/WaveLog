@@ -204,6 +204,58 @@ let b=null,page=null;
   const back=await page.evaluate(()=>document.querySelectorAll('.svb-defect').length);
   rec('入に戻すと印が戻る',back>=1,String(back));
 
+  /* ---- ピッチだけでも保存できる（§9.319-B、利用者の指示） ----
+     「異常位置判定のピッチだけの場合も保存できるようにしてください。」
+     **幅方向を空にしてから見る**——距離が入ったままだと①だけで保存でき、
+     ②を見ない実装でも通る（材料は自分で作る・§9.291 ①）。 */
+  await page.evaluate(()=>{
+   if(document.querySelector('#defectModal')?.hidden)WL.defect.open();
+   const d=document.getElementById('defectDistance');
+   if(d){d.value='';d.dispatchEvent(new Event('input',{bubbles:true}))}
+   const s=S.measure&&S.measure.settings;
+   if(s){delete s.defectLocation;delete s.defectRoll}
+   const pitch=document.getElementById('defectPitch');
+   if(pitch){pitch.value='';pitch.dispatchEvent(new Event('input',{bubbles:true}))}
+   WL.defect.refresh();
+  });
+  await page.waitForTimeout(400);
+  const none=await page.evaluate(()=>({
+   押せる:!document.getElementById('defectSave').disabled,
+   帯:(document.getElementById('defectSaveState')||{}).textContent||'',
+  }));
+  rec('距離もピッチも無ければ、今までどおり押せない',
+      none.押せる===false&&/未保存/.test(none.帯),JSON.stringify(none));
+
+  await page.evaluate(()=>{
+   WL.defect.setTab('roll');
+   const el=document.getElementById('defectPitch');
+   el.value='785.4';el.dispatchEvent(new Event('input',{bubbles:true}));
+  });
+  await page.waitForTimeout(500);
+  const only=await page.evaluate(()=>({
+   押せる:!document.getElementById('defectSave').disabled,
+   説明:document.getElementById('defectSave').getAttribute('title')||'',
+   帯:(document.getElementById('defectSaveState')||{}).textContent||'',
+  }));
+  rec('ピッチだけでも保存を押せる',only.押せる===true,JSON.stringify(only));
+  rec('幅方向は保存しないことを説明に書く（§4）',
+      /幅方向は判定できていない/.test(only.説明),only.説明.slice(0,70));
+  rec('帳票に出せることを帯が言う（「出ません」と嘘をつかない）',
+      /長手方向（ピッチ）は記録済み/.test(only.帯)&&!/帳票に出ません/.test(only.帯),only.帯);
+
+  await page.click('#defectSave');
+  await page.waitForTimeout(600);
+  const saved=await page.evaluate(()=>{
+   const s=(S.measure&&S.measure.settings)||{};
+   return {ピッチ:(s.defectRoll||{}).pitch,
+           幅方向の保存:!!(s.defectLocation&&s.defectLocation.saved),
+           紙に出る:!!(WL.defect.hasRoll&&WL.defect.hasRoll(S.measure))};
+  });
+  rec('押すとピッチが記録に入る',Number(saved.ピッチ)===785.4,JSON.stringify(saved));
+  rec('ピッチだけのときは幅方向の判定を作らない（空の判定を残さない）',
+      saved.幅方向の保存===false,JSON.stringify(saved));
+  rec('記録したピッチは帳票の対象になる',saved.紙に出る===true,JSON.stringify(saved));
+
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
   rec('FATAL',false,e.message);

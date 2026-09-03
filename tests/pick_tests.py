@@ -70,7 +70,9 @@ G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint',
                    # §9.306-B: リンクマスタの盤（押す道・掴む道・断り）
                    'test_choicelinkui']
 # 異常位置判定と条の設計の連携(§9.226 ④)。どちらを触っても両方を回す。
+# §9.319-C: 紙の異常位置判定とピッチ判定（塊を分ける・文字を本文並みに）
 G['異常位置'] = ['test_defect', 'test_defectlink', 'test_splitlive', 'test_scsplit',
+                 'test_rpdefect',
                  # §9.239 ⑥: ピッチ→ロール判定とロールマスタ
                  'test_roll', 'test_mmfold',
                  # §9.241 ④⑤: ロールの読み込み経路と、入力の取り消し
@@ -148,7 +150,8 @@ G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'tes
              # §9.242 ③: バリの2段（1回目の受付・2回目の計算式）
              # §9.242 ⑤⑥: 公差／基準の言い分けと、確認カードの強調・NGの記録
              # §9.242 ④: ③「記録した値」は操業データ項目マスタが決める
-             'test_burr', 'test_ngcard', 'test_recvalues', 'test_reclayout',
+             # §9.319: 公差外・基準外があっても測定を完了できる
+             'test_burr', 'test_ngcard', 'test_ngdone', 'test_recvalues', 'test_reclayout',
              # §9.317: 参照データ（品質など）が読めなくても測定は始められる
              'test_ctxfail']
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',
@@ -242,6 +245,8 @@ RULES = [
                                         'test_rpsave',
                                         # §9.313: 紙の余白は横と縦の別の軸
                                         'test_rppack',
+                                        # §9.319-C: 異常位置判定とピッチ判定を分ける
+                                        'test_rpdefect',
                                         # §9.302: 設備の候補（ロットの無い設備だけ絞る）
                                         'test_eqfeature',
                                         # §9.254 (3): 帳票レイアウトマスタの口（WL.reportLayout）
@@ -296,6 +301,8 @@ RULES = [
                                     'test_blockbuild', 'test_rbcells', 'test_rbcatalog')),
     ('static/css/60-report.css', g('見た目', 'test_screport', 'test_rpblocks', 'test_rplayout',
                                    'test_rpprint',
+                                   # §9.319-C: 判定の文字を本文並みに・図を最大化
+                                   'test_rpdefect',
                                    # §9.313: 余白の横・縦は別の変数（掛け算）
                                    'test_rppack',
                                    # §9.274: 見出しのマス・ラベル無しのマス・紙への入口

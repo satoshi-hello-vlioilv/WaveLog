@@ -297,32 +297,53 @@ function completionReview(){
  const m=S.measure;if(!m)return null;
  const p=progressOf(m);if(!p)return null;
  const notes=[];
+ /* **公差外もここへ入れる**（§9.319、利用者の指示「測定値のエラーでNGが
+    あっても測定は完了できるようにしてください」）。以前は公差外だけが別扱いで
+    **完了そのものを断って**いた。止めないと決めた以上、確認は**この1つの
+    ダイアログ**に集める——未入力とNGで2回聞くのは、2回とも読まれなくなる
+    （§5「危ない操作は確認する」は、確認を増やせという意味ではない）。
+    数えるのは`outOfToleranceOf()`の1箇所（§9.163。③確認のカードと同じ数）。 */
+ let ng=null;try{ng=outOfToleranceOf(m)}catch(e){}
+ if(ng&&ng.total){
+  ng.items.forEach(x=>{
+   const w=(window.WL&&WL.measureItem&&WL.measureItem.limitWord)?WL.measureItem.limitWord(x.name):'公差';
+   notes.push(`・${x.name} ${w}外 ${x.hits.length}件`);
+  });
+ }
  p.unmeasured.forEach(x=>{
   notes.push(`・${x.name}（${x.state==='todo'?'未入力':`${x.filled}/${x.total} 入力`}）`);
  });
  const wt=m.workTime||{};
  if(!wt.startAt||!wt.endAt)notes.push(`・作業時間（${!wt.startAt&&!wt.endAt?'開始・終了とも未記録':!wt.startAt?'開始が未記録':'終了が未記録'}）`);
- return{progress:p,notes};
+ return{progress:p,notes,ngTotal:(ng&&ng.total)||0};
 }
 const basePersistAndTransition=typeof persistAndTransition==='function'?persistAndTransition:null;
 if(basePersistAndTransition){
- persistAndTransition=function(status){
+ persistAndTransition=async function(status){
   if(status==='完了'){
-   /* 公差外・オペレータ/検査員の未選択は records-store 側で止まる。確認を
-      出してから止めると二度手間になるため、その場合は確認を出さず委ねる。 */
+   /* **オペレータ/検査員の未選択だけは records-store 側で止まる**（§9.319）。
+      確認を出してから止めると二度手間になるので、その場合は聞かずに委ねる。
+      **公差外はもう止まらない**ので、ここで一緒に確認する。 */
    try{
     const v=updateValidationVisuals();
     const identity=v.missing.filter(x=>x.el&&(x.el.id==='operator'||x.el.id==='inspector'));
-    if(v.ng.length||identity.length)return basePersistAndTransition.apply(this,arguments);
+    if(identity.length)return basePersistAndTransition.apply(this,arguments);
    }catch(e){console.warn('completion precheck failed',e)}
    let review=null;
    try{review=completionReview()}catch(e){console.warn('completion review failed',e)}
    if(review&&review.notes.length){
     const skipped=review.progress.items.filter(x=>x.excluded).map(x=>x.name);
-    const text=['測定していない項目があります。','',...review.notes,'',
+    /* **見出しは事実に合わせる**（§CLAUDE 6）。公差外があるのに「測定して
+       いない項目があります」とだけ出すと、画面が別のことを言うことになる。 */
+    const head=review.ngTotal
+     ?`公差・基準の外に出ている測定値が ${review.ngTotal}件 あります。`
+     :'測定していない項目があります。';
+    const text=[head,'',...review.notes,'',
      skipped.length?`対象外に設定した項目: ${skipped.join('、')}`:'',
-     'このまま完了として登録しますか？'].filter(x=>x!=='').join('\n');
-    if(!confirm(text))return Promise.resolve();
+     review.ngTotal?'このまま完了として登録しますか？（公差外・基準外があったことは記録に残ります）'
+                   :'このまま完了として登録しますか？'].filter(x=>x!=='').join('\n');
+    const ok=(typeof confirmModal==='function')?await confirmModal(text):confirm(text);
+    if(!ok)return;
    }
   }
   return basePersistAndTransition.apply(this,arguments);

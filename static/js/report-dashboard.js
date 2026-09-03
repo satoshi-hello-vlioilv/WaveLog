@@ -211,28 +211,34 @@
  /* 異常位置判定(参考)。描画は defect-locator.js が持つ(モーダルの図と
     同じ計算・同じ配色を1箇所に置き、帳票側で作り直さないため)。
     保存されていないロットでは空文字が返るので、そのまま連結してよい。 */
- /* ---------- 長手方向（ピッチ）を紙に載せるか（§9.305 ②-2、利用者の指示
-    「長手方向のデータがある場合はそれも表示したり、しなかったり選べるように」） ----------
-    **既定は出す**——記録が無いロットでは1行も増えないので、いま刷っている紙は
-    変わらない（§9.132）。設定は他の見せ方と同じ`|`区切りの印（§9.226 ③）。 */
+ /* ---------- 長手方向（ピッチ）の入切は**塊の「紙に出す」へ移した**（§9.319-C）
+    ----------
+    §9.305 ②-2では「異常位置判定」の中の`長手:`という印で入切していたが、
+    塊を2つに分けた以上、**同じことをする入口が2つ**になる（§9.207・
+    §CLAUDE 8）。ふつうの塊と同じ「紙に出す」に一本化し、印は廃した。
+    **既定は出す**——記録が無いロットでは1行も増えないので、いま刷っている
+    紙は変わらない（§9.132）。 */
  const RP_DEFECT_KEY='異常位置判定';
- const RP_DEFECT_ROLLS=[
-  {v:'',    label:'出す',  note:'長手方向（ピッチ）を記録したロットでは、ロールの判定も紙に出します。'},
-  {v:'なし',label:'出さない',note:'幅方向（どの条に掛かるか）だけを紙に出します。'},
- ];
- function rpDefectRoll(){return rpToken(RP_DEFECT_KEY,'長手:')==='なし'?'なし':''}
+ const RP_DEFECT_ROLL_KEY='ピッチ判定';
+ /* ---------- 幅方向とピッチは**別の塊**（§9.319-C、利用者の指示） ----------
+    「異常位置判定とピッチ判定のブロックを分けてほしいです」
+    「印刷レイアウトでピッチ測定の場合、見切れが生じる不具合」
+
+    以前は1つの塊で、ピッチを幅方向の節の中へ差し込んでいた。**器の高さは
+    塊ごとに決まる**ので、幅方向の図に合わせた高さのままピッチだけの中身を
+    入れると、背丈がまるで違って`overflow:hidden`に切り落とされる。
+    分ければ高さはそれぞれの中身から決まる（`rpFitRows()`が測る）。 */
  function defectSection(x){
   if(!rpShowDefect)return '';
   const d=window.WL&&WL.defect;
   if(!d||!d.reportSectionHtml)return '';
-  const width=d.reportSectionHtml(x)||'';
-  /* **長手だけでも出す**——幅方向を保存していないロットでもピッチは記録
-     されうる（別のタブ・別の鍵）。片方が空でも、もう片方は紙に出す。 */
-  const roll=(rpDefectRoll()==='なし'||!d.rollSectionHtml)?'':(d.rollSectionHtml(x)||'');
-  if(!width&&!roll)return '';
-  if(!width)return `<section class="rp-section"><h3>異常位置判定（参考）</h3>${roll}</section>`;
-  /* 幅方向の節の中へ差し込む（見出しを2つ出さない・CLAUDE 画面基準 8）。 */
-  return roll?width.replace('</section>',roll+'</section>'):width;
+  return d.reportSectionHtml(x)||'';
+ }
+ function defectRollSection(x){
+  if(!rpShowDefect)return '';
+  const d=window.WL&&WL.defect;
+  if(!d||!d.rollSectionHtml)return '';
+  return d.rollSectionHtml(x)||'';
  }
  /* ---------- 用紙の向き（A4縦 / A4横） ----------
     横向きは列の多い測定データ表(板幅ほか15列)に効く。用紙寸法はCSSの
@@ -1219,7 +1225,8 @@
      入っている（利用者の指示「通常は今までどおり軸を共通にして組み合わせた形」）。 */
   ...RP_MEAS_GROUPS.map(gr=>({k:rpMeasSoloKey(gr.g),span:gr.cols.length>=3?6:4,meas:gr.g,
     html:x=>rpShowWidthTable(x)?measSoloSection(x,gr.g):''})),
-  {k:'異常位置判定',span:12,html:x=>defectSection(x)},
+  {k:RP_DEFECT_KEY,span:12,html:x=>defectSection(x)},
+  {k:RP_DEFECT_ROLL_KEY,span:6,html:x=>defectRollSection(x)},
   {k:'作業時間',span:6,html:x=>{const w=x.workTime||{};
    const dur=w.startAt&&w.endAt?formatDuration(new Date(w.endAt)-new Date(w.startAt)):(w.startAt?'作業中':'未計測');
    return reportSection('作業時間',[['開始時刻',formatWorkTime(w.startAt)],['終了時刻',formatWorkTime(w.endAt)],['実働時間',dur]])}},
@@ -1846,6 +1853,13 @@
    if(order.length&&order.indexOf(k)<0){order.push(k);patch.order=order}
   }else set.add(k);
   patch.hidden=[...set];
+  /* **旧`長手:なし`は、押されたその場で捨てる**（§9.319-C／§9.132）。
+     下の`rpHiddenSet()`が旧い印を「ピッチ判定を隠す」と読み替えているので、
+     捨てないと**「出す」を押しても次に読むとまた隠れる**——§9.274でここへ
+     集約した「押しても何も起きないボタン」（§4）を、別の道でもう一度作る
+     ことになる。**旧い印を持っていないときは触らない**。 */
+  if(k===RP_DEFECT_ROLL_KEY&&rpToken(RP_DEFECT_KEY,'長手:'))
+   patch.formats=rpTokenPatch(RP_DEFECT_KEY,'長手:','');
   rpStage(patch);
  }
  function rpHiddenSet(){
@@ -1858,6 +1872,12 @@
      出したあとに「隠した」のか「まだ出していない」のかが区別できなくなる。 */
   const known=new Set(l.order||[]);
   rpUserBlocks.forEach(b=>{if(!known.has(b.k))set.add(b.k)});
+  /* **旧`長手:なし`を「ピッチ判定を出さない」として読み替える**（§9.319-C）。
+     §9.305 ②-2ではこの入切を「異常位置判定」の中の印で持っていた。塊を2つに
+     分けた以上その印はもう誰も読まないので、**わざわざ「出さない」を選んだ
+     紙が、版を上げただけで黙って1枚増える**（§9.132）。読み替えは
+     ここ1箇所で、`rpShowBlock()`が押された時点で印そのものを捨てる。 */
+  if(rpToken(RP_DEFECT_KEY,'長手:')==='なし')set.add(RP_DEFECT_ROLL_KEY);
   return set;
  }
  /* ---------- 紙のマス数(§9.173) ----------
@@ -3030,12 +3050,6 @@
     <span class="rp-form-ctl">
      ${RP_PRODUCT_MODES.map(m=>`<button type="button" data-e-pmode="${esc(m.v)}" class="${m.v===rpProductMode()?'is-on':''}">${esc(m.label)}${m.v===''?'（既定）':''}</button>`).join('')}
      <i class="rp-form-note">${esc((RP_PRODUCT_MODES.find(m=>m.v===rpProductMode())||RP_PRODUCT_MODES[0]).note)}</i></span></div>`:''}
-   ${k===RP_DEFECT_KEY?`<div class="rp-form-row"><span class="rp-form-label">長手方向</span>
-    <span class="rp-form-ctl">
-     ${RP_DEFECT_ROLLS.map(m=>`<button type="button" data-e-droll="${esc(m.v)}" class="${m.v===rpDefectRoll()?'is-on':''}">${esc(m.label)}${m.v===''?'（既定）':''}</button>`).join('')}
-     <i class="rp-form-note">${esc((RP_DEFECT_ROLLS.find(m=>m.v===rpDefectRoll())||RP_DEFECT_ROLLS[0]).note)}
-      ピッチを記録していないロットでは、どちらを選んでも<b>1行も増えません</b>。
-      候補のロールはロールマスタから毎回引き直すので、径を直せば紙の候補も直ります。</i></span></div>`:''}
    <div class="rp-form-row"><span class="rp-form-label">紙に出す</span>
     <span class="rp-form-ctl">
      <button type="button" data-e-vis>${rpHiddenSet().has(k)?'出す':'出さない'}</button>
@@ -3077,10 +3091,6 @@
    const t=rpTokens(RP_PRODUCT_KEY).filter(x=>x!=='内訳'&&x!=='合否');
    if(b.dataset.ePmode)t.push(b.dataset.ePmode);
    rpStage({formats:rpPatternPatch(RP_PRODUCT_KEY,t.join('|'))});renderBlockEditor();
-  });
-  /* 長手方向の入切（§9.305 ②-2）。**印は1つずつ差し替える**（§9.226 ③）。 */
-  form.querySelectorAll('[data-e-droll]').forEach(b=>b.onclick=()=>{
-   rpStage({formats:rpTokenPatch(k,'長手:',b.dataset.eDroll)});renderBlockEditor();
   });
   form.querySelectorAll('[data-e-turn]').forEach(b=>b.onclick=()=>{
    rpStage({formats:rpFlagPatch(k,'転置',b.dataset.eTurn==='転置')});renderBlockEditor();
@@ -4614,11 +4624,11 @@
    /* **押すだけでも出せる**（§4）。掴めない環境・タッチでも行き止まりに
       しない。位置は末尾で、あとから掴んで動かせる。 */
    b.onclick=()=>{
-    const set=new Set(rpHiddenSet());set.delete(k);
-    /* **並びにも載せる**（§9.217）。自作の塊は「並びに載っていない＝まだ
-       出していない」で判断するので、`hidden`から外すだけでは次に読んだ
-       ときにまた隠れる（押しても何も起きないように見える）。 */
-    rpStage({hidden:[...set],order:rpBlockKeys()});updateArrangeBar();
+    /* **出す・出さないは`rpShowBlock()`の1つを通す**（§9.274）。ここだけが
+       自前で`hidden`と`order`を書いていたので、あちらが持っている決まり
+       （並びにも載せる・§9.217／旧い印を捨てる・§9.319-C）が効かなかった
+       ——**置き場から押して出した塊だけ、次に読むとまた隠れる**。 */
+    rpShowBlock(k,true);updateArrangeBar();
    };
   });
   if(el.dataset.wired)return;
@@ -4699,7 +4709,6 @@
  function rpWarmRolls(x){
   const d=window.WL&&WL.defect;
   if(!d||!d.ensureRolls||!d.hasRoll||!d.hasRoll(x))return;
-  if(rpDefectRoll()==='なし')return;
   const eq=d.rollEquipmentOf?d.rollEquipmentOf(x):'';
   const id=x&&x.id;
   d.ensureRolls(eq).then(got=>{

@@ -909,14 +909,25 @@ function updateValidationVisuals(){
   else setVisualState(el,hasValue(el)?'valid':'required');
  });
  const missing=required.filter(({el})=>!hasValue(el)),ng=required.filter(({el})=>el.classList.contains('ng'));
- const button=$('#complete');if(button){button.classList.toggle('validation-blocked',missing.length>0||ng.length>0);button.title=missing.length?`未入力 ${missing.length}件`:ng.length?`公差外 ${ng.length}件`:'完了できます'}
+ /* **合図は残すが、文言は事実に合わせる**（§9.319・§CLAUDE 6）。公差外では
+    もう完了を止めないので、「完了できません」と読める書き方をしない。
+    印（`validation-blocked`）は「押す前に見てほしいものがある」の意味で残す。 */
+ const button=$('#complete');
+ if(button){
+  button.classList.toggle('validation-blocked',missing.length>0||ng.length>0);
+  button.title=missing.length?`未入力 ${missing.length}件`
+   :ng.length?`公差外・基準外 ${ng.length}件（確認のうえ完了できます）`:'完了できます';
+ }
  return{missing,ng};
 }
 function showValidationMessage(result){
  document.querySelectorAll('.validation-message').forEach(x=>x.remove());
  const target=$('.center-pane'),message=document.createElement('div');message.className='validation-message';
  const missingNames=[...new Set(result.missing.map(x=>x.label))];
- message.textContent=result.ng.length?`完了できません。未入力 ${result.missing.length}件、公差外 ${result.ng.length}件を確認してください。`:`完了できません。未入力項目を確認してください: ${missingNames.slice(0,6).join('、')}${missingNames.length>6?' ほか':''}`;
+ /* ここへ来るのは**オペレータ/検査員が未選択のときだけ**（§9.319）。
+    公差外は止めないので、件数を併記して「完了できません」と言わない
+    ——止めていない理由を止めた理由として書くと、直す先を取り違える。 */
+ message.textContent=`完了できません。未入力項目を確認してください: ${missingNames.slice(0,6).join('、')}${missingNames.length>6?' ほか':''}`;
  target.prepend(message);result.missing[0]?.el?.focus();
 }
 function judgeInput(el,key,value,index){

@@ -331,37 +331,85 @@
    hits:r.hits.map(h=>({index:h.index,lot:h.lot,width:h.width,fromLaneOs:h.fromLaneOs}))};
  }
  function savedRecord(){return S.measure?.settings?.defectLocation?.saved||null}
+ /* ---------- ピッチだけでも保存できる（§9.319-B、利用者の指示） ----------
+    「異常位置判定のピッチだけの場合も保存できるようにしてください。」
+
+    **幅方向（①）と長手方向（②）は別の鍵**（`defectLocation` /
+    `defectRoll`）で、**紙も片方だけで出せる**ように既に組んである
+    （`defectSection()`の「長手だけでも出す」）。ところが**この足元だけが
+    ①しか見ておらず**、ピッチだけ入れた人には「判定できていないため保存
+    できません」「未保存（この判定は帳票に出ません）」と出ていた
+    ——記録には入っているのに、画面が嘘をつく（§CLAUDE 6）。
+
+    いま判定できるピッチが在るかは`rollReady()`の1箇所が答える。画面が
+    開いていれば入力欄、まだ書き戻されていなければ記録を見る（`refreshRoll()`
+    が書き戻すまでの隙を作らない）。 */
+ function rollReady(){
+  const live=num($id('defectPitch')?.value);
+  if(Number.isFinite(live)&&live>0)return true;
+  return !!rollInputOf(S.measure);
+ }
  function renderSaveState(r){
   const el=$id('defectSaveState'),save=$id('defectSave'),unsave=$id('defectUnsave');
   const sv=savedRecord(),cur=readInput();
   const stale=!!sv&&!sameInput(sv.input||sv,cur);
-  if(unsave)unsave.hidden=!sv;
+  const roll=rollReady();
+  const widthErr=!!r&&!!r.error;
+  if(unsave){
+   unsave.hidden=!sv;
+   /* **外せるのは幅方向だけ**と書く（§4）。ピッチは入力そのものが記録なので、
+      ここでは消さない（消したいなら「入力を消す」）。 */
+   unsave.title=roll?'保存した幅方向の判定を取り消します（長手方向のピッチは記録に残ります）'
+                    :'保存した判定を取り消します。取り消すと測定帳票には表示されなくなります';
+  }
   if(save){
-   save.disabled=!!r&&!!r.error;
+   /* **どちらか一方でも保存できるものが在れば押せる。** */
+   save.disabled=widthErr&&!roll;
    save.textContent=sv?(stale?'保存を更新':'保存済み'):'この判定を保存';
-   save.title=r&&r.error?`判定できていないため保存できません（${r.error}）`
+   save.title=save.disabled?`判定できていないため保存できません（${r.error}）`
+    :widthErr?`長手方向（ピッチ）を記録します。幅方向は判定できていないので保存しません（${r.error}）`
     :stale?'いま画面に出ている判定で、保存内容を上書きします'
     :'この判定を保存します。保存すると測定帳票にも載せられます（正式な測定値ではなく、参考のシミュレーション結果として扱います）';
   }
   if(!el)return;
-  el.classList.toggle('is-saved',!!sv&&!stale);
+  el.classList.toggle('is-saved',(!!sv&&!stale)||(!sv&&roll));
   el.classList.toggle('is-stale',stale);
-  if(!sv)el.textContent='未保存（この判定は帳票に出ません）';
-  else if(stale)el.textContent='保存後に入力が変わりました。帳票にはまだ保存時の内容が出ます';
-  else el.innerHTML=`保存済み <b>${esc(new Date(sv.savedAt).toLocaleString('ja-JP'))}</b> ／ 帳票に表示できます`;
+  /* **出るものは出ると書く**（§3）。幅方向・長手方向のどちらが紙に載るのかを
+     分けて言う——「未保存」の一言だけだと、記録済みのピッチまで出ないと読める。 */
+  const rollNote=roll?'長手方向（ピッチ）は記録済み ／ 帳票に出せます':'';
+  if(!sv)el.innerHTML=roll?esc(rollNote)+'（幅方向は未保存です）'
+                          :'未保存（この判定は帳票に出ません）';
+  else if(stale)el.textContent='保存後に入力が変わりました。帳票にはまだ保存時の内容が出ます'
+   +(roll?'（長手方向のピッチは記録済みです）':'');
+  else el.innerHTML=`保存済み <b>${esc(new Date(sv.savedAt).toLocaleString('ja-JP'))}</b> ／ 帳票に表示できます`
+   +(roll?` ／ ${esc(rollNote)}`:'');
  }
  function doSave(){
   const r=lastResult;
-  if(!S.measure||!r||r.error){showToast?.('保存できません','判定できていないため保存しません');return}
-  S.measure.settings=S.measure.settings||{};
-  const prev=S.measure.settings.defectLocation||{};
-  S.measure.settings.defectLocation={...prev,...readInput(),
-   lanes:r.hits.map(h=>({index:h.index,lot:h.lot,width:h.width})),position:r.pos,
-   updatedAt:new Date().toISOString(),saved:snapshot(r)};
-  if(typeof markDirty==='function')markDirty();
+  if(!S.measure)return;
+  const roll=rollReady();
+  if((!r||r.error)&&!roll){showToast?.('保存できません','判定できていないため保存しません');return}
+  /* **長手方向は入力そのものが記録**（§9.239 ⑥。候補はマスタから毎回引き
+     直すので凍結しない）。押されたぶんを取りこぼさないよう、ここでも書き戻す。 */
+  if(roll)saveRollInput();
+  const widthSaved=!!r&&!r.error;
+  if(widthSaved){
+   S.measure.settings=S.measure.settings||{};
+   const prev=S.measure.settings.defectLocation||{};
+   S.measure.settings.defectLocation={...prev,...readInput(),
+    lanes:r.hits.map(h=>({index:h.index,lot:h.lot,width:h.width})),position:r.pos,
+    updatedAt:new Date().toISOString(),saved:snapshot(r)};
+   if(typeof markDirty==='function')markDirty();
+  }
   renderSaveState(r);
   syncSplitMarks();
-  showToast?.('異常位置判定を保存しました','測定帳票の「異常位置判定（参考）」に表示されます');
+  /* **何を保存したかを言う**（§3）。片方だけのときに「保存しました」だけだと、
+     もう片方も保存できたと読める。 */
+  const what=widthSaved&&roll?'幅方向と長手方向（ピッチ）'
+   :widthSaved?'幅方向':'長手方向（ピッチ）';
+  showToast?.(`異常位置判定を保存しました（${what}）`,
+   widthSaved?'測定帳票の「異常位置判定」に表示されます'
+             :'測定帳票の「ピッチ判定」に表示されます');
  }
  function doUnsave(){
   const d=S.measure?.settings?.defectLocation;
@@ -558,7 +606,17 @@
   const lots=[...new Set(hits.map(h=>h.lot).filter(Boolean))];
   const fact=(label,value,cls)=>`<div class="rp-defect-fact${cls?' '+cls:''}"><span>${esc(label)}</span><b>${esc(value||'－')}</b></div>`;
   const answer=hits.length?`OSから ${rangeLabel(hits.map(h=>h.index+1))} 条目（${hits.length}条）`:'製品に掛かる条なし';
-  return `<section class="rp-section"><h3>異常位置判定（参考）</h3>
+  /* ---------- 図を最大化し、文字は帳票並みに（§9.319-C、利用者の指示） ----------
+     「異常位置判定の文字の項目は必要な範囲でコンパクトに条の分割の図を
+      最大化したいです」「文字が小さいので他の項目並みに大きくしてほしい」
+
+     以前は**右に54mmの欄を立てて**図と横に並べていた（紙194mmの28%）。
+     欄は7行しかないので、**図の下へ横に流す**ほうが場所を使い切れる
+     ——図は全幅になり、欄は4列でむしろ読みやすくなる（§CLAUDE 1
+     「面積は頻度×重要度で配る」。ここで毎回読むのは図のほう）。
+     **題から「（参考）」を外す**（利用者の指示）——参考値であることは
+     足元の注記が言っており、題で2度言う必要は無い（§CLAUDE 8）。 */
+  return `<section class="rp-section"><h3>異常位置判定</h3>
    <div class="rp-defect-body">
     <div class="rp-defect-figure">
      <div class="rp-defect-row"><span class="rp-defect-end">OS</span>
@@ -661,7 +719,11 @@
      +`・候補 ${r.hits.length}本（うち直接一致 ${direct}本）</span></div>`;
     /* 紙は狭いので**上位5本まで**。**落とした件数は必ず書く**（§4）。 */
     const show=r.hits.slice(0,5);
-    list=`<table class="rp-defect-roll-table"><thead><tr>`
+    /* **列の割りを決めておく**（§9.319-C）。`table-layout:fixed`は
+       colgroupが無いと先頭行の中身で割るので、長いロール名が1本混じると
+       他の列が潰れて切れる（利用者の報告「見切れが生じる」）。 */
+    list=`<table class="rp-defect-roll-table"><colgroup><col><col class="w-face">`
+     +`<col class="w-dia"><col class="w-kind"><col class="w-dev"></colgroup><thead><tr>`
      +`<th>ロール名</th><th>接触面</th><th>径(mm)</th><th>一致</th><th>ずれ</th></tr></thead><tbody>`
      +show.map(h=>{const b=h.band;
        const dia=b.worn?`${fmt(b.dHi,1)}〜${fmt(b.dLo,1)}`:fmt(b.dHi,1);
@@ -676,8 +738,15 @@
        ?`<p class="rp-defect-roll-more">ほかに ${r.hits.length-show.length}本の候補があります（画面の「長手方向」で全部見られます）。</p>`:'');
    }
   }
-  return `<div class="rp-defect-roll">
-   <h4>長手方向（ピッチ）</h4>
+  /* ---------- ピッチは**独立した塊**（§9.319-C、利用者の指示） ----------
+     「異常位置判定とピッチ判定のブロックを分けてほしいです」
+
+     以前は幅方向の節の中へ差し込んでいたため、**器の高さは幅方向の図に
+     合わせて決まっていた**——ピッチだけのロットでは中身の背丈がまるで違い、
+     `.rp-block`の`overflow:hidden`に切り落とされていた（利用者の報告
+     「印刷レイアウトでピッチ測定の場合、見切れが生じる」）。塊を分ければ
+     高さはそれぞれの中身から決まる（`rpFitRows()`が測る）。 */
+  return `<section class="rp-section rp-defect-roll"><h3>ピッチ判定</h3>
    ${head}
    <div class="rp-defect-facts rp-defect-roll-facts">
     ${fact('ピッチ',`${fmt(input.pitch,1)}mm`)}
@@ -690,7 +759,7 @@
    ${list}
    <p class="rp-defect-roll-foot">欠陥のピッチ＝ロールの周長（π×径）。候補は${esc(eq||'（設備不明）')}のロールマスタから引いた参考値で、
     「倍の間隔」「1周に複数」は<b>直接一致ではありません</b>。</p>
-  </div>`;
+  </section>`;
  }
 
  /* ---------- 条の設計へ渡す（§9.226 ②、利用者の指示） ----------
@@ -1011,6 +1080,10 @@
   set('defectRollBasis',rollBasisHtml());
   /* ①と同じ理由で、**判定できなくても入力は書き戻す**（§9.241 ⑤）。 */
   saveRollInput();
+  /* **足元の状態もここで直す**（§9.319-B）。ピッチを打った瞬間に
+     「保存できます」へ変わらないと、押せるようになったことに気づけない
+     ——足元は①と②で共有しているので、②を触ったときも塗り直す。 */
+  renderSaveState(lastResult);
  }
 
  /* ---------- タブ（§9.239 ⑥） ---------- */
