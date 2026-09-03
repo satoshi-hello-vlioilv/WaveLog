@@ -296,7 +296,12 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('印は理由と結果を書く（紙では空欄になる）',
       /空欄/.test(board2.title),board2.title.slice(0,80));
 
-  /* 既定の塊では「既定の中身を写す」が出る。 */
+  /* 既定の塊では「既定の中身を写す」が出る。
+     **`品質等級`は§9.320-Eで自動で種をまく側**になったので、開いた時点で
+     既にマスが入っている——ボタンの文字は「既定を写す」ではなく
+     「既定へ戻す」（`master-maint.js`の`state.rows.length?'既定へ戻す':
+     '既定を写す'`）。**どちらでも「白紙から組ませない」は満たしている**
+     （押せば1回でその塊の既定形へ揃う点は同じ）ので、両方を受ける。 */
   await page.evaluate(()=>{const c=document.getElementById('maintEditorCancel');if(c)c.click()});
   await page.waitForSelector('#masterMaintList .mm-row',{timeout:20000});
   await page.evaluate(name=>{
@@ -312,8 +317,8 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
    const b=document.querySelector('#maintEditorForm .fb-seed');
    return b?{hidden:b.hidden,text:b.textContent.trim(),title:b.title}:null;
   });
-  rec('既定の塊では「既定の中身を写す」が出る（白紙から組ませない）',
-      !!seed&&seed.hidden===false&&/写す|置き換え/.test(seed.text),JSON.stringify(seed));
+  rec('既定の塊では「既定の中身を写す／戻す」が出る（白紙から組ませない）',
+      !!seed&&seed.hidden===false&&/写す|置き換え|戻す/.test(seed.text),JSON.stringify(seed));
   if(seed&&!seed.hidden){
    await page.click('#maintEditorForm .fb-seed');
    await page.waitForFunction(()=>document.querySelectorAll('#maintEditorForm .fb-rows .fb-row').length>=12,

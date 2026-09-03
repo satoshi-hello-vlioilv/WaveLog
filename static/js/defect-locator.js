@@ -727,7 +727,12 @@
      +`<th>ロール名</th><th>接触面</th><th>径(mm)</th><th>一致</th><th>ずれ</th></tr></thead><tbody>`
      +show.map(h=>{const b=h.band;
        const dia=b.worn?`${fmt(b.dHi,1)}〜${fmt(b.dLo,1)}`:fmt(b.dHi,1);
-       return `<tr class="${h.kind==='direct'?'is-direct':''}">`
+       /* **狭い紙では接触面・径の列を落とす**（§9.320-F）ので、行に全部を
+          書いておく——落とした列は「無い」のではなく「読める場所を移した」
+          （§4／§9.234 ①）。 */
+       return `<tr class="${h.kind==='direct'?'is-direct':''}" title="${esc(
+         `${h.roll.name||'（名前なし）'} ／ 接触面 ${h.roll.contactFace||'—'}`
+         +` ／ 径 ${dia}mm ／ ${ROLL_KIND_LABEL[h.kind]} ／ ずれ ${(h.dev*100).toFixed(2)}%`)}">`
         +`<td>${esc(h.roll.name||'（名前なし）')}</td>`
         +`<td>${esc(h.roll.contactFace||'—')}</td>`
         +`<td class="num">${esc(dia)}</td>`

@@ -859,10 +859,18 @@ const endArrange=async page=>{
    rec('詰めても文字サイズ（font-size）は変えない',
        !!N&&N.fs===W.fs,`広${W&&W.fs} / 狭${N&&N.fs}`);
    /* ---- 詰めを止めると縮む倍率が下がる（＝文字が小さくなる） ----
-      inline の `--rp-pack`（塊ごとの段・§9.313）を `!important` で打ち消してから測り直す。
-      **A/Bで見ること**——「狭いと縮む」だけを見る網は、詰めが1pxも
-      効いていない実装でも通る。 */
-   await page.addStyleTag({content:'.rp-block-fit{--rp-pack:1 !important}'});
+      **詰め（段）は3つの経路を持つ**（§9.303 ①: 余白／1行に戻す／余力の
+      列を回す）ので、**3つとも**止めないと「止めた」ことにならない
+      ——`--rp-pack`（余白）だけを`!important`で打ち消しても、`rp-pack-
+      nowrap`・`rp-pack-share`のクラスが持つCSS効果（`white-space:nowrap`・
+      `table-layout:auto`）はそのまま生きており、**片方が生きていれば
+      それだけで詰まってしまう**（実測: 8.5pxへ上げたあとは、nowrapだけ・
+      余白だけのどちらか片方でも単独でroomへ収まってしまい、A/Bの差が
+      消える。§9.320-D の追補）。**A/Bで見ること**——「狭いと縮む」だけを
+      見る網は、詰めが1pxも効いていない実装でも通る。 */
+   await page.addStyleTag({content:'.rp-block-fit{--rp-pack:1 !important}'
+    +'.rp-block-fit.rp-pack-share .rp-product-table{table-layout:fixed !important}'
+    +'.rp-block-fit.rp-pack-nowrap,.rp-block-fit.rp-pack-nowrap *:not(.rp-info-box){white-space:normal !important}'});
    await page.evaluate(()=>WL.reportFit());
    await settle(page);await page.waitForTimeout(150);
    const OFF=await look();
@@ -909,9 +917,13 @@ const endArrange=async page=>{
    rec('狭いマスでは余白を詰め、余力のある列を詰まった列へ回す（table-layout:auto）',
        !!NP&&NP.pack.indexOf('rp-pack-share')>=0&&NP.dense<1&&NP.tl==='auto',
        JSON.stringify(NP&&{pack:NP.pack,dense:NP.dense,tl:NP.tl,fit:NP.fit}));
-   /* ---- 段を止めると、そのぶん文字を縮めることになる（A/B） ---- */
+   /* ---- 段を止めると、そのぶん文字を縮めることになる（A/B） ----
+      **余白（`--rp-pack`）も一緒に打ち消すこと**——nowrap/shareだけを
+      止めても、余白の詰め（dense .25）が単独で足りてしまうと差が出ない
+      （上のA/Bと同じ罠。§9.320-D の追補）。 */
    await page.addStyleTag({content:
-     '.rp-block-fit.rp-pack-share .rp-product-table{table-layout:fixed !important}'
+     '.rp-block-fit{--rp-pack:1 !important}'
+    +'.rp-block-fit.rp-pack-share .rp-product-table{table-layout:fixed !important}'
     +'.rp-block-fit.rp-pack-nowrap,.rp-block-fit.rp-pack-nowrap *:not(.rp-info-box){white-space:normal !important}'});
    await page.evaluate(()=>WL.reportFit());
    await settle(page);await page.waitForTimeout(150);
@@ -919,6 +931,15 @@ const endArrange=async page=>{
    rec('段（1行を保つ・余力のある列を回す）を止めると、そのぶん文字を縮めることになる',
        !!NOFF&&!!NP&&NOFF.fit<NP.fit-0.001,
        `段あり ${NP&&NP.fit} / 段なし ${NOFF&&NOFF.fit}`);
+   /* **後片付け**——このA/B用の`<style>`を残すと、以降の節（§9.308等）の
+      詰め・縮めの実測に紛れ込む。 */
+   await page.evaluate(()=>{
+    document.querySelectorAll('style').forEach(s=>{
+     if((s.textContent||'').indexOf('rp-pack-nowrap')>=0)s.remove();
+    });
+   });
+   await page.evaluate(()=>WL.reportFit());
+   await settle(page);
   }catch(e){rec('FATAL(§9.298)',false,e.message)}
 
   /* ==========================================================

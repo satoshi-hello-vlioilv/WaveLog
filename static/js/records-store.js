@@ -434,6 +434,7 @@ async function persistAndTransition(status){
   const accessOK=await backupAndTrackSync(m);
   if(!accessOK)console.warn('Access backup failed',m.syncState?.lastError);
   measureDirty=false;
+  cancelAutoSave();
   await refreshDraftCount();refreshSyncStatusUI();$('#measureModal').hidden=true;hideSaveOverlay();
   /* **公差外のまま完了したなら、そう言う**（§9.319・§3）。「完了登録しました」
      だけだと、外れていた事実が押した瞬間に画面から消える。 */
@@ -548,7 +549,7 @@ async function openMeasurement(row){
 // v32 final navigation controller
 function bindV32Navigation(){
  const open=async status=>{try{await openRecords(status)}catch(e){console.error(e);alert('保存データ一覧を開けません: '+e.message)}};
- [['homeDrafts','編集中'],['openDrafts','編集中']].forEach(([id,status])=>{const b=$('#'+id);if(b){b.onclick=null;b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();open(status)})}})
+ [['homeDrafts','編集中']].forEach(([id,status])=>{const b=$('#'+id);if(b){b.onclick=null;b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();open(status)})}})
 }
 /* データ一覧(#recordModal)。半透明のモーダルなので、他の画面を閉じずに
    開くと下の画面が透けて重なる(実績カレンダー表示中に開いて実際に起きた)。
@@ -578,7 +579,7 @@ async function openRecordsSafe(status='編集中'){
 }
 // Capture phase keeps the navigation working even if another handler fails or is overwritten.
 document.addEventListener('click',event=>{
- const button=event.target.closest('[data-open-records],#homeDrafts,#openDrafts');
+ const button=event.target.closest('[data-open-records],#homeDrafts');
  if(!button)return;
  event.preventDefault();event.stopImmediatePropagation();
  const status=button.dataset.openRecords||'編集中';
@@ -586,17 +587,70 @@ document.addEventListener('click',event=>{
 },true);
 $('#saveDraft').onclick=()=>persistAndTransition('編集中');
 $('#complete').onclick=()=>persistAndTransition('完了');
-$('#backupNow').onclick=async()=>{
- showSaveOverlay('バックアップDBへ送信','完全スナップショットを送信中');
+/* ---------- DBへは裏で書く（§9.320-G、利用者の指示） ----------
+   「DBへの保存は変更があるたびごとに裏でやっているはずなので特に意識する
+    必要もないと思いますが、DBに保存していることがわかるように右上の
+    バッジをうまく使って表示をしてほしいです」
+
+   **その前提は事実ではなかった**——測定値は「保存して一覧へ」か「測定を
+   完了」を押すまでDBへ入らず、15分ごとのタイマーは**保存済みで送信に
+   失敗した分の再送**だけだった。ボタン（旧`#backupNow`）を消すだけでは、
+   測定を続けながらDBへ入れる唯一の手立てが消え、バッジは最後まで
+   「未保存」と言い続けることになる（画面が嘘をつく・§CLAUDE 6）。
+   利用者の指示で**前提のほうを本当にした**。
+
+   **測定中の転送に触らないこと**（§9.122）——ここでするのは値を書くことと
+   バッジの文字だけで、`renderMeasureGrid()`も`#deviceInput`も触らない。
+   **`lockCounts()`は呼ばない**——`saveLocal()`は条数・丈数を固定するので、
+   裏で走らせると**打ち始めた瞬間に条数を変えられなくなる**（利用者が
+   保存を押した意思とは別のことをすることになる）。
+   **落ち着いてから1回**（打つたびに往復すると共有越しで数秒かかる・§9.273）。 */
+const AUTO_SAVE_IDLE_MS=1500;
+let autoSaveTimer=null,autoSaveRunning=false,autoSaveAgain=false;
+function cancelAutoSave(){if(autoSaveTimer){clearTimeout(autoSaveTimer);autoSaveTimer=null}}
+function scheduleAutoSave(){
+ if(!S.measure)return;
+ /* 画面を閉じたあとは書かない（閉じる側が完全な保存を済ませている）。 */
+ if($('#measureModal')?.hidden)return;
+ cancelAutoSave();
+ autoSaveTimer=setTimeout(()=>{autoSaveTimer=null;runAutoSave()},AUTO_SAVE_IDLE_MS);
+}
+async function runAutoSave(){
+ if(!S.measure||!measureDirty)return;
+ if($('#measureModal')?.hidden)return;
+ if(autoSaveRunning){autoSaveAgain=true;return}
+ autoSaveRunning=true;
+ const id=S.measure.id;
  try{
-  const m=collect();await reliablePut(m);
-  const ok=await backupAndTrackSync(m);
-  refreshSyncStatusUI();hideSaveOverlay();
-  if(ok)showToast('バックアップ完了',m.basic.lotNo||'');
-  else showToast('バックアップ失敗',`${m.basic.lotNo||''} / ${m.syncState?.lastError||''}（未同期として記録し、後で再送できます）`,7000);
- }catch(e){hideSaveOverlay();alert('バックアップ失敗: '+e.message)}
-};
-$('#discard').onclick=async()=>{if(await confirmModal('端末内の測定データを削除しますか？')){await reliableDelete(S.measure.id);await refreshDraftCount();$('#measureModal').hidden=true;WL.refreshScheduleIfOpen?.()}};
+  do{
+   autoSaveAgain=false;
+   const m=collect();
+   /* **状態は変えない**——完了済みのデータを開いて直しているときに
+      「編集中」へ落とすと、一覧の分類が押した覚えなく変わる。 */
+   m.status=S.measure.status||'編集中';m.updatedAt=new Date().toISOString();
+   setState('DBへ保存しています…');
+   await reliablePut(m);
+   /* **開いている記録が変わったら止める**（§9.229 ④と同じ罠）——往復の
+      あいだに別のロットへ移っていたら、そのロットの状態を上書きしない。 */
+   if(!S.measure||S.measure.id!==id)return;
+   measureDirty=false;
+   const ok=await backupAndTrackSync(m);
+   if(!S.measure||S.measure.id!==id)return;
+   refreshSyncStatusUI();
+   /* **どこまで入ったかを書く**（§9.202の3か所のうち①②）。失敗も
+      黙らない——「後で再送します」まで書けば、打つ手が無いことも読める。 */
+   setState(ok?'DBへ保存済み':'この端末に保存済み（DBへは後で自動的に再送します）');
+  }while(autoSaveAgain);
+ }catch(e){
+  /* **画面の値は消えない**ことを書く（§4）。次の入力でまた試す。 */
+  if(S.measure&&S.measure.id===id)setState('保存できませんでした（画面の値は残っています）');
+  console.warn('auto save failed',e);
+ }finally{autoSaveRunning=false}
+}
+window.WL=window.WL||{};
+window.WL.autoSave={schedule:scheduleAutoSave,cancel:cancelAutoSave,now:runAutoSave,
+  idleMs:()=>AUTO_SAVE_IDLE_MS};
+$('#discard').onclick=async()=>{if(await confirmModal('端末内の測定データを削除しますか？')){cancelAutoSave();measureDirty=false;await reliableDelete(S.measure.id);await refreshDraftCount();$('#measureModal').hidden=true;WL.refreshScheduleIfOpen?.()}};
 /* NGの記録は**③の確認カードから呼ぶ**（§9.242 ⑥）。操作レールのボタンは
    外したので、ここで配線する相手はもう居ない。**素の`window.*`を増やさず**
    名前空間で公開する（呼び出し側で、どのファイルの機能かが読める）。 */
@@ -607,7 +661,14 @@ WL.measureNg={register:registerNg};
    スケジュールを描き直さないと、作業を始めた/終えた結果が反映されないまま
    前の並びが残る(キャッシュを捨てるだけでは、既に描かれている行は変わらない)。 */
 async function closeMeasureModal(){
- if(measureDirty&&!(await confirmModal('保存されていない変更があります。破棄して閉じますか？')))return;
+ /* **閉じる前に書き切る**（§9.320-G）。裏の保存は入力が落ち着いてから
+    1回なので、直後に閉じると最後のぶんがまだ書けていない。
+    **書けたなら聞かない**——保存する手立てがあるのに「破棄しますか」と
+    聞くのは、押した人に要らない判断をさせること（§5は確認を増やせという
+    意味ではない）。書けなかったときだけ、破棄かどうかを聞く。 */
+ if(measureDirty){cancelAutoSave();try{await runAutoSave()}catch(e){}}
+ if(measureDirty&&!(await confirmModal('DBへ保存できていない変更があります。破棄して閉じますか？')))return;
+ cancelAutoSave();
  $('#measureModal').hidden=true;
  WL.refreshScheduleIfOpen?.();
 }

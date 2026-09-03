@@ -160,7 +160,15 @@ let measureDirty=false;
 /* **どこに在るのかまで書く**(§9.202、利用者の報告「入力しただけでは
    完了に反映されない」)。「未保存」だけだと、打った値がもう端末に
    入っていると読める。実際は保存を押すまで画面の中にしか無い。 */
-function markDirty(){measureDirty=true;setState('未保存（画面の中だけ）')}
+/* **変わったら裏でDBへ書く**（§9.320-G、利用者の指示）。ここは値を書く
+   合図を出すだけで、実処理は`records-store.js`が持つ（`collect()`も
+   `reliablePut()`もあちらのもの）。**「あれば呼ぶ」で黙らせない**
+   ——公開漏れは静かに機能だけを失うので、無ければ理由を出す（§CLAUDE）。 */
+function markDirty(){
+ measureDirty=true;setState('未保存（画面の中だけ）');
+ if(window.WL&&WL.autoSave)WL.autoSave.schedule();
+ else console.error('WL.autoSave が見つかりません（DBへの自動保存が動きません）');
+}
 /* サイドバーの選択状態。トップレベルの行き先(データ一覧・仕掛・品質データ・
    マスタ一覧・ダッシュボード・実績カレンダー)は排他で、常にどれか1つだけが
    選択中になる。以前は行き先ごとに自分の.activeを付け外ししていたため、
@@ -1525,13 +1533,47 @@ function durationMs(record){const a=record?.workTime?.startAt,b=record?.workTime
    丸めは四捨五入——古い記録には秒が入っており、切り捨てると59秒が0分になる。 */
 function formatDuration(ms){if(ms===null||ms===undefined)return '-';const min=Math.round(ms/60000),h=Math.floor(min/60),m=min%60;return h>0?`${h}時間 ${m}分`:`${m}分`}
 /* Measurement precision and zero-order-tolerance correction. */
-/* 板幅は**小数2桁**（§9.242 ②、利用者の指示「幅の自動入力データは小数点
-   以下2桁にしてください」）。**転送側だけ2桁にしても意味が無い**——欄を
-   離れたとき（`fixedMeasurementValue`）にここの桁数へ丸め直すので、1桁の
-   ままだと受け取った`1234.56`が`1234.6`へ戻る。**桁数を決めるのはここ
-   1箇所**にして、転送・手入力・読み直しが同じ答えを見る。 */
-function measurementDigits(key){return key==='thickness'?3:key==='width'?2:null}
-function fixedMeasurementValue(key,value){const raw=String(value??'').trim(),digits=measurementDigits(key);if(raw===''||digits===null)return raw;const n=Number(raw);return Number.isFinite(n)?n.toFixed(digits):raw}
+/* ---------- 桁は「測定器が保証できるところまで」（§9.320-C、利用者の指示） ----------
+   「自動登録で使うものについては、測定機器によって保証できる測定精度が
+    違うため、最終的な測定値は自動転送で判断される測定機器の情報で見極め
+    データの桁数を変更するようにしてください。……明示的にロジックとして
+    マイクロメータ＝小数点以下3桁を適用してください。板幅については、
+    ノギスは小数点2桁、コンベックスルールの場合は小数点1桁までの保証」
+
+   §9.242 ②の「板幅は測定器によらず小数2桁」は**撤回した**。あれは
+   「入口が両方1桁へ丸めていたのでノギスの2桁目が必ず0だった」という
+   **不具合**を直した副作用で、器ごとの精度をそろえる根拠は無い
+   ——コンベックスルールで測った値に2桁目を書くと、**測っていない桁を
+   測ったことにする**（画面が嘘をつく・§CLAUDE 6）。
+
+   **桁を決めるのはここ1箇所**（§9.163）。転送・手入力・欄を離れたとき・
+   読み直しが同じ答えを見る。**器が分からなければ項目の桁**（手入力と
+   古い記録はここへ落ちる。黙って1桁にすると既にある値が痩せる）。 */
+const MEASURE_DEVICE_DIGITS={micrometer:3,caliper:2,tape:1};
+/* 呼び名も1箇所（画面へ綴りを書き写さない）。`depth`はデプスゲージで、
+   桁を持たない項目（テレスコープ）にしか来ないので表には載せるが数は無い。 */
+const MEASURE_DEVICE_LABELS={micrometer:'マイクロメータ',caliper:'ノギス',
+  tape:'コンベックスルール',depth:'デプスゲージ',manual:'手入力'};
+function measureDeviceLabel(device){return MEASURE_DEVICE_LABELS[String(device||'')]||''}
+/* いまの記録が「その項目を最後にどの器で受けたか」。**記録の中に持つ**
+   ——画面の変数だと、続きを別のPCで開いたときに桁が変わる（§9.91）。 */
+function measureDeviceOf(key){
+ const d=S.measure&&S.measure.settings&&S.measure.settings.deviceOf;
+ return (d&&d[key])||'';
+}
+function noteMeasureDevice(key,device){
+ const m=S.measure;if(!m||!key||!device)return;
+ if(!MEASURE_DEVICE_DIGITS[device])return;      /* 桁を持つ器だけ覚える */
+ m.settings=m.settings||{};
+ m.settings.deviceOf=Object.assign({},m.settings.deviceOf,{[key]:device});
+}
+function measurementDigits(key,device){
+ const base=key==='thickness'?3:key==='width'?2:null;
+ if(base===null)return null;
+ const d=MEASURE_DEVICE_DIGITS[String(device===undefined?measureDeviceOf(key):(device||''))];
+ return d===undefined?base:d;
+}
+function fixedMeasurementValue(key,value,device){const raw=String(value??'').trim(),digits=measurementDigits(key,device);if(raw===''||digits===null)return raw;const n=Number(raw);return Number.isFinite(n)?n.toFixed(digits):raw}
 /* ---------- 入力値の丸め（§9.305 ①／§9.307、利用者の指示） ----------
    「0.5単位切り上げなど、入力値の切り上げ機能を実装してください。
     導入したい項目は ①ラテラルボー ②テレスコープ ③巻ズレ ④揃いの値」
@@ -1592,12 +1634,15 @@ function roundMeasureValue(key,value){
 }
 /* 「丸めてから桁をそろえる」1本。**入力の確定はここを通す**——2つに
    分けると、丸めが効く欄と効かない欄ができる（§9.233 ③）。 */
-function settleMeasurementValue(key,value){
- return fixedMeasurementValue(key,roundMeasureValue(key,value));
+function settleMeasurementValue(key,value,device){
+ return fixedMeasurementValue(key,roundMeasureValue(key,value),device);
 }
 window.WL=window.WL||{};
 window.WL.measureRound={rules:()=>({...MEASURE_ROUND}),apply:roundMeasureValue,
  settle:settleMeasurementValue,toUnit:roundToUnit,by:roundValueBy};
+/* 測定器のことを答える1箇所（§9.320-C）。画面は綴りも桁も書き写さない。 */
+window.WL.measureDevice={label:measureDeviceLabel,of:measureDeviceOf,note:noteMeasureDevice,
+ digits:measurementDigits,known:()=>({...MEASURE_DEVICE_DIGITS})};
 /* 公差・基準の表示桁は**測定値と同じ**（§9.242 ②）。値だけ2桁にして範囲を
    1桁のままにすると、`1234.55`が`1233.5 ～ 1234.5`の中に見えてしまう
    （実際の判定は生の範囲で行うので、**画面だけが嘘をつく**）。 */

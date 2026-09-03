@@ -1704,6 +1704,12 @@ def report_block_list():
            # 組み直させると、いま見えている形が押した瞬間に消えたように
            # 見える（§9.259と同じ理由）。並びも列数もサーバーが答える。
            'defaultCells':rb.default_cell_map(),
+           # **このうち起動時に自動で種をまく塊**（§9.320-E の追補）。
+           # `品質情報（仕掛）`は`.rp-info-box`のカードいっぱいに広がる
+           # 枠（§9.242 ⑧）を持つので自動では切り替えない——押して
+           # 初めて汎用のマスへ移る。**顔ぶれはここが答える**（画面や
+           # テストへ綴りを書き写さない）。
+           'autoSeededCells':list(rb.AUTO_SEED_CELL_KEYS),
            # 1つのマスが持てるもの（§9.274）。**語彙はサーバーが答える**
            # ——画面へ写すと、選べる書式を1つ足すたびに2箇所直すことになる。
            'cellKinds':[{'v':v,'label':lb} for v,lb in rb.CELL_KINDS],
@@ -1728,15 +1734,17 @@ def _report_block_save(x):
  # 「有効」は画面からは文字列（有効/無効）で来る。**文字列をそのまま
  # `bool()`へ渡さないこと**——`'無効'`は真なので、外したつもりが効かない。
  def _on(v):
-  if v is None:return True
+  if v is None:return None
   if isinstance(v,str):return v.strip() not in ('無効','false','0','')
   return bool(v)
+ # **渡していなければ触らない**（§9.320-E）——`None`はrepo側が「今の値のまま」
+ # と読む。既定へ倒すと、送っていない設定だけが黙って消える（§9.212 ②）。
  alive=_on(x.get('enabledText') if x.get('enabledText') is not None else x.get('enabled'))
  try:
   def fn(c):
-   return rb.block_upsert(c,uid,equipment=x.get('equipment') or '*',name=name,
+   return rb.block_upsert(c,uid,equipment=x.get('equipment'),name=name,
                           order=iv(x.get('order')),span=x.get('span'),rows=x.get('rows'),
-                          content=x.get('content') or '',note=x.get('note') or '',
+                          content=x.get('content'),note=x.get('note'),
                           enabled=alive,cols=x.get('cols'),
                           # 種別（項目の並び／エリア）と、エリアに置く文字（§9.234 ⑤）。
                           # **文字列→内部値の変換は`normalize_kind`に任せる**

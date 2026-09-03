@@ -151,7 +151,11 @@ G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'tes
              # §9.242 ⑤⑥: 公差／基準の言い分けと、確認カードの強調・NGの記録
              # §9.242 ④: ③「記録した値」は操業データ項目マスタが決める
              # §9.319: 公差外・基準外があっても測定を完了できる
-             'test_burr', 'test_ngcard', 'test_ngdone', 'test_recvalues', 'test_reclayout',
+             # §9.320-C: 測定器で桁が変わる（マイクロメータ／ノギス／コンベックス）
+             # §9.320-D: フラットネスの全〇
+             # §9.320-G: レールの2つのボタンを消し、DBへは裏で書く
+             'test_burr', 'test_ngcard', 'test_ngdone', 'test_devdigits',
+             'test_recvalues', 'test_reclayout',
              # §9.317: 参照データ（品質など）が読めなくても測定は始められる
              'test_ctxfail']
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',
@@ -246,7 +250,8 @@ RULES = [
                                         # §9.313: 紙の余白は横と縦の別の軸
                                         'test_rppack',
                                         # §9.319-C: 異常位置判定とピッチ判定を分ける
-                                        'test_rpdefect',
+                                        # §9.320-E/F: 半自動の塊のカスタム・ピッチ判定の狭幅
+                                        'test_rpdefect', 'test_rptext',
                                         # §9.302: 設備の候補（ロットの無い設備だけ絞る）
                                         'test_eqfeature',
                                         # §9.254 (3): 帳票レイアウトマスタの口（WL.reportLayout）
@@ -303,6 +308,8 @@ RULES = [
                                    'test_rpprint',
                                    # §9.319-C: 判定の文字を本文並みに・図を最大化
                                    'test_rpdefect',
+                                   # §9.320-D/F: 表の文字を本文並みに・ピッチ判定の狭幅
+                                   'test_rptext',
                                    # §9.313: 余白の横・縦は別の変数（掛け算）
                                    'test_rppack',
                                    # §9.274: 見出しのマス・ラベル無しのマス・紙への入口
@@ -310,6 +317,8 @@ RULES = [
     ('static/css/62-actuals.css', g('見た目', '実績')),
     ('backend/repositories/report_block_repo.py', g('test_rpmaster', 'test_rpblocks', 'test_rbmodal',
                                                     'test_rplayout', 'test_crudroutes',
+                                                    # §9.320-E: 半自動の塊にも既定セルを持たせる
+                                                    'test_rptext',
                                                     'test_blockbuild', 'test_opdata',
                                                     # §9.253: 見本のロット1件
                                                     'test_rbsample',

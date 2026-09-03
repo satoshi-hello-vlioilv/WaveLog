@@ -1945,6 +1945,19 @@ th.col-sorted:hover{background:#c7e7ea}
    1行に収めるための縮み代だけを持たせる。 */
 .mhead-status{flex:0 1 auto;min-width:0;color:var(--ink-3);font-weight:700;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* ---------- 判定された測定器（§9.320-C、利用者の指示） ----------
+   「表示のエリアを無理やりつくらず今あるスペースにうまくなじませて
+    コンパクトに表示」——**行も器も増やさない**。同じ見出しの1行の中に、
+   進みの隣へ小さな札で置く。**縮まない**（`flex:0 0 auto`）——「ノギス
+   2桁」は切れると器の名前が読めなくなるので、狭いときは隣の進みが先に
+   縮む（`.burr-step`と同じ約束）。色は自動で入る値の軸（`--computed-*`）
+   ——人が打った値ではなく、転送から**判定した**ものだから。 */
+.mhead-device{
+  display:inline-flex;align-items:baseline;gap:var(--gap-hair);flex:0 0 auto;
+  padding:var(--pad-chip);border-radius:var(--radius-pill);
+  background:var(--computed-bg);color:var(--computed-fg);
+  font-size:var(--fs-sm);font-weight:700;white-space:nowrap}
+.mhead-device>b{font-weight:800;font-variant-numeric:tabular-nums}
 /* ---------- バリの2段（§9.242 ③、利用者の指示） ----------
    「1回目のデータを受け付けたことを表示し、2回目入力時にはそのデータの
     計算式も合わせて見える形に表示…表示領域は今の1行の範囲内で納める」
