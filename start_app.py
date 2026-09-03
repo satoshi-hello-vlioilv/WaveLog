@@ -39,7 +39,9 @@ from backend.launcher import ready, setup_check
 from backend import boot_status
 from backend.config import PORT, app_url
 from backend.logging_setup import launcher_logger, log_environment
-from backend.paths import APP_ROOT, configured_path, ensure_local_dirs, is_network_path, runtime_dir
+from backend.paths import (APP_ROOT, browser_dir_reason, configured_path,
+                          ensure_local_dirs, is_network_path,
+                          msix_private_copy as paths_msix_private_copy, runtime_dir)
 
 
 # ============================================================================
@@ -258,6 +260,13 @@ def _ensure_local_waiting_page(log):
  # 何度でも推測で終わる。ここは起動の最初の数msなので、書く量は数行に留める。
  ok,why=_readable_safe(local)
  log.info('待機画面: 写しを探しました: %s（%s）',local,'読める' if ok else why)
+ # **置き場を移したなら、その理由を言う**（§9.318・§4）。黙って別の場所へ
+ # 置くと、次に調べる人が「なぜここに在るのか」を推測することになる。
+ try:
+  moved=browser_dir_reason()
+  if moved:log.warning('待機画面: %s',moved)
+ except Exception:
+  pass
  if ok:
   _refresh_waiting_page_later(log)
   return local
@@ -279,9 +288,15 @@ def _refresh_waiting_page_later(log):
  **失敗しても何も言わない**（起動には関係が無い。次の起動でまた試す）。"""
  def work():
   try:
-   made=setup_check.copy_waiting_page()
-   if made:
-    log.info('待機画面: 次回のために本来の写しを更新しました: %s',made)
+   # **やったことをそのまま言う**（§9.318）。以前は戻り値が在れば必ず
+   # 「更新しました」と書いていたが、`copy_waiting_page()`は**何もしなかった
+   # とき**（中身が同じ）も写しのパスを返す。実機のログでは、書いていないのに
+   # 「渡した直後に更新しました」と読める行が並び、**直したはずの§9.314の
+   # 競合がまだ起きている**ように見えた（原因を探す側を丸1往復遠回りさせた）。
+   said=[]
+   setup_check.copy_waiting_page(say=lambda m,bad=False:said.append(m))
+   for m in said:
+    log.info('待機画面: %s',m)
   except Exception as e:
    log.info('待機画面: 本来の写しは更新できませんでした(%s)。いまの写しで開いています',e)
  try:
@@ -311,6 +326,25 @@ def open_waiting_screen(log):
  # 利用者から見えるのは起動失敗**という、いちばん質の悪い壊れ方になる。
  # 消える経路はこちらの都合だけではない（ウイルス対策の隔離・プロファイルの
  # 同期・掃除）。**確かめて、無ければ書き直して開く**（§4）。
+ # **このアプリからしか見えない写しになっていないか**（§9.318）。
+ # Microsoft Store 版のPythonは`%LOCALAPPDATA%`への書き込みを
+ # パッケージの私的な写しへ回す——**こちらは読めるのにブラウザは読めない**
+ # ので、渡しても「ファイルが見つかりません」にしかならない。
+ # 置き場そのものは`paths.browser_dir()`が避けるが、**万一残っていたら
+ # 名指しで言う**（§4。黙って開いて失敗させない）。
+ try:
+  hidden=paths_msix_private_copy(page)
+ except Exception:
+  hidden=None
+ if hidden is not None:
+  # **見えないと分かっているなら、猶予を待たない**（§9.318）。保険は
+  # 「分からないから待つ」ための仕掛けで、分かっているときに待つ理由は無い。
+  global _waiting_page_visible
+  _waiting_page_visible=False
+  log.error('待機画面: この写しは**このアプリからしか見えません**（実体は %s）。'
+            'ブラウザは元の場所を見るので「ファイルが見つかりません」になります。'
+            'Microsoft Store 版のPythonをお使いの場合は、python.org の'
+            'インストーラ版へ替えると解消します',hidden)
  ok,why=_readable_safe(page)
  if not ok:
   log.warning('待機画面: 開く直前に写しを読めませんでした(%s: %s)。組み込みの簡易画面を書き直します',page,why)
@@ -343,11 +377,18 @@ def open_waiting_screen(log):
    log.warning('待機画面: 既定の方法で開けませんでした(%s)。別の方法を試します',e)
  if not opened:
   try:
-   webbrowser.open(uri)
-   opened='webbrowser.open'
+   # **戻り値を見ること**（§9.318）。`webbrowser.open()`はブラウザが1つも
+   # 無いとき**送出せずFalseを返す**ので、見ないと「渡しました」という嘘を
+   # ログへ書くことになる（今回、原因を探す側を遠回りさせたのがこの手の嘘）。
+   if webbrowser.open(uri):
+    opened='webbrowser.open'
+   else:
+    log.error('待機画面: ブラウザを起動できませんでした（既定のブラウザが'
+              '見つかりません）。サーバーが立ったらアプリの画面を開きます')
   except Exception as e:
    log.error('待機画面を開けませんでした: %s',e)
-   return
+ if not opened:
+  return
  log.info('待機画面: ブラウザへ渡しました（%s）',opened)
  # **渡した「後」も一度だけ確かめる**（§9.316）。ここで消えていれば、
  # 消しているのは**こちらではない**（ウイルス対策の隔離・同期・掃除）と
@@ -364,6 +405,97 @@ def open_waiting_screen(log):
    pass
  try:threading.Thread(target=_watch,daemon=True,name='watch-waiting-page').start()
  except Exception:pass
+
+
+# ===========================================================================
+# 待機画面が誰にも見えていなければ、アプリのURLを開く（§9.318、利用者の報告）
+# ---------------------------------------------------------------------------
+# 「起動時、うまくいかなくてhtmlを後から直接クリックして起動している」
+#
+# **渡したことと、見えていることは別**。`os.startfile()`は成功しても、
+# ブラウザがそのファイルを開けたかは分からない——隔離・同期・掃除・
+# 私的な写し（§9.318のMSIX）・復元タブ・関連付け、原因はいくらでもある。
+# **原因を突き止めるより先に、利用者がアプリへ辿り着けること**が要る。
+#
+# 待機画面は`/api/ready.js`を**繰り返し**読みに来るので、1回でも来たなら
+# そのブラウザで生きている。本体のタブが名乗り出た（ハートビート）なら、
+# もう待機画面は要らない。**どちらも来なければ**、アプリのURLを直接開く。
+#
+# **黙って開かない**（§4）——理由をログへ1行残す。
+# **1回だけ**——押し売りにしない。
+# **健全な端末では一度も走らない**（待機画面は数秒で名乗り出る）。
+# ===========================================================================
+# **猶予は「ブラウザの立ち上がり」より長く、「利用者の我慢」より短く。**
+# 待機画面は読み込まれた直後に`/api/ready.js`を読みに来るので、要るのは
+# ブラウザが冷えた状態から最初のページを描くまでの時間だけ。短すぎると
+# 健全な端末でタブが2枚開き、長すぎると「起動しない」と判断されて手で
+# クリックされる（＝いまの状態）。**2枚開くほうが、開かないよりまし。**
+WAITING_SEEN_GRACE_SEC=12.0     # サーバーが応答してから、待機画面を待つ時間
+WAITING_SEEN_WAIT_SEC=180.0     # サーバーが応答するまで待つ上限
+
+
+# 待機画面がブラウザから**見える**と考えてよいか。渡す前に「見えない」と
+# 分かったときだけ False（§9.318）。分からないときは True＝猶予を待つ。
+_waiting_page_visible=True
+
+
+def _server_answers():
+ try:
+  with launch_guard.urlopen_local(f'{app_url()}api/build',timeout=1.5) as r:
+   return r.status==200
+ except Exception:
+  return False
+
+
+def _browser_reached_app():
+ """待機画面か本体のタブが、このサーバーへ届いているか。"""
+ try:
+  if boot_status.waiting_seen():return True
+ except Exception:
+  pass
+ try:
+  from backend import watchdog
+  return watchdog.active_tab_count()>0
+ except Exception:
+  return False
+
+
+def open_app_if_unseen_later(log):
+ """保険を裏で回す。**起動そのものは待たせない**。"""
+ def work():
+  try:
+   end=time.monotonic()+WAITING_SEEN_WAIT_SEC
+   while time.monotonic()<end:
+    if _browser_reached_app():return          # もう届いている。何もしない
+    if _server_answers():break
+    time.sleep(0.5)
+   else:
+    return                                    # サーバーが立たなかった
+   grace=WAITING_SEEN_GRACE_SEC if _waiting_page_visible else 0.0
+   end=time.monotonic()+grace
+   while time.monotonic()<end:
+    if _browser_reached_app():return
+    time.sleep(0.5)
+   url=app_url()
+   log.error('待機画面がブラウザに出ていないようです（%s）。'
+             'アプリの画面を直接開きます: %s',
+             ('この写しはブラウザから見えないと分かっています' if not _waiting_page_visible
+              else f'{grace:.0f}秒待ちましたが、待機画面からも本体のタブからも'
+                   '問い合わせが1件も来ていません'),url)
+   try:
+    if webbrowser.open(url):
+     log.info('待機画面の代わりにアプリの画面を開きました: %s',url)
+    else:
+     log.error('アプリの画面も開けませんでした（既定のブラウザが見つかりません）。'
+               'ブラウザで %s を開いてください',url)
+   except Exception as e:
+    log.error('アプリの画面も開けませんでした(%s)。ブラウザで %s を開いてください',e,url)
+  except Exception:
+   pass
+ try:
+  threading.Thread(target=work,daemon=True,name='open-app-if-unseen').start()
+ except Exception:
+  pass
 
 
 def run_full_check(log,why):
@@ -449,6 +581,11 @@ def main():
             'stop.bat(python process_manager.py stop)で停止してから再度起動してください',PORT)
   log.info('--- 終了 --- (ポート使用中・応答無し)')
   return 1
+
+ # ---------- 待機画面が見えていなければアプリを開く（§9.318） ----------
+ # **多重起動の判定を抜けてから**起こす——既存のインスタンスへ委譲して
+ # 戻る道でこれが生きていると、余計なタブを開くことになる。
+ open_app_if_unseen_later(log)
 
  # 確認済みの刻印があれば、ここは飛ばす(§9.225)。**刻印は速さのための門で
  # あって正しさの門ではない**——バイトコードが古いかどうかはPython自身が

@@ -17,7 +17,7 @@ from pathlib import Path
 import json
 import time
 
-from .paths import APP_ROOT, runtime_dir
+from .paths import APP_ROOT, browser_dir
 from .changelog_data import APP_VERSION
 
 STATUS_FILENAME='boot_status.js'
@@ -56,9 +56,13 @@ def status_path():
     待機画面の写しと同じ場所へ置けばそれだけで筋が通る
     (`setup_check.waiting_page()`が写しの置き場)。
 
-    **書けなかったら共有側へ落とす**——進捗が出ないより、出たほうがよい。"""
+    **書けなかったら共有側へ落とす**——進捗が出ないより、出たほうがよい。
+
+    置き場は`paths.browser_dir()`が答える(§9.318)——**待機画面と同じ場所**
+    でなければ`<script src="boot_status.js">`が当たらない。答える場所を
+    2つ持たないこと。"""
  try:
-  return runtime_dir()/STATUS_FILENAME
+  return browser_dir()/STATUS_FILENAME
  except Exception:
   return APP_ROOT/STATUS_FILENAME
 
@@ -86,3 +90,27 @@ def clear():
  """起動完了後に消す(次回起動時に前回の内容が一瞬見えるのを防ぐ)。"""
  try:_path().unlink(missing_ok=True)
  except Exception:pass
+
+
+# ===========================================================================
+# 待機画面がブラウザで生きているか（§9.318、利用者の報告）
+# ---------------------------------------------------------------------------
+# 「起動時、うまくいかなくてhtmlを後から直接クリックして起動している」
+#
+# **渡したことと、見えていることは別**——`os.startfile()`は成功しても、
+# ブラウザがそのファイルを開けたかは分からない（隔離・同期・掃除・
+# 私的な写し・復元タブ・関連付け…原因はいくらでもある）。
+# 待機画面は`http://127.0.0.1:PORT/api/ready.js`を**繰り返し**読みに来るので、
+# **1回でも来たなら、そのブラウザで生きている**と言い切れる。
+# ここはその印だけを持つ（判定と打つ手は`start_app`が持つ）。
+# ===========================================================================
+_waiting_seen=0.0
+
+def note_waiting_seen():
+ """待機画面から問い合わせが来た。**時刻を覚えるだけ**。"""
+ global _waiting_seen
+ _waiting_seen=time.time()
+
+def waiting_seen():
+ """待機画面がブラウザで生きていた時刻（一度も来ていなければ0.0）。"""
+ return _waiting_seen

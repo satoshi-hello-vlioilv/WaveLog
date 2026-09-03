@@ -155,7 +155,8 @@ G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'tes
                'test_uiux', 'test_headbar', 'test_uisize', 'test_bootui',
                'test_gridhead']
 G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 'test_tabclose',
-             'test_faststart']
+             # §9.318: 待機画面が見えなくてもアプリへ辿り着ける（保険・置き場の判定）
+             'test_faststart', 'test_bootopen']
 G['接続'] = ['test_mastershare', 'test_storage', 'test_storageui', 'test_recmirror', 'test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
              'test_atomicio', 'test_localwork', 'test_dscap',
              'test_qjoin', 'test_qjoinui',
