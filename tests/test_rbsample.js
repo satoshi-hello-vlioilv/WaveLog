@@ -130,6 +130,66 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   /* 更新者IDは打ち込む欄ではなくなった（§9.276 ③）。端末の覚え（localStorage）へ入れる。 */
   await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tester');
   await page.waitForSelector('#masterMaintNav [data-master="reportBlock"]',{timeout:20000});
+
+  /* ---- 0c) 見本が「いまの入力の決まり」に乗っている（§9.321、利用者の指示） ----
+     「デモデータを最新のデータのパターンに合わせてアップデートしてください。
+      ステップ刻みのあるデータや、小数点の桁数が変わるものを想定しています」
+
+     **決まりは製品のコードに聞く**（`WL.measureRound`／`WL.measureDevice`）
+     ——網へ数（0.5・3桁・2桁）を書き写すと、決まりを直したときに網だけが
+     古い約束のまま残る（§9.163）。ここが見るのは「見本がその決まりを
+     破っていないか」だけ。
+
+     **素通りに注意**: 「値が入っている」を見る網は、刻みから外れた値でも
+     通る。**丸めを実際に当てて、値が1つも変わらないこと**で見る——変わる
+     なら、その値は現場では絶対に出ない値（＝見本が嘘をつく・§CLAUDE 6）。 */
+  const rules=await page.evaluate(()=>({round:!!(window.WL&&WL.measureRound),
+                                        device:!!(window.WL&&WL.measureDevice)}));
+  rec('入力の決まりを画面に聞ける（WL.measureRound／WL.measureDevice）',
+      rules.round&&rules.device,JSON.stringify(rules));
+  const fit=await page.evaluate(r=>{
+   const ms=r.measurements||{},of=(r.settings||{}).deviceOf||{};
+   const out={刻み:[],桁:[],器:[],揃い:[]};
+   /* ① 刻み（`MEASURE_ROUND`）。丸めて変わる値＝刻みから外れている。 */
+   Object.keys(WL.measureRound.rules()).forEach(k=>{
+    const rows=k==='alignValue'
+      ?[((r.product||{}).rows||[]).map(x=>x.alignmentValue)]:(ms[k]||[]);
+    rows.forEach(row=>(row||[]).forEach(v=>{
+     const t=String(v==null?'':v).trim();
+     if(t===''||WL.measureRound.apply(k,t)===t)return;
+     if(out.刻み.length<6)out.刻み.push(k+':'+t+'→'+WL.measureRound.apply(k,t));
+    }));
+   });
+   /* ② 桁（`MEASURE_DEVICE_DIGITS`）。器を記録し、その器の桁で書いてあるか。 */
+   ['thickness','width'].forEach(k=>{
+    const dev=of[k]||'';
+    if(!dev){out.器.push(k);return}
+    const want=WL.measureDevice.digits(k,dev);
+    (ms[k]||[]).forEach(row=>(row||[]).forEach(v=>{
+     const t=String(v==null?'':v).trim();if(t==='')return;
+     const d=t.indexOf('.')<0?0:t.length-t.indexOf('.')-1;
+     if(d!==want&&out.桁.length<6)out.桁.push(k+'('+dev+'は'+want+'桁):'+t);
+    }));
+   });
+   return out;
+  },(await getj('/api/report-block-master/sample-record?equipment='+encodeURIComponent(EQ))).record||{});
+  rec('刻みのある欄（ラテラルボー・テレスコープ・巻ずれ・揃いの値）が刻みに乗っている',
+      !fit.刻み.length,JSON.stringify(fit.刻み));
+  rec('板厚・板幅は測定器を記録している（器で桁が決まることを見本で確かめられる）',
+      !fit.器.length,JSON.stringify(fit.器));
+  rec('測定値の桁が、記録した測定器の保証する桁とそろっている',
+      !fit.桁.length,JSON.stringify(fit.桁));
+  /* **器は準備の「板厚測定器／板幅測定器」と食い違わない**——ここだけ別の器に
+     すると「ノギスで測ったのに3桁」という嘘を見本が言う。 */
+  const gauge=await page.evaluate(r=>{
+   const st=r.settings||{},of=st.deviceOf||{};
+   const same=(name,dev)=>String(name||'').indexOf(WL.measureDevice.label(dev))===0;
+   return {板厚:same(st.thicknessGauge,of.thickness),板幅:same(st.widthGauge,of.width),
+           値:[st.thicknessGauge,of.thickness,st.widthGauge,of.width]};
+  },(await getj('/api/report-block-master/sample-record?equipment='+encodeURIComponent(EQ))).record||{});
+  rec('記録した器が、準備で選んだ測定器と食い違わない',
+      gauge.板厚&&gauge.板幅,JSON.stringify(gauge.値));
+
   await page.click('#masterMaintNav [data-master="reportBlock"]');
 
   /* ---- 1) 帳票ブロックマスタから1押しで開く ---- */

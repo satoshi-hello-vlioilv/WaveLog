@@ -24,6 +24,7 @@
 判定を新しく書き起こさない。
 """
 import copy as _copy
+import math as _math
 import json
 
 from ..db_access import add_missing_columns
@@ -505,28 +506,11 @@ SAMPLE_VALUES = {
     'lot.index': '2',
     'lot.count': '9',
 }
-# 統計は**項目ごとに桁が違う**（板厚は3桁・板幅は2桁・N数は整数）。
-# 表で持つと項目を1つ足すたびに40行増えるので、項目の代表値と集計の作り方で持つ。
-_STAT_SAMPLE = {
-    'thickness': ('0.298', '0.302', '0.300', '0.004'),
-    'width': ('29.96', '30.05', '30.00', '0.09'),
-    'lateral': ('0.2', '0.8', '0.5', '0.6'),
-    'burr': ('0.01', '0.03', '0.02', '0.02'),
-    'telescope': ('0.5', '1.2', '0.8', '0.7'),
-    'offset': ('0.3', '0.9', '0.6', '0.6'),
-    'length': ('1998', '2002', '2000', '4'),
-    'wall': ('1.48', '1.52', '1.50', '0.04'),
-}
-# N数は**項目ごとに違う**（§9.254 ④）。条ごとに測るもの（板幅ほか）は
-# 丈×条、板厚は丈×3点、丈ごとの記録（板丈・肉厚）は丈の数——1つの数で
-# 揃えると、見本を見た人が「1点でも400点でも同じ」と読んでしまう（§9.214）。
-_STAT_N = {'thickness': 3 * 10, 'length': 10, 'wall': 10}
-for _k, _vals in _STAT_SAMPLE.items():
-    SAMPLE_VALUES[f'stat.{_k}.min'] = _vals[0]
-    SAMPLE_VALUES[f'stat.{_k}.max'] = _vals[1]
-    SAMPLE_VALUES[f'stat.{_k}.avg'] = _vals[2]
-    SAMPLE_VALUES[f'stat.{_k}.span'] = _vals[3]
-    SAMPLE_VALUES[f'stat.{_k}.n'] = str(_STAT_N.get(_k, 40 * 10))
+# 統計（`stat.*`）は**見本の測定値から数える**（この下の`_fill_stat_samples()`）。
+# 手で書かないこと——以前はここに代表値の表を持っていたが、測定値のほうを
+# 直したときに一緒に直す人が居らず、**同じ見本のロットについて統計が2通り**
+# あった（実測: 板厚MINが候補の見本`0.298`／紙に出る統計`0.296`）。
+# 候補の見本と紙が食い違うと、見本で確かめる意味そのものが無くなる（§9.163）。
 
 
 # ---------------------------------------------------------------------------
@@ -564,20 +548,152 @@ SAMPLE_RECORD_ID = '__sample__'
 _SAMPLE_VERTICAL = 9
 _SAMPLE_LENGTHS = tuple(f'{i + 1}(頭)' for i in range(_SAMPLE_VERTICAL)) + (f'{_SAMPLE_VERTICAL}(尾)',)
 _SAMPLE_STRIPS = 40
+# ---------------------------------------------------------------------------
+# 見本も「いまの入力の決まり」に乗せる（§9.321、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「デモデータを最新のデータのパターンに合わせてアップデートしてください。
+#  ステップ刻みのあるデータや、小数点の桁数が変わるものを想定しています」
+#
+# 決まりは2つあり、**どちらも見本が破っていた**。
+#
+# ① **刻み**（§9.305 ①／§9.307）——ラテラルボー・テレスコープ・巻ずれ・
+#    揃いの値は`0.5`刻みで切り上げる。見本は`0.1`刻みで作っていたので、
+#    `0.3` `0.7` `1.2`という**現場では絶対に出ない値**が紙に並んでいた。
+# ② **桁**（§9.320-C）——測定値の桁は「その項目を受けた測定器が保証する
+#    ところまで」。見本は器を1つも記録していなかったので、器で桁が決まる
+#    ことを見本では一度も確かめられなかった（札も出ない）。
+#
+# **数そのものは製品のコード（`base.js`）が持つ**——ここはその写しで、
+# 食い違わないことは`tests/test_rbsample.js`が**画面の`WL.measureRound`／
+# `WL.measureDevice`に聞いて**確かめる（数を2箇所で決めない・§9.163）。
+_SAMPLE_ROUND_UNIT = 0.5           # `MEASURE_ROUND`の4つ（0.5刻み・切り上げ）
+# 刻みを「最小単位の何倍か」で言い直したもの（1桁 × 5 ＝ 0.5）。**数を
+# 書き下ろさずここから作る**——刻みを直したときに、系列と揃いの値の両方が
+# 一緒に動く。
+_SAMPLE_ROUND_MULT = int(round(_SAMPLE_ROUND_UNIT * 10))
+_SAMPLE_DEVICE_DIGITS = {'micrometer': 3, 'caliper': 2, 'tape': 1}
+# 見本の器。**`settings.thicknessGauge`／`widthGauge`の器と揃える**
+# （マイクロメータ-A／ノギス-B）——ここだけ別の器にすると「ノギスで測った
+# のに3桁」という嘘を見本が言う（§CLAUDE 6）。板厚3桁・板幅2桁という
+# **桁の違いそのもの**が、この見本で確かめたいことになる。
+_SAMPLE_DEVICES = {'thickness': 'micrometer', 'width': 'caliper'}
+# 器が分からないときの桁（`measurementDigits()`の既定）。
+_SAMPLE_BASE_DIGITS = {'thickness': 3, 'width': 2}
 _SAMPLE_SERIES = {
-    # 鍵: (中心値, 1つずつずらす幅, 小数桁, 1丈あたりの本数)
+    # 鍵: (中心値, 1つずつずらす幅＝最小単位の何倍か, 小数桁, 1丈あたりの本数)
+    #     小数桁 None は「受けた測定器が保証する桁」（§9.320-C）——器を
+    #     替えれば見本の桁も刻みも一緒に動く（桁より細かい刻みを作らない）。
     #     本数 None は「条の数だけ」（板厚だけが丈ごとに3点・§9.138）。
-    'thickness': (0.300, 0.002, 3, 3),
-    'width': (30.00, 0.03, 2, None),
-    'lateral': (0.5, 0.1, 1, None),
-    'burr': (0.02, 0.01, 2, None),
-    'telescope': (0.8, 0.1, 1, None),
-    'offset': (0.6, 0.1, 1, None),
+    # **中心値は刻みに乗せること**——`中心値 ± 刻み×2`を並べるので、
+    # 中心が乗っていないと5つとも刻みから外れる。
+    'thickness': (0.300, 2, None, 3),
+    'width': (30.00, 3, None, None),
+    # 0.5刻みの3つ（`MEASURE_ROUND`）。刻みは`_SAMPLE_ROUND_MULT`から。
+    'lateral': (1.5, _SAMPLE_ROUND_MULT, 1, None),
+    # バリは**0.00を出さない**（§9.254 ④）——`0.00`は「測っていない」と
+    # 読めるので、中心を1つ上げて`0.01`〜`0.05`にしてある。
+    'burr': (0.03, 1, 2, None),
+    'telescope': (1.5, _SAMPLE_ROUND_MULT, 1, None),
+    'offset': (1.5, _SAMPLE_ROUND_MULT, 1, None),
 }
+
+
+def _sample_digits(key, digits=None):
+    """その項目の見本の小数桁。**器を記録しているならそちらが正**。"""
+    if digits is not None:
+        return digits
+    dev = _SAMPLE_DEVICES.get(key, '')
+    return _SAMPLE_DEVICE_DIGITS.get(dev, _SAMPLE_BASE_DIGITS.get(key, 1))
+
+
+def _sample_series_rows(key):
+    """1項目ぶんの見本の測定値（丈 × 条）。
+
+    **`sample_record()`と統計が同じここを通る**——別々に作ると、測定値を
+    直したときに紙の統計だけが古い値のまま残る。
+    """
+    base, mult, digits, points = _SAMPLE_SERIES[key]
+    d = _sample_digits(key, digits)
+    step = mult * (10.0 ** -d)
+    width = points if points else _SAMPLE_STRIPS
+    fmt = '%.' + str(d) + 'f'
+    rows = []
+    for li in range(len(_SAMPLE_LENGTHS)):
+        # 上下に振る（同じ値が並ぶと「1つも測っていない」ように見える）
+        rows.append([fmt % (base + step * (((li * width + si) % 5) - 2))
+                     for si in range(width)])
+    return rows
 # 平面度と備考は数の列ではないので別に持つ。**空にしない**——空欄の列が
 # 1本あると、その塊だけ紙の上で実物より痩せて見える（§9.130）。
 _SAMPLE_FLATNESS = ('〇', '〇', '〇', '△', '〇', '〇', '×', '〇')
 _SAMPLE_COMMENTS = ('', '軽微キズ', '', '端部ダレ', '', '', '色ムラ', '')
+# 揃いの値も**0.5刻み**（`MEASURE_ROUND`の`alignValue`）。以前は`1.2`／`2.8`と
+# 刻みに乗らない値で、**丸めが効いていないように読めた**（§9.321）。
+_SAMPLE_EDGE_SHAPES = ('揃い綺麗', 'のこぎり状', 'テレスコ状')
+_SAMPLE_ALIGN_VALUES = ('',) + tuple('%.1f' % (_SAMPLE_ROUND_UNIT * n) for n in (3, 6))
+
+
+def _sample_product_rows():
+    """丈ごとのデータ（板丈・肉厚・揃い）。**丈位置の名前も入れる**——
+    空だと「どの丈の行か」が紙で分からない。
+
+    **どの丈も埋める**（§9.254 ④）。エッジ形状は3通りを回して、合否（OK／NG）と
+    内訳の欄が**両方**紙に出るようにする（§9.204）。統計（板丈・肉厚）も
+    ここから数えるので、**紙と候補の見本が食い違わない**（§9.321）。
+    """
+    rows = []
+    for i in range(len(_SAMPLE_LENGTHS)):
+        k = i % 3
+        rows.append({
+            'productLength': ('%d' % (1998 + (i % 5))),
+            'wallThickness': ('%.2f' % (1.48 + 0.01 * (i % 5))),
+            'edgeShape': _SAMPLE_EDGE_SHAPES[k],
+            'occurrencePosition': '' if k == 0 else ('端部' if k == 1 else '中央'),
+            'regularity': '' if k == 0 else ('一定' if k == 1 else '不定'),
+            'direction': '' if k == 0 else ('OS' if k == 1 else 'DS'),
+            'pitch': '' if k == 0 else ('120' if k == 1 else '245'),
+            'alignmentValue': _SAMPLE_ALIGN_VALUES[k],
+            'note': ('良' if k == 0 else ('要観察' if k == 1 else '選別対象')),
+        })
+    return rows
+
+
+def _stat_of(values):
+    """1組の統計。**`report-dashboard.js`の`rpStatOf()`と同じ作り方**——
+    桁は「記録されている値の小数桁（最大3桁）」で、そこから min/max/平均/
+    ばらつき/N数を作る。見本の統計を手で書くと、測定値を1つ直したときに
+    紙（実際に数える）と候補の見本（手書き）が食い違う（§9.321）。"""
+    raws = [str(v).strip() for v in values if str(v).strip() != '']
+    nums = [float(t) for t in raws]
+    if not nums:
+        return {'min': '', 'max': '', 'avg': '', 'span': '', 'n': '0'}
+    d = 0
+    for t in raws:
+        if '.' in t:
+            d = max(d, min(3, len(t.split('.')[1])))
+    fmt = '%.' + str(d) + 'f'
+    lo, hi = min(nums), max(nums)
+    return {'min': fmt % lo, 'max': fmt % hi,
+            'avg': fmt % (sum(nums) / len(nums)),
+            'span': fmt % (hi - lo), 'n': str(len(nums))}
+
+
+def _fill_stat_samples():
+    """`stat.*` の見本を**見本の測定値から数えて**入れる（§9.321）。
+
+    N数は**項目ごとに違う**（§9.254 ④）——条ごとに測るもの（板幅ほか）は
+    丈×条、板厚は丈×3点、丈ごとの記録（板丈・肉厚）は丈の数。1つの数で
+    揃えると、見本を見た人が「1点でも400点でも同じ」と読んでしまう（§9.214）。
+    ここは数えた結果なので、その違いが黙って出る。
+    """
+    bags = {k: _stat_of([v for row in _sample_series_rows(k) for v in row])
+            for k in _SAMPLE_SERIES}
+    prod = _sample_product_rows()
+    bags['length'] = _stat_of([r['productLength'] for r in prod])
+    bags['wall'] = _stat_of([r['wallThickness'] for r in prod])
+    for key, bag in bags.items():
+        for agg, value in bag.items():
+            SAMPLE_VALUES[f'stat.{key}.{agg}'] = value
 # 子ロット（異幅分割）。**合計は条数と合わせる**——合わないと、
 # `rpSplitLots()`が数える条の範囲と実際の測定値の並びがずれる。
 # 幅を1つずつ変えてあるのは**異幅分割の紙**を確かめるため（等幅だと
@@ -661,6 +777,9 @@ def _sample_defect_saved():
 _SAMPLE_DEFECT = _sample_defect_saved()
 
 
+_fill_stat_samples()
+
+
 def _put_path(out, path, value):
     """`a.b.c` を入れ子の辞書へ入れる。**道の綴りは`SAMPLE_VALUES`が正**
     なので、ここでキー名を並べ直さない（並べると2箇所になる）。"""
@@ -724,6 +843,12 @@ def sample_record(c=None, equipment=''):
     st['splitPositionGroup'] = pos_group
     # 屑幅の片寄せ（§9.160）。**OS側の実寸そのもの**を持つ。
     st['scrapOsWidth'] = _SAMPLE_SCRAP_OS
+    # その項目を最後にどの器で受けたか（§9.320-C）。**記録の中に持つ**ので、
+    # 見本でも測定値の桁が器から決まり、測定の見出しに器の札が出る。
+    # 器の綴りは`base.js`の`MEASURE_DEVICE_DIGITS`のもの。**写しを配る**
+    # ——画面はこのレコードを書き換えるので、使い回すと2回目に開いた見本が
+    # 前回の続きになる。
+    st['deviceOf'] = dict(_SAMPLE_DEVICES)
     # 異常位置判定（§9.254 ④）。入力と、帳票へ載る**保存済みの判定**の両方。
     st['defectLocation'] = {'basis': _SAMPLE_DEFECT_BASIS,
                             'distance': str(_SAMPLE_DEFECT_DISTANCE),
@@ -784,18 +909,7 @@ def sample_record(c=None, equipment=''):
     rec['createdAt'] = SAMPLE_VALUES.get('updatedAt', '')
     # 測定値。**使う範囲だけ**（丈×条）。残りは画面の`ensureMeasureShape()`が
     # 空で埋める——丈の総数(LENGTH_SLOTS)をここへ書き写さない。
-    ms = {}
-    for key, (base, step, digits, points) in _SAMPLE_SERIES.items():
-        width = points if points else _SAMPLE_STRIPS
-        rows = []
-        for li in range(len(_SAMPLE_LENGTHS)):
-            row = []
-            for si in range(width):
-                # 上下に振る（同じ値が並ぶと「1つも測っていない」ように見える）
-                k = ((li * width + si) % 5) - 2
-                row.append(('%.' + str(digits) + 'f') % (base + step * k))
-            rows.append(row)
-        ms[key] = rows
+    ms = {key: _sample_series_rows(key) for key in _SAMPLE_SERIES}
     # 平面度と備考。**全部同じにしない**（§9.254 ④）——1種類だけだと、
     # 異常の印が紙でどう出るのか確かめられない。
     ms['flatness'] = [[_SAMPLE_FLATNESS[(li + si) % len(_SAMPLE_FLATNESS)]
@@ -803,22 +917,7 @@ def sample_record(c=None, equipment=''):
     ms['comments'] = [[_SAMPLE_COMMENTS[(li + si) % len(_SAMPLE_COMMENTS)]
                        for si in range(_SAMPLE_STRIPS)] for li in range(len(_SAMPLE_LENGTHS))]
     rec['measurements'] = ms
-    # 丈ごとのデータ（板丈・肉厚・揃い）。**丈位置の名前も入れる**——
-    # 空だと「どの丈の行か」が紙で分からない。
-    # **どの丈も埋める**（§9.254 ④）。エッジ形状は3通りを回して、
-    # 合否（OK／NG）と内訳の欄が**両方**紙に出るようにする（§9.204）。
-    _EDGE = ('揃い綺麗', 'のこぎり状', 'テレスコ状')
-    rec['product'] = {'rows': [{
-        'productLength': ('%d' % (1998 + (i % 5))),
-        'wallThickness': ('%.2f' % (1.48 + 0.01 * (i % 5))),
-        'edgeShape': _EDGE[i % 3],
-        'occurrencePosition': '' if i % 3 == 0 else ('端部' if i % 3 == 1 else '中央'),
-        'regularity': '' if i % 3 == 0 else ('一定' if i % 3 == 1 else '不定'),
-        'direction': '' if i % 3 == 0 else ('OS' if i % 3 == 1 else 'DS'),
-        'pitch': '' if i % 3 == 0 else ('120' if i % 3 == 1 else '245'),
-        'alignmentValue': '' if i % 3 == 0 else ('1.2' if i % 3 == 1 else '2.8'),
-        'note': ('良' if i % 3 == 0 else ('要観察' if i % 3 == 1 else '選別対象')),
-    } for i in range(len(_SAMPLE_LENGTHS))]}
+    rec['product'] = {'rows': _sample_product_rows()}
     rec['workTime'] = rec.get('workTime') or {}
     # 操業データ（§9.215）。**項目は設備ごとのマスタが決める**ので並べない。
     if c is not None:
@@ -839,13 +938,46 @@ def sample_record(c=None, equipment=''):
     return rec
 
 
+# 刻みの当たり判定の遊び。`0.1*3`が`0.30000000000000004`になるので、
+# 素で比べると刻みに乗っている値が「外れている」と判定される。
+_EPS = 1e-9
+
+
+def _num(value):
+    """数として読めれば`float`、読めなければ`None`。**空欄を0と読まない**
+    （§9.114。0は「設定した」の意味になる）。"""
+    if value is None or value == '':
+        return None
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return None
+    return n if n == n and n not in (float('inf'), float('-inf')) else None
+
+
+def _decimals_of(unit):
+    """刻みの小数桁（`base.js`の`roundUnitDecimals()`と同じ）。"""
+    t = repr(float(unit))
+    if 'e-' in t:
+        head, exp = t.split('e-')
+        return int(exp) + len(head.split('.')[1]) if '.' in head else int(exp)
+    return len(t.split('.')[1].rstrip('0')) if '.' in t else 0
+
+
 def sample_for(path, item=None):
     """その道に入りそうな値を1つ返す（§9.250 ⑤）。
 
     **操業データの項目はマスタから作る**——項目名も型も選択肢も現場が
     決めるので、表では持てない。選択肢があれば先頭、数なら桁と上下限から
     それらしい数、それ以外は短い語。**知らない道でも空にしない**
-    （空だと「見本が壊れている」と読まれる・§CLAUDE 6）。"""
+    （空だと「見本が壊れている」と読まれる・§CLAUDE 6）。
+
+    **その項目の決まりに乗せること**（§9.321、利用者の指示「ステップ刻みの
+    あるデータや、小数点の桁数が変わるものを想定しています」）——見本は
+    「見本の値を入れる」で**そのまま欄へ入る**（`master-maint.js`）ので、
+    刻みや上下限から外れた値だと、欄を離れた瞬間に丸められて**見本と
+    記録される値が食い違う**（§CLAUDE 6「見本が嘘をつく」）。
+    """
     fixed = SAMPLE_VALUES.get(str(path or ''))
     if fixed is not None:
         return fixed
@@ -854,16 +986,52 @@ def sample_for(path, item=None):
         if choices:
             return str(choices[0])
         kind = str(item.get('kind') or item.get('type') or '')
+        if kind not in ('整数', '正の整数', '数値', '正の数'):
+            return '（値）'
+        step = _num(item.get('step'))
+        if step is not None and step <= 0:
+            step = None
+        lo, hi = _num(item.get('min')), _num(item.get('max'))
+        # 桁は**刻みがあればその桁**（`0.25`刻みなら2桁）。刻みが無ければ
+        # 項目の小数桁。整数の型は0桁。
         if kind in ('整数', '正の整数'):
-            lo = item.get('min')
-            return str(int(lo) + 1) if isinstance(lo, (int, float)) else '12'
-        if kind in ('数値', '正の数'):
-            try:
-                d = int(item.get('decimals'))
-            except (TypeError, ValueError):
-                d = 1
-            d = max(0, min(4, d))
-            return f'{12.5:.{d}f}' if d else '12'
+            d = 0
+        else:
+            d = _num(item.get('decimals'))
+            d = int(d) if d is not None else 1
+            if step is not None:
+                d = max(d, _decimals_of(step))
+        d = max(0, min(4, int(d)))
+        # 値は**範囲の中ほど**（下限ぴったりだと「最小値」に見え、上限だと
+        # 「限界まで入れた」に見える）。範囲が無ければ今までどおり12.5前後。
+        if lo is not None and hi is not None and hi > lo:
+            n = lo + (hi - lo) * 0.4
+        elif lo is not None:
+            n = lo + (step if step else 1) * 2
+        elif hi is not None:
+            n = hi - (step if step else 1) * 2
+        else:
+            n = 12.5 if d else 12
+        if step:
+            # 刻みへ寄せてから、範囲の内側でいちばん近い刻みへ寄せ直す。
+            n = round(n / step) * step
+            if lo is not None and n < lo - _EPS:
+                n = _math.ceil((lo - _EPS) / step) * step
+            if hi is not None and n > hi + _EPS:
+                n = _math.floor((hi + _EPS) / step) * step
+            if lo is not None and n < lo - _EPS:
+                # 刻みでは範囲に入れない（上下限が刻みに乗っていない）。
+                # **範囲を優先する**——欄は範囲の外を受け付けないが、刻みは
+                # 欄を離れたときに丸めるだけなので、外れても入力そのものは通る。
+                n = lo
+        else:
+            if lo is not None:
+                n = max(n, lo)
+            if hi is not None:
+                n = min(n, hi)
+        if kind in ('正の整数', '正の数') and n <= 0:
+            n = step if step else (10.0 ** -d if d else 1)
+        return f'{n:.{d}f}'
     return '（値）'
 
 
