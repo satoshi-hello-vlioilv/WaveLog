@@ -381,7 +381,12 @@ let b=null;
   const repSec=await page.evaluate(()=>{
    const html=WL.defect.reportSectionHtml(S.measure)||'';
    const d=document.createElement('div');d.innerHTML=html;
-   return {has:!!html,title:/異常位置判定（参考）/.test(html),
+   /* **見出しは「異常位置判定」**（§9.319-C で利用者の指示により「（参考）」を
+      外した）。改名したとき`test_rpdefect.js`・`test_defectlink.js`は直したが
+      **この網だけ古い綴りのまま残り**、通しで3件落ちていた——**名前を変えたら
+      その名前を当てにしている網を機械で探すこと**（§9.200「赤いまま残っている
+      網は網ではない」）。 */
+   return {has:!!html,title:/異常位置判定/.test(html),
     lanes:d.querySelectorAll('.rp-defect-lane').length,
     hits:d.querySelectorAll('.rp-defect-lane.is-hit').length,
     mark:d.querySelectorAll('.rp-defect-mark').length,
@@ -402,7 +407,9 @@ let b=null;
    await window.openReportForRecord(id);
    const read=()=>{
     const c=document.getElementById('reportContent');
-    return {text:/異常位置判定（参考）/.test(c.innerText),
+    /* 見出しは§9.319-Cで「異常位置判定」へ改名（上と同じ理由）。
+       **「ピッチ判定」は別の塊**なので、この綴りでは当たらない。 */
+    return {text:/異常位置判定/.test(c.innerText),
             lanes:c.querySelectorAll('.rp-defect-lane').length};
    };
    const on=read();
@@ -422,7 +429,7 @@ let b=null;
    if(secEl)await secEl.screenshot({path:process.env.WAVELOG_SHOT+'/defect_report_zoom.png'});
    await page.evaluate(()=>{document.getElementById('measureModal').hidden=false});
   }
-  rec('帳票プレビューに異常位置判定(参考)が出る',
+  rec('帳票プレビューに異常位置判定が出る',
    inReport.on.text&&inReport.on.lanes===6,JSON.stringify(inReport.on));
   rec('既定は「載せる」',/載せる/.test(inReport.label),inReport.label);
   rec('ツールバーのトグルで帳票から外せる',!inReport.off.text&&inReport.off.lanes===0,JSON.stringify(inReport.off));

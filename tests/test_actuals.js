@@ -330,7 +330,10 @@ async function mk(o){
            grid:vis('grid'),tabs:vis('tabs'),
            bar:vis('genericFilterBar'),tool:vis('listToolbar')};
   });
-  const views=[['実績データ','#openActuals'],['データ一覧','#openDrafts'],
+  /* **データ一覧の入口は左メニューの`#homeDrafts`**（§9.320-Gで測定レールの
+     `#openDrafts`を外した）。`if(!b)return false`で飛ばす作りなので、綴りが
+     古いままだと**落ちずに黙って1画面ぶん見なくなる**（§CLAUDE「素通りする網」）。 */
+  const views=[['実績データ','#openActuals'],['データ一覧','#homeDrafts'],
                ['作業スケジュール','#openSchedule'],['マスタ管理','#openMasterMaint']];
   const left=[];
   for(const [name,sel] of views){

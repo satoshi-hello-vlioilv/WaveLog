@@ -1575,6 +1575,70 @@ def _seed_builtins(c):
     return True
 
 
+# ---------------------------------------------------------------------------
+# 半自動登録の塊にも「既定の中身」を持たせる（§9.320-E、利用者の指示）
+# ---------------------------------------------------------------------------
+# 「帳票ブロックの『基本情報』を含む、半自動登録内容の項目は内部データ修正
+#  してもほぼ修正が効きません。列の変更、表組み、ラベルの位置変更など様々な
+#  カスタム機能があるのに使えないので使えるように修正をお願いします」
+#
+# 実測すると、`[内容]`が**空**の塊は`rpMergeBuiltin()`がコードの既定の
+# 描き手へ落ちるので、列数も表組みもラベルの位置も**1つも効かない**
+# ——設定は保存できて盤にも出るのに紙が変わらない（押せるのに何も起きない
+# ボタン・§4）。種を持っている6塊（基本情報・コース情報・測定条件…）は
+# 効いていて、**既定セルしか持たない4塊だけ**が効かなかった。
+#
+# `default_cells()`は「いま紙に出ている形」をそのまま並べたものなので、
+# 入れても**紙はほぼ変わらない**——ただし**`品質情報（仕掛）`だけは例外**
+# （§9.320-E の追補）: あの塊はコードの描き手(`qualityInfoSection()`)が
+# `.rp-section-fill`/`.rp-info-box`で**カードいっぱいに広がる枠**を
+# 組んでおり（§9.242 ⑧）、汎用のマス（`.rp-grid`）へ切り替えると
+# **中身なりの高さへ縮む**——「文字列は変わらない」が「枠の高さ」は
+# 変わる、という気づきにくい形の欠陥を実際に踏んだ（`test_rpprint.js`の
+# §9.242 ⑧が検出）。**自動で種をまくのはこの塊を除いた3つだけ**
+# （`AUTO_SEED_CELL_KEYS`）——`品質情報（仕掛）`は今までどおりコードが
+# 描き、**利用者が「既定の中身を写す」を自分で押したときだけ**汎用の
+# マスへ切り替わる（既存のボタンの挙動は変えない。押した先で枠が
+# 中身なりへ変わることは利用者の選択として受け入れる）。
+#
+# **目印はパス設定マスタ**（`seed_mother_builtins`と同じ作法）——「空なら
+# 入れる」にすると、**利用者が中身を消してコードの既定へ戻す道**が塞がれる
+# （消した瞬間に復活する）。
+_CELL_SEEDED_KEY = '__rb_default_cells_seeded__'
+AUTO_SEED_CELL_KEYS = tuple(k for k in DEFAULT_CELL_COLS if k != '品質情報（仕掛）')
+
+
+def seed_default_cells(c):
+    """既定セルを持つ塊のうち**自動で種をまくものだけ**、`[内容]`が空なら
+    1度だけ入れる（`品質情報（仕掛）`を除く。上の注記）。
+
+    **空の行だけ**触る（利用者が組んだ中身は上書きしない）。
+    """
+    from ..db_access import path_config_rows, set_path_config
+    if path_config_rows(c).get(_CELL_SEEDED_KEY):
+        return 0
+    cur = c.cursor()
+    made = 0
+    cell_map = default_cell_map()
+    for key in AUTO_SEED_CELL_KEYS:
+        d = cell_map.get(key)
+        if not d:
+            continue
+        cur.execute(f"SELECT [ブロックID],[内容],[内訳列数] FROM [{TABLE}] "
+                    "WHERE [組み込みキー]=?", [key])
+        for bid, content, cols in cur.fetchall():
+            if str(content or '').strip():
+                continue
+            cur.execute(f'UPDATE [{TABLE}] SET [内容]=?,[内訳列数]=?,'
+                        '[更新者ID]=?,[更新日時]=Now() WHERE [ブロックID]=?',
+                        [d['content'], int(cols or 0) or int(d.get('cols') or 0),
+                         'migrate:cells', int(bid)])
+            made += 1
+    set_path_config(c, _CELL_SEEDED_KEY, 'done', 'migrate:cells')
+    c.commit()
+    return made
+
+
 def ensure_table(c):
     if TABLE not in tables(c):
         cur = c.cursor()
@@ -1586,9 +1650,14 @@ def ensure_table(c):
                     '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
         c.commit()
         _seed_builtins(c)
+        seed_default_cells(c)
         return True
     _ensure_columns(c)
     _seed_builtins(c)
+    # **後から足した既定セルは、既にあるDBへも入れる**（§9.320-E）。
+    # `_seed_builtins()`は「鍵がまだ無い行」しか作らないので、先に
+    # 立ち上がっている端末では一生入らない（§9.232と同じ罠）。
+    seed_default_cells(c)
     return False
 
 
@@ -1637,15 +1706,15 @@ def builtin_off(c, equipment):
     return sorted(known - live)
 
 
-def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
-                 content='', note='', enabled=True, block_id=None,
+def block_upsert(c, uid, equipment='*', name='', order=None, span=None, rows=None,
+                 content=None, note=None, enabled=None, block_id=None,
                  builtin=None, cols=None, kind=None, text=None, repeat=None,
                  repeat_dir=None, full=None):
     ensure_table(c)
     name = str(name or '').strip()
     if not name:
         raise ValueError('ブロック名を入力してください。')
-    equipment = str(equipment or '').strip() or '*'
+    equipment_given = str(equipment or '').strip()
     cur = c.cursor()
     # **組み込みの印は付け替えられない**（§9.219 ②、`item_upsert`と同じ約束）。
     # 既定の塊はコードの`RP_BLOCKS`のどれかを指しているので、後から書き換えると
@@ -1658,10 +1727,24 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
     cur_repeat = ''
     cur_repeat_dir = ''
     cur_full = ''
+    # **渡していない設定は今の値のまま**（§9.320-E／§9.212 ②で7度目）。
+    # ここは全置換のUPDATEなので、呼ぶ側が1つ渡し忘れるとその設定だけが
+    # 黙って消える。とりわけ`[内容]`が消えると、**その塊はコードの既定へ
+    # 落ちて列数・表組み・ラベルの位置が一切効かなくなる**——設定は残って
+    # いるのに紙が変わらないので、いちばん気づきにくい壊れ方になる
+    # （利用者の報告「半自動登録内容の項目は内部データ修正してもほぼ
+    #  修正が効きません」の正体）。**入口で安全側へ倒す**。
+    cur_content = ''
+    cur_note = ''
+    cur_span = None
+    cur_rows = None
+    cur_enabled = True
+    cur_equipment = ''
     if block_id is not None:
         cur.execute(f'SELECT [組み込みキー],[内訳列数],[種別],[文字],[繰返],[繰返方向],'
-                    f'[最大表示] FROM [{TABLE}] WHERE [ブロックID]=?', [int(block_id)])
-        hit = cur.fetchone() or ['', 0, '', '', '', '', '']
+                    f'[最大表示],[内容],[備考],[幅],[行数],[有効],[設備名] '
+                    f'FROM [{TABLE}] WHERE [ブロックID]=?', [int(block_id)])
+        hit = cur.fetchone() or ['', 0, '', '', '', '', '', '', '', None, None, -1, '']
         cur_builtin = str(hit[0] or '').strip()
         cur_cols = int(hit[1] or 0)
         cur_kind = normalize_kind(hit[2])
@@ -1669,6 +1752,21 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
         cur_repeat = normalize_repeat(hit[4] if len(hit) > 4 else '')
         cur_repeat_dir = normalize_repeat_dir(hit[5] if len(hit) > 5 else '')
         cur_full = normalize_full(hit[6] if len(hit) > 6 else '')
+        cur_content = str(hit[7] or '') if len(hit) > 7 else ''
+        cur_note = str(hit[8] or '') if len(hit) > 8 else ''
+        cur_span = hit[9] if len(hit) > 9 else None
+        cur_rows = hit[10] if len(hit) > 10 else None
+        cur_enabled = bool(hit[11]) if len(hit) > 11 else True
+        cur_equipment = str(hit[12] or '').strip() if len(hit) > 12 else ''
+    equipment = equipment_given or cur_equipment or '*'
+    content = cur_content if content is None else str(content or '')
+    note = cur_note if note is None else str(note or '')
+    if span is None:
+        span = cur_span if cur_span is not None else 6
+    if rows is None:
+        rows = cur_rows if cur_rows is not None else 0
+    if enabled is None:
+        enabled = cur_enabled
     if builtin is None:
         builtin = cur_builtin
     builtin = str(builtin or '').strip()
@@ -1713,7 +1811,7 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=6, rows=0,
     # `args[2:]`という**位置スライス**なので、途中へ入れると値が別の列へ入る。
     # SET・VALUES・argsの**4箇所**（UPDATE2本＋INSERT1本＋この行）を同じ順に。
     args = [equipment, name, order, normalize_span(span), normalize_rows(rows),
-            str(content or ''), str(note or ''), -1 if enabled else 0, builtin, cols,
+            content, note, -1 if enabled else 0, builtin, cols,
             kind, text, repeat, repeat_dir, full]
     if block_id is not None:
         cur.execute('UPDATE [帳票ブロックマスタ] SET [設備名]=?,[ブロック名]=?,[表示順]=?,[幅]=?,'

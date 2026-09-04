@@ -428,6 +428,28 @@ def fix_master(quiet: bool = False) -> None:
                           'WHERE [組み込みキー]=? AND ([内容] IS NOT ? OR '
                           'COALESCE([内訳列数],0) IS NOT ?)',
                           [content, cols, key, content, cols])
+        # 10) 半自動の塊の「既定セル」再種まき（§9.320-E の追補）
+        # 上のUPDATEは`_builtin_block_seeds()`（＝`BUILTIN_SEEDS`の`[内容]`）
+        # へ戻すので、**既定セルしか持たない4塊**（品質等級・寸法・品質情報・
+        # 母材実績。`BUILTIN_SEEDS`では`content=''`）は毎回**空へ**戻る
+        # ——これは意図どおり（§9.121。テストが組んだ中身を次回へ持ち越さない）。
+        # だが空にするだけでは足りない——アプリ側の一度きりの移行
+        # （`report_block_repo.seed_default_cells()`）は`__rb_default_cells_
+        # 　seeded__`という**パス設定マスタの目印**で「もう済んだ」と判断して
+        # おり、フィクスチャがマスタを戻しても目印は残ったまま。目印が残ると
+        # 空にした4塊へ**二度と種が入らず**、`列数を変えると紙の列が実際に
+        # 変わる`ようなテストが「読み込む前から空」で落ちる。
+        # **ここではAPI経由の再種まきを呼ばない**——`report_block_repo`は
+        # `db_access`をimportしているだけで設定移行が走り、`fix_master()`が
+        # 書き込みトランザクションを開いたまま別の接続が割り込むことになる
+        # （`_builtin_block_seeds()`の注記と同じ理由・実際に踏んだ罠）。
+        # **目印だけ消す**——次にサーバー自身が`/api/report-block-master`を
+        # 読んだ瞬間、`ensure_table()`がサーバー自身の安全な接続で種をまき
+        # 直す（`block_rows()`は呼ばれるたびに`ensure_table()`を通るので、
+        # 起動直後の1回を待つ必要が無い）。
+        if 'パス設定マスタ' in have:
+            c.execute("DELETE FROM [パス設定マスタ] "
+                      "WHERE [設定キー]='__rb_default_cells_seeded__'")
         c.commit()
 
 

@@ -757,7 +757,18 @@
 .rp-note{margin:0 0 calc(2px * var(--rp-dense-y,1) * var(--rp-pack,1));color:#60747b;font-size:7.5px}
 .rp-wide-wrap{overflow:visible}
 .rp-wide-table{min-width:0;width:100%;--rp-pd-y:1px;--rp-pd-x:2px}
-.rp-wide-table th,.rp-wide-table td{font-size:7.5px;line-height:calc(1 + .15 * var(--rp-dense-y,1) * var(--rp-pack,1))}
+/* ---------- 表の文字も本文と同じ大きさ（§9.320-D、利用者の指示） ----------
+   「測定データ、丈別データの文字が少し小さいように思えるので**十分に
+    表示エリアが確保できている場合は**通常のサイズを他のベースの文字
+    サイズと合わせられるようにしてください」
+
+   実測すると、この2つの表だけが7.5pxで、他（`.rp-field`本文・
+   `.rp-dim-table`）は8.5pxだった——**縮んでいたのではなく、地の大きさが
+   違っていた**（`--rp-fit`は掛かっておらず、器には余りがあった）。
+   地を8.5pxへそろえ、**入らないときだけ**今までどおり詰めて縮める
+   （`rpFitBlockBodies()`の段と`--rp-fit`）。実測で横に切れるセルは
+   7.5pxでも8.5pxでも0件なので、広げても文字は切れない。 */
+.rp-wide-table th,.rp-wide-table td{font-size:8.5px;line-height:calc(1 + .15 * var(--rp-dense-y,1) * var(--rp-pack,1))}
 /* 条番号: 見切れない範囲でできるだけ幅を絞り、数字は右パディング付きの
    右寄せにする。空いた分の幅は隣のロット№列(幅ロット分割対応)へ回す。 */
 .rp-wide-table th.rp-colno{width:8mm;max-width:8mm;padding-right:3px;text-align:right}
@@ -767,7 +778,7 @@
    測定データ(板厚)の領域まではみ出さないよう、はみ出す分は省略記号で
    切り詰める(丈数が増えるのは行方向のみ)。 */
 .rp-product-table{min-width:0;width:100%;table-layout:fixed;--rp-pd-y:1px;--rp-pd-x:2px}
-.rp-product-table th,.rp-product-table td{font-size:7.5px;line-height:calc(1 + .15 * var(--rp-dense-y,1) * var(--rp-pack,1));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rp-product-table th,.rp-product-table td{font-size:8.5px;line-height:calc(1 + .15 * var(--rp-dense-y,1) * var(--rp-pack,1));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rp-product-table tbody th{white-space:nowrap}
 /* 揃いの内訳(§9.205、利用者の指示「内訳と合否両方(デフォルト)と内訳のみ、
    合否のみを切り替えほしい」)。**この欄だけ折り返す**——他の列はnowrap＋
@@ -855,8 +866,47 @@
 .rp-defect-roll-answer.is-empty>b{color:#8a6d3b}
 /* 候補の欄は**幅方向の欄と同じ形**（`.rp-defect-fact`）を使い回す。ただし
    節の中では横に流したほうが場所を使い切れるので、器だけ2列にする。 */
-/* ピッチの塊は幅6マス（紙の半分）が既定なので、欄は2列で足りる。 */
+/* ---------- 狭くしてもきれいに収まる（§9.320-F、利用者の指示） ----------
+   「ピッチ判定ブロックは横幅を狭くしてもきれいに収まるようにしてほしい。
+    ラベル上下など使えそうなカスタム機能には対応させてほしい」
+
+   実測すると、幅6マスでは収まるのに**4マス・3マスでは横へ溢れ**、欄の値が
+   2件切れていた——欄が`repeat(2,…)`の**決め打ち**で、幅に関わらず2列の
+   まま値を押し込んでいたため。
+   **器の幅で決める**（`@container`）——塊は紙のどのマス数にも置けるので、
+   ビューポートでは判断できない。段は2つだけ:
+     ふつう … 2列・ラベルは左（今までどおり。**広い紙は1pxも変わらない**）
+     狭い   … 1列（値に幅を渡す）
+     もっと狭い … **ラベルを上・値を下**（横に並べる幅そのものが無い）
+   「ラベル上下」は設定ではなく**幅で自動**にする——この塊の中身は計算で
+   作るので盤のマスを持てず（§9.274のセルが無い）、設定を置いても
+   当てる先が無い（押せるのに何も起きない・§4）。 */
+.rp-defect-roll{container-type:inline-size}
 .rp-defect-roll-facts{grid-template-columns:repeat(2,minmax(0,1fr));gap:0 6px;margin-top:1px}
+/* **しきい値は実測から**（紙は画面でも印刷でも794px＝210mmなので、
+   プレビューと刷り上がりで同じ段になる）。紙の割りは12/24/36/48列を
+   選べるので「何マス」では決まらない——**器の実幅**で決める。
+     180px（24列中6マス）… 2列で切れも溢れも0件 → **今までどおり**
+     119px（同4マス）    … 2列だと値が2件切れて横へ溢れる → 1列
+      88px（同3マス）    … 横に並べる幅そのものが無い → ラベルを上下 */
+@container (max-width:150px){
+ .rp-defect-roll-facts{grid-template-columns:minmax(0,1fr)}
+}
+@container (max-width:110px){
+ /* ラベルを上・値を下。**値は左づめ**——右づめのままだと、ラベルの真下で
+    値だけが右端へ寄って対応が読めなくなる（§9.305 ②-1と同じ理由）。 */
+ .rp-defect-roll .rp-defect-fact{grid-template-columns:minmax(0,1fr);gap:0}
+ .rp-defect-roll .rp-defect-fact span{white-space:normal}
+ .rp-defect-roll .rp-defect-fact b{text-align:left}
+ /* 候補の表は**ロール名と一致だけ**にする——狭い器で5列に割ると、どの列も
+    2〜3文字になって読めない。落とした列は`title`に残す（§4）。 */
+ .rp-defect-roll .rp-defect-roll-table col.w-face,
+ .rp-defect-roll .rp-defect-roll-table col.w-dia{width:0}
+ .rp-defect-roll .rp-defect-roll-table th:nth-child(2),
+ .rp-defect-roll .rp-defect-roll-table td:nth-child(2),
+ .rp-defect-roll .rp-defect-roll-table th:nth-child(3),
+ .rp-defect-roll .rp-defect-roll-table td:nth-child(3){display:none}
+}
 /* **切れないように組む**（§9.319-C、利用者の報告「見切れが生じる」）——
    ロール名・接触面は現場が決める文字なので、固定割りにして折り返させる。 */
 .rp-defect-roll-table{width:100%;table-layout:fixed;border-collapse:collapse;margin-top:1px;font-size:8px}

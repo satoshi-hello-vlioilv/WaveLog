@@ -1287,14 +1287,20 @@ function updateMeasurementHeading(){
     :'この項目には判定に使える基準が登録されていません。判定は行いません。');
  const labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示基準'},sourceLabel=labels[detail.source],requestedLabel=labels[configuredToleranceSource()],fallback=detail.fallback?`${requestedLabel}が不足しているため製造公差を使用`:'';
  /* 片側だけの基準は「0〜上限」なので、±の内訳を出しても読む値が無い。 */
- if(detail.single)return pill('',`${sourceLabel} ${detail.range[0]}〜${detail.range[1]}`,
-   `基準 ${detail.range[0]}〜${detail.range[1]}`
+ /* **桁は測定値と同じにそろえる**（§9.320-B、利用者の報告「板厚製造公差の
+    表示が桁数溢れしている」）。生の`range`は`1.475`が
+    `1.4749999999999999`のように出る——二進では表せない値の引き算なので
+    必ず起きる。桁を答えるのは`fixedToleranceValue()`の1箇所で、
+    **判定は生の範囲のまま**（画面だけを丸める・§9.242 ②）。 */
+ const lo=fixedToleranceValue(kind,detail.range[0]),hi=fixedToleranceValue(kind,detail.range[1]);
+ if(detail.single)return pill('',`${sourceLabel} ${lo}〜${hi}`,
+   `基準 ${lo}〜${hi}`
    +(detail.plusKey?`（${detail.plusKey}）`:'')
    +'　※上下限のある公差ではなく、これ以下という基準です');
  pill(detail.source==='order'?'is-order':'',
-      `${sourceLabel} ${detail.range[0]}〜${detail.range[1]}`,
-      `基準値 ${base} ／ 公差 +${detail.plus}（${detail.plusKey}） -${detail.minus}（${detail.minusKey}）`
-      +` ／ 判定範囲 ${detail.range[0]}〜${detail.range[1]}`+(fallback?` ／ ${fallback}`:''));
+      `${sourceLabel} ${lo}〜${hi}`,
+      `基準値 ${fixedToleranceValue(kind,base)} ／ 公差 +${fixedToleranceValue(kind,detail.plus)}（${detail.plusKey}） -${fixedToleranceValue(kind,detail.minus)}（${detail.minusKey}）`
+      +` ／ 判定範囲 ${lo}〜${hi}`+(fallback?` ／ ${fallback}`:''));
  if(fallback)box.insertAdjacentHTML('beforeend',`<span class="tol-pill is-fallback" title="${esc(fallback)}">代替</span>`);
 }
 // Design, actual and residual courses are rendered as one ordered information group.

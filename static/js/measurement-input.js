@@ -300,7 +300,10 @@ function processDeviceInputCore(raw){
     テレスコープ＝デプスゲージ と同じ形）。 */
  if(type==='板厚'){
   if(!['micrometer','manual'].includes(p.device))return inputError('板厚はマイクロメータを使用してください');
-  const j=st.tStep||0;m.measurements.thickness[li][j]=p.value.toFixed(3);st.tStep=(j+1)%3;st.pendingDevice='micrometer'
+  /* **桁は器が決める**（§9.320-C）。マイクロメータ＝3桁を`measurementDigits()`
+     の1箇所から引く（ここに3と書くと、桁を直したときに2箇所になる）。 */
+  noteMeasureDevice('thickness',p.device);
+  const j=st.tStep||0;m.measurements.thickness[li][j]=p.value.toFixed(measurementDigits('thickness',p.device));st.tStep=(j+1)%3
  }else if(type==='板幅'){
   if(!['caliper','tape','manual'].includes(p.device))return inputError('板幅はノギスまたはコンベックスを使用してください');
   /* **板幅は測定器によらず小数2桁**（§9.242 ②、利用者の指示）。以前は
@@ -311,7 +314,11 @@ function processDeviceInputCore(raw){
   /* **転送された値にも丸めが効く**（§9.305 ①）——板幅に刻みを設定した
      現場では、手入力と転送で違う値になるほうが分かりにくい。設定していな
      ければ`settle`は今までどおり桁だけをそろえる。 */
-  const j=st.wStep||0;m.measurements.width[li][j]=WL.measureRound.settle('width',p.value);st.pendingDevice='width';advanceWidth()
+  /* **ノギスは2桁・コンベックスルールは1桁**（§9.320-C、利用者の指示）。
+     器を覚えてから丸める——欄を離れたときの`settle`も同じ器を見るので、
+     **転送で受けた桁が手入力の丸めで戻されない**。 */
+  noteMeasureDevice('width',p.device);
+  const j=st.wStep||0;m.measurements.width[li][j]=WL.measureRound.settle('width',p.value,p.device);advanceWidth()
  }else if(type==='バリ'){
   /* 段の案内は**見出しのバッジ**が出す（§9.242 ③）。`setState()`へ書いて
      いた頃は、この関数の末尾の`markDirty()`が保存状態で上書きするため
@@ -355,7 +362,7 @@ function processDeviceInput(raw){
   /* 丸めるのは**`measurementDigits('width')`の桁**（§9.242 ②）。ここに
      桁数を直に書くと、`base.js`の桁数を上げてもこちらが先に落として
      しまう（実際に2桁の設定が1桁で潰されていた）。 */
-  const normalized={...parsed,value:Number(parsed.value.toFixed(measurementDigits('width')))};const original=deviceParse;deviceParse=()=>normalized;
+  const normalized={...parsed,value:Number(parsed.value.toFixed(measurementDigits('width',parsed.device)))};const original=deviceParse;deviceParse=()=>normalized;
   try{result=processDeviceInputCore(raw)}finally{deviceParse=original}
  }else result=processDeviceInputCore(raw);
  const el=$('#deviceInput'),out=$('#deviceLastReceived');
@@ -863,9 +870,25 @@ function renderMeasureGridVertical(){
  /* バリの2段（§9.242 ③）は**この1行の中**に置く。項目名・進捗と同じ器なので
     行は増えない。出るのはバリのときだけ。 */
  const burrBadge=type==='バリ'?burrStepHtml():'';
+ /* ---------- 判定された測定器を1つの札で言う（§9.320-C、利用者の指示） ----------
+    「測定時に自動転送で判定された機器が何か、表示のエリアを無理やりつくらず
+     今あるスペースにうまくなじませてコンパクトに表示してください」
+
+    **行は増やさない**——項目名・進みと同じ器（`#measureHeadBadges`）へ入れる
+    （§9.234 ③の「見出しは1行」を崩さない）。出るのは**桁が器で変わる項目**
+    （板厚・板幅）で、**まだ転送を受けていなければ出さない**——「不明」と
+    書く場所を常設すると、いちばん多い状態が場所だけ取ることになる。 */
+ const devBadge=(()=>{
+  const key=actualKey,dev=key?WL.measureDevice.of(key):'';
+  if(!dev||WL.measureDevice.digits(key,'')===null)return '';
+  const label=WL.measureDevice.label(dev),d=WL.measureDevice.digits(key,dev);
+  return `<span class="mhead-device" title="${esc(`自動転送の値から判定した測定器です。`
+    +`${label}が保証できる桁までで記録します（小数${d}桁）。手入力もこの桁にそろえます。`)}">`
+    +`${esc(label)} <b>${d}桁</b></span>`;
+ })();
  if(head)head.innerHTML=`<b class="mhead-item">${esc(type)}</b>`
    +`<span class="mhead-status" title="${esc(`この丈の進み: ${compactMeasureStatus(done,slots)}`)}">`
-   +`${esc(compactMeasureStatus(done,slots))}</span>`+burrBadge+bulkBtn;
+   +`${esc(compactMeasureStatus(done,slots))}</span>`+devBadge+burrBadge+bulkBtn;
  let h=`<section class="measure-grid-block compact-other"><div class="matrix-body${tol.graph?'':' no-graph'}"><aside class="compact-tolerance-side">${tol.graph}</aside>`;
  h+=measureMatrixHtml(actualKey,slots,type);
  h+='</div></section>';
@@ -1031,7 +1054,14 @@ function bindFlatnessInputs(){
    if(e.key==='Enter'){e.preventDefault();advanceWidth();renderMeasureGrid();focusFlatnessCurrentCell()}
   };
  });
- document.querySelectorAll('.flat-pick').forEach(btn=>{
+ /* **記号のボタンだけを配線する**（§9.320-A、利用者の報告「フラットネスの
+    全〇ボタンが使えません」）。`.flat-pick`には**全〇（`#flatAllOk`）も
+    含まれる**ので、素の`.flat-pick`で拾うと、直前に付けた全〇の処理を
+    ここが上書きしてしまう——押すと`btn.dataset.sym`＝`undefined`が
+    いまの1マスへ書き込まれ、全〇にならないどころか値が壊れる。
+    **器の名前ではなく「印を持っているか」で拾う**（§9.233 ③）——
+    記号を入れるのが役目のボタンは`data-sym`を持つ、が唯一の見分け方。 */
+ document.querySelectorAll('.flat-pick[data-sym]').forEach(btn=>{
   btn.onclick=()=>{
    const j=lengthIndex(),c=m.settings.wStep||0;
    m.measurements.flatness[j][c]=btn.dataset.sym;
