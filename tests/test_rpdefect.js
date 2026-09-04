@@ -234,6 +234,52 @@ const made=[];
   rec('1か所なら今までどおり（混入位置の行を足さない・該当条のまま）',
       O.indexOf('rp-defect-spots')<0&&O.indexOf('該当条')>=0,O.slice(0,160));
 
+  /* ---- ⑤ 何条目かは赤太字（§9.323 ⑤、利用者の指示） ----
+     「条混入位置で何条目という表示の部分の大事な文字情報を赤太字で」
+     **宣言ではなく実際に描かれた色で見る**（§9.229 ⑥）——クラスが付くだけでは
+     絵は変わらない。**本物の紙のCSSの中で測ること**（§9.311 C）。
+     **片側だけ見ない**——全部を赤くすると、どれが結論なのか色が語らなくなる。 */
+  const red=await page.evaluate(html=>{
+   const pg=document.createElement('div');
+   pg.className='rp-report rp-page';
+   pg.style.position='fixed';pg.style.left='-3000px';pg.style.top='0';
+   pg.innerHTML=html;
+   document.body.appendChild(pg);
+   const lanes=[...pg.querySelectorAll('.rp-defect-spot-lane')];
+   const at=pg.querySelector('.rp-defect-spot-at');
+   const num=lanes[0]&&lanes[0].querySelector('b');
+   const g=el=>el?{c:getComputedStyle(el).color,w:getComputedStyle(el).fontWeight,
+                   t:(el.textContent||'').slice(0,24)}:null;
+   const out={掛かる:g(lanes[0]),番号:g(num),距離:g(at),件数:lanes.length};
+   pg.remove();
+   return out;
+  },M);
+  const isRed=c=>{const m=/rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(String(c||''));
+    if(!m)return false;const[,R,G,Bb]=m.map(Number);
+    return R>=120&&R>G*2&&R>Bb*2};   /* 赤い＝Rが飛び抜けて高い */
+  rec('何条目かを赤太字で出す（§9.323 ⑤）',
+      !!red&&isRed(red.掛かる&&red.掛かる.c)&&Number(red.掛かる.w)>=700,
+      JSON.stringify(red&&red.掛かる));
+  rec('条番号そのものはさらに太い（先に目に入る）',
+      !!red&&!!red.番号&&Number(red.番号.w)>Number(red.掛かる.w),
+      JSON.stringify(red&&red.番号));
+  /* **距離まで赤くしない**——全部赤いと、どれが結論なのか色が語らない（§3）。 */
+  rec('どこで測ったかは地の色のまま（全部を赤くしない）',
+      !!red&&!!red.距離&&!isRed(red.距離.c),JSON.stringify(red&&red.距離));
+  /* 「該当条」の欄と**同じ赤**であること（§9.163。同じことを言う色を2つ持たない）。 */
+  const sameRed=await page.evaluate(html=>{
+   const pg=document.createElement('div');
+   pg.className='rp-report rp-page';
+   pg.style.position='fixed';pg.style.left='-3000px';pg.style.top='0';
+   pg.innerHTML=html;document.body.appendChild(pg);
+   const f=pg.querySelector('.rp-defect-fact-hit b');
+   const c=f?getComputedStyle(f).color:'';
+   pg.remove();return c;
+  },O);
+  rec('「該当条」の欄と同じ赤（読み替えが要らない）',
+      !!red&&!!red.掛かる&&sameRed===red.掛かる.c,
+      JSON.stringify({欄:sameRed,混入位置:red&&red.掛かる&&red.掛かる.c}));
+
   /* ---- 7. 旧「長手:なし」を引き継ぐ（§9.319-C／§9.132） ----
      §9.305 ②-2の印を読む人はもう居ない。**わざわざ「出さない」を選んだ紙が、
      版を上げただけで黙って1枚増える**のを防ぐ。ここは「印が在ること」では

@@ -29,7 +29,34 @@
 /* **詳細度を数えること**（§9.206）——`.settings-dialog`（40-records.css）は
    同じ(0,1,0)で**後に読まれる**ので、素の`.changelog-dialog`では負けて
    幅620pxのままだった（実測）。両方を書いて(0,2,0)にする。 */
-.settings-dialog.changelog-dialog{width:min(1180px,96vw);height:min(880px,92vh);
+/* **器は中身の長さから決める**（§CLAUDE 画面基準 11、利用者の報告「更新履歴が
+   表示されるエリアと改行の位置がずれていて余白が広すぎます」）。
+   以前は幅を`1180px`の直値で決めており、本文の行長（`li{max-width:76ch}`）と
+   何の関係も無かった——実測で**器の使える幅868pxに対して文字は591px**、
+   右に**277px（器の32%）**の空きが残り、カードの右端と行の折り返しが
+   ずれて見えていた。
+   **`ch`は半角「0」の幅**なので、日本語の本文では意味を持たない単位
+   （76ch＝全角42文字。読みやすさとしては妥当だが、そう読めない）。
+   行長は`--cl-text-w`が1箇所で持ち、**器も本文も同じ数から作る**（§9.163）
+   ので、必ず揃う。
+   **`em`で持たないこと**（§9.257 ①）——カスタムプロパティの`em`は書いた
+   場所ではなく**使った場所の文字サイズ**で解けるので、器（ダイアログ）と
+   本文（li）で違う数になる。`--fs`から絶対長で作る。 */
+.settings-dialog.changelog-dialog{
+  --cl-rail-w:260px;
+  /* 日本語の本文は**全角40〜45文字/行**が読みやすい（欧文の66〜80字に相当）。
+     42文字は今までの見え方（76ch＝全角42文字）とまったく同じ（§9.132）。 */
+  --cl-text-w:calc(42 * var(--fs));
+  /* **内訳を全部足すこと**——1つでも落とすと本文がそのぶん切られ、器を
+     中身から決めた意味が無くなる（実測: カードの内側24pxを落として3px
+     足りず、`li`が588→561pxで折り返していた）。 */
+  width:min(calc(var(--cl-rail-w)             /* 左のレール */
+                 + var(--cl-text-w)           /* 行長 */
+                 + var(--space-5) * 2         /* 本文の左右の余白 */
+                 + var(--space-3) * 2         /* 「いま動いている版」のカードの内側 */
+                 + var(--space-5)),           /* レールの罫線とスクロールバーの帯 */
+             96vw);
+  height:min(880px,92vh);
   max-height:92vh;display:flex;flex-direction:column}
 .cl-sub{margin:2px 0 0;color:#8fd4d4;font-size:var(--fs-sm);font-weight:400}
 .cl-tools{flex:0 0 auto;display:flex;align-items:center;gap:var(--gap-inline);
@@ -58,7 +85,9 @@
   color:var(--ink-soft);font-size:var(--fs-tiny)}
 .cl-rail-row em{font-style:normal;color:var(--teal);font-weight:800}
 .cl-rail-empty{padding:var(--space-3);color:var(--muted);font-size:var(--fs-sm)}
-.cl-main{min-height:0;overflow:auto;padding:var(--space-5)}
+.cl-main{min-height:0;overflow:auto;padding:var(--space-5);
+  /* バーの出入りで内側の幅が動くと、器を中身から決めた意味が無くなる（§9.227 ②）。 */
+  scrollbar-gutter:stable}
 .changelog-entry{padding:var(--space-4) 0;border-bottom:1px solid var(--line-soft);
   scroll-margin-top:var(--space-2)}
 .changelog-entry:first-child{padding-top:0}
@@ -72,7 +101,9 @@
 .changelog-entry.is-now{background:var(--surface-2);border-radius:var(--radius-md);
   padding-left:var(--space-3);padding-right:var(--space-3)}
 .changelog-entry ul{margin:0;padding-left:var(--space-5);color:var(--ink-2);line-height:1.8}
-.changelog-entry li{max-width:76ch}
+/* **行長は器と同じ数から作る**（§9.163）——直値で持つと、器を直したときに
+   ここだけ古い行長のまま残り、また右に空きができる。 */
+.changelog-entry li{max-width:var(--cl-text-w)}
 .changelog-entry li+li{margin-top:var(--space-2)}
 .changelog-entry code{border-radius:var(--radius-xs);padding:0 var(--space-1);
   background:var(--surface-3);font-size:var(--fs-sm)}
