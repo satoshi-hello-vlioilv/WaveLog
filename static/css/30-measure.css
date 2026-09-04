@@ -2869,6 +2869,26 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
 }
 .opf-widget.is-other-on .opf-other-btn{display:none}
 .opf-widget.is-other-on .opf-other-in{display:inline-block}
+
+/* --- 測定画面からマスタへ間接登録（§9.323 ①、利用者の指示） ---
+   「測定画面からマスタへ間接登録する経路を開通してほしいです」
+
+   **打った値が候補に無いときだけ出る**（欄を1つも太らせない）ので、
+   器の高さは持たず**行の下へ小さく置く**。**押す前に何をするか字で言う**
+   （§2）——「＋」だけだと、この欄の候補なのかマスタなのかが読めない。
+   **色は仕上げの色（`--opf-hue`）を借りる**——欄ごとの意匠に追随する。 */
+.opf-addchoice{
+  display:inline-flex;align-items:center;gap:var(--space-1);
+  align-self:flex-start;margin-top:var(--space-1);
+  padding:0 var(--space-2);height:var(--ctl-h-xs);
+  border:1px dashed var(--opf-hue,var(--teal));
+  border-radius:var(--opf-radius,var(--radius-sm));
+  background:transparent;color:var(--opf-hue-dark,var(--teal-dark));
+  font-size:var(--fs-sm);font-weight:800;cursor:pointer;
+}
+.opf-addchoice::before{content:'＋';font-weight:900}
+.opf-addchoice:hover{background:var(--surface-2)}
+.opf-addchoice:disabled{opacity:.6;cursor:progress}
 /* 未入力・公差外の印を**ボタン側へ移す**（selectは見えないので）。
    **器の名前を並べないこと**（§9.288 ①）——並べていたので、あとから足した
    形（パネル・メニュー・切替・入切・メモ）には橙も赤も一度も付いていな

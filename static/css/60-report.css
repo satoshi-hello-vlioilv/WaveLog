@@ -889,6 +889,9 @@
      180px（24列中6マス）… 2列で切れも溢れも0件 → **今までどおり**
      119px（同4マス）    … 2列だと値が2件切れて横へ溢れる → 1列
       88px（同3マス）    … 横に並べる幅そのものが無い → ラベルを上下 */
+/* **明示した設定が勝つ**（§9.323 ④）——利用者が選んでいない紙は今までどおり
+   器の幅で切り替わる（§9.132）ので、自動の段は`:not([data-fact-label])`と
+   `:not([style*=...])`ではなく、**明示した側を後ろに置いて上書きする**。 */
 @container (max-width:150px){
  .rp-defect-roll-facts{grid-template-columns:minmax(0,1fr)}
 }
@@ -907,6 +910,43 @@
  .rp-defect-roll .rp-defect-roll-table th:nth-child(3),
  .rp-defect-roll .rp-defect-roll-table td:nth-child(3){display:none}
 }
+/* ---------- 混入位置は横幅を取る（§9.323 ②、利用者の指示） ----------
+   「複数条の位置表示でも文字で表示できるようにしてください。その他の文字
+    情報は混入位置の情報表示のために余白を詰めてスペースを節約してください」
+
+   欄の並び（4列）の中へ入れると、1件で1列ぶんしか取れず必ず折り返す。
+   **欄の外へ全幅で置く**——2か所以上のときだけ出るので、1か所のロットの紙は
+   1行も増えない（§9.132）。**その他の欄は詰める**（`is-compact`）——同じ
+   数字を2度出さないぶん（基準・製品座標）と合わせて場所を作る。 */
+.rp-defect-spots{display:grid;font-size:8.5px;grid-template-columns:min-content minmax(0,1fr);
+ gap:4px;padding:.5px 2px;border-bottom:1px solid #eef2f4}
+.rp-defect-spots-label{color:#60747b;font-size:8px;font-weight:700;white-space:nowrap}
+.rp-defect-spots-list{display:flex;flex-wrap:wrap;gap:0 8px;min-width:0}
+.rp-defect-spot{display:inline-flex;align-items:baseline;gap:3px;color:#17272d;font-weight:800;
+ white-space:nowrap}
+/* 何か所目かは**小さな番号**で（図の旗と対応が読める）。色だけで伝えない（§3）。 */
+.rp-defect-spot>i{display:inline-block;font-size:7.5px;border-radius:2px;min-width:8px;
+ padding:0 2px;background:#dfe9ec;color:#40575e;font-style:normal;font-weight:800;text-align:center}
+.rp-defect-facts.is-compact{gap:0 4px}
+.rp-defect-facts.is-compact .rp-defect-fact{padding:0 2px}
+
+/* ---------- 利用者が選んだ見せ方（§9.323 ④、利用者の指示） ----------
+   「ピッチ判定の部分ラベルの上下や横位置や列数が半自動になっていますが、
+    ここもユーザーが選んでカスタムを正しくできるように」
+   帳票ブロックマスタの3つ（内訳列数／欄のラベル位置／欄の値の揃え）を
+   `defect-locator.js`が印として付ける。**印が無ければ何も足さない**ので、
+   選んでいない紙は上の自動の段のまま（§9.132）。
+   **自動の段より後ろに置く**——同じ詳細度なら後が勝つ（§9.206）。 */
+.rp-defect-facts[style*="--rp-fact-cols"]{grid-template-columns:repeat(var(--rp-fact-cols),minmax(0,1fr))}
+.rp-defect-facts[data-fact-label="side"] .rp-defect-fact{grid-template-columns:min-content minmax(0,1fr);gap:4px}
+.rp-defect-facts[data-fact-label="side"] .rp-defect-fact span{white-space:nowrap}
+.rp-defect-facts[data-fact-label="stack"] .rp-defect-fact{grid-template-columns:minmax(0,1fr);gap:0}
+.rp-defect-facts[data-fact-label="stack"] .rp-defect-fact span{white-space:normal}
+.rp-defect-facts[data-fact-label="stack"] .rp-defect-fact b{text-align:left}
+.rp-defect-facts[data-fact-align="left"] .rp-defect-fact b{text-align:left}
+.rp-defect-facts[data-fact-align="center"] .rp-defect-fact b{text-align:center}
+.rp-defect-facts[data-fact-align="right"] .rp-defect-fact b{text-align:right}
+
 /* **切れないように組む**（§9.319-C、利用者の報告「見切れが生じる」）——
    ロール名・接触面は現場が決める文字なので、固定割りにして折り返させる。 */
 .rp-defect-roll-table{width:100%;table-layout:fixed;border-collapse:collapse;margin-top:1px;font-size:8px}
