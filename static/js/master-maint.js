@@ -329,7 +329,7 @@
             when:{kindText:'項目の並び'},
             fieldGroup:'③ 紙のどこへ出すか',
             hint:'空欄なら**中身の数から決まります**。',
-            more:'節の中で「ラベル＝値」を何列に並べるかです。並べ方が「幅なり」「高さなり」のときは使いません（カードの大きさで決まります）。「表に組む」を押すと、組んだ表に合う数がここへ入ります。'},
+            more:'節の中で「ラベル＝値」を何列に並べるかです。並べ方が「幅なり」「高さなり」のときは使いません（カードの大きさで決まります）。「表に組む」を押すと、組んだ表に合う数がここへ入ります。**ピッチ判定・異常位置判定**のように中身をコードが組み立てる塊にも効きます——空欄ならこれまでどおり器の幅なりに自動で切り替わります。'},
            /* 繰り返し（§9.247 ②）。**分割の無いロットでは1回だけ**出る。 */
            {k:'repeatText',label:'繰り返し',type:'choice-card',
             when:{kindText:'項目の並び'},
@@ -361,6 +361,30 @@
                    {v:'記録された数だけ出す',icon:'▭',label:'データなり',note:'記録された数だけ'}],
             hint:'**紙の高さをロットによらず同じにしたいとき**に「最大で出す」を選びます。',
             more:'測定データの表は元から40条ぶんを常に出しています（横割数を超える行は空欄の控え欄）。同じ形を丈別データにも当てられるようにしたのがこの設定です。「最大で出す」にすると丈は9本ぶんの枠が空欄で出ます。逆に「データなり」にすると、測定データの表を記録された条数だけに縮められます。効くのは行や列の数がロットで変わる塊（測定データ・丈別データ）で、それ以外の塊では選んでも見え方は変わりません。'},
+           /* ---------- 欄の見せ方（§9.323 ④、利用者の指示） ----------
+              「ピッチ判定の部分ラベルの上下や横位置や列数が半自動になって
+               いますが、ここもユーザーが選んでカスタムを正しくできるように」
+              §9.320-Fは器の幅で自動に切り替えていた。**選べるようにした**
+              ぶん、**既定は今までどおり「器の幅に合わせる」**（§9.132）。
+              効くのは**コードが描く欄の並び**（ピッチ判定・異常位置判定）で、
+              マスの並びを組んだ塊は1マスずつの設定が勝つ——**そう書く**（§4）。 */
+           {k:'labelPlaceText',label:'欄のラベル位置',type:'choice-card',
+            when:{kindText:'項目の並び'},
+            fieldGroup:'③ 紙のどこへ出すか',
+            cards:[{v:'器の幅に合わせる（既定）',icon:'⇔',label:'幅なり',note:'今までどおり'},
+                   {v:'ラベルは左・値は右',icon:'▤',label:'左右',note:'いつも横並び'},
+                   {v:'ラベルは上・値は下',icon:'▥',label:'上下',note:'いつも縦積み'}],
+            hint:'**ピッチ判定・異常位置判定の欄**の並べ方です。',
+            more:'これらの塊は中身をコードが組み立てるので、1マスずつの設定（マスの並び）を持てません。その代わりに塊ごとの設定として置いてあります。「幅なり」は器が狭いと自動で1列・ラベル上下へ切り替わる今までの動きで、選べば幅によらずその形に固定します。マスの並びを組んだ塊では、1マスずつの設定のほうが勝ちます。'},
+           {k:'factAlignText',label:'欄の値の揃え',type:'choice-card',
+            when:{kindText:'項目の並び'},
+            fieldGroup:'③ 紙のどこへ出すか',
+            cards:[{v:'自動',icon:'≡',label:'自動',note:'今までどおり'},
+                   {v:'左',icon:'⇤',label:'左'},
+                   {v:'中央',icon:'↔',label:'中央'},
+                   {v:'右',icon:'⇥',label:'右'}],
+            hint:'**ピッチ判定・異常位置判定の欄**の値をどちらへ寄せるかです。',
+            more:'ラベルの位置を「上下」にすると、値はラベルの真下に来ます。そのとき右づめのままだと値だけが右端へ離れて対応が読めなくなるので、自動では左づめにしています。ここで明示すればその通りに寄せます。'},
            {k:'enabledText',label:'紙に出す',type:'choice-card',
             fieldGroup:'④ 出す・並び',
             cards:[{v:'有効',icon:'✓',label:'出す',note:'配置に置けば紙へ出る'},
@@ -10671,6 +10695,39 @@
        :`「${esc(widget)}」では使えません${now?'（設定は残してあります）':''}`}</i>
     </span></div>`;
  }
+ /* ---------- 測定画面からマスタへ間接登録（§9.323 ①、利用者の指示） ----------
+    「測定画面からマスタへ間接登録する経路を開通してほしいです」
+
+    **効く欄の条件はサーバーが答える**（§9.163）——`inline_add_usable()`が
+    「選択肢を持つ × 手打ち可」を見て`inlineAdd`（＝効いている値）を返す。
+    盤は`inlineAddSaved`（保存値）と突き合わせて、**保存してあるのに効いて
+    いないときは理由を書く**（§4）——押せるのに何も起きない設定を残さない。 */
+ function opInlineAddRowHtml(x){
+  if(!opIsChoiceLike(x))return '';
+  const saved=!!x.inlineAddSaved;
+  /* **手打ちが切のときは足す値そのものが作れない**（候補にない値を
+     打てないので）。効いているかはサーバーの`inlineAdd`が答える。 */
+  const usable=!!x.freeText;
+  /* **効いているか＝保存値 × 使える欄か**。使える条件（`freeText`）は
+     サーバーが解いた値をそのまま読む——`choiceOrder`の行が
+     `choiceOrderWidgets`を読むのと同じ作法で、規則を画面で組み直さない。
+     **`x.inlineAdd`（サーバーが返した効いている値）を直に読まない**——押した
+     直後は取り直していないので、注記だけが1手前の状態になる。 */
+  const live=saved&&usable;
+  return `<div class="op-form-row is-fixed-layout"><span class="op-form-label">手打ちを登録</span>
+    <span class="op-form-ctl">
+     <span class="op-look-row">
+      <button type="button" data-op-inadd="0" class="op-mini${saved?'':' is-on'}"${usable?'':' disabled'}>登録しない</button>
+      <button type="button" data-op-inadd="1" class="op-mini${saved?' is-on':''}"${usable?'':' disabled'}>その場で登録できる</button>
+     </span>
+     <i class="op-form-note">${usable
+       ?(live?`測定画面で候補にない値を打つと「<b>選択肢に登録</b>」が出て、`
+              +`押すと <b>${esc(x.choice||'')}</b> へ足します（押したときだけ送ります）。`
+            :'測定画面では候補にない値を打っても、記録にだけ入ります（今までどおり）。')
+       :`<b>手打ち可</b>が切なので使えません${saved?'（設定は残してあります）':''}`
+        +'——候補にない値を打てない欄では、足す値そのものが作れません。'}</i>
+    </span></div>`;
+ }
  function opLookPickHtml(x){
   const lk=opLookOf(x);
   const swatch=c=>`<button type="button" data-op-look="color" data-op-val="${esc(c)}"`
@@ -11207,6 +11264,7 @@
    ${opBlankRowHtml(x,widget)}
    ${opBlankTintRowHtml(x)}
    ${opChoiceOrderRowHtml(x,widget)}
+   ${opInlineAddRowHtml(x)}
    ${help('look','並べ方・空欄の札・未入力の色・選択肢の並び',
      '<p><b>並べ方</b>は「選択肢を何個ずつ置くか」で、意匠（色・形・大きさ）とは別の軸です。'
      +'左の見本は<b>1マスが実物と同じ大きさ</b>なので、器に収まるかがそのまま分かります。</p>'
@@ -11436,6 +11494,12 @@
   /* §9.248 ⑤ 選択肢の並び。 */
   form.querySelectorAll('[data-op-corder]').forEach(b=>b.onclick=()=>{
    if(b.disabled)return;touch({choiceOrder:b.dataset.opCorder});
+  });
+  /* §9.323 ① 測定画面からの間接登録。 */
+  form.querySelectorAll('[data-op-inadd]').forEach(b=>b.onclick=()=>{
+   /* **保存値（`inlineAddSaved`）を書く**——効いている値を書くと、手打ちを
+      一時的に切っただけで設定そのものが消える（`freeTextSaved`と同じ作法）。 */
+   if(b.disabled)return;touch({inlineAddSaved:b.dataset.opInadd==='1'});
   });
 
   form.querySelectorAll('[data-op-align]').forEach(b=>b.onclick=()=>touch({align:b.dataset.opAlign}));
@@ -11707,6 +11771,11 @@
           dummy:!!x.dummy,noBlank:!!x.noBlank,
           /* §9.248 ⑤。選択肢の並びも同じ——落とすと保存のたびに登録順へ戻る。 */
           choiceOrder:x.choiceOrder||'',
+          /* §9.323 ①。測定画面からの間接登録も同じ——落とすと保存のたびに
+             開けた経路が閉じる（§9.212 ②と同じ形で7度目）。**保存値を送る**
+             （`inlineAddSaved`）——効いている値（`inlineAdd`）を送ると、
+             手打ちを一時的に切っただけで設定そのものが消える。 */
+          inlineAdd:!!x.inlineAddSaved,
           /* §9.242 ④。③「記録した値」へ出すかも同じ——落とすと保存のたびに
              既定（出す）へ戻る（§9.212 ②と同じ形）。 */
           recordShow:x.recordShow!==false,

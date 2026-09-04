@@ -405,11 +405,21 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
    return {見出し:(el.querySelector('h3')||{}).textContent==='ピッチ判定',
            ピッチ:/314\.2/.test(t),
            径:/合うロール径/.test(t),
+           /* §9.323 ③: 欄には式を書かない（狭い欄で折り返して不自然だった）。
+              式は足元の注記が言うので、**注記には残っている**こと。
+              **「合うロール径のすぐ後ろに」で見ないこと**——ラベルと値は
+              `</span><b>`で隔てられているので、`[^<]*`のような近さで見る網は
+              式を書き戻しても通る（実際に素通りした）。塊のどこにも
+              `ピッチ÷π`が無いことで見る（注記は`π×径`と書くので当たらない）。 */
+           式を欄に書かない:!/ピッチ÷π/.test(t),
+           式は注記に在る:/ロールの周長/.test(t),
            判定:!!el.querySelector('.rp-defect-roll-answer')};
   });
   rec('ピッチ判定が独立した塊として既定で紙に出る（§9.319-C）',
       !!rollOn&&rollOn.見出し&&rollOn.ピッチ&&rollOn.判定,JSON.stringify(rollOn));
-  rec('合うロール径（ピッチ÷π）も紙に出る',!!rollOn&&rollOn.径,JSON.stringify(rollOn));
+  rec('合うロール径も紙に出る',!!rollOn&&rollOn.径,JSON.stringify(rollOn));
+  rec('欄には式（ピッチ÷π）を書かない／式は足元の注記が言う（§9.323 ③）',
+      !!rollOn&&rollOn.式を欄に書かない&&rollOn.式は注記に在る,JSON.stringify(rollOn));
 
   /* 出す／出さないを切り替える。**紙の文字が実際に変わること**まで見る。
      §9.319-Cで塊を分けたので、入切は**ふつうの塊と同じ「紙に出す」**

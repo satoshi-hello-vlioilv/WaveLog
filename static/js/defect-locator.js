@@ -55,7 +55,23 @@
  const BASIS_LABEL={os:'OSから',ds:'DSから','center-os':'センターからOSへ','center-ds':'センターからDSへ'};
  const WIDTH_BASIS_LABEL={original:'元幅（屑幅を含む）',product:'製品幅合計（屑幅を含まない）'};
  const DEFAULT_DEFECT_WIDTH=5;
- const INPUT_KEYS=['basis','distance','widthBasis','defectWidth','memo'];
+ /* ---------- 混入位置は3か所まで（§9.323 ②、利用者の指示） ----------
+    「異常位置判定の条混入位置について、1か所だけでなく3か所まで入力できる
+     ようにしてください」
+
+    **鍵は増やすだけ**（`distance`はそのまま1か所目）——保存済みの記録も
+    古い帳票も、今までどおり読める（§9.132）。2か所目・3か所目は**任意**で、
+    空欄なら1か所ぶんの判定と1pxも変わらない。
+    **どこを見るかは`DISTANCE_KEYS`の1箇所**（§9.163。散らすと「入力欄には
+    在るのに判定は1か所だけ」が作れる）。 */
+ const DISTANCE_KEYS=['distance','distance2','distance3'];
+ const DISTANCE_IDS=['defectDistance','defectDistance2','defectDistance3'];
+ const INPUT_KEYS=['basis',...DISTANCE_KEYS,'widthBasis','defectWidth','memo'];
+ /* 入っている距離だけを順番に。**打った順を保つ**——番号（1か所目…）が
+    画面と紙で食い違わないように、詰めずに「何か所目か」も一緒に返す。 */
+ const distanceList=i=>DISTANCE_KEYS
+   .map((k,idx)=>({no:idx+1,raw:i?.[k],value:num(i?.[k])}))
+   .filter(d=>Number.isFinite(d.value));
 
  /* ---------- 条の並びを組み立てる ----------
     条割が確定していれば子ロットごとの実幅で、未確定なら製造板幅×横割数で
@@ -92,29 +108,48 @@
   const scrapOs=alloc&&Number.isFinite(alloc.os)?alloc.os:(Number.isFinite(scrap)?scrap/2:NaN);
   const scrapDs=Number.isFinite(scrap)&&Number.isFinite(scrapOs)?scrap-scrapOs:NaN;
   const scrapBiased=!!(alloc&&alloc.biased);
-  const d=num(input.distance);
-  if(!Number.isFinite(d))return{error:'基準位置からの距離を入力してください。',errorKind:'input',lanes:L,original,scrap,scrapOs,scrapDs,scrapBiased};
+  /* **3か所まで**（§9.323 ②）。1か所も入っていなければ今までどおり待つ。 */
+  const dl=distanceList(input);
+  if(!dl.length)return{error:'基準位置からの距離を入力してください。',errorKind:'input',lanes:L,original,scrap,scrapOs,scrapDs,scrapBiased};
+  const d=dl[0].value;
   let baseWidth,toProduct;
   if(input.widthBasis==='original'){
    if(!Number.isFinite(original))return{error:'元幅（実績）が取得できないため、屑幅を含む基準では計算できません。基準幅を「製品幅合計」にしてください。',
                                         errorKind:'basis',lanes:L,original,scrap,scrapOs,scrapDs,scrapBiased};
    baseWidth=original;toProduct=scrapOs;      // 条1のOS端はOS側の屑幅だけ内側
   }else{baseWidth=L.slit;toProduct=0}
-  let posBase;
-  if(input.basis==='os')posBase=d;
-  else if(input.basis==='ds')posBase=baseWidth-d;
-  else if(input.basis==='center-os')posBase=baseWidth/2-d;
-  else posBase=baseWidth/2+d;
-  const pos=posBase-toProduct;                // 製品座標(条1のOS端=0)
   const w=Math.max(0,num(input.defectWidth)||0);
-  const lo=pos-w/2,hi=pos+w/2;
-  /* 幅0の欠陥は「点」なので、境界にちょうど乗った場合は手前の条に含める。
-     幅がある場合は重なりで判定する(端に少しでも掛かれば該当)。 */
-  const hits=L.list.filter(l=>w>0?(l.end>lo&&l.start<hi):(pos>=l.start&&pos<l.end))
-   .map(l=>({...l,fromLaneOs:Math.max(0,Math.min(l.width,pos-l.start))}));
-  let outside='';
-  if(hi<=0)outside='os';else if(lo>=L.slit)outside='ds';
-  return{lanes:L,original,scrap,scrapOs,scrapDs,scrapBiased,baseWidth,toProduct,posBase,pos,lo,hi,defectWidth:w,hits,outside,
+  /* **1か所ぶんの計算は`spotOf()`の1箇所**（§9.163）——3か所へ広げるとき、
+     式を複製すると「1か所目だけ屑幅を引く」のような食い違いが作れる。 */
+  const spotOf=one=>{
+   let pb;
+   if(input.basis==='os')pb=one;
+   else if(input.basis==='ds')pb=baseWidth-one;
+   else if(input.basis==='center-os')pb=baseWidth/2-one;
+   else pb=baseWidth/2+one;
+   const p=pb-toProduct;                      // 製品座標(条1のOS端=0)
+   const l0=p-w/2,h0=p+w/2;
+   /* 幅0の欠陥は「点」なので、境界にちょうど乗った場合は手前の条に含める。
+      幅がある場合は重なりで判定する(端に少しでも掛かれば該当)。 */
+   const hh=L.list.filter(l=>w>0?(l.end>l0&&l.start<h0):(p>=l.start&&p<l.end))
+    .map(l=>({...l,fromLaneOs:Math.max(0,Math.min(l.width,p-l.start))}));
+   let out='';
+   if(h0<=0)out='os';else if(l0>=L.slit)out='ds';
+   return{distance:one,posBase:pb,pos:p,lo:l0,hi:h0,hits:hh,outside:out};
+  };
+  const spots=dl.map(d0=>Object.assign({no:d0.no},spotOf(d0.value)));
+  const first=spots[0];
+  /* **上位の`hits`は全部の合わせ**（重複は条の番号で1つに）——図の強調・
+     条の設計のバッジ・帳票の「該当条」は「どこかに掛かっている条」を見る。
+     1か所しか入っていなければ今までとまったく同じ集合になる（§9.132）。 */
+  const seen=new Set(),hits=[];
+  spots.forEach(sp=>sp.hits.forEach(h=>{
+   if(seen.has(h.index))return;seen.add(h.index);hits.push(h);
+  }));
+  hits.sort((a,b)=>a.index-b.index);
+  return{lanes:L,original,scrap,scrapOs,scrapDs,scrapBiased,baseWidth,toProduct,
+         posBase:first.posBase,pos:first.pos,lo:first.lo,hi:first.hi,
+         defectWidth:w,hits,spots,outside:first.outside,
          distance:d,basis:input.basis,widthBasis:input.widthBasis,memo:input.memo||''};
  }
 
@@ -186,19 +221,39 @@
        +`${width>4?`<span class="${c}-lane-label"><b>${esc(l.index+1)}</b><small>${esc(lot3(l.lot))}</small></span>`:''}</div>`;
   });
   html+=`<div class="${c}-centerline" title="センターライン"></div>`;
-  if(Number.isFinite(r.pos)){
-   const dl=Math.max(0,Math.min(100,pct(sc.off+r.lo)));
+  /* **位置ごとに1本ずつ**（§9.323 ②）。古い記録は`spots`を持たないので、
+     そのときは今までどおり1本だけ描く（§9.132）。 */
+  spotsOf(r).forEach(sp=>{
+   if(!Number.isFinite(sp.pos))return;
+   const dl=Math.max(0,Math.min(100,pct(sc.off+sp.lo)));
    const dw=Math.max(.6,pct(Math.max(r.defectWidth,sc.total*.004)));
-   html+=`<div class="${c}-mark" style="left:${dl.toFixed(3)}%;width:${dw.toFixed(3)}%" title="欠陥位置 ${esc(fmt(r.pos))}（製品座標）"></div>`;
-  }
+   html+=`<div class="${c}-mark" style="left:${dl.toFixed(3)}%;width:${dw.toFixed(3)}%" title="欠陥位置${esc(sp.no?` ${sp.no}か所目`:'')} ${esc(fmt(sp.pos))}（製品座標）"></div>`;
+  });
   return html;
  }
  /* 帯の上に置く位置ラベル(▼付き)。 */
+ /* 判定の結果から「位置の並び」を取り出す1箇所（§9.163）。**古い記録は
+    `spots`を持たない**ので、そのときは`pos/lo/hi`の1件として答える
+    ——読む側が毎回「あれば`spots`、無ければ`pos`」と書くと、書き忘れた
+    ところだけ1か所しか描かない、という食い違いが作れる。 */
+ function spotsOf(r){
+  if(r&&Array.isArray(r.spots)&&r.spots.length)return r.spots;
+  if(r&&Number.isFinite(r.pos))return [{no:1,distance:r.distance,pos:r.pos,lo:r.lo,hi:r.hi,
+                                        hits:r.hits||[],outside:r.outside||''}];
+  return [];
+ }
  function flagsHtml(r,cls){
   const c=cls||'defect',sc=figureScale(r);
-  if(!sc.ok||!Number.isFinite(r.pos))return '';
-  const p=Math.max(0,Math.min(100,sc.pct(sc.off+r.pos)));
-  return `<div class="${c}-flag${edgeClass(p)}" style="left:${p.toFixed(3)}%"><b>${esc(fmt(r.pos))}</b><i></i></div>`;
+  if(!sc.ok)return '';
+  /* **2か所以上のときだけ番号を出す**（§9.323 ②）——旗が同じ顔だと、
+     どれが1か所目かを図から読めない（内訳・帳票の並びと突き合わせられない）。
+     1か所のロットの図は1文字も変わらない（§9.132）。 */
+  const list=spotsOf(r).filter(sp=>Number.isFinite(sp.pos)),many=list.length>1;
+  return list.map(sp=>{
+   const p=Math.max(0,Math.min(100,sc.pct(sc.off+sp.pos)));
+   return `<div class="${c}-flag${edgeClass(p)}" style="left:${p.toFixed(3)}%">`
+    +`<b>${many?`<u>${esc(sp.no||1)}</u>`:''}${esc(fmt(sp.pos))}</b><i></i></div>`;
+  }).join('');
  }
  function rulerHtml(r,cls){
   const c=cls||'defect',sc=figureScale(r);
@@ -249,12 +304,22 @@
    ? '<div class="defect-warn">元幅（実績）より条幅合計のほうが大きく、屑幅がマイナスです。元幅か条割を確認してください。</div>':'';
   if(r.error)return head+warn+`<div class="defect-detail-empty">${esc(r.error)}</div>`;
   const rows=r.hits.map(h=>`<tr><th>${h.index+1}条目</th><td>${esc(h.lot||'－')}</td><td>${esc(fmt(h.width))}</td><td>${esc(fmt(h.fromLaneOs))}</td></tr>`).join('');
+  /* **内訳は入れた箇所ぶん並べる**（§9.323 ②）——1か所目だけを出していると、
+     2か所目の位置が合っているかを画面から確かめられない（「入れたのに
+     効いていない」と読まれる）。1か所のときは今までと同じ1行（§9.132）。 */
+  /* **どの箇所を見るかは`spotsOf()`の1箇所**（§9.163）——ここで別の畳み方を
+     書くと、図の旗と内訳が食い違う形が作れる。ここへ来る時点で`r.error`は
+     無く`pos`は数なので、必ず1件以上返る。 */
+  const spots=spotsOf(r);
+  const many=spots.length>1;
+  const spotCalc=spots.map(sp=>
+    `<span>${many?`<i>${esc(sp.no||1)}</i> `:''}${esc(BASIS_LABEL[r.basis]||'')}の位置 <b>${esc(fmt(sp.posBase))}</b>`
+    +` ／ 製品座標 <b>${esc(fmt(sp.pos))}</b> ／ 掛かる範囲 ${esc(fmt(sp.lo))}〜${esc(fmt(sp.hi))}</span>`).join('');
   return head+warn
    +`<div class="defect-calc">`
    +`<span>基準幅 <b>${esc(fmt(r.baseWidth))}</b>（${esc(WIDTH_BASIS_LABEL[r.widthBasis]||'')}）</span>`
-   +`<span>${esc(BASIS_LABEL[r.basis]||'')}の位置 <b>${esc(fmt(r.posBase))}</b></span>`
-   +`<span>製品座標（条1のOS端＝0） <b>${esc(fmt(r.pos))}</b></span>`
-   +`<span>欠陥の幅 <b>${esc(fmt(r.defectWidth))}</b>（${esc(fmt(r.lo))}〜${esc(fmt(r.hi))}）</span>`
+   +spotCalc
+   +`<span>欠陥の幅 <b>${esc(fmt(r.defectWidth))}</b>${many?'（どの箇所も同じ幅）':''}</span>`
    +(Number.isFinite(r.scrap)?`<span>屑幅（両耳合計） <b>${esc(fmt(r.scrap))}</b>／OS側 ${esc(fmt(r.scrapOs))}・DS側 ${esc(fmt(r.scrapDs))}</span>`:'')
    +`</div>`
    +(rows?`<table class="defect-table"><thead><tr><th>条</th><th>ロット№</th><th>条幅</th><th>条のOS端から</th></tr></thead><tbody>${rows}</tbody></table>`
@@ -263,17 +328,20 @@
 
  /* ---------- 入力の読み書き ---------- */
  function readInput(){
-  return{basis:$id('defectBasis')?.value||'os',
-         distance:$id('defectDistance')?.value??'',
-         widthBasis:$id('defectWidthBasis')?.value||'original',
-         defectWidth:$id('defectWidth')?.value??DEFAULT_DEFECT_WIDTH,
-         memo:$id('defectMemo')?.value||''};
+  const out={basis:$id('defectBasis')?.value||'os',
+             widthBasis:$id('defectWidthBasis')?.value||'original',
+             defectWidth:$id('defectWidth')?.value??DEFAULT_DEFECT_WIDTH,
+             memo:$id('defectMemo')?.value||''};
+  /* **欄と鍵の対応は`DISTANCE_*`の1箇所**（§9.163）——名指しで書き写すと、
+     4か所目を足したときにここだけ古いまま残る（`markers()`が実際にそうなった）。 */
+  DISTANCE_IDS.forEach((id,i)=>{out[DISTANCE_KEYS[i]]=$id(id)?.value??''});
+  return out;
  }
  const sameInput=(a,b)=>!!a&&!!b&&INPUT_KEYS.every(k=>String(a[k]??'')===String(b[k]??''));
  /* 何も入れていない状態（§9.241 ⑤）。**「消した」と「まだ何も入れていない」を
     見分ける**ためだけの判定で、記録が既にあるときは使わない。 */
  function blankInput(i){
-  return String(i.distance??'')===''&&String(i.memo??'')==='';
+  return DISTANCE_KEYS.every(k=>String(i[k]??'')==='')&&String(i.memo??'')==='';
  }
  /* 一時データの書き戻し。開いて眺めただけで「未保存の変更あり」にならない
     よう、中身が変わっていないときは何もしない。**保存済みスナップショット
@@ -308,7 +376,9 @@
   if(!saved)return;
   if($id('defectBasis')&&saved.basis)$id('defectBasis').value=saved.basis;
   if($id('defectWidthBasis')&&saved.widthBasis)$id('defectWidthBasis').value=saved.widthBasis;
-  if($id('defectDistance'))$id('defectDistance').value=saved.distance??'';
+  DISTANCE_IDS.forEach((id,idx)=>{
+   const el=$id(id);if(el)el.value=saved[DISTANCE_KEYS[idx]]??'';
+  });
   if($id('defectWidth'))$id('defectWidth').value=saved.defectWidth??DEFAULT_DEFECT_WIDTH;
   if($id('defectMemo'))$id('defectMemo').value=saved.memo||'';
  }
@@ -327,6 +397,11 @@
    baseWidth:r.baseWidth,original:r.original,scrap:r.scrap,
    scrapOs:r.scrapOs,scrapDs:r.scrapDs,scrapBiased:r.scrapBiased,slit:r.lanes.slit,
    pos:r.pos,lo:r.lo,hi:r.hi,
+   /* **位置の並びも凍らせる**（§9.323 ②）。`pos/lo/hi`は1か所目のまま残す
+      ——古い帳票・古い一覧が読んでいるので落とさない（§9.132）。 */
+   spots:(r.spots||[]).map(sp=>({no:sp.no,distance:sp.distance,pos:sp.pos,lo:sp.lo,hi:sp.hi,
+     outside:sp.outside||'',
+     hits:sp.hits.map(h=>({index:h.index,lot:h.lot,width:h.width,fromLaneOs:h.fromLaneOs}))})),
    lanes:r.lanes.list.map(l=>({index:l.index,lot:l.lot,width:l.width,start:l.start,end:l.end})),
    hits:r.hits.map(h=>({index:h.index,lot:h.lot,width:h.width,fromLaneOs:h.fromLaneOs}))};
  }
@@ -458,6 +533,30 @@
   return Math.round(d*10)/10;
  }
  let dragging=false;
+ /* **掴んだ箇所が動く**（§9.323 ②、§9.283の「掴んだ辺が動く」と同じ考え方）
+    ——3か所まで入るようになったので、いつも1か所目へ書き戻すと
+    「2か所目の旗を掴んだのに1か所目が飛ぶ」＝意図と反対のことが起きる。
+    掴んだ位置にいちばん近い箇所を選ぶ。1か所しか入っていなければ
+    必ずその1つなので、今までとまったく同じ動きになる（§9.132）。 */
+ let dragId=DISTANCE_IDS[0];
+ function nearestSpotId(e){
+  const sc=figureScale(lastResult);
+  const strip=$id('defectStrip');
+  if(!sc.ok||!strip)return DISTANCE_IDS[0];
+  const box=strip.getBoundingClientRect();
+  if(box.width<1)return DISTANCE_IDS[0];
+  const at=Math.max(0,Math.min(1,(e.clientX-box.left)/box.width))*sc.total-sc.off;
+  let best=null;
+  spotsOf(lastResult).forEach(sp=>{
+   if(!Number.isFinite(sp.pos))return;
+   const id=DISTANCE_IDS[(Number(sp.no)||1)-1];
+   /* 欄が無ければ掴めない（＝書き戻す先が無い）ので候補にしない。 */
+   if(!id||!$id(id))return;
+   const gap=Math.abs(sp.pos-at);
+   if(!best||gap<best.gap)best={id,gap};
+  });
+  return best?best.id:DISTANCE_IDS[0];
+ }
  function beginDrag(e){
   /* **掴んでいる最中は2本目を受けない**——右クリックや2本目の指で
      `beginDrag`がもう一度走ると、`applyDrag`が離す前に別の座標を書く。 */
@@ -467,6 +566,7 @@
   const d=figureFromEvent(e);
   if(d===null)return;
   e.preventDefault();
+  dragId=nearestSpotId(e);
   dragging=true;
   strip.classList.add('is-dragging');
   applyDrag(e);
@@ -480,7 +580,7 @@
  function applyDrag(e){
   const d=figureFromEvent(e);
   if(d===null)return;
-  const el=$id('defectDistance');
+  const el=$id(dragId)||$id(DISTANCE_IDS[0]);
   if(!el)return;
   el.value=String(d);
   refresh();
@@ -589,7 +689,7 @@
     report-dashboard.js から呼ばれる。保存スナップショットだけを見るので、
     いま開いているロットでなくても(一覧から選んだ過去データでも)描ける。
     A4に載せるため .rp-* 側の px 固定スタイルを使い、高さは条数によらず一定。 */
- function reportSectionHtml(x){
+ function reportSectionHtml(x,opt){
   const sv=x?.settings?.defectLocation?.saved;
   if(!sv||!Array.isArray(sv.lanes)||!sv.lanes.length)return '';
   /* 保存した時点の割り付けで描く（後から条割や割り付けを変えても、
@@ -599,13 +699,32 @@
            scrapOs:Number.isFinite(sv.scrapOs)?sv.scrapOs:(Number.isFinite(sv.scrap)?sv.scrap/2:NaN),
            scrapDs:Number.isFinite(sv.scrapDs)?sv.scrapDs:(Number.isFinite(sv.scrap)?sv.scrap/2:NaN),
            scrapBiased:!!sv.scrapBiased,
-           pos:sv.pos,lo:sv.lo,hi:sv.hi,defectWidth:sv.defectWidth,hits:sv.hits||[]};
+           pos:sv.pos,lo:sv.lo,hi:sv.hi,defectWidth:sv.defectWidth,hits:sv.hits||[],
+           /* 保存済みの位置の並び（§9.323 ②）。**古い記録は持たない**ので、
+              そのときは`spotsOf()`が`pos`の1件として答える（§9.132）。 */
+           spots:Array.isArray(sv.spots)?sv.spots:null,
+           distance:sv.distance,basis:sv.basis};
   const sc=figureScale(r);
   if(!sc.ok)return '';
   const hits=r.hits;
   const lots=[...new Set(hits.map(h=>h.lot).filter(Boolean))];
   const fact=(label,value,cls)=>`<div class="rp-defect-fact${cls?' '+cls:''}"><span>${esc(label)}</span><b>${esc(value||'－')}</b></div>`;
   const answer=hits.length?`OSから ${rangeLabel(hits.map(h=>h.index+1))} 条目（${hits.length}条）`:'製品に掛かる条なし';
+  /* ---------- 混入位置は位置ごとに文字で出す（§9.323 ②、利用者の指示） ----------
+     「複数条の位置表示でも文字で表示できるようにしてください」
+     **1か所のときは今までどおり1行**（§9.132）。2か所以上のときだけ
+     「1: OSから 3条目（120.0mm）」のように**何か所目か・どの条か・どこか**を
+     並べる——番号を落とすと、図の旗3本とこの文字の対応が読めなくなる。 */
+  const spots=spotsOf(r);
+  const spotText=sp=>{
+   const lanesTxt=sp.hits&&sp.hits.length
+     ?`OSから ${rangeLabel(sp.hits.map(h=>h.index+1))} 条目（${sp.hits.length}条）`
+     :(sp.outside==='os'?'製品より手前（屑側）':sp.outside==='ds'?'製品より奥（屑側）':'製品に掛かる条なし');
+   return `${lanesTxt}／${BASIS_LABEL[sv.basis]||''} ${fmt(sp.distance)}mm`;
+  };
+  const spotsHtml=spots.length>1
+    ? spots.map(sp=>`<span class="rp-defect-spot"><i>${esc(sp.no||'')}</i>${esc(spotText(sp))}</span>`).join('')
+    : '';
   /* ---------- 図を最大化し、文字は帳票並みに（§9.319-C、利用者の指示） ----------
      「異常位置判定の文字の項目は必要な範囲でコンパクトに条の分割の図を
       最大化したいです」「文字が小さいので他の項目並みに大きくしてほしい」
@@ -628,13 +747,23 @@
       <span class="rp-defect-end">DS</span></div>
      <div class="rp-defect-legend">${legendHtml(r,'rp-defect')}</div>
     </div>
-    <div class="rp-defect-facts">
-     ${fact('該当条',answer,'rp-defect-fact-hit')}
+    ${/* **混入位置は横幅を取り、文字で出す**（§9.323 ②、利用者の指示
+         「横幅を確保し、複数条の位置表示でも文字で表示できるように」）。
+         2か所以上のときだけ**欄の並びの上へ全幅**で置く——1か所のロットの
+         紙は1行も増えない（§9.132）。 */''}
+    ${spotsHtml?`<div class="rp-defect-spots"><span class="rp-defect-spots-label">混入位置</span>
+       <div class="rp-defect-spots-list">${spotsHtml}</div></div>`:''}
+    <div class="rp-defect-facts${spotsHtml?' is-compact':''}"${factAttrs(opt)}>
+     ${spotsHtml?'':fact('該当条',answer,'rp-defect-fact-hit')}
      ${fact('対象ロット',lotsLabel(lots),'rp-defect-fact-text')}
-     ${fact('基準',`${BASIS_LABEL[sv.basis]||''} ${fmt(sv.distance)}mm`)}
+     ${/* **位置ごとの欄が出ているときは、1か所目だけの「基準」「製品座標」を
+          繰り返さない**（§CLAUDE 8。同じ数字が2箇所に出ると数え直させる）
+          ——そのぶんの余白が混入位置の行へ回る（利用者の指示「その他の文字
+          情報は混入位置の情報表示のために余白を詰めてスペースを節約」）。 */''}
+     ${spotsHtml?'':fact('基準',`${BASIS_LABEL[sv.basis]||''} ${fmt(sv.distance)}mm`)}
      ${fact('基準幅',`${fmt(sv.baseWidth)}（${sv.widthBasis==='original'?'元幅':'製品幅合計'}）`)}
      ${fact('欠陥の幅',`${fmt(sv.defectWidth)}mm`)}
-     ${fact('製品座標',`${fmt(sv.pos)}mm`)}
+     ${spotsHtml?'':fact('製品座標',`${fmt(sv.pos)}mm`)}
      ${/* **自由記述と並びは左づめ**（§9.305 ②-1）——右づめのまま折り返すと
           2行目の左端がばらけて読めない（利用者の報告）。 */''}
      ${fact('内容',sv.memo,'rp-defect-fact-text')}
@@ -689,7 +818,28 @@
   }catch(err){return false}
   return !!rollRowsFor(e);
  }
- function rollSectionHtml(x){
+ /* ---------- 欄の見せ方（§9.323 ④、利用者の指示） ----------
+    帳票ブロックマスタの「内訳列数／欄のラベル位置／欄の値の揃え」を、
+    コードが描く欄の並びへ当てる。**当て方はCSSが持ち、ここは印を付けるだけ**
+    （§9.163）——未設定なら属性を付けないので、今までどおり器の幅で自動に
+    切り替わる（§9.132・§9.320-F）。 */
+ /* 保存値→CSSの印。**綴りが正なのはサーバー**（`report_block_repo`の
+    `FACT_LABEL_SIDE`／`FACT_LABEL_STACK`）で、ここは**受け取った印を属性へ
+    写すだけ**（§9.223 ③の`LOOK_COLOR`とまったく同じ作法）。CSSのセレクタは
+    ASCIIで書きたいので、その翻訳だけをここが持つ。**知らない綴りは既定
+    （器の幅なり）へ倒す**——保存済みの紙が壊れるより、今までどおりが安全。 */
+ const FACT_LABEL_SLUG={'横':'side','上下':'stack'};
+ const FACT_ALIGN_SLUG={left:'left',center:'center',right:'right'};
+ function factAttrs(opt){
+  const o=opt||{},cols=Number(o.cols)||0;
+  const place=FACT_LABEL_SLUG[String(o.labelPlace||'')]||'';
+  const align=FACT_ALIGN_SLUG[String(o.factAlign||'')]||'';
+  return (place?` data-fact-label="${place}"`:'')
+       +(align?` data-fact-align="${align}"`:'')
+       +(cols>0?` style="--rp-fact-cols:${cols}"`:'');
+ }
+
+ function rollSectionHtml(x,opt){
   const input=rollInputOf(x);
   if(!input)return '';
   const eq=rollEquipmentOf(x);
@@ -753,9 +903,13 @@
      高さはそれぞれの中身から決まる（`rpFitRows()`が測る）。 */
   return `<section class="rp-section rp-defect-roll"><h3>ピッチ判定</h3>
    ${head}
-   <div class="rp-defect-facts rp-defect-roll-facts">
+   <div class="rp-defect-facts rp-defect-roll-facts"${factAttrs(opt)}>
     ${fact('ピッチ',`${fmt(input.pitch,1)}mm`)}
-    ${fact('合うロール径',`${need}mm（ピッチ÷π）`)}
+    ${/* **式は書かない**（§9.323 ③、利用者の指示「ロール径とちゃんと言って
+         いて、(ピッチ÷π)は、言わなくてもさすがにわかるので消去」）——狭い欄で
+         括弧書きが折り返して不自然に見えていた。式そのものは足元の注記
+         「欠陥のピッチ＝ロールの周長（π×径）」が既に言っている（§CLAUDE 8）。 */''}
+    ${fact('合うロール径',`${need}mm`)}
     ${fact('許容差',`±${input.tol}%`)}
     ${fact('接触面',input.face||'指定なし')}
     ${fact('何周まで見るか',`${input.harmonics}`)}
@@ -780,10 +934,14 @@
  function markers(){
   const d=S.measure?.settings?.defectLocation;
   if(!d)return null;
-  const input={basis:d.basis||'os',distance:d.distance,
+  /* **距離は`DISTANCE_KEYS`から写す**（§9.323 ②、§9.163）——`distance`だけを
+     名指しで書き写していたため、2か所目・3か所目が条の設計のバッジに
+     一度も出ない状態が作れた。ここで欄を数え直さない。 */
+  const input={basis:d.basis||'os',
                widthBasis:d.widthBasis||'original',
                defectWidth:d.defectWidth??DEFAULT_DEFECT_WIDTH,memo:d.memo||''};
-  if(String(input.distance??'').trim()==='')return null;
+  DISTANCE_KEYS.forEach(k=>{input[k]=d[k]});
+  if(!distanceList(input).length)return null;
   const r=compute(input);
   if(r.error)return null;
   const sv=d.saved;
@@ -791,6 +949,10 @@
   return {lanes:r.hits.map(h=>h.index),pos:r.pos,lo:r.lo,hi:r.hi,
           defectWidth:r.defectWidth,memo:String(d.memo||''),
           basis:r.basis,distance:r.distance,
+          /* **何か所ぶんか**（§9.323 ②）——`lanes`は条の合わせなので、
+             2か所が同じ条に掛かると`1条`としか出ず、**箇所が2つあることが
+             どこからも読めない**。数えるのはここ1箇所（§9.163）。 */
+          spotCount:spotsOf(r).length,
           /* **保存済みかどうかも渡す**（§6「出どころを画面に出す」）——
              帳票に載るのは保存した判定だけなので、同じ印でも意味が違う。 */
           saved:!!sv,stale:!!(sv&&stale),
@@ -1150,7 +1312,7 @@
  $id('defectSave')?.addEventListener('click',doSave);
  $id('defectUnsave')?.addEventListener('click',doUnsave);
  $id('defectReset')?.addEventListener('click',()=>{
-  if($id('defectDistance'))$id('defectDistance').value='';
+  DISTANCE_IDS.forEach(id=>{const el=$id(id);if(el)el.value=''});
   if($id('defectMemo'))$id('defectMemo').value='';
   if($id('defectWidth'))$id('defectWidth').value=DEFAULT_DEFECT_WIDTH;
   refresh();                       /* ここで記録へも書き戻る（§9.241 ⑤） */
@@ -1162,7 +1324,7 @@
     savedRecord()?'帳票に載せている判定はそのままです（外すときは「帳票から外す」）。この変更は測定画面の「保存」でDBへ入ります'
                 :'この変更は測定画面の「保存」でDBへ入ります');
  });
- ['defectBasis','defectDistance','defectWidthBasis','defectWidth','defectMemo'].forEach(id=>{
+ ['defectBasis',...DISTANCE_IDS,'defectWidthBasis','defectWidth','defectMemo'].forEach(id=>{
   const el=$id(id);if(!el)return;
   el.addEventListener('input',refresh);el.addEventListener('change',refresh);
  });

@@ -689,6 +689,11 @@
      （§9.233 ④）なので、器を足したときに付け忘れる道が無い。
      **下の早い戻り道より前**に置くこと（単位が同じでも器は変わりうる）。 */
   markFace(host);
+  /* **登録ボタンもここで置く**（§9.323 ①、§9.233 ④／§9.288 ①と同じ理由）
+     ——「いま見えている操作面はどれか」と同じ問いなので、答える場所を
+     2つ持たない。`placeUnit()`は`buildWidget()`/`stripWidget()`の直後に
+     必ず通る約束なので、器を1つ足したときに付け忘れる道が無い。 */
+  placeInlineAdd(host,def);
   const u=unitParts(def);
   const want=u.top+u.inside+u.bottom;
   const anchor=displayEl(host);
@@ -724,6 +729,108 @@
    else host.insertAdjacentHTML('beforeend',u.bottom);
   }
  }
+
+ /* ---------- 測定画面からマスタへ間接登録（§9.323 ①、利用者の指示） ----------
+    「測定画面からマスタへ間接登録する経路を開通してほしいです」
+
+    **開けたのは経路だけで、既定は今までどおり**（§9.132）——手打ちの値は
+    記録にだけ入り、マスタは1行も増えない。開けるのは操業データ項目マスタの
+    `[手打ちを登録]`を入にした欄だけ。
+
+    **足せる欄かどうかはサーバーが答える**（§9.163）——`inline_add_usable()`が
+    「選択肢を持つ × 手打ち可」を見て`inlineAdd`を返す。画面はその真偽を読む
+    だけで、条件を書き写さない（写すと「盤では入にできるのに測定画面に
+    ボタンが出ない」が作れる）。
+
+    **黙って登録しない**（§3）——人が押したときだけ送る。打つそばから送ると
+    「む」「むら」「むらさ」がマスタへ並ぶ（`addOption()`が手打ちの席を1つに
+    まとめているのと同じ理由）。
+
+    **通す口は`POST /api/operation-choice-master`の1本**——`role_can(...,
+    'choice:inline-add')`の門が名指ししているのがこの口で（§9.322）、
+    設備作業者の端末でもここだけは通る。別の口を新しく作らないこと。 */
+ const INLINE_ADD_BTN='opf-addchoice';
+ function inlineAddable(def,sel){
+  /* **サーバーの答え（`inlineAdd`）をそのまま信じる**。値が手打ちで、
+     まだ候補に無いときだけ「足せる」——候補に在る値を足すと二重になる。 */
+  /* **見本の欄には出さない**（§9.276 ⑥と同じ理由）——設定窓の見本は
+     `def.preview`を立てて作る。ここへ置くと、**マスタを設定している最中に
+     見本へ打った文字がそのままマスタへ入る**（記録へ書かないのと同じ約束）。 */
+  if(!def||def.preview||!def.inlineAdd||!def.choice)return false;
+  const v=String((sel&&sel.value)||'').trim();
+  if(!v)return false;
+  return isFreeValue(sel,v);
+ }
+ function placeInlineAdd(host,def){
+  if(!host)return;
+  const sel=host.querySelector(':scope>select');
+  const want=!!sel&&inlineAddable(def,sel);
+  const have=host.querySelector('.'+INLINE_ADD_BTN);
+  if(!want){if(have)have.remove();return}
+  const v=String(sel.value||'').trim();
+  if(have){
+   /* **同じ値なら作り直さない**（§9.117）——押そうとした瞬間にボタンが
+      作り直されると、押しただけで何も起きない。 */
+   if(have.dataset.opaddValue===v)return;
+   have.dataset.opaddValue=v;
+   have.title='「'+v+'」を選択肢マスタ（'+def.choice+'）へ足します';
+   return;
+  }
+  const b=document.createElement('button');
+  b.type='button';b.className=INLINE_ADD_BTN;
+  b.dataset.opaddValue=v;
+  /* **何をするボタンかを字で言う**（§2）——「＋」だけだと、押した先が
+     この欄の候補なのかマスタなのかが読めない。 */
+  b.innerHTML='<span>選択肢に登録</span>';
+  b.title='「'+v+'」を選択肢マスタ（'+def.choice+'）へ足します';
+  host.appendChild(b);
+ }
+ /* **押したときだけ送る**。委譲で1つ受ける（§9.233 ③）——欄ごとに配線すると、
+    器を1つ足したときに足し忘れた欄だけがボタンを押しても何も起きない。 */
+ document.addEventListener('click',async e=>{
+  const b=e.target&&e.target.closest&&e.target.closest('.'+INLINE_ADD_BTN);
+  if(!b)return;
+  e.preventDefault();
+  const host=b.closest('[data-opfield],[data-f]');
+  const sel=host&&host.querySelector(':scope>select');
+  /* **どの項目かは`defOfHost()`の1箇所が答える**（§9.163）——組み込みの欄は
+     `data-opfield`を持たない（`data-f`のまま置かれる）ので、片方だけを見る
+     形にすると組み込みの選択欄でボタンが押しても何も起きない（§9.233 ③）。 */
+  const def=host&&defOfHost(host);
+  const v=String((sel&&sel.value)||'').trim();
+  if(!def||!def.choice||!v)return;
+  b.disabled=true;
+  const was=b.innerHTML;
+  b.innerHTML='<span>登録しています…</span>';
+  try{
+   /* **通す口は1本**（§9.322 の`MASTER_EDIT_INLINE_ENDPOINTS`）。
+      `equipment`は渡さない——ここで絞ると、その設備でしか出ない選択肢に
+      なる。どの設備で使うかはマスタ管理で決める話（§9.221 ③）。 */
+   await api('/api/operation-choice-master',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({name:def.choice,value:v})});
+   /* **足した値はもう「手打ち」ではない**（§9.323 ①）。印はその場で外す
+      ——`refresh()`の組み直しに任せると、測定を開いていない画面や、
+      組み直しの走らない経路でボタンが残り、**押すたびに同じ値がマスタへ
+      並ぶ**。印は候補の側が持つ（`isFreeValue`）ので、ここを外せば
+      `placeInlineAdd()`がボタンを消す。 */
+   const opt=[...sel.options].find(o=>o.value===v);
+   if(opt)delete opt.dataset.opFree;
+   placeInlineAdd(host,def);
+   /* **写しを捨てて取り直す**（§9.226 ①）——捨てないと、他の欄や次に開いた
+      ときに足した値が候補へ出てこない。**画面は待たせない**（失敗しても
+      登録そのものは済んでいる）。 */
+   if(window.WL&&WL.opData&&WL.opData.forget)WL.opData.forget();
+   if(window.WL&&WL.opData&&WL.opData.refresh)WL.opData.refresh().catch(()=>{});
+   showToast('選択肢に登録しました',
+             '「'+v+'」を '+def.choice+' へ足しました。次からは候補に出ます。');
+  }catch(err){
+   /* **失敗を黙らない**（§4）。断られる理由（権限・重複）はサーバーが
+      書いているので、包み直さない（§9.200）。 */
+   b.disabled=false;b.innerHTML=was;
+   showToast('選択肢に登録できませんでした',String(err&&err.message||err));
+  }
+ });
 
  /* ---------- 選ばせ方（§9.218 ②、利用者の指示） ----------
     「プルダウンだけでなく、ラジオボタンやタブっぽいボタン、フローティング

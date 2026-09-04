@@ -1285,6 +1285,50 @@ def normalize_full(v):
     return s if s in (FULL_MAX, FULL_ACTUAL) else ''
 
 
+# ---------- 欄の見せ方（§9.323 ④、利用者の指示） ----------
+# 「帳票ブロックマスタでのピッチ判定の部分ラベルの上下や横位置や列数が
+#   半自動になっていますが、ここもユーザーが選んでカスタムを正しくできる
+#   ように修正してください」
+#
+# §9.320-Fは**器の幅で自動**に切り替えていた（「設定を置いても当てる先が
+# 無い」と書いてあった）。**その前提を本当にする**——当てる先をここで作る。
+# 効くのは**コードが描く欄の並び**（ピッチ判定・異常位置判定の欄）だけで、
+# マスの並びを持つ塊は今までどおり**1マスずつの設定が勝つ**（§9.292 ⑤）。
+#
+# **既定は`''`＝今までどおり器の幅に合わせる**（§9.132。選んでいない紙は
+# 1pxも変わらない）。**語彙はここだけが持つ**（§9.163。画面へ写さない）。
+FACT_LABEL_SIDE = '横'
+FACT_LABEL_STACK = '上下'
+FACT_LABEL_PLACES = (('', '器の幅に合わせる（既定）'),
+                     (FACT_LABEL_SIDE, 'ラベルは左・値は右'),
+                     (FACT_LABEL_STACK, 'ラベルは上・値は下'))
+_FACT_LABEL_BY_LABEL = {lb: v for v, lb in FACT_LABEL_PLACES}
+_LABEL_BY_FACT_LABEL = {v: lb for v, lb in FACT_LABEL_PLACES}
+# 揃えは**セルと同じ語彙**（`ALIGNS`）を使い回す（§9.163。同じことを言う
+# 言葉を2つ持たない）。**`ALIGNS`はこの下で定義される**ので、モジュールを
+# 読む時点では引かない（引くと import しただけで落ちる）——関数の中で引く。
+def _fact_align_maps():
+    return ({lb: v for v, lb in ALIGNS}, {v: lb for v, lb in ALIGNS})
+
+
+def normalize_fact_label(v):
+    """欄のラベル位置。**知らない値は既定（器の幅なり）へ倒す**。"""
+    s = str(v or '').strip()
+    if s in _FACT_LABEL_BY_LABEL:
+        s = _FACT_LABEL_BY_LABEL[s]
+    return s if s in (FACT_LABEL_SIDE, FACT_LABEL_STACK) else ''
+
+
+def normalize_fact_align(v):
+    """欄の揃え。`normalize_align`と同じ語彙で、**呼び名でも受ける**
+    （画面の汎用フォームは文字列の選択欄しか持たない）。"""
+    s = str(v or '').strip()
+    by_label, _ = _fact_align_maps()
+    if s in by_label:
+        s = by_label[s]
+    return normalize_align(s)
+
+
 def normalize_repeat_dir(v):
     """繰り返しの向き。**知らない値は「縦」へ倒す**（`normalize_repeat`と同じ）。"""
     s = str(v or '').strip()
@@ -1672,7 +1716,17 @@ def _row(r):
             'full': ('' if normalize_kind(r[11] if len(r) > 11 else '') == AREA_KIND
                      else normalize_full(r[15] if len(r) > 15 else '')),
             'fullText': _LABEL_BY_FULL.get(
-                normalize_full(r[15] if len(r) > 15 else ''), _LABEL_BY_FULL[''])}
+                normalize_full(r[15] if len(r) > 15 else ''), _LABEL_BY_FULL['']),
+            # コードが描く欄の並びの見せ方（§9.323 ④）。**呼び名でも返す**
+            # ——マスタ管理の汎用フォームは文字列の選択欄しか持たない
+            # （`enabledText`／`fullText`とまったく同じ作法）。
+            'labelPlace': normalize_fact_label(r[16] if len(r) > 16 else ''),
+            'labelPlaceText': _LABEL_BY_FACT_LABEL.get(
+                normalize_fact_label(r[16] if len(r) > 16 else ''),
+                _LABEL_BY_FACT_LABEL['']),
+            'factAlign': normalize_fact_align(r[17] if len(r) > 17 else ''),
+            'factAlignText': _fact_align_maps()[1].get(
+                normalize_fact_align(r[17] if len(r) > 17 else ''), '自動')}
 
 
 # 後から足した列（§9.180「無ければ足す」で移行する。共有DBは現場で動いて
@@ -1685,6 +1739,9 @@ _ADDED_COLUMNS = (
     ('繰返', 'TEXT'),              # ''＝1回だけ／'子ロット'＝分割後の子ロットごと
     ('繰返方向', 'TEXT'),          # ''＝縦に積む／'横'＝横に並べる（§9.277）
     ('最大表示', 'TEXT'),          # ''＝ふつう／'最大'／'データなり'（§9.309）
+    # コードが描く欄の並びの見せ方（§9.323 ④）。''＝器の幅なり（既定）。
+    ('欄のラベル位置', 'TEXT'),    # ''／'横'／'上下'
+    ('欄の揃え', 'TEXT'),          # ''／'left'／'center'／'right'
 )
 
 
@@ -1830,7 +1887,8 @@ def ensure_table(c):
 
 
 _SELECT = ('SELECT [ブロックID],[設備名],[ブロック名],[表示順],[幅],[行数],[内容],[備考],[有効],'
-           '[組み込みキー],[内訳列数],[種別],[文字],[繰返],[繰返方向],[最大表示] '
+           '[組み込みキー],[内訳列数],[種別],[文字],[繰返],[繰返方向],[最大表示],'
+           '[欄のラベル位置],[欄の揃え] '
            f'FROM [{TABLE}] ORDER BY [表示順],[ブロックID]')
 
 
@@ -1877,7 +1935,7 @@ def builtin_off(c, equipment):
 def block_upsert(c, uid, equipment='*', name='', order=None, span=None, rows=None,
                  content=None, note=None, enabled=None, block_id=None,
                  builtin=None, cols=None, kind=None, text=None, repeat=None,
-                 repeat_dir=None, full=None):
+                 repeat_dir=None, full=None, label_place=None, fact_align=None):
     ensure_table(c)
     name = str(name or '').strip()
     if not name:
@@ -1895,6 +1953,8 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=None, rows=Non
     cur_repeat = ''
     cur_repeat_dir = ''
     cur_full = ''
+    cur_label_place = ''
+    cur_fact_align = ''
     # **渡していない設定は今の値のまま**（§9.320-E／§9.212 ②で7度目）。
     # ここは全置換のUPDATEなので、呼ぶ側が1つ渡し忘れるとその設定だけが
     # 黙って消える。とりわけ`[内容]`が消えると、**その塊はコードの既定へ
@@ -1910,7 +1970,8 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=None, rows=Non
     cur_equipment = ''
     if block_id is not None:
         cur.execute(f'SELECT [組み込みキー],[内訳列数],[種別],[文字],[繰返],[繰返方向],'
-                    f'[最大表示],[内容],[備考],[幅],[行数],[有効],[設備名] '
+                    f'[最大表示],[内容],[備考],[幅],[行数],[有効],[設備名],'
+                    f'[欄のラベル位置],[欄の揃え] '
                     f'FROM [{TABLE}] WHERE [ブロックID]=?', [int(block_id)])
         hit = cur.fetchone() or ['', 0, '', '', '', '', '', '', '', None, None, -1, '']
         cur_builtin = str(hit[0] or '').strip()
@@ -1926,6 +1987,8 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=None, rows=Non
         cur_rows = hit[10] if len(hit) > 10 else None
         cur_enabled = bool(hit[11]) if len(hit) > 11 else True
         cur_equipment = str(hit[12] or '').strip() if len(hit) > 12 else ''
+        cur_label_place = normalize_fact_label(hit[13] if len(hit) > 13 else '')
+        cur_fact_align = normalize_fact_align(hit[14] if len(hit) > 14 else '')
     equipment = equipment_given or cur_equipment or '*'
     content = cur_content if content is None else str(content or '')
     note = cur_note if note is None else str(note or '')
@@ -1961,6 +2024,11 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=None, rows=Non
     repeat_dir = (cur_repeat_dir if repeat_dir is None
                   else normalize_repeat_dir(repeat_dir))
     full = cur_full if full is None else normalize_full(full)
+    # **渡していなければ今の値のまま**（§9.212 ②／§9.320-E）。
+    label_place = (cur_label_place if label_place is None
+                   else normalize_fact_label(label_place))
+    fact_align = (cur_fact_align if fact_align is None
+                  else normalize_fact_align(fact_align))
     try:
         cols = max(0, min(CONTENT_COLS_MAX, int(cols or 0)))
     except (TypeError, ValueError):
@@ -1980,11 +2048,12 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=None, rows=Non
     # SET・VALUES・argsの**4箇所**（UPDATE2本＋INSERT1本＋この行）を同じ順に。
     args = [equipment, name, order, normalize_span(span), normalize_rows(rows),
             content, note, -1 if enabled else 0, builtin, cols,
-            kind, text, repeat, repeat_dir, full]
+            kind, text, repeat, repeat_dir, full, label_place, fact_align]
     if block_id is not None:
         cur.execute('UPDATE [帳票ブロックマスタ] SET [設備名]=?,[ブロック名]=?,[表示順]=?,[幅]=?,'
                     '[行数]=?,[内容]=?,[備考]=?,[有効]=?,[組み込みキー]=?,[内訳列数]=?,'
                     '[種別]=?,[文字]=?,[繰返]=?,[繰返方向]=?,[最大表示]=?,'
+                    '[欄のラベル位置]=?,[欄の揃え]=?,'
                     '[更新者ID]=?,[更新日時]=Now() '
                     'WHERE [ブロックID]=?', args + [uid, int(block_id)])
         c.commit()
@@ -1998,7 +2067,8 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=None, rows=Non
     if hit:
         cur.execute('UPDATE [帳票ブロックマスタ] SET [表示順]=?,[幅]=?,[行数]=?,[内容]=?,[備考]=?,'
                     '[有効]=?,[組み込みキー]=?,[内訳列数]=?,[種別]=?,[文字]=?,[繰返]=?,'
-                    '[繰返方向]=?,[最大表示]=?,[更新者ID]=?,[更新日時]=Now() '
+                    '[繰返方向]=?,[最大表示]=?,[欄のラベル位置]=?,[欄の揃え]=?,'
+                    '[更新者ID]=?,[更新日時]=Now() '
                     'WHERE [ブロックID]=?', args[2:] + [uid, hit[0]])
         c.commit()
         return int(hit[0])
@@ -2010,8 +2080,9 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=None, rows=Non
     cur.execute('INSERT INTO [帳票ブロックマスタ] '
                 '([設備名],[ブロック名],[表示順],[幅],[行数],[内容],[備考],[有効],'
                 '[組み込みキー],[内訳列数],[種別],[文字],[繰返],[繰返方向],[最大表示],'
+                '[欄のラベル位置],[欄の揃え],'
                 '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())', args + [uid, uid])
+                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())', args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)
 

@@ -172,6 +172,68 @@ const made=[];
   rec('候補の表は固定割りで、セルが横に切れない',
       !!table&&table.割り==='fixed'&&table.列===5&&table.切れ===0,JSON.stringify(table));
 
+  /* ==========================================================
+     §9.323 ②③④（利用者の指示）
+     ========================================================== */
+
+  /* ---- ③ 欄には式（ピッチ÷π）を書かない ----
+     「ロール径とちゃんと言っていて、(ピッチ÷π)は、言わなくてもさすがに
+      わかるので消去」。**「合うロール径のすぐ後ろに」で見ないこと**
+     ——ラベルと値は`</span><b>`で隔たっているので、`[^<]*`のような近さで
+     見る網は式を書き戻しても通る（実際に素通りした）。塊のどこにも
+     `ピッチ÷π`が無いことで見る（足元の注記は`π×径`と書くので当たらない）。 */
+  const roll3=await page.evaluate(()=>{
+   const el=document.querySelector('#reportContent .rp-defect-roll');
+   if(!el)return null;
+   const t=el.textContent||'';
+   return {式:/ピッチ÷π/.test(t),径:/合うロール径/.test(t),注記:/ロールの周長/.test(t)};
+  });
+  rec('欄に式（ピッチ÷π）を書かない（§9.323 ③）',
+      !!roll3&&roll3.式===false,JSON.stringify(roll3));
+  rec('「合うロール径」そのものと足元の注記は残す',
+      !!roll3&&roll3.径&&roll3.注記,JSON.stringify(roll3));
+
+  /* ---- ④ 欄の見せ方は利用者が選べる ----
+     「ラベルの上下や横位置や列数が半自動になっていますが、ここもユーザーが
+      選んでカスタムを正しくできるように」。**器の幅で決まる`@container`の
+     自動は残したまま**、明示した設定がそれに勝つこと（詳細度 0,3,0 > 0,2,0）。
+     **宣言ではなく刷り上がりで見る**（§9.289）——属性が付くだけでは絵は
+     変わらない。ラベルと値の**位置関係**（上下なら値がラベルより下）と、
+     欄の並びの**トラック数**を実測する。 */
+  /* ---- ② 混入位置は3か所まで・複数でも文字で出る ----
+     「条混入位置について、1か所だけでなく3か所まで入力できるように…複数条の
+      位置表示でも文字で表示できるように…その他の文字情報は…余白を詰めて
+      スペースを節約」。**組み立ての口をそのまま通す**（`reportSectionHtml`）
+     ——見本のロットは1か所しか保存していないので、材料は自分で注ぎ込む
+     （§9.291 ①。無ければ素通りの書き方だと直す前でも通る）。 */
+  const spots=await page.evaluate(()=>{
+   const lanes=[0,1,2,3,4].map(i=>({index:i,lot:i<3?'L0000001':'L0000002',
+                                    width:100,start:i*100,end:i*100+100}));
+   const base={basis:'os',widthBasis:'original',defectWidth:5,memo:'キズ',
+               slit:500,original:520,scrap:20,scrapOs:10,scrapDs:10,lanes};
+   const sp=(no,d,pos,idx)=>({no,distance:d,pos,lo:pos-2.5,hi:pos+2.5,outside:'',
+     hits:[{index:idx,lot:idx<3?'L0000001':'L0000002',width:100,fromLaneOs:10}]});
+   const mk=list=>({settings:{defectLocation:{saved:Object.assign({},base,{
+     distance:list[0].distance,pos:list[0].pos,lo:list[0].lo,hi:list[0].hi,
+     hits:list[0].hits,spots:list})}}});
+   const many=WL.defect.reportSectionHtml(mk([sp(1,120,110,1),sp(2,420,410,4)]));
+   const one =WL.defect.reportSectionHtml(mk([sp(1,120,110,1)]));
+   return {many,one};
+  });
+  const M=spots?spots.many:'',O=spots?spots.one:'';
+  rec('2か所以上なら混入位置を文字で並べる（§9.323 ②）',
+      M.indexOf('rp-defect-spots')>=0&&/120/.test(M)&&/420/.test(M),M.slice(0,120));
+  rec('何か所目かを文字で言う（図の旗と対応が読める）',
+      /<i>1<\/i>/.test(M)&&/<i>2<\/i>/.test(M),M.slice(0,160));
+  /* 「その他の文字情報は…余白を詰めて」——同じ数字を2度出さない（§CLAUDE 8）。
+     混入位置が条を言っているので「該当条」は重ねず、欄は詰める。 */
+  rec('混入位置を出したら該当条を重ねない／欄を詰める',
+      M.indexOf('該当条')<0&&M.indexOf('is-compact')>=0,M.slice(0,160));
+  /* **1か所のロットの紙は1行も増えない**（§9.132）。片側だけ見ると
+     「いつも出す」実装が通る。 */
+  rec('1か所なら今までどおり（混入位置の行を足さない・該当条のまま）',
+      O.indexOf('rp-defect-spots')<0&&O.indexOf('該当条')>=0,O.slice(0,160));
+
   /* ---- 7. 旧「長手:なし」を引き継ぐ（§9.319-C／§9.132） ----
      §9.305 ②-2の印を読む人はもう居ない。**わざわざ「出さない」を選んだ紙が、
      版を上げただけで黙って1枚増える**のを防ぐ。ここは「印が在ること」では
@@ -204,6 +266,52 @@ const made=[];
   rec('「出す」を押せば出る（旧い印に押し戻されない）',
       back.indexOf('ピッチ判定')>=0,JSON.stringify(back.filter(k=>/判定/.test(k))));
   rec('押した時点で旧い印そのものを捨てる',!/長手:/.test(tok),JSON.stringify(tok));
+  /* **設定は本物の経路で通すこと**——盤で保存 → `rpMergeBuiltin`が`opt`を
+     渡す → `rollSectionHtml`が属性を書く → CSSが当たる、の全部を通る。
+     属性を網の側から手で貼る形にすると**CSSが在ることしか確かめられず**、
+     `factAttrs()`が属性を1つも書かなくても通る（実際に素通りした）。 */
+  const rollRow=await (await fetch(B+'/api/report-block-master')).json()
+   .then(j=>(j.items||[]).find(x=>x.name==='ピッチ判定'));
+  rec('ピッチ判定の行がマスタに在る',!!rollRow,JSON.stringify(rollRow&&rollRow.name));
+  const readFacts=async ()=>await page.evaluate(()=>{
+   const g=document.querySelector('#reportContent .rp-defect-roll .rp-defect-facts');
+   if(!g)return null;
+   const f=g.querySelector('.rp-defect-fact');
+   const lb=f&&f.querySelector('span'),v=f&&f.querySelector('b');
+   const cs=getComputedStyle(g);
+   return {列:(cs.gridTemplateColumns||'').split(/\s+/).filter(Boolean).length,
+           /* ラベルの**上下**は位置関係で見る（属性ではなく刷り上がり・§9.289）。 */
+           上下:!!(lb&&v)&&v.getBoundingClientRect().top>lb.getBoundingClientRect().top+1,
+           /* **揃えが当たるのは値（`b`）**——器を測ると継承値の`start`しか
+              返らず、規則が効いていなくても効いていても同じ絵になる。 */
+           揃え:v?getComputedStyle(v).textAlign:''};
+  });
+  const saveRoll=async body=>await post('/api/report-block-master/update',
+    Object.assign({user_id:'test',id:rollRow&&rollRow.id,name:rollRow&&rollRow.name,
+                   equipment:rollRow&&rollRow.equipment},body));
+  const before=await readFacts();
+  if(rollRow){
+   await saveRoll({labelPlaceText:'ラベルは上・値は下',factAlignText:'中央',cols:3});
+   /* **写しを捨ててから開き直す**（§9.274）——捨てないと古い顔ぶれを拾う。 */
+   await page.evaluate(()=>{WL.reportBlocks.forget&&WL.reportBlocks.forget()});
+   await reopen();
+  }
+  const after=await readFacts();
+  rec('ラベル上下がマスタから刷り上がりまで効く（§9.323 ④）',
+      !!after&&after.上下===true,JSON.stringify({before,after}));
+  rec('列数がマスタから刷り上がりまで効く',
+      !!after&&after.列===3,JSON.stringify({before,after}));
+  rec('揃えがマスタから刷り上がりまで効く',
+      !!after&&after.揃え==='center',JSON.stringify({before,after}));
+  /* **片側だけ見ない**——「いつも上下・いつも3列」でも上の3件は通る。
+     何も指定していない状態では今までどおり（器の幅なりの自動）であること（§9.132）。 */
+  rec('何も指定しなければ今までどおり自動のまま',
+      !!before&&!(before.上下===true&&before.列===3&&before.揃え==='center'),
+      JSON.stringify(before));
+  /* 後片付け（§9.121）。この設備の帳票ブロックは他の網も見る。 */
+  if(rollRow)await saveRoll({labelPlaceText:'器の幅に合わせる（既定）',
+                             factAlignText:'自動',cols:0});
+
   /* 後片付け（§9.121）。この設備の配置は他の網も見る。 */
   await page.evaluate(async eq=>{await WL.reportLayout.reset(eq)},EQ);
 

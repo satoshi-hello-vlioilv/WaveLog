@@ -1345,6 +1345,11 @@ def operation_item_list():
            # 書き写すと片方だけ増えた状態が作れる（§9.163）。
            'blankTints':list(op.BLANK_TINTS),
            'blankTintNone':op.BLANK_TINT_NONE,
+           # §9.323 ① 測定画面からの間接登録は**入切の1つ**なので、語彙は
+           # 出さない（`choiceOrder`のような綴りの一覧を持たない）。
+           # **読まれない鍵をAPIへ置かないこと**——契約が在るように見えて
+           # 誰も使っていない面が増える。効く欄かどうかは行ごとの
+           # `inlineAdd`／`inlineAddSaved`が言う。
            # §9.248 ① 選ばせ方のまとまり（盤の見出しと並び）。**サーバーが
            # 答える**——画面へ写すと、種類を足したときに2箇所直すことになる。
            'widgetGroups':[{'label':l,'note':n,'items':list(i)}
@@ -1408,6 +1413,20 @@ def operation_item_list():
   return jsonify(ok=True,equipment=eq,**d)
  except Exception as e:return jsonify(error=f'操業データ項目マスタの読込に失敗しました: {e}'),500
 
+def _inline_add_on(x):
+ """測定画面からの間接登録を許すか（§9.323 ①）。
+
+ **文字列をそのまま`bool()`しない**——汎用フォームは呼び名（'登録しない'）で
+ 送るので、`bool('登録しない')`はTrueになり**「登録しない」が一度も保存
+ できない**（帳票ブロックの`_on()`・選択肢の`_choice_on()`とまったく同じ罠を
+ これで3度目に踏むところだった）。
+ **`None`は「送っていない」**（§9.212 ②）——他の段から保存したときに、
+ 開けた経路が黙って閉じては困る。"""
+ v=x.get('inlineAddText') if x.get('inlineAddText') is not None else x.get('inlineAdd')
+ if v is None:return None
+ if isinstance(v,str):return v.strip() not in ('登録しない','しない','無効','false','0','')
+ return bool(v)
+
 def _operation_item_save(x):
  from ..repositories import operation_repo as op
  uid=request_user_id(x)
@@ -1467,6 +1486,11 @@ def _operation_item_save(x):
                          blank_tint=x.get('blankTint'),
                          # §9.307 入力値の丸めの向き（単位は「刻み」）。
                          round_mode=x.get('roundMode'),
+                         # §9.323 ① 測定画面で打った値をその場で選択肢マスタへ
+                         # 足せるか。**呼び名でも受ける**——汎用フォームは
+                         # 文字列の選択欄しか持たない（`enabledText`と同じ作法）。
+                         # **送っていないときは今の値を残す**（§9.212 ②）。
+                         inline_add=_inline_add_on(x),
                          report=ref)
   saved=_op_read(fn)
   # **付け替えたことは黙って済ませない**（§9.226 ①）。名前を変えると
@@ -1757,6 +1781,10 @@ def report_block_list():
            'axisLot':rb.AXIS_LOT,
            # 節の中の列数の上限（§9.277）。**紙が受ける数と同じ**——画面が
            # 別に持つと、組んだ表が保存で黙って丸められる。
+           # コードが描く欄の並びの見せ方（§9.323 ④）。**語彙はサーバーが
+           # 答える**——画面へ綴りを写すと、選べる値を1つ足すたびに2箇所直す。
+           'factLabelPlaces':[{'v':v,'label':lb} for v,lb in rb.FACT_LABEL_PLACES],
+           'factAligns':[{'v':v,'label':lb} for v,lb in rb.ALIGNS],
            'contentColsMax':rb.CONTENT_COLS_MAX,
            'contentEditable':sorted(rb.CONTENT_EDITABLE),
            # **既定の中身をマスの並びで写せる塊**（§9.285 ②）。白紙から
@@ -1814,6 +1842,14 @@ def _report_block_save(x):
                           # 繰り返し（§9.247 ②）。**呼び名でも受ける**
                           # ——画面の汎用フォームは文字列の選択欄しか持たない
                           # （`kindText`／`enabledText`とまったく同じ作法）。
+                          # 欄の見せ方（§9.323 ④）。**呼び名でも受ける**——画面の
+                          # 汎用フォームは文字列の選択欄しか持たない。
+                          label_place=(x.get('labelPlaceText')
+                                       if x.get('labelPlaceText') is not None
+                                       else x.get('labelPlace')),
+                          fact_align=(x.get('factAlignText')
+                                      if x.get('factAlignText') is not None
+                                      else x.get('factAlign')),
                           repeat=(x.get('repeatText') if x.get('repeatText') is not None
                                   else x.get('repeat')),
                           # 繰り返しの向き（§9.277）。**呼び名でも受ける**。

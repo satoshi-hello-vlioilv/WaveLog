@@ -1222,6 +1222,20 @@ def choice_order_usable(widget):
     return str(widget or '') in CHOICE_ORDER_WIDGETS
 
 
+def inline_add_usable(family, free_text):
+    """測定画面からその場で選択肢マスタへ足せる欄か（§9.323 ①）。
+
+    **判定はここ1箇所**（§9.163）——ルートにも画面にも書き写さない。
+    条件は2つとも要る:
+      ・**選択肢を持つ族**（`choice`）……足す先のまとまりがある
+      ・**手打ち可**……候補に無い値を打てなければ、足す値そのものが作れない
+    どちらか欠けた欄で設定できても何も起きないので、盤では押せなくして
+    理由を書く（§4）。**族で見ること**——`[型]`で見ると、組み込みの選択欄は
+    どれも`[型]='文字'`なので必ず偽になる（§9.244でまったく同じ罠を踏んだ）。
+    """
+    return str(family or '') == 'choice' and bool(free_text)
+
+
 def choice_map(c, equipment=None):
     """{選択肢名: [値,...]}。**表示順で並べる**（選ぶ順番は現場が決める）。
 
@@ -1972,6 +1986,17 @@ _ITEM_ADDED_COLUMNS = (
     # ''＝表示順（今までどおり）／'よく使う順'＝使用回数の多い順。
     # **効くのは「開くと新しい面が出る」形だけ**（`choice_order_usable`）。
     ('選択肢の並び', 'TEXT'),
+    # --- §9.323 ①（利用者の指示「測定画面からマスタへ間接登録する経路を
+    #     開通してほしい」）---
+    # 測定画面で打った値を**その場で選択肢マスタへ足せるか**。
+    # **既定は「足せない」**（§9.132）——`0`/NULLは今までとまったく同じで、
+    # 手打ちの値は記録にだけ入る。打ち間違いがそのままマスタへ溜まるのを
+    # 現場が選べるようにしただけで、勝手には開けない。
+    # **効くのは「選択肢を持つ × 手打ち可」の欄だけ**（`inline_add_usable`）
+    # ——足せる先（まとまり）が無い欄で設定できても何も起きない（§4）。
+    # **登録するのは人が押したときだけ**（§3）。画面が黙って送ると、
+    # 打ちかけの1文字ずつがマスタへ並ぶ。
+    ('手打ちを登録', 'INTEGER'),
 )
 
 # 設備ごとに上書きできる項目（§9.239 ②）。**ここに無いものは共通のまま**
@@ -2274,6 +2299,11 @@ def _row_to_item(r):
     # `[型]='文字'`で、まとまり（`[選択肢名]`）のほうで選択肢に結んで
     # いる。`widget_family()`が唯一の判定。
     fam = widget_family(normalize_item_type(r[5]), builtin, auto)
+    # 手打ちが**いま効いているか**（§9.323 ①）。**1箇所で解いて使い回す**
+    # ——`freeText`と`inlineAdd`が同じ式を別々に持つと、片方の規則を直したときに
+    # もう片方だけが古い判定のまま残る（§9.163）。
+    free_live = ((bool(r[21]) if r[21] is not None else False)
+                 and fam == 'choice' and free_text_ok(_widget_live(r[19], fam)))
     # 設備ごとのレイアウトの上書き（§9.239 ②）。**列が無い古いDBでも動く**。
     overrides = _override_map(r[37] if len(r) > 37 else None)
     return {'overrides': overrides,
@@ -2311,8 +2341,7 @@ def _row_to_item(r):
             #    **打ち込む席の無い形でも落とす**（§9.247 ①）——`入切`・`切替`は
             #    スイッチ／ボタン1つなので打つ場所が出ない。保存値は
             #    `freeTextSaved`に残す（形を戻したら復活する。§9.233 ④と同じ）。
-            'freeText': (bool(r[21]) if r[21] is not None else False)
-                        and fam == 'choice' and free_text_ok(_widget_live(r[19], fam)),
+            'freeText': free_live,
             'freeTextSaved': bool(r[21]) if r[21] is not None else False,
             # ⑤ ステッパー・スライダーの1回ぶん。**未設定(None)は小数桁から作る**
             #    （今までの挙動）——0を「設定した」と読むと増減できなくなる。
@@ -2402,7 +2431,15 @@ def _row_to_item(r):
             # §9.307 入力値の丸めの向き（単位は`step`）。**空欄＝丸めない**。
             'roundMode': (normalize_round_mode(r[44]) if len(r) > 44 else ''),
             'blankTint': (normalize_blank_tint(r[43]) if len(r) > 43
-                          else BLANK_TINT_DEFAULT)}
+                          else BLANK_TINT_DEFAULT),
+            # §9.323 ① 測定画面からその場で選択肢マスタへ足せるか。
+            # **既定は足せない**（NULL＝今までどおり。§9.132）。**保存値は
+            # 残す**（`inlineAddSaved`）——形や手打ちを戻したら復活させる
+            # （`freeText`／`freeTextSaved`とまったく同じ作法・§9.233 ④）。
+            'inlineAdd': (bool(r[45]) if len(r) > 45 and r[45] is not None else False)
+                         and inline_add_usable(fam, free_live),
+            'inlineAddSaved': (bool(r[45]) if len(r) > 45 and r[45] is not None
+                               else False)}
 
 
 _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],'
@@ -2419,7 +2456,9 @@ _ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[�
                 # §9.286 ⑥。**末尾へ足す**（同上）。
                 '[未入力配色],'
                 # §9.307。**末尾へ足す**（同上）。
-                '[丸め方] '
+                '[丸め方],'
+                # §9.323 ①。**末尾へ足す**（同上）。
+                '[手打ちを登録] '
                 'FROM [操業データ項目マスタ] ORDER BY [表示順],[項目ID]')
 
 
@@ -2539,7 +2578,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 dummy=None, no_blank=None, min_from=None, max_from=None,
                 source_note=None, auto_value=None, record_show=None,
                 choice_order=None, auto_formula=None, blank_tint=None,
-                round_mode=None):
+                round_mode=None, inline_add=None):
     ensure_item_table(c)
     name = str(name or '').strip()
     if not name:
@@ -2555,7 +2594,8 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
     if item_id is not None:
         cur.execute('SELECT [組み込みキー],[項目名],[ダミー],[空欄なし],'
                     '[最小の出どころ],[最大の出どころ],[出どころ表示],[自動値],[記録表示],'
-                    '[選択肢の並び],[自動計算式],[未入力配色],[丸め方] '
+                    '[選択肢の並び],[自動計算式],[未入力配色],[丸め方],'
+                    '[手打ちを登録] '
                     'FROM [操業データ項目マスタ] WHERE [項目ID]=?', [int(item_id)])
         hit = cur.fetchone()
         cur_builtin = str((hit or ['', '', 0, 0, '', '', '', '', None, ''])[0] or '').strip()
@@ -2596,6 +2636,10 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
         # 決めた向きが黙って消えては困る（§9.287-H と同じ形で6度目）。
         if round_mode is None and hit is not None and len(hit) > 12:
             round_mode = hit[12]
+        # §9.323 ①。測定画面からの間接登録も同じ約束——設定窓の他の段から
+        # 保存したときに、開けた経路が黙って閉じては困る（7度目）。
+        if inline_add is None and hit is not None and len(hit) > 13:
+            inline_add = bool(hit[13])
     if builtin is None:
         builtin = cur_builtin
     builtin = str(builtin or '').strip()
@@ -2657,7 +2701,11 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
             # `args[1:2]+args[3:]`で位置を数えている。
             normalize_blank_tint(blank_tint),
             # §9.307 入力値の丸めの向き（単位は`[ステップ量]`）。
-            normalize_round_mode(round_mode)]
+            normalize_round_mode(round_mode),
+            # §9.323 ① 測定画面からその場で選択肢マスタへ足せるか。
+            # **列は末尾へ足す**——2本目のUPDATEが`args[1:2]+args[3:]`で
+            # 位置を数えている。
+            -1 if inline_add else 0]
     if item_id is not None:
         cur.execute('UPDATE [操業データ項目マスタ] SET [設備名]=?,[群]=?,[項目名]=?,[表示順]=?,'
                     '[型]=?,[小数桁]=?,[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,'
@@ -2667,7 +2715,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
                     '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,[自動値]=?,'
                     '[記録表示]=?,[選択肢の並び]=?,[自動計算式]=?,[未入力配色]=?,'
-                    '[丸め方]=?,'
+                    '[丸め方]=?,[手打ちを登録]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args + [uid, int(item_id)])
         c.commit()
@@ -2691,7 +2739,7 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                     '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
                     '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,[自動値]=?,'
                     '[記録表示]=?,[選択肢の並び]=?,[自動計算式]=?,[未入力配色]=?,'
-                    '[丸め方]=?,'
+                    '[丸め方]=?,[手打ちを登録]=?,'
                     '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
                     args[1:2] + args[3:] + [uid, hit[0]])
         c.commit()
@@ -2708,9 +2756,9 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
                 '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
                 '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ],'
                 '[出どころ表示],[自動値],[記録表示],[選択肢の並び],[自動計算式],'
-                '[未入力配色],[丸め方],'
+                '[未入力配色],[丸め方],[手打ちを登録],'
                 '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (' + ','.join(['?'] * 43) + ',Now(),Now())',
+                'VALUES (' + ','.join(['?'] * 44) + ',Now(),Now())',
                 args + [uid, uid])
     c.commit()
     return int(cur.lastrowid)

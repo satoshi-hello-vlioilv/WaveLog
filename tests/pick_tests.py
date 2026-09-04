@@ -58,6 +58,8 @@ G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint',
                    'test_reclayout',
                    # §9.246 ①: 「空欄の札」は組み込みの選択欄でも効く
                    'test_opblank',
+                   # §9.323 ①: 測定画面からマスタへ間接登録する経路
+                   'test_opinline',
                    # §9.247 ①: トグルの作り直しと、足した2つの選ばせ方
                    'test_opwidget',
                    # §9.305 ①: 入力値の丸め（測定項目マスタ）

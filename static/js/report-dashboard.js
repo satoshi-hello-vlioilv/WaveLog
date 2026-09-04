@@ -228,17 +228,26 @@
     塊ごとに決まる**ので、幅方向の図に合わせた高さのままピッチだけの中身を
     入れると、背丈がまるで違って`overflow:hidden`に切り落とされる。
     分ければ高さはそれぞれの中身から決まる（`rpFitRows()`が測る）。 */
- function defectSection(x){
+ /* ---------- 欄の見せ方は塊の設定が決める（§9.323 ④、利用者の指示） ----------
+    「ピッチ判定の部分ラベルの上下や横位置や列数が半自動になっていますが、
+     ここもユーザーが選んでカスタムを正しくできるように」
+
+    §9.320-Fは**器の幅で自動**に切り替えていた（「設定を置いても当てる先が
+    無い」と書いてあった）。**その前提を本当にした**——コードが描く塊にも
+    帳票ブロックマスタの設定（列数・ラベル位置・揃え）を渡す。
+    **渡すだけで、当て方はCSSが持つ**（§9.163）。未設定なら今までどおり
+    器の幅なり（§9.132）。 */
+ function defectSection(x,opt){
   if(!rpShowDefect)return '';
   const d=window.WL&&WL.defect;
   if(!d||!d.reportSectionHtml)return '';
-  return d.reportSectionHtml(x)||'';
+  return d.reportSectionHtml(x,opt)||'';
  }
- function defectRollSection(x){
+ function defectRollSection(x,opt){
   if(!rpShowDefect)return '';
   const d=window.WL&&WL.defect;
   if(!d||!d.rollSectionHtml)return '';
-  return d.rollSectionHtml(x)||'';
+  return d.rollSectionHtml(x,opt)||'';
  }
  /* ---------- 用紙の向き（A4縦 / A4横） ----------
     横向きは列の多い測定データ表(板幅ほか15列)に効く。用紙寸法はCSSの
@@ -1225,8 +1234,8 @@
      入っている（利用者の指示「通常は今までどおり軸を共通にして組み合わせた形」）。 */
   ...RP_MEAS_GROUPS.map(gr=>({k:rpMeasSoloKey(gr.g),span:gr.cols.length>=3?6:4,meas:gr.g,
     html:x=>rpShowWidthTable(x)?measSoloSection(x,gr.g):''})),
-  {k:RP_DEFECT_KEY,span:12,html:x=>defectSection(x)},
-  {k:RP_DEFECT_ROLL_KEY,span:6,html:x=>defectRollSection(x)},
+  {k:RP_DEFECT_KEY,span:12,html:(x,opt)=>defectSection(x,opt)},
+  {k:RP_DEFECT_ROLL_KEY,span:6,html:(x,opt)=>defectRollSection(x,opt)},
   {k:'作業時間',span:6,html:x=>{const w=x.workTime||{};
    const dur=w.startAt&&w.endAt?formatDuration(new Date(w.endAt)-new Date(w.startAt)):(w.startAt?'作業中':'未計測');
    return reportSection('作業時間',[['開始時刻',formatWorkTime(w.startAt)],['終了時刻',formatWorkTime(w.endAt)],['実働時間',dur]])}},
@@ -1292,7 +1301,13 @@
        /* §9.247 ②。**既定の塊でも繰り返せる**（中身を差し替えてある塊は
           自作の塊と同じ「ラベル＝出どころ」の並びなので、道を分けない）。 */
        ?(x=>rpFieldsSection(x,name,fields,r.cols,r.repeat,r.repeatDir))
-       :(x=>{const h=b.html(x);return renamed?rpRetitle(h,name):h}))});
+       /* **コードが描く塊にも設定を渡す**（§9.323 ④）。マスの並びを持たない
+          塊（ピッチ判定・異常位置判定）は、ここで受け取った列数・ラベル位置・
+          揃えを自分の欄へ当てる。**受けない描き手は今までどおり**（第2引数を
+          見ないだけなので、既存の塊は1行も変わらない）。 */
+       :(x=>{const h=b.html(x,{cols:r.cols||0,labelPlace:r.labelPlace||'',
+                               factAlign:r.factAlign||''});
+             return renamed?rpRetitle(h,name):h}))});
  }
  function rpAllBlocks(){
   const code=new Map(RP_BLOCKS.map(b=>[b.k,b]));

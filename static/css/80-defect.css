@@ -201,6 +201,9 @@
 .defect-mark::before{content:"";position:absolute;inset:0;background:var(--danger);opacity:.32}
 .defect-flag{position:absolute;bottom:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;pointer-events:none;white-space:nowrap}
 .defect-flag b{padding:var(--pad-chip);border-radius:var(--radius-pill);background:var(--danger);color:#fff;font-size:var(--fs-tiny);font-weight:900;font-variant-numeric:tabular-nums}
+/* 何か所目か（2か所以上のときだけ出る）。旗の色は「欠陥」の意味なので変えず、
+   番号は白い丸で分ける——色だけで伝えない（§3）。 */
+.defect-flag b>u{display:inline-block;min-width:1em;margin-right:.25em;padding:0 .2em;border-radius:var(--radius-pill);background:#fff;color:var(--danger);text-decoration:none;font-weight:900}
 .defect-flag i{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid var(--danger)}
 /* 端に寄ったときはラベルだけ内側へ寄せる(▼はほぼ位置どおりのまま)。
    translateX(-50%)のままだと数字が図の外へ出て見切れる。 */
@@ -224,6 +227,8 @@
 .defect-warn{margin-bottom:var(--space-2);padding:5px 9px;border-radius:var(--radius-card);background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-fg);font-size:var(--fs-sm);font-weight:700}
 .defect-calc{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-2);font-size:var(--fs-micro);color:var(--ink-3);font-variant-numeric:tabular-nums}
 .defect-calc span{padding:var(--pad-chip);border-radius:var(--radius-sm);background:var(--surface-2);border:1px solid var(--line-soft)}
+/* 何か所目かは**小さな番号**で（図の旗と対応が読める）。色だけで伝えない（§3）。 */
+.defect-calc i{display:inline-block;min-width:1.1em;margin-right:var(--space-1);padding:0 .25em;border-radius:var(--radius-xs);background:var(--line-soft);color:var(--ink-2);font-style:normal;font-weight:800;text-align:center}
 .defect-table{width:100%;margin-top:var(--space-2);border-collapse:collapse;font-size:var(--fs-sm);font-variant-numeric:tabular-nums}
 .defect-table th,.defect-table td{padding:3px 7px;border:1px solid var(--line-mid);text-align:right}
 .defect-table thead th{background:var(--surface-3);text-align:center;font-weight:800}
