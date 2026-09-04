@@ -37,7 +37,10 @@ import threading
 import time
 
 from .db_access import DBS, connect
-from .repositories.master_repo import permission_flags
+from .repositories.master_repo import (permission_flags, master_write_check,
+                                       MASTER_EDIT_DEFAULT, ROLE_DEFAULT,
+                                       MASTER_WRITE_BLUEPRINTS,
+                                       master_edit_capabilities)
 
 _lock=threading.Lock()
 _mode='edit'  # 'edit' | 'view' | 'schedule'
@@ -382,17 +385,25 @@ def current_pc_name():
  if who and who[1]:return who[1]
  return pc_name_info()['name']
 
+# マスタが読めない/未整備のときの既定。**区分とマスタ編集も必ず入れる**
+# （§9.322）——欠けると`flags['masterEdit']`を見る側がKeyErrorで落ちるか、
+# `.get()`の既定に散らばって「答える場所が2つ」になる。
+_FALLBACK_FLAGS={'canEdit':True,'canSchedule':False,'canFieldReorder':False,
+                 'fieldReorderEquipment':'','role':ROLE_DEFAULT,
+                 'masterEdit':MASTER_EDIT_DEFAULT,'masterEditStored':MASTER_EDIT_DEFAULT,
+                 'matchedId':None}
+
 def _permission_flags():
  # マスタ未整備/未接続でも既定(編集可・スケジュール不可・現場段取り不可)を
  # 維持する(安全側・互換ポリシー。master_repo.permission_flagsの既定と同じ)。
  path=DBS['MASTER']['path']
  if not path.exists():
-  return {'canEdit':True,'canSchedule':False,'canFieldReorder':False,'fieldReorderEquipment':''}
+  return dict(_FALLBACK_FLAGS)
  try:
   with connect(path,True) as c:
    return permission_flags(c,current_login_id(),current_pc_name())
  except Exception:
-  return {'canEdit':True,'canSchedule':False,'canFieldReorder':False,'fieldReorderEquipment':''}
+  return dict(_FALLBACK_FLAGS)
 
 def current_permission_flags():
  # 他モジュール(schedule.pyの現場段取りAPI等)がこの端末の権限を参照する
@@ -471,7 +482,10 @@ def install(app):
                  loginId=current_login_id(),pcName=current_pc_name(),
                  pcNameSource=pc_name_info()['source'],
                  # 権限区分と切断の状態(§9.272)。画面はこれを見て帯を出す。
-                 role=flags.get('role',''),revoked=revocation_now())
+                 role=flags.get('role',''),revoked=revocation_now(),
+                 # マスタ編集(§9.322)。**判定は画面へ写さない**——できることを
+                 # 名前で受け取り、入口を出すかどうかだけを見る。
+                 **master_edit_capabilities(flags.get('role',''),flags.get('masterEditStored','')))
 
  @app.post('/api/access-mode')
  def access_mode_set():
@@ -508,8 +522,26 @@ def install(app):
   allowed=_WRITE_ALLOWED_MODES.get(bp)
   if allowed is None:return None       # 未宣言のBlueprintは従来どおり素通し
   mode=get_mode()
-  if mode in allowed:return None
+  # ---- マスタ編集の段(§9.322) ----
+  # モードの門を通ったあとに、**マスタ管理の画面が書くものだけ**へ掛ける。
+  # 判定は`master_repo.master_write_check()`の1箇所（§9.163）。
+  # **モードの門より後に置くこと**——先に置くと、そもそもモードで断られる
+  # 書き込みにマスタ編集の理由を返してしまい、打つ手を取り違えさせる。
+  def _master_edit_error():
+   # **マスタのBlueprint以外では権限を読みに行かない**——`_permission_flags()`は
+   # 呼ぶたびにマスタDBを開く（再起動不要にするため・§9.163）ので、測定や
+   # 作業予定の書き込み1本ごとに1回開くことになる。判定そのものは
+   # `master_write_check`が同じ答えを返す（ここは読みを省くだけ）。
+   if bp not in MASTER_WRITE_BLUEPRINTS:return None
+   flags=_permission_flags()
+   ok,reason=master_write_check(flags.get('role',''),flags.get('masterEditStored',''),
+                                bp,request.endpoint)
+   return None if ok else reason
   extra=_ENDPOINT_EXTRA_MODES.get(request.endpoint)
+  if mode in allowed:
+   reason=_master_edit_error()
+   if reason:return jsonify(error=reason),403
+   return None
   if extra and mode in extra:
    # 現場段取り権限を追加で要求するのは並べ替えAPIだけ(§3.1.1)。
    # 以前は「editモードで例外的に許可された非GET」すべてにこの判定を
@@ -518,6 +550,8 @@ def install(app):
    # ときに実際に踏んだ)。判定対象をエンドポイントで明示する。
    if mode=='edit' and request.endpoint in _FIELD_REORDER_ENDPOINTS and not _field_reorder_permitted():
     return jsonify(error='この端末には現場段取り(並べ替え)の権限がありません。'),403
+   reason=_master_edit_error()
+   if reason:return jsonify(error=reason),403
    return None                         # schedule.plan_reorder自身はequipment一致
                                         # チェックをハンドラ側で行う(§7.5)
   return jsonify(error='現在のモードでは、この操作は実行できません。'),403

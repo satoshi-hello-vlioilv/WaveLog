@@ -34,7 +34,12 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
  const MODE_SHORT={edit:'編集',view:'閲覧',schedule:'スケジュール'};
  const MODE_DESC={edit:'測定データ・マスタを書き込めます',view:'すべて読み取り専用です',schedule:'作業予定を書き込めます(測定データ・マスタは読み取り専用)'};
 
- let accessMode={mode:'edit',canEdit:true,canSchedule:false,canFieldReorder:false,fieldReorderEquipment:'',loginId:'',pcName:'',pcNameSource:''};
+ /* マスタ編集の段（§9.322）は**サーバーが解いた答えを名前で受け取る**
+    （§9.163）——上限の掛け算も、どのマスタが「管理」かも画面では持たない。
+    届くまでの既定は**今までどおり全部開いている状態**（§9.132）。 */
+ let accessMode={mode:'edit',canEdit:true,canSchedule:false,canFieldReorder:false,fieldReorderEquipment:'',loginId:'',pcName:'',pcNameSource:'',
+                 role:'',masterEdit:'編集可',masterEditStored:'編集可',masterEditCap:'編集可',
+                 canOpenMaster:true,canEditFieldMaster:true,canEditAdminMaster:true,adminMasters:[]};
  window.accessMode=accessMode;
  /* ---------- この端末の名札(§9.180) ----------
     「どのPC・どのIDが編集したのか」を残すために、画面側でも端末名が要る
@@ -88,9 +93,18 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
    accessMode.canFieldReorder=!!r.canFieldReorder;accessMode.fieldReorderEquipment=r.fieldReorderEquipment||'';
    accessMode.loginId=r.loginId||'';accessMode.pcName=r.pcName||'';
    accessMode.pcNameSource=r.pcNameSource||'';
+   accessMode.role=r.role||'';
+   accessMode.masterEdit=r.masterEdit||'編集可';accessMode.masterEditStored=r.masterEditStored||'編集可';
+   accessMode.masterEditCap=r.masterEditCap||'編集可';
+   accessMode.canOpenMaster=r.canOpenMaster!==false;
+   accessMode.canEditFieldMaster=r.canEditFieldMaster!==false;
+   accessMode.canEditAdminMaster=r.canEditAdminMaster!==false;
+   accessMode.adminMasters=Array.isArray(r.adminMasters)?r.adminMasters:[];
   }catch(e){
    // 判定できない場合は既存動作(編集可能)を維持する(安全側・互換ポリシー)。
    accessMode.mode='edit';accessMode.canEdit=true;accessMode.canSchedule=false;accessMode.canFieldReorder=false;accessMode.fieldReorderEquipment='';
+   accessMode.role='';accessMode.masterEdit='編集可';accessMode.masterEditStored='編集可';accessMode.masterEditCap='編集可';
+   accessMode.canOpenMaster=true;accessMode.canEditFieldMaster=true;accessMode.canEditAdminMaster=true;accessMode.adminMasters=[];
   }
   applyAccessModeUI();
   return accessMode;
@@ -123,6 +137,20 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
    // モードは状態そのものが意味を持つので、色でも区別する(§9.48)
    const chip=$('#accessModeBadge');
    if(chip){chip.classList.toggle('is-view',mode==='view');chip.classList.toggle('is-schedule',mode==='schedule')}
+  }
+  /* マスタ管理の入口（§9.322）。**「非表示」なら行き先ごと消す**——押せるのに
+     何も出ない入口を残さない（§CLAUDE 4）。設備作業者はここで消える。
+     開いたままで区分が変わった場合に備えて、開いていたら閉じて一覧へ戻す。 */
+  const mmBtn=document.getElementById('openMasterMaint');
+  if(mmBtn){
+   const canOpen=accessMode.canOpenMaster!==false;
+   mmBtn.hidden=!canOpen;
+   /* 開いたまま区分が下がったら一覧へ戻す。**`enterView`の1本を通す**
+      （§CLAUDE「画面の出入りは1箇所」）——`hidden`だけを触ると、画面の
+      印（`mm-mode`）が残って他の画面の道具が伏せられたままになる。 */
+   if(!canOpen&&document.body.classList.contains('mm-mode')&&window.WL&&WL.enterView){
+    try{WL.enterView('list')}catch(e){/* 戻れなくても入口は消えている */}
+   }
   }
   // 現場段取り(§3.1.1): editモードでcanFieldReorderが真の端末にだけ表示する
   // 小さなバッジ。モードそのものを増やしたわけではないことを示す表示上の工夫。

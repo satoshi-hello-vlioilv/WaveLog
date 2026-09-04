@@ -862,29 +862,164 @@ _SCHEDULE_PERMISSION_COLUMNS=(('スケジュール可否','INTEGER'),('現場段
 ROLE_DEVELOPER='開発者'
 ROLE_MAINTAINER='メンテナンス者'
 ROLE_USER='一般ユーザー'
-ROLES=(ROLE_DEVELOPER,ROLE_MAINTAINER,ROLE_USER)
+# 設備作業者（§9.322、利用者の指示「測定の実績登録はできるが、マスタ類は
+# 表示せず触れないというのが基本」「1設備1ユーザーをより実現しやすくしたい」）。
+# **一般ユーザーより下**——今までの4区分の中でいちばん触れる範囲が狭い。
+ROLE_OPERATOR='設備作業者'
+# **並びは上位から**（画面の選択欄もこの順で出す）。
+ROLES=(ROLE_DEVELOPER,ROLE_MAINTAINER,ROLE_USER,ROLE_OPERATOR)
 ROLE_DEFAULT=ROLE_USER
-_ROLE_COLUMNS=(('権限区分','TEXT'),)
+# 上下関係。**「より上位の人しか区分を変えられない」の物差し**（§9.322）で、
+# ここ1箇所が答える——ルートにも画面にも書き写さない（写すと「画面では
+# 押せるのにサーバーが断る」が作れる）。
+ROLE_RANK={ROLE_DEVELOPER:3,ROLE_MAINTAINER:2,ROLE_USER:1,ROLE_OPERATOR:0}
+_ROLE_COLUMNS=(('権限区分','TEXT'),('マスタ編集','TEXT'))
 
 def normalize_role(value):
- """保存値 -> 3つのどれか。知らない綴り・空欄は既定（一般ユーザー）。"""
+ """保存値 -> 4つのどれか。知らない綴り・空欄は既定（一般ユーザー）。"""
  v=str(value or '').strip()
  return v if v in ROLES else ROLE_DEFAULT
+
+def role_rank(value):
+ """区分の上下。大きいほど上位。"""
+ return ROLE_RANK.get(normalize_role(value),0)
+
+# ------------------------------------------------------------------------
+# マスタ編集（§9.322、利用者の指示「アクセス権限マスタの管理カテゴリに
+# 『マスタ編集』を追加してください、非表示・閲覧のみ・部分的編集可・編集可の
+# パターンが欲しいです」）
+#
+# 「何を触れるか」の3つ（編集可否・スケジュール可否・現場段取り可否）が
+# **どのドメインへ書けるか**を決めるのに対し、こちらは**マスタ管理という
+# 画面そのものをどこまで開くか**を決める。段は4つで、下から順に:
+#   非表示     … マスタ管理の入口を出さない（画面へ辿り着けない）
+#   閲覧のみ   … 開いて読めるが、1件も書けない
+#   部分的編集可 … 現場のマスタ（測定・帳票・設備・スケジュールの設定）だけ書ける
+#   編集可     … すべて書ける（今までと同じ）
+#
+# **既定は「編集可」**（§9.132）——登録の無い端末・この列を持たない既存の行の
+# 見え方を1つも変えない。権限区分の既定（一般ユーザー）が安全側なのとは
+# 理由が違う: あちらは「新しく配る管理の権限」、こちらは「現場が今使っている
+# マスタ管理」で、絞ると触っていない端末の画面が黙って減る。
+#
+# **ただし区分の上限（キャップ）で頭打ちにする**（利用者の指示「権限区分以上の
+# 権限は付与できないようにしてください」）。設備作業者だけが「非表示」に
+# 張り付き、残る3区分は今までどおり「編集可」まで許す——一般ユーザーを絞ると、
+# 登録の無い端末（＝既定で一般ユーザー）がマスタ管理を失い、しかも
+# **アクセス権限マスタごと触れなくなって誰も直せない**（締め出し）。
+# ------------------------------------------------------------------------
+MASTER_EDIT_HIDDEN='非表示'
+MASTER_EDIT_VIEW='閲覧のみ'
+MASTER_EDIT_PARTIAL='部分的編集可'
+MASTER_EDIT_FULL='編集可'
+MASTER_EDIT_LEVELS=(MASTER_EDIT_HIDDEN,MASTER_EDIT_VIEW,MASTER_EDIT_PARTIAL,MASTER_EDIT_FULL)
+MASTER_EDIT_RANK={MASTER_EDIT_HIDDEN:0,MASTER_EDIT_VIEW:1,MASTER_EDIT_PARTIAL:2,MASTER_EDIT_FULL:3}
+MASTER_EDIT_DEFAULT=MASTER_EDIT_FULL
+ROLE_MASTER_EDIT_CAP={ROLE_DEVELOPER:MASTER_EDIT_FULL,
+                      ROLE_MAINTAINER:MASTER_EDIT_FULL,
+                      ROLE_USER:MASTER_EDIT_FULL,
+                      ROLE_OPERATOR:MASTER_EDIT_HIDDEN}
+
+def normalize_master_edit(value):
+ """保存値 -> 4段のどれか。知らない綴り・空欄は既定（編集可）。"""
+ v=str(value or '').strip()
+ return v if v in MASTER_EDIT_LEVELS else MASTER_EDIT_DEFAULT
+
+def master_edit_rank(value):
+ return MASTER_EDIT_RANK.get(normalize_master_edit(value),0)
+
+def master_edit_cap(role):
+ """その区分に**付与できる上限**。画面の選択欄もこれで絞る。"""
+ return ROLE_MASTER_EDIT_CAP.get(normalize_role(role),MASTER_EDIT_HIDDEN)
+
+def master_edit_options(role):
+ """その区分で選べる段（上限まで）。**画面へ写さないための窓口**。"""
+ top=master_edit_rank(master_edit_cap(role))
+ return [lv for lv in MASTER_EDIT_LEVELS if MASTER_EDIT_RANK[lv]<=top]
+
+def master_edit_effective(role,stored):
+ """保存値に区分の上限を掛けた**実際に効く段**。
+
+ 保存値のほうが上でも上限で頭打ちにする——区分を下げただけで、前に
+ 与えてあった段が黙って効き続けることが無いようにする。"""
+ want=normalize_master_edit(stored)
+ cap=master_edit_cap(role)
+ return want if MASTER_EDIT_RANK[want]<=MASTER_EDIT_RANK[cap] else cap
+
+# マスタの区別。**管理のマスタ**＝アプリそのものの動きを決めるもの（権限・
+# 置き場・接続・後片付け・生データ）で、`部分的編集可`では書けない。
+# 綴りは画面のタブのキー（`MASTER_DEFS`の`key`）。**ここが正**で、画面は
+# `/api/access-mode`の`adminMasters`を読むだけ（§9.163）。
+# **書き込みがこの段に載っているタブだけを並べる**——`presence`（接続状況）と
+# `importBackup`（データ引継ぎ）は書き先が別のBlueprint（`presence`／
+# `measurement`）で、段では1つも止まらない。並べると画面の帯が
+# 「読み取り専用」と名乗るのに実際は切断も引き継ぎもできる＝**合図が嘘をつく**
+# （§CLAUDE 6）。接続状況は区分そのもの（`role_can('presence:view')`）が答える。
+ADMIN_MASTER_KEYS=('accessPermission','pathConfig','dataSource','queryJoin',
+                   'measStorage','cleanup','rawTable')
+
+def master_scope_of(key):
+ """タブのキー -> 'admin'（管理のマスタ）/ 'field'（現場のマスタ）。"""
+ return 'admin' if str(key or '').strip() in ADMIN_MASTER_KEYS else 'field'
+
+def master_edit_can(level,action,scope='field'):
+ """この段で何ができるか。**ここ1箇所が答える**（§9.163）。
+
+   'open'  … マスタ管理の画面を開く（入口を出す）
+   'write' … その`scope`のマスタへ書く
+ """
+ lv=normalize_master_edit(level)
+ if action=='open':
+  return lv!=MASTER_EDIT_HIDDEN
+ if action=='write':
+  if lv==MASTER_EDIT_FULL:return True
+  if lv==MASTER_EDIT_PARTIAL:return str(scope or 'field')!='admin'
+  return False
+ return False
+
+def master_edit_capabilities(role,stored):
+ """画面へ渡す「できること」。判定を画面へ書き写さないための窓口。"""
+ lv=master_edit_effective(role,stored)
+ return {'masterEdit':lv,
+         'masterEditStored':normalize_master_edit(stored),
+         'masterEditCap':master_edit_cap(role),
+         'canOpenMaster':master_edit_can(lv,'open'),
+         'canEditFieldMaster':master_edit_can(lv,'write','field'),
+         'canEditAdminMaster':master_edit_can(lv,'write','admin'),
+         'adminMasters':list(ADMIN_MASTER_KEYS)}
 
 # 何ができるか。**ここ1箇所が答える**（§9.163）——画面にもルートにも
 # 書き写さない。写すと「画面には切断ボタンが出るのにサーバーが断る」が作れる。
 #   'presence:view'       … 接続状況を見る
 #   'presence:disconnect' … 他の端末を切断する（対象の区分も見る）
+#   'role:grant'          … 他の端末の権限区分を変える（対象の区分も見る）
+#   'choice:inline-add'   … 測定画面から選択肢マスタへ間接的に登録する
 def role_can(role,action,target_role=''):
  r=normalize_role(role)
  if action=='presence:view':
-  return True                      # 3区分とも見られる（利用者の指示）
+  # **設備作業者は見られない**（§9.322）——接続状況はマスタ管理の中の
+  # 管理のタブで、「マスタ類は表示せず触れない」に含まれる。
+  return r!=ROLE_OPERATOR
  if action=='presence:disconnect':
   if r==ROLE_DEVELOPER:return True
   if r==ROLE_MAINTAINER:
    # **開発者は切れない**（利用者の指示「開発者を除いて実行可能」）。
    return normalize_role(target_role)!=ROLE_DEVELOPER
   return False
+ if action=='role:grant':
+  # **より上位の人しか区分を触れない**（§9.322、利用者の指示「権限区分に
+  # 関しての変更はより上位権限を持つ人からの変更しか受け付けない」）。
+  # **例外は開発者だけ**——`presence:disconnect`と同じ「開発者＝制限なし」の
+  # 約束をここでも通す。通さないと**開発者の行を誰も直せない**（自分の行は
+  # 自分で触れない・同格も不可、で行き止まりになる）し、開発者を新しく
+  # 1人増やすこともできない。
+  if r==ROLE_DEVELOPER:return True
+  return role_rank(r)>role_rank(target_role)
+ if action=='choice:inline-add':
+  # 測定画面からの間接登録（§9.322、利用者の指示）。**設備作業者にも許す**
+  # ——マスタ管理は閉じるが、測定の途中で候補に無い値を打てる設定
+  # （手打ち可）が入っている欄はその場で通す。
+  return True
  return False
 
 def role_capabilities(role,):
@@ -894,6 +1029,70 @@ def role_capabilities(role,):
          'canView':role_can(r,'presence:view'),
          'canDisconnect':role_can(r,'presence:disconnect'),
          'canDisconnectDeveloper':role_can(r,'presence:disconnect',ROLE_DEVELOPER)}
+# ------------------------------------------------------------------------
+# マスタ編集の段を「どの書き込みに掛けるか」（§9.322）
+#
+# **段が掛かるのはマスタ管理の画面が書くものだけ。** 一覧・作業スケジュール・
+# 測定の各画面が書く「見せ方」（列の並び・絞り込み・並べ替え・表示ルール）は
+# マスタ管理の外にあり、CLAUDE.mdでも「一覧画面から編集する」と決めてある
+# ——ここを塞ぐと、閲覧のみの端末で列幅ひとつ直せなくなる。
+#
+# 網の張り方は**Blueprintごと（＝書き漏らしは安全側）＋名指しの例外**。
+# 逆（守る側を名指し）にすると、マスタを1つ足したときに**黙って穴が空く**。
+# 例外を書き漏らしたときは画面が目に見えて断られるので、直せる。
+# ------------------------------------------------------------------------
+MASTER_WRITE_BLUEPRINTS=('masters','path_config','master_tables','cleanup','rne')
+# 管理のマスタ（`部分的編集可`では書けない）。Blueprint単位で管理のものと、
+# `masters`の中の名指しの2つ。
+_ADMIN_WRITE_BLUEPRINTS=('path_config','master_tables','cleanup','rne')
+_ADMIN_WRITE_ENDPOINTS=('masters.access_permission_master_register',
+                        'masters.access_permission_master_update',
+                        'masters.access_permission_master_delete',
+                        'masters.query_join_master_register',
+                        'masters.query_join_master_update',
+                        'masters.query_join_master_delete',
+                        'masters.query_join_master_builtin')
+# 「見せ方」の保存。段は掛からない（上のコメント）。
+MASTER_EDIT_EXEMPT_ENDPOINTS=(
+ 'masters.column_layout_master_save','masters.column_layout_master_scope',
+ 'masters.column_preset_master_save','masters.column_preset_master_update',
+ 'masters.column_preset_master_delete',
+ 'masters.display_rule_master_save','masters.display_rule_master_delete',
+ 'masters.list_view_master_save',
+ 'masters.sort_preset_register','masters.sort_preset_use','masters.sort_preset_delete',
+ 'masters.filter_preset_register','masters.filter_preset_use','masters.filter_preset_delete',
+ 'masters.filter_preset_marks','masters.filter_preset_owner','masters.filter_preset_combo',
+ 'masters.schedule_column_master_save','masters.schedule_content_master_save')
+# 測定画面からの間接登録（§9.322、利用者の指示「測定作業時、汎用カスタム部分の
+# 選択肢でリストにないものを登録できるモード設定があった場合に測定画面から
+# 入力してマスタに間接的に登録する形のマスタ登録は許可する」）。
+# **段（非表示・閲覧のみ）を素通りするのはここだけ**で、通してよいかは
+# `role_can(...,'choice:inline-add')`が答える。
+MASTER_EDIT_INLINE_ENDPOINTS=('masters.operation_choice_register',)
+
+def master_write_scope(blueprint,endpoint):
+ """その書き込みは管理のマスタか現場のマスタか。"""
+ if endpoint in _ADMIN_WRITE_ENDPOINTS:return 'admin'
+ return 'admin' if blueprint in _ADMIN_WRITE_BLUEPRINTS else 'field'
+
+def master_write_check(role,level,blueprint,endpoint):
+ """マスタへの書き込みを通してよいか。`(ok, reason)`を返す。
+
+ **ここ1箇所が答える**（§9.163）——`access_mode`の書込ガードはこれを呼ぶだけ。"""
+ if blueprint not in MASTER_WRITE_BLUEPRINTS:return True,''
+ if endpoint in MASTER_EDIT_EXEMPT_ENDPOINTS:return True,''
+ if endpoint in MASTER_EDIT_INLINE_ENDPOINTS:
+  if role_can(role,'choice:inline-add'):return True,''
+ lv=master_edit_effective(role,level)
+ scope=master_write_scope(blueprint,endpoint)
+ if master_edit_can(lv,'write',scope):return True,''
+ if lv==MASTER_EDIT_PARTIAL:
+  return False,('この端末のマスタ編集は「部分的編集可」です。'
+                '権限・置き場・接続などの管理のマスタは変更できません。')
+ return False,(f'この端末のマスタ編集は「{lv}」です（権限区分: {normalize_role(role)}）。'
+               'マスタは変更できません。変更が要る場合は、'
+               'アクセス権限マスタで「マスタ編集」を上げてもらってください。')
+
 def ensure_access_permission_table(c):
  names=tables(c);created=False
  if ACCESS_PERMISSION_TABLE not in names:
@@ -921,7 +1120,7 @@ def access_permission_master_rows(c):
  cur=c.cursor()
  # 全行取得後にPython側で有効判定する。スケジュール関連3列は既存の呼び出し元
  # (masters.pyのCRUD一覧等)のインデックス([0]〜[7])を壊さないよう末尾へ追加する。
- cur.execute('SELECT [権限ID],[ログインID],[PC名],[編集可否],[表示順],[有効],[更新日時],[更新者ID],[スケジュール可否],[現場段取り可否],[現場段取り対象設備],[権限区分] FROM [アクセス権限マスタ] ORDER BY [表示順],[ログインID],[PC名]')
+ cur.execute('SELECT [権限ID],[ログインID],[PC名],[編集可否],[表示順],[有効],[更新日時],[更新者ID],[スケジュール可否],[現場段取り可否],[現場段取り対象設備],[権限区分],[マスタ編集] FROM [アクセス権限マスタ] ORDER BY [表示順],[ログインID],[PC名]')
  rows=[]
  for r in cur.fetchall():
   active=True if r[5] is None else bool(r[5])
@@ -931,7 +1130,15 @@ def access_permission_master_rows(c):
 def has_edit_permission(c,login_id,pc_name):
  return permission_flags(c,login_id,pc_name)['canEdit']
 
-_DEFAULT_PERMISSION_FLAGS={'canEdit':True,'canSchedule':False,'canFieldReorder':False,'fieldReorderEquipment':'','role':ROLE_DEFAULT}
+_DEFAULT_PERMISSION_FLAGS={'canEdit':True,'canSchedule':False,'canFieldReorder':False,'fieldReorderEquipment':'',
+ 'role':ROLE_DEFAULT,
+ # マスタ編集の既定は**編集可**（§9.322/§9.132）——登録の無い端末の
+ # マスタ管理を黙って取り上げない。区分の既定（一般ユーザー）の上限が
+ # 編集可なので、キャップを掛けても値は変わらない。
+ 'masterEdit':MASTER_EDIT_DEFAULT,'masterEditStored':MASTER_EDIT_DEFAULT,
+ # どの行が効いているか（§9.322）。**自分の区分を決めている行**は
+ # 自分では触れない、を判定するのに要る。登録が無ければNone。
+ 'matchedId':None}
 
 # 現場段取りの対象設備。1設備だけでなく、複数設備とワイルドカードも書ける。
 #   ''          … 未設定（権限なし。空欄は「全設備許可」ではない）
@@ -971,8 +1178,14 @@ def permission_flags(c,login_id,pc_name):
   return dict(_DEFAULT_PERMISSION_FLAGS)
  target_login=normalize_identity_part(login_id);target_pc=normalize_identity_part(pc_name)
  def flags_of(r):
+  role=normalize_role(r[11] if len(r)>11 else '')
+  stored=normalize_master_edit(r[12] if len(r)>12 else '')
   return {'canEdit':bool(r[3]),'canSchedule':bool(r[8]),'canFieldReorder':bool(r[9]),'fieldReorderEquipment':str(r[10] or '').strip(),
-          'role':normalize_role(r[11] if len(r)>11 else '')}
+          'role':role,
+          # **保存値ではなく効いている段を配る**（§9.322）——区分を下げたのに
+          # 前の段が効き続ける、を作らない。保存値も別に持って画面に出す。
+          'masterEdit':master_edit_effective(role,stored),'masterEditStored':stored,
+          'matchedId':r[0]}
  exact=login_only=pc_only=global_rule=None
  for r in access_permission_master_rows(c):
   rl,rp=normalize_identity_part(r[1]),normalize_identity_part(r[2])
@@ -986,6 +1199,76 @@ def permission_flags(c,login_id,pc_name):
    global_rule=r
  matched=exact or login_only or pc_only or global_rule
  return flags_of(matched) if matched else dict(_DEFAULT_PERMISSION_FLAGS)
+
+# ------------------------------------------------------------------------
+# 権限区分・マスタ編集を「書き換えてよいか」（§9.322、利用者の指示
+# 「権限区分に関しての変更はより上位権限を持つ人からの変更しか受け付けない
+#  ようにして、自分自身で自分の権限区分を触れないようにしてください」）
+#
+# **判定はこの1箇所**（§9.163）——登録・更新・削除の3つのルートが同じここを
+# 通る。散らすと「登録では通るのに更新では断られる」が作れる。
+#
+# 3つの門を順に見る:
+#   ① 自分の区分を決めている行か     … 自分では触れない（自己昇格を塞ぐ唯一の門）
+#   ② まだ管理者が1人も居ないか      … 居なければ通す（最初の1人を作る道。
+#                                      これが無いと、既定の一般ユーザーしか
+#                                      居ない新しい現場で開発者を作れない）
+#   ③ 相手の区分・与える区分より上位か … `role_can(...,'role:grant',...)`
+# ------------------------------------------------------------------------
+def has_admin_role_row(c):
+ """一般ユーザーより上位の区分を持つ有効な行が1つでもあるか。"""
+ if ACCESS_PERMISSION_TABLE not in tables(c):return False
+ top=role_rank(ROLE_USER)
+ for r in access_permission_master_rows(c):
+  if role_rank(r[11] if len(r)>11 else '')>top:return True
+ return False
+
+def identity_covers(row_login,row_pc,login_id,pc_name):
+ """この行は、その人・その端末に当たるか（空欄＝問わない）。
+
+ `permission_flags`の一致度判定と同じ読み方。**新しく作る行**には権限IDが
+ まだ無く「効いている行か」で見分けられないので、こちらで見る。"""
+ rl=normalize_identity_part(row_login);rp=normalize_identity_part(row_pc)
+ tl=normalize_identity_part(login_id);tp=normalize_identity_part(pc_name)
+ return (not rl or rl==tl) and (not rp or rp==tp)
+
+def role_change_check(c,actor_login,actor_pc,old_role,new_role,
+                      row_id=None,row_login='',row_pc=''):
+ """区分を`old_role`から`new_role`へ変えてよいか。`(ok, reason)`を返す。
+
+ `row_id`が無い（新規登録）ときは、その行が自分に当たるかで自己判定する。
+ **変わらないなら何も要らない**——区分に触っていない更新（名前や編集可否
+ だけを直す、既定のまま新しい端末を登録する）を巻き添えにしない。"""
+ old=normalize_role(old_role);new=normalize_role(new_role)
+ if old==new:return True,''
+ me=permission_flags(c,actor_login,actor_pc)
+ mine=(row_id is not None and me.get('matchedId') is not None
+       and str(row_id)==str(me['matchedId'])) \
+      or (row_id is None and identity_covers(row_login,row_pc,actor_login,actor_pc))
+ if mine:
+  return False,('自分の権限区分は自分では変更できません'
+                f'（いまの区分: {me["role"]}）。上位の区分を持つ人に変更してもらってください。')
+ if not has_admin_role_row(c):
+  # まだ誰も管理者が居ない＝最初の1人を作る場面。ここを塞ぐと、既定
+  # （一般ユーザー）しか居ない現場で開発者を1つも作れない。
+  return True,''
+ actor=me['role']
+ if not role_can(actor,'role:grant',old):
+  return False,(f'この端末の権限区分（{actor}）では、{old}の登録の区分を変更できません。'
+                'より上位の区分を持つ人に依頼してください。')
+ if not role_can(actor,'role:grant',new):
+  return False,(f'この端末の権限区分（{actor}）では、{new}を与えられません。'
+                '自分より上位（同格を含む）の区分は付与できません。')
+ return True,''
+
+def master_edit_check(role,level):
+ """その区分にその段を与えてよいか。`(ok, reason)`を返す（§9.322、利用者の
+ 指示「権限区分以上の権限は付与できないようにしてください」）。"""
+ r=normalize_role(role);lv=normalize_master_edit(level)
+ cap=master_edit_cap(r)
+ if master_edit_rank(lv)<=master_edit_rank(cap):return True,''
+ return False,(f'権限区分「{r}」に「{lv}」は与えられません（上限は「{cap}」）。'
+               '先に権限区分を上げるか、マスタ編集を上限までにしてください。')
 
 def field_reorder_terminal_count(c,equipment):
  # docs/SCHEDULE_MODE_DESIGN.md §5.0.1: 設備削除確認で使う。現場段取り

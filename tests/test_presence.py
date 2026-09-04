@@ -9,7 +9,8 @@
 いるのは**ファイルの壊れ方**で、**人と人の衝突**は別の話。
 
 ここで固定するのは次の8つ。
- 1. 権限区分は3つで、**できることを答えるのは`role_can()`の1箇所**
+ 1. 権限区分の可否を**答えるのは`role_can()`の1箇所**（区分そのものは
+    §9.322で4つになった。この網が見るのは切断まわりの3区分）
  2. **既定は一般ユーザー**（登録の無い端末に管理の権限を配らない）
  3. 端末キーは**別の端末どうしがぶつからない**（落とすだけにしない）
  4. 在席は**端末ごとに1ファイル**（1つのファイルを書くのはいつも1台）
@@ -65,9 +66,9 @@ try:
     am.current_login_id = lambda: 'me'
     am.current_pc_name = lambda: 'PC-ME'
 
-    # ---- 1. 権限区分は3つ。答えるのは role_can の1箇所 ------------------
+    # ---- 1. 切断の可否。答えるのは role_can の1箇所 ---------------------
     D, M, U = mr.ROLE_DEVELOPER, mr.ROLE_MAINTAINER, mr.ROLE_USER
-    rec('3区分とも接続状況を見られる（利用者の指示）',
+    rec('開発者・メンテナンス者・一般ユーザーは接続状況を見られる（利用者の指示）',
         all(mr.role_can(r, 'presence:view') for r in (D, M, U)))
     rec('開発者は制限なし', mr.role_can(D, 'presence:disconnect', D)
         and mr.role_can(D, 'presence:disconnect', M) and mr.role_can(D, 'presence:disconnect', U))
