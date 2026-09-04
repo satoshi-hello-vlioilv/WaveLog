@@ -849,7 +849,10 @@
    （§9.233 ③）——`rp-defect-fact-text`を貼るのは「自由記述・並び」の側だけで、
    貼るかどうかは値を組み立てる1箇所が決める。 */
 .rp-defect-fact-text b{text-align:left}
-.rp-defect-fact-hit b{color:#a32424}
+/* 「該当した条」を指す赤は**1つ**（§9.163）——欄（該当条）と混入位置の行で
+   違う赤だと、同じことを言っているのに読む側が読み替えることになる。 */
+.rp-defect-facts,.rp-defect-spots{--rp-hit:#a32424}
+.rp-defect-fact-hit b{color:var(--rp-hit)}
 .rp-defect-foot{margin-top:1px;color:#8a9a97;font-size:7.5px}
 /* ---------- ピッチ判定（§9.305 ②-2 → §9.319-C で独立した塊へ） ----------
    以前は幅方向の節の中へ差し込んでいたので見出しは`h4`だったが、塊を
@@ -924,6 +927,15 @@
 .rp-defect-spots-list{display:flex;flex-wrap:wrap;gap:0 8px;min-width:0}
 .rp-defect-spot{display:inline-flex;align-items:baseline;gap:3px;color:#17272d;font-weight:800;
  white-space:nowrap}
+/* **何条目かは赤太字**（§9.323 ⑤、利用者の指示）——現場が紙から拾うのは
+   この数字。中の`<b>`（条番号そのもの）はさらに太くして、範囲や複数条の
+   ときも数字が先に目に入るようにする。**製品に掛かっていないときは
+   赤くしない**（赤は「該当した」の意味なので、屑側に落ちた箇所まで赤いと
+   色が語らなくなる）。 */
+.rp-defect-spot-lane{color:var(--rp-hit);font-weight:800}
+.rp-defect-spot-lane b{font-weight:900}
+.rp-defect-spot-lane.is-none{color:#60747b;font-weight:700}
+.rp-defect-spot-at{color:#60747b;font-weight:700}
 /* 何か所目かは**小さな番号**で（図の旗と対応が読める）。色だけで伝えない（§3）。 */
 .rp-defect-spot>i{display:inline-block;font-size:7.5px;border-radius:2px;min-width:8px;
  padding:0 2px;background:#dfe9ec;color:#40575e;font-style:normal;font-weight:800;text-align:center}

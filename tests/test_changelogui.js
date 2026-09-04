@@ -65,7 +65,20 @@ let b=null;
           railLeft:Math.round(rail.getBoundingClientRect().left),
           mainLeft:Math.round(main.getBoundingClientRect().left)};
  });
- rec('窓が画面の6割以上の幅を使う',box.w>=box.vw*0.6,JSON.stringify(box));
+ /* **画面比では見ない**（§9.323 ⑥で書き直した。§9.200）——この網は§9.286 ⑦で
+    「620pxの既定から広げた」ことを固定するために書かれたが、物差しが
+    **画面の何割か**だった。利用者の指摘「余白が広すぎます」で器を中身から
+    決めた（§CLAUDE 画面基準 11）ので、画面比の約束とは正面から反対になる。
+    **守りたいのは「620pxの既定へ戻っていないこと」**なので、そう書く
+    ——レールと本文の行長が両方収まっていれば、既定へは戻っていない。 */
+ const need=await page.evaluate(()=>{
+  const rail=document.querySelector('.cl-rail');
+  const li=document.querySelector('.changelog-entry li');
+  return {rail:rail?Math.round(rail.getBoundingClientRect().width):0,
+          text:li?Math.round(parseFloat(getComputedStyle(li).maxWidth)||0):0};
+ });
+ rec('窓がレールと本文の行長を収めている（620pxの既定へ戻っていない）',
+     box.w>=need.rail+need.text,JSON.stringify({窓:box.w,...need}));
  rec('窓が画面の7割以上の高さを使う',box.h>=box.vh*0.7,`${box.h}/${box.vh}`);
  rec('レールと中身が別々にスクロールする',box.railScroll&&box.mainScroll&&box.railLeft<box.mainLeft,
      JSON.stringify(box));
@@ -130,6 +143,63 @@ let b=null;
  await page.waitForTimeout(300);
  const back=await page.evaluate(()=>document.querySelectorAll('#changelogList .changelog-entry').length);
  rec('外すと全部戻る',back===tags.entries,`${back}/${tags.entries}`);
+
+ /* ---- 器は中身の長さから決める（§9.323 ⑥、利用者の報告） ----
+    「更新履歴が表示されるエリアと改行の位置がずれていて余白が広すぎます」
+    以前は幅が`1180px`の直値で、本文の行長（`li{max-width:76ch}`）と何の関係も
+    無かった——実測で**器の使える幅868pxに対して文字は591px**、右に**277px
+    （器の32%）**が空いていた。
+    **宣言ではなく刷り上がりで見る**（§9.289）——「幅の式が在ること」を見る網は、
+    式が間違っていても通る。**文字が実際に置かれた右端**（Range の矩形）と
+    **器の内寸**を突き合わせる。 */
+ const fit=await page.evaluate(()=>{
+  const main=document.querySelector('.cl-main');
+  if(!main)return null;
+  const cs=getComputedStyle(main);
+  const inner=main.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
+  let widest=0,lines=0;
+  [...document.querySelectorAll('.changelog-entry li')].slice(0,40).forEach(li=>{
+   const r=document.createRange();r.selectNodeContents(li);
+   const rects=[...r.getClientRects()];
+   lines+=rects.length;
+   rects.forEach(x=>{if(x.width>widest)widest=x.width});
+  });
+  const li=document.querySelector('.changelog-entry li');
+  return {内寸:Math.round(inner),いちばん長い行:Math.round(widest),
+          行長の指定:li?getComputedStyle(li).maxWidth:'',行数:lines};
+ });
+ /* **器の3割が空いていない**こと。カードの内側の余白（12px×2）とバーの帯ぶんは
+    残るので、そこは許容する。 */
+ rec('器の右に大きな空きが残らない（中身の長さから決まっている）',
+     !!fit&&(fit.内寸-fit.いちばん長い行)<=60,
+     JSON.stringify(fit));
+ /* **片側だけ見ない**——器を詰めるついでに行を短くしては本末転倒。
+    行長は日本語で読みやすい全角40〜45文字の範囲に居ること。 */
+ const em=await page.evaluate(()=>parseFloat(getComputedStyle(document.body).fontSize)||14);
+ rec('行長は日本語で読みやすい範囲のまま（全角38〜48文字）',
+     !!fit&&fit.いちばん長い行/em>=38&&fit.いちばん長い行/em<=48,
+     JSON.stringify({全角:fit?Math.round(fit.いちばん長い行/em):null,em}));
+ /* **器と本文が「同じ数」から作られているかは、動かして確かめる**（§9.163）。
+    computed style では見分けが付かない——`76ch`と`42em`はこのフォントでは
+    たまたま同じpxに解けるので、`px`で終わっているかを見る網は
+    **直値へ戻しても通る**（実際に素通りした）。
+    `--cl-text-w`を変えたときに**器と本文が一緒に動く**ことで見る。
+    片方だけ動く実装＝どちらかが直値、が必ず落ちる。 */
+ const linked=await page.evaluate(()=>{
+  const d=document.querySelector('.changelog-dialog');
+  const li=()=>document.querySelector('.changelog-entry li');
+  const read=()=>({窓:Math.round(d.getBoundingClientRect().width),
+                   行長:Math.round(parseFloat(getComputedStyle(li()).maxWidth)||0)});
+  const before=read();
+  const was=d.style.getPropertyValue('--cl-text-w');
+  d.style.setProperty('--cl-text-w','300px');
+  const after=read();
+  if(was)d.style.setProperty('--cl-text-w',was);else d.style.removeProperty('--cl-text-w');
+  return {before,after};
+ });
+ rec('器と本文が同じ数（--cl-text-w）から作られている（片方だけ直値ではない）',
+     !!linked&&linked.after.行長===300&&linked.after.窓<linked.before.窓,
+     JSON.stringify(linked));
 
  await page.evaluate(()=>{const m=document.querySelector('#changelogModal');if(m)m.hidden=true});
 

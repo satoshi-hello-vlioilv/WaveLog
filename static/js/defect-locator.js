@@ -716,15 +716,26 @@
      「1: OSから 3条目（120.0mm）」のように**何か所目か・どの条か・どこか**を
      並べる——番号を落とすと、図の旗3本とこの文字の対応が読めなくなる。 */
   const spots=spotsOf(r);
-  const spotText=sp=>{
-   const lanesTxt=sp.hits&&sp.hits.length
-     ?`OSから ${rangeLabel(sp.hits.map(h=>h.index+1))} 条目（${sp.hits.length}条）`
-     :(sp.outside==='os'?'製品より手前（屑側）':sp.outside==='ds'?'製品より奥（屑側）':'製品に掛かる条なし');
-   return `${lanesTxt}／${BASIS_LABEL[sv.basis]||''} ${fmt(sp.distance)}mm`;
+  /* **いちばん大事なのは「何条目か」**（§9.323 ⑤、利用者の指示「条混入位置で
+     何条目という表示の部分の大事な文字情報を赤太字で表示してほしい」）——
+     現場が紙から拾うのはこの数字なので、赤太字で出す。
+     **色だけで伝えない**（§3）ので「条目」の字は必ず残す。赤は
+     「該当条」の欄と**同じ1つ**（`--rp-hit`）——同じことを言っているのに
+     違う赤だと、読む側が読み替えることになる（§9.163）。
+     距離（／OSから 120.0mm）は**どこで測ったか**の補助なので、地の色のまま
+     ——全部を赤くすると、どれが結論なのか色が語らなくなる。 */
+  const spotHtml=sp=>{
+   const hit=!!(sp.hits&&sp.hits.length);
+   const lanes=hit
+     ?`OSから <b>${esc(rangeLabel(sp.hits.map(h=>h.index+1)))}</b> 条目（${esc(sp.hits.length)}条）`
+     :esc(sp.outside==='os'?'製品より手前（屑側）'
+         :sp.outside==='ds'?'製品より奥（屑側）':'製品に掛かる条なし');
+   return `<span class="rp-defect-spot"><i>${esc(sp.no||'')}</i>`
+    +`<span class="rp-defect-spot-lane${hit?'':' is-none'}">${lanes}</span>`
+    +`<span class="rp-defect-spot-at">／${esc(BASIS_LABEL[sv.basis]||'')} ${esc(fmt(sp.distance))}mm</span>`
+    +`</span>`;
   };
-  const spotsHtml=spots.length>1
-    ? spots.map(sp=>`<span class="rp-defect-spot"><i>${esc(sp.no||'')}</i>${esc(spotText(sp))}</span>`).join('')
-    : '';
+  const spotsHtml=spots.length>1?spots.map(spotHtml).join(''):'';
   /* ---------- 図を最大化し、文字は帳票並みに（§9.319-C、利用者の指示） ----------
      「異常位置判定の文字の項目は必要な範囲でコンパクトに条の分割の図を
       最大化したいです」「文字が小さいので他の項目並みに大きくしてほしい」
