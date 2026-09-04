@@ -256,6 +256,73 @@ rec('⑧ 記録に残らない欄は読み替えの表にも候補にも出さ�
     all(k not in rb.BUILTIN_PATHS for k in rb.UNRECORDED_BUILTINS),
     rb.UNRECORDED_BUILTINS)
 
+# ---------------------------------------------------------------------------
+# §9.321 見本は「いまの入力の決まり」に乗る（利用者の指示）
+# ---------------------------------------------------------------------------
+# 「デモデータを最新のデータのパターンに合わせてアップデートしてください。
+#  ステップ刻みのあるデータや、小数点の桁数が変わるものを想定しています」
+#
+# 刻みと器の桁そのものは`tests/test_rbsample.js`が**画面の決まりに聞いて**
+# 確かめる（数を網へ書き写さない・§9.163）。ここで見るのは、そこからは
+# 見えない2つ:
+#  ① `stat.*`の見本を**手で書いていない**（見本の測定値から数えている）
+#  ② `sample_for()`が**その項目の刻み・上下限に乗った値**を返す
+_rec0 = rb.sample_record()
+_ms = _rec0.get('measurements') or {}
+_prod = (_rec0.get('product') or {}).get('rows') or []
+
+
+def _stat_now(key):
+    if key == 'length':
+        return rb._stat_of([r['productLength'] for r in _prod])
+    if key == 'wall':
+        return rb._stat_of([r['wallThickness'] for r in _prod])
+    return rb._stat_of([v for row in _ms.get(key) or [] for v in row])
+
+
+_drift = []
+for _k in list(rb._SAMPLE_SERIES) + ['length', 'wall']:
+    for _agg, _v in _stat_now(_k).items():
+        if rb.SAMPLE_VALUES.get('stat.%s.%s' % (_k, _agg)) != _v:
+            _drift.append('stat.%s.%s: 見本=%r 実測=%r'
+                          % (_k, _agg, rb.SAMPLE_VALUES.get('stat.%s.%s' % (_k, _agg)), _v))
+rec('§9.321 統計の見本は見本の測定値から数える（手書きの表を持たない）',
+    not _drift, _drift[:6])
+
+# ② 刻み・上下限。**「見本の値を入れる」でそのまま欄へ入る**ので、欄が
+#    受け付けない値・欄を離れた瞬間に丸められる値を返してはいけない。
+#    最後の1件は**刻みでは範囲に入れない**形（範囲を優先して下限を返す）。
+_CASES = [
+    ({'type': '数値', 'decimals': 1, 'min': 20, 'max': 60, 'step': 5}, 1, 5, 20, 60),
+    ({'type': '数値', 'decimals': 2, 'min': 0.5, 'max': 3.0, 'step': 0.25}, 2, 0.25, 0.5, 3.0),
+    ({'type': '正の整数', 'min': 1, 'max': 40, 'step': 1}, 0, 1, 1, 40),
+    ({'type': '正の数', 'decimals': 1, 'step': 0.5}, 1, 0.5, None, None),
+    ({'type': '数値', 'decimals': 3}, 3, None, None, None),
+    ({'type': '数値', 'decimals': 1, 'min': 0.1, 'max': 0.2, 'step': 0.5}, 1, None, 0.1, 0.2),
+]
+_bad = []
+for _it, _d, _step, _lo, _hi in _CASES:
+    _v = rb.sample_for('settings.opData.見本', _it)
+    _why = []
+    _dec = 0 if '.' not in _v else len(_v.split('.')[1])
+    if _dec != _d:
+        _why.append('小数%d桁のはず' % _d)
+    try:
+        _n = float(_v)
+    except ValueError:
+        _n = None
+        _why.append('数として読めない')
+    if _n is not None:
+        if _step and abs(_n / _step - round(_n / _step)) > 1e-9:
+            _why.append('刻み%s に乗らない' % _step)
+        if _lo is not None and _n < _lo:
+            _why.append('下限%s 未満' % _lo)
+        if _hi is not None and _n > _hi:
+            _why.append('上限%s 超え' % _hi)
+    if _why:
+        _bad.append('%r → %r: %s' % (_it, _v, '／'.join(_why)))
+rec('§9.321 操業データの見本は刻み・上下限・小数桁に乗る', not _bad, _bad)
+
 ng = [x for x in R if not x[1]]
 print('\n=== SUMMARY ===')
 print('%d/%d passed' % (len(R) - len(ng), len(R)))
