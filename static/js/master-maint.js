@@ -433,7 +433,8 @@
    hint:'この工場のラインの一覧です。1行＝1つの設備で、**行を押すと編集の窓が開きます**。「区分」は扱う材料の形（コイル／板）、「最大条数」は幅分割で割れる条数の上限（空欄＝40条）、「標準時間」は実績が無いときの見積（空欄＝120分）、「最大ライン速度」は操業データの入力上限として参照できます（空欄＝上限なし）。「使える機能」を外すと、その機能の設備の選択肢に出なくなります（記録は消えません）。'},
   /* 接続状況（§9.272）。**汎用CRUDは持たない**（`special`で分岐する）。
      一般ユーザーでも開ける——見るだけならどの区分でもできる。 */
-  {group:'system',key:'presence',label:'接続状況',icon:'席',
+  /* **マスタ編集の段の対象外**（§9.322）——切断できるかは権限区分が答える。 */
+  {group:'system',key:'presence',label:'接続状況',icon:'席',masterEditExempt:true,
    special:'presence',endpoint:'/api/presence',
    titleText:'接続状況 — 誰がいまこのシステムを使っているか',
    cols:[{k:'login',label:'ログインID'}],
@@ -445,15 +446,39 @@
   {group:'system',key:'accessPermission',label:'アクセス権限',icon:'権',endpoint:'/api/access-permission-master',hasDelete:true,
    fields:[{k:'loginId',label:'ログインID',key:true},{k:'pcName',label:'PC名',key:true},
            /* **区分が先**（§9.272）。上位概念なので、細かい可否より前に決める。 */
-           {k:'role',label:'権限区分',type:'select',options:['一般ユーザー','メンテナンス者','開発者'],
-            more:'アプリそのものをどこまで管理できるかです。下の3つ（何を触れるか）とは別の軸で、掛け合わせません。'
+           /* 並びは**下位から**（決める順。ふだん増やすのは下の区分）。
+              綴りはサーバー（`master_repo.ROLES`）が正で、ここは選択欄の
+              並びだけを持つ（§9.322）。 */
+           {k:'role',label:'権限区分',type:'select',options:['設備作業者','一般ユーザー','メンテナンス者','開発者'],
+            more:'アプリそのものをどこまで管理できるかです。下の「何を触れるか」とは別の軸で、掛け合わせません。'
                  +'**開発者**＝制限なし。**メンテナンス者**＝接続状況を見て切断できる（ただし開発者は切断できません）。'
-                 +'**一般ユーザー**＝接続状況を見るだけ。登録の無い端末は一般ユーザーです。'},
+                 +'**一般ユーザー**＝接続状況を見るだけ。登録の無い端末は一般ユーザーです。'
+                 +'**設備作業者**＝測定の実績登録だけ。マスタ管理も接続状況も出ません'
+                 +'（1設備1ユーザーの端末向け）。\n'
+                 +'**区分を変えられるのは、その区分より上位の人だけ**です。'
+                 +'**自分の区分を決めている行は、自分では変更・削除できません。**'},
+           /* マスタ編集（§9.322、利用者の指示）。**区分のすぐ下**——上限が
+              区分で決まるので、区分を決めてから選ぶ。 */
+           {k:'masterEdit',label:'マスタ編集',type:'select',options:['非表示','閲覧のみ','部分的編集可','編集可'],
+            hint:'選べるのは**権限区分の上限まで**です（設備作業者は「非表示」だけ）。',
+            more:'マスタ管理の画面をどこまで開くかです。\n'
+                 +'**非表示**＝左メニューにマスタ管理を出しません。\n'
+                 +'**閲覧のみ**＝開いて読めますが、1件も保存できません。\n'
+                 +'**部分的編集可**＝測定・帳票・設備・スケジュールの設定だけ保存できます'
+                 +'（権限・共通設定・データ接続・クエリ結合・掃除・生データ・接続状況は読むだけ）。\n'
+                 +'**編集可**＝すべて保存できます（登録の無い端末はこれです）。\n'
+                 +'一覧の列・絞り込み・並べ替えといった**画面の見せ方**はマスタ編集の対象外で、'
+                 +'どの段でも今までどおり保存できます。'},
            {k:'canEdit',label:'編集可否',type:'select',options:['編集可','閲覧のみ']},
            {k:'canSchedule',label:'スケジュール可否',type:'select',options:['不可','可']},
            {k:'canFieldReorder',label:'現場段取り可否',type:'select',options:['不可','可']},
            {k:'fieldReorderEquipment',label:'現場段取り対象設備',type:'equipment-multi-text'}],
-   cols:[{k:'loginId',label:'ログインID',grow:2},{k:'pcName',label:'PC名',grow:2},{k:'role',label:'権限区分',grow:1},{k:'canEdit',label:'編集可否',grow:1},{k:'canSchedule',label:'スケジュール',grow:1},{k:'canFieldReorder',label:'現場段取り',grow:1},{k:'fieldReorderEquipment',label:'対象設備',grow:2,format:'equipmentTarget'}],
+   cols:[{k:'loginId',label:'ログインID',grow:2},{k:'pcName',label:'PC名',grow:2},{k:'role',label:'権限区分',grow:1},
+         /* **効いている段を出す**（§9.322）——保存値が区分の上限を超えている
+            行は、保存値ではなく頭打ちになった段が実際に効く。食い違うときは
+            `cellText`が「保存値 → 効いている段」と書く。 */
+         {k:'masterEdit',label:'マスタ編集',grow:1,format:'masterEdit'},
+         {k:'canEdit',label:'編集可否',grow:1},{k:'canSchedule',label:'スケジュール',grow:1},{k:'canFieldReorder',label:'現場段取り',grow:1},{k:'fieldReorderEquipment',label:'対象設備',grow:2,format:'equipmentTarget'}],
    /* ---------- 長い説明は畳んで階層にする（§9.276 ④、利用者の指示） ----------
       「説明文長すぎてわかりにくくて読みにくいので、タブやアコーディオンなど
        使ってわかりやすく階層化しながらコンパクトに表示・説明する方法も」
@@ -473,9 +498,29 @@
        +'**開発者**＝制限なし。\n'
        +'**メンテナンス者**＝接続状況を見て切断できる（開発者は切断できません）。\n'
        +'**一般ユーザー**＝接続状況を見るだけ。\n'
+       +'**設備作業者**＝測定の実績登録だけ。マスタ管理も接続状況も出ません。'
+       +'1台の端末を1つの設備の作業者が使う運用向けです。\n'
        +'**登録の無い端末は一般ユーザー**です——管理の権限を配らないため。'
        +'誰も切断できない状態になったら、この画面で開発者を1つ登録してください。'
        +'接続状況は「マスタ管理 > 接続状況」で見られます。'},
+    {t:'区分を変えられるのは誰か',
+     b:'**自分より上位の区分は与えられません**——一般ユーザーの端末から'
+       +'開発者を作ることはできません（開発者だけは制限なしで、同格も含めて変更できます）。\n'
+       +'**自分の区分を決めている行は、自分では変更も削除もできません。**'
+       +'降格したい・辞めたい場合も、上位の区分を持つ人に頼んでください'
+       +'（自分の行を消して制限を外す、という抜け道を塞ぐためです）。\n'
+       +'**まだ管理者（一般ユーザーより上位）が1人も居ないあいだは、誰でも最初の1人を作れます**'
+       +'——新しい現場で開発者を登録する道が無くなるためです。1人作った時点で上の規則が効きます。'},
+    {t:'マスタ編集（マスタ管理の画面をどこまで開くか）',
+     b:'**非表示**＝左メニューにマスタ管理を出しません。\n'
+       +'**閲覧のみ**＝開いて読めますが1件も保存できません。\n'
+       +'**部分的編集可**＝測定・帳票・設備・スケジュールの設定だけ保存できます。'
+       +'権限・共通設定・データ接続・クエリ結合・掃除・生データ・接続状況は読むだけです。\n'
+       +'**編集可**＝すべて保存できます。**登録の無い端末はこれ**なので、'
+       +'いま動いている端末の見え方は変わりません。\n'
+       +'選べるのは**権限区分の上限まで**で、設備作業者は「非表示」だけです。\n'
+       +'一覧の列・絞り込み・並べ替えといった**画面の見せ方はマスタ編集の対象外**で、'
+       +'どの段でも今までどおり保存できます（マスタ管理の画面ではなく、その一覧から直すものだからです）。'},
     {t:'ログインID・PC名の照合（どの行が効くか）',
      b:'どちらか一方だけの登録もできます。片方だけ登録すると、もう一方は**「問わない」**という意味になります'
        +'（例: ログインIDだけ登録すると、その人はどの端末からでもこの権限になります）。\n'
@@ -510,7 +555,8 @@
      同じ設定を2画面に置かない＝§9.168と同じ作法）。 */
   {group:'data',key:'measStorage',label:'測定データの保存',icon:'測',special:'meas-storage',
    titleText:'測定データの保存 — どこに何が入るか'},
-  {group:'data',key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup'},
+  /* 書き先は測定データ（measurement）なので、マスタ編集の段では止まらない（§9.322）。 */
+  {group:'data',key:'importBackup',label:'データ引継ぎ',icon:'継',special:'import-backup',masterEditExempt:true},
   /* データ接続(§9.168)。**1行＝1つのデータソース**で、「これは何か／どこから
      読むか／この設定で何ができるか」を1枚のカードにまとめる。読み込み先の
      個別上書きは以前パス設定タブにあったが、同じ「どこを読むか」の設定が
@@ -550,8 +596,42 @@
     ここから先は`allDefs()`を見ること——`MASTER_DEFS`を直に見ると、
     足したタブがそこだけ見えない状態が作れる。 */
  let rawDefs=[];
- function allDefs(){return rawDefs.length?MASTER_DEFS.concat(rawDefs):MASTER_DEFS}
- function currentDef(){return allDefs().find(d=>d.key===maintState.defKey)||MASTER_DEFS[0]}
+ /* ---------- マスタ編集の段（§9.322、利用者の指示） ----------
+    「アクセス権限マスタの管理カテゴリに『マスタ編集』を追加してください、
+      非表示・閲覧のみ・部分的編集可・編集可のパターンが欲しいです」
+
+    **判定はサーバーが答える**（§9.163）——どのタブが「管理のマスタ」かも
+    上限の掛け算も`/api/access-mode`が名前で返すので、ここでは受け取った
+    答えを`def.readOnly`という**既にある1つのレバー**へ翻訳するだけ。
+    そうすると上のフォーム・行の「編集/削除」・行クリックの3箇所が
+    今までどおり同じ印を見て閉じる（新しい閉じ方を作らない）。
+    **書けないだけで、見えるものは減らさない**——タブごと消すと、なぜ
+    出てこないのかが画面から読めなくなる（消えるのは「非表示」のときの
+    マスタ管理そのものだけ・`access-mode.js`）。 */
+ function masterEditLevel(){
+  const a=window.accessMode||{};
+  return a.masterEdit||'編集可';
+ }
+ function masterDefWritable(def){
+  const a=window.accessMode||{};
+  /* **書き先が段に載っていないタブは対象外**（`masterEditExempt`）——接続状況の
+     切断は区分（§9.272）が、データ引継ぎは測定データの側が決める。ここへ
+     混ぜると、帯が「読み取り専用」と名乗るのに実際は動く（§CLAUDE 6）。 */
+  if(def&&def.masterEditExempt)return true;
+  if(a.canEditFieldMaster===false&&a.canEditAdminMaster===false)return false;
+  const admin=Array.isArray(a.adminMasters)&&a.adminMasters.indexOf(def.key)>=0;
+  return admin?a.canEditAdminMaster!==false:a.canEditFieldMaster!==false;
+ }
+ /* **元の定義は書き換えない**（写しに印を足す）——書き換えると、段が上がった
+    ときに`readOnly`が残ったままになる（`MASTER_DEFS`はモジュールの寿命で
+    生き続ける）。読み取り専用が元から立っている定義（テーブル生データ）は
+    そのまま。 */
+ function withMasterEditGate(def){
+  if(!def||def.readOnly)return def;
+  return masterDefWritable(def)?def:Object.assign({},def,{readOnly:true,readOnlyByLevel:true});
+ }
+ function allDefs(){return (rawDefs.length?MASTER_DEFS.concat(rawDefs):MASTER_DEFS).map(withMasterEditGate)}
+ function currentDef(){return allDefs().find(d=>d.key===maintState.defKey)||withMasterEditGate(MASTER_DEFS[0])}
  // scheduleモードは作業予定(schedule Blueprint)以外のマスタへ書込できない
  // (backend/access_mode.pyの_WRITE_ALLOWED_MODES)。マスタ管理モーダル自体は
  // 開けるようにしつつ(設備停止マスタはscheduleモードでのみ書込可能なため)、
@@ -779,7 +859,13 @@
           操作列(#mmHead → #headerViewBar)が持つ(§9.100)。ここに残すと、
           この画面だけ操作の置き場が2段になる。 -->
      <div class="mm-toolbar">
-      <div class="mm-toolbar-left"><b id="masterMaintTitle">オペレータ</b><span class="mm-count" id="masterMaintCount"></span></div>
+      <div class="mm-toolbar-left"><b id="masterMaintTitle">オペレータ</b><span class="mm-count" id="masterMaintCount"></span>
+       <!-- マスタ編集の段（§9.322）。**書けないときだけ出す**——器は常に
+            置いておき、中身の出し入れだけで済ませる（出入りで見出しの行が
+            跳ねないように・§9.227 ②）。専用の画面（共通設定・データ接続など）は
+            自前で欄を組み立てるので、断るのはサーバーだけ——**先に読める形で
+            言う**のがこの帯の役目（§4）。 -->
+       <span class="mm-mode-chip" id="masterMaintLevel" hidden></span></div>
       <!-- 束ねた見出しの開閉（§9.241 ①）。**群を持つマスタのときだけ**中身が
            入る（renderMaintList が出し入れする。押せるのに何も起きない
            ボタンを置かない・§CLAUDE 4）。 -->
@@ -1163,6 +1249,14 @@
  function cellText(col,value){
   const v=String(value??'');
   if(col.format==='maxStrips')return v.trim()===''?'40（既定）':v;
+  /* マスタ編集（§9.322）。**保存値と効いている段が食い違ったら両方書く**
+     ——区分の上限で頭打ちになっているのに保存値だけを出すと、「編集可に
+     したのに触れない」という読み方しかできなくなる（§3・§4）。 */
+  if(col.format==='masterEdit'){
+   const eff=col.row&&col.row.masterEditEffective;
+   const stored=v.trim()||'編集可';
+   return (eff&&eff!==stored)?`${stored} → ${eff}（区分の上限）`:stored;
+  }
   /* 1ロットあたり標準時間(§9.114)。**未設定を「0分」に見せない**——
      空欄は「登録していない＝全体の暫定既定値を使う」であって0分ではない。 */
   if(col.format==='standardMinutes')return v.trim()===''?'120分（既定）':`${v}分`;
@@ -2411,6 +2505,41 @@
   bindPathFields(form);
   bindFieldBuilders(form);
   bindWhenFields(form);
+  bindRoleCapFields(form);
+ }
+ /* ---------- 権限区分でマスタ編集の段を頭打ちにする（§9.322、利用者の指示
+    「権限区分以上の権限は付与できないようにしてください」） ----------
+    **上限の表はサーバーが答える**（`/api/access-permission-master`の
+    `masterEditByRole`）——画面へ写すと、上限を1つ直したときに片方だけ
+    古い約束のまま残る（§9.163）。ここがするのは、届いた並びに無い段を
+    **押せなくして理由を書く**（§4）ことだけ。
+    **候補ごと消さないこと**——消すと「なぜ選べないのか」が読めなくなるし、
+    区分を戻したときに元の段へ戻せない。 */
+ function bindRoleCapFields(form){
+  const role=form.querySelector('[data-field="role"]');
+  const level=form.querySelector('[data-field="masterEdit"]');
+  if(!role||!level)return;
+  const note=level.closest('.mm-field')?.querySelector('.mm-field-hint');
+  const apply=()=>{
+   const table=(maintState.meta&&maintState.meta.masterEditByRole)||null;
+   const allow=table?table[role.value]:null;
+   const ok=Array.isArray(allow)?allow:null;
+   [...level.options].forEach(o=>{
+    const on=!ok||ok.indexOf(o.value)>=0;
+    o.disabled=!on;
+    o.title=on?'':`権限区分「${role.value}」には与えられません`;
+   });
+   /* 選べない段が選ばれたままなら、**上限まで下げる**（保存で断られる値を
+      画面に残さない）。上限は並びの最後（サーバーが下から順に返す）。 */
+   if(ok&&ok.length&&ok.indexOf(level.value)<0)level.value=ok[ok.length-1];
+   if(note){
+    note.textContent=ok
+     ?`権限区分「${role.value}」で選べるのは ${ok.join('・')} です。`
+     :'選べるのは権限区分の上限までです（設備作業者は「非表示」だけ）。';
+   }
+  };
+  if(!role.dataset.capWired){role.dataset.capWired='1';role.addEventListener('change',apply)}
+  apply();
  }
  /* ---------- 選んで組み立てる（§9.226 ④、利用者の指示） ----------
     保存の形は`ラベル=出どころ`の並びのままで、**書く手段だけ**を変える。
@@ -4866,11 +4995,30 @@
   return withWaiting({title:def.label+'マスタを読み込んでいます',detail:'マスタDB: '+(def.endpoint||'-'),
    progress:'登録済みの内容を取得しています'},()=>loadMaintInner(force));
  }
+ /* いま書けるかを**見出しの隣で名乗る**（§3・§9.322）。段の名前だけでなく
+    「なぜこのタブが読むだけなのか」まで書く——「部分的編集可」だけだと、
+    どのタブが該当するのかを覚えていないと読めない。 */
+ function paintMasterEditLevel(def){
+  const chip=$('#masterMaintLevel');if(!chip)return;
+  const a=window.accessMode||{};
+  const writable=masterDefWritable(def);
+  if(writable&&def.readOnly&&!def.readOnlyByLevel){chip.hidden=true;return}  // 元から読むだけの表は既存の帯が言う
+  if(writable){chip.hidden=true;return}
+  const lv=masterEditLevel();
+  const admin=Array.isArray(a.adminMasters)&&a.adminMasters.indexOf(def.key)>=0;
+  chip.hidden=false;
+  chip.textContent=lv==='部分的編集可'?'読み取り専用（管理のマスタ）':'読み取り専用';
+  chip.title=lv==='部分的編集可'
+   ?`この端末のマスタ編集は「部分的編集可」です。${admin?'このタブは権限・置き場・接続などの管理のマスタなので保存できません。':''}測定・帳票・設備・スケジュールの設定は今までどおり保存できます。`
+   :`この端末のマスタ編集は「${lv}」です（権限区分: ${a.role||'不明'}）。保存が要る場合は、アクセス権限マスタで「マスタ編集」を上げてもらってください。`;
+ }
+
  async function loadMaintInner(force){
   const def=currentDef();const title=$('#masterMaintTitle');
   /* 見出しは**その画面の呼び名**。「〜マスタ」を機械的に足すと
      「データ接続マスタ」のような読みにくい名前ができる。 */
   if(title)title.textContent=def.titleText||(def.label+'マスタ');
+  paintMasterEditLevel(def);
   // 設定ページ形式(パス設定・§9.68)はフォーム自体がスクロール領域になる。
   // タブを移ったら必ず外す(付いたままだと他のマスタで上部フォームが
   // 伸び縮みして一覧の高さが安定しない)。
@@ -4915,6 +5063,9 @@
       `master-suggest`の欄が候補として出す。画面へ写さないための1行。 */
    maintState.meta=r||{};
    renderMaintList();
+   /* **語彙が届いてから当て直す**（§9.234 ⑧と同じ罠）——上のフォームは
+      取得より前に描かれるので、届いた上限を当てる人がここに要る。 */
+   const ff=$('#masterMaintForm');if(ff)bindRoleCapFields(ff);
   }catch(e){if(list)list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
  }
 

@@ -42,6 +42,12 @@ def _me():
 @bp.get('/api/presence')
 def presence_list():
     me = _me()
+    # **見られない区分は断る**（§9.322）——設備作業者は「マスタ類は表示せず
+    # 触れない」で、接続状況は管理のタブ。画面は`can.canView`で入口を消すが、
+    # 消えているだけで読めるのは合図が嘘をつくのと同じ（§3）。
+    if not role_can(me['role'], 'presence:view'):
+        return jsonify(error=f'この端末の権限区分（{me["role"]}）では接続状況を見られません。',
+                       me=me, can=role_capabilities(me['role'])), 403
     rows = presence.entries()
     d, source = presence.presence_dir()
     out = []

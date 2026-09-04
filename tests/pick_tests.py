@@ -173,7 +173,11 @@ G['接続'] = ['test_mastershare', 'test_storage', 'test_storageui', 'test_recmi
              'test_srcread']
 G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm', 'test_pcname',
              # §9.272: 権限区分（開発者/メンテナンス者/一般ユーザー）と接続の管理
-             'test_presence', 'test_presenceui']
+             'test_presence', 'test_presenceui',
+             # §9.322: 設備作業者とマスタ編集の段（上限・自分の行・書込ガード）。
+             # **サーバーと画面の両方**——片方だけでは、サーバーが正しく
+             # 答えていても画面が引かない状態を素通りさせる。
+             'test_roleperm', 'test_roleui']
 # §9.286 ①: 登録フィルタの群・プリセット中心のバー
 G['フィルタ'] = ['test_filter', 'test_adhoc', 'test_filterio', 'test_filteruser',
                  'test_filteractive', 'test_filterkeep', 'test_filterlock',
@@ -377,7 +381,8 @@ RULES = [
     # 置き換えの粘り(§9.108)は写し・共有JSON・RNE公開の全部が通る土台。
     ('backend/atomic_io.py', g('test_atomicio', 'test_dbmirror', 'test_sclock',
                                'test_scsync', 'test_datasource', 'test_cleanup')),
-    ('backend/repositories/master_repo.py', g('マスタ', '列', 'test_workable', 'test_oplimit')),
+    # 権限区分・マスタ編集の判定もここが持つ（§9.272/§9.322）ので「権限」ごと。
+    ('backend/repositories/master_repo.py', g('マスタ', '列', '権限', 'test_workable', 'test_oplimit')),
     ('backend/repositories/operation_repo.py', g('操業データ', '操業意匠', 'test_msteps', 'test_mcore')),
     # 操業データの入力欄（§9.215）。測定画面①の中身なので測定一式へ。
     ('static/js/measure-opdata.js', g('操業データ', '測定', '見た目', 'モーダル', '操業意匠')),
