@@ -112,6 +112,9 @@ if [ -e "$LOCK" ] && kill -0 "$(cat "$LOCK" 2>/dev/null)" 2>/dev/null; then
 fi
 echo $$ > "$LOCK"
 release_lock(){ [ "$(cat "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"; }
+# 全体の所要時間（§9.324 R5）。本ごとの秒数だけでは「ランナーの固定費」が
+# 見えない——実測: 固定費は約9秒、1本あたり約0.3秒。残りは本の中の固定待ち。
+T_START=$(date +%s)
 
 SAVED_PATHS=""
 SAVED_FILE="$ROOT/tests/.saved_paths.json"
@@ -294,6 +297,6 @@ printf '%b' "$TIMES" | sort -rn | head -10 | while read -r sec n name; do
 done
 echo
 echo "=================================================="
-echo "  合計 $((TOT-NG))/$TOT PASS  (FAIL/FATAL: $NG)"
+echo "  合計 $((TOT-NG))/$TOT PASS  (FAIL/FATAL: $NG)  所要 $(( $(date +%s) - T_START ))秒"
 echo "=================================================="
 exit $([ $NG -gt 0 ] && echo 1 || echo 0)

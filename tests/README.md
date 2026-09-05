@@ -176,6 +176,38 @@ NODE_PATH=/opt/node22/lib/node_modules /opt/node22/bin/node tests/test_nav.js
 画面が出来ていないと、**数える対象が減っただけで全部PASSする**。
 `test_scale`には「数えた部品が360件を下回らない」を入れてある。
 
+**同じ待ちは `tests/lib/wait.js` で名前を付けて呼ぶ**（§9.324 R5）。書き写しを
+減らすためで、置き換えの型はこの5つ:
+
+| 道具 | 何を待つか | 置き換えた固定待ち |
+|---|---|---|
+| `W.booted(page)` | 起動の覆い（`app-booting`）が外れた | `waitForSelector('#openSchedule')`＋1200ms |
+| `W.openSchedule(page,EQ)` | 設備の行→その設備のタイムライン→作業可否の落ち着き | 2200ms＋1500ms |
+| `W.until(page,fn,arg)` | 画面の条件（＋350msの落ち着き） | モーダルが開く／並びが変わる等の900〜2500ms |
+| `W.poll(fn,pred)` | **サーバーの答え**が条件を満たす（書込のあとの取り直し） | 「3500ms待ってからGET」 |
+| `W.opSave(page)` | 操業データ項目の窓が閉じて「保存しました」が出た | `#opdSave`のあとの1500ms |
+
+**押す前に前の合図を消すこと**（`opSave`は`#opLayoutState`を空にしてから押す）
+——前回の「保存しました」が残っていると、押した瞬間に条件が真になって何も待たない。
+**わざと遅らせた応答を待つ時間は残す**（`test_scsave`の4000ms。時間そのものが
+検証の材料）。**どこに固定待ちが残っているかは `python3 tests/wait_report.py`**
+（本ごとの合計と件数。`tests/wait_report.py test_x`で1件ずつ）。
+
+置き換えた7本の実績（単独・PASS数は同じ・3回連続で同結果）:
+
+| テスト | 前 | 後 |
+|---|---|---|
+| `test_scinsert` | 36秒 | 22秒 |
+| `test_scstop` | 23秒 | 11秒 |
+| `test_startwork` | 21秒 | 6秒 |
+| `test_scsave` | 30秒 | 14秒 |
+| `test_opui` | 42秒 | 35秒 |
+| `test_oppad` | 35秒 | 32秒 |
+
+**単独で回せない網は直したかどうかを単独で確かめられない**（§9.325 ②）——
+`test_startwork`／`test_sctimecols`は「完了」の行を前のテストの記録に頼っていた。
+材料は自分で置くこと。
+
 
 
 `waitForTimeout` の固定待ちは**フィクスチャが育つと必ず落ちる**。

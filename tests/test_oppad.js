@@ -20,6 +20,8 @@
     - 空きの群の行は**「記録した値」の分母に入らない**
    ============================================================ */
 const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+/* 待ちは「時間」でなく「条件」で置く（§9.324 R5、tests/lib/wait.js）。 */
+const W=require('./lib/wait');
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const B='http://127.0.0.1:5029';
 const TAG='pad-'+Date.now().toString(36);
@@ -364,8 +366,7 @@ let b=null;
     await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="data"]',{timeout:8000});
     await page.waitForTimeout(400);
     await page.fill('#opdName',TAG+'-止め');
-    await page.click('#opdSave');
-    await page.waitForTimeout(1500);
+    await W.opSave(page);
     const saved=((await get('/api/operation-item-master')).items||[])
       .find(i=>i.builtin==='coilStop');
     rec('組み込みの欄の名前を窓から変えると保存される',
@@ -578,13 +579,15 @@ let b=null;
    return [...grid.children].filter(el=>el.dataset.opBand!==undefined)
      .map(el=>el.dataset.opBand);
   });
+  /* 動かす前に前の「保存しました」を消す——残っていると待たずに通る。 */
+  await page.evaluate(()=>{const e=document.getElementById('opLayoutState');if(e)e.textContent=''});
   const moved=await page.evaluate(names=>{
    const grid=document.querySelector('#masterMaintList .op-board-grid');
    const place=grid.dataset.opPlace;
    /* 2つ目の群を先頭へ動かす。 */
    return WL.opBoard.moveGroup(place,names[1],names[0]);
   },before4);
-  await page.waitForTimeout(1800);
+  await W.until(page,()=>/保存しました|できませんでした/.test((document.getElementById('opLayoutState')||{}).textContent||''));
   const after4=await page.evaluate(()=>{
    const grid=document.querySelector('#masterMaintList .op-board-grid');
    return {帯:[...grid.children].filter(el=>el.dataset.opBand!==undefined)

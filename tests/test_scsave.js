@@ -16,6 +16,10 @@
     5. 行の色とアイコン: 絵を見たまま選べて、その場で保存される
    ============================================================ */
 const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+/* 待ちは「時間」でなく「条件」で置く（§9.324 R5、tests/lib/wait.js）。
+   **わざと遅らせた応答を待つ4000msだけは残す**（時間そのものが検証の材料）。 */
+const W=require('./lib/wait');
+const rowStyles=async()=>((await (await fetch('http://127.0.0.1:5029/api/schedule/row-style-master')).json()).items||[]);
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
@@ -68,7 +72,8 @@ let b=null;
   await page.evaluate(e=>{const r=[...document.querySelectorAll('.sc-board-row')]
     .find(x=>x.dataset.equipment===e);if(r)r.click()},EQ);
   await page.waitForSelector('.sc-row-line',{timeout:30000});
-  await page.waitForTimeout(2000);
+  await W.until(page,e=>(document.querySelector('#scTimeline')||{dataset:{}}).dataset.equipment===e,EQ);
+  await W.settleFlags(page);
 
   const ids=()=>page.$$eval('#scTimeline .sc-row-line',n=>n.map(x=>x.dataset.id));
   const srvIds=()=>page.evaluate(async e=>{
@@ -105,7 +110,7 @@ let b=null;
    await h.focus();
    await page.keyboard.down('Alt');await page.keyboard.press('ArrowDown');await page.keyboard.up('Alt');
   }
-  await page.waitForTimeout(1200);
+  await W.until(page,b=>[...document.querySelectorAll('#scTimeline .sc-row-line')].map(x=>x.dataset.id).join()!==b,before.join());
   const justAfter=await ids();
   rec('並べ替えると画面の並びが変わる',!!moved&&moveIds.length>1&&before.join()!==justAfter.join(),
       `${moved} / ${before.slice(0,6).join(',')} → ${justAfter.slice(0,6).join(',')}`);
@@ -127,13 +132,14 @@ let b=null;
 
   /* ---- 2) 画面を切り替えて戻っても残る ---- */
   await page.click('#openMasterMaint');
-  await page.waitForTimeout(2500);
+  await W.until(page,()=>document.body.classList.contains('mm-mode'));
   await page.click('#openSchedule');
-  await page.waitForTimeout(1200);
+  await W.until(page,e=>[...document.querySelectorAll('.sc-board-row')].some(x=>x.dataset.equipment===e),EQ);
   await page.evaluate(e=>{const r=[...document.querySelectorAll('.sc-board-row')]
     .find(x=>x.dataset.equipment===e);if(r)r.click()},EQ);
   await page.waitForSelector('.sc-row-line',{timeout:30000});
-  await page.waitForTimeout(2500);
+  await W.until(page,e=>(document.querySelector('#scTimeline')||{dataset:{}}).dataset.equipment===e,EQ);
+  await W.settleFlags(page);
   const back=await ids();
   rec('画面を切り替えて戻っても並べ替えが残る',back.join()===afterLate.join(),
       `${afterLate.slice(0,6).join(',')} / ${back.slice(0,6).join(',')}`);
@@ -182,7 +188,11 @@ let b=null;
   rec('掴んで運ぶと画面の並びが変わる',
       !!dragMoved&&dragMoved.order0.join()!==dragMoved.moved.join(),
       dragMoved?`${dragMoved.order0.slice(0,5).join(',')} → ${dragMoved.moved.slice(0,5).join(',')}`:'行が足りない');
-  await page.waitForTimeout(2500);
+  /* 送られたことは要求の数で、届いたことはサーバーの並びで待つ（時間で待たない）。 */
+  await W.poll(async()=>reorderPosts,n=>n>=1,8000);
+  await W.poll(async()=>{const s=await srvIds(),d=await ids();
+    const f=x=>/^\d+$/.test(x)&&s.includes(x)&&d.includes(x);
+    return s.filter(f).join()===d.filter(f).join()},ok=>ok,8000);
   rec('dropが起きなくても並べ替えがサーバーへ届く',reorderPosts>=1,`POST ${reorderPosts}回`);
   const srvAfterDrag=await srvIds();
   const domAfterDrag=await ids();
@@ -192,13 +202,14 @@ let b=null;
       `画面 ${domAfterDrag.filter(planOnly).slice(0,6).join(',')} / サーバ ${srvAfterDrag.filter(planOnly).slice(0,6).join(',')}`);
   /* **画面を切り替えて戻す**——実機の症状はここで元へ戻ることだった。 */
   await page.click('#openMasterMaint');
-  await page.waitForTimeout(2000);
+  await W.until(page,()=>document.body.classList.contains('mm-mode'));
   await page.click('#openSchedule');
-  await page.waitForTimeout(1000);
+  await W.until(page,e=>[...document.querySelectorAll('.sc-board-row')].some(x=>x.dataset.equipment===e),EQ);
   await page.evaluate(e=>{const r=[...document.querySelectorAll('.sc-board-row')]
     .find(x=>x.dataset.equipment===e);if(r)r.click()},EQ);
   await page.waitForSelector('.sc-row-line',{timeout:30000});
-  await page.waitForTimeout(2500);
+  await W.until(page,e=>(document.querySelector('#scTimeline')||{dataset:{}}).dataset.equipment===e,EQ);
+  await W.settleFlags(page);
   const backDrag=await ids();
   rec('掴んで運んだ順が画面を切り替えても残る',
       backDrag.filter(planOnly).join()===domAfterDrag.filter(planOnly).join(),
@@ -259,7 +270,7 @@ let b=null;
   await page.fill('#scIconPickQ','');
   await page.waitForTimeout(250);
   await page.click('#scIconPick [data-icon-pick="svg:bolt"]');
-  await page.waitForTimeout(1200);
+  await W.poll(rowStyles,xs=>xs.some(x=>x.key==='cat:stop'&&/bolt/.test(String(x.icon||''))),8000);
   const saved=await page.evaluate(async()=>{
    const r=await fetch('/api/schedule/row-style-master');
    const hit=((await r.json()).items||[]).find(x=>x.key==='cat:stop');
@@ -292,7 +303,7 @@ let b=null;
   rec('パネルの文字が見切れていない',clipped.length===0,clipped.join(' '));
   // 既定へ戻せる
   await page.click('.sc-rs-row[data-rs="cat:stop"] [data-rs-reset]');
-  await page.waitForTimeout(1000);
+  await W.poll(rowStyles,xs=>!xs.some(x=>x.key==='cat:stop'),8000);
   const gone=await page.evaluate(async()=>{
    const r=await fetch('/api/schedule/row-style-master');
    return ((await r.json()).items||[]).some(x=>x.key==='cat:stop');

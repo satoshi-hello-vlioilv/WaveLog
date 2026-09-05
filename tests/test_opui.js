@@ -20,6 +20,8 @@
     6. 掴んで動かした先が**狙った境目**になる（元の位置へ戻せる）
    ============================================================ */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+/* 待ちは「時間」でなく「条件」で置く（§9.324 R5、tests/lib/wait.js）。 */
+const W=require('./lib/wait');
 const B='http://127.0.0.1:5029';
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
@@ -253,8 +255,7 @@ const restore=[];
   await tab('place');
   await page.click('[data-op-span="6"]');
   await page.waitForTimeout(200);
-  await page.click('#opdSave');
-  await page.waitForTimeout(1500);
+  await W.opSave(page);
   const after=await get('/api/operation-item-master?equipment='+encodeURIComponent(EQ));
   const t2=(after.items||[]).find(x=>x.builtin==='verticalCount');
   rec('マスの数を変えるとマスタに入る',!!t2&&t2.span===6,JSON.stringify(t2&&{span:t2.span}));
@@ -302,8 +303,11 @@ const restore=[];
   await page.fill('#opdNewChoiceValue','金');
   await page.fill('#opdNewChoiceNote','いちばん明るい色');
   await page.click('#opdAddChoiceValue');
-  await page.waitForTimeout(1800);
-  const ch=await get('/api/operation-choice-master');
+  /* 足したことは**サーバーの答え**で待つ（時間で待たない）。 */
+  const ch=await W.poll(()=>get('/api/operation-choice-master'),
+    x=>(x.items||[]).some(y=>y.name===TAG+'-色'&&y.value==='金'));
+  /* 窓の一覧はサーバーへ書いたあとに取り直して描く——描かれたことも条件で待つ。 */
+  await W.until(page,()=>[...document.querySelectorAll('#opItemModal .op-choice-row>b')].some(x=>x.textContent==='金'));
   const mine=(ch.items||[]).filter(x=>x.name===TAG+'-色');
   mine.forEach(x=>madeChoices.push(x.id));
   rec('足した値がマスタに入る',mine.length===1&&mine[0].value==='金',
@@ -327,8 +331,7 @@ const restore=[];
   await openPop('widget');
   await page.click('[data-op-widget="タブ"]');
   await page.waitForTimeout(200);
-  await page.click('#opdSave');
-  await page.waitForTimeout(1500);
+  await W.opSave(page);
   const form3=await get('/api/operation-form?equipment='+encodeURIComponent(EQ));
   const f3=(form3.items||[]).find(x=>String(x.id)===String(mkj.id));
   rec('選ばせ方を変えると測定画面の定義に出る',!!f3&&f3.widget==='タブ'&&f3.widgetLive==='タブ',
@@ -660,8 +663,7 @@ const restore=[];
   await openPop('widget');
   await page.click('[data-op-widget="セグメント"]');
   await page.waitForTimeout(250);
-  await page.click('#opdSave');
-  await page.waitForTimeout(1600);
+  await W.opSave(page);
   const form9=await get('/api/operation-form?equipment='+encodeURIComponent(EQ));
   const f9=(form9.items||[]).find(x=>String(x.id)===String(mkj.id));
   rec('初期値と手打ちが測定画面の定義に出る',
@@ -809,8 +811,7 @@ const restore=[];
   rec('値の寄せが効く（右詰め）',!look.none&&look.align==='右'&&look.寄せ==='right',JSON.stringify(look));
   rec('3桁区切りは欄を離れたときに当たる',!look.none&&look.値==='1,234.0',JSON.stringify(look));
   /* **保存して読み直しても残る**（§9.113の「送り漏らすと消える」の網）。 */
-  await page.click('#opdSave');
-  await page.waitForTimeout(1500);
+  await W.opSave(page);
   const back=await (await fetch(B+'/api/operation-item-master')).json();
   const savedItem=(back.items||[]).find(x=>x.id===mkuj.id)||{};
   rec('単位の置き場・寄せ・見せ方が保存される',
@@ -936,8 +937,7 @@ const restore=[];
    return l?[...l.classList].filter(c=>/^opf-(c|r|z)-/.test(c)).sort().join('/'):'(無い)';
   });
   rec('意匠は押した瞬間に見本へ当たる',lookNow==='opf-c-green/opf-r-wide/opf-z-lg',lookNow);
-  await page.click('#opdSave');
-  await page.waitForTimeout(1600);
+  await W.opSave(page);
   const lookForm=await get('/api/operation-form?equipment='+encodeURIComponent(EQ));
   const lf=(lookForm.items||[]).find(x=>String(x.id)===String(mkrj.id));
   rec('意匠が保存され、測定画面の定義に出る',
