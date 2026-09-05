@@ -138,10 +138,13 @@
 | `backend/routes/measurement.py` | 測定コンテキスト・マスタ診断・バックアップAPI |
 | `backend/routes/quality.py` | 品質データ分析API(`/api/quality/analysis`) |
 | `backend/routes/masters.py` | 各種マスタCRUDのBlueprint（設備/操業データ項目/操業データ選択肢/フィルタプリセット/列レイアウト/アクセス権限ほか）。URLは分離前と同一。リクエスト受付とレスポンス整形のみを行い、データアクセスは`repositories/master_repo.py`・`repositories/operation_repo.py`へ委譲。**オペレータ・機器・スプール種別・内径種別・バリ揃え・コイル止めは`操業データ選択肢マスタ`のまとまりへ統合した**（§9.221 ③。6つとも「名前の一覧」で、違いはオペレータのヨミガナと作業可能設備だけだった——`[よみ]`／`[対象設備]`として選択肢の側へ持たせてある）。読み口は`operation_repo.choice_values()`の1本、CRUDは`/api/operation-choice-master`の1組。 |
+| `backend/routes/common.py` | ルート層の共通部品。`api_guard(fail,bad=None,bad_status=400)`＝「失敗の受け方」の1箇所（§9.324 R2）。`Exception`→500 `f'{fail}: {e}'`、`bad`の型だけ`bad_status`で`str(e)`、`HTTPException`は素通し。`@bp.post(...)`の**下**に置く。写しが残っていないことは`tests/test_apiguard.py`が構文木で数える |
 | `backend/routes/path_config.py` | パス設定マスタとパス参照ダイアログのBlueprint（`masters.py`から分離）。データアクセスは例外的に`db_access.py`（起動時に接続先を確定させる都合、`master_repo.py`はdb_accessに依存する側のため） |
 | `backend/routes/rne.py` | RNE抽出の状態表示と手動実行のBlueprint（`masters.py`から分離）。手動実行は「読み直すだけのPOST」として`access_mode._READ_ONLY_POST_ENDPOINTS`に`rne.rne_extract_run`で登録 |
 | `backend/routes/logs.py` | ログ・診断のBlueprint（`/api/logs*`）。診断の側（接続を1段ずつ試す `/api/db-diagnose`）は`tables.py`が持ち、画面は同じ「ログ・診断」に同居する（§9.101）。末尾読み・**日時で始まらない行を直前の件へ畳む解析**・2系統(`launcher.log`/`app.log`)の時間軸統合・件単位の削除・区切り(rotate)・保存。書き換えはロガーのハンドラを掴んでから行う（`_with_handlers`）。消す・区切るは`access_mode._WRITE_ALLOWED_MODES`に`'logs':{'edit'}`でeditへ限定 |
 | `backend/repositories/master_repo.py` | 各種マスタのデータアクセス層。テーブル定義(`ensure_*_table`)・正規化(`normalize_*_name`)・読み取り(`*_master_rows`/`read_*_names`)・書き込み補助(`set_operator_equipment`/`set_hidden_columns`)。Flaskに依存しない |
+| `backend/repositories/table_def.py` | マスタ1表の列定義の器（§9.324 R1）。`TableDef(table,key,columns,order_by)`が`create`／`add_missing`（`db_access.add_missing_columns`を通す）／`fetch`（**在る列だけ**で読み、無い列は`None`・表が無ければ空）／`get`／`insert`／`update`（渡した鍵だけ書く・監査列はここが書く・知らない列は断る）を1つの`columns`から作る。帳票ブロック(`DEF`)・ロール(`DEF`)・操業データ項目(`ITEM_DEF`)・選択肢(`CHOICE_DEF`)が乗る。固定は`tests/test_tabledef.py` |
+| `backend/flags.py` | 画面から来る「入/切」の読み方の1箇所（§9.324 R4）。`flag_of(v,off=OFF_WORDS)`／`text_or(x,key)`。`None`は`None`のまま（「送っていない」）。写しは`tests/test_flags.py`が数える |
 | `backend/changelog_data.py` | `APP_VERSION` と `CHANGELOG`（データのみ。リリースごとにここを更新） |
 | `backend/db_access.py` | `DBS`(接続先定義)・`APP_ROOT`/`DB_DIR`(パス基準)・`connect`/`cols`/`tables`/`qi`(SQLite専用。`.accdb`/`.mdb`は対処を添えて拒否)・監査列・バックアップテーブル整備・パス設定マスタ(`PATH_CONFIG_TABLE`、旧`config/local.json`。仕掛/品質データの読み込み先・共有パス・各種間隔設定を`db/master.sqlite3`側で管理し、`master_repo.py`と同じ形のCRUDヘルパを提供する) |
 | `backend/query_join.py` | データソース同士のクエリ結合(§9.193)。効く定義の絞り込み・行への適用・保存前の下見を1箇所で持つ。品質データ結合は**保存されない既定の1件の定義**としてここに乗る |
@@ -285,7 +288,10 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 
 ## フロントエンド構成
 
-読み込み順（`templates/index.html` の記載順）に意味がある。
+読み込み順に意味がある。**並びの唯一の定義は `backend/routes/core.py` の `JS_FILES`**
+（§9.324 R3。`templates/index.html` の起動ローダーはそれを描くだけ。CSSの `CSS_FILES` と
+同じ作法）。`tests/test_loadorder.py` が「`static/js` の全部が1度ずつ載っている」
+「`base.js` が先頭・`access-mode.js` が末尾・マスタ管理は定義→盤→専用画面」を固定する。
 
 ### 1. コア5ファイル（旧 core.js を機能別に分割）
 
@@ -603,8 +609,31 @@ Box等のクラウド同期フォルダへ複製し、他端末はそれを閲�
 ### 2. 機能拡張ファイル（コアの後に読み込み）
 
 `measurement-tolerance.js` → `lot-split.js` → `measure-progress.js` →
-`filters.js` → `measurement-worklog.js` → `master-maint.js` →
+`filters.js` → `measurement-worklog.js` →
+`master-defs.js` → `master-maint.js` → `master-report.js` → `master-data.js` → `master-opdata.js` →
 `quality-analysis.js` → `report-dashboard.js` → `calendar-view.js`
+
+**マスタ管理は5本**（§9.324 R3。13,000行の1つのIIFEを「定義／盤／専用画面」に分けた）:
+
+| ファイル | 持つもの |
+|---|---|
+| `master-defs.js` | `MASTER_DEFS`（1行＝1つのマスタ画面）・`MASTER_GROUPS`（左の群と並び） |
+| `master-maint.js` | 盤。状態（`maintState`）・ナビ・入力支援・汎用の編集モーダル・一覧・`submitMaint`／`deleteMaint`・`loadMaintInner`。**`WL.mm` を作り、専用画面の登録簿 `WL.mm.special` を持つ** |
+| `master-report.js` | 帳票ブロックの見本（`fb*`／`rb*`）・`bindFieldBuilders`・帳票レイアウトマスタ |
+| `master-data.js` | 換算係数・測定データの保存・データ引継ぎ・データ接続・クエリ結合・共通設定・勤務形態・掃除・テーブル生データ・接続状況 |
+| `master-opdata.js` | 操業データの盤・自動値・項目の設定モーダル・リンクマスタ・選択肢の値・記録した値の配置 |
+
+ファイル間の受け渡しは **`WL.mm` の1つだけ**（素の`window.*`を増やさない）。
+盤は末尾で `Object.assign(WL.mm,{…})` により専用画面が使う関数を配り、専用画面は
+先頭の `const {…}=WL.mm` で受ける（盤が先に読まれているので束縛してよい）。
+**逆向き**（盤→専用画面・定義→見本）は読み込み順の後ろを指すので **`WL.mm.fn()` と
+呼ぶたびに引く**（`RB_PAGE_ROWS`／`bindFieldBuilders`／`forgetReportCaches`／
+`loadMasterTableCatalog`／`dropRetiredTable`／`mtState`／`rbAsideHtml`／`rbBindAside`）。
+専用画面（`special:`）は各ファイルの末尾で `WL.mm.registerSpecial(key,{load,onEditorClose})`
+と名乗り、盤の `loadMaintInner`／`closeMaintEditor` は登録簿から引く——**画面を1つ
+足しても盤へ `if` を足さない**。名乗っていない鍵は `console.error` で言う（黙って汎用へ
+落とさない）。`tests/test_loadorder.py` が「`special:` の鍵が全部名乗っている」ことを
+突き合わせる。
 
 各ファイルはIIFE（即時関数）で自身のヘルパを閉じ込め、コアの関数を
 拡張する場合のみ次の規約でラップする:
@@ -917,6 +946,11 @@ CSSは1ファイル3,900行から**16ファイル**へ分けてある（VER1.86.
   あいだに「主語（セレクタ右端）が同じルール」が無いことを確かめてから。
 - 新しい画面のCSSは、新しい番号のファイルを作って
   `templates/index.html` と `tests/test_csslint.py` の並びへ足す。
+- **同じセレクタの同じプロパティを2つのファイルに書かない**（§9.324 R6）。
+  同じ`@layer`の中では後に読まれる側だけが効き、先の側は死んだ写しになる
+  （`.work-time-item`で実際に踏んだ）。名前の衝突も同じ形で出る
+  （`.cl-search`＝更新履歴とリンクマスタ）。`tests/test_csslint.py`の10)が
+  機械で数える。`@media`／`@container`の中の上書きは対象外。
 
 ### CSSの優先順位は @layer だけで決める（`!important` 禁止）
 

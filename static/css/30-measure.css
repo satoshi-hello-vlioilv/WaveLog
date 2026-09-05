@@ -292,7 +292,6 @@ th.col-sorted:hover{background:#c7e7ea}
   grid-template-columns:160px minmax(0,1fr);
   grid-template-rows:auto auto minmax(0,1fr);
   overflow:hidden;
-  font-size:var(--fs);
 }
 /* ヘッダー固定のミニ進捗表示(#railProgressと同じ集計をmeasure-progress.js
    から複製表示)。左端の操作レールは縦に長くなると視界から外れ得るが、
@@ -339,7 +338,7 @@ th.col-sorted:hover{background:#c7e7ea}
    **暗い面の上のラベル**と**明るいバッジの中の文字**は別の役割で、
    同じ色は使えない。バッジ側の既定（濃色`#17272d`）に任せる。 */
 .rail-group{display:grid;gap:var(--gap-inline)}
-.rail-label{height:20px;display:flex;align-items:center;padding:0 var(--space-1);color:#8fb3ba;font-size:var(--fs-micro);font-weight:800;letter-spacing:.06em;white-space:nowrap}
+.rail-label{height:20px;display:flex;align-items:center;padding:0 var(--space-1);color:#8fb3ba;font-weight:800;letter-spacing:.06em;white-space:nowrap}
 .rail-bottom{margin-top:auto}
 /* ボタンも`aside`の`.nav-item`と同じ見え方にする(§9.134)。 */
 .action-rail button{
@@ -1408,7 +1407,8 @@ th.col-sorted:hover{background:#c7e7ea}
 /* 開始と終了は**1組**なので隙間は最小（§9.157、利用者の指示「開始・終了間の
    余白を少し詰める」）。詰めたぶんは周りとの釣り合いに回る。 */
 .work-time-grid{display:grid;grid-template-columns:1fr;gap:var(--gap-hair)}
-.work-time-item{display:grid;grid-template-columns:1fr 140px;gap:var(--gap-tight);padding:7px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
+/* `.work-time-item`の定義は 50-master.css の1箇所（§9.324 R6。ここに在った写しは
+   後に読まれる側に全部負けていて、一度も効いていなかった）。 */
 .work-time-item span{grid-column:1/-1;color:#526970;font-weight:800}
 /* 日時は書式が決まっている（2026/08/14 15:04:05）。494pxも要らない。
    幅は規格から選ぶ（§9.131。JSも同じ段へ丸める）。 */
@@ -2028,7 +2028,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .measure-grid-block-title{
   display:flex;align-items:center;justify-content:space-between;min-height:26px;
   padding:var(--pad-chip);background:var(--header-bar-bg);color:var(--header-bar-fg);border-bottom:1px solid #aebdc2;
-  font-size:var(--fs-title);font-weight:800;
+  font-weight:800;
 }
 /* 見出しバーの中の状態は**文字だけ**。バーの中にさらに白い箱を置くと
    枠の中の枠になる（§9.129）。 */
@@ -2133,7 +2133,7 @@ th.col-sorted:hover{background:#c7e7ea}
   background:linear-gradient(to bottom,#f6dede 0 17%,#e3f5e8 17% 83%,#f6dede 83% 100%);
 }
 .compact-tol-scale::before{content:"";position:absolute;left:50%;top:17%;bottom:17%;width:3px;transform:translateX(-50%);background:#3a565d}
-.compact-scale-label{position:absolute;left:6px;right:6px;z-index:2;display:flex;align-items:center;justify-content:space-between;padding:var(--pad-chip);border:1px solid #d4c779;background:#fff8c8;font-size:var(--fs-micro);line-height:1.2}
+.compact-scale-label{position:absolute;left:6px;right:6px;z-index:2;display:flex;align-items:center;justify-content:space-between;padding:var(--pad-chip);border:1px solid #d4c779;background:#fff8c8;line-height:1.2}
 .compact-scale-label.upper{top:6px}
 .compact-scale-label.lower{bottom:6px}
 .compact-scale-safe{position:absolute;top:48%;left:2px;right:2px;text-align:center;color:#275a53;font-weight:800}
@@ -2349,7 +2349,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .disclosure-head:hover{background:#f7fafb}
 .disclosure-num{display:grid;place-items:center;width:22px;height:22px;border-radius:var(--radius-sm);background:#dceff1;color:#0a6570;font-size:var(--fs-micro);font-weight:900;flex:0 0 auto}
 .disclosure.open .disclosure-num{background:var(--teal);color:#fff}
-.disclosure-title{color:#173842;flex:0 0 auto}
+.disclosure-title{flex:0 0 auto}
 .disclosure-sum{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;color:#0a6570}
 .disclosure.open .disclosure-sum{display:none}
 .disclosure-chev{flex:0 0 auto;width:8px;height:8px;border-right:2px solid #6d8990;border-bottom:2px solid #6d8990;transform:rotate(-45deg);transition:transform .18s ease}

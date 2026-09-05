@@ -416,8 +416,8 @@
 .measure-shell h2,.split-dialog h3{
   font-size:var(--fs-title);
 }
-/* 物理的に狭い図解要素のみ小さく保持（それ以外は 14px で完全統一） */
-.judge-pill{font-size:var(--fs-micro)}
+/* 物理的に狭い図解要素のみ小さく保持（それ以外は 14px で完全統一）。
+   `.judge-pill`の`--fs-micro`は部品側（30-measure.css）が持つ。 */
 .compact-scale-label,.compact-scale-safe,.receive-state small{font-size:var(--fs-sm)}
 /* ---------- 15. レスポンシブ（幅に応じた列調整のみ / 文字サイズは不変） ---------- */
 @media(max-width:1450px){

@@ -1,4 +1,6 @@
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+/* 待ちは「時間」でなく「条件」で置く（§9.324 R5、tests/lib/wait.js）。 */
+const W=require('./lib/wait');
 const setMode=async m=>{await fetch('http://127.0.0.1:5029/api/access-mode',
  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
 let b=null;
@@ -18,7 +20,8 @@ let b=null;
 
  /* このテストが必要とする実績を毎回作り直す(他テストの実績が混ざっても
     自分の見たい行を特定できるよう、予定に無いロット番号を使う)。
-    L0055=実施中の計画外実績 / L0057=40時間前の完了実績(表示範囲の確認用)。 */
+    L0055=実施中の計画外実績 / L0057=40時間前の完了実績(表示範囲の確認用) /
+    L0059=8時間以内の完了実績(完了の行が必ず1本あるように)。 */
  const seed=async()=>{
   const now=Date.now();
   const put=async(id,lot,cast,startMin,endMin,status)=>{
@@ -34,6 +37,10 @@ let b=null;
   };
   await put('sw-running','L0055','C055',45,null,'編集中');
   await put('sw-old','L0057','C057',40*60,40*60-90,'完了');
+  /* 既定の8時間に入る完了実績も**自分で置く**（§9.325 ②）。以前は「他テストの
+     実績も混ざる」前提で、通しでは前のテストが完了させた記録が必ず在ったが、
+     単独で回すと「完了」の行が1本も無く落ちた（順番に依存する網）。 */
+  await put('sw-done','L0059','C059',300,240,'完了');
  };
  const open=async()=>{
   await seed();
@@ -41,10 +48,11 @@ let b=null;
   await page.waitForSelector('#openSchedule',{timeout:15000});
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForSelector('#openSchedule',{timeout:15000});
-  await page.waitForTimeout(1200);
+  await W.booted(page);
   await page.click('#openSchedule');
-  await page.waitForTimeout(3500);
+  await page.waitForSelector('.sc-row-line',{timeout:25000});
+  await W.settleFlags(page);
+  await W.settle(page);
  };
 
  /* ===== 編集モード ===== */
@@ -83,13 +91,14 @@ let b=null;
  rec('表示範囲外(40時間前)の実績は既定では出ない',
   await page.evaluate(()=>!/L0057/.test(document.querySelector('#scTimeline').textContent)));
  await pickView('#scHistorySelect','72');
- await page.waitForTimeout(2500);
+ await W.until(page,()=>/L0057/.test(document.querySelector('#scTimeline').textContent));
  rec('表示範囲を直近72時間へ広げると40時間前の実績も出る',
   await page.evaluate(()=>/L0057/.test(document.querySelector('#scTimeline').textContent)));
  rec('表示範囲は保存され次回も引き継ぐ',
   await page.evaluate(()=>localStorage.getItem('ScheduleHistoryHoursV1')==='72'));
  await pickView('#scHistorySelect','8');
- await page.waitForTimeout(2000);
+ await W.until(page,()=>!/L0057/.test(document.querySelector('#scTimeline').textContent));
+ await W.settleFlags(page);
 
  // --- (1) 編集モードから作業開始 ---
  const startCount=await page.$$eval('.sc-row-start',n=>n.length);
@@ -98,7 +107,7 @@ let b=null;
  rec('作業中・完了の行には開始ボタンが出ない',
   (await catOf('作業中')).every(r=>!r.start)&&(await catOf('完了')).every(r=>!r.start));
  await page.click('.sc-row-start');
- await page.waitForTimeout(4000);
+ await W.until(page,()=>!document.querySelector('#measureModal')?.hidden&&typeof S!=='undefined'&&!!S.measure,null,25000);
  const opened=await page.evaluate(()=>({modal:!document.querySelector('#measureModal').hidden,
   lot:document.querySelector('#basicInfo')?.textContent?.slice(0,120)||''}));
  rec('「開始」で測定画面が開く',opened.modal,JSON.stringify(opened).slice(0,180));
@@ -106,8 +115,7 @@ let b=null;
  /* ===== スケジュールモードでは開始ボタンを出さない ===== */
  await setMode('schedule');
  await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
- await page.waitForSelector('#openSchedule',{timeout:15000});
- await page.waitForTimeout(1200);
+ await W.booted(page);
  await page.click('#openSchedule');
  // scheduleモードの既定は俯瞰ボード。設備行から個別タイムラインへ入る
  await page.waitForSelector('.sc-board-row',{timeout:10000});
@@ -116,7 +124,9 @@ let b=null;
     .find(x=>x.dataset.equipment==='テスト設備A');
    return !!r&&/稼働中/.test(r.textContent)}));
  await page.evaluate(()=>{const r=[...document.querySelectorAll('.sc-board-row')].find(x=>x.dataset.equipment==='テスト設備A');if(r)r.click()});
- await page.waitForTimeout(3500);
+ await W.until(page,()=>(document.querySelector('#scTimeline')||{dataset:{}}).dataset.equipment==='テスト設備A'
+   &&document.querySelectorAll('.sc-row-line').length>0);
+ await W.settleFlags(page);
  rec('スケジュールモードでは開始ボタンを出さない(計画専用の端末のため)',
   await page.$$eval('.sc-row-start',n=>n.length)===0);
  rec('スケジュールモードでも作業中の区分と計画外バッジは出る',

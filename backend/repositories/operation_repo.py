@@ -27,6 +27,7 @@
 """
 from ..db_access import add_missing_columns
 from .master_repo import tables
+from .table_def import TableDef
 
 ITEM_TABLE = '操業データ項目マスタ'
 CHOICE_TABLE = '操業データ選択肢マスタ'
@@ -1033,23 +1034,27 @@ _CHOICE_ADDED_COLUMNS = (
     ('親の値', 'TEXT'),
 )
 
+# 最初からある列。**列の並びの持ち主はこの1つ**（§9.324 R1）——CREATE・
+# 「無ければ足す」・SELECT・辞書化・UPDATE・INSERTを全部`CHOICE_DEF`が作る。
+CHOICE_BASE_COLUMNS = (('選択肢名', 'TEXT'), ('値', 'TEXT'), ('表示順', 'INTEGER'),
+                       ('有効', 'INTEGER'))
+CHOICE_DEF = TableDef(CHOICE_TABLE, '選択肢ID', CHOICE_BASE_COLUMNS + _CHOICE_ADDED_COLUMNS,
+                      order_by='[選択肢名],[表示順],[選択肢ID]')
+
 
 def _ensure_choice_columns(c):
     # **足すのは`add_missing_columns()`の1箇所**（§9.315）——同時に読みに
     # 来た2本が両方足しに行くと、後の1本が`duplicate column name`で落ちる。
-    return bool(add_missing_columns(c, CHOICE_TABLE, _CHOICE_ADDED_COLUMNS))
+    return bool(CHOICE_DEF.add_missing(c))
 
 
 def ensure_choice_table(c):
     names = tables(c)
     if CHOICE_TABLE not in names:
-        cur = c.cursor()
-        cur.execute('CREATE TABLE [操業データ選択肢マスタ] ('
-                    '[選択肢ID] INTEGER PRIMARY KEY AUTOINCREMENT, [選択肢名] TEXT, [値] TEXT, '
-                    '[説明] TEXT, [表示順] INTEGER, [有効] INTEGER, '
-                    '[よみ] TEXT, [対象設備] TEXT, [使用回数] INTEGER, '
-                    '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
-        c.commit()
+        # **列は`CHOICE_DEF`から作る**（§9.324 R1）——CREATEだけが古いままだと
+        # 新しいDBで最初の1回だけ`no such column`になる（帳票ブロックで実際に
+        # 起きていた形）。
+        CHOICE_DEF.create(c)
         _seed_choices(c)
         return True
     _ensure_choice_columns(c)
@@ -1071,46 +1076,24 @@ def choice_rows(c, include_disabled=False):
     """**読み取り専用の接続からも呼べること**(§9.221 ③)。測定画面の
     選択肢はここから引くが、あちらは`connect(path,True)`で開いている
     ——`ensure`が通らないからといって読めないのでは、選択肢が丸ごと消える。
-    表が無ければ空、列が足りなければ在る列だけで読む。"""
+    表が無ければ空、列が足りなければ在る列だけで読む（`TableDef.fetch`）。"""
     try:
         ensure_choice_table(c)
     except Exception:
         pass
-    if CHOICE_TABLE not in tables(c):
-        return []
-    cur = c.cursor()
-    try:
-        cur.execute('SELECT [選択肢ID],[選択肢名],[値],[表示順],[有効],[説明],[よみ],[対象設備],'
-                    '[使用回数],[親の値] '
-                    'FROM [操業データ選択肢マスタ] ORDER BY [選択肢名],[表示順],[選択肢ID]')
-        raw = cur.fetchall()
-    except Exception:
-        try:
-            cur.execute('SELECT [選択肢ID],[選択肢名],[値],[表示順],[有効],[説明],[よみ],'
-                        '[対象設備],[使用回数] '
-                        'FROM [操業データ選択肢マスタ] ORDER BY [選択肢名],[表示順],[選択肢ID]')
-            raw = [tuple(r) + ('',) for r in cur.fetchall()]
-        except Exception:
-            cur.execute('SELECT [選択肢ID],[選択肢名],[値],[表示順],[有効],[説明],[よみ],[対象設備] '
-                        'FROM [操業データ選択肢マスタ] ORDER BY [選択肢名],[表示順],[選択肢ID]')
-            raw = [tuple(r) + (0, '') for r in cur.fetchall()]
-        except Exception:
-            cur.execute('SELECT [選択肢ID],[選択肢名],[値],[表示順],[有効],[説明] '
-                        'FROM [操業データ選択肢マスタ] ORDER BY [選択肢名],[表示順],[選択肢ID]')
-            raw = [tuple(r) + ('', '', 0, '') for r in cur.fetchall()]
     out = []
-    for r in raw:
-        on = True if r[4] is None else bool(r[4])
+    for d in CHOICE_DEF.fetch(c):
+        on = True if d['有効'] is None else bool(d['有効'])
         if not on and not include_disabled:
             continue
-        out.append({'id': r[0], 'name': str(r[1] or '').strip(),
-                    'value': str(r[2] or ''), 'order': r[3], 'enabled': on,
-                    'note': str(r[5] or ''),
-                    'reading': str(r[6] or ''), 'equipment': str(r[7] or ''),
+        out.append({'id': d['選択肢ID'], 'name': str(d['選択肢名'] or '').strip(),
+                    'value': str(d['値'] or ''), 'order': d['表示順'], 'enabled': on,
+                    'note': str(d['説明'] or ''),
+                    'reading': str(d['よみ'] or ''), 'equipment': str(d['対象設備'] or ''),
                     # §9.248 ⑤ 使われた回数。**無い列は0**（古い端末でも読める）。
-                    'used': int(r[8] or 0) if len(r) > 8 and r[8] is not None else 0,
+                    'used': int(d['使用回数'] or 0),
                     # §9.306 親のどの値のときに出るか。**無い列は空＝すべての親**。
-                    'parentValue': str(r[9] or '') if len(r) > 9 and r[9] is not None else ''})
+                    'parentValue': str(d['親の値'] or '')})
     return out
 
 
@@ -1712,71 +1695,55 @@ def choice_upsert(c, name, value, uid, order=None, choice_id=None, enabled=None,
         raise ValueError('値を入力してください。')
     cur = c.cursor()
     if choice_id is not None:
-        # **並び順を渡していないときは今の値を残す**——空欄で保存したつもりが
-        # NULLになると、その行だけ先頭へ飛ぶ（送っていない設定を消さない・§9.212 ②）。
-        if order is None:
-            cur.execute('SELECT [表示順] FROM [操業データ選択肢マスタ] WHERE [選択肢ID]=?',
-                        [int(choice_id)])
-            hit = cur.fetchone()
-            order = hit[0] if hit else None
         # **送っていない項目は今の値を残す**（§9.212 ②）。1つ書き漏らすと
-        # その設定だけが保存のたびに消える。
-        cur.execute('SELECT [説明],[よみ],[対象設備],[有効],[親の値] FROM [操業データ選択肢マスタ] '
-                    'WHERE [選択肢ID]=?', [int(choice_id)])
-        hit = cur.fetchone() or ['', '', '', -1, '']
+        # その設定だけが保存のたびに消える。並び順も同じ——空欄で保存した
+        # つもりがNULLになると、その行だけ先頭へ飛ぶ。
+        hit = CHOICE_DEF.get(c, int(choice_id)) or {}
+        if order is None:
+            order = hit.get('表示順')
         if note is None:
-            note = hit[0] or ''
+            note = hit.get('説明') or ''
         if reading is None:
-            reading = hit[1] or ''
+            reading = hit.get('よみ') or ''
         if equipment is None:
-            equipment = hit[2] or ''
+            equipment = hit.get('対象設備') or ''
         if enabled is None:
-            enabled = bool(hit[3])
+            enabled = bool(hit.get('有効', -1))
         # §9.306 **送っていない親の値は今の値を残す**（§9.212 ②）——1つ
         # 書き漏らすと、他の欄を直しただけで親子の割り当てが消える。
         if parent_value is None:
-            parent_value = (hit[4] if len(hit) > 4 else '') or ''
-        cur.execute('UPDATE [操業データ選択肢マスタ] SET [選択肢名]=?,[値]=?,[説明]=?,[表示順]=?,'
-                    '[有効]=?,[よみ]=?,[対象設備]=?,[親の値]=?,[更新者ID]=?,[更新日時]=Now() '
-                    'WHERE [選択肢ID]=?',
-                    [name, value, str(note or ''), order, -1 if enabled else 0,
-                     str(reading or ''), _norm_equipment(equipment),
-                     _norm_equipment(parent_value), uid, int(choice_id)])
-        c.commit()
+            parent_value = hit.get('親の値') or ''
+        CHOICE_DEF.update(c, int(choice_id),
+                          {'選択肢名': name, '値': value, '説明': str(note or ''),
+                           '表示順': order, '有効': -1 if enabled else 0,
+                           'よみ': str(reading or ''),
+                           '対象設備': _norm_equipment(equipment),
+                           '親の値': _norm_equipment(parent_value)}, uid)
         return int(choice_id)
     # 自然キーは(選択肢名,値)。同じ値を2つ並べない——どちらを選んでも同じ。
-    cur.execute('SELECT [選択肢ID],[表示順],[説明],[よみ],[対象設備],[有効],[親の値] '
-                'FROM [操業データ選択肢マスタ] '
-                'WHERE [選択肢名]=? AND [値]=?', [name, value])
-    hit = cur.fetchone()
-    if hit:
-        cur.execute('UPDATE [操業データ選択肢マスタ] SET [表示順]=?,[説明]=?,[有効]=?,'
-                    '[よみ]=?,[対象設備]=?,[親の値]=?,[更新者ID]=?,[更新日時]=Now() '
-                    'WHERE [選択肢ID]=?',
-                    [hit[1] if order is None else order,
-                     str((hit[2] if note is None else note) or ''),
-                     -1 if (bool(hit[5]) if enabled is None else enabled) else 0,
-                     str((hit[3] if reading is None else reading) or ''),
-                     _norm_equipment(hit[4] if equipment is None else equipment),
-                     _norm_equipment((hit[6] if len(hit) > 6 else '')
-                                     if parent_value is None else parent_value),
-                     uid, hit[0]])
-        c.commit()
-        return int(hit[0])
+    hits = CHOICE_DEF.fetch(c, '[選択肢名]=? AND [値]=?', [name, value], order_by='')
+    if hits:
+        hit = hits[0]
+        CHOICE_DEF.update(c, hit['選択肢ID'],
+                          {'表示順': hit['表示順'] if order is None else order,
+                           '説明': str((hit['説明'] if note is None else note) or ''),
+                           '有効': -1 if (bool(hit['有効']) if enabled is None else enabled) else 0,
+                           'よみ': str((hit['よみ'] if reading is None else reading) or ''),
+                           '対象設備': _norm_equipment(hit['対象設備'] if equipment is None
+                                                   else equipment),
+                           '親の値': _norm_equipment((hit['親の値'] or '') if parent_value is None
+                                                  else parent_value)}, uid)
+        return int(hit['選択肢ID'])
     if order is None:
         cur.execute('SELECT MAX([表示順]) FROM [操業データ選択肢マスタ] WHERE [選択肢名]=?', [name])
         top = cur.fetchone()[0] or 0
         order = int(top) + 10
-    cur.execute('INSERT INTO [操業データ選択肢マスタ] '
-                '([選択肢名],[値],[説明],[表示順],[有効],[よみ],[対象設備],[親の値],'
-                '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (?,?,?,?,?,?,?,?,?,?,Now(),Now())',
-                [name, value, str(note or ''), order,
-                 -1 if (True if enabled is None else enabled) else 0,
-                 str(reading or ''), _norm_equipment(equipment),
-                 _norm_equipment(parent_value), uid, uid])
-    c.commit()
-    return int(cur.lastrowid)
+    return CHOICE_DEF.insert(c, {'選択肢名': name, '値': value, '説明': str(note or ''),
+                                 '表示順': order,
+                                 '有効': -1 if (True if enabled is None else enabled) else 0,
+                                 'よみ': str(reading or ''),
+                                 '対象設備': _norm_equipment(equipment),
+                                 '親の値': _norm_equipment(parent_value)}, uid)
 
 
 def choice_rename_group(c, src, dst, uid):
@@ -1999,6 +1966,19 @@ _ITEM_ADDED_COLUMNS = (
     ('手打ちを登録', 'INTEGER'),
 )
 
+# 最初からある列。**列の並びの持ち主はこの1つ**（§9.324 R1）——CREATE・
+# 「無ければ足す」・SELECT・辞書化・UPDATE・INSERTを全部`ITEM_DEF`が作る。
+# 以前は5箇所（CREATE／`_ITEM_ADDED_COLUMNS`／`_ITEM_SELECT`／`_row_to_item`の
+# `r[N]`／`item_upsert`の`args`）が別々に列を数えており、CREATEだけが古いまま
+# だったので**新しいDBでは最初の1回だけ`no such column: 役割`**で落ちていた。
+ITEM_BASE_COLUMNS = (('設備名', 'TEXT'), ('群', 'TEXT'), ('項目名', 'TEXT'),
+                     ('表示順', 'INTEGER'), ('型', 'TEXT'), ('小数桁', 'INTEGER'),
+                     ('最小値', 'REAL'), ('最大値', 'REAL'), ('選択肢名', 'TEXT'),
+                     ('単位', 'TEXT'), ('必須', 'INTEGER'), ('備考', 'TEXT'),
+                     ('有効', 'INTEGER'))
+ITEM_DEF = TableDef(ITEM_TABLE, '項目ID', ITEM_BASE_COLUMNS + _ITEM_ADDED_COLUMNS,
+                    order_by='[表示順],[項目ID]')
+
 # 設備ごとに上書きできる項目（§9.239 ②）。**ここに無いものは共通のまま**
 # ——型・選択肢・役割・初期値・意匠のような「何を記録するか」は設備で
 # 変わらない（変わるならそれは別の項目）。
@@ -2140,7 +2120,7 @@ def _ensure_item_columns(c):
     # 「読んでから足すまでに別のリクエストが足す」で落ちていた
     # （利用者の報告『duplicate column name: 丸め方』。その版へ上げた
     # 最初の1回だけ起き、リロードすると直る）。
-    added = add_missing_columns(c, ITEM_TABLE, _ITEM_ADDED_COLUMNS)
+    added = ITEM_DEF.add_missing(c)
     if grow:
         cur.execute(f'UPDATE [{ITEM_TABLE}] SET [列幅]=[列幅]*{SPAN_UNIT} '
                     'WHERE [列幅] IS NOT NULL AND [列幅]>0')
@@ -2242,18 +2222,9 @@ def seed_mother_builtins(c):
 def ensure_item_table(c):
     names = tables(c)
     if ITEM_TABLE not in names:
-        cur = c.cursor()
-        cur.execute('CREATE TABLE [操業データ項目マスタ] ('
-                    '[項目ID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [群] TEXT, '
-                    '[項目名] TEXT, [表示順] INTEGER, [型] TEXT, [小数桁] INTEGER, '
-                    '[最小値] REAL, [最大値] REAL, [選択肢名] TEXT, [単位] TEXT, '
-                    '[必須] INTEGER, [備考] TEXT, [有効] INTEGER, '
-                    '[組み込みキー] TEXT, [置き場] TEXT, [列幅] INTEGER, '
-                    '[群折りたたみ] INTEGER, [表示条件] TEXT, [入力方法] TEXT, '
-                    '[初期値] TEXT, [手打ち可] INTEGER, [ステップ量] REAL, '
-                    '[単位位置] TEXT, [文字寄せ] TEXT, [表示書式] TEXT, [表示桁数] INTEGER, '
-                    '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
-        c.commit()
+        # **列は`ITEM_DEF`から作る**（§9.324 R1）——CREATEだけが古いままだと
+        # 新しいDBで最初の1回だけ`no such column: 役割`になる（実際に起きていた）。
+        ITEM_DEF.create(c)
         _seed_items(c)
         _seed_builtins(c)
         return True
@@ -2288,46 +2259,48 @@ def _widget_live(saved, fam):
     return w if w in WIDGET_FAMILIES[fam] else WIDGET_SELECT
 
 
-def _row_to_item(r):
-    builtin = str(r[14] or '').strip()
+def _row_to_item(d):
+    """`ITEM_DEF.fetch()`が返す**列名を鍵にした辞書**を画面の形へ。**位置では読まない**
+    （§9.324 R1）——無い列は`None`で来るので、古いDBの守りは要らない。"""
+    builtin = str(d['組み込みキー'] or '').strip()
     # §9.234 ②。**族の判定より先に決める**——自動で入る値の行は`output`で、
     # 選ばせ方・初期値・手打ちが効かない（判定は`widget_family()`の1箇所）。
-    auto = normalize_auto_value(r[36] if len(r) > 36 else '')
+    auto = normalize_auto_value(d['自動値'])
     auto_def = auto_value_def(auto)
     # その項目がどの入力方法の仲間か。**`[型]`で判定しないこと**
     # （§9.244、§9.229 ③と同じ罠）——組み込みの選択欄はどれも
     # `[型]='文字'`で、まとまり（`[選択肢名]`）のほうで選択肢に結んで
     # いる。`widget_family()`が唯一の判定。
-    fam = widget_family(normalize_item_type(r[5]), builtin, auto)
+    fam = widget_family(normalize_item_type(d['型']), builtin, auto)
     # 手打ちが**いま効いているか**（§9.323 ①）。**1箇所で解いて使い回す**
     # ——`freeText`と`inlineAdd`が同じ式を別々に持つと、片方の規則を直したときに
     # もう片方だけが古い判定のまま残る（§9.163）。
-    free_live = ((bool(r[21]) if r[21] is not None else False)
-                 and fam == 'choice' and free_text_ok(_widget_live(r[19], fam)))
+    free_live = ((bool(d['手打ち可']) if d['手打ち可'] is not None else False)
+                 and fam == 'choice' and free_text_ok(_widget_live(d['入力方法'], fam)))
     # 設備ごとのレイアウトの上書き（§9.239 ②）。**列が無い古いDBでも動く**。
-    overrides = _override_map(r[37] if len(r) > 37 else None)
+    overrides = _override_map(d['設備別レイアウト'])
     return {'overrides': overrides,
-            'id': r[0], 'equipment': str(r[1] or '').strip(), 'group': str(r[2] or '').strip(),
-            'name': str(r[3] or '').strip(), 'order': r[4],
-            'type': normalize_item_type(r[5]), 'decimals': r[6],
-            'min': r[7], 'max': r[8], 'choice': str(r[9] or '').strip(),
-            'unit': str(r[10] or '').strip(),
-            'required': bool(r[11]) if r[11] is not None else False,
-            'note': str(r[12] or ''), 'enabled': True if r[13] is None else bool(r[13]),
+            'id': d['項目ID'], 'equipment': str(d['設備名'] or '').strip(), 'group': str(d['群'] or '').strip(),
+            'name': str(d['項目名'] or '').strip(), 'order': d['表示順'],
+            'type': normalize_item_type(d['型']), 'decimals': d['小数桁'],
+            'min': d['最小値'], 'max': d['最大値'], 'choice': str(d['選択肢名'] or '').strip(),
+            'unit': str(d['単位'] or '').strip(),
+            'required': bool(d['必須']) if d['必須'] is not None else False,
+            'note': str(d['備考'] or ''), 'enabled': True if d['有効'] is None else bool(d['有効']),
             # **組み込みの入力欄か**(§9.216 ②)。空なら自由項目（画面が作る）。
             'builtin': builtin,
-            'place': normalize_place(r[15]),
-            'span': normalize_span(r[16]),
-            'fold': bool(r[17]) if r[17] is not None else False,
+            'place': normalize_place(d['置き場']),
+            'span': normalize_span(d['列幅']),
+            'fold': bool(d['群折りたたみ']) if d['群折りたたみ'] is not None else False,
             # 畳んだ群を自動で開く測定項目。空＝いつも畳んだまま。
-            'showWhen': [x for x in str(r[18] or '').replace('、', ',').split(',') if x.strip()],
+            'showWhen': [x for x in str(d['表示条件'] or '').replace('、', ',').split(',') if x.strip()],
             # 選ばせ方(§9.218 ②／§9.219 ③)。**型ごとに効く物が違う**ので、
             # 効かない設定は`widgetLive`で標準の欄へ潰す——保存値(`widget`)は
             # 残す（型を戻したときに選び直させない）。仲間分けは
             # `widget_family()`の1箇所が答える。
-            'widget': normalize_widget(r[19]),
+            'widget': normalize_widget(d['入力方法']),
             'widgetFamily': fam,
-            'widgetLive': _widget_live(r[19], fam),
+            'widgetLive': _widget_live(d['入力方法'], fam),
             # --- §9.220 ---
             # ② 初期値。**組み込みの欄も持てる**（§9.229 ③、利用者の指示
             #    「汎用設計にしているつもりなので」）。値の持ち方を変えないので、
@@ -2335,52 +2308,52 @@ def _row_to_item(r):
             #    仕掛データから値が来る欄では**仕掛の値が勝つ**——決められない
             #    のではなく、順番が決まっている（`applyInitials`が入れた値は
             #    「まだ選んでいない」として扱う）。
-            'initial': str(r[20] or ''),
+            'initial': str(d['初期値'] or ''),
             # ③ 候補にない値も手で打てるか。**選択肢を持つ型だけ**に効く
             #    ——自由記述はもともと手で打つので、印を出しても意味が無い（§4）。
             #    **打ち込む席の無い形でも落とす**（§9.247 ①）——`入切`・`切替`は
             #    スイッチ／ボタン1つなので打つ場所が出ない。保存値は
             #    `freeTextSaved`に残す（形を戻したら復活する。§9.233 ④と同じ）。
             'freeText': free_live,
-            'freeTextSaved': bool(r[21]) if r[21] is not None else False,
+            'freeTextSaved': bool(d['手打ち可']) if d['手打ち可'] is not None else False,
             # ⑤ ステッパー・スライダーの1回ぶん。**未設定(None)は小数桁から作る**
             #    （今までの挙動）——0を「設定した」と読むと増減できなくなる。
-            'step': (float(r[22]) if r[22] is not None and float(r[22]) > 0 else None),
+            'step': (float(d['ステップ量']) if d['ステップ量'] is not None and float(d['ステップ量']) > 0 else None),
             # --- §9.221 ⑦ ---
             # 単位の置き場。**重ねられない入力方法では外下左へ落とす**
             # （判定はここ1箇所。画面へ同じ判定を書かない）。
             'unitPlace': (UNIT_PLACE_DEFAULT
-                          if (normalize_unit_place(r[23]) == UNIT_PLACE_IN
-                              and not unit_in_ok(normalize_widget(r[19]), bool(r[21])))
-                          else normalize_unit_place(r[23])),
+                          if (normalize_unit_place(d['単位位置']) == UNIT_PLACE_IN
+                              and not unit_in_ok(normalize_widget(d['入力方法']), bool(d['手打ち可'])))
+                          else normalize_unit_place(d['単位位置'])),
             # 保存値そのもの（設定画面が「選んだが効いていない」を言うため）。
-            'unitPlaceSaved': normalize_unit_place(r[23]),
-            'align': normalize_align(r[24]),
-            'valueFormat': normalize_value_format(r[25]),
-            'digits': normalize_digits(r[26]),
+            'unitPlaceSaved': normalize_unit_place(d['単位位置']),
+            'align': normalize_align(d['文字寄せ']),
+            'valueFormat': normalize_value_format(d['表示書式']),
+            'digits': normalize_digits(d['表示桁数']),
             # --- §9.223 ① ---
             # 役割。**保存値と、実際に担っている役割を分けて返す**——保存値が
             # 空でも組み込みキーが役割になる行があるので、設定画面で「なぜ
             # この欄が担っているのか」を言えるようにしておく。
-            'role': normalize_role(r[27]),
-            'roleLive': role_of({'role': normalize_role(r[27]), 'builtin': builtin}),
+            'role': normalize_role(d['役割']),
+            'roleLive': role_of({'role': normalize_role(d['役割']), 'builtin': builtin}),
             # --- §9.223 ③ ---
             # 見た目。色・形・大きさの3つで、空＝既定（今までの見え方）。
-            'look': normalize_look(r[28]),
+            'look': normalize_look(d['意匠']),
             # --- §9.226 ① ---
             # 並べ方。**効かない入力方法では`自動`へ落とす**（判定はここ1箇所。
             # 単位の`内部`と同じ作法で、保存値は残す＝入力方法を戻したら復活）。
-            'layout': (normalize_layout(r[29])
-                       if layout_usable(normalize_widget(r[19])) else LAYOUT_AUTO),
-            'layoutSaved': normalize_layout(r[29]),
+            'layout': (normalize_layout(d['並べ方'])
+                       if layout_usable(normalize_widget(d['入力方法'])) else LAYOUT_AUTO),
+            'layoutSaved': normalize_layout(d['並べ方']),
             # --- §9.226 ③ ---
             # 群の幅（マス）。0＝横いっぱい。**群のものなので、群の中で
             # 食い違ったときは「1つでも指定があればそれ」**（畳むと同じ読み方）。
-            'groupSpan': normalize_group_span(r[30]),
+            'groupSpan': normalize_group_span(d['群幅']),
             # --- §9.227 ③ ---
             # ダミー（空き）の群かどうか。**群のものなので、群の中で
             # 食い違ったときは「1つでも印があればダミー」**（畳むと同じ読み方）。
-            'dummy': bool(r[31]),
+            'dummy': bool(d['ダミー']),
             # --- §9.228 ④ ---
             # 「空欄（選ばない）」を並べないか。**選択肢を持つ欄だけの話**
             # （自由記述や数値・自動で入る値には空の札が無いので、読む側で
@@ -2392,21 +2365,21 @@ def _row_to_item(r):
             # 画面（`opIsChoiceLike()`）は既に族で見ており設定は保存されて
             # いたので、**書けるのに読むと必ずfalse**という形で出ていた
             # （押しても効かない設定・§4）。
-            'noBlank': bool(r[32]) and fam == 'choice',
+            'noBlank': bool(d['空欄なし']) and fam == 'choice',
             # --- §9.231 ② ---
             # 上下限の出どころ。空＝この行の数をそのまま使う。
-            'minFrom': normalize_limit_source(r[33]),
-            'maxFrom': normalize_limit_source(r[34]),
+            'minFrom': normalize_limit_source(d['最小の出どころ']),
+            'maxFrom': normalize_limit_source(d['最大の出どころ']),
             # --- §9.233 ⑤ ---
             # 自動で入る値の添え書き（仕掛由来のプリセット等）をどこへ出すか。
             # **添え書きを持たない項目では持っていても意味が無い**ので、
             # 出どころのある項目（`SOURCE_NOTE_KEYS`）だけが読む。
-            'sourceNote': normalize_source_note(r[35]),
+            'sourceNote': normalize_source_note(d['出どころ表示']),
             # 値がこの画面の外から入る欄か（''／computed／preset。§9.234 ⑦）。
             # **派生値なので保存列は増やさない**——列を足すと、書き込み側の
             # 明示ペイロードに1つ足し忘れた瞬間に黙って消える設定がまた増える
             # （§9.113／§9.212 ②）。
-            'autoFill': auto_fill_of(normalize_item_type(r[5]), builtin, auto),
+            'autoFill': auto_fill_of(normalize_item_type(d['型']), builtin, auto),
             # --- §9.234 ② ---
             # 自動で入る値。保存値・呼び名・群・説明・この版が引けるかを返す。
             # **引けない鍵も返す**（画面が「引けません」と書けるように・§4）。
@@ -2416,59 +2389,35 @@ def _row_to_item(r):
             'autoValueGroup': (auto_def[2] if auto_def else ''),
             'autoValueNote': (auto_def[4] if auto_def else ''),
             # §9.242 ④。③「記録した値」のカードへ出すか。**列の無い古いDBでも
-            # 動く**（`len(r)`で守る）。NULL＝まだ触っていない＝出す。
-            'recordShow': True if (len(r) <= 38 or r[38] is None) else bool(r[38]),
+            # 動く**（無い列は`None`で来る）。NULL＝まだ触っていない＝出す。
+            'recordShow': True if d['記録表示'] is None else bool(d['記録表示']),
             # §9.243。カードの中の群と並び。**空＝この項目の群／表示順に従う**
             # （盤で動かしていない項目は測定画面の並びへ追随し続ける）。
-            'recordGroup': (str(r[39] or '').strip() if len(r) > 39 else ''),
-            'recordOrder': (int(r[40]) if len(r) > 40 and r[40] is not None else None),
+            'recordGroup': str(d['記録群'] or '').strip(),
+            'recordOrder': (int(d['記録順']) if d['記録順'] is not None else None),
             # §9.248 ⑤ 選択肢の並び。**列の無い古いDBでも動く**。
-            'choiceOrder': (normalize_choice_order(r[41]) if len(r) > 41
-                            else CHOICE_ORDER_DEFAULT),
+            'choiceOrder': normalize_choice_order(d['選択肢の並び']),
             # §9.256 式で作る自動値。**列の無い古いDBでも動く**。
-            'autoFormula': (str(r[42] or '').strip() if len(r) > 42 else ''),
+            'autoFormula': str(d['自動計算式'] or '').strip(),
             # §9.286 ⑥。空欄のときの配色。**古いDB（列が無い）でも動く**。
             # §9.307 入力値の丸めの向き（単位は`step`）。**空欄＝丸めない**。
-            'roundMode': (normalize_round_mode(r[44]) if len(r) > 44 else ''),
-            'blankTint': (normalize_blank_tint(r[43]) if len(r) > 43
-                          else BLANK_TINT_DEFAULT),
+            'roundMode': normalize_round_mode(d['丸め方']),
+            'blankTint': normalize_blank_tint(d['未入力配色']),
             # §9.323 ① 測定画面からその場で選択肢マスタへ足せるか。
             # **既定は足せない**（NULL＝今までどおり。§9.132）。**保存値は
             # 残す**（`inlineAddSaved`）——形や手打ちを戻したら復活させる
             # （`freeText`／`freeTextSaved`とまったく同じ作法・§9.233 ④）。
-            'inlineAdd': (bool(r[45]) if len(r) > 45 and r[45] is not None else False)
+            'inlineAdd': (bool(d['手打ちを登録']) if d['手打ちを登録'] is not None else False)
                          and inline_add_usable(fam, free_live),
-            'inlineAddSaved': (bool(r[45]) if len(r) > 45 and r[45] is not None
+            'inlineAddSaved': (bool(d['手打ちを登録']) if d['手打ちを登録'] is not None
                                else False)}
-
-
-_ITEM_SELECT = ('SELECT [項目ID],[設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],'
-                '[選択肢名],[単位],[必須],[備考],[有効],'
-                '[組み込みキー],[置き場],[列幅],[群折りたたみ],[表示条件],[入力方法],'
-                '[初期値],[手打ち可],[ステップ量],'
-                '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
-                '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ],'
-                '[出どころ表示],[自動値],[設備別レイアウト],[記録表示],'
-                '[記録群],[記録順],[選択肢の並び],'
-                # §9.256。**末尾へ足す**——上の並びは`_row_to_item`が位置で
-                # 読んでいるので、途中へ挿すと全部の項目が1つずれる。
-                '[自動計算式],'
-                # §9.286 ⑥。**末尾へ足す**（同上）。
-                '[未入力配色],'
-                # §9.307。**末尾へ足す**（同上）。
-                '[丸め方],'
-                # §9.323 ①。**末尾へ足す**（同上）。
-                '[手打ちを登録] '
-                'FROM [操業データ項目マスタ] ORDER BY [表示順],[項目ID]')
 
 
 def item_rows(c, include_disabled=False):
     ensure_item_table(c)
-    cur = c.cursor()
-    cur.execute(_ITEM_SELECT)
     out = []
-    for r in cur.fetchall():
-        item = _row_to_item(r)
+    for d in ITEM_DEF.fetch(c):
+        item = _row_to_item(d)
         if not item['enabled'] and not include_disabled:
             continue
         out.append(item)
@@ -2591,134 +2540,107 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
     # なのか」が決まらなくなる。既存行のキーはそのまま残す。
     cur_builtin = ''
     prev_name = ''
-    if item_id is not None:
-        cur.execute('SELECT [組み込みキー],[項目名],[ダミー],[空欄なし],'
-                    '[最小の出どころ],[最大の出どころ],[出どころ表示],[自動値],[記録表示],'
-                    '[選択肢の並び],[自動計算式],[未入力配色],[丸め方],'
-                    '[手打ちを登録] '
-                    'FROM [操業データ項目マスタ] WHERE [項目ID]=?', [int(item_id)])
-        hit = cur.fetchone()
-        cur_builtin = str((hit or ['', '', 0, 0, '', '', '', '', None, ''])[0] or '').strip()
-        prev_name = str((hit or ['', '', 0, 0, '', '', '', '', None])[1] or '').strip() if hit else ''
+    hit = ITEM_DEF.get(c, int(item_id)) if item_id is not None else None
+    if hit is not None:
+        cur_builtin = str(hit['組み込みキー'] or '').strip()
+        prev_name = str(hit['項目名'] or '').strip()
         # **渡されなかったら今の値を保つ**（§9.212 ②「送った項目だけ書く」）
         # ——設定窓は`dummy`を送らないので、触るたびに空きが解けては困る。
-        if dummy is None and hit is not None:
-            dummy = bool(hit[2])
-        if no_blank is None and hit is not None:
-            no_blank = bool(hit[3])
-        # §9.231 ②。出どころも同じ約束（送らない呼び出しで消さない）。
-        if min_from is None and hit is not None:
-            min_from = hit[4]
-        if max_from is None and hit is not None:
-            max_from = hit[5]
-        # §9.233 ⑤。添え書きの置き場も同じ約束。
-        if source_note is None and hit is not None:
-            source_note = hit[6]
-        # §9.234 ②。自動で入る値の鍵も同じ約束——設定窓は`auto_value`を
-        # 送らないので、触るたびに「自動で入る値」が人が打つ欄へ戻っては困る。
-        if auto_value is None and hit is not None:
-            auto_value = hit[7]
-        # §9.242 ④。③「記録した値」へ出すかも同じ約束（送らない呼び出しで
-        # 消さない）。**NULLは「出す」**なので、そのまま持ち上げる。
-        if record_show is None and hit is not None:
-            record_show = True if hit[8] is None else bool(hit[8])
-        # §9.248 ⑤。選択肢の並びも同じ約束（送らない呼び出しで消さない）。
-        if choice_order is None and hit is not None and len(hit) > 9:
-            choice_order = hit[9]
-        # §9.256。式も同じ約束——設定窓の他の段から保存したときに、
-        # 書いた式が黙って消えては困る（§9.223 ②と同じ形）。
-        if auto_formula is None and hit is not None and len(hit) > 10:
-            auto_formula = hit[10]
-        # §9.286 ⑥。未入力の配色も同じ約束（送らない呼び出しで消さない）。
-        if blank_tint is None and hit is not None and len(hit) > 11:
-            blank_tint = hit[11]
-        # §9.307。丸め方も同じ約束——設定窓の他の段から保存したときに、
-        # 決めた向きが黙って消えては困る（§9.287-H と同じ形で6度目）。
-        if round_mode is None and hit is not None and len(hit) > 12:
-            round_mode = hit[12]
-        # §9.323 ①。測定画面からの間接登録も同じ約束——設定窓の他の段から
-        # 保存したときに、開けた経路が黙って閉じては困る（7度目）。
-        if inline_add is None and hit is not None and len(hit) > 13:
-            inline_add = bool(hit[13])
+        # 出どころ（§9.231 ②）・添え書きの置き場（§9.233 ⑤）・自動で入る値の鍵
+        # （§9.234 ②）・記録表示（§9.242 ④。**NULLは「出す」**）・選択肢の並び
+        # （§9.248 ⑤）・式（§9.256）・未入力の配色（§9.286 ⑥）・丸め方（§9.307）・
+        # 間接登録（§9.323 ①）も同じ約束——設定窓の他の段から保存したときに、
+        # 決めた値が黙って消えては困る（§9.223 ②と同じ形で7度踏んだ）。
+        if dummy is None:
+            dummy = bool(hit['ダミー'])
+        if no_blank is None:
+            no_blank = bool(hit['空欄なし'])
+        if min_from is None:
+            min_from = hit['最小の出どころ']
+        if max_from is None:
+            max_from = hit['最大の出どころ']
+        if source_note is None:
+            source_note = hit['出どころ表示']
+        if auto_value is None:
+            auto_value = hit['自動値']
+        if record_show is None:
+            record_show = True if hit['記録表示'] is None else bool(hit['記録表示'])
+        if choice_order is None:
+            choice_order = hit['選択肢の並び']
+        if auto_formula is None:
+            auto_formula = hit['自動計算式']
+        if blank_tint is None:
+            blank_tint = hit['未入力配色']
+        if round_mode is None:
+            round_mode = hit['丸め方']
+        if inline_add is None:
+            inline_add = bool(hit['手打ちを登録'])
     if builtin is None:
         builtin = cur_builtin
     builtin = str(builtin or '').strip()
     # **並び順を渡していないときは今の値を残す**（§9.212 ②と同じ約束）。
     if order is None:
         if item_id is not None:
-            cur.execute('SELECT [表示順] FROM [操業データ項目マスタ] WHERE [項目ID]=?',
-                        [int(item_id)])
+            order = hit['表示順'] if hit is not None else None
         else:
             cur.execute('SELECT [表示順] FROM [操業データ項目マスタ] '
                         'WHERE [設備名]=? AND [項目名]=?', [equipment, name])
-        hit = cur.fetchone()
-        if hit:
-            order = hit[0]
-    args = [equipment, str(group or '').strip(), name, order, kind, decimals, vmin, vmax,
-            str(choice or '').strip(), str(unit or '').strip(),
-            -1 if required else 0, str(note or ''), -1 if enabled else 0,
-            builtin, normalize_place(place), normalize_span(span),
-            -1 if fold else 0,
-            ','.join(x.strip() for x in (show_when or []) if str(x).strip())
-            if isinstance(show_when, (list, tuple)) else str(show_when or ''),
-            normalize_widget(widget),
-            # §9.220 ②③⑤。初期値は**そのまま文字で持つ**——選択肢の値も
-            # 数値も同じ1つの列に入るので、型ごとに解釈するのは読む側の仕事。
-            str(initial or ''), -1 if free_text else 0, normalize_step(step),
-            # §9.221 ⑦。見せ方は保存値をそのまま持つ（効くかどうかの判定は
-            # 読む側の`_row_to_item`が1箇所で行う）。
-            normalize_unit_place(unit_place), normalize_align(align),
-            normalize_value_format(value_format), normalize_digits(digits),
-            # §9.223 ①③。役割は**組み込みキーと同じ語**で持つ（移行前の行が
-            # 空でも`role_of()`が組み込みキーを役割として読むので、書き足す
-            # 必要が無い）。見た目は既定なら空文字（行に意味の無い値を残さない）。
-            # **組み込みキーと同じ役割は保存しない**（§9.300 ③）。判定は
-            # `stored_role()`の1箇所——ここで落とさないと、組み込みの欄を
-            # 開いて保存しただけで暫定が明示に化け、二度と下がらなくなる。
-            stored_role(role, builtin), look_text(look),
-            # §9.226 ①③
-            normalize_layout(layout), normalize_group_span(group_span),
-            # §9.228 ② ダミー（空き）は**項目1枚の属性**。
-            -1 if dummy else 0,
-            # §9.228 ④ 空欄（選ばない）の札を並べないか。
-            -1 if no_blank else 0,
-            # §9.231 ② 上下限の出どころ。空＝この行の数をそのまま使う。
-            normalize_limit_source(min_from), normalize_limit_source(max_from),
-            # §9.233 ⑤ 自動で入る値の添え書きの置き場。
-            normalize_source_note(source_note),
-            # §9.234 ② 自動で入る値の鍵。空＝人が打つ欄。**列は末尾へ足す**
-            # ——2本目のUPDATEが`args[1:2]+args[3:]`で位置を数えている。
-            normalize_auto_value(auto_value),
-            # §9.242 ④ ③「記録した値」へ出すか。**既定は出す**（Noneも出す）。
-            0 if record_show is False else -1,
-            # §9.248 ⑤ 選択肢の並び。**列は末尾へ足す**——2本目のUPDATEが
-            # `args[1:2]+args[3:]`で位置を数えている。
-            normalize_choice_order(choice_order),
-            # §9.256 式で作る自動値の式。**列は末尾へ足す**——2本目のUPDATEが
-            # `args[1:2]+args[3:]`で位置を数えている。
-            str(auto_formula or '').strip(),
-            # §9.286 ⑥ 未入力の配色。**列は末尾へ足す**——2本目のUPDATEが
-            # `args[1:2]+args[3:]`で位置を数えている。
-            normalize_blank_tint(blank_tint),
-            # §9.307 入力値の丸めの向き（単位は`[ステップ量]`）。
-            normalize_round_mode(round_mode),
-            # §9.323 ① 測定画面からその場で選択肢マスタへ足せるか。
-            # **列は末尾へ足す**——2本目のUPDATEが`args[1:2]+args[3:]`で
-            # 位置を数えている。
-            -1 if inline_add else 0]
+            h = cur.fetchone()
+            if h:
+                order = h[0]
+    # 書く列は**この辞書の鍵だけ**（`ITEM_DEF`が知らない列は断る）。ここに無い
+    # 列（`[設備別レイアウト]`・`[記録群]`・`[記録順]`）は専用の口が書き、
+    # ここでは触らない——以前は`args`の44個を3本のSQLと**位置で**突き合わせて
+    # おり、列を1つ足すたびに「末尾へ足すこと」を4箇所で気を付けていた。
+    vals = {
+        '設備名': equipment, '群': str(group or '').strip(), '項目名': name,
+        '表示順': order, '型': kind, '小数桁': decimals, '最小値': vmin, '最大値': vmax,
+        '選択肢名': str(choice or '').strip(), '単位': str(unit or '').strip(),
+        '必須': -1 if required else 0, '備考': str(note or ''), '有効': -1 if enabled else 0,
+        '組み込みキー': builtin, '置き場': normalize_place(place), '列幅': normalize_span(span),
+        '群折りたたみ': -1 if fold else 0,
+        '表示条件': (','.join(x.strip() for x in (show_when or []) if str(x).strip())
+                 if isinstance(show_when, (list, tuple)) else str(show_when or '')),
+        '入力方法': normalize_widget(widget),
+        # §9.220 ②③⑤。初期値は**そのまま文字で持つ**——選択肢の値も
+        # 数値も同じ1つの列に入るので、型ごとに解釈するのは読む側の仕事。
+        '初期値': str(initial or ''), '手打ち可': -1 if free_text else 0,
+        'ステップ量': normalize_step(step),
+        # §9.221 ⑦。見せ方は保存値をそのまま持つ（効くかどうかの判定は
+        # 読む側の`_row_to_item`が1箇所で行う）。
+        '単位位置': normalize_unit_place(unit_place), '文字寄せ': normalize_align(align),
+        '表示書式': normalize_value_format(value_format), '表示桁数': normalize_digits(digits),
+        # §9.223 ①③。役割は**組み込みキーと同じ語**で持つ（移行前の行が
+        # 空でも`role_of()`が組み込みキーを役割として読むので、書き足す
+        # 必要が無い）。見た目は既定なら空文字（行に意味の無い値を残さない）。
+        # **組み込みキーと同じ役割は保存しない**（§9.300 ③）。判定は
+        # `stored_role()`の1箇所——ここで落とさないと、組み込みの欄を
+        # 開いて保存しただけで暫定が明示に化け、二度と下がらなくなる。
+        '役割': stored_role(role, builtin), '意匠': look_text(look),
+        # §9.226 ①③
+        '並べ方': normalize_layout(layout), '群幅': normalize_group_span(group_span),
+        # §9.228 ② ダミー（空き）は**項目1枚の属性**。§9.228 ④ 空欄の札を並べないか。
+        'ダミー': -1 if dummy else 0, '空欄なし': -1 if no_blank else 0,
+        # §9.231 ② 上下限の出どころ。空＝この行の数をそのまま使う。
+        '最小の出どころ': normalize_limit_source(min_from),
+        '最大の出どころ': normalize_limit_source(max_from),
+        # §9.233 ⑤ 自動で入る値の添え書きの置き場。
+        '出どころ表示': normalize_source_note(source_note),
+        # §9.234 ② 自動で入る値の鍵。空＝人が打つ欄。
+        '自動値': normalize_auto_value(auto_value),
+        # §9.242 ④ ③「記録した値」へ出すか。**既定は出す**（Noneも出す）。
+        '記録表示': 0 if record_show is False else -1,
+        # §9.248 ⑤ 選択肢の並び。§9.256 式で作る自動値の式。
+        '選択肢の並び': normalize_choice_order(choice_order),
+        '自動計算式': str(auto_formula or '').strip(),
+        # §9.286 ⑥ 未入力の配色。§9.307 入力値の丸めの向き（単位は`[ステップ量]`）。
+        '未入力配色': normalize_blank_tint(blank_tint),
+        '丸め方': normalize_round_mode(round_mode),
+        # §9.323 ① 測定画面からその場で選択肢マスタへ足せるか。
+        '手打ちを登録': -1 if inline_add else 0,
+    }
     if item_id is not None:
-        cur.execute('UPDATE [操業データ項目マスタ] SET [設備名]=?,[群]=?,[項目名]=?,[表示順]=?,'
-                    '[型]=?,[小数桁]=?,[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,'
-                    '[備考]=?,[有効]=?,[組み込みキー]=?,[置き場]=?,[列幅]=?,[群折りたたみ]=?,'
-                    '[表示条件]=?,[入力方法]=?,[初期値]=?,[手打ち可]=?,[ステップ量]=?,'
-                    '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
-                    '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
-                    '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,[自動値]=?,'
-                    '[記録表示]=?,[選択肢の並び]=?,[自動計算式]=?,[未入力配色]=?,'
-                    '[丸め方]=?,[手打ちを登録]=?,'
-                    '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
-                    args + [uid, int(item_id)])
-        c.commit()
+        ITEM_DEF.update(c, int(item_id), vals, uid)
         # **名前で結び付いている設定も付け替える**（§9.226 ①）。
         moved = item_rename_references(c, prev_name, name, uid)
         if isinstance(report, dict):
@@ -2729,39 +2651,17 @@ def item_upsert(c, uid, equipment='*', group='', name='', order=None, kind='文�
     # ——値はこの名前を鍵にレコードへ入るので、2つあるとどちらの値か決まらない。
     cur.execute('SELECT [項目ID] FROM [操業データ項目マスタ] WHERE [設備名]=? AND [項目名]=?',
                 [equipment, name])
-    hit = cur.fetchone()
-    if hit:
-        cur.execute('UPDATE [操業データ項目マスタ] SET [群]=?,[表示順]=?,[型]=?,[小数桁]=?,'
-                    '[最小値]=?,[最大値]=?,[選択肢名]=?,[単位]=?,[必須]=?,[備考]=?,[有効]=?,'
-                    '[組み込みキー]=?,[置き場]=?,[列幅]=?,[群折りたたみ]=?,[表示条件]=?,'
-                    '[入力方法]=?,[初期値]=?,[手打ち可]=?,[ステップ量]=?,'
-                    '[単位位置]=?,[文字寄せ]=?,[表示書式]=?,[表示桁数]=?,[役割]=?,[意匠]=?,'
-                    '[並べ方]=?,[群幅]=?,[ダミー]=?,[空欄なし]=?,'
-                    '[最小の出どころ]=?,[最大の出どころ]=?,[出どころ表示]=?,[自動値]=?,'
-                    '[記録表示]=?,[選択肢の並び]=?,[自動計算式]=?,[未入力配色]=?,'
-                    '[丸め方]=?,[手打ちを登録]=?,'
-                    '[更新者ID]=?,[更新日時]=Now() WHERE [項目ID]=?',
-                    args[1:2] + args[3:] + [uid, hit[0]])
-        c.commit()
-        return int(hit[0])
+    same = cur.fetchone()
+    if same:
+        # 鍵そのもの（設備名・項目名）は書き換えない。
+        ITEM_DEF.update(c, same[0], {k: v for k, v in vals.items()
+                                     if k not in ('設備名', '項目名')}, uid)
+        return int(same[0])
     if order is None:
         cur.execute('SELECT MAX([表示順]) FROM [操業データ項目マスタ]')
         top = cur.fetchone()[0] or 0
-        order = int(top) + 10
-        args[3] = order
-    cur.execute('INSERT INTO [操業データ項目マスタ] '
-                '([設備名],[群],[項目名],[表示順],[型],[小数桁],[最小値],[最大値],[選択肢名],'
-                '[単位],[必須],[備考],[有効],[組み込みキー],[置き場],[列幅],[群折りたたみ],'
-                '[表示条件],[入力方法],[初期値],[手打ち可],[ステップ量],'
-                '[単位位置],[文字寄せ],[表示書式],[表示桁数],[役割],[意匠],'
-                '[並べ方],[群幅],[ダミー],[空欄なし],[最小の出どころ],[最大の出どころ],'
-                '[出どころ表示],[自動値],[記録表示],[選択肢の並び],[自動計算式],'
-                '[未入力配色],[丸め方],[手打ちを登録],'
-                '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (' + ','.join(['?'] * 44) + ',Now(),Now())',
-                args + [uid, uid])
-    c.commit()
-    return int(cur.lastrowid)
+        vals['表示順'] = int(top) + 10
+    return ITEM_DEF.insert(c, vals, uid)
 
 
 def _same_as_common(key, value, common):

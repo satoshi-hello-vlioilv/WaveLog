@@ -112,6 +112,9 @@ if [ -e "$LOCK" ] && kill -0 "$(cat "$LOCK" 2>/dev/null)" 2>/dev/null; then
 fi
 echo $$ > "$LOCK"
 release_lock(){ [ "$(cat "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"; }
+# 全体の所要時間（§9.324 R5）。本ごとの秒数だけでは「ランナーの固定費」が
+# 見えない——実測: 固定費は約9秒、1本あたり約0.3秒。残りは本の中の固定待ち。
+T_START=$(date +%s)
 
 SAVED_PATHS=""
 SAVED_FILE="$ROOT/tests/.saved_paths.json"
@@ -283,7 +286,7 @@ for t in test_cols test_listmodal test_split_layout test_sccols; do
 echo "--- サーバー側 ---"
 mode schedule
 for t in test_sclock test_scsession test_scwritespeed test_colscache test_colsripple test_colsave test_opdata test_choicelink test_modeguard test_noaccess test_pcname \
-         test_csslint test_dbopen test_error test_datasource test_dscap test_dskeylint test_dbmirror test_atomicio test_localwork test_displayrule test_eqstd test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_tabclose test_logs test_docindex test_sortpipe test_scwatch test_scowner test_qjoin test_workdate test_scload test_faststart test_bootopen test_rollio test_cleanup test_rawmaster test_recsplit test_colscope test_mastershare test_storage test_recmirror test_srcread test_presence test_roleperm test_savechip test_rbcells test_pywarn test_hintlint test_ddllint test_changelog test_pick; do run python3 $t.py; done
+         test_csslint test_dbopen test_error test_datasource test_dscap test_dskeylint test_dbmirror test_atomicio test_localwork test_displayrule test_eqstd test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_tabclose test_logs test_docindex test_sortpipe test_scwatch test_scowner test_qjoin test_workdate test_scload test_faststart test_bootopen test_rollio test_cleanup test_rawmaster test_recsplit test_colscope test_mastershare test_storage test_recmirror test_srcread test_presence test_roleperm test_savechip test_rbcells test_pywarn test_hintlint test_ddllint test_changelog test_pick test_flags test_apiguard test_tabledef test_loadorder test_scsnapread; do run python3 $t.py; done
 
 echo
 echo "-- 時間のかかったテスト(上位10) --"
@@ -294,6 +297,6 @@ printf '%b' "$TIMES" | sort -rn | head -10 | while read -r sec n name; do
 done
 echo
 echo "=================================================="
-echo "  合計 $((TOT-NG))/$TOT PASS  (FAIL/FATAL: $NG)"
+echo "  合計 $((TOT-NG))/$TOT PASS  (FAIL/FATAL: $NG)  所要 $(( $(date +%s) - T_START ))秒"
 echo "=================================================="
 exit $([ $NG -gt 0 ] && echo 1 || echo 0)

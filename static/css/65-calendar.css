@@ -92,7 +92,8 @@
 /* ---------- 作業スケジュール(順次作業表示、docs/SCHEDULE_MODE_DESIGN.md §9) ---------- */
 .sc-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f7fafb;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
 .sc-head{display:flex;align-items:center;justify-content:space-between;gap:var(--gap-section);padding:var(--pad-card);background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
-.sc-head-left,.sc-head-right{display:flex;align-items:center;gap:var(--gap-section);flex-wrap:wrap}
+.sc-head-left,.sc-head-right{display:flex;align-items:center;flex-wrap:wrap}
+.sc-head-left{gap:var(--gap-section)}
 .sc-equipment-select{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
 .sc-equipment-fixed{font-size:var(--fs-base-sm);font-weight:700;color:#3a565d;background:#eafafa;border:1px solid var(--teal);border-radius:var(--radius-lg);padding:4px 10px}
 .sc-lock-badge{font-size:var(--fs-sm);font-weight:700;color:var(--warn-fg);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:var(--radius-md);padding:var(--pad-chip)}

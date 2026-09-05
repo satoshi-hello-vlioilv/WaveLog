@@ -150,35 +150,10 @@ try{window.__wlTabId=(self.crypto&&crypto.randomUUID)?crypto.randomUUID()
    (3)どちらも来なければ時間切れで進む。**止まらないことが最優先**なので、
    CSSが失敗しても必ずJSは動かす(見た目より、操作できることを優先する)。 */
 (function(){
+ /* 一覧は backend/routes/core.py の JS_FILES（唯一の置き場・§9.324 R3）。 */
  var FILES=[
-  'base.js',
-  'wl-window.js',
-  'list-view.js',
-  'list-formula.js',
-  'list-columns.js',
-  'list-rules.js',
-  'measurement-view.js',
-  'measurement-input.js',
-  'records-store.js',
-  'measurement-tolerance.js',
-  'lot-split.js',
-  'measure-progress.js',
-  'measure-opdata.js',
-  'measure-steps.js',
-  'defect-locator.js',
-  'filters.js',
-  'measurement-worklog.js',
-  'master-maint.js',
-  'quality-analysis.js',
-  'report-dashboard.js',
-  'calendar-view.js',
-  'schedule-view.js',
-  'schedule-print.js',
-  'actuals-view.js',
-  'opsheet-print.js',
-  'log-view.js',
-  'access-mode.js'
- ],TOKEN='?t={{asset_token}}',BOOT_WAIT_MS=1500,started=false;
+{% for f in js_files %}  '{{ f }}'{{ ',' if not loop.last else '' }}
+{% endfor %} ],TOKEN='?t={{asset_token}}',BOOT_WAIT_MS=1500,started=false;
  function inject(){
   if(started)return;started=true;
   var left=FILES.length;

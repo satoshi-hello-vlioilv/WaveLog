@@ -43,8 +43,21 @@ async function cleanup(){
  const errs=[];page.on('pageerror',e=>errs.push(e.message));
  const heads=()=>page.evaluate(()=>[...document.querySelectorAll('.sc-row-head [data-col]')].map(h=>h.dataset.col));
  const saved=async()=>(await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(TARGET))).json());
+ /* 読み替えの網（§9.234 ⑥）は「区分が完了の行」が要る。**自分で置く**（§9.325 ②）
+    ——通しでは前のテストが完了させた記録が在ったが、単独で回すと1本も無く
+    「当たる行が無い」で落ちていた（順番に依存する網）。 */
+ const putDone=async()=>{
+  const now=Date.now();
+  const payload={basic:{lotNo:'L0059',castingNo:'C059',mfgMaterial:'A5052',mfgTemper:'H34',
+                        purposeName:'一般用材',inspectionNo:'K0059'},
+                 settings:{registeredEquipment:EQ,operator:'田中'},
+                 workTime:{startAt:new Date(now-300*60000).toISOString(),endAt:new Date(now-240*60000).toISOString()}};
+  await post('/api/measurement/backup',{id:'stc-done',equipment:EQ,lotNo:'L0059',inspectionNo:'K0059',
+    castingNo:'C059',status:'完了',codec:'json-full-v32',payload:JSON.stringify(payload)});
+ };
  try{
   await cleanup();
+  await putDone();
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:20000});

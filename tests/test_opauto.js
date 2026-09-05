@@ -55,7 +55,9 @@ let b=null;
       groups.length>=3,JSON.stringify(groups));
   /* **画面へ鍵の綴りを書き写していないこと**（§9.163）。写すと増やしたときに
      2箇所直すことになり、片方だけ直った状態が作れる。 */
-  const src=await (await fetch(B+'/static/js/master-maint.js')).text();
+  /* §9.324 R3: 操業データの盤は master-opdata.js（定義は master-defs.js）。 */
+  const src=(await Promise.all(['master-defs','master-maint','master-opdata']
+    .map(n=>fetch(B+'/static/js/'+n+'.js').then(r=>r.text())))).join('\n');
   const hard=av.filter(a=>src.indexOf("'"+a.key+"'")>=0||src.indexOf('"'+a.key+'"')>=0);
   rec('画面のJSに鍵の綴りを書き写していない',hard.length===0,
       JSON.stringify(hard.map(a=>a.key)));

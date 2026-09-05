@@ -38,7 +38,15 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
           'test_docindex', 'test_pywarn', 'test_hintlint',
           # §9.315: 後から足した列を「無ければ足す」のは1箇所。マスタを1つ
           # 足した人がここを通さずに書くと、同じ不具合が別の列で戻る。
-          'test_ddllint']
+          'test_ddllint',
+          # §9.324 R4: 真偽の読み方の写しが残っていないか（1秒未満）
+          'test_flags',
+          # §9.324 R2: ルートの失敗の受け方は api_guard の1箇所（写しを機械で数える）
+          'test_apiguard',
+          # §9.324 R1: 列定義は TableDef の1箇所（位置読みの写しを機械で数える・数秒）
+          'test_tabledef',
+          # §9.324 R3: JSの読み込み順は core.py の JS_FILES の1箇所（static/js と突き合わせる）
+          'test_loadorder']
 
 # 束ねた呼び名。右辺は実際のテスト名。
 G = {}
@@ -247,6 +255,38 @@ RULES = [
                                      'test_rlmaster',
                                      # §9.286 (7): 説明文の印は WL.markup() の1箇所
                                      '更新履歴')),
+    # §9.324 R3: マスタ管理の分割ファイル（盤と同じ網で見る）
+    ('static/js/master-defs.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
+                                    'test_headbar', 'test_datasource',
+                                     'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal',
+                                     # §9.254 (3): 帳票レイアウトマスタ（親子の行き来）
+                                     'test_rlmaster',
+                                     # §9.286 (7): 説明文の印は WL.markup() の1箇所
+                                     '更新履歴')),
+    # §9.324 R3: マスタ管理の分割ファイル（盤と同じ網で見る）
+    ('static/js/master-report.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
+                                    'test_headbar', 'test_datasource',
+                                     'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal',
+                                     # §9.254 (3): 帳票レイアウトマスタ（親子の行き来）
+                                     'test_rlmaster',
+                                     # §9.286 (7): 説明文の印は WL.markup() の1箇所
+                                     '更新履歴')),
+    # §9.324 R3: マスタ管理の分割ファイル（盤と同じ網で見る）
+    ('static/js/master-data.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
+                                    'test_headbar', 'test_datasource',
+                                     'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal',
+                                     # §9.254 (3): 帳票レイアウトマスタ（親子の行き来）
+                                     'test_rlmaster',
+                                     # §9.286 (7): 説明文の印は WL.markup() の1箇所
+                                     '更新履歴')),
+    # §9.324 R3: マスタ管理の分割ファイル（盤と同じ網で見る）
+    ('static/js/master-opdata.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
+                                    'test_headbar', 'test_datasource',
+                                     'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal',
+                                     # §9.254 (3): 帳票レイアウトマスタ（親子の行き来）
+                                     'test_rlmaster',
+                                     # §9.286 (7): 説明文の印は WL.markup() の1箇所
+                                     '更新履歴')),
     ('static/js/calendar-view.js', g('test_uisize', 'test_histdel', 'test_headbar')),
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
     ('static/js/report-dashboard.js', g('モーダル', 'test_screport', 'test_headbar', 'test_uisize',
@@ -340,6 +380,10 @@ RULES = [
     ('backend/routes/tables.py', g('一覧', '接続', '列', 'test_colscache', 'test_colsripple',
                                    'test_modeguard')),
     ('backend/routes/masters.py', g('マスタ', '列', 'test_modeguard')),
+    ('backend/routes/common.py', g('マスタ', 'test_modeguard', 'test_crudroutes', 'test_error')),
+    # §9.324 R1: 表の列定義（CREATE・足す・読む・書く）の器。3つのRepoが乗る。
+    ('backend/repositories/table_def.py', g('マスタ', '操業データ', '異常位置', 'test_rpmaster',
+                                              'test_rpblocks', 'test_rbmodal', 'test_rollio')),
     ('backend/routes/schedule.py', g('スケジュール', 'test_modeguard', 'test_crudroutes')),
     ('backend/routes/measurement.py', g('測定', 'test_modeguard', 'test_measstore',
                                         # §9.317: 参照データが読めなくても測定は始められる
@@ -388,7 +432,8 @@ RULES = [
     ('backend/repositories/operation_repo.py', g('操業データ', '操業意匠', 'test_msteps', 'test_mcore')),
     # 操業データの入力欄（§9.215）。測定画面①の中身なので測定一式へ。
     ('static/js/measure-opdata.js', g('操業データ', '測定', '見た目', 'モーダル', '操業意匠')),
-    ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq', 'test_workdate')),
+    # §9.325: 読む側は写しに書かない（1秒未満のサーバー側の網）
+    ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq', 'test_workdate', 'test_scsnapread')),
     ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd', 'test_workdate')),
     ('backend/sort_order.py', g('列', 'test_tablequery')),
     ('backend/schedule_watch.py', g('スケジュール')),

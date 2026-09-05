@@ -22,6 +22,8 @@ const EQ='テスト設備A';
 let b=null;const made=[];
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).then(r=>r.json());
+/* 待ちは「時間」でなく「条件」で置く（§9.324 R5、tests/lib/wait.js）。 */
+const W=require('./lib/wait');
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1700,height:1000}});
@@ -41,13 +43,8 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
   await page.evaluate(e=>{localStorage.setItem('AccessMeasurementConfiguredEquipment',e);
    localStorage.removeItem('scLayoutPrefsV1');localStorage.removeItem('scSplitListCollapsedV1')},EQ);
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForSelector('#openSchedule',{timeout:20000});
-  await page.waitForTimeout(1200);
-  await page.click('#openSchedule');
-  await page.waitForTimeout(2200);
-  await page.evaluate(e=>{const r=document.querySelector(`[data-equipment="${e}"]`);r&&r.click()},EQ);
-  await page.waitForSelector('.sc-row-line',{timeout:25000});
-  await page.waitForTimeout(1500);
+  await W.booted(page);
+  await W.openSchedule(page,EQ);
 
   // ---- 1. 設定ポップ
   await openView();
@@ -79,13 +76,8 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
   await page.click('#scLayoutPop input[name=scOpenMode][value=schedule]');
   await page.waitForTimeout(400);
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForSelector('#openSchedule',{timeout:20000});
-  await page.waitForTimeout(1200);
-  await page.click('#openSchedule');
-  await page.waitForTimeout(2200);
-  await page.evaluate(e=>{const r=document.querySelector(`[data-equipment="${e}"]`);r&&r.click()},EQ);
-  await page.waitForSelector('.sc-row-line',{timeout:25000});
-  await page.waitForTimeout(1500);
+  await W.booted(page);
+  await W.openSchedule(page,EQ);
   const only=await page.evaluate(()=>({collapsed:!!document.querySelector('.sc-split-wrap.sc-list-collapsed'),
    insertable:!!document.querySelector('#scTimeline.sc-insertable'),
    hint:document.querySelector('#scSplitHint')?.textContent.replace(/\s+/g,' ').trim()||''}));
@@ -217,13 +209,13 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
      clickは2回目でも飛ぶので、少し待ってからdblclickが来ていなければ
      単クリックとして扱う。 */
   await page.click('#scInsertGhost .sc-insert-line');
-  await page.waitForTimeout(900);
+  await W.until(page,()=>document.querySelector('#scStopModal')?.hidden===false);
   const byClick=await page.evaluate(()=>({stop:document.querySelector('#scStopModal')?.hidden===false,
     list:document.querySelector('#scListModal')?.hidden===false}));
   rec('クリックでは設備停止が開く（仕掛表は開かない）',byClick.stop===true&&byClick.list===false,
       JSON.stringify(byClick));
   await page.evaluate(()=>{document.querySelector('#scStopModalClose')?.click()});
-  await page.waitForTimeout(600);
+  await W.until(page,()=>document.querySelector('#scStopModal')?.hidden!==false);
   const seen=[];
   for(let dy=-5;dy<=5;dy++){
    await page.mouse.move(t.x,t.y+dy);await page.waitForTimeout(50);
@@ -236,7 +228,10 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
   await page.mouse.move(t.x,t.y+40);await page.waitForTimeout(120);
   await page.mouse.move(t.x,t.y);await page.waitForTimeout(420);
   await page.dblclick('#scInsertGhost .sc-insert-line');
-  await page.waitForTimeout(1600);
+  /* 仕掛表が開くまで待ち、単クリックの判定（設備停止が開く道）が
+     過ぎるぶんだけ落ち着かせる。 */
+  await W.until(page,()=>document.querySelector('#scListModal')?.hidden===false);
+  await W.settle(page,600);
   const modal=await page.evaluate(()=>({list:document.querySelector('#scListModal')?.hidden===false,
     stop:document.querySelector('#scStopModal')?.hidden===false,
     pinned:!!document.querySelector('#scInsertGhost.is-pinned'),
@@ -253,8 +248,9 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
    for(const tr of trs){const c=tr.querySelector('[data-col="ロット番号"]');
     if(c&&c.textContent.trim()){tr.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));return c.textContent.trim()}}
    return null});
-  await page.waitForTimeout(4500);
-  const j=await plan();
+  /* 書き込みが届いたことは**サーバーの答え**で待つ（時間で待たない）。 */
+  const j=lot?await W.poll(plan,x=>(x.entries||[]).some(e=>e.lotNo===lot)):await plan();
+  await W.until(page,l=>[...document.querySelectorAll('.sc-row-line')].some(r=>(r.textContent||'').includes(l)),lot||'',8000);
   const ids=(j.entries||[]).map(e=>e.lotNo);
   const at=ids.indexOf(lot),ref=ids.indexOf(t.lot);
   const added=(j.entries||[]).find(e=>e.lotNo===lot);
@@ -297,8 +293,7 @@ const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).t
   rec('「追加中」の行が指定した位置（この行の前）に出る',
       pend.at>=0&&pend.ref>=0&&pend.at<pend.ref,JSON.stringify(pend));
   await page.unroute('**/api/schedule/plan/add');
-  await page.waitForTimeout(3500);
-  const j2=await plan();
+  const j2=await W.poll(plan,x=>(x.entries||[]).some(e=>e.lotNo===lot2));
   const added2=(j2.entries||[]).find(e=>e.lotNo===lot2);
   if(added2)made.push(added2.id);
   /* 閉じたら忘れる——残ると次の追加が思い出しもしない位置へ入る。 */

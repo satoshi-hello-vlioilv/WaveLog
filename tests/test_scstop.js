@@ -18,6 +18,9 @@ const NEW='点検（自動テスト）';
 let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const reasons=()=>fetch(B+'/api/schedule/stop-reason-master?equipment='+encodeURIComponent(EQ)).then(r=>r.json());
+const planEntries=async()=>(await (await fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ))).json()).entries||[];
+/* 待ちは「時間」でなく「条件」で置く（§9.324 R5、tests/lib/wait.js）。 */
+const W=require('./lib/wait');
 const SEED=[['保全','定期メンテナンス',120],['保全','刃物交換',30],['段取り','段取り替え',45],
             ['突発','突発停止',0],['','清掃',15]];
 async function cleanup(){
@@ -41,13 +44,8 @@ async function cleanup(){
   await page.waitForSelector('#openSchedule',{timeout:20000});
   await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForSelector('#openSchedule',{timeout:20000});
-  await page.waitForTimeout(1200);
-  await page.click('#openSchedule');
-  await page.waitForTimeout(2200);
-  await page.evaluate(e=>{const r=document.querySelector(`[data-equipment="${e}"]`);r&&r.click()},EQ);
-  await page.waitForSelector('.sc-row-line',{timeout:25000});
-  await page.waitForTimeout(1500);
+  await W.booted(page);
+  await W.openSchedule(page,EQ);
   await page.click('#scStopModalBtn');
   await page.waitForSelector('#scStopModal:not([hidden])',{timeout:8000});
   await page.waitForTimeout(800);
@@ -102,7 +100,7 @@ async function cleanup(){
   await page.selectOption('#scStopNewCat','保全');
   await page.fill('#scStopNewMin','25');
   await page.click('#scStopNewSave');
-  await page.waitForTimeout(2500);
+  await W.until(page,n=>[...document.querySelectorAll('.sc-stop-button b')].some(x=>x.textContent===n),NEW);
   const saved=await page.evaluate(n=>({names:[...document.querySelectorAll('.sc-stop-button b')].map(x=>x.textContent),
     isNew:[...document.querySelectorAll('.sc-stop-button.is-new b')].map(x=>x.textContent),
     formHidden:document.getElementById('scStopNewForm')?.hidden}),NEW);
@@ -122,8 +120,8 @@ async function cleanup(){
      日本語を打っている最中を再現するため、先に絞り込み欄へ入っておく。 */
   await page.click('#scStopSearch');
   await page.click(`.sc-stop-button[data-id="${hit.id}"]`);
-  await page.waitForTimeout(3500);
-  const after=(await (await fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ))).json()).entries||[];
+  /* 予定へ入ったことは**サーバーの答え**で待つ（時間で待たない）。 */
+  const after=await W.poll(planEntries,es=>es.some(e=>e.kind==='設備停止'&&e.title===NEW));
   const added=after.find(e=>e.kind==='設備停止'&&e.title===NEW);
   rec('登録したものを押すと予定へ入る',!!added,`${before.length} → ${after.length}`);
 
@@ -191,8 +189,7 @@ async function cleanup(){
    await page.fill('#scStopEditName',NEW+'改');
    await page.fill('#scStopEditMin','45');
    await page.click('#appConfirmOk');
-   await page.waitForTimeout(3500);
-   const after2=(await (await fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ))).json()).entries||[];
+   const after2=await W.poll(planEntries,es=>es.some(e=>String(e.id)===String(added.id)&&e.title===NEW+'改'));
    const ed=after2.find(e=>String(e.id)===String(added.id));
    rec('名称と所要分がマスタ（共有スケジュール）へ入る',
        !!ed&&ed.title===NEW+'改'&&Number(ed.estimateMinutes)===45,

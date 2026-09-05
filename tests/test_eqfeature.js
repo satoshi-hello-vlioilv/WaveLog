@@ -74,7 +74,9 @@ async function cleanup(){
      足したときに直す場所が2つになる。設備マスタの欄の型は`source.key`で
      サーバーの戻りを読むだけ、という作りをここで固定する。 */
   const js=await page.evaluate(async()=>{
-   const t=await fetch('/js/master-maint.js',{cache:'no-store'}).then(r=>r.text());
+   /* §9.324 R3: マスタ管理は5本。設備マスタの定義は master-defs.js にある。 */
+   const t=(await Promise.all(['master-defs','master-maint','master-report','master-data','master-opdata']
+     .map(n=>fetch('/js/'+n+'.js',{cache:'no-store'}).then(r=>r.text())))).join('\n');
    /* 説明文（`more`／`hint`）には呼び名が出てよい。見るのは**綴りの配列**。 */
    return {配列:/\[\s*['"]measure['"]\s*,\s*['"]schedule['"]/.test(t)};
   });

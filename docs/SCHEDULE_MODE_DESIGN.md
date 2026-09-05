@@ -21328,3 +21328,292 @@ from〜to）／`picked`（一覧のチェックで選んだ予定だけ）の3�
 だったため、**この指摘と正面から反対**になった。守りたいのは「既定へ戻って
 いないこと」なので、**レール＋行長が収まっているか**で見る。
 **行長も一緒に見る**——器を詰めるついでに行を短くしては本末転倒。
+
+## §9.324 構造の見直し（利用者の指示「コードの構造や構成で見直すべきポイント…長期メンテナンスしやすいように」→「推奨の順番で進めてください」）
+
+順番は **R4 → R2 → R6 → R1 → R3 → R5**。各段で**振る舞いを変えず**、既存の
+網が緑のまま、段ごとにコミット＆push する。
+
+### R4 画面から来る「入/切」の読み方を1箇所へ（VER2.201.0）
+
+帳票ブロック(`_on`)・選択肢の値(`_choice_on`)・ロール(`_on`)・手打ちの登録
+(`_inline_add_on`)の4箇所が、**それぞれ別の語彙で** `v.strip() not in (...)` を
+書いていた。`bool('無効')` が真＝「外したつもりが一度も保存できない」を
+§9.222 ⑥／§9.320-E／§9.323 ①で3度踏んだのは、**書く場所が4つあったから**。
+
+- `backend/flags.py`: `flag_of(v, off=OFF_WORDS)` ／ `text_or(x, key)`
+  （`<key>Text` が来ていればそれ、無ければ `<key>`）
+- **`None` は `None` のまま**（「送っていない」・§9.212 ②）
+- **空欄を「入」と読む場面だけ `off=` で空文字を外す**（ロールのExcel取り込み・§9.240）
+- 振る舞いの違いは語彙が揃ったことだけ——帳票ブロックの `enabledText:'出さない'`
+  はこれからは切と読まれる（意図どおりの側へ揃えた）
+
+固定は `tests/test_flags.py`——`backend/` に写しが残っていれば落ちる（§9.96）。
+
+### R2 ルート層の「失敗の受け方」を `api_guard` の1箇所へ
+
+55本のルート（`masters.py` 52・`path_config.py` 3）が末尾に同じ定型を
+書き写していた:
+
+    try:
+     ...
+    except ValueError as e:return jsonify(error=str(e)),400
+    except Exception as e:return jsonify(error=f'◯◯に失敗しました: {e}'),500
+
+`backend/routes/common.py` の `@api_guard(fail, bad=None, bad_status=400)` が
+受け持つ。**`@bp.post(...)` の下・関数のすぐ上**に置く（上に置くとFlaskへ
+登録されるのが素の関数になり、一度も通らない）。
+
+- **Exception は 500 で `f'{fail}: {e}'`**——今までの文言そのまま（`: {e}` は
+  デコレータが足すので、`fail` には「◯◯に失敗しました」までを渡す）
+- **`bad` を渡した型だけ** `bad_status` で `str(e)`（repoが理由を書いた
+  `ValueError` を画面へ通す道）。**渡さなければ今までどおり500**——既定で
+  `ValueError` を拾うと、拾っていなかった41本の挙動が変わる（§9.132）
+- **`HTTPException`（`abort()`・壊れたJSONの400）は素通し**——`errors.py`の
+  全体の受けと同じ約束。唯一の見え方の違いはここで、`try`の中に
+  `request.get_json(force=True)` を置いていたルートでは壊れたJSONが
+  500→400 になる（失敗ではなく「意図した応答」なので直した側）
+- `functools.wraps` で名前を残す——Flaskのエンドポイント名は関数名なので、
+  落とすと `_ENDPOINT_EXTRA_MODES`（`Blueprint名.関数名`）が当たらなくなる
+- **変換したのは「tryが関数の最後・定型のexceptだけ」の形だけ**（構文木で
+  選んだ）。入れ子のtry・`master_path=` のような追加のキー・`finally`・
+  複数のtryを持つ44本は触っていない（形が違うものを無理に寄せると、
+  受け方が2通りになる）
+- **変換は構文木の行番号で機械的に**（手で55本書き直さない）——`try:` の
+  行と `except` 節を消し、本体を1段戻す。三重引用符の中の行は字下げを
+  触らない（文字列の中身が変わる）
+
+固定は `tests/test_apiguard.py`——デコレータの約束・**本物のルート**での
+受け方（repoの関数を差し替えて起こす。**マスタへは1行も書かない**・§9.121）・
+**写しが `backend/routes` に残っていないこと**（構文木で数える。56本目が
+書かれた瞬間に落ちる）。
+
+### R6 同じセレクタの同じプロパティを2ファイルに書かない
+
+評価関数 = 「同じ`@layer`・`@media`の外で、結合子なしの同じセレクタが同じ
+プロパティを2つ以上のファイルで宣言している数」（`tests/test_csslint.py` 10)）。
+直す前は **15件**。壊れ方は2種類あった。
+
+| 種類 | 件数 | 例 |
+|---|---|---|
+| 同じ値の重複（どちらを消しても絵は変わらない） | 8 | `.mm-btn-primary{font-weight:800}`（10-roles.cssと50-master.css） |
+| 値が違い、先の側が死んでいる | 6 | `.rail-label`の`font-size`（30-measure.cssの`--fs-micro`は40-records.cssの`--fs`に負ける） |
+| **別の部品の名前の衝突** | 1 | `.cl-search`——更新履歴の検索欄（20-shell.css）とリンクマスタの絞り込み欄（50-master.css） |
+
+`.cl-search`は実測で更新履歴の`label`に **`border:1px solid`・`height:30.2px`・
+`flex:0 0 auto`** が付いていた（リンクマスタの`<input>`向けの枠と高さが漏れて
+いた）。リンクマスタ側を`.cl-filter`へ改名して、`border:0`・`height:auto`・
+`flex:1 1 auto`（20-shell.cssが書いたとおり）へ戻った。これが**R6で唯一の
+見え方の変更**で、残り14件は「負けている側を消す」だけなので1pxも変わらない。
+
+- **役割の寸法・色は10-roles.cssが決める**（「唯一の決定場所」）——
+  `.sc-stop-button`の`padding`と`.wtb-title`の`color`は部品側が後勝ちで
+  上書きしていたので、値を10-roles.cssへ移した（同じ要素に同じ詳細度で
+  当たる規則が2つのファイルのあいだに無いことを確かめてから）
+- `.sc-head-right`は65-calendar.cssの群（`.sc-head-left,.sc-head-right`）の
+  `gap`が70-schedule.cssに負けていたので、群を割って`.sc-head-left`だけに残した
+- **`@media`／`@container`の中は対象外**（幅で上書きするための意図した重ね）
+- **網は同じ形を注ぎ込んで1件になることまで確かめる**（§9.200。数える側が
+  壊れていると「0件」で通る）
+
+回した網は本文の報告どおり。CSSの並び（`CSS_FILES`）は触っていない。
+
+### R1 Repo層の列定義を1つのデータ構造に（VER2.204.0）
+
+帳票ブロック・ロール・操業データ項目・選択肢の4つの表は、1つの表について
+**5箇所**が別々に列を数えていた:
+
+    CREATE TABLE …（新しいDB）
+    _ADDED_COLUMNS = (…)（後から足した列を「無ければ足す」）
+    SELECT [a],[b],…（読む並び）
+    _row(r): r[14] … / len(r)>36 and r[36]（位置で読む・古いDBの守り）
+    UPDATE … SET [a]=?,[b]=? / INSERT … VALUES (?×44)（書く並び・`args`）
+
+列を1つ足すたびに5箇所を**同じ順で**直す必要があり、実際に**CREATEだけが
+古いまま**だった——新しいDBでは最初の1回だけ `no such column: 繰返`
+（帳票ブロック）／`役割`（操業データ項目）で落ち、2回目は`add_missing_columns()`が
+足すので通る（§9.315の「リロードすると直る」と同じ顔。新しく端末を立てた
+ときにしか出ないので誰も気づいていなかった）。`_ITEM_SELECT`には「**末尾へ
+足す**——`_row_to_item`が位置で読んでいる」という注意書きが4つ並び、
+`item_upsert`の`args`にも「2本目のUPDATEが`args[1:2]+args[3:]`で位置を数えて
+いる」が5つ並んでいた——**気を付ける場所が増え続ける作り**だった。
+
+`backend/repositories/table_def.py` の `TableDef(table, key, columns, order_by)`:
+
+- `create_sql()`／`create()`: 鍵＋`columns`＋監査列（`AUDIT`）
+- `add_missing()`: `db_access.add_missing_columns()`を通す（§9.315の窓口はあちら）
+- `fetch(c, where, args, order_by)`: **在る列だけで読む**（無い列は`None`。
+  表が無ければ空。並びの鍵も在る列だけ）——読み取り専用の接続では列を
+  足せない（§9.221 ③）。`choice_rows()`の**4段の`try/except`の読み直し**は
+  これで消えた
+- `get(c, key)`／`insert(c, vals, uid)`／`update(c, key, vals, uid)`:
+  **渡した辞書の鍵だけを書く**（§9.212 ②が構造として成り立つ）。監査列は
+  ここが書く。**知らない列は断る**（綴りの間違いが黙って捨てられない）
+
+乗せ換えたもの:
+
+| 表 | 定義 | 変わった点 |
+|---|---|---|
+| 帳票ブロックマスタ | `report_block_repo.DEF` | `_row(d)`が名前で読む／`block_upsert`が`vals`辞書 |
+| ロールマスタ | `roll_repo.DEF` | `ensure_audit_columns`不要／`migrate_single_equipment`は`DEF.get` |
+| 操業データ項目マスタ | `operation_repo.ITEM_DEF` | `_ITEM_SELECT`廃止／`_row_to_item(d)`／`item_upsert`の`args`44個→`vals`辞書 |
+| 操業データ選択肢マスタ | `operation_repo.CHOICE_DEF` | 4段の読み直し廃止／`choice_upsert`が辞書 |
+
+**振る舞いは変えない**——保存される値・戻り値の形は同じ。`item_upsert`が
+書かない列（`[設備別レイアウト]`・`[記録群]`・`[記録順]`）は辞書に**入れない**
+ことで「触らない」を表す（以前はUPDATEの列挙から外すことで表していた）。
+`_ensure_item_columns()`の**`grow`（列幅×12の1度きりの移行）**と種まき
+（`_seed_items`／`_seed_builtins`／`seed_mother_builtins`）は据え置き。
+
+固定は `tests/test_tabledef.py`（32件）:
+- `TableDef`の契約（CREATEに全列／`fetch`は在る列だけ／`insert`・`update`は
+  渡した鍵だけ／知らない列は断る／`add_missing`は2度目に何も足さない）
+- **新しいDB**で4つの表が最初の1回から読め、**表に全列が入っていること**を
+  `cols()`で直接見る——**「読める」だけを見る網は素通りする**（`fetch`が在る列
+  だけで読むので、CREATEが古くても通る。**実際に素通りした**——`[役割]`を落とした
+  CREATEを注いでも0件だった）
+- 部分更新で他の列が消えないこと（4表）——`auto_formula`の持ち上げを1行消すと
+  落ちることを確認済み
+- 読み取り専用の古い選択肢マスタ（列が足りない）でも読めること
+- `_row`／`_row_to_item`／`choice_rows`が**`r[N]`で読んでいない**ことを
+  構文木で数える（自己確認つき）
+
+回した網: `test_rollio test_roll test_rollwipe test_rollload test_rbcells
+test_ddllint`（235/235）、`test_opdata test_choicelink test_opchoice test_oppad
+test_opinline test_crudroutes test_ddllint test_opmother test_opauto test_oplimit
+test_reclayout test_opparent test_opformula test_opblank test_rbcells test_rollio`
+（592/592）、`test_tabledef`（32/32）、`test_pick`・`test_changelog`。
+**フルスイートは回していない。**
+
+### R3 master-maint.js を「定義／盤／専用画面」に分割（VER2.205.0）
+
+`static/js/master-maint.js` は **13,090行の1つのIIFE** で、`MASTER_DEFS`（600行）・
+盤（状態・ナビ・入力支援・編集モーダル・一覧・submit/delete）・15の専用画面
+（`special:`）が1つの閉包に同居していた。読む側は「どこまでが盤で、どこからが
+専用画面か」を毎回探すことになり、専用画面を1つ足すたびに盤の`loadMaintInner`と
+`closeMaintEditor`へ`if`を1行ずつ足していた（実際に15本×2箇所）。
+
+分け方（読み込み順）:
+
+| ファイル | 行数 | 持つもの |
+|---|---|---|
+| `master-defs.js` | 671 | `MASTER_DEFS`／`MASTER_GROUPS` |
+| `master-maint.js` | 2,822 | 盤。`WL.mm`と登録簿`WL.mm.special`を作る |
+| `master-report.js` | 1,997 | 帳票ブロックの見本・`bindFieldBuilders`・帳票レイアウトマスタ |
+| `master-data.js` | 3,401 | 換算係数・測定データの保存・データ引継ぎ・データ接続・クエリ結合・共通設定・勤務形態・掃除・生データ・接続状況 |
+| `master-opdata.js` | 4,279 | 操業データの盤・自動値・設定モーダル・リンク・選択肢の値・記録した値の配置 |
+
+**中身は動かしただけ**（関数の並びも本文もそのまま。§9.132）。変えたのは
+ファイル間の受け渡しの形だけ:
+
+- **`WL.mm` の1つ**で受け渡す（素の`window.*`は増やさない・上限63のまま）。
+  盤は末尾で `Object.assign(WL.mm,{…28件})`、専用画面は先頭で `const {…}=WL.mm`
+  （盤が先に読まれているので束縛してよい）。
+- **逆向き**（盤→専用画面・定義→見本）は `WL.mm.fn()` と**呼ぶたびに引く**
+  ——読み込み順の後ろを指すので先頭では束縛できない（8件）。
+- **専用画面は登録簿へ名乗る**: `WL.mm.registerSpecial(key,{load,onEditorClose})`。
+  盤は `WL.mm.special[def.special]` から引き、**名乗っていない鍵は
+  `console.error`で言う**（黙って汎用の一覧へ落とさない）。
+- 生の表の一覧（`rawDefs`、§9.249 ②）は盤の`let`のままで、データ側は
+  `WL.mm.setRawDefs()`で届ける（`let`を跨いで代入できないため）。
+- **JSの読み込み順は `backend/routes/core.py` の `JS_FILES` へ移した**
+  （`index.html`は描くだけ。`CSS_FILES`と同じ作法）。
+
+分けるときの手順（機械で）: 元ファイルの行範囲を5つへ振り分け →
+1行ごとに「他のファイルで定義された名前」を数えて、盤へ向かうものは
+`const {…}=WL.mm`、後ろへ向かうものは`WL.mm.`を前置 → `node --check` →
+**未解決の名前が0件**であることを別のスクリプトで数える。
+
+固定は `tests/test_loadorder.py`（12件）: `static/js`と1対1／重複なし／
+先頭・末尾・マスタ管理の順／`index.html`に一覧の写しが無い／`special:`の鍵が
+全部名乗っている（定義↔登録簿を両向きに突き合わせる）／盤に`special==='…'`の
+`if`が戻っていない。ファイル名で読む網は分けた先へ向けた——`test_crudroutes`
+（`master-defs.js`）・`test_hintlint`（5本）・`test_eqfeature`／`test_opauto`／
+`test_storageui`（関係する本を連結して見る。1本だけ見ると、分けた先に写した
+綴りを素通しする）。
+
+回した網: マスタ管理に関わる52本（`pick_tests`の「マスタ」「モーダル」「操業意匠」
+「更新履歴」の群＋名指しの分）で 1928/1932。落ちた4件は**全部テストの側**——
+`test_bootflash`／`test_globallint`が`index.html`の一覧を読み、`test_rawmaster`が
+`master-maint.js`の`MASTER_DEFS`を読んでいた（分けた先へ向けて直した）。
+残る1件は`test_nav`の「畳んだメニューの浮き出し」（`waitForSelector`の8秒）で、
+**サーバー再起動直後の1本目**でだけ起き、同じ版で単独・7本組で回し直すと
+24/24——触っていない`base.js`の浮き出しなので、この変更の影響ではないが、
+落ちる仕組みまでは言えていない（§9.284。次に同じ形で出たら追う）。
+直したあとの確認は`test_nav test_bootflash test_globallint test_rawmaster
+test_loadorder test_headbar test_maint`で 172/172。**フルスイートは回していない。**
+
+## §9.325 作業予定を「読む側」は写しに書かない（R5の計測中に見つかった不具合、VER2.206.0）
+
+R5（テスト実行時間の短縮）の下見で、遅い網を**単独で**回したところ、
+`test_startwork`（3件）と`test_sctimecols`（2件）が落ちた。通しでは緑
+（2026-09-04の全件 5734/5734）。
+
+**① 製品の不具合。** サーバーのログに
+`GET /api/schedule/plan で未処理の例外` →
+`schedule_repo.plan_rows` → `ensure_plan_table` → `add_missing_columns` →
+`ALTER TABLE … ADD COLUMN` → **`attempt to write a readonly database`**。
+GET系（`_read`）が開くのは共有の**写し**（`schedule_cache.sqlite3`、書ける接続）で、
+別の要求が同時に`fetch_snapshot()`で写し直して`Path.replace()`で差し替える。
+SQLiteは**開いたまま差し替えられたファイルへの書き込み**を`SQLITE_READONLY_DBMOVED`
+（文言は「readonly database」）で断る——Pythonの5行で再現した。`fetch_snapshot()`の
+注釈には「Playwright検証で readonly database が再現した」とあり、一時名を一意にして
+**写す側**は直してあったが、**読む側が書く**ことは残っていた。
+
+読む側が書いていた理由は、後から足した3列（`親予定ID`・`登録端末名`・`更新端末名`）を
+「無ければ足す」で移行していたから。検証用フィクスチャの`share/schedule.sqlite3`は
+この3列を持たないので、**写しを作り直すたびに**最初の読みがALTERを打つ。通しでは
+前のテストの書込サイクル（`with_write`）が先に列を足していたので当たらず、単独で
+回すと最初の読みがALTERになって当たった——**順番に依存して見えていた**。
+現場でも、読むだけの端末（閲覧モード）が古い共有を写した直後に別のGETが重なれば
+同じ形で500になる。
+
+直し方: `_plan_select(c)`が**在る列だけ**で`SELECT`を組み、無い列は`NULL AS [列]`
+（`TableDef.fetch`と同じ考え方・§9.324 R1）。`plan_rows`／`plan_row`／`plan_child_rows`は
+`ensure_plan_table()`を呼ばない（表が無ければ空）。**列を足すのは書込サイクルだけ**
+（`plan_add`等は今までどおり）。位置で読む側（`r[14]`等）は1つも変えない。
+
+固定は`tests/test_scsnapread.py`（12件）: 読み取り専用の接続で古い写しを読める／
+読んだだけでは列を足さない／**開いたまま差し替えられた写しでも読める**（同じ状況で
+書くと落ちる、という前提まで確かめる——前提が通らない環境では網が空振りする）／
+表が無い写しは空／構文木で「読む3関数に`ensure_plan_table`が無い」。
+
+**② 網の順番依存。** 直したあとも`test_startwork`2件・`test_sctimecols`2件は落ちた。
+どちらも「区分が完了の行」を**前のテストが完了させた記録**に頼っていた
+（`test_startwork`の注釈にも「他テストの実績も混ざる」と書いてある）。単独で
+回せない網は、直したかどうかを単独で確かめられない。8時間以内の完了実績
+（`L0059`）を**自分で置く**ようにした。
+
+回した網: `test_scsnapread test_startwork test_sctimecols test_scsplit test_scload
+test_sclock test_scsync test_scsession test_screorder test_scwritespeed`。
+**フルスイートは回していない。**
+
+## §9.324 R5 テスト実行時間の短縮（VER2.207.0）
+
+**まず測った。** 全件（158本・5,734件）は2026-09-04の実測で39分。
+ランナー自身の固定費は**9秒**（サブ秒の3本で実測）、1本あたりの前後処理は
+**約0.3秒**（52本で483秒の本体に対して500秒の壁時計）——つまり**時間は本の
+中にある**。`waitForTimeout`は988件・**申告で868秒**（ループの中は回数ぶん掛かる
+ので下限）。サーバーの再起動は0.35秒、`make_fixture.py`は0.08秒、APIは2ms
+——「再起動を減らす」「猶予を短くする」は当たらない。
+
+**打つ手は固定待ち→条件待ち**（§9.102・README「待ち方」）。同じ待ちが何本にも
+書き写されていたので、道具を`tests/lib/wait.js`に集めた（`booted`／`openSchedule`／
+`settleFlags`／`until`／`poll`／`opSave`）。**サーバーへ書いたあとの取り直しは
+`poll`**（「3500ms待ってからGET」を「答えが条件を満たすまで250msごとにGET」へ）、
+**画面の合図は`until`**（＋350msの落ち着き）。**押す前に前の合図を消す**
+（`opSave`は`#opLayoutState`を空にしてから押す。残っていると押した瞬間に真）。
+**わざと遅らせた応答を待つ時間は残す**（`test_scsave`の4000ms）。
+
+置き換えた6本（単独・PASS数は同じ・3回連続で同結果）:
+scinsert 36→22秒／scstop 23→11秒／startwork 21→6秒／scsave 30→14秒／
+opui 42→35秒／oppad 35→32秒（合計187→120秒）。`test_opui`は1度、サーバーへ
+書けた時点で先へ進んで**窓の一覧が描き直される前に見て**落ちた——描かれたことも
+条件で待つ（「サーバーに在る」と「画面に出ている」は別の合図）。
+
+残り: `python3 tests/wait_report.py`が本ごとの申告を出す（上位は scprint 24秒／
+sctimecols 23秒／rplayout 15秒／dbequip 15秒／uiux 16秒）。同じ型で1本ずつ、
+**3回連続で同結果**を確かめながら進めること（速いが不安定な網は遅い網より悪い）。
+ランナーは最後に**全体の所要時間**を出す（`所要 N秒`）。
+
+回した網: 置き換えた6本を各3回。**フルスイートは回していない。**
