@@ -15,6 +15,9 @@ import json
 from ..db_access import (add_missing_columns, connect, ensure_audit_columns,
                          tables, cols, qi)
 from ..quiet import quiet
+# 設備名の表記ゆれ吸収は backend/textnorm.py が持つ（§9.329）。db_access も
+# 頭からこれを読むので、ここから再公開して既存の呼び出しを保つ。
+from ..textnorm import normalize_equipment_name  # noqa: F401 再公開（§9.329）
 
 EQUIPMENT_MASTER_TABLE='設備マスタ'
 MAX_STRIPS_COLUMN='最大条数'
@@ -235,9 +238,6 @@ def read_equipment_kind(c,equipment):
  except Exception as _e:quiet('列を読めない（設備区分は空として扱う）',_e)
  return ''
 
-def normalize_equipment_name(value):
- import unicodedata
- return unicodedata.normalize('NFKC',str(value or '')).strip().upper()
 
 def equipment_master_rows(c,feature=None):
  """有効な設備の行。**`feature`を渡すのは「人に選ばせる候補」を作るときだけ**

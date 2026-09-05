@@ -232,9 +232,12 @@ try:
     # **「確かめられなかった」を「共有にまだ無い」と読まないこと。** 読むと、
     # 共有には全員のマスタがあるのに手元の写しを正とみなし、次の書込で
     # 丸ごと上書きしてしまう。
-    from backend import db_access as _dba
-    _orig_exists = _dba.path_exists_safe
-    _dba.path_exists_safe = lambda p: None
+    # 差し替えるのは **master_share が読んでいる名前**（§9.329で
+    # `from .sqlite_io import path_exists_safe` を頭で読むようにしたので、
+    # `db_access` 側を差し替えても届かない・§CLAUDE「from ... import した
+    # 名前は差し替わらない」）。
+    _orig_exists = ms.path_exists_safe
+    ms.path_exists_safe = lambda p: None
     try:
         try:
             ms._pull(force=True)
@@ -252,7 +255,7 @@ try:
         rec('断ったあともロックは残さない', ms.lock_status().get('locked') is False,
             str(ms.lock_status()))
     finally:
-        _dba.path_exists_safe = _orig_exists
+        ms.path_exists_safe = _orig_exists
     rec('共有が読めれば元どおり取り込める',
         ms.refresh(force=True) is not None and read_value(opened) == 'inode-check',
         read_value(opened))

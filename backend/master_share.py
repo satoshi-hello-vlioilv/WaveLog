@@ -34,6 +34,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import atomic_io, paths
+# SQLiteの開き方だけが要るので **sqlite_io** を読む（§9.329）。db_access を
+# 読むと「マスタの置き場を決める側」を読み込むことになり、輪が戻る。
+from .sqlite_io import connect, tables, path_exists_safe
 from .logging_setup import app_logger
 from .quiet import quiet
 
@@ -193,7 +196,6 @@ def _opened(path, readonly):
     `db_mirror._verify()` は最初から `finally: c.close()` で書かれており、
     だからあちらは実機で動いていた。**同じ約束をここにも持ち込む。**
     """
-    from .db_access import connect
     c = connect(path, readonly)
     try:
         yield c
@@ -228,7 +230,6 @@ def _ensure_meta(c):
 
 
 def _read_revision(path):
-    from .db_access import tables
     try:
         with _opened(path, True) as c:
             if META_TABLE not in tables(c):
@@ -386,7 +387,6 @@ def _pull(force=False):
         except Exception as _e:
             quiet('改訂番号を比べられない（写し直す側へ倒す）',_e)
     mirror.parent.mkdir(parents=True, exist_ok=True)
-    from .db_access import path_exists_safe
     found = path_exists_safe(src)
     if found is False:
         # 共有にまだ無い（初回）。**手元の写しをそのまま正とする**——

@@ -26,10 +26,11 @@ from .. import source_capability
 from .. import storage_layout
 from ..logging_setup import app_logger
 from ..db_access import (
- DBS, MEAS_DB, connect, request_user_id,
+ DBS, MEAS_DB, connect,
  PATH_CONFIG_KEYS, path_config_rows, set_path_config, path_config_value,
  SIKALOT_SOURCE, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, SCHEDULE_SHARE_PATH,
 )
+from ..access_mode import request_user_id
 from ..quiet import quiet
 
 bp=Blueprint('path_config',__name__)

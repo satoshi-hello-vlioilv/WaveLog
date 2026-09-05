@@ -164,7 +164,8 @@ def main():
     # 何も確かめていない)。列名の出どころ(cols()のキャッシュ)へ同じ名前を
     # 2つ入れ、それでもAPIが一意で返すことを見る。実データでは、品質側が
     # ビューで同名の列を持っていた場合などにこの形になる。
-    from backend import db_access as _dba
+    # 列名の写しを持っているのは **sqlite_io**（§9.329でdb_accessから出した）。
+    from backend import sqlite_io as _dba
     key = None
     with _dba._cols_cache_lock:
         for k in list(_dba._cols_cache):

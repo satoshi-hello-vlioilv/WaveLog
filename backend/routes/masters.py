@@ -15,7 +15,8 @@ from flask import Blueprint, request, jsonify
 from .common import api_guard
 
 from ..flags import flag_of, text_or
-from ..db_access import DBS, connect, request_user_id
+from ..db_access import DBS, connect
+from ..access_mode import request_user_id
 from ..repositories.master_repo import (
  EQUIPMENT_MASTER_TABLE, ensure_equipment_master_table, normalize_equipment_name, equipment_master_rows,
  EQUIPMENT_FEATURES, EQUIPMENT_FEATURE_KEYS, normalize_equipment_features,

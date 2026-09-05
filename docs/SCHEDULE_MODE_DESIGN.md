@@ -21771,3 +21771,107 @@ Pythonは**構文木**で上の定義どおりに数える（字で探すと`exc
 回した網: `test_quietlint`（欠陥を注いでPython2件・JS4件を数えることを確認）と
 `test_pyflakes`・`test_eslint`（`no-empty`の上限は404→261へ下げた。残りはテスト側）、
 サーバー側の主要な網と、触った画面の網。**フルスイートは回していない。**
+
+## §9.329 `db_access`の層を正す——SQLiteの入出力と「置き場の答え」を分け、読み込みから書込を外す（REVIEW 3-2、構造の改善の4段目、VER2.212.0）
+
+### 何が問題だったか
+
+`backend/db_access.py`（1,283行）は、性質のまるで違う3つを1つのファイルで持っていた。
+
+1. **SQLiteの入出力そのもの** — `connect()`・読み取り専用URIの組み立て・
+   Access方言のユーザー定義関数・`cols()`／`tables()`・「無ければ足す」（§9.315）。
+   ここは**どのDBかを知らなくてよい**。
+2. **置き場の答え** — `DBS`（どのデータソースがあるか）・パス設定マスタ・
+   データソースマスタ・測定データの読み書き先（§9.258／§9.268）。
+3. **起動時の書込** — 旧`config/local.json`の一度きりの移行と、
+   データソースマスタの既定2件の種まき。
+
+そのため、**接続の仕方だけが要るモジュール**（`db_mirror`＝共有からの写し、
+`master_share`＝マスタの書込サイクル、`master_repo`）が②ごと読み込むことになり、
+しかも②は`db_mirror`を必要とする——**輪**。輪は「関数の中でimportする」で
+避けていたが、逃がすと**誰が誰を必要とするかがファイルの頭から読めなくなる**
+（実測: `backend/`全体で関数の中のbackend宛importが201本、相互に必要とし合う組が9組。
+うち`db_access`自身が3モジュールを関数の中から読んでいた）。
+
+③はもっと素直に悪い。**`import backend.db_access` するだけでマスタDBが書き変わる。**
+呼ぶ側からは読み込みで何が起きるか読めず、検証も「importしない」以外に避けようがない。
+
+### どう分けたか
+
+| 出したもの | 置き場 | 理由 |
+|---|---|---|
+| `connect`／`qi`／`path_exists_safe`／`_sqlite_ro_uri`／UDF／`cols`／`tables`／`add_missing_columns`／`ensure_audit_columns` | **`backend/sqlite_io.py`**（新） | 置き場を知らない層。`db_mirror`・`master_share`はここだけを頭から読めばよい |
+| `normalize_equipment_name` | **`backend/textnorm.py`**（新） | 2行の純粋な関数なのに`master_repo`（`db_access`を読む側）に居たため、`db_access`が関数の中から呼び戻していた |
+| `request_user_id`／`request_pc_name` | **`backend/access_mode.py`**（移動） | 答えを持っているのは`current_login_id`／`current_pc_name`＝あちら。「誰が触ったか」は接続の話ではない |
+| 旧`local.json`の移行・データソースの種まき | **`db_access.bootstrap()`**（新。`app.py`が1回だけ呼ぶ） | 読むことと書くことを分ける |
+
+**`db_access`から`sqlite_io`の名前は再公開してある**（`# noqa: F401 理由`）
+——`db_access.connect(...)`で呼んでいる既存の約100箇所を1つも書き換えないため。
+**新しく書くコードは`sqlite_io`から直に読むこと。** 置き場の答えが要らないのに
+`db_access`を読み込むと、分けたはずの輪が戻る。
+
+### 読み込みで書かないための作法
+
+移行と種まきは**「読む」と「書く」に割った**。
+
+* `_legacy_path_config_updates()` … 旧`local.json`から移すべき値を**返すだけ**。
+  読み込み時はその値を`_PATH_CONFIG`へ**重ねるだけ**にしてある。
+  こうしておくと、目印がまだ書かれていない端末でも**このプロセスは移行後と
+  同じ値で動く**（`bootstrap()`が呼ばれなくても見え方は変わらない）。
+* `_master_data_sources()` … データソースマスタを**読み取り専用で読むだけ**。
+  表がまだ無い端末は空が返り、呼び出し側が`_DEFAULT_DATA_SOURCES`（種と同じ中身）へ
+  落ちるので、やはり**種を入れた後と同じ見え方**になる。
+* `bootstrap()` … 種まきと移行の書込。**何度呼んでも同じ**（目印があれば何もしない）。
+
+### 結果
+
+| 評価関数 | 前 | 後 |
+|---|---|---|
+| モジュール直下のimportの輪 | 0 | 0（元から無い。輪は関数の中に隠れていた） |
+| 相互に必要とし合う組（関数の中も含む） | 9 | **6** |
+| `db_access`が関数の中から読むbackendのモジュール | 3（`access_mode`／`master_repo`／`db_mirror`） | **1**（`db_mirror`だけ） |
+| `backend/`全体の関数の中のbackend宛import | 201 | 194 |
+| `import backend.db_access` での書込 | あり（マスタDBへ2種類） | **0** |
+
+**`db_access`↔`db_mirror`の1組は残してある。** 置き場の答え（`DBS`・パス設定）を
+別モジュールへ出さないと解けず、それはREVIEW 3-2の②そのもの（`db_access`の
+残り1,000行の大移動）になる。**残した理由は網の一覧（`DEEP_ALLOW`）に書いてある**
+——理由の書けない遅延importは、輪を隠しているだけ。
+
+### 網（`tests/test_dblayer.py`、`ALWAYS`）
+
+見るのは6つ——①`sqlite_io`が置き場（`db_access`／`db_mirror`／`paths`／`DBS`）を
+読まない ②`db_access`の関数の中のimportは理由付きの一覧のものだけ
+③一覧に載っているものが実際に使われている（腐った例外を残さない）
+④`db_access`と`access_mode`／`master_share`／`master_repo`が相互importしない
+⑤`import backend.db_access`が**書ける形でDBを開かない**
+⑥`bootstrap()`を呼ぶのは`app.py`の1箇所。
+
+**⑤は「ファイルの中身が変わったか」だけを見ないこと。** 移行の目印が既に
+書かれている端末では、読み込み時に書きに行っても「済んでいる」で早く戻るので
+**1バイトも変わらず、網が空振りする**（§9.325と同じ形。実際に最初の書き方で
+空振りし、欠陥を戻しても通った）。別プロセスで`sqlite3.connect`を差し替え、
+**書ける形で開いたことそのもの**を数える。
+
+**⑥は行をコメントアウトされたときに落ちること**まで見る（素の文字列検索だと
+`#db_access.bootstrap()`を数えて通る。これも実際に通った）。
+
+4つの欠陥（`sqlite_io`が`db_access`を読む／`db_access`が`access_mode`を関数の
+中から読む／読み込み時に種を入れる／`app.py`が`bootstrap()`を呼ばない）を
+注いで、それぞれ落ちることを確認済み。
+
+### 触った網
+
+`tests/test_pcname.py` … 窓口が`access_mode`へ移ったので、そちらを見るようにした。
+
+`tests/test_mastershare.py` … 「共有の有無を確かめられない」を作るために
+`db_access.path_exists_safe`を差し替えていたが、`master_share`が
+`from .sqlite_io import path_exists_safe`と**頭で読む**ようになったので届かない
+（§CLAUDE「`from ... import`した名前は差し替わらない」）。差し替える先を
+`master_share`側の名前へ直した。**この3件が落ちたことで、名前の束縛が
+変わったことに気づけた**——落ちなければ、共有が応答しない端末の道が
+黙って確かめられなくなっていた。
+
+回した網: サーバー側の網（`test_dblayer`・`test_pcname`・`test_mastershare`・
+`test_dbmirror`・`test_srcread`・`test_recmirror`・`test_modeguard`ほか）と
+画面側の主要な網。**フルスイートは回していない。**

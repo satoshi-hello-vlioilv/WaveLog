@@ -609,6 +609,25 @@
   （落とした側で見るとどの理由も空に見える）。窓口そのもの（`quiet.py`と
   `WL.quiet`）は対象外で、**`WL.quiet`の中では`try`で包まない**（包むとこの関数
   自身が黙る場所になる）。
+- **SQLiteの入出力は`backend/sqlite_io.py`、置き場の答えは`db_access`、書込は
+  `bootstrap()`**（§9.329、REVIEW 3-2）: `db_access.py`は「接続の仕方」と「置き場の
+  答え（`DBS`・パス設定マスタ）」を一緒に持ち、しかも**読み込んだだけでマスタDBへ
+  書いて**いた（旧`config/local.json`の移行とデータソースの種まき）。接続だけが要る
+  `db_mirror`・`master_share`・`master_repo`が置き場ごと読み込むことになり、その答えは
+  `db_mirror`を要る——輪。**`sqlite_io`へ`DBS`やパス設定を持ち込まないこと**（持ち込んだ
+  瞬間に分けた意味が無くなる）。**新しく書くコードは`sqlite_io`から直に読む**
+  ——`db_access`側の再公開は既存の約100箇所を書き換えないためだけに在る。
+  **設備名の表記ゆれ吸収は`backend/textnorm.py`**（`master_repo`が再公開）、
+  **「誰が・どの端末で」は`access_mode`の`request_user_id`／`request_pc_name`**
+  （§9.180。`db_access`から移した）。**読み込みで書かないこと**——移行も種まきも
+  「読むだけ」に割り、書くのは`bootstrap()`の1箇所で`app.py`が1回だけ呼ぶ。
+  読み込み時は移す値を`_PATH_CONFIG`へ**重ねるだけ**にしてあるので、
+  `bootstrap()`が呼ばれなくても見え方は変わらない（§9.132）。
+  **残っている輪は`db_access`↔`db_mirror`の1組だけ**で、理由は網の`DEEP_ALLOW`に
+  書いてある（理由の書けない遅延importは輪を隠しているだけ）。固定は
+  `tests/test_dblayer.py`——**「ファイルの中身が変わったか」だけを見ないこと**
+  （移行の目印が既に在る端末では書きに行っても1バイトも変わらず素通りする・§9.325）。
+  別プロセスで`sqlite3.connect`を差し替え、**書ける形で開いたこと**を数える。
 - **画面の共有状態`S`の鍵は`base.js`の1つのリテラルだけが決める。`Object.seal(S)`で後付けを
   断る**（§9.327、REVIEW 3-8）: 以前は宣言11個に対して使っている鍵が19個で、`filters.js`・
   `list-view.js`・`records-store.js`が8個を後から足していた——綴りを間違えても静かに新しい鍵が

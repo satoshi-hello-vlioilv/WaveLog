@@ -27,7 +27,8 @@ from .. import schedule_calc
 from .. import load_factor
 from ..repositories import schedule_repo as sr
 from ..repositories.master_repo import normalize_equipment_name, equipment_master_rows, field_reorder_equipment_allows
-from ..db_access import connect, request_user_id, request_pc_name, path_config_value, DBS
+from ..db_access import connect, path_config_value, DBS
+from ..access_mode import request_user_id, request_pc_name
 from ..access_mode import current_login_id, current_pc_name, get_mode, current_permission_flags
 from ..logging_setup import app_logger
 from ..quiet import quiet

@@ -74,6 +74,8 @@ import time
 from pathlib import Path
 
 from . import atomic_io
+# 読み取り専用オープン用の file: URI の組み立てだけが要る（§9.329）。
+from .sqlite_io import _sqlite_ro_uri
 from .logging_setup import app_logger
 from .quiet import quiet
 
@@ -235,7 +237,6 @@ def _remote_signature(remote):
 # ------------------------------------------------------------------
 def _snapshot_via_backup(remote, tmp):
  """SQLiteのバックアップAPIで一貫した写しを作る。"""
- from .db_access import _sqlite_ro_uri
  src = sqlite3.connect(_sqlite_ro_uri(remote), uri=True, timeout=15)
  try:
   dst = sqlite3.connect(str(tmp))

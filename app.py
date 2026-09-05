@@ -20,7 +20,7 @@ app_logger()
 
 app=Flask(__name__)
 
-from backend import watchdog, records_export, access_mode, rne_scheduler, errors, file_cleanup
+from backend import watchdog, records_export, access_mode, rne_scheduler, errors, file_cleanup, db_access
 from backend.routes.core import bp as core_bp
 from backend.routes.tables import bp as tables_bp
 from backend.routes.measurement import bp as measurement_bp
@@ -46,6 +46,11 @@ app.register_blueprint(logs_bp)
 app.register_blueprint(cleanup_bp)
 app.register_blueprint(master_tables_bp)
 app.register_blueprint(presence_bp)
+
+# 読み込みでは起こさない書込（旧config/local.jsonの一度きりの移行）は、
+# **アプリの起動がここで1回だけ**行う（§9.329）。import に副作用を持たせると、
+# 読み込んだだけで何が起きるかが呼ぶ側から読めない。
+db_access.bootstrap()
 
 # ========================================================================
 # キャッシュの方針(§9.97)

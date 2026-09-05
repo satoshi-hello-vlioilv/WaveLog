@@ -26,7 +26,8 @@
 from flask import Blueprint, jsonify, request
 
 from ..db_access import (AUDIT_COLUMNS, DBS, connect, ensure_audit_columns,
-                         request_user_id, tables)
+                         tables)
+from ..access_mode import request_user_id
 from ..logging_setup import app_logger
 from ..quiet import quiet
 

@@ -32,7 +32,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import _pycache_bootstrap  # noqa: E402,F401 副作用のためのimport（.pycの置き場）
-from backend import db_access  # noqa: E402
+from backend import sqlite_io  # noqa: E402
 from backend.db_access import DBS, add_missing_columns, connect  # noqa: E402
 
 RESULTS = []
@@ -53,13 +53,13 @@ for path in sorted((ROOT / 'backend').rglob('*.py')):
         code = line.split('#')[0]
         if 'ADD COLUMN' not in code:
             continue
-        if path.name == 'db_access.py':
-            continue          # 窓口そのもの
+        if path.name == 'sqlite_io.py':
+            continue          # 窓口そのもの（§9.329でdb_accessから出した）
         raw.append(f'{path.relative_to(ROOT)}:{i}')
 rec('素の ALTER TABLE ADD COLUMN は窓口の外に無い（§9.315）',
     not raw, ' / '.join(raw) or 'なし')
 # 窓口の中でも1文だけ（2つ持つと片方だけ直した状態が作れる）。
-_dbsrc = (ROOT / 'backend' / 'db_access.py').read_text(encoding='utf-8')
+_dbsrc = (ROOT / 'backend' / 'sqlite_io.py').read_text(encoding='utf-8')
 _hits = [l for l in _dbsrc.splitlines() if 'ADD COLUMN' in l.split('#')[0]]
 rec('窓口の中の ADD COLUMN も1文だけ', len(_hits) == 1, f'{len(_hits)}件')
 
@@ -75,9 +75,16 @@ except Exception:
 with connect(tmp) as c:
     c.cursor().execute('CREATE TABLE [T] ([id] INTEGER PRIMARY KEY, [a] TEXT)')
     c.commit()
-    real_cols = db_access.cols
+    real_cols = sqlite_io.cols
     try:
-        db_access.cols = lambda _c, _t: ['id']        # [a] を「無い」と答える
+        # 差し替えるのは **sqlite_io の名前**（§9.329で窓口ごと移した。
+        # db_access 側を差し替えても届かず、この節が素通りする）。
+        sqlite_io.cols = lambda _c, _t: ['id']        # [a] を「無い」と答える
+        # **前提を確かめること**——差し替えが届いていないと ALTER そのものが
+        # 走らず、「落ちない」も「戻り値が空」も**素通りで真になる**
+        # （§9.329で窓口を移したとき、実際にこの形で通った）。
+        rec('前提: cols の差し替えが窓口へ届いている',
+            sqlite_io.cols(c, 'T') == ['id'], str(sqlite_io.cols(c, 'T')))
         got, raised = None, ''
         try:
             got = add_missing_columns(c, 'T', (('a', 'TEXT'),))
@@ -87,7 +94,7 @@ with connect(tmp) as c:
             not raised, raised)
         rec('自分が足したことにはしない（戻り値に入れない）', got == [], str(got))
     finally:
-        db_access.cols = real_cols
+        sqlite_io.cols = real_cols
     # ふつうに足せることも見る（前提）。
     added = add_missing_columns(c, 'T', (('c', 'TEXT'),))
     rec('前提: 無い列はふつうに足せる', added == ['c'], str(added))

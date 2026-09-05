@@ -46,6 +46,8 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
           'test_tabledef',
           # §9.326: 標準の静的解析（pyflakes／eslint）。どの .py/.js を触っても数秒で回る
           'test_pyflakes', 'test_eslint', 'test_quietlint',
+          # §9.329 REVIEW 3-2: db_access の層と、読み込みの副作用（1秒未満）
+          'test_dblayer',
           # §9.324 R3: JSの読み込み順は core.py の JS_FILES の1箇所（static/js と突き合わせる）
           'test_loadorder']
 

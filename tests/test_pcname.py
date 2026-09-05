@@ -106,12 +106,13 @@ finally:
     am.resolve_pc_name(force=True)
 
 # ---- 7) 監査列の窓口も同じ答えを見る --------------------------------
-from backend import db_access as da  # noqa: E402
-rec('db_access.request_pc_name も同じ名前を返す（判定は1箇所・§9.180）',
-    da.request_pc_name() == am.current_pc_name(),
-    f"{da.request_pc_name()} / {am.current_pc_name()}")
+# 窓口は access_mode 側にある（§9.329でdb_accessから移した。「誰が・どの端末で」は
+# 接続の話ではなくこの層の話で、db_access→access_mode→db_access の輪でもあった）。
+rec('access_mode.request_pc_name も同じ名前を返す（判定は1箇所・§9.180）',
+    am.request_pc_name() == am.current_pc_name(),
+    f"{am.request_pc_name()} / {am.current_pc_name()}")
 rec('画面が明示した端末名は上書きしない（作った端末を塗り潰さない）',
-    da.request_pc_name({'pc_name': 'OTHER-PC'}) == 'OTHER-PC')
+    am.request_pc_name({'pc_name': 'OTHER-PC'}) == 'OTHER-PC')
 
 ng = [x for x in R if not x[1]]
 print(f"\n== {len(R)-len(ng)}/{len(R)} PASS ==")
