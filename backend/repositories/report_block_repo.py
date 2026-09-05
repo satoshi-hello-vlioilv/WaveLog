@@ -27,8 +27,8 @@ import copy as _copy
 import math as _math
 import json
 
-from ..db_access import add_missing_columns
 from .master_repo import tables
+from .table_def import TableDef
 
 TABLE = '帳票ブロックマスタ'
 
@@ -1666,27 +1666,34 @@ def parse_content(text):
     return out
 
 
-def _row(r):
-    builtin = str(r[9] or '').strip()
-    return {'id': r[0], 'equipment': str(r[1] or '').strip(),
-            'name': str(r[2] or '').strip(), 'order': r[3],
-            'span': normalize_span(r[4]), 'rows': normalize_rows(r[5]),
-            'content': str(r[6] or ''),
+def _row(d):
+    """`DEF.fetch()`の1行（列名→値）を画面の形へ。**位置では読まない**（§9.324 R1）。"""
+    builtin = str(d['組み込みキー'] or '').strip()
+    kind = normalize_kind(d['種別'])
+    enabled = True if d['有効'] is None else bool(d['有効'])
+    repeat = normalize_repeat(d['繰返'])
+    repeat_dir = normalize_repeat_dir(d['繰返方向'])
+    full = normalize_full(d['最大表示'])
+    label_place = normalize_fact_label(d['欄のラベル位置'])
+    fact_align = normalize_fact_align(d['欄の揃え'])
+    return {'id': d['ブロックID'], 'equipment': str(d['設備名'] or '').strip(),
+            'name': str(d['ブロック名'] or '').strip(), 'order': d['表示順'],
+            'span': normalize_span(d['幅']), 'rows': normalize_rows(d['行数']),
+            'content': str(d['内容'] or ''),
             # **エリアの塊では項目として読ませない**（§9.234 ⑤）——読ませると
             # `rpMergeBuiltin`が節として描いてしまい、枠だけのはずの塊に
             # ラベルと「-」が並ぶ。
-            'fields': ([] if normalize_kind(r[11] if len(r) > 11 else '') == AREA_KIND
-                       else parse_content(r[6])),
-            'note': str(r[7] or ''), 'enabled': True if r[8] is None else bool(r[8]),
+            'fields': ([] if kind == AREA_KIND else parse_content(d['内容'])),
+            'note': str(d['備考'] or ''), 'enabled': enabled,
             # **画面から入切できる形でも返す**（§9.219 ②）。マスタ管理の
             # 汎用フォームは文字列の選択欄しか持たないので、真偽値のままだと
             # 欄を出せない——**欄が無いと既定の塊を紙から外す手立てが消える**
             # （消せない・無効にもできない行き止まりになる）。
-            'enabledText': '有効' if (r[8] is None or bool(r[8])) else '無効',
+            'enabledText': '有効' if enabled else '無効',
             # 既定の塊（§9.219 ②）。空なら現場が足した塊。
             'builtin': builtin,
             # 節の中を何列で並べるか（`reportSection`の第3引数）。0＝既定。
-            'cols': int(r[10] or 0) if str(r[10] or '').strip() != '' else 0,
+            'cols': int(d['内訳列数'] or 0) if str(d['内訳列数'] or '').strip() != '' else 0,
             # **中身を書き換えてよいか。** 中身の作り方が仕事の塊
             # （測定表・条の図・異常位置判定）は書き換えても効かないので、
             # 画面は欄ごと出さずに理由を書く（§4）。
@@ -1694,44 +1701,41 @@ def _row(r):
             # 塊の種別（§9.234 ⑤）。'エリア'＝値を出さず場所を空けるだけの塊。
             # **画面から選べる形でも返す**（`enabledText`とまったく同じ作法）
             # ——マスタ管理の汎用フォームは文字列の選択欄しか持たない。
-            'kind': normalize_kind(r[11] if len(r) > 11 else ''),
-            'kindText': _LABEL_BY_KIND.get(normalize_kind(r[11] if len(r) > 11 else ''),
-                                           _LABEL_BY_KIND['']),
+            'kind': kind,
+            'kindText': _LABEL_BY_KIND.get(kind, _LABEL_BY_KIND['']),
             # エリアに置く文字（改行できる）。**値は入らない。**
-            'text': str((r[12] if len(r) > 12 else '') or ''),
+            'text': str(d['文字'] or ''),
             # 繰り返し（§9.247 ②）。'子ロット'＝分割後の子ロットの数だけ描く。
             # **エリアの塊では繰り返さない**——値を出さない塊を子ロットの数だけ
             # 並べても、同じ枠が増えるだけ（§4。効かない設定を出さない）。
-            'repeat': ('' if normalize_kind(r[11] if len(r) > 11 else '') == AREA_KIND
-                       else normalize_repeat(r[13] if len(r) > 13 else '')),
-            'repeatText': _LABEL_BY_REPEAT.get(
-                normalize_repeat(r[13] if len(r) > 13 else ''), _LABEL_BY_REPEAT['']),
+            'repeat': ('' if kind == AREA_KIND else repeat),
+            'repeatText': _LABEL_BY_REPEAT.get(repeat, _LABEL_BY_REPEAT['']),
             # 繰り返しの向き（§9.277）。**繰り返さない塊では効かない**ので、
             # 画面は欄ごと出さずに理由を書く（§4）。
-            'repeatDir': normalize_repeat_dir(r[14] if len(r) > 14 else ''),
-            'repeatDirText': _LABEL_BY_REPEAT_DIR.get(
-                normalize_repeat_dir(r[14] if len(r) > 14 else ''), _LABEL_BY_REPEAT_DIR['']),
+            'repeatDir': repeat_dir,
+            'repeatDirText': _LABEL_BY_REPEAT_DIR.get(repeat_dir, _LABEL_BY_REPEAT_DIR['']),
             # 行・列を最大で出すか（§9.309）。**エリアの塊では効かない**
             # （値を出さない塊に「行の数」が無い）ので既定へ倒す（§4）。
-            'full': ('' if normalize_kind(r[11] if len(r) > 11 else '') == AREA_KIND
-                     else normalize_full(r[15] if len(r) > 15 else '')),
-            'fullText': _LABEL_BY_FULL.get(
-                normalize_full(r[15] if len(r) > 15 else ''), _LABEL_BY_FULL['']),
+            'full': ('' if kind == AREA_KIND else full),
+            'fullText': _LABEL_BY_FULL.get(full, _LABEL_BY_FULL['']),
             # コードが描く欄の並びの見せ方（§9.323 ④）。**呼び名でも返す**
             # ——マスタ管理の汎用フォームは文字列の選択欄しか持たない
             # （`enabledText`／`fullText`とまったく同じ作法）。
-            'labelPlace': normalize_fact_label(r[16] if len(r) > 16 else ''),
-            'labelPlaceText': _LABEL_BY_FACT_LABEL.get(
-                normalize_fact_label(r[16] if len(r) > 16 else ''),
-                _LABEL_BY_FACT_LABEL['']),
-            'factAlign': normalize_fact_align(r[17] if len(r) > 17 else ''),
-            'factAlignText': _fact_align_maps()[1].get(
-                normalize_fact_align(r[17] if len(r) > 17 else ''), '自動')}
+            'labelPlace': label_place,
+            'labelPlaceText': _LABEL_BY_FACT_LABEL.get(label_place, _LABEL_BY_FACT_LABEL['']),
+            'factAlign': fact_align,
+            'factAlignText': _fact_align_maps()[1].get(fact_align, '自動')}
 
 
-# 後から足した列（§9.180「無ければ足す」で移行する。共有DBは現場で動いて
-# いるので作り直さない）。
-_ADDED_COLUMNS = (
+# 列の並び（§9.324 R1）。**ここが唯一の定義**——CREATE・「無ければ足す」
+# （§9.180。共有DBは現場で動いているので作り直さない）・SELECT・辞書化・
+# UPDATE・INSERTの全部が`DEF`から作られる。以前は5箇所に別々に書かれており、
+# CREATEだけが古いままで**新しいDBでは最初の1回だけ`no such column: 繰返`で
+# 落ちていた**（2回目は足されるので通る）。**新しい列は末尾へ足す**。
+COLUMNS = (
+    ('設備名', 'TEXT'), ('ブロック名', 'TEXT'), ('表示順', 'INTEGER'),
+    ('幅', 'INTEGER'), ('行数', 'INTEGER'), ('内容', 'TEXT'), ('備考', 'TEXT'),
+    ('有効', 'INTEGER'),
     ('組み込みキー', 'TEXT'),      # 既定の塊はどのコードの塊か（自作は空）
     ('内訳列数', 'INTEGER'),       # 節の中を何列で並べるか（0＝既定）
     ('種別', 'TEXT'),              # ''＝項目の並び／'エリア'＝場所を空けるだけ
@@ -1743,6 +1747,7 @@ _ADDED_COLUMNS = (
     ('欄のラベル位置', 'TEXT'),    # ''／'横'／'上下'
     ('欄の揃え', 'TEXT'),          # ''／'left'／'center'／'right'
 )
+DEF = TableDef(TABLE, 'ブロックID', COLUMNS, order_by='[表示順],[ブロックID]')
 
 
 def _ensure_columns(c):
@@ -1750,7 +1755,7 @@ def _ensure_columns(c):
     have = {r[1] for r in cur.execute(f'PRAGMA table_info([{TABLE}])')}
     # **足すのは`add_missing_columns()`の1箇所**（§9.315。同時に走っても
     # 壊れない）。下の移行は**足した列の名前**ではなく`have`で見分ける。
-    added = bool(add_missing_columns(c, TABLE, _ADDED_COLUMNS))
+    added = bool(DEF.add_missing(c))
     # **`[種別]`を足したその場だけ**、既にあるラベル貼付スペースの行を
     # エリアへ移す（§9.234 ⑤）。列は二度と追加されないので別の目印は要らない
     # ——**どの列を足したかを`added`の1つのboolで見分けないこと**（`[文字]`
@@ -1866,14 +1871,9 @@ def seed_default_cells(c):
 
 def ensure_table(c):
     if TABLE not in tables(c):
-        cur = c.cursor()
-        cur.execute('CREATE TABLE [帳票ブロックマスタ] ('
-                    '[ブロックID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, '
-                    '[ブロック名] TEXT, [表示順] INTEGER, [幅] INTEGER, [行数] INTEGER, '
-                    '[内容] TEXT, [備考] TEXT, [有効] INTEGER, '
-                    '[組み込みキー] TEXT, [内訳列数] INTEGER, [種別] TEXT, [文字] TEXT, '
-                    '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
-        c.commit()
+        # **列は`DEF`の1つの定義から**（§9.324 R1）。以前はCREATEに後から足した
+        # 列が無く、作った直後の`SELECT`が`no such column`で落ちていた。
+        DEF.create(c)
         _seed_builtins(c)
         seed_default_cells(c)
         return True
@@ -1886,19 +1886,11 @@ def ensure_table(c):
     return False
 
 
-_SELECT = ('SELECT [ブロックID],[設備名],[ブロック名],[表示順],[幅],[行数],[内容],[備考],[有効],'
-           '[組み込みキー],[内訳列数],[種別],[文字],[繰返],[繰返方向],[最大表示],'
-           '[欄のラベル位置],[欄の揃え] '
-           f'FROM [{TABLE}] ORDER BY [表示順],[ブロックID]')
-
-
 def block_rows(c, include_disabled=False):
     ensure_table(c)
-    cur = c.cursor()
-    cur.execute(_SELECT)
     out = []
-    for r in cur.fetchall():
-        b = _row(r)
+    for d in DEF.fetch(c):
+        b = _row(d)
         if not b['enabled'] and not include_disabled:
             continue
         out.append(b)
@@ -1946,15 +1938,6 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=None, rows=Non
     # 既定の塊はコードの`RP_BLOCKS`のどれかを指しているので、後から書き換えると
     # 「どの塊の設定なのか」が決まらなくなる。渡し忘れでも消えないよう、
     # 既存行の値を引き継ぐ。
-    cur_builtin = ''
-    cur_cols = 0
-    cur_kind = ''
-    cur_text = ''
-    cur_repeat = ''
-    cur_repeat_dir = ''
-    cur_full = ''
-    cur_label_place = ''
-    cur_fact_align = ''
     # **渡していない設定は今の値のまま**（§9.320-E／§9.212 ②で7度目）。
     # ここは全置換のUPDATEなので、呼ぶ側が1つ渡し忘れるとその設定だけが
     # 黙って消える。とりわけ`[内容]`が消えると、**その塊はコードの既定へ
@@ -1962,33 +1945,23 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=None, rows=Non
     # いるのに紙が変わらないので、いちばん気づきにくい壊れ方になる
     # （利用者の報告「半自動登録内容の項目は内部データ修正してもほぼ
     #  修正が効きません」の正体）。**入口で安全側へ倒す**。
-    cur_content = ''
-    cur_note = ''
-    cur_span = None
-    cur_rows = None
-    cur_enabled = True
-    cur_equipment = ''
-    if block_id is not None:
-        cur.execute(f'SELECT [組み込みキー],[内訳列数],[種別],[文字],[繰返],[繰返方向],'
-                    f'[最大表示],[内容],[備考],[幅],[行数],[有効],[設備名],'
-                    f'[欄のラベル位置],[欄の揃え] '
-                    f'FROM [{TABLE}] WHERE [ブロックID]=?', [int(block_id)])
-        hit = cur.fetchone() or ['', 0, '', '', '', '', '', '', '', None, None, -1, '']
-        cur_builtin = str(hit[0] or '').strip()
-        cur_cols = int(hit[1] or 0)
-        cur_kind = normalize_kind(hit[2])
-        cur_text = str(hit[3] or '')
-        cur_repeat = normalize_repeat(hit[4] if len(hit) > 4 else '')
-        cur_repeat_dir = normalize_repeat_dir(hit[5] if len(hit) > 5 else '')
-        cur_full = normalize_full(hit[6] if len(hit) > 6 else '')
-        cur_content = str(hit[7] or '') if len(hit) > 7 else ''
-        cur_note = str(hit[8] or '') if len(hit) > 8 else ''
-        cur_span = hit[9] if len(hit) > 9 else None
-        cur_rows = hit[10] if len(hit) > 10 else None
-        cur_enabled = bool(hit[11]) if len(hit) > 11 else True
-        cur_equipment = str(hit[12] or '').strip() if len(hit) > 12 else ''
-        cur_label_place = normalize_fact_label(hit[13] if len(hit) > 13 else '')
-        cur_fact_align = normalize_fact_align(hit[14] if len(hit) > 14 else '')
+    # 今の値は**名前で読む**（§9.324 R1。`DEF.get()`は無い列を`None`で埋める）。
+    hit = (DEF.get(c, int(block_id)) if block_id is not None else None) or {}
+    cur_builtin = str(hit.get('組み込みキー') or '').strip()
+    cur_cols = int(hit.get('内訳列数') or 0)
+    cur_kind = normalize_kind(hit.get('種別'))
+    cur_text = str(hit.get('文字') or '')
+    cur_repeat = normalize_repeat(hit.get('繰返'))
+    cur_repeat_dir = normalize_repeat_dir(hit.get('繰返方向'))
+    cur_full = normalize_full(hit.get('最大表示'))
+    cur_content = str(hit.get('内容') or '')
+    cur_note = str(hit.get('備考') or '')
+    cur_span = hit.get('幅')
+    cur_rows = hit.get('行数')
+    cur_enabled = bool(hit['有効']) if hit.get('有効') is not None else True
+    cur_equipment = str(hit.get('設備名') or '').strip()
+    cur_label_place = normalize_fact_label(hit.get('欄のラベル位置'))
+    cur_fact_align = normalize_fact_align(hit.get('欄の揃え'))
     equipment = equipment_given or cur_equipment or '*'
     content = cur_content if content is None else str(content or '')
     note = cur_note if note is None else str(note or '')
@@ -2043,20 +2016,16 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=None, rows=Non
         hit = cur.fetchone()
         if hit:
             order = hit[0]
-    # **新しい列は必ず末尾へ足す**（§9.234 ⑤）——下のUPDATEの1本は
-    # `args[2:]`という**位置スライス**なので、途中へ入れると値が別の列へ入る。
-    # SET・VALUES・argsの**4箇所**（UPDATE2本＋INSERT1本＋この行）を同じ順に。
-    args = [equipment, name, order, normalize_span(span), normalize_rows(rows),
-            content, note, -1 if enabled else 0, builtin, cols,
-            kind, text, repeat, repeat_dir, full, label_place, fact_align]
+    # 書く列は**名前で**持つ（§9.324 R1）。UPDATE／INSERTは`DEF`が同じ辞書から
+    # 作るので、列を1つ足しても書く場所はここ1箇所。
+    vals = {'設備名': equipment, 'ブロック名': name, '表示順': order,
+            '幅': normalize_span(span), '行数': normalize_rows(rows),
+            '内容': content, '備考': note, '有効': -1 if enabled else 0,
+            '組み込みキー': builtin, '内訳列数': cols,
+            '種別': kind, '文字': text, '繰返': repeat, '繰返方向': repeat_dir,
+            '最大表示': full, '欄のラベル位置': label_place, '欄の揃え': fact_align}
     if block_id is not None:
-        cur.execute('UPDATE [帳票ブロックマスタ] SET [設備名]=?,[ブロック名]=?,[表示順]=?,[幅]=?,'
-                    '[行数]=?,[内容]=?,[備考]=?,[有効]=?,[組み込みキー]=?,[内訳列数]=?,'
-                    '[種別]=?,[文字]=?,[繰返]=?,[繰返方向]=?,[最大表示]=?,'
-                    '[欄のラベル位置]=?,[欄の揃え]=?,'
-                    '[更新者ID]=?,[更新日時]=Now() '
-                    'WHERE [ブロックID]=?', args + [uid, int(block_id)])
-        c.commit()
+        DEF.update(c, int(block_id), vals, uid)
         return int(block_id)
     # 自然キーは(設備名,ブロック名)。**同じ設備に同じ名前を2つ置かない**
     # ——塊の並び・幅・高さは名前を鍵に列レイアウトマスタへ入るので、
@@ -2065,26 +2034,14 @@ def block_upsert(c, uid, equipment='*', name='', order=None, span=None, rows=Non
                 [equipment, name])
     hit = cur.fetchone()
     if hit:
-        cur.execute('UPDATE [帳票ブロックマスタ] SET [表示順]=?,[幅]=?,[行数]=?,[内容]=?,[備考]=?,'
-                    '[有効]=?,[組み込みキー]=?,[内訳列数]=?,[種別]=?,[文字]=?,[繰返]=?,'
-                    '[繰返方向]=?,[最大表示]=?,[欄のラベル位置]=?,[欄の揃え]=?,'
-                    '[更新者ID]=?,[更新日時]=Now() '
-                    'WHERE [ブロックID]=?', args[2:] + [uid, hit[0]])
-        c.commit()
+        # 自然キーで当たった行は設備名・ブロック名を書き直さない（今までどおり）。
+        DEF.update(c, hit[0], {k: v for k, v in vals.items() if k not in ('設備名', 'ブロック名')}, uid)
         return int(hit[0])
     if order is None:
         cur.execute('SELECT MAX([表示順]) FROM [帳票ブロックマスタ]')
         top = cur.fetchone()[0] or 0
-        order = int(top) + 10
-        args[2] = order
-    cur.execute('INSERT INTO [帳票ブロックマスタ] '
-                '([設備名],[ブロック名],[表示順],[幅],[行数],[内容],[備考],[有効],'
-                '[組み込みキー],[内訳列数],[種別],[文字],[繰返],[繰返方向],[最大表示],'
-                '[欄のラベル位置],[欄の揃え],'
-                '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())', args + [uid, uid])
-    c.commit()
-    return int(cur.lastrowid)
+        vals['表示順'] = int(top) + 10
+    return DEF.insert(c, vals, uid)
 
 
 def block_delete(c, block_id, uid):

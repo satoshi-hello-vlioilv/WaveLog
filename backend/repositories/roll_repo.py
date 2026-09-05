@@ -66,7 +66,8 @@
 （現場の呼び名は選択肢で塞げない）。
 """
 from ..flags import flag_of, OFF_WORDS
-from ..db_access import add_missing_columns, ensure_audit_columns, tables
+from ..db_access import tables
+from .table_def import TableDef
 
 TABLE = 'ロールマスタ'
 # 設備停止マスタが「すべての設備」に使う印。**ロールでは受け付けない**が、
@@ -84,13 +85,16 @@ ENTRY_POSITIONS = ('入側', '出側', '中間', 'ルーパー', '巻取', '巻�
 CONTACT_FACES = ('上', '下', '上下', '端面', '非接触')
 DRIVE_KINDS = ('駆動', '従動', 'フリー', 'ブレーキ')
 
-_ADDED_COLUMNS = (
-    ('入出位置', 'TEXT'), ('接触面', 'TEXT'),
+# 列の並び（§9.324 R1）。**ここが唯一の定義**——CREATE・「無ければ足す」・
+# SELECT・辞書化・UPDATE・INSERTの全部が`DEF`から作られる。**新しい列は末尾へ**。
+COLUMNS = (
+    ('設備名', 'TEXT'), ('入出位置', 'TEXT'), ('接触面', 'TEXT'),
     ('ロール径MAX', 'REAL'), ('ロール径MIN', 'REAL'), ('ロール面長', 'REAL'),
-    ('材質', 'TEXT'), ('硬度', 'TEXT'), ('本数', 'INTEGER'),
+    ('材質', 'TEXT'), ('硬度', 'TEXT'), ('本数', 'INTEGER'), ('ロール名', 'TEXT'),
     ('ロール使用条件', 'TEXT'), ('駆動方式', 'TEXT'), ('基準番号', 'TEXT'),
     ('備考', 'TEXT'), ('表示順', 'INTEGER'), ('有効', 'INTEGER'),
 )
+DEF = TableDef(TABLE, 'ロールID', COLUMNS, order_by='[設備名],[表示順],[ロールID]')
 
 
 def _num(v):
@@ -417,22 +421,12 @@ def _canonical_eq(c, raw):
 
 def ensure_table(c):
     if TABLE not in tables(c):
-        cur = c.cursor()
-        cur.execute('CREATE TABLE [ロールマスタ] ('
-                    '[ロールID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, '
-                    '[入出位置] TEXT, [接触面] TEXT, '
-                    '[ロール径MAX] REAL, [ロール径MIN] REAL, [ロール面長] REAL, '
-                    '[材質] TEXT, [硬度] TEXT, [本数] INTEGER, [ロール名] TEXT, '
-                    '[ロール使用条件] TEXT, [駆動方式] TEXT, [基準番号] TEXT, [備考] TEXT, '
-                    '[表示順] INTEGER, [有効] INTEGER, '
-                    '[登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
-        c.commit()
-        ensure_audit_columns(c, TABLE)
+        DEF.create(c)                      # 列は`DEF`の1つの定義から（§9.324 R1）
         return True
     # 既存DBへの追加は他マスタと同じ「無ければ足す」方式。**足すのは
-    # `add_missing_columns()`の1箇所**（§9.315。同時に走っても壊れない）。
-    add_missing_columns(c, TABLE, _ADDED_COLUMNS)
-    ensure_audit_columns(c, TABLE)
+    # `add_missing_columns()`の1箇所**（§9.315。同時に走っても壊れない。
+    # 監査列も`DEF`が一緒に見る）。
+    DEF.add_missing(c)
     _migrate_once(c)
     return False
 
@@ -456,39 +450,33 @@ def _migrate_once(c):
         pass
 
 
-_SELECT = ('SELECT [ロールID],[設備名],[入出位置],[接触面],[ロール径MAX],[ロール径MIN],'
-           '[ロール面長],[材質],[硬度],[本数],[ロール名],[ロール使用条件],[駆動方式],'
-           '[基準番号],[備考],[表示順],[有効] '
-           f'FROM [{TABLE}] ORDER BY [設備名],[表示順],[ロールID]')
-
-
-def _row(r):
-    return {'id': r[0],
-            'equipment': str(r[1] or '').strip(),
-            'entryPos': str(r[2] or '').strip(),
-            'contactFace': str(r[3] or '').strip(),
-            'diaMax': _num(r[4]), 'diaMin': _num(r[5]), 'faceLen': _num(r[6]),
-            'material': str(r[7] or '').strip(),
-            'hardness': str(r[8] or '').strip(),
-            'count': _int(r[9]),
-            'name': str(r[10] or '').strip(),
-            'useCond': str(r[11] or '').strip(),
-            'driveKind': str(r[12] or '').strip(),
-            'refNo': str(r[13] or '').strip(),
-            'note': str(r[14] or ''),
-            'order': r[15],
+def _row(d):
+    """`DEF.fetch()`の1行（列名→値）を画面の形へ。**位置では読まない**（§9.324 R1）。"""
+    return {'id': d['ロールID'],
+            'equipment': str(d['設備名'] or '').strip(),
+            'entryPos': str(d['入出位置'] or '').strip(),
+            'contactFace': str(d['接触面'] or '').strip(),
+            'diaMax': _num(d['ロール径MAX']), 'diaMin': _num(d['ロール径MIN']),
+            'faceLen': _num(d['ロール面長']),
+            'material': str(d['材質'] or '').strip(),
+            'hardness': str(d['硬度'] or '').strip(),
+            'count': _int(d['本数']),
+            'name': str(d['ロール名'] or '').strip(),
+            'useCond': str(d['ロール使用条件'] or '').strip(),
+            'driveKind': str(d['駆動方式'] or '').strip(),
+            'refNo': str(d['基準番号'] or '').strip(),
+            'note': str(d['備考'] or ''),
+            'order': d['表示順'],
             # [有効] が NULL の行は**有効**として扱う（列を足したときに
             # 既存の行が勝手に消えないように。他マスタと同じ約束）。
-            'enabled': True if r[16] is None else bool(r[16])}
+            'enabled': True if d['有効'] is None else bool(d['有効'])}
 
 
 def roll_rows(c, include_disabled=False):
     ensure_table(c)
-    cur = c.cursor()
-    cur.execute(_SELECT)
     out = []
-    for r in cur.fetchall():
-        x = _row(r)
+    for d in DEF.fetch(c):
+        x = _row(d)
         if not x['enabled'] and not include_disabled:
             continue
         out.append(x)
@@ -530,12 +518,9 @@ def roll_upsert(c, uid, equipment=None, name=None, entry_pos=None, contact_face=
     index = RollIndex(cur.fetchall())
     prev = None
     if roll_id is not None:
-        cur.execute(f'SELECT * FROM [{TABLE}] WHERE [ロールID]=?', [roll_id])
-        row = cur.fetchone()
-        if row is None:
+        prev = DEF.get(c, roll_id)
+        if prev is None:
             raise ValueError('更新対象のロールが見つかりません。')
-        cols = [d[0] for d in cur.description]
-        prev = dict(zip(cols, row))
     # **自然キーで引き当てるのは`prev`を読む前**（§9.240 の追補）。
     # 以前はここが値を組み立てた**あと**に在ったため、IDを渡さない経路
     # （Excelの取り込み・登録API）では`prev`が`None`のままで`keep()`が効かず、
@@ -563,11 +548,7 @@ def roll_upsert(c, uid, equipment=None, name=None, entry_pos=None, contact_face=
                                  % (equipment, name, '・'.join(KEY_LABELS[2:])))
             roll_id = hit
             if roll_id is not None:
-                cur.execute(f'SELECT * FROM [{TABLE}] WHERE [ロールID]=?', [roll_id])
-                row = cur.fetchone()
-                if row is not None:
-                    cols = [d[0] for d in cur.description]
-                    prev = dict(zip(cols, row))
+                prev = DEF.get(c, roll_id)
     keep = lambda col, v: (prev.get(col) if (v is None and prev is not None) else v)
 
     # 設備は**ちょうど1つの登録済み設備**（§9.239 ⑥ 訂正）。
@@ -652,17 +633,8 @@ def roll_upsert(c, uid, equipment=None, name=None, entry_pos=None, contact_face=
                                             vals['ロール径MIN'], vals['備考']),
                             eq, '・'.join(KEY_LABELS)))
     if roll_id is None:
-        keys = ','.join(f'[{k}]' for k in vals)
-        marks = ','.join('?' for _ in vals)
-        cur.execute(f'INSERT INTO [{TABLE}] ({keys},[登録者ID],[更新者ID],[登録日時],[更新日時]) '
-                    f'VALUES ({marks},?,?,Now(),Now())',
-                    list(vals.values()) + [uid, uid])
-        c.commit()
-        return cur.lastrowid
-    sets = ','.join(f'[{k}]=?' for k in vals)
-    cur.execute(f'UPDATE [{TABLE}] SET {sets},[更新者ID]=?,[更新日時]=Now() WHERE [ロールID]=?',
-                list(vals.values()) + [uid, roll_id])
-    c.commit()
+        return DEF.insert(c, vals, uid)
+    DEF.update(c, roll_id, vals, uid)
     return roll_id
 
 
@@ -852,12 +824,9 @@ def migrate_single_equipment(c, uid='migrate:roll'):
         targets = _split_eq(raw)
         if len(targets) <= 1:
             continue              # 既に1設備（または空）＝触らない
-        cur.execute(f'SELECT * FROM [{TABLE}] WHERE [ロールID]=?', [rid])
-        src = cur.fetchone()
-        if src is None:
+        base = DEF.get(c, rid)
+        if base is None:
             continue
-        cols = [d[0] for d in cur.description]
-        base = dict(zip(cols, src))
         cur.execute(f'UPDATE [{TABLE}] SET [設備名]=?,[更新者ID]=?,[更新日時]=Now() '
                     f'WHERE [ロールID]=?', [targets[0], uid, rid])
         seen.discard(roll_key(raw, rname, rface, rmax, rmin, rnote))

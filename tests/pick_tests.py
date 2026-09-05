@@ -42,7 +42,9 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
           # §9.324 R4: 真偽の読み方の写しが残っていないか（1秒未満）
           'test_flags',
           # §9.324 R2: ルートの失敗の受け方は api_guard の1箇所（写しを機械で数える）
-          'test_apiguard']
+          'test_apiguard',
+          # §9.324 R1: 列定義は TableDef の1箇所（位置読みの写しを機械で数える・数秒）
+          'test_tabledef']
 
 # 束ねた呼び名。右辺は実際のテスト名。
 G = {}
@@ -345,6 +347,9 @@ RULES = [
                                    'test_modeguard')),
     ('backend/routes/masters.py', g('マスタ', '列', 'test_modeguard')),
     ('backend/routes/common.py', g('マスタ', 'test_modeguard', 'test_crudroutes', 'test_error')),
+    # §9.324 R1: 表の列定義（CREATE・足す・読む・書く）の器。3つのRepoが乗る。
+    ('backend/repositories/table_def.py', g('マスタ', '操業データ', '異常位置', 'test_rpmaster',
+                                              'test_rpblocks', 'test_rbmodal', 'test_rollio')),
     ('backend/routes/schedule.py', g('スケジュール', 'test_modeguard', 'test_crudroutes')),
     ('backend/routes/measurement.py', g('測定', 'test_modeguard', 'test_measstore',
                                         # §9.317: 参照データが読めなくても測定は始められる

@@ -21417,3 +21417,70 @@ from〜to）／`picked`（一覧のチェックで選んだ予定だけ）の3�
   壊れていると「0件」で通る）
 
 回した網は本文の報告どおり。CSSの並び（`CSS_FILES`）は触っていない。
+
+### R1 Repo層の列定義を1つのデータ構造に（VER2.204.0）
+
+帳票ブロック・ロール・操業データ項目・選択肢の4つの表は、1つの表について
+**5箇所**が別々に列を数えていた:
+
+    CREATE TABLE …（新しいDB）
+    _ADDED_COLUMNS = (…)（後から足した列を「無ければ足す」）
+    SELECT [a],[b],…（読む並び）
+    _row(r): r[14] … / len(r)>36 and r[36]（位置で読む・古いDBの守り）
+    UPDATE … SET [a]=?,[b]=? / INSERT … VALUES (?×44)（書く並び・`args`）
+
+列を1つ足すたびに5箇所を**同じ順で**直す必要があり、実際に**CREATEだけが
+古いまま**だった——新しいDBでは最初の1回だけ `no such column: 繰返`
+（帳票ブロック）／`役割`（操業データ項目）で落ち、2回目は`add_missing_columns()`が
+足すので通る（§9.315の「リロードすると直る」と同じ顔。新しく端末を立てた
+ときにしか出ないので誰も気づいていなかった）。`_ITEM_SELECT`には「**末尾へ
+足す**——`_row_to_item`が位置で読んでいる」という注意書きが4つ並び、
+`item_upsert`の`args`にも「2本目のUPDATEが`args[1:2]+args[3:]`で位置を数えて
+いる」が5つ並んでいた——**気を付ける場所が増え続ける作り**だった。
+
+`backend/repositories/table_def.py` の `TableDef(table, key, columns, order_by)`:
+
+- `create_sql()`／`create()`: 鍵＋`columns`＋監査列（`AUDIT`）
+- `add_missing()`: `db_access.add_missing_columns()`を通す（§9.315の窓口はあちら）
+- `fetch(c, where, args, order_by)`: **在る列だけで読む**（無い列は`None`。
+  表が無ければ空。並びの鍵も在る列だけ）——読み取り専用の接続では列を
+  足せない（§9.221 ③）。`choice_rows()`の**4段の`try/except`の読み直し**は
+  これで消えた
+- `get(c, key)`／`insert(c, vals, uid)`／`update(c, key, vals, uid)`:
+  **渡した辞書の鍵だけを書く**（§9.212 ②が構造として成り立つ）。監査列は
+  ここが書く。**知らない列は断る**（綴りの間違いが黙って捨てられない）
+
+乗せ換えたもの:
+
+| 表 | 定義 | 変わった点 |
+|---|---|---|
+| 帳票ブロックマスタ | `report_block_repo.DEF` | `_row(d)`が名前で読む／`block_upsert`が`vals`辞書 |
+| ロールマスタ | `roll_repo.DEF` | `ensure_audit_columns`不要／`migrate_single_equipment`は`DEF.get` |
+| 操業データ項目マスタ | `operation_repo.ITEM_DEF` | `_ITEM_SELECT`廃止／`_row_to_item(d)`／`item_upsert`の`args`44個→`vals`辞書 |
+| 操業データ選択肢マスタ | `operation_repo.CHOICE_DEF` | 4段の読み直し廃止／`choice_upsert`が辞書 |
+
+**振る舞いは変えない**——保存される値・戻り値の形は同じ。`item_upsert`が
+書かない列（`[設備別レイアウト]`・`[記録群]`・`[記録順]`）は辞書に**入れない**
+ことで「触らない」を表す（以前はUPDATEの列挙から外すことで表していた）。
+`_ensure_item_columns()`の**`grow`（列幅×12の1度きりの移行）**と種まき
+（`_seed_items`／`_seed_builtins`／`seed_mother_builtins`）は据え置き。
+
+固定は `tests/test_tabledef.py`（32件）:
+- `TableDef`の契約（CREATEに全列／`fetch`は在る列だけ／`insert`・`update`は
+  渡した鍵だけ／知らない列は断る／`add_missing`は2度目に何も足さない）
+- **新しいDB**で4つの表が最初の1回から読め、**表に全列が入っていること**を
+  `cols()`で直接見る——**「読める」だけを見る網は素通りする**（`fetch`が在る列
+  だけで読むので、CREATEが古くても通る。**実際に素通りした**——`[役割]`を落とした
+  CREATEを注いでも0件だった）
+- 部分更新で他の列が消えないこと（4表）——`auto_formula`の持ち上げを1行消すと
+  落ちることを確認済み
+- 読み取り専用の古い選択肢マスタ（列が足りない）でも読めること
+- `_row`／`_row_to_item`／`choice_rows`が**`r[N]`で読んでいない**ことを
+  構文木で数える（自己確認つき）
+
+回した網: `test_rollio test_roll test_rollwipe test_rollload test_rbcells
+test_ddllint`（235/235）、`test_opdata test_choicelink test_opchoice test_oppad
+test_opinline test_crudroutes test_ddllint test_opmother test_opauto test_oplimit
+test_reclayout test_opparent test_opformula test_opblank test_rbcells test_rollio`
+（592/592）、`test_tabledef`（32/32）、`test_pick`・`test_changelog`。
+**フルスイートは回していない。**
