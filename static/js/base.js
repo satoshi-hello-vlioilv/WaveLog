@@ -2,7 +2,29 @@
 /* base.js: 共有基盤 — グローバル状態(S)・API呼び出し・共通ユーティリティ・
    フィールド別名(aliases)・端末設定(使用設備/ユーザーID)。
    読込順の先頭に置き、画面固有の処理はここへ置かない。 */
-const LENGTH_SLOTS=12;const $=s=>document.querySelector(s),S={db:null,table:null,catalog:[],tables:[],columns:[],rows:[],page:1,count:0,current:null,measure:null,selectedRows:new Set()};
+const LENGTH_SLOTS=12;const $=s=>document.querySelector(s);
+/* グローバル状態 S。**鍵はここだけが決める**（§9.327、REVIEW 3-8）——
+   `Object.seal` で後付けを断っているので、別のファイルで宣言に無い鍵へ書くと
+   （strict の関数の中では）その場で TypeError になる。綴りを間違えても
+   静かに新しい鍵ができない。鍵を足すときはここへ1行足し、誰が書くかを添える。
+   見張りは tests/test_globallint.py（使っている鍵が全部ここに載っているか）。 */
+const S={
+  db:null,table:null,             /* いま開いている一覧（list-view.js が書く） */
+  catalog:[],tables:[],           /* /api/catalog の答え（list-view.js） */
+  columns:[],rows:[],page:1,count:0,  /* いま出している表（list-view.js。テストも書く） */
+  joinQuality:null,               /* 品質データ結合の内訳（list-view.js。列の設定パネルが読む） */
+  selectedRow:null,               /* 一覧で選んでいる1行（list-view.js） */
+  selectedRows:new Set(),         /* まとめて選んだ行（予定投入・§9.5） */
+  t:null,                         /* 検索欄の debounce タイマー（list-view.js） */
+  current:null,                   /* 測定を開いている元の行（records-store.js） */
+  measure:null,                   /* 測定レコードそのもの（records-store.js。測定系が読む） */
+  measureContextError:'',         /* 参照データが読めなかった理由（§9.317。records-store.js） */
+  genericFilters:[],              /* いま効いている絞り込み条件（filters.js） */
+  filterPresets:[],               /* 登録フィルタ（filters.js） */
+  filterPresetSource:'local',     /* 登録フィルタの出どころ master/local（filters.js） */
+  filterCondUsage:{},             /* 条件の利用回数（filters.js） */
+};
+Object.seal(S);
 /* エラー時、応答JSONの残りのフィールド(code等)をErrorオブジェクトへ
    そのまま乗せる(呼び出し側がe.messageだけでなくe.codeでも分岐できるように
    するため)。既存の呼び出し元はe.messageしか見ていないため、これを追加

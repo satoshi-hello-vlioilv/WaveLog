@@ -21674,3 +21674,32 @@ sctimecols 23秒／rplayout 15秒／dbequip 15秒／uiux 16秒）。同じ型で
 
 回した網: `test_pyflakes`・`test_eslint`（新設）と、`ALWAYS`の静的検査、触ったモジュールの
 網（サーバー側の数十本と、触ったJSを見る画面の網）。**フルスイートは回していない。**
+
+## §9.327 画面の共有状態 `S` の鍵を1箇所で宣言して封じる（REVIEW 3-8、構造の改善の2段目、VER2.210.0）
+
+`base.js`の`S`は画面をまたぐ共有状態で、700箇所から読まれる。宣言は
+`{db,table,catalog,tables,columns,rows,page,count,current,measure,selectedRows}`の
+11個だったが、実際に触られている鍵は19個——`filters.js`が`genericFilters`／
+`filterPresets`／`filterPresetSource`／`filterCondUsage`、`list-view.js`が
+`joinQuality`／`selectedRow`／`t`、`records-store.js`が`measureContextError`を
+**後から足していた**。JSのオブジェクトは何でも足せるので、綴りを1字間違えても
+**静かに新しい鍵ができて、読む側は`undefined`を読む**（§9.215の`window.S`と同じ形の
+「画面は動いて見える」壊れ方）。
+
+直したのは2つ。①**宣言を1つのリテラルへ**（鍵ごとに誰が書くかを添える）
+②**`Object.seal(S)`**——29本のJSは`'use strict'`なので、宣言に無い鍵への代入は
+その場で`TypeError`になる。既定値は**読む側が`||[]`／`||{}`で受けていた形と同じ**
+（`genericFilters:[]`等）にしてあるので、`undefined`だった頃と分岐は1つも変わらない
+（真偽で見ているのは`S.selectedRow===r`の1箇所で、`null`でも`undefined`でも同じ答え）。
+
+見張りは`tests/test_globallint.py`（既存の`window.*`の網。`ALWAYS`）へ4件——
+使っている鍵（`static/js`＋`tests`）が全部宣言に載っている／宣言だけで誰も触らない
+鍵が無い／`Object.seal(S)`が在る／`S[...]`の動的な鍵が無い。**`seal`だけでは足りない**
+——足し忘れは実行時にしか出ず、その画面を開いた人にしか見えない。**網だけでも足りない**
+——`S[k]=v`のような動的な書き方は字で数えられないので`seal`が受ける。
+`report-dashboard.js`の`const S=M0.sheet`は紙の1枚ぶんを指す**別の局所変数**なので、
+その関数の中は読み飛ばす（名前が同じなのは紛らわしいが、改名は3-9のフォルダ整理と
+一緒に）。
+
+回した網: `test_globallint`（直す前は「後付け8件」「sealが無い」の2件で落ちることを
+確認）と、`S`の鍵を触る画面の網。**フルスイートは回していない。**
