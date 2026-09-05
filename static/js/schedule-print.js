@@ -861,7 +861,7 @@
  function kidBadgeHtml(count){
   if(!count)return '';
   let mode='count';
-  try{if(typeof WL.scheduleView.childBadgeMode==='function')mode=WL.scheduleView.childBadgeMode()}catch(_){}
+  try{if(typeof WL.scheduleView.childBadgeMode==='function')mode=WL.scheduleView.childBadgeMode()}catch(_){WL.quiet.note('子の印の出し方を引けない（件数の形で出す）',_)}
   const text=mode==='parent'?'親':`子${count}`;
   return `<span class="sp-kid" title="分割後の子ロットが${count}件あります">${esc(text)}</span>`;
  }
@@ -1247,7 +1247,7 @@
   }catch(_){return {...DEFAULTS}}
  }
  function savePref(p){
-  try{localStorage.setItem(PREF_KEY,JSON.stringify(p))}catch(_){}
+  try{localStorage.setItem(PREF_KEY,JSON.stringify(p))}catch(_){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',_)}
  }
 
  /* ---------- 印刷はプレビューを先に出す(§9.186) ----------
@@ -1304,7 +1304,7 @@
      /* **紙の列は`timeline:<設備>`から引く**(§9.235)ので、成り代わる前に
         読んでおく(`WL.columnLayout`はターゲットごとのキャッシュなので、
         読み込みは1回だけで済む)。 */
-     try{await WL.columnLayout.load('timeline:'+name)}catch(_){}
+     try{await WL.columnLayout.load('timeline:'+name)}catch(_){WL.quiet.note('列の設定を取れない（既定の並びで出す）',_)}
      const built=(typeof view.withEquipment==='function')
        ?await view.withEquipment(name,rows,()=>buildPages(name,rows,opt))
        :buildPages(name,rows,opt);
@@ -1504,7 +1504,7 @@
   const names=(typeof view?.equipmentNames==='function')?view.equipmentNames():[];
   const allCols=(typeof view?.printColumnKeys==='function')?view.printColumnKeys().length:0;
   let visCols=allCols;
-  try{if(typeof view?.visibleColumnKeys==='function')visCols=view.visibleColumnKeys().length}catch(_){}
+  try{if(typeof view?.visibleColumnKeys==='function')visCols=view.visibleColumnKeys().length}catch(_){WL.quiet.note('見えている列を数えられない（全部の列で見積もる）',_)}
   return {
    /* 「すべての設備」を入れていると、他設備ぶんは読むまで分からない。
       そのときは**数えられないので断らない**（fail-open）。 */

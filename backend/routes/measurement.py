@@ -15,6 +15,7 @@ from ..repositories.master_repo import read_equipment_max_strips, read_equipment
 from ..repositories.master_repo import choice_usage_for, choice_usage_bump
 from .. import records_export
 from ..logging_setup import app_logger
+from ..quiet import quiet
 
 bp=Blueprint('measurement',__name__)
 
@@ -347,7 +348,7 @@ def measurement_actuals():
   to=str(request.args.get('to') or '').strip()
   basis='cal' if str(request.args.get('basis') or '').strip()=='cal' else 'work'
   try:limit=int(request.args.get('limit') or ACTUALS_LIMIT_DEFAULT)
-  except Exception:limit=ACTUALS_LIMIT_DEFAULT
+  except Exception as _e:quiet('数として読めない（既定で続ける）',_e);limit=ACTUALS_LIMIT_DEFAULT
   limit=max(1,min(20000,limit))
   items=actuals.rows(equipment=eq,date_from=frm,date_to=to,basis=basis)
   total=len(items)
@@ -365,7 +366,7 @@ def measurement_actuals():
    if raw:
     got=json.loads(raw)
     if isinstance(got,list):paths=[str(x) for x in got if str(x or '')][:400]
-  except Exception:paths=[]
+  except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);paths=[]
   if paths:
    items=[dict(x,fields=actuals.field_values(x,paths)) for x in items]
   cat=actuals.catalog(eq)
@@ -534,7 +535,8 @@ def storage_status():
         'mirrored':_mirror_state()}
  try:
   local['exists']=path_exists_safe(write_target)
- except Exception:
+ except Exception as _e:
+  quiet('在るかどうかを確かめられない（分からないものとして続ける）',_e)
   local['exists']=None
  try:
   local['size']=write_target.stat().st_size

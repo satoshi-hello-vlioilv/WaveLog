@@ -27,6 +27,7 @@
 """
 from .master_repo import tables
 from .table_def import TableDef
+from ..quiet import quiet
 
 ITEM_TABLE = '操業データ項目マスタ'
 CHOICE_TABLE = '操業データ選択肢マスタ'
@@ -1078,8 +1079,8 @@ def choice_rows(c, include_disabled=False):
     表が無ければ空、列が足りなければ在る列だけで読む（`TableDef.fetch`）。"""
     try:
         ensure_choice_table(c)
-    except Exception:
-        pass
+    except Exception as _e:
+        quiet('表を用意できない（読み取り専用の接続では足せない・§9.221 ③）',_e)
     out = []
     for d in CHOICE_DEF.fetch(c):
         on = True if d['有効'] is None else bool(d['有効'])
@@ -1270,7 +1271,8 @@ def choice_usage(c):
         for it in item_rows(c, True):
             if it['choice']:
                 out.setdefault(it['choice'], []).append(it['name'])
-    except Exception:
+    except Exception as _e:
+        quiet('項目を読めない（どこで使っているかを出さない）',_e)
         return None
     return out
 
@@ -1299,7 +1301,8 @@ def choice_hints(c):
             if g and g not in slot['groups']:
                 slot['groups'].append(g)
             slot['count'] += 1
-    except Exception:
+    except Exception as _e:
+        quiet('項目を読めない（手掛かりを出さない）',_e)
         return {}
     return out
 
@@ -1344,8 +1347,8 @@ def builtin_choice_name(c, key):
         for it in item_rows(c, True):
             if it['builtin'] == key:
                 return it['choice'] or fallback
-    except Exception:
-        pass
+    except Exception as _e:
+        quiet('項目を読めない（既定のまとまり名を使う）',_e)
     return fallback
 
 
@@ -1359,7 +1362,8 @@ def choice_used_bump(c, name, value, n=1):
         return 0
     try:
         ensure_choice_table(c)
-    except Exception:
+    except Exception as _e:
+        quiet('表を用意できない（数えずに0を返す）',_e)
         return 0
     cur = c.cursor()
     cur.execute(f'UPDATE [{CHOICE_TABLE}] '
@@ -1410,8 +1414,8 @@ def choice_links(c, include_disabled=False):
     `connect(path,True)`で開く。表が無ければ空。"""
     try:
         ensure_choice_link_table(c)
-    except Exception:
-        pass
+    except Exception as _e:
+        quiet('表を用意できない（リンクは無いものとして続ける）',_e)
     if CHOICE_LINK_TABLE not in tables(c):
         return []
     cur = c.cursor()
@@ -1419,7 +1423,8 @@ def choice_links(c, include_disabled=False):
         cur.execute('SELECT [リンクID],[親まとまり],[子まとまり],[説明],[有効] '
                     'FROM [選択肢リンクマスタ] ORDER BY [親まとまり],[子まとまり]')
         raw = cur.fetchall()
-    except Exception:
+    except Exception as _e:
+        quiet('リンクを読めない（親子は無いものとして続ける）',_e)
         return []
     out = []
     for r in raw:
@@ -2001,7 +2006,8 @@ def _override_map(raw):
         import json
         try:
             src = json.loads(str(raw))
-        except Exception:
+        except Exception as _e:
+            quiet('保存された値を読めない（既定で続ける）',_e)
             return {}
     if not isinstance(src, dict):
         return {}
@@ -2101,7 +2107,8 @@ def resolve_limit(c, key, equipment):
         if key == 'equipment.maxStrips':
             n = mr.read_equipment_max_strips(c, equipment)
             return float(n) if n else None
-    except Exception:
+    except Exception as _e:
+        quiet('上下限をマスタから引けない（上限なしとして続ける・§9.231）',_e)
         return None
     return None
 
@@ -2232,8 +2239,8 @@ def ensure_item_table(c):
     # **後から足した組み込みの欄も入れる**（§9.232）。1度だけ・まだ無い鍵だけ。
     try:
         seed_mother_builtins(c)
-    except Exception:
-        pass
+    except Exception as _e:
+        quiet('母材の組み込み欄を入れられない（次に開いたときに入る）',_e)
     return False
 
 
@@ -2512,7 +2519,8 @@ def item_rename_references(c, old, new, uid):
         if n:
             c.commit()
         return n
-    except Exception:
+    except Exception as _e:
+        quiet('帳票の参照を付け替えられない（名前を変えた欄が紙で空になる）',_e)
         return 0
 
 

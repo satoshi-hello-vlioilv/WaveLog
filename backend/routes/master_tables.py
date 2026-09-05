@@ -28,6 +28,7 @@ from flask import Blueprint, jsonify, request
 from ..db_access import (AUDIT_COLUMNS, DBS, connect, ensure_audit_columns,
                          request_user_id, tables)
 from ..logging_setup import app_logger
+from ..quiet import quiet
 
 bp = Blueprint('master_tables', __name__)
 
@@ -182,7 +183,8 @@ def master_table_catalog():
     info = _known(t)
     try:
      rows = c.execute(f'SELECT COUNT(*) FROM [{t}]').fetchone()[0]
-    except Exception:
+    except Exception as _e:
+     quiet('件数を数えられない（件数を出さない）',_e)
      rows = None
     cols = _schema(c, t)
     info.update({'table': t, 'rows': rows, 'columns': [x['name'] for x in cols],
@@ -347,7 +349,8 @@ def master_table_drop(table):
  with connect(_master_path(), False) as c:
   try:
    rows = c.execute(f'SELECT COUNT(*) FROM [{name}]').fetchone()[0]
-  except Exception:
+  except Exception as _e:
+   quiet('件数を数えられない（件数を出さない）',_e)
    rows = None
   c.cursor().execute(f'DROP TABLE IF EXISTS [{name}]')
   c.commit()

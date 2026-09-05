@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import atomic_io
+from .quiet import quiet
 
 def qi(s):return '"'+str(s).replace('"','""')+'"'
 
@@ -194,6 +195,6 @@ def extract_one(job,conf,work_dir):
  finally:
   if api_client:
    try:api_client.close()
-   except Exception:pass
+   except Exception as _e:quiet('接続を閉じられない（この要求のあいだだけの接続なので後で片付く）',_e)
   try:shutil.rmtree(work_dir,ignore_errors=True)
-  except Exception:pass
+  except Exception as _e:quiet('作業フォルダを片付けられない（次の掃除で消える）',_e)

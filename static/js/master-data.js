@@ -15,7 +15,7 @@
  function fmtLfMinutes(min){if(min===null||min===undefined)return '-';const v=Math.round(min);if(v<60)return `${v}分`;return `${Math.floor(v/60)}時間${v%60?(v%60)+'分':''}`}
  async function loadLoadFactorMaint(force){
   const list=$('#masterMaintList');if(!list)return;
-  if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){/* 設備マスタが読めなくても画面表示は継続する */}}
+  if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備マスタが読めなくても画面表示は継続する',e)}}
   const opts=equipmentMasterState.items||[];
   if(!loadFactorState.equipment&&opts.length)loadFactorState.equipment=opts[0].name;
   renderLoadFactorForm();
@@ -1382,7 +1382,7 @@
    el.onclick=ev=>{ev.preventDefault();qjPickField(side,col)};
    el.ondragstart=ev=>{
     qjState.pick={side,col};
-    try{ev.dataTransfer.setData('text/plain',side+'\t'+col);ev.dataTransfer.effectAllowed='link'}catch(_){}
+    try{ev.dataTransfer.setData('text/plain',side+'\t'+col);ev.dataTransfer.effectAllowed='link'}catch(_){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',_)}
     el.classList.add('is-pick');
    };
    el.ondragend=()=>{el.classList.remove('is-pick');
@@ -1397,7 +1397,7 @@
     ev.preventDefault();el.classList.remove('is-drop');
     let from=null;
     try{const t=String(ev.dataTransfer.getData('text/plain')||'').split('\t');
-        if(t.length===2)from={side:t[0],col:t[1]}}catch(_){}
+        if(t.length===2)from={side:t[0],col:t[1]}}catch(_){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',_)}
     if(!from)from=qjState.pick;
     if(!from||from.side===side)return;
     qjState.pick=null;
@@ -2549,7 +2549,7 @@
  async function loadShiftPatternMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   form.classList.remove('mm-form-compact');
-  if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){/* 設備が読めなくても編集は続行 */}}
+  if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備が読めなくても編集は続行',e)}}
   list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   try{
    const r=await api('/api/schedule/shift-pattern-master?scope=all');
@@ -3330,7 +3330,7 @@
     return;
    }
   }
-  try{await loadMasterTableCatalog()}catch(e){/* 読めなくても一覧は出す */}
+  try{await loadMasterTableCatalog()}catch(e){WL.quiet.note('読めなくても一覧は出す',e)}
   renderRawTableForm();
   await loadRawTableRows();
  }

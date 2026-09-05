@@ -31,6 +31,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from . import paths
+from .quiet import quiet
 
 # ------------------------------------------------------------------
 # config/local.json で受け付ける鍵。**ここが唯一の一覧**——増やすときは
@@ -58,13 +59,13 @@ def kind_of(path):
     try:
         if paths.is_network_path(raw):
             return 'network'
-    except Exception:
-        pass
+    except Exception as _e:
+        quiet('置き場の種類を確かめられない（分からないものとして続ける）',_e)
     try:
         if paths.cloud_sync_hint(Path(raw)):
             return 'cloud'
-    except Exception:
-        pass
+    except Exception as _e:
+        quiet('置き場の種類を確かめられない（分からないものとして続ける）',_e)
     return 'local'
 
 
@@ -75,14 +76,16 @@ def exists_of(path):
     from .db_access import path_exists_safe
     try:
         return path_exists_safe(Path(path))
-    except Exception:
+    except Exception as _e:
+        quiet('在るかどうかを確かめられない（分からないものとして続ける）',_e)
         return None
 
 
 def _local_config_raw():
     try:
         return paths.load_local_config()
-    except Exception:
+    except Exception as _e:
+        quiet('置き場の設定を読めない（理由は`paths.local_config_error()`が持つ・§9.271）',_e)
         return {}
 
 
@@ -188,7 +191,8 @@ def _read_path_config():
         from .db_access import DBS, connect, path_config_rows
         with connect(DBS['MASTER']['path'], True) as c:
             return dict(path_config_rows(c))
-    except Exception:
+    except Exception as _e:
+        quiet('パス設定マスタを読めない（保存値なしで組み立てる）',_e)
         return {}
 
 
@@ -368,7 +372,8 @@ def _items_inner(records_export):
     retired = ''
     try:
         retired = records_export.retired_reason() or ''
-    except Exception:
+    except Exception as _e:
+        quiet('複製をやめた理由を引けない（理由を出さない）',_e)
         retired = ''
     out.append(_row(
         'export', 'share', '閲覧用の複製',
@@ -406,8 +411,8 @@ def _items_inner(records_export):
                         mode='dir', when='live', editable=False, creatable=False,
                         section='rne',
                         note='読み込み先は「RNE抽出」の節で直します。'))
-    except Exception:
-        pass
+    except Exception as _e:
+        quiet('RNE資材の置き場を出せない（その行を出さない）',_e)
     return out
 
 
@@ -424,7 +429,8 @@ def same_root(rows):
         try:
             p = Path(x['path'])
             roots.append(str(p if x['key'] == 'recordsShare' else p.parent))
-        except Exception:
+        except Exception as _e:
+            quiet('置き場を比べられない（揃っているとは言わない）',_e)
             return ''
     return roots[0] if len(roots) == 3 and len(set(roots)) == 1 else ''
 
@@ -540,7 +546,8 @@ def save_local_config(updates):
     try:
         if path.exists():
             backup.write_text(path.read_text(encoding='utf-8'), encoding='utf-8')
-    except Exception:
+    except Exception as _e:
+        quiet('控えを作れない（保存そのものは続ける）',_e)
         backup = None
     text = json.dumps(current, ensure_ascii=False, indent=2) + '\n'
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -645,8 +652,8 @@ def prepare_path(raw, mode='dir', apply=False):
         probe.write_text('', encoding='utf-8')
         try:
             probe.unlink()
-        except Exception:
-            pass
+        except Exception as _e:
+            quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
         plan['writable'] = True
     except Exception as e:
         plan['writable'] = False

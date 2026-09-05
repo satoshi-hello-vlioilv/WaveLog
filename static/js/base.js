@@ -25,6 +25,38 @@ const S={
   filterCondUsage:{},             /* 条件の利用回数（filters.js） */
 };
 Object.seal(S);
+/* ---------- 黙らない（§9.328、REVIEW 3-4） ----------
+   中身の無い catch と、何もしない捨て手を渡した catch は**何が起きても誰にも
+   見えない**。§9.190で「捨て手が403を握り潰し、鍵が外れる不具合に誰も気づけ
+   なかった」が既に起きている。捨てること自体は正しい場面が多いので禁じないが、
+   **なぜ捨ててよいのかを書く**のを構造として要求する。
+
+     try{ ... }catch(e){ WL.quiet.note('端末の覚えが読めない（既定で続ける）',e) }
+     fetch(...).catch(WL.quiet('取れなくても画面は出る'))
+
+   出すのは`console.debug`（ふだんのコンソールを埋めない）。直近200件は
+   `WL.quiet.log()`で読めるので、実機で「何かが静かに落ちている」ときの
+   手掛かりになる。見張りは`tests/test_quietlint.py`。 */
+window.WL=window.WL||{};
+WL.quiet=(function(){
+ const LOG=[];let n=0;
+ const note=(why,err)=>{
+  n++;
+  const rec={why:String(why||''),err:err?(err.message||String(err)):'',at:Date.now()};
+  LOG.push(rec);if(LOG.length>200)LOG.shift();
+  /* ここを try で包まない——包むとこの関数自身が「黙る場所」になる。
+     `console.debug`はどのブラウザにも在る。 */
+  if(typeof console!=='undefined'&&console.debug)console.debug('見送り:',rec.why,err||'');
+  return undefined;
+ };
+ /* `WL.quiet('理由')` は捨て手（`.catch()`へそのまま渡せる関数）を返す。 */
+ const f=why=>(err=>note(why,err));
+ f.note=note;
+ f.count=()=>n;
+ f.last=()=>LOG.length?LOG[LOG.length-1]:null;
+ f.log=()=>LOG.slice();
+ return f;
+})();
 /* エラー時、応答JSONの残りのフィールド(code等)をErrorオブジェクトへ
    そのまま乗せる(呼び出し側がe.messageだけでなくe.codeでも分岐できるように
    するため)。既存の呼び出し元はe.messageしか見ていないため、これを追加
@@ -135,7 +167,7 @@ function copyText(text){
 }
 function copyTextFallback(text){
  const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();
- try{document.execCommand('copy')}catch(_){}
+ try{document.execCommand('copy')}catch(_){WL.quiet.note('この環境ではコピーできない（手で選んで写せる）',_)}
  document.body.removeChild(ta);
 }
 function openLotDsp(lotNo,castingNo,tab){
@@ -239,8 +271,8 @@ WL.choiceUsage={
   c[value]=(Number(c[value])||0)+1;
   try{
    fetch('/api/measurement/choice-usage',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({equipment,picks:{[field]:value},user_id:(window.currentUserId||'')})}).catch(()=>{});
-  }catch(e){}
+    body:JSON.stringify({equipment,picks:{[field]:value},user_id:(window.currentUserId||'')})}).catch(WL.quiet('選択肢の使用回数を送れない（並び順の材料が増えないだけ）'));
+  }catch(e){WL.quiet.note('選択肢の使用回数を送れない（並び順の材料が増えないだけ）',e)}
  },
 };
 /* ---------- 「選ばない」は札であって値ではない（§9.286 ⑤、利用者の指示） ----------
@@ -337,7 +369,7 @@ function attachNumericInput(el){
   if(v!==el.value){
    const back=el.value.length-el.selectionEnd;
    el.value=v;
-   try{const at=Math.max(0,v.length-back);el.setSelectionRange(at,at)}catch(e){}
+   try{const at=Math.max(0,v.length-back);el.setSelectionRange(at,at)}catch(e){WL.quiet.note('カーソル位置を戻せない（値は入っている）',e)}
   }
  });
  el.addEventListener('blur',()=>{
@@ -638,7 +670,7 @@ const columnLayout=(()=>{
    v=norm(r);
    scopes.set(target,r&&r.scope==='personal'?'personal':'common');
    canPersonalize=!!(r&&r.canPersonalize);
-  }catch(e){/* 読めなくても既定の並びで一覧は出す(fail-open) */}
+  }catch(e){WL.quiet.note('読めなくても既定の並びで一覧は出す(fail-open)',e)}
   saved.set(target,v);loadedFor.set(target,uid);bump(target);return get(target);
  }
  /* いまどちらで見ているか。**読む前は分からないので'common'とは言い切らない** */
@@ -883,7 +915,7 @@ const columnTint=(()=>{
  const KEYS=Object.keys(PALETTE);
  let all=(()=>{try{const m=JSON.parse(sessionStorage.getItem(STORE)||'{}');
    return (m&&typeof m==='object')?m:{}}catch(_){return {}}})();
- const write=()=>{try{sessionStorage.setItem(STORE,JSON.stringify(all))}catch(_){}};
+ const write=()=>{try{sessionStorage.setItem(STORE,JSON.stringify(all))}catch(_){WL.quiet.note('このタブの覚えを書けない（既定で続ける）',_)}};
  const bucket=t=>{const k=String(t||'');return (k&&all[k]&&typeof all[k]==='object')?all[k]:null};
  /* 属性セレクタの値は**引用符つきの文字列**なので、エスケープするのは
     `\` と `"` の2つだけ（`CSS.escape`は識別子用なのでここでは使えない）。 */
@@ -1761,7 +1793,7 @@ WL.quitting=false;
 WL.quitApp=async function(){
  if(WL.quitting)return;
  let facts={tabs:0,isOwner:false,sessions:[]};
- try{facts=await api('/api/app/quit-check')}catch(e){/* 分からなくても閉じられる */}
+ try{facts=await api('/api/app/quit-check')}catch(e){WL.quiet.note('分からなくても閉じられる',e)}
  const lines=[];
  if(typeof measureDirty!=='undefined'&&measureDirty)
   lines.push('<p class="confirm-modal-message"><b>保存されていない測定があります。</b>'
@@ -1801,7 +1833,7 @@ WL.onReady(()=>{
    実機でタブを閉じてもサーバーが終了しない事例があったため、念のため
    unloadでも同じ終了通知を送る(ブラウザ実装差の保険。同じtab idへの
    重複DELETE相当の呼び出しになるだけで、副作用は無い)。 */
-function notifyTabClosed(){try{navigator.sendBeacon(`/api/heartbeat/close?tab=${encodeURIComponent(WATCHDOG_TAB_ID)}`)}catch(e){}}
+function notifyTabClosed(){try{navigator.sendBeacon(`/api/heartbeat/close?tab=${encodeURIComponent(WATCHDOG_TAB_ID)}`)}catch(e){WL.quiet.note('閉じた通知を送れない（監視が0件の猶予で気づく）',e)}}
 window.addEventListener('pagehide',notifyTabClosed);
 window.addEventListener('unload',notifyTabClosed);
 
@@ -1921,7 +1953,7 @@ window.addEventListener('unload',notifyTabClosed);
  if(brand)brand.appendChild(toggle);else aside.prepend(toggle);
  toggle.addEventListener('click',()=>{
   collapsed=!collapsed;
-  try{localStorage.setItem(NAV_COLLAPSED_KEY,collapsed?'1':'0')}catch(e){/* 保存できなくても切替は効く */}
+  try{localStorage.setItem(NAV_COLLAPSED_KEY,collapsed?'1':'0')}catch(e){WL.quiet.note('保存できなくても切替は効く',e)}
   applyCollapsed();
  });
  applyCollapsed();
@@ -1949,7 +1981,7 @@ window.addEventListener('unload',notifyTabClosed);
   function onUp(){
    document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);
    handle.classList.remove('dragging');
-   try{localStorage.setItem('navWidthV1',String(navWidth))}catch(err){/* 保存できなくても表示自体は継続する */}
+   try{localStorage.setItem('navWidthV1',String(navWidth))}catch(err){WL.quiet.note('保存できなくても表示自体は継続する',err)}
   }
   document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
  });
@@ -1985,13 +2017,13 @@ function currentUiSize(){
   const v=localStorage.getItem(UI_SIZE_KEY);
   if(UI_SIZES.some(s=>s.key===v))return v;
   if(UI_SIZE_ALIASES[v])return UI_SIZE_ALIASES[v];
- }catch(e){}
+ }catch(e){WL.quiet.note('端末の覚えが読めない（既定で続ける）',e)}
  return 'md';
 }
 function applyUiSize(key){
  const size=UI_SIZES.some(s=>s.key===key)?key:(UI_SIZE_ALIASES[key]||'md');
  document.documentElement.dataset.uiSize=size;
- try{localStorage.setItem(UI_SIZE_KEY,size)}catch(e){/* 保存できなくても表示自体は継続する */}
+ try{localStorage.setItem(UI_SIZE_KEY,size)}catch(e){WL.quiet.note('保存できなくても表示自体は継続する',e)}
  const label=document.getElementById('uiSizeLabel');
  if(label)label.textContent=(UI_SIZES.find(s=>s.key===size)||{}).label||'中';
  document.querySelectorAll('#uiSizeMenu [data-ui-size-option]').forEach(b=>{

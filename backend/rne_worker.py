@@ -29,6 +29,7 @@ import sys
 import threading
 import traceback
 from pathlib import Path
+from .quiet import quiet
 
 _DEFAULT_SELF_TIMEOUT_SEC = 600
 
@@ -44,8 +45,8 @@ def atomic_json(path, data):
 def _self_timeout_exit(result_path, job_name):
     try:
         atomic_json(result_path, {'ok': False, 'job': job_name, 'error': '自己タイムアウトにより強制終了しました(Navigator APIの呼び出しが応答しませんでした)'})
-    except Exception:
-        pass
+    except Exception as _e:
+        quiet('自己タイムアウトの理由を書き残せない（そのまま終了する）',_e)
     os._exit(3)
 
 

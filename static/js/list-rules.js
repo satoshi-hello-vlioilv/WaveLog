@@ -356,7 +356,7 @@
     `renderGrid()`は仕掛一覧専用なので、口が答えるならそちらも呼ぶ
     ——呼ばないと、スケジュール表ではルールを直しても画面が変わらない。 */
  function applyToView(){
-  if(panelSrc&&typeof panelSrc.afterApply==='function'){try{panelSrc.afterApply()}catch(e){}}
+  if(panelSrc&&typeof panelSrc.afterApply==='function'){try{panelSrc.afterApply()}catch(e){WL.quiet.note('呼び出し側の後始末に失敗（読み替えの当て込みは済んでいる）',e)}}
   else if(typeof renderGrid==='function')renderGrid();
  }
  async function save(){

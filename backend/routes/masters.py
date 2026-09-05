@@ -53,6 +53,7 @@ from ..repositories.master_repo import (
 )
 from ..db_access import tables
 from .. import schedule_calc
+from ..quiet import quiet
 
 bp=Blueprint('masters',__name__)
 
@@ -281,7 +282,7 @@ def filter_preset_list():
    items=[]
    for r in rows:
     try:filters=json.loads(r[4] or '[]')
-    except Exception:filters=[]
+    except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);filters=[]
     if not isinstance(filters,list):filters=[]
     owner=(str(r[11]).strip() if len(r)>11 and r[11] else '')
     if not _preset_visible_to(owner,uid):continue
@@ -413,7 +414,7 @@ def filter_preset_marks():
    for it in items:
     if not isinstance(it,dict) or it.get('id') is None:continue
     try:pid=int(it.get('id'))
-    except Exception:continue
+    except Exception as _e:quiet('数として読めない（既定で続ける）',_e);continue
     filter_personal_set(c,requester,pid,bool(it.get('isDefault')),bool(it.get('isLocked')),uid)
     saved+=1
   return jsonify(ok=True,user=requester,saved=saved)
@@ -898,7 +899,7 @@ def column_preset_master_update():
    if not isinstance(body,dict):
     import json as _json
     try:body=_json.loads(row[1] or '{}')
-    except Exception:body={}
+    except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);body={}
    cur.execute('UPDATE [列プリセットマスタ] SET [名称]=?,[説明]=?,[内容JSON]=?,[更新者ID]=?,'
                '[更新日時]=Now() WHERE [プリセットID]=?',
                [name,str(x.get('note') or ''),
@@ -990,7 +991,7 @@ def sort_preset_list():
   items=[]
   for r in rows:
    try:keys=json.loads(r[4] or '[]')
-   except Exception:keys=[]
+   except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);keys=[]
    items.append({'id':r[0],'name':str(r[1] or '').strip(),'db':str(r[2] or '').strip(),
                  'table':str(r[3] or '').strip(),'sorts':normalize_sort_keys(keys),
                  'uses':int(r[5] or 0),
@@ -1249,7 +1250,8 @@ def operation_item_list():
      if cname:
       try:
        vals=op.choice_values(c,cname,eq)
-      except Exception:
+      except Exception as _e:
+       quiet('選択肢を読めない（候補なしで返す）',_e)
        vals=[]
       if vals:
        src=dict(it);src['choices']=vals
@@ -1520,7 +1522,7 @@ def operation_choice_list():
    # 開く前にマスタ管理を開いた端末では、まだ写していない状態で一覧が
    # 出る——「移したはずのオペレータが1人も居ない」に見える。
    try:op.migrate_legacy_choice_masters(c)
-   except Exception:pass
+   except Exception as _e:quiet('旧マスタの移行を試せない（移行済みの目印は立てない）',_e)
    usage=op.choice_usage(c) or {}
    rows=op.choice_rows(c,True)
    # **どの項目がこの選択肢を使っているか**(§9.216 ④)。使い道の見えない

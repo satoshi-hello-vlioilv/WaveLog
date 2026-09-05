@@ -29,6 +29,7 @@ import json
 
 from .master_repo import tables
 from .table_def import TableDef
+from ..quiet import quiet
 
 TABLE = '帳票ブロックマスタ'
 
@@ -357,7 +358,8 @@ def source_columns(limit=SOURCE_COLUMN_MAX):
         if not db.WORK_DB_KEY:
             return []
         return sc.sample_columns(db.WORK_DB_KEY, limit)
-    except Exception:
+    except Exception as _e:
+        quiet('仕掛の列を取れない（この群は候補に出さない）',_e)
         return []
 
 
@@ -888,7 +890,8 @@ def sample_record(c=None, equipment=''):
         for x in source_columns():
             if x.get('sample') != '':
                 src[x['name']] = x['sample']
-    except Exception:
+    except Exception as _e:
+        quiet('見本の値を仕掛の列から作れない（既定の見本で出す）',_e)
         src = {}
     # 公差は**見本の値で上書きする**——測定値の表の範囲がここで決まるので、
     # 現場のデータ次第で見本の絵が変わると、幅の確かめに使えない。
@@ -931,10 +934,10 @@ def sample_record(c=None, equipment=''):
                 if not name or name in bag:
                     continue
                 bag[name] = sample_for('settings.opData.' + name, it)
-        except Exception:
+        except Exception as _e:
             # **見本が作れないことを失敗にしない**（§9.163の判定と同じ作法）
             # ——操業データが読めなくても、帳票の見本そのものは出せる。
-            pass
+            quiet('操業データの見本を作れない（その群は空で出す）',_e)
     return rec
 
 
@@ -1095,8 +1098,8 @@ def field_catalog(c, equipment=''):
             # 見本の値（§9.250 ⑤）。**行そのものから作る**——項目名も型も
             # 選択肢も現場が決めるので、道の表では持てない。
             row['sample'] = sample_for(row['path'], it)
-    except Exception:
-        pass
+    except Exception as _e:
+        quiet('操業データ項目を読めない（候補から外す）',_e)
     if prep:
         note = '測定画面がもともと持っている入力欄です。'
         if skipped:
@@ -1627,7 +1630,8 @@ def parse_content(text):
     if s[:1] == '[':
         try:
             data = json.loads(s)
-        except Exception:
+        except Exception as _e:
+            quiet('保存された値を読めない（既定で続ける）',_e)
             data = None
         if isinstance(data, list):
             out = [_cell_from_json(x) for x in data]

@@ -35,6 +35,7 @@ from pathlib import Path
 
 from . import atomic_io, paths
 from .logging_setup import app_logger
+from .quiet import quiet
 
 LOCK_FILENAME = 'master.lock.json'
 META_TABLE = '共有メタ'
@@ -94,7 +95,8 @@ def _mode_setting():
     `master_share_mode` だけで上書きできる。"""
     try:
         v = str(paths.load_local_config().get('master_share_mode') or '').strip().lower()
-    except Exception:
+    except Exception as _e:
+        quiet('共有の設定を読めない（自動判定で続ける）',_e)
         v = ''
     return v if v in ('auto', 'on', 'off') else 'auto'
 
@@ -106,11 +108,12 @@ def _looks_shared(path):
     try:
         if paths.is_network_path(str(path)):
             return True
-    except Exception:
-        pass
+    except Exception as _e:
+        quiet('置き場の種類を確かめられない（分からないものとして続ける）',_e)
     try:
         return bool(paths.cloud_sync_hint(Path(path)))
-    except Exception:
+    except Exception as _e:
+        quiet('置き場の種類を確かめられない（分からないものとして続ける）',_e)
         return False
 
 
@@ -233,7 +236,8 @@ def _read_revision(path):
             row = c.cursor().execute(
                 f'SELECT [値] FROM [{META_TABLE}] WHERE [キー]=?', [REVISION_KEY]).fetchone()
             return int((row or [0])[0] or 0)
-    except Exception:
+    except Exception as _e:
+        quiet('改訂番号を読めない（0として比べる）',_e)
         return 0
 
 
@@ -270,7 +274,8 @@ def _read_lock():
             return None
         data = json.loads(p.read_text(encoding='utf-8'))
         return data if isinstance(data, dict) else None
-    except Exception:
+    except Exception as _e:
+        quiet('保存された値を読めない（既定で続ける）',_e)
         return None
 
 
@@ -279,7 +284,8 @@ def _expired(lock):
         return True
     try:
         return datetime.fromisoformat(lock['expires_at']) <= datetime.now()
-    except Exception:
+    except Exception as _e:
+        quiet('日時として読めない（無いものとして続ける）',_e)
         return True
 
 
@@ -296,8 +302,8 @@ def _verify_delay_sec():
     try:
         if src is not None and paths.cloud_sync_hint(Path(src)):
             return LOCK_VERIFY_DELAY_CLOUD_SEC
-    except Exception:
-        pass
+    except Exception as _e:
+        quiet('置き場の種類を確かめられない（分からないものとして続ける）',_e)
     return LOCK_VERIFY_DELAY_NETWORK_SEC
 
 
@@ -322,8 +328,8 @@ def acquire_lock(login_id='', pc_name='', ttl_sec=None):
         remaining = 1
         try:
             remaining = max(1, int((datetime.fromisoformat(cur['expires_at']) - datetime.now()).total_seconds()))
-        except Exception:
-            pass
+        except Exception as _e:
+            quiet('日時として読めない（無いものとして続ける）',_e)
         raise MasterLockHeld(cur.get('holder_login', ''), cur.get('holder_pc', ''), remaining)
     token = uuid.uuid4().hex
     now = datetime.now()
@@ -362,7 +368,8 @@ def _verify(path):
         with _opened(path, True) as c:
             row = c.cursor().execute('PRAGMA integrity_check').fetchone()
             return bool(row) and str(row[0]).lower() == 'ok'
-    except Exception:
+    except Exception as _e:
+        quiet('写しの中身を確かめられない（採らない側へ倒す）',_e)
         return False
 
 
@@ -376,8 +383,8 @@ def _pull(force=False):
         try:
             if _read_revision(src) == _read_revision(mirror):
                 return False
-        except Exception:
-            pass
+        except Exception as _e:
+            quiet('改訂番号を比べられない（写し直す側へ倒す）',_e)
     mirror.parent.mkdir(parents=True, exist_ok=True)
     from .db_access import path_exists_safe
     found = path_exists_safe(src)
@@ -448,7 +455,8 @@ def signature():
     try:
         st = p.stat()
         return (st.st_mtime_ns, st.st_size)
-    except Exception:
+    except Exception as _e:
+        quiet('見かけ（更新時刻・大きさ）を取れない（分からないものとして続ける）',_e)
         return None
 
 

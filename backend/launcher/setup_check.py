@@ -28,6 +28,7 @@ import sys
 from ..config import REQUIRED_PACKAGES
 from ..paths import APP_ROOT, browser_dir, ensure_local_dirs
 from . import ready
+from ..quiet import quiet
 
 # 旧配置(リポジトリ直下 / data フォルダ)に残っているDBファイルの取り込み先。
 # 取り込み先に同名ファイルが既にある場合は上書きしない(繰り返し実行しても安全)。
@@ -165,13 +166,13 @@ def copy_waiting_page(say=None):
                 # 既に最新。**差し替えを1回減らす**のがここの値打ち。
                 try:
                     dst.unlink()
-                except Exception:
-                    pass
+                except Exception as _e:
+                    quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
                 if say:
                     say('起動待機画面の写しは最新です: %s' % waiting_page())
                 return waiting_page()
-        except Exception:
-            pass                      # 読めない＝写しが無い/壊れている。写す。
+        except Exception as _e:
+            quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
         tmp.write_bytes(data)
         atomic_io.replace(tmp, dst, label='loading.next.html')
         if say:
@@ -180,8 +181,8 @@ def copy_waiting_page(say=None):
     except Exception as e:
         try:
             tmp.unlink()
-        except Exception:
-            pass
+        except Exception as _e:
+            quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
         if say:
             say('起動待機画面を写せませんでした（いまの写しのまま開きます）: %s' % e, bad=True)
         return None
@@ -199,7 +200,8 @@ def promote_waiting_page(say=None):
     try:
         if not src.exists():
             return None
-    except Exception:
+    except Exception as _e:
+        quiet('写しの在り処を確かめられない（差し替えない）',_e)
         return None
     try:
         atomic_io.replace(src, dst, label='loading.html(promote)')
@@ -225,8 +227,8 @@ def sweep_shared_leftovers(say=None):
             old.unlink()
             if say:
                 say('以前の進捗ファイルを片付けました: %s' % old)
-    except Exception:
-        pass
+    except Exception as _e:
+        quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
 
 
 def run(say, write_stamp=True):

@@ -151,7 +151,7 @@ function outOfToleranceOf(m){
    let range=null;
    /* **項目名を渡す。** 渡さないと画面でいま選ばれている項目の公差が
       全項目に当たる（ラッパーが`#measureType`を見るため）。 */
-   try{range=toleranceDetail(key==='thickness'?'thickness':'width',0,def.name)?.range||null}catch(e){}
+   try{range=toleranceDetail(key==='thickness'?'thickness':'width',0,def.name)?.range||null}catch(e){WL.quiet.note('公差を引けない（範囲なしとして数える）',e)}
    if(range)judged=true;
    const rows=(m.measurements||{})[key]||[];
    for(let li=0;li<c.lengthSlots;li++){
@@ -303,7 +303,7 @@ function completionReview(){
     ダイアログ**に集める——未入力とNGで2回聞くのは、2回とも読まれなくなる
     （§5「危ない操作は確認する」は、確認を増やせという意味ではない）。
     数えるのは`outOfToleranceOf()`の1箇所（§9.163。③確認のカードと同じ数）。 */
- let ng=null;try{ng=outOfToleranceOf(m)}catch(e){}
+ let ng=null;try{ng=outOfToleranceOf(m)}catch(e){WL.quiet.note('公差外を数えられない（件数を出さないだけ）',e)}
  if(ng&&ng.total){
   ng.items.forEach(x=>{
    const w=(window.WL&&WL.measureItem&&WL.measureItem.limitWord)?WL.measureItem.limitWord(x.name):'公差';

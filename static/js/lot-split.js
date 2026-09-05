@@ -972,7 +972,7 @@
     try{return localStorage.getItem(DEFECT_SHOW_KEY)!=='0'}catch(e){return true}
   }
   function setDefectShown(on){
-    try{localStorage.setItem(DEFECT_SHOW_KEY,on?'1':'0')}catch(e){}
+    try{localStorage.setItem(DEFECT_SHOW_KEY,on?'1':'0')}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
   }
   function defectInfo(){
     if(!(window.WL&&WL.defect&&WL.defect.markers))return null;
@@ -1084,7 +1084,7 @@
     ensureSplitVisualWiring();
     renderScrapAndRuler(layout);
     /* 屑の帯を置くと条の束の幅が変わる（`flexGrow`）ので、**最後に**測る。 */
-    requestAnimationFrame(()=>{try{fitStripLabels(strip)}catch(e){}});
+    requestAnimationFrame(()=>{try{fitStripLabels(strip)}catch(e){WL.quiet.note('条の札の測り直しに失敗（前の段のまま出る）',e)}});
   }
   /* ---------- 同じ幅の条は同じ見せ方（§9.210 ④、利用者の指示） ----------
      「同じ幅にもかかわらず、表示があるものとないものが混在するときがある」。

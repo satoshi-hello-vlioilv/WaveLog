@@ -15,6 +15,7 @@ from ..access_mode import current_login_id, current_pc_name, current_permission_
 from ..db_access import DBS, connect
 from ..repositories.master_repo import (ROLE_DEFAULT, ROLES, permission_flags,
                                         role_can, role_capabilities)
+from ..quiet import quiet
 
 bp = Blueprint('presence', __name__)
 
@@ -28,7 +29,8 @@ def _registered_role(login_id, pc_name):
     try:
         with connect(DBS['MASTER']['path'], True) as c:
             return permission_flags(c, login_id, pc_name).get('role') or ROLE_DEFAULT
-    except Exception:
+    except Exception as _e:
+        quiet('区分を引けない（既定の区分で扱う）',_e)
         return ROLE_DEFAULT
 
 

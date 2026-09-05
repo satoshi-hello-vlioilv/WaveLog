@@ -12,6 +12,7 @@ NaviCloseSession。
 from __future__ import annotations
 import ctypes, os, re, struct, time
 from pathlib import Path
+from .quiet import quiet
 
 NAVI_OK=0
 NAVI_DOWNLOADNOW=0
@@ -186,7 +187,7 @@ class NavigatorApi:
     def error_code(self):
         code=ctypes.c_long()
         try:self.dll.NaviGetErrorCode(ctypes.byref(code));return int(code.value)
-        except Exception:return 0
+        except Exception as _e:quiet('エラー番号を引けない（0として扱う）',_e);return 0
     def error_message(self):
         # 公式サンプルと同じく、詳細コードより先にNavigator Serverメッセージを取得する。
         rc=ctypes.c_long();message_ptr=ctypes.c_char_p()

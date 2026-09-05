@@ -43,6 +43,7 @@ from pathlib import Path
 
 from . import atomic_io, paths
 from .logging_setup import app_logger
+from .quiet import quiet
 
 DIR_NAME = 'presence'
 SUFFIX = '.json'
@@ -77,14 +78,14 @@ def presence_dir():
             src = master_share.source_path()
             if src is not None:
                 return Path(src).parent / DIR_NAME, 'master'
-    except Exception:
-        pass
+    except Exception as _e:
+        quiet('マスタ側の共有の置き場を引けない（次の候補を試す）',_e)
     try:
         from .db_access import SCHEDULE_SHARE_PATH
         if SCHEDULE_SHARE_PATH:
             return Path(SCHEDULE_SHARE_PATH).parent / DIR_NAME, 'schedule'
-    except Exception:
-        pass
+    except Exception as _e:
+        quiet('作業予定側の共有の置き場を引けない（次の候補を試す）',_e)
     return paths.work_dir() / DIR_NAME, 'local'
 
 
@@ -122,7 +123,8 @@ def _read_json(path):
     try:
         data = json.loads(Path(path).read_text(encoding='utf-8'))
         return data if isinstance(data, dict) else None
-    except Exception:
+    except Exception as _e:
+        quiet('保存された値を読めない（既定で続ける）',_e)
         return None
 
 
@@ -145,7 +147,8 @@ def _write_json(path, payload):
 def _age_sec(entry):
     try:
         return max(0.0, (datetime.now() - datetime.fromisoformat(entry['at'])).total_seconds())
-    except Exception:
+    except Exception as _e:
+        quiet('日時として読めない（無いものとして続ける）',_e)
         return None
 
 
@@ -215,7 +218,8 @@ def _sweep():
     d, _ = presence_dir()
     try:
         names = list(d.glob('*' + SUFFIX))
-    except Exception:
+    except Exception as _e:
+        quiet('在席ファイルの一覧を辿れない（掃除は次の機会に）',_e)
         return
     for p in names:
         entry = _read_json(p)
@@ -235,7 +239,8 @@ def entries():
     d, _ = presence_dir()
     try:
         names = sorted(d.glob('*' + SUFFIX))
-    except Exception:
+    except Exception as _e:
+        quiet('在席ファイルの一覧を辿れない（読めなかったので「誰も居ない」とは言わない）',_e)
         return None
     out = []
     for p in names:

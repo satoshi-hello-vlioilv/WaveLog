@@ -159,7 +159,7 @@
    </div>`;
   const grid=$id('grid');grid?.parentNode?.insertBefore(panel,grid);
   /* 配置設定は**描く前に読む**（読めなくても既定の並びで紙は出る）。 */
-  WL.columnLayout.load(rpTarget()).catch(()=>{});
+  WL.columnLayout.load(rpTarget()).catch(WL.quiet('列の設定を取れない（既定の並びで出す）'));
   const search=$id('reportSearch');if(search)search.oninput=()=>{rpState.query=search.value;renderLotList()};
   const sort=$id('reportSort');if(sort)sort.onchange=()=>{rpState.sort=sort.value;renderLotList()};
   $id('reportPrint').onclick=printReport;$id('reportPdf').onclick=printReport;
@@ -400,14 +400,14 @@
      ——組み換えのあいだにわざわざ畳んだ／開いた人に対して、抜けるときに
      元へ戻すのは「押しても戻される」になる。 */
   rpNavWasHidden=false;
-  try{localStorage.setItem(RP_NAV_KEY,rpNavHidden?'1':'0')}catch(e){}
+  try{localStorage.setItem(RP_NAV_KEY,rpNavHidden?'1':'0')}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
   applyNavVisibility();
  }
  function setOrientation(v){
   const next=v==='landscape'?'landscape':'portrait';
   if(next===rpOrientation)return;
   rpOrientation=next;
-  try{localStorage.setItem(RP_ORIENT_KEY,rpOrientation)}catch(e){}
+  try{localStorage.setItem(RP_ORIENT_KEY,rpOrientation)}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
   applyOrientation();
  }
  function setZoom(v){
@@ -536,8 +536,8 @@
      コードの既定で刷られる**（保存した配置が効かない）。 */
   const need=[...new Set(items.map(rpTargetOf))];
   const eqs=[...new Set(items.map(x=>rpEquipmentOf(x)||''))];
-  Promise.all([...need.map(t=>WL.columnLayout.load(t).catch(()=>{})),
-               ...eqs.map(eq=>rpLoadUserBlocks(eq).catch(()=>{}))])
+  Promise.all([...need.map(t=>WL.columnLayout.load(t).catch(WL.quiet('列の設定を取れない（既定の並びで出す）'))),
+               ...eqs.map(eq=>rpLoadUserBlocks(eq).catch(WL.quiet('自作の塊を取れない（コードの既定の塊で出す）')))])
    .then(()=>bulkPrintNow(items,area))
    .catch(()=>bulkPrintNow(items,area));
  }
@@ -631,12 +631,12 @@
    const pages=[...area.querySelectorAll('.rp-page')];
    pages.forEach((h,i)=>{
     const x=items[i];
-    if(!x){try{rpFitPage(h)}catch(e){}return}
+    if(!x){try{rpFitPage(h)}catch(e){WL.quiet.note('紙の割り付けを測り直せない（前の寸法のまま出る）',e)}return}
     rpWithLot(x,()=>{try{rpFitPage(h)}catch(e){console.warn('帳票の割り付けに失敗',e)}});
    });
    /* 画面のプレビューは選んでいるロットのままで測る。 */
    const own=$id('reportContent');
-   if(own){try{rpFitPage(own)}catch(e){}}
+   if(own){try{rpFitPage(own)}catch(e){WL.quiet.note('紙の割り付けを測り直せない（前の寸法のまま出る）',e)}}
    /* **1枚ずつと同じ道**（§9.244）——ここだけ`window.print()`のままにすると、
       「1枚なら合うのに一括だけ縮む」という分かりにくい形になる（§9.242 ⑦で
       箱の作り方を揃えたのと同じ理由）。測り終わったDOMをそのまま渡す。 */
@@ -3336,8 +3336,8 @@
      割ると塊へ`transform`が付くので、外さずに`getBoundingClientRect()`で
      測ると**2枚目以降の塊だけ1〜2行ぶん下**として書き下ろしてしまう。
      書き下ろしはマスタへ入るので、読み違えるとそのまま残る。 */
-  try{rpClearSheets($id('reportContent'))}catch(e){}
-  try{rpFitRows(host)}catch(e){}
+  try{rpClearSheets($id('reportContent'))}catch(e){WL.quiet.note('紙の切れ目を片付けられない（次の測り直しで片付く）',e)}
+  try{rpFitRows(host)}catch(e){WL.quiet.note('行の割り付けを測り直せない（前の高さのまま出る）',e)}
   /* **書き下ろしも拡大前で測る**（§9.222 ②）。`getBoundingClientRect()`は
      拡大後、`gap`／`gridAutoRows`は拡大前なので、混ぜると**書き下ろした
      大きさが倍率のぶん小さくなる**——初めて組み換えに入った瞬間に、全部の
@@ -3957,9 +3957,9 @@
      できない」を無くすのがこの機能の目的なので、レコードから拾える設備
      だけでは足りない（実際、検証用データでは1つしか出なかった）。
      読めなくても組み換えは開ける（fail-open）。 */
-  try{if(typeof loadEquipmentMaster==='function')await loadEquipmentMaster()}catch(e){}
+  try{if(typeof loadEquipmentMaster==='function')await loadEquipmentMaster()}catch(e){WL.quiet.note('設備マスタを取れない（設備を選ぶ欄が減るだけ）',e)}
   try{await Promise.all([WL.columnLayout.load(rpTarget()),
-                         rpLoadUserBlocks(rpEditEquipment)])}catch(e){}
+                         rpLoadUserBlocks(rpEditEquipment)])}catch(e){WL.quiet.note('列の設定を取れない（既定の並びで出す）',e)}
   rpArranging=true;rpSeeded=false;
   /* **置き場は左サイドバーの中**（§9.276 ①）なので、畳んだままだと
      組み換えの主要動線が消える（§CLAUDE 4）。入るときだけ開く——
@@ -4133,12 +4133,12 @@
    /* **切り替える前に、いまの設備ぶんの保存を流し切る**（§9.303 ③）——
       投げ残したまま`rpTarget()`が変わると、直したぶんが**別の設備の紙**へ
       書かれる（自動保存にした以上、ここは待ってから進む）。 */
-   try{await rpFlushSave()}catch(e){}
+   try{await rpFlushSave()}catch(e){WL.quiet.note('配置を書き切れない（下書きは残るので次に保存される）',e)}
    /* **読み終えてから切り替える**（§9.239 ③）。読む前に`rpStage()`が走ると
       `order`が空＝既定と見なして書き下ろし、その設備の保存済みの配置を
       空だと思って上書きする（§9.173の罠）。 */
    const t=RP_LAYOUT_PREFIX+(eq||'共通');
-   try{await Promise.all([WL.columnLayout.load(t),rpLoadUserBlocks(eq)])}catch(e){}
+   try{await Promise.all([WL.columnLayout.load(t),rpLoadUserBlocks(eq)])}catch(e){WL.quiet.note('列の設定を取れない（既定の並びで出す）',e)}
    rpEditEquipment=eq;
    rpUseEquipmentBlocks(eq);
    /* その設備のロットがあれば見本もそちらへ移す（紙は必ずそのロットの
@@ -4289,7 +4289,7 @@
      `#rpArrangeNote`はこの`innerHTML`の中なので、入れ直さないと次に
      `rpMarkOverflow()`が走るまで空欄のまま——マス数を変えた直後こそ
      「収まるか」を知りたいし、断りの文は書いた瞬間に消えてしまう。 */
-  try{rpUpdateSheets()}catch(e){}
+  try{rpUpdateSheets()}catch(e){WL.quiet.note('紙の切れ目を引き直せない（枚数の帯が古いまま）',e)}
   rpPaintNote();
  }
  function bindArrangeHandlers(){
@@ -4352,7 +4352,7 @@
        ときに左上がカーソルへ吸い寄せられ、掴んだぶんだけ飛ぶ。 */
     rpSetGrab(el.parentElement,el,ev.clientX,ev.clientY);
     el.parentElement&&el.parentElement.classList.add('is-dropping');
-    try{ev.dataTransfer.setData('text/plain',k);ev.dataTransfer.effectAllowed='move'}catch(_){}
+    try{ev.dataTransfer.setData('text/plain',k);ev.dataTransfer.effectAllowed='move'}catch(_){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',_)}
    });
    el.addEventListener('dragend',rpEndDrag);
    /* 塊の上でも**マスの規則は同じ**（§9.221 ⑨）。器の`dragover`／`drop`が
@@ -4633,7 +4633,7 @@
     rpDragKey=k;rpDragFrom='palette';b.classList.add('is-dragging');
     rpDragGrab={dc:0,dr:0};      /* 置き場から掴んだときは左上がカーソル */
     document.querySelectorAll('.rp-blocks').forEach(x=>x.classList.add('is-dropping'));
-    try{ev.dataTransfer.setData('text/plain',k);ev.dataTransfer.effectAllowed='move'}catch(_){}
+    try{ev.dataTransfer.setData('text/plain',k);ev.dataTransfer.effectAllowed='move'}catch(_){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',_)}
    });
    b.addEventListener('dragend',rpEndDrag);
    /* **押すだけでも出せる**（§4）。掴めない環境・タッチでも行き止まりに
@@ -4669,7 +4669,7 @@
  /* 1枚ぶんの割り付け。**設備を差し替えて呼べるように切り出してある**
     （§9.239 ③）——`rpFitAll()`は今までどおり画面ぶんをまとめて回す。 */
  function rpFitPage(h){
-  try{rpApplyPaperPack()}catch(e){}
+  try{rpApplyPaperPack()}catch(e){WL.quiet.note('紙の余白を当て直せない（前の余白で測る）',e)}
   try{rpFitRows(h)}catch(e){console.warn('帳票の行の割り付けに失敗',e)}
   try{rpFitBlockBodies(h)}catch(e){console.warn('帳票の中身の合わせ込みに失敗',e)}
   try{rpFreeCells(h)}catch(e){console.warn('帳票の空きマスの計算に失敗',e)}
@@ -4678,7 +4678,7 @@
   /* **紙の余白は行を測る前に与える**（§9.308）——あとから与えると、
      `rpFitRows()`が詰める前の中身で行数を数えてしまい、詰めたぶんが
      そのまま空きになる（詰めたのに紙が縮まない、という見え方）。 */
-  try{rpApplyPaperPack()}catch(e){}
+  try{rpApplyPaperPack()}catch(e){WL.quiet.note('紙の余白を当て直せない（前の余白で測る）',e)}
   /* **測る前に片付ける**（§9.281 の追補。理由は`rpMarkOverflow`と同じ）。 */
   rpClearSheets($id('reportContent'));
   document.querySelectorAll('#reportContent,#reportBulkPrintArea .rp-page').forEach(h=>{
@@ -4701,7 +4701,7 @@
      「全体」が1枚目しか映さないことがあった（実測 85% → 押し直すと42%）。
      **変わったときだけ**合わせ直す（毎回だとちらつく）。倍率は`transform`
      なので`offsetHeight`は動かず、ここが回り続けることはない。 */
-  try{rpRefitZoom()}catch(e){}
+  try{rpRefitZoom()}catch(e){WL.quiet.note('倍率を合わせ直せない（前の倍率のまま）',e)}
  }
  let rpFitHeight=0;
  function rpRefitZoom(){
@@ -4715,9 +4715,9 @@
   const t=rpTargetOf(x),eq=rpEquipmentOf(x)||'';
   /* 設定と**自作の塊**を両方読んでから描き直す（§9.217）。塊だけ先に
      届くと、まだ並びを知らない状態で末尾へ並べてしまう。 */
-  Promise.all([WL.columnLayout.load(t).catch(()=>{}),rpLoadUserBlocks(eq)])
+  Promise.all([WL.columnLayout.load(t).catch(WL.quiet('列の設定を取れない（既定の並びで出す）')),rpLoadUserBlocks(eq)])
    .then(()=>{if(rpCurrentLot()&&rpTargetOf(rpCurrentLot())===t)rpRepaint()})
-   .catch(()=>{});
+   .catch(WL.quiet('配置と自作の塊を取れない（既定の並びで出す）'));
  }
  /* 長手方向の候補に要るロールを先に読む。**この関数だけが取りに行く**
     （紙を描く側は控えを見るだけ・§9.163）。 */
@@ -4728,7 +4728,7 @@
   const id=x&&x.id;
   d.ensureRolls(eq).then(got=>{
    if(got&&rpState.selectedId===id&&rpState.items.some(i=>i.id===id))selectLot(id);
-  }).catch(()=>{});
+  }).catch(WL.quiet('ロールを先に読めない（長手の候補が出ないだけ）'));
  }
  function renderReport(x){
   rpLoadLayoutFor(x);                /* その設備ぶんの設定を読む（届いたら描き直す） */
@@ -4872,7 +4872,7 @@
    let done=false;
    const finish=ok=>{
     if(done)return;done=true;
-    setTimeout(()=>{try{f.remove()}catch(e){}},400);
+    setTimeout(()=>{try{f.remove()}catch(e){WL.quiet.note('刷り終えた器を片付けられない（画面の外なので見えない）',e)}},400);
     ok?resolve():reject(new Error('印刷の書類を組み立てられませんでした'));
    };
    /* **刷るのは1回だけ**（§9.247 ③、利用者の報告「印刷ボタンを押すと…
@@ -5012,7 +5012,7 @@
     const hit=(r.items||[]).find(it=>String(it.id)===String(id));
     if(!hit)continue;
     const rec=ensureMeasureShape(JSON.parse(hit.payload));rec.id=hit.id;return rec;
-   }catch(e){/* 次の取得先を試す */}
+   }catch(e){WL.quiet.note('次の取得先を試す',e)}
   }
   return null;
  }
@@ -5175,7 +5175,7 @@
   const eq=String(equipment==null?'':equipment).trim();
   const target=rpLayoutTarget(eq);
   await rpLoadUserBlocks(eq);
-  try{await WL.columnLayout.load(target)}catch(e){}
+  try{await WL.columnLayout.load(target)}catch(e){WL.quiet.note('列の設定を取れない（既定の並びで出す）',e)}
   return rpWithEquipment(eq,()=>{
    const savedOrder=(WL.columnLayout.saved(target).order||[]);
    const hidden=rpHiddenSet();
@@ -5210,7 +5210,7 @@
  async function rpLayoutCommit(eq,fn){
   const target=rpLayoutTarget(eq);
   await rpLoadUserBlocks(String(eq==null?'':eq).trim());
-  try{await WL.columnLayout.load(target)}catch(e){}
+  try{await WL.columnLayout.load(target)}catch(e){WL.quiet.note('列の設定を取れない（既定の並びで出す）',e)}
   rpWithEquipment(eq,fn);                     /* 下書きへ当てる（同期） */
   const now=WL.columnLayout.get(target);
   const body={};
@@ -5245,7 +5245,7 @@
    const target=rpLayoutTarget(eq);
    await WL.columnLayout.save(target,{});
    WL.columnLayout.forget(target);
-   try{await WL.columnLayout.load(target)}catch(e){}
+   try{await WL.columnLayout.load(target)}catch(e){WL.quiet.note('列の設定を取れない（既定の並びで出す）',e)}
   },
   /* 紙で組み換える。**見本のロットで開く**ので、その設備で測ったロットが
      この端末に1件も無くても配置を直せる（§9.253）。 */

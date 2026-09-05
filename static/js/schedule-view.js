@@ -55,7 +55,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   try{
    const v=Number(localStorage.getItem(SC_HISTORY_KEY));
    if(SC_HISTORY_CHOICES.includes(v))return v;
-  }catch(e){/* 保存値が壊れていても既定で続行する */}
+  }catch(e){WL.quiet.note('保存値が壊れていても既定で続行する',e)}
   return 8;
  }
  let scState={equipment:'',entries:[],anchor:null,anchorRounded:null,warnings:[],configured:true,
@@ -425,7 +425,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    }catch(e){
     showToast&&showToast('引き取れませんでした',String(e&&e.message||e),6000);
    }
-   try{scOwnerState=await api('/api/schedule/owner-status')}catch(e){}
+   try{scOwnerState=await api('/api/schedule/owner-status')}catch(e){WL.quiet.note('書込役の状態を取れない（前の状態のまま続ける）',e)}
    renderSyncChip();
   };
  }
@@ -542,7 +542,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       「持ち主が入れ替わったか」を追うときだけで、offのままの現場では
       5分に1回で足りる（設定を入れたら次の回で気づく）。 */
    if(!scOwnerState||scOwnerState.enabled||scOwnerTick<=0){
-    try{scOwnerState=await api('/api/schedule/owner-status')}catch(e){}
+    try{scOwnerState=await api('/api/schedule/owner-status')}catch(e){WL.quiet.note('書込役の状態を取れない（前の状態のまま続ける）',e)}
     scOwnerTick=(scOwnerState&&scOwnerState.enabled)?0:30;
    }else scOwnerTick--;
    /* 「いまから過去◯時間」の起点は時計とともに動く(§9.198)。10秒ごとの
@@ -561,7 +561,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    }else{
     renderSyncBanner(true);
    }
-  }catch(e){/* 見張りの表示はベストエフォート */}
+  }catch(e){WL.quiet.note('見張りの表示はベストエフォート',e)}
  }
  async function syncNow(){
   try{
@@ -822,7 +822,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   grp.value=scState.groupMode;
   grp.onchange=()=>{
    scState.groupMode=grp.value;
-   try{localStorage.setItem(SC_GROUP_KEY,scState.groupMode)}catch(err){/* 保存できなくても表示は変わる */}
+   try{localStorage.setItem(SC_GROUP_KEY,scState.groupMode)}catch(err){WL.quiet.note('保存できなくても表示は変わる',err)}
    updateViewMenuUi();          // 畳んでいる入口の文字も一緒に直す(§9.199)
    renderTimeline();
   };
@@ -830,7 +830,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   hist.value=String(scState.historyHours);
   hist.onchange=()=>{
    scState.historyHours=Number(hist.value)||8;
-   try{localStorage.setItem(SC_HISTORY_KEY,String(scState.historyHours))}catch(e){/* 保存できなくても表示は変わる */}
+   try{localStorage.setItem(SC_HISTORY_KEY,String(scState.historyHours))}catch(e){WL.quiet.note('保存できなくても表示は変わる',e)}
    updateHistoryFromUi();
    updateViewMenuUi();
    if(scState.equipment)loadPlan(true);
@@ -894,7 +894,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       ための既存の契約で、こちらは外へ出す必要が無い（CLAUDE.md）。 */
    scState.dragComment=true;
    e.dataTransfer.effectAllowed='copy';
-   try{e.dataTransfer.setData('text/plain','コメント')}catch(err){/* setData制限は無視 */}
+   try{e.dataTransfer.setData('text/plain','コメント')}catch(err){WL.quiet.note('setData制限は無視',err)}
    cmt.classList.add('is-row-dragging');
   });
   cmt.addEventListener('dragend',()=>{cmt.classList.remove('is-row-dragging');scState.dragComment=false});
@@ -907,7 +907,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   frm.addEventListener('dragstart',e=>{
    scState.dragFrame=true;
    e.dataTransfer.effectAllowed='copy';
-   try{e.dataTransfer.setData('text/plain','枠')}catch(err){/* setData制限は無視 */}
+   try{e.dataTransfer.setData('text/plain','枠')}catch(err){WL.quiet.note('setData制限は無視',err)}
    frm.classList.add('is-row-dragging');
   });
   frm.addEventListener('dragend',()=>{frm.classList.remove('is-row-dragging');scState.dragFrame=false});
@@ -1042,7 +1042,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }catch(e){return {swap:false,open:'last',tip:true,childBadge:'count',childBadgeCol:'',wide:false}}
  })();
  function saveScLayout(){
-  try{localStorage.setItem(SC_LAYOUT_KEY,JSON.stringify(scLayout))}catch(e){/* 保存できなくても表示は続く */}
+  try{localStorage.setItem(SC_LAYOUT_KEY,JSON.stringify(scLayout))}catch(e){WL.quiet.note('保存できなくても表示は続く',e)}
  }
  /* ---------- 一覧を広く使う（§9.292 ⑦、利用者の指示） ----------
     「スケジュール作成時に、とにかく仕掛のデータを多く表示したいです。
@@ -1080,10 +1080,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     今までどおり端末に覚える(`last`で開いたときに戻せるように)。 */
  function applyOpenMode(collapsed){
   splitListCollapsed=!!collapsed;
-  try{localStorage.setItem('scSplitListCollapsedV1',splitListCollapsed?'1':'0')}catch(e){}
+  try{localStorage.setItem('scSplitListCollapsedV1',splitListCollapsed?'1':'0')}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
   updateSplitCollapseUi();
   updateInsertHintUi();
-  if(!splitListCollapsed)showSplitList().catch(()=>{});
+  if(!splitListCollapsed)showSplitList().catch(WL.quiet('仕掛一覧を出せない（畳んだままになる）'));
  }
  function applySplitSide(){
   if(!splitWrap)return;
@@ -1536,7 +1536,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    function onUp(){
     document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);
     divider.classList.remove('dragging');
-    try{localStorage.setItem('scSplitListWidthV1',String(splitListWidth))}catch(err){/* 保存できなくても表示自体は継続する */}
+    try{localStorage.setItem('scSplitListWidthV1',String(splitListWidth))}catch(err){WL.quiet.note('保存できなくても表示自体は継続する',err)}
    }
    document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
   });
@@ -1565,11 +1565,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  function toggleSplitListCollapsed(){
   splitListCollapsed=!splitListCollapsed;
-  try{localStorage.setItem('scSplitListCollapsedV1',splitListCollapsed?'1':'0')}catch(e){/* 保存できなくても表示自体は継続する */}
+  try{localStorage.setItem('scSplitListCollapsedV1',splitListCollapsed?'1':'0')}catch(e){WL.quiet.note('保存できなくても表示自体は継続する',e)}
   updateSplitCollapseUi();
   /* 畳んでいるあいだは中身を読んでいない(§9.182)。開いた時点で読む
      ——押してから「空の一覧」が出るのでは、壊れて見える。 */
-  if(!splitListCollapsed)showSplitList().catch(()=>{});
+  if(!splitListCollapsed)showSplitList().catch(WL.quiet('仕掛一覧を出せない（畳んだままになる）'));
   /* 一覧を畳んだ／開いた時点で「行間クリックで入れられる」かどうかが
      変わる(§9.179)。案内を出し直さないと、押せるのに何も書いていない／
      書いてあるのに押せない状態になる。 */
@@ -1624,7 +1624,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     try{
      if(S.db!==workKey)await selectDb(workKey,navBtn);
      else if(!scSplitJoinApplied&&typeof load==='function')await load();
-    }catch(e){/* 一覧が読めなくてもスケジュール自体の表示は継続する */}
+    }catch(e){WL.quiet.note('一覧が読めなくてもスケジュール自体の表示は継続する',e)}
    });
    scSplitJoinApplied=true;
   }
@@ -1693,7 +1693,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  function toggleSideCollapsed(){
   scSideCollapsed=!scSideCollapsed;
-  try{localStorage.setItem('scSideCollapsedV1',scSideCollapsed?'1':'0')}catch(e){/* 保存できなくても表示自体は継続する */}
+  try{localStorage.setItem('scSideCollapsedV1',scSideCollapsed?'1':'0')}catch(e){WL.quiet.note('保存できなくても表示自体は継続する',e)}
   updateSideUi();
  }
 
@@ -1747,7 +1747,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       も呼ぶため、開いたモーダルもその場で閉じる)。通常はS.dbが既に
       作業対象なので表に出ていなかった。 */
    await WL.withInternalDbSwitch(async()=>{
-    try{await selectDb(workKey2,navBtn)}catch(e){/* ベストエフォート */}
+    try{await selectDb(workKey2,navBtn)}catch(e){WL.quiet.note('ベストエフォート',e)}
    });
   }
  }
@@ -2088,7 +2088,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    }else{
     badge.hidden=true;
    }
-  }catch(e){/* ロック表示はベストエフォート */}
+  }catch(e){WL.quiet.note('ロック表示はベストエフォート',e)}
  }
  function startLockPolling(){
   stopLockPolling();
@@ -2203,10 +2203,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const ok=navigator.sendBeacon&&navigator.sendBeacon('/api/schedule/session/release',
     new Blob([JSON.stringify({equipment})],{type:'application/json'}));
    if(ok)return;
-  }catch(e){/* フォールバックへ */}
+  }catch(e){WL.quiet.note('フォールバックへ',e)}
   try{
-   api('/api/schedule/session/release',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({equipment})}).catch(()=>{});
-  }catch(e){/* ベストエフォート */}
+   api('/api/schedule/session/release',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({equipment})}).catch(WL.quiet('編集権を手放せない（期限で自然に解ける）'));
+  }catch(e){WL.quiet.note('ベストエフォート',e)}
  }
  async function syncSession(){
   if(scSessionHeldFor&&scSessionHeldFor!==scState.equipment){
@@ -2365,7 +2365,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      scReclaiming=true;
      Promise.resolve()
       .then(()=>acquireSessionOnce())
-      .catch(()=>{})
+      .catch(WL.quiet('編集権を取り直せない（次の巡回で取り直す）'))
       .then(()=>{scReclaiming=false});
     }
    }
@@ -2793,7 +2793,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      const course=row?String(row[cols.resCol]??''):'';
      map.set(lot,course);
      rememberCourseOnEntries(lot,course);
-    }catch(e){/* 引けなければ「?」のまま(勝手に可にしない) */}
+    }catch(e){WL.quiet.note('引けなければ「?」のまま(勝手に可にしない)',e)}
    }
   }));
   if(missing.length>targets.length){
@@ -2929,10 +2929,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      scPlanCache.set(eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
        loadFactor:r.loadFactor,historyHours:hours,fetchedAt:Date.now(),timings:r.timings});
    })
-   .catch(()=>{})
+   .catch(WL.quiet('予定を先読みできない（開いたときに取りに行く）'))
    .finally(()=>warmingPlans.delete(eq));
   /* 列の見せ方も一緒に(設備ごとに違う)。描画の直前に必要になるもの。 */
-  WL.columnLayout.load('timeline:'+eq).catch(()=>{});
+  WL.columnLayout.load('timeline:'+eq).catch(WL.quiet('列の設定を取れない（既定の並びで出す）'));
  }
  async function refreshAll(force){
   /* ---------- 覆いは「予定が出るまで」だけ(§9.182) ----------
@@ -3004,7 +3004,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     「この停止はどの分類か」が要る。モードで読み分けると、同じ予定が
     端末によって違う色になる（色が意味を失う）。 */
  jobs.push(loadRowStyles(),loadStopReasons());
-  await Promise.all(jobs.map(x=>Promise.resolve(x).catch(()=>{})));
+  await Promise.all(jobs.map(x=>Promise.resolve(x).catch(WL.quiet('取れない設定がある（取れたものだけで描く）'))));
   await planApply(plan);
   // 作業可否(§9.51)の判定材料は**待たない**。仕掛一覧の取得は共有越しだと
   // 時間がかかることがあり、待つとその間ずっと予定が出ない。先に予定を描き、
@@ -4353,7 +4353,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   try{
    const v=localStorage.getItem(SC_GROUP_KEY);
    if(SC_GROUP_MODES.some(m=>m.key===v))return v;
-  }catch(err){/* 保存値が壊れていても既定で続行する */}
+  }catch(err){WL.quiet.note('保存値が壊れていても既定で続行する',err)}
   return 'none';
  }
  function dateBucketLabel(e){
@@ -4622,7 +4622,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      const el=timeline.querySelector(`.sc-row-head [data-col="${CSS.escape(k)}"]`);
      if(el)el.classList.add('col-dragging');
     });
-    try{e.dataTransfer.setData('text/plain',dragKeys.join('\n'));e.dataTransfer.effectAllowed='move'}catch(_){}
+    try{e.dataTransfer.setData('text/plain',dragKeys.join('\n'));e.dataTransfer.effectAllowed='move'}catch(_){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',_)}
    });
    h.addEventListener('dragend',()=>{
     dragKeys=null;
@@ -5164,7 +5164,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function setChildOpen(id,open){
   const s=childOpenSet();
   open?s.add(String(id)):s.delete(String(id));
-  try{localStorage.setItem(CHILD_OPEN_KEY,JSON.stringify([...s].slice(-200)))}catch(e){}
+  try{localStorage.setItem(CHILD_OPEN_KEY,JSON.stringify([...s].slice(-200)))}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
  }
  function childSummary(e){
   const d=e.detail||{};
@@ -5880,7 +5880,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
         else{
          const err=Error((one&&one.error)||'反映できませんでした');
          err.__reported=!!b.onFailure;failures.push(err);
-         if(b.onFailure){try{b.onFailure(err)}catch(_e){/* ロールバック失敗は無視 */}}
+         if(b.onFailure){try{b.onFailure(err)}catch(_e){WL.quiet.note('ロールバック失敗は無視',_e)}}
         }
        });
        if(batch.some(b=>opShiftsTime(b.op)))timeShifted=true;
@@ -5895,7 +5895,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
         batch.forEach(b=>{
          const err=Error(e.message);err.status=e.status;err.__reported=!!b.onFailure;
          failures.push(err);
-         if(b.onFailure){try{b.onFailure(err)}catch(_e){/* 同上 */}}
+         if(b.onFailure){try{b.onFailure(err)}catch(_e){WL.quiet.note('同上',_e)}}
         });
         scWriteQueue.splice(0,batch.length);
         handled=true;
@@ -5929,7 +5929,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       scWriteQueue.shift();failures.push(e);
       // onFailureを持つ操作は、そちらで利用者へ知らせる責任を持つ。
       if(op.onFailure){
-       try{e.__reported=true;op.onFailure(e)}catch(err){/* ロールバック自体の失敗はここでは無視(諦めたことは既にfailuresへ記録済み) */}
+       try{e.__reported=true;op.onFailure(e)}catch(err){WL.quiet.note('ロールバック自体の失敗はここでは無視(諦めたことは既にfailuresへ記録済み)',err)}
       }
      }
      else await sleep(700*op.attempts);
@@ -6438,7 +6438,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      showToast&&showToast('ほかの端末が先に並べ替えました',
        (who?who+'が':'')+'並び順を変えたので、最新を読み直しました。'
        +'もう一度並べ替えてください。',8000);
-     if(scState.equipment===equipment)loadPlan(true).catch(()=>{});
+     if(scState.equipment===equipment)loadPlan(true).catch(WL.quiet('予定を読み直せない（次の巡回で追いつく）'));
      return;
     }
     showToast&&showToast('並べ替えできませんでした',(e&&e.message)||'',7000);
@@ -6470,7 +6470,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const r=await api('/api/schedule/stop-reason-master?equipment='+encodeURIComponent(scState.equipment));
    scState.stopReasons=(r.items||[]);
    renderStopButtons();
-  }catch(e){/* 追加パネルは補助機能のためベストエフォート */}
+  }catch(e){WL.quiet.note('追加パネルは補助機能のためベストエフォート',e)}
  }
  /* 分類の名前は**分類マスタが持つ**。読めなくても止めない（固定の並びで出す）。 */
  let stopCategories=null;
@@ -6681,7 +6681,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    btn.addEventListener('dragstart',e=>{
     window.__scDragStopReason={id:reasonId,name:label2};
     e.dataTransfer.effectAllowed='copy';
-    try{e.dataTransfer.setData('text/plain',label2)}catch(err){/* 一部ブラウザでのsetData制限は無視する */}
+    try{e.dataTransfer.setData('text/plain',label2)}catch(err){WL.quiet.note('一部ブラウザでのsetData制限は無視する',err)}
     btn.classList.add('is-row-dragging');
    });
    btn.addEventListener('dragend',()=>{btn.classList.remove('is-row-dragging');window.__scDragStopReason=null});
@@ -8049,8 +8049,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     }));
    }
    jobs.push(WL.displayRules.load());
-   await Promise.all(jobs.map(x=>Promise.resolve(x).catch(()=>{})));
-  }catch(e){/* 先読みは失敗しても構わない */}
+   await Promise.all(jobs.map(x=>Promise.resolve(x).catch(WL.quiet('取れない設定がある（取れたものだけで描く）'))));
+  }catch(e){WL.quiet.note('先読みは失敗しても構わない',e)}
  }
  if(navBtn){
   const warm=()=>prefetchSchedule();

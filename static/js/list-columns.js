@@ -488,7 +488,7 @@
      1対象につき1回だけ頼む（読めなかったときに回り続けないように）。 */
   if(!scope&&!scopeAsked.has(target)){
    scopeAsked.add(target);
-   WL.columnLayout.load(target).then(()=>renderScope()).catch(()=>{});
+   WL.columnLayout.load(target).then(()=>renderScope()).catch(WL.quiet('列の設定を取れない（既定の並びで出す）'));
   }
   scope=WL.columnLayout.scope(target);
   const mine=scope==='personal';
@@ -1047,7 +1047,7 @@
      const at=fxIn.selectionStart;
      renderDetail();
      const again=document.getElementById('lcFormula');
-     if(again){again.focus();try{again.setSelectionRange(at,at)}catch(_){}}
+     if(again){again.focus();try{again.setSelectionRange(at,at)}catch(_){WL.quiet.note('カーソル位置を戻せない（値は入っている）',_)}}
      if(WL.formula.check(draft.formulas[picked]||'').ok){renderList();applyLive()}
     },350);
    });
@@ -1611,7 +1611,7 @@
      （実際には保存できているのに、一覧を開き直すまで消えたように見える）。
      **いま開いている一覧ぶんだけは取り直してから続ける**（他の対象は
      次に開いたときの`load()`が取りに行く）。 */
-  try{await WL.columnLayout.load(target)}catch(_){}
+  try{await WL.columnLayout.load(target)}catch(_){WL.quiet.note('列の設定を取れない（既定の並びで出す）',_)}
   closeIo();
   showToast&&showToast(`${ok}件を取り込みました`,ng?`${ng}件は書き込めませんでした（ログ・診断を確認してください）`
                                                  :'一覧を開き直すと反映されます',5000);

@@ -25,6 +25,7 @@ from backend.launcher import guard as launch_guard
 from backend.config import HOST, PORT
 from backend.paths import APP_ROOT
 from backend.logging_setup import launcher_logger
+from backend.quiet import quiet
 
 
 def request_shutdown(timeout=3.0):
@@ -35,7 +36,8 @@ def request_shutdown(timeout=3.0):
   # 端末では127.0.0.1宛てまで転送され、407で停止できなくなる)。
   with launch_guard.urlopen_local(req,timeout=timeout) as r:
    return json.loads(r.read().decode('utf-8','replace')).get('stopping') is True
- except Exception:
+ except Exception as _e:
+  quiet('アプリが正常終了の要求に答えない（記録したPIDでの停止へ進む）',_e)
   return False
 
 

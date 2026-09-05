@@ -30,6 +30,7 @@ from ..repositories.master_repo import normalize_equipment_name, equipment_maste
 from ..db_access import connect, request_user_id, request_pc_name, path_config_value, DBS
 from ..access_mode import current_login_id, current_pc_name, get_mode, current_permission_flags
 from ..logging_setup import app_logger
+from ..quiet import quiet
 
 bp=Blueprint('schedule',__name__)
 
@@ -302,7 +303,8 @@ def _relay_write(body):
  Noneを返して、呼び出し元が自分で書く道へ落ちる。"""
  try:
   from .. import schedule_owner, schedule_watch
- except Exception:
+ except Exception as _e:
+  quiet('中継の仕組みを読み込めない（自分で書く）',_e)
   return None
  # **中継されてきたものを中継し返さない。** 共有(Box等)の結果整合性では
  # 目印が二重に見えることがあり、互いを持ち主だと思い込むと同じ依頼を
@@ -318,14 +320,14 @@ def _relay_write(body):
  if status is None:
   app_logger().warning('持ち主へ頼めなかったので自分で書きます(%s): %s',request.path,out)
   try:g.relay_fallback=str(out or '書込役へ届きません')
-  except Exception:pass
+  except Exception as _e:quiet('中継できなかったことを画面へ渡せない（自分で書いた事実は変わらない）',_e)
   return None
  # 書けたので**自分の写しも取り直す**——取り直さないと、書いた本人の画面
  # だけが古いままになる（他の端末は見張りが気づく）。
  if status<400:
   try:
    schedule_watch.schedule_watch_once();schedule_watch.wake()
-  except Exception:pass
+  except Exception as _e:quiet('共有の取り込みを起こせない（次の巡回で取り込む）',_e)
  payload=dict(out or {})
  payload['relayedTo']=schedule_owner.status().get('ownerPc') or ''
  return jsonify(**payload),status
@@ -341,7 +343,7 @@ def _request_mode():
   from .. import schedule_owner
   m=schedule_owner.relayed_mode(request.headers)
   if m:return m
- except Exception:pass
+ except Exception as _e:quiet('中継のモードを読めない（この端末のモードで判定する）',_e)
  return get_mode()
 
 def _session_block_on():
@@ -986,7 +988,8 @@ def estimate_preview():
  try:
   detail=json.loads(detail_raw)
   if not isinstance(detail,dict):detail=None
- except Exception:
+ except Exception as _e:
+  quiet('保存された値を読めない（既定で続ける）',_e)
   detail=None
  if detail is None:return jsonify(error='detail(明細JSON)の形式が不正です。'),400
  # 見積は換算係数上書きマスタ(master.sqlite3)しか読まないため、共有DBの
@@ -1035,7 +1038,8 @@ def _overview_row(equipment,expanded,now):
   if e['state'] in ('着手',sr.PLAN_REORDERABLE_STATE) and e.get('plannedStart') and e.get('plannedEnd'):
    try:
     start=datetime.fromisoformat(e['plannedStart']);end=datetime.fromisoformat(e['plannedEnd'])
-   except Exception:
+   except Exception as _e:
+    quiet('日時として読めない（無いものとして続ける）',_e)
     continue
    if end<now or start>window_end:continue
    blocks.append({'id':e['id'],'kind':e['kind'],'state':e['state'],

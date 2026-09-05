@@ -69,6 +69,7 @@ from flask import Blueprint, jsonify, request, send_file
 
 from ..logging_setup import app_logger, launcher_logger
 from ..paths import logs_dir
+from ..quiet import quiet
 
 bp=Blueprint('logs',__name__)
 
@@ -244,7 +245,8 @@ def _place(label, path, note=''):
    next(iter(Path(path).iterdir()),None);out['readable']=True
   else:
    with open(str(path),'rb') as f:out['readable']=bool(f.read(1))
- except Exception:
+ except Exception as _e:
+  quiet('読めるかを確かめられない（読めないものとして出す）',_e)
   out['readable']=False
  return out
 
@@ -481,12 +483,12 @@ def _with_handlers(name,fn):
  try:
   for h in handlers:
    try:h.flush();h.close()
-   except Exception:pass
+   except Exception as _e:quiet('接続を閉じられない（この要求のあいだだけの接続なので後で片付く）',_e)
   return fn()
  finally:
   for h in handlers:
    try:h.release()
-   except Exception:pass
+   except Exception as _e:quiet('ログの鍵を解けない（次の追記でハンドラが開き直す）',_e)
 
 
 def _resolve(name):

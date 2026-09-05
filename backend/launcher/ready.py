@@ -31,6 +31,7 @@ import json
 import sys
 
 from ..paths import APP_ROOT, local_root, runtime_dir
+from ..quiet import quiet
 
 # 刻印そのものの形。**作りを変えたら上げること**——上げないと、古い形の
 # 刻印を新しい判定が「合っている」と読んでしまう。
@@ -72,7 +73,8 @@ def read():
     try:
         data = json.loads(stamp_file().read_text(encoding='utf-8'))
         return data if isinstance(data, dict) else None
-    except Exception:
+    except Exception as _e:
+        quiet('保存された値を読めない（既定で続ける）',_e)
         return None
 
 
@@ -86,15 +88,16 @@ def write(extra=None):
         stamp_file().write_text(json.dumps(payload, ensure_ascii=False, indent=1),
                                 encoding='utf-8')
         return True
-    except Exception:
+    except Exception as _e:
+        quiet('刻印を書けない（次の起動でもう一度確認する）',_e)
         return False
 
 
 def clear():
     try:
         stamp_file().unlink(missing_ok=True)
-    except Exception:
-        pass
+    except Exception as _e:
+        quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
 
 
 def mismatch():

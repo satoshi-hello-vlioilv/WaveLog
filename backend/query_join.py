@@ -30,6 +30,7 @@ from .db_access import (DBS, QUALITY_DB_KEY, WORK_DB_KEY, cfg, cols, connect, pa
                         qi, tables)
 from .logging_setup import app_logger
 from . import source_capability
+from .quiet import quiet
 
 # 相手を引くときのIN句の単位（パラメータ数の上限対策。品質データ結合と同じ）。
 _IN_CHUNK = 100
@@ -246,7 +247,8 @@ def _right_table(d, c, right_cfg):
   for t in ordered:
    try:
     cs = cols(c, t, source=right_cfg['path'])
-   except Exception:
+   except Exception as _e:
+    quiet('相手の列を読めない（この表は候補から外す）',_e)
     continue
    if all(_resolve_key_column(cs, k['right'], k.get('alias')) for k in d['keys']):
     return t, cs, ''

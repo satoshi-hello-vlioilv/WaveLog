@@ -23,6 +23,7 @@ import time
 from . import paths
 from .paths import APP_ROOT, configured_path, load_local_config, local_config_error
 from .logging_setup import app_logger
+from .quiet import quiet
 
 # DBの置き場所は既定でAPP_ROOT/db。config/local.jsonの"db_dir"で上書き可能
 # (未配置なら従来どおり)。個別ファイルの上書きはDBS['MASTER']['path']/
@@ -214,7 +215,8 @@ def cfg(k):
  try:
   from . import db_mirror
   local=db_mirror.read_path(k,entry['path'])
- except Exception:
+ except Exception as _e:
+  quiet('写しの場所を引けない（元のパスをそのまま読む）',_e)
   return entry
  if Path(local)==Path(entry['path']):return entry
  out=dict(entry);out['path_remote']=entry['path'];out['path']=Path(local);out['mirrored']=True
@@ -257,7 +259,7 @@ def add_missing_columns(c,table,columns,commit=True):
     ディスク）は呼び出し側へそのまま返す。黙って進むと、列が無いまま
     SELECTして別の場所で落ちる。"""
  try:existing=set(cols(c,table))
- except Exception:return []
+ except Exception as _e:quiet('列を読めない（足す列を決められないので何もしない）',_e);return []
  cur=c.cursor();added=[]
  for name,decl in columns:
   if name in existing:continue
@@ -434,7 +436,8 @@ def _master_path_config():
   if not _MASTER_PATH.exists():return {}
   with connect(_MASTER_PATH,True) as c:
    return path_config_rows(c)
- except Exception:
+ except Exception as _e:
+  quiet('マスタの設定を読めない（既定で続ける）',_e)
   return {}
 
 def path_config_value(key,default=None):
@@ -925,7 +928,7 @@ def _records_share_files():
   for entry in sorted(RECORDS_SHARE_DIR.iterdir(),key=lambda e:e.name):
    try:
     if entry.is_dir():found.append(entry/RECORDS_FILE_NAME)
-   except Exception:continue
+   except Exception as _e:quiet('共有の中を辿れない（この項目を飛ばす）',_e);continue
  except Exception as e:
   # **読めなかったことを「1件も無い」と同じに扱わない**(§9.211 ②)。
   # 前に読めた一覧があればそれを使い続ける。
@@ -985,7 +988,7 @@ def note_records_written(path):
  try:
   from . import db_mirror
   db_mirror.wake()
- except Exception:pass
+ except Exception as _e:quiet('写しの取り直しを起こせない（次の巡回で写す）',_e)
 
 def records_written_here():
  with _records_written_lock:
@@ -1003,7 +1006,8 @@ def records_read_paths():
  try:
   from . import db_mirror
   by_path={str(remote):key for key,remote in db_mirror.records_targets()}
- except Exception:
+ except Exception as _e:
+  quiet('写しの対応表を引けない（実物をそのまま読む）',_e)
   by_path={}
  for real in records_paths_all():
   use=real
@@ -1011,7 +1015,8 @@ def records_read_paths():
   if key and str(real) not in mine:
    try:
     use=Path(db_mirror.read_path(key,real))
-   except Exception:
+   except Exception as _e:
+    quiet('写しの場所を引けない（実物をそのまま読む）',_e)
     use=real
   k=str(use)
   if k in seen:continue
@@ -1106,7 +1111,8 @@ def request_user_id(x):
  try:
   from .access_mode import current_login_id
   return str(current_login_id() or '')[:50]
- except Exception:
+ except Exception as _e:
+  quiet('ログインIDを引けない（空として続ける）',_e)
   return ''
 
 def request_pc_name(x=None):
@@ -1127,7 +1133,8 @@ def request_pc_name(x=None):
  try:
   from .access_mode import current_pc_name
   return str(current_pc_name() or '')[:80]
- except Exception:
+ except Exception as _e:
+  quiet('端末名を引けない（空として続ける）',_e)
   return ''
 
 def read_backup_rows(path):
@@ -1208,15 +1215,17 @@ _backup_file_cache={}
 def _backup_file_rows(path):
  try:
   st=path.stat();sig=(st.st_mtime_ns,st.st_size)
- except Exception:
+ except Exception as _e:
   # 署名が取れないときは覚えない(共有越しではstatだけ失敗する。§9.188)。
+  quiet('見かけ（更新時刻・大きさ）を取れない（分からないものとして続ける）',_e)
   sig=None
  if sig is not None:
   hit=_backup_file_cache.get(str(path))
   if hit is not None and hit[0]==sig:return hit[1]
  try:
   items,_=read_backup_rows(path)
- except Exception:
+ except Exception as _e:
+  quiet('控えのファイルを読めない（この1件を飛ばす）',_e)
   items=None
  rows=items or []
  if sig is not None:_backup_file_cache[str(path)]=(sig,rows)
@@ -1259,7 +1268,7 @@ def merged_backup_rows(force=False):
  try:
   from . import db_mirror
   db_mirror.wake()
- except Exception:pass
+ except Exception as _e:quiet('写しの取り直しを起こせない（次の巡回で写す）',_e)
  sig=_backup_sources_signature()
  if not force:
   with _backup_rows_lock:

@@ -72,7 +72,7 @@
   const b=$id('qaFold');
   if(b){b.textContent=on?'▼ 開く':'▲ 畳む';
         b.title=on?'このカードを開いて、グラフの設定を出します':'このカードを畳んで、下の一覧を広く使います'}
-  try{localStorage.setItem(FOLD_KEY,on?'1':'0')}catch(_){}
+  try{localStorage.setItem(FOLD_KEY,on?'1':'0')}catch(_){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',_)}
  }
 /* ---------- パネル生成 ---------- */
  function ensurePanel(){

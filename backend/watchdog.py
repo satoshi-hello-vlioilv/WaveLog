@@ -43,6 +43,7 @@ import time
 from .config import (CLOSED_GRACE_SEC, EMPTY_GRACE_SEC, HEARTBEAT_STALE_SEC,
                      WATCHDOG_CHECK_INTERVAL_SEC, WATCHDOG_CLOSING_INTERVAL_SEC)
 from .logging_setup import launcher_logger
+from .quiet import quiet
 
 _active_tabs={}
 _tabs_lock=threading.Lock()
@@ -148,7 +149,7 @@ def _exit(reason,code=0):
  log.info('--- 終了 ---')
  for handler in log.handlers:
   try:handler.flush()
-  except Exception:pass
+  except Exception as _e:quiet('ログを書き切れない（終了は続ける）',_e)
  os._exit(code)
 
 def active_tab_count():
@@ -187,8 +188,8 @@ def install(app):
    presence.touch_async(current_login_id(),current_pc_name(),get_mode(),
                         current_permission_flags().get('role',''),
                         str(request.args.get('view') or '')[:40])
-  except Exception:
-   pass
+  except Exception as _e:
+   quiet('在席を書けない（ハートビートは受け付ける）',_e)
   return jsonify(ok=True)
 
  @app.post('/api/heartbeat/close')
@@ -204,8 +205,8 @@ def install(app):
     from . import presence
     from .access_mode import current_login_id,current_pc_name
     presence.leave(current_login_id(),current_pc_name())
-   except Exception:
-    pass
+   except Exception as _e:
+    quiet('在席から抜けられない（期限で自然に消える）',_e)
   _wake.set()          # 寝て待たずに、すぐ数え始める
   return jsonify(ok=True)
 
@@ -229,13 +230,13 @@ def install(app):
   try:
    from . import schedule_owner
    owner=schedule_owner.is_owner()
-  except Exception:pass
+  except Exception as _e:quiet('書込役かどうかを確かめられない（その一言を出さない）',_e)
   try:
    from . import schedule_sync
    from .access_mode import current_login_id,current_pc_name
    st=schedule_sync.sessions_all(current_login_id(),current_pc_name())
    sessions=[x['equipment'] for x in (st.get('sessions') or []) if x.get('mine')]
-  except Exception:pass
+  except Exception as _e:quiet('編集権の状況を引けない（その一言を出さない）',_e)
   return jsonify(ok=True,tabs=tabs,isOwner=owner,sessions=sessions)
 
  @app.post('/api/app/quit')
@@ -250,7 +251,7 @@ def install(app):
   try:
    from .access_mode import current_login_id,current_pc_name
    who=f'{current_login_id() or "?"}@{current_pc_name() or "?"}'
-  except Exception:pass
+  except Exception as _e:quiet('誰が終了したかを記録できない（終了は続ける）',_e)
   threading.Timer(0.3,lambda:_exit(f'画面の終了ボタン({who})')).start()
   return jsonify(ok=True,stopping=True)
 

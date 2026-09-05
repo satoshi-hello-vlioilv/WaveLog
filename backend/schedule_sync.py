@@ -47,6 +47,7 @@ from .config import (SCHEDULE_LOCK_TTL_SEC_DEFAULT, SCHEDULE_LOCK_VERIFY_DELAY_M
                      SCHEDULE_WATCH_INTERVAL_SEC_DEFAULT, SCHEDULE_WATCH_PAUSE_SEC_DEFAULT)
 from .db_access import SCHEDULE_SHARE_PATH, SCHEDULE_CACHE_PATH, connect, path_config_value
 from .logging_setup import app_logger
+from .quiet import quiet
 
 LOCK_FILENAME='schedule.lock.json'
 META_TABLE='スケジュールメタ'
@@ -72,7 +73,8 @@ def _lock_verify_delay_default_ms():
  try:
   if SCHEDULE_SHARE_PATH is not None and paths.cloud_sync_hint(Path(SCHEDULE_SHARE_PATH)):
    return SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT
- except Exception:
+ except Exception as _e:
+  quiet('置き場の種類を確かめられない（分からないものとして続ける）',_e)
   return SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT
  return SCHEDULE_LOCK_VERIFY_DELAY_NETWORK_MS
 
@@ -126,7 +128,8 @@ def _read_lock():
  try:
   data=json.loads(path.read_text(encoding='utf-8'))
   return data if isinstance(data,dict) else None
- except Exception:
+ except Exception as _e:
+  quiet('保存された値を読めない（既定で続ける）',_e)
   return None
 
 
@@ -134,7 +137,8 @@ def _lock_expired(lock):
  if not lock or not lock.get('expires_at'):return True
  try:
   return datetime.fromisoformat(lock['expires_at'])<=datetime.now()
- except Exception:
+ except Exception as _e:
+  quiet('日時として読めない（無いものとして続ける）',_e)
   return True
 
 
@@ -159,8 +163,8 @@ def acquire_lock(login_id,pc_name,ttl_sec=None):
   remaining=1
   try:
    remaining=max(1,int((datetime.fromisoformat(current['expires_at'])-datetime.now()).total_seconds()))
-  except Exception:
-   pass
+  except Exception as _e:
+   quiet('日時として読めない（無いものとして続ける）',_e)
   raise LockHeldError(current.get('holder_login',''),current.get('holder_pc',''),remaining)
  token=uuid.uuid4().hex
  now=datetime.now()
@@ -225,7 +229,8 @@ def _read_sessions_raw():
  try:
   data=json.loads(path.read_text(encoding='utf-8'))
   return data if isinstance(data,dict) else {}
- except Exception:
+ except Exception as _e:
+  quiet('保存された値を読めない（既定で続ける）',_e)
   return {}
 
 
@@ -236,7 +241,8 @@ def _prune_expired(sessions):
   try:
    if isinstance(entry,dict) and datetime.fromisoformat(entry.get('expires_at',''))>now:
     kept[eq]=entry
-  except Exception:
+  except Exception as _e:
+   quiet('日時として読めない（無いものとして続ける）',_e)
    continue
  return kept
 
@@ -452,7 +458,8 @@ def _verify_integrity(path):
   finally:
    c.close()
   return True
- except Exception:
+ except Exception as _e:
+  quiet('写しの中身を確かめられない（採らない側へ倒す）',_e)
   return False
 
 
@@ -556,7 +563,8 @@ def local_revision():
   c=connect(SCHEDULE_CACHE_PATH,True,'sqlite')
   try:return _read_revision_only(c)
   finally:c.close()
- except Exception:
+ except Exception as _e:
+  quiet('写しの改訂番号を読めない（分からないものとして扱う）',_e)
   return None
 
 
@@ -571,7 +579,8 @@ def _shared_signature():
  try:
   st=shared.stat()
   return (int(st.st_mtime_ns),int(st.st_size))
- except Exception:
+ except Exception as _e:
+  quiet('数として読めない（既定で続ける）',_e)
   return None
 
 
@@ -718,7 +727,7 @@ def fetch_snapshot(force=False):
    app_logger().warning('スケジュールデータの取得に失敗しました(%s): %s',shared,e)
   finally:
    try:tmp.unlink(missing_ok=True)
-   except Exception:pass
+   except Exception as _e:quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
  else:
   # 共有ファイルがまだ存在しない(初回)。空のローカルコピーを新規に作る。
   if not SCHEDULE_CACHE_PATH.exists():
@@ -781,8 +790,8 @@ def acquire_lock_deferred(login_id,pc_name,ttl_sec=None):
   remaining=1
   try:
    remaining=max(1,int((datetime.fromisoformat(current['expires_at'])-datetime.now()).total_seconds()))
-  except Exception:
-   pass
+  except Exception as _e:
+   quiet('日時として読めない（無いものとして続ける）',_e)
   raise LockHeldError(current.get('holder_login',''),current.get('holder_pc',''),remaining)
  token=uuid.uuid4().hex
  now=datetime.now()

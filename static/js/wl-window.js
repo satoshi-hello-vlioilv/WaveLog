@@ -33,7 +33,7 @@
   try{
    const saved=o.storageKey&&JSON.parse(localStorage.getItem(o.storageKey)||'null');
    if(saved&&typeof saved==='object')rect=Object.assign(rect,saved);
-  }catch(e){/* 保存値が壊れていても既定値で開始する */}
+  }catch(e){WL.quiet.note('保存値が壊れていても既定値で開始する',e)}
   /* **画面の中へ引き戻した写しを返す**（§9.292 ④）。ウィンドウ全体
      (右下角の抽出ハンドル・閉じるボタン含む)が画面外へ出てしまうと、
      以後リサイズも移動もできなくなり実質操作不能になる。固定マージンでは
@@ -61,7 +61,7 @@
    if(r.left==null){el.style.left='';el.style.right=o.defaultRight+'px'}
    else{el.style.left=r.left+'px';el.style.right=''}
   }
-  function save(){try{if(o.storageKey)localStorage.setItem(o.storageKey,JSON.stringify(rect))}catch(e){/* 保存できなくても表示自体は継続する */}}
+  function save(){try{if(o.storageKey)localStorage.setItem(o.storageKey,JSON.stringify(rect))}catch(e){WL.quiet.note('保存できなくても表示自体は継続する',e)}}
   function dragToMove(startEvent){
    if(startEvent.target.closest('button'))return;
    startEvent.preventDefault();

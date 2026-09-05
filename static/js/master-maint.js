@@ -147,7 +147,7 @@
   }catch(e){return new Set(MM_NAVFOLD_DEFAULT)}
  }
  function mmSetNavFolded(set){
-  try{localStorage.setItem(MM_NAVFOLD_KEY,JSON.stringify([...set]))}catch(e){}
+  try{localStorage.setItem(MM_NAVFOLD_KEY,JSON.stringify([...set]))}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
  }
  function renderMaintNav(){
   const nav=$('#masterMaintNav');if(!nav)return;
@@ -305,7 +305,7 @@
   b.classList.toggle('is-unknown',!id);
   b.onclick=()=>openMasterMaint('presence');
   if(!id&&typeof fetchWhoami==='function'){
-   fetchWhoami().then(v=>{if(v){setUserId(v);paintMaintUser()}}).catch(()=>{});
+   fetchWhoami().then(v=>{if(v){setUserId(v);paintMaintUser()}}).catch(WL.quiet('利用者IDを取れない（この端末の共通の設定として続ける）'));
   }
  }
  /* **打ち込ませない**（§9.276 ③）。取れていないときは、無言で断らずに
@@ -421,7 +421,7 @@
   }catch(e){return 'full'}
  }
  function setHintLevel(v){
-  try{localStorage.setItem(HINT_LEVEL_KEY,HINT_LEVELS.some(x=>x.v===v)?v:'full')}catch(e){}
+  try{localStorage.setItem(HINT_LEVEL_KEY,HINT_LEVELS.some(x=>x.v===v)?v:'full')}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
   document.documentElement.setAttribute('data-hint',hintLevel());
  }
  /* 短めは**最初の1文だけ**（`。`まで）。**文の途中で切らない**——途中で
@@ -511,9 +511,9 @@
     既に唯一の受け口なので、そこへ戻す（2つ目の対応表を作らない）。 */
  function refreshMaintScreen(){
   const def=currentDef();
-  if(def&&def.special){loadMaintInner(false).catch(()=>{});return}
-  try{renderMaintForm()}catch(e){}
-  try{renderMaintList()}catch(e){}
+  if(def&&def.special){loadMaintInner(false).catch(WL.quiet('専用の画面を描き直せない（前の中身が残る）'));return}
+  try{renderMaintForm()}catch(e){WL.quiet.note('入力欄を描き直せない（前の欄が残る）',e)}
+  try{renderMaintList()}catch(e){WL.quiet.note('一覧を描き直せない（前の一覧が残る）',e)}
  }
  /* ---------- 説明を階層にする（§9.276 ④、利用者の指示） ----------
     「説明文長すぎてわかりにくくて読みにくいので、タブやアコーディオンなど
@@ -2054,7 +2054,7 @@
      if(/^\/[A-Za-z]:/.test(p))p=p.slice(1);
      else if(!/^\//.test(p))p='\\\\'+p;
      return p.replace(/\//g,'\\');
-    }catch(e){/* 壊れたURIは無視 */}
+    }catch(e){WL.quiet.note('壊れたURIは無視',e)}
    }
    if(/^[A-Za-z]:\\|^\\\\/.test(raw))return raw;
   }
@@ -2271,7 +2271,7 @@
    const form=document.querySelector(root);
    if(form&&firstMissing){
     mmRevealField(form,firstMissing);
-    if(firstMissing.focus){try{firstMissing.focus()}catch(e){}}
+    if(firstMissing.focus){try{firstMissing.focus()}catch(e){WL.quiet.note('焦点を当てられない（値も操作も残る）',e)}}
    }
    showToast('入力を確認してください','必須項目が未入力です。',4000);return;
   }
@@ -2402,7 +2402,7 @@
   const cur=Object.assign({},all[def.key]||{},patch);
   if(!cur.sort&&!(cur.widths&&Object.keys(cur.widths).length))delete all[def.key];
   else all[def.key]=cur;
-  try{localStorage.setItem(MM_VIEW_KEY,JSON.stringify(all))}catch(e){}
+  try{localStorage.setItem(MM_VIEW_KEY,JSON.stringify(all))}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
  }
  function mmViewTouched(def){
   const v=mmViewOf(def);
@@ -2467,9 +2467,9 @@
       設備へ足したとき、保存できたのに一覧に出ないのは「消えた」と読まれる。 */
  const MM_FOLD_KEY='MasterListFoldV1';
  let mmFoldPref=new Map();
- try{mmFoldPref=new Map(Object.entries(JSON.parse(localStorage.getItem(MM_FOLD_KEY)||'{}')))}catch(e){}
+ try{mmFoldPref=new Map(Object.entries(JSON.parse(localStorage.getItem(MM_FOLD_KEY)||'{}')))}catch(e){WL.quiet.note('端末の覚えが読めない（既定で続ける）',e)}
  const mmFoldKey=(def,g)=>`${def.key}::${g}`;
- function mmFoldRemember(){try{localStorage.setItem(MM_FOLD_KEY,JSON.stringify(Object.fromEntries(mmFoldPref)))}catch(e){}}
+ function mmFoldRemember(){try{localStorage.setItem(MM_FOLD_KEY,JSON.stringify(Object.fromEntries(mmFoldPref)))}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}}
  function mmIsFolded(def,g){return mmFoldPref.get(mmFoldKey(def,g))===true}
  function mmSetFolded(def,g,on){
   /* **開いた群は覚えない**（鍵ごと消す）——既定が「開く」なので、
@@ -2750,7 +2750,7 @@
   // force未指定(キャッシュ利用)のままだと、設備マスタタブで新規登録・削除した
   // 直後でもオペレータ/設備停止タブの選択肢が古いままになる。loadMaint()の
   // forceをそのまま伝播し、タブを開き直すたびに最新の設備マスタを反映する。
-  if(needsEquipmentMaster&&typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){/* 設備マスタが読めなくても一覧の表示は継続する */}}
+  if(needsEquipmentMaster&&typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備マスタが読めなくても一覧の表示は継続する',e)}}
   renderMaintForm();
   try{
    const r=await api(def.endpoint);let items=(r&&r.items)||[];
@@ -2785,7 +2785,7 @@
   syncNav();panel.hidden=false;loadMaint(true);
   /* 専用タブを持たないマスタ（§9.249 ②）。**画面は待たせない**——届いたら
      ナビを描き直す。読めなくても他のタブは今までどおり使える。 */
-  WL.mm.loadMasterTableCatalog().catch(()=>{});
+  WL.mm.loadMasterTableCatalog().catch(WL.quiet('マスタ表の一覧を取れない（他のタブは今までどおり）'));
   /* 更新者IDは打ち込む欄では無くなった（§9.276 ③）ので、最初のフォーカスは
      絞り込みへ渡す（打てない物へ当てると、そこで手が止まる）。 */
   requestAnimationFrame(()=>{const s=$('#masterMaintSearch');if(s)s.focus()});

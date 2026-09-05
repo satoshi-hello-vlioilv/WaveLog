@@ -38,6 +38,7 @@ from datetime import timedelta
 from . import schedule_calc
 from .db_access import merged_backup_rows
 from .repositories import schedule_repo as sr
+from .quiet import quiet
 
 # 解いた抜粋の覚え。{記録ID: (署名, 抜粋)}。署名は「更新日時＋レコード自身の
 # 更新時刻」で、どちらかが動いたら解き直す。**上限は持たない**——1件あたり
@@ -63,7 +64,8 @@ def _payload(row):
     try:
         obj = json.loads(raw)
         return obj if isinstance(obj, dict) else None
-    except Exception:
+    except Exception as _e:
+        quiet('保存された値を読めない（既定で続ける）',_e)
         return None
 
 
@@ -157,7 +159,8 @@ def _shift_rows_for(conn, equipment, memo):
     if key not in memo:
         try:
             memo[key] = sr.shift_rows(conn, key)
-        except Exception:
+        except Exception as _e:
+            quiet('勤務体系を引けない（直の割り当て無しで続ける）',_e)
             memo[key] = []
     return memo[key]
 
@@ -181,7 +184,8 @@ def _with_shift(item, conn, memo, global_rows):
     if ref:
         try:
             dt = schedule_calc._parse_dt(ref)
-        except Exception:
+        except Exception as _e:
+            quiet('日時として読めない（直を当てない）',_e)
             dt = None
     item['durationMin'] = _duration_min(item.get('workStart'), item.get('workEnd'))
     if dt is None:
@@ -221,12 +225,13 @@ def rows(equipment=None, date_from=None, date_to=None, basis='work', force=False
     try:
         try:
             sr.migrate_config_masters_from_shared()
-        except Exception:
-            pass
+        except Exception as _e:
+            quiet('共有からの移行を試せない（手元のマスタで続ける）',_e)
         try:
             conn = sr.config_master_conn()
             global_rows = sr.shift_rows(conn, '')
-        except Exception:
+        except Exception as _e:
+            quiet('マスタへつなげない（直の割り当て無しで続ける）',_e)
             conn = None
         for row in all_rows:
             rid = row.get('id')
@@ -255,8 +260,8 @@ def rows(equipment=None, date_from=None, date_to=None, basis='work', force=False
         if conn is not None:
             try:
                 conn.close()
-            except Exception:
-                pass
+            except Exception as _e:
+                quiet('接続を閉じられない（この要求のあいだだけの接続なので後で片付く）',_e)
     # 新しい順（作業開始が無い行は更新時刻で並ぶ）。**画面で並べ直せる**ので
     # ここは1本だけ持つ。
     out.sort(key=lambda x: (x.get('refAt') or '', x.get('id') or ''), reverse=True)
@@ -317,14 +322,15 @@ def catalog(equipment=''):
     try:
         conn = sr2.config_master_conn()
         groups = rb.field_catalog(conn, equipment)
-    except Exception:
+    except Exception as _e:
+        quiet('帳票の候補を取れない（列の候補が減るだけ）',_e)
         groups = []
     finally:
         if conn is not None:
             try:
                 conn.close()
-            except Exception:
-                pass
+            except Exception as _e:
+                quiet('接続を閉じられない（この要求のあいだだけの接続なので後で片付く）',_e)
     out, dropped = [], []
     for g in groups:
         name = str(g.get('group') or '')

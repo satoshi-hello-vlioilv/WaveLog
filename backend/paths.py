@@ -30,6 +30,7 @@ import re
 import sys
 
 from .config import LOCAL_DIR_NAME
+from .quiet import quiet
 
 APP_ROOT=Path(__file__).resolve().parent.parent
 
@@ -132,8 +133,8 @@ def expand_path(raw):
  text=os.path.expandvars(text)
  try:
   text=os.path.expanduser(text)
- except Exception:
-  pass
+ except Exception as _e:
+  quiet('`~`を展開できない（書いたまま使う）',_e)
  return text
 
 def configured_path(key):
@@ -169,11 +170,11 @@ def _local_root_candidates():
   base=os.environ.get(key)
   if base:out.append(Path(base)/LOCAL_DIR_NAME)
  try:out.append(Path.home()/'.local'/'share'/LOCAL_DIR_NAME)
- except Exception:pass
+ except Exception as _e:quiet('この候補を作れない（次の候補を試す）',_e)
  try:
   import tempfile
   out.append(Path(tempfile.gettempdir())/LOCAL_DIR_NAME)
- except Exception:pass
+ except Exception as _e:quiet('この候補を作れない（次の候補を試す）',_e)
  return out
 
 def local_root():
@@ -191,10 +192,11 @@ def local_root():
    probe=path/'.writable'
    probe.write_text('',encoding='utf-8')
    try:probe.unlink()
-   except Exception:pass
+   except Exception as _e:quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
    _LOCAL_ROOT=path
    return path
-  except Exception:
+  except Exception as _e:
+   quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
    continue
  # どこにも書けない。**それでもパスは返す**——ここで送出すると、
  # 起動が待機画面を開く前に死ぬ（この節の冒頭がまさにそれ）。
@@ -225,8 +227,8 @@ def _sub_dir(name):
  path=local_root()/name
  try:
   path.mkdir(parents=True,exist_ok=True)
- except Exception:
-  pass
+ except Exception as _e:
+  quiet('フォルダを作れない（次の候補を試す）',_e)
  return path
 
 def logs_dir():
@@ -271,7 +273,8 @@ def is_network_path(path):
   return False
  try:
   return ctypes.windll.kernel32.GetDriveTypeW(f'{drive}\\')==_DRIVE_REMOTE
- except Exception:
+ except Exception as _e:
+  quiet('ドライブの種類を引けない（ネットワークではないものとして扱う）',_e)
   return False
 
 # ------------------------------------------------------------------------
@@ -321,7 +324,8 @@ def _decide_work_dir():
   return local_root()/'work'/_install_id(),f'{cloud}の中のため手元へ移しました'
  try:
   remote=is_network_path(base)
- except Exception:
+ except Exception as _e:
+  quiet('置き場の種類を確かめられない（分からないものとして続ける）',_e)
   remote=False
  if remote:
   return local_root()/'work'/_install_id(),'ネットワーク上のため手元へ移しました'
@@ -388,7 +392,8 @@ def msix_private_copy(path):
         if not base:return None
         base=Path(base)
         rel=Path(path).relative_to(base)
-    except Exception:
+    except Exception as _e:
+        quiet('私的な写しの道を組み立てられない（写しは無いものとして扱う）',_e)
         return None
     parts=rel.parts
     if not parts or parts[0].lower()=='packages':
@@ -401,13 +406,13 @@ def msix_private_copy(path):
         exe=Path(sys.executable)
         if any(p.lower()=='windowsapps' for p in exe.parts):
             names.append(exe.parent.name)
-    except Exception:
-        pass
+    except Exception as _e:
+        quiet('Pythonの置き場からパッケージ名を拾えない（次の手掛かりを試す）',_e)
     try:
         for entry in pkgs.iterdir():
             if entry.name not in names:names.append(entry.name)
-    except Exception:
-        pass
+    except Exception as _e:
+        quiet('パッケージの一覧を辿れない（拾えた名前だけで見る）',_e)
     for name in names:
         cand=pkgs/name/'LocalCache'/'Local'/rel
         try:
@@ -425,7 +430,7 @@ def _browser_dir_candidates():
     ホーム直下とアプリ本体の隣はその外側にある。"""
     out=[]
     try:out.append(Path.home()/('.'+LOCAL_DIR_NAME.lower())/'runtime')
-    except Exception:pass
+    except Exception as _e:quiet('この候補を作れない（次の候補を試す）',_e)
     out.append(APP_ROOT/'runtime')
     return out
 
@@ -438,9 +443,10 @@ def _visible_probe(path):
         probe.write_text('',encoding='utf-8')
         hidden=msix_private_copy(probe)
         try:probe.unlink()
-        except Exception:pass
+        except Exception as _e:quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
         return hidden is None
-    except Exception:
+    except Exception as _e:
+        quiet('フォルダを作れない（次の候補を試す）',_e)
         return False
 
 def browser_dir():

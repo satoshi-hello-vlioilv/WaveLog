@@ -41,6 +41,7 @@ from .repositories.master_repo import (permission_flags, master_write_check,
                                        MASTER_EDIT_DEFAULT, ROLE_DEFAULT,
                                        MASTER_WRITE_BLUEPRINTS,
                                        master_edit_capabilities)
+from .quiet import quiet
 
 _lock=threading.Lock()
 _mode='edit'  # 'edit' | 'view' | 'schedule'
@@ -244,7 +245,8 @@ def _relayed_identity():
   if not has_request_context():return None
   from . import schedule_owner
   return schedule_owner.relayed_identity(request.headers)
- except Exception:
+ except Exception as _e:
+  quiet('中継の素性を読めない（この端末の素性で扱う）',_e)
   return None
 
 def _relayed_write_ok():
@@ -264,7 +266,8 @@ def _relayed_write_ok():
   from . import schedule_owner
   if not schedule_owner.is_owner():return False
   return schedule_owner.relayed_identity(request.headers) is not None
- except Exception:
+ except Exception as _e:
+  quiet('中継の書込かを確かめられない（通さない側へ倒す）',_e)
   return False
 
 def current_login_id():
@@ -289,7 +292,7 @@ def current_login_id():
              lambda:os.environ.get('USER'),
              lambda:os.environ.get('LOGNAME')):
   try:v=str(get() or '').strip()
-  except Exception:v=''
+  except Exception as _e:quiet('ログインIDを引けない（空として続ける）',_e);v=''
   if v:return v
  return ''
 
@@ -326,28 +329,30 @@ def _pc_name_override():
  try:
   from .db_access import path_config_value
   return _usable_pc_name(path_config_value('pc_name'))
- except Exception:
+ except Exception as _e:
+  quiet('設定のPC名を読めない（名乗り直さない）',_e)
   return ''
 
 def _pc_name_candidates():
  import platform
  def env(k):
   try:return os.environ.get(k) or ''
-  except Exception:return ''
+  except Exception as _e:quiet('環境変数を読めない（次の出どころを試す）',_e);return ''
  def host():
   try:return socket.gethostname()
-  except Exception:return ''
+  except Exception as _e:quiet('gethostnameが使えない（次の出どころを試す）',_e);return ''
  def node():
   try:return platform.node()
-  except Exception:return ''
+  except Exception as _e:quiet('platform.nodeが使えない（次の出どころを試す）',_e);return ''
  def fqdn():
   try:return str(socket.getfqdn() or '').split('.')[0]
-  except Exception:return ''
+  except Exception as _e:quiet('getfqdnが使えない（次の出どころを試す）',_e);return ''
  def etc():
   try:
    with open('/etc/hostname','r',encoding='utf-8',errors='replace') as f:
     return f.read().strip()
-  except Exception:
+  except Exception as _e:
+   quiet('/etc/hostnameを読めない（次の出どころを試す）',_e)
    return ''
  # 並びは「今までの答え → Windowsの正式な機械名 → 保険」の順。
  return [('設定（共通設定のPC名）',_pc_name_override()),
@@ -444,7 +449,8 @@ def revocation_now():
  try:
   from . import presence
   value=presence.my_revocation(current_login_id(),current_pc_name())
- except Exception:
+ except Exception as _e:
+  quiet('切断の指示を読めない（切断されていないものとして続ける）',_e)
   value=None                      # **読めなかったら止めない**（fail-open）
  with _revocation_lock:
   _revocation['at']=now;_revocation['value']=value
@@ -469,8 +475,8 @@ def install(app):
   app_logger().info('この端末の名前: %s (出どころ: %s / 試した順: %s)',
                     info['name'] or '（取得できませんでした）',info['source'] or '-',
                     ', '.join(f"{t['source']}={t['value'] or '空'}" for t in info['tried']))
- except Exception:
-  pass
+ except Exception as _e:
+  quiet('この端末の名前を記録できない（判定そのものは動く）',_e)
  with _lock:
   _mode=_initial_mode(_permission_flags())
 

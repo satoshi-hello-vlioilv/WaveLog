@@ -64,11 +64,11 @@
    if(v.basis==='cal')acState.basis='cal';
    const d=Number(v.days);
    if(Number.isFinite(d)&&d>0&&d<=3660)acState.days=d;
-  }catch(e){}
+  }catch(e){WL.quiet.note('端末の覚えが読めない（既定で続ける）',e)}
  }
  function savePref(){
   try{localStorage.setItem(AC_PREF_KEY,JSON.stringify(
-   {equipment:acState.equipment,basis:acState.basis,days:acState.days}))}catch(e){}
+   {equipment:acState.equipment,basis:acState.basis,days:acState.days}))}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
  }
  /* **`new Date('2026-08-18')`で組み立てないこと**（§9.195）——UTCの0時として
     読まれ、地方時へ直すと1日ずれる端末がある。地方時の年月日から文字列を作る。 */
@@ -177,7 +177,7 @@
  function wantedPaths(){
   const seen=new Set(),out=[];
   const add=k=>{const p=pathOf(k);if(p&&!seen.has(p)){seen.add(p);out.push(p)}};
-  try{visibleColumnKeys().forEach(add)}catch(e){}
+  try{visibleColumnKeys().forEach(add)}catch(e){WL.quiet.note('出す列を数えられない（残りの道で候補を作る）',e)}
   const layout=WL.columnLayout.get(AC_TARGET)||{};
   (layout.order||[]).forEach(add);
   return out;
@@ -351,7 +351,7 @@
    const q=acState.equipment?('?equipment='+encodeURIComponent(acState.equipment)):'';
    const r=await api('/api/operation-form'+q);
    acState.opDefs=(r&&r.items)||[];
-  }catch(e){}
+  }catch(e){WL.quiet.note('操業データ項目を取れない（項目の呼び名が出ないだけ）',e)}
  }
  function rebuildOpKeys(){
   /* **並びは項目マスタの順**（現場が決めた順）。マスタに無い鍵（項目名を
@@ -524,12 +524,12 @@
      },
      commit:w=>{
       const widths={...(WL.columnLayout.get(AC_TARGET).widths||{}),[key]:w};
-      saveColumns({widths}).catch(()=>{}).finally(()=>WL.columnLayout.release(AC_TARGET));
+      saveColumns({widths}).catch(WL.quiet('列幅を保存できない（画面の幅はそのまま）')).finally(()=>WL.columnLayout.release(AC_TARGET));
      },
      reset:()=>{
       const widths={...(WL.columnLayout.get(AC_TARGET).widths||{})};delete widths[key];
       WL.columnLayout.hold(AC_TARGET,{widths});
-      saveColumns({widths}).catch(()=>{}).finally(()=>{WL.columnLayout.release(AC_TARGET);renderList()});
+      saveColumns({widths}).catch(WL.quiet('列幅を保存できない（画面の幅はそのまま）')).finally(()=>{WL.columnLayout.release(AC_TARGET);renderList()});
      },
     });
    }
@@ -647,8 +647,8 @@
   syncHead();
   renderList();
   /* 配置設定は**描く前に読む**（読めなくても既定の並びで一覧は出る）。 */
-  await Promise.all([WL.columnLayout.load(AC_TARGET).catch(()=>{}),
-                     (WL.displayRules&&WL.displayRules.load)?WL.displayRules.load().catch(()=>{}):Promise.resolve(),
+  await Promise.all([WL.columnLayout.load(AC_TARGET).catch(WL.quiet('列の設定を取れない（既定の並びで出す）')),
+                     (WL.displayRules&&WL.displayRules.load)?WL.displayRules.load().catch(WL.quiet('表示ルールを取れない（読み替え無しで出す）')):Promise.resolve(),
                      loadEquipments()]);
   syncHead();
   await load(true);

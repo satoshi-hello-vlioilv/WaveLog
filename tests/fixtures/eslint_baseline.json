@@ -1,88 +1,47 @@
 {
- "static/js/actuals-view.js": {
-  "no-empty": 4
- },
- "static/js/base.js": {
-  "no-empty": 6
- },
  "static/js/calendar-view.js": {
   "no-unused-vars": 1
  },
  "static/js/defect-locator.js": {
-  "no-empty": 1,
   "no-unused-vars": 1
  },
  "static/js/filters.js": {
-  "no-empty": 13,
   "no-unused-vars": 5
  },
  "static/js/list-columns.js": {
-  "no-empty": 2,
   "no-unused-vars": 1
  },
- "static/js/list-rules.js": {
-  "no-empty": 1
- },
- "static/js/list-view.js": {
-  "no-empty": 2
- },
  "static/js/lot-split.js": {
-  "no-empty": 2,
   "no-unused-vars": 1
  },
  "static/js/master-data.js": {
-  "no-empty": 2,
   "no-unused-vars": 1
  },
  "static/js/master-maint.js": {
-  "no-empty": 8,
   "no-unused-vars": 3
  },
  "static/js/master-opdata.js": {
-  "no-empty": 11,
   "no-unused-vars": 2
  },
  "static/js/master-report.js": {
-  "no-empty": 5,
   "no-unused-vars": 2
- },
- "static/js/measure-opdata.js": {
-  "no-empty": 22
  },
  "static/js/measure-progress.js": {
-  "no-empty": 2,
   "no-unused-vars": 2
  },
- "static/js/measure-steps.js": {
-  "no-empty": 18
- },
- "static/js/measurement-input.js": {
-  "no-empty": 3
- },
  "static/js/measurement-view.js": {
-  "no-empty": 3,
   "no-unused-vars": 1
  },
- "static/js/opsheet-print.js": {
-  "no-empty": 2
- },
- "static/js/quality-analysis.js": {
-  "no-empty": 1
- },
  "static/js/records-store.js": {
-  "no-empty": 6,
   "no-unused-vars": 1
  },
  "static/js/report-dashboard.js": {
-  "no-empty": 20,
   "no-unused-vars": 3
  },
  "static/js/schedule-print.js": {
-  "no-empty": 4,
   "no-unused-vars": 3
  },
  "static/js/schedule-view.js": {
-  "no-empty": 5,
   "no-unused-vars": 3
  },
  "tests/audit_scale.js": {

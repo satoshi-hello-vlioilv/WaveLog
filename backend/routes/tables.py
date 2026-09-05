@@ -17,6 +17,7 @@ from ..db_access import (DBS, qi, connect, cols, tables, cfg,
                          WORK_DB_KEY, QUALITY_DB_KEY, SCHEDULE_DB_KEY)
 from ..logging_setup import app_logger
 from ..errors import os_error_hint
+from ..quiet import quiet
 
 bp=Blueprint('tables',__name__)
 
@@ -383,7 +384,7 @@ def api_table():
   def safe_filters(text,columns):
    if not text:return []
    try:items=json.loads(text)
-   except Exception:return []
+   except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);return []
    if not isinstance(items,list):return []
    allowed_ops={'contains','not_contains','eq','neq','starts','starts_any','ends','gt','gte','lt','lte','empty','not_empty'}
    out=[]
@@ -439,7 +440,7 @@ def api_table():
    raw_sorts=request.args.get('sorts','').strip()
    if raw_sorts:
     try:items=json.loads(raw_sorts)
-    except Exception:items=[]
+    except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);items=[]
     for it in (items if isinstance(items,list) else []):
      if isinstance(it,str):it={'column':it}
      if not isinstance(it,dict):continue
@@ -541,7 +542,7 @@ def api_table():
   # ——別の口で取りに行くと、一覧と鮮度が別のタイミングの話になりうる。
   from .. import db_mirror as _dbm
   try:src_info=_dbm.source_info(k,cf.get('path'))
-  except Exception:src_info=None
+  except Exception as _e:quiet('元データの時刻を引けない（鮮度を出さない）',_e);src_info=None
   resp=jsonify(columns=visible_cs,rows=row_dicts,count=count,
                filters_applied=len(filters),joinQuality=join_info,joins=join_list,
                timing=timing,sortNote=sort_note,source=src_info)

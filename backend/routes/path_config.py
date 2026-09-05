@@ -30,6 +30,7 @@ from ..db_access import (
  PATH_CONFIG_KEYS, path_config_rows, set_path_config, path_config_value,
  SIKALOT_SOURCE, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, SCHEDULE_SHARE_PATH,
 )
+from ..quiet import quiet
 
 bp=Blueprint('path_config',__name__)
 
@@ -97,7 +98,8 @@ def _pc_name_now():
   from ..access_mode import pc_name_info
   info=pc_name_info()
   return str(info.get('name') or ''),str(info.get('source') or '')
- except Exception:
+ except Exception as _e:
+  quiet('この端末の名前を引けない（空で返す）',_e)
   return '',''
 
 # 選択肢を持つ設定（キー -> (画面での呼び名, 受け付ける値)）。
@@ -149,10 +151,10 @@ def _share_kind(path):
  if not raw:return ''
  try:
   if paths.is_network_path(raw):return 'network'
- except Exception:pass
+ except Exception as _e:quiet('置き場の種類を確かめられない（分からないものとして続ける）',_e)
  try:
   if paths.cloud_sync_hint(Path(raw)):return 'cloud'
- except Exception:pass
+ except Exception as _e:quiet('置き場の種類を確かめられない（分からないものとして続ける）',_e)
  return 'local'
 
 @bp.get('/api/path-config-master')
@@ -180,7 +182,8 @@ def path_config_master_get():
   # loaded=False として「再起動後に反映」と書く。
   try:
    with connect(path,True) as c:ds_rows=data_source_rows(c)
-  except Exception:
+  except Exception as _e:
+   quiet('マスタを開けない（保存値なしで組み立てる）',_e)
    ds_rows=[]
   sources=[]
   for x in ds_rows:
@@ -295,7 +298,8 @@ def path_config_master_update():
   path=DBS['MASTER']['path']
   try:
    with connect(path,True) as c:ds_rows=data_source_rows(c)
-  except Exception:
+  except Exception as _e:
+   quiet('マスタを開けない（保存値なしで組み立てる）',_e)
    ds_rows=[]
   for src in ds_rows:
    k=source_override_key(src['key'])
@@ -332,8 +336,8 @@ def _browse_places():
   try:
    places.append({'label':f'{cfg.get("label") or key}の場所',
                   'path':str(cfg['path'].parent)})
-  except Exception:
-   pass
+  except Exception as _e:
+   quiet('この置き場を候補に足せない（残りの候補を出す）',_e)
  if SCHEDULE_SHARE_PATH:
   places.append({'label':'共有スケジュール','path':str(Path(SCHEDULE_SHARE_PATH).parent)})
  seen=set();out=[]
@@ -398,7 +402,7 @@ def data_source_master_list():
   saved={}
   try:
    with connect(path,True) as c:saved=path_config_rows(c)
-  except Exception:saved={}
+  except Exception as _e:quiet('マスタを開けない（保存値なしで組み立てる）',_e);saved={}
   items=[]
   for r in rows:
    rne=rne_scheduler.rne_path(r['rne']) if r.get('rne') else None

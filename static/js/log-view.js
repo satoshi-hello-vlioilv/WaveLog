@@ -169,7 +169,7 @@
     .concat(state.files.map(f=>`<option value="${esc(f.name)}">${esc(f.streamLabel)}`
       +`${f.current?'':`（${f.generation}世代前）`} — ${esc(f.name)}</option>`)).join('');
    if(keep&&[...sel.options].some(o=>o.value===keep))sel.value=keep;
-  }catch(e){/* 一覧が取れなくても本読みは試す(理由はそちらで出る) */}
+  }catch(e){WL.quiet.note('一覧が取れなくても本読みは試す(理由はそちらで出る)',e)}
  };
 
  const load=async()=>{

@@ -28,6 +28,7 @@ import time
 
 from . import atomic_io
 from .logging_setup import app_logger
+from .quiet import quiet
 
 # ------------------------------------------------------------------
 # 決まり(パス設定マスタ。呼び出しのたびに読み直すので再起動は要らない)
@@ -54,7 +55,8 @@ def _cfg(key, default):
  try:
   from .db_access import path_config_value
   raw = path_config_value(key, default)
- except Exception:
+ except Exception as _e:
+  quiet('設定を読めない（既定で続ける）',_e)
   raw = default
  return raw
 
@@ -62,7 +64,8 @@ def _cfg(key, default):
 def _cfg_int(key, default, minimum):
  try:
   n = int(str(_cfg(key, default)).strip() or default)
- except Exception:
+ except Exception as _e:
+  quiet('数として読めない（既定で続ける）',_e)
   n = default
  return max(minimum, n)
 
@@ -96,7 +99,8 @@ def policy():
 def _safe(fn, fallback=None):
  try:
   return fn()
- except Exception:
+ except Exception as _e:
+  quiet('数えられない（この項目は既定の値で出す）',_e)
   return fallback
 
 

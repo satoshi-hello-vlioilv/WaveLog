@@ -738,7 +738,7 @@
    };
    t.ondragstart=e=>{
     opState.drag=t.dataset.opId;t.classList.add('is-dragging');
-    try{e.dataTransfer.setData('text/plain',t.dataset.opId);e.dataTransfer.effectAllowed='move'}catch(_){}
+    try{e.dataTransfer.setData('text/plain',t.dataset.opId);e.dataTransfer.effectAllowed='move'}catch(_){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',_)}
    };
    t.ondragend=()=>{opState.drag=null;t.classList.remove('is-dragging');opClearMark()};
   });
@@ -750,7 +750,7 @@
     opState.dragGroup={place:bd.dataset.opPlace,name:bd.dataset.opBand};
     bd.classList.add('is-dragging');
     try{e.dataTransfer.setData('text/plain','group:'+bd.dataset.opBand);
-        e.dataTransfer.effectAllowed='move'}catch(_){}
+        e.dataTransfer.effectAllowed='move'}catch(_){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',_)}
    };
    bd.ondragend=()=>{opState.dragGroup=null;bd.classList.remove('is-dragging');opClearMark()};
   });
@@ -3379,7 +3379,7 @@
    b.onclick=()=>clPick(b.dataset.clName);
    b.ondragstart=e=>{
     clState.pick=b.dataset.clName;
-    try{e.dataTransfer.setData('text/plain',b.dataset.clName)}catch(err){}
+    try{e.dataTransfer.setData('text/plain',b.dataset.clName)}catch(err){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',err)}
     e.dataTransfer.effectAllowed='link';
     clRepaint();
    };
@@ -3453,7 +3453,7 @@
  async function loadOpChoiceMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   form.classList.remove('mm-form-compact');
-  if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){}}
+  if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備マスタを取れない（設備を選ぶ欄が減るだけ）',e)}}
   if(!list.querySelector('.oc-edit'))list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   try{
    const ch=await api('/api/operation-choice-master');
@@ -3623,7 +3623,7 @@
    const at=q.selectionStart;
    pane.outerHTML=ocGroupPaneHtml(ocPickedName());
    const again=$('#ocSearch');
-   if(again){again.focus();try{again.setSelectionRange(at,at)}catch(e){}}
+   if(again){again.focus();try{again.setSelectionRange(at,at)}catch(e){WL.quiet.note('カーソル位置を戻せない（値は入っている）',e)}}
    list.querySelectorAll('[data-oc-group]').forEach(b=>b.onclick=()=>ocSelectGroup(b.dataset.ocGroup));
   };
   list.querySelectorAll('[data-oc-group]').forEach(b=>b.onclick=()=>ocSelectGroup(b.dataset.ocGroup));
@@ -3688,7 +3688,7 @@
   let from=null;
   list.querySelectorAll('.oc-row[data-oc-id]').forEach(row=>{
    row.addEventListener('dragstart',e=>{from=row;row.classList.add('is-drag');
-    try{e.dataTransfer.setData('text/plain',row.dataset.ocId)}catch(err){}});
+    try{e.dataTransfer.setData('text/plain',row.dataset.ocId)}catch(err){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',err)}});
    row.addEventListener('dragend',()=>{
     row.classList.remove('is-drag');
     if(!from)return;
@@ -3800,7 +3800,7 @@
  async function loadOpItemMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   form.classList.remove('mm-form-compact');
-  if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){}}
+  if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備マスタを取れない（設備を選ぶ欄が減るだけ）',e)}}
   if(!list.querySelector('.op-edit'))list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   try{
    const q=opState.equipment?('?equipment='+encodeURIComponent(opState.equipment)):'';
@@ -4152,7 +4152,7 @@
   document.querySelectorAll('#masterMaintList .rl-chip').forEach(t=>{
    t.ondragstart=e=>{
     rlState.drag=t.dataset.rlId;t.classList.add('is-dragging');
-    try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',t.dataset.rlId)}catch(_){}
+    try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',t.dataset.rlId)}catch(_){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',_)}
    };
    t.ondragend=()=>{rlState.drag=null;t.classList.remove('is-dragging');rlClearMark()};
   });
@@ -4160,7 +4160,7 @@
    box.ondragover=e=>{
     if(!rlState.drag)return;
     e.preventDefault();
-    try{e.dataTransfer.dropEffect='move'}catch(_){}
+    try{e.dataTransfer.dropEffect='move'}catch(_){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',_)}
     rlClearMark();
     box.closest('.rl-group')?.classList.add('is-drop');
     rlMark(box,rlDropAt(box,e));
@@ -4178,7 +4178,7 @@
    pool.ondragover=e=>{
     if(!rlState.drag)return;
     e.preventDefault();
-    try{e.dataTransfer.dropEffect='move'}catch(_){}
+    try{e.dataTransfer.dropEffect='move'}catch(_){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',_)}
     rlClearMark();pool.classList.add('is-drop');
    };
    pool.ondrop=e=>{
@@ -4253,7 +4253,7 @@
  }
  async function loadRecordLayoutMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
-  if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){}}
+  if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備マスタを取れない（設備を選ぶ欄が減るだけ）',e)}}
   if(!list.querySelector('.rl-edit'))list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   try{
    const q=rlState.equipment?('?equipment='+encodeURIComponent(rlState.equipment)):'';

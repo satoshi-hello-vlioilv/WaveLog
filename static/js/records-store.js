@@ -55,7 +55,7 @@ function pendingBackupDeletes(){
 }
 function setPendingBackupDeletes(ids){
  try{localStorage.setItem(PENDING_BACKUP_DELETE_KEY,JSON.stringify([...new Set(ids)].slice(0,500)))}
- catch(e){/* 保存できなくても削除自体は続ける */}
+ catch(e){WL.quiet.note('保存できなくても削除自体は続ける',e)}
 }
 async function deleteBackupRows(ids){
  const list=[...new Set((ids||[]).filter(Boolean))];
@@ -197,7 +197,7 @@ async function refreshContextChoices(){
   const snap=S.measure.snapshot.context;
   if(snap)CONTEXT_CHOICE_KEYS.forEach(k=>{if(k in x)snap[k]=x[k]});
   applyContextChoices(x);
- }catch(e){}
+ }catch(e){WL.quiet.note('候補を取り直せない（控えの候補で続ける）',e)}
 }
 /* 仕掛・品質・マスタの参照データを取得し、スナップショットとして保存データへ
    同梱する(再開時はスナップショットを優先し、オフラインでも復元できる)。 */
@@ -324,7 +324,7 @@ async function syncPendingRecords({silent}={}){
   /* 15分ごとの自動同期（1319行）からも来る。列幅を掴んでいる最中に一覧を
      作り直すと取っ手ごと入れ替わるので待たせる（§9.211 ①）。 */
   if($('#recordModal')&&!$('#recordModal').hidden){
-   if(silent)WL.columnResize.defer('records:sync',()=>{refreshRecordList().catch(()=>{})});
+   if(silent)WL.columnResize.defer('records:sync',()=>{refreshRecordList().catch(WL.quiet('データ一覧を描き直せない（次に開いたときに追いつく）'))});
    else await refreshRecordList();
   }
   if(!silent)showToast(ok===targets.length?'すべて同期しました':'一部同期できませんでした',`${ok}/${targets.length}件`,6000);
@@ -399,7 +399,7 @@ window.withWaiting=withWaiting;
 function noteCompletedWithNg(m){
  if(!m)return;
  let ng=null;
- try{ng=window.WL&&WL.measureReview&&WL.measureReview.outOfTolerance()}catch(e){}
+ try{ng=window.WL&&WL.measureReview&&WL.measureReview.outOfTolerance()}catch(e){WL.quiet.note('公差外を数えられない（件数を出さないだけ）',e)}
  m.settings=m.settings||{};
  if(!ng||!ng.total){delete m.settings.completedWithNg;return}
  m.settings.completedWithNg={at:new Date().toISOString(),total:ng.total,
@@ -478,7 +478,7 @@ function shareRecord(m){
     sharing.set(m.id,'running');
     await backupAndTrackSync(m);
    }while(sharing.get(m.id)==='again');
-  }catch(e){/* syncStateへ記録済み。ここで画面を止めない */}
+  }catch(e){WL.quiet.note('syncStateへ記録済み。ここで画面を止めない',e)}
   finally{sharing.delete(m.id);
    if(typeof refreshSyncStatusUI==='function')refreshSyncStatusUI();
    /* 送信が終わったら、開いている測定の状態欄も言い直す(§9.202)。
@@ -491,7 +491,7 @@ function shareRecord(m){
      const done=S.measure.status==='完了'?'完了・':'';
      setState(ok?`${done}端末＋DBに保存`:`${done}端末に保存（DBへ未送信・あとで自動再送）`);
     }
-   }catch(e){/* 状態欄の言い直しに失敗しても保存そのものは済んでいる */}}
+   }catch(e){WL.quiet.note('状態欄の言い直しに失敗しても保存そのものは済んでいる',e)}}
  })();
 }
 window.shareRecord=shareRecord;
@@ -678,7 +678,7 @@ async function closeMeasureModal(){
     **書けたなら聞かない**——保存する手立てがあるのに「破棄しますか」と
     聞くのは、押した人に要らない判断をさせること（§5は確認を増やせという
     意味ではない）。書けなかったときだけ、破棄かどうかを聞く。 */
- if(measureDirty){cancelAutoSave();try{await runAutoSave()}catch(e){}}
+ if(measureDirty){cancelAutoSave();try{await runAutoSave()}catch(e){WL.quiet.note('自動保存に失敗（このあと破棄してよいかを聞く）',e)}}
  if(measureDirty&&!(await confirmModal('DBへ保存できていない変更があります。破棄して閉じますか？')))return;
  cancelAutoSave();
  $('#measureModal').hidden=true;
@@ -718,7 +718,7 @@ function recordScope(){
  try{return localStorage.getItem(RECORD_SCOPE_KEY)==='all'?'all':'mine'}catch(e){return 'mine'}
 }
 function setRecordScope(v){
- try{localStorage.setItem(RECORD_SCOPE_KEY,v==='all'?'all':'mine')}catch(e){}
+ try{localStorage.setItem(RECORD_SCOPE_KEY,v==='all'?'all':'mine')}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
 }
 /* その記録が「どの設備で実施されたか」。**測ったPCの登録設備**が正で、
    仕掛の設計設備ではない（§9.91の`[設備]`列と同じ考え方）。
@@ -826,7 +826,7 @@ async function mergedRecords(){
  try{
   const r=await api('/api/measurement/backup/summary');
   remote=(r&&r.items)||[];
- }catch(e){/* 共有が読めなくても端末内のぶんは出す */}
+ }catch(e){WL.quiet.note('共有が読めなくても端末内のぶんは出す',e)}
  if(!remote.length)return local;
  const byId=new Map(local.map(x=>[x.id,x]));
  for(const row of remote){
@@ -895,8 +895,8 @@ async function openRecords(status){
     一度既定の15列で出てから組み替わる**（ちらつくうえ、設定が効いて
     いないように見える）。読めなくても既定の形で一覧は出す。 */
  await Promise.all([
-  WL.columnLayout.load(RECORD_LIST_TARGET).catch(()=>{}),
-  WL.displayRules.load().catch(()=>{}),
+  WL.columnLayout.load(RECORD_LIST_TARGET).catch(WL.quiet('列の設定を取れない（既定の並びで出す）')),
+  WL.displayRules.load().catch(WL.quiet('表示ルールを取れない（読み替え無しで出す）')),
  ]);
  const allRecords=await mergedRecords();
  recordListState.items=allRecords;recordListState.query='';recordListState.sort='updated-desc';
@@ -1798,7 +1798,7 @@ function fillEquipmentSelect(selected='',suggested=''){
   /* 新規登録を選んだら**打つ場所へ連れて行く**（§CLAUDE 画面基準 2）。
      **焦点を当てるのはここだけ**——`syncNewEquipmentSlot()`は開いた直後にも
      走るので、あちらで当てると窓を開いた瞬間の焦点を横取りする。 */
-  if(select.value===EQ_NEW&&newName)requestAnimationFrame(()=>{try{newName.focus()}catch(e){}});
+  if(select.value===EQ_NEW&&newName)requestAnimationFrame(()=>{try{newName.focus()}catch(e){WL.quiet.note('焦点を当てられない（値も操作も残る）',e)}});
   /* いま選んでいるものを見出しのチップへ返す（§CLAUDE 2「いま選んでいる
      ものは名乗る」）。**値を出す場所はここ1箇所**にする。 */
   paintEquipmentNow(select.value===EQ_NEW?(newName&&newName.value)||'':select.value,'pick');
@@ -1939,7 +1939,7 @@ async function openEquipmentSettingsFinal(reason='manual',suggested=''){
   try{
    const s2=$('#configuredEquipment');
    ((s2&&s2.value===EQ_NEW)?$('#newEquipmentName'):s2).focus();
-  }catch(e){}
+  }catch(e){WL.quiet.note('焦点を当てられない（値も操作も残る）',e)}
  });
  return true;
 }

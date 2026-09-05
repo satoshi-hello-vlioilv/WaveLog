@@ -75,6 +75,7 @@ from pathlib import Path
 
 from . import atomic_io
 from .logging_setup import app_logger
+from .quiet import quiet
 
 # 写しの置き場。db/cache/<キー>.sqlite3
 _CACHE_DIRNAME = 'cache'
@@ -175,7 +176,8 @@ def _load_ledger():
  try:
   data = json.loads(_signature_path().read_text(encoding='utf-8'))
   return data if isinstance(data, dict) else {}
- except Exception:
+ except Exception as _e:
+  quiet('保存された値を読めない（既定で続ける）',_e)
   return {}
 
 

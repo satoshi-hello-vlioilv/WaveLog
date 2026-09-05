@@ -99,7 +99,7 @@ async function loadRowGap(){
   const r=await api('/api/list-view-master?target='+encodeURIComponent(target));
   applyRowGap(r.rowGap);
   const el=document.querySelector('#listRowGap');if(el)el.value=String(rowGapValue);
- }catch(e){/* 読めなくても既定の密度で出す(fail-open) */}
+ }catch(e){WL.quiet.note('読めなくても既定の密度で出す(fail-open)',e)}
 }
 WL.rowGap={apply:applyRowGap,save:saveRowGap,load:loadRowGap,value:()=>rowGapValue};
 
@@ -148,7 +148,7 @@ const sortPresets=(()=>{
    const q=new URLSearchParams({db:S.db,table:S.table,mode:mode()});
    const r=await api('/api/sort-presets?'+q);
    items=(r.items||[]).sort((a,b)=>(b.uses||0)-(a.uses||0)||a.name.localeCompare(b.name,'ja'));
-  }catch(e){/* 読めなくても並び替えそのものは使える(fail-open) */}
+  }catch(e){WL.quiet.note('読めなくても並び替えそのものは使える(fail-open)',e)}
   return items;
  }
  return {load,all:()=>items,picked:()=>picked,setPicked:v=>{picked=v},
@@ -180,7 +180,7 @@ function bindSortControls(bar){
     WL.listSort.set(p.sorts||[]);
     // 使った回数を数えて、よく使うものが上に来るようにする(フィルタと同じ)。
     api('/api/sort-presets/use',{method:'POST',headers:{'Content-Type':'application/json'},
-     body:JSON.stringify(withUserId({id:p.id}))}).catch(()=>{});
+     body:JSON.stringify(withUserId({id:p.id}))}).catch(WL.quiet('並べ替えの利用回数を送れない（候補の並びが変わらないだけ）'));
    }
    closeMenu();S.page=1;renderSortBar();load();return;
   }
@@ -455,7 +455,7 @@ function bindColumnWidthGrip(grip,o){
    const width=w;
    saveTimer=setTimeout(()=>{
     saveTimer=null;gripSaving++;
-    Promise.resolve().then(()=>o.commit(width)).catch(()=>{})
+    Promise.resolve().then(()=>o.commit(width)).catch(WL.quiet('列幅を保存できない（画面の幅はそのまま）'))
      .then(()=>{gripSaving=Math.max(0,gripSaving-1);gripCalmUntil=Date.now()+GRIP_SETTLE_MS});
    },GRIP_SETTLE_MS);
   };
@@ -537,7 +537,7 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
  heads.forEach(th=>{
   th.addEventListener('dragstart',e=>{
    dragCol=th.dataset.col;th.classList.add('col-dragging');
-   try{e.dataTransfer.setData('text/plain',dragCol);e.dataTransfer.effectAllowed='move'}catch(_){}
+   try{e.dataTransfer.setData('text/plain',dragCol);e.dataTransfer.effectAllowed='move'}catch(_){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',_)}
   });
   th.addEventListener('dragend',()=>{
    dragCol=null;th.classList.remove('col-dragging');
@@ -1267,10 +1267,10 @@ async function fetchTableData(key,force){
     **束ねて並列に投げ、揃うのを待つ**。どれが読めなくても既定の見せ方で
     一覧は出す(fail-open)。 */
  const settings=Promise.all([
-  WL.columnLayout.load(listLayoutTarget()).catch(()=>{}),
-  WL.displayRules.load().catch(()=>{}),
-  sortPresets.load().catch(()=>{}),
-  loadRowGap().catch(()=>{}),
+  WL.columnLayout.load(listLayoutTarget()).catch(WL.quiet('列の設定を取れない（既定の並びで出す）')),
+  WL.displayRules.load().catch(WL.quiet('表示ルールを取れない（読み替え無しで出す）')),
+  sortPresets.load().catch(WL.quiet('並べ替えの登録を取れない（素の並びで出す）')),
+  loadRowGap().catch(WL.quiet('行間の設定を取れない（既定で出す）')),
  ]);
  const hit=force?null:tableCacheGet(key);
  if(hit){await settings;applyTableData(hit.data);updateListFreshness(hit.at);return}
@@ -1547,13 +1547,13 @@ const tablesVerified=new Set();
 try{
  const saved=JSON.parse(localStorage.getItem(TABLES_CACHE_KEY)||'{}');
  Object.entries(saved).forEach(([k,v])=>{if(v&&Array.isArray(v.tables))tablesCache.set(k,v)});
-}catch(e){/* 壊れていても取り直せばよい */}
+}catch(e){WL.quiet.note('壊れていても取り直せばよい',e)}
 function rememberTables(k,result){
  tablesCache.set(k,result);tablesVerified.add(k);
  try{
   const out={};tablesCache.forEach((v,kk)=>{out[kk]={tables:v.tables}});
   localStorage.setItem(TABLES_CACHE_KEY,JSON.stringify(out));
- }catch(e){/* 保存できなくても動作は続く */}
+ }catch(e){WL.quiet.note('保存できなくても動作は続く',e)}
 }
 /* 一覧(データ一覧/仕掛/品質データ)。品質データを選んだときだけ品質分析の
    パネルが上に付く(qa-mode)ので、一覧から他の画面へ移るときはそれも一緒に
@@ -2144,7 +2144,7 @@ function renderGridInner(){
     const dragRows=(S.selectedRows.has(r)&&S.selectedRows.size>1)?Array.from(S.selectedRows):[r];
     window.__scDragRows=dragRows;
     e.dataTransfer.effectAllowed='copy';
-    try{e.dataTransfer.setData('text/plain',dragRows.map(x=>pick(x,'lotNo')||'').join('、'))}catch(err){/* 一部ブラウザでのsetData制限は無視する */}
+    try{e.dataTransfer.setData('text/plain',dragRows.map(x=>pick(x,'lotNo')||'').join('、'))}catch(err){WL.quiet.note('一部ブラウザでのsetData制限は無視する',err)}
     /* **運んでいる行を全部そう見せる**(§9.170)。ブラウザが作るドラッグの
        写しは掴んだ1行だけなので、印が1行にしか付いていないと「1件しか
        運んでいない」と読める(まとめて投入したつもりが1件だった、という
@@ -2747,7 +2747,7 @@ function prefetchSplitLookups(targets){
    .map(({row})=>String(pick(row,'lotNo')||''))
    .filter(x=>x.length>=5).map(x=>x.slice(0,5)))];
  if(!prefixes.length)return Promise.resolve();
- return window.prefetchLotPrefixes(prefixes).catch(()=>{});
+ return window.prefetchLotPrefixes(prefixes).catch(WL.quiet('先読みできない（行ごとに引き直すだけ）'));
 }
 /* 分割のセルの文字を差し替える（§9.239 ⑤-2）。**中身を`textContent`で
    丸ごと入れ替えないこと**——セルの中には子ロットを畳むつまみ
@@ -2845,7 +2845,7 @@ WL.rne=(()=>{
    if(!last.running)break;
   }
   // 実行中フラグが立つ前に1周目を読むことがあるので、最後にもう一度締める。
-  try{last=await status();paint(last)}catch(_){}
+  try{last=await status();paint(last)}catch(_){WL.quiet.note('抽出の状況を取れない（次の巡回で描き直す）',_)}
   const jobs=last?.jobs||[];
   const ng=jobs.filter(j=>j&&j.running===false&&!j.ok);
   if(ng.length){
