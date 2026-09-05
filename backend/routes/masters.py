@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, request, jsonify
 
+from ..flags import flag_of, text_or
 from ..paths import APP_ROOT as BASE_DIR
 
 from ..config import RNE_EXTRACT_INTERVAL_SEC_DEFAULT, SCHEDULE_LOCK_TTL_SEC_DEFAULT, SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT
@@ -1413,20 +1414,6 @@ def operation_item_list():
   return jsonify(ok=True,equipment=eq,**d)
  except Exception as e:return jsonify(error=f'操業データ項目マスタの読込に失敗しました: {e}'),500
 
-def _inline_add_on(x):
- """測定画面からの間接登録を許すか（§9.323 ①）。
-
- **文字列をそのまま`bool()`しない**——汎用フォームは呼び名（'登録しない'）で
- 送るので、`bool('登録しない')`はTrueになり**「登録しない」が一度も保存
- できない**（帳票ブロックの`_on()`・選択肢の`_choice_on()`とまったく同じ罠を
- これで3度目に踏むところだった）。
- **`None`は「送っていない」**（§9.212 ②）——他の段から保存したときに、
- 開けた経路が黙って閉じては困る。"""
- v=x.get('inlineAddText') if x.get('inlineAddText') is not None else x.get('inlineAdd')
- if v is None:return None
- if isinstance(v,str):return v.strip() not in ('登録しない','しない','無効','false','0','')
- return bool(v)
-
 def _operation_item_save(x):
  from ..repositories import operation_repo as op
  uid=request_user_id(x)
@@ -1490,7 +1477,8 @@ def _operation_item_save(x):
                          # 足せるか。**呼び名でも受ける**——汎用フォームは
                          # 文字列の選択欄しか持たない（`enabledText`と同じ作法）。
                          # **送っていないときは今の値を残す**（§9.212 ②）。
-                         inline_add=_inline_add_on(x),
+                         # 真偽の読み方は`flags.flag_of`の1箇所（§9.324 R4）。
+                         inline_add=flag_of(text_or(x,'inlineAdd')),
                          report=ref)
   saved=_op_read(fn)
   # **付け替えたことは黙って済ませない**（§9.226 ①）。名前を変えると
@@ -1627,17 +1615,6 @@ def operation_choice_list():
   return jsonify(ok=True,**_op_read(fn))
  except Exception as e:return jsonify(error=f'操業データ選択肢マスタの読込に失敗しました: {e}'),500
 
-def _choice_on(v):
- """「出す/出さない」の真偽（§9.222 ⑥）。**文字列をそのまま`bool()`しない**
-    ——汎用モーダルは`enabledText`に'出さない'を入れて送るので、`bool('出さない')`
-    はTrueになり**「出さない」が一度も保存できない**（帳票ブロックの`_on()`で
-    同じ罠を踏んでいる）。"""
- # **`None`は「送っていない」**（§9.212 ②）。Trueへ倒すと、説明やよみだけを
- # 直す呼び出しが「出さない」にしてあった行を毎回「出す」へ戻す。
- if v is None:return None
- if isinstance(v,str):return v.strip() not in ('出さない','無効','false','0','')
- return bool(v)
-
 def _operation_choice_save(x):
  from ..repositories import operation_repo as op
  uid=request_user_id(x)
@@ -1646,8 +1623,7 @@ def _operation_choice_save(x):
   def fn(c):
    return op.choice_upsert(c,x.get('name'),x.get('value'),uid,order=iv(x.get('order')),
                            choice_id=(int(x['id']) if x.get('id') not in (None,'') else None),
-                           enabled=_choice_on(x.get('enabledText') if x.get('enabledText') is not None
-                                              else x.get('enabled')),
+                           enabled=flag_of(text_or(x,'enabled')),
                            note=x.get('note'),
                            # §9.221 ③。よみ＝探すための読み、対象設備＝
                            # その設備のときだけ出す（空＝すべて）。
@@ -1818,15 +1794,10 @@ def _report_block_save(x):
  name=str(x.get('name') or '').strip()
  if not name:return jsonify(error='ブロック名を入力してください。'),400
  iv=lambda v:(None if v in (None,'') else int(v))
- # 「有効」は画面からは文字列（有効/無効）で来る。**文字列をそのまま
- # `bool()`へ渡さないこと**——`'無効'`は真なので、外したつもりが効かない。
- def _on(v):
-  if v is None:return None
-  if isinstance(v,str):return v.strip() not in ('無効','false','0','')
-  return bool(v)
- # **渡していなければ触らない**（§9.320-E）——`None`はrepo側が「今の値のまま」
- # と読む。既定へ倒すと、送っていない設定だけが黙って消える（§9.212 ②）。
- alive=_on(x.get('enabledText') if x.get('enabledText') is not None else x.get('enabled'))
+ # 「有効」は画面からは呼び名（有効/無効）で来る。読み方は`flags.flag_of`の
+ # 1箇所（§9.324 R4）。**渡していなければ触らない**（§9.320-E）——`None`は
+ # repo側が「今の値のまま」と読む。
+ alive=flag_of(text_or(x,'enabled'))
  try:
   def fn(c):
    return rb.block_upsert(c,uid,equipment=x.get('equipment'),name=name,
@@ -1935,13 +1906,8 @@ def roll_master_list():
 def _roll_save(x):
  from ..repositories import roll_repo as rr
  uid=request_user_id(x)
- # 「有効」は画面からは文字列（有効/無効）で来る。**文字列をそのまま
- # `bool()`へ渡さないこと**——`'無効'`は真なので、外したつもりが効かない。
- def _on(v):
-  if v is None:return None
-  if isinstance(v,str):return v.strip() not in ('無効','出さない','false','0','')
-  return bool(v)
- alive=_on(x.get('enabledText') if x.get('enabledText') is not None else x.get('enabled'))
+ # 「有効」は呼び名で来る。読み方は`flags.flag_of`の1箇所（§9.324 R4）。
+ alive=flag_of(text_or(x,'enabled'))
  try:
   def fn(c):
    return rr.roll_upsert(c,uid,
@@ -2111,9 +2077,7 @@ def _choice_link_save(x):
   def fn(c):
    return op.choice_link_upsert(c,x.get('parent'),x.get('child'),uid,
                                 note=x.get('note'),
-                                enabled=_choice_on(x.get('enabledText')
-                                                   if x.get('enabledText') is not None
-                                                   else x.get('enabled')),
+                                enabled=flag_of(text_or(x,'enabled')),
                                 link_id=(int(x['id']) if x.get('id') not in (None,'') else None))
   return jsonify(ok=True,id=_op_read(fn),message='親子を保存しました。')
  except ValueError as e:

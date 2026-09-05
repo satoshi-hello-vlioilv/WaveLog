@@ -38,7 +38,9 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
           'test_docindex', 'test_pywarn', 'test_hintlint',
           # §9.315: 後から足した列を「無ければ足す」のは1箇所。マスタを1つ
           # 足した人がここを通さずに書くと、同じ不具合が別の列で戻る。
-          'test_ddllint']
+          'test_ddllint',
+          # §9.324 R4: 真偽の読み方の写しが残っていないか（1秒未満）
+          'test_flags']
 
 # 束ねた呼び名。右辺は実際のテスト名。
 G = {}

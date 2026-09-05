@@ -65,6 +65,7 @@
 増やしたときに2箇所直すことになる）。**知らない値も保存できる**
 （現場の呼び名は選択肢で塞げない）。
 """
+from ..flags import flag_of, OFF_WORDS
 from ..db_access import add_missing_columns, ensure_audit_columns, tables
 
 TABLE = 'ロールマスタ'
@@ -1086,7 +1087,10 @@ def import_rows(c, uid, data, dry_run=True, replace=''):
                 continue
             raw = cell(r, key)
             if key == 'enabledText':
-                vals['enabled'] = raw.strip() not in ('無効', '出さない', 'false', '0')
+                # 読み方は`flags.flag_of`の1箇所（§9.324 R4）。**空欄は「入」**
+                # ——書き出しは無効な行も出すので、往復で空欄になるのは
+                # 列そのものが無かったときだけ（§9.240）。
+                vals['enabled'] = flag_of(raw, off=tuple(w for w in OFF_WORDS if w != ''))
                 continue
             if pos[key] < 0 or raw == '':
                 vals[key] = None          # 列が無い／空欄＝触らない（§9.212 ②）
