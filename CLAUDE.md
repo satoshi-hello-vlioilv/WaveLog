@@ -561,6 +561,21 @@
   **網はマスタへ1行も書かない**（repoの関数を差し替えて断り・失敗を起こす・§9.121。
   最初に書いた網が`/api/schedule-column-master`へ本当に保存して
   `db/master.sqlite3`に置き土産を作った）。
+- **作業予定を「読む側」は写しに書かない**（§9.325、`schedule_repo._plan_select()`）:
+  GET系が開くのは共有の**写し**（`schedule_cache.sqlite3`）で、別の要求が同時に写し直して
+  `Path.replace()`で差し替える。**開いたまま差し替えられたファイルへ書くと**SQLiteは
+  `SQLITE_READONLY_DBMOVED`＝「attempt to write a readonly database」で断る（実測で
+  再現）。以前は`plan_rows()`が読む前に`ensure_plan_table()`で後から足した列を**ALTER**
+  しており、写しが差し替わった瞬間の読みが500になっていた——画面では作業スケジュールが
+  開けず、開けても完了の行だけ消える（`test_startwork`が**単独では落ち、通しでは通る**
+  形で出ていた。通しでは前のテストの書込が列を足していた）。**読む側は無い列を
+  `NULL AS [列]`で読む**（`TableDef.fetch`と同じ考え方・§9.324 R1）、**列を足すのは
+  書込サイクル（`with_write`の中の`plan_add`等）だけ**。位置で読む側（`r[14]`等）を
+  変えないため並びは`_PLAN_COLUMNS`のまま。**網は「差し替えられた写しへ書くと落ちる」
+  前提まで確かめる**（`tests/test_scsnapread.py`。前提が通らない環境では網が空振りする）。
+  **テストは他のテストの置き土産に頼らないこと**——`test_startwork`／`test_sctimecols`は
+  「完了」の行を前のテストの記録に頼っていたので、自分で置くようにした（順番に
+  依存する網は、単独で回すと落ちる＝直したかどうかを単独で確かめられない）。
 - **マスタ管理のJSは「定義／盤／専用画面」の5本。受け渡しは`WL.mm`の1つ**
   （§9.324 R3、構造の見直しの5段目）: `master-defs.js`（`MASTER_DEFS`／`MASTER_GROUPS`）
   → `master-maint.js`（盤）→ `master-report.js`／`master-data.js`／`master-opdata.js`

@@ -52,10 +52,26 @@ PLAN_UPDATED_PC_COLUMN='更新端末名'
 # (master_repo.ensure_audit_columns 等と同じ方式)。列が増えても
 # plan_rows/plan_row は列名を明示して読むので、古い版のアプリが書いた
 # 行(この列がNULL)もそのまま読める。
-_PLAN_SELECT=('SELECT [予定ID],[設備名],[表示順],[種別],[ロット番号],[検査番号],[鋳造番号],'
-              '[予定名称],[明細JSON],[固定開始日時],[見積分],[状態],[実績測定ID],[備考],'
-              '[有効],[登録日時],[更新日時],[更新者ID],[親予定ID],'
-              '[登録者ID],[登録端末名],[更新端末名] FROM [作業予定]')
+_PLAN_COLUMNS=('予定ID','設備名','表示順','種別','ロット番号','検査番号','鋳造番号',
+               '予定名称','明細JSON','固定開始日時','見積分','状態','実績測定ID','備考',
+               '有効','登録日時','更新日時','更新者ID',PLAN_PARENT_COLUMN,
+               '登録者ID',PLAN_CREATED_PC_COLUMN,PLAN_UPDATED_PC_COLUMN)
+
+def _plan_select(c_share):
+ """読む側のSELECT。**読む側は書かない**（§9.325）。
+
+ 後から足した列（親予定ID・端末名）が無い写しでは`NULL AS [列]`で読む。
+ 以前は読む前に`ensure_plan_table()`で列を**足して**いたが、GET系が開くのは
+ 共有の**写し**（`schedule_cache.sqlite3`）で、別の要求が同時に写し直して
+ `Path.replace()`で差し替える。開いたまま差し替えられたファイルへ書くと
+ SQLiteは`SQLITE_READONLY_DBMOVED`＝「attempt to write a readonly database」
+ で断る（実測。画面では作業スケジュールが500で開けず、完了の行だけ消えた）。
+ 列を足すのは書込サイクル（`with_write`の中の`plan_add`等）だけ。
+ 位置で読む側（`r[14]`等）を1つも変えないため、**並びは`_PLAN_COLUMNS`のまま**。"""
+ from ..db_access import cols
+ have=set(cols(c_share,PLAN_TABLE))
+ return ('SELECT '+','.join(f'[{n}]' if n in have else f'NULL AS [{n}]' for n in _PLAN_COLUMNS)
+         +' FROM [作業予定]')
 
 def ensure_plan_table(c_share):
  names=tables(c_share);created=False
@@ -75,12 +91,13 @@ def ensure_plan_table(c_share):
  return created
 
 def plan_rows(c_share,equipment=None,include_inactive=False):
- ensure_plan_table(c_share)
+ # **読むだけ**（§9.325）。表が無い写し（共有がまだ空）は0件。
+ if PLAN_TABLE not in tables(c_share):return []
  cur=c_share.cursor()
  # 子ロットは親と同じ[表示順]を持つ(§9.83)ので、同順のときは[予定ID]順に
  # する。親は必ず子より先に作られるため、これで親→子の並びが確定する
  # (同順の並びをSQLite任せにすると、子が親の前に出ることがある)。
- cur.execute(_PLAN_SELECT+' ORDER BY [設備名],[表示順],[予定ID]')
+ cur.execute(_plan_select(c_share)+' ORDER BY [設備名],[表示順],[予定ID]')
  target=normalize_equipment_name(equipment) if equipment else ''
  rows=[]
  for r in cur.fetchall():
@@ -91,16 +108,19 @@ def plan_rows(c_share,equipment=None,include_inactive=False):
  return rows
 
 def plan_row(c_share,plan_id):
- ensure_plan_table(c_share)
+ if PLAN_TABLE not in tables(c_share):return None
  cur=c_share.cursor()
- cur.execute(_PLAN_SELECT+' WHERE [予定ID]=?',[plan_id])
+ cur.execute(_plan_select(c_share)+' WHERE [予定ID]=?',[plan_id])
  return cur.fetchone()
 
 def plan_child_rows(c_share,parent_id):
  """この親にぶら下がる子ロットの行(有効なものだけ、表示順)。"""
- ensure_plan_table(c_share)
+ if PLAN_TABLE not in tables(c_share):return []
+ # 親予定IDの列そのものが無い写しでは子は1本も無い（`NULL AS`では絞れない）。
+ from ..db_access import cols
+ if PLAN_PARENT_COLUMN not in set(cols(c_share,PLAN_TABLE)):return []
  cur=c_share.cursor()
- cur.execute(_PLAN_SELECT+' WHERE [親予定ID]=? ORDER BY [表示順],[予定ID]',[parent_id])
+ cur.execute(_plan_select(c_share)+' WHERE [親予定ID]=? ORDER BY [表示順],[予定ID]',[parent_id])
  return [r for r in cur.fetchall() if r[14] is None or bool(r[14])]
 
 def _next_plan_order(c_share,equipment):

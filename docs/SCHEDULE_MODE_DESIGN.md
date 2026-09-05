@@ -21542,3 +21542,48 @@ test_reclayout test_opparent test_opformula test_opblank test_rbcells test_rolli
 落ちる仕組みまでは言えていない（§9.284。次に同じ形で出たら追う）。
 直したあとの確認は`test_nav test_bootflash test_globallint test_rawmaster
 test_loadorder test_headbar test_maint`で 172/172。**フルスイートは回していない。**
+
+## §9.325 作業予定を「読む側」は写しに書かない（R5の計測中に見つかった不具合、VER2.206.0）
+
+R5（テスト実行時間の短縮）の下見で、遅い網を**単独で**回したところ、
+`test_startwork`（3件）と`test_sctimecols`（2件）が落ちた。通しでは緑
+（2026-09-04の全件 5734/5734）。
+
+**① 製品の不具合。** サーバーのログに
+`GET /api/schedule/plan で未処理の例外` →
+`schedule_repo.plan_rows` → `ensure_plan_table` → `add_missing_columns` →
+`ALTER TABLE … ADD COLUMN` → **`attempt to write a readonly database`**。
+GET系（`_read`）が開くのは共有の**写し**（`schedule_cache.sqlite3`、書ける接続）で、
+別の要求が同時に`fetch_snapshot()`で写し直して`Path.replace()`で差し替える。
+SQLiteは**開いたまま差し替えられたファイルへの書き込み**を`SQLITE_READONLY_DBMOVED`
+（文言は「readonly database」）で断る——Pythonの5行で再現した。`fetch_snapshot()`の
+注釈には「Playwright検証で readonly database が再現した」とあり、一時名を一意にして
+**写す側**は直してあったが、**読む側が書く**ことは残っていた。
+
+読む側が書いていた理由は、後から足した3列（`親予定ID`・`登録端末名`・`更新端末名`）を
+「無ければ足す」で移行していたから。検証用フィクスチャの`share/schedule.sqlite3`は
+この3列を持たないので、**写しを作り直すたびに**最初の読みがALTERを打つ。通しでは
+前のテストの書込サイクル（`with_write`）が先に列を足していたので当たらず、単独で
+回すと最初の読みがALTERになって当たった——**順番に依存して見えていた**。
+現場でも、読むだけの端末（閲覧モード）が古い共有を写した直後に別のGETが重なれば
+同じ形で500になる。
+
+直し方: `_plan_select(c)`が**在る列だけ**で`SELECT`を組み、無い列は`NULL AS [列]`
+（`TableDef.fetch`と同じ考え方・§9.324 R1）。`plan_rows`／`plan_row`／`plan_child_rows`は
+`ensure_plan_table()`を呼ばない（表が無ければ空）。**列を足すのは書込サイクルだけ**
+（`plan_add`等は今までどおり）。位置で読む側（`r[14]`等）は1つも変えない。
+
+固定は`tests/test_scsnapread.py`（12件）: 読み取り専用の接続で古い写しを読める／
+読んだだけでは列を足さない／**開いたまま差し替えられた写しでも読める**（同じ状況で
+書くと落ちる、という前提まで確かめる——前提が通らない環境では網が空振りする）／
+表が無い写しは空／構文木で「読む3関数に`ensure_plan_table`が無い」。
+
+**② 網の順番依存。** 直したあとも`test_startwork`2件・`test_sctimecols`2件は落ちた。
+どちらも「区分が完了の行」を**前のテストが完了させた記録**に頼っていた
+（`test_startwork`の注釈にも「他テストの実績も混ざる」と書いてある）。単独で
+回せない網は、直したかどうかを単独で確かめられない。8時間以内の完了実績
+（`L0059`）を**自分で置く**ようにした。
+
+回した網: `test_scsnapread test_startwork test_sctimecols test_scsplit test_scload
+test_sclock test_scsync test_scsession test_screorder test_scwritespeed`。
+**フルスイートは回していない。**
