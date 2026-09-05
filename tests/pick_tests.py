@@ -40,7 +40,9 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
           # 足した人がここを通さずに書くと、同じ不具合が別の列で戻る。
           'test_ddllint',
           # §9.324 R4: 真偽の読み方の写しが残っていないか（1秒未満）
-          'test_flags']
+          'test_flags',
+          # §9.324 R2: ルートの失敗の受け方は api_guard の1箇所（写しを機械で数える）
+          'test_apiguard']
 
 # 束ねた呼び名。右辺は実際のテスト名。
 G = {}
@@ -342,6 +344,7 @@ RULES = [
     ('backend/routes/tables.py', g('一覧', '接続', '列', 'test_colscache', 'test_colsripple',
                                    'test_modeguard')),
     ('backend/routes/masters.py', g('マスタ', '列', 'test_modeguard')),
+    ('backend/routes/common.py', g('マスタ', 'test_modeguard', 'test_crudroutes', 'test_error')),
     ('backend/routes/schedule.py', g('スケジュール', 'test_modeguard', 'test_crudroutes')),
     ('backend/routes/measurement.py', g('測定', 'test_modeguard', 'test_measstore',
                                         # §9.317: 参照データが読めなくても測定は始められる

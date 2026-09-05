@@ -13,6 +13,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, request, jsonify
+from .common import api_guard
 
 from ..flags import flag_of, text_or
 from ..paths import APP_ROOT as BASE_DIR
@@ -194,44 +195,43 @@ def equipment_master_update():
  except Exception as e:return jsonify(error=f'設備マスタ更新失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
 @bp.post('/api/equipment-master/delete')
+@api_guard('設備マスタ削除失敗')
 def equipment_master_delete():
- try:
-  x=request.get_json(force=True) or {};eid=x.get('id');uid=request_user_id(x);force=bool(x.get('force'))
-  if eid is None:return jsonify(error='削除対象IDがありません。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   ensure_equipment_master_table(c);cur=c.cursor()
-   cur.execute('SELECT [設備名] FROM [設備マスタ] WHERE [設備ID]=?',[eid]);row=cur.fetchone();name=str(row[0]).strip() if row and row[0] else ''
-   # docs/SCHEDULE_MODE_DESIGN.md §5.0.1: まず拒否して内訳を提示し、
-   # 利用者が再確認のうえforce:trueで再送した場合のみ実際に削除する。
-   # スケジュール側の参照はDBへ一切書き込まない読み取り専用の確認のみ
-   # (削除してもスケジュール側のデータは履歴として残る)。
-   references_check_failed=False
-   if name and not force:
-    references=schedule_calc.equipment_reference_counts(name)
-    if references is None:
-     # 共有ファイルの取得自体に失敗(Box未接続等)。確認できないだけで、
-     # 削除自体をブロックする理由にはしない(§5.0.1)。
-     references_check_failed=True
-    else:
-     references['fieldReorderTerminals']=field_reorder_terminal_count(c,name)
-     if any(v>0 for v in references.values()):
-      return jsonify(error='この設備には関連するスケジュールデータがあります。',
-                      code='schedule_references_exist',references=references),409
-   # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
-   cur.execute('UPDATE [設備マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[uid,eid])
-   # オペレータ設備マスタは設備名で紐づいているため、削除した設備を作業可能
-   # 設備として持つオペレータの割当からも取り除き、削除済みの設備名が
-   # 選択肢から消えた後も表示上だけ残り続ける(ゴースト参照)のを防ぐ。
-   # **移行済みの表は無ければ作らない**（§9.255 ①）。在るときだけ片付ける
-   #  ——`ensure_operator_equipment_table()`はもう作らないので、
-   #  存在を確かめずにDELETEすると、消してある端末で500になる。
-   if name and OPERATOR_EQUIPMENT_TABLE in tables(c):
-    ensure_operator_equipment_table(c)
-    cur.execute('DELETE FROM [オペレータ設備マスタ] WHERE [設備名]=?',[name])
-   c.commit()
-  return jsonify(ok=True,id=eid,updated_by=uid,referencesCheckFailed=references_check_failed)
- except Exception as e:return jsonify(error=f'設備マスタ削除失敗: {e}'),500
+ x=request.get_json(force=True) or {};eid=x.get('id');uid=request_user_id(x);force=bool(x.get('force'))
+ if eid is None:return jsonify(error='削除対象IDがありません。'),400
+ path=DBS['MASTER']['path']
+ with connect(path,False) as c:
+  ensure_equipment_master_table(c);cur=c.cursor()
+  cur.execute('SELECT [設備名] FROM [設備マスタ] WHERE [設備ID]=?',[eid]);row=cur.fetchone();name=str(row[0]).strip() if row and row[0] else ''
+  # docs/SCHEDULE_MODE_DESIGN.md §5.0.1: まず拒否して内訳を提示し、
+  # 利用者が再確認のうえforce:trueで再送した場合のみ実際に削除する。
+  # スケジュール側の参照はDBへ一切書き込まない読み取り専用の確認のみ
+  # (削除してもスケジュール側のデータは履歴として残る)。
+  references_check_failed=False
+  if name and not force:
+   references=schedule_calc.equipment_reference_counts(name)
+   if references is None:
+    # 共有ファイルの取得自体に失敗(Box未接続等)。確認できないだけで、
+    # 削除自体をブロックする理由にはしない(§5.0.1)。
+    references_check_failed=True
+   else:
+    references['fieldReorderTerminals']=field_reorder_terminal_count(c,name)
+    if any(v>0 for v in references.values()):
+     return jsonify(error='この設備には関連するスケジュールデータがあります。',
+                     code='schedule_references_exist',references=references),409
+  # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
+  cur.execute('UPDATE [設備マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[uid,eid])
+  # オペレータ設備マスタは設備名で紐づいているため、削除した設備を作業可能
+  # 設備として持つオペレータの割当からも取り除き、削除済みの設備名が
+  # 選択肢から消えた後も表示上だけ残り続ける(ゴースト参照)のを防ぐ。
+  # **移行済みの表は無ければ作らない**（§9.255 ①）。在るときだけ片付ける
+  #  ——`ensure_operator_equipment_table()`はもう作らないので、
+  #  存在を確かめずにDELETEすると、消してある端末で500になる。
+  if name and OPERATOR_EQUIPMENT_TABLE in tables(c):
+   ensure_operator_equipment_table(c)
+   cur.execute('DELETE FROM [オペレータ設備マスタ] WHERE [設備名]=?',[name])
+  c.commit()
+ return jsonify(ok=True,id=eid,updated_by=uid,referencesCheckFailed=references_check_failed)
 
 # ---------------------------------------------------------------------------
 # オペレータ／機器／スプール種別／内径種別／バリ揃え／コイル止めは
@@ -371,39 +371,37 @@ def filter_preset_register():
  except Exception as e:return jsonify(error=f'フィルタプリセット登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
 @bp.post('/api/filter-presets/use')
+@api_guard('使用回数更新失敗')
 def filter_preset_use():
  # サジェスト順位（よく使う順）を精緻化するため、適用時に使用回数を加算する。
- try:
-  x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
-  if pid is None:return jsonify(ok=True,skipped=True)
-  path=DBS['MASTER']['path']
-  if not path.exists():return jsonify(ok=True,skipped=True)
-  with connect(path,False) as c:
-   ensure_filter_preset_table(c);cur=c.cursor()
-   cur.execute('UPDATE [フィルタプリセットマスタ] SET [使用回数]=Nz([使用回数],0)+1,[最終使用日時]=Now(),[更新者ID]=? WHERE [プリセットID]=?',[uid,pid]);c.commit()
-  return jsonify(ok=True,id=pid,updated_by=uid)
- except Exception as e:return jsonify(error=f'使用回数更新失敗: {e}'),500
+ x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
+ if pid is None:return jsonify(ok=True,skipped=True)
+ path=DBS['MASTER']['path']
+ if not path.exists():return jsonify(ok=True,skipped=True)
+ with connect(path,False) as c:
+  ensure_filter_preset_table(c);cur=c.cursor()
+  cur.execute('UPDATE [フィルタプリセットマスタ] SET [使用回数]=Nz([使用回数],0)+1,[最終使用日時]=Now(),[更新者ID]=? WHERE [プリセットID]=?',[uid,pid]);c.commit()
+ return jsonify(ok=True,id=pid,updated_by=uid)
 
 @bp.post('/api/filter-presets/delete')
+@api_guard('フィルタプリセット削除失敗')
 def filter_preset_delete():
- try:
-  x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
-  if pid is None:return jsonify(error='削除対象IDがありません。'),400
-  requester=_filter_preset_user(x) or uid
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   ensure_filter_preset_table(c);cur=c.cursor()
-   # **他人の個人フィルタは消せない**(§9.172)。みんなのもの(所有者空欄)は
-   # 今までどおり誰でも消せる——共有のものを消せる人を絞ると、作った人が
-   # 辞めた後に誰も片付けられなくなる。
-   cur.execute('SELECT [所有者ID] FROM [フィルタプリセットマスタ] WHERE [プリセットID]=?',[pid])
-   row=cur.fetchone()
-   if row is not None and not _preset_visible_to(row[0],requester):
-    return jsonify(error='この登録フィルタは別の人のものです。持ち主だけが削除できます。'),403
-   # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
-   cur.execute('UPDATE [フィルタプリセットマスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [プリセットID]=?',[uid,pid]);c.commit()
-  return jsonify(ok=True,id=pid,updated_by=uid)
- except Exception as e:return jsonify(error=f'フィルタプリセット削除失敗: {e}'),500
+ x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
+ if pid is None:return jsonify(error='削除対象IDがありません。'),400
+ requester=_filter_preset_user(x) or uid
+ path=DBS['MASTER']['path']
+ with connect(path,False) as c:
+  ensure_filter_preset_table(c);cur=c.cursor()
+  # **他人の個人フィルタは消せない**(§9.172)。みんなのもの(所有者空欄)は
+  # 今までどおり誰でも消せる——共有のものを消せる人を絞ると、作った人が
+  # 辞めた後に誰も片付けられなくなる。
+  cur.execute('SELECT [所有者ID] FROM [フィルタプリセットマスタ] WHERE [プリセットID]=?',[pid])
+  row=cur.fetchone()
+  if row is not None and not _preset_visible_to(row[0],requester):
+   return jsonify(error='この登録フィルタは別の人のものです。持ち主だけが削除できます。'),403
+  # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
+  cur.execute('UPDATE [フィルタプリセットマスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [プリセットID]=?',[uid,pid]);c.commit()
+ return jsonify(ok=True,id=pid,updated_by=uid)
 
 @bp.post('/api/filter-presets/marks')
 def filter_preset_marks():
@@ -431,29 +429,28 @@ def filter_preset_marks():
  except Exception as e:return jsonify(error=f'フィルタ個人設定の保存に失敗: {e}'),500
 
 @bp.post('/api/filter-presets/owner')
+@api_guard('フィルタの持ち主変更に失敗')
 def filter_preset_owner():
  """「自分だけ」と「みんな」を行き来する(§9.172)。**持ち主だけが変えられる**。
  みんなのものを自分のものにするのは、他の人から見えなくなるので**取り上げ**に
  なる——できるのは、まだ誰の物でもない(＝共有)ものを自分の物にする場合だけに
  限らず、画面側が確認を出す。"""
- try:
-  x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
-  if pid is None:return jsonify(error='対象のプリセットIDがありません。'),400
-  requester=_filter_preset_user(x) or uid
-  to_shared=bool(x.get('shared'))
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   ensure_filter_preset_table(c);cur=c.cursor()
-   cur.execute('SELECT [所有者ID] FROM [フィルタプリセットマスタ] WHERE [プリセットID]=?',[pid])
-   row=cur.fetchone()
-   if row is None:return jsonify(error='その登録フィルタは見つかりません。'),404
-   if not _preset_visible_to(row[0],requester):
-    return jsonify(error='この登録フィルタは別の人のものです。持ち主だけが変えられます。'),403
-   owner='' if to_shared else str(requester or '')[:50]
-   cur.execute('UPDATE [フィルタプリセットマスタ] SET [所有者ID]=?,[更新者ID]=?,[更新日時]=Now() WHERE [プリセットID]=?',[owner,uid,pid])
-   c.commit()
-  return jsonify(ok=True,id=pid,owner=owner,mine=bool(owner))
- except Exception as e:return jsonify(error=f'フィルタの持ち主変更に失敗: {e}'),500
+ x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
+ if pid is None:return jsonify(error='対象のプリセットIDがありません。'),400
+ requester=_filter_preset_user(x) or uid
+ to_shared=bool(x.get('shared'))
+ path=DBS['MASTER']['path']
+ with connect(path,False) as c:
+  ensure_filter_preset_table(c);cur=c.cursor()
+  cur.execute('SELECT [所有者ID] FROM [フィルタプリセットマスタ] WHERE [プリセットID]=?',[pid])
+  row=cur.fetchone()
+  if row is None:return jsonify(error='その登録フィルタは見つかりません。'),404
+  if not _preset_visible_to(row[0],requester):
+   return jsonify(error='この登録フィルタは別の人のものです。持ち主だけが変えられます。'),403
+  owner='' if to_shared else str(requester or '')[:50]
+  cur.execute('UPDATE [フィルタプリセットマスタ] SET [所有者ID]=?,[更新者ID]=?,[更新日時]=Now() WHERE [プリセットID]=?',[owner,uid,pid])
+  c.commit()
+ return jsonify(ok=True,id=pid,owner=owner,mine=bool(owner))
 
 @bp.post('/api/filter-presets/combo')
 def filter_preset_combo():
@@ -540,61 +537,55 @@ def filter_preset_combo():
  except Exception as e:return jsonify(error=f'組み合わせの保存に失敗: {e}'),500
 
 @bp.get('/api/schedule-column-master')
+@api_guard('スケジュール列表示マスタ読込失敗')
 def schedule_column_master_get():
- try:
-  equipment=str(request.args.get('equipment') or '').strip()
-  if not equipment:return jsonify(ok=True,equipment='',columns=[])
-  path=DBS['MASTER']['path']
-  if not path.exists():return jsonify(ok=True,equipment=equipment,columns=[])
-  with connect(path,True) as c:
-   columns=schedule_columns_for(c,equipment)
-  return jsonify(ok=True,equipment=equipment,columns=columns)
- except Exception as e:return jsonify(error=f'スケジュール列表示マスタ読込失敗: {e}'),500
+ equipment=str(request.args.get('equipment') or '').strip()
+ if not equipment:return jsonify(ok=True,equipment='',columns=[])
+ path=DBS['MASTER']['path']
+ if not path.exists():return jsonify(ok=True,equipment=equipment,columns=[])
+ with connect(path,True) as c:
+  columns=schedule_columns_for(c,equipment)
+ return jsonify(ok=True,equipment=equipment,columns=columns)
 
 @bp.post('/api/schedule-column-master')
+@api_guard('スケジュール列表示マスタ保存失敗',bad=ValueError)
 def schedule_column_master_save():
- try:
-  x=request.get_json(force=True) or {};uid=request_user_id(x)
-  equipment=str(x.get('equipment') or '').strip()
-  columns=x.get('columns')
-  if not equipment:return jsonify(error='設備名を指定してください。'),400
-  if not isinstance(columns,list):return jsonify(error='列の指定が不正です。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   n=set_schedule_columns(c,equipment,columns,uid)
-  return jsonify(ok=True,equipment=equipment,saved=n,updated_by=uid,message='表示列を保存しました。')
- except ValueError as e:return jsonify(error=str(e)),400
- except Exception as e:return jsonify(error=f'スケジュール列表示マスタ保存失敗: {e}'),500
+ x=request.get_json(force=True) or {};uid=request_user_id(x)
+ equipment=str(x.get('equipment') or '').strip()
+ columns=x.get('columns')
+ if not equipment:return jsonify(error='設備名を指定してください。'),400
+ if not isinstance(columns,list):return jsonify(error='列の指定が不正です。'),400
+ path=DBS['MASTER']['path']
+ with connect(path,False) as c:
+  n=set_schedule_columns(c,equipment,columns,uid)
+ return jsonify(ok=True,equipment=equipment,saved=n,updated_by=uid,message='表示列を保存しました。')
 
 # ------------------------------------------------------------------------
 # スケジュール内容表示マスタ（タイムラインの「内容」欄の項目・並び順）
 # ------------------------------------------------------------------------
 @bp.get('/api/schedule-content-master')
+@api_guard('スケジュール内容表示マスタ読込失敗')
 def schedule_content_master_get():
- try:
-  equipment=str(request.args.get('equipment') or '').strip()
-  if not equipment:return jsonify(ok=True,equipment='',items=[])
-  path=DBS['MASTER']['path']
-  if not path.exists():return jsonify(ok=True,equipment=equipment,items=[])
-  with connect(path,True) as c:
-   items=schedule_content_items_for(c,equipment)
-  return jsonify(ok=True,equipment=equipment,items=items)
- except Exception as e:return jsonify(error=f'スケジュール内容表示マスタ読込失敗: {e}'),500
+ equipment=str(request.args.get('equipment') or '').strip()
+ if not equipment:return jsonify(ok=True,equipment='',items=[])
+ path=DBS['MASTER']['path']
+ if not path.exists():return jsonify(ok=True,equipment=equipment,items=[])
+ with connect(path,True) as c:
+  items=schedule_content_items_for(c,equipment)
+ return jsonify(ok=True,equipment=equipment,items=items)
 
 @bp.post('/api/schedule-content-master')
+@api_guard('スケジュール内容表示マスタ保存失敗',bad=ValueError)
 def schedule_content_master_save():
- try:
-  x=request.get_json(force=True) or {};uid=request_user_id(x)
-  equipment=str(x.get('equipment') or '').strip()
-  items=x.get('items')
-  if not equipment:return jsonify(error='設備名を指定してください。'),400
-  if not isinstance(items,list):return jsonify(error='項目の指定が不正です。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   n=set_schedule_content_items(c,equipment,items,uid)
-  return jsonify(ok=True,equipment=equipment,saved=n,updated_by=uid,message='内容欄の項目を保存しました。')
- except ValueError as e:return jsonify(error=str(e)),400
- except Exception as e:return jsonify(error=f'スケジュール内容表示マスタ保存失敗: {e}'),500
+ x=request.get_json(force=True) or {};uid=request_user_id(x)
+ equipment=str(x.get('equipment') or '').strip()
+ items=x.get('items')
+ if not equipment:return jsonify(error='設備名を指定してください。'),400
+ if not isinstance(items,list):return jsonify(error='項目の指定が不正です。'),400
+ path=DBS['MASTER']['path']
+ with connect(path,False) as c:
+  n=set_schedule_content_items(c,equipment,items,uid)
+ return jsonify(ok=True,equipment=equipment,saved=n,updated_by=uid,message='内容欄の項目を保存しました。')
 
 # ========================================================================
 # アクセス権限マスタ（ログインID×PC名で編集可否を管理。閲覧モードの判定は
@@ -720,23 +711,22 @@ def access_permission_master_update():
  except Exception as e:return jsonify(error=f'アクセス権限マスタ更新失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
 @bp.post('/api/access-permission-master/delete')
+@api_guard('アクセス権限マスタ削除失敗')
 def access_permission_master_delete():
- try:
-  x=request.get_json(force=True) or {};aid=x.get('id');uid=request_user_id(x)
-  if aid is None:return jsonify(error='削除対象IDがありません。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   ensure_access_permission_table(c);cur=c.cursor()
-   # **消すことも区分の変更**（§9.322）——行が消えれば、その端末は既定
-   # （一般ユーザー）へ戻る。自分の行を消して制限を外す、という抜け道を
-   # 塞ぐため、登録・更新とまったく同じ門を通す。
-   err=_permission_grant_error(c,x,existing_role=_row_role(c,aid),role=PERMISSION_ROLE_DEFAULT,
-                               master_edit=None,row_id=aid)
-   if err:return jsonify(error=err),403
-   # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
-   cur.execute('UPDATE [アクセス権限マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [権限ID]=?',[uid,aid]);c.commit()
-  return jsonify(ok=True,id=aid,updated_by=uid)
- except Exception as e:return jsonify(error=f'アクセス権限マスタ削除失敗: {e}'),500
+ x=request.get_json(force=True) or {};aid=x.get('id');uid=request_user_id(x)
+ if aid is None:return jsonify(error='削除対象IDがありません。'),400
+ path=DBS['MASTER']['path']
+ with connect(path,False) as c:
+  ensure_access_permission_table(c);cur=c.cursor()
+  # **消すことも区分の変更**（§9.322）——行が消えれば、その端末は既定
+  # （一般ユーザー）へ戻る。自分の行を消して制限を外す、という抜け道を
+  # 塞ぐため、登録・更新とまったく同じ門を通す。
+  err=_permission_grant_error(c,x,existing_role=_row_role(c,aid),role=PERMISSION_ROLE_DEFAULT,
+                              master_edit=None,row_id=aid)
+  if err:return jsonify(error=err),403
+  # 物理削除ではなく無効化し、履歴を残す。無効化した更新者も記録する。
+  cur.execute('UPDATE [アクセス権限マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [権限ID]=?',[uid,aid]);c.commit()
+ return jsonify(ok=True,id=aid,updated_by=uid)
 
 
 # ========================================================================
@@ -747,90 +737,87 @@ def access_permission_master_delete():
 # (知らない列は無視し、記録に無い列は既定の位置・既定の幅になる)。
 # ========================================================================
 @bp.get('/api/column-layout-master')
+@api_guard('列レイアウト読込失敗')
 def column_layout_master_get():
- try:
-  # all=1 は「保存されている全対象をまとめて返す」(§9.178。持ち出し用)。
-  # **画面はここでしか全対象を知れない**——targetは画面が組み立てる文字列で、
-  # どんな対象が保存済みかを推測する手掛かりがどこにも無い。
-  if str(request.args.get('all') or '').strip() in ('1','true','yes'):
-   path=DBS['MASTER']['path']
-   if not path.exists():return jsonify(ok=True,items=[])
-   with connect(path,True) as c:
-    items=[dict(target=t,**column_layout_for(c,t)) for t in column_layout_targets(c)]
-   return jsonify(ok=True,items=items)
-  target=str(request.args.get('target') or '').strip()
-  if not target:return jsonify(error='対象(target)を指定してください。'),400
-  uid=str(request.args.get('user') or '').strip()
+ # all=1 は「保存されている全対象をまとめて返す」(§9.178。持ち出し用)。
+ # **画面はここでしか全対象を知れない**——targetは画面が組み立てる文字列で、
+ # どんな対象が保存済みかを推測する手掛かりがどこにも無い。
+ if str(request.args.get('all') or '').strip() in ('1','true','yes'):
   path=DBS['MASTER']['path']
-  if not path.exists():
-   return jsonify(ok=True,target=target,order=[],widths={},scope='common',canPersonalize=bool(uid))
+  if not path.exists():return jsonify(ok=True,items=[])
   with connect(path,True) as c:
-   # **誰の行を読むかは column_layout_owner の1箇所が答える**(§9.259)。
-   # 画面は今までどおり対象(target)だけを送り、所有者のことを知らない。
-   owner=column_layout_owner(c,target,uid)
-   layout=column_layout_for(c,target,owner)
-  # **どちらを見ているかを必ず返す**(§3)。黙って個人の並びを出すと、
-  # 「自分にだけ違って見える」理由が画面のどこにも無くなる。
-  return jsonify(ok=True,target=target,scope=('personal' if owner else 'common'),
-                 canPersonalize=bool(uid),**layout)
- except Exception as e:
-  # 並びが読めなくても一覧そのものは出せる(既定の並び)。画面はfail-openで扱う。
-  return jsonify(error=f'列レイアウト読込失敗: {e}'),500
+   items=[dict(target=t,**column_layout_for(c,t)) for t in column_layout_targets(c)]
+  return jsonify(ok=True,items=items)
+ target=str(request.args.get('target') or '').strip()
+ if not target:return jsonify(error='対象(target)を指定してください。'),400
+ uid=str(request.args.get('user') or '').strip()
+ path=DBS['MASTER']['path']
+ if not path.exists():
+  return jsonify(ok=True,target=target,order=[],widths={},scope='common',canPersonalize=bool(uid))
+ with connect(path,True) as c:
+  # **誰の行を読むかは column_layout_owner の1箇所が答える**(§9.259)。
+  # 画面は今までどおり対象(target)だけを送り、所有者のことを知らない。
+  owner=column_layout_owner(c,target,uid)
+  layout=column_layout_for(c,target,owner)
+ # **どちらを見ているかを必ず返す**(§3)。黙って個人の並びを出すと、
+ # 「自分にだけ違って見える」理由が画面のどこにも無くなる。
+ return jsonify(ok=True,target=target,scope=('personal' if owner else 'common'),
+                canPersonalize=bool(uid),**layout)
 
 @bp.post('/api/column-layout-master')
+@api_guard('列レイアウト保存失敗')
 def column_layout_master_save():
- try:
-  x=request.get_json(force=True) or {};uid=request_user_id(x)
-  target=str(x.get('target') or '').strip()
-  if not target:return jsonify(error='対象(target)を指定してください。'),400
-  order=x.get('order');widths=x.get('widths');hidden=x.get('hidden');names=x.get('names')
-  formats=x.get('formats');rules=x.get('rules');formulas=x.get('formulas')
-  locks=x.get('locks')          # 幅を固定する列(§9.119)
-  sorts=x.get('sorts')          # 列ごとの並べ替えの決まり(§9.187)
-  aligns=x.get('aligns')        # 値と見出しの揃え(§9.239 ④)
-  # **送られてきた項目だけを書く**(§9.212 ②、利用者の指示「修正した内容が
-  # 戻されたりしないために」)。以前は常に全置換で、渡し忘れた設定が黙って
-  # 消えていた(計算式・並べ替え・幅固定で実際に3回起きた)。判断の材料は
-  # 「JSONにそのキーがあるか」の1点——**空の値と省略は別のこと**で、
-  # `hidden:[]`は「隠す列は無い」、`hidden`が無いのは「触っていない」。
-  fields={k for k in ('order','widths','hidden','names','formats','rules',
-                      'formulas','locks','sorts','aligns') if k in x}
-  # `clear:true`は**この対象の設定を全部消す**。差分更新にしたぶん、
-  # 「まっさらに戻す」は9個のキーを空で並べる必要が出てしまうので、
-  # **意図を1語で言える口**を用意する(書き漏らすと消し残る＝前の設定が
-  # 生き延びる。検証の後片付けで実際に問題になる)。
-  if str(x.get('clear') or '').lower() in ('1','true','yes') or x.get('clear') is True:
-   fields=None
-  if order is not None and not isinstance(order,list):
-   return jsonify(error='並び(order)の指定が不正です。'),400
-  if widths is not None and not isinstance(widths,dict):
-   return jsonify(error='列幅(widths)の指定が不正です。'),400
-  if hidden is not None and not isinstance(hidden,list):
-   return jsonify(error='非表示列(hidden)の指定が不正です。'),400
-  if locks is not None and not isinstance(locks,list):
-   return jsonify(error='幅を固定する列(locks)の指定が不正です。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   # 読むときと**同じ1箇所**で所有者を決める(§9.259)。別々に決めると
-   # 「画面には個人の並びが出ているのに保存は共通へ行く」が作れる。
-   owner=column_layout_owner(c,target,uid)
-   n=set_column_layout(c,target,order or [],widths or {},uid,owner=owner,hidden=hidden or [],
-                       names=names if isinstance(names,dict) else {},
-                       formats=formats if isinstance(formats,dict) else {},
-                       rules=rules if isinstance(rules,dict) else {},
-                       formulas=formulas if isinstance(formulas,dict) else {},
-                       locks=locks if isinstance(locks,list) else [],
-                       sorts=sorts if isinstance(sorts,dict) else {},
-                       aligns=aligns if isinstance(aligns,dict) else {},
-                       fields=fields)
-  return jsonify(ok=True,target=target,columns=n,updated_by=uid,
-                 scope=('personal' if owner else 'common'),
-                 message=('自分だけの表示の並びを保存しました。' if owner
-                          else '表示の並びを保存しました。'))
- except Exception as e:return jsonify(error=f'列レイアウト保存失敗: {e}'),500
+ x=request.get_json(force=True) or {};uid=request_user_id(x)
+ target=str(x.get('target') or '').strip()
+ if not target:return jsonify(error='対象(target)を指定してください。'),400
+ order=x.get('order');widths=x.get('widths');hidden=x.get('hidden');names=x.get('names')
+ formats=x.get('formats');rules=x.get('rules');formulas=x.get('formulas')
+ locks=x.get('locks')          # 幅を固定する列(§9.119)
+ sorts=x.get('sorts')          # 列ごとの並べ替えの決まり(§9.187)
+ aligns=x.get('aligns')        # 値と見出しの揃え(§9.239 ④)
+ # **送られてきた項目だけを書く**(§9.212 ②、利用者の指示「修正した内容が
+ # 戻されたりしないために」)。以前は常に全置換で、渡し忘れた設定が黙って
+ # 消えていた(計算式・並べ替え・幅固定で実際に3回起きた)。判断の材料は
+ # 「JSONにそのキーがあるか」の1点——**空の値と省略は別のこと**で、
+ # `hidden:[]`は「隠す列は無い」、`hidden`が無いのは「触っていない」。
+ fields={k for k in ('order','widths','hidden','names','formats','rules',
+                     'formulas','locks','sorts','aligns') if k in x}
+ # `clear:true`は**この対象の設定を全部消す**。差分更新にしたぶん、
+ # 「まっさらに戻す」は9個のキーを空で並べる必要が出てしまうので、
+ # **意図を1語で言える口**を用意する(書き漏らすと消し残る＝前の設定が
+ # 生き延びる。検証の後片付けで実際に問題になる)。
+ if str(x.get('clear') or '').lower() in ('1','true','yes') or x.get('clear') is True:
+  fields=None
+ if order is not None and not isinstance(order,list):
+  return jsonify(error='並び(order)の指定が不正です。'),400
+ if widths is not None and not isinstance(widths,dict):
+  return jsonify(error='列幅(widths)の指定が不正です。'),400
+ if hidden is not None and not isinstance(hidden,list):
+  return jsonify(error='非表示列(hidden)の指定が不正です。'),400
+ if locks is not None and not isinstance(locks,list):
+  return jsonify(error='幅を固定する列(locks)の指定が不正です。'),400
+ path=DBS['MASTER']['path']
+ with connect(path,False) as c:
+  # 読むときと**同じ1箇所**で所有者を決める(§9.259)。別々に決めると
+  # 「画面には個人の並びが出ているのに保存は共通へ行く」が作れる。
+  owner=column_layout_owner(c,target,uid)
+  n=set_column_layout(c,target,order or [],widths or {},uid,owner=owner,hidden=hidden or [],
+                      names=names if isinstance(names,dict) else {},
+                      formats=formats if isinstance(formats,dict) else {},
+                      rules=rules if isinstance(rules,dict) else {},
+                      formulas=formulas if isinstance(formulas,dict) else {},
+                      locks=locks if isinstance(locks,list) else [],
+                      sorts=sorts if isinstance(sorts,dict) else {},
+                      aligns=aligns if isinstance(aligns,dict) else {},
+                      fields=fields)
+ return jsonify(ok=True,target=target,columns=n,updated_by=uid,
+                scope=('personal' if owner else 'common'),
+                message=('自分だけの表示の並びを保存しました。' if owner
+                         else '表示の並びを保存しました。'))
 
 
 @bp.post('/api/column-layout-master/scope')
+@api_guard('列レイアウトの切り替えに失敗')
 def column_layout_master_scope():
  """その一覧の列の見せ方を「みんなと同じ／自分だけ」で切り替える(§9.259)。
 
@@ -841,31 +828,29 @@ def column_layout_master_scope():
  ——白紙から始めると、こだわって作った並びが押した瞬間に消えたように見える。
  **共通へ戻しても個人の行は消さない**（また個人へ戻せば続きから使える）。
  """
- try:
-  x=request.get_json(force=True) or {};uid=request_user_id(x)
-  target=str(x.get('target') or '').strip()
-  if not target:return jsonify(error='対象(target)を指定してください。'),400
-  if not uid:
-   # **押せるのに何も起きないボタンを残さない**(§4)。画面はこの理由をそのまま出す。
-   return jsonify(error='利用者IDが分からないため、自分だけの設定は持てません。'
+ x=request.get_json(force=True) or {};uid=request_user_id(x)
+ target=str(x.get('target') or '').strip()
+ if not target:return jsonify(error='対象(target)を指定してください。'),400
+ if not uid:
+  # **押せるのに何も起きないボタンを残さない**(§4)。画面はこの理由をそのまま出す。
+  return jsonify(error='利用者IDが分からないため、自分だけの設定は持てません。'
                         'この端末のログインIDを取得できていない可能性があります。'),400
-  scope=str(x.get('scope') or '').strip().lower()
-  if scope not in ('common','personal'):
-   return jsonify(error="scopeは'common'か'personal'を指定してください。"),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   personal=column_layout_scope_set(c,target,uid,scope=='personal',updated_by=uid)
-   layout=column_layout_for(c,target,uid if personal else '')
-   mine=column_layout_personal_targets(c,uid)
-  return jsonify(ok=True,target=target,scope=('personal' if personal else 'common'),
-                 personalTargets=mine,canPersonalize=True,
-                 message=('この一覧の列は、これから自分だけの設定になります。'
+ scope=str(x.get('scope') or '').strip().lower()
+ if scope not in ('common','personal'):
+  return jsonify(error="scopeは'common'か'personal'を指定してください。"),400
+ path=DBS['MASTER']['path']
+ with connect(path,False) as c:
+  personal=column_layout_scope_set(c,target,uid,scope=='personal',updated_by=uid)
+  layout=column_layout_for(c,target,uid if personal else '')
+  mine=column_layout_personal_targets(c,uid)
+ return jsonify(ok=True,target=target,scope=('personal' if personal else 'common'),
+                personalTargets=mine,canPersonalize=True,
+                message=('この一覧の列は、これから自分だけの設定になります。'
                           '（いまの見え方を写してあるので、続きから直せます）'
-                          if personal else
-                          'この一覧の列は、みんなと同じ設定に戻りました。'
+                         if personal else
+                         'この一覧の列は、みんなと同じ設定に戻りました。'
                           '（自分だけの設定は消していないので、いつでも戻せます）'),
-                 **layout)
- except Exception as e:return jsonify(error=f'列レイアウトの切り替えに失敗: {e}'),500
+                **layout)
 
 
 # ========================================================================
@@ -877,31 +862,28 @@ def column_layout_master_scope():
 #    JSONをそのまま保存し、読み込んだJSONをそのまま当てる)。
 # ========================================================================
 @bp.get('/api/column-preset-master')
+@api_guard('列プリセット読込失敗')
 def column_preset_master_get():
- try:
-  target=str(request.args.get('target') or '').strip()
-  path=DBS['MASTER']['path']
-  if not path.exists():return jsonify(ok=True,target=target,items=[])
-  with connect(path,False) as c:
-   items=column_presets(c,target)
-  return jsonify(ok=True,target=target,items=items)
- except Exception as e:return jsonify(error=f'列プリセット読込失敗: {e}'),500
+ target=str(request.args.get('target') or '').strip()
+ path=DBS['MASTER']['path']
+ if not path.exists():return jsonify(ok=True,target=target,items=[])
+ with connect(path,False) as c:
+  items=column_presets(c,target)
+ return jsonify(ok=True,target=target,items=items)
 
 @bp.post('/api/column-preset-master')
+@api_guard('列プリセット保存失敗',bad=ValueError)
 def column_preset_master_save():
- try:
-  x=request.get_json(force=True) or {};uid=request_user_id(x)
-  target=str(x.get('target') or '').strip()
-  name=str(x.get('name') or '').strip()
-  body=x.get('body')
-  if not isinstance(body,dict):return jsonify(error='内容(body)の指定が不正です。'),400
-  with connect(DBS['MASTER']['path'],False) as c:
-   pid=save_column_preset(c,target,name,body,uid,note=str(x.get('note') or ''))
-   items=column_presets(c,target)
-  return jsonify(ok=True,id=pid,target=target,items=items,updated_by=uid,
-                 message=f'「{name}」として保存しました。')
- except ValueError as e:return jsonify(error=str(e)),400
- except Exception as e:return jsonify(error=f'列プリセット保存失敗: {e}'),500
+ x=request.get_json(force=True) or {};uid=request_user_id(x)
+ target=str(x.get('target') or '').strip()
+ name=str(x.get('name') or '').strip()
+ body=x.get('body')
+ if not isinstance(body,dict):return jsonify(error='内容(body)の指定が不正です。'),400
+ with connect(DBS['MASTER']['path'],False) as c:
+  pid=save_column_preset(c,target,name,body,uid,note=str(x.get('note') or ''))
+  items=column_presets(c,target)
+ return jsonify(ok=True,id=pid,target=target,items=items,updated_by=uid,
+                message=f'「{name}」として保存しました。')
 
 @bp.post('/api/column-preset-master/update')
 def column_preset_master_update():
@@ -936,17 +918,16 @@ def column_preset_master_update():
  except Exception as e:return jsonify(error=f'列プリセット更新失敗: {e}'),500
 
 @bp.post('/api/column-preset-master/delete')
+@api_guard('列プリセット削除失敗')
 def column_preset_master_delete():
- try:
-  x=request.get_json(force=True) or {}
-  pid=x.get('id')
-  if pid in (None,''):return jsonify(error='プリセットIDを指定してください。'),400
-  target=str(x.get('target') or '').strip()
-  with connect(DBS['MASTER']['path'],False) as c:
-   n=delete_column_preset(c,pid)
-   items=column_presets(c,target)
-  return jsonify(ok=True,deleted=n,target=target,items=items,message='削除しました。')
- except Exception as e:return jsonify(error=f'列プリセット削除失敗: {e}'),500
+ x=request.get_json(force=True) or {}
+ pid=x.get('id')
+ if pid in (None,''):return jsonify(error='プリセットIDを指定してください。'),400
+ target=str(x.get('target') or '').strip()
+ with connect(DBS['MASTER']['path'],False) as c:
+  n=delete_column_preset(c,pid)
+  items=column_presets(c,target)
+ return jsonify(ok=True,deleted=n,target=target,items=items,message='削除しました。')
 
 
 # ========================================================================
@@ -957,58 +938,51 @@ def column_preset_master_delete():
 #  - 判定は画面側が行う。ここは保存と読み出しだけ。
 # ========================================================================
 @bp.get('/api/display-rule-master')
+@api_guard('表示ルール読込失敗')
 def display_rule_master_get():
- try:
-  path=DBS['MASTER']['path']
-  if not path.exists():
-   return jsonify(ok=True,rules={},usage={},ops=list(RULE_OPS),colors=list(RULE_COLORS))
-  with connect(path,True) as c:
-   rules=display_rules(c)
-   # **どの列で使われているかも一緒に返す。** 編集画面が「このルールを直すと
-   # どこへ効くか」を出せるようにするため(読み替えは複数の列で使い回す)。
-   usage=display_rule_usage_all(c)
-  return jsonify(ok=True,rules=rules,usage=usage,ops=list(RULE_OPS),colors=list(RULE_COLORS),
-                 table=DISPLAY_RULE_TABLE)
- except Exception as e:
-  # ルールが読めなくても一覧そのものは出せる(読み替えなしで表示)。
-  return jsonify(error=f'表示ルール読込失敗: {e}'),500
+ path=DBS['MASTER']['path']
+ if not path.exists():
+  return jsonify(ok=True,rules={},usage={},ops=list(RULE_OPS),colors=list(RULE_COLORS))
+ with connect(path,True) as c:
+  rules=display_rules(c)
+  # **どの列で使われているかも一緒に返す。** 編集画面が「このルールを直すと
+  # どこへ効くか」を出せるようにするため(読み替えは複数の列で使い回す)。
+  usage=display_rule_usage_all(c)
+ return jsonify(ok=True,rules=rules,usage=usage,ops=list(RULE_OPS),colors=list(RULE_COLORS),
+                table=DISPLAY_RULE_TABLE)
 
 @bp.post('/api/display-rule-master')
+@api_guard('表示ルール保存失敗',bad=ValueError)
 def display_rule_master_save():
- try:
-  x=request.get_json(force=True) or {};uid=request_user_id(x)
-  name=str(x.get('name') or '').strip()
-  if not name:return jsonify(error='ルール名を指定してください。'),400
-  rows=x.get('rows')
-  if rows is not None and not isinstance(rows,list):
-   return jsonify(error='ルールの行(rows)の指定が不正です。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   n=set_display_rule(c,name,rows or [],uid)
-   rules=display_rules(c)
-  return jsonify(ok=True,name=name,rows=n,rules=rules,updated_by=uid,
-                 message=f'表示ルール「{name}」を保存しました。')
- except ValueError as e:return jsonify(error=str(e)),400
- except Exception as e:return jsonify(error=f'表示ルール保存失敗: {e}'),500
+ x=request.get_json(force=True) or {};uid=request_user_id(x)
+ name=str(x.get('name') or '').strip()
+ if not name:return jsonify(error='ルール名を指定してください。'),400
+ rows=x.get('rows')
+ if rows is not None and not isinstance(rows,list):
+  return jsonify(error='ルールの行(rows)の指定が不正です。'),400
+ path=DBS['MASTER']['path']
+ with connect(path,False) as c:
+  n=set_display_rule(c,name,rows or [],uid)
+  rules=display_rules(c)
+ return jsonify(ok=True,name=name,rows=n,rules=rules,updated_by=uid,
+                message=f'表示ルール「{name}」を保存しました。')
 
 @bp.post('/api/display-rule-master/delete')
+@api_guard('表示ルール削除失敗',bad=ValueError)
 def display_rule_master_delete():
- try:
-  x=request.get_json(force=True) or {}
-  name=str(x.get('name') or '').strip()
-  if not name:return jsonify(error='ルール名を指定してください。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   # 参照している列があっても消せる(無いルール名は読み替えなしとして扱う)。
-   # ただし**どこで使っていたかは返す**——消した後で「表示が戻った」と
-   # 言われたときに、原因へたどり着けるようにするため。
-   used=display_rule_usage(c,name)
-   n=delete_display_rule(c,name)
-   rules=display_rules(c)
-  return jsonify(ok=True,name=name,deleted=n,used_by=used,rules=rules,
-                 message=f'表示ルール「{name}」を削除しました。')
- except ValueError as e:return jsonify(error=str(e)),400
- except Exception as e:return jsonify(error=f'表示ルール削除失敗: {e}'),500
+ x=request.get_json(force=True) or {}
+ name=str(x.get('name') or '').strip()
+ if not name:return jsonify(error='ルール名を指定してください。'),400
+ path=DBS['MASTER']['path']
+ with connect(path,False) as c:
+  # 参照している列があっても消せる(無いルール名は読み替えなしとして扱う)。
+  # ただし**どこで使っていたかは返す**——消した後で「表示が戻った」と
+  # 言われたときに、原因へたどり着けるようにするため。
+  used=display_rule_usage(c,name)
+  n=delete_display_rule(c,name)
+  rules=display_rules(c)
+ return jsonify(ok=True,name=name,deleted=n,used_by=used,rules=rules,
+                message=f'表示ルール「{name}」を削除しました。')
 
 
 # ========================================================================
@@ -1041,96 +1015,91 @@ def sort_preset_list():
  except Exception as e:return jsonify(error=f'ソートプリセット読込失敗: {e}'),500
 
 @bp.post('/api/sort-presets')
+@api_guard('ソートプリセット登録失敗')
 def sort_preset_register():
- try:
-  x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();uid=request_user_id(x)
-  if not name:return jsonify(error='並び順の名前を入力してください。'),400
-  keys=normalize_sort_keys(x.get('sorts'))
-  if not keys:return jsonify(error='保存する並び順がありません。'),400
-  db_key=str(x.get('db') or '').strip();table=str(x.get('table') or '').strip()
-  mode=_filter_preset_mode(x.get('mode'));payload=json.dumps(keys,ensure_ascii=False)
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   ensure_sort_preset_table(c);cur=c.cursor()
-   cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル],[対象モード] FROM [ソートプリセットマスタ]')
-   target=normalize_equipment_name(name)
-   existing=next((r for r in cur.fetchall()
-                  if normalize_equipment_name(r[1])==target and str(r[2] or '')==db_key
-                  and str(r[3] or '')==table and str(r[4] or '')==mode),None)
-   if existing:
-    cur.execute('UPDATE [ソートプリセットマスタ] SET [並びJSON]=?,[有効]=-1,[更新者ID]=?,'
+ x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();uid=request_user_id(x)
+ if not name:return jsonify(error='並び順の名前を入力してください。'),400
+ keys=normalize_sort_keys(x.get('sorts'))
+ if not keys:return jsonify(error='保存する並び順がありません。'),400
+ db_key=str(x.get('db') or '').strip();table=str(x.get('table') or '').strip()
+ mode=_filter_preset_mode(x.get('mode'));payload=json.dumps(keys,ensure_ascii=False)
+ path=DBS['MASTER']['path']
+ with connect(path,False) as c:
+  ensure_sort_preset_table(c);cur=c.cursor()
+  cur.execute('SELECT [プリセットID],[名称],[対象DB],[対象テーブル],[対象モード] FROM [ソートプリセットマスタ]')
+  target=normalize_equipment_name(name)
+  existing=next((r for r in cur.fetchall()
+                 if normalize_equipment_name(r[1])==target and str(r[2] or '')==db_key
+                 and str(r[3] or '')==table and str(r[4] or '')==mode),None)
+  if existing:
+   cur.execute('UPDATE [ソートプリセットマスタ] SET [並びJSON]=?,[有効]=-1,[更新者ID]=?,'
                 '[更新日時]=Now() WHERE [プリセットID]=?',[payload,uid,existing[0]])
-    registered=False;pid=existing[0]
-   else:
-    cur.execute('SELECT Max([表示順]) FROM [ソートプリセットマスタ]')
-    order=int(cur.fetchone()[0] or 0)+10
-    cur.execute('INSERT INTO [ソートプリセットマスタ] ([名称],[対象DB],[対象テーブル],[対象モード],'
+   registered=False;pid=existing[0]
+  else:
+   cur.execute('SELECT Max([表示順]) FROM [ソートプリセットマスタ]')
+   order=int(cur.fetchone()[0] or 0)+10
+   cur.execute('INSERT INTO [ソートプリセットマスタ] ([名称],[対象DB],[対象テーブル],[対象モード],'
                 '[並びJSON],[使用回数],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) '
                 'VALUES (?,?,?,?,?,0,?,-1,?,?,Now(),Now())',
-                [name,db_key,table,mode,payload,order,uid,uid])
-    registered=True;pid=cur.lastrowid
-   c.commit()
-  return jsonify(ok=True,name=name,id=pid,registered=registered,updated_by=uid,
-                 message=('並び順を登録しました。' if registered else '登録済みの並び順を更新しました。'))
- except Exception as e:return jsonify(error=f'ソートプリセット登録失敗: {e}'),500
+               [name,db_key,table,mode,payload,order,uid,uid])
+   registered=True;pid=cur.lastrowid
+  c.commit()
+ return jsonify(ok=True,name=name,id=pid,registered=registered,updated_by=uid,
+                message=('並び順を登録しました。' if registered else '登録済みの並び順を更新しました。'))
 
 @bp.post('/api/sort-presets/use')
+@api_guard('使用回数更新失敗')
 def sort_preset_use():
  # よく使う順に並べるため、適用時に使用回数を加算する(フィルタと同じ)。
- try:
-  x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
-  if pid is None:return jsonify(ok=True,skipped=True)
-  path=DBS['MASTER']['path']
-  if not path.exists():return jsonify(ok=True,skipped=True)
-  with connect(path,False) as c:
-   ensure_sort_preset_table(c);cur=c.cursor()
-   cur.execute('UPDATE [ソートプリセットマスタ] SET [使用回数]=Nz([使用回数],0)+1,'
+ x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
+ if pid is None:return jsonify(ok=True,skipped=True)
+ path=DBS['MASTER']['path']
+ if not path.exists():return jsonify(ok=True,skipped=True)
+ with connect(path,False) as c:
+  ensure_sort_preset_table(c);cur=c.cursor()
+  cur.execute('UPDATE [ソートプリセットマスタ] SET [使用回数]=Nz([使用回数],0)+1,'
                '[最終使用日時]=Now(),[更新者ID]=? WHERE [プリセットID]=?',[uid,pid])
-   c.commit()
-  return jsonify(ok=True,id=pid,updated_by=uid)
- except Exception as e:return jsonify(error=f'使用回数更新失敗: {e}'),500
+  c.commit()
+ return jsonify(ok=True,id=pid,updated_by=uid)
 
 @bp.post('/api/sort-presets/delete')
+@api_guard('ソートプリセット削除失敗')
 def sort_preset_delete():
- try:
-  x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
-  if pid is None:return jsonify(error='削除対象IDがありません。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   ensure_sort_preset_table(c);cur=c.cursor()
-   # 物理削除ではなく無効化(フィルタプリセットと同じ方針)。
-   cur.execute('UPDATE [ソートプリセットマスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() '
+ x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
+ if pid is None:return jsonify(error='削除対象IDがありません。'),400
+ path=DBS['MASTER']['path']
+ with connect(path,False) as c:
+  ensure_sort_preset_table(c);cur=c.cursor()
+  # 物理削除ではなく無効化(フィルタプリセットと同じ方針)。
+  cur.execute('UPDATE [ソートプリセットマスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() '
                'WHERE [プリセットID]=?',[uid,pid])
-   c.commit()
-  return jsonify(ok=True,id=pid,updated_by=uid)
- except Exception as e:return jsonify(error=f'ソートプリセット削除失敗: {e}'),500
+  c.commit()
+ return jsonify(ok=True,id=pid,updated_by=uid)
 
 # ========================================================================
 # 一覧表示設定マスタ(§9.88): 行間。列ではなく一覧全体の設定。
 # ========================================================================
 @bp.get('/api/list-view-master')
+@api_guard('一覧表示設定読込失敗')
 def list_view_master_get():
- try:
-  target=str(request.args.get('target') or '').strip()
-  if not target:return jsonify(error='対象(target)を指定してください。'),400
-  path=DBS['MASTER']['path']
-  if not path.exists():return jsonify(ok=True,target=target,rowGap=ROW_GAP_DEFAULT)
-  with connect(path,True) as c:
-   v=list_view_settings_for(c,target)
-  return jsonify(ok=True,target=target,**v)
- except Exception as e:return jsonify(error=f'一覧表示設定読込失敗: {e}'),500
+ target=str(request.args.get('target') or '').strip()
+ if not target:return jsonify(error='対象(target)を指定してください。'),400
+ path=DBS['MASTER']['path']
+ if not path.exists():return jsonify(ok=True,target=target,rowGap=ROW_GAP_DEFAULT)
+ with connect(path,True) as c:
+  v=list_view_settings_for(c,target)
+ return jsonify(ok=True,target=target,**v)
 
 @bp.post('/api/list-view-master')
+@api_guard('一覧表示設定保存失敗')
 def list_view_master_save():
- try:
-  x=request.get_json(force=True) or {};uid=request_user_id(x)
-  target=str(x.get('target') or '').strip()
-  if not target:return jsonify(error='対象(target)を指定してください。'),400
-  path=DBS['MASTER']['path']
-  with connect(path,False) as c:
-   gap=set_list_view_settings(c,target,x.get('rowGap'),uid)
-  return jsonify(ok=True,target=target,rowGap=gap,updated_by=uid,message='行間を保存しました。')
- except Exception as e:return jsonify(error=f'一覧表示設定保存失敗: {e}'),500
+ x=request.get_json(force=True) or {};uid=request_user_id(x)
+ target=str(x.get('target') or '').strip()
+ if not target:return jsonify(error='対象(target)を指定してください。'),400
+ path=DBS['MASTER']['path']
+ with connect(path,False) as c:
+  gap=set_list_view_settings(c,target,x.get('rowGap'),uid)
+ return jsonify(ok=True,target=target,rowGap=gap,updated_by=uid,message='行間を保存しました。')
 
 
 # ========================================================================
@@ -1148,111 +1117,103 @@ def _join_payload(x):
          'order':x.get('order'),'enabled':x.get('enabled')}
 
 @bp.get('/api/query-join-master')
+@api_guard('クエリ結合マスタ読込失敗')
 def query_join_master_list():
- try:
-  from .. import query_join
-  from ..db_access import DBS as _DBS
-  path=DBS['MASTER']['path']
-  items=[]
-  if path.exists():
-   with connect(path,False) as c:
-    ensure_query_join_table(c)
-    items=query_joins(c,include_disabled=True)
-  # 選べる相手は**データ接続に登録済みのものだけ**(§9.193、利用者の指示)。
-  # 画面が別に一覧を作ると、消したデータソースが選択肢に残る。
-  sources=[{'key':k,'label':v.get('label') or k,'purpose':v.get('purpose') or '',
-            'listed':bool(v.get('listed',True)),'preferred':v.get('preferred') or ''}
-           for k,v in _DBS.items() if v.get('role')=='readonly']
-  # 既定の品質データ結合は**解除していても内容を返す**(§9.194)。
-  # 「どうつないでいるのか」を見て真似できることが値打ちなので、
-  # 解除＝見えなくする、にはしない（利用者の指示）。
-  builtin=query_join.builtin_quality_def()
-  return jsonify(ok=True,items=items,sources=sources,multiModes=list(QUERY_JOIN_MULTI),
-                 kinds=query_join.JOIN_KINDS,kindDefault=query_join.JOIN_KIND_DEFAULT,
-                 builtinEnabled=query_join.builtin_quality_enabled(),
-                 builtin=({'name':builtin['name'],'left':builtin['left'],'right':builtin['right'],
-                           'leftTable':builtin.get('leftTable') or '',
-                           'rightTable':builtin.get('rightTable') or '',
-                           'kind':builtin.get('kind') or query_join.JOIN_KIND_DEFAULT,
-                           'multi':builtin.get('multi') or 'first',
-                           'keys':builtin['keys']} if builtin else None))
- except Exception as e:return jsonify(error=f'クエリ結合マスタ読込失敗: {e}'),500
+ from .. import query_join
+ from ..db_access import DBS as _DBS
+ path=DBS['MASTER']['path']
+ items=[]
+ if path.exists():
+  with connect(path,False) as c:
+   ensure_query_join_table(c)
+   items=query_joins(c,include_disabled=True)
+ # 選べる相手は**データ接続に登録済みのものだけ**(§9.193、利用者の指示)。
+ # 画面が別に一覧を作ると、消したデータソースが選択肢に残る。
+ sources=[{'key':k,'label':v.get('label') or k,'purpose':v.get('purpose') or '',
+           'listed':bool(v.get('listed',True)),'preferred':v.get('preferred') or ''}
+          for k,v in _DBS.items() if v.get('role')=='readonly']
+ # 既定の品質データ結合は**解除していても内容を返す**(§9.194)。
+ # 「どうつないでいるのか」を見て真似できることが値打ちなので、
+ # 解除＝見えなくする、にはしない（利用者の指示）。
+ builtin=query_join.builtin_quality_def()
+ return jsonify(ok=True,items=items,sources=sources,multiModes=list(QUERY_JOIN_MULTI),
+                kinds=query_join.JOIN_KINDS,kindDefault=query_join.JOIN_KIND_DEFAULT,
+                builtinEnabled=query_join.builtin_quality_enabled(),
+                builtin=({'name':builtin['name'],'left':builtin['left'],'right':builtin['right'],
+                          'leftTable':builtin.get('leftTable') or '',
+                          'rightTable':builtin.get('rightTable') or '',
+                          'kind':builtin.get('kind') or query_join.JOIN_KIND_DEFAULT,
+                          'multi':builtin.get('multi') or 'first',
+                          'keys':builtin['keys']} if builtin else None))
 
 @bp.post('/api/query-join-master')
+@api_guard('クエリ結合の登録に失敗しました',bad=ValueError)
 def query_join_master_register():
- try:
-  x=request.get_json(force=True) or {};uid=request_user_id(x)
-  with connect(DBS['MASTER']['path'],False) as c:
-   jid=query_join_save(c,_join_payload(x),uid)
-  return jsonify(ok=True,id=jid,updated_by=uid,message='結合を登録しました。')
- except ValueError as e:return jsonify(error=str(e)),400
- except Exception as e:return jsonify(error=f'クエリ結合の登録に失敗しました: {e}'),500
+ x=request.get_json(force=True) or {};uid=request_user_id(x)
+ with connect(DBS['MASTER']['path'],False) as c:
+  jid=query_join_save(c,_join_payload(x),uid)
+ return jsonify(ok=True,id=jid,updated_by=uid,message='結合を登録しました。')
 
 @bp.post('/api/query-join-master/update')
+@api_guard('クエリ結合の保存に失敗しました',bad=ValueError)
 def query_join_master_update():
- try:
-  x=request.get_json(force=True) or {};uid=request_user_id(x)
-  jid=x.get('id')
-  if jid is None or str(jid).strip()=='':return jsonify(error='更新対象IDがありません。'),400
-  with connect(DBS['MASTER']['path'],False) as c:
-   query_join_save(c,_join_payload(x),uid,jid=int(jid))
-  return jsonify(ok=True,id=int(jid),updated_by=uid,message='結合を保存しました。')
- except ValueError as e:return jsonify(error=str(e)),400
- except Exception as e:return jsonify(error=f'クエリ結合の保存に失敗しました: {e}'),500
+ x=request.get_json(force=True) or {};uid=request_user_id(x)
+ jid=x.get('id')
+ if jid is None or str(jid).strip()=='':return jsonify(error='更新対象IDがありません。'),400
+ with connect(DBS['MASTER']['path'],False) as c:
+  query_join_save(c,_join_payload(x),uid,jid=int(jid))
+ return jsonify(ok=True,id=int(jid),updated_by=uid,message='結合を保存しました。')
 
 @bp.post('/api/query-join-master/delete')
+@api_guard('クエリ結合の削除に失敗しました')
 def query_join_master_delete():
- try:
-  x=request.get_json(force=True) or {};uid=request_user_id(x)
-  jid=x.get('id')
-  if jid is None or str(jid).strip()=='':return jsonify(error='削除対象IDがありません。'),400
-  with connect(DBS['MASTER']['path'],False) as c:
-   n=query_join_delete(c,int(jid))
-  return jsonify(ok=True,deleted=n,updated_by=uid,
-                 message='結合を削除しました。' if n else '対象が見つかりませんでした。')
- except Exception as e:return jsonify(error=f'クエリ結合の削除に失敗しました: {e}'),500
+ x=request.get_json(force=True) or {};uid=request_user_id(x)
+ jid=x.get('id')
+ if jid is None or str(jid).strip()=='':return jsonify(error='削除対象IDがありません。'),400
+ with connect(DBS['MASTER']['path'],False) as c:
+  n=query_join_delete(c,int(jid))
+ return jsonify(ok=True,deleted=n,updated_by=uid,
+                message='結合を削除しました。' if n else '対象が見つかりませんでした。')
 
 @bp.post('/api/query-join-master/builtin')
+@api_guard('既定の結合を切り替えられませんでした')
 def query_join_master_builtin():
  """既定の品質データ結合を使う／使わない(§9.194、利用者の指示)。
 
  **解除してもエラーにしない**——足していた列が出なくなるだけで、その列を
  参照していた設定（列レイアウト・フィルタ）は「無い列」として静かに落ちる。
  保存先はパス設定マスタの1行なので、**再起動は要らない**。"""
- try:
-  from .. import query_join
-  from ..db_access import set_path_config
-  x=request.get_json(force=True) or {};uid=request_user_id(x)
-  on=x.get('enabled')
-  on=(str(on).strip().lower() not in ('0','false','off','no','無効')) if on is not None else True
-  with connect(DBS['MASTER']['path'],False) as c:
-   set_path_config(c,query_join.BUILTIN_QUALITY_SWITCH_KEY,'' if on else 'off',uid)
-  return jsonify(ok=True,enabled=on,updated_by=uid,
-                 message='既定の品質データ結合を使います。' if on
-                         else '既定の品質データ結合を解除しました。品質の列は一覧に出なくなります。')
- except Exception as e:return jsonify(error=f'既定の結合を切り替えられませんでした: {e}'),500
+ from .. import query_join
+ from ..db_access import set_path_config
+ x=request.get_json(force=True) or {};uid=request_user_id(x)
+ on=x.get('enabled')
+ on=(str(on).strip().lower() not in ('0','false','off','no','無効')) if on is not None else True
+ with connect(DBS['MASTER']['path'],False) as c:
+  set_path_config(c,query_join.BUILTIN_QUALITY_SWITCH_KEY,'' if on else 'off',uid)
+ return jsonify(ok=True,enabled=on,updated_by=uid,
+                message='既定の品質データ結合を使います。' if on
+                        else '既定の品質データ結合を解除しました。品質の列は一覧に出なくなります。')
 
 @bp.post('/api/query-join-master/probe')
+@api_guard('下見に失敗しました')
 def query_join_master_probe():
  """保存する前に、いまのデータで実際に当ててみる。**読むだけ**。"""
- try:
-  from .. import query_join
-  from ..repositories.master_repo import normalize_join_keys, normalize_join_columns
-  x=request.get_json(force=True) or {}
-  d={'id':x.get('id'),'name':str(x.get('name') or '(下見)'),
-     'left':str(x.get('left') or ''),'leftTable':str(x.get('leftTable') or ''),
-     'right':str(x.get('right') or ''),'rightTable':str(x.get('rightTable') or ''),
-     'keys':normalize_join_keys(x.get('keys')),
-     'columns':normalize_join_columns(x.get('columns')),
-     'prefix':str(x.get('prefix') or ''),'multi':str(x.get('multi') or 'first'),
-     'kind':str(x.get('kind') or query_join.JOIN_KIND_DEFAULT),
-     'active':True}
-  if not d['keys']:
-   return jsonify(ok=True,result={'ok':False,'reason':'突合キーを1組入れると、ここで結果を確かめられます。',
-                                  'sampled':0,'matched':0,'ambiguous':0,'addedColumns':0,
-                                  'addedColumnNames':[],'table':'','examples':[]}),200
-  return jsonify(ok=True,result=query_join.probe(d))
- except Exception as e:return jsonify(error=f'下見に失敗しました: {e}'),500
+ from .. import query_join
+ from ..repositories.master_repo import normalize_join_keys, normalize_join_columns
+ x=request.get_json(force=True) or {}
+ d={'id':x.get('id'),'name':str(x.get('name') or '(下見)'),
+    'left':str(x.get('left') or ''),'leftTable':str(x.get('leftTable') or ''),
+    'right':str(x.get('right') or ''),'rightTable':str(x.get('rightTable') or ''),
+    'keys':normalize_join_keys(x.get('keys')),
+    'columns':normalize_join_columns(x.get('columns')),
+    'prefix':str(x.get('prefix') or ''),'multi':str(x.get('multi') or 'first'),
+    'kind':str(x.get('kind') or query_join.JOIN_KIND_DEFAULT),
+    'active':True}
+ if not d['keys']:
+  return jsonify(ok=True,result={'ok':False,'reason':'突合キーを1組入れると、ここで結果を確かめられます。',
+                                 'sampled':0,'matched':0,'ambiguous':0,'addedColumns':0,
+                                 'addedColumnNames':[],'table':'','examples':[]}),200
+ return jsonify(ok=True,result=query_join.probe(d))
 
 
 # ========================================================================
@@ -1414,6 +1375,7 @@ def operation_item_list():
   return jsonify(ok=True,equipment=eq,**d)
  except Exception as e:return jsonify(error=f'操業データ項目マスタの読込に失敗しました: {e}'),500
 
+@api_guard('操業データ項目マスタの保存に失敗しました',bad=ValueError)
 def _operation_item_save(x):
  from ..repositories import operation_repo as op
  uid=request_user_id(x)
@@ -1422,73 +1384,70 @@ def _operation_item_save(x):
  num=lambda v:(None if v in (None,'') else float(v))
  iv=lambda v:(None if v in (None,'') else int(v))
  ref={}
- try:
-  def fn(c):
-   return op.item_upsert(c,uid,equipment=x.get('equipment') or '*',
-                         group=x.get('group') or '',name=name,order=iv(x.get('order')),
-                         kind=x.get('type') or '文字',decimals=iv(x.get('decimals')),
-                         vmin=num(x.get('min')),vmax=num(x.get('max')),
-                         choice=x.get('choice') or '',unit=x.get('unit') or '',
-                         required=bool(x.get('required')),note=x.get('note') or '',
-                         enabled=(True if x.get('enabled') is None else bool(x.get('enabled'))),
-                         item_id=(int(x['id']) if x.get('id') not in (None,'') else None),
-                         place=x.get('place'),span=x.get('span'),
-                         fold=bool(x.get('fold')),show_when=x.get('showWhen'),
-                         widget=x.get('widget'),
-                         # §9.220 ②③⑤
-                         initial=x.get('initial'),free_text=bool(x.get('freeText')),
-                         step=x.get('step'),
-                         # §9.221 ⑦（単位の置き場・寄せ・見せ方・桁数）
-                         unit_place=x.get('unitPlace'),align=x.get('align'),
-                         value_format=x.get('valueFormat'),digits=x.get('digits'),
-                         # §9.223 ①③（役割・見た目）
-                         role=x.get('role'),look=x.get('look'),
-                         # §9.226 ①③
-                         layout=x.get('layout'),group_span=x.get('groupSpan'),
-                         # §9.228 ② ダミー（空き）のカード。**送られてきた
-                         # ときだけ**書く（設定窓は送らないので、触るたびに
-                         # 空きが解けては困る）。
-                         dummy=x.get('dummy'),
-                         # §9.228 ④ 空欄（選ばない）の札を並べないか
-                         no_blank=x.get('noBlank'),
-                         # §9.231 ② 上下限の出どころ（空＝この行の数をそのまま）
-                         min_from=x.get('minFrom'),max_from=x.get('maxFrom'),
-                         # §9.233 ⑤ 自動で入る値の添え書きの置き場
-                         source_note=x.get('sourceNote'),
-                         # §9.234 ② 自動で入る値の鍵。**送られてきたときだけ**
-                         # 書く（設定窓は送らないので、触るたびに人が打つ欄へ
-                         # 戻っては困る。`dummy`と同じ約束）。
-                         auto_value=x.get('autoValue'),
-                         # §9.256 式で作る自動値。**送っていないときは今の値を
-                         # 残す**（`None`のまま渡す・§9.212 ②）。
-                         auto_formula=x.get('autoFormula'),
-                         # §9.242 ④ ③「記録した値」のカードへ出すか。
-                         # **送られてきたときだけ**書く（`dummy`と同じ約束）。
-                         record_show=x.get('recordShow'),
-                         # §9.248 ⑤ 選択肢の並び（''＝表示順／'よく使う順'）。
-                         choice_order=x.get('choiceOrder'),
-                         # §9.286 ⑥ 未入力・未選択のときの配色
-                         # （''＝既定／'なし'／色の鍵）。**送っていないときは
-                         # 今の値を残す**（`None`のまま渡す・§9.212 ②）。
-                         blank_tint=x.get('blankTint'),
-                         # §9.307 入力値の丸めの向き（単位は「刻み」）。
-                         round_mode=x.get('roundMode'),
-                         # §9.323 ① 測定画面で打った値をその場で選択肢マスタへ
-                         # 足せるか。**呼び名でも受ける**——汎用フォームは
-                         # 文字列の選択欄しか持たない（`enabledText`と同じ作法）。
-                         # **送っていないときは今の値を残す**（§9.212 ②）。
-                         # 真偽の読み方は`flags.flag_of`の1箇所（§9.324 R4）。
-                         inline_add=flag_of(text_or(x,'inlineAdd')),
-                         report=ref)
-  saved=_op_read(fn)
-  # **付け替えたことは黙って済ませない**（§9.226 ①）。名前を変えると
-  # 帳票の`settings.opData.<項目名>`も一緒に動くので、何件動いたかを言う。
-  msg='操業データの項目を保存しました。'
-  if ref.get('renamedRefs'):
-   msg+=f"「{ref.get('oldName')}」を参照していた帳票ブロック{ref['renamedRefs']}件も新しい名前へ付け替えました。"
-  return jsonify(ok=True,id=saved,message=msg,renamedRefs=ref.get('renamedRefs') or 0)
- except ValueError as e:return jsonify(error=str(e)),400
- except Exception as e:return jsonify(error=f'操業データ項目マスタの保存に失敗しました: {e}'),500
+ def fn(c):
+  return op.item_upsert(c,uid,equipment=x.get('equipment') or '*',
+                        group=x.get('group') or '',name=name,order=iv(x.get('order')),
+                        kind=x.get('type') or '文字',decimals=iv(x.get('decimals')),
+                        vmin=num(x.get('min')),vmax=num(x.get('max')),
+                        choice=x.get('choice') or '',unit=x.get('unit') or '',
+                        required=bool(x.get('required')),note=x.get('note') or '',
+                        enabled=(True if x.get('enabled') is None else bool(x.get('enabled'))),
+                        item_id=(int(x['id']) if x.get('id') not in (None,'') else None),
+                        place=x.get('place'),span=x.get('span'),
+                        fold=bool(x.get('fold')),show_when=x.get('showWhen'),
+                        widget=x.get('widget'),
+                        # §9.220 ②③⑤
+                        initial=x.get('initial'),free_text=bool(x.get('freeText')),
+                        step=x.get('step'),
+                        # §9.221 ⑦（単位の置き場・寄せ・見せ方・桁数）
+                        unit_place=x.get('unitPlace'),align=x.get('align'),
+                        value_format=x.get('valueFormat'),digits=x.get('digits'),
+                        # §9.223 ①③（役割・見た目）
+                        role=x.get('role'),look=x.get('look'),
+                        # §9.226 ①③
+                        layout=x.get('layout'),group_span=x.get('groupSpan'),
+                        # §9.228 ② ダミー（空き）のカード。**送られてきた
+                        # ときだけ**書く（設定窓は送らないので、触るたびに
+                        # 空きが解けては困る）。
+                        dummy=x.get('dummy'),
+                        # §9.228 ④ 空欄（選ばない）の札を並べないか
+                        no_blank=x.get('noBlank'),
+                        # §9.231 ② 上下限の出どころ（空＝この行の数をそのまま）
+                        min_from=x.get('minFrom'),max_from=x.get('maxFrom'),
+                        # §9.233 ⑤ 自動で入る値の添え書きの置き場
+                        source_note=x.get('sourceNote'),
+                        # §9.234 ② 自動で入る値の鍵。**送られてきたときだけ**
+                        # 書く（設定窓は送らないので、触るたびに人が打つ欄へ
+                        # 戻っては困る。`dummy`と同じ約束）。
+                        auto_value=x.get('autoValue'),
+                        # §9.256 式で作る自動値。**送っていないときは今の値を
+                        # 残す**（`None`のまま渡す・§9.212 ②）。
+                        auto_formula=x.get('autoFormula'),
+                        # §9.242 ④ ③「記録した値」のカードへ出すか。
+                        # **送られてきたときだけ**書く（`dummy`と同じ約束）。
+                        record_show=x.get('recordShow'),
+                        # §9.248 ⑤ 選択肢の並び（''＝表示順／'よく使う順'）。
+                        choice_order=x.get('choiceOrder'),
+                        # §9.286 ⑥ 未入力・未選択のときの配色
+                        # （''＝既定／'なし'／色の鍵）。**送っていないときは
+                        # 今の値を残す**（`None`のまま渡す・§9.212 ②）。
+                        blank_tint=x.get('blankTint'),
+                        # §9.307 入力値の丸めの向き（単位は「刻み」）。
+                        round_mode=x.get('roundMode'),
+                        # §9.323 ① 測定画面で打った値をその場で選択肢マスタへ
+                        # 足せるか。**呼び名でも受ける**——汎用フォームは
+                        # 文字列の選択欄しか持たない（`enabledText`と同じ作法）。
+                        # **送っていないときは今の値を残す**（§9.212 ②）。
+                        # 真偽の読み方は`flags.flag_of`の1箇所（§9.324 R4）。
+                        inline_add=flag_of(text_or(x,'inlineAdd')),
+                        report=ref)
+ saved=_op_read(fn)
+ # **付け替えたことは黙って済ませない**（§9.226 ①）。名前を変えると
+ # 帳票の`settings.opData.<項目名>`も一緒に動くので、何件動いたかを言う。
+ msg='操業データの項目を保存しました。'
+ if ref.get('renamedRefs'):
+  msg+=f"「{ref.get('oldName')}」を参照していた帳票ブロック{ref['renamedRefs']}件も新しい名前へ付け替えました。"
+ return jsonify(ok=True,id=saved,message=msg,renamedRefs=ref.get('renamedRefs') or 0)
 
 @bp.post('/api/operation-item-master')
 def operation_item_register():
@@ -1501,6 +1460,7 @@ def operation_item_update():
  return _operation_item_save(x)
 
 @bp.post('/api/operation-item-master/layout')
+@api_guard('操業データの並びの保存に失敗しました')
 def operation_item_layout():
  """並び・群・列幅・置き場・必須・出す/出さないを**まとめて1回で**書く
     (§9.216 ②)。D&Dで組み替える画面なので、1行ずつ送ると往復が増え、
@@ -1509,16 +1469,15 @@ def operation_item_layout():
  x=request.get_json(force=True) or {}
  rows=x.get('items')
  if not isinstance(rows,list):return jsonify(error='items（並び）がありません。'),400
- try:
-  # 設備を選んで並べているときは**その設備の上書きへ**書く（§9.239 ②）。
-  # 空＝「共通（すべての設備）」で、今までどおり行そのものを書き換える。
-  eq=str(x.get('equipment') or '').strip()
-  n=_op_read(lambda c:op.item_layout_save(c,request_user_id(x),rows,equipment=eq))
-  return jsonify(ok=True,saved=n,equipment=eq,
-                 message=f'操業データの並びを保存しました（{eq or "共通（すべての設備）"}）。')
- except Exception as e:return jsonify(error=f'操業データの並びの保存に失敗しました: {e}'),500
+ # 設備を選んで並べているときは**その設備の上書きへ**書く（§9.239 ②）。
+ # 空＝「共通（すべての設備）」で、今までどおり行そのものを書き換える。
+ eq=str(x.get('equipment') or '').strip()
+ n=_op_read(lambda c:op.item_layout_save(c,request_user_id(x),rows,equipment=eq))
+ return jsonify(ok=True,saved=n,equipment=eq,
+                message=f'操業データの並びを保存しました（{eq or "共通（すべての設備）"}）。')
 
 @bp.post('/api/operation-item-master/record-layout')
+@api_guard('「記録した値」の配置の保存に失敗しました')
 def operation_item_record_layout():
  """③「記録した値」のカードの配置を**まとめて1回で**書く（§9.243）。
 
@@ -1530,12 +1489,11 @@ def operation_item_record_layout():
  x=request.get_json(force=True) or {}
  rows=x.get('items')
  if not isinstance(rows,list):return jsonify(error='items（配置）がありません。'),400
- try:
-  n=_op_read(lambda c:op.record_layout_save(c,request_user_id(x),rows))
-  return jsonify(ok=True,saved=n,message=f'「記録した値」の配置を保存しました（{n}件）。')
- except Exception as e:return jsonify(error=f'「記録した値」の配置の保存に失敗しました: {e}'),500
+ n=_op_read(lambda c:op.record_layout_save(c,request_user_id(x),rows))
+ return jsonify(ok=True,saved=n,message=f'「記録した値」の配置を保存しました（{n}件）。')
 
 @bp.post('/api/operation-item-master/group')
+@api_guard('群の設定の保存に失敗しました')
 def operation_item_group():
  """群のふるまい（畳む・開く条件）だけをまとめて書く(§9.216 ④)。
     `layout`で代用すると、直前に1件だけ更新した内容を古い写しで上書きする。"""
@@ -1543,27 +1501,24 @@ def operation_item_group():
  x=request.get_json(force=True) or {}
  g=str(x.get('group') or '').strip()
  if not g:return jsonify(error='群がありません。'),400
- try:
-  n=_op_read(lambda c:op.group_flags_save(c,request_user_id(x),x.get('place'),g,
-                                          bool(x.get('fold')),x.get('showWhen'),
-                                          # **送られてきたときだけ書く**（§9.226 ③）
-                                          x.get('groupSpan'),
-                                          # §9.227 ③ ダミー（空き）の群
-                                          x.get('dummy'),
-                                          # §9.239 ② 設備を選んでいるときは上書きへ
-                                          equipment=str(x.get('equipment') or '').strip()))
-  return jsonify(ok=True,saved=n,message='群の設定を保存しました。')
- except Exception as e:return jsonify(error=f'群の設定の保存に失敗しました: {e}'),500
+ n=_op_read(lambda c:op.group_flags_save(c,request_user_id(x),x.get('place'),g,
+                                         bool(x.get('fold')),x.get('showWhen'),
+                                         # **送られてきたときだけ書く**（§9.226 ③）
+                                         x.get('groupSpan'),
+                                         # §9.227 ③ ダミー（空き）の群
+                                         x.get('dummy'),
+                                         # §9.239 ② 設備を選んでいるときは上書きへ
+                                         equipment=str(x.get('equipment') or '').strip()))
+ return jsonify(ok=True,saved=n,message='群の設定を保存しました。')
 
 @bp.post('/api/operation-item-master/delete')
+@api_guard('操業データ項目マスタの削除に失敗しました')
 def operation_item_delete():
  from ..repositories import operation_repo as op
  x=request.get_json(force=True) or {}
  if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
- try:
-  n=_op_read(lambda c:op.item_delete(c,x['id'],request_user_id(x)))
-  return jsonify(ok=True,deleted=n,message='操業データの項目を削除しました。')
- except Exception as e:return jsonify(error=f'操業データ項目マスタの削除に失敗しました: {e}'),500
+ n=_op_read(lambda c:op.item_delete(c,x['id'],request_user_id(x)))
+ return jsonify(ok=True,deleted=n,message='操業データの項目を削除しました。')
 
 @bp.get('/api/operation-choice-master')
 def operation_choice_list():
@@ -1615,25 +1570,23 @@ def operation_choice_list():
   return jsonify(ok=True,**_op_read(fn))
  except Exception as e:return jsonify(error=f'操業データ選択肢マスタの読込に失敗しました: {e}'),500
 
+@api_guard('操業データ選択肢マスタの保存に失敗しました',bad=ValueError)
 def _operation_choice_save(x):
  from ..repositories import operation_repo as op
  uid=request_user_id(x)
  iv=lambda v:(None if v in (None,'') else int(v))
- try:
-  def fn(c):
-   return op.choice_upsert(c,x.get('name'),x.get('value'),uid,order=iv(x.get('order')),
-                           choice_id=(int(x['id']) if x.get('id') not in (None,'') else None),
-                           enabled=flag_of(text_or(x,'enabled')),
-                           note=x.get('note'),
-                           # §9.221 ③。よみ＝探すための読み、対象設備＝
-                           # その設備のときだけ出す（空＝すべて）。
-                           reading=x.get('reading'),equipment=x.get('equipment'),
-                           # §9.306 親のどの値のときに出るか（空＝すべての親）。
-                           # **`None`は「送っていない」**なので今の値が残る。
-                           parent_value=x.get('parentValue'))
-  return jsonify(ok=True,id=_op_read(fn),message='操業データの選択肢を保存しました。')
- except ValueError as e:return jsonify(error=str(e)),400
- except Exception as e:return jsonify(error=f'操業データ選択肢マスタの保存に失敗しました: {e}'),500
+ def fn(c):
+  return op.choice_upsert(c,x.get('name'),x.get('value'),uid,order=iv(x.get('order')),
+                          choice_id=(int(x['id']) if x.get('id') not in (None,'') else None),
+                          enabled=flag_of(text_or(x,'enabled')),
+                          note=x.get('note'),
+                          # §9.221 ③。よみ＝探すための読み、対象設備＝
+                          # その設備のときだけ出す（空＝すべて）。
+                          reading=x.get('reading'),equipment=x.get('equipment'),
+                          # §9.306 親のどの値のときに出るか（空＝すべての親）。
+                          # **`None`は「送っていない」**なので今の値が残る。
+                          parent_value=x.get('parentValue'))
+ return jsonify(ok=True,id=_op_read(fn),message='操業データの選択肢を保存しました。')
 
 @bp.post('/api/operation-choice-master')
 def operation_choice_register():
@@ -1646,6 +1599,7 @@ def operation_choice_update():
  return _operation_choice_save(x)
 
 @bp.post('/api/operation-choice-master/rename-group')
+@api_guard('まとまり名の変更に失敗しました',bad=ValueError)
 def operation_choice_rename_group():
  """まとまりの名前を変える(§9.221 ②)。**参照している項目の`[選択肢名]`も
     一緒に書き換える**——名前で結んでいるので(§9.215)、片方だけ変えると
@@ -1655,13 +1609,11 @@ def operation_choice_rename_group():
  src=str(x.get('from') or '').strip();dst=str(x.get('to') or '').strip()
  if not src or not dst:return jsonify(error='まとまり名を入力してください。'),400
  if src==dst:return jsonify(ok=True,moved=0,message='名前は変わっていません。')
- try:
-  n=_op_read(lambda c:op.choice_rename_group(c,src,dst,request_user_id(x)))
-  return jsonify(ok=True,moved=n,message=f'「{src}」を「{dst}」へ変更しました（{n}件）。')
- except ValueError as e:return jsonify(error=str(e)),400
- except Exception as e:return jsonify(error=f'まとまり名の変更に失敗しました: {e}'),500
+ n=_op_read(lambda c:op.choice_rename_group(c,src,dst,request_user_id(x)))
+ return jsonify(ok=True,moved=n,message=f'「{src}」を「{dst}」へ変更しました（{n}件）。')
 
 @bp.post('/api/operation-choice-master/delete-group')
+@api_guard('まとまりの削除に失敗しました',bad=ValueError,bad_status=409)
 def operation_choice_delete_group():
  """まとまりごと消す(§9.221 ②)。**使っている項目があれば断る**——消すと
     その項目は黙って空の欄になる（§9.216 ④で「使い道の見えない選択肢は
@@ -1670,13 +1622,11 @@ def operation_choice_delete_group():
  x=request.get_json(force=True) or {}
  nm=str(x.get('name') or '').strip()
  if not nm:return jsonify(error='まとまり名がありません。'),400
- try:
-  n=_op_read(lambda c:op.choice_delete_group(c,nm,request_user_id(x)))
-  return jsonify(ok=True,deleted=n,message=f'「{nm}」を{n}件まとめて削除しました。')
- except ValueError as e:return jsonify(error=str(e)),409
- except Exception as e:return jsonify(error=f'まとまりの削除に失敗しました: {e}'),500
+ n=_op_read(lambda c:op.choice_delete_group(c,nm,request_user_id(x)))
+ return jsonify(ok=True,deleted=n,message=f'「{nm}」を{n}件まとめて削除しました。')
 
 @bp.post('/api/operation-choice-master/reorder')
+@api_guard('選択肢の並びの保存に失敗しました')
 def operation_choice_reorder():
  """1つのまとまりの中の並びをまとめて書く(§9.221 ②)。D&Dで並べ替える
     画面なので、1行ずつ送ると往復が増え、途中で切れると半分だけ動いた
@@ -1685,12 +1635,11 @@ def operation_choice_reorder():
  x=request.get_json(force=True) or {}
  ids=x.get('ids')
  if not isinstance(ids,list):return jsonify(error='ids（並び）がありません。'),400
- try:
-  n=_op_read(lambda c:op.choice_reorder(c,ids,request_user_id(x)))
-  return jsonify(ok=True,saved=n,message='選択肢の並びを保存しました。')
- except Exception as e:return jsonify(error=f'選択肢の並びの保存に失敗しました: {e}'),500
+ n=_op_read(lambda c:op.choice_reorder(c,ids,request_user_id(x)))
+ return jsonify(ok=True,saved=n,message='選択肢の並びを保存しました。')
 
 @bp.post('/api/operation-choice-master/used')
+@api_guard('使用回数を数えられませんでした')
 def operation_choice_used():
  """選ばれた回数を1つ増やす（§9.248 ⑤、利用者の指示）。
 
@@ -1703,24 +1652,19 @@ def operation_choice_used():
  端末で測った回数だけが数えられず、並びが端末によって食い違う。"""
  from ..repositories import operation_repo as op
  x=request.get_json(force=True) or {}
- try:
-  # `_op_read`は名前に反して**書ける接続**（`connect(path,False)`）を開く
-  # だけの道具で、他の保存経路も同じものを通っている。
-  n=_op_read(lambda c:op.choice_used_bump(c,x.get('name'),x.get('value')))
-  return jsonify(ok=True,updated=n)
- except Exception as e:
-  # **数えられなくても測定は続く**——ここで500を返しても画面は何もしない。
-  return jsonify(error=f'使用回数を数えられませんでした: {e}'),500
+ # `_op_read`は名前に反して**書ける接続**（`connect(path,False)`）を開く
+ # だけの道具で、他の保存経路も同じものを通っている。
+ n=_op_read(lambda c:op.choice_used_bump(c,x.get('name'),x.get('value')))
+ return jsonify(ok=True,updated=n)
 
 @bp.post('/api/operation-choice-master/delete')
+@api_guard('操業データ選択肢マスタの削除に失敗しました')
 def operation_choice_delete():
  from ..repositories import operation_repo as op
  x=request.get_json(force=True) or {}
  if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
- try:
-  n=_op_read(lambda c:op.choice_delete(c,x['id'],request_user_id(x)))
-  return jsonify(ok=True,deleted=n,message='操業データの選択肢を削除しました。')
- except Exception as e:return jsonify(error=f'操業データ選択肢マスタの削除に失敗しました: {e}'),500
+ n=_op_read(lambda c:op.choice_delete(c,x['id'],request_user_id(x)))
+ return jsonify(ok=True,deleted=n,message='操業データの選択肢を削除しました。')
 
 # ========================================================================
 # 帳票ブロックマスタ(§9.217)。「ラベルと値の出どころを並べただけの塊」を
@@ -1728,66 +1672,66 @@ def operation_choice_delete():
 # （測定表・条の図・異常位置判定）はコードの側のまま。
 # ========================================================================
 @bp.get('/api/report-block-master')
+@api_guard('帳票ブロックマスタの読込に失敗しました')
 def report_block_list():
- try:
-  from ..repositories import report_block_repo as rb
-  eq=str(request.args.get('equipment') or '').strip()
-  def fn(c):
-   items=rb.blocks_for_equipment(c,eq) if eq else rb.block_rows(c,True)
-   return {'items':items,'spans':list(rb.SPANS),'rows':list(rb.ROWS),
-           # **出さない既定の塊は名指しで返す**（§9.219 ②）。画面はコードの
-           # 側にも既定の塊を持っているので、伝えないと外したつもりの塊が
-           # 今までどおり出たままになる（`operation-form`の`builtinOff`と同じ）。
-           'builtinOff':rb.builtin_off(c,eq),
-           'builtinKeys':list(rb.BUILTIN_KEYS),
-           # 塊の種別の選択肢（§9.234 ⑤）。**呼び名もサーバーが答える**
-           # ——画面へ写すと、増やしたときに2箇所直すことになる（§9.163）。
-           'kinds':[{'v':v,'label':lb} for v,lb in rb.KIND_LABELS],
-           # 繰り返しの選択肢（§9.247 ②）。**呼び名もサーバーが答える**。
-           'repeats':[{'v':v,'label':lb} for v,lb in rb.REPEAT_LABELS],
-           # 繰り返しの向き（§9.277）。**呼び名もサーバーが答える**。
-           'repeatDirs':[{'v':v,'label':lb} for v,lb in rb.REPEAT_DIRS],
-           # 行・列を最大で出すか（§9.309）。**語彙はサーバーが答える**
-           # ——画面へ綴りを書き写すと、増やしたときに2箇所直すことになる。
-           'fulls':[{'v':v,'label':lb} for v,lb in rb.FULL_LABELS],
-           # 表に組むときの軸（§9.277）。**既定の置き方はこの並びが決める**
-           # ——1つ目を行、残りを列。画面へ写すと、軸を1つ足したときに
-           # 「既定の並び」が2箇所になる（§9.163）。
-           'pivotAxes':list(rb.PIVOT_AXES),
-           'axisLot':rb.AXIS_LOT,
-           # 節の中の列数の上限（§9.277）。**紙が受ける数と同じ**——画面が
-           # 別に持つと、組んだ表が保存で黙って丸められる。
-           # コードが描く欄の並びの見せ方（§9.323 ④）。**語彙はサーバーが
-           # 答える**——画面へ綴りを写すと、選べる値を1つ足すたびに2箇所直す。
-           'factLabelPlaces':[{'v':v,'label':lb} for v,lb in rb.FACT_LABEL_PLACES],
-           'factAligns':[{'v':v,'label':lb} for v,lb in rb.ALIGNS],
-           'contentColsMax':rb.CONTENT_COLS_MAX,
-           'contentEditable':sorted(rb.CONTENT_EDITABLE),
-           # **既定の中身をマスの並びで写せる塊**（§9.285 ②）。白紙から
-           # 組み直させると、いま見えている形が押した瞬間に消えたように
-           # 見える（§9.259と同じ理由）。並びも列数もサーバーが答える。
-           'defaultCells':rb.default_cell_map(),
-           # **このうち起動時に自動で種をまく塊**（§9.320-E の追補）。
-           # `品質情報（仕掛）`は`.rp-info-box`のカードいっぱいに広がる
-           # 枠（§9.242 ⑧）を持つので自動では切り替えない——押して
-           # 初めて汎用のマスへ移る。**顔ぶれはここが答える**（画面や
-           # テストへ綴りを書き写さない）。
-           'autoSeededCells':list(rb.AUTO_SEED_CELL_KEYS),
-           # 1つのマスが持てるもの（§9.274）。**語彙はサーバーが答える**
-           # ——画面へ写すと、選べる書式を1つ足すたびに2箇所直すことになる。
-           'cellKinds':[{'v':v,'label':lb} for v,lb in rb.CELL_KINDS],
-           'aligns':[{'v':v,'label':lb} for v,lb in rb.ALIGNS],
-           'formatKinds':[{'v':v,'label':lb} for v,lb in rb.FORMAT_KINDS],
-           'datePatterns':list(rb.DATE_PATTERNS),
-           'decimalMax':rb.DECIMAL_MAX,
-           # **出どころの見本**。ここに無い道も書けるので、選択肢で塞がない。
-           'fields':[{'label':a,'path':b} for a,b in rb.FIELD_CATALOG],
-           # **選んで組み立てるための候補**（§9.226 ④）。操業データの項目も
-           # 含むので、現場が項目を足せばそのまま候補に増える。
-           'catalog':rb.field_catalog(c,eq)}
-  return jsonify(ok=True,equipment=eq,**_op_read(fn))
- except Exception as e:return jsonify(error=f'帳票ブロックマスタの読込に失敗しました: {e}'),500
+ from ..repositories import report_block_repo as rb
+ eq=str(request.args.get('equipment') or '').strip()
+ def fn(c):
+  items=rb.blocks_for_equipment(c,eq) if eq else rb.block_rows(c,True)
+  return {'items':items,'spans':list(rb.SPANS),'rows':list(rb.ROWS),
+          # **出さない既定の塊は名指しで返す**（§9.219 ②）。画面はコードの
+          # 側にも既定の塊を持っているので、伝えないと外したつもりの塊が
+          # 今までどおり出たままになる（`operation-form`の`builtinOff`と同じ）。
+          'builtinOff':rb.builtin_off(c,eq),
+          'builtinKeys':list(rb.BUILTIN_KEYS),
+          # 塊の種別の選択肢（§9.234 ⑤）。**呼び名もサーバーが答える**
+          # ——画面へ写すと、増やしたときに2箇所直すことになる（§9.163）。
+          'kinds':[{'v':v,'label':lb} for v,lb in rb.KIND_LABELS],
+          # 繰り返しの選択肢（§9.247 ②）。**呼び名もサーバーが答える**。
+          'repeats':[{'v':v,'label':lb} for v,lb in rb.REPEAT_LABELS],
+          # 繰り返しの向き（§9.277）。**呼び名もサーバーが答える**。
+          'repeatDirs':[{'v':v,'label':lb} for v,lb in rb.REPEAT_DIRS],
+          # 行・列を最大で出すか（§9.309）。**語彙はサーバーが答える**
+          # ——画面へ綴りを書き写すと、増やしたときに2箇所直すことになる。
+          'fulls':[{'v':v,'label':lb} for v,lb in rb.FULL_LABELS],
+          # 表に組むときの軸（§9.277）。**既定の置き方はこの並びが決める**
+          # ——1つ目を行、残りを列。画面へ写すと、軸を1つ足したときに
+          # 「既定の並び」が2箇所になる（§9.163）。
+          'pivotAxes':list(rb.PIVOT_AXES),
+          'axisLot':rb.AXIS_LOT,
+          # 節の中の列数の上限（§9.277）。**紙が受ける数と同じ**——画面が
+          # 別に持つと、組んだ表が保存で黙って丸められる。
+          # コードが描く欄の並びの見せ方（§9.323 ④）。**語彙はサーバーが
+          # 答える**——画面へ綴りを写すと、選べる値を1つ足すたびに2箇所直す。
+          'factLabelPlaces':[{'v':v,'label':lb} for v,lb in rb.FACT_LABEL_PLACES],
+          'factAligns':[{'v':v,'label':lb} for v,lb in rb.ALIGNS],
+          'contentColsMax':rb.CONTENT_COLS_MAX,
+          'contentEditable':sorted(rb.CONTENT_EDITABLE),
+          # **既定の中身をマスの並びで写せる塊**（§9.285 ②）。白紙から
+          # 組み直させると、いま見えている形が押した瞬間に消えたように
+          # 見える（§9.259と同じ理由）。並びも列数もサーバーが答える。
+          'defaultCells':rb.default_cell_map(),
+          # **このうち起動時に自動で種をまく塊**（§9.320-E の追補）。
+          # `品質情報（仕掛）`は`.rp-info-box`のカードいっぱいに広がる
+          # 枠（§9.242 ⑧）を持つので自動では切り替えない——押して
+          # 初めて汎用のマスへ移る。**顔ぶれはここが答える**（画面や
+          # テストへ綴りを書き写さない）。
+          'autoSeededCells':list(rb.AUTO_SEED_CELL_KEYS),
+          # 1つのマスが持てるもの（§9.274）。**語彙はサーバーが答える**
+          # ——画面へ写すと、選べる書式を1つ足すたびに2箇所直すことになる。
+          'cellKinds':[{'v':v,'label':lb} for v,lb in rb.CELL_KINDS],
+          'aligns':[{'v':v,'label':lb} for v,lb in rb.ALIGNS],
+          'formatKinds':[{'v':v,'label':lb} for v,lb in rb.FORMAT_KINDS],
+          'datePatterns':list(rb.DATE_PATTERNS),
+          'decimalMax':rb.DECIMAL_MAX,
+          # **出どころの見本**。ここに無い道も書けるので、選択肢で塞がない。
+          'fields':[{'label':a,'path':b} for a,b in rb.FIELD_CATALOG],
+          # **選んで組み立てるための候補**（§9.226 ④）。操業データの項目も
+          # 含むので、現場が項目を足せばそのまま候補に増える。
+          'catalog':rb.field_catalog(c,eq)}
+ return jsonify(ok=True,equipment=eq,**_op_read(fn))
 
+@api_guard('帳票ブロックマスタの保存に失敗しました',bad=ValueError)
 def _report_block_save(x):
  from ..repositories import report_block_repo as rb
  uid=request_user_id(x)
@@ -1798,44 +1742,42 @@ def _report_block_save(x):
  # 1箇所（§9.324 R4）。**渡していなければ触らない**（§9.320-E）——`None`は
  # repo側が「今の値のまま」と読む。
  alive=flag_of(text_or(x,'enabled'))
- try:
-  def fn(c):
-   return rb.block_upsert(c,uid,equipment=x.get('equipment'),name=name,
-                          order=iv(x.get('order')),span=x.get('span'),rows=x.get('rows'),
-                          content=x.get('content'),note=x.get('note'),
-                          enabled=alive,cols=x.get('cols'),
-                          # 種別（項目の並び／エリア）と、エリアに置く文字（§9.234 ⑤）。
-                          # **文字列→内部値の変換は`normalize_kind`に任せる**
-                          # ——ここで判定を書くと2つの答えが出る（§9.163）。
-                          kind=(x.get('kindText') if x.get('kindText') is not None
-                                else x.get('kind')),
-                          text=x.get('text'),
-                          # 繰り返し（§9.247 ②）。**呼び名でも受ける**
-                          # ——画面の汎用フォームは文字列の選択欄しか持たない
-                          # （`kindText`／`enabledText`とまったく同じ作法）。
-                          # 欄の見せ方（§9.323 ④）。**呼び名でも受ける**——画面の
-                          # 汎用フォームは文字列の選択欄しか持たない。
-                          label_place=(x.get('labelPlaceText')
-                                       if x.get('labelPlaceText') is not None
-                                       else x.get('labelPlace')),
-                          fact_align=(x.get('factAlignText')
-                                      if x.get('factAlignText') is not None
-                                      else x.get('factAlign')),
-                          repeat=(x.get('repeatText') if x.get('repeatText') is not None
-                                  else x.get('repeat')),
-                          # 繰り返しの向き（§9.277）。**呼び名でも受ける**。
-                          repeat_dir=(x.get('repeatDirText')
-                                      if x.get('repeatDirText') is not None
-                                      else x.get('repeatDir')),
-                          # 行・列の出し方（§9.309）。**呼び名でも受ける**。
-                          full=(x.get('fullText') if x.get('fullText') is not None
-                                else x.get('full')),
-                          block_id=(int(x['id']) if x.get('id') not in (None,'') else None))
-  return jsonify(ok=True,id=_op_read(fn),message='帳票ブロックを保存しました。')
- except ValueError as e:return jsonify(error=str(e)),400
- except Exception as e:return jsonify(error=f'帳票ブロックマスタの保存に失敗しました: {e}'),500
+ def fn(c):
+  return rb.block_upsert(c,uid,equipment=x.get('equipment'),name=name,
+                         order=iv(x.get('order')),span=x.get('span'),rows=x.get('rows'),
+                         content=x.get('content'),note=x.get('note'),
+                         enabled=alive,cols=x.get('cols'),
+                         # 種別（項目の並び／エリア）と、エリアに置く文字（§9.234 ⑤）。
+                         # **文字列→内部値の変換は`normalize_kind`に任せる**
+                         # ——ここで判定を書くと2つの答えが出る（§9.163）。
+                         kind=(x.get('kindText') if x.get('kindText') is not None
+                               else x.get('kind')),
+                         text=x.get('text'),
+                         # 繰り返し（§9.247 ②）。**呼び名でも受ける**
+                         # ——画面の汎用フォームは文字列の選択欄しか持たない
+                         # （`kindText`／`enabledText`とまったく同じ作法）。
+                         # 欄の見せ方（§9.323 ④）。**呼び名でも受ける**——画面の
+                         # 汎用フォームは文字列の選択欄しか持たない。
+                         label_place=(x.get('labelPlaceText')
+                                      if x.get('labelPlaceText') is not None
+                                      else x.get('labelPlace')),
+                         fact_align=(x.get('factAlignText')
+                                     if x.get('factAlignText') is not None
+                                     else x.get('factAlign')),
+                         repeat=(x.get('repeatText') if x.get('repeatText') is not None
+                                 else x.get('repeat')),
+                         # 繰り返しの向き（§9.277）。**呼び名でも受ける**。
+                         repeat_dir=(x.get('repeatDirText')
+                                     if x.get('repeatDirText') is not None
+                                     else x.get('repeatDir')),
+                         # 行・列の出し方（§9.309）。**呼び名でも受ける**。
+                         full=(x.get('fullText') if x.get('fullText') is not None
+                               else x.get('full')),
+                         block_id=(int(x['id']) if x.get('id') not in (None,'') else None))
+ return jsonify(ok=True,id=_op_read(fn),message='帳票ブロックを保存しました。')
 
 @bp.get('/api/report-block-master/sample-record')
+@api_guard('見本のロットを作れませんでした')
 def report_block_sample_record():
  """帳票の見本に使う**ダミーのロット1件**（§9.253、利用者の指示）。
 
@@ -1845,12 +1787,10 @@ def report_block_sample_record():
 
     `equipment` を渡すと登録設備をそれにする——帳票の配置は
     `report:<設備>`（§9.174）なので、**どの設備の配置で見るか**が決まる。"""
- try:
-  from ..repositories import report_block_repo as rb
-  eq=str(request.args.get('equipment') or '').strip()
-  rec=_op_read(lambda c:rb.sample_record(c,eq))
-  return jsonify(ok=True,equipment=eq,id=rb.SAMPLE_RECORD_ID,record=rec)
- except Exception as e:return jsonify(error=f'見本のロットを作れませんでした: {e}'),500
+ from ..repositories import report_block_repo as rb
+ eq=str(request.args.get('equipment') or '').strip()
+ rec=_op_read(lambda c:rb.sample_record(c,eq))
+ return jsonify(ok=True,equipment=eq,id=rb.SAMPLE_RECORD_ID,record=rec)
 
 @bp.post('/api/report-block-master')
 def report_block_register():
@@ -1863,17 +1803,15 @@ def report_block_update():
  return _report_block_save(x)
 
 @bp.post('/api/report-block-master/delete')
+@api_guard('帳票ブロックマスタの削除に失敗しました',bad=ValueError)
 def report_block_delete():
  from ..repositories import report_block_repo as rb
  x=request.get_json(force=True) or {}
  if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
- try:
-  n=_op_read(lambda c:rb.block_delete(c,x['id'],request_user_id(x)))
-  return jsonify(ok=True,deleted=n,message='帳票ブロックを削除しました。')
+ n=_op_read(lambda c:rb.block_delete(c,x['id'],request_user_id(x)))
+ return jsonify(ok=True,deleted=n,message='帳票ブロックを削除しました。')
  # **サーバーが理由を書いているのに包み直さない**（§9.200）。既定の塊は
  # 消せない、という断りは400で返す（500だと「失敗しました」に埋もれる）。
- except ValueError as e:return jsonify(error=str(e)),400
- except Exception as e:return jsonify(error=f'帳票ブロックマスタの削除に失敗しました: {e}'),500
 
 # ========================================================================
 # ロールマスタ(§9.239 ⑥、利用者の指示)
@@ -1884,44 +1822,41 @@ def report_block_delete():
 #    画面へ写すと、増やしたときに2箇所直すことになる。
 # ========================================================================
 @bp.get('/api/roll-master')
+@api_guard('ロールマスタの読込に失敗しました')
 def roll_master_list():
- try:
-  from ..repositories import roll_repo as rr
-  eq=str(request.args.get('equipment') or '').strip()
-  def fn(c):
-   items=rr.rolls_for_equipment(c,eq) if eq else rr.roll_rows(c,True)
-   return {'items':items,
-           'entryPositions':list(rr.ENTRY_POSITIONS),
-           'contactFaces':list(rr.CONTACT_FACES),
-           'driveKinds':list(rr.DRIVE_KINDS),
-           # **1本を見分ける列はサーバーが答える**（§9.163／§9.257 ③）。
-           # 画面へ書き写すと、鍵を1つ足したときに2箇所直すことになる
-           # ——実際にこの一覧は (設備,名前) → +接触面 → +径・備考 と
-           # 2度広がっている。
-           'keyLabels':list(rr.KEY_LABELS),
-           'equipments':rr.equipments(c)}
-  return jsonify(ok=True,equipment=eq,**_op_read(fn))
- except Exception as e:return jsonify(error=f'ロールマスタの読込に失敗しました: {e}'),500
+ from ..repositories import roll_repo as rr
+ eq=str(request.args.get('equipment') or '').strip()
+ def fn(c):
+  items=rr.rolls_for_equipment(c,eq) if eq else rr.roll_rows(c,True)
+  return {'items':items,
+          'entryPositions':list(rr.ENTRY_POSITIONS),
+          'contactFaces':list(rr.CONTACT_FACES),
+          'driveKinds':list(rr.DRIVE_KINDS),
+          # **1本を見分ける列はサーバーが答える**（§9.163／§9.257 ③）。
+          # 画面へ書き写すと、鍵を1つ足したときに2箇所直すことになる
+          # ——実際にこの一覧は (設備,名前) → +接触面 → +径・備考 と
+          # 2度広がっている。
+          'keyLabels':list(rr.KEY_LABELS),
+          'equipments':rr.equipments(c)}
+ return jsonify(ok=True,equipment=eq,**_op_read(fn))
 
+@api_guard('ロールマスタの保存に失敗しました',bad=ValueError)
 def _roll_save(x):
  from ..repositories import roll_repo as rr
  uid=request_user_id(x)
  # 「有効」は呼び名で来る。読み方は`flags.flag_of`の1箇所（§9.324 R4）。
  alive=flag_of(text_or(x,'enabled'))
- try:
-  def fn(c):
-   return rr.roll_upsert(c,uid,
-     equipment=x.get('equipment'),name=x.get('name'),
-     entry_pos=x.get('entryPos'),contact_face=x.get('contactFace'),
-     dia_max=x.get('diaMax'),dia_min=x.get('diaMin'),face_len=x.get('faceLen'),
-     material=x.get('material'),hardness=x.get('hardness'),count=x.get('count'),
-     use_cond=x.get('useCond'),drive_kind=x.get('driveKind'),
-     ref_no=x.get('refNo'),note=x.get('note'),order=x.get('order'),
-     enabled=alive,
-     roll_id=(int(x['id']) if x.get('id') not in (None,'') else None))
-  return jsonify(ok=True,id=_op_read(fn),message='ロールを保存しました。')
- except ValueError as e:return jsonify(error=str(e)),400
- except Exception as e:return jsonify(error=f'ロールマスタの保存に失敗しました: {e}'),500
+ def fn(c):
+  return rr.roll_upsert(c,uid,
+    equipment=x.get('equipment'),name=x.get('name'),
+    entry_pos=x.get('entryPos'),contact_face=x.get('contactFace'),
+    dia_max=x.get('diaMax'),dia_min=x.get('diaMin'),face_len=x.get('faceLen'),
+    material=x.get('material'),hardness=x.get('hardness'),count=x.get('count'),
+    use_cond=x.get('useCond'),drive_kind=x.get('driveKind'),
+    ref_no=x.get('refNo'),note=x.get('note'),order=x.get('order'),
+    enabled=alive,
+    roll_id=(int(x['id']) if x.get('id') not in (None,'') else None))
+ return jsonify(ok=True,id=_op_read(fn),message='ロールを保存しました。')
 
 @bp.post('/api/roll-master')
 def roll_master_register():
@@ -1939,19 +1874,18 @@ def roll_master_update():
 # **取り込みはJSON+base64**——この repo は multipart を1つも受けておらず、
 # ここだけ別の受け口を作ると、後から触る人が2通りを覚えることになる。
 @bp.get('/api/roll-master/export')
+@api_guard('ロールマスタの書き出しに失敗しました')
 def roll_master_export():
  from ..repositories import roll_repo as rr
- try:
-  eq=str(request.args.get('equipment') or '').strip()
-  data=_op_read(lambda c:rr.export_bytes(c,eq))
-  import time
-  stamp=time.strftime('%Y%m%d-%H%M%S')
-  name=('ロールマスタ_%s_%s.xlsx'%(eq,stamp)) if eq else ('ロールマスタ_%s.xlsx'%stamp)
-  from flask import send_file
-  import io
-  return send_file(io.BytesIO(data),as_attachment=True,download_name=name,
-                   mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
- except Exception as e:return jsonify(error=f'ロールマスタの書き出しに失敗しました: {e}'),500
+ eq=str(request.args.get('equipment') or '').strip()
+ data=_op_read(lambda c:rr.export_bytes(c,eq))
+ import time
+ stamp=time.strftime('%Y%m%d-%H%M%S')
+ name=('ロールマスタ_%s_%s.xlsx'%(eq,stamp)) if eq else ('ロールマスタ_%s.xlsx'%stamp)
+ from flask import send_file
+ import io
+ return send_file(io.BytesIO(data),as_attachment=True,download_name=name,
+                  mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 @bp.post('/api/roll-master/import')
 def roll_master_import():
@@ -1991,6 +1925,7 @@ def roll_master_import():
  except Exception as e:return jsonify(error=f'ロールマスタの取り込みに失敗しました: {e}'),500
 
 @bp.post('/api/roll-master/delete-all')
+@api_guard('ロールマスタの一括削除に失敗しました',bad=ValueError)
 def roll_master_delete_all():
  """まとめて消す（§9.251、利用者の指示「ロールマスタの全削除機能
     （ロールマスタの完全入替機能）」）。**既定は下見**——`apply`を付けた
@@ -2006,25 +1941,20 @@ def roll_master_delete_all():
  eq=x.get('equipment') if 'equipment' in x else None
  if eq is not None:eq=str(eq)
  apply=bool(x.get('apply'))
- try:
-  uid=request_user_id(x)
-  r=_op_read(lambda c:rr.delete_all(c,uid,scope=scope,equipment=eq,dry_run=not apply))
-  msg=(f"{r.get('deleted',0)}件を削除しました（{r['label']}）。" if apply
-       else f"{r['label']}のロール {r['count']}件を削除します（全{r['total']}件）。")
-  return jsonify(ok=True,message=msg,**r)
- except ValueError as e:return jsonify(error=str(e)),400
- except Exception as e:return jsonify(error=f'ロールマスタの一括削除に失敗しました: {e}'),500
+ uid=request_user_id(x)
+ r=_op_read(lambda c:rr.delete_all(c,uid,scope=scope,equipment=eq,dry_run=not apply))
+ msg=(f"{r.get('deleted',0)}件を削除しました（{r['label']}）。" if apply
+      else f"{r['label']}のロール {r['count']}件を削除します（全{r['total']}件）。")
+ return jsonify(ok=True,message=msg,**r)
 
 @bp.post('/api/roll-master/delete')
+@api_guard('ロールマスタの削除に失敗しました',bad=ValueError)
 def roll_master_delete():
  from ..repositories import roll_repo as rr
  x=request.get_json(force=True) or {}
  if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
- try:
-  n=_op_read(lambda c:rr.roll_delete(c,x['id'],request_user_id(x)))
-  return jsonify(ok=True,deleted=n,message='ロールを削除しました。')
- except ValueError as e:return jsonify(error=str(e)),400
- except Exception as e:return jsonify(error=f'ロールマスタの削除に失敗しました: {e}'),500
+ n=_op_read(lambda c:rr.roll_delete(c,x['id'],request_user_id(x)))
+ return jsonify(ok=True,deleted=n,message='ロールを削除しました。')
 
 
 @bp.get('/api/operation-form')
@@ -2047,45 +1977,37 @@ def operation_form():
 # 返ってきた木を描くだけで、1段だけの規則を画面に書き写さない。
 # ---------------------------------------------------------------------
 @bp.get('/api/choice-link-master')
+@api_guard('選択肢リンクマスタの読込に失敗しました')
 def choice_link_list():
- try:
-  from ..repositories import operation_repo as op
-  def fn(c):
-   links=op.choice_links(c,True)
-   names=op.choice_names(c)
-   child_of={x['child'] for x in links}
-   parent_of={x['parent'] for x in links}
-   rows=[]
-   for x in links:
-    rows.append({**x,
-                 # **件数はサーバーが数える**（盤で数え直さない）。
-                 'parentCount':len(op.choice_values(c,x['parent'])),
-                 'childCount':len(op.choice_values(c,x['child']))})
-   return {'items':rows,'names':names,
-           # **繋げるかどうかもサーバーが答える**——1段だけの規則は
-           # `choice_link_upsert()`が持っているので、盤は理由を出すだけ。
-           'groups':[{'name':n,'isChild':n in child_of,'isParent':n in parent_of,
-                      'count':len(op.choice_values(c,n))} for n in names]}
-  return jsonify(ok=True,**_op_read(fn))
- except Exception as e:
-  return jsonify(error=f'選択肢リンクマスタの読込に失敗しました: {e}'),500
+ from ..repositories import operation_repo as op
+ def fn(c):
+  links=op.choice_links(c,True)
+  names=op.choice_names(c)
+  child_of={x['child'] for x in links}
+  parent_of={x['parent'] for x in links}
+  rows=[]
+  for x in links:
+   rows.append({**x,
+                # **件数はサーバーが数える**（盤で数え直さない）。
+                'parentCount':len(op.choice_values(c,x['parent'])),
+                'childCount':len(op.choice_values(c,x['child']))})
+  return {'items':rows,'names':names,
+          # **繋げるかどうかもサーバーが答える**——1段だけの規則は
+          # `choice_link_upsert()`が持っているので、盤は理由を出すだけ。
+          'groups':[{'name':n,'isChild':n in child_of,'isParent':n in parent_of,
+                     'count':len(op.choice_values(c,n))} for n in names]}
+ return jsonify(ok=True,**_op_read(fn))
 
+@api_guard('選択肢リンクマスタの保存に失敗しました',bad=ValueError)
 def _choice_link_save(x):
  from ..repositories import operation_repo as op
  uid=request_user_id(x)
- try:
-  def fn(c):
-   return op.choice_link_upsert(c,x.get('parent'),x.get('child'),uid,
-                                note=x.get('note'),
-                                enabled=flag_of(text_or(x,'enabled')),
-                                link_id=(int(x['id']) if x.get('id') not in (None,'') else None))
-  return jsonify(ok=True,id=_op_read(fn),message='親子を保存しました。')
- except ValueError as e:
-  # **断る理由と打つ手を返す**（§4）——「できません」だけでは、どのリンクを
-  # 外せばよいのか分からない。
-  return jsonify(error=str(e)),400
- except Exception as e:
-  return jsonify(error=f'選択肢リンクマスタの保存に失敗しました: {e}'),500
+ def fn(c):
+  return op.choice_link_upsert(c,x.get('parent'),x.get('child'),uid,
+                               note=x.get('note'),
+                               enabled=flag_of(text_or(x,'enabled')),
+                               link_id=(int(x['id']) if x.get('id') not in (None,'') else None))
+ return jsonify(ok=True,id=_op_read(fn),message='親子を保存しました。')
 
 @bp.post('/api/choice-link-master')
 def choice_link_register():
@@ -2098,16 +2020,14 @@ def choice_link_update():
  return _choice_link_save(x)
 
 @bp.post('/api/choice-link-master/delete')
+@api_guard('選択肢リンクマスタの削除に失敗しました')
 def choice_link_delete_route():
- try:
-  from ..repositories import operation_repo as op
-  x=request.get_json(force=True) or {}
-  if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
-  def fn(c):
-   op.choice_link_delete(c,int(x['id']));return True
-  _op_read(fn)
-  # **値の`[親の値]`は消さない**（また繋げば続きから使える）ので、そのことを言う。
-  return jsonify(ok=True,message='親子を外しました（値に入れた「親の値」は残しています）。')
- except Exception as e:
-  return jsonify(error=f'選択肢リンクマスタの削除に失敗しました: {e}'),500
+ from ..repositories import operation_repo as op
+ x=request.get_json(force=True) or {}
+ if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
+ def fn(c):
+  op.choice_link_delete(c,int(x['id']));return True
+ _op_read(fn)
+ # **値の`[親の値]`は消さない**（また繋げば続きから使える）ので、そのことを言う。
+ return jsonify(ok=True,message='親子を外しました（値に入れた「親の値」は残しています）。')
 

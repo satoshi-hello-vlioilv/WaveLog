@@ -283,7 +283,7 @@ for t in test_cols test_listmodal test_split_layout test_sccols; do
 echo "--- サーバー側 ---"
 mode schedule
 for t in test_sclock test_scsession test_scwritespeed test_colscache test_colsripple test_colsave test_opdata test_choicelink test_modeguard test_noaccess test_pcname \
-         test_csslint test_dbopen test_error test_datasource test_dscap test_dskeylint test_dbmirror test_atomicio test_localwork test_displayrule test_eqstd test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_tabclose test_logs test_docindex test_sortpipe test_scwatch test_scowner test_qjoin test_workdate test_scload test_faststart test_bootopen test_rollio test_cleanup test_rawmaster test_recsplit test_colscope test_mastershare test_storage test_recmirror test_srcread test_presence test_roleperm test_savechip test_rbcells test_pywarn test_hintlint test_ddllint test_changelog test_pick test_flags; do run python3 $t.py; done
+         test_csslint test_dbopen test_error test_datasource test_dscap test_dskeylint test_dbmirror test_atomicio test_localwork test_displayrule test_eqstd test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_tabclose test_logs test_docindex test_sortpipe test_scwatch test_scowner test_qjoin test_workdate test_scload test_faststart test_bootopen test_rollio test_cleanup test_rawmaster test_recsplit test_colscope test_mastershare test_storage test_recmirror test_srcread test_presence test_roleperm test_savechip test_rbcells test_pywarn test_hintlint test_ddllint test_changelog test_pick test_flags test_apiguard; do run python3 $t.py; done
 
 echo
 echo "-- 時間のかかったテスト(上位10) --"
