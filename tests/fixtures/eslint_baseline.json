@@ -1,0 +1,435 @@
+{
+ "static/js/actuals-view.js": {
+  "no-empty": 4
+ },
+ "static/js/base.js": {
+  "no-empty": 6
+ },
+ "static/js/calendar-view.js": {
+  "no-unused-vars": 1
+ },
+ "static/js/defect-locator.js": {
+  "no-empty": 1,
+  "no-unused-vars": 1
+ },
+ "static/js/filters.js": {
+  "no-empty": 13,
+  "no-unused-vars": 5
+ },
+ "static/js/list-columns.js": {
+  "no-empty": 2,
+  "no-unused-vars": 1
+ },
+ "static/js/list-rules.js": {
+  "no-empty": 1
+ },
+ "static/js/list-view.js": {
+  "no-empty": 2
+ },
+ "static/js/lot-split.js": {
+  "no-empty": 2,
+  "no-unused-vars": 1
+ },
+ "static/js/master-data.js": {
+  "no-empty": 2,
+  "no-unused-vars": 1
+ },
+ "static/js/master-maint.js": {
+  "no-empty": 8,
+  "no-unused-vars": 3
+ },
+ "static/js/master-opdata.js": {
+  "no-empty": 11,
+  "no-unused-vars": 2
+ },
+ "static/js/master-report.js": {
+  "no-empty": 5,
+  "no-unused-vars": 2
+ },
+ "static/js/measure-opdata.js": {
+  "no-empty": 22
+ },
+ "static/js/measure-progress.js": {
+  "no-empty": 2,
+  "no-unused-vars": 2
+ },
+ "static/js/measure-steps.js": {
+  "no-empty": 18
+ },
+ "static/js/measurement-input.js": {
+  "no-empty": 3
+ },
+ "static/js/measurement-view.js": {
+  "no-empty": 3,
+  "no-unused-vars": 1
+ },
+ "static/js/opsheet-print.js": {
+  "no-empty": 2
+ },
+ "static/js/quality-analysis.js": {
+  "no-empty": 1
+ },
+ "static/js/records-store.js": {
+  "no-empty": 6,
+  "no-unused-vars": 1
+ },
+ "static/js/report-dashboard.js": {
+  "no-empty": 20,
+  "no-unused-vars": 3
+ },
+ "static/js/schedule-print.js": {
+  "no-empty": 4,
+  "no-unused-vars": 3
+ },
+ "static/js/schedule-view.js": {
+  "no-empty": 5,
+  "no-unused-vars": 3
+ },
+ "tests/audit_scale.js": {
+  "no-empty": 1
+ },
+ "tests/test_actuals.js": {
+  "no-empty": 7
+ },
+ "tests/test_adhoc.js": {
+  "no-empty": 1
+ },
+ "tests/test_appquit.js": {
+  "no-empty": 3
+ },
+ "tests/test_audittrail.js": {
+  "no-empty": 3
+ },
+ "tests/test_blockbuild.js": {
+  "no-empty": 2
+ },
+ "tests/test_bootreport.js": {
+  "no-empty": 3
+ },
+ "tests/test_burr.js": {
+  "no-empty": 2
+ },
+ "tests/test_choicelinkui.js": {
+  "no-empty": 2
+ },
+ "tests/test_colio.js": {
+  "no-empty": 2
+ },
+ "tests/test_colmenu.js": {
+  "no-empty": 1
+ },
+ "tests/test_colpreset.js": {
+  "no-empty": 3
+ },
+ "tests/test_colrule.js": {
+  "no-empty": 2,
+  "no-unused-vars": 1
+ },
+ "tests/test_cols.js": {
+  "no-unused-vars": 1
+ },
+ "tests/test_colsort.js": {
+  "no-empty": 1,
+  "no-unused-vars": 1
+ },
+ "tests/test_coltint.js": {
+  "no-empty": 3
+ },
+ "tests/test_ctxfail.js": {
+  "no-empty": 2
+ },
+ "tests/test_defectlink.js": {
+  "no-empty": 1
+ },
+ "tests/test_devdigits.js": {
+  "no-empty": 3
+ },
+ "tests/test_dsrestart.js": {
+  "no-empty": 1
+ },
+ "tests/test_eqkind.js": {
+  "no-empty": 1
+ },
+ "tests/test_eqscope.js": {
+  "no-empty": 2
+ },
+ "tests/test_filteractive.js": {
+  "no-empty": 2
+ },
+ "tests/test_filtergroup.js": {
+  "no-empty": 3
+ },
+ "tests/test_filterio.js": {
+  "no-empty": 5
+ },
+ "tests/test_filterkeep.js": {
+  "no-empty": 2
+ },
+ "tests/test_filterlock.js": {
+  "no-empty": 2
+ },
+ "tests/test_filteruser.js": {
+  "no-empty": 4
+ },
+ "tests/test_histdel.js": {
+  "no-empty": 2
+ },
+ "tests/test_lcpanel.js": {
+  "no-empty": 1
+ },
+ "tests/test_listmodal.js": {
+  "no-empty": 1
+ },
+ "tests/test_maint.js": {
+  "no-empty": 1
+ },
+ "tests/test_master.js": {
+  "no-empty": 3
+ },
+ "tests/test_mcore.js": {
+  "no-empty": 2
+ },
+ "tests/test_measstore.js": {
+  "no-empty": 1
+ },
+ "tests/test_mmfold.js": {
+  "no-empty": 5
+ },
+ "tests/test_mmtable.js": {
+  "no-empty": 1
+ },
+ "tests/test_modalkeep.js": {
+  "no-empty": 1
+ },
+ "tests/test_msteps.js": {
+  "no-empty": 2
+ },
+ "tests/test_ngcard.js": {
+  "no-empty": 3
+ },
+ "tests/test_ngdone.js": {
+  "no-empty": 3
+ },
+ "tests/test_opauto.js": {
+  "no-empty": 2
+ },
+ "tests/test_opblank.js": {
+  "no-empty": 4
+ },
+ "tests/test_opblanktint.js": {
+  "no-empty": 3
+ },
+ "tests/test_opchoice.js": {
+  "no-empty": 2,
+  "no-unused-vars": 1
+ },
+ "tests/test_opformula.js": {
+  "no-empty": 4
+ },
+ "tests/test_opinline.js": {
+  "no-empty": 4
+ },
+ "tests/test_oplimit.js": {
+  "no-empty": 3
+ },
+ "tests/test_opmother.js": {
+  "no-empty": 2,
+  "no-unused-vars": 1
+ },
+ "tests/test_oppad.js": {
+  "no-empty": 5,
+  "no-unused-vars": 1
+ },
+ "tests/test_opparent.js": {
+  "no-empty": 3
+ },
+ "tests/test_opsheet.js": {
+  "no-empty": 3
+ },
+ "tests/test_opui.js": {
+  "no-empty": 4
+ },
+ "tests/test_opunit.js": {
+  "no-empty": 1,
+  "no-unused-vars": 1
+ },
+ "tests/test_opwidget.js": {
+  "no-empty": 2
+ },
+ "tests/test_presenceui.js": {
+  "no-empty": 1
+ },
+ "tests/test_qjoinui.js": {
+  "no-empty": 8
+ },
+ "tests/test_rbcatalog.js": {
+  "no-empty": 1
+ },
+ "tests/test_rbcells.js": {
+  "no-empty": 9
+ },
+ "tests/test_rbmodal.js": {
+  "no-empty": 2
+ },
+ "tests/test_rbsample.js": {
+  "no-empty": 3
+ },
+ "tests/test_reccols.js": {
+  "no-empty": 2
+ },
+ "tests/test_reclayout.js": {
+  "no-empty": 2
+ },
+ "tests/test_recperm.js": {
+  "no-empty": 1
+ },
+ "tests/test_recvalues.js": {
+  "no-empty": 3
+ },
+ "tests/test_rlmaster.js": {
+  "no-empty": 3
+ },
+ "tests/test_roll.js": {
+  "no-empty": 6,
+  "no-unused-vars": 2
+ },
+ "tests/test_rollload.js": {
+  "no-empty": 3
+ },
+ "tests/test_rollwipe.js": {
+  "no-empty": 5
+ },
+ "tests/test_rpblocks.js": {
+  "no-empty": 2,
+  "no-unused-vars": 3
+ },
+ "tests/test_rpdefect.js": {
+  "no-empty": 5
+ },
+ "tests/test_rplayout.js": {
+  "no-empty": 2,
+  "no-unused-vars": 1
+ },
+ "tests/test_rpmaster.js": {
+  "no-empty": 1
+ },
+ "tests/test_rppack.js": {
+  "no-unused-vars": 1
+ },
+ "tests/test_rpprint.js": {
+  "no-unused-vars": 2
+ },
+ "tests/test_rptext.js": {
+  "no-empty": 2
+ },
+ "tests/test_savechip.js": {
+  "no-empty": 1
+ },
+ "tests/test_scale.js": {
+  "no-empty": 1
+ },
+ "tests/test_scbar.js": {
+  "no-empty": 3
+ },
+ "tests/test_scbatch.js": {
+  "no-unused-vars": 1
+ },
+ "tests/test_sccols.js": {
+  "no-empty": 2
+ },
+ "tests/test_sccomment.js": {
+  "no-empty": 2
+ },
+ "tests/test_sccontent.js": {
+  "no-empty": 2,
+  "no-unused-vars": 1
+ },
+ "tests/test_scdrop.js": {
+  "no-empty": 2
+ },
+ "tests/test_scframe.js": {
+  "no-empty": 4
+ },
+ "tests/test_scinsert.js": {
+  "no-empty": 2,
+  "no-unused-vars": 1
+ },
+ "tests/test_scmodecols.js": {
+  "no-empty": 5
+ },
+ "tests/test_scpick.js": {
+  "no-empty": 2
+ },
+ "tests/test_scprint.js": {
+  "no-empty": 7,
+  "no-unused-vars": 3
+ },
+ "tests/test_scrowstyle.js": {
+  "no-empty": 3,
+  "no-unused-vars": 1
+ },
+ "tests/test_scsave.js": {
+  "no-empty": 1
+ },
+ "tests/test_scsplit.js": {
+  "no-empty": 2
+ },
+ "tests/test_scstop.js": {
+  "no-empty": 1,
+  "no-unused-vars": 1
+ },
+ "tests/test_sctimecols.js": {
+  "no-empty": 3,
+  "no-unused-vars": 1
+ },
+ "tests/test_scundecided.js": {
+  "no-empty": 2
+ },
+ "tests/test_scwarm.js": {
+  "no-empty": 1
+ },
+ "tests/test_scwatchui.js": {
+  "no-empty": 1
+ },
+ "tests/test_scwho.js": {
+  "no-empty": 4
+ },
+ "tests/test_setpage.js": {
+  "no-empty": 1
+ },
+ "tests/test_share.js": {
+  "no-empty": 1,
+  "no-unused-vars": 1
+ },
+ "tests/test_shift.js": {
+  "no-empty": 2
+ },
+ "tests/test_sortcustom.js": {
+  "no-empty": 1
+ },
+ "tests/test_splitlive.js": {
+  "no-unused-vars": 2
+ },
+ "tests/test_stopcat.js": {
+  "no-empty": 3
+ },
+ "tests/test_stopeq.js": {
+  "no-empty": 3
+ },
+ "tests/test_storageui.js": {
+  "no-empty": 1
+ },
+ "tests/test_sub.js": {
+  "no-empty": 1
+ },
+ "tests/test_wkbg.js": {
+  "no-empty": 1
+ },
+ "tests/test_wkfast.js": {
+  "no-empty": 2
+ },
+ "tests/test_workable.js": {
+  "no-empty": 1,
+  "no-unused-vars": 2
+ }
+}

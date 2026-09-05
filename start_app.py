@@ -25,7 +25,7 @@ Start.vbs(通常起動)と start_app.bat(診断起動)は、どちらも最終�
 また多重起動時は、待機画面が既存インスタンスを検出して即座にアプリへ
 遷移するので、「既存の画面を開く」動作(仕様書2.4)がそのまま実現される。
 """
-import _pycache_bootstrap  # 他のimportより前に。必ず1行目のimportにすること
+import _pycache_bootstrap  # noqa: F401 副作用のためのimport。他のimportより前に。必ず1行目のimportにすること
 
 import os
 import sys

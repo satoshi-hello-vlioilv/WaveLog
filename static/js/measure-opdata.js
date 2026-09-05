@@ -147,7 +147,7 @@
   if(!isNumeric(t))return;
   let v=String(el.value||'');
   v=v.replace(/[０-９．＋－]/g,c=>'0123456789.+-'['０１２３４５６７８９．＋－'.indexOf(c)]);
-  v=v.replace(/[^0-9.\-]/g,'');
+  v=v.replace(/[^0-9.-]/g,'');
   if(isPositive(t))v=v.replace(/-/g,'');
   else v=v.replace(/(?!^)-/g,'');
   if(isInteger(t))v=v.replace(/\./g,'');

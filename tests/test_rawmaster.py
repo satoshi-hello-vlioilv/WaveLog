@@ -171,7 +171,7 @@ try:
         with urllib.request.urlopen(API + '/api/measurement/context?lot=&equipment=',
                                     timeout=30) as _r:
             _r.read()
-    except Exception as _e:  # 読めなくても「作られていないこと」は数えられる
+    except Exception:  # 読めなくても「作られていないこと」は数えられる
         pass
     rec('測定画面を開いても移行済みの表は戻らない（利用者の報告そのもの）',
         not _present(), str(_present()))

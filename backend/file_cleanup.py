@@ -21,7 +21,6 @@ master.sqlite3 / records.sqlite3 / 共有スケジュール / 仕掛・品質の
 ファイルを消せないが、それは待てば消せるものなので、次の周回へ回すだけで
 実害が無い。件数だけ返して理由を添える。
 """
-from datetime import datetime
 from pathlib import Path
 import shutil
 import threading

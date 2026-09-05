@@ -815,7 +815,7 @@ def sample_record(c=None, equipment=''):
         if path.split('.')[0] in ('calc', 'stat', 'lot'):
             continue
         _put_path(rec, path, value)
-    basic = rec.setdefault('basic', {})
+    rec.setdefault('basic', {})
     st = rec.setdefault('settings', {})
     eq = str(equipment or '').strip()
     if eq:

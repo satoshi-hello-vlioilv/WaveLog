@@ -131,6 +131,7 @@ let b=null;
  await page.evaluate(()=>document.querySelector('#scRefresh').click());
  // 取り直しが**始まった**ことは問い合わせ回数で分かるので、そこまで待つ
  // (6秒固定で待っていた箇所。速い機械では無駄、遅い機械では足りない)。
+ // eslint-disable-next-line no-unmodified-loop-condition -- tableCalls は page.route の側で増える
  for(let i=0;i<100&&tableCalls===0;i++)await new Promise(r=>setTimeout(r,100));
  await settleFlags(page);
  rec('「再計算」では情報源を取り直す(全件検証)',tableCalls>0,tableCalls+'回');

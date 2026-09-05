@@ -30,7 +30,7 @@
    失敗させた状態で、それでもDBを開けることを確かめる。
    ============================================================
 """
-import os, sqlite3, sys, pathlib, tempfile
+import sqlite3, sys, pathlib, tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))

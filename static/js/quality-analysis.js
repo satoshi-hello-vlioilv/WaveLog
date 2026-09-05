@@ -267,6 +267,7 @@
    const label=ell(String(k),14);
    /* 日本語（全角）は1文字がほぼ1em幅なので、半角基準の推定だと重なる。
       全角/半角を判定して幅を積算し、凡例チップが本文と衝突しないようにする。 */
+   // eslint-disable-next-line no-control-regex -- \x00〜\xff＝半角1文字ぶんの幅と見なす（意図した範囲）
    const textW=Math.max(20,[...label].reduce((w,ch)=>w+(/[\x00-\xff]/.test(ch)?6.4:11.5),0));
    const itemW=chipW+4+textW+padX;
    if(cx+itemW>maxW&&cx>0){cx=0;rows++}

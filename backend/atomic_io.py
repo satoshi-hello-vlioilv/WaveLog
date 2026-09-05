@@ -193,4 +193,4 @@ def unlink(path, *, budget_sec=DEFAULT_BUDGET_SEC, label='', missing_ok=True):
 # ここから使っていた呼び出し元のために名前だけ引き継ぐ。
 # paths は logging_setup より下にあるので、この向きの import だけが可能
 # (paths→atomic_io にすると logging_setup を挟んで循環する)。
-from .paths import cloud_sync_hint  # noqa: E402,F401
+from .paths import cloud_sync_hint  # noqa: E402,F401 名前を引き継ぐためのimport（上の説明）

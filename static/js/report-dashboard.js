@@ -5355,6 +5355,7 @@
   let cx=0,rows=1;const placements=[];
   keys.forEach((k,i)=>{
    const label=ell(String(k),14);
+   // eslint-disable-next-line no-control-regex -- \x00〜\xff＝半角1文字ぶんの幅と見なす（意図した範囲）
    const textW=Math.max(20,[...label].reduce((w,ch)=>w+(/[\x00-\xff]/.test(ch)?6.4:11.5),0));
    const itemW=chipW+4+textW+padX;
    if(cx+itemW>maxW&&cx>0){cx=0;rows++}
@@ -5647,11 +5648,6 @@
   try{scheduleOverviewCache=await api('/api/schedule/overview')}
   catch(e){scheduleOverviewCache={ok:false,error:e.message,equipment:[]}}
   return scheduleOverviewCache;
- }
- function fmtMin(min){
-  const n=Number(min);if(!Number.isFinite(n)||n<=0)return '0分';
-  const h=Math.floor(n/60),m=Math.round(n%60);
-  return h?`${h}時間${m?m+'分':''}`:`${m}分`;
  }
  async function runStatusView(force){
   const panel=$id('dashboardPanel');if(!panel||panel.hidden||dbView!=='status')return;

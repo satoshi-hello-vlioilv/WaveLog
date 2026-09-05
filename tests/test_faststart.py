@@ -31,10 +31,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-import _pycache_bootstrap  # noqa: E402,F401
+import _pycache_bootstrap  # noqa: E402,F401 副作用のためのimport（.pycの置き場）
 from backend import boot_status  # noqa: E402
 from backend.launcher import ready, setup_check  # noqa: E402
-from backend.paths import APP_ROOT, local_root, runtime_dir  # noqa: E402
+from backend.paths import APP_ROOT, local_root  # noqa: E402
 
 API = 'http://127.0.0.1:5029'
 R = []
@@ -130,7 +130,6 @@ try:
     #   ① 置き場の解決（`local_root()`）が送出しない＝起動の1行目で死なない
     #   ② 手元に写しが無くても**本体を読まずに**組み込みの簡易画面で開く
     #   ③ 手元にもテンポラリにも書けない、を作らない（候補を3段持つ）
-    import importlib  # noqa: E402
     import tempfile  # noqa: E402
     from backend import paths as _paths  # noqa: E402
     import start_app as _start  # noqa: E402

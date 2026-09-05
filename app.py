@@ -6,7 +6,7 @@
 (キャッシュ無効化)、ウォッチドッグの組み込みのみを行う(起動制御と業務
 ロジックを分ける方針。詳細はdocs/ARCHITECTURE.md・docs/REBUILD_PLAN.mdを参照)。
 """
-import _pycache_bootstrap  # 他のimportより前に。単独実行(python app.py)される場合に備える
+import _pycache_bootstrap  # noqa: F401 副作用のためのimport。他のimportより前に。単独実行(python app.py)される場合に備える
 
 from flask import Flask, request
 

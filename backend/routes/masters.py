@@ -11,24 +11,16 @@ URLはBlueprint分離前と同一(/api/equipment-master 等)。
 """
 import json
 from datetime import datetime
-from pathlib import Path
 from flask import Blueprint, request, jsonify
 from .common import api_guard
 
 from ..flags import flag_of, text_or
-from ..paths import APP_ROOT as BASE_DIR
-
-from ..config import RNE_EXTRACT_INTERVAL_SEC_DEFAULT, SCHEDULE_LOCK_TTL_SEC_DEFAULT, SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT
-from ..db_access import (
- DBS, connect, request_user_id,
- PATH_CONFIG_KEYS, path_config_rows, set_path_config, path_config_value,
- SIKALOT_SOURCE, RECORDS_BACKUP_EXPORT_PATH, SCHEDULE_SHARE_PATH,
-)
+from ..db_access import DBS, connect, request_user_id
 from ..repositories.master_repo import (
  EQUIPMENT_MASTER_TABLE, ensure_equipment_master_table, normalize_equipment_name, equipment_master_rows,
  EQUIPMENT_FEATURES, EQUIPMENT_FEATURE_KEYS, normalize_equipment_features,
  equipment_disabled_features, equipment_allows,
- MAX_STRIPS_COLUMN, STRIP_LIMIT, DEFAULT_MAX_STRIPS, clamp_max_strips,
+ STRIP_LIMIT, DEFAULT_MAX_STRIPS, clamp_max_strips,
  EQUIPMENT_KINDS, normalize_equipment_kind,
  STANDARD_MINUTES_MAX, normalize_standard_minutes,
  MAX_LINE_SPEED_MAX, normalize_max_line_speed,
@@ -38,29 +30,28 @@ from ..repositories.master_repo import (
  rename_equipment_references,
  FILTER_PRESET_TABLE, ensure_filter_preset_table, filter_preset_rows,
  filter_preset_members,
- FILTER_PERSONAL_TABLE, ensure_filter_personal_table, filter_personal_marks,
+ ensure_filter_personal_table, filter_personal_marks,
  filter_personal_set, filter_personal_has_any,
- SCHEDULE_COLUMN_TABLE, ensure_schedule_column_table, schedule_columns_for, set_schedule_columns,
- SCHEDULE_CONTENT_TABLE, ensure_schedule_content_table, schedule_content_items_for, set_schedule_content_items,
- COLUMN_LAYOUT_TABLE, ensure_column_layout_table, column_layout_for, column_layout_targets, set_column_layout,
- column_layout_owner, column_layout_is_personal, column_layout_scope_set, column_layout_personal_targets,
- COLUMN_PRESET_TABLE, ensure_column_preset_table, column_presets, save_column_preset,
+ schedule_columns_for, set_schedule_columns,
+ schedule_content_items_for, set_schedule_content_items,
+ column_layout_for, column_layout_targets, set_column_layout,
+ column_layout_owner, column_layout_scope_set, column_layout_personal_targets,
+ ensure_column_preset_table, column_presets, save_column_preset,
  delete_column_preset, normalize_column_preset,
- FORMAT_KINDS, normalize_format,
- DISPLAY_RULE_TABLE, ensure_display_rule_table, display_rules, set_display_rule,
+ DISPLAY_RULE_TABLE, display_rules, set_display_rule,
  delete_display_rule, display_rule_usage, display_rule_usage_all, RULE_OPS, RULE_COLORS,
  SORT_PRESET_TABLE, ensure_sort_preset_table, sort_preset_rows, normalize_sort_keys,
- LIST_VIEW_TABLE, ensure_list_view_table, list_view_settings_for, set_list_view_settings,
+ list_view_settings_for, set_list_view_settings,
  ROW_GAP_DEFAULT,
  ACCESS_PERMISSION_TABLE, ensure_access_permission_table, normalize_identity_part, access_permission_master_rows,
  ROLES as PERMISSION_ROLES, ROLE_DEFAULT as PERMISSION_ROLE_DEFAULT, normalize_role,
  MASTER_EDIT_LEVELS, normalize_master_edit, master_edit_effective, master_edit_options,
  master_edit_check, role_change_check, has_admin_role_row,
  field_reorder_terminal_count,
- QUERY_JOIN_TABLE, QUERY_JOIN_MULTI, ensure_query_join_table, query_joins,
+ QUERY_JOIN_MULTI, ensure_query_join_table, query_joins,
  query_join_save, query_join_delete,
 )
-from ..db_access import cols, tables, cfg
+from ..db_access import tables
 from .. import schedule_calc
 
 bp=Blueprint('masters',__name__)

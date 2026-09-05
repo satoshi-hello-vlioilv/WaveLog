@@ -25,7 +25,6 @@
 入れない——1ロット1枚の記録なので、レコードと一緒に運ばれるのが正しい
 （子ロットデータと同じ扱い・§9.91）。
 """
-from ..db_access import add_missing_columns
 from .master_repo import tables
 from .table_def import TableDef
 

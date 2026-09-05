@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
-import _pycache_bootstrap  # noqa: E402,F401
+import _pycache_bootstrap  # noqa: E402,F401 副作用のためのimport（.pycの置き場）
 from backend import db_access  # noqa: E402
 from backend.db_access import DBS, add_missing_columns, connect  # noqa: E402
 

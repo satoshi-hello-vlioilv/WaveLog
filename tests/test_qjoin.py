@@ -40,7 +40,6 @@ sys.path.insert(0, str(ROOT))
 
 import app as flask_app                                     # noqa: E402
 from backend import db_access, query_join                   # noqa: E402
-from backend.repositories import master_repo as mr          # noqa: E402
 
 R = []
 

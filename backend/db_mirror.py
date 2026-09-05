@@ -474,8 +474,7 @@ def records_targets():
  間隔ぶん見えない。判定は`db_access.records_written_here()`の1箇所。
  """
  from .db_access import (RECORDS_SHARE_DIR, RECORDS_BACKUP_EXPORT_PATH,
-                         records_share_files, records_dir_name,
-                         records_written_here)
+                         records_share_files, records_written_here)
  if RECORDS_SHARE_DIR is None and RECORDS_BACKUP_EXPORT_PATH is None:
   return []
  mine = records_written_here()

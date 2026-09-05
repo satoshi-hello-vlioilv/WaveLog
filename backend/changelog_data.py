@@ -4,11 +4,20 @@
 意味のある変更をコミットするたびに APP_VERSION を上げ、CHANGELOG の
 先頭へ新しいエントリを追記すること(新しい順)。
 """
-APP_VERSION='2.208.0'
+APP_VERSION='2.209.0'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
 CHANGELOG=[
+ {'version':'2.209.0','notes':[
+  '**標準の静的解析（pyflakes／eslint）を回帰テストの網に加えました**（§9.326、REVIEW 3-1。'
+  '構造の改善の1段目）。アプリの動きは変わりません。pyflakesが数えていた使っていないimport・'
+  '変数77件を0件に（副作用のためのimport8件は理由を書いて除く）、eslintの`no-redeclare`が'
+  '見つけた`report-dashboard.js`の`fmtMin`の二重定義（先の定義は一度も実行されない死んだ'
+  'コード）を消し、以後は`tests/test_pyflakes.py`・`tests/test_eslint.py`が常に回ります。'
+  '使っていない局所変数と空のブロックはファイルごとに今の件数を上限に固定し、増えたら落ちます。'
+  '規則は`eslint.config.mjs`の1箇所、開発用の道具は`requirements-dev.txt`と`npm i -g eslint`。',
+ ]},
  {'version':'2.208.0','notes':[
   '**構造と画面の評価（2026-09）を`docs/REVIEW_2026-09.md`へ残しました**。R1〜R6（§9.324）の'
   '次に取り組む候補を、構造（3-1〜3-14）と画面（4-1〜4-4）に分けて、いまの実測値（評価関数）と'

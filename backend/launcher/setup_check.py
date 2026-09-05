@@ -20,7 +20,6 @@
 その設定が効いた状態で走らせる**こと(`compileall`は
 `importlib.util.cache_from_source()`を通るのでprefixに従う)。
 """
-from pathlib import Path
 import compileall
 import importlib.util
 import subprocess

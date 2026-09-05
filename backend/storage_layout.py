@@ -296,10 +296,6 @@ def items():
     群は3つ——「この端末の中」「みんなで使う」「読むだけ」。
     **群を増やすより、どの群に入るかを決めるほうが読む側は楽**（§9.264）。
     """
-    from . import master_share
-    from .db_access import (DBS, MEAS_DB, RECORDS_SHARE_DIR,
-                            RECORDS_BACKUP_EXPORT_PATH, SCHEDULE_SHARE_PATH,
-                            SCHEDULE_SHARE_FROM, PURPOSE_SCHEDULE)
     from . import records_export
 
     with _path_config_once():

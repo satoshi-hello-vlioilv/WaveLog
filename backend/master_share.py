@@ -225,7 +225,7 @@ def _ensure_meta(c):
 
 
 def _read_revision(path):
-    from .db_access import connect, tables
+    from .db_access import tables
     try:
         with _opened(path, True) as c:
             if META_TABLE not in tables(c):

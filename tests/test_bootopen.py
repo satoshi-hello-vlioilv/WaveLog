@@ -42,7 +42,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import _pycache_bootstrap  # noqa: E402,F401
+import _pycache_bootstrap  # noqa: E402,F401 副作用のためのimport（.pycの置き場）
 from backend import boot_status  # noqa: E402
 from backend import paths as P  # noqa: E402
 from backend.launcher import setup_check  # noqa: E402

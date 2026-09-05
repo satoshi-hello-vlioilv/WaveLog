@@ -94,7 +94,7 @@ def publish(src,dst,backup_dir,generations=5):
  try:
   shutil.copy2(src,incoming)
   if incoming.stat().st_size!=src.stat().st_size:raise IOError('公開先へのコピーサイズが一致しません')
-  deadline=time.time()+3.0;last=None
+  deadline=time.time()+3.0
   while time.time()<deadline:
    try:
     if dst.exists() and backup_dir:
@@ -112,7 +112,7 @@ def publish(src,dst,backup_dir,generations=5):
     # 「待てば直る失敗」の見分けはbackend/atomic_io.pyが1箇所で持つ(§9.108)。
     # ここは保留(pending)へ逃がす独自の受け皿があるので、共通の再試行では
     # なく自前のループのままにしてある。
-    if atomic_io.is_transient(e):last=e;time.sleep(.25)
+    if atomic_io.is_transient(e):time.sleep(.25)
     else:raise
   pending=dst.parent/f'{dst.stem}.pending_{stamp}{dst.suffix}';os.replace(incoming,pending)
   return {'published':False,'path':str(dst),'pending':str(pending),'reason':'公開先が使用中のため保留しました'}

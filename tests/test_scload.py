@@ -25,7 +25,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from datetime import datetime, timedelta                    # noqa: E402
+from datetime import datetime                               # noqa: E402
 
 from backend import db_access, load_factor, query_join, schedule_calc, schedule_owner  # noqa: E402
 

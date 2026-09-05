@@ -12,7 +12,7 @@
   python process_manager.py stop     停止する
   python process_manager.py status   起動状況を表示する
 """
-import _pycache_bootstrap  # 他のimportより前に。stop.bat等から単独実行されるため必要
+import _pycache_bootstrap  # noqa: F401 副作用のためのimport。他のimportより前に。stop.bat等から単独実行されるため必要
 
 import json
 import os

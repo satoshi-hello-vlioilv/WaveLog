@@ -8,11 +8,10 @@ SQLiteには無いため、db_access.pyのconnect()がユーザー定義関数�
 ストレージクラス優先で比較する仕様のため、パラメータ側もPythonで数値化してから
 渡す(そうしないとVal()が返す数値と文字列パラメータの比較が常に不成立になる)。
 """
-import json, re, time, unicodedata
+import json, re, time
 from flask import Blueprint, request, jsonify
 
 from .. import query_join
-from .. import source_capability
 from .. import sort_order
 from ..db_access import (DBS, qi, connect, cols, tables, cfg,
                          WORK_DB_KEY, QUALITY_DB_KEY, SCHEDULE_DB_KEY)

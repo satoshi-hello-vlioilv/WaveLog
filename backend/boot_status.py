@@ -13,7 +13,6 @@ Webサーバーの起動前から実際の進捗を出せる。
 
 書き込みに失敗しても起動そのものは続ける(表示の都合で起動を止めない)。
 """
-from pathlib import Path
 import json
 import time
 

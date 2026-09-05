@@ -27,7 +27,6 @@
 たびに上がる約束(CLAUDE.md)なので、版と`requirements.txt`の2つで足りる。
 ============================================================
 """
-from pathlib import Path
 import json
 import sys
 

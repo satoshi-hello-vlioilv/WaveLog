@@ -12,7 +12,7 @@ backend/routes/masters.py が持つ。
 """
 import json
 
-from ..db_access import (DBS, add_missing_columns, connect, ensure_audit_columns,
+from ..db_access import (add_missing_columns, connect, ensure_audit_columns,
                          tables, cols, qi)
 
 EQUIPMENT_MASTER_TABLE='設備マスタ'

@@ -83,7 +83,7 @@ def main():
   # ---- 5) require_session の3態 ----
   ok_self=True
   try:ss.require_session(EQ,*A)
-  except Exception as e:ok_self=False
+  except Exception:ok_self=False
   rec('自分が持っていれば書ける（require_session）',ok_self)
   blocked=False
   try:ss.require_session(EQ,*B)

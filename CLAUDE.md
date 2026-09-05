@@ -574,6 +574,19 @@
   **わざと遅らせた応答を待つ時間は残す**（時間そのものが検証の材料）。
   **速くしたら同じ件数が通ることを3回連続で確かめる**（README「待ち方」の表）。
   **単独で回せない網は直したかどうかを単独で確かめられない**——材料は自分で置く（§9.325 ②）。
+- **標準の静的解析（pyflakes／eslint）は網の一部。規則は`eslint.config.mjs`の1箇所**（§9.326、
+  REVIEW 3-1）: `tests/test_pyflakes.py`が「使っていないimport・変数・二重定義」を**0件**に、
+  `tests/test_eslint.py`が'error'の規則（`no-redeclare`・`no-unreachable`等55本）を**0件**に固定し、
+  'warn'の2本（局所の`no-unused-vars`・`no-empty`）は**ファイルごとに今の件数を上限**に固定する
+  （`tests/fixtures/eslint_baseline.json`。減ったら`--update`で下げる。**上げる更新はできない**）。
+  どちらも`ALWAYS`（どのファイルを触っても回る）。**副作用のためのimport**
+  （`import _pycache_bootstrap`）は`# noqa: F401 理由`と**その行に理由を書いて**除く——理由の無い
+  `noqa`は網が落とす。**道具が無い環境では落ちる**（黙って通さない・§4）——入れ方は
+  `pip install -r requirements-dev.txt`と`npm i -g eslint`。`requirements.txt`は増やさない（§9.268 ⑥）。
+  **同じファイルの中の同名関数は後の宣言が勝つ**——`report-dashboard.js`の`fmtMin`は先の定義
+  （`H時間M分`）が一度も実行されずに稼働状況が`N分`で出ていた（`test_patchlint`は別ファイルからの
+  全置換しか見ないので素通りした）。**JSの最上位の関数は`no-unused-vars`で数えない**
+  （`vars:'local'`）——`<script>`を順に読む素のグローバルなので、別ファイルから使われている。
 - **作業予定を「読む側」は写しに書かない**（§9.325、`schedule_repo._plan_select()`）:
   GET系が開くのは共有の**写し**（`schedule_cache.sqlite3`）で、別の要求が同時に写し直して
   `Path.replace()`で差し替える。**開いたまま差し替えられたファイルへ書くと**SQLiteは

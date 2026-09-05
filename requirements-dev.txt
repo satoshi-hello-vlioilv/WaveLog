@@ -1,0 +1,4 @@
+# 開発・検証用（現場の端末には要らない。`requirements.txt`は`flask`だけ・§9.268 ⑥）。
+#   pip install -r requirements-dev.txt
+# tests/test_pyflakes.py が使う。JS側の eslint は npm（`npm i -g eslint`）。
+pyflakes>=3.2
