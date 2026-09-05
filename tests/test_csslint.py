@@ -197,6 +197,62 @@ redecl=[n for n in CSS_ORDER[1:]
         if re.search(r'@layer\s+[\w-]+\s*,',(CSS_DIR/n).read_text(encoding='utf-8'))]
 rec('レイヤの並びを宣言しているのは00-base.cssだけ',not redecl,f'{redecl}')
 
+# ---- 10) 同じセレクタの同じプロパティを2ファイルが宣言していない(§9.324 R6) ----
+# 同じ`@layer`の中で同じセレクタ（結合子なし＝同じ詳細度）が同じプロパティを
+# 別のファイルで宣言すると、**後に読まれる側だけが効き、先の側は死んだ写し**
+# になる。直したつもりの1行が効かない（§9.129の`.work-time-item`）、別の画面の
+# 枠が漏れる（`.cl-search`＝更新履歴の検索欄にリンクマスタの枠と高さが付いて
+# いた）、の2つを実際に踏んだ。**目で数えない**——15件あった。
+# `@media`/`@container`の中は「幅で上書きする」ための意図した重ねなので除く。
+def _conflicts():
+    decls={}   # (selector,layer) -> file -> {prop: value}
+    for name in CSS_ORDER:
+        src=re.sub(r'/\*[\s\S]*?\*/','',(CSS_DIR/name).read_text(encoding='utf-8'))
+        ctx=[];buf=''
+        for ch in src:
+            if ch=='{':
+                sel=buf.strip();buf=''
+                ctx.append(sel if sel.startswith('@') else ('S',sel))
+            elif ch=='}':
+                if ctx:
+                    top=ctx.pop()
+                    if isinstance(top,tuple):
+                        body=buf;buf=''
+                        if any(isinstance(c,str) and (c.startswith('@media') or c.startswith('@container')) for c in ctx):
+                            continue
+                        layer=[c for c in ctx if isinstance(c,str) and c.startswith('@layer')]
+                        layer=layer[-1] if layer else ''
+                        for part in top[1].split(','):
+                            part=part.strip()
+                            if not re.fullmatch(r'([.#][\w-]+)+',part):continue
+                            slot=decls.setdefault((part,layer),{}).setdefault(name,{})
+                            for d in body.split(';'):
+                                if ':' not in d:continue
+                                prop,val=d.split(':',1);slot[prop.strip()]=val.strip()
+                buf=''
+            else:
+                buf+=ch
+    out=[]
+    for (sel,layer),byf in decls.items():
+        if len(byf)<2:continue
+        props={}
+        for f,pv in byf.items():
+            for prop in pv:props.setdefault(prop,[]).append(f)
+        dup={prop:fs for prop,fs in props.items() if len(fs)>=2}
+        if dup:out.append(f'{sel} '+', '.join(f'{prop}({"/".join(fs)})' for prop,fs in dup.items()))
+    return sorted(out)
+_dup=_conflicts()
+rec('同じセレクタの同じプロパティを2ファイルが宣言していない（後勝ちで片方が死ぬ）',
+    not _dup,'; '.join(_dup[:6]))
+# 見張りが実際に数えられること——同じ形を注ぎ込んで1件になるか（網の網・§9.200）
+_saved=(CSS_DIR/'95-boot.css').read_text(encoding='utf-8')
+try:
+    (CSS_DIR/'95-boot.css').write_text(_saved+'\n@layer component{.mm-btn-primary{font-weight:800}}\n',encoding='utf-8')
+    _probe=_conflicts()
+finally:
+    (CSS_DIR/'95-boot.css').write_text(_saved,encoding='utf-8')
+rec('見張りは同じ形を注ぎ込むと数える',any(x.startswith('.mm-btn-primary ') for x in _probe),'; '.join(_probe[:3]))
+
 ng=[x for x in R if not x[1]]
 print('\n=== SUMMARY ===')
 print(f'{len(R)-len(ng)}/{len(R)} passed')

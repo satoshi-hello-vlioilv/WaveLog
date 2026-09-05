@@ -12042,7 +12042,7 @@
        :'まとまりがまだありません。「選択肢の値」で作ってください。'}</p>`;
   return `<section class="cl-pool">`
    +`<h4 class="cl-pane-head">まとまり<small>右の箱へ入れると親子になります。</small></h4>`
-   +`<input type="search" id="clSearch" class="cl-search" value="${esc(clState.q||'')}"`
+   +`<input type="search" id="clSearch" class="cl-filter" value="${esc(clState.q||'')}"`
    +` placeholder="まとまり名で絞る" autocomplete="off">`
    +`<div class="cl-list">${body}</div></section>`;
  }

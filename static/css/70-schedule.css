@@ -85,8 +85,8 @@
 /* 1つの停止理由。**名前と見積を2段**にする——横に並べると名前が切れる
    （実測で「定期メンテナンス (2時間)」が器を越えていた）。 */
 .sc-stop-button{display:flex;flex-direction:column;align-items:flex-start;gap:0;
- min-height:var(--ctl-h-lg);padding:var(--space-1) var(--space-3);
- border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
+ min-height:var(--ctl-h-lg);
+ border:1px solid var(--line);background:var(--surface);
  cursor:grab;text-align:left}
 .sc-stop-button b{font-size:var(--fs-sm);font-weight:800;color:var(--ink)}
 .sc-stop-button small{font-size:var(--fs-micro);color:var(--muted)}
@@ -685,7 +685,7 @@
 /* 文字のボタンは**左右を詰める**（§9.220 2③）。絵文字1字を2文字の言葉へ
    直したので、素の`button{padding:7px}`のままだと操作の列が広がり、
    1600pxの窓でも右端のボタンが画面の外へ出た（`test_density`が検出）。 */
-.sc-row-btn{min-width:var(--row-ctl-h);padding:0 var(--space-1);
+.sc-row-btn{min-width:var(--row-ctl-h);
  border:1px solid var(--line);background:#fff;line-height:1;cursor:pointer;color:#60747b;flex-shrink:0}
 .sc-row-btn:hover{border-color:var(--teal);color:#0c5d67}
 .sc-row-btn.active{background:var(--computed-bg);border-color:var(--teal);color:#0c5d67}

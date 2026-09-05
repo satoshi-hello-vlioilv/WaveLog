@@ -11,8 +11,8 @@
 /* 項目の枠は付けない（§9.129）。パネル枠 → 項目枠 → 入力欄枠と3重だった。
    **状態の色は残す**——要記録・記録済み・誤りは意味のある配色で、
    90-state.cssが地色と左のアクセントで示す。枠だけを落とす。
-   **この定義が実効**（30-measure.cssにも同じセレクタがあるが、こちらが
-   後に読まれて勝つ。片方だけ直しても見た目は変わらない）。 */
+   **定義はここ1箇所**（以前は30-measure.cssにも同じセレクタがあり、こちらが
+   後に読まれて勝つ＝あちらは死んだ写しだった。§9.324 R6で消した）。 */
 .work-time-item{display:grid;grid-template-columns:minmax(0,auto) minmax(0,1fr);align-items:center;gap:var(--gap-inline);
  padding:var(--space-1) var(--space-2) var(--space-1) var(--space-3);border:0;border-radius:var(--radius-sm);background:transparent}
 /* 見出しは枠(作業時間)が文脈を与えているので「開始/終了」で足りる。
@@ -43,7 +43,7 @@
    囲みを外して1行の注記へ落とす(§9.55。情報が増えたら通常のカードへ戻る)。 */
 .worktime-benchmark:has(.wtb-empty){padding:2px 0;border:0;background:none;min-height:0}
 #workTimeHint{line-height:1.35}
-.wtb-title{color:#1f5b52;margin-bottom:7px}
+.wtb-title{margin-bottom:7px}
 .wtb-title small{font-weight:600;color:#4c7a72;margin-left:4px}
 .wtb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(84px,1fr));gap:var(--gap-inline)}
 .wtb-cell{display:flex;flex-direction:column;gap:var(--gap-hair);padding:var(--pad-row);background:#fff;border:1px solid #cfe4e0;border-radius:var(--radius-sm)}
@@ -202,7 +202,7 @@
 .mm-tag-suggest-item:hover,.mm-tag-suggest-item:focus-visible{outline:0;background:#eafafa;color:#0a6570}
 .mm-tag-suggest-empty{padding:7px 10px;color:#8a9aa0;font-size:var(--fs-sm)}
 .mm-form-tail{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
-.mm-btn-primary{border:0;background:var(--teal);color:#fff;font-weight:800;cursor:pointer;box-shadow:0 4px 12px #087c8940}
+.mm-btn-primary{border:0;background:var(--teal);color:#fff;cursor:pointer;box-shadow:0 4px 12px #087c8940}
 .mm-btn-primary:hover{background:var(--teal-dark)}
 .mm-btn-primary.sm{}
 .mm-form-hint{color:#6a7d83;font-size:var(--fs-sm)}
@@ -337,7 +337,7 @@
 .mm-cd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:var(--gap-tight) var(--gap-section);padding:6px 4px}
 .mm-cd-checkbox{padding:6px 4px;border-radius:var(--radius-sm)}
 .mm-cd-checkbox:hover{background:#eafafa}
-.mm-btn-danger{border:0;background:var(--invalid);color:#fff;font-weight:800;cursor:pointer;box-shadow:0 4px 12px #c92c2c40}
+.mm-btn-danger{border:0;background:var(--invalid);color:#fff;cursor:pointer;box-shadow:0 4px 12px #c92c2c40}
 /* 換算係数モデル管理画面(docs/SCHEDULE_MODE_DESIGN.md §6・§9.8)。 */
 .lf-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--gap-inline);padding:var(--pad-card);margin-bottom:12px;background:var(--computed-bg);border:1px solid #9cd6ce;border-radius:var(--radius-sm)}
 .lf-summary small{display:block;color:#60747b;font-size:var(--fs-micro)}
@@ -1904,7 +1904,12 @@
   display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline)}
 .cl-pane-head small{font-weight:400;font-size:var(--fs-tiny);color:var(--muted)}
 .cl-pane-head small b{color:var(--ink-2)}
-.cl-search{flex:none;height:var(--ctl-h-sm);min-width:0;padding:0 var(--space-2);
+/* **`.cl-search`は更新履歴の検索欄（20-shell.css）が先に使っている名前**（§9.324 R6）。
+   同じ名前を使うと、この枠と高さが更新履歴の欄へ漏れる（実測: 更新履歴の
+   `label.cl-search`に`border:1px solid`・`height:30.2px`・`flex:0 0 auto`が
+   付いていた）。`cl-`はここでは「リンク(choice link)」の意味だが、更新履歴の
+   `cl-`(changelog)と同じ接頭辞なので、**名前を足すときは相手側を必ず見る**。 */
+.cl-filter{flex:none;height:var(--ctl-h-sm);min-width:0;padding:0 var(--space-2);
   border:1px solid var(--line);border-radius:var(--radius-sm);font-size:var(--fs-sm)}
 .cl-list{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow:auto;
   scrollbar-gutter:stable}
