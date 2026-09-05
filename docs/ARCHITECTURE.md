@@ -288,7 +288,10 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 
 ## フロントエンド構成
 
-読み込み順（`templates/index.html` の記載順）に意味がある。
+読み込み順に意味がある。**並びの唯一の定義は `backend/routes/core.py` の `JS_FILES`**
+（§9.324 R3。`templates/index.html` の起動ローダーはそれを描くだけ。CSSの `CSS_FILES` と
+同じ作法）。`tests/test_loadorder.py` が「`static/js` の全部が1度ずつ載っている」
+「`base.js` が先頭・`access-mode.js` が末尾・マスタ管理は定義→盤→専用画面」を固定する。
 
 ### 1. コア5ファイル（旧 core.js を機能別に分割）
 
@@ -606,8 +609,31 @@ Box等のクラウド同期フォルダへ複製し、他端末はそれを閲�
 ### 2. 機能拡張ファイル（コアの後に読み込み）
 
 `measurement-tolerance.js` → `lot-split.js` → `measure-progress.js` →
-`filters.js` → `measurement-worklog.js` → `master-maint.js` →
+`filters.js` → `measurement-worklog.js` →
+`master-defs.js` → `master-maint.js` → `master-report.js` → `master-data.js` → `master-opdata.js` →
 `quality-analysis.js` → `report-dashboard.js` → `calendar-view.js`
+
+**マスタ管理は5本**（§9.324 R3。13,000行の1つのIIFEを「定義／盤／専用画面」に分けた）:
+
+| ファイル | 持つもの |
+|---|---|
+| `master-defs.js` | `MASTER_DEFS`（1行＝1つのマスタ画面）・`MASTER_GROUPS`（左の群と並び） |
+| `master-maint.js` | 盤。状態（`maintState`）・ナビ・入力支援・汎用の編集モーダル・一覧・`submitMaint`／`deleteMaint`・`loadMaintInner`。**`WL.mm` を作り、専用画面の登録簿 `WL.mm.special` を持つ** |
+| `master-report.js` | 帳票ブロックの見本（`fb*`／`rb*`）・`bindFieldBuilders`・帳票レイアウトマスタ |
+| `master-data.js` | 換算係数・測定データの保存・データ引継ぎ・データ接続・クエリ結合・共通設定・勤務形態・掃除・テーブル生データ・接続状況 |
+| `master-opdata.js` | 操業データの盤・自動値・項目の設定モーダル・リンクマスタ・選択肢の値・記録した値の配置 |
+
+ファイル間の受け渡しは **`WL.mm` の1つだけ**（素の`window.*`を増やさない）。
+盤は末尾で `Object.assign(WL.mm,{…})` により専用画面が使う関数を配り、専用画面は
+先頭の `const {…}=WL.mm` で受ける（盤が先に読まれているので束縛してよい）。
+**逆向き**（盤→専用画面・定義→見本）は読み込み順の後ろを指すので **`WL.mm.fn()` と
+呼ぶたびに引く**（`RB_PAGE_ROWS`／`bindFieldBuilders`／`forgetReportCaches`／
+`loadMasterTableCatalog`／`dropRetiredTable`／`mtState`／`rbAsideHtml`／`rbBindAside`）。
+専用画面（`special:`）は各ファイルの末尾で `WL.mm.registerSpecial(key,{load,onEditorClose})`
+と名乗り、盤の `loadMaintInner`／`closeMaintEditor` は登録簿から引く——**画面を1つ
+足しても盤へ `if` を足さない**。名乗っていない鍵は `console.error` で言う（黙って汎用へ
+落とさない）。`tests/test_loadorder.py` が「`special:` の鍵が全部名乗っている」ことを
+突き合わせる。
 
 各ファイルはIIFE（即時関数）で自身のヘルパを閉じ込め、コアの関数を
 拡張する場合のみ次の規約でラップする:

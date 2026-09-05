@@ -8,7 +8,7 @@
 **編集できる**ようにした。ここで守るのは4つ。
 
  1. **対応表が腐っていない**——`COVERED_BY`が指すタブのキーが
-    `master-maint.js`の`MASTER_DEFS`に実在すること。タブを消したり
+    `master-defs.js`の`MASTER_DEFS`に実在すること。タブを消したり
     キーを変えたりすると、その表は「専用タブがある」と言われたまま
     **どこからも開けない**行き止まりになる。
  2. **触れるのはマスタDBだけ**——仕掛・品質・共有スケジュールへ向いた
@@ -65,10 +65,11 @@ def call(path, body=None):
 from backend.routes import master_tables as mt  # noqa: E402
 
 # ---- 1) 対応表が腐っていない ----------------------------------------
-js = (ROOT / 'static/js/master-maint.js').read_text(encoding='utf-8')
+# §9.324 R3: 定義は master-defs.js（盤の master-maint.js とは別ファイル）
+js = (ROOT / 'static/js/master-defs.js').read_text(encoding='utf-8')
 def_keys = set(re.findall(r"\bkey:'([A-Za-z][\w]*)'", js))
 missing = sorted(v for v in set(mt.COVERED_BY.values()) if v not in def_keys)
-rec('COVERED_BY が指すタブが master-maint.js に実在する', not missing, f'見つからない: {missing}')
+rec('COVERED_BY が指すタブが master-defs.js に実在する', not missing, f'見つからない: {missing}')
 # 逆向き: 専用タブを持つのに対応表へ載っていない表は「内部データ」へ二重に出る。
 rec('対応表と移行済み・別画面の表が重なっていない',
     not (set(mt.COVERED_BY) & set(mt.RETIRED)) and not (set(mt.COVERED_BY) & set(mt.EDITED_FROM)),

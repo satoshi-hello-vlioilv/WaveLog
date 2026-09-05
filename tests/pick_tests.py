@@ -44,7 +44,9 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
           # §9.324 R2: ルートの失敗の受け方は api_guard の1箇所（写しを機械で数える）
           'test_apiguard',
           # §9.324 R1: 列定義は TableDef の1箇所（位置読みの写しを機械で数える・数秒）
-          'test_tabledef']
+          'test_tabledef',
+          # §9.324 R3: JSの読み込み順は core.py の JS_FILES の1箇所（static/js と突き合わせる）
+          'test_loadorder']
 
 # 束ねた呼び名。右辺は実際のテスト名。
 G = {}
@@ -247,6 +249,38 @@ RULES = [
     ('backend/actuals.py', g('実績', 'test_workdate', 'test_modeguard')),
     ('static/js/lot-split.js', g('異常位置', 'test_orphan', 'test_sub')),
     ('static/js/master-maint.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
+                                    'test_headbar', 'test_datasource',
+                                     'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal',
+                                     # §9.254 (3): 帳票レイアウトマスタ（親子の行き来）
+                                     'test_rlmaster',
+                                     # §9.286 (7): 説明文の印は WL.markup() の1箇所
+                                     '更新履歴')),
+    # §9.324 R3: マスタ管理の分割ファイル（盤と同じ網で見る）
+    ('static/js/master-defs.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
+                                    'test_headbar', 'test_datasource',
+                                     'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal',
+                                     # §9.254 (3): 帳票レイアウトマスタ（親子の行き来）
+                                     'test_rlmaster',
+                                     # §9.286 (7): 説明文の印は WL.markup() の1箇所
+                                     '更新履歴')),
+    # §9.324 R3: マスタ管理の分割ファイル（盤と同じ網で見る）
+    ('static/js/master-report.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
+                                    'test_headbar', 'test_datasource',
+                                     'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal',
+                                     # §9.254 (3): 帳票レイアウトマスタ（親子の行き来）
+                                     'test_rlmaster',
+                                     # §9.286 (7): 説明文の印は WL.markup() の1箇所
+                                     '更新履歴')),
+    # §9.324 R3: マスタ管理の分割ファイル（盤と同じ網で見る）
+    ('static/js/master-data.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
+                                    'test_headbar', 'test_datasource',
+                                     'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal',
+                                     # §9.254 (3): 帳票レイアウトマスタ（親子の行き来）
+                                     'test_rlmaster',
+                                     # §9.286 (7): 説明文の印は WL.markup() の1箇所
+                                     '更新履歴')),
+    # §9.324 R3: マスタ管理の分割ファイル（盤と同じ網で見る）
+    ('static/js/master-opdata.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
                                     'test_headbar', 'test_datasource',
                                      'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal',
                                      # §9.254 (3): 帳票レイアウトマスタ（親子の行き来）

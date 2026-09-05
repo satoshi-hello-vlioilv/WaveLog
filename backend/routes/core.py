@@ -52,6 +52,46 @@ BODY_CSS_FILES=[
 ]
 # カスケードの順序そのもの。**起動用が先、本体が後**の並びで読み込まれる。
 CSS_FILES=BOOT_CSS_FILES+BODY_CSS_FILES
+# アプリのJSの**読み込み順**（§9.324 R3）。起動ローダー（templates/index.html）は
+# この並びをそのまま順に挿す（`async=false`）。依存があるので順番が意味を持つ:
+#   base.js が先頭（WL・registerView）、access-mode.js が末尾（入口ガード）、
+#   master-defs.js → master-maint.js → master-{report,data,opdata}.js
+#   （定義 → 盤 → 専用画面。専用画面は盤の `WL.mm` を受け取り、登録簿へ名乗る）。
+# **ここが唯一の一覧**——index.htmlへ書き写さない。`tests/test_loadorder.py`が
+# 「static/js の全部が1度ずつ載っている」「順の約束」を固定する。
+JS_FILES=[
+ 'base.js',
+ 'wl-window.js',
+ 'list-view.js',
+ 'list-formula.js',
+ 'list-columns.js',
+ 'list-rules.js',
+ 'measurement-view.js',
+ 'measurement-input.js',
+ 'records-store.js',
+ 'measurement-tolerance.js',
+ 'lot-split.js',
+ 'measure-progress.js',
+ 'measure-opdata.js',
+ 'measure-steps.js',
+ 'defect-locator.js',
+ 'filters.js',
+ 'measurement-worklog.js',
+ 'master-defs.js',      # マスタ管理: 定義（MASTER_DEFS / MASTER_GROUPS）
+ 'master-maint.js',     # マスタ管理: 盤（WL.mm を作る）
+ 'master-report.js',    # マスタ管理: 帳票ブロック・帳票レイアウト
+ 'master-data.js',      # マスタ管理: データと接続・作業スケジュール・管理
+ 'master-opdata.js',    # マスタ管理: 操業データ項目・選択肢・記録した値
+ 'quality-analysis.js',
+ 'report-dashboard.js',
+ 'calendar-view.js',
+ 'schedule-view.js',
+ 'schedule-print.js',
+ 'actuals-view.js',
+ 'opsheet-print.js',
+ 'log-view.js',
+ 'access-mode.js',
+]
 _CSS_CACHE={'token':None,'body':''}
 _BOOT_CSS_CACHE={'token':None,'body':''}
 
@@ -146,7 +186,8 @@ def home():
  token=_newest_mtime(js+[_css_dir()/n for n in CSS_FILES],'静的ファイル')
  # バージョンは起動オーバーレイが最初の描画で出すため、APIを待たずに埋め込む
  # (画面本体のバッジは従来どおり /api/build を読んで差し替える)。
- return render_template('index.html', build='current', asset_token=token, app_version=APP_VERSION)
+ return render_template('index.html', build='current', asset_token=token, app_version=APP_VERSION,
+                        js_files=JS_FILES)
 # ========================================================================
 # 「更新は届いたが、まだ再起動していない」の検出(§9.200)
 # ------------------------------------------------------------------------

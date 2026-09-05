@@ -185,7 +185,9 @@ const writeShareDir=async v=>{
    JSON.stringify((srv.items||[])[0]||{}).slice(0,120));
  /* **画面のJSに判定を書き写していないこと**——2つの答えが出ると、
     片方だけ直した状態が作れる。 */
- const js=await (await fetch(B+'/js/master-maint.js')).text().catch(()=>'');
+ /* §9.324 R3: 共通設定の画面は master-data.js（定義は master-defs.js）。 */
+ const js=(await Promise.all(['master-defs','master-maint','master-data']
+   .map(n=>fetch(B+'/js/'+n+'.js').then(r=>r.text()))).catch(()=>[])).join('\n');
  rec('画面のJSにUNC判定を書き写していない',
    js.length>0&&!/is_network_path|startsWith\('\\\\\\\\'\)/.test(js),
    js.length?'ok':'JSを読めませんでした');

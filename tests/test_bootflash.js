@@ -23,11 +23,12 @@
    といった、崩れたら必ず白が戻る条件を見る。 */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
 const API='http://127.0.0.1:5029';
-/* 本数は起動ローダーの一覧(index.htmlのFILES)から数える。**直値で持たない**
+/* 本数は起動ローダーの一覧(FILES)から数える。**直値で持たない**
    ——JSを1本足すたびにこのテストだけが落ちて、意味のない数字合わせになる
-   (実際に19→20で落ちた)。見たいのは「一覧にあるものが全部読み込まれたか」。 */
-const EXPECTED_JS=(require('fs').readFileSync(require('path').join(__dirname,'..','templates','index.html'),'utf8')
-  .match(/var FILES=\[[\s\S]*?\]/)||[''])[0].match(/'[a-z0-9-]+\.js'/g)?.length||0;
+   (実際に19→20で落ちた)。見たいのは「一覧にあるものが全部読み込まれたか」。
+   §9.324 R3: 一覧は core.py の JS_FILES へ移り index.html は描くだけなので、
+   **配られたHTML**（下で取る）から数える。 */
+let EXPECTED_JS=0;
 let b=null;
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
@@ -53,6 +54,7 @@ let b=null;
 
   /* ---- 2) HTMLはパーサーを止めない ---- */
   const html=await (await fetch(API+'/')).text();
+  EXPECTED_JS=(html.match(/var FILES=\[[\s\S]*?\]/)||[''])[0].match(/'[a-z0-9-]+\.js'/g)?.length||0;
   const parserScripts=(html.match(/<script[^>]+src=["'][^"']*\/js\//g)||[]).length;
   rec('HTMLにパーサー実行のアプリJSが無い(描画を止めない)',parserScripts===0,`${parserScripts}本`);
   rec('起動用CSSはブロッキングで読む',/core\.boot_css|\/css\/boot\.css/.test(html)&&

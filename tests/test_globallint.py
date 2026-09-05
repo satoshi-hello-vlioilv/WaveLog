@@ -115,10 +115,12 @@ def main():
     naked = sorted(f for f, ok in wrapped.items() if not ok and f not in LEGACY_FILES)
     rec('新しいJSファイルは即時関数で包んでいる', not naked, ', '.join(naked))
 
-    # 読み込み一覧(index.html)と実ファイルが食い違っていないか。
+    # 読み込み一覧と実ファイルが食い違っていないか。
     # 足したのに読み込まれない/消したのに残っている、はどちらも静かに壊れる。
-    html = (ROOT / 'templates' / 'index.html').read_text(encoding='utf-8')
-    listed = re.findall(r"'([a-z0-9-]+\.js)'", html)
+    # §9.324 R3: 一覧は backend/routes/core.py の JS_FILES（index.html は描くだけ）。
+    core_py = (ROOT / 'backend' / 'routes' / 'core.py').read_text(encoding='utf-8')
+    block = re.search(r'JS_FILES=\[(.*?)\n\]', core_py, re.S)
+    listed = re.findall(r"'([a-z0-9-]+\.js)'", block.group(1) if block else '')
     on_disk = {p.name for p in JS.glob('*.js')}
     missing = [f for f in listed if f not in on_disk]
     unlisted = sorted(on_disk - set(listed))

@@ -21484,3 +21484,61 @@ test_opinline test_crudroutes test_ddllint test_opmother test_opauto test_oplimi
 test_reclayout test_opparent test_opformula test_opblank test_rbcells test_rollio`
 （592/592）、`test_tabledef`（32/32）、`test_pick`・`test_changelog`。
 **フルスイートは回していない。**
+
+### R3 master-maint.js を「定義／盤／専用画面」に分割（VER2.205.0）
+
+`static/js/master-maint.js` は **13,090行の1つのIIFE** で、`MASTER_DEFS`（600行）・
+盤（状態・ナビ・入力支援・編集モーダル・一覧・submit/delete）・15の専用画面
+（`special:`）が1つの閉包に同居していた。読む側は「どこまでが盤で、どこからが
+専用画面か」を毎回探すことになり、専用画面を1つ足すたびに盤の`loadMaintInner`と
+`closeMaintEditor`へ`if`を1行ずつ足していた（実際に15本×2箇所）。
+
+分け方（読み込み順）:
+
+| ファイル | 行数 | 持つもの |
+|---|---|---|
+| `master-defs.js` | 671 | `MASTER_DEFS`／`MASTER_GROUPS` |
+| `master-maint.js` | 2,822 | 盤。`WL.mm`と登録簿`WL.mm.special`を作る |
+| `master-report.js` | 1,997 | 帳票ブロックの見本・`bindFieldBuilders`・帳票レイアウトマスタ |
+| `master-data.js` | 3,401 | 換算係数・測定データの保存・データ引継ぎ・データ接続・クエリ結合・共通設定・勤務形態・掃除・生データ・接続状況 |
+| `master-opdata.js` | 4,279 | 操業データの盤・自動値・設定モーダル・リンク・選択肢の値・記録した値の配置 |
+
+**中身は動かしただけ**（関数の並びも本文もそのまま。§9.132）。変えたのは
+ファイル間の受け渡しの形だけ:
+
+- **`WL.mm` の1つ**で受け渡す（素の`window.*`は増やさない・上限63のまま）。
+  盤は末尾で `Object.assign(WL.mm,{…28件})`、専用画面は先頭で `const {…}=WL.mm`
+  （盤が先に読まれているので束縛してよい）。
+- **逆向き**（盤→専用画面・定義→見本）は `WL.mm.fn()` と**呼ぶたびに引く**
+  ——読み込み順の後ろを指すので先頭では束縛できない（8件）。
+- **専用画面は登録簿へ名乗る**: `WL.mm.registerSpecial(key,{load,onEditorClose})`。
+  盤は `WL.mm.special[def.special]` から引き、**名乗っていない鍵は
+  `console.error`で言う**（黙って汎用の一覧へ落とさない）。
+- 生の表の一覧（`rawDefs`、§9.249 ②）は盤の`let`のままで、データ側は
+  `WL.mm.setRawDefs()`で届ける（`let`を跨いで代入できないため）。
+- **JSの読み込み順は `backend/routes/core.py` の `JS_FILES` へ移した**
+  （`index.html`は描くだけ。`CSS_FILES`と同じ作法）。
+
+分けるときの手順（機械で）: 元ファイルの行範囲を5つへ振り分け →
+1行ごとに「他のファイルで定義された名前」を数えて、盤へ向かうものは
+`const {…}=WL.mm`、後ろへ向かうものは`WL.mm.`を前置 → `node --check` →
+**未解決の名前が0件**であることを別のスクリプトで数える。
+
+固定は `tests/test_loadorder.py`（12件）: `static/js`と1対1／重複なし／
+先頭・末尾・マスタ管理の順／`index.html`に一覧の写しが無い／`special:`の鍵が
+全部名乗っている（定義↔登録簿を両向きに突き合わせる）／盤に`special==='…'`の
+`if`が戻っていない。ファイル名で読む網は分けた先へ向けた——`test_crudroutes`
+（`master-defs.js`）・`test_hintlint`（5本）・`test_eqfeature`／`test_opauto`／
+`test_storageui`（関係する本を連結して見る。1本だけ見ると、分けた先に写した
+綴りを素通しする）。
+
+回した網: マスタ管理に関わる52本（`pick_tests`の「マスタ」「モーダル」「操業意匠」
+「更新履歴」の群＋名指しの分）で 1928/1932。落ちた4件は**全部テストの側**——
+`test_bootflash`／`test_globallint`が`index.html`の一覧を読み、`test_rawmaster`が
+`master-maint.js`の`MASTER_DEFS`を読んでいた（分けた先へ向けて直した）。
+残る1件は`test_nav`の「畳んだメニューの浮き出し」（`waitForSelector`の8秒）で、
+**サーバー再起動直後の1本目**でだけ起き、同じ版で単独・7本組で回し直すと
+24/24——触っていない`base.js`の浮き出しなので、この変更の影響ではないが、
+落ちる仕組みまでは言えていない（§9.284。次に同じ形で出たら追う）。
+直したあとの確認は`test_nav test_bootflash test_globallint test_rawmaster
+test_loadorder test_headbar test_maint`で 172/172。**フルスイートは回していない。**

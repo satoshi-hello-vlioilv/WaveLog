@@ -561,6 +561,23 @@
   **網はマスタへ1行も書かない**（repoの関数を差し替えて断り・失敗を起こす・§9.121。
   最初に書いた網が`/api/schedule-column-master`へ本当に保存して
   `db/master.sqlite3`に置き土産を作った）。
+- **マスタ管理のJSは「定義／盤／専用画面」の5本。受け渡しは`WL.mm`の1つ**
+  （§9.324 R3、構造の見直しの5段目）: `master-defs.js`（`MASTER_DEFS`／`MASTER_GROUPS`）
+  → `master-maint.js`（盤）→ `master-report.js`／`master-data.js`／`master-opdata.js`
+  （専用画面）。以前は13,090行の**1つのIIFE**で、定義・盤・15の専用画面が1つの
+  閉包に同居していた。**専用画面は`WL.mm.registerSpecial(key,{load,onEditorClose})`で
+  名乗る**——盤の`loadMaintInner`／`closeMaintEditor`は登録簿`WL.mm.special`から引く
+  ので、画面を1つ足しても盤へ`if`を足さない（以前は15本の`if`が2箇所に並んでいた）。
+  **名乗っていない鍵は`console.error`で言う**（黙って汎用の一覧へ落とさない・
+  §CLAUDE「公開漏れは黙って素通しになる」）。**盤→専用画面・定義→見本の逆向きの
+  参照は`WL.mm.fn()`と呼ぶたびに引く**（読み込み順の後ろを指すので先頭で束縛できない）。
+  **素の`window.*`を新しく増やさない**（`test_globallint`の上限63のまま）。
+  **JSの読み込み順は`backend/routes/core.py`の`JS_FILES`の1箇所**——`index.html`は
+  描くだけ（`CSS_FILES`と同じ作法）。固定は`tests/test_loadorder.py`（`static/js`の全部が
+  1度ずつ載っている・順の約束・`special:`の鍵が全部名乗っている・盤に`special==='…'`の
+  `if`が戻っていない）。**ファイル名で読む網は分けた先を指すこと**——`test_crudroutes`は
+  `master-defs.js`、`test_hintlint`は5本、`test_eqfeature`／`test_opauto`／`test_storageui`は
+  関係する本を連結して見る（1本だけ見ると、分けた先に写した綴りを素通しする）。
 - **マスタ1表の列定義は`TableDef`の1箇所**（§9.324 R1、構造の見直しの4段目、
   `backend/repositories/table_def.py`）: 帳票ブロック（`report_block_repo.DEF`）・
   ロール（`roll_repo.DEF`）・操業データ項目／選択肢（`operation_repo.ITEM_DEF`／
@@ -6141,7 +6158,7 @@
   触るときは、その読み書きがどちらのDBに対してかを必ず意識すること
   （`plan_add`が設備停止マスタを引く箇所のように、共有接続のまま残すと
   そこだけ壊れる）。詳細は`docs/SCHEDULE_MODE_DESIGN.md`§9.27。
-- **マスタ管理の汎用CRUDは4本セット**: 画面(`master-maint.js`の`submitMaint`)は
+- **マスタ管理の汎用CRUDは4本セット**: 画面(`master-maint.js`の`submitMaint`、定義は`master-defs.js`)は
   `GET <endpoint>` / `POST <endpoint>` / **`POST <endpoint>/update`（編集）** /
   `POST <endpoint>/delete` を決め打ちで呼ぶ。`MASTER_DEFS`に1行足すだけで
   画面は動くので、**サーバー側の`/update`を書き忘れても押すまで気づけない**
@@ -6192,7 +6209,7 @@
   （旧`config/local.json`）を保存する。キー1件=1行で、値の無い項目は行自体が
   無い＝既定値を使う（他マスタと同じ互換ポリシー）。CRUD APIは`backend/routes/
   path_config.py`の`/api/path-config-master`、UIはマスタ管理画面の「パス設定」タブ
-  （`static/js/master-maint.js`のMASTER_DEFS、key:pathConfig）。
+  （`static/js/master-defs.js`のMASTER_DEFS、key:pathConfig）。
   本来なら`backend/repositories/master_repo.py`が持つべき層だが、
   `db_access.py`自身が起動時に接続先を1回だけ確定させる必要があり
   `master_repo.py`はdb_accessに依存する側のため、循環importを避けて
