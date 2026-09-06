@@ -365,6 +365,13 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .access-mode-menu{position:fixed;z-index:var(--z-popover);min-width:190px;padding:var(--space-2);border:1px solid var(--line);border-radius:var(--radius-md);background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.16)}
 .access-mode-menu button{display:flex;flex-direction:column;align-items:flex-start;gap:var(--gap-hair);width:100%;padding:var(--pad-card);border:0;border-radius:var(--radius-sm);background:transparent;text-align:left;font-weight:700;font-size:var(--fs-base-sm);color:var(--ink,#222);cursor:pointer}
 .access-mode-menu button:hover{background:#eef2f4}
+/* 再読込メニューの「読み込みの内訳」（§9.340）。読み込みのチップは遅いときしか
+   出さないので、**速いときに内訳へ辿り着ける場所はここだけ**。押せる物と
+   見分けが付くよう、面を持たせて字を小さくする（ボタンではない）。 */
+.reload-menu-note{display:flex;flex-direction:column;gap:var(--gap-hair);
+ margin-bottom:var(--space-1);padding:var(--pad-card);border-radius:var(--radius-sm);
+ background:var(--surface-2);font-size:var(--fs-micro);color:var(--ink-3)}
+.reload-menu-note b{font-size:var(--fs-sm);color:var(--ink-2)}
 /* 一覧の見出しを右クリックしたときの小さなメニュー(§9.110)。
    列を1つ隠すためだけに設定パネルを開かせない。**戻す操作も同じ場所**に
    置く——隠した本人が次に探すのはここなので、別の場所を覚えさせない。 */

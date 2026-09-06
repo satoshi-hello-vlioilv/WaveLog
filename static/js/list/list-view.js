@@ -1534,28 +1534,39 @@ async function load(force){
  // 全件は1ページ目を出してから続きを読む。**待たない**(画面は使える)。
  if(isAllRows())continueAllRows(key);
 }
-/* 内訳を一覧の脇に出す。**遅かったときだけ**目立たせる(速いときに
-   出しても読む理由が無い)。押すと内訳の内わけが出る。 */
-function renderLoadChip(){
- const chip=document.getElementById('listLoadChip');
- const b=lastLoadBreakdown;
- if(!chip)return;
- if(!b){chip.hidden=true;return}
- const total=b.wait+b.transfer+b.parse+b.render;
- chip.hidden=false;
- const slow=total>=1500;
- chip.className='list-load-chip'+(slow?' is-slow':'');
+/* 読み込みの内訳（§9.198）。「遅い」は**どこが遅いのかで打つ手がまるで違う**
+   （共有ならネットワーク、整形なら列と件数、表示なら行数）ので、内訳をそのまま
+   出す。**文言は1箇所**——チップの`title`と再読込メニューの両方がここを読む。 */
+function loadBreakdownLines(b){
+ if(!b)return [];
  const kb=Math.round(b.bytes/1024);
  const src={mirror:'手元の写し',share:'共有を直接',local:'手元'}[b.detail&&b.detail.source]||'';
- chip.textContent=`${(total/1000).toFixed(1)}秒`;
- chip.title=[
+ return [
   `読み出し ${b.wait}ms（サーバー側 ${b.server}ms${src?' / '+src:''}）`,
   b.detail?`　└ 開く${b.detail.open??'-'}ms・列${b.detail.cols??'-'}ms・件数${b.detail.count??'-'}ms・取り出し${b.detail.fetch??'-'}ms`
            +(b.detail.join!=null?`・品質結合${b.detail.join}ms`:''):'',
   `転送 ${b.transfer}ms（${kb}KB）`,
   `整形 ${b.parse}ms`,
   `表示 ${b.render}ms（${b.rows}行 × ${b.columns}列）`,
- ].filter(Boolean).join('\n');
+ ].filter(Boolean);
+}
+function loadTotalMs(b){return b?b.wait+b.transfer+b.parse+b.render:0}
+/* 読み込みの秒数を一覧の脇に出すのは**遅かったときだけ**（§9.340、REVIEW 4-1 ④）。
+   作業スケジュールは§9.198で既にそうしていたのに、一覧だけ**常に出して**いた
+   ——「0.2秒」が全画面でずっと居座り、面積を取るのに読む理由が無い。しきい値の
+   答えは`WL.slowLoadMs`の1箇所（§9.163。以前はスケジュール1200・一覧1500と
+   2つあった）。
+   **内訳の入口は消さない**——速くて出ていないときは、鮮度チップの再読込メニュー
+   から読める（スケジュールが浮きメニューに内訳を持つのと同じ形・§9.300 ①）。 */
+function renderLoadChip(){
+ const chip=document.getElementById('listLoadChip');
+ const b=lastLoadBreakdown;
+ if(!chip)return;
+ if(!b||loadTotalMs(b)<WL.slowLoadMs){chip.hidden=true;return}
+ chip.hidden=false;
+ chip.className='list-load-chip is-slow';
+ chip.textContent=`${(loadTotalMs(b)/1000).toFixed(1)}秒`;
+ chip.title=loadBreakdownLines(b).join('\n');
 }
 /* データベース切替→テーブル選択は、実際に目視できる2段階で待機表示する
    (テーブル構成の確認→列情報・一覧データの取得)。以前は3段階だったが、
@@ -2927,7 +2938,14 @@ async function openReloadMenu(anchor){
  closeReloadMenu();
  const menu=document.createElement('div');
  menu.className='access-mode-menu reload-menu';menu.id='reloadMenu';
- menu.innerHTML=`<button type="button" data-reload-action="list">`
+ /* 読み込みの内訳（§9.340）。チップは遅いときしか出さないので、**速いときに
+    内訳へ辿り着ける場所はここだけ**——入口ごと消さない（§4）。 */
+ const bd=lastLoadBreakdown;
+ const note=bd?`<div class="reload-menu-note"><b>読み込み ${(loadTotalMs(bd)/1000).toFixed(1)}秒</b>`
+   +loadBreakdownLines(bd).map(l=>`<span>${esc(l)}</span>`).join('')+`</div>`
+   :'<div class="reload-menu-note"><b>読み込みの内訳はまだありません</b>'
+   +'<span>一覧を1回読むと出ます</span></div>';
+ menu.innerHTML=note+`<button type="button" data-reload-action="list">`
   +`<span>一覧を再読込</span><small>いま読んでいる場所から取り直します</small></button>`;
  document.body.append(menu);
  // 位置の決め方はモードバッジ・表示サイズのポップオーバーと同じ(base.js)。

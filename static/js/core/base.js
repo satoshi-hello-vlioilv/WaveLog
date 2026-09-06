@@ -1430,6 +1430,13 @@ function onReady(fn){
 }
 window.WL.onReady=onReady;
 
+/* 「この読み込みは遅いか」の答えは1箇所（§9.340、§9.163）。
+   **速いときに毎回ミリ秒を並べても読まれない**ので、読み込みの秒数を画面へ
+   出すのは遅かったときだけ——という約束（§9.198）を、作業スケジュールと
+   一覧の**両方**がここを見て守る。以前はスケジュール1200ms・一覧1500msと
+   数が2つあり、しかも一覧は数を持っているだけで**常に出していた**。 */
+window.WL.slowLoadMs=1200;
+
 const VIEW_REGISTRY=new Map();
 function registerView(def){VIEW_REGISTRY.set(def.key,def);return def}
 /* 新しい画面へ入る。key以外の登録済み画面を全て閉じ、ナビの選択状態・

@@ -130,7 +130,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     クエリ結合マスタ）。サーバーが返した内訳をそのまま出し、**遅いときだけ
     見えるところへ出す**——速いときに毎回ミリ秒を並べても読まれない。 */
  let scLastTimings=null;
- const SC_SLOW_MS=1200;            // これを超えたら文字で出す
+ const SC_SLOW_MS=WL.slowLoadMs;   // 「遅い」の答えは base.js の1箇所（§9.340）
  const SC_TIMING_LABEL={snapshot:'共有の取り込み',rows:'予定の読み出し',
    actual:'実績の突合',expand:'時刻の展開',join:'クエリ結合',total:'合計'};
  function timingLines(t){
