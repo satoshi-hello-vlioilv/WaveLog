@@ -28,6 +28,7 @@ from flask import Blueprint, jsonify, request
 from ..db_access import (AUDIT_COLUMNS, DBS, connect, ensure_audit_columns,
                          tables)
 from ..access_mode import request_user_id
+from .body import body, any_
 from ..logging_setup import app_logger
 from ..quiet import quiet
 
@@ -270,7 +271,7 @@ def master_table_insert(table):
  name, err = _resolve(table)
  if name is None:
   return jsonify(error=err), 400
- x = request.get_json(silent=True) or {}
+ x = body({'id': any_}, silent=True)   # 鍵はその表の列そのもの（実行時に決まる）
  uid = request_user_id(x)
  with connect(_master_path(), False) as c:
   ensure_audit_columns(c, name)
@@ -304,7 +305,7 @@ def master_table_update(table):
  name, err = _resolve(table)
  if name is None:
   return jsonify(error=err), 400
- x = request.get_json(silent=True) or {}
+ x = body({'id': any_}, silent=True)   # 鍵はその表の列そのもの（実行時に決まる）
  uid = request_user_id(x)
  try:
   rid = int(x.get('id'))
@@ -365,7 +366,7 @@ def master_table_delete(table):
  name, err = _resolve(table)
  if name is None:
   return jsonify(error=err), 400
- x = request.get_json(silent=True) or {}
+ x = body({'id': any_}, silent=True)   # 鍵はその表の列そのもの（実行時に決まる）
  try:
   rid = int(x.get('id'))
  except (TypeError, ValueError):

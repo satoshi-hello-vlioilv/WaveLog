@@ -10,6 +10,7 @@ SQLiteには無いため、db_access.pyのconnect()がユーザー定義関数�
 """
 import json, re, time
 from flask import Blueprint, request, jsonify
+from .body import body, flag, any_
 
 from .. import query_join
 from .. import sort_order
@@ -128,9 +129,9 @@ def api_db_mirror_refresh():
  """今すぐ写し直す(一覧の「再読込」から呼ぶ)。**待たせない**——
  背景スレッドを起こすだけで、結果は次の取得から反映される。"""
  from .. import db_mirror
- x=request.get_json(silent=True) or {}
- if x.get('wait'):
-  return jsonify(ok=True,results=db_mirror.refresh_all(force=bool(x.get('force'))))
+ x=body({'wait': flag, 'force': flag}, silent=True, strict=True)
+ if x.flag('wait'):
+  return jsonify(ok=True,results=db_mirror.refresh_all(force=x.flag('force')))
  db_mirror.wake()
  return jsonify(ok=True,queued=True)
 
@@ -344,8 +345,8 @@ def api_query_join_resolve():
  スケジュール表に出る列が食い違わない**。
 
  読むだけ(_READ_ONLY_POST_ENDPOINTSで全モードから通す)。"""
- x=request.get_json(silent=True) or {}
- k=str(x.get('db') or '');t=str(x.get('table') or '')
+ x=body({'db': str, 'table': str, 'rows': any_, 'builtin': any_}, silent=True)
+ k=x.text('db');t=x.text('table')
  rows=x.get('rows')
  if not isinstance(rows,list):return jsonify(error='rowsは配列で送ってください。'),400
  rows=[r if isinstance(r,dict) else {} for r in rows[:2000]]

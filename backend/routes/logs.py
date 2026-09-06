@@ -66,6 +66,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request, send_file
+from .body import body, any_
 
 from ..logging_setup import app_logger, launcher_logger
 from ..paths import logs_dir
@@ -506,7 +507,7 @@ def rotate_now():
 
  世代の押し出しは`RotatingFileHandler.doRollover()`に任せる(自前で
  os.replaceを書くと、ハンドラが持っている世代数と食い違う)。"""
- name=(request.get_json(silent=True) or {}).get('file') or 'app.log'
+ name=body({'file': str}, silent=True, strict=True).text('file') or 'app.log'
  path=_resolve(name)
  if path is None:return jsonify(ok=False,error='そのログは扱えません'),400
  handlers=_handlers_for(name)
@@ -523,7 +524,7 @@ def rotate_now():
 
 @bp.post('/api/logs/clear')
 def clear_log():
- name=(request.get_json(silent=True) or {}).get('file') or 'app.log'
+ name=body({'file': str}, silent=True, strict=True).text('file') or 'app.log'
  path=_resolve(name)
  if path is None:return jsonify(ok=False,error='そのログは扱えません'),400
  def do():
@@ -541,11 +542,11 @@ def _rewrite(path,keep):
 def delete_lines():
  """選んだ件を消す。**送られてくるのは物理行の集合**で、畳んだ続きの行
  (トレースバック)も含まれている。見出しだけ消して中身が残らないように。"""
- data=request.get_json(silent=True) or {}
- name=data.get('file') or ''
+ data=body({'file': str, 'lines': list}, silent=True, strict=True)
+ name=data.text('file')
  path=_resolve(name)
  if path is None:return jsonify(ok=False,error='そのログは扱えません'),400
- remove=set(data.get('lines') or [])
+ remove=set(data.items_of('lines'))
  if not remove:return jsonify(ok=True,removed=0)
  def do():
   lines=path.read_text(encoding='utf-8',errors='replace').splitlines()
@@ -560,8 +561,11 @@ def delete_lines():
 def delete_old():
  """指定日数より前の件を消す。**件の単位で消す**ので、続きの行だけが
  取り残されることはない(日時の無い行は直前の件の運命に従う)。"""
- data=request.get_json(silent=True) or {}
- name=data.get('file') or ''
+ # `days`は`any`のまま受けて読めなければ30へ倒す——**今までどおり**
+ # （`int`で宣言すると読めない値が例外になり、このルートは`api_guard`を
+ # 持たないので500になる。断り方を変えない・§9.132）。
+ data=body({'file': str, 'days': any_}, silent=True)
+ name=data.text('file')
  path=_resolve(name)
  if path is None:return jsonify(ok=False,error='そのログは扱えません'),400
  try:days=int(data.get('days') or 30)

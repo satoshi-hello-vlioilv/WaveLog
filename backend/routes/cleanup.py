@@ -7,9 +7,10 @@
 ——未宣言はfail-open(素通し)で、閲覧モードの端末からも消せてしまう
 (`tests/test_modeguard.py`が機械で見張る)。
 """
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify
 
 from .. import file_cleanup
+from .body import body, flag
 
 bp = Blueprint('cleanup', __name__)
 
@@ -28,14 +29,12 @@ def cleanup_survey():
 @bp.post('/api/cleanup/run')
 def cleanup_run():
  """消す。`dryRun`なら数えるだけ(押す前に何件消えるかを出すため・§9.193)。"""
- x = request.get_json(silent=True) or {}
- keys = x.get('categories') or []
- if not isinstance(keys, list):
-  keys = []
+ x = body({'categories': list, 'dryRun': flag}, silent=True, strict=True)
+ keys = x.items_of('categories')
  unknown = [k for k in keys if k not in {c['key'] for c in file_cleanup.CATEGORIES}]
  if unknown:
   return jsonify(error='知らない種別です: ' + '、'.join(str(k) for k in unknown)), 400
  try:
-  return jsonify(file_cleanup.run(keys=keys, dry_run=bool(x.get('dryRun'))))
+  return jsonify(file_cleanup.run(keys=keys, dry_run=x.flag('dryRun')))
  except Exception as e:
   return jsonify(error=str(e)), 500

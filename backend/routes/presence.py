@@ -8,7 +8,7 @@
 編集可否とは別の軸なので、閲覧モードの端末でも開発者なら切断できる
 （`access_mode._WRITE_ALLOWED_MODES`でこの段に3モードとも許してある）。
 """
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify
 
 from .. import presence
 from ..access_mode import current_login_id, current_pc_name, current_permission_flags, get_mode
@@ -16,6 +16,7 @@ from ..db_access import DBS, connect
 from ..repositories.master_repo import (ROLE_DEFAULT, ROLES, permission_flags,
                                         role_can, role_capabilities)
 from ..quiet import quiet
+from .body import body
 
 bp = Blueprint('presence', __name__)
 
@@ -72,8 +73,8 @@ def presence_list():
 
 @bp.post('/api/presence/disconnect')
 def presence_disconnect():
-    x = request.get_json(force=True) or {}
-    key = str(x.get('key') or '').strip()
+    x = body({'key': str, 'reason': str}, strict=True)
+    key = x.text('key')
     if not key:
         return jsonify(error='切断する端末を選んでください。'), 400
     me = _me()
@@ -97,7 +98,7 @@ def presence_disconnect():
         # ここまで来たら「区分そのものは切断できるが、相手が上位」の場合だけ。
         return jsonify(error=f'「{target_role}」の端末は切断できません'
                              f'（この端末は「{me["role"]}」です）。'), 403
-    if not presence.disconnect(key, me['login'], me['pc'], str(x.get('reason') or '')):
+    if not presence.disconnect(key, me['login'], me['pc'], x.text('reason')):
         return jsonify(error='切断の指示を書けませんでした（共有の置き場を確認してください）。'), 503
     return jsonify(ok=True, key=key, cooldownSec=presence.REVOKE_COOLDOWN_SEC)
 
@@ -105,8 +106,8 @@ def presence_disconnect():
 @bp.post('/api/presence/allow')
 def presence_allow():
     """切断を取り消す。**同じ権限で判定する**——切れる相手は戻せる。"""
-    x = request.get_json(force=True) or {}
-    key = str(x.get('key') or '').strip()
+    x = body({'key': str}, strict=True)
+    key = x.text('key')
     if not key:
         return jsonify(error='対象の端末を選んでください。'), 400
     me = _me()

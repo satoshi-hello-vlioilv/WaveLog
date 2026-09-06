@@ -7,6 +7,7 @@ from flask import Blueprint, request, jsonify
 
 from ..db_access import DBS, cfg, MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, qi, connect, cols, tables, ensure_backup_table, read_backup_rows, merged_backup_rows, records_path_for, records_dir_name, records_paths_all, records_read_paths, records_paths_holding, note_records_written, invalidate_backup_rows_cache, QUALITY_DB_KEY, path_exists_safe
 from ..access_mode import request_user_id, request_pc_name
+from .body import body, flag, any_
 # 選択肢の読み取りは §9.221 ③ で op.choice_values() の1本になった。
 # **読み取り関数と表名の定数は import ごと外す**——残すと grep で
 # read_operator_names が今もここに当たり、廃止した経路が現役だと誤読される
@@ -184,13 +185,13 @@ def measurement_choice_usage():
  画面は結果を待たないので、失敗しても測定は止めない(数が1つ増えないだけ)。
  """
  try:
-  x=request.get_json(force=True) or {}
-  equipment=str(x.get('equipment') or '').strip()
+  x=body({'equipment': str, 'picks': any_})
+  equipment=x.text('equipment')
   picks=x.get('picks') or {}
   if not equipment:return jsonify(error='設備名を指定してください。'),400
   if not isinstance(picks,dict):return jsonify(error='picksはオブジェクトで指定してください。'),400
   with connect(DBS['MASTER']['path']) as c:
-   n=choice_usage_bump(c,equipment,picks,str(x.get('user_id') or ''))
+   n=choice_usage_bump(c,equipment,picks,x.text('user_id'))
   return jsonify(ok=True,counted=n)
  except Exception as e:return jsonify(error=str(e)),500
 
@@ -210,7 +211,10 @@ def master_diagnostics():
 @bp.post('/api/measurement/backup')
 def backup():
  try:
-  x=request.get_json(force=True);required=['id','lotNo','payload'];missing=[k for k in required if not x.get(k)]
+  x=body({'id': str,'lotNo': str,'payload': any_,'equipment': str,'inspectionNo': str,
+          'castingNo': str,'status': str,'codec': str,'created_by': str,'created_pc': str,
+          'created_at': str,'updated_at_iso': str})
+  required=['id','lotNo','payload'];missing=[k for k in required if not x.get(k)]
   if missing:return jsonify(error='必須項目不足: '+','.join(missing)),400
   # **書き込む先はその行の設備が決める**(§9.258)。設備ごとに1ファイルなので、
   # 1台の測定端末が触るファイルは原則1つ——同じファイルを2台が変えることが
@@ -226,14 +230,14 @@ def backup():
    prev=cur.fetchone() or (None,None,None)
    # 画面が送ってきた値(レコードが持つ「入力を始めた」情報)を最優先し、
    # 次に既存行の値、最後にこの端末の値へ落とす。
-   created_by=str(x.get('created_by') or '').strip() or str(prev[0] or '').strip() or request_user_id(x)
-   created_pc=str(x.get('created_pc') or '').strip() or str(prev[1] or '').strip() or request_pc_name()
-   created_at=str(x.get('created_at') or '').strip() or (prev[2] if prev[2] else None)
+   created_by=x.text('created_by') or str(prev[0] or '').strip() or request_user_id(x)
+   created_pc=x.text('created_pc') or str(prev[1] or '').strip() or request_pc_name()
+   created_at=x.text('created_at') or (prev[2] if prev[2] else None)
    cur.execute('DELETE FROM [Web測定バックアップ] WHERE [記録ID]=?',[x['id']])
    # [更新時刻ISO]は**レコード自身の`updatedAt`**(§9.208 ⑤)。[更新日時]は
    # サーバーが押す現地時刻で、画面が持つUTCのISOとは物差しが違う——
    # 画面側の「新しい版あり」はこちらの列だけで判定する。
-   record_updated_at=str(x.get('updated_at_iso') or '').strip()[:40]
+   record_updated_at=x.text('updated_at_iso')[:40]
    cur.execute('INSERT INTO [Web測定バックアップ] ([記録ID],[設備],[ロット番号],[検査番号],[鋳造番号],[状態],[更新日時],[圧縮形式],[ペイロード],[登録者ID],[登録端末名],[更新者ID],[更新端末名],[登録日時],[更新時刻ISO]) VALUES (?,?,?,?,?,?,Now(),?,?,?,?,?,?,?,?)',
                [x['id'],x.get('equipment',''),x.get('lotNo',''),x.get('inspectionNo',''),x.get('castingNo',''),
                 x.get('status','編集中'),x.get('codec','delimiter-v1'),x['payload'],
@@ -275,7 +279,7 @@ def backup_delete():
  (端末側の削除は既に済んでおり、ここで失敗にしても再送で解決しないため)。
  """
  try:
-  x=request.get_json(force=True) or {}
+  x=body({'ids': any_, 'id': any_})
   ids=x.get('ids')
   if ids is None:
    one=x.get('id')
@@ -431,8 +435,8 @@ def records_split():
  (記録IDごとに新しい方を採る)。以後その記録を保存し直せば、置き去りは
  backup()が片付ける。
  """
- x=request.get_json(force=True) or {}
- apply=bool(x.get('apply'))
+ x=body({'apply': flag})
+ apply=x.flag('apply')
  if RECORDS_SHARE_DIR is None:
   return jsonify(error='測定データの共有の置き場が設定されていません。'
                        'マスタ管理 > 測定データの保存で置き場を決めて、アプリを再起動してください。'),400

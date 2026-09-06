@@ -21875,3 +21875,108 @@ Pythonは**構文木**で上の定義どおりに数える（字で探すと`exc
 回した網: サーバー側の網（`test_dblayer`・`test_pcname`・`test_mastershare`・
 `test_dbmirror`・`test_srcread`・`test_recmirror`・`test_modeguard`ほか）と
 画面側の主要な網。**フルスイートは回していない。**
+
+---
+
+## §9.330 画面から来るJSONは `body(spec)` の1つの型で読む（REVIEW 3-3）
+
+### 何が問題だったか
+
+ルート層の100箇所が **`request.get_json(force=True) or {}` を書き写し**、
+そこから値を手で組み立てていた。
+
+```python
+x = request.get_json(force=True) or {}
+name = str(x.get('name') or '').strip()
+enabled = bool(x.get('enabled'))
+```
+
+この書き方は3つのことを同時に壊す。
+
+1. **「送っていない」と「空で送った」が入口で混ざる。** `or ''` は `None` を
+   空文字へ倒すので、repo 側の「渡した鍵だけ書く」（§9.212 ②）が成り立たない
+   ——**触っていない設定が空で上書きされる**という、いちばん多い壊れ方
+   （§9.113／§9.212 ②／§9.287-H／§9.320-E で数えて8度目）の入口がここ。
+2. **綴りの間違いが黙って捨てられる。** `x.get('enabld')` は `None` を返す
+   だけで誰も何も言わない。設定は保存できて盤にも出るのに、**紙も画面も
+   1pxも変わらない**（§9.296 ③と同じ顔）。
+3. **そのルートが何を読むのかが、本文を全部読まないと分からない。**
+   下請けへ `x` を渡していれば、下請けまで追わないと分からない。
+
+### どうしたか
+
+窓口は `backend/routes/body.py` の **`body(spec)` 1箇所**。
+
+```python
+x = body({'name': str, 'order': int, 'enabled': flag, 'rows': list})
+x.name          # 前後の空白を落とした文字列。送っていなければ None
+x.flag('enabled')   # 呼び名（無効/出さない…）も真偽へ（§9.324 R4 の flags.flag_of）
+x.given()       # 送った鍵だけ（repo の「渡した鍵だけ書く」へそのまま渡せる）
+'name' in x     # 本文に在ったか（値が空でも True）
+```
+
+**約束は5つ。**
+
+- **`None` は `None` のまま。** 空文字へ倒さない（§9.212 ②）。
+- **`spec` に書いた鍵しか読めない。** 綴りを間違えると `x.get('enabld')` は
+  spec に無いので網が落とす（実行時ではなく**書いた時点**で捕まる）。
+- **数で読めない値は理由付きで断る**（`ValueError`）——`api_guard`（§9.324 R2）が
+  400 にして画面へ返すので、**黙って 0 として保存しない**。
+- **知らない鍵は既定では通す。** マスタ管理の汎用フォームは **GET が返した1行を
+  丸ごと POST し返す**ので、サーバーが計算して返した項目（`active`・
+  `capability`・`loaded`・`plannedPath`…）が必ず混ざる。**既定で断ると全部の
+  マスタ画面が保存できなくなる**（`test_dsrestart` が実際にそれで落ちた）。
+  断ってよいのは、画面が手で組んだ本文を受けるルートだけ——そこは
+  **`strict=True` と明示する**（`cleanup`・`presence`・`logs`・`tables` の一部）。
+- **`user_id`／`pc_name`（`IDENTITY_KEYS`）は spec に書かなくてよい。**
+  「誰が・どの端末で」はどのルートも同じように受け取る（§9.180）。
+
+**`silent=True` を既定にしないこと。** `get_json(force=True)` は壊れた JSON を
+400 で断り、`get_json(silent=True)` は `None` を返す——**断るべき場面で
+「1つも送られていない」と読み替えると、空で上書きが起きる**。既に
+`silent` で書かれていたルートだけそのまま `silent=True` で移した（§9.132）。
+
+### 網（`tests/test_body.py`）
+
+1. `backend/routes` に **`request.get_json` の直呼びが無い**（窓口だけが呼ぶ）。
+2. **ルートが読む鍵は spec に宣言されている。**
+3. spec を書けない本文（鍵が実行時に決まる）は `body({})` と書き、
+   **理由付きの一覧 `FREE_SPEC`** に載っている（理由の書けないものは載せない）。
+   いま2件——パス設定の保存（鍵は設定の表と登録済みデータソースから決まる）と、
+   作業予定の共通処理 `_write_response`（読むのは素性と、中継へ渡す生の本文だけ）。
+4. `Body` の約束（上の5つ）。
+5. 網そのものが素通りしないこと。
+
+**②を数えるには「本文を渡した先」まで辿ること。** 渡し方は2通りあり
+（`x=body(...)` してから `_save(x)` と、`_save(body(...))` とその場で渡す）、
+**片方だけ辿る網は、もう片方の書き方をしているルートを素通りさせる**
+——実際に、先に書いた網は `f(x)` しか辿らず、`f(body(...))` で書かれていた
+登録ルート5本の宣言漏れを1つも数えなかった。
+
+**呼び名（`text_or`）は展開すること。** `text_or(x,'enabled')` は
+`enabledText` と `enabled` の**両方**を読む（§9.324 R4）。展開しない網では
+`enabledText` が spec に無くても通り、**呼び名で送る汎用フォームだけが黙って
+既定へ倒れる**——設定が「保存できているのに効かない」に見える。
+
+**この2つは机上の心配ではない。** 網を強めた時点で、変換で入れてしまった
+実際の宣言漏れが5件出た（操業データ項目の `inlineAdd`／`inlineAddText`＝
+§9.323 ① の「測定画面から選択肢マスタへ足せる」経路と、選択肢・帳票ブロック・
+ロール・親子リンクの `enabled`／`enabledText`）。**どれも「保存は通るのに
+効かない」形**で、画面からは見分けが付かない。
+
+### 結果
+
+| | 前 | 後 |
+|---|---|---|
+| `request.get_json` の直呼び（`body.py` 以外） | 100 | **0** |
+| 鍵を宣言しているルート | 0 | **100** |
+| 宣言できない本文（理由付き） | — | 2 |
+
+**振る舞いは変えていない**（§9.132）——`force`/`silent` の別も、
+`str(...).strip()` の結果も、`bool(...)` の結果も、鍵ごとにそのまま移した。
+
+回した網: `test_body`・`test_crudroutes`・`test_opchoice`・`test_roleperm`・
+`test_savechip`・`test_rollio`・`test_cleanup`・`test_rawmaster`・`test_storage`・
+`test_dscap`・`test_datasource`・`test_logs`・`test_pyflakes`・`test_apiguard`・
+`test_flags`・`test_modeguard` と、画面側の主要な網。
+**フルスイートは回していない。**

@@ -31,6 +31,7 @@ from ..db_access import (
  SIKALOT_SOURCE, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, SCHEDULE_SHARE_PATH,
 )
 from ..access_mode import request_user_id
+from .body import body, flag, any_
 from ..quiet import quiet
 
 bp=Blueprint('path_config',__name__)
@@ -249,7 +250,10 @@ def path_config_master_get():
 @bp.post('/api/path-config-master')
 def path_config_master_update():
  try:
-  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  # 鍵は`_PATH_CONFIG_*_FIELDS`と、登録済みデータソースぶんの`<キー>_path`
+  # ——**実行時にしか分からない**ので spec では宣言できない。
+  x=body({})
+  uid=request_user_id(x)
   errors=[]
   # ---- 選択肢を持つ設定は1つの表で受ける(§9.208 ⑨) ----
   # 以前は`sikalot_source`と`rne_extract_enabled`だけを名指しで受けており、
@@ -545,13 +549,15 @@ def _purpose_conflict(cur,purpose,exclude_id=None):
 @api_guard('データソース保存失敗')
 def data_source_master_save():
  from ..db_access import ensure_data_source_table
- x=request.get_json(force=True) or {};uid=request_user_id(x)
- key=str(x.get('key') or '').strip().upper()
+ x=body({'id': any_,'key': str,'label': str,'rne': str,'table': str,'output': str,
+         'share': str,'preferred': str,'purpose': str,'order': any_,'enabled': any_,
+         'listed': any_,'mode': any_,'readMode': any_,'overridePath': any_});uid=request_user_id(x)
+ key=x.text('key').upper()
  if not _KEY_RE.match(key):
   return jsonify(error='キーは半角英数と _ で1〜40文字にしてください（一覧のURLに使うため）。'),400
  if key=='MASTER':
   return jsonify(error='MASTER はマスタDB自身に予約されています。別のキーにしてください。'),400
- label=str(x.get('label') or '').strip() or key
+ label=x.text('label') or key
  purpose=_purpose_of(x)
  path=DBS['MASTER']['path']
  with connect(path,False) as c:
@@ -598,7 +604,9 @@ def data_source_master_update():
     マスタ管理画面の「編集」は元からこのURLへPOSTしており、ルートが無い
     あいだは404で弾かれていた(設備停止マスタと同じ取りこぼし)。"""
  from ..db_access import ensure_data_source_table
- x=request.get_json(force=True) or {};uid=request_user_id(x)
+ x=body({'id': any_,'key': str,'label': str,'rne': str,'table': str,'output': str,
+         'share': str,'preferred': str,'purpose': str,'order': any_,'enabled': any_,
+         'listed': any_,'mode': any_,'readMode': any_,'overridePath': any_});uid=request_user_id(x)
  sid=x.get('id')
  if sid is None or str(sid).strip()=='':return jsonify(error='更新対象IDがありません。'),400
  sid=int(sid)
@@ -652,7 +660,9 @@ def data_source_master_probe():
 
     **読むだけ**で、マスタには何も書かない。"""
  try:
-  x=request.get_json(force=True) or {}
+  x=body({'id': any_,'key': str,'label': str,'rne': str,'table': str,'output': str,
+         'share': str,'preferred': str,'purpose': str,'order': any_,'enabled': any_,
+         'listed': any_,'mode': any_,'readMode': any_,'overridePath': any_})
   from ..db_access import source_read_mode,_source_path,source_override_key
   key=str(x.get('key') or '').strip().upper() or 'PROBE'
   entry={'key':key,'label':str(x.get('label') or '').strip() or key,
@@ -679,7 +689,7 @@ def data_source_master_probe():
 @api_guard('データソース削除失敗')
 def data_source_master_delete():
  from ..db_access import ensure_data_source_table
- x=request.get_json(force=True) or {};uid=request_user_id(x)
+ x=body({'id': any_,'key': str});uid=request_user_id(x)
  # 画面の削除ボタンは他マスタと同じく id を送る。キー指定も受け付ける
  # (APIを直接叩く運用・以前の呼び出し方との互換)。
  sid=x.get('id')
@@ -726,7 +736,7 @@ def storage_layout_local_config():
  ファイルが要る、という話であって、書く側を画面から塞ぐ理由は無い。
  塞いだままにしていたので、置き場の設定だけが画面の外に残っていた。
  """
- x=request.get_json(force=True) or {}
+ x=body({k: str for k in storage_layout.LOCAL_CONFIG_KEYS})
  updates={k:x[k] for k in storage_layout.LOCAL_CONFIG_KEYS if k in x}
  if not updates:
   return jsonify(error='変える項目がありません。'),400
@@ -754,10 +764,10 @@ def storage_layout_prepare():
  ユーザーに確認する方式にして欲しい」——確認できる材料（何を作るのか）を
  先に返し、`apply:true` で初めて作る。
  """
- x=request.get_json(force=True) or {}
+ x=body({'path': str,'mode': str,'apply': flag})
  try:
-  plan=storage_layout.prepare_path(x.get('path'),str(x.get('mode') or 'dir'),
-                                   apply=bool(x.get('apply')))
+  plan=storage_layout.prepare_path(x.get('path'),x.text('mode') or 'dir',
+                                   apply=x.flag('apply'))
  except storage_layout.LocalConfigError as e:
   return jsonify(error=str(e)),400
  except Exception as e:
