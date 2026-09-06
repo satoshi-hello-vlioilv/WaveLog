@@ -69,7 +69,7 @@ run('test_scbalance: 一覧とスケジュールの釣り合い',async({page,rec
  await page.evaluate(()=>document.documentElement.setAttribute('data-ui-size','md'));
  await paint();
  rec('横スクロールバーが出ない',await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1));
- await page.screenshot({path:'sched_balanced.png'});
+ await page.screenshot({path:require('path').join(require('os').tmpdir(),'sched_balanced.png')  /* 作業ツリーへ置き土産を残さない（§9.349） */});
 
  /* ---- 縦の間隔(§9.84) ----
     「リストの間隔が広いものと狭いものがあってバランスが悪い」という指摘。

@@ -132,7 +132,7 @@ let b=null;
  const unlocked=(await plan()).entries.find(e=>String(e.id)===targetRow);
  rec('もう一度押すとロックが外れ通常の並びへ戻る',!!unlocked&&!unlocked.fixedStart,String(unlocked&&unlocked.fixedStart));
 
- await page.screenshot({path:'sched_cat2.png'});
+ await page.screenshot({path:require('path').join(require('os').tmpdir(),'sched_cat2.png')  /* 作業ツリーへ置き土産を残さない（§9.349） */});
  console.log('\n=== SUMMARY ===');
  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
  f.forEach(x=>console.log(' -',x.n,x.d||''));
