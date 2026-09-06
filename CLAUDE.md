@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（484件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（487件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -263,10 +263,11 @@
 | 「記録した値」の並べ方は専用の盤が持つ | — | [§9.243](docs/decisions/9.243.md) |
 | 「既定へ戻す」は本当に空へ帰す | — | [§9.243](docs/decisions/9.243.md) |
 
-### 一覧と列（104件）
+### 一覧と列（105件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 条件を足す入口はボタン。検索欄の顔をした器を同時に2つ出さない | `test_filter.js` | [§9.345](docs/decisions/9.345.md) |
 | 読み込みの秒数は**遅いときだけ**出す。「遅い」の答えは`WL.slowLoadMs`の1箇所。チップを消しても内訳の入口は残す | `test_listcache.js` | [§9.340](docs/decisions/9.340.md) |
 | 関数の定義は1箇所 | `test_patchlint.py` | [§9.96](docs/decisions/9.96.md) |
 | どの列を出すかはサーバーが決めない | — | [§9.165](docs/decisions/9.165.md) |
@@ -582,10 +583,11 @@
 | モーダルは背景クリックで閉じない | `test_modalkeep.js` | [§9.221](docs/decisions/9.221.md) |
 | マスタの1行を直す窓は汎用モーダル1枚 | — | [§9.222](docs/decisions/9.222.md) |
 
-### 見た目（CSS・寸法・色）（42件）
+### 見た目（CSS・寸法・色）（43件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 色帯は「面」とセットのときだけ出す。面の無い帯は括弧に見え、列の罫線とも競合する | `test_density.js` | [§9.344](docs/decisions/9.344.md) |
 | 所要時間の書き方は`WL.duration`の1箇所。既定は「分」、切り替えは「表示」バッジの1枚に畳む。時点（〜前／〜後）と間隔（〜ごと）は別の軸 | `test_patchlint.py`・`test_uisize.js` | [§9.341](docs/decisions/9.341.md) |
 | 状態チップの色は「正常＝中立／設定要＝橙／赤は取り消せない操作だけ」。同じ橙に2つの意味を持たせない | `test_headbar.js` | [§9.338](docs/decisions/9.338.md) |
 | 寸法は文字サイズから作る | `test_fit.js`・`test_typescale.js` | [§9.90](docs/decisions/9.90.md) |
@@ -629,10 +631,11 @@
 | 「何で選ばせるか」と「どう見えるか」は別の軸 | — | [§9.223](docs/decisions/9.223.md) |
 | 公差外・基準外は確認カードの色で気づかせる。NGの記録はその行の中 | `test_ngcard.js` | [§9.242](docs/decisions/9.242.md) |
 
-### 検証（テスト）（13件）
+### 検証（テスト）（14件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| `offsetParent`で「見えているか」を測らない。`position:fixed`と未組み立ての両方で`null`になる | — | [§9.346](docs/decisions/9.346.md) |
 | テストが開く／取りに行く`static/js`の道は領域つきで実在するURL（`/static/js/…`）。取れた中身が短ければ落とす | `test_loadorder.py` | [§9.334](docs/decisions/9.334.md) |
 | テストは3層（`--pure`＝サーバー不要・並列／`--smoke`＝各1本／全件は指示があったときだけ）。一覧の宣言は`run_all.sh`の1箇所 | `test_layers.py` | [§9.337](docs/decisions/9.337.md) |
 | 更新履歴は版ごとに「利用者向け／開発の記録（`'dev':True`）」。判定は`changelog_data.is_dev()`の1箇所、画面は`e.dev`を読むだけ | `test_changelog.py`・`test_changelogui.js` | [§9.336](docs/decisions/9.336.md) |

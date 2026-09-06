@@ -472,7 +472,13 @@
    面のごく淡い色と左端の色帯で状態を示し、高さは文字なりにする。 */
 .sc-row-cat{
  display:inline-flex;align-items:center;gap:var(--gap-hair);justify-self:start;max-width:100%;
- padding:0 var(--space-1);border-radius:var(--radius-xs);border-left:2px solid transparent;
+ padding:0 var(--space-1);border-radius:var(--radius-xs);
+ /* **帯は面とセットのときだけ**（§9.344）。面の無い区分（予定・完了）に
+    2pxの縦棒だけを残すと、角丸のせいで開き括弧`[`に見え、しかも同じ表に
+    ある列の区切り線と形が競合する。区分は文字と文字色で言い切っている
+    ので、帯は何も足していない（画面基準10）。帯を出すのは利用者が行の
+    色を選んだとき（`sc-rs-*`。必ず面を伴う）だけ。 */
+ border-left:0;
  /* **文字は小さくしない。** 区分もデータ列の1つなので、読める大きさ
     (--fs-sm)を保つ(tests/test_scbalance.js が一覧のセルとの関係を固定
     している)。詰めるのは箱の側——高さ・枠線・丸みを外すだけで足りる。 */
@@ -482,8 +488,8 @@
 }
 .sc-row-cat i{font-style:normal;font-size:var(--tbl-fs);line-height:1}
 .sc-cat-doing{background:var(--success-bg);color:var(--success);border-left-color:var(--success)}
-.sc-cat-done{background:transparent;color:#9caeb4;border-left-color:#cfdde0}
-.sc-cat-planned{background:transparent;color:#0c5d67;border-left-color:var(--teal)}
+.sc-cat-done{background:transparent;color:#9caeb4}
+.sc-cat-planned{background:transparent;color:#0c5d67}
 .sc-cat-cancel{background:var(--danger-bg);color:var(--danger);border-left-color:var(--danger)}
 .sc-cat-stop{background:var(--warn-bg);color:var(--warn-fg);border-left-color:var(--warn-border)}
 /* 空の日付・直の枠(§9.238 ②)。作業でも停止でもない「場所取り」なので、
@@ -1614,14 +1620,16 @@
 .sp-b-wk-ng{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
 .sp-b-wk-unknown{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
 .sp-b-wk-na{color:var(--muted)}
-/* 区分は画面(`.sc-row-cat`)と同じ「淡い面＋左の色帯」。丸は控えめに。 */
-.sp-badge[class*="sp-b-cat-"]{border-radius:var(--radius-xs);border-left-width:0.6mm;border-left-style:solid}
-.sp-b-cat-doing{background:var(--success-bg);color:var(--success);border-left-color:var(--success)}
-.sp-b-cat-done{color:var(--muted);border-left-color:var(--line-mid)}
-.sp-b-cat-planned{color:var(--teal-dark);border-left-color:var(--teal)}
-.sp-b-cat-cancel{background:var(--danger-bg);color:var(--danger);border-left-color:var(--danger)}
-.sp-b-cat-stop{background:var(--warn-bg);color:var(--warn-fg);border-left-color:var(--warn-border)}
-.sp-b-cat-comment{color:var(--ink-3);border-left-color:var(--line-mid)}
+/* 区分は画面(`.sc-row-cat`)と同じ見え方にする（§9.237）。**帯は付けない**
+   （§9.344）——画面から外したものを紙にだけ残すと、同じ表の同じ列が
+   画面と紙で違う顔になる。淡い面と文字色は画面と同じ。 */
+.sp-badge[class*="sp-b-cat-"]{border-radius:var(--radius-xs)}
+.sp-b-cat-doing{background:var(--success-bg);color:var(--success)}
+.sp-b-cat-done{color:var(--muted)}
+.sp-b-cat-planned{color:var(--teal-dark)}
+.sp-b-cat-cancel{background:var(--danger-bg);color:var(--danger)}
+.sp-b-cat-stop{background:var(--warn-bg);color:var(--warn-fg)}
+.sp-b-cat-comment{color:var(--ink-3)}
 /* 見積が暫定(実績がまだ無い)であることは画面と同じ薄い斜体で示す(§9.114)。
    脚の注記「~の付いた見積は暫定」と対になる。 */
 .sp-est-prov{color:var(--muted);font-style:italic}
@@ -1807,7 +1815,9 @@
 .sc-rs-brown {--rs-fg:var(--rs-brown); --rs-bg:var(--rs-brown-bg);   --rs-line:var(--rs-brown-border)}
 .sc-rs-pink  {--rs-fg:var(--rs-pink);  --rs-bg:var(--rs-pink-bg);    --rs-line:var(--rs-pink-border)}
 /* 区分のセルは面まで塗る。行の地はごく淡く(色相だけが分かればよい)。 */
-.sc-row-cat[class*="sc-rs-"]{background:var(--rs-bg);color:var(--rs-fg);border-left-color:var(--rs-line)}
+/* 行の色を選んだときだけ帯を出す（§9.344）。ここは必ず面が付くので、
+   帯は「面の左端」として読める。 */
+.sc-row-cat[class*="sc-rs-"]{background:var(--rs-bg);color:var(--rs-fg);border-left:2px solid var(--rs-line)}
 .sc-row-line[class*="sc-rs-"]{background:color-mix(in srgb, var(--rs-bg) 55%, var(--surface))}
 .sc-row-line[class*="sc-rs-"]:hover{background:var(--rs-bg)}
 /* 同梱の線画アイコン。文字と同じ高さで並ぶよう、文字サイズを基準にする。 */

@@ -57,6 +57,50 @@ let b=null;
                            localStorage.setItem('AccessMeasurementUserId','tester')});
   await openList();
 
+  /* ---- 0) 条件を足す入口は「検索欄」ではなく「ボタン」（§9.345） ----
+     以前はここが常時開いた入力欄（実測1071px）で、ヘッダーの「一覧を検索」
+     （行の全文検索）と**同じ顔なのに意味が違う**ものが同じ画面に2つ並んで
+     いた。**機能は消していない**——押すと同じ欄が出る。 */
+  const condUi=()=>page.evaluate(()=>{
+   const g=id=>document.getElementById(id);
+   const 見える=e=>!!(e&&!e.hidden&&e.offsetParent);
+   /* 候補の箱は`position:fixed`。**`offsetParent`で見えるかを測らない**
+      ——固定配置の要素は`offsetParent`が必ず`null`になるので、出ていても
+      「見えない」と読めてしまう（この網自身が1度それで落ちた）。 */
+   const sg=g('filterSuggest');
+   return {ボタン:見える(g('filterAddCond')),欄:見える(g('filterTokenInput')),
+           候補:!!sg&&!sg.hidden&&sg.childElementCount>0,
+           一覧の検索欄:見える(g('search')),
+           焦点:document.activeElement&&document.activeElement.id,
+           字:(g('filterTokenSearch')||{}).value||''};
+  });
+  const c0=await condUi();
+  rec('はじめは「＋ 条件を追加」のボタンだけが出ている',
+      c0.ボタン===true&&c0.欄===false,JSON.stringify(c0));
+  /* ③の本体。**同じ顔の欄を2つ同時に出さない。** */
+  rec('検索欄の顔をした器は、同時にひとつだけ',
+      c0.一覧の検索欄===true&&c0.欄===false,JSON.stringify(c0));
+
+  await page.click('#filterAddCond');await settle(500);
+  const c1=await condUi();
+  rec('押すと欄が開き、そのまま打てる（焦点が乗る）',
+      c1.欄===true&&c1.ボタン===false&&c1.焦点==='filterTokenSearch',JSON.stringify(c1));
+  rec('開いた欄は器いっぱいに伸びない（中身なりの幅）',
+      await page.evaluate(()=>{
+       const w=document.getElementById('filterTokenInput').getBoundingClientRect().width;
+       const row=document.querySelector('.filter-search-row').getBoundingClientRect().width;
+       return w>0&&w<row*0.5;}),
+      await page.evaluate(()=>Math.round(document.getElementById('filterTokenInput').getBoundingClientRect().width)+'px'));
+
+  await page.fill('#filterTokenSearch','ロット');await settle(600);
+  rec('打つと候補が出る（機能は消えていない）',(await condUi()).候補===true);
+  await page.keyboard.press('Escape');await settle(400);
+  const c2=await condUi();
+  /* 畳むときは**打ちかけの字も捨てる**——条件はまだ足っていないので、
+     残すと次に開いたとき「何か効いている」と読める。 */
+  rec('Escで畳み、打ちかけの字も残さない',
+      c2.ボタン===true&&c2.欄===false&&c2.字==='',JSON.stringify(c2));
+
   /* ---- 1) 適用と登録が別々に効く ---- */
   /* §9.286 ①: たまにしか使わない入口は`⋯`の浮きメニューへ畳んだ。**消していない**ので、開いてから押す。 */
   await page.click('#filterMoreBtn');await settle(200);

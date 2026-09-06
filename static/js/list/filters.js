@@ -1118,8 +1118,11 @@
           <svg class="fb-cond-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M1.6 2.6h12.8L9.4 8.2v4.3l-2.8 1.6V8.2z"/></svg>
           <b id="filterCount">0件</b><i aria-hidden="true">▾</i>
         </button>
-        <div class="filter-token-input" id="filterTokenInput">
-          <input class="filter-token-search" id="filterTokenSearch" autocomplete="off" placeholder="検索して条件を追加">
+        <button id="filterAddCond" class="fb-addcond-btn" type="button"
+                aria-expanded="false" aria-controls="filterTokenInput"
+                title="列や値を検索して、この一覧へ条件を足します">＋ 条件を追加</button>
+        <div class="filter-token-input" id="filterTokenInput" hidden>
+          <input class="filter-token-search" id="filterTokenSearch" autocomplete="off" placeholder="列名・値で検索">
         </div>
         <div class="filter-suggest" id="filterSuggest" hidden></div>
         <span class="filter-inline-loading" id="filterInlineLoading" hidden><span class="mini-spinner"></span><span id="filterInlineLoadingText">読込中</span></span>
@@ -1362,7 +1365,7 @@
       ? '効いている条件 '+n+'件\n'
         +rows.map(r=>r.kind==='adhoc'?`その場フィルタ: ${r.label}`:condFullText(r.f)).join('\n')
         +'\n押すと中身を確かめたり、外したりできます。'
-      : '効いている条件はありません。右の「検索して条件を追加」か「その場フィルタ」で絞り込めます。';
+      : '効いている条件はありません。「＋ 条件を追加」か「その場フィルタ」で絞り込めます。';
     if(condMenuEl)openCondMenu($('#filterCondBtn'),{keep:true});
   }
   /* 中身を確かめる浮きメニュー。**器の外（body直下）へ`position:fixed`で
@@ -1708,22 +1711,43 @@
     suggestFlat.forEach((c,i)=>c.classList.toggle('active',i===suggestIndex));
     suggestFlat[suggestIndex]?.scrollIntoView({block:'nearest'});
   }
+  /* 条件を足す入口は**ボタン**（§9.345）。以前は常時開いた1071pxの入力欄で、
+     ヘッダーの「一覧を検索」（行の全文検索）と**同じ顔なのに意味が違う**
+     ものが同じ画面に2つ並んでいた。押したときだけ欄を出す。 */
+  function openCondSearch(){
+    const btn=$('#filterAddCond'),box=$('#filterTokenInput'),input=$('#filterTokenSearch');
+    if(!btn||!box||!input)return;
+    btn.hidden=true;btn.setAttribute('aria-expanded','true');
+    box.hidden=false;input.focus();
+  }
+  function closeCondSearch(){
+    const btn=$('#filterAddCond'),box=$('#filterTokenInput'),input=$('#filterTokenSearch');
+    if(!btn||!box||!input)return;
+    input.value='';box.hidden=true;box.classList.remove('focus-within');
+    btn.hidden=false;btn.setAttribute('aria-expanded','false');
+    const suggest=$('#filterSuggest');if(suggest)suggest.hidden=true;
+  }
   function bindTokenSearch(){
-    const input=$('#filterTokenSearch'),box=$('#filterTokenInput'),suggest=$('#filterSuggest');if(!input)return;
+    const input=$('#filterTokenSearch'),box=$('#filterTokenInput');if(!input)return;
+    $('#filterAddCond')?.addEventListener('click',openCondSearch);
     input.addEventListener('focus',()=>{box.classList.add('focus-within');renderSuggest()});
     input.addEventListener('input',()=>renderSuggest());
     input.addEventListener('keydown',async e=>{
       if(e.key==='ArrowDown'){e.preventDefault();moveSuggest(1)}
       else if(e.key==='ArrowUp'){e.preventDefault();moveSuggest(-1)}
       else if(e.key==='Enter'){e.preventDefault();(suggestFlat[suggestIndex]||suggestFlat[0])?.click()}
-      else if(e.key==='Escape'){suggest.hidden=true}
+      else if(e.key==='Escape'){closeCondSearch()}
       else if(e.key==='Backspace'&&!input.value&&S.genericFilters.length){
         const last=S.genericFilters[S.genericFilters.length-1];
         if(isLockedFilter(last)&&!(await confirmRemoveLockedFilter(last)))return;
         S.genericFilters.pop();S.page=1;renderGenericFilterBar();load();
       }
     });
-    const row=input.closest('.filter-search-row')||box;document.addEventListener('click',e=>{if(!row.contains(e.target)){box.classList.remove('focus-within');if(suggest)suggest.hidden=true}});
+    /* 外を押したら畳む。**打ちかけの字も捨てる**——条件はまだ1つも足って
+       いないので、残しておく値打ちが無い（残すと、次に開いたとき前の字が
+       出ていて「何か効いている」と読める）。 */
+    const row=input.closest('.filter-search-row')||box;
+    document.addEventListener('click',e=>{if(!row.contains(e.target))closeCondSearch()});
   }
 
   /* ==========================================================

@@ -121,6 +121,34 @@ let b=null;
   rec('区分バッジが押せる部品ほどの高さを取っていない',
       !!cat&&cat.h<cat.ctl,cat?`${cat.h}px < ${cat.ctl}px`:'-');
 
+  /* **帯は面とセットのときだけ**（§9.344）。面の無い区分に2pxの縦棒だけを
+     残すと、角丸のせいで開き括弧`[`に見え、同じ表の列の区切り線とも形が
+     競合する。**全部の区分を見る**——1つだけ見ると、面のある「作業中」を
+     たまたま拾って素通りする。 */
+  const bands=await page.evaluate(()=>[...document.querySelectorAll('.sc-row-cat')].map(n=>{
+   const cs=getComputedStyle(n);
+   return {字:n.textContent.trim(),
+           面:cs.backgroundColor,
+           帯:Math.round(parseFloat(cs.borderLeftWidth)||0)};
+  }));
+  const 浮いた帯=bands.filter(b=>b.帯>0&&/rgba\(0, 0, 0, 0\)|transparent/.test(b.面));
+  rec('面を持たない区分に帯（左の縦棒）を出さない',
+      bands.length>0&&浮いた帯.length===0,
+      `${bands.length}件中 ${浮いた帯.length}件が浮いた帯: `
+      +浮いた帯.map(b=>b.字).join('・'));
+  /* 行の色を選んだときは、面と帯が揃って出る（帯そのものを捨てたのではない）。
+     実物の行を作らずCSSだけを測る——**規則が生きていることの確認**。 */
+  const styled=await page.evaluate(()=>{
+   const n=document.createElement('span');
+   n.className='sc-row-cat sc-rs-blue';n.textContent='見本';
+   document.body.appendChild(n);
+   const cs=getComputedStyle(n);
+   const r={面:cs.backgroundColor,帯:Math.round(parseFloat(cs.borderLeftWidth)||0)};
+   n.remove();return r;
+  });
+  rec('行の色を選んだときは面と帯が揃って出る',
+      styled.帯>0&&!/rgba\(0, 0, 0, 0\)/.test(styled.面),JSON.stringify(styled));
+
   /* 本題。幅を狭めても操作へ手が届くこと。
      **届かせ方が変わった**（§9.207、利用者の指示「操作ボタンの列固定は不要
      です。…代わりに右クリックメニューに操作と同等の機能を実装し…」）。
