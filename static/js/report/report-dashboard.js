@@ -4945,9 +4945,10 @@
    await rpPrintFrame(pagesHtml,title);
    return true;
   }catch(e){
-   /* **黙って落とさない**（§4）——今までの形で刷れることと、なぜそうなったかを言う。 */
-   if(typeof toast==='function')
-    toast('帳票だけの書類を作れなかったので、画面ごと印刷します（'+e.message+'）','warn');
+   /* **黙って落とさない**（§4）——今までの形で刷れることと、なぜそうなったかを言う。
+      **`toast` という関数は無い**（`showToast`）。`typeof` で囲ってあったので
+      例外にはならず、**断りの一言が一度も出ていなかった**（§9.354）。 */
+   showToast('画面ごと印刷します','帳票だけの書類を作れませんでした（'+e.message+'）');
    const prev=document.title;document.title=title;
    window.print();
    setTimeout(()=>{document.title=prev},500);

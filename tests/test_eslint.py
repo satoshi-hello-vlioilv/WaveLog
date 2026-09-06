@@ -140,6 +140,44 @@ def main(update=False):
         except FileNotFoundError:
             pass
 
+    # ---- 画面のJSは「呼んでいるのに無い」を落とす（§9.354、REVIEW 3-17） ----
+    # globals は `eslint.config.mjs` が**実物から作る**（どのファイルのトップレベルに
+    # 何があるか）。だから**IIFE で閉じた瞬間にその名前は globals から外れ**、外から
+    # 呼んでいれば `no-undef` が出る——5本を1本ずつ閉じる 3-17 を機械が守る。
+    # 実測（この仕組みを入れたとき）: `toast(...)`（正しくは `showToast`）が1件。
+    # `typeof` で囲ってあったので例外にならず、**断りの一言が一度も出ていなかった**。
+    probe2 = ROOT / 'static' / 'js' / '_undef_probe.js'
+    try:
+        probe2.write_text('function zzProbe(){ return zzNoSuchGlobal(1) }\nzzProbe();\n',
+                          encoding='utf-8')
+        f3 = run(cmd, ['static/js/_undef_probe.js'])
+        rules2 = [rule for msgs in f3.values() for rule, sev, _, _ in msgs if sev == 2]
+        rec('無い名前の呼び出しを no-undef で数える（閉じたファイルの中身を外から呼んだら落ちる）',
+            rules2 == ['no-undef'], rules2)
+    finally:
+        try:
+            probe2.unlink()
+        except FileNotFoundError:
+            pass
+    # 閉じたファイル（IIFE）が globals へ漏れていないこと——漏れると網が黙る
+    probe3 = ROOT / 'static' / 'js' / '_wrapped_probe.js'
+    probe4 = ROOT / 'static' / 'js' / '_caller_probe.js'
+    try:
+        probe3.write_text('(function(){\nfunction zzInside(){return 1}\nzzInside();\n})();\n',
+                          encoding='utf-8')
+        probe4.write_text('function zzOutside(){ return zzInside() }\nzzOutside();\n',
+                          encoding='utf-8')
+        f4 = run(cmd, ['static/js/_caller_probe.js'])
+        rules3 = [rule for msgs in f4.values() for rule, sev, _, _ in msgs if sev == 2]
+        rec('IIFE で閉じたファイルの中身は globals へ出ない（外から呼ぶと落ちる）',
+            rules3 == ['no-undef'], rules3)
+    finally:
+        for x in (probe3, probe4):
+            try:
+                x.unlink()
+            except FileNotFoundError:
+                pass
+
 
 if __name__ == '__main__':
     try:
