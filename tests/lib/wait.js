@@ -80,4 +80,32 @@ async function opSave(page,ms=15000){
    return (!m||m.hidden)&&/保存しました|できませんでした/.test(t)},null,ms);
 }
 
-module.exports={SETTLE,settle,until,booted,settleFlags,openSchedule,poll,opSave};
+/* 1行入力の窓（§9.342）に答える。素の`prompt()`をやめたので
+   `page.on('dialog')`では答えられない——**あの配線が残っているテストは、
+   窓が開いたまま待ち続けて時間切れになる**（実際に`test_colpreset`が
+   そうなった）。
+
+   窓は`confirmModal`の器を使い回すので、**閉じきるまで待ってから**次へ
+   進む（前の窓が消える前に次を開けると、入力欄が入れ替わって打った字が
+   どこへ行ったか分からなくなる）。 */
+async function answerPrompt(page,text,timeout=8000){
+ await page.waitForSelector('#appPromptInput',{timeout});
+ await page.fill('#appPromptInput',String(text));
+ await page.click('#appConfirmOk');
+ /* **`state:'hidden'`で待つこと。** 既定は`'visible'`なので
+    `'#appConfirmModal[hidden]'`は永久に一致しない（伏せた要素は
+    「見えない」ので、条件を満たした瞬間に待てなくなる）。 */
+ await page.waitForSelector('#appConfirmModal',{state:'hidden',timeout});
+}
+
+/* 確認の窓（§9.342）に答える。`page.on('dialog',d=>d.accept())`は素の
+   `confirm()`のための配線で、**もう何も受け取らない**——削除や解除を
+   押したテストは、窓が開いたまま次の待ちで時間切れになる。 */
+async function answerConfirm(page,ok=true,timeout=8000){
+ await page.waitForSelector('#appConfirmModal',{state:'visible',timeout});
+ await page.click(ok?'#appConfirmOk':'#appConfirmCancel');
+ await page.waitForSelector('#appConfirmModal',{state:'hidden',timeout});
+}
+
+module.exports={SETTLE,settle,until,booted,settleFlags,openSchedule,poll,opSave,
+                answerPrompt,answerConfirm};

@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（482件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（483件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -570,10 +570,11 @@
 | 紙に出すのは「帳票だけの1枚もの」 | `test_rpprint.js` | [§9.244](docs/decisions/9.244.md) |
 | 帳票ブロックの中身はマトリクスで並べられる | `test_blockbuild.js` | [§9.245](docs/decisions/9.245.md) |
 
-### 画面の土台（5件）
+### 画面の土台（6件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 窓は`confirmModal`／`alertModal`／`promptModal`の3つだけ。素の`alert`/`confirm`/`prompt`は呼ばない | `test_patchlint.py`・`test_modalkeep.js` | [§9.342](docs/decisions/9.342.md) |
 | `window.*`への新規公開は名前空間経由 | `test_globallint.py` | [決まり](docs/decisions/rules-misc.md) |
 | 画面のJSは領域フォルダ。綴りは1つ | `test_loadorder.py` | [§9.334](docs/decisions/9.334.md) |
 | 設定の窓は「決める順の番号付きの節」で、同じ値を2箇所に出さない | `test_eqsetup.js` | [§9.257](docs/decisions/9.257.md) |

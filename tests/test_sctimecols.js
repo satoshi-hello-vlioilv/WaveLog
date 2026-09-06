@@ -395,7 +395,6 @@ async function cleanup(){
      **見出しの言葉で書けること**が値打ち（`__date__`のような内側のキーを
      覚えさせない）。**確かめるときは実際に値が出ることまで見る**——
      列が増えただけなら、式が当たっていなくても通る。 */
-  page.on('dialog',d=>d.accept('計算テスト'));
   await openView();
   await page.click('#scContentModalBtn');
   await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:8000});
@@ -403,6 +402,8 @@ async function cleanup(){
   const addable=await page.evaluate(()=>!document.getElementById('lcAddCol').hidden);
   rec('スケジュール表でも「列を作る」が使える',addable===true,String(addable));
   await page.click('#lcAddCol');
+  /* 名前を聞く窓は素の`prompt()`ではない（§9.342）。開いた窓に打つ。 */
+  await require('./lib/wait.js').answerPrompt(page,'計算テスト');
   await page.waitForTimeout(500);
   await page.evaluate(()=>{
    const ta=document.getElementById('lcFormula');

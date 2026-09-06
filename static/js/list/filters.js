@@ -1042,16 +1042,12 @@
       document.addEventListener('keydown',onPresetEsc,true);
     });
   }
-  /* 組み合わせの名前を聞く小さな窓。**`prompt()`は使わない**（見た目を合わせ
-     られず、タブ全体を止める）。 */
-  async function askGroupName(seed){
-    const ok=await confirmModal({title:'組み合わせに名前を付ける',confirmLabel:'決める',
-      bodyHtml:'<label class="mm-field mm-w-lg"><span>プリセットの名前</span>'
-        +`<input type="text" id="fbGroupNameInput" autocomplete="off" placeholder="例: 今日の担当" value="${esc(seed||'')}"></label>`
-        +'<small class="mm-field-hint">同じ名前を付けた条件がひとまとまりのプリセットになり、'
-        +'絞り込みバーの「プリセット」から切り替えられます。</small>'});
-    const el=document.getElementById('fbGroupNameInput');
-    return ok?String(el&&el.value||'').trim():'';
+  /* 組み合わせの名前を聞く。**窓そのものは`promptModal`の1箇所**（§9.342）。 */
+  function askGroupName(seed){
+    return promptModal({title:'組み合わせに名前を付ける',confirmLabel:'決める',
+      label:'プリセットの名前',placeholder:'例: 今日の担当',value:seed||'',
+      hint:'同じ名前を付けた条件がひとまとまりのプリセットになり、'
+        +'絞り込みバーの「プリセット」から切り替えられます。'});
   }
   /* たまにしか使わない入口（条件を作る・登録一覧・よく使う条件・全解除）は
      `⋯`の中へ畳む。**要素はDOMに置いたまま**にして`hidden`だけを入切する

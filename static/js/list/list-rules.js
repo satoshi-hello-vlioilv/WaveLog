@@ -378,10 +378,8 @@
        esc(used.slice(0,4).map(u=>u.column).join('、'))}${used.length>4?' ほか':''}）。
       消すと、その列は<b>元の値のまま</b>表示されます。</p>`
    : '<p class="confirm-modal-message">このルールを使っている列は、元の値のまま表示されます。</p>';
-  const ok=typeof confirmModal==='function'
-   ? await confirmModal({eyebrow:'DELETE',title:`表示ルール「${ruleName}」を削除`,
-                         bodyHtml:where,confirmLabel:'削除する',cancelLabel:'やめる'})
-   : true;
+  const ok=await confirmModal({eyebrow:'DELETE',title:`表示ルール「${ruleName}」を削除`,
+                              bodyHtml:where,confirmLabel:'削除する',cancelLabel:'やめる'});
   if(!ok)return;
   try{
    const r=await api('/api/display-rule-master/delete',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -396,19 +394,14 @@
   }catch(e){showToast&&showToast('削除に失敗しました',e.message,5000)}
  }
 
- /* 名前を聞く。**prompt()を使わない**——素のダイアログは浮きウィンドウの
-    裏に出ることがあり、見た目もアプリの他の確認と揃わない。 */
- async function askName(){
-  if(typeof confirmModal!=='function')return '';
-  const ok=await confirmModal({
-   eyebrow:'NEW',title:'新しい表示ルール',
-   bodyHtml:`<p class="confirm-modal-message">複数の列から使い回すための名前を付けます。</p>
-    <input type="text" id="lrNewName" class="lr-name-input" maxlength="60"
-     placeholder="例: 有無フラグ、合否" autocomplete="off">`,
-   confirmLabel:'作る',cancelLabel:'やめる'});
-  const box=document.getElementById('appConfirmBody');
-  const v=box?String(box.querySelector('#lrNewName')?.value||'').trim():'';
-  return ok?v:'';
+ /* 名前を聞く。**窓そのものは`promptModal`の1箇所**（§9.342）——
+    以前はここに自前の小窓があり、同じ「名前を聞く」窓が画面ごとに
+    3つの見た目を持っていた。 */
+ function askName(){
+  return promptModal({eyebrow:'NEW',title:'新しい表示ルール',
+   message:'複数の列から使い回すための名前を付けます。',
+   label:'表示ルールの名前',placeholder:'例: 有無フラグ、合否',
+   maxLength:60,confirmLabel:'作る'});
  }
 
  /* 開く。name が空なら新規、column はプレビューに使う「この列」。 */
@@ -419,7 +412,7 @@
   selfColumn=String(o.column||'')||srcColumns()[0]||'';
   onDone=o.onDone||null;
   if(!ruleName){
-   ruleName=(await askName()).slice(0,60);
+   ruleName=String((await askName())||'').slice(0,60);
    if(!ruleName)return;
   }
   const saved=WL.displayRules.get(ruleName);

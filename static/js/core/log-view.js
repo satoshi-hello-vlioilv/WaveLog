@@ -218,7 +218,7 @@
   const recs=pickedRecords();
   if(!recs.length)return showToast('削除する件が選ばれていません','行のチェックか「この起動を選ぶ」で選んでください。');
   const rows=recs.reduce((a,r)=>a+r.lines.length,0);
-  if(!confirm(`選んだ${recs.length}件（${rows}行）を削除します。元に戻せません。`))return;
+  if(!await confirmModal({message:`選んだ${recs.length}件（${rows}行）を削除します。元に戻せません。`,danger:true}))return;
   let removed=0;
   try{
    for(const [file,lines] of byFile(recs))removed+=(await postJson('/api/logs/delete-lines',{file,lines})).removed||0;
@@ -230,7 +230,7 @@
  const deleteOld=async()=>{
   const days=Number($id('lgDays')?.value||0);
   if(!days)return showToast('期間が「すべて」です','上の「期間」で残す日数を選んでから押してください。',4600);
-  if(!confirm(`${days}日より前のログを削除します。元に戻せません。`))return;
+  if(!await confirmModal({message:`${days}日より前のログを削除します。元に戻せません。`,danger:true}))return;
   let removed=0;
   try{
    for(const file of currentFile().split(',').filter(Boolean))
@@ -243,8 +243,8 @@
   const files=currentFile().split(',').filter(Boolean);
   // 「区切る」との違いを押す前に言う。区切りは古い内容が1世代前へ残るが、
   // 消去は残らない。取り違えると調べる材料ごと失う。
-  if(!confirm(`${files.join('・')}の中身を空にします。**1世代前にも残りません。**\n`
-             +'古い内容を取っておきたいときは「ここで区切る」を使ってください。'))return;
+  if(!await confirmModal({message:`${files.join('・')}の中身を空にします。**1世代前にも残りません。**\n`
+             +'古い内容を取っておきたいときは「ここで区切る」を使ってください。',danger:true}))return;
   try{
    for(const file of files)await postJson('/api/logs/clear',{file});
   }catch(e){return showToast('消去できませんでした',e.message||String(e),5200)}
@@ -253,7 +253,7 @@
   await loadFiles();await load();
  };
  const rotate=async()=>{
-  if(!confirm('いまのログを1つ古い世代へ送り、新しいログを始めます。'))return;
+  if(!await confirmModal('いまのログを1つ古い世代へ送り、新しいログを始めます。'))return;
   try{
    for(const file of currentFile().split(',').filter(Boolean))await postJson('/api/logs/rotate',{file});
   }catch(e){return showToast('区切れませんでした',e.message||String(e),5200)}

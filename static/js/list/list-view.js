@@ -197,7 +197,8 @@ function bindSortControls(bar){
    showToast&&showToast('保存する並び順がありません','見出しをクリックして並べ替えてから保存してください',3600);return;
   }
   const label=keys.map(k=>`${WL.columnLayout.label(listLayoutTarget(),k.column)}${k.dir==='desc'?'↓':'↑'}`).join(' → ');
-  const name=prompt(`この並び順に名前を付けて保存します。\n${label}`,'');
+  const name=await promptModal({title:'並び順に名前を付けて保存します',message:label,
+   label:'並び順の名前',confirmLabel:'保存'});
   if(name===null)return;
   const nm=String(name).trim();
   if(!nm){showToast&&showToast('名前を入れてください','次に選ぶときの目印になります',3200);return}
@@ -213,7 +214,7 @@ function bindSortControls(bar){
  async function deleteSortPreset(id){
   const p=sortPresets.find(id);
   if(!p)return;
-  if(!confirm(`並び順「${p.name}」を削除します。よろしいですか？`))return;
+  if(!await confirmModal({message:`並び順「${p.name}」を削除します。よろしいですか？`,danger:true}))return;
   try{
    await api('/api/sort-presets/delete',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(withUserId({id:p.id}))});
@@ -2158,7 +2159,7 @@ function renderGridInner(){
      return;
     }
     e.preventDefault();e.stopPropagation();
-    openMeasurement(r).catch(err=>alert('測定画面を開けません: '+err.message));
+    openMeasurement(r).catch(err=>alertModal('測定画面を開けません: '+err.message));
    };
    /* 行のダブルクリックは**ボタンを消しても残す**——測定を開く導線が
       1つも無くなると、列を隠しただけで機能ごと失われる。 */

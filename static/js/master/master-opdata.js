@@ -795,7 +795,7 @@
    b.onclick=async e=>{
     e.stopPropagation();
     const now=b.dataset.opRename,place=b.dataset.opPlace;
-    const next=prompt('群の名前',now);
+    const next=await promptModal({title:'群の名前を変える',label:'群の名前',value:now});
     if(next===null)return;
     const name=String(next).trim();
     if(!name||name===now)return;
@@ -1049,7 +1049,8 @@
   }catch(e){opSay('名前を変えられませんでした: '+e.message,true)}
  }
  async function opCreateGroup(){
-  const name=prompt('新しい群の名前（この名前の見出しが測定画面に出ます）','新しい群');
+  const name=await promptModal({title:'群を作る',label:'新しい群の名前',value:'新しい群',
+   hint:'この名前の見出しが測定画面に出ます。',confirmLabel:'作る'});
   if(name===null)return;
   const n=String(name).trim();if(!n)return;
   await opCreateItem({group:n,name:n+' 1'});
@@ -1179,8 +1180,8 @@
   const del=m.querySelector('[data-opm-del]');
   if(del)del.onclick=()=>act(async uid=>{
    /* **取り消せないので確認する**（§5）。空きは中身が無いので聞かない。 */
-   if(!pad&&!confirm(`「${x.name}」を削除します。取り消せません。\n`
-     +'（記録済みの値は残りますが、これ以降は画面から入れられなくなります）'))return;
+   if(!pad&&!await confirmModal({message:`「${x.name}」を削除します。取り消せません。\n`
+     +'（記録済みの値は残りますが、これ以降は画面から入れられなくなります）',danger:true}))return;
    await api('/api/operation-item-master/delete',{method:'POST',
      headers:{'Content-Type':'application/json'},
      body:JSON.stringify({id:x.id,user_id:uid})});
@@ -1305,7 +1306,8 @@
  async function opCreateItem(seed){
   const uid=requireMaintUser();if(uid===null)return;
   const base=seed||{};
-  const name=base.name||prompt('項目名（測定画面に出る名前で、記録の鍵にもなります）','新しい項目');
+  const name=base.name||await promptModal({title:'項目を作る',label:'項目名',value:'新しい項目',
+   hint:'測定画面に出る名前で、記録の鍵にもなります。',confirmLabel:'作る'});
   if(name===null)return;
   const nm=String(name).trim();if(!nm)return;
   try{
@@ -3343,8 +3345,8 @@
   if(clState.busy)return;
   const row=(clState.items||[]).find(x=>String(x.id)===String(id));
   if(!row)return;
-  if(!confirm(`${row.parent} → ${row.child} の親子を外しますか？\n`
-    +'値に入れた「親の値」は残すので、また結べば続きから使えます。'))return;
+  if(!await confirmModal({message:`${row.parent} → ${row.child} の親子を外しますか？\n`
+    +'値に入れた「親の値」は残すので、また結べば続きから使えます。',danger:true}))return;
   clState.busy=true;clSay('外しています…');
   try{
    const r=await api('/api/choice-link-master/delete',{method:'POST',
@@ -3783,20 +3785,9 @@
    await loadOpChoiceMaint(true);
   }catch(e){ocSay('削除できませんでした: '+(e.message||String(e)),true)}
  }
- /* 1行だけ書かせる小さな窓。**`prompt()`は使わない**（アプリの見た目に
-    合わせられず、タブ全体を止める。`confirmModal`と同じ理由）。 */
- function promptModal(opts){
-  const o=opts||{};
-  return confirmModal({title:o.title||'入力',confirmLabel:o.confirmLabel||'決定',
-    bodyHtml:`<label class="mm-field mm-w-md"><span>${esc(o.label||'')}</span>`
-     +`<input type="text" id="appPromptInput" value="${esc(o.value||'')}" autocomplete="off"></label>`
-     +(o.hint?`<small class="mm-field-hint">${esc(o.hint)}</small>`:'')
-  }).then(ok=>{
-   const el=document.getElementById('appPromptInput');
-   const v=String(el&&el.value||'').trim();
-   return ok?v:'';
-  });
- }
+ /* 1行入力の窓は`base.js`の`promptModal`（§9.342）。ここに自前の写しを
+    置かない——持っていながら、同じファイルの5箇所で素の`prompt()`を
+    呼んでいた。 */
  async function loadOpItemMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   form.classList.remove('mm-form-compact');
@@ -4189,15 +4180,17 @@
    };
   }
  }
- function rlRenameGroup(from){
-  const to=prompt('カードの中の見出しの名前（測定画面の入力欄の群は変わりません）',from);
+ async function rlRenameGroup(from){
+  const to=await promptModal({title:'見出しの名前を変える',label:'カードの中の見出しの名前',
+   value:from,hint:'測定画面の入力欄の群は変わりません。'});
   if(to===null)return;
   const n=String(to).trim();if(!n||n===from)return;
   rlRows().on.forEach(r=>{if(r.group===from)r.group=n});
   renderRecordLayout();rlSay('保存を押すと確定します');
  }
- function rlCreateGroup(){
-  const name=prompt('新しい見出しの名前','新しい見出し');
+ async function rlCreateGroup(){
+  const name=await promptModal({title:'見出しを作る',label:'新しい見出しの名前',
+   value:'新しい見出し',confirmLabel:'作る'});
   if(name===null)return;
   const n=String(name).trim();if(!n)return;
   if(rlGroups().some(g=>g.name===n)){rlSay(`「${n}」は既にあります`,true);return}

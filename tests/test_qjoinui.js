@@ -374,8 +374,9 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
   await page.click('#masterMaintNav [data-master="queryJoin"]');
   await page.waitForSelector('#qjBuiltinToggle',{timeout:20000});
   builtinTouched=true;
-  page.once('dialog',d=>d.accept());
+  /* 確認は素の`confirm()`ではなくなった（§9.342）。 */
   await page.click('#qjBuiltinToggle');
+  await require('./lib/wait.js').answerConfirm(page);
   await page.waitForFunction(()=>{const n=document.querySelector('.qj-row.is-builtin .ds-listed');
     return n&&n.textContent.trim()==='解除中'},{timeout:20000});
   const offState=(await call('GET','/api/query-join-master')).body;

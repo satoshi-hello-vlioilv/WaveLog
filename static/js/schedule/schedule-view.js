@@ -3240,7 +3240,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // 「今この位置でいい、これ以上ずらしたくない」なので、日時入力を出して
   // 打ち直させない(細かく変えたい場合は詳細パネルの日時欄で調整できる)。
   const base=e.plannedStart||e.fixedStart;
-  if(!base){alert('この予定はまだ予定日時が決まっていないため固定できません。');return}
+  if(!base){alertModal('この予定はまだ予定日時が決まっていないため固定できません。');return}
   updateFixedStart(e.id,fmtLocalInput(base));
  }
 
@@ -5990,10 +5990,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   /* **読み取り専用のときは消さない**（§9.211 ②）。右クリックメニュー・
      🗑ボタン・選択バーの3経路から来るので、入口ではなくここで1回だけ断る。 */
   if(sessionBlocked()){showToast&&showToast('削除できません',sessionHolderMessage(),4000);return}
-  if(typeof confirmModal==='function'){
-   const ok=await confirmModal({message:'この予定を削除します。よろしいですか？'});
-   if(!ok)return;
-  }
+  if(!await confirmModal({message:'この予定を削除します。よろしいですか？',danger:true}))return;
   const idx=scState.entries.findIndex(e=>e.id===id);
   if(idx===-1)return;
   const [removed]=scState.entries.splice(idx,1);
@@ -7664,24 +7661,24 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  async function openEntryReport(e){
   const id=e.actualRecordId;
   if(!id||typeof window.openReportForRecord!=='function'){
-   alert('この行には帳票を開ける測定データが紐づいていません。');
+   await alertModal('この行には帳票を開ける測定データが紐づいていません。');
    return;
   }
   try{
    await window.openReportForRecord(id);
   }catch(err){
-   alert('帳票を開けません: '+(err&&err.message?err.message:err));
+   await alertModal('帳票を開けません: '+(err&&err.message?err.message:err));
   }
  }
  async function startWorkFromEntry(e){
-  if(typeof openMeasurement!=='function'){alert('測定画面を開けません。');return}
+  if(typeof openMeasurement!=='function'){await alertModal('測定画面を開けません。');return}
   /* §9.51: まだこの設備に仕掛かっていないロットは開始させない。ボタン自体
      出していないが、ダブルクリック等の別経路からも来るので二重に確かめる
      (「予定」から始めるときだけ。着手済みの再開は対象外)。 */
   if(e.state==='予定'){
    const w=workableOf(e);
    if(w.state!=='ok'){
-    alert(w.state==='ng'
+    await alertModal(w.state==='ng'
      ?`このロットはまだ${scState.equipment}に仕掛かっていないため作業を開始できません。\n残仕掛設備ｺｰｽ: ${w.course||'(不明)'}`
      :'仕掛データに該当ロットが見つからないため、作業できるか確認できません。仕掛一覧を再読込してからお試しください。');
     return;
@@ -7689,7 +7686,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }
   const row=entryMeasurementRow(e);
   if(!(typeof pick==='function'?pick(row,'lotNo'):row.lotNo)){
-   alert('この予定にはロット番号が記録されていないため、測定画面を開けません。');
+   await alertModal('この予定にはロット番号が記録されていないため、測定画面を開けません。');
    return;
   }
   try{
@@ -7698,7 +7695,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    // 開いたときに必ず取り直せるよう、キャッシュを捨てておく(§9.42)。
    invalidatePlanCache(scState.equipment);
   }catch(err){
-   alert('測定画面を開けません: '+(err&&err.message?err.message:err));
+   await alertModal('測定画面を開けません: '+(err&&err.message?err.message:err));
   }
  }
 

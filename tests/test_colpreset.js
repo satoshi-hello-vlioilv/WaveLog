@@ -40,8 +40,10 @@ async function cleanup(){
   const ctx=await b.newContext({viewport:{width:1520,height:940}});
   const page=await ctx.newPage();
   page.on('pageerror',e=>errs.push(e.message));
-  let answer=NAME;
-  page.on('dialog',async d=>{await d.accept(answer)});
+  /* 名前を聞く窓は素の`prompt()`ではなくなった（§9.342）ので、
+     `page.on('dialog')`では答えられない。**開いた窓に打つ。** */
+  const {answerPrompt}=require('./lib/wait.js');
+  page.on('dialog',async d=>{await d.dismiss()});   // 素のダイアログが出たら気づけるように
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:30000});
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
@@ -64,6 +66,7 @@ async function cleanup(){
   },victim);
   await page.waitForTimeout(400);
   await page.click('#lcPresetSave');
+  await answerPrompt(page,NAME);
   await page.waitForFunction(n=>[...document.querySelectorAll('#lcPresetSel option')]
     .some(o=>o.textContent===n),NAME,{timeout:10000});
   rec('名前を付けて登録できる',true,NAME);
@@ -84,9 +87,9 @@ async function cleanup(){
   rec('読み込むと一覧にその場で当たる（保存しなくても見える）',!(await heads()).includes(victim));
 
   /* ================= ⑦ 式で列を作る ================= */
-  answer=COL;
   const beforeN=await page.evaluate(()=>document.querySelectorAll('#lcList .lc-item').length);
   await page.click('#lcAddCol');
+  await answerPrompt(page,COL);
   await page.waitForSelector('#lcFormula',{timeout:10000});
   const afterN=await page.evaluate(()=>document.querySelectorAll('#lcList .lc-item').length);
   rec('列を1つ足せる',afterN===beforeN+1,`${beforeN} -> ${afterN}`);

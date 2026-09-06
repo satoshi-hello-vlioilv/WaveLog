@@ -2108,7 +2108,7 @@
     const diffs=diffSplitSources(st.splitSourcesCache,sources);
     if(!diffs.length){if(typeof showToast==='function')showToast('現在のデータと同じ内容です','差し替えは行いませんでした');return false}
     const blockers=splitUpdateBlockers(diffs);
-    if(blockers.length){alert(blockerMessage(blockers,verb));return false}
+    if(blockers.length){await alertModal(blockerMessage(blockers,verb));return false}
     if(confirmText&&!(await confirmModal(confirmText)))return false;
     const history=Array.isArray(st.splitSourcesHistory)?st.splitSourcesHistory:[];
     history.push({at:st.splitSourcesSavedAt||null,sources:st.splitSourcesCache||[],note:'差し替え前'});

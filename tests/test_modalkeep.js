@@ -11,6 +11,19 @@
     5. **変換中(IME)のEscでは閉じない**——変換の取り消しでモーダルごと
        消えるのは、背景クリックとまったく同じ壊れ方
     6. モーダルの閉じ方の規則は**1箇所**（`WL.modal`）が持つ
+    7. **素のダイアログを出さない**（§9.342）——`alertModal`／`confirmModal`／
+       `promptModal` の3つが同じ器を使い、ブラウザ標準の
+       `alert()`/`confirm()`/`prompt()` は1つも残っていない
+
+   なぜ7を**ここで**見るか
+   ------------------------------------------------------------
+   静的な網（`tests/test_patchlint.py`）は「素のダイアログを**呼んでいない**」
+   ことしか言えない。**替わりの窓がちゃんと開いて答えを返すか**は動かさないと
+   分からず、そこが壊れていると「押しても何も起きない」になる——素の
+   `confirm()`のままより悪い。器は`#appConfirmModal`の1つなので、
+   **お知らせの次に確認を開いたとき「やめる」が戻っていること**まで見る
+   （お知らせは「やめる」を伏せるので、入れ直しを忘れると**次の確認から
+   選択肢が片方消える**）。
    ============================================================ */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
 const B='http://127.0.0.1:5029';
@@ -90,6 +103,59 @@ let b=null;
   await page.waitForTimeout(200);
   rec('キャンセルでは閉じる',
       await page.evaluate(()=>document.querySelector('#maintEditorModal').hidden===true));
+
+  /* ---- 7) 素のダイアログを出さない（§9.342） ---- */
+  /* 素の`alert()`等が呼ばれたらここが拾う。**出たこと自体を記録する**
+     ——閉じてしまうと、次の待ちが通ってしまい何事も無かったように見える。 */
+  const native=[];
+  page.on('dialog',async d=>{native.push(d.type()+':'+d.message().slice(0,40));await d.dismiss()});
+
+  const three=await page.evaluate(()=>['alertModal','confirmModal','promptModal']
+    .filter(n=>typeof window[n]==='function'));
+  rec('お知らせ・確認・1行入力の3つが揃っている',three.length===3,three.join(','));
+
+  page.evaluate(()=>{window.__mkA=alertModal('お知らせの本文です')});
+  await page.waitForSelector('#appConfirmModal:not([hidden])',{timeout:4000});
+  const al=await page.evaluate(()=>({
+    title:document.querySelector('#appConfirmTitle').textContent,
+    ok:document.querySelector('#appConfirmOk').textContent,
+    cancelHidden:document.querySelector('#appConfirmCancel').hidden}));
+  rec('お知らせはボタンが1つ（やめるを出さない）',
+      al.cancelHidden===true&&al.ok==='閉じる',JSON.stringify(al));
+  await page.click('#appConfirmOk');await page.waitForTimeout(200);
+
+  /* **お知らせの次の確認で「やめる」が戻っている。** ここが今回いちばん
+     壊れやすい（伏せたままにすると選択肢が片方消えたまま気づかれない）。 */
+  page.evaluate(()=>{window.__mkC=confirmModal('消しますか')});
+  await page.waitForSelector('#appConfirmModal:not([hidden])',{timeout:4000});
+  rec('お知らせの後の確認でも「やめる」が戻っている',
+      await page.evaluate(()=>document.querySelector('#appConfirmCancel').hidden===false));
+  await page.click('#appConfirmCancel');await page.waitForTimeout(200);
+  rec('「やめる」は false を返す',(await page.evaluate(()=>window.__mkC))===false);
+
+  page.evaluate(()=>{window.__mkP=promptModal({title:'名前',label:'新しい名前',value:'あ'})});
+  await page.waitForSelector('#appPromptInput',{timeout:4000});
+  await page.waitForTimeout(300);
+  rec('1行入力は入力欄に焦点が乗る（すぐ打てる）',
+      (await page.evaluate(()=>document.activeElement&&document.activeElement.id))==='appPromptInput');
+  await page.fill('#appPromptInput','  かきくけこ  ');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(250);
+  /* 素の`prompt()`はEnterで決まった。作法を落とさない。前後の空白は落とす。 */
+  rec('Enterで決まり、前後の空白は落ちる',
+      (await page.evaluate(()=>window.__mkP))==='かきくけこ',
+      JSON.stringify(await page.evaluate(()=>window.__mkP)));
+
+  page.evaluate(()=>{window.__mkP2=promptModal({label:'名前'})});
+  await page.waitForSelector('#appPromptInput',{timeout:4000});
+  await page.click('#appConfirmCancel');await page.waitForTimeout(250);
+  /* **やめたときは`null`。** 「空で決定した」と分かれていないと、理由の
+     ように空でも通す欄で「やめた」が「理由なしで実行」に化ける。 */
+  rec('やめたときは null（空文字と見分けが付く）',
+      (await page.evaluate(()=>window.__mkP2))===null,
+      JSON.stringify(await page.evaluate(()=>window.__mkP2)));
+
+  rec('この間、素のダイアログは1度も出ていない',native.length===0,native.join(' / '));
 
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}

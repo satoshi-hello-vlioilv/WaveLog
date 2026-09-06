@@ -511,7 +511,7 @@
    :'いまの見え方をそのまま写して、この一覧だけ自分専用の設定にします（他の人の見え方は変わりません）';
   btn.onclick=async()=>{
    const to=!mine;
-   if(mine&&!confirm('この一覧の列を、みんなと同じ設定に戻します。\n\n'
+   if(mine&&!await confirmModal('この一覧の列を、みんなと同じ設定に戻します。\n\n'
                      +'自分だけの設定は消さないので、あとで戻せます。よろしいですか？'))return;
    btn.disabled=true;
    try{
@@ -863,8 +863,9 @@
     つまり**データ側に無い列を、既にある列から作って並べたい**。
     作った列は列レイアウトマスタの1行として持つので、並び・幅・書式・
     読み替えはデータ側の列とまったく同じ仕組みに乗る。 */
- function addFormulaColumn(){
-  const name=prompt('新しい列の名前を入力してください（一覧の見出しになります）','計算列');
+ async function addFormulaColumn(){
+  const name=await promptModal({title:'計算列を作る',label:'新しい列の名前',
+   value:'計算列',hint:'一覧の見出しになります。',confirmLabel:'作る'});
   if(name===null)return;
   const key=String(name).trim();
   if(!key){showToast&&showToast('名前を入力してください','',3000);return}
@@ -1397,7 +1398,8 @@
  async function savePreset(){
   const sel=document.getElementById('lcPresetSel');
   const suggest=(presets.find(x=>String(x.id)===String(sel&&sel.value))||{}).name||'';
-  const name=prompt('この設定に付ける名前を入力してください（同じ名前があれば上書きします）',suggest);
+  const name=await promptModal({title:'この設定に名前を付ける',label:'設定の名前',value:suggest,
+   hint:'同じ名前があれば上書きします。',confirmLabel:'保存'});
   if(name===null)return;
   if(!String(name).trim()){showToast&&showToast('名前を入力してください','',3000);return}
   try{

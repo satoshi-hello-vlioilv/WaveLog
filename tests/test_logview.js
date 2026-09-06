@@ -148,13 +148,17 @@ const FIXTURE={ok:true,total:6,matched:6,shown:6,clipped:false,
   sent.push({url:route.request().url().replace(/^.*\/api/,'/api'),body:route.request().postData()});
   await route.fulfill({status:200,contentType:'application/json',body:'{"ok":true,"removed":0}'});
  });
- await page.evaluate(()=>{window.confirm=()=>true});
+ /* 確認は素の`confirm()`ではなくなった（§9.342）ので、`window.confirm`を
+    差し替えても素通りしない。**開いた窓のOKを押す。** */
+ const {answerConfirm}=require('./lib/wait.js');
  await page.click('#lgClear');
+ await answerConfirm(page);
  await page.waitForTimeout(500);
  const clearReq=sent.find(x=>/clear$/.test(x.url));
  rec('「すべて」消去がサーバーへ届く（押せるのに繋がっていない、が無い）',
      !!clearReq&&/app\.log|launcher\.log/.test(clearReq.body||''),JSON.stringify(clearReq||null));
  await page.click('#lgRotate');
+ await answerConfirm(page);
  await page.waitForTimeout(500);
  rec('「ここで区切る」もサーバーへ届く',sent.some(x=>/rotate$/.test(x.url)),
      sent.map(x=>x.url).join(' '));

@@ -116,7 +116,7 @@
       btn.addEventListener('click',event=>{
         if(btn.dataset.mode!=='manual'||!S.measure)return;
         const msg='手動入力は例外操作です。板厚・板幅・ラテラルボー・バリは自動転送が基本のため、手動入力に切り替えた事実を記録します。';
-        alert(msg);
+        alertModal(msg);   // 見せるだけ。記録は待たずに残す
         appendManualLog('手動入力モードへ切替',{message:msg});
       },true);
     });

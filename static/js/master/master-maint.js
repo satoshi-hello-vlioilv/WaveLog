@@ -1480,8 +1480,6 @@
    <ul class="cl-confirm">${list}</ul>
    <p class="confirm-modal-message">同時に 追加${r.add||0}件・上書き${r.update||0}件 を行います。
     元へ戻すには、いまのマスタを先に「書き出す」でExcelへ残してください。</p>`;
-  if(typeof confirmModal!=='function')
-   return window.confirm(`ファイルに出てこないロール ${r.removeCount}件を削除します。よろしいですか？`);
   return await confirmModal({title:'ロールを入れ替えます',eyebrow:'REPLACE',
                              bodyHtml:body,confirmLabel:'入れ替える',danger:true});
  }
@@ -2356,7 +2354,7 @@
   /* **言い回しはdefが決める**（§9.249 ②）。有効フラグを持つマスタの削除は
      「無効化」だが、生の表は**本当に行が消える**——同じ文言で言うと嘘になる。 */
   const word=def.deleteWord||'無効化（削除）';
-  if(!confirm(`${def.label}「${nm}」を${word}しますか？`))return;
+  if(!await confirmModal(`${def.label}「${nm}」を${word}しますか？`))return;
   try{
    setMaintLoading(true,`${def.label}を${def.deleteWord||'無効化'}しています…`);
    await api(def.endpoint+'/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:item.id,user_id:uid})});

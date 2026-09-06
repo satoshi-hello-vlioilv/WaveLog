@@ -1658,9 +1658,9 @@
       ?'いま並べているマスを捨てて、画面がもともと持っている中身と同じ並びに戻します。'
       :'画面がもともと持っている中身と同じ並びを入れます。ここから1マスずつ直せます。';
    };
-   if(seed)seed.onclick=()=>{
+   if(seed)seed.onclick=async()=>{
     const d=seedOf();if(!d)return;
-    if(state.rows.length&&!confirm('いま並べているマスを捨てて、既定の中身に戻します。よろしいですか。'))return;
+    if(state.rows.length&&!await confirmModal('いま並べているマスを捨てて、既定の中身に戻します。よろしいですか。'))return;
     state.rows=fbParse(d.content||'');
     /* **列数も一緒に入れる**——並びだけ写すと、既定は6列なのに欄が2列の
        ままで、写した瞬間に別の絵になる（§9.280と同じ食い違い）。 */
@@ -1917,7 +1917,7 @@
   const rs=$('#rlyReset');
   if(rs)rs.onclick=async()=>{
    /* **消える操作は1回だけ確かめる**（§CLAUDE 5）。 */
-   if(!confirm(`${rlyLabel(rlyState.picked)}の紙の設定（並び・幅・高さ・出す/出さない・紙の割り）を消して、既定に戻しますか？\n塊そのもの（帳票ブロック）は消えません。`))return;
+   if(!await confirmModal(`${rlyLabel(rlyState.picked)}の紙の設定（並び・幅・高さ・出す/出さない・紙の割り）を消して、既定に戻しますか？\n塊そのもの（帳票ブロック）は消えません。`))return;
    rlyWrite(()=>WL.reportLayout.reset(rlyState.picked),'既定に戻しました。');
   };
   const ar=$('#rlyArrange');

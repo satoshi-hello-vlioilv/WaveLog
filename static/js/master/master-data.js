@@ -375,9 +375,9 @@
   if($('#msSplitPreview'))$('#msSplitPreview').onclick=()=>msSplitRun(false);
   if($('#msSplitApply'))$('#msSplitApply').onclick=async()=>{
    if(!splitSeen)return;
-   if(!confirm('今ある測定データを、設備ごとのフォルダへ写します。\n\n'
+   if(!await confirmModal({message:'今ある測定データを、設備ごとのフォルダへ写します。\n\n'
               +'元のファイルは消しません（記録は1件も消えず、二重にも出ません）。\n'
-              +'よろしいですか？'))return;
+              +'よろしいですか？'}))return;
    await msSplitRun(true);
   };
   $('#msSaveCfg').onclick=async()=>{
@@ -540,7 +540,7 @@
   const msg=`バックアップから ${ids.length}件を削除します。`
    +(orphan<ids.length?`\n\nうち ${ids.length-orphan}件はこの端末のデータ一覧にも存在します。削除するとスケジュールの実績表示から消えますが、端末内のデータは残ります。`:'')
    +'\n\nこの操作は元に戻せません。よろしいですか?';
-  const ok=typeof confirmModal==='function'?await confirmModal(msg):window.confirm(msg);
+  const ok=await confirmModal(msg);
   if(!ok)return;
   try{
    setMaintLoading(true,`バックアップから ${ids.length}件を削除しています…`);
@@ -560,8 +560,8 @@
   const targets=importBackupState.items.filter(it=>checked.includes(it.id));
   const overwriteCount=targets.filter(it=>importBackupState.localIds.has(it.id)).length;
   // 取り消せない操作なので、何がどう変わるかを箇条書きで示してから確認する
-  // (以前はブラウザ標準のconfirm()で、他画面の確認と作法が揃っていなかった)。
-  const okRun=typeof confirmModal==='function'?await confirmModal({
+  // (確認の窓は`confirmModal`の1つ。§9.342)。
+  const okRun=await confirmModal({
    eyebrow:'IMPORT TO THIS TERMINAL',title:'この端末へ取り込みます',
    danger:true,confirmLabel:'取り込む',
    bodyHtml:`<p class="confirm-modal-message">選択した <b>${esc(String(targets.length))}件</b> をこの端末のデータへ取り込みます。</p>
@@ -569,7 +569,7 @@
      <li>新しく追加: <b>${esc(String(targets.length-overwriteCount))}</b>件</li>
      <li>既存データを上書き: <b>${esc(String(overwriteCount))}</b>件${overwriteCount?'（<b>元に戻せません</b>）':''}</li>
      <li>PC更新・端末交換の引継ぎ以外では実行しないでください。</li>
-    </ul>`}):window.confirm(`選択した${targets.length}件を取り込みます。よろしいですか?`);
+    </ul>`});
   if(!okRun)return;
   let okCount=0,ngCount=0;const errors=[];
   try{
@@ -941,7 +941,7 @@
  }
  async function qjToggleBuiltin(on){
   const uid=requireMaintUser();if(uid===null)return;
-  if(!on&&!confirm('既定の品質データ結合を解除します。\n品質データの列（鋳造番号・製造材質・検査結果など）は一覧に出なくなります。\nエラーにはならず、その列を見ていた設定は静かに落ちます。よろしいですか？'))return;
+  if(!on&&!await confirmModal('既定の品質データ結合を解除します。\n品質データの列（鋳造番号・製造材質・検査結果など）は一覧に出なくなります。\nエラーにはならず、その列を見ていた設定は静かに落ちます。よろしいですか？'))return;
   try{
    setMaintLoading(true,on?'既定に戻しています…':'解除しています…');
    const r=await api('/api/query-join-master/builtin',{method:'POST',
@@ -979,7 +979,7 @@
  }
  async function qjDelete(id){
   const x=qjState.items.find(i=>String(i.id)===String(id));if(!x)return;
-  if(!confirm(`結合「${x.name}」を削除します。\nこの結合で足していた列は一覧から消えます。よろしいですか？`))return;
+  if(!await confirmModal({message:`結合「${x.name}」を削除します。\nこの結合で足していた列は一覧から消えます。よろしいですか？`,danger:true}))return;
   const uid=requireMaintUser();if(uid===null)return;
   try{
    setMaintLoading(true,'削除しています…');
@@ -1526,7 +1526,7 @@
  }
  async function dsDelete(id){
   const x=dsState.items.find(i=>String(i.id)===String(id));if(!x)return;
-  if(!confirm(`「${x.label||x.key}」を無効にします。\n一覧から消えるのはサーバー再起動後です。よろしいですか？`))return;
+  if(!await confirmModal(`「${x.label||x.key}」を無効にします。\n一覧から消えるのはサーバー再起動後です。よろしいですか？`))return;
   const uid=requireMaintUser();if(uid===null)return;
   try{
    setMaintLoading(true,'無効にしています…');
@@ -2273,10 +2273,8 @@
      <p class="confirm-modal-message">${plan.kind==='network'||plan.kind==='cloud'
        ?'共有の置き場です。<b>作るだけ</b>で、中のデータは触りません。'
        :'この端末の中に作ります。'}</p>`;
-   const ok=(typeof confirmModal==='function')
-    ? await confirmModal({title:`${label||'置き場'}を作ります`,eyebrow:'CREATE',
-                          bodyHtml:body,confirmLabel:'作る'})
-    : window.confirm(`${made.length}件のフォルダ／ファイルを作ります。よろしいですか？`);
+   const ok=await confirmModal({title:`${label||'置き場'}を作ります`,eyebrow:'CREATE',
+                                bodyHtml:body,confirmLabel:'作る'});
    if(!ok)return;
    setMaintLoading(true,'作っています…');
    const r=await api('/api/storage-layout/prepare',{method:'POST',
@@ -2787,7 +2785,7 @@
  async function deleteShiftPattern(d){
   const uid=requireMaintUser();if(uid===null)return;
   if(!d.id)return;
-  if(typeof confirmModal==='function'){
+  {
    const ok=await confirmModal({eyebrow:'勤務形態',title:'この勤務体系を削除しますか？',
     message:`「${d.name}」とその配下の区分(${d.segments.length}件)を無効化します。`,confirmLabel:'削除する',danger:true});
    if(!ok)return;
@@ -3021,10 +3019,8 @@
      `<li><b>${esc(c.label)}</b>${c.auto?'':'<i>自動掃除の対象外</i>'}<em>${clSize(c.removableBytes)}・${c.removable}件</em></li>`).join('')}</ul>
    <p class="confirm-modal-message">合計 <b>${clSize(sel.bytes)}（${sel.n}件）</b>。
     どれも<b>作り直せるファイル</b>で、測定データ・マスタ・共有スケジュールには触れません。</p>`;
-  const ok=typeof confirmModal==='function'
-   ? await confirmModal({title:'不要ファイルを消します',eyebrow:'CLEANUP',bodyHtml:body,
-                         confirmLabel:'掃除する',danger:true})
-   : window.confirm(`${clSize(sel.bytes)}（${sel.n}件）を消します。よろしいですか？`);
+  const ok=await confirmModal({title:'不要ファイルを消します',eyebrow:'CLEANUP',bodyHtml:body,
+                              confirmLabel:'掃除する',danger:true});
   if(!ok)return;
   cleanupState.busy=true;
   try{
@@ -3124,10 +3120,8 @@
    <ul class="cl-confirm"><li><b>${esc(def.rawTable)}</b><em>${rows}件</em></li></ul>
    <p class="confirm-modal-message">この表は<b>アプリがもう読みません</b>
     （中身は移行先へ移っています）。消しても画面の動きは変わりません。</p>`;
-  const ok=typeof confirmModal==='function'
-   ? await confirmModal({title:'移行済みの表を削除します',eyebrow:'DROP TABLE',bodyHtml:body,
-                         confirmLabel:'削除する',danger:true})
-   : window.confirm(`${def.rawTable} を丸ごと消します。よろしいですか？`);
+  const ok=await confirmModal({title:'移行済みの表を削除します',eyebrow:'DROP TABLE',bodyHtml:body,
+                              confirmLabel:'削除する',danger:true});
   if(!ok)return;
   try{
    setMaintLoading(true,'削除しています…');
@@ -3296,9 +3290,9 @@
  async function pzCut(key){
   const x=(presenceState.data?.items||[]).find(r=>r.key===key);if(!x)return;
   /* **危ない操作なので相手を名指しで1回だけ確認する**（§5・§9.211 ②）。 */
-  const reason=prompt(`${x.login||'（不明）'}／${x.pc||'（不明）'} の接続を解除します。\n`
-   +`相手の書き込みが止まります（開いている画面は残ります）。\n`
-   +`理由があれば書いてください（相手の画面に出ます）。`,'');
+  const reason=await promptModal({title:'接続を解除します',danger:true,confirmLabel:'解除する',
+   message:`${x.login||'（不明）'}／${x.pc||'（不明）'} の書き込みが止まります（開いている画面は残ります）。`,
+   label:'理由（空のままでも解除できます）',hint:'書いた理由は相手の画面に出ます。'});
   if(reason===null)return;
   try{
    const r=await api('/api/presence/disconnect',{method:'POST',body:JSON.stringify({key,reason})});

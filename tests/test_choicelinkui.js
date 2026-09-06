@@ -58,8 +58,11 @@ let b=null;const made=[];
    if(!el)throw Error('まとまりが無い: '+x);el.click();},n);
   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))};
  /* 保存を伴う操作は**時間で待たない**（§9.102）——帯の文字が変わるまで待つ。 */
- const press=async(sel,until)=>{
+ /* `ask`を渡すと、押したあとに開く確認の窓へOKを返す（§9.342。素の
+    `confirm()`をやめたので`page.on('dialog')`では答えられない）。 */
+ const press=async(sel,until,ask)=>{
   await page.evaluate(s=>{const el=document.querySelector(s);if(!el)throw Error('無い: '+s);el.click()},sel);
+  if(ask)await require('./lib/wait.js').answerConfirm(page);
   await page.waitForFunction(t=>((document.getElementById('clState')||{}).textContent||'').includes(t),
     until,{timeout:15000});
   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
@@ -162,7 +165,7 @@ let b=null;const made=[];
       JSON.stringify({drag,保存:two.map(x=>x.parent+'→'+x.child),子:s.箱[0]&&s.箱[0].子}));
 
   /* ---- 8) 外す ---- */
-  await press('.cl-chip-del','外しました');
+  await press('.cl-chip-del','外しました',true);   // 外すときは1回確かめる
   s=await look();
   const one=await links();
   rec('⑧ 外すと親子が1本減る',one.length===1&&s.箱[0].子.length===1,

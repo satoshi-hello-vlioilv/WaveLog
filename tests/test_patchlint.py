@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""test_patchlint.py: 「元の実装を退避しない全置換」を機械的に見つける（フェーズA）。
+"""test_patchlint.py: 「同じ役目の実装が2つ以上ある」を機械的に見つける。
 
 ============================================================
 なぜ要るか
@@ -22,6 +22,18 @@ grepで辿っても最終的な実装に行き着かない**。読む側は`inde
 
 CLAUDE.mdは既に「拡張ファイルからはラップのみ可、全置換は不可」と
 定めている。**規約はあったが機械的な歯止めが無かった**ので、ここで見る。
+
+同じ形の問題を、あとから2つ足した
+------------------------------------------------------------
+どれも「**同じことをする実装が複数あり、読む側はどれが効いているのか
+分からない**」という1つの形をしている。
+
+  ・所要時間の書き方（§9.341）… 7つ・表記5種類あった
+  ・素のダイアログ（§9.342）… `alert`/`confirm`/`prompt` が56箇所
+
+**規約だけでは減らない**ことは実証済みで、`prompt()`をやめる自前の小窓を
+3つも書きながら、同じファイルの5箇所で素の`prompt()`を呼んでいた
+（`master-opdata.js`）。書いた本人が気づけないので、機械が見る。
 
 何を「ラップ」と認めるか
 ------------------------------------------------------------
@@ -142,6 +154,38 @@ def duration_formatters():
     return out
 
 
+def native_dialogs():
+    """素の `alert()` / `confirm()` / `prompt()`（§9.342）。
+
+    ブラウザ標準のダイアログは**タブ全体を止め**、見た目もEscの効き方も
+    IMEの挙動も浮きウィンドウとの重なり順もアプリと揃わない。使うのは
+    `confirmModal` / `alertModal` / `promptModal` の3つだけ。
+
+    文章の中の言及（`prompt()` のように**中身が空**の書き方）は数えない
+    ——本物の呼び出しには必ず引数がある。ブロックコメントの中も見ない。
+    """
+    call = re.compile(r'(?<![\w.$])(?:window\s*\.\s*)?(alert|confirm|prompt)\('
+                      r'\s*[^\s)]')
+    out = []
+    for path in sorted(JS.rglob('*.js')):
+        in_block = False
+        for i, line in enumerate(path.read_text(encoding='utf-8').split('\n')):
+            stripped = line.lstrip()
+            if in_block:
+                if '*/' in line:
+                    in_block = False
+                continue
+            if stripped.startswith('//'):
+                continue
+            if stripped.startswith('/*') and '*/' not in line:
+                in_block = True
+                continue
+            m = call.search(line)
+            if m:
+                out.append(f'{path.name}:{i + 1} {m.group(1)}()')
+    return out
+
+
 def main():
     found = scan()
     rec('拡張ファイルの関数差し替えを機械的に拾えている', len(found) >= 10, f'{len(found)}件')
@@ -171,6 +215,10 @@ def main():
     dur = duration_formatters()
     rec('所要時間の書き方は`WL.duration`の1箇所だけが組み立てている（§9.341）',
         not dur, '; '.join(dur))
+
+    native = native_dialogs()
+    rec('素の alert()/confirm()/prompt() を呼んでいない（§9.342）',
+        not native, '; '.join(native))
 
     print(f'\n== {sum(R)}/{len(R)} PASS ==')
     print('  現状の全置換: ' + (', '.join(f'{f}:{ln} {fn}' for f, fn, ln in replaced) or 'なし'))

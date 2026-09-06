@@ -442,7 +442,7 @@ async function persistAndTransition(status){
   showToast(status==='完了'?(withNg?`完了登録しました（公差外・基準外 ${withNg.total}件を含みます）`:'完了登録しました'):'一時保存しました',
             `${m.basic.lotNo||''} / IndexedDB ${result.idbOK?'OK':'代替保存'} / バックアップ ${accessOK?'OK':'未送信（後で自動的に再送します）'}`,6500);
   await openRecords(status==='完了'?'履歴':'編集中');
- }catch(e){hideSaveOverlay();setState('保存エラー');alert('保存できませんでした: '+e.message)}
+ }catch(e){hideSaveOverlay();setState('保存エラー');await alertModal('保存できませんでした: '+e.message)}
 }
 /* 端末内への保存。条数ロック→回収→IndexedDB保存→件数バッジ更新。
    IndexedDB単独ではなくreliablePutを使う(IndexedDB障害時もlocalStorage
@@ -498,7 +498,7 @@ window.shareRecord=shareRecord;
 async function registerNg(){
  try{
   const m=await saveLocal('測定値NG');m.settings.ngCount=(m.settings.ngCount||0)+1;await reliablePut(m);setState(`NGロット ${m.settings.ngCount}回目を保存`);
- }catch(e){alert('NG登録を保存できませんでした: '+e.message)}
+ }catch(e){await alertModal('NG登録を保存できませんでした: '+e.message)}
 }
 async function refreshDraftCount(){
  // 全件読みは1回だけにして、未同期件数の表示へも同じ配列を渡す。
@@ -548,7 +548,7 @@ async function openMeasurement(row){
 }
 // v32 final navigation controller
 function bindV32Navigation(){
- const open=async status=>{try{await openRecords(status)}catch(e){console.error(e);alert('保存データ一覧を開けません: '+e.message)}};
+ const open=async status=>{try{await openRecords(status)}catch(e){console.error(e);await alertModal('保存データ一覧を開けません: '+e.message)}};
  [['homeDrafts','編集中']].forEach(([id,status])=>{const b=$('#'+id);if(b){b.onclick=null;b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();open(status)})}})
 }
 /* データ一覧(#recordModal)。半透明のモーダルなので、他の画面を閉じずに
@@ -1955,7 +1955,9 @@ function requireEquipmentBeforeMeasurement(row){
  if(!equipment){pendingMeasurementRow=row||null;openEquipmentSettingsFinal('required');return false}
  const rowEquipment=row?pick(row,'equipment'):'';
  if(rowEquipment&&!equipmentIsInDesignCourse(equipment,rowEquipment)){
-  alert(`このロットの設計設備「${rowEquipment}」は、登録済みの使用設備「${equipment}」と一致しません。\n測定を開始・再開できません。設備が正しいか確認してください。`);
+  /* ここは**同期で真偽を返す**関門（呼ぶ側が`if(!...)return`で使う）。
+     お知らせは見せるだけなので待たない。 */
+  alertModal(`このロットの設計設備「${rowEquipment}」は、登録済みの使用設備「${equipment}」と一致しません。\n測定を開始・再開できません。設備が正しいか確認してください。`);
   return false;
  }
  return true;

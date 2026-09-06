@@ -452,7 +452,9 @@ WL.modal={keepOpen:keepModalOpen,nudge:nudgeModal,escCloses:escClosesModal};
    それも含めてこの共通モーダルへ一本化する)。
    opts.message: 通常のテキスト確認(改行はそのまま表示)。
    opts.bodyHtml: 任意のHTML本文(ロット情報の要約表示等)。指定時はmessageより優先。
-   opts.danger: trueで確定ボタンを危険色にする。文字列を渡した場合はmessage扱い。 */
+   opts.danger: trueで確定ボタンを危険色にする。文字列を渡した場合はmessage扱い。
+   opts.hideCancel: 「やめる」を出さない(お知らせ。`alertModal`が使う)。
+   opts.focus: 開いたときに焦点を置く要素のセレクタ(既定は「やめる」)。 */
 function ensureConfirmModal(){
  let modal=$('#appConfirmModal');if(modal)return modal;
  modal=document.createElement('div');modal.className='record-modal';modal.id='appConfirmModal';modal.hidden=true;
@@ -469,13 +471,66 @@ function confirmModal(opts){
   $('#appConfirmBody').innerHTML=o.bodyHtml!==undefined?o.bodyHtml:`<p class="confirm-modal-message">${esc(o.message||'')}</p>`;
   const cancel=$('#appConfirmCancel'),ok=$('#appConfirmOk'),close=$('#closeAppConfirm');
   cancel.textContent=o.cancelLabel||'キャンセル';ok.textContent=o.confirmLabel||'OK';ok.className=o.danger?'danger':'';
+  /* お知らせは「やめる」を出さない。**毎回入れ直す**——前の呼び出しで
+     伏せたままにすると、次の確認から選択肢が片方消える。 */
+  cancel.hidden=!!o.hideCancel;
   modal.hidden=false;
   const finish=result=>{modal.hidden=true;resolve(result)};
   cancel.onclick=()=>finish(false);ok.onclick=()=>finish(true);close.onclick=()=>finish(false);
+  /* 入力欄でEnterを押したら決定（素の`prompt()`はそうだった。作法を落とさない）。
+     本文は呼び出しごとに`innerHTML`ごと入れ替わるので、配線は溜まらない。 */
+  $('#appConfirmBody').querySelectorAll('input,select').forEach(el=>{
+   el.addEventListener('keydown',ev=>{if(ev.key==='Enter'){ev.preventDefault();ok.click()}});
+  });
   WL.modal.keepOpen(modal);
-  requestAnimationFrame(()=>cancel.focus());
+  const first=(o.focus&&modal.querySelector(o.focus))||cancel;
+  requestAnimationFrame(()=>{first.focus();if(first.select)first.select()});
  });
 }
+/* ---------- お知らせ・1行入力（§9.342） ----------
+   ブラウザ標準の`alert()`/`prompt()`は、`confirm()`と同じ理由でやめる:
+   アプリの見た目に合わせられず、**タブ全体を止め**、Escの効き方もIMEの
+   挙動も浮きウィンドウとの重なり順も違う。
+
+   **器は確認モーダルと同じ1つ。** 以前は「`prompt()`をやめる」と書いた
+   自前の小窓が**3つ**（`list-rules.js`の`askName`・`filters.js`の
+   `askGroupName`・`master-opdata.js`の`promptModal`）あり、それぞれ枠の
+   クラスも入力欄の幅も決定ボタンの字も違った。**やめる先が3つあると、
+   やめていない`prompt()`が残っていても誰も気づかない**——実際
+   `master-opdata.js`は自前の`promptModal`を持ちながら、同じファイルの
+   5箇所で素の`prompt()`を呼んでいた。 */
+/* お知らせ。ボタンは1つ（「閉じる」）。返り値は使わない。 */
+function alertModal(opts){
+ const o=typeof opts==='string'?{message:opts}:(opts||{});
+ return confirmModal({...o,eyebrow:o.eyebrow||'NOTICE',title:o.title||'お知らせ',
+   confirmLabel:o.confirmLabel||'閉じる',hideCancel:true}).then(()=>undefined);
+}
+/* 1行だけ書かせる窓。返すのは前後の空白を落とした文字列で、
+   **やめたときは`null`**（素の`prompt()`と同じ）。
+
+   「空で決定した」と「やめた」を分けられることに意味がある——名前を聞く
+   場面は`if(!v)return`でどちらも弾けるが、**理由のように空でも通す欄**
+   （在席の切断理由）は、分かれていないと「やめた」が「理由なしで実行」に
+   化ける。`prompt()`と同じ形にしてあるので、置き換えは1行で済む。 */
+function promptModal(opts){
+ const o=typeof opts==='string'?{label:opts}:(opts||{});
+ return confirmModal({
+   eyebrow:o.eyebrow||'INPUT',title:o.title||'入力',danger:o.danger,
+   confirmLabel:o.confirmLabel||'決定',cancelLabel:o.cancelLabel||'やめる',
+   bodyHtml:(o.message?`<p class="confirm-modal-message">${esc(o.message)}</p>`:'')
+     +`<label class="confirm-modal-field"><span>${esc(o.label||'名前')}</span>`
+     +`<input type="text" id="appPromptInput" value="${esc(o.value||'')}"`
+     +` maxlength="${Number(o.maxLength)||120}" placeholder="${esc(o.placeholder||'')}"`
+     +' autocomplete="off" spellcheck="false"></label>'
+     +(o.hint?`<small class="confirm-modal-hint">${esc(o.hint)}</small>`:''),
+   focus:'#appPromptInput',
+ }).then(ok=>{
+  const el=document.getElementById('appPromptInput');
+  const v=String((el&&el.value)||'').trim();
+  return ok?v:null;
+ });
+}
+
 document.addEventListener('keydown',event=>{if(WL.modal.escCloses(event)&&!$('#appConfirmModal')?.hidden){$('#appConfirmCancel')?.click()}},true);
 function sourceValue(names){const r=S.measure?.source||S.measure?.snapshot?.source||{};for(const n of names){if(r[n]!==undefined&&r[n]!==null&&String(r[n]).trim()!=='')return String(r[n])}return ''}
 // Database field normalization supports half-width/full-width variants such as ﾌﾟﾗｽ / プラス.
