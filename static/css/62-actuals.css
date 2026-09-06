@@ -28,8 +28,6 @@ body.ac-mode .pager{display:none}
  border-radius:var(--radius-pill);background:var(--surface);color:var(--ink-2);
  font-size:var(--fs-micro);font-weight:700;cursor:pointer;white-space:nowrap}
 .ac-chip:hover{background:var(--surface-2)}
-/* 選んだ札のほうが濃い（§9.229 ②）。合図は面と文字色の2つまで。 */
-.ac-chip.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
 .ac-btn{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line);
  border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);
  font-size:var(--fs-sm);font-weight:700;cursor:pointer;white-space:nowrap}
@@ -170,7 +168,6 @@ body.ac-mode .pager{display:none}
  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
  color:var(--ink-2);font-size:var(--fs-sm);font-weight:700;cursor:pointer}
 .os-pv-seg button:hover{background:var(--surface-2)}
-.os-pv-seg button.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
 .os-pv-note{margin:var(--space-1) 0 0;font-size:var(--fs-micro);color:var(--ink-3)}
 .os-pv-check{display:flex;align-items:center;gap:var(--space-1);
  font-size:var(--fs-sm);color:var(--ink-2);cursor:pointer}

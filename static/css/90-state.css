@@ -140,7 +140,6 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
 /* 入のタグ(§9.197)。面を塗って**文字を白**にする——枠の色だけだと、
    タグが並んだときにどれが入なのかを1つずつ見比べることになる。 */
 .shift-eq-tag.is-on{border-color:var(--teal-dark);background:var(--teal);color:#fff;font-weight:700}
-.shift-eq-tag.is-on>i{color:#fff}
 .shift-eq-tag.is-on:hover{border-color:var(--teal-dark);background:var(--teal-dark);color:#fff}
 .sc-row-workable.is-ok{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
 .sc-row-workable.is-ng{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
@@ -156,7 +155,6 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
 .defect-lane.is-hit .defect-lane-label b{padding:0 var(--space-1);border-radius:var(--radius-sm);background:#fff;color:var(--danger)}
 .rp-defect-lane.is-hit{outline:1.5px solid var(--danger);outline-offset:-1.5px;filter:saturate(1.2) brightness(1.12)}
 }
-
 
 /* ============================================================
    @layer mode
@@ -372,7 +370,6 @@ body.sc-mode .hd-status .hd-chip-equip{display:none}
 body.sc-mode #headerContextSource{display:none}
 }
 
-
 /* ============================================================
    @layer print
    ============================================================ */
@@ -473,7 +470,6 @@ body.sc-mode #headerContextSource{display:none}
 }
 }
 
-
 /* ============================================================
    @layer utility
    ============================================================ */
@@ -521,4 +517,92 @@ body.sc-mode #headerContextSource{display:none}
    .record-modal と同じ 1500 のままだと、先に作られていた側が下敷きになる
    (登録フィルタ一覧の削除が押せなかった。生成順で前後が決まっていた)。 */
 #appConfirmModal{z-index:var(--z-confirm)}
+
+  /* ============================================================
+     選ばれた札の見た目（§9.353・REVIEW 3-19）
+     ------------------------------------------------------------
+     「選んだ札のほうが濃い」（§9.229 ③）を**1箇所で決める**。以前は同じ3行を
+     23族が各自書いており（実測: 選択中の規則168・族110・宣言セット109）、
+     1つ直すと残りとずれた。値は変えていない——同じ宣言を同じ要素へ当てている。
+     **足すときはここへセレクタを1つ足す**。族ごとの規則を新しく作らない。
+     ここは `@layer state`。component 層のどの規則よりも後に効く。
+     ============================================================ */
+
+  /* 濃い面（縁つき）（23族） */
+  #reportArrange.is-on,
+  .ac-chip.is-on,
+  .db-presets button.active,
+  .db-seg button.active,
+  .filter-search-row-actions #filterAdhocToggle.is-on,
+  .hd-viewbar .db-seg button.active, .hd-viewbar .db-viewtabs button.active, .hd-viewbar .sc-mode-toggle-btn.active,
+  .hd-viewbar button.active, .hd-viewbar [role="tab"].active,
+  .lc-state-chip.is-on,
+  .mm-cd-tab.active,
+  .mm-more.is-on,
+  .nl-win .nl-span.is-on,
+  .op-look-btn.is-on,
+  .op-mini.is-on,
+  .op-seg button.is-on, .op-toggle.is-on, .op-when button.is-on,
+  .op-upad-cell.is-on,
+  .opf-quick-btn.is-on,
+  .os-pv-seg button.is-on,
+  .product-length-tabs button.active,
+  .rp-bar-btn.is-on,
+  .rp-form-ctl button.is-on,
+  .sp-zoom-btn.is-on,
+  .status-filter-btn.active,
+  .suggest-chip.active{background:var(--teal);border-color:var(--teal);color:#fff}
+
+  /* 濃い面（縁なし）（7族） */
+  .db-viewtabs button.active,
+  .mm-card-opt.is-on .mm-card-ico,
+  .mode-tabs button.active,
+  .nav-item--admin.active:hover,
+  .rp-seg button.is-on,
+  .sc-mode-toggle-btn.active,
+  .work-tabs button.active{background:var(--teal);color:#fff}
+
+  /* 濃い面（字は各自）（4族） */
+  .oc-group.is-on,
+  .op-span-pick button.is-on,
+  .rly-paper.is-on,
+  .shift-list-item.active{background:var(--teal);border-color:var(--teal)}
+
+  /* 紺の面（縁つき）（3族） */
+  .fb-axis>button.is-on,
+  .fb-cat.is-on,
+  .lc-origin-chip.is-on{background:var(--nav);border-color:var(--nav);color:#fff}
+
+  /* 紺の面（縁なし）（4族） */
+  .fb-seg>button.is-on,
+  .op-band-span>button.is-on,
+  .op-menu button.is-on,
+  .rly-grid-pick>button.is-on{background:var(--nav);color:#fff}
+
+  /* 淡い面（4族） */
+  .fc-alert-mode.is-on,
+  .mm-card-opt.is-on,
+  .opf-card-btn.is-on,
+  .record-scope-btn.is-on{background:var(--pale);border-color:var(--teal);color:var(--teal-dark)}
+
+  /* 淡い面（字は各自）（3族） */
+  .sc-frame-shift.is-on,
+  .sp-pat.is-on,
+  .sp-pv-tab.is-on{background:var(--pale);border-color:var(--teal)}
+
+  /* 濃い面の中の字（6族） */
+  .fb-cat.is-on>i,
+  .oc-group.is-on>b, .oc-group.is-on .oc-group-meta, .oc-group.is-on .oc-group-use,
+  .opf-stage-btn.is-on .opf-stage-no,
+  .rly-paper.is-on>b, .rly-paper.is-on .rly-paper-meta, .rly-paper.is-on .rly-paper-gone,
+  .shift-eq-tag.is-on>i,
+  .shift-list-item.active b, .shift-list-item.active small{color:#fff}
+
+  /* 淡い面の中の字（6族） */
+  .mm-card-opt.is-on>small,
+  .mm-tab.is-on .mm-tab-sum,
+  .nl-win .nl-choice.is-on>b,
+  .opf-radio-btn.is-on,
+  .record-scope-btn.is-on>i,
+  .sc-view-sec.active>span{color:var(--teal-dark)}
 }

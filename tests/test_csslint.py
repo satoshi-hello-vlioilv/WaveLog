@@ -292,6 +292,54 @@ rec('トークンが自分自身を参照していない（--x:var(--x) は循�
 rec('色の見張りは同じ形を注ぎ込むと数える（トークン行・白・コメントは数えない）',
     _color_literals('.a{color:#60747b;--x:#173842;background:#fff;border:1px solid rgba(0,0,0,.2)}')==2)
 
+# ---- 12) 選ばれた札の見た目は1箇所（§9.353、REVIEW 3-19） ----
+# 「選んだ札のほうが濃い」（§9.229 ③）を、以前は**同じ3行を23族が各自書いて**いた
+# （実測: 選択中の規則168・族110・宣言セット109）。1つ直すと残りとずれる。
+# 束ねた型（`90-state.css` の `@layer state`）と**同じ宣言セット**を族が自前で書いたら
+# 落とす——足すときは束ね規則へセレクタを1つ足す。
+_ON = re.compile(r'(\.(?:active|is-active|is-on|is-selected|current|selected)\b|\[aria-selected="?true"?\])')
+# 束ねた型。増やすときは 90-state.css と**両方**へ書く（片方だけだと網が緩む）。
+_BUNDLED = {
+    ('background:var(--teal)', 'border-color:var(--teal)', 'color:#fff'),
+    ('background:var(--teal)', 'color:#fff'),
+    ('background:var(--teal)', 'border-color:var(--teal)'),
+    ('background:var(--nav)', 'border-color:var(--nav)', 'color:#fff'),
+    ('background:var(--nav)', 'color:#fff'),
+    ('background:var(--pale)', 'border-color:var(--teal)', 'color:var(--teal-dark)'),
+    ('background:var(--pale)', 'border-color:var(--teal)'),
+    ('color:#fff',),
+    ('color:var(--teal-dark)',),
+}
+
+
+def _on_rules(text):
+    """(セレクタ, 宣言セット) の並び。コメントは呼ぶ側で潰す。"""
+    out = []
+    for m in re.finditer(r'([^{}]+)\{([^{}]*)\}', text):
+        sel, body = m.group(1).strip(), m.group(2)
+        if not _ON.search(sel) or '@' in sel:
+            continue
+        ds = tuple(sorted(' '.join(d.split()) for d in body.split(';') if d.strip()))
+        out.append((' '.join(sel.split()), ds))
+    return out
+
+
+_state_css = re.sub(r'/\*[\s\S]*?\*/', '', (CSS_DIR / '90-state.css').read_text(encoding='utf-8'))
+_bundle_sels = {sel for sel, ds in _on_rules(_state_css) if ds in _BUNDLED}
+_dup = []
+for _n in CSS_ORDER:
+    _txt = re.sub(r'/\*[\s\S]*?\*/', '', (CSS_DIR / _n).read_text(encoding='utf-8'))
+    for _sel, _ds in _on_rules(_txt):
+        if _ds in _BUNDLED and _sel not in _bundle_sels:
+            _dup.append(f'{_n} {_sel[:50]}')
+rec('選ばれた札の見た目を族が自前で書いていない（束ねた規則へセレクタを足す・§9.353）',
+    not _dup, '; '.join(_dup[:5]) or f'束ねた型 {len(_BUNDLED)}・束ね規則 {len(_bundle_sels)}本')
+rec('束ねた規則が `@layer state` の1ファイルに揃っている',
+    len(_bundle_sels) >= 8, f'{len(_bundle_sels)}本')
+_probe = [s for s, d in _on_rules('.zz-x.is-on{background:var(--teal);border-color:var(--teal);color:#fff}')
+          if d in _BUNDLED]
+rec('見張りは同じ形を注ぎ込むと数える（束ねた型と同じ3行）', _probe == ['.zz-x.is-on'], str(_probe))
+
 ng=[x for x in R if not x[1]]
 print('\n=== SUMMARY ===')
 print(f'{len(R)-len(ng)}/{len(R)} passed')
