@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""test_patchlint.py: 「元の実装を退避しない全置換」を機械的に見つける（フェーズA）。
+"""test_patchlint.py: 「同じ役目の実装が2つ以上ある」を機械的に見つける。
 
 ============================================================
 なぜ要るか
@@ -13,15 +13,27 @@ grepで辿っても最終的な実装に行き着かない**。読む側は`inde
     直して効いていない」が**3回**(品質データ結合・キャッシュ・読み込み
     時間の計測)。§9.93でフックへ置き換え済み。
   ・`compactToleranceScale` … **3ファイルが同じ関数を定義**していた。
-    読み込み順は measurement-input(定義) → measurement-tolerance(置換) →
-    filters(置換) → measurement-worklog(ラップ)。つまり真ん中の
-    measurement-tolerance版は**一度も実行されない死んだコード**で、
+    読み込み順は measure-input(定義) → measure-tolerance(置換) →
+    filters(置換) → measure-worklog(ラップ)。つまり真ん中の
+    measure-tolerance版は**一度も実行されない死んだコード**で、
     そこを直しても何も変わらない。§9.150で図を作り直したとき、
-    filters.js の置換を外して measurement-input.js の定義を live に戻した
+    filters.js の置換を外して measure-input.js の定義を live に戻した
     ——**一覧の絞り込みのファイルが測定画面の図を持っていたこと自体が誤り**。
 
 CLAUDE.mdは既に「拡張ファイルからはラップのみ可、全置換は不可」と
 定めている。**規約はあったが機械的な歯止めが無かった**ので、ここで見る。
+
+同じ形の問題を、あとから2つ足した
+------------------------------------------------------------
+どれも「**同じことをする実装が複数あり、読む側はどれが効いているのか
+分からない**」という1つの形をしている。
+
+  ・所要時間の書き方（§9.341）… 7つ・表記5種類あった
+  ・素のダイアログ（§9.342）… `alert`/`confirm`/`prompt` が56箇所
+
+**規約だけでは減らない**ことは実証済みで、`prompt()`をやめる自前の小窓を
+3つも書きながら、同じファイルの5箇所で素の`prompt()`を呼んでいた
+（`master-opdata.js`）。書いた本人が気づけないので、機械が見る。
 
 何を「ラップ」と認めるか
 ------------------------------------------------------------
@@ -45,7 +57,7 @@ JS = ROOT / 'static' / 'js'
 ALLOWED = {
     ('lot-split.js', 'compactToleranceData'):
         '分割ロットでは条ごとに公差が変わるため、index の既定値ごと差し替える。',
-    ('measurement-worklog.js', 'updateWorkTimePanel'):
+    ('measure-worklog.js', 'updateWorkTimePanel'):
         '作業時間パネルを worklog 側の同期処理へ置き換える。',
 }
 
@@ -65,7 +77,7 @@ def rec(name, ok, detail=''):
 def declared_functions():
     """`function 名(` で宣言されている関数名（＝置き換えられうる相手）。"""
     names = set()
-    for path in JS.glob('*.js'):
+    for path in JS.rglob('*.js'):
         for m in re.finditer(r'^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(',
                              path.read_text(encoding='utf-8'), re.M):
             names.add(m.group(1))
@@ -76,7 +88,7 @@ def scan():
     """(ファイル名, 関数名, 行番号, ラップか) を返す。"""
     known = declared_functions()
     out = []
-    for path in sorted(JS.glob('*.js')):
+    for path in sorted(JS.rglob('*.js')):
         lines = path.read_text(encoding='utf-8').split('\n')
         for i, line in enumerate(lines):
             m = ASSIGN.match(line)
@@ -89,6 +101,88 @@ def scan():
             saved = re.search(r'\b(?:const|let|var)\s+\w+\s*=\s*(?:typeof\s+)?'
                               + re.escape(fn) + r'\b', back)
             out.append((path.name, fn, i + 1, bool(saved)))
+    return out
+
+
+DURATION_RE = re.compile(r'(?:function\s+\w+\s*\([^)]*\)|=>)[^\n]{0,200}?'
+                         r'(?:\$\{[^}]*\}時間|\'時間\'|`\$\{h\}:)')
+
+
+def duration_formatters():
+    """所要時間を自前で書いている場所（§9.341）。
+
+    「150分」か「2時間30分」か「2:30」かを答えるのは`WL.duration`の1箇所。
+    以前は同じことをする関数が**6つ・表記4種類**あり（fmtMin 2箇所・
+    fmtMinutes・fmtCompact・fmtHour・measure-worklog の fmtMin）、
+    稼働状況は`150分`、作業スケジュールは`2時間30分`、その実績列だけ
+    `2:30`と、**同じ数字が画面をまたぐと別の顔**になっていた。
+
+    ここは「分と時間を組み立てる式」を探す。`WL.duration`の実装
+    （base.js）と、1日を超える相対時刻（`fmtRelative`。「後」は所要時間
+    ではなく到達点なので別の軸）だけが例外。
+    """
+    allow = {
+        # 書き方そのものを持つ1箇所。
+        ('base.js', 'durationText'): '`WL.duration`の実装',
+        # 「いつ始まるか」は所要時間ではなく到達点。1日を超えるぶんだけ持つ。
+        ('schedule-view.js', 'fmtRelative'): '相対時刻（〜後）は別の軸',
+        # 「30分ごと」と「30分かかる」は別のことを言っている。
+        ('master-data.js', 'clEvery'): '間隔（〜ごと）は所要時間ではない',
+    }
+    out = []
+    for path in sorted(JS.rglob('*.js')):
+        lines = path.read_text(encoding='utf-8').split('\n')
+        name = ''
+        for i, line in enumerate(lines):
+            m = re.match(r'\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(', line)
+            if m:
+                name = m.group(1)
+            if line.lstrip().startswith(('*', '//', '/*')):
+                continue
+            # 所要時間の書き方は「時と分の両方」を組み立てる。片方だけの
+            # 「過去8時間」「30分前」は窓の設定や時点であって、ここではない。
+            if '分' not in line:
+                continue
+            if not re.search(r'\$\{[^}]*\}\s*時間', line):
+                continue
+            # 「〜前」「〜後」「〜ごと」は時点・間隔であって所要時間ではない。
+            if re.search(r'時間[^`\'"]{0,12}?(前|後|ごと|以内|以降)', line):
+                continue
+            if (path.name, name) in allow:
+                continue
+            out.append(f'{path.name}:{i + 1} {name or "(無名)"}')
+    return out
+
+
+def native_dialogs():
+    """素の `alert()` / `confirm()` / `prompt()`（§9.342）。
+
+    ブラウザ標準のダイアログは**タブ全体を止め**、見た目もEscの効き方も
+    IMEの挙動も浮きウィンドウとの重なり順もアプリと揃わない。使うのは
+    `confirmModal` / `alertModal` / `promptModal` の3つだけ。
+
+    文章の中の言及（`prompt()` のように**中身が空**の書き方）は数えない
+    ——本物の呼び出しには必ず引数がある。ブロックコメントの中も見ない。
+    """
+    call = re.compile(r'(?<![\w.$])(?:window\s*\.\s*)?(alert|confirm|prompt)\('
+                      r'\s*[^\s)]')
+    out = []
+    for path in sorted(JS.rglob('*.js')):
+        in_block = False
+        for i, line in enumerate(path.read_text(encoding='utf-8').split('\n')):
+            stripped = line.lstrip()
+            if in_block:
+                if '*/' in line:
+                    in_block = False
+                continue
+            if stripped.startswith('//'):
+                continue
+            if stripped.startswith('/*') and '*/' not in line:
+                in_block = True
+                continue
+            m = call.search(line)
+            if m:
+                out.append(f'{path.name}:{i + 1} {m.group(1)}()')
     return out
 
 
@@ -117,6 +211,14 @@ def main():
     dup = {fn: v for fn, v in by_fn.items() if len(v) > 1}
     rec('同じ関数を複数のファイルが全置換していない（読み込み順で勝敗が決まる）',
         not dup, '; '.join(f'{fn} → {", ".join(v)}' for fn, v in dup.items()))
+
+    dur = duration_formatters()
+    rec('所要時間の書き方は`WL.duration`の1箇所だけが組み立てている（§9.341）',
+        not dur, '; '.join(dur))
+
+    native = native_dialogs()
+    rec('素の alert()/confirm()/prompt() を呼んでいない（§9.342）',
+        not native, '; '.join(native))
 
     print(f'\n== {sum(R)}/{len(R)} PASS ==')
     print('  現状の全置換: ' + (', '.join(f'{f}:{ln} {fn}' for f, fn, ln in replaced) or 'なし'))

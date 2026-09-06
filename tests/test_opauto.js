@@ -56,8 +56,10 @@ let b=null;
   /* **画面へ鍵の綴りを書き写していないこと**（§9.163）。写すと増やしたときに
      2箇所直すことになり、片方だけ直った状態が作れる。 */
   /* §9.324 R3: 操業データの盤は master-opdata.js（定義は master-defs.js）。 */
-  const src=(await Promise.all(['master-defs','master-maint','master-opdata']
+  const src=(await Promise.all(['master/master-defs','master/master-maint','master/master-opdata']
     .map(n=>fetch(B+'/static/js/'+n+'.js').then(r=>r.text())))).join('\n');
+  if(src.length<20000)throw new Error('画面のJSを読めていない（取れた長さ '+src.length
+    +'）——空の材料では「書き写していない」が必ず通る');
   const hard=av.filter(a=>src.indexOf("'"+a.key+"'")>=0||src.indexOf('"'+a.key+'"')>=0);
   rec('画面のJSに鍵の綴りを書き写していない',hard.length===0,
       JSON.stringify(hard.map(a=>a.key)));

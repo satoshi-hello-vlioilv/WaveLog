@@ -682,7 +682,7 @@ def stop_category_register():
 @bp.post('/api/schedule/stop-category-master/update')
 def stop_category_update():
  """マスタ管理画面の「編集」はどのマスタも <endpoint>/update へPOSTする
-    (static/js/master-maint.js の submitMaint)。改名の処理は登録側が
+    (static/js/master/master-maint.js の submitMaint)。改名の処理は登録側が
     idを見て既に持っているのに、このURLだけ無く404で弾かれていた(§9.82)。"""
  x=body({'id': any_,'name': str,'colorKey': any_})
  if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
@@ -989,7 +989,7 @@ def load_factor_recalc():
 @bp.get('/api/schedule/estimate')
 def estimate_preview():
  # §6.7・§6.8・§8「単一ロットの見積(内訳付き)」。明細(detail)はフロントが
- # 仕掛一覧の行からaliases(static/js/base.js)で作って渡す
+ # 仕掛一覧の行からaliases(static/js/core/base.js)で作って渡す
  # (§5.1と同じ規約。サーバー側でSIKALOTNOWのエイリアス解決を再実装しない)。
  equipment=str(request.args.get('equipment') or '').strip()
  if not equipment:return jsonify(error='どの設備の見積か指定してください(equipment)。'),400

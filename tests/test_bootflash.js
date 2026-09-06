@@ -54,7 +54,10 @@ let b=null;
 
   /* ---- 2) HTMLはパーサーを止めない ---- */
   const html=await (await fetch(API+'/')).text();
-  EXPECTED_JS=(html.match(/var FILES=\[[\s\S]*?\]/)||[''])[0].match(/'[a-z0-9-]+\.js'/g)?.length||0;
+  // 領域フォルダ（§9.334）なので `'<領域>/<名前>.js'`。折りの無い綴りだけを
+  // 見ると **3-9 以降0本**になる（`EXPECTED_JS>0` の門で落ちるので気づけたが、
+  // 門が無ければ静かに素通りしていた・§9.335）。
+  EXPECTED_JS=(html.match(/var FILES=\[[\s\S]*?\]/)||[''])[0].match(/'[a-z0-9-]+\/[a-z0-9-]+\.js'/g)?.length||0;
   const parserScripts=(html.match(/<script[^>]+src=["'][^"']*\/js\//g)||[]).length;
   rec('HTMLにパーサー実行のアプリJSが無い(描画を止めない)',parserScripts===0,`${parserScripts}本`);
   rec('起動用CSSはブロッキングで読む',/core\.boot_css|\/css\/boot\.css/.test(html)&&

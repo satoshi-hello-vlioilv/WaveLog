@@ -1,0 +1,89 @@
+/* test_mmswitch.js: マスタ管理のタブを切り替えたとき、前のタブの応答が
+   今の画面を上書きしないこと（§9.331）。
+   ------------------------------------------------------------
+   専用の画面（`special:`。操業データ項目の盤など）は**取りに行ってから描く**
+   ので、取りに行っている最中に別のタブへ移ると、後から届いた前のタブの盤が
+   今の画面を上書きする——**見出しだけ新しいマスタで、中身は前の盤**。
+   実際に「設備停止マスタ」の見出しの下に操業データ項目の盤が出て、
+   「追加」が押せなくなった（`test_stopeq`が通しでだけ落ちる形で出ていた）。
+
+   **応答をわざと遅らせること**（§9.312と同じ理由）——手元のマスタでは往復が
+   一瞬なのでこの道をほとんど通らず、遅らせない網は直す前でも通る。
+   マスタを共有に置いた端末では1回の取得に数秒かかる（§9.263／§9.273）ので、
+   現場ではむしろこちらがふつう。 */
+const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+const API='http://127.0.0.1:5029';
+let b=null;
+(async()=>{
+ b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
+ const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+ const page=await b.newPage({viewport:{width:1700,height:1000}});
+ page.on('pageerror',e=>console.log('[pageerror]',e.message));
+ const wait=ms=>page.waitForTimeout(ms);
+ try{
+  // 操業データ項目の盤が読む口だけを2秒遅らせる（他は素通し）。
+  await page.route('**/api/operation-item-master*',async route=>{
+   await new Promise(r=>setTimeout(r,2000));
+   await route.continue();
+  });
+  await page.goto(API+'/',{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
+  await wait(900);
+
+  await page.click('#openMasterMaint');
+  await page.waitForSelector('#masterMaintForm',{timeout:10000});
+  // 遅い盤の取得が終わる前に、汎用の一覧を持つタブへ移る。
+  await wait(300);
+  const moved=await page.evaluate(()=>{
+   const b=document.querySelector('[data-master="stopReason"]');if(!b)return false;b.click();return true;});
+  rec('設備停止マスタのタブがある',moved);
+
+  // 前のタブの応答（2秒後）が届いたあとまで待つ。
+  await wait(3500);
+
+  const st=await page.evaluate(()=>({
+   見出し:(document.querySelector('#masterMaintTitle,.mm-title')||{}).textContent||'',
+   追加:!!document.getElementById('masterMaintAdd'),
+   前の盤:!!document.querySelector('#masterMaintForm #opEqPick, #masterMaintForm .op-bar'),
+  }));
+  rec('見出しは切り替えた先のマスタ',/設備停止/.test(st.見出し),st.見出し||'なし');
+  rec('前のタブの盤が残っていない',!st.前の盤,JSON.stringify(st));
+  /* **「見出しが変わった」だけを見ないこと**——見出しは取りに行く前に書くので、
+     上書きされていても必ず通る。中身（押せる「追加」）まで見る。 */
+  rec('切り替えた先の一覧が出ている（追加が押せる）',st.追加,JSON.stringify(st));
+
+  // 遅い盤へ戻れること（負けたほうが描き直す作りで、戻る道を塞いでいないか）。
+  await page.evaluate(()=>{const b=document.querySelector('[data-master="opItem"]');if(b)b.click()});
+  await wait(3500);
+  const back=await page.evaluate(()=>!!document.querySelector('#masterMaintForm #opEqPick, #masterMaintForm .op-bar'));
+  rec('遅い盤のタブへ戻れる',back);
+
+  /* ---- 汎用の一覧どうしでも同じこと ----
+     専用の画面だけでなく、**汎用の一覧も取りに行ってから描く**。前のタブの
+     行が今のタブの一覧に並ぶと、見出しと中身が食い違ったまま操作できてしまう
+     （消すつもりで別のマスタの行を消せる）。 */
+  await page.unroute('**/api/operation-item-master*');
+  await page.route('**/api/schedule/stop-reason-master*',async route=>{
+   await new Promise(r=>setTimeout(r,2000));
+   await route.continue();
+  });
+  await page.evaluate(()=>{const b=document.querySelector('[data-master="stopReason"]');if(b)b.click()});
+  await wait(300);
+  await page.evaluate(()=>{const b=document.querySelector('[data-master="equipment"]');if(b)b.click()});
+  await wait(3500);
+  const g=await page.evaluate(()=>({
+   見出し:(document.querySelector('#masterMaintTitle,.mm-title')||{}).textContent||'',
+   一覧:(document.getElementById('masterMaintList')||{}).textContent||''}));
+  rec('見出しは設備マスタ',/^設備/.test(g.見出し)&&!/設備停止/.test(g.見出し),g.見出し||'なし');
+  rec('前のタブの行が一覧に残っていない',
+      g.一覧.indexOf('テスト設備A')>=0,(g.一覧||'').slice(0,120));
+ }catch(e){
+  console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false});
+ }finally{
+  if(b)await b.close().catch(()=>{});
+ }
+ const ng=R.filter(x=>!x.ok).length;
+ console.log(`\n=== SUMMARY ===\n${R.length-ng}/${R.length} passed`);
+ process.exit(ng?1:0);
+})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});

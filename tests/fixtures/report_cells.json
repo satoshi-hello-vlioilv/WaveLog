@@ -1,5 +1,5 @@
 {
-  "_note": "帳票ブロックの[内容]（§9.274）の突き合わせ用。サーバー(backend/repositories/report_block_repo.py の parse_content/dump_content)と画面(static/js/master-maint.js の fbParse/fbText)は同じ約束を別々に持っているので、同じ例で両方を確かめる。tests/test_rbcells.py と tests/test_rbcells.js が読む。**片方だけ直さないこと**——2通りあると、盤で組んだ形と紙が食い違う（§9.245）。",
+  "_note": "帳票ブロックの[内容]（§9.274）の突き合わせ用。サーバー(backend/repositories/report_block_repo.py の parse_content/dump_content)と画面(static/js/master/master-maint.js の fbParse/fbText)は同じ約束を別々に持っているので、同じ例で両方を確かめる。tests/test_rbcells.py と tests/test_rbcells.js が読む。**片方だけ直さないこと**——2通りあると、盤で組んだ形と紙が食い違う（§9.245）。",
   "_parse_note": "text を読んだ結果が cells。cells は label/path/kind/span/rows/showLabel/stack/align/format/lot の10つで比べる（blank は kind から決まるので比べない）。lot は §9.277 の「対象（子ロット）の軸のマス」の印で、**紙が1つの表の中で子ロットの数だけ複製する並び**を指す。 stack は §9.292 ⑤ の「ラベルを値の上へ置く」印で、**ラベルを出さないマス・見出し・空きでは必ず false**（並べる相手が無い）。",
   "parse": [
     {

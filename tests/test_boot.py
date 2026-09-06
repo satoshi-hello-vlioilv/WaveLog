@@ -146,7 +146,7 @@ rec('起動が終わるまで本体を伏せる印がhtmlに付いている',
 rec('base.jsが読めなかった場合の解除(保険)がindex.htmlにある',
     "classList.remove('app-booting')" in index and 'setTimeout' in index)
 
-base_js = (ROOT / 'static' / 'js' / 'base.js').read_text(encoding='utf-8')
+base_js = (ROOT / 'static' / 'js' / 'core' / 'base.js').read_text(encoding='utf-8')
 rec('base.jsの段階数がboot_status.pyと一致する',
     ('BOOT_SERVER_STEPS=%d' % len(boot_status.STEPS)) in base_js.replace(' ', '') and
     ('BOOT_TOTAL_STEPS=%d' % boot_status.TOTAL_STEPS) in base_js.replace(' ', ''))

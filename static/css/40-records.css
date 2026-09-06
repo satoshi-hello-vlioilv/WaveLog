@@ -288,6 +288,13 @@
 /* 共通確認モーダル(confirmModal)のメッセージ本文。confirm()の改行表現を
    引き継ぐため、\nをそのまま改行として表示する。 */
 .confirm-modal-message{margin:0;padding:var(--pad-card);border-left:4px solid var(--teal);background:#eef8f9;color:#3a565d;line-height:1.7;white-space:pre-line}
+/* 1行入力の窓（§9.342）。**器は確認モーダルと同じ**なので、足すのは
+   「ラベル＋欄」と「添え書き」の2つだけ。入力欄は器いっぱいに伸ばす
+   ——名前は何文字入るか分からず、途中で見切れると読み直せない。 */
+.confirm-modal-field{display:flex;flex-direction:column;gap:var(--gap-hair);margin-top:var(--space-2)}
+.confirm-modal-field>span{font-weight:700;font-size:var(--fs-base-sm);color:#3a565d}
+.confirm-modal-field>input{width:100%}
+.confirm-modal-hint{display:block;margin-top:var(--gap-hair);color:var(--muted);font-size:var(--fs-micro);line-height:1.6}
 /* 確認の中の「何が起きるか」の箇条書き（§9.301 ②）。**先に文章、次に箇条書き**
    ——起きることを1行ずつ並べたほうが、押す前に数えられる（§6）。 */
 .confirm-modal-list{margin:var(--space-2) 0 0;padding-left:var(--space-4);color:var(--ink-2);line-height:1.7}

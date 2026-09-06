@@ -71,7 +71,7 @@ B1・B4は同じ原因（ハートビートの応答を`.catch(()=>{})`で捨て
 
 | 値 | 散在箇所 |
 |---|---|
-| ポート`5029` | `start_app.bat`, `app.py`(2箇所), `static/js/base.js` |
+| ポート`5029` | `start_app.bat`, `app.py`(2箇所), `static/js/core/base.js` |
 | 表示名`測定伝送システム` | `templates/index.html`(3箇所), `base.js`(2箇所), `list-view.js` |
 
 ---

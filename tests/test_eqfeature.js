@@ -75,8 +75,10 @@ async function cleanup(){
      サーバーの戻りを読むだけ、という作りをここで固定する。 */
   const js=await page.evaluate(async()=>{
    /* §9.324 R3: マスタ管理は5本。設備マスタの定義は master-defs.js にある。 */
-   const t=(await Promise.all(['master-defs','master-maint','master-report','master-data','master-opdata']
-     .map(n=>fetch('/js/'+n+'.js',{cache:'no-store'}).then(r=>r.text())))).join('\n');
+   const t=(await Promise.all(['master/master-defs','master/master-maint','master/master-report',
+                              'master/master-data','master/master-opdata']
+     .map(n=>fetch('/static/js/'+n+'.js',{cache:'no-store'}).then(r=>r.text())))).join('\n');
+   if(t.length<20000)throw new Error('画面のJSを読めていない（取れた長さ '+t.length+'）——空の材料では「書き写していない」が必ず通る');
    /* 説明文（`more`／`hint`）には呼び名が出てよい。見るのは**綴りの配列**。 */
    return {配列:/\[\s*['"]measure['"]\s*,\s*['"]schedule['"]/.test(t)};
   });

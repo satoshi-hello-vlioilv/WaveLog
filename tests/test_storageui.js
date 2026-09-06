@@ -186,8 +186,10 @@ const writeShareDir=async v=>{
  /* **画面のJSに判定を書き写していないこと**——2つの答えが出ると、
     片方だけ直した状態が作れる。 */
  /* §9.324 R3: 共通設定の画面は master-data.js（定義は master-defs.js）。 */
- const js=(await Promise.all(['master-defs','master-maint','master-data']
-   .map(n=>fetch(B+'/js/'+n+'.js').then(r=>r.text()))).catch(()=>[])).join('\n');
+ const js=(await Promise.all(['master/master-defs','master/master-maint','master/master-data']
+   .map(n=>fetch(B+'/static/js/'+n+'.js').then(r=>r.text()))).catch(()=>[])).join('\n');
+ if(js.length<20000)throw new Error('画面のJSを読めていない（取れた長さ '+js.length
+   +'）——空の材料では「書き写していない」が必ず通る');
  rec('画面のJSにUNC判定を書き写していない',
    js.length>0&&!/is_network_path|startsWith\('\\\\\\\\'\)/.test(js),
    js.length?'ok':'JSを読めませんでした');

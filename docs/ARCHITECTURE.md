@@ -82,7 +82,7 @@
 留まり、共有の応答待ちで長引いたときにどこで待たされているのか分からなかった
 (実際に「起動時の『接続を確認中』が長い」という指摘を受けた)。現在は
 `backend/boot_status.py` が実際の段階を書き出す。詳細は
-`docs/SCHEDULE_MODE_DESIGN.md` §9.47。
+`docs/decisions/9.47.md`。
 
 ### 起動は「サーバーが応答したら終わり」ではない（起動オーバーレイ）
 
@@ -137,7 +137,7 @@
 | `backend/routes/tables.py` | 汎用DB一覧API(`/api/catalog`・`/api/tables`・`/api/table`・`/api/table-columns`・クエリ結合の引き当て`/api/query-join/keys`・`/api/query-join/resolve`) |
 | `backend/routes/measurement.py` | 測定コンテキスト・マスタ診断・バックアップAPI |
 | `backend/routes/quality.py` | 品質データ分析API(`/api/quality/analysis`) |
-| `backend/routes/masters.py` | 各種マスタCRUDのBlueprint（設備/操業データ項目/操業データ選択肢/フィルタプリセット/列レイアウト/アクセス権限ほか）。URLは分離前と同一。リクエスト受付とレスポンス整形のみを行い、データアクセスは`repositories/master_repo.py`・`repositories/operation_repo.py`へ委譲。**オペレータ・機器・スプール種別・内径種別・バリ揃え・コイル止めは`操業データ選択肢マスタ`のまとまりへ統合した**（§9.221 ③。6つとも「名前の一覧」で、違いはオペレータのヨミガナと作業可能設備だけだった——`[よみ]`／`[対象設備]`として選択肢の側へ持たせてある）。読み口は`operation_repo.choice_values()`の1本、CRUDは`/api/operation-choice-master`の1組。 |
+| `backend/routes/masters/` | 各種マスタCRUDのBlueprint（設備/操業データ項目/操業データ選択肢/フィルタプリセット/列レイアウト/アクセス権限ほか）。URLは分離前と同一。**9つの段（`equipment`／`access`／`filters`／`columns`／`joins`／`operation`／`report_block`／`roll`／`choice_link`）に分かれ、Blueprintは`_base.py`の1つ**（§9.333。権限表の鍵は`Blueprint名.関数名`なので、段へ分けても1文字も変わらない）。リクエスト受付とレスポンス整形のみを行い、データアクセスは`repositories/master_repo.py`・`repositories/operation_repo.py`へ委譲。**オペレータ・機器・スプール種別・内径種別・バリ揃え・コイル止めは`操業データ選択肢マスタ`のまとまりへ統合した**（§9.221 ③。6つとも「名前の一覧」で、違いはオペレータのヨミガナと作業可能設備だけだった——`[よみ]`／`[対象設備]`として選択肢の側へ持たせてある）。読み口は`operation_repo.choice_values()`の1本、CRUDは`/api/operation-choice-master`の1組。 |
 | `backend/routes/common.py` | ルート層の共通部品。`api_guard(fail,bad=None,bad_status=400)`＝「失敗の受け方」の1箇所（§9.324 R2）。`Exception`→500 `f'{fail}: {e}'`、`bad`の型だけ`bad_status`で`str(e)`、`HTTPException`は素通し。`@bp.post(...)`の**下**に置く。写しが残っていないことは`tests/test_apiguard.py`が構文木で数える |
 | `backend/routes/path_config.py` | パス設定マスタとパス参照ダイアログのBlueprint（`masters.py`から分離）。データアクセスは例外的に`db_access.py`（起動時に接続先を確定させる都合、`master_repo.py`はdb_accessに依存する側のため） |
 | `backend/routes/rne.py` | RNE抽出の状態表示と手動実行のBlueprint（`masters.py`から分離）。手動実行は「読み直すだけのPOST」として`access_mode._READ_ONLY_POST_ENDPOINTS`に`rne.rne_extract_run`で登録 |
@@ -272,7 +272,7 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 パス設定の下部に状態パネルを置き、有効/停止・直近の成否と行数・抽出先の
 最終更新・資材の配置状況を表示し、「今すぐ抽出」で任意のタイミングでも
 走らせられるようにしてある(`/api/rne-extract/status`・`/run`。詳細は
-`docs/SCHEDULE_MODE_DESIGN.md` §9.50)。
+`docs/decisions/9.50.md`)。
 - サンドボックス等の非Windows環境では`navigator_api.py`がインスタンス化
   時点で`RuntimeError`を返すため、抽出は毎回失敗ログを残すだけでサーバー
   自体は問題なく動作する(周辺のロジック——設定切替・スケジューラの間隔
@@ -299,8 +299,8 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 |---|---|
 | `base.js` | `S`(状態)・`api`・`esc`・`aliases`/`pick`・`fmtDim`・`showToast`・`normalizedFieldName`・`sourceField`・使用設備/ユーザーIDの取得・`durationMs` |
 | `list-view.js` | `init`・`selectDb`/`selectTable`/`load`・`fetchTableData`(取得キャッシュ。`filters.js`の`load()`と共用)・`renderGrid`・更新履歴モーダル・検索/ページャ |
-| `measurement-view.js` | `ensureMeasureShape`・`collect`・`renderMeasurement`・各パネル描画（品質等級/コース/製品丈/作業時間）・入力検証（`updateValidationVisuals`）・`updateMeasurementHeading` |
-| `measurement-input.js` | `deviceParse`・`processDeviceInput`・`focusCurrent`・`renderMeasureGrid(Vertical)`・`judgeInput`・公差計算（`toleranceDetail`/`toleranceDataForSource`/`compactTolerance*`）・公差数直線の値→縦位置の写像（`WL.toleranceScaleView`、下記） |
+| `measure-view.js` | `ensureMeasureShape`・`collect`・`renderMeasurement`・各パネル描画（品質等級/コース/製品丈/作業時間）・入力検証（`updateValidationVisuals`）・`updateMeasurementHeading` |
+| `measure-input.js` | `deviceParse`・`processDeviceInput`・`focusCurrent`・`renderMeasureGrid(Vertical)`・`judgeInput`・公差計算（`toleranceDetail`/`toleranceDataForSource`/`compactTolerance*`）・公差数直線の値→縦位置の写像（`WL.toleranceScaleView`、下記） |
 | `records-store.js` | IndexedDB/ミラー永続化・`saveLocal`/`persistAndTransition`・`openMeasurement`・`openRecords`/`renderRecordListRows`・`loadMeasurementContext`・使用設備設定/設備マスタ・Access同期の未完了キューと再送・アプリ起動呼び出し（末尾） |
 
 ### 画面ごとの操作列をヘッダーへ相乗りさせる（#headerViewBar）
@@ -362,7 +362,7 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 - 表示は「Nロット / M条」と両方を出す（`summarizeAppliedGroups`、仕掛一覧の
   分割セル、幅分割情報パネル）。
 - 横割数(`#horizontalCount`)の`max`と`updateCoilOptions`の丸めも、設備の最大条数へ
-  追随する（`applyMaxStripsToInputs`/`currentMaxStrips`、measurement-view.js）。
+  追随する（`applyMaxStripsToInputs`/`currentMaxStrips`、measure-view.js）。
 - 条の入力欄には、**分割ありのときだけ**子ロット番号の下3桁バッジを出す
   (`.strip-lot-badge`、lot-split.jsが`makeMeasureInputV29`をラップして注入)。
   色は `appliedLotColorMap()` が返す**異なるロットの並び順**の配色で、
@@ -468,9 +468,9 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 目盛りと、測定済みの値をスウォームプロット（近い値は左右へずらす）で示す。
 
 - 描画本体は `filters.js` が `compactToleranceScale` を上書きして持つ
-  （`measurement-input.js` の素の実装 → `measurement-tolerance.js` →
-  `filters.js` → `measurement-worklog.js` の順にラップされ、**読み込み順で
-  最後が勝つ**。指示型のときだけ `measurement-worklog.js` が専用カードへ
+  （`measure-input.js` の素の実装 → `measure-tolerance.js` →
+  `filters.js` → `measure-worklog.js` の順にラップされ、**読み込み順で
+  最後が勝つ**。指示型のときだけ `measure-worklog.js` が専用カードへ
   差し替える）。
 - **値→縦位置(%)の写像は `WL.toleranceScaleView` に一本化する**。数直線の本体と、
   測定器から受信中（確定前）の先読みリング `#numberlinePending`
@@ -608,8 +608,8 @@ Box等のクラウド同期フォルダへ複製し、他端末はそれを閲�
 
 ### 2. 機能拡張ファイル（コアの後に読み込み）
 
-`measurement-tolerance.js` → `lot-split.js` → `measure-progress.js` →
-`filters.js` → `measurement-worklog.js` →
+`measure-tolerance.js` → `lot-split.js` → `measure-progress.js` →
+`filters.js` → `measure-worklog.js` →
 `master-defs.js` → `master-maint.js` → `master-report.js` → `master-data.js` → `master-opdata.js` →
 `quality-analysis.js` → `report-dashboard.js` → `calendar-view.js`
 
@@ -698,7 +698,7 @@ fn=function(...){ /* 前処理 */ const r=baseFn(...); /* 後処理 */ return r 
 | ハード | `records-store.js` の `persistAndTransition` | 公差外(`ng`)、オペレータ/検査員の未選択 | 登録させない |
 | 確認 | `measure-progress.js`（`persistAndTransition` をラップ） | 8つの入力内容の未測定、丈位置の未測定、作業時間の未記録 | 一覧を提示して**確認のうえ続行可** |
 
-`measurement-view.js` の `activeRequiredControls()` は**表示中のグリッドしか
+`measure-view.js` の `activeRequiredControls()` は**表示中のグリッドしか
 見ない**（現在の入力内容 × 現在の丈位置）。これは枠色表示のための仕様として
 残してあり、完了可否の判断には使わない。全体の集計は
 `measure-progress.js` が `S.measure` から**DOM非依存**で行うため、入力内容や
@@ -1183,7 +1183,7 @@ return withWaiting({title:'…を読み込んでいます', detail:'…', progre
   `loadMaintInner()`）。ラップで包むだけだと、内側の関数を直接呼んでいる
   既存の呼び出し元を取りこぼす。
 - **書込系には被せない。** 作業スケジュールの書込は操作直後に画面を止めない
-  一方通行の設計（`docs/SCHEDULE_MODE_DESIGN.md` §9.22）で、待ち表示はその
+  一方通行の設計（`docs/decisions/9.22.md`）で、待ち表示はその
   狙いを打ち消す。
 
 ### ネットワーク共有を読む処理は「回数」で見る
@@ -1197,7 +1197,7 @@ return withWaiting({title:'…を読み込んでいます', detail:'…', progre
 
 - **設備ごとにループする処理で、ループの外で1回作れるものを中で作らない。**
   `schedule_calc.expand_plan()` の `actual_index` がその代表例
-  （`docs/SCHEDULE_MODE_DESIGN.md` §9.41）。
+  （`docs/decisions/9.41.md`）。
 - 共有を読む共通関数には、**ファイルの署名（更新時刻+サイズ）+ TTL** の
   キャッシュを入れる（`db_access.merged_backup_rows()`）。TTL 内は `stat` すら
   省く（共有越しでは `stat` も往復する）。書き込んだ側が明示的に捨てられる口
@@ -1635,7 +1635,7 @@ return withWaiting({title:'…を読み込んでいます', detail:'…', progre
 
 ### マスタ管理の汎用CRUDは4本セット（`/update` の書き忘れが3回起きた）
 
-マスタ管理画面（`static/js/master-maint.js` の `submitMaint`）は、どのマスタでも
+マスタ管理画面（`static/js/master/master-maint.js` の `submitMaint`）は、どのマスタでも
 同じ約束でサーバーを呼ぶ。**編集のときだけURLが変わる**のがつまずきどころ。
 
 ```
@@ -1776,7 +1776,7 @@ return withWaiting({title:'…を読み込んでいます', detail:'…', progre
 
 - 書込ボタン・ドラッグ可否を出す条件は、**サーバー側のガードと同じ式**にする。
   条件を片方だけ足したり緩めたりしない
-  （`docs/SCHEDULE_MODE_DESIGN.md` §9.44 が実際に踏んだ）。
+  （`docs/decisions/9.44.md` が実際に踏んだ）。
 - 権限が足りずに無効化するときは、**黙って消さずに理由を出す**。マスタで
   直せる内容なら、どのマスタの何を設定すればよいかまで書く。
 - 空欄の意味を勝手に広げない。「対象設備が空欄」は *未設定* であって
@@ -1933,7 +1933,7 @@ A4縦は `fit` 倍率が**高さで決まる**（210×297mm を横長の画面�
 
 ### ハンドラ結線の注意
 
-- `measurement-view.js` の `.selectors` 一括 `onchange=markDirty` は、
+- `measure-view.js` の `.selectors` 一括 `onchange=markDirty` は、
   `#measureType` などの個別ハンドラ割当より**先**に実行される必要がある
   （後にすると個別ハンドラを潰す。過去に実不具合化）。
 - イベントハンドラへ関数を渡すときは、後からラップされうる関数は

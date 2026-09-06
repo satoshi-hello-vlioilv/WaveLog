@@ -158,7 +158,7 @@ try:
     # **載せ忘れるとそのAPIだけ書込サイクルを通らない**（共有へ出ないか、
     # 取り直さずに当てる）。人手の一覧は必ず腐るので機械で数える。
     missing = []
-    for f in (ROOT / 'backend' / 'routes').glob('*.py'):
+    for f in (ROOT / 'backend' / 'routes').rglob('*.py'):   # 段は入れ子（§9.333）
         src = f.read_text(encoding='utf-8')
         if "DBS['MASTER']['path']" not in src:
             continue
@@ -167,7 +167,10 @@ try:
             or re.search(r"connect\(DBS\['MASTER'\]\['path'\]\)", src)
         if not writes:
             continue
-        bp = f.stem
+        # **Blueprint名はパッケージの名前**（§9.333）——`masters/operation.py`の
+        # Blueprintは`operation`ではなく`masters`。段の綴りで数えると、分けた
+        # 瞬間に「載っていない」が9件出て、直しようの無い赤になる。
+        bp = f.parent.name if f.parent.name != 'routes' else f.stem
         if bp not in ms.WRITING_BLUEPRINTS:
             missing.append(bp)
     rec('マスタへ書く段は全部 WRITING_BLUEPRINTS に載っている',

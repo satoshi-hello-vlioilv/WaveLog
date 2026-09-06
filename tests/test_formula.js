@@ -14,7 +14,7 @@
    ============================================================ */
 const path=require('path');
 global.window={};
-require(path.join(__dirname,'..','static','js','list-formula.js'));
+require(path.join(__dirname,'..','static','js','list','list-formula.js'));
 const F=global.window.WL.formula;
 
 const R=[];
@@ -38,7 +38,7 @@ const ok=(src,want,note)=>{
 
 /* ---- 1) evalを使っていない ---- */
 // **これが崩れると、保存した式が他のPCで何でもできてしまう。**
-const src=require('fs').readFileSync(path.join(__dirname,'..','static','js','list-formula.js'),'utf8');
+const src=require('fs').readFileSync(path.join(__dirname,'..','static','js','list','list-formula.js'),'utf8');
 rec('evalもFunction生成も使っていない',
  !/\beval\s*\(/.test(src)&&!/new\s+Function\s*\(/.test(src));
 // 実際にJSの式として書いても通らないことを見る(構文が別物であること)

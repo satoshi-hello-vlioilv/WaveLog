@@ -144,13 +144,13 @@ static/css/*.css           全画面共通スタイル(読み込み順で16分�
 static/js/                 (index.htmlの記載順に読み込み)
   base.js                  共有基盤: グローバル状態S・api・共通ユーティリティ・別名定義
   list-view.js             起動処理・DB/テーブル選択・一覧グリッド
-  measurement-view.js      測定画面の構成・各パネル描画・入力検証・作業時間
-  measurement-input.js     測定器受信・入力位置管理・測定グリッド・公差計算
+  measure-view.js      測定画面の構成・各パネル描画・入力検証・作業時間
+  measure-input.js     測定器受信・入力位置管理・測定グリッド・公差計算
   records-store.js         端末内保存(IndexedDB)・保存/完了遷移・データ一覧・設備設定
-  measurement-tolerance.js 公差判定の拡張・寸法ロック
+  measure-tolerance.js 公差判定の拡張・寸法ロック
   lot-split.js             条割(ロット分割): 検出・条割変更モーダル・条ごと公差・屑幅
   filters.js               一覧の絞り込み・フィルタプリセット・スウォーム表示
-  measurement-worklog.js   指示値表示・作業時間UI・作業時間の過去実績比較
+  measure-worklog.js   指示値表示・作業時間UI・作業時間の過去実績比較
   master-maint.js          マスタ管理画面・列表示マスタ・データ引継ぎ・パス設定
   quality-analysis.js      品質データ分析グラフ
   report-dashboard.js      測定帳票・生産管理ダッシュボード

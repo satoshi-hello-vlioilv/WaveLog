@@ -77,7 +77,7 @@ def scan(paths, stripper):
     return hits
 
 # ---- 1) フロント ----
-js = sorted((ROOT / 'static' / 'js').glob('*.js'))
+js = sorted((ROOT / 'static' / 'js').rglob('*.js'))
 hits = scan(js, strip_comments_js)
 rec('画面のコードがデータソースのキーを決め打ちしていない', not hits,
     ' / '.join(hits[:6]))
@@ -104,13 +104,13 @@ rec('HTMLがデータソースのキーを決め打ちしていない', not hits
 db_access = (ROOT / 'backend' / 'db_access.py').read_text(encoding='utf-8')
 rec('サーバー側の判定の入口がある（WORK_DB_KEY / QUALITY_DB_KEY）',
     'WORK_DB_KEY=' in db_access and 'QUALITY_DB_KEY=' in db_access)
-base_js = (ROOT / 'static' / 'js' / 'base.js').read_text(encoding='utf-8')
+base_js = (ROOT / 'static' / 'js' / 'core' / 'base.js').read_text(encoding='utf-8')
 rec('画面側の判定の入口がある（WL.dataSource）',
     'window.WL.dataSource=' in base_js
     and all(f'{n}:' in base_js for n in ('isWork', 'isQuality', 'workKey')))
 
 # ---- 5) 左メニューはカタログから作り直す ----
-list_js = (ROOT / 'static' / 'js' / 'list-view.js').read_text(encoding='utf-8')
+list_js = (ROOT / 'static' / 'js' / 'list' / 'list-view.js').read_text(encoding='utf-8')
 rec('左メニューはカタログに無いボタンを消す',
     'renderDbNav' in list_js and 'wanted.has' in list_js and '.remove()' in list_js)
 

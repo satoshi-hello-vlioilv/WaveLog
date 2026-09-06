@@ -1,9 +1,11 @@
 #!/bin/bash
 # WaveLog 回帰テスト一括実行
 # ============================================================
-# 使い方: tests/run_all.sh              全部回す(コミット前はこれ)
+# 使い方: tests/run_all.sh              全部回す(**利用者が指示したときだけ**)
 #         tests/run_all.sh test_sccat   名前を並べるとそれだけ
 #         tests/run_all.sh --changed    変更ファイルに関係するものだけ(§9.103)
+#         tests/run_all.sh --pure       サーバー不要の網だけ・並列(§9.337)
+#         tests/run_all.sh --smoke      起動・一覧・スケジュール・測定 各1本
 #
 # このランナーが保証すること(手作業だった前後処理をここへ集約):
 #  1. パス設定マスタ(仕掛/品質/共有スケジュールの接続先)を実行前に退避し、
@@ -43,6 +45,75 @@ if [ "$1" = "--changed" ]; then
   fi
   set -- $PICKED
 fi
+
+# ---- 層（§9.337、REVIEW 3-13） ---------------------------------------
+# 通しは39分かかり、直したいものと関係のない網まで毎回待つことになる。
+# **サーバーを立てずに回る網**を1段目として切り出し、並列で回せるようにした。
+#
+#   tests/run_all.sh --pure    サーバー不要の網だけ（並列。実測22秒）
+#   tests/run_all.sh --smoke   煙テスト（起動・一覧・スケジュール・測定 各1本）
+#   tests/run_all.sh           全件（**利用者が指示したときだけ**・CLAUDE.md A）
+#
+# **1段目に載せてよいのは「まっさらな取得（DBも設定もサーバーも無い）で
+# そのまま通る」ものだけ。** 決めるのは注意書きではなく**CIそのもの**——
+# サーバーを要るものを載せれば、まっさらな取得で回す1段目が落ちる。
+# 互いの状態を触らないことが「純粋」の定義なので、並列にしてよい。
+# **`--pure` はパス設定の差し替えも見せ方の戻しもしない**（差し替えが要る
+# 網は、そもそもここに載っていない）。
+PURE_TESTS="test_apiguard test_assetcache test_atomicio test_body test_bootopen \
+test_changelog test_cleanup test_csslint test_dblayer test_dbmirror \
+test_dbopen test_ddllint test_displayrule test_docindex test_dskeylint \
+test_eqstd test_error test_eslint test_faststart test_flags \
+test_globallint test_hintlint test_layers test_loadorder test_localwork test_logs \
+test_mastershare test_noaccess test_patchlint test_pcname test_pick \
+test_presence test_printcore test_pyflakes test_pywarn test_quietlint \
+test_recmirror test_recsplit test_routesplit test_savechip \
+test_scsnapread test_scwatch test_sortpipe test_storage test_tabclose \
+test_tabledef test_tablequery test_workdate"
+# 2段目。**全部の代わりではなく「動いていること」の確認**なので各1本だけ。
+SMOKE_TESTS="test_boot test_bootui test_flows test_sccat test_mcore"
+
+if [ "$1" = "--pure" ]; then
+  JOBS="${WAVELOG_TEST_JOBS:-8}"
+  echo "--- 純粋な網（サーバー不要・並列 $JOBS） ---"
+  T0=$(date +%s)
+  PURE_OUT="$(mktemp -d)"; export PURE_OUT
+  trap 'rm -rf "$PURE_OUT"' EXIT
+  printf '%s\n' $PURE_TESTS | xargs -P "$JOBS" -I@ sh -c \
+    'timeout 300 python3 "@.py" >"$PURE_OUT/@.log" 2>&1; echo $? >"$PURE_OUT/@.rc"'
+  TOT=0; NG=0; RAN=0
+  for t in $PURE_TESTS; do
+    # **`grep -c` は0件でも数を出して終了コード1を返す。** `|| echo 0` を
+    # 添えると "0\n0" になり、`$(( ))` が構文エラーで止まる——しかも
+    # **終了コード0のまま「合計 0/0 PASS」と出た**（緑に見えている壊れた
+    # 網は赤より悪い・§9.200）。数を取るのに `||` を使わない。
+    rc=1; [ -f "$PURE_OUT/$t.rc" ] && rc=$(cat "$PURE_OUT/$t.rc")
+    p=0; f=0
+    if [ -f "$PURE_OUT/$t.log" ]; then
+      p=$(grep -c '^PASS' "$PURE_OUT/$t.log"); f=$(grep -c '^FAIL' "$PURE_OUT/$t.log")
+      RAN=$((RAN+1))
+    fi
+    # 途中で落ちたものを「全部PASS」と数えない（§9.200）。終了コードで見る。
+    bad=$f; [ "$rc" -ne 0 ] && [ "$f" -eq 0 ] && bad=1
+    TOT=$((TOT+p+f)); NG=$((NG+bad))
+    printf '%-24s %3d PASS / %d FAIL%s\n' "$t.py" "$p" "$f" \
+      "$([ "$rc" -ne 0 ] && [ "$f" -eq 0 ] && echo '  [FATAL exit '"$rc"']')"
+    [ "$bad" -gt 0 ] && grep -E '^FAIL|FATAL|Error' "$PURE_OUT/$t.log" | head -4 | sed 's/^/      /'
+  done
+  # **1本も回っていないのに緑を出さない。** 名前を打ち間違えた・xargsが
+  # 動かなかった、を「異常なし」と読ませない（§9.200）。
+  N=$(printf '%s\n' $PURE_TESTS | wc -l)
+  if [ "$RAN" -ne "$N" ]; then
+    echo "FATAL: $N 本のうち $RAN 本しか回っていません"; NG=$((NG+1))
+  fi
+  echo
+  echo "=================================================="
+  echo "  純粋な網 $((TOT-NG))/$TOT PASS  (FAIL/FATAL: $NG)  $RAN/$N 本  所要 $(( $(date +%s) - T0 ))秒"
+  echo "=================================================="
+  exit $([ $NG -gt 0 ] && echo 1 || echo 0)
+fi
+
+if [ "$1" = "--smoke" ]; then shift; set -- $SMOKE_TESTS "$@"; fi
 
 mode(){ curl -s -X POST $API/api/access-mode -H 'Content-Type: application/json' -d "{\"mode\":\"$1\"}" >/dev/null; }
 # 「見せ方」の設定(内容欄の項目・列レイアウト)を検証用設備ぶんだけ白紙へ戻す。
@@ -271,7 +342,7 @@ sleep 3
 echo "--- 一般UI (editモード) ---"
 mode edit
 for t in test_stopcat test_workable test_wkbg test_mcore test_burr test_ngcard test_ngdone test_devdigits test_recvalues test_reclayout test_ctxfail test_msteps test_orphan test_audit test_sub test_maint test_setpage test_nav test_uiux test_histdel test_uisize test_master test_mmtable test_shift test_measstore test_waiting \
-         test_listcache test_ttlcache test_flows test_dbequip test_course test_tolscale test_defect test_theme test_scale test_fit test_bootui test_density test_filter test_adhoc test_stopeq test_eqkind test_eqfeature test_bootflash test_dsnav test_opui test_collayout test_colformat test_colrule test_colsort test_typescale test_lcpanel test_colmenu test_colpreset test_formula test_share test_listperf test_allrows test_logview test_bootreport test_headbar test_gridhead test_reccols test_rpblocks test_rpprint test_rpdefect test_rptext test_rplayout test_rpsave test_rppack test_rpmaster test_filterio test_filteruser test_filteractive test_colio test_multidrag test_sortcustom test_filterkeep test_filterlock test_dsrestart test_qjoinui test_modalkeep test_opchoice test_recdel test_blockbuild test_rbmodal test_rbsample test_rlmaster test_oppad test_oplimit test_opmother test_opunit test_opauto test_opformula test_opblank test_opinline test_opwidget test_mround test_colkeep test_eqscope test_coltint test_gridchild test_roll test_mmfold test_actuals test_opsheet test_rollload test_rollwipe test_eqsetup test_colscopeui test_storageui test_presenceui test_savechip test_rbcells test_rbcatalog test_changelogui test_filtergroup test_opblanktint test_opparent test_choicelinkui test_roleui; do run $NODE $t.js; done
+         test_listcache test_ttlcache test_flows test_dbequip test_course test_tolscale test_defect test_theme test_scale test_fit test_bootui test_density test_filter test_adhoc test_stopeq test_mmswitch test_eqkind test_eqfeature test_bootflash test_dsnav test_opui test_collayout test_colformat test_colrule test_colsort test_typescale test_lcpanel test_colmenu test_colpreset test_formula test_share test_listperf test_allrows test_logview test_bootreport test_headbar test_gridhead test_reccols test_rpblocks test_rpprint test_rpdefect test_rptext test_rplayout test_rpsave test_rppack test_rpmaster test_filterio test_filteruser test_filteractive test_colio test_multidrag test_sortcustom test_filterkeep test_filterlock test_dsrestart test_qjoinui test_modalkeep test_opchoice test_recdel test_blockbuild test_rbmodal test_rbsample test_rlmaster test_oppad test_oplimit test_opmother test_opunit test_opauto test_opformula test_opblank test_opinline test_opwidget test_mround test_colkeep test_eqscope test_coltint test_gridchild test_roll test_mmfold test_actuals test_opsheet test_rollload test_rollwipe test_eqsetup test_colscopeui test_storageui test_presenceui test_savechip test_rbcells test_rbcatalog test_changelogui test_filtergroup test_opblanktint test_opparent test_choicelinkui test_roleui; do run $NODE $t.js; done
 
 echo "--- スケジュール (テスト側でモードを切り替える) ---"
 for t in test_screport test_startwork test_scsync test_sccat test_scbalance test_scbatch \
@@ -286,7 +357,7 @@ for t in test_cols test_listmodal test_split_layout test_sccols; do
 echo "--- サーバー側 ---"
 mode schedule
 for t in test_sclock test_scsession test_scwritespeed test_colscache test_colsripple test_colsave test_opdata test_choicelink test_modeguard test_noaccess test_pcname \
-         test_csslint test_dbopen test_error test_datasource test_dscap test_dskeylint test_dbmirror test_atomicio test_localwork test_displayrule test_eqstd test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_tabclose test_logs test_docindex test_sortpipe test_scwatch test_scowner test_qjoin test_workdate test_scload test_faststart test_bootopen test_rollio test_cleanup test_rawmaster test_recsplit test_colscope test_mastershare test_storage test_recmirror test_srcread test_presence test_roleperm test_savechip test_rbcells test_pywarn test_hintlint test_ddllint test_changelog test_pick test_flags test_apiguard test_tabledef test_loadorder test_scsnapread test_pyflakes test_eslint test_quietlint test_dblayer test_body; do run python3 $t.py; done
+         test_csslint test_dbopen test_error test_datasource test_dscap test_dskeylint test_dbmirror test_atomicio test_localwork test_displayrule test_eqstd test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_tabclose test_logs test_docindex test_sortpipe test_scwatch test_scowner test_qjoin test_workdate test_scload test_faststart test_bootopen test_rollio test_cleanup test_rawmaster test_recsplit test_colscope test_mastershare test_storage test_recmirror test_srcread test_presence test_roleperm test_savechip test_rbcells test_pywarn test_hintlint test_ddllint test_changelog test_pick test_flags test_apiguard test_tabledef test_loadorder test_scsnapread test_pyflakes test_eslint test_quietlint test_dblayer test_body test_printcore test_routesplit test_layers; do run python3 $t.py; done
 
 echo
 echo "-- 時間のかかったテスト(上位10) --"

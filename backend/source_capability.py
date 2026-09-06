@@ -49,7 +49,7 @@ def find_column(columns, aliases):
  return None
 
 
-# 画面が機能を出すかどうかを決めている別名。**static/js/base.js の aliases と
+# 画面が機能を出すかどうかを決めている別名。**static/js/core/base.js の aliases と
 # 同じ並び**にしてある（あちらが画面側の唯一の定義で、こちらはサーバーが
 # 「その機能が使えるか」を答えるためだけに持つ写し）。片方だけ増やすと、
 # 画面には出るのにここが「使えません」と言う、という食い違いになる。
@@ -60,7 +60,7 @@ FEATURE_ALIASES = {
  'equipment': ['BOX設計_設備名', '設備'],
  'residualCourse': ['残仕掛設備ｺｰｽ', '残仕掛設備コース', 'ZANMC'],
 }
-# 分割(条割)の判定は別名表ではなく**列名の接頭辞**で行う(static/js/lot-split.js)。
+# 分割(条割)の判定は別名表ではなく**列名の接頭辞**で行う(static/js/measure/lot-split.js)。
 SPLIT_PREFIXES = ('親子管理_子カード', '親子管理_子ｶｰﾄﾞ', 'KOCARD',
                   'コンマ5本分割_切断巾', 'ｺﾝﾏ5本分割_切断巾', 'K05W')
 # 品質データの結合に要る3つのキー(backend/routes/tables.py の _JOIN_KEY_ALIASES)。

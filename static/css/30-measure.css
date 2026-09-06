@@ -119,7 +119,9 @@
 .list-toolbar-btn{border:1px solid var(--line);background:#fff;cursor:pointer;font-weight:700;color:#60747b}
 .list-toolbar-btn:hover{border-color:var(--teal);background:#f7fafb}
 .list-join-chip{display:inline-flex;align-items:center;height:var(--ctl-h-xs);border-radius:var(--radius-md);white-space:nowrap;cursor:help}
-/* 読み込みにかかった時間(§9.90)。速いときは控えめ、遅いときだけ色が付く。 */
+/* 読み込みにかかった時間(§9.90)。**出るのは遅かったときだけ**（§9.340、
+   REVIEW 4-1 ④）——速いときは`hidden`で消える（作業スケジュールと同じ約束・
+   §9.198）。出ている＝遅い、なので素の見た目も警告色でよい。 */
 .list-load-chip{display:inline-flex;align-items:center;height:var(--ctl-h-xs);
  padding:var(--pad-chip);border-radius:var(--radius-md);white-space:nowrap;cursor:help;
  font-size:var(--fs-micro);font-weight:800;color:var(--muted);background:var(--surface-2);
@@ -1938,7 +1940,7 @@ th.col-sorted:hover{background:#c7e7ea}
   font-weight:800;white-space:nowrap;
 }
 /* **チップ（`#measureTypeChips`）と同じ数字ではない**（§9.234 ③）。
-   ここは**いま選んでいる丈だけ**の進捗（`measurement-input.js`が
+   ここは**いま選んでいる丈だけ**の進捗（`measure-input.js`が
    `m.measurements[key][li]`から数える）で、チップは**全丈の合算**
    （`measure-progress.js`の`itemProgress`）。縦割数が2以上のロットでは
    12/12 と 12/24 で別の数になるので、消すと丈ごとの進みが画面から失われる。

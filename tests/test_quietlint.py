@@ -34,7 +34,7 @@
 約束
 ------------------------------------------------------------
  * 理由は**空にしない**（`WL.quiet.note('')`・`quiet('')`を数える）。
- * `backend/quiet.py`と`static/js/base.js`の`WL.quiet`自身は窓口なので対象外
+ * `backend/quiet.py`と`static/js/core/base.js`の`WL.quiet`自身は窓口なので対象外
    （**ここで黙るのは理由を出す道そのもの**）。
  * 網そのものが素通りしないことを確かめる（欠陥を注いで数えられるか）。
 ============================================================
@@ -202,7 +202,7 @@ def main():
     rec('Python: 黙って捨てている広いexceptが無い', not bad,
         '; '.join(f'{a}:{b}' for a, b, _ in bad[:20]) + (f' … 計{len(bad)}件' if bad else ''))
 
-    jss = sorted((ROOT / 'static' / 'js').glob('*.js'))
+    jss = sorted((ROOT / 'static' / 'js').rglob('*.js'))
     rec('対象のJSが集まっている', len(jss) > 20, len(jss))
     badjs = scan_js(jss)
     rec('JS: 空のcatch・`.catch(()=>{})`・理由の空が無い', not badjs,
@@ -220,7 +220,7 @@ def main():
     rec('Python: 理由が空の quiet() が無い', not blank, ', '.join(blank[:10]))
 
     # 道具そのものが在る
-    base = (ROOT / 'static' / 'js' / 'base.js').read_text(encoding='utf-8')
+    base = (ROOT / 'static' / 'js' / 'core' / 'base.js').read_text(encoding='utf-8')
     rec('WL.quiet が base.js に在る（`WL.quiet(理由)`と`WL.quiet.note`）',
         'WL.quiet=' in base and 'f.note=note' in base)
     q = (ROOT / 'backend' / 'quiet.py').read_text(encoding='utf-8')

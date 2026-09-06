@@ -73,6 +73,54 @@ let b=null;
  rec('取り立てのときは「画面の写しは◯前」を言わない',
    !/画面に出ているのは/.test(fresh2.title),fresh2.title.slice(0,80));
 
+ /* --- 3.5 読み込みの秒数は「遅いときだけ」出す（§9.340、REVIEW 4-1 ④） ---
+    作業スケジュールは§9.198で既にそうしていたのに、一覧だけ**常に出して**
+    いた（「0.2秒」が全画面でずっと居座る）。
+    **「速いときに消える」と「遅いときに出る」の両方を見る**——片方だけの網は、
+    常に出す実装（＝直す前）も、二度と出ない実装も通してしまう。
+    遅い側は**応答をわざと遅らせて**作る（§9.312。数を書き換えて作った
+    「遅いことにした状態」では、本当に出るかを一度も通らない）。 */
+ const chip=()=>page.evaluate(()=>{const e=document.querySelector('#listLoadChip');
+   return {ある:!!e,出ている:!!e&&!e.hidden,字:(e?.textContent||'').trim()}});
+ const fast=await chip();
+ rec('速い読み込みでは秒数のチップを出さない',fast.ある&&!fast.出ている,JSON.stringify(fast));
+ /* 内訳の入口は**チップが消えていても**残っている（§4）。速いときは
+    再読込メニューが唯一の道——チップと一緒に入口ごと消さない。 */
+ await page.click('#listFreshness');
+ await page.waitForSelector('#reloadMenu',{timeout:5000});
+ const note=await page.evaluate(()=>{
+   const n=document.querySelector('#reloadMenu .reload-menu-note');
+   return {ある:!!n,字:(n?.textContent||'').replace(/\s+/g,' ').slice(0,90)}});
+ rec('チップが出ていなくても再読込メニューから内訳を読める',
+   note.ある&&/読み込み/.test(note.字),JSON.stringify(note));
+ await page.evaluate(()=>document.getElementById('reloadMenu')?.remove());
+ // 「遅い」の答えは1箇所（§9.163）。網が数を書き写すと、直したとき網だけ古くなる。
+ const slowMs=await page.evaluate(()=>window.WL&&WL.slowLoadMs);
+ rec('「遅い」の答えが1箇所にある（WL.slowLoadMs）',
+   typeof slowMs==='number'&&slowMs>0,String(slowMs));
+ // 応答を しきい値+600ms 遅らせて取り直す
+ const delay=(Number(slowMs)||1200)+600;
+ await page.route('**/api/table*',async r=>{
+   await new Promise(s=>setTimeout(s,delay)); await r.continue();
+ });
+ await page.click('#listFreshness');
+ await page.waitForSelector('#reloadMenu [data-reload-action="list"]',{timeout:5000});
+ await page.click('#reloadMenu [data-reload-action="list"]');
+ await page.waitForFunction(()=>{const e=document.querySelector('#listLoadChip');
+   return !!e&&!e.hidden},{timeout:delay+15000}).catch(()=>{});
+ const slow=await chip();
+ await page.unroute('**/api/table*');
+ rec('遅い読み込みでは秒数のチップが出る',slow.出ている&&/秒$/.test(slow.字),JSON.stringify(slow));
+ rec('出たチップは遅いことも色で言う（is-slow）',
+   await page.evaluate(()=>document.querySelector('#listLoadChip')?.classList.contains('is-slow')));
+ // 速い読み込みへ戻したら、また消える（出しっぱなしにしない）
+ await page.click('#listFreshness');
+ await page.waitForSelector('#reloadMenu [data-reload-action="list"]',{timeout:5000});
+ await page.click('#reloadMenu [data-reload-action="list"]');
+ await page.waitForTimeout(2500);
+ const back=await chip();
+ rec('速い読み込みへ戻ると、また消える',!back.出ている,JSON.stringify(back));
+
  // --- 4. 検索語やページを変えたら別内容なので取り直す ---
  mark=since();
  await page.fill('#search','L00');

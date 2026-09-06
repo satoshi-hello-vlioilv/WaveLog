@@ -906,12 +906,13 @@
   .type-chip{font-size:var(--fs-micro);padding:var(--pad-chip)}
 }
 @media(prefers-reduced-motion:reduce){.rail-progress-bar i{transition:none}}
-/* 使用設備が未登録のときの初期案内。仕掛一覧を取りに行く前に設定へ誘導する。 */
+/* 使用設備が未登録のときの初期案内（§9.343）。**1行だけ**——見出しと
+   ボタンは上の帯が持っており、ここで繰り返すと同じ文が画面に2つ並ぶ。
+   **中身が1行なら器も1行ぶん**（§9.126）。枠を付けないのは、読むだけの
+   案内に入力欄風の枠を与えないため（画面基準10）。 */
 .setup-first{
-  display:flex;flex-direction:column;gap:var(--gap-inline);margin:18px;padding:20px 22px;
-  background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius-card);
+  margin:18px;padding:0;background:none;border:0;
 }
-.setup-first b{font-size:var(--fs-title);color:var(--nav)}
 .setup-first span{color:#60747b;max-width:60ch}
 /* ---------- 24. Access同期の未完了キューと再送 ----------
    backupRecord()の成否をsyncStateへ保存するようにしたのに合わせ、

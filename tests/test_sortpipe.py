@@ -14,7 +14,7 @@ Pythonで並べてからページを切り出す。ここで固定するのは�
     生の値)。ここが違うと「画面の並びと違う並びで並ぶ」ことになる。
  4. 指定が無ければNone＝今までどおりSQLの並び(既定の挙動を変えない)。
 
-判定は画面側(`static/js/base.js`の`WL.sortSpec`/`WL.cellFormat`)にも
+判定は画面側(`static/js/core/base.js`の`WL.sortSpec`/`WL.cellFormat`)にも
 あるので、**同じ例**(tests/fixtures/sort_cases.json)で両方を確かめる。
 画面側は tests/test_colsort.js。**片方だけ直さないこと。**
 """

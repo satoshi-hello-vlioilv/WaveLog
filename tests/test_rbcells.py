@@ -138,7 +138,8 @@ rec('⑤ 日付の見本を持つ（手で書いてもよいが、選べる）',
     len(rb.DATE_PATTERNS) >= 4 and 'yyyy/MM/dd' in rb.DATE_PATTERNS)
 
 # **画面へ写していないこと**（§9.163）。写すと書式を1つ足すたびに2箇所直す。
-js = open(os.path.join(os.path.dirname(HERE), 'static', 'js', 'master-maint.js'),
+js = open(os.path.join(os.path.dirname(HERE), 'static', 'js', 'master',
+                       'master-maint.js'),
           encoding='utf-8').read()
 # **見分けの付く呼び名だけを見る**——`数値`や`文字`は操業データ項目マスタの
 # `[型]`の選択肢でもあるので、それを数えると常に落ちる（意味のない網）。
@@ -230,14 +231,14 @@ finally:
 # ==========================================================
 # ⑧ 品質等級の呼び名は画面とそろっている（§9.285 ②）
 # ==========================================================
-# 記録は`qualityGrades[<呼び名>]`（`measurement-view.js`の
+# 記録は`qualityGrades[<呼び名>]`（`measure-view.js`の
 # `QUALITY_GRADE_SOURCE`が書く）。候補の綴りがずれると、**選んでも必ず空欄**に
 # なる（§CLAUDE 6「見本が嘘をつく」の裏返し）。**目で数えないこと**——
 # 呼び名は12個あり、片方だけ直した状態が作れる。
 import re as _re
 from pathlib import Path as _Path
 ROOT = _Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_js = (ROOT / 'static' / 'js' / 'measurement-view.js').read_text(encoding='utf-8')
+_js = (ROOT / 'static' / 'js' / 'measure' / 'measure-view.js').read_text(encoding='utf-8')
 _m = _re.search(r'const QUALITY_GRADE_SOURCE=\{(.*?)\n\};', _js, _re.S)
 _screen = set(_re.findall(r"'([^']+)':\[", _m.group(1))) if _m else set()
 rec('⑧ 品質等級の呼び名がサーバーと画面でそろっている',

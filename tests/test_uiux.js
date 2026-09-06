@@ -13,6 +13,25 @@ let b=null;
  page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openSchedule',{timeout:15000});
+ /* ---- 初回案内は1箇所（§9.343、画面基準8「同じ情報を2箇所に出さない」） ----
+    **使用設備を入れる前に見る**。ここから下は設定済みの画面なので、
+    未設定のときの見え方を確かめられるのはこの一瞬だけ。
+    以前は帯と表の中が**まったく同じ見出し**（「最初に使用設備を設定して
+    ください」）を出し、しかも表の中の本文が「上の『使用設備を設定』から」
+    と帯を指していた——読む側は2回読んで、同じことだと確かめる。 */
+ await page.waitForSelector('.setup-first',{timeout:15000});
+ const first=await page.evaluate(()=>{
+  const t=n=>n?n.innerText.replace(/\s+/g,' ').trim():'';
+  const band=document.getElementById('equipmentSetupBanner');
+  return {帯:t(band),帯見える:!!(band&&band.offsetParent),表:t(document.querySelector('.setup-first'))};
+ });
+ rec('使用設備が未設定なら帯が出て、次にすることを指す',
+     first.帯見える&&/最初に使用設備を設定してください/.test(first.帯),first.帯.slice(0,60));
+ rec('同じ見出しを表の中で繰り返さない',
+     !/最初に使用設備を設定してください/.test(first.表),first.表);
+ rec('表の中は「この場所に何が出るか」だけを言う（帯を指し返さない）',
+     /ここに仕掛一覧が出ます/.test(first.表)&&!/上の/.test(first.表),first.表);
+
  await page.evaluate(()=>{localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A');
    localStorage.setItem('scSplitListCollapsedV1','0')});
  await page.reload({waitUntil:'domcontentloaded'});

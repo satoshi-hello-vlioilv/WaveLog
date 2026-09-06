@@ -201,6 +201,53 @@ let b=null;
      !!linked&&linked.after.行長===300&&linked.after.窓<linked.before.窓,
      JSON.stringify(linked));
 
+ /* ---- 開発の記録の出し入れ（§9.336、REVIEW 3-12） ----
+    現場の人が開く画面に、テストの名前・§番号・中のファイル名が並ぶのをやめた。
+    **「ボタンが在る」だけを見ない**——伏せていない実装でも通る。
+    伏せている版が**実際に描かれていないこと**と、押すと**出ること**、
+    もう一度押すと**戻ること**（片道にしない）まで見る。 */
+ const clSnap=()=>page.evaluate(()=>({
+  vers:[...document.querySelectorAll('[data-cl-entry]')].map(e=>e.dataset.clEntry),
+  btn:document.querySelector('#changelogDev')?.textContent.trim()||'',
+  btnShown:!!document.querySelector('#changelogDev')&&!document.querySelector('#changelogDev').hidden,
+  hits:document.querySelector('#changelogHits')?.textContent||'',
+  now:document.querySelector('.changelog-entry.is-now')?.dataset.clEntry||'',
+ }));
+ /* **窓はここまで開いたまま。** もう一度バッジを押すと窓に覆われて届かない
+    （クリックが時間切れになる）ので、覚えを消して描き直すだけにする。 */
+ await page.evaluate(()=>{
+  try{localStorage.removeItem('ChangelogShowDevV1')}
+  catch(e){console.log('覚えを消せない（既定＝伏せるで続く）',e.message)}
+  if(window.clRender)window.clRender();
+ });
+ await page.waitForFunction(()=>{
+  const b=document.querySelector('#changelogDev');
+  return !!b&&!b.hidden&&/開発の記録/.test(b.textContent||'');
+ },{timeout:10000});
+ const off=await clSnap();
+ rec('開発の記録の出し入れボタンが出ている',off.btnShown&&/開発の記録も出す（\d+版）/.test(off.btn),off.btn);
+ rec('既定では開発の記録の版が出ていない',
+     !off.vers.includes('2.217.0')&&!off.vers.includes('2.216.0'),
+     JSON.stringify(off.vers.slice(0,6)));
+ rec('伏せていることと件数を文字で言う',/開発の記録 \d+版 は伏せています/.test(off.hits),off.hits);
+ rec('いま動いている版は伏せていても出ている（唯一の手掛かり）',
+     !!off.now&&off.vers.includes(off.now),JSON.stringify({now:off.now}));
+ await page.click('#changelogDev');
+ await page.waitForFunction(()=>[...document.querySelectorAll('[data-cl-entry]')]
+   .some(e=>e.dataset.clEntry==='2.217.0'),{timeout:10000});
+ const on=await clSnap();
+ rec('押すと開発の記録が出る',on.vers.includes('2.217.0')&&on.vers.length>off.vers.length,
+     JSON.stringify({前:off.vers.length,後:on.vers.length}));
+ rec('出していることも文字で言う',/開発の記録 \d+版 を含む/.test(on.hits),on.hits);
+ rec('ボタンの文字が「伏せる」へ変わる',/開発の記録を伏せる/.test(on.btn),on.btn);
+ await page.click('#changelogDev');
+ await page.waitForFunction(()=>![...document.querySelectorAll('[data-cl-entry]')]
+   .some(e=>e.dataset.clEntry==='2.217.0'),{timeout:10000});
+ const again=await clSnap();
+ rec('もう一度押すと戻る（片道にしない）',
+     again.vers.length===off.vers.length&&!again.vers.includes('2.217.0'),
+     JSON.stringify({前:off.vers.length,後:again.vers.length}));
+
  await page.evaluate(()=>{const m=document.querySelector('#changelogModal');if(m)m.hidden=true});
 
  console.log('\n=== SUMMARY ===');

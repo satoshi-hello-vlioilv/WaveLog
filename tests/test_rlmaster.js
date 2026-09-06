@@ -207,6 +207,8 @@ let b=null;
    return !!h&&h.textContent.indexOf(eq)>=0;
   },EQ,{timeout:20000});
   await page.click('#rlyReset');
+  /* 消える操作なので1回確かめる。素の`confirm()`ではなくなった（§9.342）。 */
+  await require('./lib/wait.js').answerConfirm(page);
   await page.waitForFunction(()=>/既定に戻しました|保存できません/.test(
     (document.getElementById('rlyState')||{}).textContent||''),null,{timeout:20000});
   const cleared=await layout();

@@ -738,8 +738,8 @@ let b=null,page=null;
       &&inject.集計.items[0].name==='板幅'
       &&inject.集計.items[0].hits.every(h=>h.length===1),
       JSON.stringify(inject.集計||{}));
-  /* **項目ごとに公差を引き直す。** ラッパー(`measurement-worklog.js`/
-     `measurement-tolerance.js`)が`#measureType`を見るため、項目名を
+  /* **項目ごとに公差を引き直す。** ラッパー(`measure-worklog.js`/
+     `measure-tolerance.js`)が`#measureType`を見るため、項目名を
      渡さないと「いま選ばれている項目の公差」が全項目に当たる。実際に
      公差の無いラテラルボーが板幅の公差で判定され、偽の1件が出た。 */
   rec('公差の無い項目を他項目の公差で判定しない',

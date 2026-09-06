@@ -2,7 +2,7 @@
 
 対象: 機能追加を伴わない内部整理。アーキテクチャの現状は `ARCHITECTURE.md`、
 起動基盤の再編は `REBUILD_PLAN.md`(実施済み)、機能設計の経緯は
-`SCHEDULE_MODE_DESIGN.md` §9 を参照。
+`docs/decisions/`（旧 `SCHEDULE_MODE_DESIGN.md` §9）を参照。
 
 ---
 
@@ -27,14 +27,14 @@
 |---|---|
 | 回帰テスト | 62ファイル・453件 — **全てサンドボックスのscratchpadにあり、リポジトリに無い** → 済(フェーズ0。`tests/`へ常設、455件) |
 | リポジトリ直下のPython | 6本(app / start_app / process_manager / server / launch_guard / _pycache_bootstrap)+起動スクリプト3本(bat×2/vbs) — うち**直接実行されるのは4本、2本はimportされるだけ** |
-| `static/js/schedule-view.js` | 2,668行(単一IIFE。セッション/書込キュー・俯瞰ボード・タイムライン・作業可否・フローティング窓・分割表示・列/内容マスタが同居) |
-| `static/js/measurement-worklog.js` | 1,872行 — **154行目以降(92%)はマスタ管理画面**。ファイル名と中身が不一致 |
+| `static/js/schedule/schedule-view.js` | 2,668行(単一IIFE。セッション/書込キュー・俯瞰ボード・タイムライン・作業可否・フローティング窓・分割表示・列/内容マスタが同居) |
+| `static/js/measure/measure-worklog.js` | 1,872行 — **154行目以降(92%)はマスタ管理画面**。ファイル名と中身が不一致 |
 | `static/app.css` | 3,420行(単一ファイル、番号付きセクション) |
 | `backend/routes/masters.py` | 831行(マスタCRUD+パス設定+RNE状態+パス参照が同居) |
 | ビュー切替の相互`exit*`呼び出し | 21箇所(各`open*`が他ビュー全部を手動で閉じる) |
 | `selectDb`のモンキーパッチ連鎖 | 8箇所(ファイル読み込み順に依存) |
 | `window.*`公開 | 約70件(ファイル間の暗黙の契約) |
-| 生の制御文字(`\x00`/`\x1f`)混入 | 2ファイル(`measurement-worklog.js`のキー区切り文字・`filters.js`) — **grepがバイナリ扱いし検索から漏れる** → 済(フェーズ1。実際は文書2つを含む4ファイルだった) |
+| 生の制御文字(`\x00`/`\x1f`)混入 | 2ファイル(`measure-worklog.js`のキー区切り文字・`filters.js`) — **grepがバイナリ扱いし検索から漏れる** → 済(フェーズ1。実際は文書2つを含む4ファイルだった) |
 
 ## 0.2 分割・統合の判定基準
 
@@ -50,7 +50,7 @@
    混ぜると、逆方向のimportが生まれる。
 3. **統合候補は「誰からも参照されない自己完結」と「名前と中身の乖離」**。
    公開ゼロ・参照ゼロの独立IIFE(実測: `worktime-benchmark.js`)や、
-   ファイル名が責務を表していないもの(`measurement-worklog.js`の92%が
+   ファイル名が責務を表していないもの(`measure-worklog.js`の92%が
    マスタ管理)が対象。
 4. **ファイル数のコストは言語で違う**。JSは`index.html`の読み込み順を手で
    管理しており1ファイル=管理コスト1件。Pythonはimportが明示的で
@@ -163,7 +163,7 @@
 
 ## フェーズ1: 検索を壊す小さな異物の除去【小・即効】
 
-**問題**: 複合キーの区切りに生バイトの `\x00`(measurement-worklog.jsの
+**問題**: 複合キーの区切りに生バイトの `\x00`(measure-worklog.jsの
 `overrideMap`)と `\x1f`(filters.jsの`usageScopeKey`)を使っており、
 grep/ripgrepがファイルをバイナリ扱いする。**このセッションでも
 「binary file matches」で検索結果が読めない事故が繰り返し起きた**。
@@ -252,15 +252,15 @@ grep/ripgrepがファイルをバイナリ扱いする。**このセッション
 
 ## フェーズ3: 巨大ファイルの責務分割【大・段階実施】
 
-### 3.1 measurement-worklog.js の分割(先行)
+### 3.1 measure-worklog.js の分割(先行)
 
 実測でファイルの92%がマスタ管理画面。**「マスタ管理を直すのに
 measurement-worklogを開く」状態が誤読・誤編集の温床**(§9.68の作業でも
 このファイル内の遠い場所を行き来した)。
 
-- `static/js/master-maint.js` を新設し、`MASTER_DEFS`・統合パネル・
+- `static/js/master/master-maint.js` を新設し、`MASTER_DEFS`・統合パネル・
   編集モーダル・特殊タブ(列表示/データ引継ぎ/換算係数/パス設定/勤務体系/
-  生データ)を移す。`measurement-worklog.js` には指示値表示・作業時間UI
+  生データ)を移す。`measure-worklog.js` には指示値表示・作業時間UI
   (本来の責務、約150行)だけを残す。
 - `templates/index.html` の読み込み順に1行追加(access-mode.jsの前)。
 - 関数はそのまま移す(改名・分割はしない。移動と分割を同時にやると
@@ -268,7 +268,7 @@ measurement-worklogを開く」状態が誤読・誤編集の温床**(§9.68の�
 
 #### 3.1 の実施結果(2026-08-06)
 
-`measurement-worklog.js` 1,860行 → **155行**、`master-maint.js` 1,718行。
+`measure-worklog.js` 1,860行 → **155行**、`master-maint.js` 1,718行。
 関数はそのまま移し、改名・再分割はしていない。
 
 切る前に**両側のトップレベル定義が一方向にも参照されていないこと**を
@@ -276,7 +276,7 @@ measurement-worklogを開く」状態が誤読・誤編集の温床**(§9.68の�
 名前が重なって見えたのは`d`/`el`/`s`/`w`等の別関数内のローカルだけ。
 1つのIIFEを割るときは、この確認を先にやること——目視だと必ず取りこぼす。
 
-読み込み順は`measurement-worklog.js`の直後(従来この位置で動いていたコードなので
+読み込み順は`measure-worklog.js`の直後(従来この位置で動いていたコードなので
 相対順序を変えない)。`registerView()`を使うので`base.js`より後であること。
 
 `README.md`/`CLAUDE.md`/`docs/ARCHITECTURE.md`/`docs/SCHEDULE_MODE_DESIGN.md`の
@@ -309,7 +309,7 @@ measurement-worklogを開く」状態が誤読・誤編集の温床**(§9.68の�
 フェーズ2で解消したばかりの構造を作り直すことになる(判定基準②
 「依存の方向が違うものは独立が正しい」の裏返しで、方向が定まらないものは
 割ってはいけない。基準④のとおりJSはファイル1つ=`index.html`の読み込み順の
-管理コスト1件でもある)。measurement-worklog.jsの分割(相互参照ゼロ)とは
+管理コスト1件でもある)。measure-worklog.jsの分割(相互参照ゼロ)とは
 事情が違う。
 
 部分的に切り出せる単位も探したが、どれも双方向だった:
@@ -333,19 +333,19 @@ measurement-worklogを開く」状態が誤読・誤編集の温床**(§9.68の�
 
 基準0.2-3で洗った結果、フロントの統合候補は1件:
 
-- **`worktime-benchmark.js`(157行) → `measurement-worklog.js`へ吸収**(実施済み)。
+- **`worktime-benchmark.js`(157行) → `measure-worklog.js`へ吸収**(実施済み)。
   `window.*`公開ゼロ・他ファイルからの参照ゼロの自己完結IIFEで、
   測定画面左ペインの1カード(作業時間の過去実績比較)を描くだけ。
   独立ファイルである利益が無く、読み込み順の管理項目が1つ減る。
 
-  **統合先は当初案の`measurement-view.js`ではなく`measurement-worklog.js`**。
+  **統合先は当初案の`measure-view.js`ではなく`measure-worklog.js`**。
   このIIFEは冒頭で`idbAll`(records-store.js)の存在を確認して早期returnし、
-  `saveLocal`(records-store.js)/`renderMeasurement`(measurement-view.js)/
-  `markDirty`(base.js)をラップする。`measurement-view.js`は
+  `saveLocal`(records-store.js)/`renderMeasurement`(measure-view.js)/
+  `markDirty`(base.js)をラップする。`measure-view.js`は
   records-store.jsより**先に**読まれるため、そこへ移すとガードに掛かって
-  **機能が丸ごと黙って死ぬ**(エラーも出ない)。`measurement-worklog.js`は
+  **機能が丸ごと黙って死ぬ**(エラーも出ない)。`measure-worklog.js`は
   元の`worktime-benchmark.js`の直前に読まれるので、その末尾へ置けば実行順は
-  元のまま。責務の面でも、統合後の`measurement-worklog.js`は
+  元のまま。責務の面でも、統合後の`measure-worklog.js`は
   「指示値表示・作業時間UI」で、作業時間タブに出るこのカードと一致する。
   **統合先は行数や名前ではなく、読み込み順の制約で決まる**という実例
   (判定基準①)。
@@ -354,8 +354,8 @@ measurement-worklogを開く」状態が誤読・誤編集の温床**(§9.68の�
 
 | ファイル | 行数 | 統合しない理由 |
 |---|---|---|
-| `measurement-tolerance.js` | 200 | 公差ロジックを入力・表示・進捗の複数ファイルが共用(基準2) |
-| `measurement-input.js` | 322 | 測定器受信という独立した入出力責務。tolerance/viewと相互参照はあるが方向が明確 |
+| `measure-tolerance.js` | 200 | 公差ロジックを入力・表示・進捗の複数ファイルが共用(基準2) |
+| `measure-input.js` | 322 | 測定器受信という独立した入出力責務。tolerance/viewと相互参照はあるが方向が明確 |
 | `access-mode.js` | 226 | 「最後に読み込む」ことが仕様(入口ガード)。位置=責務(基準1) |
 | `calendar-view.js` | 258 | 独立ビュー。フェーズ2のビュー登録簿の単位と一致させる |
 
@@ -573,9 +573,9 @@ master.sqlite3)を渡すかは呼び出し側の責任**(§9.27)。`plan_add`が
 | CSS | 17ファイル(分割済み) | 3,420行/1ファイル |
 | 回帰テスト | 78ファイル・11,266行・**1,299件** | 62ファイル・453件 |
 | docs | 7,610行(うち`SCHEDULE_MODE_DESIGN.md`が4,016行・§9が72節) | — |
-| `static/js/schedule-view.js` | **3,054行 / 171関数 / 29セクション** | 2,668行(分割しないと判断) |
-| `static/js/master-maint.js` | 1,873行 | 1,872行(分割直後) |
-| `static/js/lot-split.js` | 1,731行 | — |
+| `static/js/schedule/schedule-view.js` | **3,054行 / 171関数 / 29セクション** | 2,668行(分割しないと判断) |
+| `static/js/master/master-maint.js` | 1,873行 | 1,872行(分割直後) |
+| `static/js/measure/lot-split.js` | 1,731行 | — |
 | `backend/routes/masters.py` | **983行(うち890行=90%がルート定義)** | 831行→分割したが再増 |
 | `backend/repositories/master_repo.py` | 1,160行 | — |
 | **退避なしの全置換モンキーパッチ** | **8箇所** | (未計測) |
@@ -594,12 +594,12 @@ grepで辿っても最終的な実装に行き着かない**ため、読む側�
 | 場所 | 対象 | 備考 |
 |---|---|---|
 | `filters.js:770` | `load` | **事故実績あり。**CLAUDE.mdに「品質データ結合とキャッシュで2度」と明記。本セッションで**3度目のニアミス**(読み込み時間の計測を`load()`へ置くと、絞り込み経由の読み込みだけ測れない。`renderGrid()`側へ移して回避) |
-| `filters.js:799` / `measurement-tolerance.js:100` | `compactToleranceScale` | **2ファイルが同じ関数を全置換**。どちらが勝つかは`index.html`のスクリプトの並び次第 |
+| `filters.js:799` / `measure-tolerance.js:100` | `compactToleranceScale` | **2ファイルが同じ関数を全置換**。どちらが勝つかは`index.html`のスクリプトの並び次第 |
 | `lot-split.js:1619` | `compactToleranceData` | |
 | `measure-progress.js:252` | `updateValidationVisuals` | |
 | `measure-progress.js:276` | `persistAndTransition` | 保存の本体。**測定データの保存経路**なので影響が大きい |
-| `measurement-tolerance.js:134` | `bindMeasureInputs` | |
-| `measurement-worklog.js:154` | `updateWorkTimePanel` | |
+| `measure-tolerance.js:134` | `bindMeasureInputs` | |
+| `measure-worklog.js:154` | `updateWorkTimePanel` | |
 
 CLAUDE.mdは既に「拡張ファイルからは`const base=fn; fn=function(){...base()...}`の
 ラップのみ可、全置換は不可」と定めている。**規約はあるが機械的な歯止めが無い。**
@@ -647,9 +647,9 @@ CLAUDE.mdは既に「拡張ファイルからは`const base=fn; fn=function(){..
    `onQuery`/`onAfter`へ`filters.js`が登録する形にした。全置換は消えた。
 2. **`compactToleranceScale`の重複を1つ消した。** 同じ関数を3ファイルが
    定義しており、読み込み順は
-   `measurement-input.js`(定義) → `measurement-tolerance.js`(置換) →
-   `filters.js`(置換) → `measurement-worklog.js`(ラップ)。
-   つまり**真ん中の`measurement-tolerance.js`版は一度も実行されない**。
+   `measure-input.js`(定義) → `measure-tolerance.js`(置換) →
+   `filters.js`(置換) → `measure-worklog.js`(ラップ)。
+   つまり**真ん中の`measure-tolerance.js`版は一度も実行されない**。
    実際に動いているのが`filters.js`の数直線であることを画面で確かめてから
    (`compactToleranceFacts`を差し替えて出力のクラス名を見る)削除した。
    ヘルパー3つ(`lastMeasuredValue`/`currentKindLabel`/`formatTol`)も
@@ -667,9 +667,9 @@ CLAUDE.mdは既に「拡張ファイルからは`const base=fn; fn=function(){..
 
 | 場所 | 対象 | なぜ全置換のままか |
 |---|---|---|
-| `filters.js:797` | `compactToleranceScale` | 公差数直線の実装そのもの。`measurement-input.js`の定義を丸ごと置き換える |
+| `filters.js:797` | `compactToleranceScale` | 公差数直線の実装そのもの。`measure-input.js`の定義を丸ごと置き換える |
 | `lot-split.js:1702` | `compactToleranceData` | 分割ロットは条ごとに公差が変わるため、`index`の既定値ごと差し替える |
-| `measurement-worklog.js:154` | `updateWorkTimePanel` | 作業時間パネルをworklog側の同期処理へ置き換える |
+| `measure-worklog.js:154` | `updateWorkTimePanel` | 作業時間パネルをworklog側の同期処理へ置き換える |
 
 ---
 
@@ -801,7 +801,7 @@ CLAUDE.mdにも「サーバー側の`/update`を書き忘れても押すまで�
 
 **結論: 切ったのは1つだけ。残りは切らない。**
 
-**切った: 浮きウィンドウ → `static/js/wl-window.js`(118行)。**
+**切った: 浮きウィンドウ → `static/js/core/wl-window.js`(118行)。**
 実装を1行ずつ読んで確かめたところ、`makeFloatingWindow`が触るのは
 引数の`el`/`opts`と`document`/`window`/`localStorage`だけで、
 **スケジュールの状態(`scState`等)を1つも見ていない**。既に
@@ -920,7 +920,7 @@ CLAUDE.mdにも「サーバー側の`/update`を書き忘れても押すまで�
 
 ## フェーズG: 小掃除【極小】
 
-- 真に未参照の関数2件(`measurement-input.js: toleranceFieldValue`、
+- 真に未参照の関数2件(`measure-input.js: toleranceFieldValue`、
   `records-store.js: findMasterEquipment`)の削除。他の4候補は参照が
   あったため対象外(HTML属性・イベント代入からの参照)。
 

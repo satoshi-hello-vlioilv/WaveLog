@@ -86,7 +86,7 @@ _WRITE_ALLOWED_MODES={
 # 新しい書込系エンドポイントをここへ追記する際は、権限の絞り込みを
 # ハンドラ側(_field_reorder_permitted等)で必ず二重に行うこと。
 # 設定系マスタ(稼働カレンダー・設備停止・勤務体系・換算係数上書き)は、
-# 保存先をmaster.sqlite3へ移して(docs/SCHEDULE_MODE_DESIGN.md §9.27)他のマスタと
+# 保存先をmaster.sqlite3へ移して(docs/decisions/9.27.md)他のマスタと
 # 同列になったため、マスタ管理画面を持つeditモードからも書けるようにする。
 # scheduleモードはBlueprintの既定(_WRITE_ALLOWED_MODES)で元から書ける。
 # これらは設定値であって作業予定(運用データ)ではないため、editへ開いても

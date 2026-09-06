@@ -61,7 +61,7 @@ def main():
     rec('画面が資材の版(?t=)を埋め込んでいる', bool(token), token)
 
     # ---- 1. 版付きの資材は長期キャッシュ ----
-    st, v = cc(f'/static/js/base.js?t={token}')
+    st, v = cc(f'/static/js/core/base.js?t={token}')
     rec('版付きのJSは長期キャッシュを返す', st == 200 and LONG in v, f'{st} / {v}')
     st, v = cc(f'/css/app.css?t={token}')
     rec('版付きのCSSも長期キャッシュを返す', st == 200 and LONG in v, f'{st} / {v}')
@@ -77,12 +77,12 @@ def main():
     rec('APIは ?t= が付いていても長期キャッシュしない', 'no-store' in v, v)
 
     # ---- 3. 版の無い資材は長期キャッシュしない ----
-    st, v = cc('/static/js/base.js')
+    st, v = cc('/static/js/core/base.js')
     rec('版の無いJSは長期キャッシュしない（どの版か分からないため）',
         'no-store' in v, v)
 
     # ---- 4. 資材を触ると版が変わる ----
-    target = ROOT / 'static' / 'js' / 'base.js'
+    target = ROOT / 'static' / 'js' / 'core' / 'base.js'
     before = target.stat().st_mtime
     try:
         now = time.time() + 2

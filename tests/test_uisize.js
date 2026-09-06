@@ -19,6 +19,19 @@
     4. 廃止した段（xs/xl）の保存値は近い段へ寄せる（§9.132）
     5. **実績カレンダー**も文字・マス・ボタン・明細幅が段どおりに伸び縮みし、
        大でも横スクロールが出ない
+    6. **時間の書き方**（§9.341）も同じバッジの中にあり、既定は「分」、
+       選ぶと**いま出ている画面の数字が書き直る**
+
+   時間の書き方をここで見る理由
+   ------------------------------------------------------------
+   入口が`#uiSizeBadge`の1つに統合されたので（§9.341）、**バッジの中身は
+   1本の網が見る**。片方だけの網にすると、節を1つ足したときに「開いたら
+   もう片方が消えていた」を誰も見ない。
+
+   **`WL.duration`の出力だけを見て終わりにしないこと**（§9.229 ⑥）。
+   関数が正しくても、画面がその答えを使っていなければ何も変わらない。
+   稼働状況（`#dbStatusView`）を実際に開き、**描かれた字が変わること**まで
+   見る——ここは元の指摘（4-4 ⑰「150分と出ている」）そのものの画面。
    ============================================================ */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
 let b=null;
@@ -82,6 +95,84 @@ let b=null;
   const m=await measure();
   rec(`廃止した段(${old})の保存値は近い段(${want})へ寄せる`,m.size===want,JSON.stringify(m));
  }
+
+ /* ---------- 時間の書き方（§9.341） ---------- */
+ await page.evaluate(()=>localStorage.removeItem('WaveLogDurationStyleV1'));
+ await page.reload({waitUntil:'domcontentloaded'});
+ await page.waitForSelector('#uiSizeBadge',{timeout:15000});
+
+ const durOut=()=>page.evaluate(()=>({
+  style:WL.duration.style(),
+  text:WL.duration.text(150),compact:WL.duration.compact(150),
+  short:WL.duration.text(45),empty:WL.duration.text(null),
+  neg:WL.duration.text(-90),big:WL.duration.text(4830),
+ }));
+ const d0=await durOut();
+ rec('既定は「分」（利用者の指示）',d0.style==='min'&&d0.text==='150分',JSON.stringify(d0));
+ /* **密な列でも単位を落とさない**（§9.341）。以前の`fmtCompact`は`2:30`と
+    書いていたが、見出しは「実績」としか言っておらず、時分か分秒かは値の
+    側にしか手掛かりが無い。 */
+ rec('「分」では密な列も単位を書く（裸の数字を作らない）',
+   d0.compact==='150分',d0.compact);
+ rec('値が無いときは「-」、負の値は符号を保つ',
+   d0.empty==='-'&&d0.neg==='-90分',`${d0.empty} / ${d0.neg}`);
+
+ await page.click('#uiSizeBadge');
+ await page.waitForSelector('#uiSizeMenu',{timeout:4000});
+ const menu=await page.evaluate(()=>({
+  heads:[...document.querySelectorAll('#uiSizeMenu .ui-size-menu-head')].map(h=>h.textContent.trim()),
+  sizes:document.querySelectorAll('#uiSizeMenu [data-ui-size-option]').length,
+  durs:[...document.querySelectorAll('#uiSizeMenu [data-duration-style]')].map(b=>b.dataset.durationStyle),
+  hints:[...document.querySelectorAll('#uiSizeMenu [data-duration-style] small')].map(x=>x.textContent.trim()),
+  current:document.querySelector('#uiSizeMenu [data-duration-style].is-current')?.dataset.durationStyle,
+ }));
+ rec('1つのバッジに2つの節が名前つきで並ぶ（入口を2つに増やさない）',
+   menu.heads.length===2&&menu.heads[0]==='文字の大きさ'&&menu.heads[1]==='時間の書き方',
+   menu.heads.join('／'));
+ rec('文字の大きさ3段と時間の書き方2種が同居する',
+   menu.sizes===3&&menu.durs.join(',')==='min,hm',`${menu.sizes}段 / ${menu.durs.join(',')}`);
+ /* 選ぶ前に見える（§9.200）。名前だけでは150分がどう出るか分からない。 */
+ rec('札に見本が出ている（選ぶ前に見える）',
+   menu.hints.join('／')==='150分／2時間30分',menu.hints.join('／'));
+ rec('いまどれかは開いた先が言う（バッジの字は「表示」で固定）',
+   menu.current==='min',String(menu.current));
+
+ await page.click('#uiSizeMenu [data-duration-style="hm"]');
+ await page.waitForTimeout(300);
+ const d1=await durOut();
+ rec('「時間と分」を選ぶと書き方が変わる',
+   d1.style==='hm'&&d1.text==='2時間30分'&&d1.short==='45分',JSON.stringify(d1));
+ rec('「時間と分」では密な列だけ h:mm へ詰める',d1.compact==='2:30',d1.compact);
+ rec('60時間を超えても時間で書き切る（日へ繰り上げない）',d1.big==='80時間30分',d1.big);
+ rec('バッジの字は選んだ値ではなく「表示」のまま',
+   (await page.$eval('#uiSizeBadge',e=>e.textContent.trim()))==='表示');
+
+ await page.reload({waitUntil:'domcontentloaded'});
+ await page.waitForSelector('#uiSizeBadge',{timeout:15000});
+ rec('再読込しても選んだ書き方が残る',(await durOut()).style==='hm');
+
+ /* **描かれた字まで見る**（§9.229 ⑥）。`WL.duration`が正しくても、画面が
+    その答えを使っていなければ4-4 ⑰は直っていない。稼働状況は「見込」
+    「経過」「遅れ」を出す、指摘そのものの画面。 */
+ await page.click('#openDashboard');
+ await page.waitForTimeout(3500);
+ const statusText=()=>page.$eval('#dbStatusView',e=>e.innerText.replace(/\s+/g,' '));
+ const hmText=await statusText();
+ rec('稼働状況が時間と分で描かれている',/\d+時間/.test(hmText)&&!/\d{3,}分/.test(hmText),
+   hmText.slice(0,90));
+ /* 書き方を変えたら**いま出ている表も書き直る**。次の描画まで待たせると、
+    選んだのに変わらない＝設定が壊れているのと見分けが付かない。 */
+ await page.evaluate(()=>WL.duration.setStyle('min'));
+ await page.waitForTimeout(1500);
+ const minText=await statusText();
+ rec('書き方を変えると、いま出ている稼働状況がその場で書き直る',
+   minText!==hmText&&/\d{3,}分/.test(minText)&&!/\d+時間/.test(minText),
+   minText.slice(0,90));
+
+ /* 後片付け: 既定へ戻す（端末の覚えを次の実行へ持ち越さない・§9.121）。 */
+ await page.evaluate(()=>localStorage.removeItem('WaveLogDurationStyleV1'));
+ await page.reload({waitUntil:'domcontentloaded'});
+ await page.waitForSelector('#uiSizeBadge',{timeout:15000});
 
  /* ---------- 実績カレンダー（旧 test_calscale.js） ----------
     段は`data-ui-size`を直に書き換えて確かめる（上でメニューの経路は

@@ -119,6 +119,13 @@ let b=null,page=null;
      s.value=t;s.dispatchEvent(new Event('change',{bubbles:true}))},type);
    await page.waitForTimeout(500);
    await page.evaluate(()=>{const b=document.querySelector('[data-mode="manual"]');if(b)b.click()});
+   /* 手動入力の注意はアプリの窓で出るようになった（§9.342）。**開いたまま
+      だと次のクリックが窓に遮られる**（素の`alert()`のときは
+      `page.on('dialog')`が黙って閉じていた）。 */
+   if(await page.$('#appConfirmModal:not([hidden])')){
+    await page.click('#appConfirmOk');
+    await page.waitForSelector('#appConfirmModal',{state:'hidden',timeout:5000});
+   }
    await page.waitForTimeout(200);
    const sel='[data-mkey][data-i="0"][data-j="0"]';
    await page.waitForSelector(sel,{timeout:10000});

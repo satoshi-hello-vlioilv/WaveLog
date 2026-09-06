@@ -131,6 +131,9 @@ async function cleanup(){
   /* ========== 4) みんなと同じに戻せる。戻しても自分の設定は消えない ========== */
   await openPanel();
   await page.click('#lcScopeBtn');
+  /* 戻すときだけ確認が出る（自分の設定を捨てる向きなので）。素の
+     `confirm()`ではなくなった（§9.342）ので、開いた窓のOKを押す。 */
+  await require('./lib/wait.js').answerConfirm(page);
   await page.waitForFunction(()=>WL.columnLayout.scope(listLayoutTarget())==='common',
                              null,{timeout:15000});
   const back=await page.evaluate(c=>(WL.columnLayout.saved(listLayoutTarget()).widths||{})[c],

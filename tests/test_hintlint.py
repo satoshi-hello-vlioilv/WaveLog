@@ -27,8 +27,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 # §9.324 R3: マスタ管理は5本に分けた。説明文（`hint:`）は定義と専用画面の両方にある。
-TARGETS = ['static/js/master-defs.js', 'static/js/master-maint.js', 'static/js/master-report.js',
-           'static/js/master-data.js', 'static/js/master-opdata.js']
+TARGETS = ['static/js/master/master-defs.js', 'static/js/master/master-maint.js', 'static/js/master/master-report.js',
+           'static/js/master/master-data.js', 'static/js/master/master-opdata.js']
 # 説明として画面に出る（＝`hintHtml()`か`esc()`を通る）キー。
 KEYS = ('hint', 'hintShort', 'more')
 TAG = re.compile(r'</?[a-zA-Z][a-zA-Z0-9]*\s*/?>')
