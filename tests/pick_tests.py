@@ -147,6 +147,8 @@ G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 't
                'test_mmfold', 'test_rollload',
                # §9.251: ロールの全削除・完全入替
                'test_rollwipe',
+               # §9.331: タブを切り替えたとき、前のタブの応答が今の画面を上書きしない
+               'test_mmswitch',
                # §9.250 ①②③⑥⑦: 一覧の折りたたみ・移行済みの削除・並べ替え/列幅
                'test_mmtable',
                # §9.253: 帳票ブロックマスタから見本のロットで帳票を見る

@@ -20,7 +20,7 @@
  WL.mm.special=WL.mm.special||{};
  WL.mm.registerSpecial=(key,handlers)=>{WL.mm.special[key]=handlers};
  const MASTER_DEFS=WL.mm.MASTER_DEFS,MASTER_GROUPS=WL.mm.MASTER_GROUPS;
- let maintState={defKey:MASTER_DEFS[0].key,items:[],editing:null,query:'',meta:{}};
+ let maintState={defKey:MASTER_DEFS[0].key,items:[],editing:null,query:'',meta:{},loadGen:0};
  /* ---------- 専用タブを持たないマスタ（§9.249 ②） ----------
     タブの一覧は**固定のMASTER_DEFSと、サーバーが答える表から作った分**の
     2本立て。**どちらも同じ`def`の形**にしてあるので、一覧・編集モーダル・
@@ -2719,6 +2719,10 @@
 
  async function loadMaintInner(force){
   const def=currentDef();const title=$('#masterMaintTitle');
+  /* いま何回目の読み込みか（§9.331）。**取りに行った応答は「いつの分か」で
+     捨てる**（§9.200と同じ約束）——タブを切り替えると前の読み込みは止められ
+     ないので、届いた時点で世代を突き合わせる。 */
+  const gen=++maintState.loadGen;
   /* 見出しは**その画面の呼び名**。「〜マスタ」を機械的に足すと
      「データ接続マスタ」のような読みにくい名前ができる。 */
   if(title)title.textContent=def.titleText||(def.label+'マスタ');
@@ -2737,7 +2741,17 @@
      落とさない**（§CLAUDE「公開漏れは黙って素通しになる」）。 */
   if(def.special){
    const sp=WL.mm.special[def.special];
-   if(sp){setMaintSearchVisible(false);return sp.load(force)}
+   if(sp){setMaintSearchVisible(false);
+    /* **描き終えたときに、まだそのタブが開いているか確かめる**（§9.331・§9.200）。
+       専用の画面は取りに行ってから描くので、**取りに行っている最中に別のタブへ
+       移ると、後から届いた前のタブの盤が今の画面を上書きする**——見出しだけ
+       新しいマスタで、中身は前の盤（実際に「設備停止マスタ」の見出しの下に
+       操業データ項目の盤が出て、「追加」が押せなくなった）。
+       **負けたほうが今のタブを描き直す**（応答を捨てるだけでは、上書き済みの
+       画面が戻らない）。 */
+    return Promise.resolve(sp.load(force)).then(()=>{
+     if(gen!==maintState.loadGen)return loadMaintInner(force);
+    });}
    console.error('専用画面が登録されていません: '+def.special);
   }
   setMaintSearchVisible(true);
@@ -2755,6 +2769,10 @@
   try{
    const r=await api(def.endpoint);let items=(r&&r.items)||[];
    if(multiField)items=items.map(it=>({...it,[multiField.k+'Text']:(Array.isArray(it[multiField.k])&&it[multiField.k].length)?it[multiField.k].join('、'):'（制限なし・全設備）'}));
+   /* 取りに行っている最中に別のタブへ移っていたら描かない（§9.331）。
+      控え（`maintState.items`）まで書き換えると、いま開いているタブの
+      一覧が前のタブの中身で並ぶ。 */
+   if(gen!==maintState.loadGen)return;
    maintState.items=items;
    /* **語彙はサーバーだけが持つ**（§9.163）。GETの戻りの`items`以外の
       キー（ロールマスタの入出位置・接触面・駆動方式など）はここで控え、
@@ -2764,7 +2782,7 @@
    /* **語彙が届いてから当て直す**（§9.234 ⑧と同じ罠）——上のフォームは
       取得より前に描かれるので、届いた上限を当てる人がここに要る。 */
    const ff=$('#masterMaintForm');if(ff)bindRoleCapFields(ff);
-  }catch(e){if(list)list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
+  }catch(e){if(gen===maintState.loadGen&&list)list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
  }
 
  /* ---------- 換算係数モデル(docs/SCHEDULE_MODE_DESIGN.md §6・§9.8) ----------
