@@ -42,6 +42,9 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
           'test_flags',
           # §9.324 R2: ルートの失敗の受け方は api_guard の1箇所（写しを機械で数える）
           'test_apiguard',
+          # §9.337: テストの層（純粋/煙/全件）が崩れていないか。**ここが崩れると
+          # CIの1段目が静かに減る**ので、どのファイルを触っても見る（1秒未満）。
+          'test_layers',
           # §9.324 R1: 列定義は TableDef の1箇所（位置読みの写しを機械で数える・数秒）
           'test_tabledef',
           # §9.326: 標準の静的解析（pyflakes／eslint）。どの .py/.js を触っても数秒で回る
@@ -499,7 +502,10 @@ RULES = [
     # ここに書くのは**テスト以外**の、tests/ の下にあるもの。
     # **`tests/` の受け皿は置かない**——書いていないものは
     # 「当たる規則なし」＝全部回す側へ倒れるのが正しい。
+    # 層の宣言（PURE_TESTS/SMOKE_TESTS）を持つので test_layers も回るが、
+    # ランナー自体を触ったら通しへ倒す（全部の網の回り方が変わる）。
     ('tests/run_all.sh', [ALL]),
+    ('.github/', g('test_layers')),
     ('tests/make_fixture.py', [ALL]),
     ('tests/setperm.py', [ALL]),
     ('tests/make_split_fixture.py', g('test_scsplit')),

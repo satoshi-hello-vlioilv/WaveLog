@@ -53,7 +53,8 @@ def main():
     # 3. 監視対象のソースは必ずどれかの規則に当たるか。
     watched = []
     watched += sorted(str(p.relative_to(ROOT)) for p in (ROOT / 'backend').rglob('*.py'))
-    watched += sorted(str(p.relative_to(ROOT)) for p in (ROOT / 'static/js').glob('*.js'))
+    # 領域フォルダ（§9.334）なので **rglob**（`glob`は3-9以降0本・§9.335）
+    watched += sorted(str(p.relative_to(ROOT)) for p in (ROOT / 'static/js').rglob('*.js'))
     watched += sorted(str(p.relative_to(ROOT)) for p in (ROOT / 'static/css').glob('*.css'))
     watched += sorted(str(p.relative_to(ROOT)) for p in (ROOT / 'templates').glob('*.html'))
     watched += sorted(str(p.relative_to(ROOT)) for p in ROOT.glob('*.py'))

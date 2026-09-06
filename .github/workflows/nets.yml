@@ -1,0 +1,66 @@
+# WaveLog の網を push ごとに機械で回す（§9.337、REVIEW 3-13）。
+#
+# 3層のうち **1段目と2段目だけ**をここで回す。
+#   1) pure  … サーバーを立てずに回る網（47本・実測20秒）。**並列**。
+#   2) smoke … 起動・一覧・スケジュール・測定の各1本（実測93秒）。
+#   3) 全件 … **人が指示したときだけ**手元で（`tests/run_all.sh`・約39分）。
+#      全件の並列化はしない——ランナーは1台のサーバーと共有フィクスチャを
+#      順に使う作りで、並べると互いの書込を踏む（過去の非目標のまま）。
+#
+# 1段目は「まっさらな取得（DBも設定もサーバーも無い）でそのまま通る」ものだけ。
+# **その判定をしているのがこのワークフローそのもの**——サーバーを要る網を
+# `PURE_TESTS` へ載せれば、ここが落ちる（注意書きではなく仕組みで止める）。
+name: nets
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pure:
+    name: 純粋な網（サーバー不要・並列）
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 道具を入れる
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+          npm install -g eslint
+      - name: 回す
+        run: tests/run_all.sh --pure
+
+  smoke:
+    name: 煙テスト（起動・一覧・スケジュール・測定）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 道具を入れる
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          npm install -g playwright
+          npx --yes playwright install --with-deps chromium
+      - name: 回す
+        # ランナーの既定はこのリポジトリの開発サンドボックスの置き場なので、
+        # CIでは実際の置き場を渡す（run_all.sh はこの3つで上書きできる）。
+        run: |
+          export WAVELOG_NODE="$(command -v node)"
+          export NODE_PATH="$(npm root -g)"
+          export WAVELOG_PLAYWRIGHT="$NODE_PATH/playwright"
+          export WAVELOG_CHROMIUM="$(node -e "console.log(require('playwright').chromium.executablePath())")"
+          tests/run_all.sh --smoke

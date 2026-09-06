@@ -118,8 +118,10 @@ rec('宣言した全レイヤに中身がある',not missing,f'空: {missing}')
 BAN=re.compile(r"\.style\.(background|backgroundColor|color|fontSize|display|transform)\s*=")
 ALLOW={'static/js/master/master-maint.js'}     # display切替のみ。hidden属性へ移すのは別途
 bad=[]
-for p in sorted((ROOT/'static/js').glob('*.js')):
-    rel=f'static/js/{p.name}'
+# 領域フォルダ（§9.334）なので **rglob**。`glob`のままだと3-9以降**0本**しか
+# 見ずに素通りする（数え落としは緩む側に壊れる・§9.335）。
+for p in sorted((ROOT/'static/js').rglob('*.js')):
+    rel=p.relative_to(ROOT).as_posix()
     if rel in ALLOW: continue
     for i,l in enumerate(p.read_text(encoding='utf-8').split('\n')):
         if BAN.search(l): bad.append(f'{rel}:{i+1}')
