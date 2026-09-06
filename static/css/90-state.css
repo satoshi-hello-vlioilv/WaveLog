@@ -14,8 +14,8 @@
    損ねた」ように見える）。 */
 body.col-resizing{cursor:col-resize;user-select:none}
 body.col-resizing .col-resize{opacity:1}
-.hd-chip-mode.is-view{border-color:var(--line);background:#eef2f4}
-.hd-chip-mode.is-view .hd-chip-val{color:#60747b}
+.hd-chip-mode.is-view{border-color:var(--line);background:var(--bg)}
+.hd-chip-mode.is-view .hd-chip-val{color:var(--muted)}
 .hd-chip-mode.is-schedule{border-color:#9ec8dd;background:#eaf4fb}
 .hd-chip-mode.is-schedule .hd-chip-val{color:#1a5f86}
 /* 使用設備: 未設定は要対応なので警告色 */
@@ -93,7 +93,7 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
 .opf-host[data-op-blank-tint].is-blank .opf-face .opf-dot{border-color:var(--opb-line)}
 #complete.validation-blocked{background:var(--warn-solid);border-color:var(--warn-solid)}
 .dimension-locked{
-  background:#e3ebee;
+  background:var(--surface-3);
   color:#66777c;
   cursor:not-allowed;
 }
@@ -102,17 +102,17 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
    どのセルがどの点かを一目で結び付けられるようにする。 */
 .work-time-item.validation-ng input{background:var(--invalid-bg);border-color:var(--invalid)}
 #workTimeHint.is-invalid{font-weight:700}
-.mm-tag-box.is-disabled{opacity:.5;background:#eef2f4;cursor:not-allowed;pointer-events:none}
+.mm-tag-box.is-disabled{opacity:.5;background:var(--bg);cursor:not-allowed;pointer-events:none}
 .mm-apply-badge.is-restart{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
 .mm-apply-badge.is-live{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
-.mm-apply-badge.is-info{background:#eef2f4;border-color:#d6e0e3;color:#60747b}
+.mm-apply-badge.is-info{background:var(--bg);border-color:var(--line-soft);color:var(--muted)}
 /* 保存値と実際に効いている値が食い違う行(=再起動待ち) */
 .mm-row.is-pending-restart{background:var(--warn-bg)}
 .mm-imp-state-list b.is-warn{color:var(--warn-fg)}
-.mm-imp-preview.is-active{border-style:solid;border-color:var(--teal);background:#f7fafb;color:#3a565d}
+.mm-imp-preview.is-active{border-style:solid;border-color:var(--teal);background:var(--surface-2);color:var(--ink-2)}
 .db-card.is-warn{border-color:var(--warn-border);background:var(--warn-bg)}
 .db-card.is-warn .db-card-label{color:var(--warn-fg)}
-.db-status-table tbody tr.is-running{background:#f7fafb}
+.db-status-table tbody tr.is-running{background:var(--surface-2)}
 .db-status-table tbody tr.is-late{background:var(--warn-bg)}
 .sc-stop-button.is-disabled{opacity:.5;cursor:not-allowed}
 .sc-stop-button.is-row-dragging{opacity:.45;outline:1px dashed var(--teal)}
@@ -154,7 +154,7 @@ tbody tr.is-plan-selected:hover{background:#d9f0ee}
    3つで示す(色だけに意味を持たせない)。 */
 .defect-lane.is-hit{outline:2px solid var(--danger);outline-offset:-2px;filter:saturate(1.25) brightness(1.12)}
 .defect-lane.is-hit .defect-lane-label b{padding:0 var(--space-1);border-radius:var(--radius-sm);background:#fff;color:var(--danger)}
-.rp-defect-lane.is-hit{outline:1.5px solid #a32424;outline-offset:-1.5px;filter:saturate(1.2) brightness(1.12)}
+.rp-defect-lane.is-hit{outline:1.5px solid var(--danger);outline-offset:-1.5px;filter:saturate(1.2) brightness(1.12)}
 }
 
 

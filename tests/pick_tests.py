@@ -520,6 +520,9 @@ RULES = [
     # §9.326: lint の設定と上限は網そのもの
     ('eslint.config.mjs', ['test_eslint']),
     ('tests/fixtures/eslint_baseline.json', ['test_eslint']),
+    ('tests/fixtures/color_baseline.json', ['test_csslint']),
+    ('tests/fixtures/import_baseline.json', ['test_importlint']),
+    ('tests/fixtures/wait_baseline.json', ['test_waitlint']),
     ('requirements-dev.txt', ['test_pyflakes']),
     ('tests/README.md', ['test_docindex']),
 ]

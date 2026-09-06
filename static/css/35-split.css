@@ -30,7 +30,7 @@
   color:var(--ink-3);font-size:var(--fs-micro);font-weight:800;letter-spacing:.04em;
   display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-2);
 }
-.split-candidates-stats{font-size:var(--fs-sm);font-weight:600;color:#60747b}
+.split-candidates-stats{font-size:var(--fs-sm);font-weight:600;color:var(--muted)}
 .split-candidates-stats b{color:var(--teal);font-size:var(--fs-base-sm)}
 .split-hint-text{margin:8px 0 0;color:#79898d}
 .split-row-loading{padding:var(--space-4);color:#526970;font-weight:700}
@@ -45,7 +45,7 @@
 .split-candidate-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--gap-tight)}
 .split-candidate-head{display:flex;align-items:center;gap:var(--space-2)}
 .split-candidate-head b{color:#1b3438}
-.split-candidate-head em{font-style:normal;font-size:var(--fs-sm);font-weight:700;color:#60747b;background:#eef2f4;border-radius:var(--radius-pill);padding:1px 8px}
+.split-candidate-head em{font-style:normal;font-size:var(--fs-sm);font-weight:700;color:var(--muted);background:var(--bg);border-radius:var(--radius-pill);padding:1px 8px}
 .split-candidate.active .split-candidate-head em{color:var(--teal-dark);background:#d3f0ee}
 .split-candidate-meta{font-size:var(--fs-sm);color:#79898d}
 /* 条割結果プレビュー(#splitResult)。左端に視覚図/候補カードと同じ色の
@@ -54,12 +54,12 @@
 .split-result-row{display:grid;grid-template-columns:22px 1fr auto auto;align-items:center;gap:var(--gap-section);padding:9px 12px;background:#fff;border:1px solid #dbe4e6;border-left-width:5px;border-left-style:solid;border-radius:var(--radius-sm);font-size:var(--fs-base-sm)}
 .split-result-index{color:#9aabab;font-weight:800;font-size:var(--fs-sm)}
 .split-result-lot{font-weight:800;color:#1b3438}
-.split-result-count{color:#3a565d;font-weight:700}
-.split-result-width{color:#60747b;font-size:var(--fs-sm);justify-self:end}
+.split-result-count{color:var(--ink-2);font-weight:700}
+.split-result-width{color:var(--muted);font-size:var(--fs-sm);justify-self:end}
 .split-result-tol{display:none}
 .split-apply-btn{margin-top:10px;color:#fff;background:var(--teal);border:0;cursor:pointer;transition:filter .12s}
 .split-apply-btn:hover:not(:disabled){filter:brightness(1.08)}
-.split-apply-btn:disabled{background:#c4d0d4;color:#fff;cursor:not-allowed}
+.split-apply-btn:disabled{background:var(--line-mid);color:#fff;cursor:not-allowed}
 /* 条の並び視覚図: 母材幅をほぼ100%として、各条を実際の条幅比率(子ロットの
    製造板幅)で並べた帯として表示する(splitVisualLayout)。同じロットが
    連続していても1条=1マスの個別セルとして描画し、最大40条規模でも見やすく
@@ -112,7 +112,7 @@
    従来通りの表示に自然にフォールバックする(flex-growの明示指定を解除
    するだけでよい)。 */
 .split-visual-measure{position:relative;flex:1;min-width:0;display:flex;align-items:stretch}
-.split-visual-strip{position:relative;flex:1;min-width:0;border-radius:var(--radius-md);background:#eef2f4;touch-action:none;user-select:none}
+.split-visual-strip{position:relative;flex:1;min-width:0;border-radius:var(--radius-md);background:var(--bg);touch-action:none;user-select:none}
 /* **幅はmmの比だけで決まる**（§9.221 ⑥③）。`flex:0 0 auto`＋`min-width:26px`
    だったため、中の「屑 12.5」の文字幅が帯の下限になり、比で割り付けたはずの
    帯が実際より太く出ていた（そのぶん条の束が痩せて「図が崩れる」）。
@@ -152,11 +152,11 @@
 /* **ラベルと異常の印は縦に積む**（§9.234 ①）。横に並べると要る幅が
    「ラベル＋印」の足し算になり、25条のような狭い図では両方とも切れる。
    縦なら要るのは広いほうだけで、高さ（64px）には余裕がある。 */
-.split-visual-block{position:absolute;top:0;bottom:0;background-color:var(--split-block-bg,#8a9a97);box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;border-right:2px solid #eef2f4;color:#fff;text-shadow:0 1px 1px #0006;cursor:grab;transition:filter .1s}
+.split-visual-block{position:absolute;top:0;bottom:0;background-color:var(--split-block-bg,#8a9a97);box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;border-right:2px solid var(--bg);color:#fff;text-shadow:0 1px 1px #0006;cursor:grab;transition:filter .1s}
 .split-visual-block:hover{filter:brightness(1.07)}
 .split-visual-block:last-child{border-right:0}
 .split-visual-strip.split-visual-dragging .split-visual-block{cursor:grabbing}
-.split-visual-block.empty{background:#eef2f4;border:1.5px dashed #c4d0d4;cursor:default}
+.split-visual-block.empty{background:var(--bg);border:1.5px dashed var(--line-mid);cursor:default}
 /* ---------- 異常位置判定の印（§9.226 ②、利用者の指示） ----------
    **色だけで伝えない**（§3）ので、掛かっている条には「異常」の文字を置き、
    縁も立てる。印はダブルクリックで判定の窓へ——単クリックは今までどおり
@@ -362,9 +362,9 @@
 /* 動かしている間は文字を選ばせない（掴んだまま横へ振ると帯の文字が
    青く反転して、動かしているものが分からなくなる）。 */
 .split-visual-measure.is-scrap-dragging{user-select:none;cursor:ew-resize}
-.split-ghost-btn{font-weight:700;color:#3a565d;background:#fff;border:1px solid #c4d0d4;
+.split-ghost-btn{font-weight:700;color:var(--ink-2);background:#fff;border:1px solid var(--line-mid);
   cursor:pointer;white-space:nowrap}
-.split-ghost-btn:hover:not(:disabled){background:#eef2f4;border-color:#9aabab}
+.split-ghost-btn:hover:not(:disabled){background:var(--bg);border-color:#9aabab}
 .split-ghost-btn:disabled{color:#b6c2c4;cursor:not-allowed}
 /* 条ごとの公差の一覧は**子ロットの内訳の中**（§9.234 ③）。以前は測定の
    見出しへ差し込んでいたが、あちらは寸法系のとき常に`hidden`で一度も

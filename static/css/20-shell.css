@@ -267,10 +267,10 @@ main>header small{color:#687a81;margin-top:2px}
    の2段組チップ、操作は四角いボタン/入力、と形で種類が分かるようにする。 */
 main>header{gap:var(--space-4)}
 .hd-context{display:flex;align-items:baseline;gap:var(--space-2);min-width:0}
-.hd-context #fileName{font-size:var(--fs-title);font-weight:800;color:#173842;
+.hd-context #fileName{font-size:var(--fs-title);font-weight:800;color:var(--ink);
  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:38vw}
 /* 副見出し(データの出どころ)。主見出しの画面名より一段弱く出す。 */
-.hd-context-source{font-size:var(--fs-sm);color:#7b8e95;white-space:nowrap;
+.hd-context-source{font-size:var(--fs-sm);color:var(--ink-soft);white-space:nowrap;
  overflow:hidden;text-overflow:ellipsis;max-width:26vw}
 .hd-freshness{font-size:var(--fs-sm);color:#8a9aa0;white-space:nowrap}
 /* 編集権の在席表示(§9.211 ③)。**タイトル帯の空きに置く**(利用者の指示)。
@@ -310,12 +310,12 @@ main>header{gap:var(--space-4)}
 .hd-chip{
  display:inline-flex;flex-direction:column;align-items:flex-start;justify-content:center;
  height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1px solid var(--line);border-radius:var(--radius-sm);
- background:#fff;color:#3a565d;white-space:nowrap;line-height:1.15;
+ background:#fff;color:var(--ink-2);white-space:nowrap;line-height:1.15;
  font-family:inherit;text-align:left;
 }
 .hd-chip[hidden]{display:none}
 .hd-chip-key{font-size:var(--fs-tiny);font-weight:700;color:#8a9aa0;letter-spacing:.02em}
-.hd-chip-val{font-size:var(--fs-base-sm);font-weight:800;color:#173842;
+.hd-chip-val{font-size:var(--fs-base-sm);font-weight:800;color:var(--ink);
  max-width:150px;overflow:hidden;text-overflow:ellipsis}
 button.hd-chip{cursor:pointer;transition:border-color .12s,background .12s}
 button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
@@ -331,13 +331,13 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .hd-actions .hd-btn,.hd-actions .hd-search,.hd-actions .hd-field{
  height:var(--ctl-h);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;
 }
-.hd-actions .hd-btn{font-weight:700;color:#3a565d;cursor:pointer;
+.hd-actions .hd-btn{font-weight:700;color:var(--ink-2);cursor:pointer;
  display:inline-flex;align-items:center;gap:var(--gap-inline);transition:border-color .12s,background .12s}
 .hd-actions .hd-btn:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
 .hd-btn-icon{padding:0 var(--ctl-pad-x)}
 /* 「表示」バッジの印（§9.341）。以前は`A`の字だったが、いまは文字の
    大きさと時間の書き方の2つが入るので、片方だけを指す字はやめた。 */
-.hd-size-a{font-size:var(--fs-sm);color:#3a565d;line-height:1}
+.hd-size-a{font-size:var(--fs-sm);color:var(--ink-2);line-height:1}
 .hd-search{display:inline-flex;align-items:center;gap:var(--gap-inline);padding:0 var(--ctl-pad-x-sm)}
 .hd-search:focus-within{border-color:var(--teal);box-shadow:0 0 0 3px #087c8922}
 .hd-search-icon{font-size:var(--fs-sm);opacity:.6}
@@ -346,10 +346,10 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .hd-field{display:inline-flex;align-items:center;gap:var(--gap-inline);padding:0 var(--ctl-pad-x-sm)}
 .hd-field>span{font-size:var(--fs-tiny);font-weight:700;color:#8a9aa0;white-space:nowrap}
 .hd-actions #pageSize{border:0;outline:0;background:transparent;height:auto;padding:0;
- font-size:var(--fs);font-weight:700;color:#3a565d}
+ font-size:var(--fs);font-weight:700;color:var(--ink-2)}
 /* quality-analysis.jsが後から差し込む「画面を印刷」も同じ見た目へ揃える */
 .hd-actions #printCurrentView{height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1px solid var(--line);
- border-radius:var(--radius-sm);background:#fff;font-size:var(--fs);font-weight:700;color:#3a565d;cursor:pointer}
+ border-radius:var(--radius-sm);background:#fff;font-size:var(--fs);font-weight:700;color:var(--ink-2);cursor:pointer}
 .hd-actions #printCurrentView:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
 @media(max-width:1180px){
  .hd-context #fileName{max-width:22vw}
@@ -366,7 +366,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .access-mode-badge:disabled{cursor:not-allowed;opacity:.7}
 .access-mode-menu{position:fixed;z-index:var(--z-popover);min-width:190px;padding:var(--space-2);border:1px solid var(--line);border-radius:var(--radius-md);background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.16)}
 .access-mode-menu button{display:flex;flex-direction:column;align-items:flex-start;gap:var(--gap-hair);width:100%;padding:var(--pad-card);border:0;border-radius:var(--radius-sm);background:transparent;text-align:left;font-weight:700;font-size:var(--fs-base-sm);color:var(--ink,#222);cursor:pointer}
-.access-mode-menu button:hover{background:#eef2f4}
+.access-mode-menu button:hover{background:var(--bg)}
 /* 再読込メニューの「読み込みの内訳」（§9.340）。読み込みのチップは遅いときしか
    出さないので、**速いときに内訳へ辿り着ける場所はここだけ**。押せる物と
    見分けが付くよう、面を持たせて字を小さくする（ボタンではない）。 */
@@ -478,8 +478,8 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .access-mode-menu button small{font-weight:500;color:#687a81;font-size:var(--fs-micro)}
 /* 表示サイズ切替(アプリ全体)。モードバッジと同じ言語で揃えつつ、
    意味が違う(権限ではなく見た目の設定)ので彩度を落とした中立色にする。 */
-.ui-size-badge{display:inline-flex;align-items:center;gap:var(--gap-inline);height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1px solid var(--line);border-radius:var(--radius-pill);background:#fff;color:#3a565d;font-weight:700;font-size:var(--fs-base-sm);cursor:pointer;white-space:nowrap}
-.ui-size-badge:hover{border-color:var(--teal);background:#f7fafb}
+.ui-size-badge{display:inline-flex;align-items:center;gap:var(--gap-inline);height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1px solid var(--line);border-radius:var(--radius-pill);background:#fff;color:var(--ink-2);font-weight:700;font-size:var(--fs-base-sm);cursor:pointer;white-space:nowrap}
+.ui-size-badge:hover{border-color:var(--teal);background:var(--surface-2)}
 .ui-size-badge span{font-size:var(--fs-title);line-height:1}
 .ui-size-badge b{font-weight:800}
 .ui-size-menu button>span{display:flex;align-items:center;gap:var(--gap-inline)}

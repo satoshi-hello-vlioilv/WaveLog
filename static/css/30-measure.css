@@ -116,8 +116,8 @@
 /* id付きセレクタで書くこと。分割/ポップアップ表示の再表示ルール
    (body.sc-mode.sc-split #listToolbar{display:flex!important})より詳細度を
    高くしないと、出す中身が無いときでも空のツールバーが表示されてしまう。 */
-.list-toolbar-btn{border:1px solid var(--line);background:#fff;cursor:pointer;font-weight:700;color:#60747b}
-.list-toolbar-btn:hover{border-color:var(--teal);background:#f7fafb}
+.list-toolbar-btn{border:1px solid var(--line);background:#fff;cursor:pointer;font-weight:700;color:var(--muted)}
+.list-toolbar-btn:hover{border-color:var(--teal);background:var(--surface-2)}
 .list-join-chip{display:inline-flex;align-items:center;height:var(--ctl-h-xs);border-radius:var(--radius-md);white-space:nowrap;cursor:help}
 /* 読み込みにかかった時間(§9.90)。**出るのは遅かったときだけ**（§9.340、
    REVIEW 4-1 ④）——速いときは`hidden`で消える（作業スケジュールと同じ約束・
@@ -184,13 +184,13 @@
 /* 数字は**表全体で等幅**にする(§9.90)。以前は書式を当てた列(.col-num)だけ
    だったため、同じ表の中で桁幅の揃う数字と揃わない数字が混ざり、数字だけ
    大きさが違って見えていた。字面の話なので、右づめにするかどうかとは別。 */
-#grid th,#grid td{padding:var(--row-pad-y) var(--row-pad-x);height:var(--row-h);border-right:1px solid #d6e0e3;border-bottom:1px solid #d6e0e3;white-space:nowrap;font-variant-numeric:tabular-nums;font-size:var(--tbl-fs)}
+#grid th,#grid td{padding:var(--row-pad-y) var(--row-pad-x);height:var(--row-h);border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);white-space:nowrap;font-variant-numeric:tabular-nums;font-size:var(--tbl-fs)}
 /* 見出しは**折り返さない**(§9.90)。中途半端に2行になると行の高さが変わり、
    表として読めなくなる。入り切らないときは左右の余白を先に詰め、それでも
    足りなければ省略記号にする(幅は列ごとに指定できる)。 */
 #grid th{position:sticky;top:0;background:var(--pale);text-align:left;
  padding-inline:var(--row-pad-x-head);overflow:hidden;text-overflow:ellipsis}
-tbody tr:nth-child(even){background:#f7fafb}
+tbody tr:nth-child(even){background:var(--surface-2)}
 tbody tr:hover{background:#e5f2f3;cursor:pointer}
 .measurement-row td:first-child{border-left:4px solid var(--teal)}
 .measurement-row:hover{background:#d7eff1}
@@ -202,7 +202,7 @@ tbody tr:hover{background:#e5f2f3;cursor:pointer}
    打ち消しとhoverの2つを**同じ詳細度まで上げて**書き直すこと（`#grid`が
    付くと(1,0,2)になり、素の`tbody tr:hover`(0,1,1)に勝ってしまうため）。 */
 #grid tbody tr{background:var(--surface)}
-#grid tbody tr.is-alt{background:#f7fafb}
+#grid tbody tr.is-alt{background:var(--surface-2)}
 #grid tbody tr:hover{background:#e5f2f3;cursor:pointer}
 #grid tbody tr.measurement-row:hover{background:#d7eff1}
 /* 子ロットの行（§9.239 ⑤-2）。意匠はスケジュール表の`.sc-child-line`に
@@ -1251,8 +1251,8 @@ th.col-sorted:hover{background:#c7e7ea}
 .quality-info-block.qi-has textarea{border-left-color:#c0504d;color:var(--ink)}
 /* ---------- 5. 左ペイン ---------- */
 .tabs{display:flex}
-.tabs button{border-radius:var(--radius-tab) var(--radius-tab) 0 0;display:flex;align-items:center;justify-content:center;white-space:nowrap;border:1px solid transparent;background:transparent;color:#4a6169;box-shadow:none}
-.tabs button:hover{border-color:transparent;background:#eef2f4}
+.tabs button{border-radius:var(--radius-tab) var(--radius-tab) 0 0;display:flex;align-items:center;justify-content:center;white-space:nowrap;border:1px solid transparent;background:transparent;color:var(--ink-3);box-shadow:none}
+.tabs button:hover{border-color:transparent;background:var(--bg)}
 .tabs .active{background:var(--teal);color:#fff;font-weight:700}
 /* **`.split-pane`はここから外した**（§9.234 ①）——`.measure-body>.split-pane`
    （詳細度0,2,0）が勝つので、この宣言は一度も効いていなかった。
@@ -1288,7 +1288,7 @@ th.col-sorted:hover{background:#c7e7ea}
    詳細度で勝つため**一度も効いていなかった**。効かない指定を残すと、列幅を
    `em`で決めるときに「ラベルは11px」という誤った前提で計算してしまう
    （実際にそれで6文字のラベルが省略記号になった）。 */
-.field label{color:#7b8e95;white-space:nowrap;text-align:right;
+.field label{color:var(--ink-soft);white-space:nowrap;text-align:right;
  min-width:0;overflow:hidden;text-overflow:ellipsis}
 /* 値は**読み取り専用**。入力欄そっくりの枠と白地を与えると押せるように
    見えるうえ、カードの枠と二重になる（§9.129）。枠を外し、そろえた列と
@@ -1325,12 +1325,12 @@ th.col-sorted:hover{background:#c7e7ea}
 .info-group{
  grid-column:1/-1;margin-top:6px;padding-bottom:1px;
  color:#93a5ab;font-size:var(--fs-micro);font-weight:800;letter-spacing:.08em;
- border-bottom:1px solid #eef2f4;
+ border-bottom:1px solid var(--bg);
 }
 .info-grid>.info-group:first-child,.info-grid>.field:first-child+.info-group{margin-top:0}
 /* 主識別(ロット№)。値だけ一段大きくして、開いた直後の確認を速くする。 */
 .info-lot{grid-template-columns:minmax(58px,auto) minmax(0,1fr);margin-bottom:2px}
-.info-lot label{font-weight:700;color:#60747b}
+.info-lot label{font-weight:700;color:var(--muted)}
 /* ロット№は主識別。**他の値より小さくしない。**--fs-base-sm(13px)は
    他の値(--fs=14px)より小さく、「ここだけ字が小さい」という見え方に
    なっていた。押せる部品でもあるので、一段大きくして視線の起点にする。 */
@@ -1384,13 +1384,13 @@ th.col-sorted:hover{background:#c7e7ea}
    パネルの枠の中に12個の枠が並ぶと、それだけで画面の枠が18個になる
    （§9.131で常時表示にしたら実測でそうなった）。**地色だけでまとまりは
    足りる。** */
-.data-management-grid{display:grid;grid-template-columns:130px minmax(0,1fr);border:1px solid #c4d0d4}
-.data-management-grid>*{min-height:var(--ctl-h);padding:var(--pad-row);border-bottom:1px solid #d6e0e3}
+.data-management-grid{display:grid;grid-template-columns:130px minmax(0,1fr);border:1px solid var(--line-mid)}
+.data-management-grid>*{min-height:var(--ctl-h);padding:var(--pad-row);border-bottom:1px solid var(--line-soft)}
 .data-management-grid b{background:var(--header-bar-bg);color:var(--header-bar-fg);white-space:nowrap}
 .data-management-grid span{background:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .subtabs{display:flex;margin-top:var(--space-1)}
-.subtabs button{position:relative;border-radius:var(--radius-tab) var(--radius-tab) 0 0;padding:var(--pad-row);border:1px solid transparent;border-bottom:0;background:transparent;color:#4a6169;box-shadow:none}
-.subtabs button:hover{border-color:transparent;background:#eef2f4}
+.subtabs button{position:relative;border-radius:var(--radius-tab) var(--radius-tab) 0 0;padding:var(--pad-row);border:1px solid transparent;border-bottom:0;background:transparent;color:var(--ink-3);box-shadow:none}
+.subtabs button:hover{border-color:transparent;background:var(--bg)}
 .subtabs button.active{background:var(--teal);color:#fff;font-weight:700}
 .split-tab-badge{display:inline-block;margin-left:5px;padding:var(--pad-chip);border-radius:var(--radius-sm);font-size:var(--fs-badge);font-weight:800;vertical-align:middle}
 .split-tab-badge-pending{background:#e0b23d;color:#4a3900}
@@ -1644,14 +1644,14 @@ th.col-sorted:hover{background:#c7e7ea}
 .input-status[hidden]{display:none}
 .input-status.receiving{border-color:var(--teal);background:#e5f7fa}
 .input-status.manual-state{border-color:var(--warn-border);background:var(--warn-bg)}
-.input-status.not-ready-state{border-color:#b2bdc1;background:#eef2f4}
+.input-status.not-ready-state{border-color:#b2bdc1;background:var(--bg)}
 .receive-state{display:flex;align-items:center;gap:var(--gap-inline);min-width:0}
 .receive-state>div{display:none}
 .auto-mode-label{font-weight:800;color:#0b5e68;letter-spacing:.02em}
 .manual-state .auto-mode-label{color:var(--warn-fg)}
 .not-ready-state .auto-mode-label{color:#5d7077}
 .state-lamp{width:8px;height:8px;border-radius:var(--radius-round);background:#16a273}
-.not-ready-state .state-lamp{background:#7b8e95;box-shadow:none}
+.not-ready-state .state-lamp{background:var(--ink-soft);box-shadow:none}
 .manual-state .state-lamp{background:#e49a20;box-shadow:0 0 0 4px #e49a2022}
 .receive-input-wrap{position:relative}
 .receive-input-wrap input{
@@ -1659,11 +1659,11 @@ th.col-sorted:hover{background:#c7e7ea}
   clip:rect(0,0,0,0);white-space:nowrap;border:0;
 }
 .receive-lock{display:none}
-.device-key-count{color:#60747b;font-size:var(--fs-badge)}
+.device-key-count{color:var(--muted);font-size:var(--fs-badge)}
 .device-key-count.ng{color:#c02020;font-weight:700}
 .work-tabs{display:flex;position:sticky;top:0;z-index:4;margin-top:8px;background:#f5f5f3;border-bottom:1px solid var(--line)}
-.work-tabs button{flex:1;border-radius:var(--radius-tab) var(--radius-tab) 0 0;padding:8px 5px;font-weight:700;border:1px solid transparent;background:transparent;color:#4a6169;box-shadow:none}
-.work-tabs button:hover{border-color:transparent;background:#eef2f4}
+.work-tabs button{flex:1;border-radius:var(--radius-tab) var(--radius-tab) 0 0;padding:8px 5px;font-weight:700;border:1px solid transparent;background:transparent;color:var(--ink-3);box-shadow:none}
+.work-tabs button:hover{border-color:transparent;background:var(--bg)}
 .work-tabs button.active{background:var(--teal);color:#fff}
 .right-pane.layout-material .work-tabs,
 .right-pane.layout-measure .work-tabs{display:none}
@@ -2020,7 +2020,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .tolerance-source-badge{display:inline-flex;align-items:center;padding:var(--pad-chip);border-radius:var(--radius-md);background:var(--teal);color:#fff;font-weight:800;font-size:var(--fs-micro)}
 .tolerance-source-badge.order{background:#7652a8}
 .tol-fallback{padding:var(--pad-chip);border-radius:var(--radius-md);background:var(--warn-bg);color:var(--warn-fg);font-weight:700;font-size:var(--fs-micro)}
-.tol-formula{margin-top:7px;padding:var(--pad-row);border-radius:var(--radius-sm);background:#eef2f4;color:#445d65;font-size:var(--fs-micro);font-variant-numeric:tabular-nums}
+.tol-formula{margin-top:7px;padding:var(--pad-row);border-radius:var(--radius-sm);background:var(--bg);color:#445d65;font-size:var(--fs-micro);font-variant-numeric:tabular-nums}
 #measurementGrid{flex:1 1 auto;min-height:0;overflow:hidden}
 /* --- 測定表のブロック ---
    板厚と板幅を別々の入力内容にしたので、専用の2枚組ワークスペース
@@ -2089,8 +2089,8 @@ th.col-sorted:hover{background:#c7e7ea}
 .compact-tol-source{flex:0 0 auto;padding:var(--pad-chip);border-radius:var(--radius-sm);background:var(--teal);color:#fff;font-weight:800;white-space:nowrap}
 .tol-line-plusminus{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--gap-inline);padding-top:2px;border-top:1px solid #e0e7e9}
 .tol-value-pair{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-1);min-width:0;white-space:nowrap}
-.tol-line-plusminus .tol-value-pair+.tol-value-pair{padding-left:7px;border-left:1px solid #d6e0e3}
-.tol-value-pair small,.tol-line-range small{flex:0 0 auto;color:#60747b;font-size:var(--fs-micro)}
+.tol-line-plusminus .tol-value-pair+.tol-value-pair{padding-left:7px;border-left:1px solid var(--line-soft)}
+.tol-value-pair small,.tol-line-range small{flex:0 0 auto;color:var(--muted);font-size:var(--fs-micro)}
 .tol-value-pair b{min-width:0;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .tol-line-range{justify-content:space-between;gap:var(--space-2);padding:var(--pad-chip);border-radius:var(--radius-xs);background:var(--computed-bg);min-height:27px}
 .tol-line-range b{color:var(--computed-fg);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -2109,23 +2109,23 @@ th.col-sorted:hover{background:#c7e7ea}
 /* card 版: 見出し + 定義リスト + 判定範囲バー */
 .compact-tol-card{display:flex;flex-direction:column;gap:var(--space-1)}
 .compact-tol-card dl{display:grid;grid-template-columns:max-content 1fr;gap:var(--gap-hair) var(--gap-inline);margin:0;min-width:0}
-.compact-tol-card dt{color:#60747b;white-space:nowrap}
+.compact-tol-card dt{color:var(--muted);white-space:nowrap}
 .compact-tol-card dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .compact-tol-range{margin-top:auto;padding:var(--pad-chip);border-radius:var(--radius-xs);background:var(--computed-bg);color:var(--computed-fg);font-weight:800;text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap}
 /* inline 版: 見出し + 3 情報を縦に */
 .compact-tol-inline{display:flex;flex-direction:column;gap:var(--space-1);justify-content:center}
 .tol-inline-fact{display:flex;align-items:baseline;justify-content:space-between;gap:var(--gap-inline);min-width:0;white-space:nowrap}
-.tol-inline-fact small{flex:0 0 auto;color:#60747b;font-size:var(--fs-micro)}
+.tol-inline-fact small{flex:0 0 auto;color:var(--muted);font-size:var(--fs-micro)}
 .tol-inline-fact b{min-width:0;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tol-inline-fact.range b{color:var(--computed-fg)}
 /* two-row 版: 上段(見出し+基準+公差) + 下段(判定範囲) */
 .compact-tol-two-row{display:grid;grid-template-rows:auto auto;gap:var(--space-1);align-content:center}
 .tol-row-primary{display:flex;align-items:center;flex-wrap:wrap;gap:var(--gap-inline);min-width:0}
 .tol-pair{display:flex;align-items:baseline;gap:var(--space-1);min-width:0;white-space:nowrap}
-.tol-pair small{flex:0 0 auto;color:#60747b;font-size:var(--fs-micro)}
+.tol-pair small{flex:0 0 auto;color:var(--muted);font-size:var(--fs-micro)}
 .tol-pair b{font-variant-numeric:tabular-nums;white-space:nowrap}
 .tol-row-range{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);padding:var(--pad-chip);border-radius:var(--radius-xs);background:var(--computed-bg);white-space:nowrap}
-.tol-row-range small{flex:0 0 auto;color:#60747b;font-size:var(--fs-micro)}
+.tol-row-range small{flex:0 0 auto;color:var(--muted);font-size:var(--fs-micro)}
 .tol-row-range b{color:var(--computed-fg);font-variant-numeric:tabular-nums;white-space:nowrap}
 /* 公差スケール（縦の帯グラフ） */
 .compact-tol-scale{
@@ -2134,7 +2134,7 @@ th.col-sorted:hover{background:#c7e7ea}
   border:0;border-radius:var(--radius-sm);
   background:linear-gradient(to bottom,#f6dede 0 17%,#e3f5e8 17% 83%,#f6dede 83% 100%);
 }
-.compact-tol-scale::before{content:"";position:absolute;left:50%;top:17%;bottom:17%;width:3px;transform:translateX(-50%);background:#3a565d}
+.compact-tol-scale::before{content:"";position:absolute;left:50%;top:17%;bottom:17%;width:3px;transform:translateX(-50%);background:var(--ink-2)}
 .compact-scale-label{position:absolute;left:6px;right:6px;z-index:2;display:flex;align-items:center;justify-content:space-between;padding:var(--pad-chip);border:1px solid #d4c779;background:#fff8c8;line-height:1.2}
 .compact-scale-label.upper{top:6px}
 .compact-scale-label.lower{bottom:6px}
@@ -2345,10 +2345,10 @@ th.col-sorted:hover{background:#c7e7ea}
    .qa-v7専用の見た目調整が多く絡むため、そちらは触れずこちらは独立させる。
    qa-accと異なり単独開閉(1つ開くと他が閉じる、ではなく各項目が独立)とし、
    既定はopenのまま(情報を不意に隠さない)。 */
-.disclosure{border:1px solid #d6e0e3;border-radius:var(--radius-md);background:#fff;box-shadow:0 1px 3px #0b2b330a;overflow:hidden}
+.disclosure{border:1px solid var(--line-soft);border-radius:var(--radius-md);background:#fff;box-shadow:0 1px 3px #0b2b330a;overflow:hidden}
 .disclosure+.disclosure{margin-top:var(--space-2)}
 .disclosure-head{display:flex;align-items:center;gap:var(--gap-section);width:100%;padding:9px 12px;border:0;background:#fff;cursor:pointer;text-align:left;box-shadow:none;border-radius:0}
-.disclosure-head:hover{background:#f7fafb}
+.disclosure-head:hover{background:var(--surface-2)}
 .disclosure-num{display:grid;place-items:center;width:22px;height:22px;border-radius:var(--radius-sm);background:#dceff1;color:#0a6570;font-size:var(--fs-micro);font-weight:900;flex:0 0 auto}
 .disclosure.open .disclosure-num{background:var(--teal);color:#fff}
 .disclosure-title{flex:0 0 auto}
@@ -2364,7 +2364,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .product-head b,.flatness-table-head b{font-weight:800}
 .product-head span{padding:var(--pad-chip);background:#fff;border:1px solid var(--line)}
 .product-head button,.flatness-table-head button{height:var(--ctl-h-sm);white-space:nowrap;margin-left:auto}
-.product-rows-note{padding:var(--pad-card);color:#60747b;font-size:var(--fs-sm);background:#f7fafb;border:1px solid var(--line);border-top:0}
+.product-rows-note{padding:var(--pad-card);color:var(--muted);font-size:var(--fs-sm);background:var(--surface-2);border:1px solid var(--line);border-top:0}
 /* ---------- 切断面等級から出す基準の帯(§9.204) ----------
    **出どころ（等級）と、見ていないもの（客先の個別要求）を必ず出す**ので、
    1行で終わらせず「見出し＋基準＋注意書き」を並べる。基準が出せないときは
@@ -2390,8 +2390,8 @@ th.col-sorted:hover{background:#c7e7ea}
 /* 丈番号タブ: 横スクロール表を避け、1丈ずつ切り替えて縦並びで入力する。
    必須3項目(長さ/肉厚/揃いコード)が入力済みの丈にはドットを表示する。 */
 .product-length-tabs{display:flex;flex-wrap:wrap;gap:var(--space-1);padding:var(--space-2);background:#fff;border:1px solid var(--line);border-top:0}
-.product-length-tabs button{position:relative;min-width:40px;padding:0 var(--ctl-pad-x-xs);border:1px solid transparent;border-radius:var(--radius-tab) var(--radius-tab) 0 0;background:transparent;color:#4a6169;font-weight:800;cursor:pointer;box-shadow:none}
-.product-length-tabs button:hover{border-color:transparent;background:#eef2f4}
+.product-length-tabs button{position:relative;min-width:40px;padding:0 var(--ctl-pad-x-xs);border:1px solid transparent;border-radius:var(--radius-tab) var(--radius-tab) 0 0;background:transparent;color:var(--ink-3);font-weight:800;cursor:pointer;box-shadow:none}
+.product-length-tabs button:hover{border-color:transparent;background:var(--bg)}
 .product-length-tabs button.active{background:var(--teal);border-color:var(--teal);color:#fff}
 .product-length-tabs button.filled::after{content:'';position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:var(--radius-round);background:var(--success)}
 .product-length-tabs button.active.filled::after{background:#fff}
@@ -2405,7 +2405,7 @@ th.col-sorted:hover{background:#c7e7ea}
    幅は規格から選ぶ（§9.131）。 */
 .product-length-fields label.wide input{max-width:var(--w-xl)}
 .product-length-fields .product-judge{align-self:center;justify-self:start}
-.product-judge{display:inline-block;min-width:32px;padding:var(--pad-chip);border-radius:var(--radius-md);background:#eef2f4;color:#60747b;font-weight:800}
+.product-judge{display:inline-block;min-width:32px;padding:var(--pad-chip);border-radius:var(--radius-md);background:var(--bg);color:var(--muted);font-weight:800}
 .product-judge.ok{background:var(--success-bg);color:var(--success)}
 .product-judge.ng{background:var(--danger-bg);color:var(--danger)}
 .flatness-entry{display:grid;grid-template-columns:120px minmax(0,1fr);gap:var(--space-2);padding:var(--space-2)}
@@ -2413,7 +2413,7 @@ th.col-sorted:hover{background:#c7e7ea}
 .flatness-entry select,.flatness-entry textarea{width:100%;margin-top:3px;background:#fff}
 .flatness-entry textarea{height:60px;resize:vertical}
 .measure-status-group{display:flex;align-items:center;gap:var(--gap-inline)}
-.measure-status-group button{height:24px;padding:0 var(--ctl-pad-x-xs);white-space:nowrap;border:1px solid #b7c7cc;background:#fff;border-radius:var(--radius-xs);cursor:pointer;font-weight:700}
+.measure-status-group button{height:24px;padding:0 var(--ctl-pad-x-xs);white-space:nowrap;border:1px solid var(--line);background:#fff;border-radius:var(--radius-xs);cursor:pointer;font-weight:700}
 /* ---------- フラットネスの一括入力（§9.233 ④、利用者の指示） ----------
    **見出しは1行**（§9.210 ①）。以前は「現在の条へ入力」の文字と器の枠・
    余白で約200px使っており、フラットネスだけ見出しが2行になっていた
@@ -2422,7 +2422,7 @@ th.col-sorted:hover{background:#c7e7ea}
    ——押すと入る値そのものが書いてあるので、押す前に何が起きるかは読める。
    高さは行の中の部品なので`--row-ctl-h`ではなく見出しの1行に収まる22px。 */
 .flat-pick-group{display:flex;align-items:center;gap:2px;flex:0 0 auto}
-.flat-pick{height:22px;min-width:22px;padding:0 var(--ctl-pad-x-xs);border:1px solid #b7c7cc;background:#fff;border-radius:var(--radius-xs);cursor:pointer;font-weight:800;white-space:nowrap}
+.flat-pick{height:22px;min-width:22px;padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);background:#fff;border-radius:var(--radius-xs);cursor:pointer;font-weight:800;white-space:nowrap}
 .flat-pick:hover{background:var(--teal);color:#fff;border-color:var(--teal)}
 /* 「いまの条」と「全条」の境目は**線1本**（器を2つに分けると隙間と枠が増える）。 */
 .flat-pick-sep{width:1px;height:16px;margin:0 2px;background:var(--line-mid)}
