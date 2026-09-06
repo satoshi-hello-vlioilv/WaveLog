@@ -2572,10 +2572,7 @@
     }finally{inSplitRefresh=rendering}
   }
   window.refreshSplitStatusPanel=refreshSplitStatusPanel;
-  if(typeof renderMeasurement==='function'){
-    const baseRenderMeasurementSplitStatus=renderMeasurement;
-    renderMeasurement=function(){baseRenderMeasurementSplitStatus();refreshSplitStatusPanel()};
-  }
+  WL.measureHooks.afterRender(()=>refreshSplitStatusPanel());
   $('#horizontalCount')?.addEventListener('change',()=>refreshSplitStatusPanel());
 
   /* ---- 条の入力欄へロット番号のバッジを付ける ----
@@ -2642,17 +2639,12 @@
     if(!data)return null;
     return{range:[base-data.minus,base+data.plus],source,fallback,plus:data.plus,minus:data.minus,plusKey:data.plusKey,minusKey:data.minusKey,base,splitLot:g.lot};
   }
-  const baseToleranceDetail=toleranceDetail;
-  /* 第3引数 typeName は画面の選択の代わり（§9.125）。**受け取って渡す**
-     ——`toleranceDetail`は3つのファイルが順に包んでおり(ここ・
-     `measure-worklog.js`・`measure-tolerance.js`)、**1つでも
-     引数を落とすと根まで届かない**。実際にここで落ちており、完了前の
-     確認が全項目に「いま選ばれている項目の公差」を当てていた。 */
-  toleranceDetail=function(kind,index=0,typeName){
-    const split=groupRangeFor(kind,index,typeName);
-    if(split)return split;
-    return baseToleranceDetail(kind,index,typeName);
-  };
+  /* 提供者として登録する（§9.348）。分割の条に当たらなければ自分の答えでは
+     ない（undefined＝次の提供者へ）。以前はここが`toleranceDetail`を包み、
+     引数を1つ落として「完了前の確認が全項目に今の項目の公差を当てる」事故が
+     起きた——登録表では引数を resolve が運ぶので、その形は作れない。 */
+  WL.tolerance.register({name:'分割ロット（条ごと）',priority:30,
+    detail:(kind,index,typeName)=>groupRangeFor(kind,index,typeName)||undefined});
 
   // compactToleranceData(表示用の公差テキスト生成)は従来 index を常に0扱いで
   // 呼ばれており、条ごとに公差が変わる分割ロットでは「今フォーカスしている
@@ -2745,16 +2737,12 @@
      寸法系のときだけなので、どの場面でも出ない死んだ処理だった）。
      条に属する情報なので、条の設計カードの内訳が正しい置き場——畳んで
      あるので見出しの1行を1pxも取らない。 */
-  if(typeof updateMeasurementHeading==='function'){
-    const baseHeading=updateMeasurementHeading;
-    updateMeasurementHeading=function(){
-      baseHeading();
-      const slot=$('#splitTolLegendSlot');if(!slot)return;
-      const type=$('#measureType')?.value;
-      const html=WL.measureItem.isDimensional(type)?splitLegendHtml():'';
-      if(slot.innerHTML!==html)slot.innerHTML=html;
-    };
-  }
+  WL.measureHooks.afterHeading(()=>{
+    const slot=$('#splitTolLegendSlot');if(!slot)return;
+    const type=$('#measureType')?.value;
+    const html=WL.measureItem.isDimensional(type)?splitLegendHtml():'';
+    if(slot.innerHTML!==html)slot.innerHTML=html;
+  });
 
   // ---- 条(条位置)ごとに公差が異なりうるため、フォーカス移動時に
   //      公差表示(数値・図示)を追従させる ----

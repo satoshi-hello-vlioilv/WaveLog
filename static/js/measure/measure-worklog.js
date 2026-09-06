@@ -63,21 +63,17 @@
 
   // toleranceDetail: 指示型は文字列の数値部を判定範囲[0,value]として返す（判定・図示に利用）。
   if(typeof toleranceDetail==='function'){
-    var baseDetail=toleranceDetail;
-    /* 第3引数 typeName は「いま画面で選ばれている入力内容」の代わり（§9.125）。
-       **ラッパーが引数を捨てると、根の関数がいくら受け取れても届かない**
-       ——完了前の確認は描かれていない項目の公差外まで数えるので、ここで
-       落とすと全項目に「いま選ばれている項目の公差」を当ててしまう
-       （実際にそうなり、公差の無いラテラルボーが板幅の公差で判定された）。 */
-    toleranceDetail=function(kind,index,typeName){
+    /* 提供者として登録する（§9.348）。指示型でなければ自分の答えではない
+       （undefined＝次の提供者へ）。指示値が読めないときは null＝「公差なし」。 */
+    WL.tolerance.register({name:'指示型（指示_項目の値）',priority:20,detail:function(kind,index,typeName){
       var type=typeName||currentType();
       if(isInstructionType(type)){
         var info=instructionInfo(type);
         if(!info||!Number.isFinite(info.value))return null;
         return {range:[0,info.value],source:'instruction',fallback:false,plus:info.value,minus:0,plusKey:info.key,minusKey:'',base:0,single:true,instructionType:type,unit:info.unit,raw:info.raw};
       }
-      return baseDetail(kind,index,typeName);
-    };
+      return undefined;
+    }});
   }
 
   // 公差カード/スケールは指示型では専用カードへ置換（数値上下限バー・数直線は出さない）。
@@ -104,10 +100,7 @@
     var baseRMGV=renderMeasureGridVertical;
     renderMeasureGridVertical=function(){baseRMGV();suppressSummaryForInstruction();};
   }
-  if(typeof updateMeasurementHeading==='function'){
-    var baseUMH=updateMeasurementHeading;
-    updateMeasurementHeading=function(){baseUMH();suppressSummaryForInstruction();};
-  }
+  WL.measureHooks.afterHeading(()=>suppressSummaryForInstruction());
   /* ③の公差一覧が指示型の項目も並べられるように口を出す（§9.157）。
      **項目名の一覧もここが答える**——`INSTRUCTION_FIELDS`はこのファイルの
      ものなので、呼ぶ側に写しを作らせない（2箇所になると片方だけ増える）。
@@ -423,10 +416,7 @@
   let debounceTimer=null;
   function scheduleRefresh(){clearTimeout(debounceTimer);debounceTimer=setTimeout(()=>{refreshBenchmark();ensureLiveTimer()},700)}
 
-  if(typeof renderMeasurement==='function'){
-    const baseRender=renderMeasurement;
-    renderMeasurement=function(){baseRender();refreshBenchmark();ensureLiveTimer()};
-  }
+  WL.measureHooks.afterRender(()=>{refreshBenchmark();ensureLiveTimer()});
   if(typeof markDirty==='function'){
     const baseMarkDirty=markDirty;
     markDirty=function(){baseMarkDirty();scheduleRefresh()};

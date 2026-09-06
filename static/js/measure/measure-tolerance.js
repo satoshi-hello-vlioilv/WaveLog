@@ -42,16 +42,15 @@
     }
     return null;
   }
-  var baseDetail=toleranceDetail;
-  /* 第3引数 typeName は画面の選択の代わり（§9.125）。**受け取って渡す**
-     ——ここで捨てると、外側のラッパーが渡してきた項目名が根へ届かない。 */
-  toleranceDetail=function(kind,index,typeName){
+  /* 提供者として登録する（§9.348）。寸法系は自分の答えではない（undefined＝
+     次の提供者へ）。指示値が無いときは null＝「公差なし」で、次へは行かない。 */
+  WL.tolerance.register({name:'指示型（単一の指示値）',priority:10,detail:function(kind,index,typeName){
     var type=typeName||currentType();
-    if(DIMENSIONAL[type])return baseDetail(kind,index,typeName);
+    if(DIMENSIONAL[type])return undefined;
     var single=instructionSingle(type);
     if(!single)return null; // 指示公差の該当なし -> 表示しない
     return {range:[0,single.value],source:'instruction',fallback:false,plus:single.value,minus:0,plusKey:single.key,minusKey:'',base:0,single:true,instructionType:type};
-  };
+  }});
   var baseFacts=compactToleranceFacts;
   compactToleranceFacts=function(kind){
     var detail=toleranceDetail(kind);
@@ -197,10 +196,7 @@
   // fetch失敗時の原因表示は、先頭のapi関数で一元対応。
 
   // 画面描画後に必ず再適用。
-  if(typeof renderMeasurement==='function'){
-    const baseRenderMeasurement=renderMeasurement;
-    renderMeasurement=function(){baseRenderMeasurement();bindManualModeWarning();updateDimensionLocks();};
-  }
+  WL.measureHooks.afterRender(()=>{bindManualModeWarning();updateDimensionLocks();});
   if(typeof renderMeasureGrid==='function'){
     const baseRenderMeasureGrid=renderMeasureGrid;
     renderMeasureGrid=function(){baseRenderMeasureGrid();updateDimensionLocks();};

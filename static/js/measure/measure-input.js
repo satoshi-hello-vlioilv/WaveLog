@@ -593,7 +593,40 @@ function applyInstructionToleranceForOtherTargets(kind){const p=instructedTolera
 /* typeName は「いま画面で選ばれている入力内容」の代わりに使う省略可能な引数。
    完了前の確認は**描かれていない項目の公差外まで数える**必要があり、画面の
    選択に引きずられると1項目ぶんしか見られない(§9.125)。省略時は今までどおり。 */
-function toleranceDetail(kind,index=0,typeName){
+/* ---------- 公差の答えは1つの登録表が出す（§9.348・REVIEW 3-16） ----------
+   以前は`toleranceDetail`を3つのファイルが読み込み順に「退避して被せて」いた
+   （input → tolerance → lot-split → worklog）。①被せの1つが引数を落とすと根まで
+   届かない ②読み込み順がそのまま答えの順になる ③同じ分岐（指示型）が2度
+   書かれ、内側のほうは一度も走らない——どれも実際に起きた事故。
+   提供者は`priority`（大きいほど先）で並び、`resolve`が先頭から当てる。
+   **引数は resolve が運ぶ**ので「1つ落とすと根まで届かない」は構造として消える。
+
+   提供者の返し方は3通りで、**区別に意味がある**:
+     detail（object） … これが答え
+     null              … 答えは「公差なし」（表示しない）。次の提供者へは行かない
+     undefined         … 自分の答えではない。次の提供者へ
+   以前の被せは`null`を「表示しない」の意味で返しており、これを「次へ」に
+   読み替えると非寸法の項目に製造公差が当たってしまう。 */
+const toleranceProviders=[];
+function registerToleranceProvider(p){
+ if(!p||typeof p.detail!=='function')return;
+ toleranceProviders.push({name:String(p.name||''),priority:Number(p.priority)||0,detail:p.detail});
+ toleranceProviders.sort((a,b)=>b.priority-a.priority);
+}
+function resolveTolerance(kind,index=0,typeName){
+ for(const p of toleranceProviders){
+  let r;
+  try{r=p.detail(kind,index,typeName)}
+  catch(e){console.error('公差の提供者「'+p.name+'」で例外（次の提供者へ）',e);continue}
+  if(r!==undefined)return r;
+ }
+ return manufacturingToleranceDetail(kind,index,typeName);
+}
+window.WL.tolerance={register:registerToleranceProvider,resolve:resolveTolerance,
+ providers:()=>toleranceProviders.map(p=>({name:p.name,priority:p.priority}))};
+function toleranceDetail(kind,index=0,typeName){return resolveTolerance(kind,index,typeName)}
+/* 既定の答え: 製造公差／オーダー公差（寸法系）。登録表の最後に当たる。 */
+function manufacturingToleranceDetail(kind,index=0,typeName){
  const type=typeName||$('#measureType')?.value||S.measure?.settings?.measureType||'',isDimensional=WL.measureItem.isDimensional(type),b=S.measure.basic,
    base=Number(b[(TOL_DIMENSIONS[kind]||TOL_DIMENSIONS.width).baseKey]);
  let requested=configuredToleranceSource();if(!isDimensional)requested='instruction';let data=requested==='instruction'?applyInstructionToleranceForOtherTargets(kind):toleranceDataForSource(kind,requested),source=requested,fallback=false;

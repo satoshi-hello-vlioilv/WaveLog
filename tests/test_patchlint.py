@@ -216,6 +216,17 @@ def main():
     rec('所要時間の書き方は`WL.duration`の1箇所だけが組み立てている（§9.341）',
         not dur, '; '.join(dur))
 
+    # §9.348 REVIEW 3-16: 公差の答えは登録表。定義は1つ、描画の被せは無い。
+    js = '\n'.join(p.read_text(encoding='utf-8') for p in JS.rglob('*.js'))
+    n_def = len(re.findall(r'(?m)^\s*(?:function toleranceDetail\b|toleranceDetail\s*=\s*function)', js))
+    rec('`toleranceDetail` の定義は1つ（提供者は `WL.tolerance.register` で登録する・§9.348）',
+        n_def == 1, f'{n_def}箇所')
+    n_wrap = len(re.findall(r'(?m)^\s*(?:renderMeasurement|updateMeasurementHeading)\s*=\s*function', js))
+    rec('`renderMeasurement`／`updateMeasurementHeading` を被せていない（`WL.measureHooks` へ登録する・§9.348）',
+        n_wrap == 0, f'{n_wrap}箇所')
+    n_reg = len(re.findall(r'WL\.tolerance\.register\(', js))
+    rec('公差の提供者が登録表に載っている', n_reg >= 3, f'{n_reg}件')
+
     native = native_dialogs()
     rec('素の alert()/confirm()/prompt() を呼んでいない（§9.342）',
         not native, '; '.join(native))

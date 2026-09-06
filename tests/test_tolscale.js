@@ -28,6 +28,17 @@ let b=null;
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:20000});
   await page.waitForTimeout(1500);
+  /* ---- 公差の答えは登録表が出す（§9.348・REVIEW 3-16） ----
+     以前は3つのファイルが`toleranceDetail`を読み込み順に被せており、順番も
+     引数の運び方も読み込み順まかせだった。**提供者の顔ぶれと順番を画面から
+     読んで固定する**——1つ登録し忘れると、その分の公差が黙って製造公差に
+     化ける（A/Bで分割ロットの提供者を外すと`test_splitlive`が落ちる）。 */
+  const reg=await page.evaluate(()=>({providers:WL.tolerance.providers(),hooks:WL.measureHooks.count()}));
+  rec('公差の提供者は3つ（分割ロット→指示型→指示型・単一）が priority の順に並ぶ',
+      reg.providers.map(p=>p.name).join('／')==='分割ロット（条ごと）／指示型（指示_項目の値）／指示型（単一の指示値）'
+      &&reg.providers.every((p,i,a)=>i===0||a[i-1].priority>p.priority),JSON.stringify(reg.providers));
+  rec('描いたあとのフックは登録で足す（afterRender 4・afterHeading 2）',
+      reg.hooks.afterRender===4&&reg.hooks.afterHeading===2,JSON.stringify(reg.hooks));
   await page.click('#openSchedule');
   await page.waitForSelector('.sc-row-line',{timeout:20000});
   const started=await page.evaluate(()=>{

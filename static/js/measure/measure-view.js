@@ -737,7 +737,23 @@ $('#measureType').onchange=()=>{S.measure.settings.wStep=0;S.measure.settings.tS
 /* 測定画面全体の再描画。旧実装は9層のラップ(モード表示→製品丈→検証→
    基本情報→公差セレクタ→コース→作業時間→タブ初期化)だったものを、
    実行順を保ったまま一本の関数へ整理した。 */
-function renderMeasurement(){
+/* ---------- 「描いたあとに足す」は登録で（§9.348・REVIEW 3-16） ----------
+   `renderMeasurement`／`updateMeasurementHeading`は4つ＋2つのファイルが
+   「退避して被せて」いた。`WL.listHooks`（§9.93）と同じ形にする——足したい側は
+   登録するだけで、順番は登録順（＝読み込み順、今までと同じ）。1つが転んでも
+   残りは走る（fail-open）。核は`…Core`で、早期 return でもフックは走る。 */
+const measureHooks={afterRender:[],afterHeading:[]};
+WL.measureHooks={
+ afterRender:fn=>{if(typeof fn==='function')measureHooks.afterRender.push(fn)},
+ afterHeading:fn=>{if(typeof fn==='function')measureHooks.afterHeading.push(fn)},
+ count:()=>({afterRender:measureHooks.afterRender.length,afterHeading:measureHooks.afterHeading.length}),
+};
+function runMeasureHooks(kind){
+ measureHooks[kind].forEach(fn=>{try{fn()}catch(e){console.error('測定画面の'+kind+'フックで例外',e)}});
+}
+function renderMeasurement(){renderMeasurementCore();runMeasureHooks('afterRender')}
+function updateMeasurementHeading(){updateMeasurementHeadingCore();runMeasureHooks('afterHeading')}
+function renderMeasurementCore(){
  hydrateBusinessFields();
  measureDirty=false;const m=S.measure,b=m.basic;updateLengthOptions(m.settings.verticalCount||1);updateCoilOptions(m.settings.horizontalCount||1);$('#modalEquipment').textContent=b.equipment;/* 基本情報の並び(§9.55)。13項目を「主識別 → 識別番号 → 製品 → コース」の
     4かたまりへ束ね、参照用の項目はラベルと値を1行に収める。以前は全項目が
@@ -1259,7 +1275,7 @@ function renderResidualCourseEverywhere(){
  const grid=$('#dataManagementPanel .data-management-grid');if(grid){[...grid.querySelectorAll('[data-residual-course]')].forEach(x=>x.remove());const children=[...grid.children],courseIndex=children.findIndex(x=>x.tagName==='B'&&x.textContent==='実績コース'),courseValue=courseIndex>=0?children[courseIndex+1]:null,label=document.createElement('b'),value=document.createElement('span');label.textContent='残コース';value.textContent=residual||'未設定';value.title=residual;label.dataset.residualCourse='1';value.dataset.residualCourse='1';if(courseValue)courseValue.after(label,value);else grid.append(label,value)}
 }
 /* 公差の内訳(基準値・±・計算式)を見出し領域へ表示する。 */
-function updateMeasurementHeading(){
+function updateMeasurementHeadingCore(){
  /* カードの名前は骨子どおり「測定」。**項目名は表の見出しが言っている**ので
     ここでは繰り返さない（§9.129。以前は上が「板幅測定」下が「板幅」だった）。 */
  /* ---------- 公差もバッジ1つで言う（§9.209 ②、利用者の指示） ----------
