@@ -358,11 +358,13 @@
  /* **呼ぶ側は`rpPageMetrics()`を1回取って`*M`へ渡すこと。** 引数無しの
     薄い包み（`rpRowShift(r)`のような形）は置かない——1行数えるたびに
     測り直すことになり、`rpRowAtGridM()`の中の走査で何十回も測る。 */
+ /* `@page`は**用紙の名前でなく実寸mm**で頼む（§9.252・§9.332）。
+    この紙はA4だけなので`size:A4`でも同じ絵になるが、**名前で頼む書き方が
+    残っていると、用紙を1つ足したときにそこだけ既定のA4で刷られる**
+    （作業予定表がB4でまさにそれを踏んだ）。作り方は`WL.paper`の1箇所。 */
  function updatePageSizeStyle(){
-  let el=document.getElementById('rpPageSizeStyle');
-  if(!el){el=document.createElement('style');el.id='rpPageSizeStyle';document.head.appendChild(el)}
-  el.textContent=`@page{size:A4 ${rpOrientation==='landscape'?'landscape':'portrait'};`
-   +`margin:${RP_PAGE_MARGIN}}`;
+  WL.paper.applyPageStyle('rpPageSizeStyle',
+   'a4-'+(rpOrientation==='landscape'?'landscape':'portrait'),null,RP_PAGE_MARGIN);
  }
  function applyOrientation(){
   const page=$id('reportContent');
@@ -4846,7 +4848,7 @@
   const land=rpOrientation==='landscape';
   return `<!doctype html><html lang="ja"${attrs}><head><meta charset="utf-8">`
    +`<title>${esc(title)}</title>${links}<style>`
-   +`@page{size:A4 ${land?'landscape':'portrait'};margin:${RP_PAGE_MARGIN}}`
+   +WL.paper.pageRule('a4-'+(land?'landscape':'portrait'),null,RP_PAGE_MARGIN)
    +`html,body{margin:0;padding:0;background:#fff;--rp-scale:1}`
    +`.rp-page{width:210mm;min-height:297mm;margin:0;padding:8mm;`
    +`box-sizing:border-box;box-shadow:none;transform:none;background:#fff}`

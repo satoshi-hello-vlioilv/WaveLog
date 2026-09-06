@@ -120,60 +120,20 @@
     「値は隠し欄が持つ」と同じ）。
 
     **余白は四辺とも同じ8mm**（既存のA4と揃える）。 */
- const PAPER_KINDS=[
-  // w/h は**縦のときの寸法**。横は入れ替えるだけなので2通り持たない。
-  // B4は**JIS B4(257×364mm)**——日本の印刷機の「B4」はこちら。
-  {key:'a4',label:'A4',w:210,h:297,note:'ふだんの帳票'},
-  {key:'b4',label:'B4',w:257,h:364,note:'A4では狭いが、A3ほどは要らないとき'},
-  {key:'a3',label:'A3',w:297,h:420,note:'列がとても多い設備向け'},
- ];
- const PAPER_ORIENTS=[
-  {key:'portrait', label:'縦',note:'1枚に載る行数が増えます'},
-  {key:'landscape',label:'横',note:'列が多いときはこちら'},
- ];
- /* 掛け合わせは**ここで1回だけ**作る。`data-paper`・保存値・
-    `paperSizeOf()`の呼び出し側は今までどおりこの綴りを見る。 */
- const PAPER_SIZES=PAPER_KINDS.reduce((out,k)=>out.concat(PAPER_ORIENTS.map(o=>({
-   key:k.key+'-'+o.key,label:k.label+' '+o.label,kind:k.key,orient:o.key,
-   w:o.key==='landscape'?k.h:k.w,h:o.key==='landscape'?k.w:k.h}))),[]);
- const PAPER_MARGIN_MM=8;
- function paperSizeOf(key){return PAPER_SIZES.find(p=>p.key===key)||PAPER_SIZES[0]}
- function paperUsableMm(key){
-  const p=paperSizeOf(key);
-  return {w:p.w-PAPER_MARGIN_MM*2,h:p.h-PAPER_MARGIN_MM*2};
- }
- /* 片方だけ選び直したときの鍵。**知らない綴りは今の値を残す**（§9.204）
-    ——古い設定や別の版の値で、用紙が黙って既定へ戻らないように。 */
- function paperKeyWith(cur,part){
-  const now=paperSizeOf(cur);
-  const kind=PAPER_KINDS.some(k=>k.key===part)?part:now.kind;
-  const orient=PAPER_ORIENTS.some(o=>o.key===part)?part:now.orient;
-  return paperSizeOf(kind+'-'+orient).key;
- }
- /* 実際に紙へ出すときだけ`@page`を差し替える(§9.235)。**クラスでは
-    切り替えられない**ため、専用の<style>を書き換える方式にする
-    ——帳票(`report-dashboard.js`の`updatePageSizeStyle`)と同じ作法で、
-    app.css側の既定`@page`より後に挿入されるためこちらが優先される。 */
+ /* ---------- 用紙（§9.332で共通核へ集約） ----------
+    表も`@page`の作り方も`WL.paper`の1箇所（`print-core.js`）。ここが持つのは
+    **この紙の既定**（A4縦＝並びの先頭）と、**この画面の`<style>`のid**だけ。
+    以前は同じ表と同じ関数が操業データ表にも並んでおり、§9.252で
+    「片方だけ直さないこと」と注意書きを足すしかなかった。 */
+ const PAPER_KINDS=WL.paper.KINDS;
+ const PAPER_ORIENTS=WL.paper.orients({orientFirst:'portrait'});
+ const PAPER_SIZES=WL.paper.sizes({orientFirst:'portrait'});
+ const PAPER_MARGIN_MM=WL.paper.MARGIN_MM;
  const PAGE_STYLE_ID='scPrintPageSizeStyle';
- function applyPrintPageStyle(paperKey){
-  let el=document.getElementById(PAGE_STYLE_ID);
-  if(!el){el=document.createElement('style');el.id=PAGE_STYLE_ID;document.head.appendChild(el)}
-  /* **用紙の名前(A4/A3…)で頼まないこと**（§9.252）。理由は2つあり、
-     どちらも「刷ったときだけ紙が違う」という気付きにくい形で出る。
-     ① 以前は`p.key.indexOf('a3')===0`で綴りから当てていたので、**用紙を
-        1つ足すとその用紙だけ既定のA4で刷られる**（B4がまさにそれ）。
-     ② CSSの`B4`は**ISO B4(250×353mm)**で、日本の印刷機のB4＝
-        **JIS B4(257×364mm)**とは別物。`.sp-page`はJISのmmで組んであるので、
-        名前で頼むと紙だけ小さくなり、ブラウザが中身を縮めて刷る。
-     実寸をそのまま渡せばどちらも起きず、`.sp-page`と`@page`が必ず同じ箱に
-     なる（§9.242 ⑦「紙の箱は、刷るときもプレビューと同じ」）。 */
-  el.textContent=pageRuleFor(paperKey);
- }
- /* `@page`の中身は**1箇所が作る**（刷る側とテストが同じ答えを見る）。 */
- function pageRuleFor(paperKey){
-  const p=paperSizeOf(paperKey);
-  return `@page{size:${p.w}mm ${p.h}mm;margin:0}`;
- }
+ function paperSizeOf(key){return WL.paper.sizeOf(key,PAPER_SIZES)}
+ function paperUsableMm(key){return WL.paper.usableMm(key,PAPER_SIZES)}
+ function paperKeyWith(cur,part){return WL.paper.keyWith(cur,part,PAPER_SIZES)}
+ function pageRuleFor(paperKey){return WL.paper.pageRule(paperKey,PAPER_SIZES)}
 
  /* ---------- 印刷する中身を組み立てる ----------
     entriesは画面が持っているものをそのまま受け取る(紙のために取り直さない
@@ -467,7 +427,7 @@
     そのまま残す）。余った分は表の右の余白になる——伸ばして埋め直さない
     （§9.115「行の高さは中身で決め、余った下は空けたままにする」と同じ
     考え方を横方向にも当てる）。 */
- const MM_PER_PX=25.4/96;
+ const MM_PER_PX=WL.paper.MM_PER_PX;
  /* 縮めるときは**文字も一緒に縮める**（§9.237、利用者の指摘「列の折り返しを
     無くした形で列を整えても印刷側できちんと反映されない」）。
     幅だけを比率で詰めると、同じ文字が狭い箱に入らなくなって折り返し
@@ -586,55 +546,17 @@
     床に着いた列を固定して、残りを残りの予算で配り直す——を落ち着くまで繰り返す。
     列が多すぎて「全部が下限」でも入らないときは、**下限のほうを下げる**
     （紙からはみ出させない、が最後まで優先）。 */
+ /* 下限のある比例配分と丸めは`WL.paper.shareMm()`の1箇所（§9.332）。
+    「床に着いた列を固定して配り直す」も「端数は広い列から0.1mmずつ散らして
+    引く」（§9.295）も、紙を出す3本で同じでなければならない。 */
  function shareMm(natural,usableMm){
-  const n=natural.length;
-  if(!n)return [];
-  const floor=Math.min(MIN_COL_MM,usableMm/n);
-  const out=natural.slice();
-  const fixed=new Array(n).fill(false);
-  for(let pass=0;pass<=n;pass++){
-   let used=0,freeNat=0;const free=[];
-   for(let i=0;i<n;i++){
-    if(fixed[i]){used+=out[i];continue}
-    free.push(i);freeNat+=natural[i];
-   }
-   if(!free.length)break;
-   const k=freeNat>0?Math.min(1,(usableMm-used)/freeNat):1;
-   let hit=false;
-   free.forEach(i=>{
-    const v=natural[i]*k;
-    if(v<floor){out[i]=floor;fixed[i]=true;hit=true}else out[i]=v;
-   });
-   if(!hit)break;
-  }
-  return trimRound(out,usableMm,floor);
+  return WL.paper.shareMm(natural,usableMm,{min:MIN_COL_MM,step:0.1});
  }
- /* 0.1mm へ丸めた誤差で合計が予算を超えることがある。**広い列から順に
-    0.1mmずつ散らして引く**（狭い列から引くと下限を割る）。
-    **1本にまとめて引かないこと**（§9.295）——文字に合わせた幅は遊びが
-    0.3mmしか無いので、いちばん広い列だけから 16列ぶんの端数（最大0.8mm）を
-    引くと**その列が必ず切れる**（実測で1セル）。散らせば1列あたり0.1mmで
-    済み、遊びの中に収まる。 */
  function trimRound(values,usableMm,floorMm){
-  const n=values.length;
-  const floor=floorMm!=null?floorMm:Math.min(MIN_COL_MM,usableMm/(n||1));
-  const mm=values.map(v=>Math.round(v*10)/10);
-  let over=Math.round((mm.reduce((s,v)=>s+v,0)-usableMm)*10)/10;
-  const order=mm.map((v,i)=>i).sort((a,b)=>mm[b]-mm[a]);
-  let guard=n*40;
-  while(over>0.001&&guard-->0){
-   let moved=false;
-   for(const i of order){
-    if(over<=0.001)break;
-    if(mm[i]-0.1<floor-0.001)continue;
-    mm[i]=Math.round((mm[i]-0.1)*10)/10;
-    over=Math.round((over-0.1)*10)/10;
-    moved=true;
-   }
-   if(!moved)break;
-  }
-  return mm;
+  return WL.paper.trimRound(values,usableMm,
+   floorMm!=null?floorMm:Math.min(MIN_COL_MM,usableMm/(values.length||1)),0.1);
  }
+
  /* ---------- 幅と文字は別の答え（§9.293 ②、利用者の報告「文字のサイズ変更
     機能は印刷で見てもプレビューで見ても全く変化しているように感じません」）
     ----------
@@ -1132,20 +1054,11 @@
     **描き終えてからダイアログを開く**(同期的にwindow.print()を呼ぶと
     まだ差し込んだDOMが反映されておらず白紙になる。既存の帳票と同じ)。 */
  function printPages(pages,opt,title){
-  const area=ensureArea();
-  area.innerHTML=pages.map((p,i)=>pageHtml(p,opt,i+1,pages.length)).join('');
-  /* 用紙サイズ・向きを`@page`へ反映してから刷る(§9.235)。 */
-  applyPrintPageStyle(opt.paper);
-  document.body.classList.add(PRINT_CLASS);
-  const prevTitle=document.title;
-  document.title=title;
-  const cleanup=()=>{
-   document.body.classList.remove(PRINT_CLASS);
-   document.title=prevTitle;area.innerHTML='';
-   window.removeEventListener('afterprint',cleanup);
-  };
-  window.addEventListener('afterprint',cleanup);
-  requestAnimationFrame(()=>requestAnimationFrame(()=>window.print()));
+  WL.printCore.printOnPage({
+   area:ensureArea(),
+   html:pages.map((p,i)=>pageHtml(p,opt,i+1,pages.length)).join(''),
+   styleId:PAGE_STYLE_ID,paper:opt.paper,paperSizes:PAPER_SIZES,
+   printClass:PRINT_CLASS,title:title});
  }
 
  /* ---------- 設定の段（§9.293 ③、利用者の指示「印刷のメニューがかなり

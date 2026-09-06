@@ -84,6 +84,9 @@ JS_FILES=[
  'master-data.js',      # マスタ管理: データと接続・作業スケジュール・管理
  'master-opdata.js',    # マスタ管理: 操業データ項目・選択肢・記録した値
  'quality-analysis.js',
+ # 紙まわりの共通核（§9.332）。用紙の表・@page・mm換算・下限つき比例配分・
+ # 刷り出しの段取りを持つ。**紙を出す3本より先に読むこと。**
+ 'print-core.js',
  'report-dashboard.js',
  'calendar-view.js',
  'schedule-view.js',

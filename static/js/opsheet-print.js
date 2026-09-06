@@ -42,56 +42,24 @@
     掛け合わせて並べると用紙を1つ足すたびに札が2枚増える（B4を足すと8枚）。
     **既定はA4横**（利用者の指示）——列が多い表なので、縦だと1行に収まらない。
     余白は四辺8mm。B4は**JIS B4(257×364mm)**。 */
- const PAPER_KINDS=[
-  {key:'a4',label:'A4',w:210,h:297},
-  {key:'b4',label:'B4',w:257,h:364},
-  {key:'a3',label:'A3',w:297,h:420},
- ];
- const PAPER_ORIENTS=[
-  {key:'landscape',label:'横'},
-  {key:'portrait', label:'縦'},
- ];
- /* 掛け合わせは**ここで1回だけ**。`data-paper`・保存値・`paperSizeOf()`の
-    呼び出し側は今までどおりこの綴りを見る（**保存は1つの鍵のまま**）。
-    並びの先頭が既定なので、横→縦の順にしてA4横を先頭に置く。 */
- const PAPER_SIZES=PAPER_KINDS.reduce((out,k)=>out.concat(PAPER_ORIENTS.map(o=>({
-   key:k.key+'-'+o.key,label:k.label+' '+o.label,kind:k.key,orient:o.key,
-   w:o.key==='landscape'?k.h:k.w,h:o.key==='landscape'?k.w:k.h}))),[]);
- const PAPER_MARGIN_MM=8;
- const MM_PER_PX=25.4/96;
+ /* ---------- 用紙（§9.332で共通核へ集約） ----------
+    表も`@page`の作り方も`WL.paper`の1箇所（`print-core.js`）。ここが持つのは
+    **この紙の既定**（A4横＝並びの先頭。利用者の指示。列が多い表なので縦だと
+    1行に収まらない）と、**この画面の`<style>`のid**だけ。 */
+ const PAPER_KINDS=WL.paper.KINDS;
+ const PAPER_ORIENTS=WL.paper.orients({orientFirst:'landscape'});
+ const PAPER_SIZES=WL.paper.sizes({orientFirst:'landscape'});
+ const PAPER_MARGIN_MM=WL.paper.MARGIN_MM;
+ const MM_PER_PX=WL.paper.MM_PER_PX;
  const MIN_COL_MM=6;
  const FRAME_MM=0.5;
  const MIN_FIT=.62;
  const SHEET_SLACK_PX=6;
 
- function paperSizeOf(key){return PAPER_SIZES.find(p=>p.key===key)||PAPER_SIZES[0]}
- function paperUsableMm(key){
-  const p=paperSizeOf(key);
-  return {w:p.w-PAPER_MARGIN_MM*2,h:p.h-PAPER_MARGIN_MM*2};
- }
- /* 片方だけ選び直したときの鍵（§9.252）。**もう片方の今の値を残す**
-    ——残さないと、向きを変えるたびに大きさが既定へ戻る。 */
- function paperKeyWith(cur,part){
-  const now=paperSizeOf(cur);
-  const kind=PAPER_KINDS.some(k=>k.key===part)?part:now.kind;
-  const orient=PAPER_ORIENTS.some(o=>o.key===part)?part:now.orient;
-  return paperSizeOf(kind+'-'+orient).key;
- }
- /* `@page`の中身は**1箇所が作る**。**用紙の名前で頼まないこと**（§9.252）
-    ——①以前は`key.indexOf('a3')===0`で名前を当てており、**用紙を1つ足すと
-    その用紙だけ既定のA4で刷られる**（B4がまさにそれ）②CSSの`B4`は
-    **ISO B4(250×353mm)**で、日本の印刷機のB4＝**JIS B4(257×364mm)**とは
-    別物。`.os-page`はJISのmmで組んであるので、名前で頼むと紙だけ小さくなり
-    中身が縮む。実寸をそのまま渡せばどちらも起きない。 */
- function pageRuleFor(paperKey){
-  const p=paperSizeOf(paperKey);
-  return `@page{size:${p.w}mm ${p.h}mm;margin:0}`;
- }
- function applyPrintPageStyle(paperKey){
-  let el=$id(PAGE_STYLE_ID);
-  if(!el){el=document.createElement('style');el.id=PAGE_STYLE_ID;document.head.appendChild(el)}
-  el.textContent=pageRuleFor(paperKey);
- }
+ function paperSizeOf(key){return WL.paper.sizeOf(key,PAPER_SIZES)}
+ function paperUsableMm(key){return WL.paper.usableMm(key,PAPER_SIZES)}
+ function paperKeyWith(cur,part){return WL.paper.keyWith(cur,part,PAPER_SIZES)}
+ function pageRuleFor(paperKey){return WL.paper.pageRule(paperKey,PAPER_SIZES)}
 
  /* ---------- 設定（この端末に覚える） ----------
     既定は利用者の指示どおり **A4横 ＋ 直単位（日＋直）**。行の構成は
@@ -268,33 +236,12 @@
     収まらないときだけ合計が予算ちょうどになるよう比例で縮める。
     **下限に着いた列を固定して配り直す**——1回の掛け算だと、床に当たった
     列のぶんだけ合計が膨らんで紙からはみ出す（§9.237）。 */
+ /* 下限のある比例配分と丸めは`WL.paper.shareMm()`の1箇所（§9.332）。
+    **ここには写しを置かない**——以前はこの1本だけ§9.295の直し（端数は広い列
+    から0.1mmずつ散らして引く）が入っておらず、**いちばん広い列から一度に
+    引く**古い形のまま残っていた（その列が切れる、と§9.295が名指しで禁じた形）。 */
  function shareMm(natural,budget){
-  const n=natural.length;if(!n)return [];
-  const floor=Math.min(MIN_COL_MM,budget/n);
-  const fixed=new Array(n).fill(false),out=natural.slice();
-  for(let pass=0;pass<n+1;pass++){
-   let free=0,used=0;
-   for(let i=0;i<n;i++){if(fixed[i])used+=out[i];else free+=natural[i]}
-   const rest=budget-used;
-   if(free<=0||rest<=0)break;
-   const scale=rest/free;
-   let changed=false;
-   for(let i=0;i<n;i++){
-    if(fixed[i])continue;
-    const v=natural[i]*scale;
-    if(v<floor){out[i]=floor;fixed[i]=true;changed=true}else out[i]=v;
-   }
-   if(!changed)break;
-  }
-  /* 丸めの誤差は**いちばん広い列から**引く（紙からはみ出さない側へ倒す）。 */
-  let over=out.reduce((s,v)=>s+v,0)-budget;
-  while(over>0.05){
-   let at=0;for(let i=1;i<out.length;i++)if(out[i]>out[at])at=i;
-   const cut=Math.min(over,out[at]-floor);
-   if(cut<=0)break;
-   out[at]-=cut;over-=cut;
-  }
-  return out.map(v=>Math.round(v*100)/100);
+  return WL.paper.shareMm(natural,budget,{min:MIN_COL_MM,step:0.1});
  }
  function withMm(keys,usableMm){
   const natural=keys.map(k=>Math.max(MIN_COL_MM,widthPxOf(k)*MM_PER_PX));
@@ -463,20 +410,11 @@
  }
 
  function printPages(sheets,opt,title){
-  const area=ensureArea();
-  area.innerHTML=sheets.map((p,i)=>pageHtml(p,opt,i+1,sheets.length)).join('');
-  applyPrintPageStyle(opt.paper);
-  document.body.classList.add(PRINT_CLASS);
-  const prev=document.title;
-  document.title=title;
-  const cleanup=()=>{
-   document.body.classList.remove(PRINT_CLASS);
-   document.title=prev;area.innerHTML='';
-   window.removeEventListener('afterprint',cleanup);
-  };
-  window.addEventListener('afterprint',cleanup);
-  /* **描き終えてから開く**（同期的に呼ぶと白紙になる）。 */
-  requestAnimationFrame(()=>requestAnimationFrame(()=>window.print()));
+  WL.printCore.printOnPage({
+   area:ensureArea(),
+   html:sheets.map((p,i)=>pageHtml(p,opt,i+1,sheets.length)).join(''),
+   styleId:PAGE_STYLE_ID,paper:opt.paper,paperSizes:PAPER_SIZES,
+   printClass:PRINT_CLASS,title:title});
  }
 
  /* ---------- プレビュー（§9.186「印刷はプレビューを先に出す」） ----------

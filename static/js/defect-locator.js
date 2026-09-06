@@ -675,14 +675,11 @@
    </section>
    <div class="df-foot">この判定は、条割で確定した子ロットの幅と、屑幅の割り付け（${r.scrapBiased?'片寄せ':'左右均等'}）にもとづく参考値です（測定値ではありません）。</div>
   </div>`;
-  document.body.classList.add('df-print');
-  const prevTitle=document.title;
-  document.title=`異常位置判定_${b.lotNo||''}`;
-  const cleanup=()=>{document.body.classList.remove('df-print');document.title=prevTitle;area.innerHTML='';
-   window.removeEventListener('afterprint',cleanup)};
-  window.addEventListener('afterprint',cleanup);
-  // 描画が反映されてから印刷ダイアログを開く(同期的に呼ぶと白紙になる)。
-  requestAnimationFrame(()=>requestAnimationFrame(()=>window.print()));
+  /* 刷り出しの段取り（印を付ける→題を替える→描き終えてから開く→
+     `afterprint`で全部戻す）は`WL.printCore`の1箇所（§9.332）。
+     **この紙は用紙を選べない**ので`paper`は渡さない＝`@page`はCSSの既定のまま。 */
+  WL.printCore.printOnPage({area,html:area.innerHTML,printClass:'df-print',
+                            title:`異常位置判定_${b.lotNo||''}`});
  }
 
  /* ---------- 測定帳票への相乗り（保存されたときだけ） ----------
