@@ -945,7 +945,20 @@ WL.renderDbNav=renderDbNav;
    レールには版と**その版の一言**（先頭の強調）を出す——番号だけでは
    どれが目当ての版か読めない。**いま動いている版には文字で印を付ける**
    （§CLAUDE 画面基準 3）。 */
-let changelogLoaded=false,clEntries=[],clNow='';
+let changelogLoaded=false,clEntries=[],clNow='',clDevCount=0;
+/* 「開発の記録」は既定で伏せる（§9.336、REVIEW 3-12）。現場の人が開く画面に
+   テストの名前・§番号・中のファイル名が並ぶのをやめるため。**消さずに伏せる**
+   ので、ボタン1つでいつでも出せる（§4）。**分けているのはサーバー**
+   （`changelog_data`の判定）で、画面は`e.dev`を読むだけ（§9.163）。
+   置き場はこの端末（読み方の好み・§9.199）。 */
+const CL_DEV_KEY='ChangelogShowDevV1';
+function clShowDev(){try{return localStorage.getItem(CL_DEV_KEY)==='1'}
+ catch(e){return WL.quiet.note('更新履歴の見え方の覚えを読めない（既定＝伏せるで続く）',e),false}}
+function clSetShowDev(on){
+ try{localStorage.setItem(CL_DEV_KEY,on?'1':'0')}
+ catch(e){WL.quiet.note('更新履歴の見え方を覚えられない（この回だけ効く）',e)}
+ clRender();
+}
 /* 先頭の強調（`**…**`）＝その版の見出し。無ければ最初の1文。
    **レールにしか出さない**（中身にも出すと同じ文が2箇所に並ぶ・§CLAUDE 8）。 */
 function clLead(entry){
@@ -982,7 +995,12 @@ function clHighlight(html,q){
 function clRender(){
  const list=$('#changelogList'),rail=$('#changelogRail');if(!list||!rail)return;
  const q=String($('#changelogSearch')?.value||'').trim().toLowerCase();
- const hit=clEntries.filter(e=>clMatches(e,q));
+ const dev=clShowDev();
+ /* **いま動いている版だけは伏せない**——開発の記録の版であっても、
+    「いまどれが動いているか」は現場が確かめる唯一の手掛かり（§9.316 の
+    起動の状況もこの版で見分ける）。伏せると印の付いた版が画面から消える。 */
+ const shown=dev?clEntries:clEntries.filter(e=>!e.dev||e.version===clNow);
+ const hit=shown.filter(e=>clMatches(e,q));
  const notes=hit.reduce((n,e)=>n+(e.notes||[]).length,0);
  rail.innerHTML=hit.length?hit.map(e=>{
   const now=e.version===clNow;
@@ -999,8 +1017,21 @@ function clRender(){
   </article>`;
  }).join(''):`<p class="changelog-loading">「${esc(q)}」に当たる更新履歴はありませんでした。</p>`;
  const hits=$('#changelogHits');
- if(hits)hits.textContent=q?`${hit.length}版 / ${notes}件が当たりました（全${clEntries.length}版）`
-                          :`全${clEntries.length}版 / ${notes}件`;
+ // **いまどちらを見ているかを必ず文字で出す**（§3）。伏せている件数も言う。
+ const hidden=clEntries.filter(e=>e.dev&&e.version!==clNow).length;
+ const tail=clDevCount?(dev?`（開発の記録 ${clDevCount}版 を含む）`
+                           :`（開発の記録 ${hidden}版 は伏せています）`):'';
+ if(hits)hits.textContent=(q?`${hit.length}版 / ${notes}件が当たりました（全${shown.length}版）`
+                            :`全${shown.length}版 / ${notes}件`)+tail;
+ const devBtn=$('#changelogDev');
+ if(devBtn){
+  devBtn.hidden=!clDevCount;
+  devBtn.textContent=dev?`開発の記録を伏せる（${clDevCount}版）`
+                        :`開発の記録も出す（${hidden}版）`;
+  devBtn.setAttribute('aria-pressed',dev?'true':'false');
+  devBtn.title=dev?'構造の改善だけの版（画面の動きが変わらない版）も出しています。'
+                  :'構造の改善だけの版（画面の動きが変わらない版）を伏せています。';
+ }
  const clr=$('#changelogClear');if(clr)clr.hidden=!q;
  rail.querySelectorAll('[data-cl-ver]').forEach(b=>{
   b.onclick=()=>clJumpTo(b.dataset.clVer);
@@ -1044,6 +1075,7 @@ async function openChangelog(){
   const data=await api('/api/changelog');
   clEntries=(data.entries||[]).filter(e=>e&&e.version);
   clNow=String(data.version||'');
+  clDevCount=Number(data.devCount||0);
   const sub=$('#changelogSub');
   if(sub)sub.textContent=clNow?`いま動いているのは VER${clNow} です。左の一覧から版へ跳べます。`
                               :'左の一覧から版へ跳べます。';
@@ -1058,6 +1090,7 @@ async function openChangelog(){
  }
 }
 $('#closeChangelog').onclick=()=>{$('#changelogModal').hidden=true};
+if($('#changelogDev'))$('#changelogDev').onclick=()=>clSetShowDev(!clShowDev());
 /* 打っている最中に器を作り直さない（§9.117）——検索欄は最初から在り、
    描き直すのはレールと中身だけ。 */
 $('#changelogSearch')?.addEventListener('input',()=>{if(changelogLoaded)clRender()});

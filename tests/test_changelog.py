@@ -85,6 +85,36 @@ rec('hintHtml() は WL.markup() へ委譲している',
     (hint.group(1).strip()[:80] if hint else 'hintHtml が見つからない'))
 rec('更新履歴も WL.markup() を通す','WL.markup(n)' in LV)
 
+# ---- 5) 開発の記録の分け方（§9.336、REVIEW 3-12） ----
+# 現場の人が開く画面に、テストの名前・§番号・中のファイル名が並ぶのをやめた。
+# **判定はここ1箇所**（画面へ写さない・§9.163）で、**宣言が無ければ利用者向け**
+# （伏せる側へ倒すと、宣言を忘れた版が黙って現場から消える）。
+sys.path.insert(0,str(ROOT))
+from backend.changelog_data import is_dev  # noqa: E402  判定は本体の1箇所を呼ぶ
+# （`changelog_data` は何もimportしない素のデータなので、読み込みの副作用が無い）
+dev=[e for e in CHANGELOG if is_dev(e)]
+rec('開発の記録の版を分けられている',5<=len(dev)<len(CHANGELOG),
+    f'{len(dev)} / 全{len(CHANGELOG)}版')
+rec('宣言の無い版は利用者向けへ倒れる',not is_dev({'version':'x','notes':['a']}))
+rec('宣言した版だけが開発の記録になる',
+    all(e.get('dev') is True for e in dev))
+# **不具合を直した版に付けていないこと。** 内部の話に見えても「直った」ことは
+# 利用者に見える変更（VER2.206.0 は「作業スケジュールが開けない」、
+# VER2.214.0 は「タブの中身が入れ替わる」を直した版）。
+for v in ('2.206.0','2.214.0'):
+    e=next((x for x in CHANGELOG if x.get('version')==v),None)
+    rec(f'VER{v}（不具合修正）を開発の記録にしていない', e is not None and not is_dev(e))
+# 構造の改善の版には付いていること（付け忘れると現場の履歴が汚れる）
+for v in ('2.218.0','2.217.0','2.216.0'):
+    e=next((x for x in CHANGELOG if x.get('version')==v),None)
+    rec(f'VER{v}（構造の改善）を開発の記録にしている', e is not None and is_dev(e))
+# APIが判定を返していること（画面が自分で判定し直さないための材料）
+CORE=(ROOT/'backend/routes/core.py').read_text(encoding='utf-8')
+rec('/api/changelog が dev と件数を返す',
+    'dev=is_dev(e)' in CORE and 'devCount=' in CORE)
+rec('画面のJSに判定を書き写していない',
+    'is_dev' not in LV and 'e.dev' in LV)
+
 ng=[x for x in R if not x[1]]
 print(f'\n{len(R)-len(ng)} PASS / {len(ng)} FAIL')
 sys.exit(1 if ng else 0)

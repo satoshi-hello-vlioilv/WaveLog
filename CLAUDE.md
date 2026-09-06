@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（475件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（476件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -623,10 +623,11 @@
 | 「何で選ばせるか」と「どう見えるか」は別の軸 | — | [§9.223](docs/decisions/9.223.md) |
 | 公差外・基準外は確認カードの色で気づかせる。NGの記録はその行の中 | `test_ngcard.js` | [§9.242](docs/decisions/9.242.md) |
 
-### 検証（テスト）（10件）
+### 検証（テスト）（11件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 更新履歴は版ごとに「利用者向け／開発の記録（`'dev':True`）」。判定は`changelog_data.is_dev()`の1箇所、画面は`e.dev`を読むだけ | `test_changelog.py`・`test_changelogui.js` | [§9.336](docs/decisions/9.336.md) |
 | 知識の置き場は「規則＝CLAUDE.md の表／経緯＝`docs/decisions/9.xxx.md`」。§番号は振り直さない | `test_docindex.py` | [§9.335](docs/decisions/9.335.md) |
 | 標準の静的解析（pyflakes／eslint）は網の一部。規則は`eslint.config.mjs`の1箇所 | `test_eslint.py`・`test_pyflakes.py` | [§9.326](docs/decisions/9.326.md) |
 | ピボットの軸は「行」「列」の2つの箱。掴んでも押しても動く | — | [§9.278](docs/decisions/9.278.md) |

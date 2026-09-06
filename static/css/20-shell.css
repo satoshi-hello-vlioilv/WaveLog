@@ -67,6 +67,10 @@
 .cl-search input{flex:1 1 auto;min-width:0;max-width:var(--w-xl,32em)}
 .cl-hits{flex:0 0 auto;color:var(--ink-3);font-size:var(--fs-sm)}
 .cl-clear{flex:0 0 auto}
+/* 「開発の記録」の出し入れ（§9.336）。**押した状態が色で分かる**が、
+   ボタンの文字も「出す／伏せる」で言い分けるので色だけには頼らない（§3）。 */
+.cl-dev{flex:0 0 auto}
+.cl-dev[aria-pressed="true"]{background:var(--surface-3);border-color:var(--line-strong);color:var(--ink)}
 /* 2列。左のレールは版の一覧、右が中身。**どちらも別々にスクロールする**
    ——1本にすると、レールを見るために中身を送ることになる。 */
 .changelog-dialog .cl-body{flex:1 1 auto;min-height:0;display:grid;

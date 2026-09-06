@@ -7,7 +7,7 @@ import json, os, re, subprocess, time
 
 from ..config import APP_ID, PORT
 from .. import boot_status
-from ..changelog_data import APP_VERSION, CHANGELOG
+from ..changelog_data import APP_VERSION, CHANGELOG, is_dev
 from ..paths import APP_ROOT as BASE
 from ..logging_setup import app_logger
 from ..quiet import quiet
@@ -271,4 +271,10 @@ def whoami():
  from ..access_mode import current_login_id
  return jsonify(username=current_login_id())
 @bp.get('/api/changelog')
-def changelog(): return jsonify(version=APP_VERSION, entries=CHANGELOG)
+def changelog():
+ # 「開発の記録か」は changelog_data.is_dev() の1箇所が答える(§9.336)。
+ # **画面へ判定を写さない**——写すと、宣言を足したのに画面だけ古い規則で
+ # 分け続ける状態が作れる。
+ rows=[dict(e, dev=is_dev(e)) for e in CHANGELOG]
+ return jsonify(version=APP_VERSION, entries=rows,
+                devCount=sum(1 for e in rows if e['dev']))
