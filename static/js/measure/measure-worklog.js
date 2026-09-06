@@ -77,29 +77,22 @@
   }
 
   // 公差カード/スケールは指示型では専用カードへ置換（数値上下限バー・数直線は出さない）。
-  if(typeof compactToleranceFacts==='function'){
-    var baseFacts=compactToleranceFacts;
-    compactToleranceFacts=function(kind){
+  /* カード（facts）と数直線（scale）も提供者が持つ（§9.352）。指示型でなければ undefined＝次へ。 */
+  WL.tolerance.register({name:'指示型（指示_項目の値）・カード',priority:20,
+    facts:function(kind){
       var type=currentType();
       if(isInstructionType(type)){var info=instructionInfo();return {range:(info&&Number.isFinite(info.value))?[0,info.value]:null,html:instructionCardHtml()};}
-      return baseFacts(kind);
-    };
-  }
-  if(typeof compactToleranceScale==='function'){
-    var baseScale=compactToleranceScale;
-    compactToleranceScale=function(kind,values,count){
+      return undefined;
+    },
+    scale:function(kind,values,count){
       var type=currentType();
       if(isInstructionType(type))return instructionCardHtml();
-      return baseScale(kind,values,count);
-    };
-  }
+      return undefined;
+    }});
 
   // 上部の要約(#toleranceSummary)は指示型では抑止（内容がふさわしくないため）。
   function suppressSummaryForInstruction(){var type=currentType();if(isInstructionType(type)){var s=$('#toleranceSummary');if(s)s.hidden=true;}}
-  if(typeof renderMeasureGridVertical==='function'){
-    var baseRMGV=renderMeasureGridVertical;
-    renderMeasureGridVertical=function(){baseRMGV();suppressSummaryForInstruction();};
-  }
+  WL.measureHooks.on('afterGridVertical',()=>suppressSummaryForInstruction());
   WL.measureHooks.afterHeading(()=>suppressSummaryForInstruction());
   /* ③の公差一覧が指示型の項目も並べられるように口を出す（§9.157）。
      **項目名の一覧もここが答える**——`INSTRUCTION_FIELDS`はこのファイルの
@@ -247,7 +240,8 @@
   const fb=$('#workFillFromAuto');
   if(fb)fb.onclick=()=>fillFromAuto();
  }
- updateWorkTimePanel=function(){if(!S.measure)return;syncField('workStartAt');syncField('workEndAt');bindWorkTime();refreshWorkTime();refreshAutoStamps()};
+ /* 作業時間パネルの描画はこのファイルが持ち主（§9.352）。核（measure-view.js）は持ち主が居ればそれを呼ぶ。 */
+ WL.measureHooks.own('workTimePanel',function(){if(!S.measure)return;syncField('workStartAt');syncField('workEndAt');bindWorkTime();refreshWorkTime();refreshAutoStamps()});
  /* 時間の書き方を変えたら、作業時間の比較カードも書き直す（§9.341）。 */
  document.addEventListener('wl:duration-style',()=>{
   try{if(S.measure)refreshWorkTime()}
@@ -417,12 +411,6 @@
   function scheduleRefresh(){clearTimeout(debounceTimer);debounceTimer=setTimeout(()=>{refreshBenchmark();ensureLiveTimer()},700)}
 
   WL.measureHooks.afterRender(()=>{refreshBenchmark();ensureLiveTimer()});
-  if(typeof markDirty==='function'){
-    const baseMarkDirty=markDirty;
-    markDirty=function(){baseMarkDirty();scheduleRefresh()};
-  }
-  if(typeof saveLocal==='function'){
-    const baseSaveLocal=saveLocal;
-    saveLocal=async function(status){const r=await baseSaveLocal(status);refreshBenchmark();return r};
-  }
+  WL.measureHooks.on('afterDirty',()=>scheduleRefresh());
+  WL.measureHooks.on('afterSave',()=>refreshBenchmark());
 })();

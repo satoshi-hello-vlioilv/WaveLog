@@ -244,22 +244,15 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
     のため個別にブロックする。measurement/mastersへの書込はeditモードだけ
     許可されるため、判定は「editでなければ止める」に統一する(view/schedule
     のどちらでも同じく書込不可。§3.5、実装時の主要な事故ポイント)。 */
- if(typeof openMeasurement==='function'){
-  const baseOpenMeasurement=openMeasurement;
-  openMeasurement=async function(row){
-   if(accessMode.mode!=='edit'){showToast&&showToast(`${MODE_LABELS[accessMode.mode]||accessMode.mode}です`,'新しい測定を開始・再開するには編集モードへ切り替えてください。',5000);return}
-   return baseOpenMeasurement(row);
-  };
- }
- if(typeof resumeRecordFromList==='function'){
-  const baseResumeRecordFromList=resumeRecordFromList;
-  resumeRecordFromList=function(x){
-   return async()=>{
-    if(accessMode.mode!=='edit'){showToast&&showToast(`${MODE_LABELS[accessMode.mode]||accessMode.mode}です`,'編集を再開するには編集モードへ切り替えてください。',5000);return}
-    return baseResumeRecordFromList(x)();
-   };
-  };
- }
+ /* 関門は登録で（§9.352）。被せだと読み込み順が答えの順になる。lot-split の
+    「子ロットなら親へ読み替える」（priority 20）より後に断る（priority 10）——被せの
+    ときと同じ順（外側の lot-split が先に走っていた）。 */
+ WL.measureHooks.gate('openMeasurement',()=>{
+  if(accessMode.mode!=='edit'){showToast&&showToast(`${MODE_LABELS[accessMode.mode]||accessMode.mode}です`,'新しい測定を開始・再開するには編集モードへ切り替えてください。',5000);return false}
+ },{priority:10});
+ WL.measureHooks.gate('resumeRecordFromList',()=>{
+  if(accessMode.mode!=='edit'){showToast&&showToast(`${MODE_LABELS[accessMode.mode]||accessMode.mode}です`,'編集を再開するには編集モードへ切り替えてください。',5000);return false}
+ },{priority:10});
 
  /* ---------- edit以外のデータ一覧: 閲覧用バックアップから読む ----------
     recordListState/openRecords/renderRecordListRowsはrecords-store.jsの
@@ -382,13 +375,10 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
   renderRecordListRows();
   requestAnimationFrame(()=>search?.focus());
  }
- if(typeof openRecords==='function'){
-  const baseOpenRecords=openRecords;
-  openRecords=async function(status){
-   if(accessMode.mode!=='edit')return openRecordsViewMode(status);
-   return baseOpenRecords(status);
-  };
- }
+ /* 閲覧・スケジュールモードでは閲覧用の一覧を開いて、通常の一覧は開かない（false）。 */
+ WL.measureHooks.gate('openRecords',async status=>{
+  if(accessMode.mode!=='edit'){await openRecordsViewMode(status);return false}
+ },{priority:10});
 
  /* 起動オーバーレイの「権限を確認」はここで済む(モードでヘッダーの
     バッジが増減するため、確定してから本体を見せる)。refreshAccessMode は

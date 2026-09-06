@@ -19,7 +19,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1600,height:950}});
- const W=require('./lib/wait.js');const {idle}=W.track(page);const paint=()=>W.paint(page);
+ const W=require('./lib/wait.js');const {idle}=W.track(page);
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  const errs=[];
  page.on('pageerror',e=>errs.push(e.message));

@@ -5936,5 +5936,4 @@ function updateSoftChoiceVisuals(){
 }
 SOFT_CHOICE_IDS.forEach(id=>{const el=$('#'+id);if(el)el.addEventListener('change',updateSoftChoiceVisuals)});
 WL.measureHooks.afterRender(()=>{updateSoftChoiceVisuals();if(typeof syncInputModeLock==='function')syncInputModeLock()});
-const optionFillSoftChoiceBase=optionFill;
-optionFill=function(id,items,current){optionFillSoftChoiceBase(id,items,current);updateSoftChoiceVisuals()};
+WL.measureHooks.on('afterOptionFill',()=>updateSoftChoiceVisuals());

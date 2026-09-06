@@ -234,7 +234,33 @@ function markDirty(){
  measureDirty=true;measureEditSeq++;setState('未保存（画面の中だけ）');
  if(window.WL&&WL.autoSave)WL.autoSave.schedule();
  else console.error('WL.autoSave が見つかりません（DBへの自動保存が動きません）');
+ WL.measureHooks.run('afterDirty');
 }
+/* ---------- 登録表（§9.348・§9.352・REVIEW 3-16） ----------
+   「描いたあとに足す」「前で断る」「丸ごと持つ」を、`const base=fn; fn=function(){…base()…}`
+   の被せで書かない。被せは読み込み順が答えの順になり、引数を1つ落とすと根まで届かない
+   （実際に起きた・§9.125）。ここは土台（core）に置く——測定画面のファイルより先に読まれ、
+   `markDirty` のように土台の関数からも呼べる。
+     on(name,fn)             … あとに足す。登録順に走り、1つが転んでも残りは走る（fail-open）
+     gate(name,fn,{priority})… 前で断る／引数を差し替える。false を返すと呼び出しは何もしない、
+                               配列を返すとそれが次の引数、undefined なら次へ。priority の大きい順
+     own(name,fn)            … 丸ごと持つ（1つだけ）。核は owner が居ればそれを呼び、居なければ自分の体
+   名前は呼ぶ側（核）が決め、呼ぶ側の 1 箇所にだけ書く。 */
+const HOOKS={},OWNERS={};
+function hookList(name){return HOOKS[name]||(HOOKS[name]=[])}
+WL.measureHooks={
+ on(name,fn){if(typeof fn==='function')hookList(name).push({fn,priority:0})},
+ afterRender(fn){WL.measureHooks.on('afterRender',fn)},
+ afterHeading(fn){WL.measureHooks.on('afterHeading',fn)},
+ gate(name,fn,opt){if(typeof fn!=='function')return;const l=hookList(name);l.push({fn,priority:Number(opt&&opt.priority)||0});l.sort((a,b)=>b.priority-a.priority)},
+ own(name,fn){if(typeof fn==='function')OWNERS[name]=fn},
+ owner(name){return OWNERS[name]||null},
+ run(name,...args){hookList(name).forEach(h=>{try{h.fn(...args)}catch(e){console.error('フック '+name+' で例外',e)}})},
+ async runAsync(name,...args){for(const h of hookList(name)){try{await h.fn(...args)}catch(e){console.error('フック '+name+' で例外',e)}}},
+ /* 関門。例外は呼び出し元へそのまま伝える（被せのときと同じ）。 */
+ async through(name,...args){for(const h of hookList(name)){const r=await h.fn(...args);if(r===false)return false;if(r!==undefined)args=Array.isArray(r)?r:[r]}return args},
+ count(){const o={};Object.keys(HOOKS).forEach(k=>{o[k]=HOOKS[k].length});Object.keys(OWNERS).forEach(k=>{o['own:'+k]=1});return o},
+};
 /* サイドバーの選択状態。トップレベルの行き先(データ一覧・仕掛・品質データ・
    マスタ一覧・ダッシュボード・実績カレンダー)は排他で、常にどれか1つだけが
    選択中になる。以前は行き先ごとに自分の.activeを付け外ししていたため、
@@ -298,7 +324,9 @@ const OPTION_BLANK_VALUES=['','-'];
 function optionBlank(v){return OPTION_BLANK_VALUES.includes(String(v??'').trim())}
 window.WL=window.WL||{};WL.optionBlank=optionBlank;   /* 新しい公開は名前空間へ */
 WL.optionBlankLabel=OPTION_BLANK_LABEL;
-function optionFill(id,items,current=''){
+/* 選択肢を入れたあとに足す（選んだ札の見え方）は `afterOptionFill`（§9.352）。 */
+function optionFill(id,items,current=''){optionFillCore(id,items,current);WL.measureHooks.run('afterOptionFill',id)}
+function optionFillCore(id,items,current=''){
  const el=$('#'+id);if(!el)return;
  const vals=WL.choiceUsage.order(id,[...new Set(items||[])]).filter(v=>!optionBlank(v));
  el.innerHTML=`<option value="">${esc(OPTION_BLANK_LABEL)}</option>`

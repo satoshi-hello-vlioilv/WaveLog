@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（492件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（493件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -572,10 +572,11 @@
 | 紙に出すのは「帳票だけの1枚もの」 | `test_rpprint.js` | [§9.244](docs/decisions/9.244.md) |
 | 帳票ブロックの中身はマトリクスで並べられる | `test_blockbuild.js` | [§9.245](docs/decisions/9.245.md) |
 
-### 画面の土台（7件）
+### 画面の土台（8件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 拡張は登録表へ: あとに足す`on`／前で断る`gate`／丸ごと持つ`own`（`WL.measureHooks`・`WL.listHooks`）。被せも全置換も作らない | `test_patchlint.py`・`test_tolscale.js` | [§9.352](docs/decisions/9.352.md) |
 | 初回の案内は帯の1箇所。空の器は「ここに何が出るか」だけを言う | `test_uiux.js` | [§9.343](docs/decisions/9.343.md) |
 | 窓は`confirmModal`／`alertModal`／`promptModal`の3つだけ。素の`alert`/`confirm`/`prompt`は呼ばない | `test_patchlint.py`・`test_modalkeep.js` | [§9.342](docs/decisions/9.342.md) |
 | `window.*`への新規公開は名前空間経由 | `test_globallint.py` | [決まり](docs/decisions/rules-misc.md) |

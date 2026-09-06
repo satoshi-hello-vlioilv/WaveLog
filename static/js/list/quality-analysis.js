@@ -477,9 +477,9 @@
   prevQa=true;
  }
 
- if(typeof renderGrid==='function'){const old=renderGrid;renderGrid=function(){old();sync()}}
- if(typeof selectDb==='function'){const old=selectDb;selectDb=async function(k,b){const r=await old(k,b);sync();return r}}
- if(typeof selectTable==='function'){const old=selectTable;selectTable=async function(t){const r=await old(t);sync();return r}}
+ /* 表を描いたあと・接続先や表を選んだあとに足す（被せない・§9.352）。 */
+ WL.listHooks.onGrid(sync);
+ WL.listHooks.onSelect(sync);
  window.addEventListener('resize',()=>{clearTimeout(window._qaRz);window._qaRz=setTimeout(()=>{const p=$id('qualityAnalysisPanel');if(last&&p&&!p.hidden&&p.dataset.view==='graph')render(last)},150)});
  WL.onReady(sync);queueMicrotask(sync);
 })();
