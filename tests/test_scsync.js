@@ -52,7 +52,15 @@ let b=null;
   };
   await waitOverlay();
 
-  // 「編集中」で保存する(=作業途中)。保存でスケジュール側のキャッシュが捨てられる。
+  // **開始を打刻してから**「編集中」で保存する(=作業途中)。製品は勝手に開始・
+  // 終了へ書き込まない（測定画面の作業時間カードの方針）ので、打刻しない
+  // 一時保存は「予定」のまま——以前この網が緑だったのは、直前の test_startwork が
+  // 残した sw-running（開始時刻つき）を「作業中」と数えていたから（§9.351）。
+  await page.evaluate(()=>document.querySelector('#stampWorkStart').click());
+  const stamped=await page.evaluate(()=>!!(S.measure&&S.measure.workTime&&S.measure.workTime.startAt));
+  rec('開始を打刻できる（打刻が「作業中」の条件）',stamped);
+  const draftId=await page.evaluate(()=>S.measure&&S.measure.id);  // 後始末用（スケジュールへ戻ると S.measure は空になる）
+  // 保存でスケジュール側のキャッシュが捨てられる。
   await page.click('#saveDraft');
   await page.waitForTimeout(3500);
 
@@ -81,6 +89,10 @@ let b=null;
    if(typeof S!=='undefined'&&S.measure&&typeof reliableDelete==='function')
     await reliableDelete(S.measure.id);
   }).catch(()=>{});
+  /* 上の削除はスケジュールへ戻った時点で S.measure が空なので実際には効かず、
+     作った一時保存（記録ID）が records.sqlite3 に残っていた（§9.351）。控えたIDで消す。 */
+  if(draftId)await fetch(`${API}/api/measurement/backup/delete`,{method:'POST',
+   headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[draftId]})}).catch(()=>{});
 
   console.log('\n=== SUMMARY ===');
   const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);

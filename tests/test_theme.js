@@ -196,13 +196,17 @@ run('test_theme: 色と文字サイズはトークンから',async({page,rec,W,i
      実績削除のボタンは「実績のある行」にしか出ない。フィクスチャの予定には
      実績が無いので、いま開いている測定画面を「編集中」で保存して作業中に
      してから、スケジュールを開き直して確かめる(test_scsyncと同じ手順)。 */
+  // 開始を打刻してから保存する（打刻の無い一時保存は「実績のある行」にならない。§9.351）
+  await page.evaluate(()=>document.querySelector('#stampWorkStart').click());
+  rec('開始を打刻できる',await page.evaluate(()=>!!(S.measure&&S.measure.workTime&&S.measure.workTime.startAt)));
+  const draftId=await page.evaluate(()=>S.measure&&S.measure.id);  // 後始末用（スケジュールへ戻ると S.measure は空になる）
   await page.click('#saveDraft');
   await idle(400,15000);
   await page.waitForFunction(()=>document.querySelector('#saveOverlay')?.hidden!==false,null,{timeout:30000}).catch(()=>{});
   await page.waitForFunction(()=>document.querySelector('#measureModal')?.hidden,null,{timeout:20000});
   await page.click('#openSchedule');
   await page.waitForSelector('.sc-row-line',{timeout:20000});
-  await W.settleFlags(page);await paint();
+  await idle(400,15000);await paint();
   const labels=await page.evaluate(()=>{
    const btns=[...document.querySelectorAll('.sc-row-delete-history')];
    return {n:btns.length,texts:[...new Set(btns.map(b=>b.textContent.trim()))],
@@ -220,6 +224,10 @@ run('test_theme: 色と文字サイズはトークンから',async({page,rec,W,i
    if(typeof S!=='undefined'&&S.measure&&typeof reliableDelete==='function')
     await reliableDelete(S.measure.id);
   }).catch(()=>{});
+  /* 上の削除はスケジュールへ戻った時点で S.measure が空なので実際には効かず、
+     作った一時保存（記録ID）が records.sqlite3 に残っていた（§9.351）。控えたIDで消す。 */
+  if(draftId)await fetch(`${API}/api/measurement/backup/delete`,{method:'POST',
+   headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[draftId]})}).catch(()=>{});
 
   /* ---- 5b) 画面名の重複と、画面ごとの操作列のヘッダー相乗り ----
      各画面が「ヘッダーと同じ画面名＋操作」の見出しバーを持っていた。名前は

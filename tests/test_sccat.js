@@ -133,6 +133,11 @@ let b=null;
  rec('もう一度押すとロックが外れ通常の並びへ戻る',!!unlocked&&!unlocked.fixedStart,String(unlocked&&unlocked.fixedStart));
 
  await page.screenshot({path:require('path').join(require('os').tmpdir(),'sched_cat2.png')  /* 作業ツリーへ置き土産を残さない（§9.349） */});
+ /* 後始末: 自分が置いた実績（rec-*）は自分で消す。残すと後続の網が「作業中」「完了」を
+    この置き土産で数える（§9.351）。 */
+ await fetch('http://127.0.0.1:5029/api/measurement/backup/delete',{method:'POST',
+  headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:['rec-run','rec-old','rec-done','rec-doing','rec-done2']})}).catch(()=>{});
+
  console.log('\n=== SUMMARY ===');
  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
  f.forEach(x=>console.log(' -',x.n,x.d||''));
