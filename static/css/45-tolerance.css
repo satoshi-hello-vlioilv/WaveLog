@@ -161,7 +161,11 @@
    バーいっぱい（実測1071px）へ伸び、ヘッダーの「一覧を検索」と同じ顔の
    入力欄が2つ並んでいた。押したときだけ出し、幅は候補の名前に足りる
    ぶんだけにする。余りは空白のまま（列を増やして詰めない・画面基準13）。 */
-.fb-addcond-btn{flex:0 0 auto;white-space:nowrap;font-weight:700}
+/* 高さは**隣の`.fb-cond-btn`と同じトークン**（`--ctl-h-sm`）。
+   自前の余白で35pxにすると、同じ行のボタンが1pxずつずれて並ばない
+   （`tests/test_scale.js`が19/26/30/36/40の段で固定している）。 */
+.fb-addcond-btn{flex:0 0 auto;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+  white-space:nowrap;font-weight:700}
 .filter-token-input[hidden]{display:none}
 .filter-token-input{position:relative;flex:0 1 var(--w-xl);min-width:0;display:flex;align-items:center;gap:var(--gap-tight);flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;min-height:32px;padding:3px 8px;border:1px solid var(--teal);border-radius:var(--radius-sm);background:#fff}
 .filter-token-input.focus-within{box-shadow:0 0 0 3px #087c8928}

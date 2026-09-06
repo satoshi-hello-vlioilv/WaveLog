@@ -24,12 +24,19 @@ let b=null;
     if(!nav||!nav.classList.contains('active'))return false;
     const list=document.getElementById('masterMaintList');
     if(!list)return false;
-    /* **見えている「読み込んでいます…」だけを待つ。** 1画面まるごとの
-       専用画面（共通設定＝`.mm-form-page`）は`.mm-list-wrap`をCSSで
-       畳むので、一覧の器には読み込み中の文字が**出たまま残る**
-       （見えていないので害は無い）。器の中身だけを見て待つと、その画面
-       では永久に待つことになる。 */
-    if(list.offsetParent===null)return true;
+    const form=document.getElementById('masterMaintForm');
+    /* 1画面まるごとの専用画面（共通設定＝`.mm-form-page`）は`.mm-list-wrap`を
+       CSSで畳むので、一覧の器には読み込み中の文字が**出たまま残る**。
+       その画面では中身を待たない——待つと永久に終わらない。
+
+       **`offsetParent`で「畳んである」を測らないこと**（§9.346）。以前は
+       `list.offsetParent===null`なら`true`（＝待ち終わり）としていたが、
+       これは「畳んである」だけでなく**「まだ組み上がっていない」でも真**に
+       なる。再起動直後の1本目はマスタDBの移行がその場で走るぶん組み上がりが
+       遅く、**まだ空の一覧を「出来上がった」と読んで**素通りし、
+       `.mm-row`が0件のまま「既定の分類が入っていない」と報告していた
+       （通しの1本目でだけ落ちる）。畳んであるかは**器の印で見る**。 */
+    if(form&&form.classList.contains('mm-form-page'))return true;
     if(!list.children.length)return false;
     /* **失敗の知らせも「待ち終わり」として受ける。** これを待ち続けると
        20秒かけて「来なかった」としか言えない。中身の判定は下でする。 */
