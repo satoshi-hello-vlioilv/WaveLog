@@ -40,7 +40,11 @@ async function run(title,body,opts={}){
  try{
   if(opts.mode)await setMode(opts.mode);
   b=await chromium.launch({executablePath:exe});
-  const page=await b.newPage({viewport:opts.viewport||{width:1700,height:1000}});
+  /* 文脈を1つ作る。`init` は最初の航行より前に走らせる小さな仕込み
+     （localStorage へ使用設備を入れる等。test_listcache が使う）。 */
+  const ctx=await b.newContext({viewport:opts.viewport||{width:1700,height:1000}});
+  if(opts.init)await ctx.addInitScript(opts.init);
+  const page=await ctx.newPage();
   page.on('pageerror',e=>{errs.push(e.message);console.log('[pageerror]',String(e.message||e).slice(0,160))});
   page.on('dialog',async d=>{native.push(d.type()+':'+d.message().slice(0,60));await d.dismiss().catch(()=>{})});
   const t=W.track(page);

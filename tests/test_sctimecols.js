@@ -17,21 +17,21 @@
     6. 隠した列は見出しからもセルからも消える(数がずれない)
     7. ボタン名は他の一覧と同じ「表示列」、モーダルの見出しに設備名が出る
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const TARGET='timeline:'+EQ;
 const FIXED=['__cat__','__workable__','__date__','__time__','__shift__','__rel__',
              '__est__','__actual__','__flags__','__actions__'];
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 async function cleanup(){
  try{await post('/api/column-layout-master',{target:TARGET,clear:true,order:[],widths:{},hidden:[],names:{},formats:{},rules:{},formulas:{},locks:[],user_id:'test'})}catch(e){}
  try{await post('/api/schedule-content-master',{equipment:EQ,items:[],user_id:'test'})}catch(e){}
 }
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
+const {run}=require('./lib/harness.js');
+/* 待ちは「時間」ではなく「条件」（§9.102・3-15 ③・§9.347）。骨組み
+   （起動・rec・pageerror・素のダイアログ・集計・閉じる）は tests/lib/harness.js。
+   置き換え前後で全PASS行（測った値ごと）を突き合わせてある。 */
+run('test_sctimecols: スケジュール表の列も列レイアウトマスタ（§9.176）',async({page,rec,W,idle,paint,errs})=>{
  /* 見え方の設定（まとめ・さかのぼり・表示列・行の色・配置）は「表示」
     パネル(§9.199)の中にある。開く→選ぶ→**閉じる**まで1つの手順にする
     ——開いたままにすると、パネルが表の右上を覆って次のクリックが
@@ -39,8 +39,6 @@ async function cleanup(){
  const openView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.openViewPop&&WL.scheduleView.openViewPop());
  const closeView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.closeViewPop&&WL.scheduleView.closeViewPop());
  const pickView=async(sel,val)=>{await openView();await page.selectOption(sel,val).catch(()=>{});await closeView()};
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];page.on('pageerror',e=>errs.push(e.message));
  const heads=()=>page.evaluate(()=>[...document.querySelectorAll('.sc-row-head [data-col]')].map(h=>h.dataset.col));
  const saved=async()=>(await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(TARGET))).json());
  /* 読み替えの網（§9.234 ⑥）は「区分が完了の行」が要る。**自分で置く**（§9.325 ②）
@@ -64,10 +62,10 @@ async function cleanup(){
   await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:20000});
-  await page.waitForTimeout(1200);
+  await W.booted(page);
   await page.click('#openSchedule');
   await page.waitForSelector('.sc-row-line',{timeout:25000});
-  await page.waitForTimeout(1500);
+  await W.settleFlags(page);await paint();
 
   // ---- 1. 固定列も見出しに並ぶ / 全部が掴めて取っ手を持つ
   const h0=await heads();
@@ -109,7 +107,7 @@ async function cleanup(){
     c.dispatchEvent(new DragEvent('drop',at));
     a.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer:dt}));
    },[from,to]);
-   await page.waitForTimeout(900);
+   await idle(600);
   };
   await dnd('__cat__','__rel__');
   const h1=await heads();
@@ -147,7 +145,7 @@ async function cleanup(){
    body:document.body.classList.contains('col-resizing'),
    busy:!!(window.WL&&WL.columnResize&&WL.columnResize.busy())}));
   await page.mouse.up();
-  await page.waitForTimeout(1200);
+  await idle(600);
   const after=await page.evaluate(()=>({posts:window.__wfp.length,
    lag:window.__wfp.length?window.__wfp[0]-window.__rel:null,
    body:document.body.classList.contains('col-resizing'),
@@ -179,7 +177,7 @@ async function cleanup(){
       続けて引く網は、孤児から測る不具合(§9.197)も古い写しの束縛(§9.211 ①)も
       素通りする（どちらも注入して54/54で通ることを確認済み）。 */
    await page.evaluate(()=>WL.scheduleView.render());
-   await page.waitForTimeout(300);
+   await paint();
    const gg=await page.evaluate(kk=>{
     const el=document.querySelector(`.sc-row-head [data-col="${kk}"] .col-resize`);
     if(!el)return null;const r=el.getBoundingClientRect();
@@ -189,7 +187,7 @@ async function cleanup(){
    await page.mouse.move(gg.x+dx,gg.y,{steps:8});
    await page.mouse.up();
    /* 保存が戻ってから次を引く——**戻る前に引くと、直っていなくても通る**。 */
-   await page.waitForTimeout(1200);
+   await idle(600);
    return true;
   };
   const t1=await wOf('__time__');
@@ -218,16 +216,16 @@ async function cleanup(){
    await WL.columnLayout.save(tg,{...cur,widths:{...(cur.widths||{}),__time__:w}});
    WL.scheduleView.render();
   },w1);
-  await page.waitForTimeout(600);
+  await paint();
 
   // ---- 5-6. 右クリックのメニュー / 隠す
   await page.click('.sc-row-head [data-col="__shift__"]',{button:'right'});
-  await page.waitForTimeout(400);
+  await paint();
   const menu=await page.evaluate(()=>{const m=document.querySelector('.col-head-menu');
    return m?{head:m.querySelector('.chm-head')?.textContent,n:m.querySelectorAll('button').length}:null});
   rec('見出しの右クリックでメニューが開く',!!menu&&menu.head==='勤務',JSON.stringify(menu));
   await page.click('.col-head-menu .chm-hide');
-  await page.waitForTimeout(1200);
+  await idle(600);
   const h2=await heads();
   const rowKeys2=await page.evaluate(()=>[...document.querySelector('.sc-row-line').children].filter(c=>c.dataset.col).map(c=>c.dataset.col));
   rec('隠した固定列が見出しから消える',!h2.includes('__shift__'),JSON.stringify(h2.slice(0,7)));
@@ -244,7 +242,7 @@ async function cleanup(){
   await openView();
  await page.click('#scContentModalBtn');
   await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:8000});
-  await page.waitForTimeout(900);
+  await idle();
   const title=await page.evaluate(()=>document.getElementById('lcTitle')?.textContent||'');
   rec('モーダルの見出しにどの表かが出る',title.includes('作業スケジュール表')&&title.includes(EQ),title);
   const panel=await page.evaluate(()=>({
@@ -285,9 +283,9 @@ async function cleanup(){
    const cb=r&&r.querySelector('input[type=checkbox]');
    if(cb&&!cb.checked)cb.click();
   });
-  await page.waitForTimeout(400);
+  await paint();
   await page.click('#lcSave');
-  await page.waitForTimeout(1500);
+  await idle(600);
   const twoDates=await page.evaluate(()=>{
    const head=[...document.querySelectorAll('.sc-row-head [data-col]')].map(h=>h.dataset.col);
    const rows=[...document.querySelectorAll('.sc-row-line')].map(r=>({
@@ -321,27 +319,27 @@ async function cleanup(){
    await openView();
    await page.click('#scContentModalBtn');
    await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:8000});
-   await page.waitForTimeout(600);
+   await idle();
    await page.evaluate(k=>{
     const r=[...document.querySelectorAll('#lcList .lc-item')].find(x=>x.dataset.key===k);
     const cb=r&&r.querySelector('input[type=checkbox]');
     if(cb&&cb.checked)cb.click();
    },key);
-   await page.waitForTimeout(400);
+   await paint();
    await page.click('#lcSave');
-   await page.waitForTimeout(1500);
+   await idle(600);
   };
   const reopenState=async key=>{
    await openView();
    await page.click('#scContentModalBtn');
    await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:8000});
-   await page.waitForTimeout(600);
+   await idle();
    const v=await page.evaluate(k=>{
     const r=[...document.querySelectorAll('#lcList .lc-item')].find(x=>x.dataset.key===k);
     return r?!!r.querySelector('input[type=checkbox]')?.checked:null;
    },key);
    await page.evaluate(()=>WL.listColumns.close());
-   await page.waitForTimeout(300);
+   await paint();
    return v;
   };
   await hideFixed('__rel__');
@@ -387,7 +385,7 @@ async function cleanup(){
       rowMenu.items.some(t=>/表示列/.test(t)),rowMenu.items.join(' / '));
   rec('危ない操作は下へ離す（§5）',rowMenu.dangerLast===true,rowMenu.items.join(' / '));
   await page.keyboard.press('Escape');
-  await page.waitForTimeout(200);
+  await paint();
   rec('Escでメニューが閉じる',
       await page.evaluate(()=>!document.querySelector('.sc-row-menu')));
 
@@ -398,20 +396,24 @@ async function cleanup(){
   await openView();
   await page.click('#scContentModalBtn');
   await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:8000});
-  await page.waitForTimeout(600);
+  await idle();
   const addable=await page.evaluate(()=>!document.getElementById('lcAddCol').hidden);
   rec('スケジュール表でも「列を作る」が使える',addable===true,String(addable));
   await page.click('#lcAddCol');
   /* 名前を聞く窓は素の`prompt()`ではない（§9.342）。開いた窓に打つ。 */
   await require('./lib/wait.js').answerPrompt(page,'計算テスト');
-  await page.waitForTimeout(500);
+  await paint();
+  /* 式の検査は打った瞬間には走らない（入力ハンドラが遅らせて盤を組み直す）。
+     **打つ前の札の字を控え、変わるまで待つ**——「まだ式が入っていません」の
+     まま読むと、正しい式でも落ちる（実際に落ちた）。 */
+  const fxBefore=await W.textOf(page,'.lc-fx-state');
   await page.evaluate(()=>{
    const ta=document.getElementById('lcFormula');
    ta.value='concat("★",[ロット番号])';
    ta.dispatchEvent(new Event('input',{bubbles:true}));
    ta.dispatchEvent(new Event('change',{bubbles:true}));
   });
-  await page.waitForTimeout(700);
+  await W.changed(page,'.lc-fx-state',fxBefore);
   const fxState=await page.evaluate(()=>({
    ok:!!document.querySelector('.lc-fx-state.is-ok'),
    msg:document.querySelector('.lc-fx-state')?.textContent.trim()||'',
@@ -420,7 +422,7 @@ async function cleanup(){
   rec('設定画面の見本に式の結果が出る',
       fxState.sample.some(t=>t.startsWith('★')&&t.length>1),JSON.stringify(fxState.sample));
   await page.click('#lcSave');
-  await page.waitForTimeout(1600);
+  await idle(600);
   const fxCells=await page.evaluate(()=>({
    head:!!document.querySelector('.sc-row-head [data-col="計算テスト"]'),
    vals:[...document.querySelectorAll('.sc-row-line [data-col="計算テスト"]')]
@@ -459,7 +461,7 @@ async function cleanup(){
    WL.displayRules.forget(); await WL.displayRules.load(true);
    if(WL.scheduleView&&WL.scheduleView.render)WL.scheduleView.render();
   },{TARGET,RULE});
-  await page.waitForTimeout(1200);
+  await idle(600);
   const ruled=await page.evaluate(()=>{
    const cells=[...document.querySelectorAll('.sc-row-line')].map(r=>{
     const c=r.querySelector('[data-col="計算テスト"]'),cat=r.querySelector('[data-col="__cat__"]');
@@ -495,7 +497,7 @@ async function cleanup(){
     hidden:(cur.hidden||[]).filter(k=>k!=='ルールだけ')});
    if(WL.scheduleView&&WL.scheduleView.render)WL.scheduleView.render();
   },{TARGET,RULE});
-  await page.waitForTimeout(1200);
+  await idle(600);
   const s6=await saved();
   rec('式が空でも読み替えだけの列はサーバーに残る（§9.234 ⑥）',
       Object.prototype.hasOwnProperty.call(s6.formulas||{},'ルールだけ')
@@ -525,7 +527,7 @@ async function cleanup(){
     order:(cur.order||[]).filter(k=>k!=='ルールだけ'),formulas:fx,rules:rl});
    if(WL.scheduleView&&WL.scheduleView.render)WL.scheduleView.render();
   },{TARGET});
-  await page.waitForTimeout(900);
+  await idle(600);
   try{await post('/api/display-rule-master/delete',{name:RULE,user_id:'test'})}catch(e){}
 
   /* ---- 列幅の合計が器より狭くても、決めた幅がそのまま効く（§9.209 ①） ----
@@ -555,7 +557,7 @@ async function cleanup(){
   await page.mouse.move(before.x,before.y);await page.mouse.down();
   await page.mouse.move(before.x-80,before.y,{steps:8});
   await page.mouse.up();
-  await page.waitForTimeout(1200);
+  await idle(600);
   const narrow=await page.evaluate(()=>{
    const head=document.querySelector('.sc-row-head');
    return{列:Math.round(head.querySelector('[data-col="__time__"]').getBoundingClientRect().width),
@@ -590,12 +592,7 @@ async function cleanup(){
       `トラック${before.トラック} / 列${before.列数}+取っ手+余り`);
 
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
- }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
- finally{
-  await cleanup().catch(()=>{});
-  await b.close();
-  const ok=R.filter(x=>x.ok).length;
-  console.log(`\n=== SUMMARY ===\n${ok}/${R.length} passed`);
-  process.exit(ok===R.length?0:1);
+ }finally{
+  await cleanup().catch(()=>{});   // 集計・閉じるはハーネス
  }
-})();
+});

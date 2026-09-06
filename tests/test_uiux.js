@@ -1,16 +1,11 @@
 /* §9.59 hidden / §9.62 折りたたみ / §9.63 パネル見出し /
    §9.64 ダッシュボード稼働状況 / §9.65 ボタンの基本作法 の検証 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+/* 待ちは「時間」ではなく「条件」（§9.102・3-15 ③・§9.347）。骨組み
+   （起動・rec・pageerror・素のダイアログ・集計・閉じる）は tests/lib/harness.js。
+   置き換え前後で全PASS行（測った値ごと）を突き合わせてある。 */
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const setMode=async m=>{await fetch(B+'/api/access-mode',{method:'POST',
- headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
-let b=null;
-(async()=>{
- await setMode('edit');
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
+run('test_uiux: §9.59〜§9.65 の作法',async({page,rec,setMode,W,idle,paint})=>{
  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openSchedule',{timeout:15000});
  /* ---- 初回案内は1箇所（§9.343、画面基準8「同じ情報を2箇所に出さない」） ----
@@ -35,7 +30,7 @@ let b=null;
  await page.evaluate(()=>{localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A');
    localStorage.setItem('scSplitListCollapsedV1','0')});
  await page.reload({waitUntil:'domcontentloaded'});
- await page.waitForTimeout(2500);
+ await W.booted(page);await idle();
 
  // ---- §9.65 ボタンの基本作法 ----
  const base=await page.evaluate(()=>{
@@ -82,7 +77,7 @@ let b=null;
  /* 一覧のページ送りは1ページ目で押せないと分かる。
     §9.286 ②: 置き場は画面下の`<footer>`から**一覧ツールバー**へ移した
     （分割表示ではfooterが`display:none`で、ページを繰る手立てが無かった）。 */
- await page.click('[data-db-key="SIKALOTNOW"]');await page.waitForTimeout(2500);
+ await page.click('[data-db-key="SIKALOTNOW"]');await idle();
  await page.waitForSelector('#listToolbar #prev',{timeout:10000});
  const prev=await page.evaluate(()=>{const e=document.querySelector('#prev');
    const cs=getComputedStyle(e);return {dis:e.disabled,cur:cs.cursor,op:+cs.opacity,title:e.title}});
@@ -91,7 +86,7 @@ let b=null;
  rec('ページ送りに説明が付いている',!!prev.title,prev.title);
 
  // ---- §9.63 パネル見出し ----
- await page.click('#openDashboard');await page.waitForTimeout(3000);
+ await page.click('#openDashboard');await idle(400,15000);
  const head=await page.evaluate(()=>{
   // パネル側は画面名も見出しバーも持たない(ヘッダーの#fileNameと
   // #headerViewBarが担う)。以前はダッシュボード/実績カレンダー/マスタ管理が
@@ -121,7 +116,7 @@ let b=null;
    dash.statusVisible&&dash.pivotHidden&&dash.activeTab==='status',JSON.stringify(dash));
  rec('稼働状況にKPIが4枚出る',dash.kpi===4,dash.kpi+'枚');
  rec('作業予定から設備ごとの状況が出る',dash.equipRows>0,dash.equipRows+'行');
- await page.click('[data-dbview="pivot"]');await page.waitForTimeout(2000);
+ await page.click('[data-dbview="pivot"]');await idle(400,15000);
  const pivot=await page.evaluate(()=>({
   pivotVisible:!document.querySelector('#dbPivotView').hidden,
   presets:document.querySelectorAll('[data-preset]').length,
@@ -134,21 +129,21 @@ let b=null;
  const btn=await page.evaluate(()=>{const e=document.querySelector('#dbRefresh');
    const cs=getComputedStyle(e);return {h:Math.round(e.getBoundingClientRect().height),bg:cs.backgroundColor}});
  rec('rp-btn-primaryに様式が当たっている',btn.h>20&&btn.bg!=='rgba(0, 0, 0, 0)',JSON.stringify(btn));
- await page.click('[data-dbview="status"]');await page.waitForTimeout(1200);
+ await page.click('[data-dbview="status"]');await idle(400,15000);
  rec('稼働状況へ戻れる',await page.evaluate(()=>!document.querySelector('#dbStatusView').hidden));
 
  // ---- §9.62 スケジュールの折りたたみ ----
  await setMode('schedule');
  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openSchedule',{timeout:15000});
- await page.waitForTimeout(1500);
+ await W.booted(page);
  await page.click('#openSchedule');
  await page.waitForSelector('.sc-board-row',{timeout:15000});
  await page.evaluate(()=>{const r=[...document.querySelectorAll('.sc-board-row')].find(x=>x.dataset.equipment==='テスト設備A');if(r)r.click()});
  await page.waitForSelector('.sc-row-line',{timeout:15000});
- await page.waitForTimeout(1500);
+ await W.settleFlags(page);await paint();
  const openW=await page.evaluate(()=>Math.round(document.querySelector('#grid').getBoundingClientRect().width));
- await page.click('.sc-split-collapse-btn');await page.waitForTimeout(700);
+ await page.click('.sc-split-collapse-btn');await paint();
  const folded=await page.evaluate(()=>{
   const ids=['genericFilterBar','listToolbar','grid'];
   return {shown:ids.filter(i=>{const e=document.getElementById(i);return e&&getComputedStyle(e).display!=='none'}),
@@ -161,7 +156,7 @@ let b=null;
  rec('畳んだ状態でも何が畳まれているか分かる',folded.label==='仕掛一覧',folded.label);
  rec('取っ手は掴める太さがある',folded.divider>=20,folded.divider+'px');
  rec('開閉状態が支援技術へ伝わる',folded.expanded==='false',folded.expanded);
- await page.click('.sc-split-collapse-btn');await page.waitForTimeout(700);
+ await page.click('.sc-split-collapse-btn');await paint();
  const back=await page.evaluate(()=>Math.round(document.querySelector('#grid').getBoundingClientRect().width));
  rec('開き直すと元に戻る',Math.abs(back-openW)<=2,`${openW}px → ${back}px`);
 
@@ -171,15 +166,4 @@ let b=null;
  rec('hidden属性が効いていない要素が無い',badHidden===0,badHidden+'件');
 
  await setMode('edit');
- await b.close();
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+},{mode:'edit'});

@@ -129,11 +129,6 @@
   "harness": 1,
   "ms": 2200
  },
- "test_dbequip.js": {
-  "count": 9,
-  "harness": 1,
-  "ms": 15100
- },
  "test_defect.js": {
   "count": 4,
   "harness": 1,
@@ -253,11 +248,6 @@
   "count": 29,
   "harness": 1,
   "ms": 12300
- },
- "test_listcache.js": {
-  "count": 7,
-  "harness": 1,
-  "ms": 15500
  },
  "test_listmodal.js": {
   "count": 6,
@@ -654,11 +644,6 @@
   "harness": 1,
   "ms": 7700
  },
- "test_sctimecols.js": {
-  "count": 26,
-  "harness": 1,
-  "ms": 22800
- },
  "test_scundecided.js": {
   "count": 0,
   "harness": 1,
@@ -758,11 +743,6 @@
   "count": 8,
   "harness": 1,
   "ms": 9950
- },
- "test_uiux.js": {
-  "count": 9,
-  "harness": 1,
-  "ms": 15600
  },
  "test_waiting.js": {
   "count": 2,
