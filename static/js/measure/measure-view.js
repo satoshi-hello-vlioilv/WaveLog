@@ -1325,7 +1325,7 @@ function renderCourseHierarchy(){
  const grid=$('#dataManagementPanel .data-management-grid');if(grid){const pairs=[];for(let i=0;i<grid.children.length;i+=2)pairs.push([grid.children[i]?.textContent,grid.children[i+1]?.textContent]);const keep=pairs.filter(([label])=>!['設計コース','実績コース','残コース'].includes(label));const insertAt=Math.max(0,keep.findIndex(([label])=>label==='オーダー番号'));keep.splice(insertAt,0,['設計コース',design||'未設定'],['実績コース',actual||'未設定'],['残コース',residual||'未設定']);grid.innerHTML=keep.map(([label,value])=>`<b>${esc(label||'')}</b><span title="${esc(value||'')}">${esc(value||'未設定')}</span>`).join('')}
  updateCourseGuard();
 }
-/* ---------- 作業スケジュールとの連携(読み取りのみ、docs/SCHEDULE_MODE_DESIGN.md §9.7) ----------
+/* ---------- 作業スケジュールとの連携(読み取りのみ、docs/decisions/9.7.md) ----------
    測定画面を開いたロットが作業予定に含まれていれば、基本情報タブへ
    「予定 2番目 / 予定開始 11:44 / 見積 2時間32分」の1行を出す。書き込みは
    行わない(進捗は§7.4の実績突合で自動反映される)。取得はopenMeasurement()の

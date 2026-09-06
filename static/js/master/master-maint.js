@@ -352,7 +352,7 @@
   return def.fields.length>=EDITOR_MODAL_MIN_FIELDS;
  }
 
- /* ================= 入力支援(docs/SCHEDULE_MODE_DESIGN.md §9.49) =================
+ /* ================= 入力支援(docs/decisions/9.49.md) =================
     マスタの入力は「マウスだけで最後まで終えられる」ことを基本にする。現場の
     端末はキーボードが使いにくい場所にあることがあり、また手入力は表記ゆれ
     (全角/半角・余分な空白)をそのままマスタへ持ち込む原因になるため。
@@ -2785,7 +2785,7 @@
   }catch(e){if(gen===maintState.loadGen&&list)list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
  }
 
- /* ---------- 換算係数モデル(docs/SCHEDULE_MODE_DESIGN.md §6・§9.8) ----------
+ /* ---------- 換算係数モデル(docs/SCHEDULE_MODE_DESIGN.md §6・docs/decisions/9.8.md) ----------
     因子×水準の一覧(自動算出値・N数・上書き値)は「自動算出＋上書き」の2層
     構造で汎用CRUDのフォームに載らないため、専用の描画を持つ特別扱いにする。 */
  function openMasterMaint(defKey){

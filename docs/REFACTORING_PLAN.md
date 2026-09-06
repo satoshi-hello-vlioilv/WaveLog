@@ -2,7 +2,7 @@
 
 対象: 機能追加を伴わない内部整理。アーキテクチャの現状は `ARCHITECTURE.md`、
 起動基盤の再編は `REBUILD_PLAN.md`(実施済み)、機能設計の経緯は
-`SCHEDULE_MODE_DESIGN.md` §9 を参照。
+`docs/decisions/`（旧 `SCHEDULE_MODE_DESIGN.md` §9）を参照。
 
 ---
 

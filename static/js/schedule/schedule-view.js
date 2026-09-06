@@ -1,5 +1,5 @@
 "use strict";
-/* schedule-view.js: 作業スケジュール画面(順次作業表示、docs/SCHEDULE_MODE_DESIGN.md §9)。
+/* schedule-view.js: 作業スケジュール画面(順次作業表示、docs/decisions/ の §9)。
 
 既存のcal-mode/rp-mode/db-modeと同じ「メイン画面の表示切り替え」方式で、
 #grid の兄弟要素としてパネルを差し込みbody.sc-modeで他要素を隠す

@@ -965,7 +965,7 @@ def read_backup_rows(path):
           # 古い行には無いので空になる——**空を「同じ」と読まないこと**。
           'record_updated_at':str(r[14] or '')} for r in rows],path
 
-# ---------- 実績バックアップ読込のキャッシュ(docs/SCHEDULE_MODE_DESIGN.md §9.41) ----------
+# ---------- 実績バックアップ読込のキャッシュ(docs/decisions/9.41.md) ----------
 # RECORDS_BACKUP_EXPORT_PATHは閲覧用複製(Box等のネットワーク共有)を指すのが
 # 普通で、merged_backup_rows()は毎回そのテーブルを**全件**読む。作業スケジュールの
 # 俯瞰ボードは設備数だけexpand_plan()を回すため、10設備なら同じ全件読込が10回

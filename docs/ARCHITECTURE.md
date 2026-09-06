@@ -82,7 +82,7 @@
 留まり、共有の応答待ちで長引いたときにどこで待たされているのか分からなかった
 (実際に「起動時の『接続を確認中』が長い」という指摘を受けた)。現在は
 `backend/boot_status.py` が実際の段階を書き出す。詳細は
-`docs/SCHEDULE_MODE_DESIGN.md` §9.47。
+`docs/decisions/9.47.md`。
 
 ### 起動は「サーバーが応答したら終わり」ではない（起動オーバーレイ）
 
@@ -272,7 +272,7 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 パス設定の下部に状態パネルを置き、有効/停止・直近の成否と行数・抽出先の
 最終更新・資材の配置状況を表示し、「今すぐ抽出」で任意のタイミングでも
 走らせられるようにしてある(`/api/rne-extract/status`・`/run`。詳細は
-`docs/SCHEDULE_MODE_DESIGN.md` §9.50)。
+`docs/decisions/9.50.md`)。
 - サンドボックス等の非Windows環境では`navigator_api.py`がインスタンス化
   時点で`RuntimeError`を返すため、抽出は毎回失敗ログを残すだけでサーバー
   自体は問題なく動作する(周辺のロジック——設定切替・スケジューラの間隔
@@ -1183,7 +1183,7 @@ return withWaiting({title:'…を読み込んでいます', detail:'…', progre
   `loadMaintInner()`）。ラップで包むだけだと、内側の関数を直接呼んでいる
   既存の呼び出し元を取りこぼす。
 - **書込系には被せない。** 作業スケジュールの書込は操作直後に画面を止めない
-  一方通行の設計（`docs/SCHEDULE_MODE_DESIGN.md` §9.22）で、待ち表示はその
+  一方通行の設計（`docs/decisions/9.22.md`）で、待ち表示はその
   狙いを打ち消す。
 
 ### ネットワーク共有を読む処理は「回数」で見る
@@ -1197,7 +1197,7 @@ return withWaiting({title:'…を読み込んでいます', detail:'…', progre
 
 - **設備ごとにループする処理で、ループの外で1回作れるものを中で作らない。**
   `schedule_calc.expand_plan()` の `actual_index` がその代表例
-  （`docs/SCHEDULE_MODE_DESIGN.md` §9.41）。
+  （`docs/decisions/9.41.md`）。
 - 共有を読む共通関数には、**ファイルの署名（更新時刻+サイズ）+ TTL** の
   キャッシュを入れる（`db_access.merged_backup_rows()`）。TTL 内は `stat` すら
   省く（共有越しでは `stat` も往復する）。書き込んだ側が明示的に捨てられる口
@@ -1776,7 +1776,7 @@ return withWaiting({title:'…を読み込んでいます', detail:'…', progre
 
 - 書込ボタン・ドラッグ可否を出す条件は、**サーバー側のガードと同じ式**にする。
   条件を片方だけ足したり緩めたりしない
-  （`docs/SCHEDULE_MODE_DESIGN.md` §9.44 が実際に踏んだ）。
+  （`docs/decisions/9.44.md` が実際に踏んだ）。
 - 権限が足りずに無効化するときは、**黙って消さずに理由を出す**。マスタで
   直せる内容なら、どのマスタの何を設定すればよいかまで書く。
 - 空欄の意味を勝手に広げない。「対象設備が空欄」は *未設定* であって
