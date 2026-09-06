@@ -372,8 +372,10 @@ let b=null;
       picked.slice(0,60));
   const NEW=TAG+'新組';
   await page.evaluate(()=>document.querySelector('#fpBulkNew').click());
-  await page.waitForSelector('#fbGroupNameInput',{timeout:5000});
-  await page.fill('#fbGroupNameInput',NEW);
+  /* 名前を聞く窓は共通の`promptModal`（§9.342）。入力欄は`#appPromptInput`
+     ——この画面だけの`#fbGroupNameInput`は廃した。 */
+  await page.waitForSelector('#appPromptInput',{timeout:5000});
+  await page.fill('#appPromptInput',NEW);
   /* 確認窓の「決める」は`#appConfirmOk`（`confirmModal()`が使い回す1枚）。
      **テキストで探さないこと**——札の字は呼ぶ側が決めるので、文言を直した
      瞬間に網だけが古い約束のまま残る。 */

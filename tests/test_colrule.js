@@ -369,7 +369,10 @@ async function cleanup(){
    const p=WL.listRules.open({column:(S.columns||[])[0]});
    await new Promise(r=>setTimeout(r,400));
    const modal=document.getElementById('appConfirmModal');
-   const shown=!!modal&&!modal.hidden&&!!document.getElementById('lrNewName');
+   /* 入力欄は共通の`promptModal`が持つ`#appPromptInput`（§9.342）。
+      以前はこの画面だけの`#lrNewName`だった——**自前の写しを消したので、
+      網も共通の口を見る**。 */
+   const shown=!!modal&&!modal.hidden&&!!document.getElementById('appPromptInput');
    document.getElementById('appConfirmCancel')?.click();
    await p.catch(()=>{});
    window.prompt=orig;

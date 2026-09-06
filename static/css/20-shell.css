@@ -927,7 +927,6 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
     「直すと全部に効きます」が読めない大きさになる。 */
  .sc-float-header .lr-usage{display:block;font-size:var(--fs-micro);line-height:1.5;
   margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
- .lr-name-input{width:100%;margin-top:var(--space-2)}
  .lr-row-conds{display:flex;flex-direction:column;gap:var(--gap-hair)}
  .lr-cond,.lr-row-then{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-hair);
   font-size:var(--fs-sm)}
