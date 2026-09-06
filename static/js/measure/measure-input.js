@@ -248,6 +248,7 @@ function focusCurrent(){
  const at=$('#stepStatus');
  at.textContent=`丈${li+1}・${slot.replace(/\s+/g,'')}`;
  at.title='いま入力する位置（丈・条）';
+ WL.measureHooks.run('afterFocus');
 }
 function advanceWidth(){const m=S.measure.settings,max=Math.max(1,+$('#horizontalCount').value||1),seq=widthSequence(max,$('#widthOrder').value,$('#widthDirection').value),pos=seq.indexOf(m.wStep||0);m.wStep=seq[(pos+1)%seq.length]}
 /* 「次の枠へ／前の枠へ」。条ごとの項目は条入力順(`widthSequence`)に従うが、
@@ -355,6 +356,7 @@ function processDeviceInputCore(raw){
    丸めてから本処理へ渡し（§9.242 ②）、処理後は診断用に直前受信の生データと
    結果を#deviceLastReceivedへ記録する。 */
 function processDeviceInput(raw){
+ WL.measureHooks.run('beforeDeviceInput',raw);
  const pad2=n=>String(n).padStart(2,'0'),d=new Date(),ts=`${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
  const type=$('#measureType')?.value,parsed=deviceParse(raw);
  let result;
@@ -367,6 +369,7 @@ function processDeviceInput(raw){
  }else result=processDeviceInputCore(raw);
  const el=$('#deviceInput'),out=$('#deviceLastReceived');
  if(out){const ok=el?.classList.contains('device-ok'),ng=el?.classList.contains('device-error');const label=ok?'OK':ng?'NG':'-';out.textContent=`直前受信 ${ts} [${label}]: ${raw||'(空)'}`;out.classList.toggle('ng',!!ng)}
+ WL.measureHooks.run('afterDeviceInput',raw,result);
  return result;
 }
 function inputError(msg){setState(msg);const el=$('#deviceInput');el.classList.add('device-error');el.value='';refocusDeviceInput()}
@@ -475,7 +478,9 @@ function makeMeasureInput(key,i,j,value){value=fixedMeasurementValue(key,value);
  /* 読み上げ名も枠の呼び名から作る。板厚は「1条」ではなく「OS/CL/DS」。 */
  const aria=key==='thickness'?(WL.measureItem.slotLabels('thickness')[j]||String(j+1)):`${j+1}条`;
  return `<input data-mkey="${key}" data-i="${i}" data-j="${j}" value="${esc(value)}" inputmode="${mode}" aria-label="${esc(aria)}">`}
-function bindMeasureInputs(){
+/* 欄を結んだあとに足す（手動入力の選択状態など）は `afterBindInputs`（§9.352）。 */
+function bindMeasureInputs(){bindMeasureInputsCore();WL.measureHooks.run('afterBindInputs')}
+function bindMeasureInputsCore(){
  const m=S.measure;
  const syncStepFor=x=>{if(x.dataset.mkey==='thickness')m.settings.tStep=+x.dataset.j;else m.settings.wStep=+x.dataset.j};
  document.querySelectorAll('[data-mkey]').forEach(x=>{
@@ -593,7 +598,50 @@ function applyInstructionToleranceForOtherTargets(kind){const p=instructedTolera
 /* typeName は「いま画面で選ばれている入力内容」の代わりに使う省略可能な引数。
    完了前の確認は**描かれていない項目の公差外まで数える**必要があり、画面の
    選択に引きずられると1項目ぶんしか見られない(§9.125)。省略時は今までどおり。 */
-function toleranceDetail(kind,index=0,typeName){
+/* ---------- 公差の答えは1つの登録表が出す（§9.348・REVIEW 3-16） ----------
+   以前は`toleranceDetail`を3つのファイルが読み込み順に「退避して被せて」いた
+   （input → tolerance → lot-split → worklog）。①被せの1つが引数を落とすと根まで
+   届かない ②読み込み順がそのまま答えの順になる ③同じ分岐（指示型）が2度
+   書かれ、内側のほうは一度も走らない——どれも実際に起きた事故。
+   提供者は`priority`（大きいほど先）で並び、`resolve`が先頭から当てる。
+   **引数は resolve が運ぶ**ので「1つ落とすと根まで届かない」は構造として消える。
+
+   提供者の返し方は3通りで、**区別に意味がある**:
+     detail（object） … これが答え
+     null              … 答えは「公差なし」（表示しない）。次の提供者へは行かない
+     undefined         … 自分の答えではない。次の提供者へ
+   以前の被せは`null`を「表示しない」の意味で返しており、これを「次へ」に
+   読み替えると非寸法の項目に製造公差が当たってしまう。 */
+const toleranceProviders=[];
+function registerToleranceProvider(p){
+ if(!p||typeof p.detail!=='function')return;
+ toleranceProviders.push({name:String(p.name||''),priority:Number(p.priority)||0,detail:p.detail,facts:p.facts,scale:p.scale});
+ toleranceProviders.sort((a,b)=>b.priority-a.priority);
+}
+/* 提供者は `detail` のほかに `facts(kind)`／`scale(kind,values,count)` も持てる（§9.352）。
+   答えを持たないときは undefined を返す（次の提供者へ）。 */
+function resolveToleranceSlot(slot,...args){
+ for(const p of toleranceProviders){
+  if(typeof p[slot]!=='function')continue;
+  let r;try{r=p[slot](...args)}catch(e){console.error('公差の提供者 '+p.name+' の '+slot+' で例外',e);continue}
+  if(r!==undefined)return r;
+ }
+ return undefined;
+}
+function resolveTolerance(kind,index=0,typeName){
+ for(const p of toleranceProviders){
+  let r;
+  try{r=p.detail(kind,index,typeName)}
+  catch(e){console.error('公差の提供者「'+p.name+'」で例外（次の提供者へ）',e);continue}
+  if(r!==undefined)return r;
+ }
+ return manufacturingToleranceDetail(kind,index,typeName);
+}
+window.WL.tolerance={register:registerToleranceProvider,resolve:resolveTolerance,
+ providers:()=>toleranceProviders.map(p=>({name:p.name,priority:p.priority}))};
+function toleranceDetail(kind,index=0,typeName){return resolveTolerance(kind,index,typeName)}
+/* 既定の答え: 製造公差／オーダー公差（寸法系）。登録表の最後に当たる。 */
+function manufacturingToleranceDetail(kind,index=0,typeName){
  const type=typeName||$('#measureType')?.value||S.measure?.settings?.measureType||'',isDimensional=WL.measureItem.isDimensional(type),b=S.measure.basic,
    base=Number(b[(TOL_DIMENSIONS[kind]||TOL_DIMENSIONS.width).baseKey]);
  let requested=configuredToleranceSource();if(!isDimensional)requested='instruction';let data=requested==='instruction'?applyInstructionToleranceForOtherTargets(kind):toleranceDataForSource(kind,requested),source=requested,fallback=false;
@@ -927,6 +975,7 @@ const summary=$('#toleranceSummary');if(summary&&summary.hidden)summary.hidden=f
   loadFlatComment();
   bindFlatnessInputs();
  }
+ WL.measureHooks.run('afterGridVertical');
 }
 /* ---------- 表は器に入るぶんだけ縮める（§9.209 ③⑤、利用者の指示） ----------
    「25条程度から怪しいので、**高さが足りないでスクロールが出る場合に限り**、
@@ -1073,14 +1122,18 @@ function bindFlatnessInputs(){
 /* 出どころの呼び名。**指示値は上下限を持たない**ので「指示基準」と呼ぶ
    （§9.242 ⑤、利用者の指示）。製造・オーダーは板厚・板幅の上下限なので公差。 */
 const TOL_SOURCE_LABELS={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示基準'};
-function compactToleranceData(kind){
- const detail=toleranceDetail(kind),
-   base=Number(S.measure.basic[(TOL_DIMENSIONS[kind]||TOL_DIMENSIONS.width).baseKey]),
-   labels=TOL_SOURCE_LABELS;
+/* index を省くと**今の入力位置**（wStep/tStep）。分割ロットでは条ごとに公差が変わるので
+   1条目で固定すると別の条の公差を出す（以前は lot-split.js が丸ごと差し替えていた。§9.352）。
+   基準値（base）は提供者が返した値（分割時はその子ロット自身の値）を優先する。 */
+function compactToleranceData(kind,index){
+ const idx=index??((S.measure?.settings?.[kind==='thickness'?'tStep':'wStep'])||0);
+ const detail=toleranceDetail(kind,idx),labels=TOL_SOURCE_LABELS;
  if(!detail)return null;
- return{source:labels[detail.source]||'公差',base:fixedToleranceValue(kind,base),plus:fixedToleranceValue(kind,detail.plus),minus:fixedToleranceValue(kind,detail.minus),low:fixedToleranceValue(kind,detail.range[0]),high:fixedToleranceValue(kind,detail.range[1]),range:detail.range};
+ const base=Number.isFinite(detail.base)?detail.base:Number(S.measure.basic[(TOL_DIMENSIONS[kind]||TOL_DIMENSIONS.width).baseKey]);
+ return{source:labels[detail.source]||'公差',base:fixedToleranceValue(kind,base),plus:fixedToleranceValue(kind,detail.plus),minus:fixedToleranceValue(kind,detail.minus),low:fixedToleranceValue(kind,detail.range[0]),high:fixedToleranceValue(kind,detail.range[1]),range:detail.range,splitLot:detail.splitLot||''};
 }
 function compactToleranceFacts(kind){
+ const own=resolveToleranceSlot('facts',kind);if(own!==undefined)return own;
  const data=compactToleranceData(kind);
  /* **公差が無いことはバッジ1つで言う**（§9.209 ②、利用者の指示）。
     3行のカード（実測34px＋余白）を1行の帯に置いていたので、そのぶん条が
@@ -1340,6 +1393,7 @@ function toleranceAxisView(kind,values,count,opt){
    行の高さは**実際の表を測って**合わせる（`alignToleranceChart`）。トークンから
    計算すると罫線と表示サイズのぶんでずれる（§9.95の行高と同じ罠）。 */
 function compactToleranceScale(kind,values,count){
+ const own=resolveToleranceSlot('scale',kind,values,count);if(own!==undefined)return own;
  const facts=compactToleranceFacts(kind);
  if(!facts.range)return facts.html;
  const view=toleranceAxisView(kind,values,count);
@@ -1503,5 +1557,5 @@ WL.numberline={
  },
 };
 WL.onReady(()=>{syncNumberlineControls()});
-function renderMeasureGrid(){renderMeasureGridVertical();requestAnimationFrame(updateValidationVisuals)}
+function renderMeasureGrid(){renderMeasureGridVertical();requestAnimationFrame(updateValidationVisuals);WL.measureHooks.run('afterGrid')}
 Object.assign(window.WL,{toleranceAxisView});

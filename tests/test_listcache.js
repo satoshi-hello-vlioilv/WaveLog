@@ -1,14 +1,10 @@
 /* 仕掛一覧/品質データの切替高速化(§9.46)の検証:
    画面を戻したときに /api/table を叩き直さない・鮮度表示・再読込での強制取得 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const ctx=await b.newContext({viewport:{width:1600,height:1000}});
- await ctx.addInitScript(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
- const page=await ctx.newPage();
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
+/* 待ちは「時間」ではなく「条件」（§9.102・3-15 ③・§9.347）。骨組み
+   （起動・rec・pageerror・素のダイアログ・集計・閉じる）は tests/lib/harness.js。
+   置き換え前後で全PASS行（測った値ごと）を突き合わせてある。 */
+const {run}=require('./lib/harness.js');
+run('test_listcache: 一覧の写しと鮮度・再読込',async({page,rec,W,idle,paint})=>{
 
  // API呼び出しを数える(体感速度の正体は往復回数。ローカルSSDの実時間は当てにしない)
  const calls=[];
@@ -24,13 +20,13 @@ let b=null;
  // --- 1. 品質データへ切り替えて仕掛へ戻す ---
  let mark=since();
  await page.click('[data-db-key="SIKALOTDEF"]');
- await page.waitForTimeout(2500);
+ await idle();
  const toDef=mark();
  rec('品質データへの初回切替では取得が発生する',toDef.filter(x=>x==='table').length>=1,JSON.stringify(toDef));
 
  mark=since();
  await page.click('[data-db-key="SIKALOTNOW"]');
- await page.waitForTimeout(2000);
+ await idle();
  const backNow=mark();
  rec('仕掛一覧へ戻るときは再取得しない(/api/table 0回)',
    backNow.filter(x=>x==='table').length===0,JSON.stringify(backNow));
@@ -39,7 +35,7 @@ let b=null;
 
  mark=since();
  await page.click('[data-db-key="SIKALOTDEF"]');
- await page.waitForTimeout(2000);
+ await idle();
  const backDef=mark();
  rec('品質データへ戻るときも再取得しない',backDef.length===0,JSON.stringify(backDef));
 
@@ -61,7 +57,7 @@ let b=null;
  await page.click('#listFreshness');
  await page.waitForSelector('#reloadMenu [data-reload-action="list"]',{timeout:5000});
  await page.click('#reloadMenu [data-reload-action="list"]');
- await page.waitForTimeout(2500);
+ await idle();
  const reloaded=mark();
  rec('「再読込」は必ずサーバーから取り直す',
    reloaded.filter(x=>x==='table').length>=1,JSON.stringify(reloaded));
@@ -117,14 +113,14 @@ let b=null;
  await page.click('#listFreshness');
  await page.waitForSelector('#reloadMenu [data-reload-action="list"]',{timeout:5000});
  await page.click('#reloadMenu [data-reload-action="list"]');
- await page.waitForTimeout(2500);
+ await idle();
  const back=await chip();
  rec('速い読み込みへ戻ると、また消える',!back.出ている,JSON.stringify(back));
 
  // --- 4. 検索語やページを変えたら別内容なので取り直す ---
  mark=since();
  await page.fill('#search','L00');
- await page.waitForTimeout(2500);
+ await idle(600);
  const searched=mark();
  rec('検索条件を変えたときは取り直す',searched.filter(x=>x==='table').length>=1,JSON.stringify(searched));
 
@@ -149,7 +145,7 @@ let b=null;
  //     完了し、かつ点滅しない切替ができる」ことを見る。本当に取得が走る
  //     回帰なら毎回350msを超えるので3回とも落ちる。
  const measure=async()=>{
-  await page.click('[data-db-key="SIKALOTDEF"]');await page.waitForTimeout(1500);
+  await page.click('[data-db-key="SIKALOTDEF"]');await idle();
   return page.evaluate(async()=>{
     const ov=document.querySelector('#saveOverlay');
     let seen=false;
@@ -175,15 +171,5 @@ let b=null;
   !!flash,JSON.stringify(samples));
  console.log('  (参考) キャッシュ命中時の切替~描画完了 '+samples.map(x=>x.ms+'ms').join(' / '));
 
- await b.close();
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+},{viewport:{width:1600,height:1000},
+   init:()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A')});

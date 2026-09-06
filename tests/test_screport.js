@@ -95,6 +95,7 @@ let b=null;
  await open();
  const doing3=await rowOf('作業中');
  rec('再開の検証に使う作業中の行がある',!!doing3,JSON.stringify(doing3));
+ let resumedId=null;  // 再開で開いた記録のID（後始末用。ブロックの外で使う）
  if(doing3){
   // どの行が先頭の作業中になるかは実績の開始時刻で決まる(他テストの実績も
   // 混ざる)。行が表示しているロット番号と、開いた測定画面のロットを突き合わせる。
@@ -114,10 +115,18 @@ let b=null;
   },null,{timeout:20000}).catch(()=>{});
   const resumed=await page.evaluate(()=>({modal:!document.querySelector('#measureModal').hidden,
    lot:(document.querySelector('#basicInfo')?.textContent||'').slice(0,60)}));
+  /* 再開で開いた測定は開いた時点で records.sqlite3 へ写る（記録IDは設備の段が空の
+     `|L0003|K0003|C003`。§9.351）。控えて後始末で消す。 */
+  resumedId=await page.evaluate(()=>S.measure&&S.measure.id);
   rec('作業中の行をダブルクリックすると測定画面が開く(続きから再開)',
    resumed.modal&&!!doingLot&&resumed.lot.includes(doingLot),
    `行のロット=${doingLot} / ${JSON.stringify(resumed)}`);
  }
+
+ /* 後始末: 自分が置いた実績（rec-*）は自分で消す。残すと後続の網が「作業中」「完了」を
+    この置き土産で数える（§9.351）。 */
+ await fetch('http://127.0.0.1:5029/api/measurement/backup/delete',{method:'POST',
+  headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:['rec-doing','rec-done2'].concat(resumedId?[resumedId]:[])})}).catch(()=>{});
 
  console.log('\n=== SUMMARY ===');
  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);

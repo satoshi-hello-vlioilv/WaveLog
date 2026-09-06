@@ -8,9 +8,10 @@
     python3 tests/pick_tests.py backend/routes/logs.py static/js/core/log-view.js
 
 **これは絞り込みの手掛かりであって、フルスイートの代わりではない。**
-コミット前は `tests/run_all.sh` を通しで回すこと。535件が20分かかるから
-途中で回しにくい、という問題だけを解く道具で、「関係ない」と判断できる
-根拠は下の表(人が書いたもの)しかない。表が間違っていれば見落とす。
+通しを回すかどうかは利用者が決める（CLAUDE.md「作業の進め方」A。
+「コミット前は必ず通す」は撤回した）。ここは「関係ない」と判断できる根拠が
+下の表(人が書いたもの)しかない道具で、表が間違っていれば見落とす。
+**絞り込みで回したことと、通していないことを報告に書く。**
 
 設計:
  ・**分からないものは全部回す**(`ALL`)。当たる規則が無いファイルを
@@ -55,7 +56,11 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
           # §9.332: 紙まわりの写しが増えていないこと
           'test_printcore',
           # §9.324 R3: JSの読み込み順は core.py の JS_FILES の1箇所（static/js と突き合わせる）
-          'test_loadorder']
+          'test_loadorder',
+          # §9.347 REVIEW 3-15: 固定待ちとハーネスの写しが増えていないか（1秒未満）
+          'test_waitlint',
+          # §9.349 REVIEW 3-21: 関数の中の import が増えていないか（輪を隠す道）
+          'test_importlint']
 
 # 束ねた呼び名。右辺は実際のテスト名。
 G = {}
@@ -515,6 +520,9 @@ RULES = [
     # §9.326: lint の設定と上限は網そのもの
     ('eslint.config.mjs', ['test_eslint']),
     ('tests/fixtures/eslint_baseline.json', ['test_eslint']),
+    ('tests/fixtures/color_baseline.json', ['test_csslint']),
+    ('tests/fixtures/import_baseline.json', ['test_importlint']),
+    ('tests/fixtures/wait_baseline.json', ['test_waitlint']),
     ('requirements-dev.txt', ['test_pyflakes']),
     ('tests/README.md', ['test_docindex']),
 ]

@@ -63,51 +63,37 @@
 
   // toleranceDetail: 指示型は文字列の数値部を判定範囲[0,value]として返す（判定・図示に利用）。
   if(typeof toleranceDetail==='function'){
-    var baseDetail=toleranceDetail;
-    /* 第3引数 typeName は「いま画面で選ばれている入力内容」の代わり（§9.125）。
-       **ラッパーが引数を捨てると、根の関数がいくら受け取れても届かない**
-       ——完了前の確認は描かれていない項目の公差外まで数えるので、ここで
-       落とすと全項目に「いま選ばれている項目の公差」を当ててしまう
-       （実際にそうなり、公差の無いラテラルボーが板幅の公差で判定された）。 */
-    toleranceDetail=function(kind,index,typeName){
+    /* 提供者として登録する（§9.348）。指示型でなければ自分の答えではない
+       （undefined＝次の提供者へ）。指示値が読めないときは null＝「公差なし」。 */
+    WL.tolerance.register({name:'指示型（指示_項目の値）',priority:20,detail:function(kind,index,typeName){
       var type=typeName||currentType();
       if(isInstructionType(type)){
         var info=instructionInfo(type);
         if(!info||!Number.isFinite(info.value))return null;
         return {range:[0,info.value],source:'instruction',fallback:false,plus:info.value,minus:0,plusKey:info.key,minusKey:'',base:0,single:true,instructionType:type,unit:info.unit,raw:info.raw};
       }
-      return baseDetail(kind,index,typeName);
-    };
+      return undefined;
+    }});
   }
 
   // 公差カード/スケールは指示型では専用カードへ置換（数値上下限バー・数直線は出さない）。
-  if(typeof compactToleranceFacts==='function'){
-    var baseFacts=compactToleranceFacts;
-    compactToleranceFacts=function(kind){
+  /* カード（facts）と数直線（scale）も提供者が持つ（§9.352）。指示型でなければ undefined＝次へ。 */
+  WL.tolerance.register({name:'指示型（指示_項目の値）・カード',priority:20,
+    facts:function(kind){
       var type=currentType();
       if(isInstructionType(type)){var info=instructionInfo();return {range:(info&&Number.isFinite(info.value))?[0,info.value]:null,html:instructionCardHtml()};}
-      return baseFacts(kind);
-    };
-  }
-  if(typeof compactToleranceScale==='function'){
-    var baseScale=compactToleranceScale;
-    compactToleranceScale=function(kind,values,count){
+      return undefined;
+    },
+    scale:function(kind,values,count){
       var type=currentType();
       if(isInstructionType(type))return instructionCardHtml();
-      return baseScale(kind,values,count);
-    };
-  }
+      return undefined;
+    }});
 
   // 上部の要約(#toleranceSummary)は指示型では抑止（内容がふさわしくないため）。
   function suppressSummaryForInstruction(){var type=currentType();if(isInstructionType(type)){var s=$('#toleranceSummary');if(s)s.hidden=true;}}
-  if(typeof renderMeasureGridVertical==='function'){
-    var baseRMGV=renderMeasureGridVertical;
-    renderMeasureGridVertical=function(){baseRMGV();suppressSummaryForInstruction();};
-  }
-  if(typeof updateMeasurementHeading==='function'){
-    var baseUMH=updateMeasurementHeading;
-    updateMeasurementHeading=function(){baseUMH();suppressSummaryForInstruction();};
-  }
+  WL.measureHooks.on('afterGridVertical',()=>suppressSummaryForInstruction());
+  WL.measureHooks.afterHeading(()=>suppressSummaryForInstruction());
   /* ③の公差一覧が指示型の項目も並べられるように口を出す（§9.157）。
      **項目名の一覧もここが答える**——`INSTRUCTION_FIELDS`はこのファイルの
      ものなので、呼ぶ側に写しを作らせない（2箇所になると片方だけ増える）。
@@ -254,7 +240,8 @@
   const fb=$('#workFillFromAuto');
   if(fb)fb.onclick=()=>fillFromAuto();
  }
- updateWorkTimePanel=function(){if(!S.measure)return;syncField('workStartAt');syncField('workEndAt');bindWorkTime();refreshWorkTime();refreshAutoStamps()};
+ /* 作業時間パネルの描画はこのファイルが持ち主（§9.352）。核（measure-view.js）は持ち主が居ればそれを呼ぶ。 */
+ WL.measureHooks.own('workTimePanel',function(){if(!S.measure)return;syncField('workStartAt');syncField('workEndAt');bindWorkTime();refreshWorkTime();refreshAutoStamps()});
  /* 時間の書き方を変えたら、作業時間の比較カードも書き直す（§9.341）。 */
  document.addEventListener('wl:duration-style',()=>{
   try{if(S.measure)refreshWorkTime()}
@@ -423,16 +410,7 @@
   let debounceTimer=null;
   function scheduleRefresh(){clearTimeout(debounceTimer);debounceTimer=setTimeout(()=>{refreshBenchmark();ensureLiveTimer()},700)}
 
-  if(typeof renderMeasurement==='function'){
-    const baseRender=renderMeasurement;
-    renderMeasurement=function(){baseRender();refreshBenchmark();ensureLiveTimer()};
-  }
-  if(typeof markDirty==='function'){
-    const baseMarkDirty=markDirty;
-    markDirty=function(){baseMarkDirty();scheduleRefresh()};
-  }
-  if(typeof saveLocal==='function'){
-    const baseSaveLocal=saveLocal;
-    saveLocal=async function(status){const r=await baseSaveLocal(status);refreshBenchmark();return r};
-  }
+  WL.measureHooks.afterRender(()=>{refreshBenchmark();ensureLiveTimer()});
+  WL.measureHooks.on('afterDirty',()=>scheduleRefresh());
+  WL.measureHooks.on('afterSave',()=>refreshBenchmark());
 })();

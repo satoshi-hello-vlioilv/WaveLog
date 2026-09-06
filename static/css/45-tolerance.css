@@ -106,10 +106,10 @@
 @keyframes numberline-pending-pulse{0%,100%{opacity:1;transform:translate(-50%,-50%) scale(1)}50%{opacity:.55;transform:translate(-50%,-50%) scale(1.25)}}
 @media(prefers-reduced-motion:reduce){.numberline-pending{animation:none}}
 /* ---- 汎用フィルタ バー ---- */
-.generic-filter-bar{margin:6px 14px 0;border:1px solid #b7c7cc;border-radius:var(--radius-sm);background:#fff;overflow:hidden}
+.generic-filter-bar{margin:6px 14px 0;border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;overflow:hidden}
 /* 1段目: 検索窓（トークン入力）＝汎用検索窓から次々に条件を追加する主導線 */
 .filter-search-row{position:relative;display:flex;align-items:center;gap:var(--space-2);min-height:var(--ctl-h-lg);padding:var(--pad-row);background:#edf7f8}
-.filter-search-row>b{flex:0 0 auto;color:#173842;white-space:nowrap}
+.filter-search-row>b{flex:0 0 auto;color:var(--ink);white-space:nowrap}
 .filter-count{flex:0 0 auto;padding:var(--pad-chip);border-radius:var(--radius-md);background:#fff;border:1px solid #9fc3c8;color:#075e67;font-weight:800;font-size:var(--fs-micro);white-space:nowrap}
 /* ---------- その場フィルタ(§9.238 ⑤、利用者の指示) ----------
    登録フィルタとは別の、**登録しない絞り込み**。カラムと条件を決めておき、
@@ -302,16 +302,16 @@
 .filter-suggest-head{display:flex;align-items:center;gap:var(--gap-inline);padding:4px 6px 3px;color:#526970;font-size:var(--fs-micro);font-weight:800}
 .filter-suggest-head .fs-icon{display:grid;place-items:center;width:16px;height:16px;border-radius:var(--radius-round);background:#e4f3f4;color:#075e67;font-size:var(--fs-badge)}
 .filter-suggest-items{display:flex;flex-wrap:wrap;gap:var(--gap-tight);padding:2px 4px 4px}
-.suggest-chip{display:inline-flex;align-items:center;gap:var(--gap-tight);max-width:100%;min-height:var(--ctl-h-xs);border-radius:var(--radius-lg);border:1px solid #bcd6d9;background:#f7fafb;color:#173842;cursor:pointer}
+.suggest-chip{display:inline-flex;align-items:center;gap:var(--gap-tight);max-width:100%;min-height:var(--ctl-h-xs);border-radius:var(--radius-lg);border:1px solid #bcd6d9;background:var(--surface-2);color:var(--ink);cursor:pointer}
 .suggest-chip:hover,.suggest-chip.active{background:var(--teal);border-color:var(--teal);color:#fff}
 .suggest-chip:hover b,.suggest-chip.active b,.suggest-chip:hover small,.suggest-chip.active small{color:#eafafa}
 .suggest-chip>span{font-weight:800;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .suggest-chip b{font-size:var(--fs-micro);color:#075e67;white-space:nowrap}
-.suggest-chip em{font-style:normal;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#3a565d}
-.suggest-chip small{color:#7b8e95;font-size:var(--fs-tiny);white-space:nowrap}
+.suggest-chip em{font-style:normal;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.suggest-chip small{color:var(--ink-soft);font-size:var(--fs-tiny);white-space:nowrap}
 .suggest-chip.preset{background:#fff8e8;border-color:#e0c274}
 .suggest-chip.preset:hover,.suggest-chip.preset.active{background:#c9902f;border-color:#c9902f;color:#fff}
-.suggest-chip.op-select{background:#eef2f4;border-color:#c4d0d4}
+.suggest-chip.op-select{background:var(--bg);border-color:var(--line-mid)}
 .filter-suggest-empty{padding:8px 8px 10px;color:#6d7e84;font-size:var(--fs-micro)}
 /* 2段目: 詳細ビルダー（段階的開示。既定は折りたたみ） */
 .filter-body{padding:7px 8px;display:grid;gap:var(--gap-inline);border-top:1px solid #dbe7ea}
@@ -337,7 +337,7 @@
 .filter-inline-loading[hidden]{display:none}
 .mini-spinner{width:13px;height:13px;border:2px solid #bcd9dd;border-top-color:var(--teal);border-radius:var(--radius-round);animation:waiting-spin .8s linear infinite}
 /* 登録フィルタ一覧モーダル */
-.filter-preset-dialog{width:min(1040px,95vw);height:min(700px,90vh);background:#f7fafb;border-radius:var(--radius-md);overflow:hidden;box-shadow:0 20px 60px #0005;display:flex;flex-direction:column}
+.filter-preset-dialog{width:min(1040px,95vw);height:min(700px,90vh);background:var(--surface-2);border-radius:var(--radius-md);overflow:hidden;box-shadow:0 20px 60px #0005;display:flex;flex-direction:column}
 .filter-preset-dialog>header{display:flex;align-items:center;justify-content:space-between;padding:var(--pad-dialog);background:var(--nav);color:#fff}
 .filter-preset-dialog h2{margin:2px 0}
 .filter-preset-dialog small{color:#8fd4d4}
@@ -351,15 +351,15 @@
 .filter-preset-toolbar span{color:#40606a;font-size:var(--fs-sm)}
 .filter-preset-toolbar button{background:var(--teal);color:#fff;border-color:var(--teal)}
 .filter-preset-list{flex:1;min-height:0;overflow:auto;padding:var(--pad-card);display:grid;gap:var(--space-2);align-content:start;position:relative}
-.filter-preset-item{display:grid;grid-template-columns:auto minmax(var(--w-lg),1.2fr) auto minmax(0,2fr) auto;gap:var(--gap-section);align-items:center;padding:9px 11px;background:#fff;border:1px solid #d6e0e3;border-radius:var(--radius-sm)}
+.filter-preset-item{display:grid;grid-template-columns:auto minmax(var(--w-lg),1.2fr) auto minmax(0,2fr) auto;gap:var(--gap-section);align-items:center;padding:9px 11px;background:#fff;border:1px solid var(--line-soft);border-radius:var(--radius-sm)}
 .filter-preset-item.is-picked{border-color:var(--teal);background:var(--pale)}
 /* 組み合わせを作るときの選択（§9.287-D）。 */
 .filter-preset-item .fp-pick{display:flex;align-items:center;cursor:pointer}
 .filter-preset-item .fp-pick input{margin:0;width:16px;height:16px;min-width:0}
 /* **名前は折り返す**（§9.287-E、利用者の報告「文字の見切れが無いように」）
    ——1行に押し込む理由が無く、切ると何の条件か読めなくなる。 */
-.filter-preset-item .fp-name{font-weight:800;color:#173842;min-width:0;overflow-wrap:anywhere}
-.filter-preset-item .fp-name small{display:block;margin-top:2px;color:#7b8e95;font-weight:700;font-size:var(--fs-tiny)}
+.filter-preset-item .fp-name{font-weight:800;color:var(--ink);min-width:0;overflow-wrap:anywhere}
+.filter-preset-item .fp-name small{display:block;margin-top:2px;color:var(--ink-soft);font-weight:700;font-size:var(--fs-tiny)}
 /* 持ち主は**独立した列**にする(§9.172)。名前と同じマスへ入れると、
    長い条件名のほうが切れる（列は縦にそろえる）。 */
 .filter-preset-item .fp-own-cell{display:flex;align-items:center}
@@ -397,12 +397,12 @@
    しまううえ、利用者は2つの言葉を覚えることになっていた。
    **付いていることが一目で分かる**ように、付いたら面で示す（文字も
    「固定」と書く——色だけで意味を伝えない）。 */
-.fp-always{display:flex;align-items:center;gap:var(--space-1);padding:var(--pad-row);border:1px solid #cddbde;border-radius:var(--radius-sm);background:#f7fafb;font-size:var(--fs-micro);font-weight:700;color:#40606a;white-space:nowrap;cursor:pointer}
+.fp-always{display:flex;align-items:center;gap:var(--space-1);padding:var(--pad-row);border:1px solid #cddbde;border-radius:var(--radius-sm);background:var(--surface-2);font-size:var(--fs-micro);font-weight:700;color:#40606a;white-space:nowrap;cursor:pointer}
 .fp-always input{margin:0}
 .fp-always b{font-weight:800}
 .fp-always.is-on{background:#fff2cc;border-color:#e0b23d;color:#6b5200}
 .fp-always:hover{border-color:#9fc3c8}
-.fp-cond{display:inline-flex;align-items:center;gap:var(--gap-tight);padding:var(--pad-chip);border-radius:var(--radius-md);border:1px solid #cddbde;background:#f7fafb;font-size:var(--fs-micro);white-space:nowrap}
+.fp-cond{display:inline-flex;align-items:center;gap:var(--gap-tight);padding:var(--pad-chip);border-radius:var(--radius-md);border:1px solid #cddbde;background:var(--surface-2);font-size:var(--fs-micro);white-space:nowrap}
 .fp-cond b{color:#075e67}
 @media(max-width:820px){.filter-preset-item{grid-template-columns:auto 1fr auto;gap:var(--gap-inline)}.filter-preset-item .fp-conds,.filter-preset-item .fp-actions{grid-column:1/-1}}
 /* ---------- 節（＝プリセット）と選択の帯（§9.287-D、利用者の指示） ----------
@@ -543,11 +543,11 @@
 .instruction-tol-card.no-data{min-height:0;border-color:var(--warn-border);background:var(--warn-bg);color:var(--warn-fg);font-weight:700}
 .instruction-tol-head{display:flex;align-items:center;justify-content:space-between;gap:var(--gap-inline);min-width:0}
 .instruction-tol-head .compact-tol-source{flex:0 0 auto}
-.instruction-tol-type{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#3a565d;font-size:var(--fs-micro);font-weight:700}
+.instruction-tol-type{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2);font-size:var(--fs-micro);font-weight:700}
 .instruction-tol-main{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap}
 .instruction-tol-value{font-size:var(--fs-xl);font-weight:900;color:var(--computed-fg);font-variant-numeric:tabular-nums;line-height:1.1}
 .instruction-tol-unit{padding:2px 8px;border-radius:var(--radius-md);background:var(--computed-bg);border:1px solid #9fc3c8;color:#0a6570;font-weight:800;font-size:var(--fs-micro);white-space:nowrap}
-.instruction-tol-raw{color:#60747b;font-size:var(--fs-micro);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.instruction-tol-raw{color:var(--muted);font-size:var(--fs-micro);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* ============================================================
  2026-07-21: 作業時間の再編集UI / マスタ管理モーダル
  ============================================================ *//* 作業時間(§9.55)。開始・終了はそれぞれ「見出し → 入力+ボタン」の2段だったが、

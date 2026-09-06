@@ -255,6 +255,43 @@ finally:
     (CSS_DIR/'95-boot.css').write_text(_saved,encoding='utf-8')
 rec('見張りは同じ形を注ぎ込むと数える',any(x.startswith('.mm-btn-primary ') for x in _probe),'; '.join(_probe[:3]))
 
+# ---- 11) 色のリテラルはトークン定義行だけ(§9.350、REVIEW 3-18) ----
+# 規則（CLAUDE.md「色と文字サイズは:rootのトークンから選ぶ」）はあったが網が無く、
+# 非トークン行の色リテラルが実測 1,517（398種）あった。398種は「同じ意味に違う色」が
+# 混ざっていることの現れ（4-1 ①で色が逆に付いていた）。ここでは**増えないこと**を
+# ファイルごとの上限（tests/fixtures/color_baseline.json）で固め、下げる方向だけ動かす
+# （python3 tests/test_csslint.py --update）。白（#fff）は数えない。
+_COLOR=re.compile(r'#[0-9a-fA-F]{3,8}\b|\brgba?\([^)]*\)|\bhsla?\([^)]*\)')
+def _color_literals(code):
+    """トークン定義（`--x:`）でない宣言の中の色リテラルを数える。コメントは呼ぶ側で潰す。"""
+    n=0
+    for m in _COLOR.finditer(code):
+        if m.group(0).lower() in ('#fff','#ffffff'): continue
+        j=max(code.rfind(';',0,m.start()),code.rfind('{',0,m.start()),code.rfind('}',0,m.start()))
+        seg=code[j+1:m.start()]; k=seg.find(':')
+        if k>=0 and seg[:k].strip().startswith('--'): continue
+        n+=1
+    return n
+_CB=ROOT/'tests/fixtures/color_baseline.json'
+_now={n:_color_literals(re.sub(r'/\*[\s\S]*?\*/','',(CSS_DIR/n).read_text(encoding='utf-8'))) for n in CSS_ORDER}
+_now={k:v for k,v in _now.items() if v}
+import json as _json
+_base=_json.loads(_CB.read_text(encoding='utf-8')) if _CB.exists() else {}
+_over=[f'{k} {_base.get(k,0)}→{v}' for k,v in _now.items() if v>_base.get(k,0)]
+_under=[f'{k} {_base.get(k,0)}→{v}' for k,v in _now.items() if v<_base.get(k,0)]+[f'{k} {b}→0' for k,b in _base.items() if k not in _now and b]
+if '--update' in sys.argv:
+    if _over and _base: print('!! 上限を上げる更新はしません: '+'; '.join(_over[:8]))
+    else:
+        _CB.write_text(_json.dumps(_now,ensure_ascii=False,indent=1,sort_keys=True)+'\n',encoding='utf-8')
+        print(f'baseline を書き直しました: {_CB} ({len(_now)} files)')
+rec('色のリテラルがファイルごとの上限を超えていない（トークン定義行と白は数えない。増えたら落ちる）',
+    not _over,'; '.join(_over[:8]) or f'いま {sum(_now.values())}箇所 / {len(_now)}ファイル')
+if _under: print('   注: 上限を下げられます（python3 tests/test_csslint.py --update）: '+'; '.join(_under[:6]))
+_selfref=[f'L{i+1} {l.strip()[:60]}' for i,l in enumerate(CODE.split('\n')) if re.search(r'--([a-z0-9-]+)\s*:\s*var\(--\1\)',l)]
+rec('トークンが自分自身を参照していない（--x:var(--x) は循環でトークンが無効になる。置換の道具が実際に作った）',not _selfref,'; '.join(_selfref[:4]))
+rec('色の見張りは同じ形を注ぎ込むと数える（トークン行・白・コメントは数えない）',
+    _color_literals('.a{color:#60747b;--x:#173842;background:#fff;border:1px solid rgba(0,0,0,.2)}')==2)
+
 ng=[x for x in R if not x[1]]
 print('\n=== SUMMARY ===')
 print(f'{len(R)-len(ng)}/{len(R)} passed')

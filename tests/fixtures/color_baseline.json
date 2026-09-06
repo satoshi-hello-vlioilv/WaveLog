@@ -1,0 +1,20 @@
+{
+ "00-base.css": 4,
+ "10-roles.css": 1,
+ "20-shell.css": 65,
+ "30-measure.css": 97,
+ "35-split.css": 38,
+ "40-records.css": 63,
+ "45-tolerance.css": 57,
+ "50-master.css": 112,
+ "55-quality.css": 35,
+ "60-report.css": 100,
+ "62-actuals.css": 23,
+ "65-calendar.css": 22,
+ "70-schedule.css": 89,
+ "75-master-paths.css": 5,
+ "80-defect.css": 13,
+ "85-headerbar.css": 7,
+ "90-state.css": 26,
+ "95-boot.css": 1
+}

@@ -109,7 +109,7 @@
 .nav-collapse-toggle{
  margin-left:auto;flex:none;width:26px;height:26px;padding:0;
  display:grid;place-items:center;
- border:1px solid #2c4750;border-radius:var(--radius-sm);background:#173842;color:#9fc4cb;cursor:pointer;
+ border:1px solid #2c4750;border-radius:var(--radius-sm);background:var(--ink);color:#9fc4cb;cursor:pointer;
 }
 .nav-collapse-toggle:hover{background:#22434d;border-color:#3d6673;color:#fff}
 .nav-collapse-toggle span{

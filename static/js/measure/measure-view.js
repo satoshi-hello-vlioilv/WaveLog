@@ -226,6 +226,7 @@ m.mother=m.mother||{};m.qualityInfo=m.qualityInfo||'異常情報なし';m.measur
     実際に送信できたか判定できないため安全側でpendingとし、再送の対象にする
     (backupRecordはDELETE+INSERTのため再送しても重複しない)。 */
  m.syncState={status:'pending',lastAttempt:'',lastError:'',attempts:0,...(m.syncState||{})};
+ WL.measureHooks.run('shape',m);  // 拡張ファイルが持ち物を足す（§9.352）
  return m;
 }
 /* 画面の入力値をS.measureへ回収する。設定→母材→製品丈→登録設備→作業時間の順。 */
@@ -246,6 +247,7 @@ function collect(){
     項目名を並べない。打った時点でも`settings.opData`へ入れているが、
     取りこぼし防止にここでも回収する。 */
  if(window.WL&&WL.opData)WL.opData.collect();
+ WL.measureHooks.run('collect',m);  // 拡張ファイルが回収した値へ足す（§9.352）
  return m;
 }
 /* ---------- 母材の計算全長（参考）（§9.160、利用者の指示） ----------
@@ -737,7 +739,16 @@ $('#measureType').onchange=()=>{S.measure.settings.wStep=0;S.measure.settings.tS
 /* 測定画面全体の再描画。旧実装は9層のラップ(モード表示→製品丈→検証→
    基本情報→公差セレクタ→コース→作業時間→タブ初期化)だったものを、
    実行順を保ったまま一本の関数へ整理した。 */
-function renderMeasurement(){
+/* ---------- 「描いたあとに足す」は登録で（§9.348・REVIEW 3-16） ----------
+   `renderMeasurement`／`updateMeasurementHeading`は4つ＋2つのファイルが
+   「退避して被せて」いた。`WL.listHooks`（§9.93）と同じ形にする——足したい側は
+   登録するだけで、順番は登録順（＝読み込み順、今までと同じ）。1つが転んでも
+   残りは走る（fail-open）。核は`…Core`で、早期 return でもフックは走る。 */
+/* 登録表の実体は土台（base.js の `WL.measureHooks`。§9.352）。ここは核が呼ぶ口だけ。 */
+function runMeasureHooks(kind,...args){WL.measureHooks.run(kind,...args)}
+function renderMeasurement(){renderMeasurementCore();runMeasureHooks('afterRender')}
+function updateMeasurementHeading(){updateMeasurementHeadingCore();runMeasureHooks('afterHeading')}
+function renderMeasurementCore(){
  hydrateBusinessFields();
  measureDirty=false;const m=S.measure,b=m.basic;updateLengthOptions(m.settings.verticalCount||1);updateCoilOptions(m.settings.horizontalCount||1);$('#modalEquipment').textContent=b.equipment;/* 基本情報の並び(§9.55)。13項目を「主識別 → 識別番号 → 製品 → コース」の
     4かたまりへ束ね、参照用の項目はラベルと値を1行に収める。以前は全項目が
@@ -901,7 +912,9 @@ function activeRequiredControls(){
  }
  return controls.filter(x=>x.el);
 }
-function updateValidationVisuals(){
+/* 検証の印を描いたあとに足す（進捗の引き直し）は `afterValidation`（§9.352）。 */
+function updateValidationVisuals(){const r=updateValidationVisualsCore();WL.measureHooks.run('afterValidation',r);return r}
+function updateValidationVisualsCore(){
  const required=activeRequiredControls(),requiredSet=new Set(required.map(x=>x.el));
  document.querySelectorAll('.validation-required,.validation-valid,.validation-ng').forEach(el=>{if(!requiredSet.has(el))el.classList.remove('validation-required','validation-valid','validation-ng')});
  required.forEach(({el})=>{
@@ -1259,7 +1272,7 @@ function renderResidualCourseEverywhere(){
  const grid=$('#dataManagementPanel .data-management-grid');if(grid){[...grid.querySelectorAll('[data-residual-course]')].forEach(x=>x.remove());const children=[...grid.children],courseIndex=children.findIndex(x=>x.tagName==='B'&&x.textContent==='実績コース'),courseValue=courseIndex>=0?children[courseIndex+1]:null,label=document.createElement('b'),value=document.createElement('span');label.textContent='残コース';value.textContent=residual||'未設定';value.title=residual;label.dataset.residualCourse='1';value.dataset.residualCourse='1';if(courseValue)courseValue.after(label,value);else grid.append(label,value)}
 }
 /* 公差の内訳(基準値・±・計算式)を見出し領域へ表示する。 */
-function updateMeasurementHeading(){
+function updateMeasurementHeadingCore(){
  /* カードの名前は骨子どおり「測定」。**項目名は表の見出しが言っている**ので
     ここでは繰り返さない（§9.129。以前は上が「板幅測定」下が「板幅」だった）。 */
  /* ---------- 公差もバッジ1つで言う（§9.209 ②、利用者の指示） ----------
@@ -1385,7 +1398,7 @@ function configureToleranceSelector(){const el=$('#toleranceSource');if(!el||!S.
    よって違う長さで出る**（読む側は「別の値かもしれない」と数え直す）。 */
 function formatWorkTime(value){if(!value)return '';const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
 function stampWorkTimeLocked(kind){if(!S.measure)return;S.measure.workTime=S.measure.workTime||{};const now=new Date();if(kind==='start'){if(S.measure.workTime.endAt){showToast('開始時刻は変更できません','終了時刻の記録後は開始時刻を変更できません。');return}S.measure.workTime.startAt=now.toISOString()}else{if(!S.measure.workTime.startAt){showToast('開始時刻が未記録です','先に開始時刻を記録してください。');return}if(now<new Date(S.measure.workTime.startAt)){showToast('終了時刻を記録できません','終了時刻は開始時刻より後である必要があります。');return}S.measure.workTime.endAt=now.toISOString()}updateWorkTimePanel();markDirty();updateValidationVisuals()}
-function updateWorkTimePanel(){if(!S.measure)return;S.measure.workTime=S.measure.workTime||{startAt:'',endAt:''};const start=$('#workStartAt'),end=$('#workEndAt');if(!start||!end)return;start.dataset.iso=S.measure.workTime.startAt||'';end.dataset.iso=S.measure.workTime.endAt||'';start.value=formatWorkTime(start.dataset.iso);end.value=formatWorkTime(end.dataset.iso);$('#stampWorkStart').disabled=!!S.measure.workTime.startAt;$('#stampWorkEnd').disabled=!S.measure.workTime.startAt||!!S.measure.workTime.endAt;[[ $('#workStartCard'),start.dataset.iso],[ $('#workEndCard'),end.dataset.iso]].forEach(([card,value])=>{card?.classList.toggle('validation-required',!value);card?.classList.toggle('validation-valid',!!value)});$('#workDuration').textContent=S.measure.workTime.endAt?`実作業時間 ${formatDuration(durationMs(S.measure))}`:S.measure.workTime.startAt?'作業中':'未計測';$('#stampWorkStart').onclick=()=>stampWorkTimeLocked('start');$('#stampWorkEnd').onclick=()=>stampWorkTimeLocked('end');
+function updateWorkTimePanel(){const own=WL.measureHooks.owner('workTimePanel');if(own)return own();if(!S.measure)return;S.measure.workTime=S.measure.workTime||{startAt:'',endAt:''};const start=$('#workStartAt'),end=$('#workEndAt');if(!start||!end)return;start.dataset.iso=S.measure.workTime.startAt||'';end.dataset.iso=S.measure.workTime.endAt||'';start.value=formatWorkTime(start.dataset.iso);end.value=formatWorkTime(end.dataset.iso);$('#stampWorkStart').disabled=!!S.measure.workTime.startAt;$('#stampWorkEnd').disabled=!S.measure.workTime.startAt||!!S.measure.workTime.endAt;[[ $('#workStartCard'),start.dataset.iso],[ $('#workEndCard'),end.dataset.iso]].forEach(([card,value])=>{card?.classList.toggle('validation-required',!value);card?.classList.toggle('validation-valid',!!value)});$('#workDuration').textContent=S.measure.workTime.endAt?`実作業時間 ${formatDuration(durationMs(S.measure))}`:S.measure.workTime.startAt?'作業中':'未計測';$('#stampWorkStart').onclick=()=>stampWorkTimeLocked('start');$('#stampWorkEnd').onclick=()=>stampWorkTimeLocked('end');
  /* 自動で入る値（§9.234 ②）。開始・終了・実働時間を欄として置けるように
     なったので、打刻したらその場で引き直す（読み直すまで古いままにしない）。 */
  if(window.WL&&WL.opData&&WL.opData.paintAuto)WL.opData.paintAuto();}

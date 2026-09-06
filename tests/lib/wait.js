@@ -18,6 +18,17 @@
 'use strict';
 const SETTLE=350;
 
+/* どの待ちに何秒かかったかを出す口。**遅くなった網は測ってから直す**
+   （§9.347）——固定待ちを条件待ちへ替えて逆に遅くなったとき、どの条件が
+   上限まで待ったのかは、これが無いと当てずっぽうになる。
+     WAVELOG_WAIT_TRACE=1 node tests/test_x.js 2>&1 | grep '^\[wait\]'  */
+const TRACE=!!process.env.WAVELOG_WAIT_TRACE;
+function traced(name,fn){
+ if(!TRACE)return fn;
+ return async function(...a){const t0=Date.now();try{return await fn.apply(this,a)}
+  finally{const ms=Date.now()-t0;if(ms>=300)console.log(`[wait] ${name} ${ms}ms`)}};
+}
+
 const settle=(page,ms=SETTLE)=>page.waitForTimeout(ms);
 
 /* 画面の条件が真になるまで待ち、そのあと短く落ち着かせる。 */
@@ -107,5 +118,57 @@ async function answerConfirm(page,ok=true,timeout=8000){
  await page.waitForSelector('#appConfirmModal',{state:'hidden',timeout});
 }
 
-module.exports={SETTLE,settle,until,booted,settleFlags,openSchedule,poll,opSave,
-                answerPrompt,answerConfirm};
+/* ---------- §9.102 の「実測済みの形」を名前で呼べるようにした3つ（3-15 ②） ----------
+   test_fit.js が 70秒→35秒 にしたときの道具そのもの。あちらに閉じていたので
+   他の網は同じ待ちを固定の秒数で書き写していた。 */
+
+/* レイアウトの確定。寸法を動かす transition は無い（§9.102）ので、
+   描画が1巡（rAF×2）すれば計測してよい。 */
+const paint=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+
+/* 「その画面ぶんの取得が終わったか」。**page を作った直後に呼ぶ**（配線は
+   最初の航行より前に張らないと、最初の取得を数え損ねる）。返る`idle()`は
+   取得が0のまま quiet ミリ秒静かなら次へ進む。「0件になった瞬間」では
+   早すぎる——一覧は描き終えたあと requestIdleCallback で追加の問い合わせを
+   出す（§9.94）。ハートビートは画面と無関係なので数から外す。
+   cap を超えたら黙って先へ進む（その先の判定で FAIL として出る）。 */
+function track(page,{ignore=/\/api\/heartbeat/}={}){
+ /* 取得中のものを**要求ごとに**持つ（数だけだと、終わりの合図が来ない
+    要求が1つ混ざったときに何が塞いでいるのか分からない）。 */
+ const live=new Map();
+ const counted=r=>!ignore.test(r.url());
+ page.on('request',r=>{if(counted(r))live.set(r,Date.now())});
+ page.on('requestfinished',r=>{live.delete(r)});
+ page.on('requestfailed',r=>{live.delete(r)});
+ const idle=async(quiet=400,cap=6000)=>{
+  const t0=Date.now();let calm=Date.now();
+  while(Date.now()-t0<cap){
+   if(live.size>0)calm=Date.now();
+   else if(Date.now()-calm>=quiet)break;
+   await new Promise(r=>setTimeout(r,50));
+  }
+  if(TRACE&&live.size)console.log('[wait] idle が上限に当たった。取得中のまま: '
+    +[...live].map(([r,t])=>`${r.method()} ${r.url().replace(/^https?:\/\/[^/]+/,'')} (${Date.now()-t}ms)`).join(' | '));
+  await paint(page);
+ };
+ return {idle,pending:()=>live.size};
+}
+
+/* 「文字が変わる」。押す**前に**いまの字を控え、それと違う字になるまで待つ。
+   前回の合図が残っていると押した瞬間に真になるので、控えてから押すこと
+   （opSave と同じ理由）。 */
+async function changed(page,sel,before,ms=15000){
+ await page.waitForFunction(a=>{const e=document.querySelector(a.sel);
+   return !!e&&(e.textContent||'').trim()!==a.before},{sel,before:String(before||'').trim()},{timeout:ms}).catch(()=>{});
+ await settle(page);
+}
+const textOf=(page,sel)=>page.evaluate(s=>((document.querySelector(s)||{}).textContent||'').trim(),sel);
+
+/* 計測の口は公開するものにだけ被せる（中で呼び合うぶんは二重に数えない）。 */
+const X={SETTLE,settle,paint,textOf,
+ until:traced('until',until),booted:traced('booted',booted),settleFlags:traced('settleFlags',settleFlags),
+ openSchedule:traced('openSchedule',openSchedule),poll:traced('poll',poll),opSave:traced('opSave',opSave),
+ answerPrompt:traced('answerPrompt',answerPrompt),answerConfirm:traced('answerConfirm',answerConfirm),
+ changed:traced('changed',changed),
+ track:(page,o)=>{const t=track(page,o);return {idle:traced('idle',t.idle),pending:t.pending}}};
+module.exports=X;

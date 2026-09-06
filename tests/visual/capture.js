@@ -154,24 +154,30 @@ const shots=[];
    await page.waitForFunction(()=>document.querySelector('#saveOverlay')?.hidden!==false,null,{timeout:30000}).catch(()=>{});
    await settle(3000);
    await shot('70-測定画面-基本情報');
-   // 左ペイン: 基本情報 / 品質等級 / 幅分割情報
-   for(const [sel,name] of [['[data-infotab="grade"]','71-測定画面-品質等級'],
-                            ['[data-infotab="split"]','72-測定画面-幅分割情報']]){
+   // 3段（①準備→②測定→③確認。§9.123）。旧の左ペインの札（data-infotab／
+   // data-lefttab）は無くなった——押せない選択子を残すと「撮れなかった」が
+   // 「変わっていない」と読まれる（§9.349）。
+   for(const [sel,name] of [['#measureSteps [data-mstep="2"]','71-測定画面-②測定'],
+                            ['#measureSteps [data-mstep="3"]','72-測定画面-③確認']]){
     if(await click(sel,1400)) await shot(name);
    }
-   await click('[data-infotab="basic"]',1200);
-   // 左ペイン下段: 作業時間 / 測定データ分析
-   if(await click('[data-lefttab="analysis"]',1400)) await shot('73-測定画面-測定データ分析');
-   await click('[data-lefttab="worktime"]',1200);
+   await click('#measureSteps [data-mstep="1"]',1200);
+   // 作業の札: 測定 / 母材・揃い / フラットネス
+   for(const [key,name] of [['material','73-測定画面-母材揃い'],['flat','73b-測定画面-フラットネス']]){
+    if(await click(`[data-worktab="${key}"]`,1400)) await shot(name);
+   }
+   await click('[data-worktab="measure"]',1200);
    // 入力内容(右ペインの描画がここで切り替わる)
    for(const [val,name] of [['板厚','74-測定画面-板厚'],['板幅','74b-測定画面-板幅'],
                             ['バリ','75-測定画面-バリ']]){
     const ok=await page.selectOption('#measureType',val).then(()=>true).catch(()=>false);
     if(ok){await settle(1600);await shot(name)}else{console.log('  (選べず) 入力内容',val)}
    }
-   // 条割ダイアログ・異常位置判定・帳票
-   if(await click('#openSplit',1800)) await shot('76-条割ダイアログ');
-   await page.keyboard.press('Escape').catch(()=>{}); await settle(700);
+   // 条の設計はカード（#splitCard。モーダルの #openSplit は廃止）・異常位置判定・帳票
+   if(await page.$('#splitCard')){
+    await page.evaluate(()=>document.querySelector('#splitCard').scrollIntoView({block:'start'}));
+    await settle(600); await shot('76-測定画面-条の設計');
+   }
    if(await click('#openDefect',1800)) await shot('77-異常位置判定');
    await page.keyboard.press('Escape').catch(()=>{}); await settle(700);
    if(await click('#openReport',2800)) await shot('78-帳票');

@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""test_waitlint.py: 固定待ちとハーネスの写しを「増やさない」（3-15 ④・§9.347）
+
+固定待ち（`waitForTimeout(N)`）は速い画面では無駄に待ち、遅い画面では
+足りない（§9.102）。実測で **967箇所・792秒＝通し39分の34%** だった。
+置き換えは1本ずつしかできないので、ここで見張るのは**増えないこと**——
+`tests/fixtures/wait_baseline.json` に本ごとの件数と合計msを固定し、
+**下げる方向だけ**動かせる（`test_eslint` の baseline と同じ作法）。
+減ったら `python3 tests/test_waitlint.py --update` で上限を下げる。
+増えた側の更新は断る。
+
+**わざと待つものは行に `固定待ち:` と理由を書く**（`test_scsave` の4000ms＝
+遅らせた応答を待つ時間そのものが検証の材料）。印のある行は数えない。
+
+同じ形で「ハーネスの写し」（`chromium.launch(` を自分で書いている本）も
+見張る。写しが多いほど、§9.342 のような横断の変更が本数ぶんの問題になる。
+"""
+import json
+import pathlib
+import re
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+TESTS = ROOT / 'tests'
+BASELINE = TESTS / 'fixtures' / 'wait_baseline.json'
+PAT = re.compile(r'waitForTimeout\(\s*(\d+)\s*\)')
+MARK = '固定待ち:'
+R = []
+
+
+def rec(name, ok, detail=''):
+    R.append(ok)
+    print(('PASS' if ok else 'FAIL') + ': ' + name + ((' -- ' + detail) if detail else ''))
+
+
+def scan(path):
+    """(件数, 合計ms, 印なしの行番号)。印のある行は数えない。"""
+    n = ms = 0
+    lines = []
+    for i, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+        if MARK in line:
+            continue
+        for m in PAT.finditer(line):
+            n += 1
+            ms += int(m.group(1))
+            lines.append(i)
+    return n, ms, lines
+
+
+def measure(files):
+    now = {}
+    for p in files:
+        n, ms, _ = scan(p)
+        harness = 1 if 'chromium.launch(' in p.read_text(encoding='utf-8') else 0
+        if n or harness:
+            now[p.name] = {'count': n, 'ms': ms, 'harness': harness}
+    return now
+
+
+def main(update=False):
+    files = sorted(TESTS.glob('test_*.js'))
+    rec('見る本がある', len(files) >= 100, f'{len(files)}本')
+    now = measure(files)
+    base = json.loads(BASELINE.read_text(encoding='utf-8')) if BASELINE.exists() else {}
+    over, under = [], []
+    for name, d in now.items():
+        b = base.get(name, {})
+        for k in ('count', 'ms', 'harness'):
+            if d[k] > b.get(k, 0):
+                over.append(f'{name} {k} {b.get(k, 0)}→{d[k]}')
+            elif d[k] < b.get(k, 0):
+                under.append(f'{name} {k} {b.get(k, 0)}→{d[k]}')
+    for name, b in base.items():
+        if name not in now and any(b.get(k, 0) for k in ('count', 'ms', 'harness')):
+            under.append(f'{name} →0')
+    if update:
+        if over and base:
+            print('!! 上限を上げる更新はしません: ' + '; '.join(over[:10]))
+        else:
+            BASELINE.parent.mkdir(exist_ok=True)
+            BASELINE.write_text(json.dumps(now, ensure_ascii=False, indent=1, sort_keys=True) + '\n',
+                                encoding='utf-8')
+            print(f'baseline を書き直しました: {BASELINE} ({len(now)} files)')
+    tot_n = sum(d['count'] for d in now.values())
+    tot_ms = sum(d['ms'] for d in now.values())
+    tot_h = sum(d['harness'] for d in now.values())
+    rec('固定待ちとハーネスの写しが本ごとの上限を超えていない（増えたら落ちる）',
+        not over, '; '.join(over[:12]) or
+        f'いま 固定待ち {tot_n}箇所 {tot_ms/1000:.0f}秒 ／ ハーネスの写し {tot_h}本')
+    if under:
+        print('   注: 上限を下げられます（python3 tests/test_waitlint.py --update）: '
+              + '; '.join(under[:8]) + (' …' if len(under) > 8 else ''))
+    rec('baseline がある（無いと「増えた」を言えない）', BASELINE.exists(), str(BASELINE.relative_to(ROOT)))
+    # 印のある行は数えない——印の書き方が変わると黙って全部が数から外れる。
+    # 印のある行が実在し、かつその本の数に入っていないことを見る。
+    marked = [(p.name, i) for p in files
+              for i, line in enumerate(p.read_text(encoding='utf-8').splitlines(), 1)
+              if MARK in line and PAT.search(line)]
+    rec('「固定待ち:」と理由を書いた行だけが数から外れる', len(marked) >= 1,
+        '; '.join(f'{n}:{i}' for n, i in marked[:5]))
+    # 素通りしないこと: 固定待ちを1つ注いで数えられるか
+    probe = TESTS / 'test__waitprobe.js'
+    try:
+        probe.write_text("await page.waitForTimeout(1234);\nawait page.waitForTimeout(5); // 固定待ち: 印の例\n",
+                         encoding='utf-8')
+        n, ms, _ = scan(probe)
+        rec('網そのものが素通りしない（注いだ固定待ちを数え、印の行は数えない）',
+            (n, ms) == (1, 1234), f'{n}件 {ms}ms')
+    finally:
+        try:
+            probe.unlink()
+        except FileNotFoundError:
+            pass
+    top = sorted(now.items(), key=lambda kv: -kv[1]['ms'])[:8]
+    print('  残っている上位: ' + ', '.join(f"{k} {v['ms']/1000:.1f}s/{v['count']}件" for k, v in top))
+    print(f'\n== {sum(R)}/{len(R)} PASS ==')
+    sys.exit(0 if all(R) else 1)
+
+
+if __name__ == '__main__':
+    main(update='--update' in sys.argv)

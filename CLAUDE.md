@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（487件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（493件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -373,10 +373,11 @@
 | 条の設計カードの3点 | `test_splitlive.js` | [§9.221](docs/decisions/9.221.md) |
 | 「どれが仕掛でどれが品質か」はキーでなく`データソースマスタ`の`[役割]` | `test_datasource.py`・`test_dskeylint.py`・`test_dsnav.js` | [決まり](docs/decisions/rules-misc.md) |
 
-### 測定画面（81件）
+### 測定画面（82件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 公差の答えは`WL.tolerance`の登録表。描いたあとに足すのは`WL.measureHooks`へ登録し、被せない | `test_patchlint.py`・`test_tolscale.js` | [§9.348](docs/decisions/9.348.md) |
 | テストの待ちは`tests/lib/wait.js`の道具で「条件」で置く | — | [§9.324](docs/decisions/9.324-1.md) |
 | 紙の「混入位置」の何条目かは赤太字。赤は1つ | — | [§9.323](docs/decisions/9.323-1.md) |
 | 異常位置の条混入位置は3か所まで。1か所ぶんの計算は`spotOf()`の1箇所 | `test_rpdefect.js` | [§9.323](docs/decisions/9.323-1.md) |
@@ -571,10 +572,11 @@
 | 紙に出すのは「帳票だけの1枚もの」 | `test_rpprint.js` | [§9.244](docs/decisions/9.244.md) |
 | 帳票ブロックの中身はマトリクスで並べられる | `test_blockbuild.js` | [§9.245](docs/decisions/9.245.md) |
 
-### 画面の土台（7件）
+### 画面の土台（8件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 拡張は登録表へ: あとに足す`on`／前で断る`gate`／丸ごと持つ`own`（`WL.measureHooks`・`WL.listHooks`）。被せも全置換も作らない | `test_patchlint.py`・`test_tolscale.js` | [§9.352](docs/decisions/9.352.md) |
 | 初回の案内は帯の1箇所。空の器は「ここに何が出るか」だけを言う | `test_uiux.js` | [§9.343](docs/decisions/9.343.md) |
 | 窓は`confirmModal`／`alertModal`／`promptModal`の3つだけ。素の`alert`/`confirm`/`prompt`は呼ばない | `test_patchlint.py`・`test_modalkeep.js` | [§9.342](docs/decisions/9.342.md) |
 | `window.*`への新規公開は名前空間経由 | `test_globallint.py` | [決まり](docs/decisions/rules-misc.md) |
@@ -583,10 +585,11 @@
 | モーダルは背景クリックで閉じない | `test_modalkeep.js` | [§9.221](docs/decisions/9.221.md) |
 | マスタの1行を直す窓は汎用モーダル1枚 | — | [§9.222](docs/decisions/9.222.md) |
 
-### 見た目（CSS・寸法・色）（43件）
+### 見た目（CSS・寸法・色）（44件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 色のリテラルは増やさない（上限は`tests/fixtures/color_baseline.json`）。トークンと同じ値は`var()`で書く | `test_csslint.py` | [§9.350](docs/decisions/9.350.md) |
 | 色帯は「面」とセットのときだけ出す。面の無い帯は括弧に見え、列の罫線とも競合する | `test_density.js` | [§9.344](docs/decisions/9.344.md) |
 | 所要時間の書き方は`WL.duration`の1箇所。既定は「分」、切り替えは「表示」バッジの1枚に畳む。時点（〜前／〜後）と間隔（〜ごと）は別の軸 | `test_patchlint.py`・`test_uisize.js` | [§9.341](docs/decisions/9.341.md) |
 | 状態チップの色は「正常＝中立／設定要＝橙／赤は取り消せない操作だけ」。同じ橙に2つの意味を持たせない | `test_headbar.js` | [§9.338](docs/decisions/9.338.md) |
@@ -631,10 +634,13 @@
 | 「何で選ばせるか」と「どう見えるか」は別の軸 | — | [§9.223](docs/decisions/9.223.md) |
 | 公差外・基準外は確認カードの色で気づかせる。NGの記録はその行の中 | `test_ngcard.js` | [§9.242](docs/decisions/9.242.md) |
 
-### 検証（テスト）（14件）
+### 検証（テスト）（17件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 実績を置く網は自分で消す。「作業中」を見る網は開始を打刻してから保存する（一時保存だけでは「予定」のまま） | `test_scsync.js`・`test_startwork.js` | [§9.351](docs/decisions/9.351.md) |
+| 文書が指す名前・撮る道具の選択子は実在させる。関数の中の`import`は増やさない（理由は`# 遅延:`） | `test_docindex.py`・`test_importlint.py` | [§9.349](docs/decisions/9.349.md) |
+| 固定待ち（`waitForTimeout`）とハーネスの写しは増やさない。網の骨組みは`tests/lib/harness.js`、待ちは`wait.js`の道具で | `test_waitlint.py` | [§9.347](docs/decisions/9.347.md) |
 | `offsetParent`で「見えているか」を測らない。`position:fixed`と未組み立ての両方で`null`になる | — | [§9.346](docs/decisions/9.346.md) |
 | テストが開く／取りに行く`static/js`の道は領域つきで実在するURL（`/static/js/…`）。取れた中身が短ければ落とす | `test_loadorder.py` | [§9.334](docs/decisions/9.334.md) |
 | テストは3層（`--pure`＝サーバー不要・並列／`--smoke`＝各1本／全件は指示があったときだけ）。一覧の宣言は`run_all.sh`の1箇所 | `test_layers.py` | [§9.337](docs/decisions/9.337.md) |

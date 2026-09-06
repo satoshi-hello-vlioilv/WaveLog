@@ -6,6 +6,7 @@ let b=null;
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1700,height:1000}});
+ const W=require('./lib/wait.js');const {idle}=W.track(page);
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  page.on('pageerror',e=>console.log('[pageerror]',e.message));
  let posts=0;
@@ -16,7 +17,7 @@ let b=null;
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:15000});
-  await page.waitForTimeout(1200);
+  await W.booted(page);
   await page.click('#openSchedule');
   // 行が描かれるまで待つ(固定待ちはフィクスチャが育つと落ちる)
   await page.waitForSelector('.sc-row-line',{timeout:20000});
@@ -71,9 +72,11 @@ let b=null;
  rec('バッジも「並べ替え可」に戻る',!!st.badge&&/並べ替え可/.test(st.badge.txt)&&!st.badge.warn,JSON.stringify(st.badge));
  const ids=await planIds();
  posts=0;
+ // 並べ替えの往復（150msのまとめ待ち→POST→応答）を条件で待つ。押す前に仕掛ける。
+ const reorderDone=page.waitForResponse(r=>r.url().includes('/plan/reorder'),{timeout:20000}).catch(()=>null);
  await (await page.$(`.sc-row-line[data-id="${ids[0]}"]`)).focus();
  await page.keyboard.down('Alt');await page.keyboard.press('ArrowDown');await page.keyboard.up('Alt');
- await page.waitForTimeout(3500);
+ await reorderDone;await idle(400,6000);
  const after=await planIds();
  rec('実際に並べ替えできる',posts===1&&after[0]!==ids[0],`POST=${posts} before=${ids.slice(0,3)} after=${after.slice(0,3)}`);
  rec('成功時はエラー通知を出さない',(await toasts()).length===0,JSON.stringify(await toasts()));
@@ -89,13 +92,20 @@ let b=null;
  });
  const ids2=await planIds();
  posts=0;
+ // 「拒否される前」は**要求が出た時点**で観測する（楽観的更新は要求より先に画面へ出ている。
+ // 応答は route が1.5秒遅らせるので、ここで読む並びは拒否前のもの）。
+ const reorderSent=page.waitForRequest(r=>r.url().includes('/plan/reorder'),{timeout:20000}).catch(()=>null);
+ const rejected=page.waitForResponse(r=>r.url().includes('/plan/reorder'),{timeout:20000}).catch(()=>null);
  await (await page.$(`.sc-row-line[data-id="${ids2[0]}"]`)).focus();
  await page.keyboard.down('Alt');await page.keyboard.press('ArrowDown');await page.keyboard.up('Alt');
- await page.waitForTimeout(700);
+ await reorderSent;
  const during=await planIds();
  rec('拒否される前は画面上で入れ替わっている(楽観的更新)',
   JSON.stringify(during)!==JSON.stringify(ids2),`before=${ids2.slice(0,3)} during=${during.slice(0,3)}`);
- await page.waitForTimeout(6000);
+ await rejected;
+ // 拒否のあと、通知が出て並びが戻るまで（通知は応答の直後に出る）
+ await page.waitForFunction(()=>document.querySelectorAll('.toast').length>0,{timeout:10000}).catch(()=>{});
+ await idle(400,6000);
  const t=await toasts();
  rec('403はリトライしない(呼び出しは1回)',posts===1,'POST='+posts);
  rec('失敗の通知は1件だけ(同じ文言が並ばない)',t.length===1,JSON.stringify(t));

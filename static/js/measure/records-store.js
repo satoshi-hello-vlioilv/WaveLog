@@ -408,6 +408,7 @@ function noteCompletedWithNg(m){
 /* 保存/完了登録。**完了で止めるのはオペレータ/検査員の未選択だけ**（§9.319）。
    公差外は完了前の確認（measure-progress.js）で1回聞いてから通す。 */
 async function persistAndTransition(status){
+ if(await WL.measureHooks.through('persistAndTransition',status)===false)return;  // 完了前の確認（関門・§9.352）
  updateValidationVisuals();
  /* **止めるのは「誰が測ったか」だけ**（§9.319、利用者の指示「測定値のエラーで
     NGがあっても測定は完了できるようにしてください」）。
@@ -449,7 +450,9 @@ async function persistAndTransition(status){
    ミラーへ確実に残すため。以前はここだけidbPutを直接呼んでおり、私用
    端末のプライベートブラウジング等でIndexedDBが使えない場合にNG登録
    ("測定値NG")が無警告で失われ得た)。 */
-async function saveLocal(status='編集中'){
+/* 保存のあとに足す（作業時間の比較カード等）は `afterSave` へ登録（§9.352）。 */
+async function saveLocal(status='編集中'){const r=await saveLocalCore(status);WL.measureHooks.run('afterSave',status,r);return r}
+async function saveLocalCore(status='編集中'){
  lockCounts();
  const m=collect();m.status=status;m.updatedAt=new Date().toISOString();
  await reliablePut(m);measureDirty=false;
@@ -512,7 +515,10 @@ async function findDraftForRow(row){
  const drafts=all.filter(x=>x.status!=='完了'&&normalizedLot(x.basic?.lotNo)===targetLot).sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));
  return drafts.find(x=>targetInspection&&normalizedLot(x.basic?.inspectionNo)===targetInspection)||drafts.find(x=>targetCasting&&normalizedLot(x.basic?.castingNo)===targetCasting)||drafts[0]||null;
 }
-async function resumeStoredMeasure(saved,row=null){S.current=row||saved.source||saved.snapshot?.source||null;S.measure=ensureMeasureShape(saved);renderMeasurement();$('#recordModal').hidden=true;$('#measureModal').hidden=false;requestAnimationFrame(()=>$('#deviceInput').focus());await loadMeasurementContext(false);requestAnimationFrame(()=>$('#deviceInput').focus())}
+/* 再開のあとに足す（分割データの補完等）は `afterResumeStoredMeasure`。核が途中で
+   例外を投げても走る（被せの finally と同じ）。 */
+async function resumeStoredMeasure(saved,row=null){try{return await resumeStoredMeasureCore(saved,row)}finally{await WL.measureHooks.runAsync('afterResumeStoredMeasure')}}
+async function resumeStoredMeasureCore(saved,row=null){S.current=row||saved.source||saved.snapshot?.source||null;S.measure=ensureMeasureShape(saved);renderMeasurement();$('#recordModal').hidden=true;$('#measureModal').hidden=false;requestAnimationFrame(()=>$('#deviceInput').focus());await loadMeasurementContext(false);requestAnimationFrame(()=>$('#deviceInput').focus())}
 /* 測定画面を開く本処理: 同一ロットの編集中データがあれば直接再開、なければ
    新規作成して参照データ取得→初回保存まで行う。端末内検索(高速・ローカル)
    →仕掛等の参照データ取得(Access経由・低速)という実際の所要時間の境目に
@@ -536,7 +542,15 @@ async function openMeasurementCore(row){
    取得)に整理し、それぞれの表示に確実に1フレーム以上の猶予(nextPaint)を
    与える。以前は3段階だったが、間に描画の猶予が無い箇所があり中間の
    ステップが画面に一切表示されないまま次のステップへ上書きされていた。 */
+/* 開く前の関門（編集モードか・子ロットなら親へ読み替える）は `gate('openMeasurement')`、
+   開いたあとに足すのは `afterOpenMeasurement`（途中で例外でも走る）。§9.352 */
 async function openMeasurement(row){
+ const gated=await WL.measureHooks.through('openMeasurement',row);
+ if(gated===false)return;
+ try{return await openMeasurementGated(gated[0])}
+ finally{await WL.measureHooks.runAsync('afterOpenMeasurement')}
+}
+async function openMeasurementGated(row){
  if(!requireEquipmentBeforeMeasurement(row))return;
  const lot=pick(row,'lotNo')||'選択ロット';
  showWaiting('測定画面を準備しています',`ロット ${lot} の保存データを確認中`,'端末内の編集中データを確認しています',1);
@@ -887,6 +901,9 @@ async function refreshRecordList(){
  renderRecordListRows();
 }
 async function openRecords(status){
+ const gated=await WL.measureHooks.through('openRecords',status);  // 閲覧モードは関門が別の一覧を開く（§9.352）
+ if(gated===false)return;
+ status=gated[0];
  clearRecordListNotice();
  if(status==='編集中')recordListState.statuses={editing:true,done:false};
  else if(status==='履歴')recordListState.statuses={editing:false,done:true};
@@ -926,6 +943,7 @@ async function unlockCompletedForEdit(x){
 // 測定画面オープン経路と同様に待機表示を出す(こちらは検索を伴わない
 // 単発の読込のためステップ表示は使わない)。
 function resumeRecordFromList(x){return async()=>{
+ if(await WL.measureHooks.through('resumeRecordFromList',x)===false)return;  // 関門（編集モードか）§9.352
  try{
   /* 他のPCで保存された続き(§9.91)。**開く前にこの端末へ取り込む**
      ——取り込まないと編集した内容の保存先が無い。共有側のほうが新しい

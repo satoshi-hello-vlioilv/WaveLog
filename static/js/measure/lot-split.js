@@ -2572,10 +2572,7 @@
     }finally{inSplitRefresh=rendering}
   }
   window.refreshSplitStatusPanel=refreshSplitStatusPanel;
-  if(typeof renderMeasurement==='function'){
-    const baseRenderMeasurementSplitStatus=renderMeasurement;
-    renderMeasurement=function(){baseRenderMeasurementSplitStatus();refreshSplitStatusPanel()};
-  }
+  WL.measureHooks.afterRender(()=>refreshSplitStatusPanel());
   $('#horizontalCount')?.addEventListener('change',()=>refreshSplitStatusPanel());
 
   /* ---- 条の入力欄へロット番号のバッジを付ける ----
@@ -2642,34 +2639,20 @@
     if(!data)return null;
     return{range:[base-data.minus,base+data.plus],source,fallback,plus:data.plus,minus:data.minus,plusKey:data.plusKey,minusKey:data.minusKey,base,splitLot:g.lot};
   }
-  const baseToleranceDetail=toleranceDetail;
-  /* 第3引数 typeName は画面の選択の代わり（§9.125）。**受け取って渡す**
-     ——`toleranceDetail`は3つのファイルが順に包んでおり(ここ・
-     `measure-worklog.js`・`measure-tolerance.js`)、**1つでも
-     引数を落とすと根まで届かない**。実際にここで落ちており、完了前の
-     確認が全項目に「いま選ばれている項目の公差」を当てていた。 */
-  toleranceDetail=function(kind,index=0,typeName){
-    const split=groupRangeFor(kind,index,typeName);
-    if(split)return split;
-    return baseToleranceDetail(kind,index,typeName);
-  };
+  /* 提供者として登録する（§9.348）。分割の条に当たらなければ自分の答えでは
+     ない（undefined＝次の提供者へ）。以前はここが`toleranceDetail`を包み、
+     引数を1つ落として「完了前の確認が全項目に今の項目の公差を当てる」事故が
+     起きた——登録表では引数を resolve が運ぶので、その形は作れない。 */
+  WL.tolerance.register({name:'分割ロット（条ごと）',priority:30,
+    detail:(kind,index,typeName)=>groupRangeFor(kind,index,typeName)||undefined});
 
   // compactToleranceData(表示用の公差テキスト生成)は従来 index を常に0扱いで
   // 呼ばれており、条ごとに公差が変わる分割ロットでは「今フォーカスしている
   // 条」ではなく常に1条目の公差を表示してしまっていた。index省略時は現在の
   // 入力位置(wStep/tStep)を既定値として使うようにし、基準値(base)も
   // toleranceDetailが返す値(分割時はその子ロット自身の値)を優先する。
-  if(typeof compactToleranceData==='function'){
-    compactToleranceData=function(kind,index){
-      const idx=index??((S.measure?.settings?.[kind==='thickness'?'tStep':'wStep'])||0);
-      const detail=toleranceDetail(kind,idx);
-      if(!detail)return null;
-      const base=Number.isFinite(detail.base)?detail.base:Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth);
-      /* 呼び名は`TOL_SOURCE_LABELS`と同じにそろえる（§9.242 ⑤）。 */
-      const labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示基準'};
-      return{source:labels[detail.source]||'公差',base:fixedToleranceValue(kind,base),plus:fixedToleranceValue(kind,detail.plus),minus:fixedToleranceValue(kind,detail.minus),low:fixedToleranceValue(kind,detail.range[0]),high:fixedToleranceValue(kind,detail.range[1]),range:detail.range,splitLot:detail.splitLot||''};
-    };
-  }
+  // index 省略時に今の入力位置を使う・基準値は提供者の値を優先する、は核（measure-input.js の
+  // compactToleranceData）が持つようになった（§9.352）。ここで差し替えない。
 
   // 使用設備・仕掛データを開いた時点のテーブル/列名を、子ロット再検索に
   // そのまま使えるよう記録しておく(仕掛一覧から開いた場合のみ意味を持つ)。
@@ -2681,46 +2664,37 @@
   // 補完・再描画は測定画面自体が開いた後であれば意味があるため、finally で
   // 必ず実行し、後続のマスタ読込失敗に巻き込まれて実行されなくなることを防ぐ。
   // (例外そのものは従来通り再送出されるため、呼び出し元の挙動は変えない)
-  if(typeof openMeasurement==='function'){
-    const baseOpenMeasurement=openMeasurement;
-    openMeasurement=async function(row){
-      row=await resolveToParentIfChild(row);
-      if(row&&WL.dataSource.isWork(S.db)){
-        const missingInfo=await findMissingChildLots(row);
-        if(missingInfo&&missingInfo.missing.length){
-          const proceed=await confirmModal(`このロットは分割データがありますが、次の子ロットが仕掛データに見つかりません:\n${missingInfo.missing.join('、')}\n\n子ロットが仕掛から外れている場合、既に作業済みである可能性が高く、このまま測定を始めると目標幅・公差の一部が欠けたまま判定されます。\n\nこのまま測定を開始しますか？`);
-          if(!proceed)return;
-        }
+  /* 開く前: 子ロットなら親へ読み替え、子ロットが仕掛に無ければ確認して断れる（関門）。
+     開いたあと: 分割データの補完と再描画（例外でも走る）。§9.352 */
+  WL.measureHooks.gate('openMeasurement',async row=>{
+    row=await resolveToParentIfChild(row);
+    if(row&&WL.dataSource.isWork(S.db)){
+      const missingInfo=await findMissingChildLots(row);
+      if(missingInfo&&missingInfo.missing.length){
+        const proceed=await confirmModal(`このロットは分割データがありますが、次の子ロットが仕掛データに見つかりません:\n${missingInfo.missing.join('、')}\n\n子ロットが仕掛から外れている場合、既に作業済みである可能性が高く、このまま測定を始めると目標幅・公差の一部が欠けたまま判定されます。\n\nこのまま測定を開始しますか？`);
+        if(!proceed)return false;
       }
-      try{
-        return await baseOpenMeasurement(row);
-      }finally{
-        if(S.measure&&WL.dataSource.isWork(S.db)){
-          S.measure.settings=S.measure.settings||{};S.measure.settings.sourceTable=S.table;S.measure.settings.sourceColumns=(S.columns||[]).slice();
-          await refreshSelfSourceFull();
-          refreshSplitStatusPanel();
-          scheduleSplitUpdateCheck();
-        }
-      }
-    };
-  }
+    }
+    return [row];
+  },{priority:20});
+  WL.measureHooks.on('afterOpenMeasurement',async()=>{
+    if(S.measure&&WL.dataSource.isWork(S.db)){
+      S.measure.settings=S.measure.settings||{};S.measure.settings.sourceTable=S.table;S.measure.settings.sourceColumns=(S.columns||[]).slice();
+      await refreshSelfSourceFull();
+      refreshSplitStatusPanel();
+      scheduleSplitUpdateCheck();
+    }
+  });
   // 編集中/完了一覧からの「続きから再開」経路でも、分割関連の完全データを
   // 補ってから幅分割情報を再描画する(現在のS.dbが仕掛一覧とは限らないため
   // ここではS.db判定をしない)。
-  if(typeof resumeStoredMeasure==='function'){
-    const baseResumeStoredMeasure=resumeStoredMeasure;
-    resumeStoredMeasure=async function(saved,row=null){
-      try{
-        return await baseResumeStoredMeasure(saved,row);
-      }finally{
-        await refreshSelfSourceFull();
-        refreshSplitStatusPanel();
-        // 途中から再開した場合、保存済みの子ロットデータは取得時点のもの。
-        // 実データが更新されていないかバックグラウンドで確認する。
-        scheduleSplitUpdateCheck();
-      }
-    };
-  }
+  WL.measureHooks.on('afterResumeStoredMeasure',async()=>{
+    await refreshSelfSourceFull();
+    refreshSplitStatusPanel();
+    // 途中から再開した場合、保存済みの子ロットデータは取得時点のもの。
+    // 実データが更新されていないかバックグラウンドで確認する。
+    scheduleSplitUpdateCheck();
+  });
 
   // ---- 条ごとの公差一覧をパネルへ表示(現在フォーカス中の条をハイライト) ----
   function splitLegendHtml(){
@@ -2745,16 +2719,12 @@
      寸法系のときだけなので、どの場面でも出ない死んだ処理だった）。
      条に属する情報なので、条の設計カードの内訳が正しい置き場——畳んで
      あるので見出しの1行を1pxも取らない。 */
-  if(typeof updateMeasurementHeading==='function'){
-    const baseHeading=updateMeasurementHeading;
-    updateMeasurementHeading=function(){
-      baseHeading();
-      const slot=$('#splitTolLegendSlot');if(!slot)return;
-      const type=$('#measureType')?.value;
-      const html=WL.measureItem.isDimensional(type)?splitLegendHtml():'';
-      if(slot.innerHTML!==html)slot.innerHTML=html;
-    };
-  }
+  WL.measureHooks.afterHeading(()=>{
+    const slot=$('#splitTolLegendSlot');if(!slot)return;
+    const type=$('#measureType')?.value;
+    const html=WL.measureItem.isDimensional(type)?splitLegendHtml():'';
+    if(slot.innerHTML!==html)slot.innerHTML=html;
+  });
 
   // ---- 条(条位置)ごとに公差が異なりうるため、フォーカス移動時に
   //      公差表示(数値・図示)を追従させる ----
@@ -2781,8 +2751,5 @@
       WL.measureTolerance.repaint(key,values,WL.measureItem.slotCount(key,count));
     }
   }
-  if(typeof focusCurrent==='function'){
-    const baseFocusCurrent=focusCurrent;
-    focusCurrent=function(){baseFocusCurrent();refreshFocusedToleranceDisplay()};
-  }
+  WL.measureHooks.on('afterFocus',()=>refreshFocusedToleranceDisplay());
 })();

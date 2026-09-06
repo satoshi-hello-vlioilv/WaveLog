@@ -143,6 +143,11 @@ let b=null;const made=[];
   await tap(C);  /* 選び直し（外す） */
 
   /* ---- 6) 掴む道でも張れる ---- */
+  /* 帯の字は直前の「④-c」で既に「結びました」なので、**同じ字を待つと落とし込みが
+     捨てられても素通りする**。掴む前の字を控え、字が**変わって**「結びました」になるまで
+     待つ。通しで1回だけ15秒で切れた（単独・近傍7本では再現せず）ので、切れたときは
+     帯の字をそのまま出して、次に落ちたときに何が起きたか読めるようにする（§9.352 追補）。 */
+  const beforeDrag=await page.evaluate(()=>(document.getElementById('clState')||{}).textContent||'');
   const drag=await page.evaluate(([src,par])=>{
    const el=[...document.querySelectorAll('.cl-item')].find(x=>x.dataset.clName===src);
    const box=[...document.querySelectorAll('.cl-box[data-cl-parent]')].find(x=>x.dataset.clParent===par);
@@ -154,8 +159,12 @@ let b=null;const made=[];
    b2.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:dt}));
    return 'ok';
   },[D,P]);
-  await page.waitForFunction(t=>((document.getElementById('clState')||{}).textContent||'').includes(t),
-    '結びました',{timeout:15000});
+  const dragSaid=await page.waitForFunction(b=>{const t=(document.getElementById('clState')||{}).textContent||'';
+    return t!==b&&/結びました|できません|ません。|失敗/.test(t)?t:false},beforeDrag,{timeout:30000})
+    .then(h=>h.jsonValue()).catch(()=>null);
+  rec('⑥-a 落とし込みのあと帯の字が変わる（保存中→結びました）',
+      !!dragSaid&&/結びました/.test(dragSaid),
+      dragSaid===null?'30秒で変わらず: '+JSON.stringify(await page.evaluate(()=>(document.getElementById('clState')||{}).textContent||'')):String(dragSaid));
   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
   s=await look();
   const two=await links();

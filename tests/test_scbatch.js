@@ -7,6 +7,7 @@ let b=null;
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1700,height:1000}});
+ const W=require('./lib/wait.js');const {idle}=W.track(page);
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  page.on('pageerror',e=>console.log('[pageerror]',e.message));
  page.on('dialog',d=>d.accept());
@@ -20,11 +21,13 @@ let b=null;
  const open=async()=>{
   await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:15000});
-  await page.waitForTimeout(1200);
+  await W.booted(page);
   await page.click('#openSchedule');
   await page.waitForSelector('.sc-board-row',{timeout:15000});
   await page.evaluate(()=>{const r=[...document.querySelectorAll('.sc-board-row')].find(x=>x.dataset.equipment==='テスト設備A');if(r)r.click()});
-  await page.waitForTimeout(4000);
+  // 設備の予定が描かれ、取得が静かになるまで（固定4秒はフィクスチャが育つと足りず、速い環境では無駄）
+  await page.waitForSelector('.sc-row-line',{timeout:20000});
+  await idle(400,15000);
  };
  await open();
 
@@ -54,6 +57,9 @@ let b=null;
  await open();
  const ids=await page.$$eval('.sc-row-line',x=>x.map(r=>r.dataset.id).filter(i=>/^\d+$/.test(i)));
  reset();
+ // 3操作は150msのまとめ待ちのあと1回の batch へ。**押す前に**応答待ちを仕掛ける
+ // （押してから仕掛けると、速い環境では応答が先に来て永遠に待つ）。
+ const batchDone=page.waitForResponse(r=>r.url().includes('/plan/batch'),{timeout:20000}).catch(()=>null);
  await page.evaluate(async idList=>{
   // 削除はアプリ内の確認モーダルを待つ。検証では自動承諾にして、
   // 3操作が同じキュー(150msのまとめ待ち)へ入るようにする。
@@ -63,7 +69,9 @@ let b=null;
   document.querySelector(`.sc-row-line[data-id="${idList[2]}"] .sc-row-lock`)?.click();
   await new Promise(r=>setTimeout(r,50));
  },ids);
- await page.waitForTimeout(6000);
+ await batchDone;
+ await page.waitForFunction(()=>!document.querySelector('.sc-flag-pending'),{timeout:20000}).catch(()=>{});
+ await idle(400,6000);
  rec('削除・ロックなど種類の違う操作も1回にまとまる',
   n.batch===1&&n.del===0&&n.update===0,`batch=${n.batch} delete個別=${n.del} update個別=${n.update}`);
  const p2=await plan();

@@ -458,7 +458,7 @@ button,select,input{
   transition:border-color .15s,box-shadow .15s,background-color .15s;
 }
 button{box-shadow:0 1px 2px #102a3314}
-button:hover{border-color:#6da6ad;background:#f7fafb}
+button:hover{border-color:#6da6ad;background:var(--surface-2)}
 button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{
   outline:0;
   box-shadow:0 0 0 3px #087c8928;

@@ -115,7 +115,7 @@ let b=null;
   rec('並べ替えると画面の並びが変わる',!!moved&&moveIds.length>1&&before.join()!==justAfter.join(),
       `${moved} / ${before.slice(0,6).join(',')} → ${justAfter.slice(0,6).join(',')}`);
   // 遅れていた「変更前」の応答が届くのを待つ
-  await page.waitForTimeout(4000);
+  await page.waitForTimeout(4000);   // 固定待ち: わざと遅らせた応答を待つ（時間そのものが検証の材料）
   const afterLate=await ids();
   rec('遅れて届いた変更前の応答で画面を巻き戻さない',afterLate.join()===justAfter.join(),
       `${justAfter.slice(0,6).join(',')} / ${afterLate.slice(0,6).join(',')}`);

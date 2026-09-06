@@ -1157,7 +1157,9 @@ function openTableMenu(anchor){
   document.addEventListener('keydown',onTableEsc,true);
  });
 }
-function renderTabs(){
+/* 表の切り替え札を描いたあとに足す（汎用フィルタの帯）は `onTabs`（§9.352）。 */
+function renderTabs(){renderTabsCore();runListHooks('tabs')}
+function renderTabsCore(){
  const box=document.getElementById('tabs');if(!box)return;
  closeTableMenu();
  const list=S.tables||[];
@@ -1458,11 +1460,15 @@ window.fetchTableData=fetchTableData;
      query : 問い合わせの組み立て後に呼ばれる。URLSearchParamsを受け取り、
              条件を足す(戻り値は不要)
      after : 一覧を描き終えた後に呼ばれる */
-const listHooks={query:[],after:[]};
+const listHooks={query:[],after:[],tabs:[],grid:[],beforeSelectTable:[],select:[]};
 WL.listHooks={
  onQuery:fn=>{if(typeof fn==='function')listHooks.query.push(fn)},
  onAfter:fn=>{if(typeof fn==='function')listHooks.after.push(fn)},
- count:()=>({query:listHooks.query.length,after:listHooks.after.length}),
+ onTabs:fn=>{if(typeof fn==='function')listHooks.tabs.push(fn)},
+ onGrid:fn=>{if(typeof fn==='function')listHooks.grid.push(fn)},
+ onBeforeSelectTable:fn=>{if(typeof fn==='function')listHooks.beforeSelectTable.push(fn)},
+ onSelect:fn=>{if(typeof fn==='function')listHooks.select.push(fn)},
+ count:()=>Object.fromEntries(Object.keys(listHooks).map(k=>[k,listHooks[k].length])),
 };
 function runListHooks(kind,arg){
  listHooks[kind].forEach(fn=>{
@@ -1470,6 +1476,8 @@ function runListHooks(kind,arg){
   try{fn(arg)}catch(e){console.error('一覧の'+kind+'フックで例外',e)}
  });
 }
+/* 「選ぶ前」は待つ（既定のフィルタを当てる往復が1回ある）。例外は呼び出し元へ（被せのときと同じ）。 */
+async function runListHooksAsync(kind,arg){for(const fn of listHooks[kind])await fn(arg)}
 /* ---------- 「全件」(§9.95) ----------
    表示件数に「全件」を足した。サーバーは1回に500件までしか返さない
    (それ以上を1度に運ぶと転送も解読も1つの塊になり、そのあいだ操作できない)
@@ -1612,7 +1620,8 @@ WL.registerView({key:'list',exit:()=>{
  document.body.classList.remove('qa-mode','qa-view-raw');
  document.getElementById('qualityAnalysisPanel')?.setAttribute('hidden','');
 }});
-async function selectDb(k,b){
+async function selectDb(k,b){const r=await selectDbCore(k,b);runListHooks('select',{db:k});return r}
+async function selectDbCore(k,b){
  /* 利用者の操作で一覧へ移るなら、これが画面の切替そのもの。以前は
     「他の画面を閉じる」処理を各ファイルがselectDbを順に包むモンキーパッチ
     (6箇所)で足しており、読み込み順に依存する連鎖になっていた。
@@ -1645,7 +1654,9 @@ async function selectDb(k,b){
 }
 /* reportは呼び出し元(selectDb)が待機表示を握っているときだけ渡ってくる。
    単独で呼ばれたとき(タブのクリック)は自分で遅延表示を用意する。 */
-async function selectTable(t,report){
+/* 表を選ぶ前に足す（フィルタの文脈の入れ替え）は `onBeforeSelectTable`、選んだあとは `onSelect`（§9.352）。 */
+async function selectTable(t,report){await runListHooksAsync('beforeSelectTable',t);const r=await selectTableCore(t,report);runListHooks('select',{table:t});return r}
+async function selectTableCore(t,report){
  S.table=t;S.page=1;WL.listSort.clear();renderTabs();const label=databaseLabel(S.db);
  if(report){report({detail:`テーブル: ${t}`,progress:'列情報と一覧データを取得しています',step:2});return load()}
  return withWaiting({title:`${label}を読み込んでいます`,detail:`テーブル: ${t}`,
@@ -1864,7 +1875,7 @@ function renderGrid(){
     (§9.88と同じ落とし穴)。renderGridは両方の経路が必ず通る。 */
  const _t0=performance.now();
  try{return renderGridInner()}
- finally{noteRenderTime(performance.now()-_t0);renderLoadChip()}
+ finally{noteRenderTime(performance.now()-_t0);renderLoadChip();runListHooks('grid')}
 }
 function renderGridInner(){
  bumpGridGeneration();   // 前の描画に紐づく非同期判定を打ち切る(下のcheck*参照)

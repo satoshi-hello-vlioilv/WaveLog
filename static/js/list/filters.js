@@ -2543,11 +2543,9 @@
     if(typeof showToast==='function')showToast('使用設備を切り替えました',
       `変数を使っている絞り込み ${uses.length}件 を「${now||'未登録'}」で当て直しました。`,5000);
   });
-  if(typeof renderTabs==='function'){
-    const baseRenderTabs=renderTabs;renderTabs=function(){baseRenderTabs();ensureGenericFilterBar();renderGenericFilterBar();};
-  }
-  const baseRenderGrid=typeof renderGrid==='function'?renderGrid:null;
-  if(baseRenderGrid){renderGrid=function(){baseRenderGrid();renderGenericFilterBar();updateFilterSuggestions();};}
+  /* 札と表を描いたあとに足す（§9.352。被せない） */
+  WL.listHooks.onTabs(()=>{ensureGenericFilterBar();renderGenericFilterBar();});
+  WL.listHooks.onGrid(()=>{renderGenericFilterBar();updateFilterSuggestions();});
 
   /* ---- 公差の図は`measure-input.js`が持つ（§9.150） ----
      以前はここでスウォーム（蜂群図）版の`compactToleranceScale`へ**丸ごと
@@ -2561,9 +2559,8 @@
   // 使用設備必須条件が欲しい場合も、登録フィルタに鍵を付けて保存すれば
   // 他の鍵付きデフォルトフィルタと同じくここで自動適用される(ハード
   // コーディングされた専用注入は行わない)。
-  if(typeof selectTable==='function'){
-    const selectTableDefaultFilterBase=selectTable;
-    selectTable=async function(t){
+  /* 表を選ぶ前に足す（被せない・§9.352）。 */
+  WL.listHooks.onBeforeSelectTable(async t=>{
       /* 切替先に応じてS.genericFiltersを個別コンテキストへ入れ替える。
          (1)直前の状態を保存 (2)切替先の覚えを復元 (3)既定/鍵を当てる。
          **中身はsyncFilterContext()の1箇所**(§9.184)——以前はここに同じ
@@ -2580,9 +2577,7 @@
       await ensurePresetsFor(S.db,t);
       applyDefaultFiltersFor(S.db,t);
       if(presetsReady(S.db,t))defaultsAppliedFor=key;
-      return selectTableDefaultFilterBase(t);
-    };
-  }
+  });
 
   // 起動時: バー生成 → マスタからサジェスト材料を先読み（ローディング表示つき）。
   queueMicrotask(async()=>{

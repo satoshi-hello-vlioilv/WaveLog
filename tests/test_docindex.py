@@ -37,12 +37,92 @@ DOC = ROOT / 'docs' / 'SCHEDULE_MODE_DESIGN.md'
 # CLAUDE.md の上限。**規則の表だけ**なら十分に収まる（現状 81KB）。
 CLAUDE_MAX = 120 * 1024
 
+ARCH = ROOT / 'docs' / 'ARCHITECTURE.md'
+CAP = ROOT / 'tests' / 'visual' / 'capture.js'
+SRC_DIRS = [ROOT / 'static' / 'js', ROOT / 'templates']
+
+# ARCHITECTURE.md が名前で指しているが、リポジトリに無くてよいもの。
+# **理由の書けるものだけ**残す（`test_dblayer` の `DEEP_ALLOW` と同じ作法）。
+# 理由が「旧名」なら本文にも「旧」と書いてあること。
+ARCH_ALLOW = {
+    'app.css': '連結して返す束の名前（`/css/app.css`）。実体は static/css/NN-*.css',
+    'boot_status.js': '起動時に端末の runtime/ へ書き出す（§9.225）',
+    'instance.json': '起動中インスタンスの控え。実行時に作る',
+    'config/local.json': '端末ごとの設定。.gitignore（雛形は local.example.json）',
+    'masters.py': '3-10 で分けた旧ファイル。「から分離」の経緯として残す',
+    'launch_guard.py': '旧名（いまは backend/launcher/guard.py）。「旧」と併記',
+    'count_io.py': 'scratchpad の計測道具。経緯として残す',
+    'probe_scale3/4.js': 'scratchpad の計測道具。経緯として残す',
+}
+# capture.js の選択子のうち、値がソースに無くてよい属性（値はマスタの行）。
+SEL_ALLOW_ATTR = {'data-db-key': '値はデータソースマスタのキー（フィクスチャ）'}
+
 R = []
 
 
 def rec(name, ok, detail=''):
     R.append(ok)
     print(('PASS' if ok else 'FAIL') + ': ' + name + ((' -- ' + str(detail)) if detail else ''))
+
+
+_NAME_RE = re.compile(r'`([A-Za-z0-9_./\-]+\.(?:py|js|css|html|bat|sh|json|md|mjs|txt))`')
+# 押す口（click 等）の引数だけでなく、配列に並べた `'#…'`／`'[data-…'` の文字列も拾う
+# ——配列で回す形を見落とすと 6 件のうち 2 件が素通りした（実測）。
+_SEL_RE = re.compile(r"'((?:#|\[data-)[^']+)'")
+_ID_DEF = ('id="%s"', "id='%s'", "id:'%s'", 'id:"%s"', ".id='%s'", '.id="%s"',
+           "getElementById('%s')", 'getElementById("%s")')
+
+
+def _exists(name):
+    """名前（パスでも basename でも）がリポジトリに実在するか。"""
+    if (ROOT / name).exists():
+        return True
+    base = name.rsplit('/', 1)[-1]
+    for p in ROOT.rglob(base):
+        if 'node_modules' in p.parts or '.git' in p.parts:
+            continue
+        return True
+    return False
+
+
+def missing_names(text):
+    """文書が `名前` で指しているファイルのうち、実在せず、除外にも無いもの。
+    先頭が `/` のものは URL（アプリが返す道）であってファイルではない。"""
+    out = set()
+    for name in set(_NAME_RE.findall(text)):
+        if name.startswith('/') or name in ARCH_ALLOW:
+            continue
+        if not _exists(name):
+            out.add('`' + name + '`')
+    return sorted(out)
+
+
+def _source_text():
+    parts = []
+    for d in SRC_DIRS:
+        for p in sorted(d.rglob('*')):
+            if p.suffix in ('.js', '.html'):
+                parts.append(p.read_text(encoding='utf-8', errors='ignore'))
+    return '\n'.join(parts)
+
+
+def dead_selectors(js):
+    """道具が押す選択子のうち、`#id` がどのソースにも無い／`data-x="値"` が
+    どのソースにも無いもの。`${…}` を含む（実行時に決まる）ものは見ない。"""
+    hay = _source_text()
+    dead = set()
+    for sel in set(_SEL_RE.findall(js)):
+        if '${' in sel:
+            continue
+        for i in re.findall(r'#([A-Za-z0-9_-]+)', sel):
+            if not any((f % i) in hay for f in _ID_DEF):
+                dead.add(sel)
+        for attr, val in re.findall(r'\[(data-[a-z0-9-]+)="([^"]+)"\]', sel):
+            if attr in SEL_ALLOW_ATTR:
+                continue
+            if f'{attr}="{val}"' not in hay and f"{attr}='{val}'" not in hay:
+                dead.add(sel)
+    return sorted(dead)
 
 
 def main():
@@ -101,6 +181,28 @@ def main():
     # **経緯を表へ書き戻さない**——1行が長くなったら、それは本文が戻ってきた合図
     longs = [r[0][:30] for r in rows if len(r[0]) > 90]
     rec('表の1行に本文を書き戻していない（見出しだけ）', not longs, ', '.join(longs[:4]))
+
+    # ---- 3-20（§9.349）: 構成の説明と撮る道具が腐っていない ----
+    # 「規則」と「経緯」は分けたが、**構成の説明（ARCHITECTURE.md）と撮る道具
+    # （tests/visual/capture.js）は誰も見ていなかった**。実測: ARCHITECTURE が
+    # 指す名前のうち無いもの 11、capture.js の押せない選択子 6（3段化・条の設計の
+    # カード化で消えた `#openSplit`／`data-infotab`／`data-lefttab`）。押せない
+    # 選択子は「撮れなかった」を「変わっていない」と読ませる——腐った道具は
+    # 無いより悪い。
+    miss = missing_names(ARCH.read_text(encoding='utf-8'))
+    rec('構成の説明（ARCHITECTURE.md）が指す名前は実在する（旧名・実行時の物は理由つきで除外）',
+        not miss, ', '.join(miss[:8]))
+    gone = [k for k in ARCH_ALLOW if _exists(k)]
+    if gone:
+        print('   注: 除外していた名前が実在するようになっています（除外を外せます）: ' + ', '.join(gone))
+    rec('網そのものが素通りしない（無い名前を1つ注ぐと見つける）',
+        missing_names('`zz_not_here.py` と `backend/zz_gone.js`') == ['`backend/zz_gone.js`', '`zz_not_here.py`'])
+    dead_sel = dead_selectors(CAP.read_text(encoding='utf-8'))
+    rec('撮る道具（tests/visual/capture.js）の選択子は実在する（#id と data-*="値"）',
+        not dead_sel, ', '.join(dead_sel[:8]))
+    rec('網そのものが素通りしない（無い選択子を注ぐと見つける）',
+        dead_selectors("""click('#zzNoSuchId'); click('[data-zz="nope"]'); click('#openSchedule')""")
+        == ['#zzNoSuchId', '[data-zz="nope"]'])
 
     # ---- 設計書に §9 が戻っていない ----
     back = re.findall(r'^(?:### 9(?:\.\d+)+|## §9(?:\.\d+)+) ', doc, re.M)

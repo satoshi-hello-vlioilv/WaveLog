@@ -54,17 +54,16 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 JS = ROOT / 'static' / 'js'
 
 # 残っている全置換。**増やさないこと。** 減らしたらここからも消す。
-ALLOWED = {
-    ('lot-split.js', 'compactToleranceData'):
-        '分割ロットでは条ごとに公差が変わるため、index の既定値ごと差し替える。',
-    ('measure-worklog.js', 'updateWorkTimePanel'):
-        '作業時間パネルを worklog 側の同期処理へ置き換える。',
-}
+ALLOWED = {}
+# 3-16（§9.348・§9.352）で被せも全置換も 0 になった。「あとに足す」は `WL.measureHooks.on`／
+# `WL.listHooks.on*`、「前で断る」は `WL.measureHooks.gate`、「丸ごと持つ」は `own`。
+# ここから先は**1件も増やさない**（登録表へ書く）。
 
 # 代入の何行前までを「退避」とみなすか
 LOOKBACK = 6
 
-ASSIGN = re.compile(r'^\s*(?:window\.)?([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function\b')
+# 行頭の `fn=function` と、`{const old=fn;fn=async function` のように行の途中で被せる形の両方。
+ASSIGN = re.compile(r'(?:^|[;{]\s*)(?:window\.)?([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function\b')
 
 R = []
 
@@ -84,23 +83,30 @@ def declared_functions():
     return names
 
 
+def scan_text(name, text, known):
+    """1本ぶん。(ファイル名, 関数名, 行番号, ラップか) の並び。"""
+    out = []
+    lines = text.split('\n')
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith(('//', '*', '/*')):
+            continue
+        for m in ASSIGN.finditer(line):
+            fn = m.group(1)
+            if fn not in known:
+                continue                      # 新しい名前を作っているだけ
+            back = '\n'.join(lines[max(0, i - LOOKBACK):i]) + '\n' + line[:m.start()]
+            saved = re.search(r'\b(?:const|let|var)\s+\w+\s*=\s*(?:typeof\s+)?'
+                              + re.escape(fn) + r'\b', back)
+            out.append((name, fn, i + 1, bool(saved)))
+    return out
+
+
 def scan():
     """(ファイル名, 関数名, 行番号, ラップか) を返す。"""
     known = declared_functions()
     out = []
     for path in sorted(JS.rglob('*.js')):
-        lines = path.read_text(encoding='utf-8').split('\n')
-        for i, line in enumerate(lines):
-            m = ASSIGN.match(line)
-            if not m:
-                continue
-            fn = m.group(1)
-            if fn not in known:
-                continue                      # 新しい名前を作っているだけ
-            back = '\n'.join(lines[max(0, i - LOOKBACK):i])
-            saved = re.search(r'\b(?:const|let|var)\s+\w+\s*=\s*(?:typeof\s+)?'
-                              + re.escape(fn) + r'\b', back)
-            out.append((path.name, fn, i + 1, bool(saved)))
+        out += scan_text(path.name, path.read_text(encoding='utf-8'), known)
     return out
 
 
@@ -188,12 +194,18 @@ def native_dialogs():
 
 def main():
     found = scan()
-    rec('拡張ファイルの関数差し替えを機械的に拾えている', len(found) >= 10, f'{len(found)}件')
+    # 網そのものが素通りしないこと: 行頭の被せ・行の途中の被せ・全置換の3つを注いで数える
+    probe = scan_text('probe.js', 'const baseX=renderGrid;\nrenderGrid=function(){baseX()};\n'
+                      '{const old=selectTable;selectTable=async function(t){return old(t)}}\n'
+                      'optionFill=function(){};\n', {'renderGrid', 'selectTable', 'optionFill'})
+    rec('被せ・全置換を機械的に拾えている（注いだ3件を数え、行の途中の形も拾う）',
+        [(fn, w) for _, fn, _, w in probe] == [('renderGrid', True), ('selectTable', True), ('optionFill', False)],
+        str(probe))
 
     replaced = [(f, fn, ln) for f, fn, ln, wrapped in found if not wrapped]
     wrapped = [x for x in found if x[3]]
-    rec('ラップ形式（元の実装を退避して呼ぶ）が大半を占める',
-        len(wrapped) > len(replaced), f'ラップ {len(wrapped)}件 / 全置換 {len(replaced)}件')
+    rec('被せ（元を退避して呼ぶ）が1つも無い（登録表へ書く・§9.352）',
+        not wrapped, '; '.join(f'{f}:{ln} {fn}' for f, fn, ln, _ in wrapped[:8]) or '0件')
 
     unknown = [(f, fn, ln) for f, fn, ln in replaced if (f, fn) not in ALLOWED]
     rec('**新しい全置換が増えていない**（増やすなら ALLOWED へ理由を書く）',
@@ -215,6 +227,17 @@ def main():
     dur = duration_formatters()
     rec('所要時間の書き方は`WL.duration`の1箇所だけが組み立てている（§9.341）',
         not dur, '; '.join(dur))
+
+    # §9.348 REVIEW 3-16: 公差の答えは登録表。定義は1つ、描画の被せは無い。
+    js = '\n'.join(p.read_text(encoding='utf-8') for p in JS.rglob('*.js'))
+    n_def = len(re.findall(r'(?m)^\s*(?:function toleranceDetail\b|toleranceDetail\s*=\s*function)', js))
+    rec('`toleranceDetail` の定義は1つ（提供者は `WL.tolerance.register` で登録する・§9.348）',
+        n_def == 1, f'{n_def}箇所')
+    n_wrap = len(re.findall(r'(?m)^\s*(?:renderMeasurement|updateMeasurementHeading)\s*=\s*function', js))
+    rec('`renderMeasurement`／`updateMeasurementHeading` を被せていない（`WL.measureHooks` へ登録する・§9.348）',
+        n_wrap == 0, f'{n_wrap}箇所')
+    n_reg = len(re.findall(r'WL\.tolerance\.register\(', js))
+    rec('公差の提供者が登録表に載っている', n_reg >= 3, f'{n_reg}件')
 
     native = native_dialogs()
     rec('素の alert()/confirm()/prompt() を呼んでいない（§9.342）',

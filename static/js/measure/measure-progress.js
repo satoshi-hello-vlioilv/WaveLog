@@ -280,15 +280,7 @@ document.addEventListener('contextmenu',e=>{
 });
 
 /* 入力・描画のたびに呼ばれる updateValidationVisuals に相乗りして更新する。 */
-const baseUpdateValidationVisuals=typeof updateValidationVisuals==='function'?updateValidationVisuals:null;
-if(baseUpdateValidationVisuals){
- updateValidationVisuals=function(){
-  const result=baseUpdateValidationVisuals.apply(this,arguments);
-  try{refreshMeasureProgress()}catch(e){console.warn('measure progress refresh failed',e)}
-  return result;
- };
- window.updateValidationVisuals=updateValidationVisuals;
-}
+WL.measureHooks.on('afterValidation',()=>{try{refreshMeasureProgress()}catch(e){console.warn('measure progress refresh failed',e)}});
 
 /* 完了時、全項目・全丈位置と作業時間をまとめて確認する。必要な測定項目は
    製品によって変わるため、ここでブロックはせず「意図的に飛ばすのか」を
@@ -317,9 +309,8 @@ function completionReview(){
  if(!wt.startAt||!wt.endAt)notes.push(`・作業時間（${!wt.startAt&&!wt.endAt?'開始・終了とも未記録':!wt.startAt?'開始が未記録':'終了が未記録'}）`);
  return{progress:p,notes,ngTotal:(ng&&ng.total)||0};
 }
-const basePersistAndTransition=typeof persistAndTransition==='function'?persistAndTransition:null;
-if(basePersistAndTransition){
- persistAndTransition=async function(status){
+/* 完了前の確認は関門（gate）で。false を返すと保存しない（§9.352）。 */
+WL.measureHooks.gate('persistAndTransition',async status=>{
   if(status==='完了'){
    /* **オペレータ/検査員の未選択だけは records-store 側で止まる**（§9.319）。
       確認を出してから止めると二度手間になるので、その場合は聞かずに委ねる。
@@ -327,7 +318,7 @@ if(basePersistAndTransition){
    try{
     const v=updateValidationVisuals();
     const identity=v.missing.filter(x=>x.el&&(x.el.id==='operator'||x.el.id==='inspector'));
-    if(identity.length)return basePersistAndTransition.apply(this,arguments);
+    if(identity.length)return;  // records-store 側で止まるので、ここでは聞かない（次へ）
    }catch(e){console.warn('completion precheck failed',e)}
    let review=null;
    try{review=completionReview()}catch(e){console.warn('completion review failed',e)}
@@ -343,13 +334,10 @@ if(basePersistAndTransition){
      review.ngTotal?'このまま完了として登録しますか？（公差外・基準外があったことは記録に残ります）'
                    :'このまま完了として登録しますか？'].filter(x=>x!=='').join('\n');
     const ok=await confirmModal(text);
-    if(!ok)return;
+    if(!ok)return false;  // 断る
    }
   }
-  return basePersistAndTransition.apply(this,arguments);
- };
- window.persistAndTransition=persistAndTransition;
-}
+});
 
 /* 新しく公開するものは名前空間へ入れる（素の`window.*`は上限固定）。 */
 WL.measureReview={

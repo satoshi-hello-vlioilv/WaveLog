@@ -29,22 +29,49 @@
 
    紙を組み立てるだけで window.print() は呼ばない（ヘッドレスで
    ダイアログを開くと戻ってこない）。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+/* 骨組み（起動・rec・pageerror・素のダイアログ・集計・落ちても閉じる）は
+   tests/lib/harness.js の1本（3-15 ①・§9.347）。この網に残るのは見る中身だけ。 */
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const PARENT='L9000';
 const TARGET='timeline:'+EQ;
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
- const setMode=m=>page.evaluate(async mm=>{await fetch('/api/access-mode',{method:'POST',
-   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mm})})},m);
+run('test_scprint: 作業予定表の印刷（§9.115／§9.235）',async({page,rec,setMode,W,paint})=>{
+ /* ---------- 待ちは「時間」ではなく「条件」で（§9.102・3-15 ③・§9.347） ----------
+    この網は固定待ちが33箇所・24.4秒あった。守っていたものは4種類しか無い:
+     ・用紙の選択肢を押す → renderPreview()（非同期）が紙の figure を**丸ごと
+       入れ替える** → 押す前の最初の紙を控え、**別のノードになる**まで待つ（rerender）
+     ・段・倍率・窓の幅・まとめ方の切替 → 同期の描き直し → 描画1巡（paint）
+     ・reloadRowStyles / columnLayout.save → evaluate が await 済み → paint
+     ・scheduleAddFromRow → サーバー書込 → **答えが出るまで取り直す**（W.poll）
+    置き換え前後で全PASS行（測った値ごと）を突き合わせた。 */
+ const SHEET='.sp-pv-sheet,.sp-pv-empty';
+ /* 押す前の最初の紙（または「予定がありません」の札）を控え、別のノードに
+    なるまで待つ。renderPreview は続けて押されると最後の1回だけ組む
+    （pv.again）ので、1回押したら1回入れ替わる。 */
+ const rerender=async fn=>{
+  const old=await page.evaluateHandle(sel=>document.querySelector(sel),SHEET);
+  await fn();
+  await page.waitForFunction(a=>{const n=document.querySelector(a.sel);return !!n&&n!==a.old},
+    {sel:SHEET,old},{timeout:15000}).catch(()=>{});
+  await paint();
+ };
+ /* 続けて何回も押したあと（設定の札4つなど）は「入れ替わりが止まった」を
+    待つ——同じノードが3回続けて見え、組み立て中の札が無いこと。 */
+ const rerenderSettled=async(cap=15000)=>{
+  const t0=Date.now();let last=null,same=0;
+  while(Date.now()-t0<cap){
+   const cur=await page.evaluateHandle(sel=>document.querySelector(sel),SHEET);
+   const busy=await page.evaluate(()=>!!document.querySelector('.sp-pv-wait'));
+   const eq=last?await page.evaluate(a=>a.x===a.y,{x:cur,y:last}):false;
+   same=(!busy&&eq)?same+1:0;
+   if(same>=3)break;
+   last=cur;
+   await new Promise(r=>setTimeout(r,100));
+  }
+  await paint();
+ };
  let savedLayout=null;   // timeline:テスト設備A の保存済みの写し(復元用)
  const made=[];          // 予定へ入れたロット(あとで削除)
  const madeStops=[];     // 足した停止理由マスタ(あとで削除。§9.121)
@@ -96,7 +123,7 @@ let b=null;
    const bar=await page.$('#spPvTabs');
    if(!bar)return;                       // プレビューを開いていない場面
    await page.click(`[data-pv-tab="${key}"]`);
-   await page.waitForTimeout(120);
+   await paint();   // paintTabs() は同期。描画1巡で足りる
   };
   /* 紙を組み立てて器へ入れる（測るために一時的に出す）。 */
   const build=(opt)=>page.evaluate(o=>{
@@ -283,7 +310,7 @@ let b=null;
       `先頭のデータ列=${mutated.cols[0]&&mutated.cols[0].key} / 動かした列=${moveKey}`);
   /* 元へ戻す（このあとの検査へ影響を残さない。§9.121と同じ理由）。 */
   await page.evaluate(a=>WL.columnLayout.save(a.t,a.orig),{t:TARGET,orig:savedLayout});
-  await page.waitForTimeout(300);
+  await paint();
   const restored=await page.evaluate(()=>WL.scheduleView.printColumnKeys());
   rec('列の設定を元へ戻せた',JSON.stringify(restored)===JSON.stringify(keysBefore),
       JSON.stringify({元:keysBefore,いま:restored}));
@@ -363,13 +390,13 @@ let b=null;
   /* 画面を狭くすると、見える範囲の列も連動して減ることを確かめる
      （「全ての列」は画面幅に関わらず変わらない）。 */
   await page.setViewportSize({width:640,height:1000});
-  await page.waitForTimeout(400);
+  await paint();
   const narrow=await page.evaluate(()=>({
    全て:WL.schedulePrint.printColumns({columnScope:'all'}).map(c=>c.key),
    見える範囲:WL.schedulePrint.printColumns({columnScope:'visible'}).map(c=>c.key),
   }));
   await page.setViewportSize({width:1700,height:1000});
-  await page.waitForTimeout(400);
+  await paint();
   rec('画面を狭くすると見える範囲の列も減る（画面の見た目に連動する）',
       narrow.見える範囲.length<wide.見える範囲.length,
       `狭いとき${narrow.見える範囲.length}列 / 広いとき${wide.見える範囲.length}列`);
@@ -686,12 +713,12 @@ let b=null;
    await window.scheduleAddFromRow(row);
    return true;
   },PARENT);
-  await page.waitForTimeout(3500);
-  const pid=await page.evaluate(async e=>{
+  /* 書込のあとは**答えが出るまで取り直す**（3500ms の固定待ちをやめた）。 */
+  const pid=await W.poll(()=>page.evaluate(async e=>{
    const r=await fetch('/api/schedule/plan?equipment='+encodeURIComponent(e));
    const es=((await r.json()).entries||[]).filter(x=>x.lotNo==='L9000'&&x.parentId==null);
    return es.length?es[es.length-1].id:null;
-  },EQ);
+  },EQ),v=>!!v,15000);
   if(pid)made.push(pid);
   rec('分割ありの親を予定へ入れられる',added&&!!pid);
 
@@ -806,34 +833,29 @@ let b=null;
    return {shown,kept:WL.schedulePrint.previewSheets().length};
   });
   rec('刷るのは見えている紙そのもの',same.shown===same.kept,JSON.stringify(same));
-  await page.click('.sp-pv-side [data-opt="pageByDate"]');   // 元へ戻す
-  await page.waitForTimeout(400);
+  await rerender(()=>page.click('.sp-pv-side [data-opt="pageByDate"]'));   // 元へ戻す
 
   /* ---- 14b) 列の範囲・枠線もその場でプレビューに効く(§9.236) ---- */
   const colsBefore=await page.evaluate(()=>
     (document.querySelector('.sp-pv-sheet .sp-page')||{}).querySelectorAll?.('thead th').length||0);
   await openTab('look');
-  await page.click('#spColumnScope input[value="visible"]');
-  await page.waitForTimeout(700);
+  await rerender(()=>page.click('#spColumnScope input[value="visible"]'));
   const colsAfterVisible=await page.evaluate(()=>
     (document.querySelector('.sp-pv-sheet .sp-page')||{}).querySelectorAll?.('thead th').length||0);
   rec('「見える範囲の列だけ」を選ぶとその場で列数が減る',
       colsAfterVisible<colsBefore&&colsAfterVisible>0,`${colsBefore}列 → ${colsAfterVisible}列`);
   await openTab('look');
-  await page.click('#spColumnScope input[value="all"]');      // 元へ戻す
-  await page.waitForTimeout(700);
+  await rerender(()=>page.click('#spColumnScope input[value="all"]'));      // 元へ戻す
   const bordersBefore=await page.evaluate(()=>
     (document.querySelector('.sp-pv-sheet .sp-page')||{}).dataset?.borders||'');
   await openTab('look');
-  await page.click('.sp-pv-side [data-opt="borders"]');
-  await page.waitForTimeout(700);
+  await rerender(()=>page.click('.sp-pv-side [data-opt="borders"]'));
   const bordersAfter=await page.evaluate(()=>
     (document.querySelector('.sp-pv-sheet .sp-page')||{}).dataset?.borders||'');
   rec('「枠線を出す」を外すとその場でdata-borders="off"になる',
       bordersBefore===''&&bordersAfter==='off',JSON.stringify({前:bordersBefore,後:bordersAfter}));
   await openTab('look');
-  await page.click('.sp-pv-side [data-opt="borders"]');      // 元へ戻す
-  await page.waitForTimeout(700);
+  await rerender(()=>page.click('.sp-pv-side [data-opt="borders"]'));      // 元へ戻す
 
   /* ---- 15) 「分割後の子ロットの情報も載せる」もプレビューへその場で効く ---- */
   const kidsOff=await page.evaluate(()=>document.querySelectorAll('.sp-page .sp-row-child').length);
@@ -845,8 +867,7 @@ let b=null;
   const kidsOn=await page.evaluate(()=>document.querySelectorAll('.sp-page .sp-row-child').length);
   rec('チェックすると子ロットの行がその場で出る',kidsOn>0,String(kidsOn));
   await openTab('load');
-  await page.click('.sp-pv-side [data-opt="includeChildren"]');
-  await page.waitForTimeout(400);
+  await rerender(()=>page.click('.sp-pv-side [data-opt="includeChildren"]'));
 
   /* ---- 16) 用紙サイズを選ぶとその場でプレビューの紙が変わる ---- */
   const beforePaper=await page.evaluate(()=>{
@@ -903,7 +924,7 @@ let b=null;
   await page.click('#spPaperKinds input[value="a4"]');
   await page.click('#spPaperOrients input[value="portrait"]');
   await waitPaper('a4-portrait');
-  await page.waitForTimeout(400);
+  await paint();
 
   /* ---- 17) 画面のまとめを紙にも入れる／申し送りの欄(§9.189) ---- */
   const grouped=await page.evaluate(async()=>{
@@ -914,10 +935,10 @@ let b=null;
    sel.value='category';sel.dispatchEvent(new Event('change',{bubbles:true}));
    return true;
   });
-  await page.waitForTimeout(1200);
+  await paint();
   await page.evaluate(()=>WL.schedulePrint.openPreview('テスト設備A'));
   await page.waitForFunction(()=>document.querySelectorAll('.sp-pv-sheet').length>0,null,{timeout:20000});
-  await page.waitForTimeout(500);
+  await paint();
   const gp=await page.evaluate(()=>({
    見出し:[...document.querySelectorAll('.sp-row-group')].map(n=>n.innerText.replace(/\s+/g,' ')),
    申し送り:document.querySelectorAll('.sp-note').length,
@@ -947,12 +968,12 @@ let b=null;
      ——分けると見出しが紙の頭と同じ文字になって出ない決まり（§9.129）。 */
   await page.evaluate(()=>{const sel=document.getElementById('scGroupSelect');
    sel.value='dateshift';sel.dispatchEvent(new Event('change',{bubbles:true}))});
-  await page.waitForTimeout(1200);
+  await paint();
   await page.evaluate(()=>WL.schedulePrint.openPreview('テスト設備A'));
   await page.waitForFunction(()=>document.querySelectorAll('.sp-pv-sheet').length>0,null,{timeout:20000});
   const wasByDate=await page.evaluate(()=>
     !!document.querySelector('#spPvOptions [data-opt="pageByDate"]')?.checked);
-  if(wasByDate){await openTab('load');await page.click('#spPvOptions [data-opt="pageByDate"]');await page.waitForTimeout(900)}
+  if(wasByDate){await openTab('load');await rerender(()=>page.click('#spPvOptions [data-opt="pageByDate"]'))}
   const basis=await page.evaluate(()=>{
    const g=document.querySelector('.sp-pv-sheet .sp-row-group');
    return {basis:((g&&g.querySelector('.sp-group-basis'))||{}).textContent||'',
@@ -961,28 +982,26 @@ let b=null;
   });
   rec('日付でまとめたときは「現場歴／太陽暦」の印も紙に出る(§9.237)',
       /現場歴|太陽暦/.test(basis.basis),JSON.stringify(basis));
-  if(wasByDate){await openTab('load');await page.click('#spPvOptions [data-opt="pageByDate"]');await page.waitForTimeout(700)}
+  if(wasByDate){await openTab('load');await rerender(()=>page.click('#spPvOptions [data-opt="pageByDate"]'))}
   await page.evaluate(()=>{const sel=document.getElementById('scGroupSelect');
    sel.value='category';sel.dispatchEvent(new Event('change',{bubbles:true}))});
-  await page.waitForTimeout(1000);
+  await paint();
   await page.evaluate(()=>WL.schedulePrint.openPreview('テスト設備A'));
   await page.waitForFunction(()=>document.querySelectorAll('.sp-pv-sheet').length>0,null,{timeout:20000});
-  await page.waitForTimeout(400);
+  await paint();
   /* **見出し行を「行」として数えないこと**——数えると、見出しのぶんだけ
      予定が紙から抜け落ちる。 */
   rec('見出しを行として数えていない（予定が抜けない）',gp.行===gp.件数,`${gp.行} / ${gp.件数}`);
   rec('申し送りの欄が紙ごとに付く',gp.申し送り===gp.紙,`${gp.申し送り} / ${gp.紙}枚`);
   await openTab('look');
-  await page.click('.sp-pv-side [data-opt="commentBox"]');
-  await page.waitForTimeout(900);
+  await rerender(()=>page.click('.sp-pv-side [data-opt="commentBox"]'));
   rec('外すと申し送りの欄は消える',
       (await page.evaluate(()=>document.querySelectorAll('.sp-note').length))===0);
   await openTab('look');
-  await page.click('.sp-pv-side [data-opt="commentBox"]');
-  await page.waitForTimeout(700);
+  await rerender(()=>page.click('.sp-pv-side [data-opt="commentBox"]'));
   await page.evaluate(()=>{const s=document.getElementById('scGroupSelect');
     s.value='none';s.dispatchEvent(new Event('change',{bubbles:true}))});
-  await page.waitForTimeout(900);
+  await paint();
   /* ============================================================
      §9.238 ③ 表示倍率 ／ ④ メニューの再構成
      利用者の指示:
@@ -994,7 +1013,7 @@ let b=null;
   /* ---- 18) 表示倍率の帯があり、選ぶと実際に見え方が変わる ---- */
   await page.evaluate(()=>WL.schedulePrint.openPreview('テスト設備A'));
   await page.waitForFunction(()=>document.querySelectorAll('.sp-pv-sheet').length>0,null,{timeout:20000});
-  await page.waitForTimeout(600);
+  await paint();
   const zoomBar=await page.evaluate(()=>{
    const bar=document.getElementById('spPvZoom');
    return {ある:!!bar&&!!bar.offsetParent,
@@ -1021,26 +1040,26 @@ let b=null;
            素のW:pg?pg.offsetWidth:0,素のH:pg?pg.offsetHeight:0};
   });
   await page.click('#spPvZoom [data-zoom="width"]');
-  await page.waitForTimeout(500);
+  await paint();
   const zw=await zoomOf();
   rec('「幅」を選ぶと紙の横幅が器いっぱいになる',
       Math.abs(zw.紙W-(zw.器W-24))<=3,JSON.stringify(zw));
   await page.click('#spPvZoom [data-zoom="height"]');
-  await page.waitForTimeout(500);
+  await paint();
   const zh=await zoomOf();
   rec('「縦」を選ぶと紙の高さが器いっぱいになる',
       Math.abs(zh.紙H-(zh.器H-56))<=3,JSON.stringify(zh));
   await page.click('#spPvZoom [data-zoom="actual"]');
-  await page.waitForTimeout(500);
+  await paint();
   const za=await zoomOf();
   rec('「100%」は実寸で出す',Math.abs(za.zoom-1)<0.001&&Math.abs(za.紙W-za.素のW)<=2,JSON.stringify(za));
   /* ＋／−で1段ずつ動く（100%からは下がる／上がる）。 */
   await page.click('#spPvZoom [data-zoom-step="-1"]');
-  await page.waitForTimeout(400);
+  await paint();
   const zminus=await zoomOf();
   rec('−で1段小さくなる',zminus.zoom<za.zoom&&zminus.zoom>0.2,JSON.stringify(zminus));
   await page.click('#spPvZoom [data-zoom-step="1"]');
-  await page.waitForTimeout(400);
+  await paint();
   const zplus=await zoomOf();
   rec('＋で1段大きくなる',zplus.zoom>zminus.zoom,JSON.stringify(zplus));
   /* **倍率は刷り上がりを変えない**（見え方だけ）。枚数・列数が動かないこと。 */
@@ -1048,7 +1067,7 @@ let b=null;
    枚:document.querySelectorAll('.sp-pv-sheet').length,
    列:(document.querySelector('.sp-pv-sheet .sp-page')||{}).querySelectorAll?.('thead th').length||0}));
   await page.click('#spPvZoom [data-zoom="fit"]');
-  await page.waitForTimeout(500);
+  await paint();
   const stillSame=await page.evaluate(()=>({
    枚:document.querySelectorAll('.sp-pv-sheet').length,
    列:(document.querySelector('.sp-pv-sheet .sp-page')||{}).querySelectorAll?.('thead th').length||0}));
@@ -1593,7 +1612,7 @@ let b=null;
    await page.click('#spCellPad label:has(input[name="spPadX"][value="0.3"])');
    await page.click('#spCellPad label:has(input[name="spPadY"][value="1.5"])');
    await page.click('#spCellPad label:has(input[name="spDayGap"][value="2.2"])');
-   await page.waitForTimeout(800);
+   await rerenderSettled();
    const kept=await page.evaluate(()=>{
     const p=JSON.parse(localStorage.getItem('SchedulePrintPrefV1')||'{}');
     return {fs:p.fontScale,padX:p.padX,padY:p.padY,day:p.dayGap,legacy:p.cellPad,
@@ -1624,7 +1643,8 @@ let b=null;
   {
    await page.evaluate(e=>WL.schedulePrint.openPreview(e),EQ);
    await page.waitForSelector('#spPvTabs',{timeout:15000});
-   await page.waitForTimeout(400);
+   await page.waitForFunction(sel=>!!document.querySelector(sel),SHEET,{timeout:15000}).catch(()=>{});
+   await paint();
    const fit=await page.evaluate(()=>{
     const side=document.querySelector('.sp-pv-side');
     const box=document.querySelector('.sp-pv-box');
@@ -1774,7 +1794,7 @@ let b=null;
      titleLook:'バッジ',titlePlace:'全幅',titleAlign:'中央'});
    madeStyles.push(madeStyle&&madeStyle.id);
    await page.evaluate(()=>WL.scheduleView.reloadRowStyles&&WL.scheduleView.reloadRowStyles());
-   await page.waitForTimeout(1500);
+   await paint();   // reloadRowStyles は async で、evaluate が待ち終えている
    const styled=await page.evaluate(name=>{
     const row=[...document.querySelectorAll('.sc-row-line')]
       .find(r=>(r.textContent||'').includes(name));
@@ -1842,7 +1862,7 @@ let b=null;
       ()書きで時間を表示するように。デフォルト表示ONでOFFにもできるように」） ---- */
    const timeOf=async()=>{
     await page.evaluate(()=>WL.scheduleView.reloadRowStyles());
-    await page.waitForTimeout(1200);
+    await paint();
     return page.evaluate(name=>{
      const row=[...document.querySelectorAll('.sc-row-line')]
        .find(r=>(r.textContent||'').includes(name));
@@ -1987,15 +2007,8 @@ let b=null;
       await page.evaluate(()=>document.getElementById('schedulePrintPreview').hidden
         &&!document.body.classList.contains('sc-print')));
 
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
-  await cleanup();
-  process.exit(ng.length?1:0);
- }catch(e){
-  console.error('FATAL',e);
-  await cleanup();
-  process.exit(2);
+ }finally{
+  await cleanup();   // 集計・終了コード・ブラウザを閉じるのはハーネスが受け持つ
  }
  async function cleanup(){
   /* 画面の列設定(timeline:テスト設備A)を触っているので必ず元へ戻す
@@ -2027,6 +2040,5 @@ let b=null;
    },id);
   }catch(e){}
   try{await setMode('edit')}catch(e){}
-  if(b)await b.close().catch(()=>{});
  }
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});
+});

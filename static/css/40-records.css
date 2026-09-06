@@ -8,17 +8,17 @@
    レイヤの宣言とトークンは 00-base.css が持つ。
    ============================================================ */
 @layer component {
-.record-dialog{width:min(1480px,97vw);height:min(900px,94vh);background:#f7fafb;border-radius:var(--radius-lg);box-shadow:0 20px 60px #0005;display:flex;flex-direction:column;overflow:hidden}
+.record-dialog{width:min(1480px,97vw);height:min(900px,94vh);background:var(--surface-2);border-radius:var(--radius-lg);box-shadow:0 20px 60px #0005;display:flex;flex-direction:column;overflow:hidden}
 /* データ一覧の見出しバンドは廃止(画面名はヘッダーの#fileNameが持つ)。
    絞り込み(.record-searchbar)はヘッダーの#headerViewBarへ移る。 */
-.record-searchbar{display:grid;grid-template-columns:auto minmax(300px,1fr) 250px 110px auto auto;gap:var(--gap-section);align-items:end;padding:12px 16px;border-bottom:1px solid #d6e0e3;background:#fff}
+.record-searchbar{display:grid;grid-template-columns:auto minmax(300px,1fr) 250px 110px auto auto;gap:var(--gap-section);align-items:end;padding:12px 16px;border-bottom:1px solid var(--line-soft);background:#fff}
 .record-searchbar label{display:grid;gap:var(--space-1)}
 .record-searchbar label>span{font-size:var(--fs-micro);font-weight:800;color:#526970}
 .record-searchbar input,.record-searchbar select,.record-searchbar button{height:var(--ctl-h)}
 /* 編集中/完了はそれぞれ独立にON/OFFできるトグル(排他選択ではない)なので、
    セグメントコントロールではなくピル状のチェックボタンで表現する。 */
 .record-status-filter{display:flex;gap:var(--gap-inline)}
-.status-filter-btn{border:1.5px solid #c7d4d8;background:#fff;color:#60747b;font-weight:800;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
+.status-filter-btn{border:1.5px solid #c7d4d8;background:#fff;color:var(--muted);font-weight:800;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
 .status-filter-btn:hover{border-color:#9fb4ba}
 .status-filter-btn.active{border-color:var(--teal);background:var(--teal);color:#fff}
 .status-filter-btn[data-status-filter="done"].active{border-color:var(--success);background:var(--success)}
@@ -38,7 +38,7 @@
      ・**見出しは折り返さない**（足りなければ余白を削り、次に省略記号）
    カスタムプロパティは**定義した場所で解決される**ので、`#grid`と同じく
    ここでも行の3つを定義し直す（`:root`のままでは器の余白が効かない）。 */
-#recordList{padding:0;overflow:auto;background:#eef2f4;
+#recordList{padding:0;overflow:auto;background:var(--bg);
   font-size:var(--tbl-fs);
   --row-h:calc(var(--fs) * var(--lh) + var(--row-pad-y) * 2 + 1px);
   --row-inner-h:calc(var(--row-h) - var(--row-pad-y) * 2 - 1px);
@@ -82,12 +82,12 @@
 .record-list-head{position:sticky;top:0;z-index:4;background:#dcecef;color:#28464e;font-weight:700}
 /* 見出しの左右余白は値のセルより詰める（削る順は 余白 → 省略記号）。 */
 .record-list-head>*{height:var(--row-h);display:flex;align-items:center;
-  padding:var(--row-pad-y) var(--row-pad-x-head);border-right:1px solid #c4d0d4;
-  border-bottom:1px solid #9caeb4;background:inherit;
+  padding:var(--row-pad-y) var(--row-pad-x-head);border-right:1px solid var(--line-mid);
+  border-bottom:1px solid var(--line-strong);background:inherit;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .record-list-row{background:#fff;cursor:pointer}
-.record-list-row>*{background:inherit;border-bottom:1px solid #d6e0e3}
-.record-list-row:nth-child(even){background:#f7fafb}
+.record-list-row>*{background:inherit;border-bottom:1px solid var(--line-soft)}
+.record-list-row:nth-child(even){background:var(--surface-2)}
 .record-list-row:hover{background:#edfafa}
 .record-list-row:focus{outline:3px solid #087c8950;outline-offset:-3px}
 .record-list-cell{min-width:0;height:var(--row-h);display:flex;align-items:center;gap:var(--gap-hair);
@@ -96,7 +96,7 @@
 .record-list-cell>*{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .record-list-cell.primary{padding-inline:var(--space-1)}
 .record-list-cell.primary .grid-lot-link{width:100%;min-height:0}
-.record-list-cell.primary{font-weight:800;color:#173842}
+.record-list-cell.primary{font-weight:800;color:var(--ink)}
 /* **補助の列は色だけで下げる。** 大きさを変えると、同じ距離で同時に読む
    ものが違う大きさになり、表全体が「揃っていない」と感じられる（§9.90）。 */
 .record-list-cell.secondary{color:#526970}
@@ -280,19 +280,19 @@
 .settings-actions .danger{min-width:120px;height:42px;background:#c62828;color:#fff;border-color:#c62828;font-weight:800}
 .settings-actions .danger:hover{background:#a31f1f}
 /* ---------- データ削除の確認モーダル(何も入力がないデータ以外はここでしっかり警告する) ---------- */
-.delete-confirm-summary{display:flex;flex-direction:column;gap:var(--gap-hair);margin-bottom:14px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:#f7fafb}
-.delete-confirm-row{display:flex;justify-content:space-between;gap:var(--space-3);padding:3px 0;font-size:var(--fs-base-sm);color:#3a565d}
-.delete-confirm-row span{color:#60747b;font-weight:700}
+.delete-confirm-summary{display:flex;flex-direction:column;gap:var(--gap-hair);margin-bottom:14px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2)}
+.delete-confirm-row{display:flex;justify-content:space-between;gap:var(--space-3);padding:3px 0;font-size:var(--fs-base-sm);color:var(--ink-2)}
+.delete-confirm-row span{color:var(--muted);font-weight:700}
 .delete-confirm-row b{color:#17272d}
 .delete-confirm-warning{margin:0;padding:var(--pad-card);border-left:4px solid #c62828;background:#fdecec;color:#7a1f1f;line-height:1.7;font-weight:700}
 /* 共通確認モーダル(confirmModal)のメッセージ本文。confirm()の改行表現を
    引き継ぐため、\nをそのまま改行として表示する。 */
-.confirm-modal-message{margin:0;padding:var(--pad-card);border-left:4px solid var(--teal);background:#eef8f9;color:#3a565d;line-height:1.7;white-space:pre-line}
+.confirm-modal-message{margin:0;padding:var(--pad-card);border-left:4px solid var(--teal);background:#eef8f9;color:var(--ink-2);line-height:1.7;white-space:pre-line}
 /* 1行入力の窓（§9.342）。**器は確認モーダルと同じ**なので、足すのは
    「ラベル＋欄」と「添え書き」の2つだけ。入力欄は器いっぱいに伸ばす
    ——名前は何文字入るか分からず、途中で見切れると読み直せない。 */
 .confirm-modal-field{display:flex;flex-direction:column;gap:var(--gap-hair);margin-top:var(--space-2)}
-.confirm-modal-field>span{font-weight:700;font-size:var(--fs-base-sm);color:#3a565d}
+.confirm-modal-field>span{font-weight:700;font-size:var(--fs-base-sm);color:var(--ink-2)}
 .confirm-modal-field>input{width:100%}
 .confirm-modal-hint{display:block;margin-top:var(--gap-hair);color:var(--muted);font-size:var(--fs-micro);line-height:1.6}
 /* 確認の中の「何が起きるか」の箇条書き（§9.301 ②）。**先に文章、次に箇条書き**
@@ -301,7 +301,7 @@
 .confirm-modal-list li{margin:0 0 var(--gap-hair)}
 /* 取り消せない操作の確認で「何が起きるか」を箇条書きにする(§9.61)。
    本文を長い一段落にすると読み飛ばされるため、影響範囲を1行1件で示す。 */
-.confirm-modal-points{margin:10px 0 0;padding:0 0 0 20px;color:#3a565d;
+.confirm-modal-points{margin:10px 0 0;padding:0 0 0 20px;color:var(--ink-2);
  font-size:var(--fs-sm);line-height:1.75}
 .confirm-modal-points li+li{margin-top:4px}
 /* 申し送り（コメント）の入力(§9.189)。**ここだけ入力欄を置く**ので、
@@ -362,7 +362,7 @@
    視覚のみで進捗を把握できるようにする。 */
 .waiting-steps{display:flex;align-items:center;gap:0;margin-top:10px}
 .waiting-steps[hidden]{display:none}
-.waiting-step{display:grid;place-items:center;width:20px;height:20px;border-radius:var(--radius-round);background:#eef2f4;border:2px solid var(--line);color:#8199a0;font-size:var(--fs-badge);font-weight:800;flex:none;transition:background .25s,border-color .25s,color .25s}
+.waiting-step{display:grid;place-items:center;width:20px;height:20px;border-radius:var(--radius-round);background:var(--bg);border:2px solid var(--line);color:#8199a0;font-size:var(--fs-badge);font-weight:800;flex:none;transition:background .25s,border-color .25s,color .25s}
 .waiting-step i{display:block;width:6px;height:6px;border-radius:var(--radius-round);background:currentColor}
 .waiting-step::before{content:attr(data-step);display:none}
 .waiting-step.active{border-color:var(--teal);background:var(--teal);color:#fff;box-shadow:0 0 0 4px #087c8926}

@@ -132,6 +132,12 @@ let b=null;
  rec('スケジュールモードでも作業中の区分と計画外バッジは出る',
   (await catOf('作業中')).some(r=>r.unplanned));
 
+ /* 後始末: 自分が置いた実績（sw-*）は自分で消す。残すと後続の網が「作業中」
+    「完了」の行をこの置き土産で数え、単独では落ちる網が通しでだけ緑になる
+    （test_scsync／test_theme がそうだった。§9.351）。 */
+ await fetch('http://127.0.0.1:5029/api/measurement/backup/delete',{method:'POST',
+  headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:['sw-running','sw-old','sw-done']})}).catch(()=>{});
+
  console.log('\n=== SUMMARY ===');
  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
  f.forEach(x=>console.log(' -',x.n,x.d||''));

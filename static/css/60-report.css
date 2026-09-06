@@ -66,8 +66,8 @@
 /* 行は「一括印刷のチェックボックス」+「プレビュー選択ボタン」の2要素。
    button要素の中へinputをネストするのは仕様・アクセシビリティ上避けるため、
    行自体はdiv、チェックボックスとボタンを横並びにする。 */
-.rp-lot-row{display:flex;align-items:stretch;gap:0;padding:0;border:1px solid #d6e0e3;border-radius:var(--radius-sm);background:#fff;overflow:hidden}
-.rp-lot-row:hover{border-color:#9fc3c8;background:#f7fafb}
+.rp-lot-row{display:flex;align-items:stretch;gap:0;padding:0;border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:#fff;overflow:hidden}
+.rp-lot-row:hover{border-color:#9fc3c8;background:var(--surface-2)}
 .rp-lot-row.active{border-color:var(--teal);background:#eafafa;box-shadow:0 0 0 2px #087c8930}
 .rp-lot-row.checked{border-color:#0a8993}
 .rp-lot-check{display:flex;align-items:center;padding:0 3px 0 9px;cursor:pointer;flex:none}
@@ -78,18 +78,18 @@
   background:transparent;border:0;
 }
 .rp-lot-main{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2)}
-.rp-lot-main b{font-size:var(--fs-base-sm);color:#173842;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rp-lot-sub{color:#60747b;font-size:var(--fs-micro);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-lot-main b{font-size:var(--fs-base-sm);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rp-lot-sub{color:var(--muted);font-size:var(--fs-micro);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rp-lot-date{color:#8a9aa0;font-size:var(--fs-badge);font-variant-numeric:tabular-nums}
-.rp-status-badge{flex:0 0 auto;padding:2px 7px;border-radius:var(--radius-md);background:#eef2f4;color:#526970;font-weight:800;font-size:var(--fs-badge);white-space:nowrap}
+.rp-status-badge{flex:0 0 auto;padding:2px 7px;border-radius:var(--radius-md);background:var(--bg);color:#526970;font-weight:800;font-size:var(--fs-badge);white-space:nowrap}
 .rp-status-badge.done{background:var(--success-bg);color:var(--success)}
 .rp-status-badge.ng{background:var(--danger-bg);color:var(--danger)}
 /* 表示設定は左パネルの最下段へ。操作バーを1層のまま薄く保つため。 */
 .rp-nav-foot{
-  flex:none;border-top:1px solid var(--line);padding:7px 8px;background:#e3ebee;
+  flex:none;border-top:1px solid var(--line);padding:7px 8px;background:var(--surface-3);
   display:flex;align-items:center;gap:6px;
 }
-.rp-nav-foot .rp-foot-label{font-size:var(--fs-micro);font-weight:800;color:#3a565d;flex:none}
+.rp-nav-foot .rp-foot-label{font-size:var(--fs-micro);font-weight:800;color:var(--ink-2);flex:none}
 .rp-foot-btn{flex:1;min-width:0;border:1px solid #9fb9b2;
   background:#fff;color:#2c5049;font-weight:700;cursor:pointer;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -102,7 +102,7 @@
    読めなくなるため、見出しを縦に通してボタンを1つずつ積む。 */
 .rp-display-foot{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 6px}
 .rp-display-foot .rp-foot-label{grid-row:1/3}
-.rp-bulk-foot{background:#eef2f4}
+.rp-bulk-foot{background:var(--bg)}
 .rp-foot-selectall{
   display:flex;align-items:center;gap:5px;flex:none;font-size:var(--fs-micro);font-weight:700;color:#2c5049;
   cursor:pointer;user-select:none;
@@ -193,9 +193,9 @@
 .rp-wide-split{display:grid;grid-template-columns:1fr 1fr;gap:0 4px;align-items:start}
 .rp-empty{padding:40px;text-align:center;color:var(--muted);background:#fff;border:1px dashed var(--muted-border);border-radius:var(--radius-md)}
 .rp-empty button{margin-top:var(--space-3)}
-.rp-report-head{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--space-3);padding-bottom:3px;margin-bottom:4px;border-bottom:2px solid #173842}
+.rp-report-head{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--space-3);padding-bottom:3px;margin-bottom:4px;border-bottom:2px solid var(--ink)}
 .rp-report-head small{color:var(--teal);font-weight:800;letter-spacing:.1em}
-.rp-report-head h2{margin:2px 0 0;font-size:16px;color:#173842}
+.rp-report-head h2{margin:2px 0 0;font-size:16px;color:var(--ink)}
 /* 帳票の頭は「どこで・いつ・どのロットか」（§9.161、利用者の指示）。
    **3つとも同じ大きさで左から横に並べる**——どれも1枚を特定する鍵で、
    大きさに差を付けると設備・日付が添え物に見える。項目名は値の左に小さく
@@ -203,10 +203,10 @@
    用紙の割り付けはpx固定（`.rp-page`配下の例外。§CLAUDE.md）。 */
 .rp-report-head-id{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 16px;min-width:0}
 .rp-head-fact{display:inline-flex;align-items:baseline;gap:4px;margin:0;white-space:nowrap}
-.rp-head-fact small{color:#60747b;font-size:8px;font-weight:800;letter-spacing:.06em}
-.rp-head-fact b{color:#173842;font-size:16px;font-weight:800;line-height:1.15}
+.rp-head-fact small{color:var(--muted);font-size:8px;font-weight:800;letter-spacing:.06em}
+.rp-head-fact b{color:var(--ink);font-size:16px;font-weight:800;line-height:1.15}
 .rp-head-fact i{color:#7a8b90;font-size:8px;font-style:normal}
-.rp-report-head-meta{display:flex;flex-direction:column;align-items:flex-end;gap:2px;color:#60747b;font-size:9px}
+.rp-report-head-meta{display:flex;flex-direction:column;align-items:flex-end;gap:2px;color:var(--muted);font-size:9px}
 /* ---- 塊（ブロック）の並び（§9.169） ----
    紙は**12マスの粗いグリッド**。1塊が何マスぶんかは列レイアウトマスタが
    持ち、JSが`grid-column:span N`で入れる（設定で変わるのでCSSに書けない）。
@@ -245,7 +245,7 @@
    （**borderを含まずpaddingを含む**）なので、この置き方でだけ測定が
    食い違わない（§9.222 ②「拡大前／拡大後を混ぜない」と同じ注意）。
    **A4帳票配下はpx・16進が正しい例外**（`tests/test_theme.js`）。 */
-.rp-block.is-framed{border:1px solid #b7c7cc;border-radius:8px}
+.rp-block.is-framed{border:1px solid var(--line);border-radius:8px}
 .rp-block.is-framed>.rp-block-fit{padding:2px 4px}
 /* 縮める倍率は**カスタムプロパティで渡す**（`--rp-fit`）。インラインの
    `style.transform`はどのレイヤより強く、CSSから打ち消せなくなる
@@ -350,7 +350,7 @@
 .rp-blocks.is-arranging .rp-size-grip:hover{background:var(--teal)}
 .rp-size-tip{position:fixed;z-index:var(--z-drag);pointer-events:none;padding:2px 6px;border-radius:var(--radius-xs);background:#0f2027;color:#fff;font-size:10px;font-weight:800}
 /* 「いまの大きさ」は操作帯にも出す（掴む前に読める）。 */
-.rp-block-dim{font-style:normal;font-size:9px;font-weight:700;color:#4a6169;padding:0 3px;border-radius:3px;background:#fff}
+.rp-block-dim{font-style:normal;font-size:9px;font-weight:700;color:var(--ink-3);padding:0 3px;border-radius:3px;background:#fff}
 .rp-block.rp-drop-before::before,.rp-block.rp-drop-after::before{
   content:"";position:absolute;top:0;bottom:0;width:2px;background:var(--teal);z-index:3}
 .rp-block.rp-drop-before::before{left:-2px}
@@ -568,12 +568,12 @@
 .rp-block.is-area>.rp-block-fit{height:100%}
 .rp-area{min-height:0;height:100%;padding:3px 6px;background:#ffffff;
   display:flex;align-items:flex-end;justify-content:flex-end;break-inside:avoid}
-.rp-area-text{color:#60747b;font-size:8.5px;white-space:pre-wrap;overflow-wrap:break-word;text-align:right}
+.rp-area-text{color:var(--muted);font-size:8.5px;white-space:pre-wrap;overflow-wrap:break-word;text-align:right}
 .rp-section{margin:0;break-inside:avoid}
 /* 見出しと注記の余白も「詰める」対象（§9.298）。**表のセルだけを詰めても
    足りない**——1丈しか無いロットでは、塊の高さの半分以上を見出しと注記が
    占めている（実測: 表32px／見出し＋注記が残り）。**文字サイズは掛けない**。 */
-.rp-section h3{margin:0 0 calc(2px * var(--rp-dense-y,1) * var(--rp-pack,1));padding:calc(1.5px * var(--rp-dense-y,1) * var(--rp-pack,1)) calc(6px * var(--rp-dense-x,1) * var(--rp-pack,1));background:#eef2f4;border-left:4px solid var(--teal);color:#173842;font-size:9px;line-height:calc(1 + .35 * var(--rp-dense-y,1) * var(--rp-pack,1))}
+.rp-section h3{margin:0 0 calc(2px * var(--rp-dense-y,1) * var(--rp-pack,1));padding:calc(1.5px * var(--rp-dense-y,1) * var(--rp-pack,1)) calc(6px * var(--rp-dense-x,1) * var(--rp-pack,1));background:var(--bg);border-left:4px solid var(--teal);color:var(--ink);font-size:9px;line-height:calc(1 + .35 * var(--rp-dense-y,1) * var(--rp-pack,1))}
 /* 節の中の列数（§9.289、利用者の報告「帳票ブロックマスタで調整する列数が
    全く効いておらず…プレビューは2列、紙レイアウトの方のプレビューも2列」）。
    **JSが`--rp-cols`で渡す**——以前は`.rp-grid-N`という決め打ちのクラスで、
@@ -673,8 +673,8 @@
    **余白だけ詰めても足りない**——8.5pxの文字が11.475pxの行箱に入っており、
    詰められる高さの半分は行送りだった（実測: 余白だけだと11.6→11.0px、
    行送りも入れて9.5px）。**文字サイズには掛けない**（§9.303 ①）。 */
-.rp-field{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:calc(var(--space-1) * var(--rp-dense-x,1) * var(--rp-pack,1));padding:calc(1px * var(--rp-dense-y,1) * var(--rp-pack,1)) calc(2px * var(--rp-dense-x,1) * var(--rp-pack,1));border-bottom:1px solid #eef2f4;font-size:8.5px;line-height:calc(1 + .35 * var(--rp-dense-y,1) * var(--rp-pack,1))}
-.rp-field-label{color:#60747b;font-size:8px;font-weight:700;white-space:nowrap}
+.rp-field{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:calc(var(--space-1) * var(--rp-dense-x,1) * var(--rp-pack,1));padding:calc(1px * var(--rp-dense-y,1) * var(--rp-pack,1)) calc(2px * var(--rp-dense-x,1) * var(--rp-pack,1));border-bottom:1px solid var(--bg);font-size:8.5px;line-height:calc(1 + .35 * var(--rp-dense-y,1) * var(--rp-pack,1))}
+.rp-field-label{color:var(--muted);font-size:8px;font-weight:700;white-space:nowrap}
 /* ラベルを**値の上**へ置く（§9.292 ⑤、利用者の指示「上下にラベルと内容が
    組み合わさるパターンでレイアウトできるように」）。1列にして縦へ積むだけ
    ——**ラベルの折り返しは許す**（横並びのときは`nowrap`で幅を食わせない
@@ -727,19 +727,19 @@
 /* **行送りも詰める対象**（§9.308）。ここだけ`--lh`(1.35)を継いでいたので、
    8.5pxの文字に11.475pxの行箱＝**余白の半分は行送り**だった（広い表は
    1.15で組んである）。式は広い表と同じ形にし、**1で1.35**＝今までどおり。 */
-.rp-dim-table th,.rp-dim-table td{height:auto;padding:calc(var(--rp-pd-y) * var(--rp-dense-y,1) * var(--rp-pack,1)) calc(var(--rp-pd-x) * var(--rp-dense-x,1) * var(--rp-pack,1));border:var(--rp-line-w,1px) solid #d6e0e3;text-align:center;font-size:8.5px;line-height:calc(1 + .35 * var(--rp-dense-y,1) * var(--rp-pack,1))}
-.rp-dim-table thead th{background:#eef2f4;color:#173842}
-.rp-dim-table tbody th{background:#f7fafb;text-align:left}
+.rp-dim-table th,.rp-dim-table td{height:auto;padding:calc(var(--rp-pd-y) * var(--rp-dense-y,1) * var(--rp-pack,1)) calc(var(--rp-pd-x) * var(--rp-dense-x,1) * var(--rp-pack,1));border:var(--rp-line-w,1px) solid var(--line-soft);text-align:center;font-size:8.5px;line-height:calc(1 + .35 * var(--rp-dense-y,1) * var(--rp-pack,1))}
+.rp-dim-table thead th{background:var(--bg);color:var(--ink)}
+.rp-dim-table tbody th{background:var(--surface-2);text-align:left}
 /* 品質等級: ラベル(th)と値(td)を交互に並べた4ペア構成（コンパクト化） */
-.rp-grade-table th{background:#f7fafb;color:#60747b;font-weight:700;text-align:left;white-space:nowrap}
-.rp-grade-table td{font-weight:800;color:#173842}
+.rp-grade-table th{background:var(--surface-2);color:var(--muted);font-weight:700;text-align:left;white-space:nowrap}
+.rp-grade-table td{font-weight:800;color:var(--ink)}
 /* 品質情報・板幅測定データなど、ゾーン(グリッド)に属さず全幅で単独配置する
    セクション同士の縦間隔。ゾーンの外に出た分、明示的に余白を持たせる。 */
 #reportContent>.rp-section{margin-bottom:calc(3px * var(--rp-dense-y,1) * var(--rp-pack,1))}
 /* 品質情報: 仕掛の別ファイルから取得した異常/保留情報。文字量が多くなる
    ことが多いため、狭い列に押し込めず全幅の専用行として常時確保する。
    短文の場合でも面積が安定するよう最小高さを確保する。 */
-.rp-info-box{min-height:calc(26px * var(--rp-dense-y,1) * var(--rp-pack,1));padding:calc(1px * var(--rp-dense-y,1) * var(--rp-pack,1)) calc(5px * var(--rp-dense-x,1) * var(--rp-pack,1));border:1px solid #d6e0e3;border-radius:0 0 6px 6px;background:#ffffff;color:#173842;font-size:7.5px;line-height:1.25;white-space:normal;word-break:break-word}
+.rp-info-box{min-height:calc(26px * var(--rp-dense-y,1) * var(--rp-pack,1));padding:calc(1px * var(--rp-dense-y,1) * var(--rp-pack,1)) calc(5px * var(--rp-dense-x,1) * var(--rp-pack,1));border:1px solid var(--line-soft);border-radius:0 0 6px 6px;background:#ffffff;color:var(--ink);font-size:7.5px;line-height:1.25;white-space:normal;word-break:break-word}
 /* ---------- 中の枠はカードいっぱい（§9.242 ⑧、利用者の指摘） ----------
    「品質情報のカードのサイズの枠に合わせて中の情報表示領域の枠を確保して
     ください」——「異常情報なし」の1行しか無いときに枠が26pxまで縮み、
@@ -754,7 +754,7 @@
   display:flex;flex-direction:column;height:100%;min-height:0}
 .rp-section-fill>.rp-info-box{flex:1 1 auto}
 /* 頭/尾を1枚に収める測定データ表。列数が多いため小さめのフォントで密に配置する */
-.rp-note{margin:0 0 calc(2px * var(--rp-dense-y,1) * var(--rp-pack,1));color:#60747b;font-size:7.5px}
+.rp-note{margin:0 0 calc(2px * var(--rp-dense-y,1) * var(--rp-pack,1));color:var(--muted);font-size:7.5px}
 .rp-wide-wrap{overflow:visible}
 .rp-wide-table{min-width:0;width:100%;--rp-pd-y:1px;--rp-pd-x:2px}
 /* ---------- 表の文字も本文と同じ大きさ（§9.320-D、利用者の指示） ----------
@@ -794,7 +794,7 @@
 .rp-product-table td.rp-product-cell .product-judge{min-width:0;margin-right:calc(3px * var(--rp-dense-x,1) * var(--rp-pack,1));padding:0 calc(2px * var(--rp-dense-x,1) * var(--rp-pack,1));border-radius:2px;font-size:7px}
 .rp-pb{display:inline-block;margin-right:calc(4px * var(--rp-dense-x,1) * var(--rp-pack,1));white-space:nowrap}
 /* ラベルは**色で下げる。大きさは変えない**（同じ表の中は同じ文字サイズ）。 */
-.rp-pb>i{margin-right:calc(2px * var(--rp-dense-x,1) * var(--rp-pack,1));color:#60747b;font-style:normal;font-weight:700}
+.rp-pb>i{margin-right:calc(2px * var(--rp-dense-x,1) * var(--rp-pack,1));color:var(--muted);font-style:normal;font-weight:700}
 /* ---------- 異常位置判定 ／ ピッチ判定 ----------
    モーダルで**保存された場合だけ**帳票へ載せる参考情報(オペレータの
    シミュレーション結果であり、測定値ではない)。板幅の実測表は条番号で
@@ -813,35 +813,35 @@
 .rp-defect-body{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;align-items:start;margin-top:2px}
 .rp-defect-figure{display:flex;flex-direction:column;min-width:0}
 .rp-defect-row{display:flex;align-items:center;gap:3px;min-width:0}
-.rp-defect-end{flex:0 0 auto;width:7mm;align-self:stretch;display:flex;align-items:center;justify-content:center;border:1px solid #d6e0e3;border-radius:3px;background:#f7fafb;color:#60747b;font-size:8px;font-weight:800}
+.rp-defect-end{flex:0 0 auto;width:7mm;align-self:stretch;display:flex;align-items:center;justify-content:center;border:1px solid var(--line-soft);border-radius:3px;background:var(--surface-2);color:var(--muted);font-size:8px;font-weight:800}
 .rp-defect-measure{flex:1;min-width:0;display:flex;flex-direction:column}
 .rp-defect-flags{position:relative;height:13px;min-width:0}
-.rp-defect-strip{position:relative;height:15mm;min-width:0;border:1px solid #9caeb4;border-radius:3px;background:#eef2f4;overflow:hidden}
+.rp-defect-strip{position:relative;height:15mm;min-width:0;border:1px solid var(--line-strong);border-radius:3px;background:var(--bg);overflow:hidden}
 .rp-defect-ruler{position:relative;height:13px;min-width:0}
 .rp-defect-lane{position:absolute;top:0;bottom:0;background-color:var(--defect-lane-bg,#8a9a97);border-right:1px solid #ffffff8c;color:#fff;overflow:hidden}
 .rp-defect-lane-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;font-size:8px;font-weight:800}
-.rp-defect-scrap{position:absolute;top:0;bottom:0;overflow:hidden;background:repeating-linear-gradient(45deg,#dde5e7,#dde5e7 3px,#eef2f4 3px,#eef2f4 6px)}
+.rp-defect-scrap{position:absolute;top:0;bottom:0;overflow:hidden;background:repeating-linear-gradient(45deg,#dde5e7,#dde5e7 3px,var(--bg) 3px,var(--bg) 6px)}
 .rp-defect-scrap span{display:none}
 .rp-defect-centerline{position:absolute;top:0;bottom:0;left:50%;width:0;border-left:1px dashed #ffffffcc}
-.rp-defect-mark{position:absolute;top:0;bottom:0;min-width:2px;box-sizing:border-box;border-left:1px solid #a32424;border-right:1px solid #a32424}
-.rp-defect-mark::before{content:"";position:absolute;inset:0;background:#a32424;opacity:.32}
+.rp-defect-mark{position:absolute;top:0;bottom:0;min-width:2px;box-sizing:border-box;border-left:1px solid var(--danger);border-right:1px solid var(--danger)}
+.rp-defect-mark::before{content:"";position:absolute;inset:0;background:var(--danger);opacity:.32}
 .rp-defect-flag{position:absolute;bottom:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;white-space:nowrap}
-.rp-defect-flag b{padding:0 3px;border-radius:6px;background:#a32424;color:#fff;font-size:8px;font-weight:800}
-.rp-defect-flag i{width:0;height:0;border-left:3px solid transparent;border-right:3px solid transparent;border-top:3px solid #a32424}
+.rp-defect-flag b{padding:0 3px;border-radius:6px;background:var(--danger);color:#fff;font-size:8px;font-weight:800}
+.rp-defect-flag i{width:0;height:0;border-left:3px solid transparent;border-right:3px solid transparent;border-top:3px solid var(--danger)}
 .rp-defect-flag.at-start{align-items:flex-start;transform:translateX(-4px)}
 .rp-defect-flag.at-end{align-items:flex-end;transform:translateX(calc(-100% + 4px))}
-.rp-defect-tick{position:absolute;top:0;width:0;height:3px;border-left:1px solid #9caeb4}
-.rp-defect-tick-label{position:absolute;top:3px;transform:translateX(-50%);color:#60747b;font-size:8px;white-space:nowrap}
+.rp-defect-tick{position:absolute;top:0;width:0;height:3px;border-left:1px solid var(--line-strong)}
+.rp-defect-tick-label{position:absolute;top:3px;transform:translateX(-50%);color:var(--muted);font-size:8px;white-space:nowrap}
 .rp-defect-tick-label.at-start{transform:translateX(0)}
 .rp-defect-tick-label.at-end{transform:translateX(-100%)}
 .rp-defect-legend{display:flex;flex-wrap:wrap;gap:1px 8px;margin-top:1px}
-.rp-defect-legend span{display:inline-flex;align-items:center;gap:3px;color:#60747b;font-size:8px;font-weight:700}
+.rp-defect-legend span{display:inline-flex;align-items:center;gap:3px;color:var(--muted);font-size:8px;font-weight:700}
 .rp-defect-legend i{width:6px;height:6px;border-radius:1px;background:var(--defect-lane-bg,#8a9a97)}
 .rp-defect-legend b{color:#17272d}
 /* 欄は**下へ横に流す**（§9.319-C）。4列で7行ぶんが2段に収まり、図へ全幅を渡せる。 */
 .rp-defect-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-content:start;gap:0 6px;min-width:0}
-.rp-defect-fact{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:4px;padding:.5px 2px;border-bottom:1px solid #eef2f4;font-size:8.5px}
-.rp-defect-fact span{color:#60747b;font-size:8px;font-weight:700;white-space:nowrap}
+.rp-defect-fact{display:grid;grid-template-columns:min-content minmax(0,1fr);gap:4px;padding:.5px 2px;border-bottom:1px solid var(--bg);font-size:8.5px}
+.rp-defect-fact span{color:var(--muted);font-size:8px;font-weight:700;white-space:nowrap}
 .rp-defect-fact b{color:#17272d;font-weight:800;text-align:right;overflow-wrap:break-word;white-space:normal}
 /* **折り返す値は左づめ**（§9.305 ②-1、利用者の報告「『内容』のコメント欄の
    折り返し方が変で2行目が右寄せになっている」）。数は右づめのままにする——
@@ -864,7 +864,7 @@
 .rp-defect-roll .rp-defect-facts{margin-top:1px}
 .rp-defect-roll-answer{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;padding:1px 3px;border-radius:3px;background:#eef5f6;font-size:8.5px}
 .rp-defect-roll-answer>b{color:#17272d;font-weight:800}
-.rp-defect-roll-answer>span{color:#60747b}
+.rp-defect-roll-answer>span{color:var(--muted)}
 .rp-defect-roll-answer.is-empty{background:#f6f2ea}
 .rp-defect-roll-answer.is-empty>b{color:#8a6d3b}
 /* 候補の欄は**幅方向の欄と同じ形**（`.rp-defect-fact`）を使い回す。ただし
@@ -922,8 +922,8 @@
    1行も増えない（§9.132）。**その他の欄は詰める**（`is-compact`）——同じ
    数字を2度出さないぶん（基準・製品座標）と合わせて場所を作る。 */
 .rp-defect-spots{display:grid;font-size:8.5px;grid-template-columns:min-content minmax(0,1fr);
- gap:4px;padding:.5px 2px;border-bottom:1px solid #eef2f4}
-.rp-defect-spots-label{color:#60747b;font-size:8px;font-weight:700;white-space:nowrap}
+ gap:4px;padding:.5px 2px;border-bottom:1px solid var(--bg)}
+.rp-defect-spots-label{color:var(--muted);font-size:8px;font-weight:700;white-space:nowrap}
 .rp-defect-spots-list{display:flex;flex-wrap:wrap;gap:0 8px;min-width:0}
 .rp-defect-spot{display:inline-flex;align-items:baseline;gap:3px;color:#17272d;font-weight:800;
  white-space:nowrap}
@@ -934,8 +934,8 @@
    色が語らなくなる）。 */
 .rp-defect-spot-lane{color:var(--rp-hit);font-weight:800}
 .rp-defect-spot-lane b{font-weight:900}
-.rp-defect-spot-lane.is-none{color:#60747b;font-weight:700}
-.rp-defect-spot-at{color:#60747b;font-weight:700}
+.rp-defect-spot-lane.is-none{color:var(--muted);font-weight:700}
+.rp-defect-spot-at{color:var(--muted);font-weight:700}
 /* 何か所目かは**小さな番号**で（図の旗と対応が読める）。色だけで伝えない（§3）。 */
 .rp-defect-spot>i{display:inline-block;font-size:7.5px;border-radius:2px;min-width:8px;
  padding:0 2px;background:#dfe9ec;color:#40575e;font-style:normal;font-weight:800;text-align:center}
@@ -962,13 +962,13 @@
 /* **切れないように組む**（§9.319-C、利用者の報告「見切れが生じる」）——
    ロール名・接触面は現場が決める文字なので、固定割りにして折り返させる。 */
 .rp-defect-roll-table{width:100%;table-layout:fixed;border-collapse:collapse;margin-top:1px;font-size:8px}
-.rp-defect-roll-table th,.rp-defect-roll-table td{padding:.5px 2px;border-bottom:1px solid #eef2f4;text-align:left;overflow-wrap:anywhere}
-.rp-defect-roll-table th{color:#60747b;font-weight:700;white-space:nowrap}
+.rp-defect-roll-table th,.rp-defect-roll-table td{padding:.5px 2px;border-bottom:1px solid var(--bg);text-align:left;overflow-wrap:anywhere}
+.rp-defect-roll-table th{color:var(--muted);font-weight:700;white-space:nowrap}
 .rp-defect-roll-table col.w-face{width:18%}.rp-defect-roll-table col.w-dia{width:20%}
 .rp-defect-roll-table col.w-kind{width:20%}.rp-defect-roll-table col.w-dev{width:14%}
 .rp-defect-roll-table td.num,.rp-defect-roll-table th.num{text-align:right}
 .rp-defect-roll-table tr.is-direct td{color:#17272d;font-weight:800}
-.rp-defect-roll-more{margin:1px 0 0;color:#60747b;font-size:7.5px}
+.rp-defect-roll-more{margin:1px 0 0;color:var(--muted);font-size:7.5px}
 .rp-defect-roll-foot{margin:1px 0 0;color:#8a9a97;font-size:7.5px}
 @media(max-width:1000px){.rp-body{grid-template-columns:1fr}.rp-nav{max-height:220px}}
 /* ============================================================
@@ -991,16 +991,16 @@
  font-weight:700;cursor:pointer;
  display:inline-flex;align-items:center;justify-content:center;gap:6px;
  transition:background .12s,border-color .12s,color .12s}
-.rp-btn-secondary{background:#fff;color:#3a565d}
+.rp-btn-secondary{background:#fff;color:var(--ink-2)}
 .rp-btn-secondary:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
 .rp-btn-secondary:active{background:var(--teal);border-color:var(--teal);color:#fff}
 .rp-btn-primary{background:var(--teal);border-color:var(--teal);color:#fff}
 .rp-btn-primary:hover{background:var(--teal-dark);border-color:var(--teal-dark)}
 .rp-btn-primary:active{background:#06565f;border-color:#06565f}
 .rp-btn-primary:disabled,.rp-btn-secondary:disabled{
- opacity:.45;cursor:not-allowed;background:#eef2f4;border-color:#d6e0e3;color:#93a5ab}
+ opacity:.45;cursor:not-allowed;background:var(--bg);border-color:var(--line-soft);color:#93a5ab}
 .rp-btn-icon{width:var(--ctl-h);padding:0;font-size:var(--fs-title);line-height:1}
-.db-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:#f7fafb;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
+.db-panel{flex:1;min-height:0;margin:9px 14px;display:flex;flex-direction:column;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
 .db-layout{flex:1;min-height:0;display:grid;grid-template-columns:calc(260px * var(--ui-scale)) minmax(0,1fr);overflow:hidden}
 .db-controls{display:flex;flex-direction:column;gap:var(--gap-section);padding:var(--space-4);background:#e7eff1;border-right:1px solid var(--line);overflow-y:auto}
 .db-presets{display:flex;flex-wrap:wrap;gap:var(--gap-inline)}
@@ -1010,36 +1010,36 @@
 .db-ctl-label{font-size:var(--fs-micro);font-weight:800;color:#526970;letter-spacing:.02em}
 .db-ctl-group select{height:var(--ctl-h);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff}
 .db-seg{display:flex;flex-wrap:wrap;gap:var(--space-1)}
-.db-seg button{padding:5px 9px;border:1px solid #c4d0d4;border-radius:var(--radius-lg);background:#fff;color:#3a565d;font-size:var(--fs-micro);cursor:pointer}
+.db-seg button{padding:5px 9px;border:1px solid var(--line-mid);border-radius:var(--radius-lg);background:#fff;color:var(--ink-2);font-size:var(--fs-micro);cursor:pointer}
 .db-seg button.active{background:var(--teal);border-color:var(--teal);color:#fff}
 .db-seg-sm button{padding:3px 8px;font-size:var(--fs-badge)}
 .db-field-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap-inline)}
-.db-field-grid label{display:flex;flex-direction:column;gap:var(--gap-hair);font-size:var(--fs-micro);color:#60747b}
+.db-field-grid label{display:flex;flex-direction:column;gap:var(--gap-hair);font-size:var(--fs-micro);color:var(--muted)}
 .db-field-grid input{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);border-radius:var(--radius-sm)}
-.db-sub{display:flex;flex-direction:column;gap:var(--space-1);margin-top:2px;font-size:var(--fs-micro);color:#60747b}
+.db-sub{display:flex;flex-direction:column;gap:var(--space-1);margin-top:2px;font-size:var(--fs-micro);color:var(--muted)}
 .db-main{display:flex;flex-direction:column;min-width:0;min-height:0;padding:var(--space-4);gap:var(--gap-section);overflow-y:auto}
 .db-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--gap-section)}
-.db-card{display:flex;flex-direction:column;gap:var(--space-1);padding:var(--pad-card);background:#fff;border:1px solid #d6e0e3;border-radius:var(--radius-md)}
-.db-card-label{font-size:var(--fs-micro);color:#60747b;font-weight:700}
-.db-card-value{font-size:var(--fs-lg);color:#173842;font-variant-numeric:tabular-nums}
-.db-chart-wrap{background:#fff;border:1px solid #d6e0e3;border-radius:var(--radius-md);padding:10px;min-height:360px;display:flex}
+.db-card{display:flex;flex-direction:column;gap:var(--space-1);padding:var(--pad-card);background:#fff;border:1px solid var(--line-soft);border-radius:var(--radius-md)}
+.db-card-label{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
+.db-card-value{font-size:var(--fs-lg);color:var(--ink);font-variant-numeric:tabular-nums}
+.db-chart-wrap{background:#fff;border:1px solid var(--line-soft);border-radius:var(--radius-md);padding:10px;min-height:360px;display:flex}
 .db-chart{flex:1;min-width:0;min-height:340px}
 .db-chart svg{width:100%;height:100%}
 .db-empty{margin:auto;padding:20px;color:var(--muted);text-align:center}
-.db-table-wrap{background:#fff;border:1px solid #d6e0e3;border-radius:var(--radius-md);overflow:auto}
+.db-table-wrap{background:#fff;border:1px solid var(--line-soft);border-radius:var(--radius-md);overflow:auto}
 .db-table{width:100%;border-collapse:collapse}
-.db-table th,.db-table td{padding:var(--row-pad-y) var(--row-pad-x);border-bottom:1px solid #eef2f4;text-align:center;font-size:var(--fs-sm);white-space:nowrap}
-.db-table thead th{background:#eef2f4;color:#173842;position:sticky;top:0}
-.db-table tbody th{text-align:left;color:#173842}
+.db-table th,.db-table td{padding:var(--row-pad-y) var(--row-pad-x);border-bottom:1px solid var(--bg);text-align:center;font-size:var(--fs-sm);white-space:nowrap}
+.db-table thead th{background:var(--bg);color:var(--ink);position:sticky;top:0}
+.db-table tbody th{text-align:left;color:var(--ink)}
 .db-empty-cell{padding:var(--space-4);text-align:center;color:var(--muted)}
 .db-axis{stroke:#8299a0;stroke-width:1}
-.db-gridline{stroke:#e3ebee;stroke-width:1}
-.db-label{font-size:var(--fs-micro);fill:#3a565d}
+.db-gridline{stroke:var(--surface-3);stroke-width:1}
+.db-label{font-size:var(--fs-micro);fill:var(--ink-2)}
 .db-value{font-size:var(--fs-micro);fill:#075e67;font-weight:800}
-.db-chart-title{font-size:var(--fs-title);font-weight:800;fill:#173842}
-.db-chart-subtitle{font-size:var(--fs-micro);font-weight:700;fill:#60747b}
+.db-chart-title{font-size:var(--fs-title);font-weight:800;fill:var(--ink)}
+.db-chart-subtitle{font-size:var(--fs-micro);font-weight:700;fill:var(--muted)}
 .db-axis-title{font-size:var(--fs-micro);font-weight:800;fill:#40606a}
-.db-svg-legend-label{font-size:var(--fs-micro);fill:#3a565d}
+.db-svg-legend-label{font-size:var(--fs-micro);fill:var(--ink-2)}
 @media(max-width:1000px){.db-layout{grid-template-columns:1fr}.db-controls{max-height:280px}.db-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* ---------- 稼働状況ビュー(§9.64) ----------
    ダッシュボードを開いた直後に見えるのはこちら。条件を組み立てなくても
@@ -1048,23 +1048,23 @@
 .db-viewtabs button{height:calc(var(--ctl-h) - 8px);padding:0 var(--ctl-pad-x);border:0;border-radius:var(--radius-sm);
  background:transparent;color:#a8d6dc;font-size:var(--fs-sm);font-weight:700;cursor:pointer;
  transition:background .12s,color .12s}
-.db-viewtabs button:hover{color:#fff;background:#173842}
+.db-viewtabs button:hover{color:#fff;background:var(--ink)}
 .db-viewtabs button.active{background:var(--teal);color:#fff}
 .db-status-view{flex:1;min-height:0;display:flex;flex-direction:column;gap:var(--space-3);
  padding:var(--space-4);overflow-y:auto}
-.db-card-note{font-size:var(--fs-micro);color:#7b8e95}
-.db-card-value small{font-size:var(--fs-sm);font-weight:700;margin-left:2px;color:#60747b}
+.db-card-note{font-size:var(--fs-micro);color:var(--ink-soft)}
+.db-card-value small{font-size:var(--fs-sm);font-weight:700;margin-left:2px;color:var(--muted)}
 .db-status-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:var(--space-3);
  align-items:start}
-.db-status-card{background:#fff;border:1px solid #d6e0e3;border-radius:var(--radius-md);overflow:hidden;min-width:0}
+.db-status-card{background:#fff;border:1px solid var(--line-soft);border-radius:var(--radius-md);overflow:hidden;min-width:0}
 .db-status-card-head{display:flex;align-items:baseline;gap:var(--space-2);flex-wrap:wrap;
- padding:var(--pad-card);border-bottom:1px solid #eef2f4;background:#f7fafb}
-.db-status-card-head b{font-size:var(--fs-base-sm);color:#173842}
-.db-status-card-head span{font-size:var(--fs-micro);color:#7b8e95}
+ padding:var(--pad-card);border-bottom:1px solid var(--bg);background:var(--surface-2)}
+.db-status-card-head b{font-size:var(--fs-base-sm);color:var(--ink)}
+.db-status-card-head span{font-size:var(--fs-micro);color:var(--ink-soft)}
 .db-status-body{max-height:min(46vh,460px);overflow:auto}
 .db-status-table{width:100%;border-collapse:collapse}
 .db-status-table th,.db-status-table td{padding:var(--row-pad-y) var(--row-pad-x);
- border-bottom:1px solid #eef2f4;text-align:center;font-size:var(--fs-sm);white-space:nowrap}
+ border-bottom:1px solid var(--bg);text-align:center;font-size:var(--fs-sm);white-space:nowrap}
 
 /* 刷るための書類を組み立てる器（§9.244）。**画面には出さない**が、
    `display:none`にすると中身が組み上がらない（寸法が全部0になり、

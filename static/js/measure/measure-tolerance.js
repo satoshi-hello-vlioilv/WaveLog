@@ -42,18 +42,18 @@
     }
     return null;
   }
-  var baseDetail=toleranceDetail;
-  /* 第3引数 typeName は画面の選択の代わり（§9.125）。**受け取って渡す**
-     ——ここで捨てると、外側のラッパーが渡してきた項目名が根へ届かない。 */
-  toleranceDetail=function(kind,index,typeName){
+  /* 提供者として登録する（§9.348）。寸法系は自分の答えではない（undefined＝
+     次の提供者へ）。指示値が無いときは null＝「公差なし」で、次へは行かない。 */
+  WL.tolerance.register({name:'指示型（単一の指示値）',priority:10,detail:function(kind,index,typeName){
     var type=typeName||currentType();
-    if(DIMENSIONAL[type])return baseDetail(kind,index,typeName);
+    if(DIMENSIONAL[type])return undefined;
     var single=instructionSingle(type);
     if(!single)return null; // 指示公差の該当なし -> 表示しない
     return {range:[0,single.value],source:'instruction',fallback:false,plus:single.value,minus:0,plusKey:single.key,minusKey:'',base:0,single:true,instructionType:type};
-  };
-  var baseFacts=compactToleranceFacts;
-  compactToleranceFacts=function(kind){
+  }});
+  /* 公差カード（facts）も提供者が持つ（§9.352）。単一の指示値のときだけ答え、それ以外は
+     undefined＝核の答え。 */
+  WL.tolerance.register({name:'指示型（単一の指示値）・カード',priority:10,facts:function(kind){
     var detail=toleranceDetail(kind);
     if(detail&&detail.single){
       var label=detail.instructionType||'指示';
@@ -62,8 +62,8 @@
       var html='<div class="compact-tol-three-row"><div class="tol-line tol-line-base"><span class="compact-tol-source">指示基準</span><span class="tol-value-pair"><small>'+esc(label)+'</small><b>'+esc(v)+'</b></span></div><div class="tol-line tol-line-range"><small>判定範囲</small><b>0 ～ '+esc(v)+'</b></div></div>';
       return {range:detail.range,html:html};
     }
-    return baseFacts(kind);
-  };
+    return undefined;
+  }});
 })();
 
 
@@ -123,10 +123,7 @@
   }
 
   // 手動入力時はセルにフォーカスを残す。自動時は従来通り受信欄へ戻す。
-  const baseBindMeasureInputs=typeof bindMeasureInputs==='function'?bindMeasureInputs:null;
-  if(baseBindMeasureInputs){
-    bindMeasureInputs=function(){
-      baseBindMeasureInputs();
+  WL.measureHooks.on('afterBindInputs',()=>{
       document.querySelectorAll('[data-mkey]').forEach(el=>{
         /* **`select()`は`focus`を起こす。** Chromiumの`HTMLInputElement.select()`は
            フォーカスが載っていないと自分で載せに行くため、`focus`ハンドラの中で
@@ -162,33 +159,22 @@
       });
       updateDimensionLocks();
       bindManualModeWarning();
-    };
-  }
+  });
 
   // 受信欄から manual として入った場合も記録する。
-  if(typeof processDeviceInput==='function'){
-    const baseProcessDeviceInput=processDeviceInput;
-    processDeviceInput=function(raw){
-      const parsed=typeof deviceParse==='function'?deviceParse(raw):null;
-      const beforeKey=typeof activeMeasureKey==='function'?activeMeasureKey():'';
-      if(parsed?.device==='manual'&&['thickness','width','lateral','burr'].includes(beforeKey)){
-        appendManualLog('受信欄から手動数値を登録',{item:RESTRICTED_MANUAL_KEYS[beforeKey]||beforeKey,value:parsed.value});
-      }
-      const result=baseProcessDeviceInput(raw);
-      updateDimensionLocks();
-      return result;
-    };
-  }
+  /* 受信の前に手動入力を記録し、あとにロック状態を引き直す（§9.352）。 */
+  WL.measureHooks.on('beforeDeviceInput',raw=>{
+    const parsed=typeof deviceParse==='function'?deviceParse(raw):null;
+    const beforeKey=typeof activeMeasureKey==='function'?activeMeasureKey():'';
+    if(parsed?.device==='manual'&&['thickness','width','lateral','burr'].includes(beforeKey)){
+      appendManualLog('受信欄から手動数値を登録',{item:RESTRICTED_MANUAL_KEYS[beforeKey]||beforeKey,value:parsed.value});
+    }
+  });
+  WL.measureHooks.on('afterDeviceInput',()=>updateDimensionLocks());
 
   // collect/ensure に手動入力ログとロック状態を保持する。
-  if(typeof collect==='function'){
-    const baseCollect=collect;
-    collect=function(){const m=baseCollect();m.manualInputLog=ensureManualLog();m.settings.dimensionLocked=hasDimensionData();return m;};
-  }
-  if(typeof ensureMeasureShape==='function'){
-    const baseEnsure=ensureMeasureShape;
-    ensureMeasureShape=function(m){m=baseEnsure(m);if(m){m.manualInputLog=Array.isArray(m.manualInputLog)?m.manualInputLog:[];m.settings=m.settings||{};m.settings.dimensionLocked=!!m.settings.dimensionLocked;}return m;};
-  }
+  WL.measureHooks.on('collect',m=>{m.manualInputLog=ensureManualLog();m.settings.dimensionLocked=hasDimensionData()});
+  WL.measureHooks.on('shape',m=>{m.manualInputLog=Array.isArray(m.manualInputLog)?m.manualInputLog:[];m.settings=m.settings||{};m.settings.dimensionLocked=!!m.settings.dimensionLocked});
 
   // 丈位置・測定種別切替時は保存済み配列から再描画し、続きから入力する。
   ['lengthPos','measureType'].forEach(id=>{const el=$('#'+id);if(el&&el.dataset.hotfixSwitchBound!=='1'){el.dataset.hotfixSwitchBound='1';el.addEventListener('change',()=>{if(typeof renderMeasureGrid==='function')renderMeasureGrid();updateDimensionLocks();},true);}});
@@ -197,14 +183,8 @@
   // fetch失敗時の原因表示は、先頭のapi関数で一元対応。
 
   // 画面描画後に必ず再適用。
-  if(typeof renderMeasurement==='function'){
-    const baseRenderMeasurement=renderMeasurement;
-    renderMeasurement=function(){baseRenderMeasurement();bindManualModeWarning();updateDimensionLocks();};
-  }
-  if(typeof renderMeasureGrid==='function'){
-    const baseRenderMeasureGrid=renderMeasureGrid;
-    renderMeasureGrid=function(){baseRenderMeasureGrid();updateDimensionLocks();};
-  }
+  WL.measureHooks.afterRender(()=>{bindManualModeWarning();updateDimensionLocks();});
+  WL.measureHooks.on('afterGrid',()=>updateDimensionLocks());
   queueMicrotask(()=>{bindManualModeWarning();updateDimensionLocks();});
 })();
 

@@ -1,22 +1,20 @@
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+/* 待ちは「時間」ではなく「条件」（§9.102・3-15 ③・§9.347）。骨組み
+   （起動・rec・pageerror・素のダイアログ・集計・閉じる）は tests/lib/harness.js。
+   置き換え前後で全PASS行（測った値ごと）を突き合わせてある。 */
+const {run}=require('./lib/harness.js');
 const setMode=async m=>{await fetch('http://127.0.0.1:5029/api/access-mode',
  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
+run('test_screorder: 現場段取りの並べ替え',async({page,rec,W,idle,paint})=>{
  let reorderBody=null;
  page.on('request',r=>{if(r.url().includes('/api/schedule/plan/reorder'))reorderBody=r.postData()});
  await setMode('schedule');
  await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openSchedule',{timeout:15000});
- await page.waitForTimeout(1200);
+ await W.booted(page);
  await page.click('#openSchedule');
  await page.waitForSelector('.sc-board-row',{timeout:10000});
  await page.evaluate(()=>{const r=[...document.querySelectorAll('.sc-board-row')].find(x=>x.dataset.equipment==='テスト設備A');if(r)r.click()});
- await page.waitForTimeout(3500);
+ await W.until(page,()=>!!document.querySelector(".sc-row-line"),null,15000);await W.settleFlags(page);await idle();
 
  // タイムラインは区分列を持つ1本のリスト(§9.39)。予定行は区分チップで見分ける。
  // 並べ替え対象は「予定」と「設備停止」(どちらも状態は予定)。
@@ -35,7 +33,7 @@ let b=null;
  const target=await page.$(`.sc-row-line[data-id="${ids0[1]}"]`);
  await target.focus();
  await page.keyboard.down('Alt');await page.keyboard.press('ArrowDown');await page.keyboard.up('Alt');
- await page.waitForTimeout(2500);
+ await idle(600);
  const after=await planned();
  rec('Alt+↓で予定の並びが入れ替わる',before[0]!==after[0]||before[1]!==after[1],
   `before=${before.slice(0,4)} after=${after.slice(0,4)}`);
@@ -57,7 +55,11 @@ let b=null;
   await fetch('/api/schedule/plan/update',{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify({id:Number(id),fixedStart:iso,user_id:'test'})});
  },[lockTargetId,early]);
- await page.click('#scRefresh');await page.waitForTimeout(3000);
+ /* **上限3秒で見切る**（元の固定待ちと同じ）。計測すると、この直前の
+    `/api/schedule/plan/update` がスケジュールモードの単独実行では21秒以上
+    返らず（§9.347 追補）、`idle` は正直に待って上限まで行く。元の網は3秒で
+    先へ進んでも判定が通っていたので、待ち方だけを変えて結果は変えない。 */
+ await page.click('#scRefresh');await idle(400,3000);await W.settleFlags(page);
  const domNow=await planned();
  rec('ロック行は固定日時どおり表示順の前方へ割り込む',
   domNow.indexOf(lockTargetId)<6,`表示位置=${domNow.indexOf(lockTargetId)} (元は6)`);
@@ -72,7 +74,7 @@ let b=null;
   else{
    await t2.focus();
    await page.keyboard.down('Alt');await page.keyboard.press('ArrowDown');await page.keyboard.up('Alt');
-   await page.waitForTimeout(2500);
+   await idle(600,2500);   // 上限は元の固定待ちと同じ2.5秒（同じ update が塞いでいる）
    if(reorderBody){
     const ids2=JSON.parse(reorderBody).orderedIds.map(String);
     rec('ロック行は表示順ではなく元の予定順の位置のまま送られる',
@@ -87,16 +89,4 @@ let b=null;
     body:JSON.stringify({id:Number(id),fixedStart:'',user_id:'test'})});
   },lockTargetId).catch(()=>{});
  }
-
- console.log('\n=== SUMMARY ===');
- const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
- f.forEach(x=>console.log(' -',x.n,x.d||''));
- await b.close();process.exit(f.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+},{mode:'schedule'});
