@@ -7,6 +7,7 @@ let b=null;
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1700,height:1000}});
+ const W=require('./lib/wait.js');const {idle}=W.track(page);const paint=()=>W.paint(page);
  /* 見え方の設定（まとめ・さかのぼり・表示列・行の色・配置）は「表示」
     パネル(§9.199)の中にある。開く→選ぶ→**閉じる**まで1つの手順にする
     ——開いたままにすると、パネルが表の右上を覆って次のクリックが
@@ -45,11 +46,12 @@ let b=null;
  const openSingle=async()=>{
   await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:15000});
-  await page.waitForTimeout(1200);
+  await W.booted(page);
   await page.click('#openSchedule');
   await page.waitForSelector('.sc-board-row',{timeout:10000});
   await page.evaluate(()=>{const r=[...document.querySelectorAll('.sc-board-row')].find(x=>x.dataset.equipment==='テスト設備A');if(r)r.click()});
-  await page.waitForTimeout(3500);
+  await page.waitForSelector('.sc-row-line',{timeout:20000});
+  await idle(400,15000);
  };
  await openSingle();
 
@@ -92,13 +94,13 @@ let b=null;
  rec('まとめセレクタが出る',await page.evaluate(()=>{const w=document.querySelector('#scGroupRange');return !!w&&!w.hidden}));
  for(const [mode,label] of [['date','日付ごと'],['shift','勤務ごと'],['category','区分ごと']]){
   await pickView('#scGroupSelect',mode);
-  await page.waitForTimeout(600);
+  await idle(300,3000);  // まとめ方の切り替えは描き直し（取得を伴うこともある）
   const heads=await page.$$eval('.sc-group-head .sc-group-label',n=>n.map(x=>x.textContent));
   rec(`「${label}」でまとめ見出しが出る`,heads.length>0,heads.slice(0,4).join(' / '));
   rec(`「${label}」でも区分列は残る`,await page.$$eval('.sc-row-cat',n=>n.length)>0);
  }
  await pickView('#scGroupSelect','none');
- await page.waitForTimeout(600);
+ await idle(300,3000);
  rec('「まとめない」へ戻すと見出しが消える',await page.$$eval('.sc-group-head',n=>n.length)===0);
  rec('まとめ方は保存される',await page.evaluate(()=>localStorage.getItem('ScheduleGroupModeV1')==='none'));
 
@@ -110,15 +112,19 @@ let b=null;
  });
  rec('予定行にロックボタンが出る',!!targetRow,'id='+targetRow);
  const beforeStart=(before.entries.find(e=>String(e.id)===targetRow)||{}).plannedStart;
+ // ロックはまとめ待ち→書込→応答。**押す前に**応答待ちを仕掛け、未確定の印が消えるまで待つ
+ const lockDone=page.waitForResponse(r=>/\/plan\/(batch|update)/.test(r.url()),{timeout:20000}).catch(()=>null);
  await page.click(`.sc-row-line[data-id="${targetRow}"] .sc-row-lock`);
- await page.waitForTimeout(2500);
+ await lockDone;
+ await page.waitForFunction(()=>!document.querySelector('.sc-flag-pending'),{timeout:20000}).catch(()=>{});
+ await idle(400,6000);
  const after=await plan();
  const locked=after.entries.find(e=>String(e.id)===targetRow);
  rec('ロックすると固定開始日時が設定される',!!locked&&!!locked.fixedStart,locked&&locked.fixedStart);
  rec('ロックしても今いる予定日時のまま(勝手に動かない)',
   !!locked&&Math.abs(new Date(locked.plannedStart)-new Date(beforeStart))<120000,
   `before=${beforeStart} after=${locked&&locked.plannedStart}`);
- await page.waitForTimeout(500);
+ await paint();
  const lockedUi=await page.evaluate(id=>{
   const r=document.querySelector(`.sc-row-line[data-id="${id}"]`);
   return r?{cls:r.className,drag:r.draggable,flag:!!r.querySelector('.sc-flag-locked'),
@@ -127,8 +133,11 @@ let b=null;
  rec('ロック行は鍵バッジが付きドラッグ対象から外れる',
   !!lockedUi&&/sc-row-locked/.test(lockedUi.cls)&&lockedUi.drag===false&&lockedUi.flag,JSON.stringify(lockedUi));
  // 解除
+ const unlockDone=page.waitForResponse(r=>/\/plan\/(batch|update)/.test(r.url()),{timeout:20000}).catch(()=>null);
  await page.click(`.sc-row-line[data-id="${targetRow}"] .sc-row-lock`);
- await page.waitForTimeout(2500);
+ await unlockDone;
+ await page.waitForFunction(()=>!document.querySelector('.sc-flag-pending'),{timeout:20000}).catch(()=>{});
+ await idle(400,6000);
  const unlocked=(await plan()).entries.find(e=>String(e.id)===targetRow);
  rec('もう一度押すとロックが外れ通常の並びへ戻る',!!unlocked&&!unlocked.fixedStart,String(unlocked&&unlocked.fixedStart));
 

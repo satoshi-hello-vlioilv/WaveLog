@@ -26,6 +26,7 @@ async function cleanup(){
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1700,height:1000}});
+ const W=require('./lib/wait.js');const {idle}=W.track(page);const paint=()=>W.paint(page);
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  const errs=[];page.on('pageerror',e=>errs.push(e.message));
  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'wl-colio-'));
@@ -45,10 +46,10 @@ async function cleanup(){
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('aside [data-db-key]',{timeout:25000});
-  await page.waitForTimeout(700);
+  await W.booted(page);
   await page.click('aside [data-db-key]');
   await page.waitForSelector('#grid tbody tr',{timeout:25000});
-  await page.waitForTimeout(1500);
+  await idle(400,15000);
   /* この一覧そのものにも設定を1つ持たせておく（§9.216 ③の下ごしらえ）。
      取り込みは**写しを丸ごと捨てる**ので、捨てたあと取り直さないと、
      取り込みと無関係なこの一覧の設定まで画面から消える。 */
@@ -61,13 +62,14 @@ async function cleanup(){
    renderGrid();
    return k;
   });
-  await page.waitForTimeout(600);
+  await paint();
   await page.click('#listColumnBtn');
   await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:8000});
-  await page.waitForTimeout(800);
+  await idle(300,5000);
   const before=await page.evaluate(()=>document.querySelectorAll('.sc-float-win,#listColumnPanel').length);
   await page.click('#lcExport');
-  await page.waitForTimeout(1200);
+  await page.waitForSelector('#lcIo:not([hidden])',{timeout:8000}).catch(()=>{});
+  await paint();
   const io=await page.evaluate(()=>{const x=document.getElementById('lcIo');
    return x&&!x.hidden?{title:document.getElementById('lcIoTitle').textContent,
      scopes:[...x.querySelectorAll('input[name=lcIoScope]')].map(r=>r.value),
@@ -78,8 +80,9 @@ async function cleanup(){
   rec('「この一覧だけ／すべての一覧」を選べる',!!io&&io.scopes.join(',')==='one,all',JSON.stringify(io&&io.scopes));
   rec('運ぶもの・運ばないものを画面に書く',
       !!io&&io.what.includes('運ぶもの')&&io.what.includes('運ばないもの'),String(io&&io.what).slice(0,90));
+  const noteBefore=await W.textOf(page,'#lcIoNote');
   await page.click('#lcIo input[name=lcIoScope][value=all]');
-  await page.waitForTimeout(900);
+  await W.changed(page,'#lcIoNote',noteBefore,5000);  // 説明文が「すべての一覧」の文へ変わるまで
   const allNote=await page.evaluate(()=>({note:document.getElementById('lcIoNote').textContent,
    list:[...document.querySelectorAll('#lcIo .lc-io-list li code')].map(x=>x.textContent)}));
   rec('「すべての一覧」で件数と対象が出る',allNote.list.includes(T1)&&/\d+件/.test(allNote.note),
@@ -103,9 +106,11 @@ async function cleanup(){
    {target:T2,body:{order:['X','Y'],widths:{'X':240},hidden:['Y'],names:{'X':'エックス'},
                     formats:{},rules:{},formulas:{},locks:[]}}]}));
   await page.click('#lcImport');
-  await page.waitForTimeout(700);
+  await paint();
   await page.setInputFiles('#lcImportFile',imp);
-  await page.waitForTimeout(1200);
+  // ファイルを読んで中身の一覧が出るまで
+  await page.waitForFunction(()=>document.querySelectorAll('#lcIo .lc-io-list code').length>0,null,{timeout:8000}).catch(()=>{});
+  await paint();
   const impUi=await page.evaluate(()=>{const x=document.getElementById('lcIo');
    return {scopes:[...x.querySelectorAll('input[name=lcIoImp]')].map(r=>r.value+(r.disabled?'(不可)':'')),
      list:[...x.querySelectorAll('.lc-io-list code')].map(c=>c.textContent),
@@ -117,8 +122,9 @@ async function cleanup(){
   /* **置き換えは取り消せない**ので確認を挟む。押した先を待ってから答える
      (先に押しておくと、まだ出ていないボタンを押すことになる)。 */
   await page.waitForSelector('#appConfirmOk',{timeout:8000});
+  const imported=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('column-layout'),{timeout:15000}).catch(()=>null);
   await page.click('#appConfirmOk');
-  await page.waitForTimeout(2500);
+  await imported;await idle(400,8000);
   const got=await layout(T2);
   rec('取り込みでマスタが書き換わる',(got.order||[]).join(',')==='X,Y'&&(got.widths||{})['X']===240,
       JSON.stringify({order:got.order,widths:got.widths}));
@@ -142,7 +148,7 @@ async function cleanup(){
   rec('取り込み直後もこの一覧の設定が生きている（§9.216 ③）',
       afterImport.name==='取り込み前の名前',JSON.stringify(afterImport.name));
   await page.evaluate(()=>WL.listColumns.close());
-  await page.waitForTimeout(800);
+  await idle(300,5000);
   const afterClose=await page.evaluate(k=>({
    name:WL.columnLayout.get(listLayoutTarget()).names[k]||'',
    shown:[...document.querySelectorAll('#grid th[data-sort-col]')]

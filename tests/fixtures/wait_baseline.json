@@ -70,9 +70,9 @@
   "ms": 4100
  },
  "test_colio.js": {
-  "count": 10,
+  "count": 0,
   "harness": 1,
-  "ms": 10900
+  "ms": 0
  },
  "test_colkeep.js": {
   "count": 3,
@@ -270,9 +270,9 @@
   "ms": 7300
  },
  "test_master.js": {
-  "count": 9,
+  "count": 0,
   "harness": 1,
-  "ms": 11600
+  "ms": 0
  },
  "test_mcore.js": {
   "count": 10,
@@ -540,14 +540,14 @@
   "ms": 13650
  },
  "test_scbatch.js": {
-  "count": 3,
+  "count": 0,
   "harness": 1,
-  "ms": 11200
+  "ms": 0
  },
  "test_sccat.js": {
-  "count": 7,
+  "count": 0,
   "harness": 1,
-  "ms": 11400
+  "ms": 0
  },
  "test_sccols.js": {
   "count": 6,
@@ -590,9 +590,9 @@
   "ms": 50
  },
  "test_scperm.js": {
-  "count": 4,
+  "count": 0,
   "harness": 1,
-  "ms": 11400
+  "ms": 0
  },
  "test_scpick.js": {
   "count": 2,

@@ -37,6 +37,7 @@ const made={perm:[],cat:[]};
  await post('/api/access-mode',{mode:'edit'});
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1400,height:900}});
+ const W=require('./lib/wait.js');const {idle}=W.track(page);const paint=()=>W.paint(page);
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  const errs=[];
  page.on('dialog',d=>d.accept());
@@ -53,7 +54,7 @@ const made={perm:[],cat:[]};
   await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:10000});
   /* 更新者IDは打ち込む欄ではなくなった（§9.276 ③）。端末の覚え（localStorage）へ入れる。 */
   await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tester');
-  await page.waitForTimeout(900);
+  await idle(400,8000);  // マスタ一覧の取得が静かになるまで
   const integ=await page.evaluate(()=>({
     mmMode:document.body.classList.contains('mm-mode'),
     panelInMain:!!document.querySelector('main > #masterMaintPanel'),
@@ -126,14 +127,14 @@ const made={perm:[],cat:[]};
   rec('畳んでも件数は文字で出る（何を畳んでいるのか分かる）',
       folds.filter(f=>f.folded).every(f=>Number(f.count)>0&&f.items===0),JSON.stringify(folds));
   await page.click('[data-nav-fold="internal"]');
-  await page.waitForTimeout(400);
+  await paint();
   const opened=await page.evaluate(()=>{
    const x=document.querySelector('.mm-nav-group[data-nav-group="internal"]');
    return {folded:x.classList.contains('is-folded'),items:x.querySelectorAll('[data-master]').length};
   });
   rec('見出しを押すと開く',!opened.folded&&opened.items>0,JSON.stringify(opened));
   await page.click('[data-nav-fold="internal"]');
-  await page.waitForTimeout(400);
+  await paint();
   rec('もう一度押すと畳む',
       await page.evaluate(()=>document.querySelector('.mm-nav-group[data-nav-group="internal"]').classList.contains('is-folded')));
 
@@ -152,7 +153,7 @@ const made={perm:[],cat:[]};
 
   // 横スクロールが出ないこと(列数の多いアクセス権限マスタで確認)
   await clickTab('アクセス権限');
-  await page.waitForTimeout(1200);
+  await idle(400,8000);
   const ov=await page.evaluate(()=>{
    const w=document.querySelector('.mm-list-wrap'),p=document.querySelector('#masterMaintPanel');
    return {listScrollW:w.scrollWidth,listClientW:w.clientWidth,
@@ -184,7 +185,9 @@ const made={perm:[],cat:[]};
   await page.fill('#maintEditorForm [data-field="loginId"]',name);
   await page.fill('#maintEditorForm [data-field="pcName"]','PC-BEFORE');
   await page.click('#maintEditorSave');
-  await page.waitForTimeout(2500);
+  // 保存したら窓は閉じる（§9.222）。閉じてから一覧の取り直しが静かになるまで
+  await page.waitForFunction(()=>document.querySelector('#maintEditorModal')?.hidden,null,{timeout:15000}).catch(()=>{});
+  await idle(400,8000);
   const saved=await page.evaluate(n=>({
     modalClosed:document.querySelector('#maintEditorModal').hidden,
     inList:document.querySelector('#masterMaintList').textContent.includes(n),
@@ -209,7 +212,8 @@ const made={perm:[],cat:[]};
   rec('一覧の行クリックで編集モーダルが開き既存値が入る',editOpen.nameVal===name,JSON.stringify(editOpen));
   await page.fill('#maintEditorForm [data-field="pcName"]','PC-AFTER');
   await page.click('#maintEditorSave');
-  await page.waitForTimeout(2500);
+  await page.waitForFunction(()=>document.querySelector('#maintEditorModal')?.hidden,null,{timeout:15000}).catch(()=>{});
+  await idle(400,8000);
   perm=(await get('/api/access-permission-master')).items||[];
   const updated=(perm.find(i=>i.loginId===name)||{}).pcName;
   rec('編集モーダルからの更新がサーバーへ反映される',updated==='PC-AFTER','pcName='+updated);
@@ -239,8 +243,9 @@ const made={perm:[],cat:[]};
       inline.labels.includes('更新者')&&inline.labels.includes('更新日時'),inline.labels.join(','));
   const sname='分類'+Date.now().toString().slice(-6);
   await page.fill('#masterMaintForm [data-field="name"]',sname);
+  const catSaved=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('stop-category-master'),{timeout:15000}).catch(()=>null);
   await page.click('#masterMaintForm button[type="submit"]');
-  await page.waitForTimeout(2200);
+  await catSaved;await idle(400,8000);
   const cats=(await get('/api/schedule/stop-category-master')).items||[];
   const cat=cats.find(i=>i.name===sname);
   if(cat)made.cat.push(cat.id);
@@ -269,7 +274,7 @@ const made={perm:[],cat:[]};
   }));
   rec('編集専用モーダルが開き4項目すべて表示',editor.fields===4,JSON.stringify(editor));
   await page.click('#maintEditorCancel');
-  await page.waitForTimeout(300);
+  await page.waitForFunction(()=>document.querySelector('#maintEditorModal')?.hidden,null,{timeout:8000}).catch(()=>{});
   rec('編集モーダルを閉じられる',await page.evaluate(()=>document.querySelector('#maintEditorModal').hidden));
 
   /* ---- ④ 生データ（旧 test_p11 / test_master） ---- */
@@ -294,7 +299,8 @@ const made={perm:[],cat:[]};
 
   /* ---- ① 形: 他ナビへ移ると閉じる（旧 test_p11） ---- */
   await page.click('aside [data-db-key="SIKALOTNOW"]');
-  await page.waitForTimeout(1200);
+  await page.waitForFunction(()=>!document.body.classList.contains('mm-mode'),null,{timeout:8000}).catch(()=>{});
+  await idle(400,8000);
   rec('他のサイドバー項目を押すとマスタ管理から出る',
       await page.evaluate(()=>!document.body.classList.contains('mm-mode')&&document.querySelector('#masterMaintPanel').hidden));
 
