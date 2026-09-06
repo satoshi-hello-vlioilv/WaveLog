@@ -55,7 +55,9 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
           # §9.332: 紙まわりの写しが増えていないこと
           'test_printcore',
           # §9.324 R3: JSの読み込み順は core.py の JS_FILES の1箇所（static/js と突き合わせる）
-          'test_loadorder']
+          'test_loadorder',
+          # §9.347 REVIEW 3-15: 固定待ちとハーネスの写しが増えていないか（1秒未満）
+          'test_waitlint']
 
 # 束ねた呼び名。右辺は実際のテスト名。
 G = {}
