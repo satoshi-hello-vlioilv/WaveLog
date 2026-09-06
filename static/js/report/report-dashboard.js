@@ -5651,6 +5651,14 @@
   catch(e){scheduleOverviewCache={ok:false,error:e.message,equipment:[]}}
   return scheduleOverviewCache;
  }
+ /* 時間の書き方を変えたら、いま出ている稼働状況も書き直す（§9.341）。
+    取り直しはしない（`force`を渡さない）——変わったのは書き方だけで、
+    数字そのものは同じ。 */
+ document.addEventListener('wl:duration-style',()=>{
+  const panel=$id('dashboardPanel');if(!panel||panel.hidden)return;
+  if(dbView==='status')runStatusView();
+  else if(dbView==='equipment')runEquipmentView();
+ });
  async function runStatusView(force){
   const panel=$id('dashboardPanel');if(!panel||panel.hidden||dbView!=='status')return;
   if(typeof withWaiting!=='function')return runStatusViewInner(force,()=>{});
@@ -5676,8 +5684,8 @@
   const failed=ov&&ov.ok===false;
   $id('dbStatusKpi').innerHTML=`
    <div class="db-card"><span class="db-card-label">稼働中の設備</span><b class="db-card-value">${fmt(running.length)}</b><small class="db-card-note">全 ${fmt(rows.length)} 設備</small></div>
-   <div class="db-card"><span class="db-card-label">残っている予定</span><b class="db-card-value">${fmt(pendingCount)}<small>件</small></b><small class="db-card-note">見込 ${esc(fmtMin(pendingMin))}</small></div>
-   <div class="db-card${late.length?' is-warn':''}"><span class="db-card-label">遅れている設備</span><b class="db-card-value">${fmt(late.length)}</b><small class="db-card-note">${late.length?'最大 '+esc(fmtMin(Math.max(...late.map(r=>r.maxOverdueMinutes||0)))):'遅れなし'}</small></div>
+   <div class="db-card"><span class="db-card-label">残っている予定</span><b class="db-card-value">${fmt(pendingCount)}<small>件</small></b><small class="db-card-note">見込 ${esc(WL.duration.text(pendingMin))}</small></div>
+   <div class="db-card${late.length?' is-warn':''}"><span class="db-card-label">遅れている設備</span><b class="db-card-value">${fmt(late.length)}</b><small class="db-card-note">${late.length?'最大 '+esc(WL.duration.text(Math.max(...late.map(r=>r.maxOverdueMinutes||0)))):'遅れなし'}</small></div>
    <div class="db-card"><span class="db-card-label">本日の完了</span><b class="db-card-value">${fmt(doneToday.length)}<small>件</small></b><small class="db-card-note">${avg!=null?'平均 '+fmt(avg)+' 分':'実績なし'}</small></div>`;
 
   if(notConfigured||failed){
@@ -5699,10 +5707,10 @@
       <th>${esc(r.equipment)}</th>
       <td><span class="db-state-badge ${r.active?'running':'idle'}">${r.active?'稼働中':'空き'}</span></td>
       <td class="db-lot">${esc(r.active?(r.active.lotNo||r.active.title||'-'):'-')}</td>
-      <td>${r.active&&r.active.elapsedMinutes!=null?esc(fmtMin(r.active.elapsedMinutes)):'-'}</td>
+      <td>${r.active&&r.active.elapsedMinutes!=null?esc(WL.duration.text(r.active.elapsedMinutes)):'-'}</td>
       <td>${fmt(r.pendingCount||0)}件</td>
-      <td>${esc(fmtMin(r.pendingMinutes||0))}</td>
-      <td>${od>0?`<b class="db-late">${esc(fmtMin(od))}</b>`:'-'}</td>
+      <td>${esc(WL.duration.text(r.pendingMinutes||0))}</td>
+      <td>${od>0?`<b class="db-late">${esc(WL.duration.text(od))}</b>`:'-'}</td>
      </tr>`}).join('')}</tbody></table>`;
   }
 
@@ -5797,8 +5805,9 @@
   return {count:rows.length,measured:durs.length,sumMin:sum,
           avgMin:durs.length?sum/durs.length:null};
  }
- function fmtMin(v){return Number.isFinite(v)?`${Math.round(v)}分`:'-'}
- function fmtHour(v){return Number.isFinite(v)?`${(v/60).toFixed(1)}時間`:'-'}
+ /* 所要時間の書き方は`WL.duration`の1箇所(§9.341)。ここには置かない——
+    以前はこの2行が`150分`と`2.5時間`を別々に決めており、同じ画面の中で
+    「見込 150分」と「合計作業時間 2.5時間」が並んでいた。 */
  async function runEquipmentView(force){
   const panel=$id('dashboardPanel');if(!panel||panel.hidden)return;
   if(typeof withWaiting!=='function')return runEquipmentViewInner(force);
@@ -5829,12 +5838,12 @@
   const diff=(Number.isFinite(me.avgMin)&&Number.isFinite(ot.avgMin))?me.avgMin-ot.avgMin:null;
   const diffText=diff===null?'比較できる実績がありません'
    :(Math.abs(diff)<0.5?'他設備とほぼ同じ'
-     :`他設備より${fmtMin(Math.abs(diff))}${diff<0?'速い':'遅い'}`);
+     :`他設備より${WL.duration.text(Math.abs(diff))}${diff<0?'速い':'遅い'}`);
   const perDay=me.count/days;
   if(kpi)kpi.innerHTML=[
    ['完了ロット',`${me.count}件`,`直近${days}日`],
-   ['合計作業時間',fmtHour(me.sumMin),`実測できた${me.measured}件ぶん`],
-   ['平均作業時間',fmtMin(me.avgMin),diffText],
+   ['合計作業時間',WL.duration.text(me.sumMin),`実測できた${me.measured}件ぶん`],
+   ['平均作業時間',WL.duration.text(me.avgMin),diffText],
    ['1日あたり',`${perDay.toFixed(1)}件`,`直近${days}日の平均`],
   // 稼働状況ビューと同じ視覚語彙(.db-card)を使う。新しいクラスを作ると
   // 同じ意味の要素が2種類の見た目になる(統一の逆行)。
@@ -5851,7 +5860,7 @@
    if(!list.length)return `<div class="db-empty">${esc(emptyText)}</div>`;
    return `<table class="db-table"><thead><tr><th>区分</th><th>件数</th><th>平均</th></tr></thead><tbody>`
     +list.map(x=>`<tr><td>${esc(x.k)}</td><td class="num">${x.count}</td>`
-      +`<td class="num">${esc(fmtMin(x.avgMin))}</td></tr>`).join('')
+      +`<td class="num">${esc(WL.duration.text(x.avgMin))}</td></tr>`).join('')
     +`</tbody></table>`;
   };
   $id('dbEquipProduct').innerHTML=groupTable(mine,r=>r.productType,'この期間の完了実績がありません。');
@@ -5862,7 +5871,7 @@
    ?`<table class="db-table"><thead><tr><th>日時</th><th>ロット</th><th>用途</th><th>作業時間</th></tr></thead><tbody>`
      +recent.map(r=>`<tr><td>${esc(r.date?r.date.toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'-')}</td>`
        +`<td>${esc(r.lotNo||'-')}</td><td>${esc(r.purposeName||'-')}</td>`
-       +`<td class="num">${esc(fmtMin(r.durationMin))}</td></tr>`).join('')
+       +`<td class="num">${esc(WL.duration.text(r.durationMin))}</td></tr>`).join('')
      +`</tbody></table>`
    :'<div class="db-empty">この期間の完了実績がありません。</div>';
  }

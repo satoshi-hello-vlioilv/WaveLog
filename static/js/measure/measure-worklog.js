@@ -255,6 +255,11 @@
   if(fb)fb.onclick=()=>fillFromAuto();
  }
  updateWorkTimePanel=function(){if(!S.measure)return;syncField('workStartAt');syncField('workEndAt');bindWorkTime();refreshWorkTime();refreshAutoStamps()};
+ /* 時間の書き方を変えたら、作業時間の比較カードも書き直す（§9.341）。 */
+ document.addEventListener('wl:duration-style',()=>{
+  try{if(S.measure)refreshWorkTime()}
+  catch(e){WL.quiet.note('作業時間カードを描き直せなかった（次の更新で直る）',e)}
+ });
 })();
 
 /* ============================================================
@@ -345,11 +350,9 @@
     return result;
   }
 
-  function fmtMin(min){
-    if(min==null||!Number.isFinite(min))return '-';
-    const sign=min<0?'-':'',abs=Math.abs(min),h=Math.floor(abs/60),m=Math.round(abs%60);
-    return sign+(h>0?`${h}時間${m}分`:`${m}分`);
-  }
+  /* 所要時間の書き方は`WL.duration`の1箇所（§9.341）。ここには置かない
+     ——ここだけ`2時間30分`固定で、稼働状況の`150分`と食い違っていた。
+     符号は`WL.duration`が持つ（平均比の`+`だけは呼ぶ側が付ける）。 */
 
   function ensureCard(){
     let card=$('#worktimeBenchmark');
@@ -383,14 +386,14 @@
     }
     const hasCurrent=result.currentMin!=null;
     const diffCell=hasCurrent&&Number.isFinite(result.diffMin)
-      ?`<div class="wtb-cell ${result.diffMin>0?'wtb-slower':'wtb-faster'}"><small>平均比</small><b>${result.diffMin>0?'+':''}${esc(fmtMin(result.diffMin))}</b></div>`
+      ?`<div class="wtb-cell ${result.diffMin>0?'wtb-slower':'wtb-faster'}"><small>平均比</small><b>${result.diffMin>0?'+':''}${esc(WL.duration.text(result.diffMin))}</b></div>`
       :'';
     card.innerHTML=`
       <div class="wtb-title">過去実績との比較<small>(同条件 N=${result.n}件)</small></div>
       <div class="wtb-grid">
-        <div class="wtb-cell"><small>過去平均</small><b>${esc(fmtMin(result.avgMin))}</b></div>
-        <div class="wtb-cell"><small>バラつき(σ)</small><b>±${esc(fmtMin(result.sdMin))}</b></div>
-        <div class="wtb-cell"><small>${result.currentLive?'経過(作業中)':'今回'}</small><b>${hasCurrent?esc(fmtMin(result.currentMin)):'未計測'}</b></div>
+        <div class="wtb-cell"><small>過去平均</small><b>${esc(WL.duration.text(result.avgMin))}</b></div>
+        <div class="wtb-cell"><small>バラつき(σ)</small><b>±${esc(WL.duration.text(result.sdMin))}</b></div>
+        <div class="wtb-cell"><small>${result.currentLive?'経過(作業中)':'今回'}</small><b>${hasCurrent?esc(WL.duration.text(result.currentMin)):'未計測'}</b></div>
         ${diffCell}
       </div>`;
   }

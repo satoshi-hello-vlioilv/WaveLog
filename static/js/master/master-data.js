@@ -12,7 +12,7 @@
  const {CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,firstVisibleDefKey,fmtDT,hintHtml,loadMaint,maintState,numFieldHtml,numRaw,pageFoldHtml,pageTabsHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav}=WL.mm;
  let loadFactorState={equipment:'',configured:true,model:null,accuracy:null};
  function loadFactorBasisLabel(b){return {equipment:'自設備の実績',pooled:'全設備プール(自設備は実績不足)',default:'算出不可(実績なし)'}[b]||b||'-'}
- function fmtLfMinutes(min){if(min===null||min===undefined)return '-';const v=Math.round(min);if(v<60)return `${v}分`;return `${Math.floor(v/60)}時間${v%60?(v%60)+'分':''}`}
+ /* 所要時間の書き方は`WL.duration`の1箇所（§9.341）。 */
  async function loadLoadFactorMaint(force){
   const list=$('#masterMaintList');if(!list)return;
   if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備マスタが読めなくても画面表示は継続する',e)}}
@@ -66,7 +66,7 @@
   const baseOv=(model.overrides||[]).find(o=>o.factor==='BASE');
   const summary=`<div class="lf-summary">
    <div><small>基準</small><b>${esc(loadFactorBasisLabel(model.basis))}</b></div>
-   <div><small>基準時間T0</small><b>${fmtLfMinutes(model.T0)}</b>${baseOv?`<span class="lf-override-note">→ 上書き適用中: ${fmtLfMinutes(baseOv.coefficient)}</span>`:''}</div>
+   <div><small>基準時間T0</small><b>${WL.duration.text(model.T0)}</b>${baseOv?`<span class="lf-override-note">→ 上書き適用中: ${WL.duration.text(baseOv.coefficient)}</span>`:''}</div>
    <div><small>実績件数</small><b>${model.n}件${model.excluded?`(外れ値${model.excluded}件除外)`:''}</b></div>
    <div><small>ばらつき(σ)</small><b>${model.sigmaLog!=null?model.sigmaLog:'-'}</b></div>
    ${acc&&acc.n?`<div><small>精度: 中央値バイアス</small><b>${acc.medianLogBias>0?'+':''}${acc.medianLogBias}</b></div>
@@ -77,7 +77,7 @@
   const baseOverride=overrideMap['BASE\u0000'];
   const baseRow=`<div class="lf-row lf-row-base">
    <span class="lf-row-key">BASE</span><span class="lf-row-level">基準時間T0</span>
-   <span class="lf-row-value">${fmtLfMinutes(model.T0)}</span><span class="lf-row-n">n=${model.n}</span>
+   <span class="lf-row-value">${WL.duration.text(model.T0)}</span><span class="lf-row-n">n=${model.n}</span>
    <span class="lf-row-override"><input type="number" step="0.1" min="0" placeholder="分で上書き" data-lf-factor="BASE" data-lf-level="" value="${baseOverride?baseOverride.coefficient:''}"></span>
    <span class="lf-row-actions"><button type="button" class="mm-btn-ghost sm" data-lf-save="BASE|">保存</button>${baseOverride?'<button type="button" class="mm-btn-ghost sm" data-lf-clear="BASE|">解除</button>':''}</span>
   </div>`;

@@ -1603,8 +1603,11 @@ function durationMs(record){const a=record?.workTime?.startAt,b=record?.workTime
    開始・終了の欄が分刻み（`step="60"`）になったので、秒の位は必ず0になる
    ——出しても嘘の精度が増えるだけ。**1時間未満は「N分」だけ**にする
    （`0時間 8分`は0を読ませるぶん遅い）。
-   丸めは四捨五入——古い記録には秒が入っており、切り捨てると59秒が0分になる。 */
-function formatDuration(ms){if(ms===null||ms===undefined)return '-';const min=Math.round(ms/60000),h=Math.floor(min/60),m=min%60;return h>0?`${h}時間 ${m}分`:`${m}分`}
+   丸めは四捨五入——古い記録には秒が入っており、切り捨てると59秒が0分になる。
+   **書き方そのものは`WL.duration`が持つ**（§9.341）。ここはミリ秒を分へ
+   直す入口だけを受け持つ（以前はここだけ`2時間 30分`と空白を挟んでおり、
+   同じ作業時間が画面によって`2時間30分`にも`150分`にもなっていた）。 */
+function formatDuration(ms){if(ms===null||ms===undefined)return '-';return WL.duration.text(Math.round(ms/60000))}
 /* Measurement precision and zero-order-tolerance correction. */
 /* ---------- 桁は「測定器が保証できるところまで」（§9.320-C、利用者の指示） ----------
    「自動登録で使うものについては、測定機器によって保証できる測定精度が
@@ -1994,6 +1997,69 @@ window.addEventListener('unload',notifyTabClosed);
  });
 })();
 
+/* ---------- 時間の書き方(アプリ全体・§9.341) ----------
+   「150分」なのか「2時間30分」なのか。**答えるのはここだけ**(§9.163)。
+
+   実測すると、同じ「所要時間」を書く関数が5つ・表記が4種類あった:
+     fmtMin(15箇所) 150分 ／ fmtMinutes(13箇所) 2時間30分 ／
+     fmtCompact(4箇所) 2:30 ／ fmtHour(1箇所) 2.5時間 ／
+     fmtRelative 2時間30分後
+   稼働状況は「150分」、作業スケジュールは「2時間30分」、その実績列だけ
+   「2:30」——**同じ数字が画面をまたぐと別の顔になる**ので、読む側は毎回
+   どの単位で読むのかを確かめ直すことになる(画面基準6「単位を画面に出す」)。
+
+   **既定は「分」**(利用者の指示)。作業時間は分まで見る(§9.242)現場の
+   数え方に合わせる。「時間と分」で読みたい人のために書き方を選べるように
+   し、選んだ書き方はこの端末に覚える。
+
+   **単位を落とした裸の数字は作らない。** 以前の`fmtCompact`は密な列で
+   `2:30`と書いていたが、見出しは「実績」としか言っておらず、時分なのか
+   分秒なのかは値の側にしか手掛かりが無い。「分」の書き方では密な列でも
+   `150分`と書く(4文字で、`2:30`と同じ幅に収まる)。 */
+const DURATION_KEY='WaveLogDurationStyleV1';
+const DURATION_STYLES=[
+ {key:'min',label:'分',hint:'150分'},
+ {key:'hm',label:'時間と分',hint:'2時間30分'},
+];
+let durationStyle='min';
+function currentDurationStyle(){
+ try{
+  const v=localStorage.getItem(DURATION_KEY);
+  if(DURATION_STYLES.some(s=>s.key===v))return v;
+ }catch(e){WL.quiet.note('端末の覚えが読めない（既定の「分」で続ける）',e)}
+ return 'min';
+}
+/* `compact`は密な列用。「分」の書き方では通常と同じ(単位を落とさない)、
+   「時間と分」でだけ`2:30`まで詰める。 */
+function durationText(minutes,compact){
+ const n=Number(minutes);
+ if(minutes===null||minutes===undefined||minutes===''||!Number.isFinite(n))return '-';
+ const v=Math.round(n),sign=v<0?'-':'',a=Math.abs(v);
+ if(durationStyle!=='hm'||a<60)return `${sign}${a}分`;
+ const h=Math.floor(a/60),m=a%60;
+ return compact?`${sign}${h}:${String(m).padStart(2,'0')}`
+               :`${sign}${h}時間${m?m+'分':''}`;
+}
+function applyDurationStyle(key){
+ durationStyle=DURATION_STYLES.some(s=>s.key===key)?key:'min';
+ try{localStorage.setItem(DURATION_KEY,durationStyle)}catch(e){WL.quiet.note('保存できなくても表示自体は継続する',e)}
+ document.querySelectorAll('#uiSizeMenu [data-duration-style]').forEach(b=>{
+  b.classList.toggle('is-current',b.dataset.durationStyle===durationStyle);
+ });
+ /* 書き方を変えたら、**いま画面に出ている数字も書き直す**。「次に描くとき
+    から効く」にすると、直らない画面が必ず残る(選んだのに変わらない、は
+    設定が壊れているのと見分けが付かない)。 */
+ document.dispatchEvent(new CustomEvent('wl:duration-style',{detail:{style:durationStyle}}));
+}
+durationStyle=currentDurationStyle();
+window.WL.duration={
+ text:m=>durationText(m,false),
+ compact:m=>durationText(m,true),
+ style:()=>durationStyle,
+ setStyle:applyDurationStyle,
+ STYLES:DURATION_STYLES,
+};
+
 /* ---------- 表示サイズ(3段階、アプリ全体) ----------
    文字サイズ・コントロールの高さ・一覧の行の高さは、すべてapp.cssの
    :rootトークンが--ui-scaleを掛けた値で決まる(docs/ARCHITECTURE.md
@@ -2031,8 +2097,9 @@ function applyUiSize(key){
  const size=UI_SIZES.some(s=>s.key===key)?key:(UI_SIZE_ALIASES[key]||'md');
  document.documentElement.dataset.uiSize=size;
  try{localStorage.setItem(UI_SIZE_KEY,size)}catch(e){WL.quiet.note('保存できなくても表示自体は継続する',e)}
- const label=document.getElementById('uiSizeLabel');
- if(label)label.textContent=(UI_SIZES.find(s=>s.key===size)||{}).label||'中';
+ /* バッジの字は「表示」で固定(§9.341)。以前はここへ`小/中/大`を書いて
+    いたが、いまは節が2つあるので**片方の値だけをバッジに出すと、もう
+    片方が無いように見える**。いまどれかは開いた先の`is-current`が言う。 */
  document.querySelectorAll('#uiSizeMenu [data-ui-size-option]').forEach(b=>{
   b.classList.toggle('is-current',b.dataset.uiSizeOption===size);
  });
@@ -2040,9 +2107,20 @@ function applyUiSize(key){
 applyUiSize(currentUiSize());
 window.applyUiSize=applyUiSize;
 
-/* 表示サイズの選択ポップオーバー。モードバッジ(.access-mode-menu)と同じ
-   「小さなボタン→権限/選択肢を並べたポップオーバー」の言語で揃える
-   (アプリ内で同じ役割のUIは同じ見た目・同じ操作にする)。 */
+/* 「表示」のポップオーバー。モードバッジ(.access-mode-menu)と同じ
+   「小さなボタン→選択肢を並べたポップオーバー」の言語で揃える
+   (アプリ内で同じ役割のUIは同じ見た目・同じ操作にする)。
+
+   **1つのバッジに2つの節**(§9.341)。文字の大きさも時間の書き方も
+   「この端末の見え方」という同じ性格の設定なので、**入口を2つに増やさない**
+   (§9.207「入口を2つにしない」)。ヘッダーの一等地は有限で、常設の物を
+   1つ増やすたびに、本来主役であるはずの一覧が狭くなる。
+   バッジの字は入っている物の名前(「表示」)にする——`A 中`のままだと
+   時間の書き方はここにあると誰も思わない(画面基準:探させない)。
+
+   `.global-actions`の中でも**このバッジだけは伏せない**(90-state.cssは
+   `.hd-search`/`.hd-field`/`#reload`だけを伏せる)。作業スケジュールこそ
+   時間の書き方がいちばん効く画面なので、そこで開けないと意味が無い。 */
 (function(){
  function closeMenu(){
   document.getElementById('uiSizeMenu')?.remove();
@@ -2056,6 +2134,8 @@ window.applyUiSize=applyUiSize;
   closeMenu();
   const menu=document.createElement('div');
   menu.className='access-mode-menu ui-size-menu';menu.id='uiSizeMenu';
+  const head=t=>{const h=document.createElement('h6');h.className='ui-size-menu-head';h.textContent=t;menu.appendChild(h)};
+  head('文字の大きさ');
   const cur=(typeof currentUiSize==='function')?currentUiSize():'md';
   UI_SIZES.forEach(s=>{
    const btn=document.createElement('button');
@@ -2063,6 +2143,19 @@ window.applyUiSize=applyUiSize;
    if(s.key===cur)btn.classList.add('is-current');
    btn.innerHTML=`<span><i class="ui-size-swatch" data-swatch="${s.key}" aria-hidden="true">Ａ</i>${s.label}</span><small>${s.hint}</small>`;
    btn.addEventListener('click',()=>{applyUiSize(s.key);closeMenu()});
+   menu.appendChild(btn);
+  });
+  /* 時間の書き方(§9.341)。**見本をそのまま札に出す**——「分」「時間と分」
+     という名前だけでは、150分がどう出るのかは選ぶ前には分からない
+     (§9.200「選ばせるものは選ぶ前に見える」)。 */
+  head('時間の書き方');
+  const curDur=WL.duration.style();
+  WL.duration.STYLES.forEach(d=>{
+   const btn=document.createElement('button');
+   btn.type='button';btn.dataset.durationStyle=d.key;
+   if(d.key===curDur)btn.classList.add('is-current');
+   btn.innerHTML=`<span>${d.label}</span><small>${d.hint}</small>`;
+   btn.addEventListener('click',()=>{WL.duration.setStyle(d.key);closeMenu()});
    menu.appendChild(btn);
   });
   document.body.appendChild(menu);

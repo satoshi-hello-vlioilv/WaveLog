@@ -335,7 +335,9 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  display:inline-flex;align-items:center;gap:var(--gap-inline);transition:border-color .12s,background .12s}
 .hd-actions .hd-btn:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
 .hd-btn-icon{padding:0 var(--ctl-pad-x)}
-.hd-size-a{font-size:var(--fs-title);font-weight:800;line-height:1}
+/* 「表示」バッジの印（§9.341）。以前は`A`の字だったが、いまは文字の
+   大きさと時間の書き方の2つが入るので、片方だけを指す字はやめた。 */
+.hd-size-a{font-size:var(--fs-sm);color:#3a565d;line-height:1}
 .hd-search{display:inline-flex;align-items:center;gap:var(--gap-inline);padding:0 var(--ctl-pad-x-sm)}
 .hd-search:focus-within{border-color:var(--teal);box-shadow:0 0 0 3px #087c8922}
 .hd-search-icon{font-size:var(--fs-sm);opacity:.6}
@@ -486,6 +488,12 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .ui-size-swatch[data-swatch="sm"]{font-size:var(--fs-sm)}
 .ui-size-swatch[data-swatch="md"]{font-size:var(--fs)}
 .ui-size-swatch[data-swatch="lg"]{font-size:var(--fs-title)}
+/* 「表示」の節見出し(§9.341)。1枚に2つの節（文字の大きさ／時間の書き方）を
+   置くので、**どこからどこまでが1つの選択か**を字で言う。2つ目の節の上に
+   だけ線を引く（先頭に引くと窓の縁と二重になる）。 */
+.ui-size-menu-head{margin:0;padding:var(--space-1) var(--ctl-pad-x) calc(var(--space-1) / 2);
+ font-size:var(--fs-tiny);font-weight:800;color:var(--muted);letter-spacing:.04em}
+.ui-size-menu-head~.ui-size-menu-head{margin-top:var(--space-1);border-top:1px solid var(--line);padding-top:var(--space-2)}
  /* ---------- 見出しの操作: 列の並べ替えと列幅(§9.88) ----------
     よく使う操作は設定画面を開かずに表の上で完結させる。取っ手は普段は
     目立たせず、その列に触れたときだけ出す(常時見えていると、値より先に

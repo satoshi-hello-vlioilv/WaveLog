@@ -593,30 +593,21 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
   return scDateFmt.format(d);
  }
+ /* 「いつ始まるか」は所要時間とは別の軸（待ち時間ではなく到達点）なので
+    `〜後`は残すが、**分と時間の書き分けは`WL.duration`に合わせる**
+    （§9.341）。1日を超えるぶんだけはここが持つ——`4320分後`は読めない。 */
  function fmtRelative(minutes){
   if(minutes===null||minutes===undefined)return '';
   const m=Math.round(minutes);
   if(m<=0)return '今';
-  if(m<60)return `${m}分後`;
-  if(m<1440)return `${Math.floor(m/60)}時間${m%60?(m%60)+'分':''}後`;
+  if(m<1440)return `${WL.duration.text(m)}後`;
   const days=Math.floor(m/1440),rem=m%1440;
   return `${days}日${rem?Math.floor(rem/60)+'時間':''}後`;
  }
- function fmtMinutes(m){
-  if(m===null||m===undefined)return '-';
-  const v=Math.round(m);
-  if(v<60)return `${v}分`;
-  return `${Math.floor(v/60)}時間${v%60?(v%60)+'分':''}`;
- }
- // 高密度リスト(§9.3改訂)用の短縮時間表記。「見積」「実績」等、ヘッダーで
- // 単位の文脈が既に分かっている列でだけ使う(h:mm・分単位はfmtMinutesと
- // 使い分け、見積の内訳などの詳細表示は従来どおりfmtMinutesの文言を使う)。
- function fmtCompact(m){
-  if(m===null||m===undefined)return '-';
-  const v=Math.round(m);
-  const h=Math.floor(v/60),mm=v%60;
-  return h>0?`${h}:${String(mm).padStart(2,'0')}`:`${mm}分`;
- }
+ /* 所要時間の書き方は`WL.duration`の1箇所(§9.341)。ここには置かない——
+    以前はこの2つが`2時間30分`と`2:30`を別々に決めており、同じ表の中で
+    「残 2時間30分」と実績列の「2:30」が並んでいた。密な列は
+    `WL.duration.compact()`を使う(「分」の書き方では単位を落とさない)。 */
  function fmtLocalInput(iso){
   if(!iso)return '';
   const d=new Date(iso);if(Number.isNaN(d.getTime()))return '';
@@ -2542,6 +2533,19 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(scState.overviewSort==='busy')rows.sort((a,b)=>(b.pendingMinutes||0)-(a.pendingMinutes||0));
   return rows;
  }
+ /* 時間の書き方を変えたら、**いま出ている表も書き直す**（§9.341）。
+    次の描画まで待たせると、選んだのに変わらない＝設定が壊れているのと
+    見分けが付かない。盤と一覧は出ている側だけを描き直す（隠れている側は
+    次に開くとき新しい書き方で組み上がる）。 */
+ document.addEventListener('wl:duration-style',()=>{
+  const panel=$('#schedulePanel');if(!panel||panel.hidden)return;
+  const board=$('#scOverviewBoard');
+  try{if(board&&!board.hidden)renderOverviewBoard()}
+  catch(e){WL.quiet.note('盤を描き直せなかった（次に開くときに直る）',e)}
+  try{if($('#scTimeline'))renderTimeline()}
+  catch(e){WL.quiet.note('一覧を描き直せなかった（次に開くときに直る）',e)}
+ });
+
  function renderOverviewBoard(){
   const board=$('#scBoard');if(!board)return;
   if(!scState.overview.length){board.innerHTML='<div class="sc-empty-note">設備マスタが未登録です。</div>';return}
@@ -2555,9 +2559,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    }</span></div>`;
   const rows=overviewRows().map(row=>{
    const lv=loadLevelClass(row.pendingMinutes);
-   const swatchText=row.pendingMinutes?`残 ${fmtMinutes(row.pendingMinutes)}・${row.pendingCount}件`:'空き';
+   const swatchText=row.pendingMinutes?`残 ${WL.duration.text(row.pendingMinutes)}・${row.pendingCount}件`:'空き';
    const activeChip=row.active?'<span class="sc-board-active-chip">稼働中</span>':'';
-   const overdueChip=row.maxOverdueMinutes>0?`<span class="sc-board-overdue-chip">遅延 ${fmtMinutes(row.maxOverdueMinutes)}</span>`:'';
+   const overdueChip=row.maxOverdueMinutes>0?`<span class="sc-board-overdue-chip">遅延 ${WL.duration.text(row.maxOverdueMinutes)}</span>`:'';
    const blocks=row.blocks.map(b=>{
     const start=new Date(b.plannedStart).getTime(),end=new Date(b.plannedEnd).getTime();
     const left=Math.max(0,(start-now)/windowMs*100);
@@ -3125,13 +3129,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const note=estimateNoteOf(est.source);
    if(!note)return '';
    return `<div class="sc-detail-block"><div class="sc-detail-heading">見積の根拠</div>`
-    +`<div class="sc-estimate-row sc-estimate-base">${esc(fmtMinutes(est.minutes))}`
+    +`<div class="sc-estimate-row sc-estimate-base">${esc(WL.duration.text(est.minutes))}`
     +`（${esc(estimateSourceLabel(est.source))}）</div>`
     +`<div class="sc-estimate-row sc-estimate-note">${esc(note)}</div></div>`;
   }
   if(!est||!est.factors||!est.factors.length)return '';
-  const baseLine=est.base?`<div class="sc-estimate-row sc-estimate-base">基準時間 T0=${fmtMinutes(est.base.T0)}(実績${est.base.n}件)</div>`:'';
-  const rangeLine=(est.low!=null&&est.high!=null)?`<div class="sc-estimate-row sc-estimate-range">予測区間 ${fmtMinutes(est.low)} 〜 ${fmtMinutes(est.high)}</div>`:'';
+  const baseLine=est.base?`<div class="sc-estimate-row sc-estimate-base">基準時間 T0=${WL.duration.text(est.base.T0)}(実績${est.base.n}件)</div>`:'';
+  const rangeLine=(est.low!=null&&est.high!=null)?`<div class="sc-estimate-row sc-estimate-range">予測区間 ${WL.duration.text(est.low)} 〜 ${WL.duration.text(est.high)}</div>`:'';
   const rows=est.factors.map(f=>
    `<div class="sc-estimate-factor sc-ef-source-${esc(f.source)}"><span class="sc-ef-key">${esc(f.key)}</span><span class="sc-ef-level">${esc(f.level)}</span>`+
    `<span class="sc-ef-value">×${f.value}</span><span class="sc-ef-n">n=${f.n}</span><span class="sc-ef-source">${factorSourceLabel(f.source)}</span></div>`
@@ -3214,7 +3218,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
        ?`（${fmtDateTime(f.target)}は稼働時間外なので繰り上げました）`:'')
      :'—'],
    ['いまの空き',f.reached?'0分（もう埋まりました）'
-     :(Number.isFinite(Number(f.gapMinutes))?fmtMinutes(Number(f.gapMinutes)):'—')],
+     :(Number.isFinite(Number(f.gapMinutes))?WL.duration.text(Number(f.gapMinutes)):'—')],
    note?['メモ',note]:null,
    f.warning?['注意',f.warning]:null,
   ].filter(Boolean);
@@ -3830,7 +3834,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(!f)return '';
   if(f.reached)return 'ここまで埋まりました';
   const g=Number(f.gapMinutes);
-  return Number.isFinite(g)&&g>0?`空き ${fmtMinutes(g)}`:'';
+  return Number.isFinite(g)&&g>0?`空き ${WL.duration.text(g)}`:'';
  }
  const FRAME_WD=['日','月','火','水','木','金','土'];
  function frameDateLabel(iso){
@@ -4258,7 +4262,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(String(rowStyleOf(e).titleTime||'')==='なし')return '';
   const m=e.estimate&&e.estimate.minutes;
   if(m===null||m===undefined||!Number.isFinite(Number(m))||Number(m)<=0)return '';
-  return `（${fmtMinutes(Number(m))}）`;
+  return `（${WL.duration.text(Number(m))}）`;
  }
  function rowStyleClass(e){
   const c=rowStyleOf(e).colorKey;
@@ -5347,7 +5351,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const relText=e.ongoing
    ?'作業中'
    :(e.startsInMinutes!=null?(fmtRelative(e.startsInMinutes)||'今'):'-');
-  const estText=e.estimate?fmtCompact(e.estimate.minutes):'-';
+  const estText=e.estimate?WL.duration.compact(e.estimate.minutes):'-';
   /* 見積が実績由来かどうかを行の中で見分けられるようにする(§9.114)。
      **「実績」「設備の標準時間」「暫定」の3つを言い分ける**——どれも
      同じ数字に見えるが、当たるかどうかの見込みがまるで違う。 */
@@ -5356,10 +5360,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const estNote=estimateNoteOf(estSrc);
   let actualText='-';
   if(e.actual){
-   if(e.state==='着手')actualText=fmtCompact(e.actual.elapsedMinutes)+' 経過';
+   if(e.state==='着手')actualText=WL.duration.compact(e.actual.elapsedMinutes)+' 経過';
    else if(e.state==='完了'){
     const v=e.actual.varianceMinutes;
-    actualText=fmtCompact(e.actual.minutes)+(v!=null?`(${v>=0?'+':''}${Math.round(v)})`:'');
+    actualText=WL.duration.compact(e.actual.minutes)+(v!=null?`(${v>=0?'+':''}${Math.round(v)})`:'');
    }
   }
   /* ---------- 行の印は「並び」で持ち、HTMLはそこから作る（§9.237） ----------
@@ -5441,7 +5445,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      const isFixedGap=e.fixedStart&&Math.abs(new Date(e.fixedStart)-new Date(e.plannedStart))<60000;
      const div=document.createElement('div');
      div.className='sc-gap-divider';
-     div.textContent=`── ${fmtMinutes(gapMin)}の空き・${fmtDateTime(lastEnd)}〜${fmtDateTime(e.plannedStart)}${isFixedGap?'・固定開始時刻待ち':''} ──`;
+     div.textContent=`── ${WL.duration.text(gapMin)}の空き・${fmtDateTime(lastEnd)}〜${fmtDateTime(e.plannedStart)}${isFixedGap?'・固定開始時刻待ち':''} ──`;
      timeline.append(div);
     }
    }
@@ -6656,7 +6660,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     `<button type="button" class="sc-stop-button" data-id="${s.id}" draggable="true"
       title="押すと予定へ入ります／ドラッグで入れる位置を選べます">`
     +`<b>${esc(s.name)}</b>`
-    +`<small>${s.standardMinutes?esc(fmtMinutes(s.standardMinutes)):'見積は自動'}</small></button>`).join('');
+    +`<small>${s.standardMinutes?esc(WL.duration.text(s.standardMinutes)):'見積は自動'}</small></button>`).join('');
    return `<div class="sc-stop-group">
     <div class="sc-stop-group-title">${esc(label(cat))}
      <span class="sc-stop-group-count">${groups.get(cat).length}件</span></div>
@@ -6788,7 +6792,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
                 remark:String(e.remark||'')};
   const est=e.estimate||{};
   const nowText=Number.isFinite(Number(est.minutes))
-    ?`${fmtMinutes(Number(est.minutes))}（${esc(estimateSourceLabel(est.source))}）`
+    ?`${WL.duration.text(Number(est.minutes))}（${esc(estimateSourceLabel(est.source))}）`
     :'決まっていません';
   const ok=await confirmModal({
    eyebrow:'STOP',title:'設備停止の内容を変える',

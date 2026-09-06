@@ -92,6 +92,56 @@ def scan():
     return out
 
 
+DURATION_RE = re.compile(r'(?:function\s+\w+\s*\([^)]*\)|=>)[^\n]{0,200}?'
+                         r'(?:\$\{[^}]*\}時間|\'時間\'|`\$\{h\}:)')
+
+
+def duration_formatters():
+    """所要時間を自前で書いている場所（§9.341）。
+
+    「150分」か「2時間30分」か「2:30」かを答えるのは`WL.duration`の1箇所。
+    以前は同じことをする関数が**6つ・表記4種類**あり（fmtMin 2箇所・
+    fmtMinutes・fmtCompact・fmtHour・measure-worklog の fmtMin）、
+    稼働状況は`150分`、作業スケジュールは`2時間30分`、その実績列だけ
+    `2:30`と、**同じ数字が画面をまたぐと別の顔**になっていた。
+
+    ここは「分と時間を組み立てる式」を探す。`WL.duration`の実装
+    （base.js）と、1日を超える相対時刻（`fmtRelative`。「後」は所要時間
+    ではなく到達点なので別の軸）だけが例外。
+    """
+    allow = {
+        # 書き方そのものを持つ1箇所。
+        ('base.js', 'durationText'): '`WL.duration`の実装',
+        # 「いつ始まるか」は所要時間ではなく到達点。1日を超えるぶんだけ持つ。
+        ('schedule-view.js', 'fmtRelative'): '相対時刻（〜後）は別の軸',
+        # 「30分ごと」と「30分かかる」は別のことを言っている。
+        ('master-data.js', 'clEvery'): '間隔（〜ごと）は所要時間ではない',
+    }
+    out = []
+    for path in sorted(JS.rglob('*.js')):
+        lines = path.read_text(encoding='utf-8').split('\n')
+        name = ''
+        for i, line in enumerate(lines):
+            m = re.match(r'\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(', line)
+            if m:
+                name = m.group(1)
+            if line.lstrip().startswith(('*', '//', '/*')):
+                continue
+            # 所要時間の書き方は「時と分の両方」を組み立てる。片方だけの
+            # 「過去8時間」「30分前」は窓の設定や時点であって、ここではない。
+            if '分' not in line:
+                continue
+            if not re.search(r'\$\{[^}]*\}\s*時間', line):
+                continue
+            # 「〜前」「〜後」「〜ごと」は時点・間隔であって所要時間ではない。
+            if re.search(r'時間[^`\'"]{0,12}?(前|後|ごと|以内|以降)', line):
+                continue
+            if (path.name, name) in allow:
+                continue
+            out.append(f'{path.name}:{i + 1} {name or "(無名)"}')
+    return out
+
+
 def main():
     found = scan()
     rec('拡張ファイルの関数差し替えを機械的に拾えている', len(found) >= 10, f'{len(found)}件')
@@ -117,6 +167,10 @@ def main():
     dup = {fn: v for fn, v in by_fn.items() if len(v) > 1}
     rec('同じ関数を複数のファイルが全置換していない（読み込み順で勝敗が決まる）',
         not dup, '; '.join(f'{fn} → {", ".join(v)}' for fn, v in dup.items()))
+
+    dur = duration_formatters()
+    rec('所要時間の書き方は`WL.duration`の1箇所だけが組み立てている（§9.341）',
+        not dur, '; '.join(dur))
 
     print(f'\n== {sum(R)}/{len(R)} PASS ==')
     print('  現状の全置換: ' + (', '.join(f'{f}:{ln} {fn}' for f, fn, ln in replaced) or 'なし'))

@@ -1332,12 +1332,7 @@ function renderCourseHierarchy(){
    finally(CLAUDE.mdの既知の落とし穴どおり)で1回だけ行い、結果はモジュール内
    変数へキャッシュする(renderMeasurement()のたびに毎回問い合わせない)。 */
 let scheduleInfoCache=null;
-function scheduleMinutesLabel(min){
- if(min===null||min===undefined)return '-';
- const v=Math.round(min);
- if(v<60)return `${v}分`;
- return `${Math.floor(v/60)}時間${v%60?(v%60)+'分':''}`;
-}
+/* 所要時間の書き方は`WL.duration`の1箇所（§9.341）。 */
 function renderScheduleInfo(){
  const basic=$('#basicDetail')||$('#basicInfo .info-grid');if(!basic)return;
  basic.querySelectorAll('.schedule-info-field').forEach(x=>x.remove());
@@ -1362,7 +1357,7 @@ async function refreshScheduleInfo(){
      const entry=active[idx];
      scheduleInfoCache={lotNo,position:idx+1,
       startText:entry.plannedStart?new Date(entry.plannedStart).toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'未定',
-      minutesText:scheduleMinutesLabel(entry.estimate?.minutes)};
+      minutesText:WL.duration.text(entry.estimate?.minutes)};
     }
    }
   }catch(e){WL.quiet.note('補助表示のためベストエフォート。未設定・取得失敗時は単に出さない',e)}
