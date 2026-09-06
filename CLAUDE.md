@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（479件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（480件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -457,10 +457,11 @@
 | 「選ばない」の札は空文字だけではない | `test_opblank.js` | [§9.246](docs/decisions/9.246.md) |
 | ロールは「設備名＋ロール名＋接触面＋径MAX＋径MIN＋備考」で1本 | `test_rollio.py` | [§9.246](docs/decisions/9.246.md) |
 
-### 作業スケジュール（13件）
+### 作業スケジュール（14件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 作業スケジュールの「開始」は着手できる**全行**に出す（次の1本は現場が自由に選ぶ。先頭N行に絞らない） | `test_workable.js` | [§9.339](docs/decisions/9.339.md) |
 | 稼働カレンダーは足りなくなったら伸びる | `test_scload.py` | [§9.291](docs/decisions/9.291.md) |
 | 開始ボタンを作る場所は2つある。文字とHTMLは1箇所 | `test_workable.js` | [§9.51](docs/decisions/9.51.md) |
 | 空の日付・直の枠は「ここから先の起点を進めるだけ」 | `test_scframe.js` | [§9.238](docs/decisions/9.238.md) |
