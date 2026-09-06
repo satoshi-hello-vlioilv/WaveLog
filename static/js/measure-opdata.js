@@ -57,9 +57,9 @@
  /* 群名→true(畳む)/false(開く)。**既定は「条件があるかどうか」で決まる**
     ので、覚えるのは**触ったものだけ**（触っていない群は既定に追随する）。 */
  let foldPref=new Map();
- try{foldPref=new Map(Object.entries(JSON.parse(localStorage.getItem(FOLD_KEY)||'{}')))}catch(e){}
+ try{foldPref=new Map(Object.entries(JSON.parse(localStorage.getItem(FOLD_KEY)||'{}')))}catch(e){WL.quiet.note('端末の覚えが読めない（既定で続ける）',e)}
  const rememberFold=()=>{
-  try{localStorage.setItem(FOLD_KEY,JSON.stringify(Object.fromEntries(foldPref)))}catch(e){}
+  try{localStorage.setItem(FOLD_KEY,JSON.stringify(Object.fromEntries(foldPref)))}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
  };
 
  const PLACE_PREP='準備',PLACE_INPUT='入力内容',PLACE_MOTHER='母材';
@@ -147,7 +147,7 @@
   if(!isNumeric(t))return;
   let v=String(el.value||'');
   v=v.replace(/[０-９．＋－]/g,c=>'0123456789.+-'['０１２３４５６７８９．＋－'.indexOf(c)]);
-  v=v.replace(/[^0-9.\-]/g,'');
+  v=v.replace(/[^0-9.-]/g,'');
   if(isPositive(t))v=v.replace(/-/g,'');
   else v=v.replace(/(?!^)-/g,'');
   if(isInteger(t))v=v.replace(/\./g,'');
@@ -317,7 +317,7 @@
     const v=sourceField(aliases[key]);
     if(String(v==null?'':v).trim()!=='')return String(v).trim();
    }
-  }catch(_){}
+  }catch(_){WL.quiet.note('仕掛の行から引けない（既定値で続ける）',_)}
   const b=(state()&&S.measure&&S.measure.basic)||{};
   return String(b[key]==null?'':b[key]).trim();
  }
@@ -342,7 +342,7 @@
  function lanesOf(){
   try{
    if(typeof WL!=='undefined'&&WL.defect&&WL.defect.lanes)return WL.defect.lanes();
-  }catch(_){}
+  }catch(_){WL.quiet.note('条の数を引けない（既定で続ける）',_)}
   return null;
  }
  /* §9.256。式で作る自動値の鍵は**サーバーが答える**（§9.163／§9.234 ②）。
@@ -821,7 +821,7 @@
       ときに足した値が候補へ出てこない。**画面は待たせない**（失敗しても
       登録そのものは済んでいる）。 */
    if(window.WL&&WL.opData&&WL.opData.forget)WL.opData.forget();
-   if(window.WL&&WL.opData&&WL.opData.refresh)WL.opData.refresh().catch(()=>{});
+   if(window.WL&&WL.opData&&WL.opData.refresh)WL.opData.refresh().catch(WL.quiet('操業データ項目を取り直せない（前の候補で続ける）'));
    showToast('選択肢に登録しました',
              '「'+v+'」を '+def.choice+' へ足しました。次からは候補に出ます。');
   }catch(err){
@@ -1173,7 +1173,7 @@
      見えないと、目当ての値まで何回押すのか数えることになる（§2）。 */
   const cyNow=box.querySelector('.opf-cycle-now');
   if(cyNow){
-   let arr=[];try{arr=JSON.parse(box.dataset.opCycle||'[]')}catch(_){}
+   let arr=[];try{arr=JSON.parse(box.dataset.opCycle||'[]')}catch(_){WL.quiet.note('控えを読み直せない（空として続ける）',_)}
    const at=arr.findIndex(o=>o[0]===v);
    const cur=at>=0?arr[at][1]:(v||'—');
    cyNow.textContent=cur;
@@ -1193,7 +1193,7 @@
      （一巡しないので、無い方向を書くと押せるように読める・§4）。 */
   const dNow=box.querySelector('.opf-dial-now');
   if(dNow){
-   let arr=[];try{arr=JSON.parse(box.dataset.opDial||'[]')}catch(_){}
+   let arr=[];try{arr=JSON.parse(box.dataset.opDial||'[]')}catch(_){WL.quiet.note('控えを読み直せない（空として続ける）',_)}
    const at=arr.findIndex(o=>o[0]===v);
    const pv=box.querySelector('.opf-dial-prev'),nx=box.querySelector('.opf-dial-next');
    if(pv)pv.textContent=(at>0)?arr[at-1][1]:'';
@@ -1343,7 +1343,7 @@
   const back=numPopBack;numPopBack=null;
   if(back){
    back.setAttribute('aria-expanded','false');
-   if(back.focus){try{back.focus()}catch(e){}}
+   if(back.focus){try{back.focus()}catch(e){WL.quiet.note('焦点を当てられない（値も操作も残る）',e)}}
   }
  }
  function openNumPop(def,host,el,btn,kind){
@@ -1765,7 +1765,7 @@
    e.preventDefault();
    box.classList.add('is-other-on');
    /* **空のまま席を開ける**（値はまだ書かない）。打った時点で入る。 */
-   try{inp.focus()}catch(_){}
+   try{inp.focus()}catch(_){WL.quiet.note('焦点を当てられない（値も操作も残る）',_)}
   };
   if(inp){
    inp.addEventListener('input',()=>{
@@ -1978,7 +1978,7 @@
    /* **一巡させない**（`切替`との違い）——前後が見えている形で端から端へ
       飛ぶと、いま何番目かが読めなくなる。端では止める。 */
    const step=d=>{
-    let arr=[];try{arr=JSON.parse(box.dataset.opDial||'[]')}catch(_){}
+    let arr=[];try{arr=JSON.parse(box.dataset.opDial||'[]')}catch(_){WL.quiet.note('控えを読み直せない（空として続ける）',_)}
     if(!arr.length)return;
     const at=arr.findIndex(o=>o[0]===String(sel.value==null?'':sel.value));
     const nx=at<0?(d>0?0:arr.length-1):Math.max(0,Math.min(arr.length-1,at+d));
@@ -2031,7 +2031,7 @@
     +'<span class="opf-cycle-meta"><i class="opf-cycle-pos"></i>'
     +'<i class="opf-cycle-next"></i></span></button>';
    const step=d=>{
-    let arr=[];try{arr=JSON.parse(box.dataset.opCycle||'[]')}catch(_){}
+    let arr=[];try{arr=JSON.parse(box.dataset.opCycle||'[]')}catch(_){WL.quiet.note('控えを読み直せない（空として続ける）',_)}
     if(!arr.length)return;
     const at=arr.findIndex(o=>o[0]===String(sel.value==null?'':sel.value));
     /* まだ選んでいないとき（`at<0`）は**先頭から**。−で戻るときは末尾から。 */
@@ -2215,7 +2215,7 @@
   const back=menuBack;menuBack=null;
   if(back){
    back.setAttribute('aria-expanded','false');
-   if(back.focus){try{back.focus()}catch(e){}}
+   if(back.focus){try{back.focus()}catch(e){WL.quiet.note('焦点を当てられない（値も操作も残る）',e)}}
   }
  }
  /* 押した欄へ寄せる。**開いてから測る**——中身の高さが分からないと、
@@ -2301,7 +2301,7 @@
   menuOff=()=>{window.removeEventListener('scroll',onScroll,true);
                window.removeEventListener('resize',onResize)};
   const first=el.querySelector('.opf-menu-item.is-on')||el.querySelector('.opf-menu-item');
-  if(first&&first.focus){try{first.focus()}catch(e){}}
+  if(first&&first.focus){try{first.focus()}catch(e){WL.quiet.note('焦点を当てられない（値も操作も残る）',e)}}
  }
 
  /* ---------- 大きな札を並べた窓（§9.248 ①、利用者の指示） ----------
@@ -2336,7 +2336,7 @@
   if(!panelEl||panelEl.hidden)return;
   panelEl.hidden=true;
   const back=panelBack;panelBack=null;
-  if(back&&back.focus){try{back.focus()}catch(e){}}
+  if(back&&back.focus){try{back.focus()}catch(e){WL.quiet.note('焦点を当てられない（値も操作も残る）',e)}}
  }
  function openPanel(def,host,sel){
   const el=ensurePanelWin();
@@ -2374,7 +2374,7 @@
    };
   }
   const first=grid.querySelector('.opf-panel-item.is-on')||grid.querySelector('.opf-panel-item');
-  if(first&&first.focus){try{first.focus()}catch(e){}}
+  if(first&&first.focus){try{first.focus()}catch(e){WL.quiet.note('焦点を当てられない（値も操作も残る）',e)}}
  }
 
  /* ---------- 索引つきの窓（§9.288 ③、利用者の指示） ----------
@@ -2440,7 +2440,7 @@
   if(!indexEl||indexEl.hidden)return;
   indexEl.hidden=true;
   const back=indexBack;indexBack=null;
-  if(back&&back.focus){try{back.focus()}catch(e){}}
+  if(back&&back.focus){try{back.focus()}catch(e){WL.quiet.note('焦点を当てられない（値も操作も残る）',e)}}
  }
  function openIndex(def,host,sel){
   const el=ensureIndexWin();
@@ -2505,7 +2505,7 @@
    };
   }
   drawRail();draw();
-  try{find.focus()}catch(e){}
+  try{find.focus()}catch(e){WL.quiet.note('焦点を当てられない（値も操作も残る）',e)}
  }
 
  /* ---------- 打ちながら候補が垂れる（§9.288 ③、利用者の指示） ----------
@@ -2561,7 +2561,7 @@
    b.onmousedown=e=>{
     e.preventDefault();
     setValue(el,b.dataset.opw);syncWidget(host);closeSug();
-    try{el.focus()}catch(_){}
+    try{el.focus()}catch(_){WL.quiet.note('焦点を当てられない（値も操作も残る）',_)}
    };
   });
   placeMenu(pop,el);
@@ -2595,7 +2595,7 @@
   if(!pickerEl)return;
   pickerEl.hidden=true;
   const back=pickerBack;pickerBack=null;
-  if(back&&back.focus){try{back.focus()}catch(e){}}
+  if(back&&back.focus){try{back.focus()}catch(e){WL.quiet.note('焦点を当てられない（値も操作も残る）',e)}}
  }
  function openPicker(def,host,sel){
   const el=ensurePicker();
@@ -2643,7 +2643,7 @@
   /* **入力中に一覧だけを描き直す**（§9.117）——入力欄を作り替えるとカーソルが飛ぶ。 */
   find.value='';find.oninput=draw;
   draw();
-  try{find.focus()}catch(e){}
+  try{find.focus()}catch(e){WL.quiet.note('焦点を当てられない（値も操作も残る）',e)}
  }
 
  /* ---------- 群にまとめる ---------- */
@@ -3068,13 +3068,13 @@
    const w=parseFloat(t[0]);
    if(!Number.isFinite(w)||w<8)return;
    localStorage.setItem(CELL_KEY,String(Math.round(w*10)/10));
-  }catch(e){}
+  }catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
  }
  function cellPx(){
   try{
    const v=Number(localStorage.getItem(CELL_KEY));
    if(Number.isFinite(v)&&v>=8&&v<=400)return v;
-  }catch(e){}
+  }catch(e){WL.quiet.note('端末の覚えが読めない（既定で続ける）',e)}
   return 94;                                 /* 実測の既定（1920幅・12マス） */
  }
 
@@ -3484,8 +3484,8 @@
    try{
     api('/api/operation-choice-master/used',{quiet:true,method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name,value})}).catch(()=>{});
-   }catch(_){}
+      body:JSON.stringify({name,value})}).catch(WL.quiet('選択肢の使用回数を送れない（並び順の材料が増えないだけ）'));
+   }catch(_){WL.quiet.note('選択肢の使用回数を送れない（並び順の材料が増えないだけ）',_)}
   },true);
  }
  async function refresh(equipment){

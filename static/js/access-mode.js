@@ -149,7 +149,7 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
       （§CLAUDE「画面の出入りは1箇所」）——`hidden`だけを触ると、画面の
       印（`mm-mode`）が残って他の画面の道具が伏せられたままになる。 */
    if(!canOpen&&document.body.classList.contains('mm-mode')&&window.WL&&WL.enterView){
-    try{WL.enterView('list')}catch(e){/* 戻れなくても入口は消えている */}
+    try{WL.enterView('list')}catch(e){WL.quiet.note('戻れなくても入口は消えている',e)}
    }
   }
   // 現場段取り(§3.1.1): editモードでcanFieldReorderが真の端末にだけ表示する
@@ -358,8 +358,8 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
   /* 表示列の設定（§9.162）はこちらの経路でも効かせる。読めなくても
      既定の15列で一覧は出す。 */
   await Promise.all([
-   WL.columnLayout.load(WL.recordColumns.target).catch(()=>{}),
-   WL.displayRules.load().catch(()=>{}),
+   WL.columnLayout.load(WL.recordColumns.target).catch(WL.quiet('列の設定を取れない（既定の並びで出す）')),
+   WL.displayRules.load().catch(WL.quiet('表示ルールを取れない（読み替え無しで出す）')),
   ]);
   updateRecordListTitle();syncStatusFilterButtons();$('#recordModal').hidden=false;
   const list=$('#recordList');if(list)list.innerHTML='<div class="record-empty">閲覧データを読み込んでいます…</div>';

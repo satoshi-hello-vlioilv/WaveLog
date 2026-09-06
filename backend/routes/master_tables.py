@@ -26,8 +26,11 @@
 from flask import Blueprint, jsonify, request
 
 from ..db_access import (AUDIT_COLUMNS, DBS, connect, ensure_audit_columns,
-                         request_user_id, tables)
+                         tables)
+from ..access_mode import request_user_id
+from .body import body, any_
 from ..logging_setup import app_logger
+from ..quiet import quiet
 
 bp = Blueprint('master_tables', __name__)
 
@@ -182,7 +185,8 @@ def master_table_catalog():
     info = _known(t)
     try:
      rows = c.execute(f'SELECT COUNT(*) FROM [{t}]').fetchone()[0]
-    except Exception:
+    except Exception as _e:
+     quiet('件数を数えられない（件数を出さない）',_e)
      rows = None
     cols = _schema(c, t)
     info.update({'table': t, 'rows': rows, 'columns': [x['name'] for x in cols],
@@ -267,7 +271,7 @@ def master_table_insert(table):
  name, err = _resolve(table)
  if name is None:
   return jsonify(error=err), 400
- x = request.get_json(silent=True) or {}
+ x = body({'id': any_}, silent=True)   # 鍵はその表の列そのもの（実行時に決まる）
  uid = request_user_id(x)
  with connect(_master_path(), False) as c:
   ensure_audit_columns(c, name)
@@ -301,7 +305,7 @@ def master_table_update(table):
  name, err = _resolve(table)
  if name is None:
   return jsonify(error=err), 400
- x = request.get_json(silent=True) or {}
+ x = body({'id': any_}, silent=True)   # 鍵はその表の列そのもの（実行時に決まる）
  uid = request_user_id(x)
  try:
   rid = int(x.get('id'))
@@ -347,7 +351,8 @@ def master_table_drop(table):
  with connect(_master_path(), False) as c:
   try:
    rows = c.execute(f'SELECT COUNT(*) FROM [{name}]').fetchone()[0]
-  except Exception:
+  except Exception as _e:
+   quiet('件数を数えられない（件数を出さない）',_e)
    rows = None
   c.cursor().execute(f'DROP TABLE IF EXISTS [{name}]')
   c.commit()
@@ -361,7 +366,7 @@ def master_table_delete(table):
  name, err = _resolve(table)
  if name is None:
   return jsonify(error=err), 400
- x = request.get_json(silent=True) or {}
+ x = body({'id': any_}, silent=True)   # 鍵はその表の列そのもの（実行時に決まる）
  try:
   rid = int(x.get('id'))
  except (TypeError, ValueError):

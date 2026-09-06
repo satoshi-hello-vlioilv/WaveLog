@@ -18,6 +18,7 @@ import urllib.request
 
 from backend.config import APP_ID, HOST, PORT, app_url
 from backend.paths import APP_ROOT, instance_file
+from ..quiet import quiet
 
 # 既存インスタンスの判定結果
 OURS='ours'                # 同じアプリが起動中
@@ -71,7 +72,7 @@ def probe(timeout=2.0):
    return UNRESPONSIVE,{'http_status':e.code,'note':'プロキシ経由の応答の可能性'}
   # 原因調査のため、返ってきたステータスだけでも記録しておく。
   return FOREIGN,{'http_status':e.code}
- except Exception:
+ except Exception as _e:
   # bindはされているがHTTPとして応答しない(タイムアウト・接続断など)。
   # 以前はここも一律FOREIGN扱いだったが、ネットワーク共有I/Oのブロックで
   # 自分自身(WaveLog)が一時的に応答不能になっているだけのケースと区別が
@@ -79,6 +80,7 @@ def probe(timeout=2.0):
   # なる実例があった。ここでは即断せずUNRESPONSIVEを返し、呼び出し側で
   # instance.json(このフォルダーのアプリとして記録されたPIDか)による
   # 最終判定に委ねる(process_manager.force_stop()が行う照合と同じ考え方)。
+  quiet('生存確認に答えない（届いていないものとして扱う）',_e)
   return UNRESPONSIVE,None
  if isinstance(info,dict) and info.get('app_id')==APP_ID:
   return OURS,info
@@ -91,8 +93,8 @@ def write_instance():
        'app_root':str(APP_ROOT),'started_at':datetime.now().isoformat(timespec='seconds')}
  try:
   instance_file().write_text(json.dumps(data,ensure_ascii=False,indent=1),encoding='utf-8')
- except Exception:
-  pass                            # 記録できなくても起動自体は続行する
+ except Exception as _e:
+  quiet('起動の記録を書けない（停止は生存確認から進む）',_e)
  return data
 
 
@@ -100,12 +102,13 @@ def read_instance():
  """記録済みのインスタンス情報。無ければNone。"""
  try:
   return json.loads(Path(instance_file()).read_text(encoding='utf-8'))
- except Exception:
+ except Exception as _e:
+  quiet('保存された値を読めない（既定で続ける）',_e)
   return None
 
 
 def clear_instance():
  try:
   instance_file().unlink()
- except Exception:
-  pass
+ except Exception as _e:
+  quiet('いらないファイルを消せない（次の掃除で片付く）',_e)

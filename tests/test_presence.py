@@ -20,7 +20,7 @@
  8. 断る理由を言い分ける（権限が無い／相手が上位／もう居ない）
 ============================================================
 """
-import json, pathlib, shutil, sys, tempfile, time
+import json, pathlib, shutil, sys, tempfile
 from datetime import datetime, timedelta
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent

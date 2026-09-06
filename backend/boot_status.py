@@ -13,12 +13,12 @@ Webサーバーの起動前から実際の進捗を出せる。
 
 書き込みに失敗しても起動そのものは続ける(表示の都合で起動を止めない)。
 """
-from pathlib import Path
 import json
 import time
 
 from .paths import APP_ROOT, browser_dir
 from .changelog_data import APP_VERSION
+from .quiet import quiet
 
 STATUS_FILENAME='boot_status.js'
 # 待機画面の一覧と対応させる。増減させるときは loading.html の steps も合わせる。
@@ -63,7 +63,8 @@ def status_path():
     2つ持たないこと。"""
  try:
   return browser_dir()/STATUS_FILENAME
- except Exception:
+ except Exception as _e:
+  quiet('進捗ファイルの置き場を決められない（アプリの隣へ置く）',_e)
   return APP_ROOT/STATUS_FILENAME
 
 
@@ -82,14 +83,14 @@ def report(step,detail='',failed=False):
  try:
   _path().write_text('window.wavelogBootStatus&&window.wavelogBootStatus('
                      +json.dumps(payload,ensure_ascii=False)+');\n',encoding='utf-8')
- except Exception:
-  pass  # 表示の都合で起動を止めない
+ except Exception as _e:
+  quiet('起動の進捗を書けない（待機画面が古いまま出る）',_e)
 
 
 def clear():
  """起動完了後に消す(次回起動時に前回の内容が一瞬見えるのを防ぐ)。"""
  try:_path().unlink(missing_ok=True)
- except Exception:pass
+ except Exception as _e:quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
 
 
 # ===========================================================================

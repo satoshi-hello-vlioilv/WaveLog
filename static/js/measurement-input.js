@@ -221,7 +221,7 @@ function moveCaretTo(el){
  if(S.measure?.settings?.inputMode!=='manual')return;   /* 自動転送は§9.122で受信欄に固定 */
  if(document.activeElement===el||el.disabled)return;
  caretMoving=true;
- try{el.focus({preventScroll:true})}catch(e){try{el.focus()}catch(_){}}
+ try{el.focus({preventScroll:true})}catch(e){try{el.focus()}catch(_){WL.quiet.note('焦点を当てられない（値も操作も残る）',_)}}
  finally{caretMoving=false}
 }
 function focusCurrent(){
@@ -909,7 +909,7 @@ function renderMeasureGridVertical(){
  syncNumberlineControls();
  bindMeasureInputs();applyInputProtection();focusCurrent();updateMeasurementHeading();
  /* 器に入るかは**描き終えてから**しか分からない（§9.209 ③⑤）。 */
- requestAnimationFrame(()=>{try{fitMeasureMatrix()}catch(e){}});/* 寸法系（板厚・板幅）は横長の公差バーを出さない。数直線の隣の公差カード
+ requestAnimationFrame(()=>{try{fitMeasureMatrix()}catch(e){WL.quiet.note('測定表の割り付けを測り直せない（前の寸法のまま出る）',e)}});/* 寸法系（板厚・板幅）は横長の公差バーを出さない。数直線の隣の公差カード
    （`.compact-tolerance-side`）が基準値・公差±・判定範囲を既に持っており、
    **同じ数字を画面に2つ出さない**（§9.129。項目を分ける前の板厚/板幅と
    同じ扱いを、分けた後の両方へそのまま引き継ぐ）。 */
@@ -1243,7 +1243,7 @@ const NL_MODES=[['abs','実寸(mm)'],['rel','公差比']];
 const NL_SPANS=[1.2,1.5,2,3,5,10],NL_SPAN_DEFAULT=2;
 function nlStore(k,v){
  try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,String(v))}
- catch(e){}
+ catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
  return null;
 }
 function numberlineMode(){return nlStore(NL_MODE_KEY)==='rel'?'rel':'abs'}

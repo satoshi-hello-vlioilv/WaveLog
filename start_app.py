@@ -25,7 +25,7 @@ Start.vbs(通常起動)と start_app.bat(診断起動)は、どちらも最終�
 また多重起動時は、待機画面が既存インスタンスを検出して即座にアプリへ
 遷移するので、「既存の画面を開く」動作(仕様書2.4)がそのまま実現される。
 """
-import _pycache_bootstrap  # 他のimportより前に。必ず1行目のimportにすること
+import _pycache_bootstrap  # noqa: F401 副作用のためのimport。他のimportより前に。必ず1行目のimportにすること
 
 import os
 import sys
@@ -42,6 +42,7 @@ from backend.logging_setup import launcher_logger, log_environment
 from backend.paths import (APP_ROOT, browser_dir_reason, configured_path,
                           ensure_local_dirs, is_network_path,
                           msix_private_copy as paths_msix_private_copy, runtime_dir)
+from backend.quiet import quiet
 
 
 # ============================================================================
@@ -160,7 +161,8 @@ def _is_emergency_page(path):
     ——「本来の写し」として扱えば、少なくとも今まで通り開ける。"""
  try:
   head=Path(path).read_text(encoding='utf-8',errors='ignore')[:400]
- except Exception:
+ except Exception as _e:
+  quiet('待機画面の中身を読めない（組み込みの簡易画面ではないものとして扱う）',_e)
   return False
  return _EMERGENCY_MARK in head
 
@@ -204,8 +206,8 @@ def _write_emergency_waiting_page(log,target):
   tmpdir=Path(tempfile.gettempdir())/'WaveLog'
   if tmpdir/'loading.html' not in candidates:
    candidates.append(tmpdir/'loading.html')
- except Exception:
-  pass
+ except Exception as _e:
+  quiet('一時フォルダを候補に足せない（他の候補へ書く）',_e)
  last_err=None
  for dest in candidates:
   try:
@@ -265,8 +267,8 @@ def _ensure_local_waiting_page(log):
  try:
   moved=browser_dir_reason()
   if moved:log.warning('待機画面: %s',moved)
- except Exception:
-  pass
+ except Exception as _e:
+  quiet('待機画面の置き場を変えた理由を出せない（写しの作成は続ける）',_e)
  if ok:
   _refresh_waiting_page_later(log)
   return local
@@ -301,8 +303,8 @@ def _refresh_waiting_page_later(log):
    log.info('待機画面: 本来の写しは更新できませんでした(%s)。いまの写しで開いています',e)
  try:
   threading.Thread(target=work,daemon=True,name='refresh-waiting-page').start()
- except Exception:
-  pass
+ except Exception as _e:
+  quiet('裏の処理を起こせない（起動は続ける）',_e)
 
 
 def open_waiting_screen(log):
@@ -334,7 +336,8 @@ def open_waiting_screen(log):
  # 名指しで言う**（§4。黙って開いて失敗させない）。
  try:
   hidden=paths_msix_private_copy(page)
- except Exception:
+ except Exception as _e:
+  quiet('私的な写しかどうかを確かめられない（既定の置き場のまま開く）',_e)
   hidden=None
  if hidden is not None:
   # **見えないと分かっているなら、猶予を待たない**（§9.318）。保険は
@@ -401,10 +404,10 @@ def open_waiting_screen(log):
    else:log.error('待機画面: 渡した3秒後には写しが読めません(%s)。'
                   'このアプリは触っていないので、ウイルス対策の隔離・フォルダーの同期・'
                   '掃除ツールなど**外側**が消している可能性があります: %s',why2,page)
-  except Exception:
-   pass
+  except Exception as _e:
+   quiet('渡した3秒後の確かめができない（起動は続ける）',_e)
  try:threading.Thread(target=_watch,daemon=True,name='watch-waiting-page').start()
- except Exception:pass
+ except Exception as _e:quiet('裏の処理を起こせない（起動は続ける）',_e)
 
 
 # ===========================================================================
@@ -443,7 +446,8 @@ def _server_answers():
  try:
   with launch_guard.urlopen_local(f'{app_url()}api/build',timeout=1.5) as r:
    return r.status==200
- except Exception:
+ except Exception as _e:
+  quiet('サーバーが生存確認に答えない（まだ立っていないものとして扱う）',_e)
   return False
 
 
@@ -451,12 +455,13 @@ def _browser_reached_app():
  """待機画面か本体のタブが、このサーバーへ届いているか。"""
  try:
   if boot_status.waiting_seen():return True
- except Exception:
-  pass
+ except Exception as _e:
+  quiet('待機画面が名乗ったかを読めない（まだ見えていないものとして扱う）',_e)
  try:
   from backend import watchdog
   return watchdog.active_tab_count()>0
- except Exception:
+ except Exception as _e:
+  quiet('開いているタブを数えられない（まだ見えていないものとして扱う）',_e)
   return False
 
 
@@ -490,12 +495,12 @@ def open_app_if_unseen_later(log):
                'ブラウザで %s を開いてください',url)
    except Exception as e:
     log.error('アプリの画面も開けませんでした(%s)。ブラウザで %s を開いてください',e,url)
-  except Exception:
-   pass
+  except Exception as _e:
+   quiet('待機画面の見え方を確かめられない（起動は続ける）',_e)
  try:
   threading.Thread(target=work,daemon=True,name='open-app-if-unseen').start()
- except Exception:
-  pass
+ except Exception as _e:
+  quiet('裏の処理を起こせない（起動は続ける）',_e)
 
 
 def run_full_check(log,why):
@@ -536,8 +541,8 @@ def main():
  # ここでは**どれも起動を止めない**ことを守る。
  try:
   ensure_local_dirs()
- except Exception:
-  pass
+ except Exception as _e:
+  quiet('実行時フォルダを用意できない（起動は続ける）',_e)
  log=launcher_logger()
  started=time.monotonic()
  # 段階表示(boot_status)は待機画面を開く前に1件書いておく。開いた直後の
@@ -549,7 +554,7 @@ def main():
    log.warning('手元のフォルダを作れませんでした（%s）。起動は続けます',why)
  except Exception as e:
   try:log.warning('起動の記録を残せませんでした(%s)。起動は続けます',e)
-  except Exception:pass
+  except Exception as _e:quiet('起動の記録すら残せない（起動は続ける）',_e)
 
  # 以降どこで失敗しても利用者の画面に状況が出るよう、先に待機画面を開く。
  # **ここも送出させない**——開けなかった理由はログへ残し、起動そのものは
@@ -558,7 +563,7 @@ def main():
   open_waiting_screen(log)
  except Exception as e:
   try:log.error('待機画面を開く処理で失敗しました(%s)。起動は続けます',e)
-  except Exception:pass
+  except Exception as _e:quiet('待機画面の失敗すら残せない（起動は続ける）',_e)
 
  boot_status.report('instance',f'ポート {PORT} を確認しています')
  state,info=launch_guard.probe()

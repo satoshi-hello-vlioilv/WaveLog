@@ -21,7 +21,6 @@
  ・表の腐りは `tests/test_pick.py` が見る——存在しないテスト名、
    どの規則からも呼ばれないテスト、どの規則にも当たらないソース。
 """
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -45,6 +44,11 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
           'test_apiguard',
           # §9.324 R1: 列定義は TableDef の1箇所（位置読みの写しを機械で数える・数秒）
           'test_tabledef',
+          # §9.326: 標準の静的解析（pyflakes／eslint）。どの .py/.js を触っても数秒で回る
+          'test_pyflakes', 'test_eslint', 'test_quietlint',
+          # §9.329 REVIEW 3-2: db_access の層と、読み込みの副作用（1秒未満）
+          'test_dblayer',
+          'test_body',
           # §9.324 R3: JSの読み込み順は core.py の JS_FILES の1箇所（static/js と突き合わせる）
           'test_loadorder']
 
@@ -493,6 +497,10 @@ RULES = [
     ('tests/orphan_lot.js', g('test_audit', 'test_nav', 'test_orphan')),
     ('tests/audit_scale.js', g('test_audit')),
     ('tests/pick_tests.py', ['test_pick']),
+    # §9.326: lint の設定と上限は網そのもの
+    ('eslint.config.mjs', ['test_eslint']),
+    ('tests/fixtures/eslint_baseline.json', ['test_eslint']),
+    ('requirements-dev.txt', ['test_pyflakes']),
     ('tests/README.md', ['test_docindex']),
 ]
 

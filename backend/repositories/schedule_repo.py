@@ -30,6 +30,7 @@ import re as _re
 
 from ..db_access import add_missing_columns, tables
 from .master_repo import normalize_equipment_name
+from ..quiet import quiet
 
 # ========================================================================
 # 作業予定(§5.1)
@@ -525,8 +526,8 @@ def _seed_stop_categories(c_master):
    for (v,) in cur.fetchall():
     v=str(v or '').strip()
     if v and v not in seen:seen.append(v)
- except Exception:
-  pass  # 取り込めなくても既定の4分類だけで動く
+ except Exception as _e:
+  quiet('分類の種を入れられない（分類は手で足せる）',_e)
  cur=c_master.cursor()
  for i,name in enumerate(seen):
   cur.execute('INSERT INTO [設備停止分類マスタ] ([名称],[色キー],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,-1,?,?,Now(),Now())',
@@ -645,7 +646,7 @@ def ensure_row_style_table(c_master):
                       tuple((n,'TEXT') for n in
                             (ROW_TITLE_LOOK_COLUMN,ROW_TITLE_PLACE_COLUMN,
                              ROW_TITLE_ALIGN_COLUMN,ROW_TITLE_TIME_COLUMN)))
- except Exception:pass
+ except Exception as _e:quiet('後から足した列を用意できない（在る列だけで読む）',_e)
  return created
 
 def row_style_rows(c_master):
@@ -1066,7 +1067,7 @@ def crosses_midnight(start,end):
  def hm(v):
   t=str(v or '').strip().split(':')
   try:return int(t[0])*60+int(t[1])
-  except Exception:return None
+  except Exception as _e:quiet('数として読めない（既定で続ける）',_e);return None
  a,b=hm(start),hm(end)
  if a is None or b is None:return False
  return b<=a
@@ -1080,7 +1081,7 @@ def segment_day_offset(start,end,raw):
  if not crosses_midnight(start,end):return 0
  if raw in (None,''):return SHIFT_DAYOFF_DEFAULT
  try:n=int(raw)
- except Exception:return SHIFT_DAYOFF_DEFAULT
+ except Exception as _e:quiet('数として読めない（既定で続ける）',_e);return SHIFT_DAYOFF_DEFAULT
  return max(-SHIFT_DAYOFF_LIMIT,min(SHIFT_DAYOFF_LIMIT,n))
 
 # ------------------------------------------------------------------------
@@ -1110,8 +1111,8 @@ def _migrate_shift_pattern_equipment(c_master):
    cur.execute('UPDATE [勤務体系マスタ] SET [適用設備]=? WHERE [勤務体系ID]=?',['',pid])
   if pending:c_master.commit()
   _SHIFT_PATTERN_EQUIPMENT_MIGRATED=True
- except Exception:
-  pass   # 移行できなくても、子テーブルが空=全設備既定として動く
+ except Exception as _e:
+  quiet('勤務体系の設備を移し替えられない（次に開いたときに試す）',_e)
 
 def shift_pattern_equipment_map(c_master):
  """{勤務体系ID: [設備名, ...]}。割当の無い体系はキー自体が無い(=全設備既定)。"""
@@ -1356,8 +1357,9 @@ def migrate_config_masters_from_shared():
   from .. import schedule_sync
   try:
    local_path,_stale=schedule_sync.fetch_snapshot()
-  except Exception:
+  except Exception as _e:
    # 共有が未設定・未到達。目印は立てず、次回のアクセスで再挑戦する。
+   quiet('共有の写しを取れない（手元のマスタで続ける）',_e)
    return
   moved={}
   sc=connect(local_path,False,'sqlite')
@@ -1395,4 +1397,4 @@ def migrate_config_masters_from_shared():
 def _column_names(c,table):
  from ..db_access import cols as _cols
  try:return _cols(c,table)
- except Exception:return []
+ except Exception as _e:quiet('列を読めない（無い列として読む・§9.325）',_e);return []

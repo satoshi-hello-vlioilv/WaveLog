@@ -189,7 +189,6 @@ def main():
       f'持ち主のモード={get_mode()} status={st} {body}')
 
   if ok:
-   from backend.repositories import schedule_repo as sr
    from backend import schedule_sync
    local,_stale=schedule_sync.fetch_snapshot(force=True)
    from backend.db_access import connect

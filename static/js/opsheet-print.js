@@ -98,8 +98,8 @@
     `auto`＝入るなら1行・入らなければ2行（「1行で収まるものは1行構成」）。 */
  const DEFAULTS={paper:'a4-landscape',unit:'shift',rows:'auto',borders:true,dense:true};
  let pref=Object.assign({},DEFAULTS);
- try{Object.assign(pref,JSON.parse(localStorage.getItem(PREF_KEY)||'{}')||{})}catch(e){}
- function savePref(){try{localStorage.setItem(PREF_KEY,JSON.stringify(pref))}catch(e){}}
+ try{Object.assign(pref,JSON.parse(localStorage.getItem(PREF_KEY)||'{}')||{})}catch(e){WL.quiet.note('端末の覚えが読めない（既定で続ける）',e)}
+ function savePref(){try{localStorage.setItem(PREF_KEY,JSON.stringify(pref))}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}}
 
  /* いま組み立てている紙の設備。**成り代わり中は必ずこちらが勝つ**
     （§9.235 ⑤／§9.174の`rpActiveTarget`と同じ罠）——設備をまたいで
@@ -694,8 +694,8 @@
   opKeys=keys;
   const el=ensurePreview();
   /* 配置設定は**描く前に読む**（読めなくても既定の並びで紙は出る）。 */
-  await Promise.all([WL.columnLayout.load(targetOf(activeEquipment)).catch(()=>{}),
-                     (WL.displayRules&&WL.displayRules.load)?WL.displayRules.load().catch(()=>{}):Promise.resolve()]);
+  await Promise.all([WL.columnLayout.load(targetOf(activeEquipment)).catch(WL.quiet('列の設定を取れない（既定の並びで出す）')),
+                     (WL.displayRules&&WL.displayRules.load)?WL.displayRules.load().catch(WL.quiet('表示ルールを取れない（読み替え無しで出す）')):Promise.resolve()]);
   el.hidden=false;
   paintOptions();
   renderPreview();

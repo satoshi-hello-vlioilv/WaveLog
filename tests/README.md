@@ -95,6 +95,10 @@ python3 tests/pick_tests.py backend/routes/logs.py   # ファイルを直接指�
 | `WAVELOG_NODE` | `/opt/node22/bin/node` |
 | `WAVELOG_PLAYWRIGHT` | `/opt/node22/lib/node_modules/playwright` |
 | `WAVELOG_CHROMIUM` | `/opt/pw-browsers/chromium-1194/chrome-linux/chrome` |
+| `WAVELOG_ESLINT` | PATHの`eslint` → `WAVELOG_NODE`と同じ場所の`eslint`（`test_eslint`が使う。`npm i -g eslint`） |
+
+Python側の静的解析（`test_pyflakes`）は`pip install -r requirements-dev.txt`で入れる
+（現場の端末には要らない。`requirements.txt`は`flask`だけ）。
 
 診断用（既定は無効。指定したときだけ出力する）:
 

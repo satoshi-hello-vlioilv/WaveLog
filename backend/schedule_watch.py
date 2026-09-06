@@ -23,7 +23,6 @@
 デーモンスレッド1本だけなので、終わらせる仕掛けを持つほうが事故になる。
 """
 import threading
-import time
 
 from . import schedule_sync
 from .logging_setup import app_logger

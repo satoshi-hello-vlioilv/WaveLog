@@ -827,7 +827,7 @@ function renderMeasurement(){
    mb.textContent=open?'詳細を閉じる':'詳細を見る';};}Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;paintQualityInfo();document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');$('#motherOriginalWidth').textContent=fmtDim(b.originalWidth,1)||'－';updateMotherCalcLength();renderMeasureGrid();renderStats();
  /* 操業データの入力欄は**設備ごと**なので、開いた時点で用意して値を戻す
     （§9.215）。読めなくても測定は開ける（fail-open）。 */
- if(window.WL&&WL.opData)WL.opData.refresh().catch(()=>{});
+ if(window.WL&&WL.opData)WL.opData.refresh().catch(WL.quiet('操業データ項目を取れない（測定は開ける・fail-open）'));
  setState('IndexedDB読込済み')
  {const mode=S.measure.settings.inputMode||'auto';document.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('active',x.dataset.mode===mode))}
  activateWorkspace(rightLayoutFor($('#measureType').value));
@@ -856,7 +856,7 @@ function renderMeasurement(){
  updateMeasurementHeading();
  /* マスタの差異の見張りを始める（§9.139）。開いているあいだだけ回り、
     閉じていれば`check()`が自分で降りる。 */
- try{WL.masterDiff.start()}catch(e){}
+ try{WL.masterDiff.start()}catch(e){WL.quiet.note('マスタの新旧を見張れない（測定は続けられる）',e)}
 }
 // Unified required/valid/NG visual language.
 function hasValue(el){return String(el?.value??'').trim()!==''&&String(el?.value??'').trim()!=='-'}
@@ -1082,7 +1082,7 @@ const RV_AXES=[
 ];
 function rvPref(){
  let v=null;
- try{v=JSON.parse(localStorage.getItem(RV_KEY)||'null')}catch(e){}
+ try{v=JSON.parse(localStorage.getItem(RV_KEY)||'null')}catch(e){WL.quiet.note('端末の覚えが読めない（既定で続ける）',e)}
  const p=(v&&typeof v==='object')?v:{};
  const out={};
  RV_AXES.forEach(a=>{
@@ -1093,7 +1093,7 @@ function rvPref(){
 }
 function setRvPref(patch){
  const next=Object.assign(rvPref(),patch||{});
- try{localStorage.setItem(RV_KEY,JSON.stringify(next))}catch(e){}
+ try{localStorage.setItem(RV_KEY,JSON.stringify(next))}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
  applyRvPref();
  renderRecordedValues();
 }
@@ -1365,7 +1365,7 @@ async function refreshScheduleInfo(){
       minutesText:scheduleMinutesLabel(entry.estimate?.minutes)};
     }
    }
-  }catch(e){/* 補助表示のためベストエフォート。未設定・取得失敗時は単に出さない */}
+  }catch(e){WL.quiet.note('補助表示のためベストエフォート。未設定・取得失敗時は単に出さない',e)}
  }
  renderScheduleInfo();
 }
@@ -1442,7 +1442,7 @@ WL.masterDiff=(function(){
    mark(id,fresh.length!==now.length||fresh.some(v=>!now.includes(v)));
   });
  }
- function start(){stop();timer=setInterval(()=>{check().catch(()=>{})},CHECK_MS)}
+ function start(){stop();timer=setInterval(()=>{check().catch(WL.quiet('マスタの新旧を確かめられない（次の巡回で確かめ直す）'))},CHECK_MS)}
  function stop(){if(timer){clearInterval(timer);timer=null}
   FIELDS.forEach(([id])=>mark(id,false))}
  return{check,start,stop};

@@ -34,6 +34,7 @@ from .config import RNE_EXTRACT_INTERVAL_SEC_DEFAULT
 from .db_access import DATA_SOURCES, DB_DIR, SIKALOT_SOURCE, path_config_value
 from .logging_setup import app_logger
 from .paths import APP_ROOT, ensure_local_dirs
+from .quiet import quiet
 
 _DEFAULT_ASSETS_DIR=APP_ROOT/'config'/'rne_extract'
 _MIN_INTERVAL_SEC=60
@@ -136,7 +137,7 @@ def _run_job(job,conf):
   # 作業フォルダ削除)は実行されない。呼び出し元(ここ)からも念のため
   # 掃除しておき、繰り返しのタイムアウトでディスクを圧迫しないようにする。
   try:shutil.rmtree(work_dir,ignore_errors=True)
-  except Exception:pass
+  except Exception as _e:quiet('作業フォルダを片付けられない（次の掃除で消える）',_e)
 
 
 # 直近の実行結果。画面(マスタ管理 > パス設定)へ「動いているか」を出すために持つ。

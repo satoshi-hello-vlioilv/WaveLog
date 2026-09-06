@@ -19,6 +19,7 @@ import traceback
 
 from .logging_setup import app_logger
 from .paths import logs_dir
+from .quiet import quiet
 
 
 # ネットワーク共有まわりのWindowsエラー。番号だけ出されても分からないので、
@@ -40,7 +41,8 @@ def _diagnose_key():
  try:
   from .db_access import WORK_DB_KEY,DBS
   return WORK_DB_KEY or next(iter(DBS),'MASTER')
- except Exception:
+ except Exception as _e:
+  quiet('仕掛のキーを引けない（MASTERを見に行く）',_e)
   return 'MASTER'
 
 
@@ -119,4 +121,4 @@ def install(app):
 
 def _log_dir_safe():
  try:return logs_dir()
- except Exception:return '(場所を特定できませんでした)'
+ except Exception as _e:quiet('ログの置き場を特定できない（場所を出さない）',_e);return '(場所を特定できませんでした)'

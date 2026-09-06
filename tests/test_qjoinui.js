@@ -209,7 +209,7 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
      /* **塗り分けが図ごとに違うこと。** 6枚が同じ絵だと、図があっても
         何も伝えていない（塗る円の数と種類で見分ける）。 */
      shapes:[...new Set(cards.map(c=>[...c.querySelectorAll('svg.qj-venn .on')]
-       .map(x=>((x.getAttribute('mask')||x.getAttribute('clip-path')||'').match(/-(ml|mr|c)\)?$/)||[,'?'])[1])
+       .map(x=>((x.getAttribute('mask')||x.getAttribute('clip-path')||'').match(/-(ml|mr|c)\)?$/)||[null,'?'])[1])
        .sort().join('')))].length,
      /* 色だけで伝えない: 名前・一行説明・行の増減が文字で出ていること。 */
      labels:cards.map(c=>c.querySelector('b')?.textContent.trim()||''),

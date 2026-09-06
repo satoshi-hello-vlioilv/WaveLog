@@ -8,16 +8,17 @@ SQLiteには無いため、db_access.pyのconnect()がユーザー定義関数�
 ストレージクラス優先で比較する仕様のため、パラメータ側もPythonで数値化してから
 渡す(そうしないとVal()が返す数値と文字列パラメータの比較が常に不成立になる)。
 """
-import json, re, time, unicodedata
+import json, re, time
 from flask import Blueprint, request, jsonify
+from .body import body, flag, any_
 
 from .. import query_join
-from .. import source_capability
 from .. import sort_order
 from ..db_access import (DBS, qi, connect, cols, tables, cfg,
                          WORK_DB_KEY, QUALITY_DB_KEY, SCHEDULE_DB_KEY)
 from ..logging_setup import app_logger
 from ..errors import os_error_hint
+from ..quiet import quiet
 
 bp=Blueprint('tables',__name__)
 
@@ -128,9 +129,9 @@ def api_db_mirror_refresh():
  """今すぐ写し直す(一覧の「再読込」から呼ぶ)。**待たせない**——
  背景スレッドを起こすだけで、結果は次の取得から反映される。"""
  from .. import db_mirror
- x=request.get_json(silent=True) or {}
- if x.get('wait'):
-  return jsonify(ok=True,results=db_mirror.refresh_all(force=bool(x.get('force'))))
+ x=body({'wait': flag, 'force': flag}, silent=True, strict=True)
+ if x.flag('wait'):
+  return jsonify(ok=True,results=db_mirror.refresh_all(force=x.flag('force')))
  db_mirror.wake()
  return jsonify(ok=True,queued=True)
 
@@ -344,8 +345,8 @@ def api_query_join_resolve():
  スケジュール表に出る列が食い違わない**。
 
  読むだけ(_READ_ONLY_POST_ENDPOINTSで全モードから通す)。"""
- x=request.get_json(silent=True) or {}
- k=str(x.get('db') or '');t=str(x.get('table') or '')
+ x=body({'db': str, 'table': str, 'rows': any_, 'builtin': any_}, silent=True)
+ k=x.text('db');t=x.text('table')
  rows=x.get('rows')
  if not isinstance(rows,list):return jsonify(error='rowsは配列で送ってください。'),400
  rows=[r if isinstance(r,dict) else {} for r in rows[:2000]]
@@ -384,7 +385,7 @@ def api_table():
   def safe_filters(text,columns):
    if not text:return []
    try:items=json.loads(text)
-   except Exception:return []
+   except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);return []
    if not isinstance(items,list):return []
    allowed_ops={'contains','not_contains','eq','neq','starts','starts_any','ends','gt','gte','lt','lte','empty','not_empty'}
    out=[]
@@ -440,7 +441,7 @@ def api_table():
    raw_sorts=request.args.get('sorts','').strip()
    if raw_sorts:
     try:items=json.loads(raw_sorts)
-    except Exception:items=[]
+    except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);items=[]
     for it in (items if isinstance(items,list) else []):
      if isinstance(it,str):it={'column':it}
      if not isinstance(it,dict):continue
@@ -542,7 +543,7 @@ def api_table():
   # ——別の口で取りに行くと、一覧と鮮度が別のタイミングの話になりうる。
   from .. import db_mirror as _dbm
   try:src_info=_dbm.source_info(k,cf.get('path'))
-  except Exception:src_info=None
+  except Exception as _e:quiet('元データの時刻を引けない（鮮度を出さない）',_e);src_info=None
   resp=jsonify(columns=visible_cs,rows=row_dicts,count=count,
                filters_applied=len(filters),joinQuality=join_info,joins=join_list,
                timing=timing,sortNote=sort_note,source=src_info)

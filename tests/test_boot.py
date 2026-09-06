@@ -1,6 +1,6 @@
 # 起動ステップの可視化(§9.47)の検証: 起動中にboot_status.jsが実ステップを
 # 順に書き出し、起動完了で消えること。
-import json, os, re, subprocess, sys, time, urllib.request
+import json, re, subprocess, sys, time, urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent   # tests/ の1つ上がリポジトリルート

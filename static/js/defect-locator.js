@@ -1311,7 +1311,7 @@
     ときだけ**——1文字打つたびに条の図を組み直すと、判定の窓の中で操作が
     重くなる（あちらは開いていないので、閉じるときに1回で足りる）。 */
  function syncSplitMarks(){
-  try{if(window.WL&&WL.split&&WL.split.redrawFigure)WL.split.redrawFigure()}catch(e){}
+  try{if(window.WL&&WL.split&&WL.split.redrawFigure)WL.split.redrawFigure()}catch(e){WL.quiet.note('条の図を描き直せない（次の描画で追いつく）',e)}
  }
  function close(){const m=$id('defectModal');if(m)m.hidden=true;syncSplitMarks()}
 

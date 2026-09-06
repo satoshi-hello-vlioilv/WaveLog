@@ -13,7 +13,7 @@
  5. ルールを消しても列側の参照は残せる(無いルール名＝読み替えなし)
  6. 消す前に「どこで使っていたか」が分かる
 """
-import json,sys,tempfile
+import sys,tempfile
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from backend.db_access import connect

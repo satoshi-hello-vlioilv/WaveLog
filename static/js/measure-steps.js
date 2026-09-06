@@ -72,7 +72,7 @@
   const started=!!(m&&m.workTime&&m.workTime.startAt);
   const ended=!!(m&&m.workTime&&m.workTime.endAt);
   if(prog===undefined){prog=null;
-   try{if(typeof measureProgress==='function')prog=measureProgress()}catch(e){}}
+   try{if(typeof measureProgress==='function')prog=measureProgress()}catch(e){WL.quiet.note('進捗を数えられない（数字を出さないだけ）',e)}}
   const rest=prog?prog.unmeasured.length:null;
   return {
    '1':started?'開始 済':'開始 未',
@@ -111,7 +111,7 @@
     try{
      const eq=(S.measure&&S.measure.equipment)||localStorage.getItem('AccessMeasurementConfiguredEquipment')||'';
      WL.choiceUsage.bump(eq,id,String(el.value||'').trim());
-    }catch(e){}
+    }catch(e){WL.quiet.note('端末の覚えが読めない（既定で続ける）',e)}
    });
   });
  }
@@ -136,7 +136,7 @@
  function finishRows(){
   if(!measuring())return null;
   const m=S.measure,rows=[];
-  let p=null;try{if(typeof measureProgress==='function')p=measureProgress()}catch(e){}
+  let p=null;try{if(typeof measureProgress==='function')p=measureProgress()}catch(e){WL.quiet.note('進捗を数えられない（数字を出さないだけ）',e)}
   if(p){
    const rest=p.unmeasured;
    rows.push({key:'measure',name:'測定',state:rest.length?'todo':'done',
@@ -146,7 +146,7 @@
      :'対象の項目はすべて入力済みです。',
     fix:rest.length?{label:'測定へ',type:rest[0].name}:null});
   }
-  let ng=null;try{ng=WL.measureReview&&WL.measureReview.outOfTolerance()}catch(e){}
+  let ng=null;try{ng=WL.measureReview&&WL.measureReview.outOfTolerance()}catch(e){WL.quiet.note('公差外を数えられない（件数を出さないだけ）',e)}
   if(ng){
    /* **公差と基準は言い分ける**（§9.242 ⑤、利用者の指示）。この行は板厚・
       板幅（上下限＝公差）とラテラルボー等（片側＝基準）を同じ表に並べる
@@ -205,7 +205,7 @@
  const tintPalette=()=>(window.WL&&WL.columnTint&&WL.columnTint.PALETTE)||{};
  function alertPref(){
   let v=null;
-  try{v=JSON.parse(localStorage.getItem(ALERT_KEY)||'null')}catch(e){}
+  try{v=JSON.parse(localStorage.getItem(ALERT_KEY)||'null')}catch(e){WL.quiet.note('端末の覚えが読めない（既定で続ける）',e)}
   const p=(v&&typeof v==='object')?v:{};
   const modes=ALERT_MODES.map(x=>x[0]);
   return {mode:modes.includes(p.mode)?p.mode:ALERT_DEFAULT.mode,
@@ -213,7 +213,7 @@
  }
  function setAlertPref(patch){
   const next=Object.assign(alertPref(),patch||{});
-  try{localStorage.setItem(ALERT_KEY,JSON.stringify(next))}catch(e){}
+  try{localStorage.setItem(ALERT_KEY,JSON.stringify(next))}catch(e){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',e)}
   paintFinish();
  }
  /* 強調を当てるのは**カードそのもの**（利用者の指示「カード自体を」）。
@@ -483,11 +483,11 @@
     という約束はそのまま持っている）。**同じ処理を2箇所に持たない。** */
  function paint(){
   const el=shell();if(!el)return;
-  try{openInfoWall();openRecordWall()}catch(e){}
+  try{openInfoWall();openRecordWall()}catch(e){WL.quiet.note('畳んだ壁を開けられない（畳んだまま出る）',e)}
   /* 未測定の一覧は**同じ材料を1回だけ**引いて、状態の文字（`stepStates`）と
      段3の`title`の両方へ渡す（2度計算すると片方だけ直した状態が作れる）。 */
   let prog=null;
-  try{if(measuring()&&typeof measureProgress==='function')prog=measureProgress()}catch(e){}
+  try{if(measuring()&&typeof measureProgress==='function')prog=measureProgress()}catch(e){WL.quiet.note('進捗を数えられない（数字を出さないだけ）',e)}
   const states=stepStates(prog);
   const rest=prog?prog.unmeasured:null;
   STEP_KEYS.forEach(k=>{
@@ -507,11 +507,11 @@
   });
   fillContext();
   paintMaterialNote();
-  try{fitLengthList()}catch(e){}
-  try{fitControlWidths()}catch(e){}
+  try{fitLengthList()}catch(e){WL.quiet.note('丈の一覧の高さを合わせられない（既定の高さで出る）',e)}
+  try{fitControlWidths()}catch(e){WL.quiet.note('欄の幅を測り直せない（前の幅のまま出る）',e)}
   /* 測定表が器へ入るかは段の切り替えでも変わる（§9.209 ③⑤）。 */
-  requestAnimationFrame(()=>{try{WL.measureFit&&WL.measureFit.matrix()}catch(e){}});
-  try{paintFinish()}catch(e){}
+  requestAnimationFrame(()=>{try{WL.measureFit&&WL.measureFit.matrix()}catch(e){WL.quiet.note('測定表の割り付けを測り直せない（前の寸法のまま出る）',e)}});
+  try{paintFinish()}catch(e){WL.quiet.note('確認の段を塗り直せない（次の描き直しで追いつく）',e)}
  }
 
  /* 母材の手入力の案内（§9.233 ③）。**文言はここ1箇所**——帯から母材の
@@ -804,8 +804,8 @@
     表示サイズは`html[data-ui-size]`で伝わる（`base.js`）。 */
  function watchUiSize(){
   new MutationObserver(()=>{
-   requestAnimationFrame(()=>{try{fitControlWidths()}catch(e){}
-     try{WL.measureFit&&WL.measureFit.matrix()}catch(e){}});
+   requestAnimationFrame(()=>{try{fitControlWidths()}catch(e){WL.quiet.note('欄の幅を測り直せない（前の幅のまま出る）',e)}
+     try{WL.measureFit&&WL.measureFit.matrix()}catch(e){WL.quiet.note('測定表の割り付けを測り直せない（前の寸法のまま出る）',e)}});
   }).observe(document.documentElement,{attributes:true,attributeFilter:['data-ui-size']});
  }
 
@@ -820,14 +820,14 @@
  function watchInfoWall(){
   const pane=document.querySelector('.measure-shell .left-pane');
   if(!pane)return;
-  new MutationObserver(()=>{try{openInfoWall()}catch(e){}})
+  new MutationObserver(()=>{try{openInfoWall()}catch(e){WL.quiet.note('畳んだ壁を開けられない（畳んだまま出る）',e)}})
    .observe(pane,{attributes:true,attributeFilter:['hidden'],subtree:true});
  }
 
  function watchWorkTabs(){
   document.querySelectorAll('[data-worktab]').forEach(b=>{
    b.addEventListener('click',()=>{
-    requestAnimationFrame(()=>{try{fitControlWidths()}catch(e){}});
+    requestAnimationFrame(()=>{try{fitControlWidths()}catch(e){WL.quiet.note('欄の幅を測り直せない（前の幅のまま出る）',e)}});
    });
   });
  }
@@ -907,7 +907,7 @@
  function watchProgress(){
   const head=document.getElementById('measureTypeChips');
   if(!head){console.error('measure-steps: #measureTypeChips が無い（進捗の追随が止まる）');return}
-  new MutationObserver(()=>{try{paint()}catch(e){}})
+  new MutationObserver(()=>{try{paint()}catch(e){WL.quiet.note('段の見出しを塗り直せない（次の描き直しで追いつく）',e)}})
    .observe(head,{childList:true,subtree:true,characterData:true});
  }
 
@@ -931,7 +931,7 @@
  function watchInputs(){
   ['#measureType','#horizontalCount','#verticalCount','#toleranceSource'].forEach(sel=>{
    const el=document.querySelector(sel);
-   if(el)el.addEventListener('change',()=>{try{paint()}catch(e){}});
+   if(el)el.addEventListener('change',()=>{try{paint()}catch(e){WL.quiet.note('段の見出しを塗り直せない（次の描き直しで追いつく）',e)}});
   });
  }
 

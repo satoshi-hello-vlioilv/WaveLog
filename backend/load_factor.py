@@ -17,6 +17,7 @@ from .config import LOAD_FACTOR_CACHE_TTL_SEC, MIN_SAMPLES
 from .db_access import records_paths_all, merged_backup_rows
 from .repositories import schedule_repo as sr
 from .repositories.master_repo import normalize_equipment_name, read_equipment_standard_minutes
+from .quiet import quiet
 
 FACTOR_KEYS=('purposeName','mfgMaterial','mfgTemper','mfgThickness','mfgWidth','mfgLength','boxHorizontalCount','boxVerticalCount','crewSize')
 NUMERIC_FACTORS={'mfgThickness','mfgWidth','mfgLength','boxHorizontalCount','boxVerticalCount'}
@@ -34,14 +35,16 @@ def _numeric(v):
   s=str(v).strip()
   if s=='':return None
   return float(s)
- except Exception:
+ except Exception as _e:
+  quiet('数として読めない（既定で続ける）',_e)
   return None
 
 def _decode_payload(row):
  import json
  try:
   return json.loads(row.get('payload') or '{}')
- except Exception:
+ except Exception as _e:
+  quiet('保存された値を読めない（既定で続ける）',_e)
   return None
 
 def _record_equipment(payload):
@@ -60,7 +63,7 @@ def completed_training_rows(equipment=None):
   if not start or not end:continue
   try:
    s=datetime.fromisoformat(start);e=datetime.fromisoformat(end)
-  except Exception:continue
+  except Exception as _e:quiet('日時として読めない（無いものとして続ける）',_e);continue
   minutes=(e-s).total_seconds()/60.0
   if minutes<=0:continue
   eq=_record_equipment(payload)
@@ -199,7 +202,7 @@ def _source_mtime():
  for p in records_paths_all():
   try:
    if p and p.exists():mtimes.append(p.stat().st_mtime)
-  except Exception:pass
+  except Exception as _e:quiet('見かけ（更新時刻・大きさ）を取れない（分からないものとして続ける）',_e)
  return max(mtimes) if mtimes else 0.0
 
 def _compute_model(equipment):

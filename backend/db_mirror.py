@@ -74,7 +74,10 @@ import time
 from pathlib import Path
 
 from . import atomic_io
+# 読み取り専用オープン用の file: URI の組み立てだけが要る（§9.329）。
+from .sqlite_io import _sqlite_ro_uri
 from .logging_setup import app_logger
+from .quiet import quiet
 
 # 写しの置き場。db/cache/<キー>.sqlite3
 _CACHE_DIRNAME = 'cache'
@@ -175,7 +178,8 @@ def _load_ledger():
  try:
   data = json.loads(_signature_path().read_text(encoding='utf-8'))
   return data if isinstance(data, dict) else {}
- except Exception:
+ except Exception as _e:
+  quiet('保存された値を読めない（既定で続ける）',_e)
   return {}
 
 
@@ -233,7 +237,6 @@ def _remote_signature(remote):
 # ------------------------------------------------------------------
 def _snapshot_via_backup(remote, tmp):
  """SQLiteのバックアップAPIで一貫した写しを作る。"""
- from .db_access import _sqlite_ro_uri
  src = sqlite3.connect(_sqlite_ro_uri(remote), uri=True, timeout=15)
  try:
   dst = sqlite3.connect(str(tmp))
@@ -474,8 +477,7 @@ def records_targets():
  間隔ぶん見えない。判定は`db_access.records_written_here()`の1箇所。
  """
  from .db_access import (RECORDS_SHARE_DIR, RECORDS_BACKUP_EXPORT_PATH,
-                         records_share_files, records_dir_name,
-                         records_written_here)
+                         records_share_files, records_written_here)
  if RECORDS_SHARE_DIR is None and RECORDS_BACKUP_EXPORT_PATH is None:
   return []
  mine = records_written_here()

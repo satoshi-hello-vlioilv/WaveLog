@@ -34,7 +34,6 @@ sys.path.insert(0, str(ROOT))
 import app as flask_app                                    # noqa: E402
 from backend import access_mode as am, db_access           # noqa: E402
 from backend.repositories import master_repo as mr         # noqa: E402
-from backend.routes import masters as masters_routes       # noqa: E402
 
 R = []
 def rec(name, ok, detail=''):

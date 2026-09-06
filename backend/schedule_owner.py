@@ -46,6 +46,7 @@ from . import atomic_io
 from .config import APP_ID, SCHEDULE_OWNER_PORT_DEFAULT, SCHEDULE_OWNER_TTL_SEC_DEFAULT
 from .db_access import SCHEDULE_SHARE_PATH, path_config_value
 from .logging_setup import app_logger
+from .quiet import quiet
 
 MARKER_FILENAME='schedule.owner.json'
 # 転送してよいパス。**共有スケジュールDB(schedule.sqlite3)へ書く5本だけ**。
@@ -209,13 +210,14 @@ def local_urls():
   if host:out.append(f'http://{host}:{port}')
   try:
    _n,_a,ips=socket.gethostbyname_ex(host)
-  except Exception:
+  except Exception as _e:
+   quiet('IPを引けない（名前だけで頼む）',_e)
    ips=[]
   for ip in ips:
    if ip.startswith('127.'):continue
    u=f'http://{ip}:{port}'
    if u not in out:out.append(u)
- except Exception:pass
+ except Exception as _e:quiet('自分のURLを組み立てられない（残りの候補で頼む）',_e)
  if not out:out.append(f'http://127.0.0.1:{port}')
  _urls_cache.update({'at':now,'port':port,'urls':list(out)})
  return out
@@ -267,7 +269,7 @@ def resign():
  if isinstance(cur,dict) and cur.get('id')==_state['id']:
   p=marker_path()
   try:atomic_io.unlink(p,label='schedule.owner')
-  except Exception:pass
+  except Exception as _e:quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
  with _lock:_state['owner']=False
 
 
@@ -386,7 +388,7 @@ class _Handler(BaseHTTPRequestHandler):
    with flask_app.test_client() as c:
     r=c.post(path,data=json.dumps(body or {}),headers=headers)
     try:out=r.get_json()
-    except Exception:out=None
+    except Exception as _e:quiet('本文をJSONとして読めない（空として断る）',_e);out=None
     return self._send(r.status_code,out if out is not None else {'ok':r.status_code<400})
   except Exception as e:
    app_logger().exception('持ち主の受け口で失敗しました: %s',path)
@@ -413,9 +415,9 @@ def _stop_server():
  srv=_state['server']
  if not srv:return
  try:srv.shutdown()
- except Exception:pass
+ except Exception as _e:quiet('受け口を止められない（プロセスの終了で閉じる）',_e)
  try:srv.server_close()
- except Exception:pass
+ except Exception as _e:quiet('受け口を閉じられない（プロセスの終了で閉じる）',_e)
  with _lock:_state['server']=None;_state['bound_port']=0
 
 

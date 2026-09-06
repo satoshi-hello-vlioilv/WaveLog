@@ -72,7 +72,7 @@
   const b=$id('qaFold');
   if(b){b.textContent=on?'▼ 開く':'▲ 畳む';
         b.title=on?'このカードを開いて、グラフの設定を出します':'このカードを畳んで、下の一覧を広く使います'}
-  try{localStorage.setItem(FOLD_KEY,on?'1':'0')}catch(_){}
+  try{localStorage.setItem(FOLD_KEY,on?'1':'0')}catch(_){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',_)}
  }
 /* ---------- パネル生成 ---------- */
  function ensurePanel(){
@@ -267,6 +267,7 @@
    const label=ell(String(k),14);
    /* 日本語（全角）は1文字がほぼ1em幅なので、半角基準の推定だと重なる。
       全角/半角を判定して幅を積算し、凡例チップが本文と衝突しないようにする。 */
+   // eslint-disable-next-line no-control-regex -- \x00〜\xff＝半角1文字ぶんの幅と見なす（意図した範囲）
    const textW=Math.max(20,[...label].reduce((w,ch)=>w+(/[\x00-\xff]/.test(ch)?6.4:11.5),0));
    const itemW=chipW+4+textW+padX;
    if(cx+itemW>maxW&&cx>0){cx=0;rows++}

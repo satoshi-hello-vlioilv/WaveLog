@@ -5,6 +5,7 @@ app.pyから移設。ロジックは変更していない(移動のみ)。
 from flask import Blueprint, request, jsonify
 
 from ..db_access import DBS, cfg, connect, tables, cols, qi, QUALITY_DB_KEY
+from ..quiet import quiet
 
 bp=Blueprint('quality',__name__)
 
@@ -36,7 +37,7 @@ def _quality_parse_number(value):
  m=re.search(r'[-+]?\d+(?:\.\d+)?',s)
  if not m:return None
  try:return float(m.group(0))
- except Exception:return None
+ except Exception as _e:quiet('数として読めない（既定で続ける）',_e);return None
 
 def _quality_parse_datetime(value):
  from datetime import datetime
@@ -47,7 +48,7 @@ def _quality_parse_datetime(value):
  formats=('%Y-%m-%d %H:%M:%S','%Y-%m-%d %H:%M','%Y-%m-%d','%Y%m%d%H%M%S','%Y%m%d')
  for fmt in formats:
   try:return datetime.strptime(s[:len(datetime.now().strftime(fmt))],fmt)
-  except Exception:pass
+  except Exception as _e:quiet('日時として読めない（無いものとして続ける）',_e)
  return None
 
 @bp.get('/api/quality/analysis')

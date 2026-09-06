@@ -126,7 +126,7 @@
     if(!activeAll[uid]||typeof activeAll[uid]!=='object')activeAll[uid]={};
     return activeAll[uid];
   }
-  function writeActiveAll(){try{localStorage.setItem(ACTIVE_STORE,JSON.stringify(activeAll))}catch(_){}}
+  function writeActiveAll(){try{localStorage.setItem(ACTIVE_STORE,JSON.stringify(activeAll))}catch(_){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',_)}}
   /* whoは**書き込む先の利用者**。利用者IDは後から届くので(§9.172)、
      起動直後に空のIDで覚えたぶんを、IDが届いた時点でその人の側へ
      置き換える。そのとき「元の持ち主」へ書き戻すために引数で受ける。 */
@@ -205,7 +205,7 @@
     /* 同じ一覧を同時に2回取りに行かない(一覧を引くたびに呼ばれる)。 */
     if(presetsLoading&&presetsLoading.key===key)return presetsLoading.p;
     const p=loadMasterPresets({inline:false,db,table})
-      .catch(()=>{/* 読めなければ次の機会に取り直す */})
+      .catch(WL.quiet('読めなければ次の機会に取り直す'))
       .finally(()=>{if(presetsLoading&&presetsLoading.key===key)presetsLoading=null});
     presetsLoading={key,p};
     return p;
@@ -225,7 +225,7 @@
   }
 
   function readLocalPresets(){try{return JSON.parse(localStorage.getItem(FILTER_STORE)||'[]')}catch(_){return []}}
-  function writeLocalPresets(){try{localStorage.setItem(FILTER_STORE,JSON.stringify((S.filterPresets||[]).slice(0,120)))}catch(_){}}
+  function writeLocalPresets(){try{localStorage.setItem(FILTER_STORE,JSON.stringify((S.filterPresets||[]).slice(0,120)))}catch(_){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',_)}}
   function readUsage(){
     let all={};
     try{all=JSON.parse(localStorage.getItem(USAGE_STORE)||'{}')}catch(_){all={}}
@@ -237,11 +237,11 @@
       try{
         const old=JSON.parse(localStorage.getItem(USAGE_STORE_V2)||'{}');
         if(old&&typeof old==='object'&&Object.keys(old).length)all[uid]=old;
-      }catch(_){}
+      }catch(_){WL.quiet.note('端末の覚えが読めない（既定で続ける）',_)}
     }
     return all;
   }
-  function writeUsage(){try{localStorage.setItem(USAGE_STORE,JSON.stringify(S.filterCondUsage||{}))}catch(_){}}
+  function writeUsage(){try{localStorage.setItem(USAGE_STORE,JSON.stringify(S.filterCondUsage||{}))}catch(_){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',_)}}
   /* その人のバケット。**無ければ作る**(呼び出し側で毎回undefinedを気にしない)。 */
   function userUsageBucket(){
     const all=S.filterCondUsage||(S.filterCondUsage={});
@@ -499,7 +499,7 @@
     if(!preset)return;preset.uses=(preset.uses||0)+1;
     if(preset.master&&preset.id!=null){
       // 使用回数はサジェスト順位の材料。ブロックせず裏で加算する。
-      api('/api/filter-presets/use',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:preset.id,user_id:currentUserId()})}).catch(()=>{});
+      api('/api/filter-presets/use',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:preset.id,user_id:currentUserId()})}).catch(WL.quiet('登録フィルタの利用回数を送れない（候補の並びが変わらないだけ）'));
     }
   }
 
@@ -526,7 +526,7 @@
     try{const all=JSON.parse(localStorage.getItem(MARK_MIRROR)||'{}');
         const mine=all[filterUserId()];
         if(mine&&typeof mine==='object')return {def:mine.def||{},lock:mine.lock||{}};
-    }catch(_){}
+    }catch(_){WL.quiet.note('端末の覚えが読めない（既定で続ける）',_)}
     return null;
   }
   function writeMarkMirror(){
@@ -534,7 +534,7 @@
       const all=JSON.parse(localStorage.getItem(MARK_MIRROR)||'{}');
       all[filterUserId()]={def:markMaps.def,lock:markMaps.lock};
       localStorage.setItem(MARK_MIRROR,JSON.stringify(all));
-    }catch(_){}
+    }catch(_){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',_)}
   }
   /* 端末に残っている**旧V1（端末ごとの印）**。移行の材料としてだけ読む。 */
   function legacyMarkMaps(){
@@ -624,7 +624,7 @@
      覚えておく(0件へ戻したあと、もう一度移行が走らないように)。 */
   async function migrateLegacyMarks(items,serverHasMarks){
     let done={};
-    try{done=JSON.parse(localStorage.getItem(MARK_MIGRATED)||'{}')}catch(_){}
+    try{done=JSON.parse(localStorage.getItem(MARK_MIGRATED)||'{}')}catch(_){WL.quiet.note('端末の覚えが読めない（既定で続ける）',_)}
     const uid=filterUserId();
     if(done[uid]||serverHasMarks)return false;
     /* **端末に残っている印を全部まとめて1回で移す。** 今開いている一覧ぶんだけを
@@ -652,7 +652,7 @@
       }catch(_){return false}
     }
     done[uid]=new Date().toISOString();
-    try{localStorage.setItem(MARK_MIGRATED,JSON.stringify(done))}catch(_){}
+    try{localStorage.setItem(MARK_MIGRATED,JSON.stringify(done))}catch(_){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',_)}
     return ids.size>0;
   }
   function lockedPresetIdsFor(db,table){return (readLockedPresetMap()[defaultMapKey(db,table)]||[]).map(String)}
@@ -819,7 +819,7 @@
   const PRESET_NONE='';           // 「なし」＝プリセットの条件を入れない
   let presetSelAll=(()=>{try{const m=JSON.parse(localStorage.getItem(PRESET_STORE)||'{}');
                              return (m&&typeof m==='object')?m:{}}catch(_){return {}}})();
-  function writePresetSel(){try{localStorage.setItem(PRESET_STORE,JSON.stringify(presetSelAll))}catch(_){}}
+  function writePresetSel(){try{localStorage.setItem(PRESET_STORE,JSON.stringify(presetSelAll))}catch(_){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',_)}}
   /* **利用者IDは呼ぶたびに引く**（`/api/whoami`から後から届く・§9.184）。 */
   function presetSelBucket(who){
     const k=(who===undefined?filterUserId():who)||'';
@@ -1445,13 +1445,13 @@
   let adhocAll=(()=>{try{const m=JSON.parse(localStorage.getItem(ADHOC_STORE)||'{}');
                           return (m&&typeof m==='object')?m:{}}catch(_){return {}}})();
   let adhocOpen=(()=>{try{return localStorage.getItem(ADHOC_OPEN_STORE)==='1'}catch(_){return false}})();
-  function writeAdhocOpen(){try{localStorage.setItem(ADHOC_OPEN_STORE,adhocOpen?'1':'0')}catch(_){}}
+  function writeAdhocOpen(){try{localStorage.setItem(ADHOC_OPEN_STORE,adhocOpen?'1':'0')}catch(_){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',_)}}
   function adhocBucket(who){
     const uid=who==null?filterUserId():who;
     if(!adhocAll[uid]||typeof adhocAll[uid]!=='object')adhocAll[uid]={};
     return adhocAll[uid];
   }
-  function writeAdhocAll(){try{localStorage.setItem(ADHOC_STORE,JSON.stringify(adhocAll))}catch(_){}}
+  function writeAdhocAll(){try{localStorage.setItem(ADHOC_STORE,JSON.stringify(adhocAll))}catch(_){WL.quiet.note('端末の覚えを書けない（次に開くと既定へ戻るだけ）',_)}}
   /* いまの支度と値。**値はここにしか無い**（保存へ回らない）。 */
   let adhoc={column:'',op:'contains',value:''};
   let adhocScope=null,adhocUid=null,adhocTimer=null,adhocColsSig='';
@@ -2049,7 +2049,7 @@
              すると、取り込んだ人が別のPCへ移った瞬間に印だけ消える。 */
           if(marks.length){
             try{await api('/api/filter-presets/marks',{method:'POST',headers:{'Content-Type':'application/json'},
-              body:JSON.stringify(withUserId({user:filterUserId(),items:marks}))})}catch(_){}
+              body:JSON.stringify(withUserId({user:filterUserId(),items:marks}))})}catch(_){WL.quiet.note('取り込んだ印をマスタへ残せない（端末の控えには入っている）',_)}
           }
         }
       }
@@ -2112,7 +2112,7 @@
       const q=new URLSearchParams({db:S.db,table:S.table,mode:otherMode(),user:filterUserId()});
       const r=await api('/api/filter-presets?'+q);
       otherScene={count:(r.items||[]).length,items:r.items||[]};
-    }catch(_){/* 数えられなければ黙る(あるとも無いとも言わない) */}
+    }catch(_){WL.quiet.note('数えられなければ黙る(あるとも無いとも言わない)',_)}
   }
   /* こちらの場面へも同じ条件を登録する。**印(デフォルト・鍵)も一緒に運ぶ**
      ——鍵を付けた意図がいちばん大事なので、条件だけ移して印が消えると
@@ -2577,7 +2577,7 @@
          先に走るため、この当て直しが無いと鍵付き・デフォルトの条件が
          「再起動すると外れている」状態になる（実機で報告された）。 */
       reapplyDefaultFilters();
-    }catch(_){}
+    }catch(_){WL.quiet.note('登録フィルタを取れない（この一覧では絞り込みが空のまま）',_)}
   });
 })();
 

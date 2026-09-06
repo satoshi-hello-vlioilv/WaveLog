@@ -24,6 +24,7 @@ from .db_access import (DBS, cfg, connect, tables, cols,
                         WORK_DB_KEY, QUALITY_DB_KEY, SCHEDULE_DB_KEY,
                         PURPOSE_WORK, PURPOSE_QUALITY, PURPOSE_SCHEDULE)
 from .logging_setup import app_logger
+from .quiet import quiet
 
 
 def norm_name(s):
@@ -143,7 +144,8 @@ def _quality_key_table(key, all_tables, entry_preferred, path=None):
   for t in ordered:
    try:
     cs = cols(c, t, source=entry['path'])
-   except Exception:
+   except Exception as _e:
+    quiet('相手の列を読めない（この表は候補から外す）',_e)
     continue
    missing = [_JOIN_KEY_LABEL[k] for k in JOIN_KEYS
               if not find_column(cs, FEATURE_ALIASES[k])]

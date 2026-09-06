@@ -27,9 +27,12 @@ from .. import schedule_calc
 from .. import load_factor
 from ..repositories import schedule_repo as sr
 from ..repositories.master_repo import normalize_equipment_name, equipment_master_rows, field_reorder_equipment_allows
-from ..db_access import connect, request_user_id, request_pc_name, path_config_value, DBS
+from ..db_access import connect, path_config_value, DBS
+from ..access_mode import request_user_id, request_pc_name
+from .body import body, flag, any_
 from ..access_mode import current_login_id, current_pc_name, get_mode, current_permission_flags
 from ..logging_setup import app_logger
+from ..quiet import quiet
 
 bp=Blueprint('schedule',__name__)
 
@@ -125,7 +128,7 @@ def session_status_get():
 @bp.post('/api/schedule/session/acquire')
 def session_acquire():
  # ハートビートも同じ実装(自分の分は延長、他端末保持中は弾く。§9.11)。
- x=request.get_json(force=True) or {}
+ x=body({'equipment': str})
  equipment=str(x.get('equipment') or '').strip()
  if not equipment:return jsonify(error='どの設備か指定してください(equipment)。'),400
  # **止めるかどうかはサーバーが答える**（§9.291 ③）——画面へ既定を書き写すと、
@@ -169,7 +172,7 @@ def session_take_over():
  その設備の予定を誰も直せない。奪われた側は次のハートビートで423になり、
  その場でREADONLYへ落ちる(書込APIもrequire_session()で二重に弾く)。
  """
- x=request.get_json(force=True) or {}
+ x=body({'equipment': str})
  equipment=str(x.get('equipment') or '').strip()
  if not equipment:return jsonify(error='どの設備か指定してください(equipment)。'),400
  try:
@@ -191,7 +194,7 @@ def session_heartbeat():
 
 @bp.post('/api/schedule/session/release')
 def session_release():
- x=request.get_json(force=True) or {}
+ x=body({'equipment': str})
  equipment=str(x.get('equipment') or '').strip()
  if equipment:
   schedule_sync.release_session(equipment,current_login_id(),current_pc_name())
@@ -255,9 +258,12 @@ def _write_response(apply_fn):
  リクエストをそのまま持ち主へ頼み、返事をそのまま返す。**頼めなければ
  今までどおり自分で書く**——持ち主が落ちていても仕事が止まらないことの
  ほうが大事で、ロックと改訂番号の砦はそのまま残っている。"""
- x=request.get_json(force=True) or {}
+ # ここは**全部の書込ルートが通る共通処理**なので、鍵は宣言できない
+ # （それぞれのルートが自分の spec で読んでいる）。読むのは
+ # 「誰が・どの端末で」と、中継へそのまま渡す生の本文だけ。
+ x=body({})
  uid=request_user_id(x)
- relayed=_relay_write(x)
+ relayed=_relay_write(x.raw)
  if relayed is not None:return relayed
  try:
   result=schedule_sync.with_write(current_login_id(),current_pc_name(),uid,apply_fn)
@@ -294,7 +300,7 @@ def _write_response(apply_fn):
  except Exception as e:
   return jsonify(error=str(e)),500
 
-def _relay_write(body):
+def _relay_write(payload):
  """持ち主へ書き込みを頼む(§9.192)。頼まないときは None。
 
  **頼んだ結果は「持ち主が答えたそのもの」**を返す（423の編集中・409の
@@ -302,7 +308,8 @@ def _relay_write(body):
  Noneを返して、呼び出し元が自分で書く道へ落ちる。"""
  try:
   from .. import schedule_owner, schedule_watch
- except Exception:
+ except Exception as _e:
+  quiet('中継の仕組みを読み込めない（自分で書く）',_e)
   return None
  # **中継されてきたものを中継し返さない。** 共有(Box等)の結果整合性では
  # 目印が二重に見えることがあり、互いを持ち主だと思い込むと同じ依頼を
@@ -314,18 +321,18 @@ def _relay_write(body):
  # （自分で書けば済む場面なのに、他のPCだけ機能が欠ける）。
  if request.path not in schedule_owner.RELAY_PATHS:return None
  if not schedule_owner.should_relay():return None
- status,out=schedule_owner.relay(request.path,body,current_login_id(),current_pc_name(),get_mode())
+ status,out=schedule_owner.relay(request.path,payload,current_login_id(),current_pc_name(),get_mode())
  if status is None:
   app_logger().warning('持ち主へ頼めなかったので自分で書きます(%s): %s',request.path,out)
   try:g.relay_fallback=str(out or '書込役へ届きません')
-  except Exception:pass
+  except Exception as _e:quiet('中継できなかったことを画面へ渡せない（自分で書いた事実は変わらない）',_e)
   return None
  # 書けたので**自分の写しも取り直す**——取り直さないと、書いた本人の画面
  # だけが古いままになる（他の端末は見張りが気づく）。
  if status<400:
   try:
    schedule_watch.schedule_watch_once();schedule_watch.wake()
-  except Exception:pass
+  except Exception as _e:quiet('共有の取り込みを起こせない（次の巡回で取り込む）',_e)
  payload=dict(out or {})
  payload['relayedTo']=schedule_owner.status().get('ownerPc') or ''
  return jsonify(**payload),status
@@ -341,7 +348,7 @@ def _request_mode():
   from .. import schedule_owner
   m=schedule_owner.relayed_mode(request.headers)
   if m:return m
- except Exception:pass
+ except Exception as _e:quiet('中継のモードを読めない（この端末のモードで判定する）',_e)
  return get_mode()
 
 def _session_block_on():
@@ -418,7 +425,9 @@ def plan_list():
 
 @bp.post('/api/schedule/plan/add')
 def plan_add():
- x=request.get_json(force=True) or {}
+ x=body({'equipment': str,'kind': str,'lotNo': str,'inspectionNo': str,'castingNo': str,
+         'estimateMinutes': any_,'fixedStart': any_,'remark': str,'title': str,
+         'stopReasonId': any_,'position': str,'children': any_,'detail': any_})
  equipment=str(x.get('equipment') or '').strip()
  kind=str(x.get('kind') or '').strip()
  if not equipment:return jsonify(error='どの設備の予定か指定してください。'),400
@@ -450,7 +459,7 @@ def _plan_children(raw):
 
 @bp.post('/api/schedule/plan/update')
 def plan_update():
- x=request.get_json(force=True) or {}
+ x=body({'id': any_,'frame': any_,'estimateMinutes': any_,'fixedStart': any_,'remark': any_,'state': any_,'title': any_})
  plan_id=x.get('id')
  if plan_id is None:return jsonify(error='更新対象の予定IDがありません。'),400
  # titleは申し送り(コメント)の本文(§9.191)。他の種別では repo が弾く。
@@ -470,7 +479,7 @@ def plan_update():
 
 @bp.post('/api/schedule/plan/delete')
 def plan_delete():
- x=request.get_json(force=True) or {}
+ x=body({'id': any_})
  plan_id=x.get('id')
  if plan_id is None:return jsonify(error='削除対象の予定IDがありません。'),400
  def fn(c):
@@ -563,7 +572,7 @@ def plan_batch():
  # いけない: まとめ書込は追加・削除も運べるため、editモードへ開くと
  # 「現場段取り端末は並べ替えだけ」という§3.1.1の制限を迂回できてしまう。
  # editモードの現場段取りは従来どおり個別のplan/reorderを使うこと。
- x=request.get_json(force=True) or {}
+ x=body({'ops': any_})
  ops=x.get('ops')
  if not isinstance(ops,list) or not ops:
   return jsonify(error='適用する操作がありません。'),400
@@ -594,7 +603,7 @@ def plan_reorder():
  # _ENDPOINT_EXTRA_MODESで「並べ替え権限があるか」までは確認済みだが、
  # 「この端末の現場段取り対象設備と、リクエストのequipmentが一致するか」は
  # 設備名がリクエストボディの中にしか無いため、ここで追加チェックする。
- x=request.get_json(force=True) or {}
+ x=body({'equipment': str,'orderedIds': any_,'planIds': any_,'baseOrderedIds': any_})
  equipment=str(x.get('equipment') or '').strip()
  if not equipment:return jsonify(error='どの設備の並べ替えか指定してください。'),400
  if get_mode()=='edit':
@@ -634,7 +643,7 @@ def calendar_list():
 
 @bp.post('/api/schedule/calendar')
 def calendar_save():
- x=request.get_json(force=True) or {}
+ x=body({'equipment': str,'entries': any_})
  equipment=str(x.get('equipment') or '').strip()
  entries=x.get('entries') or []
  def fn(mc):
@@ -668,20 +677,20 @@ def _stop_category_save(x):
 
 @bp.post('/api/schedule/stop-category-master')
 def stop_category_register():
- return _stop_category_save(request.get_json(force=True) or {})
+ return _stop_category_save(body({'id': any_,'name': str,'colorKey': any_}))
 
 @bp.post('/api/schedule/stop-category-master/update')
 def stop_category_update():
  """マスタ管理画面の「編集」はどのマスタも <endpoint>/update へPOSTする
     (static/js/master-maint.js の submitMaint)。改名の処理は登録側が
     idを見て既に持っているのに、このURLだけ無く404で弾かれていた(§9.82)。"""
- x=request.get_json(force=True) or {}
+ x=body({'id': any_,'name': str,'colorKey': any_})
  if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
  return _stop_category_save(x)
 
 @bp.post('/api/schedule/stop-category-master/delete')
 def stop_category_delete():
- x=request.get_json(force=True) or {}
+ x=body({'id': any_,'force': flag})
  cid=x.get('id')
  if cid is None:return jsonify(error='削除対象IDがありません。'),400
  force=bool(x.get('force'))
@@ -749,18 +758,20 @@ def _row_style_save(x):
 
 @bp.post('/api/schedule/row-style-master')
 def row_style_register():
- return _row_style_save(request.get_json(force=True) or {})
+ return _row_style_save(body({'id': any_,'key': str,'colorKey': any_,'icon': any_,'showIcon': any_,
+         'titleLook': any_,'titlePlace': any_,'titleAlign': any_,'titleTime': any_}))
 
 @bp.post('/api/schedule/row-style-master/update')
 def row_style_update():
- x=request.get_json(force=True) or {}
+ x=body({'id': any_,'key': str,'colorKey': any_,'icon': any_,'showIcon': any_,
+         'titleLook': any_,'titlePlace': any_,'titleAlign': any_,'titleTime': any_})
  if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
  return _row_style_save(x)
 
 @bp.post('/api/schedule/row-style-master/delete')
 def row_style_delete_route():
  """既定へ戻す。**行ごと消す**のが「設定していない」状態。"""
- x=request.get_json(force=True) or {}
+ x=body({'id': any_})
  rid=x.get('id')
  if rid is None:return jsonify(error='削除対象IDがありません。'),400
  def fn(mc):
@@ -806,20 +817,20 @@ def _stop_reason_save(x,stop_reason_id=None):
 
 @bp.post('/api/schedule/stop-reason-master')
 def stop_reason_register():
- return _stop_reason_save(request.get_json(force=True) or {})
+ return _stop_reason_save(body({'id': any_,'equipment': any_,'name': str,'category': any_,'colorKey': any_,'standardMinutes': any_}))
 
 @bp.post('/api/schedule/stop-reason-master/update')
 def stop_reason_update():
  # 既存行の更新(§9.81)。対象設備そのものを入れ替えられるのはこの経路だけで、
  # 登録側(自然キー照合)では「対象設備を変える」と別行の新規登録になってしまう。
- x=request.get_json(force=True) or {}
+ x=body({'id': any_,'equipment': any_,'name': str,'category': any_,'colorKey': any_,'standardMinutes': any_})
  sid=x.get('id')
  if sid is None or str(sid).strip()=='':return jsonify(error='更新対象IDがありません。'),400
  return _stop_reason_save(x,stop_reason_id=sid)
 
 @bp.post('/api/schedule/stop-reason-master/delete')
 def stop_reason_delete():
- x=request.get_json(force=True) or {}
+ x=body({'id': any_})
  sid=x.get('id')
  if sid is None:return jsonify(error='削除対象IDがありません。'),400
  def fn(mc):
@@ -870,7 +881,7 @@ def shift_pattern_list():
 def shift_pattern_save():
  """勤務体系と、その配下の勤務区分をまとめて保存する(区分は全置換)。
  親子を1リクエストで保存することで、片方だけ保存された中途半端な状態を作らない。"""
- x=request.get_json(force=True) or {}
+ x=body({'id': any_,'name': str,'equipment': any_,'segments': any_})
  pattern_id=x.get('id')
  # equipmentは設備名の配列(複数可、空配列=全設備共通)。以前は単一文字列
  # だったため、互換のため文字列で来た場合も受け付ける。
@@ -890,7 +901,7 @@ def shift_pattern_save():
 
 @bp.post('/api/schedule/shift-pattern-master/delete')
 def shift_pattern_delete_route():
- x=request.get_json(force=True) or {}
+ x=body({'id': any_})
  pid=x.get('id')
  if pid is None:return jsonify(error='削除対象IDがありません。'),400
  def fn(mc):
@@ -944,7 +955,7 @@ def load_factor_override_save():
  # 解除する。因子='BASE'は水準=''固定でT0(基準時間)自体を上書きする。
  # 上書きはestimate_work()が呼び出しのたびに読み直す(§6.7)ため、モデルの
  # プロセス内キャッシュ(get_model)は無効化不要。
- x=request.get_json(force=True) or {}
+ x=body({'equipment': str,'factor': str,'level': str,'coefficient': any_,'reason': any_})
  equipment=str(x.get('equipment') or '').strip()
  factor=str(x.get('factor') or '').strip()
  level='' if factor=='BASE' else str(x.get('level') or '').strip()
@@ -968,7 +979,7 @@ def load_factor_recalc():
  # 実績データ(共有測定バックアップ)はこのアプリの書込対象外のため、
  # 共有スケジュールDBのロック/改訂番号は使わない(プロセス内キャッシュの
  # 破棄のみ)。
- x=request.get_json(force=True) or {}
+ x=body({'equipment': str})
  equipment=str(x.get('equipment') or '').strip()
  if not equipment:return jsonify(error='どの設備を再計算するか指定してください(equipment)。'),400
  load_factor.invalidate_cache(equipment)
@@ -986,7 +997,8 @@ def estimate_preview():
  try:
   detail=json.loads(detail_raw)
   if not isinstance(detail,dict):detail=None
- except Exception:
+ except Exception as _e:
+  quiet('保存された値を読めない（既定で続ける）',_e)
   detail=None
  if detail is None:return jsonify(error='detail(明細JSON)の形式が不正です。'),400
  # 見積は換算係数上書きマスタ(master.sqlite3)しか読まないため、共有DBの
@@ -1035,7 +1047,8 @@ def _overview_row(equipment,expanded,now):
   if e['state'] in ('着手',sr.PLAN_REORDERABLE_STATE) and e.get('plannedStart') and e.get('plannedEnd'):
    try:
     start=datetime.fromisoformat(e['plannedStart']);end=datetime.fromisoformat(e['plannedEnd'])
-   except Exception:
+   except Exception as _e:
+    quiet('日時として読めない（無いものとして続ける）',_e)
     continue
    if end<now or start>window_end:continue
    blocks.append({'id':e['id'],'kind':e['kind'],'state':e['state'],

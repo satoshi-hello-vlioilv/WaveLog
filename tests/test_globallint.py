@@ -85,8 +85,49 @@ def scan():
     return windows, globals_by_file, wrapped, wl
 
 
+S_KEY = re.compile(r'\bS\.([A-Za-z_$][A-Za-z0-9_$]*)')  # 鍵はASCIIだけ（コメントの日本語を鍵に数えない）
+
+
+def s_keys():
+    """グローバル状態 `S`（base.js）の**宣言された鍵**と、画面・網が触っている鍵。
+
+    §9.327（REVIEW 3-8）: `S` の鍵は base.js の1つのリテラルだけが持ち、
+    `Object.seal(S)` で**後付けできない**。以前は `filters.js` が
+    `S.filterPresets` 等3つ、`list-view.js` が `S.selectedRow`／`S.t`／
+    `S.joinQuality`、`records-store.js` が `S.measureContextError` を後付けして
+    おり（宣言11・使用19）、**綴りを間違えても静かに新しい鍵ができる**状態だった。
+    宣言は「`S={` から `}` まで」を読み、`key:` の形の鍵を集める。
+    """
+    base = (JS / 'base.js').read_text(encoding='utf-8')
+    m = re.search(r'\bS\s*=\s*\{(.*?)\}\s*;', base, re.S)
+    body = m.group(1) if m else ''
+    declared = set(re.findall(r'(?:^|[{,])\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*:', body, re.M))
+    used = {}
+    for path in sorted(list(JS.glob('*.js')) + list((ROOT / 'tests').glob('*.js'))):
+        text = path.read_text(encoding='utf-8')
+        if path.name == 'report-dashboard.js':
+            # `const S=M0.sheet` という**別の局所変数**が1つある（紙の1枚ぶん）。
+            # その関数の中だけ読み飛ばす。
+            text = re.sub(r'const S=M0\.sheet.*?\n\s*\}', '', text, flags=re.S)
+        for k in set(S_KEY.findall(text)):
+            used.setdefault(k, []).append(path.name)
+    sealed = bool(re.search(r'Object\.seal\(S\)', base))
+    return declared, used, sealed
+
+
 def main():
     windows, globals_by_file, wrapped, wl = scan()
+    declared, used, sealed = s_keys()
+    undeclared = {k: v for k, v in used.items() if k not in declared}
+    rec('`S` の鍵は base.js の宣言に全部載っている（後付け0件）', declared and not undeclared,
+        ', '.join(f'{k}({"/".join(v)})' for k, v in sorted(undeclared.items()))
+        or f'宣言{len(declared)}・使用{len(used)}')
+    unused = sorted(k for k in declared if k not in used)
+    rec('宣言だけで誰も触らない鍵が無い', not unused, ', '.join(unused))
+    rec('`S` は Object.seal で後付けを断っている', sealed)
+    dyn = [p.name for p in list(JS.glob('*.js')) + list((ROOT / 'tests').glob('*.js'))
+           if re.search(r'\bS\[', p.read_text(encoding='utf-8'))]
+    rec('`S[...]` の動的な鍵で宣言をすり抜けていない', not dyn, ', '.join(dyn))
     total = sum(len(v) for v in windows.values())
     rec('画面側のJSを読めている', len(wrapped) >= 15, f'{len(wrapped)}ファイル')
 

@@ -41,6 +41,7 @@ from .repositories.master_repo import (permission_flags, master_write_check,
                                        MASTER_EDIT_DEFAULT, ROLE_DEFAULT,
                                        MASTER_WRITE_BLUEPRINTS,
                                        master_edit_capabilities)
+from .quiet import quiet
 
 _lock=threading.Lock()
 _mode='edit'  # 'edit' | 'view' | 'schedule'
@@ -244,7 +245,8 @@ def _relayed_identity():
   if not has_request_context():return None
   from . import schedule_owner
   return schedule_owner.relayed_identity(request.headers)
- except Exception:
+ except Exception as _e:
+  quiet('中継の素性を読めない（この端末の素性で扱う）',_e)
   return None
 
 def _relayed_write_ok():
@@ -264,7 +266,8 @@ def _relayed_write_ok():
   from . import schedule_owner
   if not schedule_owner.is_owner():return False
   return schedule_owner.relayed_identity(request.headers) is not None
- except Exception:
+ except Exception as _e:
+  quiet('中継の書込かを確かめられない（通さない側へ倒す）',_e)
   return False
 
 def current_login_id():
@@ -289,7 +292,7 @@ def current_login_id():
              lambda:os.environ.get('USER'),
              lambda:os.environ.get('LOGNAME')):
   try:v=str(get() or '').strip()
-  except Exception:v=''
+  except Exception as _e:quiet('ログインIDを引けない（空として続ける）',_e);v=''
   if v:return v
  return ''
 
@@ -326,28 +329,30 @@ def _pc_name_override():
  try:
   from .db_access import path_config_value
   return _usable_pc_name(path_config_value('pc_name'))
- except Exception:
+ except Exception as _e:
+  quiet('設定のPC名を読めない（名乗り直さない）',_e)
   return ''
 
 def _pc_name_candidates():
  import platform
  def env(k):
   try:return os.environ.get(k) or ''
-  except Exception:return ''
+  except Exception as _e:quiet('環境変数を読めない（次の出どころを試す）',_e);return ''
  def host():
   try:return socket.gethostname()
-  except Exception:return ''
+  except Exception as _e:quiet('gethostnameが使えない（次の出どころを試す）',_e);return ''
  def node():
   try:return platform.node()
-  except Exception:return ''
+  except Exception as _e:quiet('platform.nodeが使えない（次の出どころを試す）',_e);return ''
  def fqdn():
   try:return str(socket.getfqdn() or '').split('.')[0]
-  except Exception:return ''
+  except Exception as _e:quiet('getfqdnが使えない（次の出どころを試す）',_e);return ''
  def etc():
   try:
    with open('/etc/hostname','r',encoding='utf-8',errors='replace') as f:
     return f.read().strip()
-  except Exception:
+  except Exception as _e:
+   quiet('/etc/hostnameを読めない（次の出どころを試す）',_e)
    return ''
  # 並びは「今までの答え → Windowsの正式な機械名 → 保険」の順。
  return [('設定（共通設定のPC名）',_pc_name_override()),
@@ -444,7 +449,8 @@ def revocation_now():
  try:
   from . import presence
   value=presence.my_revocation(current_login_id(),current_pc_name())
- except Exception:
+ except Exception as _e:
+  quiet('切断の指示を読めない（切断されていないものとして続ける）',_e)
   value=None                      # **読めなかったら止めない**（fail-open）
  with _revocation_lock:
   _revocation['at']=now;_revocation['value']=value
@@ -469,8 +475,8 @@ def install(app):
   app_logger().info('この端末の名前: %s (出どころ: %s / 試した順: %s)',
                     info['name'] or '（取得できませんでした）',info['source'] or '-',
                     ', '.join(f"{t['source']}={t['value'] or '空'}" for t in info['tried']))
- except Exception:
-  pass
+ except Exception as _e:
+  quiet('この端末の名前を記録できない（判定そのものは動く）',_e)
  with _lock:
   _mode=_initial_mode(_permission_flags())
 
@@ -594,3 +600,46 @@ def install(app):
    app_logger().warning('共有マスタへ書き出せませんでした: %s',e)
 
  return app
+
+# ========================================================================
+# この操作をしたのは誰か・どの端末か（§9.180／§9.329）
+# ------------------------------------------------------------------------
+# 以前は db_access が持っていたが、答えを持っているのは**このモジュール**
+# （current_login_id/current_pc_name）で、db_access はそれを関数の中から
+# 遅延importして呼び戻していた——db_access→access_mode→db_access の輪。
+# 「誰が触ったか」は接続の話ではなくこの層の話なので、こちらへ移した。
+# ========================================================================
+def request_user_id(x):
+ x=x or {}
+ for k in ('user_id','userId','updated_by','更新者ID'):
+  v=str(x.get(k) or '').strip()
+  if v:return v[:50]
+ # 指定が無ければ端末のログインIDを使う。画面からの操作は必ず利用者IDを
+ # 送るが、直接APIを叩いた場合に空文字のまま[更新者ID]へ入ると「誰が変えたか」
+ # が残らない。分かる範囲で埋めておく(監査列は空より端末の主が有用)。
+ try:
+  return str(current_login_id() or '')[:50]
+ except Exception as _e:
+  quiet('ログインIDを引けない（空として続ける）',_e)
+  return ''
+
+def request_pc_name(x=None):
+ """この操作をした端末(PC)名。**request_user_id と対で使う**(§9.180)。
+
+ 「どのPC・どのIDが編集したのか」を残すのが目的で、IDだけでは同じ人が
+ 別のPCから触った場合を見分けられない(現場は端末ごとに役割が違う)。
+
+ **サーバーは各端末で動いている**(1台1プロセス、共有DBを読み書きする作り)
+ ので、`socket.gethostname()`はそのまま操作した端末の名前になる。
+ 画面が明示的に送ってきた値(`pc_name`)を優先するのは、**別のPCで作られた
+ データを引き継いで保存する場合**に「作った端末」を上書きしないため。
+ """
+ x=x or {}
+ for k in ('pc_name','pcName','端末名'):
+  v=str(x.get(k) or '').strip()
+  if v:return v[:80]
+ try:
+  return str(current_pc_name() or '')[:80]
+ except Exception as _e:
+  quiet('端末名を引けない（空として続ける）',_e)
+  return ''

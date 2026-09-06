@@ -10,6 +10,7 @@ from .. import boot_status
 from ..changelog_data import APP_VERSION, CHANGELOG
 from ..paths import APP_ROOT as BASE
 from ..logging_setup import app_logger
+from ..quiet import quiet
 
 bp=Blueprint('core',__name__)
 
@@ -170,7 +171,8 @@ def _git_version():
   when=subprocess.check_output(['git','log','-1','--format=%cI'],cwd=BASE,stderr=subprocess.DEVNULL).decode().strip()
   dirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=BASE,stderr=subprocess.DEVNULL).decode().strip())
   return {'commit':rev,'commit_at':when,'dirty':dirty}
- except Exception:
+ except Exception as _e:
+  quiet('gitの版を読めない（版は空で返す）',_e)
   return {'commit':'','commit_at':'','dirty':False}
 GIT_VERSION=_git_version()
 
@@ -228,7 +230,7 @@ def _restart_needed():
 @bp.get('/api/build')
 def build():
  try:restart=_restart_needed()
- except Exception:restart=None
+ except Exception as _e:quiet('再起動が要るかを確かめられない（案内を出さない）',_e);restart=None
  return jsonify(build='current', version=APP_VERSION, feature='measurement-workflow-current',
                 port=PORT, app_id=APP_ID, restartNeeded=restart, startedAt=_STARTED_AT, **GIT_VERSION)
 

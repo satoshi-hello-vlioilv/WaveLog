@@ -12,8 +12,12 @@ backend/routes/masters.py が持つ。
 """
 import json
 
-from ..db_access import (DBS, add_missing_columns, connect, ensure_audit_columns,
+from ..db_access import (add_missing_columns, connect, ensure_audit_columns,
                          tables, cols, qi)
+from ..quiet import quiet
+# 設備名の表記ゆれ吸収は backend/textnorm.py が持つ（§9.329）。db_access も
+# 頭からこれを読むので、ここから再公開して既存の呼び出しを保つ。
+from ..textnorm import normalize_equipment_name  # noqa: F401 再公開（§9.329）
 
 EQUIPMENT_MASTER_TABLE='設備マスタ'
 MAX_STRIPS_COLUMN='最大条数'
@@ -37,7 +41,7 @@ DEFAULT_MAX_STRIPS=40
 def clamp_max_strips(value):
  """設備マスタの値を実際に使える条数へ丸める。未設定・不正値は既定。"""
  try:n=int(str(value).strip())
- except Exception:return DEFAULT_MAX_STRIPS
+ except Exception as _e:quiet('数として読めない（既定で続ける）',_e);return DEFAULT_MAX_STRIPS
  if n<1:return DEFAULT_MAX_STRIPS
  return min(n,STRIP_LIMIT)
 
@@ -133,7 +137,7 @@ def normalize_max_line_speed(value):
  s=str(value if value is not None else '').strip()
  if not s:return None
  try:n=float(s)
- except Exception:return None
+ except Exception as _e:quiet('数として読めない（既定で続ける）',_e);return None
  if not (n>0):return None
  return round(min(n,MAX_LINE_SPEED_MAX),1)
 
@@ -151,7 +155,7 @@ def read_equipment_max_line_speed(c,equipment):
    active=True if r[2] is None else bool(r[2])
    if active and normalize_equipment_name(r[0])==name:
     return normalize_max_line_speed(r[1])
- except Exception:pass
+ except Exception as _e:quiet('列を読めない（最大ライン速度は無いものとして扱う）',_e)
  return None
 
 def normalize_standard_minutes(value):
@@ -161,7 +165,7 @@ def normalize_standard_minutes(value):
  s=str(value if value is not None else '').strip()
  if not s:return None
  try:n=float(s)
- except Exception:return None
+ except Exception as _e:quiet('数として読めない（既定で続ける）',_e);return None
  if not (n>0):return None
  return round(min(n,STANDARD_MINUTES_MAX),1)
 
@@ -178,7 +182,7 @@ def read_equipment_standard_minutes(c,equipment):
   for r in cur.fetchall():
    active=True if r[2] is None else bool(r[2])
    if active and normalize_equipment_name(r[0])==name:return normalize_standard_minutes(r[1])
- except Exception:pass
+ except Exception as _e:quiet('列を読めない（標準時間は無いものとして扱う）',_e)
  return None
 
 def ensure_equipment_master_table(c):
@@ -196,7 +200,7 @@ def ensure_equipment_master_table(c):
                       ((MAX_STRIPS_COLUMN,'INTEGER'),(EQUIPMENT_KIND_COLUMN,'TEXT'),
                        (STANDARD_MINUTES_COLUMN,'REAL'),(MAX_LINE_SPEED_COLUMN,'REAL'),
                        (EQUIPMENT_DISABLED_COLUMN,'TEXT')))
- except Exception:pass
+ except Exception as _e:quiet('後から足した列を用意できない（在る列だけで読む）',_e)
  ensure_audit_columns(c,EQUIPMENT_MASTER_TABLE)
  return created
 
@@ -210,7 +214,7 @@ def read_equipment_max_strips(c,equipment):
   for r in cur.fetchall():
    active=True if r[2] is None else bool(r[2])
    if active and normalize_equipment_name(r[0])==name:return clamp_max_strips(r[1])
- except Exception:pass
+ except Exception as _e:quiet('列を読めない（最大条数は既定で扱う）',_e)
  return DEFAULT_MAX_STRIPS
 
 def read_equipment_kind(c,equipment):
@@ -231,12 +235,9 @@ def read_equipment_kind(c,equipment):
   for r in cur.fetchall():
    active=True if r[2] is None else bool(r[2])
    if active and normalize_equipment_name(r[0])==name:return normalize_equipment_kind(r[1])
- except Exception:pass
+ except Exception as _e:quiet('列を読めない（設備区分は空として扱う）',_e)
  return ''
 
-def normalize_equipment_name(value):
- import unicodedata
- return unicodedata.normalize('NFKC',str(value or '')).strip().upper()
 
 def equipment_master_rows(c,feature=None):
  """有効な設備の行。**`feature`を渡すのは「人に選ばせる候補」を作るときだけ**
@@ -748,7 +749,7 @@ def filter_preset_members(raw):
  """`[メンバーJSON]`→プリセットIDの配列。**壊れていたら空**(＝ふつうの
  条件行として扱う)——例外にすると一覧が丸ごと出なくなる。"""
  try:ids=json.loads(raw or '[]')
- except Exception:return []
+ except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);return []
  if not isinstance(ids,list):return []
  out=[]
  for v in ids:
@@ -1847,7 +1848,7 @@ def column_presets(c,target=''):
   name=str(r[2] or '').strip()
   if not name:continue
   try:body=json.loads(r[4] or '{}')
-  except Exception:body={}
+  except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);body={}
   out.append({'id':r[0],'target':r[1],'name':name,'note':str(r[3] or ''),
               'body':normalize_column_preset(body),
               'updatedAt':r[5],'updatedBy':r[6]})
@@ -2078,7 +2079,7 @@ def display_rules(c):
   name=str(name or '').strip()
   if not name:continue
   try:parsed=json.loads(cond) if cond else []
-  except Exception:continue
+  except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);continue
   out.setdefault(name,[]).append({
    'conditions':normalize_rule_conditions(parsed),
    'text':str(text or ''),
@@ -2192,7 +2193,7 @@ def choice_usage_for(c,equipment):
   f=str(field or '').strip();v=str(value or '').strip()
   if not f or not v:continue
   try:n=int(cnt or 0)
-  except Exception:n=0
+  except Exception as _e:quiet('数として読めない（既定で続ける）',_e);n=0
   out.setdefault(f,{})[v]=n
  return out
 
@@ -2302,9 +2303,9 @@ def normalize_join_columns(raw):
 def _join_row(r):
  name=str(r[1] or '').strip()
  try:keys=json.loads(r[6]) if r[6] else []
- except Exception:keys=[]
+ except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);keys=[]
  try:columns=json.loads(r[7]) if r[7] else []
- except Exception:columns=[]
+ except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);columns=[]
  multi=str(r[9] or '').strip()
  kind=str((r[12] if len(r)>12 else '') or '').strip()
  return {'id':r[0],'name':name or f'結合{r[0]}',

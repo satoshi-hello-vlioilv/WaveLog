@@ -11,24 +11,18 @@ URLはBlueprint分離前と同一(/api/equipment-master 等)。
 """
 import json
 from datetime import datetime
-from pathlib import Path
 from flask import Blueprint, request, jsonify
 from .common import api_guard
 
 from ..flags import flag_of, text_or
-from ..paths import APP_ROOT as BASE_DIR
-
-from ..config import RNE_EXTRACT_INTERVAL_SEC_DEFAULT, SCHEDULE_LOCK_TTL_SEC_DEFAULT, SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT
-from ..db_access import (
- DBS, connect, request_user_id,
- PATH_CONFIG_KEYS, path_config_rows, set_path_config, path_config_value,
- SIKALOT_SOURCE, RECORDS_BACKUP_EXPORT_PATH, SCHEDULE_SHARE_PATH,
-)
+from ..db_access import DBS, connect
+from ..access_mode import request_user_id
+from .body import body, any_
 from ..repositories.master_repo import (
  EQUIPMENT_MASTER_TABLE, ensure_equipment_master_table, normalize_equipment_name, equipment_master_rows,
  EQUIPMENT_FEATURES, EQUIPMENT_FEATURE_KEYS, normalize_equipment_features,
  equipment_disabled_features, equipment_allows,
- MAX_STRIPS_COLUMN, STRIP_LIMIT, DEFAULT_MAX_STRIPS, clamp_max_strips,
+ STRIP_LIMIT, DEFAULT_MAX_STRIPS, clamp_max_strips,
  EQUIPMENT_KINDS, normalize_equipment_kind,
  STANDARD_MINUTES_MAX, normalize_standard_minutes,
  MAX_LINE_SPEED_MAX, normalize_max_line_speed,
@@ -38,30 +32,30 @@ from ..repositories.master_repo import (
  rename_equipment_references,
  FILTER_PRESET_TABLE, ensure_filter_preset_table, filter_preset_rows,
  filter_preset_members,
- FILTER_PERSONAL_TABLE, ensure_filter_personal_table, filter_personal_marks,
+ ensure_filter_personal_table, filter_personal_marks,
  filter_personal_set, filter_personal_has_any,
- SCHEDULE_COLUMN_TABLE, ensure_schedule_column_table, schedule_columns_for, set_schedule_columns,
- SCHEDULE_CONTENT_TABLE, ensure_schedule_content_table, schedule_content_items_for, set_schedule_content_items,
- COLUMN_LAYOUT_TABLE, ensure_column_layout_table, column_layout_for, column_layout_targets, set_column_layout,
- column_layout_owner, column_layout_is_personal, column_layout_scope_set, column_layout_personal_targets,
- COLUMN_PRESET_TABLE, ensure_column_preset_table, column_presets, save_column_preset,
+ schedule_columns_for, set_schedule_columns,
+ schedule_content_items_for, set_schedule_content_items,
+ column_layout_for, column_layout_targets, set_column_layout,
+ column_layout_owner, column_layout_scope_set, column_layout_personal_targets,
+ ensure_column_preset_table, column_presets, save_column_preset,
  delete_column_preset, normalize_column_preset,
- FORMAT_KINDS, normalize_format,
- DISPLAY_RULE_TABLE, ensure_display_rule_table, display_rules, set_display_rule,
+ DISPLAY_RULE_TABLE, display_rules, set_display_rule,
  delete_display_rule, display_rule_usage, display_rule_usage_all, RULE_OPS, RULE_COLORS,
  SORT_PRESET_TABLE, ensure_sort_preset_table, sort_preset_rows, normalize_sort_keys,
- LIST_VIEW_TABLE, ensure_list_view_table, list_view_settings_for, set_list_view_settings,
+ list_view_settings_for, set_list_view_settings,
  ROW_GAP_DEFAULT,
  ACCESS_PERMISSION_TABLE, ensure_access_permission_table, normalize_identity_part, access_permission_master_rows,
  ROLES as PERMISSION_ROLES, ROLE_DEFAULT as PERMISSION_ROLE_DEFAULT, normalize_role,
  MASTER_EDIT_LEVELS, normalize_master_edit, master_edit_effective, master_edit_options,
  master_edit_check, role_change_check, has_admin_role_row,
  field_reorder_terminal_count,
- QUERY_JOIN_TABLE, QUERY_JOIN_MULTI, ensure_query_join_table, query_joins,
+ QUERY_JOIN_MULTI, ensure_query_join_table, query_joins,
  query_join_save, query_join_delete,
 )
-from ..db_access import cols, tables, cfg
+from ..db_access import tables
 from .. import schedule_calc
+from ..quiet import quiet
 
 bp=Blueprint('masters',__name__)
 
@@ -107,7 +101,8 @@ def equipment_master_list():
 @bp.post('/api/equipment-master')
 def equipment_master_register():
  try:
-  x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();uid=request_user_id(x)
+  x=body({'disabledFeatures': any_, 'kind': any_, 'maxLineSpeed': any_, 'maxStrips': any_, 
+          'name': any_, 'reuseExisting': any_, 'standardMinutes': any_});name=x.text('name');uid=request_user_id(x)
   # reuseExisting: True=同じ設備として復元/False=別の新しい設備として登録/
   # 未指定(None)=無効化された同名設備があれば選択を求める(下記参照)。
   reuse_existing=x.get('reuseExisting')
@@ -151,14 +146,14 @@ def equipment_master_register():
     cur.execute('UPDATE [設備マスタ] SET [設備名]=?,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[retired_name,uid,existing[0]])
     renamed=rename_equipment_references(c,name,retired_name)
     cur.execute('SELECT Max([表示順]) FROM [設備マスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-    cur.execute('INSERT INTO [設備マスタ] ([設備名],[区分],[最大条数],[標準時間分],[最大ライン速度],[無効機能],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,-1,?,?,Now(),Now())',[name,normalize_equipment_kind(x.get('kind')),(None if str(x.get('maxStrips') or '').strip()=='' else clamp_max_strips(x.get('maxStrips'))),normalize_standard_minutes(x.get('standardMinutes')),normalize_max_line_speed(x.get('maxLineSpeed')),normalize_equipment_features(x.get('disabledFeatures')),order,uid,uid])
+    cur.execute('INSERT INTO [設備マスタ] ([設備名],[区分],[最大条数],[標準時間分],[最大ライン速度],[無効機能],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,-1,?,?,Now(),Now())',[name,normalize_equipment_kind(x.get('kind')),(None if x.text('maxStrips')=='' else clamp_max_strips(x.get('maxStrips'))),normalize_standard_minutes(x.get('standardMinutes')),normalize_max_line_speed(x.get('maxLineSpeed')),normalize_equipment_features(x.get('disabledFeatures')),order,uid,uid])
     c.commit()
     return jsonify(ok=True,name=name,registered=True,reused=False,retiredAs=retired_name,retiredReferences=renamed,updated_by=uid,
                     message=f'「{name}」を新しい設備として登録しました。過去の設備は「{retired_name}」として履歴に残ります。')
 
    # 同名の既存行が無い場合: 通常の新規登録。
    cur.execute('SELECT Max([表示順]) FROM [設備マスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-   cur.execute('INSERT INTO [設備マスタ] ([設備名],[区分],[最大条数],[標準時間分],[最大ライン速度],[無効機能],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,-1,?,?,Now(),Now())',[name,normalize_equipment_kind(x.get('kind')),(None if str(x.get('maxStrips') or '').strip()=='' else clamp_max_strips(x.get('maxStrips'))),normalize_standard_minutes(x.get('standardMinutes')),normalize_max_line_speed(x.get('maxLineSpeed')),normalize_equipment_features(x.get('disabledFeatures')),order,uid,uid]);c.commit()
+   cur.execute('INSERT INTO [設備マスタ] ([設備名],[区分],[最大条数],[標準時間分],[最大ライン速度],[無効機能],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,-1,?,?,Now(),Now())',[name,normalize_equipment_kind(x.get('kind')),(None if x.text('maxStrips')=='' else clamp_max_strips(x.get('maxStrips'))),normalize_standard_minutes(x.get('standardMinutes')),normalize_max_line_speed(x.get('maxLineSpeed')),normalize_equipment_features(x.get('disabledFeatures')),order,uid,uid]);c.commit()
    return jsonify(ok=True,name=name,registered=True,reused=False,updated_by=uid,
                    message='設備マスタへ新規登録しました。次回から設備リストに表示されます。')
  except Exception as e:return jsonify(error=f'設備マスタ登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
@@ -166,7 +161,8 @@ def equipment_master_register():
 @bp.post('/api/equipment-master/update')
 def equipment_master_update():
  try:
-  x=request.get_json(force=True) or {};eid=x.get('id');name=str(x.get('name') or '').strip();uid=request_user_id(x)
+  x=body({'disabledFeatures': any_, 'id': any_, 'kind': any_, 'maxLineSpeed': any_, 
+          'maxStrips': any_, 'name': any_, 'standardMinutes': any_});eid=x.get('id');name=x.text('name');uid=request_user_id(x)
   if eid is None:return jsonify(error='更新対象IDがありません。'),400
   if not name:return jsonify(error='設備名を入力してください。'),400
   path=DBS['MASTER']['path']
@@ -176,7 +172,7 @@ def equipment_master_update():
    if dup:return jsonify(error=f'同名の設備が既に存在するため変更できません: {str(dup[1]).strip()}'),409
    current=next((r for r in rows if str(r[0])==str(eid)),None);old_name=str(current[1]).strip() if current and current[1] else ''
    # 最大条数: 空欄は「未設定＝既定値」の意味なのでNULLへ戻す(0を入れない)。
-   raw_max=str(x.get('maxStrips') or '').strip()
+   raw_max=x.text('maxStrips')
    max_strips=None if raw_max=='' else clamp_max_strips(raw_max)
    # 使える機能（§9.302）。**送られてこなければ今の値を残す**——他の画面が
    # 一部だけを送ってきたときに、触っていない設定が黙って消えないように
@@ -197,7 +193,7 @@ def equipment_master_update():
 @bp.post('/api/equipment-master/delete')
 @api_guard('設備マスタ削除失敗')
 def equipment_master_delete():
- x=request.get_json(force=True) or {};eid=x.get('id');uid=request_user_id(x);force=bool(x.get('force'))
+ x=body({'force': any_, 'id': any_});eid=x.get('id');uid=request_user_id(x);force=x.flag('force')
  if eid is None:return jsonify(error='削除対象IDがありません。'),400
  path=DBS['MASTER']['path']
  with connect(path,False) as c:
@@ -290,7 +286,7 @@ def filter_preset_list():
    items=[]
    for r in rows:
     try:filters=json.loads(r[4] or '[]')
-    except Exception:filters=[]
+    except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);filters=[]
     if not isinstance(filters,list):filters=[]
     owner=(str(r[11]).strip() if len(r)>11 and r[11] else '')
     if not _preset_visible_to(owner,uid):continue
@@ -328,7 +324,8 @@ def filter_preset_list():
 @bp.post('/api/filter-presets')
 def filter_preset_register():
  try:
-  x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();uid=request_user_id(x)
+  x=body({'db': any_, 'filters': any_, 'group': any_, 'members': any_, 'mode': any_, 
+          'name': any_, 'owner': any_, 'shared': any_, 'table': any_});name=x.text('name');uid=request_user_id(x)
   if not name:return jsonify(error='フィルタ名を入力してください。'),400
   filters=x.get('filters') or []
   # 組み合わせ(§9.288 ②)は条件を持たない行なので、**メンバーがあれば
@@ -337,7 +334,7 @@ def filter_preset_register():
   members=[int(v) for v in members if str(v).lstrip('-').isdigit()] if isinstance(members,list) else None
   if not isinstance(filters,list) or (not filters and not members):
    return jsonify(error='保存する条件がありません。'),400
-  db_key=str(x.get('db') or '').strip();table=str(x.get('table') or '').strip();payload=json.dumps(filters,ensure_ascii=False)
+  db_key=x.text('db');table=x.text('table');payload=json.dumps(filters,ensure_ascii=False)
   mode=_filter_preset_mode(x.get('mode'))
   # 所有者(§9.172)。指定が無ければ**その人のもの**として登録する。共有したい
   # ときだけ owner='' を明示する(shared=trueでも同じ)。**同名の照合にも
@@ -348,7 +345,7 @@ def filter_preset_register():
   # グループ(§9.286 ①)。**渡していなければ今の値を残す**(§9.212 ②)——
   # 条件だけを送り直す経路（登録済みの上書き）で群が消えないように。
   has_group='group' in x
-  group=str(x.get('group') or '').strip()[:50]
+  group=x.text('group')[:50]
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
    ensure_filter_preset_table(c);cur=c.cursor()
@@ -374,7 +371,7 @@ def filter_preset_register():
 @api_guard('使用回数更新失敗')
 def filter_preset_use():
  # サジェスト順位（よく使う順）を精緻化するため、適用時に使用回数を加算する。
- x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
+ x=body({'id': any_});pid=x.get('id');uid=request_user_id(x)
  if pid is None:return jsonify(ok=True,skipped=True)
  path=DBS['MASTER']['path']
  if not path.exists():return jsonify(ok=True,skipped=True)
@@ -386,7 +383,7 @@ def filter_preset_use():
 @bp.post('/api/filter-presets/delete')
 @api_guard('フィルタプリセット削除失敗')
 def filter_preset_delete():
- x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
+ x=body({'id': any_});pid=x.get('id');uid=request_user_id(x)
  if pid is None:return jsonify(error='削除対象IDがありません。'),400
  requester=_filter_preset_user(x) or uid
  path=DBS['MASTER']['path']
@@ -409,7 +406,7 @@ def filter_preset_marks():
  以前は端末のlocalStorageだったため、同じPCを別の人が使うと相手の既定が
  当たり、別のPCへ移ると付けた覚えの印が消えていた。"""
  try:
-  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  x=body({'id': any_, 'isDefault': any_, 'isLocked': any_, 'items': any_});uid=request_user_id(x)
   requester=_filter_preset_user(x) or uid
   items=x.get('items')
   if not isinstance(items,list):
@@ -422,7 +419,7 @@ def filter_preset_marks():
    for it in items:
     if not isinstance(it,dict) or it.get('id') is None:continue
     try:pid=int(it.get('id'))
-    except Exception:continue
+    except Exception as _e:quiet('数として読めない（既定で続ける）',_e);continue
     filter_personal_set(c,requester,pid,bool(it.get('isDefault')),bool(it.get('isLocked')),uid)
     saved+=1
   return jsonify(ok=True,user=requester,saved=saved)
@@ -435,10 +432,10 @@ def filter_preset_owner():
  みんなのものを自分のものにするのは、他の人から見えなくなるので**取り上げ**に
  なる——できるのは、まだ誰の物でもない(＝共有)ものを自分の物にする場合だけに
  限らず、画面側が確認を出す。"""
- x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
+ x=body({'id': any_, 'shared': any_});pid=x.get('id');uid=request_user_id(x)
  if pid is None:return jsonify(error='対象のプリセットIDがありません。'),400
  requester=_filter_preset_user(x) or uid
- to_shared=bool(x.get('shared'))
+ to_shared=x.flag('shared')
  path=DBS['MASTER']['path']
  with connect(path,False) as c:
   ensure_filter_preset_table(c);cur=c.cursor()
@@ -470,10 +467,11 @@ def filter_preset_combo():
  いる条件」を辿らないと読めなくなる。落としたものは件数と理由を返す（§4）。
  **持ち主の判定は`/owner`と同じ**（他人の個人フィルタは動かせない）。"""
  try:
-  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  x=body({'db': any_, 'id': any_, 'members': any_, 'mode': any_, 'name': any_, 'shared': any_, 
+          'table': any_});uid=request_user_id(x)
   requester=_filter_preset_user(x) or uid
   pid=x.get('id')
-  name=str(x.get('name') or '').strip()
+  name=x.text('name')
   raw=x.get('members')
   members=None
   if isinstance(raw,list):
@@ -482,7 +480,7 @@ def filter_preset_combo():
     try:n=int(v)
     except (TypeError,ValueError):continue
     if n not in members:members.append(n)
-  db_key=str(x.get('db') or '').strip();table=str(x.get('table') or '').strip()
+  db_key=x.text('db');table=x.text('table')
   mode=_filter_preset_mode(x.get('mode'))
   path=DBS['MASTER']['path']
   dropped={'missing':0,'other':0,'combo':0}
@@ -550,8 +548,8 @@ def schedule_column_master_get():
 @bp.post('/api/schedule-column-master')
 @api_guard('スケジュール列表示マスタ保存失敗',bad=ValueError)
 def schedule_column_master_save():
- x=request.get_json(force=True) or {};uid=request_user_id(x)
- equipment=str(x.get('equipment') or '').strip()
+ x=body({'columns': any_, 'equipment': any_});uid=request_user_id(x)
+ equipment=x.text('equipment')
  columns=x.get('columns')
  if not equipment:return jsonify(error='設備名を指定してください。'),400
  if not isinstance(columns,list):return jsonify(error='列の指定が不正です。'),400
@@ -577,8 +575,8 @@ def schedule_content_master_get():
 @bp.post('/api/schedule-content-master')
 @api_guard('スケジュール内容表示マスタ保存失敗',bad=ValueError)
 def schedule_content_master_save():
- x=request.get_json(force=True) or {};uid=request_user_id(x)
- equipment=str(x.get('equipment') or '').strip()
+ x=body({'equipment': any_, 'items': any_});uid=request_user_id(x)
+ equipment=x.text('equipment')
  items=x.get('items')
  if not equipment:return jsonify(error='設備名を指定してください。'),400
  if not isinstance(items,list):return jsonify(error='項目の指定が不正です。'),400
@@ -661,8 +659,10 @@ def access_permission_master_list():
 @bp.post('/api/access-permission-master')
 def access_permission_master_register():
  try:
-  x=request.get_json(force=True) or {};login_id=str(x.get('loginId') or '').strip();pc_name=str(x.get('pcName') or '').strip();can_edit=_bool_from_can_edit(x.get('canEdit'));uid=request_user_id(x)
-  can_schedule=_bool_from_yes_no(x.get('canSchedule'));can_field_reorder=_bool_from_yes_no(x.get('canFieldReorder'));field_reorder_equipment=str(x.get('fieldReorderEquipment') or '').strip()
+  x=body({'canEdit': any_, 'canFieldReorder': any_, 'canSchedule': any_, 
+          'fieldReorderEquipment': any_, 'loginId': any_, 'masterEdit': any_, 
+          'pcName': any_, 'role': any_});login_id=x.text('loginId');pc_name=x.text('pcName');can_edit=_bool_from_can_edit(x.get('canEdit'));uid=request_user_id(x)
+  can_schedule=_bool_from_yes_no(x.get('canSchedule'));can_field_reorder=_bool_from_yes_no(x.get('canFieldReorder'));field_reorder_equipment=x.text('fieldReorderEquipment')
   role=normalize_role(x.get('role'));master_edit=normalize_master_edit(x.get('masterEdit'))
   # ログインID・PC名は汎用的に使えるよう、どちらか一方だけの登録を許す
   # (もう一方は空欄=「問わない」という意味になる。master_repo.permission_flags
@@ -692,8 +692,10 @@ def access_permission_master_register():
 @bp.post('/api/access-permission-master/update')
 def access_permission_master_update():
  try:
-  x=request.get_json(force=True) or {};aid=x.get('id');login_id=str(x.get('loginId') or '').strip();pc_name=str(x.get('pcName') or '').strip();can_edit=_bool_from_can_edit(x.get('canEdit'));uid=request_user_id(x)
-  can_schedule=_bool_from_yes_no(x.get('canSchedule'));can_field_reorder=_bool_from_yes_no(x.get('canFieldReorder'));field_reorder_equipment=str(x.get('fieldReorderEquipment') or '').strip()
+  x=body({'canEdit': any_, 'canFieldReorder': any_, 'canSchedule': any_, 
+          'fieldReorderEquipment': any_, 'id': any_, 'loginId': any_, 
+          'masterEdit': any_, 'pcName': any_, 'role': any_});aid=x.get('id');login_id=x.text('loginId');pc_name=x.text('pcName');can_edit=_bool_from_can_edit(x.get('canEdit'));uid=request_user_id(x)
+  can_schedule=_bool_from_yes_no(x.get('canSchedule'));can_field_reorder=_bool_from_yes_no(x.get('canFieldReorder'));field_reorder_equipment=x.text('fieldReorderEquipment')
   role=normalize_role(x.get('role'));master_edit=normalize_master_edit(x.get('masterEdit'))
   if aid is None:return jsonify(error='更新対象IDがありません。'),400
   if not login_id and not pc_name:return jsonify(error='ログインIDまたはPC名の少なくとも一方を入力してください。'),400
@@ -713,7 +715,7 @@ def access_permission_master_update():
 @bp.post('/api/access-permission-master/delete')
 @api_guard('アクセス権限マスタ削除失敗')
 def access_permission_master_delete():
- x=request.get_json(force=True) or {};aid=x.get('id');uid=request_user_id(x)
+ x=body({'id': any_});aid=x.get('id');uid=request_user_id(x)
  if aid is None:return jsonify(error='削除対象IDがありません。'),400
  path=DBS['MASTER']['path']
  with connect(path,False) as c:
@@ -767,8 +769,10 @@ def column_layout_master_get():
 @bp.post('/api/column-layout-master')
 @api_guard('列レイアウト保存失敗')
 def column_layout_master_save():
- x=request.get_json(force=True) or {};uid=request_user_id(x)
- target=str(x.get('target') or '').strip()
+ x=body({'aligns': any_, 'clear': any_, 'formats': any_, 'formulas': any_, 'hidden': any_, 
+          'locks': any_, 'names': any_, 'order': any_, 'rules': any_, 'sorts': any_, 
+          'target': any_, 'widths': any_});uid=request_user_id(x)
+ target=x.text('target')
  if not target:return jsonify(error='対象(target)を指定してください。'),400
  order=x.get('order');widths=x.get('widths');hidden=x.get('hidden');names=x.get('names')
  formats=x.get('formats');rules=x.get('rules');formulas=x.get('formulas')
@@ -828,14 +832,14 @@ def column_layout_master_scope():
  ——白紙から始めると、こだわって作った並びが押した瞬間に消えたように見える。
  **共通へ戻しても個人の行は消さない**（また個人へ戻せば続きから使える）。
  """
- x=request.get_json(force=True) or {};uid=request_user_id(x)
- target=str(x.get('target') or '').strip()
+ x=body({'scope': any_, 'target': any_});uid=request_user_id(x)
+ target=x.text('target')
  if not target:return jsonify(error='対象(target)を指定してください。'),400
  if not uid:
   # **押せるのに何も起きないボタンを残さない**(§4)。画面はこの理由をそのまま出す。
   return jsonify(error='利用者IDが分からないため、自分だけの設定は持てません。'
                         'この端末のログインIDを取得できていない可能性があります。'),400
- scope=str(x.get('scope') or '').strip().lower()
+ scope=x.text('scope').lower()
  if scope not in ('common','personal'):
   return jsonify(error="scopeは'common'か'personal'を指定してください。"),400
  path=DBS['MASTER']['path']
@@ -874,13 +878,14 @@ def column_preset_master_get():
 @bp.post('/api/column-preset-master')
 @api_guard('列プリセット保存失敗',bad=ValueError)
 def column_preset_master_save():
- x=request.get_json(force=True) or {};uid=request_user_id(x)
- target=str(x.get('target') or '').strip()
- name=str(x.get('name') or '').strip()
- body=x.get('body')
- if not isinstance(body,dict):return jsonify(error='内容(body)の指定が不正です。'),400
+ x=body({'body': any_, 'name': any_, 'note': any_, 'target': any_});uid=request_user_id(x)
+ target=x.text('target')
+ name=x.text('name')
+ # 変数名は`preset_body`——`body`は本文を読む関数の名前（`from .body import body`）。
+ preset_body=x.get('body')
+ if not isinstance(preset_body,dict):return jsonify(error='内容(body)の指定が不正です。'),400
  with connect(DBS['MASTER']['path'],False) as c:
-  pid=save_column_preset(c,target,name,body,uid,note=str(x.get('note') or ''))
+  pid=save_column_preset(c,target,name,preset_body,uid,note=x.text('note'))
   items=column_presets(c,target)
  return jsonify(ok=True,id=pid,target=target,items=items,updated_by=uid,
                 message=f'「{name}」として保存しました。')
@@ -891,10 +896,10 @@ def column_preset_master_update():
  照合なので、**名前そのものを変える操作はこちらでしか表現できない**
  (登録側へ送ると別のプリセットが増える)。"""
  try:
-  x=request.get_json(force=True) or {};uid=request_user_id(x)
+  x=body({'body': any_, 'id': any_, 'name': any_, 'note': any_});uid=request_user_id(x)
   pid=x.get('id')
   if pid in (None,''):return jsonify(error='プリセットIDを指定してください。'),400
-  name=str(x.get('name') or '').strip()
+  name=x.text('name')
   if not name:return jsonify(error='プリセットの名前を入力してください。'),400
   with connect(DBS['MASTER']['path'],False) as c:
    ensure_column_preset_table(c)
@@ -903,15 +908,16 @@ def column_preset_master_update():
    row=cur.fetchone()
    if not row:return jsonify(error='そのプリセットが見つかりません。'),404
    target=row[0]
-   body=x.get('body')
-   if not isinstance(body,dict):
+   # 変数名は`preset_body`——`body`は本文を読む関数の名前（`from .body import body`）。
+   preset_body=x.get('body')
+   if not isinstance(preset_body,dict):
     import json as _json
-    try:body=_json.loads(row[1] or '{}')
-    except Exception:body={}
+    try:preset_body=_json.loads(row[1] or '{}')
+    except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);preset_body={}
    cur.execute('UPDATE [列プリセットマスタ] SET [名称]=?,[説明]=?,[内容JSON]=?,[更新者ID]=?,'
                '[更新日時]=Now() WHERE [プリセットID]=?',
-               [name,str(x.get('note') or ''),
-                __import__('json').dumps(normalize_column_preset(body),ensure_ascii=False),uid,pid])
+               [name,x.text('note'),
+                __import__('json').dumps(normalize_column_preset(preset_body),ensure_ascii=False),uid,pid])
    c.commit()
    items=column_presets(c,target)
   return jsonify(ok=True,id=pid,target=target,items=items,updated_by=uid,message='更新しました。')
@@ -920,10 +926,10 @@ def column_preset_master_update():
 @bp.post('/api/column-preset-master/delete')
 @api_guard('列プリセット削除失敗')
 def column_preset_master_delete():
- x=request.get_json(force=True) or {}
+ x=body({'id': any_, 'target': any_})
  pid=x.get('id')
  if pid in (None,''):return jsonify(error='プリセットIDを指定してください。'),400
- target=str(x.get('target') or '').strip()
+ target=x.text('target')
  with connect(DBS['MASTER']['path'],False) as c:
   n=delete_column_preset(c,pid)
   items=column_presets(c,target)
@@ -954,8 +960,8 @@ def display_rule_master_get():
 @bp.post('/api/display-rule-master')
 @api_guard('表示ルール保存失敗',bad=ValueError)
 def display_rule_master_save():
- x=request.get_json(force=True) or {};uid=request_user_id(x)
- name=str(x.get('name') or '').strip()
+ x=body({'name': any_, 'rows': any_});uid=request_user_id(x)
+ name=x.text('name')
  if not name:return jsonify(error='ルール名を指定してください。'),400
  rows=x.get('rows')
  if rows is not None and not isinstance(rows,list):
@@ -970,8 +976,8 @@ def display_rule_master_save():
 @bp.post('/api/display-rule-master/delete')
 @api_guard('表示ルール削除失敗',bad=ValueError)
 def display_rule_master_delete():
- x=request.get_json(force=True) or {}
- name=str(x.get('name') or '').strip()
+ x=body({'name': any_})
+ name=x.text('name')
  if not name:return jsonify(error='ルール名を指定してください。'),400
  path=DBS['MASTER']['path']
  with connect(path,False) as c:
@@ -999,7 +1005,7 @@ def sort_preset_list():
   items=[]
   for r in rows:
    try:keys=json.loads(r[4] or '[]')
-   except Exception:keys=[]
+   except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);keys=[]
    items.append({'id':r[0],'name':str(r[1] or '').strip(),'db':str(r[2] or '').strip(),
                  'table':str(r[3] or '').strip(),'sorts':normalize_sort_keys(keys),
                  'uses':int(r[5] or 0),
@@ -1017,11 +1023,11 @@ def sort_preset_list():
 @bp.post('/api/sort-presets')
 @api_guard('ソートプリセット登録失敗')
 def sort_preset_register():
- x=request.get_json(force=True) or {};name=str(x.get('name') or '').strip();uid=request_user_id(x)
+ x=body({'db': any_, 'mode': any_, 'name': any_, 'sorts': any_, 'table': any_});name=x.text('name');uid=request_user_id(x)
  if not name:return jsonify(error='並び順の名前を入力してください。'),400
  keys=normalize_sort_keys(x.get('sorts'))
  if not keys:return jsonify(error='保存する並び順がありません。'),400
- db_key=str(x.get('db') or '').strip();table=str(x.get('table') or '').strip()
+ db_key=x.text('db');table=x.text('table')
  mode=_filter_preset_mode(x.get('mode'));payload=json.dumps(keys,ensure_ascii=False)
  path=DBS['MASTER']['path']
  with connect(path,False) as c:
@@ -1051,7 +1057,7 @@ def sort_preset_register():
 @api_guard('使用回数更新失敗')
 def sort_preset_use():
  # よく使う順に並べるため、適用時に使用回数を加算する(フィルタと同じ)。
- x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
+ x=body({'id': any_});pid=x.get('id');uid=request_user_id(x)
  if pid is None:return jsonify(ok=True,skipped=True)
  path=DBS['MASTER']['path']
  if not path.exists():return jsonify(ok=True,skipped=True)
@@ -1065,7 +1071,7 @@ def sort_preset_use():
 @bp.post('/api/sort-presets/delete')
 @api_guard('ソートプリセット削除失敗')
 def sort_preset_delete():
- x=request.get_json(force=True) or {};pid=x.get('id');uid=request_user_id(x)
+ x=body({'id': any_});pid=x.get('id');uid=request_user_id(x)
  if pid is None:return jsonify(error='削除対象IDがありません。'),400
  path=DBS['MASTER']['path']
  with connect(path,False) as c:
@@ -1093,8 +1099,8 @@ def list_view_master_get():
 @bp.post('/api/list-view-master')
 @api_guard('一覧表示設定保存失敗')
 def list_view_master_save():
- x=request.get_json(force=True) or {};uid=request_user_id(x)
- target=str(x.get('target') or '').strip()
+ x=body({'rowGap': any_, 'target': any_});uid=request_user_id(x)
+ target=x.text('target')
  if not target:return jsonify(error='対象(target)を指定してください。'),400
  path=DBS['MASTER']['path']
  with connect(path,False) as c:
@@ -1149,7 +1155,9 @@ def query_join_master_list():
 @bp.post('/api/query-join-master')
 @api_guard('クエリ結合の登録に失敗しました',bad=ValueError)
 def query_join_master_register():
- x=request.get_json(force=True) or {};uid=request_user_id(x)
+ x=body({'columns': any_, 'enabled': any_, 'keys': any_, 'kind': any_, 'left': any_, 
+          'leftTable': any_, 'multi': any_, 'name': any_, 'order': any_, 
+          'prefix': any_, 'right': any_, 'rightTable': any_});uid=request_user_id(x)
  with connect(DBS['MASTER']['path'],False) as c:
   jid=query_join_save(c,_join_payload(x),uid)
  return jsonify(ok=True,id=jid,updated_by=uid,message='結合を登録しました。')
@@ -1157,7 +1165,9 @@ def query_join_master_register():
 @bp.post('/api/query-join-master/update')
 @api_guard('クエリ結合の保存に失敗しました',bad=ValueError)
 def query_join_master_update():
- x=request.get_json(force=True) or {};uid=request_user_id(x)
+ x=body({'columns': any_, 'enabled': any_, 'id': any_, 'keys': any_, 'kind': any_, 
+          'left': any_, 'leftTable': any_, 'multi': any_, 'name': any_, 
+          'order': any_, 'prefix': any_, 'right': any_, 'rightTable': any_});uid=request_user_id(x)
  jid=x.get('id')
  if jid is None or str(jid).strip()=='':return jsonify(error='更新対象IDがありません。'),400
  with connect(DBS['MASTER']['path'],False) as c:
@@ -1167,7 +1177,7 @@ def query_join_master_update():
 @bp.post('/api/query-join-master/delete')
 @api_guard('クエリ結合の削除に失敗しました')
 def query_join_master_delete():
- x=request.get_json(force=True) or {};uid=request_user_id(x)
+ x=body({'id': any_});uid=request_user_id(x)
  jid=x.get('id')
  if jid is None or str(jid).strip()=='':return jsonify(error='削除対象IDがありません。'),400
  with connect(DBS['MASTER']['path'],False) as c:
@@ -1185,7 +1195,7 @@ def query_join_master_builtin():
  保存先はパス設定マスタの1行なので、**再起動は要らない**。"""
  from .. import query_join
  from ..db_access import set_path_config
- x=request.get_json(force=True) or {};uid=request_user_id(x)
+ x=body({'enabled': any_});uid=request_user_id(x)
  on=x.get('enabled')
  on=(str(on).strip().lower() not in ('0','false','off','no','無効')) if on is not None else True
  with connect(DBS['MASTER']['path'],False) as c:
@@ -1200,7 +1210,9 @@ def query_join_master_probe():
  """保存する前に、いまのデータで実際に当ててみる。**読むだけ**。"""
  from .. import query_join
  from ..repositories.master_repo import normalize_join_keys, normalize_join_columns
- x=request.get_json(force=True) or {}
+ x=body({'columns': any_, 'id': any_, 'keys': any_, 'kind': any_, 'left': any_, 
+          'leftTable': any_, 'multi': any_, 'name': any_, 'prefix': any_, 
+          'right': any_, 'rightTable': any_})
  d={'id':x.get('id'),'name':str(x.get('name') or '(下見)'),
     'left':str(x.get('left') or ''),'leftTable':str(x.get('leftTable') or ''),
     'right':str(x.get('right') or ''),'rightTable':str(x.get('rightTable') or ''),
@@ -1258,7 +1270,8 @@ def operation_item_list():
      if cname:
       try:
        vals=op.choice_values(c,cname,eq)
-      except Exception:
+      except Exception as _e:
+       quiet('選択肢を読めない（候補なしで返す）',_e)
        vals=[]
       if vals:
        src=dict(it);src['choices']=vals
@@ -1379,7 +1392,7 @@ def operation_item_list():
 def _operation_item_save(x):
  from ..repositories import operation_repo as op
  uid=request_user_id(x)
- name=str(x.get('name') or '').strip()
+ name=x.text('name')
  if not name:return jsonify(error='項目名を入力してください。'),400
  num=lambda v:(None if v in (None,'') else float(v))
  iv=lambda v:(None if v in (None,'') else int(v))
@@ -1390,14 +1403,14 @@ def _operation_item_save(x):
                         kind=x.get('type') or '文字',decimals=iv(x.get('decimals')),
                         vmin=num(x.get('min')),vmax=num(x.get('max')),
                         choice=x.get('choice') or '',unit=x.get('unit') or '',
-                        required=bool(x.get('required')),note=x.get('note') or '',
-                        enabled=(True if x.get('enabled') is None else bool(x.get('enabled'))),
+                        required=x.flag('required'),note=x.get('note') or '',
+                        enabled=(True if x.get('enabled') is None else x.flag('enabled')),
                         item_id=(int(x['id']) if x.get('id') not in (None,'') else None),
                         place=x.get('place'),span=x.get('span'),
-                        fold=bool(x.get('fold')),show_when=x.get('showWhen'),
+                        fold=x.flag('fold'),show_when=x.get('showWhen'),
                         widget=x.get('widget'),
                         # §9.220 ②③⑤
-                        initial=x.get('initial'),free_text=bool(x.get('freeText')),
+                        initial=x.get('initial'),free_text=x.flag('freeText'),
                         step=x.get('step'),
                         # §9.221 ⑦（単位の置き場・寄せ・見せ方・桁数）
                         unit_place=x.get('unitPlace'),align=x.get('align'),
@@ -1451,11 +1464,33 @@ def _operation_item_save(x):
 
 @bp.post('/api/operation-item-master')
 def operation_item_register():
- return _operation_item_save(request.get_json(force=True) or {})
+ return _operation_item_save(body({'align': any_, 'autoFormula': any_, 'autoValue': any_, 'blankTint': any_, 
+          'choice': any_, 'choiceOrder': any_, 'decimals': any_, 'digits': any_, 
+          'dummy': any_, 'enabled': any_, 'equipment': any_, 'fold': any_, 
+          'freeText': any_, 'group': any_, 'groupSpan': any_, 'id': any_, 
+          'initial': any_, 'inlineAdd': any_, 'inlineAddText': any_, 
+          'layout': any_, 'look': any_, 'max': any_, 
+          'maxFrom': any_, 'min': any_, 'minFrom': any_, 'name': any_, 
+          'noBlank': any_, 'note': any_, 'order': any_, 'place': any_, 
+          'recordShow': any_, 'required': any_, 'role': any_, 'roundMode': any_, 
+          'showWhen': any_, 'sourceNote': any_, 'span': any_, 'step': any_, 
+          'type': any_, 'unit': any_, 'unitPlace': any_, 'valueFormat': any_, 
+          'widget': any_}))
 
 @bp.post('/api/operation-item-master/update')
 def operation_item_update():
- x=request.get_json(force=True) or {}
+ x=body({'align': any_, 'autoFormula': any_, 'autoValue': any_, 'blankTint': any_, 
+          'choice': any_, 'choiceOrder': any_, 'decimals': any_, 'digits': any_, 
+          'dummy': any_, 'enabled': any_, 'equipment': any_, 'fold': any_, 
+          'freeText': any_, 'group': any_, 'groupSpan': any_, 'id': any_, 
+          'initial': any_, 'inlineAdd': any_, 'inlineAddText': any_, 
+          'layout': any_, 'look': any_, 'max': any_, 
+          'maxFrom': any_, 'min': any_, 'minFrom': any_, 'name': any_, 
+          'noBlank': any_, 'note': any_, 'order': any_, 'place': any_, 
+          'recordShow': any_, 'required': any_, 'role': any_, 'roundMode': any_, 
+          'showWhen': any_, 'sourceNote': any_, 'span': any_, 'step': any_, 
+          'type': any_, 'unit': any_, 'unitPlace': any_, 'valueFormat': any_, 
+          'widget': any_})
  if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
  return _operation_item_save(x)
 
@@ -1466,12 +1501,12 @@ def operation_item_layout():
     (§9.216 ②)。D&Dで組み替える画面なので、1行ずつ送ると往復が増え、
     途中で切れると並びが半分だけ変わった状態が残る。"""
  from ..repositories import operation_repo as op
- x=request.get_json(force=True) or {}
+ x=body({'equipment': any_, 'items': any_})
  rows=x.get('items')
  if not isinstance(rows,list):return jsonify(error='items（並び）がありません。'),400
  # 設備を選んで並べているときは**その設備の上書きへ**書く（§9.239 ②）。
  # 空＝「共通（すべての設備）」で、今までどおり行そのものを書き換える。
- eq=str(x.get('equipment') or '').strip()
+ eq=x.text('equipment')
  n=_op_read(lambda c:op.item_layout_save(c,request_user_id(x),rows,equipment=eq))
  return jsonify(ok=True,saved=n,equipment=eq,
                 message=f'操業データの並びを保存しました（{eq or "共通（すべての設備）"}）。')
@@ -1486,7 +1521,7 @@ def operation_item_record_layout():
     書くのは`[記録表示]`／`[記録群]`／`[記録順]`の3つだけで、
     型・選択肢・役割・意匠には触らない。"""
  from ..repositories import operation_repo as op
- x=request.get_json(force=True) or {}
+ x=body({'items': any_})
  rows=x.get('items')
  if not isinstance(rows,list):return jsonify(error='items（配置）がありません。'),400
  n=_op_read(lambda c:op.record_layout_save(c,request_user_id(x),rows))
@@ -1498,24 +1533,25 @@ def operation_item_group():
  """群のふるまい（畳む・開く条件）だけをまとめて書く(§9.216 ④)。
     `layout`で代用すると、直前に1件だけ更新した内容を古い写しで上書きする。"""
  from ..repositories import operation_repo as op
- x=request.get_json(force=True) or {}
- g=str(x.get('group') or '').strip()
+ x=body({'dummy': any_, 'equipment': any_, 'fold': any_, 'group': any_, 'groupSpan': any_, 
+          'place': any_, 'showWhen': any_})
+ g=x.text('group')
  if not g:return jsonify(error='群がありません。'),400
  n=_op_read(lambda c:op.group_flags_save(c,request_user_id(x),x.get('place'),g,
-                                         bool(x.get('fold')),x.get('showWhen'),
+                                         x.flag('fold'),x.get('showWhen'),
                                          # **送られてきたときだけ書く**（§9.226 ③）
                                          x.get('groupSpan'),
                                          # §9.227 ③ ダミー（空き）の群
                                          x.get('dummy'),
                                          # §9.239 ② 設備を選んでいるときは上書きへ
-                                         equipment=str(x.get('equipment') or '').strip()))
+                                         equipment=x.text('equipment')))
  return jsonify(ok=True,saved=n,message='群の設定を保存しました。')
 
 @bp.post('/api/operation-item-master/delete')
 @api_guard('操業データ項目マスタの削除に失敗しました')
 def operation_item_delete():
  from ..repositories import operation_repo as op
- x=request.get_json(force=True) or {}
+ x=body({'id': any_})
  if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
  n=_op_read(lambda c:op.item_delete(c,x['id'],request_user_id(x)))
  return jsonify(ok=True,deleted=n,message='操業データの項目を削除しました。')
@@ -1529,7 +1565,7 @@ def operation_choice_list():
    # 開く前にマスタ管理を開いた端末では、まだ写していない状態で一覧が
    # 出る——「移したはずのオペレータが1人も居ない」に見える。
    try:op.migrate_legacy_choice_masters(c)
-   except Exception:pass
+   except Exception as _e:quiet('旧マスタの移行を試せない（移行済みの目印は立てない）',_e)
    usage=op.choice_usage(c) or {}
    rows=op.choice_rows(c,True)
    # **どの項目がこの選択肢を使っているか**(§9.216 ④)。使い道の見えない
@@ -1590,11 +1626,15 @@ def _operation_choice_save(x):
 
 @bp.post('/api/operation-choice-master')
 def operation_choice_register():
- return _operation_choice_save(request.get_json(force=True) or {})
+ return _operation_choice_save(body({'enabled': any_, 'enabledText': any_, 'equipment': any_, 'id': any_, 'name': any_, 
+          'note': any_, 'order': any_, 'parentValue': any_, 'reading': any_, 
+          'value': any_}))
 
 @bp.post('/api/operation-choice-master/update')
 def operation_choice_update():
- x=request.get_json(force=True) or {}
+ x=body({'enabled': any_, 'enabledText': any_, 'equipment': any_, 'id': any_, 'name': any_, 
+          'note': any_, 'order': any_, 'parentValue': any_, 'reading': any_, 
+          'value': any_})
  if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
  return _operation_choice_save(x)
 
@@ -1605,8 +1645,8 @@ def operation_choice_rename_group():
     一緒に書き換える**——名前で結んでいるので(§9.215)、片方だけ変えると
     その項目の選択肢が黙って消える。"""
  from ..repositories import operation_repo as op
- x=request.get_json(force=True) or {}
- src=str(x.get('from') or '').strip();dst=str(x.get('to') or '').strip()
+ x=body({'from': any_, 'to': any_})
+ src=x.text('from');dst=x.text('to')
  if not src or not dst:return jsonify(error='まとまり名を入力してください。'),400
  if src==dst:return jsonify(ok=True,moved=0,message='名前は変わっていません。')
  n=_op_read(lambda c:op.choice_rename_group(c,src,dst,request_user_id(x)))
@@ -1619,8 +1659,8 @@ def operation_choice_delete_group():
     その項目は黙って空の欄になる（§9.216 ④で「使い道の見えない選択肢は
     消してよいのか判断できない」と書いた、その裏返し）。"""
  from ..repositories import operation_repo as op
- x=request.get_json(force=True) or {}
- nm=str(x.get('name') or '').strip()
+ x=body({'name': any_})
+ nm=x.text('name')
  if not nm:return jsonify(error='まとまり名がありません。'),400
  n=_op_read(lambda c:op.choice_delete_group(c,nm,request_user_id(x)))
  return jsonify(ok=True,deleted=n,message=f'「{nm}」を{n}件まとめて削除しました。')
@@ -1632,7 +1672,7 @@ def operation_choice_reorder():
     画面なので、1行ずつ送ると往復が増え、途中で切れると半分だけ動いた
     並びが残る（項目マスタの`layout`と同じ作法）。"""
  from ..repositories import operation_repo as op
- x=request.get_json(force=True) or {}
+ x=body({'ids': any_})
  ids=x.get('ids')
  if not isinstance(ids,list):return jsonify(error='ids（並び）がありません。'),400
  n=_op_read(lambda c:op.choice_reorder(c,ids,request_user_id(x)))
@@ -1651,7 +1691,7 @@ def operation_choice_used():
  いう事実だけで、現場の設定は1つも変わらない。ここを塞ぐと、閲覧モードの
  端末で測った回数だけが数えられず、並びが端末によって食い違う。"""
  from ..repositories import operation_repo as op
- x=request.get_json(force=True) or {}
+ x=body({'name': any_, 'value': any_})
  # `_op_read`は名前に反して**書ける接続**（`connect(path,False)`）を開く
  # だけの道具で、他の保存経路も同じものを通っている。
  n=_op_read(lambda c:op.choice_used_bump(c,x.get('name'),x.get('value')))
@@ -1661,7 +1701,7 @@ def operation_choice_used():
 @api_guard('操業データ選択肢マスタの削除に失敗しました')
 def operation_choice_delete():
  from ..repositories import operation_repo as op
- x=request.get_json(force=True) or {}
+ x=body({'id': any_})
  if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
  n=_op_read(lambda c:op.choice_delete(c,x['id'],request_user_id(x)))
  return jsonify(ok=True,deleted=n,message='操業データの選択肢を削除しました。')
@@ -1735,7 +1775,7 @@ def report_block_list():
 def _report_block_save(x):
  from ..repositories import report_block_repo as rb
  uid=request_user_id(x)
- name=str(x.get('name') or '').strip()
+ name=x.text('name')
  if not name:return jsonify(error='ブロック名を入力してください。'),400
  iv=lambda v:(None if v in (None,'') else int(v))
  # 「有効」は画面からは呼び名（有効/無効）で来る。読み方は`flags.flag_of`の
@@ -1794,11 +1834,23 @@ def report_block_sample_record():
 
 @bp.post('/api/report-block-master')
 def report_block_register():
- return _report_block_save(request.get_json(force=True) or {})
+ return _report_block_save(body({'cols': any_, 'content': any_, 'enabled': any_, 'enabledText': any_, 'equipment': any_, 
+          'factAlign': any_, 
+          'factAlignText': any_, 'full': any_, 'fullText': any_, 'id': any_, 
+          'kind': any_, 'kindText': any_, 'labelPlace': any_, 'labelPlaceText': any_, 
+          'name': any_, 'note': any_, 'order': any_, 'repeat': any_, 
+          'repeatDir': any_, 'repeatDirText': any_, 'repeatText': any_, 'rows': any_, 
+          'span': any_, 'text': any_}))
 
 @bp.post('/api/report-block-master/update')
 def report_block_update():
- x=request.get_json(force=True) or {}
+ x=body({'cols': any_, 'content': any_, 'enabled': any_, 'enabledText': any_, 'equipment': any_, 
+          'factAlign': any_, 
+          'factAlignText': any_, 'full': any_, 'fullText': any_, 'id': any_, 
+          'kind': any_, 'kindText': any_, 'labelPlace': any_, 'labelPlaceText': any_, 
+          'name': any_, 'note': any_, 'order': any_, 'repeat': any_, 
+          'repeatDir': any_, 'repeatDirText': any_, 'repeatText': any_, 'rows': any_, 
+          'span': any_, 'text': any_})
  if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
  return _report_block_save(x)
 
@@ -1806,7 +1858,7 @@ def report_block_update():
 @api_guard('帳票ブロックマスタの削除に失敗しました',bad=ValueError)
 def report_block_delete():
  from ..repositories import report_block_repo as rb
- x=request.get_json(force=True) or {}
+ x=body({'id': any_})
  if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
  n=_op_read(lambda c:rb.block_delete(c,x['id'],request_user_id(x)))
  return jsonify(ok=True,deleted=n,message='帳票ブロックを削除しました。')
@@ -1860,11 +1912,19 @@ def _roll_save(x):
 
 @bp.post('/api/roll-master')
 def roll_master_register():
- return _roll_save(request.get_json(force=True) or {})
+ return _roll_save(body({'contactFace': any_, 'count': any_, 'diaMax': any_, 'diaMin': any_, 
+          'driveKind': any_, 'enabled': any_, 'enabledText': any_, 'entryPos': any_, 'equipment': any_, 
+          'faceLen': any_, 
+          'hardness': any_, 'id': any_, 'material': any_, 'name': any_, 'note': any_, 
+          'order': any_, 'refNo': any_, 'useCond': any_}))
 
 @bp.post('/api/roll-master/update')
 def roll_master_update():
- x=request.get_json(force=True) or {}
+ x=body({'contactFace': any_, 'count': any_, 'diaMax': any_, 'diaMin': any_, 
+          'driveKind': any_, 'enabled': any_, 'enabledText': any_, 'entryPos': any_, 'equipment': any_, 
+          'faceLen': any_, 
+          'hardness': any_, 'id': any_, 'material': any_, 'name': any_, 'note': any_, 
+          'order': any_, 'refNo': any_, 'useCond': any_})
  if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
  return _roll_save(x)
 
@@ -1895,7 +1955,7 @@ def roll_master_import():
  ——何件が追加で何件が上書きか、どの行がなぜ飛ばされるか。"""
  from ..repositories import roll_repo as rr
  from ..xlsx_io import XlsxError
- x=request.get_json(force=True) or {}
+ x=body({'apply': any_, 'fileBase64': any_, 'replace': any_})
  b64=str(x.get('fileBase64') or '')
  if not b64:return jsonify(error='ファイルがありません。'),400
  try:
@@ -1905,10 +1965,10 @@ def roll_master_import():
   data=base64.b64decode(b64)
  except Exception:
   return jsonify(error='ファイルを読み取れませんでした（送信の途中で壊れた可能性があります）。'),400
- apply=bool(x.get('apply'))
+ apply=x.flag('apply')
  # **取り込み方は口が受けるだけ**（§9.251）。何が消えるかを決めるのは
  # `roll_repo.import_rows()`の1箇所で、ここは綴りを運ぶだけにする。
- replace=str(x.get('replace') or '').strip()
+ replace=x.text('replace')
  try:
   uid=request_user_id(x)
   r=_op_read(lambda c:rr.import_rows(c,uid,data,dry_run=not apply,replace=replace))
@@ -1936,11 +1996,11 @@ def roll_master_delete_all():
     「設備の入っていない行」という意味を持つので、`or ''`で潰すと
     その行を名指しで消せなくなる。"""
  from ..repositories import roll_repo as rr
- x=request.get_json(force=True) or {}
- scope=str(x.get('scope') or '').strip()
+ x=body({'apply': any_, 'equipment': any_, 'scope': any_})
+ scope=x.text('scope')
  eq=x.get('equipment') if 'equipment' in x else None
  if eq is not None:eq=str(eq)
- apply=bool(x.get('apply'))
+ apply=x.flag('apply')
  uid=request_user_id(x)
  r=_op_read(lambda c:rr.delete_all(c,uid,scope=scope,equipment=eq,dry_run=not apply))
  msg=(f"{r.get('deleted',0)}件を削除しました（{r['label']}）。" if apply
@@ -1951,7 +2011,7 @@ def roll_master_delete_all():
 @api_guard('ロールマスタの削除に失敗しました',bad=ValueError)
 def roll_master_delete():
  from ..repositories import roll_repo as rr
- x=request.get_json(force=True) or {}
+ x=body({'id': any_})
  if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
  n=_op_read(lambda c:rr.roll_delete(c,x['id'],request_user_id(x)))
  return jsonify(ok=True,deleted=n,message='ロールを削除しました。')
@@ -2011,11 +2071,11 @@ def _choice_link_save(x):
 
 @bp.post('/api/choice-link-master')
 def choice_link_register():
- return _choice_link_save(request.get_json(force=True) or {})
+ return _choice_link_save(body({'child': any_, 'enabled': any_, 'enabledText': any_, 'id': any_, 'note': any_, 'parent': any_}))
 
 @bp.post('/api/choice-link-master/update')
 def choice_link_update():
- x=request.get_json(force=True) or {}
+ x=body({'child': any_, 'enabled': any_, 'enabledText': any_, 'id': any_, 'note': any_, 'parent': any_})
  if x.get('id') in (None,''):return jsonify(error='更新対象IDがありません。'),400
  return _choice_link_save(x)
 
@@ -2023,7 +2083,7 @@ def choice_link_update():
 @api_guard('選択肢リンクマスタの削除に失敗しました')
 def choice_link_delete_route():
  from ..repositories import operation_repo as op
- x=request.get_json(force=True) or {}
+ x=body({'id': any_})
  if x.get('id') in (None,''):return jsonify(error='削除対象IDがありません。'),400
  def fn(c):
   op.choice_link_delete(c,int(x['id']));return True

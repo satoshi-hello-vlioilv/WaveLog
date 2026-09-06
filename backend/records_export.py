@@ -25,6 +25,7 @@ import time
 from .config import RECORDS_BACKUP_EXPORT_INTERVAL_SEC
 from .db_access import MEAS_DB, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, path_config_value
 from .logging_setup import app_logger
+from .quiet import quiet
 
 _dirty=threading.Event()
 # 最後に試した結果。画面(GET /api/measurement/storage)がそのまま出す。
@@ -46,7 +47,8 @@ def interval_sec():
  try:
   raw=path_config_value('records_backup_export_interval_sec',RECORDS_BACKUP_EXPORT_INTERVAL_SEC)
   n=int(str(raw).strip() or RECORDS_BACKUP_EXPORT_INTERVAL_SEC)
- except Exception:
+ except Exception as _e:
+  quiet('数として読めない（既定で続ける）',_e)
   n=RECORDS_BACKUP_EXPORT_INTERVAL_SEC
  return max(30,n)
 

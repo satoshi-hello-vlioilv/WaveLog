@@ -14,15 +14,26 @@
 本アプリ自身が読み書きするローカルストアのため、SQLite(db/フォルダ)へ移行した。
 """
 from pathlib import Path
-from datetime import datetime
-from urllib.parse import quote
-import sqlite3
+import hashlib
 import threading
 import time
 
 from . import paths
+from .textnorm import normalize_equipment_name
 from .paths import APP_ROOT, configured_path, load_local_config, local_config_error
 from .logging_setup import app_logger
+from .quiet import quiet
+# SQLiteの入出力そのもの（接続・列・後から足す列）は backend/sqlite_io.py が持つ
+# （§9.329）。ここから名前を再公開しているのは、`db_access.connect(...)` 等で
+# 呼んでいる既存の約100箇所を1つも書き換えないため。**新しく書くコードは
+# sqlite_io から直に読むこと**——置き場の答え（DBS・パス設定マスタ）が要らない
+# のに db_access を読み込むと、分けたはずの輪が戻る。
+from .sqlite_io import (  # noqa: F401 既存の呼び出し互換のための再公開（§9.329）
+ ACCESS_SUFFIXES,_reject_access_path,
+ _sqlite_now,_sqlite_nz,_sqlite_cstr,_sqlite_val,
+ qi,path_exists_safe,_sqlite_ro_uri,connect,
+ COLS_CACHE_TTL_SEC,invalidate_cols_cache,cols,tables,
+ _already_added,add_missing_columns,AUDIT_COLUMNS,ensure_audit_columns)
 
 # DBの置き場所は既定でAPP_ROOT/db。config/local.jsonの"db_dir"で上書き可能
 # (未配置なら従来どおり)。個別ファイルの上書きはDBS['MASTER']['path']/
@@ -41,160 +52,6 @@ DB_DIR=paths.db_dir()
 # 同期対象から外れる。
 WORK_DIR=paths.work_dir()
 SIKA_DIR=Path(r"\\Nlmsrvngy03\Read\【New】仕掛\台帳")
-# 接続はSQLiteのみ。以前はAccess(pyodbc)にも接続できたが、実機を含め全ての
-# 接続先をSQLiteへ統一したため廃止した。古い設定が残っていても黙って落ちない
-# よう、Accessの拡張子が指定されていたら理由を添えて弾く(_reject_access_path)。
-ACCESS_SUFFIXES=('.accdb','.mdb')
-
-def _reject_access_path(path):
- """Accessのパスが設定されていたら、何をすればよいかを添えて弾く。
-    分岐を消すだけだと、古いパス設定が残った端末で「接続できない」理由が
-    分からないまま失敗する。"""
- if str(path).lower().endswith(ACCESS_SUFFIXES):
-  raise RuntimeError(
-   f"Accessファイルへは接続できません(接続先はSQLiteへ統一しました): {path}\n"
-   "マスタ管理 > パス設定 で .sqlite3 のパスを指定し、サーバーを再起動してください。")
-
-# ========================================================================
-# SQLite側のAccess SQL互換関数
-#  - Now()/Nz()/CStr()/Val()はAccess独自のSQL関数。masters.py・汎用一覧
-#    API(/api/table)側のSQL文言はそのまま流用し、これらをSQLite接続へ
-#    ユーザー定義関数として登録することで差分を吸収する(呼び出し側のSQL
-#    文字列を書き換えずに済む)。Max()はSQLite組込のMAX()とキーワードが
-#    大小無視で一致するため登録不要。
-#  - DATETIME列はISO8601文字列で保存し、detect_types+コンバータで
-#    読み出し時に自動的にdatetimeオブジェックへ復元する(既存コードの
-#    .isoformat()呼び出しをそのまま使えるようにするため)。
-# ========================================================================
-def _sqlite_now():return datetime.now().isoformat(sep=' ')
-def _sqlite_nz(value,default):return default if value is None else value
-def _sqlite_cstr(value):return '' if value is None else str(value)
-def _sqlite_val(value):
- import re
- m=re.match(r'^\s*[+-]?\d+(\.\d+)?',str(value or ''))
- return float(m.group(0)) if m else 0.0
-sqlite3.register_adapter(datetime,lambda dt:dt.isoformat(sep=' '))
-sqlite3.register_converter('DATETIME',lambda b:datetime.fromisoformat(b.decode()))
-
-def qi(s): return '['+str(s).replace(']',']]')+']'
-def path_exists_safe(path):
- """存在を確かめる。ただし**判定できなかった場合はNone**を返す。
-
- pathlib の Path.exists() は OSError のうち ENOENT/ENOTDIR/EBADF/ELOOP と
- WinError 21/123/1921 だけを「無し」と読み替え、**それ以外はそのまま送出する**。
- ネットワーク共有では WinError 59(予期しないネットワークエラー)や
- 64/1231 のように「一時的に問い合わせできない」種類のエラーが起こり、
- これらは送出される。存在確認のつもりの1行が例外の発生源になり、しかも
- メッセージが「ファイルが無い」ではなく生のネットワークエラーになるため、
- 原因の見当がつかない(実際に、エクスプローラでも sqlite3.connect() でも
- 開ける共有ファイルに対して、この行だけが WinError 59 で失敗した端末があった)。
-
- 戻り値: True=ある / False=無い / None=確かめられなかった(共有が応答しない等)"""
- try:
-  return path.exists()
- except OSError as e:
-  app_logger().warning('存在確認に失敗しました(共有の応答不良の可能性): %s (%s)',path,e)
-  return None
-
-def _sqlite_ro_uri(path):
- """読み取り専用オープン用のfile: URIを組み立てる(str連結だとドライブレター
- 区切りやUnicodeファイル名でURI解釈を誤り得るため、パーセントエンコードする)。
- UNC共有パス(\\\\server\\share\\...)は要注意: pathlibの標準as_uri()は
- file://server/share/...という2スラッシュ形式を返すが、これは"server"を
- URIのauthority部分と解釈させてしまい、SQLITE_ALLOW_URI_AUTHORITYでビルド
- されていない標準的なsqlite3モジュールでは"invalid uri authority"で拒否
- される(実際にsikalotnow_path等をUNC上の.sqlite3へ向けたときに発生した)。
- authorityを空のままサーバー名をpath側に含める4スラッシュ形式
- (file:////server/share/...)にするとこの制限を回避できる
- (SQLiteのURI filename仕様に沿った回避策)。
-
- **絶対パスに resolve() を掛けないこと**。resolve()はWindowsでは
- GetFinalPathNameByHandle を呼ぶ実ファイルアクセスで、共有が不安定だと
- ここでも WinError 59 等で失敗する。加えて UNC を「\\?\\UNC\\...」形式へ書き換える
- ことがあり、URIの組み立て前提が崩れる。相対パス(開発時のみ)の解決に必要な
- ときだけ resolve() する。"""
- target=path if path.is_absolute() else path.resolve()
- posix=target.as_posix()
- if posix.startswith('//'):
-  return 'file://'+quote(posix)+'?mode=ro'
- return target.as_uri()+'?mode=ro'
-def connect(path,readonly=False,engine=None):
- """SQLiteへ接続する。engine引数は呼び出し側の互換のため残しているが
-    'sqlite'以外は受け付けない。"""
- _reject_access_path(path)
- if engine not in (None,'sqlite'):
-  raise ValueError(f"未対応のエンジンです(SQLiteのみ対応): {engine}")
- if readonly:
-  # **開く前に存在確認をしない**。読みたいのはファイルそのもので、確認は
-  # 別のファイルアクセス(os.stat)になる。共有越しでは「開けるのに stat だけ
-  # 失敗する」ことがあり(WinError 59 等)、確認のつもりの1行が唯一の失敗
-  # 原因になっていた。まず開き、失敗したときだけ理由を切り分ける。
-  try:
-   c=sqlite3.connect(_sqlite_ro_uri(path),uri=True,timeout=10,detect_types=sqlite3.PARSE_DECLTYPES)
-  except sqlite3.Error as e:
-   found=path_exists_safe(path)
-   if found is False:
-    raise FileNotFoundError(f"データベースが見つかりません: {path}") from e
-   raise RuntimeError(
-    f"データベースを開けませんでした: {path}\n"
-    f"SQLiteからの応答: {e}\n"
-    +("共有フォルダの応答を確認できませんでした。ネットワーク共有への接続を確認してください。"
-      if found is None else
-      "ファイルはありますが開けませんでした。読み取り権限と、他プロセスによる排他を確認してください。")) from e
- else:
-  path.parent.mkdir(parents=True,exist_ok=True)
-  c=sqlite3.connect(str(path),timeout=10,detect_types=sqlite3.PARSE_DECLTYPES)
- # Now()/Nz()/CStr()/Val()はAccess方言のSQL関数。masters.pyのSQLが今もこの
- # 方言で書かれているため、SQLite側へユーザー定義関数として登録して吸収する。
- # **接続をSQLiteへ統一した後も残す**(消すと全マスタSQLの書き換えが要る)。
- c.create_function('Now',0,_sqlite_now);c.create_function('Nz',2,_sqlite_nz)
- c.create_function('CStr',1,_sqlite_cstr);c.create_function('Val',1,_sqlite_val)
- return c
-
-# 列名の取得は「1行だけSELECTして description を見る」実装のため、共有越しの
-# Access(SIKALOTNOW/SIKALOTDEF)では1往復まるごとかかる。列構成は運用中に
-# 変わらないので短時間キャッシュする(docs/ARCHITECTURE.md「共有ファイルを
-# 読む処理は回数が効く」)。一覧を開くたびの往復を1回減らす。
-COLS_CACHE_TTL_SEC=60.0
-_cols_cache={}
-_cols_cache_lock=threading.Lock()
-
-def invalidate_cols_cache():
- with _cols_cache_lock:_cols_cache.clear()
-
-def cols(c,t,use_cache=True,source=None):
- """テーブルtの列名を、SELECT * と同じ並びで返す。
-
- **sourceを渡したときだけキャッシュする**。sourceは接続先を一意に表す値
- (DBファイルのパス)。呼び出し側が接続先を知っているときだけ渡すこと。
-
- 以前は接続オブジェクトへ目印(_wavelog_source)を付けて接続先を引く実装
- だったが、sqlite3.Connectionは属性を追加でき
- ないC実装のため**目印付けは常に失敗**し、キャッシュキーが
- `id(type(c))`(=同じエンジンなら全DB共通の定数)へ落ちていた。結果、
- 「同じ名前のテーブルを持つ別のDB」を続けて開くと、先に開いた方の列名が
- 返り、`dict(zip(cols,row))`で**値が別の列名へ紐づく**(品質データの一覧で
- ロット№欄に日時が出る等)。列数が違えばzipで末尾が黙って捨てられもする。
- 接続オブジェクトから接続先を推測するのは諦め、呼び出し側から明示的に
- 受け取る。sourceが無ければキャッシュしない(速度より正しさを優先する)。
- """
- key=(str(source),str(t)) if (use_cache and source) else None
- if key:
-  now=time.time()
-  with _cols_cache_lock:
-   hit=_cols_cache.get(key)
-  if hit and (now-hit[0])<COLS_CACHE_TTL_SEC:return list(hit[1])
- cur=c.cursor()
- cur.execute(f"SELECT * FROM {qi(t)} LIMIT 1")
- out=[x[0] for x in cur.description]
- if key:
-  with _cols_cache_lock:_cols_cache[key]=(time.time(),list(out))
- return out
-def tables(c):
- if isinstance(c,sqlite3.Connection):
-  cur=c.cursor();cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-  return sorted({r[0] for r in cur.fetchall() if r[0]},key=str.casefold)
- return sorted({r.table_name for r in c.cursor().tables(tableType='TABLE') if r.table_name and not r.table_name.startswith(('MSys','USys','~'))},key=str.casefold)
 def cfg(k):
  """そのデータソースの設定。**読む場所は写し(あれば)を指す**(§9.89)。
 
@@ -214,67 +71,13 @@ def cfg(k):
  try:
   from . import db_mirror
   local=db_mirror.read_path(k,entry['path'])
- except Exception:
+ except Exception as _e:
+  quiet('写しの場所を引けない（元のパスをそのまま読む）',_e)
   return entry
  if Path(local)==Path(entry['path']):return entry
  out=dict(entry);out['path_remote']=entry['path'];out['path']=Path(local);out['mirrored']=True
  return out
 
-# ========================================================================
-# 後から足した列を「無ければ足す」（§9.315、利用者の報告）
-# ------------------------------------------------------------------------
-# 「起動時に *読み込みに失敗しました: … duplicate column name: 丸め方* と
-#   出る。リロードすると正しく読める」
-#
-# 現場では**マスタを作り直さず「無ければ足す」で移行する**（§9.216 ②）。
-# その処理はどこも `PRAGMA table_info` で今ある列を読み、無い列だけ
-# `ALTER TABLE ADD COLUMN` する形だった——**読んでから足すまでのあいだに
-# 別のリクエストが同じ列を足せる**。`flask_app.run(threaded=True)`（§9.98で
-# 外さないと決めてある）なので、画面を開いた瞬間に走る何本かの問い合わせが
-# 素直に重なる。2本とも「無い」と見て2本とも足しに行き、後の1本が
-# `duplicate column name` で落ちる。
-#
-# **その版へ上げた最初の1回にしか起きない**（次からは列が在るのでALTERを
-# 通らない）ので、**リロードすると直る**——原因に辿り着きにくいのはこのため。
-#
-# ここが唯一の窓口。**散らばった場所で気を付けるのではなく、入口で1回だけ
-# 落とす**（§9.113）。「足そうとしたら既に在った」は**失敗ではない**
-# ——他の誰かが今まさに足したということなので、そのまま先へ進む。
-# ========================================================================
-def _already_added(exc):
- """その失敗は「誰かが今足したところだった」か。**綴りで見るしかない**
-    ——SQLiteはこれを専用のエラー番号で返さない。"""
- return 'duplicate column name' in str(exc).lower()
-
-def add_missing_columns(c,table,columns,commit=True):
- """`columns`（(列名, 型) の並び）のうち**まだ無いものだけ**足す。
-
-    戻り値は**実際に足した列名のリスト**（呼び出し側の「足したか」の判定に
-    使う）。同時に走った別のリクエストが先に足していた場合は、その列は
-    戻り値に入らない（足したのはこちらではない）。
-
-    **例外は握り潰さない**——「既に在った」以外の失敗（権限・読み取り専用・
-    ディスク）は呼び出し側へそのまま返す。黙って進むと、列が無いまま
-    SELECTして別の場所で落ちる。"""
- try:existing=set(cols(c,table))
- except Exception:return []
- cur=c.cursor();added=[]
- for name,decl in columns:
-  if name in existing:continue
-  try:
-   cur.execute(f'ALTER TABLE {qi(table)} ADD COLUMN {qi(name)} {decl}')
-   added.append(name)
-  except Exception as e:
-   if not _already_added(e):raise
- if added and commit:c.commit()
- return added
-
-# ========================================================================
-# 更新対象者（ユーザーID）の管理
-# ========================================================================
-AUDIT_COLUMNS=(('登録者ID','TEXT'),('更新者ID','TEXT'))
-def ensure_audit_columns(c,table):
- return bool(add_missing_columns(c,table,AUDIT_COLUMNS))
 
 # db/ 導入以前に使われていた置き場所とファイル名(新しい順)。db/に無い場合の
 # 移行先探索にのみ使う(過去バージョンからの引き継ぎ用で、新規環境では未使用)。
@@ -434,7 +237,8 @@ def _master_path_config():
   if not _MASTER_PATH.exists():return {}
   with connect(_MASTER_PATH,True) as c:
    return path_config_rows(c)
- except Exception:
+ except Exception as _e:
+  quiet('マスタの設定を読めない（既定で続ける）',_e)
   return {}
 
 def path_config_value(key,default=None):
@@ -655,10 +459,16 @@ def seed_data_sources(c):
  return True
 
 def _master_data_sources():
+ """データソースマスタの行を**読むだけ**（種は入れない）。
+
+ **種を入れるのは`bootstrap()`**（§9.329）。以前はここが読み込みのその場で
+ 表を作って既定の2件を入れており、`import backend.db_access` するだけで
+ マスタDBが書き変わっていた。表がまだ無い端末はここで空が返り、呼び出し側が
+ `_DEFAULT_DATA_SOURCES`（種と同じ中身）へ落ちるので、**このプロセスの
+ 見え方は種を入れた後と同じ**になる。"""
  try:
   if not _MASTER_PATH.exists():return []
-  with connect(_MASTER_PATH,False) as c:
-   seed_data_sources(c)
+  with connect(_MASTER_PATH,True) as c:
    return data_source_rows(c)
  except Exception as e:
   app_logger().warning('データソースマスタを読めませんでした(既定の2件で続行します): %s',e)
@@ -673,17 +483,21 @@ _VALID_SIKALOT_SOURCES=('network','local')
 # また複製する」を繰り返し、UIでの削除操作が復活してしまう不具合になる。
 _MIGRATION_MARKER_KEY='__legacy_json_migrated__'
 
-def _migrate_legacy_path_config():
- """旧config/local.jsonにあった値を、初回起動時に一度だけパス設定マスタへ
- 複製する(後方互換の一度きりの移行)。一度移行が済んだら_MIGRATION_MARKER_KEY
- を残し、以後はconfig/local.jsonの内容を一切見ない(マスタ管理画面での編集・
- 削除を正とする。sikalot_sourceが'network'/'local'以外の値(誤記・別項目の
- 値の書き間違い等)なら、誤った値をそのまま引き継がず読み捨ててログへ残す。"""
+def _legacy_path_config_updates():
+ """旧config/local.jsonにあった値のうち、パス設定マスタへ移すべきものを返す
+ （**読むだけ。1件も書かない**）。まだ移していなければその辞書、済んでいれば
+ 空の辞書。sikalot_sourceが'network'/'local'以外の値(誤記・別項目の値の
+ 書き間違い等)なら、誤った値をそのまま引き継がず読み捨ててログへ残す。
+
+ **書くのは`bootstrap()`**（§9.329）。以前はこの関数が読み込みのその場で
+ マスタDBへ書いており、`import backend.db_access` するだけでファイルが
+ 変わった——読み込んだだけで何が起きるかが呼ぶ側から読めず、検証も
+ 「importしない」以外に避けようがない。読むことと書くことを分ける。"""
  try:
   legacy=load_local_config()
-  if not legacy:return
+  if not legacy:return {}
   current=_master_path_config()
-  if _MIGRATION_MARKER_KEY in current:return
+  if _MIGRATION_MARKER_KEY in current:return {}
   updates={}
   for key in PATH_CONFIG_STATIC_KEYS+PATH_CONFIG_LIVE_KEYS:
    if key=='sikalot_source':continue
@@ -693,21 +507,46 @@ def _migrate_legacy_path_config():
   if src in _VALID_SIKALOT_SOURCES:updates['sikalot_source']=src
   elif src:
    app_logger().warning('config/local.jsonのsikalot_source(%r)は"network"/"local"以外の値のため移行しませんでした(値の書き間違いの可能性があります)。マスタ管理 > パス設定から選び直してください。',src)
+  return updates
+ except Exception as e:
+  app_logger().warning('config/local.jsonからパス設定マスタの移行内容を読めませんでした: %s',e)
+  return {}
+
+def bootstrap():
+ """読み込みでは起こさなかった書込（旧config/local.jsonの一度きりの移行）を
+ ここで行う。**アプリの起動が1回だけ呼ぶ**（`app.py`）。
+
+ 何度呼んでも同じ（移行済みの目印があれば何もしない）。呼ばれなくても
+ 動きは変わらない——移す値は読み込み時に`_PATH_CONFIG`へ重ねてあるので、
+ 目印が書かれないまま毎回読み直すだけになる。"""
+ done=False
+ try:
+  with connect(_MASTER_PATH,False) as c:
+   done=bool(seed_data_sources(c))
+ except Exception as e:
+  app_logger().warning('データソースマスタの既定を入れられませんでした: %s',e)
+ updates=_legacy_path_config_updates()
+ try:
+  if not updates and _MIGRATION_MARKER_KEY in _master_path_config():return done
   with connect(_MASTER_PATH,False) as c:
    for key,value in updates.items():
     set_path_config(c,key,value,'migrate:config/local.json')
    set_path_config(c,_MIGRATION_MARKER_KEY,'done','migrate:config/local.json')
   if updates:
    app_logger().info('config/local.jsonの設定%d件をパス設定マスタへ移行しました: %s',len(updates),sorted(updates))
+  return True
  except Exception as e:
   app_logger().warning('config/local.jsonからパス設定マスタへの移行に失敗しました: %s',e)
+  return False
 
-_migrate_legacy_path_config()
+# 移す値は**読み込み時に重ねるだけ**（書くのは bootstrap()）。こうしておくと、
+# 目印がまだ書かれていない端末でも、このプロセスは移行後と同じ値で動く。
+_LEGACY_PATH_UPDATES=_legacy_path_config_updates()
 # プロセス起動時に1回だけ読み込むスナップショット。PATH_CONFIG_STATIC_KEYS
 # (接続先を決める項目)はこれを使う。以降にマスタ管理画面から変更しても、
 # このプロセスでは反映されない(再起動が必要。config/local.json時代から
 # 変わらない既存の制約)。
-_PATH_CONFIG=_master_path_config()
+_PATH_CONFIG={**_master_path_config(),**_LEGACY_PATH_UPDATES}
 def _static_path_cfg(key,default=None):
  v=_PATH_CONFIG.get(key)
  return v if v not in (None,'') else default
@@ -852,8 +691,6 @@ _RECORDS_BAD_CHARS='<>:"/\\|?*'
 
 def _records_equipment_ident(equipment):
  # 設備の同一判定は**アプリ全体で1つ**(全角/半角のゆれを吸収する。§9.239 ⑥)。
- # master_repoはdb_accessを読む側なので、循環importを避けて呼ぶときに引く。
- from .repositories.master_repo import normalize_equipment_name
  return normalize_equipment_name(equipment)
 
 def records_dir_name(equipment):
@@ -868,7 +705,6 @@ def records_dir_name(equipment):
  safe=''.join(('_' if (ch in _RECORDS_BAD_CHARS or ord(ch)<32) else ch) for ch in ident)
  safe=safe.rstrip(' .')  # Windowsは末尾の空白とピリオドを落とす
  if safe!=ident or not safe:
-  import hashlib
   safe=(safe or 'eq')+'-'+hashlib.sha1(ident.encode('utf-8')).hexdigest()[:6]
  return safe
 
@@ -925,7 +761,7 @@ def _records_share_files():
   for entry in sorted(RECORDS_SHARE_DIR.iterdir(),key=lambda e:e.name):
    try:
     if entry.is_dir():found.append(entry/RECORDS_FILE_NAME)
-   except Exception:continue
+   except Exception as _e:quiet('共有の中を辿れない（この項目を飛ばす）',_e);continue
  except Exception as e:
   # **読めなかったことを「1件も無い」と同じに扱わない**(§9.211 ②)。
   # 前に読めた一覧があればそれを使い続ける。
@@ -985,7 +821,7 @@ def note_records_written(path):
  try:
   from . import db_mirror
   db_mirror.wake()
- except Exception:pass
+ except Exception as _e:quiet('写しの取り直しを起こせない（次の巡回で写す）',_e)
 
 def records_written_here():
  with _records_written_lock:
@@ -1003,7 +839,8 @@ def records_read_paths():
  try:
   from . import db_mirror
   by_path={str(remote):key for key,remote in db_mirror.records_targets()}
- except Exception:
+ except Exception as _e:
+  quiet('写しの対応表を引けない（実物をそのまま読む）',_e)
   by_path={}
  for real in records_paths_all():
   use=real
@@ -1011,7 +848,8 @@ def records_read_paths():
   if key and str(real) not in mine:
    try:
     use=Path(db_mirror.read_path(key,real))
-   except Exception:
+   except Exception as _e:
+    quiet('写しの場所を引けない（実物をそのまま読む）',_e)
     use=real
   k=str(use)
   if k in seen:continue
@@ -1094,42 +932,6 @@ def ensure_backup_table(c):
   return
  add_missing_columns(c,'Web測定バックアップ',BACKUP_AUDIT_COLUMNS)
 
-def request_user_id(x):
- x=x or {}
- for k in ('user_id','userId','updated_by','更新者ID'):
-  v=str(x.get(k) or '').strip()
-  if v:return v[:50]
- # 指定が無ければ端末のログインIDを使う。画面からの操作は必ず利用者IDを
- # 送るが、直接APIを叩いた場合に空文字のまま[更新者ID]へ入ると「誰が変えたか」
- # が残らない。分かる範囲で埋めておく(監査列は空より端末の主が有用)。
- # access_mode側がdb_accessを読むため、循環importにならないよう遅延取得する。
- try:
-  from .access_mode import current_login_id
-  return str(current_login_id() or '')[:50]
- except Exception:
-  return ''
-
-def request_pc_name(x=None):
- """この操作をした端末(PC)名。**request_user_id と対で使う**(§9.180)。
-
- 「どのPC・どのIDが編集したのか」を残すのが目的で、IDだけでは同じ人が
- 別のPCから触った場合を見分けられない(現場は端末ごとに役割が違う)。
-
- **サーバーは各端末で動いている**(1台1プロセス、共有DBを読み書きする作り)
- ので、`socket.gethostname()`はそのまま操作した端末の名前になる。
- 画面が明示的に送ってきた値(`pc_name`)を優先するのは、**別のPCで作られた
- データを引き継いで保存する場合**に「作った端末」を上書きしないため。
- """
- x=x or {}
- for k in ('pc_name','pcName','端末名'):
-  v=str(x.get(k) or '').strip()
-  if v:return v[:80]
- try:
-  from .access_mode import current_pc_name
-  return str(current_pc_name() or '')[:80]
- except Exception:
-  return ''
-
 def read_backup_rows(path):
  # [Web測定バックアップ]テーブルを読み取り専用で読む共通処理。
  # backend/routes/measurement.py(PC引継ぎ用/閲覧モード一覧)と
@@ -1208,15 +1010,17 @@ _backup_file_cache={}
 def _backup_file_rows(path):
  try:
   st=path.stat();sig=(st.st_mtime_ns,st.st_size)
- except Exception:
+ except Exception as _e:
   # 署名が取れないときは覚えない(共有越しではstatだけ失敗する。§9.188)。
+  quiet('見かけ（更新時刻・大きさ）を取れない（分からないものとして続ける）',_e)
   sig=None
  if sig is not None:
   hit=_backup_file_cache.get(str(path))
   if hit is not None and hit[0]==sig:return hit[1]
  try:
   items,_=read_backup_rows(path)
- except Exception:
+ except Exception as _e:
+  quiet('控えのファイルを読めない（この1件を飛ばす）',_e)
   items=None
  rows=items or []
  if sig is not None:_backup_file_cache[str(path)]=(sig,rows)
@@ -1259,7 +1063,7 @@ def merged_backup_rows(force=False):
  try:
   from . import db_mirror
   db_mirror.wake()
- except Exception:pass
+ except Exception as _e:quiet('写しの取り直しを起こせない（次の巡回で写す）',_e)
  sig=_backup_sources_signature()
  if not force:
   with _backup_rows_lock:

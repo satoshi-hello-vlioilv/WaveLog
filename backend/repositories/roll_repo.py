@@ -68,6 +68,7 @@
 from ..flags import flag_of, OFF_WORDS
 from ..db_access import tables
 from .table_def import TableDef
+from ..quiet import quiet
 
 TABLE = 'ロールマスタ'
 # 設備停止マスタが「すべての設備」に使う印。**ロールでは受け付けない**が、
@@ -444,10 +445,10 @@ def _migrate_once(c):
     _migrated_this_process = True
     try:
         migrate_single_equipment(c)
-    except Exception:
+    except Exception as _e:
         # **移行に失敗してもロールマスタは開けること**（fail-open）。
         # 割れなかった行は「設備なし」として画面に出るので、気づいて直せる。
-        pass
+        quiet('1度きりの移行を試せない（次に開いたときに試す）',_e)
 
 
 def _row(d):
@@ -801,8 +802,8 @@ def migrate_single_equipment(c, uid='migrate:roll'):
     try:
         if path_config_rows(c).get(MIGRATE_KEY):
             return (0, 0, 0, 0)
-    except Exception:
-        pass                      # 目印が読めなくても移行そのものは冪等
+    except Exception as _e:
+        quiet('移行済みの目印を読めない（もう一度移行を試す）',_e)
     cur = c.cursor()
     cur.execute(f'SELECT [ロールID],[設備名],[ロール名],[接触面],'
                 f'[ロール径MAX],[ロール径MIN],[備考] FROM [{TABLE}]')
@@ -857,8 +858,8 @@ def migrate_single_equipment(c, uid='migrate:roll'):
     if not left:
         try:
             set_path_config(c, MIGRATE_KEY, 'done', uid)
-        except Exception:
-            pass
+        except Exception as _e:
+            quiet('移行済みの目印を書けない（次にもう一度試す）',_e)
     return (split_from, made, held, clash)
 
 

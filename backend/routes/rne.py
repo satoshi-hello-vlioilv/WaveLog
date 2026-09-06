@@ -11,6 +11,7 @@ backend/access_mode.py の _READ_ONLY_POST_ENDPOINTS が
 手動実行がeditモード以外で403になる。tests/test_modeguard.py が固定している。
 """
 from flask import Blueprint, jsonify
+from ..quiet import quiet
 
 bp=Blueprint('rne',__name__)
 
@@ -47,6 +48,6 @@ def rne_extract_run():
   return jsonify(error='抽出が既に実行中です。完了までお待ちください。'),409
  def _go():
   try:rne_scheduler.run_batch('manual')
-  except Exception:pass   # 失敗は last_status()のjobs[].errorに出る
+  except Exception as _e:quiet('抽出を回せない（次の周回で試す）',_e)
  _th.Thread(target=_go,daemon=True,name='rne-manual').start()
  return jsonify(ok=True,started=True,message='抽出を開始しました。完了すると状態表示が更新されます。')

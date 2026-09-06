@@ -542,10 +542,10 @@
      ——投げっぱなしにすると、②のタブを開くまで値の場所が「（値）」のまま
      残る（§9.234 ⑧と同じ罠）。**失敗しても黙って進む**（値が「（値）」に
      なるだけで、設定そのものは触れる）。 */
-  fbLoadCatalog().then(()=>paint()).catch(()=>{});
+  fbLoadCatalog().then(()=>paint()).catch(WL.quiet('候補の一覧を取れない（設定そのものは触れる）'));
   /* **この塊がどの紙に置かれているか**は開いた時点で読む（§9.274）——
      読めなくても窓は使える（fail-open）。 */
-  rbLoadPaper(form).then(()=>paint()).catch(()=>{});
+  rbLoadPaper(form).then(()=>paint()).catch(WL.quiet('候補の一覧を取れない（設定そのものは触れる）'));
   if(form.dataset.rbWired==='1'){paint();return}
   form.dataset.rbWired='1';
   form.addEventListener('change',paint);
@@ -692,7 +692,7 @@
    busy=true;
    requestAnimationFrame(()=>{try{fbFitCellHeight(wrap)}finally{busy=false}});
   });
-  try{wrap.__fbRo.observe(wrap)}catch(e){}
+  try{wrap.__fbRo.observe(wrap)}catch(e){WL.quiet.note('見張りを付けられない（大きさの変化に追随しないだけ）',e)}
  }
  function fbCell(o){
   const x=o||{};
@@ -1282,7 +1282,7 @@
     wrap.querySelectorAll('.fb-row').forEach(row=>{
      row.addEventListener('dragstart',e=>{
       from=Number(row.dataset.fbI);row.classList.add('is-drag');
-      try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','')}catch(_){}
+      try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','')}catch(_){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',_)}
      });
      row.addEventListener('dragend',()=>row.classList.remove('is-drag'));
      row.addEventListener('dragover',e=>{e.preventDefault()});
@@ -1448,7 +1448,7 @@
     state.rows.push(fbCell({kind:FB_KIND_HEAD,label:''}));state.sel=state.rows.length-1;sync();
     /* 足したら**そこへ書ける状態にする**（§2「次にすることを1つだけ指す」）。 */
     const inp=box.querySelector(`.fb-row[data-fb-i="${state.sel}"] .fb-label`);
-    if(inp)try{inp.focus()}catch(_){}
+    if(inp)try{inp.focus()}catch(_){WL.quiet.note('焦点を当てられない（値も操作も残る）',_)}
    };
    const tableBtn=box.querySelector('.fb-table');
    if(tableBtn)tableBtn.onclick=()=>fbMakeTable(box,state,sync);
@@ -1546,7 +1546,7 @@
      el.ondragstart=ev=>{
       state.axisDrag=el.dataset.fbAxis;
       try{ev.dataTransfer.setData('text/plain',el.dataset.fbAxis);
-          ev.dataTransfer.effectAllowed='move'}catch(_e){}
+          ev.dataTransfer.effectAllowed='move'}catch(_e){WL.quiet.note('掴んだ印を渡せない（押す道は残る）',_e)}
       el.classList.add('is-dragging');
      };
      el.ondragend=()=>{state.axisDrag=null;el.classList.remove('is-dragging')};
@@ -1722,7 +1722,7 @@
     saved.set(name==='共通'?RLY_COMMON:name,
       {order:(it.order||[]).length,hidden:(it.hidden||[]).length});
    });
-  }catch(e){/* 読めなくても設備の一覧は出せる（fail-open） */}
+  }catch(e){WL.quiet.note('読めなくても設備の一覧は出せる（fail-open）',e)}
   /* **設備マスタが正**（§9.239 ③）。保存済みの紙だけを並べると、これから
      作る設備の紙を開く手立てが無い。保存が残っている「もう無い設備」も
      消さずに出す——消すと、その設定を片付けられなくなる。 */
@@ -1893,7 +1893,7 @@
    pane.outerHTML=rlyPaperPaneHtml();
    bindReportLayout();
    const el=$('#rlySearch');
-   if(el){el.focus();try{el.setSelectionRange(keep,keep)}catch(_){}}
+   if(el){el.focus();try{el.setSelectionRange(keep,keep)}catch(_){WL.quiet.note('カーソル位置を戻せない（値は入っている）',_)}}
   };
   list.querySelectorAll('[data-rly-paper]').forEach(b=>b.onclick=()=>rlyPick(b.dataset.rlyPaper));
   list.querySelectorAll('[data-rly-vis]').forEach(b=>b.onclick=()=>{

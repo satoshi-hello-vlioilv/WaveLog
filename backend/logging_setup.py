@@ -19,6 +19,7 @@ import os
 import sys
 
 from .paths import APP_ROOT, logs_dir
+from .quiet import quiet
 
 _MAX_BYTES=1_000_000
 _BACKUP_COUNT=3
@@ -52,9 +53,9 @@ def get_logger(name,filename,to_console=True):
   handler.setFormatter(logging.Formatter(_FORMAT))
   setattr(handler,mark,True)
   logger.addHandler(handler)
- except Exception:
+ except Exception as _e:
   # ログを書けないこと自体でアプリを止めない(共有側が読み取り専用等)。
-  pass
+  quiet('ログファイルを開けない（画面へは出したまま続ける）',_e)
  # pythonw(コンソール非表示)では標準出力が無いためStreamHandlerを付けない。
  if to_console and sys.stdout is not None:
   console=logging.StreamHandler(sys.stdout)

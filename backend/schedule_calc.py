@@ -24,6 +24,7 @@ from . import schedule_sync
 from .repositories import schedule_repo as sr
 from .repositories.master_repo import normalize_equipment_name
 from .db_access import merged_backup_rows, connect as _sqlite_connect
+from .quiet import quiet
 
 # 稼働カレンダーを**最初に**組み立てる日数。ここで足りなければ
 # `SlotTimeline`が伸ばす（§9.291 ②、利用者の指示「枠いっぱいになったら、
@@ -140,7 +141,7 @@ def frame_target(detail,specific_shift_rows,global_shift_rows):
  d=str((detail or {}).get('frameDate') or '').strip()
  if not d:return (None,'枠に日付が入っていません。')
  try:day=date.fromisoformat(d)
- except Exception:return (None,f'枠の日付「{d}」を読めません。')
+ except Exception as _e:quiet('日時として読めない（無いものとして続ける）',_e);return (None,f'枠の日付「{d}」を読めません。')
  name=str((detail or {}).get('frameShift') or '').strip()
  if not name:return (datetime.combine(day,time(0,0)),'')
  rows=specific_shift_rows if specific_shift_rows else global_shift_rows
@@ -291,7 +292,8 @@ def _build_actual_index(rows):
  for row in rows:
   try:
    payload=json.loads(row.get('payload') or '{}')
-  except Exception:
+  except Exception as _e:
+   quiet('保存された値を読めない（既定で続ける）',_e)
    continue
   basic=payload.get('basic') or {}
   lot=str(basic.get('lotNo') or '').strip()
@@ -360,7 +362,7 @@ def unplanned_entries(actual_index,equipment,matched_keys,now,history_hours=None
  cutoff=None
  if history_hours is not None:
   try:cutoff=now-timedelta(hours=float(history_hours))
-  except Exception:cutoff=None
+  except Exception as _e:quiet('数として読めない（既定で続ける）',_e);cutoff=None
  running,done=[],[]
  for key,a in actual_index.items():
   if key in matched_keys:continue
@@ -537,7 +539,7 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
   detail={}
   if r[8]:
    try:detail=json.loads(r[8])
-   except Exception:detail={}
+   except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);detail={}
   entry={'id':r[0],'order':r[2],'kind':r[3],'lotNo':r[4],'inspectionNo':r[5],'castingNo':r[6],
          'title':r[7],'detail':detail,'fixedStart':r[9],'estimateMinutes':r[10],
          'storedState':r[11],'actualRecordId':r[12],'remark':r[13],
@@ -704,7 +706,7 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
   fixed_start=None
   if e.get('fixedStart'):
    try:fixed_start=_parse_dt(e['fixedStart'])
-   except Exception:fixed_start=None
+   except Exception as _e:quiet('固定開始日時を読めない（固定なしとして並べる）',_e);fixed_start=None
   overdue=0.0
   resume_from=None
   if fixed_start:
@@ -795,7 +797,8 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
     est=(e.get('estimate') or {}).get('minutes')
     variance=round(actual_minutes-est,1) if est is not None else None
     e['actual']={'startAt':actual['startAt'],'endAt':actual['endAt'],'minutes':round(actual_minutes,1),'varianceMinutes':variance}
-   except Exception:
+   except Exception as _e:
+    quiet('実績の時刻を読めない（実績なしとして出す）',_e)
     e['actual']=None
   else:
    e['actual']=None
