@@ -619,11 +619,6 @@
   "harness": 1,
   "ms": 4000
  },
- "test_scprint.js": {
-  "count": 33,
-  "harness": 1,
-  "ms": 24420
- },
  "test_screorder.js": {
   "count": 5,
   "harness": 1,
