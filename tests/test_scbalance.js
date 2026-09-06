@@ -1,10 +1,10 @@
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+/* 待ちは「時間」ではなく「条件」（§9.102・3-15 ③・§9.347）。骨組み
+   （起動・rec・pageerror・素のダイアログ・集計・閉じる）は tests/lib/harness.js。
+   置き換え前後で全PASS行（測った値ごと）を突き合わせてある。 */
+const {run}=require('./lib/harness.js');
 const setMode=async m=>{await fetch('http://127.0.0.1:5029/api/access-mode',
  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
+run('test_scbalance: 一覧とスケジュールの釣り合い',async({page,rec,W,idle,paint})=>{
  /* 見え方の設定（まとめ・さかのぼり・表示列・行の色・配置）は「表示」
     パネル(§9.199)の中にある。開く→選ぶ→**閉じる**まで1つの手順にする
     ——開いたままにすると、パネルが表の右上を覆って次のクリックが
@@ -12,19 +12,17 @@ let b=null;
  const openView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.openViewPop&&WL.scheduleView.openViewPop());
  const closeView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.closeViewPop&&WL.scheduleView.closeViewPop());
  const pickView=async(sel,val)=>{await openView();await page.selectOption(sel,val).catch(()=>{});await closeView()};
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
  await setMode('edit');
  await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openSchedule',{timeout:15000});
  await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
  await page.reload({waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openSchedule',{timeout:15000});
- await page.waitForTimeout(1200);
+ await W.booted(page);
 
  // 基準: 仕掛一覧のデータセル
  await page.click('aside [data-db-key="SIKALOTNOW"]');
- await page.waitForTimeout(3000);
+ await idle();
  const base=await page.evaluate(()=>{
   const td=document.querySelector('#grid tbody td');const th=document.querySelector('#grid thead th');
   return {cell:td?parseFloat(getComputedStyle(td).fontSize):null,
@@ -32,7 +30,7 @@ let b=null;
           rowH:td?Math.round(td.getBoundingClientRect().height):null};
  });
  await page.click('#openSchedule');
- await page.waitForTimeout(3500);
+ await W.until(page,()=>!!document.querySelector(".sc-board-row,.sc-row-line"),null,15000);await idle();
  const sc=await page.evaluate(()=>{
   const g=s=>{const e=document.querySelector(s);return e?parseFloat(getComputedStyle(e).fontSize):null};
   const r=[...document.querySelectorAll('.sc-row-line')]
@@ -61,7 +59,7 @@ let b=null;
  // 表示サイズを変えても関係が保たれる
  for(const size of ['sm','lg']){
   await page.evaluate(v=>document.documentElement.setAttribute('data-ui-size',v),size);
-  await page.waitForTimeout(300);
+  await paint();
   const s2=await page.evaluate(()=>{
    const g=s=>{const e=document.querySelector(s);return e?parseFloat(getComputedStyle(e).fontSize):null};
    return {title:g('.sc-row-title'),body:parseFloat(getComputedStyle(document.body).fontSize)};
@@ -69,7 +67,7 @@ let b=null;
   rec(`表示サイズ${size}でも内容は本文と同じ大きさ`,Math.abs(s2.title-s2.body)<0.01,JSON.stringify(s2));
  }
  await page.evaluate(()=>document.documentElement.setAttribute('data-ui-size','md'));
- await page.waitForTimeout(300);
+ await paint();
  rec('横スクロールバーが出ない',await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1));
  await page.screenshot({path:'sched_balanced.png'});
 
@@ -84,21 +82,21 @@ let b=null;
  await setMode('schedule');
  await page.reload({waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openSchedule',{timeout:20000});
- await page.waitForTimeout(1500);
+ await W.booted(page);
  await page.click('#openSchedule');
  await page.waitForSelector('.sc-board-row',{timeout:20000});
- await page.waitForTimeout(1200);
+ await idle();
  const board=await page.$$eval('.sc-board-row',ns=>ns.map(n=>Math.round(n.getBoundingClientRect().height)));
  rec('俯瞰ボードの行の高さが揃っている',new Set(board).size===1,`高さ=${[...new Set(board)].join('/')} (${board.length}行)`);
 
  await page.evaluate(()=>{const r=[...document.querySelectorAll('.sc-board-row')]
    .find(x=>x.dataset.equipment==='テスト設備A');if(r)r.click()});
  await page.waitForSelector('.sc-row-line',{timeout:20000});
- await page.waitForTimeout(1500);
+ await W.settleFlags(page);await paint();
  // まとめ方を変えても、列見出しは1枚・行の間隔は一定であること
  for(const mode of ['none','date','dateshift']){
   await pickView('#scGroupSelect',mode);
-  await page.waitForTimeout(1200);
+  await paint();
   const m=await page.evaluate(()=>{
    const rows=[...document.querySelectorAll('.sc-row-line')];
    const heads=document.querySelectorAll('.sc-row-head').length;
@@ -118,10 +116,6 @@ let b=null;
  }
  await pickView('#scGroupSelect','none');
  await setMode('edit');
-
- console.log('\n=== SUMMARY ===');
- const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
- f.forEach(x=>console.log(' -',x.n,x.d||''));
 
  /* ---- 行の高さは中身で変わらない(§9.88 段0) ----
     以前は min-height だったため、その行にだけ出るもの(開始ボタン・遅延
@@ -155,13 +149,4 @@ let b=null;
  rec('つまみを戻すと元の高さへ戻る',
    !!fixed&&fixed.back.length===1&&fixed.back[0]===fixed.before,
    fixed?`${fixed.back.join('/')}px`:'');
-
- await b.close();process.exit(f.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
 });

@@ -5,25 +5,21 @@
     - 文字サイズは表示サイズ(--ui-scale)へ必ず追随する＝拡大で全部が変わる
     - 同じ役割の色は同じ値になる（枠線・補助文字の種類数が増えていない）
     - 測定画面の地色が一覧画面と同じ（以前は選択項目が常時琥珀だった） */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
 const API='http://127.0.0.1:5029';
 const setMode=async m=>{await fetch(`${API}/api/access-mode`,
  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
- try{
+/* 待ちは「時間」ではなく「条件」（§9.102・3-15 ③・§9.347）。骨組み
+   （起動・rec・pageerror・素のダイアログ・集計・閉じる）は tests/lib/harness.js。
+   置き換え前後で全PASS行（測った値ごと）を突き合わせてある。 */
+const {run}=require('./lib/harness.js');
+run('test_theme: 色と文字サイズはトークンから',async({page,rec,W,idle,paint})=>{
   await setMode('edit');
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:20000});
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#grid',{timeout:20000});
-  await page.waitForTimeout(1500);
+  await W.booted(page);await idle();
 
   /* ---- 1) 実際に配られたCSSを1枚として取る ---- */
   /* CSSは static/css/ 配下へ分割されている(§9.72)。読み込み順=カスケード順
@@ -201,12 +197,12 @@ let b=null;
      実績が無いので、いま開いている測定画面を「編集中」で保存して作業中に
      してから、スケジュールを開き直して確かめる(test_scsyncと同じ手順)。 */
   await page.click('#saveDraft');
-  await page.waitForTimeout(3500);
+  await idle(400,15000);
   await page.waitForFunction(()=>document.querySelector('#saveOverlay')?.hidden!==false,null,{timeout:30000}).catch(()=>{});
   await page.waitForFunction(()=>document.querySelector('#measureModal')?.hidden,null,{timeout:20000});
   await page.click('#openSchedule');
   await page.waitForSelector('.sc-row-line',{timeout:20000});
-  await page.waitForTimeout(2500);
+  await W.settleFlags(page);await paint();
   const labels=await page.evaluate(()=>{
    const btns=[...document.querySelectorAll('.sc-row-delete-history')];
    return {n:btns.length,texts:[...new Set(btns.map(b=>b.textContent.trim()))],
@@ -325,9 +321,9 @@ let b=null;
   await setMode('edit');
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openMasterMaint',{timeout:20000});
-  await page.waitForTimeout(1200);
-  await page.click('#openMasterMaint');await page.waitForTimeout(1500);
-  await page.click('#masterMaintNav [data-master="accessPermission"]');await page.waitForTimeout(2000);
+  await W.booted(page);
+  await page.click('#openMasterMaint');await idle();
+  await page.click('#masterMaintNav [data-master="accessPermission"]');await idle(400,15000);
   const form=await page.evaluate(()=>{
    const btn=document.querySelector('#masterMaintPanel .mm-new,#masterMaintPanel [data-mm-new]')
     ||[...document.querySelectorAll('#masterMaintPanel button')].find(b=>/新規|追加/.test(b.textContent));
@@ -349,18 +345,4 @@ let b=null;
   });
   rec('「すべての設備」を選ぶと個別選択は触れなくなる',
    toggled.disabled&&toggled.searchDisabled,JSON.stringify(toggled));
-
-  console.log('\n=== SUMMARY ===');
-  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
-  f.forEach(x=>console.log(' -',x.n,x.d||''));
-  await b.close();process.exit(f.length?1:0);
- }catch(e){
-  console.error('FATAL',e);
-  await b.close().catch(()=>{});
-  process.exit(2);
- }
-})().catch(async e=>{
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
 });

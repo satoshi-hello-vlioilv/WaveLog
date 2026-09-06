@@ -404,11 +404,6 @@
   "harness": 1,
   "ms": 1200
  },
- "test_orphan.js": {
-  "count": 8,
-  "harness": 1,
-  "ms": 13400
- },
  "test_presenceui.js": {
   "count": 5,
   "harness": 1,
@@ -539,11 +534,6 @@
   "harness": 1,
   "ms": 0
  },
- "test_scbalance.js": {
-  "count": 9,
-  "harness": 1,
-  "ms": 13700
- },
  "test_scbar.js": {
   "count": 19,
   "harness": 1,
@@ -608,11 +598,6 @@
   "count": 2,
   "harness": 1,
   "ms": 4000
- },
- "test_screorder.js": {
-  "count": 5,
-  "harness": 1,
-  "ms": 12700
  },
  "test_screport.js": {
   "count": 1,
@@ -718,11 +703,6 @@
   "count": 6,
   "harness": 1,
   "ms": 10400
- },
- "test_theme.js": {
-  "count": 6,
-  "harness": 1,
-  "ms": 12200
  },
  "test_tolscale.js": {
   "count": 7,

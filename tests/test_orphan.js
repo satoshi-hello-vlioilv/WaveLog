@@ -1,5 +1,4 @@
 /* データ一覧とスケジュール実績の食い違い(§9.52)の検証 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
 const B='http://127.0.0.1:5029';
 const setMode=async m=>{await fetch(B+'/api/access-mode',{method:'POST',
  headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
@@ -18,13 +17,11 @@ const backupIds=async()=>{
  const r=await fetch(B+'/api/measurement/backup/list').then(x=>x.json());
  return (r.items||[]).map(i=>i.id);
 };
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
+/* 待ちは「時間」ではなく「条件」（§9.102・3-15 ③・§9.347）。骨組み
+   （起動・rec・pageerror・素のダイアログ・集計・閉じる）は tests/lib/harness.js。
+   置き換え前後で全PASS行（測った値ごと）を突き合わせてある。 */
+const {run}=require('./lib/harness.js');
+run('test_orphan: 孤児になった記録の始末',async({page,rec,W,idle,paint})=>{
  await setMode('edit');
 
  const openSchedule=async()=>{
@@ -33,10 +30,10 @@ let b=null;
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:15000});
-  await page.waitForTimeout(1200);
+  await W.booted(page);
   await page.click('#openSchedule');
   await page.waitForSelector('.sc-row-line',{timeout:15000});
-  await page.waitForTimeout(3000);
+  await W.settleFlags(page);await idle();
  };
  const rowsFor=async lot=>page.$$eval('.sc-row-line',(ns,l)=>ns
    .filter(n=>(n.querySelector('.sc-row-title')?.textContent||'').includes(l))
@@ -86,10 +83,10 @@ let b=null;
   await reliablePut(m);
   await backupRecord(m);
  });
- await page.waitForTimeout(1200);
+ await idle();
  rec('端末内保存でバックアップにも行ができる',(await backupIds()).includes('local-del-1'));
  await page.evaluate(async()=>{await reliableDelete('local-del-1')});
- await page.waitForTimeout(1500);
+ await idle();
  rec('データ一覧から削除するとバックアップからも消える(本体の修正)',
    !(await backupIds()).includes('local-del-1'));
 
@@ -97,13 +94,13 @@ let b=null;
  await put('pending-del','P9005','C9005',20,null,'編集中');
  await page.route('**/api/measurement/backup/delete',r=>r.abort());
  await page.evaluate(async()=>{await reliableDelete('pending-del')});
- await page.waitForTimeout(800);
+ await idle();
  const stillThere=(await backupIds()).includes('pending-del');
  const queued=await page.evaluate(()=>JSON.parse(localStorage.getItem('WaveLogPendingBackupDeleteV1')||'[]'));
  rec('サーバーへ届かないと削除は保留になる',stillThere&&queued.includes('pending-del'),JSON.stringify(queued));
  await page.unroute('**/api/measurement/backup/delete');
  await page.evaluate(async()=>{await flushPendingBackupDeletes()});
- await page.waitForTimeout(1200);
+ await idle();
  rec('通信が戻ると保留分をまとめて消す',!(await backupIds()).includes('pending-del'),
    JSON.stringify(await page.evaluate(()=>JSON.parse(localStorage.getItem('WaveLogPendingBackupDeleteV1')||'[]'))));
 
@@ -118,7 +115,7 @@ let b=null;
    .find(x=>(x.querySelector('.mm-nav-label')||x).textContent.trim()==='データ引継ぎ');
   if(t)t.click();
  });
- await page.waitForTimeout(2000);
+ await idle(400,15000);
  const view=await page.evaluate(()=>({
   orphanRows:document.querySelectorAll('#masterMaintList .mm-row.is-orphan').length,
   badge:document.querySelectorAll('#masterMaintList .mm-imp-badge.orphan').length,
@@ -138,7 +135,7 @@ let b=null;
  // 削除はアプリ内の確認モーダル(confirmModal)を通る。OKを押す。
  await page.waitForSelector('#appConfirmOk',{state:'visible',timeout:5000});
  await page.click('#appConfirmOk');
- await page.waitForTimeout(2500);
+ await idle(400,15000);
  rec('画面から残骸を削除できる',!(await backupIds()).includes('orphan-view'));
 
  // 後片付け
@@ -146,16 +143,4 @@ let b=null;
   await fetch('/api/measurement/backup/delete',{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify({ids:['done-noend','ng-noend','orphan-run','pending-del','orphan-view','local-del-1']})});
  });
-
- await b.close();
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
 });
