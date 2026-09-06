@@ -32,7 +32,7 @@ let b=null;
      以前は3つのファイルが`toleranceDetail`を読み込み順に被せており、順番も
      引数の運び方も読み込み順まかせだった。**提供者の顔ぶれと順番を画面から
      読んで固定する**——1つ登録し忘れると、その分の公差が黙って製造公差に
-     化ける（A/Bで分割ロットの提供者を外すと`test_splitlive`が落ちる）。 */
+     化ける（A/Bで分割ロットの提供者を外すと、この網が6件落ちる）。 */
   const reg=await page.evaluate(()=>({providers:WL.tolerance.providers(),hooks:WL.measureHooks.count()}));
   rec('公差の提供者は3つ（分割ロット→指示型→指示型・単一）が priority の順に並ぶ',
       reg.providers.map(p=>p.name).join('／')==='分割ロット（条ごと）／指示型（指示_項目の値）／指示型（単一の指示値）'

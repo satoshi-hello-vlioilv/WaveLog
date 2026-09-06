@@ -377,7 +377,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
-| 公差の答えは`WL.tolerance`の登録表（提供者は`priority`・`null`は「公差なし」・`undefined`は「次へ」）。描いたあとに足すのは`WL.measureHooks`へ登録。被せない | `test_patchlint.py`・`test_tolscale.js` | [§9.348](docs/decisions/9.348.md) |
+| 公差の答えは`WL.tolerance`の登録表。描いたあとに足すのは`WL.measureHooks`へ登録し、被せない | `test_patchlint.py`・`test_tolscale.js` | [§9.348](docs/decisions/9.348.md) |
 | テストの待ちは`tests/lib/wait.js`の道具で「条件」で置く | — | [§9.324](docs/decisions/9.324-1.md) |
 | 紙の「混入位置」の何条目かは赤太字。赤は1つ | — | [§9.323](docs/decisions/9.323-1.md) |
 | 異常位置の条混入位置は3か所まで。1か所ぶんの計算は`spotOf()`の1箇所 | `test_rpdefect.js` | [§9.323](docs/decisions/9.323-1.md) |
