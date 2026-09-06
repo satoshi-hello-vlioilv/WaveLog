@@ -80,9 +80,9 @@
   "ms": 3000
  },
  "test_collayout.js": {
-  "count": 16,
+  "count": 0,
   "harness": 1,
-  "ms": 10950
+  "ms": 0
  },
  "test_colmenu.js": {
   "count": 5,
@@ -135,9 +135,9 @@
   "ms": 6700
  },
  "test_defectlink.js": {
-  "count": 17,
+  "count": 0,
   "harness": 1,
-  "ms": 10900
+  "ms": 0
  },
  "test_density.js": {
   "count": 0,
@@ -535,9 +535,9 @@
   "ms": 0
  },
  "test_scbar.js": {
-  "count": 19,
+  "count": 0,
   "harness": 1,
-  "ms": 13650
+  "ms": 0
  },
  "test_scbatch.js": {
   "count": 0,

@@ -28,6 +28,7 @@ let b=null,page=null;
 (async()=>{
  b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
  page=await b.newPage({viewport:{width:1920,height:1080}});
+ const W=require('./lib/wait.js');const {idle}=W.track(page);const paint=()=>W.paint(page);
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  const errs=[];
  page.on('pageerror',e=>errs.push(e.message));
@@ -52,7 +53,7 @@ let b=null,page=null;
   if(!started)throw Error('開始できる行が無い');
   await page.waitForFunction(()=>!document.querySelector('#measureModal')?.hidden,null,{timeout:25000});
   await page.waitForFunction(()=>typeof S!=='undefined'&&!!S.measure,null,{timeout:25000});
-  await page.waitForTimeout(1200);
+  await idle(400,15000);
 
   /* 材料を注ぐ（母材幅・元幅・横割数）。 */
   await page.evaluate(()=>{
@@ -61,12 +62,12 @@ let b=null,page=null;
    const h=document.getElementById('horizontalCount');
    if(h){h.value='4';h.dispatchEvent(new Event('change',{bubbles:true}))}
   });
-  await page.waitForTimeout(600);
+  await idle(300,5000);
 
   /* ---- 1) 図をつかんで位置を決める ---- */
   await page.click('#openDefect');
   await page.waitForFunction(()=>!document.querySelector('#defectModal')?.hidden,null,{timeout:8000});
-  await page.waitForTimeout(500);
+  await paint();
   const st=await page.evaluate(()=>{
    const e=document.querySelector('#defectStrip');const r=e.getBoundingClientRect();
    return {x:r.x,y:r.y,w:r.width,h:r.height,
@@ -81,7 +82,7 @@ let b=null,page=null;
   await page.mouse.down();
   await page.mouse.move(st.x+st.w*0.62,st.y+st.h/2,{steps:8});
   await page.mouse.up();
-  await page.waitForTimeout(500);
+  await paint();
   const dragged=await page.evaluate(()=>({
    距離:document.querySelector('#defectDistance').value,
    答え:(document.querySelector('#defectResult')||{}).textContent||'',
@@ -95,7 +96,7 @@ let b=null,page=null;
      何も起きていないのと同じ（座標を読んでいない実装でも通ってしまう）。 */
   await page.mouse.move(st.x+st.w*0.15,st.y+st.h/2);
   await page.mouse.down();await page.mouse.up();
-  await page.waitForTimeout(400);
+  await paint();
   const left=await page.inputValue('#defectDistance');
   rec('押した場所で距離が変わる（座標を読んでいる）',
       Number(left)<Number(dragged.距離),JSON.stringify({左:left,右:dragged.距離}));
@@ -103,11 +104,12 @@ let b=null,page=null;
   /* ---- 2) 保存すると条の設計に印が出る ---- */
   await page.mouse.move(st.x+st.w*0.62,st.y+st.h/2);
   await page.mouse.down();await page.mouse.up();
-  await page.waitForTimeout(400);
+  await paint();
   await page.click('#defectSave');
-  await page.waitForTimeout(500);
+  await idle(300,5000);
   await page.click('#closeDefect');
-  await page.waitForTimeout(900);
+  await page.waitForFunction(()=>document.querySelector('#defectModal')?.hidden,null,{timeout:8000}).catch(()=>{});
+  await idle(300,5000);
   const marks=await page.evaluate(()=>{
    const chip=document.querySelector('#splitDefectChip');
    const tg=document.querySelector('#splitDefectToggle');
@@ -145,7 +147,7 @@ let b=null,page=null;
    const h=document.getElementById('horizontalCount');
    if(h){h.value='40';h.dispatchEvent(new Event('change',{bubbles:true}))}
   });
-  await page.waitForTimeout(900);
+  await idle(300,5000);
   const narrow=await page.evaluate(()=>{
    const flags=[...document.querySelectorAll('.svb-defect')];
    const shown=el=>[...el.children].filter(c=>c.offsetParent!==null||c.getClientRects().length)
@@ -170,7 +172,7 @@ let b=null,page=null;
    const h=document.getElementById('horizontalCount');
    if(h){h.value='4';h.dispatchEvent(new Event('change',{bubbles:true}))}
   });
-  await page.waitForTimeout(700);
+  await idle(300,5000);
   rec('帯に件数と保存の状態が出る',
       /異常/.test(marks.帯)&&/保存済み/.test(marks.帯),marks.帯);
 
@@ -183,15 +185,17 @@ let b=null,page=null;
   });
   rec('単クリックでは判定の窓を開かない（条を選ぶまま）',one===false,String(one));
   await page.dblclick('.svb-defect');
-  await page.waitForTimeout(500);
+  await page.waitForFunction(()=>!document.querySelector('#defectModal')?.hidden,null,{timeout:5000}).catch(()=>{});
+  await paint();
   const opened=await page.evaluate(()=>!document.querySelector('#defectModal')?.hidden);
   rec('印のダブルクリックで異常位置判定が開く',opened===true,String(opened));
   await page.click('#closeDefect');
-  await page.waitForTimeout(700);
+  await page.waitForFunction(()=>document.querySelector('#defectModal')?.hidden,null,{timeout:8000}).catch(()=>{});
+  await paint();
 
   /* ---- 4) 出す/出さない（切でも「判定はある」ことは言う） ---- */
   await page.click('#splitDefectToggle');
-  await page.waitForTimeout(800);
+  await idle(300,5000);
   const off=await page.evaluate(()=>({
    印:document.querySelectorAll('.svb-defect').length,
    帯:(document.querySelector('#splitDefectChip')||{}).hidden===false,
@@ -200,7 +204,7 @@ let b=null,page=null;
   rec('切でも「判定はある」ことは帯が言う',off.帯===true&&/出さない/.test(off.入切),
       JSON.stringify(off));
   await page.click('#splitDefectToggle');
-  await page.waitForTimeout(800);
+  await idle(300,5000);
   const back=await page.evaluate(()=>document.querySelectorAll('.svb-defect').length);
   rec('入に戻すと印が戻る',back>=1,String(back));
 
@@ -218,7 +222,7 @@ let b=null,page=null;
    if(pitch){pitch.value='';pitch.dispatchEvent(new Event('input',{bubbles:true}))}
    WL.defect.refresh();
   });
-  await page.waitForTimeout(400);
+  await paint();
   const none=await page.evaluate(()=>({
    押せる:!document.getElementById('defectSave').disabled,
    帯:(document.getElementById('defectSaveState')||{}).textContent||'',
@@ -231,7 +235,7 @@ let b=null,page=null;
    const el=document.getElementById('defectPitch');
    el.value='785.4';el.dispatchEvent(new Event('input',{bubbles:true}));
   });
-  await page.waitForTimeout(500);
+  await idle(400,5000);
   const only=await page.evaluate(()=>({
    押せる:!document.getElementById('defectSave').disabled,
    説明:document.getElementById('defectSave').getAttribute('title')||'',
@@ -244,7 +248,7 @@ let b=null,page=null;
       /長手方向（ピッチ）は記録済み/.test(only.帯)&&!/帳票に出ません/.test(only.帯),only.帯);
 
   await page.click('#defectSave');
-  await page.waitForTimeout(600);
+  await idle(300,5000);
   const saved=await page.evaluate(()=>{
    const s=(S.measure&&S.measure.settings)||{};
    return {ピッチ:(s.defectRoll||{}).pitch,

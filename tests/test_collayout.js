@@ -19,6 +19,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1600,height:950}});
+ const W=require('./lib/wait.js');const {idle}=W.track(page);const paint=()=>W.paint(page);
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  const errs=[];
  page.on('pageerror',e=>errs.push(e.message));
@@ -29,7 +30,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'load'});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
-  await page.waitForTimeout(1200);
+  await idle(400,15000);
 
   const cols=()=>page.evaluate(()=>[...document.querySelectorAll('#grid th[data-sort-col]')].map(t=>t.dataset.sortCol));
   const base=await cols();
@@ -78,8 +79,9 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
     await page.mouse.move(g.x+g.width/2,g.y+g.height/2);
     await page.mouse.down();
     await page.mouse.move(g.x+g.width/2-70,g.y+g.height/2,{steps:8});
+    const saved=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('column-layout'),{timeout:10000}).catch(()=>null);
     await page.mouse.up();
-    await page.waitForTimeout(900);
+    await saved;await idle(300,5000);
     const after=await page.evaluate(()=>{
      const th=document.querySelector('#grid thead th[data-col="__split__"]');
      const tbl=document.querySelector('#grid table');
@@ -103,7 +105,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   },{order,widths:widths||{},hidden:hidden||[]});
 
   await apply([base[2],base[0],base[1],...base.slice(3)],{[base[0]]:222},[base[1]]);
-  await page.waitForTimeout(250);
+  await idle(300,5000);
   const after=await cols();
   rec('決めた順で並ぶ',after[0]===base[2]&&after[1]===base[0],`${after.slice(0,3).join(' / ')}`);
   rec('非表示にした列は出ない',!after.includes(base[1]),base[1]);
@@ -116,7 +118,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   /* ---- 3) 一覧を開き直しても残る ---- */
   await page.reload({waitUntil:'load'});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
-  await page.waitForTimeout(1200);
+  await idle(400,15000);
   const reloaded=await cols();
   rec('開き直しても同じ並びで出る',reloaded[0]===base[2]&&!reloaded.includes(base[1]),
    reloaded.slice(0,3).join(' / '));
@@ -157,7 +159,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   await post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
   await page.evaluate(()=>{WL.columnLayout.forget();return load()});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
-  await page.waitForTimeout(400);
+  await idle(300,5000);
   const headKeys=()=>page.evaluate(()=>[...document.querySelectorAll('#grid thead th')]
     .map(t=>t.dataset.col||t.textContent.trim()));
   const beforeGrip=await headKeys();
@@ -166,8 +168,9 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   await page.mouse.move(gb.x+gb.width/2,gb.y+gb.height/2);
   await page.mouse.down();
   await page.mouse.move(gb.x+gb.width/2+60,gb.y+gb.height/2,{steps:6});
+  const savedGrip=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('column-layout'),{timeout:10000}).catch(()=>null);
   await page.mouse.up();
-  await page.waitForTimeout(900);
+  await savedGrip;await idle(300,5000);
   const savedAfterGrip=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(target))).json();
   const virt=['#','__split__','__measure__'].filter(k=>beforeGrip.length&&true);
   rec('列幅を変えても番号・ボタンの列が並びから消えない',
@@ -175,7 +178,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
    virt.filter(k=>!(savedAfterGrip.order||[]).includes(k)).join(' / ')||'すべて残っている');
   await page.evaluate(()=>{WL.columnLayout.forget();return load()});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
-  await page.waitForTimeout(400);
+  await idle(300,5000);
   const afterGrip=await headKeys();
   rec('列幅を変えても番号・ボタンの列が右端へ飛ばない',
    afterGrip[0]===beforeGrip[0]&&afterGrip[1]===beforeGrip[1]
@@ -192,7 +195,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   await post('/api/column-layout-master',{target,order:brokenOrder,widths:{},hidden:[],user_id:'test'});
   await page.evaluate(()=>{WL.columnLayout.forget();return load()});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
-  await page.waitForTimeout(400);
+  await idle(300,5000);
   const healed=await headKeys();
   rec('番号・ボタンの列が無い古い並びでも先頭へ戻る',
    healed[0]==='#'&&healed[1]==='__split__',healed.slice(0,3).join(' / '));
@@ -209,7 +212,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   await post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
   await page.evaluate(()=>{WL.columnLayout.forget();return load()});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
-  await page.waitForTimeout(400);
+  await idle(300,5000);
   const injected=await page.evaluate(()=>{
    const dup=a=>{const s=new Set(),d=[];a.forEach(x=>{if(s.has(x))d.push(x);s.add(x)});return d};
    const orig=[...S.columns];
@@ -246,7 +249,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
    return load();
   },fxKey);
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
-  await page.waitForTimeout(500);
+  await idle(300,5000);
   const fxBefore=await page.evaluate(k=>({
    ある:(WL.columnLayout.get(listLayoutTarget()).formulas||{})[k]!==undefined,
    見出し:[...document.querySelectorAll('#grid thead th')].some(t=>t.dataset.col===k),
@@ -258,8 +261,9 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
    await page.mouse.move(a.x+a.width/2,a.y+a.height/2);
    await page.mouse.down();
    await page.mouse.move(z.x+z.width*0.7,z.y+z.height/2,{steps:12});
+   const savedZ=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('column-layout'),{timeout:10000}).catch(()=>null);
    await page.mouse.up();
-   await page.waitForTimeout(1200);
+   await savedZ;await idle(300,5000);
   }
   const fxAfter=await page.evaluate(k=>({
    ある:(WL.columnLayout.get(listLayoutTarget()).formulas||{})[k]!==undefined,
@@ -405,7 +409,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   await post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
   await page.evaluate(()=>{WL.columnLayout.forget();return load()});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
-  await page.waitForTimeout(500);
+  await idle(300,5000);
   const widthMap=()=>page.evaluate(()=>Object.fromEntries(
     [...document.querySelectorAll('#grid thead th[data-sort-col]')]
       .map(t=>[t.dataset.sortCol,Math.round(t.getBoundingClientRect().width)])));
@@ -433,10 +437,12 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
    during.__table__=await page.evaluate(()=>{
     const t=document.querySelector('#grid table');
     return t?Math.round(t.getBoundingClientRect().width):0;});
-   await page.mouse.up();
    /* 保存は離してから0.3秒落ち着いてまとめて1回(§9.197)。その保存が
-      戻ってきてから次を引く——**戻る前に引くと、直っていなくても通る**。 */
-   await page.waitForTimeout(1200);
+      戻ってきてから次を引く——**戻る前に引くと、直っていなくても通る**。
+      応答待ちは**離す前に**仕掛ける（§9.347 追補）。 */
+   const savedDrag=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('column-layout'),{timeout:10000}).catch(()=>null);
+   await page.mouse.up();
+   await savedDrag;await idle(300,5000);
    return during;
   };
   const dragKeys=(await cols()).filter(k=>k&&!String(k).startsWith('__')&&k!=='#');
@@ -452,7 +458,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
    await WL.columnLayout.save(t,{...cur,widths:{...(cur.widths||{}),[ks[0]]:320,[ks[1]]:320}});
    renderGrid();
   },[K1,K2]);
-  await page.waitForTimeout(600);
+  await idle(300,5000);
   const w0=await widthMap();
   const d1=(K1&&K2)?await dragBy(K1,-50):null;
   const moved=!!d1;
@@ -512,7 +518,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
    const t=listLayoutTarget(),cur=WL.columnLayout.get(t);
    await WL.columnLayout.save(t,{...cur,sorts:{[k]:{buckets:['empty','num','date','text']}}});
   },sortKey);
-  await page.waitForTimeout(400);
+  await idle(300,5000);
   await dragBy(K1,-40);
   const afterSorts=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(target))).json();
   rec('列幅を引いても並べ替えの設定が消えない',
@@ -533,7 +539,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
    await WL.columnLayout.patch(t,{order:[g[0],g[1],...(cur.order||[])
      .filter(k=>k!==g[0]&&k!==g[1])]});
   },[GHOST,GHOST2]);
-  await page.waitForTimeout(500);
+  await idle(300,5000);
   const seeded=await (await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(target))).json();
   rec('前提: いま画面に出ていない列が並びに入っている',
       (seeded.order||[]).includes(GHOST)&&(seeded.order||[]).includes(GHOST2)

@@ -32,6 +32,7 @@ let b=null;
  b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  const page=await b.newPage({viewport:{width:1700,height:1000}});
+ const W=require('./lib/wait.js');const {idle}=W.track(page);const paint=()=>W.paint(page);
  page.on('pageerror',e=>console.log('[pageerror]',e.message));
  page.on('dialog',d=>d.accept());
  const setMode=m=>page.evaluate(async mm=>{await fetch('/api/access-mode',{method:'POST',
@@ -56,7 +57,7 @@ let b=null;
   await page.evaluate(e=>{const r=[...document.querySelectorAll('.sc-board-row')]
     .find(x=>x.dataset.equipment===e);if(r)r.click()},EQ);
   await page.waitForSelector('.sc-row-line',{timeout:30000});
-  await page.waitForTimeout(1500);
+  await idle(400,15000);
 
   /* ---- 1) 操作列は1行 ----------------------------------------
      **「折り返していないこと」を高さではなく上端で見る**——高さは中身の
@@ -223,11 +224,11 @@ let b=null;
   /* **開くのは常に1つ**——2枚開くと、長い中身のどちらを見ているのか
      分からなくなる。逆順でも効くことを見る（片方だけが相手を畳む実装だと
      押す順で結果が変わる）。 */
-  await page.click('#scLayoutBtn');await page.waitForTimeout(250);
-  await page.click('#scRowStyleBtn');await page.waitForTimeout(600);
+  await page.click('#scLayoutBtn');await paint();
+  await page.click('#scRowStyleBtn');await paint();
   const acc1=await page.evaluate(()=>({lay:document.getElementById('scLayoutPop').hidden,
                                        rs:document.getElementById('scRowStylePop').hidden}));
-  await page.click('#scLayoutBtn');await page.waitForTimeout(400);
+  await page.click('#scLayoutBtn');await paint();
   const acc2=await page.evaluate(()=>({lay:document.getElementById('scLayoutPop').hidden,
                                        rs:document.getElementById('scRowStylePop').hidden}));
   rec('開く段は常に1つ（どちらの順でも）',
@@ -244,6 +245,8 @@ let b=null;
   await closeView();
 
   // 分割ありの親を1件入れて、実際のバッジを見る
+  // 追加はまとめ待ち→書込→応答。**押す前に**応答待ちを仕掛ける（§9.347 追補）
+  const addDone=page.waitForResponse(r=>/\/plan\/(batch|add)/.test(r.url()),{timeout:20000}).catch(()=>null);
   const added=await page.evaluate(async lot=>{
    const r=await fetch('/api/table?'+new URLSearchParams({db:'SIKALOTNOW',table:'仕掛',page:1,page_size:5,
      filters:JSON.stringify([{column:'ロット番号',op:'eq',value:lot}])}));
@@ -252,7 +255,9 @@ let b=null;
    await window.scheduleAddFromRow(row);
    return true;
   },PARENT);
-  await page.waitForTimeout(4000);
+  await addDone;
+  await page.waitForFunction(()=>!document.querySelector('.sc-flag-pending'),{timeout:20000}).catch(()=>{});
+  await idle(400,8000);
   const pid=await page.evaluate(async e=>{
    const r=await fetch('/api/schedule/plan?equipment='+encodeURIComponent(e));
    const es=((await r.json()).entries||[]).filter(x=>x.lotNo==='L9000'&&x.parentId==null);
@@ -267,9 +272,9 @@ let b=null;
   rec('既定のバッジは「子」＋件数',
       !!bCount&&/子/.test(bCount.t)&&/2/.test(bCount.t)&&bCount.vis,JSON.stringify(bCount));
   await openView();
-  await page.click('#scLayoutBtn');await page.waitForTimeout(300);
+  await page.click('#scLayoutBtn');await paint();
   await page.click('#scLayoutPop input[name=scChildBadge][value=parent]');
-  await page.waitForTimeout(700);
+  await idle(300,5000);  // 印の切り替えで行を描き直す
   await closeView();
   const bParent=await badge();
   rec('「親」を選ぶと数字が消える',
@@ -282,9 +287,9 @@ let b=null;
       await page.evaluate(()=>{try{return JSON.parse(localStorage.getItem('scLayoutPrefsV1')||'{}').childBadge==='parent'}catch(e){return false}}));
   // 既定へ戻す
   await openView();
-  await page.click('#scLayoutBtn');await page.waitForTimeout(250);
+  await page.click('#scLayoutBtn');await paint();
   await page.click('#scLayoutPop input[name=scChildBadge][value=count]');
-  await page.waitForTimeout(600);
+  await idle(300,5000);
   await closeView();
   rec('「子N」へ戻せる',/子/.test(((await badge())||{}).t||''),JSON.stringify(await badge()));
 
@@ -315,9 +320,9 @@ let b=null;
   const altKey=selInfo.keys.find(k=>k!=='lotNo');
   if(altKey){
    await openView();
-   await page.click('#scLayoutBtn');await page.waitForTimeout(300);
+   await page.click('#scLayoutBtn');await paint();
    await page.selectOption('#scChildBadgeCol',altKey);
-   await page.waitForTimeout(700);
+   await idle(300,5000);
    await closeView();
    rec('選んだ列へバッジが移る（一番左固定ではない）',
        await badgeColAt()===altKey,`${await badgeColAt()} / 選んだ:${altKey}`);
@@ -328,9 +333,9 @@ let b=null;
          catch(e){return null}}))===altKey);
    // 自動へ戻す（デフォルトのロット番号を確かめてから、後始末を兼ねて戻す）
    await openView();
-   await page.click('#scLayoutBtn');await page.waitForTimeout(250);
+   await page.click('#scLayoutBtn');await paint();
    await page.selectOption('#scChildBadgeCol','');
-   await page.waitForTimeout(600);
+   await idle(300,5000);
    await closeView();
    rec('「自動」に戻すとロット番号（既定）へ戻る',await badgeColAt()==='lotNo',String(await badgeColAt()));
   }else{
@@ -349,9 +354,9 @@ let b=null;
   });
   const ghostOn=()=>page.evaluate(()=>{const g=document.getElementById('scInsertGhost');
     return !!(g&&g.parentNode&&g.getBoundingClientRect().width>0)});
-  await page.mouse.move(geo.x,geo.mid);await page.waitForTimeout(300);
+  await page.mouse.move(geo.x,geo.mid);await paint();
   const midGhost=await ghostOn();
-  await page.mouse.move(geo.x,geo.top);await page.waitForTimeout(300);
+  await page.mouse.move(geo.x,geo.top);await paint();
   const edgeGhost=await ghostOn();
   rec('行の中央では差し込みの帯が出ない（掴む場所として空ける）',midGhost===false,
       `中央y=${geo.mid} 行高=${geo.h}`);
@@ -458,7 +463,7 @@ let b=null;
        menu.inView&&menu.kw.length===1&&menu.over===0,JSON.stringify(menu));
    /* **外を押すと閉じる**（開いた器を控えていないと二度と閉じない・§9.222 ①）。 */
    await page.mouse.click(5,300);
-   await page.waitForTimeout(300);
+   await paint();
    rec('外を押すと同期のメニューは閉じる',
        await page.evaluate(()=>!document.getElementById('scSyncMenu')));
   }else{
@@ -484,7 +489,7 @@ let b=null;
    rec('「広く」の入口がある（畳む前は戻り道の札を出さない）',
        before.btn&&!before.pill&&before.head>0,JSON.stringify(before));
    await page.click('#scWideBtn');
-   await page.waitForTimeout(400);
+   await paint();
    const after=await page.evaluate(()=>{
     const h=document.querySelector('main>header');
     const pill=document.getElementById('scWideExit');
@@ -507,7 +512,7 @@ let b=null;
    rec('広く使う設定はこの端末に残る（毎回選び直させない）',after.kept,String(after.kept));
    /* **Escで戻せる**（畳んだ先から戻れない状態を作らない・§4）。 */
    await page.keyboard.press('Escape');
-   await page.waitForTimeout(400);
+   await paint();
    const back=await page.evaluate(()=>({
     tl:Math.round(document.getElementById('scTimeline').clientHeight),
     headShown:!!(document.querySelector('main>header')||{}).getBoundingClientRect
@@ -521,7 +526,8 @@ let b=null;
 
   /* ---- 4) 中身が無い場面では入口ごと消える ---- */
   await page.evaluate(()=>{const b=document.getElementById('scModeBoard');if(b)b.click()});
-  await page.waitForTimeout(1500);
+  await page.waitForSelector('.sc-board-row',{timeout:15000}).catch(()=>{});
+  await idle(400,8000);
   const inBoard=await page.evaluate(()=>{
    const btn=document.getElementById('scViewMenuBtn');
    const grp=document.querySelector('#scHead .sc-tools[data-tools="view"]');
