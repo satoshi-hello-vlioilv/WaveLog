@@ -161,7 +161,7 @@ try:
     # ---- 9. 紙の割り付けには個人設定を出さない -------------------------
     # 同じ名前の紙を2人が刷って中身が違う、を作らない。**印の書き忘れは
     # 画面を開かないと気づけない**ので、ここで機械的に見る。
-    src = (ROOT / 'static' / 'js' / 'opsheet-print.js').read_text(encoding='utf-8')
+    src = (ROOT / 'static' / 'js' / 'report' / 'opsheet-print.js').read_text(encoding='utf-8')
     rec('操業データ表(紙)の口は personalScope:false を宣言している',
         'personalScope:false' in src.replace(' ', ''))
     # もう片側——表示する一覧の口は宣言しない（＝既定で切り替えられる）。

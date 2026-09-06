@@ -230,14 +230,14 @@ finally:
 # ==========================================================
 # ⑧ 品質等級の呼び名は画面とそろっている（§9.285 ②）
 # ==========================================================
-# 記録は`qualityGrades[<呼び名>]`（`measurement-view.js`の
+# 記録は`qualityGrades[<呼び名>]`（`measure-view.js`の
 # `QUALITY_GRADE_SOURCE`が書く）。候補の綴りがずれると、**選んでも必ず空欄**に
 # なる（§CLAUDE 6「見本が嘘をつく」の裏返し）。**目で数えないこと**——
 # 呼び名は12個あり、片方だけ直した状態が作れる。
 import re as _re
 from pathlib import Path as _Path
 ROOT = _Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_js = (ROOT / 'static' / 'js' / 'measurement-view.js').read_text(encoding='utf-8')
+_js = (ROOT / 'static' / 'js' / 'measure' / 'measure-view.js').read_text(encoding='utf-8')
 _m = _re.search(r'const QUALITY_GRADE_SOURCE=\{(.*?)\n\};', _js, _re.S)
 _screen = set(_re.findall(r"'([^']+)':\[", _m.group(1))) if _m else set()
 rec('⑧ 品質等級の呼び名がサーバーと画面でそろっている',

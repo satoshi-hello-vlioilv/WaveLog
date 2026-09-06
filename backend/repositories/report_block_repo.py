@@ -277,7 +277,7 @@ STAT_AXES = {f'stat.{ik}.{ak}': {AXIS_ITEM: il, AXIS_AGG: al}
 # 触れない）。道を候補へ出せば、既にある仕組み（§9.274のマス・§9.277の
 # ピボット・書式）がそのまま効く。
 #
-# **等級の呼び名は画面（`measurement-view.js`の`QUALITY_GRADE_SOURCE`）と
+# **等級の呼び名は画面（`measure-view.js`の`QUALITY_GRADE_SOURCE`）と
 # そろえること**——記録は`qualityGrades[<呼び名>]`なので、綴りがずれると
 # 候補から選んでも必ず空欄になる。`tests/test_rbcells.py`が機械で突き合わせる。
 QUALITY_GRADE_LABELS = ('生地外観', 'アルマイト', '表面処理', '付着油',

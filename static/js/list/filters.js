@@ -2529,11 +2529,11 @@
   const baseRenderGrid=typeof renderGrid==='function'?renderGrid:null;
   if(baseRenderGrid){renderGrid=function(){baseRenderGrid();renderGenericFilterBar();updateFilterSuggestions();};}
 
-  /* ---- 公差の図は`measurement-input.js`が持つ（§9.150） ----
+  /* ---- 公差の図は`measure-input.js`が持つ（§9.150） ----
      以前はここでスウォーム（蜂群図）版の`compactToleranceScale`へ**丸ごと
      差し替え**ていた。図を「縦＝条・横＝測定値」へ作り替えるにあたり、
      この差し替えは外した。**一覧の絞り込みのファイルが測定画面の図を
-     持っていたこと自体が誤り**で、`measurement-input.js`の定義は一度も
+     持っていたこと自体が誤り**で、`measure-input.js`の定義は一度も
      実行されない死んだコードになっていた（CLAUDE.md「同じ関数を2ファイル
      以上が全置換すると、先に読まれた側は死んだコードになる」）。 */
 

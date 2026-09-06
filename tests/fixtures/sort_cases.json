@@ -1,5 +1,5 @@
 {
-  "_note": "列ごとの並べ替え(§9.187)の突き合わせ用。サーバー(backend/sort_order.py)と画面(static/js/base.js の WL.sortSpec / WL.cellFormat)は同じ判定を別々に持っているので、同じ例で両方を確かめる。tests/test_sortpipe.py と tests/test_colsort.js が読む。**片方だけ直さないこと。**",
+  "_note": "列ごとの並べ替え(§9.187)の突き合わせ用。サーバー(backend/sort_order.py)と画面(static/js/core/base.js の WL.sortSpec / WL.cellFormat)は同じ判定を別々に持っているので、同じ例で両方を確かめる。tests/test_sortpipe.py と tests/test_colsort.js が読む。**片方だけ直さないこと。**",
   "classify": [
     {"v": "",              "kind": "empty"},
     {"v": "   ",           "kind": "empty"},

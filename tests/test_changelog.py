@@ -70,9 +70,9 @@ dup=sorted({v for v in vers if vers.count(v)>1})
 rec('同じ版が2つ無い',not dup,f'{dup[:4]}')
 
 # ---- 4) 印を解くのは1箇所 ----
-BASE=(ROOT/'static/js/base.js').read_text(encoding='utf-8')
-MM=(ROOT/'static/js/master-maint.js').read_text(encoding='utf-8')
-LV=(ROOT/'static/js/list-view.js').read_text(encoding='utf-8')
+BASE=(ROOT/'static/js/core/base.js').read_text(encoding='utf-8')
+MM=(ROOT/'static/js/master/master-maint.js').read_text(encoding='utf-8')
+LV=(ROOT/'static/js/list/list-view.js').read_text(encoding='utf-8')
 rec('WL.markup() が base.js にある','WL.markup=' in BASE)
 rec('WL.markup() は先にエスケープしてから印を戻す',
     bool(re.search(r'WL\.markup=t=>esc\(t\)',BASE)))

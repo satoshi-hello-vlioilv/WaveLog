@@ -4982,7 +4982,7 @@
   try{
    /* 閲覧モード・スケジュールモードでは、この端末のIndexedDBではなく
       閲覧用バックアップ(Box等へ複製したrecords.sqlite3)を読む
-      (static/js/access-mode.js window.loadViewModeRecords)。どちらも
+      (static/js/core/access-mode.js window.loadViewModeRecords)。どちらも
       この端末で測定データを書き込まない点は同じため、editモード以外は
       同じ経路にする(編集モードのみ従来どおりreliableAll())。 */
    const viewMode=window.accessMode&&window.accessMode.mode!=='edit';

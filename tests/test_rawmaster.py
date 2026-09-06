@@ -66,7 +66,7 @@ from backend.routes import master_tables as mt  # noqa: E402
 
 # ---- 1) 対応表が腐っていない ----------------------------------------
 # §9.324 R3: 定義は master-defs.js（盤の master-maint.js とは別ファイル）
-js = (ROOT / 'static/js/master-defs.js').read_text(encoding='utf-8')
+js = (ROOT / 'static/js/master/master-defs.js').read_text(encoding='utf-8')
 def_keys = set(re.findall(r"\bkey:'([A-Za-z][\w]*)'", js))
 missing = sorted(v for v in set(mt.COVERED_BY.values()) if v not in def_keys)
 rec('COVERED_BY が指すタブが master-defs.js に実在する', not missing, f'見つからない: {missing}')

@@ -182,7 +182,7 @@ let b=null,page=null;
 
   /* ---- 7) Ctrl系はフォーカスを奪わない ----
      ブラウザの既定ショートカットが割り込むと、転送の最後のTabを取りこぼす。
-     このため measurement-input.js は Ctrl/Alt/⌘ を捨てている。
+     このため measure-input.js は Ctrl/Alt/⌘ を捨てている。
      **段の移動をCtrl+数字に割り当てられないのはこれが理由。** */
   await page.keyboard.press('Control+a');
   await page.waitForTimeout(200);

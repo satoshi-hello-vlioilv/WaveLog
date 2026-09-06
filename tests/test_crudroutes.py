@@ -2,7 +2,7 @@
 
 なぜ要るか
 ------------------------------------------------------------------
-マスタ管理画面(static/js/master-maint.js の submitMaint、定義は master-defs.js)は、どのマスタでも
+マスタ管理画面(static/js/master/master-maint.js の submitMaint、定義は master-defs.js)は、どのマスタでも
 同じ約束で叩く:
 
     一覧   GET  <endpoint>
@@ -59,7 +59,7 @@ def master_defs():
     """MASTER_DEFS から汎用CRUD(special でなく hasDelete を持つ)を拾う。
        画面の定義そのものを情報源にするので、マスタを増やせば自動で対象になる。"""
     # §9.324 R3: 定義は master-defs.js（盤の master-maint.js とは別ファイル）
-    js = (ROOT / 'static' / 'js' / 'master-defs.js').read_text(encoding='utf-8')
+    js = (ROOT / 'static' / 'js' / 'master' / 'master-defs.js').read_text(encoding='utf-8')
     return re.findall(
         r"\{group:'[^']*',key:'([A-Za-z]+)',label:'([^']*)',icon:'[^']*',"
         r"endpoint:'([^']+)',hasDelete:true,", js)

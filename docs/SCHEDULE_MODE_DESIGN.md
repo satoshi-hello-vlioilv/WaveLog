@@ -562,7 +562,7 @@ def _guard_write():
 (常に `edit` モードのまま、並べ替えAPIの可否だけが変わる)。
 権限はこれまでどおり呼び出しのたびにマスタを読み直す(再起動不要)。
 
-### 3.5 フロント側の入口ガード(`static/js/access-mode.js`)
+### 3.5 フロント側の入口ガード(`static/js/core/access-mode.js`)
 
 - `accessMode` に `canSchedule` を追加。`document.body` のクラスを
   `view-mode` / `schedule-mode` の2種で出し分ける。
@@ -806,7 +806,7 @@ EQUIPMENT_NAME_REFERENCES=(
 > 参照が1件以上あれば409(`code:'schedule_references_exist'`)、
 > `schedule_sync.fetch_snapshot()`自体が失敗した場合は
 > `referencesCheckFailed:true`を付けて削除をブロックせず進める(方針どおり)。
-> フロント側は`static/js/measurement-worklog.js`の
+> フロント側は`static/js/measure/measure-worklog.js`の
 > `deleteEquipmentWithReferenceCheck()`が409を捕捉して内訳テーブル
 > (`.eq-ref-table`)付きの確認モーダルを出し、確認後に`force:true`で
 > 再送する。単体テスト(参照0件/複数件)・HTTPでの409→force再送・
@@ -939,7 +939,7 @@ CREATE INDEX [IX_作業予定_設備順] ON [作業予定] ([設備名],[表示�
 - 完了した予定を後から見返したときに品種・寸法が表示できない
 - 見積の内訳(どの係数が効いたか)を再現できない
 
-ため、予定に追加した時点の仕掛行から `aliases`(`static/js/base.js`)で
+ため、予定に追加した時点の仕掛行から `aliases`(`static/js/core/base.js`)で
 拾える値をスナップショットして持つ。
 
 ```json
@@ -1143,7 +1143,7 @@ CREATE UNIQUE INDEX [UX_負荷率上書き] ON [負荷率上書きマスタ] ([�
 
 1. **説明できる**。「この用途名は 1.32 倍」「この板厚帯は 0.88 倍」と現場の言葉で
    そのまま読める。ユーザーの要望文にある「換算係数」という語と一致する。
-2. **未知の組み合わせに必ず答えが出る**。既存の作業時間ベンチマーク(現 `measurement-worklog.js`)は
+2. **未知の組み合わせに必ず答えが出る**。既存の作業時間ベンチマーク(現 `measure-worklog.js`)は
    用途名・材質・調質・実測寸法・丈割数・条割数・設備の**完全一致**で過去実績を
    引くため、条件が1つでも違うと N=0 になる。計画は「まだ流したことのない
    組み合わせ」も並べるので、完全一致方式は計画用途には使えない。
@@ -1498,7 +1498,7 @@ for entry in 有効な予定(表示順):
 > 算出(`basis='equipment'`/`'pooled'`)・因子別上書きの保存/解除・`BASE`
 > 上書きによるT0置換・キャッシュ再計算・schedule以外のモードでの403を
 > 確認済み。`estimate`の`detail`(明細)はフロントが仕掛一覧の行から
-> `aliases`(static/js/base.js)で作って渡す規約とし、サーバー側では
+> `aliases`(static/js/core/base.js)で作って渡す規約とし、サーバー側では
 > SIKALOTNOWのエイリアス解決を再実装していない(§5.1と同じ規約)。
 > `accuracy`(§6.9、`GET /api/schedule/accuracy?equipment=...`)も
 > **フェーズ8で実装済み**。`load_factor.accuracy()`(フェーズ5から存在、
@@ -1630,7 +1630,7 @@ Blueprint 名は `schedule`(`backend/routes/schedule.py`)。
 
 ## 9. 画面設計
 
-> **実装済み(フェーズ4)**: `static/js/schedule-view.js`(新規)がタイムライン
+> **実装済み(フェーズ4)**: `static/js/schedule/schedule-view.js`(新規)がタイムライン
 > (順次作業表示)・並べ替え・仕掛一覧からの投入・ロック表示を実装。
 > サイドバーへ§9.1どおり「計画」グループを新設し「作業スケジュール」を
 > 静的ボタンとして常時表示(全モード)。§9.2のビュー排他制御は既存の
@@ -1651,7 +1651,7 @@ Blueprint 名は `schedule`(`backend/routes/schedule.py`)。
 > 予定カードへの固定開始日時の設定/解除UI(§5.1・§7.3、`plan/update`の
 > `fixedStart`をそのまま使う。schedule モードの未着手カードのみ編集可、
 > それ以外は設定済みの値を読み取り表示のみ)、§9.8の設備停止マスタ管理
-> (`static/js/measurement-worklog.js`の`MASTER_DEFS`へ`stopReason`タブを
+> (`static/js/measure/measure-worklog.js`の`MASTER_DEFS`へ`stopReason`タブを
 > 追加。汎用CRUDにそのまま乗る素直な行編集のため専用UIは作っていない)。
 > **フェーズ6のPlaywright検証中に見つけた不具合を修正**: 「マスタ管理」
 > ボタンは`body.schedule-mode`でも`body.view-mode`と同じく無条件に無効化
@@ -1757,7 +1757,7 @@ Blueprint 名は `schedule`(`backend/routes/schedule.py`)。
 - **「◯時間後」は各カードに常時表示**する。これが要望の中心。
   60分未満は「◯分後」、24時間以上は「明日 9:20 (◯時間後)」の併記。
 - **見積の不確かさを隠さない**。`±` と `実績なし ⚠` を出す。
-  既存の作業時間ベンチマーク(現 `measurement-worklog.js`)が σ を出しているのと同じ思想。
+  既存の作業時間ベンチマーク(現 `measure-worklog.js`)が σ を出しているのと同じ思想。
 - **完了カードにも実績を残す**(カード0)。「見積とどれだけ差があったか」が
   その場で見えることが、§6.9の精度検証を画面上で日常的に感じさせる。
 - **設備停止パネルは、選択中の設備に登録されている設備停止マスタの行だけを
@@ -1792,7 +1792,7 @@ Blueprint 名は `schedule`(`backend/routes/schedule.py`)。
 
 ### 9.4 並べ替え操作
 
-`static/js/lot-split.js` の条割ドラッグ(単一ジェスチャー + ゴースト挿入位置表示)で
+`static/js/measure/lot-split.js` の条割ドラッグ(単一ジェスチャー + ゴースト挿入位置表示)で
 確立した操作語彙をそのまま使う。新しい操作を覚えさせない。
 
 - ドラッグ&ドロップで並べ替え → 離した時点で `reorder` をPOST
@@ -1821,7 +1821,7 @@ Blueprint 名は `schedule`(`backend/routes/schedule.py`)。
 
 ### 9.5 仕掛一覧からの投入導線
 
-`static/js/list-view.js` の `renderGrid()` は既に `isWork`(SIKALOTNOW)のとき
+`static/js/list/list-view.js` の `renderGrid()` は既に `isWork`(SIKALOTNOW)のとき
 「測定」列を出している。同じ場所へ、**スケジュールモードのときだけ**
 「予定」列(＋ボタン)を追加する。
 
@@ -1907,7 +1907,7 @@ const canPlan = window.accessMode?.mode === 'schedule';
 > 投げうるため、この表示処理を差し込むラップは `finally` に置く
 > (CLAUDE.md の既知の落とし穴)。
 
-> **実装済み(フェーズ7)**: `static/js/measurement-view.js`に
+> **実装済み(フェーズ7)**: `static/js/measure/measure-view.js`に
 > `refreshScheduleInfo()`(非同期、`GET /api/schedule/plan`を1回だけ問い合わせて
 > モジュール内変数`scheduleInfoCache`へ結果をキャッシュ)と`renderScheduleInfo()`
 > (同期、キャッシュから基本情報タブの`ロット№`直下へ「作業予定」の1行を
@@ -1925,7 +1925,7 @@ const canPlan = window.accessMode?.mode === 'schedule';
 
 ### 9.8 換算係数・稼働カレンダー・設備停止の管理画面
 
-`static/js/measurement-worklog.js` の `MASTER_DEFS` へタブを追加する形で
+`static/js/measure/measure-worklog.js` の `MASTER_DEFS` へタブを追加する形で
 既存のマスタ管理モーダルに相乗りさせる(新しい管理画面を作らない)。
 
 - `{key:'loadFactor', label:'換算係数', icon:'率', special:'load-factor'}`
@@ -2230,7 +2230,7 @@ scheduleモードにも開いている(表示設定のみで測定データ・�
 
 ### 9.19 左ナビの幅リサイズ+分割表示中のフィルタバーのコンパクト化
 
-左ナビ(`<aside>`)の幅を`#navResizeHandle`(`static/js/base.js`、
+左ナビ(`<aside>`)の幅を`#navResizeHandle`(`static/js/core/base.js`、
 `.layout`グリッドへ`<aside>`の直後に挿入)のドラッグでリサイズできるように
 した(`localStorage`の`navWidthV1`、既定242px)。スケジュール画面固有の
 機能ではないため、`schedule-view.js`ではなく共有基盤の`base.js`に置いた。
@@ -2258,7 +2258,7 @@ scheduleモードにも開いている(表示設定のみで測定データ・�
 の`resolve_shift_label()`)。`expand_plan()`が各予定の`plannedStart`確定時に
 呼び、結果を`entry.shift`へ持たせる(状態が未確定/実績突合前で
 `plannedStart`が無い行は`shift=None`)。マスタ管理画面には`shiftMaster`の
-タブを追加した(`measurement-worklog.js`のMASTER_DEFS、
+タブを追加した(`measure-worklog.js`のMASTER_DEFS、
 `equipment-select`型フィールドで「空欄=全設備既定」を表現)。
 
 「内容」欄(タイムライン上の`.sc-row-title`)は、従来ロット№+用途名+製造材質
@@ -3218,7 +3218,7 @@ JSファイル(`boot_status.js`)を書き出すようにした。待機画面は
 - **`include_hidden=1`を必ず付ける**。列表示マスタで残仕掛設備ｺｰｽが
   非表示にされていても判定には要る(CLAUDE.md「内部計算用の問い合わせには
   `include_hidden=1`」)。
-- 列名の解決は`aliases`(`static/js/base.js`)で行う。サーバー側で
+- 列名の解決は`aliases`(`static/js/core/base.js`)で行う。サーバー側で
   SIKALOTNOWのエイリアス解決を再実装しない、という§5.1の規約に合わせる。
 - **仕掛が読めない/該当ロットが無いときは`可`にしない**(`?`にする)。
   確認できないものを既定で通すと、フラグを付けた意味が失われる。
@@ -4307,12 +4307,12 @@ DOMは窓のぶんだけ・スクロールで窓が入れ替わること・戻�
 
 | 読み込み順 | ファイル | 何をしていたか |
 |---|---|---|
-| 6 | `measurement-input.js` | 定義（基本の図示） |
-| 8 | `measurement-tolerance.js` | 退避せず置換（直前の1点だけの中間デザイン） |
+| 6 | `measure-input.js` | 定義（基本の図示） |
+| 8 | `measure-tolerance.js` | 退避せず置換（直前の1点だけの中間デザイン） |
 | 12 | `filters.js` | 退避せず置換（**実際に出ている数直線**） |
-| 13 | `measurement-worklog.js` | ラップ（指示型のカードを足す） |
+| 13 | `measure-worklog.js` | ラップ（指示型のカードを足す） |
 
-**真ん中の`measurement-tolerance.js`版は一度も実行されない。**
+**真ん中の`measure-tolerance.js`版は一度も実行されない。**
 ファイル自身のコメントも「この後filters.jsが数直線デザインへさらに
 上書きするため、これは中間段階の見た目」と書いており、そうと知らずに
 そこを直しても画面は1ピクセルも変わらない。
@@ -4336,7 +4336,7 @@ DOMは窓のぶんだけ・スクロールで窓が入れ替わること・戻�
 差し替えは37件・うち退避なしは4件で、3件は既にラップ形式だった。
 
 残る3件(`filters.js`の`compactToleranceScale`・`lot-split.js`の
-`compactToleranceData`・`measurement-worklog.js`の`updateWorkTimePanel`)は
+`compactToleranceData`・`measure-worklog.js`の`updateWorkTimePanel`)は
 どれも「元の実装を呼ばずに丸ごと差し替える」ことに業務上の理由がある。
 消すには定義を1箇所にして分岐を**登録表**で持つ形へ移す必要があるので、
 ALLOWEDへ理由付きで載せたうえで残してある(`docs/REFACTORING_PLAN.md`
@@ -5184,7 +5184,7 @@ WinError 87を粘ると、間違いに気づくのが遅れるだけになる。
 
 **`eval`を使わない。** 式は利用者が書き、マスタに保存され、他のPCでも
 動く。文字列をJSとして実行する作りにすると、保存した式がそのPCで何でも
-できてしまう。`static/js/list-formula.js`が字句解析→構文解析→評価を自前で
+できてしまう。`static/js/list/list-formula.js`が字句解析→構文解析→評価を自前で
 行い、**書ける物を最初から限る**。
 
 比較には落とし穴がひとつある。**緩く数として読むと `[コード] = 10` が
@@ -5434,7 +5434,7 @@ colgroup・行のセル数が食い違わないこと／見出しD&Dで計算列
 
 タイムラインは15列以上あり、A4へ押し込むと文字が読めない大きさになる。
 紙に要るのは「何を・いつ・どの順で流すか」と**書き込む場所**だけなので、
-専用の割り付け（`static/js/schedule-print.js`・`.sp-*`）を別に持つ。
+専用の割り付け（`static/js/schedule/schedule-print.js`・`.sp-*`）を別に持つ。
 実績（開始・終了・確認）の記入欄を右側に作る——配る目的の半分は
 「書いて戻してもらう」ことで、書く場所が無いと結局手書きの別紙が要る。
 
@@ -5501,7 +5501,7 @@ A4へ何行載るかは内容欄の折り返し次第で変わる（1行の日�
 表示ルール（§9.88 段4）の編集画面は、判定そのものは正しく動いていたが、
 **書いた人が「これで合っているか」を確かめる手立てが無い**状態だった。
 どれも「動かない」わけではないので、使ってみるまで気づけない類の欠けで、
-まとめて直した（`static/js/list-rules.js`）。
+まとめて直した（`static/js/list/list-rules.js`）。
 
 | 直したこと | 直す前に起きていたこと |
 |---|---|
@@ -5937,7 +5937,7 @@ flexにすると行の指定が効かなくなり、**8項目が同じ場所へ�
 ##### フォーカスは「実際に入力する場所」へ置く
 
 転送を受けるのは**板厚/板幅とバリの2項目だけ**で、残りは手動入力と決まって
-いる（`measurement-view.js`の`AUTO_ONLY_MEASURE_TYPES` /
+いる（`measure-view.js`の`AUTO_ONLY_MEASURE_TYPES` /
 `MANUAL_ONLY_MEASURE_TYPES`）。したがって項目を移ったら、転送の項目なら
 受信欄へ、手動の項目なら**セル**へ載せる。片方に決め打ちすると、移った先で
 「どこへ打てばいいか分からない」状態になる。
@@ -6030,8 +6030,8 @@ flexにすると行の指定が効かなくなり、**8項目が同じ場所へ�
 | ファイル | 何をするか |
 |---|---|
 | `lot-split.js` | 分割ロットなら子ロットごとの公差を返す |
-| `measurement-worklog.js` | 指示型（ラテラルボー等）なら`[0,指示値]` |
-| `measurement-tolerance.js` | 寸法型なら根の関数、それ以外は指示公差 |
+| `measure-worklog.js` | 指示型（ラテラルボー等）なら`[0,指示値]` |
+| `measure-tolerance.js` | 寸法型なら根の関数、それ以外は指示公差 |
 
 どれも**`#measureType`（画面の選択）を見て**分岐し、余分な引数を捨てる。
 根の関数に「項目名」の引数を足しても届かない。実際、最初の実装では
@@ -6493,7 +6493,7 @@ canvasで測って**`max-width`を入れる。測り直すのは**選択肢か�
 | 場所 | 何を持っているか |
 |---|---|
 | `static/css/00-base.css` | `:root[data-ui-size="…"]{--ui-scale:…}`（倍率そのもの） |
-| `static/js/base.js` | `UI_SIZES`（選択肢と呼び名）・`UI_SIZE_ALIASES`（古い保存値の行き先） |
+| `static/js/core/base.js` | `UI_SIZES`（選択肢と呼び名）・`UI_SIZE_ALIASES`（古い保存値の行き先） |
 | `static/css/20-shell.css` | `.ui-size-swatch[data-swatch="…"]`（選ぶ前に大きさが分かる見本） |
 
 固定は`tests/test_uisize.js`（選択肢が3つであること・小＜中＜大・保存の
@@ -6682,7 +6682,7 @@ canvasで測って**`max-width`を入れる。測り直すのは**選択肢か�
 「板厚/板幅のときだけ」専用の2枚組ワークスペースを持ち、同じ
 `stripColumnsHtml`/`lengthCompareHtml`をもう一度並べていた。
 
-#### 判定は1箇所（`WL.measureItem`、`measurement-view.js`）
+#### 判定は1箇所（`WL.measureItem`、`measure-view.js`）
 
 `type==='板厚/板幅'`という**文字列比較が6ファイル・十数箇所**に散っていた
 （公差の出どころ・幅分割公差・自動転送の固定・帳票の節・入力欄の数）。
@@ -6705,7 +6705,7 @@ canvasで測って**`max-width`を入れる。測り直すのは**選択肢か�
   なり、どの項目でもない状態で開く。`ensureMeasureShape()`が読み込む時点で
   `板幅`へ寄せる（coilStopと同じ方針）。**帳票は`ensureMeasureShape`を
   通さない生のレコードも読む**ので、`report-dashboard.js`と
-  `measurement-tolerance.js`の`DIMENSIONAL`は**旧名も受ける**。
+  `measure-tolerance.js`の`DIMENSIONAL`は**旧名も受ける**。
 - **横長の公差バー（`#toleranceSummary`）。** 板厚/板幅では隠していた
   （数直線の隣の公差カードが基準値・公差±・判定範囲を既に持つ＝§9.129の
   「同じ数字を画面に2つ出さない」）。分けた後の**両方**へ引き継ぐこと。
@@ -6774,7 +6774,7 @@ JSが`--mx-cols`で渡す。余りは右に空ける——器いっぱいに引�
 #### 分け方——組み立ては1本、配るのは2箇所
 
 `compactToleranceScale()`は**3つのファイルが順に包んでいる**
-（`measurement-input.js`＝根／`measurement-worklog.js`＝指示公差の専用カード／
+（`measure-input.js`＝根／`measure-worklog.js`＝指示公差の専用カード／
 `filters.js`＝スウォーム数直線）。§9.125の`toleranceDetail`と同じ形で、
 **引数を1枚でも落とすと根まで届かず黙って効かなくなる**。そこで
 「facts だけ返す／graph だけ返す」という引数を足すのではなく、
@@ -7003,10 +7003,10 @@ UIサイズの概算を決める → **複数のUIサイズを規格化したサ
 保存先は`S.measure.workTime.auto`（レコードと一緒に運ばれる）。記録するのは
 `WL.workStamp.note(kind)`の1箇所で、呼ぶのは:
 
-- 測定器の受信が成功したとき（`measurement-input.js`）— `'transfer'`
+- 測定器の受信が成功したとき（`measure-input.js`）— `'transfer'`
 - 測定セルへ手入力したとき（同）— `'manual'`
 - フラットネスの記号を押したとき（同）— `'manual'`
-- 母材・製品の欄（`measurement-worklog.js`が**委譲で**受ける。あちらは
+- 母材・製品の欄（`measure-worklog.js`が**委譲で**受ける。あちらは
   `collect()`が保存時にまとめて読む作りで、1つずつの書き込み点が無い）
 
 **手入力を「転送」に数えないこと。** 混ぜると「転送を受け始めた時刻」が作れない
@@ -7062,12 +7062,12 @@ UIサイズの概算を決める → **複数のUIサイズを規格化したサ
 | `backend/routes/tables.py` | **フェーズ15で追加**。§9.21の品質データ結合(`_join_quality_data()`/`_find_column()`)。`GET /api/table`へ`join_quality=1`指定時のみSIKALOTNOWにSIKALOTDEFをアプリ側でマージする(オプトイン、fail-open) |
 | `backend/schedule_sync.py` | **§9.45で追加**: `acquire_lock_deferred()`(検証待ちをスナップショット取得と重ねる)・ハートビート時の検証待ち省略。**実装済み**。ロック取得/解放・Box上ファイルの取得(backup())・整合性確認・一時名書込+リネーム反映・改訂番号チェック(§4.2〜§4.5)。データの中身を知らない汎用基盤で、業務テーブル実装時は`with_write()`のapply_fnへ差し込むだけで使える。フェーズ4のPlaywright検証中に見つけた不具合を修正: `fetch_snapshot()`の一時ファイル名が固定だったため、GET系(ロック無し)の複数リクエストがほぼ同時に走ると一時ファイルを取り合って読込失敗することがあった。呼び出しごとに一意な一時ファイル名にして解消(最終目的地への反映は`Path.replace()`で元々アトミック)。**フェーズ13で追加**: §9.11の編集セッション(`acquire_session`/`heartbeat_session`/`release_session`/`session_status`/`require_session`、`schedule.sessions.json`という別ファイルで管理し`with_write()`のサイクルを経由しない) |
 | `backend/db_access.py` | **§9.41で追加**: `merged_backup_rows()`の署名+TTLキャッシュ(`BACKUP_ROWS_CACHE_TTL_SEC`/`_backup_sources_signature`/`invalidate_backup_rows_cache`) |
-| `static/js/report-dashboard.js` | **§9.31/§9.32で調整**済み。**§9.43で追加**: `openReportForRecord()`が一覧に無い記録IDをサーバー側の測定バックアップから1件だけ拾う(`fetchRecordFromBackup`) |
-| `static/js/records-store.js` | **§9.32で追加**: `withWaiting(opts,fn)`(`window.withWaiting`)。読み込み系へ共通のWAITING表示を被せるラッパー。350ms超のときだけ表示・二重表示の抑止・例外時も必ず閉じる、の3点を担う |
-| `static/js/calendar-view.js` | **§9.31で調整**: `.cal-*`のCSSをタイプスケールへ追随。**§9.32で追加**: `ensureData()`を`ensureDataInner()`へ切り出し`withWaiting`で包む |
-| `static/js/report-dashboard.js` | **§9.31で調整**: `.db-*`のCSSをタイプスケールへ追随。**§9.32で追加**: `runDashboard()`を`runDashboardInner()`へ切り出し`withWaiting`で包む(2ステップ) |
-| `static/js/quality-analysis.js` | **§9.32で追加**: `run()`を`runInner()`へ切り出し`withWaiting`で包む |
-| `static/js/schedule-view.js` | **実装済み**。スケジュール画面・タイムライン・並べ替え(現場段取り簡易表示§9.4.1・ロック表示§9.3を含む)。並べ替えはHTML5 Drag and Drop + Alt+↑/↓(lot-split.jsの単一ジェスチャー演出は未移植)。§6.8の「見積の内訳」(基準時間T0・予測区間・因子別係数/N/source)を各カードの折りたたみパネルとして表示(既定は折りたたみ)。§5.1・§7.3の固定開始日時の設定/解除UI(scheduleモードの未着手カードのみ編集可)、§9.3の非稼働帯の区切り表示(カード間の`plannedEnd`/`plannedStart`の差からフロント側で算出)。**フェーズ9で追加**: §9.9の全設備横断俯瞰ボード(`renderOverviewBoard()`、既定表示・混雑順ソート・行クリックでの個別タイムラインへのドリルダウン)、§9.5の複数選択一括追加(`addRowsToSchedule()`)。**フェーズ11で追加**: §9.10の分割表示(`ensureSplitWrap`/`teardownSplitWrap`が`#grid`をDOM上で分割レイアウトへ移設・復元、`wireDropTarget`がスケジュールパネル全体をドロップ受け皿にする)。旧`renderAddFromListPanel`/ロット検索(`wireLotSearch`等)は分割表示に置き換えたため削除。**フェーズ13で追加**: §9.11の編集セッション(`syncSession`/`acquireSessionOnce`/`sessionBlocked`)+書込キュー(`queueScheduleWrite`/`runWriteQueue`/`makeOptimisticEntry`)、§9.12の高密度表示(`toggleListDensity`)、§9.13の設備停止折りたたみ+モーダル(`openStopModal`/`closeStopModal`)、§9.14の仕掛一覧モーダル(`moveGridTo`/`returnGridHome`共通化、`openListModal`/`closeListModal`)。**フェーズ14で追加**: §9.16のセッションfail-open化(`sessionBlocked`の判定変更、`scState.sessionError`)、§9.17のフローティングウィンドウ化(`makeFloatingWindow()`共通ヘルパー、`clampToViewport()`のサイズ考慮クランプ)+リサイズ可能な分割バー(`ensureSplitDivider`/`applySplitListWidth`/`toggleSplitListCollapsed`)+`.sc-side`折りたたみ(`updateSideUi`/`toggleSideCollapsed`)、§9.18の投入済みロット除外(`window.scScheduledLotSet`/`refreshScheduledLotFilter`)+スケジュール列表示マスタのUI(`openColumnModal`/`saveColumnSelection`/`window.scColumnAllowlist`)。**フェーズ15で追加**: §9.20の年月日/勤務列(`fmtDateShort`/`fmtDateTitle`/`ROW_HEAD_HTML`)+「内容」欄の汎用化(`entryContentText()`、`buildScheduleDetail()`が`S.columns`全列をスナップショット)、§9.21の分割表示入場時のjoin_quality強制再取得(`scSplitJoinApplied`)、§9.22の一方通行書込(`resolveOptimisticEntry`/`discardOptimisticEntry`、`queueScheduleWrite`の`onFailure`コールバック、`updateFixedStart`の書込キュー化)。**§9.34/§9.35で追加**: 表示範囲(`SC_HISTORY_CHOICES`/`loadHistoryHours`)・予定からの測定開始(`startWorkFromEntry`/`entryMeasurementRow`)。`dragId`は文字列。**§9.38〜§9.40で追加**: 日時ロック(`toggleEntryLock`)・区分列(`SC_CATEGORIES`/`categoryOf`/`rowTimeOf`/`visibleEntries`)・まとめ方の切り替え(`SC_GROUP_MODES`/`groupBucketOf`、日付＋勤務を含む)。**§9.45で追加**: `queuePlanOp()`とまとめ書込(`runWriteQueue`が連続する操作を`/api/schedule/plan/batch`へ束ねる)。**§9.44で修正**: 並べ替え可否をサーバーと同じ条件で判定(`applyFieldReorderPermission`)・失敗時の並び戻し。**§9.42/§9.43で追加**: 読込結果のキャッシュ(`scPlanCache`/`scOverviewCache`/`invalidatePlanCache`/`updateFreshnessUi`)・作業中の再開と帳票(`openEntryReport`、行の`ondblclick`)。`commitDragOrder`はロック行を予定順の位置に据え置いたまま組み立て直す。**§9.32で追加**: `refreshAll()`/`loadOverviewBoard()`を`refreshAllInner()`/`loadOverviewBoardInner()`へ切り出し`withWaiting`で包む。**§9.30で追加**: `ensureListModal()`のリサイズ対応(下端の`.sc-list-foot`でつまみ用の行を確保、`makeFloatingWindow()`へ`scListModalRectV2`/既定760×600/最小360×320を指定) |
+| `static/js/report/report-dashboard.js` | **§9.31/§9.32で調整**済み。**§9.43で追加**: `openReportForRecord()`が一覧に無い記録IDをサーバー側の測定バックアップから1件だけ拾う(`fetchRecordFromBackup`) |
+| `static/js/measure/records-store.js` | **§9.32で追加**: `withWaiting(opts,fn)`(`window.withWaiting`)。読み込み系へ共通のWAITING表示を被せるラッパー。350ms超のときだけ表示・二重表示の抑止・例外時も必ず閉じる、の3点を担う |
+| `static/js/schedule/calendar-view.js` | **§9.31で調整**: `.cal-*`のCSSをタイプスケールへ追随。**§9.32で追加**: `ensureData()`を`ensureDataInner()`へ切り出し`withWaiting`で包む |
+| `static/js/report/report-dashboard.js` | **§9.31で調整**: `.db-*`のCSSをタイプスケールへ追随。**§9.32で追加**: `runDashboard()`を`runDashboardInner()`へ切り出し`withWaiting`で包む(2ステップ) |
+| `static/js/list/quality-analysis.js` | **§9.32で追加**: `run()`を`runInner()`へ切り出し`withWaiting`で包む |
+| `static/js/schedule/schedule-view.js` | **実装済み**。スケジュール画面・タイムライン・並べ替え(現場段取り簡易表示§9.4.1・ロック表示§9.3を含む)。並べ替えはHTML5 Drag and Drop + Alt+↑/↓(lot-split.jsの単一ジェスチャー演出は未移植)。§6.8の「見積の内訳」(基準時間T0・予測区間・因子別係数/N/source)を各カードの折りたたみパネルとして表示(既定は折りたたみ)。§5.1・§7.3の固定開始日時の設定/解除UI(scheduleモードの未着手カードのみ編集可)、§9.3の非稼働帯の区切り表示(カード間の`plannedEnd`/`plannedStart`の差からフロント側で算出)。**フェーズ9で追加**: §9.9の全設備横断俯瞰ボード(`renderOverviewBoard()`、既定表示・混雑順ソート・行クリックでの個別タイムラインへのドリルダウン)、§9.5の複数選択一括追加(`addRowsToSchedule()`)。**フェーズ11で追加**: §9.10の分割表示(`ensureSplitWrap`/`teardownSplitWrap`が`#grid`をDOM上で分割レイアウトへ移設・復元、`wireDropTarget`がスケジュールパネル全体をドロップ受け皿にする)。旧`renderAddFromListPanel`/ロット検索(`wireLotSearch`等)は分割表示に置き換えたため削除。**フェーズ13で追加**: §9.11の編集セッション(`syncSession`/`acquireSessionOnce`/`sessionBlocked`)+書込キュー(`queueScheduleWrite`/`runWriteQueue`/`makeOptimisticEntry`)、§9.12の高密度表示(`toggleListDensity`)、§9.13の設備停止折りたたみ+モーダル(`openStopModal`/`closeStopModal`)、§9.14の仕掛一覧モーダル(`moveGridTo`/`returnGridHome`共通化、`openListModal`/`closeListModal`)。**フェーズ14で追加**: §9.16のセッションfail-open化(`sessionBlocked`の判定変更、`scState.sessionError`)、§9.17のフローティングウィンドウ化(`makeFloatingWindow()`共通ヘルパー、`clampToViewport()`のサイズ考慮クランプ)+リサイズ可能な分割バー(`ensureSplitDivider`/`applySplitListWidth`/`toggleSplitListCollapsed`)+`.sc-side`折りたたみ(`updateSideUi`/`toggleSideCollapsed`)、§9.18の投入済みロット除外(`window.scScheduledLotSet`/`refreshScheduledLotFilter`)+スケジュール列表示マスタのUI(`openColumnModal`/`saveColumnSelection`/`window.scColumnAllowlist`)。**フェーズ15で追加**: §9.20の年月日/勤務列(`fmtDateShort`/`fmtDateTitle`/`ROW_HEAD_HTML`)+「内容」欄の汎用化(`entryContentText()`、`buildScheduleDetail()`が`S.columns`全列をスナップショット)、§9.21の分割表示入場時のjoin_quality強制再取得(`scSplitJoinApplied`)、§9.22の一方通行書込(`resolveOptimisticEntry`/`discardOptimisticEntry`、`queueScheduleWrite`の`onFailure`コールバック、`updateFixedStart`の書込キュー化)。**§9.34/§9.35で追加**: 表示範囲(`SC_HISTORY_CHOICES`/`loadHistoryHours`)・予定からの測定開始(`startWorkFromEntry`/`entryMeasurementRow`)。`dragId`は文字列。**§9.38〜§9.40で追加**: 日時ロック(`toggleEntryLock`)・区分列(`SC_CATEGORIES`/`categoryOf`/`rowTimeOf`/`visibleEntries`)・まとめ方の切り替え(`SC_GROUP_MODES`/`groupBucketOf`、日付＋勤務を含む)。**§9.45で追加**: `queuePlanOp()`とまとめ書込(`runWriteQueue`が連続する操作を`/api/schedule/plan/batch`へ束ねる)。**§9.44で修正**: 並べ替え可否をサーバーと同じ条件で判定(`applyFieldReorderPermission`)・失敗時の並び戻し。**§9.42/§9.43で追加**: 読込結果のキャッシュ(`scPlanCache`/`scOverviewCache`/`invalidatePlanCache`/`updateFreshnessUi`)・作業中の再開と帳票(`openEntryReport`、行の`ondblclick`)。`commitDragOrder`はロック行を予定順の位置に据え置いたまま組み立て直す。**§9.32で追加**: `refreshAll()`/`loadOverviewBoard()`を`refreshAllInner()`/`loadOverviewBoardInner()`へ切り出し`withWaiting`で包む。**§9.30で追加**: `ensureListModal()`のリサイズ対応(下端の`.sc-list-foot`でつまみ用の行を確保、`makeFloatingWindow()`へ`scListModalRectV2`/既定760×600/最小360×320を指定) |
 | `docs/SCHEDULE_MODE_DESIGN.md` | 本書 |
 
 ### 10.2 既存ファイルの変更
@@ -7080,12 +7080,12 @@ UIサイズの概算を決める → **複数のUIサイズを規格化したサ
 | `backend/db_access.py` | **実装済み**。`SCHEDULE_SHARE_PATH`・`SCHEDULE_CACHE_PATH`(ローカル一時取得先)の解決。`read_backup_rows()`を追加し、`backend/routes/measurement.py`の重複実装(`_read_backup_rows`)を統合(§7.4の実績突合と共用)。`merged_backup_rows()`を追加し、`MEAS_DB`・`RECORDS_BACKUP_EXPORT_PATH`両方の実績を記録IDごとに更新日時の新しい方でマージする(§7.4の実績突合・§6.6の換算係数モデル学習データの両方が共用) |
 | `backend/config.py` | **実装済み**。`SCHEDULE_LOCK_TTL_SEC_DEFAULT` / `SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT` に加え、`LOAD_FACTOR_CACHE_TTL_SEC=600` / `MIN_SAMPLES=20` を追加 |
 | `app.py` | **実装済み**。`schedule` Blueprint 登録のみ。§4.2のサイクルは呼び出しごとに動く同期処理のため、`records_export.py`のような常駐の背景スレッド起動は不要 |
-| `static/js/access-mode.js` | **実装済み**。3モード対応。**`openMeasurement`/`resumeRecordFromList` ガードの条件を `!== 'edit'` へ反転**。モードピッカーポップオーバー。`canFieldReorder` バッジ(§3.5、ヘッダーの`accessModeBadge`隣に配置) |
-| `static/js/list-view.js` | **実装済み**。仕掛一覧に「予定」列(schedule時のみ)。**フェーズ9で追加**: §9.5の複数選択(チェックボックス列+ヘッダー全選択+選択件数バー、`S.selectedRows`)。**フェーズ11で追加**: §9.10の行ドラッグ(`draggable`+`window.__scDragRows`)・選択件数バーの直接追加ボタン(`window.scAddSelectedRows`/`window.scCurrentDropTarget`)。**フェーズ13で§9.15の「+予定」列を最左列(選択チェックボックスの隣)へ移動**。**フェーズ14で追加**: §9.18の投入済みロット除外表示(`visibleRows`、`window.scScheduledLotSet`参照)・設備ごとの列フィルタ(`visibleColumns`、`window.scColumnAllowlist`参照)。**フェーズ15で`load()`へ§9.21のjoin_quality=1付与を追加**(scheduleモード+SIKALOTNOW表示中のみ) |
-| `static/js/filters.js` | **フェーズ15で追加**。§9.21のjoin_quality=1付与。`load()`をラップでなく丸ごと置き換える既存実装のため(CLAUDE.mdの「関数の定義は1箇所」からは外れる古いコード)、list-view.js側と同じ分岐をこちらにも重複して持たせる必要があった |
-| `static/js/base.js` | `closeAllMainViews(except)` への一本化リファクタは未実装。schedule-view.jsは既存4ビューと同じ「個別に他ビューを閉じる」方式のまま追加した(§9.2)。**フェーズ9で`S`の初期値へ`selectedRows:new Set()`を追加**(§9.5)。**フェーズ14で追加**: §9.19の左ナビ幅リサイズ(`#navResizeHandle`、`localStorage`の`navWidthV1`) |
-| `static/js/master-maint.js`(分割前は`measurement-worklog.js`) | **実装済み**。設備停止マスタ部分(フェーズ6): `MASTER_DEFS`へ`stopReason`タブを追加(設備名は`equipment-select`という新規フィールド型で設備マスタから選択)。scheduleモードでは書込めないタブ(`masters`Blueprint配下)をナビから隠す`maintDefVisible`/`renderMaintNav`を追加し、`#openMasterMaint`のCSS無効化を`view-mode`のみに縮小(旧`schedule-mode`無効化のままだと設備停止マスタに永久に手が届かない矛盾があったため)。**フェーズ8で追加**: `MASTER_DEFS`へ`loadFactor`タブ(`special:'load-factor'`、§9.8の換算係数管理画面)、`deleteMaint()`が設備タブのみ`deleteEquipmentWithReferenceCheck()`へ分岐し409(§5.0.1)を確認モーダル+`force`再送で処理。**フェーズ15で`MASTER_DEFS`へ`shiftMaster`タブを追加**(§9.20、勤務形態マスタ) |
-| `static/js/measurement-view.js` | **実装済み(フェーズ7)**。`refreshScheduleInfo()`(非同期、`records-store.js`の`openMeasurement()`の`finally`から発火)・`renderScheduleInfo()`(同期、`renderMeasurement()`の描画チェーンから毎回呼ぶ)で基本情報タブへ予定表示(読み取り専用)を追加 |
+| `static/js/core/access-mode.js` | **実装済み**。3モード対応。**`openMeasurement`/`resumeRecordFromList` ガードの条件を `!== 'edit'` へ反転**。モードピッカーポップオーバー。`canFieldReorder` バッジ(§3.5、ヘッダーの`accessModeBadge`隣に配置) |
+| `static/js/list/list-view.js` | **実装済み**。仕掛一覧に「予定」列(schedule時のみ)。**フェーズ9で追加**: §9.5の複数選択(チェックボックス列+ヘッダー全選択+選択件数バー、`S.selectedRows`)。**フェーズ11で追加**: §9.10の行ドラッグ(`draggable`+`window.__scDragRows`)・選択件数バーの直接追加ボタン(`window.scAddSelectedRows`/`window.scCurrentDropTarget`)。**フェーズ13で§9.15の「+予定」列を最左列(選択チェックボックスの隣)へ移動**。**フェーズ14で追加**: §9.18の投入済みロット除外表示(`visibleRows`、`window.scScheduledLotSet`参照)・設備ごとの列フィルタ(`visibleColumns`、`window.scColumnAllowlist`参照)。**フェーズ15で`load()`へ§9.21のjoin_quality=1付与を追加**(scheduleモード+SIKALOTNOW表示中のみ) |
+| `static/js/list/filters.js` | **フェーズ15で追加**。§9.21のjoin_quality=1付与。`load()`をラップでなく丸ごと置き換える既存実装のため(CLAUDE.mdの「関数の定義は1箇所」からは外れる古いコード)、list-view.js側と同じ分岐をこちらにも重複して持たせる必要があった |
+| `static/js/core/base.js` | `closeAllMainViews(except)` への一本化リファクタは未実装。schedule-view.jsは既存4ビューと同じ「個別に他ビューを閉じる」方式のまま追加した(§9.2)。**フェーズ9で`S`の初期値へ`selectedRows:new Set()`を追加**(§9.5)。**フェーズ14で追加**: §9.19の左ナビ幅リサイズ(`#navResizeHandle`、`localStorage`の`navWidthV1`) |
+| `static/js/master/master-maint.js`(分割前は`measure-worklog.js`) | **実装済み**。設備停止マスタ部分(フェーズ6): `MASTER_DEFS`へ`stopReason`タブを追加(設備名は`equipment-select`という新規フィールド型で設備マスタから選択)。scheduleモードでは書込めないタブ(`masters`Blueprint配下)をナビから隠す`maintDefVisible`/`renderMaintNav`を追加し、`#openMasterMaint`のCSS無効化を`view-mode`のみに縮小(旧`schedule-mode`無効化のままだと設備停止マスタに永久に手が届かない矛盾があったため)。**フェーズ8で追加**: `MASTER_DEFS`へ`loadFactor`タブ(`special:'load-factor'`、§9.8の換算係数管理画面)、`deleteMaint()`が設備タブのみ`deleteEquipmentWithReferenceCheck()`へ分岐し409(§5.0.1)を確認モーダル+`force`再送で処理。**フェーズ15で`MASTER_DEFS`へ`shiftMaster`タブを追加**(§9.20、勤務形態マスタ) |
+| `static/js/measure/measure-view.js` | **実装済み(フェーズ7)**。`refreshScheduleInfo()`(非同期、`records-store.js`の`openMeasurement()`の`finally`から発火)・`renderScheduleInfo()`(同期、`renderMeasurement()`の描画チェーンから毎回呼ぶ)で基本情報タブへ予定表示(読み取り専用)を追加 |
 | `templates/index.html` | **実装済み**。「計画」ナビグループ(`#planNav`静的ボタン`#openSchedule`)・スクリプトタグ追加。`fieldReorderBadge`要素も配置済み |
 | `static/app.css` | **実装済み**。`body.view-mode`/`schedule-mode`のモードバッジ・`body.sc-mode`排他・`.sc-panel`タイムライン・`.plan-action-*`(仕掛一覧の予定列)一式。**フェーズ13で追加**: `.sc-session-banner`/`.sc-panel.sc-session-locked`(§9.11)、`#grid.sc-dense`(§9.12)、`.sc-side-section-toggle`/`.sc-stop-button[draggable]`(§9.13)、`.sc-float-modal`/`.sc-float-dialog`(§9.13・§9.14、`.record-modal`/`.settings-dialog`を土台に流用)、`body.sc-mode.sc-list-modal-open`(§9.14)、`.sc-row-pending`(§9.11)。**フェーズ14で刷新・追加**: `.sc-float-modal`/`.sc-float-dialog`(全画面シェード付き)を`.sc-float-win`/`.sc-float-header`/`.sc-float-resize`(シェード無しの浮いたウィンドウ)へ置き換え(§9.17)、`.sc-split-divider`/`.sc-split-collapse-btn`+`--sc-list-w`変数によるリサイズ可能な分割バー(§9.17)、`.sc-side-tab`(`.sc-side`自体の折りたたみ、§9.17)、`:is(.sc-split-wrap,.sc-float-body)`配下のフィルタバーコンパクト化(§9.19)、`#navResizeHandle`+`.layout`3列グリッド化(§9.19)、`.sc-column-list`/`.sc-column-item`(§9.18)。**フェーズ15で追加**: `.sc-row-date`/`.sc-row-shift`(§9.20)、`:root`のタイプスケールへ`--fs-tiny`/`--fs-sm`/`--fs-base-sm`を追加し`.sc-*`配下・`#grid.sc-dense`のfont-size宣言(約60箇所)をすべて`var(--fs-*)`参照へ統一(§9.23)。**§9.31で追加**: `.cal-*`(実績カレンダー)・`.db-*`(分析ダッシュボード、SVGラベル含む)の固定pxのfont-sizeをすべて`var(--fs-*)`へ、日セル高/明細ペイン幅/操作ペイン幅/凡例スウォッチを`calc(Npx * var(--ui-scale))`へ、各コントロール高を`--ctl-h-sm`/`--ctl-h`へ置換。`.sc-close`/`.mm-close`/`.split-flag-cell`/`.brand h2`も追随させた。**§9.30で追加**: `#scListModalBody`のflex化(`#grid`の内側だけをスクロールさせる)、`.sc-list-foot`(つまみ用の帯)、**§9.34/§9.36で追加**: `.sc-group`/`.sc-group-head`(まとめ見出し)・`.sc-flag-unplanned`(計画外バッジ)・`.sc-row-start`(開始ボタン)・`.sc-history-range`(表示範囲/まとめ)、**§9.37〜§9.39で追加**: `.sc-row-cat`/`.sc-cat-*`(区分列)・`.sc-row-locked`/`.sc-flag-locked`/`.sc-row-lock`(ロック)・`.sc-row-ongoing`(作業中)、`.sc-row-*`のfont-sizeを1段引き上げ列幅/行高を`--ui-scale`込みへ。`:is(.sc-float-body,.sc-split-wrap) #grid`の横スクロールバー常時表示、`.sc-split-wrap`への`toolbar`行/エリア追加 |
 | `config/local.example.json` | **実装済み**。`schedule_share_path`/`schedule_lock_ttl_sec`/`schedule_lock_verify_delay_ms`の雛形 |
@@ -7656,9 +7656,9 @@ nullガードを置くこと**——消した瞬間に`Cannot set properties of 
 #### 図の持ち主を`filters.js`から取り戻す
 
 `filters.js`（一覧の絞り込みのファイル）が`compactToleranceScale`を**丸ごと
-差し替えて**おり、`measurement-input.js`の定義は一度も実行されない死んだ
+差し替えて**おり、`measure-input.js`の定義は一度も実行されない死んだ
 コードだった（CLAUDE.md「同じ関数を2ファイル以上が全置換すると…」）。
-作り替えにあたって差し替えを外し、本体を`measurement-input.js`へ戻した。
+作り替えにあたって差し替えを外し、本体を`measure-input.js`へ戻した。
 `test_patchlint.py`のALLOWEDからも消した（残っている全置換は2件）。
 
 #### 固定は`tests/test_tolscale.js`
@@ -8000,7 +8000,7 @@ x = (測定値 − その条の基準) ÷ その条の公差（＋側は plus、
   `equipment_kind`で画面へ渡る。**未設定を「板」と決め付けない**（出どころの
   分からない公差を出すより、出さないほうがよい）。出さない理由は文で言う。
 - **`toleranceDetail`は通さない。** あれは「いま測っている項目の判定」を
-  答える関数で、`measurement-tolerance.js`のラッパーが
+  答える関数で、`measure-tolerance.js`のラッパーが
   `DIMENSIONAL={'板厚','板幅',…}`に無い項目名で**nullを返す**
   ——板丈は測る項目ではないので必ずそこで落ちる（実際に「登録なし」に
   なった）。一覧が欲しいのは**データに在る公差**なので、
@@ -10708,9 +10708,9 @@ keys.filter(k=>!chosen.has(k)&&(!scIsFixedCol(k)||SC_COL_OFF_BY_DEFAULT.includes
   フォーカスが載っていないと自分で載せに行くため、`focus`ハンドラの中で呼ぶと
   同じハンドラが呼び直され、**行って来いで積み上がる**（実測で
   「Maximum call stack size exceeded」）。`moveCaretTo()`と
-  `measurement-tolerance.js`の選択処理の**両方**を再入不可にする。
+  `measure-tolerance.js`の選択処理の**両方**を再入不可にする。
 - **`stopImmediatePropagation()`で持ち主の処理を止めない。**
-  `measurement-tolerance.js`のクリック処理が止めていたため、手動入力では
+  `measure-tolerance.js`のクリック処理が止めていたため、手動入力では
   クリックしても印も丈も動かなかった。あちらが受け持つのは「読み取り専用を
   解いて選択状態にする」だけ。
 - 丈の見出しを押したら**その丈の先頭の枠**から始める（並びは条入力順に従う）。
@@ -14156,7 +14156,7 @@ Noneへ落とすので、画面では効くのに保存だけが黙って消え�
 （`measure-progress.js:202-219`）で、その入口は
 `updateValidationVisuals`／チップのクリック／`[data-mother]`の`input`／
 製品行の`input`／`document`の捕捉リスナ——**すべて「入力があったとき」**。
-測定を開く経路は`measurement-view.js:799`の
+測定を開く経路は`measure-view.js:799`の
 `WL.opData.refresh().catch(()=>{})`＝**投げっぱなし**（awaitも`.then`も無い）で、
 チップを塗るのはその8行あと（`:807`）に積まれる`requestAnimationFrame`。
 **マスタの応答より必ず先に走る。**
@@ -14350,7 +14350,7 @@ A3・横向きを使う。
 そろえたが、①太い黒格子が画面の印象と違う②列幅は必ず余白へ比例配分され
 （旧`withMm()`）、画面で見えている幅の感覚とは別物③紙には常に画面の全列が
 乗り、「いま見えている範囲だけ」を選べない、の3点が「画面のさわやかな
-見た目そのまま」から外れていた。3つとも`static/js/schedule-print.js`が持つ。
+見た目そのまま」から外れていた。3つとも`static/js/schedule/schedule-print.js`が持つ。
 
 #### ① 枠線ON/OFF
 
@@ -14411,9 +14411,9 @@ px→mm変換)でmmへ直し、**その合計が余白に収まるならその�
 
 #### 実装
 
-- `static/js/schedule-view.js`: `visibleColumnKeys()`を新設し
+- `static/js/schedule/schedule-view.js`: `visibleColumnKeys()`を新設し
   `WL.scheduleView`へ公開。
-- `static/js/schedule-print.js`: `COLUMN_SCOPES`定数・`columnScopeOf(opt)`、
+- `static/js/schedule/schedule-print.js`: `COLUMN_SCOPES`定数・`columnScopeOf(opt)`、
   `printColumns(opt)`を範囲で分岐、`withMm()`を自然体優先へ書き換え、
   `pageHtml()`が`opt.borders===false`のときだけ`data-borders="off"`を
   `.sp-page`へ立てる。`DEFAULTS`/`loadPref()`に`columnScope:'all'`・
@@ -14612,13 +14612,13 @@ A4帳票の例外を説明する文で**ワイルドカードの直後にスラ�
 
 - `static/css/00-base.css`: 角丸トークンの上のコメントを書き直す（＋再発の注記）。
 - `tests/test_csslint.py`: 「コメントを外したCSSに散文が残っていない」を追加。
-- `static/js/schedule-view.js`: `entryCellInfo()` の `flags` を `flagList` から
+- `static/js/schedule/schedule-view.js`: `entryCellInfo()` の `flags` を `flagList` から
   作るように分解、`SC_FIXED_TONE` を新設、`printRowCells()` が `tone`/`chips` を
   返す、`groupOf()` に `tone`、`groupBasisLabel()` を公開、
   `columnEffWidthPx()` を実測優先（`measuredColumnWidthPx()`／`uiScaleNow()`）、
   `visibleColumnKeys()` の予算を同じ物差しへ、
   `applyTimelineContentColumns()` が `#scTimeline` へ `data-equipment` を刻む。
-- `static/js/schedule-print.js`: `STATE_TONE`、`badgeHtml()`/`kidBadgeHtml()`/
+- `static/js/schedule/schedule-print.js`: `STATE_TONE`、`badgeHtml()`/`kidBadgeHtml()`/
   `kidBadgeKey()`、`cellsOf()` がバッジ・チップ・子の印を組む、
   `buildPages()` が `rowStyle`/`kidCount` を運ぶ、`shareMm()`＋`withMm()`、
   `pageHtml()` が `.sp-table-wrap`／表幅の合計／`--sp-fit`／帯の3点を出す、
@@ -14670,7 +14670,7 @@ right:var(--space-3)`でタイムラインの下端を横断しており、**一
 
 - `static/css/70-schedule.css`: `.sc-drop-remove`を
   `right`＋`width:max-content`＋`max-width:min(var(--w-lg),…)`へ。
-- `static/js/schedule-view.js`: 受け皿のHTMLを1行の札へ、
+- `static/js/schedule/schedule-view.js`: 受け皿のHTMLを1行の札へ、
   `showRemoveZone()`は`textContent`と`title`だけを書き換える。
 
 固定は`tests/test_scdrop.js`。**幅の数字だけを見ないこと**——「受け皿と
@@ -14720,7 +14720,7 @@ right:var(--space-3)`でタイムラインの下端を横断しており、**一
   `resolve_estimate`が`source='frame'`で0分、展開ループに枠の分岐。
 - `backend/routes/schedule.py`: `/api/schedule/plan/update`とまとめ書込が
   `frame`（日付・直）を受ける。
-- `static/js/schedule-view.js`: `#scFrameBtn`（押す／掴んで落とす）、
+- `static/js/schedule/schedule-view.js`: `#scFrameBtn`（押す／掴んで落とす）、
   `openFramePicker()`／`addFrameAt()`／`updateFrameEntry()`／`frameEditable()`、
   区分`SC_CATEGORIES.frame`と行表示マスタの`cat:frame`、
   `nonWorkTitleText()`（作業以外の題名を1箇所で作る）、`frameDetailHtml()`。
@@ -14853,7 +14853,7 @@ right:var(--space-3)`でタイムラインの下端を横断しており、**一
    マスタに親子関係を持たせ、設備単位で持つ。計算はロール径MAXを主とし、
    ロール径MINもデータがあればそれも用いる。
 
-#### ① その場フィルタを1行に収める（`static/js/filters.js` / `45-tolerance.css`）
+#### ① その場フィルタを1行に収める（`static/js/list/filters.js` / `45-tolerance.css`）
 
 以前は器が `display:grid` で、**欄ごとの見出しの段**（`grid-template-rows:
 auto var(--ctl-h-sm)`）と、**状態**・**注記**の `grid-column:1/-1` が
@@ -15288,7 +15288,7 @@ Excelがファイルごと開けない。**黙って切らない**）。
 
 **測定帳票（`report-dashboard.js`）とは紙の性格が違う。** あちらは1ロット1枚の
 「塊の配置」で、こちらは**多数のロットを1枚へ詰める一覧**。だから骨格は
-作業予定表の紙（`schedule-print.js`）から借りる（`static/js/opsheet-print.js`、
+作業予定表の紙（`schedule-print.js`）から借りる（`static/js/report/opsheet-print.js`、
 CSSは`static/css/62-actuals.css`の`.os-*`）:
 
 - **枚数は実測で切る**（`splitToSheets()`）。定数で決め打ちにすると最後の
@@ -15473,7 +15473,7 @@ DBへは測定画面の「保存」で入る・§9.202「自動保存は無い�
     ① 2.000 ▸ ② 高さ            … 1回目を受け付けた（受け付けた値をそのまま出す）
     2.150 − 2.000 = 0.150 ▸ ①   … 2回目で確定。**計算式のまま**出す
 
-**式の控えは記録へ入れない**（`burrEcho` は `measurement-input.js` の変数）——
+**式の控えは記録へ入れない**（`burrEcho` は `measure-input.js` の変数）——
 差の値は既に `measurements.burr` にあり、途中式は「いま何をしたか」を示す画面の
 道具でしかない。**開いている記録が変わったら捨てる**（idで見分ける）。
 
@@ -15488,7 +15488,7 @@ DBへは測定画面の「保存」で入る・§9.202「自動保存は無い�
 
 #### ④ ③「記録した値」は操業データ項目マスタが決める
 
-`measurement-view.js` の `RECORD_GROUPS`（項目名を4群ぶん直に並べた表）は
+`measure-view.js` の `RECORD_GROUPS`（項目名を4群ぶん直に並べた表）は
 **廃止した**——群の名前も並びも現場では変えられず、母材だけ画面のラベルから拾う
 という別の道も持っていた（同じことを2通りで書いていた）。
 
@@ -17135,7 +17135,7 @@ CSSの`.sp-page[data-paper="b4-*"]`を書き忘れていれば紙はA4のまま�
 **実際に選んで紙の実寸(mm)が変わること**と、**`@page`の文字列そのもの**を
 見る。固定は`tests/test_scprint.js`。
 
-**実績データ表の印刷（`static/js/opsheet-print.js`）も同じ形へ揃えた**
+**実績データ表の印刷（`static/js/report/opsheet-print.js`）も同じ形へ揃えた**
 （利用者の指示「実績データ表も同じ形に揃えてください」）。`PAPER_SIZES`は
 別に持つが、3点（分ける・1つの鍵・実寸mmの`@page`）は同じで、既定だけが
 **A4横**（列が多い表なので縦だと1行に収まらない・§9.241 ③）。
@@ -20982,7 +20982,7 @@ READONLYが追加で防いでいたのは**人の意図の衝突**だけで、�
 > メニューのほぼすべてを畳んで最大限広いスペースで仕掛の一覧表を表示できるような
 > 機能を実装してください。
 
-### ① 印刷範囲（`static/js/schedule-print.js`）
+### ① 印刷範囲（`static/js/schedule/schedule-print.js`）
 
 `RANGE_MODES` は `all`（既定＝今までどおり全部）／`date`（現場歴の日付で
 from〜to）／`picked`（一覧のチェックで選んだ予定だけ）の3つ。当てるのは
@@ -21003,7 +21003,7 @@ from〜to）／`picked`（一覧のチェックで選んだ予定だけ）の3�
 固定は `tests/test_scprint.js` §9.292 ①——**札が並ぶことではなく、紙になる行が
 実際に減ること**を見る（札だけを見る網は1件も絞らない実装でも通る）。
 
-### ② 一覧の下の余白（`static/js/schedule-view.js`）
+### ② 一覧の下の余白（`static/js/schedule/schedule-view.js`）
 
 `#scTailSpace` を `renderTimeline()` の末尾に置き、高さは `fitTailSpace()` が
 **測って**入れる（狙いは「最後の行の上端が器の上端まで上がれる」ことなので、
@@ -21035,7 +21035,7 @@ from〜to）／`picked`（一覧のチェックで選んだ予定だけ）の3�
   「30秒後」と書くと、待てば来ると読まれる（来ない）。
 - 器の外へ `position:fixed` で出し（§9.201）、**開いた器を控える**（§9.222 ①）。
 
-### ④ 列の設定パネルが開かない（`static/js/list-columns.js`）
+### ④ 列の設定パネルが開かない（`static/js/list/list-columns.js`）
 
 **真因は差し替え口の契約違反**。`initialHidden` は「まだ一度も保存していない
 ときの既定」を答える口で、**保存済みなら `null`** を返す約束
@@ -21487,7 +21487,7 @@ test_reclayout test_opparent test_opformula test_opblank test_rbcells test_rolli
 
 ### R3 master-maint.js を「定義／盤／専用画面」に分割（VER2.205.0）
 
-`static/js/master-maint.js` は **13,090行の1つのIIFE** で、`MASTER_DEFS`（600行）・
+`static/js/master/master-maint.js` は **13,090行の1つのIIFE** で、`MASTER_DEFS`（600行）・
 盤（状態・ナビ・入力支援・編集モーダル・一覧・submit/delete）・15の専用画面
 （`special:`）が1つの閉包に同居していた。読む側は「どこまでが盤で、どこからが
 専用画面か」を毎回探すことになり、専用画面を1つ足すたびに盤の`loadMaintInner`と
@@ -22088,7 +22088,7 @@ x.given()       # 送った鍵だけ（repo の「渡した鍵だけ書く」へ
 
 ### どうしたか
 
-`static/js/print-core.js`（207行）が `WL.paper` と `WL.printCore` を持つ。
+`static/js/core/print-core.js`（207行）が `WL.paper` と `WL.printCore` を持つ。
 
 ```js
 WL.paper.KINDS / ORIENTS          // 用紙の表はここ1つ
@@ -22250,4 +22250,92 @@ URL・エンドポイント名・メソッドは、分ける前後の`url_map`�
 `test_mastershare`・`test_routesplit`・`test_error`・`test_tablequery`と、
 静的検査（`test_pyflakes`・`test_quietlint`・`test_flags`・`test_ddllint`・
 `test_dblayer`・`test_srcread`・`test_pywarn`・`test_pick`）。
+**フルスイートは回していない。**
+
+
+## §9.334 画面のJSは領域フォルダ。綴りは1つ（REVIEW 3-9）
+
+### 何が問題だったか
+
+`static/js` に **32本が平らに**並んでいた。読み込み順は `JS_FILES`（§9.324 R3）が
+持っているので動きに問題は無いが、**直したい画面のファイルを名前の記憶で探す**
+ことになる——`actuals-view.js` と `opsheet-print.js` が同じ画面のものだと分かるのは、
+中を開いた人だけ。
+
+しかも**同じ領域なのに綴りが2通り**あった。`measure-progress.js` /
+`measure-opdata.js` / `measure-steps.js` と、`measurement-view.js` /
+`measurement-input.js` / `measurement-tolerance.js` / `measurement-worklog.js`。
+どちらが正しいかを毎回思い出すことになり、新しく足す人は**多いほう**を選ぶので
+不揃いは自然には解けない。
+
+### 分け方
+
+  `core/`     土台とアプリ自身のこと（`base` / `wl-window` / `print-core` /
+              `access-mode` / `log-view`）
+  `list/`     一覧（仕掛・品質データ分析）と、その列・絞り込み・計算式
+  `measure/`  測定画面（入力・公差・条割・異常位置・記録の保存）
+  `master/`   マスタ管理（定義・盤・専用画面）
+  `schedule/` 作業スケジュールとカレンダー
+  `report/`   紙にする画面（帳票・実績データ表）
+
+**領域は6つだけ**で、綴りは `measure-` にそろえた（`measurement-*` の4本を改名）。
+**`JS_FILES` は今までどおり読み込み順の唯一の置き場**で、値が
+`'base.js'` から `'core/base.js'` になっただけ——`index.html` は
+`url_for('static', filename='js/') + name` を組み立てるので、**画面側は1文字も
+変えていない**。
+
+### 直さなかったもの——**更新履歴は書き換えない**
+
+`measurement-*` を参照している文は、**docs と CLAUDE.md は書き換え、
+`backend/changelog_data.py` の過去のエントリは書き換えていない。**
+更新履歴は**日付のある記録**で、当時そのファイルがその名前だったのは事実。
+書き換えると「その版で何をしたか」の記録が今の名前で塗り替わる。
+
+**フォルダの中で接頭辞を落とす**（`measure/view.js`）形は採らなかった——
+`list/`・`schedule/`・`measure/` に `view.js` が3本並び、エディタのタブや
+grep の結果から**どの領域のものか読めなくなる**。フォルダは領域を語り、
+ファイル名は今までどおり中身を語る。
+
+### 網
+
+`tests/test_loadorder.py` に4つ足した（`ALWAYS` ではないが、`static/js` を
+触れば `pick_tests` が必ず選ぶ）。
+
+ 1. **`static/js` の直下に `.js` を置かない**（領域フォルダへ入れる）。
+ 2. **領域は宣言した6つだけ**（`AREAS` の1箇所。増やすときは理由を添えて1行）。
+ 3. 領域に説明が書いてある。
+ 4. **`measure/` に `measurement-*` が戻っていない。**
+
+**平らへ戻るのは1回の判断ではなく、小さな判断の積み上がり**——次に足す人が
+「どこに置くか」を迷えば、いちばん近い場所へ置かれる。だから注意書きではなく
+網で止める（§9.333 と同じ理由）。
+
+### 一緒に直した「フォルダを見ていなかった」網
+
+`glob('*.js')` は**直下しか見ない**ので、移した瞬間に**0件を数えて通る**
+——`test_globallint`・`test_patchlint`・`test_printcore`・`test_quietlint` が
+そうなる（数える対象が消えたので「違反0件」になる）。**緩む側に壊れるので、
+通ったこと自体が証拠にならない**（§9.328 と同じ形）。`rglob` へ直し、
+`test_globallint` の突き合わせは**相対パス**にした（`p.name` のままだと
+`JS_FILES` の `core/base.js` と一致しない）。
+
+### 実測
+
+| | 前 | 後 |
+|---|---|---|
+| `static/js` 直下の `.js` | **32** | **0** |
+| 領域フォルダ | 0 | **6**（1フォルダ最大10本） |
+| 同じ領域の接頭辞の綴り | **2**（`measure-` 3本 / `measurement-` 4本） | **1** |
+| `JS_FILES` の順 | — | **1つも変えていない** |
+| 画面が読む一覧 | 32本 | **32本**（`/static/js/...` は全部200） |
+
+### 回した網
+
+`test_loadorder`・`test_globallint`・`test_patchlint`・`test_printcore`・
+`test_quietlint`・`test_eslint`・`test_pyflakes`・`test_csslint`・`test_hintlint`・
+`test_pick`・`test_dskeylint`・`test_boot`・`test_docindex`・`test_changelog`・
+`test_body`・`test_apiguard`・`test_routesplit` と、画面側の
+`test_flows`・`test_msteps`・`test_mcore`・`test_master`・`test_maint`・`test_theme`・
+`test_uiux`・`test_nav`・`test_headbar`・`test_scprint`・`test_rpprint`・
+`test_opsheet`・`test_logview`・`test_actuals`。
 **フルスイートは回していない。**

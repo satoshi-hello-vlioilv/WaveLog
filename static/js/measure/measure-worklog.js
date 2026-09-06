@@ -1,6 +1,6 @@
 "use strict";
-/* measurement-worklog.js: 指示値表示・作業時間UI
-   マスタ管理画面は static/js/master-maint.js へ分離した(ファイルの92%が
+/* measure-worklog.js: 指示値表示・作業時間UI
+   マスタ管理画面は static/js/master/master-maint.js へ分離した(ファイルの92%が
    マスタ管理で、名前と中身が乖離していたため。docs/REFACTORING_PLAN.md
    フェーズ3.1)。 */
 /* ============================================================
@@ -264,9 +264,9 @@
    window.*公開ゼロ・他ファイルからの参照ゼロの自己完結IIFEで、独立
    ファイルである利益が無かった。**読み込み位置は変えていない**:
    このIIFEは冒頭でidbAll(records-store.js)の存在を確認して早期returnし、
-   saveLocal(records-store.js)/renderMeasurement(measurement-view.js)/
+   saveLocal(records-store.js)/renderMeasurement(measure-view.js)/
    markDirty(base.js)をラップするため、それら全ての後に読まれる必要がある。
-   計画当初の統合先だったmeasurement-view.jsはrecords-store.jsより先に
+   計画当初の統合先だったmeasure-view.jsはrecords-store.jsより先に
    読まれるので、そちらへ移すとガードに掛かって**機能が丸ごと黙って死ぬ**。
    このファイルは元のworktime-benchmark.jsの直前に読まれるため、末尾へ
    置けば実行順は元のままになる。

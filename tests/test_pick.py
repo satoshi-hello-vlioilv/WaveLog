@@ -78,12 +78,12 @@ def main():
     #    中身が入れ替わっても気づけない。
     cases = [
         ('backend/routes/logs.py', ['test_logs', 'test_logview']),
-        ('static/js/log-view.js', ['test_logview', 'test_logs']),
+        ('static/js/core/log-view.js', ['test_logview', 'test_logs']),
         ('backend/watchdog.py', ['test_tabclose']),
         ('backend/schedule_calc.py', ['test_sccat', 'test_scbalance', 'test_scsplit']),
         ('static/css/70-schedule.css', ['test_fit', 'test_sccols']),
         ('backend/repositories/master_repo.py', ['test_master', 'test_crudroutes']),
-        ('static/js/list-columns.js', ['test_collayout', 'test_lcpanel', 'test_colsort']),
+        ('static/js/list/list-columns.js', ['test_collayout', 'test_lcpanel', 'test_colsort']),
         ('backend/access_mode.py', ['test_modeguard', 'test_noaccess']),
     ]
     bad = []
@@ -96,7 +96,7 @@ def main():
         ' / '.join(bad) if bad else f'{len(cases)}件')
 
     # 7. 土台を触ったら全部回す(base.js / index.html / app.py)。
-    bad = [p for p in ('static/js/base.js', 'templates/index.html', 'app.py',
+    bad = [p for p in ('static/js/core/base.js', 'templates/index.html', 'app.py',
                        'backend/config.py', 'tests/run_all.sh')
            if P.pick([p])[0] != set()]
     rec('土台を触ったときは全部回す', not bad, ' '.join(bad) if bad else '5件')

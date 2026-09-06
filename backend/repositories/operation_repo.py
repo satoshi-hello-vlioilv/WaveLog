@@ -1185,7 +1185,7 @@ def normalize_choice_order(v):
 # 測定画面では色が付かない札ができる（§4）。
 BLANK_TINT_DEFAULT = ''
 BLANK_TINT_NONE = 'なし'
-# `WL.columnTint.PALETTE`の鍵（`static/js/base.js`）。**並びも合わせる**
+# `WL.columnTint.PALETTE`の鍵（`static/js/core/base.js`）。**並びも合わせる**
 # ——盤の札の並びが画面ごとに違うと、同じ色を探す場所が変わる。
 BLANK_TINT_COLORS = ('gray', 'slate', 'teal', 'cyan', 'blue', 'indigo',
                      'green', 'lime', 'yellow', 'amber', 'brown', 'red',
@@ -2215,7 +2215,7 @@ def seed_mother_builtins(c):
 #  してください。」
 #
 # **直したのはサーバーではなく画面のほう**（`base.js`の`optionFill()`と
-# `measurement-view.js`の`blankMeasure()`）。`-`は「選ばない」の**札の字**で
+# `measure-view.js`の`blankMeasure()`）。`-`は「選ばない」の**札の字**で
 # あって値ではないのに、画面が値として`operator:'-'`を書き込んでいたため、
 # `applyInitials()`が見る「まだ何も選ばれていない」の判定を画面の側が先に
 # 埋めてしまい、**マスタの`[初期値]`が一度も効かなかった**。

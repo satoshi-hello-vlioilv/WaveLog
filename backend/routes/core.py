@@ -61,40 +61,40 @@ CSS_FILES=BOOT_CSS_FILES+BODY_CSS_FILES
 # **ここが唯一の一覧**——index.htmlへ書き写さない。`tests/test_loadorder.py`が
 # 「static/js の全部が1度ずつ載っている」「順の約束」を固定する。
 JS_FILES=[
- 'base.js',
- 'wl-window.js',
- 'list-view.js',
- 'list-formula.js',
- 'list-columns.js',
- 'list-rules.js',
- 'measurement-view.js',
- 'measurement-input.js',
- 'records-store.js',
- 'measurement-tolerance.js',
- 'lot-split.js',
- 'measure-progress.js',
- 'measure-opdata.js',
- 'measure-steps.js',
- 'defect-locator.js',
- 'filters.js',
- 'measurement-worklog.js',
- 'master-defs.js',      # マスタ管理: 定義（MASTER_DEFS / MASTER_GROUPS）
- 'master-maint.js',     # マスタ管理: 盤（WL.mm を作る）
- 'master-report.js',    # マスタ管理: 帳票ブロック・帳票レイアウト
- 'master-data.js',      # マスタ管理: データと接続・作業スケジュール・管理
- 'master-opdata.js',    # マスタ管理: 操業データ項目・選択肢・記録した値
- 'quality-analysis.js',
+ 'core/base.js',
+ 'core/wl-window.js',
+ 'list/list-view.js',
+ 'list/list-formula.js',
+ 'list/list-columns.js',
+ 'list/list-rules.js',
+ 'measure/measure-view.js',
+ 'measure/measure-input.js',
+ 'measure/records-store.js',
+ 'measure/measure-tolerance.js',
+ 'measure/lot-split.js',
+ 'measure/measure-progress.js',
+ 'measure/measure-opdata.js',
+ 'measure/measure-steps.js',
+ 'measure/defect-locator.js',
+ 'list/filters.js',
+ 'measure/measure-worklog.js',
+ 'master/master-defs.js',      # マスタ管理: 定義（MASTER_DEFS / MASTER_GROUPS）
+ 'master/master-maint.js',     # マスタ管理: 盤（WL.mm を作る）
+ 'master/master-report.js',    # マスタ管理: 帳票ブロック・帳票レイアウト
+ 'master/master-data.js',      # マスタ管理: データと接続・作業スケジュール・管理
+ 'master/master-opdata.js',    # マスタ管理: 操業データ項目・選択肢・記録した値
+ 'list/quality-analysis.js',
  # 紙まわりの共通核（§9.332）。用紙の表・@page・mm換算・下限つき比例配分・
  # 刷り出しの段取りを持つ。**紙を出す3本より先に読むこと。**
- 'print-core.js',
- 'report-dashboard.js',
- 'calendar-view.js',
- 'schedule-view.js',
- 'schedule-print.js',
- 'actuals-view.js',
- 'opsheet-print.js',
- 'log-view.js',
- 'access-mode.js',
+ 'core/print-core.js',
+ 'report/report-dashboard.js',
+ 'schedule/calendar-view.js',
+ 'schedule/schedule-view.js',
+ 'schedule/schedule-print.js',
+ 'report/actuals-view.js',
+ 'report/opsheet-print.js',
+ 'core/log-view.js',
+ 'core/access-mode.js',
 ]
 _CSS_CACHE={'token':None,'body':''}
 _BOOT_CSS_CACHE={'token':None,'body':''}
@@ -185,7 +185,7 @@ def home():
  # 例外を出すと画面が一切出ない(実際に別端末から「起動時にInternal Server
  # Error」とだけ報告が上がった)。更新時刻はキャッシュ破棄のための値なので、
  # 取得できないファイルがあっても飛ばして進む(_newest_mtime)。
- try:js=list((BASE/'static'/'js').glob('*.js'))
+ try:js=list((BASE/'static'/'js').rglob('*.js'))   # 領域フォルダ（§9.334）
  except OSError as e:
   app_logger().warning('静的JSの一覧を取得できませんでした: %s',e);js=[]
  token=_newest_mtime(js+[_css_dir()/n for n in CSS_FILES],'静的ファイル')

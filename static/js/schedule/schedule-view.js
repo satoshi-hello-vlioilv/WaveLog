@@ -21,7 +21,7 @@ timeline/split)で測ると、トップレベル定義185個のうち63個(34%)�
 core↔timeline、board↔timeline)。`scState`だけで193箇所から参照される。
 「1つの大きなファイル」を「読み込み順に依存する63個の暗黙の契約を持つ
 4ファイル」に置き換えることになり、フェーズ2で解消したばかりの問題を
-作り直してしまう。measurement-worklog.jsの分割(相互参照ゼロ)とは事情が違う。
+作り直してしまう。measure-worklog.jsの分割(相互参照ゼロ)とは事情が違う。
 代わりに下の節目次で辿れるようにする(app.cssと同じ扱い)。
 
 ── 節目次 ──
@@ -1697,7 +1697,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   updateSideUi();
  }
 
- /* 汎用フローティングウィンドウは static/js/wl-window.js が持つ(§9.17)。
+ /* 汎用フローティングウィンドウは static/js/core/wl-window.js が持つ(§9.17)。
     ここに置いていたが、スケジュールの状態を一切見ない部品で、
     list-columns.js からも使われている。呼ぶときは WL.makeFloatingWindow。 */
 

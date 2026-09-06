@@ -5,7 +5,7 @@
     tests/run_all.sh --changed        # 変更ファイルに関係するものだけ回す
     python3 tests/pick_tests.py       # 選ばれたテスト名を並べて出す
     python3 tests/pick_tests.py --why # どのファイルがどの規則で何を呼んだか
-    python3 tests/pick_tests.py backend/routes/logs.py static/js/log-view.js
+    python3 tests/pick_tests.py backend/routes/logs.py static/js/core/log-view.js
 
 **これは絞り込みの手掛かりであって、フルスイートの代わりではない。**
 コミット前は `tests/run_all.sh` を通しで回すこと。535件が20分かかるから
@@ -230,7 +230,7 @@ RULES = [
     # --- 全部に効くもの ---------------------------------------------
     ('templates/', [ALL]),
     # base.js は全画面が読む土台(WL名前空間・起動・ハートビート・キャッシュ)。
-    ('static/js/base.js', [ALL]),
+    ('static/js/core/base.js', [ALL]),
     # index.html は全画面のマークアップと起動ローダーを1枚で持っている。
     ('templates/index.html', [ALL]),
     # app.py はアプリの組み立て(Blueprint登録・キャッシュ方針・書込ガード)。
@@ -238,25 +238,25 @@ RULES = [
     ('backend/config.py', [ALL]),
 
     # --- 画面(JS) ----------------------------------------------------
-    ('static/js/list-view.js', g('一覧', '列', 'test_fit', 'test_uiux', '更新履歴')),
-    ('static/js/list-columns.js', g('列', 'test_sccontent',
+    ('static/js/list/list-view.js', g('一覧', '列', 'test_fit', 'test_uiux', '更新履歴')),
+    ('static/js/list/list-columns.js', g('列', 'test_sccontent',
                                     'test_sccols', 'test_cols', 'test_lcpanel')),
-    ('static/js/list-rules.js', g('列')),
+    ('static/js/list/list-rules.js', g('列')),
     # §9.256 式で作る自動値も同じ評価器を使う（片方だけ直した状態を作らない）
-    ('static/js/list-formula.js', g('test_formula', 'test_colpreset', 'test_lcpanel',
+    ('static/js/list/list-formula.js', g('test_formula', 'test_colpreset', 'test_lcpanel',
                                     'test_opformula')),
-    ('static/js/filters.js', g('モーダル', 'フィルタ',
+    ('static/js/list/filters.js', g('モーダル', 'フィルタ',
                                'test_listcache', 'test_allrows', 'test_nav')),
     # §9.302: 設備の使える機能で予定の設備の候補を絞る
-    ('static/js/schedule-view.js', g('スケジュール', 'モーダル', 'test_listmodal',
+    ('static/js/schedule/schedule-view.js', g('スケジュール', 'モーダル', 'test_listmodal',
                                      'test_eqfeature')),
-    ('static/js/schedule-print.js', g('モーダル', 'test_scprint')),
+    ('static/js/schedule/schedule-print.js', g('モーダル', 'test_scprint')),
     # 実績データリストは列の設定パネル・帳票・アクセスモードへつながる。
-    ('static/js/actuals-view.js', g('実績', 'モーダル', '列', 'test_recperm', 'test_nav')),
-    ('static/js/opsheet-print.js', g('実績', 'モーダル', '列')),
+    ('static/js/report/actuals-view.js', g('実績', 'モーダル', '列', 'test_recperm', 'test_nav')),
+    ('static/js/report/opsheet-print.js', g('実績', 'モーダル', '列')),
     ('backend/actuals.py', g('実績', 'test_workdate', 'test_modeguard')),
-    ('static/js/lot-split.js', g('異常位置', 'test_orphan', 'test_sub')),
-    ('static/js/master-maint.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
+    ('static/js/measure/lot-split.js', g('異常位置', 'test_orphan', 'test_sub')),
+    ('static/js/master/master-maint.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
                                     'test_headbar', 'test_datasource',
                                      'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal',
                                      # §9.254 (3): 帳票レイアウトマスタ（親子の行き来）
@@ -264,7 +264,7 @@ RULES = [
                                      # §9.286 (7): 説明文の印は WL.markup() の1箇所
                                      '更新履歴')),
     # §9.324 R3: マスタ管理の分割ファイル（盤と同じ網で見る）
-    ('static/js/master-defs.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
+    ('static/js/master/master-defs.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
                                     'test_headbar', 'test_datasource',
                                      'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal',
                                      # §9.254 (3): 帳票レイアウトマスタ（親子の行き来）
@@ -272,7 +272,7 @@ RULES = [
                                      # §9.286 (7): 説明文の印は WL.markup() の1箇所
                                      '更新履歴')),
     # §9.324 R3: マスタ管理の分割ファイル（盤と同じ網で見る）
-    ('static/js/master-report.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
+    ('static/js/master/master-report.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
                                     'test_headbar', 'test_datasource',
                                      'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal',
                                      # §9.254 (3): 帳票レイアウトマスタ（親子の行き来）
@@ -280,7 +280,7 @@ RULES = [
                                      # §9.286 (7): 説明文の印は WL.markup() の1箇所
                                      '更新履歴')),
     # §9.324 R3: マスタ管理の分割ファイル（盤と同じ網で見る）
-    ('static/js/master-data.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
+    ('static/js/master/master-data.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
                                     'test_headbar', 'test_datasource',
                                      'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal',
                                      # §9.254 (3): 帳票レイアウトマスタ（親子の行き来）
@@ -288,16 +288,16 @@ RULES = [
                                      # §9.286 (7): 説明文の印は WL.markup() の1箇所
                                      '更新履歴')),
     # §9.324 R3: マスタ管理の分割ファイル（盤と同じ網で見る）
-    ('static/js/master-opdata.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
+    ('static/js/master/master-opdata.js', g('マスタ', 'モーダル', '操業意匠', 'test_rawmaster',
                                     'test_headbar', 'test_datasource',
                                      'test_qjoinui', 'test_dscap', 'test_blockbuild', 'test_rbmodal',
                                      # §9.254 (3): 帳票レイアウトマスタ（親子の行き来）
                                      'test_rlmaster',
                                      # §9.286 (7): 説明文の印は WL.markup() の1箇所
                                      '更新履歴')),
-    ('static/js/calendar-view.js', g('test_uisize', 'test_histdel', 'test_headbar')),
+    ('static/js/schedule/calendar-view.js', g('test_uisize', 'test_histdel', 'test_headbar')),
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
-    ('static/js/report-dashboard.js', g('モーダル', 'test_screport', 'test_headbar', 'test_uisize',
+    ('static/js/report/report-dashboard.js', g('モーダル', 'test_screport', 'test_headbar', 'test_uisize',
                                         'test_rpblocks', 'test_rplayout', 'test_rpmaster',
                                         # §9.312: 触ったら裏で保存（往復中に触ったぶんを捨てない）
                                         'test_rpsave',
@@ -315,21 +315,21 @@ RULES = [
                                         # §9.253: 見本のロットで帳票を見る
                                         'test_rbsample',
                                         'test_collayout', 'test_actuals')),
-    ('static/js/quality-analysis.js', g('test_uiux', 'test_headbar', 'test_fit', 'test_theme')),
-    ('static/js/defect-locator.js', g('モーダル', '異常位置')),
+    ('static/js/list/quality-analysis.js', g('test_uiux', 'test_headbar', 'test_fit', 'test_theme')),
+    ('static/js/measure/defect-locator.js', g('モーダル', '異常位置')),
     # ロールマスタ（§9.239 ⑥）。マスタの4本セットと判定の両方に効く。
     ('backend/repositories/roll_repo.py', g('マスタ', '異常位置')),
     # Excelの読み書き（§9.240）。ロールマスタの入出力が唯一の使い手。
     ('backend/xlsx_io.py', g('test_rollio', 'test_roll')),
-    ('static/js/log-view.js', g('ログ')),
-    ('static/js/access-mode.js', g('権限', 'test_nav')),
-    ('static/js/wl-window.js', g('test_lcpanel', 'test_listmodal', 'test_split_layout',
+    ('static/js/core/log-view.js', g('ログ')),
+    ('static/js/core/access-mode.js', g('権限', 'test_nav')),
+    ('static/js/core/wl-window.js', g('test_lcpanel', 'test_listmodal', 'test_split_layout',
                                  'test_scsplit')),
-    ('static/js/measure-progress.js', g('test_waiting', 'test_mcore',
+    ('static/js/measure/measure-progress.js', g('test_waiting', 'test_mcore',
                                         'test_msteps')),
-    ('static/js/measure-steps.js', g('測定', '見た目')),   # 段の枠は測定画面全体に効く
+    ('static/js/measure/measure-steps.js', g('測定', '見た目')),   # 段の枠は測定画面全体に効く
     # データ一覧の表示列(§9.162)も持つので、列の網も回す。
-    ('static/js/records-store.js', g('モーダル', 'test_share', 'test_flows', 'test_master',
+    ('static/js/measure/records-store.js', g('モーダル', 'test_share', 'test_flows', 'test_master',
                                      'test_recperm', 'test_reccols', 'test_lcpanel',
                                      # §9.302: 使用設備の候補を「測定」で絞る
                                      'test_eqfeature',
@@ -341,7 +341,9 @@ RULES = [
                                      # §9.257 ②: 使用設備の設定モーダル（作りはここ1箇所）
                                      'test_eqsetup')),
     # 測定画面は test_scale(寸法の網)の巡回にも入っている(§9.127)ので見た目も回す。
-    ('static/js/measurement-', g('測定', '見た目', 'モーダル')),   # measurement-*.js
+    # §9.334で `measurement-*` は `measure-*` へそろえ、`measure/` へ移した。
+    # 上で名指ししていない残り（view / input / tolerance / worklog）をここが受ける。
+    ('static/js/measure/measure-', g('測定', '見た目', 'モーダル')),
 
     # --- 見た目(CSS) -------------------------------------------------
     # CSSは1枚に閉じない(トークンは:rootで共有し、@layerで順序が決まる)。
@@ -442,7 +444,7 @@ RULES = [
     ('backend/repositories/master_repo.py', g('マスタ', '列', '権限', 'test_workable', 'test_oplimit')),
     ('backend/repositories/operation_repo.py', g('操業データ', '操業意匠', 'test_msteps', 'test_mcore')),
     # 操業データの入力欄（§9.215）。測定画面①の中身なので測定一式へ。
-    ('static/js/measure-opdata.js', g('操業データ', '測定', '見た目', 'モーダル', '操業意匠')),
+    ('static/js/measure/measure-opdata.js', g('操業データ', '測定', '見た目', 'モーダル', '操業意匠')),
     # §9.325: 読む側は写しに書かない（1秒未満のサーバー側の網）
     ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq', 'test_workdate', 'test_scsnapread')),
     ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd', 'test_workdate')),

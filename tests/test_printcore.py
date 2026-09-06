@@ -40,7 +40,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 JS = ROOT / 'static' / 'js'
-CORE = 'print-core.js'
+CORE = 'print-core.js'   # 実体は core/print-core.js（§9.334）
 R = []
 
 # `window.print()` を直に呼んでよいもの。**理由を書けないものは載せない。**
@@ -116,7 +116,7 @@ def scan(pattern, keep_strings=False):
     残して数える（落とすと共通核ですら1件も当たらず、写しが増えても通る）。"""
     rx = re.compile(pattern)
     hit = []
-    for f in sorted(JS.glob('*.js')):
+    for f in sorted(JS.rglob('*.js')):   # 領域フォルダ（§9.334）
         if rx.search(strip_js(f.read_text(encoding='utf-8'), keep_strings)):
             hit.append(f.name)
     return hit
@@ -142,12 +142,12 @@ def main():
         rec(f'例外 {f} に理由が書いてある', len(why.strip()) >= 12)
 
     # 共通核が名乗っていること（読み込み順は test_loadorder が見る）
-    src = (JS / CORE).read_text(encoding='utf-8')
+    src = (JS / 'core' / CORE).read_text(encoding='utf-8')
     rec('WL.paper と WL.printCore を公開している',
         'WL.paper=' in src and 'WL.printCore=' in src)
 
     # ---- 網そのものが素通りしないこと ----
-    probe = JS / '_print_probe.js'
+    probe = JS / 'core' / '_print_probe.js'
     try:
         probe.write_text(
             'const K=[{key:"a4",w:210,h:297}];\n'
@@ -162,7 +162,7 @@ def main():
         probe.unlink(missing_ok=True)
 
     # コメントの中の綴りでは落ちないこと（§9.328）
-    probe2 = JS / '_print_probe2.js'
+    probe2 = JS / 'core' / '_print_probe2.js'
     try:
         probe2.write_text('/* @page{size: と 25.4/96 と w:210 の話 */\n'
                           '// window.print() のこと\n'

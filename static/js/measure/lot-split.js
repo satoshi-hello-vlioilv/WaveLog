@@ -466,7 +466,7 @@
         if(typeof renderQualityGradePanel==='function')renderQualityGradePanel();
         if(typeof renderProductPanel==='function'
            &&WL.measureItem.isMaterial($('#measureType')?.value))renderProductPanel();
-        /* 当て方は1箇所（measurement-view.js）が持つ。ここは呼ぶだけ。 */
+        /* 当て方は1箇所（measure-view.js）が持つ。ここは呼ぶだけ。 */
         if(WL.innerDiameter)WL.innerDiameter.apply(S.measure.source);
       }
     }catch(e){console.warn('自ロットの完全データ取得に失敗しました',e)}
@@ -2397,7 +2397,7 @@
      表示する(条割変更モーダルを手動で開くまで待たない)。applySplit実行後
      もここで最新の設定内容へ更新する。 */
   /* 骨子（§9.137）の①基本情報は「分割ロット」を持つ。子ロットは非同期で
-     取りに行くので、`measurement-view.js`は器だけ置き、埋めるのはここ
+     取りに行くので、`measure-view.js`は器だけ置き、埋めるのはここ
      （分割の状態を知っているのはこのファイルだけ）。**分割が無いときは
      行ごと出さない**——「分割無し」は条の設計カードが言っており、同じ
      ことを2箇所に書かない（§9.129）。 */
@@ -2609,7 +2609,7 @@
   /* 子ロットの印は**測定表の専用列**が出す（§9.146）。以前は入力欄の中へ
      差し込んでおり、丈位置の数だけ同じバッジが並んで数値の場所を削っていた
      ——**ロット№は条で決まり、丈では変わらない**ので1列で足りる。
-     表を組むのは`measureMatrixHtml`（measurement-input.js）なので、条→印の
+     表を組むのは`measureMatrixHtml`（measure-input.js）なので、条→印の
      対応だけをここから渡す。 */
   window.WL.split=Object.assign(window.WL.split||{},{
     lotColumn(count){
@@ -2645,7 +2645,7 @@
   const baseToleranceDetail=toleranceDetail;
   /* 第3引数 typeName は画面の選択の代わり（§9.125）。**受け取って渡す**
      ——`toleranceDetail`は3つのファイルが順に包んでおり(ここ・
-     `measurement-worklog.js`・`measurement-tolerance.js`)、**1つでも
+     `measure-worklog.js`・`measure-tolerance.js`)、**1つでも
      引数を落とすと根まで届かない**。実際にここで落ちており、完了前の
      確認が全項目に「いま選ばれている項目の公差」を当てていた。 */
   toleranceDetail=function(kind,index=0,typeName){

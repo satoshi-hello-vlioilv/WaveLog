@@ -1,5 +1,5 @@
 "use strict";
-/* measurement-input.js: 測定値の入力系 — 測定器受信(deviceInput)・手入力・
+/* measure-input.js: 測定値の入力系 — 測定器受信(deviceInput)・手入力・
    入力位置管理(focusCurrent)・測定グリッド描画・公差計算(toleranceDetail)。 */
 function nums(a){return a.flat().map(Number).filter(Number.isFinite).filter(x=>x!==0)}function stat(a){const n=nums(a);if(!n.length)return['','','','',0];const av=n.reduce((x,y)=>x+y,0)/n.length,sd=Math.sqrt(n.reduce((x,y)=>x+(y-av)**2,0)/n.length);return[Math.min(...n),av,Math.max(...n),sd*3,n.length]}
 /* ---------- ③測定データ分析（§9.214、利用者の指示） ----------
@@ -212,7 +212,7 @@ function updateNumberlinePending(raw){
    次の枠だけを指せばよい（「次にすることを常に1つだけ指す」）。 */
 /* カーソルの移動は**入れ子では行わない**（§9.208 ③）。`el.focus()`は
    `focus`イベントを起こし、そのハンドラ（`bindMeasureInputs`の追従処理と、
-   `measurement-tolerance.js`が足す選択処理）が**また`focusCurrent()`を
+   `measure-tolerance.js`が足す選択処理）が**また`focusCurrent()`を
    呼ぶ**ので、素直に書くと行って来いで積み上がる（実測で
    「Maximum call stack size exceeded」）。1回の移動の中では動かさない。 */
 let caretMoving=false;
@@ -1118,7 +1118,7 @@ function toleranceListRows(){
  dims.forEach(k=>{
   const d=TOL_DIMENSIONS[k],base=Number(b[d.baseKey]);
   /* **`toleranceDetail`は通さない。** あれは「いま測っている項目の判定」を
-     答える関数で、`measurement-tolerance.js`のラッパーが
+     答える関数で、`measure-tolerance.js`のラッパーが
      `DIMENSIONAL={'板厚','板幅',…}`に無い項目名で**nullを返す**
      ——板丈は測る項目ではないので、そこで必ず落ちる（実際に「登録なし」に
      なった）。ここが欲しいのは**データに在る公差**なので、出どころから
@@ -1405,7 +1405,7 @@ function alignToleranceChart(){
 
    組み立ては`compactToleranceScale`の**1本のまま**で、**出来上がりを2つに
    配る**。引数で切り替える形にしないのは、この関数を3つのファイルが順に
-   包んでおり（`measurement-worklog.js`＝指示公差／`filters.js`＝スウォーム
+   包んでおり（`measure-worklog.js`＝指示公差／`filters.js`＝スウォーム
    数直線。§9.125の`toleranceDetail`と同じ形）、**1枚でも引数を落とすと
    根まで届かず黙って効かなくなる**ため。出来上がりのHTMLから図の要素を
    取り出す形なら、どの包みが勝っていても同じように分けられる。 */
@@ -1413,7 +1413,7 @@ const TOLERANCE_GRAPH_SELECTOR='.accurate-numberline,.compact-tol-scale';
 window.WL=window.WL||{};
 WL.measureTolerance={
  /* 図が作られない項目がある——公差そのものが無いもの（ラテラルボー等）と、
-    指示公差（`measurement-worklog.js`が専用カードへ置き換える）。そのときは
+    指示公差（`measure-worklog.js`が専用カードへ置き換える）。そのときは
     **左の列ごと畳んで表へ渡す**（`no-graph`）。空の器を210px残すのは
     「意味のない余白」で、しかも**理由は基本情報カードの公差欄に既に
     書いてある**（「公差情報なし」／指示値のカード）——同じことを2箇所に

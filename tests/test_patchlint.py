@@ -13,11 +13,11 @@ grepで辿っても最終的な実装に行き着かない**。読む側は`inde
     直して効いていない」が**3回**(品質データ結合・キャッシュ・読み込み
     時間の計測)。§9.93でフックへ置き換え済み。
   ・`compactToleranceScale` … **3ファイルが同じ関数を定義**していた。
-    読み込み順は measurement-input(定義) → measurement-tolerance(置換) →
-    filters(置換) → measurement-worklog(ラップ)。つまり真ん中の
-    measurement-tolerance版は**一度も実行されない死んだコード**で、
+    読み込み順は measure-input(定義) → measure-tolerance(置換) →
+    filters(置換) → measure-worklog(ラップ)。つまり真ん中の
+    measure-tolerance版は**一度も実行されない死んだコード**で、
     そこを直しても何も変わらない。§9.150で図を作り直したとき、
-    filters.js の置換を外して measurement-input.js の定義を live に戻した
+    filters.js の置換を外して measure-input.js の定義を live に戻した
     ——**一覧の絞り込みのファイルが測定画面の図を持っていたこと自体が誤り**。
 
 CLAUDE.mdは既に「拡張ファイルからはラップのみ可、全置換は不可」と
@@ -45,7 +45,7 @@ JS = ROOT / 'static' / 'js'
 ALLOWED = {
     ('lot-split.js', 'compactToleranceData'):
         '分割ロットでは条ごとに公差が変わるため、index の既定値ごと差し替える。',
-    ('measurement-worklog.js', 'updateWorkTimePanel'):
+    ('measure-worklog.js', 'updateWorkTimePanel'):
         '作業時間パネルを worklog 側の同期処理へ置き換える。',
 }
 
@@ -65,7 +65,7 @@ def rec(name, ok, detail=''):
 def declared_functions():
     """`function 名(` で宣言されている関数名（＝置き換えられうる相手）。"""
     names = set()
-    for path in JS.glob('*.js'):
+    for path in JS.rglob('*.js'):
         for m in re.finditer(r'^\s*(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(',
                              path.read_text(encoding='utf-8'), re.M):
             names.add(m.group(1))
@@ -76,7 +76,7 @@ def scan():
     """(ファイル名, 関数名, 行番号, ラップか) を返す。"""
     known = declared_functions()
     out = []
-    for path in sorted(JS.glob('*.js')):
+    for path in sorted(JS.rglob('*.js')):
         lines = path.read_text(encoding='utf-8').split('\n')
         for i, line in enumerate(lines):
             m = ASSIGN.match(line)

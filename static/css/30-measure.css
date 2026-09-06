@@ -1938,7 +1938,7 @@ th.col-sorted:hover{background:#c7e7ea}
   font-weight:800;white-space:nowrap;
 }
 /* **チップ（`#measureTypeChips`）と同じ数字ではない**（§9.234 ③）。
-   ここは**いま選んでいる丈だけ**の進捗（`measurement-input.js`が
+   ここは**いま選んでいる丈だけ**の進捗（`measure-input.js`が
    `m.measurements[key][li]`から数える）で、チップは**全丈の合算**
    （`measure-progress.js`の`itemProgress`）。縦割数が2以上のロットでは
    12/12 と 12/24 で別の数になるので、消すと丈ごとの進みが画面から失われる。

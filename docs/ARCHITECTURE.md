@@ -299,8 +299,8 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 |---|---|
 | `base.js` | `S`(状態)・`api`・`esc`・`aliases`/`pick`・`fmtDim`・`showToast`・`normalizedFieldName`・`sourceField`・使用設備/ユーザーIDの取得・`durationMs` |
 | `list-view.js` | `init`・`selectDb`/`selectTable`/`load`・`fetchTableData`(取得キャッシュ。`filters.js`の`load()`と共用)・`renderGrid`・更新履歴モーダル・検索/ページャ |
-| `measurement-view.js` | `ensureMeasureShape`・`collect`・`renderMeasurement`・各パネル描画（品質等級/コース/製品丈/作業時間）・入力検証（`updateValidationVisuals`）・`updateMeasurementHeading` |
-| `measurement-input.js` | `deviceParse`・`processDeviceInput`・`focusCurrent`・`renderMeasureGrid(Vertical)`・`judgeInput`・公差計算（`toleranceDetail`/`toleranceDataForSource`/`compactTolerance*`）・公差数直線の値→縦位置の写像（`WL.toleranceScaleView`、下記） |
+| `measure-view.js` | `ensureMeasureShape`・`collect`・`renderMeasurement`・各パネル描画（品質等級/コース/製品丈/作業時間）・入力検証（`updateValidationVisuals`）・`updateMeasurementHeading` |
+| `measure-input.js` | `deviceParse`・`processDeviceInput`・`focusCurrent`・`renderMeasureGrid(Vertical)`・`judgeInput`・公差計算（`toleranceDetail`/`toleranceDataForSource`/`compactTolerance*`）・公差数直線の値→縦位置の写像（`WL.toleranceScaleView`、下記） |
 | `records-store.js` | IndexedDB/ミラー永続化・`saveLocal`/`persistAndTransition`・`openMeasurement`・`openRecords`/`renderRecordListRows`・`loadMeasurementContext`・使用設備設定/設備マスタ・Access同期の未完了キューと再送・アプリ起動呼び出し（末尾） |
 
 ### 画面ごとの操作列をヘッダーへ相乗りさせる（#headerViewBar）
@@ -362,7 +362,7 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 - 表示は「Nロット / M条」と両方を出す（`summarizeAppliedGroups`、仕掛一覧の
   分割セル、幅分割情報パネル）。
 - 横割数(`#horizontalCount`)の`max`と`updateCoilOptions`の丸めも、設備の最大条数へ
-  追随する（`applyMaxStripsToInputs`/`currentMaxStrips`、measurement-view.js）。
+  追随する（`applyMaxStripsToInputs`/`currentMaxStrips`、measure-view.js）。
 - 条の入力欄には、**分割ありのときだけ**子ロット番号の下3桁バッジを出す
   (`.strip-lot-badge`、lot-split.jsが`makeMeasureInputV29`をラップして注入)。
   色は `appliedLotColorMap()` が返す**異なるロットの並び順**の配色で、
@@ -468,9 +468,9 @@ API経由でRNE(Navigator問い合わせ定義)を実行し、ローカルSQLite
 目盛りと、測定済みの値をスウォームプロット（近い値は左右へずらす）で示す。
 
 - 描画本体は `filters.js` が `compactToleranceScale` を上書きして持つ
-  （`measurement-input.js` の素の実装 → `measurement-tolerance.js` →
-  `filters.js` → `measurement-worklog.js` の順にラップされ、**読み込み順で
-  最後が勝つ**。指示型のときだけ `measurement-worklog.js` が専用カードへ
+  （`measure-input.js` の素の実装 → `measure-tolerance.js` →
+  `filters.js` → `measure-worklog.js` の順にラップされ、**読み込み順で
+  最後が勝つ**。指示型のときだけ `measure-worklog.js` が専用カードへ
   差し替える）。
 - **値→縦位置(%)の写像は `WL.toleranceScaleView` に一本化する**。数直線の本体と、
   測定器から受信中（確定前）の先読みリング `#numberlinePending`
@@ -608,8 +608,8 @@ Box等のクラウド同期フォルダへ複製し、他端末はそれを閲�
 
 ### 2. 機能拡張ファイル（コアの後に読み込み）
 
-`measurement-tolerance.js` → `lot-split.js` → `measure-progress.js` →
-`filters.js` → `measurement-worklog.js` →
+`measure-tolerance.js` → `lot-split.js` → `measure-progress.js` →
+`filters.js` → `measure-worklog.js` →
 `master-defs.js` → `master-maint.js` → `master-report.js` → `master-data.js` → `master-opdata.js` →
 `quality-analysis.js` → `report-dashboard.js` → `calendar-view.js`
 
@@ -698,7 +698,7 @@ fn=function(...){ /* 前処理 */ const r=baseFn(...); /* 後処理 */ return r 
 | ハード | `records-store.js` の `persistAndTransition` | 公差外(`ng`)、オペレータ/検査員の未選択 | 登録させない |
 | 確認 | `measure-progress.js`（`persistAndTransition` をラップ） | 8つの入力内容の未測定、丈位置の未測定、作業時間の未記録 | 一覧を提示して**確認のうえ続行可** |
 
-`measurement-view.js` の `activeRequiredControls()` は**表示中のグリッドしか
+`measure-view.js` の `activeRequiredControls()` は**表示中のグリッドしか
 見ない**（現在の入力内容 × 現在の丈位置）。これは枠色表示のための仕様として
 残してあり、完了可否の判断には使わない。全体の集計は
 `measure-progress.js` が `S.measure` から**DOM非依存**で行うため、入力内容や
@@ -1635,7 +1635,7 @@ return withWaiting({title:'…を読み込んでいます', detail:'…', progre
 
 ### マスタ管理の汎用CRUDは4本セット（`/update` の書き忘れが3回起きた）
 
-マスタ管理画面（`static/js/master-maint.js` の `submitMaint`）は、どのマスタでも
+マスタ管理画面（`static/js/master/master-maint.js` の `submitMaint`）は、どのマスタでも
 同じ約束でサーバーを呼ぶ。**編集のときだけURLが変わる**のがつまずきどころ。
 
 ```
@@ -1933,7 +1933,7 @@ A4縦は `fit` 倍率が**高さで決まる**（210×297mm を横長の画面�
 
 ### ハンドラ結線の注意
 
-- `measurement-view.js` の `.selectors` 一括 `onchange=markDirty` は、
+- `measure-view.js` の `.selectors` 一括 `onchange=markDirty` は、
   `#measureType` などの個別ハンドラ割当より**先**に実行される必要がある
   （後にすると個別ハンドラを潰す。過去に実不具合化）。
 - イベントハンドラへ関数を渡すときは、後からラップされうる関数は

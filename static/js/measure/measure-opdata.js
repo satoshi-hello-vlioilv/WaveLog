@@ -2978,7 +2978,7 @@
   /* ---------- 仕掛由来の添え書き（§9.233 ⑤） ----------
      置き場（欄の下／名前の横／出さない）はマスタの1列なので、割り付けの
      あとに当て直す——マスタを直しても画面が変わらないと「効いていない」
-     としか見えない。**当てるのは持ち主（`measurement-view.js`）**で、
+     としか見えない。**当てるのは持ち主（`measure-view.js`）**で、
      ここは合図を送るだけ（出どころを知っているのはあちらだけ）。 */
   if(window.WL&&WL.innerDiameter&&WL.innerDiameter.refresh)WL.innerDiameter.refresh();
   const note=document.getElementById('opDataNote');
@@ -3020,7 +3020,7 @@
      いないあいだは8欄の受け皿へ落ちる**（`measure-progress.js`の
      `MOTHER_FIELDS_FALLBACK`）。ところが`#measureTypeChips`を書くのは
      `refreshMeasureProgress()`ただ1つで、その入口は**すべて「入力があった
-     とき」**。測定を開く経路（`measurement-view.js`の
+     とき」**。測定を開く経路（`measure-view.js`の
      `WL.opData.refresh().catch(...)`）は**投げっぱなし**なので、届いたあとに
      塗り直す人が居なかった——結果、マスタで母材の欄を外しても
      **打ち始めるまで分母が古いまま**で、外した欄が「どう頑張っても埋まらない
@@ -3160,7 +3160,7 @@
      ・**組み込みの欄にも入れる**（§9.229 ③、利用者の指示「汎用設計にして
        いるつもりなので」）。ただし置き場が違う——組み込みの値は
        `settings.opData`ではなく`settings.<キー>`なので、**画面へ入れるだけ**
-       にして控えへは書かない（保存は`measurement-view.js`の`collect()`が
+       にして控えへは書かない（保存は`measure-view.js`の`collect()`が
        `#<キー>`から拾う）。入れるのは**まだ何も選ばれていないとき**だけで、
        選ばれていない印は選択欄が使う`''`と`'-'`の2つ（§4のとおり、既定の
        選択肢が入っている欄には入らないことを設定画面に書く）。
@@ -3311,7 +3311,7 @@
      したいです。操業データ項目で配置した内容の中から選んで表示できるように
      マスタ化してください」
 
-    以前は`measurement-view.js`の`RECORD_GROUPS`に**項目名を直に4群ぶん
+    以前は`measure-view.js`の`RECORD_GROUPS`に**項目名を直に4群ぶん
     書き並べて**おり、群の名前も並びも現場では変えられなかった（母材だけ
     画面のラベルから拾うという別の道も持っていた）。いまは
     **操業データ項目マスタの1行＝カードの1行**で、群・並び・呼び名・単位も
@@ -3468,7 +3468,7 @@
          形は`setValue()`の合成イベントなので`isTrusted`は偽）
        ・器を被せていない ＝ 押す札が無いので、飛んできた`change`は人しかいない
          （**画面側の書き戻しは`change`を飛ばさない**——記録の復元は
-         `putValue()`、内径のプリセットは`el.value=`のまま。`measurement-view.js`
+         `putValue()`、内径のプリセットは`el.value=`のまま。`measure-view.js`
          にも「`el.value=`ではchangeが飛ばない」と書いてある）
       **1つだけを見ないこと**——`isTrusted`だけだと⑤がいちばん効かせたい
       「新しい表示領域を開くタイプ」が1回も数えられず、全部数えると
@@ -3564,7 +3564,7 @@
  WL.opData={load,layout,render:layout,refresh,apply,collect,values,filled,requiredControls,
             motherKeys,
             /* ③「記録した値」の中身（§9.242 ④）。**答えるのはマスタを
-               読んでいるここ**——呼ぶ側（`measurement-view.js`）に項目名の
+               読んでいるここ**——呼ぶ側（`measure-view.js`）に項目名の
                写しを持たせない。 */
             recordRows,
             /* 自動で入る値を引き直す口（§9.234 ②）。**呼ぶのは値が変わる
@@ -3574,7 +3574,7 @@
             paintAuto,autoKnown,autoValueOf,
             /* 自動で入る値の添え書きの置き場（§9.233 ⑤）。**答えるのは
                マスタを読んでいるここ**——出どころを持っている側
-               （`measurement-view.js`）に置き場の判定まで書かせると、
+               （`measure-view.js`）に置き場の判定まで書かせると、
                項目が増えるたびに同じ判定が増える。 */
             sourceNotePlace,
             syncAutoOpen,syncWidgets,previewWidget,ruleText,

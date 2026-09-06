@@ -1,5 +1,5 @@
 "use strict";
-/* measurement-view.js: 測定画面の構成 — データ形状(ensureMeasureShape/collect)、
+/* measure-view.js: 測定画面の構成 — データ形状(ensureMeasureShape/collect)、
    画面全体の描画(renderMeasurement)、左右パネル、入力検証、作業時間、公差表示の見出し。 */
 /* 入力内容の素性を決めるのは**ここ1箇所**（§9.138）。以前は
    `type==='板厚/板幅'`という文字列比較が6ファイル・十数箇所に散っており、

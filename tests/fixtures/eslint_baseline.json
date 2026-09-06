@@ -1,47 +1,47 @@
 {
- "static/js/calendar-view.js": {
+ "static/js/schedule/calendar-view.js": {
   "no-unused-vars": 1
  },
- "static/js/defect-locator.js": {
+ "static/js/measure/defect-locator.js": {
   "no-unused-vars": 1
  },
- "static/js/filters.js": {
+ "static/js/list/filters.js": {
   "no-unused-vars": 5
  },
- "static/js/list-columns.js": {
+ "static/js/list/list-columns.js": {
   "no-unused-vars": 1
  },
- "static/js/lot-split.js": {
+ "static/js/measure/lot-split.js": {
   "no-unused-vars": 1
  },
- "static/js/master-data.js": {
+ "static/js/master/master-data.js": {
   "no-unused-vars": 1
  },
- "static/js/master-maint.js": {
+ "static/js/master/master-maint.js": {
   "no-unused-vars": 3
  },
- "static/js/master-opdata.js": {
+ "static/js/master/master-opdata.js": {
   "no-unused-vars": 2
  },
- "static/js/master-report.js": {
+ "static/js/master/master-report.js": {
   "no-unused-vars": 2
  },
- "static/js/measure-progress.js": {
+ "static/js/measure/measure-progress.js": {
   "no-unused-vars": 2
  },
- "static/js/measurement-view.js": {
+ "static/js/measure/measure-view.js": {
   "no-unused-vars": 1
  },
- "static/js/records-store.js": {
+ "static/js/measure/records-store.js": {
   "no-unused-vars": 1
  },
- "static/js/report-dashboard.js": {
+ "static/js/report/report-dashboard.js": {
   "no-unused-vars": 3
  },
- "static/js/schedule-print.js": {
+ "static/js/schedule/schedule-print.js": {
   "no-unused-vars": 3
  },
- "static/js/schedule-view.js": {
+ "static/js/schedule/schedule-view.js": {
   "no-unused-vars": 3
  },
  "tests/audit_scale.js": {

@@ -170,7 +170,7 @@ def main():
         f'{config.WATCHDOG_CLOSING_INTERVAL_SEC} < {config.CLOSED_GRACE_SEC}')
 
     # ---- 5. 画面側が終了通知を送っている ----
-    js = (ROOT / 'static' / 'js' / 'base.js').read_text(encoding='utf-8')
+    js = (ROOT / 'static' / 'js' / 'core' / 'base.js').read_text(encoding='utf-8')
     rec('画面が終了通知を送る（sendBeaconなので閉じる途中でも届く）',
         'sendBeacon' in js and '/api/heartbeat/close' in js)
     rec('pagehide と unload の両方で送る（ブラウザ実装差の保険）',

@@ -51,7 +51,7 @@ rec('前提: 読むだけのPOSTのURLを引ける', len(read_only_urls) >= 5,
 # `api('<url>', { ... })` の options に `quiet:true` があるか。
 CALL = re.compile(r"""api\(\s*'(/api/[^']+)'\s*,\s*\{([^{}]*)""", re.S)
 calls = []          # (ファイル, URL, quiet, 行)
-for f in sorted((ROOT / 'static' / 'js').glob('*.js')):
+for f in sorted((ROOT / 'static' / 'js').rglob('*.js')):
     src = f.read_text(encoding='utf-8')
     for m in CALL.finditer(src):
         url, opts = m.group(1), m.group(2)
@@ -77,7 +77,7 @@ rec('本物の保存に quiet:true を付けていない（付けると出なく
 
 # 3. 既定は「出す」——`api()`が非GETで自動的に出す作りであること。
 #    **綴りで見る**のはここだけ（振る舞いは tests/test_savechip.js が実際に測る）。
-base = (ROOT / 'static' / 'js' / 'base.js').read_text(encoding='utf-8')
+base = (ROOT / 'static' / 'js' / 'core' / 'base.js').read_text(encoding='utf-8')
 rec('api() が非GETで自動的に出す', "!=='GET'&&!quiet" in base.replace(' ', ''),
     'watching の条件が見当たらない')
 rec('やり直しのボタンは自動側では出さない（二重に書かないため）',

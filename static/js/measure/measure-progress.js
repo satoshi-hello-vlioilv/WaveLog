@@ -45,7 +45,7 @@ const MOTHER_FIELDS_FALLBACK=['manual','fullLength','minCard','maxCard','front',
 const motherFields=()=>((window.WL&&WL.opData&&WL.opData.motherKeys&&WL.opData.motherKeys())
                         ||MOTHER_FIELDS_FALLBACK);
 /* 揃い/肉厚/長さ で1丈を「入力済み」とみなす項目。**定義は1箇所**
-   （`measurement-view.js`の`PRODUCT_FILLED_KEYS`）——2つ持つと、項目を
+   （`measure-view.js`の`PRODUCT_FILLED_KEYS`）——2つ持つと、項目を
    足したときに片方だけ直った状態が作れる。§9.203で4桁の揃いコードを
    廃止したので、`alignmentCode`だけを見ると新しく入力した行が1件も
    数えられない（旧データのために残してある）。

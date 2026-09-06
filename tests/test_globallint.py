@@ -43,9 +43,9 @@ WINDOW_LIMIT = 63
 # ここに載っているファイルは、素のグローバル関数を持っていてよい。
 LEGACY_FILES = {
     'base.js', 'list-view.js', 'list-columns.js', 'list-rules.js',
-    'measurement-view.js', 'measurement-input.js', 'records-store.js',
-    'measurement-tolerance.js', 'lot-split.js', 'measure-progress.js',
-    'defect-locator.js', 'filters.js', 'measurement-worklog.js',
+    'measure-view.js', 'measure-input.js', 'records-store.js',
+    'measure-tolerance.js', 'lot-split.js', 'measure-progress.js',
+    'defect-locator.js', 'filters.js', 'measure-worklog.js',
     'master-maint.js', 'quality-analysis.js', 'report-dashboard.js',
     'calendar-view.js', 'schedule-view.js', 'access-mode.js',
 }
@@ -68,7 +68,7 @@ def scan():
     行頭(桁0)の宣言だけがグローバルになるので、そちらを数える。
     """
     windows, globals_by_file, wrapped, wl = {}, {}, {}, set()
-    for path in sorted(JS.glob('*.js')):
+    for path in sorted(JS.rglob('*.js')):
         text = path.read_text(encoding='utf-8')
         # `window.WL=window.WL||{}` は名前空間そのものの用意なので数えない
         # (各ファイルが書くため、数えると「名前空間を使うほど増える」ことになる)。
@@ -98,12 +98,12 @@ def s_keys():
     おり（宣言11・使用19）、**綴りを間違えても静かに新しい鍵ができる**状態だった。
     宣言は「`S={` から `}` まで」を読み、`key:` の形の鍵を集める。
     """
-    base = (JS / 'base.js').read_text(encoding='utf-8')
+    base = (JS / 'core' / 'base.js').read_text(encoding='utf-8')
     m = re.search(r'\bS\s*=\s*\{(.*?)\}\s*;', base, re.S)
     body = m.group(1) if m else ''
     declared = set(re.findall(r'(?:^|[{,])\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*:', body, re.M))
     used = {}
-    for path in sorted(list(JS.glob('*.js')) + list((ROOT / 'tests').glob('*.js'))):
+    for path in sorted(list(JS.rglob('*.js')) + list((ROOT / 'tests').glob('*.js'))):
         text = path.read_text(encoding='utf-8')
         if path.name == 'report-dashboard.js':
             # `const S=M0.sheet` という**別の局所変数**が1つある（紙の1枚ぶん）。
@@ -125,7 +125,7 @@ def main():
     unused = sorted(k for k in declared if k not in used)
     rec('宣言だけで誰も触らない鍵が無い', not unused, ', '.join(unused))
     rec('`S` は Object.seal で後付けを断っている', sealed)
-    dyn = [p.name for p in list(JS.glob('*.js')) + list((ROOT / 'tests').glob('*.js'))
+    dyn = [p.name for p in list(JS.rglob('*.js')) + list((ROOT / 'tests').glob('*.js'))
            if re.search(r'\bS\[', p.read_text(encoding='utf-8'))]
     rec('`S[...]` の動的な鍵で宣言をすり抜けていない', not dyn, ', '.join(dyn))
     total = sum(len(v) for v in windows.values())
@@ -161,8 +161,9 @@ def main():
     # §9.324 R3: 一覧は backend/routes/core.py の JS_FILES（index.html は描くだけ）。
     core_py = (ROOT / 'backend' / 'routes' / 'core.py').read_text(encoding='utf-8')
     block = re.search(r'JS_FILES=\[(.*?)\n\]', core_py, re.S)
-    listed = re.findall(r"'([a-z0-9-]+\.js)'", block.group(1) if block else '')
-    on_disk = {p.name for p in JS.glob('*.js')}
+    # 領域フォルダ（§9.334）なので `<領域>/<名前>.js` で突き合わせる。
+    listed = re.findall(r"'([a-z0-9-]+/[a-z0-9-]+\.js)'", block.group(1) if block else '')
+    on_disk = {p.relative_to(JS).as_posix() for p in JS.rglob('*.js')}
     missing = [f for f in listed if f not in on_disk]
     unlisted = sorted(on_disk - set(listed))
     rec('読み込み一覧に無いJSファイルが転がっていない',

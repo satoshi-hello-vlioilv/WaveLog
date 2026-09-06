@@ -198,7 +198,7 @@ def main():
     # 実装**になっていた(§9.96と同じ形。押すまで気づけない)。エンドポイントと
     # 画面の呼び出しを機械的に突き合わせる。
     src = (ROOT / 'backend' / 'routes' / 'logs.py').read_text(encoding='utf-8')
-    view = (ROOT / 'static' / 'js' / 'log-view.js').read_text(encoding='utf-8')
+    view = (ROOT / 'static' / 'js' / 'core' / 'log-view.js').read_text(encoding='utf-8')
     routes = set(re.findall(r"@bp\.(?:get|post)\('([^']+)'\)", src))
     unused = sorted(r for r in routes if r not in view)
     rec('作ったAPIは画面から呼ばれている（一度も動かない実装を残さない）',

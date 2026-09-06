@@ -116,7 +116,7 @@ rec('宣言した全レイヤに中身がある',not missing,f'空: {missing}')
 # (打ち消すために !important が生まれる元凶)。位置やサイズの計算結果は
 # カスタムプロパティで渡し、使い方はCSSに残す。
 BAN=re.compile(r"\.style\.(background|backgroundColor|color|fontSize|display|transform)\s*=")
-ALLOW={'static/js/master-maint.js'}     # display切替のみ。hidden属性へ移すのは別途
+ALLOW={'static/js/master/master-maint.js'}     # display切替のみ。hidden属性へ移すのは別途
 bad=[]
 for p in sorted((ROOT/'static/js').glob('*.js')):
     rel=f'static/js/{p.name}'
@@ -126,7 +126,7 @@ for p in sorted((ROOT/'static/js').glob('*.js')):
 rec('JSが見た目のプロパティをインラインで直書きしていない',not bad,'; '.join(bad[:6]))
 
 # ---- 6) 帳票の拡大率がカスタムプロパティ経由 ----
-rp=(ROOT/'static/js/report-dashboard.js').read_text(encoding='utf-8')
+rp=(ROOT/'static/js/report/report-dashboard.js').read_text(encoding='utf-8')
 rec('帳票の拡大率は--rp-scaleで渡している',
     '--rp-scale' in rp and 'style.transform=' not in rp)
 
