@@ -95,12 +95,15 @@ rec('関数名（エンドポイント名）が残る', boom.__name__ == 'boom' 
 
 # ---- 2. 本物のルートで --------------------------------------------------
 import app as flask_app  # noqa: E402
-from backend.routes import masters  # noqa: E402
+# 差し替える先は**その関数が名前を引く段**（§9.333で`masters`を段へ分けた）。
+# パッケージ側（`backend.routes.masters`）へ差しても、`columns.py`の中の
+# `schedule_column_master_save`は自分の段のグローバルを見るので効かない。
+from backend.routes.masters import columns as masters_columns  # noqa: E402
 
 real = flask_app.app.test_client()
 # **マスタへは1行も書かない**（§9.121の置き土産を作らない）——repoの関数を
 # 差し替えて「断る」「壊れる」の両方を起こし、本物のルートがどう受けるかだけを見る。
-orig = masters.set_schedule_columns
+orig = masters_columns.set_schedule_columns
 
 
 def _refuse(*a, **k):
@@ -112,18 +115,18 @@ def _blow(*a, **k):
 
 
 try:
-    masters.set_schedule_columns = _refuse
+    masters_columns.set_schedule_columns = _refuse
     r = real.post('/api/schedule-column-master', json={'equipment': 'テスト設備A', 'columns': ['x']})
     body = r.get_json() or {}
     rec('本物のルート: repoのValueErrorは400で文言そのまま',
         r.status_code == 400 and body.get('error') == '列名でない要素があります', f'{r.status_code} {body}')
-    masters.set_schedule_columns = _blow
+    masters_columns.set_schedule_columns = _blow
     r = real.post('/api/schedule-column-master', json={'equipment': 'テスト設備A', 'columns': ['x']})
     body = r.get_json() or {}
     rec('本物のルート: 想定外の例外は500で「スケジュール列表示マスタ保存失敗: …」',
         r.status_code == 500 and body.get('error') == 'スケジュール列表示マスタ保存失敗: ディスクが読めない', f'{r.status_code} {body}')
 finally:
-    masters.set_schedule_columns = orig
+    masters_columns.set_schedule_columns = orig
 
 # ---- 3. 写しが残っていない（構文木で数える） --------------------------------
 def _fmsg(v):
@@ -172,11 +175,11 @@ def _copy_of_guard(fn):
 
 
 left = []
-for p in sorted((ROOT / 'backend' / 'routes').glob('*.py')):
+for p in sorted((ROOT / 'backend' / 'routes').rglob('*.py')):   # 段は入れ子（§9.333）
     tree = ast.parse(p.read_text(encoding='utf-8'))
     for fn in ast.walk(tree):
         if isinstance(fn, ast.FunctionDef) and _copy_of_guard(fn):
-            left.append(f'{p.name}:{fn.lineno} {fn.name}')
+            left.append(f'{p.relative_to(ROOT)}:{fn.lineno} {fn.name}')
 rec('api_guardで書ける定型のtry/exceptが backend/routes に残っていない', not left, '; '.join(left[:6]))
 
 # 見張りが実際に数えられること（網の網・§9.200）

@@ -45,7 +45,7 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
           # §9.324 R1: 列定義は TableDef の1箇所（位置読みの写しを機械で数える・数秒）
           'test_tabledef',
           # §9.326: 標準の静的解析（pyflakes／eslint）。どの .py/.js を触っても数秒で回る
-          'test_pyflakes', 'test_eslint', 'test_quietlint',
+          'test_pyflakes', 'test_eslint', 'test_routesplit', 'test_quietlint',
           # §9.329 REVIEW 3-2: db_access の層と、読み込みの副作用（1秒未満）
           'test_dblayer',
           'test_body',
@@ -387,7 +387,10 @@ RULES = [
     # --- サーバー(ルート) --------------------------------------------
     ('backend/routes/tables.py', g('一覧', '接続', '列', 'test_colscache', 'test_colsripple',
                                    'test_modeguard')),
-    ('backend/routes/masters.py', g('マスタ', '列', 'test_modeguard')),
+    # §9.333で段（`equipment.py`/`operation.py`…）へ分けた。**末尾の`/`で丸ごと**
+    # 見る——段ごとに書き分けると、段を1つ足したときだけ当たらずに全件へ倒れる。
+    ('backend/routes/masters/', g('マスタ', '列', 'test_modeguard', 'test_apiguard',
+                                  'test_mastershare', 'test_body')),
     ('backend/routes/common.py', g('マスタ', 'test_modeguard', 'test_crudroutes', 'test_error')),
     # §9.324 R1: 表の列定義（CREATE・足す・読む・書く）の器。3つのRepoが乗る。
     ('backend/repositories/table_def.py', g('マスタ', '操業データ', '異常位置', 'test_rpmaster',

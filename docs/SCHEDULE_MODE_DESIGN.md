@@ -22152,3 +22152,102 @@ WL.printCore.printOnPage({...})   // 紙を出す→刷る→afterprintで戻す
 `test_rpblocks`・`test_rpdefect`・`test_defectlink`（505/505 PASS）と
 静的検査（`test_eslint`・`test_patchlint`・`test_globallint`・`test_loadorder`・
 `test_csslint`・`test_pick`）。**フルスイートは回していない。**
+
+
+## §9.333 マスタのAPIは9つの段。Blueprintは1つのまま（REVIEW 3-10）
+
+### 何が問題だったか
+
+`backend/routes/masters.py` は **73ルート・2,093行**の1枚だった。中身は
+互いに無関係な9つのマスタ——設備／アクセス権限／フィルタ・ソートの
+プリセット／列の見せ方／クエリ結合／操業データ／帳票ブロック／ロール／
+選択肢リンク——で、**直したい1つへ辿り着くのに関係のない8つを飛ばす**
+ことになっていた。
+
+これは「読みにくい」だけの話ではない。1枚が大きいほど、次に足す人は
+**いちばん近い場所へ書く**ので、無関係なものが隣に並び続ける。1枚に戻るのは
+1回の判断ではなく、20回の小さな判断の積み上がりで起きる。
+
+### 分け方——**Blueprintは1つのまま**
+
+  `masters/_base.py`      Blueprint（`'masters'`）と `_op_read()`
+  `masters/__init__.py`   段を import するだけ（＝ルートの登録）
+  `masters/equipment.py`     設備マスタ（4ルート）
+  `masters/access.py`        アクセス権限マスタ（4）
+  `masters/filters.py`       フィルタ／ソートのプリセット・一覧表示設定（13）
+  `masters/columns.py`       列の見せ方（14）
+  `masters/joins.py`         クエリ結合マスタ（6）
+  `masters/operation.py`     操業データ（16）
+  `masters/report_block.py`  帳票ブロックマスタ（5）
+  `masters/roll.py`          ロールマスタ（7）
+  `masters/choice_link.py`   選択肢リンクマスタ（4）
+
+**この分け方の値打ちは、権限表を1文字も触らずに済むこと。**
+`access_mode` の `_WRITE_ALLOWED_MODES`（Blueprint名 → 書けるモード）・
+`_ENDPOINT_EXTRA_MODES`／`_READ_ONLY_POST_ENDPOINTS`（`Blueprint名.関数名`）と
+`master_share.WRITING_BLUEPRINTS` は、**どれもBlueprint名と関数名で書いてある**。
+段ごとにBlueprintを作ると、その瞬間に鍵が全部変わる——そして
+**未宣言のBlueprintは fail-open（素通し）** なので、403になるのではなく
+**閲覧モードから書けるようになる**（`test_modeguard`の但し書き）。
+黙って穴が空くので、**段を足すときも`_base.py`の`bp`を使うこと**。
+
+URL・エンドポイント名・メソッドは、分ける前後の`url_map`（185本）を
+突き合わせて**差分0**を確かめてある。
+
+**`bp`を`__init__.py`ではなく`_base.py`に置いたのは、依存を一方向にするため。**
+`__init__.py`が`bp`を作って末尾で段をimportする形も動くが、段の側は
+「まだ作りかけのパッケージ」から`bp`を引くことになり、読む人にはどちらが先に
+走るのかが見えない。
+
+**段を1つ足したら`__init__.py`のimportへも1行足すこと**——importしないと
+`@bp.post(...)`が走らず、**そのAPIだけ404**になる（画面からは「押しても何も
+起きないボタン」に見える・§4）。
+
+### 踏んだ罠——**関数の中の相対importは1つ足りなくなる**
+
+段を1つ深くしたので、`from ..repositories import operation_repo` は
+`...` でなければ届かない。**多くは関数の中に書いてある**（循環importを
+避けるための遅延import）ので、**`import backend.routes.masters` が通っても
+残ったまま**になる。実測36件で、`/api/operation-choice-master`・
+`/api/roll-master`・`/api/query-join-master` が**500** になっていた。
+
+  `No module named 'backend.routes.repositories'`
+
+**ルート数を数えるだけの網は素通りする**（数は正しい）。拾ったのは
+`test_crudroutes`（4本セットを実際に叩く）で、そのあと
+`test_routesplit` に「**相対importが1つ残らず解決する**（関数の中まで）」を
+足した——構文木で`ImportFrom`を全部拾い、`level`から実際のモジュール名を
+組み立てて`importlib`で解けるかを見る。
+
+### 網
+
+`tests/test_routesplit.py`（`ALWAYS`）。
+
+ 1. どの段も**20ルート以下**。まだ分けていない`schedule.py`（41）は
+    **今の件数を上限に固定**する（減ったら下げる。**上げる更新はできない**
+    ——`test_eslint`のベースラインと同じ作法）。理由も一緒に書く。
+ 2. `masters/`の段は**自前のBlueprintを作らない**。
+ 3. `__init__.py`が段を**1つ残らず**importしている。
+ 4. **相対importが1つ残らず解決する**（関数の中まで）。
+ 5. 網そのものが素通りしないこと——写しを注ぎ、太った段・自前のBlueprint・
+    1つ足りない相対importの3つを**実際に数える**ことまで確かめる。
+
+**A/Bで確かめた**——`roll.py`の6件を`..`へ戻すと落ち、直すと通る。
+
+### 実測
+
+| | 前 | 後 |
+|---|---|---|
+| 1ファイルのルート数 | 73 | 最大16（`operation.py`） |
+| 1ファイルの行数 | 2,093 | 最大503 |
+| Blueprint | 1 | **1（変えていない）** |
+| 権限表の鍵 | — | **1つも変えていない** |
+| `url_map`の差分 | — | **0**（185本） |
+
+### 回した網
+
+`test_crudroutes`・`test_modeguard`・`test_apiguard`・`test_body`・
+`test_mastershare`・`test_routesplit`・`test_error`・`test_tablequery`と、
+静的検査（`test_pyflakes`・`test_quietlint`・`test_flags`・`test_ddllint`・
+`test_dblayer`・`test_srcread`・`test_pywarn`・`test_pick`）。
+**フルスイートは回していない。**

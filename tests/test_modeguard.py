@@ -12,8 +12,10 @@
   _READ_ONLY_POST_ENDPOINTS 'bp.func' の集合(読み直すだけのPOST。ガード対象外)
 
 後ろ2つのキーは **Blueprint名を含む**ので、移動すると黙って一致しなくなる。
-routes/masters.py の分割(docs/REFACTORING_PLAN.md フェーズ4.1)の前に、
-現在の許可表を実測で固定しておくためのテスト。
+現在の許可表を実測で固定しておくためのテスト。§9.333で
+`routes/masters.py`を段（`equipment.py`/`operation.py`…）へ分けたときも、
+**Blueprintを`masters`の1つのままにした**ので鍵は1つも変わっていない
+——この網が「変わっていないこと」を数えたので、権限表を触らずに済んだ。
 
 **未宣言のBlueprintはfail-open**(素通し)である点に注意。移動先を
 _WRITE_ALLOWED_MODES へ登録し忘れると、403になるのではなく
