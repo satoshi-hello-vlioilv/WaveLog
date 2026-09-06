@@ -157,7 +157,13 @@
 }
 
 /* トークン入力: アクティブ条件タグ＋入力欄を1つの入力面に見せる（近接・グルーピング） */
-.filter-token-input{position:relative;flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:var(--gap-tight);flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;min-height:32px;padding:3px 8px;border:1px solid var(--teal);border-radius:var(--radius-sm);background:#fff}
+/* 条件を足す入口（§9.345）。**器は中身なり**——以前は`flex:1 1 auto`で
+   バーいっぱい（実測1071px）へ伸び、ヘッダーの「一覧を検索」と同じ顔の
+   入力欄が2つ並んでいた。押したときだけ出し、幅は候補の名前に足りる
+   ぶんだけにする。余りは空白のまま（列を増やして詰めない・画面基準13）。 */
+.fb-addcond-btn{flex:0 0 auto;white-space:nowrap;font-weight:700}
+.filter-token-input[hidden]{display:none}
+.filter-token-input{position:relative;flex:0 1 var(--w-xl);min-width:0;display:flex;align-items:center;gap:var(--gap-tight);flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;min-height:32px;padding:3px 8px;border:1px solid var(--teal);border-radius:var(--radius-sm);background:#fff}
 .filter-token-input.focus-within{box-shadow:0 0 0 3px #087c8928}
 .filter-token-search{flex:1 0 160px;min-width:120px;height:var(--ctl-h-xs);border:0;border-radius:0;padding:0 2px;background:transparent;box-shadow:none}
 .filter-token-search:focus-visible{outline:0;box-shadow:none}
