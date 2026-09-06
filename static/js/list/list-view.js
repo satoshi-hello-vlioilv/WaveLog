@@ -57,7 +57,11 @@ async function init(){
  const initialDbBtn=initialKey?nav?.querySelector(`[data-db-key="${CSS.escape(initialKey)}"]`):null;
  const equipped=typeof currentConfiguredEquipment==='function'&&currentConfiguredEquipment();
  if(initialDbBtn&&equipped){try{await selectDb(initialKey,initialDbBtn)}catch(e){console.warn('初期表示(仕掛一覧)の読み込みに失敗しました',e)}}
- else if(!equipped)$('#grid').innerHTML='<div class="setup-first"><b>最初に使用設備を設定してください</b><span>この端末で使用する設備を登録すると、仕掛一覧を設備で絞り込んで表示できます。上の「使用設備を設定」から登録してください。</span></div>';
+ /* **見出しは繰り返さない**（§9.343、画面基準8）。「最初に使用設備を
+    設定してください」は上の帯（`#equipmentSetupBanner`）が既に言っており、
+    押すボタンもそちらにある。ここは**この場所に何が出るか**だけを言う
+    ——空の器が「壊れているのか、まだ何も無いのか」を答えるのが役目。 */
+ else if(!equipped)$('#grid').innerHTML='<div class="setup-first"><span>使用設備を設定すると、ここに仕掛一覧が出ます。</span></div>';
  }catch(e){console.error('初期化エラー',e);showToast('初期化の一部に失敗',e.message,8000)}
  finally{bindV32Navigation()}
 }
