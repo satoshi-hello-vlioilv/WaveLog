@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（478件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（479件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -578,10 +578,11 @@
 | モーダルは背景クリックで閉じない | `test_modalkeep.js` | [§9.221](docs/decisions/9.221.md) |
 | マスタの1行を直す窓は汎用モーダル1枚 | — | [§9.222](docs/decisions/9.222.md) |
 
-### 見た目（CSS・寸法・色）（40件）
+### 見た目（CSS・寸法・色）（41件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 状態チップの色は「正常＝中立／設定要＝橙／赤は取り消せない操作だけ」。同じ橙に2つの意味を持たせない | `test_headbar.js` | [§9.338](docs/decisions/9.338.md) |
 | 寸法は文字サイズから作る | `test_fit.js`・`test_typescale.js` | [§9.90](docs/decisions/9.90.md) |
 | 色と文字サイズは`:root`のトークンから選ぶ | `test_theme.js` | [決まり](docs/decisions/rules-misc.md) |
 | 表示件数の「全件」は「250件ずつ最後まで取り続ける」 | `test_allrows.js` | [§9.95](docs/decisions/9.95.md) |

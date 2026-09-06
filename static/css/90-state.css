@@ -21,8 +21,13 @@ body.col-resizing .col-resize{opacity:1}
 /* 使用設備: 未設定は要対応なので警告色 */
 .hd-chip-equip.is-unset{border-color:var(--warn-border);background:var(--warn-bg)}
 .hd-chip-equip.is-unset .hd-chip-val{color:var(--warn-fg)}
-.hd-chip-static.is-warn{background:var(--danger-bg);border-color:var(--danger-border)}
-.hd-chip-static.is-warn .hd-chip-val{color:var(--danger)}
+/* 現場段取りの「設定要」（§9.338）。**橙＝設定要**で、すぐ隣の
+   `.hd-chip-equip.is-unset`（使用設備 未設定）と同じ色・同じ意味にそろえる。
+   以前はここが赤（danger）で、赤は「取り消せない・危ない」の色（実績削除の
+   `.sc-row-btn-danger`など）。設定が足りないだけの状態に使うと、色が
+   実際より重い意味を語る。 */
+.hd-chip-static.is-warn{background:var(--warn-bg);border-color:var(--warn-border)}
+.hd-chip-static.is-warn .hd-chip-val{color:var(--warn-fg)}
 .equipment-header-button.is-unset{border-color:var(--warn-border);background:var(--warn-bg);color:var(--warn-fg)}
 .access-mode-badge.is-view{border-color:#e5b3b3;background:#fff5f5;color:#8a2323}
 .access-mode-badge.is-schedule{border-color:#b9c4f0;background:#f2f4ff;color:#333e8a}

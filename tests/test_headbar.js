@@ -83,6 +83,66 @@ const VIEWS=[
  rec('バッジが「項目名＋値」の形で内容を明示している',
    chips.length>0&&chips.every(c=>c.k&&c.v),JSON.stringify(chips));
 
+ /* 状態チップの色が語っていること（§9.338）。**宣言ではなく描かれた色で見る**
+    ——クラスが付くだけでは絵は変わらない（§9.229 ⑥）。見るのは3つ:
+      ・正常（並べ替え可）は**中立**＝地に色を足さない
+      ・「設定要」は**橙**で、すぐ隣の「使用設備 未設定」と**同じ色**
+      ・「設定要」に**赤（危険）を使わない**——赤は取り消せない操作の色
+    以前は逆に付いていた（正常＝橙／設定要＝赤）ので、**両方向**を見る。
+
+    **クラスを足した直後に読まないこと**（§9.229 ⑥）——`button.hd-chip`は
+    `transition:border-color .12s,background .12s` を持つので、直後の
+    `getComputedStyle`は**遷移の途中（＝前の色）**を返す。実際に
+    「使用設備 未設定」が白のまま読めて、直したはずのCSSを疑うことになった。
+    `<span>`の現場段取りチップには遷移が無いので**片方だけ正しく読める**——
+    この食い違いが手掛かりだった。 */
+ const setChips=on=>page.evaluate(v=>{
+  const badge=document.querySelector('#fieldReorderBadge');
+  const equip=document.querySelector('.hd-chip-equip');
+  if(!badge||!equip)return false;
+  badge.hidden=false;
+  badge.classList.toggle('is-warn',v);
+  equip.classList.toggle('is-unset',v);
+  return true;
+ },on);
+ const readChips=()=>page.evaluate(()=>{
+  const read=e=>{const s=getComputedStyle(e);
+    return {bg:s.backgroundColor,bd:s.borderTopColor,
+            fg:getComputedStyle(e.querySelector('.hd-chip-val')).color}};
+  // 危険の色は**トークンを器に載せてブラウザに解かせる**（`#rrggbb`と
+  // `rgb(...)`はそのままでは比べられない）。
+  const probe=document.createElement('span');
+  probe.style.cssText='background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)';
+  document.body.appendChild(probe);
+  const ps=getComputedStyle(probe);
+  const danger={bg:ps.backgroundColor,bd:ps.borderTopColor,fg:ps.color};
+  probe.remove();
+  return {badge:read(document.querySelector('#fieldReorderBadge')),
+          equip:read(document.querySelector('.hd-chip-equip')),danger};
+ });
+ const okSet=await setChips(false);
+ await page.waitForTimeout(300);                 // 遷移が終わるまで待つ
+ const normal=okSet?await readChips():null;
+ await setChips(true);
+ await page.waitForTimeout(300);
+ const warned=okSet?await readChips():null;
+ rec('状態チップの色を読めている',!!normal&&!!warned,
+     JSON.stringify({正常:normal&&normal.badge,設定要:warned&&warned.badge}));
+ if(normal&&warned){
+  const ok=normal.badge,warn=warned.badge,unset=warned.equip,d=warned.danger;
+  rec('正常の「並べ替え可」は中立（地に色を足さない）',
+      ok.bg==='rgb(255, 255, 255)'||ok.bg==='rgba(0, 0, 0, 0)',JSON.stringify(ok));
+  rec('「設定要」は正常と違う色で言う',
+      warn.bg!==ok.bg&&warn.bd!==ok.bd,JSON.stringify({ok,warn}));
+  rec('「設定要」は「使用設備 未設定」と同じ橙',
+      warn.bg===unset.bg&&warn.bd===unset.bd&&warn.fg===unset.fg,
+      JSON.stringify({warn,unset}));
+  rec('「設定要」に危険の赤を使っていない（赤は取り消せない操作の色）',
+      warn.bg!==d.bg&&warn.bd!==d.bd&&warn.fg!==d.fg,JSON.stringify({warn,danger:d}));
+ }
+ await setChips(false);
+ await page.evaluate(()=>{const b=document.querySelector('#fieldReorderBadge');if(b)b.hidden=true});
+
  /* 使用設備チップから設備設定が開ける(旧 .equipment-header-button の役割を継承) */
  await page.click('.hd-chip-equip');
  await page.waitForTimeout(400);

@@ -322,8 +322,11 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 /* モード: 状態そのものが意味を持つので色で区別する(編集=緑/閲覧=灰/スケジュール=青) */
 .hd-chip-mode{border-color:var(--success-border);background:var(--success-bg)}
 .hd-chip-mode .hd-chip-val{color:var(--success)}
-.hd-chip-static{background:var(--warn-bg);border-color:var(--warn-border)}
-.hd-chip-static .hd-chip-val{color:var(--warn-fg)}
+/* 押せない状態チップ（`.hd-chip-static`＝現場段取り）。**正常のときは中立**——素の`.hd-chip`
+   （白地・`--line`の枠）のまま色を足さない（§9.338）。以前はここで橙
+   （`--warn-*`）を当てており、**正常な「並べ替え可」が全画面でずっと橙**で、
+   隣の「使用設備 未設定」（本当に手を打つ状態）と同じ色だった。
+   橙は`90-state.css`の`.is-warn`＝「設定要」だけが使う。 */
 /* 操作: 高さ・角丸・枠を揃えた四角い部品で統一する */
 .hd-actions .hd-btn,.hd-actions .hd-search,.hd-actions .hd-field{
  height:var(--ctl-h);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;
