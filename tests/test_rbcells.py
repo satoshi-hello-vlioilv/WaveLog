@@ -138,7 +138,8 @@ rec('⑤ 日付の見本を持つ（手で書いてもよいが、選べる）',
     len(rb.DATE_PATTERNS) >= 4 and 'yyyy/MM/dd' in rb.DATE_PATTERNS)
 
 # **画面へ写していないこと**（§9.163）。写すと書式を1つ足すたびに2箇所直す。
-js = open(os.path.join(os.path.dirname(HERE), 'static', 'js', 'master-maint.js'),
+js = open(os.path.join(os.path.dirname(HERE), 'static', 'js', 'master',
+                       'master-maint.js'),
           encoding='utf-8').read()
 # **見分けの付く呼び名だけを見る**——`数値`や`文字`は操業データ項目マスタの
 # `[型]`の選択肢でもあるので、それを数えると常に落ちる（意味のない網）。

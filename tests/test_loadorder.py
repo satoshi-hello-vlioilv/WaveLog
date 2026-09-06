@@ -94,6 +94,43 @@ rec('領域に説明が書いてある', all(len(v.strip()) >= 10 for v in AREAS
 stray = sorted(p.name for p in (JS_DIR / 'measure').glob('measurement-*.js'))
 rec('measure/ に measurement-* が戻っていない', not stray, str(stray))
 
+# ---- 6. テストが開く／取りに行く static/js の道（§9.334 の追補） ----
+# 領域フォルダにしたとき、**テスト側の道を直し切れていなかった**。フルスイートで
+# 4件が落ちて分かった（`test_formula` は `require` が MODULE_NOT_FOUND、
+# `test_rbcells`/`test_colscope` は `open`/`read_text` が FileNotFoundError、
+# `test_bootflash` は一覧を0本と数えた）。**さらに悪いのが3件**——
+# `fetch('/js/master-defs.js')` は 404 のHTMLを返すだけなので、
+# 「画面のJSに◯◯を書き写していない」を見る網が**空の材料で必ず通って**いた
+# （緩む側に壊れるので、通ったこと自体が証拠にならない・§9.335）。
+#
+# 見るのは**道を組み立てている場所だけ**——`'static','js'`（`,`でも`/`でも）の
+# 連結と、`/js/`・`/static/js/` への fetch。名前を鍵として並べているだけの
+# 一覧（`test_globallint`の`LEGACY_FILES`・`test_patchlint`の`ALLOWED`など）は
+# **対象外**（`path.name`と突き合わせる正しい書き方なので、混ぜると誤検知になる）。
+PATH_CTX = re.compile(r"""['"]static['"]\s*[,/]\s*['"]js['"]|fetch\([^)]*['"]/(?:static/)?js/['"]""")
+AREA_RE = '|'.join(AREAS)
+stems = {p.stem for p in JS_DIR.rglob('*.js')}
+jsnames = {p.name for p in JS_DIR.rglob('*.js')}
+stale = []
+for f in sorted(list((ROOT / 'tests').glob('*.js')) + list((ROOT / 'tests').glob('*.py'))):
+    ls = f.read_text(encoding='utf-8').split('\n')
+    for i, line in enumerate(ls):
+        if not PATH_CTX.search(line):
+            continue
+        ctx = '\n'.join(ls[max(0, i - 3):i + 2])   # 名前は fetch の前の行に並ぶ
+        for m in re.finditer(r"""['"]([A-Za-z0-9_-]+)(\.js)?['"]""", ctx):
+            tok = m.group(1)
+            if tok in ('static', 'js') or re.fullmatch(AREA_RE, tok):
+                continue
+            if tok not in stems and (tok + '.js') not in jsnames:
+                continue
+            if (re.search(r"""['"](?:%s)['"]\s*[,/]\s*['"]%s""" % (AREA_RE, re.escape(tok)), ctx)
+                    or re.search(r'(?:%s)/%s' % (AREA_RE, re.escape(tok)), ctx)):
+                continue                              # 領域が付いている
+            stale.append(f'{f.name}:{i + 1} {tok}')
+rec('テストが開く static/js の道に領域が付いている', not stale,
+    ', '.join(sorted(set(stale))[:6]) + (f'（計{len(set(stale))}）' if stale else ''))
+
 ng = [n for n, ok in R if not ok]
 print(f'\n== {len(R) - len(ng)}/{len(R)} PASS ==')
 sys.exit(1 if ng else 0)

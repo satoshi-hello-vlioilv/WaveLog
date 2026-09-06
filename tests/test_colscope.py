@@ -165,7 +165,8 @@ try:
     rec('操業データ表(紙)の口は personalScope:false を宣言している',
         'personalScope:false' in src.replace(' ', ''))
     # もう片側——表示する一覧の口は宣言しない（＝既定で切り替えられる）。
-    for f in ('list-columns.js', 'records-store.js', 'schedule-view.js', 'actuals-view.js'):
+    for f in ('list/list-columns.js', 'measure/records-store.js',
+              'schedule/schedule-view.js', 'report/actuals-view.js'):
         t = (ROOT / 'static' / 'js' / f).read_text(encoding='utf-8').replace(' ', '')
         rec(f'{f} は個人設定を塞いでいない', 'personalScope:false' not in t)
 finally:
