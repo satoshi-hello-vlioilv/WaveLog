@@ -200,7 +200,7 @@ let b=null;
    const vis=el=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0};
    /* 名前は`<span class="opf-name">`が持つ（§9.233 ⑤）。**製品と同じ
       読み方を通すこと**——ここだけ素のテキスト節点を見ていると、
-      `motherFieldLabel()`が壊れても網が空振りする。 */
+      `WL.measureView.motherFieldLabel()`が壊れても網が空振りする。 */
    const lab=el=>{
     const box=el.querySelector(':scope>.opf-name')||el;
     return [...box.childNodes].filter(n=>n.nodeType===3)

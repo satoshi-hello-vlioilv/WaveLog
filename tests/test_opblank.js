@@ -309,7 +309,7 @@ let b=null;
       ——器を被せた形では印の同期がそこにぶら下がっている。 */
    const sel=document.getElementById('operator');
    if(sel){sel.value='';sel.dispatchEvent(new Event('change',{bubbles:true}))}
-   if(typeof renderRecordedValues==='function')renderRecordedValues();
+   if(typeof WL.measureView.renderRecordedValues==='function')WL.measureView.renderRecordedValues();
    const label=(window.WL&&WL.optionBlankLabel)||'';
    const dds=[...document.querySelectorAll('#recordedList .rv-group dd')]
      .map(d=>d.textContent.trim());

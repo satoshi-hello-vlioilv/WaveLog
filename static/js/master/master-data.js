@@ -578,7 +578,7 @@
     const it=targets[i];
     setMaintLoading(true,`インポートしています… (${i+1}/${targets.length})`);
     try{
-     const record=ensureMeasureShape(JSON.parse(it.payload));
+     const record=WL.measureView.ensureMeasureShape(JSON.parse(it.payload));
      record.id=it.id;
      await reliablePut(record);okCount++;
     }catch(e){ngCount++;errors.push(`${it.lotNo||it.id}: ${e.message}`)}

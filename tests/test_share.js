@@ -49,7 +49,7 @@ async function cleanup(){
      (測定画面をUIで開くと仕掛の状態に左右されるため、保存の経路そのものを
       直接呼ぶ。見たいのは「保存が共有DBへ届くか」なので、これで足りる。) */
   const saved=await p1.evaluate(async({id,lot,eq})=>{
-   const m=ensureMeasureShape({id,status:'編集中',
+   const m=WL.measureView.ensureMeasureShape({id,status:'編集中',
      basic:{lotNo:lot,inspectionNo:'INS-1',castingNo:'CAS-1',mfgMaterial:'A5052'},
      registeredEquipment:eq,
      settings:{operator:'テスト作業者',splitSourcesCache:{

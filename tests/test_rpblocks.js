@@ -436,7 +436,7 @@ const endArrange=async page=>{
   const made=await page.evaluate(async pair=>{
    const out=[];
    for(const{id,grade} of pair){
-    const rec=ensureMeasureShape({
+    const rec=WL.measureView.ensureMeasureShape({
      id,status:'編集中',updatedAt:new Date().toISOString(),
      registeredEquipment:'テスト設備A',
      basic:{lotNo:id},

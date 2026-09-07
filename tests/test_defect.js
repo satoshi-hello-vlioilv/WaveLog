@@ -98,8 +98,8 @@ let b=null;
   // 旧データ(innerTape:true)を開くと「内巻両面テープ」へ読み替わる
   const legacy=await page.evaluate(()=>{
    const m={settings:{innerTape:true}};
-   ensureMeasureShape(m);
-   const m2={settings:{innerTape:false}};ensureMeasureShape(m2);
+   WL.measureView.ensureMeasureShape(m);
+   const m2={settings:{innerTape:false}};WL.measureView.ensureMeasureShape(m2);
    return {on:m.settings.coilStop,off:m2.settings.coilStop,left:m.settings.innerTape};
   });
   rec('旧データの内巻両面テープ(真)をコイル止めへ読み替える',legacy.on==='内巻両面テープ',JSON.stringify(legacy));
@@ -110,7 +110,7 @@ let b=null;
   const kept=await page.evaluate(()=>{
    document.getElementById('burr').value='下バリ揃え';
    document.getElementById('coilStop').value='内巻両面テープ';
-   collect();
+   WL.measureView.collect();
    return {burr:S.measure.settings.burr,coil:S.measure.settings.coilStop};
   });
   rec('選んだ値が保存データへ入る',kept.burr==='下バリ揃え'&&kept.coil==='内巻両面テープ',JSON.stringify(kept));
@@ -401,7 +401,7 @@ let b=null;
 
   /* 実際の帳票プレビューへ出るか・ツールバーで消せるか */
   const inReport=await page.evaluate(async()=>{
-   await reliablePut(collect());
+   await reliablePut(WL.measureView.collect());
    const id=S.measure.id;
    document.getElementById('defectModal').hidden=true;
    await window.openReportForRecord(id);
@@ -437,7 +437,7 @@ let b=null;
 
   const unsavedReport=await page.evaluate(async()=>{
    delete S.measure.settings.defectLocation.saved;
-   await reliablePut(collect());
+   await reliablePut(WL.measureView.collect());
    const html=WL.defect.reportSectionHtml(S.measure)||'';
    return {html,hasSaved:WL.defect.hasSaved(S.measure)};
   });
@@ -530,7 +530,7 @@ let b=null;
 
   const applied=await page.evaluate(()=>{
    S.measure.settings.maxStrips=12;
-   applyMaxStripsToInputs();
+   WL.measureView.applyMaxStripsToInputs();
    const el=document.getElementById('horizontalCount');
    const before=el.value;
    el.value='30';el.dispatchEvent(new Event('change',{bubbles:true}));

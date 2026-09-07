@@ -1,6 +1,9 @@
-"use strict";
 /* measure-view.js: 測定画面の構成 — データ形状(ensureMeasureShape/collect)、
-   画面全体の描画(renderMeasurement)、左右パネル、入力検証、作業時間、公差表示の見出し。 */
+   画面全体の描画(renderMeasurement)、左右パネル、入力検証、作業時間、公差表示の見出し。
+   **このファイルは閉じている**（§9.359・REVIEW 3-17）——外へ出す面は末尾の
+   `WL.measureView`。 */
+(function(){
+"use strict";
 /* 入力内容の素性を決めるのは**ここ1箇所**（§9.138）。以前は
    `type==='板厚/板幅'`という文字列比較が6ファイル・十数箇所に散っており、
    項目を「板厚」「板幅」の2つへ分けるだけで**片方だけ直った状態**が簡単に
@@ -396,8 +399,10 @@ const PRODUCT_ROUND_KEYS={alignmentValue:'alignValue',pitch:'pitch'};
    **等級の実値は数字1桁の文字列**（実データ3件はいずれも `'3'`。生地外観の
    ように `'3C'` と英字が付く項目もあるので、数字だけを取り出す）。
    出どころは`S.measure.qualityGrades['切断面']`＝仕掛の`品質ｸﾞﾚｰﾄﾞ_切断面`
-   （`QUALITY_GRADE_SOURCE`。`qualityGradeFields`は読まれていない死んだ配列
-   なので当てにしないこと）。
+   （`QUALITY_GRADE_SOURCE`）。**以前ここにあった`qualityGradeFields`は
+   誰にも読まれていない死んだ配列で、§9.359 でファイルを閉じたときに
+   それが証明できたので消した**（グローバルのあいだは「外の誰かが読んで
+   いるかもしれない」と言い切れず、コメントで断るしかなかった）。
    **基準が引けないときは判定しない**——3級・4級以外や空欄で「OK」と言うのは
    根拠が無く、「NG」と言い切るのも嘘になる（§「推測させない」）。 */
 const CUT_FACE_LIMITS={
@@ -876,7 +881,14 @@ function setVisualState(el,state){
  el.classList.add(state==='ng'?'validation-ng':state==='valid'?'validation-valid':'validation-required');
  el.setAttribute('aria-invalid',state==='valid'?'false':'true');
 }
+/* 丸ごと持ち替えられる（§9.352 の `own`）。閉じたので外から関数を
+   差し替えることはできない——**持ち替えの口は登録表の1箇所**にする。 */
 function activeRequiredControls(){
+ const own=WL.measureHooks.owner('activeRequiredControls');
+ if(own)return own();
+ return activeRequiredControlsCore();
+}
+function activeRequiredControlsCore(){
  const controls=[];
  /* **必須はマスタが決める**（§9.216 ②、利用者の指示「一部の必須入力事項も
     マスタで設定可能とし」）。以前はここに`['operator','inspector']`と直に
@@ -954,15 +966,6 @@ function judgeInput(el,key,value,index){
 }
 document.addEventListener('input',event=>{if(event.target.matches('input,select,textarea'))updateValidationVisuals()},true);
 document.addEventListener('change',event=>{if(event.target.matches('input,select,textarea'))updateValidationVisuals()},true);
-// Information architecture: basic / quality grade / data management.
-const qualityGradeFields=[
- ['生地外観',['生地外観','品質等級_生地外観','QCD1','RQCD1']],['フラットネス',['フラットネス等級','品質等級_フラットネス','QCD2','RQCD2']],
- ['付着油',['付着油','品質等級_付着油','QCD3','RQCD3']],['切断面',['切断面','品質等級_切断面','QCD4','RQCD4']],
- ['板厚公差',['板厚公差等級','品質等級_板厚公差','QCD5','RQCD5']],['幅丈公差',['幅丈公差','巾丈公差','品質等級_幅丈公差','QCD6','RQCD6']],
- ['ラテラルボー',['ラテラルボー等級','品質等級_ラテラルボー','QCD7','RQCD7']],['直角度',['直角度','品質等級_直角度','QCD8','RQCD8']],
- ['方向性',['方向性','品質等級_方向性','QCD9','RQCD9']],['強度',['強度','品質等級_強度','QCD10','RQCD10']],
- ['アルマイト',['アルマイト','品質等級_アルマイト','QCD11','RQCD11']],['表面処理',['表面処理','品質等級_表面処理','QCD15','RQCD15']]
-];
 function hydrateBusinessFields(){
  if(!S.measure)return;const b=S.measure.basic||(S.measure.basic={}),r=S.measure.source||S.measure.snapshot?.source||{};
  const extra={
@@ -1479,3 +1482,23 @@ $('#horizontalCount').addEventListener('change',()=>{
  updateCoilOptions(el.value);WL.measureInput.renderMeasureGrid();
 });
 function lockCounts(){const has=Object.values(S.measure.measurements).some(a=>a.flat().some(v=>v!==''));$('#verticalCount').disabled=has;$('#horizontalCount').disabled=has}
+
+/* ============================================================
+   外へ出す面（§9.359・REVIEW 3-17）。**ここに載せた名前だけ**が外から
+   呼べる。載せ忘れは `no-undef` が教える——**ただし `typeof x` は教えない**
+   （§9.355）。外から使う側は `typeof WL.measureView.x==='function'`。
+   ============================================================ */
+WL.measureView={
+ ensureMeasureShape,blankMeasure,blankProductRow,collect,
+ renderMeasurement,renderProductPanel,renderQualityGradePanel,renderRecordedValues,
+ renderCourseHierarchy,renderResidualCourseEverywhere,paintQualityInfo,
+ refreshScheduleInfo,applyRightLayout,
+ updateValidationVisuals,showValidationMessage,activeRequiredControls,
+ judgeInput,judgeProductRow,
+ updateCoilOptions,updateLengthOptions,updateMeasurementHeading,
+ applyMaxStripsToInputs,syncInputModeLock,configureToleranceSelector,
+ lockCounts,motherFieldLabel,PRODUCT_FILLED_KEYS,
+ formatWorkTime,stampWorkTimeLocked,
+ loadFlatComment,saveFlatComment,
+};
+})();

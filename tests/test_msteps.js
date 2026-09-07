@@ -1424,7 +1424,7 @@ let b=null,page=null;
   const legacy=await page.evaluate(()=>{
    S.measure.product.rows[0]=Object.assign(S.measure.product.rows[0]||{},
      {edgeShape:'',occurrencePosition:'',regularity:'',direction:'',alignmentCode:'1203'});
-   renderProductPanel();
+   WL.measureView.renderProductPanel();
    const tr=document.querySelector('#productRowsBody tr[data-row="0"]');
    return {judge:tr.querySelector('[data-product-judge]').textContent.trim(),
            note:(tr.querySelector('.prt-old')||{}).textContent||''};
@@ -1461,12 +1461,12 @@ let b=null,page=null;
    };
    const setGrade=g=>{
     if(g===null)delete src['品質ｸﾞﾚｰﾄﾞ_切断面'];else src['品質ｸﾞﾚｰﾄﾞ_切断面']=g;
-    renderQualityGradePanel();renderProductPanel();
+    WL.measureView.renderQualityGradePanel();WL.measureView.renderProductPanel();
    };
    const setRow=(edge,val)=>{
     const r=S.measure.product.rows[0];
     r.edgeShape=edge;r.alignmentValue=val;r.alignmentCode='';
-    renderProductPanel();
+    WL.measureView.renderProductPanel();
    };
    /* ① 等級が無いとき: 基準を出せないと書き、判定もしない */
    setGrade(null);setRow('のこぎり状','1.0');
@@ -1494,8 +1494,8 @@ let b=null,page=null;
    out.超過の印=!!document.querySelector('#productRowsBody .prt-df.is-over');
    /* 後始末 */
    if(keep===undefined)delete src['品質ｸﾞﾚｰﾄﾞ_切断面'];else src['品質ｸﾞﾚｰﾄﾞ_切断面']=keep;
-   S.measure.product.rows=S.measure.product.rows.map(()=>blankProductRow());
-   renderQualityGradePanel();renderProductPanel();
+   S.measure.product.rows=S.measure.product.rows.map(()=>WL.measureView.blankProductRow());
+   WL.measureView.renderQualityGradePanel();WL.measureView.renderProductPanel();
    return out;
   });
   rec('等級が読めないときは基準を出せないと書く',
@@ -1588,8 +1588,8 @@ let b=null,page=null;
   rec('選び直したら出どころの注記は消える',inner.選び直したら出どころは消える===true,
       String(inner.選び直したら出どころは消える));
   await page.evaluate(()=>{
-   S.measure.product.rows=S.measure.product.rows.map(()=>blankProductRow());
-   renderProductPanel();
+   S.measure.product.rows=S.measure.product.rows.map(()=>WL.measureView.blankProductRow());
+   WL.measureView.renderProductPanel();
   });
 
   /* ---- 母材の計算全長（参考）（§9.160、利用者の指示） ----
@@ -1742,7 +1742,7 @@ let b=null,page=null;
    const s=document.getElementById('motherScrapWidth');
    if(s)s.textContent='34.8';
    document.querySelectorAll('[data-mother]').forEach(el=>{if(!el.value)el.value='1234.5'});
-   renderRecordedValues();
+   WL.measureView.renderRecordedValues();
   });
   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
   const rvCut=await page.evaluate(()=>[...document.querySelectorAll('.rv-group dd')]
@@ -1751,7 +1751,7 @@ let b=null,page=null;
   rec('「記録した値」の値が切り詰められない',rvCut.length===0,rvCut.slice(0,4).join(' / '));
   /* ①で選んだ値がそのまま出ること（§9.206、実機で報告「準備の入力など、
      選択状態にしたら、記録した値に入ってほしいところ何も表示されません」）。
-     `settings`は`collect()`＝保存のときにしか書かれないので、そこだけを
+     `settings`は`WL.measureView.collect()`＝保存のときにしか書かれないので、そこだけを
      見ていると**選んだ直後は「—」のまま**になる。 */
   const rvLive=await page.evaluate(async()=>{
    WL.measureSteps.go('1');
@@ -1777,7 +1777,7 @@ let b=null,page=null;
      ================================================================== */
 
   /* ---- ② 入力数はその場で数え直す ----
-     母材8欄は`collect()`＝**保存のときだけ**回収する作りで、`m.mother`は
+     母材8欄は`WL.measureView.collect()`＝**保存のときだけ**回収する作りで、`m.mother`は
      打っても空のままだった。入力数は`m.mother`から数えるので、**全部
      埋めてもチップは 0/N のまま**（実機で報告）。
      **確かめるときは保存せずに見ること**——保存してから数えると、
@@ -1794,7 +1794,7 @@ let b=null,page=null;
    document.querySelectorAll('[data-mother]').forEach(el=>{el.value='';el.dispatchEvent(new Event('input',{bubbles:true}))});
    S.measure.mother={};
    (S.measure.product.rows||[]).forEach(r=>Object.keys(r).forEach(k=>r[k]=''));
-   renderProductPanel();refreshMeasureProgress();
+   WL.measureView.renderProductPanel();refreshMeasureProgress();
    await new Promise(r=>setTimeout(r,120));
    const before=chip();
    const el=document.querySelector('[data-mother]');
@@ -2310,7 +2310,7 @@ let b=null,page=null;
      '板幅公差_ｵｰﾀﾞｰ_ﾌﾟﾗｽ':0.8,'板幅公差_ｵｰﾀﾞｰ_ﾏｲﾅｽ':0.8});
    const mt=document.getElementById('measureType'),bkType=mt.value;
    mt.value='板幅';mt.dispatchEvent(new Event('change',{bubbles:true}));
-   if(typeof configureToleranceSelector==='function')configureToleranceSelector();
+   if(typeof WL.measureView.configureToleranceSelector==='function')WL.measureView.configureToleranceSelector();
    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
    const box=document.querySelector('.tolerance-source-control'),
      fold=document.getElementById('tolSourceFold'),
@@ -2331,7 +2331,7 @@ let b=null,page=null;
    out.もう一度押すと畳む=!!pick.hidden;
    Object.keys(bk).forEach(k=>{if(bk[k]===undefined)delete src[k];else src[k]=bk[k]});
    mt.value=bkType;mt.dispatchEvent(new Event('change',{bubbles:true}));
-   if(typeof configureToleranceSelector==='function')configureToleranceSelector();
+   if(typeof WL.measureView.configureToleranceSelector==='function')WL.measureView.configureToleranceSelector();
    return out;
   });
   rec('判定公差の切り替えは選べるときだけ出す',公差切替.選べる&&公差切替.入口が出ている,

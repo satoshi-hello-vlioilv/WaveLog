@@ -444,7 +444,7 @@
             if(S.measure.settings.horizontalCount!==rounded){
               S.measure.settings.horizontalCount=rounded;
               if($('#horizontalCount'))$('#horizontalCount').value=rounded;
-              if(typeof updateCoilOptions==='function')updateCoilOptions(rounded);
+              if(typeof WL.measureView.updateCoilOptions==='function')WL.measureView.updateCoilOptions(rounded);
             }
           }
           const vn=Number(pick(S.measure.source,'boxVerticalCount'));
@@ -453,7 +453,7 @@
             if(S.measure.settings.verticalCount!==rounded){
               S.measure.settings.verticalCount=rounded;
               if($('#verticalCount'))$('#verticalCount').value=rounded;
-              if(typeof updateLengthOptions==='function')updateLengthOptions(rounded);
+              if(typeof WL.measureView.updateLengthOptions==='function')WL.measureView.updateLengthOptions(rounded);
             }
           }
         }
@@ -463,9 +463,9 @@
            「基準を出せません」のまま残り、丈の判定も止まったままになる
            （`renderQualityGradePanel`が`m.qualityGrades`の唯一の書き手）。
            **内径のプリセット**も同じで、`ｺｲﾙ_内径目標`がここで現れうる。 */
-        if(typeof renderQualityGradePanel==='function')renderQualityGradePanel();
-        if(typeof renderProductPanel==='function'
-           &&WL.measureItem.isMaterial($('#measureType')?.value))renderProductPanel();
+        if(typeof WL.measureView.renderQualityGradePanel==='function')WL.measureView.renderQualityGradePanel();
+        if(typeof WL.measureView.renderProductPanel==='function'
+           &&WL.measureItem.isMaterial($('#measureType')?.value))WL.measureView.renderProductPanel();
         /* 当て方は1箇所（measure-view.js）が持つ。ここは呼ぶだけ。 */
         if(WL.innerDiameter)WL.innerDiameter.apply(S.measure.source);
       }
@@ -1609,7 +1609,7 @@
     S.measure.settings.splitGroups=splitGroups;
     S.measure.settings.splitPositionGroup=positionGroup;
     $('#horizontalCount').value=total;
-    if(typeof updateCoilOptions==='function')updateCoilOptions(total);
+    if(typeof WL.measureView.updateCoilOptions==='function')WL.measureView.updateCoilOptions(total);
     if(!changed){
       if(typeof WL.measureInput.renderMeasureGrid==='function')WL.measureInput.renderMeasureGrid();
       refreshSplitStatusPanel();
@@ -1618,7 +1618,7 @@
     if(typeof markDirty==='function')markDirty();
     if(typeof setState==='function')setState('条割を変更しました');
     if(typeof WL.measureInput.renderMeasureGrid==='function')WL.measureInput.renderMeasureGrid();
-    if(typeof updateMeasurementHeading==='function')updateMeasurementHeading();
+    if(typeof WL.measureView.updateMeasurementHeading==='function')WL.measureView.updateMeasurementHeading();
     refreshSplitStatusPanel();
     /* 条割「適用」直後だけの一撃アニメーション。refreshSplitStatusPanel()は
        測定画面を開いた/再開しただけの同期でも呼ばれるため、アニメーション
@@ -2092,7 +2092,7 @@
   }
   function rerenderAfterSplitDataChange(){
     if(typeof WL.measureInput.renderMeasureGrid==='function')WL.measureInput.renderMeasureGrid();
-    if(typeof updateMeasurementHeading==='function')updateMeasurementHeading();
+    if(typeof WL.measureView.updateMeasurementHeading==='function')WL.measureView.updateMeasurementHeading();
     refreshSplitStatusPanel();
   }
   function blockerMessage(blockers,verb){
@@ -2735,7 +2735,7 @@
   function refreshFocusedToleranceDisplay(){
     const type=$('#measureType')?.value;
     if(!WL.measureItem.isDimensional(type))return;
-    if(typeof updateMeasurementHeading==='function')updateMeasurementHeading();
+    if(typeof WL.measureView.updateMeasurementHeading==='function')WL.measureView.updateMeasurementHeading();
     /* 板厚・板幅を別々の入力内容にしたので、描かれている数直線は
        **いま選んでいる項目のもの1つだけ**（§9.138）。枠の数も項目で
        違うため`slotCount`から取る（板厚は条数ではなく3）。 */

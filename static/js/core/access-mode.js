@@ -267,7 +267,7 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
    throw err;
   }
   return (r.items||[]).map(it=>{
-   try{const rec=ensureMeasureShape(JSON.parse(it.payload));rec.id=it.id;return rec}
+   try{const rec=WL.measureView.ensureMeasureShape(JSON.parse(it.payload));rec.id=it.id;return rec}
    catch(e){return null}
   }).filter(Boolean);
  }

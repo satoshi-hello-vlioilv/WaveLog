@@ -208,7 +208,7 @@ WL.lotDspTab={
 };
 function setState(x){$('#localState').textContent=x}
 /* 保存されていない変更があるかどうかを追跡する。×ボタン/背景クリックで
-   閉じようとした際、破棄してよいか確認するために使う。renderMeasurement()
+   閉じようとした際、破棄してよいか確認するために使う。WL.measureView.renderMeasurement()
    でデータを新規に読み込んだ時と、保存が成功した時にリセットする。 */
 let measureDirty=false;
 /* **触った回数**（§9.320-G の追補、§9.312と同じ数え方）。旗（`measureDirty`）
@@ -217,17 +217,17 @@ let measureDirty=false;
    バッジが「DBへ保存済み」と言ってしまう（**画面が嘘をつく**・§CLAUDE 6）。
    **控えた回数と違っていたら、旗を下ろさない・保存済みとも言わない**。
 
-   **値そのものは落ちない**（実測で確かめた。推測で書かない）——`collect()`が
+   **値そのものは落ちない**（実測で確かめた。推測で書かない）——`WL.measureView.collect()`が
    返す写しは測定値の配列を**実体で共有**しており、`backupAndTrackSync()`が
    `finally`でもう一度`reliablePut(m)`するので、往復中の1文字もその書き込みに
    乗る。ここで直しているのは**バッジの文言**（未保存のものを保存済みと
-   言わない）で、`collect()`を深い写しへ変えるならこの前提も変わる。 */
+   言わない）で、`WL.measureView.collect()`を深い写しへ変えるならこの前提も変わる。 */
 let measureEditSeq=0;
 /* **どこに在るのかまで書く**(§9.202、利用者の報告「入力しただけでは
    完了に反映されない」)。「未保存」だけだと、打った値がもう端末に
    入っていると読める。実際は保存を押すまで画面の中にしか無い。 */
 /* **変わったら裏でDBへ書く**（§9.320-G、利用者の指示）。ここは値を書く
-   合図を出すだけで、実処理は`records-store.js`が持つ（`collect()`も
+   合図を出すだけで、実処理は`records-store.js`が持つ（`WL.measureView.collect()`も
    `reliablePut()`もあちらのもの）。**「あれば呼ぶ」で黙らせない**
    ——公開漏れは静かに機能だけを失うので、無ければ理由を出す（§CLAUDE）。 */
 function markDirty(){
@@ -253,7 +253,9 @@ WL.measureHooks={
  afterRender(fn){WL.measureHooks.on('afterRender',fn)},
  afterHeading(fn){WL.measureHooks.on('afterHeading',fn)},
  gate(name,fn,opt){if(typeof fn!=='function')return;const l=hookList(name);l.push({fn,priority:Number(opt&&opt.priority)||0});l.sort((a,b)=>b.priority-a.priority)},
- own(name,fn){if(typeof fn==='function')OWNERS[name]=fn},
+ /* `null` を渡すと返上する。**返上できない登録表は後始末ができない**——
+    差し替えたまま次へ漏れる（§9.121）。 */
+ own(name,fn){if(typeof fn==='function')OWNERS[name]=fn;else if(fn===null)delete OWNERS[name]},
  owner(name){return OWNERS[name]||null},
  run(name,...args){hookList(name).forEach(h=>{try{h.fn(...args)}catch(e){console.error('フック '+name+' で例外',e)}})},
  async runAsync(name,...args){for(const h of hookList(name)){try{await h.fn(...args)}catch(e){console.error('フック '+name+' で例外',e)}}},

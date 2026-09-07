@@ -50,7 +50,7 @@ const motherFields=()=>((window.WL&&WL.opData&&WL.opData.motherKeys&&WL.opData.m
    廃止したので、`alignmentCode`だけを見ると新しく入力した行が1件も
    数えられない（旧データのために残してある）。
    **読むのは呼ばれたとき**——読み込み順に依存しないようにする。 */
-const productFilledKeys=()=>PRODUCT_FILLED_KEYS;
+const productFilledKeys=()=>WL.measureView.PRODUCT_FILLED_KEYS;
 
 const filled=v=>String(v??'').trim()!=='';
 
@@ -133,7 +133,7 @@ function progressOf(m){
 function measureProgress(){return progressOf(S.measure)}
 
 /* ---------- 公差外の集計（§9.125） ----------
-   **画面ではなくデータから数える。** `updateValidationVisuals()`が見るのは
+   **画面ではなくデータから数える。** `WL.measureView.updateValidationVisuals()`が見るのは
    いま描かれているグリッドだけなので、別の丈位置・別の項目にある公差外は
    完了を押すまで誰も気づけない（進捗を全項目から数えているのと同じ理由）。
    判定式は`judgeInput`と同じ——値があって数として読めて、公差の外なら1件。
@@ -316,7 +316,7 @@ WL.measureHooks.gate('persistAndTransition',async status=>{
       確認を出してから止めると二度手間になるので、その場合は聞かずに委ねる。
       **公差外はもう止まらない**ので、ここで一緒に確認する。 */
    try{
-    const v=updateValidationVisuals();
+    const v=WL.measureView.updateValidationVisuals();
     const identity=v.missing.filter(x=>x.el&&(x.el.id==='operator'||x.el.id==='inspector'));
     if(identity.length)return;  // records-store 側で止まるので、ここでは聞かない（次へ）
    }catch(e){console.warn('completion precheck failed',e)}

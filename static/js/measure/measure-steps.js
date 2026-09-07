@@ -124,8 +124,8 @@
  /* 作業時刻は**地方時の分まで**（§9.242 ①）。以前は保存値（ISO・UTC・
     ミリ秒つき）の`T`を空白へ置き換えるだけで、`2026-08-26 04:59:31.307Z`と
     そのまま出していた——**時差のぶんずれた時刻**を、欄には出ていない
-    精度で見せていたことになる。書式は`formatWorkTime()`の1箇所へ寄せる。 */
- const wtText=v=>(typeof formatWorkTime==='function'?formatWorkTime(v):String(v||''))
+    精度で見せていたことになる。書式は`WL.measureView.formatWorkTime()`の1箇所へ寄せる。 */
+ const wtText=v=>(typeof WL.measureView.formatWorkTime==='function'?WL.measureView.formatWorkTime(v):String(v||''))
    ||String(v||'').replace('T',' ');
  /* 丈位置の呼び名は`#lengthPos`の選択肢が正（「1(頭)」「1(尾)」）。
     番号だけ出すと画面のどことも一致しない。 */
@@ -775,7 +775,7 @@
   placeToleranceBlock(step);
   /* ③の「記録した値」は**入るたびに作り直す**——①で設定を直してから戻って
      くることがあるので、開いた時点の値でなければ確認の意味が無い。 */
-  if(step==='3'&&measuring())renderRecordedValues();
+  if(step==='3'&&measuring())WL.measureView.renderRecordedValues();
   /* ③は確認の面なので**効いている公差を全部並べる**（§9.157）。②は
      いま測っている1項目だけでよい（判定しているのがそれだから）。 */
   if(measuring()&&WL.toleranceList)WL.toleranceList.paint();
@@ -811,7 +811,7 @@
     ある**（読み込みの順は場面によって違う）。器が出る瞬間にもう一度
     測り直せば、どちらの順でも正しい大きさになる。**onclickを奪わない**
     ようaddEventListenerで足し、切り替え後の値で測るため1フレーム待つ。 */
- /* 情報の壁は**閉じられたら開き直す**。`renderMeasurement()`が開くたびに
+ /* 情報の壁は**閉じられたら開き直す**。`WL.measureView.renderMeasurement()`が開くたびに
     `[data-leftpanel]`を1枚だけ残して畳むため（作業時間タブの初期化）、
     段の描き直しの前に閉じられていることがある。同じ値の代入では変化
     記録が出ないので、この見張りは回り続けない。 */

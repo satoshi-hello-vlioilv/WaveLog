@@ -50,7 +50,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   /* 端末内に「編集中2件・完了1件」を置く。共有DBへは送らない(送ると
      他のテストの共有データを汚す)ので、reliablePut だけを呼ぶ。 */
   const seeded=await page.evaluate(async({tag,lot,eq})=>{
-   const mk=(n,st)=>ensureMeasureShape({id:`${tag}-${n}`,status:st,
+   const mk=(n,st)=>WL.measureView.ensureMeasureShape({id:`${tag}-${n}`,status:st,
      basic:{lotNo:`${lot}-${n}`,inspectionNo:'INS-'+n},
      registeredEquipment:eq,updatedAt:new Date().toISOString()});
    for(const m of [mk(1,'編集中'),mk(2,'編集中'),mk(3,'完了')])await reliablePut(m);

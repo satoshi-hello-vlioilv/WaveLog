@@ -840,7 +840,7 @@
     **値を持つのは今までどおり`<select>`**。ボタン側から`value`を書いて
     `change`を飛ばすだけにする——こうすると
       ・記録の読み書き（`values()`／`apply()`／`collect()`）
-      ・必須の判定（`activeRequiredControls()`は`controlOf()`が返す部品を見る）
+      ・必須の判定（`WL.measureView.activeRequiredControls()`は`controlOf()`が返す部品を見る）
       ・仕掛由来のプリセット（内径・§9.204）や条数の上限（§9.210 ⑤）
     が**1つも書き換わらない**。組み込みの欄（オペレータ・作業人数…）にも
     同じ形で当てられるのはこのため。
@@ -934,7 +934,7 @@
      ものなので、この機能も未選択、未入力の場合、配色するという機能を実装して
      ください」
 
-    直す前は`updateValidationVisuals()`が**必須の欄だけ**に橙を当てていた
+    直す前は`WL.measureView.updateValidationVisuals()`が**必須の欄だけ**に橙を当てていた
     ——①必須でない欄は空でも何も出ない ②色は橙で固定、で「未入力なら色を
     付ける」という設定そのものが無かった。
 
@@ -1070,7 +1070,7 @@
   return box;
  }
  /* 押した結果を`select`へ書いて`change`を飛ばす。**`input`も飛ばす**
-    ——`updateValidationVisuals()`は両方をcaptureで拾っており、片方だけだと
+    ——`WL.measureView.updateValidationVisuals()`は両方をcaptureで拾っており、片方だけだと
     未入力の印が更新されない経路が残る。 */
  function setValue(sel,v){
   if(sel.value===v)return;
@@ -3047,8 +3047,8 @@
      まったく同じ理由）——中身はマスタの行から組み立てるので、③を開いたまま
      マスタが届いた場合に塗り直さないと**空のまま**になる。
      **「あれば呼ぶ」で黙らせないこと**——無ければ理由を出す。 */
-  if(typeof renderRecordedValues==='function'){
-   try{renderRecordedValues()}
+  if(typeof WL.measureView.renderRecordedValues==='function'){
+   try{WL.measureView.renderRecordedValues()}
    catch(e){console.warn('measure-opdata: 記録した値を塗り直せませんでした',e)}
   }else console.error('measure-opdata: renderRecordedValues が無い（③の記録した値が空のまま残る）');
  }
@@ -3391,7 +3391,7 @@
  }
 
  /* **必須はマスタが決める**（§9.216 ②、利用者の指示「一部の必須入力事項も
-    マスタで設定可能とし」）。以前は`activeRequiredControls()`が
+    マスタで設定可能とし」）。以前は`WL.measureView.activeRequiredControls()`が
     `['operator','inspector']`と直に書いており、設備ごとに変えられなかった。
     **答えられないときはnull**——読めなかったことを「必須は無い」と同じに
     扱うと、完了前の確認が黙って緩くなる（§9.211 ②のfail-openと逆向きの

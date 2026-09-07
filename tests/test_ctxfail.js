@@ -17,7 +17,7 @@
     2. 黙って続けない——品質情報の札が「異常なし」ではなく「読めません」に
        なり、**理由が文字で読める**（§3・§4）
     3. **品質だけ読めなかった**応答（200＋diagnostics.quality_error）でも同じ
-    4. **エラー文を記録へ入れない**——`collect()`は`#qualityInfo`の中身を
+    4. **エラー文を記録へ入れない**——`WL.measureView.collect()`は`#qualityInfo`の中身を
        そのまま保存するので、そこへ書くと品質情報として残り帳票にも刷られる
     5. 読み直して成功したら注記は消える
 
@@ -95,7 +95,7 @@ let b=null;
   // ---- 4. エラー文を記録へ入れない ----
   rec('エラー文を品質情報として記録しない',
       !/読み込めません|WinError/.test(a.本文)
-      && await page.evaluate(()=>!/読み込めません|WinError/.test(String(collect().qualityInfo||''))),
+      && await page.evaluate(()=>!/読み込めません|WinError/.test(String(WL.measureView.collect().qualityInfo||''))),
       a.本文.slice(0,40));
 
   // ---- 3. 品質だけ読めなかった応答でも同じ ----

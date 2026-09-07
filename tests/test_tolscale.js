@@ -67,7 +67,7 @@ let b=null;
    vals.forEach((v,i)=>w[i]=v);
    /* 測定パネルは入力内容(measureType)に応じてapplyRightLayoutが出し分ける。
       値を差し替えるだけでは隠れたままで、寸法が全て0になり測れない。 */
-   applyRightLayout();WL.measureInput.renderMeasureGrid();
+   WL.measureView.applyRightLayout();WL.measureInput.renderMeasureGrid();
    const d=WL.measureInput.toleranceDetail('width');
    return {range:d&&d.range,base:Number(S.measure.basic.mfgWidth)};
   },[BASE,PLUS,MINUS,VALUES]);

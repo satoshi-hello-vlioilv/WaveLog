@@ -161,11 +161,11 @@ let b=null;
      来る**のがふつう。ここで見るのは、そのとき打った値が
      **端末内の記録まで届くこと**と、**旗（未保存）が残らないこと**。
 
-     **実測して分かったこと**（推測で書かない）: `collect()`が返す写しは
+     **実測して分かったこと**（推測で書かない）: `WL.measureView.collect()`が返す写しは
      測定値の配列を**実体で共有**しており、さらに`backupAndTrackSync()`が
      `finally`でもう一度`reliablePut(m)`する。だから往復中の1文字は
      取りこぼされない——**この網はその成り立ちを固定する**もので、
-     `collect()`を深い写しへ変えるような直しが入れば落ちる。
+     `WL.measureView.collect()`を深い写しへ変えるような直しが入れば落ちる。
 
      **遅らせるのは端末内への書き込み（`reliablePut`）**——共有DBへの送信を
      遅らせても`autoSaveAgain`が拾うので、窓が開かない（実際に空振りした）。 */
@@ -176,7 +176,7 @@ let b=null;
   },1200);
   await page.evaluate(()=>{const el=document.getElementById('deviceInput');
     el.value='DT110+1201.00';WL.measureInput.processDeviceInput('DT110+1201.00')});
-  /* 書き込みが始まった（＝`collect()`は済んだ）ところで、もう1つ打つ。 */
+  /* 書き込みが始まった（＝`WL.measureView.collect()`は済んだ）ところで、もう1つ打つ。 */
   await page.waitForFunction(()=>/保存しています/
     .test(document.getElementById('localState').textContent||''),null,{timeout:20000});
   await page.waitForTimeout(200);

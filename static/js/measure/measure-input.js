@@ -493,7 +493,7 @@ function bindMeasureInputsCore(){
      **`oninput`を割り当てる前に付けること**——`input`は登録順に走るので、
      後から付けると配列へ生の値（`-`つき）が入ってしまう。 */
   if(x.dataset.mkey!=='flatness')WL.numericInput.attach(x);
-  judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);x.onclick=()=>{
+  WL.measureView.judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);x.onclick=()=>{
    /* **押した枠がいま測る枠**（§9.208 ③）。丈も一緒に合わせてから印を移す
       ——先に印だけ動かすと、直後の描き直しで一度別の丈へ跳ねて見える。
       丈が変われば`#lengthPos`のchangeが描き直し、その中で`focusCurrent()`が
@@ -517,7 +517,7 @@ function bindMeasureInputsCore(){
       そちらへ引き戻していた（打った文字が別の丈へ入る）。 */
    if(!gotoLengthSlot(+x.dataset.i))focusCurrent();
   });
-  x.oninput=()=>{m.measurements[x.dataset.mkey][+x.dataset.i][+x.dataset.j]=x.value;judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);renderStats();WL.workStamp.note('manual');markDirty()};x.onkeydown=e=>{if(S.measure.settings.inputMode!=='manual'){e.preventDefault();return}if(e.key==='Delete'){x.value='';x.oninput()}if(e.key==='Enter'){e.preventDefault();advanceSlot();focusCurrent()}}})
+  x.oninput=()=>{m.measurements[x.dataset.mkey][+x.dataset.i][+x.dataset.j]=x.value;WL.measureView.judgeInput(x,x.dataset.mkey,Number(x.value),+x.dataset.j);renderStats();WL.workStamp.note('manual');markDirty()};x.onkeydown=e=>{if(S.measure.settings.inputMode!=='manual'){e.preventDefault();return}if(e.key==='Delete'){x.value='';x.oninput()}if(e.key==='Enter'){e.preventDefault();advanceSlot();focusCurrent()}}})
 
  /* 打ち終わった値を**丸めてから桁をそろえる**（§9.305 ①）。
     **全部の項目に付ける**——以前は板厚・板幅だけで、ラテラルボー・
@@ -528,7 +528,7 @@ function bindMeasureInputsCore(){
     書き換わったように見える（§9.15）。 */
  document.querySelectorAll('[data-mkey]').forEach(el=>{
   const previousBlur=el.onblur;
-  el.onblur=event=>{if(previousBlur)previousBlur.call(el,event);const formatted=WL.measureRound.settle(el.dataset.mkey,el.value);if(el.value!==formatted){el.value=formatted;S.measure.measurements[el.dataset.mkey][+el.dataset.i][+el.dataset.j]=formatted;judgeInput(el,el.dataset.mkey,Number(formatted),+el.dataset.j);renderStats();markDirty()}}
+  el.onblur=event=>{if(previousBlur)previousBlur.call(el,event);const formatted=WL.measureRound.settle(el.dataset.mkey,el.value);if(el.value!==formatted){el.value=formatted;S.measure.measurements[el.dataset.mkey][+el.dataset.i][+el.dataset.j]=formatted;WL.measureView.judgeInput(el,el.dataset.mkey,Number(formatted),+el.dataset.j);renderStats();markDirty()}}
  });
 }
 function toleranceInfoFor(key,index,value){
@@ -958,7 +958,7 @@ function renderMeasureGridVertical(){
    if(want&&WL.numberlinePanel)WL.numberlinePanel.close()}}
  alignToleranceChart();
  syncNumberlineControls();
- bindMeasureInputs();applyInputProtection();focusCurrent();updateMeasurementHeading();
+ bindMeasureInputs();applyInputProtection();focusCurrent();WL.measureView.updateMeasurementHeading();
  /* 器に入るかは**描き終えてから**しか分からない（§9.209 ③⑤）。 */
  requestAnimationFrame(()=>{try{fitMeasureMatrix()}catch(e){WL.quiet.note('測定表の割り付けを測り直せない（前の寸法のまま出る）',e)}});/* 寸法系（板厚・板幅）は横長の公差バーを出さない。数直線の隣の公差カード
    （`.compact-tolerance-side`）が基準値・公差±・判定範囲を既に持っており、
@@ -971,11 +971,11 @@ function renderMeasureGridVertical(){
    公差±・出どころの列名）はピルの`title`が持つ。 */
 const summary=$('#toleranceSummary');if(summary&&summary.hidden)summary.hidden=false;
  if(type==='フラットネス'){
-  updateCoilOptions($('#horizontalCount').value);
-  $('#coilNo').onchange=()=>{saveFlatComment();loadFlatComment()};
-  $('#coilComment').onchange=()=>{saveFlatComment();markDirty()};
+  WL.measureView.updateCoilOptions($('#horizontalCount').value);
+  $('#coilNo').onchange=()=>{WL.measureView.saveFlatComment();WL.measureView.loadFlatComment()};
+  $('#coilComment').onchange=()=>{WL.measureView.saveFlatComment();markDirty()};
   $('#flatAllOk').onclick=()=>{const j=lengthIndex(),n=Math.max(1,+$('#horizontalCount').value||1);for(let c=0;c<n;c++)m.measurements.flatness[j][c]='〇';renderMeasureGrid();markDirty()};
-  loadFlatComment();
+  WL.measureView.loadFlatComment();
   bindFlatnessInputs();
  }
  WL.measureHooks.run('afterGridVertical');
@@ -1560,7 +1560,7 @@ WL.numberline={
  },
 };
 WL.onReady(()=>{syncNumberlineControls()});
-function renderMeasureGrid(){renderMeasureGridVertical();requestAnimationFrame(updateValidationVisuals);WL.measureHooks.run('afterGrid')}
+function renderMeasureGrid(){renderMeasureGridVertical();requestAnimationFrame(WL.measureView.updateValidationVisuals);WL.measureHooks.run('afterGrid')}
 Object.assign(window.WL,{toleranceAxisView});
 
 /* ============================================================

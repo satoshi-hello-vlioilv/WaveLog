@@ -3921,7 +3921,7 @@
   }
   /* **同じ群はまとめて描く**（§9.219 ③と同じ作法）。保存されている並びでは
      同じ群がばらけていることがある（`[表示順]`は置き場ごとの並びなので、
-     カードの群と一致する保証が無い）。盤は`renderRecordedValues()`と同じ
+     カードの群と一致する保証が無い）。盤は`WL.measureView.renderRecordedValues()`と同じ
      「出てきた順に束ねる」で描くので、**平らな並びのほうも束ねておかないと、
      見えている形と保存される`[記録順]`が食い違う**（盤は1塊なのに、
      保存された順は2つに割れている、という状態が作れる）。 */
@@ -3936,7 +3936,7 @@
   return rlState.rows;
  }
  const rlItemById=id=>(rlState.items||[]).find(x=>String(x.id)===String(id));
- /* 群の並び（出てきた順）。`renderRecordedValues()`と同じ「出てきた順に束ねる」。 */
+ /* 群の並び（出てきた順）。`WL.measureView.renderRecordedValues()`と同じ「出てきた順に束ねる」。 */
  function rlGroups(){
   const order=[],bag=new Map();
   rlRows().on.forEach(r=>{

@@ -1079,7 +1079,7 @@
    /* 揃いの判定は`judgeProductRow`の1箇所が答える(§9.203)。
       4桁コードを廃止したので、`alignmentCode`だけを見ると新しい記録が
       すべて空欄になる（旧データはあちらが面倒を見る）。 */
-   const r=rows[i]||{},j=showJudge?judgeProductRow(r,grades):'';
+   const r=rows[i]||{},j=showJudge?WL.measureView.judgeProductRow(r,grades):'';
    const badge=j?`<span class="product-judge${j==='OK'?' ok':j==='NG'?' ng':' pend'}">${esc(j)}</span>`:'';
    const br=showBreak?WL.product.breakdown(r):[];
    const brHtml=br.length
@@ -1240,7 +1240,7 @@
   {k:RP_DEFECT_ROLL_KEY,span:6,html:(x,opt)=>defectRollSection(x,opt)},
   {k:'作業時間',span:6,html:x=>{const w=x.workTime||{};
    const dur=w.startAt&&w.endAt?formatDuration(new Date(w.endAt)-new Date(w.startAt)):(w.startAt?'作業中':'未計測');
-   return reportSection('作業時間',[['開始時刻',formatWorkTime(w.startAt)],['終了時刻',formatWorkTime(w.endAt)],['実働時間',dur]])}},
+   return reportSection('作業時間',[['開始時刻',WL.measureView.formatWorkTime(w.startAt)],['終了時刻',WL.measureView.formatWorkTime(w.endAt)],['実働時間',dur]])}},
   {k:'登録状態',span:6,html:x=>reportSection('登録状態',[['状態',statusLabel(x.status)],['更新日時',fmtDT(x.updatedAt)],['NG回数',x.settings?.ngCount||0]])},
   /* 測定値の統計（§9.244、利用者の指示「異幅分割の複数ロットが混在する
      パターンにおいてもロットごとに統計データが出てくるように」）。
@@ -1378,7 +1378,7 @@
       だった。過去の帳票が空欄にならないよう旧値も読む。 */
    coilStop:s.coilStop||(s.innerTape===undefined?'':(s.innerTape?'内巻両面テープ':'指定なし')),
    crewSize:(s.crewSize&&s.crewSize!=='-')?`${s.crewSize}名班`:'-',
-   workStart:formatWorkTime(w.startAt),workEnd:formatWorkTime(w.endAt),workDuration:dur,
+   workStart:WL.measureView.formatWorkTime(w.startAt),workEnd:WL.measureView.formatWorkTime(w.endAt),workDuration:dur,
    status:statusLabel(x.status),updatedAt:fmtDT(x.updatedAt),
   };
  }
@@ -1813,7 +1813,7 @@
     ||hasMeasurementValues(x,['width','lateral','burr','offset','telescope','flatness']);
  }
  function rpShowProduct(x){
-  const has=(x.product?.rows||[]).some(r=>r&&PRODUCT_FILLED_KEYS.some(k=>String(r[k]||'').trim()!==''));
+  const has=(x.product?.rows||[]).some(r=>r&&WL.measureView.PRODUCT_FILLED_KEYS.some(k=>String(r[k]||'').trim()!==''));
   return WL.measureItem.isMaterial(x.settings?.measureType)||has;
  }
  /* 並び。**知らない名前は捨て、登録済みで並びに無いものは末尾へ**（一覧の
@@ -5014,7 +5014,7 @@
     const r=await api(url);
     const hit=(r.items||[]).find(it=>String(it.id)===String(id));
     if(!hit)continue;
-    const rec=ensureMeasureShape(JSON.parse(hit.payload));rec.id=hit.id;return rec;
+    const rec=WL.measureView.ensureMeasureShape(JSON.parse(hit.payload));rec.id=hit.id;return rec;
    }catch(e){WL.quiet.note('次の取得先を試す',e)}
   }
   return null;
@@ -5119,7 +5119,7 @@
   }
   if(!rec){showToast&&showToast('見本を作れませんでした','サーバーが見本のロットを返しませんでした。',6000);return}
   rec.id=RP_SAMPLE_ID;rec.__sample=true;
-  if(typeof ensureMeasureShape==='function')ensureMeasureShape(rec);
+  if(typeof WL.measureView.ensureMeasureShape==='function')WL.measureView.ensureMeasureShape(rec);
   rpReturnTo=RP_RETURNS.indexOf(opt.returnTo)>=0?opt.returnTo:'blocks';
   await openReportView();
   updateBackButton();
@@ -5286,7 +5286,7 @@
     modal.hidden=false;
     /* 帳票へ出ている間に描画が止まっているため、戻った時点の内容で
        検証表示と測定進捗を作り直す(古い件数が残るのを防ぐ)。 */
-    if(typeof updateValidationVisuals==='function')updateValidationVisuals();
+    if(typeof WL.measureView.updateValidationVisuals==='function')WL.measureView.updateValidationVisuals();
     requestAnimationFrame(()=>$id('deviceInput')?.focus());
    }
    return;
@@ -5936,5 +5936,5 @@ function updateSoftChoiceVisuals(){
  });
 }
 SOFT_CHOICE_IDS.forEach(id=>{const el=$('#'+id);if(el)el.addEventListener('change',updateSoftChoiceVisuals)});
-WL.measureHooks.afterRender(()=>{updateSoftChoiceVisuals();if(typeof syncInputModeLock==='function')syncInputModeLock()});
+WL.measureHooks.afterRender(()=>{updateSoftChoiceVisuals();if(typeof WL.measureView.syncInputModeLock==='function')WL.measureView.syncInputModeLock()});
 WL.measureHooks.on('afterOptionFill',()=>updateSoftChoiceVisuals());

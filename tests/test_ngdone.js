@@ -87,7 +87,7 @@ let b=null;
    m.source['板幅公差_製造_プラス']=0.5;m.source['板幅公差_製造_マイナス']=0.5;
    m.measurements.width.forEach(r=>r.fill(''));
    m.measurements.width[0][0]='120.00';        // 99.5〜100.5 の外
-   /* **入力内容を板幅にしてから見る**——`activeRequiredControls()`が
+   /* **入力内容を板幅にしてから見る**——`WL.measureView.activeRequiredControls()`が
       測定表のセルを必須として数えるのは、その面が開いているときだけ
       （母材のままだと`.ng`のセルが1つも数に入らず、公差外だけの
       言い回しの道を一度も通らない）。 */
@@ -98,7 +98,7 @@ let b=null;
     const el=document.getElementById(id);
     if(el&&el.options&&el.options.length>1){el.selectedIndex=1;el.dispatchEvent(new Event('change',{bubbles:true}))}
    });
-   WL.measureInput.renderMeasureGrid();updateValidationVisuals();
+   WL.measureInput.renderMeasureGrid();WL.measureView.updateValidationVisuals();
    const ng=WL.measureReview.outOfTolerance();
    return {公差:!!WL.measureInput.toleranceDetail('width',0,'板幅'),件数:(ng&&ng.total)||0};
   });
@@ -107,20 +107,21 @@ let b=null;
   /* ---- 7. 完了ボタンの説明が「完了できません」と読めない ---- */
   /* **「できません」と読める書き方をしない**——未入力が残っていれば説明は
      そちらを言う（直す先が1つに決まるほうを出す）。公差外だけのときの
-     言い回しは、下で `updateValidationVisuals()` の分岐を直接通して見る。 */
+     言い回しは、下で `WL.measureView.updateValidationVisuals()` の分岐を直接通して見る。 */
   const tip=await page.evaluate(()=>document.getElementById('complete')?.getAttribute('title')||'');
   rec('完了ボタンの説明が「完了できません」と読める書き方をしない',
       !/できません/.test(tip),tip);
   /* 未入力を一時的に「無い」ことにして、公差外だけのときの文言を見る。
-     **本体の`updateValidationVisuals()`を通すこと**——写して確かめると、
+     **本体の`WL.measureView.updateValidationVisuals()`を通すこと**——写して確かめると、
      本体が違う文言を出していても通る（§9.289）。 */
   const ngTip=await page.evaluate(()=>{
-   const base=activeRequiredControls;
-   const only=activeRequiredControls().filter(x=>x.el&&x.el.classList.contains('ng'));
-   window.activeRequiredControls=activeRequiredControls=()=>only;
+   /* **被せない**（§9.352）——閉じたファイルの関数は外から差し替えられない。
+      持ち替えは登録表の `own` で行い、`finally` で必ず返上する。 */
+   const only=WL.measureView.activeRequiredControls().filter(x=>x.el&&x.el.classList.contains('ng'));
+   WL.measureHooks.own('activeRequiredControls',()=>only);
    let t='';
-   try{updateValidationVisuals();t=document.getElementById('complete').title}
-   finally{window.activeRequiredControls=activeRequiredControls=base;updateValidationVisuals()}
+   try{WL.measureView.updateValidationVisuals();t=document.getElementById('complete').title}
+   finally{WL.measureHooks.own('activeRequiredControls',null);WL.measureView.updateValidationVisuals()}
    return t;
   });
   rec('公差外だけのときは「確認のうえ完了できます」と言う',
@@ -175,10 +176,10 @@ let b=null;
   await page.evaluate(async id=>{
    const all=await reliableAll();
    const r=all.find(v=>v.id===id);
-   S.measure=ensureMeasureShape(r);
+   S.measure=WL.measureView.ensureMeasureShape(r);
    document.getElementById('measureModal').hidden=false;
    S.measure.measurements.width[0][0]='100.00';
-   renderMeasurement();updateValidationVisuals();
+   WL.measureView.renderMeasurement();WL.measureView.updateValidationVisuals();
   },lotId);
   await page.waitForTimeout(400);
   const left=await page.evaluate(()=>WL.measureReview.outOfTolerance().total);
@@ -204,12 +205,12 @@ let b=null;
   await page.evaluate(async id=>{
    const all=await reliableAll();
    const r=all.find(v=>v.id===id);
-   S.measure=ensureMeasureShape(r);S.measure.status='編集中';
+   S.measure=WL.measureView.ensureMeasureShape(r);S.measure.status='編集中';
    document.getElementById('measureModal').hidden=false;
-   renderMeasurement();
+   WL.measureView.renderMeasurement();
    const el=document.getElementById('operator');
    if(el){el.value='';el.dispatchEvent(new Event('change',{bubbles:true}))}
-   updateValidationVisuals();
+   WL.measureView.updateValidationVisuals();
   },lotId);
   await page.waitForTimeout(400);
   await page.click('#complete');
