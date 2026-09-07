@@ -25,6 +25,7 @@
    出ていても通る。**実寸で位置を突き合わせる**。
    ================================================================ */
 const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+const W=require('./lib/wait');   // 待ちは条件で置き、成立しなければ記録に残す（§9.360）
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
@@ -518,10 +519,29 @@ let b=null;
       ときだけ間に合わず、**前の置き場のまま測って**落ちていた（実測: 「内部」を
       押したのに `位置:"外下左"` のまま）。見本の `data-opunit` が押した先に
       なるまで待つ——押した結果そのものを見るので、速い機械では待たない。 */
-   await page.waitForFunction(a=>{
-    const f=document.getElementById('opPrevField')?.querySelector('.opf');
-    return !!f&&(f.dataset.opunit||'')===a;
-   },at,{timeout:8000}).catch(()=>{});
+   /* **押した先で「落ち着く」まで待つ**（§9.360）。押した直後は必ず反映
+      されるが、**マスタの再読み込みが遅れて届くと`renderOpModal()`が走り、
+      編集中の選択が捨てられて保存値へ戻る**（`master-opdata.js`の
+      `loadOpItemMaint`末尾。実測: 単独で3回に1回落ちていた）。
+      製品側の挙動なので網では直さない——**戻ったら押し直し**、一定時間
+      戻らなくなったところで測る。固定待ちではなく「戻らないこと」を見る。 */
+   const stable=async()=>{
+    for(let i=0;i<4;i++){
+     const ok=await W.until(page,a=>{
+      const f=document.getElementById('opPrevField')?.querySelector('.opf');
+      return !!f&&(f.dataset.opunit||'')===a;
+     },at,{ms:8000,what:'見本の単位の置き場が「'+at+'」になる'});
+     if(!ok)return false;
+     const kept=await page.waitForFunction(a=>{
+      const f=document.getElementById('opPrevField')?.querySelector('.opf');
+      return !f||(f.dataset.opunit||'')!==a;       // 戻ったら真
+     },at,{timeout:1200}).then(()=>false).catch(()=>true);   // 戻らなければ真
+     if(kept)return true;
+     await setUnit(at);                            // 戻されたので押し直す
+    }
+    return false;
+   };
+   await stable();
    pv[at]=await prev();
   }
   rec('見本の単位は1つだけ（「内部」で二重に出さない）（⑥）',

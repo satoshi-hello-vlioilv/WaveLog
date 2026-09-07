@@ -32,9 +32,21 @@ function traced(name,fn){
 const settle=(page,ms=SETTLE)=>page.waitForTimeout(ms);
 
 /* 画面の条件が真になるまで待ち、そのあと短く落ち着かせる。 */
-async function until(page,fn,arg=null,ms=15000){
- await page.waitForFunction(fn,arg,{timeout:ms}).catch(()=>{});
+/* 条件待ち。**timeout しても止めないが、黙ってもいない**（§9.360）。
+   握りつぶすと「古い値のまま比べて不一致」という**別の顔**で落ち、
+   何を待っていたのかが記録に残らない（実測: `test_opunit`が「単位が
+   動かない」に化け、原因に辿り着くのに通しを2回まわした）。
+   `WAIT-TIMEOUT:` の1行を出す——ランナーが落ちた本の出力に添えるので、
+   失敗の理由が**その場で読める**。
+   第4引数はミリ秒か `{ms, what}`。`what` は「何を待っていたか」の一言。 */
+async function until(page,fn,arg=null,opt=15000){
+ const ms=typeof opt==='number'?opt:(opt&&opt.ms)||15000;
+ const what=(opt&&opt.what)||'';
+ let ok=true;
+ await page.waitForFunction(fn,arg,{timeout:ms}).catch(()=>{ok=false});
+ if(!ok)console.log('WAIT-TIMEOUT: '+(what||'条件待ち')+' が '+ms+'ms で成立しませんでした');
  await settle(page);
+ return ok;
 }
 
 /* 起動の覆い（§9.86）が外れるまで。`#openSchedule`が在るだけでは

@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（501件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（502件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -638,11 +638,12 @@
 | 「何で選ばせるか」と「どう見えるか」は別の軸 | — | [§9.223](docs/decisions/9.223.md) |
 | 公差外・基準外は確認カードの色で気づかせる。NGの記録はその行の中 | `test_ngcard.js` | [§9.242](docs/decisions/9.242.md) |
 
-### 検証（テスト）（21件）
+### 検証（テスト）（22件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 通しで落ちた本はランナーがその場で単独へ回して切り分ける。実績も1本ごとに空へ戻す | `test_layers.py` | [§9.356](docs/decisions/9.356.md) |
+| マスタは1本ごとに丸ごと戻す。汚した本は指紋で名指しする。落ちた本は単独で2回、待ちは黙らない | `test_layers.py`・`test_waitlint.py` | [§9.360](docs/decisions/9.360.md) |
 | 「いま」から引き直す値は幅で見る。言い切りは自分が作った行に限る。最初の描画は1回で測る | `test_wkfast.js`・`test_scsplit.js` | [§9.358](docs/decisions/9.358.md) |
 | 実績を置く網は自分で消す。「作業中」を見る網は開始を打刻してから保存する（一時保存だけでは「予定」のまま） | `test_scsync.js`・`test_startwork.js` | [§9.351](docs/decisions/9.351.md) |
 | 文書が指す名前・撮る道具の選択子は実在させる。関数の中の`import`は増やさない（理由は`# 遅延:`） | `test_docindex.py`・`test_importlint.py` | [§9.349](docs/decisions/9.349.md) |

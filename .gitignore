@@ -58,3 +58,4 @@ db/presence/
 
 # 実測用に立てる開発サーバーの作業コピー(tests/run_all.sh の work/ と同じ役割)
 db/test_fixture/devwork/
+.master_snapshot.sqlite3
