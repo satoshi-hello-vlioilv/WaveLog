@@ -53,13 +53,13 @@ async function cleanup(){
   /* この一覧そのものにも設定を1つ持たせておく（§9.216 ③の下ごしらえ）。
      取り込みは**写しを丸ごと捨てる**ので、捨てたあと取り直さないと、
      取り込みと無関係なこの一覧の設定まで画面から消える。 */
-  curTarget=await page.evaluate(()=>listLayoutTarget());
+  curTarget=await page.evaluate(()=>WL.list.listLayoutTarget());
   const RENAMED=await page.evaluate(async()=>{
-   const t=listLayoutTarget();
+   const t=WL.list.listLayoutTarget();
    const k=[...document.querySelectorAll('#grid th[data-sort-col]')]
      .map(x=>x.dataset.sortCol).find(x=>x&&!x.startsWith('__')&&x!=='#');
    await WL.columnLayout.patch(t,{names:{[k]:'取り込み前の名前'}});
-   renderGrid();
+   WL.list.renderGrid();
    return k;
   });
   await paint();
@@ -132,7 +132,7 @@ async function cleanup(){
       JSON.stringify({hidden:got.hidden,names:got.names}));
 
   /* ---- 7) 取り込みのあと、この一覧の設定が消えない(§9.216 ③) ----
-     `forget()`は写しを丸ごと捨てるが、`load()`は「写しがあれば取りに
+     `forget()`は写しを丸ごと捨てるが、`WL.list.load()`は「写しがあれば取りに
      行かない」ので、捨てた直後に誰かが`get()`を呼ぶと**空の形**が写しへ
      入り直す。パネルは`useBody()`で下書きを当てて隠していたが、
      **保存せずに閉じた拍子に`discard()`で捨てられ**、一覧の設定が
@@ -141,7 +141,7 @@ async function cleanup(){
      **確かめるときは「保存せずに閉じる」まで通すこと**——パネルを
      開いたままでは下書きが覆い隠すので、直す前でも通る。 */
   const afterImport=await page.evaluate(k=>({
-   name:WL.columnLayout.get(listLayoutTarget()).names[k]||'',
+   name:WL.columnLayout.get(WL.list.listLayoutTarget()).names[k]||'',
    head:[...document.querySelectorAll('#grid th[data-sort-col]')]
      .map(x=>x.textContent.replace(/\s+/g,'')).join('／'),
   }),RENAMED);
@@ -150,7 +150,7 @@ async function cleanup(){
   await page.evaluate(()=>WL.listColumns.close());
   await idle(300,5000);
   const afterClose=await page.evaluate(k=>({
-   name:WL.columnLayout.get(listLayoutTarget()).names[k]||'',
+   name:WL.columnLayout.get(WL.list.listLayoutTarget()).names[k]||'',
    shown:[...document.querySelectorAll('#grid th[data-sort-col]')]
      .some(x=>x.textContent.includes('取り込み前の名前')),
   }),RENAMED);

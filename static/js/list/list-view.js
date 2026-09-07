@@ -1,5 +1,7 @@
+/* list-view.js: 起動処理・DB/テーブル選択・一覧グリッド(仕掛一覧/品質データ)。
+   **このファイルは閉じている**（§9.355・REVIEW 3-17）——外へ出す面は末尾の `WL.list`。 */
+(function(){
 "use strict";
-/* list-view.js: 起動処理・DB/テーブル選択・一覧グリッド(仕掛一覧/品質データ)。 */
 async function init(){
  try{
  /* **一覧を出すまでの往復を減らす**(§9.93)。以前は
@@ -1199,8 +1201,11 @@ function tableCacheGet(key){
  if(Date.now()-hit.at>TABLE_CACHE_TTL_MS){tableCache.delete(key);return null}
  return hit;
 }
-function tableCacheSet(key,data){
- tableCache.set(key,{data,at:Date.now()});
+/* `at` は「いつ取ったことにするか」。既定は今——**渡すのは検証だけ**（§9.355）。
+   以前は網が内部の `tableCache`（Map）を直に触って `at` を書き換えており、
+   ファイルを閉じた瞬間に触れなくなった。**内部を晒すより、意味のある引数で受ける。** */
+function tableCacheSet(key,data,at){
+ tableCache.set(key,{data,at:Number.isFinite(at)?at:Date.now()});
  // 際限なく溜めない(条件を変えるたびに1件増えるため)
  if(tableCache.size>40)tableCache.delete(tableCache.keys().next().value);
 }
@@ -3001,3 +3006,16 @@ async function openReloadMenu(anchor){
 /* 「再読込」の入口は**一覧のツールバーの鮮度チップ1つ**（§9.286 ④）。
    ヘッダーのボタンは外した——`body.sc-mode`で伏せられるため、分割表示の
    仕掛一覧からは押せなかった（入口を2つにしない・§9.207）。 */
+
+/* ============================================================
+   外へ出す面（§9.355・REVIEW 3-17）
+   ------------------------------------------------------------
+   このファイルは IIFE で閉じている。**ここに載っているものだけが外から呼べる**——
+   足すときは、まず「本当に外から要るのか」を見る（中で済むなら載せない）。
+   閉じたので、載せ忘れは `no-undef` が教える（§9.354）。
+   ============================================================ */
+WL.list={init,load,renderGrid,renderGridInner,renderTabs,renderDbNav,selectDb,
+ listLayoutTarget,listColumnKeys,fmtStamp,applyTableData,estimateColumnWidth,
+ tableCacheGet,tableCacheSet,checkParentLookupRows,checkSplitRowsForMissingChildren,
+ setSplitCellText};
+})();

@@ -2043,7 +2043,7 @@ window.addEventListener('online',()=>syncPendingRecords({silent:true}));
 setInterval(()=>syncPendingRecords({silent:true}),15*60*1000);
 /* ---- アプリ起動 ---- */
 bindAppSettingsControls();
-init().catch(error=>{
+WL.list.init().catch(error=>{
  console.error('初期化エラー',error);
  const grid=$('#grid');if(grid)grid.innerHTML=`<div class="load-error"><b>画面を初期化できませんでした</b><span>${esc(error?.message||String(error))}</span></div>`;
 /* 起動オーバーレイの「一覧を読み込み」はここで済む。**失敗しても進める**

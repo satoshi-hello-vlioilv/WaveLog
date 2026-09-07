@@ -158,7 +158,7 @@
    if(lb&&lb!==c)return `${lb}（${c}）`;
   }
   const t=(panelSrc&&typeof panelSrc.target==='function')?panelSrc.target()
-    :(typeof listLayoutTarget==='function'?listLayoutTarget():'');
+    :(typeof WL.list.listLayoutTarget==='function'?WL.list.listLayoutTarget():'');
   const n=t?WL.columnLayout.label(t,c):c;
   return n===c?c:`${n}（${c}）`;
  };
@@ -357,7 +357,7 @@
     ——呼ばないと、スケジュール表ではルールを直しても画面が変わらない。 */
  function applyToView(){
   if(panelSrc&&typeof panelSrc.afterApply==='function'){try{panelSrc.afterApply()}catch(e){WL.quiet.note('呼び出し側の後始末に失敗（読み替えの当て込みは済んでいる）',e)}}
-  else if(typeof renderGrid==='function')renderGrid();
+  else if(typeof WL.list.renderGrid==='function')WL.list.renderGrid();
  }
  async function save(){
   try{

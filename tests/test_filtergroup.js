@@ -240,7 +240,7 @@ let b=null;
    S.genericFilters.push({column:a.col,op:'contains',value:a.v});
    S.page=1;
   },{col,v:vals[2]||vals[0]});
-  await page.evaluate(()=>load());
+  await page.evaluate(()=>WL.list.load());
   await settle(1200);
   await pickPreset(GA);
   const mixed=await state();
@@ -299,7 +299,7 @@ let b=null;
   await page.evaluate(a=>{
    S.genericFilters=[{column:a.col,op:'contains',value:a.v}];S.page=1;
   },{col,v:vals[0]});
-  await page.evaluate(()=>load());
+  await page.evaluate(()=>WL.list.load());
   await settle(1200);
   await page.click('#filterCondBtn');
   await page.waitForSelector('#filterCondMenu',{timeout:5000});

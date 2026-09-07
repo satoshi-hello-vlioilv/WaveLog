@@ -94,12 +94,12 @@ let b=null;
 
   /* **わざと狭くしても折り返さない。** 表示名を長くし、幅も細くする。 */
   await page.evaluate(async()=>{
-   const t=typeof listLayoutTarget==='function'?listLayoutTarget():'';
+   const t=typeof WL.list.listLayoutTarget==='function'?WL.list.listLayoutTarget():'';
    const col=(S.columns||[])[1];
    if(!t||!col)return;
    await WL.columnLayout.save(t,{order:[],widths:{[col]:70},hidden:[],
      names:{[col]:'とても長い表示名の見出しです'},formats:{},rules:{}});
-   renderGrid();
+   WL.list.renderGrid();
   });
   await page.waitForTimeout(500);
   const narrow=await wrapped();
@@ -113,9 +113,9 @@ let b=null;
   rec('入り切らない見出しは省略記号になる',
    !!ell&&ell.ws==='nowrap'&&ell.te==='ellipsis'&&ell.ov==='hidden',JSON.stringify(ell));
   await page.evaluate(async()=>{
-   const t=typeof listLayoutTarget==='function'?listLayoutTarget():'';
+   const t=typeof WL.list.listLayoutTarget==='function'?WL.list.listLayoutTarget():'';
    if(t)await WL.columnLayout.save(t,{order:[],widths:{},hidden:[],names:{},formats:{},rules:{}});
-   renderGrid();
+   WL.list.renderGrid();
   });
   await page.waitForTimeout(400);
 

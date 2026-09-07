@@ -34,7 +34,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 
   const cols=()=>page.evaluate(()=>[...document.querySelectorAll('#grid th[data-sort-col]')].map(t=>t.dataset.sortCol));
   const base=await cols();
-  target=await page.evaluate(()=>listLayoutTarget());
+  target=await page.evaluate(()=>WL.list.listLayoutTarget());
   rec('この一覧のスコープが決まる',/^list:.+:.+$/.test(target),target);
   rec('列が並んでいる',base.length>=5,`${base.length}列`);
 
@@ -101,7 +101,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 
   /* ---- 2) 並び・非表示・幅が効く ---- */
   const apply=(order,widths,hidden)=>page.evaluate(async a=>{
-   await WL.columnLayout.save(listLayoutTarget(),a);renderGrid();
+   await WL.columnLayout.save(WL.list.listLayoutTarget(),a);WL.list.renderGrid();
   },{order,widths:widths||{},hidden:hidden||[]});
 
   await apply([base[2],base[0],base[1],...base.slice(3)],{[base[0]]:222},[base[1]]);
@@ -128,7 +128,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   // 落ちず、記録にある列が消えても引きずらない。
   const mixed=await page.evaluate(k=>{
    const l=WL.columnLayout;
-   const t=listLayoutTarget();
+   const t=WL.list.listLayoutTarget();
    // 記録には「今は無い列」を混ぜ、実際の列には「記録に無い列」を混ぜる
    const cur=l.get(t);
    l.get(t).order=['存在しない列X',...cur.order];
@@ -157,7 +157,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      消えていた。消えると次に開いたとき「知らない列」として末尾へ回る
      ので、**幅を少し引いただけで番号・ボタンが右端へ飛ぶ**。 */
   await post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
-  await page.evaluate(()=>{WL.columnLayout.forget();return load()});
+  await page.evaluate(()=>{WL.columnLayout.forget();return WL.list.load()});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
   await idle(300,5000);
   const headKeys=()=>page.evaluate(()=>[...document.querySelectorAll('#grid thead th')]
@@ -176,7 +176,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('列幅を変えても番号・ボタンの列が並びから消えない',
    virt.every(k=>(savedAfterGrip.order||[]).includes(k)),
    virt.filter(k=>!(savedAfterGrip.order||[]).includes(k)).join(' / ')||'すべて残っている');
-  await page.evaluate(()=>{WL.columnLayout.forget();return load()});
+  await page.evaluate(()=>{WL.columnLayout.forget();return WL.list.load()});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
   await idle(300,5000);
   const afterGrip=await headKeys();
@@ -193,7 +193,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   const dataCols=beforeGrip.filter(k=>k!=='#'&&!String(k).startsWith('__'));
   const brokenOrder=[dataCols[2],dataCols[0],dataCols[1],...dataCols.slice(3)];
   await post('/api/column-layout-master',{target,order:brokenOrder,widths:{},hidden:[],user_id:'test'});
-  await page.evaluate(()=>{WL.columnLayout.forget();return load()});
+  await page.evaluate(()=>{WL.columnLayout.forget();return WL.list.load()});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
   await idle(300,5000);
   const healed=await headKeys();
@@ -207,10 +207,10 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      (見出し・幅・書式・読み替え・並び順のすべてが列名を鍵にしている)ので、
      同じ名前が2つある並びは表として成り立たず、見出しもセルも二重に出る。
      名前が重なりうる出どころは複数ある(結合してきた列・計算で作った列・
-     ビュー越しの取得)ので、**入口の`listColumnKeys()`で1回だけ落とす**。
+     ビュー越しの取得)ので、**入口の`WL.list.listColumnKeys()`で1回だけ落とす**。
      ここは実データに重複が無くても確かめられるよう、**注ぎ込んで**見る。 */
   await post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
-  await page.evaluate(()=>{WL.columnLayout.forget();return load()});
+  await page.evaluate(()=>{WL.columnLayout.forget();return WL.list.load()});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
   await idle(300,5000);
   const injected=await page.evaluate(()=>{
@@ -218,12 +218,12 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
    const orig=[...S.columns];
    S.columns=[...orig,orig[0],orig[1]];      // 先頭2列の名前をもう1つずつ
    const keys=WL.listColumnKeys();
-   renderGrid();
+   WL.list.renderGrid();
    const heads=[...document.querySelectorAll('#grid thead th')].map(t=>t.dataset.col||t.textContent.trim());
    const cg=document.querySelectorAll('#grid table colgroup col').length;
    const cells=[...document.querySelectorAll('#grid tbody tr')].slice(0,2).map(tr=>{
     let n=0;tr.querySelectorAll('td').forEach(td=>{n+=Number(td.getAttribute('colspan')||1)});return n});
-   S.columns=orig;renderGrid();
+   S.columns=orig;WL.list.renderGrid();
    return {keysDup:dup(keys),headsDup:dup(heads),heads:heads.length,cg,cells};
   });
   rec('同じ列名が2つ来ても並びは1つに畳む',injected.keysDup.length===0,
@@ -237,21 +237,21 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   /* ---- 9) 見出しのD&Dで計算列が消えない(§9.113) ----
      保存は全置換なので、**送り忘れた設定はその場で消える**。`formulas`を
      渡していなかったため、**見出しを1回ドラッグしただけで計算式で作った列が
-     全部消えていた**(式が消えると`listColumnKeys()`がその列を並べなくなる)。 */
+     全部消えていた**(式が消えると`WL.list.listColumnKeys()`がその列を並べなくなる)。 */
   const fxKey='テスト計算列';
   await page.evaluate(async k=>{
-   const t=listLayoutTarget();
+   const t=WL.list.listLayoutTarget();
    const cur=WL.columnLayout.get(t);
    await WL.columnLayout.save(t,{order:[...WL.listColumnKeys(),k],widths:cur.widths,
      hidden:cur.hidden,names:cur.names,formats:cur.formats,rules:cur.rules,
      formulas:{[k]:'"x"'}});
    WL.columnLayout.forget();await WL.columnLayout.load(t);
-   return load();
+   return WL.list.load();
   },fxKey);
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
   await idle(300,5000);
   const fxBefore=await page.evaluate(k=>({
-   ある:(WL.columnLayout.get(listLayoutTarget()).formulas||{})[k]!==undefined,
+   ある:(WL.columnLayout.get(WL.list.listLayoutTarget()).formulas||{})[k]!==undefined,
    見出し:[...document.querySelectorAll('#grid thead th')].some(t=>t.dataset.col===k),
   }),fxKey);
   rec('計算式で作った列が一覧に出る',fxBefore.ある&&fxBefore.見出し,JSON.stringify(fxBefore));
@@ -266,7 +266,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
    await savedZ;await idle(300,5000);
   }
   const fxAfter=await page.evaluate(k=>({
-   ある:(WL.columnLayout.get(listLayoutTarget()).formulas||{})[k]!==undefined,
+   ある:(WL.columnLayout.get(WL.list.listLayoutTarget()).formulas||{})[k]!==undefined,
    見出し:[...document.querySelectorAll('#grid thead th')].some(t=>t.dataset.col===k),
   }),fxKey);
   rec('見出しをドラッグしても計算列が消えない',fxAfter.ある&&fxAfter.見出し,JSON.stringify(fxAfter));
@@ -286,9 +286,9 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
    return pick;
   });
   const narrow=await page.evaluate(async c=>{
-   const t=listLayoutTarget(),l=WL.columnLayout.get(t);
+   const t=WL.list.listLayoutTarget(),l=WL.columnLayout.get(t);
    await WL.columnLayout.save(t,{...l,widths:{...(l.widths||{}),[c]:45}});
-   renderGrid();
+   WL.list.renderGrid();
    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
    const th=document.querySelector(`#grid thead th[data-col="${CSS.escape(c)}"]`);
    const tbl=document.querySelector('#grid table');
@@ -307,10 +307,10 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 
   /* ---- 固定はサーバーを往復し、取っ手が掴めなくなる ---- */
   const lock=await page.evaluate(async c=>{
-   const t=listLayoutTarget(),l=WL.columnLayout.get(t);
+   const t=WL.list.listLayoutTarget(),l=WL.columnLayout.get(t);
    await WL.columnLayout.save(t,{...l,locks:[c]});
    WL.columnLayout.forget(t);await WL.columnLayout.load(t);
-   renderGrid();
+   WL.list.renderGrid();
    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
    const th=document.querySelector(`#grid thead th[data-col="${CSS.escape(c)}"]`);
    const grip=th.querySelector('.col-resize');
@@ -322,7 +322,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 
   /* ---- 幅を保存し直しても固定が消えない(全置換の書き漏らし。§9.113) ---- */
   const keep=await page.evaluate(async c=>{
-   const t=listLayoutTarget(),l=WL.columnLayout.get(t);
+   const t=WL.list.listLayoutTarget(),l=WL.columnLayout.get(t);
    // 見出しのD&Dや列を隠す操作と同じ経路(並びだけ送る)
    await WL.columnLayout.save(t,{...l,order:[...(l.order||[])]});
    WL.columnLayout.forget(t);await WL.columnLayout.load(t);
@@ -334,7 +334,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      openColumnHeaderMenu の persist が formulas を渡しておらず、
      **列を1つ隠しただけで計算列が全部消えていた**(実バグ)。 */
   const menuFx=await page.evaluate(async k=>{
-   const t=listLayoutTarget(),l=WL.columnLayout.get(t);
+   const t=WL.list.listLayoutTarget(),l=WL.columnLayout.get(t);
    if(!(l.formulas||{})[k])return {前提なし:true};
    const th=[...document.querySelectorAll('#grid thead th[data-col]')]
      .find(x=>x.dataset.col&&x.dataset.col!==k&&!x.dataset.col.startsWith('__'));
@@ -351,10 +351,10 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 
   /* ---- 自動へ戻すと、幅も固定も消える ---- */
   const back=await page.evaluate(async c=>{
-   const t=listLayoutTarget(),l=WL.columnLayout.get(t);
+   const t=WL.list.listLayoutTarget(),l=WL.columnLayout.get(t);
    const w={...(l.widths||{})};delete w[c];
    await WL.columnLayout.save(t,{...l,widths:w,locks:(l.locks||[]).filter(k=>k!==c)});
-   renderGrid();
+   WL.list.renderGrid();
    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
    const th=document.querySelector(`#grid thead th[data-col="${CSS.escape(c)}"]`);
    return {状態:WL.columnLayout.widthMode(t,c),
@@ -370,11 +370,11 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      **確かめるときは実際に合計を器より狭くすること**——広いままだと、
      直す前の実装でも通る。 */
   const narrowFit=await page.evaluate(async()=>{
-   const t=listLayoutTarget(),all=WL.listColumnKeys(S.columns);
+   const t=WL.list.listLayoutTarget(),all=WL.listColumnKeys(S.columns);
    const keep=all.filter(k=>!/^(#|分割|測定|予定)$/.test(k)).slice(0,3);
    await WL.columnLayout.save(t,{order:keep,widths:Object.fromEntries(keep.map(k=>[k,60])),
      hidden:all.filter(k=>!keep.includes(k)),names:{},formats:{},rules:{},formulas:{},locks:[]});
-   renderGrid();
+   WL.list.renderGrid();
    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
    const grid=document.getElementById('grid'),table=grid.querySelector('table');
    const th=[...table.querySelectorAll('thead th')].map(x=>Math.round(x.getBoundingClientRect().width));
@@ -407,7 +407,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      **1回だけ引く網ではこの3つとも素通りする**ので、必ず2回目・3回目まで
      引き、**掴んでいない列が動かないこと**を見る。 */
   await post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
-  await page.evaluate(()=>{WL.columnLayout.forget();return load()});
+  await page.evaluate(()=>{WL.columnLayout.forget();return WL.list.load()});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
   await idle(300,5000);
   const widthMap=()=>page.evaluate(()=>Object.fromEntries(
@@ -454,9 +454,9 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      ここで一度保存するので、**保存でキャッシュが差し替わったあとの
      2回目・3回目**という、報告された条件そのものになる。 */
   await page.evaluate(async ks=>{
-   const t=listLayoutTarget(),cur=WL.columnLayout.get(t);
+   const t=WL.list.listLayoutTarget(),cur=WL.columnLayout.get(t);
    await WL.columnLayout.save(t,{...cur,widths:{...(cur.widths||{}),[ks[0]]:320,[ks[1]]:320}});
-   renderGrid();
+   WL.list.renderGrid();
   },[K1,K2]);
   await idle(300,5000);
   const w0=await widthMap();
@@ -493,7 +493,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
       `${K2}:${w2[K2]}→${w3[K2]} 他:`
       +(others(w2,w3,K2).map(k=>`${k}:${w2[k]}→${w3[k]}`).slice(0,4).join(' / ')||'動いていない'));
   /* **表そのものの幅も掴んだぶんだけ動くこと**（§9.211 ①）。
-     `renderGridInner()`は`t.style.width`へ列幅の合計を入れている(§9.119)。
+     `WL.list.renderGridInner()`は`t.style.width`へ列幅の合計を入れている(§9.119)。
      引いている最中に合計を据え置くと、`table-layout:fixed`は
      **余ったぶんを全列へ配り直す**——列数が多いほど1列あたりの動きは
      小さいので「他の列が何px動いたか」だけでは捕まらない。
@@ -515,7 +515,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      保存は**全置換**(§9.113)なので、渡し忘れたキーは黙って消える。 */
   const sortKey=dragKeys[2]||K2;
   await page.evaluate(async k=>{
-   const t=listLayoutTarget(),cur=WL.columnLayout.get(t);
+   const t=WL.list.listLayoutTarget(),cur=WL.columnLayout.get(t);
    await WL.columnLayout.save(t,{...cur,sorts:{[k]:{buckets:['empty','num','date','text']}}});
   },sortKey);
   await idle(300,5000);
@@ -525,7 +525,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
       !!((afterSorts.sorts||{})[sortKey]),JSON.stringify(afterSorts.sorts||{}));
 
   /* ---- 11) いま出せない列も並びから落とさない(§9.216 ②) ----
-     `listColumnKeys()`の顔ぶれは**場面で変わる**——`__select__`/`__plan__`は
+     `WL.list.listColumnKeys()`の顔ぶれは**場面で変わる**——`__select__`/`__plan__`は
      スケジュールモードだけ、結合で足された列は結合が当たったときだけ。
      以前の`fullOrder()`は「今ある列」に無い並びを黙って捨てていたので、
      編集モードで列幅を1回引くだけで**スケジュールモードで決めた並びが
@@ -535,7 +535,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      ——出ている列だけで見ても、直す前でも通る。 */
   const GHOST='__plan__',GHOST2='__io_ghost_col__';
   await page.evaluate(async g=>{
-   const t=listLayoutTarget(),cur=WL.columnLayout.saved(t);
+   const t=WL.list.listLayoutTarget(),cur=WL.columnLayout.saved(t);
    await WL.columnLayout.patch(t,{order:[g[0],g[1],...(cur.order||[])
      .filter(k=>k!==g[0]&&k!==g[1])]});
   },[GHOST,GHOST2]);

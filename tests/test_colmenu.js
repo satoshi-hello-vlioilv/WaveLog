@@ -32,9 +32,9 @@ const reset=()=>target?post('/api/column-layout-master',{target,clear:true,order
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#grid table',{timeout:30000});
   await page.waitForFunction(()=>document.querySelectorAll('#grid thead th').length>5,{timeout:20000});
-  target=await page.evaluate(()=>listLayoutTarget());
+  target=await page.evaluate(()=>WL.list.listLayoutTarget());
   await reset();
-  await page.evaluate(()=>{WL.columnLayout.forget();return load()});
+  await page.evaluate(()=>{WL.columnLayout.forget();return WL.list.load()});
   await page.waitForFunction(()=>document.querySelectorAll('#grid thead th').length>5,{timeout:20000});
 
   const heads=()=>page.evaluate(()=>[...document.querySelectorAll('#grid thead th')].map(t=>t.dataset.col));
@@ -106,10 +106,10 @@ const reset=()=>target?post('/api/column-layout-master',{target,clear:true,order
   // 見出しが1つも無い表は、右クリックして戻すこともできなくなる。
   const keys=await heads();
   await page.evaluate(async ks=>{
-   const t=listLayoutTarget(),v=WL.columnLayout.get(t);
+   const t=WL.list.listLayoutTarget(),v=WL.columnLayout.get(t);
    await WL.columnLayout.save(t,{order:v.order,widths:v.widths,hidden:ks.slice(1),
                                  names:v.names,formats:v.formats,rules:v.rules});
-   renderGrid();
+   WL.list.renderGrid();
   },keys);
   await page.waitForTimeout(500);
   const last=(await heads());

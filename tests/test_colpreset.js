@@ -50,9 +50,9 @@ async function cleanup(){
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#grid table',{timeout:30000});
   await page.waitForFunction(()=>document.querySelectorAll('#grid thead th').length>5,{timeout:20000});
-  target=await page.evaluate(()=>listLayoutTarget());
+  target=await page.evaluate(()=>WL.list.listLayoutTarget());
   await cleanup();
-  await page.evaluate(()=>{WL.columnLayout.forget();return load()});
+  await page.evaluate(()=>{WL.columnLayout.forget();return WL.list.load()});
   await page.waitForFunction(()=>document.querySelectorAll('#grid thead th').length>5,{timeout:20000});
 
   const heads=()=>page.evaluate(()=>[...document.querySelectorAll('#grid thead th')].map(t=>t.dataset.col));

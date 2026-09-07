@@ -104,7 +104,7 @@ let b=null;
   rec('その人でないうちは、その人の印は当たらない',
       empty.uid!=='tester'&&empty.n===0,JSON.stringify(empty));
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementUserId','tester'));
-  await page.evaluate(()=>load());
+  await page.evaluate(()=>WL.list.load());
   await page.waitForFunction(()=>(S.genericFilters||[]).some(f=>f.locked),null,{timeout:20000})
     .catch(()=>{});
   const late=await page.evaluate(()=>(S.genericFilters||[]).map(f=>({c:f.column,locked:!!f.locked})));

@@ -62,10 +62,10 @@ let b=null;
   // ---- 2. 幅は見出しとデータから見積もられている ----
   const est=await page.evaluate(()=>{
    // 半角と全角で見積りが変わること(文字数ではなく字幅で数えている証拠)
-   const half=estimateColumnWidth('ABCDEFGH',[],14,6);
-   const full=estimateColumnWidth('あいうえおかきく',[],14,6);
-   const long=estimateColumnWidth('A',['あ'.repeat(200)],14,6);
-   const short=estimateColumnWidth('A',[''],14,6);
+   const half=WL.list.estimateColumnWidth('ABCDEFGH',[],14,6);
+   const full=WL.list.estimateColumnWidth('あいうえおかきく',[],14,6);
+   const long=WL.list.estimateColumnWidth('A',['あ'.repeat(200)],14,6);
+   const short=WL.list.estimateColumnWidth('A',[''],14,6);
    return {half,full,long,short};
   });
   rec('全角の見出しは半角より広く見積もる',est.full>est.half,JSON.stringify(est));
@@ -91,7 +91,7 @@ let b=null;
      広げて吸収していた(指定より広く描かれていた)ため、見積りが数px
      足りないことに誰も気づけなかった。 */
   const autoFit=await page.evaluate(()=>{
-   const t=listLayoutTarget();
+   const t=WL.list.listLayoutTarget();
    const w=WL.columnLayout.get(t).widths||{};
    const tds=[...document.querySelectorAll('#grid tbody tr td[data-col]')]
      .filter(td=>w[td.dataset.col]==null);          // 幅を手で決めていない列だけ

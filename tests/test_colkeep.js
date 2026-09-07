@@ -57,7 +57,7 @@ const clear=()=>TARGET?post('/api/column-layout-master',{target:TARGET,clear:tru
   await page.waitForSelector('#grid table',{timeout:30000});
   await page.waitForSelector('#grid th[data-col]',{timeout:30000});
   await page.waitForTimeout(1200);
-  TARGET=await page.evaluate(()=>listLayoutTarget());
+  TARGET=await page.evaluate(()=>WL.list.listLayoutTarget());
   rec('前提: 仕掛一覧が開けて対象が決まる',!!TARGET,TARGET);
   await clear();
   await page.evaluate(()=>WL.columnLayout.forget&&WL.columnLayout.forget());
@@ -71,7 +71,7 @@ const clear=()=>TARGET?post('/api/column-layout-master',{target:TARGET,clear:tru
      ========================================================== */
   const GHOST='__回帰_いま出せない列__';
   const before=await page.evaluate(async g=>{
-   const t=listLayoutTarget();
+   const t=WL.list.listLayoutTarget();
    const live=WL.listColumnKeys();
    /* 幻の列を**先頭でも末尾でもない位置**へ入れる（端だけを見る網にしない）。 */
    const order=[...live.slice(0,3),g,...live.slice(3)];
@@ -103,7 +103,7 @@ const clear=()=>TARGET?post('/api/column-layout-master',{target:TARGET,clear:tru
   rec('前提: 保存が走るメニュー（幅を内容に合わせる）を押せた',pressed,String(pressed));
   await page.waitForTimeout(900);
   const afterMenu=await page.evaluate(g=>{
-   const t=listLayoutTarget();
+   const t=WL.list.listLayoutTarget();
    const o=WL.columnLayout.saved(t).order||[];
    return {残った:o.includes(g),件数:o.length,
      いま出せる列も入っている:WL.listColumnKeys().every(k=>o.includes(k))};
@@ -128,7 +128,7 @@ const clear=()=>TARGET?post('/api/column-layout-master',{target:TARGET,clear:tru
   await page.evaluate(()=>{const b=document.querySelector('#lcSave');if(b)b.click()});
   await page.waitForTimeout(900);
   const afterPanel=await page.evaluate(g=>{
-   const t=listLayoutTarget();
+   const t=WL.list.listLayoutTarget();
    const o=WL.columnLayout.saved(t).order||[];
    return {残った:o.includes(g),件数:o.length};
   },GHOST);

@@ -214,7 +214,7 @@
   function reapplyDefaultFilters(){
     if(!syncFilterContext())return false;
     renderGenericFilterBar();
-    if(typeof load==='function')load();
+    if(typeof WL.list.load==='function')WL.list.load();
     return true;
   }
   /* いま覚えている一覧の数。登録一覧モーダルの見出しで「どこに何が残って
@@ -767,7 +767,7 @@
         S.genericFilters.splice(idx,1);
       }
     });
-    S.page=1;renderGenericFilterBar();load();
+    S.page=1;renderGenericFilterBar();WL.list.load();
   }
 
   /* 保存フィルタは条件単位で登録されるため、適用は常にマージ(現在の条件へ
@@ -779,7 +779,7 @@
     const seen=new Set(S.genericFilters.map(filterKey));
     incoming.forEach(f=>{if(!seen.has(filterKey(f))){S.genericFilters.push(f);seen.add(filterKey(f))}});
     S.genericFilters.forEach(bumpCondUsage);
-    S.page=1;renderGenericFilterBar();load();
+    S.page=1;renderGenericFilterBar();WL.list.load();
   }
 
   /* ================= プリセット（§9.287、利用者の指示） =================
@@ -940,7 +940,7 @@
     }
     setSelectedPresetKey(next?next.key:PRESET_NONE);
     S.page=1;renderGenericFilterBar();
-    if(reload)load();
+    if(reload)WL.list.load();
     /* **外せなかったことを黙らない**（§4）——「切り替えたのに前の条件が
        残っている」ようにしか見えない。 */
     if(kept&&typeof showToast==='function')
@@ -1291,7 +1291,7 @@
     }else{
       S.genericFilters=[];
     }
-    S.page=1;renderGenericFilterBar();load();
+    S.page=1;renderGenericFilterBar();WL.list.load();
   }
   function updateFilterColumns(){
     ensureGenericFilterBar();const select=$('#filterColumn');if(!select)return;const current=select.value;
@@ -1315,7 +1315,7 @@
   }
   function addGenericFilter(f){
     const key=filterKey(f);if(!S.genericFilters.some(x=>filterKey(x)===key))S.genericFilters.push(f);
-    bumpCondUsage(f);S.page=1;renderGenericFilterBar();load();
+    bumpCondUsage(f);S.page=1;renderGenericFilterBar();WL.list.load();
   }
 
   /* ================= 効いている条件（§9.287、利用者の指示） =================
@@ -1421,7 +1421,7 @@
       const i=+b.dataset.condX,f=S.genericFilters[i];
       if(!f)return;
       if(isLockedFilter(f)&&!(await confirmRemoveLockedFilter(f)))return;
-      S.genericFilters.splice(i,1);S.page=1;renderGenericFilterBar();load();
+      S.genericFilters.splice(i,1);S.page=1;renderGenericFilterBar();WL.list.load();
     });
     menu.querySelectorAll('[data-cond-save]').forEach(b=>b.onclick=async()=>{
       const f=S.genericFilters[+b.dataset.condSave];
@@ -1504,7 +1504,7 @@
      ると、打っている最中ずっと一覧が組み直される。Enterはすぐ効かせる。 */
   function applyAdhoc(now){
     if(adhocTimer){clearTimeout(adhocTimer);adhocTimer=null}
-    const run=()=>{adhocTimer=null;S.page=1;load();};
+    const run=()=>{adhocTimer=null;S.page=1;WL.list.load();};
     if(now)run();else adhocTimer=setTimeout(run,ADHOC_DEBOUNCE_MS);
   }
   function clearAdhoc(){
@@ -1740,7 +1740,7 @@
       else if(e.key==='Backspace'&&!input.value&&S.genericFilters.length){
         const last=S.genericFilters[S.genericFilters.length-1];
         if(isLockedFilter(last)&&!(await confirmRemoveLockedFilter(last)))return;
-        S.genericFilters.pop();S.page=1;renderGenericFilterBar();load();
+        S.genericFilters.pop();S.page=1;renderGenericFilterBar();WL.list.load();
       }
     });
     /* 外を押したら畳む。**打ちかけの字も捨てる**——条件はまだ1つも足って
@@ -2539,7 +2539,7 @@
     renderGenericFilterBar();
     if(!uses.length||!S.db||!S.table)return;
     S.page=1;
-    if(typeof load==='function')load();
+    if(typeof WL.list.load==='function')WL.list.load();
     if(typeof showToast==='function')showToast('使用設備を切り替えました',
       `変数を使っている絞り込み ${uses.length}件 を「${now||'未登録'}」で当て直しました。`,5000);
   });

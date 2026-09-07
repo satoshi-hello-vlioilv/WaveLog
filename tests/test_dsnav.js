@@ -28,7 +28,7 @@ let b=null;
  try{
   await page.goto(B+'/',{waitUntil:'load'});
   /* **本物のカタログが入り終わるまで待つ。** アプリのJSは起動オーバーレイが
-     描かれてから読み込まれ(§9.86)、init()が/api/catalogを取ってから
+     描かれてから読み込まれ(§9.86)、WL.list.init()が/api/catalogを取ってから
      setCatalog()する。関数が生えた時点で差し替えると、あとから届いた本物に
      上書きされて「キーを変えても作業対象」が落ちる(通しで回したときだけ
      落ちる形で実際に踏んだ)。all()が入っていれば本物の反映は済んでいる。 */
@@ -107,7 +107,7 @@ let b=null;
   const odd=await page.evaluate(async()=>{
    S.db=WL.dataSource.workKey()||'AAA';S.table='T';
    const d=await api('/api/table?db='+encodeURIComponent(S.db)+'&table=T');
-   applyTableData(d);renderGrid();
+   WL.list.applyTableData(d);WL.list.renderGrid();
    return {heads:[...document.querySelectorAll('#grid table thead th')].map(t=>t.textContent.trim()),
            rows:document.querySelectorAll('#grid table tbody tr').length};
   });
@@ -120,7 +120,7 @@ let b=null;
    body:JSON.stringify({columns:['X'],rows:[{X:'v'}],count:1})}));
   const swapped=await page.evaluate(async()=>{
    const d=await api('/api/table?db='+encodeURIComponent(S.db)+'&table=T');
-   applyTableData(d);renderGrid();
+   WL.list.applyTableData(d);WL.list.renderGrid();
    return {heads:[...document.querySelectorAll('#grid table thead th')].map(t=>t.textContent.trim()),
            rows:document.querySelectorAll('#grid table tbody tr').length};
   });
