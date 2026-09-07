@@ -30,7 +30,10 @@
     並べられる。**選択肢はその場で足せる**——項目を作る手を止めて別のタブへ
     行かせない（利用者の言う「登録の負荷」の正体）。
     ================================================================ */
- const opState={equipment:'',items:[],types:[],places:['準備','入力内容'],
+ const opState={equipment:'',items:[],
+                /* 未保存の変更を持つ項目のid（§9.361）。再読み込みで
+                   その1件だけ上書きしないために使う。 */
+                dirty:'',types:[],places:['準備','入力内容'],
                 spans:Array.from({length:12},(_,i)=>i+1),
                 widgets:['プルダウン','ラジオ','セグメント','タブ','ボタン群','一覧'],
                 /* 型ごとに効く入力方法。**サーバーが答える**（§9.219 ③）
@@ -1489,7 +1492,7 @@
      分からない説明が画面に浮いたままになる。 */
   opClosePrevInfo();
   opState.pop='';opSyncPops();
-  m.hidden=true;opState.picked=null;renderOpItem();
+  m.hidden=true;opState.picked=null;opState.dirty='';renderOpItem();   // §9.361
  }
  function openOpModal(id){
   /* **別の項目を開いたら浮き出しは畳む**（§9.299。段は廃止したので
@@ -2675,7 +2678,10 @@
      ので、組み直す前に打ち込み欄を控える——控えないと、初期値・覚え書き・
      単位を打ってから幅のボタンを押しただけで消える（値は保存のときに
      `opDetailValues()`が読む作りなので、押した時点では拾われていなかった）。 */
-  const touch=patch=>{Object.assign(x,opFormEdits(),patch);renderOpModal()};
+  /* **触った項目を覚えておく**（§9.361）。`opState.items`は再読み込みで
+     丸ごと入れ替わるので、覚えていないと**未保存の変更が黙って消える**。 */
+  const touch=patch=>{Object.assign(x,opFormEdits(),patch);
+    opState.dirty=x.id;renderOpModal()};
   form.querySelectorAll('[data-op-place]').forEach(b=>b.onclick=()=>touch({place:b.dataset.opPlace}));
   form.querySelectorAll('[data-op-span]').forEach(b=>b.onclick=()=>touch({span:Number(b.dataset.opSpan)}));
   form.querySelectorAll('[data-op-type]').forEach(b=>b.onclick=()=>touch({type:b.dataset.opType}));
@@ -3068,6 +3074,7 @@
    await api('/api/operation-item-master/update',{method:'POST',
      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
    await opSyncGroupFlags(d.place||x.place,d.group||x.group,d.showWhen,body.fold,uid);
+   opState.dirty='';        // 保存できた——サーバーが正した値を受け取る（§9.361）
    await loadOpItemMaint(true);
    if(window.WL&&WL.opData)WL.opData.forget();
    /* **保存したら閉じる**（§9.222 ⑦、利用者の指示「保存ボタンを押したら
@@ -3102,7 +3109,7 @@
   try{
    await api('/api/operation-item-master/delete',{method:'POST',
      headers:{'Content-Type':'application/json'},body:JSON.stringify({id:x.id,user_id:uid})});
-   opState.picked=null;
+   opState.picked=null;opState.dirty='';   // §9.361
    const m=$('#opItemModal');if(m)m.hidden=true;
    await loadOpItemMaint(true);
    opSay('削除しました');
@@ -3798,7 +3805,19 @@
    const [it,ch]=await Promise.all([
      api('/api/operation-item-master'+q),
      api('/api/operation-choice-master')]);
+   /* **編集中の1件は、遅れて届いた再読み込みで上書きしない**（§9.361）。
+      ここで丸ごと入れ替えると、開いている設定窓が積んだ未保存の変更が
+      消える——利用者から見ると「設定を変えた約1秒後に黙って元へ戻る」。
+      §9.331 の「いつの分の応答か」と同じ考えで、**新しいほうを残す**。
+      戻すのは保存・削除・窓を閉じたときで、そこでは `opState.dirty` を
+      落としてあるので、サーバーが正した値がそのまま入る。 */
+   const keep=opState.dirty?opItemById(opState.dirty):null;
    opState.items=(it.items||[]).map(x=>({...x}));
+   if(keep){
+    const i=opState.items.findIndex(r=>String(r.id)===String(keep.id));
+    if(i>=0)opState.items[i]=keep;   // 無ければ消された項目——残さない
+    else opState.dirty='';
+   }
    opState.types=it.types||opState.types;
    opState.places=it.places||opState.places;
    opState.spans=it.spans||opState.spans;

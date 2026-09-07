@@ -24,6 +24,14 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 TESTS = ROOT / 'tests'
 BASELINE = TESTS / 'fixtures' / 'wait_baseline.json'
 PAT = re.compile(r'waitForTimeout\(\s*(\d+)\s*\)')
+# **黙って握りつぶす待ち**（§9.360）。`waitFor…(...).catch(()=>{})` は timeout を
+# 無かったことにするので、失敗が「古い値のまま比べて不一致」という**別の顔**で
+# 出る——何を待っていたのかが記録に残らず、原因に辿り着けない。
+# 全部が悪いわけではない（「出ないことを確かめる待ち」は正しい）ので禁止せず、
+# **増えないこと**だけを固定する。減らすときは `--update` で控えを下げる。
+SILENT = re.compile(
+    r'waitFor(?:Function|Selector)\((?:[^()]|\([^()]*\))*\)\s*\.catch\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)',
+    re.S)
 MARK = '固定待ち:'
 R = []
 
@@ -51,9 +59,11 @@ def measure(files):
     now = {}
     for p in files:
         n, ms, _ = scan(p)
-        harness = 1 if 'chromium.launch(' in p.read_text(encoding='utf-8') else 0
-        if n or harness:
-            now[p.name] = {'count': n, 'ms': ms, 'harness': harness}
+        text = p.read_text(encoding='utf-8')
+        harness = 1 if 'chromium.launch(' in text else 0
+        silent = len(SILENT.findall(text))
+        if n or harness or silent:
+            now[p.name] = {'count': n, 'ms': ms, 'harness': harness, 'silent': silent}
     return now
 
 
@@ -65,13 +75,13 @@ def main(update=False):
     over, under = [], []
     for name, d in now.items():
         b = base.get(name, {})
-        for k in ('count', 'ms', 'harness'):
+        for k in ('count', 'ms', 'harness', 'silent'):
             if d[k] > b.get(k, 0):
                 over.append(f'{name} {k} {b.get(k, 0)}→{d[k]}')
             elif d[k] < b.get(k, 0):
                 under.append(f'{name} {k} {b.get(k, 0)}→{d[k]}')
     for name, b in base.items():
-        if name not in now and any(b.get(k, 0) for k in ('count', 'ms', 'harness')):
+        if name not in now and any(b.get(k, 0) for k in ('count', 'ms', 'harness', 'silent')):
             under.append(f'{name} →0')
     if update:
         if over and base:

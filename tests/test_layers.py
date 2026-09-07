@@ -29,6 +29,7 @@
 ============================================================
 """
 import pathlib
+import subprocess
 import re
 import sys
 
@@ -108,6 +109,31 @@ def main():
     rec('CIが2段目を回す', 'run_all.sh --smoke' in y)
     rec('CIが全件を回さない（39分・ランナーは並べられない）',
         not re.search(r'run_all\.sh\s*$', y, re.M))
+
+    # ---- 共有状態の後始末の仕組みが**外れていない**ことを見る（§9.360）----
+    # 「マスタを丸ごと戻す」「汚した本を名指しする」は**消えても誰も気づかない**
+    # 種類の仕組み（テストは緑のまま、赤が散らばるようになるだけ）。しかも
+    # `state_fp.py` を相対パスで書くと**1件も読めずに黙って空振りする**——実際に
+    # 一度そう書いて、比較が常に一致＝検出0件になった。ここで固定する。
+    rec('マスタを控えて戻す（snap_master / restore_master）',
+        'snap_master' in SH and 'restore_master' in SH)
+    # **「書いてある」ではなく「呼ばれている」を見る。** コメントにしただけで
+    # 通ってしまう網は網ではない（注入で素通りして気づいた）。行そのものを見る。
+    called = re.search(r'^\s*restore_master\s*$', SH, re.M)
+    rec('restore_master が run() の中で実際に呼ばれている', bool(called))
+    rec('共有状態の指紋を取る（汚した本を名指しする）',
+        'fingerprint' in SH and 'state_fp.py' in SH)
+    rec('後始末は1つの trap へ畳んである（2つ書くと前のが消える）',
+        "trap 'restore_paths; release_lock; rm -rf" in SH)
+    fp = (ROOT / 'tests' / 'state_fp.py').read_text(encoding='utf-8')
+    rec('指紋の置き場はファイル位置から決める（カレントに依らない）', '__file__' in fp)
+    out = subprocess.run([sys.executable, str(ROOT / 'tests' / 'state_fp.py')],
+                         capture_output=True, text=True, cwd=str(ROOT / 'tests'))
+    lines = len(out.stdout.strip().splitlines())
+    rec('指紋が実際に取れる（tests/ から呼んでも空にならない）', lines > 5, f'{lines}件')
+    rec('落ちた本は単独で2回回して切り分ける（不安定を見分ける）',
+        'for _try in 1 2' in SH and '不安定' in SH)
+
 
     print(f'\n== {sum(R)}/{len(R)} PASS ==')
     print(f'  1段目 {len(pure)}本 / 2段目 {len(smoke)}本')

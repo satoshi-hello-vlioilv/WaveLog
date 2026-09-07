@@ -171,6 +171,36 @@ if p.exists():
 PYEOF
 }
 
+# ============================================================
+# 共有状態を「丸ごと」戻す／汚した本を名指しする（§9.360）
+# ============================================================
+# **なぜ要るか**: `reseed`(= make_fixture.py の fix_master) は**知っている行しか
+# 戻さない**。テストが増えるたびに戻し漏れの行が増え、片付け損ねた1本が以降
+# ぜんぶを巻き添えにする。しかも落ちるのは**被害者のほう**なので、直すべき本に
+# 辿り着けない——「毎回ちがう数本が赤／単独では緑」を繰り返した原因がこれで、
+# §9.121・§9.284・§9.356 はどれも**対症療法**だった（戻す行を1つずつ足していた）。
+#
+# **やり方**: マスタDB(360KB)を開始時に1枚控え、**1本ごとにファイルごと戻す**。
+# 知っている行かどうかに関係なく白紙へ帰るので、戻し漏れが原理的に無くなる。
+# `journal_mode=delete`(WAL無し)なのでファイル差し替えで安全。テストの合間は
+# 通信が無いので、開いた接続の下で差し替わることもない。
+MASTER_DB="$ROOT/db/master.sqlite3"
+MASTER_SNAP="$ROOT/tests/.master_snapshot.sqlite3"
+snap_master(){
+  rm -f "$MASTER_DB-journal"
+  cp -f "$MASTER_DB" "$MASTER_SNAP" 2>/dev/null \
+    || echo "!! マスタを控えられませんでした（このあとは reseed 頼みになります）" >&2
+}
+restore_master(){
+  [ -f "$MASTER_SNAP" ] || return 0
+  rm -f "$MASTER_DB-journal"
+  cp -f "$MASTER_SNAP" "$MASTER_DB" 2>/dev/null || echo "!! マスタを戻せませんでした" >&2
+}
+# 共有状態の指紋(表ごとの行数)。**汚した本をその場で名指しする**ために使う。
+# 戻すのは restore_master がやるので、これは「誰が汚したか」を言うだけ。
+fingerprint(){
+  python3 "$ROOT/tests/state_fp.py" 2>/dev/null
+}
 server_up(){ curl -s -m 3 -o /dev/null "$API/" 2>/dev/null; }
 
 # テストが異常終了するとPlaywrightのChromiumが残る。残った画面は設備の
@@ -255,7 +285,11 @@ restore_paths(){
   SAVED_PATHS=""
   restart_server >/dev/null 2>&1
 }
-trap 'restore_paths; release_lock' EXIT INT TERM
+# 指紋などの一時ファイルの置き場。**後始末は既存の trap へ畳み込む**——
+# `trap ... EXIT` をもう1つ書くと**前のものを上書きする**（パス設定を戻す・
+# ロックを外すが動かなくなる。実際に一度そう書いて気づいた。§9.360）。
+WL_TMP="${TMPDIR:-/tmp}/wavelog_run_$$"; mkdir -p "$WL_TMP"
+trap 'restore_paths; release_lock; rm -rf "$WL_TMP"' EXIT INT TERM
 
 save_paths
 # 共有スケジュールDBはテストが書き換える(予定の追加・並べ替え・ロック)ので、
@@ -308,7 +342,7 @@ reseed(){
   return 1
 }
 
-TOT=0; NG=0; RETRY=""
+TOT=0; NG=0; RETRY=""; DIRTY=""
 # 所要時間も出す。**遅いテストは「固定待ち」を書いている**ことが多く、
 # 削るか直すかを決めるのに数字が要る(docs/REFACTORING_PLAN.md フェーズF)。
 # 秒数はマシンで変わるので、判断に使うのは**本数あたりの秒数**。
@@ -329,8 +363,14 @@ run(){
   # テストへそのまま渡る（実測: `test_rbcatalog`が別の塊の紙を読んで4件落ち、
   # `test_rpblocks`が組み換えの待ちで落ちた）。**実行のたびに結果が変わるので
   # は安全網にならない**ので、1本ごとに白紙から始める（§9.121）。
+  # **マスタは丸ごと戻す**（§9.360）。`reseed`は知っている行しか戻さないので、
+  # 戻し漏れが1つでもあると以降の本を巻き添えにする。ファイルごと差し替える。
+  restore_master
   resetcontent
   resetrecords
+  # 共有状態の指紋を控える（**汚した本を名指しする**ため。§9.360）。
+  FP_BEFORE="$WL_TMP/fp_before"; FP_AFTER="$WL_TMP/fp_after"
+  fingerprint > "$FP_BEFORE" 2>/dev/null
   t0=$(date +%s)
   out=$($1 "$2" 2>&1); rc=$?
   # 1本ぶんの生ログを残したいときだけ（既定は残さない）。落ちた場所を
@@ -354,10 +394,27 @@ FATAL: 途中で終了しました (exit $rc)。最後のPASSの直後を見て�
   # 直し方がまるで違うのに、今までは通しをもう一度回さないと分からなかった。
   if [ $((f+fatal)) -gt 0 ]; then RETRY="$RETRY$1 $2
 "; fi
+  # **共有状態を残した本をその場で名指しする**（§9.360）。戻すのは次の本の
+  # `restore_master`がやるので実害は無いが、**後片付けを忘れた本**はここでしか
+  # 分からない——今までは「無関係な本が落ちる」形でしか現れず、被害者のほうを
+  # 直していた。`WAVELOG_NO_FP=1`で止められる。
+  if [ -z "$WAVELOG_NO_FP" ]; then
+    fingerprint > "$FP_AFTER" 2>/dev/null
+    if ! cmp -s "$FP_BEFORE" "$FP_AFTER"; then
+      DIRTY="$DIRTY$2|$(python3 "$ROOT/tests/state_fp.py" "$FP_BEFORE" "$FP_AFTER")
+"
+    fi
+  fi
   TOT=$((TOT+p+f)); NG=$((NG+f+fatal))
   TIMES="$TIMES$dt $((p+f)) $2\n"
   printf '%-24s %3d PASS / %d FAIL  %4ds%s\n' "$2" "$p" "$f" "$dt" "$([ $fatal -gt 0 ] && echo ' [FATAL]')"
   echo "$out" | grep -E '^FAIL|FATAL' | head -4 | sed 's/^/      /'
+  # **待ちが成立しなかった事実を添える**（§9.360）。失敗の表明だけを見ると
+  # 「値が合わない」に見えるが、実際は**待ちが timeout して古い値のまま
+  # 比べていた**ことが多い。原因が要約の中で読めるようにする。
+  if [ $((f+fatal)) -gt 0 ]; then
+    echo "$out" | grep -E '^WAIT-TIMEOUT' | head -3 | sed 's/^/      ↳ /'
+  fi
   reap_browsers
 }
 
@@ -366,6 +423,11 @@ echo "--- 起動(サーバーを再起動する) ---"
 # 実行するとき(`run_all.sh test_orphan`)も同じ白紙から始められるように、
 # テストを選ぶより前に置く。
 resetcontent
+# **白紙のマスタを1枚控える**（§9.360）。ここから先、1本ごとにこれへ戻す。
+# 控えるのは`reseed`(種データ)と`resetcontent`(見せ方)を通した**直後**——
+# ここが「あるべき姿」で、以降どの本が何を足しても必ずここへ帰る。
+reseed
+snap_master
 run python3 test_boot.py
 sleep 3
 
@@ -397,6 +459,19 @@ for t in test_sclock test_scsession test_scwritespeed test_colscache test_colsri
 # なら数十秒で済むので、通しの最後に自動でやる。**状態は白紙へ戻してから**
 # 回す——戻さずに回すと「単独」の意味が無い。
 # `WAVELOG_NO_RETRY=1` で止められる（切り分けたくないときだけ）。
+# ---- 共有状態を残した本を名指しする（§9.360） ------------------------
+# **落ちた本ではなく、汚した本を出す。** 実害は`restore_master`が消している
+# ので、ここに出た本が落ちているとは限らない——むしろ**落ちるのは次以降の
+# 無関係な本**で、今まではそちらを直していた。
+if [ -n "$DIRTY" ]; then
+  echo
+  echo "-- 共有状態を残したまま終わった本（後片付けを足すこと） --"
+  printf '%s' "$DIRTY" | while IFS='|' read -r who what; do
+    [ -z "$who" ] && continue
+    printf '   %-24s %s\n' "$who" "$what"
+  done
+fi
+
 if [ -n "$RETRY" ] && [ -z "$WAVELOG_NO_RETRY" ]; then
   echo
   echo "-- 落ちた本を単独で回し直す（順番・状態への依存かを切り分ける） --"
@@ -407,16 +482,29 @@ if [ -n "$RETRY" ] && [ -z "$WAVELOG_NO_RETRY" ]; then
     resetrecords
     reseed
     server_up || restart_server
-    out=$($cmd "$name" 2>&1); rc=$?
-    f=$(echo "$out" | grep -c '^FAIL'); fatal=$(echo "$out" | grep -c 'FATAL')
-    [ "$rc" -ne 0 ] && [ "$f" -eq 0 ] && [ "$fatal" -eq 0 ] && fatal=1
-    if [ $((f+fatal)) -gt 0 ]; then
-      printf '   %-24s 単独でも落ちる（本物）\n' "$name"
-      echo "$out" | grep -E '^FAIL|FATAL' | head -2 | sed 's/^/        /'
+    # **単独で2回回す**（§9.360）。1回で緑だと「順番のせい」と読んでしまうが、
+    # 実際には**単独でも落ちたり落ちなかったりする本**がある（実測:
+    # `test_opunit` は単独で3回に1回落ちていた）。1回だけ見て「順番依存」と
+    # 決めつけたせいで、通しのたびに顔ぶれの違う赤が出続けた。3つに分ける。
+    ng=0
+    for _try in 1 2; do
+      out=$($cmd "$name" 2>&1); rc=$?
+      f=$(echo "$out" | grep -c '^FAIL'); fatal=$(echo "$out" | grep -c 'FATAL')
+      [ "$rc" -ne 0 ] && [ "$f" -eq 0 ] && [ "$fatal" -eq 0 ] && fatal=1
+      [ $((f+fatal)) -gt 0 ] && ng=$((ng+1)) && last="$out"
+      reap_browsers
+    done
+    if [ "$ng" -eq 2 ]; then
+      printf '   %-24s 単独でも必ず落ちる（本物）\n' "$name"
+      echo "$last" | grep -E '^FAIL|FATAL' | head -2 | sed 's/^/        /'
+      echo "$last" | grep -E '^WAIT-TIMEOUT' | head -2 | sed 's/^/        ↳ /'
+    elif [ "$ng" -eq 1 ]; then
+      printf '   %-24s 単独でも落ちたり落ちなかったり（不安定・網かレースを直す）\n' "$name"
+      echo "$last" | grep -E '^FAIL|FATAL' | head -2 | sed 's/^/        /'
+      echo "$last" | grep -E '^WAIT-TIMEOUT' | head -2 | sed 's/^/        ↳ /'
     else
       printf '   %-24s 単独では緑（順番・状態への依存）\n' "$name"
     fi
-    reap_browsers
   done
 fi
 
