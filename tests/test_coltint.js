@@ -49,7 +49,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   await page.waitForSelector('#grid tbody tr',{timeout:25000});
   await settle();
 
-  const target=await page.evaluate(()=>listLayoutTarget());
+  const target=await page.evaluate(()=>WL.list.listLayoutTarget());
   rec('この一覧のスコープが決まる',/^list:.+:.+$/.test(target),target);
 
   /* ---- 0) 道具が公開されている（公開漏れは黙って素通しになる） ---- */

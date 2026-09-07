@@ -33,7 +33,7 @@ const clear=()=>target?post('/api/column-layout-master',{target,clear:true,order
   await page.reload({waitUntil:'load'});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
   await page.waitForTimeout(1200);
-  target=await page.evaluate(()=>listLayoutTarget());
+  target=await page.evaluate(()=>WL.list.listLayoutTarget());
 
   /* ---- 1) 整形そのもの(値を入れて結果を見るだけ) ---- */
   const f=(spec,raw)=>page.evaluate(a=>WL.cellFormat.value(a.spec,a.raw),{spec,raw});
@@ -107,11 +107,11 @@ const clear=()=>target?post('/api/column-layout-master',{target,clear:true,order
 
   const rawText=await rawOf(textCol),rawNum=await rawOf(numCol);
   await page.evaluate(async a=>{
-   await WL.columnLayout.save(listLayoutTarget(),{order:[],widths:{[a.textCol]:150},hidden:[],
+   await WL.columnLayout.save(WL.list.listLayoutTarget(),{order:[],widths:{[a.textCol]:150},hidden:[],
     names:{[a.textCol]:'材質(表示名)'},
     formats:{[a.textCol]:{kind:'text',prefix:'<',suffix:'>'},
              [a.numCol]:{kind:'number',decimals:2,suffix:'mm'}}});
-   renderGrid();
+   WL.list.renderGrid();
   },{textCol,numCol});
   await page.waitForTimeout(250);
   rec('書式が一覧のセルに効く',await cellOf(textCol)===`<${rawText}>`,
@@ -143,9 +143,9 @@ const clear=()=>target?post('/api/column-layout-master',{target,clear:true,order
      文字の列を中央へ寄せて、両方が効くことを見る——数値の列だけを見ると、
      自動判定を潰しても通る。 */
   await page.evaluate(async a=>{
-   await WL.columnLayout.patch(listLayoutTarget(),
+   await WL.columnLayout.patch(WL.list.listLayoutTarget(),
     {aligns:{[a.numCol]:{data:'left',head:''},[a.textCol]:{data:'center',head:'follow'}}});
-   renderGrid();
+   WL.list.renderGrid();
   },{textCol,numCol});
   await page.waitForTimeout(250);
   const manNum=await align(numCol),manText=await align(textCol);
@@ -157,12 +157,12 @@ const clear=()=>target?post('/api/column-layout-master',{target,clear:true,order
      `fields`／`keep`／`extra` の3箇所へ足し忘れると、ここで落ちる）。 */
   {
    const saved=await (await fetch(B+'/api/column-layout-master?target='
-     +encodeURIComponent(await page.evaluate(()=>listLayoutTarget())))).json();
+     +encodeURIComponent(await page.evaluate(()=>WL.list.listLayoutTarget())))).json();
    const a=(saved.aligns||{})[numCol]||{};
    rec('揃えがマスタへ往復する',a.data==='left',JSON.stringify(saved.aligns||{}));
   }
   /* 元へ戻して、以降の検査に影響させない。 */
-  await page.evaluate(async()=>{await WL.columnLayout.patch(listLayoutTarget(),{aligns:{}});renderGrid()});
+  await page.evaluate(async()=>{await WL.columnLayout.patch(WL.list.listLayoutTarget(),{aligns:{}});WL.list.renderGrid()});
   await page.waitForTimeout(200);
   rec('整形した値はツールチップで元の値が分かる',
    await cellIn(textCol,'title')===rawText);
@@ -173,16 +173,16 @@ const clear=()=>target?post('/api/column-layout-master',{target,clear:true,order
   await page.waitForTimeout(1200);
   rec('開き直しても書式が残る',await cellOf(textCol)===`<${rawText}>`,await cellOf(textCol));
   const kept=await page.evaluate(c=>({
-   name:WL.columnLayout.label(listLayoutTarget(),c),
-   width:WL.columnLayout.width(listLayoutTarget(),c),
-   fmt:WL.columnLayout.format(listLayoutTarget(),c),
+   name:WL.columnLayout.label(WL.list.listLayoutTarget(),c),
+   width:WL.columnLayout.width(WL.list.listLayoutTarget(),c),
+   fmt:WL.columnLayout.format(WL.list.listLayoutTarget(),c),
   }),textCol);
   rec('表示名も幅も一緒に残る',kept.name==='材質(表示名)'&&kept.width===150,JSON.stringify(kept));
 
   /* **要点**: 保存は全置換。見出しをD&Dしただけで書式や表示名が消えると、
      利用者は「勝手に戻った」としか見えない(原因にたどり着けない)。 */
   await page.evaluate(()=>{
-   const t=listLayoutTarget(),l=WL.columnLayout.get(t);
+   const t=WL.list.listLayoutTarget(),l=WL.columnLayout.get(t);
    return WL.columnLayout.save(t,{order:[...l.order].reverse(),widths:l.widths,hidden:l.hidden,
                                   names:l.names,formats:l.formats});
   });

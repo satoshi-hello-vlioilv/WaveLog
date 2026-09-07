@@ -127,11 +127,11 @@ run('test_listcache: 一覧の写しと鮮度・再読込',async({page,rec,W,idl
  // --- 5. TTL(3分)を過ぎたキャッシュは使わない ---
  const stale=await page.evaluate(()=>{
   const key='__ttl_probe__';
-  tableCacheSet(key,{columns:[],rows:[],count:0});
-  const fresh=!!tableCacheGet(key);
-  // 4分前に取得したことにする
-  tableCache.get(key).at=Date.now()-240000;
-  return {fresh,expired:tableCacheGet(key)===null};
+  WL.list.tableCacheSet(key,{columns:[],rows:[],count:0});
+  const fresh=!!WL.list.tableCacheGet(key);
+  // 4分前に取得したことにする（内部の Map ではなく `at` を渡す・§9.355）
+  WL.list.tableCacheSet(key,{columns:[],rows:[],count:0},Date.now()-240000);
+  return {fresh,expired:WL.list.tableCacheGet(key)===null};
  });
  rec('3分を過ぎたキャッシュは破棄して取り直す',stale.fresh&&stale.expired,JSON.stringify(stale));
 

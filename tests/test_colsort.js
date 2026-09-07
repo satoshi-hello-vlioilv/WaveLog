@@ -79,10 +79,10 @@ async function cleanup(){
 
   /* ---- 3) 実際に順序が変わる ---- */
   const firstValues=async()=>page.evaluate(c=>S.rows.slice(0,5).map(r=>String(r[c]??'')),c2);
-  await page.evaluate(()=>{WL.listSort.set([{column:S.columns[1],dir:'asc'}]);S.page=1;load()});
+  await page.evaluate(()=>{WL.listSort.set([{column:S.columns[1],dir:'asc'}]);S.page=1;WL.list.load()});
   await page.waitForTimeout(900);
   const asc=await page.evaluate(c=>S.rows.slice(0,8).map(r=>String(r[c]??'')),c1);
-  await page.evaluate(()=>{WL.listSort.set([{column:S.columns[1],dir:'desc'}]);S.page=1;load()});
+  await page.evaluate(()=>{WL.listSort.set([{column:S.columns[1],dir:'desc'}]);S.page=1;WL.list.load()});
   await page.waitForTimeout(900);
   const desc=await page.evaluate(c=>S.rows.slice(0,8).map(r=>String(r[c]??'')),c1);
   rec('昇順が実際に昇順になっている',

@@ -104,7 +104,7 @@ run('test_dbequip: 使用設備は WL.equipment の1箇所（§9.285）',async({
     S.genericFilters=[{column:'BOX設計_設備名',op:'eq',value:'{使用設備}'}];
     S.page=1;
    });
-   await page.evaluate(()=>load());
+   await page.evaluate(()=>WL.list.load());
    await page.waitForFunction(()=>!document.querySelector('#grid .loading'),{timeout:20000}).catch(()=>{});
    await paint();
   };
@@ -158,7 +158,7 @@ run('test_dbequip: 使用設備は WL.equipment の1箇所（§9.285）',async({
   /* **変数を使っていない一覧は読み直さない**——関係の無い一覧まで引き直すと、
      重い一覧では設備を選び直しただけで数秒止まる。 */
   await page.evaluate(()=>{S.genericFilters=[];S.page=1});
-  await page.evaluate(()=>load());
+  await page.evaluate(()=>WL.list.load());
   await idle();
   const quiet=await page.evaluate(async(other)=>{
    let n=0;

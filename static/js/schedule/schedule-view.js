@@ -1607,14 +1607,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      **器(分割バー)は先に作る**——取っ手が無いと開く手立てが消える。 */
   if(splitListCollapsed){updateSplitCollapseUi();return}
   const workKey=workDbKey();
-  if(typeof S!=='undefined'&&typeof selectDb==='function'&&workKey){
+  if(typeof S!=='undefined'&&typeof WL.list.selectDb==='function'&&workKey){
    const navBtn=document.querySelector(`aside [data-db-key="${CSS.escape(workKey)}"]`);
    // 分割表示を組み立てるための内部呼び出し。画面の切替ではないので、
    // ここでスケジュール画面が畳まれないようwithInternalDbSwitchで囲う。
    await WL.withInternalDbSwitch(async()=>{
     try{
-     if(S.db!==workKey)await selectDb(workKey,navBtn);
-     else if(!scSplitJoinApplied&&typeof load==='function')await load();
+     if(S.db!==workKey)await WL.list.selectDb(workKey,navBtn);
+     else if(!scSplitJoinApplied&&typeof WL.list.load==='function')await WL.list.load();
     }catch(e){WL.quiet.note('一覧が読めなくてもスケジュール自体の表示は継続する',e)}
    });
    scSplitJoinApplied=true;
@@ -1729,7 +1729,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   document.body.classList.add('sc-list-modal-open');
   updateSplitToggleUi();
   const workKey2=workDbKey();
-  if(typeof S!=='undefined'&&typeof selectDb==='function'&&workKey2&&S.db!==workKey2){
+  if(typeof S!=='undefined'&&typeof WL.list.selectDb==='function'&&workKey2&&S.db!==workKey2){
    const navBtn=document.querySelector(`aside [data-db-key="${CSS.escape(workKey2)}"]`);
    /* 分割表示と同じく、モーダルの中身を用意するための内部呼び出し。
       旧実装ではここだけ内部フラグで囲われておらず、S.dbが作業対象以外の
@@ -1738,7 +1738,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       も呼ぶため、開いたモーダルもその場で閉じる)。通常はS.dbが既に
       作業対象なので表に出ていなかった。 */
    await WL.withInternalDbSwitch(async()=>{
-    try{await selectDb(workKey2,navBtn)}catch(e){WL.quiet.note('ベストエフォート',e)}
+    try{await WL.list.selectDb(workKey2,navBtn)}catch(e){WL.quiet.note('ベストエフォート',e)}
    });
   }
  }
@@ -5787,12 +5787,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     （§9.211 ①）。 */
  let lotFilterQueued=false;
  function refreshScheduledLotFilter(){
-  if(!(typeof renderGrid==='function'&&typeof S!=='undefined'&&WL.dataSource.isWork(S.db)))return;
+  if(!(typeof WL.list.renderGrid==='function'&&typeof S!=='undefined'&&WL.dataSource.isWork(S.db)))return;
   if(lotFilterQueued)return;
   lotFilterQueued=true;
   requestAnimationFrame(()=>{
    lotFilterQueued=false;
-   WL.columnResize.defer('grid:scheduledLot',()=>renderGrid());
+   WL.columnResize.defer('grid:scheduledLot',()=>WL.list.renderGrid());
   });
  }
 

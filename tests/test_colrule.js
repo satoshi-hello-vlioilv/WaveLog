@@ -39,7 +39,7 @@ async function cleanup(){
   await page.reload({waitUntil:'load'});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
   await page.waitForTimeout(1200);
-  target=await page.evaluate(()=>listLayoutTarget());
+  target=await page.evaluate(()=>WL.list.listLayoutTarget());
 
   /* ---- 1) 判定そのもの(行を渡して結果を見るだけ) ---- */
   // 下書きを直接キャッシュへ入れて評価する(保存しなくても試せる形)。
@@ -180,9 +180,9 @@ async function cleanup(){
 
   await page.evaluate(async a=>{
    await WL.displayRules.load(true);
-   await WL.columnLayout.save(listLayoutTarget(),{order:[],widths:{},hidden:[],names:{},formats:{},
+   await WL.columnLayout.save(WL.list.listLayoutTarget(),{order:[],widths:{},hidden:[],names:{},formats:{},
                                                  rules:{[a.col]:a.rule}});
-   renderGrid();
+   WL.list.renderGrid();
   },{col,rule:RULE});
   await page.waitForTimeout(300);
   /* 列は`data-col`で引く(§9.104)。本文は「列の窓」の中しか作らないので、
@@ -212,7 +212,7 @@ async function cleanup(){
 
   /* **要点**: ルールを消しても一覧は出る(参照が残っていても元の値で表示)。 */
   await post('/api/display-rule-master/delete',{name:RULE,user_id:'test'});
-  await page.evaluate(async()=>{await WL.displayRules.load(true);renderGrid()});
+  await page.evaluate(async()=>{await WL.displayRules.load(true);WL.list.renderGrid()});
   await page.waitForTimeout(250);
   rec('ルールを消したら元の値に戻る(一覧は壊れない)',(await cellOf(col)).text===raw,
    (await cellOf(col)).text);

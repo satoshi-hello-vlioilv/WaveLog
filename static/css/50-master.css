@@ -329,7 +329,6 @@
 .mm-cd-dbtabs{display:flex;gap:var(--gap-inline);flex-wrap:wrap}
 .mm-cd-tab{height:34px;padding:0 16px;border:1.5px solid #c7d4d8;border-radius:var(--radius-lg);background:#fff;color:#526970;font-weight:800;font-size:var(--fs-sm);cursor:pointer}
 .mm-cd-tab:hover{border-color:#9fb4ba}
-.mm-cd-tab.active{border-color:var(--teal);background:var(--teal);color:#fff}
 .mm-cd-actions{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
 /* 逆の結果になるボタン(取り込む / 削除する)を隣り合わせで並べない。
    間に仕切りを入れ、色も分ける(取り違えると元に戻せないため)。§9.68 */
@@ -952,7 +951,6 @@
   color:var(--ink-3);font-size:var(--fs-micro);font-weight:700;cursor:pointer;
 }
 .op-band-span>button:hover{background:var(--surface)}
-.op-band-span>button.is-on{background:var(--nav);color:#fff}
 /* ---------- 空き（ダミー）の群（§9.227 ③、利用者の指示） ----------
    測定画面では**見出しも枠も出さず、幅ぶんの空白**になる。盤では
    「そこが空きである」ことが読めないと困るので、**斜線の地**で出す
@@ -999,7 +997,6 @@
 }
 .op-menu-row button{width:auto;flex:1 1 0;text-align:center;font-weight:700}
 .op-menu button:hover{background:var(--surface-2)}
-.op-menu button.is-on{background:var(--nav);color:#fff}
 .op-menu button.is-danger{color:var(--danger)}
 .op-menu button.is-danger:hover{background:var(--danger-bg,var(--surface-2))}
 .op-menu button[disabled]{color:var(--muted);cursor:default}
@@ -1256,9 +1253,6 @@
 .op-seg button{border-radius:0;margin-left:-1px}
 .op-seg button:first-child{border-radius:var(--radius-xs) 0 0 var(--radius-xs);margin-left:0}
 .op-seg button:last-child{border-radius:0 var(--radius-xs) var(--radius-xs) 0}
-.op-seg button.is-on,.op-toggle.is-on,.op-when button.is-on{
-  background:var(--teal);border-color:var(--teal);color:#fff;
-}
 .op-toggle,.op-when button{border-radius:var(--radius-xs)}
 /* 連れて行った先を1度だけ光らせる（§9.229 ③）。**色だけで伝えない**ので、
    ボタンの文言と説明が何を指しているかは文字で書いてある。 */
@@ -1287,7 +1281,6 @@
 }
 .op-span-pick button:first-child{border-radius:var(--radius-xs) 0 0 var(--radius-xs)}
 .op-span-pick button:last-child{border-radius:0 var(--radius-xs) var(--radius-xs) 0}
-.op-span-pick button.is-on{background:var(--teal);border-color:var(--teal)}
 .op-form-nums{gap:var(--space-2)}
 .op-form-nums label{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm)}
 .op-form-nums input{width:var(--w-xs)}
@@ -1805,7 +1798,6 @@
 .op-role-who{color:var(--teal-dark);font-weight:700}
 .op-role-item>small{flex:1 1 100%;color:var(--muted);line-height:1.3}
 
-
 /* 見せるが触らせない欄（§9.219 ②）。**隠さない**——隠すと「なぜ中身を
    変えられないのか」が読めなくなる。触れないことを面と色で示す。 */
 .mm-field-ro>input{
@@ -1845,7 +1837,6 @@
   display:flex;align-items:center;justify-content:center;
 }
 .op-upad-cell:hover:not(:disabled){border-color:var(--teal);color:var(--teal)}
-.op-upad-cell.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
 .op-upad-cell:disabled{opacity:.4;cursor:not-allowed}
 .op-upad-gap{border-radius:var(--radius-xs);background:repeating-linear-gradient(135deg,var(--surface) 0 4px,var(--surface-2) 4px 8px)}
 .op-look-line{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-tight);flex:1 1 100%}
@@ -1856,7 +1847,6 @@
   background:var(--surface);color:var(--ink-2);
   font-size:var(--fs-badge);font-weight:700;cursor:pointer;
 }
-.op-mini.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
 /* ---------- 未入力の色の札（§9.286 ⑥、利用者の指示） ----------
    **色だけで伝えない**（§3）——札は「見本の面＋呼び名の文字」の2つで、
    意味（灰＝目立たせない…）は`title`が言う。選んだ札は縁を濃くする
@@ -1985,9 +1975,7 @@
 .oc-group-sub{display:flex;flex-wrap:nowrap;gap:var(--space-2);min-width:0}
 .oc-group-sub>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .oc-group:hover{background:var(--surface-2)}
-.oc-group.is-on{background:var(--teal);border-color:var(--teal)}
 .oc-group>b{font-size:var(--fs-sm);font-weight:800;color:var(--ink)}
-.oc-group.is-on>b,.oc-group.is-on .oc-group-meta,.oc-group.is-on .oc-group-use{color:#fff}
 .oc-group-meta{font-size:var(--fs-micro);font-weight:700;color:var(--ink-3)}
 /* **使い道は文字で言う**（§9.216 ④）。色だけだと「使われていない」ことに
    気づけず、消してよいかを判断できない。 */
@@ -2070,7 +2058,6 @@
   background:var(--surface-2);color:var(--ink-2)}
 .oc-eq-tag.is-all{background:var(--pale);border-color:var(--teal);color:var(--teal-dark)}
 
-
 /* ================================================================
    選んで組み立てる（§9.226 ④、利用者の指示「帳票ブロックを新規登録が
    難しすぎて作成できない。入力データ(汎用入力データも含む)の中から選んで
@@ -2129,7 +2116,6 @@
   border:1px solid var(--line-soft);border-radius:var(--radius-xs);
   background:var(--surface);color:var(--ink-3);
   font-size:var(--fs-micro);font-weight:700;cursor:pointer}
-.fb-axis>button.is-on{background:var(--nav);border-color:var(--nav);color:#fff}
 .fb-axis>button:disabled{opacity:.45;cursor:not-allowed}
 /* 軸を落とす箱（§9.278、利用者の指示「軸単位のドラッグアンドドロップ」）。
    **箱は2つ**——「使わない」を作ると、その軸の値どうしが同じマスへ重なって
@@ -2185,8 +2171,6 @@
   font-size:var(--fs-badge);font-weight:700;cursor:pointer;
 }
 .fb-cat>i{font-style:normal;color:var(--muted);font-size:var(--fs-micro)}
-.fb-cat.is-on{background:var(--nav);border-color:var(--nav);color:#fff}
-.fb-cat.is-on>i{color:#fff}
 /* **縦は器いっぱい**（§9.254 ②、利用者の指示「縦方向表示可能領域の半分の
    高さくらいしか使っていないので最大限の高さを利用して見やすくして」）。
    `max-height:18em`で頭打ちにしていたため、窓をどれだけ大きくしても
@@ -2510,7 +2494,6 @@
   background:none;color:var(--muted);font-size:var(--fs-micro);font-weight:700;cursor:pointer;
 }
 .fb-seg>button:hover{background:var(--surface)}
-.fb-seg>button.is-on{background:var(--nav);color:#fff}
 /* 「表に組む」は材料が揃うまで押せない（§4）。理由は`title`が言う。 */
 .fb-head,.fb-blank,.fb-table,.fb-seed{flex:none;min-height:var(--ctl-h-xs);
   padding:0 var(--space-2);font-size:var(--fs-badge);
@@ -2600,7 +2583,6 @@
 .cl-auto-fields .mm-field-hint{max-width:var(--w-xl)}
 .cl-places{margin-top:var(--space-3)}
 
-
 /* いま空の種別は1行の札に畳む。**消さずに畳む**ので、何を見ているのかは残る。 */
 .cl-none{margin:0;padding:var(--space-4);text-align:center;color:var(--ink-3);font-size:var(--fs-sm);
  border:1px dashed var(--line);border-radius:var(--radius-card);background:var(--surface)}
@@ -2612,13 +2594,11 @@
 .cl-cold-chip>i{font-style:normal;color:var(--muted);font-weight:800}
 .cl-cold-chip>em{font-style:normal;color:var(--muted)}
 
-
 /* 生データの一覧から「どこで直すか」へ連れて行く帯（§9.249 (2)）。 */
 .mm-raw-goto{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap;
  margin-top:var(--space-2);padding:var(--pad-card);
  border:1px solid var(--teal-soft);border-radius:var(--radius-card);background:var(--pale)}
 .mm-raw-goto>span{flex:1 1 auto;min-width:0;color:var(--ink);font-size:var(--fs-sm)}
-
 
 /* ============================================================
    帳票ブロックの編集窓（§9.249 (3)）
@@ -2706,7 +2686,6 @@
   min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   color:var(--ink-3);font-size:var(--fs-micro);line-height:var(--lh);font-weight:600;
 }
-.mm-tab.is-on .mm-tab-sum{color:var(--teal-dark)}
 .mm-tabpanel[hidden]{display:none}
 
 /* ---- 設定ページの段（§9.261） ----
@@ -2754,7 +2733,6 @@
   font-size:var(--fs-micro);font-weight:800;line-height:1;cursor:pointer;
 }
 .mm-more:hover{border-color:var(--teal);color:var(--teal-dark)}
-.mm-more.is-on{border-color:var(--teal);background:var(--teal);color:#fff}
 .mm-more-body{
   margin-top:var(--space-1);padding:var(--space-2);
   border-left:3px solid var(--line-mid);border-radius:var(--radius-xs);
@@ -2983,14 +2961,11 @@ html[data-hint="off"] .mm-def-hint{display:none}
  padding:var(--pad-card);border:1px solid var(--line);border-radius:var(--radius-sm);
  background:#fff;color:var(--ink-2);cursor:pointer}
 .mm-card-opt:hover{border-color:var(--teal-soft)}
-.mm-card-opt.is-on{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
 .mm-card-ico{flex:0 0 auto;display:grid;place-items:center;
  width:var(--ctl-h-sm);height:var(--ctl-h-sm);border-radius:var(--radius-xs);
  background:var(--surface-2);color:var(--ink-3);font-size:var(--fs-sm);font-weight:800}
-.mm-card-opt.is-on .mm-card-ico{background:var(--teal);color:#fff}
 .mm-card-opt>b{display:block;font-size:var(--fs-sm);font-weight:800}
 .mm-card-opt>small{display:block;color:var(--muted);font-size:var(--fs-micro);font-weight:400}
-.mm-card-opt.is-on>small{color:var(--teal-dark)}
 /* 札の中は「絵／名前と一言」の2枚。**折り返さない**——折り返すと札ごとに
    高さが変わって並びが崩れる（入らなければ省略記号・§9.237 (3)）。 */
 .mm-card-txt{display:flex;flex-direction:column;min-width:0}
@@ -3021,7 +2996,6 @@ html[data-hint="off"] .mm-def-hint{display:none}
  font-style:normal;font-size:var(--fs-micro);font-weight:800;cursor:help}
 .mm-field>span:hover .mm-more{background:var(--teal);color:#fff}
 
-
 /* ---------- 一覧の見出し: 並べ替えと列幅（§9.250 (6)） ---------- */
 /* **`overflow`を戻す**——`.mm-row>span{overflow:hidden}`が効いたままだと、
    セルの縁へ置いた取っ手が切り落とされて**掴めない**（実測: 取っ手の座標を
@@ -3049,8 +3023,6 @@ html[data-hint="off"] .mm-def-hint{display:none}
  font-size:var(--fs-micro);line-height:1;padding:0 2px}
 .mm-viewmark>button:hover{color:var(--danger)}
 
-
-
 /* ============================================================
    帳票レイアウトマスタ（§9.254 (3)、利用者の指示）
    ------------------------------------------------------------
@@ -3074,9 +3046,7 @@ html[data-hint="off"] .mm-def-hint{display:none}
 .rly-paper{display:grid;gap:0;width:100%;text-align:left;padding:2px var(--space-2);
   border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;cursor:pointer}
 .rly-paper:hover{background:var(--surface-2)}
-.rly-paper.is-on{background:var(--teal);border-color:var(--teal)}
 .rly-paper>b{font-size:var(--fs-sm);font-weight:800;color:var(--ink)}
-.rly-paper.is-on>b,.rly-paper.is-on .rly-paper-meta,.rly-paper.is-on .rly-paper-gone{color:#fff}
 .rly-paper-sub{display:flex;flex-wrap:nowrap;gap:var(--space-2);min-width:0}
 .rly-paper-sub>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rly-paper-meta{font-size:var(--fs-micro);font-weight:700;color:var(--ink-3)}
@@ -3090,7 +3060,6 @@ html[data-hint="off"] .mm-def-hint{display:none}
   min-height:var(--ctl-h-xs);padding:0 var(--space-2);border:0;background:var(--surface);
   color:var(--ink-2);font-size:var(--fs-micro);font-weight:700;cursor:pointer;white-space:nowrap}
 .rly-grid-pick>button:hover{background:var(--surface-2)}
-.rly-grid-pick>button.is-on{background:var(--nav);color:#fff}
 /* 幅・高さは**選ぶ欄1つ**（§9.254 ③）。札を並べると幅5＋高さ9で1行が
    2段に折り返し、23件の一覧が縦に倍になる——ここは「見比べて直す」画面
    なので、行は1行に収める（§CLAUDE 11「入れ物は中身の長さから」）。 */
@@ -3166,7 +3135,6 @@ html[data-hint="off"] .mm-def-hint{display:none}
 .ms-where-path{flex:1 1 var(--w-lg);min-width:0;font-family:var(--font-mono,monospace);
   font-size:var(--fs-micro);color:var(--ink-2);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
 
 /* ==================================================================
    接続状況（§9.272）。誰がいま繋いでいるか／切断する。

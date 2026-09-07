@@ -69,9 +69,9 @@ let b=null,orphan=null;
   const tr=document.createElement('tr');
   tr.innerHTML='<td class="split-flag-cell">分割なし</td>';
   const targets=Array.from({length:12},()=>({tr,row:{'ロット番号':'Z1234567'}}));
-  checkParentLookupRows(targets);       // 走らせてから
+  WL.list.checkParentLookupRows(targets);       // 走らせてから
   await new Promise(x=>setTimeout(x,60));
-  renderGrid();                          // 途中で描き直す
+  WL.list.renderGrid();                          // 途中で描き直す
   await new Promise(x=>setTimeout(x,900));
   window.findParentLotFor=orig;
   return {calls,total:targets.length};

@@ -129,18 +129,18 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('つまみが畳んだ状態を名乗る',closed.つまみ==='false',String(closed.つまみ));
 
   /* ---- 7b) 追い判定がつまみを消さない（§9.235 ④と同じ罠） ----
-     `checkSplitRowsForMissingChildren()`は分割のセルの文字を差し替える。
+     `WL.list.checkSplitRowsForMissingChildren()`は分割のセルの文字を差し替える。
      **`textContent`で丸ごと入れ替えると、中に入れたつまみごと消える**
      ——押す手立てが無くなるので「子N」が出たあと押せなくなる。
      ここでは実際に差し替えを走らせて、つまみが残ることを見る。 */
   const survives=await page.evaluate(()=>{
    const cell=document.querySelector('#grid .split-flag-cell.split-yes');
    if(!cell)return {前提なし:'分割ありの行が無い'};
-   if(typeof setSplitCellText!=='function')return {前提なし:'setSplitCellText が無い'};
+   if(typeof WL.list.setSplitCellText!=='function')return {前提なし:'setSplitCellText が無い'};
    const before=!!cell.querySelector('.grid-child-toggle');
    /* **製品の関数をそのまま呼ぶ**——テストの中で同じ処理を書き直すと、
       製品が`textContent`へ戻っても通ってしまう（何も確かめていない）。 */
-   setSplitCellText(cell,'分割あり・子ロット未検出(1)⚠','ためし');
+   WL.list.setSplitCellText(cell,'分割あり・子ロット未検出(1)⚠','ためし');
    return {前:before,後:!!cell.querySelector('.grid-child-toggle'),
            文字:cell.textContent.replace(/\s+/g,' ').trim()};
   });

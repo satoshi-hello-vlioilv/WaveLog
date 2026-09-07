@@ -63,7 +63,7 @@
    const db=(typeof S!=='undefined'&&S.db)||'',tb=(typeof S!=='undefined'&&S.table)||'';
    return (db||tb)?`表示列の設定（仕掛一覧：${db||'-'} / ${tb||'-'}）`:'表示列の設定（仕掛一覧）';
   },
-  target:()=>typeof listLayoutTarget==='function'?listLayoutTarget():'',
+  target:()=>typeof WL.list.listLayoutTarget==='function'?WL.list.listLayoutTarget():'',
   /* 候補の全列。**並びの出どころは一覧側と同じ1本**(§9.106)——ここで
      別に組み立てると、設定画面で動かした並びが一覧に出ない。 */
   keys:()=>{
@@ -104,13 +104,13 @@
      サーバーで並べていない一覧（タイムライン・データ一覧）では出さない
      ——設定できるのに効かないのが一番悪い。 */
   features:{formula:true,preset:true,width:true,format:true,rule:true,sort:true},
-  afterApply:()=>{if(typeof renderGrid==='function')renderGrid()},
+  afterApply:()=>{if(typeof WL.list.renderGrid==='function')WL.list.renderGrid()},
   /* 並べ替えの決まりを変えたら、**その列で並べているときだけ**取り直す
      (並びはサーバーが決めるので、描き直しでは変わらない)。 */
   resort:col=>{
-   if(!WL.listSort||typeof load!=='function')return;
+   if(!WL.listSort||typeof WL.list.load!=='function')return;
    /* 問い合わせに決まりが入るので、素の`load()`で取り直せる(§9.187)。 */
-   if((WL.listSort.keys()||[]).some(k=>k.column===col))load();
+   if((WL.listSort.keys()||[]).some(k=>k.column===col))WL.list.load();
   },
   save:null,        // null=列レイアウトマスタへそのまま保存する
  };

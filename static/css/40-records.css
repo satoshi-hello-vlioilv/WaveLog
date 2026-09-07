@@ -20,7 +20,6 @@
 .record-status-filter{display:flex;gap:var(--gap-inline)}
 .status-filter-btn{border:1.5px solid #c7d4d8;background:#fff;color:var(--muted);font-weight:800;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
 .status-filter-btn:hover{border-color:#9fb4ba}
-.status-filter-btn.active{border-color:var(--teal);background:var(--teal);color:#fff}
 .status-filter-btn[data-status-filter="done"].active{border-color:var(--success);background:var(--success)}
 .record-search-result{align-self:center;text-align:right;color:#526970;font-weight:700;white-space:nowrap}
 /* ---------- データ一覧は仕掛一覧(#grid)と同じ表の規格で組む（§9.161） ----------
@@ -544,8 +543,6 @@
 .record-scope-btn>b{font-weight:700;max-width:12em;overflow:hidden;text-overflow:ellipsis}
 .record-scope-btn>i{font-style:normal;font-size:var(--fs-micro);color:var(--muted)}
 .record-scope-btn:hover:not(:disabled){border-color:var(--teal)}
-.record-scope-btn.is-on{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
-.record-scope-btn.is-on>i{color:var(--teal-dark)}
 .record-scope-btn:disabled{opacity:.55;cursor:default}
 
 }

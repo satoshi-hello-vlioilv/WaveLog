@@ -229,7 +229,6 @@
 .nav-item.active{box-shadow:inset 3px 0 0 #6be0d6}
 .nav-item--admin.active{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:800}
 .nav-item--admin.active .nav-icon{opacity:1}
-.nav-item--admin.active:hover{background:var(--teal);color:#fff}
 #nav{margin-top:0}
 main{display:flex;min-width:0;min-height:0;flex-direction:column}
 /* ヘッダーは2段のグリッド。1段目は「画面名 / 状態チップ / 全体操作」で、
@@ -670,7 +669,6 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lc-origin-chip b{font-weight:800;font-size:var(--fs-micro);color:var(--muted)}
  .lc-origin-chip:hover:not(:disabled){border-color:var(--teal)}
  .lc-origin-chip:disabled{opacity:.45;cursor:default}
- .lc-origin-chip.is-on{color:#fff;background:var(--nav);border-color:var(--nav)}
  .lc-origin-chip.is-on b{color:#cfe6ea}
  .lc-origin-chip.lc-origin-source.is-on{background:var(--origin-source);border-color:var(--origin-source)}
  .lc-origin-chip.lc-origin-join.is-on{background:var(--origin-join);border-color:var(--origin-join)}
@@ -682,7 +680,6 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
     出どころの3色とは別の意味であることが色でも読める。 */
  .lc-chip-sep{flex:none;align-self:center;width:1px;height:var(--ctl-h-xs);
   margin:0 var(--space-1);background:var(--line-mid)}
- .lc-state-chip.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
  .lc-state-chip.lc-state-off.is-on{background:var(--look-slate);border-color:var(--look-slate)}
  /* リストの行頭に置く小さな点。分類名はチップとツールチップが持つ。 */
  .lc-dot{flex:none;width:var(--space-2);height:var(--space-2);margin-right:var(--space-2);

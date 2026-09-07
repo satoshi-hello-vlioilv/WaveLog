@@ -353,10 +353,10 @@ async function cleanup(){
    const th=()=>document.querySelector(`#grid thead th[data-sort-col="${CSS.escape(key)}"]`);
    const before=Math.round(th().getBoundingClientRect().width);
    // わざと広げてから「幅を内容に合わせる」で戻す
-   const t=listLayoutTarget();
+   const t=WL.list.listLayoutTarget();
    const cur=WL.columnLayout.get(t);
    WL.columnLayout.stage(t,{...cur,widths:{...(cur.widths||{}),[key]:600}});
-   renderGrid();
+   WL.list.renderGrid();
    await new Promise(r=>setTimeout(r,300));
    const wide=Math.round(th().getBoundingClientRect().width);
    return {key,before,wide};
@@ -487,7 +487,7 @@ async function cleanup(){
   await page.waitForSelector('#listColumnPanel .lc-item',{timeout:10000});
   await page.waitForTimeout(400);
   const mix=await page.evaluate(async()=>{
-   const t=listLayoutTarget();
+   const t=WL.list.listLayoutTarget();
    /* パネルの中で1列のチェックを外す（＝未保存の下書き）。 */
    const box=document.querySelector('#listColumnPanel .lc-item input[type=checkbox]:checked');
    const key=box?box.closest('.lc-item').dataset.key:'';
@@ -522,7 +522,7 @@ async function cleanup(){
   const chip=await page.evaluate(async()=>{
    const el=document.getElementById('saveState');
    if(!el)return null;
-   const t=listLayoutTarget();
+   const t=WL.list.listLayoutTarget();
    const p=WL.columnLayout.patch(t,{widths:{...(WL.columnLayout.saved(t).widths||{})}});
    const busy={hidden:el.hidden,text:(el.textContent||'').trim()};
    await p;

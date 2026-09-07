@@ -38,7 +38,7 @@ let b=null;
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
   await page.waitForSelector('#grid table',{timeout:30000});
   await page.waitForFunction(()=>(S.rows||[]).length>0,null,{timeout:20000});
-  target=await page.evaluate(()=>listLayoutTarget());
+  target=await page.evaluate(()=>WL.list.listLayoutTarget());
 
   /* ---- 0) 画面とサーバーで判定が食い違わない ---- */
   const cls=await page.evaluate(list=>list.map(c=>({v:c.v,got:WL.sortSpec.classify(c.v),want:c.kind})),

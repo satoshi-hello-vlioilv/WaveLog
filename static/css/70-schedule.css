@@ -756,7 +756,6 @@
    --------------------------------------------------------------- */
 .sc-mode-toggle{display:flex;border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden;background:#fff}
 .sc-mode-toggle-btn{border:0;background:#fff;color:var(--muted);font-weight:700;cursor:pointer}
-.sc-mode-toggle-btn.active{background:var(--teal);color:#fff}
 .sc-board-window{display:flex;border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden;background:#fff}
 .sc-board-window-btn{border:0;background:#fff;color:var(--muted);font-weight:700;cursor:pointer}
 .sc-board-window-btn.active{background:var(--pale);color:#075e67}
@@ -966,8 +965,6 @@
 .shift-list-item b{font-size:var(--fs-base-sm);color:var(--ink);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .shift-list-item small{font-size:var(--fs-micro);color:var(--ink-soft)}
 .shift-list-item:hover{border-color:var(--teal);background:var(--surface-2)}
-.shift-list-item.active{background:var(--teal);border-color:var(--teal)}
-.shift-list-item.active b,.shift-list-item.active small{color:#fff}
 .shift-detail{min-width:0;display:flex;flex-direction:column;gap:var(--space-2)}
 /* **器は中身の長さから決める**(CLAUDE.md §11)。以前は`flex:1 1 240px`＋
    `width:100%`で、勤務体系の名称（長くても20字ほど）の入力欄が枠いっぱい
@@ -1234,7 +1231,6 @@
 .sc-frame-shift b{font-size:var(--fs-sm);font-weight:700;color:var(--ink)}
 .sc-frame-shift small{font-size:var(--fs-micro);color:var(--muted)}
 .sc-frame-shift:hover{border-color:var(--teal)}
-.sc-frame-shift.is-on{background:var(--pale);border-color:var(--teal)}
 .sc-row-comment-edit{cursor:text}
 .sc-row-comment-edit .sc-row-title.is-empty{color:var(--muted);font-style:italic}
 .sc-comment-edit{width:100%;min-width:0;height:var(--row-inner-h);padding:0 var(--ctl-pad-x-sm);
@@ -1335,7 +1331,6 @@
 .sp-pv-tab small{font-size:var(--fs-micro);color:var(--muted);
  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sp-pv-tab:hover{border-color:var(--teal)}
-.sp-pv-tab.is-on{background:var(--pale);border-color:var(--teal)}
 .sp-pv-tab.is-on>i,.sp-pv-tab.is-on b{color:var(--computed-fg)}
 /* 開いている段だけが伸びてスクロールする（残りは`hidden`）。 */
 .sp-pv-panes{flex:1;min-height:0;display:flex;flex-direction:column}
@@ -1394,7 +1389,6 @@
 .sp-pat b{font-size:var(--fs-sm);font-weight:700;color:var(--ink)}
 .sp-pat small{font-size:var(--fs-micro);color:var(--muted)}
 .sp-pat:hover{border-color:var(--teal)}
-.sp-pat.is-on{background:var(--pale);border-color:var(--teal)}
 .sp-pat.is-on b{color:var(--computed-fg)}
 /* いま効かない設定は**押せなくして理由を書く**(§9.238 ④・CLAUDE.md §4)。
    薄くするだけにしないこと——薄いだけでは「押せるのに反応しない」と読まれる。 */
@@ -1420,7 +1414,6 @@
   padding:0 var(--space-2);border:1px solid var(--line);border-radius:var(--radius-sm);
   background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);font-weight:700}
 .sp-zoom-btn:hover:not(:disabled),.sp-zoom-step:hover:not(:disabled){border-color:var(--teal);color:var(--teal-dark)}
-.sp-zoom-btn.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
 .sp-zoom-step:disabled{opacity:.45;cursor:not-allowed}
 .sp-zoom-now{min-width:var(--w-xs);text-align:center;font-size:var(--fs-sm);
   font-weight:700;color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -2178,7 +2171,6 @@
 .sc-view-sec>span small{font-weight:400;color:var(--muted);font-size:var(--fs-micro);line-height:1.4}
 .sc-view-sec>em{flex:none;font-style:normal;color:var(--muted);font-size:var(--fs-badge)}
 .sc-view-sec:hover{color:var(--nav)}
-.sc-view-sec.active>span{color:var(--teal-dark)}
 .sc-view-sec.active .sc-view-chev{transform:rotate(180deg);display:inline-block}
 /* 段の中身は**枠を重ねない**(§10)。浮きパネルとして持っていた枠・影・
    位置指定を、入れ子にしたぶんだけ外す。 */

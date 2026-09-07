@@ -53,9 +53,9 @@ async function cleanup(){
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#grid table',{timeout:30000});
   await page.waitForSelector('#grid th[data-col]',{timeout:30000});
-  await page.waitForFunction(()=>typeof listLayoutTarget==='function'&&!!listLayoutTarget(),
+  await page.waitForFunction(()=>typeof WL.list.listLayoutTarget==='function'&&!!WL.list.listLayoutTarget(),
                              null,{timeout:30000});
-  TARGET=await page.evaluate(()=>listLayoutTarget());
+  TARGET=await page.evaluate(()=>WL.list.listLayoutTarget());
   const uidSeen=await page.evaluate(()=>(window.currentUserId&&currentUserId())||'');
   rec('前提: 仕掛一覧が開けて対象と利用者IDが決まる',!!TARGET&&uidSeen===UID,TARGET+' / '+uidSeen);
   await cleanup();
@@ -77,7 +77,7 @@ async function cleanup(){
          t=document.getElementById('lcScopeNote'),box=document.getElementById('lcScope');
    return {hidden:!!box.hidden,now:(n.textContent||'').trim(),btn:(b.textContent||'').trim(),
            note:(t.textContent||'').trim(),disabled:!!b.disabled,
-           scope:WL.columnLayout.scope(listLayoutTarget())};
+           scope:WL.columnLayout.scope(WL.list.listLayoutTarget())};
   });
 
   /* ========== 1) いまどちらで見ているかが文字で出る ========== */
@@ -91,7 +91,7 @@ async function cleanup(){
 
   /* ========== 2) 共通の並びを作ってから、自分だけへ切り替える ========== */
   const COMMON=await page.evaluate(async()=>{
-   const t=listLayoutTarget(),live=WL.listColumnKeys();
+   const t=WL.list.listLayoutTarget(),live=WL.listColumnKeys();
    /* 共通の設定として「先頭の列に決まった幅」を入れておく。 */
    await WL.columnLayout.save(t,{order:live,widths:{[live[0]]:123},hidden:[],names:{},
      formats:{},rules:{},formulas:{},locks:[]});
@@ -101,20 +101,20 @@ async function cleanup(){
 
   await openPanel();
   await page.click('#lcScopeBtn');
-  await page.waitForFunction(()=>WL.columnLayout.scope(listLayoutTarget())==='personal',
+  await page.waitForFunction(()=>WL.columnLayout.scope(WL.list.listLayoutTarget())==='personal',
                              null,{timeout:15000});
   ui=await scopeUi();
   rec('押すと「自分だけの設定」になる',ui.scope==='personal'&&/自分だけ/.test(ui.now),
       ui.now+' / '+ui.scope);
   rec('自分だけのときは「他の人の見え方は変わらない」と書く',/他の人/.test(ui.note),ui.note);
-  const copied=await page.evaluate(c=>(WL.columnLayout.saved(listLayoutTarget()).widths||{})[c],
+  const copied=await page.evaluate(c=>(WL.columnLayout.saved(WL.list.listLayoutTarget()).widths||{})[c],
                                    COMMON.col);
   rec('切り替えた時点で、いまの見え方がそのまま写っている（白紙にしない）',
       copied===123,String(copied));
 
   /* ========== 3) 自分だけを変えても共通は変わらない ========== */
   await page.evaluate(async c=>{
-   const t=listLayoutTarget();
+   const t=WL.list.listLayoutTarget();
    await WL.columnLayout.patch(t,{widths:{...(WL.columnLayout.saved(t).widths||{}),[c]:456}});
   },COMMON.col);
   const mine=await fetch(B+'/api/column-layout-master?target='+encodeURIComponent(TARGET)
@@ -134,9 +134,9 @@ async function cleanup(){
   /* 戻すときだけ確認が出る（自分の設定を捨てる向きなので）。素の
      `confirm()`ではなくなった（§9.342）ので、開いた窓のOKを押す。 */
   await require('./lib/wait.js').answerConfirm(page);
-  await page.waitForFunction(()=>WL.columnLayout.scope(listLayoutTarget())==='common',
+  await page.waitForFunction(()=>WL.columnLayout.scope(WL.list.listLayoutTarget())==='common',
                              null,{timeout:15000});
-  const back=await page.evaluate(c=>(WL.columnLayout.saved(listLayoutTarget()).widths||{})[c],
+  const back=await page.evaluate(c=>(WL.columnLayout.saved(WL.list.listLayoutTarget()).widths||{})[c],
                                  COMMON.col);
   rec('戻すと共通の見え方になる',back===123,String(back));
   const kept=await fetch(B+'/api/column-layout-master/scope',{method:'POST',
@@ -165,7 +165,7 @@ async function cleanup(){
   await page.evaluate(()=>localStorage.removeItem('AccessMeasurementUserId'));
   await page.evaluate(()=>WL.columnLayout.forget&&WL.columnLayout.forget());
   const noUidUi=await page.evaluate(async()=>{
-   const t=listLayoutTarget();
+   const t=WL.list.listLayoutTarget();
    /* IDの無い状態で読み直す。**サーバーが「持てない」と答える**。 */
    const r=await api('/api/column-layout-master?target='+encodeURIComponent(t)+'&user=');
    return {can:!!r.canPersonalize,scope:r.scope};
@@ -182,7 +182,7 @@ async function cleanup(){
    const live=WL.listColumnKeys();
    WL.listColumns.open({
     key:'__scopetest__',eyebrow:'検証',title:()=>'検証',
-    target:()=>listLayoutTarget(),
+    target:()=>WL.list.listLayoutTarget(),
     keys:()=>live,healed:()=>null,rows:()=>[],valueOf:()=>'',
     joined:()=>new Set(),joinFrom:()=>'',virtual:()=>({}),
     origins:()=>['source'],originOf:()=>'source',
