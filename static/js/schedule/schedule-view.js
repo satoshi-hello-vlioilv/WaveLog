@@ -4989,6 +4989,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   },
  };
 
+ /* タイムライン（`#scTimeline`）は `innerHTML=''` のあと**同じ同期の流れで**
+    中身を組み直すので、ブラウザはスクロール位置を切り詰めない——注入で確かめた
+    （控えるのをやめても位置は動かない）。戻るのは**仕掛一覧のほう**なので、
+    手当ては `renderGrid()` にある（§9.357）。 */
  function renderTimeline(){
   const timeline=$('#scTimeline');
   const list=visibleEntries();
@@ -7913,6 +7917,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   /* 子ロット(§9.83)。紙は`entries()`に混ざっている子（`parentId`付き）を
      自分で拾わず、ここから引く——判定を2箇所に持たない。 */
   childrenOf:parentId=>childEntriesByParent().get(parentId)||[],
+  /* いま**画面で開いている**親のid（§9.357）。紙は「画面の見た目が正」（§9.237）
+     なので、開いている子ロットは何も選ばなくても刷る。畳んでいるぶんまで出すかは
+     印刷の設定（`includeChildren`）が決める。 */
+  childOpenIds:()=>[...childOpenSet()].map(String),
   childSummaryOf:c=>childSummary(c),
   /* 子ロットの折りたたみバッジをどの列へ付けるか(§9.235)。画面と紙の
      どちらも**同じ判定**（`childBadgeTargetKey()`）を通す。 */

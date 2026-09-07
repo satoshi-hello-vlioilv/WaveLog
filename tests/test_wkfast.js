@@ -111,14 +111,21 @@ let b=null;
  await page.waitForSelector('.sc-row-line',{timeout:20000});
  const firstPaint=await flags();
  // 投入時に残仕掛設備ｺｰｽを保存している予定は、**仕掛を1回も読まずに**
- // 最初の描画で確定している。保存が無い古い予定(APIで直接作った検証用
- // データ等)だけが「?」で始まり、裏の取り直しで確定する。
+ // 最初の描画で確定している（「?」が1つも無い）。
+ // **取り直しに行くのは「可」でない行のため**（§9.67 の `lotsNeedingLookup` は
+ // `state!=='ok'` を集める）。種データは「可」と「不可」の両方を持つ（不可10件。
+ // `make_fixture.py` が意図してそうしている）ので、**`pages===0` は成り立たない**
+ // ——以前ここで見ていた「1回も読んでいない」は、前の実行が残した実績で予定の
+ // 状態が変わり、たまたま不可が0になった回にだけ通っていた（§9.356）。
  const resolvedAtPaint=(firstPaint['is-ok']||0)+(firstPaint['is-ng']||0);
  rec('開き直した直後から保存値で判定できている行がある',resolvedAtPaint>0,
    JSON.stringify(firstPaint));
- rec('保存値だけで判定した時点では仕掛を読んでいない',
-   (await page.evaluate(()=>window.scheduleWorkableState())).pages===0,
-   JSON.stringify(await page.evaluate(()=>window.scheduleWorkableState())));
+ const st0=await page.evaluate(()=>window.scheduleWorkableState());
+ rec('最初の描画に「?」が無い（保存値だけで確定している）',
+   !firstPaint['is-unknown'],JSON.stringify(firstPaint));
+ rec('仕掛を読みに行くのは「可」でない行があるときだけ',
+   st0.pages===0||(firstPaint['is-ng']||0)>0,
+   JSON.stringify({...st0,firstPaint}));
  // 保存の無い古い予定も、裏の取り直しで「?」が解消される
  const gone=await page.waitForFunction(()=>![...document.querySelectorAll('.sc-row-workable')]
    .some(n=>n.classList.contains('is-unknown')),null,{timeout:60000})

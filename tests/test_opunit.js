@@ -514,7 +514,14 @@ let b=null;
   for(const at of ['内部','外下左','外上左']){
    const ok=await setUnit(at);
    if(!ok){rec('前提: 単位の置き場「'+at+'」を選べる（⑥）',false);continue}
-   await page.waitForTimeout(450);
+   /* **時間でなく状態で待つ**（§9.102・§9.356）。450ms の固定待ちでは通しの
+      ときだけ間に合わず、**前の置き場のまま測って**落ちていた（実測: 「内部」を
+      押したのに `位置:"外下左"` のまま）。見本の `data-opunit` が押した先に
+      なるまで待つ——押した結果そのものを見るので、速い機械では待たない。 */
+   await page.waitForFunction(a=>{
+    const f=document.getElementById('opPrevField')?.querySelector('.opf');
+    return !!f&&(f.dataset.opunit||'')===a;
+   },at,{timeout:8000}).catch(()=>{});
    pv[at]=await prev();
   }
   rec('見本の単位は1つだけ（「内部」で二重に出さない）（⑥）',

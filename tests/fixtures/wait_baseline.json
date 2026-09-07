@@ -395,9 +395,9 @@
   "ms": 18150
  },
  "test_opunit.js": {
-  "count": 16,
+  "count": 15,
   "harness": 1,
-  "ms": 5280
+  "ms": 4830
  },
  "test_opwidget.js": {
   "count": 3,

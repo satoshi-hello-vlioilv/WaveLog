@@ -147,6 +147,30 @@ resetcontent(){
   # （§CLAUDE 8）——`reseed`は1本ごとに走るので、あちらのほうが強い。
 }
 
+# 測定の実績（`db/records.sqlite3`）も**実行をまたいで生き延びる**（§9.356）。
+# 作業予定は`reseed`、見せ方は`resetcontent`で戻していたが、ここだけ素通しだった。
+# 残った実績は**計画外実績として予定表に現れ**（§9.33）、行数・作業可否・
+# 「作業中」の有無を変える——後片付けを忘れた1本が、無関係な網を落とす。
+# 壊れ方が遠いので、落ちた側を見ても原因に辿り着けない（実測: 6件残っていた）。
+# **1本ごとに空へ戻す**（§9.121 と同じ理由。開始時に1回では前の本の分が渡る）。
+# 実績を前提にする網は**自分で置いて自分で消す**（§9.351）。
+resetrecords(){
+  python3 - <<'PYEOF' 2>/dev/null
+import sqlite3, pathlib
+p = pathlib.Path('db/records.sqlite3')
+if p.exists():
+    try:
+        c = sqlite3.connect(p, timeout=5)
+        n = c.execute('SELECT COUNT(*) FROM "Web測定バックアップ"').fetchone()[0]
+        if n:
+            c.execute('DELETE FROM "Web測定バックアップ"')
+            c.commit()
+        c.close()
+    except Exception as e:
+        print('!! 実績を空へ戻せませんでした: ' + str(e)[:80])
+PYEOF
+}
+
 server_up(){ curl -s -m 3 -o /dev/null "$API/" 2>/dev/null; }
 
 # テストが異常終了するとPlaywrightのChromiumが残る。残った画面は設備の
@@ -284,7 +308,7 @@ reseed(){
   return 1
 }
 
-TOT=0; NG=0
+TOT=0; NG=0; RETRY=""
 # 所要時間も出す。**遅いテストは「固定待ち」を書いている**ことが多く、
 # 削るか直すかを決めるのに数字が要る(docs/REFACTORING_PLAN.md フェーズF)。
 # 秒数はマシンで変わるので、判断に使うのは**本数あたりの秒数**。
@@ -306,6 +330,7 @@ run(){
   # `test_rpblocks`が組み換えの待ちで落ちた）。**実行のたびに結果が変わるので
   # は安全網にならない**ので、1本ごとに白紙から始める（§9.121）。
   resetcontent
+  resetrecords
   t0=$(date +%s)
   out=$($1 "$2" 2>&1); rc=$?
   # 1本ぶんの生ログを残したいときだけ（既定は残さない）。落ちた場所を
@@ -324,6 +349,11 @@ run(){
     out="$out
 FATAL: 途中で終了しました (exit $rc)。最後のPASSの直後を見てください。"
   fi
+  # 落ちた本を控える。通しの最後に**単独で回し直して切り分ける**（§9.356）——
+  # 「通しでだけ落ちる（順番・状態への依存）」と「単独でも落ちる（本物）」は
+  # 直し方がまるで違うのに、今までは通しをもう一度回さないと分からなかった。
+  if [ $((f+fatal)) -gt 0 ]; then RETRY="$RETRY$1 $2
+"; fi
   TOT=$((TOT+p+f)); NG=$((NG+f+fatal))
   TIMES="$TIMES$dt $((p+f)) $2\n"
   printf '%-24s %3d PASS / %d FAIL  %4ds%s\n' "$2" "$p" "$f" "$dt" "$([ $fatal -gt 0 ] && echo ' [FATAL]')"
@@ -358,6 +388,37 @@ echo "--- サーバー側 ---"
 mode schedule
 for t in test_sclock test_scsession test_scwritespeed test_colscache test_colsripple test_colsave test_opdata test_choicelink test_modeguard test_noaccess test_pcname \
          test_csslint test_dbopen test_error test_datasource test_dscap test_dskeylint test_dbmirror test_atomicio test_localwork test_displayrule test_eqstd test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_tabclose test_logs test_docindex test_sortpipe test_scwatch test_scowner test_qjoin test_workdate test_scload test_faststart test_bootopen test_rollio test_cleanup test_rawmaster test_recsplit test_colscope test_mastershare test_storage test_recmirror test_srcread test_presence test_roleperm test_savechip test_rbcells test_pywarn test_hintlint test_ddllint test_changelog test_pick test_flags test_apiguard test_tabledef test_loadorder test_scsnapread test_pyflakes test_eslint test_quietlint test_dblayer test_body test_printcore test_routesplit test_layers test_waitlint test_importlint; do run python3 $t.py; done
+
+# ---- 落ちた本を単独で回し直して切り分ける（§9.356） -------------------
+# 「通しでだけ落ちる」と「単独でも落ちる」は**直し方がまるで違う**:
+#   前者 … 順番・前の本の置き土産・サーバーの状態への依存（網かランナーを直す）
+#   後者 … 本物（製品か、その網の期待そのもの）
+# 今までは切り分けるのに**通しをもう一度回して**いた（1回32分）。落ちた本だけ
+# なら数十秒で済むので、通しの最後に自動でやる。**状態は白紙へ戻してから**
+# 回す——戻さずに回すと「単独」の意味が無い。
+# `WAVELOG_NO_RETRY=1` で止められる（切り分けたくないときだけ）。
+if [ -n "$RETRY" ] && [ -z "$WAVELOG_NO_RETRY" ]; then
+  echo
+  echo "-- 落ちた本を単独で回し直す（順番・状態への依存かを切り分ける） --"
+  ONLY_ORDER=""; REAL=""
+  printf '%s' "$RETRY" | while read -r cmd name; do
+    [ -z "$name" ] && continue
+    resetcontent
+    resetrecords
+    reseed
+    server_up || restart_server
+    out=$($cmd "$name" 2>&1); rc=$?
+    f=$(echo "$out" | grep -c '^FAIL'); fatal=$(echo "$out" | grep -c 'FATAL')
+    [ "$rc" -ne 0 ] && [ "$f" -eq 0 ] && [ "$fatal" -eq 0 ] && fatal=1
+    if [ $((f+fatal)) -gt 0 ]; then
+      printf '   %-24s 単独でも落ちる（本物）\n' "$name"
+      echo "$out" | grep -E '^FAIL|FATAL' | head -2 | sed 's/^/        /'
+    else
+      printf '   %-24s 単独では緑（順番・状態への依存）\n' "$name"
+    fi
+    reap_browsers
+  done
+fi
 
 echo
 echo "-- 時間のかかったテスト(上位10) --"

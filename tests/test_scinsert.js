@@ -302,6 +302,10 @@ const W=require('./lib/wait');
   const cleared=await page.evaluate(()=>!!document.querySelector('#scInsertGhost'));
   rec('仕掛表を閉じたら位置の固定も外れる',cleared===false,String(cleared));
 
+  /* ---- 9. 予定へ足してもスクロール位置が戻らない（§9.357、利用者の指示
+        「D&Dでスケジュール表に追加する際にスクロール位置が戻されてしまう」） ----
+     `renderTimeline()` は `innerHTML=''` で中身を捨てるので、控えておかないと
+     必ず先頭へ飛ぶ。1件足すたびに先頭へ戻ると、次の1件を探し直すことになる。 */
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
  finally{

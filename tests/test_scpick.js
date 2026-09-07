@@ -66,6 +66,32 @@ let b=null;
   await page.waitForSelector('#grid tbody tr .plan-select-checkbox',{timeout:30000});
   await settle();
 
+  /* ---- 8. 予定を描き直しても仕掛一覧のスクロール位置が戻らない
+        （§9.357、利用者の指示「D&Dでスケジュール表に追加する際に
+        スクロール位置が戻されてしまう」） ----
+     1件足すたびに `refreshScheduledLotFilter()` が `renderGrid()` **だけ**を
+     呼ぶ。`load()` の中の `keepGridScroll()` を通らないので控える相手が居らず、
+     毎回先頭へ戻っていた——「次の1件」を探し直すことになり、続けて足す作業が
+     成り立たない。 */
+  const geo=()=>page.evaluate(()=>{const e=document.querySelector('#grid');
+    return e?{top:Math.round(e.scrollTop),max:Math.round(e.scrollHeight-e.clientHeight)}:null});
+  const g0=await geo();
+  if(!g0||g0.max<60){
+   rec('前提: 仕掛一覧がスクロールできる高さにある（⑧）',false,JSON.stringify(g0));
+  }else{
+   await page.evaluate(v=>{document.querySelector('#grid').scrollTop=v},Math.min(200,Math.floor(g0.max/2)));
+   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+   const before=await geo();
+   await page.evaluate(()=>{WL.scheduleView&&WL.scheduleView.render&&WL.scheduleView.render()});
+   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+   const after=await geo();
+   rec('予定を描き直しても仕掛一覧のスクロール位置が戻らない（⑧）',
+       !!(before&&after&&before.top>0&&Math.abs(after.top-before.top)<=2),
+       JSON.stringify({before,after}));
+  }
+
+
   /* ---- 0) 入れる側（§9.5・§9.10）: チェックで複数選ぶ → まとめて投入 ----
      ここで作った行を、そのまま外す側の題材にする。**既存の行は触らない。** */
   const had=new Set(await page.evaluate(()=>[...document.querySelectorAll('.sc-row-line')].map(r=>r.dataset.id)));

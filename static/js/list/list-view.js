@@ -1879,6 +1879,13 @@ function renderGrid(){
     置き換えるため、load()側に置くと絞り込みを使ったときだけ測れなくなる
     (§9.88と同じ落とし穴)。renderGridは両方の経路が必ず通る。 */
  const _t0=performance.now();
+ /* **描き直しで先頭へ飛ばさない**（§9.357、利用者の指示「D&Dでスケジュール表へ
+    追加する際にスクロール位置が戻されてしまう」）。スケジュール画面は1件足すたびに
+    `refreshScheduledLotFilter()` から**この関数だけ**を呼ぶ——`load()` の中の
+    `keepGridScroll()` を通らないので、控える相手が居らず毎回先頭へ戻っていた。
+    「次の1件」を探し直すことになり、続けて足す作業が成り立たない。
+    戻すのは行を並べ終えてから（`applyPendingScroll()`・§9.95）。 */
+ keepGridScroll();
  try{return renderGridInner()}
  finally{noteRenderTime(performance.now()-_t0);renderLoadChip();runListHooks('grid')}
 }
