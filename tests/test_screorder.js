@@ -4,7 +4,33 @@
 const {run}=require('./lib/harness.js');
 const setMode=async m=>{await fetch('http://127.0.0.1:5029/api/access-mode',
  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
+/* 「作業中の行」は**自分で置く**（§9.351）。以前は `test_startwork` が残した実績に
+   頼っており、あちらが後片付けするようになった時点で**単独でも通しでも落ちる**ように
+   なった（判定は「作業中の行が在って、かつドラッグ不可」なので、行が無いと落ちる）。
+   予定に無いロット番号を使う——計画外実績（§9.33）として「作業中」の行が1本出る。 */
+const RO_ID='ro-running';
+const seedRunning=async()=>{
+ const payload={basic:{lotNo:'L0077',castingNo:'C077',mfgMaterial:'A5052',mfgTemper:'H34',
+                       purposeName:'一般用材',inspectionNo:'K0077'},
+                settings:{registeredEquipment:'テスト設備A',operator:'田中'},
+                workTime:{startAt:new Date(Date.now()-45*60000).toISOString(),endAt:null}};
+ /* **書き込みは編集モードでしか通らない**（この網は schedule モードで動く）。
+    置いてから schedule へ戻す——ここを忘れると POST が黙って弾かれ、
+    「作業中の行が無い」で落ちる（実際に踏んだ）。 */
+ await setMode('edit');
+ const r=await fetch('http://127.0.0.1:5029/api/measurement/backup',{method:'POST',
+  headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({id:RO_ID,equipment:'テスト設備A',lotNo:'L0077',inspectionNo:'K0077',
+    castingNo:'C077',status:'編集中',codec:'json-full-v32',payload:JSON.stringify(payload)})});
+ if(!r.ok)console.log('!! 作業中の実績を置けなかった: '+r.status);
+};
+const dropRunning=async()=>{
+ await setMode('edit');
+ await fetch('http://127.0.0.1:5029/api/measurement/backup/delete',{method:'POST',
+  headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[RO_ID]})}).catch(()=>{});
+};
 run('test_screorder: 現場段取りの並べ替え',async({page,rec,W,idle,paint})=>{
+ await seedRunning();
  let reorderBody=null;
  page.on('request',r=>{if(r.url().includes('/api/schedule/plan/reorder'))reorderBody=r.postData()});
  await setMode('schedule');
@@ -88,5 +114,7 @@ run('test_screorder: 現場段取りの並べ替え',async({page,rec,W,idle,pain
    await fetch('/api/schedule/plan/update',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({id:Number(id),fixedStart:'',user_id:'test'})});
   },lockTargetId).catch(()=>{});
+  /* 自分で置いた実績は自分で消す（§9.351）——残すと後続が「作業中」を数える。 */
+  await dropRunning();
  }
 },{mode:'schedule'});
