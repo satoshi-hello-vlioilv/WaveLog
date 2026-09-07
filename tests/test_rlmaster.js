@@ -251,6 +251,15 @@ let b=null;
  }catch(e){
   console.log('FATAL: '+(e&&e.stack||e));process.exitCode=1;
  }finally{
+  /* **後片付け**（§9.360）: 画面を触ると、その帳票・一覧の列レイアウトが
+     保存される。**触った網は自分で消す**——残すと、単独で回したときに
+     自分のDBを汚し、通しでは「共有状態を残した本」の報告がうるさくなって
+     本物の置き土産が埋もれる（§9.284 の`list:`が積み上がる形）。 */
+  /* 自前の`clearLayout()`は`report:<設備>`を消す。**`report:共通`は別の対象**で
+     残っていた（§9.360で実測 +24）ので、こちらも消す。 */
+  try{await post('/api/column-layout-master',{target:'report:共通',clear:true,
+    order:[],hidden:[],widths:{},names:{},formats:{},rules:{},formulas:{},
+    locks:[],sorts:{},user_id:'tests'})}catch(_){}
   /* **モードは必ず戻す**（同じ群の後続テストは編集モードで走る）。 */
   try{await post('/api/access-mode',{mode:'edit'})}catch(e){}
   try{await clearLayout()}catch(e){}

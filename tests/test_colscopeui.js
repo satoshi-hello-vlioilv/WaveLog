@@ -15,6 +15,7 @@
        ——同じ名前の紙を2人が刷って中身が違う、が起きるため
    ============================================================ */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+const {clearLayout}=require('./lib/harness.js');   // 後片付け（§9.360）
 const B='http://127.0.0.1:5029';
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
@@ -197,6 +198,9 @@ async function cleanup(){
   console.log('FATAL '+(e&&e.message||e));R.push({n:'FATAL',ok:false,d:String(e&&e.message||e)});
  }finally{
   await cleanup().catch(()=>{});
+  /* **`cleanup()`のあとで消す**（§9.360）。あちらは「みんなのもの」へ戻す
+     ために書き込むので、先に消しても37行が復活していた（実測）。 */
+  try{await clearLayout(TARGET)}catch(_){}
   if(b)await b.close();
  }
  const ng=R.filter(x=>!x.ok);

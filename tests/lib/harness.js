@@ -62,4 +62,17 @@ async function run(title,body,opts={}){
  ng.forEach(x=>console.log(' -',x.n,x.d||''));
  process.exit(fatal?2:(ng.length?1:0));
 }
-module.exports={run,B};
+/* 後片付け: 触った一覧の列レイアウトを白紙へ戻す（§9.360 の追補）。
+   **画面の列を触るとその一覧のレイアウトが保存される**ので、触った網は
+   自分で消す。通しはランナーがマスタを丸ごと戻すので実害は出ないが、
+   残すと①単独で回したとき自分のDBを汚し、②「共有状態を残した本」の
+   報告がうるさくなって**本物の置き土産が埋もれる**。
+   payload は `run_all.sh` の `resetcontent` と同じ形（送っていない設定だけが
+   生き延びるのを防ぐため `clear:true` を必ず付ける・§9.212 ②）。 */
+async function clearLayout(target,userId='test'){
+ await fetch(B+'/api/column-layout-master',{method:'POST',
+   headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({target,clear:true,order:[],hidden:[],widths:{},names:{},
+     formats:{},rules:{},formulas:{},locks:[],sorts:{},user_id:userId})}).catch(()=>{});
+}
+module.exports={run,B,clearLayout};

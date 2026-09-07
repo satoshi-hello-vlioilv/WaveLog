@@ -1,4 +1,5 @@
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+const {clearLayout}=require('./lib/harness.js');   // 後片付け（§9.360）
 let b=null;
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
@@ -125,6 +126,10 @@ let b=null;
  rec('サイドバーで仕掛一覧へ移ると分割バー・スケジュールパネルが残らない',
    !leaked.scMode&&!leaked.split&&!leaked.divider&&!leaked.wrap&&leaked.panelHidden===true,JSON.stringify(leaked));
 
+ /* **後片付け**（§9.360）: 画面を触るとその帳票・一覧の列レイアウトが
+    保存される。**触った網は自分で消す**——残すと単独で回したとき自分の
+    DBを汚し、通しでは報告がうるさくなって本物の置き土産が埋もれる。 */
+ try{await clearLayout('timeline:テスト設備A')}catch(_){}
  console.log('\n=== SUMMARY ===');
  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
  f.forEach(x=>console.log(' -',x.n,x.d||''));
