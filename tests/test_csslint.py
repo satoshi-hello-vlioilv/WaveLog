@@ -324,13 +324,20 @@ def _on_rules(text):
     return out
 
 
+# 束ねない族（§9.353 追補）。**値が同じでも、束ねると規則の位置が変わる**——元は
+# component 層の自分の場所に居て「後ろの規則に上書きされる」前提だったものが、state 層へ
+# 移ると上書きされなくなる。カスタム色（`--opf-hue` 等）で塗り分ける族がそれで、実際に
+# `test_opblanktint` が「カードの地が別の色になった」で落ちた。**理由が書けるものだけ**。
+_SKIP_PREFIX = ('.opf-', '.op-btint', '.op-look-', '.fc-alert-color', '.sc-row-cat', '.sc-row-line',
+                '.col-head-menu')
 _state_css = re.sub(r'/\*[\s\S]*?\*/', '', (CSS_DIR / '90-state.css').read_text(encoding='utf-8'))
 _bundle_sels = {sel for sel, ds in _on_rules(_state_css) if ds in _BUNDLED}
 _dup = []
 for _n in CSS_ORDER:
     _txt = re.sub(r'/\*[\s\S]*?\*/', '', (CSS_DIR / _n).read_text(encoding='utf-8'))
     for _sel, _ds in _on_rules(_txt):
-        if _ds in _BUNDLED and _sel not in _bundle_sels:
+        if _ds in _BUNDLED and _sel not in _bundle_sels \
+                and not any(p.strip().startswith(_SKIP_PREFIX) for p in _sel.split(',')):
             _dup.append(f'{_n} {_sel[:50]}')
 rec('選ばれた札の見た目を族が自前で書いていない（束ねた規則へセレクタを足す・§9.353）',
     not _dup, '; '.join(_dup[:5]) or f'束ねた型 {len(_BUNDLED)}・束ね規則 {len(_bundle_sels)}本')

@@ -1750,6 +1750,7 @@
   border:1px solid var(--line-mid);border-radius:var(--radius-xs);
   background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);font-weight:700;cursor:pointer;
 }
+.op-look-btn.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
 
 /* ================================================================
    §9.223 ①: 構成チェック（利用者の指示）

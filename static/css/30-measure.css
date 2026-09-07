@@ -2735,6 +2735,9 @@ input.numeric-input:focus::-webkit-inner-spin-button,input.numeric-input:hover::
   border:1px solid var(--line-strong);background:var(--surface);
 }
 .opf-radio-btn:hover .opf-dot{border-color:var(--teal)}
+/* 見本の絵と同じ「丸ぽち＋濃い色の文字」（§9.229 ②）。太字は足さない
+   ——丸ぽちと色で2つ、そこへ太さを重ねると選んだ行だけ幅が変わる。 */
+.opf-radio-btn.is-on{color:var(--teal-dark)}
 .opf-radio-btn.is-on .opf-dot{
   border-color:var(--teal);
   box-shadow:inset 0 0 0 4px var(--teal);
@@ -3065,6 +3068,9 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
    「teal枠＋pale面」だったので、載せただけで選ばれたように見え、
    どれが選択中なのか分からなくなっていた。 */
 .opf-card-btn:hover{border-color:var(--line-mid);background:var(--surface-2)}
+/* 見本の絵と同じ「teal枠＋淡い面＋濃い文字」（§9.229 ②）。太字は足さない
+   ——枠と面で1つ、文字色で1つ。 */
+.opf-card-btn.is-on{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
 .opf-btn-note{display:block;color:var(--muted);font-size:var(--fs-micro);font-weight:600;
   line-height:1.3;white-space:normal}
 .opf-card-btn.is-on .opf-btn-note{color:var(--ink-3)}
@@ -3426,6 +3432,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
   font-size:var(--fs-sm);font-weight:700;cursor:pointer;
 }
 .opf-quick-btn:hover{border-color:var(--teal);color:var(--teal-dark)}
+.opf-quick-btn.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
 .opf-oneline{display:none}   /* 器は要らない（素の欄がそのまま1行） */
 .opf-plain{display:none}     /* 素のプルダウン（意匠だけが効く） */
 
@@ -3464,6 +3471,7 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
   background:var(--opf-hue,var(--teal));border-color:var(--opf-hue,var(--teal));
   color:#fff;font-weight:700;
 }
+.opf-stage-btn.is-on .opf-stage-no{color:#fff}
 .opf-stage-scale{color:var(--ink-3);font-size:var(--fs-micro)}
 .opf-stage-scale>b{color:var(--opf-hue-dark,var(--teal-dark));font-weight:700}
 /* --- 入切: 1つのスイッチ。**状態は文字でも出す**（色だけで伝えない・§3） --- */

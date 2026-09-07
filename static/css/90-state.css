@@ -528,7 +528,7 @@ body.sc-mode #headerContextSource{display:none}
      ここは `@layer state`。component 層のどの規則よりも後に効く。
      ============================================================ */
 
-  /* 濃い面（縁つき）（23族） */
+  /* 濃い面（縁つき）（21族） */
   #reportArrange.is-on,
   .ac-chip.is-on,
   .db-presets button.active,
@@ -540,11 +540,9 @@ body.sc-mode #headerContextSource{display:none}
   .mm-cd-tab.active,
   .mm-more.is-on,
   .nl-win .nl-span.is-on,
-  .op-look-btn.is-on,
   .op-mini.is-on,
   .op-seg button.is-on, .op-toggle.is-on, .op-when button.is-on,
   .op-upad-cell.is-on,
-  .opf-quick-btn.is-on,
   .os-pv-seg button.is-on,
   .product-length-tabs button.active,
   .rp-bar-btn.is-on,
@@ -579,10 +577,9 @@ body.sc-mode #headerContextSource{display:none}
   .op-menu button.is-on,
   .rly-grid-pick>button.is-on{background:var(--nav);color:#fff}
 
-  /* 淡い面（4族） */
+  /* 淡い面（3族） */
   .fc-alert-mode.is-on,
   .mm-card-opt.is-on,
-  .opf-card-btn.is-on,
   .record-scope-btn.is-on{background:var(--pale);border-color:var(--teal);color:var(--teal-dark)}
 
   /* 淡い面（字は各自）（3族） */
@@ -590,19 +587,17 @@ body.sc-mode #headerContextSource{display:none}
   .sp-pat.is-on,
   .sp-pv-tab.is-on{background:var(--pale);border-color:var(--teal)}
 
-  /* 濃い面の中の字（6族） */
+  /* 濃い面の中の字（5族） */
   .fb-cat.is-on>i,
   .oc-group.is-on>b, .oc-group.is-on .oc-group-meta, .oc-group.is-on .oc-group-use,
-  .opf-stage-btn.is-on .opf-stage-no,
   .rly-paper.is-on>b, .rly-paper.is-on .rly-paper-meta, .rly-paper.is-on .rly-paper-gone,
   .shift-eq-tag.is-on>i,
   .shift-list-item.active b, .shift-list-item.active small{color:#fff}
 
-  /* 淡い面の中の字（6族） */
+  /* 淡い面の中の字（5族） */
   .mm-card-opt.is-on>small,
   .mm-tab.is-on .mm-tab-sum,
   .nl-win .nl-choice.is-on>b,
-  .opf-radio-btn.is-on,
   .record-scope-btn.is-on>i,
   .sc-view-sec.active>span{color:var(--teal-dark)}
 }
