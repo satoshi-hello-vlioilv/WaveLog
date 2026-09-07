@@ -723,8 +723,23 @@ run('test_scprint: 作業予定表の印刷（§9.115／§9.235）',async({page,
   rec('分割ありの親を予定へ入れられる',added&&!!pid);
 
   const noKids=await build({includeDone:true,pageByDate:false,includeChildren:false});
-  rec('既定（載せない）では子ロットの行が出ない',noKids.childRows===0,String(noKids.childRows));
+  rec('畳んでいる子ロットは、設定を入れなければ出ない',noKids.childRows===0,String(noKids.childRows));
   await clear();
+
+  /* **画面で開いている子ロットは、設定を入れなくても紙に出る**（§9.357、利用者の
+     指摘「子ロット情報が展開状態でも印刷一覧にのってこない」）。紙は画面の見た目が
+     正（§9.237）——同じ画面を見ているつもりで、刷ると中身が違うのが一番困る。
+     開閉は端末に覚える（`scChildOpenV1`）ので、そこへ親のidを入れて開いた状態を作る。 */
+  const openedKids=await (async()=>{
+   const keep=await page.evaluate(()=>localStorage.getItem('scChildOpenV1'));
+   await page.evaluate(id=>localStorage.setItem('scChildOpenV1',JSON.stringify([String(id)])),pid);
+   const r=await build({includeDone:true,pageByDate:false,includeChildren:false});
+   await clear();
+   await page.evaluate(v=>{v==null?localStorage.removeItem('scChildOpenV1'):localStorage.setItem('scChildOpenV1',v)},keep);
+   return r;
+  })();
+  rec('画面で開いている子ロットは、設定を入れなくても紙に出る',
+      openedKids.childRows===2,String(openedKids.childRows));
 
   const withKids=await build({includeDone:true,pageByDate:false,includeChildren:true});
   rec('「載せる」にすると子ロットの行が出る',withKids.childRows===2,String(withKids.childRows));

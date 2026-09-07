@@ -140,6 +140,9 @@
     ——取り直すと画面と紙で件数が食い違い、どちらが正か分からなくなる)。 */
  function buildPages(equipment,entries,opt){
   const view=WL.scheduleView;
+  /* **画面で開いている親**（§9.357）。紙は画面の見た目が正（§9.237）なので、
+     開いている子ロットは何も選ばなくても出す。1回だけ引いて使い回す。 */
+  const openParents=new Set((typeof view?.childOpenIds==='function'?view.childOpenIds():[])||[]);
   const rows=(entries||[]).filter(e=>{
    if(e.parentId!=null)return false;              // 子ロットは主行にしない(§9.235③)——内訳は下で別に付ける
    if(e.__pending)return false;                    // まだサーバーに無いものは刷らない
@@ -175,7 +178,13 @@
       （成り代わりは同期のあいだしか続かない）。 */
    const cells=(typeof view.printRowCells==='function')?view.printRowCells(e):[];
    const allKids=(typeof view.childrenOf==='function')?(view.childrenOf(e.id)||[]):[];
-   const kids=opt.includeChildren?allKids:[];
+   /* **画面で開いている子ロットは、何も選ばなくても紙に出る**（§9.357、利用者の
+      指摘「子ロット情報が展開状態でも印刷一覧にのってこない」）。紙は画面の
+      見た目が正（§9.237）。以前は `includeChildren` だけで決めており、画面で
+      開いていても既定（切）のままだと**紙にだけ出ない**——同じ画面を見ている
+      つもりで、刷ると中身が違った。
+      設定を入れると**畳んでいるぶんも含めて全部**出す。 */
+   const kids=opt.includeChildren?allKids:allKids.filter(()=>openParents.has(String(e.id)));
    /* 行の見せ方（行表示マスタ。§9.198）も紙へ運ぶ（§9.237）——画面で色を
       付けた区分・停止分類が、紙では真っ白では「画面の見た目そのまま」に
       ならない。**判定は画面の1箇所**（`rowStyleOf`）を呼ぶだけ。 */
@@ -985,9 +994,12 @@
                  dayStart?'is-day-start':''].filter(Boolean).join(' ');
    const mainRow=head2+`<tr class="${esc(rowCls)}" data-row="${i}">`
      +`${cellsOf(item,from+i,cols)}</tr>`;
-   /* 子ロットの内訳(§9.235③)。**「載せる」を選んだときだけ**——分割の
-      無いロットが大半の現場では、内訳が常に付くと紙が長くなりすぎる。 */
-   const kidRows=(opt.includeChildren&&item.kids&&item.kids.length)
+   /* 子ロットの内訳(§9.235③)。**載せるかどうかは `buildPages` が決めて
+      `item.kids` に入れてある**（画面で開いているぶん、または設定が入なら全部。
+      §9.357）——ここで `includeChildren` をもう一度見ると、**決めた結果を
+      出力側が握り潰す**（実際にそうなっていて、開いている子ロットが紙に
+      出なかった）。**同じ判定を2箇所に置かない**（§CLAUDE 8）。 */
+   const kidRows=(item.kids&&item.kids.length)
      ?item.kids.map(k=>childRowHtml(k,cols,i)).join(''):'';
    return mainRow+kidRows;
   }).join('')
@@ -1535,7 +1547,7 @@
       facts.equipments>1?'':(facts.equipments?'この画面に設備が1台しかありません':'設備の一覧を読めていません'))}
    ${cb(pref,'includeDone','完了・取消も載せる','ふだんは載せません（これから流すものだけ配るため）',
       (facts.unknown||facts.doneCount>0)?'':'この設備に完了・取消の予定がありません')}
-   ${cb(pref,'includeChildren','分割後の子ロットの情報も載せる','親の下に「└ 子ロット番号・幅・条数・公差」を差し込みます',
+   ${cb(pref,'includeChildren','畳んでいる子ロットも載せる','画面で開いている子ロットは、ここを切にしていても出ます（紙は画面の見た目が正）。入にすると、畳んでいるぶんも含めて全部の子ロットを親の下へ差し込みます',
       (facts.unknown||facts.childCount>0)?'':'この設備の予定に、分割後の子ロットがありません')}
    ${cb(pref,'useGroups',
       facts.grouped?`画面のまとめ（${facts.groupLabel}）で見出しを入れる`:'画面のまとめで見出しを入れる',

@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（497件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（499件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -263,10 +263,11 @@
 | 「記録した値」の並べ方は専用の盤が持つ | — | [§9.243](docs/decisions/9.243.md) |
 | 「既定へ戻す」は本当に空へ帰す | — | [§9.243](docs/decisions/9.243.md) |
 
-### 一覧と列（106件）
+### 一覧と列（107件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 一覧を描き直すときはスクロール位置を`renderGrid()`の入口で控える（戻すのは並べ終えてから） | `test_scpick.js` | [§9.357](docs/decisions/9.357.md) |
 | 一覧のJS（`list-view.js`）は閉じてある。外から呼ぶのは`WL.list`の17個。`typeof`の判定も名前空間で書く | `test_eslint.py` | [§9.355](docs/decisions/9.355.md) |
 | 条件を足す入口はボタン。検索欄の顔をした器を同時に2つ出さない | `test_filter.js` | [§9.345](docs/decisions/9.345.md) |
 | 読み込みの秒数は**遅いときだけ**出す。「遅い」の答えは`WL.slowLoadMs`の1箇所。チップを消しても内訳の入口は残す | `test_listcache.js` | [§9.340](docs/decisions/9.340.md) |
@@ -480,10 +481,11 @@
 | 分割ありの親ロットは子ロットをぶら下げて予定へ入る | `test_scsplit.js` | [決まり](docs/decisions/rules-misc.md) |
 | 見積の出どころは4段で、順番を入れ替えないこと | `test_eqstd.py` | [§9.114](docs/decisions/9.114.md) |
 
-### 帳票と紙（88件）
+### 帳票と紙（89件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 紙は画面で開いている子ロットを出す。載せるかどうかを決めるのは`buildPages`の1箇所 | `test_scprint.js` | [§9.357](docs/decisions/9.357.md) |
 | 紙まわり（用紙・`@page`・mm換算・列幅の配分・刷り出し）は`print-core.js`の1本 | `test_printcore.py` | [§9.332](docs/decisions/9.332.md) |
 | ピッチ判定・異常位置判定の欄の見せ方は利用者が選べる | `test_rpdefect.js` | [§9.323](docs/decisions/9.323-1.md) |
 | 作業予定表の印刷は「紙のための別の割り付け」 | `test_scprint.js` | [§9.115](docs/decisions/9.115.md) |
