@@ -519,29 +519,13 @@ let b=null;
       ときだけ間に合わず、**前の置き場のまま測って**落ちていた（実測: 「内部」を
       押したのに `位置:"外下左"` のまま）。見本の `data-opunit` が押した先に
       なるまで待つ——押した結果そのものを見るので、速い機械では待たない。 */
-   /* **押した先で「落ち着く」まで待つ**（§9.360）。押した直後は必ず反映
-      されるが、**マスタの再読み込みが遅れて届くと`renderOpModal()`が走り、
-      編集中の選択が捨てられて保存値へ戻る**（`master-opdata.js`の
-      `loadOpItemMaint`末尾。実測: 単独で3回に1回落ちていた）。
-      製品側の挙動なので網では直さない——**戻ったら押し直し**、一定時間
-      戻らなくなったところで測る。固定待ちではなく「戻らないこと」を見る。 */
-   const stable=async()=>{
-    for(let i=0;i<4;i++){
-     const ok=await W.until(page,a=>{
-      const f=document.getElementById('opPrevField')?.querySelector('.opf');
-      return !!f&&(f.dataset.opunit||'')===a;
-     },at,{ms:8000,what:'見本の単位の置き場が「'+at+'」になる'});
-     if(!ok)return false;
-     const kept=await page.waitForFunction(a=>{
-      const f=document.getElementById('opPrevField')?.querySelector('.opf');
-      return !f||(f.dataset.opunit||'')!==a;       // 戻ったら真
-     },at,{timeout:1200}).then(()=>false).catch(()=>true);   // 戻らなければ真
-     if(kept)return true;
-     await setUnit(at);                            // 戻されたので押し直す
-    }
-    return false;
-   };
-   await stable();
+   /* **待ちは条件で置く**（§9.102）。押した先になるまで待つ。
+      §9.360で一時的に「戻ったら押し直す」を入れていたが、**戻る側を
+      §9.361で直した**ので要らなくなった（凌ぎは原因を直したら外す）。 */
+   await page.waitForFunction(a=>{
+    const f=document.getElementById('opPrevField')?.querySelector('.opf');
+    return !!f&&(f.dataset.opunit||'')===a;
+   },at,{timeout:8000}).catch(()=>{});
    pv[at]=await prev();
   }
   rec('見本の単位は1つだけ（「内部」で二重に出さない）（⑥）',
@@ -550,6 +534,26 @@ let b=null;
   rec('見本の欄が単位を`placeholder`でもう一度出さない（⑥）',
       !!(pv['内部']&&pv['内部'].欄の字.indexOf('mm')<0&&pv['内部'].欄の字.indexOf('MPa')<0),
       JSON.stringify(pv['内部']&&pv['内部'].欄の字));
+  /* ---- 遅れて届いた再読み込みで、選んだ設定を捨てない（§9.361） ----
+     利用者の指摘:「黙って戻るのは問題だし、戻ること自体望んでいないはず」。
+     `opState.items`を丸ごと入れ替えるため、**開いている窓の未保存の変更が
+     消えて**いた（画面上は「変えた約1秒後に元へ戻る」）。**再読み込みを
+     実際に起こして**確かめる——待つのではなくレースそのものを作るので、
+     速い機械でも遅い機械でも同じことを見る。 */
+  await setUnit('内部');
+  await page.waitForFunction(()=>{
+   const f=document.getElementById('opPrevField')?.querySelector('.opf');
+   return !!f&&(f.dataset.opunit||'')==='内部';
+  },null,{timeout:8000}).catch(()=>{});
+  const beforeReload=await page.evaluate(()=>document.getElementById('opPrevField')
+    ?.querySelector('.opf')?.dataset.opunit||'');
+  await page.evaluate(()=>WL.mm.special['op-item'].load(true));
+  const afterReload=await page.evaluate(()=>document.getElementById('opPrevField')
+    ?.querySelector('.opf')?.dataset.opunit||'');
+  rec('遅れて届いた再読み込みで、選んだ単位の置き場が戻らない（§9.361）',
+      beforeReload==='内部'&&afterReload==='内部',
+      `再読み込み前=${beforeReload} / 後=${afterReload}`);
+
   rec('見本の単位は置き場に追従する（内部→外下→外上で実際に動く）（⑥）',
       !!(pv['内部']&&pv['外下左']&&pv['外上左']
          &&pv['外下左'].単位.t>pv['外下左'].欄.t

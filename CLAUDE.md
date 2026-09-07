@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（502件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（503件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -375,7 +375,7 @@
 | 条の設計カードの3点 | `test_splitlive.js` | [§9.221](docs/decisions/9.221.md) |
 | 「どれが仕掛でどれが品質か」はキーでなく`データソースマスタ`の`[役割]` | `test_datasource.py`・`test_dskeylint.py`・`test_dsnav.js` | [決まり](docs/decisions/rules-misc.md) |
 
-### 測定画面（82件）
+### 測定画面（83件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -414,6 +414,7 @@
 | 操業データは「何を記録するか」をマスタが決める | `test_msteps.js`・`test_opdata.py` | [§9.215](docs/decisions/9.215.md) |
 | 選ばせ方（プルダウン/ラジオ/タブ/一覧）は`<select>`を残したまま被せる | — | [§9.218](docs/decisions/9.218.md) |
 | 操業データ項目の設定はモーダルで開く | — | [§9.218](docs/decisions/9.218.md) |
+| 設定窓の未保存の変更は、遅れて届いた再読み込みで捨てない（`opState.dirty`の1件だけ残す） | `test_opunit.js` | [§9.361](docs/decisions/9.361.md) |
 | ③測定データ分析は「板厚・板幅のMIN/MAX」が主役 | `test_msteps.js` | [§9.214](docs/decisions/9.214.md) |
 | 条の図のロット番号は幅で桁数を変える | `test_splitlive.js` | [§9.213](docs/decisions/9.213.md) |
 | 屑幅の片寄せは図の縁を掴んで直せる | — | [§9.167](docs/decisions/9.167.md) |
