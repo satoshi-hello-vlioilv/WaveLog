@@ -519,13 +519,13 @@ let b=null;
       ときだけ間に合わず、**前の置き場のまま測って**落ちていた（実測: 「内部」を
       押したのに `位置:"外下左"` のまま）。見本の `data-opunit` が押した先に
       なるまで待つ——押した結果そのものを見るので、速い機械では待たない。 */
-   /* **待ちは条件で置く**（§9.102）。押した先になるまで待つ。
+   /* **待ちは条件で置き、成立しなければ記録に残す**（§9.102・§9.360）。
       §9.360で一時的に「戻ったら押し直す」を入れていたが、**戻る側を
       §9.361で直した**ので要らなくなった（凌ぎは原因を直したら外す）。 */
-   await page.waitForFunction(a=>{
+   await W.until(page,a=>{
     const f=document.getElementById('opPrevField')?.querySelector('.opf');
     return !!f&&(f.dataset.opunit||'')===a;
-   },at,{timeout:8000}).catch(()=>{});
+   },at,{ms:8000,what:'見本の単位の置き場が「'+at+'」になる'});
    pv[at]=await prev();
   }
   rec('見本の単位は1つだけ（「内部」で二重に出さない）（⑥）',
@@ -541,10 +541,10 @@ let b=null;
      実際に起こして**確かめる——待つのではなくレースそのものを作るので、
      速い機械でも遅い機械でも同じことを見る。 */
   await setUnit('内部');
-  await page.waitForFunction(()=>{
+  await W.until(page,()=>{
    const f=document.getElementById('opPrevField')?.querySelector('.opf');
    return !!f&&(f.dataset.opunit||'')==='内部';
-  },null,{timeout:8000}).catch(()=>{});
+  },null,{ms:8000,what:'見本の単位の置き場が「内部」になる'});
   const beforeReload=await page.evaluate(()=>document.getElementById('opPrevField')
     ?.querySelector('.opf')?.dataset.opunit||'');
   await page.evaluate(()=>WL.mm.special['op-item'].load(true));
