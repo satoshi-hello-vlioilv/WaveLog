@@ -1019,7 +1019,7 @@
 
     ---------- §9.241 ④（利用者の報告「登録されたロールマスタを読めていない」）
     ここは**2つ同時に間違えていて、しかも例外が出ない**形だった:
-     ① `WL.ttlCache` は **位置引数**（`ttlCache(ttlMs,maxEntries)`）なのに
+     ① `WL.ttlCache` は **位置引数**（`WL.base.ttlCache(ttlMs,maxEntries)`）なのに
         オブジェクトを渡していた
      ② 「無ければ取りに行く」のは **`fetch(key,loader)`**。`get(key)` は
         **控えを見るだけ**で、第2引数は捨てられる

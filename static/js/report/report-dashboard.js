@@ -504,7 +504,7 @@
       (ボタンの中へinputをネストするのはアクセシビリティ・仕様上避ける)。 */
    const row=document.createElement('div');row.className='rp-lot-row'+(x.id===rpState.selectedId?' active':'');
    const checked=rpSelectedIds.has(x.id);
-   row.innerHTML=`<label class="rp-lot-check" title="一括印刷の対象に含めます" onclick="event.stopPropagation()"><input type="checkbox"${checked?' checked':''}></label><button type="button" class="rp-lot-main-btn"><span class="rp-lot-main"><b title="${esc(x.basic?.lotNo||x.id)}">${esc(x.basic?.lotNo||x.id)}</b><em class="rp-status-badge ${statusClass(x.status)}">${esc(statusLabel(x.status))}</em></span><span class="rp-lot-sub" title="${esc(equipment)}">${esc(equipment)}・${esc(x.basic?.inspectionNo||'-')}</span><span class="rp-lot-date">${esc(fmtDT(x.updatedAt))}</span></button>`;
+   row.innerHTML=`<label class="rp-lot-check" title="一括印刷の対象に含めます" onclick="event.stopPropagation()"><input type="checkbox"${checked?' checked':''}></label><button type="button" class="rp-lot-main-btn"><span class="rp-lot-main"><b title="${esc(x.basic?.lotNo||x.id)}">${esc(x.basic?.lotNo||x.id)}</b><em class="rp-status-badge ${WL.base.statusClass(x.status)}">${esc(WL.base.statusLabel(x.status))}</em></span><span class="rp-lot-sub" title="${esc(equipment)}">${esc(equipment)}・${esc(x.basic?.inspectionNo||'-')}</span><span class="rp-lot-date">${esc(fmtDT(x.updatedAt))}</span></button>`;
    row.querySelector('.rp-lot-check input').onchange=e=>{
     if(e.target.checked)rpSelectedIds.add(x.id);else rpSelectedIds.delete(x.id);
     row.classList.toggle('checked',e.target.checked);updateBulkPrintButton();
@@ -1239,9 +1239,9 @@
   {k:RP_DEFECT_KEY,span:12,html:(x,opt)=>defectSection(x,opt)},
   {k:RP_DEFECT_ROLL_KEY,span:6,html:(x,opt)=>defectRollSection(x,opt)},
   {k:'作業時間',span:6,html:x=>{const w=x.workTime||{};
-   const dur=w.startAt&&w.endAt?formatDuration(new Date(w.endAt)-new Date(w.startAt)):(w.startAt?'作業中':'未計測');
+   const dur=w.startAt&&w.endAt?WL.base.formatDuration(new Date(w.endAt)-new Date(w.startAt)):(w.startAt?'作業中':'未計測');
    return reportSection('作業時間',[['開始時刻',WL.measureView.formatWorkTime(w.startAt)],['終了時刻',WL.measureView.formatWorkTime(w.endAt)],['実働時間',dur]])}},
-  {k:'登録状態',span:6,html:x=>reportSection('登録状態',[['状態',statusLabel(x.status)],['更新日時',fmtDT(x.updatedAt)],['NG回数',x.settings?.ngCount||0]])},
+  {k:'登録状態',span:6,html:x=>reportSection('登録状態',[['状態',WL.base.statusLabel(x.status)],['更新日時',fmtDT(x.updatedAt)],['NG回数',x.settings?.ngCount||0]])},
   /* 測定値の統計（§9.244、利用者の指示「異幅分割の複数ロットが混在する
      パターンにおいてもロットごとに統計データが出てくるように」）。
      **既定は出さない**——今まで無かった塊なので、置いていない現場の紙を
@@ -1370,7 +1370,7 @@
     マスタで組み替えられる**。 */
  function rpCalc(x){
   const s=x.settings||{},w=x.workTime||{};
-  const dur=(w.startAt&&w.endAt)?formatDuration(new Date(w.endAt)-new Date(w.startAt))
+  const dur=(w.startAt&&w.endAt)?WL.base.formatDuration(new Date(w.endAt)-new Date(w.startAt))
     :(w.startAt?'作業中':'未計測');
   return {
    equipment:s.registeredEquipment||x.registeredEquipment||(x.snapshot||{}).registeredEquipment||'-',
@@ -1379,7 +1379,7 @@
    coilStop:s.coilStop||(s.innerTape===undefined?'':(s.innerTape?'内巻両面テープ':'指定なし')),
    crewSize:(s.crewSize&&s.crewSize!=='-')?`${s.crewSize}名班`:'-',
    workStart:WL.measureView.formatWorkTime(w.startAt),workEnd:WL.measureView.formatWorkTime(w.endAt),workDuration:dur,
-   status:statusLabel(x.status),updatedAt:fmtDT(x.updatedAt),
+   status:WL.base.statusLabel(x.status),updatedAt:fmtDT(x.updatedAt),
   };
  }
  /* ---------- 測定した値の統計（§9.242 ⑨、利用者の指示） ----------
@@ -1410,7 +1410,7 @@
   const key=RP_STAT_KEYS[item];
   if(key){
    const rows=((x&&x.measurements)||{})[key]||[];
-   const slots=Math.min(LENGTH_SLOTS,vertical+1);
+   const slots=Math.min(WL.base.LENGTH_SLOTS,vertical+1);
    const n=key==='thickness'?3:horizontal;
    for(let li=0;li<slots;li++){
     const row=rows[li]||[];
@@ -1487,7 +1487,7 @@
   if(lots.length){
    const s=(x&&x.settings)||{};
    const vertical=Math.max(1,Math.min(9,Number(s.verticalCount)||1));
-   const slots=Math.min(LENGTH_SLOTS,vertical+1);
+   const slots=Math.min(WL.base.LENGTH_SLOTS,vertical+1);
    out.byLot=lots.map(L=>{
     const bag={lot:L.lot,from:L.from,to:L.to,count:L.count};
     items.forEach(item=>{
@@ -2373,7 +2373,7 @@
      <span class="rp-head-fact"><small>作業年月日</small><b>${esc(workDay.text)}</b>${workDay.note?`<i>${esc(workDay.note)}</i>`:''}</span>
      <h2 class="rp-head-fact"><small>ロット番号</small><b>${esc(b.lotNo||x.id)}</b></h2>
     </div>
-    <div class="rp-report-head-meta"><span class="rp-status-badge ${statusClass(x.status)}">${esc(statusLabel(x.status))}</span><span>帳票作成: ${esc(fmtDT(new Date().toISOString()))}</span></div>
+    <div class="rp-report-head-meta"><span class="rp-status-badge ${WL.base.statusClass(x.status)}">${esc(WL.base.statusLabel(x.status))}</span><span>帳票作成: ${esc(fmtDT(new Date().toISOString()))}</span></div>
    </div>
    ${reportBlocksHtml(x,arranging)}
   `;
@@ -4604,7 +4604,7 @@
    rpClosePaletteHelp();
  }
  function rpPalHelpKey(e){
-  if(typeof escClosesModal==='function'?escClosesModal(e):e.key==='Escape')rpClosePaletteHelp();
+  if(typeof WL.base.escClosesModal==='function'?WL.base.escClosesModal(e):e.key==='Escape')rpClosePaletteHelp();
  }
  function rpOpenPaletteHelp(anchor){
   rpClosePaletteHelp();
@@ -4745,7 +4745,7 @@
   rpState.selectedId=id;renderLotList();
   const x=rpState.items.find(i=>i.id===id);if(!x)return;
   /* バーは1層に詰めているため、左の一覧で選択中が分かることを前提に短く出す。 */
-  $id('reportSelectedTitle').textContent=[x.basic?.lotNo||x.id,x.basic?.inspectionNo,statusLabel(x.status)].filter(Boolean).join(' / ');
+  $id('reportSelectedTitle').textContent=[x.basic?.lotNo||x.id,x.basic?.inspectionNo,WL.base.statusLabel(x.status)].filter(Boolean).join(' / ');
   $id('reportPrint').disabled=false;$id('reportPdf').disabled=false;
   renderReport(x);
   fitPage();fitWidth();
@@ -5721,7 +5721,7 @@
    <tbody>${recent.map(r=>`<tr>
     <th class="db-lot">${esc(r.lotNo||'-')}</th>
     <td>${esc(r.equipment||'-')}</td>
-    <td><span class="db-state-badge ${r.status==='完了'?'done':(r.status==='測定値NG'?'ng':'editing')}">${esc(statusShortLabel(r.status))}</span></td>
+    <td><span class="db-state-badge ${r.status==='完了'?'done':(r.status==='測定値NG'?'ng':'editing')}">${esc(WL.base.statusShortLabel(r.status))}</span></td>
     <td>${r.durationMin!=null?fmt(r.durationMin)+' 分':'-'}</td>
     <td>${esc(r.date.toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}))}</td>
    </tr>`).join('')}</tbody></table>`

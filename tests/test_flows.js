@@ -145,7 +145,7 @@ let b=null;
     const kept=await page.evaluate(()=>!document.querySelector('#measureModal')?.hidden);
     rec('測定画面: 未保存なら画面を移っても閉じない',kept,`hidden=${!kept}`);
     // 後始末: 破棄して閉じる
-    await page.evaluate(()=>{if(typeof measureDirty!=='undefined')measureDirty=false;
+    await page.evaluate(()=>{if(typeof WL.base.measureDirty!=='undefined')WL.base.measureDirty=false;
      const m=document.querySelector('#measureModal');if(m)m.hidden=true});
    }
   }else rec('測定画面: 予定から開始できる',false,'開始ボタンのある行が無い');

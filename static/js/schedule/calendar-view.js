@@ -232,7 +232,7 @@
    const w=x.weight;
    const weightText=w?`${fmtKg(w.workKg)}kg`:'<span class="cal-blank">計算対象外</span>';
    return `<div class="cal-lot-row">
-    <div class="cal-lot-main"><span class="rp-status-badge ${statusClass(x.status)}">${esc(statusLabel(x.status))}</span><b class="cal-lot-no" data-lot-id="${esc(x.id)}" title="クリックで帳票プレビューを開きます">${esc(x.lotNo)}</b></div>
+    <div class="cal-lot-main"><span class="rp-status-badge ${WL.base.statusClass(x.status)}">${esc(WL.base.statusLabel(x.status))}</span><b class="cal-lot-no" data-lot-id="${esc(x.id)}" title="クリックで帳票プレビューを開きます">${esc(x.lotNo)}</b></div>
     <div class="cal-lot-sub"><span>${esc(x.purposeName)}</span><span>${esc(x.equipment)}</span><span>${esc(crewLabel(x.crewSize))} / ${esc(x.operator)}</span></div>
     <div class="cal-lot-weight">${weightText}</div>
    </div>`;

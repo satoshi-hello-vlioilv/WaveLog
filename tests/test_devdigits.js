@@ -187,7 +187,7 @@ let b=null;
   await page.evaluate(()=>{const el=document.getElementById('deviceInput');
     el.value='DT110+1202.00';WL.measureInput.processDeviceInput('DT110+1202.00')});
   /* 落ち着くまで待つ。**時間で決め打ちにしない**（§9.102）。 */
-  await page.waitForFunction(()=>!measureDirty&&/保存済み|再送します/
+  await page.waitForFunction(()=>!WL.base.measureDirty&&/保存済み|再送します/
     .test(document.getElementById('localState').textContent||''),null,{timeout:30000}).catch(()=>{});
   await page.waitForTimeout(600);
   const late=await page.evaluate(async()=>{
@@ -195,7 +195,7 @@ let b=null;
    const saved=await WL.records.reliableGet(S.measure.id).catch(()=>null);
    const row=((saved&&saved.measurements&&saved.measurements.width)||[])[lengthIndex()]||[];
    return {画面:(S.measure.measurements.width[lengthIndex()]||[]).slice(0,3),
-     端末内:row.slice(0,3),旗:measureDirty,
+     端末内:row.slice(0,3),旗:WL.base.measureDirty,
      バッジ:document.getElementById('localState').textContent||''};
   });
   /* **端末内の記録まで見る**（画面の配列だけを見る網は、どこへも書いて

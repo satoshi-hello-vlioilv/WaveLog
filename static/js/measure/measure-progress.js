@@ -77,7 +77,7 @@ function countsOf(m){
  const st=m.settings||{};
  const vertical=Math.max(1,Math.min(9,Number(st.verticalCount)||1));
  const horizontal=Math.max(1,Math.min(40,Number(st.horizontalCount)||1));
- return{vertical,horizontal,lengthSlots:Math.min(LENGTH_SLOTS,vertical+1)};
+ return{vertical,horizontal,lengthSlots:Math.min(WL.base.LENGTH_SLOTS,vertical+1)};
 }
 
 /* 1項目分の進捗。perLength は丈位置ごとの充足数(length scope のみ)。 */

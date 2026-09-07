@@ -304,8 +304,8 @@
   n.textContent=id||'IDが取れていません';
   b.classList.toggle('is-unknown',!id);
   b.onclick=()=>openMasterMaint('presence');
-  if(!id&&typeof fetchWhoami==='function'){
-   fetchWhoami().then(v=>{if(v){setUserId(v);paintMaintUser()}}).catch(WL.quiet('利用者IDを取れない（この端末の共通の設定として続ける）'));
+  if(!id&&typeof WL.base.fetchWhoami==='function'){
+   WL.base.fetchWhoami().then(v=>{if(v){WL.base.setUserId(v);paintMaintUser()}}).catch(WL.quiet('利用者IDを取れない（この端末の共通の設定として続ける）'));
   }
  }
  /* **打ち込ませない**（§9.276 ③）。取れていないときは、無言で断らずに
@@ -469,7 +469,7 @@
  function onHintOutside(e){
   if(mmHintMenu&&!mmHintMenu.contains(e.target)&&!e.target.closest('#mmHintBadge'))closeHintMenu();
  }
- function onHintKey(e){if(escClosesModal(e))closeHintMenu()}
+ function onHintKey(e){if(WL.base.escClosesModal(e))closeHintMenu()}
  function openHintMenu(anchor){
   closeHintMenu();
   const cur=hintLevel();

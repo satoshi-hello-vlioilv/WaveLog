@@ -871,7 +871,7 @@ WL.openColumnHeaderMenu=openColumnHeaderMenu;
    なので、毎回この関数が全部作り直す。
    マスタ(role='master')は出さない。生テーブルの閲覧は「マスタ管理」画面の
    「テーブル生データ」タブへ統合済みで、入口を1つに絞ってあるため
-   (S.catalogには残るので databaseLabel()/selectDb('MASTER') は動く)。 */
+   (S.catalogには残るので WL.base.databaseLabel()/selectDb('MASTER') は動く)。 */
 const DB_NAV_ICONS={
  /* 役割で選ぶ。キーの綴りに依存させない。 */
  work:'<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
@@ -1138,7 +1138,7 @@ function openTableMenu(anchor){
  menu.className='access-mode-menu hd-table-menu';menu.id='tableMenu';
  menu.setAttribute('role','menu');
  menu.innerHTML='<p class="hd-table-head">表を選ぶ<small>'
-  +`${esc(databaseLabel(S.db))} の中の表 ${list.length}件。ふだんは変える必要はありません</small></p>`
+  +`${esc(WL.base.databaseLabel(S.db))} の中の表 ${list.length}件。ふだんは変える必要はありません</small></p>`
   +list.map(t=>'<button type="button" role="menuitemradio" class="hd-table-pick'
     +(t===S.table?' is-current':'')+`" aria-checked="${t===S.table?'true':'false'}" data-table="${esc(t)}">`
     +'<i class="hd-table-mark" aria-hidden="true"></i>'
@@ -1284,7 +1284,7 @@ function applyTableData(d){
  // ただしスケジュールの分割表示中(body.sc-mode)は、仕掛一覧は作業スケジュール
  // 画面の中の一区画にすぎない。ここで書き換えると、作業スケジュールを見て
  // いるのにヘッダーだけ「仕掛一覧」になる(実際にそうなっていた)。
- if(!document.body.classList.contains('sc-mode'))setHeaderContext(databaseLabel(S.db),info.file_name||'');
+ if(!document.body.classList.contains('sc-mode'))WL.base.setHeaderContext(WL.base.databaseLabel(S.db),info.file_name||'');
  const tn=$('#tableName');if(tn)tn.textContent=S.table||'';
  S.selectedRows.clear();
  /* **当てられなかった並べ替えは黙って捨てない**(§9.187)。設定したのに
@@ -1319,7 +1319,7 @@ async function fetchTableData(key,force){
  ]);
  const hit=force?null:tableCacheGet(key);
  if(hit){await settings;applyTableData(hit.data);updateListFreshness(hit.at);return}
- const label=databaseLabel(S.db),table=S.table||'テーブル';
+ const label=WL.base.databaseLabel(S.db),table=S.table||'テーブル';
  await WL.records.withWaiting({title:`${label}を読み込んでいます`,detail:`テーブル: ${table}`,
    progress:'サーバーが読み出しています'},async(report)=>{
   /* 一覧データの取得も**設定と同時に**始める。描く直前に両方が揃っていれば
@@ -1632,10 +1632,10 @@ async function selectDbCore(k,b){
     (6箇所)で足しており、読み込み順に依存する連鎖になっていた。
     内部からの呼び出し(スケジュールの分割表示)では切り替えない。 */
  if(!WL.isInternalDbSwitch())WL.enterView('list');
- const label=databaseLabel(k);
+ const label=WL.base.databaseLabel(k);
  return WL.records.withWaiting({title:`${label}へ切り替えています`,detail:`接続先を確認しています: ${label}`,
    progress:'テーブル構成を確認しています',step:1},async report=>{
-  try{S.db=k;setActiveNav(k);
+  try{S.db=k;WL.base.setActiveNav(k);
    let result=tablesCache.get(k);
    if(!result){result=await api(`/api/tables?db=${encodeURIComponent(k)}`);rememberTables(k,result)}
    else if(!tablesVerified.has(k)){
@@ -1662,7 +1662,7 @@ async function selectDbCore(k,b){
 /* 表を選ぶ前に足す（フィルタの文脈の入れ替え）は `onBeforeSelectTable`、選んだあとは `onSelect`（§9.352）。 */
 async function selectTable(t,report){await runListHooksAsync('beforeSelectTable',t);const r=await selectTableCore(t,report);runListHooks('select',{table:t});return r}
 async function selectTableCore(t,report){
- S.table=t;S.page=1;WL.listSort.clear();renderTabs();const label=databaseLabel(S.db);
+ S.table=t;S.page=1;WL.listSort.clear();renderTabs();const label=WL.base.databaseLabel(S.db);
  if(report){report({detail:`テーブル: ${t}`,progress:'列情報と一覧データを取得しています',step:2});return load()}
  return WL.records.withWaiting({title:`${label}を読み込んでいます`,detail:`テーブル: ${t}`,
    progress:'列情報と一覧データを取得しています'},()=>load());
@@ -1670,7 +1670,7 @@ async function selectTableCore(t,report){
 /* 一覧の列名は仕掛先DBの生カラム名なので、aliasesの候補名のうち
    実際にS.columnsへ含まれているものを探してロット番号・鋳造番号の
    列を特定する(見つからなければ通常表示のまま)。 */
-function findColumnFor(key){return (aliases[key]||[]).find(n=>S.columns.includes(n))||null}
+function findColumnFor(key){return (WL.base.aliases[key]||[]).find(n=>S.columns.includes(n))||null}
 /* ---------- 列幅の見積り(§9.94) ----------
    `table-layout:fixed`にした以上、**全列に幅を与えるのはこちらの仕事**
    (与えないと等分になり、短い列が間延びし長い列が潰れる)。
@@ -2232,7 +2232,7 @@ function renderGridInner(){
   }
   if(hasLotDsp){
    const lotBtn=tr.querySelector('.grid-lot-link');
-   if(lotBtn)lotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();openLotDsp(pick(r,'lotNo'),castCol?r[castCol]:pick(r,'castingNo'),WL.lotDspTab.get())};
+   if(lotBtn)lotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();WL.base.openLotDsp(pick(r,'lotNo'),castCol?r[castCol]:pick(r,'castingNo'),WL.lotDspTab.get())};
   }
   /* ---------- 子ロットの行(§9.239 ⑤-2) ----------
      **畳んでいる間は作らない**。押した時点で親の直下へ差し込み、

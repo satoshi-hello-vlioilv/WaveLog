@@ -310,11 +310,11 @@
     サーバーからは引けない）。**知らない鍵は黙って捨てない**（§9.204）
     ——`null`を返し、画面は「この版では引けません」と書く。 */
  function lotOf(key){
-  /* `basic`は`aliases`に載せた列しか持たないので、**生の行から**も探す
+  /* `basic`は`WL.base.aliases`に載せた列しか持たないので、**生の行から**も探す
      （§9.160）。どちらも空なら空文字。 */
   try{
-   if(typeof sourceField==='function'&&typeof aliases==='object'&&aliases[key]){
-    const v=sourceField(aliases[key]);
+   if(typeof WL.base.sourceField==='function'&&typeof WL.base.aliases==='object'&&WL.base.aliases[key]){
+    const v=WL.base.sourceField(WL.base.aliases[key]);
     if(String(v==null?'':v).trim()!=='')return String(v).trim();
    }
   }catch(_){WL.quiet.note('仕掛の行から引けない（既定値で続ける）',_)}
@@ -375,7 +375,7 @@
   'meas.endAt':()=>timeOf('endAt'),
   'calc.workDuration':()=>{
    /* **終わっていなければ空欄**（§9.114「空欄は未設定であって0分ではない」）。 */
-   const ms=(typeof durationMs==='function')?durationMs(state()&&S.measure):null;
+   const ms=(typeof WL.base.durationMs==='function')?WL.base.durationMs(state()&&S.measure):null;
    return (ms===null||ms===undefined)?'':String(Math.round(ms/60000));
   },
   'calc.stripCount':()=>{const L=lanesOf();return L&&L.list&&L.list.length?String(L.list.length):''},
@@ -869,7 +869,7 @@
      「－」が出たままになっています」
 
     **空文字だけではない。** 組み込みの選択欄（オペレータ・検査員・
-    板厚/板幅測定器・内径・スプール）の候補は`base.js`の`optionFill()`が
+    板厚/板幅測定器・内径・スプール）の候補は`base.js`の`WL.base.optionFill()`が
     入れており、**先頭へ`-`を1つ足す**——未選択の札の値は`''`ではなく`'-'`。
     `noBlank`の絞り込みが`o.v!==''`しか見ていなかったので、
     **組み込みの欄では一度も効いていなかった**。
@@ -3283,7 +3283,7 @@
  }
  function syncWidgets(){
   /* **候補を入れ直すと「選ばない」の札が戻る**（§9.246 ①）。
-     `WL.records.applyContextChoices()`（`records-store.js`）は`optionFill()`で
+     `WL.records.applyContextChoices()`（`records-store.js`）は`WL.base.optionFill()`で
      `<select>`の中身を丸ごと作り直すので、そのたびに`-`が先頭へ復活する。
      印（`data-op-noblank`）はホスト側に残っているので、ここで当て直す
      ——**この関数は候補を入れ直した直後に必ず呼ばれる**（記録の復元・

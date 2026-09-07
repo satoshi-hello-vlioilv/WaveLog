@@ -1,3 +1,9 @@
+/* **このファイルは閉じている**（§9.359・REVIEW 3-17）——外へ出す面は末尾の
+   2つだけ。①みんなが使う土台（`$`・`esc`・`S`・`api`…）は**素のグローバル
+   のまま明示的に公開**する（`WL.base.$()` と書き換えると2,000箇所以上が
+   読みにくくなるだけで、得るものが無い）。②それ以外は `WL.base` に載せる。
+   ここに載せていない名前は、このファイルの中だけのもの。 */
+(function(){
 "use strict";
 /* base.js: 共有基盤 — グローバル状態(S)・API呼び出し・共通ユーティリティ・
    フィールド別名(aliases)・端末設定(使用設備/ユーザーID)。
@@ -2371,3 +2377,24 @@ const bootGate=(()=>{
 
 /* ---------- WL名前空間への公開(定義は上記) ---------- */
 Object.assign(window.WL,{registerView,enterView,withInternalDbSwitch,isInternalDbSwitch,ttlCache,optionList,mountViewToolbar,syncViewToolbar,boot:bootGate});
+
+/* ============================================================
+   外へ出す面（§9.359・REVIEW 3-17）
+   ① 土台。**今までどおりの短い名前で**、ここから明示的に公開する。呼ぶ側は
+      今までどおり `$('#id')`／`esc(v)` と書ける（実測 `$`1,031・`esc`1,464
+      箇所。名前空間にすると読みにくくなるだけで、衝突は起きようがない
+      ——**このファイルだけが名乗っている**）。
+   ② それ以外は `WL.base`。使う場所が少ない＝土台ではない、の線引き。
+   ここに載せていない名前（131のうち約80）は、このファイルの中だけのもの。
+   ============================================================ */
+window.$=$;window.esc=esc;window.S=S;window.api=api;window.showToast=showToast;window.markDirty=markDirty;window.confirmModal=confirmModal;window.alertModal=alertModal;window.promptModal=promptModal;window.pick=pick;window.setState=setState;window.withUserId=withUserId;window.currentConfiguredEquipment=currentConfiguredEquipment;window.fmtDim=fmtDim;window.lengthIndex=lengthIndex;window.fixedToleranceValue=fixedToleranceValue;window.currentUserId=currentUserId;window.normalizedFieldName=normalizedFieldName;
+WL.base={normalizedLot,durationMs,statusLabel,statusClass,statusShortLabel,aliases,databaseLabel,designCourseValue,actualCourseValue,residualCourseValue,equipmentIsInDesignCourse,escClosesModal,fetchWhoami,fieldFromRows,fixedMeasurementValue,formatDuration,lotKey,measurementDigits,nextPaint,normalizeCourseText,noteMeasureDevice,openLotDsp,optionFill,qualityText,setActiveNav,setHeaderContext,setUserId,sourceField,sourceValue,toHalfWidth,ttlCache,widthSequence,bindTabs,
+ LENGTH_SLOTS,
+ /* `let` の入れ物は **getter** で載せる（値で載せると古い物が固定される）。
+    `measureDirty` は外からも倒す（`records-store` が保存し終えて false に
+    する）ので setter も置く。 */
+ get measureDirty(){return measureDirty},
+ set measureDirty(v){measureDirty=v},
+ get measureEditSeq(){return measureEditSeq},
+};
+})();

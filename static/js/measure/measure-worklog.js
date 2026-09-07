@@ -134,7 +134,7 @@
   const dur=$('#workDuration'),hint=$('#workTimeHint');
   if(dur){
    if(invalid)dur.textContent='終了が開始より前です';
-   else if(hasStart&&hasEnd)dur.textContent=`実作業時間 ${formatDuration(durationMs(S.measure))}`;
+   else if(hasStart&&hasEnd)dur.textContent=`実作業時間 ${WL.base.formatDuration(WL.base.durationMs(S.measure))}`;
    else if(hasStart)dur.textContent='作業中';
    else dur.textContent='未計測';
   }
@@ -276,7 +276,7 @@
    板幅は小数1桁に丸めて比較する。
    ============================================================ */
 (function(){
-  if(typeof $!=='function'||typeof WL.records.idbAll!=='function'||typeof durationMs!=='function')return;
+  if(typeof $!=='function'||typeof WL.records.idbAll!=='function'||typeof WL.base.durationMs!=='function')return;
 
   function avgMeasured(grid,rowLimit,colLimit){
     let sum=0,n=0;const rows=Math.min((grid||[]).length,Math.max(1,rowLimit||0));
@@ -321,7 +321,7 @@
       const p=profileOf(x);
       return p&&profileKey(p)===key;
     });
-    const durations=matches.map(x=>durationMs(x)).filter(ms=>ms!=null&&ms>0).map(ms=>ms/60000);
+    const durations=matches.map(x=>WL.base.durationMs(x)).filter(ms=>ms!=null&&ms>0).map(ms=>ms/60000);
     const result={profile,n:durations.length};
     if(durations.length){
       const avg=durations.reduce((a,v)=>a+v,0)/durations.length;
@@ -329,7 +329,7 @@
     }
     const w=record.workTime||{};
     if(w.startAt&&w.endAt){
-      result.currentMin=durationMs(record)/60000;result.currentLive=false;
+      result.currentMin=WL.base.durationMs(record)/60000;result.currentLive=false;
     }else if(w.startAt){
       result.currentMin=(Date.now()-new Date(w.startAt).getTime())/60000;result.currentLive=true;
     }

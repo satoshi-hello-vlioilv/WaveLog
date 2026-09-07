@@ -2740,8 +2740,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      const d=await api('/api/table?'+q);
      pages=page;total=Number(d.count||0);
      if(!cols){
-      cols={lotCol:(aliases.lotNo||[]).find(n=>(d.columns||[]).includes(n)),
-            resCol:(aliases.residualCourse||[]).find(n=>(d.columns||[]).includes(n))};
+      cols={lotCol:(WL.base.aliases.lotNo||[]).find(n=>(d.columns||[]).includes(n)),
+            resCol:(WL.base.aliases.residualCourse||[]).find(n=>(d.columns||[]).includes(n))};
      }
      const rows=d.rows||[];scanned+=rows.length;
      if(!cols.lotCol||!cols.resCol)break;    // 列が無ければ辿っても意味が無い
@@ -7305,7 +7305,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  // 生カラム名(用途名など)はそのまま、alias名(purposeNameなど)は日本語の
  // 代表名で見せる(利用者にとってはaliasの英字名に馴染みが無いため)。
  function contentItemLabel(k){
-  const names=(typeof aliases!=='undefined'&&aliases[k])||null;
+  const names=(typeof WL.base.aliases!=='undefined'&&WL.base.aliases[k])||null;
   return names&&names.length?names[0]:k;
  }
  function sameItems(a,b){return a.length===b.length&&a.every((x,i)=>x===b[i])}
@@ -7320,14 +7320,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(!detail)return undefined;
   const ok=v=>v!==undefined&&v!==null&&String(v).trim()!=='';
   if(ok(detail[key]))return detail[key];
-  if(typeof aliases==='undefined')return undefined;
-  const names=aliases[key];
+  if(typeof WL.base.aliases==='undefined')return undefined;
+  const names=WL.base.aliases[key];
   if(names){                       // keyがalias名 -> 生カラム名を順に試す
    for(const n of names)if(ok(detail[n]))return detail[n];
    return undefined;
   }
-  for(const ak of Object.keys(aliases)){   // keyが生カラム名 -> alias名を試す
-   if(aliases[ak].includes(key)&&ok(detail[ak]))return detail[ak];
+  for(const ak of Object.keys(WL.base.aliases)){   // keyが生カラム名 -> alias名を試す
+   if(WL.base.aliases[ak].includes(key)&&ok(detail[ak]))return detail[ak];
   }
   return undefined;
  }
@@ -7425,9 +7425,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     どちらを選ぶべきか分からず、しかも片方は古い予定で引けない。alias表に
     載っている項目はalias名へ寄せて1つにまとめる(表示は日本語名)。 */
  function canonicalContentKey(k){
-  if(typeof aliases==='undefined')return k;
-  if(aliases[k])return k;
-  for(const ak of Object.keys(aliases))if(aliases[ak].includes(k))return ak;
+  if(typeof WL.base.aliases==='undefined')return k;
+  if(WL.base.aliases[k])return k;
+  for(const ak of Object.keys(WL.base.aliases))if(WL.base.aliases[ak].includes(k))return ak;
   return k;
  }
 
@@ -7649,11 +7649,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // 書き戻してから渡す。
   const put=(key,val)=>{
    if(val===undefined||val===null||String(val).trim()==='')return;
-   (aliases[key]||[]).forEach(n=>{
+   (WL.base.aliases[key]||[]).forEach(n=>{
     if(row[n]===undefined||row[n]===null||row[n]==='')row[n]=val;
    });
   };
-  Object.keys(aliases).forEach(k=>put(k,contentValueOf(e.detail,k)));
+  Object.keys(WL.base.aliases).forEach(k=>put(k,contentValueOf(e.detail,k)));
   // detailが古くて欠けている場合に備え、予定行が持つ3項目で補う。
   put('lotNo',e.lotNo);put('castingNo',e.castingNo);put('inspectionNo',e.inspectionNo);
   return row;
@@ -7711,7 +7711,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // キーに)スナップショットへ含める。どの設備・どの仕掛データ構成でも
   // 対応できるようにするための汎用化(alias一覧に無い列も選べる)。
   const detail={};
-  Object.keys(aliases).forEach(k=>{const v=pick(row,k);if(v!==undefined&&v!==null&&v!=='')detail[k]=v});
+  Object.keys(WL.base.aliases).forEach(k=>{const v=pick(row,k);if(v!==undefined&&v!==null&&v!=='')detail[k]=v});
   if(typeof S!=='undefined'&&Array.isArray(S.columns)){
    S.columns.forEach(c=>{
     const v=row[c];

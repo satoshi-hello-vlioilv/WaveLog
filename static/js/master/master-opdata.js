@@ -1571,7 +1571,7 @@
   const hit=opLimitSource(cur);
   const opts=['<option value="">自分で決める（上の数）</option>']
    .concat(list.map(s=>`<option value="${esc(s.key)}"${s.key===cur?' selected':''}>${esc(s.label)}</option>`))
-   /* **知らない鍵を黙って捨てない**（§9.204の`optionFill()`と同じ罠）
+   /* **知らない鍵を黙って捨てない**（§9.204の`WL.base.optionFill()`と同じ罠）
       ——候補に無い値を`select.value`へ入れると空になり、保存した瞬間に
       設定が消える。候補へ足したうえで、引けないことを名前で言う。 */
    .concat(cur&&!hit?[`<option value="${esc(cur)}" selected>${esc(cur)}（このアプリが知らない出どころ）</option>`]:[]);

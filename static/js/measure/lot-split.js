@@ -290,8 +290,8 @@
      問い合わせを何度も投げるため、キーで1回に束ねる(進行中の呼び出しにも
      相乗りできるようPromiseのまま持つ)。 */
   async function searchByLotPrefix(table,columns,prefix){
-    const lotCol=findColumn(columns,aliases.lotNo);if(!lotCol)return [];
-    const equipCol=findColumn(columns,aliases.equipment);
+    const lotCol=findColumn(columns,WL.base.aliases.lotNo);if(!lotCol)return [];
+    const equipCol=findColumn(columns,WL.base.aliases.equipment);
     const equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
     const key=`${table}|${prefix}|${equipCol&&equipment?equipment:''}`;
     const hit=prefixSearchCache.get(key);
@@ -318,7 +318,7 @@
   const LIGHT_CHUNK=25;             // 1回の問い合わせにまとめる先頭の数
   const LIGHT_PAGE_SIZE=500;        // サーバー側の上限と同じ
   function lightColumns(columns){
-    const lotCol=findColumn(columns,aliases.lotNo);
+    const lotCol=findColumn(columns,WL.base.aliases.lotNo);
     const want=lotCol?[lotCol]:[];
     // 親判定に使う子カード列(実カラム名のゆれは候補名で拾う)
     for(let i=1;i<=CHILD_SLOTS;i++)
@@ -331,8 +331,8 @@
   async function prefetchLotPrefixes(prefixes){
     const table=await resolveSikaTable();if(!table)return;
     const columns=await resolveSikaColumns(table);if(!columns.length)return;
-    const lotCol=findColumn(columns,aliases.lotNo);if(!lotCol)return;
-    const equipCol=findColumn(columns,aliases.equipment);
+    const lotCol=findColumn(columns,WL.base.aliases.lotNo);if(!lotCol)return;
+    const equipCol=findColumn(columns,WL.base.aliases.equipment);
     const equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
     const eq=equipCol&&equipment?equipment:'';
     const want=[...new Set(prefixes)].filter(p=>{
@@ -365,8 +365,8 @@
   window.prefetchLotPrefixes=prefetchLotPrefixes;
   /* まとめ引きが効いていればその場で返る。効いていなければ1件だけ引く。 */
   async function searchByLotPrefixLight(table,columns,prefix){
-    const lotCol=findColumn(columns,aliases.lotNo);if(!lotCol)return [];
-    const equipCol=findColumn(columns,aliases.equipment);
+    const lotCol=findColumn(columns,WL.base.aliases.lotNo);if(!lotCol)return [];
+    const equipCol=findColumn(columns,WL.base.aliases.equipment);
     const equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
     const eq=equipCol&&equipment?equipment:'';
     const key=lightKey(table,prefix,eq);
@@ -397,7 +397,7 @@
     try{
       const table=await resolveSikaTable();if(!table)return null;
       const columns=await resolveSikaColumns(table);if(!columns.length)return null;
-      const lotCol=findColumn(columns,aliases.lotNo);if(!lotCol)return null;
+      const lotCol=findColumn(columns,WL.base.aliases.lotNo);if(!lotCol)return null;
       const key=String(lotNo||'');
       if(key.length>=5){
         const rows=await searchByLotPrefix(table,columns,key.slice(0,5));
@@ -406,7 +406,7 @@
         if(rows.length<PREFIX_PAGE_SIZE)return null;   // 取りこぼしではなく本当に無い
       }
       const filters=[{column:lotCol,op:'eq',value:lotNo}];
-      const equipCol=findColumn(columns,aliases.equipment),equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
+      const equipCol=findColumn(columns,WL.base.aliases.equipment),equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
       if(equipCol&&equipment)filters.push({column:equipCol,op:'contains',value:equipment});
       const params=new URLSearchParams({db:workDb(),table,page:1,page_size:5,filters:JSON.stringify(filters)});
       const d=await api('/api/table?'+params);
@@ -417,7 +417,7 @@
   // S.measure.sourceへマージする。一覧取得時点では列表示マスタにより
   // 分割関連の列が欠落している可能性があるため、測定画面を開いた際に
   // 一度だけ取り直して補う。分割関連列に限らず、元幅（実績）等の他の
-  // 基本情報項目(aliases/pick)も同じ列表示マスタの影響を受けうるため、
+  // 基本情報項目(WL.base.aliases/pick)も同じ列表示マスタの影響を受けうるため、
   // マージ後の完全なsourceから基本情報(S.measure.basic)も再計算し直す
   // (値が取得できた項目のみ上書きし、既存値を空欄で潰さない)。
   async function refreshSelfSourceFull(){
@@ -427,8 +427,8 @@
       const row=await fetchChildLotRow(lotNo);
       if(row){
         S.measure.source={...(S.measure.source||{}),...row};
-        if(typeof aliases==='object'&&typeof pick==='function'){
-          Object.keys(aliases).forEach(k=>{
+        if(typeof WL.base.aliases==='object'&&typeof pick==='function'){
+          Object.keys(WL.base.aliases).forEach(k=>{
             const v=pick(S.measure.source,k);
             if(v!=='')S.measure.basic[k]=v;
           });
