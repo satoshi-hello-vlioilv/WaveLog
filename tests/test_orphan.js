@@ -80,12 +80,12 @@ run('test_orphan: 孤児になった記録の始末',async({page,rec,W,idle,pain
    basic:{lotNo:'P9004',castingNo:'C9004',mfgMaterial:'A5052',inspectionNo:'K9004'},
    settings:{registeredEquipment:'テスト設備A'},
    workTime:{startAt:new Date(Date.now()-30*60000).toISOString(),endAt:null}};
-  await reliablePut(m);
-  await backupRecord(m);
+  await WL.records.reliablePut(m);
+  await WL.records.backupRecord(m);
  });
  await idle();
  rec('端末内保存でバックアップにも行ができる',(await backupIds()).includes('local-del-1'));
- await page.evaluate(async()=>{await reliableDelete('local-del-1')});
+ await page.evaluate(async()=>{await WL.records.reliableDelete('local-del-1')});
  await idle();
  rec('データ一覧から削除するとバックアップからも消える(本体の修正)',
    !(await backupIds()).includes('local-del-1'));
@@ -93,13 +93,13 @@ run('test_orphan: 孤児になった記録の始末',async({page,rec,W,idle,pain
  // ---- (5) 通信できなかった分は控えて次回消す ----
  await put('pending-del','P9005','C9005',20,null,'編集中');
  await page.route('**/api/measurement/backup/delete',r=>r.abort());
- await page.evaluate(async()=>{await reliableDelete('pending-del')});
+ await page.evaluate(async()=>{await WL.records.reliableDelete('pending-del')});
  await idle();
  const stillThere=(await backupIds()).includes('pending-del');
  const queued=await page.evaluate(()=>JSON.parse(localStorage.getItem('WaveLogPendingBackupDeleteV1')||'[]'));
  rec('サーバーへ届かないと削除は保留になる',stillThere&&queued.includes('pending-del'),JSON.stringify(queued));
  await page.unroute('**/api/measurement/backup/delete');
- await page.evaluate(async()=>{await flushPendingBackupDeletes()});
+ await page.evaluate(async()=>{await WL.records.flushPendingBackupDeletes()});
  await idle();
  rec('通信が戻ると保留分をまとめて消す',!(await backupIds()).includes('pending-del'),
    JSON.stringify(await page.evaluate(()=>JSON.parse(localStorage.getItem('WaveLogPendingBackupDeleteV1')||'[]'))));

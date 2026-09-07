@@ -29,7 +29,7 @@ let b=null;
   await page.waitForSelector('#openSchedule',{timeout:20000});
   await page.waitForTimeout(1500);
   /* ---- 公差の答えは登録表が出す（§9.348・REVIEW 3-16） ----
-     以前は3つのファイルが`toleranceDetail`を読み込み順に被せており、順番も
+     以前は3つのファイルが`WL.measureInput.toleranceDetail`を読み込み順に被せており、順番も
      引数の運び方も読み込み順まかせだった。**提供者の顔ぶれと順番を画面から
      読んで固定する**——1つ登録し忘れると、その分の公差が黙って製造公差に
      化ける（A/Bで分割ロットの提供者を外すと、この網が6件落ちる）。 */
@@ -67,8 +67,8 @@ let b=null;
    vals.forEach((v,i)=>w[i]=v);
    /* 測定パネルは入力内容(measureType)に応じてapplyRightLayoutが出し分ける。
       値を差し替えるだけでは隠れたままで、寸法が全て0になり測れない。 */
-   applyRightLayout();renderMeasureGrid();
-   const d=toleranceDetail('width');
+   WL.measureView.applyRightLayout();WL.measureInput.renderMeasureGrid();
+   const d=WL.measureInput.toleranceDetail('width');
    return {range:d&&d.range,base:Number(S.measure.basic.mfgWidth)};
   },[BASE,PLUS,MINUS,VALUES]);
   rec('非対称公差を注入できる(範囲999〜1003・基準1000)',
@@ -181,7 +181,7 @@ let b=null;
 
   /* --- 5) 確定前の先読みリングが確定後の点と同じ写像で置かれる --- */
   const pend=await page.evaluate(()=>{
-   updateNumberlinePending('DT11+1002.8M');   // ノギス受信中(未確定)
+   WL.measureInput.updateNumberlinePending('DT11+1002.8M');   // ノギス受信中(未確定)
    const m=document.querySelector('#numberlinePending'),box=document.querySelector('.accurate-numberline');
    if(!m||!box)return null;
    const r=m.getBoundingClientRect(),br=box.getBoundingClientRect();
@@ -248,7 +248,7 @@ let b=null;
       実寸では300側が+0.5mm・500側が+1.5mmなので別の位置） */
    ['300.50','300.00','501.50','500.00'].forEach((v,i)=>w[i]=v);
    S.measure.settings.wStep=0;
-   renderMeasureGrid();
+   WL.measureInput.renderMeasureGrid();
    await new Promise(r=>setTimeout(r,300));
   });
   const mixedRead=async()=>page.evaluate(()=>{
@@ -347,7 +347,7 @@ let b=null;
   });
   await page.evaluate(async()=>{
    S.measure.measurements.width[lengthIndex()][0]='315.00';   /* +15mm。軸(±2mm)の外 */
-   renderMeasureGrid();await new Promise(r=>setTimeout(r,300));
+   WL.measureInput.renderMeasureGrid();await new Promise(r=>setTimeout(r,300));
   });
   const out1=await far();
   rec('軸をはみ出した点は件数を文字で出す',
@@ -367,7 +367,7 @@ let b=null;
   await page.evaluate(async()=>{
    S.measure.settings.splitGroups=null;S.measure.settings.splitPositionGroup=null;
    document.querySelector('#horizontalCount').value='6';
-   renderMeasureGrid();
+   WL.measureInput.renderMeasureGrid();
    await new Promise(r=>setTimeout(r,200));
   });
 
@@ -380,7 +380,7 @@ let b=null;
    document.querySelector('[data-mode="manual"]')?.click();
    const w=S.measure.measurements.width[lengthIndex()];
    [1000,1000.02,1000.04,999.2,1002.9].forEach((v,i)=>w[i]=v.toFixed(3));
-   renderMeasureGrid();
+   WL.measureInput.renderMeasureGrid();
    await new Promise(r=>setTimeout(r,300));
    const box=document.querySelector('.accurate-numberline'),br=box.getBoundingClientRect();
    const rows=[...box.querySelectorAll('.tc-row')];
@@ -426,8 +426,8 @@ let b=null;
    clicked.強調>clicked.通常,`強調${clicked.強調}px / 通常${clicked.通常}px`);
 
   await page.evaluate(async()=>{
-   if(typeof S!=='undefined'&&S.measure&&typeof reliableDelete==='function')
-    await reliableDelete(S.measure.id);
+   if(typeof S!=='undefined'&&S.measure&&typeof WL.records.reliableDelete==='function')
+    await WL.records.reliableDelete(S.measure.id);
   }).catch(()=>{});
 
   console.log('\n=== SUMMARY ===');

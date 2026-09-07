@@ -54,7 +54,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('品質情報（仕掛）の道が候補に出る',
       pathsOf('品質情報（仕掛）').includes('qualityInfo'),JSON.stringify(groups));
   /* **母材は`mother.<キー>`**——以前は`settings.motherManual`を答えており、
-     実データでは必ず空だった（`collect()`が`[data-mother]`から`mother`へ書く）。 */
+     実データでは必ず空だった（`WL.measureView.collect()`が`[data-mother]`から`mother`へ書く）。 */
   const prep=pathsOf('準備で決めた値');
   rec('母材の道は mother.<キー>（settings.mother* ではない）',
       prep.includes('mother.manual')&&prep.includes('mother.rearCard')

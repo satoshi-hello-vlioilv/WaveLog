@@ -16,7 +16,7 @@
    フォーカスが戻ることをここで固定する。
 
    期待値は**実際に転送を流して観測してから**書く。憶測で書くと外す。
-   板幅の桁数は`measurementDigits('width')`の1箇所が決める——§9.242 ②
+   板幅の桁数は`WL.base.measurementDigits('width')`の1箇所が決める——§9.242 ②
    （利用者の指示）で**小数2桁**にした。それまでは入口で1桁へ丸めてから
    2桁で格納しており、ノギスの`DT110+026.15`は2桁目が必ず0になっていた
    （「ノギスだけ2桁」という設定はあったが、入口の丸めに潰されて一度も
@@ -240,10 +240,10 @@ let b=null,page=null;
   await setType('板幅');
 
   /* ---- 10) 公差が無いときに、勝手にNGにしない ----
-     このフィクスチャは公差を持たない(compactToleranceData が null)。
+     このフィクスチャは公差を持たない(WL.measureInput.compactToleranceData が null)。
      **公差が無いのにNGを出すと、現場は直しようのない警告を見ることになる。** */
   const noTol=await page.evaluate(()=>{
-   const has=typeof compactToleranceData==='function'&&!!compactToleranceData('width');
+   const has=typeof WL.measureInput.compactToleranceData==='function'&&!!WL.measureInput.compactToleranceData('width');
    if(has)return{公差あり:true};
    const cell=[...document.querySelectorAll('#measurementGrid input')].find(x=>x.dataset.mkey==='width');
    if(!cell)return{セルなし:true};
@@ -290,7 +290,7 @@ let b=null,page=null;
   await page.waitForTimeout(2500);
   const saved=await page.evaluate(async rid=>{
    const r=await fetch('/api/measurement/backup/list').then(x=>x.json()).catch(()=>({items:[]}));
-   const local=typeof reliableAll==='function'?await reliableAll():[];
+   const local=typeof WL.records.reliableAll==='function'?await WL.records.reliableAll():[];
    return {共有:(r.items||[]).some(i=>i.id===rid),端末内:local.some(m=>m.id===rid),
            閉じた:!!document.querySelector('#measureModal')?.hidden};
   },id);
@@ -322,7 +322,7 @@ let b=null,page=null;
  async function cleanup(){
   try{await page.evaluate(async()=>{
    const id=(typeof S!=='undefined'&&S.measure)?S.measure.id:'';
-   if(id&&typeof reliableDelete==='function')await reliableDelete(id).catch(()=>{});
+   if(id&&typeof WL.records.reliableDelete==='function')await WL.records.reliableDelete(id).catch(()=>{});
    /* **消えるまで確かめる。** 共有(shareRecord)は画面を待たせずに送るので、
       1回消しただけだと**遅れて届いた登録が後から復活する**（通しで1回だけ
       test_scdrop が落ち、L0001に身に覚えのない実績が残っていた）。

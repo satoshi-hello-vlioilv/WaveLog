@@ -1,12 +1,15 @@
-"use strict";
 /* measure-view.js: 測定画面の構成 — データ形状(ensureMeasureShape/collect)、
-   画面全体の描画(renderMeasurement)、左右パネル、入力検証、作業時間、公差表示の見出し。 */
+   画面全体の描画(renderMeasurement)、左右パネル、入力検証、作業時間、公差表示の見出し。
+   **このファイルは閉じている**（§9.359・REVIEW 3-17）——外へ出す面は末尾の
+   `WL.measureView`。 */
+(function(){
+"use strict";
 /* 入力内容の素性を決めるのは**ここ1箇所**（§9.138）。以前は
    `type==='板厚/板幅'`という文字列比較が6ファイル・十数箇所に散っており、
    項目を「板厚」「板幅」の2つへ分けるだけで**片方だけ直った状態**が簡単に
    できてしまう（公差の出どころ・幅分割公差・自動転送の固定・帳票の節・
    入力欄の数——どれか1つ落とすと、そこだけ黙って別の項目の公差で判定する）。
-   §9.125で`toleranceDetail`の第3引数を3ファイルへ通し忘れて偽の公差外を
+   §9.125で`WL.measureInput.toleranceDetail`の第3引数を3ファイルへ通し忘れて偽の公差外を
    出したのと同じ壊れ方なので、判定は関数にして散らさない。 */
 WL.measureItem={
  /* 保存済みレコードが持つ旧名。選択肢から消えた値をそのまま`select.value`へ
@@ -27,7 +30,7 @@ WL.measureItem={
  MATERIAL:'母材/丈毎',
  LEGACY_MATERIAL:['母材','揃い/肉厚/長さ','母材・揃い/肉厚/長さ'],
  /* 旧名（母材／板厚/板幅）も残す——保存済みレコードを開いた瞬間に
-    `activeMeasureKey()`の答えが変わらないようにするため。 */
+    `WL.measureInput.activeMeasureKey()`の答えが変わらないようにするため。 */
  KEYS:{'母材/丈毎':'mother','母材・揃い/肉厚/長さ':'mother',母材:'mother',板厚:'thickness',板幅:'width',
   ラテラルボー:'lateral',バリ:'burr',
   テレスコープ:'telescope',巻ずれ:'offset',フラットネス:'flatness','板厚/板幅':'width'},
@@ -50,7 +53,7 @@ WL.measureItem={
     **判定は`isDimensional()`の1箇所に乗せる**（項目名の一覧をもう1つ
     作らない。§9.138で文字列比較を散らして壊した形をくり返さない）。 */
  limitWord(type){return this.isDimensional(type??this.current())?'公差':'基準'},
- /* 判定の材料（`toleranceDetail()`の戻り）から決める版。片側だけの指示値
+ /* 判定の材料（`WL.measureInput.toleranceDetail()`の戻り）から決める版。片側だけの指示値
     （`single`）は項目名に関わらず基準。**materialは判定そのものが無い**ので
     呼ばれない。 */
  limitWordOf(detail,type){return (detail&&detail.single)?'基準':this.limitWord(type)},
@@ -115,8 +118,8 @@ function innerDiameterOf(raw){
    （`refreshSelfSourceFull`。一覧の行には列が無いことがある）。 */
 function innerDiameterPreset(row){
  return innerDiameterOf(row&&typeof row==='object'
-   ?fieldFromRows([row],INNER_DIAMETER_SOURCE)
-   :sourceField(INNER_DIAMETER_SOURCE));
+   ?WL.base.fieldFromRows([row],INNER_DIAMETER_SOURCE)
+   :WL.base.sourceField(INNER_DIAMETER_SOURCE));
 }
 function defaultInnerDiameter(row){return innerDiameterPreset(row)||'-'}
 /* 出どころを画面に書く(§6)。**同じ数字でも、目標値と選んだ値は別物**。 */
@@ -184,7 +187,7 @@ function applyInnerDiameterPreset(row){
  return preset;
 }
 window.WL.innerDiameter={preset:innerDiameterPreset,apply:applyInnerDiameterPreset,refresh:updateInnerDiameterHint};
-function blankMeasure(row){return{id:crypto.randomUUID(),status:'編集中',updatedAt:new Date().toISOString(),...measureStarter(),source:row,basic:Object.fromEntries(Object.keys(aliases).map(k=>[k,pick(row,k)])),settings:{operator:'',inspector:'',lengthPos:'1(頭)',measureType:WL.measureItem.MATERIAL,verticalCount:defaultVerticalCount(row),horizontalCount:defaultHorizontalCount(row),unwind:'上出し',innerDiameter:defaultInnerDiameter(row),spool:'',thicknessGauge:'',widthGauge:'',widthOrder:'通常',widthDirection:'昇順',inputMode:'auto',tStep:0,wStep:0,burrFirst:null,ngCount:0,burr:'指定なし',coilStop:'指定なし',crewSize:''},mother:{},qualityInfo:'異常情報なし',measurements:{thickness:Array.from({length:LENGTH_SLOTS},()=>Array(3).fill('')),width:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),lateral:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),burr:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),telescope:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),offset:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),flatness:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill('')),comments:Array.from({length:LENGTH_SLOTS},()=>Array(40).fill(''))}}}
+function blankMeasure(row){return{id:crypto.randomUUID(),status:'編集中',updatedAt:new Date().toISOString(),...measureStarter(),source:row,basic:Object.fromEntries(Object.keys(WL.base.aliases).map(k=>[k,pick(row,k)])),settings:{operator:'',inspector:'',lengthPos:'1(頭)',measureType:WL.measureItem.MATERIAL,verticalCount:defaultVerticalCount(row),horizontalCount:defaultHorizontalCount(row),unwind:'上出し',innerDiameter:defaultInnerDiameter(row),spool:'',thicknessGauge:'',widthGauge:'',widthOrder:'通常',widthDirection:'昇順',inputMode:'auto',tStep:0,wStep:0,burrFirst:null,ngCount:0,burr:'指定なし',coilStop:'指定なし',crewSize:''},mother:{},qualityInfo:'異常情報なし',measurements:{thickness:Array.from({length:WL.base.LENGTH_SLOTS},()=>Array(3).fill('')),width:Array.from({length:WL.base.LENGTH_SLOTS},()=>Array(40).fill('')),lateral:Array.from({length:WL.base.LENGTH_SLOTS},()=>Array(40).fill('')),burr:Array.from({length:WL.base.LENGTH_SLOTS},()=>Array(40).fill('')),telescope:Array.from({length:WL.base.LENGTH_SLOTS},()=>Array(40).fill('')),offset:Array.from({length:WL.base.LENGTH_SLOTS},()=>Array(40).fill('')),flatness:Array.from({length:WL.base.LENGTH_SLOTS},()=>Array(40).fill('')),comments:Array.from({length:WL.base.LENGTH_SLOTS},()=>Array(40).fill(''))}}}
 /* 保存データ/新規データを最新スキーマへ整形する。旧実装は多層ラップ
    (基本形状→製品丈→登録設備→作業時間)だったものを一本化した。 */
 function ensureMeasureShape(m){
@@ -204,17 +207,17 @@ if(m.settings.innerTape!==undefined){
   m.settings.coilStop=m.settings.innerTape?'内巻両面テープ':'指定なし';
  delete m.settings.innerTape;
 }
-m.mother=m.mother||{};m.qualityInfo=m.qualityInfo||'異常情報なし';m.measurements=m.measurements||{};const shape=(name,width)=>{const src=Array.isArray(m.measurements[name])?m.measurements[name]:[];m.measurements[name]=Array.from({length:LENGTH_SLOTS},(_,i)=>Array.from({length:width},(_,j)=>src[i]?.[j]??''))};shape('thickness',3);['width','lateral','burr','telescope','offset','flatness','comments'].forEach(k=>shape(k,40));
+m.mother=m.mother||{};m.qualityInfo=m.qualityInfo||'異常情報なし';m.measurements=m.measurements||{};const shape=(name,width)=>{const src=Array.isArray(m.measurements[name])?m.measurements[name]:[];m.measurements[name]=Array.from({length:WL.base.LENGTH_SLOTS},(_,i)=>Array.from({length:width},(_,j)=>src[i]?.[j]??''))};shape('thickness',3);['width','lateral','burr','telescope','offset','flatness','comments'].forEach(k=>shape(k,40));
  }
  {
  if(!m.product||!Array.isArray(m.product.rows)){
   const legacy=m.product&&typeof m.product==='object'?m.product:null;
-  m.product={rows:Array.from({length:LENGTH_SLOTS},blankProductRow)};
+  m.product={rows:Array.from({length:WL.base.LENGTH_SLOTS},blankProductRow)};
   if(legacy&&(legacy.productLength||legacy.wallThickness||legacy.alignmentCode)){
    Object.assign(m.product.rows[0],{productLength:legacy.productLength||'',wallThickness:legacy.wallThickness||'',alignmentCode:legacy.alignmentCode||'',edgeShape:legacy.edgeShape||'',occurrencePosition:legacy.occurrencePosition||'',regularity:legacy.regularity||'',direction:legacy.direction||'',pitch:legacy.pitch||'',alignmentValue:legacy.alignmentValue||''});
   }
- }else if(m.product.rows.length<LENGTH_SLOTS){
-  while(m.product.rows.length<LENGTH_SLOTS)m.product.rows.push(blankProductRow());
+ }else if(m.product.rows.length<WL.base.LENGTH_SLOTS){
+  while(m.product.rows.length<WL.base.LENGTH_SLOTS)m.product.rows.push(blankProductRow());
  }
  }
  m.settings.registeredEquipment=m.settings.registeredEquipment||m.registeredEquipment||m.snapshot?.registeredEquipment||'';
@@ -222,7 +225,7 @@ m.mother=m.mother||{};m.qualityInfo=m.qualityInfo||'異常情報なし';m.measur
  /* Accessへのバックアップ同期状態。status: 'synced'(直近の送信に成功)/
     'pending'(まだ送信していない、または未送信のまま作成された旧データ)/
     'failed'(直近の送信が失敗)。records-store.js の markSyncResult が
-    backupRecord() の成否に応じて更新する。旧データ(このフィールドが無い)は
+    WL.records.backupRecord() の成否に応じて更新する。旧データ(このフィールドが無い)は
     実際に送信できたか判定できないため安全側でpendingとし、再送の対象にする
     (backupRecordはDELETE+INSERTのため再送しても重複しない)。 */
  m.syncState={status:'pending',lastAttempt:'',lastError:'',attempts:0,...(m.syncState||{})};
@@ -236,7 +239,7 @@ function collect(){
  // (揃えないと、後続のリロード等を経ない一度目の保存でだけ文字列型のまま
  // 保存され、===比較箇所で不整合を起こし得る)。
  const m=S.measure;m.updatedAt=new Date().toISOString();['operator','inspector','lengthPos','measureType','verticalCount','horizontalCount','unwind','innerDiameter','spool','thicknessGauge','widthGauge','widthOrder','widthDirection','crewSize','burr','coilStop'].forEach(k=>{const el=$('#'+k);if(!el)return;m.settings[k]=(k==='verticalCount'||k==='horizontalCount')?(Number(el.value)||1):el.value});m.qualityInfo=$('#qualityInfo').value;document.querySelectorAll('[data-mother]').forEach(x=>m.mother[x.dataset.mother]=x.value);saveFlatComment();
- m.product=m.product&&Array.isArray(m.product.rows)?m.product:{rows:Array.from({length:LENGTH_SLOTS},blankProductRow)};
+ m.product=m.product&&Array.isArray(m.product.rows)?m.product:{rows:Array.from({length:WL.base.LENGTH_SLOTS},blankProductRow)};
  document.querySelectorAll('#productRowsBody tr').forEach(tr=>{
   const i=+tr.dataset.row,row=m.product.rows[i]=m.product.rows[i]||blankProductRow();
   tr.querySelectorAll('[data-product-field]').forEach(el=>row[el.dataset.productField]=el.value);
@@ -262,13 +265,13 @@ function collect(){
    **良品重量が0のときは計算しない**（利用者の指示）。0除算になる板厚・板幅・
    比重も同じ扱いで、そろっていなければ**欄ごと出さない**（§CLAUDE.md
    「できないことは、できないと書く」の裏返しで、そもそも欄を置かない）。
-   値は`sourceField()`で生の行から引く——`basic`は`aliases`に載せた列しか
+   値は`WL.base.sourceField()`で生の行から引く——`basic`は`WL.base.aliases`に載せた列しか
    持たず、ここで要る4つはそのうち板幅しか無い。 */
 const MOTHER_CALC_FIELDS={thickness:['BOX実績_板厚'],width:['BOX実績_板幅'],
  density:['比重'],weight:['BOX実績_良品重量']};
 function motherCalcLength(){
  /* 空欄を0と読まない（`Number('')`は0。屑幅で同じ罠を踏んでいる）。 */
- const num=names=>{const raw=String(sourceField(names)||'').trim();
+ const num=names=>{const raw=String(WL.base.sourceField(names)||'').trim();
   if(raw==='')return NaN;const n=Number(raw);return Number.isFinite(n)?n:NaN};
  const thickness=num(MOTHER_CALC_FIELDS.thickness),width=num(MOTHER_CALC_FIELDS.width);
  const density=num(MOTHER_CALC_FIELDS.density),weight=num(MOTHER_CALC_FIELDS.weight);
@@ -350,7 +353,7 @@ function applyRightLayout(){
  const type=$('#measureType').value, layout=rightLayoutFor(type), pane=$('.right-pane');
  pane.classList.remove('layout-material','layout-measure');
  pane.classList.add('layout-'+layout); activateWorkspace(layout);
- if(layout==='measure'){renderMeasureGrid();updateMeasurementHeading()}
+ if(layout==='measure'){WL.measureInput.renderMeasureGrid();updateMeasurementHeading()}
  if(layout==='material'){renderProductPanel();updateMotherCalcLength();bindMotherInputs()}
  /* 手入力の案内は**入れる場所のすぐ上**（§9.233 ③）。段は変わらないので
     `WL.measureSteps.refresh()`は走らない——ここから書き直す。 */
@@ -396,8 +399,10 @@ const PRODUCT_ROUND_KEYS={alignmentValue:'alignValue',pitch:'pitch'};
    **等級の実値は数字1桁の文字列**（実データ3件はいずれも `'3'`。生地外観の
    ように `'3C'` と英字が付く項目もあるので、数字だけを取り出す）。
    出どころは`S.measure.qualityGrades['切断面']`＝仕掛の`品質ｸﾞﾚｰﾄﾞ_切断面`
-   （`QUALITY_GRADE_SOURCE`。`qualityGradeFields`は読まれていない死んだ配列
-   なので当てにしないこと）。
+   （`QUALITY_GRADE_SOURCE`）。**以前ここにあった`qualityGradeFields`は
+   誰にも読まれていない死んだ配列で、§9.359 でファイルを閉じたときに
+   それが証明できたので消した**（グローバルのあいだは「外の誰かが読んで
+   いるかもしれない」と言い切れず、コメントで断るしかなかった）。
    **基準が引けないときは判定しない**——3級・4級以外や空欄で「OK」と言うのは
    根拠が無く、「NG」と言い切るのも嘘になる（§「推測させない」）。 */
 const CUT_FACE_LIMITS={
@@ -582,7 +587,7 @@ function renderProductPanel(){
  /* 別のロットを開いたら畳みは持ち越さない（丈の番号は使い回されるので、
     前のロットで畳んだ丈が新しいロットで畳まれて見える）。 */
  if(prtFoldedFor!==(m.id||'')){prtFolded.clear();prtFoldedFor=m.id||''}
- if(!m.product||!Array.isArray(m.product.rows))m.product={rows:Array.from({length:LENGTH_SLOTS},blankProductRow)};
+ if(!m.product||!Array.isArray(m.product.rows))m.product={rows:Array.from({length:WL.base.LENGTH_SLOTS},blankProductRow)};
  const n=productRowCount();
  /* 1丈ずつの器は使わない。**残骸を残さない**（空のタブ列が細い帯として残る）。 */
  if(tabs){tabs.innerHTML='';tabs.hidden=true}
@@ -686,7 +691,7 @@ function renderProductPanel(){
  });
  renderCutFaceNote();
  upgradeManualInputTypes();updateProductStatus();
- loadFlatComment(); applyInputProtection();
+ loadFlatComment(); WL.measureInput.applyInputProtection();
 }
 if($('#productAllOk'))$('#productAllOk').onclick=()=>{
  const n=productRowCount();
@@ -728,12 +733,12 @@ function syncInputModeLock(){
  if(desiredMode&&S.measure.settings.inputMode!==desiredMode){
   S.measure.settings.inputMode=desiredMode;
   document.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('active',x.dataset.mode===desiredMode));
-  applyInputProtection();
+  WL.measureInput.applyInputProtection();
  }
  /* **必ず描き直す。** 上の`if`は「モードが変わったとき」しか通らないので、
     そこだけに任せると手入力の項目どうしを行き来したときに帯が前の項目の
     ままになる（「自動」と出たまま手入力、が実際に作れる）。 */
- updateReceiveState(document.activeElement===$('#deviceInput'));
+ WL.measureInput.updateReceiveState(document.activeElement===$('#deviceInput'));
 }
 $('#measureType').onchange=()=>{S.measure.settings.wStep=0;S.measure.settings.tStep=0;S.measure.settings.burrFirst=null;S.measure.settings.measureType=$('#measureType').value;applyRightLayout();syncInputModeLock();$('#deviceInput').focus();markDirty()};
 /* 測定画面全体の再描画。旧実装は9層のラップ(モード表示→製品丈→検証→
@@ -750,7 +755,7 @@ function renderMeasurement(){renderMeasurementCore();runMeasureHooks('afterRende
 function updateMeasurementHeading(){updateMeasurementHeadingCore();runMeasureHooks('afterHeading')}
 function renderMeasurementCore(){
  hydrateBusinessFields();
- measureDirty=false;const m=S.measure,b=m.basic;updateLengthOptions(m.settings.verticalCount||1);updateCoilOptions(m.settings.horizontalCount||1);$('#modalEquipment').textContent=b.equipment;/* 基本情報の並び(§9.55)。13項目を「主識別 → 識別番号 → 製品 → コース」の
+ WL.base.measureDirty=false;const m=S.measure,b=m.basic;updateLengthOptions(m.settings.verticalCount||1);updateCoilOptions(m.settings.horizontalCount||1);$('#modalEquipment').textContent=b.equipment;/* 基本情報の並び(§9.55)。13項目を「主識別 → 識別番号 → 製品 → コース」の
     4かたまりへ束ね、参照用の項目はラベルと値を1行に収める。以前は全項目が
     ラベル上・値下の同じ見た目で、短い値(コース等)まで全幅を1行使っていたため
     縦に収まらず常時スクロールしていた。 */
@@ -835,15 +840,15 @@ function renderMeasurementCore(){
  {const mb=$('#basicMore'),dt=$('#basicDetail');
   if(mb&&dt)mb.onclick=()=>{const open=dt.hidden;dt.hidden=!open;
    mb.setAttribute('aria-expanded',open?'true':'false');
-   mb.textContent=open?'詳細を閉じる':'詳細を見る';};}Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;paintQualityInfo();document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');$('#motherOriginalWidth').textContent=fmtDim(b.originalWidth,1)||'－';updateMotherCalcLength();renderMeasureGrid();renderStats();
+   mb.textContent=open?'詳細を閉じる':'詳細を見る';};}Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;paintQualityInfo();document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');$('#motherOriginalWidth').textContent=fmtDim(b.originalWidth,1)||'－';updateMotherCalcLength();WL.measureInput.renderMeasureGrid();WL.measureInput.renderStats();
  /* 操業データの入力欄は**設備ごと**なので、開いた時点で用意して値を戻す
     （§9.215）。読めなくても測定は開ける（fail-open）。 */
  if(window.WL&&WL.opData)WL.opData.refresh().catch(WL.quiet('操業データ項目を取れない（測定は開ける・fail-open）'));
  setState('IndexedDB読込済み')
  {const mode=S.measure.settings.inputMode||'auto';document.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('active',x.dataset.mode===mode))}
  activateWorkspace(rightLayoutFor($('#measureType').value));
- applyInputProtection();
- updateReceiveState(document.activeElement===$('#deviceInput'));
+ WL.measureInput.applyInputProtection();
+ WL.measureInput.updateReceiveState(document.activeElement===$('#deviceInput'));
  renderProductPanel();
  applyRightLayout();
  requestAnimationFrame(updateValidationVisuals);
@@ -876,7 +881,14 @@ function setVisualState(el,state){
  el.classList.add(state==='ng'?'validation-ng':state==='valid'?'validation-valid':'validation-required');
  el.setAttribute('aria-invalid',state==='valid'?'false':'true');
 }
+/* 丸ごと持ち替えられる（§9.352 の `own`）。閉じたので外から関数を
+   差し替えることはできない——**持ち替えの口は登録表の1箇所**にする。 */
 function activeRequiredControls(){
+ const own=WL.measureHooks.owner('activeRequiredControls');
+ if(own)return own();
+ return activeRequiredControlsCore();
+}
+function activeRequiredControlsCore(){
  const controls=[];
  /* **必須はマスタが決める**（§9.216 ②、利用者の指示「一部の必須入力事項も
     マスタで設定可能とし」）。以前はここに`['operator','inspector']`と直に
@@ -949,20 +961,11 @@ function judgeInput(el,key,value,index){
   if(String(el.value||'').trim()!=='')el.classList.add('complete');
   return;
  }
- const raw=String(el.value??'').trim(),tol=toleranceFor(key==='thickness'?'thickness':'width',index),num=Number(raw);
+ const raw=String(el.value??'').trim(),tol=WL.measureInput.toleranceFor(key==='thickness'?'thickness':'width',index),num=Number(raw);
  if(raw!==''&&Number.isFinite(num)){el.classList.add('complete');if(tol&&(num<tol[0]||num>tol[1]))el.classList.add('ng')}
 }
 document.addEventListener('input',event=>{if(event.target.matches('input,select,textarea'))updateValidationVisuals()},true);
 document.addEventListener('change',event=>{if(event.target.matches('input,select,textarea'))updateValidationVisuals()},true);
-// Information architecture: basic / quality grade / data management.
-const qualityGradeFields=[
- ['生地外観',['生地外観','品質等級_生地外観','QCD1','RQCD1']],['フラットネス',['フラットネス等級','品質等級_フラットネス','QCD2','RQCD2']],
- ['付着油',['付着油','品質等級_付着油','QCD3','RQCD3']],['切断面',['切断面','品質等級_切断面','QCD4','RQCD4']],
- ['板厚公差',['板厚公差等級','品質等級_板厚公差','QCD5','RQCD5']],['幅丈公差',['幅丈公差','巾丈公差','品質等級_幅丈公差','QCD6','RQCD6']],
- ['ラテラルボー',['ラテラルボー等級','品質等級_ラテラルボー','QCD7','RQCD7']],['直角度',['直角度','品質等級_直角度','QCD8','RQCD8']],
- ['方向性',['方向性','品質等級_方向性','QCD9','RQCD9']],['強度',['強度','品質等級_強度','QCD10','RQCD10']],
- ['アルマイト',['アルマイト','品質等級_アルマイト','QCD11','RQCD11']],['表面処理',['表面処理','品質等級_表面処理','QCD15','RQCD15']]
-];
 function hydrateBusinessFields(){
  if(!S.measure)return;const b=S.measure.basic||(S.measure.basic={}),r=S.measure.source||S.measure.snapshot?.source||{};
  const extra={
@@ -994,7 +997,7 @@ const QUALITY_GRADE_SOURCE={
 function renderQualityGradePanel(){
  const host=$('#qualityGradeFields');
  const m=S.measure;m.qualityGrades=m.qualityGrades||{};
- Object.entries(QUALITY_GRADE_SOURCE).forEach(([label,names])=>m.qualityGrades[label]=sourceValue(names));
+ Object.entries(QUALITY_GRADE_SOURCE).forEach(([label,names])=>m.qualityGrades[label]=WL.base.sourceValue(names));
  if(!host)return;
  host.innerHTML=Object.keys(QUALITY_GRADE_SOURCE).map(label=>{
   const v=m.qualityGrades[label]||'';
@@ -1225,7 +1228,7 @@ WL.onReady(()=>{
  applyRvPref();
 });
 /* 品質情報の見出しに**件数を文字で**添える（§9.144）。状態を色だけで伝えない。
-   本文は`qualityText()`が`(1) …`の塊を空行で連ねたもので、件数はその印の数。
+   本文は`WL.base.qualityText()`が`(1) …`の塊を空行で連ねたもので、件数はその印の数。
    **値は`.value`への代入で入るのでDOMは変わらない**（§9.130と同じ）——
    代入した側が呼ぶ。**呼ぶのは2箇所**（開いたとき／共有DBから読んだとき）。 */
 function paintQualityInfo(){
@@ -1267,7 +1270,7 @@ function upgradeManualInputTypes(){
  });
 }
 function renderResidualCourseEverywhere(){
- if(!S.measure)return;const residual=sourceField(['残仕掛設備ｺｰｽ','残仕掛設備コース']);S.measure.basic.residualCourse=residual;
+ if(!S.measure)return;const residual=WL.base.sourceField(['残仕掛設備ｺｰｽ','残仕掛設備コース']);S.measure.basic.residualCourse=residual;
  const basic=$('#basicDetail')||$('#basicInfo .info-grid');if(basic){basic.querySelectorAll('.residual-course-field').forEach(x=>x.remove());const course=[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='実績');const item=document.createElement('div');item.className='field residual-course-field';item.innerHTML=`<label>残</label><output title="${esc(residual)}">${esc(residual||'未設定')}</output>`;if(course)course.after(item);else basic.append(item)}
  const grid=$('#dataManagementPanel .data-management-grid');if(grid){[...grid.querySelectorAll('[data-residual-course]')].forEach(x=>x.remove());const children=[...grid.children],courseIndex=children.findIndex(x=>x.tagName==='B'&&x.textContent==='実績コース'),courseValue=courseIndex>=0?children[courseIndex+1]:null,label=document.createElement('b'),value=document.createElement('span');label.textContent='残コース';value.textContent=residual||'未設定';value.title=residual;label.dataset.residualCourse='1';value.dataset.residualCourse='1';if(courseValue)courseValue.after(label,value);else grid.append(label,value)}
 }
@@ -1289,7 +1292,7 @@ function updateMeasurementHeadingCore(){
     記号のボタン（`.flat-pick-group`）がすぐ隣に並ぶので、ここに要るのは
     「〇が合格」という約束だけ。 */
  if(type==='フラットネス')return pill('is-mark','〇=OK','条ごとに記号を入力してください。〇がOK、△と×はどちらもNGです。');
- const kind=WL.measureItem.kindOf(type),detail=toleranceDetail(kind),base=Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth);
+ const kind=WL.measureItem.kindOf(type),detail=WL.measureInput.toleranceDetail(kind),base=Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth);
  /* **上下限を持つものだけが「公差」**（§9.242 ⑤、利用者の指示）。片側の
     目標しか無い項目（ラテラルボー・バリ・テレスコープ・巻ずれ）で「公差」と
     書くと、下限もあるかのように読める。言葉は`WL.measureItem`の1箇所。 */
@@ -1298,7 +1301,7 @@ function updateMeasurementHeadingCore(){
    word==='公差'
     ?'選択した公差区分に使用可能なプラス・マイナス値がありません。判定は行いません。'
     :'この項目には判定に使える基準が登録されていません。判定は行いません。');
- const labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示基準'},sourceLabel=labels[detail.source],requestedLabel=labels[configuredToleranceSource()],fallback=detail.fallback?`${requestedLabel}が不足しているため製造公差を使用`:'';
+ const labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示基準'},sourceLabel=labels[detail.source],requestedLabel=labels[WL.measureInput.configuredToleranceSource()],fallback=detail.fallback?`${requestedLabel}が不足しているため製造公差を使用`:'';
  /* 片側だけの基準は「0〜上限」なので、±の内訳を出しても読む値が無い。 */
  /* **桁は測定値と同じにそろえる**（§9.320-B、利用者の報告「板厚製造公差の
     表示が桁数溢れしている」）。生の`range`は`1.475`が
@@ -1318,7 +1321,7 @@ function updateMeasurementHeadingCore(){
 }
 // Design, actual and residual courses are rendered as one ordered information group.
 function renderCourseHierarchy(){
- if(!S.measure)return;const design=designCourseValue(),actual=actualCourseValue(),residual=residualCourseValue();S.measure.basic.designCourse=design;S.measure.basic.course=actual;S.measure.basic.residualCourse=residual;
+ if(!S.measure)return;const design=WL.base.designCourseValue(),actual=WL.base.actualCourseValue(),residual=WL.base.residualCourseValue();S.measure.basic.designCourse=design;S.measure.basic.course=actual;S.measure.basic.residualCourse=residual;
  const basic=$('#basicDetail')||$('#basicInfo .info-grid');if(basic){[...basic.querySelectorAll('.course-stack-field,.residual-course-field')].forEach(x=>x.remove());const old=[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='実績コース');if(old)old.remove();
   /* コースは「設計→実績→残」の順に意味がつながる1かたまり(§9.55)。
      コース見出しの直後へこの順で並べる。**3項目とも縦に1行ずつ**で、
@@ -1336,7 +1339,7 @@ function renderCourseHierarchy(){
   [['設計',design],['実績',actual],['残',residual]].forEach(([label,value])=>{const item=document.createElement('div');item.className='field course-stack-field';item.innerHTML=`<label>${label}</label><output title="${esc(value)}">${esc(value||'未設定')}</output>`;if(anchor){const prior=[...basic.querySelectorAll('.course-stack-field')].at(-1);(prior||anchor).after(item)}else basic.append(item)})
  }
  const grid=$('#dataManagementPanel .data-management-grid');if(grid){const pairs=[];for(let i=0;i<grid.children.length;i+=2)pairs.push([grid.children[i]?.textContent,grid.children[i+1]?.textContent]);const keep=pairs.filter(([label])=>!['設計コース','実績コース','残コース'].includes(label));const insertAt=Math.max(0,keep.findIndex(([label])=>label==='オーダー番号'));keep.splice(insertAt,0,['設計コース',design||'未設定'],['実績コース',actual||'未設定'],['残コース',residual||'未設定']);grid.innerHTML=keep.map(([label,value])=>`<b>${esc(label||'')}</b><span title="${esc(value||'')}">${esc(value||'未設定')}</span>`).join('')}
- updateCourseGuard();
+ WL.records.updateCourseGuard();
 }
 /* ---------- 作業スケジュールとの連携(読み取りのみ、docs/decisions/9.7.md) ----------
    測定画面を開いたロットが作業予定に含まれていれば、基本情報タブへ
@@ -1350,7 +1353,7 @@ function renderScheduleInfo(){
  const basic=$('#basicDetail')||$('#basicInfo .info-grid');if(!basic)return;
  basic.querySelectorAll('.schedule-info-field').forEach(x=>x.remove());
  const lotNo=S.measure?.basic?.lotNo;
- if(!lotNo||!scheduleInfoCache||normalizedLot(scheduleInfoCache.lotNo)!==normalizedLot(lotNo))return;
+ if(!lotNo||!scheduleInfoCache||WL.base.normalizedLot(scheduleInfoCache.lotNo)!==WL.base.normalizedLot(lotNo))return;
  const anchor=[...basic.querySelectorAll('.field')].find(x=>x.querySelector('label')?.textContent==='ロット№');
  const item=document.createElement('div');
  item.className='field full schedule-info-field';
@@ -1365,7 +1368,7 @@ async function refreshScheduleInfo(){
    const r=await api('/api/schedule/plan?equipment='+encodeURIComponent(equipment));
    if(r&&r.configured&&Array.isArray(r.entries)){
     const active=r.entries.filter(e=>e.state!=='完了'&&e.state!=='取消');
-    const idx=active.findIndex(e=>normalizedLot(e.lotNo)===normalizedLot(lotNo));
+    const idx=active.findIndex(e=>WL.base.normalizedLot(e.lotNo)===WL.base.normalizedLot(lotNo));
     if(idx>=0){
      const entry=active[idx];
      scheduleInfoCache={lotNo,position:idx+1,
@@ -1377,7 +1380,7 @@ async function refreshScheduleInfo(){
  }
  renderScheduleInfo();
 }
-function configureToleranceSelector(){const el=$('#toleranceSource');if(!el||!S.measure)return;const type=$('#measureType').value,isDimensional=WL.measureItem.isDimensional(type),order=el.querySelector('option[value="order"]'),availability=orderToleranceAvailability();order.disabled=!availability.available;order.textContent=availability.available?'オーダー公差':'オーダー公差（データなし）';order.classList.toggle('order-tolerance-unavailable',!availability.available);if(!availability.available&&S.measure.settings.toleranceSource==='order')S.measure.settings.toleranceSource='manufacturing';el.value=S.measure.settings.toleranceSource||'manufacturing';el.disabled=!isDimensional;el.title=isDimensional?(availability.available?'製造公差またはオーダー公差を選択できます':'オーダー公差がないため製造公差のみ使用できます'):'板厚・板幅以外は指示公差を自動適用します';
+function configureToleranceSelector(){const el=$('#toleranceSource');if(!el||!S.measure)return;const type=$('#measureType').value,isDimensional=WL.measureItem.isDimensional(type),order=el.querySelector('option[value="order"]'),availability=WL.measureInput.orderToleranceAvailability();order.disabled=!availability.available;order.textContent=availability.available?'オーダー公差':'オーダー公差（データなし）';order.classList.toggle('order-tolerance-unavailable',!availability.available);if(!availability.available&&S.measure.settings.toleranceSource==='order')S.measure.settings.toleranceSource='manufacturing';el.value=S.measure.settings.toleranceSource||'manufacturing';el.disabled=!isDimensional;el.title=isDimensional?(availability.available?'製造公差またはオーダー公差を選択できます':'オーダー公差がないため製造公差のみ使用できます'):'板厚・板幅以外は指示公差を自動適用します';
  /* **選べるときだけ出す**（§9.143、利用者の指示）。通常は製造公差のままで
     触ることがなく、選択肢が1つしか無い状態で常設すると「選ぶもの」に
     見えてしまう（機能としては残す必要があるので、消すのではなく隠す）。
@@ -1391,19 +1394,19 @@ function configureToleranceSelector(){const el=$('#toleranceSource');if(!el||!S.
     1回押せば必ず出せる場所に残す。 */
  {const box=el.closest('.tolerance-source-control'),pick=$('#toleranceSourcePick'),fold=$('#tolSourceFold');
   if(box){const usable=isDimensional&&availability.available;if(box.hidden!==!usable)box.hidden=!usable;
-   if(!usable&&pick&&!pick.hidden){pick.hidden=true;fold?.setAttribute('aria-expanded','false')}}}el.onchange=()=>{if(el.value==='order'&&!availability.available)return;S.measure.settings.toleranceSource=el.value;renderMeasureGrid();updateMeasurementHeading();markDirty()}}
+   if(!usable&&pick&&!pick.hidden){pick.hidden=true;fold?.setAttribute('aria-expanded','false')}}}el.onchange=()=>{if(el.value==='order'&&!availability.available)return;S.measure.settings.toleranceSource=el.value;WL.measureInput.renderMeasureGrid();updateMeasurementHeading();markDirty()}}
 /* 作業時間パネル。開始→終了の順序を強制するロック付き打刻。 */
 /* 作業時刻は**分まで**（§9.242 ①、利用者の指示「秒数は不要です」）。
    欄が分刻みになった以上、帳票・トーストだけ秒を出すと**同じ時刻が場所に
    よって違う長さで出る**（読む側は「別の値かもしれない」と数え直す）。 */
 function formatWorkTime(value){if(!value)return '';const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
 function stampWorkTimeLocked(kind){if(!S.measure)return;S.measure.workTime=S.measure.workTime||{};const now=new Date();if(kind==='start'){if(S.measure.workTime.endAt){showToast('開始時刻は変更できません','終了時刻の記録後は開始時刻を変更できません。');return}S.measure.workTime.startAt=now.toISOString()}else{if(!S.measure.workTime.startAt){showToast('開始時刻が未記録です','先に開始時刻を記録してください。');return}if(now<new Date(S.measure.workTime.startAt)){showToast('終了時刻を記録できません','終了時刻は開始時刻より後である必要があります。');return}S.measure.workTime.endAt=now.toISOString()}updateWorkTimePanel();markDirty();updateValidationVisuals()}
-function updateWorkTimePanel(){const own=WL.measureHooks.owner('workTimePanel');if(own)return own();if(!S.measure)return;S.measure.workTime=S.measure.workTime||{startAt:'',endAt:''};const start=$('#workStartAt'),end=$('#workEndAt');if(!start||!end)return;start.dataset.iso=S.measure.workTime.startAt||'';end.dataset.iso=S.measure.workTime.endAt||'';start.value=formatWorkTime(start.dataset.iso);end.value=formatWorkTime(end.dataset.iso);$('#stampWorkStart').disabled=!!S.measure.workTime.startAt;$('#stampWorkEnd').disabled=!S.measure.workTime.startAt||!!S.measure.workTime.endAt;[[ $('#workStartCard'),start.dataset.iso],[ $('#workEndCard'),end.dataset.iso]].forEach(([card,value])=>{card?.classList.toggle('validation-required',!value);card?.classList.toggle('validation-valid',!!value)});$('#workDuration').textContent=S.measure.workTime.endAt?`実作業時間 ${formatDuration(durationMs(S.measure))}`:S.measure.workTime.startAt?'作業中':'未計測';$('#stampWorkStart').onclick=()=>stampWorkTimeLocked('start');$('#stampWorkEnd').onclick=()=>stampWorkTimeLocked('end');
+function updateWorkTimePanel(){const own=WL.measureHooks.owner('workTimePanel');if(own)return own();if(!S.measure)return;S.measure.workTime=S.measure.workTime||{startAt:'',endAt:''};const start=$('#workStartAt'),end=$('#workEndAt');if(!start||!end)return;start.dataset.iso=S.measure.workTime.startAt||'';end.dataset.iso=S.measure.workTime.endAt||'';start.value=formatWorkTime(start.dataset.iso);end.value=formatWorkTime(end.dataset.iso);$('#stampWorkStart').disabled=!!S.measure.workTime.startAt;$('#stampWorkEnd').disabled=!S.measure.workTime.startAt||!!S.measure.workTime.endAt;[[ $('#workStartCard'),start.dataset.iso],[ $('#workEndCard'),end.dataset.iso]].forEach(([card,value])=>{card?.classList.toggle('validation-required',!value);card?.classList.toggle('validation-valid',!!value)});$('#workDuration').textContent=S.measure.workTime.endAt?`実作業時間 ${WL.base.formatDuration(WL.base.durationMs(S.measure))}`:S.measure.workTime.startAt?'作業中':'未計測';$('#stampWorkStart').onclick=()=>stampWorkTimeLocked('start');$('#stampWorkEnd').onclick=()=>stampWorkTimeLocked('end');
  /* 自動で入る値（§9.234 ②）。開始・終了・実働時間を欄として置けるように
     なったので、打刻したらその場で引き直す（読み直すまで古いままにしない）。 */
  if(window.WL&&WL.opData&&WL.opData.paintAuto)WL.opData.paintAuto();}
 document.querySelectorAll('[data-worktab]').forEach(b=>b.onclick=()=>activateWorkspace(b.dataset.worktab));
-bindTabs('left','left');
+WL.base.bindTabs('left','left');
 /* ---------- マスタの差異はバッジで知らせる（§9.139） ----------
    利用者の指示「マスタ再読込ボタンは、バックグラウンドで差異が見られた
    場合にのみ、各入力内容ごとにバッジで出す」。常設のボタンは**押す理由が
@@ -1431,7 +1434,7 @@ WL.masterDiff=(function(){
    b=document.createElement('button');
    b.type='button';b.className='master-diff-badge';b.textContent='更新あり';
    b.title='マスタの選択肢が変わりました。押すと取り込みます。';
-   b.onclick=async e=>{e.preventDefault();await loadMeasurementContext(true);check()};
+   b.onclick=async e=>{e.preventDefault();await WL.records.loadMeasurementContext(true);check()};
    box.append(b);
   }else if(!on&&b)b.remove();
  }
@@ -1455,7 +1458,7 @@ WL.masterDiff=(function(){
   FIELDS.forEach(([id])=>mark(id,false))}
  return{check,start,stop};
 })();
-$('#verticalCount').addEventListener('change',()=>{updateLengthOptions($('#verticalCount').value);renderMeasureGrid()});
+$('#verticalCount').addEventListener('change',()=>{updateLengthOptions($('#verticalCount').value);WL.measureInput.renderMeasureGrid()});
 $('#horizontalCount').addEventListener('change',()=>{
  /* 設備ごとの最大条数を超えた入力はその場で戻す。max属性だけだとスピナーは
     止まるが、手打ち・貼り付けは通ってしまう。 */
@@ -1476,6 +1479,26 @@ $('#horizontalCount').addEventListener('change',()=>{
     `元幅（実績）${lim.original}mm ÷ 製造板幅 ${lim.width}mm ＝ 最大 ${lim.max}条です。`
     +'これ以上増やすと屑幅がマイナスになります。増やすなら母材（元幅）を直してください。',7000);
  }
- updateCoilOptions(el.value);renderMeasureGrid();
+ updateCoilOptions(el.value);WL.measureInput.renderMeasureGrid();
 });
 function lockCounts(){const has=Object.values(S.measure.measurements).some(a=>a.flat().some(v=>v!==''));$('#verticalCount').disabled=has;$('#horizontalCount').disabled=has}
+
+/* ============================================================
+   外へ出す面（§9.359・REVIEW 3-17）。**ここに載せた名前だけ**が外から
+   呼べる。載せ忘れは `no-undef` が教える——**ただし `typeof x` は教えない**
+   （§9.355）。外から使う側は `typeof WL.measureView.x==='function'`。
+   ============================================================ */
+WL.measureView={
+ ensureMeasureShape,blankMeasure,blankProductRow,collect,
+ renderMeasurement,renderProductPanel,renderQualityGradePanel,renderRecordedValues,
+ renderCourseHierarchy,renderResidualCourseEverywhere,paintQualityInfo,
+ refreshScheduleInfo,applyRightLayout,
+ updateValidationVisuals,showValidationMessage,activeRequiredControls,
+ judgeInput,judgeProductRow,
+ updateCoilOptions,updateLengthOptions,updateMeasurementHeading,
+ applyMaxStripsToInputs,syncInputModeLock,configureToleranceSelector,
+ lockCounts,motherFieldLabel,PRODUCT_FILLED_KEYS,
+ formatWorkTime,stampWorkTimeLocked,
+ loadFlatComment,saveFlatComment,
+};
+})();

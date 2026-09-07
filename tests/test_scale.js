@@ -208,7 +208,7 @@ let b=null,measureId='';
  async function cleanup(){
   try{
    if(measureId)await page.evaluate(async id=>{
-    if(typeof reliableDelete==='function')await reliableDelete(id).catch(()=>{});
+    if(typeof WL.records.reliableDelete==='function')await WL.records.reliableDelete(id).catch(()=>{});
     for(let k=0;k<6;k++){
      const r=await fetch('/api/measurement/backup/list').then(x=>x.json()).catch(()=>({items:[]}));
      const ids=(r.items||[]).map(i=>i.id).filter(x=>x===id||String(x).endsWith(id));

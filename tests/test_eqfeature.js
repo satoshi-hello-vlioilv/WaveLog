@@ -218,8 +218,8 @@ async function cleanup(){
      そちらに寄りかかると、落ちたときにどちらが壊れたのか読めなくなる。 */
   await post('/api/equipment-master/update',{id:eid,name:NAME,disabledFeatures:['measure']});
   const eqSel=async()=>{
-   await page.evaluate(()=>{if(typeof loadEquipmentMaster==='function')return loadEquipmentMaster(true)});
-   await page.evaluate(()=>{if(typeof openEquipmentSettingsFinal==='function')return openEquipmentSettingsFinal('manual','')});
+   await page.evaluate(()=>{if(typeof WL.records.loadEquipmentMaster==='function')return WL.records.loadEquipmentMaster(true)});
+   await page.evaluate(()=>{if(typeof WL.records.openEquipmentSettingsFinal==='function')return WL.records.openEquipmentSettingsFinal('manual','')});
    await page.waitForSelector('#configuredEquipment',{timeout:10000});
    await page.waitForTimeout(400);
    return page.evaluate(()=>({
@@ -276,7 +276,7 @@ async function cleanup(){
   /* 設備マスタはタブを開いているあいだ持ち回るので、**取り直してから**
      画面へ入り直す（別のPCが直した設定は、この端末では古いまま残る）。 */
   const reloadEq=()=>page.evaluate(()=>{
-   if(typeof loadEquipmentMaster==='function')return loadEquipmentMaster(true)});
+   if(typeof WL.records.loadEquipmentMaster==='function')return WL.records.loadEquipmentMaster(true)});
   const reenterSchedule=async()=>{
    await page.click('#openMasterMaint');
    await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:15000});
@@ -319,7 +319,7 @@ async function cleanup(){
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
   /* 帳票はデータ一覧の行の「帳票」から開く（操作レールの`#openReport`は
      測定を開いているときだけ出る）。 */
-  await page.evaluate(()=>openRecordsSafe('編集中'));
+  await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
   await page.waitForSelector('.record-list-row',{timeout:25000});
   await page.click('.record-list-row .report');
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
@@ -333,7 +333,7 @@ async function cleanup(){
    /* **前提を先に確かめる**（§9.108の作法）——この設備が帳票から外れていて、
       かつ**この端末にロットがある**ことまで見ないと、下の2つは
       「たまたま外れていなかった」でも通ってしまう。 */
-   const m=(typeof equipmentMasterState!=='undefined'?equipmentMasterState.items:[])||[];
+   const m=(typeof WL.records.equipmentMasterState!=='undefined'?WL.records.equipmentMasterState.items:[])||[];
    const hit=m.find(x=>x.name===e);
    const lots=[...s.options].find(o=>o.value===e);
    return {候補:[...s.options].map(o=>o.value),

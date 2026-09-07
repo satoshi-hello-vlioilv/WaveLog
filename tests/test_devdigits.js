@@ -80,7 +80,7 @@ let b=null;
   /* ---- ④ 器で桁が変わる ---- */
   const send=async(raw,key)=>{
    await page.evaluate(v=>{const el=document.getElementById('deviceInput');
-     el.value=v;processDeviceInput(v)},raw);
+     el.value=v;WL.measureInput.processDeviceInput(v)},raw);
    await page.waitForTimeout(500);
    return page.evaluate(k=>({
      値:S.measure.measurements[k][0][0],
@@ -141,7 +141,7 @@ let b=null;
    ty.dispatchEvent(new Event('change',{bubbles:true}));S.measure.settings.wStep=0});
   await page.waitForTimeout(600);
   await page.evaluate(()=>{const el=document.getElementById('deviceInput');
-    el.value='DT110+1200.00';processDeviceInput('DT110+1200.00')});
+    el.value='DT110+1200.00';WL.measureInput.processDeviceInput('DT110+1200.00')});
   const soon=await page.evaluate(()=>document.getElementById('localState').textContent||'');
   rec('打った直後は「未保存」と言う（嘘をつかない）',/未保存/.test(soon),JSON.stringify(soon));
   await page.waitForFunction(()=>/DBへ保存済み|再送します|保存できませんでした/
@@ -161,37 +161,41 @@ let b=null;
      来る**のがふつう。ここで見るのは、そのとき打った値が
      **端末内の記録まで届くこと**と、**旗（未保存）が残らないこと**。
 
-     **実測して分かったこと**（推測で書かない）: `collect()`が返す写しは
+     **実測して分かったこと**（推測で書かない）: `WL.measureView.collect()`が返す写しは
      測定値の配列を**実体で共有**しており、さらに`backupAndTrackSync()`が
      `finally`でもう一度`reliablePut(m)`する。だから往復中の1文字は
      取りこぼされない——**この網はその成り立ちを固定する**もので、
-     `collect()`を深い写しへ変えるような直しが入れば落ちる。
+     `WL.measureView.collect()`を深い写しへ変えるような直しが入れば落ちる。
 
      **遅らせるのは端末内への書き込み（`reliablePut`）**——共有DBへの送信を
      遅らせても`autoSaveAgain`が拾うので、窓が開かない（実際に空振りした）。 */
   await page.evaluate(ms=>{
-   window.__origPut=reliablePut;
-   reliablePut=async m=>{await new Promise(s=>setTimeout(s,ms));return window.__origPut(m)};
+   /* **被せない**（§9.352）——閉じたファイルの関数は外から差し替えられない。
+      持ち替えは登録表の `own` で行い、元の道は核（`reliablePutCore`）を呼ぶ。 */
+   WL.measureHooks.own('reliablePut',async m=>{
+    await new Promise(s=>setTimeout(s,ms));
+    return WL.records.reliablePutCore(m);
+   });
    S.measure.settings.wStep=0;
   },1200);
   await page.evaluate(()=>{const el=document.getElementById('deviceInput');
-    el.value='DT110+1201.00';processDeviceInput('DT110+1201.00')});
-  /* 書き込みが始まった（＝`collect()`は済んだ）ところで、もう1つ打つ。 */
+    el.value='DT110+1201.00';WL.measureInput.processDeviceInput('DT110+1201.00')});
+  /* 書き込みが始まった（＝`WL.measureView.collect()`は済んだ）ところで、もう1つ打つ。 */
   await page.waitForFunction(()=>/保存しています/
     .test(document.getElementById('localState').textContent||''),null,{timeout:20000});
   await page.waitForTimeout(200);
   await page.evaluate(()=>{const el=document.getElementById('deviceInput');
-    el.value='DT110+1202.00';processDeviceInput('DT110+1202.00')});
+    el.value='DT110+1202.00';WL.measureInput.processDeviceInput('DT110+1202.00')});
   /* 落ち着くまで待つ。**時間で決め打ちにしない**（§9.102）。 */
-  await page.waitForFunction(()=>!measureDirty&&/保存済み|再送します/
+  await page.waitForFunction(()=>!WL.base.measureDirty&&/保存済み|再送します/
     .test(document.getElementById('localState').textContent||''),null,{timeout:30000}).catch(()=>{});
   await page.waitForTimeout(600);
   const late=await page.evaluate(async()=>{
-   reliablePut=window.__origPut;
-   const saved=await reliableGet(S.measure.id).catch(()=>null);
+   WL.measureHooks.own('reliablePut',null);   // 返上（§9.352）
+   const saved=await WL.records.reliableGet(S.measure.id).catch(()=>null);
    const row=((saved&&saved.measurements&&saved.measurements.width)||[])[lengthIndex()]||[];
    return {画面:(S.measure.measurements.width[lengthIndex()]||[]).slice(0,3),
-     端末内:row.slice(0,3),旗:measureDirty,
+     端末内:row.slice(0,3),旗:WL.base.measureDirty,
      バッジ:document.getElementById('localState').textContent||''};
   });
   /* **端末内の記録まで見る**（画面の配列だけを見る網は、どこへも書いて

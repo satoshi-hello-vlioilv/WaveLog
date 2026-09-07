@@ -259,8 +259,8 @@ let b=null,page=null;
    m.measurements.width[0][0]='100.2';   // 合格（1丈目＝いま出ている）
    m.measurements.width[0][2]='150.0';   // 公差外
    m.measurements.width[1][1]='99.6';    // 合格（2丈目＝出ていない）
-   renderMeasureGrid();
-   return !!toleranceDetail('width',0,'板幅');
+   WL.measureInput.renderMeasureGrid();
+   return !!WL.measureInput.toleranceDetail('width',0,'板幅');
   });
   await page.waitForTimeout(500);
   rec('公差の材料を注ぎ込めた(測定表)',lcSetup===true,String(lcSetup));
@@ -290,7 +290,7 @@ let b=null,page=null;
   rec('行は条数ぶん',lc1.行数===8,String(lc1.行数));
   /* **出ていない丈の値が見えること。** ここが空なら、この表を出す意味がない。 */
   /* 板幅は**小数2桁**（§9.242 ②、利用者の指示）。注ぎ込んだ`99.6`は
-     欄では`99.60`として出る（桁数は`measurementDigits('width')`の1箇所）。 */
+     欄では`99.60`として出る（桁数は`WL.base.measurementDigits('width')`の1箇所）。 */
   rec('いま出ていない丈位置の値が見える',lc1.他の丈の値==='99.60',JSON.stringify(lc1));
   rec('いま入力している丈位置が分かる',lc1.いまの列===1,JSON.stringify(lc1));
   rec('公差外はここでも印が付く',lc1.公差外の印===1&&lc1.公差外の値[0]==='150.00',
@@ -318,7 +318,7 @@ let b=null,page=null;
       JSON.stringify({見出し:lc3.見出し,行数:lc3.行数}));
   await rowsFor(8);
   /* 後始末: 次の検証（③の公差外の集計）へ値を持ち越さない。 */
-  await page.evaluate(()=>{S.measure.measurements.width.forEach(r=>r.fill(''));renderMeasureGrid()});
+  await page.evaluate(()=>{S.measure.measurements.width.forEach(r=>r.fill(''));WL.measureInput.renderMeasureGrid()});
   await page.waitForTimeout(300);
   await rowsFor(1);
 
@@ -630,7 +630,7 @@ let b=null,page=null;
     '板丈公差_製造_ﾌﾟﾗｽ','板丈公差_製造_ﾏｲﾅｽ'].forEach(k=>{delete S.measure.source[k]});
    S.measure.basic.mfgThickness=b.基本.t;S.measure.basic.mfgWidth=b.基本.w;
    S.measure.basic.mfgLength=b.基本.l;S.measure.settings.equipmentKind=b.区分;
-   if(typeof renderMeasureGrid==='function')renderMeasureGrid();
+   if(typeof WL.measureInput.renderMeasureGrid==='function')WL.measureInput.renderMeasureGrid();
   },tolBackup);
   await go('3');
 
@@ -722,10 +722,10 @@ let b=null,page=null;
    /* **前の検証の値を持ち越さない**（この節の件数は自分で作った値だけで
       決まるようにする）。 */
    m.measurements.width.forEach(r=>r.fill(''));
-   const r=toleranceDetail('width',0,'板幅')?.range;
+   const r=WL.measureInput.toleranceDetail('width',0,'板幅')?.range;
    if(!r)return{skip:true,base:m.basic.mfgWidth,
-     公差の元:toleranceDataForSource('width','manufacturing'),
-     出どころ:configuredToleranceSource()};
+     公差の元:WL.measureInput.toleranceDataForSource('width','manufacturing'),
+     出どころ:WL.measureInput.configuredToleranceSource()};
    m.measurements.width[0][0]=String((r[0]+r[1])/2);  // 合格（1丈目＝描かれている）
    m.measurements.width[1][0]=String(r[1]+50);        // 上限超え（2丈目＝描かれていない）
    m.measurements.width[1][1]=String(r[0]-50);        // 下限割れ
@@ -1424,7 +1424,7 @@ let b=null,page=null;
   const legacy=await page.evaluate(()=>{
    S.measure.product.rows[0]=Object.assign(S.measure.product.rows[0]||{},
      {edgeShape:'',occurrencePosition:'',regularity:'',direction:'',alignmentCode:'1203'});
-   renderProductPanel();
+   WL.measureView.renderProductPanel();
    const tr=document.querySelector('#productRowsBody tr[data-row="0"]');
    return {judge:tr.querySelector('[data-product-judge]').textContent.trim(),
            note:(tr.querySelector('.prt-old')||{}).textContent||''};
@@ -1461,12 +1461,12 @@ let b=null,page=null;
    };
    const setGrade=g=>{
     if(g===null)delete src['品質ｸﾞﾚｰﾄﾞ_切断面'];else src['品質ｸﾞﾚｰﾄﾞ_切断面']=g;
-    renderQualityGradePanel();renderProductPanel();
+    WL.measureView.renderQualityGradePanel();WL.measureView.renderProductPanel();
    };
    const setRow=(edge,val)=>{
     const r=S.measure.product.rows[0];
     r.edgeShape=edge;r.alignmentValue=val;r.alignmentCode='';
-    renderProductPanel();
+    WL.measureView.renderProductPanel();
    };
    /* ① 等級が無いとき: 基準を出せないと書き、判定もしない */
    setGrade(null);setRow('のこぎり状','1.0');
@@ -1494,8 +1494,8 @@ let b=null,page=null;
    out.超過の印=!!document.querySelector('#productRowsBody .prt-df.is-over');
    /* 後始末 */
    if(keep===undefined)delete src['品質ｸﾞﾚｰﾄﾞ_切断面'];else src['品質ｸﾞﾚｰﾄﾞ_切断面']=keep;
-   S.measure.product.rows=S.measure.product.rows.map(()=>blankProductRow());
-   renderQualityGradePanel();renderProductPanel();
+   S.measure.product.rows=S.measure.product.rows.map(()=>WL.measureView.blankProductRow());
+   WL.measureView.renderQualityGradePanel();WL.measureView.renderProductPanel();
    return out;
   });
   rec('等級が読めないときは基準を出せないと書く',
@@ -1588,8 +1588,8 @@ let b=null,page=null;
   rec('選び直したら出どころの注記は消える',inner.選び直したら出どころは消える===true,
       String(inner.選び直したら出どころは消える));
   await page.evaluate(()=>{
-   S.measure.product.rows=S.measure.product.rows.map(()=>blankProductRow());
-   renderProductPanel();
+   S.measure.product.rows=S.measure.product.rows.map(()=>WL.measureView.blankProductRow());
+   WL.measureView.renderProductPanel();
   });
 
   /* ---- 母材の計算全長（参考）（§9.160、利用者の指示） ----
@@ -1742,7 +1742,7 @@ let b=null,page=null;
    const s=document.getElementById('motherScrapWidth');
    if(s)s.textContent='34.8';
    document.querySelectorAll('[data-mother]').forEach(el=>{if(!el.value)el.value='1234.5'});
-   renderRecordedValues();
+   WL.measureView.renderRecordedValues();
   });
   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
   const rvCut=await page.evaluate(()=>[...document.querySelectorAll('.rv-group dd')]
@@ -1751,7 +1751,7 @@ let b=null,page=null;
   rec('「記録した値」の値が切り詰められない',rvCut.length===0,rvCut.slice(0,4).join(' / '));
   /* ①で選んだ値がそのまま出ること（§9.206、実機で報告「準備の入力など、
      選択状態にしたら、記録した値に入ってほしいところ何も表示されません」）。
-     `settings`は`collect()`＝保存のときにしか書かれないので、そこだけを
+     `settings`は`WL.measureView.collect()`＝保存のときにしか書かれないので、そこだけを
      見ていると**選んだ直後は「—」のまま**になる。 */
   const rvLive=await page.evaluate(async()=>{
    WL.measureSteps.go('1');
@@ -1777,7 +1777,7 @@ let b=null,page=null;
      ================================================================== */
 
   /* ---- ② 入力数はその場で数え直す ----
-     母材8欄は`collect()`＝**保存のときだけ**回収する作りで、`m.mother`は
+     母材8欄は`WL.measureView.collect()`＝**保存のときだけ**回収する作りで、`m.mother`は
      打っても空のままだった。入力数は`m.mother`から数えるので、**全部
      埋めてもチップは 0/N のまま**（実機で報告）。
      **確かめるときは保存せずに見ること**——保存してから数えると、
@@ -1794,7 +1794,7 @@ let b=null,page=null;
    document.querySelectorAll('[data-mother]').forEach(el=>{el.value='';el.dispatchEvent(new Event('input',{bubbles:true}))});
    S.measure.mother={};
    (S.measure.product.rows||[]).forEach(r=>Object.keys(r).forEach(k=>r[k]=''));
-   renderProductPanel();refreshMeasureProgress();
+   WL.measureView.renderProductPanel();refreshMeasureProgress();
    await new Promise(r=>setTimeout(r,120));
    const before=chip();
    const el=document.querySelector('[data-mother]');
@@ -2310,7 +2310,7 @@ let b=null,page=null;
      '板幅公差_ｵｰﾀﾞｰ_ﾌﾟﾗｽ':0.8,'板幅公差_ｵｰﾀﾞｰ_ﾏｲﾅｽ':0.8});
    const mt=document.getElementById('measureType'),bkType=mt.value;
    mt.value='板幅';mt.dispatchEvent(new Event('change',{bubbles:true}));
-   if(typeof configureToleranceSelector==='function')configureToleranceSelector();
+   if(typeof WL.measureView.configureToleranceSelector==='function')WL.measureView.configureToleranceSelector();
    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
    const box=document.querySelector('.tolerance-source-control'),
      fold=document.getElementById('tolSourceFold'),
@@ -2331,7 +2331,7 @@ let b=null,page=null;
    out.もう一度押すと畳む=!!pick.hidden;
    Object.keys(bk).forEach(k=>{if(bk[k]===undefined)delete src[k];else src[k]=bk[k]});
    mt.value=bkType;mt.dispatchEvent(new Event('change',{bubbles:true}));
-   if(typeof configureToleranceSelector==='function')configureToleranceSelector();
+   if(typeof WL.measureView.configureToleranceSelector==='function')WL.measureView.configureToleranceSelector();
    return out;
   });
   rec('判定公差の切り替えは選べるときだけ出す',公差切替.選べる&&公差切替.入口が出ている,
@@ -2469,7 +2469,7 @@ let b=null,page=null;
    m.measurements.burr[0][0]='0.030';
    /* 子ロットごとの板幅（分割ありのときだけ出る）。 */
    m.splitSequence=['L0001','L0002'];
-   renderStats();
+   WL.measureInput.renderStats();
    await new Promise(r=>setTimeout(r,200));
    const body=document.getElementById('stats');
    const cards=[...body.querySelectorAll('.an-card')].map(c=>({
@@ -2680,7 +2680,7 @@ let b=null,page=null;
  async function cleanup(){
   try{await page.evaluate(async()=>{
    const id=(typeof S!=='undefined'&&S.measure)?S.measure.id:'';
-   if(id&&typeof reliableDelete==='function')await reliableDelete(id).catch(()=>{});
+   if(id&&typeof WL.records.reliableDelete==='function')await WL.records.reliableDelete(id).catch(()=>{});
    /* **消えるまで確かめる。** 共有(shareRecord)は画面を待たせずに送るので、
       1回消しただけだと**遅れて届いた登録が後から復活する**（通しで1回だけ
       test_scdrop が落ち、L0001に身に覚えのない実績が残っていた）。

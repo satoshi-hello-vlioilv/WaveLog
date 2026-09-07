@@ -2,7 +2,7 @@
    ------------------------------------------------------------
    遅い経路は2種類あって、どちらも同じ覆い(#saveOverlay)で受ける:
      ・ネットワーク(APIの応答が遅い)……page.routeで遅らせる
-     ・端末内データ(reliableAll)……関数を包んで遅らせる
+     ・端末内データ(reliableAll)……登録表の`own`で遅らせる（§9.359）
    後者は`test_waiting2.js`が別ファイルで持っていたが、同じ画面を同じ
    手順で開き直すだけで、ブラウザの起動とページの読み込みを2回払って
    いた(§9.132のテスト統廃合)。1本にまとめてある。
@@ -108,8 +108,16 @@ let b=null;
  await setMode('edit');
  await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openCalendar',{timeout:15000});
- await page.evaluate(()=>{const o=window.reliableAll||reliableAll;
-  window.reliableAll=reliableAll=async function(){await new Promise(r=>setTimeout(r,900));return o.apply(this,arguments)}});
+ /* **被せない**（§9.352・§9.359）——`records-store.js` は閉じてあるので、
+    外から関数を差し替えることはできない。遅らせるのは登録表の `own` で行い、
+    元の道は核（`reliableAllCore`）を呼ぶ。この網はこのあと画面を開き直さない
+    ので返上は要らない（ブラウザごと閉じる）。 */
+ await page.evaluate(()=>{
+  WL.measureHooks.own('reliableAll',async(...a)=>{
+   await new Promise(r=>setTimeout(r,900));
+   return WL.records.reliableAllCore(...a);
+  });
+ });
  await watch(); await page.click('#openCalendar'); await shownThenClosed(); await built('.cal-grid');
  s=await seen();
  rec('端末内データが遅いときもWAITINGが出る',s.shown&&/実績カレンダー/.test(s.title),JSON.stringify(s));

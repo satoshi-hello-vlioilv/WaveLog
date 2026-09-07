@@ -24,7 +24,7 @@
    ことを優先し、機能が使えないだけの状態に留める)。
    ============================================================ */
 (function(){
-  if(typeof toleranceDetail!=='function'||typeof $!=='function'||typeof api!=='function')return;
+  if(typeof WL.measureInput.toleranceDetail!=='function'||typeof $!=='function'||typeof api!=='function')return;
 
   function norm(s){return typeof normalizedFieldName==='function'?normalizedFieldName(s):String(s||'')}
   function numberFromRow(row,names){
@@ -290,8 +290,8 @@
      問い合わせを何度も投げるため、キーで1回に束ねる(進行中の呼び出しにも
      相乗りできるようPromiseのまま持つ)。 */
   async function searchByLotPrefix(table,columns,prefix){
-    const lotCol=findColumn(columns,aliases.lotNo);if(!lotCol)return [];
-    const equipCol=findColumn(columns,aliases.equipment);
+    const lotCol=findColumn(columns,WL.base.aliases.lotNo);if(!lotCol)return [];
+    const equipCol=findColumn(columns,WL.base.aliases.equipment);
     const equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
     const key=`${table}|${prefix}|${equipCol&&equipment?equipment:''}`;
     const hit=prefixSearchCache.get(key);
@@ -318,7 +318,7 @@
   const LIGHT_CHUNK=25;             // 1回の問い合わせにまとめる先頭の数
   const LIGHT_PAGE_SIZE=500;        // サーバー側の上限と同じ
   function lightColumns(columns){
-    const lotCol=findColumn(columns,aliases.lotNo);
+    const lotCol=findColumn(columns,WL.base.aliases.lotNo);
     const want=lotCol?[lotCol]:[];
     // 親判定に使う子カード列(実カラム名のゆれは候補名で拾う)
     for(let i=1;i<=CHILD_SLOTS;i++)
@@ -331,8 +331,8 @@
   async function prefetchLotPrefixes(prefixes){
     const table=await resolveSikaTable();if(!table)return;
     const columns=await resolveSikaColumns(table);if(!columns.length)return;
-    const lotCol=findColumn(columns,aliases.lotNo);if(!lotCol)return;
-    const equipCol=findColumn(columns,aliases.equipment);
+    const lotCol=findColumn(columns,WL.base.aliases.lotNo);if(!lotCol)return;
+    const equipCol=findColumn(columns,WL.base.aliases.equipment);
     const equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
     const eq=equipCol&&equipment?equipment:'';
     const want=[...new Set(prefixes)].filter(p=>{
@@ -365,8 +365,8 @@
   window.prefetchLotPrefixes=prefetchLotPrefixes;
   /* まとめ引きが効いていればその場で返る。効いていなければ1件だけ引く。 */
   async function searchByLotPrefixLight(table,columns,prefix){
-    const lotCol=findColumn(columns,aliases.lotNo);if(!lotCol)return [];
-    const equipCol=findColumn(columns,aliases.equipment);
+    const lotCol=findColumn(columns,WL.base.aliases.lotNo);if(!lotCol)return [];
+    const equipCol=findColumn(columns,WL.base.aliases.equipment);
     const equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
     const eq=equipCol&&equipment?equipment:'';
     const key=lightKey(table,prefix,eq);
@@ -397,7 +397,7 @@
     try{
       const table=await resolveSikaTable();if(!table)return null;
       const columns=await resolveSikaColumns(table);if(!columns.length)return null;
-      const lotCol=findColumn(columns,aliases.lotNo);if(!lotCol)return null;
+      const lotCol=findColumn(columns,WL.base.aliases.lotNo);if(!lotCol)return null;
       const key=String(lotNo||'');
       if(key.length>=5){
         const rows=await searchByLotPrefix(table,columns,key.slice(0,5));
@@ -406,7 +406,7 @@
         if(rows.length<PREFIX_PAGE_SIZE)return null;   // 取りこぼしではなく本当に無い
       }
       const filters=[{column:lotCol,op:'eq',value:lotNo}];
-      const equipCol=findColumn(columns,aliases.equipment),equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
+      const equipCol=findColumn(columns,WL.base.aliases.equipment),equipment=typeof currentConfiguredEquipment==='function'?currentConfiguredEquipment():'';
       if(equipCol&&equipment)filters.push({column:equipCol,op:'contains',value:equipment});
       const params=new URLSearchParams({db:workDb(),table,page:1,page_size:5,filters:JSON.stringify(filters)});
       const d=await api('/api/table?'+params);
@@ -417,7 +417,7 @@
   // S.measure.sourceへマージする。一覧取得時点では列表示マスタにより
   // 分割関連の列が欠落している可能性があるため、測定画面を開いた際に
   // 一度だけ取り直して補う。分割関連列に限らず、元幅（実績）等の他の
-  // 基本情報項目(aliases/pick)も同じ列表示マスタの影響を受けうるため、
+  // 基本情報項目(WL.base.aliases/pick)も同じ列表示マスタの影響を受けうるため、
   // マージ後の完全なsourceから基本情報(S.measure.basic)も再計算し直す
   // (値が取得できた項目のみ上書きし、既存値を空欄で潰さない)。
   async function refreshSelfSourceFull(){
@@ -427,8 +427,8 @@
       const row=await fetchChildLotRow(lotNo);
       if(row){
         S.measure.source={...(S.measure.source||{}),...row};
-        if(typeof aliases==='object'&&typeof pick==='function'){
-          Object.keys(aliases).forEach(k=>{
+        if(typeof WL.base.aliases==='object'&&typeof pick==='function'){
+          Object.keys(WL.base.aliases).forEach(k=>{
             const v=pick(S.measure.source,k);
             if(v!=='')S.measure.basic[k]=v;
           });
@@ -444,7 +444,7 @@
             if(S.measure.settings.horizontalCount!==rounded){
               S.measure.settings.horizontalCount=rounded;
               if($('#horizontalCount'))$('#horizontalCount').value=rounded;
-              if(typeof updateCoilOptions==='function')updateCoilOptions(rounded);
+              if(typeof WL.measureView.updateCoilOptions==='function')WL.measureView.updateCoilOptions(rounded);
             }
           }
           const vn=Number(pick(S.measure.source,'boxVerticalCount'));
@@ -453,7 +453,7 @@
             if(S.measure.settings.verticalCount!==rounded){
               S.measure.settings.verticalCount=rounded;
               if($('#verticalCount'))$('#verticalCount').value=rounded;
-              if(typeof updateLengthOptions==='function')updateLengthOptions(rounded);
+              if(typeof WL.measureView.updateLengthOptions==='function')WL.measureView.updateLengthOptions(rounded);
             }
           }
         }
@@ -463,9 +463,9 @@
            「基準を出せません」のまま残り、丈の判定も止まったままになる
            （`renderQualityGradePanel`が`m.qualityGrades`の唯一の書き手）。
            **内径のプリセット**も同じで、`ｺｲﾙ_内径目標`がここで現れうる。 */
-        if(typeof renderQualityGradePanel==='function')renderQualityGradePanel();
-        if(typeof renderProductPanel==='function'
-           &&WL.measureItem.isMaterial($('#measureType')?.value))renderProductPanel();
+        if(typeof WL.measureView.renderQualityGradePanel==='function')WL.measureView.renderQualityGradePanel();
+        if(typeof WL.measureView.renderProductPanel==='function'
+           &&WL.measureItem.isMaterial($('#measureType')?.value))WL.measureView.renderProductPanel();
         /* 当て方は1箇所（measure-view.js）が持つ。ここは呼ぶだけ。 */
         if(WL.innerDiameter)WL.innerDiameter.apply(S.measure.source);
       }
@@ -1609,16 +1609,16 @@
     S.measure.settings.splitGroups=splitGroups;
     S.measure.settings.splitPositionGroup=positionGroup;
     $('#horizontalCount').value=total;
-    if(typeof updateCoilOptions==='function')updateCoilOptions(total);
+    if(typeof WL.measureView.updateCoilOptions==='function')WL.measureView.updateCoilOptions(total);
     if(!changed){
-      if(typeof renderMeasureGrid==='function')renderMeasureGrid();
+      if(typeof WL.measureInput.renderMeasureGrid==='function')WL.measureInput.renderMeasureGrid();
       refreshSplitStatusPanel();
       return;
     }
     if(typeof markDirty==='function')markDirty();
     if(typeof setState==='function')setState('条割を変更しました');
-    if(typeof renderMeasureGrid==='function')renderMeasureGrid();
-    if(typeof updateMeasurementHeading==='function')updateMeasurementHeading();
+    if(typeof WL.measureInput.renderMeasureGrid==='function')WL.measureInput.renderMeasureGrid();
+    if(typeof WL.measureView.updateMeasurementHeading==='function')WL.measureView.updateMeasurementHeading();
     refreshSplitStatusPanel();
     /* 条割「適用」直後だけの一撃アニメーション。refreshSplitStatusPanel()は
        測定画面を開いた/再開しただけの同期でも呼ばれるため、アニメーション
@@ -2091,8 +2091,8 @@
     return needsReconfigure?'条数の構成が変わっています。「条割変更」で再設定してください。':'';
   }
   function rerenderAfterSplitDataChange(){
-    if(typeof renderMeasureGrid==='function')renderMeasureGrid();
-    if(typeof updateMeasurementHeading==='function')updateMeasurementHeading();
+    if(typeof WL.measureInput.renderMeasureGrid==='function')WL.measureInput.renderMeasureGrid();
+    if(typeof WL.measureView.updateMeasurementHeading==='function')WL.measureView.updateMeasurementHeading();
     refreshSplitStatusPanel();
   }
   function blockerMessage(blockers,verb){
@@ -2633,26 +2633,26 @@
     if(!g||g.missing||!g.base||!g.tol)return null;
     const base=g.base[kind];
     if(!Number.isFinite(base))return null;
-    let requested=typeof configuredToleranceSource==='function'?configuredToleranceSource():'manufacturing',source=requested,fallback=false;
+    let requested=typeof WL.measureInput.configuredToleranceSource==='function'?WL.measureInput.configuredToleranceSource():'manufacturing',source=requested,fallback=false;
     let data=g.tol[kind]?.[requested];
     if(!data&&requested!=='manufacturing'){source='manufacturing';fallback=true;data=g.tol[kind]?.manufacturing}
     if(!data)return null;
     return{range:[base-data.minus,base+data.plus],source,fallback,plus:data.plus,minus:data.minus,plusKey:data.plusKey,minusKey:data.minusKey,base,splitLot:g.lot};
   }
   /* 提供者として登録する（§9.348）。分割の条に当たらなければ自分の答えでは
-     ない（undefined＝次の提供者へ）。以前はここが`toleranceDetail`を包み、
+     ない（undefined＝次の提供者へ）。以前はここが`WL.measureInput.toleranceDetail`を包み、
      引数を1つ落として「完了前の確認が全項目に今の項目の公差を当てる」事故が
      起きた——登録表では引数を resolve が運ぶので、その形は作れない。 */
   WL.tolerance.register({name:'分割ロット（条ごと）',priority:30,
     detail:(kind,index,typeName)=>groupRangeFor(kind,index,typeName)||undefined});
 
-  // compactToleranceData(表示用の公差テキスト生成)は従来 index を常に0扱いで
+  // WL.measureInput.compactToleranceData(表示用の公差テキスト生成)は従来 index を常に0扱いで
   // 呼ばれており、条ごとに公差が変わる分割ロットでは「今フォーカスしている
   // 条」ではなく常に1条目の公差を表示してしまっていた。index省略時は現在の
   // 入力位置(wStep/tStep)を既定値として使うようにし、基準値(base)も
   // toleranceDetailが返す値(分割時はその子ロット自身の値)を優先する。
   // index 省略時に今の入力位置を使う・基準値は提供者の値を優先する、は核（measure-input.js の
-  // compactToleranceData）が持つようになった（§9.352）。ここで差し替えない。
+  // WL.measureInput.compactToleranceData）が持つようになった（§9.352）。ここで差し替えない。
 
   // 使用設備・仕掛データを開いた時点のテーブル/列名を、子ロット再検索に
   // そのまま使えるよう記録しておく(仕掛一覧から開いた場合のみ意味を持つ)。
@@ -2735,7 +2735,7 @@
   function refreshFocusedToleranceDisplay(){
     const type=$('#measureType')?.value;
     if(!WL.measureItem.isDimensional(type))return;
-    if(typeof updateMeasurementHeading==='function')updateMeasurementHeading();
+    if(typeof WL.measureView.updateMeasurementHeading==='function')WL.measureView.updateMeasurementHeading();
     /* 板厚・板幅を別々の入力内容にしたので、描かれている数直線は
        **いま選んでいる項目のもの1つだけ**（§9.138）。枠の数も項目で
        違うため`slotCount`から取る（板厚は条数ではなく3）。 */

@@ -37,8 +37,8 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      basic:{lotNo:id,inspectionNo:'X'},
      settings:{registeredEquipment:'テスト設備A',verticalCount:1,horizontalCount:1},
      workTime:{}});
-   await reliablePut(mk('回帰削除_編集中','編集中'));
-   await reliablePut(mk('回帰削除_完了','完了'));
+   await WL.records.reliablePut(mk('回帰削除_編集中','編集中'));
+   await WL.records.reliablePut(mk('回帰削除_完了','完了'));
   });
   await page.click('[data-open-records]').catch(()=>{});
   await page.waitForSelector('#recordList',{timeout:20000});
@@ -96,7 +96,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      ----------------------------------------------------------
      ここが**この網の穴だった**。上までは「開いたこと」しか見ておらず、
      2件目を試す前に自分で`.rec-row-menu`を`remove()`していたため、
-     `openRecordRowMenu()`が控え（`recordRowMenuEl`）へ代入していなくても
+     `WL.records.openRecordRowMenu()`が控え（`recordRowMenuEl`）へ代入していなくても
      全部PASSしていた。実機では**外クリックでもEscでも自ボタンでも
      閉じられず、押すたびに積み上がっていた**。
      **閉じる操作を実際に通すこと。** 3つの入口をそれぞれ見る。
@@ -151,7 +151,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
  }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
  finally{
   await page.evaluate(async()=>{
-   for(const id of ['回帰削除_編集中','回帰削除_完了'])await reliableDelete(id);
+   for(const id of ['回帰削除_編集中','回帰削除_完了'])await WL.records.reliableDelete(id);
   }).catch(()=>{});
   await b.close();
   const ok=R.filter(x=>x.ok).length;

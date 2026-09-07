@@ -580,7 +580,7 @@
    return;
   }
   /* 差し替え口の形は既定の口と同じ（**関数で答える**）。データ一覧の
-     `recordColumnPanelSource()`と同じ作法で、パネル自体には手を入れない
+     `WL.records.recordColumnPanelSource()`と同じ作法で、パネル自体には手を入れない
      （§9.120。同じパネルを使い回す）。 */
   WL.listColumns.open({
    key:'actuals',eyebrow:'実績データ',

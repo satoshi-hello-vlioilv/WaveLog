@@ -5,7 +5,7 @@
    ------------------------------------------------------------
    「測定値のエラーでNGがあっても測定は完了できるようにしてください。」
 
-   以前は公差外が1件でもあると `persistAndTransition('完了')` が入口で
+   以前は公差外が1件でもあると `WL.records.persistAndTransition('完了')` が入口で
    引き返しており、**完了そのものができなかった**。公差外は「測った事実」で
    あって入力の誤りとは限らない——外れたまま完了して次の工程へ渡す判断は
    現場のものなので、アプリが握ってはいけない。
@@ -53,7 +53,7 @@ let b=null;
   await page.waitForTimeout(500);
  };
  const recordNow=id=>page.evaluate(async x=>{
-  const all=await reliableAll();
+  const all=await WL.records.reliableAll();
   const r=all.find(v=>v.id===x);
   return r?{状態:r.status,印:(r.settings&&r.settings.completedWithNg)||null}:null;
  },id);
@@ -87,7 +87,7 @@ let b=null;
    m.source['板幅公差_製造_プラス']=0.5;m.source['板幅公差_製造_マイナス']=0.5;
    m.measurements.width.forEach(r=>r.fill(''));
    m.measurements.width[0][0]='120.00';        // 99.5〜100.5 の外
-   /* **入力内容を板幅にしてから見る**——`activeRequiredControls()`が
+   /* **入力内容を板幅にしてから見る**——`WL.measureView.activeRequiredControls()`が
       測定表のセルを必須として数えるのは、その面が開いているときだけ
       （母材のままだと`.ng`のセルが1つも数に入らず、公差外だけの
       言い回しの道を一度も通らない）。 */
@@ -98,29 +98,30 @@ let b=null;
     const el=document.getElementById(id);
     if(el&&el.options&&el.options.length>1){el.selectedIndex=1;el.dispatchEvent(new Event('change',{bubbles:true}))}
    });
-   renderMeasureGrid();updateValidationVisuals();
+   WL.measureInput.renderMeasureGrid();WL.measureView.updateValidationVisuals();
    const ng=WL.measureReview.outOfTolerance();
-   return {公差:!!toleranceDetail('width',0,'板幅'),件数:(ng&&ng.total)||0};
+   return {公差:!!WL.measureInput.toleranceDetail('width',0,'板幅'),件数:(ng&&ng.total)||0};
   });
   rec('公差外の材料を注ぎ込めた',seeded.公差===true&&seeded.件数>0,JSON.stringify(seeded));
 
   /* ---- 7. 完了ボタンの説明が「完了できません」と読めない ---- */
   /* **「できません」と読める書き方をしない**——未入力が残っていれば説明は
      そちらを言う（直す先が1つに決まるほうを出す）。公差外だけのときの
-     言い回しは、下で `updateValidationVisuals()` の分岐を直接通して見る。 */
+     言い回しは、下で `WL.measureView.updateValidationVisuals()` の分岐を直接通して見る。 */
   const tip=await page.evaluate(()=>document.getElementById('complete')?.getAttribute('title')||'');
   rec('完了ボタンの説明が「完了できません」と読める書き方をしない',
       !/できません/.test(tip),tip);
   /* 未入力を一時的に「無い」ことにして、公差外だけのときの文言を見る。
-     **本体の`updateValidationVisuals()`を通すこと**——写して確かめると、
+     **本体の`WL.measureView.updateValidationVisuals()`を通すこと**——写して確かめると、
      本体が違う文言を出していても通る（§9.289）。 */
   const ngTip=await page.evaluate(()=>{
-   const base=activeRequiredControls;
-   const only=activeRequiredControls().filter(x=>x.el&&x.el.classList.contains('ng'));
-   window.activeRequiredControls=activeRequiredControls=()=>only;
+   /* **被せない**（§9.352）——閉じたファイルの関数は外から差し替えられない。
+      持ち替えは登録表の `own` で行い、`finally` で必ず返上する。 */
+   const only=WL.measureView.activeRequiredControls().filter(x=>x.el&&x.el.classList.contains('ng'));
+   WL.measureHooks.own('activeRequiredControls',()=>only);
    let t='';
-   try{updateValidationVisuals();t=document.getElementById('complete').title}
-   finally{window.activeRequiredControls=activeRequiredControls=base;updateValidationVisuals()}
+   try{WL.measureView.updateValidationVisuals();t=document.getElementById('complete').title}
+   finally{WL.measureHooks.own('activeRequiredControls',null);WL.measureView.updateValidationVisuals()}
    return t;
   });
   rec('公差外だけのときは「確認のうえ完了できます」と言う',
@@ -159,12 +160,12 @@ let b=null;
      残していないのと同じ（§4）。データ一覧の候補に在ること・**既定では
      出さない**こと（§9.132）・実際に件数が出ることまで見る。 */
   const col=await page.evaluate(async id=>{
-   const all=await reliableAll();
+   const all=await WL.records.reliableAll();
    const r=all.find(v=>v.id===id)||{};
-   const keys=recordAllColumnKeys();
-   const c=RECORD_COL_BY_KEY.get('完了時の公差外');
+   const keys=WL.records.recordAllColumnKeys();
+   const c=WL.records.RECORD_COL_BY_KEY.get('完了時の公差外');
    return {候補:keys.indexOf('完了時の公差外')>=0,
-           既定では出さない:recordInitialHidden(keys).indexOf('完了時の公差外')>=0,
+           既定では出さない:WL.records.recordInitialHidden(keys).indexOf('完了時の公差外')>=0,
            値:c?String(c.get(r)||''):null};
   },lotId);
   rec('データ一覧の候補に出せる（読める場所がある）',col.候補===true,JSON.stringify(col));
@@ -173,12 +174,12 @@ let b=null;
 
   /* ---- 5. 直したら印は消える ---- */
   await page.evaluate(async id=>{
-   const all=await reliableAll();
+   const all=await WL.records.reliableAll();
    const r=all.find(v=>v.id===id);
-   S.measure=ensureMeasureShape(r);
+   S.measure=WL.measureView.ensureMeasureShape(r);
    document.getElementById('measureModal').hidden=false;
    S.measure.measurements.width[0][0]='100.00';
-   renderMeasurement();updateValidationVisuals();
+   WL.measureView.renderMeasurement();WL.measureView.updateValidationVisuals();
   },lotId);
   await page.waitForTimeout(400);
   const left=await page.evaluate(()=>WL.measureReview.outOfTolerance().total);
@@ -202,14 +203,14 @@ let b=null;
 
   /* ---- 6. オペレータ／検査員の未選択は今までどおり止まる ---- */
   await page.evaluate(async id=>{
-   const all=await reliableAll();
+   const all=await WL.records.reliableAll();
    const r=all.find(v=>v.id===id);
-   S.measure=ensureMeasureShape(r);S.measure.status='編集中';
+   S.measure=WL.measureView.ensureMeasureShape(r);S.measure.status='編集中';
    document.getElementById('measureModal').hidden=false;
-   renderMeasurement();
+   WL.measureView.renderMeasurement();
    const el=document.getElementById('operator');
    if(el){el.value='';el.dispatchEvent(new Event('change',{bubbles:true}))}
-   updateValidationVisuals();
+   WL.measureView.updateValidationVisuals();
   },lotId);
   await page.waitForTimeout(400);
   await page.click('#complete');
@@ -229,8 +230,8 @@ let b=null;
  /* 後片付け（§9.121）。この検証で完了にした記録を端末と共有から消す。 */
  try{
   if(lotId)await page.evaluate(async id=>{
-   try{await deleteBackupRows([id])}catch(e){}
-   try{await reliableDelete(id)}catch(e){}
+   try{await WL.records.deleteBackupRows([id])}catch(e){}
+   try{await WL.records.reliableDelete(id)}catch(e){}
   },lotId);
  }catch(e){}
 

@@ -1,3 +1,9 @@
+/* **このファイルは閉じている**（§9.359・REVIEW 3-17）——外へ出す面は末尾の
+   2つだけ。①みんなが使う土台（`$`・`esc`・`S`・`api`…）は**素のグローバル
+   のまま明示的に公開**する（`WL.base.$()` と書き換えると2,000箇所以上が
+   読みにくくなるだけで、得るものが無い）。②それ以外は `WL.base` に載せる。
+   ここに載せていない名前は、このファイルの中だけのもの。 */
+(function(){
 "use strict";
 /* base.js: 共有基盤 — グローバル状態(S)・API呼び出し・共通ユーティリティ・
    フィールド別名(aliases)・端末設定(使用設備/ユーザーID)。
@@ -208,7 +214,7 @@ WL.lotDspTab={
 };
 function setState(x){$('#localState').textContent=x}
 /* 保存されていない変更があるかどうかを追跡する。×ボタン/背景クリックで
-   閉じようとした際、破棄してよいか確認するために使う。renderMeasurement()
+   閉じようとした際、破棄してよいか確認するために使う。WL.measureView.renderMeasurement()
    でデータを新規に読み込んだ時と、保存が成功した時にリセットする。 */
 let measureDirty=false;
 /* **触った回数**（§9.320-G の追補、§9.312と同じ数え方）。旗（`measureDirty`）
@@ -217,18 +223,18 @@ let measureDirty=false;
    バッジが「DBへ保存済み」と言ってしまう（**画面が嘘をつく**・§CLAUDE 6）。
    **控えた回数と違っていたら、旗を下ろさない・保存済みとも言わない**。
 
-   **値そのものは落ちない**（実測で確かめた。推測で書かない）——`collect()`が
-   返す写しは測定値の配列を**実体で共有**しており、`backupAndTrackSync()`が
-   `finally`でもう一度`reliablePut(m)`するので、往復中の1文字もその書き込みに
+   **値そのものは落ちない**（実測で確かめた。推測で書かない）——`WL.measureView.collect()`が
+   返す写しは測定値の配列を**実体で共有**しており、`WL.records.backupAndTrackSync()`が
+   `finally`でもう一度`WL.records.reliablePut(m)`するので、往復中の1文字もその書き込みに
    乗る。ここで直しているのは**バッジの文言**（未保存のものを保存済みと
-   言わない）で、`collect()`を深い写しへ変えるならこの前提も変わる。 */
+   言わない）で、`WL.measureView.collect()`を深い写しへ変えるならこの前提も変わる。 */
 let measureEditSeq=0;
 /* **どこに在るのかまで書く**(§9.202、利用者の報告「入力しただけでは
    完了に反映されない」)。「未保存」だけだと、打った値がもう端末に
    入っていると読める。実際は保存を押すまで画面の中にしか無い。 */
 /* **変わったら裏でDBへ書く**（§9.320-G、利用者の指示）。ここは値を書く
-   合図を出すだけで、実処理は`records-store.js`が持つ（`collect()`も
-   `reliablePut()`もあちらのもの）。**「あれば呼ぶ」で黙らせない**
+   合図を出すだけで、実処理は`records-store.js`が持つ（`WL.measureView.collect()`も
+   `WL.records.reliablePut()`もあちらのもの）。**「あれば呼ぶ」で黙らせない**
    ——公開漏れは静かに機能だけを失うので、無ければ理由を出す（§CLAUDE）。 */
 function markDirty(){
  measureDirty=true;measureEditSeq++;setState('未保存（画面の中だけ）');
@@ -253,7 +259,9 @@ WL.measureHooks={
  afterRender(fn){WL.measureHooks.on('afterRender',fn)},
  afterHeading(fn){WL.measureHooks.on('afterHeading',fn)},
  gate(name,fn,opt){if(typeof fn!=='function')return;const l=hookList(name);l.push({fn,priority:Number(opt&&opt.priority)||0});l.sort((a,b)=>b.priority-a.priority)},
- own(name,fn){if(typeof fn==='function')OWNERS[name]=fn},
+ /* `null` を渡すと返上する。**返上できない登録表は後始末ができない**——
+    差し替えたまま次へ漏れる（§9.121）。 */
+ own(name,fn){if(typeof fn==='function')OWNERS[name]=fn;else if(fn===null)delete OWNERS[name]},
  owner(name){return OWNERS[name]||null},
  run(name,...args){hookList(name).forEach(h=>{try{h.fn(...args)}catch(e){console.error('フック '+name+' で例外',e)}})},
  async runAsync(name,...args){for(const h of hookList(name)){try{await h.fn(...args)}catch(e){console.error('フック '+name+' で例外',e)}}},
@@ -1538,7 +1546,7 @@ function enterView(key,opts){
  });
  // 画面をまたいで残ると重なるオーバーレイ。閉じるのは全画面共通。
  // ただし**未保存の変更があるときは閉じない**。ここでhidden属性を立てるのは
- // closeMeasureModal()の破棄確認(「保存されていない変更があります。破棄して
+ // WL.records.closeMeasureModal()の破棄確認(「保存されていない変更があります。破棄して
  // 閉じますか？」)を迂回する経路で、そのまま閉じると入力中の測定値を無言で
  // 捨てることになる。現状は.modal{inset:0}が全面を覆うので測定中にサイドバーを
  // 押せず到達しないが、モーダルを全画面でなくしたり測定中に押せる導線を足すと
@@ -2369,3 +2377,24 @@ const bootGate=(()=>{
 
 /* ---------- WL名前空間への公開(定義は上記) ---------- */
 Object.assign(window.WL,{registerView,enterView,withInternalDbSwitch,isInternalDbSwitch,ttlCache,optionList,mountViewToolbar,syncViewToolbar,boot:bootGate});
+
+/* ============================================================
+   外へ出す面（§9.359・REVIEW 3-17）
+   ① 土台。**今までどおりの短い名前で**、ここから明示的に公開する。呼ぶ側は
+      今までどおり `$('#id')`／`esc(v)` と書ける（実測 `$`1,031・`esc`1,464
+      箇所。名前空間にすると読みにくくなるだけで、衝突は起きようがない
+      ——**このファイルだけが名乗っている**）。
+   ② それ以外は `WL.base`。使う場所が少ない＝土台ではない、の線引き。
+   ここに載せていない名前（131のうち約80）は、このファイルの中だけのもの。
+   ============================================================ */
+window.$=$;window.esc=esc;window.S=S;window.api=api;window.showToast=showToast;window.markDirty=markDirty;window.confirmModal=confirmModal;window.alertModal=alertModal;window.promptModal=promptModal;window.pick=pick;window.setState=setState;window.withUserId=withUserId;window.currentConfiguredEquipment=currentConfiguredEquipment;window.fmtDim=fmtDim;window.lengthIndex=lengthIndex;window.fixedToleranceValue=fixedToleranceValue;window.currentUserId=currentUserId;window.normalizedFieldName=normalizedFieldName;
+WL.base={normalizedLot,durationMs,statusLabel,statusClass,statusShortLabel,aliases,databaseLabel,designCourseValue,actualCourseValue,residualCourseValue,equipmentIsInDesignCourse,escClosesModal,fetchWhoami,fieldFromRows,fixedMeasurementValue,formatDuration,lotKey,measurementDigits,nextPaint,normalizeCourseText,noteMeasureDevice,openLotDsp,optionFill,qualityText,setActiveNav,setHeaderContext,setUserId,sourceField,sourceValue,toHalfWidth,ttlCache,widthSequence,bindTabs,
+ LENGTH_SLOTS,
+ /* `let` の入れ物は **getter** で載せる（値で載せると古い物が固定される）。
+    `measureDirty` は外からも倒す（`records-store` が保存し終えて false に
+    する）ので setter も置く。 */
+ get measureDirty(){return measureDirty},
+ set measureDirty(v){measureDirty=v},
+ get measureEditSeq(){return measureEditSeq},
+};
+})();

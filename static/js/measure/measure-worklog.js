@@ -61,8 +61,8 @@
       +'</div>';
   }
 
-  // toleranceDetail: 指示型は文字列の数値部を判定範囲[0,value]として返す（判定・図示に利用）。
-  if(typeof toleranceDetail==='function'){
+  // WL.measureInput.toleranceDetail: 指示型は文字列の数値部を判定範囲[0,value]として返す（判定・図示に利用）。
+  if(typeof WL.measureInput.toleranceDetail==='function'){
     /* 提供者として登録する（§9.348）。指示型でなければ自分の答えではない
        （undefined＝次の提供者へ）。指示値が読めないときは null＝「公差なし」。 */
     WL.tolerance.register({name:'指示型（指示_項目の値）',priority:20,detail:function(kind,index,typeName){
@@ -134,7 +134,7 @@
   const dur=$('#workDuration'),hint=$('#workTimeHint');
   if(dur){
    if(invalid)dur.textContent='終了が開始より前です';
-   else if(hasStart&&hasEnd)dur.textContent=`実作業時間 ${formatDuration(durationMs(S.measure))}`;
+   else if(hasStart&&hasEnd)dur.textContent=`実作業時間 ${WL.base.formatDuration(WL.base.durationMs(S.measure))}`;
    else if(hasStart)dur.textContent='作業中';
    else dur.textContent='未計測';
   }
@@ -210,7 +210,7 @@
  }
  window.WL=window.WL||{};
  WL.workStamp={note:noteInput,refresh:refreshAutoStamps};
- /* 母材・製品の欄は`collect()`が保存時にまとめて読む作りで、1つずつの
+ /* 母材・製品の欄は`WL.measureView.collect()`が保存時にまとめて読む作りで、1つずつの
     書き込み点が無い。**持ち主のコードへ手を入れずに**捕まえるため、
     ここで委譲で受ける（捕捉フェーズ。他のハンドラを奪わない）。 */
  document.addEventListener('input',e=>{
@@ -218,7 +218,7 @@
   if(!S.measure||!t||typeof t.matches!=='function')return;
   if(t.matches('[data-mother],[data-product-field]'))noteInput('manual');
  },true);
- function afterWorkChange(){refreshWorkTime();refreshAutoStamps();markDirty();if(typeof updateValidationVisuals==='function')updateValidationVisuals()}
+ function afterWorkChange(){refreshWorkTime();refreshAutoStamps();markDirty();if(typeof WL.measureView.updateValidationVisuals==='function')WL.measureView.updateValidationVisuals()}
  function commitField(id){const el=$('#'+id);if(!el||!S.measure)return;const iso=localInputToIso(el.value);el.dataset.iso=iso;const w=wt();if(id==='workStartAt')w.startAt=iso;else w.endAt=iso;afterWorkChange()}
  /* 秒を落としたISO。**画面・記録・実働時間の3つを同じ物差しにする**。 */
  function minuteIso(iso){
@@ -226,7 +226,7 @@
   const d=new Date(iso);if(Number.isNaN(d.getTime()))return '';
   d.setSeconds(0,0);return d.toISOString();
  }
- function stampNow(id){if(!S.measure)return;const w=wt(),iso=minuteIso(new Date().toISOString());if(id==='workStartAt')w.startAt=iso;else w.endAt=iso;syncField(id);afterWorkChange();showToast&&showToast(id==='workStartAt'?'開始時刻を記録しました':'終了時刻を記録しました',formatWorkTime(iso))}
+ function stampNow(id){if(!S.measure)return;const w=wt(),iso=minuteIso(new Date().toISOString());if(id==='workStartAt')w.startAt=iso;else w.endAt=iso;syncField(id);afterWorkChange();showToast&&showToast(id==='workStartAt'?'開始時刻を記録しました':'終了時刻を記録しました',WL.measureView.formatWorkTime(iso))}
  function clearField(id){if(!S.measure)return;const w=wt();if(id==='workStartAt')w.startAt='';else w.endAt='';syncField(id);afterWorkChange()}
  function bindWorkTime(){
   const s=$('#workStartAt'),e=$('#workEndAt');
@@ -256,7 +256,7 @@
    window.*公開ゼロ・他ファイルからの参照ゼロの自己完結IIFEで、独立
    ファイルである利益が無かった。**読み込み位置は変えていない**:
    このIIFEは冒頭でidbAll(records-store.js)の存在を確認して早期returnし、
-   saveLocal(records-store.js)/renderMeasurement(measure-view.js)/
+   WL.records.saveLocal(records-store.js)/WL.measureView.renderMeasurement(measure-view.js)/
    markDirty(base.js)をラップするため、それら全ての後に読まれる必要がある。
    計画当初の統合先だったmeasure-view.jsはrecords-store.jsより先に
    読まれるので、そちらへ移すとガードに掛かって**機能が丸ごと黙って死ぬ**。
@@ -276,7 +276,7 @@
    板幅は小数1桁に丸めて比較する。
    ============================================================ */
 (function(){
-  if(typeof $!=='function'||typeof idbAll!=='function'||typeof durationMs!=='function')return;
+  if(typeof $!=='function'||typeof WL.records.idbAll!=='function'||typeof WL.base.durationMs!=='function')return;
 
   function avgMeasured(grid,rowLimit,colLimit){
     let sum=0,n=0;const rows=Math.min((grid||[]).length,Math.max(1,rowLimit||0));
@@ -314,14 +314,14 @@
     if(!profile)return{profile:null};
     if(!profile.equipment)return{profile,noEquipment:true};
     const key=profileKey(profile);
-    const all=await idbAll();
+    const all=await WL.records.idbAll();
     const matches=all.filter(x=>{
       if(x.id===record.id)return false;
       if(x.status!=='完了')return false;
       const p=profileOf(x);
       return p&&profileKey(p)===key;
     });
-    const durations=matches.map(x=>durationMs(x)).filter(ms=>ms!=null&&ms>0).map(ms=>ms/60000);
+    const durations=matches.map(x=>WL.base.durationMs(x)).filter(ms=>ms!=null&&ms>0).map(ms=>ms/60000);
     const result={profile,n:durations.length};
     if(durations.length){
       const avg=durations.reduce((a,v)=>a+v,0)/durations.length;
@@ -329,7 +329,7 @@
     }
     const w=record.workTime||{};
     if(w.startAt&&w.endAt){
-      result.currentMin=durationMs(record)/60000;result.currentLive=false;
+      result.currentMin=WL.base.durationMs(record)/60000;result.currentLive=false;
     }else if(w.startAt){
       result.currentMin=(Date.now()-new Date(w.startAt).getTime())/60000;result.currentLive=true;
     }

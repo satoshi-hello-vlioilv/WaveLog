@@ -173,7 +173,7 @@ async function mkRoll(name,diaMax,extra){
    });
    delete S.measure.settings.defectLocation;
    delete S.measure.settings.defectRoll;
-   measureDirty=false;
+   WL.base.measureDirty=false;
    return true;
   });
   await page.click('#closeDefect');
@@ -182,7 +182,7 @@ async function mkRoll(name,diaMax,extra){
   await page.evaluate(()=>WL.defect.setTab('pos'));
   await page.waitForTimeout(300);
   const dirty=await page.evaluate(()=>({
-   dirty:(typeof measureDirty!=='undefined')?measureDirty:null,
+   dirty:(typeof WL.base.measureDirty!=='undefined')?WL.base.measureDirty:null,
    made:!!(S.measure.settings.defectLocation||S.measure.settings.defectRoll),
    loc:S.measure.settings.defectLocation||null,
    roll:S.measure.settings.defectRoll||null,

@@ -304,8 +304,8 @@
   n.textContent=id||'IDが取れていません';
   b.classList.toggle('is-unknown',!id);
   b.onclick=()=>openMasterMaint('presence');
-  if(!id&&typeof fetchWhoami==='function'){
-   fetchWhoami().then(v=>{if(v){setUserId(v);paintMaintUser()}}).catch(WL.quiet('利用者IDを取れない（この端末の共通の設定として続ける）'));
+  if(!id&&typeof WL.base.fetchWhoami==='function'){
+   WL.base.fetchWhoami().then(v=>{if(v){WL.base.setUserId(v);paintMaintUser()}}).catch(WL.quiet('利用者IDを取れない（この端末の共通の設定として続ける）'));
   }
  }
  /* **打ち込ませない**（§9.276 ③）。取れていないときは、無言で断らずに
@@ -469,7 +469,7 @@
  function onHintOutside(e){
   if(mmHintMenu&&!mmHintMenu.contains(e.target)&&!e.target.closest('#mmHintBadge'))closeHintMenu();
  }
- function onHintKey(e){if(escClosesModal(e))closeHintMenu()}
+ function onHintKey(e){if(WL.base.escClosesModal(e))closeHintMenu()}
  function openHintMenu(anchor){
   closeHintMenu();
   const cur=hintLevel();
@@ -920,7 +920,7 @@
   return (function(){
    const val=editing?String(editing[f.k]??''):'';
    if(f.type==='equipment-select'){
-    const opts=equipmentMasterState.items||[];
+    const opts=WL.records.equipmentMasterState.items||[];
     /* **いま入っている設備が候補に無くても捨てないこと**（§9.204と同じ罠）。
        設備マスタからその設備が消えても、行そのものは残っている——候補に
        足さずに描くと`<select>`は「選択...」に落ち、**開いて保存し直した
@@ -942,7 +942,7 @@
     const raw=String(editing?(editing[f.k]??''):'').trim();
     const isAll=raw===EQUIPMENT_ALL;
     const selected=new Set(isAll?[]:raw.replace(/、/g,',').split(',').map(s=>s.trim()).filter(Boolean));
-    const opts=equipmentMasterState.items||[];
+    const opts=WL.records.equipmentMasterState.items||[];
     const hiddenBoxes=opts.map(eq=>`<input type="checkbox" data-equipment-field="${f.k}" value="${esc(eq.name)}"${selected.has(eq.name)?' checked':''} hidden>`).join('');
     // マスタから消えた設備名も選択として残す(黙って権限が消えないように)。
     const strays=[...selected].filter(n=>!opts.some(eq=>eq.name===n));
@@ -960,7 +960,7 @@
    }
    if(f.type==='equipment-multi'){
     const selected=new Set((editing&&Array.isArray(editing[f.k])?editing[f.k]:[]).map(String));
-    const opts=equipmentMasterState.items||[];
+    const opts=WL.records.equipmentMasterState.items||[];
     if(!opts.length){
      return `<div class="mm-field"><span>${esc(f.label)}</span><span class="mm-empty-inline">設備マスタが未登録です。先に「設備」タブで登録してください。</span></div>`;
     }
@@ -2152,7 +2152,7 @@
    const search=field.querySelector(`[data-equipment-search="${fk}"]`);
    const suggest=field.querySelector(`[data-equipment-suggest="${fk}"]`);
    if(!box||!search||!suggest)return;
-   const opts=equipmentMasterState.items||[];
+   const opts=WL.records.equipmentMasterState.items||[];
    const checkbox=name=>[...box.querySelectorAll(`[data-equipment-field="${fk}"]`)].find(b=>b.value===name);
    const selectedNames=()=>opts.filter(eq=>{const cb=checkbox(eq.name);return cb&&cb.checked}).map(eq=>eq.name);
    const setChecked=(name,val)=>{const cb=checkbox(name);if(cb)cb.checked=val};
@@ -2693,8 +2693,8 @@
  // withWaiting。速いときは出ないので通常の操作感は変わらない)。
  async function loadMaint(force){
   const def=currentDef();
-  if(typeof withWaiting!=='function')return loadMaintInner(force);
-  return withWaiting({title:def.label+'マスタを読み込んでいます',detail:'マスタDB: '+(def.endpoint||'-'),
+  if(typeof WL.records.withWaiting!=='function')return loadMaintInner(force);
+  return WL.records.withWaiting({title:def.label+'マスタを読み込んでいます',detail:'マスタDB: '+(def.endpoint||'-'),
    progress:'登録済みの内容を取得しています'},()=>loadMaintInner(force));
  }
  /* いま書けるかを**見出しの隣で名乗る**（§3・§9.322）。段の名前だけでなく
@@ -2762,7 +2762,7 @@
   // force未指定(キャッシュ利用)のままだと、設備マスタタブで新規登録・削除した
   // 直後でもオペレータ/設備停止タブの選択肢が古いままになる。loadMaint()の
   // forceをそのまま伝播し、タブを開き直すたびに最新の設備マスタを反映する。
-  if(needsEquipmentMaster&&typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備マスタが読めなくても一覧の表示は継続する',e)}}
+  if(needsEquipmentMaster&&typeof WL.records.loadEquipmentMaster==='function'){try{await WL.records.loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備マスタが読めなくても一覧の表示は継続する',e)}}
   renderMaintForm();
   try{
    const r=await api(def.endpoint);let items=(r&&r.items)||[];

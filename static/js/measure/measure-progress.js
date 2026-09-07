@@ -50,7 +50,7 @@ const motherFields=()=>((window.WL&&WL.opData&&WL.opData.motherKeys&&WL.opData.m
    廃止したので、`alignmentCode`だけを見ると新しく入力した行が1件も
    数えられない（旧データのために残してある）。
    **読むのは呼ばれたとき**——読み込み順に依存しないようにする。 */
-const productFilledKeys=()=>PRODUCT_FILLED_KEYS;
+const productFilledKeys=()=>WL.measureView.PRODUCT_FILLED_KEYS;
 
 const filled=v=>String(v??'').trim()!=='';
 
@@ -77,7 +77,7 @@ function countsOf(m){
  const st=m.settings||{};
  const vertical=Math.max(1,Math.min(9,Number(st.verticalCount)||1));
  const horizontal=Math.max(1,Math.min(40,Number(st.horizontalCount)||1));
- return{vertical,horizontal,lengthSlots:Math.min(LENGTH_SLOTS,vertical+1)};
+ return{vertical,horizontal,lengthSlots:Math.min(WL.base.LENGTH_SLOTS,vertical+1)};
 }
 
 /* 1項目分の進捗。perLength は丈位置ごとの充足数(length scope のみ)。 */
@@ -133,7 +133,7 @@ function progressOf(m){
 function measureProgress(){return progressOf(S.measure)}
 
 /* ---------- 公差外の集計（§9.125） ----------
-   **画面ではなくデータから数える。** `updateValidationVisuals()`が見るのは
+   **画面ではなくデータから数える。** `WL.measureView.updateValidationVisuals()`が見るのは
    いま描かれているグリッドだけなので、別の丈位置・別の項目にある公差外は
    完了を押すまで誰も気づけない（進捗を全項目から数えているのと同じ理由）。
    判定式は`judgeInput`と同じ——値があって数として読めて、公差の外なら1件。
@@ -141,7 +141,7 @@ function measureProgress(){return progressOf(S.measure)}
    合格として数えない）。フラットネスは〇/△/×なので対象外。 */
 const NG_DEFS=ITEM_DEFS.filter(d=>d.scope==='length'&&d.name!=='フラットネス');
 function outOfToleranceOf(m){
- if(!m||typeof toleranceDetail!=='function')return null;
+ if(!m||typeof WL.measureInput.toleranceDetail!=='function')return null;
  const excluded=new Set(measureScopeOf(m).excluded),c=countsOf(m),items=[],unjudged=[];
  let total=0;
  NG_DEFS.forEach(def=>{
@@ -151,7 +151,7 @@ function outOfToleranceOf(m){
    let range=null;
    /* **項目名を渡す。** 渡さないと画面でいま選ばれている項目の公差が
       全項目に当たる（ラッパーが`#measureType`を見るため）。 */
-   try{range=toleranceDetail(key==='thickness'?'thickness':'width',0,def.name)?.range||null}catch(e){WL.quiet.note('公差を引けない（範囲なしとして数える）',e)}
+   try{range=WL.measureInput.toleranceDetail(key==='thickness'?'thickness':'width',0,def.name)?.range||null}catch(e){WL.quiet.note('公差を引けない（範囲なしとして数える）',e)}
    if(range)judged=true;
    const rows=(m.measurements||{})[key]||[];
    for(let li=0;li<c.lengthSlots;li++){
@@ -226,9 +226,9 @@ function refreshMeasureProgress(){
    しようとしたときだけ実績を示して確認する。 */
 async function pastUsage(itemName){
  const m=S.measure,code=String(m?.basic?.purposeCode||'').trim();
- if(!code||typeof reliableAll!=='function')return null;
+ if(!code||typeof WL.records.reliableAll!=='function')return null;
  let all;
- try{all=await reliableAll()}catch(e){return null}
+ try{all=await WL.records.reliableAll()}catch(e){return null}
  const def=ITEM_DEFS.find(d=>d.name===itemName);if(!def)return null;
  const peers=all.filter(x=>x&&x.status==='完了'&&x.id!==m.id&&String(x.basic?.purposeCode||'').trim()===code);
  if(!peers.length)return null;
@@ -316,7 +316,7 @@ WL.measureHooks.gate('persistAndTransition',async status=>{
       確認を出してから止めると二度手間になるので、その場合は聞かずに委ねる。
       **公差外はもう止まらない**ので、ここで一緒に確認する。 */
    try{
-    const v=updateValidationVisuals();
+    const v=WL.measureView.updateValidationVisuals();
     const identity=v.missing.filter(x=>x.el&&(x.el.id==='operator'||x.el.id==='inspector'));
     if(identity.length)return;  // records-store 側で止まるので、ここでは聞かない（次へ）
    }catch(e){console.warn('completion precheck failed',e)}

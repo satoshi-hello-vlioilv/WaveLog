@@ -15,8 +15,8 @@
  /* 所要時間の書き方は`WL.duration`の1箇所（§9.341）。 */
  async function loadLoadFactorMaint(force){
   const list=$('#masterMaintList');if(!list)return;
-  if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備マスタが読めなくても画面表示は継続する',e)}}
-  const opts=equipmentMasterState.items||[];
+  if(typeof WL.records.loadEquipmentMaster==='function'){try{await WL.records.loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備マスタが読めなくても画面表示は継続する',e)}}
+  const opts=WL.records.equipmentMasterState.items||[];
   if(!loadFactorState.equipment&&opts.length)loadFactorState.equipment=opts[0].name;
   renderLoadFactorForm();
   if(!loadFactorState.equipment){list.innerHTML='<div class="mm-empty">設備マスタが未登録です。先に「設備」タブで登録してください。</div>';return}
@@ -34,7 +34,7 @@
  }
  function renderLoadFactorForm(){
   const form=$('#masterMaintForm');if(!form)return;
-  const opts=equipmentMasterState.items||[];
+  const opts=WL.records.equipmentMasterState.items||[];
   const optHtml=opts.map(eq=>`<option value="${esc(eq.name)}"${eq.name===loadFactorState.equipment?' selected':''}>${esc(eq.name)}</option>`).join('');
   form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip new">換算係数モデル</span></div>
    <div class="mm-cd-toolbar">
@@ -150,7 +150,7 @@
    const [srv,cfg,localItems]=await Promise.all([
     api('/api/measurement/storage'),
     api('/api/path-config-master'),
-    (typeof reliableAll==='function'?reliableAll():Promise.resolve(null)).catch(()=>null),
+    (typeof WL.records.reliableAll==='function'?WL.records.reliableAll():Promise.resolve(null)).catch(()=>null),
    ]);
    measStorageState.server=srv;
    measStorageState.cfg=cfg;
@@ -319,8 +319,8 @@
   bindMaintTabs(form);
   $('#msReload').onclick=()=>{measStorageState.loaded=false;loadMeasStorageMaint(true)};
   $('#msSyncNow').onclick=async()=>{
-   if(typeof syncPendingRecords!=='function'){showToast&&showToast('この画面からは送れません','',4000);return}
-   await syncPendingRecords({silent:false});
+   if(typeof WL.records.syncPendingRecords!=='function'){showToast&&showToast('この画面からは送れません','',4000);return}
+   await WL.records.syncPendingRecords({silent:false});
    measStorageState.loaded=false;loadMeasStorageMaint(true);
   };
   $('#msExportNow').onclick=async()=>{
@@ -410,7 +410,7 @@
   if(!force&&importBackupState.loaded){renderImportBackupForm();renderImportBackupList();return}
   form.innerHTML='';list.innerHTML='<div class="mm-empty">records.sqlite3を読み込んでいます…</div>';
   try{
-   const [backupResult,localItems]=await Promise.all([api('/api/measurement/backup/list'),reliableAll().catch(()=>[])]);
+   const [backupResult,localItems]=await Promise.all([api('/api/measurement/backup/list'),WL.records.reliableAll().catch(()=>[])]);
    importBackupState.items=(backupResult&&backupResult.items)||[];
    importBackupState.localIds=new Set(localItems.map(x=>x.id));
    importBackupState.loaded=true;
@@ -578,13 +578,13 @@
     const it=targets[i];
     setMaintLoading(true,`インポートしています… (${i+1}/${targets.length})`);
     try{
-     const record=ensureMeasureShape(JSON.parse(it.payload));
+     const record=WL.measureView.ensureMeasureShape(JSON.parse(it.payload));
      record.id=it.id;
-     await reliablePut(record);okCount++;
+     await WL.records.reliablePut(record);okCount++;
     }catch(e){ngCount++;errors.push(`${it.lotNo||it.id}: ${e.message}`)}
    }
   }finally{setMaintLoading(false)}
-  await refreshDraftCount();importBackupState.loaded=false;await loadImportBackupMaint(true);
+  await WL.records.refreshDraftCount();importBackupState.loaded=false;await loadImportBackupMaint(true);
   showToast&&showToast('インポートが完了しました',`成功 ${okCount}件 / 失敗 ${ngCount}件`+(errors.length?`\n${errors.slice(0,3).join('\n')}`:''),8000);
  }
  /* ======================================================================
@@ -2547,7 +2547,7 @@
  async function loadShiftPatternMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   form.classList.remove('mm-form-compact');
-  if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備が読めなくても編集は続行',e)}}
+  if(typeof WL.records.loadEquipmentMaster==='function'){try{await WL.records.loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備が読めなくても編集は続行',e)}}
   list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   try{
    const r=await api('/api/schedule/shift-pattern-master?scope=all');
@@ -2586,7 +2586,7 @@
  function refreshShiftEqSummary(){
   const sum=$('#masterMaintList .shift-eq-sum');
   const names=selectedShiftEquipment();
-  if(sum)sum.innerHTML=shiftEqSummaryHtml(names,(equipmentMasterState.items||[]).length);
+  if(sum)sum.innerHTML=shiftEqSummaryHtml(names,(WL.records.equipmentMasterState.items||[]).length);
   const none=$('#shiftEqNone');if(none)none.disabled=!names.length;
  }
  function shiftCrossesMidnight(seg){
@@ -2608,7 +2608,7 @@
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   const d=shiftState.draft||shiftDraftFrom(null);
   const eqSelected=new Set((d.equipment||[]).map(String));
-  const eqItems=(equipmentMasterState.items||[]);
+  const eqItems=(WL.records.equipmentMasterState.items||[]);
   /* 設備は**名前のタグの入切**で選ぶ(§9.197、利用者の指示「設備名のバッジを
      出して、配色のONOFF」)。名前そのものが押せる的なので、四角い枠と
      チェックの位置を目で往復しなくてよい。入は面の色で、**色だけで伝えない**
@@ -2735,7 +2735,7 @@
   });
   const eqAll=$('#shiftEqAll');
   if(eqAll)eqAll.onclick=()=>{sync();
-   shiftState.draft.equipment=(equipmentMasterState.items||[]).map(x=>x.name);renderShiftPattern()};
+   shiftState.draft.equipment=(WL.records.equipmentMasterState.items||[]).map(x=>x.name);renderShiftPattern()};
   const eqNone=$('#shiftEqNone');
   if(eqNone)eqNone.onclick=()=>{sync();shiftState.draft.equipment=[];renderShiftPattern()};
   list.querySelectorAll('.shift-seg').forEach(el=>{

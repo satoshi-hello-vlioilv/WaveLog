@@ -448,8 +448,8 @@
 
  // 品質データ(SIKALOTDEF)は最大2万行を集計するため待たされることがある。
  async function run(){
-  if(typeof withWaiting!=='function')return runInner();
-  return withWaiting({title:'品質データを集計しています',detail:'テーブル: '+((typeof S!=='undefined'&&S.table)||'-'),
+  if(typeof WL.records.withWaiting!=='function')return runInner();
+  return WL.records.withWaiting({title:'品質データを集計しています',detail:'テーブル: '+((typeof S!=='undefined'&&S.table)||'-'),
    progress:'条件に合う行を集計してグラフを作成しています'},()=>runInner());
  }
  async function runInner(){

@@ -64,7 +64,7 @@ const settle=async page=>{
      include_hidden:1,filters:JSON.stringify([{column:'ロット番号',op:'eq',value:lot}])}));
    const row=((await r.json()).rows||[])[0];
    if(!row)return 'ロットが見つからない';
-   await openMeasurement(row);return 'ok';
+   await WL.records.openMeasurement(row);return 'ok';
   },LOT).catch(e=>'例外: '+e.message);
   rec('分割ありロットを開ける',opened==='ok',String(opened));
   await page.waitForFunction(()=>typeof S!=='undefined'&&!!S.measure,null,{timeout:25000});
@@ -395,7 +395,7 @@ const settle=async page=>{
    /* 分割データを持たない行を選ぶ（`WL.split.hasSplit`が判定の1箇所）。 */
    const row=rows.find(x=>!WL.split.hasSplit(x));
    if(!row)return{無い:true};
-   await openMeasurement(row);
+   await WL.records.openMeasurement(row);
    await new Promise(r2=>setTimeout(r2,1200));
    const h=document.getElementById('horizontalCount');
    h.value='6';h.dispatchEvent(new Event('change',{bubbles:true}));
@@ -735,7 +735,7 @@ const settle=async page=>{
      filters:JSON.stringify([{column:'ロット番号',op:'eq',value:lot}])}));
    const row=((await r.json()).rows||[])[0];
    if(!row)return 'ロットが見つからない';
-   await openMeasurement(row);return 'ok';
+   await WL.records.openMeasurement(row);return 'ok';
   },LOT).catch(e=>'例外: '+e.message);
   rec('分割ありロットを開き直せる',reopened==='ok',String(reopened));
   await page.waitForFunction(

@@ -1,6 +1,9 @@
-"use strict";
 /* records-store.js: 端末内保存(IndexedDB+localStorageミラー)・保存/完了遷移・
-   編集中/完了データ一覧・参照データ(コンテキスト)取得・使用設備/設備マスタ設定。 */
+   編集中/完了データ一覧・参照データ(コンテキスト)取得・使用設備/設備マスタ設定。
+   **このファイルは閉じている**（§9.359・REVIEW 3-17）——外へ出す面は末尾の
+   `WL.records`。 */
+(function(){
+"use strict";
 const DB='MeasurementLocal',STORE='lots';function idb(){return new Promise((ok,no)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore(STORE,{keyPath:'id'});r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}async function idbGet(id){const d=await idb();return new Promise((o,n)=>{const r=d.transaction(STORE).objectStore(STORE).get(id);r.onsuccess=()=>o(r.result);r.onerror=()=>n(r.error)})}async function idbPut(v){const d=await idb();return new Promise((o,n)=>{const r=d.transaction(STORE,'readwrite').objectStore(STORE).put(v);r.onsuccess=()=>o();r.onerror=()=>n(r.error)})}async function idbDelete(id){const d=await idb();return new Promise((o,n)=>{const r=d.transaction(STORE,'readwrite').objectStore(STORE).delete(id);r.onsuccess=()=>o();r.onerror=()=>n(r.error)})}
 /* 端末内の保存容量（§9.129）。**普段は出さない。**「0.0MB / 上限目安 0.8GB」は
    測定中ずっと出ていても打つ手が無く、主要動線の面積を取るだけだった。
@@ -25,16 +28,27 @@ const MIRROR_KEY='MeasurementLocalMirrorV31';
 function mirrorRead(){try{return JSON.parse(localStorage.getItem(MIRROR_KEY)||'{}')}catch(e){console.warn('mirror read failed',e);return {}}}
 function mirrorWrite(record){const all=mirrorRead();all[record.id]=record;localStorage.setItem(MIRROR_KEY,JSON.stringify(all))}
 function mirrorDelete(id){const all=mirrorRead();delete all[id];localStorage.setItem(MIRROR_KEY,JSON.stringify(all))}
+/* 丸ごと持ち替えられる（§9.352 の `own`）。閉じたので外から関数を差し替える
+   ことはできない——**持ち替えの口は登録表の1箇所**にする。網が「読み出しを
+   種データに差し替える」「書き込みを遅らせる」を作るために要る。 */
 async function reliableAll(){
- const merged=new Map(Object.entries(mirrorRead()));
- try{(await idbAll()).forEach(x=>merged.set(x.id,x))}catch(e){console.warn('IndexedDB list failed, mirror used',e)}
- return [...merged.values()].map(ensureMeasureShape);
-}
-async function reliableGet(id){
- try{const x=await idbGet(id);if(x)return ensureMeasureShape(x)}catch(e){console.warn('IndexedDB get failed, mirror used',e)}
- const x=mirrorRead()[id];return x?ensureMeasureShape(x):null;
+ const own=WL.measureHooks.owner('reliableAll');
+ return own?own():reliableAllCore();
 }
 async function reliablePut(record){
+ const own=WL.measureHooks.owner('reliablePut');
+ return own?own(record):reliablePutCore(record);
+}
+async function reliableAllCore(){
+ const merged=new Map(Object.entries(mirrorRead()));
+ try{(await idbAll()).forEach(x=>merged.set(x.id,x))}catch(e){console.warn('IndexedDB list failed, mirror used',e)}
+ return [...merged.values()].map(WL.measureView.ensureMeasureShape);
+}
+async function reliableGet(id){
+ try{const x=await idbGet(id);if(x)return WL.measureView.ensureMeasureShape(x)}catch(e){console.warn('IndexedDB get failed, mirror used',e)}
+ const x=mirrorRead()[id];return x?WL.measureView.ensureMeasureShape(x):null;
+}
+async function reliablePutCore(record){
  let idbOK=false,mirrorOK=false;
  try{await idbPut(record);idbOK=true}catch(e){console.error('IndexedDB save failed',e)}
  try{mirrorWrite(record);mirrorOK=true}catch(e){console.error('mirror save failed',e)}
@@ -124,14 +138,14 @@ function applyContextChoices(x){
  };
  /* **いま画面に入っている値を落とさない**（§9.286 ⑤、利用者の指示）。
     `applyInitials()`（マスタの`[初期値]`）は**組み込みの欄では画面へ入れる
-    だけで`settings`へ書かない**約束（§9.229 ③。保存は`collect()`が`#<キー>`
+    だけで`settings`へ書かない**約束（§9.229 ③。保存は`WL.measureView.collect()`が`#<キー>`
     から拾う）なので、`settings`だけを見て候補を作り直すと**入れたばかりの
     初期値が消える**——これが「マスタで初期値を決めても効かない」の正体で、
     `-`を値として持っていたことと合わせて2つで一組の原因だった。
     記録された値があればそちらが勝つ（順番が決まっている・§9.204と同じ）。 */
  const now=id=>{const el=document.getElementById(id);return el?String(el.value||''):''};
  const cur=(id,v)=>{const s=String(v==null?'':v).trim();return WL.optionBlank(s)?now(id):s};
- const fill=(id,list,v)=>{const c=cur(id,v);optionFill(id,keep(list,c),c)};
+ const fill=(id,list,v)=>{const c=cur(id,v);WL.base.optionFill(id,keep(list,c),c)};
  fill('operator',x.operators,m.settings.operator);
  fill('inspector',x.inspectors||x.operators,m.settings.inspector);
  fill('thicknessGauge',x.thickness_gauges,m.settings.thicknessGauge);
@@ -149,7 +163,7 @@ function applyContextChoices(x){
     使う。取得できない場合は触らない(既定=構造上の上限40で動く)。 */
  if(Number.isFinite(Number(x.max_strips))&&Number(x.max_strips)>=1){
   m.settings.maxStrips=Math.min(40,Math.round(Number(x.max_strips)));
-  if(typeof applyMaxStripsToInputs==='function')applyMaxStripsToInputs();
+  if(typeof WL.measureView.applyMaxStripsToInputs==='function')WL.measureView.applyMaxStripsToInputs();
  }
  /* 設備の区分(コイル／板)。板丈の公差は板の設備でだけ意味を持つ(§9.157)。
     **未設定('')はそのまま持つ**——「板」と決め付けると、コイルの設備で
@@ -164,16 +178,16 @@ const CONTEXT_CHOICE_KEYS=['choice_usage','operators','inspectors','packers',
   'thickness_gauges','width_gauges','inner_diameters','spools','burr_types',
   'coil_stops','max_strips','equipment_kind'];
 /* 参照データの不足を**画面に出るところで1箇所**が覚える（§9.317）。
-   記録（`S.measure`）へは入れない——`collect()`が保存するので、その場限りの
+   記録（`S.measure`）へは入れない——`WL.measureView.collect()`が保存するので、その場限りの
    事情がロットの記録として残ってしまう。 */
 function noteContextProblem(msg){
  S.measureContextError=String(msg||'');
- if(typeof paintQualityInfo==='function')paintQualityInfo();
+ if(typeof WL.measureView.paintQualityInfo==='function')WL.measureView.paintQualityInfo();
 }
 function applyContextSnapshot(x){
  const m=S.measure;if(!m||!x)return;
  applyContextChoices(x);
- if(x.quality?.length){m.qualityInfo=qualityText(x.quality)}
+ if(x.quality?.length){m.qualityInfo=WL.base.qualityText(x.quality)}
  $('#qualityInfo').value=m.qualityInfo||'異常情報なし';
  /* **品質だけ読めなかった場合をここで受ける**（§9.317）。サーバーは
     測定を止めないために0件で返し、理由を`diagnostics.quality_error`へ
@@ -409,7 +423,7 @@ function noteCompletedWithNg(m){
    公差外は完了前の確認（measure-progress.js）で1回聞いてから通す。 */
 async function persistAndTransition(status){
  if(await WL.measureHooks.through('persistAndTransition',status)===false)return;  // 完了前の確認（関門・§9.352）
- updateValidationVisuals();
+ WL.measureView.updateValidationVisuals();
  /* **止めるのは「誰が測ったか」だけ**（§9.319、利用者の指示「測定値のエラーで
     NGがあっても測定は完了できるようにしてください」）。
     以前は公差外があると完了そのものを断っていたが、**公差外は測った事実**で
@@ -422,19 +436,19 @@ async function persistAndTransition(status){
     （誰が測ったか分からない記録は、あとから意味を持てない）。
     測定項目の未入力も止めない——必要な項目は製品の材質・用途・規格で変わる。 */
  if(status==='完了'){
-  const result=updateValidationVisuals();
+  const result=WL.measureView.updateValidationVisuals();
   const identity=result.missing.filter(x=>x.el&&(x.el.id==='operator'||x.el.id==='inspector'));
-  if(identity.length){showValidationMessage({missing:identity,ng:[]});return}
+  if(identity.length){WL.measureView.showValidationMessage({missing:identity,ng:[]});return}
  }
  showSaveOverlay(status==='完了'?'完了登録しています':'一時保存しています','入力内容と初期参照データを端末へ保存中');
  try{
-  const m=collect();m.status=status;m.updatedAt=new Date().toISOString();m.snapshot=m.snapshot||{};
+  const m=WL.measureView.collect();m.status=status;m.updatedAt=new Date().toISOString();m.snapshot=m.snapshot||{};
   m.snapshot.source=structuredClone(m.source||{});m.snapshot.basic=structuredClone(m.basic||{});m.snapshot.savedAt=m.updatedAt;m.snapshot.schema='v32-full';
   if(status==='完了')noteCompletedWithNg(m);
   const result=await reliablePut(m);
   const accessOK=await backupAndTrackSync(m);
   if(!accessOK)console.warn('Access backup failed',m.syncState?.lastError);
-  measureDirty=false;
+  WL.base.measureDirty=false;
   cancelAutoSave();
   await refreshDraftCount();refreshSyncStatusUI();$('#measureModal').hidden=true;hideSaveOverlay();
   /* **公差外のまま完了したなら、そう言う**（§9.319・§3）。「完了登録しました」
@@ -453,9 +467,9 @@ async function persistAndTransition(status){
 /* 保存のあとに足す（作業時間の比較カード等）は `afterSave` へ登録（§9.352）。 */
 async function saveLocal(status='編集中'){const r=await saveLocalCore(status);WL.measureHooks.run('afterSave',status,r);return r}
 async function saveLocalCore(status='編集中'){
- lockCounts();
- const m=collect();m.status=status;m.updatedAt=new Date().toISOString();
- await reliablePut(m);measureDirty=false;
+ WL.measureView.lockCounts();
+ const m=WL.measureView.collect();m.status=status;m.updatedAt=new Date().toISOString();
+ await reliablePut(m);WL.base.measureDirty=false;
  /* **①に入った／②はこれから**を分けて書く(§9.202)。以前は
     「端末保存済み」だけで、DBへ送れているかは画面に出ていなかった。 */
  setState(status==='完了'?'完了・端末に保存（DBへ送信中）':'端末に保存（DBへ送信中）');
@@ -489,7 +503,7 @@ function shareRecord(m){
       分からないと、利用者は保存できたのかを確かめる手立てを失う。 */
    try{
     const modal=$('#measureModal');
-    if(modal&&!modal.hidden&&S.measure&&S.measure.id===m.id&&!measureDirty){
+    if(modal&&!modal.hidden&&S.measure&&S.measure.id===m.id&&!WL.base.measureDirty){
      const ok=(m.syncState&&m.syncState.status)==='synced';
      const done=S.measure.status==='完了'?'完了・':'';
      setState(ok?`${done}端末＋DBに保存`:`${done}端末に保存（DBへ未送信・あとで自動再送）`);
@@ -511,14 +525,14 @@ async function refreshDraftCount(){
  refreshSyncStatusUI(all);
 }
 async function findDraftForRow(row){
- const all=await reliableAll(),targetLot=normalizedLot(pick(row,'lotNo')),targetInspection=normalizedLot(pick(row,'inspectionNo')),targetCasting=normalizedLot(pick(row,'castingNo'));
- const drafts=all.filter(x=>x.status!=='完了'&&normalizedLot(x.basic?.lotNo)===targetLot).sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));
- return drafts.find(x=>targetInspection&&normalizedLot(x.basic?.inspectionNo)===targetInspection)||drafts.find(x=>targetCasting&&normalizedLot(x.basic?.castingNo)===targetCasting)||drafts[0]||null;
+ const all=await reliableAll(),targetLot=WL.base.normalizedLot(pick(row,'lotNo')),targetInspection=WL.base.normalizedLot(pick(row,'inspectionNo')),targetCasting=WL.base.normalizedLot(pick(row,'castingNo'));
+ const drafts=all.filter(x=>x.status!=='完了'&&WL.base.normalizedLot(x.basic?.lotNo)===targetLot).sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));
+ return drafts.find(x=>targetInspection&&WL.base.normalizedLot(x.basic?.inspectionNo)===targetInspection)||drafts.find(x=>targetCasting&&WL.base.normalizedLot(x.basic?.castingNo)===targetCasting)||drafts[0]||null;
 }
 /* 再開のあとに足す（分割データの補完等）は `afterResumeStoredMeasure`。核が途中で
    例外を投げても走る（被せの finally と同じ）。 */
 async function resumeStoredMeasure(saved,row=null){try{return await resumeStoredMeasureCore(saved,row)}finally{await WL.measureHooks.runAsync('afterResumeStoredMeasure')}}
-async function resumeStoredMeasureCore(saved,row=null){S.current=row||saved.source||saved.snapshot?.source||null;S.measure=ensureMeasureShape(saved);renderMeasurement();$('#recordModal').hidden=true;$('#measureModal').hidden=false;requestAnimationFrame(()=>$('#deviceInput').focus());await loadMeasurementContext(false);requestAnimationFrame(()=>$('#deviceInput').focus())}
+async function resumeStoredMeasureCore(saved,row=null){S.current=row||saved.source||saved.snapshot?.source||null;S.measure=WL.measureView.ensureMeasureShape(saved);WL.measureView.renderMeasurement();$('#recordModal').hidden=true;$('#measureModal').hidden=false;requestAnimationFrame(()=>$('#deviceInput').focus());await loadMeasurementContext(false);requestAnimationFrame(()=>$('#deviceInput').focus())}
 /* 測定画面を開く本処理: 同一ロットの編集中データがあれば直接再開、なければ
    新規作成して参照データ取得→初回保存まで行う。端末内検索(高速・ローカル)
    →仕掛等の参照データ取得(Access経由・低速)という実際の所要時間の境目に
@@ -528,10 +542,10 @@ async function openMeasurementCore(row){
  if(!row)throw Error('対象データがありません');S.current=row;const found=await findDraftForRow(row);
  const lot=pick(row,'lotNo')||'選択ロット';
  updateWaiting(`ロット ${lot} の仕掛情報を取得中`,'仕掛・公差・品質等級・品質情報を読み込んでいます',2);
- await nextPaint();
+ await WL.base.nextPaint();
  if(found){await resumeStoredMeasure(found,row);showToast(found.status==='測定値NG'?'NG登録データを直接再開しました':'編集中データを直接再開しました',`${found.basic?.lotNo||pick(row,'lotNo')} / ${found.updatedAt?new Date(found.updatedAt).toLocaleString('ja-JP'):''}`);return}
- const m=blankMeasure(row);m.id=lotKey(row)||crypto.randomUUID();S.measure=ensureMeasureShape(m);renderMeasurement();$('#measureModal').hidden=false;requestAnimationFrame(()=>$('#deviceInput').focus());await loadMeasurementContext(true);
- const first=collect();await reliablePut(first);
+ const m=WL.measureView.blankMeasure(row);m.id=WL.base.lotKey(row)||crypto.randomUUID();S.measure=WL.measureView.ensureMeasureShape(m);WL.measureView.renderMeasurement();$('#measureModal').hidden=false;requestAnimationFrame(()=>$('#deviceInput').focus());await loadMeasurementContext(true);
+ const first=WL.measureView.collect();await reliablePut(first);
  // 作った時点で共有DBにも置く(§9.91)。ここで置いておかないと、測定を
  // 始めた事実そのものが他のPCから見えない。
  shareRecord(first);
@@ -554,9 +568,9 @@ async function openMeasurementGated(row){
  if(!requireEquipmentBeforeMeasurement(row))return;
  const lot=pick(row,'lotNo')||'選択ロット';
  showWaiting('測定画面を準備しています',`ロット ${lot} の保存データを確認中`,'端末内の編集中データを確認しています',1);
- await nextPaint();
+ await WL.base.nextPaint();
  let result;
- try{result=await openMeasurementCore(row)}finally{hideSaveOverlay();if(typeof refreshScheduleInfo==='function')refreshScheduleInfo()}
+ try{result=await openMeasurementCore(row)}finally{hideSaveOverlay();if(typeof WL.measureView.refreshScheduleInfo==='function')WL.measureView.refreshScheduleInfo()}
  if(S.measure){S.measure.settings=S.measure.settings||{};S.measure.settings.registeredEquipment=currentConfiguredEquipment();S.measure.registeredEquipment=currentConfiguredEquipment();updateCourseGuard()}
  return result;
 }
@@ -581,7 +595,7 @@ async function openRecordsSafe(status='編集中'){
  try{
  const modal=$('#recordModal'),list=$('#recordList');
  // 画面名はヘッダー(#fileName)が持つ。パネル側に同じ文字を出すと二重になる。
- setHeaderContext(status==='履歴'?'完了データ一覧':'編集中データ一覧','この端末に保存された測定データ');
+ WL.base.setHeaderContext(status==='履歴'?'完了データ一覧':'編集中データ一覧','この端末に保存された測定データ');
  list.innerHTML='<div class="record-loading">保存データを読み込んでいます...</div>';
  modal.hidden=false;
  try{await openRecords(status)}catch(error){
@@ -615,7 +629,7 @@ $('#complete').onclick=()=>persistAndTransition('完了');
 
    **測定中の転送に触らないこと**（§9.122）——ここでするのは値を書くことと
    バッジの文字だけで、`renderMeasureGrid()`も`#deviceInput`も触らない。
-   **`lockCounts()`は呼ばない**——`saveLocal()`は条数・丈数を固定するので、
+   **`WL.measureView.lockCounts()`は呼ばない**——`saveLocal()`は条数・丈数を固定するので、
    裏で走らせると**打ち始めた瞬間に条数を変えられなくなる**（利用者が
    保存を押した意思とは別のことをすることになる）。
    **落ち着いてから1回**（打つたびに往復すると共有越しで数秒かかる・§9.273）。 */
@@ -630,7 +644,7 @@ function scheduleAutoSave(){
  autoSaveTimer=setTimeout(()=>{autoSaveTimer=null;runAutoSave()},AUTO_SAVE_IDLE_MS);
 }
 async function runAutoSave(){
- if(!S.measure||!measureDirty)return;
+ if(!S.measure||!WL.base.measureDirty)return;
  if($('#measureModal')?.hidden)return;
  if(autoSaveRunning){autoSaveAgain=true;return}
  autoSaveRunning=true;
@@ -643,9 +657,9 @@ async function runAutoSave(){
       旗まで下ろし、**まだ書けていないのに「DBへ保存済み」と出る**
       （画面が嘘をつく・§CLAUDE 6）。**値そのものは落ちない**——写しは
       測定値の配列を実体で共有し、`backupAndTrackSync()`の`finally`が
-      もう一度書くため（実測。`base.js`の`measureEditSeq`の注記）。 */
-   const seq=measureEditSeq;
-   const m=collect();
+      もう一度書くため（実測。`base.js`の`WL.base.measureEditSeq`の注記）。 */
+   const seq=WL.base.measureEditSeq;
+   const m=WL.measureView.collect();
    /* **状態は変えない**——完了済みのデータを開いて直しているときに
       「編集中」へ落とすと、一覧の分類が押した覚えなく変わる。 */
    m.status=S.measure.status||'編集中';m.updatedAt=new Date().toISOString();
@@ -656,7 +670,7 @@ async function runAutoSave(){
    if(!S.measure||S.measure.id!==id)return;
    /* 往復のあいだに打たれていたら**旗は下ろさない**。打った側が
       `markDirty()`で次の保存を必ず予約しているので、そちらが書く。 */
-   if(measureEditSeq===seq)measureDirty=false;
+   if(WL.base.measureEditSeq===seq)WL.base.measureDirty=false;
    const ok=await backupAndTrackSync(m);
    if(!S.measure||S.measure.id!==id)return;
    refreshSyncStatusUI();
@@ -664,7 +678,7 @@ async function runAutoSave(){
       黙らない——「後で再送します」まで書けば、打つ手が無いことも読める。
       **触られていたら「保存済み」と言わない**——`markDirty()`が出した
       「未保存（画面の中だけ）」を、まだ書けていない値の上から塗り替えない。 */
-   if(measureEditSeq===seq)
+   if(WL.base.measureEditSeq===seq)
     setState(ok?'DBへ保存済み':'この端末に保存済み（DBへは後で自動的に再送します）');
   }while(autoSaveAgain);
  }catch(e){
@@ -676,7 +690,7 @@ async function runAutoSave(){
 window.WL=window.WL||{};
 window.WL.autoSave={schedule:scheduleAutoSave,cancel:cancelAutoSave,now:runAutoSave,
   idleMs:()=>AUTO_SAVE_IDLE_MS};
-$('#discard').onclick=async()=>{if(await confirmModal('端末内の測定データを削除しますか？')){cancelAutoSave();measureDirty=false;await reliableDelete(S.measure.id);await refreshDraftCount();$('#measureModal').hidden=true;WL.refreshScheduleIfOpen?.()}};
+$('#discard').onclick=async()=>{if(await confirmModal('端末内の測定データを削除しますか？')){cancelAutoSave();WL.base.measureDirty=false;await reliableDelete(S.measure.id);await refreshDraftCount();$('#measureModal').hidden=true;WL.refreshScheduleIfOpen?.()}};
 /* NGの記録は**③の確認カードから呼ぶ**（§9.242 ⑥）。操作レールのボタンは
    外したので、ここで配線する相手はもう居ない。**素の`window.*`を増やさず**
    名前空間で公開する（呼び出し側で、どのファイルの機能かが読める）。 */
@@ -692,8 +706,8 @@ async function closeMeasureModal(){
     **書けたなら聞かない**——保存する手立てがあるのに「破棄しますか」と
     聞くのは、押した人に要らない判断をさせること（§5は確認を増やせという
     意味ではない）。書けなかったときだけ、破棄かどうかを聞く。 */
- if(measureDirty){cancelAutoSave();try{await runAutoSave()}catch(e){WL.quiet.note('自動保存に失敗（このあと破棄してよいかを聞く）',e)}}
- if(measureDirty&&!(await confirmModal('DBへ保存できていない変更があります。破棄して閉じますか？')))return;
+ if(WL.base.measureDirty){cancelAutoSave();try{await runAutoSave()}catch(e){WL.quiet.note('自動保存に失敗（このあと破棄してよいかを聞く）',e)}}
+ if(WL.base.measureDirty&&!(await confirmModal('DBへ保存できていない変更があります。破棄して閉じますか？')))return;
  cancelAutoSave();
  $('#measureModal').hidden=true;
  WL.refreshScheduleIfOpen?.();
@@ -778,7 +792,7 @@ function updateRecordListTitle(){
  const st=recordListState.statuses||{};
  // 副題は「どこのデータを見ているか」。閲覧用バックアップを見ている間も
  // 「この端末に保存された測定データ」と出すと、見えない理由が分からなくなる。
- setHeaderContext(st.editing&&st.done?'データ一覧（編集中＋完了）':st.done?'完了データ一覧':'編集中データ一覧',
+ WL.base.setHeaderContext(st.editing&&st.done?'データ一覧（編集中＋完了）':st.done?'完了データ一覧':'編集中データ一覧',
   recordListState.sourceNote||'この端末に保存された測定データ');
 }
 function syncStatusFilterButtons(){
@@ -835,7 +849,7 @@ function remoteIsNewer(row,mine){
 }
 WL.recordVersion={remoteIsNewer,localStampMs};
 async function mergedRecords(){
- const local=(await reliableAll()).map(ensureMeasureShape);
+ const local=(await reliableAll()).map(WL.measureView.ensureMeasureShape);
  let remote=[];
  try{
   const r=await api('/api/measurement/backup/summary');
@@ -862,7 +876,7 @@ async function mergedRecords(){
    mine.sharedCreatedAt=row.created_at||'';
    continue;
   }
-  byId.set(row.id,ensureMeasureShape({
+  byId.set(row.id,WL.measureView.ensureMeasureShape({
    /* 更新時刻は**レコード自身の物差し**を優先する（§9.208 ⑤）。無い古い行は
       サーバーの現地時刻しか無いので、そのまま出す（`recordLocalStamp`は
       どちらも読める）。 */
@@ -890,7 +904,7 @@ async function importRemoteRecord(id){
  if(!item)throw Error('共有データに見つかりませんでした。');
  if(item.codec!=='json-full-v32')
   throw Error(`この形式(${item.codec||'不明'})は取り込めません。`);
- const m=ensureMeasureShape(decodePayload(item.payload));
+ const m=WL.measureView.ensureMeasureShape(decodePayload(item.payload));
  m.id=item.id;
  await reliablePut(m);
  return m;
@@ -919,7 +933,7 @@ async function openRecords(status){
  recordListState.items=allRecords;recordListState.query='';recordListState.sort='updated-desc';
  // 未同期件数の表示にも今読んだ配列を渡す(渡さないと全件読みがもう1回走る)
  updateRecordListTitle();syncStatusFilterButtons();$('#recordModal').hidden=false;refreshSyncStatusUI(allRecords);
- setHeaderContext('データ一覧','この端末と共有DBの測定データ');
+ WL.base.setHeaderContext('データ一覧','この端末と共有DBの測定データ');
  const search=$('#recordSearch'),sort=$('#recordSort'),clear=$('#clearRecordSearch');if(search){search.value='';search.oninput=()=>{recordListState.query=search.value;renderRecordListRows()}}if(sort){sort.value='updated-desc';sort.onchange=()=>{recordListState.sort=sort.value;renderRecordListRows()}}if(clear)clear.onclick=()=>{recordListState.query='';if(search)search.value='';renderRecordListRows()};
  bindRecordColumnsBtn();
  renderRecordListRows();requestAnimationFrame(()=>search?.focus())
@@ -951,7 +965,7 @@ function resumeRecordFromList(x){return async()=>{
   if(x.remoteOnly||x.remoteNewer){
    showWaiting('別のPCで保存された内容を取り込んでいます',
      `ロット ${x.basic?.lotNo||x.id}`,'共有データベースから取得しています');
-   await nextPaint();
+   await WL.base.nextPaint();
    try{
     x=await importRemoteRecord(x.id);
     showToast('別のPCの続きを取り込みました',String(x.basic?.lotNo||x.id),4000);
@@ -963,8 +977,8 @@ function resumeRecordFromList(x){return async()=>{
   if(!requireEquipmentBeforeMeasurement(x.source||x.snapshot?.source||null))return;
   if(x.status==='完了'&&!await unlockCompletedForEdit(x))return;
   showWaiting('編集画面を準備しています',`ロット ${x.basic?.lotNo||x.id} の内容を復元中`,'保存済みの参照データを読み込んでいます');
-  await nextPaint();
-  S.measure=ensureMeasureShape(x);S.current=x.source||x.snapshot?.source||null;renderMeasurement();
+  await WL.base.nextPaint();
+  S.measure=WL.measureView.ensureMeasureShape(x);S.current=x.source||x.snapshot?.source||null;WL.measureView.renderMeasurement();
   const recordModal=$('#recordModal'),measureModal=$('#measureModal');if(recordModal)recordModal.hidden=true;if(measureModal)measureModal.hidden=false;
   await loadMeasurementContext(false);updateCourseGuard();
   showToast('編集中データを再開しました',String(x.basic?.lotNo||x.id));
@@ -1112,7 +1126,7 @@ const RECORD_DT_FORMAT={kind:'datetime',pattern:'yyyy/MM/dd HH:mm:ss'};
      cell  …生の値だけでは足りない列の描き方   note …出どころ・作り方の一言 */
 const RECORD_COLUMNS=[
  {k:'状態',k2:'status',def:1,track:'minmax(168px,.5fr)',cell:'status',
-  get:x=>statusLabel(x.status),short:x=>statusShortLabel(x.status),
+  get:x=>WL.base.statusLabel(x.status),short:x=>WL.base.statusShortLabel(x.status),
   note:'未同期・別のPCの印もこの列に出ます（この列を消すと印も出ません）。'},
  {k:'ロット番号',def:1,track:'minmax(104px,1fr)',cell:'lot',cls:'primary',
   get:x=>x.basic?.lotNo||x.id,note:'押すとLotDspをこのロット番号で開きます。'},
@@ -1135,7 +1149,7 @@ const RECORD_COLUMNS=[
  {k:'更新日時',def:1,track:'minmax(160px,0)',tag:'time',
   get:x=>recordLocalStamp(x.updatedAt),fmt:RECORD_DT_FORMAT},
  {k:'実作業時間',def:1,track:'minmax(84px,.5fr)',cls:'record-duration',origin:'calc',
-  get:x=>{const ms=durationMs(x);return ms==null?'':formatDuration(ms)},
+  get:x=>{const ms=WL.base.durationMs(x);return ms==null?'':WL.base.formatDuration(ms)},
   note:'作業開始時刻と終了時刻の差。どちらかが未記録なら空欄です。'},
  /* ---- ここから下は既定で出さない候補 ---- */
  /* 「どのPC・どのIDが編集したデータか」(§9.180)。**入力を始めた人・端末と、
@@ -1329,7 +1343,7 @@ function renderRecordListRows(){
     「同じボタンなら閉じる」分岐は当たらないので、押すと閉じて即開き直す
     ちらつきになる。 */
  closeRecordRowMenu();
- const currentLot=normalizedLot(S.current?pick(S.current,'lotNo'):'');
+ const currentLot=WL.base.normalizedLot(S.current?pick(S.current,'lotNo'):'');
  const keys=recordVisibleColumnKeys();
  const layout=WL.columnLayout.get(RECORD_LIST_TARGET);
  /* 幅は**JSがCSS変数へ入れる**。列の数と幅は設定で変わるので、
@@ -1374,8 +1388,8 @@ function renderRecordListRows(){
   if(src&&src.trim()&&WL.formula?.check(src).ok)calc.set(k,WL.formula.compile(src))});
 
  items.forEach((x,index)=>{
-  ensureMeasureShape(x);
-  const same=currentLot&&normalizedLot(x.basic?.lotNo)===currentLot;
+  WL.measureView.ensureMeasureShape(x);
+  const same=currentLot&&WL.base.normalizedLot(x.basic?.lotNo)===currentLot;
   const row=document.createElement('article');
   const resume=resumeRecordFromList(x),isDone=x.status==='完了',isNg=x.status==='測定値NG';
   const view=recordRowView(x,index);
@@ -1410,7 +1424,7 @@ function renderRecordListRows(){
    const cls=['record-list-cell',c&&c.cls,WL.columnAlign.cellClass(RECORD_LIST_TARGET,k),
               out.color?'cell-'+out.color:''].filter(Boolean).join(' ');
    if(c&&c.cell==='status')
-    return `<div class="${cls}" data-col="${esc(k)}"><span class="rp-status-badge${statusClass(x.status)?' '+statusClass(x.status):''}" title="${isNg?'NG回数 '+(x.settings?.ngCount||0)+'回':esc(statusLabel(x.status))}">${esc(shown)}</span>${syncBadge}${remoteBadge}</div>`;
+    return `<div class="${cls}" data-col="${esc(k)}"><span class="rp-status-badge${WL.base.statusClass(x.status)?' '+WL.base.statusClass(x.status):''}" title="${isNg?'NG回数 '+(x.settings?.ngCount||0)+'回':esc(WL.base.statusLabel(x.status))}">${esc(shown)}</span>${syncBadge}${remoteBadge}</div>`;
    if(c&&c.cell==='lot')
     return `<div class="${cls}" data-col="${esc(k)}"><button type="button" class="lot-dsp-link grid-lot-link" title="${esc(shown)} ／ クリックでLotDspをこのロット番号で開きます">${esc(shown)}</button></div>`;
    const inner=(c&&c.tag==='time')?`<time>${esc(shown)}</time>`:esc(shown);
@@ -1423,7 +1437,7 @@ function renderRecordListRows(){
   const reportBtn=row.querySelector('.report');
   if(reportBtn)reportBtn.onclick=e=>{e.stopPropagation();if(typeof openReportForRecord==='function')openReportForRecord(x.id)};
   const recLotBtn=row.querySelector('.grid-lot-link');
-  if(recLotBtn)recLotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();openLotDsp(x.basic?.lotNo,x.basic?.castingNo,WL.lotDspTab.get())};
+  if(recLotBtn)recLotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();WL.base.openLotDsp(x.basic?.lotNo,x.basic?.castingNo,WL.lotDspTab.get())};
   // ダブルクリックは編集再開ではなく帳票プレビューへの遷移とする(編集は「続きから再開/内容を開く」ボタンから明示的に行う)。
   row.ondblclick=e=>{if(!e.target.closest('.rec-more')&&!e.target.closest('.resume')&&!e.target.closest('.report')&&!e.target.closest('.grid-lot-link')&&typeof openReportForRecord==='function')openReportForRecord(x.id)};
   row.setAttribute('role','button');
@@ -1745,7 +1759,7 @@ function updateEquipmentEntryPoints(){
 }
 /* Equipment master final workflow. */
 let equipmentMasterState={items:[],loaded:false,created:false};
-function residualEquipmentSuggestion(){const raw=residualCourseValue();return String(raw||'').trim().split(/[\\s　]+/).filter(Boolean)[0]||''}
+function residualEquipmentSuggestion(){const raw=WL.base.residualCourseValue();return String(raw||'').trim().split(/[\\s　]+/).filter(Boolean)[0]||''}
 /* 起動直後のqueueMicrotask初回読込と、マスタ管理を開いた際のloadMaint()側
    からの読込が同時に走ると、後から解決した方が先に解決した方の結果を
    上書きしてしまう競合状態になり得た(タイミング次第で「開いた直後は
@@ -1790,7 +1804,7 @@ function equipmentUsableFor(item,feature){
 function equipmentNamesFor(feature,keep=''){
  const kp=String(keep||'').trim();
  return equipmentMasterState.items
-  .filter(x=>equipmentUsableFor(x,feature)||(kp&&normalizeCourseText(x.name)===normalizeCourseText(kp)))
+  .filter(x=>equipmentUsableFor(x,feature)||(kp&&WL.base.normalizeCourseText(x.name)===WL.base.normalizeCourseText(kp)))
   .map(x=>x.name);
 }
 function equipmentHiddenCount(feature,keep=''){
@@ -1799,8 +1813,8 @@ function equipmentHiddenCount(feature,keep=''){
 function fillEquipmentSelect(selected='',suggested=''){
  const select=$('#configuredEquipment');if(!select)return;
  const names=equipmentNamesFor('measure',selected||currentConfiguredEquipment()),
-       preset=suggested&&names.find(x=>normalizeCourseText(x)===normalizeCourseText(suggested)),
-       current=selected&&names.find(x=>normalizeCourseText(x)===normalizeCourseText(selected));
+       preset=suggested&&names.find(x=>WL.base.normalizeCourseText(x)===WL.base.normalizeCourseText(suggested)),
+       current=selected&&names.find(x=>WL.base.normalizeCourseText(x)===WL.base.normalizeCourseText(selected));
  select.innerHTML='<option value="">選んでください</option>'
    +names.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('')
    +`<option value="${EQ_NEW}">＋ 設備マスタへ新規登録</option>`;
@@ -1945,7 +1959,7 @@ async function openEquipmentSettingsFinal(reason='manual',suggested=''){
    const row=pendingMeasurementRow;pendingMeasurementRow=null;
    setTimeout(close,450);
    if(row){
-    await nextPaint();
+    await WL.base.nextPaint();
     openMeasurement(row).catch(error=>showToast('測定画面を開けません',error.message,8000));
    }
   }catch(error){say(error.message,'is-warn')}
@@ -1972,7 +1986,7 @@ function requireEquipmentBeforeMeasurement(row){
  const equipment=currentConfiguredEquipment();
  if(!equipment){pendingMeasurementRow=row||null;openEquipmentSettingsFinal('required');return false}
  const rowEquipment=row?pick(row,'equipment'):'';
- if(rowEquipment&&!equipmentIsInDesignCourse(equipment,rowEquipment)){
+ if(rowEquipment&&!WL.base.equipmentIsInDesignCourse(equipment,rowEquipment)){
   /* ここは**同期で真偽を返す**関門（呼ぶ側が`if(!...)return`で使う）。
      お知らせは見せるだけなので待たない。 */
   alertModal(`このロットの設計設備「${rowEquipment}」は、登録済みの使用設備「${equipment}」と一致しません。\n測定を開始・再開できません。設備が正しいか確認してください。`);
@@ -1981,8 +1995,8 @@ function requireEquipmentBeforeMeasurement(row){
  return true;
 }
 function updateCourseGuard(){
- if(!S.measure)return;const equipment=currentConfiguredEquipment(),course=designCourseValue(),residual=residualCourseValue(),suggestion=residualEquipmentSuggestion(),warning=$('#courseWarning');if(!warning)return;
- let message='',show=false;if(!equipment){message='使用設備が未設定です。設備マスタから登録してください。';show=true}else if(!course){message=`設計コースが取得できないため、設備「${equipment}」の対象判定ができません。`;show=true}else if(!equipmentIsInDesignCourse(equipment,course)){message=`設定設備「${equipment}」は設計コース「${course}」に含まれていません。`;show=true}
+ if(!S.measure)return;const equipment=currentConfiguredEquipment(),course=WL.base.designCourseValue(),residual=WL.base.residualCourseValue(),suggestion=residualEquipmentSuggestion(),warning=$('#courseWarning');if(!warning)return;
+ let message='',show=false;if(!equipment){message='使用設備が未設定です。設備マスタから登録してください。';show=true}else if(!course){message=`設計コースが取得できないため、設備「${equipment}」の対象判定ができません。`;show=true}else if(!WL.base.equipmentIsInDesignCourse(equipment,course)){message=`設定設備「${equipment}」は設計コース「${course}」に含まれていません。`;show=true}
  warning.hidden=!show;if(!show){warning.innerHTML='';return}
  warning.innerHTML=`<span class="course-warning-main">${esc(message)}</span><span class="course-warning-actions">${suggestion?`<span class="course-suggestion">候補: ${esc(suggestion)}</span>`:''}<button type="button" id="changeEquipmentFromWarning">${suggestion?'候補の設備へ変更':'設備登録を変更'}</button></span>`;
  const button=$('#changeEquipmentFromWarning');if(button)button.onclick=()=>openEquipmentSettingsFinal('suggestion',suggestion);
@@ -2009,7 +2023,7 @@ queueMicrotask(()=>{ensureEquipmentSettingsModal();updateEquipmentEntryPoints()}
 // 作業スケジュールに実体の無い「作業中」が出続ける。
 queueMicrotask(()=>{flushPendingBackupDeletes().catch(e=>console.warn('バックアップ削除の再試行に失敗',e))});
 queueMicrotask(async()=>{try{await loadEquipmentMaster();updateEquipmentEntryPoints()}catch(error){console.warn('equipment master init failed',error)}});
-queueMicrotask(()=>{updateRegisteredEquipmentBadge();const start=$('#stampWorkStart'),end=$('#stampWorkEnd');if(start)start.onclick=()=>stampWorkTimeLocked('start');if(end)end.onclick=()=>stampWorkTimeLocked('end')});
+queueMicrotask(()=>{updateRegisteredEquipmentBadge();const start=$('#stampWorkStart'),end=$('#stampWorkEnd');if(start)start.onclick=()=>WL.measureView.stampWorkTimeLocked('start');if(end)end.onclick=()=>WL.measureView.stampWorkTimeLocked('end')});
 queueMicrotask(()=>{updateEquipmentEntryPoints();const badge=$('#registeredEquipmentBadge');if(badge){badge.setAttribute('role','button');badge.tabIndex=0;badge.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openEquipmentSettingsFinal('manual')}}}});
 /* 編集中/完了データ一覧をモーダルからメイン画面切替表示へ変更(帳票・
    ダッシュボードと同じIA)。既存のopenRecords/closeRecords等の表示
@@ -2049,3 +2063,33 @@ WL.list.init().catch(error=>{
 /* 起動オーバーレイの「一覧を読み込み」はここで済む。**失敗しても進める**
    (エラー表示ごと見せる必要がある。覆ったままにしない)。 */
 }).finally(()=>WL.boot.step('list'));
+
+/* ============================================================
+   外へ出す面（§9.359・REVIEW 3-17）。**ここに載せた名前だけ**が外から
+   呼べる。載せ忘れは `no-undef` が教える——**ただし `typeof x` は教えない**
+   （§9.355）。外から使う側は `typeof WL.records.x==='function'`。
+   ============================================================ */
+WL.records={
+ reliableAll,reliableGet,reliablePut,reliableDelete,idbAll,RECORD_COL_BY_KEY,
+ /* 持ち替えた側が「元の道」を呼べるように、核も載せる（§9.352 の `own` は
+    丸ごと持つので、元へ委譲する口が無いと数える・遅らせるができない）。 */
+ reliableAllCore,reliablePutCore,
+ saveLocal,backupRecord,backupAndTrackSync,deleteBackupRows,
+ flushPendingBackupDeletes,syncPendingRecords,importRemoteRecord,shareRecord,
+ mergedRecords,persistAndTransition,
+ openMeasurement,openMeasurementCore,closeMeasureModal,loadMeasurementContext,
+ applyContextChoices,updateCourseGuard,resumeRecordFromList,
+ openRecords,openRecordsSafe,renderRecordListRows,openRecordRowMenu,
+ recordAllColumnKeys,recordColumnPanelSource,recordInitialHidden,
+ updateRecordListTitle,syncStatusFilterButtons,refreshDraftCount,
+ loadEquipmentMaster,equipmentUsableFor,
+ /* この2つは**入れ物そのもの**（中身は書き換わる）。`equipmentMasterState`は
+    丸ごと差し替える箇所があるので、値で載せると古い入れ物が固定されて
+    黙って古いままになる。**getter で載せて、そのつど今の物を返す。** */
+ get recordListState(){return recordListState},
+ get equipmentMasterState(){return equipmentMasterState},
+ ensureEquipmentSettingsModal,openEquipmentSettingsFinal,fillEquipmentSelect,
+ bindAppSettingsControls,bindV32Navigation,
+ withWaiting,showWaiting,hideSaveOverlay,showQuota,
+};
+})();

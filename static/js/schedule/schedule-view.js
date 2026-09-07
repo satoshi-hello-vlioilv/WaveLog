@@ -2045,15 +2045,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const sel=$('#scEquipmentSelect'),fixed=$('#scEquipmentFixed');
   if(scState.pickerEnabled){
    fixed.hidden=true;sel.hidden=false;
-   if(typeof loadEquipmentMaster==='function')await loadEquipmentMaster();
-   const all=(typeof equipmentMasterState!=='undefined'?equipmentMasterState.items:[])||[];
+   if(typeof WL.records.loadEquipmentMaster==='function')await WL.records.loadEquipmentMaster();
+   const all=(typeof WL.records.equipmentMasterState!=='undefined'?WL.records.equipmentMasterState.items:[])||[];
    /* 使える機能で絞る（§9.302）。**いま開いている設備は落とさない**——
       落とすと、その設備の予定を開いたまま設備名が選択欄から消え、
       別の設備へ移る以外の道が無くなる（§9.15と同じ作法）。
       **絞ったことは`title`で言う**（§4。器は狭いので本文には出せない）。 */
    const cur=String(scState.equipment||'');
-   const items=(typeof equipmentUsableFor==='function')
-    ?all.filter(x=>equipmentUsableFor(x,'schedule')||x.name===cur):all;
+   const items=(typeof WL.records.equipmentUsableFor==='function')
+    ?all.filter(x=>WL.records.equipmentUsableFor(x,'schedule')||x.name===cur):all;
    const off=all.length-items.length;
    sel.innerHTML='<option value="">設備を選択...</option>'+items.map(x=>`<option value="${esc(x.name)}">${esc(x.name)}</option>`).join('');
    sel.value=cur||'';
@@ -2503,8 +2503,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  // 速いときには出ないため、ローカル検証時の操作感は変わらない)。
  async function loadOverviewBoard(force){
   if(!force&&scOverviewCache)return loadOverviewBoardInner(false);
-  if(typeof withWaiting!=='function')return loadOverviewBoardInner(force);
-  return withWaiting({title:'全設備の空き状況を読み込んでいます',detail:'共有スケジュールDBを参照しています',
+  if(typeof WL.records.withWaiting!=='function')return loadOverviewBoardInner(force);
+  return WL.records.withWaiting({title:'全設備の空き状況を読み込んでいます',detail:'共有スケジュールDBを参照しています',
    progress:'設備ごとの予定を展開して集計しています'},()=>loadOverviewBoardInner(force));
  }
  async function loadOverviewBoardInner(force){
@@ -2740,8 +2740,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      const d=await api('/api/table?'+q);
      pages=page;total=Number(d.count||0);
      if(!cols){
-      cols={lotCol:(aliases.lotNo||[]).find(n=>(d.columns||[]).includes(n)),
-            resCol:(aliases.residualCourse||[]).find(n=>(d.columns||[]).includes(n))};
+      cols={lotCol:(WL.base.aliases.lotNo||[]).find(n=>(d.columns||[]).includes(n)),
+            resCol:(WL.base.aliases.residualCourse||[]).find(n=>(d.columns||[]).includes(n))};
      }
      const rows=d.rows||[];scanned+=rows.length;
      if(!cols.lotCol||!cols.resCol)break;    // 列が無ければ辿っても意味が無い
@@ -2948,8 +2948,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      瞬くと、かえって「また読み込んでいる」ように見えるため)。 */
   const cached=scPlanCache.get(scState.equipment);
   const quick=!force&&cached&&cached.historyHours===scState.historyHours;
-  if(quick||typeof withWaiting!=='function')await refreshAllInner(()=>{},force);
-  else await withWaiting({title:'作業スケジュールを読み込んでいます',
+  if(quick||typeof WL.records.withWaiting!=='function')await refreshAllInner(()=>{},force);
+  else await WL.records.withWaiting({title:'作業スケジュールを読み込んでいます',
    detail:scState.equipment?('設備: '+scState.equipment):'共有スケジュールDBを参照しています',
    progress:'表示設定と予定を取得しています',step:1},report=>refreshAllInner(report,force));
   /* 仕掛一覧は**覆いを外してから**組む。ここは待つ(呼び出し側が「開き終えた」
@@ -3379,7 +3379,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  const scIsFixedCol=k=>SC_COL_MAP.has(k);
  /* **一度も保存していないうちは出さない列**(§9.180)。列レイアウトマスタの
     hiddenは空なので、そのまま使うと足した列がいきなり全員の画面に並ぶ
-    ——データ一覧の`recordInitialHidden()`(§9.162)と同じ考え方で、
+    ——データ一覧の`WL.records.recordInitialHidden()`(§9.162)と同じ考え方で、
     「保存済みの並びがあるか」で既定と保存値を分ける。 */
  const SC_COL_OFF_BY_DEFAULT=SC_COL_DEFS.filter(d=>d.off).map(d=>d.key);
  function timelineHiddenSet(){
@@ -3387,7 +3387,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const cur=t?WL.columnLayout.get(t):null;
   const hidden=new Set(cur?cur.hidden||[]:[]);
   /* **一度も保存していないうちは既定で畳む**（データ一覧の
-     `recordInitialHidden()`と同じ考え方。§9.162）。並びには全列が入るので、
+     `WL.records.recordInitialHidden()`と同じ考え方。§9.162）。並びには全列が入るので、
      「並びにこの列が載っているか」では既定かどうかを見分けられない
      ——`timelineOrderedKeys()`が知らない列を必ず後ろへ足すため。
      **並びを初めて保存する瞬間に、この既定を`hidden`へ書き下ろす**
@@ -6034,14 +6034,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      <li><b>元に戻せません。</b></li>
     </ul>`});
   if(!ok)return;
-  await withWaiting({title:'実績を削除しています',detail:`ロット ${lot}`,
+  await WL.records.withWaiting({title:'実績を削除しています',detail:`ロット ${lot}`,
     progress:'端末内データとバックアップから削除しています'},async()=>{
    let removed=false;
    // 端末内にあるか(あれば端末＋バックアップの両方を消すreliableDeleteを使う)
    try{
-    if(typeof reliableGet==='function'&&await reliableGet(recordId)){
-     await reliableDelete(recordId);removed=true;
-     if(typeof refreshDraftCount==='function')await refreshDraftCount();
+    if(typeof WL.records.reliableGet==='function'&&await WL.records.reliableGet(recordId)){
+     await WL.records.reliableDelete(recordId);removed=true;
+     if(typeof WL.records.refreshDraftCount==='function')await WL.records.refreshDraftCount();
     }
    }catch(err){console.warn('端末内データの削除に失敗',err)}
    if(!removed){
@@ -7305,7 +7305,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  // 生カラム名(用途名など)はそのまま、alias名(purposeNameなど)は日本語の
  // 代表名で見せる(利用者にとってはaliasの英字名に馴染みが無いため)。
  function contentItemLabel(k){
-  const names=(typeof aliases!=='undefined'&&aliases[k])||null;
+  const names=(typeof WL.base.aliases!=='undefined'&&WL.base.aliases[k])||null;
   return names&&names.length?names[0]:k;
  }
  function sameItems(a,b){return a.length===b.length&&a.every((x,i)=>x===b[i])}
@@ -7320,14 +7320,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(!detail)return undefined;
   const ok=v=>v!==undefined&&v!==null&&String(v).trim()!=='';
   if(ok(detail[key]))return detail[key];
-  if(typeof aliases==='undefined')return undefined;
-  const names=aliases[key];
+  if(typeof WL.base.aliases==='undefined')return undefined;
+  const names=WL.base.aliases[key];
   if(names){                       // keyがalias名 -> 生カラム名を順に試す
    for(const n of names)if(ok(detail[n]))return detail[n];
    return undefined;
   }
-  for(const ak of Object.keys(aliases)){   // keyが生カラム名 -> alias名を試す
-   if(aliases[ak].includes(key)&&ok(detail[ak]))return detail[ak];
+  for(const ak of Object.keys(WL.base.aliases)){   // keyが生カラム名 -> alias名を試す
+   if(WL.base.aliases[ak].includes(key)&&ok(detail[ak]))return detail[ak];
   }
   return undefined;
  }
@@ -7425,9 +7425,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     どちらを選ぶべきか分からず、しかも片方は古い予定で引けない。alias表に
     載っている項目はalias名へ寄せて1つにまとめる(表示は日本語名)。 */
  function canonicalContentKey(k){
-  if(typeof aliases==='undefined')return k;
-  if(aliases[k])return k;
-  for(const ak of Object.keys(aliases))if(aliases[ak].includes(k))return ak;
+  if(typeof WL.base.aliases==='undefined')return k;
+  if(WL.base.aliases[k])return k;
+  for(const ak of Object.keys(WL.base.aliases))if(WL.base.aliases[ak].includes(k))return ak;
   return k;
  }
 
@@ -7649,11 +7649,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // 書き戻してから渡す。
   const put=(key,val)=>{
    if(val===undefined||val===null||String(val).trim()==='')return;
-   (aliases[key]||[]).forEach(n=>{
+   (WL.base.aliases[key]||[]).forEach(n=>{
     if(row[n]===undefined||row[n]===null||row[n]==='')row[n]=val;
    });
   };
-  Object.keys(aliases).forEach(k=>put(k,contentValueOf(e.detail,k)));
+  Object.keys(WL.base.aliases).forEach(k=>put(k,contentValueOf(e.detail,k)));
   // detailが古くて欠けている場合に備え、予定行が持つ3項目で補う。
   put('lotNo',e.lotNo);put('castingNo',e.castingNo);put('inspectionNo',e.inspectionNo);
   return row;
@@ -7675,7 +7675,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }
  }
  async function startWorkFromEntry(e){
-  if(typeof openMeasurement!=='function'){await alertModal('測定画面を開けません。');return}
+  if(typeof WL.records.openMeasurement!=='function'){await alertModal('測定画面を開けません。');return}
   /* §9.51: まだこの設備に仕掛かっていないロットは開始させない。ボタン自体
      出していないが、ダブルクリック等の別経路からも来るので二重に確かめる
      (「予定」から始めるときだけ。着手済みの再開は対象外)。 */
@@ -7694,7 +7694,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    return;
   }
   try{
-   await openMeasurement(row);
+   await WL.records.openMeasurement(row);
    // 開始時刻を打刻すればこの予定は「作業中」へ移る。次にスケジュールを
    // 開いたときに必ず取り直せるよう、キャッシュを捨てておく(§9.42)。
    invalidatePlanCache(scState.equipment);
@@ -7711,7 +7711,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // キーに)スナップショットへ含める。どの設備・どの仕掛データ構成でも
   // 対応できるようにするための汎用化(alias一覧に無い列も選べる)。
   const detail={};
-  Object.keys(aliases).forEach(k=>{const v=pick(row,k);if(v!==undefined&&v!==null&&v!=='')detail[k]=v});
+  Object.keys(WL.base.aliases).forEach(k=>{const v=pick(row,k);if(v!==undefined&&v!==null&&v!=='')detail[k]=v});
   if(typeof S!=='undefined'&&Array.isArray(S.columns)){
    S.columns.forEach(c=>{
     const v=row[c];
@@ -7947,7 +7947,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    finally{scState.equipment=prevEq;scState.entries=prevEntries;scContentPrefs=prevPrefs}
   },
   equipmentNames:()=>{
-   const items=(typeof equipmentMasterState!=='undefined'?equipmentMasterState.items:[])||[];
+   const items=(typeof WL.records.equipmentMasterState!=='undefined'?WL.records.equipmentMasterState.items:[])||[];
    const names=items.map(x=>String(x.name||'').trim()).filter(Boolean);
    return names.length?names:(scState.equipment?[scState.equipment]:[]);
   },

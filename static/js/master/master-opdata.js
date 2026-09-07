@@ -592,7 +592,7 @@
  }
  function renderOpItem(){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
-  const eqs=(equipmentMasterState.items||[]).map(e=>e.name).filter(Boolean);
+  const eqs=(WL.records.equipmentMasterState.items||[]).map(e=>e.name).filter(Boolean);
   form.innerHTML=`<div class="op-bar">`
    +`<label class="op-bar-eq" title="どの設備のレイアウトを編集するかです。`
    +`「共通」で並べ替えるとすべての設備に効き、設備を選んで並べ替えるとその設備だけに効きます。">`
@@ -1571,7 +1571,7 @@
   const hit=opLimitSource(cur);
   const opts=['<option value="">自分で決める（上の数）</option>']
    .concat(list.map(s=>`<option value="${esc(s.key)}"${s.key===cur?' selected':''}>${esc(s.label)}</option>`))
-   /* **知らない鍵を黙って捨てない**（§9.204の`optionFill()`と同じ罠）
+   /* **知らない鍵を黙って捨てない**（§9.204の`WL.base.optionFill()`と同じ罠）
       ——候補に無い値を`select.value`へ入れると空になり、保存した瞬間に
       設定が消える。候補へ足したうえで、引けないことを名前で言う。 */
    .concat(cur&&!hit?[`<option value="${esc(cur)}" selected>${esc(cur)}（このアプリが知らない出どころ）</option>`]:[]);
@@ -2512,7 +2512,7 @@
   return raw.replace(/、/g,',').split(',').map(s=>s.trim()).filter(Boolean);
  }
  function opEquipmentPickHtml(x){
-  const all=(equipmentMasterState.items||[]).map(e=>e.name).filter(Boolean);
+  const all=(WL.records.equipmentMasterState.items||[]).map(e=>e.name).filter(Boolean);
   const on=opEquipmentList(x);
   const every=on.length===0;
   const known=new Set(all);
@@ -3455,7 +3455,7 @@
  async function loadOpChoiceMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   form.classList.remove('mm-form-compact');
-  if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備マスタを取れない（設備を選ぶ欄が減るだけ）',e)}}
+  if(typeof WL.records.loadEquipmentMaster==='function'){try{await WL.records.loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備マスタを取れない（設備を選ぶ欄が減るだけ）',e)}}
   if(!list.querySelector('.oc-edit'))list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   try{
    const ch=await api('/api/operation-choice-master');
@@ -3537,7 +3537,7 @@
   const rows=ocRows(name);
   const used=ocState.usage[name]||[];
   const legacy=(ocState.legacy||[]).includes(name);
-  const eqs=(equipmentMasterState.items||[]).map(e=>e.name).filter(Boolean);
+  const eqs=(WL.records.equipmentMasterState.items||[]).map(e=>e.name).filter(Boolean);
   return `<div class="oc-values">
     <div class="oc-values-head">
      <label class="oc-name">まとまり名<input type="text" id="ocGroupName" value="${esc(name)}" autocomplete="off"></label>
@@ -3791,7 +3791,7 @@
  async function loadOpItemMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   form.classList.remove('mm-form-compact');
-  if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備マスタを取れない（設備を選ぶ欄が減るだけ）',e)}}
+  if(typeof WL.records.loadEquipmentMaster==='function'){try{await WL.records.loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備マスタを取れない（設備を選ぶ欄が減るだけ）',e)}}
   if(!list.querySelector('.op-edit'))list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   try{
    const q=opState.equipment?('?equipment='+encodeURIComponent(opState.equipment)):'';
@@ -3921,7 +3921,7 @@
   }
   /* **同じ群はまとめて描く**（§9.219 ③と同じ作法）。保存されている並びでは
      同じ群がばらけていることがある（`[表示順]`は置き場ごとの並びなので、
-     カードの群と一致する保証が無い）。盤は`renderRecordedValues()`と同じ
+     カードの群と一致する保証が無い）。盤は`WL.measureView.renderRecordedValues()`と同じ
      「出てきた順に束ねる」で描くので、**平らな並びのほうも束ねておかないと、
      見えている形と保存される`[記録順]`が食い違う**（盤は1塊なのに、
      保存された順は2つに割れている、という状態が作れる）。 */
@@ -3936,7 +3936,7 @@
   return rlState.rows;
  }
  const rlItemById=id=>(rlState.items||[]).find(x=>String(x.id)===String(id));
- /* 群の並び（出てきた順）。`renderRecordedValues()`と同じ「出てきた順に束ねる」。 */
+ /* 群の並び（出てきた順）。`WL.measureView.renderRecordedValues()`と同じ「出てきた順に束ねる」。 */
  function rlGroups(){
   const order=[],bag=new Map();
   rlRows().on.forEach(r=>{
@@ -4001,7 +4001,7 @@
  function renderRecordLayout(){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   form.classList.remove('mm-form-compact');
-  const eqs=(equipmentMasterState.items||[]).map(e=>e.name).filter(Boolean);
+  const eqs=(WL.records.equipmentMasterState.items||[]).map(e=>e.name).filter(Boolean);
   form.innerHTML=`<div class="op-bar">`
    +`<label class="op-bar-eq" title="どの設備の項目を候補に出すかです。並び自体は設備によらず共通です。">`
    +`候補に出す設備<select id="rlEqPick">`
@@ -4246,7 +4246,7 @@
  }
  async function loadRecordLayoutMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
-  if(typeof loadEquipmentMaster==='function'){try{await loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備マスタを取れない（設備を選ぶ欄が減るだけ）',e)}}
+  if(typeof WL.records.loadEquipmentMaster==='function'){try{await WL.records.loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備マスタを取れない（設備を選ぶ欄が減るだけ）',e)}}
   if(!list.querySelector('.rl-edit'))list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   try{
    const q=rlState.equipment?('?equipment='+encodeURIComponent(rlState.equipment)):'';

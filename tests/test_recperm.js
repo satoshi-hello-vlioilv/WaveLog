@@ -50,11 +50,11 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   /* 端末内に「編集中2件・完了1件」を置く。共有DBへは送らない(送ると
      他のテストの共有データを汚す)ので、reliablePut だけを呼ぶ。 */
   const seeded=await page.evaluate(async({tag,lot,eq})=>{
-   const mk=(n,st)=>ensureMeasureShape({id:`${tag}-${n}`,status:st,
+   const mk=(n,st)=>WL.measureView.ensureMeasureShape({id:`${tag}-${n}`,status:st,
      basic:{lotNo:`${lot}-${n}`,inspectionNo:'INS-'+n},
      registeredEquipment:eq,updatedAt:new Date().toISOString()});
-   for(const m of [mk(1,'編集中'),mk(2,'編集中'),mk(3,'完了')])await reliablePut(m);
-   return (await reliableAll()).filter(x=>String(x.id||'').startsWith(tag)).length;
+   for(const m of [mk(1,'編集中'),mk(2,'編集中'),mk(3,'完了')])await WL.records.reliablePut(m);
+   return (await WL.records.reliableAll()).filter(x=>String(x.id||'').startsWith(tag)).length;
   },{tag:TAG,lot:LOT,eq:EQ});
   rec('端末内に3件(編集中2・完了1)を用意できた',seeded===3,'seeded='+seeded);
 
@@ -127,7 +127,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('(D)副題も端末内の表示へ戻る',/この端末/.test(v.sub),v.sub);
 
   /* ===== (E) 編集モードで本当に0件のときは、従来どおりの素直な文言 ===== */
-  await page.evaluate(()=>{recordListState.query='';recordListState.items=[];renderRecordListRows()});
+  await page.evaluate(()=>{WL.records.recordListState.query='';WL.records.recordListState.items=[];WL.records.renderRecordListRows()});
   v=await view();
   rec('(E)編集モードの0件は「表示できるデータがありません」のまま',
     !!v.empty&&/表示できるデータがありません/.test(v.empty)&&!/権限/.test(v.empty),String(v.empty).slice(0,120));

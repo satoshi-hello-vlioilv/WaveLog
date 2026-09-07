@@ -31,7 +31,7 @@ async function cleanup(){
 const settle=async page=>{await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))};
 const head=page=>page.evaluate(()=>[...document.querySelectorAll('.record-list-head>span')].map(s=>s.textContent.trim()));
 async function openList(page){
- await page.evaluate(()=>openRecordsSafe('編集中'));
+ await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
  await page.waitForSelector('.record-list-head',{timeout:20000});
  await settle(page);
 }
@@ -224,7 +224,7 @@ async function openList(page){
      ================================================================== */
   await post('/api/access-mode',{mode:'edit'});
   await page.setViewportSize({width:900,height:900});
-  await page.evaluate(()=>renderRecordListRows());
+  await page.evaluate(()=>WL.records.renderRecordListRows());
   await settle(page);
   const edge=await page.evaluate(()=>{
    const list=document.getElementById('recordList');
@@ -435,7 +435,7 @@ async function openList(page){
   await post('/api/access-mode',{mode:'view'});
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
-  await page.evaluate(()=>openRecordsSafe('編集中')).catch(()=>{});
+  await page.evaluate(()=>WL.records.openRecordsSafe('編集中')).catch(()=>{});
   await page.waitForTimeout(1500);
   const hidden=await page.evaluate(()=>{
    const b2=document.getElementById('recordColumnsBtn');

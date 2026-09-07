@@ -86,8 +86,8 @@ let b=null;
 
   // 後始末: 作った実績を消す(次のテストの突合を汚さない)
   await page.evaluate(async()=>{
-   if(typeof S!=='undefined'&&S.measure&&typeof reliableDelete==='function')
-    await reliableDelete(S.measure.id);
+   if(typeof S!=='undefined'&&S.measure&&typeof WL.records.reliableDelete==='function')
+    await WL.records.reliableDelete(S.measure.id);
   }).catch(()=>{});
   /* 上の削除はスケジュールへ戻った時点で S.measure が空なので実際には効かず、
      作った一時保存（記録ID）が records.sqlite3 に残っていた（§9.351）。控えたIDで消す。 */

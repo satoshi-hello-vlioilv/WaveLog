@@ -8,7 +8,7 @@
      (テレスコープ・バリ・巻ずれ 等) は公差を表示しない。
    ============================================================ */
 (function(){
-  if(typeof toleranceDetail!=='function'||typeof compactToleranceFacts!=='function')return;
+  if(typeof WL.measureInput.toleranceDetail!=='function'||typeof WL.measureInput.compactToleranceFacts!=='function')return;
   // 測定種 -> 参照する「指示_*」フィールド候補（半角/全角の別名を許容）
   var INSTRUCTION_FIELDS={
     'ラテラルボー':['指示_ﾗﾃﾗﾙﾎﾞｰ','指示_ラテラルボー'],
@@ -54,7 +54,7 @@
   /* 公差カード（facts）も提供者が持つ（§9.352）。単一の指示値のときだけ答え、それ以外は
      undefined＝核の答え。 */
   WL.tolerance.register({name:'指示型（単一の指示値）・カード',priority:10,facts:function(kind){
-    var detail=toleranceDetail(kind);
+    var detail=WL.measureInput.toleranceDetail(kind);
     if(detail&&detail.single){
       var label=detail.instructionType||'指示';
       var v=detail.plus;
@@ -164,8 +164,8 @@
   // 受信欄から manual として入った場合も記録する。
   /* 受信の前に手動入力を記録し、あとにロック状態を引き直す（§9.352）。 */
   WL.measureHooks.on('beforeDeviceInput',raw=>{
-    const parsed=typeof deviceParse==='function'?deviceParse(raw):null;
-    const beforeKey=typeof activeMeasureKey==='function'?activeMeasureKey():'';
+    const parsed=typeof WL.measureInput.deviceParse==='function'?WL.measureInput.deviceParse(raw):null;
+    const beforeKey=typeof WL.measureInput.activeMeasureKey==='function'?WL.measureInput.activeMeasureKey():'';
     if(parsed?.device==='manual'&&['thickness','width','lateral','burr'].includes(beforeKey)){
       appendManualLog('受信欄から手動数値を登録',{item:RESTRICTED_MANUAL_KEYS[beforeKey]||beforeKey,value:parsed.value});
     }
@@ -177,7 +177,7 @@
   WL.measureHooks.on('shape',m=>{m.manualInputLog=Array.isArray(m.manualInputLog)?m.manualInputLog:[];m.settings=m.settings||{};m.settings.dimensionLocked=!!m.settings.dimensionLocked});
 
   // 丈位置・測定種別切替時は保存済み配列から再描画し、続きから入力する。
-  ['lengthPos','measureType'].forEach(id=>{const el=$('#'+id);if(el&&el.dataset.hotfixSwitchBound!=='1'){el.dataset.hotfixSwitchBound='1';el.addEventListener('change',()=>{if(typeof renderMeasureGrid==='function')renderMeasureGrid();updateDimensionLocks();},true);}});
+  ['lengthPos','measureType'].forEach(id=>{const el=$('#'+id);if(el&&el.dataset.hotfixSwitchBound!=='1'){el.dataset.hotfixSwitchBound='1';el.addEventListener('change',()=>{if(typeof WL.measureInput.renderMeasureGrid==='function')WL.measureInput.renderMeasureGrid();updateDimensionLocks();},true);}});
   ['verticalCount','horizontalCount'].forEach(id=>{const el=$('#'+id);if(el&&el.dataset.hotfixCountBound!=='1'){el.dataset.hotfixCountBound='1';el.addEventListener('mousedown',event=>{if(hasDimensionData()){event.preventDefault();showToast?.('丈数・条数は変更できません','測定データをすべて消すと再度変更できます。',4500)}},true);}});
 
   // fetch失敗時の原因表示は、先頭のapi関数で一元対応。

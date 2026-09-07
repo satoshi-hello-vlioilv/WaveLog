@@ -51,8 +51,8 @@ let b=null;
   await page.evaluate(long=>{
    const src=S.measure.source=S.measure.source||{};
    src['設計_設備ｺｰｽ']=long;src['実績_設備ｺｰｽ']=long;src['残仕掛設備ｺｰｽ']=long;
-   if(typeof renderResidualCourseEverywhere==='function')renderResidualCourseEverywhere();
-   if(typeof renderCourseHierarchy==='function')renderCourseHierarchy();
+   if(typeof WL.measureView.renderResidualCourseEverywhere==='function')WL.measureView.renderResidualCourseEverywhere();
+   if(typeof WL.measureView.renderCourseHierarchy==='function')WL.measureView.renderCourseHierarchy();
   },LONG).catch(()=>{});
   await page.waitForTimeout(1200);
   /* コース欄は**「詳細を見る」の中**にある（§9.139で基本情報を常時8項目に
@@ -168,7 +168,7 @@ let b=null;
   await page.evaluate(()=>{
    const src=S.measure.source=S.measure.source||{};
    src['設計_設備ｺｰｽ']='LS4';src['実績_設備ｺｰｽ']='HOT';src['残仕掛設備ｺｰｽ']='AN2';
-   if(typeof renderCourseHierarchy==='function')renderCourseHierarchy();
+   if(typeof WL.measureView.renderCourseHierarchy==='function')WL.measureView.renderCourseHierarchy();
   }).catch(()=>{});
   await page.waitForTimeout(600);
   const {out:sh}=await probe();
@@ -182,7 +182,7 @@ let b=null;
   await page.evaluate(v=>{
    const src=S.measure.source=S.measure.source||{};
    src['設計_設備ｺｰｽ']=v;src['実績_設備ｺｰｽ']=v;src['残仕掛設備ｺｰｽ']=v;
-   if(typeof renderCourseHierarchy==='function')renderCourseHierarchy();
+   if(typeof WL.measureView.renderCourseHierarchy==='function')WL.measureView.renderCourseHierarchy();
   },MAXCASE).catch(()=>{});
   const worst={};
   for(const s of ['sm','md','lg']){
@@ -196,8 +196,8 @@ let b=null;
 
   // 後始末
   await page.evaluate(async()=>{
-   if(typeof S!=='undefined'&&S.measure&&typeof reliableDelete==='function')
-    await reliableDelete(S.measure.id);
+   if(typeof S!=='undefined'&&S.measure&&typeof WL.records.reliableDelete==='function')
+    await WL.records.reliableDelete(S.measure.id);
   }).catch(()=>{});
 
   console.log('\n=== SUMMARY ===');

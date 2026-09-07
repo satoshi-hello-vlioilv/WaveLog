@@ -310,11 +310,11 @@
     サーバーからは引けない）。**知らない鍵は黙って捨てない**（§9.204）
     ——`null`を返し、画面は「この版では引けません」と書く。 */
  function lotOf(key){
-  /* `basic`は`aliases`に載せた列しか持たないので、**生の行から**も探す
+  /* `basic`は`WL.base.aliases`に載せた列しか持たないので、**生の行から**も探す
      （§9.160）。どちらも空なら空文字。 */
   try{
-   if(typeof sourceField==='function'&&typeof aliases==='object'&&aliases[key]){
-    const v=sourceField(aliases[key]);
+   if(typeof WL.base.sourceField==='function'&&typeof WL.base.aliases==='object'&&WL.base.aliases[key]){
+    const v=WL.base.sourceField(WL.base.aliases[key]);
     if(String(v==null?'':v).trim()!=='')return String(v).trim();
    }
   }catch(_){WL.quiet.note('仕掛の行から引けない（既定値で続ける）',_)}
@@ -375,7 +375,7 @@
   'meas.endAt':()=>timeOf('endAt'),
   'calc.workDuration':()=>{
    /* **終わっていなければ空欄**（§9.114「空欄は未設定であって0分ではない」）。 */
-   const ms=(typeof durationMs==='function')?durationMs(state()&&S.measure):null;
+   const ms=(typeof WL.base.durationMs==='function')?WL.base.durationMs(state()&&S.measure):null;
    return (ms===null||ms===undefined)?'':String(Math.round(ms/60000));
   },
   'calc.stripCount':()=>{const L=lanesOf();return L&&L.list&&L.list.length?String(L.list.length):''},
@@ -581,7 +581,7 @@
      ——`layout()`（測定画面）と`WL.opData.presentation()`（設定窓の見本）が
      どちらもこの1本を通るので、見本と実物が食い違わない（§9.221 ⑦と同じ
      約束）。当てる側の`applyBlankPolicy()`は**DOMの印だけ**を見るので、
-     候補を入れ直したあと（`applyContextChoices()`→`syncWidgets()`）にも
+     候補を入れ直したあと（`WL.records.applyContextChoices()`→`syncWidgets()`）にも
      定義を持ち歩かずに当て直せる。 */
   if(def&&def.noBlank)host.dataset.opNoblank='1';else delete host.dataset.opNoblank;
   applyBlankPolicy(host);
@@ -840,7 +840,7 @@
     **値を持つのは今までどおり`<select>`**。ボタン側から`value`を書いて
     `change`を飛ばすだけにする——こうすると
       ・記録の読み書き（`values()`／`apply()`／`collect()`）
-      ・必須の判定（`activeRequiredControls()`は`controlOf()`が返す部品を見る）
+      ・必須の判定（`WL.measureView.activeRequiredControls()`は`controlOf()`が返す部品を見る）
       ・仕掛由来のプリセット（内径・§9.204）や条数の上限（§9.210 ⑤）
     が**1つも書き換わらない**。組み込みの欄（オペレータ・作業人数…）にも
     同じ形で当てられるのはこのため。
@@ -869,7 +869,7 @@
      「－」が出たままになっています」
 
     **空文字だけではない。** 組み込みの選択欄（オペレータ・検査員・
-    板厚/板幅測定器・内径・スプール）の候補は`base.js`の`optionFill()`が
+    板厚/板幅測定器・内径・スプール）の候補は`base.js`の`WL.base.optionFill()`が
     入れており、**先頭へ`-`を1つ足す**——未選択の札の値は`''`ではなく`'-'`。
     `noBlank`の絞り込みが`o.v!==''`しか見ていなかったので、
     **組み込みの欄では一度も効いていなかった**。
@@ -934,7 +934,7 @@
      ものなので、この機能も未選択、未入力の場合、配色するという機能を実装して
      ください」
 
-    直す前は`updateValidationVisuals()`が**必須の欄だけ**に橙を当てていた
+    直す前は`WL.measureView.updateValidationVisuals()`が**必須の欄だけ**に橙を当てていた
     ——①必須でない欄は空でも何も出ない ②色は橙で固定、で「未入力なら色を
     付ける」という設定そのものが無かった。
 
@@ -1070,7 +1070,7 @@
   return box;
  }
  /* 押した結果を`select`へ書いて`change`を飛ばす。**`input`も飛ばす**
-    ——`updateValidationVisuals()`は両方をcaptureで拾っており、片方だけだと
+    ——`WL.measureView.updateValidationVisuals()`は両方をcaptureで拾っており、片方だけだと
     未入力の印が更新されない経路が残る。 */
  function setValue(sel,v){
   if(sel.value===v)return;
@@ -3047,8 +3047,8 @@
      まったく同じ理由）——中身はマスタの行から組み立てるので、③を開いたまま
      マスタが届いた場合に塗り直さないと**空のまま**になる。
      **「あれば呼ぶ」で黙らせないこと**——無ければ理由を出す。 */
-  if(typeof renderRecordedValues==='function'){
-   try{renderRecordedValues()}
+  if(typeof WL.measureView.renderRecordedValues==='function'){
+   try{WL.measureView.renderRecordedValues()}
    catch(e){console.warn('measure-opdata: 記録した値を塗り直せませんでした',e)}
   }else console.error('measure-opdata: renderRecordedValues が無い（③の記録した値が空のまま残る）');
  }
@@ -3283,7 +3283,7 @@
  }
  function syncWidgets(){
   /* **候補を入れ直すと「選ばない」の札が戻る**（§9.246 ①）。
-     `applyContextChoices()`（`records-store.js`）は`optionFill()`で
+     `WL.records.applyContextChoices()`（`records-store.js`）は`WL.base.optionFill()`で
      `<select>`の中身を丸ごと作り直すので、そのたびに`-`が先頭へ復活する。
      印（`data-op-noblank`）はホスト側に残っているので、ここで当て直す
      ——**この関数は候補を入れ直した直後に必ず呼ばれる**（記録の復元・
@@ -3391,7 +3391,7 @@
  }
 
  /* **必須はマスタが決める**（§9.216 ②、利用者の指示「一部の必須入力事項も
-    マスタで設定可能とし」）。以前は`activeRequiredControls()`が
+    マスタで設定可能とし」）。以前は`WL.measureView.activeRequiredControls()`が
     `['operator','inspector']`と直に書いており、設備ごとに変えられなかった。
     **答えられないときはnull**——読めなかったことを「必須は無い」と同じに
     扱うと、完了前の確認が黙って緩くなる（§9.211 ②のfail-openと逆向きの

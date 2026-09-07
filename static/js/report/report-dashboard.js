@@ -504,14 +504,14 @@
       (ボタンの中へinputをネストするのはアクセシビリティ・仕様上避ける)。 */
    const row=document.createElement('div');row.className='rp-lot-row'+(x.id===rpState.selectedId?' active':'');
    const checked=rpSelectedIds.has(x.id);
-   row.innerHTML=`<label class="rp-lot-check" title="一括印刷の対象に含めます" onclick="event.stopPropagation()"><input type="checkbox"${checked?' checked':''}></label><button type="button" class="rp-lot-main-btn"><span class="rp-lot-main"><b title="${esc(x.basic?.lotNo||x.id)}">${esc(x.basic?.lotNo||x.id)}</b><em class="rp-status-badge ${statusClass(x.status)}">${esc(statusLabel(x.status))}</em></span><span class="rp-lot-sub" title="${esc(equipment)}">${esc(equipment)}・${esc(x.basic?.inspectionNo||'-')}</span><span class="rp-lot-date">${esc(fmtDT(x.updatedAt))}</span></button>`;
+   row.innerHTML=`<label class="rp-lot-check" title="一括印刷の対象に含めます" onclick="event.stopPropagation()"><input type="checkbox"${checked?' checked':''}></label><button type="button" class="rp-lot-main-btn"><span class="rp-lot-main"><b title="${esc(x.basic?.lotNo||x.id)}">${esc(x.basic?.lotNo||x.id)}</b><em class="rp-status-badge ${WL.base.statusClass(x.status)}">${esc(WL.base.statusLabel(x.status))}</em></span><span class="rp-lot-sub" title="${esc(equipment)}">${esc(equipment)}・${esc(x.basic?.inspectionNo||'-')}</span><span class="rp-lot-date">${esc(fmtDT(x.updatedAt))}</span></button>`;
    row.querySelector('.rp-lot-check input').onchange=e=>{
     if(e.target.checked)rpSelectedIds.add(x.id);else rpSelectedIds.delete(x.id);
     row.classList.toggle('checked',e.target.checked);updateBulkPrintButton();
    };
    const mainBtn=row.querySelector('.rp-lot-main-btn');
    mainBtn.onclick=()=>selectLot(x.id);
-   mainBtn.ondblclick=e=>{e.preventDefault();e.stopPropagation();if(typeof resumeRecordFromList==='function')resumeRecordFromList(x)()};
+   mainBtn.ondblclick=e=>{e.preventDefault();e.stopPropagation();if(typeof WL.records.resumeRecordFromList==='function')WL.records.resumeRecordFromList(x)()};
    frag.append(row);
   });
   list.innerHTML='';list.append(frag);
@@ -1079,7 +1079,7 @@
    /* 揃いの判定は`judgeProductRow`の1箇所が答える(§9.203)。
       4桁コードを廃止したので、`alignmentCode`だけを見ると新しい記録が
       すべて空欄になる（旧データはあちらが面倒を見る）。 */
-   const r=rows[i]||{},j=showJudge?judgeProductRow(r,grades):'';
+   const r=rows[i]||{},j=showJudge?WL.measureView.judgeProductRow(r,grades):'';
    const badge=j?`<span class="product-judge${j==='OK'?' ok':j==='NG'?' ng':' pend'}">${esc(j)}</span>`:'';
    const br=showBreak?WL.product.breakdown(r):[];
    const brHtml=br.length
@@ -1239,9 +1239,9 @@
   {k:RP_DEFECT_KEY,span:12,html:(x,opt)=>defectSection(x,opt)},
   {k:RP_DEFECT_ROLL_KEY,span:6,html:(x,opt)=>defectRollSection(x,opt)},
   {k:'作業時間',span:6,html:x=>{const w=x.workTime||{};
-   const dur=w.startAt&&w.endAt?formatDuration(new Date(w.endAt)-new Date(w.startAt)):(w.startAt?'作業中':'未計測');
-   return reportSection('作業時間',[['開始時刻',formatWorkTime(w.startAt)],['終了時刻',formatWorkTime(w.endAt)],['実働時間',dur]])}},
-  {k:'登録状態',span:6,html:x=>reportSection('登録状態',[['状態',statusLabel(x.status)],['更新日時',fmtDT(x.updatedAt)],['NG回数',x.settings?.ngCount||0]])},
+   const dur=w.startAt&&w.endAt?WL.base.formatDuration(new Date(w.endAt)-new Date(w.startAt)):(w.startAt?'作業中':'未計測');
+   return reportSection('作業時間',[['開始時刻',WL.measureView.formatWorkTime(w.startAt)],['終了時刻',WL.measureView.formatWorkTime(w.endAt)],['実働時間',dur]])}},
+  {k:'登録状態',span:6,html:x=>reportSection('登録状態',[['状態',WL.base.statusLabel(x.status)],['更新日時',fmtDT(x.updatedAt)],['NG回数',x.settings?.ngCount||0]])},
   /* 測定値の統計（§9.244、利用者の指示「異幅分割の複数ロットが混在する
      パターンにおいてもロットごとに統計データが出てくるように」）。
      **既定は出さない**——今まで無かった塊なので、置いていない現場の紙を
@@ -1370,7 +1370,7 @@
     マスタで組み替えられる**。 */
  function rpCalc(x){
   const s=x.settings||{},w=x.workTime||{};
-  const dur=(w.startAt&&w.endAt)?formatDuration(new Date(w.endAt)-new Date(w.startAt))
+  const dur=(w.startAt&&w.endAt)?WL.base.formatDuration(new Date(w.endAt)-new Date(w.startAt))
     :(w.startAt?'作業中':'未計測');
   return {
    equipment:s.registeredEquipment||x.registeredEquipment||(x.snapshot||{}).registeredEquipment||'-',
@@ -1378,8 +1378,8 @@
       だった。過去の帳票が空欄にならないよう旧値も読む。 */
    coilStop:s.coilStop||(s.innerTape===undefined?'':(s.innerTape?'内巻両面テープ':'指定なし')),
    crewSize:(s.crewSize&&s.crewSize!=='-')?`${s.crewSize}名班`:'-',
-   workStart:formatWorkTime(w.startAt),workEnd:formatWorkTime(w.endAt),workDuration:dur,
-   status:statusLabel(x.status),updatedAt:fmtDT(x.updatedAt),
+   workStart:WL.measureView.formatWorkTime(w.startAt),workEnd:WL.measureView.formatWorkTime(w.endAt),workDuration:dur,
+   status:WL.base.statusLabel(x.status),updatedAt:fmtDT(x.updatedAt),
   };
  }
  /* ---------- 測定した値の統計（§9.242 ⑨、利用者の指示） ----------
@@ -1410,7 +1410,7 @@
   const key=RP_STAT_KEYS[item];
   if(key){
    const rows=((x&&x.measurements)||{})[key]||[];
-   const slots=Math.min(LENGTH_SLOTS,vertical+1);
+   const slots=Math.min(WL.base.LENGTH_SLOTS,vertical+1);
    const n=key==='thickness'?3:horizontal;
    for(let li=0;li<slots;li++){
     const row=rows[li]||[];
@@ -1487,7 +1487,7 @@
   if(lots.length){
    const s=(x&&x.settings)||{};
    const vertical=Math.max(1,Math.min(9,Number(s.verticalCount)||1));
-   const slots=Math.min(LENGTH_SLOTS,vertical+1);
+   const slots=Math.min(WL.base.LENGTH_SLOTS,vertical+1);
    out.byLot=lots.map(L=>{
     const bag={lot:L.lot,from:L.from,to:L.to,count:L.count};
     items.forEach(item=>{
@@ -1813,7 +1813,7 @@
     ||hasMeasurementValues(x,['width','lateral','burr','offset','telescope','flatness']);
  }
  function rpShowProduct(x){
-  const has=(x.product?.rows||[]).some(r=>r&&PRODUCT_FILLED_KEYS.some(k=>String(r[k]||'').trim()!==''));
+  const has=(x.product?.rows||[]).some(r=>r&&WL.measureView.PRODUCT_FILLED_KEYS.some(k=>String(r[k]||'').trim()!==''));
   return WL.measureItem.isMaterial(x.settings?.measureType)||has;
  }
  /* 並び。**知らない名前は捨て、登録済みで並びに無いものは末尾へ**（一覧の
@@ -2373,7 +2373,7 @@
      <span class="rp-head-fact"><small>作業年月日</small><b>${esc(workDay.text)}</b>${workDay.note?`<i>${esc(workDay.note)}</i>`:''}</span>
      <h2 class="rp-head-fact"><small>ロット番号</small><b>${esc(b.lotNo||x.id)}</b></h2>
     </div>
-    <div class="rp-report-head-meta"><span class="rp-status-badge ${statusClass(x.status)}">${esc(statusLabel(x.status))}</span><span>帳票作成: ${esc(fmtDT(new Date().toISOString()))}</span></div>
+    <div class="rp-report-head-meta"><span class="rp-status-badge ${WL.base.statusClass(x.status)}">${esc(WL.base.statusLabel(x.status))}</span><span>帳票作成: ${esc(fmtDT(new Date().toISOString()))}</span></div>
    </div>
    ${reportBlocksHtml(x,arranging)}
   `;
@@ -3959,7 +3959,7 @@
      できない」を無くすのがこの機能の目的なので、レコードから拾える設備
      だけでは足りない（実際、検証用データでは1つしか出なかった）。
      読めなくても組み換えは開ける（fail-open）。 */
-  try{if(typeof loadEquipmentMaster==='function')await loadEquipmentMaster()}catch(e){WL.quiet.note('設備マスタを取れない（設備を選ぶ欄が減るだけ）',e)}
+  try{if(typeof WL.records.loadEquipmentMaster==='function')await WL.records.loadEquipmentMaster()}catch(e){WL.quiet.note('設備マスタを取れない（設備を選ぶ欄が減るだけ）',e)}
   try{await Promise.all([WL.columnLayout.load(rpTarget()),
                          rpLoadUserBlocks(rpEditEquipment)])}catch(e){WL.quiet.note('列の設定を取れない（既定の並びで出す）',e)}
   rpArranging=true;rpSeeded=false;
@@ -4089,17 +4089,17 @@
   /* 設備マスタにあってレコードが1件も無い設備も選べるようにする
      ——「その設備のロットがまだ無いから設定できない」を作らない。
      **`window.` を付けて参照しないこと**（§9.215と同じ罠）——
-     `equipmentMasterState`は`records-store.js`のトップレベルの`let`で、
+     `WL.records.equipmentMasterState`は`records-store.js`のトップレベルの`let`で、
      `window`のプロパティにならない。`window.equipmentMasterState`と書くと
      **常にundefined**になり、設備マスタの設備が1つも候補に出ない
      （実際にそうなり、`test_rplayout`が「選択肢が1つしかない」で捕まえた）。 */
-  const master=(typeof equipmentMasterState!=='undefined'&&equipmentMasterState.items)||[];
+  const master=(typeof WL.records.equipmentMasterState!=='undefined'&&WL.records.equipmentMasterState.items)||[];
   /* **絞るのは「ロットが1件も無い設備」だけ**（§9.302）——記録のある設備は
      使える機能を外しても候補に残す（履歴なので、外した瞬間にその設備の紙が
      開けなくなるのは行き過ぎ・§9.15）。 */
   master.forEach(e=>{
    const n=String(e.name||'').trim();if(!n||seen.has(n))return;
-   if(typeof equipmentUsableFor==='function'&&!equipmentUsableFor(e,'report'))return;
+   if(typeof WL.records.equipmentUsableFor==='function'&&!WL.records.equipmentUsableFor(e,'report'))return;
    seen.set(n,0);
   });
   const out=[...seen.entries()].map(([eq,n])=>({eq,n,label:eq||'共通（設備の分からないロット）'}));
@@ -4604,7 +4604,7 @@
    rpClosePaletteHelp();
  }
  function rpPalHelpKey(e){
-  if(typeof escClosesModal==='function'?escClosesModal(e):e.key==='Escape')rpClosePaletteHelp();
+  if(typeof WL.base.escClosesModal==='function'?WL.base.escClosesModal(e):e.key==='Escape')rpClosePaletteHelp();
  }
  function rpOpenPaletteHelp(anchor){
   rpClosePaletteHelp();
@@ -4745,7 +4745,7 @@
   rpState.selectedId=id;renderLotList();
   const x=rpState.items.find(i=>i.id===id);if(!x)return;
   /* バーは1層に詰めているため、左の一覧で選択中が分かることを前提に短く出す。 */
-  $id('reportSelectedTitle').textContent=[x.basic?.lotNo||x.id,x.basic?.inspectionNo,statusLabel(x.status)].filter(Boolean).join(' / ');
+  $id('reportSelectedTitle').textContent=[x.basic?.lotNo||x.id,x.basic?.inspectionNo,WL.base.statusLabel(x.status)].filter(Boolean).join(' / ');
   $id('reportPrint').disabled=false;$id('reportPdf').disabled=false;
   renderReport(x);
   fitPage();fitWidth();
@@ -4987,7 +4987,7 @@
       この端末で測定データを書き込まない点は同じため、editモード以外は
       同じ経路にする(編集モードのみ従来どおりreliableAll())。 */
    const viewMode=window.accessMode&&window.accessMode.mode!=='edit';
-   const all=viewMode&&typeof window.loadViewModeRecords==='function'?await window.loadViewModeRecords():await reliableAll();
+   const all=viewMode&&typeof window.loadViewModeRecords==='function'?await window.loadViewModeRecords():await WL.records.reliableAll();
    rpState={items:all,query:'',sort:$id('reportSort')?.value||'updated-desc',selectedId:''};
    const search=$id('reportSearch');if(search)search.value='';
    renderLotList();
@@ -5000,7 +5000,7 @@
 
  /* 編集中/完了データ一覧は統合された1つの一覧のため、帳票から戻る際は
     現在のトグル状態(編集中/完了それぞれのON/OFF)をそのまま維持して
-    再度開く(openRecordsSafe(null)はopenRecords()側でプリセットを
+    再度開く(WL.records.openRecordsSafe(null)はopenRecords()側でプリセットを
     上書きせず現在のrecordListState.statusesを引き継ぐ)。 */
  /* サーバー側の測定バックアップから1件だけ取り込む(§9.43)。
     帳票一覧は編集モードならこの端末のIndexedDBを見るが、作業スケジュールが
@@ -5014,7 +5014,7 @@
     const r=await api(url);
     const hit=(r.items||[]).find(it=>String(it.id)===String(id));
     if(!hit)continue;
-    const rec=ensureMeasureShape(JSON.parse(hit.payload));rec.id=hit.id;return rec;
+    const rec=WL.measureView.ensureMeasureShape(JSON.parse(hit.payload));rec.id=hit.id;return rec;
    }catch(e){WL.quiet.note('次の取得先を試す',e)}
   }
   return null;
@@ -5119,7 +5119,7 @@
   }
   if(!rec){showToast&&showToast('見本を作れませんでした','サーバーが見本のロットを返しませんでした。',6000);return}
   rec.id=RP_SAMPLE_ID;rec.__sample=true;
-  if(typeof ensureMeasureShape==='function')ensureMeasureShape(rec);
+  if(typeof WL.measureView.ensureMeasureShape==='function')WL.measureView.ensureMeasureShape(rec);
   rpReturnTo=RP_RETURNS.indexOf(opt.returnTo)>=0?opt.returnTo:'blocks';
   await openReportView();
   updateBackButton();
@@ -5286,7 +5286,7 @@
     modal.hidden=false;
     /* 帳票へ出ている間に描画が止まっているため、戻った時点の内容で
        検証表示と測定進捗を作り直す(古い件数が残るのを防ぐ)。 */
-    if(typeof updateValidationVisuals==='function')updateValidationVisuals();
+    if(typeof WL.measureView.updateValidationVisuals==='function')WL.measureView.updateValidationVisuals();
     requestAnimationFrame(()=>$id('deviceInput')?.focus());
    }
    return;
@@ -5307,17 +5307,17 @@
    rpReturnTo='records';updateBackButton();
    window.openMasterMaint('reportLayout');return;
   }
-  if(typeof openRecordsSafe==='function')openRecordsSafe(null);
+  if(typeof WL.records.openRecordsSafe==='function')WL.records.openRecordsSafe(null);
  }
 
  /* 測定画面(操作レール)から帳票を開く。帳票は端末に保存済みのレコードを
     読んで描画するため、画面上の入力内容をそのまま出せるよう先に保存する。
-    saveLocal()の既定値は'編集中'なので、完了済みのデータを開いていた場合に
+    WL.records.saveLocal()の既定値は'編集中'なので、完了済みのデータを開いていた場合に
     状態を巻き戻さないよう、現在の状態を明示して渡す。 */
  async function openReportFromMeasure(print){
   if(!S.measure){showToast?.('測定データがありません','測定画面を開いてから実行してください。',4000);return}
   try{
-   await saveLocal(S.measure.status||'編集中');
+   await WL.records.saveLocal(S.measure.status||'編集中');
   }catch(e){
    showToast?.('帳票を開けませんでした','入力内容を端末へ保存できませんでした: '+e.message,6000);return;
   }
@@ -5488,7 +5488,7 @@
   if(dbCache&&!force)return dbCache;
   if(dbLoading&&!force)return dbLoading;
   dbLoading=(async()=>{
-   try{dbCache=(await reliableAll()).map(toKpiRow);return dbCache}
+   try{dbCache=(await WL.records.reliableAll()).map(toKpiRow);return dbCache}
    finally{dbLoading=null}
   })();
   return dbLoading;
@@ -5662,8 +5662,8 @@
  });
  async function runStatusView(force){
   const panel=$id('dashboardPanel');if(!panel||panel.hidden||dbView!=='status')return;
-  if(typeof withWaiting!=='function')return runStatusViewInner(force,()=>{});
-  return withWaiting({title:'稼働状況を集計しています',detail:'作業予定と測定実績を読み込んでいます',
+  if(typeof WL.records.withWaiting!=='function')return runStatusViewInner(force,()=>{});
+  return WL.records.withWaiting({title:'稼働状況を集計しています',detail:'作業予定と測定実績を読み込んでいます',
    progress:'作業予定を取得しています',step:1},report=>runStatusViewInner(force,report));
  }
  async function runStatusViewInner(force,report){
@@ -5721,7 +5721,7 @@
    <tbody>${recent.map(r=>`<tr>
     <th class="db-lot">${esc(r.lotNo||'-')}</th>
     <td>${esc(r.equipment||'-')}</td>
-    <td><span class="db-state-badge ${r.status==='完了'?'done':(r.status==='測定値NG'?'ng':'editing')}">${esc(statusShortLabel(r.status))}</span></td>
+    <td><span class="db-state-badge ${r.status==='完了'?'done':(r.status==='測定値NG'?'ng':'editing')}">${esc(WL.base.statusShortLabel(r.status))}</span></td>
     <td>${r.durationMin!=null?fmt(r.durationMin)+' 分':'-'}</td>
     <td>${esc(r.date.toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}))}</td>
    </tr>`).join('')}</tbody></table>`
@@ -5811,8 +5811,8 @@
     「見込 150分」と「合計作業時間 2.5時間」が並んでいた。 */
  async function runEquipmentView(force){
   const panel=$id('dashboardPanel');if(!panel||panel.hidden)return;
-  if(typeof withWaiting!=='function')return runEquipmentViewInner(force);
-  return withWaiting({title:'自設備の実績を集計しています',
+  if(typeof WL.records.withWaiting!=='function')return runEquipmentViewInner(force);
+  return WL.records.withWaiting({title:'自設備の実績を集計しています',
    detail:'この端末に保存された測定データを読み込んでいます',
    progress:'対象期間の実績を集計しています'},()=>runEquipmentViewInner(force));
  }
@@ -5879,8 +5879,8 @@
 
  async function runDashboard(force){
   const panel=$id('dashboardPanel');if(!panel||panel.hidden)return;
-  if(typeof withWaiting!=='function')return runDashboardInner(force,()=>{});
-  return withWaiting({title:'分析データを集計しています',detail:'この端末の測定データを読み込んでいます',
+  if(typeof WL.records.withWaiting!=='function')return runDashboardInner(force,()=>{});
+  return WL.records.withWaiting({title:'分析データを集計しています',detail:'この端末の測定データを読み込んでいます',
    progress:'対象データを取得しています',step:1},report=>runDashboardInner(force,report));
  }
  async function runDashboardInner(force,report){
@@ -5936,5 +5936,5 @@ function updateSoftChoiceVisuals(){
  });
 }
 SOFT_CHOICE_IDS.forEach(id=>{const el=$('#'+id);if(el)el.addEventListener('change',updateSoftChoiceVisuals)});
-WL.measureHooks.afterRender(()=>{updateSoftChoiceVisuals();if(typeof syncInputModeLock==='function')syncInputModeLock()});
+WL.measureHooks.afterRender(()=>{updateSoftChoiceVisuals();if(typeof WL.measureView.syncInputModeLock==='function')WL.measureView.syncInputModeLock()});
 WL.measureHooks.on('afterOptionFill',()=>updateSoftChoiceVisuals());

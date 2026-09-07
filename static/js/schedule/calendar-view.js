@@ -68,12 +68,12 @@
  // 出さないので、件数が少ない端末では今までどおり)。
  async function ensureData(force){
   if(calState.loaded&&!force)return calState.items;
-  if(typeof withWaiting!=='function')return ensureDataInner();
-  return withWaiting({title:'実績カレンダーを読み込んでいます',detail:'この端末の測定データを集計しています',
+  if(typeof WL.records.withWaiting!=='function')return ensureDataInner();
+  return WL.records.withWaiting({title:'実績カレンダーを読み込んでいます',detail:'この端末の測定データを集計しています',
    progress:'保存済みのロットを日付ごとに集計しています'},()=>ensureDataInner());
  }
  async function ensureDataInner(){
-  const all=await reliableAll();
+  const all=await WL.records.reliableAll();
   calState.items=all.map(x=>{
    const date=recordDate(x);if(!date)return null;
    return {
@@ -232,7 +232,7 @@
    const w=x.weight;
    const weightText=w?`${fmtKg(w.workKg)}kg`:'<span class="cal-blank">計算対象外</span>';
    return `<div class="cal-lot-row">
-    <div class="cal-lot-main"><span class="rp-status-badge ${statusClass(x.status)}">${esc(statusLabel(x.status))}</span><b class="cal-lot-no" data-lot-id="${esc(x.id)}" title="クリックで帳票プレビューを開きます">${esc(x.lotNo)}</b></div>
+    <div class="cal-lot-main"><span class="rp-status-badge ${WL.base.statusClass(x.status)}">${esc(WL.base.statusLabel(x.status))}</span><b class="cal-lot-no" data-lot-id="${esc(x.id)}" title="クリックで帳票プレビューを開きます">${esc(x.lotNo)}</b></div>
     <div class="cal-lot-sub"><span>${esc(x.purposeName)}</span><span>${esc(x.equipment)}</span><span>${esc(crewLabel(x.crewSize))} / ${esc(x.operator)}</span></div>
     <div class="cal-lot-weight">${weightText}</div>
    </div>`;
