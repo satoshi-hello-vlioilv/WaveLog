@@ -141,7 +141,7 @@ function measureProgress(){return progressOf(S.measure)}
    合格として数えない）。フラットネスは〇/△/×なので対象外。 */
 const NG_DEFS=ITEM_DEFS.filter(d=>d.scope==='length'&&d.name!=='フラットネス');
 function outOfToleranceOf(m){
- if(!m||typeof toleranceDetail!=='function')return null;
+ if(!m||typeof WL.measureInput.toleranceDetail!=='function')return null;
  const excluded=new Set(measureScopeOf(m).excluded),c=countsOf(m),items=[],unjudged=[];
  let total=0;
  NG_DEFS.forEach(def=>{
@@ -151,7 +151,7 @@ function outOfToleranceOf(m){
    let range=null;
    /* **項目名を渡す。** 渡さないと画面でいま選ばれている項目の公差が
       全項目に当たる（ラッパーが`#measureType`を見るため）。 */
-   try{range=toleranceDetail(key==='thickness'?'thickness':'width',0,def.name)?.range||null}catch(e){WL.quiet.note('公差を引けない（範囲なしとして数える）',e)}
+   try{range=WL.measureInput.toleranceDetail(key==='thickness'?'thickness':'width',0,def.name)?.range||null}catch(e){WL.quiet.note('公差を引けない（範囲なしとして数える）',e)}
    if(range)judged=true;
    const rows=(m.measurements||{})[key]||[];
    for(let li=0;li<c.lengthSlots;li++){

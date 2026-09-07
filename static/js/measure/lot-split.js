@@ -24,7 +24,7 @@
    ことを優先し、機能が使えないだけの状態に留める)。
    ============================================================ */
 (function(){
-  if(typeof toleranceDetail!=='function'||typeof $!=='function'||typeof api!=='function')return;
+  if(typeof WL.measureInput.toleranceDetail!=='function'||typeof $!=='function'||typeof api!=='function')return;
 
   function norm(s){return typeof normalizedFieldName==='function'?normalizedFieldName(s):String(s||'')}
   function numberFromRow(row,names){
@@ -1611,13 +1611,13 @@
     $('#horizontalCount').value=total;
     if(typeof updateCoilOptions==='function')updateCoilOptions(total);
     if(!changed){
-      if(typeof renderMeasureGrid==='function')renderMeasureGrid();
+      if(typeof WL.measureInput.renderMeasureGrid==='function')WL.measureInput.renderMeasureGrid();
       refreshSplitStatusPanel();
       return;
     }
     if(typeof markDirty==='function')markDirty();
     if(typeof setState==='function')setState('条割を変更しました');
-    if(typeof renderMeasureGrid==='function')renderMeasureGrid();
+    if(typeof WL.measureInput.renderMeasureGrid==='function')WL.measureInput.renderMeasureGrid();
     if(typeof updateMeasurementHeading==='function')updateMeasurementHeading();
     refreshSplitStatusPanel();
     /* 条割「適用」直後だけの一撃アニメーション。refreshSplitStatusPanel()は
@@ -2091,7 +2091,7 @@
     return needsReconfigure?'条数の構成が変わっています。「条割変更」で再設定してください。':'';
   }
   function rerenderAfterSplitDataChange(){
-    if(typeof renderMeasureGrid==='function')renderMeasureGrid();
+    if(typeof WL.measureInput.renderMeasureGrid==='function')WL.measureInput.renderMeasureGrid();
     if(typeof updateMeasurementHeading==='function')updateMeasurementHeading();
     refreshSplitStatusPanel();
   }
@@ -2633,26 +2633,26 @@
     if(!g||g.missing||!g.base||!g.tol)return null;
     const base=g.base[kind];
     if(!Number.isFinite(base))return null;
-    let requested=typeof configuredToleranceSource==='function'?configuredToleranceSource():'manufacturing',source=requested,fallback=false;
+    let requested=typeof WL.measureInput.configuredToleranceSource==='function'?WL.measureInput.configuredToleranceSource():'manufacturing',source=requested,fallback=false;
     let data=g.tol[kind]?.[requested];
     if(!data&&requested!=='manufacturing'){source='manufacturing';fallback=true;data=g.tol[kind]?.manufacturing}
     if(!data)return null;
     return{range:[base-data.minus,base+data.plus],source,fallback,plus:data.plus,minus:data.minus,plusKey:data.plusKey,minusKey:data.minusKey,base,splitLot:g.lot};
   }
   /* 提供者として登録する（§9.348）。分割の条に当たらなければ自分の答えでは
-     ない（undefined＝次の提供者へ）。以前はここが`toleranceDetail`を包み、
+     ない（undefined＝次の提供者へ）。以前はここが`WL.measureInput.toleranceDetail`を包み、
      引数を1つ落として「完了前の確認が全項目に今の項目の公差を当てる」事故が
      起きた——登録表では引数を resolve が運ぶので、その形は作れない。 */
   WL.tolerance.register({name:'分割ロット（条ごと）',priority:30,
     detail:(kind,index,typeName)=>groupRangeFor(kind,index,typeName)||undefined});
 
-  // compactToleranceData(表示用の公差テキスト生成)は従来 index を常に0扱いで
+  // WL.measureInput.compactToleranceData(表示用の公差テキスト生成)は従来 index を常に0扱いで
   // 呼ばれており、条ごとに公差が変わる分割ロットでは「今フォーカスしている
   // 条」ではなく常に1条目の公差を表示してしまっていた。index省略時は現在の
   // 入力位置(wStep/tStep)を既定値として使うようにし、基準値(base)も
   // toleranceDetailが返す値(分割時はその子ロット自身の値)を優先する。
   // index 省略時に今の入力位置を使う・基準値は提供者の値を優先する、は核（measure-input.js の
-  // compactToleranceData）が持つようになった（§9.352）。ここで差し替えない。
+  // WL.measureInput.compactToleranceData）が持つようになった（§9.352）。ここで差し替えない。
 
   // 使用設備・仕掛データを開いた時点のテーブル/列名を、子ロット再検索に
   // そのまま使えるよう記録しておく(仕掛一覧から開いた場合のみ意味を持つ)。

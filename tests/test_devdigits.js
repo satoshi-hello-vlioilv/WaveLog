@@ -80,7 +80,7 @@ let b=null;
   /* ---- ④ 器で桁が変わる ---- */
   const send=async(raw,key)=>{
    await page.evaluate(v=>{const el=document.getElementById('deviceInput');
-     el.value=v;processDeviceInput(v)},raw);
+     el.value=v;WL.measureInput.processDeviceInput(v)},raw);
    await page.waitForTimeout(500);
    return page.evaluate(k=>({
      値:S.measure.measurements[k][0][0],
@@ -141,7 +141,7 @@ let b=null;
    ty.dispatchEvent(new Event('change',{bubbles:true}));S.measure.settings.wStep=0});
   await page.waitForTimeout(600);
   await page.evaluate(()=>{const el=document.getElementById('deviceInput');
-    el.value='DT110+1200.00';processDeviceInput('DT110+1200.00')});
+    el.value='DT110+1200.00';WL.measureInput.processDeviceInput('DT110+1200.00')});
   const soon=await page.evaluate(()=>document.getElementById('localState').textContent||'');
   rec('打った直後は「未保存」と言う（嘘をつかない）',/未保存/.test(soon),JSON.stringify(soon));
   await page.waitForFunction(()=>/DBへ保存済み|再送します|保存できませんでした/
@@ -175,13 +175,13 @@ let b=null;
    S.measure.settings.wStep=0;
   },1200);
   await page.evaluate(()=>{const el=document.getElementById('deviceInput');
-    el.value='DT110+1201.00';processDeviceInput('DT110+1201.00')});
+    el.value='DT110+1201.00';WL.measureInput.processDeviceInput('DT110+1201.00')});
   /* 書き込みが始まった（＝`collect()`は済んだ）ところで、もう1つ打つ。 */
   await page.waitForFunction(()=>/保存しています/
     .test(document.getElementById('localState').textContent||''),null,{timeout:20000});
   await page.waitForTimeout(200);
   await page.evaluate(()=>{const el=document.getElementById('deviceInput');
-    el.value='DT110+1202.00';processDeviceInput('DT110+1202.00')});
+    el.value='DT110+1202.00';WL.measureInput.processDeviceInput('DT110+1202.00')});
   /* 落ち着くまで待つ。**時間で決め打ちにしない**（§9.102）。 */
   await page.waitForFunction(()=>!measureDirty&&/保存済み|再送します/
     .test(document.getElementById('localState').textContent||''),null,{timeout:30000}).catch(()=>{});

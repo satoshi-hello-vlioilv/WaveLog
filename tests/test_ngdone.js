@@ -98,9 +98,9 @@ let b=null;
     const el=document.getElementById(id);
     if(el&&el.options&&el.options.length>1){el.selectedIndex=1;el.dispatchEvent(new Event('change',{bubbles:true}))}
    });
-   renderMeasureGrid();updateValidationVisuals();
+   WL.measureInput.renderMeasureGrid();updateValidationVisuals();
    const ng=WL.measureReview.outOfTolerance();
-   return {公差:!!toleranceDetail('width',0,'板幅'),件数:(ng&&ng.total)||0};
+   return {公差:!!WL.measureInput.toleranceDetail('width',0,'板幅'),件数:(ng&&ng.total)||0};
   });
   rec('公差外の材料を注ぎ込めた',seeded.公差===true&&seeded.件数>0,JSON.stringify(seeded));
 

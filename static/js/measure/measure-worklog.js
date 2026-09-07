@@ -61,8 +61,8 @@
       +'</div>';
   }
 
-  // toleranceDetail: 指示型は文字列の数値部を判定範囲[0,value]として返す（判定・図示に利用）。
-  if(typeof toleranceDetail==='function'){
+  // WL.measureInput.toleranceDetail: 指示型は文字列の数値部を判定範囲[0,value]として返す（判定・図示に利用）。
+  if(typeof WL.measureInput.toleranceDetail==='function'){
     /* 提供者として登録する（§9.348）。指示型でなければ自分の答えではない
        （undefined＝次の提供者へ）。指示値が読めないときは null＝「公差なし」。 */
     WL.tolerance.register({name:'指示型（指示_項目の値）',priority:20,detail:function(kind,index,typeName){

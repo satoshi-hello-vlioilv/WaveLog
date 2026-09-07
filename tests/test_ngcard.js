@@ -112,8 +112,8 @@ let b=null,page=null;
    m.source['板幅公差_製造_プラス']=0.5;m.source['板幅公差_製造_マイナス']=0.5;
    m.measurements.width.forEach(r=>r.fill(''));
    m.measurements.burr.forEach(r=>r.fill(''));
-   renderMeasureGrid();
-   return !!toleranceDetail('width',0,'板幅');
+   WL.measureInput.renderMeasureGrid();
+   return !!WL.measureInput.toleranceDetail('width',0,'板幅');
   });
   rec('公差の材料を注ぎ込めた',seeded===true,String(seeded));
 
@@ -144,7 +144,7 @@ let b=null,page=null;
   const cleanBg=clean&&clean.地;
 
   /* 公差外を1件作る（板幅 150.00 は 99.5〜100.5 の外）。 */
-  await page.evaluate(()=>{S.measure.measurements.width[0][0]='150.00';renderMeasureGrid()});
+  await page.evaluate(()=>{S.measure.measurements.width[0][0]='150.00';WL.measureInput.renderMeasureGrid()});
   await go('2');await go('3');
   const bad=await card();
   rec('公差外が出るとカードが強調される',!!bad&&bad.強調===true,JSON.stringify(bad));

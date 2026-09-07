@@ -1,7 +1,10 @@
-"use strict";
 /* measure-input.js: 測定値の入力系 — 測定器受信(deviceInput)・手入力・
-   入力位置管理(focusCurrent)・測定グリッド描画・公差計算(toleranceDetail)。 */
-function nums(a){return a.flat().map(Number).filter(Number.isFinite).filter(x=>x!==0)}function stat(a){const n=nums(a);if(!n.length)return['','','','',0];const av=n.reduce((x,y)=>x+y,0)/n.length,sd=Math.sqrt(n.reduce((x,y)=>x+(y-av)**2,0)/n.length);return[Math.min(...n),av,Math.max(...n),sd*3,n.length]}
+   入力位置管理(focusCurrent)・測定グリッド描画・公差計算(toleranceDetail)。
+   **このファイルは閉じている**（§9.359・REVIEW 3-17）——外へ出す面は末尾の
+   `WL.measureInput`。 */
+(function(){
+"use strict";
+function nums(a){return a.flat().map(Number).filter(Number.isFinite).filter(x=>x!==0)}
 /* ---------- ③測定データ分析（§9.214、利用者の指示） ----------
    「今カード内に出ている表は解体。中身のデータは表示は必要なものに絞り、
     表示内容や削ったそのエリアも使って、**ロット単位で、板厚のMIN,MAX、
@@ -1559,3 +1562,21 @@ WL.numberline={
 WL.onReady(()=>{syncNumberlineControls()});
 function renderMeasureGrid(){renderMeasureGridVertical();requestAnimationFrame(updateValidationVisuals);WL.measureHooks.run('afterGrid')}
 Object.assign(window.WL,{toleranceAxisView});
+
+/* ============================================================
+   外へ出す面（§9.359・REVIEW 3-17）。**ここに載せた名前だけ**が外から
+   呼べる。足すときは、まず「本当に外から要るのか」を見る（中で済むなら
+   載せない）。閉じたので、載せ忘れは `no-undef` が教える（§9.354）——
+   **ただし `typeof x==='function'` のガードは教えない**（§9.355）。
+   外から使う側は `typeof WL.measureInput.x==='function'` と書くこと。
+   ============================================================ */
+WL.measureInput={
+ renderMeasureGrid,renderStats,applyInputProtection,updateReceiveState,
+ deviceParse,activeMeasureKey,
+ toleranceDetail,toleranceFor,compactToleranceData,compactToleranceFacts,
+ configuredToleranceSource,orderToleranceAvailability,toleranceDataForSource,
+ /* 網が「受信中」「測定器から1点入った」を作るための口（§9.359）。
+    画面の中だけでは足りない——網が内部を掘らずに同じ道を通れるようにする。 */
+ processDeviceInput,updateNumberlinePending,
+};
+})();

@@ -259,8 +259,8 @@ let b=null,page=null;
    m.measurements.width[0][0]='100.2';   // 合格（1丈目＝いま出ている）
    m.measurements.width[0][2]='150.0';   // 公差外
    m.measurements.width[1][1]='99.6';    // 合格（2丈目＝出ていない）
-   renderMeasureGrid();
-   return !!toleranceDetail('width',0,'板幅');
+   WL.measureInput.renderMeasureGrid();
+   return !!WL.measureInput.toleranceDetail('width',0,'板幅');
   });
   await page.waitForTimeout(500);
   rec('公差の材料を注ぎ込めた(測定表)',lcSetup===true,String(lcSetup));
@@ -318,7 +318,7 @@ let b=null,page=null;
       JSON.stringify({見出し:lc3.見出し,行数:lc3.行数}));
   await rowsFor(8);
   /* 後始末: 次の検証（③の公差外の集計）へ値を持ち越さない。 */
-  await page.evaluate(()=>{S.measure.measurements.width.forEach(r=>r.fill(''));renderMeasureGrid()});
+  await page.evaluate(()=>{S.measure.measurements.width.forEach(r=>r.fill(''));WL.measureInput.renderMeasureGrid()});
   await page.waitForTimeout(300);
   await rowsFor(1);
 
@@ -630,7 +630,7 @@ let b=null,page=null;
     '板丈公差_製造_ﾌﾟﾗｽ','板丈公差_製造_ﾏｲﾅｽ'].forEach(k=>{delete S.measure.source[k]});
    S.measure.basic.mfgThickness=b.基本.t;S.measure.basic.mfgWidth=b.基本.w;
    S.measure.basic.mfgLength=b.基本.l;S.measure.settings.equipmentKind=b.区分;
-   if(typeof renderMeasureGrid==='function')renderMeasureGrid();
+   if(typeof WL.measureInput.renderMeasureGrid==='function')WL.measureInput.renderMeasureGrid();
   },tolBackup);
   await go('3');
 
@@ -722,10 +722,10 @@ let b=null,page=null;
    /* **前の検証の値を持ち越さない**（この節の件数は自分で作った値だけで
       決まるようにする）。 */
    m.measurements.width.forEach(r=>r.fill(''));
-   const r=toleranceDetail('width',0,'板幅')?.range;
+   const r=WL.measureInput.toleranceDetail('width',0,'板幅')?.range;
    if(!r)return{skip:true,base:m.basic.mfgWidth,
-     公差の元:toleranceDataForSource('width','manufacturing'),
-     出どころ:configuredToleranceSource()};
+     公差の元:WL.measureInput.toleranceDataForSource('width','manufacturing'),
+     出どころ:WL.measureInput.configuredToleranceSource()};
    m.measurements.width[0][0]=String((r[0]+r[1])/2);  // 合格（1丈目＝描かれている）
    m.measurements.width[1][0]=String(r[1]+50);        // 上限超え（2丈目＝描かれていない）
    m.measurements.width[1][1]=String(r[0]-50);        // 下限割れ
@@ -2469,7 +2469,7 @@ let b=null,page=null;
    m.measurements.burr[0][0]='0.030';
    /* 子ロットごとの板幅（分割ありのときだけ出る）。 */
    m.splitSequence=['L0001','L0002'];
-   renderStats();
+   WL.measureInput.renderStats();
    await new Promise(r=>setTimeout(r,200));
    const body=document.getElementById('stats');
    const cards=[...body.querySelectorAll('.an-card')].map(c=>({

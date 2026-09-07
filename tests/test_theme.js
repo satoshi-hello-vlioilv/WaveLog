@@ -106,7 +106,7 @@ run('test_theme: 色と文字サイズはトークンから',async({page,rec,W,i
    S.measure.settings.splitGroups=groups;S.measure.settings.splitPositionGroup=pos;
    S.measure.basic.originalWidth=940;
    document.getElementById('horizontalCount').value='6';
-   refreshSplitStatusPanel();renderMeasureGrid();
+   refreshSplitStatusPanel();WL.measureInput.renderMeasureGrid();
    document.querySelector('[data-infotab="split"]')?.click();
    await new Promise(r=>setTimeout(r,300));
    const fs=s=>{const e=document.querySelector(s);return e?parseFloat(getComputedStyle(e).fontSize):0};
@@ -181,11 +181,11 @@ run('test_theme: 色と文字サイズはトークンから',async({page,rec,W,i
   const single=await page.evaluate(async()=>{
    S.measure.settings.splitGroups=[{lot:'AAA111',count:6,base:{width:100},tol:null,missing:false}];
    S.measure.settings.splitPositionGroup=[0,0,0,0,0,0];
-   renderMeasureGrid();
+   WL.measureInput.renderMeasureGrid();
    await new Promise(r=>setTimeout(r,200));
    const n=document.querySelectorAll('.strip-lot-badge').length;
    S.measure.settings.splitGroups=null;S.measure.settings.splitPositionGroup=null;
-   renderMeasureGrid();
+   WL.measureInput.renderMeasureGrid();
    await new Promise(r=>setTimeout(r,200));
    return {single:n,none:document.querySelectorAll('.strip-lot-badge').length};
   });

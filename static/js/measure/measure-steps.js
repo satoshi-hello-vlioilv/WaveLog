@@ -56,7 +56,7 @@
      だけなので、バリやテレスコープを測っている人が「この公差で判定されて
      いる」と読まないようにする（あちらは片側の基準）。 */
   const src=st.toleranceSource==='order'?'オーダー公差':'製造公差';
-  const has=typeof compactToleranceData==='function'&&!!compactToleranceData('width');
+  const has=typeof WL.measureInput.compactToleranceData==='function'&&!!WL.measureInput.compactToleranceData('width');
   const scope='上下限のある板厚・板幅に効きます（ラテラルボー・バリ・テレスコープ・'
     +'巻ずれ・フラットネスは片側の「基準」で判定します）';
   put('mctxTolerance',has?src:src+'（未設定）',

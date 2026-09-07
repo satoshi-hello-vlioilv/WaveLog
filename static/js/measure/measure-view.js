@@ -6,7 +6,7 @@
    項目を「板厚」「板幅」の2つへ分けるだけで**片方だけ直った状態**が簡単に
    できてしまう（公差の出どころ・幅分割公差・自動転送の固定・帳票の節・
    入力欄の数——どれか1つ落とすと、そこだけ黙って別の項目の公差で判定する）。
-   §9.125で`toleranceDetail`の第3引数を3ファイルへ通し忘れて偽の公差外を
+   §9.125で`WL.measureInput.toleranceDetail`の第3引数を3ファイルへ通し忘れて偽の公差外を
    出したのと同じ壊れ方なので、判定は関数にして散らさない。 */
 WL.measureItem={
  /* 保存済みレコードが持つ旧名。選択肢から消えた値をそのまま`select.value`へ
@@ -27,7 +27,7 @@ WL.measureItem={
  MATERIAL:'母材/丈毎',
  LEGACY_MATERIAL:['母材','揃い/肉厚/長さ','母材・揃い/肉厚/長さ'],
  /* 旧名（母材／板厚/板幅）も残す——保存済みレコードを開いた瞬間に
-    `activeMeasureKey()`の答えが変わらないようにするため。 */
+    `WL.measureInput.activeMeasureKey()`の答えが変わらないようにするため。 */
  KEYS:{'母材/丈毎':'mother','母材・揃い/肉厚/長さ':'mother',母材:'mother',板厚:'thickness',板幅:'width',
   ラテラルボー:'lateral',バリ:'burr',
   テレスコープ:'telescope',巻ずれ:'offset',フラットネス:'flatness','板厚/板幅':'width'},
@@ -50,7 +50,7 @@ WL.measureItem={
     **判定は`isDimensional()`の1箇所に乗せる**（項目名の一覧をもう1つ
     作らない。§9.138で文字列比較を散らして壊した形をくり返さない）。 */
  limitWord(type){return this.isDimensional(type??this.current())?'公差':'基準'},
- /* 判定の材料（`toleranceDetail()`の戻り）から決める版。片側だけの指示値
+ /* 判定の材料（`WL.measureInput.toleranceDetail()`の戻り）から決める版。片側だけの指示値
     （`single`）は項目名に関わらず基準。**materialは判定そのものが無い**ので
     呼ばれない。 */
  limitWordOf(detail,type){return (detail&&detail.single)?'基準':this.limitWord(type)},
@@ -350,7 +350,7 @@ function applyRightLayout(){
  const type=$('#measureType').value, layout=rightLayoutFor(type), pane=$('.right-pane');
  pane.classList.remove('layout-material','layout-measure');
  pane.classList.add('layout-'+layout); activateWorkspace(layout);
- if(layout==='measure'){renderMeasureGrid();updateMeasurementHeading()}
+ if(layout==='measure'){WL.measureInput.renderMeasureGrid();updateMeasurementHeading()}
  if(layout==='material'){renderProductPanel();updateMotherCalcLength();bindMotherInputs()}
  /* 手入力の案内は**入れる場所のすぐ上**（§9.233 ③）。段は変わらないので
     `WL.measureSteps.refresh()`は走らない——ここから書き直す。 */
@@ -686,7 +686,7 @@ function renderProductPanel(){
  });
  renderCutFaceNote();
  upgradeManualInputTypes();updateProductStatus();
- loadFlatComment(); applyInputProtection();
+ loadFlatComment(); WL.measureInput.applyInputProtection();
 }
 if($('#productAllOk'))$('#productAllOk').onclick=()=>{
  const n=productRowCount();
@@ -728,12 +728,12 @@ function syncInputModeLock(){
  if(desiredMode&&S.measure.settings.inputMode!==desiredMode){
   S.measure.settings.inputMode=desiredMode;
   document.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('active',x.dataset.mode===desiredMode));
-  applyInputProtection();
+  WL.measureInput.applyInputProtection();
  }
  /* **必ず描き直す。** 上の`if`は「モードが変わったとき」しか通らないので、
     そこだけに任せると手入力の項目どうしを行き来したときに帯が前の項目の
     ままになる（「自動」と出たまま手入力、が実際に作れる）。 */
- updateReceiveState(document.activeElement===$('#deviceInput'));
+ WL.measureInput.updateReceiveState(document.activeElement===$('#deviceInput'));
 }
 $('#measureType').onchange=()=>{S.measure.settings.wStep=0;S.measure.settings.tStep=0;S.measure.settings.burrFirst=null;S.measure.settings.measureType=$('#measureType').value;applyRightLayout();syncInputModeLock();$('#deviceInput').focus();markDirty()};
 /* 測定画面全体の再描画。旧実装は9層のラップ(モード表示→製品丈→検証→
@@ -835,15 +835,15 @@ function renderMeasurementCore(){
  {const mb=$('#basicMore'),dt=$('#basicDetail');
   if(mb&&dt)mb.onclick=()=>{const open=dt.hidden;dt.hidden=!open;
    mb.setAttribute('aria-expanded',open?'true':'false');
-   mb.textContent=open?'詳細を閉じる':'詳細を見る';};}Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;paintQualityInfo();document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');$('#motherOriginalWidth').textContent=fmtDim(b.originalWidth,1)||'－';updateMotherCalcLength();renderMeasureGrid();renderStats();
+   mb.textContent=open?'詳細を閉じる':'詳細を見る';};}Object.entries(m.settings).forEach(([k,v])=>{const el=$('#'+k);if(el){if(el.type==='checkbox')el.checked=v;else el.value=v}});$('#qualityInfo').value=m.qualityInfo;paintQualityInfo();document.querySelectorAll('[data-mother]').forEach(x=>x.value=m.mother[x.dataset.mother]||'');$('#motherOriginalWidth').textContent=fmtDim(b.originalWidth,1)||'－';updateMotherCalcLength();WL.measureInput.renderMeasureGrid();WL.measureInput.renderStats();
  /* 操業データの入力欄は**設備ごと**なので、開いた時点で用意して値を戻す
     （§9.215）。読めなくても測定は開ける（fail-open）。 */
  if(window.WL&&WL.opData)WL.opData.refresh().catch(WL.quiet('操業データ項目を取れない（測定は開ける・fail-open）'));
  setState('IndexedDB読込済み')
  {const mode=S.measure.settings.inputMode||'auto';document.querySelectorAll('[data-mode]').forEach(x=>x.classList.toggle('active',x.dataset.mode===mode))}
  activateWorkspace(rightLayoutFor($('#measureType').value));
- applyInputProtection();
- updateReceiveState(document.activeElement===$('#deviceInput'));
+ WL.measureInput.applyInputProtection();
+ WL.measureInput.updateReceiveState(document.activeElement===$('#deviceInput'));
  renderProductPanel();
  applyRightLayout();
  requestAnimationFrame(updateValidationVisuals);
@@ -949,7 +949,7 @@ function judgeInput(el,key,value,index){
   if(String(el.value||'').trim()!=='')el.classList.add('complete');
   return;
  }
- const raw=String(el.value??'').trim(),tol=toleranceFor(key==='thickness'?'thickness':'width',index),num=Number(raw);
+ const raw=String(el.value??'').trim(),tol=WL.measureInput.toleranceFor(key==='thickness'?'thickness':'width',index),num=Number(raw);
  if(raw!==''&&Number.isFinite(num)){el.classList.add('complete');if(tol&&(num<tol[0]||num>tol[1]))el.classList.add('ng')}
 }
 document.addEventListener('input',event=>{if(event.target.matches('input,select,textarea'))updateValidationVisuals()},true);
@@ -1289,7 +1289,7 @@ function updateMeasurementHeadingCore(){
     記号のボタン（`.flat-pick-group`）がすぐ隣に並ぶので、ここに要るのは
     「〇が合格」という約束だけ。 */
  if(type==='フラットネス')return pill('is-mark','〇=OK','条ごとに記号を入力してください。〇がOK、△と×はどちらもNGです。');
- const kind=WL.measureItem.kindOf(type),detail=toleranceDetail(kind),base=Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth);
+ const kind=WL.measureItem.kindOf(type),detail=WL.measureInput.toleranceDetail(kind),base=Number(kind==='thickness'?S.measure.basic.mfgThickness:S.measure.basic.mfgWidth);
  /* **上下限を持つものだけが「公差」**（§9.242 ⑤、利用者の指示）。片側の
     目標しか無い項目（ラテラルボー・バリ・テレスコープ・巻ずれ）で「公差」と
     書くと、下限もあるかのように読める。言葉は`WL.measureItem`の1箇所。 */
@@ -1298,7 +1298,7 @@ function updateMeasurementHeadingCore(){
    word==='公差'
     ?'選択した公差区分に使用可能なプラス・マイナス値がありません。判定は行いません。'
     :'この項目には判定に使える基準が登録されていません。判定は行いません。');
- const labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示基準'},sourceLabel=labels[detail.source],requestedLabel=labels[configuredToleranceSource()],fallback=detail.fallback?`${requestedLabel}が不足しているため製造公差を使用`:'';
+ const labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示基準'},sourceLabel=labels[detail.source],requestedLabel=labels[WL.measureInput.configuredToleranceSource()],fallback=detail.fallback?`${requestedLabel}が不足しているため製造公差を使用`:'';
  /* 片側だけの基準は「0〜上限」なので、±の内訳を出しても読む値が無い。 */
  /* **桁は測定値と同じにそろえる**（§9.320-B、利用者の報告「板厚製造公差の
     表示が桁数溢れしている」）。生の`range`は`1.475`が
@@ -1377,7 +1377,7 @@ async function refreshScheduleInfo(){
  }
  renderScheduleInfo();
 }
-function configureToleranceSelector(){const el=$('#toleranceSource');if(!el||!S.measure)return;const type=$('#measureType').value,isDimensional=WL.measureItem.isDimensional(type),order=el.querySelector('option[value="order"]'),availability=orderToleranceAvailability();order.disabled=!availability.available;order.textContent=availability.available?'オーダー公差':'オーダー公差（データなし）';order.classList.toggle('order-tolerance-unavailable',!availability.available);if(!availability.available&&S.measure.settings.toleranceSource==='order')S.measure.settings.toleranceSource='manufacturing';el.value=S.measure.settings.toleranceSource||'manufacturing';el.disabled=!isDimensional;el.title=isDimensional?(availability.available?'製造公差またはオーダー公差を選択できます':'オーダー公差がないため製造公差のみ使用できます'):'板厚・板幅以外は指示公差を自動適用します';
+function configureToleranceSelector(){const el=$('#toleranceSource');if(!el||!S.measure)return;const type=$('#measureType').value,isDimensional=WL.measureItem.isDimensional(type),order=el.querySelector('option[value="order"]'),availability=WL.measureInput.orderToleranceAvailability();order.disabled=!availability.available;order.textContent=availability.available?'オーダー公差':'オーダー公差（データなし）';order.classList.toggle('order-tolerance-unavailable',!availability.available);if(!availability.available&&S.measure.settings.toleranceSource==='order')S.measure.settings.toleranceSource='manufacturing';el.value=S.measure.settings.toleranceSource||'manufacturing';el.disabled=!isDimensional;el.title=isDimensional?(availability.available?'製造公差またはオーダー公差を選択できます':'オーダー公差がないため製造公差のみ使用できます'):'板厚・板幅以外は指示公差を自動適用します';
  /* **選べるときだけ出す**（§9.143、利用者の指示）。通常は製造公差のままで
     触ることがなく、選択肢が1つしか無い状態で常設すると「選ぶもの」に
     見えてしまう（機能としては残す必要があるので、消すのではなく隠す）。
@@ -1391,7 +1391,7 @@ function configureToleranceSelector(){const el=$('#toleranceSource');if(!el||!S.
     1回押せば必ず出せる場所に残す。 */
  {const box=el.closest('.tolerance-source-control'),pick=$('#toleranceSourcePick'),fold=$('#tolSourceFold');
   if(box){const usable=isDimensional&&availability.available;if(box.hidden!==!usable)box.hidden=!usable;
-   if(!usable&&pick&&!pick.hidden){pick.hidden=true;fold?.setAttribute('aria-expanded','false')}}}el.onchange=()=>{if(el.value==='order'&&!availability.available)return;S.measure.settings.toleranceSource=el.value;renderMeasureGrid();updateMeasurementHeading();markDirty()}}
+   if(!usable&&pick&&!pick.hidden){pick.hidden=true;fold?.setAttribute('aria-expanded','false')}}}el.onchange=()=>{if(el.value==='order'&&!availability.available)return;S.measure.settings.toleranceSource=el.value;WL.measureInput.renderMeasureGrid();updateMeasurementHeading();markDirty()}}
 /* 作業時間パネル。開始→終了の順序を強制するロック付き打刻。 */
 /* 作業時刻は**分まで**（§9.242 ①、利用者の指示「秒数は不要です」）。
    欄が分刻みになった以上、帳票・トーストだけ秒を出すと**同じ時刻が場所に
@@ -1455,7 +1455,7 @@ WL.masterDiff=(function(){
   FIELDS.forEach(([id])=>mark(id,false))}
  return{check,start,stop};
 })();
-$('#verticalCount').addEventListener('change',()=>{updateLengthOptions($('#verticalCount').value);renderMeasureGrid()});
+$('#verticalCount').addEventListener('change',()=>{updateLengthOptions($('#verticalCount').value);WL.measureInput.renderMeasureGrid()});
 $('#horizontalCount').addEventListener('change',()=>{
  /* 設備ごとの最大条数を超えた入力はその場で戻す。max属性だけだとスピナーは
     止まるが、手打ち・貼り付けは通ってしまう。 */
@@ -1476,6 +1476,6 @@ $('#horizontalCount').addEventListener('change',()=>{
     `元幅（実績）${lim.original}mm ÷ 製造板幅 ${lim.width}mm ＝ 最大 ${lim.max}条です。`
     +'これ以上増やすと屑幅がマイナスになります。増やすなら母材（元幅）を直してください。',7000);
  }
- updateCoilOptions(el.value);renderMeasureGrid();
+ updateCoilOptions(el.value);WL.measureInput.renderMeasureGrid();
 });
 function lockCounts(){const has=Object.values(S.measure.measurements).some(a=>a.flat().some(v=>v!==''));$('#verticalCount').disabled=has;$('#horizontalCount').disabled=has}

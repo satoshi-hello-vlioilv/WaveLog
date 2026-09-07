@@ -240,10 +240,10 @@ let b=null,page=null;
   await setType('板幅');
 
   /* ---- 10) 公差が無いときに、勝手にNGにしない ----
-     このフィクスチャは公差を持たない(compactToleranceData が null)。
+     このフィクスチャは公差を持たない(WL.measureInput.compactToleranceData が null)。
      **公差が無いのにNGを出すと、現場は直しようのない警告を見ることになる。** */
   const noTol=await page.evaluate(()=>{
-   const has=typeof compactToleranceData==='function'&&!!compactToleranceData('width');
+   const has=typeof WL.measureInput.compactToleranceData==='function'&&!!WL.measureInput.compactToleranceData('width');
    if(has)return{公差あり:true};
    const cell=[...document.querySelectorAll('#measurementGrid input')].find(x=>x.dataset.mkey==='width');
    if(!cell)return{セルなし:true};
