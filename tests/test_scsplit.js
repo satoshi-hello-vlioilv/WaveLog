@@ -121,8 +121,15 @@ let b=null;
   const afterEnd=entries.filter(e=>e.plannedEnd&&e.parentId==null).slice(-1)[0]?.plannedEnd;
   const grew=beforeEnd&&afterEnd?(new Date(afterEnd)-new Date(beforeEnd))/60000:null;
   const est=parent&&parent.estimate?parent.estimate.minutes:0;
+  /* **幅で見る**(§9.284)。予定の起点は展開のたびに`now`から引き直し、
+     **5分刻みへ切り上げる**(§9.198・`ANCHOR_ROUND_MIN=5`)。beforeEnd と
+     afterEnd は別々の問い合わせなので、その間に刻みの境目をまたぐと
+     **予定の終了時刻がそろって5分後ろへ動く**——伸びは「親の見積 +0〜5分」
+     になる（切り上げなので後ろへだけ動く）。本物の失敗＝「子の数だけ伸びる」
+     は子2件ぶん**+240分**で、ゆらぎの5分とは桁で離れており取り違えない。
+     等号で見ていたため、境目をまたいだ実行だけが125分で落ちていた。 */
   rec('タイムラインは親1件ぶんだけ伸びる（子の数だけ伸びない）',
-      grew!=null&&Math.abs(grew-est)<1,`伸び${grew}分 / 親の見積${est}分`);
+      grew!=null&&grew>=est&&grew-est<=5,`伸び${grew}分 / 親の見積${est}分`);
   rec('子は並べ替えの対象にならない',kids.every(k=>!k.reorderable));
 
   /* ---- 4) 画面: 既定は折りたたみ ----

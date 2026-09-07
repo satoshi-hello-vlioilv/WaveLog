@@ -102,6 +102,10 @@ let b=null;
  rec('追加後も「?」が出ない',!after3['is-unknown'],JSON.stringify(after3));
 
  // --- 再読み込みしても保存値から判定できる(往復ゼロ) ---
+ // **この実行で仕掛一覧から投入した行**を控える。§9.67が保証するのは
+ // 「投入時に残仕掛設備ｺｰｽを保存した行は往復ゼロで確定する」ことなので、
+ // 見るべきはその行であって、予定に載っている全部ではない。
+ const addedIds=[...await planIds()].filter(id=>!idsBefore.has(id));
  await page.reload({waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openSchedule',{timeout:15000});
  await page.click('#openSchedule');
@@ -109,7 +113,23 @@ let b=null;
  await page.evaluate(e=>{const r=[...document.querySelectorAll('.sc-board-row')]
    .find(x=>x.dataset.equipment===e);if(r)r.click()},EQ);
  await page.waitForSelector('.sc-row-line',{timeout:20000});
- const firstPaint=await flags();
+ /* **1回の測定で取る**。`flags()`のあとに別の往復で行を見に行くと、その
+    数ミリ秒のあいだに裏の取り直しが終わってしまい、「最初の描画」ではなく
+    「取り直したあと」を測ることになる（保存値を読まない欠陥を注入しても
+    素通りした——測っている場所が違った）。全体の内訳と、投入した行の状態を
+    **同じ評価の中で**そろえて持ち帰る。 */
+ const paint=await page.evaluate(ids=>{
+  const c={};
+  document.querySelectorAll('.sc-row-line .sc-row-workable').forEach(n=>{
+   const k=[...n.classList].find(x=>x.startsWith('is-'));c[k]=(c[k]||0)+1});
+  const unknown=ids.filter(id=>{
+   const q=document.querySelector(
+     `.sc-row-line[data-id="${CSS.escape(id)}"] .sc-row-workable`);
+   return !q||q.classList.contains('is-unknown');
+  });
+  return {flags:c,unknown};
+ },addedIds);
+ const firstPaint=paint.flags;
  // 投入時に残仕掛設備ｺｰｽを保存している予定は、**仕掛を1回も読まずに**
  // 最初の描画で確定している（「?」が1つも無い）。
  // **取り直しに行くのは「可」でない行のため**（§9.67 の `lotsNeedingLookup` は
@@ -121,8 +141,18 @@ let b=null;
  rec('開き直した直後から保存値で判定できている行がある',resolvedAtPaint>0,
    JSON.stringify(firstPaint));
  const st0=await page.evaluate(()=>window.scheduleWorkableState());
- rec('最初の描画に「?」が無い（保存値だけで確定している）',
-   !firstPaint['is-unknown'],JSON.stringify(firstPaint));
+ /* **予定の全部に「?」が無い**とは言えない。保存を持たない古い予定
+    （他の網がAPIで直に作った行など）は最初の描画で「?」になり、すぐ下の
+    「裏の取り直しで解消される」がまさにそれを見ている——2つの言い切りは
+    同時には成り立たない。単独では保存の無い行がたまたま0件だったので
+    通っていただけで、通しの実行でだけ落ちていた（§9.356。この直前の
+    `pages===0` と同じ形の言い過ぎが1つ残っていた）。
+    **投入した行だけ**を見れば、保存値で確定しているかを取り違えずに測れる
+    ——保存を持つ行が「?」になれば、残りが何件あっても落ちる。 */
+ rec('仕掛一覧から投入した行は開き直した直後から「?」でない',
+   addedIds.length>0&&paint.unknown.length===0,
+   `投入${addedIds.length}件 / うち「?」${paint.unknown.length}件 -- `
+   +JSON.stringify(firstPaint));
  rec('仕掛を読みに行くのは「可」でない行があるときだけ',
    st0.pages===0||(firstPaint['is-ng']||0)>0,
    JSON.stringify({...st0,firstPaint}));
