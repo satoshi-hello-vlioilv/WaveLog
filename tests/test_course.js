@@ -196,8 +196,8 @@ let b=null;
 
   // 後始末
   await page.evaluate(async()=>{
-   if(typeof S!=='undefined'&&S.measure&&typeof reliableDelete==='function')
-    await reliableDelete(S.measure.id);
+   if(typeof S!=='undefined'&&S.measure&&typeof WL.records.reliableDelete==='function')
+    await WL.records.reliableDelete(S.measure.id);
   }).catch(()=>{});
 
   console.log('\n=== SUMMARY ===');

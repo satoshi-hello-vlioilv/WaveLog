@@ -31,7 +31,7 @@ run('test_dbequip: 使用設備は WL.equipment の1箇所（§9.285）',async({
    };
    const list=[mk('flowA1',eq,'ZZ001',60,1),mk('flowA2',eq,'ZZ002',120,2),
                mk('flowB1',other,'ZZ003',30,1)];
-   for(const r of list)await reliablePut(r);
+   for(const r of list)await WL.records.reliablePut(r);
    return list.map(r=>r.id);
   },[EQ,OTHER]);
 
@@ -175,7 +175,7 @@ run('test_dbequip: 使用設備は WL.equipment の1箇所（§9.285）',async({
 
   // 後始末: 入れた実績を消す
   await page.evaluate(async list=>{
-   for(const id of list)if(typeof reliableDelete==='function')await reliableDelete(id);
+   for(const id of list)if(typeof WL.records.reliableDelete==='function')await WL.records.reliableDelete(id);
   },ids).catch(()=>{});
 
 },{viewport:{width:1600,height:1000}});

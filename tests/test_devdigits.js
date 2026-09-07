@@ -170,8 +170,12 @@ let b=null;
      **遅らせるのは端末内への書き込み（`reliablePut`）**——共有DBへの送信を
      遅らせても`autoSaveAgain`が拾うので、窓が開かない（実際に空振りした）。 */
   await page.evaluate(ms=>{
-   window.__origPut=reliablePut;
-   reliablePut=async m=>{await new Promise(s=>setTimeout(s,ms));return window.__origPut(m)};
+   /* **被せない**（§9.352）——閉じたファイルの関数は外から差し替えられない。
+      持ち替えは登録表の `own` で行い、元の道は核（`reliablePutCore`）を呼ぶ。 */
+   WL.measureHooks.own('reliablePut',async m=>{
+    await new Promise(s=>setTimeout(s,ms));
+    return WL.records.reliablePutCore(m);
+   });
    S.measure.settings.wStep=0;
   },1200);
   await page.evaluate(()=>{const el=document.getElementById('deviceInput');
@@ -187,8 +191,8 @@ let b=null;
     .test(document.getElementById('localState').textContent||''),null,{timeout:30000}).catch(()=>{});
   await page.waitForTimeout(600);
   const late=await page.evaluate(async()=>{
-   reliablePut=window.__origPut;
-   const saved=await reliableGet(S.measure.id).catch(()=>null);
+   WL.measureHooks.own('reliablePut',null);   // 返上（§9.352）
+   const saved=await WL.records.reliableGet(S.measure.id).catch(()=>null);
    const row=((saved&&saved.measurements&&saved.measurements.width)||[])[lengthIndex()]||[];
    return {画面:(S.measure.measurements.width[lengthIndex()]||[]).slice(0,3),
      端末内:row.slice(0,3),旗:measureDirty,

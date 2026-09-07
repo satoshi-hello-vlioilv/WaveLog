@@ -1,6 +1,9 @@
-"use strict";
 /* records-store.js: 端末内保存(IndexedDB+localStorageミラー)・保存/完了遷移・
-   編集中/完了データ一覧・参照データ(コンテキスト)取得・使用設備/設備マスタ設定。 */
+   編集中/完了データ一覧・参照データ(コンテキスト)取得・使用設備/設備マスタ設定。
+   **このファイルは閉じている**（§9.359・REVIEW 3-17）——外へ出す面は末尾の
+   `WL.records`。 */
+(function(){
+"use strict";
 const DB='MeasurementLocal',STORE='lots';function idb(){return new Promise((ok,no)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>r.result.createObjectStore(STORE,{keyPath:'id'});r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}async function idbGet(id){const d=await idb();return new Promise((o,n)=>{const r=d.transaction(STORE).objectStore(STORE).get(id);r.onsuccess=()=>o(r.result);r.onerror=()=>n(r.error)})}async function idbPut(v){const d=await idb();return new Promise((o,n)=>{const r=d.transaction(STORE,'readwrite').objectStore(STORE).put(v);r.onsuccess=()=>o();r.onerror=()=>n(r.error)})}async function idbDelete(id){const d=await idb();return new Promise((o,n)=>{const r=d.transaction(STORE,'readwrite').objectStore(STORE).delete(id);r.onsuccess=()=>o();r.onerror=()=>n(r.error)})}
 /* 端末内の保存容量（§9.129）。**普段は出さない。**「0.0MB / 上限目安 0.8GB」は
    測定中ずっと出ていても打つ手が無く、主要動線の面積を取るだけだった。
@@ -25,7 +28,18 @@ const MIRROR_KEY='MeasurementLocalMirrorV31';
 function mirrorRead(){try{return JSON.parse(localStorage.getItem(MIRROR_KEY)||'{}')}catch(e){console.warn('mirror read failed',e);return {}}}
 function mirrorWrite(record){const all=mirrorRead();all[record.id]=record;localStorage.setItem(MIRROR_KEY,JSON.stringify(all))}
 function mirrorDelete(id){const all=mirrorRead();delete all[id];localStorage.setItem(MIRROR_KEY,JSON.stringify(all))}
+/* 丸ごと持ち替えられる（§9.352 の `own`）。閉じたので外から関数を差し替える
+   ことはできない——**持ち替えの口は登録表の1箇所**にする。網が「読み出しを
+   種データに差し替える」「書き込みを遅らせる」を作るために要る。 */
 async function reliableAll(){
+ const own=WL.measureHooks.owner('reliableAll');
+ return own?own():reliableAllCore();
+}
+async function reliablePut(record){
+ const own=WL.measureHooks.owner('reliablePut');
+ return own?own(record):reliablePutCore(record);
+}
+async function reliableAllCore(){
  const merged=new Map(Object.entries(mirrorRead()));
  try{(await idbAll()).forEach(x=>merged.set(x.id,x))}catch(e){console.warn('IndexedDB list failed, mirror used',e)}
  return [...merged.values()].map(WL.measureView.ensureMeasureShape);
@@ -34,7 +48,7 @@ async function reliableGet(id){
  try{const x=await idbGet(id);if(x)return WL.measureView.ensureMeasureShape(x)}catch(e){console.warn('IndexedDB get failed, mirror used',e)}
  const x=mirrorRead()[id];return x?WL.measureView.ensureMeasureShape(x):null;
 }
-async function reliablePut(record){
+async function reliablePutCore(record){
  let idbOK=false,mirrorOK=false;
  try{await idbPut(record);idbOK=true}catch(e){console.error('IndexedDB save failed',e)}
  try{mirrorWrite(record);mirrorOK=true}catch(e){console.error('mirror save failed',e)}
@@ -2049,3 +2063,33 @@ WL.list.init().catch(error=>{
 /* 起動オーバーレイの「一覧を読み込み」はここで済む。**失敗しても進める**
    (エラー表示ごと見せる必要がある。覆ったままにしない)。 */
 }).finally(()=>WL.boot.step('list'));
+
+/* ============================================================
+   外へ出す面（§9.359・REVIEW 3-17）。**ここに載せた名前だけ**が外から
+   呼べる。載せ忘れは `no-undef` が教える——**ただし `typeof x` は教えない**
+   （§9.355）。外から使う側は `typeof WL.records.x==='function'`。
+   ============================================================ */
+WL.records={
+ reliableAll,reliableGet,reliablePut,reliableDelete,idbAll,RECORD_COL_BY_KEY,
+ /* 持ち替えた側が「元の道」を呼べるように、核も載せる（§9.352 の `own` は
+    丸ごと持つので、元へ委譲する口が無いと数える・遅らせるができない）。 */
+ reliableAllCore,reliablePutCore,
+ saveLocal,backupRecord,backupAndTrackSync,deleteBackupRows,
+ flushPendingBackupDeletes,syncPendingRecords,importRemoteRecord,shareRecord,
+ mergedRecords,persistAndTransition,
+ openMeasurement,openMeasurementCore,closeMeasureModal,loadMeasurementContext,
+ applyContextChoices,updateCourseGuard,resumeRecordFromList,
+ openRecords,openRecordsSafe,renderRecordListRows,openRecordRowMenu,
+ recordAllColumnKeys,recordColumnPanelSource,recordInitialHidden,
+ updateRecordListTitle,syncStatusFilterButtons,refreshDraftCount,
+ loadEquipmentMaster,equipmentUsableFor,
+ /* この2つは**入れ物そのもの**（中身は書き換わる）。`equipmentMasterState`は
+    丸ごと差し替える箇所があるので、値で載せると古い入れ物が固定されて
+    黙って古いままになる。**getter で載せて、そのつど今の物を返す。** */
+ get recordListState(){return recordListState},
+ get equipmentMasterState(){return equipmentMasterState},
+ ensureEquipmentSettingsModal,openEquipmentSettingsFinal,fillEquipmentSelect,
+ bindAppSettingsControls,bindV32Navigation,
+ withWaiting,showWaiting,hideSaveOverlay,showQuota,
+};
+})();

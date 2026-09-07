@@ -347,7 +347,7 @@
       box.querySelector('.pl-text').textContent=text||'読み込んでいます...';box.hidden=false;
     }else if(box){box.hidden=true}
   }
-  const canWait=()=>typeof showWaiting==='function'&&typeof hideSaveOverlay==='function';
+  const canWait=()=>typeof WL.records.showWaiting==='function'&&typeof WL.records.hideSaveOverlay==='function';
 
   /* ---- マスタ連携（読込・保存・削除・使用回数） ---- */
   /* opts.db/opts.table を渡せる(§9.184)。**テーブルが決まる前に呼ぶ経路がある**

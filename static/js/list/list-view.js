@@ -44,12 +44,12 @@ async function init(){
  const d=await catalogPromise;S.catalog=d.databases;
  WL.dataSource.setCatalog(d);
  renderDbNav();
- const drafts=$('#homeDrafts');if(drafts)drafts.onclick=()=>openRecords('編集中');
- bindAppSettingsControls();
+ const drafts=$('#homeDrafts');if(drafts)drafts.onclick=()=>WL.records.openRecords('編集中');
+ WL.records.bindAppSettingsControls();
  /* 件数バッジと保存領域の使用量は**一覧の表示を待たせない**。どちらも
     数字が少し遅れて入るだけで、画面の組み立てには影響しない。 */
- refreshDraftCount().catch(e=>console.warn('件数バッジの更新に失敗',e));
- showQuota();
+ WL.records.refreshDraftCount().catch(e=>console.warn('件数バッジの更新に失敗',e));
+ WL.records.showQuota();
  /* 起動直後の初期画面。使用設備が未登録のうちは絞り込みも対象判定もできず、
     仕掛一覧を取得しても使えないため、先に設備登録へ誘導する。
     **どの一覧を最初に出すかはキーで決め打ちしない**(§9.87)。役割が「作業」の
@@ -65,7 +65,7 @@ async function init(){
     ——空の器が「壊れているのか、まだ何も無いのか」を答えるのが役目。 */
  else if(!equipped)$('#grid').innerHTML='<div class="setup-first"><span>使用設備を設定すると、ここに仕掛一覧が出ます。</span></div>';
  }catch(e){console.error('初期化エラー',e);showToast('初期化の一部に失敗',e.message,8000)}
- finally{bindV32Navigation()}
+ finally{WL.records.bindV32Navigation()}
 }
 /* ---------- 行間(§9.88) ----------
    一覧全体の密度。列ごとの設定とは別物なので、保存先も別
@@ -1320,7 +1320,7 @@ async function fetchTableData(key,force){
  const hit=force?null:tableCacheGet(key);
  if(hit){await settings;applyTableData(hit.data);updateListFreshness(hit.at);return}
  const label=databaseLabel(S.db),table=S.table||'テーブル';
- await withWaiting({title:`${label}を読み込んでいます`,detail:`テーブル: ${table}`,
+ await WL.records.withWaiting({title:`${label}を読み込んでいます`,detail:`テーブル: ${table}`,
    progress:'サーバーが読み出しています'},async(report)=>{
   /* 一覧データの取得も**設定と同時に**始める。描く直前に両方が揃っていれば
      よく、順番に待つ理由が無い。 */
@@ -1633,7 +1633,7 @@ async function selectDbCore(k,b){
     内部からの呼び出し(スケジュールの分割表示)では切り替えない。 */
  if(!WL.isInternalDbSwitch())WL.enterView('list');
  const label=databaseLabel(k);
- return withWaiting({title:`${label}へ切り替えています`,detail:`接続先を確認しています: ${label}`,
+ return WL.records.withWaiting({title:`${label}へ切り替えています`,detail:`接続先を確認しています: ${label}`,
    progress:'テーブル構成を確認しています',step:1},async report=>{
   try{S.db=k;setActiveNav(k);
    let result=tablesCache.get(k);
@@ -1664,7 +1664,7 @@ async function selectTable(t,report){await runListHooksAsync('beforeSelectTable'
 async function selectTableCore(t,report){
  S.table=t;S.page=1;WL.listSort.clear();renderTabs();const label=databaseLabel(S.db);
  if(report){report({detail:`テーブル: ${t}`,progress:'列情報と一覧データを取得しています',step:2});return load()}
- return withWaiting({title:`${label}を読み込んでいます`,detail:`テーブル: ${t}`,
+ return WL.records.withWaiting({title:`${label}を読み込んでいます`,detail:`テーブル: ${t}`,
    progress:'列情報と一覧データを取得しています'},()=>load());
 }
 /* 一覧の列名は仕掛先DBの生カラム名なので、aliasesの候補名のうち
@@ -2186,7 +2186,7 @@ function renderGridInner(){
      return;
     }
     e.preventDefault();e.stopPropagation();
-    openMeasurement(r).catch(err=>alertModal('測定画面を開けません: '+err.message));
+    WL.records.openMeasurement(r).catch(err=>alertModal('測定画面を開けません: '+err.message));
    };
    /* 行のダブルクリックは**ボタンを消しても残す**——測定を開く導線が
       1つも無くなると、列を隠しただけで機能ごと失われる。 */

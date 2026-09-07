@@ -786,7 +786,7 @@ let b=null;
   if(addJson&&addJson.id)madeChoiceIds.push(addJson.id);
   rec('前提: 選択肢マスタへ値を足せた',!!(addJson&&addJson.id),JSON.stringify(addJson));
   /* 再開の道（`force=false`）を通す——ここが控えを使う唯一の入口。 */
-  await page.evaluate(()=>loadMeasurementContext(false));
+  await page.evaluate(()=>WL.records.loadMeasurementContext(false));
   await page.waitForFunction(t=>{
    const el=document.getElementById('coilStop');
    return !!el&&[...el.options].some(o=>o.text===t);
@@ -800,7 +800,7 @@ let b=null;
    const el=document.getElementById('operator');
    if(!el)return null;
    S.measure.settings.operator='ZZ居ない人';
-   loadMeasurementContext(false);
+   WL.records.loadMeasurementContext(false);
    return true;
   });
   if(keptOk){

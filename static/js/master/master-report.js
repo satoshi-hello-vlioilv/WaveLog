@@ -1727,7 +1727,7 @@
      作る設備の紙を開く手立てが無い。保存が残っている「もう無い設備」も
      消さずに出す——消すと、その設定を片付けられなくなる。 */
   let eqs=[];
-  try{await loadEquipmentMaster();eqs=(equipmentMasterState.items||[]).map(e=>e.name).filter(Boolean)}
+  try{await WL.records.loadEquipmentMaster();eqs=(WL.records.equipmentMasterState.items||[]).map(e=>e.name).filter(Boolean)}
   catch(e){eqs=[]}
   const seen=new Set(),out=[];
   const push=(eq,gone)=>{

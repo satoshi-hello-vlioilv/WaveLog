@@ -511,7 +511,7 @@
    };
    const mainBtn=row.querySelector('.rp-lot-main-btn');
    mainBtn.onclick=()=>selectLot(x.id);
-   mainBtn.ondblclick=e=>{e.preventDefault();e.stopPropagation();if(typeof resumeRecordFromList==='function')resumeRecordFromList(x)()};
+   mainBtn.ondblclick=e=>{e.preventDefault();e.stopPropagation();if(typeof WL.records.resumeRecordFromList==='function')WL.records.resumeRecordFromList(x)()};
    frag.append(row);
   });
   list.innerHTML='';list.append(frag);
@@ -3959,7 +3959,7 @@
      できない」を無くすのがこの機能の目的なので、レコードから拾える設備
      だけでは足りない（実際、検証用データでは1つしか出なかった）。
      読めなくても組み換えは開ける（fail-open）。 */
-  try{if(typeof loadEquipmentMaster==='function')await loadEquipmentMaster()}catch(e){WL.quiet.note('設備マスタを取れない（設備を選ぶ欄が減るだけ）',e)}
+  try{if(typeof WL.records.loadEquipmentMaster==='function')await WL.records.loadEquipmentMaster()}catch(e){WL.quiet.note('設備マスタを取れない（設備を選ぶ欄が減るだけ）',e)}
   try{await Promise.all([WL.columnLayout.load(rpTarget()),
                          rpLoadUserBlocks(rpEditEquipment)])}catch(e){WL.quiet.note('列の設定を取れない（既定の並びで出す）',e)}
   rpArranging=true;rpSeeded=false;
@@ -4089,17 +4089,17 @@
   /* 設備マスタにあってレコードが1件も無い設備も選べるようにする
      ——「その設備のロットがまだ無いから設定できない」を作らない。
      **`window.` を付けて参照しないこと**（§9.215と同じ罠）——
-     `equipmentMasterState`は`records-store.js`のトップレベルの`let`で、
+     `WL.records.equipmentMasterState`は`records-store.js`のトップレベルの`let`で、
      `window`のプロパティにならない。`window.equipmentMasterState`と書くと
      **常にundefined**になり、設備マスタの設備が1つも候補に出ない
      （実際にそうなり、`test_rplayout`が「選択肢が1つしかない」で捕まえた）。 */
-  const master=(typeof equipmentMasterState!=='undefined'&&equipmentMasterState.items)||[];
+  const master=(typeof WL.records.equipmentMasterState!=='undefined'&&WL.records.equipmentMasterState.items)||[];
   /* **絞るのは「ロットが1件も無い設備」だけ**（§9.302）——記録のある設備は
      使える機能を外しても候補に残す（履歴なので、外した瞬間にその設備の紙が
      開けなくなるのは行き過ぎ・§9.15）。 */
   master.forEach(e=>{
    const n=String(e.name||'').trim();if(!n||seen.has(n))return;
-   if(typeof equipmentUsableFor==='function'&&!equipmentUsableFor(e,'report'))return;
+   if(typeof WL.records.equipmentUsableFor==='function'&&!WL.records.equipmentUsableFor(e,'report'))return;
    seen.set(n,0);
   });
   const out=[...seen.entries()].map(([eq,n])=>({eq,n,label:eq||'共通（設備の分からないロット）'}));
@@ -4987,7 +4987,7 @@
       この端末で測定データを書き込まない点は同じため、editモード以外は
       同じ経路にする(編集モードのみ従来どおりreliableAll())。 */
    const viewMode=window.accessMode&&window.accessMode.mode!=='edit';
-   const all=viewMode&&typeof window.loadViewModeRecords==='function'?await window.loadViewModeRecords():await reliableAll();
+   const all=viewMode&&typeof window.loadViewModeRecords==='function'?await window.loadViewModeRecords():await WL.records.reliableAll();
    rpState={items:all,query:'',sort:$id('reportSort')?.value||'updated-desc',selectedId:''};
    const search=$id('reportSearch');if(search)search.value='';
    renderLotList();
@@ -5000,7 +5000,7 @@
 
  /* 編集中/完了データ一覧は統合された1つの一覧のため、帳票から戻る際は
     現在のトグル状態(編集中/完了それぞれのON/OFF)をそのまま維持して
-    再度開く(openRecordsSafe(null)はopenRecords()側でプリセットを
+    再度開く(WL.records.openRecordsSafe(null)はopenRecords()側でプリセットを
     上書きせず現在のrecordListState.statusesを引き継ぐ)。 */
  /* サーバー側の測定バックアップから1件だけ取り込む(§9.43)。
     帳票一覧は編集モードならこの端末のIndexedDBを見るが、作業スケジュールが
@@ -5307,17 +5307,17 @@
    rpReturnTo='records';updateBackButton();
    window.openMasterMaint('reportLayout');return;
   }
-  if(typeof openRecordsSafe==='function')openRecordsSafe(null);
+  if(typeof WL.records.openRecordsSafe==='function')WL.records.openRecordsSafe(null);
  }
 
  /* 測定画面(操作レール)から帳票を開く。帳票は端末に保存済みのレコードを
     読んで描画するため、画面上の入力内容をそのまま出せるよう先に保存する。
-    saveLocal()の既定値は'編集中'なので、完了済みのデータを開いていた場合に
+    WL.records.saveLocal()の既定値は'編集中'なので、完了済みのデータを開いていた場合に
     状態を巻き戻さないよう、現在の状態を明示して渡す。 */
  async function openReportFromMeasure(print){
   if(!S.measure){showToast?.('測定データがありません','測定画面を開いてから実行してください。',4000);return}
   try{
-   await saveLocal(S.measure.status||'編集中');
+   await WL.records.saveLocal(S.measure.status||'編集中');
   }catch(e){
    showToast?.('帳票を開けませんでした','入力内容を端末へ保存できませんでした: '+e.message,6000);return;
   }
@@ -5488,7 +5488,7 @@
   if(dbCache&&!force)return dbCache;
   if(dbLoading&&!force)return dbLoading;
   dbLoading=(async()=>{
-   try{dbCache=(await reliableAll()).map(toKpiRow);return dbCache}
+   try{dbCache=(await WL.records.reliableAll()).map(toKpiRow);return dbCache}
    finally{dbLoading=null}
   })();
   return dbLoading;
@@ -5662,8 +5662,8 @@
  });
  async function runStatusView(force){
   const panel=$id('dashboardPanel');if(!panel||panel.hidden||dbView!=='status')return;
-  if(typeof withWaiting!=='function')return runStatusViewInner(force,()=>{});
-  return withWaiting({title:'稼働状況を集計しています',detail:'作業予定と測定実績を読み込んでいます',
+  if(typeof WL.records.withWaiting!=='function')return runStatusViewInner(force,()=>{});
+  return WL.records.withWaiting({title:'稼働状況を集計しています',detail:'作業予定と測定実績を読み込んでいます',
    progress:'作業予定を取得しています',step:1},report=>runStatusViewInner(force,report));
  }
  async function runStatusViewInner(force,report){
@@ -5811,8 +5811,8 @@
     「見込 150分」と「合計作業時間 2.5時間」が並んでいた。 */
  async function runEquipmentView(force){
   const panel=$id('dashboardPanel');if(!panel||panel.hidden)return;
-  if(typeof withWaiting!=='function')return runEquipmentViewInner(force);
-  return withWaiting({title:'自設備の実績を集計しています',
+  if(typeof WL.records.withWaiting!=='function')return runEquipmentViewInner(force);
+  return WL.records.withWaiting({title:'自設備の実績を集計しています',
    detail:'この端末に保存された測定データを読み込んでいます',
    progress:'対象期間の実績を集計しています'},()=>runEquipmentViewInner(force));
  }
@@ -5879,8 +5879,8 @@
 
  async function runDashboard(force){
   const panel=$id('dashboardPanel');if(!panel||panel.hidden)return;
-  if(typeof withWaiting!=='function')return runDashboardInner(force,()=>{});
-  return withWaiting({title:'分析データを集計しています',detail:'この端末の測定データを読み込んでいます',
+  if(typeof WL.records.withWaiting!=='function')return runDashboardInner(force,()=>{});
+  return WL.records.withWaiting({title:'分析データを集計しています',detail:'この端末の測定データを読み込んでいます',
    progress:'対象データを取得しています',step:1},report=>runDashboardInner(force,report));
  }
  async function runDashboardInner(force,report){

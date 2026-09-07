@@ -426,8 +426,8 @@ let b=null;
    clicked.強調>clicked.通常,`強調${clicked.強調}px / 通常${clicked.通常}px`);
 
   await page.evaluate(async()=>{
-   if(typeof S!=='undefined'&&S.measure&&typeof reliableDelete==='function')
-    await reliableDelete(S.measure.id);
+   if(typeof S!=='undefined'&&S.measure&&typeof WL.records.reliableDelete==='function')
+    await WL.records.reliableDelete(S.measure.id);
   }).catch(()=>{});
 
   console.log('\n=== SUMMARY ===');

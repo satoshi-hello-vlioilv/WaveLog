@@ -194,7 +194,7 @@ let b=null,page=null,turnedOff=false;
   }
   try{await page.evaluate(async()=>{
    const id=(typeof S!=='undefined'&&S.measure)?S.measure.id:'';
-   if(id&&typeof reliableDelete==='function')await reliableDelete(id).catch(()=>{});
+   if(id&&typeof WL.records.reliableDelete==='function')await WL.records.reliableDelete(id).catch(()=>{});
    if(id){
     for(let k=0;k<6;k++){
      const r=await fetch('/api/measurement/backup/list').then(x=>x.json()).catch(()=>({items:[]}));

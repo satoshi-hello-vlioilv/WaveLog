@@ -290,7 +290,7 @@ let b=null,page=null;
   await page.waitForTimeout(2500);
   const saved=await page.evaluate(async rid=>{
    const r=await fetch('/api/measurement/backup/list').then(x=>x.json()).catch(()=>({items:[]}));
-   const local=typeof reliableAll==='function'?await reliableAll():[];
+   const local=typeof WL.records.reliableAll==='function'?await WL.records.reliableAll():[];
    return {共有:(r.items||[]).some(i=>i.id===rid),端末内:local.some(m=>m.id===rid),
            閉じた:!!document.querySelector('#measureModal')?.hidden};
   },id);
@@ -322,7 +322,7 @@ let b=null,page=null;
  async function cleanup(){
   try{await page.evaluate(async()=>{
    const id=(typeof S!=='undefined'&&S.measure)?S.measure.id:'';
-   if(id&&typeof reliableDelete==='function')await reliableDelete(id).catch(()=>{});
+   if(id&&typeof WL.records.reliableDelete==='function')await WL.records.reliableDelete(id).catch(()=>{});
    /* **消えるまで確かめる。** 共有(shareRecord)は画面を待たせずに送るので、
       1回消しただけだと**遅れて届いた登録が後から復活する**（通しで1回だけ
       test_scdrop が落ち、L0001に身に覚えのない実績が残っていた）。

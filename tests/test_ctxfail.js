@@ -7,8 +7,8 @@
      問題があるのでしょうか？…いずれにしても**編集モードでの測定作業に
      影響がないように**してほしいです。」
 
-   以前は `loadMeasurementContext()` が例外を投げており、
-   `openMeasurementCore()` の続き——**記録の初回保存（reliablePut）と
+   以前は `WL.records.loadMeasurementContext()` が例外を投げており、
+   `WL.records.openMeasurementCore()` の続き——**記録の初回保存（reliablePut）と
    共有への登録**——が丸ごと走らなかった。つまり共有の品質データが一瞬
    読めないだけで、**測定そのものが始められなかった**。
 
@@ -78,10 +78,10 @@ let b=null;
   rec('参照データが読めなくても測定画面は開く',open.出ている,open.ロット);
 
   /* **記録が作られること**まで見る（§9.317）。画面が出ただけでは足りない
-     ——以前はここで例外が飛び、`reliablePut()`が走らなかった。 */
+     ——以前はここで例外が飛び、`WL.records.reliablePut()`が走らなかった。 */
   const saved=await page.evaluate(async()=>{
    const id=S.measure&&S.measure.id;if(!id)return {有:false};
-   const all=await reliableAll();
+   const all=await WL.records.reliableAll();
    return {有:all.some(x=>x.id===id),件数:all.length};
   });
   rec('記録の初回保存まで進む（測定を始められる）',saved.有,JSON.stringify(saved));
@@ -107,7 +107,7 @@ let b=null;
      {quality_error:"[WinError 5] アクセスが拒否されました。",quality_path:'\\\\srv\\Read\\SIKADEF.sqlite3'});
    r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(j)});
   });
-  await page.evaluate(()=>loadMeasurementContext(true));
+  await page.evaluate(()=>WL.records.loadMeasurementContext(true));
   await page.waitForTimeout(400);
   const c=await qi();
   rec('品質だけ読めなかったときも札と注記が出る',
@@ -115,7 +115,7 @@ let b=null;
 
   // ---- 5. 読み直して成功したら消える ----
   await page.unroute(CTX);
-  await page.evaluate(()=>loadMeasurementContext(true));
+  await page.evaluate(()=>WL.records.loadMeasurementContext(true));
   await page.waitForTimeout(600);
   const d=await qi();
   rec('読み直して成功したら注記は消える',!d.読めません&&!d.注記,JSON.stringify(d).slice(0,110));
@@ -123,8 +123,8 @@ let b=null;
   // 後片付け: この検証で作った記録を消す（§9.121）。
   await page.evaluate(async()=>{
    const id=S.measure&&S.measure.id;if(!id)return;
-   try{await deleteBackupRows([id])}catch(e){}
-   try{await reliableDelete(id)}catch(e){}
+   try{await WL.records.deleteBackupRows([id])}catch(e){}
+   try{await WL.records.reliableDelete(id)}catch(e){}
   });
  }catch(e){
   rec('FATAL',false,String(e&&e.message||e));

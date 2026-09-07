@@ -57,8 +57,8 @@ async function cleanup(){
        savedAt:new Date().toISOString()}},
      measurements:{'1':[['1.23','1.24']]},
      updatedAt:new Date().toISOString()});
-   await reliablePut(m);
-   shareRecord(m);
+   await WL.records.reliablePut(m);
+   WL.records.shareRecord(m);
    return {id:m.id,children:(m.settings.splitSourcesCache.children||[]).length};
   },{id:ID,lot:LOT,eq:EQ});
   rec('PC1で子ロット付きの途中データを作れる',saved.children===2,JSON.stringify(saved));
@@ -88,13 +88,13 @@ async function cleanup(){
   await p2.waitForTimeout(1200);
 
   const localOnly=await p2.evaluate(async id=>{
-   const all=await reliableAll();
+   const all=await WL.records.reliableAll();
    return {hasLocally:all.some(x=>x.id===id),count:all.length};
   },ID);
   rec('PC2の端末内には無い(別のPCであることの確認)',!localOnly.hasLocally,JSON.stringify(localOnly));
 
   const merged=await p2.evaluate(async id=>{
-   const all=await mergedRecords();
+   const all=await WL.records.mergedRecords();
    const hit=all.find(x=>x.id===id);
    return hit?{found:true,remoteOnly:!!hit.remoteOnly,lot:hit.basic?.lotNo||'',status:hit.status}:{found:false};
   },ID);
@@ -102,7 +102,7 @@ async function cleanup(){
   rec('他のPCのものだと分かる印が付く',merged.found&&merged.remoteOnly===true,JSON.stringify(merged));
 
   // 画面でも印が出ること
-  await p2.evaluate(()=>openRecords('編集中'));
+  await p2.evaluate(()=>WL.records.openRecords('編集中'));
   await p2.waitForTimeout(1500);
   const badge=await p2.evaluate(id=>{
    const rows=[...document.querySelectorAll('.record-list-row')];
@@ -113,9 +113,9 @@ async function cleanup(){
 
   /* ---- PC2 で取り込む(子ロットデータまで来ること) ---- */
   const imported=await p2.evaluate(async id=>{
-   const m=await importRemoteRecord(id);
+   const m=await WL.records.importRemoteRecord(id);
    const kids=m.settings?.splitSourcesCache?.children||[];
-   const all=await reliableAll();
+   const all=await WL.records.reliableAll();
    return {lot:m.basic?.lotNo||'',children:kids.length,
            childLots:kids.map(k=>k.lotNo),
            meas:(m.measurements&&m.measurements['1']&&m.measurements['1'][0])||[],

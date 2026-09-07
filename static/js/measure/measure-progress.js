@@ -226,9 +226,9 @@ function refreshMeasureProgress(){
    しようとしたときだけ実績を示して確認する。 */
 async function pastUsage(itemName){
  const m=S.measure,code=String(m?.basic?.purposeCode||'').trim();
- if(!code||typeof reliableAll!=='function')return null;
+ if(!code||typeof WL.records.reliableAll!=='function')return null;
  let all;
- try{all=await reliableAll()}catch(e){return null}
+ try{all=await WL.records.reliableAll()}catch(e){return null}
  const def=ITEM_DEFS.find(d=>d.name===itemName);if(!def)return null;
  const peers=all.filter(x=>x&&x.status==='完了'&&x.id!==m.id&&String(x.basic?.purposeCode||'').trim()===code);
  if(!peers.length)return null;

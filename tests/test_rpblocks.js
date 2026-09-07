@@ -103,7 +103,7 @@ const endArrange=async page=>{
   await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
-  await page.evaluate(()=>openRecordsSafe('編集中'));
+  await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
   await page.waitForSelector('.record-list-row',{timeout:25000});
   await page.click('.record-list-row .report');
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
@@ -453,7 +453,7 @@ const endArrange=async page=>{
       {productLength:'1000',wallThickness:'0.50',edgeShape:'揃い綺麗',note:''},
      ]},
     });
-    await reliablePut(rec);out.push(rec.id);
+    await WL.records.reliablePut(rec);out.push(rec.id);
    }
    return out;
   },[mk('RPPROD-G3','3'),mk('RPPROD-G4','4')]);
@@ -648,7 +648,7 @@ const endArrange=async page=>{
     列基本情報:(lgSrv.widths||{})['列:基本情報']||0};
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
-  await page.evaluate(()=>openRecordsSafe('編集中'));
+  await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
   await page.waitForSelector('.record-list-row',{timeout:25000});
   await page.click('.record-list-row .report');
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
@@ -708,7 +708,7 @@ const endArrange=async page=>{
     const c=document.getElementById('rpArrangeCancel');if(c&&!c.disabled)c.click();
    });
    await page.waitForTimeout(300);
-   await page.evaluate(()=>openRecordsSafe('編集中'));
+   await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
    await page.waitForSelector('.record-list-row',{timeout:25000});
    await page.click('.record-list-row .report');
    await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
@@ -776,7 +776,7 @@ const endArrange=async page=>{
       実装は、当てた直後だけは効いて保存で黙って消える）。 */
    await endArrange(page);
    await page.evaluate(t=>{if(WL.columnLayout.forget)WL.columnLayout.forget(t)},TARGET);
-   await page.evaluate(()=>openRecordsSafe('編集中'));
+   await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
    await page.waitForSelector('.record-list-row',{timeout:25000});
    await page.click('.record-list-row .report');
    await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
@@ -966,7 +966,7 @@ const endArrange=async page=>{
    await cleanup();
    await page.evaluate(t=>WL.columnLayout.forget(t),TARGET);
    await page.evaluate(()=>window.exitReportView&&window.exitReportView());
-   await page.evaluate(()=>openRecordsSafe('編集中'));
+   await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
    await page.waitForSelector('.record-list-row',{timeout:25000});
    await page.click('.record-list-row .report');
    await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
@@ -1108,7 +1108,7 @@ const endArrange=async page=>{
    const rowsOf=async()=>{
     await page.evaluate(()=>WL.reportBlocks.forget&&WL.reportBlocks.forget());
     await page.evaluate(()=>window.exitReportView&&window.exitReportView());
-    await page.evaluate(()=>openRecordsSafe('編集中'));
+    await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
     await page.waitForSelector('.record-list-row',{timeout:25000});
     await page.click('.record-list-row .report');
     await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});

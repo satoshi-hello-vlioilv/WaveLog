@@ -581,7 +581,7 @@
      ——`layout()`（測定画面）と`WL.opData.presentation()`（設定窓の見本）が
      どちらもこの1本を通るので、見本と実物が食い違わない（§9.221 ⑦と同じ
      約束）。当てる側の`applyBlankPolicy()`は**DOMの印だけ**を見るので、
-     候補を入れ直したあと（`applyContextChoices()`→`syncWidgets()`）にも
+     候補を入れ直したあと（`WL.records.applyContextChoices()`→`syncWidgets()`）にも
      定義を持ち歩かずに当て直せる。 */
   if(def&&def.noBlank)host.dataset.opNoblank='1';else delete host.dataset.opNoblank;
   applyBlankPolicy(host);
@@ -3283,7 +3283,7 @@
  }
  function syncWidgets(){
   /* **候補を入れ直すと「選ばない」の札が戻る**（§9.246 ①）。
-     `applyContextChoices()`（`records-store.js`）は`optionFill()`で
+     `WL.records.applyContextChoices()`（`records-store.js`）は`optionFill()`で
      `<select>`の中身を丸ごと作り直すので、そのたびに`-`が先頭へ復活する。
      印（`data-op-noblank`）はホスト側に残っているので、ここで当て直す
      ——**この関数は候補を入れ直した直後に必ず呼ばれる**（記録の復元・

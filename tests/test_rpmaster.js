@@ -45,7 +45,7 @@ const restore=async()=>{
 const CODE_BLOCK='丈別データ';
 const openReport=async page=>{
  await page.evaluate(()=>{if(typeof exitReportView==='function')exitReportView()});
- await page.evaluate(()=>openRecordsSafe('編集中'));
+ await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
  await page.waitForSelector('.record-list-row',{timeout:25000});
  await page.click('.record-list-row .report');
  await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});

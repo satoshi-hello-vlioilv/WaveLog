@@ -5,7 +5,7 @@
    ------------------------------------------------------------
    「測定値のエラーでNGがあっても測定は完了できるようにしてください。」
 
-   以前は公差外が1件でもあると `persistAndTransition('完了')` が入口で
+   以前は公差外が1件でもあると `WL.records.persistAndTransition('完了')` が入口で
    引き返しており、**完了そのものができなかった**。公差外は「測った事実」で
    あって入力の誤りとは限らない——外れたまま完了して次の工程へ渡す判断は
    現場のものなので、アプリが握ってはいけない。
@@ -53,7 +53,7 @@ let b=null;
   await page.waitForTimeout(500);
  };
  const recordNow=id=>page.evaluate(async x=>{
-  const all=await reliableAll();
+  const all=await WL.records.reliableAll();
   const r=all.find(v=>v.id===x);
   return r?{状態:r.status,印:(r.settings&&r.settings.completedWithNg)||null}:null;
  },id);
@@ -160,12 +160,12 @@ let b=null;
      残していないのと同じ（§4）。データ一覧の候補に在ること・**既定では
      出さない**こと（§9.132）・実際に件数が出ることまで見る。 */
   const col=await page.evaluate(async id=>{
-   const all=await reliableAll();
+   const all=await WL.records.reliableAll();
    const r=all.find(v=>v.id===id)||{};
-   const keys=recordAllColumnKeys();
-   const c=RECORD_COL_BY_KEY.get('完了時の公差外');
+   const keys=WL.records.recordAllColumnKeys();
+   const c=WL.records.RECORD_COL_BY_KEY.get('完了時の公差外');
    return {候補:keys.indexOf('完了時の公差外')>=0,
-           既定では出さない:recordInitialHidden(keys).indexOf('完了時の公差外')>=0,
+           既定では出さない:WL.records.recordInitialHidden(keys).indexOf('完了時の公差外')>=0,
            値:c?String(c.get(r)||''):null};
   },lotId);
   rec('データ一覧の候補に出せる（読める場所がある）',col.候補===true,JSON.stringify(col));
@@ -174,7 +174,7 @@ let b=null;
 
   /* ---- 5. 直したら印は消える ---- */
   await page.evaluate(async id=>{
-   const all=await reliableAll();
+   const all=await WL.records.reliableAll();
    const r=all.find(v=>v.id===id);
    S.measure=WL.measureView.ensureMeasureShape(r);
    document.getElementById('measureModal').hidden=false;
@@ -203,7 +203,7 @@ let b=null;
 
   /* ---- 6. オペレータ／検査員の未選択は今までどおり止まる ---- */
   await page.evaluate(async id=>{
-   const all=await reliableAll();
+   const all=await WL.records.reliableAll();
    const r=all.find(v=>v.id===id);
    S.measure=WL.measureView.ensureMeasureShape(r);S.measure.status='編集中';
    document.getElementById('measureModal').hidden=false;
@@ -230,8 +230,8 @@ let b=null;
  /* 後片付け（§9.121）。この検証で完了にした記録を端末と共有から消す。 */
  try{
   if(lotId)await page.evaluate(async id=>{
-   try{await deleteBackupRows([id])}catch(e){}
-   try{await reliableDelete(id)}catch(e){}
+   try{await WL.records.deleteBackupRows([id])}catch(e){}
+   try{await WL.records.reliableDelete(id)}catch(e){}
   },lotId);
  }catch(e){}
 

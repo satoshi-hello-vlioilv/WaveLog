@@ -22,7 +22,7 @@ let b=null;
  await page.waitForTimeout(2500);
  await page.evaluate(async()=>{
   const now=Date.now();
-  for(let i=0;i<40;i++)await reliablePut({id:'s-'+i,status:i%3?'完了':'編集中',
+  for(let i=0;i<40;i++)await WL.records.reliablePut({id:'s-'+i,status:i%3?'完了':'編集中',
    updatedAt:new Date(now-i*3600000).toISOString(),
    basic:{lotNo:'L'+String(i).padStart(5,'0'),castingNo:'C'+i,mfgMaterial:'A5052'},
    settings:{registeredEquipment:'テスト設備A'},
@@ -31,10 +31,12 @@ let b=null;
  });
  // 端末内データの全件読みを数える
  const arm=()=>page.evaluate(()=>{
+  /* **被せない**（§9.352）——数えるのは登録表の `own` で行い、
+     元の道は核（`reliableAllCore`）を呼ぶ。 */
   window.__ra=0;
-  if(!window.__origAll)window.__origAll=reliableAll;
-  const p=async(...a)=>{window.__ra++;return window.__origAll(...a)};
-  window.reliableAll=p;try{reliableAll=p}catch(e){}
+  WL.measureHooks.own('reliableAll',async(...a)=>{
+   window.__ra++;return WL.records.reliableAllCore(...a);
+  });
  });
  const reads=()=>page.evaluate(()=>window.__ra);
 
@@ -60,7 +62,7 @@ let b=null;
  // ---- 恒久的な失敗(403)は控えへ積まない ----
  await page.evaluate(()=>localStorage.removeItem('WaveLogPendingBackupDeleteV1'));
  await setMode('schedule');
- await page.evaluate(async()=>{await deleteBackupRows(['no-such-id-403'])});
+ await page.evaluate(async()=>{await WL.records.deleteBackupRows(['no-such-id-403'])});
  await page.waitForTimeout(600);
  const q403=await page.evaluate(()=>JSON.parse(localStorage.getItem('WaveLogPendingBackupDeleteV1')||'[]'));
  rec('権限が無い(403)ときは控えへ積み直さない',q403.length===0,JSON.stringify(q403));
@@ -68,7 +70,7 @@ let b=null;
  // 一時的な失敗(通信断)は従来どおり控える
  await setMode('edit');
  await page.route('**/api/measurement/backup/delete',r=>r.abort());
- await page.evaluate(async()=>{await deleteBackupRows(['transient-1'])});
+ await page.evaluate(async()=>{await WL.records.deleteBackupRows(['transient-1'])});
  await page.waitForTimeout(600);
  const qNet=await page.evaluate(()=>JSON.parse(localStorage.getItem('WaveLogPendingBackupDeleteV1')||'[]'));
  rec('通信できないときは従来どおり控える',qNet.includes('transient-1'),JSON.stringify(qNet));

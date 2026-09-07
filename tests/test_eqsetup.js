@@ -13,9 +13,9 @@
       （§9.227 ②「選んでも1pxも動かない」）
     ・「設定を保存」の隣の②は**選んだ瞬間に効く**ので、ボタンの字が
       何を保存するのか嘘をついていた（§CLAUDE 2）
-    ・`ensureEquipmentSettingsModal()`が**別の作り**の窓を持っており
+    ・`WL.records.ensureEquipmentSettingsModal()`が**別の作り**の窓を持っており
       （`<select>`でなく`<input>`・LotDspのタブも無い）、そちらが動いた
-      瞬間に`fillEquipmentSelect()`が落ちる状態だった（§9.163）
+      瞬間に`WL.records.fillEquipmentSelect()`が落ちる状態だった（§9.163）
 
    ここで固定すること。**どれも直す前なら落ちる**:
     1. 決めることが番号付きの節に分かれている（①使う設備 ②開くタブ）
@@ -179,9 +179,9 @@ let b=null;
   await page.selectOption('#lotDspTabSetting',String(before||'1'));
 
   /* ---------- 7) 窓の作りは1箇所（同じ形で戻る） ----------
-     直す前は`index.html`と`ensureEquipmentSettingsModal()`が**別々の作り**を
+     直す前は`index.html`と`WL.records.ensureEquipmentSettingsModal()`が**別々の作り**を
      持っており、後者は`<input>`＋LotDspのタブ無しだった（そちらが動いた
-     瞬間に`fillEquipmentSelect()`が落ちる）。中身を捨てて開き直しても
+     瞬間に`WL.records.fillEquipmentSelect()`が落ちる）。中身を捨てて開き直しても
      同じ形が戻ることで、作りが1つであることを固定する。 */
   await page.click('#cancelAppSettings');
   await page.waitForTimeout(200);

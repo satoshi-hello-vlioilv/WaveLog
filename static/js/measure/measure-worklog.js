@@ -256,7 +256,7 @@
    window.*公開ゼロ・他ファイルからの参照ゼロの自己完結IIFEで、独立
    ファイルである利益が無かった。**読み込み位置は変えていない**:
    このIIFEは冒頭でidbAll(records-store.js)の存在を確認して早期returnし、
-   saveLocal(records-store.js)/WL.measureView.renderMeasurement(measure-view.js)/
+   WL.records.saveLocal(records-store.js)/WL.measureView.renderMeasurement(measure-view.js)/
    markDirty(base.js)をラップするため、それら全ての後に読まれる必要がある。
    計画当初の統合先だったmeasure-view.jsはrecords-store.jsより先に
    読まれるので、そちらへ移すとガードに掛かって**機能が丸ごと黙って死ぬ**。
@@ -276,7 +276,7 @@
    板幅は小数1桁に丸めて比較する。
    ============================================================ */
 (function(){
-  if(typeof $!=='function'||typeof idbAll!=='function'||typeof durationMs!=='function')return;
+  if(typeof $!=='function'||typeof WL.records.idbAll!=='function'||typeof durationMs!=='function')return;
 
   function avgMeasured(grid,rowLimit,colLimit){
     let sum=0,n=0;const rows=Math.min((grid||[]).length,Math.max(1,rowLimit||0));
@@ -314,7 +314,7 @@
     if(!profile)return{profile:null};
     if(!profile.equipment)return{profile,noEquipment:true};
     const key=profileKey(profile);
-    const all=await idbAll();
+    const all=await WL.records.idbAll();
     const matches=all.filter(x=>{
       if(x.id===record.id)return false;
       if(x.status!=='完了')return false;

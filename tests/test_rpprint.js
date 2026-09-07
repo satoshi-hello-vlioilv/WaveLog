@@ -66,7 +66,7 @@ let b=null;
   await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
-  await page.evaluate(()=>openRecordsSafe('編集中'));
+  await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
   await page.waitForSelector('.record-list-row',{timeout:25000});
   await page.click('.record-list-row .report');
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
@@ -940,7 +940,7 @@ let b=null;
   await page.evaluate(()=>WL.columnLayout.forget&&WL.columnLayout.forget());
 
   const openSplit=async()=>{
-   await page.evaluate(()=>openRecordsSafe('編集中'));
+   await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
    await page.waitForSelector('.record-list-row',{timeout:25000});
    const hit=await page.evaluate(()=>{
     const r=[...document.querySelectorAll('.record-list-row')]
@@ -987,7 +987,7 @@ let b=null;
       JSON.stringify(P1.先回り));
 
   /* **本丸②**——分割の無いロットの紙は今までどおり（勝手に増やさない）。 */
-  await page.evaluate(()=>openRecordsSafe('編集中'));
+  await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
   await page.waitForSelector('.record-list-row',{timeout:25000});
   const soloOk=await page.evaluate(()=>{
    const r=[...document.querySelectorAll('.record-list-row')]

@@ -205,7 +205,7 @@ let b=null,page=null;
   await page.waitForTimeout(300);
   /* 外クリックで閉じられる（開いた器を控えていないと、どの経路でも閉じない）。
      **押す先はカードの中の文**にする——画面の隅（`.shade`）を押すと
-     `closeMeasureModal()`が走り、未保存の確認モーダルが前に出て以降の
+     `WL.records.closeMeasureModal()`が走り、未保存の確認モーダルが前に出て以降の
      操作を全部塞ぐ（実際にそうなった）。 */
   await page.click('#finishCheck .fc-note');
   await page.waitForTimeout(300);
@@ -277,7 +277,7 @@ let b=null,page=null;
   try{await page.evaluate(()=>localStorage.removeItem('WaveLogFinishAlertV1'))}catch(e){}
   try{await page.evaluate(async()=>{
    const id=(typeof S!=='undefined'&&S.measure)?S.measure.id:'';
-   if(id&&typeof reliableDelete==='function')await reliableDelete(id).catch(()=>{});
+   if(id&&typeof WL.records.reliableDelete==='function')await WL.records.reliableDelete(id).catch(()=>{});
    if(id){
     for(let k=0;k<6;k++){
      const r=await fetch('/api/measurement/backup/list').then(x=>x.json()).catch(()=>({items:[]}));

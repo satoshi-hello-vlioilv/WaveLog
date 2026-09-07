@@ -401,7 +401,7 @@ let b=null;
 
   /* 実際の帳票プレビューへ出るか・ツールバーで消せるか */
   const inReport=await page.evaluate(async()=>{
-   await reliablePut(WL.measureView.collect());
+   await WL.records.reliablePut(WL.measureView.collect());
    const id=S.measure.id;
    document.getElementById('defectModal').hidden=true;
    await window.openReportForRecord(id);
@@ -437,7 +437,7 @@ let b=null;
 
   const unsavedReport=await page.evaluate(async()=>{
    delete S.measure.settings.defectLocation.saved;
-   await reliablePut(WL.measureView.collect());
+   await WL.records.reliablePut(WL.measureView.collect());
    const html=WL.defect.reportSectionHtml(S.measure)||'';
    return {html,hasSaved:WL.defect.hasSaved(S.measure)};
   });
@@ -553,8 +553,8 @@ let b=null;
    JSON.stringify(cell));
 
   await page.evaluate(async()=>{
-   if(typeof S!=='undefined'&&S.measure&&typeof reliableDelete==='function')
-    await reliableDelete(S.measure.id);
+   if(typeof S!=='undefined'&&S.measure&&typeof WL.records.reliableDelete==='function')
+    await WL.records.reliableDelete(S.measure.id);
   }).catch(()=>{});
 
   console.log('\n=== SUMMARY ===');

@@ -225,7 +225,7 @@ m.mother=m.mother||{};m.qualityInfo=m.qualityInfo||'異常情報なし';m.measur
  /* Accessへのバックアップ同期状態。status: 'synced'(直近の送信に成功)/
     'pending'(まだ送信していない、または未送信のまま作成された旧データ)/
     'failed'(直近の送信が失敗)。records-store.js の markSyncResult が
-    backupRecord() の成否に応じて更新する。旧データ(このフィールドが無い)は
+    WL.records.backupRecord() の成否に応じて更新する。旧データ(このフィールドが無い)は
     実際に送信できたか判定できないため安全側でpendingとし、再送の対象にする
     (backupRecordはDELETE+INSERTのため再送しても重複しない)。 */
  m.syncState={status:'pending',lastAttempt:'',lastError:'',attempts:0,...(m.syncState||{})};
@@ -1339,7 +1339,7 @@ function renderCourseHierarchy(){
   [['設計',design],['実績',actual],['残',residual]].forEach(([label,value])=>{const item=document.createElement('div');item.className='field course-stack-field';item.innerHTML=`<label>${label}</label><output title="${esc(value)}">${esc(value||'未設定')}</output>`;if(anchor){const prior=[...basic.querySelectorAll('.course-stack-field')].at(-1);(prior||anchor).after(item)}else basic.append(item)})
  }
  const grid=$('#dataManagementPanel .data-management-grid');if(grid){const pairs=[];for(let i=0;i<grid.children.length;i+=2)pairs.push([grid.children[i]?.textContent,grid.children[i+1]?.textContent]);const keep=pairs.filter(([label])=>!['設計コース','実績コース','残コース'].includes(label));const insertAt=Math.max(0,keep.findIndex(([label])=>label==='オーダー番号'));keep.splice(insertAt,0,['設計コース',design||'未設定'],['実績コース',actual||'未設定'],['残コース',residual||'未設定']);grid.innerHTML=keep.map(([label,value])=>`<b>${esc(label||'')}</b><span title="${esc(value||'')}">${esc(value||'未設定')}</span>`).join('')}
- updateCourseGuard();
+ WL.records.updateCourseGuard();
 }
 /* ---------- 作業スケジュールとの連携(読み取りのみ、docs/decisions/9.7.md) ----------
    測定画面を開いたロットが作業予定に含まれていれば、基本情報タブへ
@@ -1434,7 +1434,7 @@ WL.masterDiff=(function(){
    b=document.createElement('button');
    b.type='button';b.className='master-diff-badge';b.textContent='更新あり';
    b.title='マスタの選択肢が変わりました。押すと取り込みます。';
-   b.onclick=async e=>{e.preventDefault();await loadMeasurementContext(true);check()};
+   b.onclick=async e=>{e.preventDefault();await WL.records.loadMeasurementContext(true);check()};
    box.append(b);
   }else if(!on&&b)b.remove();
  }

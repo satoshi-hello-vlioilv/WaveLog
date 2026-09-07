@@ -68,12 +68,12 @@
  // 出さないので、件数が少ない端末では今までどおり)。
  async function ensureData(force){
   if(calState.loaded&&!force)return calState.items;
-  if(typeof withWaiting!=='function')return ensureDataInner();
-  return withWaiting({title:'実績カレンダーを読み込んでいます',detail:'この端末の測定データを集計しています',
+  if(typeof WL.records.withWaiting!=='function')return ensureDataInner();
+  return WL.records.withWaiting({title:'実績カレンダーを読み込んでいます',detail:'この端末の測定データを集計しています',
    progress:'保存済みのロットを日付ごとに集計しています'},()=>ensureDataInner());
  }
  async function ensureDataInner(){
-  const all=await reliableAll();
+  const all=await WL.records.reliableAll();
   calState.items=all.map(x=>{
    const date=recordDate(x);if(!date)return null;
    return {

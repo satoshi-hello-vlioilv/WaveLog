@@ -218,8 +218,8 @@ let measureDirty=false;
    **控えた回数と違っていたら、旗を下ろさない・保存済みとも言わない**。
 
    **値そのものは落ちない**（実測で確かめた。推測で書かない）——`WL.measureView.collect()`が
-   返す写しは測定値の配列を**実体で共有**しており、`backupAndTrackSync()`が
-   `finally`でもう一度`reliablePut(m)`するので、往復中の1文字もその書き込みに
+   返す写しは測定値の配列を**実体で共有**しており、`WL.records.backupAndTrackSync()`が
+   `finally`でもう一度`WL.records.reliablePut(m)`するので、往復中の1文字もその書き込みに
    乗る。ここで直しているのは**バッジの文言**（未保存のものを保存済みと
    言わない）で、`WL.measureView.collect()`を深い写しへ変えるならこの前提も変わる。 */
 let measureEditSeq=0;
@@ -228,7 +228,7 @@ let measureEditSeq=0;
    入っていると読める。実際は保存を押すまで画面の中にしか無い。 */
 /* **変わったら裏でDBへ書く**（§9.320-G、利用者の指示）。ここは値を書く
    合図を出すだけで、実処理は`records-store.js`が持つ（`WL.measureView.collect()`も
-   `reliablePut()`もあちらのもの）。**「あれば呼ぶ」で黙らせない**
+   `WL.records.reliablePut()`もあちらのもの）。**「あれば呼ぶ」で黙らせない**
    ——公開漏れは静かに機能だけを失うので、無ければ理由を出す（§CLAUDE）。 */
 function markDirty(){
  measureDirty=true;measureEditSeq++;setState('未保存（画面の中だけ）');
@@ -1540,7 +1540,7 @@ function enterView(key,opts){
  });
  // 画面をまたいで残ると重なるオーバーレイ。閉じるのは全画面共通。
  // ただし**未保存の変更があるときは閉じない**。ここでhidden属性を立てるのは
- // closeMeasureModal()の破棄確認(「保存されていない変更があります。破棄して
+ // WL.records.closeMeasureModal()の破棄確認(「保存されていない変更があります。破棄して
  // 閉じますか？」)を迂回する経路で、そのまま閉じると入力中の測定値を無言で
  // 捨てることになる。現状は.modal{inset:0}が全面を覆うので測定中にサイドバーを
  // 押せず到達しないが、モーダルを全画面でなくしたり測定中に押せる導線を足すと

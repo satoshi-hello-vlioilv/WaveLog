@@ -194,7 +194,7 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
    accessMode.mode=r.mode;
    applyAccessModeUI();
    showToast&&showToast(`${MODE_LABELS[accessMode.mode]||accessMode.mode}に切り替えました`,'',3200);
-   if($('#recordModal')&&!$('#recordModal').hidden)openRecords(null);
+   if($('#recordModal')&&!$('#recordModal').hidden)WL.records.openRecords(null);
    await refreshOpenViewsForMode();
   }catch(e){showToast&&showToast('切り替えに失敗しました',e.message,5000)}
  }
@@ -238,7 +238,7 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
  document.addEventListener('click',e=>{const t=e.target.closest('#accessModeBadge');if(!t||t.disabled)return;openAccessModeMenu(t)});
 
  /* ---------- 新規測定の開始・再開をブロックする ----------
-    openMeasurement()は仕掛一覧からの新規開始と既存下書きの再開の両方を
+    WL.records.openMeasurement()は仕掛一覧からの新規開始と既存下書きの再開の両方を
     兼ねる単一入口のため、ここを止めればほぼすべての編集経路を塞げる。
     データ一覧からの「続きから再開」(resumeRecordFromList)だけは別経路
     のため個別にブロックする。measurement/mastersへの書込はeditモードだけ
@@ -255,7 +255,7 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
  },{priority:10});
 
  /* ---------- edit以外のデータ一覧: 閲覧用バックアップから読む ----------
-    recordListState/openRecords/renderRecordListRowsはrecords-store.jsの
+    WL.records.recordListState/openRecords/renderRecordListRowsはrecords-store.jsの
     トップレベル変数・関数(IIFE無し)のため、ここから直接参照できる。 */
  async function loadViewModeRecords(){
   const r=await api('/api/measurement/backup/list-view');
@@ -282,7 +282,7 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
     端末内の件数を数えて、そう書く。 */
  async function localRecordCounts(){
   try{
-   const all=await reliableAll();
+   const all=await WL.records.reliableAll();
    let editing=0,done=0;
    // 状態の分け方は一覧の絞り込み(recordMatchesStatusFilter)と同じ
    // ——「完了」だけが完了で、測定値NG等は編集中の側に入る。
@@ -343,36 +343,36 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
  });
 
  async function openRecordsViewMode(status){
-  if(status==='編集中')recordListState.statuses={editing:true,done:false};
-  else if(status==='履歴')recordListState.statuses={editing:false,done:true};
-  else if(!recordListState.statuses)recordListState.statuses={editing:true,done:false};
-  recordListState.query='';recordListState.sort='updated-desc';
-  recordListState.sourceNote=`共有された閲覧用データ（${modeName()}は読み取り専用）`;
+  if(status==='編集中')WL.records.recordListState.statuses={editing:true,done:false};
+  else if(status==='履歴')WL.records.recordListState.statuses={editing:false,done:true};
+  else if(!WL.records.recordListState.statuses)WL.records.recordListState.statuses={editing:true,done:false};
+  WL.records.recordListState.query='';WL.records.recordListState.sort='updated-desc';
+  WL.records.recordListState.sourceNote=`共有された閲覧用データ（${modeName()}は読み取り専用）`;
   /* 表示列の設定（§9.162）はこちらの経路でも効かせる。読めなくても
      既定の15列で一覧は出す。 */
   await Promise.all([
    WL.columnLayout.load(WL.recordColumns.target).catch(WL.quiet('列の設定を取れない（既定の並びで出す）')),
    WL.displayRules.load().catch(WL.quiet('表示ルールを取れない（読み替え無しで出す）')),
   ]);
-  updateRecordListTitle();syncStatusFilterButtons();$('#recordModal').hidden=false;
+  WL.records.updateRecordListTitle();WL.records.syncStatusFilterButtons();$('#recordModal').hidden=false;
   const list=$('#recordList');if(list)list.innerHTML='<div class="record-empty">閲覧データを読み込んでいます…</div>';
   const counts=await localRecordCounts();
-  recordListState.notice=viewModeNoticeHtml(counts);
+  WL.records.recordListState.notice=viewModeNoticeHtml(counts);
   let reason='',message='';
   try{
-   recordListState.items=await loadViewModeRecords();
+   WL.records.recordListState.items=await loadViewModeRecords();
   }catch(e){
-   recordListState.items=[];
+   WL.records.recordListState.items=[];
    reason=e&&e.code==='unconfigured'?'unconfigured':'error';
    message=e&&e.message||String(e);
   }
-  recordListState.emptyHtml=viewModeEmptyHtml(counts,reason,message);
+  WL.records.recordListState.emptyHtml=viewModeEmptyHtml(counts,reason,message);
   const search=$('#recordSearch'),sort=$('#recordSort'),clear=$('#clearRecordSearch');
-  if(search){search.value='';search.oninput=()=>{recordListState.query=search.value;renderRecordListRows()}}
-  if(sort){sort.value='updated-desc';sort.onchange=()=>{recordListState.sort=sort.value;renderRecordListRows()}}
-  if(clear)clear.onclick=()=>{recordListState.query='';if(search)search.value='';renderRecordListRows()};
+  if(search){search.value='';search.oninput=()=>{WL.records.recordListState.query=search.value;WL.records.renderRecordListRows()}}
+  if(sort){sort.value='updated-desc';sort.onchange=()=>{WL.records.recordListState.sort=sort.value;WL.records.renderRecordListRows()}}
+  if(clear)clear.onclick=()=>{WL.records.recordListState.query='';if(search)search.value='';WL.records.renderRecordListRows()};
   WL.recordColumns.bind();
-  renderRecordListRows();
+  WL.records.renderRecordListRows();
   requestAnimationFrame(()=>search?.focus());
  }
  /* 閲覧・スケジュールモードでは閲覧用の一覧を開いて、通常の一覧は開かない（false）。 */

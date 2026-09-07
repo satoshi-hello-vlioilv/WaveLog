@@ -51,7 +51,7 @@ let b=null,madeBlock=null;
  page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
  page.on('dialog',d=>d.accept());
  const openReport=async()=>{
-  await page.evaluate(()=>openRecordsSafe('編集中'));
+  await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
   await page.waitForSelector('.record-list-row',{timeout:25000});
   await page.click('.record-list-row .report');
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});

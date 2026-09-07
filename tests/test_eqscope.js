@@ -7,7 +7,7 @@
       データも混ざってしまうと問題になるため修正をお願いします。」
 
    実測すると、**データ一覧には設備の条件が1つも無かった**
-   （`mergedRecords()`＝端末内の全件＋共有DBの見出し全件）。共有DBは
+   （`WL.records.mergedRecords()`＝端末内の全件＋共有DBの見出し全件）。共有DBは
    全設備ぶんが入るので、設備Aの端末で開いても設備Bの測定が並ぶ。
    実績データには設備の選択欄があったが、**既定が「すべての設備」**だった。
 
@@ -60,7 +60,7 @@ const cleanup=async()=>{for(const id of MADE){
     localStorage.removeItem('ActualsViewPrefV1')}catch(e){}});
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
-  await page.evaluate(()=>openRecordsSafe('編集中'));
+  await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
   await page.waitForSelector('.record-list-row',{timeout:25000});
   await page.waitForTimeout(600);
 
@@ -114,7 +114,7 @@ const cleanup=async()=>{for(const id of MADE){
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment',''));
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
-  await page.evaluate(()=>openRecordsSafe('編集中'));
+  await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
   await page.waitForSelector('.record-list-row',{timeout:25000});
   await page.waitForTimeout(600);
   const s4=await page.evaluate(()=>({
