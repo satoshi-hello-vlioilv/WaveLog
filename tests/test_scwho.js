@@ -202,7 +202,8 @@ let b=null;
    const row=document.querySelector('.sc-row-line');
    if(!row)return{無い:true};
    const cs=getComputedStyle(row);
-   return{pe:cs.pointerEvents,opacity:cs.opacity,cls:row.className};
+   return{pe:cs.pointerEvents,opacity:cs.opacity,cls:row.className,
+          id:row.dataset.id||'',選べる:row.classList.contains('sc-row-pickable')};
   });
 
   /* ---- 2) 他端末が持っている＝READONLY ----
@@ -261,6 +262,7 @@ let b=null;
    const read=row.querySelector('.sc-row-report,.sc-row-detail-toggle');
    const write=[...row.querySelectorAll('.sc-row-lock,.sc-row-delete,.sc-row-start')];
    return{行のpe:cs.pointerEvents,行の濃さ:cs.opacity,cls:row.className,
+     id:row.dataset.id||'',選べる:row.classList.contains('sc-row-pickable'),
      読む操作:read?read.className.replace('sc-row-btn ','')+':'+getComputedStyle(read).pointerEvents:'(無し)',
      書く操作:write.map(x=>x.className.replace('sc-row-btn ','')+':'+getComputedStyle(x).pointerEvents)};
   });
@@ -272,12 +274,20 @@ let b=null;
       (rowAlive.書く操作||[]).length>0&&(rowAlive.書く操作||[]).every(x=>/:none$/.test(x)),
       JSON.stringify(rowAlive.書く操作));
   /* **同じ行**の濃さが読み取り専用にしたことで変わっていないこと。
-     以前の`.sc-row-line[draggable]{opacity:.45}`はここで0.45へ落ちていた。 */
+     以前の`.sc-row-line[draggable]{opacity:.45}`はここで0.45へ落ちていた。
+     **「同じ行か」は`data-id`で見る。** 以前は`className`の一致で見ていたが、
+     読み取り専用では選べなくなる（`sc-row-pickable`が外れる・§9.363）ので、
+     **正しい変化まで落としてしまう**——見たいのは濃さであって、印の増減ではない。 */
   rec('読み取り専用にしても行の濃さが変わらない（行ごと沈めない）',
       !rowBefore.無い&&!rowAlive.無い
       &&Math.abs(Number(rowAlive.行の濃さ||1)-Number(rowBefore.opacity||1))<0.02
-      &&rowBefore.cls===rowAlive.cls,
-      `前 ${rowBefore.opacity} / 後 ${rowAlive.行の濃さ}`);
+      &&rowBefore.id===rowAlive.id,
+      `前 ${rowBefore.opacity} / 後 ${rowAlive.行の濃さ}（同じ行=${rowBefore.id===rowAlive.id}）`);
+  /* **読み取り専用では選べない**（§9.363）。選んでも外せず並べ替えられない
+     ので、選ぶ的そのものを出さない（押せるのに何も起きない物を残さない・§4）。 */
+  rec('読み取り専用では行の選択そのものができない',
+      rowBefore.選べる===true&&rowAlive.選べる===false,
+      `前=${rowBefore.選べる} / 後=${rowAlive.選べる}`);
 
   /* 書く操作は止まっていること（判定は1箇所＝`sessionBlocked()`）。 */
   const stopped=await page.evaluate(()=>({

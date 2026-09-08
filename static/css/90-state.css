@@ -577,10 +577,11 @@ body.sc-mode #headerContextSource{display:none}
   .op-menu button.is-on,
   .rly-grid-pick>button.is-on{background:var(--nav);color:#fff}
 
-  /* 淡い面（3族） */
+  /* 淡い面（4族） */
   .fc-alert-mode.is-on,
   .mm-card-opt.is-on,
-  .record-scope-btn.is-on{background:var(--pale);border-color:var(--teal);color:var(--teal-dark)}
+  .record-scope-btn.is-on,
+  .sc-pick-all.is-on{background:var(--pale);border-color:var(--teal);color:var(--teal-dark)}
 
   /* 淡い面（字は各自）（3族） */
   .sc-frame-shift.is-on,

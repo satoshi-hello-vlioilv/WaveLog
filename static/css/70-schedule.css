@@ -1758,10 +1758,25 @@
    仕掛一覧の「チェックで複数選ぶ→まとめて投入」の裏返し。選ぶ道具は
    取っ手の列へ同居させ、**件数と対象は必ず文字で**選択バーへ出す
    (行の面の色だけでは何件選んだか数えることになる)。 */
-#scTimeline.sc-pickable{--sc-handle-col:calc(38px * var(--ui-scale))}
+/* **押す場所は行そのもの**（§9.363）。13pxのチェックボックスは狙って押すのが
+   難しく、現場から「使いにくい」と指摘された（利用者の指示）。的を行いっぱいへ
+   広げ、取っ手の列には「選ばれているか」の**目印だけ**を残す（§3 色だけで
+   伝えない）。目印は押す物ではないので `pointer-events:none`——ここだけ
+   当たり判定が変わると「押せる所と押せない所」が同じ見た目で混ざる。 */
+#scTimeline.sc-pickable{--sc-handle-col:calc(52px * var(--ui-scale))}
 .sc-row-pick-head{display:flex;align-items:center;justify-content:center}
-.sc-pick-check,#scPickAll{width:13px;height:13px;margin:0;flex:none;cursor:pointer;accent-color:var(--teal)}
-#scPickAll:disabled{cursor:not-allowed;opacity:.45}
+.sc-pick-mark{width:13px;height:13px;flex:none;pointer-events:none;
+ display:inline-flex;align-items:center;justify-content:center;
+ border:1px solid var(--line-mid);border-radius:var(--radius-xs);background:var(--surface);
+ font-size:var(--fs-micro);line-height:1;color:var(--surface)}
+.sc-pick-mark.is-on{border-color:var(--teal);background:var(--teal);color:var(--surface)}
+.sc-row-line.sc-row-pickable{cursor:pointer}
+/* 全選択は文字のボタン。押した先で何が起きるかを字で言う（`全選択`／`全解除`）。 */
+.sc-pick-all{height:var(--ctl-h-sm);padding:0 var(--space-1);
+ border:1px solid var(--line);border-radius:var(--radius-xs);background:var(--surface);
+ font-size:var(--fs-micro);font-weight:700;color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.sc-pick-all:hover:not(:disabled){border-color:var(--teal);color:var(--nav)}
+.sc-pick-all:disabled{cursor:not-allowed;opacity:.45}
 .sc-row-line.is-picked{background:var(--pale)}
 .sc-row-line.is-picked:hover{background:var(--pale)}
 /* 選択バー。仕掛一覧の plan-select-bar と同じ見た目・同じ並び順にする。 */
