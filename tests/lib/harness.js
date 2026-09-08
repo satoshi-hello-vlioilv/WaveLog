@@ -92,4 +92,34 @@ async function clearRecords(){
    headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})}).catch(()=>{});
  return ids.length;
 }
-module.exports={run,B,clearLayout,clearRecords};
+/* 素の表の中身（`id`は rowid）。**持ち主や論理削除まで見える唯一の口**——
+   製品のAPIは「いま使える行」しか返さないので、残った行はここからしか分からない。 */
+async function masterRows(table){
+ const j=await fetch(B+'/api/master-table/'+encodeURIComponent(table)+'?limit=2000')
+   .then(r=>r.json()).catch(()=>({}));
+ return j.items||[];
+}
+/* 触る前の行を控える（§9.362 ⑤）。
+   製品の「削除」が**論理削除**（`有効=0`）のマスタ——設備・勤務体系など——は、
+   APIで消しても**行は残る**。触った網は自分で片付ける必要がある。
+   **名前で拾わないこと**——名前を前提にすると、同じ名前を使う他の網の期待と
+   食い違う（§9.284）。「**触る前に居なかった行**」だけを消す。 */
+async function masterSnapshot(tables){
+ const snap=new Map();
+ for(const t of tables)snap.set(t,new Set((await masterRows(t)).map(r=>r.id)));
+ return snap;
+}
+/* 控えより後に増えた行を消す。戻り値は消した件数（0なら何も残していない）。 */
+async function dropNewMasterRows(snap){
+ let n=0;
+ for(const [t,ids] of snap){
+  for(const r of await masterRows(t)){
+   if(ids.has(r.id))continue;
+   await fetch(B+'/api/master-table/'+encodeURIComponent(t)+'/delete',{method:'POST',
+     headers:{'Content-Type':'application/json'},body:JSON.stringify({id:r.id})}).catch(()=>{});
+   n++;
+  }
+ }
+ return n;
+}
+module.exports={run,B,clearLayout,clearRecords,masterRows,masterSnapshot,dropNewMasterRows};

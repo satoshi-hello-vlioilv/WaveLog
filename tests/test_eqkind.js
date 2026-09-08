@@ -11,6 +11,11 @@ let browser=null,page=null;
 const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
 const NAME='区分テスト設備'+Date.now().toString().slice(-6);
 
+/* 触る前の行を控える（§9.362 ⑤）。製品の「設備を削除」は**論理削除**
+   （`有効=0`）なので、APIで消しても行は残る。**この実行で増えた行だけ**を
+   素の表から片付ける（名前で拾うと、同じ名前を使う他の網と食い違う）。 */
+const H=require('./lib/harness.js');
+let snapM=null;
 // 作った設備は必ず消す。片付け自体が失敗しても他の後始末は続ける。
 async function cleanup(){
  if(!page)return;
@@ -22,6 +27,8 @@ async function cleanup(){
      body:JSON.stringify({id:it.id,force:true,user_id:'tests'})});
   });
  }catch(e){console.log('  [cleanup]',e.message)}
+ try{if(snapM)await H.dropNewMasterRows(snapM)}
+ catch(e){console.log('  [cleanup] 増えた行を消せませんでした: '+(e&&e.message||e))}
 }
 
 (async()=>{
@@ -36,6 +43,7 @@ async function cleanup(){
    return fetch('/api/access-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'edit'})})});
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openMasterMaint',{timeout:20000});
+  snapM=await H.masterSnapshot(['設備マスタ']);
 
   const post=(url,body)=>page.evaluate(([u,b])=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(Object.assign({user_id:'tests'},b))}).then(async r=>({status:r.status,body:await r.json().catch(()=>({}))})),[url,body]);

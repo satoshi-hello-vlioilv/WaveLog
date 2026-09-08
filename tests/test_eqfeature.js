@@ -23,13 +23,19 @@ const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-l
 const API='http://127.0.0.1:5029';
 const PRE='機能テスト設備';
 const NAME=PRE+Date.now().toString().slice(-6);
-const EQ='テスト設備A';   /* フィクスチャにロットのある設備（履歴側の確認に使う） */
+const EQ='テスト設備A';   /* 履歴側の確認に使う設備（記録はこの網が自分で置く） */
+const REC_ID='eqfeature-'+Date.now().toString().slice(-6);  /* 自分で置く記録（§9.351） */
 
 let b=null,page=null;
 const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
 
 /* 作った設備は必ず消す。設備マスタは master.sqlite3 なので、残すと後続の
    俯瞰ボード・設備の件数が変わる（§9.121）。 */
+/* 触る前の行を控える（§9.362 ⑤）。製品の「設備を削除」は**論理削除**
+   （`有効=0`）なので、APIで消しても行は残る。**この実行で増えた行だけ**を
+   素の表から片付ける（名前で拾うと、同じ名前を使う他の網と食い違う）。 */
+const H=require('./lib/harness.js');
+let snapM=null;
 async function cleanup(){
  if(!page)return;
  try{
@@ -40,6 +46,8 @@ async function cleanup(){
      body:JSON.stringify({id:it.id,force:true,user_id:'tests'})});
   },PRE);
  }catch(e){console.log('  [cleanup]',e.message)}
+ try{if(snapM)await H.dropNewMasterRows(snapM)}
+ catch(e){console.log('  [cleanup] 増えた行を消せませんでした: '+(e&&e.message||e))}
 }
 
 (async()=>{
@@ -62,6 +70,7 @@ async function cleanup(){
   const master=()=>page.evaluate(()=>fetch('/api/equipment-master',{cache:'no-store'}).then(x=>x.json()));
   const one=async n=>((await master()).items||[]).find(x=>x.name===n)||null;
 
+  snapM=await H.masterSnapshot(['設備マスタ']);
   await cleanup();
 
   /* ---- 1) 語彙はサーバーが答える ---- */
@@ -319,6 +328,21 @@ async function cleanup(){
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
   /* 帳票はデータ一覧の行の「帳票」から開く（操作レールの`#openReport`は
      測定を開いているときだけ出る）。 */
+  /* **材料は自分で注ぎ込む**（§9.351）。ここは「記録のある設備は帳票から
+     外しても候補に残る」を見る段なので、**記録が要る**。以前はフィクスチャに
+     記録があるつもりでいたが、実際に入っていたのは**前の実行の置き土産**
+     だった——ランナーが実績を1本ごとに空へ戻すようになった（§9.362 ①。
+     それまで相対パスで空振りしていた）とたんに、待ちが25秒で timeout した。
+     **他の本が残したものを前提にしない。** 置いたら最後に消す。 */
+  /* 中身は**読める形**で渡す（`codec:'json-full-v32'`＝レコードそのままのJSON。
+     `decodePayload`が`JSON.parse`する）。`'x'`のような当て字だと一覧には出るが、
+     開いた先の帳票が組み立てられない。 */
+  await post('/api/measurement/backup',
+    {id:REC_ID,equipment:EQ,lotNo:'EQF-'+NAME,status:'編集中',codec:'json-full-v32',
+     payload:JSON.stringify({id:REC_ID,status:'編集中',
+       basic:{lotNo:'EQF-'+NAME,inspectionNo:'',castingNo:''},
+       settings:{registeredEquipment:EQ},measurements:{}}),
+     user_id:'tests'});
   await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
   await page.waitForSelector('.record-list-row',{timeout:25000});
   await page.click('.record-list-row .report');
@@ -361,6 +385,11 @@ async function cleanup(){
       body:JSON.stringify({id:it.id,name:n,disabledFeatures:[],user_id:'tests'})});
    },EQ);
   }catch(e){console.log('  [restore]',e.message)}
+  /* 置いた記録は自分で消す（§9.351）。残すと計画外実績として予定表に現れ、
+     無関係な網を落とす。 */
+  try{await fetch(API+'/api/measurement/backup/delete',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[REC_ID]})});
+  }catch(e){console.log('  [records]',e.message)}
   await cleanup();
   if(b)await b.close();
  }

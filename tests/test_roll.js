@@ -30,6 +30,11 @@ const B='http://127.0.0.1:5029';
 const TAG='RT'+process.pid;
 const EQ='テスト設備A',EQ2='テスト設備B';
 let b=null;
+/* 触る前の行を控える（§9.362 ⑤）。製品の「設備を削除」は**論理削除**
+   （`有効=0`）なので、APIで消しても行は残る。**この実行で増えた行だけ**を
+   素の表から片付ける（名前で拾うと、同じ名前を使う他の網と食い違う）。 */
+const H=require('./lib/harness.js');
+let snapM=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const getj=async p=>(await fetch(B+p)).json();
 const made=[];
@@ -37,6 +42,7 @@ const made=[];
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  try{
   await post('/api/access-mode',{mode:'edit'});
+  snapM=await H.masterSnapshot(['設備マスタ']);
 
   /* ---- 1) 4本セットと保存の作法 ---- */
   const mk=async body=>{
@@ -341,7 +347,10 @@ const made=[];
   try{
    const left=(await getj('/api/roll-master')).items.filter(x=>x.name&&x.name.startsWith(TAG));
    for(const x of left){try{await post('/api/roll-master/delete',{user_id:'test',id:x.id})}catch(_){}}
-  }catch(_){}
+  }catch(e){console.log('!! 残ったロールを消せませんでした: '+(e&&e.message||e))}
+  /* 論理削除で残る行（設備マスタ）を素の表から片付ける（§9.362 ⑤）。 */
+  try{if(snapM)await H.dropNewMasterRows(snapM)}
+  catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
   if(b)await b.close();
  }
  const ok=R.filter(x=>x.ok).length;
