@@ -129,7 +129,13 @@ let b=null;
  /* **後片付け**（§9.360）: 画面を触るとその帳票・一覧の列レイアウトが
     保存される。**触った網は自分で消す**——残すと単独で回したとき自分の
     DBを汚し、通しでは報告がうるさくなって本物の置き土産が埋もれる。 */
- try{await clearLayout('timeline:テスト設備A')}catch(_){}
+ try{await clearLayout('timeline:テスト設備A')}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
+ /* 内容表示マスタも同じ（この網は冒頭で空へ戻してから項目を足す。§9.121）。
+    **始めに戻すだけでは足りない**——戻すのは自分のためで、次の本のためでは
+    ない（実測 +2）。 */
+ try{await fetch('http://127.0.0.1:5029/api/schedule-content-master',{method:'POST',
+   headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({equipment:'テスト設備A',items:[],user_id:'test'})})}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
  console.log('\n=== SUMMARY ===');
  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
  f.forEach(x=>console.log(' -',x.n,x.d||''));

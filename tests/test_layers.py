@@ -133,6 +133,17 @@ def main():
     rec('指紋が実際に取れる（tests/ から呼んでも空にならない）', lines > 5, f'{lines}件')
     rec('落ちた本は単独で2回回して切り分ける（不安定を見分ける）',
         'for _try in 1 2' in SH and '不安定' in SH)
+    # **ランナーが開くDBの道は絶対で書く。** ランナーは`cd tests`してから走るので、
+    # `db/records.sqlite3` のような相対の道は`tests/db/...`を指す——存在せず、
+    # 例外にもならないので**入れた日から一度も動かない**。`resetrecords`が実際に
+    # そうで、実績が実行をまたいで生き延びていた（§9.356が入れた仕組みが、
+    # 入れた本人の想定と違って空振りしていた。§9.360の指紋の`±1`で発覚）。
+    # `state_fp.py`も同じ形で踏んだので、**同じ罠を2度踏まないように機械にする。**
+    rel = re.findall(r'''pathlib\.Path\(\s*['"](db/[^'"]+)['"]''', SH)
+    rec('ランナーが開くDBの道が相対で書かれていない（相対だと黙って空振りする）',
+        not rel, '; '.join(rel[:4]) or '0件')
+    rec('実績を空へ戻す口が実在するDBを指している',
+        'WAVELOG_RECORDS_DB' in SH and (ROOT / 'db' / 'records.sqlite3').exists())
 
 
     print(f'\n== {sum(R)}/{len(R)} PASS ==')

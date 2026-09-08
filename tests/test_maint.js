@@ -17,9 +17,14 @@ let b=null;
  await call('POST','/api/access-mode',{mode:'edit'});
 
  // ---- (1) 勤務体系: 設備割当の有無で削除の成否が変わらない ----
+ /* 製品の「削除」は**論理削除**（`有効=0`にして設備割当だけ消す）なので、
+    行そのものは残る（勤務体系2行＋勤務区分2行）。**触った網は自分で消す**
+    （§9.360）ので、作った勤務体系IDを控えて最後に素の表から片付ける。 */
+ const madePatterns=[];
  for(const [label,eq] of [['設備を割り当てた体系',['テスト設備A']],['全設備共通の体系(割当なし)',[]]]){
   const c=await call('POST','/api/schedule/shift-pattern-master',
    {name:'回帰_削除試験',equipment:eq,segments:[{name:'日勤',start:'08:00',end:'17:00'}],user_id:'t'});
+  if(c.body&&c.body.id!==undefined)madePatterns.push(String(c.body.id));
   const d=await call('POST','/api/schedule/shift-pattern-master/delete',{id:c.body.id,user_id:'t'});
   rec(`${label}を削除できる`,d.status===200,`作成=${c.status} 削除=${d.status} ${d.body.error||''}`);
  }
@@ -185,6 +190,24 @@ let b=null;
  rec('詳細を開いて器を超えても読める（切り落とさない）',
      opened.はみ出し<=0||/auto|scroll/.test(opened.overflowY),JSON.stringify(opened));
  await page.evaluate(()=>{document.documentElement.dataset.uiSize='md'});
+
+ /* **後片付け**（§9.360）: 論理削除では消えない行を素の表から消す。
+    消すのは**この実行で作った勤務体系ID**のぶんだけ——名前で拾うと、
+    同じ名前を前提にしている他の網と食い違う（§9.284）。 */
+ const mtDel=async(tbl,id)=>call('POST','/api/master-table/'+encodeURIComponent(tbl)+'/delete',{id});
+ const mtRows=async tbl=>((await call('GET','/api/master-table/'+encodeURIComponent(tbl)+'?limit=2000')).body.items||[]);
+ try{
+  if(madePatterns.length){
+   /* 先に子（勤務区分）から。親を消してから引くと、どの区分が誰のものか
+      分からなくなる。 */
+   for(const r of await mtRows('勤務区分マスタ'))
+    if(madePatterns.includes(String(r['勤務体系ID'])))await mtDel('勤務区分マスタ',r.id);
+   for(const r of await mtRows('勤務体系マスタ'))
+    if(madePatterns.includes(String(r['勤務体系ID'])))await mtDel('勤務体系マスタ',r.id);
+  }
+ }catch(e){console.log('!! 後片付け(勤務体系)に失敗: '+(e&&e.message||e))}
+ /* 置いた実績も自分で消す（§9.351・§9.360）。 */
+ try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
 
  await b.close();
  const ng=R.filter(x=>!x.ok);

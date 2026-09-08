@@ -484,7 +484,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      保存される。**触った網は自分で消す**——残すと、単独で回したときに
      自分のDBを汚し、通しでは「共有状態を残した本」の報告がうるさくなって
      本物の置き土産が埋もれる（§9.284 の`list:`が積み上がる形）。 */
-  try{await clearLayout('report:テスト設備A')}catch(_){}
+  try{await clearLayout('report:テスト設備A')}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
   if(b)await b.close();
  }
  const ok=R.filter(x=>x.ok).length;

@@ -174,8 +174,8 @@ let b=null;
      **列レイアウトそのものが37行残っていた**——並べ替えを消しても
      「保存された配置」は残る（§9.284 の`list:`が積み上がる形）。
      試験用の`SANDBOX`も同じ理由で消す。 */
-  try{if(target)await clearLayout(target)}catch(_){}
-  try{await clearLayout('list:__sorttest__:__t__')}catch(_){}
+  try{if(target)await clearLayout(target)}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
+  try{await clearLayout('list:__sorttest__:__t__')}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
   if(b)await b.close().catch(()=>{});
  }
  console.log('\n=== SUMMARY ===');

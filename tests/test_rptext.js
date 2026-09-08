@@ -169,7 +169,7 @@ let b=null;
  /* **後片付け**（§9.360）: 画面を触るとその帳票・一覧の列レイアウトが
     保存される。**触った網は自分で消す**——残すと単独で回したとき自分の
     DBを汚し、通しでは報告がうるさくなって本物の置き土産が埋もれる。 */
- try{await clearLayout('report:テスト設備A')}catch(_){}
+ try{await clearLayout('report:テスト設備A')}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
  const ng=R.filter(x=>!x.ok);
  console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
  process.exit(ng.length?1:0);

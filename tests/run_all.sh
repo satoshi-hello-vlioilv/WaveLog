@@ -154,11 +154,19 @@ resetcontent(){
 # 壊れ方が遠いので、落ちた側を見ても原因に辿り着けない（実測: 6件残っていた）。
 # **1本ごとに空へ戻す**（§9.121 と同じ理由。開始時に1回では前の本の分が渡る）。
 # 実績を前提にする網は**自分で置いて自分で消す**（§9.351）。
+# **道は絶対で書く。** ランナーは`cd tests`してから走るので、`db/records.sqlite3`
+# のような相対の道は`tests/db/...`を指し、**存在しないので何も起きない**——
+# 例外にもならないので、`resetrecords`は入れた日から一度も動いていなかった
+# （§9.360の指紋が`Web測定バックアップ ±1`を名指しして初めて分かった。
+# `tests/state_fp.py`も同じ形で黙って0行を読んでいた）。
+# **黙って何もしない後片付けは、無い後片付けより悪い**（あるつもりになる）。
 resetrecords(){
-  python3 - <<'PYEOF' 2>/dev/null
-import sqlite3, pathlib
-p = pathlib.Path('db/records.sqlite3')
-if p.exists():
+  WAVELOG_RECORDS_DB="$ROOT/db/records.sqlite3" python3 - <<'PYEOF'
+import sqlite3, os, pathlib
+p = pathlib.Path(os.environ['WAVELOG_RECORDS_DB'])
+if not p.exists():
+    print('!! 実績DBが見つかりません: %s' % p)
+else:
     try:
         c = sqlite3.connect(p, timeout=5)
         n = c.execute('SELECT COUNT(*) FROM "Web測定バックアップ"').fetchone()[0]

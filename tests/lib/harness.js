@@ -55,6 +55,9 @@ async function run(title,body,opts={}){
  }finally{
   if(opts.mode&&opts.mode!=='edit')await setMode('edit').catch(()=>{});
   if(b)await b.close().catch(()=>{});
+  /* 置いた実績は土台が消す（§9.351・§9.360）。**1箇所に置く**——網ごとに
+     書き写すと、書き忘れた本だけが無関係な網を落とす形で現れる。 */
+  await clearRecords().catch(()=>{});
  }
  rec('素のダイアログが1度も出ていない（§9.342）',native.length===0,native.join(' / '));
  const ng=R.filter(x=>!x.ok);
@@ -75,4 +78,18 @@ async function clearLayout(target,userId='test'){
    body:JSON.stringify({target,clear:true,order:[],hidden:[],widths:{},names:{},
      formats:{},rules:{},formulas:{},locks:[],sorts:{},user_id:userId})}).catch(()=>{});
 }
-module.exports={run,B,clearLayout};
+/* 後片付け: この網が置いた実績（`Web測定バックアップ`）を空へ戻す（§9.351）。
+   残った実績は**計画外実績として予定表に現れ**（§9.33）、行数・作業可否・
+   「作業中」の有無を変える——後片付けを忘れた1本が、無関係な網を落とす。
+   ランナーは1本ごとに空へ戻す（§9.360）ので、ここで消えるのは
+   **この網が作ったぶんだけ**。単独で回したときも同じように綺麗になる。
+   戻り値は消した件数（0なら何も置いていない）。 */
+async function clearRecords(){
+ const r=await fetch(B+'/api/measurement/backup/list').then(x=>x.json()).catch(()=>({items:[]}));
+ const ids=[...new Set((r.items||[]).map(i=>i.id).filter(Boolean))];
+ if(!ids.length)return 0;
+ await fetch(B+'/api/measurement/backup/delete',{method:'POST',
+   headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})}).catch(()=>{});
+ return ids.length;
+}
+module.exports={run,B,clearLayout,clearRecords};
