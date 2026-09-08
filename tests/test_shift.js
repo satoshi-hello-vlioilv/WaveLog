@@ -1,7 +1,16 @@
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+/* 触る前の行を控える（§9.362 ⑤）。製品の「勤務体系を削除」は**論理削除**
+   （`有効=0`）なので行が残るうえ、**名前で拾って消すとフィクスチャの行まで
+   消える**——実測で`勤務体系設備マスタ`が4行減っていた（§9.284の
+   「無差別に消すと、後片付けを持つ網の期待と食い違う」そのもの）。
+   **この実行で増えた行だけ**を素の表から片付ける。 */
+const H=require('./lib/harness.js');
+const SNAP_TABLES=['勤務体系マスタ','勤務区分マスタ','勤務体系設備マスタ'];
+let snapM=null;
 let b=null;
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
+ snapM=await H.masterSnapshot(SNAP_TABLES);
  const page=await b.newPage({viewport:{width:1500,height:950}});
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  page.on('dialog',d=>d.accept());
@@ -103,14 +112,15 @@ let b=null;
 
  /* **後始末。** 勤務体系はマスタDBに残り、実行をまたいで生き延びる(§9.121)。
     片付けないと、同じ名前の体系が回すたびに1件ずつ増えていく(実際に18件
-    溜まっていた)。移行で作られる「既定の勤務」等には触らない。 */
- try{
-  const all=await page.evaluate(async()=>await fetch('/api/schedule/shift-pattern-master?scope=all').then(r=>r.json()));
-  for(const x of (all.items||[]))if(x.name==='交替勤務(1,2,3直)')
-   await page.evaluate(async id=>await fetch('/api/schedule/shift-pattern-master/delete',
-     {method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({id,user_id:'test-shift'})}),x.id);
- }catch(_){}
+    溜まっていた)。
+
+    **名前で引いて消さないこと**（§9.362 ⑤）。この網が作る体系は
+    フィクスチャにある体系と**同じ名前**なので、名前で拾うとフィクスチャの
+    行まで消してしまう——製品の削除は設備割当を実DELETEするため、実測で
+    `勤務体系設備マスタ`が4行減っていた（無くなった割当は誰も戻さない）。
+    「触る前に居なかった行」だけを素の表から消す。 */
+ try{if(snapM)await H.dropNewMasterRows(snapM)}
+ catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
 
  console.log('\n=== SUMMARY ===');
  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);

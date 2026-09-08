@@ -1,8 +1,15 @@
 /* 設備停止分類マスタ(§5.3.1)と入力支援(§9.49)の検証 */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+/* 触る前の行を控える（§9.362 ⑤）。製品の「削除」は**論理削除**（`有効=0`）
+   なので、APIで消しても行は残る。**この実行で増えた行だけ**を素の表から
+   片付ける（名前で拾うと、同じ名前を使う他の網の期待と食い違う・§9.284）。 */
+const H=require('./lib/harness.js');
+const SNAP_TABLES=['設備停止マスタ','設備停止分類マスタ'];
+let snapM=null;
 let b=null;
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
+ snapM=await H.masterSnapshot(SNAP_TABLES);
  const page=await b.newPage({viewport:{width:1700,height:1000}});
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  const errs=[];
@@ -263,6 +270,8 @@ let b=null;
  rec('選んだ場所が入力欄へ入る(手入力不要)',
    filled.startsWith('/')&&filled!==picker.path,`${filled} (開いた時点: ${picker.path})`);
 
+  try{if(snapM)await H.dropNewMasterRows(snapM)}
+  catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
  await b.close();
  const ng=R.filter(x=>!x.ok);
  console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
@@ -272,6 +281,8 @@ let b=null;
  // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
  // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
  console.error('FATAL',e);
+  try{if(snapM)await H.dropNewMasterRows(snapM)}
+  catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
  if(b)await b.close().catch(()=>{});
  process.exit(2);
 });

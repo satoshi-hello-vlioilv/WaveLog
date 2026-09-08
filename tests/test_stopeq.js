@@ -20,9 +20,16 @@ const API='http://127.0.0.1:5029';
 const TAG='EQ'+Date.now().toString().slice(-6);
 const EQ_A='テスト設備A',EQ_B='テスト設備B';
 
+/* 触る前の行を控える（§9.362 ⑤）。製品の「削除」は**論理削除**（`有効=0`）
+   なので、APIで消しても行は残る。**この実行で増えた行だけ**を素の表から
+   片付ける（名前で拾うと、同じ名前を使う他の網の期待と食い違う・§9.284）。 */
+const H=require('./lib/harness.js');
+const SNAP_TABLES=['設備停止マスタ'];
+let snapM=null;
 let b=null;
 (async()=>{
  b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
+ snapM=await H.masterSnapshot(SNAP_TABLES);
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  const page=await b.newPage({viewport:{width:1700,height:1000}});
  page.on('pageerror',e=>console.log('[pageerror]',e.message));
@@ -192,7 +199,9 @@ let b=null;
    await page.evaluate(async()=>{await fetch('/api/access-mode',{method:'POST',
      headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'edit'})})});
    for(const id of made)await post('/api/schedule/stop-reason-master/delete',{id});
-  }catch(e){}
+  }catch(e){console.log('!! 片付けの途中で止まりました: '+(e&&e.message||e))}
+  try{if(snapM)await H.dropNewMasterRows(snapM)}
+  catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
   if(b)await b.close().catch(()=>{});
  }
 })().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});

@@ -20,9 +20,17 @@ const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-l
 const API='http://127.0.0.1:5029';
 const NAME='鍵テスト用フィルタ_'+Date.now();
 
+/* 触る前の行を控える（§9.362 ⑤）。製品の「登録フィルタを削除」は
+   **論理削除**（`有効=0`）なので、APIで消しても行は残る。**この実行で
+   増えた行だけ**を素の表から片付ける（名前で拾うと、同じ名前を使う
+   他の網の期待と食い違う・§9.284）。 */
+const H=require('./lib/harness.js');
+const SNAP_TABLES=['フィルタプリセットマスタ'];
+let snapM=null;
 let b=null;
 (async()=>{
  b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
+ snapM=await H.masterSnapshot(SNAP_TABLES);
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  const page=await b.newPage({viewport:{width:1600,height:1000}});
  page.on('pageerror',e=>console.log('[pageerror]',e.message));
@@ -130,6 +138,8 @@ let b=null;
   },pid)}catch(_){}
   try{await page.evaluate(()=>{Object.keys(localStorage).filter(k=>/Filter/i.test(k))
     .forEach(k=>localStorage.removeItem(k))})}catch(_){}
+  try{if(snapM)await H.dropNewMasterRows(snapM)}
+  catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
   if(b)await b.close().catch(()=>{});
  }
  console.log('\n=== SUMMARY ===');
