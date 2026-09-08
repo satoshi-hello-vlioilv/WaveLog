@@ -252,12 +252,25 @@ let b=null;
    const row=document.querySelector('.sc-row-line');
    if(!row)return{無い:true};
    const cs=getComputedStyle(row);
-   const btn=row.querySelector('.sc-row-report,.sc-row-detail,.sc-row-btn');
+   /* **読むための操作**（帳票・詳細）と**書く操作**（固定・外す・開始）を
+      分けて見る。以前は `.sc-row-report,.sc-row-detail,.sc-row-btn` と
+      書いており、①`.sc-row-detail`というクラスは無く（正しくは
+      `.sc-row-detail-toggle`）、②`.sc-row-btn`は全ボタンに付くので、
+      **行の最初のボタン＝「死んでいて正しい」書く操作**を掴んでいた。
+      通っていたのは、たまたま帳票が先に並んでいた回だけ（§9.362 ⑧）。 */
+   const read=row.querySelector('.sc-row-report,.sc-row-detail-toggle');
+   const write=[...row.querySelectorAll('.sc-row-lock,.sc-row-delete,.sc-row-start')];
    return{行のpe:cs.pointerEvents,行の濃さ:cs.opacity,cls:row.className,
-     ボタンのpe:btn?getComputedStyle(btn).pointerEvents:'(無し)'};
+     読む操作:read?read.className.replace('sc-row-btn ','')+':'+getComputedStyle(read).pointerEvents:'(無し)',
+     書く操作:write.map(x=>x.className.replace('sc-row-btn ','')+':'+getComputedStyle(x).pointerEvents)};
   });
+  /* **読む操作が実在すること**まで見る（無ければ素通りする網は、直す前でも
+     通ってしまう）。書く操作が死んでいることは下でまとめて見る。 */
   rec('読み取り専用でも行そのものは押せる（読むための操作は残る）',
-      rowAlive.行のpe!=='none'&&rowAlive.ボタンのpe!=='none',JSON.stringify(rowAlive));
+      rowAlive.行のpe!=='none'&&/:auto$/.test(rowAlive.読む操作||''),JSON.stringify(rowAlive));
+  rec('読み取り専用では書く操作だけが止まる（読む操作と取り違えない）',
+      (rowAlive.書く操作||[]).length>0&&(rowAlive.書く操作||[]).every(x=>/:none$/.test(x)),
+      JSON.stringify(rowAlive.書く操作));
   /* **同じ行**の濃さが読み取り専用にしたことで変わっていないこと。
      以前の`.sc-row-line[draggable]{opacity:.45}`はここで0.45へ落ちていた。 */
   rec('読み取り専用にしても行の濃さが変わらない（行ごと沈めない）',

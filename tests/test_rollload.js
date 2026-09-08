@@ -199,6 +199,9 @@ async function mkRoll(name,diaMax,extra){
    const left=((await getj('/api/roll-master')).items||[]).filter(x=>x.name&&x.name.startsWith(TAG));
    for(const x of left){try{await post('/api/roll-master/delete',{user_id:'test',id:x.id})}catch(_){}}
   }catch(_){}
+  /* 置いた実績は自分で消す（§9.351・§9.362）。残った実績は計画外実績として
+     予定表に現れ、無関係な網を落とす。 */
+  try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
   if(b)await b.close();
  }
  const ok=R.filter(x=>x.ok).length;

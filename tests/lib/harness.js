@@ -122,4 +122,26 @@ async function dropNewMasterRows(snap){
  }
  return n;
 }
-module.exports={run,B,clearLayout,clearRecords,masterRows,masterSnapshot,dropNewMasterRows};
+/* 材料は自分で注ぎ込む（§9.351・§9.362 ⑥）。「記録が1件ある」ことを前提に
+   する網は、**他の本の置き土産に頼らない**——ランナーが実績を1本ごとに空へ
+   戻すようになった（§9.362 ①）ので、頼っていた網は待ちが timeout する。
+
+   中身は`codec:'json-full-v32'`＝**レコードそのままのJSON**で渡すこと。
+   `'x'`のような当て字だと一覧には出るが、**開いた先の帳票が組み立てられない**
+   （実測: `.record-list-row`は出るのに`#reportContent .rp-blocks`で25秒待つ）。
+   戻り値は記録ID。後片付けは`clearRecords()`が持つ。 */
+async function seedRecord(opt={}){
+ const id=opt.id||('seed-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6));
+ const equipment=opt.equipment||'テスト設備A';
+ const lotNo=opt.lotNo||('SEED-'+String(id).slice(-6));
+ const basic={lotNo,inspectionNo:opt.inspectionNo||'',castingNo:opt.castingNo||''};
+ const status=opt.status||'編集中';
+ const body={id,equipment,lotNo,inspectionNo:basic.inspectionNo,castingNo:basic.castingNo,
+   status,codec:'json-full-v32',user_id:opt.userId||'tests',
+   payload:JSON.stringify(Object.assign(
+     {id,status,basic,settings:{registeredEquipment:equipment},measurements:{}},opt.extra||{}))};
+ await fetch(B+'/api/measurement/backup',{method:'POST',
+   headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).catch(()=>{});
+ return id;
+}
+module.exports={run,B,clearLayout,clearRecords,seedRecord,masterRows,masterSnapshot,dropNewMasterRows};

@@ -221,6 +221,9 @@ let b=null;
   console.log('\n=== SUMMARY ===');
   const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
   f.forEach(x=>console.log(' -',x.n,x.d||''));
+  /* 置いた実績は自分で消す（§9.351・§9.362）。残った実績は計画外実績として
+     予定表に現れ、無関係な網を落とす。 */
+  try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
   await b.close();process.exit(f.length?1:0);
  }catch(e){
   console.error('FATAL',e);

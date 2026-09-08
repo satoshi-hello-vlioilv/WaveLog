@@ -31,8 +31,11 @@ MARKER_TABLE = 'パス設定マスタ'
 def _row_count(con, table):
     """行数。移行の印は数から除く（上の理由）。"""
     if table == MARKER_TABLE:
+        # `\_`はPythonのエスケープとしては未定義（3.12以降は SyntaxError）。
+        # SQLへ渡したいのは「バックスラッシュ＋アンダースコア」なので、
+        # **生文字列**で書く（`test_pywarn`が①②で落ちて気づいた）。
         return con.execute(
-            'SELECT COUNT(*) FROM "%s" WHERE 設定キー NOT LIKE \'\_\_%%\_\_\' ESCAPE \'\\\''
+            r'SELECT COUNT(*) FROM "%s" WHERE 設定キー NOT LIKE \'\_\_%%\_\_\' ESCAPE \'\\\''
             % table).fetchone()[0]
     return con.execute('SELECT COUNT(*) FROM "%s"' % table).fetchone()[0]
 
