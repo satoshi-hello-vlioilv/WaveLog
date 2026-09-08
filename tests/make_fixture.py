@@ -154,6 +154,14 @@ _CHOICES = {
 _JUNK_EQUIPMENT = ("設備名 LIKE 'RT%新設備'", "設備名 LIKE 'RT%消える設備'",
                    "設備名 LIKE '回帰_%'")
 _JUNK_SHIFT = ("名称 LIKE '回帰_%'", "名称 LIKE '複数設備テスト%'")
+# テストが作った操業データ項目の屑（§9.362 ⑤の続き）。**通しの開始時に
+# 控えを取る前へ効かせる**——ここに残った1行が通し全体の前提になる。
+# 実際に `test_opui` の `opui-<pid> 色`（入力方法=タブ）が焼き付き、
+# **まったく無関係な `test_scale`** が「コントロールの高さがトークンに
+# 収まる」で落ちた（タブの札は器の下罫線1pxぶん低い・§9.229 ⑥）。
+# 名前で見分けられる屑だけを消す（§9.284）。
+_JUNK_OP_ITEM = ("項目名 LIKE 'opui-%'", "項目名 LIKE 'oppad-%'",
+                 "項目名 LIKE '回帰_%'", "項目名 LIKE 'RT%テスト項目'")
 
 
 def _tables(c) -> set:
@@ -276,6 +284,12 @@ def fix_master(quiet: bool = False) -> None:
                     c.execute('UPDATE [設備マスタ] SET [有効]=-1 WHERE [設備名]=?', [nm])
             for w in _JUNK_EQUIPMENT:
                 c.execute('DELETE FROM [設備マスタ] WHERE ' + w)
+        # 2b) テストが作った操業データ項目の屑（上の理由）
+        if '操業データ項目マスタ' in have:
+            for w in _JUNK_OP_ITEM:
+                n = c.execute('DELETE FROM [操業データ項目マスタ] WHERE ' + w).rowcount
+                if n:
+                    note('  操業データ項目の屑を%d件片付けました (%s)' % (n, w))
         # 3) 勤務体系＋勤務区分＋設備の紐づけ
         if {'勤務体系マスタ', '勤務区分マスタ'} <= have:
             for w in _JUNK_SHIFT:

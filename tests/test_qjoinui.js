@@ -32,7 +32,7 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
  const errs=[];page.on('pageerror',e=>errs.push(e.message));
  try{
   const cat=(await call('GET','/api/catalog')).body;
-  const WORK=cat.workKey,QUALITY=cat.qualityKey;
+  const WORK=cat.workKey;   // 品質のキーは使わなくなった（候補はサーバーに聞く・§9.364）
 
   /* ---- 1) データ接続の一覧は「行」で、見出しと同じ列定義 ---- */
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
@@ -80,9 +80,17 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
     r([...(sel?sel.options:[])].map(o=>o.value).filter(Boolean));
    },400));
   });
+  /* **「登録済み」はサーバーに聞く**（§9.364で役割「実績」が増えたときに
+     この網が落ちた）。手で並べた一覧を正にすると、データソースを1件足す
+     たびに**製品ではなく網が落ちる**——見たいのは「登録されていないキーが
+     混ざらない」ことであって、キーの顔ぶれそのものではない。 */
+  const registered=await page.evaluate(async()=>{
+   const r=await fetch('/api/data-source-master').then(x=>x.json()).catch(()=>({}));
+   return (r.items||[]).map(x=>x.key);
+  });
   rec('相手はデータ接続に登録済みのものだけから選ぶ',
-      sources.length>0&&sources.every(k=>['SIKALOTNOW','SIKALOTDEF','QJTESTUI'].includes(k)||k===WORK||k===QUALITY),
-      JSON.stringify(sources));
+      sources.length>0&&registered.length>0&&sources.every(k=>registered.includes(k)),
+      JSON.stringify({出た:sources,登録済み:registered}));
   /* ---- 2a) 突合キーは**両側の列を並べて結ぶ**（§9.197、利用者の指示） ----
      列の一覧が両側とも入るまで待つ（/api/table-columns の往復）。 */
   await page.waitForFunction(()=>{
