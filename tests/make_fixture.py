@@ -122,8 +122,13 @@ _SOURCE_FIX = (
      'SIKALOTDEF.sqlite3'),
     # 役割「実績」(§9.364)。**行が無ければ足す**——ほかの2つと違い、
     # 既定のデータソース(`db_access._DEFAULT_DATA_SOURCES`)には無いので、
-    # UPDATEだけでは1件も当たらない。表の名前は`実績`（`_SOURCE_TABLE`）。
-    ('SIKALOTACT', 30, '実績', 'SIKALOTACT.RNE', 'sikalotact.sqlite3',
+    # UPDATEだけでは1件も当たらない。表の名前は`実績`（`_ACTUAL_TABLE`）。
+    # **RNEは持たせない**（空欄）。ランナーは`sikalotact_path`で直接読ませる
+    # ので抽出は要らず、**実体の無いRNEを名乗ると「今すぐ抽出」が
+    # `canRun=false`になる**——`rne_scheduler.jobs()`は登録された全部の
+    # RNEが揃っていることを求めるため、`test_wkbg`の「network運用でも手動
+    # 実行は可能」が落ちる（実測。この形で1度落とした）。
+    ('SIKALOTACT', 30, '実績', '', '',
      'SIKALOTACT.sqlite3'),
 )
 # 実績のフィクスチャが持つ表の名前。**抽出テーブル・既定テーブルは
