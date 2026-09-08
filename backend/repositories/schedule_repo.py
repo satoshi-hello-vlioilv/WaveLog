@@ -49,6 +49,10 @@ PLAN_PARENT_COLUMN='親予定ID'
 # ——予定を入れた端末を、あとから並べ替えた端末で塗り潰さないため。
 PLAN_CREATED_PC_COLUMN='登録端末名'
 PLAN_UPDATED_PC_COLUMN='更新端末名'
+# 実績データソースでHITした行の写し(§9.364)。**スケジュール側へ残す**
+# ——実績データは次の抽出で消える（前工程が終わった行は落ちる）ので、
+# 突合できた事実をあちら任せにすると、あとから理由を辿れなくなる。
+PLAN_ACTUAL_JSON_COLUMN='実績JSON'
 # 共有DBは既に現場で動いているため、作り直さず「無ければ足す」で移行する
 # (master_repo.ensure_audit_columns 等と同じ方式)。列が増えても
 # plan_rows/plan_row は列名を明示して読むので、古い版のアプリが書いた
@@ -56,7 +60,8 @@ PLAN_UPDATED_PC_COLUMN='更新端末名'
 _PLAN_COLUMNS=('予定ID','設備名','表示順','種別','ロット番号','検査番号','鋳造番号',
                '予定名称','明細JSON','固定開始日時','見積分','状態','実績測定ID','備考',
                '有効','登録日時','更新日時','更新者ID',PLAN_PARENT_COLUMN,
-               '登録者ID',PLAN_CREATED_PC_COLUMN,PLAN_UPDATED_PC_COLUMN)
+               '登録者ID',PLAN_CREATED_PC_COLUMN,PLAN_UPDATED_PC_COLUMN,
+               PLAN_ACTUAL_JSON_COLUMN)
 
 def _plan_select(c_share):
  """読む側のSELECT。**読む側は書かない**（§9.325）。
@@ -88,7 +93,8 @@ def ensure_plan_table(c_share):
  # なおさら「別の端末が今まさに足した」が起こりうる。
  add_missing_columns(c_share,'作業予定',
                      ((PLAN_PARENT_COLUMN,'INTEGER'),
-                      (PLAN_CREATED_PC_COLUMN,'TEXT'),(PLAN_UPDATED_PC_COLUMN,'TEXT')))
+                      (PLAN_CREATED_PC_COLUMN,'TEXT'),(PLAN_UPDATED_PC_COLUMN,'TEXT'),
+                      (PLAN_ACTUAL_JSON_COLUMN,'TEXT')))
  return created
 
 def plan_rows(c_share,equipment=None,include_inactive=False):
@@ -123,6 +129,25 @@ def plan_child_rows(c_share,parent_id):
  cur=c_share.cursor()
  cur.execute(_plan_select(c_share)+' WHERE [親予定ID]=? ORDER BY [表示順],[予定ID]',[parent_id])
  return [r for r in cur.fetchall() if r[14] is None or bool(r[14])]
+
+def plan_set_actual_json(c_share,plan_id,payload,uid,pc=''):
+ """HITした実績の写しを1件ぶん残す(§9.364)。**書込サイクルの中でだけ**呼ぶ
+    （`with_write`が開いた作業コピーへ書く。読む側は写しに書かない・§9.325）。
+
+    **既に入っている行は上書きしない。** 実績は前工程が終わると次の抽出で
+    消えるので、後から読み直して「見つからない」で空へ戻すと、保存した
+    意味が無くなる。消したいときは予定そのものを外す。
+    戻り値: 書いたら True。"""
+ ensure_plan_table(c_share)
+ cur=c_share.cursor()
+ cur.execute(f'SELECT [{PLAN_ACTUAL_JSON_COLUMN}] FROM [作業予定] WHERE [予定ID]=?',[plan_id])
+ row=cur.fetchone()
+ if not row:return False
+ if str(row[0] or '').strip():return False
+ cur.execute(f'UPDATE [作業予定] SET [{PLAN_ACTUAL_JSON_COLUMN}]=?,[更新者ID]=?,'
+             f'[{PLAN_UPDATED_PC_COLUMN}]=?,[更新日時]=Now() WHERE [予定ID]=?',
+             [payload,uid,pc,plan_id])
+ return bool(cur.rowcount)
 
 def _next_plan_order(c_share,equipment):
  cur=c_share.cursor()

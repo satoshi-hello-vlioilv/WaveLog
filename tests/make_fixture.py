@@ -120,7 +120,16 @@ _SOURCE_FIX = (
      'SIKALOTNOW.sqlite3'),
     ('SIKALOTDEF', 20, '品質', 'SIKALOTDEF.RNE', 'sikalotdef.sqlite3',
      'SIKALOTDEF.sqlite3'),
+    # 役割「実績」(§9.364)。**行が無ければ足す**——ほかの2つと違い、
+    # 既定のデータソース(`db_access._DEFAULT_DATA_SOURCES`)には無いので、
+    # UPDATEだけでは1件も当たらない。表の名前は`実績`（`_SOURCE_TABLE`）。
+    ('SIKALOTACT', 30, '実績', 'SIKALOTACT.RNE', 'sikalotact.sqlite3',
+     'SIKALOTACT.sqlite3'),
 )
+# 実績のフィクスチャが持つ表の名前。**抽出テーブル・既定テーブルは
+# 触らない**という上の決まりの唯一の例外——この行はここでしか作られない
+# ので、名前を入れないと一覧が開けない。
+_ACTUAL_TABLE = '実績'
 # 3直。`日付補正`は§9.195（跨いだ後の時間帯にだけ当てる）。
 _SHIFT_NAME = '交替勤務(1,2,3直)'
 _SHIFT_SEGMENTS = (('1直', '07:00', '15:00', 10, None),
@@ -235,6 +244,16 @@ def fix_master(quiet: bool = False) -> None:
         # 1) 左メニューの並び（先頭が「仕掛」であること）
         if 'データソースマスタ' in have:
             for key, order, purpose, rne, out, share in _SOURCE_FIX:
+                exists = c.execute('SELECT 1 FROM [データソースマスタ] WHERE [キー]=?',
+                                   [key]).fetchone()
+                if not exists:
+                    # 実績(§9.364)はここでしか作られない。表の名前まで入れる。
+                    c.execute('INSERT INTO [データソースマスタ] ([キー],[表示名],'
+                              '[抽出テーブル],[既定テーブル],[登録者ID],[更新者ID],'
+                              '[登録日時],[更新日時]) '
+                              "VALUES (?,?,?,?,'fixture','fixture',"
+                              "datetime('now'),datetime('now'))",
+                              [key, purpose, _ACTUAL_TABLE, _ACTUAL_TABLE])
                 c.execute('UPDATE [データソースマスタ] SET [表示順]=?,[有効]=-1,'
                           '[一覧表示]=-1,[役割]=?,[RNEファイル]=?,[出力ファイル]=?,'
                           '[共有パス]=?,[読み方]=? WHERE [キー]=?',

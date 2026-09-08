@@ -609,6 +609,10 @@
  let dsState={items:[],loaded:false,assets:{},editing:null,probe:null,probePath:'',probeSeq:0,probing:false};
  /* 読み方の呼び名は**1箇所**。サーバー（backend/db_access.pyの
     source_read_mode）が返す語をそのまま画面の言葉へ写す。 */
+ /* 役割の綴りは**サーバーが持つ**（§9.193）。ここに文字列を書くのは
+    「実績のときだけ出す設定」の判定1箇所だけで、選択肢そのものは
+    `/api/data-source-master` が返す`purposes`をそのまま並べる。 */
+ const DS_PURPOSE_ACTUAL='実績';
  const DS_MODES=[
   {v:'share',label:'共有フォルダのファイルを読む',
    hint:'ネットワーク共有に置いてある .sqlite3 をそのまま読みます。RNEは要りません。'},
@@ -630,7 +634,10 @@
    /* 選べる役割と、いま埋まっている行は**サーバーが答える**(§9.193)。
       「各1件」という決まりを持っているのはあちらなので、画面で数え直さない
       ——無効にした行まで数えて「埋まっている」と言ってしまう。 */
-   dsState.purposes=Array.isArray(r.purposes)&&r.purposes.length?r.purposes:['仕掛','品質','スケジュール'];
+   dsState.purposes=Array.isArray(r.purposes)&&r.purposes.length?r.purposes:['仕掛','品質','実績','スケジュール'];
+   /* 既定の突合キー（§9.364）。**語彙はサーバーが持つ**——画面へ写すと
+      片方だけ直したときに食い違う。 */
+   dsState.matchKeyDefaults=Array.isArray(r.matchKeyDefaults)?r.matchKeyDefaults:[];
    dsState.purposeHolders=r.purposeHolders||{};
    dsState.loaded=true;
    renderDataSourceForm();renderDataSourceList();
@@ -1565,6 +1572,22 @@
   $('#maintEditorSave').onclick=()=>saveDataSourceEditor();
   bindInputHelpers(form);
   form.querySelectorAll('[data-ds-mode]').forEach(r=>r.onchange=()=>{dsSyncMode();dsProbeSoon(0)});
+  /* 役割を「実績」へ変えたら、その場で突合キーの節を出す（§9.364）。
+     **開き直さないと出ない**のでは、設定があること自体に気づけない
+     （§4「探させない」）。中身は`dsMatchKeysHtml()`の1箇所が作る。 */
+  const purposeEl=form.querySelector('[data-field="purpose"]');
+  if(purposeEl)purposeEl.addEventListener('change',()=>{
+   const cur=form.querySelector('.ds-edit-zone.ds-edit-match');
+   const draft=Object.assign({},x,{purpose:purposeEl.value},
+     cur?{matchKeyList:String((cur.querySelector('[data-field="matchKeys"]')||{}).value||'')
+            .split('\n').map(v=>v.trim()).filter(Boolean)}:{});
+   const html=dsMatchKeysHtml(draft);
+   if(cur)cur.remove();
+   if(html){
+    const modes=form.querySelector('.ds-edit-zone:nth-of-type(2)');
+    if(modes)modes.insertAdjacentHTML('afterend',html);
+   }
+  });
   form.querySelectorAll('[data-field]').forEach(el=>{
    el.addEventListener('change',()=>dsProbeSoon());
    el.addEventListener('input',()=>dsProbeSoon());
@@ -1589,6 +1612,27 @@
    const taken=who&&who!==x.key;
    return opt(v,taken?`${v}（いまは ${who}）`:v,cur);
   }).join('');
+ }
+ /* 実績との突合キー（§9.364）。**役割が「実績」のときだけ出す**——
+    ほかの役割では効かない設定なので、置いておくと「効いているのか」を
+    推測させることになる（§4「できないことは、できないと書く」）。
+    **順番に意味がある**ので1行に1つ。上から順に突き合わせる。 */
+ function dsMatchKeysHtml(x){
+  if((x.purpose||'')!==DS_PURPOSE_ACTUAL)return '';
+  const list=(x.matchKeyList&&x.matchKeyList.length?x.matchKeyList
+              :(dsState.matchKeyDefaults||[])).join('\n');
+  const def=(dsState.matchKeyDefaults||[]).join('／');
+  return `<section class="ds-edit-zone ds-edit-match">
+    <h4 class="mm-fieldgroup">③ 何で突き合わせるか（実績）</h4>
+    <label class="mm-field"><span>突き合わせる列（1行に1つ・上から順）</span>
+     <textarea data-field="matchKeys" rows="4" spellcheck="false"
+       class="ds-matchkeys">${esc(list)}</textarea>
+     <small class="mm-field-hint">作業スケジュールに組んだロットが<b>仕掛から消えた</b>とき、
+      この列でこの実績データを探します。見つかれば<b>作業完了</b>、見つからなければ
+      <b>作業中</b>として扱い、見つかった実績の行は予定へ保存します（実績側から消えても残ります）。
+      <b>仕掛の在席</b>は、この並びのうち<b>仕掛にも実在する列だけ</b>で見ます。
+      空にすると既定（${esc(def)}）に戻ります。</small></label>
+   </section>`;
  }
  function dsEditorHtml(x,isNew){
   const mode=x.readMode||(x.overridePath?'direct':(x.mode||'share'));
@@ -1652,6 +1696,7 @@
      </div>`).join('')}</div>
     ${f('preferred','既定テーブル',x.preferred,'','この一覧を開いた直後に選ぶ表の名前。未入力なら抽出テーブルと同じです。')}
    </section>
+   ${dsMatchKeysHtml(x)}
    <section class="ds-edit-zone ds-edit-result">
     <h4 class="mm-fieldgroup">③ この設定でできること <span class="ds-probe-state" id="dsProbeState"></span></h4>
     <div id="dsProbeBox" class="ds-probe"></div>
@@ -1687,6 +1732,13 @@
    rne:val('rne'),table:val('table'),
    output:val('output'),share:val('share'),preferred:val('preferred'),
    overridePath:String(val('overridePath')||'').trim()};
+  /* 実績との突合キー（§9.364）。**役割が「実績」のときだけ送る**——
+     ほかの役割の行を保存したときに、覚えのないキーで上書きしない
+     （送らなければサーバーは今の値を残す・§9.212 ②）。 */
+  if(d.purpose===DS_PURPOSE_ACTUAL){
+   d.matchKeys=String(val('matchKeys')||'').split('\n')
+     .map(x=>x.trim()).filter(Boolean);
+  }
   /* 「直接読む」以外を選んでいるときは上書きを**空で送る＝解除する**。
      直接指定は保存値を持たず、パス設定マスタの上書きの有無そのものなので、
      選択と実体を必ず一致させる（2箇所に持つと必ず食い違う）。 */

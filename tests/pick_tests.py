@@ -455,7 +455,10 @@ RULES = [
     ('static/js/measure/measure-opdata.js', g('操業データ', '測定', '見た目', 'モーダル', '操業意匠')),
     # §9.325: 読む側は写しに書かない（1秒未満のサーバー側の網）
     ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq', 'test_workdate', 'test_scsnapread')),
-    ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd', 'test_workdate')),
+    ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd', 'test_workdate',
+                                   'test_actualmatch')),
+    # 仕掛から消えたロットの突合（§9.364）。
+    ('backend/actual_match.py', g('test_actualmatch', 'test_datasource', 'test_dscap')),
     ('backend/sort_order.py', g('列', 'test_tablequery')),
     ('backend/schedule_watch.py', g('スケジュール')),
     # 共有スケジュールの持ち主(§9.192)。書込の入口(routes/schedule.py)と

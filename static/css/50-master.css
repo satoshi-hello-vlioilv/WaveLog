@@ -3169,4 +3169,11 @@ html[data-hint="off"] .mm-def-hint{display:none}
 .pz-badge.is-cut{border-color:var(--danger,var(--line-strong));color:var(--danger,var(--ink))}
 /* **押せない理由はその場に書く**（§4）。ボタンの代わりに文字を置く。 */
 .pz-why{font-size:var(--fs-micro);color:var(--muted)}
+/* 実績との突合キー（§9.364）。**順番に意味がある**ので1行に1つ書かせる
+   ——横に並べると、上から順という決まりが読めない。 */
+.ds-matchkeys{width:100%;min-height:calc(var(--ctl-h) * 2.4);padding:var(--space-1) var(--space-2);
+ border:1px solid var(--line);border-radius:var(--radius-xs);background:var(--surface);
+ color:var(--ink);font-family:inherit;font-size:var(--fs-sm);line-height:1.6;resize:vertical}
+.ds-matchkeys:focus{border-color:var(--teal);outline:none}
+
 }

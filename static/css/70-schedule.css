@@ -2193,4 +2193,11 @@
  position:static;width:auto;max-height:none;padding:0 0 var(--space-3) calc(var(--fs-base-sm) + var(--space-2));
  border:0;border-radius:0;background:transparent;box-shadow:none;
 }
+/* 仕掛から消えたロットの出どころ（§9.364）。**字で言う**——区分の色だけでは
+   「測定したから完了」と「仕掛から落ちたから完了」を見分けられない。 */
+.sc-row-from{display:inline-block;margin-left:var(--space-1);padding:0 var(--space-1);
+ border:1px solid var(--teal);border-radius:var(--radius-xs);
+ font-size:var(--fs-micro);font-style:normal;font-weight:700;color:var(--teal-dark)}
+.sc-row-from.is-guess{border-color:var(--line-mid);color:var(--ink-3)}
+
 }

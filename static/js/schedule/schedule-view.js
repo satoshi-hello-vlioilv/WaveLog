@@ -5519,7 +5519,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const cellOf={
     /* 区分のセル。**色とアイコンは行表示マスタが決める**(§9.198)が、
        区分名の文字は必ず出す（色だけで伝えない）。 */
-    '__cat__':`<span class="sc-row-cat sc-cat-${cat.key}${rowStyleClass(e)}" data-col="__cat__" title="${esc(e.kind)}・${esc(e.state)}">${rowStyleOf(e).html}${esc(cat.label)}</span>`,
+    '__cat__':`<span class="sc-row-cat sc-cat-${cat.key}${rowStyleClass(e)}" data-col="__cat__" title="${esc(e.kind)}・${esc(e.state)}${e.missingReason?'\n'+e.missingReason:''}">${rowStyleOf(e).html}${esc(cat.label)}${missingBadgeHtml(e)}</span>`,
     '__workable__':`<span class="sc-row-workable ${wk.cls}" data-col="__workable__" title="${esc(wkTitle)}">${esc(wk.text)}</span>`,
     '__date__':`<span class="sc-row-date${dateShifted?' is-shifted':''}" data-col="__date__" title="${esc(dateTitle)}">${esc(dateText)}</span>`,
     '__caldate__':`<span class="sc-row-date" data-col="__caldate__" title="${esc(info.calDateTitle)}">${esc(info.calDateText)}</span>`,
@@ -6089,6 +6089,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     行そのもの。13pxのチェックボックスは狙って押すのが難しく、現場から
     「使いにくい」と指摘された（利用者の指示）。的を行いっぱいへ広げ、
     ここには「選ばれているか」を**文字と形で**残す（§3 色だけで伝えない）。 */
+ /* 仕掛から消えたロットの印（§9.364）。**状態を色だけで語らない**（§3）
+    ——「完了」「作業中」という字だけでは、測定したから完了なのか、
+    仕掛から落ちたから完了なのかが読み取れない。出どころを1語で添え、
+    詳しい理由は`title`（区分のセル）へ落とす（§9.234 ①）。 */
+ function missingBadgeHtml(e){
+  if(!e||e.missingFromWork!==true)return '';
+  const saved=e.actualSourceSaved?'・保存済み':'';
+  return e.actualSource
+   ? `<i class="sc-row-from" title="仕掛から消え、実績で見つかりました${saved}">実績</i>`
+   : `<i class="sc-row-from is-guess" title="仕掛から消えていますが、実績では見つかっていません">仕掛落ち</i>`;
+ }
  function pickMarkHtml(e){
   if(!canPickEntries()||!pickableEntry(e.id))return '';
   const on=scState.picked.has(String(e.id));
