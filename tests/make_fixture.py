@@ -120,7 +120,21 @@ _SOURCE_FIX = (
      'SIKALOTNOW.sqlite3'),
     ('SIKALOTDEF', 20, '品質', 'SIKALOTDEF.RNE', 'sikalotdef.sqlite3',
      'SIKALOTDEF.sqlite3'),
+    # 役割「実績」(§9.364)。**行が無ければ足す**——ほかの2つと違い、
+    # 既定のデータソース(`db_access._DEFAULT_DATA_SOURCES`)には無いので、
+    # UPDATEだけでは1件も当たらない。表の名前は`実績`（`_ACTUAL_TABLE`）。
+    # **RNEは持たせない**（空欄）。ランナーは`sikalotact_path`で直接読ませる
+    # ので抽出は要らず、**実体の無いRNEを名乗ると「今すぐ抽出」が
+    # `canRun=false`になる**——`rne_scheduler.jobs()`は登録された全部の
+    # RNEが揃っていることを求めるため、`test_wkbg`の「network運用でも手動
+    # 実行は可能」が落ちる（実測。この形で1度落とした）。
+    ('SIKALOTACT', 30, '実績', '', '',
+     'SIKALOTACT.sqlite3'),
 )
+# 実績のフィクスチャが持つ表の名前。**抽出テーブル・既定テーブルは
+# 触らない**という上の決まりの唯一の例外——この行はここでしか作られない
+# ので、名前を入れないと一覧が開けない。
+_ACTUAL_TABLE = '実績'
 # 3直。`日付補正`は§9.195（跨いだ後の時間帯にだけ当てる）。
 _SHIFT_NAME = '交替勤務(1,2,3直)'
 _SHIFT_SEGMENTS = (('1直', '07:00', '15:00', 10, None),
@@ -140,6 +154,14 @@ _CHOICES = {
 _JUNK_EQUIPMENT = ("設備名 LIKE 'RT%新設備'", "設備名 LIKE 'RT%消える設備'",
                    "設備名 LIKE '回帰_%'")
 _JUNK_SHIFT = ("名称 LIKE '回帰_%'", "名称 LIKE '複数設備テスト%'")
+# テストが作った操業データ項目の屑（§9.362 ⑤の続き）。**通しの開始時に
+# 控えを取る前へ効かせる**——ここに残った1行が通し全体の前提になる。
+# 実際に `test_opui` の `opui-<pid> 色`（入力方法=タブ）が焼き付き、
+# **まったく無関係な `test_scale`** が「コントロールの高さがトークンに
+# 収まる」で落ちた（タブの札は器の下罫線1pxぶん低い・§9.229 ⑥）。
+# 名前で見分けられる屑だけを消す（§9.284）。
+_JUNK_OP_ITEM = ("項目名 LIKE 'opui-%'", "項目名 LIKE 'oppad-%'",
+                 "項目名 LIKE '回帰_%'", "項目名 LIKE 'RT%テスト項目'")
 
 
 def _tables(c) -> set:
@@ -235,6 +257,16 @@ def fix_master(quiet: bool = False) -> None:
         # 1) 左メニューの並び（先頭が「仕掛」であること）
         if 'データソースマスタ' in have:
             for key, order, purpose, rne, out, share in _SOURCE_FIX:
+                exists = c.execute('SELECT 1 FROM [データソースマスタ] WHERE [キー]=?',
+                                   [key]).fetchone()
+                if not exists:
+                    # 実績(§9.364)はここでしか作られない。表の名前まで入れる。
+                    c.execute('INSERT INTO [データソースマスタ] ([キー],[表示名],'
+                              '[抽出テーブル],[既定テーブル],[登録者ID],[更新者ID],'
+                              '[登録日時],[更新日時]) '
+                              "VALUES (?,?,?,?,'fixture','fixture',"
+                              "datetime('now'),datetime('now'))",
+                              [key, purpose, _ACTUAL_TABLE, _ACTUAL_TABLE])
                 c.execute('UPDATE [データソースマスタ] SET [表示順]=?,[有効]=-1,'
                           '[一覧表示]=-1,[役割]=?,[RNEファイル]=?,[出力ファイル]=?,'
                           '[共有パス]=?,[読み方]=? WHERE [キー]=?',
@@ -252,6 +284,12 @@ def fix_master(quiet: bool = False) -> None:
                     c.execute('UPDATE [設備マスタ] SET [有効]=-1 WHERE [設備名]=?', [nm])
             for w in _JUNK_EQUIPMENT:
                 c.execute('DELETE FROM [設備マスタ] WHERE ' + w)
+        # 2b) テストが作った操業データ項目の屑（上の理由）
+        if '操業データ項目マスタ' in have:
+            for w in _JUNK_OP_ITEM:
+                n = c.execute('DELETE FROM [操業データ項目マスタ] WHERE ' + w).rowcount
+                if n:
+                    note('  操業データ項目の屑を%d件片付けました (%s)' % (n, w))
         # 3) 勤務体系＋勤務区分＋設備の紐づけ
         if {'勤務体系マスタ', '勤務区分マスタ'} <= have:
             for w in _JUNK_SHIFT:

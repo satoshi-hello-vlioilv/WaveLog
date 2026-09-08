@@ -3891,7 +3891,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   /* 1列目は取っ手（掴む場所＋まとめて選ぶチェック）。**並びには入れない**
      ——動かす手立てそのものなので、隠せると戻せなくなる。 */
   return `<div class="sc-row-head">
-  ${canPickEntries()?'<span class="sc-row-pick-head"><input type="checkbox" id="scPickAll" title="まとめて動かせる／外せる予定をすべて選ぶ・解除します"></span>':'<span></span>'}${cells}
+  ${canPickEntries()?'<span class="sc-row-pick-head"><button type="button" id="scPickAll" class="sc-pick-all">全選択</button></span>':'<span></span>'}${cells}
  </div>`;
  }
 
@@ -5519,7 +5519,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const cellOf={
     /* 区分のセル。**色とアイコンは行表示マスタが決める**(§9.198)が、
        区分名の文字は必ず出す（色だけで伝えない）。 */
-    '__cat__':`<span class="sc-row-cat sc-cat-${cat.key}${rowStyleClass(e)}" data-col="__cat__" title="${esc(e.kind)}・${esc(e.state)}">${rowStyleOf(e).html}${esc(cat.label)}</span>`,
+    '__cat__':`<span class="sc-row-cat sc-cat-${cat.key}${rowStyleClass(e)}" data-col="__cat__" title="${esc(e.kind)}・${esc(e.state)}${e.missingReason?'\n'+e.missingReason:''}">${rowStyleOf(e).html}${esc(cat.label)}${missingBadgeHtml(e)}</span>`,
     '__workable__':`<span class="sc-row-workable ${wk.cls}" data-col="__workable__" title="${esc(wkTitle)}">${esc(wk.text)}</span>`,
     '__date__':`<span class="sc-row-date${dateShifted?' is-shifted':''}" data-col="__date__" title="${esc(dateTitle)}">${esc(dateText)}</span>`,
     '__caldate__':`<span class="sc-row-date" data-col="__caldate__" title="${esc(info.calDateTitle)}">${esc(info.calDateText)}</span>`,
@@ -5604,7 +5604,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     return `<span data-col="${esc(k)}"></span>`;
    };
    row.innerHTML=`
-    <span class="sc-row-handle" title="${canDrag?'ドラッグまたはAlt+↑/↓で並べ替え':(locked?'日時を固定中(ロック)':'')}">${pickBoxHtml(e)}${canDrag?'⠿':(locked?'🔒':'')}</span>`
+    <span class="sc-row-handle" title="${canDrag?'ドラッグまたはAlt+↑/↓で並べ替え':(locked?'日時を固定中(ロック)':'')}">${pickMarkHtml(e)}${canDrag?'⠿':(locked?'🔒':'')}</span>`
     +timelineColumnKeys().map(cellHtml).join('');
    /* 揃え(§9.239 ④)。**セルを組み立てる文字列へ混ぜない**——`cellOf`は
       15通りの分岐があり、1つ書き漏らすとその列だけ揃わない。
@@ -5627,16 +5627,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    if(canDrag)wireDrag(row);
    /* 選ばれている行は面でも分かるようにするが、**色だけで伝えない**
       ——件数とロット番号は選択バーが文字で出す(§9.170)。 */
-   const pick=row.querySelector('.sc-pick-check');
-   if(pick){
-    row.classList.toggle('is-picked',scState.picked.has(String(e.id)));
-    /* **clickで受ける**——changeはclickの後に飛ぶため、行のクリックで
-       作り直す作りだと反映されない(列の設定パネルで踏んだ罠と同じ)。 */
-    pick.addEventListener('click',ev=>{
-     ev.stopPropagation();
-     setPicked(e.id,ev.target.checked);
-    });
-   }
+   row.classList.toggle('is-picked',scState.picked.has(String(e.id)));
+   wireRowPick(row,e);
    const del=row.querySelector('.sc-row-delete');
    if(del)del.onclick=ev=>{ev.stopPropagation();deleteEntry(e.id)};
    const start=row.querySelector('.sc-row-start');
@@ -6093,13 +6085,50 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     ——「外せるが動かせない(固定した予定)」「動かせるが外せない」の
     どちらも選択の対象にする。できないほうはボタン側が件数で断る。 */
  function pickableEntry(id){return removableEntry(id)||reorderableEntry(id)}
- function pickBoxHtml(e){
+ /* 選ばれているかの**目印**（§9.363）。**押す物ではない**——押す場所は
+    行そのもの。13pxのチェックボックスは狙って押すのが難しく、現場から
+    「使いにくい」と指摘された（利用者の指示）。的を行いっぱいへ広げ、
+    ここには「選ばれているか」を**文字と形で**残す（§3 色だけで伝えない）。 */
+ /* 仕掛から消えたロットの印（§9.364）。**状態を色だけで語らない**（§3）
+    ——「完了」「作業中」という字だけでは、測定したから完了なのか、
+    仕掛から落ちたから完了なのかが読み取れない。出どころを1語で添え、
+    詳しい理由は`title`（区分のセル）へ落とす（§9.234 ①）。 */
+ function missingBadgeHtml(e){
+  if(!e||e.missingFromWork!==true)return '';
+  const saved=e.actualSourceSaved?'・保存済み':'';
+  return e.actualSource
+   ? `<i class="sc-row-from" title="仕掛から消え、実績で見つかりました${saved}">実績</i>`
+   : `<i class="sc-row-from is-guess" title="仕掛から消えていますが、実績では見つかっていません">仕掛落ち</i>`;
+ }
+ function pickMarkHtml(e){
   if(!canPickEntries()||!pickableEntry(e.id))return '';
+  const on=scState.picked.has(String(e.id));
   const can=[removableEntry(e.id)?'外す':'',reorderableEntry(e.id)?'並べ替える':'']
             .filter(Boolean).join('・');
-  return `<input type="checkbox" class="sc-pick-check"`
-   +`${scState.picked.has(String(e.id))?' checked':''}`
-   +` title="この予定を選ぶ（選んだぶんをまとめて${esc(can)}ことができます）">`;
+  return `<span class="sc-pick-mark${on?' is-on':''}"`
+   +` title="行のどこでもクリックすると選ぶ／解除できます（選んだぶんをまとめて${esc(can)}ことができます）"`
+   +`>${on?'✓':''}</span>`;
+ }
+ /* 行に「選ぶ／解除」を配る。**ダブルクリックの割り当てとぶつけない**
+    ——設備停止・申し送り・枠の行は ondblclick で編集に入るので、
+    1回目のクリックで裏返ったぶんを dblclick で戻す（`ev.detail`で
+    2回目のクリックは数えない）。 */
+ function wireRowPick(row,e){
+  if(!canPickEntries()||!pickableEntry(e.id))return;
+  row.classList.add('sc-row-pickable');
+  row.addEventListener('click',ev=>{
+   if(ev.detail>1)return;                       // ダブルクリックの2回目は数えない
+   if(ev.target.closest('button,input,select,textarea,a'))return;
+   if(ev.target.closest('.sc-row-detail'))return;  // 開いた詳細の中は対象外
+   row.__pickBefore=scState.picked.has(String(e.id));
+   setPicked(e.id,!row.__pickBefore);
+  });
+  /* **1回目のぶんを戻す。** 掴んで開く操作（再開・帳票・編集）は
+     ダブルクリックなので、選択が裏返ったままにしない。 */
+  row.addEventListener('dblclick',()=>{
+   if(row.__pickBefore===undefined)return;
+   setPicked(e.id,row.__pickBefore);
+  });
  }
  /* 今この画面に出ている「まとめて扱える予定」。選択の対象も全選択の分母もこれ。 */
  function pickableEntries(){
@@ -6109,7 +6138,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const key=String(id);
   if(on)scState.picked.add(key);else scState.picked.delete(key);
   const row=$(`.sc-row-line[data-id="${CSS.escape(key)}"]`);
-  if(row)row.classList.toggle('is-picked',on);
+  if(row){
+   row.classList.toggle('is-picked',on);
+   /* 目印も一緒に塗り直す（§9.363。面の色だけにしない）。 */
+   const mark=row.querySelector('.sc-pick-mark');
+   if(mark){mark.classList.toggle('is-on',on);mark.textContent=on?'✓':''}
+  }
   renderPickBar($('#scTimeline'));
  }
  /* 掴んでいる一式。掴んだ行が選ばれていて、他にも選ばれていれば選択全体。 */
@@ -6146,22 +6180,29 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      残っていると、件数だけが合わない状態になる。描くたびに今ある行へ絞る。 */
   scState.picked=new Set([...scState.picked].filter(id=>pickableEntry(id)));
   const pool=pickableEntries();
+  /* 全選択は**文字のボタン**（§9.363）。小さなチェックボックスは狙いにくく、
+     いま「全部選ばれているのか」も形だけでは読み取れなかった。
+     **押した先で何が起きるかを字で言う**——`全選択`／`全解除`。 */
   if(all){
    const n=pool.filter(e=>scState.picked.has(String(e.id))).length;
-   all.checked=pool.length>0&&n===pool.length;
-   all.indeterminate=n>0&&n<pool.length;
+   const allOn=pool.length>0&&n===pool.length;
+   all.textContent=allOn?'全解除':'全選択';
+   all.classList.toggle('is-on',allOn);
    all.disabled=!pool.length;
    all.title=pool.length
-    ?`まとめて動かせる／外せる予定${pool.length}件をすべて選ぶ・解除します（実施中・完了・計画外は選べません）`
+    ?(allOn?`選んでいる${n}件をすべて解除します`
+           :`まとめて動かせる／外せる予定${pool.length}件をすべて選びます（実施中・完了・計画外は選べません）`)
     :'この画面にまとめて扱える予定（未着手）はありません';
    all.onclick=ev=>{
-    const on=ev.target.checked;
+    ev.stopPropagation();
+    const on=!allOn;
     pool.forEach(e=>{on?scState.picked.add(String(e.id)):scState.picked.delete(String(e.id))});
     if(timeline)timeline.querySelectorAll('.sc-row-line').forEach(r=>{
-     const box=r.querySelector('.sc-pick-check');
-     if(!box)return;
-     box.checked=scState.picked.has(String(r.dataset.id));
-     r.classList.toggle('is-picked',box.checked);
+     const mark=r.querySelector('.sc-pick-mark');
+     if(!mark)return;
+     const picked=scState.picked.has(String(r.dataset.id));
+     r.classList.toggle('is-picked',picked);
+     mark.classList.toggle('is-on',picked);mark.textContent=picked?'✓':'';
     });
     renderPickBar(timeline);
    };
@@ -6182,6 +6223,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    +(canRemove.length?`<button type="button" class="sc-pick-remove" id="scPickRemove">選んだ${canRemove.length}件を予定から外す</button>`:'')
    +`<button type="button" class="sc-pick-clear" id="scPickClear">選択解除</button>`
    +`<span class="sc-pick-hint">`
+   +'行をクリックすると選ぶ／解除できます。'
    +(canMove.length>1?`選んだ行のどれかを掴むと${canMove.length}件まとめて並べ替えられます。`:'')
    +(canRemove.length?'下の受け皿へ落とすとまとめて外せます。':'')
    +(canRemove.length<ids.length?`<b>${ids.length-canRemove.length}件は外せません</b>（日時を固定した予定）。`:'')

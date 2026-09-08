@@ -88,7 +88,6 @@
   "no-unused-vars": 1
  },
  "tests/test_colsort.js": {
-  "no-empty": 1,
   "no-unused-vars": 1
  },
  "tests/test_coltint.js": {
@@ -176,14 +175,14 @@
   "no-empty": 3
  },
  "tests/test_opchoice.js": {
-  "no-empty": 2,
+  "no-empty": 1,
   "no-unused-vars": 1
  },
  "tests/test_opformula.js": {
   "no-empty": 4
  },
  "tests/test_opinline.js": {
-  "no-empty": 4
+  "no-empty": 3
  },
  "tests/test_oplimit.js": {
   "no-empty": 3
@@ -246,7 +245,7 @@
   "no-empty": 2
  },
  "tests/test_roll.js": {
-  "no-empty": 6,
+  "no-empty": 5,
   "no-unused-vars": 2
  },
  "tests/test_rollload.js": {
@@ -301,7 +300,7 @@
   "no-unused-vars": 1
  },
  "tests/test_scdrop.js": {
-  "no-empty": 2
+  "no-empty": 1
  },
  "tests/test_scframe.js": {
   "no-empty": 4
@@ -358,7 +357,7 @@
   "no-unused-vars": 1
  },
  "tests/test_shift.js": {
-  "no-empty": 2
+  "no-empty": 1
  },
  "tests/test_splitlive.js": {
   "no-unused-vars": 2
@@ -367,7 +366,7 @@
   "no-empty": 3
  },
  "tests/test_stopeq.js": {
-  "no-empty": 3
+  "no-empty": 2
  },
  "tests/test_storageui.js": {
   "no-empty": 1

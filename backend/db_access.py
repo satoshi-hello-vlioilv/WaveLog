@@ -15,6 +15,7 @@
 """
 from pathlib import Path
 import hashlib
+import json as _json
 import threading
 import time
 
@@ -283,9 +284,10 @@ DATA_SOURCE_TABLE='データソースマスタ'
 # **決まった役目**に就く。
 PURPOSE_WORK='仕掛'          # 作業対象の一覧。測定・予定投入の対象
 PURPOSE_QUALITY='品質'       # 品質データ
+PURPOSE_ACTUAL='実績'        # 前工程の実績(§9.364)。仕掛から消えたロットの行き先
 PURPOSE_SCHEDULE='スケジュール'  # 作業予定の本体(共有スケジュールDB)
 PURPOSE_OTHER=''             # その他(一覧として見るだけ)
-DATA_SOURCE_PURPOSES=(PURPOSE_WORK,PURPOSE_QUALITY,PURPOSE_SCHEDULE,PURPOSE_OTHER)
+DATA_SOURCE_PURPOSES=(PURPOSE_WORK,PURPOSE_QUALITY,PURPOSE_ACTUAL,PURPOSE_SCHEDULE,PURPOSE_OTHER)
 # 旧い呼び名(§9.193)。保存済みの行をそのまま読めるようにする。**移行は
 # ensure_data_source_table が1回だけ書き換える**が、読む側にも別名を置く
 # ——書き換え前のDBを読み取り専用で開く経路があるため(片方だけだと、
@@ -294,6 +296,47 @@ _PURPOSE_ALIASES={'作業':PURPOSE_WORK}
 # 役割が未設定の既存行を、初回だけこのキーで補う(移行)。ここに載っていない
 # キーは PURPOSE_OTHER のまま＝「一覧として見るだけ」。
 _LEGACY_PURPOSE_BY_KEY={'SIKALOTNOW':PURPOSE_WORK,'SIKALOTDEF':PURPOSE_QUALITY}
+
+# 実績との突合キー(§9.364)。**予定の明細(仕掛行の写し)と実績の、同じ名前の列**を
+# 順に突き合わせる。既定は利用者の指定どおり3つ。**後から変えられる**ように
+# データソースマスタの[突合キー](JSON配列)が持ち、答えるのは下の1箇所。
+DEFAULT_ACTUAL_MATCH_KEYS=('ロット番号','鋳造番号','前工程実績_作業終了_日付')
+
+def parse_match_keys(raw):
+ """保存値(JSON配列 or 読点/改行区切り)を列名の並びへ。空なら既定。
+
+ **入力の形を1つに絞らない**——画面はJSONで送るが、手で直した行が
+ 「ロット番号,鋳造番号」のような書き方になっていることがある。
+ 読めなかったものを黙って既定へ倒すと、**設定したつもりの列で
+ 突合していない**状態が作れる(§9.328)ので、理由を1行残す。"""
+ v=raw
+ if isinstance(v,str):
+  t=v.strip()
+  if not t:return list(DEFAULT_ACTUAL_MATCH_KEYS)
+  if t.startswith('['):
+   try:v=_json.loads(t)
+   except Exception as e:
+    app_logger().warning('突合キーを読めませんでした(%s)。既定の%sを使います。',e,
+                         '/'.join(DEFAULT_ACTUAL_MATCH_KEYS))
+    return list(DEFAULT_ACTUAL_MATCH_KEYS)
+  else:
+   v=[x for x in t.replace('\n',',').replace('、',',').split(',')]
+ if not isinstance(v,(list,tuple)):return list(DEFAULT_ACTUAL_MATCH_KEYS)
+ out=[]
+ for x in v:
+  name=str(x or '').strip()
+  if name and name not in out:out.append(name)
+ return out or list(DEFAULT_ACTUAL_MATCH_KEYS)
+
+def actual_match_keys():
+ """いま効いている突合キー。**答えるのはここだけ**(§9.364)。
+
+ 役割「実績」の行が無ければ既定を返す(突合そのものは呼ぶ側が
+ `ACTUAL_DB_KEY`の有無で決める)。"""
+ for s in DATA_SOURCES:
+  if (s.get('purpose') or PURPOSE_OTHER)==PURPOSE_ACTUAL:
+   return parse_match_keys(s.get('matchKeys'))
+ return list(DEFAULT_ACTUAL_MATCH_KEYS)
 
 def normalize_purpose(raw):
  """保存値・画面からの入力を今の呼び名へ寄せる。知らない値は「その他」。"""
@@ -381,6 +424,10 @@ def ensure_data_source_table(c):
  # 左メニューに並べても押す用が無い。空欄＝出す（既存の行の見え方を変えない）。
  if DATA_SOURCE_TABLE in tables(c):
   add_missing_columns(c,DATA_SOURCE_TABLE,(('一覧表示','INTEGER'),))
+ # 実績との突合キー(§9.364)。**行が持つ**——全体の設定にすると、実績の
+ # データソースを差し替えたときにキーだけ前のまま残る。空欄＝既定。
+ if DATA_SOURCE_TABLE in tables(c):
+  add_missing_columns(c,DATA_SOURCE_TABLE,(('突合キー','TEXT'),))
  # 役割の呼び名を今のものへ寄せる(§9.193)。**保存値を1つに保つ**——
  # 読む側の別名(_PURPOSE_ALIASES)だけで済ませると、役割の重なりを見る
  # SQL(`WHERE [役割]=?`)が旧い値の行を見落とし、「仕掛」が2件付いた状態を
@@ -404,12 +451,14 @@ def data_source_rows(c,include_disabled=False):
  has_purpose='役割' in have
  has_mode='読み方' in have
  has_listed='一覧表示' in have
+ has_match='突合キー' in have
  cur=c.cursor()
  cur.execute('SELECT [ソースID],[キー],[表示名],[RNEファイル],[抽出テーブル],[出力ファイル],'
              '[共有パス],[既定テーブル],[表示順],[有効],'
              +('[役割]' if has_purpose else "''")+','
              +('[読み方]' if has_mode else "''")+','
-             +('[一覧表示]' if has_listed else 'NULL')+' FROM [データソースマスタ] '
+             +('[一覧表示]' if has_listed else 'NULL')+','
+             +('[突合キー]' if has_match else "''")+' FROM [データソースマスタ] '
              'ORDER BY [表示順],[キー]')
  out=[];seen={}
  for r in cur.fetchall():
@@ -433,7 +482,9 @@ def data_source_rows(c,include_disabled=False):
               'preferred':str(r[7] or '').strip(),'order':int(r[8] or 0),'active':active,
               'purpose':purpose,'mode':_read_mode_value(r[11],key),
               # 空欄＝出す。役割「仕掛」だけは隠せない（隠すと主画面が消える）。
-              'listed':(True if r[12] is None else bool(r[12])) or purpose==PURPOSE_WORK})
+              'listed':(True if r[12] is None else bool(r[12])) or purpose==PURPOSE_WORK,
+              # 実績との突合キー(§9.364)。空欄は既定として読む側が補う。
+              'matchKeys':str(r[13] or '').strip()})
  return out
 
 _DATA_SOURCE_SEEDED_KEY='__data_sources_seeded__'
@@ -646,10 +697,11 @@ def _purpose_key(purpose):
                        '先頭の%sを使います。',purpose,len(hit),'/'.join(hit),hit[0])
  return hit[0] if hit else None
 
-# 「仕掛」「品質」「スケジュール」がどのキーかは**ここだけが決める**。
-# 画面・APIはキーの文字列を直接比較せず、この3つを参照すること(§9.87・§9.193)。
+# 「仕掛」「品質」「実績」「スケジュール」がどのキーかは**ここだけが決める**。
+# 画面・APIはキーの文字列を直接比較せず、この4つを参照すること(§9.87・§9.193・§9.364)。
 WORK_DB_KEY=_purpose_key(PURPOSE_WORK)
 QUALITY_DB_KEY=_purpose_key(PURPOSE_QUALITY)
+ACTUAL_DB_KEY=_purpose_key(PURPOSE_ACTUAL)
 SCHEDULE_DB_KEY=_purpose_key(PURPOSE_SCHEDULE)
 if not WORK_DB_KEY:
  app_logger().warning('データソースマスタに役割「%s」の行がありません。'

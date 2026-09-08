@@ -93,8 +93,11 @@ def get(path):
 purge()
 try:
     # ---- 1) 役割の汎用化 ----
-    rec('役割は 仕掛／品質／スケジュール／その他 の4つ',
-        db_access.DATA_SOURCE_PURPOSES == ('仕掛', '品質', 'スケジュール', ''),
+    # 役割は§9.364で「実績」が増えて5つになった。**数ではなく顔ぶれを見る**
+    # ——数だけを固定すると、増やしたときに「何が増えたか」を言えないまま
+    # 数字を書き換えることになる。
+    rec('役割は 仕掛／品質／実績／スケジュール／その他 の5つ',
+        db_access.DATA_SOURCE_PURPOSES == ('仕掛', '品質', '実績', 'スケジュール', ''),
         str(db_access.DATA_SOURCE_PURPOSES))
     rec('旧い呼び名「作業」は「仕掛」として読む',
         db_access.normalize_purpose('作業') == db_access.PURPOSE_WORK

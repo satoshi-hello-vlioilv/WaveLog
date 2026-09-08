@@ -120,20 +120,31 @@ let b=null;
   /* ---- 1) 選べるのは外せる行だけ ---- */
   const shape=await page.evaluate(()=>{
    const rows=[...document.querySelectorAll('.sc-row-line')];
-   const withBox=rows.filter(r=>r.querySelector('.sc-pick-check'));
-   /* 「実施中(着手)」「完了」の行にチェックが無いことを見る。区分の文字で
+   const withBox=rows.filter(r=>r.querySelector('.sc-pick-mark'));
+   /* 「実施中(着手)」「完了」の行に印が無いことを見る。区分の文字で
       判定する——状態はクラス名ではなく画面の言葉で確かめたい。 */
    const bad=rows.filter(r=>{
     const cat=(r.querySelector('.sc-row-cat')||{}).textContent||'';
-    return /作業中|完了|取消|計画外/.test(cat)&&!!r.querySelector('.sc-pick-check');
+    return /作業中|完了|取消|計画外/.test(cat)&&!!r.querySelector('.sc-pick-mark');
    });
+   const mark=document.querySelector('.sc-pick-mark');
+   const all=document.getElementById('scPickAll');
    return {rows:rows.length,withBox:withBox.length,bad:bad.length,
-           head:!!document.getElementById('scPickAll'),
+           head:!!all,headTag:all?all.tagName:'',headText:all?all.textContent.trim():'',
+           markPe:mark?getComputedStyle(mark).pointerEvents:'(無し)',
+           rowPickable:rows.filter(r=>r.classList.contains('sc-row-pickable')).length,
            pickable:document.getElementById('scTimeline').classList.contains('sc-pickable')};
   });
-  rec('外せる行にだけチェックが出る',shape.withBox>0&&shape.bad===0,
-      `全${shape.rows}行 / チェック${shape.withBox}行 / 出てはいけない行${shape.bad}`);
-  rec('見出しにも全選択のチェックがある',shape.head&&shape.pickable);
+  rec('選べる行にだけ印が出る',shape.withBox>0&&shape.bad===0,
+      `全${shape.rows}行 / 印${shape.withBox}行 / 出てはいけない行${shape.bad}`);
+  rec('見出しの全選択は文字のボタン（§9.363）',
+      shape.head&&shape.headTag==='BUTTON'&&/全選択|全解除/.test(shape.headText)&&shape.pickable,
+      `${shape.headTag} "${shape.headText}"`);
+  /* **印は押す物ではない**（§9.363）。押す場所は行そのもの——ここだけ
+     当たり判定が変わると「押せる所と押せない所」が同じ見た目で混ざる。 */
+  rec('選択の印は押す物ではない（的は行いっぱい）',
+      shape.markPe==='none'&&shape.rowPickable===shape.withBox,
+      `印のpointer-events=${shape.markPe} / 選べる行${shape.rowPickable}`);
 
   /* ---- 7) 列は1本も増えていない（見出しと行が同じ定義を共有している） ---- */
   const cols=await page.evaluate(()=>{
@@ -144,12 +155,15 @@ let b=null;
   });
   rec('見出しと行の列数が同じ（定義を2通り書いていない）',cols.head===cols.line,
       `見出し${cols.head} / 行${cols.line}`);
-  /* チェックは**取っ手の列へ同居**させている。1列足すのではなく幅を持ち替える。 */
-  rec('取っ手の列がチェックのぶん広がる',cols.handle>=28,`${cols.handle}px`);
+  /* 印は**取っ手の列へ同居**させている。1列足すのではなく幅を持ち替える。 */
+  rec('取っ手の列が印と全選択のぶん広がる',cols.handle>=28,`${cols.handle}px`);
 
-  /* ---- 2) 選ぶと件数とロット番号が文字で出る ---- */
-  await page.click(`.sc-row-line[data-id="${made[0]}"] .sc-pick-check`);
-  await page.click(`.sc-row-line[data-id="${made[1]}"] .sc-pick-check`);
+  /* ---- 2) 選ぶと件数とロット番号が文字で出る ----
+     **行のどこをクリックしても選べる**（§9.363）。印そのものではなく、
+     内容の出ているセルを押して確かめる——的が行いっぱいであることが要件。 */
+  const bodyCell=id=>`.sc-row-line[data-id="${id}"] [data-col]:not(.sc-row-handle)`;
+  await page.click(bodyCell(made[0]));
+  await page.click(bodyCell(made[1]));
   await settle();
   const bar=await page.evaluate(()=>{
    const b=document.getElementById('scPickBar');
@@ -161,13 +175,45 @@ let b=null;
       !bar.hidden&&/2件を選択中/.test(bar.text)&&bar.btn,bar.text.slice(0,80));
   rec('選んだ行が面でも分かる',bar.picked===2,String(bar.picked));
 
+  /* ---- 2b) ダブルクリック・行内ボタンと取り違えない（§9.363） ----
+     選べる行のうち、設備停止・申し送り・枠は**ダブルクリックで編集**に入る。
+     1回目のクリックで裏返ったぶんを戻していないと、編集を開くたびに選択が
+     増減する。**行内のボタン**（固定・外す）も選択の合図にしない
+     ——押した先の操作と、選ぶ操作を同じ1クリックに載せない。 */
+  const before2=await page.evaluate(()=>document.querySelectorAll('.sc-row-line.is-picked').length);
+  await page.dblclick(bodyCell(made[2]));
+  await settle();
+  const afterDbl=await page.evaluate(id=>({
+   n:document.querySelectorAll('.sc-row-line.is-picked').length,
+   self:!!document.querySelector(`.sc-row-line[data-id="${id}"]`)?.classList.contains('is-picked'),
+  }),made[2]);
+  rec('ダブルクリックしても選択が裏返らない',
+      afterDbl.n===before2&&afterDbl.self===false,
+      `前${before2}件 → 後${afterDbl.n}件 / その行=${afterDbl.self}`);
+  /* **実在するボタンを押さないこと。** 固定・外すはその行の状態を変えるので、
+     押すと後続の判定（並べ替え）が別の理由で落ちる（実際に落とした）。
+     見たいのは「ボタン由来のクリックを選択の合図にしない」という関門なので、
+     行の中へ**仮のボタン**を挿して、そこから泡立たせる。 */
+  const btnHit=await page.evaluate(id=>{
+   const row=document.querySelector(`.sc-row-line[data-id="${id}"]`);
+   if(!row)return {無い:true};
+   const was=row.classList.contains('is-picked');
+   const probe=document.createElement('button');probe.type='button';
+   row.appendChild(probe);
+   probe.dispatchEvent(new MouseEvent('click',{bubbles:true,detail:1}));
+   probe.remove();
+   return {was,now:row.classList.contains('is-picked')};
+  },made[2]);
+  rec('行内のボタンを押しても選ばれない',
+      btnHit.無い===true||btnHit.was===btnHit.now,JSON.stringify(btnHit));
+
   /* ---- 3) 全選択の分母は「外せる予定」だけ ---- */
   const all=await page.evaluate(()=>{
    const a=document.getElementById('scPickAll');
    a.click();
    const rows=[...document.querySelectorAll('.sc-row-line')];
-   return {checked:rows.filter(r=>r.querySelector('.sc-pick-check:checked')).length,
-           box:rows.filter(r=>r.querySelector('.sc-pick-check')).length,
+   return {checked:rows.filter(r=>r.querySelector('.sc-pick-mark.is-on')).length,
+           box:rows.filter(r=>r.querySelector('.sc-pick-mark')).length,
            text:document.getElementById('scPickBar').textContent.replace(/\s+/g,' ').trim()};
   });
   rec('全選択は外せる予定だけを選ぶ',all.checked===all.box&&all.checked>=3,
@@ -178,7 +224,7 @@ let b=null;
   /* いったん解除して、自分で作った3件だけにする。 */
   await page.evaluate(()=>document.getElementById('scPickAll').click());
   await settle();
-  for(const id of made)await page.click(`.sc-row-line[data-id="${id}"] .sc-pick-check`);
+  for(const id of made)await page.click(bodyCell(id));
   await settle();
 
   /* ---- 4) まとめて掴むと受け皿が「選んだN件」と言う ---- */
@@ -264,7 +310,7 @@ let b=null;
   await page.waitForSelector('.sc-row-line',{timeout:30000});
   await settle();
   const view=await page.evaluate(()=>({
-   checks:document.querySelectorAll('.sc-pick-check').length,
+   checks:document.querySelectorAll('.sc-pick-mark').length,
    all:!!document.getElementById('scPickAll'),
    bar:document.getElementById('scPickBar').hidden,
    pickable:document.getElementById('scTimeline').classList.contains('sc-pickable')}));

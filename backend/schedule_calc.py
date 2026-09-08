@@ -19,6 +19,7 @@ import threading
 from time import perf_counter as _perf   # `from datetime import time` と衝突するので別名
 from datetime import date, datetime, time, timedelta
 
+from . import actual_match
 from . import load_factor
 from . import schedule_sync
 from .repositories import schedule_repo as sr
@@ -408,6 +409,55 @@ def record_finished(actual):
  if actual.get('endAt'):return True
  return str(actual.get('status') or '').strip() in RECORD_FINISHED_STATUSES
 
+def _apply_actual_source(entry,detail,stored_actual_json):
+ """仕掛から消えたロットを「完了」または「着手」として扱う(§9.364)。
+
+ 利用者の指示:「作業スケジュール表に組んだロットが、仕掛データから消えた
+ 場合は、作業完了または作業開始したものとして扱いたい」——実績にHITすれば
+ **完了**、HITしなければ（実績が未設定のときも含めて）**着手**。
+
+ **保存済みの実績が最優先。** 実績データは次の抽出で消える（前工程が
+ 終わった行は落ちる）ので、一度HITしたら共有スケジュールへ写しを残す
+ （書くのは書込役だけ・§4.2）。ここは読むだけ。
+
+ 触るのは**親の作業行で、まだ「予定」のもの**だけ:
+  ・計画者が確定した完了／取消（`PLAN_TERMINAL_STATES`）は動かさない
+  ・測定データと突合できた行（`actual`）はそちらが正
+  ・子ロットは親にぶら下がる明細行なので、単独で状態を持たせない
+ """
+ entry['missingFromWork']=None
+ entry['missingReason']=''
+ entry['actualSource']=None
+ entry['actualSourceSaved']=False
+ if entry['kind']!='作業' or entry.get('parentId') is not None:return
+ if entry['state'] in PLAN_TERMINAL_STATES or entry.get('actual') is not None:return
+ if stored_actual_json:
+  # **一度突き合わせたものは、実績が消えても保持する**（利用者の指示）。
+  try:saved=json.loads(stored_actual_json)
+  except Exception as _e:
+   quiet('保存した実績を読めない（突合し直す）',_e);saved=None
+  if isinstance(saved,dict) and saved:
+   entry['state']='完了'
+   entry['missingFromWork']=True
+   entry['actualSource']=saved
+   entry['actualSourceSaved']=True
+   entry['missingReason']='仕掛から消えており、実績で確認済みです（この予定に保存してあります）。'
+   return
+ hit=actual_match.lookup(detail,entry)
+ entry['missingReason']=hit.get('reason') or ''
+ if hit.get('missing') is not True:
+  # False（仕掛にある）／None（判定できない）はどちらも状態を動かさない。
+  entry['missingFromWork']=hit.get('missing')
+  return
+ entry['missingFromWork']=True
+ if hit.get('actual'):
+  entry['state']='完了'
+  entry['actualSource']=hit['actual']
+ else:
+  # **消えた＝少なくとも着手はしている**（利用者の指示）。実績が未設定でも
+  # 「予定のまま」にはしない——現場は既に手を付けている。
+  entry['state']='着手'
+
 def derive_state(stored_state,actual):
  """§7.4。計画者が明示的に確定した完了/取消は実績突合より優先する。"""
  if stored_state in PLAN_TERMINAL_STATES:return stored_state
@@ -556,6 +606,11 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
   entry['state']=derive_state(entry['storedState'],actual)
   entry['actual']=actual
   entry['unplanned']=False
+  # ---- 仕掛から消えたロットの扱い(§9.364) ----
+  # **測定データとの突合(§7.4)が先。** あちらで着手／完了になっている行は
+  # ここで触らない——同じ状態を2つの根拠で決めると、食い違ったときに
+  # どちらが正しいか言えなくなる。
+  _apply_actual_source(entry,detail,r[22])
   if actual is not None:matched_keys.add(actual['key'])
   entries.append(entry)
 

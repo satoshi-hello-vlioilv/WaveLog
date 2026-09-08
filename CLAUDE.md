@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（504件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（506件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -149,7 +149,7 @@
 | フォルダ構成 | — | [決まり](docs/decisions/rules-misc.md) |
 | 起動スクリプトは CRLF 改行で保存する | `test_faststart.py` | [§9.229](docs/decisions/9.229.md) |
 
-### データの置き場と共有（49件）
+### データの置き場と共有（50件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -176,6 +176,7 @@
 | 「右端に空ける幅」は1つの変数が持つ。詳細度の競争をしない | — | [§9.250](docs/decisions/9.250.md) |
 | 数を扱う道具は「そのまま打つ」の1枠に収める | `test_opwidget.js` | [§9.250](docs/decisions/9.250.md) |
 | 「いま見ているのはいつのデータか」は元データの時刻 | — | [§9.286](docs/decisions/9.286.md) |
+| 選ぶ的は行いっぱい。印は押す物ではない。全選択は文字のボタン | `test_scpick.js` | [§9.363](docs/decisions/9.363.md) |
 | 選んでからまとめて動かせる | `test_multidrag.js`・`test_scpick.js` | [§9.177](docs/decisions/9.177.md) |
 | 共有スケジュールは「変わったときだけ」取り込む | `test_scwatch.py`・`test_scwatchui.js` | [§9.188](docs/decisions/9.188.md) |
 | 共有スケジュールへ書くのは1台だけにできる | `test_scowner.py` | [§9.192](docs/decisions/9.192.md) |
@@ -263,7 +264,7 @@
 | 「記録した値」の並べ方は専用の盤が持つ | — | [§9.243](docs/decisions/9.243.md) |
 | 「既定へ戻す」は本当に空へ帰す | — | [§9.243](docs/decisions/9.243.md) |
 
-### 一覧と列（107件）
+### 一覧と列（108件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -374,6 +375,7 @@
 | 段（タブ）に分けた窓は、描かれていない段の値を控えから読む | — | [§9.223](docs/decisions/9.223.md) |
 | 条の設計カードの3点 | `test_splitlive.js` | [§9.221](docs/decisions/9.221.md) |
 | 「どれが仕掛でどれが品質か」はキーでなく`データソースマスタ`の`[役割]` | `test_datasource.py`・`test_dskeylint.py`・`test_dsnav.js` | [決まり](docs/decisions/rules-misc.md) |
+| 仕掛から消えたロットは実績で突き合わせる。在席は「仕掛にも在る列」だけで見る | `test_actualmatch.py` | [§9.364](docs/decisions/9.364.md) |
 
 ### 測定画面（83件）
 

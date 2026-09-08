@@ -1268,14 +1268,14 @@ run('test_scprint: 作業予定表の印刷（§9.115／§9.235）',async({page,
        noPick.off&&noPick.why.length>0,JSON.stringify(noPick));
 
    /* 実際に1件選んでから、その1件だけが紙になることを見る。 */
-   const pickable=await page.evaluate(()=>{
-    const boxes=[...document.querySelectorAll('.sc-row-line .sc-pick-check')];
-    return boxes.length;
-   });
+   /* 選択は**行のクリック**になった（§9.363）。印（`.sc-pick-mark`）は
+      押す物ではないので、行そのものを押す。 */
+   const pickable=await page.evaluate(()=>
+    document.querySelectorAll('.sc-row-line .sc-pick-mark').length);
    if(pickable>0){
     await page.evaluate(()=>{
-     const box=document.querySelector('.sc-row-line .sc-pick-check');
-     if(box&&!box.checked)box.click();
+     const row=document.querySelector('.sc-row-line:has(.sc-pick-mark)');
+     if(row&&!row.classList.contains('is-picked'))row.click();
     });
     await page.evaluate(e=>WL.schedulePrint.openPreview(e),EQ);
     await page.waitForSelector('#spRange',{timeout:15000});
@@ -1288,8 +1288,8 @@ run('test_scprint: 作業予定表の印刷（§9.115／§9.235）',async({page,
     rec('「選んだ予定だけ」にすると、選んだ1件だけが紙になる',one===1,
         JSON.stringify({one,base}));
     await page.evaluate(()=>{
-     const box=document.querySelector('.sc-row-line .sc-pick-check:checked');
-     if(box)box.click();
+     const row=document.querySelector('.sc-row-line.is-picked');
+     if(row)row.click();
     });
    }else{
     rec('「選んだ予定だけ」にすると、選んだ1件だけが紙になる',true,
