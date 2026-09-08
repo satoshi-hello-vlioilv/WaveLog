@@ -7,6 +7,7 @@
 引数を2つ渡すと、その2つのファイル（指紋を保存したもの）の差を
 「表名 +N/-N」で1行にして出す。
 """
+import os
 import pathlib
 import sqlite3
 import sys
@@ -16,6 +17,39 @@ import sys
 # ——「仕組みを入れたのに働いていない」の典型（§9.356 で一度踏んだ）。
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 TARGETS = (ROOT / 'db' / 'master.sqlite3', ROOT / 'db' / 'records.sqlite3')
+
+
+# **製品の「一度だけの移行が済んだ」印は数えない**（§9.360 の追補）。
+# `パス設定マスタ` の `__…__` は移行フラグで、テストの置き土産ではない——
+# `tests/make_fixture.py` は既定セルをまき直させるために **わざと**
+# `__rb_default_cells_seeded__` を消しており、サーバーが次に読んだ瞬間に
+# 書き直す。これを数えると、帳票系だけで**20本が毎回「汚した」と出る**
+# ——**うるさい報告は読まれない**ので、本物の置き土産が埋もれる。
+MARKER_TABLE = 'パス設定マスタ'
+
+
+def _row_count(con, table):
+    """行数。移行の印は数から除く（上の理由）。"""
+    if table == MARKER_TABLE:
+        # `\_`はPythonのエスケープとしては未定義（3.12以降は SyntaxError）。
+        # SQLへ渡したいのは「バックスラッシュ＋アンダースコア」なので、
+        # **生文字列**で書く（`test_pywarn`が①②で落ちて気づいた）。
+        return con.execute(
+            r'SELECT COUNT(*) FROM "%s" WHERE 設定キー NOT LIKE \'\_\_%%\_\_\' ESCAPE \'\\\''
+            % table).fetchone()[0]
+    return con.execute('SELECT COUNT(*) FROM "%s"' % table).fetchone()[0]
+
+
+# 内訳モード（`WAVELOG_FP_DETAIL=1`）。**どの対象へ残したか**まで出す。
+# 「列レイアウトマスタ +59」だけでは、どこを片付ければよいか分からない——
+# 後片付けを足すときの調べ物のために、行数ではなく対象ごとに数える。
+DETAIL_TABLES = {'列レイアウトマスタ': '対象', 'スケジュール内容表示マスタ': '設備名'}
+
+
+def _detail_rows(con, table):
+    col = DETAIL_TABLES[table]
+    return [('%s[%s]' % (table, k), n) for k, n in con.execute(
+        'SELECT "%s", COUNT(*) FROM "%s" GROUP BY 1 ORDER BY 1' % (col, table))]
 
 
 def snapshot():
@@ -34,7 +68,11 @@ def snapshot():
                 "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
             for (table,) in rows.fetchall():
                 try:
-                    n = con.execute('SELECT COUNT(*) FROM "%s"' % table).fetchone()[0]
+                    if os.environ.get('WAVELOG_FP_DETAIL') and table in DETAIL_TABLES:
+                        for label, n in _detail_rows(con, table):
+                            out.append('%s|%s|%d' % (name, label, n))
+                        continue
+                    n = _row_count(con, table)
                 except sqlite3.Error:       # 壊れた表は数えない（指紋の目的外）
                     continue
                 out.append('%s|%s|%d' % (name, table, n))

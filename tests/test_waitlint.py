@@ -33,7 +33,55 @@ SILENT = re.compile(
     r'waitFor(?:Function|Selector)\((?:[^()]|\([^()]*\))*\)\s*\.catch\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)',
     re.S)
 MARK = '固定待ち:'
+# **テストが素の名前で製品の関数を呼んでいないか**（§9.359 の追補）。画面のJSは
+# 32本ともIIFEで閉じたので、`deleteBackupRows(...)` のような素の呼び出しは
+# `ReferenceError` になる。**それを`catch`が握ると、後片付けが何もしないまま
+# 緑になる**——`test_devdigits` の実績の後片付けが実際にそうで、1件ずつ
+# 積み上がっていた（§9.360の指紋が名指しして初めて分かった）。
+# eslintは`tests/`を見ない（§9.355）ので、**面は実物から作ってここで見る**。
+NS_FILES = (('measure/records-store.js', 'records'), ('core/base.js', 'base'),
+            ('list/list-view.js', 'list'), ('measure/measure-input.js', 'measureInput'),
+            ('measure/measure-view.js', 'measureView'))
 R = []
+
+
+def strip_comments(text):
+    """説明文の中の`foo()`は呼び出しではない。ここで落としておく。"""
+    text = re.sub(r'/\*.*?\*/', '', text, flags=re.S)
+    return re.sub(r'(?m)^\s*//.*$|(?<![:\w])//[^\n]*', '', text)
+
+
+def namespace_surface():
+    """`WL.<領域>`にだけ載っている名前（＝素で呼ぶと落ちる名前）。
+
+    **実物から作る**（§9.354と同じ作法）。手で並べた一覧は、面が増えた日から
+    黙って穴になる。`window.X=X`で素の名前としても公開しているものは除く。"""
+    names = set()
+    for rel, key in NS_FILES:
+        src = (ROOT / 'static' / 'js' / rel).read_text(encoding='utf-8')
+        m = (re.search(r'window\.WL\.' + key + r'\s*=\s*\{(.*?)\n\};', src, re.S)
+             or re.search(r'WL\.' + key + r'\s*=\s*\{(.*?)\n\}', src, re.S))
+        if not m:
+            return None, rel
+        names |= set(re.findall(r'(?<![\w$.])([A-Za-z_$][\w$]*)(?=\s*[,:}\n])', m.group(1)))
+    published = set()
+    for f in (ROOT / 'static' / 'js').rglob('*.js'):
+        published |= set(re.findall(r'window\.([A-Za-z_$][\w$]*)\s*=', f.read_text(encoding='utf-8')))
+    # 短い名前は同名の局所変数と見分けが付かないので見ない（`get`・`api`等）。
+    return {n for n in names - published if len(n) >= 4}, ''
+
+
+def bare_calls(path, surface):
+    """その本の中の「素の名前での呼び出し」。自分で宣言した同名は除く。"""
+    code = strip_comments(path.read_text(encoding='utf-8'))
+    local = set(re.findall(r'(?:function|const|let|var)\s+([A-Za-z_$][\w$]*)', code))
+    for grp in re.findall(r'\{([^{}\n]*)\}\s*=\s*require', code):
+        local |= {x.strip() for x in grp.split(',') if x.strip()}
+    out = []
+    for n in surface - local:
+        for m in re.finditer(r'(?<![\w$.])' + re.escape(n) + r'\s*\(', code):
+            out.append((code[:m.start()].count('\n') + 1, n))
+    return sorted(out)
 
 
 def rec(name, ok, detail=''):
@@ -121,6 +169,30 @@ def main(update=False):
             probe.unlink()
         except FileNotFoundError:
             pass
+    # 素の名前での製品の呼び出しは**0件**（増分ではなく0。落ちるのではなく
+    # 黙って何もしなくなる形なので、上限で許すと意味が無い）。
+    surface, bad = namespace_surface()
+    rec('名前空間の面を実物から数えられる', surface is not None and len(surface) >= 50,
+        f'{len(surface)}個' if surface else f'{bad} の面が読めない')
+    if surface:
+        bare = {p.name: bare_calls(p, surface) for p in files}
+        bare = {k: v for k, v in bare.items() if v}
+        rec('テストが素の名前で画面の関数を呼んでいない（§9.359。呼ぶと ReferenceError）',
+            not bare, '; '.join(f'{k}:{v[0][0]} {v[0][1]}' for k, v in list(bare.items())[:6]) or '0件')
+        # 素通りしないこと: 素の呼び出しを1つ注いで見つけられるか。
+        one = sorted(surface)[0]
+        probe2 = TESTS / 'test__bareprobe.js'
+        try:
+            probe2.write_text(f'/* {one}() は説明文なので数えない */\nawait {one}([1]);\n',
+                              encoding='utf-8')
+            found = bare_calls(probe2, surface)
+            rec('網そのものが素通りしない（注いだ素の呼び出しを1件だけ数える）',
+                [n for _, n in found] == [one], f'{found}')
+        finally:
+            try:
+                probe2.unlink()
+            except FileNotFoundError:
+                pass
     top = sorted(now.items(), key=lambda kv: -kv[1]['ms'])[:8]
     print('  残っている上位: ' + ', '.join(f"{k} {v['ms']/1000:.1f}s/{v['count']}件" for k, v in top))
     print(f'\n== {sum(R)}/{len(R)} PASS ==')

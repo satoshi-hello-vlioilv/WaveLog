@@ -207,13 +207,24 @@ let b=null;
  }catch(e){
   rec('FATAL',false,String(e&&e.message||e));
  }
- /* 後片付け（§9.121）。この検証で作った記録を端末と共有から消す。 */
+ /* 後片付け（§9.121）。この検証で作った記録を端末と共有から消す。
+
+    **名前空間で呼ぶこと**（§9.359）。画面のJSはIIFEで閉じたので、素の
+    `deleteBackupRows(...)`は`ReferenceError`になる——それを`catch`が握って
+    いたため、**後片付けが何もしないまま緑**で、実績が1件ずつ残っていた
+    （§9.360の指紋が`Web測定バックアップ +1`で名指しした）。
+    捨てるときは理由を1行残す（§9.328）——黙ると次も同じことが起きる。 */
  try{
-  if(lotId)await page.evaluate(async id=>{
-   try{await deleteBackupRows([id])}catch(e){}
-   try{await reliableDelete(id)}catch(e){}
-  },lotId);
- }catch(e){}
+  if(lotId){
+   const why=await page.evaluate(async id=>{
+    const R=WL.records;
+    try{await R.deleteBackupRows([id])}catch(e){return '共有から消せない: '+(e&&e.message||e)}
+    try{await R.reliableDelete(id)}catch(e){return '端末内から消せない: '+(e&&e.message||e)}
+    return '';
+   },lotId);
+   if(why)console.log('!! 後片付け: '+why);
+  }
+ }catch(e){console.log('!! 後片付けに届かなかった: '+(e&&e.message||e))}
  await b.close();
  const ng=R.filter(x=>!x.ok);
  console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');

@@ -1,17 +1,8 @@
 {
- "static/js/schedule/calendar-view.js": {
-  "no-unused-vars": 1
- },
- "static/js/measure/defect-locator.js": {
-  "no-unused-vars": 1
- },
  "static/js/list/filters.js": {
   "no-unused-vars": 5
  },
  "static/js/list/list-columns.js": {
-  "no-unused-vars": 1
- },
- "static/js/measure/lot-split.js": {
   "no-unused-vars": 1
  },
  "static/js/master/master-data.js": {
@@ -26,6 +17,12 @@
  "static/js/master/master-report.js": {
   "no-unused-vars": 2
  },
+ "static/js/measure/defect-locator.js": {
+  "no-unused-vars": 1
+ },
+ "static/js/measure/lot-split.js": {
+  "no-unused-vars": 1
+ },
  "static/js/measure/measure-progress.js": {
   "no-unused-vars": 2
  },
@@ -37,6 +34,9 @@
  },
  "static/js/report/report-dashboard.js": {
   "no-unused-vars": 3
+ },
+ "static/js/schedule/calendar-view.js": {
+  "no-unused-vars": 1
  },
  "static/js/schedule/schedule-print.js": {
   "no-unused-vars": 3
@@ -99,9 +99,6 @@
  },
  "tests/test_defectlink.js": {
   "no-empty": 1
- },
- "tests/test_devdigits.js": {
-  "no-empty": 3
  },
  "tests/test_dsrestart.js": {
   "no-empty": 1
@@ -246,7 +243,7 @@
   "no-empty": 3
  },
  "tests/test_rlmaster.js": {
-  "no-empty": 3
+  "no-empty": 2
  },
  "tests/test_roll.js": {
   "no-empty": 6,
@@ -363,9 +360,6 @@
  "tests/test_shift.js": {
   "no-empty": 2
  },
- "tests/test_sortcustom.js": {
-  "no-empty": 1
- },
  "tests/test_splitlive.js": {
   "no-unused-vars": 2
  },
@@ -376,9 +370,6 @@
   "no-empty": 3
  },
  "tests/test_storageui.js": {
-  "no-empty": 1
- },
- "tests/test_sub.js": {
   "no-empty": 1
  },
  "tests/test_wkbg.js": {

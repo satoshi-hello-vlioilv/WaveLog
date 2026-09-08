@@ -15,13 +15,23 @@
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
 const B='http://127.0.0.1:5029';
 const NAME='テスト並び'+Date.now().toString(36);
+/* 触る前の行を控える（§9.362 ⑤）。製品の「削除」は**論理削除**（`有効=0`）
+   なので、APIで消しても行は残る。**この実行で増えた行だけ**を素の表から
+   片付ける（名前で拾うと、同じ名前を使う他の網の期待と食い違う・§9.284）。 */
+const H=require('./lib/harness.js');
+const SNAP_TABLES=['ソートプリセットマスタ'];
+let snapM=null;
 let b=null,presetId=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 async function cleanup(){
- try{if(presetId!=null)await post('/api/sort-presets/delete',{id:presetId,user_id:'test'})}catch(e){}
+ try{if(presetId!=null)await post('/api/sort-presets/delete',{id:presetId,user_id:'test'})}
+ catch(e){console.log('!! 登録を消せませんでした: '+(e&&e.message||e))}
+ try{if(snapM)await H.dropNewMasterRows(snapM)}
+ catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
 }
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
+ snapM=await H.masterSnapshot(SNAP_TABLES);
  const page=await b.newPage({viewport:{width:1600,height:950}});
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  const errs=[];

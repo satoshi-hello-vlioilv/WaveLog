@@ -30,12 +30,19 @@ const B='http://127.0.0.1:5029';
 const post=(p,x)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(x)});
 const get=p=>fetch(B+p,{cache:'no-store'}).then(r=>r.json());
+/* 触る前の行を控える（§9.362 ⑤）。製品の「削除」は**論理削除**（`有効=0`）
+   なので、APIで消しても行は残る。**この実行で増えた行だけ**を素の表から
+   片付ける（名前で拾うと、同じ名前を使う他の網の期待と食い違う・§9.284）。 */
+const H=require('./lib/harness.js');
+const SNAP_TABLES=['アクセス権限マスタ','設備停止分類マスタ'];
+let snapM=null;
 let b=null;
 const made={perm:[],cat:[]};
 
 (async()=>{
  await post('/api/access-mode',{mode:'edit'});
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
+ snapM=await H.masterSnapshot(SNAP_TABLES);
  const page=await b.newPage({viewport:{width:1400,height:900}});
  const W=require('./lib/wait.js');const {idle}=W.track(page);const paint=()=>W.paint(page);
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
@@ -325,6 +332,8 @@ const made={perm:[],cat:[]};
      足した行は必ず消す（旧 test_p11c は消しておらず、実行のたびに増えていた）。 */
   for(const id of made.perm){try{await post('/api/access-permission-master/delete',{id,user_id:'tester'})}catch(e){}}
   for(const id of made.cat){try{await post('/api/schedule/stop-category-master/delete',{id,user_id:'tester'})}catch(e){}}
+  try{if(snapM)await H.dropNewMasterRows(snapM)}
+  catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
   if(b)await b.close().catch(()=>{});
  }
  const ng=R.filter(x=>!x.ok);

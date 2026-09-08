@@ -23,6 +23,12 @@
    **画面の値と刷るときの値を突き合わせる**こと——片方だけ見る網は、
    どちらも同じだけ狂っていても通る。 */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+/* 材料は自分で注ぎ込む（§9.351・§9.362 ⑥）。この網は「記録が1件ある」
+   ことを前提にするが、**フィクスチャに記録は無い**——今まで見えていたのは
+   前の実行の置き土産で、ランナーが実績を1本ごとに空へ戻すようになった
+   （§9.362 ①）とたんに`.record-list-row`の待ちが25秒 timeout した。
+   置いたものは`clearRecords()`が片付ける。 */
+const {seedRecord}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
@@ -66,6 +72,7 @@ let b=null;
   await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
+  await seedRecord();
   await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
   await page.waitForSelector('.record-list-row',{timeout:25000});
   await page.click('.record-list-row .report');
@@ -1273,6 +1280,8 @@ let b=null;
   /* **落ちても必ず後片付け**（§9.121）。 */
   await cleanup();
   await cleanupRecs();
+  /* 置いた実績は自分で消す（§9.351・§9.362）。 */
+  try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
   if(b)await b.close().catch(()=>{});
  }
 })();

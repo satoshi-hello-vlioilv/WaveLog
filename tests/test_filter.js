@@ -24,9 +24,17 @@ const setMode=async m=>{await fetch(`${API}/api/access-mode`,
  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
 const TAG='T'+Date.now().toString().slice(-6);
 
+/* 触る前の行を控える（§9.362 ⑤）。製品の「登録フィルタを削除」は
+   **論理削除**（`有効=0`）なので、APIで消しても行は残る。**この実行で
+   増えた行だけ**を素の表から片付ける（名前で拾うと、同じ名前を使う
+   他の網の期待と食い違う・§9.284）。 */
+const H=require('./lib/harness.js');
+const SNAP_TABLES=['フィルタプリセットマスタ'];
+let snapM=null;
 let b=null;
 (async()=>{
  b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
+ snapM=await H.masterSnapshot(SNAP_TABLES);
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  const page=await b.newPage({viewport:{width:1600,height:1000}});
  page.on('pageerror',e=>console.log('[pageerror]',e.message));
@@ -222,6 +230,8 @@ let b=null;
    }
   },TAG);
   await setMode('edit');
+  try{if(snapM)await H.dropNewMasterRows(snapM)}
+  catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
 
   console.log('\n=== SUMMARY ===');
   const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
@@ -231,6 +241,8 @@ let b=null;
  }catch(e){
   console.error('FATAL',e);
   await setMode('edit').catch(()=>{});
+  try{if(snapM)await H.dropNewMasterRows(snapM)}
+  catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
   await b.close().catch(()=>{});
   process.exit(2);
  }

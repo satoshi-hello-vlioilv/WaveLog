@@ -376,6 +376,9 @@ let b=null;
   /* **選ばせ方も戻す**（§9.121。置き土産は次の実行を巻き添えにする）。 */
   try{if(saved!==null)await put(TARGET,{blankTint:saved,widget:savedWidget0||'プルダウン'})}catch(e){}
   try{await post('/api/access-mode',{mode:'edit'})}catch(e){}
+  /* 置いた実績は自分で消す（§9.351・§9.362）。残った実績は計画外実績として
+     予定表に現れ、無関係な網を落とす。 */
+  try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
   if(b)await b.close();
  }
  const ng=R.filter(x=>!x.ok).length;

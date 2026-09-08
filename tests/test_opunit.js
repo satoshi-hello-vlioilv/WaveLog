@@ -570,6 +570,9 @@ let b=null;
   console.log('FATAL: '+(e&&e.message));process.exitCode=1;
  }finally{
   for(const x of backup){try{await saveItem(x)}catch(e){}}
+  /* 置いた実績は自分で消す（§9.351・§9.362）。残った実績は計画外実績として
+     予定表に現れ、無関係な網を落とす。 */
+  try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
   if(b)await b.close();
  }
 })();

@@ -1,12 +1,18 @@
 /* §9.68 パス設定を設定ページ形式へ / データ引継ぎの「現状→実行後」可視化 */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
 const B='http://127.0.0.1:5029';
+/* 材料は自分で注ぎ込む（§9.351・§9.362 ⑥）。この網は「取り込める記録が
+   ある」ことを前提にするが、**フィクスチャに記録は無い**——今まで見えて
+   いたのは前の実行の置き土産で、ランナーが実績を1本ごとに空へ戻すように
+   なった（§9.362 ①）とたんに0行になった。片付けは`clearRecords()`。 */
+const {seedRecord,clearRecords}=require('./lib/harness.js');
 const setMode=async m=>{await fetch(B+'/api/access-mode',{method:'POST',
  headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
 const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
 let b=null;
 (async()=>{
  await setMode('edit');
+ await seedRecord();
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  const page=await b.newPage({viewport:{width:1600,height:900}});
  page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
@@ -221,6 +227,8 @@ let b=null;
     body.replace(/\s+/g,' ').slice(0,110));
   await page.click('#appConfirmCancel');
  }
+ /* 置いた実績は自分で消す（§9.351・§9.362）。 */
+ try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
  await b.close();
  const ng=R.filter(x=>!x.ok);
  console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');

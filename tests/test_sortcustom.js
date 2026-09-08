@@ -20,6 +20,7 @@ const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_m
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const API='http://127.0.0.1:5029';
 const CASES=require('path').join(__dirname,'fixtures','sort_cases.json');
+const {clearLayout}=require('./lib/harness.js');   // 後片付け（§9.360）
 const cases=JSON.parse(require('fs').readFileSync(CASES,'utf8'));
 
 let b=null;
@@ -169,10 +170,12 @@ let b=null;
  }finally{
   /* **後始末**: 保存した並べ替えの決まりを消す(残すと次の実行が別の並びで
      始まり、関係の無いテストが落ちる。§9.121)。 */
-  try{await page.evaluate(async t=>{
-   const l=WL.columnLayout.get(t);
-   await WL.columnLayout.save(t,{...l,sorts:{}});
-  },target)}catch(_){}
+  /* **丸ごと白紙へ戻す**（§9.360）。以前は`sorts`だけ空にしていたが、
+     **列レイアウトそのものが37行残っていた**——並べ替えを消しても
+     「保存された配置」は残る（§9.284 の`list:`が積み上がる形）。
+     試験用の`SANDBOX`も同じ理由で消す。 */
+  try{if(target)await clearLayout(target)}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
+  try{await clearLayout('list:__sorttest__:__t__')}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
   if(b)await b.close().catch(()=>{});
  }
  console.log('\n=== SUMMARY ===');

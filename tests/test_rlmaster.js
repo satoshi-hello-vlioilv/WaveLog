@@ -251,9 +251,25 @@ let b=null;
  }catch(e){
   console.log('FATAL: '+(e&&e.stack||e));process.exitCode=1;
  }finally{
-  /* **モードは必ず戻す**（同じ群の後続テストは編集モードで走る）。 */
+  /* **後片付け**（§9.360）: 画面を触ると、その帳票・一覧の列レイアウトが
+     保存される。**触った網は自分で消す**——残すと、単独で回したときに
+     自分のDBを汚し、通しでは「共有状態を残した本」の報告がうるさくなって
+     本物の置き土産が埋もれる（§9.284 の`list:`が積み上がる形）。 */
+  /* 自前の`clearLayout()`は`report:<設備>`を消す。**`report:共通`は別の対象**で
+     残っていた（§9.360で実測 +24）ので、こちらも消す。 */
+  /* **消す前に画面を閉じる。** 帳票の配置は「触ったら裏で保存」（§9.113）
+     なので、開いたままだと遅れて届いた保存が消したあとの表へ書き戻し得る。
+     後片付けの順は「閉じる → モードを戻す → 消す」。 */
+  if(b){await b.close();b=null}
+  /* **モードは、消すより先に戻す。** この網は最後に閲覧モードへ切り替える
+     ので、そのまま消しに行くと書き込みが`/api/access-mode`の関所で弾かれる
+     ——`{"error":"現在のモードでは、この操作は実行できません。"}`が返るのに
+     `catch`が握って**緑のまま24行残った**（§9.360で実測 +24）。 */
   try{await post('/api/access-mode',{mode:'edit'})}catch(e){}
-  try{await clearLayout()}catch(e){}
-  if(b)await b.close();
+  /* 自前の`clearLayout()`は`report:<設備>`を消す。**`report:共通`は別の対象**。 */
+  try{await post('/api/column-layout-master',{target:'report:共通',clear:true,
+    order:[],hidden:[],widths:{},names:{},formats:{},rules:{},formulas:{},
+    locks:[],sorts:{},user_id:'tests'})}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
+  try{await clearLayout()}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
  }
 })();

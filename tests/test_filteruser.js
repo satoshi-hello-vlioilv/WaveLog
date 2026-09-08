@@ -30,9 +30,17 @@ const TAG='fu'+Date.now().toString(36);
 const A='u-'+TAG+'-a', B='u-'+TAG+'-b';   // 2人ぶん
 const DB='SIKALOTNOW',TBL='仕掛';
 
+/* 触る前の行を控える（§9.362 ⑤）。製品の「登録フィルタを削除」は
+   **論理削除**（`有効=0`）なので、APIで消しても行は残る。**この実行で
+   増えた行だけ**を素の表から片付ける（名前で拾うと、同じ名前を使う
+   他の網の期待と食い違う・§9.284）。 */
+const H=require('./lib/harness.js');
+const SNAP_TABLES=['フィルタプリセットマスタ','フィルタ個人設定マスタ'];
+let snapM=null;
 let b=null;
 (async()=>{
  b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
+ snapM=await H.masterSnapshot(SNAP_TABLES);
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  const errs=[];
  /* 「端末が違う」は**別のブラウザコンテキスト**（localStorageが別）で表す。 */
@@ -203,6 +211,8 @@ let b=null;
   }catch(e){}
   try{if(t1)await t1.ctx.close()}catch(e){}
   try{if(t2)await t2.ctx.close()}catch(e){}
+  try{if(snapM)await H.dropNewMasterRows(snapM)}
+  catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
   if(b)await b.close();
  }
  const ok=R.filter(x=>x.ok).length;

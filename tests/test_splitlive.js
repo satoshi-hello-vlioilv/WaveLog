@@ -836,7 +836,12 @@ const settle=async page=>{
   rec('操作の途中でダイアログを出さない',dialogs.length===0,dialogs.join(' / '));
   rec('コンソールに例外を出さない',errs.length===0,errs.join(' / '));
  }catch(e){rec('FATAL',false,e.message)}
- finally{if(b)await b.close()}
+ finally{
+  /* 置いた実績は自分で消す（§9.351・§9.362）。残った実績は計画外実績として
+     予定表に現れ、無関係な網を落とす。 */
+  try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
+  if(b)await b.close();
+ }
  const ng=R.filter(x=>!x.ok).length;
  console.log(`\n${R.length-ng} PASS / ${ng} FAIL`);
  process.exit(ng?1:0);

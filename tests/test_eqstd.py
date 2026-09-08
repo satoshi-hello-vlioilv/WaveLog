@@ -43,6 +43,24 @@ PREFIX = '標準時間テスト設備'
 NAME = PREFIX + str(int(__import__('time').time() * 1000))[-7:]
 
 
+SNAP = set()
+
+
+def snapshot():
+    """触る前の行（rowid）を控える（§9.362 ⑤）。
+
+    製品の「設備を削除」は**論理削除**（`有効=0`）なので、APIで消しても
+    **行は残る**。名前で拾うと同じ名前を使う他の網と食い違う（§9.284）ので、
+    「**触る前に居なかった行**」だけを消せるようにここで控える。
+    """
+    global SNAP
+    try:
+        r = client.get('/api/master-table/設備マスタ?limit=2000').get_json() or {}
+        SNAP = {it['id'] for it in (r.get('items') or [])}
+    except Exception as e:
+        print('  [snapshot]', e)
+
+
 def cleanup():
     """作った設備は必ず消す（残すと後続の俯瞰ボード・設備リストの件数が変わる）。"""
     try:
@@ -53,11 +71,21 @@ def cleanup():
                             json={'id': it['id'], 'force': True, 'user_id': 'tests'})
     except Exception as e:
         print('  [cleanup]', e)
+    # 論理削除で残った行を素の表から片付ける。
+    try:
+        if SNAP:
+            r = client.get('/api/master-table/設備マスタ?limit=2000').get_json() or {}
+            for it in (r.get('items') or []):
+                if it['id'] not in SNAP:
+                    client.post('/api/master-table/設備マスタ/delete', json={'id': it['id']})
+    except Exception as e:
+        print('  [cleanup] 増えた行を消せませんでした:', e)
 
 
 def main():
     try:
         cleanup()
+        snapshot()
 
         # ---- 1) 正規化: 空欄・0・負・文字は「未設定」 ----
         cases = [('', None), (None, None), ('0', None), ('-5', None), ('あ', None),

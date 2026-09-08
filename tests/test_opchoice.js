@@ -28,6 +28,11 @@ let manyGroup='';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(body)}).then(async r=>({status:r.status,body:await r.json()}));
 const getj=p=>fetch(B+p).then(r=>r.json());
+/* 触る前の行を控える（§9.362 ⑤）。製品の「設備を削除」は**論理削除**
+   （`有効=0`）なので、APIで消しても行は残る。**この実行で増えた行だけ**を
+   素の表から片付ける（名前で拾うと、同じ名前を使う他の網と食い違う）。 */
+const H=require('./lib/harness.js');
+let snapM=null;
 async function cleanup(){
  try{
   for(const nm of [G,G2,manyGroup].filter(Boolean))
@@ -43,7 +48,9 @@ async function cleanup(){
    const row=(eq.items||[]).find(x=>String(x.name)===madeEquipment);
    if(row)await post('/api/equipment-master/delete',{id:row.id,force:true,user_id:'cleanup'});
   }
- }catch(e){}
+ }catch(e){console.log('  [cleanup] 片付けの途中で止まりました: '+(e&&e.message||e))}
+ try{if(snapM)await H.dropNewMasterRows(snapM)}
+ catch(e){console.log('  [cleanup] 増えた行を消せませんでした: '+(e&&e.message||e))}
 }
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
@@ -51,6 +58,7 @@ async function cleanup(){
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  const errs=[];page.on('pageerror',e=>errs.push(e.message));
  try{
+  snapM=await H.masterSnapshot(['設備マスタ']);
   await cleanup();
   await post('/api/access-mode',{mode:'edit'});
 

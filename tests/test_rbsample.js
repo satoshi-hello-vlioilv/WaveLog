@@ -26,6 +26,7 @@
    いないこと**まで見る。
    ============================================================ */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+const {clearLayout}=require('./lib/harness.js');   // 後片付け（§9.360）
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 let b=null;
@@ -479,6 +480,11 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
  }catch(e){
   console.log('FATAL '+(e&&e.message||e));R.push({ok:false});
  }finally{
+  /* **後片付け**（§9.360）: 画面を触ると、その帳票・一覧の列レイアウトが
+     保存される。**触った網は自分で消す**——残すと、単独で回したときに
+     自分のDBを汚し、通しでは「共有状態を残した本」の報告がうるさくなって
+     本物の置き土産が埋もれる（§9.284 の`list:`が積み上がる形）。 */
+  try{await clearLayout('report:テスト設備A')}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
   if(b)await b.close();
  }
  const ok=R.filter(x=>x.ok).length;

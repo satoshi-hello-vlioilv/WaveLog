@@ -55,6 +55,9 @@ async function run(title,body,opts={}){
  }finally{
   if(opts.mode&&opts.mode!=='edit')await setMode('edit').catch(()=>{});
   if(b)await b.close().catch(()=>{});
+  /* 置いた実績は土台が消す（§9.351・§9.360）。**1箇所に置く**——網ごとに
+     書き写すと、書き忘れた本だけが無関係な網を落とす形で現れる。 */
+  await clearRecords().catch(()=>{});
  }
  rec('素のダイアログが1度も出ていない（§9.342）',native.length===0,native.join(' / '));
  const ng=R.filter(x=>!x.ok);
@@ -62,4 +65,83 @@ async function run(title,body,opts={}){
  ng.forEach(x=>console.log(' -',x.n,x.d||''));
  process.exit(fatal?2:(ng.length?1:0));
 }
-module.exports={run,B};
+/* 後片付け: 触った一覧の列レイアウトを白紙へ戻す（§9.360 の追補）。
+   **画面の列を触るとその一覧のレイアウトが保存される**ので、触った網は
+   自分で消す。通しはランナーがマスタを丸ごと戻すので実害は出ないが、
+   残すと①単独で回したとき自分のDBを汚し、②「共有状態を残した本」の
+   報告がうるさくなって**本物の置き土産が埋もれる**。
+   payload は `run_all.sh` の `resetcontent` と同じ形（送っていない設定だけが
+   生き延びるのを防ぐため `clear:true` を必ず付ける・§9.212 ②）。 */
+async function clearLayout(target,userId='test'){
+ await fetch(B+'/api/column-layout-master',{method:'POST',
+   headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({target,clear:true,order:[],hidden:[],widths:{},names:{},
+     formats:{},rules:{},formulas:{},locks:[],sorts:{},user_id:userId})}).catch(()=>{});
+}
+/* 後片付け: この網が置いた実績（`Web測定バックアップ`）を空へ戻す（§9.351）。
+   残った実績は**計画外実績として予定表に現れ**（§9.33）、行数・作業可否・
+   「作業中」の有無を変える——後片付けを忘れた1本が、無関係な網を落とす。
+   ランナーは1本ごとに空へ戻す（§9.360）ので、ここで消えるのは
+   **この網が作ったぶんだけ**。単独で回したときも同じように綺麗になる。
+   戻り値は消した件数（0なら何も置いていない）。 */
+async function clearRecords(){
+ const r=await fetch(B+'/api/measurement/backup/list').then(x=>x.json()).catch(()=>({items:[]}));
+ const ids=[...new Set((r.items||[]).map(i=>i.id).filter(Boolean))];
+ if(!ids.length)return 0;
+ await fetch(B+'/api/measurement/backup/delete',{method:'POST',
+   headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})}).catch(()=>{});
+ return ids.length;
+}
+/* 素の表の中身（`id`は rowid）。**持ち主や論理削除まで見える唯一の口**——
+   製品のAPIは「いま使える行」しか返さないので、残った行はここからしか分からない。 */
+async function masterRows(table){
+ const j=await fetch(B+'/api/master-table/'+encodeURIComponent(table)+'?limit=2000')
+   .then(r=>r.json()).catch(()=>({}));
+ return j.items||[];
+}
+/* 触る前の行を控える（§9.362 ⑤）。
+   製品の「削除」が**論理削除**（`有効=0`）のマスタ——設備・勤務体系など——は、
+   APIで消しても**行は残る**。触った網は自分で片付ける必要がある。
+   **名前で拾わないこと**——名前を前提にすると、同じ名前を使う他の網の期待と
+   食い違う（§9.284）。「**触る前に居なかった行**」だけを消す。 */
+async function masterSnapshot(tables){
+ const snap=new Map();
+ for(const t of tables)snap.set(t,new Set((await masterRows(t)).map(r=>r.id)));
+ return snap;
+}
+/* 控えより後に増えた行を消す。戻り値は消した件数（0なら何も残していない）。 */
+async function dropNewMasterRows(snap){
+ let n=0;
+ for(const [t,ids] of snap){
+  for(const r of await masterRows(t)){
+   if(ids.has(r.id))continue;
+   await fetch(B+'/api/master-table/'+encodeURIComponent(t)+'/delete',{method:'POST',
+     headers:{'Content-Type':'application/json'},body:JSON.stringify({id:r.id})}).catch(()=>{});
+   n++;
+  }
+ }
+ return n;
+}
+/* 材料は自分で注ぎ込む（§9.351・§9.362 ⑥）。「記録が1件ある」ことを前提に
+   する網は、**他の本の置き土産に頼らない**——ランナーが実績を1本ごとに空へ
+   戻すようになった（§9.362 ①）ので、頼っていた網は待ちが timeout する。
+
+   中身は`codec:'json-full-v32'`＝**レコードそのままのJSON**で渡すこと。
+   `'x'`のような当て字だと一覧には出るが、**開いた先の帳票が組み立てられない**
+   （実測: `.record-list-row`は出るのに`#reportContent .rp-blocks`で25秒待つ）。
+   戻り値は記録ID。後片付けは`clearRecords()`が持つ。 */
+async function seedRecord(opt={}){
+ const id=opt.id||('seed-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6));
+ const equipment=opt.equipment||'テスト設備A';
+ const lotNo=opt.lotNo||('SEED-'+String(id).slice(-6));
+ const basic={lotNo,inspectionNo:opt.inspectionNo||'',castingNo:opt.castingNo||''};
+ const status=opt.status||'編集中';
+ const body={id,equipment,lotNo,inspectionNo:basic.inspectionNo,castingNo:basic.castingNo,
+   status,codec:'json-full-v32',user_id:opt.userId||'tests',
+   payload:JSON.stringify(Object.assign(
+     {id,status,basic,settings:{registeredEquipment:equipment},measurements:{}},opt.extra||{}))};
+ await fetch(B+'/api/measurement/backup',{method:'POST',
+   headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).catch(()=>{});
+ return id;
+}
+module.exports={run,B,clearLayout,clearRecords,seedRecord,masterRows,masterSnapshot,dropNewMasterRows};

@@ -35,6 +35,12 @@ const post=async(u,body)=>{
 };
 const get=async u=>await (await fetch(B+u)).json();
 
+/* 触る前の行を控える（§9.362 ⑤）。製品の「削除」は**論理削除**（`有効=0`）
+   なので、APIで消しても行は残る。**この実行で増えた行だけ**を素の表から
+   片付ける（名前で拾うと、同じ名前を使う他の網の期待と食い違う・§9.284）。 */
+const H=require('./lib/harness.js');
+const SNAP_TABLES=['選択履歴マスタ','操業データ選択肢マスタ'];
+let snapM=null;
 (async()=>{
  const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  let b=null,item=null;
@@ -42,6 +48,7 @@ const get=async u=>await (await fetch(B+u)).json();
   /* 材料は自分で用意する（§9.291 ①）——検証用マスタの欄がどんな設定かに
      頼らない。**組み込みの選択欄で見ること**——`[型]`は`文字`なので、
      族ではなく型で判定する実装はここで落ちる（§9.244と同じ罠）。 */
+  snapM=await H.masterSnapshot(SNAP_TABLES);
   const items=(await get('/api/operation-item-master')).items||[];
   item=items.find(x=>x.choice&&x.name==='オペレータ')||items.find(x=>x.choice);
   rec('選択肢を持つ欄がマスタに在る',!!item,item&&item.name);
@@ -163,7 +170,9 @@ const get=async u=>await (await fetch(B+u)).json();
    const rows=(await get('/api/operation-choice-master')).items||[];
    for(const x of rows.filter(y=>String(y.value||'').startsWith('RT登録')))
     await post('/api/operation-choice-master/delete',{user_id:'test',id:x.id});
-  }catch(e){}
+  }catch(e){console.log('!! 足した選択肢を消せませんでした: '+(e&&e.message||e))}
+  try{if(snapM)await H.dropNewMasterRows(snapM)}
+ catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
   if(b)await b.close();
  }
  const ng=R.filter(x=>!x.ok).length;

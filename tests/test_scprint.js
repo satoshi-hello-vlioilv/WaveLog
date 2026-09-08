@@ -31,13 +31,19 @@
    ダイアログを開くと戻ってこない）。 */
 /* 骨組み（起動・rec・pageerror・素のダイアログ・集計・落ちても閉じる）は
    tests/lib/harness.js の1本（3-15 ①・§9.347）。この網に残るのは見る中身だけ。 */
-const {run}=require('./lib/harness.js');
+/* 触る前の行を控える（§9.362 ⑤）。設備停止マスタの「削除」は**論理削除**
+   （`有効=0`）なので、APIで消しても行は残る。**この実行で増えた行だけ**を
+   素の表から片付ける。 */
+const {run,masterSnapshot,dropNewMasterRows}=require('./lib/harness.js');
+const SNAP_TABLES=['設備停止マスタ'];
+let snapM=null;
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const PARENT='L9000';
 const TARGET='timeline:'+EQ;
 
 run('test_scprint: 作業予定表の印刷（§9.115／§9.235）',async({page,rec,setMode,W,paint})=>{
+ snapM=await masterSnapshot(SNAP_TABLES);
  /* ---------- 待ちは「時間」ではなく「条件」で（§9.102・3-15 ③・§9.347） ----------
     この網は固定待ちが33箇所・24.4秒あった。守っていたものは4種類しか無い:
      ・用紙の選択肢を押す → renderPreview()（非同期）が紙の figure を**丸ごと
@@ -2055,5 +2061,7 @@ run('test_scprint: 作業予定表の印刷（§9.115／§9.235）',async({page,
    },id);
   }catch(e){}
   try{await setMode('edit')}catch(e){}
+  try{if(snapM)await dropNewMasterRows(snapM)}
+  catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
  }
 });

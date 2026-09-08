@@ -15,24 +15,45 @@
        ——同じ名前の紙を2人が刷って中身が違う、が起きるため
    ============================================================ */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+const {clearLayout}=require('./lib/harness.js');   // 後片付け（§9.360）
 const B='http://127.0.0.1:5029';
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(body)}).then(async r=>({code:r.status,json:await r.json().catch(()=>({}))}));
 const UID='tests-colscope-'+Date.now();
-let b=null,TARGET='';
+const SCOPE_TBL='列レイアウト個人設定マスタ';
+let b=null,TARGET='',scopeAtStart=new Set();
+/* 表の中身を素で読む口（§9.249 の汎用CRUD）。**持ち主を名指しできる唯一の
+   手立て**——列レイアウトを読むAPIは「自分に見えている1人ぶん」しか返さない
+   ので、誰の行が残っているかはここからしか分からない。 */
+const mrows=t=>fetch(B+'/api/master-table/'+encodeURIComponent(t)+'?limit=2000')
+  .then(r=>r.json()).then(j=>j.items||[]).catch(()=>[]);
 /* 列レイアウトマスタは**実行をまたいで生き延びる**（§9.121）ので必ず片付ける。 */
 async function cleanup(){
  if(!TARGET)return;
  const wipe=u=>post('/api/column-layout-master',{target:TARGET,clear:true,order:[],widths:{},hidden:[],
    names:{},formats:{},rules:{},formulas:{},locks:[],user_id:u}).catch(()=>{});
- /* **個人設定を先に消す**（§9.121）。誰の行を読み書きするかは
-    `column_layout_owner()`が答える（§9.259）ので、先に「みんなのもの」へ
-    戻してから消すと、**消えるのは共通の行だけ**で個人の行が残る
-    ——実行のたびに`tests-colscope-<時刻>`の行が積み上がっていた（実測436行）。 */
- await wipe(UID);
- await post('/api/column-layout-master/scope',{target:TARGET,scope:'common',user_id:UID}).catch(()=>{});
- for(const u of [UID,'']) await wipe(u);
+ const scope=(u,s)=>post('/api/column-layout-master/scope',{target:TARGET,scope:s,user_id:u}).catch(()=>{});
+ /* **持ち主ごとに「個人へ戻してから消す」**（§9.274 の 消す→戻す→消す）。
+    誰の行を読み書きするかは`column_layout_owner()`が答える（§9.259）ので、
+    **共通へ戻した後に消すと、消えるのは共通の行だけ**で個人の行が残る。
+
+    **持ち主は`UID`だけではない。** この網は「空のIDで切り替えを送る」道を
+    通る（§9.276 ③の確認）が、ログインIDを持つ端末では空が**その端末のID**で
+    埋まる——`root`の個人設定として37行が複製され、そのあと共通へ戻しても
+    個人の行は消えない仕様なので、**毎回37行が積み上がっていた**（§9.360で実測）。
+    端末のIDを当てにいくのではなく、**印の表に載っている持ち主を全部拾う**
+    ——この実行で増えた行だけが対象なので、フィクスチャの行は動かさない。 */
+ const mine=(await mrows(SCOPE_TBL)).filter(r=>r['対象']===TARGET&&!scopeAtStart.has(r.id));
+ const uids=[...new Set([UID,...mine.map(r=>String(r['利用者ID']||''))])].filter(Boolean);
+ for(const u of uids){await scope(u,'personal');await wipe(u);await scope(u,'common')}
+ await wipe('');
+ /* 「みんなと同じ／自分だけ」の印そのものも1行として残る（§9.284で実測1行。
+    1行あるだけで以降の全部が「保存したのにマスタに入っていない」を見る）。
+    **この実行で増えた行だけ**消す。 */
+ for(const r of await mrows(SCOPE_TBL))
+  if(!scopeAtStart.has(r.id))
+   await post('/api/master-table/'+encodeURIComponent(SCOPE_TBL)+'/delete',{id:r.id}).catch(()=>{});
 }
 
 (async()=>{
@@ -58,6 +79,9 @@ async function cleanup(){
   TARGET=await page.evaluate(()=>WL.list.listLayoutTarget());
   const uidSeen=await page.evaluate(()=>(window.currentUserId&&currentUserId())||'');
   rec('前提: 仕掛一覧が開けて対象と利用者IDが決まる',!!TARGET&&uidSeen===UID,TARGET+' / '+uidSeen);
+  /* **触る前の印の行を控える。** 後片付けで消してよいのは「この実行で増えた
+     ぶん」だけ——無差別に消すと、後片付けを持つ他の網の前提と食い違う（§9.284）。 */
+  scopeAtStart=new Set((await mrows(SCOPE_TBL)).map(r=>r.id));
   await cleanup();
   await page.evaluate(()=>WL.columnLayout.forget&&WL.columnLayout.forget());
 
@@ -196,8 +220,13 @@ async function cleanup(){
  }catch(e){
   console.log('FATAL '+(e&&e.message||e));R.push({n:'FATAL',ok:false,d:String(e&&e.message||e)});
  }finally{
+  /* **消す前に画面を閉じる**（§9.360）。開いたままだと遅れて届いた保存が
+     消したあとの表へ書き戻し得る。後片付けの順は「閉じる → 消す」。 */
+  if(b){await b.close();b=null}
   await cleanup().catch(()=>{});
-  if(b)await b.close();
+  /* **`cleanup()`のあとで消す**（§9.360）。あちらは持ち主を戻すために
+     書き込むので、先に消しても37行が復活していた（実測）。 */
+  try{await clearLayout(TARGET)}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
  }
  const ng=R.filter(x=>!x.ok);
  console.log('\n=== SUMMARY ===');
