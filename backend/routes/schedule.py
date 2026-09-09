@@ -24,6 +24,7 @@ from flask import Blueprint, request, jsonify, g
 
 from .. import schedule_sync
 from .. import schedule_calc
+from .. import query_join
 from .. import load_factor
 from ..repositories import schedule_repo as sr
 from ..repositories.master_repo import normalize_equipment_name, equipment_master_rows, field_reorder_equipment_allows
@@ -420,7 +421,11 @@ def _persist_actual_sources(result):
  def fn(c):
   n=0
   for e in pend:
-   if sr.plan_set_actual_json(c,e['id'],json.dumps(e['actualSource'],ensure_ascii=False),uid,pc):n+=1
+   # **完了時刻と、どの定義で当たったかも一緒に残す**(§9.365)——値だけ残すと、
+   # 相手のデータが消えたあとに「いつ終わったのか」を二度と言えなくなる。
+   payload={'values':e['actualSource'],'finishedAt':e.get('finishedAt') or '',
+            'joinName':e.get('finishedBy') or '','savedAt':datetime.now().isoformat()}
+   if sr.plan_set_actual_json(c,e['id'],json.dumps(payload,ensure_ascii=False),uid,pc):n+=1
   return {'saved':n}
  try:
   schedule_sync.with_write(uid,pc,uid,fn)
@@ -444,12 +449,18 @@ def plan_list():
  if raw is not None:
   try:history_hours=max(0.0,min(float(raw),24.0*90))
   except (TypeError,ValueError):pass
+ # さかのぼりの種類(§9.366)。**`history`があればそちらが正**——「今日ぶん」
+ # 「今の直から」は時間数では言えないので、起点はサーバーが決める
+ # （`history_hours`は、種類を送ってこない古い画面のための道）。
+ history=request.args.get('history')
+ if history is not None:history=str(history)
  # 読み込みの内訳(§9.198)。**遅いときにどこが遅いのかを画面から見られる**
  # ようにするための計測。「共有の取り込み」「予定の読み出し」「実績の突合」
  # 「展開」で桁が違うので、どれか1つでも分かれば打つ手が決まる。
  timings={}
  t_all=time.perf_counter()
- result,stale,err=_read(lambda c:schedule_calc.expand_plan(c,equipment,history_hours=history_hours),timings)
+ result,stale,err=_read(lambda c:schedule_calc.expand_plan(
+  c,equipment,history_hours=history_hours,history=history),timings)
  if err=='not_configured':return jsonify(ok=True,configured=False,equipment=equipment,entries=[],anchor=None,warnings=[])
  if err:return jsonify(error=err),503
  warnings=list(result.get('warnings') or [])
@@ -457,13 +468,34 @@ def plan_list():
  # HITした実績を共有スケジュールへ残す(§9.364)。**書込役の端末だけ**が書く。
  note=_persist_actual_sources(result)
  if note:warnings.append(note)
+ # 完了突合が持ち帰った値を、内容欄の候補として名乗る(§9.365、利用者の指示
+ # 「作業スケジュールに使用可能とするデータも選べるように」)。**設定に
+ # 書いてある名前 ＋ 実際に当たっている行が持つ名前**——前者だけだと
+ # 「相手の全列」の定義で1つも出ず、後者だけだと当たった行が無い設備で
+ # 候補に出てこない。
+ actual_columns=list(query_join.finish_column_names())
+ for e in (result.get('entries') or []):
+  for k in (e.get('actualSource') or {}):
+   if k not in actual_columns:actual_columns.append(k)
  timings.update(result.get('timings') or {})
  timings['total']=round((time.perf_counter()-t_all)*1000,1)
  timings['rowCount']=len(result['entries'])
  return jsonify(ok=True,configured=True,equipment=equipment,entries=result['entries'],anchor=result.get('anchor'),
                 anchorRounded=result.get('anchorRounded'),
-                loadFactor=result.get('loadFactor'),historyHours=history_hours,warnings=warnings,
-                timings=timings)
+                loadFactor=result.get('loadFactor'),
+                historyHours=(result.get('historyHours') if history is not None else history_hours),
+                # さかのぼりの起点(§9.366)。**画面はこの日時で絞る**（None＝制限しない）。
+                historyKey=result.get('historyKey'),historyFrom=result.get('historyFrom'),
+                actualColumns=actual_columns,
+                warnings=warnings,timings=timings)
+
+@bp.get('/api/schedule/history-modes')
+def history_modes():
+ """さかのぼりの語彙(§9.366)。**画面に書かない**——増やしたときに片方だけ
+ 古い並びを見る（§9.163と同じ理由）。読むだけなので全モードから通す。"""
+ return jsonify(ok=True,groups=schedule_calc.HISTORY_GROUPS,
+                modes=schedule_calc.HISTORY_MODES,
+                default=schedule_calc.HISTORY_DEFAULT)
 
 @bp.post('/api/schedule/plan/add')
 def plan_add():

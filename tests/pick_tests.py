@@ -145,6 +145,8 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scstop', 'test_scwarm', 'test_scundecided',
                      'test_scwatchui', 'test_scwatch', 'test_sccomment',
                      'test_scowner', 'test_scrowstyle', 'test_scload', 'test_scbar', 'test_scsave',
+                     # §9.366: さかのぼりの起点と2段の選び方
+                     'test_schistory',
                      'test_scsession', 'test_scwho']
 # 実績データリストと操業データ表（§9.241 ②③）。**一覧が紙の材料を渡す**ので、
 # どちらを触っても両方回す。
@@ -429,7 +431,9 @@ RULES = [
     ('backend/db_access.py', g('接続', '一覧', 'test_setpage')),
     # データソースの「できること」の判定(§9.163)。列名の別名解決も
     # ここが持つので、品質結合(/api/table)の網も回す。
-    ('backend/query_join.py', g('接続', '列', 'test_dsnav', 'test_sccontent')),
+    # §9.365: 完了突合もこのエンジンに乗る（用途・完了日時列・スケジュール利用）。
+    ('backend/query_join.py', g('接続', '列', 'test_dsnav', 'test_sccontent',
+                                'test_finishjoin', 'test_actualmatch')),
     ('backend/source_capability.py', g('test_dscap', 'test_datasource', 'test_dsnav',
                                        'test_tablequery', 'test_uiux',
                                        # §9.285 ④: 仕掛の生の列を帳票の候補へ
@@ -456,9 +460,10 @@ RULES = [
     # §9.325: 読む側は写しに書かない（1秒未満のサーバー側の網）
     ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq', 'test_workdate', 'test_scsnapread')),
     ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd', 'test_workdate',
-                                   'test_actualmatch')),
-    # 仕掛から消えたロットの突合（§9.364）。
-    ('backend/actual_match.py', g('test_actualmatch', 'test_datasource', 'test_dscap')),
+                                   'test_actualmatch', 'test_finishjoin')),
+    # 仕掛から消えたロットの突合（§9.364・§9.365）。
+    ('backend/actual_match.py', g('test_actualmatch', 'test_finishjoin',
+                                  'test_datasource', 'test_dscap')),
     ('backend/sort_order.py', g('列', 'test_tablequery')),
     ('backend/schedule_watch.py', g('スケジュール')),
     # 共有スケジュールの持ち主(§9.192)。書込の入口(routes/schedule.py)と

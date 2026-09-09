@@ -2249,7 +2249,26 @@ QUERY_JOIN_MULTI=('first','blank')
 # 既定が変わると設定を触っていない現場の一覧が黙って変わる。
 QUERY_JOIN_KINDS=('left','inner','right','full','leftOnly','rightOnly')
 QUERY_JOIN_KIND_DEFAULT='left'
-_QUERY_JOIN_KIND_COLUMN=('結合方法','TEXT')
+# 用途(§9.365)。**1行が「何のための結合か」を名乗る。**
+#   ''       … 一覧に列を足す(今までどおり。既定)
+#   '完了突合' … 仕掛から消えたロットを相手のデータで探し、当たれば完了にする
+# **既定を''から動かさないこと**——保存済みの行は用途を持たないので、既定を
+# 変えると設定を触っていない現場の結合が別のものとして動き出す。
+QUERY_JOIN_PURPOSE_LIST=''
+QUERY_JOIN_PURPOSE_FINISH='完了突合'
+QUERY_JOIN_PURPOSES=(QUERY_JOIN_PURPOSE_LIST,QUERY_JOIN_PURPOSE_FINISH)
+# 後から足した列。**共有せず現場で動いているDBを作り直さない**ため、他のマスタと
+# 同じ「無ければALTER TABLEで足す」方式にする(§9.194で[結合方法]を足したのと同じ)。
+# **[スケジュール除外]の保存値は「使わない」側**(§9.132の作法)——1が入っている
+# 行だけがスケジュール表から外れるので、設定を触っていない行の見え方は変わらない。
+_QUERY_JOIN_EXTRA_COLUMNS=(('結合方法','TEXT'),('用途','TEXT'),
+                           ('完了日時列','TEXT'),('スケジュール除外','INTEGER'))
+# 読むときに必ずある列。**後から足した列は`_QUERY_JOIN_EXTRA_COLUMNS`で、
+# 実際にある列だけをSELECTする**——読み取り専用で開く経路があるのでここでは
+# ALTER TABLEできず、古い表もそのまま読めなければならない。
+_QUERY_JOIN_BASE_COLUMNS=('結合ID','結合名','対象データソース','対象テーブル',
+                          '相手データソース','相手テーブル','突合キーJSON',
+                          '取り込む列JSON','接頭辞','複数一致','表示順','有効')
 # 1つの結合で持てる突合キーと取り込む列の上限。**画面が壊れない範囲**で
 # 切る(キーが10も要る突合は、たいてい元データの持ち方が間違っている)。
 QUERY_JOIN_MAX_KEYS=6
@@ -2269,9 +2288,9 @@ def ensure_query_join_table(c):
               '([対象データソース],[対象テーブル],[表示順])')
   c.commit();created=True
  ensure_audit_columns(c,QUERY_JOIN_TABLE)
- # 結合方法(§9.194)は後から足した列。共有せず現場で動いているDBを作り直さない
- # ため、他のマスタと同じ「無ければALTER TABLEで足す」方式にする。
- _add_missing_column(c,QUERY_JOIN_TABLE,*_QUERY_JOIN_KIND_COLUMN)
+ # 後から足した列(結合方法=§9.194、用途・完了日時列・スケジュール除外=§9.365)。
+ for name,decl in _QUERY_JOIN_EXTRA_COLUMNS:
+  _add_missing_column(c,QUERY_JOIN_TABLE,name,decl)
  return created
 
 def normalize_join_keys(raw):
@@ -2300,42 +2319,52 @@ def normalize_join_columns(raw):
   if len(out)>=QUERY_JOIN_MAX_COLUMNS:break
  return out
 
-def _join_row(r):
- name=str(r[1] or '').strip()
- try:keys=json.loads(r[6]) if r[6] else []
- except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);keys=[]
- try:columns=json.loads(r[7]) if r[7] else []
- except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);columns=[]
- multi=str(r[9] or '').strip()
- kind=str((r[12] if len(r)>12 else '') or '').strip()
- return {'id':r[0],'name':name or f'結合{r[0]}',
+def _json_list(raw):
+ try:return json.loads(raw) if raw else []
+ except Exception as _e:
+  quiet('保存された値を読めない（既定で続ける）',_e);return []
+
+def _join_row(d):
+ """1行を画面・エンジンが読む形へ。**受けるのは列名の辞書**——後から足した
+ 列は表にあるとは限らないので、位置ではなく名前で読む(無ければ既定)。"""
+ jid=d.get('結合ID')
+ name=str(d.get('結合名') or '').strip()
+ multi=str(d.get('複数一致') or '').strip()
+ kind=str(d.get('結合方法') or '').strip()
+ purpose=str(d.get('用途') or '').strip()
+ active=d.get('有効')
+ return {'id':jid,'name':name or f'結合{jid}',
          'kind':kind if kind in QUERY_JOIN_KINDS else QUERY_JOIN_KIND_DEFAULT,
-         'left':str(r[2] or '').strip(),'leftTable':str(r[3] or '').strip(),
-         'right':str(r[4] or '').strip(),'rightTable':str(r[5] or '').strip(),
-         'keys':normalize_join_keys(keys),'columns':normalize_join_columns(columns),
-         'prefix':str(r[8] or '').strip()[:40],
+         'purpose':purpose if purpose in QUERY_JOIN_PURPOSES else QUERY_JOIN_PURPOSE_LIST,
+         'left':str(d.get('対象データソース') or '').strip(),
+         'leftTable':str(d.get('対象テーブル') or '').strip(),
+         'right':str(d.get('相手データソース') or '').strip(),
+         'rightTable':str(d.get('相手テーブル') or '').strip(),
+         'keys':normalize_join_keys(_json_list(d.get('突合キーJSON'))),
+         'columns':normalize_join_columns(_json_list(d.get('取り込む列JSON'))),
+         'prefix':str(d.get('接頭辞') or '').strip()[:40],
+         'finishColumn':str(d.get('完了日時列') or '').strip()[:120],
+         # **保存されているのは「使わない」側**(§9.132)。空＝使う。
+         'useInSchedule':not bool(d.get('スケジュール除外')),
          'multi':multi if multi in QUERY_JOIN_MULTI else 'first',
-         'order':int(r[10] or 0),'active':True if r[11] is None else bool(r[11])}
+         'order':int(d.get('表示順') or 0),
+         'active':True if active is None else bool(active)}
 
 def query_joins(c,include_disabled=False):
  """登録されている結合。表が無ければ空(読み取り専用接続から呼べる)。
 
- **[結合方法]が無い古い表も読めること**——読み取り専用で開く経路があるので
- ここではALTER TABLEできない。列が無ければ既定('left')として読む。"""
+ **後から足した列が無い古い表も読めること**——読み取り専用で開く経路が
+ あるのでここではALTER TABLEできない。実際にある列だけをSELECTし、
+ 無い列は`_join_row()`が既定で埋める。"""
  if QUERY_JOIN_TABLE not in tables(c):return []
  cur=c.cursor()
- has_kind=_QUERY_JOIN_KIND_COLUMN[0] in {r[1] for r in cur.execute(f'PRAGMA table_info([{QUERY_JOIN_TABLE}])')}
- if not has_kind:
-  cur.execute('SELECT [結合ID],[結合名],[対象データソース],[対象テーブル],[相手データソース],'
-              '[相手テーブル],[突合キーJSON],[取り込む列JSON],[接頭辞],[複数一致],[表示順],[有効] '
-              'FROM [クエリ結合マスタ] ORDER BY [表示順],[結合ID]')
-  return [d for d in (_join_row(r) for r in cur.fetchall()) if d['active'] or include_disabled]
- cur.execute('SELECT [結合ID],[結合名],[対象データソース],[対象テーブル],[相手データソース],'
-             '[相手テーブル],[突合キーJSON],[取り込む列JSON],[接頭辞],[複数一致],[表示順],[有効],'
-             '[結合方法] FROM [クエリ結合マスタ] ORDER BY [表示順],[結合ID]')
+ have={r[1] for r in cur.execute(f'PRAGMA table_info([{QUERY_JOIN_TABLE}])')}
+ names=list(_QUERY_JOIN_BASE_COLUMNS)+[n for n,_d in _QUERY_JOIN_EXTRA_COLUMNS if n in have]
+ sel=','.join(f'[{n}]' for n in names)
+ cur.execute(f'SELECT {sel} FROM [クエリ結合マスタ] ORDER BY [表示順],[結合ID]')
  out=[]
  for r in cur.fetchall():
-  d=_join_row(r)
+  d=_join_row(dict(zip(names,r)))
   if d['active'] or include_disabled:out.append(d)
  return out
 
@@ -2358,6 +2387,17 @@ def query_join_save(c,data,uid,jid=None):
  if multi not in QUERY_JOIN_MULTI:multi='first'
  kind=str((data or {}).get('kind') or '').strip()
  if kind not in QUERY_JOIN_KINDS:kind=QUERY_JOIN_KIND_DEFAULT
+ purpose=str((data or {}).get('purpose') or '').strip()
+ if purpose not in QUERY_JOIN_PURPOSES:purpose=QUERY_JOIN_PURPOSE_LIST
+ finish_col=str((data or {}).get('finishColumn') or '').strip()[:120]
+ if purpose==QUERY_JOIN_PURPOSE_FINISH:
+  # 完了突合は「当たったら完了にする」1通りしか無いので、結合の仕方は既定へ寄せる
+  # (押せるのに効かない設定を残さない。§4)。
+  kind=QUERY_JOIN_KIND_DEFAULT
+ else:
+  finish_col=''
+ # **保存するのは「使わない」側**(§9.132)。渡されなければ「使う」。
+ excluded=0 if (data or {}).get('useInSchedule',True) else 1
  cur=c.cursor()
  sql='SELECT [結合ID] FROM [クエリ結合マスタ] WHERE [結合名]=?'
  args=[name]
@@ -2369,19 +2409,22 @@ def query_join_save(c,data,uid,jid=None):
        json.dumps(keys,ensure_ascii=False),json.dumps(columns,ensure_ascii=False),
        str((data or {}).get('prefix') or '').strip()[:40],multi,
        int((data or {}).get('order') or 0),
-       0 if str((data or {}).get('enabled') or '').strip()=='無効' else -1,kind,uid]
+       0 if str((data or {}).get('enabled') or '').strip()=='無効' else -1,
+       kind,purpose,finish_col,excluded,uid]
  if jid is not None:
   cur.execute('SELECT [結合ID] FROM [クエリ結合マスタ] WHERE [結合ID]=?',[int(jid)])
   if not cur.fetchone():raise ValueError('指定の結合が見つかりません。')
   cur.execute('UPDATE [クエリ結合マスタ] SET [結合名]=?,[対象データソース]=?,[対象テーブル]=?,'
               '[相手データソース]=?,[相手テーブル]=?,[突合キーJSON]=?,[取り込む列JSON]=?,'
-              '[接頭辞]=?,[複数一致]=?,[表示順]=?,[有効]=?,[結合方法]=?,[更新者ID]=?,[更新日時]=Now() '
+              '[接頭辞]=?,[複数一致]=?,[表示順]=?,[有効]=?,[結合方法]=?,[用途]=?,[完了日時列]=?,'
+              '[スケジュール除外]=?,[更新者ID]=?,[更新日時]=Now() '
               'WHERE [結合ID]=?',vals+[int(jid)])
   c.commit();return int(jid)
  cur.execute('INSERT INTO [クエリ結合マスタ] ([結合名],[対象データソース],[対象テーブル],'
              '[相手データソース],[相手テーブル],[突合キーJSON],[取り込む列JSON],[接頭辞],'
-             '[複数一致],[表示順],[有効],[結合方法],[更新者ID],[登録者ID],[登録日時],[更新日時]) '
-             'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',vals+[uid])
+             '[複数一致],[表示順],[有効],[結合方法],[用途],[完了日時列],[スケジュール除外],'
+             '[更新者ID],[登録者ID],[登録日時],[更新日時]) '
+             'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',vals+[uid])
  c.commit()
  return int(cur.lastrowid)
 

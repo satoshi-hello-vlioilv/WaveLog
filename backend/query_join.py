@@ -10,10 +10,19 @@
 無かった——利用者の指示は「読むだけで終わらず、使うかどうか・どのデータと
 して使うかを選べるようにして幅を広げたい」。
 
-ここが持つのは3つだけ:
-  ① どの結合が効くか   definitions_for()
+ここが持つのは4つだけ:
+  ① どの結合が効くか   definitions_for()（一覧・スケジュール表）
   ② 行に当てる         apply_joins()
   ③ 保存する前の下見   probe()
+  ④ 完了突合の定義     finish_definitions()（§9.365）
+
+**用途(§9.365)で行が分かれる。** 1行が「何のための結合か」を名乗る:
+`''`＝一覧に列を足す（今までどおり）／`'完了突合'`＝仕掛から消えたロットを
+相手のデータで探し、当たれば完了にする。**どちらも同じ突合の仕組みに乗る**
+——キーの組・取り込む列・接頭辞・保存する前の下見は1つの作りで、判定する
+場所も1箇所。以前の実績突合は
+`データソースマスタ[突合キー]`の1行（**左右で同じ列名しか使えない**）を
+持つ別の仕組みで、突合の作りが2つに分かれていた。
 
 **判定を画面へ写さないこと。** どのキーで何列が足されたかを知っているのは
 ここだけで、2箇所に持つと「結合できると書いてあるのに結合されない」という
@@ -25,9 +34,10 @@
 ------------------------------------------------------------------------
 """
 import unicodedata
+from datetime import datetime
 
-from .db_access import (DBS, QUALITY_DB_KEY, WORK_DB_KEY, cfg, cols, connect, path_config_value,
-                        qi, tables)
+from .db_access import (ACTUAL_DB_KEY, DBS, QUALITY_DB_KEY, WORK_DB_KEY, actual_match_keys, cfg,
+                        cols, connect, path_config_value, qi, tables)
 from .logging_setup import app_logger
 from . import source_capability
 from .quiet import quiet
@@ -83,6 +93,31 @@ JOIN_KINDS = [
 ]
 JOIN_KIND_DEFAULT = 'left'
 _KIND_BY_KEY = {k['key']: k for k in JOIN_KINDS}
+
+
+# ---- 用途(§9.365) ------------------------------------------------------
+# 1行が「何のための結合か」を名乗る。**同じ突合の仕組みに、違う使いみちを
+# 乗せる**——キーの組・取り込む列・接頭辞・下見は共通で、変わるのは
+# 「当たったとき何をするか」だけ。
+PURPOSE_LIST = ''
+PURPOSE_FINISH = '完了突合'
+PURPOSES = [
+ {'key': PURPOSE_LIST, 'label': '一覧に列を足す', 'short': '列を足す',
+  'summary': 'この一覧の行に、相手の列を足します。',
+  'when': '品質・単価・在庫のような「参考として添えたい値」はこちら。'},
+ {'key': PURPOSE_FINISH, 'label': '完了突合（仕掛から消えたロットを探す）', 'short': '完了突合',
+  'summary': '作業スケジュールに組んだロットが仕掛データから消えたとき、'
+             '相手のデータを突合キーで探します。当たれば**作業完了**、'
+             '当たらなければ**着手**として扱います。',
+  'when': '前工程の実績のように「終わったら仕掛から落ちる」データはこちら。'
+          '当たった行はこの予定へ保存するので、実績側から消えても残ります。'},
+]
+_PURPOSE_BY_KEY = {p['key']: p for p in PURPOSES}
+
+
+def purpose_of(d):
+ """定義から用途を引く。知らない値・未設定は「一覧に列を足す」。"""
+ return _PURPOSE_BY_KEY.get(str((d or {}).get('purpose') or '')) or _PURPOSE_BY_KEY[PURPOSE_LIST]
 
 
 def kind_of(d):
@@ -155,17 +190,30 @@ def all_definitions(include_disabled=False):
   return []
 
 
-def definitions_for(db_key, table, include_builtin=True):
+def definitions_for(db_key, table, include_builtin=True, for_schedule=False):
  """この一覧（データソース＋表）に効く結合を、当てる順に返す。
 
  **対象テーブルが空欄なら、そのデータソースのどの表でも効く。** 現場の
  データソースはたいてい表が1つで、名前を毎回入れさせても打ち間違いが
- 増えるだけだから（入れてあるときだけ厳密に見る）。"""
+ 増えるだけだから（入れてあるときだけ厳密に見る）。
+
+ **用途が「一覧に足す」の行だけ**（§9.365）。完了突合の行は列を足すための
+ ものではないので、一覧にもスケジュール表にも当てない
+ （`finish_definitions()`が別に返す）。
+
+ `for_schedule=True`のときは**「作業スケジュールでも使う」行だけ**に絞る
+ （§9.365、利用者の指示）。以前は登録済みの結合が全部スケジュール表へ
+ 当たっていて、外す手立てが無かった。**保存されているのは「使わない」側**
+ なので、設定を触っていない行は今までどおり効く（§9.132）。"""
  db_key = str(db_key or '')
  table = str(table or '')
  out = []
  for d in all_definitions():
   if d.get('left') != db_key:
+   continue
+  if str(d.get('purpose') or '') != PURPOSE_LIST:
+   continue
+  if for_schedule and not d.get('useInSchedule', True):
    continue
   lt = str(d.get('leftTable') or '')
   if lt and table and lt != table:
@@ -178,6 +226,138 @@ def definitions_for(db_key, table, include_builtin=True):
   # ことになり、利用者が決めたキーではなく既定のキーで当たった列が残る。
   if b and b['left'] == db_key and not any(d.get('right') == b['right'] for d in out):
    out.insert(0, b)
+ return out
+
+
+# ---- 完了日時 ----------------------------------------------------------
+# 相手の列に入っている「作業日時」は、現場のデータでは書式がそろわない
+# （SQLiteのTEXT・DATETIME・`2026/09/01`・`2026-09-01 13:45`）。**読めた形だけ
+# 使い、読めなければ「時刻不明」として空を返す**——推測で日時を作ると、
+# さかのぼりが実際の作業と違う日で切れる（利用者の指示: 読めないものは
+# 完了にはするが、さかのぼりでは常に出す）。
+_DATE_FORMATS = ('%Y/%m/%d %H:%M:%S', '%Y/%m/%d %H:%M', '%Y/%m/%d',
+                 '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d',
+                 '%Y%m%d%H%M%S', '%Y%m%d')
+
+
+def parse_finish_time(v):
+    """完了日時をISO文字列へ。読めなければ空文字（§9.365）。"""
+    if v in (None, ''):
+        return ''
+    if isinstance(v, datetime):
+        return v.isoformat()
+    t = unicodedata.normalize('NFKC', str(v)).strip()
+    if not t:
+        return ''
+    try:
+        dt = datetime.fromisoformat(t)
+        return (dt.astimezone().replace(tzinfo=None) if dt.tzinfo else dt).isoformat()
+    except Exception as _e:
+        quiet('ISOとしては読めない（別の書式で試す）', _e)
+    for f in _DATE_FORMATS:
+        try:
+            return datetime.strptime(t, f).isoformat()
+        except Exception as _e:
+            quiet('この書式では読めない（次の書式で試す）', _e)
+    return ''
+
+
+def take_columns(d, row):
+    """当たった行から**持ち帰る値**を選ぶ（§9.365、利用者の指示「結合後に、
+    どのデータを使えるようにするか…も選べるように」）。
+
+    `columns`が空なら相手の全列（選び直さずに済むほうが普通）。`prefix`が
+    あれば必ず付ける——付いたり付かなかったりすると、列名が鍵の設定
+    （列レイアウトマスタ）がその都度はずれる（§9.193と同じ理由）。"""
+    want = list((d or {}).get('columns') or [])
+    pref = str((d or {}).get('prefix') or '')
+    out = {}
+    for name, v in (row or {}).items():
+        if want and name not in want:
+            continue
+        out[(pref + name) if pref else name] = v
+    return out
+
+
+def finish_time_of(d, row):
+    """当たった行の「完了日時」（§9.365）。列が未指定・空・読めない書式なら
+    空文字——**推測しない**。呼ぶ側は完了にはするが、時刻不明として扱う。"""
+    col = str((d or {}).get('finishColumn') or '').strip()
+    if not col or not isinstance(row, dict):
+        return ''
+    v = row.get(col)
+    if v in (None, ''):
+        hit = _resolve_key_column(list(row.keys()), col)
+        v = row.get(hit) if hit else None
+    return parse_finish_time(v)
+
+
+# ---- 完了突合の定義(§9.365) --------------------------------------------
+# 既定の1件（保存されていない）。§9.364で作った
+# `データソースマスタ[突合キー]`の設定を、**同じエンジンの上の1行**として
+# 名乗らせる——設定していない現場が今までどおり動くため、そして
+# 「どうつないでいるのか」を画面で見て真似できるようにするため
+# （既定の品質データ結合と同じ作法）。
+BUILTIN_FINISH_NAME = '実績突合（既定）'
+# 利用者が名指しした完了日時の列（§9.364の原文）。**突合キーに入っている
+# ときだけ**既定の完了日時として使う——入っていないものを勝手に探しに行くと、
+# 「設定していない列で日時を決めている」状態になる。
+_BUILTIN_FINISH_COLUMN = '前工程実績_作業終了_日付'
+
+
+def builtin_finish_def():
+ """役割「仕掛」と「実績」が両方あるときだけ名乗る、既定の完了突合。
+
+ 突合キーは`データソースマスタ[突合キー]`（§9.364）。**左右とも同じ列名**
+ ——これがこの既定の限界で、左右で名前が違う現場はクエリ結合マスタへ1行
+ 登録する（そちらは左右別々に組める）。"""
+ if not (WORK_DB_KEY and ACTUAL_DB_KEY):
+  return None
+ keys = list(actual_match_keys())
+ if not keys:
+  return None
+ return {
+  'id': 0, 'builtin': True, 'name': BUILTIN_FINISH_NAME, 'purpose': PURPOSE_FINISH,
+  'left': WORK_DB_KEY, 'leftTable': '', 'right': ACTUAL_DB_KEY, 'rightTable': '',
+  'keys': [{'left': k, 'right': k} for k in keys],
+  'columns': [], 'prefix': '', 'multi': 'first', 'kind': JOIN_KIND_DEFAULT,
+  'finishColumn': (_BUILTIN_FINISH_COLUMN if _BUILTIN_FINISH_COLUMN in keys else ''),
+  'useInSchedule': True, 'order': -1, 'active': True,
+ }
+
+
+def finish_definitions(include_builtin=True):
+ """「仕掛から消えたロットを探す」結合を、当てる順に返す（§9.365）。
+
+ **対象（左）は役割「仕掛」のデータソースだけ。** 予定が持っている明細は
+ 投入した時点の仕掛行の写しなので、左のキーはその列名で引ける。
+
+ **利用者が1件でも登録したら、既定は当てない**——同じロットを2つの定義で
+ 探すと、当たった順で完了時刻が変わる（既定の品質データ結合と同じ理由）。"""
+ out = [d for d in all_definitions()
+        if str(d.get('purpose') or '') == PURPOSE_FINISH
+        and (not WORK_DB_KEY or d.get('left') == WORK_DB_KEY)]
+ if out or not include_builtin:
+  return out
+ b = builtin_finish_def()
+ return [b] if b else []
+
+
+def finish_column_names(defs=None):
+ """完了突合が**持ち帰る列の名前**（§9.365、利用者の指示「結合後に、どの
+ データを使えるようにするか…も選べるように」）。
+
+ 作業スケジュール表の内容欄の候補に足すためのもの。**取り込む列を指定して
+ いる定義だけ**を答える——「相手の全列」の定義は相手を読まないと名前が
+ 分からないので、そちらは当たった行から拾う（読むのは1回でも、予定を開く
+ たびに相手を全件走査することになる）。"""
+ out = []
+ for d in (defs if defs is not None else finish_definitions()):
+  pref = str(d.get('prefix') or '')
+  for c in (d.get('columns') or []):
+   name = (pref + c) if pref else c
+   if name not in out:
+    out.append(name)
  return out
 
 
@@ -581,4 +761,85 @@ def probe(d, sample=200):
     out['examples'].append({n: ('' if r.get(n) is None else str(r.get(n))) for n in shown})
    if len(out['examples']) >= 3:
     break
+ return out
+
+
+def probe_finish(d, sample=2000):
+ """完了突合の下見（§9.365）。**当てる相手の側を見る**——完了突合が探すのは
+ 「仕掛から消えた」ロットなので、いま仕掛にある行へ当ててみても0件にしか
+ ならず、設定が正しいかどうかを何も言えない。
+
+ 代わりに答えるのは3つ:
+   ① 相手に何行あって、突合キーが揃っている行はいくつか
+   ② 完了日時の列を、いくつの行で実際に読めたか
+   ③ 当たったとき何が持ち帰られるか（列の名前と実例）
+ """
+ out = {'ok': False, 'reason': '', 'sampled': 0, 'matched': 0, 'ambiguous': 0,
+        'addedColumns': 0, 'addedColumnNames': [], 'table': '', 'examples': [],
+        'kind': PURPOSE_FINISH, 'kindLabel': _PURPOSE_BY_KEY[PURPOSE_FINISH]['label'],
+        'rowsAfter': 0, 'droppedRows': 0, 'addedRows': 0, 'note': '',
+        'finishColumn': str(d.get('finishColumn') or ''), 'finishReadable': 0}
+ rights = [str(k.get('right') or '') for k in (d.get('keys') or []) if k.get('right')]
+ if not rights:
+  out['reason'] = '突合キーを1組入れると、ここで結果を確かめられます。'
+  return out
+ right_cfg = source_cfg(d.get('right') or '')
+ if not right_cfg:
+  out['reason'] = '相手のデータソースが登録されていません。'
+  return out
+ try:
+  with connect(right_cfg['path'], right_cfg.get('role', 'readonly') == 'readonly') as c:
+   names = tables(c)
+   t = str(d.get('rightTable') or '').strip() or (
+       right_cfg.get('preferred') if right_cfg.get('preferred') in names
+       else (names[0] if names else ''))
+   if not t or t not in names:
+    out['reason'] = f'相手の表「{t or "(未指定)"}」がありません。'
+    return out
+   cs = list(cols(c, t, source=right_cfg['path']))
+   hit = [_resolve_key_column(cs, n) for n in rights]
+   lost = [n for n, h in zip(rights, hit) if not h]
+   if lost:
+    out['table'] = t
+    out['reason'] = f'相手の表「{t}」に突合キーの列がありません: ' + '・'.join(lost)
+    return out
+   cur = c.cursor()
+   cur.execute(f'SELECT * FROM {qi(t)} LIMIT {int(sample)}')
+   rows = [dict(zip(cs, r)) for r in cur.fetchall()]
+ except Exception as e:
+  out['reason'] = f'相手のデータを読めません: {e}'
+  return out
+ out['table'] = t
+ out['sampled'] = len(rows)
+ seen = set()
+ for r in rows:
+  k = tuple(norm_value(r.get(h)) for h in hit)
+  if any(x == '' for x in k):
+   continue
+  if k in seen:
+   out['ambiguous'] += 1
+   continue
+  seen.add(k)
+  out['matched'] += 1
+  if finish_time_of(d, r):
+   out['finishReadable'] += 1
+ pairs = _added_names(d, cs, [], set(hit))
+ out['addedColumnNames'] = [n for _src, n in pairs]
+ out['addedColumns'] = len(out['addedColumnNames'])
+ shown = out['addedColumnNames'][:4]
+ for r in rows:
+  take = take_columns(d, r)
+  if any(take.get(n) not in (None, '') for n in shown):
+   out['examples'].append({n: ('' if take.get(n) is None else str(take.get(n))) for n in shown})
+  if len(out['examples']) >= 3:
+   break
+ out['ok'] = out['matched'] > 0
+ if not out['ok']:
+  out['reason'] = (f'相手の表「{t}」に、突合キーが揃った行がありません'
+                   '（キーの列が空の行しかありません）。')
+ elif out['finishColumn'] and not out['finishReadable']:
+  out['note'] = (f'完了日時の列「{out["finishColumn"]}」を読めた行がありません。'
+                 '完了にはしますが、さかのぼりでは常に表示されます。')
+ elif not out['finishColumn']:
+  out['note'] = '完了日時の列が未指定です。完了にはしますが、さかのぼりでは常に表示されます。'
  return out

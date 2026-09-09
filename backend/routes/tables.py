@@ -324,8 +324,13 @@ def api_query_join_keys():
  k=request.args.get('db','') or (WORK_DB_KEY or '')
  t=request.args.get('table','')
  if not k:return jsonify(ok=True,keys=[],joins=[])
+ # `for=schedule`＝作業スケジュール表からの問い合わせ(§9.365)。**「スケジュールでも
+ # 使う」に印の付いた結合だけ**を返す（保存されているのは「使わない」側なので、
+ # 設定を触っていない行は今までどおり効く）。
+ for_schedule=request.args.get('for')=='schedule'
  try:
-  defs=query_join.definitions_for(k,t,include_builtin=request.args.get('builtin')!='0')
+  defs=query_join.definitions_for(k,t,include_builtin=request.args.get('builtin')!='0',
+                                  for_schedule=for_schedule)
   keys=query_join.unique_columns([kk['left'] for d in defs for kk in (d.get('keys') or [])])
   return jsonify(ok=True,db=k,table=t,keys=keys,
                  joins=[{'name':d.get('name'),'right':d.get('right'),
@@ -345,7 +350,7 @@ def api_query_join_resolve():
  スケジュール表に出る列が食い違わない**。
 
  読むだけ(_READ_ONLY_POST_ENDPOINTSで全モードから通す)。"""
- x=body({'db': str, 'table': str, 'rows': any_, 'builtin': any_}, silent=True)
+ x=body({'db': str, 'table': str, 'rows': any_, 'builtin': any_, 'for': str}, silent=True)
  k=x.text('db');t=x.text('table')
  rows=x.get('rows')
  if not isinstance(rows,list):return jsonify(error='rowsは配列で送ってください。'),400
@@ -355,7 +360,8 @@ def api_query_join_resolve():
   k=_wk or ''
  if not k:return jsonify(error='役割「仕掛」のデータソースが決まっていません。'),400
  try:
-  defs=query_join.definitions_for(k,t,include_builtin=x.get('builtin') is not False)
+  defs=query_join.definitions_for(k,t,include_builtin=x.get('builtin') is not False,
+                                  for_schedule=x.text('for')=='schedule')
   if not defs:
    return jsonify(ok=True,db=k,table=t,joins=[],columns=[],values=[{} for _ in rows])
   base=[str(c) for c in query_join.unique_columns([c for r in rows for c in r.keys()])]

@@ -45,18 +45,49 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
 (function(){
  if(typeof $!=='function')return;
 
- // historyHours(§9.34「表示範囲」): 完了した予定・計画外実績を、今から
- // 何時間前までさかのぼって表示するか。既定8時間。同じ値をサーバーへも
- // 送り、計画外実績(§9.33)の合成範囲と画面の表示範囲を必ず一致させる
- // (画面だけで絞ると「サーバーが返したのに出ない」行が生まれて紛らわしい)。
- const SC_HISTORY_CHOICES=[2,4,8,24,72];
- const SC_HISTORY_KEY='ScheduleHistoryHoursV1';
- function loadHistoryHours(){
+ /* ---------- さかのぼり(§9.34 →§9.366で作り替え) ----------
+    完了した予定・計画外実績を、どこまでさかのぼって表示するか。**種類を
+    サーバーへ送り、起点の日時をサーバーが答える**——「今日ぶん（現場歴）」
+    「今の直から」は勤務区分マスタが要るので、画面では出せない。同じ起点で
+    計画外実績(§9.33)の合成範囲も決まるので、「サーバーが返したのに出ない」
+    行が生まれない。**語彙も画面に書かない**（`/api/schedule/history-modes`）。 */
+ const SC_HISTORY_KEY='ScheduleHistoryModeV1';
+ const SC_HISTORY_OLD_KEY='ScheduleHistoryHoursV1';
+ // 旧い保存値（時間数）の読み替え。**捨てないこと**——今まで72時間で見て
+ // いた人が、更新した日だけ8時間に戻ると「予定が消えた」と読まれる。
+ const SC_HISTORY_FROM_HOURS={'1':'h1','2':'h2','4':'h4','8':'h8','12':'h12',
+                              '24':'h24','72':'d3','168':'d7','720':'d30'};
+ function loadHistoryKey(){
   try{
-   const v=Number(localStorage.getItem(SC_HISTORY_KEY));
-   if(SC_HISTORY_CHOICES.includes(v))return v;
+   const v=String(localStorage.getItem(SC_HISTORY_KEY)||'').trim();
+   if(v)return v;
+   const old=String(localStorage.getItem(SC_HISTORY_OLD_KEY)||'').trim();
+   if(SC_HISTORY_FROM_HOURS[old])return SC_HISTORY_FROM_HOURS[old];
   }catch(e){WL.quiet.note('保存値が壊れていても既定で続行する',e)}
-  return 8;
+  return 'h8';
+ }
+ /* 語彙と、いま効いている起点。**起点は必ずサーバーの答え**を持つ
+    （`historyFrom`が null なら「制限しない」）。 */
+ let scHistory={modes:[],groups:[],loaded:false};
+ function historyMode(key){
+  return (scHistory.modes||[]).find(m=>m.key===(key||scState.historyKey))||null;
+ }
+ function historyLabel(key){
+  const m=historyMode(key);
+  if(!m)return '';
+  return (m.group==='hours'?('いまから過去'+m.label):m.label);
+ }
+ async function loadHistoryModes(){
+  if(scHistory.loaded)return scHistory;
+  try{
+   const r=await api('/api/schedule/history-modes');
+   scHistory={modes:r.modes||[],groups:r.groups||[],loaded:true};
+  }catch(e){
+   WL.quiet.note('さかのぼりの語彙を取れない（既定の1つで続ける）',e);
+   scHistory={modes:[{key:'h8',group:'hours',label:'8時間',hours:8}],
+              groups:[{key:'hours',label:'時間で'}],loaded:true};
+  }
+  return scHistory;
  }
  let scState={equipment:'',entries:[],anchor:null,anchorRounded:null,warnings:[],configured:true,
               editable:false,pickerEnabled:false,stopReasons:[],dragId:null,insertBefore:'',
@@ -73,10 +104,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
                  `sessions`は**配列＝読めた／`null`＝読めなかった**で、
                  「読めなかった」を「誰も居ない」と同じに扱わないこと。 */
               sessions:null,me:null,sessionsConfigured:true,
-              canStartWork:false,historyHours:loadHistoryHours(),groupMode:'none',
+              canStartWork:false,historyKey:loadHistoryKey(),historyFrom:null,
+              historyHours:8,historyHidden:0,historyShown:0,groupMode:'none',
               /* クエリ結合(§9.193)で足された列の名前。予定がまだ無い設備でも
                  内容欄の候補に出せるよう、行ではなくここに持つ。 */
-              joinColumns:[]};
+              joinColumns:[],
+              /* 完了突合が持ち帰った値の列名(§9.365)。**サーバーが答える**
+                 ——設定に書いてある名前と、実際に当たっている行が持つ名前の
+                 両方が入っている。 */
+              actualColumns:[]};
  /* ---------- 読込結果のキャッシュ(§9.42) ----------
     共有スケジュールDBと実績バックアップはネットワーク共有上にあり、開くたびに
     読み直すと待たされる。**一度読んだら保持し、画面を開き直しただけでは
@@ -156,21 +192,92 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   cand.forEach(([k,msg])=>{const v=t[k];if(v!=null&&(!worst||v>worst[0]))worst=[v,msg]});
   return worst&&worst[0]>=SC_SLOW_MS*0.4?worst[1]:'';
  }
- /* ---------- 表示範囲の起点(§9.198、利用者の指示) ----------
+ /* ---------- さかのぼりの選び方(§9.366、利用者の指示) ----------
+    「指定できるパターンも増やしつつ選びやすくわかりやすく改良して」。
+    **種類（群）を札で選び、その中の量を欄で選ぶ2段**にする。13の候補を
+    1つの選択欄に並べると、開くたびに13行を読むことになる（探させない・§2）。
+    群は「出さない／時間で／日で／現場の区切りで／すべて」の5つで、
+    **量を持たない群では欄そのものを消す**（§4）。 */
+ function historyGroupsWithModes(){
+  const out=[];
+  (scHistory.groups||[]).forEach(g=>{
+   const modes=(scHistory.modes||[]).filter(m=>m.group===g.key);
+   if(modes.length)out.push({g,modes});
+  });
+  return out;
+ }
+ function renderHistoryPicker(){
+  const wrap=$('#scHistoryGroups'),sel=$('#scHistorySelect');
+  if(!wrap||!sel)return;
+  const groups=historyGroupsWithModes();
+  const cur=historyMode()||(groups[0]||{modes:[{}]}).modes[0]||{};
+  wrap.innerHTML=groups.map(({g,modes})=>{
+   const on=g.key===cur.group;
+   const title=modes.length>1?`${g.label}（${modes.map(m=>m.label).join('・')}）`
+                             :(modes[0].note||g.label);
+   return `<button type="button" class="sc-history-group${on?' is-on':''}"
+     data-history-group="${esc(g.key)}" aria-pressed="${on?'true':'false'}"
+     title="${esc(title)}">${esc(g.label)}</button>`;
+  }).join('');
+  const mine=groups.find(x=>x.g.key===cur.group);
+  const modes=mine?mine.modes:[];
+  sel.hidden=modes.length<2;
+  sel.innerHTML=modes.map(m=>`<option value="${esc(m.key)}"${m.key===cur.key?' selected':''}>${
+    esc(m.group==='hours'?('いまから過去'+m.label):m.label)}</option>`).join('');
+  wrap.querySelectorAll('[data-history-group]').forEach(btn=>btn.onclick=()=>{
+   const hit=groups.find(x=>x.g.key===btn.dataset.historyGroup);
+   if(!hit)return;
+   /* **その群で前に選んでいた量へ戻す**——群を押すたびに先頭へ戻ると、
+      24時間を選び直すのに毎回2手かかる。 */
+   const keep=hit.modes.find(m=>m.key===scHistoryLast[hit.g.key]);
+   setHistoryKey((keep||hit.modes[0]).key);
+  });
+  sel.onchange=()=>setHistoryKey(sel.value);
+ }
+ // 群ごとに「最後に選んだ量」を覚える（この端末だけ・画面を閉じるまで）。
+ const scHistoryLast={};
+ function setHistoryKey(key){
+  const m=historyMode(key);
+  if(!m||key===scState.historyKey){renderHistoryPicker();return}
+  scState.historyKey=key;
+  scHistoryLast[m.group]=key;
+  try{localStorage.setItem(SC_HISTORY_KEY,key)}catch(e){WL.quiet.note('保存できなくても表示は変わる',e)}
+  /* 起点はサーバーが答える。届くまでのあいだ、種類の時間数で当てておく
+     （欄を押した瞬間に画面が固まらないように）。 */
+  scState.historyFrom=null;
+  if(m.hours!=null)scState.historyHours=m.hours;
+  renderHistoryPicker();
+  updateHistoryFromUi();
+  updateViewMenuUi();
+  if(scState.equipment)loadPlan(true);
+ }
+
+ /* ---------- さかのぼりの起点(§9.198 →§9.366) ----------
     「過去の長さを指定できるが、現在か過去か書いていないので分かりにくい」。
-    選択肢を「いまから過去◯時間」と言い切り、**実際の起点の日時**を横に出す
-    ——時間数だけでは、いま何時なのかを頭の中で引き算しないと分からない。
+    **実際の起点の日時**を横に出す——時間数だけでは、いま何時なのかを頭の
+    中で引き算しないと分からない。§9.366でここへ**件数**も足した:
+    隠している行が何件あるのかが分からないと、「済んだ行が無い」のか
+    「隠している」のかを見分けられない（推測させない・§2）。
     **未来の予定は範囲に関わらず全部出る**ことも書く（範囲を短くすると
     先の予定まで消えると誤解されるため）。 */
  function updateHistoryFromUi(){
   const el=$('#scHistoryFrom'),wrap=$('#scHistoryRange');
   if(!el)return;
   if(!wrap||wrap.hidden){el.hidden=true;return}
-  const from=new Date(historyCutoff());
+  const m=historyMode()||{};
+  const cut=historyCutoff();
+  const bits=[];
+  if(cut===null)bits.push('＝ すべて');
+  else if(m.key==='none')bits.push('＝ 済んだ行は出しません');
+  else bits.push(`＝ ${fmtDateTime(new Date(cut).toISOString())} 以降`);
+  if(scState.historyHidden)bits.push(`済んだ行 ${scState.historyShown}件を表示・${scState.historyHidden}件を隠しています`);
+  else if(scState.historyShown)bits.push(`済んだ行 ${scState.historyShown}件`);
   el.hidden=false;
-  el.textContent=`＝ ${fmtDateTime(from.toISOString())} 以降`;
-  el.title=`済んだ行（完了・取消・計画外の実績）は、この日時より後のものだけを出しています`
-   +`（いまから過去${scState.historyHours}時間）。\nこれからの予定は、さかのぼりに関わらずすべて出ます。`;
+  el.textContent=bits.join(' ／ ');
+  el.title=`済んだ行（完了・取消・計画外の実績）の出し方: ${historyLabel()}。`
+   +(m.note?`\n${m.note}`:'')
+   +'\nこれからの予定は、さかのぼりに関わらずすべて出ます。'
+   +'\n完了時刻が分からない行は、隠さずに常に出します。';
  }
  /* ---------- 再計算の基準時刻(§9.198、利用者の指示) ----------
     「現在時刻を5分刻みに変換して、計算の開始時刻の見栄えを良くしてほしい」。
@@ -772,13 +879,19 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       <span class="sc-view-row-name">まとめ<small>日付は現場歴（勤務の日付補正を当てた現場の1日）と太陽暦から選べます</small></span>
       <select id="scGroupSelect">${SC_GROUP_MODES.map(m=>`<option value="${m.key}">${m.label}</option>`).join('')}</select>
      </label>
-     <label class="sc-view-row" id="scHistoryRange" hidden>
-      <span class="sc-view-row-name">さかのぼり<small>済んだ行（完了・取消）を何時間ぶん残すか。これからの予定は全部出ます</small></span>
-      <span class="sc-view-row-ctl">
-       <select id="scHistorySelect">${SC_HISTORY_CHOICES.map(h=>`<option value="${h}">いまから過去${h}時間</option>`).join('')}</select>
+     <!-- さかのぼり(§9.366)。**2段（種類→量）で選ばせる**——候補は13あるが、
+          一度に見えるのは群5つ＋その中の量だけ（一度に見る数を5つ以下に
+          保つ）。いま何を基準にしているのか（時間なのか現場歴なのか）が
+          1目で分かる。**量の無い群では欄ごと消す**（押せるのに効かない
+          ものを残さない・§4）。 -->
+     <div class="sc-view-row" id="scHistoryRange" hidden>
+      <span class="sc-view-row-name">さかのぼり<small>済んだ行（完了・取消）をどこまで残すか。これからの予定は全部出ます</small></span>
+      <span class="sc-view-row-ctl sc-history">
+       <span class="sc-history-groups" id="scHistoryGroups" role="group" aria-label="さかのぼりの種類"></span>
+       <select id="scHistorySelect" aria-label="さかのぼる量" hidden></select>
        <span class="sc-history-from" id="scHistoryFrom" hidden></span>
       </span>
-     </label>
+     </div>
      <div class="sc-view-acc" id="scViewAccRowStyle" hidden>
       <button type="button" class="sc-view-sec" id="scRowStyleBtn" aria-expanded="false">
        <i>🎨</i><span>行の色とアイコン<small>区分・設備停止の分類ごと（全員に効きます）</small></span><em class="sc-view-chev">▾</em>
@@ -817,15 +930,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    updateViewMenuUi();          // 畳んでいる入口の文字も一緒に直す(§9.199)
    renderTimeline();
   };
-  const hist=$('#scHistorySelect');
-  hist.value=String(scState.historyHours);
-  hist.onchange=()=>{
-   scState.historyHours=Number(hist.value)||8;
-   try{localStorage.setItem(SC_HISTORY_KEY,String(scState.historyHours))}catch(e){WL.quiet.note('保存できなくても表示は変わる',e)}
-   updateHistoryFromUi();
-   updateViewMenuUi();
-   if(scState.equipment)loadPlan(true);
-  };
+  /* さかのぼりの札と欄は**語彙が届いてから**組む(§9.366)。届く前でも
+     画面は出る（欄が空のまま出て、直後に埋まる）。 */
+  loadHistoryModes().then(()=>renderHistoryPicker()).catch(
+    WL.quiet('さかのぼりの語彙を組めない（既定で続ける）'));
   $('#scEquipmentSelect').onchange=e=>{scState.equipment=e.target.value;switchToSingle()};
   /* 印刷(§9.115)。紙の割り付けは schedule-print.js が持つ。
      **無ければ黙って消さない**——「あれば使う」で書くと、読み込み順を
@@ -1497,7 +1605,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    if(m)bits.push(m.short||m.label);
   }
   const histWrap=$('#scHistoryRange');
-  if(histWrap&&!histWrap.hidden)bits.push(`過去${scState.historyHours}時間`);
+  if(histWrap&&!histWrap.hidden){
+   const lb=historyLabel();
+   if(lb)bits.push(lb);
+  }
   const state=$('#scViewState');
   if(state){state.textContent=bits.join('・');state.hidden=!bits.length}
   updateToolGroups();
@@ -2924,14 +3035,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   eq=String(eq||'').trim();
   if(!eq||scPlanCache.has(eq)||warmingPlans.has(eq))return;
   warmingPlans.add(eq);
-  const hours=scState.historyHours,gen=planGen();
-  api('/api/schedule/plan?equipment='+encodeURIComponent(eq)+'&history_hours='+encodeURIComponent(hours))
+  const key=scState.historyKey,gen=planGen();
+  api('/api/schedule/plan?equipment='+encodeURIComponent(eq)+'&history='+encodeURIComponent(key))
    .then(r=>{
     // 先読みのあいだに予定を変えていたら捨てる(§9.200)
     if(gen!==planGen())return;
     if(r&&r.configured&&!scPlanCache.has(eq))
      scPlanCache.set(eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
-       loadFactor:r.loadFactor,historyHours:hours,fetchedAt:Date.now(),timings:r.timings});
+       loadFactor:r.loadFactor,historyKey:key,historyFrom:r.historyFrom||null,
+       historyHours:r.historyHours,fetchedAt:Date.now(),timings:r.timings});
    })
    .catch(WL.quiet('予定を先読みできない（開いたときに取りに行く）'))
    .finally(()=>warmingPlans.delete(eq));
@@ -2947,7 +3059,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      キャッシュから出せるならWAITING表示ごと省く(一瞬で出るのにスピナーが
      瞬くと、かえって「また読み込んでいる」ように見えるため)。 */
   const cached=scPlanCache.get(scState.equipment);
-  const quick=!force&&cached&&cached.historyHours===scState.historyHours;
+  const quick=!force&&cached&&cached.historyKey===scState.historyKey;
   if(quick||typeof WL.records.withWaiting!=='function')await refreshAllInner(()=>{},force);
   else await WL.records.withWaiting({title:'作業スケジュールを読み込んでいます',
    detail:scState.equipment?('設備: '+scState.equipment):'共有スケジュールDBを参照しています',
@@ -3029,6 +3141,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   scLastTimings=r.timings?Object.assign({},r.timings):null;
   scState.entries=r.entries||[];scState.anchor=r.anchor;scState.warnings=r.warnings||[];
   scState.anchorRounded=r.anchorRounded||null;
+  /* さかのぼりの起点は**サーバーの答えが正**(§9.366)。控えから描くときも
+     そのときの答えを一緒に持っているので、同じ位置で切れる。 */
+  scState.historyFrom=r.historyFrom||null;
+  if(r.historyHours!=null)scState.historyHours=r.historyHours;
+  scState.actualColumns=r.actualColumns||[];
   scState.planFetchedAt=fetchedAt;
   renderWarnings();renderTimeline();updateFreshnessUi(fetchedAt);
   updateHistoryFromUi();updateRefreshHint();
@@ -3045,7 +3162,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(!eq)return null;
   const cached=scPlanCache.get(eq);
   // 表示範囲が変わったときは取り直す(サーバー側の合成範囲も変わるため)
-  if(!force&&cached&&cached.historyHours===scState.historyHours)
+  if(!force&&cached&&cached.historyKey===scState.historyKey)
    return {eq,cached};
   /* **既に行が出ているときは「読み込んでいます」で消さない**(§9.182)。
      消してから入れ直すと、開き直すたびに表が空白へ落ちる(前の内容を
@@ -3055,7 +3172,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    timeline.innerHTML='<div class="sc-empty-note">読み込んでいます…</div>';
   return {eq,gen:planGen(),
           promise:api('/api/schedule/plan?equipment='+encodeURIComponent(eq)
-    +'&history_hours='+encodeURIComponent(scState.historyHours))};
+    +'&history='+encodeURIComponent(scState.historyKey))};
  }
  async function planApply(req){
   if(!req)return;
@@ -3076,7 +3193,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    }
    const fetchedAt=Date.now();
    scPlanCache.set(req.eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
-    loadFactor:r.loadFactor,historyHours:scState.historyHours,fetchedAt,timings:r.timings,
+    loadFactor:r.loadFactor,historyKey:scState.historyKey,historyFrom:r.historyFrom||null,
+    historyHours:r.historyHours,fetchedAt,timings:r.timings,
     anchorRounded:r.anchorRounded});
    applyPlanResult(r,fetchedAt);
   }catch(e){
@@ -3901,19 +4019,39 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     3つに切り分け、それぞれ見出しを付ける。
       実施中: 着手(計画済み・計画外の両方)。今この設備を塞いでいるもの
       予定  : 未着手。時刻順にそのまま
-      実績  : 完了・取消。表示範囲(historyHours)内のものだけ
+      実績  : 完了・取消。さかのぼり(historyFrom)より後のものだけ
     完了/取消はplannedStart/Endを持たない(終端状態は展開対象外)ため、
-    表示範囲の判定にはactual.endAtを使う。actualも無い取消は、履歴の
-    末尾に残す(消してしまうと「取り消したはずの予定が見当たらない」と
-    なるため)。 */
+    さかのぼりの判定にはactual.endAt、または**突合で分かった完了時刻
+    (finishedAt・§9.365)**を使う。どちらも無い取消は、履歴の末尾に残す
+    (消してしまうと「取り消したはずの予定が見当たらない」となるため)。 */
+ /* さかのぼりの起点(§9.366)。**サーバーが答えた日時**を使う（null＝制限
+    しない）。まだ答えが届いていないあいだだけ、種類の時間数から当てる。 */
  function historyCutoff(){
-  return Date.now()-(scState.historyHours||8)*3600000;
+  const m=historyMode();
+  if(m&&m.key==='all')return null;
+  if(scState.historyFrom){
+   const t=new Date(scState.historyFrom).getTime();
+   if(!Number.isNaN(t))return t;
+  }
+  const h=(m&&m.hours!=null)?m.hours:(scState.historyHours||8);
+  return Date.now()-h*3600000;
+ }
+ /* 済んだ行の代表時刻。**突合で完了した行は`finishedAt`**（§9.365）——
+    測定データの実績を持たないので、これが無いと絶対に隠れない。
+    **決め方はサーバーの`workDate`と必ず同じ**にすること（違うと、まとめた
+    見出しと行の日付が食い違う）。 */
+ function rowFinishTime(e){
+  return (e.actual&&(e.actual.endAt||e.actual.startAt))||e.finishedAt||'';
  }
  function withinHistory(e){
-  const at=e.actual&&(e.actual.endAt||e.actual.startAt);
+  const cut=historyCutoff();
+  if(cut===null)return true;
+  const at=rowFinishTime(e);
+  // **時刻が分からない行は隠さない**（利用者の指示）。隠すと「完了にした
+  // はずの行がどこにも無い」になる。
   if(!at)return true;
   const t=new Date(at).getTime();
-  return Number.isNaN(t)?true:t>=historyCutoff();
+  return Number.isNaN(t)?true:t>=cut;
  }
 
  /* ---------- 区分(カテゴリ)と並び順(§9.39) ----------
@@ -4272,8 +4410,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     これを使う(判定ごとに別の時刻を見ると、まとめた見出しと行の日付が
     食い違う)。 */
  function rowTimeOf(e){
+  /* **突合で完了した行は`finishedAt`**(§9.365)。測定データの実績を持たない
+     ので、これを見ないと時刻の無い行として末尾へ落ちる。**サーバーの
+     `workDate`の決め方と同じ順**にすること（違うと、まとめた見出しと行の
+     日付が食い違う）。 */
   const iso=(e.state==='完了'||e.state==='取消')
-   ?((e.actual&&(e.actual.startAt||e.actual.endAt))||null)
+   ?((e.actual&&(e.actual.startAt||e.actual.endAt))||e.finishedAt||null)
    :(e.plannedStart||null);
   if(!iso)return null;
   const t=new Date(iso).getTime();
@@ -4292,11 +4434,20 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   return map;
  }
  function visibleEntries(){
+  /* 隠した件数を数える(§9.366)。**「済んだ行が無い」と「隠している」を
+     見分けられるようにする**——数えないと、さかのぼりを短くしたことを
+     忘れた人が「予定が消えた」と読む。 */
+  let shown=0,hidden=0;
   const list=scState.entries.filter(e=>{
    if(e.parentId!=null)return false;
-   if(e.state==='完了'||e.state==='取消')return withinHistory(e);
+   if(e.state==='完了'||e.state==='取消'){
+    const ok=withinHistory(e);
+    if(ok)shown++;else hidden++;
+    return ok;
+   }
    return true;
   });
+  scState.historyShown=shown;scState.historyHidden=hidden;
   // 時刻の無い行(展開しきれなかった予定など)は末尾へ寄せて順序を保つ
   const rows=list.map((e,i)=>({e,i,t:rowTimeOf(e)}));
   /* **位置を指定して入れた行は、その位置のまま出す**(§9.196、利用者の指摘
@@ -4998,7 +5149,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const list=visibleEntries();
   if(!list.length){
    timeline.innerHTML=scState.entries.length
-    ?`<div class="sc-empty-note">これからの予定はありません。済んだ行は「さかのぼり」で決めた過去${scState.historyHours}時間ぶんだけ出しています——もっと前まで見るには「表示」→「さかのぼり」を長くしてください。</div>`
+    ?`<div class="sc-empty-note">これからの予定はありません。済んだ行は「さかのぼり」で決めた範囲（${esc(historyLabel())}）だけ出しています${
+       scState.historyHidden?`——いま<b>${scState.historyHidden}件</b>を隠しています`:''}。もっと前まで見るには「表示」→「さかのぼり」を長くしてください。</div>`
     :'<div class="sc-empty-note">この設備の予定はまだありません。</div>';
    renderPickBar(timeline);
    renderUndecided();
@@ -6096,9 +6248,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function missingBadgeHtml(e){
   if(!e||e.missingFromWork!==true)return '';
   const saved=e.actualSourceSaved?'・保存済み':'';
+  /* **完了時刻の出どころを言う**(§9.365・§9.366)。時刻が無い行は
+     さかのぼりで隠れないので、その理由まで印に書く（推測させない・§6）。 */
+  const at=e.finishedAt?fmtDateTime(e.finishedAt):'';
+  const by=e.finishedBy?`「${e.finishedBy}」で`:'';
+  const when=at?`\n完了時刻: ${at}（${by||'突合で'}記録）`
+               :'\n完了時刻が分からないため、さかのぼりでは常に表示されます。';
   return e.actualSource
-   ? `<i class="sc-row-from" title="仕掛から消え、実績で見つかりました${saved}">実績</i>`
-   : `<i class="sc-row-from is-guess" title="仕掛から消えていますが、実績では見つかっていません">仕掛落ち</i>`;
+   ? `<i class="sc-row-from" title="仕掛から消え、突合先で見つかりました${saved}${when}">実績</i>`
+   : `<i class="sc-row-from is-guess" title="仕掛から消えていますが、突合先では見つかっていません">仕掛落ち</i>`;
  }
  function pickMarkHtml(e){
   if(!canPickEntries()||!pickableEntry(e.id))return '';
@@ -7380,11 +7538,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     **一覧と同じ定義・同じエンジン**を通すので、一覧に出る列とスケジュール表
     に出る列が食い違わない。 */
  function entryValueOf(e,key){
+  const ok=v=>v!==undefined&&v!==null&&String(v).trim()!=='';
   const j=e&&e.joined;
-  if(j){
-   const v=j[key];
-   if(v!==undefined&&v!==null&&String(v).trim()!=='')return v;
-  }
+  if(j&&ok(j[key]))return j[key];
+  /* 完了突合が持ち帰った値(§9.365)。**凍った写し(detail)より上**——
+     detail は投入した時点の仕掛行なので、あとから確定した実績のほうが
+     新しい（クエリ結合の値を上に置くのと同じ理由・§9.193）。 */
+  const a=e&&e.actualSource;
+  if(a&&ok(a[key]))return a[key];
   return contentValueOf(e&&e.detail,key);
  }
  /* 書式・読み替えが条件で見る「行」。**結合の値が上**——同じ名前の列が
@@ -7392,7 +7553,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     写しではなく今の値を使う。 */
  function entryRow(e){
   if(!e)return {};
-  return e.joined?Object.assign({},e.detail||{},e.joined):(e.detail||{});
+  if(!e.joined&&!e.actualSource)return e.detail||{};
+  return Object.assign({},e.detail||{},e.actualSource||{},e.joined||{});
  }
  let scJoinKeys=null,scJoinKeysAt=0,scJoinSig='',scJoinSeq=0;
  const SC_JOIN_KEYS_TTL=60000;
@@ -7406,8 +7568,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       仕掛一覧のための古い決め打ちで、スケジュール表まで自動で広げると
       **誰も頼んでいないのに内容欄の候補が増え**、予定を読むたびに相手の
       DBへの往復が1本増える。品質をスケジュール表に出したい人は、
-      マスタ管理 > クエリ結合に1件登録する（それがこの機能の趣旨）。 */
-   const r=await api('/api/query-join/keys?db='+encodeURIComponent(db)+'&builtin=0');
+      マスタ管理 > クエリ結合に1件登録する（それがこの機能の趣旨）。
+
+      **`for=schedule`を必ず付ける**(§9.365)。「作業スケジュールでも使う」の
+      印が付いた結合だけをサーバーが返す——印の判定はサーバーの1箇所で、
+      画面は結合の顔ぶれを組み立て直さない。 */
+   const r=await api('/api/query-join/keys?db='+encodeURIComponent(db)+'&builtin=0&for=schedule');
    scJoinKeys={db,keys:r.keys||[],joins:r.joins||[]};
   }catch(_){scJoinKeys={db,keys:[],joins:[]}}
   scJoinKeysAt=Date.now();
@@ -7447,7 +7613,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   try{
    const r=await api('/api/query-join/resolve',{quiet:true,method:'POST',
      headers:{'Content-Type':'application/json'},
-     body:JSON.stringify({db:meta.db,rows,builtin:false})});
+     body:JSON.stringify({db:meta.db,rows,builtin:false,for:'schedule'})});
    if(seq!==scJoinSeq||scState.equipment!==eq)return;
    /* 結合は予定を描いたあとに走るので**合計には足さない**（読み込みの
       体感には乗らない）。それでも遅ければ内訳で分かるようにしておく。 */
@@ -7486,10 +7652,18 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      行が1つも無い設備では候補に出てこない）。 */
   raw.push(...(scState.joinColumns||[]));
   scState.entries.forEach(e=>{if(e.joined)raw.push(...Object.keys(e.joined))});
+  /* 完了突合が持ち帰った値(§9.365)。結合と同じ扱いで候補に足す。 */
+  raw.push(...(scState.actualColumns||[]));
+  scState.entries.forEach(e=>{if(e.actualSource)raw.push(...Object.keys(e.actualSource))});
   raw.push(...DEFAULT_CONTENT_ITEMS);
   const seen=new Set(),out=[];
   raw.forEach(k=>{const c=canonicalContentKey(k);if(!seen.has(c)){seen.add(c);out.push(c)}});
   return out;
+ }
+ /* 結合・完了突合で来た列の名前(§9.193・§9.365)。**1箇所で答える**——
+    候補・分類・帯が別々に組み立てると、片方にしか出ない列ができる。 */
+ function scJoinedKeys(){
+  return new Set([...(scState.joinColumns||[]),...(scState.actualColumns||[])]);
  }
  /* 内容の項目まわりの道具はここまで。**モーダルのUIだけを消し**、
     値の取り出し・項目名・候補の作り方は残す——タイムラインの見出しと
@@ -7610,7 +7784,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    /* 固定列は**予定そのものが持つ値**で、仕掛データの列ではない。
       分類と一言の説明を添える(§9.105。出どころを言う)。 */
    originOf:k=>(scIsFixedCol(k)||timelineIsFormulaKey(k))?'calc'
-     :((scState.joinColumns||[]).includes(k)?'join':'source'),
+     :(scJoinedKeys().has(k)?'join':'source'),
    noteOf:k=>{
     if(timelineIsFormulaKey(k))return '式で作る列（表示だけ。並べ替え・絞り込みの対象にはなりません）';
     const d=SC_COL_MAP.get(k);return d?d.note:'';
@@ -7622,7 +7796,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    virtual:()=>({}),
    /* 結合で足された列(§9.193)。**サーバーが返した名前をそのまま使う**
       ——列名から見分ける手がかりは無い（§9.105と同じ約束）。 */
-   joined:()=>new Set(scState.joinColumns||[]),
+   joined:()=>scJoinedKeys(),
    joinFrom:()=>((scJoinKeys&&scJoinKeys.joins||[]).map(j=>j.name).filter(Boolean).join('・')
                  ||'クエリ結合'),
    /* 計算式は持たない（内容欄の値は予定のスナップショットで、一覧の行を
@@ -7630,7 +7804,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    /* 内容欄の項目はすべて元データ由来なので、分類は1つで足りる。 */
    /* 分類は**使うものだけ**(§9.120)。結合が1件も無い設備では「結合0」を
       並べても覚える手間が増えるだけなので出さない。 */
-   origins:()=>((scState.joinColumns||[]).length?['source','join','calc']:['source','calc']),
+   origins:()=>(scJoinedKeys().size?['source','join','calc']:['source','calc']),
    /* 並べ替えは持たない(§9.176。行の並びは時刻の一本道)ので、
       並べ替えの決まり(§9.187)の欄も出さない。 */
    /* 計算式の列を足せる（§9.207、利用者の指示）。**並べ替えは持たない**
@@ -8009,6 +8183,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   /* 行の見せ方(§9.198)。**判定の1箇所へ外から聞ける**ようにしておく
      ——DOMを掘って色を読むと、行が1件も無い区分を確かめられない。 */
   rowStyleOf:e=>rowStyleOf(e||{}),
+  /* 内容欄で使える項目と、行から取り出した値(§9.365)。**読むだけ**——
+     結合・完了突合で来た値が候補に出ているか、行から引けるかを、DOMを
+     掘らずに確かめられるようにしておく（出ていないときの切り分けに要る）。 */
+  contentCandidates:()=>contentCandidateKeys(),
+  entryValue:(id,key)=>{
+   const e=(scState.entries||[]).find(x=>String(x.id)===String(id));
+   return e?entryValueOf(e,key):undefined;
+  },
   updateToolGroups:()=>updateToolGroups(),
   /* 「表示」パネル(§9.199)。設定はここへ畳んだので、**外から開ける口**を
      置く（畳んだ中の欄を触りたい側が、入口の名前を知らずに済む）。 */
@@ -8049,7 +8231,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      同じ値**を使う(紙だけ違う範囲で出すと突き合わせられない)。 */
   fetchEntries:async name=>{
    const r=await api('/api/schedule/plan?equipment='+encodeURIComponent(name)
-    +'&history_hours='+encodeURIComponent(scState.historyHours));
+    +'&history='+encodeURIComponent(scState.historyKey));
    return r.entries||[];
   },
  };
@@ -8092,11 +8274,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     jobs.push(WL.columnLayout.load('timeline:'+eq));
     const gen=planGen();
     jobs.push(api('/api/schedule/plan?equipment='+encodeURIComponent(eq)
-      +'&history_hours='+encodeURIComponent(scState.historyHours)).then(r=>{
+      +'&history='+encodeURIComponent(scState.historyKey)).then(r=>{
      if(gen!==planGen())return;      // 先読み中に予定を変えていたら捨てる(§9.200)
      if(r&&r.configured&&!scPlanCache.has(eq))
       scPlanCache.set(eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
-        loadFactor:r.loadFactor,historyHours:scState.historyHours,fetchedAt:Date.now()});
+        loadFactor:r.loadFactor,historyKey:scState.historyKey,historyFrom:r.historyFrom||null,
+        historyHours:r.historyHours,fetchedAt:Date.now()});
     }));
    }
    jobs.push(WL.displayRules.load());

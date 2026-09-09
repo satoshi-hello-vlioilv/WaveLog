@@ -86,17 +86,25 @@ let b=null;
  // --- (3) 表示範囲 ---
  rec('表示範囲セレクタが個別タイムラインに出る',
   await page.evaluate(()=>{const w=document.querySelector('#scHistoryRange');return !!w&&!w.hidden}));
- rec('既定は直近8時間',await page.evaluate(()=>document.querySelector('#scHistorySelect').value==='8'));
- // 40時間前の実績は8時間表示では出ない → 72時間にすると出る
+ // §9.366で「種類→量」の2段になった。既定は「時間で・8時間」。
+ rec('既定は直近8時間',await page.evaluate(()=>document.querySelector('#scHistorySelect').value==='h8'));
+ // 40時間前の実績は8時間表示では出ない → 3日にすると出る
  rec('表示範囲外(40時間前)の実績は既定では出ない',
   await page.evaluate(()=>!/L0057/.test(document.querySelector('#scTimeline').textContent)));
- await pickView('#scHistorySelect','72');
+ // 「日で」の群を押してから量を選ぶ（2段・§9.366）。
+ await page.evaluate(()=>document.querySelector('[data-history-group="days"]').click());
+ await W.until(page,()=>{const s=document.querySelector('#scHistorySelect');
+   return s&&!s.hidden&&[...s.options].some(o=>o.value==='d3')});
+ await pickView('#scHistorySelect','d3');
  await W.until(page,()=>/L0057/.test(document.querySelector('#scTimeline').textContent));
- rec('表示範囲を直近72時間へ広げると40時間前の実績も出る',
+ rec('さかのぼりを3日へ広げると40時間前の実績も出る',
   await page.evaluate(()=>/L0057/.test(document.querySelector('#scTimeline').textContent)));
- rec('表示範囲は保存され次回も引き継ぐ',
-  await page.evaluate(()=>localStorage.getItem('ScheduleHistoryHoursV1')==='72'));
- await pickView('#scHistorySelect','8');
+ rec('さかのぼりは保存され次回も引き継ぐ',
+  await page.evaluate(()=>localStorage.getItem('ScheduleHistoryModeV1')==='d3'));
+ await page.evaluate(()=>document.querySelector('[data-history-group="hours"]').click());
+ await W.until(page,()=>{const s=document.querySelector('#scHistorySelect');
+   return s&&!s.hidden&&[...s.options].some(o=>o.value==='h8')});
+ await pickView('#scHistorySelect','h8');
  await W.until(page,()=>!/L0057/.test(document.querySelector('#scTimeline').textContent));
  await W.settleFlags(page);
 

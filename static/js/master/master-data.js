@@ -774,7 +774,11 @@
     読み込み先は起動時に1回だけ決まるため、これが無いと打ち間違いに気づける
     のが再起動のあとになる（§9.168と同じ作法）。
     ================================================================== */
- let qjState={items:[],sources:[],builtin:null,builtinEnabled:true,kinds:[],kindDefault:'left',
+ /* 用途(§9.365)。**語彙はサーバーが持つ**（§9.163と同じ理由）——画面に
+    書くと、増やしたときに片方だけ古い並びを見る。 */
+ const QJ_PURPOSE_FINISH='完了突合';
+ let qjState={items:[],sources:[],builtin:null,builtinFinish:null,builtinFinishActive:true,
+              purposes:[],purposeDefault:'',builtinEnabled:true,kinds:[],kindDefault:'left',
               loaded:false,editing:null,
               cols:{},probe:null,probeSeq:0,probing:false,probeSig:'',
               /* 突合キーを選んでいる最中の状態(§9.197)。`pick`＝1つ目に押した列、
@@ -790,6 +794,10 @@
  function qjKind(key){
   const list=qjState.kinds||[];
   return list.find(k=>k.key===key)||list.find(k=>k.key===(qjState.kindDefault||'left'))||null;
+ }
+ function qjPurpose(key){
+  const list=qjState.purposes||[];
+  return list.find(p=>p.key===(key||''))||list[0]||null;
  }
  /* 2つの円で「どこを残すか」を塗る。**色だけで伝えない**(§3)ので、名前・
     一行説明・見本の表を必ず添える。idは同じ図が2箇所に出ても衝突しないよう
@@ -843,6 +851,7 @@
  const QJ_MULTI_LABEL={first:'最初の1件を使う',blank:'空にする（どれか決められないので出さない）'};
  const QJ_LIST_COLS=[
   {k:'state',label:'状態'},
+  {k:'purpose',label:'用途'},
   {k:'name',label:'結合名'},
   {k:'left',label:'足す先（この一覧に）'},
   {k:'right',label:'相手（ここから持ってくる）'},
@@ -863,6 +872,9 @@
    const r=await api('/api/query-join-master');
    qjState.items=r.items||[];qjState.sources=r.sources||[];qjState.builtin=r.builtin||null;
    qjState.kinds=r.kinds||[];qjState.kindDefault=r.kindDefault||'left';
+   qjState.purposes=r.purposes||[];qjState.purposeDefault=r.purposeDefault||'';
+   qjState.builtinFinish=r.builtinFinish||null;
+   qjState.builtinFinishActive=r.builtinFinishActive!==false;
    qjState.builtinEnabled=r.builtinEnabled!==false;
    qjState.loaded=true;
    renderQueryJoinForm();renderQueryJoinList();
@@ -909,6 +921,7 @@
   const bKind=qjKind((qjState.builtin||{}).kind||qjState.kindDefault);
   const b=qjState.builtin?`<div class="ds-row qj-row is-builtin${bOn?'':' is-off'}">
     <span class="qj-c-state"><span class="ds-listed${bOn?'':' is-off'}">${bOn?'既定':'解除中'}</span></span>
+    <span class="qj-c-purpose"><span class="ds-role">列を足す</span></span>
     <span class="qj-c-name"><b class="ds-name">${esc(qjState.builtin.name)}</b></span>
     <span class="qj-c-left">${esc(qjSourceLabel(qjState.builtin.left))}</span>
     <span class="qj-c-right">${esc(qjSourceLabel(qjState.builtin.right))}</span>
@@ -923,18 +936,42 @@
       ?'役割「仕掛」と「品質」が揃っているので自動で効いています。同じ相手への結合を登録すると、そちらが優先されます。「複製して編集」で、この設定を下敷きにした結合を作れます。'
       :'解除中です。品質データの列は一覧に出ません（<b>エラーにはなりません</b>——足していた列が無くなるだけで、その列を見ていた設定は静かに落ちます）。品質データは相手として選べるので、自分で結合を登録すれば出せます。'}</span>
    </div>`:'';
-  if(!rows&&!b){
+  /* 既定の完了突合(§9.365)。**保存されていないが効いている**ものは画面に
+     出す——出さないと「登録していないのに完了になる」ことになり、どこの
+     設定か探すはめになる（既定の品質データ結合と同じ扱い）。 */
+  const bf=qjState.builtinFinish;
+  const fOn=qjState.builtinFinishActive!==false;
+  const bfin=bf?`<div class="ds-row qj-row is-builtin${fOn?'':' is-off'}">
+    <span class="qj-c-state"><span class="ds-listed${fOn?'':' is-off'}">${fOn?'既定':'効いていない'}</span></span>
+    <span class="qj-c-purpose"><span class="ds-role is-finish">完了突合</span></span>
+    <span class="qj-c-name"><b class="ds-name">${esc(bf.name)}</b></span>
+    <span class="qj-c-left">${esc(qjSourceLabel(bf.left))}</span>
+    <span class="qj-c-right">${esc(qjSourceLabel(bf.right))}</span>
+    <span class="qj-c-keys">${esc((bf.keys||[]).map(k=>k.left).join('・'))}</span>
+    <span class="qj-c-kind">当たれば完了</span>
+    <span class="qj-c-cols">相手の全列${bf.finishColumn?`<i class="qj-sub">完了時刻: ${esc(bf.finishColumn)}</i>`:''}</span>
+    <span class="qj-c-act">
+     <button type="button" class="mm-btn-ghost sm" id="qjFinishCopy">複製して編集</button>
+    </span>
+    <span class="ds-c-note">${fOn
+      ?'役割「仕掛」と「実績」が揃っているので自動で効いています。突合キーは<b>データ接続の「実績」行</b>で変えられます（左右で同じ列名のときだけ使えます）。'
+       +'左右で名前が違う列で突き合わせたいときは「複製して編集」から1件登録してください。'
+      :'完了突合を登録済みなので、この既定は効いていません（同じロットを2つの定義で探すと、当たった順で完了時刻が変わるため）。'}</span>
+   </div>`:'';
+  if(!rows&&!b&&!bfin){
    list.innerHTML='<div class="mm-empty">結合はまだ登録されていません。「＋ 結合を追加」から登録してください。</div>';
    return;
   }
   list.innerHTML=`<div class="ds-rows">
-    <div class="ds-row qj-row ds-row-head">${head}</div>${b}${rows}</div>`;
+    <div class="ds-row qj-row ds-row-head">${head}</div>${b}${bfin}${rows}</div>`;
   list.querySelectorAll('[data-qj-edit]').forEach(btn=>btn.onclick=()=>{
    const x=qjState.items.find(i=>String(i.id)===btn.dataset.qjEdit);if(x)openQueryJoinEditor(x);
   });
   list.querySelectorAll('[data-qj-del]').forEach(btn=>btn.onclick=()=>qjDelete(btn.dataset.qjDel));
   const tg=$('#qjBuiltinToggle');if(tg)tg.onclick=()=>qjToggleBuiltin(!bOn);
   const cp=$('#qjBuiltinCopy');if(cp)cp.onclick=()=>openQueryJoinEditor(qjBuiltinDraft(),{copy:true});
+  const fc=$('#qjFinishCopy');
+  if(fc)fc.onclick=()=>openQueryJoinEditor(qjFinishDraft(),{copy:true});
  }
  /* 既定の結合を下敷きにした「新規の1件」。**IDを持たせない**——上書きでは
     なく複製なので、保存すると普通の登録として1行増える。 */
@@ -944,6 +981,18 @@
           left:b.left||'',leftTable:b.leftTable||'',right:b.right||'',rightTable:b.rightTable||'',
           keys:(b.keys||[]).map(k=>({left:k.left,right:k.right})),
           columns:[],prefix:'',multi:b.multi||'first',kind:b.kind||qjState.kindDefault,
+          purpose:'',finishColumn:'',useInSchedule:true,
+          order:(qjState.items.length+1)*10,active:true};
+ }
+ /* 既定の完了突合を下敷きにした「新規の1件」(§9.365)。**左右で別の列名を
+    組める**のがここからの値打ちなので、キーはそのまま持って開く。 */
+ function qjFinishDraft(){
+  const b=qjState.builtinFinish||{};
+  return {id:null,name:`${b.name||'実績突合'}（複製）`,
+          left:b.left||'',leftTable:b.leftTable||'',right:b.right||'',rightTable:b.rightTable||'',
+          keys:(b.keys||[]).map(k=>({left:k.left,right:k.right})),
+          columns:[],prefix:'',multi:b.multi||'first',kind:b.kind||qjState.kindDefault,
+          purpose:QJ_PURPOSE_FINISH,finishColumn:b.finishColumn||'',useInSchedule:true,
           order:(qjState.items.length+1)*10,active:true};
  }
  async function qjToggleBuiltin(on){
@@ -966,8 +1015,13 @@
   const missing=[];
   if(!(qjState.sources||[]).some(s=>s.key===x.left))missing.push('足す先');
   if(!(qjState.sources||[]).some(s=>s.key===x.right))missing.push('相手');
+  const pp=qjPurpose(x.purpose)||{};
+  const isFin=pp.key===QJ_PURPOSE_FINISH;
   return `<div class="ds-row qj-row${x.active?'':' is-off'}${missing.length?' is-pending':''}">
    <span class="qj-c-state"><span class="ds-listed${x.active?'':' is-off'}">${x.active?'有効':'停止中'}</span></span>
+   <span class="qj-c-purpose" title="${esc(pp.summary||'')}"><span class="ds-role${isFin?' is-finish':''}">${
+     esc(pp.short||pp.label||'列を足す')}</span>${
+     isFin?'':`<i class="qj-sub">${x.useInSchedule===false?'一覧だけ':'予定でも使う'}</i>`}</span>
    <span class="qj-c-name"><b class="ds-name" title="${esc(x.name)}">${esc(x.name)}</b>
     ${x.prefix?`<code class="ds-key" title="足す列の名前に付ける文字">${esc(x.prefix)}…</code>`:''}</span>
    <span class="qj-c-left" title="${esc(x.left+(x.leftTable?' / '+x.leftTable:''))}">${
@@ -975,8 +1029,10 @@
    <span class="qj-c-right" title="${esc(x.right+(x.rightTable?' / '+x.rightTable:''))}">${
      esc(qjSourceLabel(x.right))}${x.rightTable?`<i class="qj-sub">${esc(x.rightTable)}</i>`:''}</span>
    <span class="qj-c-keys" title="${esc(keys)}">${esc(keys||'—')}</span>
-   <span class="qj-c-kind" title="${esc(kind?kind.summary:'')}">${esc(kind?kind.label:'左外部結合')}</span>
-   <span class="qj-c-cols">${esc(cols)}</span>
+   <span class="qj-c-kind" title="${esc(isFin?(pp.summary||''):(kind?kind.summary:''))}">${
+     esc(isFin?'当たれば完了':(kind?kind.label:'左外部結合'))}</span>
+   <span class="qj-c-cols">${esc(cols)}${
+     isFin&&x.finishColumn?`<i class="qj-sub">完了時刻: ${esc(x.finishColumn)}</i>`:''}</span>
    <span class="qj-c-act">
     <button type="button" class="mm-btn-ghost sm" data-qj-edit="${esc(String(x.id))}">編集</button>
     <button type="button" class="mm-btn-ghost sm" data-qj-del="${esc(String(x.id))}">削除</button>
@@ -1033,6 +1089,8 @@
    leftTable:'',right:(sources.find(s=>s.purpose==='品質')||sources[1]||sources[0]||{}).key||'',
    rightTable:'',keys:[],columns:[],prefix:'',multi:'first',
    kind:qjState.kindDefault||'left',
+   purpose:(opts&&opts.purpose)||qjState.purposeDefault||'',
+   finishColumn:'',useInSchedule:true,
    order:(qjState.items.length+1)*10,active:true};
   if(!qjState.editing.kind)qjState.editing.kind=qjState.kindDefault||'left';
   qjState.probe=null;qjState.probeSig='';
@@ -1217,9 +1275,19 @@
    </label>`).join('');
   const pickAll=!(x.columns||[]).length;
   const colList=(rc.columns||[]).filter(c=>!(x.keys||[]).some(k=>k.right===c));
-  return `<div class="qj-edit">
+  /* 用途(§9.365)。**いちばん上に置く**——ここで決めた使いみちによって
+     下の節の意味が変わる（③が消え、④が「持ち帰る値」になる）ので、
+     決める順のとおりに並べる。 */
+  const purpose=qjPurpose(x.purpose)||{};
+  const isFinish=purpose.key===QJ_PURPOSE_FINISH;
+  const purposeCards=(qjState.purposes||[]).map(pp=>`<label class="qj-purpose${pp.key===purpose.key?' is-on':''}">
+    <input type="radio" name="qjPurpose" value="${esc(pp.key)}"${pp.key===purpose.key?' checked':''}>
+    <b>${esc(pp.label)}</b><span>${esc(pp.when||'')}</span>
+   </label>`).join('');
+  return `<div class="qj-edit${isFinish?' is-finish':''}">
    <section class="qj-sec qj-sec-name">
     <h4 class="mm-fieldgroup">① これは何か</h4>
+    ${purposeCards?`<div class="qj-purposes">${purposeCards}</div>`:''}
     <div class="qj-name-row">
      <label class="mm-field qj-f-name"><span>結合名</span>
       <input data-qj-field="name" type="text" value="${esc(x.name||'')}" required autocomplete="off" spellcheck="false">
@@ -1231,6 +1299,10 @@
       <select data-qj-field="enabled" data-qj-re>${qjOptions(['有効','無効'],x.active===false?'無効':'有効')}</select>
       <small class="mm-field-hint">「無効」にすると列を足しません（設定は残ります）。</small></label>
     </div>
+    ${isFinish?'':`<label class="qj-check">
+     <input type="checkbox" data-qj-sched${x.useInSchedule===false?'':' checked'}>
+     <span>作業スケジュール表でも使う<small>外すと、この結合の列は仕掛一覧にだけ出ます（予定を読むたびの往復も1本減ります）。</small></span>
+    </label>`}
    </section>
    <section class="qj-sec qj-sec-merge">
     <h4 class="mm-fieldgroup">② つなぐ2つのデータと突合キー</h4>
@@ -1245,6 +1317,12 @@
     <p class="mm-field-hint">すべてのキーが一致した行だけを結び付けます。全角/半角と前後の空白は無視します。
      選べるのは<b>データ接続に登録してあるデータ</b>だけです（一覧に出していないデータも選べます）。</p>
    </section>
+   ${isFinish?`<section class="qj-sec qj-sec-kind">
+    <h4 class="mm-fieldgroup">③ 当たったらどうなるか</h4>
+    <p class="qj-kind-summary">${esc(purpose.summary||'')}</p>
+    <p class="mm-field-hint">完了突合は「当たったら完了にする」の1通りなので、結合の仕方は選びません。
+     当たらなかったロットは<b>着手</b>として扱います（仕掛から消えている＝少なくとも手は付いている）。</p>
+   </section>`:`
    <section class="qj-sec qj-sec-kind">
     <h4 class="mm-fieldgroup">③ 結合の仕方 — <span class="qj-kind-now">${esc(kind.label||'')}</span></h4>
     ${kindCards?`<div class="qj-kinds">${kindCards}</div>
@@ -1254,9 +1332,11 @@
      ${qjSampleHtml(kind)}
      ${kind.rightOnly?'<p class="mm-field-hint is-warn">「相手にしかない行」を出すため、<b>相手の表を全部読みます</b>。また、一致しているかどうかはこの一覧の全行と突き合わせます（表示中のページだけでは決めません）。</p>':''}
     </div>`:'<p class="mm-field-hint">結合の仕方の一覧を読めませんでした。左外部結合（この一覧は全部残す）として扱います。</p>'}
-   </section>
+   </section>`}
    <section class="qj-sec qj-sec-add">
-    <h4 class="mm-fieldgroup">④ 何を足すか</h4>
+    <h4 class="mm-fieldgroup">${isFinish?'④ 何を持ち帰るか':'④ 何を足すか'}</h4>
+    ${isFinish?`<p class="mm-field-hint">当たった行から選んだ列を<b>この予定へ保存します</b>。
+     相手のデータが次の更新で消えても、保存したぶんは残ります。</p>`:''}
     ${(kind.key&&!kind.matched&&!kind.rightOnly)?`<p class="mm-field-hint">
       <b>この結合は列を足しません。</b>「${esc(kind.label)}」は相手に当たらなかった行だけを残す使い方なので、
       相手の値がありません（足しても全部空欄になります）。列を足したいときは、③で
@@ -1278,6 +1358,12 @@
       <select data-qj-field="multi" data-qj-re>${qjOptions(
         Object.keys(QJ_MULTI_LABEL).map(v=>({value:v,label:QJ_MULTI_LABEL[v]})),x.multi||'first')}</select>
       <small class="mm-field-hint">当たった件数は下の「結果」に出ます。</small></label>
+     ${isFinish?`<label class="mm-field qj-f-finish"><span>完了時刻にする列</span>
+      <select data-qj-field="finishColumn" data-qj-re>${qjOptions(
+        (rc.columns||[]),x.finishColumn||'','選ばない（時刻は記録しません）')}</select>
+      <small class="mm-field-hint">ここで選んだ列の日時を<b>完了時刻</b>として予定に記録します。
+       スケジュール表の「さかのぼり」で隠せるのは、時刻が入った行だけです
+       （選ばない・読めない場合は完了にはしますが、常に表示されます）。</small></label>`:''}
     </div>`}
    </section>
    <section class="qj-sec qj-sec-result">
@@ -1316,6 +1402,24 @@
    qjEdit().kind=el.value;
    renderQueryJoinEditor();qjProbeSoon(0);
   });
+  /* 用途を切り替えると、下の節の意味が変わる（③が消え、④が「持ち帰る値」に
+     なる）。**相手の既定も一緒に寄せる**(§9.365)——完了突合の相手はほぼ
+     必ず役割「実績」なので、探させない。 */
+  form.querySelectorAll('[name="qjPurpose"]').forEach(el=>el.onchange=()=>{
+   if(!el.checked)return;
+   const x=qjEdit();
+   x.purpose=el.value;
+   if(x.purpose===QJ_PURPOSE_FINISH){
+    const work=(qjState.sources||[]).find(s=>s.purpose==='仕掛');
+    const act=(qjState.sources||[]).find(s=>s.purpose==='実績');
+    if(work&&x.left!==work.key){x.left=work.key;x.leftTable='';x.keys=[]}
+    if(act&&!x.id&&x.right!==act.key){x.right=act.key;x.rightTable='';x.keys=[];x.columns=[]}
+   }
+   qjState.pick=null;
+   renderQueryJoinEditor();qjRefreshColumns();qjProbeSoon(0);
+  });
+  const sched=form.querySelector('[data-qj-sched]');
+  if(sched)sched.onclick=()=>{qjEdit().useInSchedule=!!sched.checked};
   form.querySelectorAll('[data-qj-sugg]').forEach(el=>el.onclick=()=>{
    const [l,r]=String(el.dataset.qjSugg||'').split('\t');
    qjAddKey(l,r);
@@ -1460,6 +1564,7 @@
   const body={left:x.left,leftTable:x.leftTable,right:x.right,rightTable:x.rightTable,
               keys:(x.keys||[]).filter(k=>k.left&&k.right),columns:x.columns,
               prefix:x.prefix,multi:x.multi,kind:x.kind||qjState.kindDefault,
+              purpose:x.purpose||'',finishColumn:x.finishColumn||'',
               name:x.name||'(下見)'};
   const sig=JSON.stringify(body);
   if(sig===qjState.probeSig)return;
@@ -1515,6 +1620,8 @@
               right:x.right,rightTable:x.rightTable,
               keys:(x.keys||[]).filter(k=>k.left&&k.right),columns:x.columns,
               prefix:x.prefix,multi:x.multi,kind:x.kind||qjState.kindDefault,order:x.order,
+              purpose:x.purpose||'',finishColumn:x.finishColumn||'',
+              useInSchedule:x.useInSchedule!==false,
               enabled:x.active===false?'無効':'有効'};
   try{
    setMaintLoading(true,'保存しています…');
@@ -1632,6 +1739,10 @@
       <b>作業中</b>として扱い、見つかった実績の行は予定へ保存します（実績側から消えても残ります）。
       <b>仕掛の在席</b>は、この並びのうち<b>仕掛にも実在する列だけ</b>で見ます。
       空にすると既定（${esc(def)}）に戻ります。</small></label>
+    <p class="mm-field-hint">ここは<b>左右で同じ列名</b>のときに使える簡単な設定です。
+     左右で名前が違う列でつなぎたい・<b>持ち帰る列を選びたい</b>・<b>完了時刻にする列を決めたい</b>ときは、
+     <b>マスタ管理 &gt; クエリ結合</b>で用途「完了突合」を1件登録してください
+     （登録すると、そちらが優先されます）。</p>
    </section>`;
  }
  function dsEditorHtml(x,isNew){
