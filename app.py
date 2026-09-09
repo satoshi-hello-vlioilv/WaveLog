@@ -52,6 +52,23 @@ app.register_blueprint(presence_bp)
 # 読み込んだだけで何が起きるかが呼ぶ側から読めない。
 db_access.bootstrap()
 
+# 旧い突合キー（§9.364の`データソースマスタ[突合キー]`）を、クエリ結合マスタの
+# 「完了突合」1行へ移す（§9.367）。**一度きり**——移したあとは他の結合と同じで、
+# 普通に編集・複製・削除できる。**移行が失敗しても起動は続ける**（実績としての
+# 変換をしないだけで、予定は今までどおり出る）。
+try:
+ from backend.repositories import master_repo as _mr
+ with db_access.connect(db_access.DBS['MASTER']['path'],False) as _c:
+  _made=_mr.migrate_finish_join(_c,db_access.WORK_DB_KEY,db_access.ACTUAL_DB_KEY,
+                                db_access.actual_match_keys(),
+                                db_access.DEFAULT_ACTUAL_MATCH_KEYS[-1])
+ if _made:
+  app_logger().info(
+   '旧い突合キーをクエリ結合マスタの「完了突合」へ移しました（結合ID %s）。'
+   'マスタ管理 > クエリ結合から編集できます。',_made)
+except Exception as _e:
+ app_logger().warning('突合キーの移行に失敗しました: %s',_e)
+
 # ========================================================================
 # キャッシュの方針(§9.97)
 # ------------------------------------------------------------------------

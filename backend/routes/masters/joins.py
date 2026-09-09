@@ -65,9 +65,6 @@ def query_join_master_list():
  # 「どうつないでいるのか」を見て真似できることが値打ちなので、
  # 解除＝見えなくする、にはしない（利用者の指示）。
  builtin=query_join.builtin_quality_def()
- # 完了突合の既定の1件(§9.365)。データソースマスタの[突合キー]から名乗る
- # ので、**利用者が1件も登録していないときだけ**効いている。
- finish=query_join.builtin_finish_def()
  def _b(x):
   if not x:return None
   return {'name':x['name'],'left':x['left'],'right':x['right'],
@@ -80,14 +77,7 @@ def query_join_master_list():
                 kinds=query_join.JOIN_KINDS,kindDefault=query_join.JOIN_KIND_DEFAULT,
                 purposes=query_join.PURPOSES,purposeDefault=query_join.PURPOSE_LIST,
                 builtinEnabled=query_join.builtin_quality_enabled(),
-                builtin=_b(builtin),
-                builtinFinish=_b(finish),
-                # 既定の完了突合が「いま効いているか」。**有効な登録が1件でも
-                # あれば効かない**（同じロットを2つの定義で探すと、当たった順で
-                # 完了時刻が変わる）。判定は`finish_definitions()`と同じ線引き。
-                builtinFinishActive=bool(finish) and not any(
-                 d.get('purpose')==query_join.PURPOSE_FINISH and d.get('active')
-                 for d in items))
+                builtin=_b(builtin))
 
 @bp.post('/api/query-join-master')
 @api_guard('クエリ結合の登録に失敗しました',bad=ValueError)

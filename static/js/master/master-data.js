@@ -609,10 +609,6 @@
  let dsState={items:[],loaded:false,assets:{},editing:null,probe:null,probePath:'',probeSeq:0,probing:false};
  /* 読み方の呼び名は**1箇所**。サーバー（backend/db_access.pyの
     source_read_mode）が返す語をそのまま画面の言葉へ写す。 */
- /* 役割の綴りは**サーバーが持つ**（§9.193）。ここに文字列を書くのは
-    「実績のときだけ出す設定」の判定1箇所だけで、選択肢そのものは
-    `/api/data-source-master` が返す`purposes`をそのまま並べる。 */
- const DS_PURPOSE_ACTUAL='実績';
  const DS_MODES=[
   {v:'share',label:'共有フォルダのファイルを読む',
    hint:'ネットワーク共有に置いてある .sqlite3 をそのまま読みます。RNEは要りません。'},
@@ -637,7 +633,6 @@
    dsState.purposes=Array.isArray(r.purposes)&&r.purposes.length?r.purposes:['仕掛','品質','実績','スケジュール'];
    /* 既定の突合キー（§9.364）。**語彙はサーバーが持つ**——画面へ写すと
       片方だけ直したときに食い違う。 */
-   dsState.matchKeyDefaults=Array.isArray(r.matchKeyDefaults)?r.matchKeyDefaults:[];
    dsState.purposeHolders=r.purposeHolders||{};
    dsState.loaded=true;
    renderDataSourceForm();renderDataSourceList();
@@ -777,7 +772,7 @@
  /* 用途(§9.365)。**語彙はサーバーが持つ**（§9.163と同じ理由）——画面に
     書くと、増やしたときに片方だけ古い並びを見る。 */
  const QJ_PURPOSE_FINISH='完了突合';
- let qjState={items:[],sources:[],builtin:null,builtinFinish:null,builtinFinishActive:true,
+ let qjState={items:[],sources:[],builtin:null,
               purposes:[],purposeDefault:'',builtinEnabled:true,kinds:[],kindDefault:'left',
               loaded:false,editing:null,
               cols:{},probe:null,probeSeq:0,probing:false,probeSig:'',
@@ -873,8 +868,6 @@
    qjState.items=r.items||[];qjState.sources=r.sources||[];qjState.builtin=r.builtin||null;
    qjState.kinds=r.kinds||[];qjState.kindDefault=r.kindDefault||'left';
    qjState.purposes=r.purposes||[];qjState.purposeDefault=r.purposeDefault||'';
-   qjState.builtinFinish=r.builtinFinish||null;
-   qjState.builtinFinishActive=r.builtinFinishActive!==false;
    qjState.builtinEnabled=r.builtinEnabled!==false;
    qjState.loaded=true;
    renderQueryJoinForm();renderQueryJoinList();
@@ -936,42 +929,18 @@
       ?'役割「仕掛」と「品質」が揃っているので自動で効いています。同じ相手への結合を登録すると、そちらが優先されます。「複製して編集」で、この設定を下敷きにした結合を作れます。'
       :'解除中です。品質データの列は一覧に出ません（<b>エラーにはなりません</b>——足していた列が無くなるだけで、その列を見ていた設定は静かに落ちます）。品質データは相手として選べるので、自分で結合を登録すれば出せます。'}</span>
    </div>`:'';
-  /* 既定の完了突合(§9.365)。**保存されていないが効いている**ものは画面に
-     出す——出さないと「登録していないのに完了になる」ことになり、どこの
-     設定か探すはめになる（既定の品質データ結合と同じ扱い）。 */
-  const bf=qjState.builtinFinish;
-  const fOn=qjState.builtinFinishActive!==false;
-  const bfin=bf?`<div class="ds-row qj-row is-builtin${fOn?'':' is-off'}">
-    <span class="qj-c-state"><span class="ds-listed${fOn?'':' is-off'}">${fOn?'既定':'効いていない'}</span></span>
-    <span class="qj-c-purpose"><span class="ds-role is-finish">完了突合</span></span>
-    <span class="qj-c-name"><b class="ds-name">${esc(bf.name)}</b></span>
-    <span class="qj-c-left">${esc(qjSourceLabel(bf.left))}</span>
-    <span class="qj-c-right">${esc(qjSourceLabel(bf.right))}</span>
-    <span class="qj-c-keys">${esc((bf.keys||[]).map(k=>k.left).join('・'))}</span>
-    <span class="qj-c-kind">当たれば完了</span>
-    <span class="qj-c-cols">相手の全列${bf.finishColumn?`<i class="qj-sub">完了時刻: ${esc(bf.finishColumn)}</i>`:''}</span>
-    <span class="qj-c-act">
-     <button type="button" class="mm-btn-ghost sm" id="qjFinishCopy">複製して編集</button>
-    </span>
-    <span class="ds-c-note">${fOn
-      ?'役割「仕掛」と「実績」が揃っているので自動で効いています。突合キーは<b>データ接続の「実績」行</b>で変えられます（左右で同じ列名のときだけ使えます）。'
-       +'左右で名前が違う列で突き合わせたいときは「複製して編集」から1件登録してください。'
-      :'完了突合を登録済みなので、この既定は効いていません（同じロットを2つの定義で探すと、当たった順で完了時刻が変わるため）。'}</span>
-   </div>`:'';
-  if(!rows&&!b&&!bfin){
+  if(!rows&&!b){
    list.innerHTML='<div class="mm-empty">結合はまだ登録されていません。「＋ 結合を追加」から登録してください。</div>';
    return;
   }
   list.innerHTML=`<div class="ds-rows">
-    <div class="ds-row qj-row ds-row-head">${head}</div>${b}${bfin}${rows}</div>`;
+    <div class="ds-row qj-row ds-row-head">${head}</div>${b}${rows}</div>`;
   list.querySelectorAll('[data-qj-edit]').forEach(btn=>btn.onclick=()=>{
    const x=qjState.items.find(i=>String(i.id)===btn.dataset.qjEdit);if(x)openQueryJoinEditor(x);
   });
   list.querySelectorAll('[data-qj-del]').forEach(btn=>btn.onclick=()=>qjDelete(btn.dataset.qjDel));
   const tg=$('#qjBuiltinToggle');if(tg)tg.onclick=()=>qjToggleBuiltin(!bOn);
   const cp=$('#qjBuiltinCopy');if(cp)cp.onclick=()=>openQueryJoinEditor(qjBuiltinDraft(),{copy:true});
-  const fc=$('#qjFinishCopy');
-  if(fc)fc.onclick=()=>openQueryJoinEditor(qjFinishDraft(),{copy:true});
  }
  /* 既定の結合を下敷きにした「新規の1件」。**IDを持たせない**——上書きでは
     なく複製なので、保存すると普通の登録として1行増える。 */
@@ -982,17 +951,6 @@
           keys:(b.keys||[]).map(k=>({left:k.left,right:k.right})),
           columns:[],prefix:'',multi:b.multi||'first',kind:b.kind||qjState.kindDefault,
           purpose:'',finishColumn:'',useInSchedule:true,
-          order:(qjState.items.length+1)*10,active:true};
- }
- /* 既定の完了突合を下敷きにした「新規の1件」(§9.365)。**左右で別の列名を
-    組める**のがここからの値打ちなので、キーはそのまま持って開く。 */
- function qjFinishDraft(){
-  const b=qjState.builtinFinish||{};
-  return {id:null,name:`${b.name||'実績突合'}（複製）`,
-          left:b.left||'',leftTable:b.leftTable||'',right:b.right||'',rightTable:b.rightTable||'',
-          keys:(b.keys||[]).map(k=>({left:k.left,right:k.right})),
-          columns:[],prefix:'',multi:b.multi||'first',kind:b.kind||qjState.kindDefault,
-          purpose:QJ_PURPOSE_FINISH,finishColumn:b.finishColumn||'',useInSchedule:true,
           order:(qjState.items.length+1)*10,active:true};
  }
  async function qjToggleBuiltin(on){
@@ -1679,22 +1637,6 @@
   $('#maintEditorSave').onclick=()=>saveDataSourceEditor();
   bindInputHelpers(form);
   form.querySelectorAll('[data-ds-mode]').forEach(r=>r.onchange=()=>{dsSyncMode();dsProbeSoon(0)});
-  /* 役割を「実績」へ変えたら、その場で突合キーの節を出す（§9.364）。
-     **開き直さないと出ない**のでは、設定があること自体に気づけない
-     （§4「探させない」）。中身は`dsMatchKeysHtml()`の1箇所が作る。 */
-  const purposeEl=form.querySelector('[data-field="purpose"]');
-  if(purposeEl)purposeEl.addEventListener('change',()=>{
-   const cur=form.querySelector('.ds-edit-zone.ds-edit-match');
-   const draft=Object.assign({},x,{purpose:purposeEl.value},
-     cur?{matchKeyList:String((cur.querySelector('[data-field="matchKeys"]')||{}).value||'')
-            .split('\n').map(v=>v.trim()).filter(Boolean)}:{});
-   const html=dsMatchKeysHtml(draft);
-   if(cur)cur.remove();
-   if(html){
-    const modes=form.querySelector('.ds-edit-zone:nth-of-type(2)');
-    if(modes)modes.insertAdjacentHTML('afterend',html);
-   }
-  });
   form.querySelectorAll('[data-field]').forEach(el=>{
    el.addEventListener('change',()=>dsProbeSoon());
    el.addEventListener('input',()=>dsProbeSoon());
@@ -1719,31 +1661,6 @@
    const taken=who&&who!==x.key;
    return opt(v,taken?`${v}（いまは ${who}）`:v,cur);
   }).join('');
- }
- /* 実績との突合キー（§9.364）。**役割が「実績」のときだけ出す**——
-    ほかの役割では効かない設定なので、置いておくと「効いているのか」を
-    推測させることになる（§4「できないことは、できないと書く」）。
-    **順番に意味がある**ので1行に1つ。上から順に突き合わせる。 */
- function dsMatchKeysHtml(x){
-  if((x.purpose||'')!==DS_PURPOSE_ACTUAL)return '';
-  const list=(x.matchKeyList&&x.matchKeyList.length?x.matchKeyList
-              :(dsState.matchKeyDefaults||[])).join('\n');
-  const def=(dsState.matchKeyDefaults||[]).join('／');
-  return `<section class="ds-edit-zone ds-edit-match">
-    <h4 class="mm-fieldgroup">③ 何で突き合わせるか（実績）</h4>
-    <label class="mm-field"><span>突き合わせる列（1行に1つ・上から順）</span>
-     <textarea data-field="matchKeys" rows="4" spellcheck="false"
-       class="ds-matchkeys">${esc(list)}</textarea>
-     <small class="mm-field-hint">作業スケジュールに組んだロットが<b>仕掛から消えた</b>とき、
-      この列でこの実績データを探します。見つかれば<b>作業完了</b>、見つからなければ
-      <b>作業中</b>として扱い、見つかった実績の行は予定へ保存します（実績側から消えても残ります）。
-      <b>仕掛の在席</b>は、この並びのうち<b>仕掛にも実在する列だけ</b>で見ます。
-      空にすると既定（${esc(def)}）に戻ります。</small></label>
-    <p class="mm-field-hint">ここは<b>左右で同じ列名</b>のときに使える簡単な設定です。
-     左右で名前が違う列でつなぎたい・<b>持ち帰る列を選びたい</b>・<b>完了時刻にする列を決めたい</b>ときは、
-     <b>マスタ管理 &gt; クエリ結合</b>で用途「完了突合」を1件登録してください
-     （登録すると、そちらが優先されます）。</p>
-   </section>`;
  }
  function dsEditorHtml(x,isNew){
   const mode=x.readMode||(x.overridePath?'direct':(x.mode||'share'));
@@ -1807,7 +1724,6 @@
      </div>`).join('')}</div>
     ${f('preferred','既定テーブル',x.preferred,'','この一覧を開いた直後に選ぶ表の名前。未入力なら抽出テーブルと同じです。')}
    </section>
-   ${dsMatchKeysHtml(x)}
    <section class="ds-edit-zone ds-edit-result">
     <h4 class="mm-fieldgroup">③ この設定でできること <span class="ds-probe-state" id="dsProbeState"></span></h4>
     <div id="dsProbeBox" class="ds-probe"></div>
@@ -1843,13 +1759,6 @@
    rne:val('rne'),table:val('table'),
    output:val('output'),share:val('share'),preferred:val('preferred'),
    overridePath:String(val('overridePath')||'').trim()};
-  /* 実績との突合キー（§9.364）。**役割が「実績」のときだけ送る**——
-     ほかの役割の行を保存したときに、覚えのないキーで上書きしない
-     （送らなければサーバーは今の値を残す・§9.212 ②）。 */
-  if(d.purpose===DS_PURPOSE_ACTUAL){
-   d.matchKeys=String(val('matchKeys')||'').split('\n')
-     .map(x=>x.trim()).filter(Boolean);
-  }
   /* 「直接読む」以外を選んでいるときは上書きを**空で送る＝解除する**。
      直接指定は保存値を持たず、パス設定マスタの上書きの有無そのものなので、
      選択と実体を必ず一致させる（2箇所に持つと必ず食い違う）。 */

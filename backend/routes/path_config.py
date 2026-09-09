@@ -29,7 +29,7 @@ from ..db_access import (
  DBS, MEAS_DB, connect,
  PATH_CONFIG_KEYS, path_config_rows, set_path_config, path_config_value,
  SIKALOT_SOURCE, RECORDS_BACKUP_EXPORT_PATH, RECORDS_SHARE_DIR, SCHEDULE_SHARE_PATH,
- DEFAULT_ACTUAL_MATCH_KEYS, parse_match_keys,
+ parse_match_keys,
 )
 import json as _json
 from ..access_mode import request_user_id
@@ -461,15 +461,13 @@ def data_source_master_list():
      holder[pv]=_purpose_holder(cur,pv)
   except Exception as e:
    app_logger().warning('役割の割り当てを確かめられませんでした: %s',e)
-  # **いま効いているキーの並び**を行ごとに添える（§9.364）。保存値は
-  # 空欄のことがあり、そのときに何で突き合わせているのかは画面からは
-  # 分からない——「推測させない」ため、解いた結果をそのまま返す。
-  for it in items:
-   it['matchKeyList']=parse_match_keys(it.get('matchKeys'))
+  # 突合キーは**この画面から消した**（§9.367、利用者の指示「データ接続部には
+  # なくてもよい」）。突合の設定はマスタ管理 > クエリ結合の1行が持つ。
+  # `[突合キー]`の列は**一度きりの移行の材料**としてだけ残っている
+  # （`master_repo.migrate_finish_join()`）ので、画面へは返さない。
   return jsonify(ok=True,items=items,master_path=str(path),
                  purposes=[pv for pv in DATA_SOURCE_PURPOSES if pv!=PURPOSE_OTHER],
                  purposeHolders=holder,
-                 matchKeyDefaults=list(DEFAULT_ACTUAL_MATCH_KEYS),
                  assetsDir=str(rne_scheduler.assets_dir()),
                  confPath=str(rne_scheduler.conf_path()),
                  confExists=rne_scheduler.conf_path().exists())

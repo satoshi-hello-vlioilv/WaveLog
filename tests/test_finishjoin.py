@@ -47,6 +47,7 @@ EQ = 'テスト設備A'
 TAG = 'FJ' + str(pathlib.os.getpid())
 made_joins = []
 made_plans = []
+paused = []          # この網のあいだ止めた既存の結合（必ず戻す）
 mine = {}
 
 
@@ -119,7 +120,19 @@ def cleanup():
             client.post('/api/query-join-master/delete', json={'id': jid, 'user_id': 'tests'})
         except Exception as e:
             print('  [cleanup] 結合を消せない:', e)
+    # **止めた行は必ず戻す**（§9.362）。戻し忘れると、以降の通し全部が
+    # 「完了突合が効いていない」状態を見る。
+    for jid, keep, name in paused:
+        try:
+            client.post('/api/query-join-master/update',
+                        json=dict(keep, id=jid, name=name, enabled='有効',
+                                  user_id='tests'))
+        except Exception as e:
+            print('  [cleanup] 止めた結合を戻せない:', e)
     actual_match.forget()
+    back = [x for x in joins_now()
+            if x['id'] in [j for j, _k, _n in paused] and not x.get('active')]
+    rec('後片付け: 止めた結合を有効へ戻している', not back, str(back))
     left = [x['id'] for x in joins_now() if x['id'] in made_joins]
     rec('後片付け: 作った結合が1件も残っていない', not left, str(left))
 
@@ -134,12 +147,58 @@ def main():
         keys == ['', '完了突合'], str(keys))
     rec('用途の既定は「一覧に列を足す」（保存済みの行の意味を変えない）',
         got.get('purposeDefault') == '', str(got.get('purposeDefault')))
-    rec('既定の完了突合を画面へ返す（どうつないでいるか見て真似できる）',
-        bool(got.get('builtinFinish'))
-        and (got['builtinFinish'].get('purpose') == '完了突合'),
-        json.dumps(got.get('builtinFinish'), ensure_ascii=False)[:160])
-    rec('登録が無いあいだは既定の完了突合が効いている',
-        got.get('builtinFinishActive') is True, str(got.get('builtinFinishActive')))
+    # §9.367: **保存されていない「既定の1件」は持たない**（編集も削除もできない
+    # ものを残さない）。旧い突合キーは一度きりの移行で普通の1行になっている。
+    rec('保存されていない「既定の完了突合」を返さない（§9.367）',
+        'builtinFinish' not in got and 'builtinFinishActive' not in got,
+        str(sorted(k for k in got if 'uiltinFinish' in k)))
+    migrated = [x for x in (got.get('items') or []) if x.get('purpose') == '完了突合']
+    rec('旧い突合キーが「普通の1行」へ移行されている（編集できる）',
+        len(migrated) == 1 and bool(migrated[0].get('id'))
+        and (migrated[0].get('keys') or []) != [],
+        json.dumps({'n': len(migrated),
+                    'name': migrated[0].get('name') if migrated else None},
+                   ensure_ascii=False))
+    # **普通に編集できる**（利用者の指摘「複製してからなら編集できます…
+    # 普通に編集できるようにしてください」）。名前を変えて戻すだけで確かめる。
+    if migrated:
+        one = migrated[0]
+        keep = {k: one.get(k) for k in
+                ('left', 'leftTable', 'right', 'rightTable', 'keys', 'columns',
+                 'prefix', 'multi', 'kind', 'purpose', 'finishColumn',
+                 'useInSchedule', 'order')}
+        r = client.post('/api/query-join-master/update',
+                        json=dict(keep, id=one['id'], name=one['name'] + TAG,
+                                  enabled='有効', user_id='tests'))
+        after = [x for x in joins_now() if x['id'] == one['id']]
+        rec('移行した行はそのまま編集して保存できる（複製しなくてよい）',
+            r.status_code == 200 and bool(after) and after[0]['name'] == one['name'] + TAG,
+            str(r.status_code) + ' ' + str(after and after[0].get('name')))
+        client.post('/api/query-join-master/update',
+                    json=dict(keep, id=one['id'], name=one['name'],
+                              enabled='有効', user_id='tests'))
+        # **この網のあいだは止めておく**——移行した行は表示順0で、この網が
+        # 作る行より先に当たる（同じロットを2つの定義で探さない）。
+        # 止めたことは`paused`に控え、後片付けで必ず戻す（§9.362）。
+        paused.append((one['id'], keep, one['name']))
+        client.post('/api/query-join-master/update',
+                    json=dict(keep, id=one['id'], name=one['name'],
+                              enabled='無効', user_id='tests'))
+        actual_match.forget()
+
+    # ---- 1a) 定義が無ければ、実績としての変換はしない（§9.367）----
+    # 利用者の言葉「データがなければ実績としての変換はしない。というだけで
+    # 今まで通り」。**完了突合が1件も効いていないときは状態を動かさない。**
+    mode('schedule')
+    add_plan('ACT0003', 'C9003', '2026-09-03')
+    off = find('ACT0003')
+    rec('完了突合が1件も無ければ、仕掛から消えていても状態を動かさない',
+        bool(off) and off['state'] == '予定' and off.get('missingFromWork') is None
+        and '完了突合の設定がありません' in str(off.get('missingReason') or ''),
+        json.dumps({'state': off and off.get('state'),
+                    'missing': off and off.get('missingFromWork'),
+                    'reason': (off or {}).get('missingReason')}, ensure_ascii=False)[:200])
+    mode('edit')
 
     # ---- 2) 左右で別の列名を組める ----
     # 検証用の実績は[材料ロット]に[ロット番号]と同じ値を持つ。**既定の1件では
@@ -161,13 +220,14 @@ def main():
     rec('「作業スケジュールでも使う」の既定は使う（保存値は「使わない」側だけ）',
         one.get('useInSchedule') is True, str(one.get('useInSchedule')))
 
-    # ---- 5) 登録があれば既定の1件は当たらない ----
+    # ---- 5) 効くのは登録された行だけ（§9.367）----
     defs = query_join.finish_definitions()
-    rec('登録が1件でもあれば既定は当てない（同じロットを2つで探さない）',
-        len(defs) == 1 and not defs[0].get('builtin'),
+    rec('効くのは登録された行だけ（保存されていない定義は無い）',
+        len(defs) >= 1 and all(not d.get('builtin') for d in defs),
         str([(d.get('name'), bool(d.get('builtin'))) for d in defs]))
-    rec('画面にも「既定はいま効いていない」と返す',
-        (client.get('/api/query-join-master').get_json() or {}).get('builtinFinishActive') is False)
+    rec('登録した行が「当てる順」に並んでいる（表示順→ID）',
+        any(d.get('name') == TAG + '別名' for d in defs),
+        str([d.get('name') for d in defs]))
 
     # ---- 3)(4) 実際に当ててみる ----
     mode('schedule')

@@ -290,6 +290,23 @@ def fix_master(quiet: bool = False) -> None:
                 n = c.execute('DELETE FROM [操業データ項目マスタ] WHERE ' + w).rowcount
                 if n:
                     note('  操業データ項目の屑を%d件片付けました (%s)' % (n, w))
+        # 2c) 完了突合の行（§9.367）。**行が消えていたら移行の目印を外す**
+        #     ——旧い突合キーからの移行は「一度きり」なので、行を消した網が
+        #     あると二度と戻らない（実績としての変換が全部止まる）。ここで
+        #     目印を外しておけば、次のサーバー起動が作り直す。**行を直に
+        #     作らないこと**——作り方は`master_repo.migrate_finish_join()`の
+        #     1箇所で、2つ持つと片方だけ古い形になる。
+        if ({'クエリ結合マスタ', 'パス設定マスタ'} <= have
+                and '用途' in {r[1] for r in
+                               c.execute('PRAGMA table_info([クエリ結合マスタ])')}):
+            n = c.execute("SELECT COUNT(*) FROM [クエリ結合マスタ] "
+                          "WHERE [用途]='完了突合'").fetchone()[0]
+            if not n:
+                got = c.execute("DELETE FROM [パス設定マスタ] "
+                                "WHERE [設定キー]='__finish_join_migrated__'").rowcount
+                if got:
+                    note('  完了突合の行が無いので、移行の目印を外しました'
+                         '（次の起動で作り直します）')
         # 3) 勤務体系＋勤務区分＋設備の紐づけ
         if {'勤務体系マスタ', '勤務区分マスタ'} <= have:
             for w in _JUNK_SHIFT:

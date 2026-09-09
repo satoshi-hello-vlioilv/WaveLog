@@ -36,8 +36,8 @@
 import unicodedata
 from datetime import datetime
 
-from .db_access import (ACTUAL_DB_KEY, DBS, QUALITY_DB_KEY, WORK_DB_KEY, actual_match_keys, cfg,
-                        cols, connect, path_config_value, qi, tables)
+from .db_access import (DBS, QUALITY_DB_KEY, WORK_DB_KEY, cfg, cols, connect, path_config_value,
+                        qi, tables)
 from .logging_setup import app_logger
 from . import source_capability
 from .quiet import quiet
@@ -292,55 +292,32 @@ def finish_time_of(d, row):
     return parse_finish_time(v)
 
 
-# ---- 完了突合の定義(§9.365) --------------------------------------------
-# 既定の1件（保存されていない）。§9.364で作った
-# `データソースマスタ[突合キー]`の設定を、**同じエンジンの上の1行**として
-# 名乗らせる——設定していない現場が今までどおり動くため、そして
-# 「どうつないでいるのか」を画面で見て真似できるようにするため
-# （既定の品質データ結合と同じ作法）。
-BUILTIN_FINISH_NAME = '実績突合（既定）'
-# 利用者が名指しした完了日時の列（§9.364の原文）。**突合キーに入っている
-# ときだけ**既定の完了日時として使う——入っていないものを勝手に探しに行くと、
-# 「設定していない列で日時を決めている」状態になる。
-_BUILTIN_FINISH_COLUMN = '前工程実績_作業終了_日付'
+# ---- 完了突合の定義(§9.365・§9.367) ------------------------------------
+# **既定の1件は持たない**（§9.367、利用者の指摘「固定されてしまい実績の
+# クエリが修正できません」）。§9.365では`データソースマスタ[突合キー]`から
+# 名乗る「保存されていない1件」を置いたが、保存されていないものは**編集も
+# 削除もできない**——複製してからしか直せず、しかも複製した瞬間に元が
+# 「効いていない」に変わる、という分かりにくい形になっていた。
+#
+# **登録された行だけが効く。** 1件も無ければ実績としての変換はしない
+# （利用者の言葉「データがなければ実績としての変換はしない。というだけで
+# 今まで通り」）。今までの設定は**一度きりの移行**で普通の1行になるので
+# （`master_repo.migrate_finish_join()`）、そのあとは他の結合と同じように
+# 編集・複製・削除できる。
+_BUILTIN_FINISH_REMOVED = True
 
 
-def builtin_finish_def():
- """役割「仕掛」と「実績」が両方あるときだけ名乗る、既定の完了突合。
-
- 突合キーは`データソースマスタ[突合キー]`（§9.364）。**左右とも同じ列名**
- ——これがこの既定の限界で、左右で名前が違う現場はクエリ結合マスタへ1行
- 登録する（そちらは左右別々に組める）。"""
- if not (WORK_DB_KEY and ACTUAL_DB_KEY):
-  return None
- keys = list(actual_match_keys())
- if not keys:
-  return None
- return {
-  'id': 0, 'builtin': True, 'name': BUILTIN_FINISH_NAME, 'purpose': PURPOSE_FINISH,
-  'left': WORK_DB_KEY, 'leftTable': '', 'right': ACTUAL_DB_KEY, 'rightTable': '',
-  'keys': [{'left': k, 'right': k} for k in keys],
-  'columns': [], 'prefix': '', 'multi': 'first', 'kind': JOIN_KIND_DEFAULT,
-  'finishColumn': (_BUILTIN_FINISH_COLUMN if _BUILTIN_FINISH_COLUMN in keys else ''),
-  'useInSchedule': True, 'order': -1, 'active': True,
- }
-
-
-def finish_definitions(include_builtin=True):
- """「仕掛から消えたロットを探す」結合を、当てる順に返す（§9.365）。
+def finish_definitions():
+ """「仕掛から消えたロットを探す」結合を、当てる順に返す（§9.365・§9.367）。
 
  **対象（左）は役割「仕掛」のデータソースだけ。** 予定が持っている明細は
  投入した時点の仕掛行の写しなので、左のキーはその列名で引ける。
 
- **利用者が1件でも登録したら、既定は当てない**——同じロットを2つの定義で
- 探すと、当たった順で完了時刻が変わる（既定の品質データ結合と同じ理由）。"""
- out = [d for d in all_definitions()
-        if str(d.get('purpose') or '') == PURPOSE_FINISH
-        and (not WORK_DB_KEY or d.get('left') == WORK_DB_KEY)]
- if out or not include_builtin:
-  return out
- b = builtin_finish_def()
- return [b] if b else []
+ **1件も無ければ空を返す**——実績としての変換をしないだけで、予定は
+ 今までどおり出る。"""
+ return [d for d in all_definitions()
+         if str(d.get('purpose') or '') == PURPOSE_FINISH
+         and (not WORK_DB_KEY or d.get('left') == WORK_DB_KEY)]
 
 
 def finish_column_names(defs=None):

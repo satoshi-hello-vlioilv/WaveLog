@@ -79,6 +79,10 @@ def add_plan(lot, casting, end_date):
     return j
 
 
+def mode(m):
+    client.post('/api/access-mode', json={'mode': m})
+
+
 def entries():
     r = client.get('/api/schedule/plan?equipment=' + EQ)
     return (r.get_json() or {}).get('entries') or []
@@ -123,9 +127,12 @@ def main():
     got = (client.get('/api/data-source-master').get_json() or {})
     purposes = got.get('purposes') or []
     rec('役割の語彙に「実績」がある', '実績' in purposes, '/'.join(purposes))
-    rec('突合キーの既定をサーバーが答える',
-        got.get('matchKeyDefaults') == ['ロット番号', '鋳造番号', '前工程実績_作業終了_日付'],
-        str(got.get('matchKeyDefaults')))
+    # 突合キーの欄は**データ接続から消した**（§9.367、利用者の指示「データ接続部
+    # にはなくてもよい」）。設定はマスタ管理 > クエリ結合の1行が持つ。
+    rec('データ接続は突合キーを画面へ返さない（§9.367）',
+        'matchKeyDefaults' not in got and not any('matchKeyList' in x
+                                                  for x in (got.get('items') or [])),
+        str(sorted(k for k in got if 'matchKey' in k)))
     act = [x for x in (got.get('items') or []) if x.get('purpose') == '実績']
     rec('検証用フィクスチャに役割「実績」の行がある', len(act) == 1,
         str([x.get('key') for x in act]))
@@ -141,14 +148,16 @@ def main():
     rec('読めない値は既定へ倒す（黙って壊れない）',
         db_access.parse_match_keys('[こわれた') == list(db_access.DEFAULT_ACTUAL_MATCH_KEYS))
 
-    # 突合の設定は**定義ごと**に答える（§9.365）。登録が無い現場では
-    # データソースマスタ[突合キー]から作った「既定の1件」だけが並ぶ。
+    # 突合の設定は**定義ごと**に答える（§9.365）。旧い突合キーは一度きりの
+    # 移行で`クエリ結合マスタ`の普通の1行になっている（§9.367）ので、
+    # **保存されていない「既定の1件」は無い**。
     d = actual_match.describe()
     one = (d.get('definitions') or [{}])[0]
-    rec('突合の設定を「定義ごと」に答える（既定の1件が名乗っている）',
-        d['configured'] and len(d['definitions']) == 1 and one.get('builtin') is True,
+    rec('突合の設定を「定義ごと」に答える（保存された行が名乗っている）',
+        d['configured'] and len(d['definitions']) == 1 and not one.get('builtin')
+        and bool(one.get('id')),
         json.dumps({'n': len(d.get('definitions') or []),
-                    'name': one.get('name')}, ensure_ascii=False))
+                    'id': one.get('id'), 'name': one.get('name')}, ensure_ascii=False))
     rec('仕掛と実績を実際に読めている',
         d['ready'] and one.get('actualRows', 0) >= 3 and not one.get('actualError'),
         json.dumps({k: one.get(k) for k in ('workRows', 'actualRows', 'workColumns',
@@ -160,8 +169,8 @@ def main():
         one.get('workColumns') == ['ロット番号', '鋳造番号']
         and one.get('actualColumns') == ['ロット番号', '鋳造番号', '前工程実績_作業終了_日付'],
         str(one.get('workColumns')) + ' / ' + str(one.get('actualColumns')))
-    # 既定の1件でも、利用者が名指しした列（§9.364の原文）を完了日時に使う。
-    rec('既定の1件は「前工程実績_作業終了_日付」を完了日時に使う',
+    # 移行した行も、利用者が名指しした列（§9.364の原文）を完了日時に使う。
+    rec('移行した行は「前工程実績_作業終了_日付」を完了日時に使う',
         one.get('finishColumn') == '前工程実績_作業終了_日付',
         str(one.get('finishColumn')))
 
@@ -221,28 +230,44 @@ def main():
         saved = 'error: %s' % e
     rec('共有スケジュールの行に実績の写しが入っている',
         '前工程1号' in saved, saved[:120])
-    # **実績データが消えても保持される**——突合の控えを捨て、実績のキーを
-    # 「当たらない列」へ変えても、保存済みの行は完了のまま。
-    keys_before = db_access.actual_match_keys()
+    # **突合先が消えても保持される**——完了突合の行そのものを止めても、
+    # 保存済みの行は完了のまま（§9.367。定義が無ければ「変換しない」だけで、
+    # 一度突き合わせて保存したものは残る）。
+    jid = one.get('id')
+    row = None
+    for x in ((client.get('/api/query-join-master').get_json() or {}).get('items') or []):
+        if x.get('id') == jid:
+            row = x
+    body = {k: (row or {}).get(k) for k in
+            ('name', 'left', 'leftTable', 'right', 'rightTable', 'keys', 'columns',
+             'prefix', 'multi', 'kind', 'purpose', 'finishColumn', 'useInSchedule',
+             'order')}
     try:
-        db_access.DATA_SOURCES  # noqa: B018  参照だけ（下で差し替える）
-        for s in db_access.DATA_SOURCES:
-            if s.get('purpose') == '実績':
-                s['matchKeys'] = json.dumps(['ロット番号', '鋳造番号', '存在しない列'],
-                                            ensure_ascii=False)
+        mode('edit')
+        client.post('/api/query-join-master/update',
+                    json=dict(body, id=jid, enabled='無効', user_id='tests'))
         actual_match.forget()
+        mode('schedule')
         still = find('ACT0001')
-        rec('実績側が当たらなくなっても、保存済みなら完了のまま',
+        rec('完了突合を止めても、保存済みなら完了のまま',
             bool(still) and still['state'] == '完了' and bool(still.get('actualSource')),
             json.dumps({'state': still and still.get('state'),
                         'reason': (still or {}).get('missingReason')}, ensure_ascii=False)[:200])
+        # そして**保存していない行は「今まで通り」**（状態を動かさない）。
+        gone = find(TAG + 'GONE')
+        rec('完了突合を止めると、保存していない行は状態を動かさない',
+            bool(gone) and gone['state'] == '予定' and gone.get('missingFromWork') is None,
+            json.dumps({'state': gone and gone.get('state'),
+                        'reason': (gone or {}).get('missingReason')}, ensure_ascii=False)[:200])
     finally:
-        for s in db_access.DATA_SOURCES:
-            if s.get('purpose') == '実績':
-                s['matchKeys'] = ''
+        mode('edit')
+        client.post('/api/query-join-master/update',
+                    json=dict(body, id=jid, enabled='有効', user_id='tests'))
         actual_match.forget()
-    rec('突合キーを戻せている', db_access.actual_match_keys() == keys_before,
-        str(db_access.actual_match_keys()))
+        mode('schedule')
+    back = [x for x in ((client.get('/api/query-join-master').get_json() or {}).get('items') or [])
+            if x.get('id') == jid and x.get('active')]
+    rec('止めた完了突合を有効へ戻せている', bool(back), str(bool(back)))
 
     # ---- 7) 判定できないときは状態を動かさない ----
     r = client.post('/api/schedule/plan/add', json={
