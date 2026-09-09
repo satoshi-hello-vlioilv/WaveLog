@@ -82,8 +82,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     この応答が届く画面にしか出ない（一覧の板では畳んである）。 */
  function setHistoryVocab(r){
   if(!r||!Array.isArray(r.historyModes)||!r.historyModes.length)return;
+  const first=!scHistory.loaded;
   scHistory={modes:r.historyModes,groups:r.historyGroups||[],loaded:true};
   renderHistoryPicker();
+  /* **語彙で決まるものを全部直す**——札と欄だけ直しても、畳んだ入口の文字
+     （`過去8時間`）と起点の行は空のままになる。届く前に描かれた画面が
+     そのまま残るので、届いた時点で必ず塗り直す（実際に踏んだ: 語彙を
+     専用のルートから予定の応答へ移したとき、3本の網が「まとめなし」
+     「札が無い」で落ちた）。 */
+  if(first){updateHistoryFromUi();updateViewMenuUi()}
  }
  let scState={equipment:'',entries:[],anchor:null,anchorRounded:null,warnings:[],configured:true,
               editable:false,pickerEnabled:false,stopReasons:[],dragId:null,insertBefore:'',
@@ -3035,10 +3042,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    .then(r=>{
     // 先読みのあいだに予定を変えていたら捨てる(§9.200)
     if(gen!==planGen())return;
+    /* **語彙は先読みでも受け取る**（§9.366）。画面を触るより前に届くので、
+       「表示」を最初に開いた時点で札がそろっている。 */
+    setHistoryVocab(r);
     if(r&&r.configured&&!scPlanCache.has(eq))
      scPlanCache.set(eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
        loadFactor:r.loadFactor,historyKey:key,historyFrom:r.historyFrom||null,
-       historyHours:r.historyHours,fetchedAt:Date.now(),timings:r.timings});
+       historyHours:r.historyHours,historyModes:r.historyModes,historyGroups:r.historyGroups,
+       fetchedAt:Date.now(),timings:r.timings});
    })
    .catch(WL.quiet('予定を先読みできない（開いたときに取りに行く）'))
    .finally(()=>warmingPlans.delete(eq));
@@ -3190,8 +3201,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    const fetchedAt=Date.now();
    scPlanCache.set(req.eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
     loadFactor:r.loadFactor,historyKey:scState.historyKey,historyFrom:r.historyFrom||null,
-    historyHours:r.historyHours,fetchedAt,timings:r.timings,
-    anchorRounded:r.anchorRounded});
+    historyHours:r.historyHours,historyModes:r.historyModes,historyGroups:r.historyGroups,
+    fetchedAt,timings:r.timings,anchorRounded:r.anchorRounded});
    applyPlanResult(r,fetchedAt);
   }catch(e){
    if(scState.equipment!==req.eq)return;
@@ -8272,10 +8283,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     jobs.push(api('/api/schedule/plan?equipment='+encodeURIComponent(eq)
       +'&history='+encodeURIComponent(scState.historyKey)).then(r=>{
      if(gen!==planGen())return;      // 先読み中に予定を変えていたら捨てる(§9.200)
+     setHistoryVocab(r);             // 語彙は先読みでも受け取る(§9.366)
      if(r&&r.configured&&!scPlanCache.has(eq))
       scPlanCache.set(eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
         loadFactor:r.loadFactor,historyKey:scState.historyKey,historyFrom:r.historyFrom||null,
-        historyHours:r.historyHours,fetchedAt:Date.now()});
+        historyHours:r.historyHours,historyModes:r.historyModes,historyGroups:r.historyGroups,
+        fetchedAt:Date.now()});
     }));
    }
    jobs.push(WL.displayRules.load());
