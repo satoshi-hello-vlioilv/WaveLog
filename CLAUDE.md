@@ -2,7 +2,7 @@
 
 **このファイルは規則だけを持つ。** なぜそうなのか（実測値・撤回した案・
 踏んだ罠）は各行の「くわしく」の先——[`docs/decisions/`](docs/decisions/README.md)
-（298の決定記録＋主題別の索引）にある。**触る前にその先を開くこと。**
+（299の決定記録＋主題別の索引）にある。**触る前にその先を開くこと。**
 
 構成の詳細は `docs/ARCHITECTURE.md`、機能と起動方法は `README.md`、
 スケジュール機能そのものの設計は `docs/SCHEDULE_MODE_DESIGN.md`（§1〜§13）。
@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（510件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（512件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -264,7 +264,7 @@
 | 「記録した値」の並べ方は専用の盤が持つ | — | [§9.243](docs/decisions/9.243.md) |
 | 「既定へ戻す」は本当に空へ帰す | — | [§9.243](docs/decisions/9.243.md) |
 
-### 一覧と列（110件）
+### 一覧と列（112件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -350,6 +350,8 @@
 | 見出しの操作（列幅・右クリック）は1つの道具を使い回す | — | [§9.164](docs/decisions/9.164.md) |
 | クエリ結合は`クエリ結合マスタ`の1行、実処理は`backend/query_join.py`の1箇所 | `test_qjoin.py`・`test_qjoinui.js` | [§9.193](docs/decisions/9.193.md) |
 | 突合の定義は`クエリ結合マスタ`の1行。用途で使いみちを分ける | `test_finishjoin.py`・`test_qjoinui.js` | [§9.365](docs/decisions/9.365.md) |
+| 利用者が入れた設定を「保存されていない既定」にしない | `test_finishjoin.py`・`test_qjoinui.js` | [§9.367](docs/decisions/9.367.md) |
+| 完了突合は登録された行だけが効く。無ければ変換しない | `test_finishjoin.py`・`test_actualmatch.py` | [§9.367](docs/decisions/9.367.md) |
 | スケジュール表で使う結合は選べる。保存値は「使わない」側 | `test_finishjoin.py` | [§9.365](docs/decisions/9.365.md) |
 | 結合の仕方は「3つの真偽値」で持つ | `test_qjoin.py`・`test_qjoinui.js` | [§9.194](docs/decisions/9.194.md) |
 | 突合キーは両側の列を並べて結ぶ | `test_qjoinui.js` | [§9.197](docs/decisions/9.197.md) |

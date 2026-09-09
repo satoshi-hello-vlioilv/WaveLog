@@ -455,8 +455,21 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
    tags:[...document.querySelectorAll('#masterMaintList .qj-c-purpose .ds-role')].map(x=>x.textContent.trim()),
   }));
   rec('一覧に「用途」の列がある',listPurpose.head.includes('用途'),JSON.stringify(listPurpose.head));
-  rec('既定の完了突合が一覧に出る（登録していないのに完了になる、を探させない）',
-      listPurpose.tags.includes('完了突合'),JSON.stringify(listPurpose.tags));
+  /* §9.367: 旧い突合キーは一度きりの移行で**普通の1行**になっている。
+     「複製してからしか直せない」行を残さないこと——完了突合の行にも
+     ふつうに「編集」「削除」が出る（利用者の指摘）。 */
+  const finRow=await page.evaluate(()=>{
+   const row=[...document.querySelectorAll('#masterMaintList .qj-row')]
+     .find(r=>(r.querySelector('.qj-c-purpose')||{}).textContent?.includes('完了突合'));
+   if(!row)return null;
+   return {edit:!!row.querySelector('[data-qj-edit]'),del:!!row.querySelector('[data-qj-del]'),
+           builtin:row.classList.contains('is-builtin'),
+           name:(row.querySelector('.ds-name')||{}).textContent||''};
+  });
+  rec('完了突合の行が一覧に出る（登録していないのに完了になる、を探させない）',
+      !!finRow&&listPurpose.tags.includes('完了突合'),JSON.stringify(listPurpose.tags));
+  rec('完了突合の行は普通に編集・削除できる（複製しないと直せない行を残さない）',
+      !!finRow&&finRow.edit&&finRow.del&&!finRow.builtin,JSON.stringify(finRow));
 
   rec('画面側の例外が出ていない',errs.length===0,errs.slice(0,2).join(' / '));
  }catch(e){

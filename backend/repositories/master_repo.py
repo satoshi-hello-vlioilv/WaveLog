@@ -13,7 +13,7 @@ backend/routes/masters.py が持つ。
 import json
 
 from ..db_access import (add_missing_columns, connect, ensure_audit_columns,
-                         tables, cols, qi)
+                         path_config_rows, set_path_config, tables, cols, qi)
 from ..quiet import quiet
 # 設備名の表記ゆれ吸収は backend/textnorm.py が持つ（§9.329）。db_access も
 # 頭からこれを読むので、ここから再公開して既存の呼び出しを保つ。
@@ -2427,6 +2427,53 @@ def query_join_save(c,data,uid,jid=None):
              'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,Now(),Now())',vals+[uid])
  c.commit()
  return int(cur.lastrowid)
+
+# ---- 旧い突合キーの移行(§9.367) ---------------------------------------
+# §9.364では`データソースマスタ[突合キー]`が突合キーの並びを1つ持ち、§9.365は
+# それを「保存されていない既定の1件」としてこのエンジンへ乗せた。**保存されて
+# いないものは編集も削除もできない**（利用者の指摘「固定されてしまい実績の
+# クエリが修正できません」）ので、**一度きりの移行で普通の1行にする**。
+# 移したあとは他の結合とまったく同じ——編集・複製・削除ができる。
+FINISH_JOIN_MIGRATED_KEY='__finish_join_migrated__'
+# 移行で作る行の名前。**現場が見て意味の分かる名前**にする（`結合12`のような
+# 通し番号だと、何のための行か開くまで分からない）。
+FINISH_JOIN_MIGRATED_NAME='実績突合'
+
+def migrate_finish_join(c,work_key,actual_key,keys,finish_column=''):
+ """旧い突合キーを、クエリ結合マスタの「完了突合」1行へ移す。
+
+ 戻り値は作った結合IDか None。**何度呼んでも同じ**（目印があれば何もしない）。
+
+ 移さないのは次のとき——いずれも**目印は立てる**（次に開くたびに試し続けない）:
+  ・役割「仕掛」か「実績」が無い（突合そのものが成り立たない）
+  ・突合キーが1つも無い
+  ・既に完了突合の行がある（利用者が自分で作った。そちらが正）
+ """
+ if path_config_rows(c).get(FINISH_JOIN_MIGRATED_KEY):
+  return None
+ ensure_query_join_table(c)
+ made=None
+ have=[d for d in query_joins(c,include_disabled=True)
+       if str(d.get('purpose') or '')==QUERY_JOIN_PURPOSE_FINISH]
+ names=[str(k or '').strip() for k in (keys or []) if str(k or '').strip()]
+ if work_key and actual_key and names and not have:
+  # **名前がぶつからないようにする**——同じ名前は1つだけ（`query_join_save`が
+  # 弾く）ので、移行が例外で止まると目印も立たず毎回試すことになる。
+  used={str(d.get('name') or '') for d in query_joins(c,include_disabled=True)}
+  name=FINISH_JOIN_MIGRATED_NAME
+  n=2
+  while name in used:
+   name=f'{FINISH_JOIN_MIGRATED_NAME}{n}';n+=1
+  made=query_join_save(c,{
+   'name':name,'left':work_key,'leftTable':'','right':actual_key,'rightTable':'',
+   # 旧い設定は**左右で同じ列名**しか持てなかった（それがこの移行の動機）。
+   'keys':[{'left':k,'right':k} for k in names],
+   'columns':[],'prefix':'','multi':'first','kind':QUERY_JOIN_KIND_DEFAULT,
+   'purpose':QUERY_JOIN_PURPOSE_FINISH,
+   'finishColumn':(finish_column if finish_column in names else ''),
+   'useInSchedule':True,'order':0,'enabled':'有効'},'migrate:finish-join')
+ set_path_config(c,FINISH_JOIN_MIGRATED_KEY,'done','migrate:finish-join')
+ return made
 
 def query_join_delete(c,jid):
  """1件消す。**本当に消す**——無効にするだけの行が溜まると、どの結合が
