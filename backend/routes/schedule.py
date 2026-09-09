@@ -487,15 +487,15 @@ def plan_list():
                 # さかのぼりの起点(§9.366)。**画面はこの日時で絞る**（None＝制限しない）。
                 historyKey=result.get('historyKey'),historyFrom=result.get('historyFrom'),
                 actualColumns=actual_columns,
+                # さかのぼりの語彙(§9.366)。**画面に書かない**——増やしたときに
+                # 片方だけ古い並びを見る（§9.163と同じ理由）。**専用のルートは
+                # 作らない**——この段はもう20ルートの目安を超えている(§9.333)し、
+                # 語彙と起点を同じ応答で返せば食い違いようがない。さかのぼりの
+                # 欄はこの応答が届く画面にしか出ない（一覧の板では畳んである）。
+                historyModes=schedule_calc.HISTORY_MODES,
+                historyGroups=schedule_calc.HISTORY_GROUPS,
+                historyDefault=schedule_calc.HISTORY_DEFAULT,
                 warnings=warnings,timings=timings)
-
-@bp.get('/api/schedule/history-modes')
-def history_modes():
- """さかのぼりの語彙(§9.366)。**画面に書かない**——増やしたときに片方だけ
- 古い並びを見る（§9.163と同じ理由）。読むだけなので全モードから通す。"""
- return jsonify(ok=True,groups=schedule_calc.HISTORY_GROUPS,
-                modes=schedule_calc.HISTORY_MODES,
-                default=schedule_calc.HISTORY_DEFAULT)
 
 @bp.post('/api/schedule/plan/add')
 def plan_add():

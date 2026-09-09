@@ -77,17 +77,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(!m)return '';
   return (m.group==='hours'?('いまから過去'+m.label):m.label);
  }
- async function loadHistoryModes(){
-  if(scHistory.loaded)return scHistory;
-  try{
-   const r=await api('/api/schedule/history-modes');
-   scHistory={modes:r.modes||[],groups:r.groups||[],loaded:true};
-  }catch(e){
-   WL.quiet.note('さかのぼりの語彙を取れない（既定の1つで続ける）',e);
-   scHistory={modes:[{key:'h8',group:'hours',label:'8時間',hours:8}],
-              groups:[{key:'hours',label:'時間で'}],loaded:true};
-  }
-  return scHistory;
+ /* 語彙は**予定の応答が運ぶ**（§9.366）。専用のルートは作らない——起点と
+    同じ応答で来るので、語彙と起点が食い違いようがない。さかのぼりの欄は
+    この応答が届く画面にしか出ない（一覧の板では畳んである）。 */
+ function setHistoryVocab(r){
+  if(!r||!Array.isArray(r.historyModes)||!r.historyModes.length)return;
+  scHistory={modes:r.historyModes,groups:r.historyGroups||[],loaded:true};
+  renderHistoryPicker();
  }
  let scState={equipment:'',entries:[],anchor:null,anchorRounded:null,warnings:[],configured:true,
               editable:false,pickerEnabled:false,stopReasons:[],dragId:null,insertBefore:'',
@@ -930,10 +926,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    updateViewMenuUi();          // 畳んでいる入口の文字も一緒に直す(§9.199)
    renderTimeline();
   };
-  /* さかのぼりの札と欄は**語彙が届いてから**組む(§9.366)。届く前でも
-     画面は出る（欄が空のまま出て、直後に埋まる）。 */
-  loadHistoryModes().then(()=>renderHistoryPicker()).catch(
-    WL.quiet('さかのぼりの語彙を組めない（既定で続ける）'));
+  /* さかのぼりの札と欄は**語彙が届いてから**組む(§9.366)。予定の応答が
+     運ぶので、ここでは器だけ作っておく（既に読み込み済みなら描く）。 */
+  renderHistoryPicker();
   $('#scEquipmentSelect').onchange=e=>{scState.equipment=e.target.value;switchToSingle()};
   /* 印刷(§9.115)。紙の割り付けは schedule-print.js が持つ。
      **無ければ黙って消さない**——「あれば使う」で書くと、読み込み順を
@@ -3146,6 +3141,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   scState.historyFrom=r.historyFrom||null;
   if(r.historyHours!=null)scState.historyHours=r.historyHours;
   scState.actualColumns=r.actualColumns||[];
+  setHistoryVocab(r);
   scState.planFetchedAt=fetchedAt;
   renderWarnings();renderTimeline();updateFreshnessUi(fetchedAt);
   updateHistoryFromUi();updateRefreshHint();
