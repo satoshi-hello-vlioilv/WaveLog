@@ -141,17 +141,29 @@ def main():
     rec('読めない値は既定へ倒す（黙って壊れない）',
         db_access.parse_match_keys('[こわれた') == list(db_access.DEFAULT_ACTUAL_MATCH_KEYS))
 
+    # 突合の設定は**定義ごと**に答える（§9.365）。登録が無い現場では
+    # データソースマスタ[突合キー]から作った「既定の1件」だけが並ぶ。
     d = actual_match.describe()
+    one = (d.get('definitions') or [{}])[0]
+    rec('突合の設定を「定義ごと」に答える（既定の1件が名乗っている）',
+        d['configured'] and len(d['definitions']) == 1 and one.get('builtin') is True,
+        json.dumps({'n': len(d.get('definitions') or []),
+                    'name': one.get('name')}, ensure_ascii=False))
     rec('仕掛と実績を実際に読めている',
-        d['ready'] and d['actualRows'] >= 3 and not d['actualError'],
-        json.dumps({k: d[k] for k in ('workRows', 'actualRows', 'workColumns',
-                                      'actualColumns', 'actualError')}, ensure_ascii=False))
+        d['ready'] and one.get('actualRows', 0) >= 3 and not one.get('actualError'),
+        json.dumps({k: one.get(k) for k in ('workRows', 'actualRows', 'workColumns',
+                                            'actualColumns', 'actualError')},
+                   ensure_ascii=False))
     # **仕掛には無い列がある**（実測: 仕掛は前工程実績_作業終了_日付を持たない）。
     # 在席の判定は「仕掛にも実在する列だけ」で行う、が要件。
     rec('仕掛の在席は「仕掛にも実在する列だけ」で見る',
-        d['workColumns'] == ['ロット番号', '鋳造番号']
-        and d['actualColumns'] == ['ロット番号', '鋳造番号', '前工程実績_作業終了_日付'],
-        str(d['workColumns']) + ' / ' + str(d['actualColumns']))
+        one.get('workColumns') == ['ロット番号', '鋳造番号']
+        and one.get('actualColumns') == ['ロット番号', '鋳造番号', '前工程実績_作業終了_日付'],
+        str(one.get('workColumns')) + ' / ' + str(one.get('actualColumns')))
+    # 既定の1件でも、利用者が名指しした列（§9.364の原文）を完了日時に使う。
+    rec('既定の1件は「前工程実績_作業終了_日付」を完了日時に使う',
+        one.get('finishColumn') == '前工程実績_作業終了_日付',
+        str(one.get('finishColumn')))
 
     # ---- 3) 仕掛に在るロットは動かさない ----
     with db_access.connect(db_access.cfg('SIKALOTNOW')['path'], True) as c:
@@ -180,6 +192,10 @@ def main():
     rec('HITした実績の中身がそのまま付く（列を選り好みしない）',
         src.get('前工程実績_設備名') == '前工程1号' and src.get('前工程実績_数量') == 120,
         json.dumps(src, ensure_ascii=False)[:160])
+    # 完了時刻(§9.365)。**さかのぼりで隠せるのはここに時刻が入った行だけ**。
+    rec('完了日時が「指定した列」から入る',
+        str((hit or {}).get('finishedAt') or '').startswith('2026-09-01'),
+        str((hit or {}).get('finishedAt')))
 
     # ---- 5) 消えて実績に無い → 着手 ----
     add_plan(TAG + 'GONE', 'C0000', '2026-09-09')

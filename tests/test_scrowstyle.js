@@ -109,17 +109,33 @@ let b=null;
   await page.selectOption('#scGroupSelect','none');
   await page.waitForTimeout(400);
 
-  /* ---- 8) さかのぼりの起点 ---- */
+  /* ---- 8) さかのぼりの起点（§9.366で「種類→量」の2段になった） ---- */
   const hist=await page.evaluate(()=>{
    const sel=document.getElementById('scHistorySelect');
    const from=document.getElementById('scHistoryFrom');
    return {opt:[...sel.options].map(o=>o.textContent),
+           groups:[...document.querySelectorAll('[data-history-group]')].map(b=>b.textContent.trim()),
+           on:(document.querySelector('[data-history-group].is-on')||{}).textContent||'',
            text:from.textContent,hidden:from.hidden,title:from.title};
   });
-  rec('さかのぼりの選択肢に「いまから過去」と書いてある',
-      hist.opt.every(t=>/いまから過去/.test(t)),JSON.stringify(hist.opt));
+  rec('さかのぼりは「種類」を札で選ぶ（5つ）',
+      hist.groups.length===5&&hist.groups.includes('現場の区切りで'),JSON.stringify(hist.groups));
+  rec('いま効いている種類が札で分かる',hist.on.trim()==='時間で',hist.on);
+  rec('その群の量に「いまから過去」と書いてある',
+      hist.opt.length>1&&hist.opt.every(t=>/いまから過去/.test(t)),JSON.stringify(hist.opt));
   rec('起点の日時が文字で出ている',!hist.hidden&&/\d+\/\d+/.test(hist.text),JSON.stringify(hist));
   rec('未来の予定は範囲に関わらず出ることを書く',/すべて出ます/.test(hist.title||''),hist.title);
+  /* 量を持たない群では、欄そのものを消す（押せるのに効かないものを残さない・§4）。 */
+  const solo=await page.evaluate(async()=>{
+   document.querySelector('[data-history-group="all"]').click();
+   await new Promise(r=>setTimeout(r,50));
+   const sel=document.getElementById('scHistorySelect');
+   const from=document.getElementById('scHistoryFrom');
+   return {hidden:sel.hidden,text:from.textContent};
+  });
+  rec('「すべて」を選ぶと量の欄は消え、起点も「すべて」と言う',
+      solo.hidden&&/すべて/.test(solo.text),JSON.stringify(solo));
+  await page.evaluate(()=>document.querySelector('[data-history-group="hours"]').click());
 
   /* ---- 9) 予定の起点は5分刻み(サーバー) ---- */
   const anchor=await page.evaluate(async e=>{

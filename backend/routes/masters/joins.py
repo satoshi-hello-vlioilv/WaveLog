@@ -28,11 +28,22 @@ from ...repositories.master_repo import (
 # 下見が無いと打ち間違いに気づけるのが再起動のあとになる(§9.168と同じ作法)。
 # ========================================================================
 def _join_payload(x):
+ # `useInSchedule`は**渡されなければ「使う」**(§9.365)。古い画面・古い網が
+ # 送ってこなくても、既存の行の見え方が黙って変わらないようにする。
+ sched=x.get('useInSchedule')
  return {'name':x.get('name'),'left':x.get('left'),'leftTable':x.get('leftTable'),
          'right':x.get('right'),'rightTable':x.get('rightTable'),
          'keys':x.get('keys'),'columns':x.get('columns'),'prefix':x.get('prefix'),
-         'multi':x.get('multi'),'kind':x.get('kind'),
+         'multi':x.get('multi'),'kind':x.get('kind'),'purpose':x.get('purpose'),
+         'finishColumn':x.get('finishColumn'),
+         'useInSchedule':True if sched is None else bool(sched),
          'order':x.get('order'),'enabled':x.get('enabled')}
+
+# 受け取る鍵は3つのルートで同じ（§9.330。鍵は必ず宣言する）。
+_JOIN_BODY={'columns': any_, 'enabled': any_, 'finishColumn': any_, 'keys': any_,
+            'kind': any_, 'left': any_, 'leftTable': any_, 'multi': any_, 'name': any_,
+            'order': any_, 'prefix': any_, 'purpose': any_, 'right': any_,
+            'rightTable': any_, 'useInSchedule': any_}
 
 @bp.get('/api/query-join-master')
 @api_guard('クエリ結合マスタ読込失敗')
@@ -54,22 +65,34 @@ def query_join_master_list():
  # 「どうつないでいるのか」を見て真似できることが値打ちなので、
  # 解除＝見えなくする、にはしない（利用者の指示）。
  builtin=query_join.builtin_quality_def()
+ # 完了突合の既定の1件(§9.365)。データソースマスタの[突合キー]から名乗る
+ # ので、**利用者が1件も登録していないときだけ**効いている。
+ finish=query_join.builtin_finish_def()
+ def _b(x):
+  if not x:return None
+  return {'name':x['name'],'left':x['left'],'right':x['right'],
+          'leftTable':x.get('leftTable') or '','rightTable':x.get('rightTable') or '',
+          'kind':x.get('kind') or query_join.JOIN_KIND_DEFAULT,
+          'purpose':x.get('purpose') or query_join.PURPOSE_LIST,
+          'finishColumn':x.get('finishColumn') or '',
+          'multi':x.get('multi') or 'first','keys':x['keys']}
  return jsonify(ok=True,items=items,sources=sources,multiModes=list(QUERY_JOIN_MULTI),
                 kinds=query_join.JOIN_KINDS,kindDefault=query_join.JOIN_KIND_DEFAULT,
+                purposes=query_join.PURPOSES,purposeDefault=query_join.PURPOSE_LIST,
                 builtinEnabled=query_join.builtin_quality_enabled(),
-                builtin=({'name':builtin['name'],'left':builtin['left'],'right':builtin['right'],
-                          'leftTable':builtin.get('leftTable') or '',
-                          'rightTable':builtin.get('rightTable') or '',
-                          'kind':builtin.get('kind') or query_join.JOIN_KIND_DEFAULT,
-                          'multi':builtin.get('multi') or 'first',
-                          'keys':builtin['keys']} if builtin else None))
+                builtin=_b(builtin),
+                builtinFinish=_b(finish),
+                # 既定の完了突合が「いま効いているか」。**有効な登録が1件でも
+                # あれば効かない**（同じロットを2つの定義で探すと、当たった順で
+                # 完了時刻が変わる）。判定は`finish_definitions()`と同じ線引き。
+                builtinFinishActive=bool(finish) and not any(
+                 d.get('purpose')==query_join.PURPOSE_FINISH and d.get('active')
+                 for d in items))
 
 @bp.post('/api/query-join-master')
 @api_guard('クエリ結合の登録に失敗しました',bad=ValueError)
 def query_join_master_register():
- x=body({'columns': any_, 'enabled': any_, 'keys': any_, 'kind': any_, 'left': any_, 
-          'leftTable': any_, 'multi': any_, 'name': any_, 'order': any_, 
-          'prefix': any_, 'right': any_, 'rightTable': any_});uid=request_user_id(x)
+ x=body(_JOIN_BODY);uid=request_user_id(x)
  with connect(DBS['MASTER']['path'],False) as c:
   jid=query_join_save(c,_join_payload(x),uid)
  return jsonify(ok=True,id=jid,updated_by=uid,message='結合を登録しました。')
@@ -77,9 +100,7 @@ def query_join_master_register():
 @bp.post('/api/query-join-master/update')
 @api_guard('クエリ結合の保存に失敗しました',bad=ValueError)
 def query_join_master_update():
- x=body({'columns': any_, 'enabled': any_, 'id': any_, 'keys': any_, 'kind': any_, 
-          'left': any_, 'leftTable': any_, 'multi': any_, 'name': any_, 
-          'order': any_, 'prefix': any_, 'right': any_, 'rightTable': any_});uid=request_user_id(x)
+ x=body(dict(_JOIN_BODY,id=any_));uid=request_user_id(x)
  jid=x.get('id')
  if jid is None or str(jid).strip()=='':return jsonify(error='更新対象IDがありません。'),400
  with connect(DBS['MASTER']['path'],False) as c:
@@ -122,9 +143,9 @@ def query_join_master_probe():
  """保存する前に、いまのデータで実際に当ててみる。**読むだけ**。"""
  from ... import query_join
  from ...repositories.master_repo import normalize_join_keys, normalize_join_columns
- x=body({'columns': any_, 'id': any_, 'keys': any_, 'kind': any_, 'left': any_, 
-          'leftTable': any_, 'multi': any_, 'name': any_, 'prefix': any_, 
-          'right': any_, 'rightTable': any_})
+ x=body(dict(_JOIN_BODY,id=any_))
+ # 用途の読み取りは`purpose_of()`の1箇所（知らない値は「一覧に列を足す」）。
+ purpose=query_join.purpose_of({'purpose':x.get('purpose')})['key']
  d={'id':x.get('id'),'name':str(x.get('name') or '(下見)'),
     'left':str(x.get('left') or ''),'leftTable':str(x.get('leftTable') or ''),
     'right':str(x.get('right') or ''),'rightTable':str(x.get('rightTable') or ''),
@@ -132,9 +153,14 @@ def query_join_master_probe():
     'columns':normalize_join_columns(x.get('columns')),
     'prefix':str(x.get('prefix') or ''),'multi':str(x.get('multi') or 'first'),
     'kind':str(x.get('kind') or query_join.JOIN_KIND_DEFAULT),
+    'purpose':purpose,'finishColumn':str(x.get('finishColumn') or ''),
     'active':True}
  if not d['keys']:
   return jsonify(ok=True,result={'ok':False,'reason':'突合キーを1組入れると、ここで結果を確かめられます。',
                                  'sampled':0,'matched':0,'ambiguous':0,'addedColumns':0,
                                  'addedColumnNames':[],'table':'','examples':[]}),200
+ # **用途で見る場所が変わる**(§9.365)。完了突合が探すのは「仕掛から消えた」
+ # ロットなので、いま仕掛にある行へ当てても0件にしかならない（相手の側を見る）。
+ if d['purpose']==query_join.PURPOSE_FINISH:
+  return jsonify(ok=True,result=query_join.probe_finish(d))
  return jsonify(ok=True,result=query_join.probe(d))

@@ -404,6 +404,60 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
   rec('既定に戻せる',onState.builtinEnabled===true,String(onState.builtinEnabled));
   builtinTouched=false;
 
+  /* ---- 5) 用途と完了突合（§9.365、利用者の指示） ----
+     「クエリ結合のようなスタイルで…汎用スタイルにしてほしい」。
+     **用途を切り替えると節の意味が変わる**ことを画面で固定する。 */
+  await page.evaluate(()=>{const b=document.querySelector('#qjAddBtn');if(b)b.click()});
+  await page.waitForSelector('.qj-purposes .qj-purpose',{timeout:20000});
+  const pur=await page.evaluate(()=>({
+   n:document.querySelectorAll('.qj-purposes .qj-purpose').length,
+   labels:[...document.querySelectorAll('.qj-purposes .qj-purpose b')].map(x=>x.textContent.trim()),
+   on:document.querySelector('.qj-purposes .qj-purpose.is-on b')?.textContent.trim()||'',
+   sched:!!document.querySelector('[data-qj-sched]'),
+   schedOn:!!document.querySelector('[data-qj-sched]')?.checked,
+   kinds:document.querySelectorAll('.qj-kinds .qj-kind').length,
+   finish:!!document.querySelector('[data-qj-field="finishColumn"]'),
+  }));
+  rec('用途は2つ（一覧に列を足す／完了突合）で、既定は「一覧に列を足す」',
+      pur.n===2&&pur.on.includes('一覧'),JSON.stringify(pur.labels)+' / on='+pur.on);
+  rec('一覧の結合には「作業スケジュールでも使う」があり、既定は使う',
+      pur.sched&&pur.schedOn,JSON.stringify({有:pur.sched,入:pur.schedOn}));
+  rec('一覧の結合では結合の仕方を選べる（完了時刻の欄は出さない）',
+      pur.kinds>=6&&!pur.finish,JSON.stringify({札:pur.kinds,完了時刻:pur.finish}));
+  await page.evaluate(()=>{
+   const el=[...document.querySelectorAll('[name="qjPurpose"]')].find(x=>x.value==='完了突合');
+   if(el){el.checked=true;el.dispatchEvent(new Event('change',{bubbles:true}))}
+  });
+  await page.waitForFunction(()=>!document.querySelector('.qj-kinds'),{timeout:20000});
+  const fin=await page.evaluate(()=>({
+   secs:[...document.querySelectorAll('.qj-sec .mm-fieldgroup')].map(x=>x.textContent.trim()),
+   kinds:document.querySelectorAll('.qj-kinds .qj-kind').length,
+   sched:!!document.querySelector('[data-qj-sched]'),
+   finish:!!document.querySelector('[data-qj-field="finishColumn"]'),
+   /* 「選ばない」を含めた候補が出ていること（相手の列から選ぶ）。 */
+   opts:[...(document.querySelector('[data-qj-field="finishColumn"]')||{options:[]}).options].length,
+  }));
+  rec('完了突合では結合の仕方を出さない（押せるのに効かない設定を残さない）',
+      fin.kinds===0&&fin.secs.some(t=>t.includes('当たったらどうなるか')),
+      JSON.stringify(fin.secs));
+  rec('完了突合では④が「何を持ち帰るか」になる',
+      fin.secs.some(t=>t.includes('何を持ち帰るか')),JSON.stringify(fin.secs));
+  rec('完了突合では「完了時刻にする列」を相手の列から選べる',
+      fin.finish&&fin.opts>1,JSON.stringify({欄:fin.finish,候補:fin.opts}));
+  rec('完了突合には「作業スケジュールでも使う」を出さない（予定のための設定なので常に効く）',
+      !fin.sched,String(fin.sched));
+  await page.click('#maintEditorCancel');
+  await page.waitForFunction(()=>document.querySelector('#maintEditorModal')?.hidden,{timeout:20000});
+  /* 一覧に用途の列と、既定の完了突合の行が出ている。 */
+  await page.waitForSelector('#masterMaintList .qj-row',{timeout:20000});
+  const listPurpose=await page.evaluate(()=>({
+   head:[...document.querySelectorAll('#masterMaintList .ds-row-head .ds-h')].map(x=>x.textContent.trim()),
+   tags:[...document.querySelectorAll('#masterMaintList .qj-c-purpose .ds-role')].map(x=>x.textContent.trim()),
+  }));
+  rec('一覧に「用途」の列がある',listPurpose.head.includes('用途'),JSON.stringify(listPurpose.head));
+  rec('既定の完了突合が一覧に出る（登録していないのに完了になる、を探させない）',
+      listPurpose.tags.includes('完了突合'),JSON.stringify(listPurpose.tags));
+
   rec('画面側の例外が出ていない',errs.length===0,errs.slice(0,2).join(' / '));
  }catch(e){
   rec('FATAL',false,e.message);

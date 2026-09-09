@@ -2000,8 +2000,24 @@
  padding-right:var(--space-1);border-right:1px solid var(--line-soft);
 }
 /* 表示範囲の起点(§9.198)。数字だけでは「いつからか」が分からない。 */
-.sc-history-from{font-size:var(--fs-badge);color:var(--muted);white-space:nowrap}
+/* さかのぼりの起点と件数(§9.198 →§9.366)。**折り返してよい**——件数まで
+   出すので1行に収まらないことがあり、`nowrap`のままだと器からはみ出す。 */
+.sc-history-from{font-size:var(--fs-badge);color:var(--muted);line-height:1.4}
 .sc-history-from[hidden]{display:none}
+/* さかのぼりの2段（種類→量）(§9.366)。**群の札は折り返す**——5つあるので
+   狭い器では2行になる。選ばれた札の見た目は`90-state.css`の束ね規則。 */
+/* さかのぼりの段は`<div>`（中に札と欄が並ぶので`<label>`では包めない）。
+   押す物ではないので、行そのものの指カーソルは外す（§10）。 */
+div.sc-view-row{cursor:default}
+.sc-history{gap:var(--space-1)}
+.sc-history-groups{display:flex;flex-wrap:wrap;gap:2px}
+.sc-history-group{
+ flex:1 1 auto;height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
+ border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
+ font-size:var(--fs-micro);color:var(--ink-2);cursor:pointer;white-space:nowrap;
+}
+.sc-history-group:hover{border-color:var(--teal);color:var(--teal-dark)}
+.sc-view-row select[hidden]{display:none}
 
 /* ============================================================
    操作列を1行に収める(§9.199、利用者の指示「上部メニューバーは1行で」)

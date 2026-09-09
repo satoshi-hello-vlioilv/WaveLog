@@ -429,19 +429,29 @@ def _apply_actual_source(entry,detail,stored_actual_json):
  entry['missingReason']=''
  entry['actualSource']=None
  entry['actualSourceSaved']=False
+ # 突合で分かった完了時刻(§9.365)。**測定データの実績とは別の欄**——出どころが
+ # 違うものを同じ欄に入れると、どちらの根拠で完了したのか言えなくなる。
+ entry['finishedAt']=None
+ entry['finishedBy']=''
  if entry['kind']!='作業' or entry.get('parentId') is not None:return
  if entry['state'] in PLAN_TERMINAL_STATES or entry.get('actual') is not None:return
  if stored_actual_json:
-  # **一度突き合わせたものは、実績が消えても保持する**（利用者の指示）。
+  # **一度突き合わせたものは、相手から消えても保持する**（利用者の指示）。
   try:saved=json.loads(stored_actual_json)
   except Exception as _e:
    quiet('保存した実績を読めない（突合し直す）',_e);saved=None
   if isinstance(saved,dict) and saved:
+   # 保存の形は2つある(§9.365): 素の行そのもの（§9.364で保存したぶん）と、
+   # 完了時刻・定義名を添えた入れ物。**古い形も読めること**——読めないと
+   # 保存済みの完了が「予定」に戻って見える。
+   values=saved.get('values') if isinstance(saved.get('values'),dict) else saved
    entry['state']='完了'
    entry['missingFromWork']=True
-   entry['actualSource']=saved
+   entry['actualSource']=values
    entry['actualSourceSaved']=True
-   entry['missingReason']='仕掛から消えており、実績で確認済みです（この予定に保存してあります）。'
+   entry['finishedAt']=str(saved.get('finishedAt') or '') or None
+   entry['finishedBy']=str(saved.get('joinName') or '')
+   entry['missingReason']='仕掛から消えており、突合で確認済みです（この予定に保存してあります）。'
    return
  hit=actual_match.lookup(detail,entry)
  entry['missingReason']=hit.get('reason') or ''
@@ -453,8 +463,13 @@ def _apply_actual_source(entry,detail,stored_actual_json):
  if hit.get('actual'):
   entry['state']='完了'
   entry['actualSource']=hit['actual']
+  # **完了日時が読めなくても完了にする**（利用者の指示）。時刻が無い行は
+  # さかのぼりで隠さない側へ倒す——隠すと「完了にしたはずの行がどこにも
+  # 無い」になる。
+  entry['finishedAt']=str(hit.get('finishedAt') or '') or None
+  entry['finishedBy']=str(hit.get('joinName') or '')
  else:
-  # **消えた＝少なくとも着手はしている**（利用者の指示）。実績が未設定でも
+  # **消えた＝少なくとも着手はしている**（利用者の指示）。突合先が未設定でも
   # 「予定のまま」にはしない——現場は既に手を付けている。
   entry['state']='着手'
 
@@ -532,6 +547,108 @@ def _parse_dt(value):
 
 DEFAULT_HISTORY_HOURS=8.0
 
+# ========================================================================
+# さかのぼり(§9.366、利用者の指示)
+# ------------------------------------------------------------------------
+# 「作業スケジュールの一覧からは、切り替えて見えないようにする機能(表示の
+# さかのぼり)をもっと使いやすく改良し、指定できるパターンも増やしつつ
+# 選びやすくわかりやすく改良してください。」
+#
+# 以前は`[2,4,8,24,72]`時間の5つだけで、しかも**時間でしか言えなかった**
+# ——現場が実際に言うのは「今日ぶん」「今の直から」で、それを時間へ翻訳
+# するのは人の側の仕事になっていた。
+#
+# **起点を答えるのはここの1箇所**。画面は返ってきた日時で絞るだけにする
+# ——画面にも同じ計算を置くと、勤務区分マスタを直した端末だけ境目が違う、
+# という状態が作れる（§9.163と同じ理由）。
+#
+# 群は5つ。**一度に見る数を5つ以下に保つ**ため、画面は「種類→量」の2段で
+# 選ばせる（§9.366）。
+HISTORY_GROUPS=[
+ {'key':'off','label':'出さない'},
+ {'key':'hours','label':'時間で'},
+ {'key':'days','label':'日で'},
+ {'key':'field','label':'現場の区切りで'},
+ {'key':'all','label':'すべて'},
+]
+HISTORY_MODES=[
+ {'key':'none','group':'off','label':'済んだ行を出さない','hours':0.0,
+  'note':'完了・取消の行を1件も出しません。これからの予定だけになります。'},
+ {'key':'h1','group':'hours','label':'1時間','hours':1.0},
+ {'key':'h2','group':'hours','label':'2時間','hours':2.0},
+ {'key':'h4','group':'hours','label':'4時間','hours':4.0},
+ {'key':'h8','group':'hours','label':'8時間','hours':8.0},
+ {'key':'h12','group':'hours','label':'12時間','hours':12.0},
+ {'key':'h24','group':'hours','label':'24時間','hours':24.0},
+ {'key':'d3','group':'days','label':'3日','hours':72.0},
+ {'key':'d7','group':'days','label':'7日','hours':168.0},
+ {'key':'d30','group':'days','label':'30日','hours':720.0},
+ {'key':'today','group':'field','label':'今日ぶん（現場歴）','hours':None,
+  'note':'勤務の日付補正を当てた「現場の1日」の始まりから。暦の0時ではありません。'},
+ {'key':'shift','group':'field','label':'今の直から','hours':None,
+  'note':'いま動いている勤務が始まった時刻から。'},
+ {'key':'all','group':'all','label':'すべて残す','hours':None,
+  'note':'完了・取消をすべて出します（計画外の実績は最大90日ぶん）。'},
+]
+HISTORY_DEFAULT='h8'
+_HISTORY_BY_KEY={m['key']:m for m in HISTORY_MODES}
+# 「すべて」で計画外実績をさかのぼる上限。**青天井にしない**——測定データを
+# 全件突き合わせることになり、開くたびに数十秒かかる（§9.198）。
+HISTORY_ALL_HOURS=24.0*90
+
+
+def history_mode(key):
+ """さかのぼりの1件。知らない値・未設定は既定（いまから過去8時間）。"""
+ return _HISTORY_BY_KEY.get(str(key or '')) or _HISTORY_BY_KEY[HISTORY_DEFAULT]
+
+
+def _shift_starts(specific_shift,global_shift,now):
+ """いまの前後にある「直の始まり」を、古い順に返す。
+
+ 直の始まりは**時刻だけ**がマスタにあるので、前日・当日・翌日の3日ぶんに
+ 当てはめて実際の日時にする（日跨ぎの直があるため前後1日を見る）。"""
+ rows=specific_shift if specific_shift else global_shift
+ out=[]
+ for r in (rows or []):
+  try:sh,sm=_parse_hm(r[3])
+  except Exception as _e:
+   quiet('直の開始時刻を読めない（この段は飛ばす）',_e);continue
+  for d in (-1,0,1):
+   base=(now+timedelta(days=d)).date()
+   out.append(datetime.combine(base,time(sh%24,sm)))
+ return sorted(set(out))
+
+
+def history_from(key,now,specific_shift=None,global_shift=None):
+ """さかのぼりの起点（この日時より後の済んだ行だけを出す）。
+
+ 戻り値: (起点のdatetime or None, 計画外実績をさかのぼる時間, 但し書き)。
+ 起点が None なら「制限しない」。**起点を決めるのはここだけ**（§9.366）。"""
+ m=history_mode(key)
+ if m['key']=='all':
+  return None,HISTORY_ALL_HOURS,''
+ if m['hours'] is not None:
+  return now-timedelta(hours=m['hours']),m['hours'],''
+ starts=[s for s in _shift_starts(specific_shift,global_shift,now) if s<=now]
+ if not starts:
+  # 勤務区分マスタが無い現場では「現場の区切り」を言えない。**黙って
+  # 別の意味へ倒さない**——暦の0時で代用すると、3直の現場で夜勤の途中に
+  # 境目が来る。既定（8時間）へ戻し、そのことを但し書きで言う。
+  d=_HISTORY_BY_KEY[HISTORY_DEFAULT]['hours']
+  return (now-timedelta(hours=d),d,
+          '勤務区分マスタが無いため、いまから過去%d時間で出しています。'%int(d))
+ if m['key']=='shift':
+  at=starts[-1]
+ else:
+  # 今日ぶん＝**いまと同じ現場歴の日付**になる直のうち、いちばん古い始まり。
+  _n,off=resolve_shift_info(specific_shift,global_shift,now)
+  today=(now+timedelta(days=off)).date()
+  same=[s for s in starts
+        if (s+timedelta(days=resolve_shift_info(specific_shift,global_shift,s)[1])).date()==today]
+  at=min(same) if same else starts[-1]
+ hours=max(0.0,(now-at).total_seconds()/3600.0)
+ return at,hours,''
+
 def _iso(v):
  """DATETIME列をISO文字列へ。**読めない値で落ちないこと**——監査の表示のために
  一覧そのものが開けなくなるのは本末転倒(§9.180)。"""
@@ -539,7 +656,7 @@ def _iso(v):
  try:return v.isoformat()
  except Exception:return str(v)
 
-def expand_plan(c,equipment,now=None,history_hours=DEFAULT_HISTORY_HOURS,include_unplanned=True,actual_index=None):
+def expand_plan(c,equipment,now=None,history_hours=DEFAULT_HISTORY_HOURS,include_unplanned=True,actual_index=None,history=None):
  """GET /api/schedule/planの本体。生のplan_rows・稼働カレンダー・実績突合を
  合成し、§8.1のentries形状(id/order/kind/estimate/plannedStart/plannedEnd/
  startsInMinutes/actual/reorderable等)を返す。DBへは一切書き戻さない。
@@ -564,19 +681,25 @@ def expand_plan(c,equipment,now=None,history_hours=DEFAULT_HISTORY_HOURS,include
  sr.migrate_config_masters_from_shared()
  mc=sr.config_master_conn()
  try:
-  out=_expand_plan_with(c,mc,equipment,now,raw_rows,history_hours,include_unplanned,actual_index,timings)
+  out=_expand_plan_with(c,mc,equipment,now,raw_rows,history_hours,include_unplanned,actual_index,timings,history)
  finally:
   mc.close()
  timings['expand']=round((_perf()-t0)*1000,1)
  out['timings']=timings
  return out
 
-def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_HOURS,include_unplanned=True,actual_index=None,timings=None):
+def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_HOURS,include_unplanned=True,actual_index=None,timings=None,history=None):
  if timings is None:timings={}
  specific_cal=sr.calendar_rows(mc,equipment)
  global_cal=sr.calendar_rows(mc,'')
  specific_shift=sr.shift_rows(mc,equipment)
  global_shift=sr.shift_rows(mc,'')
+ # さかのぼりの起点(§9.366)。**画面ではなくここが答える**——勤務区分マスタを
+ # 読めるのはサーバーだけなので、「今日ぶん」「今の直から」は画面では出せない。
+ history_from_at=None
+ history_note=''
+ if history is not None:
+  history_from_at,history_hours,history_note=history_from(history,now,specific_shift,global_shift)
  if actual_index is None:
   t=_perf()
   actual_index=build_actual_index()
@@ -816,7 +939,10 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
   ref=e.get('plannedStart')
   if e['state'] in PLAN_TERMINAL_STATES:
    a=e.get('actual') or {}
-   ref=a.get('startAt') or a.get('endAt') or None
+   # 突合で完了した行は実績を持たないので、突合で分かった完了時刻を使う
+   # (§9.365)。**代表時刻の決め方は画面の rowTimeOf() と必ず同じ**——
+   # 違うと「まとめた見出しと行の日付が食い違う」が必ず起きる。
+   ref=a.get('startAt') or a.get('endAt') or e.get('finishedAt') or None
   dt=_parse_dt(ref) if ref else None
   if dt is None:
    e['shiftDayOffset']=0;e['workDate']=None;continue
@@ -865,8 +991,13 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
   load_factor_info={'basis':lf_model.get('basis'),'n':lf_model.get('n'),
                      'sigmaLog':round(lf_model.get('sigmaLog') or 0.0,3),
                      'calculatedAt':lf_model.get('calculatedAt')}
+ if history_note:warnings.append(history_note)
  return {'entries':entries,'warnings':warnings,'anchor':anchor.isoformat() if anchor else None,
-         'anchorRounded':anchor_note,'loadFactor':load_factor_info}
+         'anchorRounded':anchor_note,'loadFactor':load_factor_info,
+         # さかのぼり(§9.366)。`historyFrom`が None なら「制限しない」。
+         'historyKey':(history_mode(history)['key'] if history is not None else None),
+         'historyFrom':history_from_at.isoformat() if history_from_at else None,
+         'historyHours':history_hours}
 
 # ========================================================================
 # 設備削除時の参照件数(§5.0.1)

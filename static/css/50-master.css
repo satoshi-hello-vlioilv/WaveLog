@@ -610,6 +610,7 @@
 .qj-row{
   grid-template-columns:
     var(--w-xs)              /* 状態 */
+    var(--w-sm)              /* 用途(§9.365) */
     minmax(var(--w-md),1.4fr)/* 結合名 */
     minmax(0,1.2fr)          /* 足す先 */
     minmax(0,1.2fr)          /* 相手 */
@@ -619,10 +620,35 @@
     var(--w-lg)}             /* 操作（上と同じ理由で固定幅） */
 .qj-row.is-builtin{background:var(--surface-2)}
 .qj-c-name{display:flex;align-items:baseline;gap:var(--gap-inline);min-width:0}
+/* 用途の札(§9.365)。**札の作りは`.ds-role`と同じ**（データ接続の役割と
+   並んで見えるものなので、別の顔を作らない）。**色だけで語らない**（§3）
+   ——札には必ず用途の名前が入っていて、完了突合だけ地を変える。 */
+.qj-c-purpose{min-width:0;display:flex;flex-direction:column;gap:2px}
+.ds-role.is-finish{background:var(--computed-bg);border-color:var(--teal);color:var(--computed-fg)}
 .qj-c-left,.qj-c-right,.qj-c-keys,.qj-c-kind,.qj-c-cols{
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
 .qj-sub{display:block;font-style:normal;font-size:var(--fs-tiny);color:var(--muted)}
 .qj-c-act{display:flex;gap:var(--gap-inline);justify-content:flex-end}
+/* ---- 用途(§9.365) ----
+   **決める順のいちばん上**に置く。ここで決めた使いみちで下の節の意味が
+   変わる（③が「当たったらどうなるか」に替わり、④が「持ち帰る値」になる）
+   ので、先に選ばせる。札は2枚なので横に並べる（§13の粗いグリッド）。
+   選ばれた札の見た目は`90-state.css`の束ね規則が持つ（§9.353）。 */
+.qj-purposes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:var(--gap-tight);margin-bottom:var(--gap-inline)}
+.qj-purpose{
+  display:grid;gap:var(--gap-hair);padding:var(--gap-tight) var(--space-2);
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+  background:var(--surface);cursor:pointer}
+.qj-purpose input{position:absolute;opacity:0;width:0;height:0}
+.qj-purpose b{font-size:var(--fs-sm);color:var(--ink)}
+.qj-purpose span{font-size:var(--fs-tiny);color:var(--ink-2)}
+/* 「作業スケジュール表でも使う」(§9.365)。**入力欄風の枠を付けない**（§10）
+   ——押せる場所はチェックだけ。 */
+.qj-check{display:flex;align-items:flex-start;gap:var(--gap-inline);
+  margin-top:var(--gap-inline);font-size:var(--fs-sm);color:var(--ink);cursor:pointer}
+.qj-check small{display:block;font-size:var(--fs-tiny);color:var(--ink-3);font-weight:400}
+
 /* ---- 結合の仕方(§9.194) ----
    6通りを**図・名前・一行説明・行の増減**の4点セットで並べる。図だけでは
    「行が減る」ことが伝わらず、文字だけでは「どこが残るのか」が伝わらない。
@@ -633,8 +659,11 @@
   gap:var(--gap-hair);padding:var(--gap-tight) var(--space-2);
   border:1px solid var(--line-soft);border-radius:var(--radius-sm);
   background:var(--surface);cursor:pointer;text-align:center}
-.qj-kind:hover{border-color:var(--teal);background:var(--pale)}
-.qj-kind.is-on{border-color:var(--teal);background:var(--pale);box-shadow:inset 0 0 0 1px var(--teal)}
+/* 選ばれた札の見た目は**この1箇所**（§9.353）。用途の札(§9.365)と結合の
+   仕方の札は同じ編集窓に並ぶので、同じ顔にする。 */
+.qj-kind:hover,.qj-purpose:hover{border-color:var(--teal);background:var(--pale)}
+.qj-kind.is-on,.qj-purpose.is-on{
+  border-color:var(--teal);background:var(--pale);box-shadow:inset 0 0 0 1px var(--teal)}
 .qj-kind input{position:absolute;opacity:0;width:0;height:0}
 .qj-kind b{font-size:var(--fs-sm);color:var(--ink)}
 .qj-kind-short{font-size:var(--fs-tiny);color:var(--ink-2)}
