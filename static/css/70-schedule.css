@@ -2216,4 +2216,100 @@ div.sc-view-row{cursor:default}
  font-size:var(--fs-micro);font-style:normal;font-weight:700;color:var(--teal-dark)}
 .sc-row-from.is-guess{border-color:var(--line-mid);color:var(--ink-3)}
 
+
+/* ============================================================
+   ICASコピー（§9.368）
+   ------------------------------------------------------------
+   ① 右クリックメニューの入れ子（`.sc-row-submenu`）
+   ② 設定モーダル（`.icc-*`）＝「上の帯に見本／下に2列」（§9.288）
+   **色・寸法はトークンから選ぶ**（リテラルを増やさない・§CLAUDE 7）。
+   ============================================================ */
+.col-head-menu .chm-has-sub{display:flex;align-items:center;gap:var(--gap-inline)}
+.col-head-menu .chm-has-sub .chm-sub-mark{margin-left:auto;flex:none;color:var(--muted);font-weight:800}
+.col-head-menu .chm-has-sub .chm-why{flex:1 1 100%;margin-top:var(--gap-hair)}
+.sc-row-submenu{max-width:380px}
+
+/* --- 設定モーダル。器は確認モーダル1枚のまま、中身の分だけ広げる --- */
+.confirm-modal-dialog:has(.icc-modal){width:min(1020px,96vw)}
+.icc-modal{display:flex;flex-direction:column;gap:var(--space-3);min-width:0}
+
+/* ① 見本（上の帯・高さは固定して、触っても跳ねないようにする） */
+.icc-sample{border:1px solid var(--card-border);border-radius:var(--radius-md);
+ background:var(--card-bg);overflow:hidden}
+.icc-sample-head{display:flex;align-items:center;flex-wrap:wrap;gap:var(--gap-inline);
+ padding:var(--pad-card);border-bottom:1px solid var(--line-soft);
+ background:var(--header-bar-bg);color:var(--header-bar-fg);font-size:var(--fs-base-sm)}
+.icc-sample-head>b{flex:none}
+.icc-sample-src{color:var(--ink-2);font-size:var(--fs-micro)}
+.icc-spacer{flex:1 1 auto}
+.icc-check{display:inline-flex;align-items:center;gap:var(--gap-hair);
+ font-size:var(--fs-micro);color:var(--ink-2);white-space:nowrap}
+.icc-count{display:inline-flex;align-items:center;gap:var(--gap-hair);
+ font-size:var(--fs-micro);color:var(--ink-2);white-space:nowrap}
+.icc-count-input{width:var(--w-xs);text-align:center}
+.icc-sample-out{display:block;height:9.5em;overflow:auto;padding:var(--pad-card);
+ background:var(--surface);color:var(--ink);
+ font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--fs-base-sm);
+ line-height:1.9;word-break:break-all}
+.icc-sample-out .icc-lot{color:var(--ink)}
+/* 区切りは**見えるようにしたときだけ**印を出す。印は面で示す——
+   文字の色だけだと、白い記号（半角スペース）は見えない。 */
+.icc-sample-out .icc-sep{font-style:normal;white-space:pre-wrap}
+.icc-sample-out.is-marked .icc-sep{border-radius:var(--radius-xs);
+ background:var(--computed-bg);color:var(--computed-fg);font-weight:700}
+.icc-sample-out.is-marked .icc-sep.is-none{display:none}
+.icc-empty{color:var(--muted)}
+
+/* ② 2列（左＝ルール／右＝区切りの決まり） */
+.icc-cols{display:grid;grid-template-columns:minmax(0,22em) minmax(0,1fr);
+ gap:var(--space-3);align-items:start}
+.icc-panel{min-width:0;border:1px solid var(--line-soft);border-radius:var(--radius-md);
+ background:var(--surface);padding:var(--pad-card)}
+.icc-panel h3{display:flex;align-items:center;gap:var(--gap-inline);
+ margin:0 0 var(--space-2);font-size:var(--fs-base-sm);color:var(--ink)}
+.icc-no{flex:none;display:grid;place-items:center;width:1.6em;height:1.6em;
+ border-radius:var(--radius-pill);background:var(--teal);color:#fff;
+ font-size:var(--fs-micro);font-weight:800}
+.icc-help{margin:0 0 var(--space-2);font-size:var(--fs-micro);color:var(--muted);line-height:1.7}
+.icc-help b{color:var(--ink-2)}
+
+.icc-rule-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--gap-hair)}
+.icc-rule{display:flex;align-items:center;gap:var(--gap-tight);min-width:0;
+ padding:var(--space-1);border:1px solid transparent;border-radius:var(--radius-sm)}
+.icc-rule.is-on{border-color:var(--teal-soft);background:var(--pale)}
+.icc-rule-pick{flex:none;width:var(--ctl-h-sm);height:var(--ctl-h-sm);padding:0;
+ border:0;background:none;color:var(--teal-dark);font-size:var(--fs-base-sm);cursor:pointer}
+.icc-rule-body{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:var(--gap-hair)}
+.icc-rule-name{width:100%;min-width:0;font-weight:700;font-size:var(--fs-base-sm)}
+.icc-rule-preview{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+ color:var(--muted);font-size:var(--fs-micro);
+ font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.icc-rule-tools{flex:none;display:flex;gap:var(--gap-hair)}
+.icc-rule-ask{flex:1 1 auto;min-width:0;color:var(--danger);font-size:var(--fs-micro);font-weight:700}
+.icc-rule.is-deleting{border-color:var(--danger-border);background:var(--danger-bg)}
+.icc-mini{padding:0 var(--space-1);border:1px solid var(--line-mid);border-radius:var(--radius-xs);
+ background:var(--surface);color:var(--ink-2);font-size:var(--fs-micro);line-height:var(--ctl-h-xs);cursor:pointer}
+.icc-mini.is-danger{color:var(--danger);border-color:var(--danger-border)}
+.icc-add{margin-top:var(--space-2);padding:var(--space-1) var(--space-2);
+ border:1px dashed var(--line-mid);border-radius:var(--radius-sm);
+ background:none;color:var(--teal-dark);font-size:var(--fs-micro);font-weight:700;cursor:pointer}
+.icc-empty-row{padding:var(--space-2);color:var(--muted);font-size:var(--fs-micro)}
+
+.icc-sep-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--gap-tight)}
+.icc-sep-row{display:flex;align-items:flex-end;flex-wrap:wrap;gap:var(--gap-inline);min-width:0;
+ padding:var(--space-2);border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+ background:var(--surface-2)}
+.icc-sep-no{flex:none;display:grid;place-items:center;width:1.6em;height:1.6em;align-self:center;
+ border-radius:var(--radius-pill);background:var(--surface-3);color:var(--ink-2);
+ font-size:var(--fs-micro);font-weight:800}
+.icc-field{display:flex;flex-direction:column;gap:var(--gap-hair);min-width:0}
+.icc-field>span{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
+.icc-field>em{font-style:normal;font-size:var(--fs-micro);color:var(--ink-2)}
+.icc-sep-row .icc-field:has(.mm-num){flex-direction:row;align-items:center;gap:var(--gap-hair);flex-wrap:wrap}
+.icc-sep-row .icc-field:has(.mm-num)>span{flex:1 1 100%}
+.icc-w-num{width:var(--w-xs);text-align:center}
+.icc-w-sel{max-width:var(--w-md)}
+.icc-w-free{max-width:var(--w-sm)}
+.icc-sep-del{align-self:center;margin-left:auto}
+
 }

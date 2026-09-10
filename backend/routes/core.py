@@ -90,6 +90,9 @@ JS_FILES=[
  'report/report-dashboard.js',
  'schedule/calendar-view.js',
  'schedule/schedule-view.js',
+ # §9.368: 選んだ予定のロット番号をつないでコピーする（ICASコピー）。
+ # schedule-view.js が右クリックメニューから `WL.lotCopy` を呼ぶ。
+ 'schedule/lot-copy.js',
  'schedule/schedule-print.js',
  'report/actuals-view.js',
  'report/opsheet-print.js',
