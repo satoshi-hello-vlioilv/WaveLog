@@ -2224,7 +2224,7 @@ div.sc-view-row{cursor:default}
    ② 設定モーダル（`.icc-*`）＝「上の帯に見本／下に2列」（§9.288）
    **色・寸法はトークンから選ぶ**（リテラルを増やさない・§CLAUDE 7）。
    ============================================================ */
-.col-head-menu .chm-has-sub{display:flex;align-items:center;gap:var(--gap-inline)}
+.col-head-menu .chm-has-sub{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline)}
 .col-head-menu .chm-has-sub .chm-sub-mark{margin-left:auto;flex:none;color:var(--muted);font-weight:800}
 .col-head-menu .chm-has-sub .chm-why{flex:1 1 100%;margin-top:var(--gap-hair)}
 .sc-row-submenu{max-width:380px}
@@ -2242,12 +2242,16 @@ div.sc-view-row{cursor:default}
 .icc-sample-head>b{flex:none}
 .icc-sample-src{color:var(--ink-2);font-size:var(--fs-micro)}
 .icc-spacer{flex:1 1 auto}
-.icc-check{display:inline-flex;align-items:center;gap:var(--gap-hair);
- font-size:var(--fs-micro);color:var(--ink-2);white-space:nowrap}
-.icc-count{display:inline-flex;align-items:center;gap:var(--gap-hair);
+/* **`.settings-body label` は`display:grid`**（40-records.css）。素の`label`より
+   詳細度を上げないと縦積みになり、**印だけが1行を占めて字が下へ落ちる**
+   （実測。§9.197 の「チェックボックスに幅を与えない」と同じ罠）。 */
+.settings-body .icc-check{flex:none;display:inline-flex;align-items:center;
+ gap:var(--gap-hair);font-size:var(--fs-micro);color:var(--ink-2);white-space:nowrap;font-weight:400}
+.settings-body .icc-check input{flex:none;width:auto;margin:0}
+.icc-count{flex:none;display:inline-flex;align-items:center;gap:var(--gap-hair);
  font-size:var(--fs-micro);color:var(--ink-2);white-space:nowrap}
 .icc-count-input{width:var(--w-xs);text-align:center}
-.icc-sample-out{display:block;height:9.5em;overflow:auto;padding:var(--pad-card);
+.icc-sample-out{display:block;height:6.6em;overflow:auto;padding:var(--pad-card);
  background:var(--surface);color:var(--ink);
  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--fs-base-sm);
  line-height:1.9;word-break:break-all}
@@ -2261,7 +2265,7 @@ div.sc-view-row{cursor:default}
 .icc-empty{color:var(--muted)}
 
 /* ② 2列（左＝ルール／右＝区切りの決まり） */
-.icc-cols{display:grid;grid-template-columns:minmax(0,22em) minmax(0,1fr);
+.icc-cols{display:grid;grid-template-columns:minmax(0,25em) minmax(0,1fr);
  gap:var(--space-3);align-items:start}
 .icc-panel{min-width:0;border:1px solid var(--line-soft);border-radius:var(--radius-md);
  background:var(--surface);padding:var(--pad-card)}
@@ -2296,20 +2300,24 @@ div.sc-view-row{cursor:default}
 .icc-empty-row{padding:var(--space-2);color:var(--muted);font-size:var(--fs-micro)}
 
 .icc-sep-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--gap-tight)}
-.icc-sep-row{display:flex;align-items:flex-end;flex-wrap:wrap;gap:var(--gap-inline);min-width:0;
- padding:var(--space-2);border:1px solid var(--line-soft);border-radius:var(--radius-sm);
- background:var(--surface-2)}
-.icc-sep-no{flex:none;display:grid;place-items:center;width:1.6em;height:1.6em;align-self:center;
+/* **見出しと行は同じ物差し**（§CLAUDE 画面基準 9）。列は左から
+   「番号／何件ごと／区切り文字／その文字／いくつ／削除」で、
+   どの行も同じ位置に来る。 */
+.icc-sep-head,.icc-sep-row{display:grid;align-items:center;gap:var(--space-2);min-width:0;
+ grid-template-columns:1.6em max-content minmax(0,var(--w-lg)) max-content auto}
+.icc-sep-head{padding:0 var(--space-2);color:var(--muted);
+ font-size:var(--fs-micro);font-weight:700}
+.icc-sep-row{padding:var(--space-2);border:1px solid var(--line-soft);
+ border-radius:var(--radius-sm);background:var(--surface-2)}
+.icc-sep-no{display:grid;place-items:center;width:1.6em;height:1.6em;
  border-radius:var(--radius-pill);background:var(--surface-3);color:var(--ink-2);
  font-size:var(--fs-micro);font-weight:800}
-.icc-field{display:flex;flex-direction:column;gap:var(--gap-hair);min-width:0}
-.icc-field>span{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
-.icc-field>em{font-style:normal;font-size:var(--fs-micro);color:var(--ink-2)}
-.icc-sep-row .icc-field:has(.mm-num){flex-direction:row;align-items:center;gap:var(--gap-hair);flex-wrap:wrap}
-.icc-sep-row .icc-field:has(.mm-num)>span{flex:1 1 100%}
 .icc-w-num{width:var(--w-xs);text-align:center}
-.icc-w-sel{max-width:var(--w-md)}
-.icc-w-free{max-width:var(--w-sm)}
-.icc-sep-del{align-self:center;margin-left:auto}
+/* 「その他」の文字は**選択肢の真下**へ置く（列を1つ増やすと、その他を選んだ
+   行だけ欄が現れて左端がずれる・§CLAUDE 画面基準 9）。 */
+.icc-kind{display:flex;flex-direction:column;gap:var(--gap-hair);min-width:0}
+.icc-w-sel{width:100%;min-width:0}
+.icc-w-free{width:100%;min-width:0}
+.icc-sep-del{justify-self:end}
 
 }

@@ -209,9 +209,12 @@
  function menuItems(lots){
   const list=rules();
   const cur=currentId();
+  /* **どのルールがどう並ぶかを、選ぶ前に見せる**（§CLAUDE 画面基準 2・
+     「選ばせるものは選ぶ前に見える」§9.200）。名前だけでは、10件ごとの改行が
+     入るのかどうかが読めない。 */
   const items=list.map(r=>({
    label:(r.id===cur?'● ':'○ ')+r.name,
-   note:previewLine(lots,r),
+   note:previewLine(lots,r),showNote:true,
    run:()=>{setCurrentId(r.id);copyLots(lots,r)},
   }));
   if(!list.length)items.push({label:'ルールがありません',disabled:true,
@@ -324,35 +327,41 @@
    <button type="button" class="icc-add" id="iccAddRule"${list.length>=MAX_RULES?' disabled title="これ以上は増やせません"':''}>＋ ルールを追加</button>
   </section>`;
  }
+ /* **決まりの並びは表にする**（§CLAUDE 画面基準 9「情報欄は縦にそろえる」）。
+    見出しは1行だけ置き、行ごとにラベルを繰り返さない。
+    **「その文字」の欄は常に置く**——「その他」のときだけ現れる作りにすると、
+    行ごとに欄の左端がずれて列を目で追えなくなる。使えないときは
+    押せなくして理由を書く（§4）。 */
+ const SEP_COLS=['','何件ごと','区切り文字','いくつ',''];
  function sepListHtml(rule){
   if(!rule)return `<section class="icc-panel icc-panel-seps">
    <h3><span class="icc-no">2</span>区切りの決まり</h3>
    <p class="icc-help">左でルールを選ぶと、ここに区切りの決まりが出ます。</p></section>`;
+  const head=`<li class="icc-sep-head">${SEP_COLS.map(t=>`<span>${esc(t)}</span>`).join('')}</li>`;
   const rows=rule.seps.map((s,i)=>{
    const k=kindOf(s.kind);
+   const free=k.kind==='custom';
    return `<li class="icc-sep-row" data-i="${i}">
     <span class="icc-sep-no">${i+1}</span>
-    <label class="icc-field"><span>間隔</span>
-     <span class="mm-num" data-num-wrap>
-      <button type="button" class="mm-num-btn" data-sep-step="-1" data-f="every" data-i="${i}" aria-label="間隔を減らす">−</button>
-      <input class="mm-num-input icc-w-num" type="text" inputmode="numeric" autocomplete="off"
-             data-f="every" data-i="${i}" value="${esc(String(s.every))}">
-      <button type="button" class="mm-num-btn" data-sep-step="1" data-f="every" data-i="${i}" aria-label="間隔を増やす">＋</button>
-     </span><em>件ごとに</em></label>
-    <label class="icc-field"><span>区切り文字</span>
-     <select class="icc-w-sel" data-f="kind" data-i="${i}">
+    <span class="mm-num" data-num-wrap>
+     <button type="button" class="mm-num-btn" data-sep-step="-1" data-f="every" data-i="${i}" aria-label="間隔を減らす">−</button>
+     <input class="mm-num-input icc-w-num" type="text" inputmode="numeric" autocomplete="off"
+            data-f="every" data-i="${i}" value="${esc(String(s.every))}" aria-label="何件ごと">
+     <button type="button" class="mm-num-btn" data-sep-step="1" data-f="every" data-i="${i}" aria-label="間隔を増やす">＋</button>
+    </span>
+    <span class="icc-kind">
+     <select class="icc-w-sel" data-f="kind" data-i="${i}" aria-label="区切り文字">
       ${SEP_KINDS.map(x=>`<option value="${x.kind}"${x.kind===s.kind?' selected':''}>${esc(x.label)}</option>`).join('')}
-     </select></label>
-    <label class="icc-field icc-field-free"${k.kind==='custom'?'':' hidden'}><span>その文字</span>
-     <input type="text" class="icc-w-free" maxlength="20" data-f="text" data-i="${i}"
-            value="${esc(s.text)}" placeholder="例: ／" autocomplete="off"></label>
-    <label class="icc-field"><span>数</span>
-     <span class="mm-num" data-num-wrap>
-      <button type="button" class="mm-num-btn" data-sep-step="-1" data-f="count" data-i="${i}" aria-label="数を減らす">−</button>
-      <input class="mm-num-input icc-w-num" type="text" inputmode="numeric" autocomplete="off"
-             data-f="count" data-i="${i}" value="${esc(String(s.count))}">
-      <button type="button" class="mm-num-btn" data-sep-step="1" data-f="count" data-i="${i}" aria-label="数を増やす">＋</button>
-     </span><em>個</em></label>
+     </select>
+     ${free?`<input type="text" class="icc-w-free" maxlength="20" data-f="text" data-i="${i}"
+       value="${esc(s.text)}" aria-label="その文字" placeholder="入れる文字を書きます" autocomplete="off">`:''}
+    </span>
+    <span class="mm-num" data-num-wrap>
+     <button type="button" class="mm-num-btn" data-sep-step="-1" data-f="count" data-i="${i}" aria-label="数を減らす">−</button>
+     <input class="mm-num-input icc-w-num" type="text" inputmode="numeric" autocomplete="off"
+            data-f="count" data-i="${i}" value="${esc(String(s.count))}" aria-label="いくつ">
+     <button type="button" class="mm-num-btn" data-sep-step="1" data-f="count" data-i="${i}" aria-label="数を増やす">＋</button>
+    </span>
     <button type="button" class="icc-mini is-danger icc-sep-del" data-sepdel="${i}"
      ${rule.seps.length<=1?' disabled title="最後の1本は消せません（区切らないなら「区切らない」を選びます）"':' title="この決まりを消します"'}>削除</button>
    </li>`;
@@ -362,7 +371,7 @@
    <p class="icc-help">上から順に「<b>N件ごとに</b>／<b>この文字を</b>／<b>何個</b>」入れます。
     同じ位置に2つ以上あたるときは<b>間隔の大きいほうが勝ちます</b>
     （「1件ごとに半角スペース」＋「10件ごとに改行」なら、10件目のうしろは改行だけ）。</p>
-   <ol class="icc-sep-list">${rows}</ol>
+   <ol class="icc-sep-list">${head}${rows}</ol>
    <button type="button" class="icc-add" id="iccAddSep"${rule.seps.length>=MAX_SEPS?' disabled title="これ以上は増やせません"':''}>＋ 決まりを足す</button>
   </section>`;
  }

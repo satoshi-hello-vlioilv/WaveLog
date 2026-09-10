@@ -34,9 +34,28 @@ let b=null;
  const page=await b.newPage({viewport:{width:1700,height:1000}});
  const errs=[];
  page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
- // 「そのロットだけ」を確かめているかを数えるため、仕掛への問い合わせを数える。
- let tableCalls=0;
- page.on('request',r=>{if(r.url().includes('/api/table?'))tableCalls++});
+ /* 「そのロットだけ」を確かめているかを見るため、仕掛への問い合わせを控える。
+    **数だけでは足りない**——一覧の行ごとの追い判定（§9.94）も同じ口を使うので、
+    数は画面の中身で揺れる。見たいのは「**全件を読み直していない**」ことなので、
+    `filters=`が付かない大きな読み出し（＝仕掛を丸ごと辿る問い合わせ）を数える。 */
+ const tableUrls=[];
+ page.on('request',r=>{if(r.url().includes('/api/table?'))tableUrls.push(r.url())});
+ const filterOf=u=>{
+  try{return (JSON.parse(new URLSearchParams(u.split('?')[1]||'').get('filters')||'null')||[])[0]||null}
+  catch(e){return null}
+ };
+ /* そのロット**1件だけ**を名指しで引いた問い合わせ。まとめ引き（§9.94の
+    `starts_any`）は読点で複数並ぶので、こちらには数えない。 */
+ const soloAsk=(lot,since)=>tableUrls.slice(since).filter(u=>{
+  const f=filterOf(u);if(!f)return false;
+  const vals=String(f.value||'').split(',').filter(Boolean);
+  return vals.length===1&&vals[0]===lot;
+ });
+ /* **まとめて1往復**で引いた問い合わせ（§9.94の`starts_any`）。値は読点区切り。 */
+ const batchedAsk=()=>tableUrls.map(u=>{
+   const f=filterOf(u);
+   return (f&&f.op==='starts_any')?String(f.value||'').split(',').filter(Boolean).length:0;
+  }).filter(n=>n>=2);
 
  const post=(p,body)=>page.evaluate(async a=>{
   const r=await fetch(a.p,{method:'POST',headers:{'Content-Type':'application/json'},
@@ -125,15 +144,16 @@ let b=null;
   await settle();
   rec('予定に入れたロットは仕掛一覧から消える（§9.15）', !(await gridHas(real.lot)));
 
-  const before1=tableCalls;
+  const before1=tableUrls.length;
   await removeRow(made[made.length-1]);
   const back=await waitOk(l=>{
    const t=document.querySelector('#grid tbody');return !!t&&t.innerText.includes(l);
   },real.lot);
   await settle();
   rec('仕掛に在るロットは外したら一覧へ戻る', back&&await gridHas(real.lot));
-  rec('確かめるのは外したロットだけ（仕掛への往復は数回まで）',
-      tableCalls-before1<=3, `${tableCalls-before1}回`);
+  rec('外したロットの確認は、そのロットを名指しで引く（多くて1回）',
+      soloAsk(real.lot,before1).length<=1,
+      `名指し${soloAsk(real.lot,before1).length}回／この間の問い合わせ${tableUrls.length-before1}回`);
   made.pop();
 
   /* ---- 2. 仕掛に無いロットは戻らない ------------------------------- */
@@ -175,7 +195,7 @@ let b=null;
   rec('仕掛に無いロットの予定は「予定」のまま外せる（再現の前提）', removable);
   rec('予定に入れたロットは仕掛一覧から消える（写しの行でも）', !(await gridHas(GONE)));
 
-  const before2=tableCalls;
+  const before2=tableUrls.length;
   await removeRow(made[made.length-1]);
   // 在席の照会が終わって一覧が組み直されるのを待つ（条件で待つ・§9.102）
   const hidden=await waitOk(l=>{
@@ -184,8 +204,13 @@ let b=null;
   },GONE);
   await settle();
   rec('**仕掛に無いロットは外しても一覧へ戻らない**', hidden&&!(await gridHas(GONE)));
-  rec('確かめるのは外したロットだけ（仕掛への往復は数回まで）',
-      tableCalls-before2<=3, `${tableCalls-before2}回`);
+  /* **確かめるのはそのロットだけ**（§9.368 ③）。控えにあれば往復ゼロ、
+     無ければ**1件だけ**を名指しで引く——予定も仕掛も読み直さない。 */
+  rec('消えていた側も、そのロットだけを名指しで引く（多くて1回）',
+      soloAsk(GONE,before2).length<=1,
+      `名指し${soloAsk(GONE,before2).length}回／この間の問い合わせ${tableUrls.length-before2}回`);
+  rec('予定のロットはまとめて1往復で確かめる（§9.94の束ね方）',
+      batchedAsk().length>=1, `まとめ引き ${batchedAsk().join('件/')}件`);
   made.pop();
 
   /* ---- 3. 戻さなかったことを字で言う（§3） ------------------------- */

@@ -4898,10 +4898,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   scRowSubEl=m;
   m.innerHTML=rowMenuItemsHtml(list);
   document.body.append(m);
+  /* **横に置く基準は「親のメニューの端」**——押した項目の端で置くと、
+     メニューの内側の余白のぶんだけ親に重なる（実測。どの項目を押して
+     いるのか分からなくなる）。縦は押した項目の高さに合わせる。 */
+  const owner=(btn.closest('.col-head-menu')||btn).getBoundingClientRect();
   const r=btn.getBoundingClientRect();
   const w=m.offsetWidth,h=m.offsetHeight;
-  let left=r.right-2;
-  if(left+w>innerWidth-6)left=Math.max(6,r.left-w+2);
+  let left=owner.right+2;
+  if(left+w>innerWidth-6)left=Math.max(6,owner.left-w-2);
   m.style.left=`${left}px`;
   m.style.top=`${Math.max(6,Math.min(r.top-6,innerHeight-h-6))}px`;
   bindRowMenuItems(m,list,null);
@@ -6577,7 +6581,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const rule=WL.lotCopy.currentRule();
   const from=scState.picked.size?`選んだ${lots.length}件`:'この行';
   return [{label:`ICASコピー（${lots.length}件）`,showNote:true,
-           note:`${from}のロット番号を「${rule?rule.name:'ルール未設定'}」でつないで写します`,
+           note:`${from}を「${rule?rule.name:'ルール未設定'}」でつなぎます`,
            run:()=>WL.lotCopy.copyLots(lots),
            sub:()=>WL.lotCopy.menuItems(lots)}];
  }
