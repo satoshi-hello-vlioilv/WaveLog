@@ -11,8 +11,12 @@
     1. **つなぎ方の答えは1箇所**（`WL.lotCopy.joinLots`）。見本も本番も
        ここを通る——2つ持つと「見本と違う文字列が貼られる」が作れる。
     2. **区切り文字・数・頻度が効く**。3つとも別の軸として動く。
-    3. **同じ位置に2つ以上あたったら、間隔の大きいほうが勝つ**（足さない）。
-       行末に見えない空白を残さないための決めごと。
+    3. **同じ位置に2つ以上あたったら、書いた順にぜんぶ重ねる**（§9.371。
+       利用者の指示で「勝ち負け」から改めた）。利用者が挙げた例そのものを
+       固定する——`,`毎回／`/`4回に1回／`+`2回に1回／`,`3回に1回で
+       `AAAAAAA,BBBBBBB,+CCCCCCC,,DDDDDDD,/+EEEEEEE,FFFFFFF`。
+    3b. **区切り文字は1文字に限られない**（利用者の指示）。「その他」には
+       何文字でも書けて、**空白だけ**でも構わない。
     4. **右クリックに「ICASコピー」があり、入れ子のメニューが開く**。
        親は押せる（押したらコピー）——押しても何も起きない見出しにしない。
     5. **設定は専用モーダルで、見本が出る**。触ると見本がその場で変わる。
@@ -68,6 +72,19 @@ let b=null;
    R.mixed=WL.lotCopy.joinLots(L,{seps:[{kind:'space',text:'',count:1,every:1},
                                         {kind:'nl',text:'',count:1,every:3}]});
    R.custom=WL.lotCopy.joinLots(L,{seps:[{kind:'custom',text:'／',count:1,every:1}]});
+   /* 利用者が挙げた例そのもの（§9.371）。**重ねる順は決まりの並び順**。 */
+   R.stack=WL.lotCopy.joinLots(
+    ['AAAAAAA','BBBBBBB','CCCCCCC','DDDDDDD','EEEEEEE','FFFFFFF'],
+    {seps:[{kind:'comma',text:'',count:1,every:1},
+           {kind:'slash',text:'',count:1,every:4},
+           {kind:'custom',text:'+',count:1,every:2},
+           {kind:'comma',text:'',count:1,every:3}]});
+   /* 何文字でも／空白でも（利用者の指示）。 */
+   R.longText=WL.lotCopy.joinLots(L,{seps:[{kind:'custom',text:' :: ',count:1,every:1}]});
+   R.spaceOnly=WL.lotCopy.joinLots(L,{seps:[{kind:'custom',text:'   ',count:1,every:1}]});
+   /* 見本と本番が同じ字を出すこと（見本は記号を添えるが、元の字は同じ）。 */
+   R.markable=WL.lotCopy.joinLots(['A1','A2'],
+    {seps:[{kind:'comma',text:'',count:2,every:1}]});
    R.none=WL.lotCopy.joinLots(L,{seps:[{kind:'none',text:'',count:1,every:1}]});
    R.one=WL.lotCopy.joinLots(['A1'],{seps:[{kind:'space',text:'',count:1,every:1}]});
    return R;
@@ -76,8 +93,18 @@ let b=null;
   rec('区切り文字を選べる（カンマ）', j.comma==='A1,A2,A3,A4,A5,A6,A7', JSON.stringify(j.comma));
   rec('区切り文字の数を決められる（×3）', j.three==='A1   A2   A3   A4   A5   A6   A7', JSON.stringify(j.three));
   rec('入れる頻度を決められる（3件ごと）', j.every3==='A1A2A3 A4A5A6 A7', JSON.stringify(j.every3));
-  rec('組み合わせられる／間隔の大きいほうが勝つ',
-      j.mixed==='A1 A2 A3\nA4 A5 A6\nA7', JSON.stringify(j.mixed));
+  /* **重ねるので、3件目のうしろは「スペース＋改行」**（以前は改行だけだった）。 */
+  rec('組み合わせられる／あたった決まりを書いた順に重ねる',
+      j.mixed==='A1 A2 A3 \nA4 A5 A6 \nA7', JSON.stringify(j.mixed));
+  rec('利用者の例どおりに重なる（,／/4／+2／,3）',
+      j.stack==='AAAAAAA,BBBBBBB,+CCCCCCC,,DDDDDDD,/+EEEEEEE,FFFFFFF',
+      JSON.stringify(j.stack));
+  rec('区切り文字は1文字でなくてよい（空白まじりの4文字）',
+      j.longText==='A1 :: A2 :: A3 :: A4 :: A5 :: A6 :: A7', JSON.stringify(j.longText));
+  rec('区切り文字は空白だけでもよい',
+      j.spaceOnly==='A1   A2   A3   A4   A5   A6   A7', JSON.stringify(j.spaceOnly));
+  rec('「いくつ」は重ねる前の1本ぶんに効く（カンマ×2）',
+      j.markable==='A1,,A2', JSON.stringify(j.markable));
   rec('その他の文字も使える', j.custom==='A1／A2／A3／A4／A5／A6／A7', JSON.stringify(j.custom));
   rec('「区切らない」も選べる', j.none==='A1A2A3A4A5A6A7', JSON.stringify(j.none));
   rec('1件だけなら区切りは付かない', j.one==='A1', JSON.stringify(j.one));
@@ -168,6 +195,36 @@ let b=null;
   const sample2=await page.evaluate(()=>document.querySelector('#iccSample').textContent);
   rec('設定を触ると見本がその場で変わる', sample2!==sample1&&sample2.includes(','),
       sample2.replace(/\n/g,'⏎').slice(0,120));
+
+  /* **見本は「実際にコピーされる字」から数える**（§9.371）。以前は
+     「記号 × いくつ」で組み直しており、記号を持たない区切り（カンマ等）は
+     `,,`が`,,,,`と出ていた——見本と刷り上がりが食い違う。 */
+  await page.evaluate(()=>{
+   const el=document.querySelector('#iccModal .icc-sep-row[data-i="0"] input[data-f="count"]');
+   el.value='2';el.dispatchEvent(new Event('input',{bubbles:true}));
+  });
+  await settle();
+  const marked=await page.evaluate(()=>document.querySelector('#iccSample').textContent);
+  rec('見本の区切りが2倍に増えない（カンマ×2は「,,」）',
+      marked.includes(',,')&&!marked.includes(',,,'), marked.slice(0,120));
+
+  /* **空白は見本で見える**（見えない字を「見えるようにする」の意味）。 */
+  await page.selectOption('#iccModal .icc-sep-row[data-i="0"] select[data-f="kind"]','custom');
+  await settle();
+  await page.evaluate(()=>{
+   const el=document.querySelector('#iccModal .icc-sep-row[data-i="0"] input[data-f="text"]');
+   el.value=' :: ';el.dispatchEvent(new Event('input',{bubbles:true}));
+  });
+  await settle();
+  const freeSample=await page.evaluate(()=>document.querySelector('#iccSample').textContent);
+  rec('「その他」に何文字でも書ける／空白は記号で見える',
+      freeSample.includes('␣::␣'), freeSample.slice(0,120));
+  const freeMax=await page.evaluate(()=>
+   document.querySelector('#iccModal .icc-sep-row[data-i="0"] input[data-f="text"]').maxLength);
+  rec('「その他」は1文字に限られない', freeMax>=20, String(freeMax));
+  /* 元へ戻す（このあとの「設定はこの端末に残る」がカンマを見る）。 */
+  await page.selectOption('#iccModal .icc-sep-row[data-i="0"] select[data-f="kind"]','comma');
+  await settle();
 
   /* ルールを増やせる・消せる（「触れない既定」を作らない）。 */
   const n0=await page.evaluate(()=>document.querySelectorAll('#iccModal .icc-rule').length);

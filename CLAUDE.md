@@ -2,7 +2,7 @@
 
 **このファイルは規則だけを持つ。** なぜそうなのか（実測値・撤回した案・
 踏んだ罠）は各行の「くわしく」の先——[`docs/decisions/`](docs/decisions/README.md)
-（300の決定記録＋主題別の索引）にある。**触る前にその先を開くこと。**
+（301の決定記録＋主題別の索引）にある。**触る前にその先を開くこと。**
 
 構成の詳細は `docs/ARCHITECTURE.md`、機能と起動方法は `README.md`、
 スケジュール機能そのものの設計は `docs/SCHEDULE_MODE_DESIGN.md`（§1〜§13）。
@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（521件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（523件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -470,13 +470,14 @@
 | 「選ばない」の札は空文字だけではない | `test_opblank.js` | [§9.246](docs/decisions/9.246.md) |
 | ロールは「設備名＋ロール名＋接触面＋径MAX＋径MIN＋備考」で1本 | `test_rollio.py` | [§9.246](docs/decisions/9.246.md) |
 
-### 作業スケジュール（18件）
+### 作業スケジュール（19件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 作業スケジュールの「開始」は着手できる**全行**に出す（次の1本は現場が自由に選ぶ。先頭N行に絞らない） | `test_workable.js` | [§9.339](docs/decisions/9.339.md) |
 | 外した予定は「仕掛にまだ在るとき」だけ一覧へ戻す。在席は3値・不明なら戻す | `test_wipgone.js` | [§9.368](docs/decisions/9.368.md) |
 | 選んだ予定のロット番号はつないでコピーできる。つなぎ方は`WL.lotCopy.joinLots()`の1箇所 | `test_lotcopy.js` | [§9.368](docs/decisions/9.368.md) |
+| 区切りは「あたった決まりを書いた順にぜんぶ重ねる」。区切り文字は1文字に限らない（空白だけでも可） | `test_lotcopy.js` | [§9.371](docs/decisions/9.371.md) |
 | さかのぼりの起点はサーバーの`history_from()`が1箇所で答える | `test_schistory.js` | [§9.366](docs/decisions/9.366.md) |
 | 済んだ行の代表時刻は`actual.startAt`→`actual.endAt`→`finishedAt`の順 | `test_schistory.js`・`test_scrowstyle.js` | [§9.366](docs/decisions/9.366.md) |
 | 稼働カレンダーは足りなくなったら伸びる | `test_scload.py` | [§9.291](docs/decisions/9.291.md) |
@@ -602,13 +603,14 @@
 | モーダルは背景クリックで閉じない | `test_modalkeep.js` | [§9.221](docs/decisions/9.221.md) |
 | マスタの1行を直す窓は汎用モーダル1枚 | — | [§9.222](docs/decisions/9.222.md) |
 
-### 見た目（CSS・寸法・色）（45件）
+### 見た目（CSS・寸法・色）（46件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 色のリテラルは増やさない（上限は`tests/fixtures/color_baseline.json`）。トークンと同じ値は`var()`で書く | `test_csslint.py` | [§9.350](docs/decisions/9.350.md) |
 | 選ばれた札の見た目は`90-state.css`の束ね規則1箇所。族ごとに同じ3行を書かない | `test_csslint.py` | [§9.353](docs/decisions/9.353.md) |
 | 色帯は「面」とセットのときだけ出す。面の無い帯は括弧に見え、列の罫線とも競合する | `test_density.js` | [§9.344](docs/decisions/9.344.md) |
+| 目に見えない字（空白・タブ・改行）を見せる記号は`visibleChars()`の1箇所で1文字ずつ当てる | `test_lotcopy.js` | [§9.371](docs/decisions/9.371.md) |
 | 所要時間の書き方は`WL.duration`の1箇所。既定は「分」、切り替えは「表示」バッジの1枚に畳む。時点（〜前／〜後）と間隔（〜ごと）は別の軸 | `test_patchlint.py`・`test_uisize.js` | [§9.341](docs/decisions/9.341.md) |
 | 状態チップの色は「正常＝中立／設定要＝橙／赤は取り消せない操作だけ」。同じ橙に2つの意味を持たせない | `test_headbar.js` | [§9.338](docs/decisions/9.338.md) |
 | 寸法は文字サイズから作る | `test_fit.js`・`test_typescale.js` | [§9.90](docs/decisions/9.90.md) |
