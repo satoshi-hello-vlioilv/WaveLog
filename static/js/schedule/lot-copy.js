@@ -19,11 +19,16 @@
       組み合わせが**足し算で**書ける。文字ごとに専用の設定を作らない
       （増やすたびに画面と保存の形が増える）。
 
-   ② **同じ位置に2つ以上あたったら、間隔の大きいほうが勝つ。**
-      「1件ごとに半角スペース」と「10件ごとに改行」を重ねたとき、10件目の
-      うしろは**改行だけ**になる（スペース＋改行にはしない）。足し合わせる
-      作りにすると、見えない空白が行末に付いて回る——貼り付け先で困るのは
-      いつもそれ。**勝ち負けは見本で見える**ので、覚えなくてよい（§2）。
+   ② **同じ位置に2つ以上あたったら、書いた順にぜんぶ重ねる**（利用者の指示）。
+      1件ごとに`,`／4件ごとに`/`／2件ごとに`+`／3件ごとに`,`を重ねると、
+      4件目のうしろは`,/+`（決まりの並び順に足す）。
+
+      **一度は「間隔の大きいほうが勝つ」にしていたが、撤回した。** 行末に
+      見えない空白が残るのを嫌ったための勝ち負けだったが、それは
+      「区切りを重ねられない」という**別の制限**とセットで払う代償だった
+      ——空白が邪魔なら、その決まりを書かなければよい。**足すか捨てるかを
+      決めるのは利用者**で、こちらが先に捨ててよいものではない。
+      重なり方は見本でそのまま見えるので、覚えなくてよい（§2）。
 
    ③ **見本は上の帯に固定で出す**（§9.288 と同じ作り）。設定を触るたびに
       「こうコピーされる」が同じ場所で変わる。**区切りは見えるようにする**
@@ -42,23 +47,37 @@
  const KEY='scLotCopyRulesV1';
  const PICK_KEY='scLotCopyRuleV1';     // 最後に使ったルール（次もこれで貼る）
  const MAX_RULES=20, MAX_SEPS=6, MAX_COUNT=20, MAX_EVERY=999;
+ /* 「その他」に書ける長さ（利用者の指示「1文字に限定せず何文字でも、
+    また、空白でも設定できるように」）。**1文字という決めはどこにも無い**
+    ——空白だけの文字列も、`  →  `のような飾りも、そのまま区切りになる。
+    上限を置くのは端末の保存（`localStorage`）を守るためで、**画面にも
+    書く**（何文字まで入るかを推測させない・§CLAUDE 画面基準 6）。 */
+ const MAX_TEXT=40;
 
- /* 区切り文字の顔ぶれ。**現場に16進や制御文字を打たせない**（§9.223 と
-    同じ判断）。`mark`は画面で見せるための記号で、コピーされるのは`ch`。 */
+ /* 区切り文字の顔ぶれ。**よく使うものを1押しで選べる**ための短い一覧で、
+    ここに無い区切りは「その他」に**何文字でも**書ける（空白まじりも可）。 */
  const SEP_KINDS=[
-  {kind:'space',  label:'半角スペース', ch:' ',  mark:'␣'},
-  {kind:'wide',   label:'全角スペース', ch:'　', mark:'▫'},
-  {kind:'comma',  label:'カンマ',       ch:',',  mark:''},
-  {kind:'tab',    label:'タブ',         ch:'\t', mark:'→'},
-  {kind:'nl',     label:'改行',         ch:'\n', mark:'⏎'},
-  {kind:'semi',   label:'セミコロン',   ch:';',  mark:''},
-  {kind:'pipe',   label:'縦棒',         ch:'|',  mark:''},
-  {kind:'slash',  label:'スラッシュ',   ch:'/',  mark:''},
-  {kind:'hyphen', label:'ハイフン',     ch:'-',  mark:''},
-  {kind:'none',   label:'区切らない',   ch:'',   mark:''},
-  {kind:'custom', label:'その他（自分で書く）', ch:'', mark:''},
+  {kind:'space',  label:'半角スペース', ch:' '},
+  {kind:'wide',   label:'全角スペース', ch:'　'},
+  {kind:'comma',  label:'カンマ',       ch:','},
+  {kind:'tab',    label:'タブ',         ch:'\t'},
+  {kind:'nl',     label:'改行',         ch:'\n'},
+  {kind:'semi',   label:'セミコロン',   ch:';'},
+  {kind:'pipe',   label:'縦棒',         ch:'|'},
+  {kind:'slash',  label:'スラッシュ',   ch:'/'},
+  {kind:'hyphen', label:'ハイフン',     ch:'-'},
+  {kind:'none',   label:'区切らない',   ch:''},
+  {kind:'custom', label:'その他（自分で書く）', ch:''},
  ];
  const kindOf=k=>SEP_KINDS.find(x=>x.kind===k)||SEP_KINDS[0];
+
+ /* **目に見えない字を見えるようにする答えは、この1箇所。** 1文字ずつ当てるので、
+    「その他」に`, `（カンマ＋空白）のような**混じった文字列**を書いても、
+    どこに空白があるかが見本で読める。**表示だけ**で、コピーされるのは本物の字。
+    以前は区切りの種類ごとに記号を1つ持っていたが、それだと「その他」に
+    書いた文字列の中の空白を指せなかった（種類は1つでも中身は何文字でもある）。 */
+ const MARKS={' ':'␣','\u3000':'▫','\t':'→','\n':'⏎'};
+ const visibleChars=v=>String(v||'').replace(/[ \u3000\t\n]/g,c=>MARKS[c]);
 
  /* 最初の1回だけ書き込む例。**触れない既定ではない**——名前も中身も変えられ、
     消せる（消したら「ルールがありません」と書く・§4）。 */
@@ -77,7 +96,7 @@
  function normSep(s){
   s=s&&typeof s==='object'?s:{};
   const kind=SEP_KINDS.some(x=>x.kind===s.kind)?s.kind:'space';
-  return {kind,text:String(s.text||'').slice(0,20),
+  return {kind,text:String(s.text||'').slice(0,MAX_TEXT),
           count:clampInt(s.count,1,MAX_COUNT),every:clampInt(s.every,1,MAX_EVERY)};
  }
  function normRule(r,i){
@@ -117,27 +136,25 @@
  }
 
  /* ---------- つなぎ方（②） ----------
-    `i`件目までを並べたあとの区切り。**あたる決まりのうち間隔の大きいほうが
-    勝つ**（同じ間隔なら並びの後ろが勝つ）。1つもあたらなければ区切らない。 */
- function sepAt(rule,i){
-  let win=null;
-  (rule&&rule.seps||[]).forEach(s=>{
-   if(i%s.every!==0)return;
-   if(!win||s.every>=win.every)win=s;
-  });
-  return win;
+    `i`件目までを並べたあとの区切り。**あたる決まりを、書いた順にぜんぶ返す**
+    ——1つもあたらなければ空になり、そこは区切らない。 */
+ function sepsAt(rule,i){
+  return (rule&&rule.seps||[]).filter(s=>i%s.every===0);
  }
- function sepChars(s){
-  if(!s)return '';
-  const k=kindOf(s.kind);
-  const ch=k.kind==='custom'?String(s.text||''):k.ch;
-  return ch.repeat(s.count);
+ /* 決まりの並び → 実際にコピーされる字。**重ねるのはここ1箇所**（見本も本番も
+    通る）。1本ぶんは「その文字 × いくつ」で、それを並び順に足す。 */
+ function sepChars(list){
+  return (list||[]).map(s=>{
+   const k=kindOf(s.kind);
+   const ch=k.kind==='custom'?String(s.text||''):k.ch;
+   return ch.repeat(s.count);
+  }).join('');
  }
  /* コピーする文字列そのもの。**ここが唯一の組み立て**——見本も本番も通す
     （見本と刷り上がりが食い違わないための1箇所・§9.163）。 */
  function joinLots(lots,rule){
   const list=(lots||[]).map(v=>String(v??'').trim()).filter(Boolean);
-  return list.map((lot,i)=>(i?sepChars(sepAt(rule,i)):'')+lot).join('');
+  return list.map((lot,i)=>(i?sepChars(sepsAt(rule,i)):'')+lot).join('');
  }
 
  /* ---------- 見本（③） ----------
@@ -147,19 +164,21 @@
   const list=(lots||[]).map(v=>String(v??'').trim()).filter(Boolean);
   if(!list.length)return '<span class="icc-empty">つなぐロット番号がありません</span>';
   return list.map((lot,i)=>{
-   const head=i?sepPieceHtml(sepAt(rule,i),showMarks):'';
+   const head=i?sepPieceHtml(sepsAt(rule,i),showMarks):'';
    return head+`<span class="icc-lot">${esc(lot)}</span>`;
   }).join('');
  }
- function sepPieceHtml(s,showMarks){
-  const raw=sepChars(s);
+ function sepPieceHtml(list,showMarks){
+  const raw=sepChars(list);
   if(!raw)return '<i class="icc-sep is-none" title="ここは区切りません"></i>';
-  const k=kindOf(s.kind);
-  const mark=showMarks?(k.mark||raw):raw;
-  const shown=showMarks?mark.repeat(s.count).slice(0,60):raw;
-  const br=k.kind==='nl'?'<br>'.repeat(s.count):'';
-  return `<i class="icc-sep" title="${esc(k.label)}×${s.count}（${s.every}件ごと）">`
-   +`${esc(shown)}</i>${br}`;
+  /* **数えるのは「実際にコピーされる字」から**（§9.371）。以前は
+     「記号 × いくつ」で組み直していたので、記号を持たない区切り（カンマ等）は
+     `,,`を2回繰り返して`,,,,`と出ていた——見本と刷り上がりが食い違っていた。 */
+  const shown=(showMarks?visibleChars(raw):raw).slice(0,60);
+  const br='<br>'.repeat((raw.match(/\n/g)||[]).length);
+  /* **何が重なっているかを、その場で言う**（探させない・§2）。 */
+  const why=list.map(s=>`${kindOf(s.kind).label}×${s.count}（${s.every}件ごと）`).join(' ＋ ');
+  return `<i class="icc-sep" title="${esc(why)}">${esc(shown)}</i>${br}`;
  }
 
  /* ---------- コピー ----------
@@ -353,8 +372,10 @@
      <select class="icc-w-sel" data-f="kind" data-i="${i}" aria-label="区切り文字">
       ${SEP_KINDS.map(x=>`<option value="${x.kind}"${x.kind===s.kind?' selected':''}>${esc(x.label)}</option>`).join('')}
      </select>
-     ${free?`<input type="text" class="icc-w-free" maxlength="20" data-f="text" data-i="${i}"
-       value="${esc(s.text)}" aria-label="その文字" placeholder="入れる文字を書きます" autocomplete="off">`:''}
+     ${free?`<input type="text" class="icc-w-free" maxlength="${MAX_TEXT}" data-f="text" data-i="${i}"
+       value="${esc(s.text)}" aria-label="その文字"
+       placeholder="何文字でも／空白も可" title="${MAX_TEXT}文字まで。空白だけでも入れられます（見本の「区切りを見えるようにする」で位置が見えます）"
+       autocomplete="off">`:''}
     </span>
     <span class="mm-num" data-num-wrap>
      <button type="button" class="mm-num-btn" data-sep-step="-1" data-f="count" data-i="${i}" aria-label="数を減らす">−</button>
@@ -369,8 +390,10 @@
   return `<section class="icc-panel icc-panel-seps">
    <h3><span class="icc-no">2</span>区切りの決まり</h3>
    <p class="icc-help">上から順に「<b>N件ごとに</b>／<b>この文字を</b>／<b>何個</b>」入れます。
-    同じ位置に2つ以上あたるときは<b>間隔の大きいほうが勝ちます</b>
-    （「1件ごとに半角スペース」＋「10件ごとに改行」なら、10件目のうしろは改行だけ）。</p>
+    同じ位置に2つ以上あたるときは<b>この並び順にぜんぶ重ねます</b>
+    （「1件ごとにカンマ」＋「4件ごとにスラッシュ」なら、4件目のうしろは
+    <code>,/</code>）。<b>重なった形は上の見本でそのまま見えます。</b>
+    「その他」には<b>何文字でも</b>書けます（空白だけでも構いません）。</p>
    <ol class="icc-sep-list">${head}${rows}</ol>
    <button type="button" class="icc-add" id="iccAddSep"${rule.seps.length>=MAX_SEPS?' disabled title="これ以上は増やせません"':''}>＋ 決まりを足す</button>
   </section>`;
@@ -438,8 +461,9 @@
   const addSep=box.querySelector('#iccAddSep');
   if(addSep&&rule)addSep.onclick=()=>{
    if(rule.seps.length>=MAX_SEPS)return;
-   /* **足すのは「まだ無い間隔」**——同じ間隔を2本足しても片方しか効かない
-      （②の勝ち負け）ので、既にある最大の10倍を初期値にする。 */
+   /* 初期値は**既にある最大の10倍**。同じ間隔を足しても今は両方が効く（②）ので
+      間違いではないが、いちばん多い使い方は「ふだんの区切り＋たまに大きな区切り」
+      なので、そこから始めれば直す手が少ない（**思い出させない**・§CLAUDE 画面基準）。 */
    const top=Math.max(...rule.seps.map(s=>s.every));
    rule.seps.push(normSep({kind:'nl',count:1,every:clampInt(top*10,2,MAX_EVERY)}));
    save();render();
@@ -465,7 +489,7 @@
     if(!rule)return;
     const s=rule.seps[i];if(!s)return;
     if(f==='kind'){s.kind=el.value;save();render();return}
-    if(f==='text'){s.text=String(el.value||'').slice(0,20);save();paintSample();return}
+    if(f==='text'){s.text=String(el.value||'').slice(0,MAX_TEXT);save();paintSample();return}
     s[f]=clampInt(el.value,1,f==='every'?MAX_EVERY:MAX_COUNT);
     save();paintSample();
    };
