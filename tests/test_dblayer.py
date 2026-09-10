@@ -36,6 +36,7 @@ import os
 import pathlib
 import subprocess
 import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BACKEND = ROOT / 'backend'
@@ -212,16 +213,23 @@ def main():
         app.count('db_access.bootstrap()'))
 
     # 6) 網そのものが素通りしないこと——欠陥を注いで落ちることを見る
-    probe = BACKEND / '_dblayer_probe.py'
-    try:
-        probe.write_text('from . import db_access  # noqa: F401 網の確認用\n'
-                         'def f():\n from . import db_mirror  # noqa: F401\n', encoding='utf-8')
-        t2, d2 = graph(BACKEND)
+    # **`backend/`の中には置かない**（§9.370）。1段目は8本並列なので、
+    # `backend/*.py`を歩く別の網（`test_flags`）が**一覧に出た直後に消えた**
+    # ファイルを読みに行って FileNotFoundError で止まる（実際に踏んだ）。
+    # `modules()`は道の名前ではなく`backend.<相対パス>`で名前を付けるので、
+    # **空の入れ物を1つ作れば同じ形で測れる**。共有の場所を汚さない。
+    with tempfile.TemporaryDirectory() as td:
+        fake = pathlib.Path(td)
+        # `targets()`は「解決できた名前だけ」を返すので、指し先も置いておく。
+        (fake / 'db_access.py').write_text('', encoding='utf-8')
+        (fake / 'db_mirror.py').write_text('', encoding='utf-8')
+        (fake / '_dblayer_probe.py').write_text(
+            'from . import db_access  # noqa: F401 網の確認用\n'
+            'def f():\n from . import db_mirror  # noqa: F401\n', encoding='utf-8')
+        t2, d2 = graph(fake)
         rec('網が「関数の中のimport」を実際に数えている',
             'backend.db_mirror' in d2.get('backend._dblayer_probe', set())
             and 'backend.db_access' in t2.get('backend._dblayer_probe', set()))
-    finally:
-        probe.unlink(missing_ok=True)
 
 
 if __name__ == '__main__':

@@ -442,10 +442,73 @@ echo "--- 起動(サーバーを再起動する) ---"
 # 実行するとき(`run_all.sh test_orphan`)も同じ白紙から始められるように、
 # テストを選ぶより前に置く。
 resetcontent
+# **控える前に、マスタの表を作らせる**（§9.370）。`bootstrap()`が作るのは
+# `データソースマスタ`・`パス設定マスタ`・`クエリ結合マスタ`の3つだけで、
+# 残りは**画面が最初に触ったときに作られる**。まっさらな取得ではその前に
+# ここへ来るので、`reseed`が「表が無い」で種を1件も入れられず、しかも
+# **その不完全なマスタを`snap_master`が「あるべき姿」として控えて**、
+# 1本ごとに戻していた——`テスト設備A`が最後まで現れず、`test_sccat`が
+# `.sc-board-row`を10秒待って落ちた（CIの2段目でだけ出た。開発機の`db/`は
+# 何度も動かした結果なので、表がそろっている）。
+# **口は製品のものを使う**（DDLをここへ書き写さない・§9.216）。
+warm_master(){
+  for u in /api/equipment-master /api/operation-item-master \
+           /api/operation-choice-master /api/choice-link-master \
+           /api/report-block-master /api/display-rule-master \
+           /api/list-view-master /api/column-preset-master \
+           /api/access-permission-master /api/roll-master \
+           /api/filter-presets /api/sort-presets \
+           /api/schedule/shift-pattern-master /api/schedule/stop-category-master \
+           /api/schedule/stop-reason-master /api/schedule/row-style-master; do
+    curl -s "$API$u" >/dev/null
+  done
+}
+warm_master
+# **この端末の名乗りをフィクスチャへ渡す**（§9.370）。`アクセス権限マスタ`が
+# 空だと既定は「編集可・スケジュール不可」なので、まっさらな取得では
+# スケジュールモードへ入れず、俯瞰ボードが最後まで出ない。誰の・どの端末かに
+# 答えるのは`current_login_id()`／`current_pc_name()`の1箇所なので、
+# **推測せず製品に聞く**（`make_fixture.py`は`backend`をimportしない）。
+WAVELOG_FIXTURE_LOGIN=$(curl -s "$API/api/access-mode" | python3 -c \
+  "import sys,json;print((json.load(sys.stdin).get('loginId') or ''))" 2>/dev/null)
+WAVELOG_FIXTURE_PC=$(curl -s "$API/api/access-mode" | python3 -c \
+  "import sys,json;print((json.load(sys.stdin).get('pcName') or ''))" 2>/dev/null)
+export WAVELOG_FIXTURE_LOGIN WAVELOG_FIXTURE_PC
 # **白紙のマスタを1枚控える**（§9.360）。ここから先、1本ごとにこれへ戻す。
 # 控えるのは`reseed`(種データ)と`resetcontent`(見せ方)を通した**直後**——
 # ここが「あるべき姿」で、以降どの本が何を足しても必ずここへ帰る。
 reseed
+# **種が入ったことを確かめる**（§9.370）。入っていないまま控えると、以降
+# ぜんぶの本が「設備が1つも無い」画面を見る——しかも落ちるのは
+# 30秒待った先なので、原因が遠い。**黙って進まない。**
+if ! WAVELOG_MASTER_DB="$MASTER_DB" python3 - <<'PYCHK'
+import sqlite3, sys, os, pathlib
+p = pathlib.Path(os.environ['WAVELOG_MASTER_DB'])
+if not p.exists():
+    print('!! マスタDBがありません: %s' % p); sys.exit(1)
+c = sqlite3.connect(p)
+have = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+if '設備マスタ' not in have:
+    print('!! 設備マスタの表がありません（warm_master が効いていません）'); sys.exit(1)
+n = c.execute('SELECT COUNT(*) FROM [設備マスタ] WHERE [設備名] LIKE ?', ['テスト設備%']).fetchone()[0]
+if n < 2:
+    print('!! 検証用の設備が入っていません（%d件）。このあとの本は設備の無い画面を見ます' % n); sys.exit(1)
+PYCHK
+then
+  echo "   種データを入れ直せないので、ここで止めます（黙って進むと原因の遠い赤が並びます）" >&2
+  exit 1
+fi
+# **「入れた」ではなく「効いた」で確かめる**（§9.370）。権限は行を書くだけでは
+# 済まない——マスタを読むのはリクエストのたびなので、**実際に切り替えて**
+# 200が返ることを見る。403のまま進むと、スケジュール系の網が全部
+# 「編集モードの画面」を見ることになり、落ちるのは10〜30秒待った先になる。
+if [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/access-mode" \
+        -H 'Content-Type: application/json' -d '{"mode":"schedule"}')" != "200" ]; then
+  echo "!! この端末はスケジュールモードへ切り替えられません（アクセス権限マスタの" >&2
+  echo "   [スケジュール可否]が入っていない）。名乗り: '$WAVELOG_FIXTURE_LOGIN' / '$WAVELOG_FIXTURE_PC'" >&2
+  exit 1
+fi
+mode edit
 snap_master
 run python3 test_boot.py
 sleep 3
