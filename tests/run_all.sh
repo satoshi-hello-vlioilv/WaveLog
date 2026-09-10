@@ -69,7 +69,11 @@ test_mastershare test_noaccess test_patchlint test_pcname test_pick \
 test_presence test_printcore test_pyflakes test_pywarn test_quietlint \
 test_recmirror test_recsplit test_routesplit test_savechip \
 test_scsnapread test_scwatch test_sortpipe test_storage test_tabclose \
-test_tabledef test_tablequery test_workdate test_waitlint test_importlint"
+test_tabledef test_workdate test_waitlint test_importlint"
+# **`test_tablequery`は1段目に入れない**（§9.369）。サーバーは要らないが
+# **仕掛の実データが要る**——まっさらな取得では読み込み先が既定の共有パス
+# （`\\Nlmsrvngy03\...`）に落ちるので必ず落ちる。1段目の約束は
+# 「DBも設定もサーバーも無い取得でそのまま通る」ことなので、ここには置けない。
 # 2段目。**全部の代わりではなく「動いていること」の確認**なので各1本だけ。
 SMOKE_TESTS="test_boot test_bootui test_flows test_sccat test_mcore"
 
@@ -79,6 +83,10 @@ if [ "$1" = "--pure" ]; then
   T0=$(date +%s)
   PURE_OUT="$(mktemp -d)"; export PURE_OUT
   trap 'rm -rf "$PURE_OUT"' EXIT
+  # **並列で回していることを本へ伝える**（§9.369）。共有の`db/`を見る網は、
+  # 隣の本が作ったファイルを自分のせいにできない——測れないことを
+  # 「変わっていない」とも「変えた」とも言わせないため、印を1つ渡す。
+  export WAVELOG_PARALLEL=1
   printf '%s\n' $PURE_TESTS | xargs -P "$JOBS" -I@ sh -c \
     'timeout 300 python3 "@.py" >"$PURE_OUT/@.log" 2>&1; echo $? >"$PURE_OUT/@.rc"'
   TOT=0; NG=0; RAN=0

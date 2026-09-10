@@ -142,8 +142,17 @@ def main():
     rel = re.findall(r'''pathlib\.Path\(\s*['"](db/[^'"]+)['"]''', SH)
     rec('ランナーが開くDBの道が相対で書かれていない（相対だと黙って空振りする）',
         not rel, '; '.join(rel[:4]) or '0件')
-    rec('実績を空へ戻す口が実在するDBを指している',
-        'WAVELOG_RECORDS_DB' in SH and (ROOT / 'db' / 'records.sqlite3').exists())
+    # **「実在する」で見ない**（§9.369）。まっさらな取得には`db/`の中身が無い
+    # ——無いことは異常ではないので、それで落とすとCIの1段目が必ず赤になる。
+    # ここで守りたいのは「相対で書いて空振りしない」ことなので、**道の組み立て方**
+    # を見る（実体があるときは中身も確かめる）。
+    records_db = ROOT / 'db' / 'records.sqlite3'
+    rec('実績を空へ戻す口は`$ROOT`から組み立てている（相対だと黙って空振りする）',
+        'WAVELOG_RECORDS_DB="$ROOT/db/records.sqlite3"' in SH,
+        '無し' if 'WAVELOG_RECORDS_DB' not in SH else '相対で書いている')
+    rec('実績DBがあるときは読める（無い取得では測らない）',
+        (not records_db.exists()) or records_db.stat().st_size > 0,
+        'まっさらな取得のため測っていない' if not records_db.exists() else str(records_db))
 
 
     print(f'\n== {sum(R)}/{len(R)} PASS ==')

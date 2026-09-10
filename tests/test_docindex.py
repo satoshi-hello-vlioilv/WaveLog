@@ -48,6 +48,7 @@ ARCH_ALLOW = {
     'app.css': '連結して返す束の名前（`/css/app.css`）。実体は static/css/NN-*.css',
     'boot_status.js': '起動時に端末の runtime/ へ書き出す（§9.225）',
     'instance.json': '起動中インスタンスの控え。実行時に作る',
+    '_mirror.json': '共有DBの写しの台帳（§9.89）。db_mirror が実行時に作る',
     'config/local.json': '端末ごとの設定。.gitignore（雛形は local.example.json）',
     'masters.py': '3-10 で分けた旧ファイル。「から分離」の経緯として残す',
     'launch_guard.py': '旧名（いまは backend/launcher/guard.py）。「旧」と併記',

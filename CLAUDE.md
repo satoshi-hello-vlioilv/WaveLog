@@ -2,7 +2,7 @@
 
 **このファイルは規則だけを持つ。** なぜそうなのか（実測値・撤回した案・
 踏んだ罠）は各行の「くわしく」の先——[`docs/decisions/`](docs/decisions/README.md)
-（299の決定記録＋主題別の索引）にある。**触る前にその先を開くこと。**
+（300の決定記録＋主題別の索引）にある。**触る前にその先を開くこと。**
 
 構成の詳細は `docs/ARCHITECTURE.md`、機能と起動方法は `README.md`、
 スケジュール機能そのものの設計は `docs/SCHEDULE_MODE_DESIGN.md`（§1〜§13）。
@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（517件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（520件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -652,7 +652,7 @@
 | 「何で選ばせるか」と「どう見えるか」は別の軸 | — | [§9.223](docs/decisions/9.223.md) |
 | 公差外・基準外は確認カードの色で気づかせる。NGの記録はその行の中 | `test_ngcard.js` | [§9.242](docs/decisions/9.242.md) |
 
-### 検証（テスト）（23件）
+### 検証（テスト）（26件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -666,6 +666,9 @@
 | `offsetParent`で「見えているか」を測らない。`position:fixed`と未組み立ての両方で`null`になる | — | [§9.346](docs/decisions/9.346.md) |
 | テストが開く／取りに行く`static/js`の道は領域つきで実在するURL（`/static/js/…`）。取れた中身が短ければ落とす | `test_loadorder.py` | [§9.334](docs/decisions/9.334.md) |
 | テストは3層（`--pure`＝サーバー不要・並列／`--smoke`＝各1本／全件は指示があったときだけ）。一覧の宣言は`run_all.sh`の1箇所 | `test_layers.py` | [§9.337](docs/decisions/9.337.md) |
+| 1段目（純粋な網）は「まっさらな取得で通る」ものだけ。確かめ方は`git archive` | `test_layers.py` | [§9.369](docs/decisions/9.369.md) |
+| 「物が無い」を欠陥として記録しない。測れないなら前提を作るか、測っていないと書く | `test_ddllint.py`・`test_layers.py` | [§9.369](docs/decisions/9.369.md) |
+| 並列で回している網に、共有の`db/`の差分を自分のせいにさせない | `test_dblayer.py` | [§9.369](docs/decisions/9.369.md) |
 | 更新履歴は版ごとに「利用者向け／開発の記録（`'dev':True`）」。判定は`changelog_data.is_dev()`の1箇所、画面は`e.dev`を読むだけ | `test_changelog.py`・`test_changelogui.js` | [§9.336](docs/decisions/9.336.md) |
 | 知識の置き場は「規則＝CLAUDE.md の表／経緯＝`docs/decisions/9.xxx.md`」。§番号は振り直さない | `test_docindex.py` | [§9.335](docs/decisions/9.335.md) |
 | 画面のJSの`no-undef`は0件。globalsは実物から作るので、IIFEで閉じると外からの呼び出しが出る | `test_eslint.py` | [§9.354](docs/decisions/9.354.md) |
