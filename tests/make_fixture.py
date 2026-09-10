@@ -141,6 +141,25 @@ _SHIFT_SEGMENTS = (('1直', '07:00', '15:00', 10, None),
                    ('2直', '15:00', '23:00', 20, None),
                    ('3直', '23:00', '07:00', 30, -1))
 _SHIFT_EQUIPMENT = ('テスト設備A', 'テスト設備B', 'テスト設備C', 'テスト設備D')
+# この端末が「スケジュールモードへ入れる」権限（§9.370）。
+# **アクセス権限マスタに1行も無いと、既定は「編集可・スケジュール不可」**
+# （master_repo._DEFAULT_PERMISSION_FLAGS。触れる範囲が広がる側は安全側に
+# 倒す・SCHEDULE_MODE_DESIGN §3.2）。まっさらな取得ではその状態なので
+# `POST /api/access-mode {mode:'schedule'}` が403で断られ、画面は編集
+# モードのまま開く——俯瞰ボード（`#scBoard`）は `pickerEnabled` が偽だと
+# 隠れたままなので、`test_sccat` が `.sc-board-row` を10秒待って落ちた。
+# 開発機では過去に手で入れた1行が効いていたので**一度も出なかった**。
+#
+# **製品のAPIでは入れられない**（§9.322 ①「自分の権限区分は自分では
+# 変更できません」。自己昇格を塞ぐ門なので、これは正しい）。だからここが
+# 「管理者が登録した1行」の代わりを務める。**誰の・どの端末か**は
+# `current_login_id()`／`current_pc_name()`が答える1箇所なので、
+# ここでは推測せず**ランナーがAPIから取って環境変数で渡す**
+# （`backend`をimportしない・§9.285の追補）。
+_PERMISSION_LOGIN_ENV = 'WAVELOG_FIXTURE_LOGIN'
+_PERMISSION_PC_ENV = 'WAVELOG_FIXTURE_PC'
+_PERMISSION_ROLE = '開発者'
+_PERMISSION_FIELD_EQUIPMENT = 'テスト設備A'
 # 旧マスタから移した選択肢（§9.221 ②）。旧マスタはもう作られないので、
 # 消えたら戻せるのはここだけ。**件数はテストが数える**（test_msteps）。
 _CHOICES = {
@@ -247,6 +266,42 @@ def _builtin_block_seeds() -> dict:
     return out
 
 
+def _fix_permission(c, note) -> None:
+    """この端末の`アクセス権限マスタ`の1行を「あるべき姿」へ戻す。**冪等**。
+
+    誰の・どの端末かはランナーが`/api/access-mode`から取って環境変数で渡す
+    （ここで推測しない・§9.370）。渡っていなければ**黙って諦めず**その旨を
+    言って何もしない——推測で別の端末の行を書き換えるほうが遠い赤を生む。
+    """
+    login = (os.environ.get(_PERMISSION_LOGIN_ENV) or '').strip()
+    pc = (os.environ.get(_PERMISSION_PC_ENV) or '').strip()
+    if not login and not pc:
+        note('  この端末の名乗り（%s / %s）が渡っていないので権限の行は触りません'
+             % (_PERMISSION_LOGIN_ENV, _PERMISSION_PC_ENV))
+        return
+    cols = {r[1] for r in c.execute('PRAGMA table_info([アクセス権限マスタ])')}
+    row = c.execute('SELECT [権限ID] FROM [アクセス権限マスタ] '
+                    'WHERE [ログインID]=? AND [PC名]=?', [login, pc]).fetchone()
+    if row is None:
+        c.execute('INSERT INTO [アクセス権限マスタ] ([ログインID],[PC名],[表示順],'
+                  '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                  "VALUES (?,?,10,'fixture','fixture',"
+                  "datetime('now'),datetime('now'))", [login, pc])
+        row = c.execute('SELECT [権限ID] FROM [アクセス権限マスタ] '
+                        'WHERE [ログインID]=? AND [PC名]=?', [login, pc]).fetchone()
+    sets = [('編集可否', 1), ('有効', -1)]
+    # 後から足った列（§9.216「無ければ足す」）は、**在るときだけ**書く。
+    for name, value in (('スケジュール可否', 1), ('現場段取り可否', 1),
+                        ('現場段取り対象設備', _PERMISSION_FIELD_EQUIPMENT),
+                        ('権限区分', _PERMISSION_ROLE)):
+        if name in cols:
+            sets.append((name, value))
+    c.execute('UPDATE [アクセス権限マスタ] SET '
+              + ','.join('[%s]=?' % n for n, _ in sets)
+              + ' WHERE [権限ID]=?',
+              [v for _, v in sets] + [row[0]])
+
+
 def fix_master(quiet: bool = False) -> None:
     """マスタDBの「テストが当てにしている行」を戻す。**冪等**。"""
     if not MASTER.exists():
@@ -284,6 +339,9 @@ def fix_master(quiet: bool = False) -> None:
                     c.execute('UPDATE [設備マスタ] SET [有効]=-1 WHERE [設備名]=?', [nm])
             for w in _JUNK_EQUIPMENT:
                 c.execute('DELETE FROM [設備マスタ] WHERE ' + w)
+        # 2a) この端末の権限（スケジュールモードへ入れること）
+        if 'アクセス権限マスタ' in have:
+            _fix_permission(c, note)
         # 2b) テストが作った操業データ項目の屑（上の理由）
         if '操業データ項目マスタ' in have:
             for w in _JUNK_OP_ITEM:

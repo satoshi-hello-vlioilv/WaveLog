@@ -29,9 +29,12 @@
 ============================================================
 """
 import pathlib
+import shutil
+import sqlite3
 import subprocess
 import re
 import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SH = (ROOT / 'tests' / 'run_all.sh').read_text(encoding='utf-8')
@@ -127,10 +130,36 @@ def main():
         "trap 'restore_paths; release_lock; rm -rf" in SH)
     fp = (ROOT / 'tests' / 'state_fp.py').read_text(encoding='utf-8')
     rec('指紋の置き場はファイル位置から決める（カレントに依らない）', '__file__' in fp)
-    out = subprocess.run([sys.executable, str(ROOT / 'tests' / 'state_fp.py')],
-                         capture_output=True, text=True, cwd=str(ROOT / 'tests'))
-    lines = len(out.stdout.strip().splitlines())
-    rec('指紋が実際に取れる（tests/ から呼んでも空にならない）', lines > 5, f'{lines}件')
+    # **「何件出たか」で見ない**（§9.370）。1段目は8本並列で、`db/`に何が
+    # 在るかは隣の本のめぐり合わせで変わる——まっさらな取得では`master.sqlite3`
+    # がまだ3表しか無い瞬間があり、件数で見ると**直しようのない赤**になる
+    # （CIで実際に「3件」で落ちた）。ここで守りたいのは
+    # **どのカレントから呼んでも同じものが読める**ことなので、
+    # **自分で作った置き場**に対して、`tests/`からと置き場の頭からの2回を
+    # 突き合わせる。中身が分かっているので「空でない」も言い切れる。
+    with tempfile.TemporaryDirectory() as td:
+        fake = pathlib.Path(td)
+        (fake / 'tests').mkdir()
+        (fake / 'db').mkdir()
+        shutil.copyfile(ROOT / 'tests' / 'state_fp.py', fake / 'tests' / 'state_fp.py')
+        con = sqlite3.connect(fake / 'db' / 'master.sqlite3')
+        con.execute('CREATE TABLE [甲] ([a] TEXT)')
+        con.execute('CREATE TABLE [乙] ([a] TEXT)')
+        con.execute("INSERT INTO [乙] VALUES ('x')")
+        con.commit()
+        con.close()
+        runs = {}
+        for where in ('tests', '.'):
+            r = subprocess.run([sys.executable, str(fake / 'tests' / 'state_fp.py')],
+                               capture_output=True, text=True, cwd=str(fake / where))
+            runs[where] = r.stdout.strip()
+        rec('指紋が実際に取れる（表と行数を読めている）',
+            runs['tests'].splitlines() == ['master.sqlite3|乙|1', 'master.sqlite3|甲|0'],
+            runs['tests'].replace('\n', ' / ') or '空')
+        rec('指紋はどのカレントから呼んでも同じ（相対だと黙って空振りする）',
+            runs['tests'] == runs['.'],
+            'tests/から%d件・頭から%d件' % (len(runs['tests'].splitlines()),
+                                            len(runs['.'].splitlines())))
     rec('落ちた本は単独で2回回して切り分ける（不安定を見分ける）',
         'for _try in 1 2' in SH and '不安定' in SH)
     # **ランナーが開くDBの道は絶対で書く。** ランナーは`cd tests`してから走るので、
@@ -142,8 +171,17 @@ def main():
     rel = re.findall(r'''pathlib\.Path\(\s*['"](db/[^'"]+)['"]''', SH)
     rec('ランナーが開くDBの道が相対で書かれていない（相対だと黙って空振りする）',
         not rel, '; '.join(rel[:4]) or '0件')
-    rec('実績を空へ戻す口が実在するDBを指している',
-        'WAVELOG_RECORDS_DB' in SH and (ROOT / 'db' / 'records.sqlite3').exists())
+    # **「実在する」で見ない**（§9.369）。まっさらな取得には`db/`の中身が無い
+    # ——無いことは異常ではないので、それで落とすとCIの1段目が必ず赤になる。
+    # ここで守りたいのは「相対で書いて空振りしない」ことなので、**道の組み立て方**
+    # を見る（実体があるときは中身も確かめる）。
+    records_db = ROOT / 'db' / 'records.sqlite3'
+    rec('実績を空へ戻す口は`$ROOT`から組み立てている（相対だと黙って空振りする）',
+        'WAVELOG_RECORDS_DB="$ROOT/db/records.sqlite3"' in SH,
+        '無し' if 'WAVELOG_RECORDS_DB' not in SH else '相対で書いている')
+    rec('実績DBがあるときは読める（無い取得では測らない）',
+        (not records_db.exists()) or records_db.stat().st_size > 0,
+        'まっさらな取得のため測っていない' if not records_db.exists() else str(records_db))
 
 
     print(f'\n== {sum(R)}/{len(R)} PASS ==')

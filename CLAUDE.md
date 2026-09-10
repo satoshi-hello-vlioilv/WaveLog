@@ -2,7 +2,7 @@
 
 **このファイルは規則だけを持つ。** なぜそうなのか（実測値・撤回した案・
 踏んだ罠）は各行の「くわしく」の先——[`docs/decisions/`](docs/decisions/README.md)
-（299の決定記録＋主題別の索引）にある。**触る前にその先を開くこと。**
+（300の決定記録＋主題別の索引）にある。**触る前にその先を開くこと。**
 
 構成の詳細は `docs/ARCHITECTURE.md`、機能と起動方法は `README.md`、
 スケジュール機能そのものの設計は `docs/SCHEDULE_MODE_DESIGN.md`（§1〜§13）。
@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（512件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（521件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -264,11 +264,12 @@
 | 「記録した値」の並べ方は専用の盤が持つ | — | [§9.243](docs/decisions/9.243.md) |
 | 「既定へ戻す」は本当に空へ帰す | — | [§9.243](docs/decisions/9.243.md) |
 
-### 一覧と列（112件）
+### 一覧と列（113件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 一覧を描き直すときはスクロール位置を`renderGrid()`の入口で控える（戻すのは並べ終えてから） | `test_scpick.js` | [§9.357](docs/decisions/9.357.md) |
+| 仕掛一覧から伏せるロットは`WL.scheduleView.hiddenLotSet()`の1箇所が答える | `test_wipgone.js` | [§9.368](docs/decisions/9.368.md) |
 | 一覧のJS（`list-view.js`）は閉じてある。外から呼ぶのは`WL.list`の17個。`typeof`の判定も名前空間で書く | `test_eslint.py` | [§9.355](docs/decisions/9.355.md) |
 | 条件を足す入口はボタン。検索欄の顔をした器を同時に2つ出さない | `test_filter.js` | [§9.345](docs/decisions/9.345.md) |
 | 読み込みの秒数は**遅いときだけ**出す。「遅い」の答えは`WL.slowLoadMs`の1箇所。チップを消しても内訳の入口は残す | `test_listcache.js` | [§9.340](docs/decisions/9.340.md) |
@@ -469,11 +470,13 @@
 | 「選ばない」の札は空文字だけではない | `test_opblank.js` | [§9.246](docs/decisions/9.246.md) |
 | ロールは「設備名＋ロール名＋接触面＋径MAX＋径MIN＋備考」で1本 | `test_rollio.py` | [§9.246](docs/decisions/9.246.md) |
 
-### 作業スケジュール（16件）
+### 作業スケジュール（18件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 作業スケジュールの「開始」は着手できる**全行**に出す（次の1本は現場が自由に選ぶ。先頭N行に絞らない） | `test_workable.js` | [§9.339](docs/decisions/9.339.md) |
+| 外した予定は「仕掛にまだ在るとき」だけ一覧へ戻す。在席は3値・不明なら戻す | `test_wipgone.js` | [§9.368](docs/decisions/9.368.md) |
+| 選んだ予定のロット番号はつないでコピーできる。つなぎ方は`WL.lotCopy.joinLots()`の1箇所 | `test_lotcopy.js` | [§9.368](docs/decisions/9.368.md) |
 | さかのぼりの起点はサーバーの`history_from()`が1箇所で答える | `test_schistory.js` | [§9.366](docs/decisions/9.366.md) |
 | 済んだ行の代表時刻は`actual.startAt`→`actual.endAt`→`finishedAt`の順 | `test_schistory.js`・`test_scrowstyle.js` | [§9.366](docs/decisions/9.366.md) |
 | 稼働カレンダーは足りなくなったら伸びる | `test_scload.py` | [§9.291](docs/decisions/9.291.md) |
@@ -584,13 +587,15 @@
 | 紙に出すのは「帳票だけの1枚もの」 | `test_rpprint.js` | [§9.244](docs/decisions/9.244.md) |
 | 帳票ブロックの中身はマトリクスで並べられる | `test_blockbuild.js` | [§9.245](docs/decisions/9.245.md) |
 
-### 画面の土台（8件）
+### 画面の土台（10件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 拡張は登録表へ: あとに足す`on`／前で断る`gate`／丸ごと持つ`own`（`WL.measureHooks`・`WL.listHooks`）。被せも全置換も作らない | `test_patchlint.py`・`test_tolscale.js` | [§9.352](docs/decisions/9.352.md) |
 | 初回の案内は帯の1箇所。空の器は「ここに何が出るか」だけを言う | `test_uiux.js` | [§9.343](docs/decisions/9.343.md) |
 | 窓は`confirmModal`／`alertModal`／`promptModal`の3つだけ。素の`alert`/`confirm`/`prompt`は呼ばない | `test_patchlint.py`・`test_modalkeep.js` | [§9.342](docs/decisions/9.342.md) |
+| 窓は1枚しかない。窓の中から窓を開かない（名前を直すのはその場、消すのは行の中で2手） | `test_lotcopy.js` | [§9.368](docs/decisions/9.368.md) |
+| メニューの入れ子は本体へ足す。1項目のHTMLと配線は`rowMenuItemsHtml`/`bindRowMenuItems`の1箇所 | `test_lotcopy.js` | [§9.368](docs/decisions/9.368.md) |
 | `window.*`への新規公開は名前空間経由 | `test_globallint.py` | [決まり](docs/decisions/rules-misc.md) |
 | 画面のJSは領域フォルダ。綴りは1つ | `test_loadorder.py` | [§9.334](docs/decisions/9.334.md) |
 | 設定の窓は「決める順の番号付きの節」で、同じ値を2箇所に出さない | `test_eqsetup.js` | [§9.257](docs/decisions/9.257.md) |
@@ -647,10 +652,11 @@
 | 「何で選ばせるか」と「どう見えるか」は別の軸 | — | [§9.223](docs/decisions/9.223.md) |
 | 公差外・基準外は確認カードの色で気づかせる。NGの記録はその行の中 | `test_ngcard.js` | [§9.242](docs/decisions/9.242.md) |
 
-### 検証（テスト）（23件）
+### 検証（テスト）（26件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 網が当てにする物は「誰が作るか」を書けること。この端末の名乗りと権限はフィクスチャが持つ | `test_layers.py` | [§9.370](docs/decisions/9.370.md) |
 | 後片付けは「消えた」で確かめる。ランナーの道は絶対、テストは名前空間で呼ぶ | `test_layers.py`・`test_waitlint.py` | [§9.362](docs/decisions/9.362.md) |
 | 通しで落ちた本はランナーがその場で単独へ回して切り分ける。実績も1本ごとに空へ戻す | `test_layers.py` | [§9.356](docs/decisions/9.356.md) |
 | マスタは1本ごとに丸ごと戻す。汚した本は指紋で名指しする。落ちた本は単独で2回、待ちは黙らない | `test_layers.py`・`test_waitlint.py` | [§9.360](docs/decisions/9.360.md) |
@@ -661,6 +667,9 @@
 | `offsetParent`で「見えているか」を測らない。`position:fixed`と未組み立ての両方で`null`になる | — | [§9.346](docs/decisions/9.346.md) |
 | テストが開く／取りに行く`static/js`の道は領域つきで実在するURL（`/static/js/…`）。取れた中身が短ければ落とす | `test_loadorder.py` | [§9.334](docs/decisions/9.334.md) |
 | テストは3層（`--pure`＝サーバー不要・並列／`--smoke`＝各1本／全件は指示があったときだけ）。一覧の宣言は`run_all.sh`の1箇所 | `test_layers.py` | [§9.337](docs/decisions/9.337.md) |
+| 1段目（純粋な網）は「まっさらな取得で通る」ものだけ。確かめ方は`git archive` | `test_layers.py` | [§9.369](docs/decisions/9.369.md) |
+| 「物が無い」を欠陥として記録しない。測れないなら前提を作るか、測っていないと書く | `test_ddllint.py`・`test_layers.py` | [§9.369](docs/decisions/9.369.md) |
+| 並列で回している網に、共有の`db/`の差分を自分のせいにさせない | `test_dblayer.py` | [§9.369](docs/decisions/9.369.md) |
 | 更新履歴は版ごとに「利用者向け／開発の記録（`'dev':True`）」。判定は`changelog_data.is_dev()`の1箇所、画面は`e.dev`を読むだけ | `test_changelog.py`・`test_changelogui.js` | [§9.336](docs/decisions/9.336.md) |
 | 知識の置き場は「規則＝CLAUDE.md の表／経緯＝`docs/decisions/9.xxx.md`」。§番号は振り直さない | `test_docindex.py` | [§9.335](docs/decisions/9.335.md) |
 | 画面のJSの`no-undef`は0件。globalsは実物から作るので、IIFEで閉じると外からの呼び出しが出る | `test_eslint.py` | [§9.354](docs/decisions/9.354.md) |

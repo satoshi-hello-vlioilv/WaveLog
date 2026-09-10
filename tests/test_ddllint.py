@@ -120,22 +120,37 @@ except Exception:
 # ——落とさずに測ると ALTER を一度も通らず、直す前でも通ってしまう。
 work = Path('/tmp/wl_ddllint_master.sqlite3')
 src = DBS['MASTER']['path']
-if not Path(src).exists():
-    rec('マスタDBが見つからないため③は測っていない', False, str(src))
-else:
+from backend.repositories import operation_repo as op   # noqa: E402
+# **前提は「あれば使う」ではなく「作る」**（§9.369）。まっさらな取得には
+# `db/master.sqlite3`が無く、以前はそこで「測っていない」を**失敗として**
+# 記録していた——環境に物が無いことは欠陥ではないので、それで落とすと
+# CIの1段目（DBも設定もサーバーも無い取得）が必ず赤になる。
+# ここで要るのは「**その表が在って、丸め方の列だけが無い**」端末なので、
+# 写しが取れないときは空から1つ作る（ALTERを必ず通る形にする）。
+try:
+    work.unlink()
+except FileNotFoundError:
+    pass          # 前回の写しが無いだけ（作り直す）
+if Path(src).exists():
     shutil.copyfile(src, work)
-    from backend.repositories import operation_repo as op   # noqa: E402
-    dropped = ''
-    with connect(work) as c:
-        try:
-            c.cursor().execute('ALTER TABLE [操業データ項目マスタ] DROP COLUMN [丸め方]')
-            c.commit()
-        except Exception as e:
-            dropped = str(e)
-    with connect(work, True) as c:
-        have = {r[1] for r in c.cursor().execute('PRAGMA table_info([操業データ項目マスタ])')}
-    rec('前提: 「丸め方」が無い端末を作れている（この版へ上げた直後の姿）',
-        '丸め方' not in have, dropped or f'sqlite {sqlite3.sqlite_version}')
+# **表そのものは先に・1本で作る。** 2本で同時に作ると `table ... already exists`
+# で落ちるが、それは§9.315（列の重なり）とは別の話で、実運用では
+# `bootstrap()`が起動時に1回だけ通る。ここで測りたいのは列のほうなので、
+# 前提として単独で作っておく。
+with connect(work) as c:
+    op.ensure_item_table(c)
+dropped = ''
+with connect(work) as c:
+    try:
+        c.cursor().execute('ALTER TABLE [操業データ項目マスタ] DROP COLUMN [丸め方]')
+        c.commit()
+    except Exception as e:
+        dropped = str(e)
+with connect(work, True) as c:
+    have = {r[1] for r in c.cursor().execute('PRAGMA table_info([操業データ項目マスタ])')}
+rec('前提: 「丸め方」が無い端末を作れている（この版へ上げた直後の姿）',
+    '丸め方' not in have, dropped or f'sqlite {sqlite3.sqlite_version}')
+if True:
 
     errs = []
     bar = threading.Barrier(2)

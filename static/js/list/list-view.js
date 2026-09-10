@@ -1211,6 +1211,10 @@ function tableCacheSet(key,data,at){
 }
 function invalidateTableCache(){
  tableCache.clear();updateListFreshness(null);
+ /* 仕掛の在席の控え（§9.368）も一緒に捨てる。取り直した一覧はもう最新なので、
+    「消えた」と決めたロットを伏せ続ける理由が無い——残すと「一覧には出ている
+    のに見えない」が作れる。 */
+ WL.scheduleView?.forgetWorkPresence?.();
  // 分割判定が使う仕掛の生データ問い合わせも一緒に捨てる(一覧だけ新しくして
  // 親ロット判定が古いまま、という食い違いを作らない)。
  if(typeof window.invalidateSplitQueryCache==='function')window.invalidateSplitQueryCache();
@@ -1900,12 +1904,13 @@ function renderGridInner(){
  const canPlan=isWork&&window.accessMode?.mode==='schedule';
  const lotCol=hasLotDsp?findColumnFor('lotNo'):null,castCol=hasLotDsp?findColumnFor('castingNo'):null;
  const filteredCols=new Set((S.genericFilters||[]).map(f=>f.column));
- // 既にスケジュールへ投入済みのロットは一覧から消す(§9.15新設)。今開いて
- // いる設備の作業スケジュール(schedule-view.js側のscState.entries)に無い
- // ロットだけを残す。対象外(スケジュール画面を開いていない・schedule
- // モードでない等)ではwindow.scScheduledLotSet?.()がnullを返し、
- // フィルタしない(通常の全件表示)。
- const scheduledLots=canPlan?window.scScheduledLotSet?.():null;
+ /* 一覧に出すべきでないロットは伏せる（§9.15＋§9.368）。答えるのは
+    スケジュール画面の1箇所（`WL.scheduleView.hiddenLotSet()`）で、
+      ・**予定に居るロット**（投入済みなので一覧に残すと二重に見える）
+      ・**仕掛から消えたと確かめたロット**（外しても戻さない）
+    の2つを1つの並びで返す。対象外（スケジュール画面を開いていない・
+    schedule モードでない等）では`null`が返り、絞り込まない（全件表示）。 */
+ const scheduledLots=canPlan?WL.scheduleView?.hiddenLotSet?.():null;
  const allVisibleRows=(scheduledLots&&scheduledLots.size)?S.rows.filter(r=>!scheduledLots.has(pick(r,'lotNo'))):S.rows;
  /* ---------- 分割ありの子ロットは親の直下へ畳む(§9.239 ⑤-2、利用者の指示) ----------
     「分割ありのものについて、親や子の情報が表示されますが、分割ありの子に

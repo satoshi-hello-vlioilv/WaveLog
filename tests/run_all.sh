@@ -69,7 +69,11 @@ test_mastershare test_noaccess test_patchlint test_pcname test_pick \
 test_presence test_printcore test_pyflakes test_pywarn test_quietlint \
 test_recmirror test_recsplit test_routesplit test_savechip \
 test_scsnapread test_scwatch test_sortpipe test_storage test_tabclose \
-test_tabledef test_tablequery test_workdate test_waitlint test_importlint"
+test_tabledef test_workdate test_waitlint test_importlint"
+# **`test_tablequery`は1段目に入れない**（§9.369）。サーバーは要らないが
+# **仕掛の実データが要る**——まっさらな取得では読み込み先が既定の共有パス
+# （`\\Nlmsrvngy03\...`）に落ちるので必ず落ちる。1段目の約束は
+# 「DBも設定もサーバーも無い取得でそのまま通る」ことなので、ここには置けない。
 # 2段目。**全部の代わりではなく「動いていること」の確認**なので各1本だけ。
 SMOKE_TESTS="test_boot test_bootui test_flows test_sccat test_mcore"
 
@@ -79,6 +83,10 @@ if [ "$1" = "--pure" ]; then
   T0=$(date +%s)
   PURE_OUT="$(mktemp -d)"; export PURE_OUT
   trap 'rm -rf "$PURE_OUT"' EXIT
+  # **並列で回していることを本へ伝える**（§9.369）。共有の`db/`を見る網は、
+  # 隣の本が作ったファイルを自分のせいにできない——測れないことを
+  # 「変わっていない」とも「変えた」とも言わせないため、印を1つ渡す。
+  export WAVELOG_PARALLEL=1
   printf '%s\n' $PURE_TESTS | xargs -P "$JOBS" -I@ sh -c \
     'timeout 300 python3 "@.py" >"$PURE_OUT/@.log" 2>&1; echo $? >"$PURE_OUT/@.rc"'
   TOT=0; NG=0; RAN=0
@@ -434,10 +442,73 @@ echo "--- 起動(サーバーを再起動する) ---"
 # 実行するとき(`run_all.sh test_orphan`)も同じ白紙から始められるように、
 # テストを選ぶより前に置く。
 resetcontent
+# **控える前に、マスタの表を作らせる**（§9.370）。`bootstrap()`が作るのは
+# `データソースマスタ`・`パス設定マスタ`・`クエリ結合マスタ`の3つだけで、
+# 残りは**画面が最初に触ったときに作られる**。まっさらな取得ではその前に
+# ここへ来るので、`reseed`が「表が無い」で種を1件も入れられず、しかも
+# **その不完全なマスタを`snap_master`が「あるべき姿」として控えて**、
+# 1本ごとに戻していた——`テスト設備A`が最後まで現れず、`test_sccat`が
+# `.sc-board-row`を10秒待って落ちた（CIの2段目でだけ出た。開発機の`db/`は
+# 何度も動かした結果なので、表がそろっている）。
+# **口は製品のものを使う**（DDLをここへ書き写さない・§9.216）。
+warm_master(){
+  for u in /api/equipment-master /api/operation-item-master \
+           /api/operation-choice-master /api/choice-link-master \
+           /api/report-block-master /api/display-rule-master \
+           /api/list-view-master /api/column-preset-master \
+           /api/access-permission-master /api/roll-master \
+           /api/filter-presets /api/sort-presets \
+           /api/schedule/shift-pattern-master /api/schedule/stop-category-master \
+           /api/schedule/stop-reason-master /api/schedule/row-style-master; do
+    curl -s "$API$u" >/dev/null
+  done
+}
+warm_master
+# **この端末の名乗りをフィクスチャへ渡す**（§9.370）。`アクセス権限マスタ`が
+# 空だと既定は「編集可・スケジュール不可」なので、まっさらな取得では
+# スケジュールモードへ入れず、俯瞰ボードが最後まで出ない。誰の・どの端末かに
+# 答えるのは`current_login_id()`／`current_pc_name()`の1箇所なので、
+# **推測せず製品に聞く**（`make_fixture.py`は`backend`をimportしない）。
+WAVELOG_FIXTURE_LOGIN=$(curl -s "$API/api/access-mode" | python3 -c \
+  "import sys,json;print((json.load(sys.stdin).get('loginId') or ''))" 2>/dev/null)
+WAVELOG_FIXTURE_PC=$(curl -s "$API/api/access-mode" | python3 -c \
+  "import sys,json;print((json.load(sys.stdin).get('pcName') or ''))" 2>/dev/null)
+export WAVELOG_FIXTURE_LOGIN WAVELOG_FIXTURE_PC
 # **白紙のマスタを1枚控える**（§9.360）。ここから先、1本ごとにこれへ戻す。
 # 控えるのは`reseed`(種データ)と`resetcontent`(見せ方)を通した**直後**——
 # ここが「あるべき姿」で、以降どの本が何を足しても必ずここへ帰る。
 reseed
+# **種が入ったことを確かめる**（§9.370）。入っていないまま控えると、以降
+# ぜんぶの本が「設備が1つも無い」画面を見る——しかも落ちるのは
+# 30秒待った先なので、原因が遠い。**黙って進まない。**
+if ! WAVELOG_MASTER_DB="$MASTER_DB" python3 - <<'PYCHK'
+import sqlite3, sys, os, pathlib
+p = pathlib.Path(os.environ['WAVELOG_MASTER_DB'])
+if not p.exists():
+    print('!! マスタDBがありません: %s' % p); sys.exit(1)
+c = sqlite3.connect(p)
+have = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+if '設備マスタ' not in have:
+    print('!! 設備マスタの表がありません（warm_master が効いていません）'); sys.exit(1)
+n = c.execute('SELECT COUNT(*) FROM [設備マスタ] WHERE [設備名] LIKE ?', ['テスト設備%']).fetchone()[0]
+if n < 2:
+    print('!! 検証用の設備が入っていません（%d件）。このあとの本は設備の無い画面を見ます' % n); sys.exit(1)
+PYCHK
+then
+  echo "   種データを入れ直せないので、ここで止めます（黙って進むと原因の遠い赤が並びます）" >&2
+  exit 1
+fi
+# **「入れた」ではなく「効いた」で確かめる**（§9.370）。権限は行を書くだけでは
+# 済まない——マスタを読むのはリクエストのたびなので、**実際に切り替えて**
+# 200が返ることを見る。403のまま進むと、スケジュール系の網が全部
+# 「編集モードの画面」を見ることになり、落ちるのは10〜30秒待った先になる。
+if [ "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/access-mode" \
+        -H 'Content-Type: application/json' -d '{"mode":"schedule"}')" != "200" ]; then
+  echo "!! この端末はスケジュールモードへ切り替えられません（アクセス権限マスタの" >&2
+  echo "   [スケジュール可否]が入っていない）。名乗り: '$WAVELOG_FIXTURE_LOGIN' / '$WAVELOG_FIXTURE_PC'" >&2
+  exit 1
+fi
+mode edit
 snap_master
 run python3 test_boot.py
 sleep 3
@@ -449,7 +520,7 @@ for t in test_stopcat test_workable test_wkbg test_mcore test_burr test_ngcard t
 
 echo "--- スケジュール (テスト側でモードを切り替える) ---"
 for t in test_screport test_startwork test_scsync test_sccat test_scbalance test_scbatch \
-         test_screorder test_scperm test_scperf test_wkfast test_scsplit test_splitlive test_scprint test_scdrop test_scpick test_sccontent test_recperm test_sctimecols test_scinsert test_audittrail test_scstop test_scwarm test_scundecided test_scwatchui test_sccomment test_scframe test_scrowstyle test_schistory test_scbar test_scsave test_scwho test_scmodecols test_defectlink test_appquit; do run $NODE $t.js; done
+         test_screorder test_scperm test_scperf test_wkfast test_scsplit test_splitlive test_scprint test_scdrop test_scpick test_sccontent test_recperm test_sctimecols test_scinsert test_audittrail test_scstop test_scwarm test_scundecided test_scwatchui test_sccomment test_scframe test_scrowstyle test_schistory test_scbar test_scsave test_scwho test_scmodecols test_wipgone test_lotcopy test_defectlink test_appquit; do run $NODE $t.js; done
 
 echo "--- スケジュール (scheduleモード固定) ---"
 mode schedule

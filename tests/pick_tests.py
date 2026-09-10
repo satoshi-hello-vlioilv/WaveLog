@@ -147,6 +147,8 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scowner', 'test_scrowstyle', 'test_scload', 'test_scbar', 'test_scsave',
                      # §9.366: さかのぼりの起点と2段の選び方
                      'test_schistory',
+                     # §9.368: 外したロットは仕掛に無ければ一覧へ戻さない／ICASコピー
+                     'test_wipgone', 'test_lotcopy',
                      'test_scsession', 'test_scwho']
 # 実績データリストと操業データ表（§9.241 ②③）。**一覧が紙の材料を渡す**ので、
 # どちらを触っても両方回す。

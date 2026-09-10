@@ -329,6 +329,12 @@
   "ms": 4400,
   "silent": 0
  },
+ "test_lotcopy.js": {
+  "count": 0,
+  "harness": 1,
+  "ms": 0,
+  "silent": 0
+ },
  "test_maint.js": {
   "count": 7,
   "harness": 1,
@@ -898,6 +904,12 @@
   "harness": 1,
   "ms": 2700,
   "silent": 3
+ },
+ "test_wipgone.js": {
+  "count": 0,
+  "harness": 1,
+  "ms": 0,
+  "silent": 0
  },
  "test_wkbg.js": {
   "count": 2,

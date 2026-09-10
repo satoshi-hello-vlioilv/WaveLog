@@ -32,9 +32,11 @@
 import ast
 import collections
 import hashlib
+import os
 import pathlib
 import subprocess
 import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BACKEND = ROOT / 'backend'
@@ -193,7 +195,16 @@ def main():
     opened = [x for x in (line[0][len('WRITABLE_OPEN:'):].split('|') if line else []) if x]
     rec('import backend.db_access が書ける形でDBを開かない', r.returncode == 0 and not opened,
         (r.returncode, opened, r.stderr[-300:]))
-    rec('import backend.db_access が db/ の中身を変えない', not changed, changed)
+    # **並列で回しているときは測れない**（§9.369）。`db/`は全部の本が共有して
+    # いるので、隣の本が作った`master.sqlite3`が差分に出る——それを`import`の
+    # せいにすると、直しようのない赤が毎回出る（実際にCIの1段目がそうなった）。
+    # 上の「書ける形で開かない」が本命の判定で、こちらはその裏取り。
+    # **測れないときは黙って通さず、測っていないと書く。**
+    if os.environ.get('WAVELOG_PARALLEL'):
+        rec('import backend.db_access が db/ の中身を変えない（並列中は裏取りのみ）',
+            True, '並列で回しているため差分は測っていない: ' + (str(changed) or 'なし'))
+    else:
+        rec('import backend.db_access が db/ の中身を変えない', not changed, changed)
 
     # 5) 書くのは bootstrap()。呼ぶのは app.py の1箇所
     rec('db_access.bootstrap() がある', 'def bootstrap()' in (BACKEND / 'db_access.py').read_text(encoding='utf-8'))
@@ -202,16 +213,23 @@ def main():
         app.count('db_access.bootstrap()'))
 
     # 6) 網そのものが素通りしないこと——欠陥を注いで落ちることを見る
-    probe = BACKEND / '_dblayer_probe.py'
-    try:
-        probe.write_text('from . import db_access  # noqa: F401 網の確認用\n'
-                         'def f():\n from . import db_mirror  # noqa: F401\n', encoding='utf-8')
-        t2, d2 = graph(BACKEND)
+    # **`backend/`の中には置かない**（§9.370）。1段目は8本並列なので、
+    # `backend/*.py`を歩く別の網（`test_flags`）が**一覧に出た直後に消えた**
+    # ファイルを読みに行って FileNotFoundError で止まる（実際に踏んだ）。
+    # `modules()`は道の名前ではなく`backend.<相対パス>`で名前を付けるので、
+    # **空の入れ物を1つ作れば同じ形で測れる**。共有の場所を汚さない。
+    with tempfile.TemporaryDirectory() as td:
+        fake = pathlib.Path(td)
+        # `targets()`は「解決できた名前だけ」を返すので、指し先も置いておく。
+        (fake / 'db_access.py').write_text('', encoding='utf-8')
+        (fake / 'db_mirror.py').write_text('', encoding='utf-8')
+        (fake / '_dblayer_probe.py').write_text(
+            'from . import db_access  # noqa: F401 網の確認用\n'
+            'def f():\n from . import db_mirror  # noqa: F401\n', encoding='utf-8')
+        t2, d2 = graph(fake)
         rec('網が「関数の中のimport」を実際に数えている',
             'backend.db_mirror' in d2.get('backend._dblayer_probe', set())
             and 'backend.db_access' in t2.get('backend._dblayer_probe', set()))
-    finally:
-        probe.unlink(missing_ok=True)
 
 
 if __name__ == '__main__':

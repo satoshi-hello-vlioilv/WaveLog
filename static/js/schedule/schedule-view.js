@@ -1954,17 +1954,30 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(rows.length===1)addRowToSchedule(rows[0],scState.equipment);
   else addRowsToSchedule(rows,scState.equipment);
  };
- // 既にスケジュールへ投入済みのロットを仕掛一覧から消す(§9.15新設、
- // list-view.js renderGrid()から参照)。今開いている設備のscState.entries
- // (種別='作業'のみ、設備停止にロット番号は無い)に含まれるロット番号を
- // 返す。楽観的追加(__pending)の間もすぐ一覧から消えてほしいため、ここは
- // pendingかどうかを区別しない。
- window.scScheduledLotSet=function(){
+ /* 仕掛一覧から伏せるロット（§9.15＋§9.368、list-view.js renderGrid()から参照）。
+    **2種類ある**——どちらも「この一覧に出すべきでない行」なので1つの並びで返す。
+
+     ① **予定に居るロット**（§9.15）。今開いている設備のscState.entries
+        （種別='作業'のみ。設備停止にロット番号は無い）。楽観的追加
+        （__pending）の間もすぐ消えてほしいので、pendingかどうかは見ない。
+     ② **仕掛から消えたと確かめたロット**（§9.368）。仕掛一覧の行は
+        読み込んだ時点の写しなので、予定へ入れてから外すまでの間に元データが
+        入れ替わっている（15分に1回・§9.89）ことがある。外すときに
+        1件だけ確かめて「消えている」と分かったものは、写しに残っていても
+        戻さない。
+
+    **対象外のときはnullを返す**（スケジュール画面を開いていない・
+    schedule モードでない等）。呼ぶ側は絞り込まず全件を出す。 */
+ function hiddenLotSet(){
   if(!scState.fullControl||scState.boardMode!=='single'||!scState.equipment)return null;
   const set=new Set();
   scState.entries.forEach(e=>{if(e.kind==='作業'&&e.lotNo)set.add(String(e.lotNo))});
+  /* **一覧の行と同じ綴りで持つ**（§9.368）。予定の`lotNo`はもともと
+     仕掛一覧の行から取った値なので、生のまま突き合わせて一致する
+     ——ここで正規化すると、一覧側（生の値で引く）と食い違う。 */
+  scGoneLots.forEach(lot=>set.add(lot));
   return set;
- };
+ }
 
  /* ---------- ビュー排他制御 ---------- */
  function exitScheduleView(){
@@ -2142,6 +2155,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      （自動の見張りは今までどおり材料を捨てない。押していないのに毎回
      仕掛を読み直すと重い）。 */
   if(force&&typeof invalidateWorkable==='function')invalidateWorkable();
+  /* **在席の控えも捨てる**（§9.368）。「いま分かることを全部見直す」操作
+     なので、前に「消えた」と決めたロットも仕掛から引き直す。 */
+  if(force)forgetWorkPresence();
   const r=await (scState.boardMode==='board'?loadOverviewBoard(force):refreshAll(force));
   if(force&&scState.boardMode!=='board'&&scState.equipment
      &&typeof refreshWorkableInBackground==='function')
@@ -3016,6 +3032,141 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    scheduleWorkableWatch();
   }catch(err){console.warn('作業可否の更新に失敗しました',err)}
  }
+/* ---------- 仕掛に在るか（§9.368） ----------
+    利用者の報告:「作業段取りから外したときに、すでに最新の仕掛データには
+    載っていないものがあったとしても、外したらそのままそのロットが仕掛に
+    戻ります。本来は載ってこないようにしたいです」。
+
+    **なぜ戻ってしまうのか。** 仕掛一覧の行（`S.rows`）は読み込んだ時点の
+    **写し**で、§9.15 はそこから「予定に居るロット」を伏せているだけ
+    ——外せば、写しに残っている行がそのまま戻る。仕掛の元データは15分に
+    1回入れ替わり、手元の写しは`db_mirror`が60秒周期で追いかける（§9.89）
+    ので、**予定へ入れてから外すまでの間に仕掛から落ちている**ことは普通に
+    起こる。画面の写しはそれより更に古い（`tableCache`はTTL3分、取り直す
+    までは読み込んだときのまま）。
+
+    **直し方**（利用者の指示どおり）:
+      ① 仕掛一覧は最新の仕掛を持つ＝写しが古いと分かった行は戻さない
+      ② 予定に載っているロットは**先に1度まとめて**在席を確かめておく
+      ③ 外すときは**そのロットだけ**を見る（全部を読み直さない）
+
+    ②を「まとめて1往復」にできるのが肝で、束ね方は§9.94の`starts_any`
+    （「この先頭のどれかで始まる」）をそのまま使う。60件までを1回で引き、
+    返ってきた行のロット番号と**完全一致**で突き合わせる（前方一致のままだと
+    `A1`で引いた答えに`A12`が混ざる）。
+
+    在席は**3値**（在る／消えた／不明）。読めなかったことを「消えた」へ
+    倒さない（§3）——確かめられないものを黙って画面から消すと、
+    「入れたはずのロットがどこにも無い」になる。**不明のときは戻す**
+    （fail-open。§9.51が「確認できないものを作業させない」と逆向きに倒すのは、
+    あちらが危ない側だから。こちらは見せないほうが危ない）。 */
+ const PRESENCE_BATCH=60;        // `starts_any`が1回で受ける上限（tables.py）
+ const scInWork=new Map();       // 正規化ロット -> true(仕掛に在る)/false(消えた)
+ /* 外したあと、仕掛一覧へ戻さないロット（生の綴りのまま持つ）。
+    **一覧を取り直したら捨てる**——取り直した一覧はもう最新なので、
+    伏せる理由が無い（`forgetWorkPresence()`）。 */
+ const scGoneLots=new Set();
+ let scWorkLotSource=null;       // {key,table,lotCol} 仕掛の表とロット番号の列
+ function noteInWork(lot,present){
+  const k=normalizeLotKey(lot);
+  if(k)scInWork.set(k,!!present);
+ }
+ function inWorkOf(lot){
+  const k=normalizeLotKey(lot);
+  if(!k)return 'unknown';
+  return scInWork.has(k)?(scInWork.get(k)?'in':'gone'):'unknown';
+ }
+ /* 仕掛一覧を取り直すときに呼ぶ（list-view.jsの`invalidateTableCache()`）。
+    **控えた事実も一緒に捨てる**——新しい写しから引き直せばよく、
+    残しておくと「一覧には出ているのに伏せられている」が作れる。 */
+ function forgetWorkPresence(){
+  scInWork.clear();scGoneLots.clear();scWorkLotSource=null;
+ }
+ /* 仕掛の「表」と「ロット番号の列」。**1度だけ引いて使い回す**——列名は
+    現場ごとに違うので別名の一覧（§9.87）から実在するものを選ぶ。 */
+ async function workLotSource(){
+  if(scWorkLotSource)return scWorkLotSource;
+  const key=workDbKey();
+  if(!key)return null;
+  /* 作業可否の索引（§9.51）が既に表と列を引いていれば、それを使う
+     ——同じことを2度サーバーへ聞かない。 */
+  if(scWorkable.table&&scWorkable.cols&&scWorkable.cols.lotCol){
+   scWorkLotSource={key,table:scWorkable.table,lotCol:scWorkable.cols.lotCol};
+   return scWorkLotSource;
+  }
+  const t=await api('/api/tables?db='+encodeURIComponent(key));
+  const table=(t.tables||[])[0];
+  if(!table)return null;
+  const d=await api('/api/table?'+new URLSearchParams({db:key,table,page:1,page_size:1}));
+  const lotCol=(WL.base.aliases.lotNo||[]).find(n=>(d.columns||[]).includes(n));
+  if(!lotCol)return null;
+  scWorkLotSource={key,table,lotCol};
+  return scWorkLotSource;
+ }
+ /* 在席をまとめて確かめる。**例外は投げない**——確かめられなければ
+    「不明」のままにして、呼ぶ側が戻す側へ倒す。 */
+ async function checkWorkPresence(lots){
+  const want=[...new Set((lots||[]).map(normalizeLotKey).filter(Boolean))];
+  if(!want.length)return;
+  let src=null;
+  try{src=await workLotSource()}
+  catch(e){WL.quiet.note('仕掛の表を引けない（在席は不明のまま）',e);return}
+  if(!src)return;
+  for(let i=0;i<want.length;i+=PRESENCE_BATCH){
+   const chunk=want.slice(i,i+PRESENCE_BATCH);
+   /* `starts_any`は読点区切りで渡す（§9.94）ので、**読点を含むロット番号は
+      束ねられない**。そのぶんだけ1件ずつ引く（黙って落とさない）。 */
+   const batch=chunk.filter(x=>!x.includes(','));
+   const solo=chunk.filter(x=>x.includes(','));
+   try{
+    if(batch.length){
+     const q=new URLSearchParams({db:src.key,table:src.table,page:1,
+      page_size:String(Math.min(500,Math.max(100,batch.length*4))),
+      columns:src.lotCol,
+      filters:JSON.stringify([{column:src.lotCol,op:'starts_any',value:batch.join(',')}])});
+     const d=await api('/api/table?'+q);
+     const found=new Set((d.rows||[]).map(r=>normalizeLotKey(r[src.lotCol])));
+     batch.forEach(lot=>noteInWork(lot,found.has(lot)));
+    }
+    for(const lot of solo){
+     const q=new URLSearchParams({db:src.key,table:src.table,page:1,page_size:1,
+      columns:src.lotCol,
+      filters:JSON.stringify([{column:src.lotCol,op:'eq',value:lot}])});
+     const d=await api('/api/table?'+q);
+     noteInWork(lot,!!(d.rows||[]).length);
+    }
+   }catch(e){WL.quiet.note('仕掛の在席を引けない（不明のまま扱う）',e)}
+  }
+ }
+ /* ② 予定を描いたら、載っているロットの在席を**裏で**確かめておく。
+    待たせない——外す操作が来たときに答えが揃っていればよい。 */
+ function refreshWorkPresenceInBackground(){
+  const lots=[...allPlannedWorkLots()].filter(l=>inWorkOf(l)==='unknown');
+  if(!lots.length)return;
+  checkWorkPresence(lots).catch(WL.quiet('仕掛の在席を確かめられない（不明のまま扱う）'));
+ }
+ /* ③ 外したロットを仕掛一覧へ戻してよいか。**そのロットだけ**を見る。
+    控えに無いものだけ1往復で確かめる。戻り値は「戻さないと決めたロット」。 */
+ async function settleRemovedLots(lots){
+  const raw=(lots||[]).map(v=>String(v??'')).filter(Boolean);
+  if(!raw.length)return [];
+  const unknown=raw.filter(l=>inWorkOf(l)==='unknown');
+  if(unknown.length)await checkWorkPresence(unknown);
+  const gone=raw.filter(l=>inWorkOf(l)==='gone');
+  if(!gone.length)return [];
+  gone.forEach(l=>scGoneLots.add(l));
+  refreshScheduledLotFilter();
+  return gone;
+ }
+ /* 仕掛一覧から入れたロットは、その時点で**確かに仕掛に在る**。
+    往復ゼロで控えられるので控える（§9.67と同じ考え方）。 */
+ function noteLotFromWorkList(lot){
+  const raw=String(lot??'');
+  if(!raw)return;
+  noteInWork(raw,true);
+  if(scGoneLots.delete(raw))refreshScheduledLotFilter();
+ }
+
  /* 仕掛一覧を取り直した直後など、外から可否を更新したいときの入口。 */
  window.refreshScheduleWorkable=refreshWorkableInBackground;
  /* 可否がなぜその値なのかを確認するための状態。全部「?」のときに
@@ -3134,6 +3285,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // 利用者が押した「再計算」(force)では、可も含めて情報源を取り直す。
   // 画面を開いた・設備を切り替えただけのときは可でない行だけを追いかける。
   refreshWorkableInBackground(force,force);
+  /* 仕掛に在るかも**待たずに**確かめておく（§9.368 ②）。外す操作が来た
+     ときに答えが揃っていれば、そのとき往復せずに決められる。 */
+  refreshWorkPresenceInBackground();
   report({progress:'仕掛一覧を並べて表示しています',step:2});
   /* **ここで一度描かせる**(§9.182)。この直後に仕掛一覧の組み立て(2000行×
      200列)が入り、メインスレッドを数百ms塞ぐ。描かせずに進むと、予定が
@@ -4676,8 +4830,43 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     下へ離す**（§5。「完了」の隣に「削除」を置かない）。
     見た目は見出しの右クリックと同じ`.col-head-menu`を使い回す
     ——2つの流儀を覚えさせない。 */
- let scRowMenuEl=null;
- function closeRowMenu(){if(scRowMenuEl){scRowMenuEl.remove();scRowMenuEl=null}}
+ let scRowMenuEl=null,scRowSubEl=null;
+ function closeRowSubMenu(){if(scRowSubEl){scRowSubEl.remove();scRowSubEl=null}}
+ function closeRowMenu(){closeRowSubMenu();if(scRowMenuEl){scRowMenuEl.remove();scRowMenuEl=null}}
+ /* **1項目ぶんのHTMLは1箇所**（§9.163）。親のメニューと入れ子のメニューで
+    2通り書くと、片方だけ直した見た目が並ぶ。
+    **できない項目も並べて理由を書く**（§4／§9.220 2①）。メニューから
+    消すと「そもそも無い機能」と読まれ、いま何が邪魔しているのかが
+    分からない。理由は`note`に入れ、`title`だけでなく本文にも出す
+    ——ツールチップは触らないと読めない。 */
+ function rowMenuItemsHtml(list){
+  return list.map((it,i)=>it.sep?'<div class="chm-sep"></div>'
+    :`<button type="button" data-i="${i}"${it.disabled?' disabled':''}`
+     +` class="${[it.danger?'chm-danger':'',it.sub?'chm-has-sub':''].filter(Boolean).join(' ')}"`
+     +`${it.note?` title="${esc(it.note)}"`:''}>${esc(it.label)}`
+     +`${it.sub?'<span class="chm-sub-mark" aria-hidden="true">▸</span>':''}`
+     +`${it.note&&(it.disabled||it.showNote)?`<small class="chm-why">${esc(it.note)}</small>`:''}</button>`).join('');
+ }
+ /* 押したときの配線も1箇所。`sub`を持つ項目は**触れると横に開く**——
+    親そのものも押せる（押したら`run`が動く）ので、押しても何も起きない
+    見出しを作らない（§4）。 */
+ function bindRowMenuItems(box,list,openSub){
+  box.querySelectorAll('[data-i]').forEach(b=>{
+   const it=list[Number(b.dataset.i)];
+   const enter=()=>{
+    if(it&&it.sub&&openSub)openSub(b,it);
+    else closeRowSubMenu();
+   };
+   b.addEventListener('mouseenter',enter);
+   b.addEventListener('focus',enter);
+   b.onclick=()=>{
+    if(it&&it.disabled)return;
+    if(it&&!it.run&&it.sub){enter();return}   // 子を持つだけの項目は開くだけ
+    closeRowMenu();
+    if(it&&it.run)it.run();
+   };
+  });
+ }
  function openRowMenu(ev,title,note,items){
   closeRowMenu();
   const list=items.filter(Boolean);
@@ -4687,25 +4876,39 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   scRowMenuEl=m;
   m.innerHTML=`<div class="chm-head" title="${esc(title)}">${esc(title)}</div>`
    +(note?`<div class="chm-label">${esc(note)}</div>`:'')
-   /* **できない項目も並べて理由を書く**（§4／§9.220 2①）。メニューから
-      消すと「そもそも無い機能」と読まれ、いま何が邪魔しているのかが
-      分からない。理由は`note`に入れ、`title`だけでなく本文にも出す
-      ——ツールチップは触らないと読めない。 */
-   +list.map((it,i)=>it.sep?'<div class="chm-sep"></div>'
-     :`<button type="button" data-i="${i}"${it.disabled?' disabled':''}`
-      +`${it.danger?' class="chm-danger"':''}`
-      +`${it.note?` title="${esc(it.note)}"`:''}>${esc(it.label)}`
-      +`${it.disabled&&it.note?`<small class="chm-why">${esc(it.note)}</small>`:''}</button>`).join('');
+   +rowMenuItemsHtml(list);
   document.body.append(m);
   const w=m.offsetWidth,h=m.offsetHeight;
   m.style.left=`${Math.max(6,Math.min(ev.clientX,innerWidth-w-6))}px`;
   m.style.top=`${Math.max(6,Math.min(ev.clientY,innerHeight-h-6))}px`;
-  m.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{
-   const it=list[Number(b.dataset.i)];
-   if(it&&it.disabled)return;
-   closeRowMenu();
-   if(it&&it.run)it.run();
-  });
+  bindRowMenuItems(m,list,openRowSubMenu);
+ }
+ /* ---------- 入れ子のポップオーバー（§9.368） ----------
+    **本体へ足す**（`document.body`）——親のメニューの中へ絶対配置で入れると、
+    親の枠で切れる（§9.201「浮きパネルの中に絶対配置のポップアップを作らない」）。
+    右に入らなければ左へ返す。閉じるのは親と同じ規則（外を押す・Esc）で、
+    子も`.sc-row-menu`を名乗るので押しても閉じない。 */
+ function openRowSubMenu(btn,parent){
+  closeRowSubMenu();
+  const raw=typeof parent.sub==='function'?parent.sub():parent.sub;
+  const list=(raw||[]).filter(Boolean);
+  if(!list.length)return;
+  const m=document.createElement('div');
+  m.className='col-head-menu sc-row-menu sc-row-submenu';
+  scRowSubEl=m;
+  m.innerHTML=rowMenuItemsHtml(list);
+  document.body.append(m);
+  /* **横に置く基準は「親のメニューの端」**——押した項目の端で置くと、
+     メニューの内側の余白のぶんだけ親に重なる（実測。どの項目を押して
+     いるのか分からなくなる）。縦は押した項目の高さに合わせる。 */
+  const owner=(btn.closest('.col-head-menu')||btn).getBoundingClientRect();
+  const r=btn.getBoundingClientRect();
+  const w=m.offsetWidth,h=m.offsetHeight;
+  let left=owner.right+2;
+  if(left+w>innerWidth-6)left=Math.max(6,owner.left-w-2);
+  m.style.left=`${left}px`;
+  m.style.top=`${Math.max(6,Math.min(r.top-6,innerHeight-h-6))}px`;
+  bindRowMenuItems(m,list,null);
  }
  document.addEventListener('mousedown',ev=>{
   if(scRowMenuEl&&!ev.target.closest('.sc-row-menu'))closeRowMenu();
@@ -5837,6 +6040,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      canPick&&{label:picked?'選択を外す':'この行を選ぶ',
                note:'選んだ行はまとめて動かす・まとめて外せます',
                run:()=>setPicked(e.id,!picked)},
+     /* ICASコピー（§9.368）。**押せばすぐコピー**、横に開く子で
+        つなぎ方を選ぶ・設定を開く。理由（何件を・どのルールで）は
+        本文にも出す（`showNote`）——次に何が起きるかを推測させない（§2）。 */
+     ...lotCopyMenuItems(e),
      {sep:true},
      {label:'表示列の設定を開く…',run:()=>openContentPanel()},
      (canDelete||canDeleteHistory)&&{sep:true},
@@ -6158,6 +6365,21 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     // したまま二度と消えない不整合が起こり得た。
     if(scState.entries.every(x=>x.id!==removed.id)){scState.entries.splice(Math.min(idx,scState.entries.length),0,removed);renderTimeline()}
    }});
+  noteRemovedLots([removed]);
+ }
+ /* 外したロットを仕掛一覧へ戻すか決める（§9.368 ③）。**外す操作は止めない**
+    ——判定は裏で走らせ、決まったら一覧を組み直す（在席が控えにあれば往復ゼロ）。
+    戻さないと決めたぶんは**必ず字で言う**（§3）——黙って消えると、
+    「外したのに一覧にも無い」としか読めない。 */
+ function noteRemovedLots(entries){
+  const lots=(entries||[]).filter(e=>e&&e.kind==='作業'&&e.lotNo).map(e=>String(e.lotNo));
+  if(!lots.length)return;
+  settleRemovedLots(lots).then(gone=>{
+   if(!gone.length)return;
+   const head=gone.slice(0,4).join('・');
+   showToast&&showToast(`${gone.length}件は仕掛一覧へ戻していません`,
+    `${head}${gone.length>4?`　ほか${gone.length-4}件`:''}／最新の仕掛データに載っていないためです`,6000);
+  }).catch(WL.quiet('在席を確かめられない（今までどおり一覧へ戻す）'));
  }
 
  /* 履歴(作業中・完了)の削除(§9.61)。
@@ -6330,6 +6552,39 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    if(row)row.classList.toggle('sc-dragging',on);
   });
  }
+ /* ---------- ICASコピー（§9.368） ----------
+    利用者の指示:「選択中のすべてのロットの『ロット番号』を区切り文字である
+    半角スペースを使って区切って連結させた形にしてコピーさせる」。
+
+    **何をコピーするか**は1箇所で決める:
+      ・行を選んでいれば**選んだ全部**（並びは画面の上から下）
+      ・選んでいなければ**右クリックした行の1件**
+    選んでいるのに右クリックした行だけを写すと、選んだ手間が無駄になる
+    （§9.170のまとめて外すと同じ約束）。 */
+ function lotCopyTargets(e){
+  const ids=[...scState.picked];
+  if(ids.length){
+   /* **画面の並びで運ぶ**——選んだ順ではない（貼り付け先で並べ直せない）。 */
+   const want=new Set(ids.map(String));
+   const lots=visibleEntries().filter(x=>want.has(String(x.id))&&x.kind==='作業')
+     .map(x=>String(x.lotNo||contentValueOf(x.detail,'lotNo')||'').trim()).filter(Boolean);
+   if(lots.length)return lots;
+  }
+  const one=String((e&&(e.lotNo||contentValueOf(e.detail,'lotNo')))||'').trim();
+  return one?[one]:[];
+ }
+ function lotCopyMenuItems(e){
+  if(!WL.lotCopy)return [];
+  const lots=lotCopyTargets(e);
+  if(!lots.length)return [{label:'ICASコピー',disabled:true,
+    note:'ロット番号のある予定を選んでください（作業以外の行は写せません）'}];
+  const rule=WL.lotCopy.currentRule();
+  const from=scState.picked.size?`選んだ${lots.length}件`:'この行';
+  return [{label:`ICASコピー（${lots.length}件）`,showNote:true,
+           note:`${from}を「${rule?rule.name:'ルール未設定'}」でつなぎます`,
+           run:()=>WL.lotCopy.copyLots(lots),
+           sub:()=>WL.lotCopy.menuItems(lots)}];
+ }
  function pickedLotOf(e){
   return e?(e.lotNo||contentValueOf(e.detail,'lotNo')||'(ロット番号なし)'):'';
  }
@@ -6414,7 +6669,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    bodyHtml:`<p class="confirm-modal-message">${esc(scState.equipment)} の予定から <b>${targets.length}件</b> を外します。</p>
     <ul class="confirm-modal-points">
      <li>${esc(shown.join('・'))}${rest>0?`　ほか${rest}件`:''}</li>
-     <li>外したロットは<b>仕掛一覧へ戻ります</b>。同じようにまた入れられます。</li>
+     <li>外したロットは<b>仕掛一覧へ戻ります</b>。同じようにまた入れられます。
+      <b>ただし最新の仕掛データに無いロットは戻りません</b>（外したあとに件数を出します）。</li>
      <li>消えるのは<b>予定の行だけ</b>です。測定データはそのまま残ります。</li>
     </ul>`});
   if(!ok)return;
@@ -6433,7 +6689,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   });
   renderTimeline();
   showToast&&showToast(`${targets.length}件を予定から外しました`,
-   `${scState.equipment}／仕掛一覧へ戻ります`,3800);
+   `${scState.equipment}／仕掛にまだ在るものは一覧へ戻ります`,3800);
+  noteRemovedLots(targets);
  }
 
  function showRemoveZone(id){
@@ -8012,6 +8269,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }
   if(sessionBlocked()){showToast&&showToast('追加できません',sessionHolderMessage(),4000);return}
   const entry=makeOptimisticEntry('作業',{lotNo:pick(row,'lotNo')||'',detail:buildScheduleDetail(row)});
+  noteLotFromWorkList(entry.lotNo);   // 仕掛一覧の行から入れた＝在席は確定（§9.368）
   const kidEntries=makeOptimisticChildren(entry,children);
   insertEntriesAt(before,[entry,...kidEntries]);
   renderTimeline();
@@ -8090,6 +8348,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     をそのまま公開すると、印刷側から画面の状態を書き換えられてしまう。 */
  WL.scheduleView={
   equipment:()=>scState.equipment||'',
+  /* ---------- 仕掛一覧へ渡す口（§9.15・§9.368） ----------
+     **印刷だけの名前空間ではない**——スケジュール画面が外へ答えるものは
+     ここ1つにまとめる（2つ作ると、呼ぶ側がどちらを見ればよいか分からない）。
+     `list-view.js`が一覧を描くときに聞く2つ:
+       hiddenLotSet()      … この一覧に出すべきでないロット（予定に居る／仕掛から消えた）
+       forgetWorkPresence()… 一覧を取り直すので、控えた在席も捨てる */
+  hiddenLotSet:()=>hiddenLotSet(),
+  forgetWorkPresence:()=>forgetWorkPresence(),
   /* いま描いているタイムラインの列レイアウトの対象（§9.239 ④）。
      紙が「手で決めた揃え」を引くのに使う——**判定は`WL.columnAlign`の
      1箇所**で、紙は対象を聞くだけ（紙側で列名から推測しない）。
