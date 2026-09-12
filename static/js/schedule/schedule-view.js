@@ -878,6 +878,18 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      <div class="sc-view-pop-head">
       <b>表示</b><small>この画面の見え方だけを変えます。予定そのものは変わりません</small>
      </div>
+     <!-- 色と濃さの意味（§9.374、利用者の指摘「背景色の濃い薄いの分類について
+          少しわかりやすくしてください。初見の人がどういうゾーンなのか扱いが
+          わかりにくいようです。表示の説明みたいな項目があるとよいかも」）。
+          **状態を色だけで語らない**（§CLAUDE 画面基準3）ための受け皿。
+          見本は**実物と同じクラス**で描く——色をここへ書き写すと、
+          実物を直したときにここだけ嘘になる（§9.163）。 -->
+     <div class="sc-view-acc" id="scViewAccLegend">
+      <button type="button" class="sc-view-sec" id="scLegendBtn" aria-expanded="false">
+       <i>🔍</i><span>色と濃さの意味<small>行の地の色・薄さが何を表しているか</small></span><em class="sc-view-chev">▾</em>
+      </button>
+      <div class="sc-legend-pop" id="scLegendPop" hidden></div>
+     </div>
      <label class="sc-view-row" id="scGroupRange" hidden>
       <span class="sc-view-row-name">まとめ<small>日付は現場歴（勤務の日付補正を当てた現場の1日）と太陽暦から選べます</small></span>
       <select id="scGroupSelect">${SC_GROUP_MODES.map(m=>`<option value="${m.key}">${m.label}</option>`).join('')}</select>
@@ -964,6 +976,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   });
   $('#scLayoutBtn').onclick=e=>{e.stopPropagation();toggleLayoutPop()};
   $('#scRowStyleBtn').onclick=e=>{e.stopPropagation();toggleRowStylePop()};
+  /* 色と濃さの意味（§9.374）。**開くときに組む**——中身は動かないが、
+     器を作った時点では見本のクラスがまだCSSに当たっていないことがある。 */
+  $('#scLegendBtn').onclick=e=>{
+   e.stopPropagation();
+   const pop=$('#scLegendPop'),btn=$('#scLegendBtn');
+   if(!pop||!btn)return;
+   const open=pop.hidden;
+   if(open)renderLegend();
+   pop.hidden=!open;
+   btn.setAttribute('aria-expanded',open?'true':'false');
+  };
   /* 外を押したら畳む。**パネルの中を押しても閉じない**——ラジオを続けて
      触れるようにするため。中の段(行の色・この端末の見え方)は「表示」
      パネルの子なので、閉じ判定は**外側の1つだけ**でよい(§9.199)。
@@ -6811,6 +6834,87 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    removeEntries(ids);
   });
  }
+
+ /* ---------- 色と濃さの意味（§9.374） ----------
+    **1行＝「見本・名前・いつそうなるか」**。名前だけでは「作業中」と
+    「作業可」の区別が付かないので、**どうすればその状態になるか**まで書く
+    （推測させない・§CLAUDE 画面基準6）。 */
+ const SC_LEGEND=[
+  {cls:'sc-row-active',   name:'作業中',   why:'開始を打刻した予定。いま流れている1本'},
+  {cls:'sc-row-done',     name:'済んだ行', why:'完了・取消。薄くして、これからの予定と見分ける'},
+  {cls:'sc-row-locked',   name:'開始を固定', why:'左の橙の線。時刻を固定したので並べ替えでは動かない'},
+  {cls:'sc-row-pending',  name:'保存中',   why:'斜線。共有へ書いている最中（数秒で消えます）'},
+  {cls:'is-picked',       name:'選んでいる', why:'行を押して選んだ状態。まとめて動かす・外すの対象'},
+  {cls:'sc-row-nw-face',  name:'作業以外', why:'設備停止・申し送り・日付や直の枠。時間の使い方が違う'},
+ ];
+ function renderLegend(){
+  const pop=$('#scLegendPop');if(!pop)return;
+  pop.innerHTML=`<ul class="sc-legend">${SC_LEGEND.map(x=>
+    `<li class="sc-legend-row">
+      <span class="sc-legend-swatch sc-row-line ${esc(x.cls)}"><span class="sc-legend-bar"></span></span>
+      <span class="sc-legend-name">${esc(x.name)}</span>
+      <span class="sc-legend-why">${esc(x.why)}</span>
+     </li>`).join('')}</ul>
+   <p class="sc-legend-note">区分（作業・設備停止など）ごとの色は
+    <b>「行の色とアイコン」</b>で決めます（全員に効きます）。
+    ここに出ているのは、それとは別に<b>状態</b>で付く地の色と薄さです。</p>`;
+ }
+
+ /* ---------- 掴んだまま表を送る（§9.374） ----------
+    **自動スクロールが無かった。** 掴んでいる間は`dragover`しか起きず、
+    ホイールも効かないので、**動かせるのは「いま見えている行」だけ**だった
+    ——1画面に収まらない移動（別の直へ運ぶ等）は物理的にできない。
+    利用者の報告「ロットを下方向へドラッグして入れ替えようとしましたが、
+    移動できませんでした」はこれで説明が付く。
+
+    **器の上下の縁に近づいている間だけ送る。** 速さは縁への近さで決める
+    （縁ほど速い）——一定だと、少し入っただけで飛んでいく。
+    止めるのは`dragend`（掴んでいる間だけ動く）。 */
+ const SC_EDGE=48;        // 縁とみなす幅(px)。行の高さ(約28px)より少し広い
+ const SC_EDGE_MAX=18;    // 1コマあたりの最大送り量(px)
+ let scScrollTimer=null,scScrollDy=0;
+ function scrollHost(){
+  /* 送るのは**実際にスクロールする器**。タイムラインが自前でスクロールする
+     ときはそれ、そうでなければページ全体。**測ってから決める**（§9.250）。 */
+  const tl=$('#scTimeline');
+  if(tl&&tl.scrollHeight>tl.clientHeight+4)return tl;
+  const sc=document.scrollingElement||document.documentElement;
+  return (sc&&sc.scrollHeight>sc.clientHeight+4)?sc:null;
+ }
+ function dragScrollTo(clientY){
+  const host=scrollHost();
+  if(!host){scScrollDy=0;return}
+  const box=(host===document.scrollingElement||host===document.documentElement)
+   ?{top:0,bottom:window.innerHeight}
+   :host.getBoundingClientRect();
+  const up=clientY-box.top, down=box.bottom-clientY;
+  if(up<SC_EDGE&&up>-SC_EDGE)scScrollDy=-Math.ceil(SC_EDGE_MAX*(1-Math.max(0,up)/SC_EDGE));
+  else if(down<SC_EDGE&&down>-SC_EDGE)scScrollDy=Math.ceil(SC_EDGE_MAX*(1-Math.max(0,down)/SC_EDGE));
+  else scScrollDy=0;
+  if(scScrollDy&&!scScrollTimer){
+   scScrollTimer=setInterval(()=>{
+    const h=scrollHost();
+    if(!scScrollDy||!h||scState.dragId==null){stopDragScroll();return}
+    h.scrollTop+=scScrollDy;
+   },30);
+  }
+ }
+ function stopDragScroll(){
+  if(scScrollTimer){clearInterval(scScrollTimer);scScrollTimer=null}
+  scScrollDy=0;
+ }
+ /* **器の上ならどこでも送る**——行の上だけで見ると、行と行の隙間で止まる。
+    **掴んでいる物で判定しない**——予定の行だけでなく、コメント・枠・
+    仕掛一覧からの持ち込みも同じように送りたい（`scState`の旗は物ごとに
+    別なので、数え漏らす）。**「予定の画面の上でドラッグ中か」**で見る。 */
+ document.addEventListener('dragover',e=>{
+  const panel=$('#schedulePanel');
+  if(!panel||panel.hidden){stopDragScroll();return}
+  if(!(e.target&&e.target.nodeType===1&&panel.contains(e.target))){stopDragScroll();return}
+  dragScrollTo(e.clientY);
+ },true);
+ document.addEventListener('dragend',stopDragScroll,true);
+ document.addEventListener('drop',stopDragScroll,true);
 
  function wireDrag(card){
   // idは文字列のまま扱う。計画外実績(§9.33)の合成idは'actual:<記録ID>'で

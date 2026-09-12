@@ -2321,3 +2321,20 @@ div.sc-view-row{cursor:default}
 .icc-sep-del{justify-self:end}
 
 }
+
+@layer component {
+/* ---------- 色と濃さの意味（§9.374） ----------
+   見本は**実物と同じクラス**（`.sc-row-line.sc-row-active` 等）で描くので、
+   ここでは「どれくらいの大きさの面にするか」だけを決める。色は書かない
+   ——書くと実物を直したときにここだけ嘘になる（§9.163）。 */
+.sc-legend{display:grid;gap:var(--space-1);margin:0;padding:var(--space-2);list-style:none}
+.sc-legend-row{display:grid;grid-template-columns:44px 6.5em 1fr;gap:var(--space-2);
+ align-items:center;font-size:var(--fs-sm)}
+.sc-legend-swatch{display:block;height:calc(var(--row-h) * .8);border-radius:var(--radius-sm);
+ border:1px solid var(--line);overflow:hidden}
+.sc-legend-bar{display:block;height:100%}
+.sc-legend-name{font-weight:700;color:var(--ink)}
+.sc-legend-why{color:var(--ink-2)}
+.sc-legend-note{margin:0;padding:0 var(--space-2) var(--space-2);
+ font-size:var(--fs-sm);color:var(--ink-2)}
+}

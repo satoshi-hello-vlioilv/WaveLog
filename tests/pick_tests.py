@@ -153,6 +153,8 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scfail',
                      # §9.373: 失敗を開発へ報告できる形で残す（コピー1手）
                      'test_feedback',
+                     # §9.374: 掴んだまま表を送る／色と濃さの意味
+                     'test_scdragscroll',
                      'test_scsession', 'test_scwho']
 # 実績データリストと操業データ表（§9.241 ②③）。**一覧が紙の材料を渡す**ので、
 # どちらを触っても両方回す。
