@@ -6218,6 +6218,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     切り替えるのも、その後ろの予定の時刻を動かす。
     **申し送りの本文だけの更新は動かさない**(§9.191)ので数えない
     ——数えると、1文字直すたびに全部を取り直して画面が作り直される。 */
+ /* 失敗したときの見出し。**答えは1箇所**（§9.372）——経路ごとに文言を書くと、
+    直したつもりの経路だけが直る。**見出しは組み立てず、完成した1文で持つ**
+    ——「ラベル＋できませんでした」で作ると「予定から外すできませんでした」の
+    ような日本語になる（実測でそう出た）。 */
+ const SC_OP_LABEL={add:'予定へ追加できませんでした',delete:'予定から外せませんでした',
+                    update:'変更できませんでした',reorder:'並べ替えできませんでした'};
  const SC_TIME_SHIFT_OPS=new Set(['add','delete','reorder','update']);
  const opShiftsTime=op=>!!op&&SC_TIME_SHIFT_OPS.has(op.op)
    &&!(op.op==='update'&&Object.prototype.hasOwnProperty.call(op,'title')
@@ -6245,7 +6251,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
         if(one&&one.ok!==false){if(b.onSuccess)b.onSuccess(one)}
         else{
          const err=Error((one&&one.error)||'反映できませんでした');
-         err.__reported=!!b.onFailure;failures.push(err);
+         /* **`onFailure`の有無で「知らせた」ことにしない**（§9.372。上の
+            個別経路と同じ理由——まとめ書込のほうだけ黙る、を作らない）。 */
+         err.__op=b.op&&b.op.op;failures.push(err);
          if(b.onFailure){try{b.onFailure(err)}catch(_e){WL.quiet.note('ロールバック失敗は無視',_e)}}
         }
        });
@@ -6259,7 +6267,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
        const permanent=e&&typeof e.status==='number'&&e.status>=400&&e.status<500&&e.status!==409&&e.status!==423;
        if(permanent){
         batch.forEach(b=>{
-         const err=Error(e.message);err.status=e.status;err.__reported=!!b.onFailure;
+         const err=Error(e.message);err.status=e.status;err.__op=b.op&&b.op.op;
          failures.push(err);
          if(b.onFailure){try{b.onFailure(err)}catch(_e){WL.quiet.note('同上',_e)}}
         });
@@ -6292,10 +6300,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      // (423/409/503やネットワーク例外)だけ。
      const permanent=e&&typeof e.status==='number'&&e.status>=400&&e.status<500&&e.status!==409&&e.status!==423;
      if(permanent||op.attempts>=3){
-      scWriteQueue.shift();failures.push(e);
-      // onFailureを持つ操作は、そちらで利用者へ知らせる責任を持つ。
+      scWriteQueue.shift();e.__op=op.op&&op.op.op;failures.push(e);
+      /* **`onFailure`があることを「知らせた」と数えない**（§9.372）。
+         以前はここで`e.__reported=true`を立てていたが、`onFailure`の中身は
+         ほとんどが**巻き戻すだけ**で、利用者には何も言っていなかった
+         ——外した行が数秒後に黙って戻り、理由がどこにも出ない
+         （利用者の報告「一度は外れたように見えたが5秒程したら復活した」。
+         欠陥注入で2.9秒後に復活し、出た知らせは§9.368の別件だけだった）。
+         **自分で言った操作だけが`e.__reported=true`を立てる**（並べ替え）。
+         言わなかったぶんは、下の1箇所がまとめて言う。 */
       if(op.onFailure){
-       try{e.__reported=true;op.onFailure(e)}catch(err){WL.quiet.note('ロールバック自体の失敗はここでは無視(諦めたことは既にfailuresへ記録済み)',err)}
+       try{op.onFailure(e)}catch(err){WL.quiet.note('ロールバック自体の失敗はここでは無視(諦めたことは既にfailuresへ記録済み)',err)}
       }
      }
      else await sleep(700*op.attempts);
@@ -6308,8 +6323,15 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     // ときだけ出す。
    const unreported=failures.filter(f=>!f.__reported);
    if(unreported.length){
-    const msg=unreported.length===1?unreported[0].message:`${unreported.length}件の変更を反映できませんでした`;
-    showToast&&showToast('一部の変更を反映できませんでした',msg,7000);
+    /* **「何が」できなかったかを頭に出す**（§9.372）。「一部の変更」では、
+       外したのか足したのか並べ替えたのかが読めない——画面は既に巻き戻って
+       いるので、**この1行だけが手掛かり**になる。 */
+    const kinds=[...new Set(unreported.map(f=>SC_OP_LABEL[f.__op]||'変更できませんでした'))];
+    const head=kinds.length===1?kinds[0]:'いくつかの変更を反映できませんでした';
+    const why=unreported[0].message||'';
+    const msg=(unreported.length===1?why:`${unreported.length}件が元へ戻りました。${why}`).trim()
+      ||'理由を受け取れませんでした（通信を確かめてください）';
+    showToast&&showToast(head,msg,8000);
    }
    /* ---------- 書込のあとは時刻を取り直す(§9.185) ----------
       予定を1本足す・外す・並べ替えると、**その後ろの予定の時刻が全部
@@ -6358,6 +6380,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const [removed]=scState.entries.splice(idx,1);
   renderTimeline();
   queuePlanOp({op:'delete',id,
+   /* **外せてから「仕掛一覧へ戻すか」を言う**（§9.372）。以前はここを
+      キューへ積んだ直後に呼んでいたので、**外せずに巻き戻った行について
+      「仕掛一覧へ戻していません」と出て**いた——外せなかったのに
+      「外したが戻さなかった」としか読めない（実測：欠陥注入でこの1件だけが
+      出て、外せなかったことはどこにも出なかった）。 */
+   onSuccess:()=>noteRemovedLots([removed]),
    onFailure:()=>{
     // リトライを使い切って諦めた時だけロールバックする(§9.22)。以前は
     // 失敗するたびに毎回ロールバックしていたため、1回目失敗→ロールバック→
@@ -6365,7 +6393,6 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     // したまま二度と消えない不整合が起こり得た。
     if(scState.entries.every(x=>x.id!==removed.id)){scState.entries.splice(Math.min(idx,scState.entries.length),0,removed);renderTimeline()}
    }});
-  noteRemovedLots([removed]);
  }
  /* 外したロットを仕掛一覧へ戻すか決める（§9.368 ③）。**外す操作は止めない**
     ——判定は裏で走らせ、決まったら一覧を組み直す（在席が控えにあれば往復ゼロ）。
@@ -6461,6 +6488,31 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const e=(scState.entries||[]).find(x=>String(x.id)===String(id));
   if(!e)return null;
   return (scState.editable&&e.reorderable&&!e.__pending&&!e.fixedStart&&!sessionBlocked())?e:null;
+ }
+ /* **動かせない理由を字で言う**（§9.372、§CLAUDE 画面基準4「できないことは、
+    できないと書く」）。掴めてしまうのに落としても戻るだけ、が
+    「移動できませんでした」という報告になっていた——止めている当人が
+    黙っているので、利用者には壊れているようにしか見えない。
+    **判定は`reorderableEntry()`と同じ順で見る**（2つ持つと食い違う）。 */
+ function reorderBlockedReason(id){
+  const e=(scState.entries||[]).find(x=>String(x.id)===String(id));
+  if(!e)return '';
+  if(sessionBlocked())return sessionHolderMessage();
+  if(!scState.editable)return 'この画面では並べ替えできません（閲覧のみ）。';
+  if(e.__pending)return 'まだ保存が終わっていません。数秒待ってからもう一度どうぞ。';
+  if(e.fixedStart)return '開始日時を固定した予定です。行の「固定」を外すと動かせます。';
+  if(!e.reorderable)return `${e.kind||'この行'}は並べ替えできません（${e.state||'この状態'}のため）。`;
+  return '';
+ }
+ /* 同じ理由を続けて何度も出さない（掴むたびに帯が積み上がる）。 */
+ let scReorderNagAt=0,scReorderNagWhy='';
+ function noteReorderBlocked(id){
+  const why=reorderBlockedReason(id);
+  if(!why)return;
+  const now=Date.now();
+  if(why===scReorderNagWhy&&now-scReorderNagAt<8000)return;
+  scReorderNagWhy=why;scReorderNagAt=now;
+  showToast&&showToast('この行は動かせません',why,6000);
  }
  /* まとめて動かせる／外せる行。**どちらか一方でもできれば選べる**
     ——「外せるが動かせない(固定した予定)」「動かせるが外せない」の
@@ -6746,6 +6798,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   // idは文字列のまま扱う。計画外実績(§9.33)の合成idは'actual:<記録ID>'で
   // 数値化するとNaNになり、比較もMap引きも静かに壊れる。
   card.addEventListener('dragstart',e=>{
+   /* **掴んだ時点で断る**（§9.372）。落としてから「戻る」のを見せるより、
+      掴んだ瞬間に理由が出るほうが短い（外すことはできる行もあるので、
+      掴むこと自体は止めない——受け皿へ運べば外せる）。 */
+   noteReorderBlocked(card.dataset.id);
    scState.dragId=card.dataset.id;card.classList.add('sc-dragging');e.dataTransfer.effectAllowed='move';
    /* **掴んだ時点の並びを控える**(§9.201)。確定は`dragend`で行うので、
       「動いたのか」をここと比べて決める。 */
@@ -6908,9 +6964,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
        (who?who+'が':'')+'並び順を変えたので、最新を読み直しました。'
        +'もう一度並べ替えてください。',8000);
      if(scState.equipment===equipment)loadPlan(true).catch(WL.quiet('予定を読み直せない（次の巡回で追いつく）'));
+     if(e)e.__reported=true;   // 自分で言った（§9.372。まとめ通知と二重に出さない）
      return;
     }
     showToast&&showToast('並べ替えできませんでした',(e&&e.message)||'',7000);
+    if(e)e.__reported=true;
    }});
  }
 
