@@ -6218,12 +6218,22 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     切り替えるのも、その後ろの予定の時刻を動かす。
     **申し送りの本文だけの更新は動かさない**(§9.191)ので数えない
     ——数えると、1文字直すたびに全部を取り直して画面が作り直される。 */
- /* 失敗したときの見出し。**答えは1箇所**（§9.372）——経路ごとに文言を書くと、
-    直したつもりの経路だけが直る。**見出しは組み立てず、完成した1文で持つ**
+ /* 操作の呼び名。**答えは1箇所**（§9.372）——経路ごとに文言を書くと、
+    直したつもりの経路だけが直る。`name`は足あと用（体言）、`failed`は
+    知らせの見出し用（完成した1文）。**見出しを組み立てないこと**
     ——「ラベル＋できませんでした」で作ると「予定から外すできませんでした」の
-    ような日本語になる（実測でそう出た）。 */
- const SC_OP_LABEL={add:'予定へ追加できませんでした',delete:'予定から外せませんでした',
-                    update:'変更できませんでした',reorder:'並べ替えできませんでした'};
+    ような日本語になる（実測でそう出た）ので、活用ごと持つ。 */
+ const SC_OP={add:{name:'予定へ追加',failed:'予定へ追加できませんでした'},
+              delete:{name:'予定から外す',failed:'予定から外せませんでした'},
+              update:{name:'変更',failed:'変更できませんでした'},
+              reorder:{name:'並べ替え',failed:'並べ替えできませんでした'}};
+ const SC_OP_LABEL=Object.fromEntries(Object.entries(SC_OP).map(([k,v])=>[k,v.failed]));
+ /* 足あと（§9.373）。**成功も残す**——失敗だけ残すと「その前に何をしたか」が
+    分からず、報告から手順を組み立て直せない。 */
+ const noteStep=(op,how)=>{
+  if(!op||!WL.feedback)return;
+  WL.feedback.step((SC_OP[op.op]||{}).name||op.op||'変更',how);
+ };
  const SC_TIME_SHIFT_OPS=new Set(['add','delete','reorder','update']);
  const opShiftsTime=op=>!!op&&SC_TIME_SHIFT_OPS.has(op.op)
    &&!(op.op==='update'&&Object.prototype.hasOwnProperty.call(op,'title')
@@ -6248,7 +6258,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
        const results=r.results||[];
        batch.forEach((b,i)=>{
         const one=results[i];
-        if(one&&one.ok!==false){if(b.onSuccess)b.onSuccess(one)}
+        if(one&&one.ok!==false){noteStep(b.op,'できた');if(b.onSuccess)b.onSuccess(one)}
         else{
          const err=Error((one&&one.error)||'反映できませんでした');
          /* **`onFailure`の有無で「知らせた」ことにしない**（§9.372。上の
@@ -6282,6 +6292,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     try{
      await op.run();
      if(opShiftsTime(op.op))timeShifted=true;
+     noteStep(op.op,'できた');
      scWriteQueue.shift();
     }catch(e){
      op.attempts++;
@@ -6331,7 +6342,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     const why=unreported[0].message||'';
     const msg=(unreported.length===1?why:`${unreported.length}件が元へ戻りました。${why}`).trim()
       ||'理由を受け取れませんでした（通信を確かめてください）';
-    showToast&&showToast(head,msg,8000);
+    /* **開発へ渡せる形で残す**（§9.373）。画面へ出した知らせと同じ失敗を
+       1通に組み、**その場で押せる1手**として「報告用にコピー」を添える
+       ——現場が開発へ渡せるのは、覚えている今このときだけ。 */
+    const rep=WL.feedback&&WL.feedback.note(head,unreported[0],
+      {件数:unreported.length,設備:scState.equipment||'',
+       操作:[...new Set(unreported.map(f=>f.__op||''))].filter(Boolean).join(',')});
+    showToast&&showToast(head,msg,10000,
+      rep?{label:'報告用にコピー',run:()=>WL.feedback.copyReport(rep)}:null);
    }
    /* ---------- 書込のあとは時刻を取り直す(§9.185) ----------
       予定を1本足す・外す・並べ替えると、**その後ろの予定の時刻が全部
@@ -8404,6 +8422,24 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
 
     別ファイルから触れるのはこの4つだけにしておく。scStateやentryContentText
     をそのまま公開すると、印刷側から画面の状態を書き換えられてしまう。 */
+ /* **文脈は画面が名乗る**（§9.373）。土台（`WL.feedback`）は設備名も編集権も
+    知らないし、知るべきでもない——ここで名乗れば、報告に自動で乗る。
+    **報告に要るのは「なぜ弾かれたか」を決めている値**なので、モード・権限・
+    編集権の持ち主・改訂番号を出す（入力値そのものは出さない）。 */
+ if(WL.feedback)WL.feedback.provide('作業スケジュール',()=>({
+  設備:scState.equipment||'',
+  表示:scState.boardMode==='board'?'俯瞰ボード':'個別タイムライン',
+  書ける:!!scState.fullControl,編集できる:!!scState.editable,
+  現場段取りのみ:!!scState.fieldReorderOnly,
+  編集権:scState.sessionHeld?'自分が持っている'
+    :(scState.sessionHolder?`${scState.sessionHolder.loginId||'?'}@${scState.sessionHolder.pcName||'?'}`:'誰も持っていない'),
+  共有の改訂番号:(scSyncState&&scSyncState.revision!=null)?String(scSyncState.revision):'—',
+  書込役:(scOwnerState&&scOwnerState.enabled)?(scOwnerState.holder||'設定あり'):'設定なし',
+  さかのぼり:scState.historyKey||'',
+  出ている行数:(scState.entries||[]).length,
+  書込キューの残り:scWriteQueue.length,
+ }));
+
  WL.scheduleView={
   equipment:()=>scState.equipment||'',
   /* ---------- 仕掛一覧へ渡す口（§9.15・§9.368） ----------

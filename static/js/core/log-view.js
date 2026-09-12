@@ -441,6 +441,10 @@
     <label>対象<select id="lgFile"></select></label>
     <button type="button" id="lgReload" title="いまのログを読み直します">再読込</button>
     <label title="開いている間、数秒ごとに読み直します"><input type="checkbox" id="lgAuto"> 自動更新</label>
+    <!-- 開発へ報告する（§9.373）。**不具合のときに人が来るのはこの画面**なので、
+         入口をここに置く——知らせのボタンは消えてしまうが、ここは残る。 -->
+    <button type="button" id="lgFeedback"
+     title="直近の失敗を、開発が読める形にまとめてコピーします（何をしようとしたか・理由・そのときの画面の状態・直前の足あと）">開発へ報告</button>
    </div>
    <div class="lg-filterbar">
     <label class="lg-search">検索<input id="lgQuery" type="search" placeholder="メッセージ・例外名・処理名で絞り込み"></label>
@@ -501,9 +505,22 @@
   const panel=$id('logPanel');if(panel)panel.hidden=true;
   stopAuto();                       // 別の画面で裏読みを続けない
  };
+ /* 「開発へ報告」の配線（§9.373）。**組み立てた直後に1度だけ**繋ぐ
+    （器を作り直すたびに繋ぎ直すと、押すたびに何通も出る）。 */
+ const wireFeedbackButton=()=>{
+  const b=$id('lgFeedback');
+  if(!b||b.dataset.wired)return;
+  b.dataset.wired='1';
+  b.onclick=()=>{
+   if(WL.feedback&&WL.feedback.openReport)WL.feedback.openReport();
+   else showToast&&showToast('報告の仕組みが読み込まれていません',
+     'アプリを開き直してからもう一度お試しください',5000);
+  };
+ };
  const openLogView=async()=>{
   WL.enterView('logs');
   ensurePanel().hidden=false;
+  wireFeedbackButton();
   WL.syncViewToolbar('logs');       // 操作列(#lgHead)はパネル生成後にヘッダーへ載せる
   await loadFiles();
   await load();

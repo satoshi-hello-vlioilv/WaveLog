@@ -378,6 +378,20 @@
 .toast b{display:block;margin-bottom:3px}
 .toast small{display:block;color:#527078}
 .toast.out{opacity:0;transform:translateX(30px);transition:opacity .2s ease-in,transform .2s ease-in}
+/* 知らせの中の「その場で押せる1手」（§9.373）。器は`pointer-events:none`
+   なので、押せるのはこのボタンだけ**明示的に戻す**——戻し忘れると
+   「押せるのに何も起きない」（§CLAUDE 画面基準4）になる。 */
+.toast-act{pointer-events:auto;margin-top:var(--space-2);padding:4px 12px;
+ border:1px solid var(--teal);border-radius:var(--radius-sm);
+ background:var(--surface);color:var(--teal-dark);font-size:var(--fs-sm);cursor:pointer}
+.toast-act:hover{background:var(--teal);color:var(--surface)}
+/* 報告の窓（§9.373）。中身は選んで写せる必要があるので、**読み取り専用でも
+   選択は殺さない**。等幅にするのは、貼り先で桁がそろって読めるため。 */
+.fb-report{display:grid;gap:var(--space-2)}
+.fb-report-note{margin:0;color:var(--ink-2);font-size:var(--fs-sm)}
+.fb-text{width:100%;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:var(--fs-sm);
+ line-height:1.5;border:1px solid var(--line);border-radius:var(--radius-sm);
+ padding:var(--space-2);background:var(--surface-2);color:var(--ink);resize:vertical}
 @keyframes toast-in{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
 /* 到着直後だけ縁に淡いブランドカラーの光彩が広がって消える、瞬間的な
    「届いた」フィードバック(保存成功トーストの体感速度を上げる)。 */

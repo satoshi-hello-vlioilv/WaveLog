@@ -420,11 +420,22 @@ window.WL=window.WL||{};
 WL.numericInput={attach:attachNumericInput,normalize:normalizeDecimalText};
 function normalizedLot(value){return String(value||'').normalize('NFKC').replace(/[\s　_-]/g,'').toUpperCase()}
 /* 画面右下に一時通知(トースト)を表示する。 */
-function showToast(title, detail='', duration=3400){
+/* `action`＝{label,run} を渡すと、知らせの中に**その場で押せる1手**が付く
+   （§9.373）。失敗を知らせるだけでは、利用者は「で、どうすれば」に答えを
+   持たない——**次にすることを1つだけ指す**（§CLAUDE 画面基準2）。
+   押したら知らせは閉じる（押したのに残ると、効いたのか分からない）。 */
+function showToast(title, detail='', duration=3400, action=null){
  const area=$('#toastArea'); if(!area)return;
  const item=document.createElement('div'); item.className='toast';
- item.innerHTML=`<b>${esc(title)}</b>${detail?`<small>${esc(detail)}</small>`:''}`;
- area.append(item); setTimeout(()=>{item.classList.add('out');setTimeout(()=>item.remove(),220)},duration);
+ item.innerHTML=`<b>${esc(title)}</b>${detail?`<small>${esc(detail)}</small>`:''}`
+  +(action&&action.label?`<button type="button" class="toast-act">${esc(action.label)}</button>`:'');
+ const close=()=>{item.classList.add('out');setTimeout(()=>item.remove(),220)};
+ if(action&&action.label){
+  const btn=item.querySelector('.toast-act');
+  if(btn)btn.onclick=()=>{close();try{action.run&&action.run()}
+    catch(e){WL.quiet.note('知らせの中の操作が失敗した（知らせ自体は閉じる）',e)}};
+ }
+ area.append(item); setTimeout(close,duration);
 }
 /* ---------- モーダルの閉じ方は1つの規則(§9.221 ①) ----------
    利用者の指示「選択肢の値マスタのモーダル外クリックした瞬間にモーダルが

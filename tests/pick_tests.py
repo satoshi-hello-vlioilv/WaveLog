@@ -151,6 +151,8 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_wipgone', 'test_lotcopy',
                      # §9.372: 書込が失敗したら必ず理由を言う（黙って巻き戻さない）
                      'test_scfail',
+                     # §9.373: 失敗を開発へ報告できる形で残す（コピー1手）
+                     'test_feedback',
                      'test_scsession', 'test_scwho']
 # 実績データリストと操業データ表（§9.241 ②③）。**一覧が紙の材料を渡す**ので、
 # どちらを触っても両方回す。
@@ -335,7 +337,9 @@ RULES = [
     ('backend/repositories/roll_repo.py', g('マスタ', '異常位置')),
     # Excelの読み書き（§9.240）。ロールマスタの入出力が唯一の使い手。
     ('backend/xlsx_io.py', g('test_rollio', 'test_roll')),
-    ('static/js/core/log-view.js', g('ログ')),
+    ('static/js/core/log-view.js', g('ログ')+['test_feedback']),
+    # §9.373: 失敗を開発へ報告できる形で残す（土台なので、知らせを出す画面も見る）
+    ('static/js/core/feedback.js', ['test_feedback', 'test_scfail', 'test_uiux']),
     ('static/js/core/access-mode.js', g('権限', 'test_nav')),
     ('static/js/core/wl-window.js', g('test_lcpanel', 'test_listmodal', 'test_split_layout',
                                  'test_scsplit')),

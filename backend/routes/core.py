@@ -62,6 +62,9 @@ CSS_FILES=BOOT_CSS_FILES+BODY_CSS_FILES
 # 「static/js の全部が1度ずつ載っている」「順の約束」を固定する。
 JS_FILES=[
  'core/base.js',
+ # 失敗を「開発へ報告できる形」で残す（§9.373）。**base のすぐ後**——
+ # どの画面よりも先に在れば、読み込みの途中で起きた失敗も拾える。
+ 'core/feedback.js',
  'core/wl-window.js',
  'list/list-view.js',
  'list/list-formula.js',
