@@ -80,6 +80,9 @@ _PATH_CONFIG_DEFAULTS={
  # 守られており、READONLYが防いでいたのは**人の意図の衝突**だけだった。
  # 厳密に「1設備1人」で運用したい現場のために'on'を残す。
  'schedule_session_block':'off',
+ # 予定に組み込んだロットの元データ（仕掛）が変わったときの扱い(§9.375)。
+ # **既定は auto＝見つけたら更新**（利用者の指示）。confirm は中身を見せてから。
+ 'schedule_source_sync':'auto',
 }
 _PATH_CONFIG_NUMERIC_FIELDS={
  'rne_extract_interval_sec':('RNE抽出間隔(秒)',60),
@@ -116,6 +119,7 @@ _PATH_CONFIG_CHOICE_FIELDS={
  'schedule_owner_enabled':('共有スケジュールの書き込み役',('on','off')),
  'schedule_session_block':('編集セッションで操作を止める',('on','off')),
  'builtin_quality_join':('既定の品質データ結合',('on','off')),
+ 'schedule_source_sync':('元データが変わったときの扱い',('auto','confirm')),
  'cleanup_auto_enabled':('不要ファイルの定期掃除',('on','off')),
 }
 # 自由に書ける文字列の設定（置き場と端末名）。空欄なら既定へ戻る。

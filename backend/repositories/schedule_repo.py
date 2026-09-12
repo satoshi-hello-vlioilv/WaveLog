@@ -324,6 +324,38 @@ def plan_set_frame(c_share,plan_id,uid,detail,pc=''):
              [frame_label(frame),_json.dumps(frame,ensure_ascii=False),uid,pc,plan_id])
  return cur.rowcount
 
+# 予定は「投入した時点の写し」(buildScheduleDetail)。**それでも動く値はある**
+# ——出荷日のように後から決まる項目は、写したあとに元データ(仕掛)の側で
+# 変わる(§9.375、利用者の指示)。そこだけを書き換える口を1つ持つ。
+def plan_merge_detail(c_share,plan_id,uid,changes,pc=''):
+ """明細JSONへ**指定した鍵だけ**を重ねる。**全置換にしない**——写しには
+ 画面が今出していない項目も入っており、全置換にすると出していない項目が
+ 黙って消える(§9.113の「渡す設定を1つでも書き漏らさない」の裏返し)。
+
+ **書き換えてよいのは種別が「作業」の行だけ**。枠は`plan_set_frame`、
+ 設備停止・申し送りは明細JSONを別の意味で使っている。"""
+ ensure_plan_table(c_share)
+ if not isinstance(changes,dict) or not changes:return 0
+ cur=c_share.cursor()
+ cur.execute('SELECT [予定ID],[種別],[明細JSON] FROM [作業予定] WHERE [予定ID]=?',[plan_id])
+ row=cur.fetchone()
+ if not row:raise ValueError('指定の予定が見つかりません。')
+ if str(row[1] or '')!='作業':
+  raise ValueError('元データの取り込みができるのは作業の行だけです。')
+ try:detail=_json.loads(row[2] or '{}')
+ except Exception:detail={}
+ if not isinstance(detail,dict):detail={}
+ # 値は文字で持つ(明細JSONは元データの見え方の写しで、計算には使わない)。
+ # **200文字で切る**——仕掛の列には長文の備考が入ることがあり、写しの
+ # ふくらみがそのまま共有DBの大きさになる。
+ for k,v in changes.items():
+  key=str(k or '').strip()
+  if not key:continue
+  detail[key]='' if v is None else str(v)[:200]
+ cur.execute('UPDATE [作業予定] SET [明細JSON]=?,[更新者ID]=?,[更新端末名]=?,[更新日時]=Now() WHERE [予定ID]=?',
+             [_json.dumps(detail,ensure_ascii=False),uid,pc,plan_id])
+ return cur.rowcount
+
 def plan_add_child(c_share,parent_id,equipment,uid,lot_no='',inspection_no='',casting_no='',detail=None,order=None,pc=''):
  """子ロットの行を1件足す(§9.83)。
     **[見積分]は0で固定**する。親ロット1本をスリットする1回の作業なので、

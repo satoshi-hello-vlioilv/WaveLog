@@ -828,6 +828,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
         勝手に読み直さない**——並べ替えの途中で行が入れ替わると、掴んで
         いたものが分からなくなる。 -->
    <div class="sc-sync-banner" id="scSyncBanner" hidden></div>
+   <!-- 元データ（仕掛）が変わったときの案内(§9.375)。**「確認して更新」の
+        ときだけ**出す。自動のときは取り込んでから知らせるので帯は要らない。 -->
+   <div class="sc-sync-banner sc-src-banner" id="scSrcBanner" hidden></div>
    <div class="sc-warnings" id="scWarnings" hidden></div>
    <!-- 時刻が決まっていない予定の案内(§9.185)。**残っているときだけ出す**。
         「未定」という言葉は行の中にも出るが、行は下へ流れるので、
@@ -3089,6 +3092,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     **一覧を取り直したら捨てる**——取り直した一覧はもう最新なので、
     伏せる理由が無い（`forgetWorkPresence()`）。 */
  const scGoneLots=new Set();
+ /* いまの仕掛の行（正規化ロット -> 行）。在席を確かめる同じ1往復で持ち帰る
+    ——**元データが変わったか**を見るのに、別の往復を増やさない（§9.375）。 */
+ const scWorkRow=new Map();
  let scWorkLotSource=null;       // {key,table,lotCol} 仕掛の表とロット番号の列
  function noteInWork(lot,present){
   const k=normalizeLotKey(lot);
@@ -3103,7 +3109,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     **控えた事実も一緒に捨てる**——新しい写しから引き直せばよく、
     残しておくと「一覧には出ているのに伏せられている」が作れる。 */
  function forgetWorkPresence(){
-  scInWork.clear();scGoneLots.clear();scWorkLotSource=null;
+  scInWork.clear();scGoneLots.clear();scWorkRow.clear();scWorkLotSource=null;
  }
  /* 仕掛の「表」と「ロット番号の列」。**1度だけ引いて使い回す**——列名は
     現場ごとに違うので別名の一覧（§9.87）から実在するものを選ぶ。 */
@@ -3145,18 +3151,21 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     if(batch.length){
      const q=new URLSearchParams({db:src.key,table:src.table,page:1,
       page_size:String(Math.min(500,Math.max(100,batch.length*4))),
-      columns:src.lotCol,
+      columns:presenceColumns(src),
       filters:JSON.stringify([{column:src.lotCol,op:'starts_any',value:batch.join(',')}])});
      const d=await api('/api/table?'+q);
-     const found=new Set((d.rows||[]).map(r=>normalizeLotKey(r[src.lotCol])));
-     batch.forEach(lot=>noteInWork(lot,found.has(lot)));
+     const found=new Map();
+     (d.rows||[]).forEach(r=>{const k=normalizeLotKey(r[src.lotCol]);if(k&&!found.has(k))found.set(k,r)});
+     batch.forEach(lot=>{noteInWork(lot,found.has(lot));if(found.has(lot))scWorkRow.set(lot,found.get(lot))});
     }
     for(const lot of solo){
      const q=new URLSearchParams({db:src.key,table:src.table,page:1,page_size:1,
-      columns:src.lotCol,
+      columns:presenceColumns(src),
       filters:JSON.stringify([{column:src.lotCol,op:'eq',value:lot}])});
      const d=await api('/api/table?'+q);
-     noteInWork(lot,!!(d.rows||[]).length);
+     const r=(d.rows||[])[0];
+     noteInWork(lot,!!r);
+     if(r)scWorkRow.set(lot,r);
     }
    }catch(e){WL.quiet.note('仕掛の在席を引けない（不明のまま扱う）',e)}
   }
@@ -3164,6 +3173,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  /* ② 予定を描いたら、載っているロットの在席を**裏で**確かめておく。
     待たせない——外す操作が来たときに答えが揃っていればよい。 */
  function refreshWorkPresenceInBackground(){
+  /* 元データの取り込み（§9.375）が要るときは**そちらが全ロットを引く**
+     ——同じ表への往復を2本にしない。在席もその1往復で埋まる。 */
+  if(canSyncSource()&&sourceSyncStamp()!==scSrcSyncStamp){runSourceSyncInBackground();return}
   const lots=[...allPlannedWorkLots()].filter(l=>inWorkOf(l)==='unknown');
   if(!lots.length)return;
   checkWorkPresence(lots).catch(WL.quiet('仕掛の在席を確かめられない（不明のまま扱う）'));
@@ -3188,6 +3200,177 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(!raw)return;
   noteInWork(raw,true);
   if(scGoneLots.delete(raw))refreshScheduledLotFilter();
+ }
+
+ /* ---------- 元データが変わったら取り込む（§9.375） ----------
+    利用者の指示:「スケジュールに組み込まれたデータの更新を行いたいです。
+    例えば『出荷日』など変わる可能性がある部分、設計情報と多岐にわたるので、
+    変更箇所を検知したら、自動で更新してほしいです（設定で、自動更新と
+    確認して更新と切り替えられるようにしたい）」。
+
+    **予定の行が持っているのは投入した時点の写し**（`buildScheduleDetail`）で、
+    そこは動かさない設計だった——並べ替えても、あとから仕掛が入れ替わっても、
+    予定に出る文字は変わらない。それでよい項目（ロット番号・材質）と、
+    **後から決まる項目**（出荷日・納期）が同じ写しに同居しているのが問題で、
+    後者は「投入したときの値」を出し続けると**そのうち嘘になる**。
+
+    **どう決めたか**
+      何と比べるか … 予定の写し（`detail`）と、**いまの仕掛の行**。
+                     仕掛の行は在席を確かめる1往復（§9.368 ②）で一緒に
+                     持ち帰るので、**往復は増えない**。
+      どの項目か   … **画面に出している内容の項目すべて**（利用者の指示）。
+                     式の列・結合で足された列は元データに無いので外す。
+      既定         … **自動で更新**。黙って変えないために「3件を最新に
+                     しました」を1行出し、中身も開ける（§3 出どころを出す）。
+      切り替え     … 「確認して更新」。帯で件数を言い、旧→新を見せてから
+                     取り込む。設定は**アプリ全体で1つ**（パス設定マスタの
+                     `schedule_source_sync`）。
+      誰が書くか   … **編集権を持っている端末だけ**。閲覧の端末が共有を
+                     書き換えると、見ているだけのつもりが予定を変える。
+
+    **空は「変わった」と読まない。** 頼んだ列が返ってこなかったのか、
+    現場が値を消したのかを画面からは見分けられない。消したぶんを取りこぼす
+    代わりに、取り違えて写しを空にすることを防ぐ（§3 と同じ倒し方）。 */
+ let scSourceSyncMode='auto';   // サーバーが予定の応答で運ぶ（届くまでは既定）
+ function setSourceSyncMode(r){
+  const v=r&&String(r.sourceSyncMode||'').trim();
+  if(v==='auto'||v==='confirm')scSourceSyncMode=v;
+ }
+ /* 見る項目。**内容欄に出している項目そのもの**——「表示中の列すべて」を
+    1箇所で答える（別々に組み立てると、見えている列と直る列が食い違う）。 */
+ function sourceSyncKeys(){
+  const joined=scJoinedKeys();
+  return chosenContentKeys().filter(k=>k&&!joined.has(k)&&!timelineIsFormulaKey(k));
+ }
+ /* 1つの項目が、仕掛の表・予定の写しでどの綴りで呼ばれ得るか（§9.87）。
+    別名の一覧の**両側**を広げる——現場ごとに列名が違う。 */
+ function contentKeyFamily(key){
+  const fam=new Set([key]);
+  const A=(WL.base&&WL.base.aliases)||{};
+  const names=A[key];
+  if(names)names.forEach(n=>fam.add(n));
+  else Object.keys(A).forEach(ak=>{if((A[ak]||[]).includes(key))fam.add(ak)});
+  return [...fam];
+ }
+ /* 在席の問い合わせで頼む列。**実在しない名前はサーバーが落とす**
+    （`columns=`は当たった名前だけを残し、1つも当たらなければ絞らない）
+    ので、別名を多めに並べてよい。ロット番号は必ず入れる——落ちると
+    どの行がどのロットか分からなくなる。 */
+ function presenceColumns(src){
+  const out=new Set([src.lotCol]);
+  sourceSyncKeys().forEach(k=>contentKeyFamily(k).forEach(n=>out.add(n)));
+  return [...out].join(',');
+ }
+ /* 取り込みを「やったかどうか」の印。**設備と読み込み時刻で1回**——
+    描き直すたびに走らせると、同じ差分を何度も書きに行く。 */
+ let scSrcSyncStamp='',scSrcPending=[];
+ const sourceSyncStamp=()=>`${scState.equipment}|${scState.planFetchedAt||''}`;
+ /* 書いてよい端末か。閲覧・他端末が編集中・未設定の設備では走らせない。 */
+ function canSyncSource(){
+  return !!(scState.configured&&scState.editable&&!sessionBlocked());
+ }
+ /* 1行ぶんの差分。戻り値は`[{key,label,was,now}]`。 */
+ function sourceDiffFor(e){
+  const lot=entryLotKey(e);
+  const row=lot?scWorkRow.get(lot):null;
+  if(!row)return [];
+  const out=[];
+  sourceSyncKeys().forEach(k=>{
+   const now=contentValueOf(row,k);
+   if(now===undefined||now===null||String(now).trim()==='')return;   // 空は読まない
+   const was=contentValueOf(e.detail,k);
+   if(String(was===undefined||was===null?'':was).trim()===String(now).trim())return;
+   out.push({key:k,label:contentItemLabel(k),
+             was:String(was===undefined||was===null?'':was),now:String(now)});
+  });
+  return out;
+ }
+ /* 写しのどの綴りへ書くか。**既に写しに在る綴りだけ**を書き換え、
+    1つも無ければ選んだ綴りで1つ足す——別名を総当たりで足すと、写しが
+    呼び名の数だけふくらむ（共有DBの大きさがそのまま増える）。 */
+ function detailKeysFor(detail,key){
+  const d=detail||{};
+  const has=contentKeyFamily(key).filter(k=>Object.prototype.hasOwnProperty.call(d,k));
+  return has.length?has:[key];
+ }
+ async function runSourceSync(){
+  if(!canSyncSource())return;
+  const stamp=sourceSyncStamp();
+  if(scSrcSyncStamp===stamp)return;
+  scSrcSyncStamp=stamp;
+  if(!sourceSyncKeys().length)return;
+  const targets=(scState.entries||[]).filter(e=>e.kind==='作業'&&!e.__pending&&entryLotKey(e));
+  if(!targets.length)return;
+  await checkWorkPresence([...new Set(targets.map(entryLotKey))]);
+  if(sourceSyncStamp()!==stamp)return;   // 途中で読み直されていたら捨てる（§9.200）
+  const diffs=[];
+  targets.forEach(e=>{
+   const changes=sourceDiffFor(e);
+   if(changes.length)diffs.push({id:e.id,lot:e.lotNo||entryLotKey(e),changes});
+  });
+  scSrcPending=diffs;
+  renderSourceSyncBanner();
+  if(diffs.length&&scSourceSyncMode!=='confirm')applySourceSync(diffs);
+ }
+ /* 予定を描いたあと、**待たせずに**確かめる（在席と同じ作法）。 */
+ function runSourceSyncInBackground(){
+  runSourceSync().catch(WL.quiet('元データの変化を確かめられない（写しのまま出す）'));
+ }
+ function applySourceSync(diffs){
+  if(!canSyncSource())return 0;
+  let n=0;
+  (diffs||[]).forEach(d=>{
+   const e=(scState.entries||[]).find(x=>String(x.id)===String(d.id));
+   if(!e)return;
+   const patch={};
+   d.changes.forEach(c=>{detailKeysFor(e.detail,c.key).forEach(k=>{patch[k]=c.now})});
+   if(!Object.keys(patch).length)return;
+   n++;
+   /* 先に画面へ当てる（§9.11 楽観的更新）。失敗したら書込キューが
+      まとめて知らせ、次の読み直しで写しの値へ戻る。 */
+   e.detail=Object.assign({},e.detail||{},patch);
+   queuePlanOp({op:'update',id:e.id,detail:patch});
+  });
+  if(!n)return 0;
+  scSrcPending=[];renderSourceSyncBanner();
+  renderTimeline();
+  const head=diffs.slice(0,3).map(d=>`${d.lot}: ${d.changes.map(c=>c.label).join('・')}`).join(' / ');
+  showToast&&showToast(`${n}件を最新にしました`,
+   head+(diffs.length>3?` ほか${diffs.length-3}件`:'')+'（元データの変化を取り込みました）',6000,
+   {label:'何が変わったか',run:()=>openSourceSyncWindow(diffs,true)});
+  return n;
+ }
+ /* 「確認して更新」のときの帯。**件数と次の一手だけ**を言い、中身は窓で出す
+    （§3 次にすることを1つだけ指す）。0件なら出さない。 */
+ function renderSourceSyncBanner(){
+  const box=$('#scSrcBanner');if(!box)return;
+  const list=scSrcPending||[];
+  if(!list.length||scSourceSyncMode!=='confirm'){box.hidden=true;box.innerHTML='';return}
+  const items=list.reduce((n,d)=>n+d.changes.length,0);
+  box.hidden=false;
+  box.innerHTML=`<span><b>${list.length}件に変更あり。</b>仕掛の側で ${items}項目が変わっています（予定に出ているのは入れたときの値です）。</span>
+   <button type="button" id="scSrcShow">中身を見る</button>`;
+  const btn=$('#scSrcShow');
+  if(btn)btn.onclick=()=>openSourceSyncWindow(list,false);
+ }
+ /* 旧→新の一覧。**読んで決められる形**——ロット／項目／旧→新を1行ずつ。
+    `readOnly`のときは取り込み済みの控えなので、決めるボタンを出さない。 */
+ async function openSourceSyncWindow(diffs,readOnly){
+  const rows=[];
+  (diffs||[]).forEach(d=>d.changes.forEach(c=>{
+   rows.push(`<tr><td>${esc(d.lot)}</td><td>${esc(c.label)}</td>
+     <td class="sc-src-was">${esc(c.was||'（空欄）')}</td><td class="sc-src-now">${esc(c.now)}</td></tr>`);
+  }));
+  const bodyHtml=`<p class="confirm-modal-message">${
+    readOnly?'元データ（仕掛）の値を予定へ取り込みました。':'元データ（仕掛）の側で変わっている項目です。取り込むと予定の表示が最新になります。'
+   }</p>
+   <div class="sc-src-list"><table class="sc-src-table">
+    <thead><tr><th>ロット番号</th><th>項目</th><th>いまの予定</th><th>元データ</th></tr></thead>
+    <tbody>${rows.join('')}</tbody></table></div>`;
+  const ok=await confirmModal({title:readOnly?'取り込んだ内容':'元データの変更を取り込む',
+    eyebrow:'SOURCE',bodyHtml,
+    confirmLabel:readOnly?'閉じる':'取り込む',cancelLabel:'あとで',hideCancel:!!readOnly});
+  if(ok&&!readOnly)applySourceSync(diffs);
  }
 
  /* 仕掛一覧を取り直した直後など、外から可否を更新したいときの入口。 */
@@ -3219,6 +3402,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     /* **語彙は先読みでも受け取る**（§9.366）。画面を触るより前に届くので、
        「表示」を最初に開いた時点で札がそろっている。 */
     setHistoryVocab(r);
+    setSourceSyncMode(r);
     if(r&&r.configured&&!scPlanCache.has(eq))
      scPlanCache.set(eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
        loadFactor:r.loadFactor,historyKey:key,historyFrom:r.historyFrom||null,
@@ -3330,6 +3514,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(r.historyHours!=null)scState.historyHours=r.historyHours;
   scState.actualColumns=r.actualColumns||[];
   setHistoryVocab(r);
+  setSourceSyncMode(r);
   scState.planFetchedAt=fetchedAt;
   renderWarnings();renderTimeline();updateFreshnessUi(fetchedAt);
   updateHistoryFromUi();updateRefreshHint();
@@ -8542,10 +8727,16 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   さかのぼり:scState.historyKey||'',
   出ている行数:(scState.entries||[]).length,
   書込キューの残り:scWriteQueue.length,
+  元データの扱い:scSourceSyncMode,
+  取り込み待ち:(scSrcPending||[]).length,
  }));
 
  WL.scheduleView={
   equipment:()=>scState.equipment||'',
+  /* 元データの取り込み（§9.375）の状態。**答えは1箇所**——網も報告も
+     ここを読む（画面の字を数えると、言い回しを直すたびに嘘になる）。 */
+  sourceSync:()=>({mode:scSourceSyncMode,keys:sourceSyncKeys(),
+    pending:(scSrcPending||[]).map(d=>({lot:d.lot,changes:d.changes.length}))}),
   /* ---------- 仕掛一覧へ渡す口（§9.15・§9.368） ----------
      **印刷だけの名前空間ではない**——スケジュール画面が外へ答えるものは
      ここ1つにまとめる（2つ作ると、呼ぶ側がどちらを見ればよいか分からない）。
@@ -8748,6 +8939,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       +'&history='+encodeURIComponent(scState.historyKey)).then(r=>{
      if(gen!==planGen())return;      // 先読み中に予定を変えていたら捨てる(§9.200)
      setHistoryVocab(r);             // 語彙は先読みでも受け取る(§9.366)
+     setSourceSyncMode(r);           // 元データの扱いも同じ応答が運ぶ(§9.375)
      if(r&&r.configured&&!scPlanCache.has(eq))
       scPlanCache.set(eq,{entries:r.entries||[],anchor:r.anchor,warnings:r.warnings||[],
         loadFactor:r.loadFactor,historyKey:scState.historyKey,historyFrom:r.historyFrom||null,

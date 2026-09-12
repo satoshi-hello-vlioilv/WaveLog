@@ -1913,6 +1913,7 @@
   schedule_watch_enabled:{auto:'auto: 見張る',on:'on: 見張る',off:'off: 見張らない'},
   schedule_owner_enabled:{off:'off: 各PCが自分で書く',on:'on: 1台が書く（既定）'},
   schedule_session_block:{off:'off: 止めない（既定）',on:'on: 後から入った端末は読み取り専用'},
+  schedule_source_sync:{auto:'auto: 見つけたら更新（既定）',confirm:'confirm: 中身を見せてから取り込む'},
   db_mirror_enabled:{auto:'auto: 写して読む',on:'on: 写して読む',off:'off: 共有を直接読む'},
   rne_extract_enabled:{auto:'auto: localのときだけ',on:'on: 定期実行',off:'off: 手動のみ'},
  };
@@ -2013,7 +2014,16 @@
      ${pickField('schedule_session_block','編集セッションで操作を止める',
        [['','（既定）off: 止めない（主担当を表示するだけ）'],['off','off: 止めない（主担当を表示するだけ）'],
         ['on','on: 後から入った端末は読み取り専用にする']],
-       '止めない場合でも、同じ顔ぶれのまま2人が同時に並べ替えたときは<b>後から保存したほうの並びが残ります</b>。')}`)}`);
+       '止めない場合でも、同じ顔ぶれのまま2人が同時に並べ替えたときは<b>後から保存したほうの並びが残ります</b>。')}`)}
+    ${pageFoldHtml('元データが変わったとき',pcNowText('schedule_source_sync','auto: 見つけたら更新（既定）'),`
+     <p class="mm-field-hint">予定の行が持っているのは<b>入れたときの仕掛データの写し</b>です。
+      出荷日のように<b>あとから決まる項目</b>は、写したあとに元データの側で変わります。
+      スケジュールを開いたときに<b>画面に出している項目だけ</b>を突き合わせ、変わっていれば取り込みます
+      （<b>書き換えるのは編集できる端末だけ</b>。閲覧の端末は見るだけです）。</p>
+     ${pickField('schedule_source_sync','元データが変わったときの扱い',
+       [['','（既定）auto: 見つけたら更新する'],['auto','auto: 見つけたら更新する'],
+        ['confirm','confirm: 変わった中身（旧→新）を見せてから取り込む']],
+       'autoでも黙っては変えません——<b>何件を最新にしたか</b>を知らせ、中身も開けます。')}`)}`);
   const SEC_RNE=group('rne','RNE抽出','保存後すぐ反映','is-live',`
     <p class="mm-field-hint">RNE（Navigator問い合わせ定義）から <code>.sqlite3</code> を作り、それを一覧として読む仕組みです。
      取得元が <b>local</b> のデータソースだけが、ここで作ったファイルを読みます。</p>

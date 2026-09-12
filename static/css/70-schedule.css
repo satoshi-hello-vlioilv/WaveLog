@@ -2338,3 +2338,19 @@ div.sc-view-row{cursor:default}
 .sc-legend-note{margin:0;padding:0 var(--space-2) var(--space-2);
  font-size:var(--fs-sm);color:var(--ink-2)}
 }
+
+@layer component {
+/* ---------- 元データの変更を見せる表（§9.375） ----------
+   **旧→新を横に並べる**——縦に積むと、どちらが今の値なのかを読む側が
+   覚えていなければならない。新しい側だけを濃くし（§3 色だけで伝えない
+   ので見出しでも「元データ」と書く）、長い一覧は器の中でだけ送る。 */
+.sc-src-list{max-height:46vh;overflow:auto;border:1px solid var(--line);
+ border-radius:var(--radius-sm)}
+.sc-src-table{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.sc-src-table th,.sc-src-table td{padding:var(--row-pad-y) var(--row-pad-x);text-align:left;
+ border-bottom:1px solid var(--line);white-space:nowrap}
+.sc-src-table th{position:sticky;top:0;background:var(--surface-2);color:var(--ink-2);
+ font-weight:700}
+.sc-src-was{color:var(--ink-3);text-decoration:line-through}
+.sc-src-now{color:var(--ink);font-weight:700}
+}

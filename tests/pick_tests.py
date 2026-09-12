@@ -155,6 +155,8 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_feedback',
                      # §9.374: 掴んだまま表を送る／色と濃さの意味
                      'test_scdragscroll',
+                     # §9.375: 元データ（仕掛）が変わったら予定へ取り込む
+                     'test_srcsync',
                      'test_scsession', 'test_scwho']
 # 実績データリストと操業データ表（§9.241 ②③）。**一覧が紙の材料を渡す**ので、
 # どちらを触っても両方回す。

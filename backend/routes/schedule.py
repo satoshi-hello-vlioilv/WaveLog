@@ -201,6 +201,28 @@ def session_release():
   schedule_sync.release_session(equipment,current_login_id(),current_pc_name())
  return jsonify(ok=True)
 
+# ------------------------------------------------------------------------
+# 予定に組み込んだロットの元データ（仕掛）が変わったときの扱い（§9.375）
+#
+# 利用者の指示:「スケジュールに組み込まれたデータの更新を行いたいです。
+#   例えば『出荷日』など変わる可能性がある部分、設計情報と多岐にわたるので、
+#   変更箇所を検知したら、自動で更新してほしいです。(設定で、自動更新と
+#   確認して更新と切り替えられるようにしたいです。)」
+#
+# **答えはここ1箇所**——画面が綴りを覚えない（§9.163）。既定は`auto`。
+# ------------------------------------------------------------------------
+SOURCE_SYNC_KEY='schedule_source_sync'
+SOURCE_SYNC_AUTO='auto'
+SOURCE_SYNC_CONFIRM='confirm'
+SOURCE_SYNC_MODES=[
+ {'key':SOURCE_SYNC_AUTO,'label':'自動で更新','note':'変わっていたらそのまま取り込み、何件直したかを出します'},
+ {'key':SOURCE_SYNC_CONFIRM,'label':'確認して更新','note':'変わった中身（旧→新）を見せてから取り込みます'},
+]
+def source_sync_mode():
+ """いまの扱い。**知らない値は既定へ倒す**（設定が壊れても画面は動く）。"""
+ v=str(path_config_value(SOURCE_SYNC_KEY,'') or '').strip().lower()
+ return v if v in (SOURCE_SYNC_AUTO,SOURCE_SYNC_CONFIRM) else SOURCE_SYNC_AUTO
+
 def _read(fn,timings=None):
  """GET系共通。ロックを取らず、共有ファイルをローカルへ取得して読むだけ
  (§4.2の「取得」のみを行い、適用・反映はしない)。
@@ -495,6 +517,10 @@ def plan_list():
                 historyModes=schedule_calc.HISTORY_MODES,
                 historyGroups=schedule_calc.HISTORY_GROUPS,
                 historyDefault=schedule_calc.HISTORY_DEFAULT,
+                # 元データが変わったときの扱い(§9.375)。**専用のルートを作らない**
+                # ——`schedule.py`は41ルートで上限（§9.333）だし、語彙と設定は
+                # 予定の応答と一緒に運べば食い違いようがない（§9.366と同じ作法）。
+                sourceSyncMode=source_sync_mode(),
                 warnings=warnings,timings=timings)
 
 @bp.post('/api/schedule/plan/add')
@@ -533,7 +559,8 @@ def _plan_children(raw):
 
 @bp.post('/api/schedule/plan/update')
 def plan_update():
- x=body({'id': any_,'frame': any_,'estimateMinutes': any_,'fixedStart': any_,'remark': any_,'state': any_,'title': any_})
+ x=body({'id': any_,'frame': any_,'estimateMinutes': any_,'fixedStart': any_,'remark': any_,'state': any_,'title': any_,
+         'detail': any_})
  plan_id=x.get('id')
  if plan_id is None:return jsonify(error='更新対象の予定IDがありません。'),400
  # titleは申し送り(コメント)の本文(§9.191)。他の種別では repo が弾く。
@@ -541,11 +568,15 @@ def plan_update():
  # frame=枠の行き先(日付・直)(§9.238 ②)。**[予定名称]と[明細JSON]を一緒に
  # 書き換える**ので、1列ずつ書く plan_update とは別の入口を通す。
  frame=x.get('frame') if isinstance(x.get('frame'),dict) else None
+ # detail=元データ(仕掛)から取り込み直す項目(§9.375)。**重ねる**だけで、
+ # 渡さなかった項目は触らない。
+ detail=x.get('detail') if isinstance(x.get('detail'),dict) else None
  def fn(c):
   row=sr.plan_row(c,plan_id)
   if row:_check_session(row[1])
   n=0
   if frame is not None:n+=sr.plan_set_frame(c,plan_id,request_user_id(x),frame,pc=request_pc_name(x))
+  if detail:n+=sr.plan_merge_detail(c,plan_id,request_user_id(x),detail,pc=request_pc_name(x))
   if fields:n+=sr.plan_update(c,plan_id,request_user_id(x),pc=request_pc_name(x),**fields)
   if n==0:raise ValueError('指定の予定が見つからないか、更新項目がありません。')
   return {'id':plan_id}
@@ -606,8 +637,11 @@ def _apply_plan_op(c,op,uid,pc=''):
   fields={k:op[k] for k in ('estimateMinutes','fixedStart','remark','state','title') if k in op}
   # 枠の行き先(§9.238 ②)。まとめ書込でも1件ずつと同じ経路を通す。
   frame=op.get('frame') if isinstance(op.get('frame'),dict) else None
+  # 元データの取り込み(§9.375)。まとめ書込でも1件ずつと同じ経路を通す。
+  detail=op.get('detail') if isinstance(op.get('detail'),dict) else None
   n=0
   if frame is not None:n+=sr.plan_set_frame(c,plan_id,uid,frame,pc=pc)
+  if detail:n+=sr.plan_merge_detail(c,plan_id,uid,detail,pc=pc)
   if fields:n+=sr.plan_update(c,plan_id,uid,pc=pc,**fields)
   if n==0:raise ValueError('指定の予定が見つからないか、更新項目がありません。')
   return {'id':plan_id}

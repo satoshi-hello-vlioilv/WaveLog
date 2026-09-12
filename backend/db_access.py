@@ -181,6 +181,11 @@ PATH_CONFIG_LIVE_KEYS=('rne_extract_interval_sec','rne_extract_enabled','schedul
                        'schedule_session_block',
                        # 既定の品質データ結合(§9.194)。'off'で解除。既定は on。
                        'builtin_quality_join',
+                       # 予定に組み込んだロットの元データが変わったときの扱い
+                       # (§9.375、利用者の指示)。'auto'(既定)＝見つけたら更新、
+                       # 'confirm'＝中身を見せてから取り込む。読むのは画面が
+                       # 予定を開いたときなので、再起動は要らない。
+                       'schedule_source_sync',
                        # 測定データの閲覧用複製を見に行く間隔(§9.202)。複製先の
                        # パスは接続先と同じ扱い(再起動が要る)だが、間隔だけは
                        # 呼び出しのたびに読み直すので再起動は要らない。
