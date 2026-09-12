@@ -2354,3 +2354,12 @@ div.sc-view-row{cursor:default}
 .sc-src-was{color:var(--ink-3);text-decoration:line-through}
 .sc-src-now{color:var(--ink);font-weight:700}
 }
+
+@layer component {
+/* ---------- 枠を入れる窓の「どこへ入るか」（§9.376） ----------
+   **何が起きるかを先に言う**（§2）。下の「枠とは何か」の説明と同じ顔だと
+   読み飛ばされるので、面を持たせて先頭に立たせる（色帯は面とセット・§9.344）。 */
+.sc-frame-where{margin:0 0 var(--space-2);padding:var(--pad-card);
+ border-left:3px solid var(--teal);border-radius:var(--radius-sm);
+ background:var(--pale);color:var(--ink)}
+}

@@ -33,6 +33,16 @@ SILENT = re.compile(
     r'waitFor(?:Function|Selector)\((?:[^()]|\([^()]*\))*\)\s*\.catch\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)',
     re.S)
 MARK = '固定待ち:'
+# **`waitForFunction`の述語がPromiseを返していないか**（§9.376）。Playwrightは
+# 述語が返したPromiseを**待たない**——Promiseそのものが真なので、条件が
+# 成立していなくても**その場で抜ける**。実測（`tests/` で確かめた）では、
+# 3秒後にだけ真になる述語が**82msで`false`を返して**成立した。
+# つまりその判定は**何も見ていない**のに緑になる。落ちるのではなく黙って
+# 素通りする形なので、上限で許さず**0件**にする。サーバーへ聞き直す待ちは
+# `tests/lib/wait.js`の`poll()`（Node側で回す）で置くこと。
+ASYNC_PRED = re.compile(
+    r'waitForFunction\(\s*(?:async|(?:\([^()]*\)|[A-Za-z_$][\w$]*)\s*=>\s*(?:'
+    r'fetch\(|new\s+Promise|[A-Za-z_$][\w$.]*\s*\([^()]*\)\s*\.then))')
 # **テストが素の名前で製品の関数を呼んでいないか**（§9.359 の追補）。画面のJSは
 # 32本ともIIFEで閉じたので、`deleteBackupRows(...)` のような素の呼び出しは
 # `ReferenceError` になる。**それを`catch`が握ると、後片付けが何もしないまま
@@ -167,6 +177,30 @@ def main(update=False):
     finally:
         try:
             probe.unlink()
+        except FileNotFoundError:
+            pass
+    # `waitForFunction`の述語がPromiseを返していないか（§9.376）。**0件**——
+    # 上限で許すと、素通りする判定がそのぶん残ることになる。
+    bad_async = [(p.name, code[:m.start()].count('\n') + 1)
+                 for p in files
+                 for code in [strip_comments(p.read_text(encoding='utf-8'))]
+                 for m in ASYNC_PRED.finditer(code)]
+    rec('`waitForFunction`の述語がPromiseを返していない（返すと即座に抜ける・§9.376）',
+        not bad_async,
+        '; '.join(f'{n}:{i}' for n, i in bad_async[:8]) or '0件')
+    # 素通りしないこと: わざと1つ書いて数えられるか。
+    probe2 = TESTS / 'test__asyncprobe.js'
+    try:
+        probe2.write_text(
+            "await page.waitForFunction(()=>fetch('/x').then(r=>r.ok),null,{timeout:1});\n"
+            "await page.waitForFunction(()=>document.body.children.length>0);\n",
+            encoding='utf-8')
+        found = ASYNC_PRED.findall(strip_comments(probe2.read_text(encoding='utf-8')))
+        rec('網そのものが素通りしない（Promiseを返す述語を1つ注いで数える）',
+            len(found) == 1, f'{len(found)}件')
+    finally:
+        try:
+            probe2.unlink()
         except FileNotFoundError:
             pass
     # 素の名前での製品の呼び出しは**0件**（増分ではなく0。落ちるのではなく

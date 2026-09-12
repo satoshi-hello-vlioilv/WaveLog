@@ -33,6 +33,7 @@ run('test_srcsync: 元データの変化を予定へ取り込む（§9.375）',
    let j={};try{j=await r.json()}catch(e){j={parseError:String(e)}}
    return {status:r.status,body:j};
   },{p,b:body||{}});
+  const planDetailOf=id=>planOf(id).then(r=>r.detail||{}).catch(()=>({}));
   const planOf=id=>page.evaluate(async a=>{
    const r=await fetch('/api/schedule/plan?equipment='+encodeURIComponent(a.eq));
    const j=await r.json();
@@ -134,16 +135,13 @@ run('test_srcsync: 元データの変化を予定へ取り込む（§9.375）',
    rec('設定を「自動で更新」にできた',okAuto);
    await bootInto('schedule');
    await openSchedule();
-   const fixed=await page.waitForFunction(a=>fetch('/api/schedule/plan?equipment='+encodeURIComponent(a.eq))
-     .then(r=>r.json()).then(j=>{
-      const e=(j.entries||[]).find(x=>String(x.id)===String(a.id));
-      return !!(e&&e.detail&&String(e.detail[a.key]||'')===a.now);
-     }).catch(()=>false),
-     {eq:EQ,id:id1,key:target.key,now:target.now},
-     /* 共有DBへ書けたかは**サーバーに聞くしかない**ので、間隔を置いて聞く
-        （既定のフレームごとだと30秒で数百往復する）。待つのは条件であって
-        時間ではない——早く直れば早く抜ける。 */
-     {timeout:30000,polling:400}).then(()=>true,()=>false);
+   /* 共有DBへ書けたかは**サーバーに聞くしかない**ので、答えが変わるまで
+      聞き直す。**`page.waitForFunction`では測れない**——あれは述語が返した
+      Promiseを待たず、Promiseそのものを「真」と読んで即座に抜ける（§9.376）。
+      待つのは条件であって時間ではないので、直ったらその場で抜ける。 */
+   const fixed=await W.poll(()=>planDetailOf(id1),
+     d=>String((d||{})[target.key]||'')===target.now,30000,400)
+    .then(d=>String((d||{})[target.key]||'')===target.now);
    const d2=(await planOf(id1)).detail||{};
    rec('自動: 開いたら写しが最新の値へ直る',fixed,
        `${target.key}: ${STALE} -> ${d2[target.key]}（元データ=${target.now}）`);
@@ -177,16 +175,9 @@ run('test_srcsync: 元データの変化を予定へ取り込む（§9.375）',
    });
    rec('確認: 旧→新を並べて見せる',shown.length===4&&shown[2]===STALE&&!!shown[3],shown.join(' | '));
    await page.click('#appConfirmOk');
-   const applied=await page.waitForFunction(a=>fetch('/api/schedule/plan?equipment='+encodeURIComponent(a.eq))
-     .then(r=>r.json()).then(j=>{
-      const e=(j.entries||[]).find(x=>String(x.id)===String(a.id));
-      return !!(e&&e.detail&&String(e.detail[a.key]||'')===a.now);
-     }).catch(()=>false),
-     {eq:EQ,id:id1,key:target.key,now:target.now},
-     /* 共有DBへ書けたかは**サーバーに聞くしかない**ので、間隔を置いて聞く
-        （既定のフレームごとだと30秒で数百往復する）。待つのは条件であって
-        時間ではない——早く直れば早く抜ける。 */
-     {timeout:30000,polling:400}).then(()=>true,()=>false);
+   const applied=await W.poll(()=>planDetailOf(id1),
+     d=>String((d||{})[target.key]||'')===target.now,30000,400)
+    .then(d=>String((d||{})[target.key]||'')===target.now);
    rec('確認: 「取り込む」で最新へ直る',applied,
        `${target.key}=${((await planOf(id1)).detail||{})[target.key]}`);
    const gone=await page.evaluate(()=>{

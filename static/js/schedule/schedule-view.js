@@ -793,7 +793,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       <!-- 空の日付・直の枠(§9.238 ②、利用者の指示「予定を少し飛ばして設定
            する場合に、何も予定がない領域にセットできる、空の日付や直の枠を
            登録できるようにしたい」)。コメントと同じく掴んでも押しても入る。 -->
-      <button type="button" class="sc-split-toggle sc-ico-btn" id="scFrameBtn" draggable="true" hidden title="空の日付・直の枠を挟みます。ここから先の予定を、その日・その直の頭から並べ直します。&#10;・日にちや直を飛ばして、先の予定を先に決められます&#10;・手前に予定を足していくと、空いた時間へ自然に入っていきます&#10;・掴んで予定の間へ落とすと、その位置に入ります"><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i><span>枠</span></button>
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scFrameBtn" draggable="true" hidden title="空の日付・直の枠を挟みます。ここから先の予定を、その日・その直の頭から並べ直します。&#10;・日にちや直を飛ばして、先の予定を先に決められます&#10;・手前に予定を足していくと、空いた時間へ自然に入っていきます&#10;・掴んで予定の間へ落とすと、その位置に入ります&#10;・行を右クリックして「ここから下を、別の日・直から並べる…」でも入れられます"><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i><span>枠</span></button>
      </div>
      <!-- 見え方の入口は1つ(§9.199)。**いまの設定を文字で連れて出す**
           ——畳んだ先の値が読めないと、開くまで思い出せない。 -->
@@ -6245,6 +6245,21 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
        note:frameEditable(e)?'ここから先を、どの日・どの直から並べるか'
          :(e.__pending?'サーバーへ反映中です':sessionHolderMessage()),
        disabled:!frameEditable(e),run:()=>openFramePicker(e.id)},
+     /* ---------- 作業日・直を直す道を、行から辿れるようにする（§9.376） ----------
+        利用者の指摘⑥「作業日の変更はどのようにしたら出来ますか」
+        「自動で作業日と作業直が入りますが日付修正する機能も必要です」。
+        **機能は前からあった**（`枠`＝日付・直の行）が、入口が上の道具列の
+        アイコン1つだけで、**「この行を別の日へ」という言葉からは辿れなかった**
+        ——探させない（§2）ので、日付の列を右クリックしたときに出るべき所へ置く。
+        枠そのものの行には出さない（すぐ上の項目と同じことになる）。
+        **これから並ぶ行だけ**に出す——済んだ行・作業中の行の上へ枠を挟んでも
+        起点は動かない（§9.238 ②「進めるのは前へだけ」）ので、押せても
+        何も起きない項目になる（§4）。 */
+     e.kind!=='枠'&&e.state==='予定'&&{label:'ここから下を、別の日・直から並べる…',
+       note:frameInsertable()?'この行のすぐ上に、日付・直の枠を入れます'
+         :(sessionBlocked()?sessionHolderMessage():'この画面では予定を変えられません（閲覧のみ）'),
+       disabled:!frameInsertable(),showNote:true,
+       run:()=>openFramePicker(null,{before:e.id})},
      canPick&&{label:picked?'選択を外す':'この行を選ぶ',
                note:'選んだ行はまとめて動かす・まとめて外せます',
                run:()=>setPicked(e.id,!picked)},
@@ -7829,6 +7844,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    return out;
   });
  }
+ /* 枠を**入れられる**か。行の右クリックからも入れられる（§9.376）ので、
+    **答えは1箇所**にする——道具列のボタンと行のメニューで別々に判定すると、
+    片方だけが押せる状態を作る。 */
+ function frameInsertable(){
+  return !!scState.fullControl&&!sessionBlocked();
+ }
  /* 枠を直せるか。設備停止・コメントと同じ条件（§9.211 ②の読み取り専用も見る）。 */
  function frameEditable(e){
   return !!e&&e.kind==='枠'&&e.state==='予定'&&!e.__pending
@@ -7874,6 +7895,14 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const curDate=String(cur.date||cur.frameDate||'')||frameDefaultDate();
   const curShift=String(cur.shift||cur.frameShift||'');
   const curNote=String(cur.note||cur.frameNote||'');
+  /* **どこへ入るかを先に言う**（§2 推測させない）。位置を決めて開いた
+     ときだけ出す——末尾へ足すときは言うことが無い（それが既定だから）。 */
+  const beforeId=(!entry&&opts.before!==undefined)?String(opts.before||''):'';
+  const beforeEntry=beforeId?(scState.entries||[]).find(x=>String(x.id)===beforeId):null;
+  const whereHtml=beforeEntry
+   ?`<p class="confirm-modal-note sc-frame-where"><b>${esc(scRowMenuTitle(beforeEntry))}</b>のすぐ上に入れます。
+      ここから<b>下ぜんぶ</b>が、選んだ日・直の頭から並び直します。</p>`
+   :'';
   const shiftBtns=[{name:'',start:'',end:''}].concat(shifts).map(sh=>{
    const on=String(sh.name||'')===curShift;
    const label=sh.name||'その日の頭から';
@@ -7885,6 +7914,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const asked=confirmModal({
    eyebrow:'FRAME',title:entry?'枠の日付・直を変える':'空の日付・直の枠を入れる',
    bodyHtml:`<div class="sc-frame-edit">
+     ${whereHtml}
      <label class="sc-frame-row"><span>日付</span>
       <input type="date" id="scFrameDate" value="${esc(curDate)}"></label>
      <div class="sc-frame-row sc-frame-row-shifts"><span>直</span>
@@ -7897,7 +7927,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      <p class="confirm-modal-note"><b>この枠は時間を使いません。</b>
       ここから下の予定を、選んだ日・直の頭から並べ直すだけです。
       手前に予定を足していくと、空けておいた時間へ自然に入っていき、
-      追い越したら枠は何もしなくなります。</p>
+      追い越したら枠は何もしなくなります。
+      <b>時刻まで決めたいとき</b>は、行の右クリックから「いまの日時で固定する」を使ってください。</p>
     </div>`,
    confirmLabel:entry?'変える':'入れる',cancelLabel:'やめる'});
   /* **選んだ札の面を追随させる**（§9.229 ②「選んだ札のほうが濃い」）。

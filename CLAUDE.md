@@ -2,7 +2,7 @@
 
 **このファイルは規則だけを持つ。** なぜそうなのか（実測値・撤回した案・
 踏んだ罠）は各行の「くわしく」の先——[`docs/decisions/`](docs/decisions/README.md)
-（305の決定記録＋主題別の索引）にある。**触る前にその先を開くこと。**
+（306の決定記録＋主題別の索引）にある。**触る前にその先を開くこと。**
 
 構成の詳細は `docs/ARCHITECTURE.md`、機能と起動方法は `README.md`、
 スケジュール機能そのものの設計は `docs/SCHEDULE_MODE_DESIGN.md`（§1〜§13）。
@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（531件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（533件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -470,7 +470,7 @@
 | 「選ばない」の札は空文字だけではない | `test_opblank.js` | [§9.246](docs/decisions/9.246.md) |
 | ロールは「設備名＋ロール名＋接触面＋径MAX＋径MIN＋備考」で1本 | `test_rollio.py` | [§9.246](docs/decisions/9.246.md) |
 
-### 作業スケジュール（27件）
+### 作業スケジュール（28件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -490,6 +490,7 @@
 | 済んだ行の代表時刻は`actual.startAt`→`actual.endAt`→`finishedAt`の順 | `test_schistory.js`・`test_scrowstyle.js` | [§9.366](docs/decisions/9.366.md) |
 | 稼働カレンダーは足りなくなったら伸びる | `test_scload.py` | [§9.291](docs/decisions/9.291.md) |
 | 開始ボタンを作る場所は2つある。文字とHTMLは1箇所 | `test_workable.js` | [§9.51](docs/decisions/9.51.md) |
+| 作業日・直を直す道は行の右クリックからも辿れる。判定は`frameInsertable()`の1箇所、窓は「どこへ入るか」を先に言う | `test_scframe.js` | [§9.376](docs/decisions/9.376.md) |
 | 空の日付・直の枠は「ここから先の起点を進めるだけ」 | `test_scframe.js` | [§9.238](docs/decisions/9.238.md) |
 | 申し送り（コメント）は時間を取らない | `test_sccomment.js` | [§9.189](docs/decisions/9.189.md) |
 | 書込のあとは予定の時刻を取り直す | `test_scundecided.js` | [§9.185](docs/decisions/9.185.md) |
@@ -662,7 +663,7 @@
 | 「何で選ばせるか」と「どう見えるか」は別の軸 | — | [§9.223](docs/decisions/9.223.md) |
 | 公差外・基準外は確認カードの色で気づかせる。NGの記録はその行の中 | `test_ngcard.js` | [§9.242](docs/decisions/9.242.md) |
 
-### 検証（テスト）（27件）
+### 検証（テスト）（28件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -674,6 +675,7 @@
 | 実績を置く網は自分で消す。「作業中」を見る網は開始を打刻してから保存する（一時保存だけでは「予定」のまま） | `test_scsync.js`・`test_startwork.js` | [§9.351](docs/decisions/9.351.md) |
 | 文書が指す名前・撮る道具の選択子は実在させる。関数の中の`import`は増やさない（理由は`# 遅延:`） | `test_docindex.py`・`test_importlint.py` | [§9.349](docs/decisions/9.349.md) |
 | 固定待ち（`waitForTimeout`）とハーネスの写しは増やさない。網の骨組みは`tests/lib/harness.js`、待ちは`wait.js`の道具で | `test_waitlint.py` | [§9.347](docs/decisions/9.347.md) |
+| `page.waitForFunction`の述語にPromiseを返させない（返すと待たずに抜ける・実測82ms）。サーバーへ聞き直す待ちは`wait.js`の`poll()` | `test_waitlint.py` | [§9.376](docs/decisions/9.376.md) |
 | `offsetParent`で「見えているか」を測らない。`position:fixed`と未組み立ての両方で`null`になる | — | [§9.346](docs/decisions/9.346.md) |
 | テストが開く／取りに行く`static/js`の道は領域つきで実在するURL（`/static/js/…`）。取れた中身が短ければ落とす | `test_loadorder.py` | [§9.334](docs/decisions/9.334.md) |
 | テストは3層（`--pure`＝サーバー不要・並列／`--smoke`＝各1本／全件は指示があったときだけ）。一覧の宣言は`run_all.sh`の1箇所 | `test_layers.py` | [§9.337](docs/decisions/9.337.md) |

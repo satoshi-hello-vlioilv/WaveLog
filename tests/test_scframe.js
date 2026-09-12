@@ -23,6 +23,7 @@
    **確かめるときは「枠の次の予定」まで見ること**——枠が行として並ぶことだけを
    見る網は、時刻をまったく動かさない実装でも通る。 */
 const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+const W=require('./lib/wait.js');    // 待ちは1箇所の道具で置く（§9.347）
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
@@ -263,10 +264,77 @@ let b=null;
   rec('右クリックにも「枠の日付・直を変える」がある',
       menu.some(t=>/枠の日付・直を変える/.test(t)),JSON.stringify(menu).slice(0,180));
 
+  /* ---- 8) 行から「作業日・直を直す」道が辿れる（§9.376） ----
+     利用者の指摘⑥「作業日の変更はどのようにしたら出来ますか」。**機能は
+     前からあった**が、入口が道具列のアイコン1つで、「この行を別の日へ」と
+     いう言葉からは辿れなかった。ここで固定するのは**辿れること**と、
+     **押す前に何が起きるか分かること**。 */
+  const planRow=(await plan()).find(e=>e.kind==='作業'&&e.state==='予定'&&e.parentId==null);
+  rec('前提: これから並ぶ作業の行がある',!!planRow,JSON.stringify(planRow&&{id:planRow.id,lot:planRow.lotNo}));
+  const rowMenu=id=>page.evaluate(i=>{
+   const row=[...document.querySelectorAll('.sc-row-line')].find(r=>String(r.dataset.id)===String(i));
+   if(!row)return null;
+   row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:400,clientY:300}));
+   const items=[...document.querySelectorAll('.sc-row-menu button')].map(b=>b.textContent.trim());
+   document.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+   return items;
+  },id);
+  const WORD='ここから下を、別の日・直から並べる';
+  const workMenu=planRow?await rowMenu(planRow.id):[];
+  rec('作業の行の右クリックから「別の日・直から並べる」を辿れる',
+      (workMenu||[]).some(t=>t.includes(WORD)),JSON.stringify(workMenu).slice(0,220));
+  const frameMenu=await rowMenu(frameId);
+  rec('枠の行には出さない（すぐ上の項目と同じことになる）',
+      !(frameMenu||[]).some(t=>t.includes(WORD)),JSON.stringify(frameMenu).slice(0,220));
+
+  /* **押す前に「どこへ入るか」を言う**（§2 推測させない）。 */
+  await page.evaluate(a=>{
+   const row=[...document.querySelectorAll('.sc-row-line')].find(r=>String(r.dataset.id)===String(a.id));
+   row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:400,clientY:300}));
+   const btn=[...document.querySelectorAll('.sc-row-menu button')].find(b=>b.textContent.includes(a.word));
+   if(btn)btn.click();
+  },{id:planRow.id,word:WORD});
+  await page.waitForSelector('#scFrameDate',{timeout:12000});
+  const where=await page.evaluate(()=>{
+   const el=document.querySelector('.sc-frame-where');
+   return el?(el.textContent||'').replace(/\s+/g,' ').trim():'';
+  });
+  rec('窓が「どこへ入るか」を先に言う',
+      !!where&&where.includes(String(planRow.lotNo||'').trim())&&/すぐ上/.test(where),
+      where.slice(0,140));
+
+  /* **決めたら、その行のすぐ上に入る**——言ったとおりに入ること。 */
+  const day2=isoDay(new Date(Date.now()+11*86400000));
+  await page.evaluate(d=>{document.getElementById('scFrameDate').value=d},day2);
+  await page.click('#appConfirmOk');
+  /* **サーバーに入るまで待つ**（楽観的な行はidを持たないので、並びは
+     **確定したidで見る**——字で見ると、日付の出し方を変えた日に嘘になる）。
+     **`page.waitForFunction`では測れない**——あれは述語が返したPromiseを
+     待たず、Promiseそのものを「真」と読んで即座に抜ける（§9.376）。
+     サーバーへ聞き直す待ちは`W.poll`で置く。 */
+  const found=await W.poll(async()=>(await plan()).find(e=>e.kind==='枠'&&e.frame&&e.frame.date===day2),
+    f=>!!f,25000,400);
+  const newFrameId=found?String(found.id):'';
+  /* 入らなかったときは**画面が言っている理由をそのまま記録する**（§9.372）
+     ——「入らなかった」だけでは、断られたのか届かなかったのかが分からない。 */
+  const said=await page.evaluate(()=>[...document.querySelectorAll('#toastArea .toast')]
+    .map(x=>(x.textContent||'').replace(/\s+/g,' ').trim()).join(' ／ ')).catch(()=>'');
+  rec('決めた日・直の枠がサーバーに入る',!!newFrameId,`id=${newFrameId} (${day2}) 知らせ=${said.slice(0,200)}`);
+  if(newFrameId)made.push(newFrameId);
+  const order=await page.evaluate(a=>{
+   const ids=[...document.querySelectorAll('#scTimeline .sc-row-line')].map(r=>String(r.dataset.id));
+   return {at:ids.indexOf(String(a.frame)),row:ids.indexOf(String(a.row))};
+  },{frame:newFrameId,row:planRow.id});
+  rec('言ったとおり、その行のすぐ上に入る',
+      order.at>=0&&order.row>=0&&order.at===order.row-1,
+      `枠=${order.at}番目 / ${planRow.lotNo}=${order.row}番目`);
+
   /* ---- 7) 予定から外せる ---- */
   const del=await post('/api/schedule/plan/delete',{id:frameId});
   rec('枠は予定から外せる',del.status===200,`${del.status}`);
-  if(del.status===200)made.length=0;
+  /* **控えから消すのはこの1件だけ**（§9.362 後片付けは「消えた」で確かめる）
+     ——丸ごと空にすると、あとで足した枠が片付かないまま次の実行へ残る。 */
+  if(del.status===200){const i=made.indexOf(frameId);if(i>=0)made.splice(i,1)}
   const gone=(await plan()).every(e=>String(e.id)!==String(frameId));
   rec('外したら一覧から消える',gone);
 
@@ -277,6 +345,12 @@ let b=null;
   /* **落ちてもブラウザを閉じる**（tests/README.md）。残ると編集セッションを
      掴んだままになり、後続のスケジュール系が連鎖で落ちる。 */
   try{for(const id of made)await post('/api/schedule/plan/delete',{id})}catch(_){}
+  /* **「消えた」で確かめる**（§9.362）——消したつもりで弾かれていると、
+     置いた枠が次の実行の起点を動かし、遠くの網が落ちる。 */
+  try{
+   const left=(await plan()).filter(e=>made.some(id=>String(id)===String(e.id))).length;
+   rec('後片付け: 置いた枠が消えている',left===0,`残り${left}件`);
+  }catch(e){rec('後片付け: 置いた枠が消えている',false,'数えられない: '+e.message)}
   try{await post('/api/schedule/session/release',{equipment:EQ})}catch(_){}
   try{await setMode('edit')}catch(_){}
   if(b)await b.close();
