@@ -2,7 +2,7 @@
 
 **このファイルは規則だけを持つ。** なぜそうなのか（実測値・撤回した案・
 踏んだ罠）は各行の「くわしく」の先——[`docs/decisions/`](docs/decisions/README.md)
-（303の決定記録＋主題別の索引）にある。**触る前にその先を開くこと。**
+（304の決定記録＋主題別の索引）にある。**触る前にその先を開くこと。**
 
 構成の詳細は `docs/ARCHITECTURE.md`、機能と起動方法は `README.md`、
 スケジュール機能そのものの設計は `docs/SCHEDULE_MODE_DESIGN.md`（§1〜§13）。
@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（527件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（529件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -470,7 +470,7 @@
 | 「選ばない」の札は空文字だけではない | `test_opblank.js` | [§9.246](docs/decisions/9.246.md) |
 | ロールは「設備名＋ロール名＋接触面＋径MAX＋径MIN＋備考」で1本 | `test_rollio.py` | [§9.246](docs/decisions/9.246.md) |
 
-### 作業スケジュール（23件）
+### 作業スケジュール（25件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -480,6 +480,8 @@
 | 書込が失敗したら必ず理由を言う。`onFailure`があることを「知らせた」と数えない（見出しは`SC_OP_LABEL`の1箇所） | `test_scfail.js` | [§9.372](docs/decisions/9.372.md) |
 | 失敗は「開発へ報告できる形」で残す。文脈は画面が`WL.feedback.provide()`で名乗る（土台に画面の知識を書かない） | `test_feedback.js` | [§9.373](docs/decisions/9.373.md) |
 | 報告は「人が読む形＋機械で読む1行（`WLFB1`）」。足あとは必ず失敗で終わる。版は控えてから使う | `test_feedback.js` | [§9.373](docs/decisions/9.373.md) |
+| 掴んでいる間は器の縁で表を送る。判定は「予定の画面の上でドラッグ中か」の1つ（掴んでいる物で数えない） | `test_scdragscroll.js` | [§9.374](docs/decisions/9.374.md) |
+| 色と濃さの意味は「表示」に畳む。見本は**実物と同じクラス**で描く（色を書き写さない） | `test_scdragscroll.js` | [§9.374](docs/decisions/9.374.md) |
 | 動かせない行は掴んだ時点で理由を言う。判定は`reorderableEntry()`と同じ順で見る | `test_scfail.js` | [§9.372](docs/decisions/9.372.md) |
 | 区切りは「あたった決まりを書いた順にぜんぶ重ねる」。区切り文字は1文字に限らない（空白だけでも可） | `test_lotcopy.js` | [§9.371](docs/decisions/9.371.md) |
 | さかのぼりの起点はサーバーの`history_from()`が1箇所で答える | `test_schistory.js` | [§9.366](docs/decisions/9.366.md) |

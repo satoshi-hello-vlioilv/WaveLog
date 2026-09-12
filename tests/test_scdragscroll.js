@@ -84,10 +84,20 @@ run('test_scdragscroll: 掴んだまま送る／色の意味（§9.374）',
    const row=document.querySelector('#scTimeline .sc-row-line');
    row.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer:new DataTransfer()}));
   });
-  const stopped1=await scrollNow();
-  await page.waitForFunction(()=>true,null,{timeout:1000}).catch(()=>{});
-  const stopped2=await scrollNow();
-  rec('離したら止まる',Math.abs(stopped2-stopped1)<=2,`${stopped1} → ${stopped2}`);
+  /* **「止まった」を条件で見る**（§9.347）。送りは30msごとなので、
+     位置が2回続けて同じなら止まっている。`waitForFunction`の巡回に
+     数えさせる——`waitForTimeout`で1秒待つのは固定待ちで、しかも
+     「たまたま止まっていただけ」と区別が付かない。 */
+  const stopped=await page.waitForFunction(()=>{
+   const tl=document.getElementById('scTimeline');
+   const sc=document.scrollingElement||document.documentElement;
+   const h=(tl&&tl.scrollHeight>tl.clientHeight+4)?tl:sc;
+   const now=h.scrollTop;
+   const same=(window.__wlLastTop===now);
+   window.__wlLastTop=now;
+   return same;
+  },null,{timeout:4000,polling:60}).then(()=>true,()=>false);
+  rec('離したら止まる',stopped,`位置 ${await scrollNow()}`);
 
   /* 上の縁でも戻れる（行き過ぎたら詰む、を作らない） */
   const mid=await scrollNow();
