@@ -4752,25 +4752,49 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function bladeSeedFromEntry(e){
   const list=scState.entries||[];
   const at=list.findIndex(x=>String(x.id)===String(e.id));
-  const after=at<0?[]:list.slice(at+1);
+  return bladeSeedLots(list,at<0?list.length:at+1);
+ }
+ /* 分割の有無は`WL.split`の1箇所が答える（測定と同じ判定を使う）。
+    読めないときは「分割なし」へ倒す——**分割ありを見落とすより、
+    見落としたことを数えて言うほうが直せる**（下の`skipped`）。 */
+ function hasSplitDetail(d){
+  const api=window.WL&&window.WL.split;
+  try{return !!(api&&typeof api.hasSplit==='function'&&api.hasSplit(d))}
+  catch(err){WL.quiet.note('分割の有無を読めない（分割なしとして扱う）',err);return false}
+ }
+ /* 条になる行を選ぶところだけを切り出した**純粋な関数**（網が合成した並びで
+    直に呼べる・`WL.scheduleView.bladeSeedLots`）。`from`はその停止の次の位置。 */
+ function bladeSeedLots(list,from){
+  const all=list||[];
   const n=v=>{const x=Number(v);return Number.isFinite(x)&&x>0?x:null};
+  /* 子がぶら下がっている親を先に拾う（子は`parentId`付きで親の直後に居る）。 */
+  const kidded=new Set();
+  all.forEach(x=>{if(x&&x.parentId!=null)kidded.add(String(x.parentId))});
   const lots=[];
-  let thickness=null,originalWidth=null,total=0;
-  for(const x of after){
+  let thickness=null,originalWidth=null,total=0,skipped=0;
+  for(const x of all.slice(Math.max(0,from))){
    if(x.kind==='設備停止'&&stopLinkRowOf(x))break;   // 次の刃組から先は別の段取り
    if(x.kind!=='作業')continue;
    const d=x.detail||{};
-   const w=n(contentValueOf(d,'mfgWidth'));
-   const cnt=Math.max(1,Math.round(n(contentValueOf(d,'boxHorizontalCount'))||1));
+   /* 板厚と元コイル幅は**親の行からも読む**——元コイル幅を持っているのは親。 */
    if(thickness===null)thickness=n(contentValueOf(d,'mfgThickness'));
    if(originalWidth===null)originalWidth=n(contentValueOf(d,'originalWidth'));
-   if(!w)continue;
+   const child=d.__childLot===true;
+   const hasKid=kidded.has(String(x.id));
+   /* **分割ありの親ロットは条にならない。** 子が並んでいない（取得に失敗した）
+      ときも同じ——親が持つ幅は元コイル幅なので、条幅として使うと1本で元幅を
+      使い切る。飛ばしたことは数えて画面に出す（§CLAUDE 4）。 */
+   if(!child&&(hasKid||hasSplitDetail(d))){if(!hasKid)skipped++;continue}
+   const w=child?n(d.__childWidth):n(contentValueOf(d,'mfgWidth'));
+   const cnt=Math.max(1,Math.round(
+    (child?n(d.__childStrips):n(contentValueOf(d,'boxHorizontalCount')))||1));
+   if(!w){if(child)skipped++;continue}   // 切断巾が読めない子は渡さない（0で埋めない）
    if(originalWidth&&total+w*cnt>originalWidth+0.001)break;   // 元コイルに載らない
    total+=w*cnt;
    lots.push({name:String(x.lotNo||x.title||('LOT'+(lots.length+1))),w,n:cnt});
    if(lots.length>=9)break;
   }
-  return {thickness,originalWidth,lots};
+  return {thickness,originalWidth,lots,skipped};
  }
  /* 題名の横に置く行き先のチップ。**押すと何が起きるかを字で書く**（§CLAUDE 4）
     ——行そのもののクリックは「選ぶ」（§9.363）、ダブルクリックは「停止の内容を
@@ -8869,6 +8893,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
        hiddenLotSet()      … この一覧に出すべきでないロット（予定に居る／仕掛から消えた）
        forgetWorkPresence()… 一覧を取り直すので、控えた在席も捨てる */
   hiddenLotSet:()=>hiddenLotSet(),
+  /* 刃組ガイダンスへ渡す「条になる行」の選び方（§9.378）。**分割ありの親は
+     条にならない**という測定と同じ規則を、網が合成した並びで直に確かめられる
+     ようにここから出す（画面を組み立てずに条の選び方だけを見る）。 */
+  bladeSeedLots:(list,from)=>bladeSeedLots(list,from||0),
   forgetWorkPresence:()=>forgetWorkPresence(),
   /* いま描いているタイムラインの列レイアウトの対象（§9.239 ④）。
      紙が「手で決めた揃え」を引くのに使う——**判定は`WL.columnAlign`の

@@ -35,6 +35,10 @@
  let M = null, IX = null, LAST = null;
  let panel = null, railTab = 'bom', loadToken = 0;
  let seededFrom = null;     /* どの予定から開いたか（画面に出どころを出す） */
+ /* 予定から拾えなかった行の数（分割ありで子ロットの切断巾が読めない等）。
+    **0で埋めずに件数を言う**（§9.231・§CLAUDE 4）——黙って落とすと、
+    条が1本足りないことに現場が気づけない。 */
+ let seededSkip = 0;
 
  /* ---------- 幅ごとの色 ----------
     最大9種の条幅が入り混じっても見分けられるよう、淡い塗りで差を付ける。
@@ -308,6 +312,7 @@
   const changed = eq !== st.equipment;
   st.equipment = eq;
   seededFrom = o.from || null;
+  seededSkip = Math.max(0, (o.seed && o.seed.skipped) | 0);
   showEmpty('');
   try {
    await loadContext(eq);
@@ -429,7 +434,11 @@
   const from = $('#bsFrom');
   if (from) {
    from.hidden = !seededFrom;
-   if (seededFrom) from.innerHTML = `この予定から：<b>${esc(seededFrom)}</b>`;
+   if (seededFrom) {
+    const why = '分割ありの親ロット、または切断巾が読めない子ロット';
+    from.innerHTML = `この予定から：<b>${esc(seededFrom)}</b>`
+     + (seededSkip ? `<s>／条にしなかった行 ${seededSkip} 件（${esc(why)}）</s>` : '');
+   }
   }
   $('#bsFigNote').textContent = `${B.METHOD_NAME[res.method]}／刃 ${res.A.U.length} 対`;
  }

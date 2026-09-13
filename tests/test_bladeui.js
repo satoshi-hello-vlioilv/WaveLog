@@ -310,6 +310,42 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('読めない項目を0で埋めていない',
         !!carried && carried.W > 0 && carried.thick > 0, JSON.stringify(carried));
 
+    /* ---- 8) 分割ありの親ロットは条にならない（§9.378） ----
+       利用者の指示「分割ロットの場合、測定画面では親ロットは測定データ格納
+       対象ではない…刃組もおなじです」。割った後の材料はすべて子ロットで、
+       **親自身の持ち分は無い**（`lot-split.js` と同じ考え方）。予定には子が
+       親の直後に実体で並ぶ（`parentId`付き・§9.83）ので、**条にするのは子だけ**。
+       親が持つ幅は元コイル幅なので、条に混ぜると二重計上のうえ1本で元幅を
+       使い切る（実際にそうなっていた）。
+       ここは画面を組み立てず、**選び方の関数だけ**を合成した並びで見る。 */
+    const seed = await page.evaluate(() => {
+     const mk = o => Object.assign({ kind: '作業', lotNo: o.id, detail: {} }, o);
+     const list = [
+      mk({ id: 'stop', kind: '設備停止', title: 'この停止' }),
+      /* ① 分割ありの親＋子2本 */
+      mk({ id: 'P1', detail: { mfgWidth: 1200, mfgThickness: 1.6, originalWidth: 1200 } }),
+      mk({ id: 'C1', parentId: 'P1', detail: { __childLot: true, __childWidth: 65, __childStrips: 2 } }),
+      mk({ id: 'C2', parentId: 'P1', detail: { __childLot: true, __childWidth: 50, __childStrips: 3 } }),
+      /* ② 分割なしの行は従来どおり */
+      mk({ id: 'N1', detail: { mfgWidth: 80, boxHorizontalCount: 2 } }),
+      /* ③ 切断巾が読めない子（0で埋めず、飛ばして数える） */
+      mk({ id: 'P2', detail: { mfgWidth: 900 } }),
+      mk({ id: 'C3', parentId: 'P2', detail: { __childLot: true, __childStrips: 1 } })
+     ];
+     return WL.scheduleView.bladeSeedLots(list, 1);
+    });
+    const names = (seed.lots || []).map(L => L.name).join(',');
+    rec('分割ありの親ロットは条にならない（親の幅＝元コイル幅を条に混ぜない）',
+        !/P1|P2/.test(names), names);
+    rec('条になるのは子ロット。幅は切断巾・本数は条数',
+        JSON.stringify(seed.lots) === JSON.stringify(
+         [{ name: 'C1', w: 65, n: 2 }, { name: 'C2', w: 50, n: 3 }, { name: 'N1', w: 80, n: 2 }]),
+        JSON.stringify(seed.lots));
+    rec('板厚・元コイル幅は親の行からも読む',
+        seed.thickness === 1.6 && seed.originalWidth === 1200,
+        `t=${seed.thickness} W=${seed.originalWidth}`);
+    rec('渡せなかった行は0で埋めず件数で言う', seed.skipped === 1, String(seed.skipped));
+
     rec('JSエラーが出ていない', errs.length === 0, errs.slice(0, 2).join(' / '));
 
   } finally {
