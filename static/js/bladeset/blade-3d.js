@@ -84,6 +84,11 @@
 
  /* ====================== 部品の読み込み ====================== */
  let loading = null;
+ /* 取りに行っている間の約束は**1本にまとめる**（同時に2回押しても2本読まない）。
+    ただし**失敗した約束は握らない**（§9.378）——握ると、一度でも読めなかった
+    あとは「もう一度押しても二度と取りに行かない」ことになり、回線が一瞬途切れた
+    だけで**ページを開き直すまで立体図が出なくなる**（網が捕まえた）。
+    読めなかった`<script>`も片付ける（同じ src の札が残っていると紛らわしい）。 */
  function loadLibrary() {
   if (window.THREE) return Promise.resolve(true);
   if (loading) return loading;
@@ -91,8 +96,8 @@
    const s = document.createElement('script');
    s.src = THREE_SRC;
    s.async = true;
-   s.onload = () => resolve(!!window.THREE);
-   s.onerror = () => resolve(false);
+   s.onload = () => { loading = null; resolve(!!window.THREE); };
+   s.onerror = () => { loading = null; s.remove(); resolve(false); };
    document.head.appendChild(s);
   });
   return loading;
