@@ -172,6 +172,127 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await W.until(page, () => !/フィンガー/.test(document.querySelector('#bsV2').textContent),
                   null, { ms: 8000, what: 'ゴムリング方式へ戻る' });
 
+    /* ---- 4.5) 模式図の読みやすさ（§9.378・利用者の指摘4点） ----
+       どれも「見えるかどうか」の話なので、**実際に描かれた図形を測って**見る。
+       字面（クラスが付いているか）ではなく、位置と大きさの関係を見ること。 */
+    const fig = await page.evaluate(() => {
+     const box = el => {
+      const o = {};
+      ['x', 'y', 'width', 'height'].forEach(k => { o[k] = parseFloat(el.getAttribute(k)) || 0; });
+      return o;
+     };
+     const stage = document.querySelector('#bsStage');
+     const caps = [...stage.querySelectorAll('rect.bs-cap')].map(box);
+     /* 青い印と重なってはいけないのは「軸の上に並ぶ部材」。軸そのもの（印を
+        載せる土台）と印どうしは除く。 */
+     const others = [...stage.querySelectorAll('rect')]
+       .filter(r => !r.classList.contains('bs-cap') && !r.classList.contains('bs-shaft'))
+       .map(box);
+     const hit = caps.filter(c => others.some(o =>
+       o.x < c.x + c.width && o.x + o.width > c.x &&
+       o.y < c.y + c.height && o.y + o.height > c.y)).length;
+     /* 番号は「板がある側」。その番号の真下（真上）にある板の矩形を x で引き、
+        板が中心より上に寄っているなら番号も上、という対応を見る。 */
+     const mats = [...stage.querySelectorAll('rect.bs-mat')].map(box);
+     const midY = mats.length
+       ? mats.reduce((a, m) => a + m.y + m.height / 2, 0) / mats.length : 0;
+     let ok = 0, ng = 0;
+     [...stage.querySelectorAll('text.bs-mk')].forEach(t => {
+      if (!/^[0-9]+$/.test(t.textContent || '')) return;      /* 耳は下に固定なので見ない */
+      const x = parseFloat(t.getAttribute('x')) || 0;
+      const m = mats.find(r => r.x <= x && x <= r.x + r.width);
+      if (!m) return;
+      const matUp = (m.y + m.height / 2) < midY - 0.5;
+      const markUp = t.dataset.side === 'up';
+      if (matUp === markUp) ok++; else ng++;
+     });
+     const vb = (stage.getAttribute('viewBox') || '').split(/\s+/).map(Number);
+     const r = stage.getBoundingClientRect();
+     const gw = document.querySelector('#bsTables .bs-gw');
+     return { hit, caps: caps.length, ok, ng,
+              vbRatio: vb[3] && vb[2] ? vb[2] / vb[3] : 0,
+              boxRatio: r.height ? r.width / r.height : 0,
+              gwFs: gw ? parseFloat(getComputedStyle(gw).fontSize) : 0,
+              bodyFs: parseFloat(getComputedStyle(document.body).fontSize) };
+    });
+    rec('軸のエンドの青い印は端部のスペーサーと重ならない（有効幅の外へ出す）',
+        fig.caps === 4 && fig.hit === 0, `印${fig.caps}枚 / 重なり${fig.hit}件`);
+    rec('条の番号は板がある側へ出る（番号と板を目で結び直させない）',
+        fig.ok > 0 && fig.ng === 0, `そろい${fig.ok}件 / ずれ${fig.ng}件`);
+    /* 模式図が**器の横幅を使い切っている**こと（§9.378 の実測で確かめた形）。
+       描画は `preserveAspectRatio` で横幅に律速されるので、中身が viewBox の
+       横いっぱいに広がっていれば、器の幅ぶんそのまま描かれる。ここが縮むと
+       左右に何も無い帯が生まれる——利用者の「両側に余白がある」はこの形。
+       縦の詰まり（`grow`）では横は1pxも動かないので、見るのは**横だけ**。 */
+    const fill = await page.evaluate(() => {
+     const g = document.querySelector('#bsStage');
+     const vb = (g.getAttribute('viewBox') || '').split(/\s+/).map(Number);
+     let bb = null;
+     try { bb = g.getBBox(); } catch (_) { bb = null; }
+     const row = document.querySelector('#bsFigRow');
+     const cols = row ? getComputedStyle(row).gridTemplateColumns.split(/\s+/)
+       .map(v => Math.round(parseFloat(v) || 0)) : [];
+     /* 両脇の表が「中身なりの器」に収まっているか（器が中身より大きく遊んで
+        いると、そのぶん模式図が痩せる・CLAUDE 11）。 */
+     const side = ['#bsOsSide', '#bsDsSide'].map(sel => {
+      const host = document.querySelector(sel);
+      if (!host) return { box: 0, nat: 0 };
+      const t = host.tagName === 'TABLE' ? host : host.querySelector('table');
+      const box = (host.closest('.bs-side') || host.parentElement).getBoundingClientRect().width;
+      let nat = 0;
+      if (t) { const o = t.style.width; t.style.width = 'max-content';
+               nat = t.getBoundingClientRect().width; t.style.width = o; }
+      return { box: Math.round(box), nat: Math.round(nat) };
+     });
+     return { vw: vb[2] || 0, x0: bb ? bb.x : 0, x1: bb ? bb.x + bb.width : 0, cols, side };
+    });
+    /* 中身が viewBox の横幅の 98% 以上を占めていること（見出しの右端の
+       わずかな空きだけを許す）。 */
+    rec('模式図は器の横幅を使い切る（左右に何も無い帯を残さない）',
+        fill.vw > 0 && (fill.x1 - fill.x0) >= fill.vw * 0.98,
+        `中身 ${Math.round(fill.x0)}..${Math.round(fill.x1)} / viewBox 0..${fill.vw}`);
+    rec('両脇の端部の表は中身なりの器に収める（遊ばせたぶん模式図が痩せる）',
+        fill.side.every(x => x.nat > 0 && x.box - x.nat <= 12),
+        fill.side.map(x => `器${x.box}/中身${x.nat}`).join(' '));
+    rec('模式図の列は両脇より広い（主役に面積を配る）',
+        fill.cols.length === 3 && fill.cols[1] > fill.cols[0] + fill.cols[2],
+        fill.cols.join(' | '));
+
+    /* 強調は**重ねている間だけ**、しかも**図と表の双方向**（§9.378）。 */
+    const hov = await page.evaluate(async () => {
+     const fire = (el, type) => el.dispatchEvent(
+       new PointerEvent(type, { bubbles: true, cancelable: true }));
+     /* 数えるのは**この画面の中だけ**（`.is-pick` は他の画面にもある字面）。 */
+     const lit = () => document.querySelectorAll('#bladeSetPanel .is-pick').length;
+     const badge = document.querySelector('#bsStage [data-badge]');
+     const row = document.querySelector('#bsTables [data-badge]');
+     const before = lit();
+     let onFig = 0, onTbl = 0, figLitRow = false, tblLitFig = false;
+     if (badge) {
+      fire(badge, 'pointerover');
+      onFig = lit();
+      figLitRow = !!document.querySelector('#bsTables .is-pick');
+      /* `pointerleave` は泡立たないので、**聞いている器そのもの**へ投げる。 */
+      fire(document.getElementById('bladeSetPanel'), 'pointerleave');
+     }
+     const afterLeave = lit();
+     if (row) {
+      fire(row, 'pointerover');
+      onTbl = lit();
+      tblLitFig = !!document.querySelector('#bsStage .is-pick');
+      fire(document.getElementById('bladeSetPanel'), 'pointerleave');
+     }
+     return { before, onFig, onTbl, afterLeave, figLitRow, tblLitFig,
+              hasBadge: !!badge, hasRow: !!row };
+    });
+    rec('図の記号に重ねると光る（押して選ばせない）',
+        hov.hasBadge && hov.onFig > hov.before, `${hov.before}→${hov.onFig}`);
+    rec('図に重ねると刃組表の該当行も光る', hov.figLitRow, String(hov.figLitRow));
+    rec('表に重ねると図の該当記号も光る（連動は双方向）',
+        hov.hasRow && hov.tblLitFig, String(hov.tblLitFig));
+    rec('器から出ると消える（光ったまま残さない）', hov.afterLeave === hov.before,
+        `${hov.onFig}→${hov.afterLeave}`);
+
     /* ---- 5) 立体図: 器の入れ替え・断り・段取りの順 ----
        **描画そのもの（WebGL の絵）はここでは見ない。** 立体図の部品（three.js）は
        押したときに CDN から取りに行く作りで、検証用のコンテナは外へつながらない。

@@ -476,13 +476,16 @@
    el.classList.toggle('is-pick', !!pickedBadge && el.dataset.badge === pickedBadge);
   });
  }
+ /* **重ねている間だけ**光らせる（§9.378、利用者の指示「クリックしないと強調
+    表示しませんが、マウスオーバーしている間だけに変更し…表側からもマウス
+    オーバーで模式図側を連動強調」）。押して選ぶ形だと「選んだままにした」
+    ことを覚えておく必要があり、解除も手で要る——見比べるだけの操作には重い。
+    図でも表でも同じ印（`[data-badge]`）なので、**どちらに重ねても両方光る**。 */
  function pickBadge(b) {
   const next = String(b || '');
-  pickedBadge = (pickedBadge === next) ? '' : next;   /* もう一度押すと解除 */
+  if (pickedBadge === next) return;
+  pickedBadge = next;
   paintBadgePick();
-  if (!pickedBadge) return;
-  const row = panel.querySelector(`#bsTables tr[data-badge="${CSS.escape(pickedBadge)}"]`);
-  if (row && row.scrollIntoView) row.scrollIntoView({ block: 'nearest' });
  }
 
  function render() {
@@ -679,6 +682,10 @@
   const maxD = Math.max(knifeD, bigD, spacerD, 322);
   const unit = FIG.topY + FIG.band / 2 + FIG.band * knifeD / maxD + FIG.openGap
              + FIG.band / 2 + FIG.tailGap;
+  /* `grow` は**縦の詰まり具合**だけを決める（§9.378 の実測）。描画は
+     `preserveAspectRatio` で必ず横幅に律速される（viewBox 1000 幅 →
+     器の幅いっぱい）ので、ここをいじっても**図は1pxも広がらない**。
+     横を広げたいときに動かすのは器の側（`--bs-side-w`）。 */
   const grow = Math.max(1, Math.min(FIG.growMax, FIG.vw * ratio / unit));
   const ts = 1 + (grow - 1) * FIG.textShare;
   const band = FIG.band * grow, hOf = d => band * d / maxD;
@@ -716,15 +723,20 @@
  function drawShafts(V, A) {
   const xa = V.px(0), xb = V.px(A.arborLen);
   const x0 = Math.min(xa, xb), w = Math.max(2, Math.abs(xb - xa));
+  /* 青い印は有効幅の**外側**へ出す（§9.378、利用者の指示「軸のエンドの青
+     オブジェクトと端部のスペーサーのオブジェクトが干渉しています。エンドなので
+     干渉しないように配置してください」）。内側に置くと、有効幅の中に並ぶ
+     端部のスペーサーの上に重なって、1枚目が読めなくなる。 */
+  const cw = FIG.capW, sx = x0 - cw, sw = w + cw * 2;
   let back = '', front = '';
   [[V.upC, '上軸'], [V.loC, '下軸']].forEach(([cy, name]) => {
-   back += `<rect x="${x0}" y="${cy - V.hOf(V.shaftD) / 2}"`
-    + ` width="${w}" height="${V.hOf(V.shaftD)}" rx="5"`
+   back += `<rect class="bs-shaft" x="${sx}" y="${cy - V.hOf(V.shaftD) / 2}"`
+    + ` width="${sw}" height="${V.hOf(V.shaftD)}" rx="5"`
     + ` fill="url(#bsSh)" stroke="${V.PAL['shaft-edge']}"/>`
-    + `<rect x="${x0}" y="${cy - V.hOf(FIG.capD) / 2}" width="${FIG.capW}"`
+    + `<rect class="bs-cap" x="${sx}" y="${cy - V.hOf(FIG.capD) / 2}" width="${cw}"`
     + ` height="${V.hOf(FIG.capD)}" rx="3" fill="${V.PAL.cap}"/>`
-    + `<rect x="${x0 + w - FIG.capW}" y="${cy - V.hOf(FIG.capD) / 2}"`
-    + ` width="${FIG.capW}" height="${V.hOf(FIG.capD)}" rx="3" fill="${V.PAL.cap}"/>`;
+    + `<rect class="bs-cap" x="${x0 + w}" y="${cy - V.hOf(FIG.capD) / 2}"`
+    + ` width="${cw}" height="${V.hOf(FIG.capD)}" rx="3" fill="${V.PAL.cap}"/>`;
    front += rowLabel(V, name, cy);
   });
   return { back, front };
@@ -908,10 +920,13 @@
    const cy = y + matShift(A, run, i) * h / 2, top = cy - h / 2, bot = cy + h / 2;
    botMost = Math.max(botMost, bot);
    topMost = Math.min(topMost, top);
-   back += `<rect x="${a + 0.6}" y="${top}" width="${Math.max(1.6, w - 1.2)}" height="${h}" rx="1"`
-    + ` fill="${face}" stroke="${edge}" stroke-width="1"/>`;
+   back += `<rect class="bs-mat" x="${a + 0.6}" y="${top}" width="${Math.max(1.6, w - 1.2)}"`
+    + ` height="${h}" rx="1" fill="${face}" stroke="${edge}" stroke-width="1"/>`;
    if (strip || (trim && (i === 0 || i === last))) {
-    marks.push({ cx, strip, text: strip ? String((sg.lotIx | 0) + 1) : '耳', w, fill: edge });
+    /* `up`＝この条の板が中心より上へ寄っているか（§9.378、利用者の指示
+       「板がある側に番号バッジを出してください」）。番号は板を指すものなので、
+       板と反対側に置くと、どの条の番号なのかを目で辿り直すことになる。 */
+    marks.push({ cx, strip, up, text: strip ? String((sg.lotIx | 0) + 1) : '耳', w, fill: edge });
    }
    if (strip && sg.flip && w > V.fs(30)) {
     front += `<text x="${cx}" y="${top - V.fs(6)}" text-anchor="middle" font-size="${V.fs(12)}"`
@@ -932,16 +947,18 @@
   if (!Number.isFinite(pair)) pair = strips.length ? strips[0].w * 2 : V.fs(13) * 2;
   const mfs = Math.max(V.fs(8), Math.min(V.fs(13), (pair - 4) / 1.4));
   const upY = Math.min(topMost, y - V.matH * FIG.reachShare) - V.fs(4);
-  let si = 0;
   marks.forEach(m => {
-   /* 耳は端にしか無いので下の段に固定。条だけを上下へ振り分ける。 */
-   const below = !m.strip || (si++ % 2 === 0);
+   /* **板がある側へ出す**（§9.378）。条は切られた向きに応じて上下どちらかへ
+      寄るので、番号もその側へ置く。千鳥では隣どうしが逆へ寄るため、
+      結果として上下に振り分かれて番号がぶつからない。耳は下に固定。 */
+   const below = !m.strip || !m.up;
    const ty = below ? my : upY;
    if (m.strip) {
     front += `<circle cx="${m.cx}" cy="${ty - mfs * 0.34}" r="${(mfs * 0.72).toFixed(1)}"`
      + ` fill="#fff" stroke="${m.fill}" stroke-width="1.3"/>`;
    }
-   front += `<text x="${m.cx}" y="${ty}" text-anchor="middle" font-size="${mfs.toFixed(1)}"`
+   front += `<text class="bs-mk" data-side="${below ? 'down' : 'up'}" x="${m.cx}" y="${ty}"`
+    + ` text-anchor="middle" font-size="${mfs.toFixed(1)}"`
     + ` font-weight="800" fill="${m.fill}">${esc(m.text)}</text>`;
   });
   return { back, front };
@@ -1594,11 +1611,12 @@
   });
   /* 記号を押したら図と表を連動させる。**図でも表でも同じ的**（`[data-badge]`）で
      受けるので、押す場所によって効き方が変わらない。 */
-  panel.addEventListener('click', e => {
+  panel.addEventListener('pointerover', e => {
    const hit = e.target.closest('[data-badge]');
-   if (!hit || !panel.contains(hit)) return;
-   pickBadge(hit.dataset.badge);
+   pickBadge(hit && panel.contains(hit) ? hit.dataset.badge : '');
   });
+  /* 器の外へ出たら消す（最後に重ねた記号が光ったまま残らない）。 */
+  panel.addEventListener('pointerleave', () => pickBadge(''));
   /* 段取りへ戻る（§9.378）。**左メニューと同じ口**を呼ぶ——入口を2つにしない。 */
   $('#bsFrom').addEventListener('click', () => {
    const api = WL.scheduleView;

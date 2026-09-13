@@ -3332,8 +3332,16 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     「書ける: false」「元データの扱い: auto」）がまさにこれで、**現場は何も
     操作していないのに失敗だけが出て、直す手立ても無い**。
     書ける端末（`fullControl`）だけが取り込む（§CLAUDE 4）。 */
+ /* **見る**のは読むだけ（`sourceDiffFor()` も `checkWorkPresence()` も読み取り）
+    なので、書き込みの権限は要らない。**取り込む**のは写しを書き換えるので、
+    そこだけ「書ける端末」に限る（§9.378、利用者の了承「書けない端末でも、
+    変化があることは見せるように」）。分けないと、書けない端末は変化に気づけず
+    **黙って入れたときの値を出し続ける**ことになる。 */
+ function canReadSource(){
+  return !!scState.configured;
+ }
  function canSyncSource(){
-  return !!(scState.configured&&scState.fullControl&&!sessionBlocked());
+  return !!(canReadSource()&&scState.fullControl&&!sessionBlocked());
  }
  /* 1行ぶんの差分。戻り値は`[{key,label,was,now}]`。 */
  function sourceDiffFor(e){
@@ -3360,7 +3368,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   return has.length?has:[key];
  }
  async function runSourceSync(){
-  if(!canSyncSource())return;
+  if(!canReadSource())return;
   const stamp=sourceSyncStamp();
   if(scSrcSyncStamp===stamp)return;
   scSrcSyncStamp=stamp;
@@ -3403,7 +3411,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const head=diffs.slice(0,3).map(d=>`${d.lot}: ${d.changes.map(c=>c.label).join('・')}`).join(' / ');
   showToast&&showToast(`${n}件を最新にしました`,
    head+(diffs.length>3?` ほか${diffs.length-3}件`:'')+'（元データの変化を取り込みました）',6000,
-   {label:'何が変わったか',run:()=>openSourceSyncWindow(diffs,true)});
+   {label:'何が変わったか',run:()=>openSourceSyncWindow(diffs,'done')});
   return n;
  }
  /* 「確認して更新」のときの帯。**件数と次の一手だけ**を言い、中身は窓で出す
@@ -3411,31 +3419,53 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function renderSourceSyncBanner(){
   const box=$('#scSrcBanner');if(!box)return;
   const list=scSrcPending||[];
-  if(!list.length||scSourceSyncMode!=='confirm'){box.hidden=true;box.innerHTML='';return}
+  /* **取り込めない端末には常に出す**（§9.378）。自動で取り込む設定でも、
+     書けない端末では取り込みが起きないので、出さないと「古い値を黙って
+     出している」ことになる（§CLAUDE 推測させない）。 */
+  const cannot=!canSyncSource();
+  if(!list.length||(!cannot&&scSourceSyncMode!=='confirm')){
+   box.hidden=true;box.innerHTML='';return;
+  }
   const items=list.reduce((n,d)=>n+d.changes.length,0);
   box.hidden=false;
-  box.innerHTML=`<span><b>${list.length}件に変更あり。</b>仕掛の側で ${items}項目が変わっています（予定に出ているのは入れたときの値です）。</span>
+  box.innerHTML=`<span><b>${list.length}件に変更あり。</b>仕掛の側で ${items}項目が変わっています`
+   +(cannot?'（この端末では取り込めません。予定に出ているのは入れたときの値です）'
+           :'（予定に出ているのは入れたときの値です）')
+   +`。</span>
    <button type="button" id="scSrcShow">中身を見る</button>`;
   const btn=$('#scSrcShow');
-  if(btn)btn.onclick=()=>openSourceSyncWindow(list,false);
+  if(btn)btn.onclick=()=>openSourceSyncWindow(list,cannot?'cannot':'decide');
  }
  /* 旧→新の一覧。**読んで決められる形**——ロット／項目／旧→新を1行ずつ。
-    `readOnly`のときは取り込み済みの控えなので、決めるボタンを出さない。 */
- async function openSourceSyncWindow(diffs,readOnly){
+    `mode` は3通り（§9.378）:
+      'decide' … これから取り込む（決めるボタンを出す）
+      'done'   … 取り込み済みの控え（閉じるだけ）
+      'cannot' … この端末では取り込めない（**なぜ出せないかを書く**・§CLAUDE 4）
+    以前は真偽値1つで「取り込み済みか」しか言えず、取り込めない端末の説明が
+    無かった。 */
+ async function openSourceSyncWindow(diffs,mode){
+  const m=(mode===true||mode==='done')?'done':(mode==='cannot'?'cannot':'decide');
+  const readOnly=m!=='decide';
   const rows=[];
   (diffs||[]).forEach(d=>d.changes.forEach(c=>{
    rows.push(`<tr><td>${esc(d.lot)}</td><td>${esc(c.label)}</td>
      <td class="sc-src-was">${esc(c.was||'（空欄）')}</td><td class="sc-src-now">${esc(c.now)}</td></tr>`);
   }));
-  const bodyHtml=`<p class="confirm-modal-message">${
-    readOnly?'元データ（仕掛）の値を予定へ取り込みました。':'元データ（仕掛）の側で変わっている項目です。取り込むと予定の表示が最新になります。'
-   }</p>
+  const LEAD={
+   done:'元データ（仕掛）の値を予定へ取り込みました。',
+   cannot:'元データ（仕掛）の側で変わっている項目です。<b>この端末は予定を書けない'
+         +'（現場段取りのみ）ため、ここでは取り込めません。</b>'
+         +'取り込みは、予定を書ける端末（スケジュールモード）で行われます。',
+   decide:'元データ（仕掛）の側で変わっている項目です。取り込むと予定の表示が最新になります。'};
+  const TITLE={done:'取り込んだ内容',cannot:'元データの変更（この端末では取り込めません）',
+               decide:'元データの変更を取り込む'};
+  const bodyHtml=`<p class="confirm-modal-message">${LEAD[m]}</p>
    <div class="sc-src-list"><table class="sc-src-table">
     <thead><tr><th>ロット番号</th><th>項目</th><th>いまの予定</th><th>元データ</th></tr></thead>
     <tbody>${rows.join('')}</tbody></table></div>`;
-  const ok=await confirmModal({title:readOnly?'取り込んだ内容':'元データの変更を取り込む',
+  const ok=await confirmModal({title:TITLE[m],
     eyebrow:'SOURCE',bodyHtml,
-    confirmLabel:readOnly?'閉じる':'取り込む',cancelLabel:'あとで',hideCancel:!!readOnly});
+    confirmLabel:readOnly?'閉じる':'取り込む',cancelLabel:'あとで',hideCancel:readOnly});
   if(ok&&!readOnly)applySourceSync(diffs);
  }
 

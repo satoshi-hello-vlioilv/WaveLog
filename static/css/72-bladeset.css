@@ -247,7 +247,12 @@ body.bs-mode .bs-shell{display:flex}
 /* ---------- 刃組図 ---------- */
 /* **`min-height:0`を鎖の1段も抜かない**（§9.222）——器→行→図のどこかで
    抜けると、SVGの中身なりの高さが下の刃組表を画面の外へ押し出す。 */
-.bs-figrow{display:grid;grid-template-columns:var(--bs-side-w,10.5rem) minmax(0,1fr) var(--bs-side-w,10.5rem);
+/* 両脇はOS/DS端部の表。**中身を測って決めた幅**（§9.378・CLAUDE 11「入れ物は
+   中身の長さから決める」）——実測で表の自然幅は156px、器は168pxで12pxずつ
+   遊んでいた。10remで中身ぴったり＋わずかな余裕になり、そのぶん模式図が広がる。
+   なお模式図そのものは**すでに列の横幅を使い切っている**（中身 x=10..1005 /
+   viewBox 0..1000）ので、これ以上横へ伸ばすには器の側を削るしかない。 */
+.bs-figrow{display:grid;grid-template-columns:var(--bs-side-w,10rem) minmax(0,1fr) var(--bs-side-w,10rem);
   gap:var(--space-1);padding:var(--space-1);min-height:0;flex:1 1 auto}
 .bs-figrow.is-flip{direction:rtl}
 .bs-figrow.is-flip>*{direction:ltr}
@@ -359,7 +364,11 @@ body.bs-mode .bs-shell{display:flex}
 .bs-g th small{display:block;font-size:var(--fs-tiny);color:var(--muted);font-weight:400}
 .bs-g .bs-grp{text-align:start;background:var(--valid-bg)}
 .bs-g .bs-grp b{display:block;font-size:var(--fs-base-sm)}
-.bs-gw{display:inline-block;font-size:var(--fs-micro);color:var(--muted);margin-inline-end:4px}
+/* ロット番号の下の条幅（§9.378、利用者の指摘「ロット№の下の幅の表示が
+   小さすぎて読みにくい」）。**これは寸法**なので、いちばん小さい字で出さない
+   ——区分の欄で読むのはロット番号と幅の2つだけで、どちらも読ませる値。 */
+.bs-gw{display:inline-block;font-size:var(--fs-sm);font-weight:700;color:var(--ink-2);
+  font-variant-numeric:tabular-nums;margin-inline-end:4px}
 .bs-gw.is-flip{color:var(--teal-dark);font-weight:700}
 .bs-lno{display:inline-grid;place-items:center;width:1.3em;height:1.3em;
   border-radius:var(--radius-round);background:var(--rs-slate);color:#fff;
