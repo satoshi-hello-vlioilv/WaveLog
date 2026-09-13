@@ -81,6 +81,16 @@ let b=null;
  rec('実際に並べ替えできる',posts===1&&after[0]!==ids[0],`POST=${posts} before=${ids.slice(0,3)} after=${after.slice(0,3)}`);
  rec('成功時はエラー通知を出さない',(await toasts()).length===0,JSON.stringify(await toasts()));
 
+ /* ===== (C-2) 現場段取りの端末は元データを取り込まない（§9.378・利用者の報告） =====
+    報告（VER2.270.0・LS4）は「27件の`update`が403」「現場段取りのみ: true」
+    「書ける: false」「元データの扱い: auto」。取り込みの可否を`editable`
+    （＝現場段取りだけでも true）で見ていたため、**アプリが勝手に書きに行き**、
+    サーバーが並べ替え以外を断って403が並んでいた。現場は何も操作しておらず、
+    直す手立ても無い。書ける端末だけが取り込む。 */
+ const sync=await page.evaluate(()=>WL.scheduleView.sourceSync());
+ rec('現場段取りだけの端末は「取り込めない」と答える（勝手に403を出しに行かない）',
+     sync&&sync.writable===false,JSON.stringify(sync&&{mode:sync.mode,writable:sync.writable}));
+
  /* ===== (D) サーバーが拒否したときの通知は1回だけ ===== */
  await open();
  // 403の返却をわざと遅らせ、「拒否される前は画面上で入れ替わっている」→

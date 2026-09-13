@@ -3323,8 +3323,17 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  let scSrcSyncStamp='',scSrcPending=[];
  const sourceSyncStamp=()=>`${scState.equipment}|${scState.planFetchedAt||''}`;
  /* 書いてよい端末か。閲覧・他端末が編集中・未設定の設備では走らせない。 */
+ /* 取り込みは**予定の中身を書き換える**（`plan` の `update`）。サーバーが
+    現場段取りの端末へ開いているのは**並べ替えだけ**（`access_mode` の
+    `_FIELD_REORDER_ENDPOINTS={'schedule.plan_reorder'}`）なので、
+    `editable`（＝現場段取りだけでも true になる・`applyFieldReorderPermission`）
+    で判断すると、**アプリが勝手に試して 403 が並ぶ**。
+    利用者の報告（VER2.270.0・LS4・27件が403・「現場段取りのみ: true」
+    「書ける: false」「元データの扱い: auto」）がまさにこれで、**現場は何も
+    操作していないのに失敗だけが出て、直す手立ても無い**。
+    書ける端末（`fullControl`）だけが取り込む（§CLAUDE 4）。 */
  function canSyncSource(){
-  return !!(scState.configured&&scState.editable&&!sessionBlocked());
+  return !!(scState.configured&&scState.fullControl&&!sessionBlocked());
  }
  /* 1行ぶんの差分。戻り値は`[{key,label,was,now}]`。 */
  function sourceDiffFor(e){
@@ -8950,6 +8959,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   /* 元データの取り込み（§9.375）の状態。**答えは1箇所**——網も報告も
      ここを読む（画面の字を数えると、言い回しを直すたびに嘘になる）。 */
   sourceSync:()=>({mode:scSourceSyncMode,keys:sourceSyncKeys(),
+    /* **取り込める端末か**。現場段取りだけの端末は書けないので false。
+       画面の字ではなくここを網が読む（§9.375 と同じ考え方）。 */
+    writable:canSyncSource(),
     pending:(scSrcPending||[]).map(d=>({lot:d.lot,changes:d.changes.length}))}),
   /* ---------- 仕掛一覧へ渡す口（§9.15・§9.368） ----------
      **印刷だけの名前空間ではない**——スケジュール画面が外へ答えるものは
