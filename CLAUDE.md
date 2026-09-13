@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（533件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（547件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -209,7 +209,7 @@
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 権限区分（開発者／メンテナンス者／一般ユーザー）は「何を触れるか」と別の軸 | — | [§9.272](docs/decisions/9.272.md) |
-| マスタのAPIは9つの段。Blueprintは`_base.py`の1つのまま | `test_routesplit.py` | [§9.333](docs/decisions/9.333.md) |
+| マスタのAPIは11の段（1段20ルートまで）。Blueprintは`_base.py`の1つのまま | `test_routesplit.py` | [§9.333](docs/decisions/9.333.md) |
 | 画面から来るJSONは`body(spec)`で読む。鍵は必ず宣言する | `test_body.py` | [§9.330](docs/decisions/9.330.md) |
 | ルートの「失敗の受け方」は`api_guard`の1箇所 | `test_apiguard.py` | [§9.324](docs/decisions/9.324-1.md) |
 | 区分は4つ。「設備作業者」はマスタを出さない。段は`マスタ編集`の1列 | `test_roleperm.py`・`test_roleui.js` | [§9.163](docs/decisions/9.163.md) |
@@ -470,11 +470,27 @@
 | 「選ばない」の札は空文字だけではない | `test_opblank.js` | [§9.246](docs/decisions/9.246.md) |
 | ロールは「設備名＋ロール名＋接触面＋径MAX＋径MIN＋備考」で1本 | `test_rollio.py` | [§9.246](docs/decisions/9.246.md) |
 
+### 刃組ガイダンス（9件）
+
+| 守ること | 固定する網 | くわしく |
+| --- | --- | --- |
+| 刃組の計算は`blade-core.js`（画面を知らない）、画面は`blade-view.js`の2本 | `test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
+| 部材は設備ごと。「すべての設備」は受け付けない | `test_bladeset.py` | [§9.377](docs/decisions/9.377.md) |
+| ゴムリングは色（＝外径）×幅で1本。同じ色をそろえるのは`ring_upsert()`の1箇所 | `test_bladeset.py` | [§9.377](docs/decisions/9.377.md) |
+| 色名を外径から起こさない。周期は「名前の無い径」の言い換え | `test_bladeset.py` | [§9.377](docs/decisions/9.377.md) |
+| 刃組基準値は「既定はコード・上書きだけがDB」。登録が無くても画面は開く | `test_bladeset.py` | [§9.377](docs/decisions/9.377.md) |
+| 初期セットは足し算にならない（2度押しても増えない） | `test_bladeset.py` | [§9.377](docs/decisions/9.377.md) |
+| 軸の寸法はスペーサーが作る。保持層（ゴムリング／フィンガー）は寸法に効かない | `test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
+| フィンガー方式では押上げ・ニップの判定を出さない（0を出さない） | `test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
+| 予定から運ぶのは「その行より後ろに並ぶ作業」。読めない項目は渡さない | `test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
+
 ### 作業スケジュール（28件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 作業スケジュールの「開始」は着手できる**全行**に出す（次の1本は現場が自由に選ぶ。先頭N行に絞らない） | `test_workable.js` | [§9.339](docs/decisions/9.339.md) |
+| 設備停止の行き先は`設備停止マスタ`の`[連携機能]`。行は持たない・語彙はサーバー | `test_bladeset.py`・`test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
+| 行き先の的は題名の横に別に立てる（行いっぱいは「選ぶ」・ダブルクリックは「直す」） | `test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
 | 予定の写しは「画面に出している項目だけ」元データから取り込み直す。空は「変わった」と読まない | `test_srcsync.js` | [§9.375](docs/decisions/9.375.md) |
 | 写しへ書き戻すのは`plan_merge_detail()`の1箇所。渡した鍵だけ重ね、作業の行だけ | `test_srcsync.js` | [§9.375](docs/decisions/9.375.md) |
 | 外した予定は「仕掛にまだ在るとき」だけ一覧へ戻す。在席は3値・不明なら戻す | `test_wipgone.js` | [§9.368](docs/decisions/9.368.md) |
@@ -606,6 +622,7 @@
 | 窓は`confirmModal`／`alertModal`／`promptModal`の3つだけ。素の`alert`/`confirm`/`prompt`は呼ばない | `test_patchlint.py`・`test_modalkeep.js` | [§9.342](docs/decisions/9.342.md) |
 | 窓は1枚しかない。窓の中から窓を開かない（名前を直すのはその場、消すのは行の中で2手） | `test_lotcopy.js` | [§9.368](docs/decisions/9.368.md) |
 | メニューの入れ子は本体へ足す。1項目のHTMLと配線は`rowMenuItemsHtml`/`bindRowMenuItems`の1箇所 | `test_lotcopy.js` | [§9.368](docs/decisions/9.368.md) |
+| 画面の`bodyClass`は自分の`exit`で外す（`enterView`は付けるだけ） | `test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
 | `window.*`への新規公開は名前空間経由 | `test_globallint.py` | [決まり](docs/decisions/rules-misc.md) |
 | 画面のJSは領域フォルダ。綴りは1つ | `test_loadorder.py` | [§9.334](docs/decisions/9.334.md) |
 | 設定の窓は「決める順の番号付きの節」で、同じ値を2箇所に出さない | `test_eqsetup.js` | [§9.257](docs/decisions/9.257.md) |
@@ -667,6 +684,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 片付けようの無いもの（`sqlite_sequence`）を指紋で数えない | `test_bladeset.py` | [§9.377](docs/decisions/9.377.md) |
 | 網が当てにする物は「誰が作るか」を書けること。この端末の名乗りと権限はフィクスチャが持つ | `test_layers.py` | [§9.370](docs/decisions/9.370.md) |
 | 後片付けは「消えた」で確かめる。ランナーの道は絶対、テストは名前空間で呼ぶ | `test_layers.py`・`test_waitlint.py` | [§9.362](docs/decisions/9.362.md) |
 | 通しで落ちた本はランナーがその場で単独へ回して切り分ける。実績も1本ごとに空へ戻す | `test_layers.py` | [§9.356](docs/decisions/9.356.md) |
@@ -705,6 +723,7 @@
 | 畳んでよいのは「言い回し」だけ。単位・できること・取り違えを防ぐ事実は別 | — | [§9.255](docs/decisions/9.255.md) |
 | `requirements.txt`は`flask`だけ。増やしたら網も書き直す | `test_noaccess.py` | [§9.268](docs/decisions/9.268.md) |
 | 折り返す横並びの器へ「1行ぶんの物」を入れるときは`flex:1 0 100%` | — | [§9.250](docs/decisions/9.250.md) |
+| 画面が出す「切」の呼び名は`flags.OFF_WORDS`へ全部並べる | `test_bladeset.py`・`test_flags.py` | [§9.377](docs/decisions/9.377.md) |
 | 「選ばない」の札は値を持たない | `test_opblank.js` | [§9.286](docs/decisions/9.286.md) |
 | 札の「字」は`WL.optionBlankLabel`、「未選択か」は値で見る | `test_opblank.js` | [§9.288](docs/decisions/9.288.md) |
 | 説明文の印を解くのは`WL.markup()`の1箇所 | `test_changelog.py`・`test_changelogui.js` | [§9.286](docs/decisions/9.286.md) |

@@ -204,7 +204,7 @@ body.qa-mode.qa-view-raw #listToolbar{display:flex}
    `qa-mode`（元データビュー）だけは上で個別に扱う（`qa-view-raw`のときは
    一覧の道具を**出す**ので、伏せる側の一覧に入れられない）。
    固定は`tests/test_actuals.js`（実際に開いて、器の外へ出ていないことを見る）。 */
-body:is(.rp-mode,.db-mode,.rec-mode,.cal-mode,.sc-mode,.mm-mode,.lg-mode,.ac-mode)
+body:is(.rp-mode,.db-mode,.rec-mode,.cal-mode,.sc-mode,.mm-mode,.lg-mode,.ac-mode,.bs-mode)
  :is(#grid,#listToolbar,#tabs,#genericFilterBar,.qa-v7){display:none}
 /* ---------- 一覧を広く使う（§9.292 ⑦、利用者の指示） ----------
    「スケジュール作成時に、とにかく仕掛のデータを多く表示したいです。
@@ -358,7 +358,8 @@ body.rp-mode .global-actions .hd-search,body.rp-mode .global-actions .hd-field,b
 body.mm-mode .global-actions .hd-search,body.mm-mode .global-actions .hd-field,body.mm-mode .global-actions #reload,
 body.cal-mode .global-actions .hd-search,body.cal-mode .global-actions .hd-field,body.cal-mode .global-actions #reload,
 body.lg-mode .global-actions .hd-search,body.lg-mode .global-actions .hd-field,body.lg-mode .global-actions #reload,
-body.rec-mode .global-actions .hd-search,body.rec-mode .global-actions .hd-field,body.rec-mode .global-actions #reload{display:none}
+body.rec-mode .global-actions .hd-search,body.rec-mode .global-actions .hd-field,body.rec-mode .global-actions #reload,
+body.bs-mode .global-actions .hd-search,body.bs-mode .global-actions .hd-field,body.bs-mode .global-actions #reload{display:none}
 /* ---- ヘッダー相乗り時の整理（重複する情報・使わない操作を出さない） ---- *//* 使用設備は画面ごとの操作列(スケジュールの設備選択)が持つので、ヘッダーの
    チップと二重にしない。モード・現場段取りは画面に関係なく効く状態なので残す。 */
 body.sc-mode .hd-status .hd-chip-equip{display:none}
@@ -578,6 +579,7 @@ body.sc-mode #headerContextSource{display:none}
   .rly-grid-pick>button.is-on{background:var(--nav);color:#fff}
 
   /* 淡い面（4族） */
+  .bs-chip.is-on,
   .fc-alert-mode.is-on,
   .mm-card-opt.is-on,
   .record-scope-btn.is-on,
@@ -585,6 +587,8 @@ body.sc-mode #headerContextSource{display:none}
   .sc-pick-all.is-on{background:var(--pale);border-color:var(--teal);color:var(--teal-dark)}
 
   /* 淡い面（字は各自）（3族） */
+  .bs-opts label.is-on,
+  .bs-sc.is-on,
   .sc-frame-shift.is-on,
   .sp-pat.is-on,
   .sp-pv-tab.is-on{background:var(--pale);border-color:var(--teal)}

@@ -1,0 +1,1450 @@
+/* blade-view.js: 刃組ガイダンスの画面（§9.377）。
+
+   計算は`blade-core.js`（`WL.bladeSet`）が持ち、ここは**出すことだけ**を行う。
+   利用者から預かった1枚のHTMLの画面構成をそのまま移し、色・文字・余白・
+   重なり順はWaveLogのトークンへ寄せた（§CLAUDE「見た目の値はトークンから選ぶ」）。
+
+   画面の作り（視覚導線＝作業導線・§CLAUDE 14）
+     上の帯 … ①バリ方向 →②刃・板厚 →③幅構成 →④ゴムリング（決める順）
+     左     … 刃組図（何をどう組むか）→ 刃組表（何を何枚）
+     右     … 所要・段取（あと何が要るか／台車の差分／刃の状態）
+
+   入口は2つで、**どちらも同じ`open()`**:
+     ・左メニュー「刃組ガイダンス」
+     ・作業スケジュールの設備停止の行（連携機能＝刃組ガイダンス。§9.377）
+       ——このときは**後ろに並ぶ作業の元コイル幅・切断幅・板厚を持ってくる**
+       （思い出させない・§CLAUDE 冒頭）。
+*/
+(function(){
+ 'use strict';
+ const WL = (window.WL = window.WL || {});
+ const BS = () => WL.bladeSet;
+
+ /* ---------- 状態（画面で選んでいる条件。保存はしない） ---------- */
+ const st = {
+  equipment: '',
+  align: 'none', canNk: true, nkWidth: 30,
+  knife: 318.2, thick: 1.3, tk: 10, clr: 0.15, ov: 0.2,
+  W: 1170, trimMode: 'even', osTrim: 20,
+  lots: [{ name: 'LOT1', w: 279.8, n: 4 }],
+  order: [0, 0, 0, 0],
+  bigMode: 'auto', smallMode: 'auto', bigTh: 39.5, smallTh: 38.0,
+  /* 刃組の道具なので、はじめから段取り向き（DS左＝部材を入れる側から見た並び）。 */
+  carriage: 'A', flip: true
+ };
+ let M = null, IX = null, LAST = null;
+ let panel = null, railTab = 'bom', loadToken = 0;
+ let seededFrom = null;     /* どの予定から開いたか（画面に出どころを出す） */
+
+ /* ---------- 幅ごとの色 ----------
+    最大9種の条幅が入り混じっても見分けられるよう、淡い塗りで差を付ける。
+    **色はトークンから選ぶ**（§CLAUDE 7）——`--look-*`／`--rs-*`の並びを使い、
+    16進をこのファイルへ足さない。塗り／縁は`--bs-w<i>-bg`／`--bs-w<i>-fg`。 */
+ const WIDTH_COLORS = 9;
+
+ /* ---------- 図の色 ----------
+    SVGの`fill`は属性なので、CSSのトークンをそのまま書けない。**器が宣言した
+    `--bs-fig-*`を1回だけ読み取って**使う（`measure-opdata.js`の`carryLook()`と
+    同じ作法）。ゴムリングの色だけは**マスタの値**なので、ここには入れない。 */
+ const FIG_VARS = ['shaft', 'shaft-edge', 'cap', 'spacer', 'spacer-edge',
+                   'filler', 'filler-edge', 'knife', 'knife-edge', 'badge',
+                   'strip', 'strip-edge', 'scrap', 'scrap-edge', 'trim',
+                   'trim-edge', 'label', 'ink', 'sheen',
+                   'chip-bg', 'chip-fg', 'chip-bd',
+                   'chip-clr-bg', 'chip-clr-fg', 'chip-clr-bd',
+                   'chip-ov-bg', 'chip-ov-fg', 'chip-ov-bd'];
+ function figPalette(host) {
+  const cs = getComputedStyle(host), o = {};
+  FIG_VARS.forEach(k => { o[k] = (cs.getPropertyValue('--bs-fig-' + k) || '').trim(); });
+  for (let i = 0; i < WIDTH_COLORS; i++) {
+   o['w' + i] = (cs.getPropertyValue(`--bs-w${i}-bg`) || '').trim();
+   o['w' + i + 'e'] = (cs.getPropertyValue(`--bs-w${i}-fg`) || '').trim();
+  }
+  return o;
+ }
+
+ /* ====================== 画面の骨組み ====================== */
+ function ensurePanel() {
+  if (panel) return panel;
+  panel = document.createElement('section');
+  panel.className = 'bs-shell';
+  panel.id = 'bladeSetPanel';
+  panel.hidden = true;
+  panel.innerHTML = `
+   <div class="bs-empty" id="bsEmpty" hidden></div>
+   <div class="bs-bar" id="bsBar">
+    <div class="bs-steps" id="bsSteps">
+     ${stepHtml(1, 'バリ方向', 'bsV1', step1Html())}
+     ${stepHtml(2, '刃・板厚', 'bsV2', step2Html())}
+     ${stepHtml(3, '幅構成', 'bsV3', step3Html())}
+     ${stepHtml(4, 'ゴムリング', 'bsV4', step4Html())}
+    </div>
+    <div class="bs-bar-tail">
+     <span class="bs-from" id="bsFrom" hidden></span>
+     <button type="button" class="bs-chip" id="bsFlip" title="刃組は台車のDS側から部材を入れます。段取り向きではDSを左に置き、手を入れる側から見た並びにします">図面向き（OS左）</button>
+    </div>
+   </div>
+   <div class="bs-body">
+    <div class="bs-col">
+     <section class="bs-panel bs-figpanel">
+      <div class="bs-ph"><h2>刃組図</h2><span class="bs-ph-note" id="bsFigNote"></span></div>
+      <div class="bs-figrow" id="bsFigRow">
+       <div class="bs-side" id="bsOsSide"></div>
+       <div class="bs-figmain"><div class="bs-stage"><svg id="bsStage" viewBox="0 0 1000 300"
+         preserveAspectRatio="xMidYMid meet" role="img" aria-label="刃組図"></svg></div></div>
+       <div class="bs-side" id="bsDsSide"></div>
+      </div>
+     </section>
+     <section class="bs-panel bs-tblpanel">
+      <div class="bs-ph"><h2>刃組表</h2><span class="bs-ph-note">横＝寸法／縦＝上下軸×ロット</span></div>
+      <div class="bs-tw" id="bsTables"></div>
+     </section>
+    </div>
+    <aside class="bs-rail" id="bsRail">
+     <div class="bs-ph"><h2>所要・段取</h2>
+      <div class="bs-seg" id="bsRailTabs">
+       <button type="button" class="bs-chip is-on" data-r="bom">所要</button>
+       <button type="button" class="bs-chip" data-r="diff">台車差分</button>
+       <button type="button" class="bs-chip" data-r="set">刃の状態</button>
+      </div></div>
+     <div class="bs-pb">
+      <div data-p="bom">
+       <div class="bs-gauges" id="bsGauges"></div>
+       <div class="bs-need" id="bsBom"></div>
+      </div>
+      <div data-p="diff" hidden>
+       <div class="bs-carbar"><span class="bs-lbl">台車</span>
+        <button type="button" class="bs-chip is-on" data-car="A">A</button>
+        <button type="button" class="bs-chip" data-car="B">B</button></div>
+       <div id="bsDiffHead"></div><div id="bsDiffSum"></div>
+       <table class="bs-l" id="bsDiff"></table>
+       <button type="button" class="bs-btn is-primary bs-wide" id="bsSaveCar">刃組完了：台車 A として記録</button>
+       <div class="bs-gh">刃組の履歴</div>
+       <div id="bsHist"></div>
+       <p class="bs-note">2台の台車を交互に使う前提です。直前の刃組はラインで稼働中のため、いま組み替える台車には<b>2回前</b>の構成が載っています。<b>＋</b>が持ち出す点数、<b>−</b>が外して戻す点数です。</p>
+      </div>
+      <div data-p="set" hidden><div id="bsSetAlerts"></div><div id="bsSetList"></div></div>
+     </div>
+     <!-- 足元の一言（§CLAUDE 2「次にすることを常に1つだけ指す」）。**どの段を
+          開いていても見える**——在庫の下限割れ・研磨の遅れ・使用限界は、
+          段の裏に畳むと気づかれない。中身そのものは「刃の状態」が持ち、
+          ここは件数と行き先だけを言う（同じ情報を2箇所に出さない・§CLAUDE 8）。 -->
+     <div class="bs-rail-foot" id="bsFoot"></div>
+    </aside>
+   </div>`;
+  const host = document.querySelector('main') || document.body;
+  host.appendChild(panel);
+  wire();
+  return panel;
+ }
+
+ const stepHtml = (n, name, valId, body) =>
+  `<div class="bs-step" data-step="${n}">
+    <button type="button" class="bs-step-btn" data-step-open="${n}">
+     <span class="bs-step-no">${n}</span>
+     <span class="bs-step-tx"><b>${name}</b><span id="${valId}">—</span></span></button>
+    <div class="bs-pop">${body}</div>
+   </div>`;
+
+ const step1Html = () => `
+  <h3>製品のバリ方向</h3>
+  <p class="bs-lead">最初に決めるのは、製品のバリをどちら向きに揃えるかです。</p>
+  <div class="bs-opts" id="bsAlign">
+   <label data-v="down"><input type="radio" name="bsAl" value="down">
+    <span><b>下バリに揃える</b><small>全ての製品条のバリを下向きに統一します。</small></span></label>
+   <label data-v="up"><input type="radio" name="bsAl" value="up">
+    <span><b>上バリに揃える</b><small>全ての製品条のバリを上向きに統一します。</small></span></label>
+   <label data-v="none"><input type="radio" name="bsAl" value="none" checked>
+    <span><b>揃えない</b><small>バリ方向を指定せず、通常の千鳥で組みます。</small></span></label>
+  </div>
+  <label class="bs-sw"><span>このラインは中抜きができる</span><input type="checkbox" id="bsCanNk" checked></label>
+  <div class="bs-derived" id="bsDerived"></div>
+  <div class="bs-f" id="bsNkBox" hidden><label for="bsNkWidth">屑条の幅</label>
+   <input type="number" id="bsNkWidth" step="1" min="1"><small>mm</small></div>
+  <p class="bs-note" id="bsHint1"></p>`;
+
+ const step2Html = () => `
+  <h3>刃と板厚</h3>
+  <p class="bs-lead">刃マスタから選ぶと、径と刃厚が入ります。</p>
+  <div class="bs-f"><label for="bsBladePick">刃マスタから呼出</label><select id="bsBladePick"></select></div>
+  <div class="bs-g2">
+   <div class="bs-f"><label for="bsKnife">ナイフ径</label><input type="number" id="bsKnife" step="0.1"><small>mm</small></div>
+   <div class="bs-f"><label for="bsThick">板厚</label><input type="number" id="bsThick" step="0.1"><small>mm</small></div>
+  </div>
+  <div class="bs-g3">
+   <div class="bs-f"><label for="bsTk">刃厚</label><input type="number" id="bsTk" step="1" min="1"><small>mm</small></div>
+   <div class="bs-f"><label for="bsClr">クリアランス</label><input type="number" id="bsClr" step="0.01" min="0"><small>mm</small></div>
+   <div class="bs-f"><label for="bsOv">ラップ</label><input type="number" id="bsOv" step="0.05" min="0"><small>mm</small></div>
+  </div>
+  <p class="bs-note">同じ切断で向かい合う上下の刃は、軸方向に<b>クリアランスのぶんだけ</b>＝<b id="bsDVal">—</b> mm ずれます。そのため上下のスペーサー長はどちらも板幅に近く、違いは<b>中間の区間でクリアランス×2</b>、<b>端部の区間は切断が片側だけなのでクリアランス×1</b> になります。</p>
+  <p class="bs-note" id="bsHold2"></p>`;
+
+ const step3Html = () => `
+  <h3>元板とロット</h3>
+  <p class="bs-lead">元板巾に対する条の割付を確認します。</p>
+  <div class="bs-g2">
+   <div class="bs-f"><label for="bsW">元板巾 W</label><input type="number" id="bsW" step="0.1"><small>mm</small></div>
+   <div class="bs-f"><label for="bsOsTrim">OS耳</label><input type="number" id="bsOsTrim" step="0.05" min="0" disabled><small>mm</small></div>
+  </div>
+  <label class="bs-sw"><span>耳を左右均等にする（板はセンター通し）</span><input type="checkbox" id="bsTrimEven" checked></label>
+  <table class="bs-lot" id="bsLotTbl"></table>
+  <button type="button" class="bs-btn bs-wide" id="bsAddLot">ロットを追加</button>
+  <div class="bs-ordbox">
+   <div class="bs-ordh"><b>条の並び</b><span class="bs-ordn" id="bsOrdN"></span>
+    <button type="button" class="bs-btn is-sm" data-ord="lot">ロット順</button>
+    <button type="button" class="bs-btn is-sm" data-ord="wide">幅の大きい順</button></div>
+   <div class="bs-ord" id="bsOrdList"></div>
+   <p class="bs-ordhint" id="bsOrdHint"></p>
+  </div>
+  <div class="bs-kpis" id="bsKpis"></div>
+  <p class="bs-note" id="bsHint3"></p>`;
+
+ const step4Html = () => `
+  <h3>ゴムリング</h3>
+  <p class="bs-lead">同じ条の両側は必ず同じリングになります。</p>
+  <div class="bs-ring-row">
+   <b>大径</b>
+   <button type="button" class="bs-chip is-on" data-ring="big" data-mode="auto">自動</button>
+   <button type="button" class="bs-chip" data-ring="big" data-mode="manual">手動</button>
+   <span class="bs-rd"><i id="bsBigChip"></i><span id="bsBigTag">—</span></span>
+  </div>
+  <div class="bs-f"><select id="bsBigSel" disabled></select></div>
+  <div class="bs-ring-row">
+   <b>小径</b>
+   <button type="button" class="bs-chip is-on" data-ring="small" data-mode="auto">自動</button>
+   <button type="button" class="bs-chip" data-ring="small" data-mode="manual">手動</button>
+   <span class="bs-rd"><i id="bsSmChip"></i><span id="bsSmTag">—</span></span>
+  </div>
+  <div class="bs-f"><select id="bsSmSel" disabled></select></div>
+  <p class="bs-note" id="bsHint4"></p>`;
+
+ /* ====================== 読み込み ====================== */
+ async function loadContext(equipment) {
+  const token = ++loadToken;
+  const url = '/api/bladeset/context?equipment=' + encodeURIComponent(equipment || '');
+  const r = await api(url);
+  /* 取りに行っている最中に別の設備へ移っていたら捨てる（§9.331）。 */
+  if (token !== loadToken) return false;
+  M = BS().normalize(r);
+  IX = BS().buildIndex(M);
+  applyStandards();
+  return true;
+ }
+ /* 基準値から**画面の既定値**を入れる。**利用者が触った値は上書きしない**
+    （§9.361と同じ約束）——設備を開き直したときだけ入れ直す。 */
+ function applyStandards() {
+  const P = M.P;
+  if (P.bladeThickness != null) st.tk = +P.bladeThickness;
+  if (P.clearance != null) st.clr = +P.clearance;
+  if (P.overlap != null) st.ov = +P.overlap;
+  if (P.scrapWidth != null) st.nkWidth = +P.scrapWidth;
+  st.canNk = P.canNakanuki !== false;
+  /* 刃の既定は「使用中」の組のいちばん厚い刃。無ければ触らない。 */
+  const use = M.blades.filter(b => b.status === '使用中' && b.currentDia)
+   .sort((a, b) => (b.thickness || 0) - (a.thickness || 0));
+  if (use.length) { st.knife = use[0].currentDia; if (use[0].thickness) st.tk = use[0].thickness; }
+ }
+
+ /* ====================== 入口 ======================
+    `seed`は作業スケジュールから来る文脈（§9.377）。**渡された項目だけ**入れる
+    ——欠けている項目を0で埋めると、そこだけ嘘の値になる（§9.231）。 */
+ async function open(opts) {
+  const o = opts || {};
+  const eq = String(o.equipment || st.equipment || (typeof currentConfiguredEquipment === 'function'
+   ? currentConfiguredEquipment() : '') || '').trim();
+  WL.enterView('bladeset', { header: ['刃組ガイダンス', eq || '設備が未設定です'] });
+  ensurePanel();
+  panel.hidden = false;
+  const changed = eq !== st.equipment;
+  st.equipment = eq;
+  seededFrom = o.from || null;
+  showEmpty('');
+  try {
+   await loadContext(eq);
+  } catch (e) {
+   showEmpty(`刃組マスタを読み込めませんでした：${esc(e && e.message ? e.message : e)}`);
+   return;
+  }
+  if (o.seed) applySeed(o.seed, changed);
+  else if (changed) BS().syncOrder(st);
+  fillBladePick();
+  fillRingSelects();
+  paintInputs();
+  render();
+  const miss = missingMasters();
+  if (miss) showEmptyMissing(miss);
+ }
+
+ /* 予定から持ってきた文脈を当てる。 */
+ function applySeed(seed, force) {
+  const s = seed || {};
+  if (s.thickness > 0) st.thick = +s.thickness;
+  if (s.originalWidth > 0) st.W = +s.originalWidth;
+  if (Array.isArray(s.lots) && s.lots.length) {
+   st.lots = s.lots.map(L => ({ name: String(L.name || 'LOT'), w: +L.w || 0, n: Math.max(1, L.n | 0) }))
+    .filter(L => L.w > 0);
+   if (!st.lots.length) st.lots = [{ name: 'LOT1', w: 100, n: 1 }];
+   st.order = [];
+  }
+  void force;
+  BS().syncOrder(st);
+ }
+
+ /* 「この設備では何が足りないか」。**足りないものを言う**（§CLAUDE 4・6）。 */
+ function missingMasters() {
+  if (!M) return '';
+  const lack = [];
+  if (!M.spacers.length) lack.push('スペーサー');
+  if (BS().isFinger(st, M)) { if (!M.fingers.length) lack.push('フィンガー'); }
+  else if (!M.rings.length) lack.push('ゴムリング');
+  if (!M.blades.length) lack.push('刃');
+  return lack.join('・');
+ }
+
+ function showEmpty(html) {
+  const box = panel && panel.querySelector('#bsEmpty');
+  if (!box) return;
+  box.innerHTML = html ? `<p>${html}</p>` : '';
+  box.hidden = !html;
+ }
+ /* マスタを書けるのは編集モードだけ（`access_mode`）。**押せるのに何も
+    起きないボタンを残さない**（§CLAUDE 4）——現場の端末（スケジュールモード）
+    からこの画面へ来たときは、押せない代わりに**理由**を書く。 */
+ const canEditMaster = () => ((window.accessMode || {}).mode || 'edit') === 'edit';
+
+ function showEmptyMissing(names) {
+  const eq = st.equipment || '（設備が未設定）';
+  const may = canEditMaster();
+  showEmpty(`<b>${esc(eq)} の刃組マスタが足りません（${esc(names)}）。</b>`
+   + '刃組図と所要は、登録されている部材だけで組み立てています。'
+   + (may
+    ? '<span class="bs-empty-acts">'
+      + '<button type="button" class="bs-btn is-primary" id="bsSeed">図面どおりの初期セットを登録</button>'
+      + '<button type="button" class="bs-btn" id="bsToMaster">マスタ管理を開く</button></span>'
+      + '<small>「初期セット」は、このアプリが持っている標準の部材構成'
+      + '（刃6・スペーサー26寸法・ゴムリング50・フィンガー4）をこの設備へ登録します。'
+      + '<b>既に登録がある種類には足しません。</b></small>'
+    : '<small>この端末は<b>スケジュールモード</b>なので、マスタを登録できません。'
+      + '編集モードの端末で「マスタ管理 &gt; 刃組」から登録してください'
+      + '（刃組図と所要は、いまある部材のままで読めます）。</small>'));
+ }
+
+ /* ====================== 描き直し ====================== */
+ let pending = 0;
+ function scheduleRender() {
+  if (pending) return;
+  pending = requestAnimationFrame(() => { pending = 0; render(); });
+ }
+
+ function render() {
+  if (!M || !IX || !panel) return;
+  const res = BS().solve(st, M, IX);
+  LAST = res;
+  renderStepBar(res);
+  renderStep1(res);
+  renderStep3(res);
+  renderStep4(res);
+  renderOrder();
+  drawFigure(res);
+  renderTables(res);
+  renderEnds(res);
+  renderGauges(res);
+  renderBom(res);
+  renderDiff(res);
+  renderSets();
+ }
+
+ /* ---------- 手順ボタンの現在値（畳んだ状態でも今の条件が読める） ---------- */
+ function renderStepBar(res) {
+  const B = BS();
+  $('#bsV1').textContent = `${B.ALIGN_NAME[st.align]}・${B.METHOD_NAME[res.method]}`;
+  $('#bsV2').textContent = `Φ${st.knife.toFixed(1)} / t${st.thick.toFixed(1)}${res.finger ? '・フィンガー' : ''}`;
+  $('#bsV3').textContent = st.lots.length === 1
+   ? `${st.lots[0].w}×${st.lots[0].n}` : `${st.lots.length}ロット`;
+  $('#bsV4').textContent = res.finger ? 'フィンガー（不要）'
+   : `${colorOf(res.bigOd)}${res.bigOd} / ${colorOf(res.smOd)}${res.smOd}`;
+  $('#bsDVal').textContent = res.A.dReal.toFixed(2);
+  $('#bsHold2').innerHTML = `板を保持する方式は<b>${B.holdName(st, M)}</b>です。`
+   + (res.finger
+    ? `板厚 ${st.thick.toFixed(1)} は ${M.P.fingerMax} 未満のため、板押さえ（フィンガー）で保持します。軸はスペーサーのみで構成します。`
+    : `板厚 ${st.thick.toFixed(1)} は ${M.P.fingerMax} 以上のため、ゴムリング主体で構成します。`);
+  const from = $('#bsFrom');
+  if (from) {
+   from.hidden = !seededFrom;
+   if (seededFrom) from.innerHTML = `この予定から：<b>${esc(seededFrom)}</b>`;
+  }
+  $('#bsFigNote').textContent = `${B.METHOD_NAME[res.method]}／刃 ${res.A.U.length} 対`;
+ }
+
+ function renderStep1(res) {
+  const B = BS();
+  $('#bsDerived').innerHTML = `<span class="bs-k">この条件で決まる刃組方式</span>`
+   + `<b class="bs-v">${B.METHOD_NAME[res.method]}</b>`
+   + `<small>${B.METHOD_DESC[res.method]}</small>`;
+  $('#bsNkBox').hidden = res.method !== 'nakanuki';
+  const ng = [];
+  if (res.method === 'nakanuki' && st.nkWidth < st.tk * 2) {
+   ng.push(`屑条の幅 ${st.nkWidth} が刃厚×2（${st.tk * 2}）未満です。刃が干渉します。`);
+  }
+  if (res.A.errs.length) ng.push(`成立しない区間が ${res.A.errs.length} か所あります（${res.A.errs[0].key}）。`);
+  if (st.W > res.A.arborLen) {
+   ng.push(`元板巾 ${st.W} がアーバー有効長 ${res.A.arborLen} を超えています`
+    + `（${(st.W - res.A.arborLen).toFixed(2)} mm 超過）。この板はこのラインに載りません。`);
+  }
+  $('#bsHint1').innerHTML = ng.length
+   ? ng.map(t => `<span class="bs-ng">${esc(t)}</span>`).join('<br>')
+   : '現在の条件で刃の干渉はありません。';
+ }
+
+ function renderStep3(res) {
+  const w = res.A.w, segs = res.segs;
+  $('#bsKpis').innerHTML = [
+   ['条・屑条 合計', w.total.toFixed(2), ''],
+   ['製品条', segs.filter(s => s.type === 'strip').length + ' 本', ''],
+   ['OS耳', w.osTrim.toFixed(2), w.osTrim < 0 ? 'is-ng' : ''],
+   ['DS耳', w.dsTrim.toFixed(2), w.dsTrim < 0 ? 'is-ng' : ''],
+   ['刃 対数', res.A.U.length + ' 対', '']
+  ].map(([k, v, cls]) => `<div class="bs-kpi ${cls}"><span>${k}</span><b>${esc(v)}</b></div>`).join('');
+  const slip = Math.abs(res.A.slip) < 1e-4 ? ''
+   : `<br>材料はアーバー中央から <b>${res.A.slip > 0 ? 'OS' : 'DS'}側へ ${Math.abs(res.A.slip).toFixed(3)} mm</b> 寄せます`
+     + `（区間長を手持ちスペーサーの ${res.A.grid} 刻みに合わせるため。耳には影響しません）。`;
+  $('#bsHint3').innerHTML = w.ok
+   ? `元板巾 ${st.W} ＝ OS耳 ${w.osTrim.toFixed(2)} ＋ 条合計 ${w.total.toFixed(2)} ＋ DS耳 ${w.dsTrim.toFixed(2)}`
+     + (w.even ? '<br>板をセンターに通すため耳を左右均等にしています。' : '<br>OS耳を手動指定しています。')
+     + slip
+   : `<span class="bs-ng">条合計 ${w.total.toFixed(2)} が元板巾 ${st.W} を超えています`
+     + `（不足 ${(w.total - st.W).toFixed(2)} mm）。幅・本数を見直してください。</span>`;
+  if (w.even) $('#bsOsTrim').value = w.osTrim;
+ }
+
+ function renderStep4(res) {
+  const finger = res.finger;
+  /* **色はカスタムプロパティで渡す**（§9.350／`test_csslint`）——インラインの
+     `background`はどのレイヤより強く、CSSから打ち消せなくなる。
+     マスタの色そのものは値なので、器の`--bs-dot`へ入れてCSSが使う。 */
+  $('#bsBigChip').style.setProperty('--bs-dot', hexOf(res.bigOd));
+  $('#bsSmChip').style.setProperty('--bs-dot', hexOf(res.smOd));
+  $('#bsBigTag').textContent = finger ? '—' : `${colorOf(res.bigOd)} ${res.bigOd}`;
+  $('#bsSmTag').textContent = finger ? '—' : `${colorOf(res.smOd)} ${res.smOd}`;
+  $('#bsBigSel').value = st.bigTh;
+  $('#bsSmSel').value = st.smallTh;
+  $('#bsBigSel').disabled = finger || st.bigMode === 'auto';
+  $('#bsSmSel').disabled = finger || st.smallMode === 'auto';
+  panel.querySelectorAll('.bs-chip[data-ring]').forEach(b => { b.disabled = finger; });
+  $('#bsHint4').innerHTML = finger
+   ? `<span class="bs-ng">フィンガー方式のためゴムリングは使いません。</span>板厚を ${M.P.fingerMax} 以上にすると、この設定が効きます。`
+   : (IX.ringsByTh.length
+    ? 'バリ方向が反転すると、上軸と下軸で大径・小径が入れ替わります。'
+    : '<span class="bs-ng">この設備のゴムリングが1本も登録されていません。</span>マスタ管理 &gt; 刃組 &gt; ゴムリング で登録してください。');
+ }
+
+ const ringMeta = od => BS().ringMeta(M, IX, od);
+ const colorOf = od => ringMeta(od).color || '—';
+ const hexOf = od => ringMeta(od).hex || 'transparent';
+
+ /* ---------- ロットの表 ---------- */
+ function renderLots() {
+  $('#bsLotTbl').innerHTML =
+   '<thead><tr><th>ロット</th><th>幅 mm</th><th>本数</th><th></th></tr></thead><tbody>'
+   + st.lots.map((l, i) => `<tr>
+      <td><input data-lot="${i}" data-k="name" value="${esc(l.name)}"></td>
+      <td><input type="number" data-lot="${i}" data-k="w" value="${esc(l.w)}" step="0.05"></td>
+      <td><input type="number" data-lot="${i}" data-k="n" value="${esc(l.n)}" step="1" min="1"></td>
+      <td><button type="button" class="bs-x" data-del-lot="${i}" aria-label="このロットを外す">×</button></td>
+     </tr>`).join('') + '</tbody>';
+ }
+
+ /* ---------- 条の並び（つまんで動かす） ---------- */
+ function widthColorIndex() {
+  const m = new Map();
+  st.lots.forEach(L => { const k = (+L.w).toFixed(3); if (!m.has(k)) m.set(k, m.size % WIDTH_COLORS); });
+  return m;
+ }
+ function renderOrder() {
+  const order = BS().syncOrder(st), color = widthColorIndex();
+  $('#bsOrdN').textContent = `${order.length} 条`;
+  const list = $('#bsOrdList');
+  list.classList.toggle('is-flip', !!st.flip);
+  $('#bsOrdHint').textContent = st.flip
+   ? 'DS側（左）から部材を入れます。条はOS側（右）から順に切ります。つまんで動かすと並びが変わります。'
+   : 'OS側（左）から順に切ります。つまんで動かすと並びが変わります。';
+  list.innerHTML = order.map((li, pos) => {
+   const L = st.lots[li], ci = color.get((+L.w).toFixed(3)) || 0;
+   return `<span class="bs-oc bs-w${ci}" draggable="true" data-pos="${pos}">`
+    + `<span class="bs-on">${esc(L.name)}</span>`
+    + `<span class="bs-ow">${(+L.w).toFixed(2)}</span></span>`;
+  }).join('');
+ }
+
+ /* ====================== 図 ======================
+    アーバー全長を viewBox に写して描く。実寸 mm と図の座標の対応は V が持つ。 */
+ const FIG = {
+  vw: 1000, left: 130, right: 932,
+  over: 58, capW: 15, stackOver: 34,
+  band: 78, topY: 64, openGap: 120,
+  matShare: 0.10, reachShare: 2.6, tailGap: 34,
+  minKnifePx: 4, capD: 300, growMax: 2.2, textShare: 0.65
+ };
+
+ function viewport(A, PAL, ratio) {
+  const PW = FIG.right - FIG.left;
+  /* 元板がアーバーより広いといった成立しない入力でも、枠の外へ描き出さない。 */
+  const x0 = Math.min(0, A.matStart), x1 = Math.max(A.arborLen, A.matStart + st.W);
+  const T = Math.max(1, x1 - x0);
+  const dir = st.flip ? -1 : 1;
+  const px = mm => (st.flip ? FIG.right - (mm - x0) / T * PW : FIG.left + (mm - x0) / T * PW);
+  const pw = mm => mm / T * PW;
+  const knifeD = st.knife;
+  const bigD = BS().odFromTh(M, st.bigTh), smallD = BS().odFromTh(M, st.smallTh);
+  const spacerD = +M.P.spacerOD || 240, shaftD = +M.P.shaftDia || 200;
+  const maxD = Math.max(knifeD, bigD, spacerD, 322);
+  const unit = FIG.topY + FIG.band / 2 + FIG.band * knifeD / maxD + FIG.openGap
+             + FIG.band / 2 + FIG.tailGap;
+  const grow = Math.max(1, Math.min(FIG.growMax, FIG.vw * ratio / unit));
+  const ts = 1 + (grow - 1) * FIG.textShare;
+  const band = FIG.band * grow, hOf = d => band * d / maxD;
+  const upC = FIG.topY * grow + hOf(maxD) / 2;
+  const loC = upC + hOf(knifeD) + FIG.openGap * grow;
+  return { PW, T, px, pw, dir, hOf, maxD, knifeD, bigD, smallD, spacerD, shaftD, grow, PAL,
+    fs: n => +(n * ts).toFixed(1),
+    matH: FIG.openGap * grow * FIG.matShare,
+    upC, loC, midY: (upC + loC) / 2, vh: unit * grow,
+    kw: Math.max(FIG.minKnifePx, pw(st.tk)),
+    ringHex: t => hexOf(t === 'big' ? bigD : smallD) };
+ }
+
+ /* 軸に通す部材1個。径をそのまま高さに写すので、太い部材ほど背が高く見える。 */
+ function block(V, cx, cy, w, dia, fill, stroke, label) {
+  const h = V.hOf(dia);
+  let o = `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" rx="2"`
+   + ` fill="${fill}" stroke="${stroke || V.PAL['spacer-edge']}"/>`;
+  if (label && w > 15) {
+   o += `<text x="${cx}" y="${cy + V.fs(8)}" text-anchor="middle" font-size="${V.fs(21)}"`
+    + ` font-weight="800" fill="#fff" stroke="${V.PAL.ink}" stroke-width="${V.fs(2.6)}"`
+    + ` style="paint-order:stroke">${label}</text>`;
+  }
+  return o;
+ }
+ function rowLabel(V, name, cy, fill) {
+  const room = FIG.left - FIG.over - 14;
+  const fs = Math.min(V.fs(19), room / Math.max(1, name.length));
+  return `<text x="${FIG.left - FIG.over - 10}" y="${cy + fs * 0.36}" text-anchor="end"`
+   + ` font-size="${fs.toFixed(1)}" font-weight="700" fill="${fill || V.PAL.label}">${name}</text>`;
+ }
+ function drawShafts(V) {
+  let back = '', front = '';
+  [[V.upC, '上軸'], [V.loC, '下軸']].forEach(([cy, name]) => {
+   back += `<rect x="${FIG.left - FIG.over}" y="${cy - V.hOf(V.shaftD) / 2}"`
+    + ` width="${V.PW + FIG.over * 2}" height="${V.hOf(V.shaftD)}" rx="5"`
+    + ` fill="url(#bsSh)" stroke="${V.PAL['shaft-edge']}"/>`
+    + `<rect x="${FIG.left - FIG.over}" y="${cy - V.hOf(FIG.capD) / 2}" width="${FIG.capW}"`
+    + ` height="${V.hOf(FIG.capD)}" rx="3" fill="${V.PAL.cap}"/>`
+    + `<rect x="${FIG.right + FIG.over - FIG.capW}" y="${cy - V.hOf(FIG.capD) / 2}"`
+    + ` width="${FIG.capW}" height="${V.hOf(FIG.capD)}" rx="3" fill="${V.PAL.cap}"/>`;
+   front += rowLabel(V, name, cy);
+  });
+  return { back, front };
+ }
+ const expand = d => d.out.flatMap(([sz, c]) => Array(c).fill(sz));
+ const widthPx = (V, pieces) => pieces.reduce((a, sz) => a + V.pw(sz), 0);
+
+ function partsRun(V, from, limit, cy, pieces, dia, fill, stroke, label, k) {
+  const d = V.dir, s = k || 1;
+  let svg = '', at = from;
+  for (const sz of pieces) {
+   const w = V.pw(sz) * s;
+   if ((at + d * w - limit) * d > 0.6) break;
+   svg += block(V, at + d * w / 2, cy, Math.max(1.2, w - 0.4), dia, fill, stroke, label);
+   at += d * w;
+  }
+  return { svg, end: at };
+ }
+ /* 1区間の中身を描く。軸の寸法はスペーサーが作る。保持層はその上に被さる別の層。
+    図の上での区間は刃の位置を見えるように広げたぶん実寸とずれる（最大で刃厚ぶん）
+    ので、区間ごとに縮尺を合わせてぴったり埋める。 */
+ function fillZone(V, xa, xb, cy, parts) {
+  const d = V.dir, span = Math.abs(xb - xa);
+  if (span <= 1) return '';
+  const k = parts.len > 0 ? span / V.pw(parts.len) : 1;
+  const fill = partsRun(V, xa, xb, cy, expand(parts.spacer), V.spacerD,
+                        V.PAL.spacer, V.PAL['spacer-edge'], null, k);
+  let svg = fill.svg;
+  if ((xb - fill.end) * d > 0.8) {
+   svg += block(V, (fill.end + xb) / 2, cy, Math.abs(xb - fill.end), V.spacerD,
+                V.PAL.filler, V.PAL['filler-edge']);
+  }
+  if (parts.hold) svg += holdLayer(V, xa, xb, cy, parts, k);
+  return svg;
+ }
+ /* 保持層（ゴムリング／フィンガー）。スペーサーの外側に出る輪の部分を上下に描く。
+    幅は刻みしかないので区間長にぴったり合うとはかぎらない。その余りを片側へ寄せると
+    クリアランスのように見えるので、左右へ均等に振り分けて中央に置く。 */
+ function holdLayer(V, xa, xb, cy, z, k) {
+  const isRing = z.hold.kind === 'ring';
+  const bore = +M.P.ringBore || 241;
+  const od = isRing ? z.hold.od : V.spacerD + 20;
+  const ri = V.hOf(bore) / 2, ro = V.hOf(od) / 2, th = ro - ri;
+  const hex = isRing ? V.ringHex(z.hold.ringT) : V.PAL['strip-edge'];
+  const d = V.dir, s = k || 1;
+  const pieces = expand(z.gom);
+  const slack = Math.max(0, Math.abs(xb - xa) - widthPx(V, pieces) * s);
+  let o = '', at = xa + d * slack / 2;
+  for (const sz of pieces) {
+   const w = V.pw(sz) * s;
+   if ((at + d * w - xb) * d > 0.6) break;
+   const x = Math.min(at, at + d * w) + 0.4, ww = Math.max(1.2, w - 0.8);
+   o += `<rect x="${x}" y="${cy - ro}" width="${ww}" height="${th}" rx="2" fill="${hex}" stroke="${V.PAL.ink}"/>`
+      + `<rect x="${x}" y="${cy + ri}" width="${ww}" height="${th}" rx="2" fill="${hex}" stroke="${V.PAL.ink}"/>`;
+   at += d * w;
+  }
+  const fs = Math.min(V.fs(16), th * 0.86);
+  if (Math.abs(xb - xa) > fs * 1.8 && fs > 6) {
+   o += `<text x="${(xa + xb) / 2}" y="${cy - ri - th / 2 + fs * 0.36}" text-anchor="middle"`
+    + ` font-size="${fs.toFixed(1)}" font-weight="800" fill="#fff" stroke="${V.PAL.ink}"`
+    + ` stroke-width="${(fs * 0.16).toFixed(2)}" style="paint-order:stroke">`
+    + `${isRing ? (z.hold.ringT === 'big' ? '大' : '小') : '指'}</text>`;
+  }
+  return o;
+ }
+ /* 図の上での刃の位置。クリアランスは実寸 0.15mm ほどで、アーバー全長を 800px に
+    写すと 0.07px になり上下のずれが見えない。ずれの**向き**はそのままに、
+    見てわかる最小限の量（刃厚ぶん）まで広げて描く。 */
+ function knifePx(V, A) {
+  const min = Math.max(V.kw, 3.5);
+  return A.U.map((u, i) => {
+   const xu = V.px(u), xl = V.px(A.Lo[i]), d = xu - xl;
+   if (Math.abs(d) >= min) return { u: xu, l: xl };
+   const mid = (xu + xl) / 2, s = d === 0 ? 0 : Math.sign(d);
+   return { u: mid + s * min / 2, l: mid - s * min / 2 };
+  });
+ }
+ const kxOf = (kx, i, upper) => (upper ? kx[i].u : kx[i].l);
+
+ function drawStack(V, A, segs, upper, zp) {
+  const cy = upper ? V.upC : V.loC, side = upper ? 'up' : 'lo', kx = V.KX;
+  const lastZ = A.zones.length - 1, lastK = kx.length - 1;
+  const d = V.dir, at = i => kxOf(kx, i, upper), half = d * V.kw / 2;
+  const over = (x0, x1) => block(V, (x0 + x1) / 2, cy, Math.abs(x1 - x0), V.spacerD,
+                                 V.PAL.filler, V.PAL['filler-edge']);
+  let svg = over(V.px(0) - d * FIG.stackOver, V.px(0));
+  svg += fillZone(V, V.px(0), at(0) - half, cy, zp.zones[0][side]);
+  for (let j = 0; j < segs.length; j++) {
+   svg += fillZone(V, at(j) + half, at(j + 1) - half, cy, zp.zones[j + 1][side]);
+  }
+  svg += fillZone(V, at(lastK) + half, V.px(A.arborLen), cy, zp.zones[lastZ][side]);
+  return svg + over(V.px(A.arborLen), V.px(A.arborLen) + d * FIG.stackOver);
+ }
+ function drawKnives(V) {
+  let o = '';
+  V.KX.forEach(k => {
+   o += block(V, k.u, V.upC, V.kw, V.knifeD, V.PAL.knife, V.PAL['knife-edge'])
+      + block(V, k.l, V.loC, V.kw, V.knifeD, V.PAL.knife, V.PAL['knife-edge']);
+  });
+  return o;
+ }
+ /* 構成記号。どの区間がどの組み合わせかを示す、刃組の要。**全区間に置く**
+    （「×8」とまとめるとどの区間を指すのか分からなくなる）。 */
+ function drawBadges(V, A, bmap) {
+  const half = V.dir * V.kw / 2;
+  const zoneX = (upper, k) => {
+   const n = V.KX.length - 1;
+   const a = (k === 0) ? V.px(0) : kxOf(V.KX, k - 1, upper) + half;
+   const b = (k === n + 1) ? V.px(A.arborLen) : kxOf(V.KX, k, upper) - half;
+   return [Math.min(a, b), Math.max(a, b)];
+  };
+  let o = '';
+  [['up', true, V.upC], ['lo', false, V.loC]].forEach(([side, upper, cy]) => {
+   for (let k = 1; k < A.zones.length - 1; k++) {
+    const r = bmap[side][k];
+    if (!r) continue;
+    const [a, b] = zoneX(upper, k), cx = (a + b) / 2, span = b - a;
+    const fs = V.fs(13), w = fs * (0.72 * r.badge.length) + fs * 0.7, h = fs * 1.5;
+    if (span > w + 2) {
+     o += `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}"`
+      + ` rx="${(h * 0.28).toFixed(1)}" fill="${V.PAL.badge}" stroke="#fff" stroke-width="1.2"/>`
+      + `<text x="${cx}" y="${cy + fs * 0.36}" text-anchor="middle" font-size="${fs}"`
+      + ` font-weight="800" fill="#fff">${r.badge}</text>`;
+    } else {
+     o += `<text x="${cx}" y="${cy + fs * 0.36}" text-anchor="middle" font-size="${fs}"`
+      + ` font-weight="800" fill="${V.PAL.badge}" stroke="#fff"`
+      + ` stroke-width="${(fs * 0.22).toFixed(2)}" style="paint-order:stroke">${r.badge}</text>`;
+    }
+   }
+  });
+  return o;
+ }
+ /* 材料の並び：OS耳 → 条／屑条 → DS耳。 */
+ function materialRun(A, segs) {
+  const items = [];
+  if (A.w.osTrim > 0) items.push({ w: A.w.osTrim, type: 'trim', label: '耳' });
+  segs.forEach(s => items.push(s));
+  if (A.w.dsTrim > 0) items.push({ w: A.w.dsTrim, type: 'trim', label: '耳' });
+  let at = A.matStart;
+  return items.map(sg => { const from = at; at += sg.w; return { sg, from, to: at }; });
+ }
+ /* 板は丸刃で切られ、切られた条は板厚のぶんだけ上下へ分かれる。条は
+    「区間の狭いほうの側」へ寄る。どちらが狭いかは切断点での刃の左右で決まる。 */
+ const matShift = (A, run, i) => {
+  const n = A.sign.length - 1;
+  const lead = run[0].sg.type === 'trim' ? 1 : 0;
+  const j = i - lead;
+  return j >= n ? A.sign[n] : -A.sign[j + 1];
+ };
+ function drawMaterial(V, A, run) {
+  const y = V.midY, h = V.matH, color = widthColorIndex();
+  let back = '', front = rowLabel(V, '材料', y, V.PAL.label);
+  let botMost = y;
+  const marks = [], last = run.length - 1;
+  const n = A.sign.length - 1, lead = run[0].sg.type === 'trim' ? 1 : 0;
+  const half = V.dir * V.kw / 2;
+  run.forEach(({ sg, from, to }, i) => {
+   const j = i - lead, up = matShift(A, run, i) < 0;
+   const kx = k => ((k < 0 || k > n) ? null : (up ? V.KX[k].u : V.KX[k].l));
+   const a0 = j <= -1 ? V.px(from) : (kx(j) !== null ? kx(j) + half : V.px(from));
+   const b0 = j >= n ? V.px(to) : (kx(j + 1) !== null ? kx(j + 1) - half : V.px(to));
+   const a = Math.min(a0, b0), b = Math.max(a0, b0), w = b - a, cx = (a + b) / 2;
+   const strip = sg.type === 'strip', trim = sg.type === 'trim', scrap = sg.type === 'scrap';
+   const ci = strip ? (color.get(sg.w.toFixed(3)) || 0) : 0;
+   const edge = strip ? V.PAL['w' + ci + 'e'] : (scrap ? V.PAL['scrap-edge'] : V.PAL['trim-edge']);
+   const face = strip ? V.PAL.strip : (scrap ? V.PAL.scrap : V.PAL.trim);
+   const cy = y + matShift(A, run, i) * h / 2, top = cy - h / 2, bot = cy + h / 2;
+   botMost = Math.max(botMost, bot);
+   back += `<rect x="${a + 0.6}" y="${top}" width="${Math.max(1.6, w - 1.2)}" height="${h}" rx="1"`
+    + ` fill="${face}" stroke="${edge}" stroke-width="1"/>`;
+   if (strip || (trim && (i === 0 || i === last))) {
+    marks.push({ cx, strip, text: strip ? String((sg.lotIx | 0) + 1) : '耳', w, fill: edge });
+   }
+   if (strip && sg.flip && w > V.fs(30)) {
+    front += `<text x="${cx}" y="${top - V.fs(6)}" text-anchor="middle" font-size="${V.fs(12)}"`
+     + ` font-weight="700" fill="${V.PAL['strip-edge']}">反転</text>`;
+   }
+  });
+  const my = Math.max(botMost, y + V.matH * FIG.reachShare) + V.fs(13);
+  const mfs = V.fs(13);
+  marks.forEach(m => {
+   if (m.w < mfs * 1.4) return;
+   if (m.strip) {
+    front += `<circle cx="${m.cx}" cy="${my - mfs * 0.34}" r="${(mfs * 0.72).toFixed(1)}"`
+     + ` fill="#fff" stroke="${m.fill}" stroke-width="1.3"/>`;
+   }
+   front += `<text x="${m.cx}" y="${my}" text-anchor="middle" font-size="${mfs}"`
+    + ` font-weight="800" fill="${m.fill}">${esc(m.text)}</text>`;
+  });
+  return { back, front };
+ }
+ /* 板を切っている刃。上刃は下から、下刃は上から板へ入り、板の位置で行き違う。 */
+ function drawLap(V) {
+  const y = V.midY, reach = V.matH * FIG.reachShare, w = Math.max(2.4, V.kw);
+  const blade = (cx, dir) =>
+   `<rect x="${(cx - w / 2).toFixed(1)}" y="${(dir > 0 ? y - reach : y).toFixed(1)}"`
+   + ` width="${w.toFixed(1)}" height="${reach.toFixed(1)}" rx="1.5"`
+   + ` fill="${V.PAL.knife}" stroke="${V.PAL['knife-edge']}" stroke-width=".6"/>`;
+  let o = '';
+  V.KX.forEach(k => { o += blade(k.u, +1) + blade(k.l, -1); });
+  return o;
+ }
+ /* 主要値の帯（§CLAUDE 12「余白があるなら、そこへ置くべきものを出す」）。
+    **クリアランスとラップは図のどこか1点を指して示せない寸法**なので、
+    寸法線ではなく値そのものをバッジで置く（クリアランスのずれの向きは
+    切断ごとに変わる）。ゴムリングは色が外径そのものなので、色の意味だけを
+    図の中に置く——それ以外（スペーサー・刃・屑条・耳）は形と並びで読める。
+    帯が長くなったときは全体を縮めて収め、折り返しや欠けを起こさない。 */
+ function drawChipBand(V, finger) {
+  const textW = t => [...t].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 16 : 9), 0);
+  const P = V.PAL;
+  const chips = [
+   { t: `クリアランス ${st.clr.toFixed(2)}`, bg: P['chip-clr-bg'], fg: P['chip-clr-fg'], bd: P['chip-clr-bd'] },
+   { t: `ラップ ${st.ov.toFixed(2)}`, bg: P['chip-ov-bg'], fg: P['chip-ov-fg'], bd: P['chip-ov-bd'] }
+  ];
+  if (finger) chips.push({ t: 'フィンガー（ゴムリング無し）', bg: P['chip-bg'], fg: P['chip-fg'], bd: P['chip-bd'] });
+  else chips.push(
+   { t: `大径 ${V.bigD}`, bg: P['chip-bg'], fg: P['chip-fg'], bd: P['chip-bd'], dot: V.ringHex('big') },
+   { t: `小径 ${V.smallD}`, bg: P['chip-bg'], fg: P['chip-fg'], bd: P['chip-bd'], dot: V.ringHex('small') });
+  const CW = chips.map(c => V.fs(22 + textW(c.t) + (c.dot ? 22 : 0)));
+  const total = CW.reduce((a, w) => a + w, 0) + (chips.length - 1) * 9;
+  /* 帯は図の上端の中央。左右の隅は OS・DS の見出しが使っているので、その分を
+     除いた幅に収める。 */
+  const side = V.fs(46), room = FIG.vw - side * 2;
+  const fit = Math.min(1, room / total);
+  let x = side / fit + Math.max(0, (room / fit - total) / 2), band = '';
+  chips.forEach((c, i) => {
+   const w = CW[i], h = V.fs(30), y = 8;
+   band += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="9" fill="${c.bg}" stroke="${c.bd}"/>`;
+   let tx = x + 11;
+   if (c.dot) {
+    band += `<circle cx="${tx + 7}" cy="${y + h / 2}" r="7.5" fill="${c.dot}" stroke="${P.ink}"/>`;
+    tx += 22;
+   }
+   band += `<text x="${tx}" y="${y + h / 2 + V.fs(6)}" font-size="${V.fs(16)}"`
+    + ` font-weight="700" fill="${c.fg}">${esc(c.t)}</text>`;
+   x += w + 9;
+  });
+  return fit < 1 ? `<g transform="scale(${fit.toFixed(4)})">${band}</g>` : band;
+ }
+ const drawEdgeLabels = V =>
+  `<text x="10" y="${V.fs(24)}" font-size="${V.fs(17)}" font-weight="800" fill="${V.PAL.label}">${st.flip ? 'DS' : 'OS'}</text>`
+  + `<text x="${FIG.vw - 10}" y="${V.fs(24)}" text-anchor="end" font-size="${V.fs(17)}"`
+  + ` font-weight="800" fill="${V.PAL.label}">${st.flip ? 'OS' : 'DS'}</text>`;
+
+ function drawFigure(res) {
+  const svg = $('#bsStage');
+  if (!svg) return;
+  const PAL = figPalette(panel);
+  const box = svg.parentNode.getBoundingClientRect();
+  const ratio = box.width > 10 ? Math.max(0.3, Math.min(1.2, box.height / box.width)) : 0.55;
+  const V = viewport(res.A, PAL, ratio);
+  V.KX = knifePx(V, res.A);
+  const shafts = drawShafts(V), run = materialRun(res.A, res.segs);
+  const mat = drawMaterial(V, res.A, run);
+  const back = shafts.back
+   + drawStack(V, res.A, res.segs, true, res.zp)
+   + drawStack(V, res.A, res.segs, false, res.zp)
+   + drawKnives(V) + mat.back + drawLap(V);
+  const front = shafts.front + drawBadges(V, res.A, res.badges)
+   + mat.front + drawEdgeLabels(V) + drawChipBand(V, res.finger);
+  svg.setAttribute('viewBox', `0 0 ${FIG.vw} ${V.vh}`);
+  svg.innerHTML = `<defs><linearGradient id="bsSh" x1="0" y1="0" x2="0" y2="1">`
+   + `<stop offset="0" stop-color="${PAL.sheen}"/><stop offset=".45" stop-color="${PAL.shaft}"/>`
+   + `<stop offset="1" stop-color="${PAL['shaft-edge']}"/></linearGradient></defs>${back}${front}`;
+ }
+
+ /* ====================== 刃組表 ====================== */
+ const K = () => BS().sizeKeys;
+ function usesCell(row, k, sep) {
+  const cls = 'bs-it' + (sep ? ' bs-sep' : '');
+  const uses = row.uses.filter(u => (k === 'up') === !!u.upper);
+  if (!uses.length) return `<td class="${cls} bs-z">·</td>`;
+  const slots = (row.zones || []).filter(z => (k === 'up') === !!z.upper).map(z => z.i);
+  const burr = [...new Set(uses.map(u => u.burr))]
+   .map(b => `<span class="bs-bt is-${b}">${b === 'down' ? '下' : '上'}</span>`).join('');
+  const n = uses.reduce((a, u) => a + u.n, 0);
+  return `<td class="${cls}">${burr}<span class="bs-slot">`
+   + `${[...new Set(slots)].sort((a, b) => a - b).join(' ')}</span><span class="bs-ct">${n}</span></td>`;
+ }
+ function renderTables(res) {
+  const rows = res.rows, keys = K();
+  const Ss = [...new Set(rows.flatMap(r => keys(r.c.sp)))].sort((a, b) => b - a);
+  const Gs = [...new Set(rows.flatMap(r => keys(r.c.G)))].sort((a, b) => b - a);
+  const hasRem = rows.some(r => r.c.rem > 0.001);
+  const holdLabel = res.finger ? 'フィンガー' : 'ゴムリング';
+  const num = v => (v ? `<b>${v}</b>` : '<span class="bs-z">·</span>');
+  const head = `<thead>
+    <tr>
+     <th class="bs-grp" rowspan="2">区分<small>ロット・条幅</small></th>
+     <th class="bs-bd" rowspan="2">記号</th>
+     <th class="bs-it bs-sep" colspan="2">取付位置<small>バリ／OS側から何番目の区間か／区間数</small></th>
+     ${Ss.length ? `<th colspan="${Ss.length}" class="bs-sep">スペーサー</th>` : ''}
+     ${Gs.length ? `<th colspan="${Gs.length}" class="bs-sep">${holdLabel}</th>` : ''}
+     ${hasRem ? `<th rowspan="2" class="bs-sep">隙間<small>許容 0〜${M.P.gapMax}</small></th>` : ''}
+    </tr>
+    <tr><th class="bs-ax bs-sep">上軸</th><th class="bs-ax">下軸</th>
+     ${Ss.map((x, i) => `<th class="bs-sz${i ? '' : ' bs-sep'}">${x}</th>`).join('')}
+     ${Gs.map((x, i) => `<th class="bs-sz${i ? '' : ' bs-sep'}">${x}</th>`).join('')}</tr>
+   </thead>`;
+  /* 区分（ロット・屑条）はいちばん左の列にまとめて1回だけ示す（縦に伸ばさない）。 */
+  const key = r => (r.sg.type === 'strip' ? r.sg.lot : '屑条');
+  const runs = [];
+  rows.forEach(r => {
+   const k = key(r);
+   if (runs.length && runs[runs.length - 1].k === k) runs[runs.length - 1].rs.push(r);
+   else runs.push({ k, rs: [r] });
+  });
+  const body = runs.map(({ k, rs }) => rs.map((r, i) => {
+   const head0 = i ? '' : `<td class="bs-grp" rowspan="${rs.length}">`
+    + `<b>${r.sg.type === 'strip' ? `<span class="bs-lno">${(r.sg.lotIx | 0) + 1}</span>` : ''}${esc(k)}</b>`
+    + `<span class="bs-gw">${r.sg.w.toFixed(2)}</span>`
+    + (r.sg.flip ? '<span class="bs-gw is-flip">反転巻き</span>' : '') + '</td>';
+   return `<tr>${head0}<td class="bs-bd"><span class="bs-bdg">${r.badge}</span></td>`
+    + usesCell(r, 'up', true) + usesCell(r, 'lo')
+    + Ss.map((x, i2) => `<td class="bs-num${i2 ? '' : ' bs-sep'}">${num(r.c.sp[x])}</td>`).join('')
+    + Gs.map((x, i2) => `<td class="bs-num${i2 ? '' : ' bs-sep'}">${num(r.c.G[x])}</td>`).join('')
+    + (hasRem ? `<td class="bs-num bs-sep ${gapCell(r.c.rem)}">`
+       + `${r.c.rem > 0.001 ? r.c.rem.toFixed(2) : '·'}</td>` : '')
+    + '</tr>';
+  }).join('')).join('');
+  $('#bsTables').innerHTML = `<table class="bs-g">${head}<tbody>${body}</tbody></table>`;
+ }
+ /* 端数は、そのまま「刃と刃のあいだに残る隙間」になる。ぴったり埋まったものと
+    許容内で隙間があるものを見分けられるようにする。 */
+ const gapCell = rem => (rem <= 1e-9 ? 'is-zero'
+  : (rem <= (+M.P.gapMax || 0) + 1e-9 ? 'is-ok' : 'is-bad'));
+
+ /* ---------- 端部（OS端／DS端）を図の左右へ ---------- */
+ function renderEnds(res) {
+  const keys = K();
+  const at = sd => ((sd === 'OS') !== !!st.flip ? '左' : '右');
+  [['OS', '#bsOsSide'], ['DS', '#bsDsSide']].forEach(([sd, sel]) => {
+   const rows = res.ends.filter(r => r.endSide === sd);
+   const el = $(sel);
+   if (!el) return;
+   if (!rows.length) { el.innerHTML = ''; return; }
+   const trim = rows[0].trim;
+   const pick = up => rows.find(r => r.uses.some(u => u.upper === up)) || rows[0];
+   const U = pick(true), L = pick(false);
+   const two = (a, b) => `<td>${a}</td><td>${b}</td>`;
+   const n = v => (v ? `<b>${v}</b>` : '<span class="bs-z">·</span>');
+   const ss = [...new Set([...keys(U.c.sp), ...keys(L.c.sp)])].sort((a, b) => b - a);
+   let h = '<tr class="bs-sec"><td colspan="3">スペーサー</td></tr>';
+   h += ss.length
+    ? ss.map(x => `<tr><td class="bs-a">${x}</td>${two(n(U.c.sp[x]), n(L.c.sp[x]))}</tr>`).join('')
+    : '<tr><td colspan="3" class="bs-note">なし</td></tr>';
+   const len = r => `<b class="${r.c.len < 0 ? 'bs-ng' : ''}">${r.c.len.toFixed(2)}</b>`;
+   h += `<tr class="bs-tot"><td class="bs-a">区間長</td>${two(len(U), len(L))}</tr>`;
+   if (U.c.rem > 0.001 || L.c.rem > 0.001) {
+    const openEnd = sd === 'DS';
+    const gv = r => (r.c.rem > 0.001
+     ? `<span class="${openEnd ? '' : gapCell(r.c.rem)}">${r.c.rem.toFixed(2)}</span>`
+     : '<span class="bs-z">·</span>');
+    h += `<tr class="bs-rem"><td class="bs-a">${openEnd ? '残り' : '隙間'}</td>${two(gv(U), gv(L))}</tr>`;
+   }
+   const why = `${sd === 'OS' ? 'いちばん先に取り付けます' : 'いちばん後に取り付けます'}。`
+    + '最外刃より外なのでスペーサーのみです。';
+   el.innerHTML = `<div class="bs-fh" title="${esc(why)}">`
+    + `<span class="bs-pin">${sd}</span><span class="bs-lr">${at(sd)}</span>`
+    + `<span class="bs-trim ${trim < 0 ? 'bs-ng' : ''}">耳 ${trim.toFixed(2)}</span></div>`
+    + '<table class="bs-e"><thead><tr><th class="bs-a">部材<small>mm</small></th>'
+    + '<th>上軸</th><th>下軸</th></tr></thead><tbody>' + h + '</tbody></table>';
+  });
+ }
+
+ /* ====================== 所要 ====================== */
+ const VERDICT = { good: ['is-good', '適正'], warn: ['is-warn', '要注意'], bad: ['is-bad', '不適'] };
+ function gaugeHtml(id, name, unit) {
+  return `<div class="bs-ga" data-g="${id}"><span class="bs-gn">${name}</span>`
+   + `<b class="bs-gv">—<i>${unit}</i></b>`
+   + '<span class="bs-gt"><i class="bs-gz"></i><i class="bs-gm"></i></span>'
+   + '<span class="bs-vb">—</span></div>';
+ }
+ function renderGauges(res) {
+  const box = $('#bsGauges');
+  if (!box.dataset.ready) {
+   box.innerHTML = gaugeHtml('push', '大径 押上げ', 'mm')
+    + gaugeHtml('nip', '板ニップ', 'mm')
+    + `<div class="bs-ga bs-ga-wide" data-g="offset"><span class="bs-gn">上下の左右差（端数の累積）</span>`
+    + '<b class="bs-gv">—<i>mm</i></b>'
+    + '<span class="bs-gt"><i class="bs-gz"></i><i class="bs-gm"></i></span>'
+    + '<span class="bs-vb">—</span>'
+    + '<details class="bs-ox"><summary>読み方</summary><div class="bs-oxb"></div></details></div>';
+   box.dataset.ready = '1';
+  }
+  paintGauge('push', res.contact.push, res.finger, 0, 1.5);
+  paintGauge('nip', res.contact.nip, res.finger, 0, 2.0);
+  paintOffset(res.err);
+ }
+ function paintGauge(kind, value, off, lo, hi) {
+  const g = $(`.bs-ga[data-g="${kind}"]`);
+  if (!g) return;
+  const vb = g.querySelector('.bs-vb');
+  if (off) {
+   g.querySelector('.bs-gv').innerHTML = '—';
+   g.querySelector('.bs-gt').hidden = true;
+   vb.className = 'bs-vb is-off';
+   vb.textContent = 'フィンガー方式';
+   return;
+  }
+  g.querySelector('.bs-gt').hidden = false;
+  const band = BS().bandOf(M, kind), pct = v => (v - lo) / (hi - lo) * 100;
+  g.querySelector('.bs-gm').style.left = Math.max(2, Math.min(98, pct(value))) + '%';
+  g.querySelector('.bs-gv').innerHTML = value.toFixed(2) + '<i>mm</i>';
+  const z = g.querySelector('.bs-gz');
+  z.style.left = pct(band.min) + '%';
+  z.style.width = (pct(band.max) - pct(band.min)) + '%';
+  const [cls, text] = VERDICT[BS().judge(value, band)];
+  vb.className = 'bs-vb ' + cls;
+  vb.textContent = text;
+ }
+ function paintOffset(e) {
+  const g = $('.bs-ga[data-g="offset"]');
+  if (!g) return;
+  const p = M.P, lim = Math.max((+p.offsetHardTol || 0) * 2, 0.02);
+  const pct = v => (v + lim) / (2 * lim) * 100;
+  g.querySelector('.bs-gm').style.left = Math.max(2, Math.min(98, pct(e.worst))) + '%';
+  g.querySelector('.bs-gv').innerHTML =
+   `${e.worst > 0 ? '＋' : e.worst < 0 ? '−' : '±'}${Math.abs(e.worst).toFixed(3)}<i>mm</i>`;
+  const z = g.querySelector('.bs-gz');
+  z.style.left = pct(-p.offsetTol) + '%';
+  z.style.width = (pct(p.offsetTol) - pct(-p.offsetTol)) + '%';
+  const [cls, text] = VERDICT[BS().judge(e.worst, BS().offsetBand(M))];
+  const vb = g.querySelector('.bs-vb');
+  vb.className = 'bs-vb ' + cls;
+  vb.textContent = text;
+  const shift = Math.min(e.cumU, e.cumL), diff = Math.abs(e.worst);
+  const lines = ['DS側から部材を入れ、OS側へ詰めます。区間を手持ち寸法で埋めきれない分（端数）だけ、それより DS 側の刃は OS 側へ寄ります。'];
+  if (diff > 1e-9) {
+   lines.push(`上軸と下軸で端数の出方が違います。差がいちばん大きいのは <b>${e.worstAt + 1} 本目の刃</b>`
+    + `（上軸の累積 ${e.cumU.toFixed(3)} ／ 下軸の累積 ${e.cumL.toFixed(3)} mm）。`);
+  } else if (shift > 1e-9) lines.push('上下とも同じだけ寄るため、左右差にはなりません。');
+  else lines.push('端数は出ていません。手持ち寸法で全区間を割り切れています。');
+  if (shift > 1e-9) {
+   lines.push(`刃全体が <b>${shift.toFixed(3)} mm</b> OS 側へ寄ります。OS耳はそのぶん狭く、DS耳は広くなります。`);
+  }
+  const tail = Math.max(e.tail.up, e.tail.lo);
+  if (tail > 0.001) lines.push(`DS端に残る ${tail.toFixed(2)} mm は開放端の余りで、刃の位置はずらしません。`);
+  g.querySelector('.bs-oxb').innerHTML = lines.join('<br>');
+ }
+
+ /* 準備するものは「寸法 × 必要数」だけ分かればよい。寸法ごとに1行の表にすると
+    スペーサーだけで十数行になり必ずスクロールになるので、チップにして折り返す。 */
+ const needChip = (label, u, l, have) => {
+  const need = u + l;
+  const short = typeof have === 'number' && have < need;
+  return `<span class="bs-nc${short ? ' is-ng' : ''}" title="上軸 ${u} ／ 下軸 ${l}`
+   + `${typeof have === 'number' ? ` ／ 使える ${have}` : ''}">${esc(label)}<b>${need}</b></span>`;
+ };
+ const needGroup = (name, chips, note) => ((chips.length || note)
+  ? `<div class="bs-ng2"><span class="bs-nh">${name}</span><span class="bs-nb">`
+    + `${chips.join('')}${note ? `<span class="bs-nn">${esc(note)}</span>` : ''}</span></div>`
+  : '');
+ function renderBom(res) {
+  const g = res.g, keys = K();
+  const blade = M.blades.find(k => k.currentDia !== null
+   && Math.abs(k.currentDia - st.knife) < 0.05 && Math.abs((k.thickness || 0) - st.tk) < 0.01);
+  const n = res.A.U.length;
+  const sizes = [...new Set([...keys(g.spacerU), ...keys(g.spacerL)])].sort((a, b) => b - a);
+  let html = needGroup(`刃 Φ${st.knife.toFixed(1)}`,
+   [needChip(`t${st.tk}`, n, n, blade ? blade.qty : null)],
+   blade ? '' : 'この径・刃厚の刃がマスタにありません');
+  html += needGroup('スペーサー', sizes.map(s => {
+   const x = g.plan.spacer.get(+s);
+   return needChip(s, g.spacerU[s] || 0, g.spacerL[s] || 0, x ? x.free : 0);
+  }));
+  if (res.finger) {
+   const fs = keys(g.finger);
+   html += needGroup('フィンガー', fs.map(sz => {
+    const w = g.finger[sz], x = g.plan.finger.get(+sz);
+    return needChip(sz, w.u, w.l, x ? x.free : 0);
+   }), fs.length ? '' : 'この設備のフィンガーが登録されていません');
+   html += needGroup('ゴムリング', [], 'フィンガー方式のため使いません');
+  } else {
+   const ods = Object.keys(g.ring).map(Number).sort((a, b) => b - a);
+   html += ods.map(od => {
+    const t = BS().odOfType(st, M, 'big') === od ? '大'
+     : (BS().odOfType(st, M, 'small') === od ? '小' : '');
+    const name = `<span class="bs-rchip" style="--bs-dot:${esc(hexOf(od))}">${t || '·'}</span>${od}`;
+    return needGroup(name, keys(g.ring[od]).map(sz => {
+     const w = g.ring[od][sz], x = g.plan.ring.get(`${od}|${sz}`);
+     return needChip(sz, w.u, w.l, x ? x.free : 0);
+    }));
+   }).join('');
+   if (!ods.length) html += needGroup('ゴムリング', [], 'この設備のゴムリングが登録されていません');
+  }
+  $('#bsBom').innerHTML = html;
+ }
+
+ /* ====================== 台車差分 ====================== */
+ const itemKeys = o => Object.keys(o).sort((a, b) => {
+  const pa = a.split('|').map(Number), pb = b.split('|').map(Number);
+  return (pb[0] - pa[0]) || ((pb[1] || 0) - (pa[1] || 0));
+ });
+ function targetRecord() {
+  const h = M.history || [];
+  for (let i = 1; i < h.length; i++) if (h[i].carriage === st.carriage) return { rec: h[i], back: i + 1 };
+  return { rec: null, back: 0 };
+ }
+ function diffRows(title, cur, prev, shelf, fmt) {
+  const keys = itemKeys(Object.assign({}, prev || {}, cur));
+  if (!keys.length) return { html: '', add: 0, back: 0, keep: 0, short: [] };
+  let html = `<tr class="bs-sec"><td colspan="5">${title}</td></tr>`;
+  let add = 0, back = 0, keep = 0;
+  const short = [];
+  keys.forEach(k => {
+   const need = cur[k] || 0, on = (prev || {})[k] || 0;
+   const plus = Math.max(0, need - on), minus = Math.max(0, on - need), same = Math.min(need, on);
+   add += plus; back += minus; keep += same;
+   const avail = shelf ? (shelf(k) - on) : null;
+   const lack = avail !== null && plus > Math.max(0, avail);
+   if (lack) short.push(String(k));
+   html += `<tr><td class="bs-a">${fmt ? fmt(k) : esc(k)}</td><td>${on || '—'}</td><td>${need || '—'}</td>`
+    + `<td class="${plus ? 'is-plus' : ''}${lack ? ' is-short' : ''}">${plus || '—'}</td>`
+    + `<td class="${minus ? 'is-minus' : ''}">${minus || '—'}</td></tr>`;
+  });
+  return { html, add, back, keep, short };
+ }
+ function renderDiff(res) {
+  const cur = BS().snapshot(st, M, res.g);
+  const h = M.history || [], inUse = h[0] || null;
+  const { rec: prev, back } = targetRecord();
+  const plan = res.g.plan;
+  const shelf = {
+   spacer: k => { const x = plan.spacer.get(+k); return x ? x.free : 0; },
+   ring: k => { const x = plan.ring.get(String(k)); return x ? x.free : 0; },
+   finger: k => { const x = plan.finger.get(+k); return x ? x.free : 0; },
+   blade: k => {
+    const [dia, tk] = String(k).split('|');
+    const x = M.blades.find(y => y.currentDia !== null && Math.abs(y.currentDia - +dia) < 0.05
+     && Math.abs((y.thickness || 0) - +tk) < 0.01);
+    return x ? x.qty : 0;
+   }
+  };
+  const pd = prev && prev.detail ? prev.detail : null;
+  const parts = [
+   diffRows('スペーサー', cur.spacer, pd && pd.spacer, shelf.spacer),
+   diffRows('ゴムリング', cur.ring, pd && pd.ring, shelf.ring, k => {
+    const [od, sz] = String(k).split('|');
+    return `<span class="bs-swc"><i style="--bs-dot:${esc(hexOf(+od))}"></i>`
+     + `${esc(colorOf(+od))}${esc(od)}<small>幅 ${esc(sz)}</small></span>`;
+   }),
+   diffRows('フィンガー', cur.finger, pd && pd.finger, shelf.finger),
+   diffRows('刃', cur.blade, pd && pd.blade, shelf.blade, k => {
+    const [dia, tk] = String(k).split('|');
+    return `Φ${esc(dia)}${tk ? `<small>刃厚 ${esc(tk)}</small>` : ''}`;
+   })
+  ];
+  $('#bsDiffHead').innerHTML =
+   (inUse ? `<div class="bs-alert"><b>ラインで稼働中（直前の刃組）</b>　台車 ${esc(inUse.carriage)}<br>`
+     + `${esc(inUse.at)}<br>${esc(inUse.note)}<br>ここに載っている部材は外せないため、今回は使えません。</div>` : '')
+   + (prev
+    ? `<div class="bs-alert is-info"><b>組み替える台車 ${esc(st.carriage)} の現在の構成（${back}回前）</b><br>`
+      + `${esc(prev.at)}<br>${esc(prev.note)}<br>ここに載っている部材はそのまま使えます。</div>`
+    : `<div class="bs-alert">台車 ${esc(st.carriage)} に組み替え対象となる記録がありません。`
+      + '刃組を終えるたびに記録すると、次回から2回前の構成との差分が出ます。</div>');
+  const total = k => parts.reduce((a, x) => a + x[k], 0);
+  const short = parts.flatMap(x => x.short);
+  $('#bsDiffSum').innerHTML = '<div class="bs-kpis">'
+   + `<div class="bs-kpi"><span>そのまま使える</span><b>${total('keep')}</b></div>`
+   + `<div class="bs-kpi is-good"><span>棚から持ち出す</span><b>${total('add')}</b></div>`
+   + `<div class="bs-kpi is-ng"><span>棚に戻す</span><b>${total('back')}</b></div></div>`
+   + (short.length ? `<div class="bs-alert is-bad">棚にも足りない部材が ${short.length} 種あります。数を確かめてください。</div>` : '');
+  $('#bsDiff').innerHTML = '<thead><tr><th class="bs-a">部品</th><th>台車</th><th>今回</th>'
+   + '<th>追加</th><th>戻す</th></tr></thead><tbody>'
+   + parts.map(x => x.html).join('') + '</tbody>';
+  $('#bsHist').innerHTML = h.length
+   ? h.slice(0, 6).map((r, i) => `<div class="bs-hrow${i === 0 ? ' is-use' : ''}${prev && r === prev ? ' is-tgt' : ''}">`
+     + `<span class="bs-hi">${i === 0 ? '1回前 稼働中' : (i + 1) + '回前'}</span>`
+     + `<span class="bs-hc">台車 ${esc(r.carriage)}</span><span class="bs-hn">${esc(r.at)}</span>`
+     + `<button type="button" class="bs-btn is-sm" data-hdel="${esc(r.id)}">削除</button></div>`).join('')
+   : '<div class="bs-hempty">記録がありません</div>';
+  $('#bsSaveCar').textContent = `刃組完了：台車 ${st.carriage} として記録`;
+ }
+
+ /* ====================== 刃の状態 ====================== */
+ function renderSets() {
+  const a = BS().warnings(st, M);
+  renderFoot(a);
+  $('#bsSetAlerts').innerHTML = a.length
+   ? `<div class="bs-alert is-bad"><b>要確認 ${a.length}件</b><br>`
+     + `${a.slice(0, 6).map(x => esc(x.text)).join('<br>')}`
+     + `${a.length > 6 ? '<br>ほか ' + (a.length - 6) + '件' : ''}</div>`
+   : '<div class="bs-alert is-ok">在庫・研磨・使用限界に要確認はありません。</div>';
+  const groups = [];
+  M.blades.forEach(k => {
+   const g = groups.find(x => x.group === (k.group || ''));
+   if (g) g.items.push(k); else groups.push({ group: k.group || '', items: [k] });
+  });
+  const days = d => (d ? Math.floor((Date.now() - new Date(d)) / 86400000) : null);
+  $('#bsSetList').innerHTML = groups.length ? groups.map(g => {
+   const on = g.items.some(k => k.status === '使用中');
+   const rows = g.items.sort((a2, b2) => (b2.thickness || 0) - (a2.thickness || 0)).map(k => {
+    const d = days(k.lastGrind), lim = k.currentDia !== null && M.P.minDia && k.currentDia <= M.P.minDia;
+    return `<div class="bs-kr"><b class="bs-tk">${esc(k.thickness)}mm</b>`
+     + `<span class="bs-dia${lim ? ' bs-ng' : ''}">Φ${esc(k.currentDia)}</span>`
+     + `<span class="bs-gr">研磨 ${esc(k.lastGrind || '—')}${d !== null ? `（${d}日）` : ''}</span>`
+     + `<span class="bs-qt">${esc(k.qty)}枚</span>`
+     + `<button type="button" class="bs-btn is-sm" data-load-blade="${esc(k.name)}">呼出</button></div>`;
+   }).join('');
+   return `<div class="bs-sc${on ? ' is-on' : ''}"><div class="bs-sch">`
+    + `<b>${esc(g.group ? '組 ' + g.group : '（組の指定なし）')}</b>`
+    + `<span class="bs-sb">${esc(g.items[0].status || '—')}</span></div>`
+    + `<div class="bs-kl">${rows}</div></div>`;
+  }).join('')
+   : '<p class="bs-note">この設備の刃が登録されていません（マスタ管理 &gt; 刃組 &gt; 刃）。</p>';
+ }
+
+ /* 足元の一言。**件数と行き先だけ**（中身は「刃の状態」が持つ）。 */
+ function renderFoot(a) {
+  const foot = $('#bsFoot');
+  if (!foot) return;
+  if (!a.length) {
+   foot.className = 'bs-rail-foot is-ok';
+   foot.innerHTML = '<span>在庫・研磨・使用限界に要確認はありません</span>';
+   return;
+  }
+  foot.className = 'bs-rail-foot is-ng';
+  foot.innerHTML = `<span><b>要確認 ${a.length}件</b>${esc(a[0].text)}`
+   + `${a.length > 1 ? ' ほか' + (a.length - 1) + '件' : ''}</span>`
+   + '<button type="button" class="bs-btn is-sm" data-r="set">刃の状態を見る</button>';
+ }
+
+ /* ====================== 入力の配線 ====================== */
+ function paintInputs() {
+  $('#bsKnife').value = st.knife;
+  $('#bsThick').value = st.thick;
+  $('#bsTk').value = st.tk;
+  $('#bsClr').value = st.clr;
+  $('#bsOv').value = st.ov;
+  $('#bsW').value = st.W;
+  $('#bsNkWidth').value = st.nkWidth;
+  $('#bsCanNk').checked = !!st.canNk;
+  $('#bsTrimEven').checked = st.trimMode === 'even';
+  $('#bsOsTrim').disabled = st.trimMode === 'even';
+  panel.querySelectorAll('#bsAlign input').forEach(r => { r.checked = r.value === st.align; });
+  markAlign();
+  renderLots();
+  setFlip(st.flip);
+ }
+ const markAlign = () => panel.querySelectorAll('#bsAlign label')
+  .forEach(l => l.classList.toggle('is-on', l.dataset.v === st.align));
+
+ function fillBladePick() {
+  const sel = $('#bsBladePick'), cur = sel.value;
+  sel.innerHTML = '<option value="">（手で入力）</option>'
+   + M.blades.map((k, i) => `<option value="${i}">${esc(k.name)}　Φ${esc(k.currentDia)}`
+     + `　刃厚${esc(k.thickness)}　${esc(k.status)}</option>`).join('');
+  sel.value = cur;
+  if (sel.selectedIndex < 0) sel.selectedIndex = 0;
+ }
+ function fillRingSelects() {
+  const opts = IX.ringsByTh.map(r =>
+   `<option value="${BS().thOf(r)}">${esc(r.color)} ${r.od}（肉厚 ${BS().thOf(r).toFixed(1)}）</option>`).join('');
+  $('#bsBigSel').innerHTML = opts;
+  $('#bsSmSel').innerHTML = opts;
+ }
+ function loadBlade(k) {
+  if (!k) return;
+  if (k.currentDia) st.knife = k.currentDia;
+  if (k.thickness) st.tk = k.thickness;
+  $('#bsKnife').value = st.knife;
+  $('#bsTk').value = st.tk;
+ }
+ function setFlip(on) {
+  st.flip = !!on;
+  const b = $('#bsFlip');
+  b.classList.toggle('is-on', st.flip);
+  b.textContent = st.flip ? '段取り向き（DS左）' : '図面向き（OS左）';
+  $('#bsFigRow').classList.toggle('is-flip', st.flip);
+ }
+
+ const closePops = () => panel.querySelectorAll('.bs-step').forEach(p => p.classList.remove('is-open'));
+
+ function wire() {
+  /* 数値欄は id をそのまま状態の鍵にする。 */
+  [['bsKnife', 'knife'], ['bsThick', 'thick'], ['bsTk', 'tk'], ['bsClr', 'clr'],
+   ['bsOv', 'ov'], ['bsW', 'W'], ['bsOsTrim', 'osTrim'], ['bsNkWidth', 'nkWidth']]
+   .forEach(([id, key]) => {
+    const el = panel.querySelector('#' + id);
+    el.addEventListener('input', e => { st[key] = +e.target.value; scheduleRender(); });
+   });
+  $('#bsAlign').addEventListener('change', e => {
+   if (e.target.name !== 'bsAl') return;
+   st.align = e.target.value;
+   markAlign();
+   scheduleRender();
+  });
+  $('#bsCanNk').addEventListener('change', e => { st.canNk = e.target.checked; scheduleRender(); });
+  $('#bsTrimEven').addEventListener('change', e => {
+   st.trimMode = e.target.checked ? 'even' : 'manual';
+   $('#bsOsTrim').disabled = e.target.checked;
+   scheduleRender();
+  });
+  $('#bsBladePick').addEventListener('change', e => {
+   if (e.target.value === '') return;
+   loadBlade(M.blades[+e.target.value]);
+   scheduleRender();
+  });
+  $('#bsBigSel').addEventListener('change', e => { st.bigTh = +e.target.value; scheduleRender(); });
+  $('#bsSmSel').addEventListener('change', e => { st.smallTh = +e.target.value; scheduleRender(); });
+  /* ロットの表 */
+  $('#bsLotTbl').addEventListener('input', e => {
+   const el = e.target;
+   if (el.dataset.lot === undefined) return;
+   const k = el.dataset.k;
+   st.lots[+el.dataset.lot][k] = (k === 'name') ? el.value : +el.value;
+   renderOrder();
+   scheduleRender();
+  });
+  $('#bsLotTbl').addEventListener('click', e => {
+   const b = e.target.closest('[data-del-lot]');
+   if (!b || st.lots.length <= 1) return;
+   const gone = +b.dataset.delLot;
+   st.lots.splice(gone, 1);
+   st.order = st.order.filter(i => i !== gone).map(i => (i > gone ? i - 1 : i));
+   renderLots(); renderOrder(); scheduleRender();
+  });
+  $('#bsAddLot').addEventListener('click', () => {
+   st.lots.push({ name: 'LOT' + (st.lots.length + 1), w: 200, n: 1 });
+   renderLots(); renderOrder(); scheduleRender();
+  });
+  /* 条の並びをつまんで動かす */
+  let dragFrom = null;
+  const list = $('#bsOrdList');
+  list.addEventListener('dragstart', e => {
+   const c = e.target.closest('.bs-oc');
+   if (!c) return;
+   dragFrom = +c.dataset.pos;
+   c.classList.add('is-drag');
+   e.dataTransfer.effectAllowed = 'move';
+   try { e.dataTransfer.setData('text/plain', String(dragFrom)); } catch (err) {
+    WL.quiet.note('ドラッグの持ち物を置けない（並べ替えは動く）', err);
+   }
+  });
+  list.addEventListener('dragend', () => {
+   dragFrom = null;
+   list.querySelectorAll('.bs-oc').forEach(x => x.classList.remove('is-drag', 'is-over'));
+  });
+  list.addEventListener('dragover', e => {
+   if (dragFrom === null) return;
+   e.preventDefault();
+   const c = e.target.closest('.bs-oc');
+   list.querySelectorAll('.bs-oc').forEach(x => x.classList.remove('is-over'));
+   if (c) c.classList.add('is-over');
+  });
+  list.addEventListener('drop', e => {
+   if (dragFrom === null) return;
+   e.preventDefault();
+   const c = e.target.closest('.bs-oc');
+   let to = c ? +c.dataset.pos : st.order.length - 1;
+   const r = c ? c.getBoundingClientRect() : null;
+   if (r && e.clientX > r.left + r.width / 2) to++;
+   const moved = st.order.splice(dragFrom, 1)[0];
+   if (to > dragFrom) to--;
+   st.order.splice(Math.max(0, Math.min(st.order.length, to)), 0, moved);
+   dragFrom = null;
+   renderOrder(); scheduleRender();
+  });
+  panel.querySelectorAll('[data-ord]').forEach(b => b.addEventListener('click', () => {
+   BS().reorder(st, b.dataset.ord);
+   renderOrder(); scheduleRender();
+  }));
+  /* リングの自動／手動 */
+  panel.querySelectorAll('.bs-chip[data-ring]').forEach(b => b.addEventListener('click', () => {
+   const ring = b.dataset.ring, auto = b.dataset.mode === 'auto';
+   panel.querySelectorAll(`.bs-chip[data-ring="${ring}"]`)
+    .forEach(x => x.classList.toggle('is-on', x === b));
+   st[ring === 'big' ? 'bigMode' : 'smallMode'] = b.dataset.mode;
+   $(ring === 'big' ? '#bsBigSel' : '#bsSmSel').disabled = auto;
+   scheduleRender();
+  }));
+  /* 手順のポップオーバー */
+  panel.querySelectorAll('[data-step-open]').forEach(b => b.addEventListener('click', e => {
+   e.stopPropagation();
+   const host = b.closest('.bs-step'), was = host.classList.contains('is-open');
+   closePops();
+   if (!was) host.classList.add('is-open');
+  }));
+  document.addEventListener('click', e => {
+   if (!panel || panel.hidden) return;
+   if (e.target.closest('.bs-step')) return;
+   closePops();
+  });
+  document.addEventListener('keydown', e => {
+   if (e.key === 'Escape' && panel && !panel.hidden) closePops();
+  });
+  /* 図の向き */
+  $('#bsFlip').addEventListener('click', () => { setFlip(!st.flip); renderOrder(); scheduleRender(); });
+  /* 右の段 */
+  /* 段の切り替え。**足元の「刃の状態を見る」も同じ道を通る**（入口を2つに
+     しない・§9.207）ので、器ではなく`[data-r]`を持つ物で受ける。 */
+  panel.addEventListener('click', e => {
+   const b = e.target.closest('[data-r]');
+   if (!b || !panel.contains(b)) return;
+   railTab = b.dataset.r;
+   panel.querySelectorAll('#bsRailTabs [data-r]')
+    .forEach(x => x.classList.toggle('is-on', x.dataset.r === railTab));
+   panel.querySelectorAll('.bs-pb [data-p]').forEach(p => { p.hidden = p.dataset.p !== railTab; });
+  });
+  panel.querySelectorAll('[data-car]').forEach(b => b.addEventListener('click', () => {
+   panel.querySelectorAll('[data-car]').forEach(x => x.classList.toggle('is-on', x === b));
+   st.carriage = b.dataset.car;
+   scheduleRender();
+  }));
+  $('#bsSaveCar').addEventListener('click', saveCarriage);
+  $('#bsHist').addEventListener('click', e => {
+   const b = e.target.closest('[data-hdel]');
+   if (b) deleteHistory(b.dataset.hdel);
+  });
+  $('#bsSetList').addEventListener('click', e => {
+   const b = e.target.closest('[data-load-blade]');
+   if (!b) return;
+   loadBlade(M.blades.find(x => x.name === b.dataset.loadBlade));
+   scheduleRender();
+  });
+  /* 足りないマスタの受け皿 */
+  panel.querySelector('#bsEmpty').addEventListener('click', e => {
+   if (e.target.closest('#bsSeed')) seedMasters();
+   else if (e.target.closest('#bsToMaster')) {
+    if (WL.mm && typeof WL.mm.openMasterMaint === 'function') WL.mm.openMasterMaint('bladesetSpacer');
+    else showToast('マスタ管理を開けません', 'この端末ではマスタ管理の画面が読み込まれていません', 4200);
+   }
+  });
+  window.addEventListener('resize', () => { if (panel && !panel.hidden && LAST) drawFigure(LAST); });
+ }
+
+ /* ---------- 書く ---------- */
+ async function seedMasters() {
+  const ok = await confirmModal({
+   title: '刃組マスタの初期セットを登録します',
+   bodyHtml: `<p class="confirm-modal-message">${esc(st.equipment || 'この設備')} へ、`
+    + 'このアプリが持っている標準の部材構成を登録します。</p>'
+    + '<p class="confirm-modal-message">刃 6／スペーサー 26寸法／ゴムリング 50（10色×5幅）／フィンガー 4。'
+    + '<b>既に登録がある種類には足しません。</b></p>',
+   confirmLabel: '登録する' });
+  if (!ok) return;
+  try {
+   const r = await api('/api/bladeset/seed', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(withUserId({ equipment: st.equipment }))
+   });
+   showToast('刃組マスタ', (r && r.message) || '登録しました', 4200);
+   await loadContext(st.equipment);
+   fillBladePick(); fillRingSelects(); render();
+   const miss = missingMasters();
+   if (miss) showEmptyMissing(miss); else showEmpty('');
+  } catch (e) {
+   await alertModal('初期セットを登録できませんでした：' + (e && e.message ? e.message : e));
+  }
+ }
+ async function saveCarriage() {
+  if (!LAST) return;
+  const B = BS();
+  const detail = B.snapshot(st, M, LAST.g);
+  const at = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  const note = `${B.METHOD_NAME[LAST.method]}／Φ${st.knife.toFixed(1)}／${B.holdName(st, M)}／`
+   + st.lots.map(l => `${l.name} ${l.w}×${l.n}`).join(' , ');
+  try {
+   await api('/api/bladeset/history', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(withUserId({ equipment: st.equipment, carriage: st.carriage,
+                                      at, note, detail }))
+   });
+   showToast('刃組の記録', `台車 ${st.carriage} として残しました`, 3800);
+   await loadContext(st.equipment);
+   render();
+  } catch (e) {
+   await alertModal('刃組の記録を残せませんでした：' + (e && e.message ? e.message : e));
+  }
+ }
+ async function deleteHistory(id) {
+  const ok = await confirmModal({ title: '刃組の記録を消します',
+                                  message: 'この記録を消すと、台車差分の比べる相手が1つ前へずれます。',
+                                  confirmLabel: '消す', danger: true });
+  if (!ok) return;
+  try {
+   await api('/api/bladeset/history/delete', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(withUserId({ id }))
+   });
+   await loadContext(st.equipment);
+   render();
+  } catch (e) {
+   await alertModal('記録を消せませんでした：' + (e && e.message ? e.message : e));
+  }
+ }
+
+ /* ====================== 画面の登録 ====================== */
+ WL.onReady(() => {
+  WL.registerView({
+   key: 'bladeset', bodyClass: 'bs-mode', nav: 'openBladeSet',
+   header: ['刃組ガイダンス', ''],
+   /* **自分の`bodyClass`は自分で外す**（`enterView`は付けるだけ・他の画面と
+      同じ作法）。外し忘れると`.bs-shell`が次の画面の上に居座る。 */
+   exit: () => {
+    document.body.classList.remove('bs-mode');
+    if (panel) { panel.hidden = true; closePops(); }
+   }
+  });
+  const nav = document.getElementById('openBladeSet');
+  if (nav) nav.addEventListener('click', () => open({}));
+ });
+
+ WL.bladeGuide = { open, state: st, get masters() { return M; } };
+})();

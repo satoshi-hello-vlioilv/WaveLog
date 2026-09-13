@@ -138,6 +138,11 @@ _ENDPOINT_EXTRA_MODES={
  'schedule.shift_pattern_save':{'edit'},
  'schedule.shift_pattern_delete_route':{'edit'},
  'schedule.load_factor_override_save':{'edit'},
+ # 刃組の記録(§9.377)。**現場の端末からも押せる**——刃組を終えたことを
+ # 記録するのはラインに居る人で、その端末はscheduleモードで動いている。
+ # 書くのは`刃組履歴マスタ`だけ（部材マスタ・基準値はeditのまま）。
+ 'masters.bladeset_history_add':{'schedule'},
+ 'masters.bladeset_history_delete':{'schedule'},
  'masters.schedule_column_master_save':{'schedule'},
  'masters.schedule_content_master_save':{'schedule'},
  # 作業スケジュールの履歴(作業中・完了)を消す導線(§9.61)。計画外実績は

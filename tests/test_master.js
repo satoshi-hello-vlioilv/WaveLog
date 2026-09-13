@@ -82,10 +82,12 @@ const made={perm:[],cat:[]};
   /* 群は§9.264で組み直した。以前の3群は名前と中身が食い違っていた——
      「設備・人」に人のマスタが1つも無く、「表示・システム」に表示マスタが
      1つも無かった。**名前の一覧で見る**（数を固定すると群を1つ足すたびに落ちる）。 */
-  const KNOWN=['測定と記録','帳票','設備','作業スケジュール','データと接続','管理',
+  /* §9.377 で「刃組」（刃・スペーサー・ゴムリング・フィンガー・刃組基準値）を
+     足した。**並びは決める順**（設備 → 刃組 → 作業スケジュール）。 */
+  const KNOWN=['測定と記録','帳票','設備','刃組','作業スケジュール','データと接続','管理',
                '内部データ','移行済み'];
   rec('マスタ種別がグループ見出しで階層化される',
-    g.slice(0,6).join('/')==='測定と記録/帳票/設備/作業スケジュール/データと接続/管理'
+    g.slice(0,7).join('/')==='測定と記録/帳票/設備/刃組/作業スケジュール/データと接続/管理'
     &&g.every(x=>KNOWN.includes(x)),g.join('/'));
   const inSchedGroup=await page.evaluate(()=>{
    const grp=document.querySelector('.mm-nav-group[data-nav-group="schedule"]');
@@ -268,7 +270,7 @@ const made={perm:[],cat:[]};
     inlineFields:document.querySelectorAll('#masterMaintForm [data-field]').length,
     addBtn:!!document.querySelector('#masterMaintAdd'),
   }));
-  rec('多項目マスタ(設備停止4項目)は上部フォームを畳み追加ボタンのみ',
+  rec('多項目マスタ(設備停止)は上部フォームを畳み追加ボタンのみ',
       modal.compact===true&&modal.inlineFields===0&&modal.addBtn,JSON.stringify(modal));
   await page.click('#masterMaintAdd');
   await page.waitForSelector('#maintEditorModal',{state:'visible',timeout:8000});
@@ -279,7 +281,15 @@ const made={perm:[],cat:[]};
     fields:document.querySelectorAll('#maintEditorForm .mm-field').length,
     title:document.querySelector('#maintEditorTitle')?.textContent,
   }));
-  rec('編集専用モーダルが開き4項目すべて表示',editor.fields===4,JSON.stringify(editor));
+  /* 欄は5つ（対象設備・分類・名称・標準所要分・**連携機能**。§9.377 で1つ増えた）。
+     **数を定義から取る**——欄を1つ足すたびにここを書き直すのは、同じことを
+     2箇所に書いているのと同じ（§9.163）。 */
+  const want=await page.evaluate(()=>{
+   const d=(WL.mm.MASTER_DEFS||[]).find(x=>x.key==='stopReason');
+   return d?(d.fields||[]).length:0;
+  });
+  rec('編集専用モーダルに定義どおりの欄がすべて出る',
+      want>0&&editor.fields===want,JSON.stringify({...editor,want}));
   await page.click('#maintEditorCancel');
   await page.waitForFunction(()=>document.querySelector('#maintEditorModal')?.hidden,null,{timeout:8000}).catch(()=>{});
   rec('編集モーダルを閉じられる',await page.evaluate(()=>document.querySelector('#maintEditorModal').hidden));

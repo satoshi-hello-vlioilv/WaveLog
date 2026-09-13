@@ -83,11 +83,17 @@ AREAS = {
     'master':   'マスタ管理（定義・盤・専用画面）',
     'schedule': '作業スケジュールとカレンダー',
     'report':   '紙にする画面（帳票・実績データ表）',
+    # 刃組ガイダンス（§9.377）。**測定でも一覧でもスケジュールでもない**——
+    # 元コイル幅・切断幅・板厚から刃とスペーサーの組み方を出す独立した仕事で、
+    # 入口が2つ（左メニューと、設備停止の行の連携機能）ある。計算（core）と
+    # 画面（view）の2本で閉じており、他の領域からは `WL.bladeGuide.open()` の
+    # 1つだけを呼ぶ。
+    'bladeset': '刃組ガイダンス（刃・スペーサー・ゴムリング・フィンガーの組み方）',
 }
 flat = sorted(p.name for p in JS_DIR.glob('*.js'))
 rec('static/js の直下に .js を置かない（領域フォルダへ入れる）', not flat, str(flat))
 dirs = sorted(d.name for d in JS_DIR.iterdir() if d.is_dir())
-rec('領域は宣言した6つだけ', set(dirs) == set(AREAS), str(sorted(set(dirs) ^ set(AREAS))))
+rec('領域は宣言した%d つだけ'%len(AREAS), set(dirs) == set(AREAS), str(sorted(set(dirs) ^ set(AREAS))))
 rec('領域に説明が書いてある', all(len(v.strip()) >= 10 for v in AREAS.values()))
 # 接頭辞の不揃い（§9.334）——`measure-*` と `measurement-*` が同じ領域に
 # 混ざっていた。**綴りは1つ**にそろえたので、片方が戻れば落ちる。

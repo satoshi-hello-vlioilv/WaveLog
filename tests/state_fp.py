@@ -27,6 +27,13 @@ TARGETS = (ROOT / 'db' / 'master.sqlite3', ROOT / 'db' / 'records.sqlite3')
 # ——**うるさい報告は読まれない**ので、本物の置き土産が埋もれる。
 MARKER_TABLE = 'パス設定マスタ'
 
+# **SQLite自身の帳簿は数えない**（§9.377 の追補）。`sqlite_sequence` は
+# `AUTOINCREMENT` の「これまでに配った最大の番号」で、行を消しても戻らない
+# ——つまり**テストには片付けようが無い**。片付けられないものを「置き土産」
+# として名指しすると、後片付けを足しても消えない指摘が毎回出る（新しいマスタを
+# 足した本が必ずそうなる）。上の移行フラグと同じ理由で数から外す。
+IGNORED_TABLES = {'sqlite_sequence'}
+
 
 def _row_count(con, table):
     """行数。移行の印は数から除く（上の理由）。"""
@@ -67,6 +74,8 @@ def snapshot():
             rows = con.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
             for (table,) in rows.fetchall():
+                if table in IGNORED_TABLES:
+                    continue
                 try:
                     if os.environ.get('WAVELOG_FP_DETAIL') and table in DETAIL_TABLES:
                         for label, n in _detail_rows(con, table):

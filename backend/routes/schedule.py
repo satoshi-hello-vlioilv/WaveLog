@@ -892,21 +892,28 @@ def row_style_delete_route():
 # 設備停止マスタ
 # ========================================================================
 def _stop_reason_entry(r):
- # r: 停止理由ID,設備名,分類,名称,標準所要分,色キー,表示順,有効,更新日時,更新者ID
+ # r: 停止理由ID,設備名,分類,名称,標準所要分,色キー,表示順,有効,更新日時,更新者ID,連携機能
  # equipment は保存値そのまま(複数設備はカンマ区切り、全設備は'*'。§9.81)。
  # 画面が書式を解釈し直さずに済むよう、配列と表示用の文字列も添える。
+ link=sr.stop_link_key(r[10] if len(r)>10 else '')
  return {'id':r[0],'equipment':r[1],
          'equipmentList':sr.stop_equipment_list(r[1]),
          'equipmentLabel':sr.stop_equipment_label(r[1]),
          'category':r[2],'name':r[3],
          'standardMinutes':r[4],'colorKey':r[5],
+         # 連携機能(§9.377)。鍵と**人が読む形**の両方を返す——画面が
+         # 綴りから呼び名を組み立てると、行き先を増やしたときに2箇所直すことになる。
+         'linkKey':link,'linkLabel':sr.stop_link_label(link),
          'updatedAt':r[8].isoformat() if r[8] else None,'updatedBy':str(r[9] or '')}
 
 @bp.get('/api/schedule/stop-reason-master')
 def stop_reason_list():
  equipment=str(request.args.get('equipment') or '').strip()
  items=_cfg_read(lambda mc:[_stop_reason_entry(r) for r in sr.stop_reason_rows(mc,equipment or None)])
- return jsonify(ok=True,configured=True,items=items,stale=False)
+ # **選べる行き先はサーバーが答える**(§9.163)。マスタ管理の札も、予定の行が
+ # 「押せるかどうか」も、この一覧を見て決める。
+ return jsonify(ok=True,configured=True,items=items,stale=False,
+                linkFeatures=[dict(f) for f in sr.STOP_LINK_FEATURES])
 
 def _stop_reason_save(x,stop_reason_id=None):
  # 対象設備は文字列(カンマ区切り・'*')でもリストでも受ける。書式の正規化は
@@ -919,19 +926,20 @@ def _stop_reason_save(x,stop_reason_id=None):
                                      category=str(x.get('category') or ''),
                                      standard_minutes=x.get('standardMinutes'),
                                      color_key=str(x.get('colorKey') or ''),
+                                     link_key=x.get('linkKey'),
                                      stop_reason_id=stop_reason_id)
   return {'id':sid,'created':created}
  return _cfg_write_response(fn)
 
 @bp.post('/api/schedule/stop-reason-master')
 def stop_reason_register():
- return _stop_reason_save(body({'id': any_,'equipment': any_,'name': str,'category': any_,'colorKey': any_,'standardMinutes': any_}))
+ return _stop_reason_save(body({'id': any_,'equipment': any_,'name': str,'category': any_,'colorKey': any_,'linkKey': any_,'standardMinutes': any_}))
 
 @bp.post('/api/schedule/stop-reason-master/update')
 def stop_reason_update():
  # 既存行の更新(§9.81)。対象設備そのものを入れ替えられるのはこの経路だけで、
  # 登録側(自然キー照合)では「対象設備を変える」と別行の新規登録になってしまう。
- x=body({'id': any_,'equipment': any_,'name': str,'category': any_,'colorKey': any_,'standardMinutes': any_})
+ x=body({'id': any_,'equipment': any_,'name': str,'category': any_,'colorKey': any_,'linkKey': any_,'standardMinutes': any_})
  sid=x.get('id')
  if sid is None or str(sid).strip()=='':return jsonify(error='更新対象IDがありません。'),400
  return _stop_reason_save(x,stop_reason_id=sid)

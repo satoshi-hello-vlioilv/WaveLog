@@ -342,8 +342,12 @@ def plan_merge_detail(c_share,plan_id,uid,changes,pc=''):
  if not row:raise ValueError('指定の予定が見つかりません。')
  if str(row[1] or '')!='作業':
   raise ValueError('元データの取り込みができるのは作業の行だけです。')
+ # **黙って捨てない**（§9.328）。壊れた明細JSONは「空の明細」として続けるのが
+ # 正しい（取り込みはこれから上書きする）が、**壊れていたこと自体は残す**
+ # ——静かに空へ倒れると、写しが消えた理由が誰にも分からなくなる。
  try:detail=_json.loads(row[2] or '{}')
- except Exception:detail={}
+ except Exception as _e:
+  quiet('予定の明細JSONを読めない（空から組み直す）',_e);detail={}
  if not isinstance(detail,dict):detail={}
  # 値は文字で持つ(明細JSONは元データの見え方の写しで、計算には使わない)。
  # **200文字で切る**——仕掛の列には長文の備考が入ることがあり、写しの
@@ -890,19 +894,54 @@ def _stop_equipment_same(a,b):
  ia,ib=stop_equipment_list(a),stop_equipment_list(b)
  return {normalize_equipment_name(x) for x in ia}=={normalize_equipment_name(x) for x in ib}
 
+# ------------------------------------------------------------------------
+# 連携機能(§9.377、利用者の指示)
+#  「設備停止マスタにカテゴリを1つ増やし…例えば『刃組み』に刃組ガイダンス
+#    連携がセットされたとすると、そこをクリックすると刃組ガイダンスに
+#    遷移することができるようにします」
+#
+#  1つの停止内容に**行き先を1つ**結び付ける。空欄(なし)がこれまでどおり。
+#  **語彙はここだけが持つ**(§9.163)——画面へ綴りを書き写すと、行き先を
+#  増やしたときに2箇所直すことになり、片方だけ直すと「マスタでは選べるのに
+#  押しても何も起きない」になる(§CLAUDE 4)。
+STOP_LINK_NONE=''
+STOP_LINK_BLADESET='bladeset'
+STOP_LINK_FEATURES=(
+ {'key':STOP_LINK_NONE,'label':'なし',
+  'note':'行き先を持たない、ふつうの設備停止です。'},
+ # 札の一言は**短く**（長いと札の中で見切れる）。詳しい説明は欄の下の
+ # 注意書き（`master-defs.js`の`hint`）が持つ。
+ {'key':STOP_LINK_BLADESET,'label':'刃組ガイダンス',
+  'note':'予定の行から刃組ガイダンスを開きます'},
+)
+
+def stop_link_key(value):
+ """保存する連携機能の鍵。**知らない鍵は空(なし)へ倒す**——綴りの間違いが
+    「押しても何も起きないボタン」として残るより、なしのほうが読める。"""
+ v=str(value or '').strip()
+ return v if any(f['key']==v for f in STOP_LINK_FEATURES) else STOP_LINK_NONE
+
+def stop_link_label(value):
+ """人が読む形。エラー文言と画面で共用する。"""
+ v=stop_link_key(value)
+ return next((f['label'] for f in STOP_LINK_FEATURES if f['key']==v),'なし')
+
 def ensure_stop_reason_table(c_master):
  names=tables(c_master);created=False
  if STOP_REASON_TABLE not in names:
   cur=c_master.cursor()
-  cur.execute('CREATE TABLE [設備停止マスタ] ([停止理由ID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [分類] TEXT, [名称] TEXT, [標準所要分] REAL, [色キー] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE TABLE [設備停止マスタ] ([停止理由ID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [分類] TEXT, [名称] TEXT, [標準所要分] REAL, [色キー] TEXT, [連携機能] TEXT, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute('CREATE UNIQUE INDEX [UX_設備停止マスタ_名称] ON [設備停止マスタ] ([設備名],[名称])')
   c_master.commit();created=True
+  return created
+ # 後から足した列を「無ければ足す」のは`add_missing_columns()`の1箇所(§9.216)。
+ add_missing_columns(c_master,STOP_REASON_TABLE,[('連携機能','TEXT')])
  return created
 
 def stop_reason_rows(c_master,equipment=None):
  ensure_stop_reason_table(c_master)
  cur=c_master.cursor()
- cur.execute('SELECT [停止理由ID],[設備名],[分類],[名称],[標準所要分],[色キー],[表示順],[有効],[更新日時],[更新者ID] FROM [設備停止マスタ] ORDER BY [設備名],[表示順],[名称]')
+ cur.execute('SELECT [停止理由ID],[設備名],[分類],[名称],[標準所要分],[色キー],[表示順],[有効],[更新日時],[更新者ID],[連携機能] FROM [設備停止マスタ] ORDER BY [設備名],[表示順],[名称]')
  rows=[]
  for r in cur.fetchall():
   active=True if r[7] is None else bool(r[7])
@@ -913,7 +952,7 @@ def stop_reason_rows(c_master,equipment=None):
   rows.append(r)
  return rows
 
-def stop_reason_upsert(c_master,equipment,name,uid,category='',standard_minutes=None,color_key='',stop_reason_id=None):
+def stop_reason_upsert(c_master,equipment,name,uid,category='',standard_minutes=None,color_key='',stop_reason_id=None,link_key=None):
  # §5.3 / §9.81。対象設備は必須(空なら拒否、他マスタの必須チェックと同じ方式)。
  # 照合の順番:
  #   ① stop_reason_id が来ていれば、その行の更新(対象設備そのものを
@@ -955,17 +994,23 @@ def stop_reason_upsert(c_master,equipment,name,uid,category='',standard_minutes=
  if conflict:
   raise ValueError('「%s」は %s に登録済みです。対象設備が重ならないようにしてください。'
                    %(name,stop_equipment_label(conflict[1])))
+ # 連携機能は**渡されたときだけ書く**(§9.212 ②)。呼ぶ側が1つ渡し忘れた
+ # だけで、設定してあった行き先が黙って消えるのを防ぐ。
+ link=None if link_key is None else stop_link_key(link_key)
  if target_id is not None:
-  cur.execute('UPDATE [設備停止マスタ] SET [設備名]=?,[分類]=?,[名称]=?,[標準所要分]=?,[色キー]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [停止理由ID]=?',
-              [equipment,category,name,standard_minutes,color_key,uid,target_id])
+  sets='[設備名]=?,[分類]=?,[名称]=?,[標準所要分]=?,[色キー]=?'
+  args=[equipment,category,name,standard_minutes,color_key]
+  if link is not None:sets+=',[連携機能]=?';args.append(link)
+  cur.execute('UPDATE [設備停止マスタ] SET '+sets+',[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [停止理由ID]=?',
+              args+[uid,target_id])
   return target_id,False
  # 表示順は全体の最大+10。対象設備が複数設備・全設備を取れるようになり、
  # 「その設備の中での最大」が一意に決まらなくなったため(同じ行が複数の設備に
  # 属する)。設備ごとの並びは登録順のまま保たれる。
  cur.execute('SELECT Max([表示順]) FROM [設備停止マスタ]')
  order=int((cur.fetchone()[0]) or 0)+10
- cur.execute('INSERT INTO [設備停止マスタ] ([設備名],[分類],[名称],[標準所要分],[色キー],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,-1,?,?,Now(),Now())',
-             [equipment,category,name,standard_minutes,color_key,order,uid,uid])
+ cur.execute('INSERT INTO [設備停止マスタ] ([設備名],[分類],[名称],[標準所要分],[色キー],[連携機能],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,-1,?,?,Now(),Now())',
+             [equipment,category,name,standard_minutes,color_key,link or STOP_LINK_NONE,order,uid,uid])
  return cur.lastrowid,True
 
 def stop_reason_delete(c_master,stop_reason_id,uid):

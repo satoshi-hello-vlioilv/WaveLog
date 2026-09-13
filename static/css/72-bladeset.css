@@ -1,0 +1,378 @@
+/* 72-bladeset.css: 刃組ガイダンス（§9.377）。
+
+   **色・文字サイズ・余白・角丸・重なり順はトークンから選ぶ**（§CLAUDE 7）。
+   このファイルに16進を新しく足さないこと——図（SVG）の色も、器が宣言した
+   `--bs-fig-*` を `blade-view.js` が読み取って使う（属性にはCSSを書けないため）。
+
+   画面の作り
+     .bs-shell  … 画面まるごと（上の帯＋本体）
+       .bs-bar  … ①バリ方向 →②刃・板厚 →③幅構成 →④ゴムリング（決める順）
+       .bs-body … 左＝刃組図＋刃組表 ／ 右＝所要・段取
+*/
+@layer components {
+
+/* ---------- 図の色（JSが読み取る） ----------
+   **ここが唯一の定義**。`blade-view.js` の `figPalette()` が1回だけ読み、
+   SVGの`fill`へ渡す。ゴムリングの色だけは**マスタの値**なので入っていない。 */
+.bs-shell{
+  --bs-fig-shaft:var(--line);
+  --bs-fig-shaft-edge:var(--rs-slate-border);
+  --bs-fig-sheen:var(--bg);
+  --bs-fig-cap:var(--rs-indigo);
+  --bs-fig-spacer:var(--rs-slate-border);
+  --bs-fig-spacer-edge:var(--rs-slate);
+  --bs-fig-filler:var(--rs-slate-bg);
+  --bs-fig-filler-edge:var(--line);
+  --bs-fig-knife:var(--nav);
+  --bs-fig-knife-edge:var(--nav);
+  --bs-fig-badge:var(--rs-slate);
+  --bs-fig-strip:var(--line);
+  --bs-fig-strip-edge:var(--teal);
+  --bs-fig-scrap:var(--rs-brown-border);
+  --bs-fig-scrap-edge:var(--rs-brown);
+  --bs-fig-trim:var(--rs-yellow-border);
+  --bs-fig-trim-edge:var(--rs-yellow);
+  --bs-fig-label:var(--muted);
+  --bs-fig-ink:var(--nav);
+  /* 図の上端の帯。**クリアランスとラップは刃組の要**なので強く出し、
+     ゴムリングの色は「色＝外径」の意味だけを中立の面で添える。 */
+  --bs-fig-chip-bg:var(--card-bg);
+  --bs-fig-chip-fg:var(--ink);
+  --bs-fig-chip-bd:var(--line);
+  --bs-fig-chip-clr-bg:var(--look-red-pale);
+  --bs-fig-chip-clr-fg:var(--look-red-dark);
+  --bs-fig-chip-clr-bd:var(--look-red);
+  --bs-fig-chip-ov-bg:var(--look-amber-pale);
+  --bs-fig-chip-ov-fg:var(--look-amber-dark);
+  --bs-fig-chip-ov-bd:var(--look-amber);
+  /* 条幅の色（最大9種）。**意味は「幅の区別」だけ**——バリの向きは板の縁の
+     帯が示すので、ここは見分けが付けばよい。 */
+  --bs-w0-bg:var(--rs-blue-bg);    --bs-w0-fg:var(--rs-blue);
+  --bs-w1-bg:var(--look-red-pale); --bs-w1-fg:var(--look-red);
+  --bs-w2-bg:var(--look-green-pale);--bs-w2-fg:var(--look-green);
+  --bs-w3-bg:var(--look-amber-pale);--bs-w3-fg:var(--look-amber);
+  --bs-w4-bg:var(--rs-purple-bg);  --bs-w4-fg:var(--rs-purple);
+  --bs-w5-bg:var(--rs-cyan-bg);    --bs-w5-fg:var(--rs-cyan);
+  --bs-w6-bg:var(--rs-pink-bg);    --bs-w6-fg:var(--rs-pink);
+  --bs-w7-bg:var(--rs-slate-bg);   --bs-w7-fg:var(--rs-slate);
+  --bs-w8-bg:var(--rs-lime-bg);    --bs-w8-fg:var(--rs-lime);
+}
+
+/* ---------- 器 ---------- */
+.bs-shell{display:none;flex-direction:column;gap:var(--space-2);min-height:0;flex:1 1 auto}
+body.bs-mode .bs-shell{display:flex}
+.bs-body{display:grid;grid-template-columns:minmax(0,1fr) var(--bs-rail-w,320px);
+  gap:var(--space-2);min-height:0;flex:1 1 auto}
+/* **余った縦は図へ渡す**（§CLAUDE 12「意味のない余白を極力なくす」）。
+   刃組表は行数なりの高さで止め（多いときだけ中で転がる）、残りを刃組図が使う
+   ——ロット1本の構成では表は2行しかないのに、半分を取っていた。 */
+.bs-col{display:grid;grid-template-rows:minmax(0,1fr) fit-content(45%);
+  gap:var(--space-2);min-height:0}
+.bs-panel{background:var(--card-bg);border:1px solid var(--card-border);
+  border-radius:var(--radius-card);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.bs-ph{display:flex;align-items:center;gap:var(--space-2);
+  padding:var(--space-1) var(--space-3);border-bottom:1px solid var(--line);
+  background:var(--header-bar-bg)}
+.bs-ph h2{font-size:var(--fs-title);margin:0;color:var(--header-bar-fg)}
+.bs-ph-note{font-size:var(--fs-sm);color:var(--muted);margin-inline-start:auto}
+
+/* ---------- 上の帯（決める順の4段） ---------- */
+.bs-bar{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
+.bs-steps{display:flex;gap:var(--space-1);flex-wrap:wrap;min-width:0}
+.bs-bar-tail{display:flex;align-items:center;gap:var(--space-2);margin-inline-start:auto}
+.bs-step{position:relative}
+.bs-step-btn{display:flex;align-items:center;gap:var(--space-2);background:var(--valid-bg);
+  border:1px solid var(--line);border-radius:var(--radius-sm);
+  padding:var(--ctl-pad-y-sm) var(--ctl-pad-x-sm);cursor:pointer;text-align:start}
+.bs-step-btn:hover{border-color:var(--teal);background:var(--pale)}
+.bs-step.is-open>.bs-step-btn{border-color:var(--teal);background:var(--pale)}
+.bs-step-no{width:1.5em;height:1.5em;border-radius:var(--radius-xs);background:var(--teal);
+  color:#fff;display:grid;place-items:center;font-size:var(--fs-sm);font-weight:700;flex:0 0 auto}
+.bs-step-tx{display:flex;flex-direction:column;line-height:1.2;min-width:0}
+.bs-step-tx b{font-size:var(--fs-micro);color:var(--muted);font-weight:600;white-space:nowrap}
+.bs-step-tx span{font-size:var(--fs-base-sm);font-weight:700;white-space:nowrap}
+.bs-from{font-size:var(--fs-sm);color:var(--muted)}
+.bs-from b{color:var(--ink)}
+
+/* ---------- 手順のポップオーバー ---------- */
+.bs-pop{position:absolute;inset-inline-start:0;top:calc(100% + var(--space-1));
+  z-index:var(--z-popover);width:min(28rem,92vw);background:var(--valid-bg);
+  border:1px solid var(--line);border-radius:var(--radius-md);box-shadow:var(--shadow-pop);
+  padding:var(--space-3);display:none;max-height:calc(100vh - 9rem);overflow:auto}
+.bs-step.is-open .bs-pop{display:block}
+.bs-pop h3{font-size:var(--fs-title);margin:0 0 var(--space-1)}
+.bs-lead{font-size:var(--fs-sm);color:var(--muted);margin:0 0 var(--space-2)}
+.bs-f{display:flex;flex-direction:column;gap:2px;min-width:0;margin-bottom:var(--space-2)}
+.bs-f label{font-size:var(--fs-sm);color:var(--muted);font-weight:600}
+.bs-f small{font-size:var(--fs-micro);color:var(--muted)}
+.bs-f input,.bs-f select{width:100%;padding:var(--ctl-pad-y-sm) var(--ctl-pad-x-sm);
+  border:1px solid var(--line);border-radius:var(--radius-sm);
+  font-size:var(--fs);font-weight:600;background:var(--valid-bg)}
+/* **器は中身の長さから決める**（§CLAUDE 11）。4〜6桁しか入らない欄に
+   器いっぱいの幅を与えない——余りは空白にする。 */
+.bs-f input[type="number"]{max-width:9rem;text-align:end}
+.bs-f input:disabled,.bs-f select:disabled{background:var(--bg);color:var(--muted)}
+.bs-g2,.bs-g3{display:grid;gap:var(--space-2)}
+.bs-g2{grid-template-columns:1fr 1fr}
+.bs-g3{grid-template-columns:1fr 1fr 1fr}
+.bs-opts{display:flex;flex-direction:column;gap:var(--space-1);margin-bottom:var(--space-2)}
+.bs-opts label{display:flex;gap:var(--space-2);align-items:flex-start;border:1px solid var(--line);
+  border-radius:var(--radius-sm);padding:var(--space-1) var(--space-2);cursor:pointer;
+  background:var(--valid-bg)}
+.bs-opts label:hover{border-color:var(--teal);background:var(--pale)}
+/* 選ばれた札（`.is-on`）の見た目は`90-state.css`の束ね規則が持つ（§9.353）。 */
+.bs-opts b{font-size:var(--fs-base-sm);display:block}
+.bs-opts small{font-size:var(--fs-sm);color:var(--muted);display:block}
+.bs-sw{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);
+  border:1px solid var(--line);border-radius:var(--radius-sm);
+  padding:var(--space-1) var(--space-2);font-size:var(--fs-base-sm);font-weight:600;
+  margin-bottom:var(--space-2)}
+.bs-derived{display:flex;flex-direction:column;gap:2px;background:var(--pale);
+  border:1px solid var(--teal-soft);border-radius:var(--radius-sm);
+  padding:var(--space-2);margin-bottom:var(--space-2)}
+.bs-k{font-size:var(--fs-micro);color:var(--teal-dark);font-weight:700}
+.bs-v{font-size:var(--fs-lg);color:var(--teal-dark)}
+.bs-derived small{font-size:var(--fs-sm);color:var(--ink)}
+.bs-note{font-size:var(--fs-sm);color:var(--muted);line-height:1.5;margin:var(--space-2) 0 0}
+.bs-ng{color:var(--danger);font-weight:700}
+
+/* ---------- ロットの表と条の並び ---------- */
+.bs-lot{width:100%;border-collapse:collapse;font-size:var(--fs-sm);margin-bottom:var(--space-1)}
+.bs-lot th{text-align:start;font-size:var(--fs-micro);color:var(--muted);font-weight:600;padding:2px 4px}
+.bs-lot td{padding:2px}
+.bs-lot input{width:100%;padding:4px var(--space-1);border:1px solid var(--line);
+  border-radius:var(--radius-xs);font-size:var(--fs-base-sm)}
+.bs-lot td:nth-child(2){width:6.5rem}
+.bs-lot td:nth-child(3){width:4.5rem}
+.bs-lot td:last-child{width:1.8rem}
+.bs-x{border:0;background:none;color:var(--muted);cursor:pointer;font-size:var(--fs);
+  line-height:1;padding:2px 4px}
+.bs-x:hover{color:var(--danger)}
+.bs-ordbox{border:1px solid var(--line);border-radius:var(--radius-sm);
+  padding:var(--space-2);margin-top:var(--space-2)}
+.bs-ordh{display:flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm);flex-wrap:wrap}
+.bs-ordn{color:var(--muted);margin-inline-end:auto}
+.bs-ord{display:flex;flex-wrap:wrap;gap:4px;margin-top:var(--space-1)}
+.bs-ord.is-flip{flex-direction:row-reverse;justify-content:flex-end}
+.bs-oc{display:inline-flex;flex-direction:column;align-items:center;gap:0;cursor:grab;
+  border:1px solid var(--line);border-radius:var(--radius-xs);padding:2px var(--space-1);
+  min-width:3.6rem;background:var(--bg)}
+.bs-oc.is-drag{opacity:.5}
+.bs-oc.is-over{outline:2px solid var(--teal);outline-offset:1px}
+.bs-on{font-size:var(--fs-micro);font-weight:700;max-width:6rem;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.bs-ow{font-size:var(--fs-sm);font-weight:700;color:var(--ink)}
+.bs-ordhint{font-size:var(--fs-micro);color:var(--muted);margin:var(--space-1) 0 0}
+.bs-w0{background:var(--bs-w0-bg);border-color:var(--bs-w0-fg)}
+.bs-w0 .bs-on{color:var(--bs-w0-fg)}
+.bs-w1{background:var(--bs-w1-bg);border-color:var(--bs-w1-fg)}
+.bs-w1 .bs-on{color:var(--bs-w1-fg)}
+.bs-w2{background:var(--bs-w2-bg);border-color:var(--bs-w2-fg)}
+.bs-w2 .bs-on{color:var(--bs-w2-fg)}
+.bs-w3{background:var(--bs-w3-bg);border-color:var(--bs-w3-fg)}
+.bs-w3 .bs-on{color:var(--bs-w3-fg)}
+.bs-w4{background:var(--bs-w4-bg);border-color:var(--bs-w4-fg)}
+.bs-w4 .bs-on{color:var(--bs-w4-fg)}
+.bs-w5{background:var(--bs-w5-bg);border-color:var(--bs-w5-fg)}
+.bs-w5 .bs-on{color:var(--bs-w5-fg)}
+.bs-w6{background:var(--bs-w6-bg);border-color:var(--bs-w6-fg)}
+.bs-w6 .bs-on{color:var(--bs-w6-fg)}
+.bs-w7{background:var(--bs-w7-bg);border-color:var(--bs-w7-fg)}
+.bs-w7 .bs-on{color:var(--bs-w7-fg)}
+.bs-w8{background:var(--bs-w8-bg);border-color:var(--bs-w8-fg)}
+.bs-w8 .bs-on{color:var(--bs-w8-fg)}
+
+/* ---------- 手順3・4の小物 ---------- */
+.bs-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(6rem,1fr));gap:var(--space-1);
+  margin-top:var(--space-2)}
+.bs-kpi{display:flex;flex-direction:column;border:1px solid var(--line);
+  border-radius:var(--radius-xs);padding:var(--space-1);background:var(--valid-bg)}
+.bs-kpi span{font-size:var(--fs-micro);color:var(--muted)}
+.bs-kpi b{font-size:var(--fs-base-sm)}
+.bs-kpi.is-ng b{color:var(--danger)}
+.bs-kpi.is-good b{color:var(--success)}
+.bs-ring-row{display:flex;align-items:center;gap:var(--space-1);margin-bottom:var(--space-1)}
+.bs-ring-row b{font-size:var(--fs-base-sm)}
+.bs-rd{display:inline-flex;align-items:center;gap:4px;margin-inline-start:auto;
+  font-size:var(--fs-sm);color:var(--muted)}
+.bs-rd i{width:.9em;height:.9em;border-radius:var(--radius-round);
+  border:1px solid var(--line);display:inline-block;background:var(--bs-dot,transparent)}
+
+/* ---------- 刃組図 ---------- */
+/* **`min-height:0`を鎖の1段も抜かない**（§9.222）——器→行→図のどこかで
+   抜けると、SVGの中身なりの高さが下の刃組表を画面の外へ押し出す。 */
+.bs-figrow{display:grid;grid-template-columns:var(--bs-side-w,10.5rem) minmax(0,1fr) var(--bs-side-w,10.5rem);
+  gap:var(--space-1);padding:var(--space-1);min-height:0;flex:1 1 auto}
+.bs-figrow.is-flip{direction:rtl}
+.bs-figrow.is-flip>*{direction:ltr}
+.bs-figmain{min-width:0;min-height:0;display:flex}
+.bs-stage{flex:1 1 auto;min-width:0;min-height:0;display:flex}
+.bs-stage svg{width:100%;height:100%}
+.bs-side{min-width:0;overflow:auto;font-size:var(--fs-sm)}
+.bs-fh{display:flex;align-items:center;gap:4px;margin-bottom:2px}
+.bs-pin{background:var(--rs-slate);color:#fff;border-radius:var(--radius-xs);
+  padding:0 var(--space-1);font-size:var(--fs-micro);font-weight:700}
+.bs-lr{font-size:var(--fs-micro);color:var(--muted)}
+.bs-trim{margin-inline-start:auto;font-size:var(--fs-micro);font-weight:700}
+.bs-e{width:100%;border-collapse:collapse;font-size:var(--tbl-fs)}
+.bs-e th,.bs-e td{border:1px solid var(--line);padding:1px var(--space-1);text-align:end}
+.bs-e th{background:var(--header-bar-bg);font-size:var(--fs-micro);font-weight:600}
+.bs-e .bs-a{text-align:start}
+.bs-e .bs-sec td{background:var(--bg);font-weight:700;text-align:start;font-size:var(--fs-micro)}
+.bs-e .bs-tot td{background:var(--pale);font-weight:700}
+
+/* ---------- 刃組表 ---------- */
+.bs-tw{overflow:auto;padding:var(--space-1);min-height:0;flex:1 1 auto}
+.bs-g{border-collapse:collapse;font-size:var(--tbl-fs);width:100%}
+.bs-g th,.bs-g td{border:1px solid var(--line);padding:1px var(--space-1);text-align:center;
+  white-space:nowrap}
+.bs-g thead th{background:var(--header-bar-bg);font-weight:600;position:sticky;top:0;
+  z-index:1}
+.bs-g th small{display:block;font-size:var(--fs-tiny);color:var(--muted);font-weight:400}
+.bs-g .bs-grp{text-align:start;background:var(--valid-bg)}
+.bs-g .bs-grp b{display:block;font-size:var(--fs-base-sm)}
+.bs-gw{display:inline-block;font-size:var(--fs-micro);color:var(--muted);margin-inline-end:4px}
+.bs-gw.is-flip{color:var(--teal-dark);font-weight:700}
+.bs-lno{display:inline-grid;place-items:center;width:1.3em;height:1.3em;
+  border-radius:var(--radius-round);background:var(--rs-slate);color:#fff;
+  font-size:var(--fs-tiny);margin-inline-end:4px}
+.bs-bdg{display:inline-block;background:var(--rs-slate);color:#fff;font-weight:800;
+  border-radius:var(--radius-xs);padding:0 var(--space-1);font-size:var(--fs-micro)}
+.bs-bt{display:inline-block;border-radius:var(--radius-xs);padding:0 3px;
+  font-size:var(--fs-tiny);font-weight:700;margin-inline-end:2px}
+.bs-bt.is-down{background:var(--rs-blue-bg);color:var(--rs-blue)}
+.bs-bt.is-up{background:var(--look-red-pale);color:var(--look-red)}
+.bs-slot{font-size:var(--fs-tiny);color:var(--muted);margin-inline-end:3px}
+.bs-ct{font-weight:700}
+.bs-z{color:var(--muted)}
+.bs-sep{border-inline-start:2px solid var(--line)}
+.bs-num.is-zero{background:var(--success-bg)}
+.bs-num.is-ok{background:var(--warn-bg)}
+.bs-num.is-bad{background:var(--danger-bg);color:var(--danger);font-weight:700}
+
+/* ---------- 右の段（所要・段取） ---------- */
+.bs-rail{background:var(--card-bg);border:1px solid var(--card-border);
+  border-radius:var(--radius-card);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.bs-pb{overflow:auto;padding:var(--space-2);min-height:0;flex:1 1 auto}
+.bs-seg{display:flex;gap:2px;margin-inline-start:auto}
+.bs-chip{border:1px solid var(--line);background:var(--valid-bg);border-radius:var(--radius-sm);
+  padding:2px var(--space-2);font-size:var(--fs-sm);font-weight:600;cursor:pointer;white-space:nowrap}
+.bs-chip:hover{border-color:var(--teal)}
+.bs-chip:disabled{opacity:.5;cursor:default}
+.bs-btn{border:1px solid var(--line);background:var(--valid-bg);border-radius:var(--radius-sm);
+  padding:var(--ctl-pad-y-sm) var(--ctl-pad-x-sm);font-size:var(--fs-base-sm);font-weight:600;
+  cursor:pointer;white-space:nowrap}
+.bs-btn:hover{border-color:var(--teal);color:var(--teal-dark)}
+.bs-btn.is-sm{padding:1px var(--space-1);font-size:var(--fs-micro)}
+.bs-btn.is-primary{background:var(--teal);border-color:var(--teal);color:#fff}
+.bs-btn.is-primary:hover{background:var(--teal-dark);color:#fff}
+.bs-wide{width:100%;margin-top:var(--space-2)}
+
+/* ---------- ゲージ ---------- */
+.bs-gauges{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-1);margin-bottom:var(--space-2)}
+.bs-ga{border:1px solid var(--line);border-radius:var(--radius-sm);padding:var(--space-1);
+  background:var(--valid-bg);min-width:0}
+.bs-ga-wide{grid-column:1/-1}
+.bs-gn{display:block;font-size:var(--fs-micro);color:var(--muted)}
+.bs-gv{display:block;font-size:var(--fs-lg);line-height:1.1}
+.bs-gv i{font-size:var(--fs-micro);color:var(--muted);font-style:normal;margin-inline-start:2px}
+.bs-gt{display:block;position:relative;height:6px;border-radius:var(--radius-pill);
+  background:var(--bg);margin:var(--space-1) 0}
+.bs-gz{position:absolute;top:0;height:100%;background:var(--success-bg);
+  border-radius:var(--radius-pill)}
+.bs-gm{position:absolute;top:-3px;width:2px;height:12px;background:var(--ink);
+  transform:translateX(-1px)}
+.bs-vb{display:inline-block;font-size:var(--fs-micro);font-weight:700;
+  border-radius:var(--radius-xs);padding:0 var(--space-1)}
+.bs-vb.is-good{background:var(--success-bg);color:var(--success)}
+.bs-vb.is-warn{background:var(--warn-bg);color:var(--warn-fg)}
+.bs-vb.is-bad{background:var(--danger-bg);color:var(--danger)}
+.bs-vb.is-off{background:var(--bg);color:var(--muted)}
+.bs-ox{margin-top:var(--space-1)}
+.bs-ox summary{font-size:var(--fs-micro);color:var(--muted);cursor:pointer}
+.bs-oxb{font-size:var(--fs-sm);color:var(--ink);line-height:1.5;margin-top:2px}
+
+/* ---------- 所要のチップ ---------- */
+.bs-ng2{display:flex;gap:var(--space-1);align-items:flex-start;margin-bottom:var(--space-1);
+  border-top:1px solid var(--line);padding-top:var(--space-1)}
+.bs-nh{flex:0 0 5.5rem;font-size:var(--fs-sm);font-weight:700;display:flex;
+  align-items:center;gap:3px}
+.bs-nb{display:flex;flex-wrap:wrap;gap:3px;min-width:0}
+.bs-nc{display:inline-flex;align-items:baseline;gap:3px;border:1px solid var(--line);
+  border-radius:var(--radius-xs);padding:0 var(--space-1);font-size:var(--fs-micro);
+  background:var(--valid-bg)}
+.bs-nc b{font-size:var(--fs-base-sm)}
+.bs-nc.is-ng{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
+.bs-nn{font-size:var(--fs-micro);color:var(--muted)}
+.bs-rchip{display:inline-grid;place-items:center;width:1.2em;height:1.2em;
+  border-radius:var(--radius-round);color:#fff;font-size:var(--fs-tiny);font-weight:700;
+  border:1px solid var(--line);background:var(--bs-dot,transparent)}
+
+/* ---------- 台車差分 ---------- */
+.bs-carbar{display:flex;align-items:center;gap:var(--space-1);margin-bottom:var(--space-2)}
+.bs-lbl{font-size:var(--fs-sm);color:var(--muted)}
+.bs-l{width:100%;border-collapse:collapse;font-size:var(--tbl-fs)}
+.bs-l th,.bs-l td{border:1px solid var(--line);padding:1px var(--space-1);text-align:end}
+.bs-l th{background:var(--header-bar-bg);font-weight:600;font-size:var(--fs-micro)}
+.bs-l .bs-a{text-align:start}
+.bs-l .bs-sec td{background:var(--bg);font-weight:700;text-align:start}
+.bs-l .is-plus{color:var(--success);font-weight:700}
+.bs-l .is-minus{color:var(--danger);font-weight:700}
+.bs-l .is-short{background:var(--danger-bg)}
+.bs-l small{color:var(--muted);margin-inline-start:3px}
+.bs-swc{display:inline-flex;align-items:center;gap:3px}
+.bs-swc i{width:.8em;height:.8em;border-radius:var(--radius-xs);
+  border:1px solid var(--line);display:inline-block;background:var(--bs-dot,transparent)}
+.bs-alert{border:1px solid var(--line);background:var(--valid-bg);border-radius:var(--radius-sm);
+  padding:var(--space-1) var(--space-2);font-size:var(--fs-sm);margin-bottom:var(--space-1)}
+.bs-alert.is-info{background:var(--pale);border-color:var(--teal-soft);color:var(--teal-dark)}
+.bs-alert.is-bad{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
+.bs-alert.is-ok{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
+.bs-gh{font-size:var(--fs-sm);font-weight:700;margin:var(--space-3) 0 var(--space-1)}
+.bs-hrow{display:flex;align-items:center;gap:var(--space-1);font-size:var(--fs-micro);
+  border:1px solid var(--line);border-radius:var(--radius-xs);padding:2px var(--space-1);
+  margin-bottom:2px;background:var(--valid-bg)}
+.bs-hrow.is-use{background:var(--bg)}
+.bs-hrow.is-tgt{border-color:var(--teal);background:var(--pale)}
+.bs-hi{font-weight:700}
+.bs-hc{color:var(--muted)}
+.bs-hn{margin-inline-start:auto;color:var(--muted)}
+.bs-hempty{font-size:var(--fs-sm);color:var(--muted)}
+
+/* ---------- 右の段の足元（どの段を開いていても見える一言） ---------- */
+.bs-rail-foot{display:flex;align-items:center;gap:var(--space-2);
+  padding:var(--space-1) var(--space-2);border-top:1px solid var(--line);
+  font-size:var(--fs-sm);flex:0 0 auto}
+.bs-rail-foot span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bs-rail-foot b{margin-inline-end:var(--space-1)}
+.bs-rail-foot button{margin-inline-start:auto}
+.bs-rail-foot.is-ok{background:var(--success-bg);color:var(--success)}
+.bs-rail-foot.is-ng{background:var(--warn-bg);color:var(--warn-fg)}
+
+/* ---------- 刃の状態 ---------- */
+.bs-sc{border:1px solid var(--line);border-radius:var(--radius-sm);padding:var(--space-1);
+  margin-bottom:var(--space-1);background:var(--valid-bg)}
+.bs-sch{display:flex;align-items:center;gap:var(--space-1);font-size:var(--fs-base-sm)}
+.bs-sb{margin-inline-start:auto;font-size:var(--fs-micro);color:var(--muted)}
+.bs-kl{display:flex;flex-direction:column;gap:2px;margin-top:2px}
+.bs-kr{display:flex;align-items:center;gap:var(--space-1);font-size:var(--fs-micro)}
+.bs-tk{flex:0 0 3.2rem}
+.bs-dia{flex:0 0 4.5rem}
+.bs-gr{color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bs-qt{margin-inline-start:auto}
+
+/* ---------- 足りないマスタの帯 ---------- */
+.bs-empty{border:1px solid var(--warn-border);background:var(--warn-bg);color:var(--warn-fg);
+  border-radius:var(--radius-sm);padding:var(--space-2) var(--space-3);font-size:var(--fs-base-sm)}
+.bs-empty p{margin:0}
+.bs-empty small{display:block;margin-top:var(--space-1);font-size:var(--fs-sm)}
+.bs-empty-acts{display:inline-flex;gap:var(--space-1);margin-inline-start:var(--space-2)}
+
+/* ---------- 狭い画面 ---------- */
+@media (max-width:1200px){
+  .bs-body{grid-template-columns:minmax(0,1fr)}
+  .bs-rail{max-height:22rem}
+  .bs-figrow{grid-template-columns:minmax(0,1fr)}
+  .bs-side{max-height:9rem}
+}
+}

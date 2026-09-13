@@ -45,6 +45,7 @@ BODY_CSS_FILES=[
  '62-actuals.css',     # 実績データリスト・操業データ表(紙とプレビュー)
  '65-calendar.css',    # 実績カレンダー
  '70-schedule.css',    # 作業スケジュール・勤務体系
+ '72-bladeset.css',    # 刃組ガイダンス（§9.377）
  '75-master-paths.css',# マスタ管理(パス設定・RNE抽出)
  '80-defect.css',      # 異常位置判定(画面と専用帳票)
  '85-headerbar.css',   # ヘッダーの操作列
@@ -97,6 +98,10 @@ JS_FILES=[
  # schedule-view.js が右クリックメニューから `WL.lotCopy` を呼ぶ。
  'schedule/lot-copy.js',
  'schedule/schedule-print.js',
+ # 刃組ガイダンス（§9.377）。計算（`blade-core.js`）→ 画面（`blade-view.js`）の順。
+ # 画面は`WL.bladeSet`を呼ぶので、この順でしか動かない。
+ 'bladeset/blade-core.js',
+ 'bladeset/blade-view.js',
  'report/actuals-view.js',
  'report/opsheet-print.js',
  'core/log-view.js',

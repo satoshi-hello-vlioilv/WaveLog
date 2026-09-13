@@ -521,6 +521,15 @@
 /* 題名の横の（所要時間）（§9.295 ④）。**名前より弱く**——主役は名前で、
    時間は添え物（同じ濃さだと2つの名前が並んでいるように読める）。 */
 .sc-nw-time{margin-left:2px;font-weight:600;opacity:.75}
+/* 連携機能の行き先（§9.377）。**題名のすぐ横に別の的**として立てる——行
+   いっぱいは「選ぶ」（§9.363）、ダブルクリックは「停止の内容を変える」
+   （§9.220）で既に埋まっているため。押すと何が起きるかは字（＝行き先の名前）
+   が言う（§CLAUDE 4）。 */
+.sc-nw-link{margin-left:var(--space-2);border:1px solid var(--teal);
+  background:var(--pale);color:var(--teal-dark);border-radius:var(--radius-xs);
+  padding:0 var(--space-1);font-size:var(--fs-micro);font-weight:700;cursor:pointer;
+  white-space:nowrap;line-height:1.6}
+.sc-nw-link:hover{background:var(--teal);color:#fff}
 .sp-nw-time{margin-left:0.6mm;font-weight:600;opacity:.75}
 .sc-nw-face{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;
  white-space:nowrap;vertical-align:middle;font-weight:800}

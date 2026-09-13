@@ -74,6 +74,10 @@ try{window.__wlTabId=(self.crypto&&crypto.randomUUID)?crypto.randomUUID()
 <nav class="nav-group plan-nav" id="planNav" aria-label="計画">
 <div class="nav-group-label">計画</div>
 <button class="db nav-item nav-item--view" id="openSchedule" type="button"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="4" x2="3" y2="20"/><rect x="6" y="5" width="11" height="3.5" rx="1.5"/><rect x="9" y="10.2" width="12" height="3.5" rx="1.5"/><rect x="6" y="15.4" width="8" height="3.5" rx="1.5"/></svg><span>作業スケジュール</span></button>
+<!-- 刃組ガイダンス(§9.377、利用者の指示)。設備停止マスタの「連携機能」から
+     予定の行を押しても開くが、**行き先は左メニューにも置く**——予定を経由
+     しないと辿り着けない画面は「探させる」ことになる(§CLAUDE 2)。 -->
+<button class="db nav-item nav-item--view" id="openBladeSet" type="button" title="刃・スペーサー・ゴムリングの組み方と所要を、元コイル幅・切断幅・板厚から出します"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="2" y1="12" x2="22" y2="12"/><rect x="5" y="6" width="2.6" height="12" rx="1"/><rect x="11" y="6" width="2.6" height="12" rx="1"/><rect x="17" y="6" width="2.6" height="12" rx="1"/></svg><span>刃組ガイダンス</span></button>
 </nav>
 <nav class="nav-group analysis-nav" id="analysisNav" aria-label="分析">
 <div class="nav-group-label">分析</div>

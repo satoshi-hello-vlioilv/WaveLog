@@ -4709,6 +4709,78 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const hit=(scState.stopReasons||[]).find(r=>String(r.name||'').trim()===name);
   return hit?String(hit.category||'').trim():'';
  }
+ /* ---------- 連携機能（§9.377、利用者の指示） ----------
+    「例えば『刃組み』に刃組ガイダンス連携がセットされたとすると、そこを
+     クリックすると刃組ガイダンスに遷移することができるようにします」
+
+    **どの停止に何が結び付いているかはマスタが持つ**（設備停止マスタの
+    `[連携機能]`）。行そのものには持たせない——停止の名前は予定を入れた時点の
+    写しで、後からマスタの設定を変えても写しは古いままになる（§5.1で
+    標準所要分をスナップショットしないのと同じ理由）。
+    **語彙（鍵と呼び名）はサーバーが答える**ので、ここには綴りを書かない。 */
+ function stopLinkRowOf(e){
+  if(!e||e.kind!=='設備停止')return null;
+  const name=String(e.title||'').trim();
+  if(!name)return null;
+  const hit=(scState.stopReasons||[]).find(r=>String(r.name||'').trim()===name);
+  return (hit&&String(hit.linkKey||'').trim())?hit:null;
+ }
+ /* 行き先の**開き方**だけは画面が持つ（§9.352「拡張は登録表へ」）。
+    鍵を増やすのはサーバーの`STOP_LINK_FEATURES`で、ここに無い鍵は
+    「押せるが何も起きない」を作らないよう**チップごと出さない**（§CLAUDE 4）。 */
+ const SC_LINK_TARGETS={
+  bladeset:{
+   ready:()=>!!(WL.bladeGuide&&typeof WL.bladeGuide.open==='function'),
+   open:e=>WL.bladeGuide.open({equipment:scState.equipment,
+                               seed:bladeSeedFromEntry(e),
+                               from:`${e.title||'設備停止'}（${scState.equipment||''}）`})
+  }
+ };
+ function stopLinkOf(e){
+  const row=stopLinkRowOf(e);
+  if(!row)return null;
+  const t=SC_LINK_TARGETS[String(row.linkKey)];
+  return t&&t.ready()?{key:row.linkKey,label:String(row.linkLabel||row.linkKey),open:t.open}:null;
+ }
+ /* 刃組ガイダンスへ持っていく文脈（§9.377）。
+    **この停止の後ろに並ぶ作業**が、この段取りで流す材料——元コイル幅・
+    ロットごとの切断幅・板厚を、予定の写し（`detail`）から読む。
+      ・次の**同じ連携の停止**まで（次の刃組までが1つの段取り）
+      ・元コイル幅に収まるところまで（条の合計が元幅を超えたら止める）
+      ・多くても9ロット（図で色を9種までしか見分けられない）
+    **読めない項目は渡さない**——0で埋めると、そこだけ嘘の値になる（§9.231）。 */
+ function bladeSeedFromEntry(e){
+  const list=scState.entries||[];
+  const at=list.findIndex(x=>String(x.id)===String(e.id));
+  const after=at<0?[]:list.slice(at+1);
+  const n=v=>{const x=Number(v);return Number.isFinite(x)&&x>0?x:null};
+  const lots=[];
+  let thickness=null,originalWidth=null,total=0;
+  for(const x of after){
+   if(x.kind==='設備停止'&&stopLinkRowOf(x))break;   // 次の刃組から先は別の段取り
+   if(x.kind!=='作業')continue;
+   const d=x.detail||{};
+   const w=n(contentValueOf(d,'mfgWidth'));
+   const cnt=Math.max(1,Math.round(n(contentValueOf(d,'boxHorizontalCount'))||1));
+   if(thickness===null)thickness=n(contentValueOf(d,'mfgThickness'));
+   if(originalWidth===null)originalWidth=n(contentValueOf(d,'originalWidth'));
+   if(!w)continue;
+   if(originalWidth&&total+w*cnt>originalWidth+0.001)break;   // 元コイルに載らない
+   total+=w*cnt;
+   lots.push({name:String(x.lotNo||x.title||('LOT'+(lots.length+1))),w,n:cnt});
+   if(lots.length>=9)break;
+  }
+  return {thickness,originalWidth,lots};
+ }
+ /* 題名の横に置く行き先のチップ。**押すと何が起きるかを字で書く**（§CLAUDE 4）
+    ——行そのもののクリックは「選ぶ」（§9.363）、ダブルクリックは「停止の内容を
+    変える」（§9.220）で既に埋まっているので、**別の的**を立てる。 */
+ function stopLinkChipHtml(e){
+  const link=stopLinkOf(e);
+  if(!link)return '';
+  return `<button type="button" class="sc-nw-link" data-sc-link="${esc(link.key)}"`
+   +` title="${esc(link.label)}を開きます">${esc(link.label)}</button>`;
+ }
  /* 効いている見せ方。**分類の指定 → 区分の指定 → 既定**の順。 */
  function rowStyleOf(e){
   const cat=categoryOf(e);
@@ -6130,7 +6202,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
       /* （所要時間）は**題名の一部ではない**（§9.295 ④）——`title`属性と
          監査に残る名前は名前のまま。添えるのは見せるときだけ。 */
       const nwTime=nonWorkTimeText(e);
-      const body=esc(nwTitle)+(nwTime?`<span class="sc-nw-time">${esc(nwTime)}</span>`:'');
+      const body=esc(nwTitle)+(nwTime?`<span class="sc-nw-time">${esc(nwTime)}</span>`:'')
+       +stopLinkChipHtml(e);
       /* 日付・直の枠は**箱**（§9.300 ②）。区分・行き先・状態を3段に組む
          ——1行に`／`で繋いだ文字列は「空のスケジュールらしきもの」にしか
          見えなかった。**文字の材料は`frameParts()`の1箇所**なので、
@@ -6211,6 +6284,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    if(report)report.onclick=ev=>{ev.stopPropagation();openEntryReport(e)};
    const delHist=row.querySelector('.sc-row-delete-history');
    if(delHist)delHist.onclick=ev=>{ev.stopPropagation();deleteHistoryEntry(e)};
+   /* 連携機能の行き先（§9.377）。**行の「選ぶ」を横取りしない**ので
+      `stopPropagation()`する（行いっぱいが選ぶ的・§9.363）。 */
+   const linkBtn=row.querySelector('.sc-nw-link');
+   if(linkBtn)linkBtn.onclick=ev=>{ev.stopPropagation();ev.preventDefault();openRowLink(e)};
    /* 詳細の器は**この時点ではまだ無い**（行を差し込んだあとに作る）ので、
       メニューは押されたときに読み直す。 */
    let detailEl=null;
@@ -6234,6 +6311,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
                     const t=row.querySelector('.sc-row-detail-toggle');
                     if(t){t.textContent=detailEl.hidden?'▾':'▴';
                           t.classList.toggle('active',!detailEl.hidden)}}}},
+     /* 連携機能（§9.377）。**行き先があるときだけ出す**——無い行に
+        「開く」を並べても、押して何も起きない項目になる（§CLAUDE 4）。 */
+     (()=>{const l=stopLinkOf(e);return l&&{label:`${l.label}を開く`,
+       note:'この行より後ろに並ぶ作業の元コイル幅・切断幅・板厚を持っていきます',
+       showNote:true,run:()=>openRowLink(e)}})(),
      commentEditable(e)&&{label:'申し送りを書き直す',run:()=>startCommentEdit(e.id)},
      /* §9.220 2①。**できないときも並べて理由を書く**（§4）——メニューから
         消すと「直せる場所が無い」のか「この行は直せない」のかが読めない。 */
@@ -8549,6 +8631,18 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }catch(err){
    await alertModal('帳票を開けません: '+(err&&err.message?err.message:err));
   }
+ }
+ /* 連携機能の行き先を開く（§9.377）。**開けない理由は必ず言う**（§CLAUDE 4）。 */
+ function openRowLink(e){
+  const link=stopLinkOf(e);
+  if(!link){
+   showToast&&showToast('行き先が設定されていません',
+    'マスタ管理 > 作業スケジュール > 設備停止 の「連携機能」で選べます',4600);
+   return;
+  }
+  try{link.open(e)}
+  catch(err){showToast&&showToast(`${link.label}を開けません`,
+   (err&&err.message)?err.message:String(err),6000)}
  }
  async function startWorkFromEntry(e){
   if(typeof WL.records.openMeasurement!=='function'){await alertModal('測定画面を開けません。');return}

@@ -29,6 +29,8 @@ URLも関数名も1つも変えていない。
   `report_block`  帳票ブロックマスタ
   `roll`          ロールマスタ
   `choice_link`   選択肢リンクマスタ
+  `bladeset`       刃組の設備の諸元（基準値）と記録（履歴）・1画面ぶん（§9.377）
+  `bladeset_parts` 刃組の部材（刃・スペーサー・ゴムリング・フィンガー）
 
 **段を1つ足したら、下の import へも1行足すこと**——import しないと
 `@bp.post(...)`が走らず、**そのAPIだけ404になる**（画面からは「押しても
@@ -55,6 +57,7 @@ URLも関数名も1つも変えていない。
 from ._base import bp
 # 段の import そのものがルートの登録（`@bp.get`/`@bp.post`）を走らせる。
 from . import (equipment, access, filters, columns, joins,      # noqa: F401 登録のためのimport
-               operation, report_block, roll, choice_link)      # noqa: F401 登録のためのimport
+               operation, report_block, roll, choice_link,      # noqa: F401 登録のためのimport
+               bladeset, bladeset_parts)                        # noqa: F401 登録のためのimport
 
 __all__ = ['bp']
