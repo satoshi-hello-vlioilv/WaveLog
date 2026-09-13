@@ -783,6 +783,31 @@
   return [...m.values()];
  }
 
+ /* ---- 組んだ条件（§9.378） ----
+    利用者の言葉:「同一条数、同一幅、同一厚の場合基本的に同じ刃組で作業できます。
+    作業スケジュール上、これらの条件がどこか違うロットになったときに刃組段取りが
+    入るというのが通常の流れです。」
+    つまり**次の段取りが要るかどうかは条数・条幅・板厚で決まる**。部材の員数とは
+    別に、台車が「どの条件で組まれているか」を言えるように控える。 */
+ function condOf(st, M) {
+  const widths = (st.order || [])
+   .map(ix => ((st.lots || [])[ix] || {}).w)
+   .filter(w => +w > 0).map(w => +(+w).toFixed(2));
+  return { strips: widths.length, widths,
+           thickness: +st.thick || 0, knife: +st.knife || 0, tk: +st.tk || 0,
+           overlap: +st.ov || 0, clearance: +st.clr || 0,
+           method: method(st), hold: holdName(st, M),
+           bigOd: odFromTh(M, st.bigTh), smOd: odFromTh(M, st.smallTh) };
+ }
+ /* 「同じ刃組で流せるか」の答えは**ここ1箇所**。条数・条幅の並び・板厚がそろえば
+    同じ——刃径やラップが違っても、軸の上の割付が同じなら組み替えは要らない。 */
+ function sameCond(a, b) {
+  if (!a || !b) return false;
+  if ((a.strips | 0) !== (b.strips | 0)) return false;
+  if (Math.abs((+a.thickness || 0) - (+b.thickness || 0)) > 1e-6) return false;
+  return (a.widths || []).join(',') === (b.widths || []).join(',');
+ }
+
  function snapshot(st, M, g) {
   const ring = {};
   Object.keys(g.ring).forEach(od => Object.keys(g.ring[od]).forEach(sz => {
@@ -791,7 +816,7 @@
   const finger = {};
   Object.keys(g.finger).forEach(sz => { finger[sz] = g.finger[sz].u + g.finger[sz].l; });
   return { spacer: Object.assign({}, g.spacer), ring, finger,
-           blade: Object.assign({}, g.blade) };
+           blade: Object.assign({}, g.blade), cond: condOf(st, M) };
  }
 
  WL.bladeSet = {
@@ -800,7 +825,7 @@
   buildSegs, widths, buildLayout, buildFiller, fillWith, planZones,
   compose, buildRows, endRows, badgeMap, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum,
-  stripDesign, designByParent,
+  stripDesign, designByParent, condOf, sameCond,
   expand, materialRun, matShift,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP
  };

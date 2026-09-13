@@ -34,7 +34,7 @@
   order: [0, 0, 0, 0],
   bigMode: 'auto', smallMode: 'auto', bigTh: 39.5, smallTh: 38.0,
   /* 刃組の道具なので、はじめから段取り向き（DS左＝部材を入れる側から見た並び）。 */
-  carriage: 'A', flip: true
+  carriage: 'A', bladeGroup: '', flip: true
  };
  let M = null, IX = null, LAST = null;
  let panel = null, railTab = 'bom', loadToken = 0;
@@ -190,9 +190,14 @@
        <div class="bs-need" id="bsBom"></div>
       </div>
       <div data-p="diff" hidden>
+       <!-- 完了に必要なのは「どの台車へ」と「どの刃セットで」の2つ（§9.378）。
+            **員数・条件・条の設計は計算とマスタから入る**ので、人が決めるのは
+            ここだけ——決める場所を1つにまとめ、完了のボタンのすぐ上に置く。 -->
        <div class="bs-carbar"><span class="bs-lbl">台車</span>
         <button type="button" class="bs-chip is-on" data-car="A">A</button>
-        <button type="button" class="bs-chip" data-car="B">B</button></div>
+        <button type="button" class="bs-chip" data-car="B">B</button>
+        <span class="bs-lbl">刃セット</span>
+        <select id="bsSetPick" class="bs-sel is-sm"></select></div>
        <div id="bsDiffHead"></div><div id="bsDiffSum"></div>
        <table class="bs-l" id="bsDiff"></table>
        <button type="button" class="bs-btn is-primary bs-wide" id="bsSaveCar">刃組完了：台車 A として記録</button>
@@ -1330,6 +1335,21 @@
      + `<span class="bs-hc">台車 ${esc(r.carriage)}</span><span class="bs-hn">${esc(r.at)}</span>`
      + `<button type="button" class="bs-btn is-sm" data-hdel="${esc(r.id)}">削除</button></div>`).join('')
    : '<div class="bs-hempty">記録がありません</div>';
+  /* 刃セットの候補は**刃マスタの「組」**から作る（§9.378、利用者の指示
+     「マスタを整備すれば入力を不要にできるものがあればマスタの導入も検討」）
+     ——人が綴りを打つ場面を作らない。1つしか無ければ初めから選んでおく。 */
+  const sel = $('#bsSetPick');
+  if (sel) {
+   const gs = [...new Set((M.blades || []).map(k => String(k.group || '').trim()))]
+    .filter(Boolean).sort();
+   if (!gs.includes(st.bladeGroup)) st.bladeGroup = gs.length === 1 ? gs[0] : '';
+   sel.innerHTML = `<option value="">選ぶ</option>`
+    + gs.map(g => `<option value="${esc(g)}"${g === st.bladeGroup ? ' selected' : ''}>`
+                  + `セット${esc(g)}</option>`).join('');
+   sel.disabled = !gs.length;
+   sel.title = gs.length ? '刃マスタの「組」から選びます'
+                         : '刃マスタに「組」の登録がありません';
+  }
   $('#bsSaveCar').textContent = `刃組完了：台車 ${st.carriage} として記録`;
  }
 
@@ -1620,6 +1640,7 @@
    st.carriage = b.dataset.car;
    scheduleRender();
   }));
+  $('#bsSetPick').addEventListener('change', e => { st.bladeGroup = e.target.value; });
   $('#bsSaveCar').addEventListener('click', saveCarriage);
   $('#bsHist').addEventListener('click', e => {
    const b = e.target.closest('[data-hdel]');
@@ -1666,13 +1687,40 @@
    await alertModal('初期セットを登録できませんでした：' + (e && e.message ? e.message : e));
   }
  }
+ /* 刃組完了。**足りない入力はその場で言う**（§9.378、利用者の指示「刃組完了と
+    する場合に必要なデータは入力を促すような工夫」）。人が決めるのは台車と
+    刃セットの2つだけで、残りは計算とマスタから入る——だから足りないのが
+    どちらなのかを名指しできる（§CLAUDE 4・6）。 */
  async function saveCarriage() {
   if (!LAST) return;
   const B = BS();
+  const gs = [...new Set((M.blades || []).map(k => String(k.group || '').trim()))].filter(Boolean);
+  if (gs.length && !st.bladeGroup) {
+   await alertModal({ title: '刃セットを選んでください',
+     message: '「台車差分」の上にある〈刃セット〉から、この刃組で使った組を選びます。'
+            + '候補は刃マスタの「組」から出しています。' });
+   const sel = $('#bsSetPick'); if (sel && sel.focus) sel.focus();
+   return;
+  }
   const detail = B.snapshot(st, M, LAST.g);
+  detail.set = st.bladeGroup || '';
+  const c = detail.cond || {};
   const at = new Date().toISOString().slice(0, 16).replace('T', ' ');
   const note = `${B.METHOD_NAME[LAST.method]}／Φ${st.knife.toFixed(1)}／${B.holdName(st, M)}／`
    + st.lots.map(l => `${l.name} ${l.w}×${l.n}`).join(' , ');
+  /* **何が残るかを見せてから**記録する。取り消せる操作ではあるが、次の段取りの
+     差分がこの1件から出るので、条件を目で確かめられるようにする。 */
+  const ok = await confirmModal({
+   title: `台車 ${st.carriage} の刃組を記録します`,
+   bodyHtml: '<p class="confirm-modal-message">この内容で残します。'
+    + '次の段取りは、この記録との差分から「持ち出す／戻す／そのまま使える」を出します。</p>'
+    + `<p class="confirm-modal-message"><b>条件</b>　${c.strips || 0}条 ／ `
+    + `板厚 ${(+c.thickness || 0).toFixed(2)} ／ Φ${(+c.knife || 0).toFixed(1)} ／ `
+    + `${esc(c.method ? B.METHOD_NAME[c.method] || c.method : '')} ／ ${esc(c.hold || '')}</p>`
+    + `<p class="confirm-modal-message"><b>刃セット</b>　${esc(st.bladeGroup || '（登録なし）')}`
+    + `　<b>条の設計</b>　${B.designByParent(st).length} ロット分</p>`,
+   confirmLabel: '記録する' });
+  if (!ok) return;
   try {
    await api('/api/bladeset/history', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },

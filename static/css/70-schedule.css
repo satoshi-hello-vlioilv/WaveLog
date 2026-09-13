@@ -2051,6 +2051,16 @@ div.sc-view-row{cursor:default}
   background:var(--surface);color:var(--ink-2);
   font-size:var(--fs-sm);white-space:nowrap;
 }
+/* 台車の刃組状態（§9.378）。在席の隣＝「この設備のいま」が集まる場所へ置く。
+   押すと中身（条件・刃セット・両台車）がポップオーバーで開く。 */
+.sc-car{display:inline-flex;align-items:center;gap:var(--gap-inline);min-width:0;
+  height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-sm);cursor:pointer;font:inherit;
+  border:1px solid var(--line);border-radius:var(--radius-pill);
+  background:var(--surface);color:var(--ink-2);white-space:nowrap}
+.sc-car[hidden]{display:none}
+.sc-car:hover{border-color:var(--teal);color:var(--teal-dark)}
+.sc-car b{font-weight:800;letter-spacing:.02em}
+.sc-car s{text-decoration:none;color:var(--muted)}
 .sc-who[hidden]{display:none}
 .sc-who .sc-who-state{font-weight:800;letter-spacing:.02em}
 .sc-who .sc-who-holder{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--ink-3)}

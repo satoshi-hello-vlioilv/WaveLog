@@ -2402,6 +2402,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function renderSessionBanner(){
   if(!scWhoRendering){scWhoRendering=true;try{syncBlockedView()}finally{scWhoRendering=false}}
   renderSessionWho();
+  loadCarriageState();
   const box=$('#scSessionBanner');if(!box)return;
   if(!sessionApplicable()||scState.sessionHeld){
    box.hidden=true;box.innerHTML='';box.className='sc-session-banner';
@@ -2537,6 +2538,62 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   if(!Array.isArray(list))return null;
   return list.find(x=>x.equipment===scState.equipment)||null;
  }
+ /* ---------- 台車の刃組状態（§9.378） ----------
+    利用者の言葉:「同一条数、同一幅、同一厚の場合基本的に同じ刃組で作業できます。
+    …台車で準備されているかどうかで作業スケジュール上に刃組待ちができるかどうかが
+    決まるので、スケジュール上でもその設備で登録中の台車がどの刃のセット状態か
+    わかるように、見られるように」。
+    **判定はサーバーの1箇所**（`bladeset_repo.carriage_state`）で、画面は履歴を
+    数え直さない。設備が変わったときだけ取りに行く。 */
+ let scCarState=null,scCarFor='';
+ const scCondText=c=>c
+  ?`${c.strips||0}条 / t${(+c.thickness||0).toFixed(2)} / Φ${(+c.knife||0).toFixed(1)}`:'';
+ async function loadCarriageState(force){
+  const eq=scState.equipment||'';
+  if(!eq){scCarState=null;scCarFor='';renderCarriageState();return}
+  if(!force&&scCarFor===eq)return;
+  scCarFor=eq;
+  try{
+   const r=await api('/api/bladeset/carriage-state?equipment='+encodeURIComponent(eq));
+   scCarState=Array.isArray(r&&r.items)?r.items:[];
+  }catch(e){
+   scCarState=null;
+   WL.quiet.note('台車の刃組状態を読めない（チップを出さない）',e);
+  }
+  renderCarriageState();
+ }
+ function renderCarriageState(){
+  const box=$('#scCarriage');if(!box)return;
+  const now=(scCarState||[]).find(x=>x.role==='稼働中');
+  if(!now){box.hidden=true;box.innerHTML='';return}
+  box.hidden=false;
+  box.innerHTML=`<s>台車</s><b>${esc(now.carriage)}</b>`
+   +(now.cond?`<s>${esc(scCondText(now.cond))}</s>`:'<s>条件の記録なし</s>')
+   +(now.set?`<s>刃${esc(now.set)}</s>`:'');
+  box.title='押すと台車ごとの刃組状態を開きます';
+ }
+ /* 中身は窓で見せる。**次にすることを1つ指す**（§CLAUDE 2）ので、
+    決定ボタンは「刃組ガイダンスを開く」にする。 */
+ async function openCarriageState(){
+  await loadCarriageState(true);
+  const list=scCarState||[];
+  const row=x=>`<p class="confirm-modal-message"><b>台車 ${esc(x.carriage)}</b>`
+   +`（${esc(x.role)}）　${esc(scCondText(x.cond)||'条件の記録なし')}`
+   +(x.set?`　刃セット ${esc(x.set)}`:'')
+   +(x.at?`<br><s>${esc(x.at)}</s>`:'')+'</p>';
+  const body=list.length?list.map(row).join('')
+   :'<p class="confirm-modal-message">この設備の刃組の記録がまだありません。</p>';
+  const ok=await confirmModal({
+   title:'台車の刃組状態',
+   bodyHtml:body
+    +'<p class="confirm-modal-message"><s>条数・条幅・板厚が同じロットは、'
+    +'同じ刃組のまま流せます。どれかが変わる行から刃組の段取りが要ります。</s></p>',
+   confirmLabel:'刃組ガイダンスを開く'});
+  if(!ok)return;
+  const t=SC_LINK_TARGETS.bladeset;
+  if(t&&t.ready())t.open({equipment:scState.equipment||''});
+ }
+
  function renderSessionWho(){
   const box=$('#scWho');if(!box)return;
   const list=scState.sessions;
@@ -9067,6 +9124,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
     「作業スケジュール」は全モードで常時表示するため(§9.1)、動的注入
     (calendar-view.js/report-dashboard.jsの分析系ボタンと同じ方式)ではなく
     templates/index.htmlに静的に置いたボタンへ直接配線する。 */
+ /* 台車の刃組状態のチップ（§9.378）。器はタイトル帯に静的に置いてあるので、
+    左メニューのボタンと同じく**直接配線する**。 */
+ const carBtn=document.getElementById('scCarriage');
+ if(carBtn)carBtn.onclick=()=>openCarriageState().catch(e=>WL.quiet.note('台車の刃組状態を開けない',e));
+
  const navBtn=document.getElementById('openSchedule');
  if(navBtn)navBtn.onclick=()=>openScheduleView().catch(e=>console.error(e));
 

@@ -191,6 +191,15 @@ def bladeset_history_list():
                 items=_op_read(lambda c: bs.history_rows(c, False, eq or None)))
 
 
+@bp.get('/api/bladeset/carriage-state')
+@api_guard('台車の刃組状態の読込に失敗しました')
+def bladeset_carriage_state():
+ """台車がどの刃組で組まれているか。**作業スケジュールが見に来る口**（§9.378）。"""
+ eq = _eq()
+ return jsonify(ok=True, equipment=eq,
+                items=_op_read(lambda c: bs.carriage_state(c, eq or None)))
+
+
 @bp.post('/api/bladeset/history')
 @api_guard('刃組履歴の保存に失敗しました', bad=ValueError)
 def bladeset_history_add():

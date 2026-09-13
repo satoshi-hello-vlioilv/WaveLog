@@ -808,6 +808,38 @@ def standard_delete(c, standard_id):
     return _delete(c, STANDARD_DEF, standard_id)
 
 
+def carriage_state(c, equipment):
+    """その設備の台車が、いまどの刃組で組まれているか。**判定はここ1箇所**。
+
+    利用者の言葉（§9.378）:「台車で準備されているかどうかで作業スケジュール上に
+    刃組待ちができるかどうかが決まるので、スケジュール上でもその設備で登録中の
+    台車がどの刃のセット状態かわかるように」。
+
+    ラインは2台の台車を交互に使う。
+      直前の刃組 … ラインで**稼働中**（その部材は外せない）
+      その次に見つかる別の台車 … いま**組み替える**台車に載っている構成
+    画面が履歴を数え直さなくて済むよう、役割まで付けて返す。
+    """
+    rows = history_rows(c, False, equipment)     # 新しい順
+    out, seen = [], set()
+    for r in rows:
+        car = r['carriage']
+        if not car or car in seen:
+            continue
+        seen.add(car)
+        d = r.get('detail') or {}
+        out.append({
+            'carriage': car,
+            'role': '稼働中' if len(out) == 0 else '組み替え対象',
+            'at': r['at'], 'note': r['note'],
+            'set': _txt(d.get('set')),
+            'cond': d.get('cond') if isinstance(d.get('cond'), dict) else None,
+        })
+        if len(out) >= 2:
+            break
+    return out
+
+
 def history_delete(c, history_id):
     return _delete(c, HISTORY_DEF, history_id)
 
