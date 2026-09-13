@@ -101,6 +101,10 @@ JS_FILES=[
  # 刃組ガイダンス（§9.377）。計算（`blade-core.js`）→ 画面（`blade-view.js`）の順。
  # 画面は`WL.bladeSet`を呼ぶので、この順でしか動かない。
  'bladeset/blade-core.js',
+ # 立体図（§9.377 追補）。three.js は**同梱せずCDNから遅延読み込み**するので、
+ # このファイル自体は小さい。画面（blade-view.js）より先に読み、`WL.bladeSolid`を
+ # 名乗らせる——画面は `attach()` を呼ぶだけになる。
+ 'bladeset/blade-3d.js',
  'bladeset/blade-view.js',
  'report/actuals-view.js',
  'report/opsheet-print.js',

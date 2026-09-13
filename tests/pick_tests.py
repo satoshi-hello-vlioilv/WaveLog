@@ -347,6 +347,7 @@ RULES = [
     ('backend/routes/masters/bladeset.py', g('刃組', 'test_crudroutes')),
     ('backend/routes/masters/bladeset_parts.py', g('刃組', 'test_crudroutes')),
     ('static/js/bladeset/blade-core.js', g('刃組')),
+    ('static/js/bladeset/blade-3d.js', g('刃組')),
     ('static/js/bladeset/blade-view.js', g('刃組', 'test_scale', 'test_theme')),
     ('static/css/72-bladeset.css', g('刃組', 'test_scale', 'test_theme')),
     # Excelの読み書き（§9.240）。ロールマスタの入出力が唯一の使い手。

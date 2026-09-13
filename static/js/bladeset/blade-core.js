@@ -670,6 +670,27 @@
   return { per, worst, worstAt, cumU: cu, cumL: cl, tail };
  }
 
+ /* ---- 図が使う並び（模式図と立体図で同じ答えを見るため、ここが持つ） ----
+    手持ち寸法の並び（大きい寸法から）を1枚ずつに展開する。 */
+ const expand = d => d.out.flatMap(([sz, c]) => Array(c).fill(sz));
+ /* 材料の並び：OS耳 → 条／屑条 → DS耳。左端からの位置をここで一度だけ決める。 */
+ function materialRun(A, segs) {
+  const items = [];
+  if (A.w.osTrim > 0) items.push({ w: A.w.osTrim, type: 'trim', label: '耳' });
+  segs.forEach(s => items.push(s));
+  if (A.w.dsTrim > 0) items.push({ w: A.w.dsTrim, type: 'trim', label: '耳' });
+  let at = A.matStart;
+  return items.map(sg => { const from = at; at += sg.w; return { sg, from, to: at }; });
+ }
+ /* 板は丸刃で切られ、切られた条は板厚のぶんだけ上下へ分かれる。条は
+    「区間の狭いほうの側」へ寄る。どちらが狭いかは切断点での刃の左右で決まる。 */
+ const matShift = (A, run, i) => {
+  const n = A.sign.length - 1;
+  const lead = run[0].sg.type === 'trim' ? 1 : 0;
+  const j = i - lead;
+  return j >= n ? A.sign[n] : -A.sign[j + 1];
+ };
+
  /* 適正帯を外れたら要注意、不適帯まで外れたら不適。 */
  const judge = (v, b) => ((v < b.hardMin || v > b.hardMax) ? 'bad'
   : ((v < b.min || v > b.max) ? 'warn' : 'good'));
@@ -749,6 +770,7 @@
   buildSegs, widths, buildLayout, buildFiller, fillWith, planZones,
   compose, buildRows, endRows, badgeMap, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum,
+  expand, materialRun, matShift,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP
  };
 })();

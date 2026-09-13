@@ -34,6 +34,8 @@
   --bs-fig-trim-edge:var(--rs-yellow);
   --bs-fig-label:var(--muted);
   --bs-fig-ink:var(--nav);
+  /* 立体図の地。**`blade-3d.js` が読み取って場面の背景にする**（§CLAUDE 7）。 */
+  --bs-3d-bg:var(--bg);
   /* 図の上端の帯。**クリアランスとラップは刃組の要**なので強く出し、
      ゴムリングの色は「色＝外径」の意味だけを中立の面で添える。 */
   --bs-fig-chip-bg:var(--card-bg);
@@ -207,6 +209,9 @@ body.bs-mode .bs-shell{display:flex}
 .bs-figrow.is-flip>*{direction:ltr}
 .bs-figmain{min-width:0;min-height:0;display:flex}
 .bs-stage{flex:1 1 auto;min-width:0;min-height:0;display:flex}
+/* **`display:flex` は UA の `[hidden]` を上書きする**ので、伏せ方をここに書く
+   （立体図に切り替えたのに模式図が並んで出た）。 */
+.bs-stage[hidden]{display:none}
 .bs-stage svg{width:100%;height:100%}
 .bs-side{min-width:0;overflow:auto;font-size:var(--fs-sm)}
 .bs-fh{display:flex;align-items:center;gap:4px;margin-bottom:2px}
@@ -220,6 +225,85 @@ body.bs-mode .bs-shell{display:flex}
 .bs-e .bs-a{text-align:start}
 .bs-e .bs-sec td{background:var(--bg);font-weight:700;text-align:start;font-size:var(--fs-micro)}
 .bs-e .bs-tot td{background:var(--pale);font-weight:700}
+
+/* ---------- 立体図（§9.377 追補） ----------
+   模式図と同じ器に重ねる。道具は**四隅に寄せ**、同じ隅のものは1つの塊に
+   まとめて探す場所を固定する。 */
+.bs-figmain .bs-stage,.bs-figmain .bs-stage3{flex:1 1 auto;min-height:0;min-width:0}
+.bs-stage3{position:relative;display:flex;border-radius:var(--radius-sm);overflow:hidden;
+  background:var(--bs-3d-bg)}
+.bs-stage3[hidden]{display:none}
+.bs-stage3 canvas{width:100%;height:100%;display:block;cursor:grab}
+.bs-stage3 canvas:active{cursor:grabbing}
+/* 立体の点を画面の座標へ写して置く札。重なったら上下へ逃がす（`place()`）。 */
+.bs-t3{position:absolute;transform:translate(-50%,-50%);pointer-events:none;white-space:nowrap;
+  font-size:var(--fs-base-sm);font-weight:800;letter-spacing:.05em;
+  background:var(--valid-bg);border:1px solid var(--line);border-radius:var(--radius-xs);
+  padding:1px var(--space-1);line-height:1.45}
+.bs-t3[hidden]{display:none}
+/* OS・DS の色は端部カードの記号と同じにして、図と表で同じ色を辿れるようにする。 */
+.bs-t3.is-os{color:var(--rs-slate);border-color:var(--rs-slate-border);background:var(--rs-slate-bg)}
+.bs-t3.is-ds{color:var(--rs-brown);border-color:var(--rs-brown-border);background:var(--rs-brown-bg)}
+.bs-hud{position:absolute;display:flex;align-items:center;gap:var(--space-1);
+  max-width:calc(100% - 20px)}
+.bs-hud.is-tl{left:10px;top:10px;flex-direction:column;align-items:flex-start}
+.bs-hud.is-tr{right:10px;top:10px}
+/* 下の道具は1本の帯にまとめる。左右に分けると、幅が足りないときに重なる。 */
+.bs-hud.is-bot{left:10px;right:10px;bottom:9px;max-width:none;
+  justify-content:space-between;flex-wrap:wrap;gap:var(--space-2)}
+/* **`.bs-grp` は刃組表の「区分」欄が使っている**ので、重ねた道具の塊は別の名前に
+   する（同じ名前を2つの意味で使うと、片方を直したときにもう片方が化ける）。 */
+.bs-hud-grp{display:flex;align-items:center;gap:4px;background:var(--valid-bg);
+  border:1px solid var(--line);border-radius:var(--radius-sm);padding:3px 7px;flex-wrap:wrap}
+.bs-hud-cap{font-size:var(--fs-tiny);font-weight:700;color:var(--muted);letter-spacing:.05em}
+.bs-hud-sep{width:1px;align-self:stretch;background:var(--line);margin:1px 2px}
+/* 使い方。いつも要る情報ではないので、ふだんは畳んでおく。 */
+.bs-hlp{font:inherit;font-size:var(--fs-micro);font-weight:700;color:var(--muted);cursor:pointer;
+  white-space:nowrap;background:var(--valid-bg);border:1px solid var(--line);
+  border-radius:var(--radius-pill);padding:4px var(--space-3)}
+.bs-hlp:hover,.bs-hlp[aria-expanded="true"]{color:var(--teal-dark);border-color:var(--teal)}
+.bs-hpop{position:absolute;right:0;top:30px;width:21rem;max-width:70vw;background:var(--valid-bg);
+  border:1px solid var(--line);border-radius:var(--radius-md);padding:var(--space-2) var(--space-3);
+  box-shadow:var(--shadow-pop);font-size:var(--fs-micro);line-height:1.65;color:var(--muted);
+  text-align:start;z-index:1}
+.bs-hpop[hidden]{display:none}
+.bs-hpop dt{font-weight:700;color:var(--teal-dark);font-size:var(--fs-tiny);
+  letter-spacing:.04em;margin-top:7px}
+.bs-hpop dt:first-child{margin-top:0}
+.bs-hpop dd{margin:1px 0 0}
+/* 見せる・隠すの切り替え。**言葉は部材の名前で固定**し、点が付いているかどうかで
+   入切を示す（押すたびに言葉が変わると読み違える）。 */
+.bs-tg{display:inline-flex;align-items:center;gap:4px;cursor:pointer;font:inherit;
+  font-size:var(--fs-tiny);font-weight:700;color:var(--muted);white-space:nowrap;
+  background:var(--valid-bg);border:1px solid var(--line);border-radius:var(--radius-pill);
+  padding:2px var(--space-2) 2px var(--space-1)}
+.bs-tg::before{content:"";width:8px;height:8px;border-radius:var(--radius-round);
+  border:1.5px solid var(--line);background:transparent}
+/* 選ばれた札（`.is-on`）と、その点の塗りは`90-state.css`の束ね規則が持つ（§9.353）。 */
+.bs-tg:hover{border-color:var(--teal)}
+/* いま画面のどちら側が OS／DS か。視点を回しても言葉が合うよう、見えている位置から出す。 */
+.bs-o3{display:flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm);font-weight:700;
+  color:var(--muted);background:var(--valid-bg);border:1px solid var(--line);
+  border-radius:var(--radius-xs);padding:4px var(--space-2);pointer-events:none}
+.bs-o3[hidden]{display:none}
+.bs-o3 i{font-style:normal;font-weight:800;letter-spacing:.04em}
+.bs-o3 i.is-os{color:var(--rs-slate)}
+.bs-o3 i.is-ds{color:var(--rs-brown)}
+.bs-o3 s{text-decoration:none;color:var(--muted);font-weight:600}
+/* 済んだ段取りの札は**選ばれた札と同じ見た目**（`90-state.css` の束ね規則・§9.353）。
+   橙は「設定要」に1つの意味で使う（§9.338）ので、状態の言い分けには使わない
+   ——いまどの段取りに居るかは札の字（①引き出す／①ラインへ戻す）が言う。 */
+/* 操作の手応え。少しのあいだ出して消える。 */
+.bs-m3{position:absolute;left:50%;top:12px;transform:translateX(-50%);
+  font-size:var(--fs-sm);font-weight:700;color:var(--warn-fg);background:var(--warn-bg);
+  border:1px solid var(--warn-border);border-radius:var(--radius-sm);
+  padding:5px var(--space-3);pointer-events:none}
+.bs-m3[hidden]{display:none}
+/* 読めなかった・描けなかったときの断り。**模式図はそのまま使える**ことまで言う。 */
+.bs-ng3{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  text-align:center;padding:var(--space-5);font-size:var(--fs-base-sm);font-weight:700;
+  color:var(--muted);line-height:1.8;background:var(--card-bg)}
+.bs-ng3[hidden]{display:none}
 
 /* ---------- 刃組表 ---------- */
 .bs-tw{overflow:auto;padding:var(--space-1);min-height:0;flex:1 1 auto}

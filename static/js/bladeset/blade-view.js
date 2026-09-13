@@ -87,11 +87,61 @@
    <div class="bs-body">
     <div class="bs-col">
      <section class="bs-panel bs-figpanel">
-      <div class="bs-ph"><h2>刃組図</h2><span class="bs-ph-note" id="bsFigNote"></span></div>
+      <div class="bs-ph"><h2>刃組図</h2>
+       <!-- 模式図／立体図（§9.377 追補）。**同じ割付から**作るので、どちらを
+            見ても食い違わない。立体図の部品（three.js）は**押したときだけ**
+            取りに行く（起動を遅くしない・回線が無くても模式図は使える）。 -->
+       <div class="bs-seg" id="bsFigTabs">
+        <button type="button" class="bs-chip is-on" data-fig="2d">模式図</button>
+        <button type="button" class="bs-chip" data-fig="3d">立体図</button>
+       </div>
+       <span class="bs-ph-note" id="bsFigNote"></span></div>
       <div class="bs-figrow" id="bsFigRow">
        <div class="bs-side" id="bsOsSide"></div>
-       <div class="bs-figmain"><div class="bs-stage"><svg id="bsStage" viewBox="0 0 1000 300"
-         preserveAspectRatio="xMidYMid meet" role="img" aria-label="刃組図"></svg></div></div>
+       <div class="bs-figmain">
+        <div class="bs-stage"><svg id="bsStage" viewBox="0 0 1000 300"
+         preserveAspectRatio="xMidYMid meet" role="img" aria-label="刃組図"></svg></div>
+        <div class="bs-stage3" id="bsStage3" hidden>
+         <canvas class="bs-c3"></canvas>
+         <span class="bs-t3 bs-t3-os is-os" hidden title="OS 側。刃組ではこちらへ詰めていきます">OS</span>
+         <span class="bs-t3 bs-t3-ds is-ds" hidden title="DS 側。軸端部を外し、こちらから部材を入れます">DS</span>
+         <div class="bs-hud is-tl"><div class="bs-o3" hidden></div></div>
+         <div class="bs-hud is-tr">
+          <button type="button" class="bs-hlp bs-help3" aria-expanded="false">使い方</button>
+          <div class="bs-hpop" hidden>
+           <dl>
+            <dt>段取りの順</dt>
+            <dd>①引き出す（レールで回転テーブルへ）→②軸端部を外す（330mm 送り出し、
+              テーブルの外の土台に降ろす）→③台車を回す（テーブルごと 180°）</dd>
+            <dt>向き</dt>
+            <dd>DS 側から部材を入れ、OS 側へ詰めます。材料の入側は、ラインを正面に見て左です。</dd>
+            <dt>視点</dt>
+            <dd>ドラッグ＝回す／ホイール＝寄る／Shift＋ドラッグ（または右ドラッグ）＝平行移動／
+              「視点を戻す」で元へ</dd>
+            <dt>表示</dt>
+            <dd>下で板・刃・ゴムリング・スペーサーを消せます。点が付いているものが出ています。</dd>
+           </dl>
+          </div>
+         </div>
+         <div class="bs-hud is-bot">
+          <div class="bs-hud-grp"><span class="bs-hud-cap">表示</span>
+           <button type="button" class="bs-tg is-on" data-show="mat" data-show-name="板" aria-pressed="true">板</button>
+           <button type="button" class="bs-tg is-on" data-show="knife" data-show-name="刃" aria-pressed="true">刃</button>
+           <button type="button" class="bs-tg is-on" data-show="ring" data-show-name="ゴムリング" aria-pressed="true">ゴムリング</button>
+           <button type="button" class="bs-tg is-on" data-show="liner" data-show-name="スペーサー" aria-pressed="true">スペーサー</button>
+          </div>
+          <div class="bs-hud-grp"><span class="bs-hud-cap">段取り</span>
+           <button type="button" class="bs-btn is-sm is-on bs-step3-pull">①ラインへ戻す</button>
+           <button type="button" class="bs-btn is-sm is-on bs-step3-open">②軸端部を戻す</button>
+           <button type="button" class="bs-btn is-sm bs-step3-spin">③台車を回す</button>
+           <span class="bs-hud-sep"></span>
+           <button type="button" class="bs-btn is-sm bs-step3-reset">視点を戻す</button>
+          </div>
+         </div>
+         <div class="bs-m3" hidden></div>
+         <div class="bs-ng3" hidden></div>
+        </div>
+       </div>
        <div class="bs-side" id="bsDsSide"></div>
       </div>
      </section>
@@ -271,6 +321,9 @@
   fillRingSelects();
   paintInputs();
   render();
+  /* 画面を出るときに立体図を止めている（`exit`）ので、戻ってきたら選んで
+     あった側へ戻す——利用者が選んだ見方を勝手に変えない。 */
+  figMode(figKind);
   const miss = missingMasters();
   if (miss) showEmptyMissing(miss);
  }
@@ -346,6 +399,11 @@
   renderStep4(res);
   renderOrder();
   drawFigure(res);
+  /* 立体図も**同じ割付（res）**から作る（§9.377 追補）。渡すだけで、
+     組み直すかどうかは向こうが決める（立体図を出していなければ何もしない）。 */
+  if (WL.bladeSolid) {
+   WL.bladeSolid.sync({ st, M, res, ringHex: hexOf });
+  }
   renderTables(res);
   renderEnds(res);
   renderGauges(res);
@@ -545,7 +603,7 @@
   });
   return { back, front };
  }
- const expand = d => d.out.flatMap(([sz, c]) => Array(c).fill(sz));
+ const expand = d => BS().expand(d);
  const widthPx = (V, pieces) => pieces.reduce((a, sz) => a + V.pw(sz), 0);
 
  function partsRun(V, from, limit, cy, pieces, dia, fill, stroke, label, k) {
@@ -673,23 +731,10 @@
   });
   return o;
  }
- /* 材料の並び：OS耳 → 条／屑条 → DS耳。 */
- function materialRun(A, segs) {
-  const items = [];
-  if (A.w.osTrim > 0) items.push({ w: A.w.osTrim, type: 'trim', label: '耳' });
-  segs.forEach(s => items.push(s));
-  if (A.w.dsTrim > 0) items.push({ w: A.w.dsTrim, type: 'trim', label: '耳' });
-  let at = A.matStart;
-  return items.map(sg => { const from = at; at += sg.w; return { sg, from, to: at }; });
- }
- /* 板は丸刃で切られ、切られた条は板厚のぶんだけ上下へ分かれる。条は
-    「区間の狭いほうの側」へ寄る。どちらが狭いかは切断点での刃の左右で決まる。 */
- const matShift = (A, run, i) => {
-  const n = A.sign.length - 1;
-  const lead = run[0].sg.type === 'trim' ? 1 : 0;
-  const j = i - lead;
-  return j >= n ? A.sign[n] : -A.sign[j + 1];
- };
+ /* 材料の並びと、切られた条が上下どちらへ寄るかは**計算の側**が持つ
+    （`blade-core.js`）——模式図と立体図が同じ答えを見るため。 */
+ const materialRun = (A, segs) => BS().materialRun(A, segs);
+ const matShift = (A, run, i) => BS().matShift(A, run, i);
  function drawMaterial(V, A, run) {
   const y = V.midY, h = V.matH, color = widthColorIndex();
   let back = '', front = rowLabel(V, '材料', y, V.PAL.label);
@@ -1206,15 +1251,31 @@
   $('#bsKnife').value = st.knife;
   $('#bsTk').value = st.tk;
  }
+ /* 図面向き／段取り向き。**模式図は見せ方を裏返し、立体図は台車そのものを回す**
+    ——どちらも「DS を手前（左）に置く」という同じ1つの状態から出す（§9.377）。 */
  function setFlip(on) {
   st.flip = !!on;
   const b = $('#bsFlip');
   b.classList.toggle('is-on', st.flip);
   b.textContent = st.flip ? '段取り向き（DS左）' : '図面向き（OS左）';
   $('#bsFigRow').classList.toggle('is-flip', st.flip);
+  if (WL.bladeSolid) WL.bladeSolid.spinTo(st.flip ? Math.PI : 0);
  }
 
  const closePops = () => panel.querySelectorAll('.bs-step').forEach(p => p.classList.remove('is-open'));
+
+ /* 模式図／立体図。**器の出し入れはここが持ち、中身は`WL.bladeSolid`が持つ**。 */
+ let figKind = '2d';
+ function figMode(mode) {
+  figKind = mode === '3d' ? '3d' : '2d';
+  panel.querySelectorAll('#bsFigTabs [data-fig]')
+   .forEach(b => b.classList.toggle('is-on', b.dataset.fig === figKind));
+  panel.querySelector('.bs-stage').hidden = figKind === '3d';
+  $('#bsStage3').hidden = figKind !== '3d';
+  if (!WL.bladeSolid) return;
+  WL.bladeSolid.sync({ st, M, res: LAST, ringHex: hexOf });
+  WL.bladeSolid.setMode(figKind === '3d');
+ }
 
  function wire() {
   /* 数値欄は id をそのまま状態の鍵にする。 */
@@ -1331,6 +1392,19 @@
   });
   /* 図の向き */
   $('#bsFlip').addEventListener('click', () => { setFlip(!st.flip); renderOrder(); scheduleRender(); });
+  /* 模式図／立体図（§9.377 追補）。**押した札はすぐ濃くする**——部品を取りに
+     行くあいだ何も変わらないと、押せていないように見える。読めなかったときは
+     立体図の器の中に理由が出る（模式図へは勝手に戻さない・選んだのは利用者）。 */
+  $('#bsFigTabs').addEventListener('click', e => {
+   const b = e.target.closest('[data-fig]');
+   if (!b) return;
+   figMode(b.dataset.fig);
+  });
+  if (WL.bladeSolid) {
+   WL.bladeSolid.attach($('#bsStage3'), { onSpin: () => {
+    setFlip(!st.flip); renderOrder(); scheduleRender();
+   } });
+  }
   /* 右の段 */
   /* 段の切り替え。**足元の「刃の状態を見る」も同じ道を通る**（入口を2つに
      しない・§9.207）ので、器ではなく`[data-r]`を持つ物で受ける。 */
@@ -1439,6 +1513,9 @@
       同じ作法）。外し忘れると`.bs-shell`が次の画面の上に居座る。 */
    exit: () => {
     document.body.classList.remove('bs-mode');
+    /* 立体図は毎フレーム描くものではないが、**画面を出たら描かせない**
+       （器の大きさが0になり、次に入ったとき比率がおかしくなる）。 */
+    if (WL.bladeSolid && WL.bladeSolid.on) WL.bladeSolid.setMode(false);
     if (panel) { panel.hidden = true; closePops(); }
    }
   });
