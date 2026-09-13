@@ -7,7 +7,7 @@
    画面の作り
      .bs-shell  … 画面まるごと（上の帯＋本体）
        .bs-bar  … ①バリ方向 →②刃・板厚 →③幅構成 →④ゴムリング（決める順）
-       .bs-body … 左＝刃組図＋刃組表 ／ 右＝所要・段取
+       .bs-body … 左＝刃組表（上）＋刃組図（下） ／ 右＝所要・段取
 */
 @layer components {
 
@@ -63,12 +63,17 @@
 /* ---------- 器 ---------- */
 .bs-shell{display:none;flex-direction:column;gap:var(--space-2);min-height:0;flex:1 1 auto}
 body.bs-mode .bs-shell{display:flex}
-.bs-body{display:grid;grid-template-columns:minmax(0,1fr) var(--bs-rail-w,320px);
+/* 右の段（所要・段取）は**準備する物の一覧**なので、チップが折り返しすぎない
+   幅を与える（§9.378、利用者の指示「準備する刃やスペーサやゴムリングなどを
+   最も見やすく」）。図の端の装飾を消したぶんをここへ回した。 */
+.bs-body{display:grid;grid-template-columns:minmax(0,1fr) var(--bs-rail-w,360px);
   gap:var(--space-2);min-height:0;flex:1 1 auto}
 /* **余った縦は図へ渡す**（§CLAUDE 12「意味のない余白を極力なくす」）。
    刃組表は行数なりの高さで止め（多いときだけ中で転がる）、残りを刃組図が使う
    ——ロット1本の構成では表は2行しかないのに、半分を取っていた。 */
-.bs-col{display:grid;grid-template-rows:minmax(0,1fr) fit-content(45%);
+/* **上＝刃組表（先に読むもの）／下＝刃組図（確かめるもの）**（§9.378）。
+   表は行数なりの高さで止め（多いときだけ中で転がる）、残りを図が使う。 */
+.bs-col{display:grid;grid-template-rows:fit-content(55%) minmax(0,1fr);
   gap:var(--space-2);min-height:0}
 .bs-panel{background:var(--card-bg);border:1px solid var(--card-border);
   border-radius:var(--radius-card);display:flex;flex-direction:column;min-height:0;overflow:hidden}

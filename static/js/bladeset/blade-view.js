@@ -113,6 +113,14 @@
    </div>
    <div class="bs-body">
     <div class="bs-col">
+     <!-- 刃組表を上に置く（§9.378、利用者の指示「刃組表を上部に移動して、
+          準備する刃やスペーサやゴムリングなどを最も見やすく」）。
+          **先に読むものを先に置く**——組む前に見るのは「何をどこへ何枚」で、
+          図はそれを確かめるためのもの（§CLAUDE 14 視覚導線と作業導線を一致）。 -->
+     <section class="bs-panel bs-tblpanel">
+      <div class="bs-ph"><h2>刃組表</h2><span class="bs-ph-note">横＝寸法／縦＝上下軸×ロット</span></div>
+      <div class="bs-tw" id="bsTables"></div>
+     </section>
      <section class="bs-panel bs-figpanel">
       <div class="bs-ph"><h2>刃組図</h2>
        <!-- 模式図／立体図（§9.377 追補）。**同じ割付から**作るので、どちらを
@@ -171,10 +179,6 @@
        </div>
        <div class="bs-side" id="bsDsSide"></div>
       </div>
-     </section>
-     <section class="bs-panel bs-tblpanel">
-      <div class="bs-ph"><h2>刃組表</h2><span class="bs-ph-note">横＝寸法／縦＝上下軸×ロット</span></div>
-      <div class="bs-tw" id="bsTables"></div>
      </section>
     </div>
     <aside class="bs-rail" id="bsRail">
