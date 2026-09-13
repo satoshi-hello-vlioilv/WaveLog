@@ -195,7 +195,10 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
        ここが外向きのURLへ戻ったら、回線の有無で立体図が出たり出なかったりする。 */
     rec('取りに行く先は同梱した1本（外を指していない）',
         /^\/static\/vendor\//.test(src3 || '') && !/^https?:/.test(src3 || ''), String(src3));
-    await page.route(src3, r => r.abort());
+    /* 遮断のパターンは**フルURLに当てる**（Playwright の照合はURL全体に対して
+       行われるので、`/static/...` の相対のままでは1つも当たらない）。 */
+    const block3 = '**' + src3;
+    await page.route(block3, r => r.abort());
     await page.click('#bsFigTabs [data-fig="3d"]');
     await W.until(page, () => {
      const e = document.querySelector('.bs-ng3');
@@ -243,7 +246,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('模式図へ戻せて、図はそのまま使える', rects2d > 20, String(rects2d));
     /* 遮断を解いて**実際に描けること**まで見る（§9.378）。同梱したので回線が
        無くても描けるはずで、ここが通らなければ現場でも出ない。 */
-    await page.unroute(src3);
+    await page.unroute(block3);
     await page.click('#bsFigTabs [data-fig="3d"]');
     await W.until(page, () => !!(window.WL.bladeSolid && window.WL.bladeSolid.ready),
                   null, { ms: 30000, what: '立体図の部品を読み終える' });
