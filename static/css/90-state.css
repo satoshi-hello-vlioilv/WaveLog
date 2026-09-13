@@ -580,6 +580,7 @@ body.sc-mode #headerContextSource{display:none}
   .rly-grid-pick>button.is-on{background:var(--nav);color:#fff}
 
   /* 淡い面（5族） */
+  .bs-bhit.is-pick rect,
   .bs-chip.is-on,
   .bs-stage3 .bs-btn.is-on,
   .bs-tg.is-on,
@@ -590,6 +591,7 @@ body.sc-mode #headerContextSource{display:none}
   .sc-pick-all.is-on{background:var(--pale);border-color:var(--teal);color:var(--teal-dark)}
 
   /* 淡い面（字は各自）（3族） */
+  .bs-g tr.is-pick>td,
   .bs-opts label.is-on,
   .bs-sc.is-on,
   .sc-frame-shift.is-on,

@@ -25,6 +25,10 @@
   equipment: '',
   align: 'none', canNk: true, nkWidth: 30,
   knife: 318.2, thick: 1.3, tk: 10, clr: 0.15, ov: 0.2,
+  /* クリアランスは**板厚の10%が基本**（§9.378、利用者の指示）。板厚を変えたら
+     引き直す。手で打った時点で `clrAuto` を落とし、以降は触らない——利用者が
+     入れた値を「保存されていない既定」にしない（§9.367 と同じ考え方）。 */
+  clrAuto: true,
   W: 1170, trimMode: 'even', osTrim: 20,
   lots: [{ name: 'LOT1', w: 279.8, n: 4 }],
   order: [0, 0, 0, 0],
@@ -340,10 +344,27 @@
   if (miss) showEmptyMissing(miss);
  }
 
+ /* 板厚からクリアランスを引き直す。**答えはここ1箇所**。
+    桁は板厚と同じ 0.01 まで（測る側が読める桁に合わせる）。 */
+ const CLEARANCE_RATE = 0.1;
+ function clearanceFromThickness(t) {
+  const v = (+t || 0) * CLEARANCE_RATE;
+  return v > 0 ? +v.toFixed(2) : 0;
+ }
+ function syncClearance() {
+  if (!st.clrAuto) return false;
+  const v = clearanceFromThickness(st.thick);
+  if (!v || v === st.clr) return false;
+  st.clr = v;
+  const el = panel && panel.querySelector('#bsClr');
+  if (el) el.value = String(v);
+  return true;
+ }
+
  /* 予定から持ってきた文脈を当てる。 */
  function applySeed(seed, force) {
   const s = seed || {};
-  if (s.thickness > 0) st.thick = +s.thickness;
+  if (s.thickness > 0) { st.thick = +s.thickness; syncClearance(); }
   if (s.originalWidth > 0) st.W = +s.originalWidth;
   if (Array.isArray(s.lots) && s.lots.length) {
    /* `parent`＝どの親ロットの条か（§9.378）。条の設計は**親ロットで引く**
@@ -405,6 +426,24 @@
   pending = requestAnimationFrame(() => { pending = 0; render(); });
  }
 
+ /* いま選んでいる記号（§9.378）。**描き直すたびに塗り直す**——図も表も
+    毎回作り直すので、印だけ残しておかないと選択が消える。 */
+ let pickedBadge = '';
+ function paintBadgePick() {
+  if (!panel) return;
+  panel.querySelectorAll('[data-badge]').forEach(el => {
+   el.classList.toggle('is-pick', !!pickedBadge && el.dataset.badge === pickedBadge);
+  });
+ }
+ function pickBadge(b) {
+  const next = String(b || '');
+  pickedBadge = (pickedBadge === next) ? '' : next;   /* もう一度押すと解除 */
+  paintBadgePick();
+  if (!pickedBadge) return;
+  const row = panel.querySelector(`#bsTables tr[data-badge="${CSS.escape(pickedBadge)}"]`);
+  if (row && row.scrollIntoView) row.scrollIntoView({ block: 'nearest' });
+ }
+
  function render() {
   if (!M || !IX || !panel) return;
   const res = BS().solve(st, M, IX);
@@ -426,6 +465,7 @@
   renderBom(res);
   renderDiff(res);
   renderSets();
+  paintBadgePick();
  }
 
  /* ---------- 手順ボタンの現在値（畳んだ状態でも今の条件が読める） ---------- */
@@ -563,8 +603,15 @@
  /* ====================== 図 ======================
     アーバー全長を viewBox に写して描く。実寸 mm と図の座標の対応は V が持つ。 */
  const FIG = {
-  vw: 1000, left: 130, right: 932,
-  over: 58, capW: 15, stackOver: 34,
+  vw: 1000, left: 100, right: 990,
+  /* `capW`＝**有効幅の境目に置く青い印**の幅（§9.378、利用者の指示「有効幅の
+     両側に目印の青い図形を置くだけにしてください」）。以前は軸を有効幅より
+     左右へ 58px 張り出させ、その先端に青を置き、さらに内側へ「積みが続く」
+     ことを示す白っぽい張り出し（34px）を入れていた——**青が有効幅の端では
+     なく絵の端に居た**ので、有効幅の範囲が比率どおりに見えず、両端に不要な
+     図形が2種類入って横幅を食っていた。どちらも消し、器を左右へ広げた
+     （中身に使える幅 802 → 890px）。 */
+  capW: 15,
   band: 78, topY: 64, openGap: 120,
   matShare: 0.10, reachShare: 2.6, tailGap: 34,
   minKnifePx: 4, capD: 300, growMax: 2.2, textShare: 0.65
@@ -610,20 +657,25 @@
   return o;
  }
  function rowLabel(V, name, cy, fill) {
-  const room = FIG.left - FIG.over - 14;
+  const room = FIG.left - 14;
   const fs = Math.min(V.fs(19), room / Math.max(1, name.length));
-  return `<text x="${FIG.left - FIG.over - 10}" y="${cy + fs * 0.36}" text-anchor="end"`
+  return `<text x="${FIG.left - 10}" y="${cy + fs * 0.36}" text-anchor="end"`
    + ` font-size="${fs.toFixed(1)}" font-weight="700" fill="${fill || V.PAL.label}">${name}</text>`;
  }
- function drawShafts(V) {
+ /* 軸は**有効幅ちょうど**に描き、その両端に青い印を置く（§9.378）。
+    青＝有効幅の境目、という1つの意味に統一する——絵の端に置くと、有効幅を
+    変えても見た目の比率が変わらず、範囲を読み違える。 */
+ function drawShafts(V, A) {
+  const xa = V.px(0), xb = V.px(A.arborLen);
+  const x0 = Math.min(xa, xb), w = Math.max(2, Math.abs(xb - xa));
   let back = '', front = '';
   [[V.upC, '上軸'], [V.loC, '下軸']].forEach(([cy, name]) => {
-   back += `<rect x="${FIG.left - FIG.over}" y="${cy - V.hOf(V.shaftD) / 2}"`
-    + ` width="${V.PW + FIG.over * 2}" height="${V.hOf(V.shaftD)}" rx="5"`
+   back += `<rect x="${x0}" y="${cy - V.hOf(V.shaftD) / 2}"`
+    + ` width="${w}" height="${V.hOf(V.shaftD)}" rx="5"`
     + ` fill="url(#bsSh)" stroke="${V.PAL['shaft-edge']}"/>`
-    + `<rect x="${FIG.left - FIG.over}" y="${cy - V.hOf(FIG.capD) / 2}" width="${FIG.capW}"`
+    + `<rect x="${x0}" y="${cy - V.hOf(FIG.capD) / 2}" width="${FIG.capW}"`
     + ` height="${V.hOf(FIG.capD)}" rx="3" fill="${V.PAL.cap}"/>`
-    + `<rect x="${FIG.right + FIG.over - FIG.capW}" y="${cy - V.hOf(FIG.capD) / 2}"`
+    + `<rect x="${x0 + w - FIG.capW}" y="${cy - V.hOf(FIG.capD) / 2}"`
     + ` width="${FIG.capW}" height="${V.hOf(FIG.capD)}" rx="3" fill="${V.PAL.cap}"/>`;
    front += rowLabel(V, name, cy);
   });
@@ -681,13 +733,16 @@
       + `<rect x="${x}" y="${cy + ri}" width="${ww}" height="${th}" rx="2" fill="${hex}" stroke="${V.PAL.ink}"/>`;
    at += d * w;
   }
-  const fs = Math.min(V.fs(16), th * 0.86);
-  if (Math.abs(xb - xa) > fs * 1.8 && fs > 6) {
-   o += `<text x="${(xa + xb) / 2}" y="${cy - ri - th / 2 + fs * 0.36}" text-anchor="middle"`
-    + ` font-size="${fs.toFixed(1)}" font-weight="800" fill="#fff" stroke="${V.PAL.ink}"`
-    + ` stroke-width="${(fs * 0.16).toFixed(2)}" style="paint-order:stroke">`
-    + `${isRing ? (z.hold.ringT === 'big' ? '大' : '小') : '指'}</text>`;
-  }
+  /* **落とさない**（§9.378）。大小はラップ構成そのものを表すので、狭い区間でも
+     出す——出ないと「小は省略されているのか」を読む側が確かめられない。
+     大きさは`V.zoneMin`でそろえ、帯の厚みにも収める。 */
+  const cap = Math.min(V.fs(16), th * 0.86);
+  const fit = V.zoneMin > 0 ? (V.zoneMin - 2) / 1.1 : cap;
+  const fs = Math.max(V.fs(7), Math.min(cap, fit));
+  o += `<text x="${(xa + xb) / 2}" y="${cy - ri - th / 2 + fs * 0.36}" text-anchor="middle"`
+   + ` font-size="${fs.toFixed(1)}" font-weight="800" fill="#fff" stroke="${V.PAL.ink}"`
+   + ` stroke-width="${(fs * 0.16).toFixed(2)}" style="paint-order:stroke">`
+   + `${isRing ? (z.hold.ringT === 'big' ? '大' : '小') : '指'}</text>`;
   return o;
  }
  /* 図の上での刃の位置。クリアランスは実寸 0.15mm ほどで、アーバー全長を 800px に
@@ -708,15 +763,14 @@
   const cy = upper ? V.upC : V.loC, side = upper ? 'up' : 'lo', kx = V.KX;
   const lastZ = A.zones.length - 1, lastK = kx.length - 1;
   const d = V.dir, at = i => kxOf(kx, i, upper), half = d * V.kw / 2;
-  const over = (x0, x1) => block(V, (x0 + x1) / 2, cy, Math.abs(x1 - x0), V.spacerD,
-                                 V.PAL.filler, V.PAL['filler-edge']);
-  let svg = over(V.px(0) - d * FIG.stackOver, V.px(0));
-  svg += fillZone(V, V.px(0), at(0) - half, cy, zp.zones[0][side]);
+  /* 有効幅の外へ「積みが続く」ことを示す張り出しは**置かない**（§9.378）——
+     端に置くのは有効幅の境目を示す青い印だけ。 */
+  let svg = fillZone(V, V.px(0), at(0) - half, cy, zp.zones[0][side]);
   for (let j = 0; j < segs.length; j++) {
    svg += fillZone(V, at(j) + half, at(j + 1) - half, cy, zp.zones[j + 1][side]);
   }
   svg += fillZone(V, at(lastK) + half, V.px(A.arborLen), cy, zp.zones[lastZ][side]);
-  return svg + over(V.px(A.arborLen), V.px(A.arborLen) + d * FIG.stackOver);
+  return svg;
  }
  function drawKnives(V) {
   let o = '';
@@ -728,6 +782,20 @@
  }
  /* 構成記号。どの区間がどの組み合わせかを示す、刃組の要。**全区間に置く**
     （「×8」とまとめるとどの区間を指すのか分からなくなる）。 */
+ /* いちばん狭い区間の幅（図の座標）。上下の両軸を見る——片方だけで決めると、
+    もう片方の狭い区間で文字が隣へはみ出す。 */
+ function minZoneSpan(V, segs) {
+  const half = V.dir * V.kw / 2;
+  let m = Infinity;
+  [true, false].forEach(upper => {
+   for (let j = 0; j < segs.length; j++) {
+    const a = kxOf(V.KX, j, upper) + half, b = kxOf(V.KX, j + 1, upper) - half;
+    m = Math.min(m, Math.abs(b - a));
+   }
+  });
+  return Number.isFinite(m) ? m : 0;
+ }
+
  function drawBadges(V, A, bmap) {
   const half = V.dir * V.kw / 2;
   const zoneX = (upper, k) => {
@@ -736,23 +804,34 @@
    const b = (k === n + 1) ? V.px(A.arborLen) : kxOf(V.KX, k, upper) - half;
    return [Math.min(a, b), Math.max(a, b)];
   };
+  /* 記号の字数は塊によって変わりうるので、**いちばん長い記号**で寸法を決める。 */
+  let len = 1;
+  [['up', true], ['lo', false]].forEach(([side]) => {
+   for (let k = 1; k < A.zones.length - 1; k++) {
+    const r = bmap[side][k];
+    if (r) len = Math.max(len, String(r.badge).length);
+   }
+  });
+  const unit = 0.72 * len + 0.7;
+  /* 狭い区間にも同じ形で収まる大きさへ落とす。**下限は決める**——小さくし過ぎると
+     読めない札を出すことになる（読めないなら出さないのと同じ）。 */
+  const fs = Math.max(V.fs(8),
+                      Math.min(V.fs(13), V.zoneMin > 0 ? (V.zoneMin - 3) / unit : V.fs(13)));
+  const w = fs * unit, h = fs * 1.5;
   let o = '';
   [['up', true, V.upC], ['lo', false, V.loC]].forEach(([side, upper, cy]) => {
    for (let k = 1; k < A.zones.length - 1; k++) {
     const r = bmap[side][k];
     if (!r) continue;
-    const [a, b] = zoneX(upper, k), cx = (a + b) / 2, span = b - a;
-    const fs = V.fs(13), w = fs * (0.72 * r.badge.length) + fs * 0.7, h = fs * 1.5;
-    if (span > w + 2) {
-     o += `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}"`
-      + ` rx="${(h * 0.28).toFixed(1)}" fill="${V.PAL.badge}" stroke="#fff" stroke-width="1.2"/>`
-      + `<text x="${cx}" y="${cy + fs * 0.36}" text-anchor="middle" font-size="${fs}"`
-      + ` font-weight="800" fill="#fff">${r.badge}</text>`;
-    } else {
-     o += `<text x="${cx}" y="${cy + fs * 0.36}" text-anchor="middle" font-size="${fs}"`
-      + ` font-weight="800" fill="${V.PAL.badge}" stroke="#fff"`
-      + ` stroke-width="${(fs * 0.22).toFixed(2)}" style="paint-order:stroke">${r.badge}</text>`;
-    }
+    const [a, b] = zoneX(upper, k), cx = (a + b) / 2;
+    /* **記号は押せる的**（§9.378、利用者の指示「ガイダンスのアルファベットを
+       クリックすると対象の刃組の準備対象の表の部分が見やすくなるように連動」）。
+       同じ記号は上下軸の両方に出るので、塊ごとに記号を名乗らせて一緒に光らせる。 */
+    o += `<g class="bs-bhit" data-badge="${esc(r.badge)}">`
+     + `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}"`
+     + ` rx="${(h * 0.28).toFixed(1)}" fill="${V.PAL.badge}" stroke="#fff" stroke-width="1.2"/>`
+     + `<text x="${cx}" y="${cy + fs * 0.36}" text-anchor="middle" font-size="${fs.toFixed(1)}"`
+     + ` font-weight="800" fill="#fff">${r.badge}</text></g>`;
    }
   });
   return o;
@@ -764,7 +843,7 @@
  function drawMaterial(V, A, run) {
   const y = V.midY, h = V.matH, color = widthColorIndex();
   let back = '', front = rowLabel(V, '材料', y, V.PAL.label);
-  let botMost = y;
+  let botMost = y, topMost = y;
   const marks = [], last = run.length - 1;
   const n = A.sign.length - 1, lead = run[0].sg.type === 'trim' ? 1 : 0;
   const half = V.dir * V.kw / 2;
@@ -780,6 +859,7 @@
    const face = strip ? V.PAL.strip : (scrap ? V.PAL.scrap : V.PAL.trim);
    const cy = y + matShift(A, run, i) * h / 2, top = cy - h / 2, bot = cy + h / 2;
    botMost = Math.max(botMost, bot);
+   topMost = Math.min(topMost, top);
    back += `<rect x="${a + 0.6}" y="${top}" width="${Math.max(1.6, w - 1.2)}" height="${h}" rx="1"`
     + ` fill="${face}" stroke="${edge}" stroke-width="1"/>`;
    if (strip || (trim && (i === 0 || i === last))) {
@@ -790,15 +870,30 @@
      + ` font-weight="700" fill="${V.PAL['strip-edge']}">反転</text>`;
    }
   });
+  /* **すべての条に番号を振る**（§9.378、利用者の指示「条の狭いエリアで…
+     表示されていません。板の図の上下に番号をばらす等、隣同士の番号の干渉が
+     無いようにしつつすべてに番号を振ってください」）。
+     以前は `m.w < mfs*1.4` で狭い条の番号を落としており、9条のうち**1個**しか
+     出ていなかった。落とす代わりに**1つ飛ばしで上下へ振り分ける**——同じ段に
+     並ぶ番号は2条ぶん離れるので、隣同士がぶつからない。 */
   const my = Math.max(botMost, y + V.matH * FIG.reachShare) + V.fs(13);
-  const mfs = V.fs(13);
+  const strips = marks.filter(m => m.strip);
+  /* 同じ段に並ぶ隣り合わせは2条ぶん離れる。そのいちばん狭いところに合わせる。 */
+  let pair = Infinity;
+  for (let i = 0; i + 1 < strips.length; i++) pair = Math.min(pair, strips[i].w + strips[i + 1].w);
+  if (!Number.isFinite(pair)) pair = strips.length ? strips[0].w * 2 : V.fs(13) * 2;
+  const mfs = Math.max(V.fs(8), Math.min(V.fs(13), (pair - 4) / 1.4));
+  const upY = Math.min(topMost, y - V.matH * FIG.reachShare) - V.fs(4);
+  let si = 0;
   marks.forEach(m => {
-   if (m.w < mfs * 1.4) return;
+   /* 耳は端にしか無いので下の段に固定。条だけを上下へ振り分ける。 */
+   const below = !m.strip || (si++ % 2 === 0);
+   const ty = below ? my : upY;
    if (m.strip) {
-    front += `<circle cx="${m.cx}" cy="${my - mfs * 0.34}" r="${(mfs * 0.72).toFixed(1)}"`
+    front += `<circle cx="${m.cx}" cy="${ty - mfs * 0.34}" r="${(mfs * 0.72).toFixed(1)}"`
      + ` fill="#fff" stroke="${m.fill}" stroke-width="1.3"/>`;
    }
-   front += `<text x="${m.cx}" y="${my}" text-anchor="middle" font-size="${mfs}"`
+   front += `<text x="${m.cx}" y="${ty}" text-anchor="middle" font-size="${mfs.toFixed(1)}"`
     + ` font-weight="800" fill="${m.fill}">${esc(m.text)}</text>`;
   });
   return { back, front };
@@ -824,7 +919,9 @@
   const textW = t => [...t].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 16 : 9), 0);
   const P = V.PAL;
   const chips = [
-   { t: `クリアランス ${st.clr.toFixed(2)}`, bg: P['chip-clr-bg'], fg: P['chip-clr-fg'], bd: P['chip-clr-bd'] },
+   { t: `クリアランス ${st.clr.toFixed(2)}`
+        + (st.clrAuto ? `（板厚の${Math.round(CLEARANCE_RATE * 100)}%）` : '（手入力）'),
+     bg: P['chip-clr-bg'], fg: P['chip-clr-fg'], bd: P['chip-clr-bd'] },
    { t: `ラップ ${st.ov.toFixed(2)}`, bg: P['chip-ov-bg'], fg: P['chip-ov-fg'], bd: P['chip-ov-bd'] }
   ];
   if (finger) chips.push({ t: 'フィンガー（ゴムリング無し）', bg: P['chip-bg'], fg: P['chip-fg'], bd: P['chip-bd'] });
@@ -865,7 +962,15 @@
   const ratio = box.width > 10 ? Math.max(0.3, Math.min(1.2, box.height / box.width)) : 0.55;
   const V = viewport(res.A, PAL, ratio);
   V.KX = knifePx(V, res.A);
-  const shafts = drawShafts(V), run = materialRun(res.A, res.segs);
+  /* 記号・大小の札は**1つの寸法にそろえて全部出す**（§9.378、利用者の指示
+     「Aだけ特異なデザインを使っています。統一感を出してください」「小って
+     感じが省略されているだけでしょうか」）。以前は区間ごとに幅を見て、狭ければ
+     **落とす／別のデザインへ切り替える**作りだったので、広いOS端の区間だけ
+     枠付きバッジになり（＝Aだけ別物）、狭い区間の大小の札は1枚も出なかった
+     （実測: 大1枚・小0枚・ロット番号1個）。いちばん狭い区間に合わせて寸法を
+     1つ決め、全部同じ形で描く（§CLAUDE 11 群の中はそろえる）。 */
+  V.zoneMin = minZoneSpan(V, res.segs);
+  const shafts = drawShafts(V, res.A), run = materialRun(res.A, res.segs);
   const mat = drawMaterial(V, res.A, run);
   const back = shafts.back
    + drawStack(V, res.A, res.segs, true, res.zp)
@@ -925,7 +1030,8 @@
     + `<b>${r.sg.type === 'strip' ? `<span class="bs-lno">${(r.sg.lotIx | 0) + 1}</span>` : ''}${esc(k)}</b>`
     + `<span class="bs-gw">${r.sg.w.toFixed(2)}</span>`
     + (r.sg.flip ? '<span class="bs-gw is-flip">反転巻き</span>' : '') + '</td>';
-   return `<tr>${head0}<td class="bs-bd"><span class="bs-bdg">${r.badge}</span></td>`
+   return `<tr data-badge="${esc(r.badge)}">${head0}`
+    + `<td class="bs-bd"><span class="bs-bdg">${r.badge}</span></td>`
     + usesCell(r, 'up', true) + usesCell(r, 'lo')
     + Ss.map((x, i2) => `<td class="bs-num${i2 ? '' : ' bs-sep'}">${num(r.c.sp[x])}</td>`).join('')
     + Gs.map((x, i2) => `<td class="bs-num${i2 ? '' : ' bs-sep'}">${num(r.c.G[x])}</td>`).join('')
@@ -1309,7 +1415,14 @@
    ['bsOv', 'ov'], ['bsW', 'W'], ['bsOsTrim', 'osTrim'], ['bsNkWidth', 'nkWidth']]
    .forEach(([id, key]) => {
     const el = panel.querySelector('#' + id);
-    el.addEventListener('input', e => { st[key] = +e.target.value; scheduleRender(); });
+    el.addEventListener('input', e => {
+     st[key] = +e.target.value;
+     /* **板厚を変えたらクリアランスを引き直す**（自動のときだけ）。
+        クリアランスを手で打ったら、以降はその値を尊重する。 */
+     if (key === 'clr') st.clrAuto = false;
+     if (key === 'thick') syncClearance();
+     scheduleRender();
+    });
    });
   $('#bsAlign').addEventListener('change', e => {
    if (e.target.name !== 'bsAl') return;
@@ -1415,6 +1528,13 @@
   });
   document.addEventListener('keydown', e => {
    if (e.key === 'Escape' && panel && !panel.hidden) closePops();
+  });
+  /* 記号を押したら図と表を連動させる。**図でも表でも同じ的**（`[data-badge]`）で
+     受けるので、押す場所によって効き方が変わらない。 */
+  panel.addEventListener('click', e => {
+   const hit = e.target.closest('[data-badge]');
+   if (!hit || !panel.contains(hit)) return;
+   pickBadge(hit.dataset.badge);
   });
   /* 段取りへ戻る（§9.378）。**左メニューと同じ口**を呼ぶ——入口を2つにしない。 */
   $('#bsFrom').addEventListener('click', () => {

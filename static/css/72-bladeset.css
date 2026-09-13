@@ -392,17 +392,39 @@ body.bs-mode .bs-shell{display:flex}
 .bs-oxb{font-size:var(--fs-sm);color:var(--ink);line-height:1.5;margin-top:2px}
 
 /* ---------- 所要のチップ ---------- */
-.bs-ng2{display:flex;gap:var(--space-1);align-items:flex-start;margin-bottom:var(--space-1);
-  border-top:1px solid var(--line);padding-top:var(--space-1)}
+.bs-ng2{display:flex;gap:var(--space-2);align-items:flex-start;
+  border-top:1px solid var(--line);padding:var(--space-1) 0}
+.bs-ng2:first-child{border-top:0}
+/* 群の見出しは**固定幅**（§CLAUDE 9 情報欄は縦にそろえる）。色を付けて
+   「刃／スペーサー／大／小」の切り替わりが目で追えるようにする。 */
 .bs-nh{flex:0 0 5.5rem;font-size:var(--fs-sm);font-weight:700;display:flex;
-  align-items:center;gap:3px}
-.bs-nb{display:flex;flex-wrap:wrap;gap:3px;min-width:0}
+  align-items:center;gap:3px;color:var(--teal-dark);line-height:1.7}
+.bs-nb{display:flex;flex-wrap:wrap;gap:4px;min-width:0;flex:1}
+/* 所要のチップ（§9.378、利用者の指摘「右側のパネルは移植元のHTMLの表と
+   比べるとかなり見た目が変わって見にくい」）。
+   **「寸法 × 員数」の×を必ず出す**——数字が2つ並ぶだけだと、どちらが寸法で
+   どちらが枚数か読めない（`100 16` は「100が16枚」とも「10016」とも読める）。
+   桁をそろえる（`tabular-nums`）のと、員数を濃く・大きくするのも同じ理由で、
+   移植元が持っていたのにこちらへ写し忘れていた。 */
 .bs-nc{display:inline-flex;align-items:baseline;gap:3px;border:1px solid var(--line);
-  border-radius:var(--radius-xs);padding:0 var(--space-1);font-size:var(--fs-micro);
-  background:var(--valid-bg)}
-.bs-nc b{font-size:var(--fs-base-sm)}
+  border-radius:var(--radius-xs);padding:1px var(--space-2);font-size:var(--fs-tiny);
+  font-weight:700;color:var(--muted);background:var(--valid-bg);
+  font-variant-numeric:tabular-nums;cursor:help}
+.bs-nc b{font-size:var(--fs-sm);font-weight:800;color:var(--ink)}
+.bs-nc b::before{content:"×";font-size:.8em;font-weight:700;color:var(--muted);
+  margin-inline-end:1px}
 .bs-nc.is-ng{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
 .bs-nn{font-size:var(--fs-micro);color:var(--muted)}
+/* 記号を押して図と表を結ぶ（§9.378）。**押せることが見た目で分かる**ように
+   カーソルを変え、選んだものは図でも表でも同じ濃さで示す（色だけに頼らず、
+   表の側は行ごと面で示すので、どの行かを数えずに読める）。 */
+.bs-bhit{cursor:pointer}
+.bs-bhit rect{transition:filter .12s}
+.bs-bhit:hover rect{filter:brightness(1.25)}
+.bs-g tr[data-badge]{cursor:pointer}
+.bs-g tr[data-badge]:hover>td{background:var(--pale)}
+.bs-bdg{display:inline-grid;place-items:center;min-width:1.5em;padding:0 3px;
+  border-radius:var(--radius-xs);background:var(--bs-fig-badge);color:#fff;font-weight:800}
 .bs-rchip{display:inline-grid;place-items:center;width:1.2em;height:1.2em;
   border-radius:var(--radius-round);color:#fff;font-size:var(--fs-tiny);font-weight:700;
   border:1px solid var(--line);background:var(--bs-dot,transparent)}
