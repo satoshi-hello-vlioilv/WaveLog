@@ -379,7 +379,6 @@
   const r = M && M.P ? +M.P.clearanceRate : NaN;
   return Number.isFinite(r) && r > 0 ? r : 0.1;
  };
- const CLEARANCE_RATE = 0.1;   /* 率が引けないときの目安（表示にも使う） */
  function clearanceFor(t) {
   const v = (+t || 0) * clearanceRate();
   return v > 0 ? +v.toFixed(2) : 0;
