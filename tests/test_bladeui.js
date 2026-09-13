@@ -190,8 +190,11 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         await page.evaluate(() => !window.THREE
           && ![...document.scripts].some(x => /three/i.test(x.src || ''))));
     const src3 = await page.evaluate(() => WL.bladeSolid && WL.bladeSolid.THREE_SRC);
-    rec('取りに行く先は版まで決めてある（版は1箇所）',
-        /^https:\/\/[^ ]+\/r\d+\/three(\.min)?\.js$/.test(src3 || ''), String(src3));
+    /* **外を指していないこと**（§9.378、利用者の報告「3Dでの表現が表示失敗します」）。
+       CDN から読んでいたときは現場の端末で読み込めなかったので、同梱へ倒した。
+       ここが外向きのURLへ戻ったら、回線の有無で立体図が出たり出なかったりする。 */
+    rec('取りに行く先は同梱した1本（外を指していない）',
+        /^\/static\/vendor\//.test(src3 || '') && !/^https?:/.test(src3 || ''), String(src3));
     await page.route(src3, r => r.abort());
     await page.click('#bsFigTabs [data-fig="3d"]');
     await W.until(page, () => {
@@ -238,7 +241,23 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     const rects2d = await page.evaluate(() =>
      document.querySelectorAll('#bsStage rect').length);
     rec('模式図へ戻せて、図はそのまま使える', rects2d > 20, String(rects2d));
+    /* 遮断を解いて**実際に描けること**まで見る（§9.378）。同梱したので回線が
+       無くても描けるはずで、ここが通らなければ現場でも出ない。 */
     await page.unroute(src3);
+    await page.click('#bsFigTabs [data-fig="3d"]');
+    await W.until(page, () => !!(window.WL.bladeSolid && window.WL.bladeSolid.ready),
+                  null, { ms: 30000, what: '立体図の部品を読み終える' });
+    const drew = await page.evaluate(() => {
+     const cv = document.querySelector('#bsStage3 canvas');
+     const ng = document.querySelector('.bs-ng3');
+     return { w: cv ? cv.width : 0, h: cv ? cv.height : 0,
+              ng: ng && !ng.hidden ? (ng.textContent || '').slice(0, 40) : '' };
+    });
+    rec('同梱した部品で立体図が実際に描ける（回線に依らない）',
+        drew.w > 100 && drew.h > 100 && !drew.ng, JSON.stringify(drew));
+    await page.click('#bsFigTabs [data-fig="2d"]');
+    await W.until(page, () => !document.querySelector('.bs-stage').hidden,
+                  null, { ms: 8000, what: '模式図へ戻る' });
 
     /* ---- 6) 設備停止 → 行き先のチップ ---- */
     const mk = await (await post('/api/schedule/stop-reason-master',
