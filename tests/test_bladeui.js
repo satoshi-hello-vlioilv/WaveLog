@@ -121,7 +121,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         s1.steps.length === 4 && s1.steps.every(t => t && t !== '—'), s1.steps.join(' / '));
 
     /* ---- 3) 幅を変えると、図・表・所要が同じ1回で追従する ---- */
-    await page.click('[data-step-open="3"]');
+    await page.click('[data-step-open="bsV3"]');
     await page.waitForSelector('#bsLotTbl input[data-k="w"]', { timeout: 8000 });
     await page.evaluate(() => {
      const el = document.querySelector('#bsLotTbl input[data-k="w"]');
@@ -143,7 +143,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         kpi.replace(/\s+/g, ' ').slice(0, 60));
 
     /* ---- 4) 板厚をフィンガー切替より下げると保持層が替わる ---- */
-    await page.click('[data-step-open="2"]');
+    await page.click('[data-step-open="bsV2"]');
     await page.waitForSelector('#bsThick', { timeout: 8000 });
     await page.evaluate(() => {
      const el = document.querySelector('#bsThick');

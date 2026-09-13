@@ -210,7 +210,8 @@ STANDARD_COLUMNS = (
     ('ニップ下限', 'REAL'), ('ニップ上限', 'REAL'),
     ('ニップ不適下限', 'REAL'), ('ニップ不適上限', 'REAL'),
     ('上下左右差許容', 'REAL'), ('上下左右差不適', 'REAL'),
-    ('クリアランス既定', 'REAL'), ('ラップ既定', 'REAL'), ('刃厚既定', 'REAL'),
+    ('クリアランス既定', 'REAL'), ('クリアランス率', 'REAL'),
+    ('ラップ既定', 'REAL'), ('刃厚既定', 'REAL'),
     ('中抜き可', 'INTEGER'), ('屑条幅既定', 'REAL'), ('寸法刻み', 'REAL'),
     ('備考', 'TEXT'), ('表示順', 'INTEGER'), ('有効', 'INTEGER'),
 )
@@ -228,7 +229,15 @@ STANDARD_DEFAULTS = {
     'pushHardMin': 0.3, 'pushHardMax': 1.0,
     'nipMin': 0.5, 'nipMax': 1.0, 'nipHardMin': 0.3, 'nipHardMax': 1.3,
     'offsetTol': 0.05, 'offsetHardTol': 0.10,
-    'clearance': 0.15, 'overlap': 0.2, 'bladeThickness': 10.0,
+    # クリアランスは**板厚に対する率**で持つ（§9.378、利用者の指示「実際の
+    # クリアランスは、作業ロットの板厚と材質に合わせて変更になる可能性が若干
+    # あります。目安として板厚の10％としておいてもらい、将来的には材質の条件も
+    # 増える可能性がありますがマスタ化するなどでクリアランスマスタから
+    # クリアランスが常に取れるようにするつもりです」）。
+    # **いまは率の1本だけ**。材質ごとの値が要るようになったら、ここを
+    # `クリアランスマスタ`（板厚×材質）へ差し替える——画面は率を直に読まず
+    # `context` が届けた値を使うので、差し替えの影響はこの1箇所に留まる。
+    'clearance': 0.15, 'clearanceRate': 0.1, 'overlap': 0.2, 'bladeThickness': 10.0,
     'canNakanuki': True, 'scrapWidth': 30.0, 'sizeStep': 0.05,
 }
 # DBの列名 ↔ 画面の鍵。**対応はここだけ**（§9.324 R1 と同じ考え方）。
@@ -243,7 +252,9 @@ _STANDARD_MAP = (
     ('ニップ下限', 'nipMin', 'num'), ('ニップ上限', 'nipMax', 'num'),
     ('ニップ不適下限', 'nipHardMin', 'num'), ('ニップ不適上限', 'nipHardMax', 'num'),
     ('上下左右差許容', 'offsetTol', 'num'), ('上下左右差不適', 'offsetHardTol', 'num'),
-    ('クリアランス既定', 'clearance', 'num'), ('ラップ既定', 'overlap', 'num'),
+    ('クリアランス既定', 'clearance', 'num'),
+    ('クリアランス率', 'clearanceRate', 'num'),
+    ('ラップ既定', 'overlap', 'num'),
     ('刃厚既定', 'bladeThickness', 'num'), ('中抜き可', 'canNakanuki', 'flag'),
     ('屑条幅既定', 'scrapWidth', 'num'), ('寸法刻み', 'sizeStep', 'num'),
 )

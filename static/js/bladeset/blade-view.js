@@ -89,11 +89,23 @@
          （押せるのに何も起きない的を作らない・§CLAUDE 4）。 -->
     <button type="button" class="bs-back" id="bsFrom" hidden></button>
     <span class="bs-skip" id="bsSkip" hidden></span>
+    <!-- 決める → 確かめる → 自動で決まる の順に置く（§CLAUDE 14 視覚導線と
+         作業導線を一致させる）。**群の名前を出す**ので、どれを触ればよいかを
+         色や枠だけに頼らず字でも読める（§CLAUDE 3）。 -->
     <div class="bs-steps" id="bsSteps">
-     ${stepHtml(1, 'バリ方向', 'bsV1', step1Html())}
-     ${stepHtml(2, '刃・板厚', 'bsV2', step2Html())}
-     ${stepHtml(3, '幅構成', 'bsV3', step3Html())}
-     ${stepHtml(4, 'ゴムリング', 'bsV4', step4Html())}
+     <div class="bs-sgrp is-decide"><s class="bs-sgcap">決める</s>
+      ${stepHtml(1, 'バリ方向', 'bsV1', step1Html(), 'decide')}
+      ${stepHtml(2, '幅構成', 'bsV3', step3Html(), 'decide')}
+     </div>
+     <div class="bs-sgrp is-check"><s class="bs-sgcap">確かめる</s>
+      ${stepHtml(0, '刃・板厚', 'bsV2', step2Html(), 'check')}
+     </div>
+     <div class="bs-sgrp is-auto"><s class="bs-sgcap">自動で決まる</s>
+      ${factHtml('方式', 'bsFMethod')}
+      ${factHtml('保持', 'bsFHold')}
+      ${factHtml('クリアランス', 'bsFClr')}
+      ${stepHtml(0, 'ゴムリング', 'bsV4', step4Html(), 'auto')}
+     </div>
     </div>
     <div class="bs-bar-tail">
      <button type="button" class="bs-chip" id="bsFlip" title="刃組は台車のDS側から部材を入れます。段取り向きではDSを左に置き、手を入れる側から見た並びにします">図面向き（OS左）</button>
@@ -203,13 +215,26 @@
   return panel;
  }
 
- const stepHtml = (n, name, valId, body) =>
-  `<div class="bs-step" data-step="${n}">
-    <button type="button" class="bs-step-btn" data-step-open="${n}">
-     <span class="bs-step-no">${n}</span>
+ /* 手順の札（§9.378、利用者の指示「決めるべき項目とそうでない項目がしっかり
+    分かれてわかりやすく」「自動的に間違いなく決まるもの／自動だけど変更の
+    可能性があるもの／手動で決めるものの3種類」）。
+    `kind` は3つだけ:
+      decide … 人が決める（オーダーの要求。番号を振り、いちばん強く出す）
+      check  … 予定・マスタから入るが、変える可能性がある（確かめる）
+      auto   … 入力から一意に決まる（ふだん触らない。番号を振らない）
+    **番号は「決めるもの」から通しで振る**——番号は作業の順番であって、
+    項目の通し番号ではない（自動で決まるものに番号を振ると、順番に触るものだと読める）。 */
+ const stepHtml = (n, name, valId, body, kind) =>
+  `<div class="bs-step is-${kind}" data-step="${valId}">
+    <button type="button" class="bs-step-btn" data-step-open="${valId}">
+     ${n ? `<span class="bs-step-no">${n}</span>` : ''}
      <span class="bs-step-tx"><b>${name}</b><span id="${valId}">—</span></span></button>
     <div class="bs-pop">${body}</div>
    </div>`;
+ /* 自動で一意に決まり、押しても変えられないもの。**押せる顔をさせない**
+    （§CLAUDE 4 押せるのに何も起きないボタンを残さない）。 */
+ const factHtml = (name, valId) =>
+  `<span class="bs-fact"><s>${name}</s><b id="${valId}">—</b></span>`;
 
  const step1Html = () => `
   <h3>製品のバリ方向</h3>
@@ -344,16 +369,24 @@
   if (miss) showEmptyMissing(miss);
  }
 
- /* 板厚からクリアランスを引き直す。**答えはここ1箇所**。
+ /* クリアランスの答えは**ここ1箇所**（§9.378、利用者の指示「目安として板厚の
+    10％としておいてもらい、将来的には材質の条件も増える可能性がありますが
+    マスタ化するなどでクリアランスマスタから常に取れるようにするつもりです」）。
+    いまは率（`刃組基準値マスタ`の`クリアランス率`）×板厚。材質ごとの値が
+    要るようになったら、**この関数の中だけ**をマスタ引きへ差し替える。
     桁は板厚と同じ 0.01 まで（測る側が読める桁に合わせる）。 */
- const CLEARANCE_RATE = 0.1;
- function clearanceFromThickness(t) {
-  const v = (+t || 0) * CLEARANCE_RATE;
+ const clearanceRate = () => {
+  const r = M && M.P ? +M.P.clearanceRate : NaN;
+  return Number.isFinite(r) && r > 0 ? r : 0.1;
+ };
+ const CLEARANCE_RATE = 0.1;   /* 率が引けないときの目安（表示にも使う） */
+ function clearanceFor(t) {
+  const v = (+t || 0) * clearanceRate();
   return v > 0 ? +v.toFixed(2) : 0;
  }
  function syncClearance() {
   if (!st.clrAuto) return false;
-  const v = clearanceFromThickness(st.thick);
+  const v = clearanceFor(st.thick);
   if (!v || v === st.clr) return false;
   st.clr = v;
   const el = panel && panel.querySelector('#bsClr');
@@ -471,8 +504,15 @@
  /* ---------- 手順ボタンの現在値（畳んだ状態でも今の条件が読める） ---------- */
  function renderStepBar(res) {
   const B = BS();
-  $('#bsV1').textContent = `${B.ALIGN_NAME[st.align]}・${B.METHOD_NAME[res.method]}`;
-  $('#bsV2').textContent = `Φ${st.knife.toFixed(1)} / t${st.thick.toFixed(1)}${res.finger ? '・フィンガー' : ''}`;
+  /* **方式は「自動で決まる」の群だけに出す**——以前はバリ方向の値にも
+     並べており、同じことを2箇所で言っていた（§CLAUDE 8）。 */
+  $('#bsV1').textContent = B.ALIGN_NAME[st.align];
+  $('#bsFMethod').textContent = B.METHOD_NAME[res.method];
+  $('#bsFHold').textContent = B.holdName(st, M);
+  $('#bsFClr').textContent = st.clrAuto
+   ? `${st.clr.toFixed(2)}（目安: 板厚の${Math.round(clearanceRate() * 100)}%）`
+   : `${st.clr.toFixed(2)}（手入力）`;
+  $('#bsV2').textContent = `Φ${st.knife.toFixed(1)} / t${st.thick.toFixed(1)}`;
   $('#bsV3').textContent = st.lots.length === 1
    ? `${st.lots[0].w}×${st.lots[0].n}` : `${st.lots.length}ロット`;
   $('#bsV4').textContent = res.finger ? 'フィンガー（不要）'
@@ -920,7 +960,7 @@
   const P = V.PAL;
   const chips = [
    { t: `クリアランス ${st.clr.toFixed(2)}`
-        + (st.clrAuto ? `（板厚の${Math.round(CLEARANCE_RATE * 100)}%）` : '（手入力）'),
+        + (st.clrAuto ? `（目安 板厚の${Math.round(clearanceRate() * 100)}%）` : '（手入力）'),
      bg: P['chip-clr-bg'], fg: P['chip-clr-fg'], bd: P['chip-clr-bd'] },
    { t: `ラップ ${st.ov.toFixed(2)}`, bg: P['chip-ov-bg'], fg: P['chip-ov-fg'], bd: P['chip-ov-bd'] }
   ];
