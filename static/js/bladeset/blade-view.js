@@ -77,6 +77,14 @@
   panel.innerHTML = `
    <div class="bs-empty" id="bsEmpty" hidden></div>
    <div class="bs-bar" id="bsBar">
+    <!-- 出どころ＝**戻り道**（§9.378、利用者の指示「段取りから刃組画面に行った
+         場合、段取りに戻りたいはずですが戻れない」）。どこから来たかと、そこへ
+         戻る手立ては**同じ1つの的**にする（同じ情報を2箇所に出さない・§CLAUDE 8）。
+         読む順の先頭＝戻る、に置く（§CLAUDE 14 視覚導線と作業導線を一致させる）。
+         左メニューから開いたときは戻り先が無いので**ボタンごと出さない**
+         （押せるのに何も起きない的を作らない・§CLAUDE 4）。 -->
+    <button type="button" class="bs-back" id="bsFrom" hidden></button>
+    <span class="bs-skip" id="bsSkip" hidden></span>
     <div class="bs-steps" id="bsSteps">
      ${stepHtml(1, 'バリ方向', 'bsV1', step1Html())}
      ${stepHtml(2, '刃・板厚', 'bsV2', step2Html())}
@@ -84,7 +92,6 @@
      ${stepHtml(4, 'ゴムリング', 'bsV4', step4Html())}
     </div>
     <div class="bs-bar-tail">
-     <span class="bs-from" id="bsFrom" hidden></span>
      <button type="button" class="bs-chip" id="bsFlip" title="刃組は台車のDS側から部材を入れます。段取り向きではDSを左に置き、手を入れる側から見た並びにします">図面向き（OS左）</button>
     </div>
    </div>
@@ -435,9 +442,15 @@
   if (from) {
    from.hidden = !seededFrom;
    if (seededFrom) {
+    from.innerHTML = `<i aria-hidden="true">←</i>`
+     + `<span><s>この予定から</s><b>${esc(seededFrom)}</b></span>`;
+    from.title = `作業スケジュールへ戻ります（${seededFrom}）`;
+   }
+   const skip = panel.querySelector('#bsSkip');
+   if (skip) {
     const why = '分割ありの親ロット、または切断巾が読めない子ロット';
-    from.innerHTML = `この予定から：<b>${esc(seededFrom)}</b>`
-     + (seededSkip ? `<s>／条にしなかった行 ${seededSkip} 件（${esc(why)}）</s>` : '');
+    skip.hidden = !seededSkip;
+    if (seededSkip) skip.textContent = `条にしなかった行 ${seededSkip} 件（${why}）`;
    }
   }
   $('#bsFigNote').textContent = `${B.METHOD_NAME[res.method]}／刃 ${res.A.U.length} 対`;
@@ -1398,6 +1411,20 @@
   });
   document.addEventListener('keydown', e => {
    if (e.key === 'Escape' && panel && !panel.hidden) closePops();
+  });
+  /* 段取りへ戻る（§9.378）。**左メニューと同じ口**を呼ぶ——入口を2つにしない。 */
+  $('#bsFrom').addEventListener('click', () => {
+   const api = WL.scheduleView;
+   if (!api || typeof api.open !== 'function') {
+    alertModal({ title: '作業スケジュールを開けません',
+                 message: '左のメニューの「作業スケジュール」から開いてください。' });
+    return;
+   }
+   Promise.resolve(api.open()).catch(e => {
+    WL.quiet.note('作業スケジュールへ戻れない', e);
+    alertModal({ title: '作業スケジュールへ戻れません',
+                 message: String((e && e.message) || e || '') });
+   });
   });
   /* 図の向き */
   $('#bsFlip').addEventListener('click', () => { setFlip(!st.flip); renderOrder(); scheduleRender(); });

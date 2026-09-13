@@ -93,8 +93,23 @@ body.bs-mode .bs-shell{display:flex}
 .bs-step-tx{display:flex;flex-direction:column;line-height:1.2;min-width:0}
 .bs-step-tx b{font-size:var(--fs-micro);color:var(--muted);font-weight:600;white-space:nowrap}
 .bs-step-tx span{font-size:var(--fs-base-sm);font-weight:700;white-space:nowrap}
-.bs-from{font-size:var(--fs-sm);color:var(--muted)}
-.bs-from b{color:var(--ink)}
+/* 出どころ＝戻り道（§9.378）。**押せる物の顔**にする——読み取り専用の字と
+   同じ見た目だと、押せることに気づけない（§CLAUDE 10 の裏返し）。 */
+.bs-back{display:inline-flex;align-items:center;gap:var(--space-2);cursor:pointer;font:inherit;
+  font-size:var(--fs-sm);color:var(--muted);text-align:start;white-space:nowrap;
+  background:var(--valid-bg);border:1px solid var(--line);border-radius:var(--radius-sm);
+  padding:var(--space-1) var(--space-3)}
+.bs-back[hidden]{display:none}
+.bs-back:hover{border-color:var(--teal);color:var(--teal-dark)}
+.bs-back i{font-style:normal;font-weight:800;font-size:var(--fs-base)}
+.bs-back span{display:flex;flex-direction:column;line-height:1.15;min-width:0}
+.bs-back s{text-decoration:none;font-size:var(--fs-micro)}
+.bs-back b{color:var(--ink);overflow:hidden;text-overflow:ellipsis}
+/* 渡せなかった行の断り。**橙は「設定要」の意味で使う**（§9.338）。 */
+.bs-skip{font-size:var(--fs-micro);font-weight:700;color:var(--warn-fg);
+  background:var(--warn-bg);border:1px solid var(--warn-border);
+  border-radius:var(--radius-sm);padding:2px var(--space-2)}
+.bs-skip[hidden]{display:none}
 
 /* ---------- 手順のポップオーバー ---------- */
 .bs-pop{position:absolute;inset-inline-start:0;top:calc(100% + var(--space-1));

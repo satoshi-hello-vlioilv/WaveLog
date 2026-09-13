@@ -310,6 +310,22 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('読めない項目を0で埋めていない',
         !!carried && carried.W > 0 && carried.thick > 0, JSON.stringify(carried));
 
+    /* 出どころは**戻り道**（§9.378、利用者の指示「段取りから刃組画面に行った
+       場合、段取りに戻りたいはずですが戻れない」）。字だけでなく**押せる的**で
+       あること、押すと作業スケジュールへ戻ることを見る。 */
+    const backTag = await page.evaluate(() => {
+     const e = document.querySelector('#bsFrom');
+     return e ? e.tagName : '';
+    });
+    rec('出どころが押せる的になっている（戻り道を兼ねる）', backTag === 'BUTTON', backTag);
+    await page.click('#bsFrom');
+    await W.until(page, () => document.body.classList.contains('sc-mode')
+                  && !!document.querySelector('#bladeSetPanel[hidden]'),
+                  null, { ms: 20000, what: '作業スケジュールへ戻る' });
+    rec('押すと作業スケジュールへ戻る（刃組の画面は閉じる）',
+        await page.evaluate(() => document.body.classList.contains('sc-mode')
+          && !document.body.classList.contains('bs-mode')));
+
     /* ---- 8) 分割ありの親ロットは条にならない（§9.378） ----
        利用者の指示「分割ロットの場合、測定画面では親ロットは測定データ格納
        対象ではない…刃組もおなじです」。割った後の材料はすべて子ロットで、
