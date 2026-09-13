@@ -139,6 +139,48 @@ def bladeset_standard_delete():
 
 
 # =========================================================================
+# 条の設計（測定より前に決めておく・§9.378）
+# =========================================================================
+# 読むのは**測定と刃組の両方**なので GET は誰でも通す（見るだけで壊れない）。
+# 書くのは段取りをする人なので `access_mode` で段（`schedule`）を要求する。
+@bp.get('/api/bladeset/strip-design')
+@api_guard('条の設計の読込に失敗しました')
+def bladeset_design_list():
+ eq = _eq()
+ lot = str(request.args.get('lot') or '').strip()
+ if lot:
+  hit = _op_read(lambda c: bs.design_for(c, eq, lot))
+  return jsonify(ok=True, equipment=eq, lot=lot, item=hit)
+ return jsonify(ok=True, equipment=eq,
+                items=_op_read(lambda c: bs.design_rows(c, False, eq or None)))
+
+
+@bp.post('/api/bladeset/strip-design')
+@api_guard('条の設計の保存に失敗しました', bad=ValueError)
+def bladeset_design_save():
+ x = body({'equipment': any_, 'lot': any_, 'strips': any_, 'coilWidth': any_,
+           'thickness': any_, 'groups': any_, 'note': any_, 'at': any_})
+ uid = request_user_id(x)
+ new_id, made = _op_read(lambda c: bs.design_upsert(
+     c, uid, equipment=x.get('equipment'), lot=x.get('lot'),
+     strips=x.get('strips'), coil_width=x.get('coilWidth'),
+     thickness=x.get('thickness'), groups=x.get('groups'),
+     note=x.get('note'), at=x.get('at')))
+ return jsonify(ok=True, id=new_id, created=made,
+                message='条の設計を記録しました。' if made else '条の設計を上書きしました。')
+
+
+@bp.post('/api/bladeset/strip-design/delete')
+@api_guard('条の設計の削除に失敗しました')
+def bladeset_design_delete():
+ x = body({'id': any_})
+ if x.get('id') in (None, ''):
+  return jsonify(error='削除対象IDがありません。'), 400
+ _op_read(lambda c: bs.design_delete(c, int(x['id'])))
+ return jsonify(ok=True, message='条の設計を消しました。')
+
+
+# =========================================================================
 # 刃組履歴（台車差分の材料）
 # =========================================================================
 @bp.get('/api/bladeset/history')

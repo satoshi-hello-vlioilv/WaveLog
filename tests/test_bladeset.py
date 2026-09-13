@@ -1,7 +1,7 @@
 """test_bladeset.py: 刃組マスタと設備停止の連携機能（§9.377）
 
 固定するのは5つ:
-  1. **6枚の表が`TableDef`から作られ**、読み書きが往復する（部分更新で他の列が消えない）
+  1. **7枚の表が`TableDef`から作られ**、読み書きが往復する（部分更新で他の列が消えない）
   2. **ゴムリングは「同じ色は同じ外径」**——外径を直すとその色ぜんぶがそろい、
      色名から外径を**起こさない**（研磨で径が減っても呼び名は変わらない）
   3. **基準値は「既定はコード・上書きだけがDB」**——登録が無い設備でも値が出る
@@ -47,15 +47,15 @@ def _reject(fn):
 EQ = 'テスト設備A'
 
 # ---------------------------------------------------------------------------
-# 1. 6枚の表
+# 1. 7枚の表
 # ---------------------------------------------------------------------------
 c = fresh()
 made = bs.ensure_tables(c)
-rec('まっさらなDBで6枚できる', len(made) == 6, str(made))
+rec('まっさらなDBで7枚できる', len(made) == 7, str(made))
 have = set(tables(c))
 rec('表の名前が定義どおり',
     {d.table for d in (bs.BLADE_DEF, bs.SPACER_DEF, bs.RING_DEF, bs.FINGER_DEF,
-                       bs.STANDARD_DEF, bs.HISTORY_DEF)} <= have,
+                       bs.STANDARD_DEF, bs.HISTORY_DEF, bs.DESIGN_DEF)} <= have,
     str(sorted(have)))
 # CREATE に全列が入っている（§9.324 R1。後から足す口に頼らない）
 for d in (bs.BLADE_DEF, bs.SPACER_DEF, bs.RING_DEF, bs.FINGER_DEF, bs.STANDARD_DEF):
@@ -223,6 +223,37 @@ rec('連携機能の語彙はサーバーの1箇所',
     len(sr.STOP_LINK_FEATURES) >= 2
     and all({'key', 'label', 'note'} <= set(f) for f in sr.STOP_LINK_FEATURES),
     str([f['key'] for f in sr.STOP_LINK_FEATURES]))
+
+# ---------------------------------------------------------------------------
+# 条の設計（§9.378）。**1設備1ロット1行**で、空の設計は受け付けない。
+# ---------------------------------------------------------------------------
+G1 = [{'lot': 'C1', 'count': 2, 'width': 65.0},
+      {'lot': 'C2', 'count': 3, 'width': 50.0}]
+did, made1 = bs.design_upsert(c, 'u', equipment=EQ, lot='P1', strips=5,
+                              coil_width=1200, thickness=1.6, groups=G1)
+rec('条の設計を記録できる', made1 and did > 0, f'id={did} made={made1}')
+got = bs.design_for(c, EQ, 'P1')
+rec('記録した設計をロットで引ける',
+    got and got['strips'] == 5 and got['coilWidth'] == 1200
+    and [g['lot'] for g in got['groups']] == ['C1', 'C2'], str(got))
+G2 = [{'lot': 'C1', 'count': 5, 'width': 65.0}]
+did2, made2 = bs.design_upsert(c, 'u', equipment=EQ, lot='P1', strips=5,
+                               coil_width=1200, thickness=1.6, groups=G2)
+rec('同じロットの2行目を作らない（上書き）', did2 == did and not made2,
+    f'id={did2} made={made2}')
+rec('上書きが効いている',
+    [g['count'] for g in bs.design_for(c, EQ, 'P1')['groups']] == [5],
+    str(bs.design_for(c, EQ, 'P1')['groups']))
+rec('設計していないロットは None（既定を作らない）',
+    bs.design_for(c, EQ, '居ないロット') is None)
+rec('空の条の設計は受け付けない',
+    _reject(lambda: bs.design_upsert(c, 'u', equipment=EQ, lot='P9', groups=[])))
+rec('親ロット番号なしは受け付けない',
+    _reject(lambda: bs.design_upsert(c, 'u', equipment=EQ, lot='', groups=G1)))
+rec('「すべての設備」は受け付けない',
+    _reject(lambda: bs.design_upsert(c, 'u', equipment='*', lot='P1', groups=G1)))
+bs.design_delete(c, did)
+rec('消すと引けなくなる', bs.design_for(c, EQ, 'P1') is None)
 
 # ---- 自己確認: 網が素通りしていない ----
 rec('自己確認: 断る網は、断らない呼び出しでは真にならない',

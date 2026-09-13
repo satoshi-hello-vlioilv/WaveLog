@@ -141,6 +141,8 @@ _ENDPOINT_EXTRA_MODES={
  # 刃組の記録(§9.377)。**現場の端末からも押せる**——刃組を終えたことを
  # 記録するのはラインに居る人で、その端末はscheduleモードで動いている。
  # 書くのは`刃組履歴マスタ`だけ（部材マスタ・基準値はeditのまま）。
+ 'masters.bladeset_design_save':{'schedule'},
+ 'masters.bladeset_design_delete':{'schedule'},
  'masters.bladeset_history_add':{'schedule'},
  'masters.bladeset_history_delete':{'schedule'},
  'masters.schedule_column_master_save':{'schedule'},

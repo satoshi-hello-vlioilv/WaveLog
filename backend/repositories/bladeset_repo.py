@@ -250,6 +250,28 @@ _STANDARD_MAP = (
 
 
 # ---------------------------------------------------------------------------
+# 7 条設計マスタ（条の設計を**測定より前に**決めておく控え）
+# ---------------------------------------------------------------------------
+# 利用者の指示（§9.378）:「測定時のロット情報の扱いと同じで、作業スケジュールの
+# 次のタイミングで作業するロットの情報から読み取り、測定メイン画面で行う
+# 『条の設計』を事前に行う。記録しておき、測定作業の際は読み込んで使える
+# ようにする。この『条の設計』を行ったロットの条の並びで刃組を行う。」
+#
+# **1設備＋1親ロットで1行**（同じロットの設計は上書き）——2行あると、刃組と
+# 測定がどちらを見ればよいか決まらない。明細（どの子ロットの条を何本、どの順で）
+# は**ロットごとに形が変わるのでJSONのまま**持つ（刃組履歴マスタと同じ理由）。
+# 条数・元コイル幅・板厚だけは**引いて見るもの**なので列に出す。
+DESIGN_TABLE = '条設計マスタ'
+DESIGN_COLUMNS = (
+    ('設備名', 'TEXT'), ('親ロット番号', 'TEXT'), ('条数', 'INTEGER'),
+    ('元コイル幅', 'REAL'), ('板厚', 'REAL'),
+    ('明細JSON', 'TEXT'), ('摘要', 'TEXT'), ('記録日時', 'TEXT'), ('有効', 'INTEGER'),
+)
+DESIGN_DEF = TableDef(DESIGN_TABLE, '条設計ID', DESIGN_COLUMNS,
+                      order_by='[設備名],[親ロット番号],[条設計ID] DESC')
+
+
+# ---------------------------------------------------------------------------
 # 6 刃組履歴マスタ
 # ---------------------------------------------------------------------------
 # ラインは2台の台車を交互に使う。直前の刃組はラインで稼働中なので、
@@ -268,11 +290,12 @@ HISTORY_KEEP = 20        # 1設備あたり残す件数（古いものから捨�
 # ---------------------------------------------------------------------------
 # 表を作る・足す
 # ---------------------------------------------------------------------------
-_ALL_DEFS = (BLADE_DEF, SPACER_DEF, RING_DEF, FINGER_DEF, STANDARD_DEF, HISTORY_DEF)
+_ALL_DEFS = (BLADE_DEF, SPACER_DEF, RING_DEF, FINGER_DEF, STANDARD_DEF,
+             HISTORY_DEF, DESIGN_DEF)
 
 
 def ensure_tables(c):
-    """6枚をまとめて用意する。**足すのは `add_missing()` の1箇所**（§9.315）。"""
+    """7枚をまとめて用意する。**足すのは `add_missing()` の1箇所**（§9.315）。"""
     have = tables(c)
     created = []
     for d in _ALL_DEFS:
@@ -369,6 +392,23 @@ def _history_row(d):
             'enabled': _alive(d['有効'])}
 
 
+def _design_row(d):
+    """条の設計1件。**明細は読めなければ空**——壊れたJSONで画面ごと止めない
+    （黙って捨てずに理由を残すのは `quiet` の役目だが、ここは repo なので
+    空へ倒し、件数で気づけるようにする）。"""
+    try:
+        groups = json.loads(d['明細JSON'] or '[]')
+    except (ValueError, TypeError):
+        groups = []
+    if not isinstance(groups, list):
+        groups = []
+    return {'id': d['条設計ID'], 'equipment': _txt(d['設備名']),
+            'lot': _txt(d['親ロット番号']), 'strips': _int(d['条数']) or 0,
+            'coilWidth': _num(d['元コイル幅']), 'thickness': _num(d['板厚']),
+            'groups': groups, 'note': _txt(d['摘要']), 'at': _txt(d['記録日時']),
+            'enabled': _alive(d['有効'])}
+
+
 def _rows(c, d, to_row, include_disabled=False, equipment=None):
     _ensure(c, d)
     out = []
@@ -427,6 +467,47 @@ def standard_for(c, equipment):
 # ---------------------------------------------------------------------------
 # 書く
 # ---------------------------------------------------------------------------
+def design_rows(c, include_disabled=False, equipment=None):
+    return _rows(c, DESIGN_DEF, _design_row, include_disabled, equipment)
+
+
+def design_for(c, equipment, lot):
+    """その設備・その親ロットの条の設計。**無ければ None**（既定を作らない
+    ——「設計していない」と「こう設計した」を混ぜない）。"""
+    key = _txt(lot)
+    if not key:
+        return None
+    for x in design_rows(c, False, equipment):
+        if x['lot'] == key:
+            return x
+    return None
+
+
+def design_upsert(c, uid, equipment=None, lot=None, strips=None,
+                  coil_width=None, thickness=None, groups=None, note=None,
+                  at=None):
+    """条の設計を書く。**1設備1ロット1行**——同じロットの2行目は作らせない
+    （刃組と測定でどちらが効くのか決まらなくなる）。"""
+    eq = _check_equipment(equipment)
+    key = _txt(lot)
+    if not key:
+        raise ValueError('親ロット番号を渡してください。')
+    if not isinstance(groups, list) or not groups:
+        raise ValueError('条の設計が空です。条を1本以上決めてください。')
+    _ensure(c, DESIGN_DEF)
+    hit = design_for(c, eq, key)
+    vals = {'設備名': eq, '親ロット番号': key,
+            '条数': _int(strips), '元コイル幅': _num(coil_width),
+            '板厚': _num(thickness),
+            '明細JSON': json.dumps(groups, ensure_ascii=False),
+            '摘要': _txt(note) or None, '記録日時': _txt(at) or None, '有効': -1}
+    return _put(c, DESIGN_DEF, hit['id'] if hit else None, _only(vals), uid, eq)
+
+
+def design_delete(c, design_id):
+    _delete(c, DESIGN_DEF, int(design_id))
+
+
 def _check_equipment(equipment):
     eq = _txt(equipment)
     if not eq:
@@ -470,7 +551,10 @@ def _put(c, d, row_id, vals, uid, equipment):
         d.update(c, row_id, vals, uid)
         return int(row_id), False
     vals = dict(vals)
-    vals.setdefault('表示順', _next_order(c, d, equipment))
+    # **その表に無い列は足さない**——`表示順` を持たない表（条設計マスタのように
+    # 並びが設備＋ロットで決まるもの）へ既定を入れると `TableDef` が弾く。
+    if '表示順' in d.names:
+        vals.setdefault('表示順', _next_order(c, d, equipment))
     vals.setdefault('有効', -1)
     return d.insert(c, vals, uid), True
 

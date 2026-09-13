@@ -711,6 +711,48 @@
      込み)はレコード自身(S.measure.settings.splitSourcesCache)へ保存
      対象として保持し、次回以降はそれをそのまま使って再計算・再問い合わせ
      を省略する(force指定時のみ強制的に取得し直す)。 */
+  /* ---- 刃組で決めた条の設計を読む（§9.378、利用者の指示） ----
+     「測定メイン画面で行う『条の設計』を事前に行う。記録しておき、測定作業の
+     際は読み込んで使えるようにする」。刃組ガイダンスが**親ロット1件ごと**に
+     `条設計マスタ`へ残しているので、測定は開いたロットで引くだけ。
+     **無ければ今までどおり**（既定の敷き詰め）——設計していないことと、
+     こう設計したことを混ぜない。 */
+  let designCache={lot:'',groups:null};
+  async function ensureDesignLoaded(){
+    const lot=String(S.measure?.basic?.lotNo||'').trim();
+    if(!lot){designCache={lot:'',groups:null};return null}
+    if(designCache.lot===lot)return designCache.groups;
+    designCache={lot,groups:null};
+    const eq=String(S.measure?.basic?.equipment||currentConfiguredEquipment?.()||'').trim();
+    try{
+      const r=await api('/api/bladeset/strip-design?equipment='
+        +encodeURIComponent(eq)+'&lot='+encodeURIComponent(lot));
+      const g=r&&r.item&&Array.isArray(r.item.groups)?r.item.groups:null;
+      if(designCache.lot===lot)designCache.groups=(g&&g.length)?g:null;
+    }catch(e){
+      /* 読めなくても測定は続けられる（既定の敷き詰めへ倒れる）。 */
+      WL.quiet.note('刃組で決めた条の設計を読めない（既定の並びで出す）',e);
+    }
+    return designCache.groups;
+  }
+  /* 記録された設計を「条ごとのロット」の並びへ開く。**候補に無いロットが
+     混ざっていたら使わない**——測り先が実在しない条を作るより、既定へ倒れる
+     ほうが安全（§9.231 と同じ考え方）。 */
+  function designFillSequence(sources,total){
+    const g=designCache.groups;
+    if(!Array.isArray(g)||!g.length||!total)return null;
+    const have=new Set((sources||[]).map(x=>String(x.lot)));
+    const seq=[];
+    for(const x of g){
+      const lot=String(x&&x.lot||'');
+      if(!have.has(lot))return null;
+      for(let k=0;k<Math.max(0,x.count|0)&&seq.length<total;k++)seq.push(lot);
+    }
+    if(!seq.length)return null;
+    while(seq.length<total)seq.push(null);
+    return seq;
+  }
+
   async function ensureSplitCandidatesLoaded(force){
     const key=currentSplitCacheKey();
     if(!force&&splitSourcesCache&&splitSourcesCacheKey===key)return splitSourcesCache;
@@ -726,6 +768,9 @@
     if(splitSourcesLoading)return splitSourcesLoading;
     splitSourcesLoading=(async()=>{
       try{
+        /* 条の設計は候補と**同じ口**で取る——別々に取りに行くと、片方だけ
+           届いた状態で並びを決めてしまう。 */
+        await ensureDesignLoaded();
         const sources=await buildSplitSources();
         splitSourcesCache=sources;splitSourcesCacheKey=key;
         if(S.measure){
@@ -822,7 +867,9 @@
       return{seq:m.splitSequence,confirmed:m.splitConfirmed};
     }
     if(total>0&&!seq.some(Boolean)){
-      m.splitSequence=defaultFillSequence(sources,total);
+      /* **刃組で決めた並びがあればそれを使う**（§9.378）。無ければ今までどおり
+         候補の順で敷き詰める。 */
+      m.splitSequence=designFillSequence(sources,total)||defaultFillSequence(sources,total);
       m.splitConfirmed=Array(total).fill(false);
     }else{
       ensureConfirmedLength(total);

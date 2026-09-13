@@ -355,8 +355,13 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         !/P1|P2/.test(names), names);
     rec('条になるのは子ロット。幅は切断巾・本数は条数',
         JSON.stringify(seed.lots) === JSON.stringify(
-         [{ name: 'C1', w: 65, n: 2 }, { name: 'C2', w: 50, n: 3 }, { name: 'N1', w: 80, n: 2 }]),
+         [{ name: 'C1', w: 65, n: 2, parent: 'P1' },
+          { name: 'C2', w: 50, n: 3, parent: 'P1' },
+          { name: 'N1', w: 80, n: 2, parent: 'N1' }]),
         JSON.stringify(seed.lots));
+    rec('どの親ロットの条かまで運ぶ（条の設計は親ロットで引くため）',
+        (seed.lots || []).every(L => !!L.parent),
+        (seed.lots || []).map(L => `${L.name}<-${L.parent}`).join(','));
     rec('板厚・元コイル幅は親の行からも読む',
         seed.thickness === 1.6 && seed.originalWidth === 1200,
         `t=${seed.thickness} W=${seed.originalWidth}`);

@@ -753,6 +753,36 @@
 
  /* 刃組を終えた記録（台車差分の材料）。**部材の顔ぶれごとに形が変わる**ので、
     サーバーへは`detail`としてそのまま預ける。 */
+ /* ---- 条の設計（§9.378） ----
+    `st.order`（OS側から順に、どのロットの条か）を**続きの塊**へ畳む。
+    測定の条割（`lot-split.js` の `splitGroups`）と同じ形（ロットと本数の並び）
+    なので、記録したものをそのまま測定が読める。 */
+ function stripDesign(st) {
+  const runs = [];
+  (st.order || []).forEach(ix => {
+   const L = (st.lots || [])[ix];
+   if (!L) return;
+   const last = runs[runs.length - 1];
+   if (last && last.lot === String(L.name || '')) { last.count += 1; return; }
+   runs.push({ parent: String(L.parent || L.name || ''), lot: String(L.name || ''),
+               count: 1, width: +L.w || 0 });
+  });
+  return runs;
+ }
+ /* **記録は親ロット1件ごと**——測定が開くのは親ロット1件なので、そこで引ける
+    形にしておく（分割の無いロットは自分自身が親）。 */
+ function designByParent(st) {
+  const m = new Map();
+  stripDesign(st).forEach(r => {
+   const k = r.parent || r.lot;
+   const g = m.get(k) || { parent: k, groups: [], strips: 0 };
+   g.groups.push({ lot: r.lot, count: r.count, width: r.width });
+   g.strips += r.count;
+   m.set(k, g);
+  });
+  return [...m.values()];
+ }
+
  function snapshot(st, M, g) {
   const ring = {};
   Object.keys(g.ring).forEach(od => Object.keys(g.ring[od]).forEach(sz => {
@@ -770,6 +800,7 @@
   buildSegs, widths, buildLayout, buildFiller, fillWith, planZones,
   compose, buildRows, endRows, badgeMap, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum,
+  stripDesign, designByParent,
   expand, materialRun, matShift,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP
  };

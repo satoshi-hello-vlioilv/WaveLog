@@ -4768,8 +4768,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   const all=list||[];
   const n=v=>{const x=Number(v);return Number.isFinite(x)&&x>0?x:null};
   /* 子がぶら下がっている親を先に拾う（子は`parentId`付きで親の直後に居る）。 */
-  const kidded=new Set();
-  all.forEach(x=>{if(x&&x.parentId!=null)kidded.add(String(x.parentId))});
+  const kidded=new Set(),lotById=new Map();
+  all.forEach(x=>{
+   if(!x)return;
+   lotById.set(String(x.id),String(x.lotNo||x.title||''));
+   if(x.parentId!=null)kidded.add(String(x.parentId));
+  });
   const lots=[];
   let thickness=null,originalWidth=null,total=0,skipped=0;
   for(const x of all.slice(Math.max(0,from))){
@@ -4791,7 +4795,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
    if(!w){if(child)skipped++;continue}   // 切断巾が読めない子は渡さない（0で埋めない）
    if(originalWidth&&total+w*cnt>originalWidth+0.001)break;   // 元コイルに載らない
    total+=w*cnt;
-   lots.push({name:String(x.lotNo||x.title||('LOT'+(lots.length+1))),w,n:cnt});
+   /* **どの親ロットの条か**まで運ぶ（§9.378）。条の設計は親ロットで引くので
+      （測定が開くのは親ロット1件）、ここで落とすと後から辿れない。 */
+   const parent=child?(lotById.get(String(x.parentId))||''):'';
+   lots.push({name:String(x.lotNo||x.title||('LOT'+(lots.length+1))),w,n:cnt,
+              parent:parent||String(x.lotNo||x.title||'')});
    if(lots.length>=9)break;
   }
   return {thickness,originalWidth,lots,skipped};

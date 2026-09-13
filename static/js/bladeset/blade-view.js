@@ -346,7 +346,11 @@
   if (s.thickness > 0) st.thick = +s.thickness;
   if (s.originalWidth > 0) st.W = +s.originalWidth;
   if (Array.isArray(s.lots) && s.lots.length) {
-   st.lots = s.lots.map(L => ({ name: String(L.name || 'LOT'), w: +L.w || 0, n: Math.max(1, L.n | 0) }))
+   /* `parent`＝どの親ロットの条か（§9.378）。条の設計は**親ロットで引く**
+      ので、ここで落とすと記録先が決められない。分割の無いロットは自分自身。 */
+   st.lots = s.lots.map(L => ({ name: String(L.name || 'LOT'), w: +L.w || 0,
+                                n: Math.max(1, L.n | 0),
+                                parent: String(L.parent || L.name || '') }))
     .filter(L => L.w > 0);
    if (!st.lots.length) st.lots = [{ name: 'LOT1', w: 100, n: 1 }];
    st.order = [];
@@ -1516,12 +1520,41 @@
     body: JSON.stringify(withUserId({ equipment: st.equipment, carriage: st.carriage,
                                       at, note, detail }))
    });
-   showToast('刃組の記録', `台車 ${st.carriage} として残しました`, 3800);
+   /* **条の設計も同じ瞬間に残す**（§9.378）——「この条の並びで刃組をした」と
+      「測定でこの条を測る」は同じ1つの決定なので、別々の操作にしない。
+      記録は**親ロット1件ごと**（測定が開くのは親ロット1件）。 */
+   const designs = await saveDesigns();
+   showToast('刃組の記録',
+             `台車 ${st.carriage} として残しました`
+             + (designs ? `／条の設計 ${designs} ロット分` : ''), 3800);
    await loadContext(st.equipment);
    render();
   } catch (e) {
    await alertModal('刃組の記録を残せませんでした：' + (e && e.message ? e.message : e));
   }
+ }
+ /* 条の設計を親ロットごとに書く。**失敗しても刃組の記録は残す**——先に書いた
+    履歴まで巻き戻すと、組んだ事実が消える。失敗は理由を残して件数に数えない。 */
+ async function saveDesigns() {
+  const at = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  const list = BS().designByParent(st);
+  let done = 0;
+  for (const d of list) {
+   if (!d.parent || !d.groups.length) continue;
+   try {
+    await api('/api/bladeset/strip-design', {
+     method: 'POST', headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify(withUserId({
+      equipment: st.equipment, lot: d.parent, strips: d.strips,
+      coilWidth: st.W, thickness: st.thick, groups: d.groups, at,
+      note: `刃組（台車 ${st.carriage}）` }))
+    });
+    done += 1;
+   } catch (e) {
+    WL.quiet.note(`条の設計を記録できない（${d.parent}）`, e);
+   }
+  }
+  return done;
  }
  async function deleteHistory(id) {
   const ok = await confirmModal({ title: '刃組の記録を消します',
