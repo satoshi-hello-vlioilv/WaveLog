@@ -203,6 +203,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
                return (c < top && c > upC) || (c > bot && c < loC);
               }), top, bot, upC, loC };
     });
+
     rec('フィンガーを図に描く（方式だけ言って絵に出さない、をやめる）',
         fg.n > 0, `${fg.n}本`);
     rec('フィンガーは板の両側に出る（上下それぞれの軸から押さえる）',
@@ -218,6 +219,50 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     });
     await W.until(page, () => !/フィンガー/.test(document.querySelector('#bsV2').textContent),
                   null, { ms: 8000, what: 'ゴムリング方式へ戻る' });
+
+    /* 向きの切り替えは**図の見出し**に居る（§9.380、利用者の指示）。
+       効く先はこの図の左右なので、離れた場所に置くと「何に効くボタンか」を
+       探すことになる。置き場所だけでなく、**そこから効くこと**まで見る
+       ——移したのに配線が切れていたら、押せるのに何も起きない的になる。 */
+    const flip0 = await page.evaluate(() => {
+     const b = document.querySelector('#bsFlip');
+     const edge = () => [...document.querySelectorAll('#bsStage text')]
+       .map(t => (t.textContent || '').trim()).filter(t => t === 'OS' || t === 'DS');
+     return { inFig: !!document.querySelector('.bs-figpanel .bs-ph #bsFlip'),
+              inBar: !!document.querySelector('.bs-bar #bsFlip'),
+              label: b ? (b.textContent || '').trim() : '', edge: edge().join('/') };
+    });
+    rec('向きの切り替えは刃組図の見出しにある', flip0.inFig && !flip0.inBar,
+        `図${flip0.inFig}/バー${flip0.inBar}`);
+    /* **手順の窓を先に閉じる。** 窓（`.bs-pop`）は図の見出しへ垂れ下がるので、
+       開いたままだと見出しの札に手が届かない（人が押すときも同じ）。
+       向きの切り替えを図の見出しへ移した（§9.380）ぶん、この札も窓の下に入る。 */
+    await page.keyboard.press('Escape');
+    await W.until(page, () => !document.querySelector('.bs-step.is-open'),
+                  null, { ms: 5000, what: '手順の窓が閉じる' });
+    /* **開いたときの向きを決め打ちしない**（刃組の道具なので既定は段取り向き
+       ＝DS左だが、既定が変わってもこの網は「入れ替わること」を見たい）。 */
+    await page.click('#bsFlip');
+    await W.until(page, (before) =>
+      document.querySelector('#bsFlip').textContent.trim() !== before,
+      flip0.label, { ms: 8000, what: '向きが切り替わる' });
+    const flip1 = await page.evaluate(() => ({
+     label: (document.querySelector('#bsFlip').textContent || '').trim(),
+     edge: [...document.querySelectorAll('#bsStage text')]
+       .map(t => (t.textContent || '').trim()).filter(t => t === 'OS' || t === 'DS').join('/'),
+     flipped: document.querySelector('#bsFigRow').classList.contains('is-flip')
+    }));
+    rec('押すと図の左右が入れ替わる（移しても効く）',
+        /^(OS\/DS|DS\/OS)$/.test(flip0.edge) && flip1.edge !== flip0.edge
+        && /^(OS\/DS|DS\/OS)$/.test(flip1.edge),
+        `${flip0.edge} → ${flip1.edge}`);
+    rec('向きの札は「いま押すと何になるか」を言う（状態と札が食い違わない）',
+        flip1.label !== flip0.label && /向き/.test(flip1.label),
+        `${flip0.label} → ${flip1.label}`);
+    await page.click('#bsFlip');
+    await W.until(page, (before) =>
+      document.querySelector('#bsFlip').textContent.trim() !== before,
+      flip1.label, { ms: 8000, what: '元の向きへ戻す' });
 
     /* ---- 4.5) 模式図の読みやすさ（§9.378・利用者の指摘4点） ----
        どれも「見えるかどうか」の話なので、**実際に描かれた図形を測って**見る。

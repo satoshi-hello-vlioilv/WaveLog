@@ -108,9 +108,6 @@
       ${stepHtml(0, 'ゴムリング', 'bsV4', step4Html(), 'auto')}
      </div>
     </div>
-    <div class="bs-bar-tail">
-     <button type="button" class="bs-chip" id="bsFlip" title="刃組は台車のDS側から部材を入れます。段取り向きではDSを左に置き、手を入れる側から見た並びにします">図面向き（OS左）</button>
-    </div>
    </div>
    <div class="bs-body">
     <div class="bs-col">
@@ -131,6 +128,12 @@
         <button type="button" class="bs-chip is-on" data-fig="2d">模式図</button>
         <button type="button" class="bs-chip" data-fig="3d">立体図</button>
        </div>
+       <!-- **向きの切り替えは図の見出しへ置く**（§9.380、利用者の指示
+            「OSDS入替ボタンは模式図に移動させて」）。効く先はこの図の
+            左右（DS／OSの字と部材の並び）なので、手順バーの尻尾に置くと
+            「何に効くボタンか」を探すことになる（§CLAUDE 14 視覚導線と
+            作業導線を一致させる）。 -->
+       <button type="button" class="bs-chip" id="bsFlip" title="刃組は台車のDS側から部材を入れます。段取り向きではDSを左に置き、手を入れる側から見た並びにします">図面向き（OS左）</button>
        <span class="bs-ph-note" id="bsFigNote"></span></div>
       <!-- **両脇の表は右レールへ移した**（§9.379、利用者の指示）。ここを1列に
            したぶん模式図が広がる（実測 760→1112px・+46%）。端部の表は
