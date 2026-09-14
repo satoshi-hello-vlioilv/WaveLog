@@ -168,6 +168,48 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         f.heads.join('|').slice(0, 80));
     rec('所要は「ゴムリングは使わない」と言う', /フィンガー方式のため使いません/.test(f.bom),
         f.bom.replace(/\s+/g, ' ').slice(0, 90));
+
+    /* フィンガーは**板押さえ**なので、軸のまわりではなく**板の両側**に描く
+       （§9.379、利用者の指示4）。以前は輪と同じ場所に出しており、どこを
+       押さえているのかが図から読めなかった。ここで見るのは位置関係だけ
+       ——形（先細り）は幅しだいで変わるので数えない。 */
+    const fg = await page.evaluate(() => {
+     const stage = document.querySelector('#bsStage');
+     const box = el => {
+      let b = null;
+      try { b = el.getBBox(); } catch (_) { b = null; }
+      return b ? { y0: b.y, y1: b.y + b.height } : null;
+     };
+     const mats = [...stage.querySelectorAll('rect.bs-mat')].map(box).filter(Boolean);
+     if (!mats.length) return { n: 0 };
+     const top = Math.min(...mats.map(m => m.y0));
+     const bot = Math.max(...mats.map(m => m.y1));
+     /* 軸の中心（上下）。青い印は軸の上に載るので、その帯の中心で代用する。 */
+     const caps = [...stage.querySelectorAll('rect.bs-cap')].map(box).filter(Boolean);
+     const cys = [...new Set(caps.map(c => Math.round((c.y0 + c.y1) / 2)))].sort((a, b) => a - b);
+     const upC = cys[0], loC = cys[cys.length - 1];
+     /* フィンガーは色で見分ける（輪と同じ道具で描かれていないこと自体を見たい
+        ので、クラスではなく**塗り**で拾う）。 */
+     const hex = getComputedStyle(stage.closest('#bladeSetPanel'))
+       .getPropertyValue('--bs-fig-finger').trim();
+     const fs = [...stage.querySelectorAll('path,rect')]
+       .filter(e => (e.getAttribute('fill') || '') === hex).map(box).filter(Boolean);
+     const above = fs.filter(b => (b.y0 + b.y1) / 2 < top);
+     const below = fs.filter(b => (b.y0 + b.y1) / 2 > bot);
+     return { n: fs.length, above: above.length, below: below.length,
+              /* 軸と板のあいだに居るか（軸の中心より板側、かつ板の外） */
+              between: fs.every(b => {
+               const c = (b.y0 + b.y1) / 2;
+               return (c < top && c > upC) || (c > bot && c < loC);
+              }), top, bot, upC, loC };
+    });
+    rec('フィンガーを図に描く（方式だけ言って絵に出さない、をやめる）',
+        fg.n > 0, `${fg.n}本`);
+    rec('フィンガーは板の両側に出る（上下それぞれの軸から押さえる）',
+        fg.above > 0 && fg.below > 0, `上${fg.above}/下${fg.below}`);
+    rec('フィンガーは軸と板のあいだに置く（軸に被せない）',
+        fg.n > 0 && fg.between === true,
+        `板 ${Math.round(fg.top)}..${Math.round(fg.bot)} / 軸 ${fg.upC}..${fg.loC}`);
     /* 戻す（以降の判定はゴムリング方式で見る） */
     await page.evaluate(() => {
      const el = document.querySelector('#bsThick');

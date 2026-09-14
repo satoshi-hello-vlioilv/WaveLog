@@ -196,12 +196,26 @@ def ring_color_of(od):
 # 板が薄いとゴムリングでは保持できない。そのときは板押さえ（フィンガー）で
 # 保持し、軸はスペーサーだけで構成する。**適用板厚上限**が空の行は
 # 基準値の`フィンガー切替板厚`に従う（行ごとに違う上限を持てるようにしてある）。
+#
+# **形は図面 N2-10689-1 / DK4-0300 LS-4（布入ベークライト）**（§9.379、利用者の
+# 添付）。1本ぶんの寸法は4つで決まる:
+#   幅     … W寸法。**軸方向の寸法**なので、模式図の横幅はこれで決まる
+#   全長   … 560。軸から板へ差し出す向きの長さ（真横から見た図には出ない）
+#   厚み   … 20±0.3。**板を押さえる向きの厚み**なので、模式図の縦はこれ
+#   研削長・研削量 … 両端を上下両面から削る量（20×6＝片側16.7°／挟角33.4°）。
+#                    先端ランド＝厚み−研削量×2、平行部＝全長−研削長×2
+# 幅ちがいで本数が変わるので、**在庫は幅ごとに1行**（スペーサーと同じ持ち方）。
 FINGER_TABLE = 'フィンガーマスタ'
 FINGER_COLUMNS = (
     ('設備名', 'TEXT'), ('名称', 'TEXT'), ('幅', 'REAL'),
     ('保有本数', 'INTEGER'), ('下限本数', 'INTEGER'), ('適用板厚上限', 'REAL'),
+    ('全長', 'REAL'), ('厚み', 'REAL'), ('研削長', 'REAL'), ('研削量', 'REAL'),
     ('備考', 'TEXT'), ('表示順', 'INTEGER'), ('有効', 'INTEGER'),
 )
+# 図面の既定値（改造後＝赤字）。**登録が無い行はこれで描く**——寸法が空だと
+# 図が描けず、現場には「フィンガーだけ出ない」としか見えない（§9.231）。
+FINGER_SHAPE = {'length': 560.0, 'thickness': 20.0, 'grindRun': 20.0,
+                'grindDrop': 6.0}
 FINGER_DEF = TableDef(FINGER_TABLE, 'フィンガーID', FINGER_COLUMNS,
                       order_by='[設備名],[表示順],[幅] DESC,[フィンガーID]')
 
@@ -553,7 +567,13 @@ def _finger_row(d):
     return {'id': d['フィンガーID'], 'equipment': _txt(d['設備名']),
             'name': _txt(d['名称']), 'width': _num(d['幅']),
             'qty': _int(d['保有本数']), 'minQty': _int(d['下限本数']),
-            'maxThickness': _num(d['適用板厚上限']), 'note': _txt(d['備考']),
+            'maxThickness': _num(d['適用板厚上限']),
+            # 形は「空なら図面の既定」（§9.231 引けなかった値を0にしない）
+            'length': _num(d['全長']) or FINGER_SHAPE['length'],
+            'thickness': _num(d['厚み']) or FINGER_SHAPE['thickness'],
+            'grindRun': _num(d['研削長']) or FINGER_SHAPE['grindRun'],
+            'grindDrop': _num(d['研削量']) or FINGER_SHAPE['grindDrop'],
+            'note': _txt(d['備考']),
             'order': d['表示順'], 'enabled': _alive(d['有効']),
             'enabledText': _enabled_pair(d['有効'])[1]}
 
@@ -1062,8 +1082,18 @@ SEED_BLADE_THICKNESS = (10, 5)
 SEED_BLADE_QTY = 70
 SEED_BLADE_DIA = 318.2
 # フィンガー（板押さえ）。板厚 0.6 未満で使う。
-SEED_FINGERS = (('フィンガー 50', 50, 20), ('フィンガー 30', 30, 20),
-                ('フィンガー 20', 20, 20), ('フィンガー 10', 10, 20))
+# **図面 N2-10689-1 の製作表そのまま**（§9.379、利用者の添付。合計 790 本）。
+# 幅の刻みが 20〜30 に1mmずつあるのは、条幅に合わせて選ぶため——ここを
+# 間引くと、選べる幅が無くて区間を埋められない条が出る。
+SEED_FINGERS = (
+    ('フィンガー 10', 10.0, 60), ('フィンガー 20', 20.0, 60),
+    ('フィンガー 21', 21.0, 60), ('フィンガー 22', 22.0, 60),
+    ('フィンガー 23', 23.0, 60), ('フィンガー 24', 24.0, 60),
+    ('フィンガー 25', 25.0, 60), ('フィンガー 26', 26.0, 60),
+    ('フィンガー 27', 27.0, 60), ('フィンガー 28', 28.0, 60),
+    ('フィンガー 29', 29.0, 60), ('フィンガー 30', 30.0, 50),
+    ('フィンガー 50', 50.0, 50), ('フィンガー 100', 100.0, 30),
+)
 
 
 def seed_standard_parts(c, uid, equipment, replace=False):
@@ -1128,6 +1158,10 @@ def seed_standard_parts(c, uid, equipment, replace=False):
                 '設備名': eq, '名称': name, '幅': float(width),
                 '保有本数': int(qty), '下限本数': 0,
                 '適用板厚上限': float(STANDARD_DEFAULTS['fingerMax']),
+                '全長': FINGER_SHAPE['length'],
+                '厚み': FINGER_SHAPE['thickness'],
+                '研削長': FINGER_SHAPE['grindRun'],
+                '研削量': FINGER_SHAPE['grindDrop'],
                 '表示順': order, '有効': -1}, uid)
             made['finger'] += 1
     c.commit()
@@ -1160,6 +1194,7 @@ def context(c, equipment):
         'bladeGeneral': BLADE_GENERAL,
         'bladeSpecial': BLADE_SPECIAL,
         'bladeMaint': BLADE_MAINT,
+        'fingerShape': dict(FINGER_SHAPE),
         'pickFields': [{'field': f, 'label': l, 'kind': k}
                        for f, l, k in BLADEPICK_FIELDS],
         'pickOps': [{'op': o, 'label': l, 'two': o in BLADEPICK_OPS_2}

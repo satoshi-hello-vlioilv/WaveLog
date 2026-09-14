@@ -57,7 +57,7 @@
  const FIG_VARS = ['shaft', 'shaft-edge', 'cap', 'spacer', 'spacer-edge',
                    'filler', 'filler-edge', 'knife', 'knife-edge', 'badge',
                    'strip', 'strip-edge', 'scrap', 'scrap-edge', 'trim',
-                   'trim-edge', 'label', 'ink', 'sheen',
+                   'trim-edge', 'finger', 'label', 'ink', 'sheen',
                    'chip-bg', 'chip-fg', 'chip-bd',
                    'chip-clr-bg', 'chip-clr-fg', 'chip-clr-bd',
                    'chip-ov-bg', 'chip-ov-fg', 'chip-ov-bd'];
@@ -826,6 +826,12 @@
     幅は刻みしかないので区間長にぴったり合うとはかぎらない。その余りを片側へ寄せると
     クリアランスのように見えるので、左右へ均等に振り分けて中央に置く。 */
  function holdLayer(V, xa, xb, cy, z, k) {
+  /* **フィンガーは板押さえ**（§9.379、利用者の指示4）。軸に被る輪ではなく、
+     上下軸と板のあいだに差し込まれて板を挟むので、軸のまわりではなく
+     **板の両側**へ描く。以前は輪と同じ場所に「指」と書いた帯を出していたが、
+     それでは「軸に何かが被っている」としか読めず、どこを押さえているのかが
+     図から分からなかった。 */
+  if (z.hold.kind === 'finger') return fingerLayer(V, xa, xb, cy, z, k);
   const isRing = z.hold.kind === 'ring';
   const bore = +M.P.ringBore || 241;
   const od = isRing ? z.hold.od : V.spacerD + 20;
@@ -852,7 +858,51 @@
   o += `<text x="${(xa + xb) / 2}" y="${cy - ri - th / 2 + fs * 0.36}" text-anchor="middle"`
    + ` font-size="${fs.toFixed(1)}" font-weight="800" fill="#fff" stroke="${V.PAL.ink}"`
    + ` stroke-width="${(fs * 0.16).toFixed(2)}" style="paint-order:stroke">`
-   + `${isRing ? (z.hold.ringT === 'big' ? '大' : '小') : '指'}</text>`;
+   + `${z.hold.ringT === 'big' ? '大' : '小'}</text>`;
+  return o;
+ }
+
+ /* フィンガー（板押さえ）を**板の両側**へ描く。
+    ・横（軸方向）はマスタの「幅」＝W寸法。区間を埋める割付は輪と同じ仕組み。
+    ・縦はマスタの「厚み」（図面 20mm）。板を押さえる向きの厚みなので、
+      径ではなく厚みを縦へ写す。
+    ・両端は図面どおり先細り（研削長×研削量）。先端のランドは 厚み−研削量×2。
+    上軸の区間は板の**上**、下軸の区間は板の**下**へ置く——どちらの軸から
+    差し込まれた押さえかが、置き場所だけで分かるようにする。 */
+ function fingerLayer(V, xa, xb, cy, z, k) {
+  const shape = (M.fingerShape || {});
+  const one = (M.fingers || [])[0] || {};
+  const th = +(one.thickness || shape.thickness) || 20;
+  const upper = cy < V.midY;
+  const h = Math.max(2.4, V.hOf(th));
+  const gap = Math.max(1.2, V.matH * 0.35);          /* 板との当たりを見せる隙間 */
+  const y0 = upper ? V.midY - V.matH / 2 - gap - h : V.midY + V.matH / 2 + gap;
+  const d = V.dir, s = k || 1;
+  const pieces = expand(z.gom);
+  const slack = Math.max(0, Math.abs(xb - xa) - widthPx(V, pieces) * s);
+  let o = '', at = xa + d * slack / 2;
+  for (const sz of pieces) {
+   const w = V.pw(sz) * s;
+   if ((at + d * w - xb) * d > 0.6) break;
+   const x = Math.min(at, at + d * w) + 0.4, ww = Math.max(1.2, w - 0.8);
+   /* **この向きでは先細りは見えない。** 図面の研削（20×6）は「全長×厚み」の
+      面にあり、全長は板の流れる向き＝この図では紙の奥行きなので、軸方向から
+      見た形は 幅×厚み の四角。奥行きの形は立体図が受け持つ（§9.379）。
+      ここに先細りを描くと、削る向きを1つ取り違えた絵になる。 */
+   o += `<rect class="bs-fng" x="${x}" y="${y0.toFixed(1)}" width="${ww}"`
+    + ` height="${h.toFixed(1)}" rx="1.5" fill="${V.PAL.finger}"`
+    + ` stroke="${V.PAL.ink}" stroke-width=".8"/>`;
+   at += d * w;
+  }
+  /* 字は**入るときだけ**。押さえの帯は輪より薄いので、無理に入れると潰れる
+     （色だけで伝えないぶんは、下の「保持」の欄と所要が受け持つ）。 */
+  const fs = Math.min(V.fs(11), h * 0.7, V.zoneMin > 0 ? (V.zoneMin - 2) / 1.1 : V.fs(11));
+  if (fs >= V.fs(7)) {
+   o += `<text x="${(xa + xb) / 2}" y="${(y0 + h / 2 + fs * 0.36).toFixed(1)}"`
+    + ` text-anchor="middle" font-size="${fs.toFixed(1)}" font-weight="800" fill="#fff"`
+    + ` stroke="${V.PAL.ink}" stroke-width="${(fs * 0.16).toFixed(2)}"`
+    + ' style="paint-order:stroke">指</text>';
+  }
   return o;
  }
  /* 図の上での刃の位置。クリアランスは実寸 0.15mm ほどで、アーバー全長を 800px に

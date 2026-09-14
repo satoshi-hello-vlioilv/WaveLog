@@ -30,6 +30,9 @@
   --bs-fig-strip-edge:var(--teal);
   --bs-fig-scrap:var(--rs-brown-border);
   --bs-fig-scrap-edge:var(--rs-brown);
+  /* フィンガー（布入ベークライト）。図面の褐色に近い既存の茶を使う
+     ——色リテラルを増やさない（§9.350）。 */
+  --bs-fig-finger:var(--rs-brown);
   --bs-fig-trim:var(--rs-yellow-border);
   --bs-fig-trim-edge:var(--rs-yellow);
   --bs-fig-label:var(--muted);
