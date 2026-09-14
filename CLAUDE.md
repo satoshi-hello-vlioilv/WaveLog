@@ -498,6 +498,9 @@
 | 軸方向から見たフィンガーは幅×厚みの四角。研削は奥行きの面なので見えない | — | [§9.379](docs/decisions/9.379.md) |
 | 端部（OS/DS）の表は右レール。図の段へ戻すと模式図が7割まで痩せる | `test_bladeui.js` | [§9.379](docs/decisions/9.379.md) |
 | 模式図は器の横幅を使い切っている。`grow`では1pxも広がらない（器の側を削る） | `test_bladeui.js` | [§9.378](docs/decisions/9.378.md) |
+| 板の場所を答えるのは`matBands()`の1箇所。押さえは**真下の条の面**へ当てる（外枠に固定すると寄った条に板厚1枚ぶんの隙間が残る） | `test_bladeui.js` | [§9.385](docs/decisions/9.385.md) |
+| 押さえの網は「外枠」で見ない。軸と**その条**のあいだに在るか・どの条にも食い込まないかで見る | `test_bladeui.js` | [§9.385](docs/decisions/9.385.md) |
+| 刃組表の区分（ロット番号・条幅）は本文（`--tbl-fs`）より小さくしない | — | [§9.385](docs/decisions/9.385.md) |
 | 向きの切り替えは刃組図の見出し。手順の窓の下に入るので、閉じてから押す | `test_bladeui.js` | [§9.380](docs/decisions/9.380.md) |
 | フィンガーを当てる先は「いちばん外へ寄った板の面」（中心線だと寄った条へ食い込む） | `test_bladeui.js` | [§9.380](docs/decisions/9.380.md) |
 | 刃選択の盤は「文として読める＋試し欄＋条件ごとの○×」。判定は`blade-core`を呼ぶ | `test_bladepick.js` | [§9.380](docs/decisions/9.380.md) |
@@ -643,6 +646,7 @@
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 拡張は登録表へ: あとに足す`on`／前で断る`gate`／丸ごと持つ`own`（`WL.measureHooks`・`WL.listHooks`）。被せも全置換も作らない | `test_patchlint.py`・`test_tolscale.js` | [§9.352](docs/decisions/9.352.md) |
+| 押す形をやめたら`cursor:pointer`も消す。押しても何も起きない物に指のカーソルを出さない | — | [§9.385](docs/decisions/9.385.md) |
 | 初回の案内は帯の1箇所。空の器は「ここに何が出るか」だけを言う | `test_uiux.js` | [§9.343](docs/decisions/9.343.md) |
 | 窓は`confirmModal`／`alertModal`／`promptModal`の3つだけ。素の`alert`/`confirm`/`prompt`は呼ばない | `test_patchlint.py`・`test_modalkeep.js` | [§9.342](docs/decisions/9.342.md) |
 | 窓は1枚しかない。窓の中から窓を開かない（名前を直すのはその場、消すのは行の中で2手） | `test_lotcopy.js` | [§9.368](docs/decisions/9.368.md) |

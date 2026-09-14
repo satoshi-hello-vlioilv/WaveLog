@@ -202,21 +202,63 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
        .filter(e => (e.getAttribute('fill') || '') === hex).map(box).filter(Boolean);
      const above = fs.filter(b => (b.y0 + b.y1) / 2 < top);
      const below = fs.filter(b => (b.y0 + b.y1) / 2 > bot);
+     /* **真下の板に貼り付いているか**（§9.385、利用者の指摘「フィンガーの図と
+        板の図の間隙間があります」）。1枚ごとに、その横位置に在る板を探して
+        面が合っているかを見る——**いちばん外の面とだけ比べると、寄った条に
+        対する隙間を見逃す**（それが元の不具合だった）。 */
+     const mb = [...stage.querySelectorAll('rect.bs-mat')].map(el => {
+      let b = null; try { b = el.getBBox(); } catch (_) { return null; }
+      return { x0: b.x, x1: b.x + b.width, y0: b.y, y1: b.y + b.height };
+     }).filter(Boolean);
+     const fxs = [...stage.querySelectorAll('path,rect')]
+       .filter(e => (e.getAttribute('fill') || '') === hex).map(el => {
+        let b = null; try { b = el.getBBox(); } catch (_) { return null; }
+        return { cx: b.x + b.width / 2, x0: b.x, x1: b.x + b.width,
+                 y0: b.y, y1: b.y + b.height };
+       }).filter(Boolean);
+     let touch = 0, gaps = [];
+     for (const f of fxs) {
+      const under = mb.find(m => f.cx >= m.x0 - 0.6 && f.cx <= m.x1 + 0.6);
+      if (!under) continue;
+      const up = (f.y0 + f.y1) / 2 < (under.y0 + under.y1) / 2;
+      const d = up ? Math.abs(f.y1 - under.y0) : Math.abs(f.y0 - under.y1);
+      if (d <= 1.2) touch++; else gaps.push(Math.round(d));
+     }
      return { n: fs.length, above: above.length, below: below.length,
-              /* 軸と板のあいだに居るか（軸の中心より板側、かつ板の外） */
-              between: fs.every(b => {
-               const c = (b.y0 + b.y1) / 2;
-               return (c < top && c > upC) || (c > bot && c < loC);
-              }), top, bot, upC, loC };
+              touch, gaps: gaps.slice(0, 5), checked: touch + gaps.length,
+              /* **軸と、その押さえが当たっている条**のあいだに居るか（§9.385）。
+                 以前は板ぜんたいの外枠（`top`/`bot`）で見ていたが、条が千鳥で
+                 寄るぶん、**外枠の内側にも正しい置き場所がある**——下へ寄った
+                 条を上から押さえる指は、外枠の中に入る。外枠で見ると、
+                 正しく貼り付いた指を「軸に被せている」と誤って落とす。 */
+              between: fxs.every(f => {
+               const under = mb.find(m => f.cx >= m.x0 - 0.6 && f.cx <= m.x1 + 0.6);
+               if (!under) return true;
+               const up = (f.y0 + f.y1) / 2 < (under.y0 + under.y1) / 2;
+               return up ? (f.y1 <= under.y0 + 0.6 && f.y0 > upC)
+                         : (f.y0 >= under.y1 - 0.6 && f.y1 < loC);
+              }),
+              /* **どの条にも食い込まない**（隣の条へはみ出さない）。 */
+              bite: fxs.filter(f => mb.some(m =>
+               f.x1 > m.x0 + 0.6 && f.x0 < m.x1 - 0.6
+               && f.y1 > m.y0 + 0.6 && f.y0 < m.y1 - 0.6)).length,
+              top, bot, upC, loC };
     });
 
     rec('フィンガーを図に描く（方式だけ言って絵に出さない、をやめる）',
         fg.n > 0, `${fg.n}本`);
     rec('フィンガーは板の両側に出る（上下それぞれの軸から押さえる）',
         fg.above > 0 && fg.below > 0, `上${fg.above}/下${fg.below}`);
-    rec('フィンガーは軸と板のあいだに置く（軸に被せない）',
+    rec('フィンガーは軸と、押さえている条のあいだに置く（軸に被せない）',
         fg.n > 0 && fg.between === true,
         `板 ${Math.round(fg.top)}..${Math.round(fg.bot)} / 軸 ${fg.upC}..${fg.loC}`);
+    rec('フィンガーはどの条にも食い込まない', fg.bite === 0, `食い込み${fg.bite}枚`);
+    /* §9.385。条は千鳥で上下へ寄るので、**いちばん外の面に固定すると
+       反対へ寄った条に板厚1枚ぶんの隙間が残る**（区間の約半分）。
+       1枚ごとに真下の板と突き合わせる。 */
+    rec('フィンガーは真下の板に貼り付く（隙間を空けない）',
+        fg.checked > 0 && fg.gaps.length === 0,
+        `${fg.touch}/${fg.checked}枚が接触` + (fg.gaps.length ? ` 隙間${fg.gaps.join(',')}px` : ''));
     /* 戻す（以降の判定はゴムリング方式で見る） */
     await page.evaluate(() => {
      const el = document.querySelector('#bsThick');

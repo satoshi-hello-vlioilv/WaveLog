@@ -906,20 +906,32 @@
   const th = +(one.thickness || shape.thickness) || 20;
   const upper = cy < V.midY;
   const h = Math.max(2.4, V.hOf(th));
-  /* **板に貼り付ける**（§9.380、利用者の指示「板との隙間を空けないでください」）。
-     押さえは板に当たっている物なので、隙間があると「浮いている」と読める。
-     ただし当てる先は**いちばん外へ寄った板の面**（`midY ± matH`）——条は千鳥で
-     上下へ `matH/2` ずつ寄るので、真ん中の線に当てると寄った条に食い込む
-     （実際にそうなり、網が「板の両側に出る」で赤くなった）。 */
-  const y0 = upper ? V.midY - V.matH - h : V.midY + V.matH;
+  /* **板に貼り付ける**（§9.385、利用者の指摘「フィンガーの図と板の図の間
+     隙間があります」）。当てる先は**その押さえの真下にある板の面**——
+     1枚ごとに `V.bands` から引く。
+     §9.380 では「いちばん外へ寄った面（`midY ± matH`）」に固定していたが、
+     それは**食い込みを避けただけで、貼り付いてはいなかった**：条は千鳥で
+     上下へ `matH/2` ずつ寄るので、反対側へ寄った条に対して**板厚1枚ぶんの
+     隙間**が残る（区間の約半分がこれに当たる）。
+     板が見つからない横位置（端の外など）だけ、これまでどおり外へ逃がす。 */
+  const far = upper ? V.midY - V.matH - h : V.midY + V.matH;
+  const yOf = x => {
+   const z2 = bandAt(V.bands || [], x);
+   if (!z2) return far;
+   return upper ? z2.top - h : z2.bot;
+  };
   const d = V.dir, s = k || 1;
   const pieces = expand(z.gom);
   const slack = Math.max(0, Math.abs(xb - xa) - widthPx(V, pieces) * s);
-  let o = '', at = xa + d * slack / 2;
+  let o = '', at = xa + d * slack / 2, lastY = far;
   for (const sz of pieces) {
    const w = V.pw(sz) * s;
    if ((at + d * w - xb) * d > 0.6) break;
    const x = Math.min(at, at + d * w) + 0.4, ww = Math.max(1.2, w - 0.8);
+   /* 当てる先は**この1枚の真ん中の真下**にある板で決める。端で決めると、
+      境目にかかった1枚が隣の条の面へ飛ぶ。 */
+   const y0 = yOf(x + ww / 2);
+   lastY = y0;
    /* **この向きでは先細りは見えない。** 図面の研削（20×6）は「全長×厚み」の
       面にあり、全長は板の流れる向き＝この図では紙の奥行きなので、軸方向から
       見た形は 幅×厚み の四角。奥行きの形は立体図が受け持つ（§9.379）。
@@ -932,9 +944,11 @@
    at += d * w;
   }
   /* 字は**入るときだけ**。押さえの帯は輪より薄いので、無理に入れると潰れる
-     （色だけで伝えないぶんは、下の「保持」の欄と所要が受け持つ）。 */
+     （色だけで伝えないぶんは、下の「保持」の欄と所要が受け持つ）。
+     置くのは区間の真ん中なので、**そこの1枚と同じ高さ**に合わせる。 */
   const fs = Math.min(V.fs(11), h * 0.7, V.zoneMin > 0 ? (V.zoneMin - 2) / 1.1 : V.fs(11));
   if (fs >= V.fs(7)) {
+   const y0 = o ? yOf((xa + xb) / 2) : lastY;
    o += `<text x="${(xa + xb) / 2}" y="${(y0 + h / 2 + fs * 0.36).toFixed(1)}"`
     + ` text-anchor="middle" font-size="${fs.toFixed(1)}" font-weight="800" fill="#fff"`
     + ` stroke="${V.PAL.ink}" stroke-width="${(fs * 0.16).toFixed(2)}"`
@@ -1021,8 +1035,9 @@
     const r = bmap[side][k];
     if (!r) continue;
     const [a, b] = zoneX(upper, k), cx = (a + b) / 2;
-    /* **記号は押せる的**（§9.378、利用者の指示「ガイダンスのアルファベットを
-       クリックすると対象の刃組の準備対象の表の部分が見やすくなるように連動」）。
+    /* **記号は重ねる的**（§9.378、利用者の指示「ガイダンスのアルファベットを
+       クリックすると対象の刃組の準備対象の表の部分が見やすくなるように連動」
+       →その後「マウスオーバーしている間だけに変更」と改めて指示があった）。
        同じ記号は上下軸の両方に出るので、塊ごとに記号を名乗らせて一緒に光らせる。 */
     o += `<g class="bs-bhit" data-badge="${esc(r.badge)}">`
      + `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}"`
@@ -1037,24 +1052,42 @@
     （`blade-core.js`）——模式図と立体図が同じ答えを見るため。 */
  const materialRun = (A, segs) => BS().materialRun(A, segs);
  const matShift = (A, run, i) => BS().matShift(A, run, i);
- function drawMaterial(V, A, run) {
-  const y = V.midY, h = V.matH, color = widthColorIndex();
-  let back = '', front = rowLabel(V, '材料', y, V.PAL.label);
-  let botMost = y, topMost = y;
-  const marks = [], last = run.length - 1;
+ /* 板1枚ぶんの場所（横の範囲と上下の面）を**1箇所**で答える（§9.385）。
+    材料を描く側と、押さえ（フィンガー）を当てる側が**同じ答え**を見るため
+    ——別々に出すと、条が千鳥で寄ったぶんだけ押さえが浮く（実際に浮いた）。
+    §9.377 の「両方が使う小道具は1箇所へ置く」と同じ理由。 */
+ function matBands(V, A, run) {
+  const y = V.midY, h = V.matH;
   const n = A.sign.length - 1, lead = run[0].sg.type === 'trim' ? 1 : 0;
   const half = V.dir * V.kw / 2;
-  run.forEach(({ sg, from, to }, i) => {
+  return run.map(({ sg, from, to }, i) => {
    const j = i - lead, up = matShift(A, run, i) < 0;
    const kx = k => ((k < 0 || k > n) ? null : (up ? V.KX[k].u : V.KX[k].l));
    const a0 = j <= -1 ? V.px(from) : (kx(j) !== null ? kx(j) + half : V.px(from));
    const b0 = j >= n ? V.px(to) : (kx(j + 1) !== null ? kx(j + 1) - half : V.px(to));
-   const a = Math.min(a0, b0), b = Math.max(a0, b0), w = b - a, cx = (a + b) / 2;
+   const a = Math.min(a0, b0), b = Math.max(a0, b0);
+   const cy = y + matShift(A, run, i) * h / 2;
+   return { sg, i, a, b, w: b - a, cx: (a + b) / 2, up,
+            cy, top: cy - h / 2, bot: cy + h / 2 };
+  });
+ }
+ /* その横位置にある板の面。**押さえを当てる先**（§9.385）。
+    見つからなければ `null` を返し、呼ぶ側が「外へ逃がす」を選ぶ。 */
+ function bandAt(bands, x) {
+  return bands.find(z => x >= z.a - 0.6 && x <= z.b + 0.6) || null;
+ }
+
+ function drawMaterial(V, A, run, bands) {
+  const y = V.midY, h = V.matH, color = widthColorIndex();
+  let back = '', front = rowLabel(V, '材料', y, V.PAL.label);
+  let botMost = y, topMost = y;
+  const marks = [], last = run.length - 1;
+  bands.forEach(({ sg, a, b, w, cx, cy, top, bot }, i) => {
    const strip = sg.type === 'strip', trim = sg.type === 'trim', scrap = sg.type === 'scrap';
    const ci = strip ? (color.get(sg.w.toFixed(3)) || 0) : 0;
    const edge = strip ? V.PAL['w' + ci + 'e'] : (scrap ? V.PAL['scrap-edge'] : V.PAL['trim-edge']);
    const face = strip ? V.PAL.strip : (scrap ? V.PAL.scrap : V.PAL.trim);
-   const cy = y + matShift(A, run, i) * h / 2, top = cy - h / 2, bot = cy + h / 2;
+   const up = matShift(A, run, i) < 0;
    botMost = Math.max(botMost, bot);
    topMost = Math.min(topMost, top);
    back += `<rect class="bs-mat" x="${a + 0.6}" y="${top}" width="${Math.max(1.6, w - 1.2)}"`
@@ -1199,7 +1232,10 @@
      1つ決め、全部同じ形で描く（§CLAUDE 11 群の中はそろえる）。 */
   V.zoneMin = minZoneSpan(V, res.segs);
   const shafts = drawShafts(V, res.A), run = materialRun(res.A, res.segs);
-  const mat = drawMaterial(V, res.A, run);
+  /* 板の場所は**先に1度だけ**出す（§9.385）。材料を描く側と、押さえを当てる
+     側（`fillZone`→`fingerLayer`）が同じ答えを見るので、`V` に預ける。 */
+  V.bands = matBands(V, res.A, run);
+  const mat = drawMaterial(V, res.A, run, V.bands);
   const back = shafts.back
    + drawStack(V, res.A, res.segs, true, res.zp)
    + drawStack(V, res.A, res.segs, false, res.zp)
@@ -1795,8 +1831,9 @@
   document.addEventListener('keydown', e => {
    if (e.key === 'Escape' && panel && !panel.hidden) closePops();
   });
-  /* 記号を押したら図と表を連動させる。**図でも表でも同じ的**（`[data-badge]`）で
-     受けるので、押す場所によって効き方が変わらない。 */
+  /* 記号に**重ねている間だけ**図と表を連動させる（§9.378）。**図でも表でも
+     同じ的**（`[data-badge]`）で受けるので、重ねる場所によって効き方が
+     変わらない。押す操作は持たない——持たせると解除も手で要る。 */
   panel.addEventListener('pointerover', e => {
    const hit = e.target.closest('[data-badge]');
    pickBadge(hit && panel.contains(hit) ? hit.dataset.badge : '');
