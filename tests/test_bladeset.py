@@ -1,13 +1,15 @@
 """test_bladeset.py: 刃組マスタと設備停止の連携機能（§9.377）
 
-固定するのは5つ:
-  1. **7枚の表が`TableDef`から作られ**、読み書きが往復する（部分更新で他の列が消えない）
+固定するのは6つ:
+  1. **8枚の表が`TableDef`から作られ**、読み書きが往復する（部分更新で他の列が消えない）
   2. **ゴムリングは「同じ色は同じ外径」**——外径を直すとその色ぜんぶがそろい、
      色名から外径を**起こさない**（研磨で径が減っても呼び名は変わらない）
   3. **基準値は「既定はコード・上書きだけがDB」**——登録が無い設備でも値が出る
   4. **初期セットは足し算にならない**（2度押しても増えない）
   5. 設備停止マスタの`[連携機能]`が**保存され、知らない鍵は「なし」へ倒れる**
      ——そして**画面に綴りを書き写していない**（語彙はサーバーの1箇所）
+  6. 刃は**既定で「一般」**が選ばれ、`刃選択マスタ`の条件に当たったときだけ
+     「専用」になる（条件の無い行は当たらない＝既定が静かに崩れない）
 
 サーバーは要らない（1段目・§9.337）。
 """
@@ -47,15 +49,16 @@ def _reject(fn):
 EQ = 'テスト設備A'
 
 # ---------------------------------------------------------------------------
-# 1. 7枚の表
+# 1. 8枚の表
 # ---------------------------------------------------------------------------
 c = fresh()
 made = bs.ensure_tables(c)
-rec('まっさらなDBで7枚できる', len(made) == 7, str(made))
+rec('まっさらなDBで8枚できる', len(made) == 8, str(made))
 have = set(tables(c))
 rec('表の名前が定義どおり',
     {d.table for d in (bs.BLADE_DEF, bs.SPACER_DEF, bs.RING_DEF, bs.FINGER_DEF,
-                       bs.STANDARD_DEF, bs.HISTORY_DEF, bs.DESIGN_DEF)} <= have,
+                       bs.STANDARD_DEF, bs.HISTORY_DEF, bs.DESIGN_DEF,
+                       bs.BLADEPICK_DEF)} <= have,
     str(sorted(have)))
 # CREATE に全列が入っている（§9.324 R1。後から足す口に頼らない）
 for d in (bs.BLADE_DEF, bs.SPACER_DEF, bs.RING_DEF, bs.FINGER_DEF, bs.STANDARD_DEF):
@@ -254,6 +257,78 @@ rec('「すべての設備」は受け付けない',
     _reject(lambda: bs.design_upsert(c, 'u', equipment='*', lot='P1', groups=G1)))
 bs.design_delete(c, did)
 rec('消すと引けなくなる', bs.design_for(c, EQ, 'P1') is None)
+
+# ---------------------------------------------------------------------------
+# 6. 刃選択マスタ（「専用」の刃を選ぶ条件・§9.379）
+# ---------------------------------------------------------------------------
+# 固定するのは「既定は一般」と「当たったときだけ専用」の2点。ここが崩れると、
+# 現場は気づかないまま違う刃で組むことになる。
+rec('状態は3つ（一般／メンテナンス中／専用）',
+    bs.BLADE_STATUS == ('一般', 'メンテナンス中', '専用'), str(bs.BLADE_STATUS))
+
+CTX = {'thickness': 1.8, 'coilWidth': 1200, 'strips': 6,
+       'minWidth': 65.0, 'maxWidth': 120.0, 'material': 'SPCC', 'lotNo': 'L-1'}
+rec('決まりが1行も無ければ「一般」（None を返す）', bs.pick_group([], CTX) is None)
+
+pid, pmade = bs.pick_upsert(c, 'u', equipment=EQ, name='厚板は専用',
+                            conditions=[{'field': 'thickness', 'op': 'ge', 'value': '1.6'}],
+                            group='X')
+rec('刃選択の決まりを足せる', pmade and pid)
+rules = bs.pick_rows(c, False, EQ)
+rec('条件が往復する',
+    len(rules) == 1 and rules[0]['conditions'] == [
+        {'field': 'thickness', 'op': 'ge', 'value': '1.6'}], str(rules))
+hit = bs.pick_group(rules, CTX)
+rec('条件に当たると専用の組を返す', hit and hit['group'] == 'X', str(hit))
+rec('当たらなければ「一般」（板厚 1.2 は 1.6 未満）',
+    bs.pick_group(rules, dict(CTX, thickness=1.2)) is None)
+rec('引けない値は当てない（板厚が空なら当たらない）',
+    bs.pick_group(rules, dict(CTX, thickness=None)) is None)
+
+# 同じ行の条件は**全部**満たしたときだけ当たる（AND）
+bs.pick_upsert(c, 'u', row_id=pid, conditions=[
+    {'field': 'thickness', 'op': 'ge', 'value': '1.6'},
+    {'field': 'strips', 'op': 'eq', 'value': '6'}])
+rules = bs.pick_rows(c, False, EQ)
+rec('同じ行の条件はANDで見る（両方そろえば当たる）',
+    (bs.pick_group(rules, CTX) or {}).get('group') == 'X')
+rec('片方だけでは当たらない',
+    bs.pick_group(rules, dict(CTX, strips=4)) is None)
+
+# 範囲・文字
+bs.pick_upsert(c, 'u', row_id=pid, conditions=[
+    {'field': 'minWidth', 'op': 'between', 'value': '60', 'value2': '70'}])
+rec('範囲で当たる', (bs.pick_group(bs.pick_rows(c, False, EQ), CTX) or {}).get('group') == 'X')
+bs.pick_upsert(c, 'u', row_id=pid, conditions=[
+    {'field': 'material', 'op': 'contains', 'value': 'PC'}])
+rec('文字は「含む」で当たる',
+    (bs.pick_group(bs.pick_rows(c, False, EQ), CTX) or {}).get('group') == 'X')
+
+# **条件の無い行は当たらない**（「いつでも当たる行」を書けないこと）
+bs.pick_upsert(c, 'u', row_id=pid, conditions=[])
+rec('条件が空の行は当たらない（既定が静かに崩れない）',
+    bs.pick_group(bs.pick_rows(c, False, EQ), CTX) is None,
+    str(bs.pick_rows(c, False, EQ)))
+
+# 壊れた条件は1件だけ落とす（行ごと消さない）
+rec('知らない項目・比べ方は1件だけ落とす',
+    bs.normalize_pick_conditions([
+        {'field': '居ない項目', 'op': 'eq', 'value': '1'},
+        {'field': 'thickness', 'op': '知らない', 'value': '1'},
+        {'field': 'strips', 'op': 'eq', 'value': '6'}])
+    == [{'field': 'strips', 'op': 'eq', 'value': '6'}])
+
+# 上から順に見て**最初に当たった1行**
+bs.pick_upsert(c, 'u', row_id=pid, conditions=[
+    {'field': 'thickness', 'op': 'ge', 'value': '1.0'}], order=1)
+p2, _ = bs.pick_upsert(c, 'u', equipment=EQ, name='あとの行', conditions=[
+    {'field': 'thickness', 'op': 'ge', 'value': '1.0'}], group='Y', order=2)
+rec('先に並ぶ行が勝つ',
+    (bs.pick_group(bs.pick_rows(c, False, EQ), CTX) or {}).get('group') == 'X',
+    str([(r['order'], r['group']) for r in bs.pick_rows(c, False, EQ)]))
+bs.pick_delete(c, pid)
+bs.pick_delete(c, p2)
+rec('消すと決まりが残らない', bs.pick_rows(c, True, EQ) == [])
 
 # ---- 自己確認: 網が素通りしていない ----
 rec('自己確認: 断る網は、断らない呼び出しでは真にならない',

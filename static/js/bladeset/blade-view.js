@@ -101,6 +101,7 @@
       ${stepHtml(0, '刃・板厚', 'bsV2', step2Html(), 'check')}
      </div>
      <div class="bs-sgrp is-auto"><s class="bs-sgcap">自動で決まる</s>
+      ${factHtml('刃の選び方', 'bsFPick')}
       ${factHtml('方式', 'bsFMethod')}
       ${factHtml('保持', 'bsFHold')}
       ${factHtml('クリアランス', 'bsFClr')}
@@ -348,9 +349,31 @@
   if (P.overlap != null) st.ov = +P.overlap;
   if (P.scrapWidth != null) st.nkWidth = +P.scrapWidth;
   st.canNk = P.canNakanuki !== false;
-  /* 刃の既定は「使用中」の組のいちばん厚い刃。無ければ触らない。 */
-  const use = M.blades.filter(b => b.status === '使用中' && b.currentDia)
-   .sort((a, b) => (b.thickness || 0) - (a.thickness || 0));
+  applyBladePick();
+ }
+
+ /* 使う刃を決める（§9.379、利用者の指示2）。
+      ふつう … 状態が「一般」の刃
+      例外 …… `刃選択マスタ` の条件に当たったら、その組の「専用」の刃
+    「メンテナンス中」は**どちらでも選ばない**。
+    決めたら `st.pick` に「なぜその組か」を残す——画面が理由を出せないと、
+    利用者には「勝手に別の刃になった」としか見えない（§CLAUDE 6 出どころを出す）。 */
+ function applyBladePick() {
+  const BS_ = BS();
+  const gen = M.bladeGeneral || '一般', sp = M.bladeSpecial || '専用';
+  const hit = BS_.pickGroup(M.picks, BS_.pickCtx(st, M), M.pickFields);
+  st.pick = hit ? { group: hit.group, rule: hit.rule } : null;
+  const ok = b => b.currentDia && (hit
+   ? (b.status === sp && b.group === hit.group)
+   : b.status === gen);
+  let use = (M.blades || []).filter(ok);
+  /* 条件に当たったのに、その組の刃が1枚も無い——**黙って一般へ落とさない**。
+     理由を持ったまま一般で描き、画面が「当たったが刃が無い」と言えるようにする。 */
+  if (hit && !use.length) {
+   st.pick = { group: hit.group, rule: hit.rule, missing: true };
+   use = (M.blades || []).filter(b => b.currentDia && b.status === gen);
+  }
+  use = use.sort((a, b) => (b.thickness || 0) - (a.thickness || 0));
   if (use.length) { st.knife = use[0].currentDia; if (use[0].thickness) st.tk = use[0].thickness; }
  }
 
@@ -528,6 +551,23 @@
   /* **方式は「自動で決まる」の群だけに出す**——以前はバリ方向の値にも
      並べており、同じことを2箇所で言っていた（§CLAUDE 8）。 */
   $('#bsV1').textContent = B.ALIGN_NAME[st.align];
+  /* **なぜその刃なのか**を出す（§9.379）。既定は「一般」で、`刃選択マスタ` の
+     決まりに当たったときだけ「専用」になる——出どころを書かないと、利用者には
+     「勝手に別の刃になった」としか見えない（§CLAUDE 6）。 */
+  const pk = $('#bsFPick');
+  if (pk) {
+   const p0 = st.pick;
+   pk.textContent = !p0 ? '一般'
+    : (p0.missing ? `一般（${p0.group} の刃が未登録）`
+                  : `専用 ${p0.group}`);
+   pk.title = !p0 ? 'ふつうの刃（状態が「一般」）から選んでいます。'
+    : (p0.missing
+       ? `決まり「${p0.rule}」に当たりましたが、${p0.group} の「専用」の刃が`
+         + '登録されていないため、一般の刃で描いています。'
+       : `決まり「${p0.rule}」に当たったので、${p0.group} の「専用」の刃を使います。`);
+   pk.classList.toggle('is-warn', !!(p0 && p0.missing));
+   pk.classList.toggle('is-pick-on', !!(p0 && !p0.missing));
+  }
   $('#bsFMethod').textContent = B.METHOD_NAME[res.method];
   $('#bsFHold').textContent = B.holdName(st, M);
   $('#bsFClr').textContent = st.clrAuto
@@ -1400,7 +1440,7 @@
   });
   const days = d => (d ? Math.floor((Date.now() - new Date(d)) / 86400000) : null);
   $('#bsSetList').innerHTML = groups.length ? groups.map(g => {
-   const on = g.items.some(k => k.status === '使用中');
+   const on = g.items.some(k => BS().selectable(k, M));
    const rows = g.items.sort((a2, b2) => (b2.thickness || 0) - (a2.thickness || 0)).map(k => {
     const d = days(k.lastGrind), lim = k.currentDia !== null && M.P.minDia && k.currentDia <= M.P.minDia;
     return `<div class="bs-kr"><b class="bs-tk">${esc(k.thickness)}mm</b>`

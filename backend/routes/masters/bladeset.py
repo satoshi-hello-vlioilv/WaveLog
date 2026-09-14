@@ -4,6 +4,7 @@
   `POST /api/bladeset/seed`             … 図面どおりの初期セットを登録する
   `/api/bladeset-standard-master`       … 刃組基準値（1設備1行）の4本セット
   `/api/bladeset/history`               … 刃組を終えた記録（台車差分の材料）
+  `/api/bladeset/blade-pick`            … 「専用」の刃を選ぶ条件（3本セット）
 
 **部材（刃・スペーサー・ゴムリング・フィンガー）は `bladeset_parts.py`**。
 分ける境目は「このラインはどういう機械か／いつ何を組んだか」と
@@ -178,6 +179,48 @@ def bladeset_design_delete():
   return jsonify(error='削除対象IDがありません。'), 400
  _op_read(lambda c: bs.design_delete(c, int(x['id'])))
  return jsonify(ok=True, message='条の設計を消しました。')
+
+
+# =========================================================================
+# 刃選択（「専用」の刃を選ぶ条件）
+# =========================================================================
+# 語彙（使える項目・比べ方）は `/api/bladeset/context` が返す。ここは
+# 受付と整形だけで、条件の正しさは `bs.normalize_pick_conditions()` が見る。
+@bp.get('/api/bladeset/blade-pick')
+@api_guard('刃選択マスタの読込に失敗しました')
+def bladeset_pick_list():
+ eq = _eq()
+ return jsonify(ok=True, equipment=eq,
+                items=_op_read(lambda c: bs.pick_rows(c, True, eq or None)),
+                fields=[{'field': f, 'label': l, 'kind': k}
+                        for f, l, k in bs.BLADEPICK_FIELDS],
+                ops=[{'op': o, 'label': l, 'two': o in bs.BLADEPICK_OPS_2}
+                     for o, l in bs.BLADEPICK_OPS])
+
+
+@bp.post('/api/bladeset/blade-pick')
+@api_guard('刃選択の保存に失敗しました', bad=ValueError)
+def bladeset_pick_save():
+ x = body({'id': any_, 'equipment': any_, 'name': any_, 'conditions': any_,
+           'group': any_, 'note': any_, 'order': any_,
+           'enabled': any_, 'enabledText': any_})
+ uid = request_user_id(x)
+ new_id, made = _op_read(lambda c: bs.pick_upsert(
+     c, uid, row_id=_rid(x), equipment=x.get('equipment'), name=x.get('name'),
+     conditions=x.get('conditions'), group=x.get('group'), note=x.get('note'),
+     order=x.get('order'), enabled=_enabled(x)))
+ return jsonify(ok=True, id=new_id, created=made,
+                message='刃選択の決まりを足しました。' if made else '刃選択の決まりを直しました。')
+
+
+@bp.post('/api/bladeset/blade-pick/delete')
+@api_guard('刃選択の削除に失敗しました')
+def bladeset_pick_delete():
+ x = body({'id': any_})
+ if x.get('id') in (None, ''):
+  return jsonify(error='削除対象IDがありません。'), 400
+ _op_read(lambda c: bs.pick_delete(c, int(x['id'])))
+ return jsonify(ok=True, message='刃選択の決まりを消しました。')
 
 
 # =========================================================================

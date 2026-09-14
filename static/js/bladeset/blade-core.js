@@ -711,7 +711,7 @@
    if (k.currentDia !== null && P.minDia && k.currentDia <= P.minDia) {
     a.push({ kind: 'blade', text: `${k.name}：Φ${k.currentDia} 使用限界` });
    }
-   if (k.status === '使用中') {
+   if (selectable(k, M)) {
     const d = days(k.lastGrind);
     if (d !== null && P.grindCycleDays && d >= P.grindCycleDays) {
      a.push({ kind: 'grind', text: `${k.name}：研磨から${d}日` });
@@ -808,6 +808,80 @@
   return (a.widths || []).join(',') === (b.widths || []).join(',');
  }
 
+ /* その刃を選ぶ対象に入れてよいか。**「メンテナンス中」だけが外れる**
+    （一般も専用も、選ばれる場面が違うだけで「生きている刃」・§9.379）。
+    綴りはサーバーが持つので、無いときだけ既定の字を使う。 */
+ function selectable(k, M) {
+  return !!k && k.status !== ((M && M.bladeMaint) || 'メンテナンス中');
+ }
+
+ /* ---------- 「専用」の刃を選ぶ条件（§9.379、利用者の指示2） ----------
+    ふつうは状態が「一般」の刃が選ばれる。そこから外れる作業だけを
+    `刃選択マスタ` に書き、**上から見て最初に当たった1行**が効く。
+    **判定はここ1箇所**——サーバー（`bladeset_repo.pick_group`）と同じ規則を
+    同じ綴りで持ち、画面は答えを受け取るだけにする。 */
+ const PICK_NUM = {
+  eq: (l, a) => Math.abs(l - a) < 1e-9,
+  ne: (l, a) => Math.abs(l - a) >= 1e-9,
+  ge: (l, a) => l >= a - 1e-9,
+  gt: (l, a) => l > a + 1e-9,
+  le: (l, a) => l <= a + 1e-9,
+  lt: (l, a) => l < a - 1e-9
+ };
+ function pickCtx(st, M) {
+  const ws = (st.order || []).map(ix => +(((st.lots || [])[ix] || {}).w))
+   .filter(w => w > 0);
+  return {
+   thickness: +st.thick || null,
+   coilWidth: +st.W || null,
+   strips: ws.length || null,
+   minWidth: ws.length ? Math.min(...ws) : null,
+   maxWidth: ws.length ? Math.max(...ws) : null,
+   material: st.material || '',
+   lotNo: st.lotNo || ''
+  };
+ }
+ function condHits(cond, ctx, kinds) {
+  const f = cond && cond.field;
+  if (!f || !(f in ctx)) return false;
+  const left = ctx[f];
+  /* **引けなかった値を当てない**（§9.231）。0として比べると、空欄の条件が
+     全部の作業に当たってしまう。 */
+  if (left === null || left === undefined || left === '') return false;
+  const op = cond.op;
+  if ((kinds[f] || 'text') === 'num') {
+   const l = +left, a = +cond.value;
+   if (!isFinite(l) || !isFinite(a)) return false;
+   if (op === 'between') {
+    const b = +cond.value2;
+    if (!isFinite(b)) return false;
+    return Math.min(a, b) - 1e-9 <= l && l <= Math.max(a, b) + 1e-9;
+   }
+   return PICK_NUM[op] ? PICK_NUM[op](l, a) : false;
+  }
+  const ls = String(left), rs = String(cond.value == null ? '' : cond.value);
+  if (op === 'eq') return ls === rs;
+  if (op === 'ne') return ls !== rs;
+  if (op === 'contains') return !!rs && ls.indexOf(rs) >= 0;
+  return false;
+ }
+ /* 当たった決まり、または `null`（＝「一般」を使う）。**条件が1つも無い行は
+    当たらない**——「いつでも当たる行」を書けると、「一般が既定」という
+    約束が静かに崩れる。 */
+ function pickGroup(rules, ctx, fields) {
+  const kinds = {};
+  (fields || []).forEach(f => { kinds[f.field] = f.kind; });
+  const list = (rules || []).filter(r => r.enabled !== false);
+  for (const r of list) {
+   const cs = r.conditions || [];
+   if (!cs.length || !r.group) continue;
+   if (cs.every(c => condHits(c, ctx, kinds))) {
+    return { group: r.group, rule: r.name || '', id: r.id };
+   }
+  }
+  return null;
+ }
+
  function snapshot(st, M, g) {
   const ring = {};
   Object.keys(g.ring).forEach(od => Object.keys(g.ring[od]).forEach(sz => {
@@ -826,6 +900,7 @@
   compose, buildRows, endRows, badgeMap, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum,
   stripDesign, designByParent, condOf, sameCond,
+  pickCtx, pickGroup, condHits, selectable,
   expand, materialRun, matShift,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP
  };

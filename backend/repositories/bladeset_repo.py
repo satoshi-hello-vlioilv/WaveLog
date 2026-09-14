@@ -118,8 +118,20 @@ BLADE_COLUMNS = (
 )
 BLADE_DEF = TableDef(BLADE_TABLE, '刃ID', BLADE_COLUMNS,
                      order_by='[設備名],[表示順],[刃ID]')
-# 刃・セットの状態。**語彙はここだけが持つ**（§9.163。画面へ写さない）。
-BLADE_STATUS = ('使用中', '研磨中', '待機', '使用不可')
+# 刃の状態。**語彙はここだけが持つ**（§9.163。画面へ写さない）。
+#
+# 3つしか無いのは、**状態が答えるのは「選ばれるか」の1点だけ**だから
+# （§9.379、利用者の指示2）。以前は 使用中／研磨中／待機／使用不可 の4つで、
+# 「いま軸に載っているか」と「選んでよいか」が混ざっていた——載っているかは
+# 刃組履歴（台車）が答えるので、状態が二重に持つ必要はない。
+#
+#   一般        … ふつうはこれが選ばれる（既定）
+#   メンテナンス中 … 研磨・修理などで**選ばれない**
+#   専用        … `刃選択マスタ` の条件に当たったときだけ選ばれる
+BLADE_GENERAL = '一般'
+BLADE_MAINT = 'メンテナンス中'
+BLADE_SPECIAL = '専用'
+BLADE_STATUS = (BLADE_GENERAL, BLADE_MAINT, BLADE_SPECIAL)
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +273,7 @@ _STANDARD_MAP = (
 
 
 # ---------------------------------------------------------------------------
-# 7 条設計マスタ（条の設計を**測定より前に**決めておく控え）
+# 6 条設計マスタ（条の設計を**測定より前に**決めておく控え）
 # ---------------------------------------------------------------------------
 # 利用者の指示（§9.378）:「測定時のロット情報の扱いと同じで、作業スケジュールの
 # 次のタイミングで作業するロットの情報から読み取り、測定メイン画面で行う
@@ -283,7 +295,182 @@ DESIGN_DEF = TableDef(DESIGN_TABLE, '条設計ID', DESIGN_COLUMNS,
 
 
 # ---------------------------------------------------------------------------
-# 6 刃組履歴マスタ
+# 7 刃選択マスタ（「専用」の刃を選ぶ条件）
+# ---------------------------------------------------------------------------
+# ふつうは「一般」の刃が選ばれる。**そこから外れる作業だけ**をここに書く
+# （§9.379、利用者の指示2）。1行＝1つの決まりで、上から順に見て
+# **最初に当たった1行**が効く（表示ルールマスタと同じ作法）。
+#
+# 条件は行ごとに数が変わるので **JSONの配列**で持つ（列にできない）。
+# 形は `[{'field':'thickness','op':'ge','value':'1.6'}, ...]` で、
+# **同じ行の条件は全部満たしたときだけ**当たる（AND）。
+# 「または」は行を分けて書く——1行の中に AND と OR を混ぜると、
+# 読む側が優先順位を推測することになる。
+BLADEPICK_TABLE = '刃選択マスタ'
+BLADEPICK_COLUMNS = (
+    ('設備名', 'TEXT'), ('名称', 'TEXT'), ('条件JSON', 'TEXT'),
+    ('刃の組', 'TEXT'), ('備考', 'TEXT'), ('表示順', 'INTEGER'), ('有効', 'INTEGER'),
+)
+BLADEPICK_DEF = TableDef(BLADEPICK_TABLE, '刃選択ID', BLADEPICK_COLUMNS,
+                         order_by='[設備名],[表示順],[刃選択ID]')
+
+# 条件に使える項目。**語彙はここだけが持つ**（画面は聞いて出す・§9.163）。
+# `kind` は画面が入力欄の形を決めるためのもの。増やすときは、
+# `pick_context()` が同じ鍵で値を作れることを確かめること。
+BLADEPICK_FIELDS = (
+    ('thickness', '板厚', 'num'),
+    ('coilWidth', '元コイル幅', 'num'),
+    ('strips', '条数', 'num'),
+    ('minWidth', '条幅（いちばん狭い）', 'num'),
+    ('maxWidth', '条幅（いちばん広い）', 'num'),
+    ('material', '材質', 'text'),
+    ('lotNo', 'ロット番号', 'text'),
+)
+# 比べ方。**表示ルールマスタと同じ綴り**を使う（1つのアプリに2つの
+# 演算子の語彙を作らない）。右辺を持たないものはここには置かない——
+# 「空かどうか」で刃を選ぶことはないため。
+BLADEPICK_OPS = (
+    ('eq', '＝'), ('ne', '≠'), ('ge', '≧'), ('gt', '＞'),
+    ('le', '≦'), ('lt', '＜'), ('between', '範囲'), ('contains', '含む'),
+)
+BLADEPICK_OPS_2 = ('between',)      # 右辺を2つ取るもの
+
+
+def normalize_pick_conditions(raw):
+    """保存できる条件の配列へ整える。**壊れた条件は1件だけ落とす**
+    （表示ルールマスタと同じ理由——1つの入力ミスで行ごと消えると、
+    利用者からは「保存したのに戻っている」としか見えない）。"""
+    if not isinstance(raw, list):
+        return []
+    fields = {f for f, _l, _k in BLADEPICK_FIELDS}
+    ops = {o for o, _l in BLADEPICK_OPS}
+    out = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        field = _txt(item.get('field'))
+        op = _txt(item.get('op'))
+        if field not in fields or op not in ops:
+            continue
+        cond = {'field': field, 'op': op,
+                'value': _txt(item.get('value'))[:120]}
+        if op in BLADEPICK_OPS_2:
+            cond['value2'] = _txt(item.get('value2'))[:120]
+        out.append(cond)
+    return out
+
+
+def _pick_row(d):
+    try:
+        conds = json.loads(d['条件JSON'] or '[]')
+    except (ValueError, TypeError):
+        conds = []
+    return {'id': d['刃選択ID'], 'equipment': _txt(d['設備名']),
+            'name': _txt(d['名称']), 'conditions': normalize_pick_conditions(conds),
+            'group': _txt(d['刃の組']), 'note': _txt(d['備考']),
+            'order': _int(d['表示順']), 'enabled': _alive(d['有効'])}
+
+
+def pick_rows(c, include_disabled=False, equipment=None):
+    return _rows(c, BLADEPICK_DEF, _pick_row, include_disabled, equipment)
+
+
+def _cmp_num(left, op, a, b):
+    """数の比べ方。**読めない値は「当たらない」**——0として比べると、
+    空欄の条件が全部の作業に当たってしまう。"""
+    ln, an = _num(left), _num(a)
+    if ln is None or an is None:
+        return False
+    if op == 'eq':
+        return abs(ln - an) < 1e-9
+    if op == 'ne':
+        return abs(ln - an) >= 1e-9
+    if op == 'ge':
+        return ln >= an - 1e-9
+    if op == 'gt':
+        return ln > an + 1e-9
+    if op == 'le':
+        return ln <= an + 1e-9
+    if op == 'lt':
+        return ln < an - 1e-9
+    if op == 'between':
+        bn = _num(b)
+        if bn is None:
+            return False
+        lo, hi = (an, bn) if an <= bn else (bn, an)
+        return lo - 1e-9 <= ln <= hi + 1e-9
+    return False
+
+
+def cond_hits(cond, ctx):
+    """条件1つ。**文脈にその項目が無ければ当たらない**（§9.231
+    「引けなかった値を0にしない」）。"""
+    field = cond.get('field')
+    if field not in ctx:
+        return False
+    left = ctx.get(field)
+    if left is None or left == '':
+        return False
+    op = cond.get('op')
+    kind = next((k for f, _l, k in BLADEPICK_FIELDS if f == field), 'text')
+    if kind == 'num':
+        return _cmp_num(left, op, cond.get('value'), cond.get('value2'))
+    ls, rs = str(left), str(cond.get('value') or '')
+    if op == 'eq':
+        return ls == rs
+    if op == 'ne':
+        return ls != rs
+    if op == 'contains':
+        return bool(rs) and rs in ls
+    return False
+
+
+def pick_group(rules, ctx):
+    """その作業で使う「専用」の刃の組。**当たらなければ空**＝「一般」を使う。
+
+    上から順に見て**最初に当たった1行**を返す（表示ルールマスタと同じ）。
+    条件が1つも無い行は当たらない扱いにする——「いつでも当たる行」を
+    書けてしまうと、「一般」が既定であるという約束が静かに崩れる。
+    """
+    for r in (rules or []):
+        conds = r.get('conditions') or []
+        if not conds or not r.get('group'):
+            continue
+        if all(cond_hits(x, ctx) for x in conds):
+            return {'group': r['group'], 'rule': r.get('name') or '',
+                    'id': r.get('id')}
+    return None
+
+
+def pick_upsert(c, uid, row_id=None, equipment=None, name=None,
+                conditions=None, group=None, note=None, order=None,
+                enabled=None):
+    """1行を足す／直す。条件は必ず `normalize_pick_conditions()` を通す。"""
+    vals = {}
+    if equipment is not None:
+        vals['設備名'] = _txt(equipment)
+    if name is not None:
+        vals['名称'] = _txt(name)
+    if conditions is not None:
+        vals['条件JSON'] = json.dumps(normalize_pick_conditions(conditions),
+                                      ensure_ascii=False)
+    if group is not None:
+        vals['刃の組'] = _txt(group)
+    if note is not None:
+        vals['備考'] = _txt(note)
+    if order is not None:
+        vals['表示順'] = _int(order)
+    if enabled is not None:
+        vals['有効'] = 1 if flag_of(enabled) else 0
+    return _put(c, BLADEPICK_DEF, row_id, vals, uid, _txt(equipment))
+
+
+def pick_delete(c, row_id):
+    _delete(c, BLADEPICK_DEF, int(row_id))
+
+
+# ---------------------------------------------------------------------------
+# 8 刃組履歴マスタ
 # ---------------------------------------------------------------------------
 # ラインは2台の台車を交互に使う。直前の刃組はラインで稼働中なので、
 # いま組み替える台車に載っているのは「2回前」の構成。その差分を出すための控え。
@@ -302,11 +489,11 @@ HISTORY_KEEP = 20        # 1設備あたり残す件数（古いものから捨�
 # 表を作る・足す
 # ---------------------------------------------------------------------------
 _ALL_DEFS = (BLADE_DEF, SPACER_DEF, RING_DEF, FINGER_DEF, STANDARD_DEF,
-             HISTORY_DEF, DESIGN_DEF)
+             HISTORY_DEF, DESIGN_DEF, BLADEPICK_DEF)
 
 
 def ensure_tables(c):
-    """7枚をまとめて用意する。**足すのは `add_missing()` の1箇所**（§9.315）。"""
+    """8枚をまとめて用意する。**足すのは `add_missing()` の1箇所**（§9.315）。"""
     have = tables(c)
     created = []
     for d in _ALL_DEFS:
@@ -910,7 +1097,7 @@ def seed_standard_parts(c, uid, equipment, replace=False):
                     '設備名': eq, '名称': '%dmm %s' % (tk, g), '組': g,
                     '刃厚': float(tk), '現状径': SEED_BLADE_DIA,
                     '保有枚数': SEED_BLADE_QTY, '下限枚数': 0,
-                    '状態': '使用中' if g == SEED_BLADE_GROUPS[0] else '待機',
+                    '状態': BLADE_GENERAL,
                     '表示順': order, '有効': -1}, uid)
                 made['blade'] += 1
     if not existing['spacer']:
@@ -967,8 +1154,16 @@ def context(c, equipment):
         'rings': ring_rows(c, False, eq),
         'fingers': finger_rows(c, False, eq),
         'history': history_rows(c, False, eq),
+        'picks': pick_rows(c, False, eq),
         # 語彙（画面へ書き写さない）
         'bladeStatus': list(BLADE_STATUS),
+        'bladeGeneral': BLADE_GENERAL,
+        'bladeSpecial': BLADE_SPECIAL,
+        'bladeMaint': BLADE_MAINT,
+        'pickFields': [{'field': f, 'label': l, 'kind': k}
+                       for f, l, k in BLADEPICK_FIELDS],
+        'pickOps': [{'op': o, 'label': l, 'two': o in BLADEPICK_OPS_2}
+                    for o, l in BLADEPICK_OPS],
         'spacerUses': list(SPACER_USES),
         'ringColors': [{'color': c0, 'hex': h,
                         'od': float(RING_COLOR_TOP_OD - i)}

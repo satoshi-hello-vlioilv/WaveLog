@@ -472,6 +472,53 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         await page.evaluate(() => document.body.classList.contains('sc-mode')
           && !document.body.classList.contains('bs-mode')));
 
+    /* ---- 7.5) 刃の選び方（§9.379、利用者の指示2） ----
+       **同じ決まりをサーバーと画面の2箇所が持っている**（サーバーは
+       `bladeset_repo.pick_group`、画面は `blade-core.js` の `pickGroup`）ので、
+       **食い違わないこと**をここで固定する。片方だけ直すと、マスタ管理で
+       見える組と実際に組む刃が静かにずれる。 */
+    const pick = await page.evaluate(() => {
+     const B = WL.bladeSet;
+     const F = [{ field: 'thickness', kind: 'num' }, { field: 'strips', kind: 'num' },
+                { field: 'material', kind: 'text' }];
+     const R = (conds, group, name) => ({ conditions: conds, group, name: name || '決まり' });
+     const CTX = { thickness: 1.8, strips: 6, material: 'SPCC' };
+     const g = (rules, ctx) => (B.pickGroup(rules, ctx || CTX, F) || {}).group || '';
+     return {
+      none: g([]),
+      hit: g([R([{ field: 'thickness', op: 'ge', value: '1.6' }], 'X')]),
+      miss: g([R([{ field: 'thickness', op: 'ge', value: '1.6' }], 'X')],
+              { thickness: 1.2, strips: 6, material: 'SPCC' }),
+      and2: g([R([{ field: 'thickness', op: 'ge', value: '1.6' },
+                  { field: 'strips', op: 'eq', value: '6' }], 'X')]),
+      andNg: g([R([{ field: 'thickness', op: 'ge', value: '1.6' },
+                   { field: 'strips', op: 'eq', value: '4' }], 'X')]),
+      empty: g([R([], 'X')]),
+      first: g([R([{ field: 'thickness', op: 'ge', value: '1.0' }], 'X'),
+                R([{ field: 'thickness', op: 'ge', value: '1.0' }], 'Y')]),
+      blank: g([R([{ field: 'thickness', op: 'ge', value: '1.0' }], 'X')],
+               { thickness: null, strips: 6, material: 'SPCC' }),
+      off: g([Object.assign(R([{ field: 'thickness', op: 'ge', value: '1.0' }], 'X'),
+                            { enabled: false })])
+     };
+    });
+    rec('決まりが無ければ「一般」', pick.none === '', pick.none);
+    rec('条件に当たると「専用」の組になる', pick.hit === 'X', pick.hit);
+    rec('当たらなければ「一般」', pick.miss === '', pick.miss);
+    rec('同じ行の条件はANDで見る', pick.and2 === 'X' && pick.andNg === '',
+        `${pick.and2}/${pick.andNg}`);
+    rec('条件が空の行は当たらない（既定が静かに崩れない）', pick.empty === '', pick.empty);
+    rec('先に並ぶ行が勝つ', pick.first === 'X', pick.first);
+    rec('引けない値は当てない（0として比べない）', pick.blank === '', pick.blank);
+    rec('無効にした決まりは当たらない', pick.off === '', pick.off);
+    /* 画面は「なぜその刃か」を出す（§CLAUDE 6 出どころを書く）。 */
+    const pf = await page.evaluate(() => {
+     const e = document.querySelector('#bsFPick');
+     return e ? { t: (e.textContent || '').trim(), title: e.title || '' } : null;
+    });
+    rec('刃の選び方を画面に出す（既定は「一般」と書く）',
+        !!pf && pf.t === '一般' && /一般/.test(pf.title), JSON.stringify(pf));
+
     /* ---- 8) 分割ありの親ロットは条にならない（§9.378） ----
        利用者の指示「分割ロットの場合、測定画面では親ロットは測定データ格納
        対象ではない…刃組もおなじです」。割った後の材料はすべて子ロットで、
