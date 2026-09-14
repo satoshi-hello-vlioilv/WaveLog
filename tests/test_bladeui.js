@@ -523,6 +523,45 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('連携の無い行にはチップを出さない（押して何も起きない的を作らない）',
         others === 1, String(others));
 
+    /* ---- 6.5) 刃組スケジュール一覧へ切り替わる（§9.383、利用者の指示） ----
+       **実際に描かせて**見る（列の定義だけ見ても、切り替わらなければ意味が無い
+       ——§9.306「サーバーが正しく答えても、画面が引かなければ何も変わらない」）。 */
+    rec('刃組の段が出ている', !!(await page.$('#scModeBlade')));
+    await page.click('#scModeBlade');
+    await W.until(page, () => {
+     const b = document.querySelector('#scBladeBody');
+     return !!b && !b.hidden && /刃組スケジュール|ありません/.test(b.textContent || '');
+    }, null, { ms: 15000, what: '刃組スケジュール一覧が出る' });
+    const bl = await page.evaluate(() => {
+     const box = document.querySelector('#scBladeBody');
+     const rows = [...box.querySelectorAll('.sc-blade-tbl tbody tr')];
+     return {
+      shown: !box.hidden,
+      timelineHidden: !!(document.querySelector('#scSingleBody') || {}).hidden,
+      rows: rows.length,
+      heads: [...box.querySelectorAll('.sc-blade-tbl thead th')].map(t => t.textContent),
+      first: rows.length ? (rows[0].textContent || '').replace(/\s+/g, ' ').trim() : '',
+      na: box.querySelectorAll('.sc-blade-na').length,
+      todo: box.querySelectorAll('.sc-blade-todo').length
+     };
+    });
+    rec('切り替えると刃組の表が出て、タイムラインは伏せる',
+        bl.shown && bl.timelineHidden, JSON.stringify([bl.shown, bl.timelineHidden]));
+    rec('予定にある刃組が行になる', bl.rows >= 1, `${bl.rows}行`);
+    rec('列に利用者の挙げた項目が並ぶ',
+        bl.heads.indexOf('予定本数') >= 0 && bl.heads.indexOf('1本目に切る材料') >= 0,
+        bl.heads.join('|'));
+    /* **記録が無い段取りを空欄にしない**（空欄は0に見える・§9.231）。 */
+    rec('まだ組んでいない段取りは「これから」「未記録」と書く',
+        bl.todo >= 1 && bl.na >= 1, `これから${bl.todo} 未記録${bl.na}`);
+    /* 戻れること（行き止まりを作らない・§CLAUDE 4）。 */
+    await page.click('#scModeSingle');
+    await W.until(page, () => {
+     const b = document.querySelector('#scBladeBody');
+     return !!b && b.hidden && !(document.querySelector('#scSingleBody') || {}).hidden;
+    }, null, { ms: 10000, what: 'タイムラインへ戻る' });
+    rec('個別へ戻せる（行き止まりにしない）', true);
+
     /* ---- 7) 押すと開き、後ろの作業の文脈が入っている ---- */
     await page.evaluate(t => {
      const row = [...document.querySelectorAll('.sc-row-line')]
