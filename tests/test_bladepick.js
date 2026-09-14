@@ -12,23 +12,35 @@
     ⑤ **断るべきものは断る**（名前なし・組なし・条件なしでは保存させない）
 
    後片付けは finally。途中で落ちると `db/master.sqlite3` に決まりが残り、
-   次の実行が丸ごと引き継ぐ（§9.284）。 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+   次の実行が丸ごと引き継ぐ（§9.284）。**初期セットで入れた部材も消す**
+   ——決まりだけ消しても、刃・スペーサー・ゴムリング・フィンガーが残る
+   （実測でゴムリング+50・スペーサー+26・フィンガー+14・刃+6を置き去りにし、
+   ランナーの「汚した本」に名指しされた）。
+
+   土台は `tests/lib/harness.js`（§9.347）。**起動を書き写さない**——写しが
+   増えると、横断の変更が本の数だけの問題になる。 */
+const H = require('./lib/harness.js');
 const W = require('./lib/wait.js');
-const B='http://127.0.0.1:5029';
+const B = H.B;
 const EQ='テスト設備A';
-const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
 const api=(p,o)=>fetch(B+p,o).then(r=>r.json());
 const post=(p,body)=>api(p,{method:'POST',headers:{'Content-Type':'application/json'},
                             body:JSON.stringify(body)});
 
-(async()=>{
- let b=null,made=[];
- try{
-  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
-  const page=await b.newPage({viewport:{width:1600,height:1000}});
-  const errs=[];
-  page.on('pageerror',e=>errs.push(e.message));
+H.run('test_bladepick: 刃選択マスタの盤（§9.380）',
+ async({page,rec,errs})=>{
+  let made=[];
+  /* この設備の刃組マスタを空にしてから始める（test_bladeui と同じ作法）。 */
+  const wipe=async()=>{
+   const c=await api('/api/bladeset/context?equipment='+encodeURIComponent(EQ));
+   for(const [path,list] of [['blade',c.blades],['spacer',c.spacers],
+                             ['ring',c.rings],['finger',c.fingers]]){
+    for(const x of (list||[]))await post(`/api/bladeset-${path}-master/delete`,{id:x.id});
+   }
+   for(const x of (c.picks||[]))await post('/api/bladeset/blade-pick/delete',{id:x.id});
+  };
+  await wipe();
+  try{
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await W.booted(page);
   /* 保存には更新者IDが要る（§CLAUDE「誰が直したか」）。取れるまで待つ
@@ -129,20 +141,17 @@ const post=(p,body)=>api(p,{method:'POST',headers:{'Content-Type':'application/j
       await page.evaluate(()=>!document.querySelector('.bp-card.is-won')));
 
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,2).join(' / '));
- }catch(e){
-  rec('FATAL',false,String(e&&e.message?e.message:e));
  }finally{
-  /* 後片付け。**消えたことまで確かめる**（§9.362）。 */
+  /* 後片付け。**消えたことまで確かめる**（§9.362）。決まりだけでなく、
+     初期セットで入れた部材も戻す（§9.284）。 */
   try{
-   const left=await api('/api/bladeset/blade-pick?equipment='+encodeURIComponent(EQ));
-   for(const x of (left.items||[]))await post('/api/bladeset/blade-pick/delete',{id:x.id});
-   const after=await api('/api/bladeset/blade-pick?equipment='+encodeURIComponent(EQ));
-   rec('後始末で刃選択マスタが空へ戻る',(after.items||[]).length===0,
-       JSON.stringify((after.items||[]).map(x=>x.name)));
+   await wipe();
+   const c=await api('/api/bladeset/context?equipment='+encodeURIComponent(EQ));
+   const left=(c.picks||[]).length+(c.blades||[]).length+(c.spacers||[]).length
+             +(c.rings||[]).length+(c.fingers||[]).length;
+   rec('後始末で刃選択マスタと部材が空へ戻る',left===0,
+       `決まり${(c.picks||[]).length}/刃${(c.blades||[]).length}/`
+       +`ス${(c.spacers||[]).length}/輪${(c.rings||[]).length}/指${(c.fingers||[]).length}`);
   }catch(e){rec('後始末',false,String(e))}
-  if(b)await b.close();
  }
- const ng=R.filter(x=>!x.ok);
- console.log(`\n== ${R.length-ng.length}/${R.length} PASS ==`);
- process.exit(ng.length?1:0);
-})();
+ },{mode:'edit',viewport:{width:1600,height:1000}});

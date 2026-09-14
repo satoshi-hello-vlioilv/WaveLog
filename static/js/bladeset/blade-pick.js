@@ -196,7 +196,7 @@
   form.querySelectorAll('[data-p]').forEach(el=>{
    el.oninput=()=>{ps.probe[el.dataset.p]=el.value;renderForm();renderList();
     const again=document.querySelector(`#masterMaintForm [data-p="${CSS.escape(el.dataset.p)}"]`);
-    if(again){again.focus();try{again.setSelectionRange(again.value.length,again.value.length)}catch(_e){/* 数値欄は選択位置を持たない */}}};
+    if(again){again.focus();try{again.setSelectionRange(again.value.length,again.value.length)}catch(_e){WL.quiet.note('カーソル位置を戻せない（値は入っている）',_e)}}};
   });
  }
 
