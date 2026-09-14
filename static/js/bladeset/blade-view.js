@@ -765,9 +765,15 @@
   return o;
  }
  function rowLabel(V, name, cy, fill) {
-  const room = FIG.left - 14;
-  const fs = Math.min(V.fs(19), room / Math.max(1, name.length));
-  return `<text x="${FIG.left - 10}" y="${cy + fs * 0.36}" text-anchor="end"`
+  /* **青い印のぶんまで避ける**（§9.380、利用者の指摘「上軸、下軸の文字が図と
+     被っている」）。§9.378 で青い印を有効幅の外側（`x0 - capW`）へ出したので、
+     軸の左端は `FIG.left - FIG.capW` まで伸びている。見出しの席をそのままに
+     していたため、字の右端（`FIG.left - 10`）と印（85〜100）が重なっていた。
+     字も1段小さくする（読めればよい添え字で、主役は部材の並び）。 */
+  const edge = FIG.left - FIG.capW - 8;
+  const room = edge - 6;
+  const fs = Math.min(V.fs(15), room / Math.max(1, name.length));
+  return `<text x="${edge}" y="${cy + fs * 0.36}" text-anchor="end"`
    + ` font-size="${fs.toFixed(1)}" font-weight="700" fill="${fill || V.PAL.label}">${name}</text>`;
  }
  /* 軸は**有効幅ちょうど**に描き、その両端に青い印を置く（§9.378）。
@@ -878,8 +884,12 @@
   const th = +(one.thickness || shape.thickness) || 20;
   const upper = cy < V.midY;
   const h = Math.max(2.4, V.hOf(th));
-  const gap = Math.max(1.2, V.matH * 0.35);          /* 板との当たりを見せる隙間 */
-  const y0 = upper ? V.midY - V.matH / 2 - gap - h : V.midY + V.matH / 2 + gap;
+  /* **板に貼り付ける**（§9.380、利用者の指示「板との隙間を空けないでください」）。
+     押さえは板に当たっている物なので、隙間があると「浮いている」と読める。
+     ただし当てる先は**いちばん外へ寄った板の面**（`midY ± matH`）——条は千鳥で
+     上下へ `matH/2` ずつ寄るので、真ん中の線に当てると寄った条に食い込む
+     （実際にそうなり、網が「板の両側に出る」で赤くなった）。 */
+  const y0 = upper ? V.midY - V.matH - h : V.midY + V.matH;
   const d = V.dir, s = k || 1;
   const pieces = expand(z.gom);
   const slack = Math.max(0, Math.abs(xb - xa) - widthPx(V, pieces) * s);
@@ -892,8 +902,10 @@
       面にあり、全長は板の流れる向き＝この図では紙の奥行きなので、軸方向から
       見た形は 幅×厚み の四角。奥行きの形は立体図が受け持つ（§9.379）。
       ここに先細りを描くと、削る向きを1つ取り違えた絵になる。 */
+   /* 角は落とさない（§9.380、利用者の指示「四角で丸みは必要ない」）——
+      丸めると板との当たり際に隙間があるように見える。 */
    o += `<rect class="bs-fng" x="${x}" y="${y0.toFixed(1)}" width="${ww}"`
-    + ` height="${h.toFixed(1)}" rx="1.5" fill="${V.PAL.finger}"`
+    + ` height="${h.toFixed(1)}" fill="${V.PAL.finger}"`
     + ` stroke="${V.PAL.ink}" stroke-width=".8"/>`;
    at += d * w;
   }
@@ -1029,7 +1041,9 @@
     /* `up`＝この条の板が中心より上へ寄っているか（§9.378、利用者の指示
        「板がある側に番号バッジを出してください」）。番号は板を指すものなので、
        板と反対側に置くと、どの条の番号なのかを目で辿り直すことになる。 */
-    marks.push({ cx, strip, up, text: strip ? String((sg.lotIx | 0) + 1) : '耳', w, fill: edge });
+    marks.push({ cx, strip, up, text: strip ? String((sg.lotIx | 0) + 1) : '耳',
+                 w, fill: edge, cy, top, bot, mm: strip ? +sg.w : null,
+                 outer: (i === 0) === (V.dir > 0) ? -1 : 1 });
    }
    if (strip && sg.flip && w > V.fs(30)) {
     front += `<text x="${cx}" y="${top - V.fs(6)}" text-anchor="middle" font-size="${V.fs(12)}"`
@@ -1050,19 +1064,42 @@
   if (!Number.isFinite(pair)) pair = strips.length ? strips[0].w * 2 : V.fs(13) * 2;
   const mfs = Math.max(V.fs(8), Math.min(V.fs(13), (pair - 4) / 1.4));
   const upY = Math.min(topMost, y - V.matH * FIG.reachShare) - V.fs(4);
+  /* 条ごとの寸法（§9.380、利用者の指示「模式図に板ごとの寸法表示を
+     つぶれないように注意しながら入れたい」）。番号の**すぐ外側**へ重ねて置く
+     ——番号と同じ段に並ぶので、上下に振り分かれるぶんだけ隣と離れる。
+     字は「同じ段の隣どうしの間隔（`pair`）」から決め、**読めない大きさには
+     しない**（下限を割るなら出さない＝潰れた字を出すより無いほうがよい）。 */
+  const wLen = Math.max(...strips.map(m => (m.mm === null ? 0 : m.mm.toFixed(2).length)), 1);
+  const wfs = Math.min(V.fs(11), (pair - 4) / (wLen * 0.62));
+  const showMm = wfs >= V.fs(7);
   marks.forEach(m => {
    /* **板がある側へ出す**（§9.378）。条は切られた向きに応じて上下どちらかへ
       寄るので、番号もその側へ置く。千鳥では隣どうしが逆へ寄るため、
-      結果として上下に振り分かれて番号がぶつからない。耳は下に固定。 */
-   const below = !m.strip || !m.up;
-   const ty = below ? my : upY;
-   if (m.strip) {
-    front += `<circle cx="${m.cx}" cy="${ty - mfs * 0.34}" r="${(mfs * 0.72).toFixed(1)}"`
-     + ` fill="#fff" stroke="${m.fill}" stroke-width="1.3"/>`;
+      結果として上下に振り分かれて番号がぶつからない。 */
+   if (!m.strip) {
+    /* **耳は耳屑のそばへ**（§9.380、利用者の指示）。番号の段（板から離れた行）に
+       置くと、どの塊を指しているのかを目で辿り直すことになる。耳屑は狭いので
+       字は中に入らない——板の**外側の縁**へ、その耳屑と同じ高さで添える。 */
+    const efs = Math.min(V.fs(12), Math.max(V.fs(8), (m.bot - m.top) * 0.9));
+    const ex = m.cx + m.outer * (m.w / 2 + efs * 0.45);
+    front += `<text class="bs-mk" data-side="edge" x="${ex.toFixed(1)}"`
+     + ` y="${(m.cy + efs * 0.36).toFixed(1)}" text-anchor="middle"`
+     + ` font-size="${efs.toFixed(1)}" font-weight="800" fill="${m.fill}">耳</text>`;
+    return;
    }
+   const below = !m.up;
+   const ty = below ? my : upY;
+   front += `<circle cx="${m.cx}" cy="${ty - mfs * 0.34}" r="${(mfs * 0.72).toFixed(1)}"`
+    + ` fill="#fff" stroke="${m.fill}" stroke-width="1.3"/>`;
    front += `<text class="bs-mk" data-side="${below ? 'down' : 'up'}" x="${m.cx}" y="${ty}"`
     + ` text-anchor="middle" font-size="${mfs.toFixed(1)}"`
     + ` font-weight="800" fill="${m.fill}">${esc(m.text)}</text>`;
+   if (showMm && m.mm !== null) {
+    const wy = below ? ty + wfs * 1.15 : ty - mfs * 0.9 - wfs * 0.5;
+    front += `<text class="bs-mw" x="${m.cx}" y="${wy.toFixed(1)}" text-anchor="middle"`
+     + ` font-size="${wfs.toFixed(1)}" font-weight="700" fill="${V.PAL.label}"`
+     + ` font-variant-numeric="tabular-nums">${m.mm.toFixed(2)}</text>`;
+   }
   });
   return { back, front };
  }
@@ -1077,6 +1114,10 @@
   V.KX.forEach(k => { o += blade(k.u, +1) + blade(k.l, -1); });
   return o;
  }
+ /* バッジの字。**規格の刻みから選ぶ**（16→13。§CLAUDE 7 見た目の値は
+    トークンから選ぶ）。図の主役は部材の並びで、設定値はその添え物なので、
+    本文より1段小さくする。 */
+ const FS_CHIP = 13;
  /* 主要値の帯（§CLAUDE 12「余白があるなら、そこへ置くべきものを出す」）。
     **クリアランスとラップは図のどこか1点を指して示せない寸法**なので、
     寸法線ではなく値そのものをバッジで置く（クリアランスのずれの向きは
@@ -1086,17 +1127,19 @@
  function drawChipBand(V, finger) {
   const textW = t => [...t].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 16 : 9), 0);
   const P = V.PAL;
+  /* **3つだけ・短く**（§9.380、利用者の指示「不要な文字は極力カット」）。
+     言い添え（目安の割合・手入力・ゴムリング無し・大径小径の値）は**手順バーと
+     刃組表がすでに言っている**ので、図の上でもう一度言わない（§CLAUDE 8）。
+     図が答えるのは「いまどの設定で組むか」の3点だけ。 */
   const chips = [
-   { t: `クリアランス ${st.clr.toFixed(2)}`
-        + (st.clrAuto ? `（目安 板厚の${Math.round(clearanceRate() * 100)}%）` : '（手入力）'),
+   { t: `クリアランス：${st.clr.toFixed(2)}mm`,
      bg: P['chip-clr-bg'], fg: P['chip-clr-fg'], bd: P['chip-clr-bd'] },
-   { t: `ラップ ${st.ov.toFixed(2)}`, bg: P['chip-ov-bg'], fg: P['chip-ov-fg'], bd: P['chip-ov-bd'] }
+   { t: `ラップ：${st.ov.toFixed(2)}mm`,
+     bg: P['chip-ov-bg'], fg: P['chip-ov-fg'], bd: P['chip-ov-bd'] },
+   { t: `板押さえ：${finger ? 'フィンガー' : 'ゴムリング'}`,
+     bg: P['chip-bg'], fg: P['chip-fg'], bd: P['chip-bd'] }
   ];
-  if (finger) chips.push({ t: 'フィンガー（ゴムリング無し）', bg: P['chip-bg'], fg: P['chip-fg'], bd: P['chip-bd'] });
-  else chips.push(
-   { t: `大径 ${V.bigD}`, bg: P['chip-bg'], fg: P['chip-fg'], bd: P['chip-bd'], dot: V.ringHex('big') },
-   { t: `小径 ${V.smallD}`, bg: P['chip-bg'], fg: P['chip-fg'], bd: P['chip-bd'], dot: V.ringHex('small') });
-  const CW = chips.map(c => V.fs(22 + textW(c.t) + (c.dot ? 22 : 0)));
+  const CW = chips.map(c => V.fs(18 + textW(c.t) * FS_CHIP / 16));
   const total = CW.reduce((a, w) => a + w, 0) + (chips.length - 1) * 9;
   /* 帯は図の上端の中央。左右の隅は OS・DS の見出しが使っているので、その分を
      除いた幅に収める。 */
@@ -1104,14 +1147,9 @@
   const fit = Math.min(1, room / total);
   let x = side / fit + Math.max(0, (room / fit - total) / 2), band = '';
   chips.forEach((c, i) => {
-   const w = CW[i], h = V.fs(30), y = 8;
+   const w = CW[i], h = V.fs(25), y = 8;
    band += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="9" fill="${c.bg}" stroke="${c.bd}"/>`;
-   let tx = x + 11;
-   if (c.dot) {
-    band += `<circle cx="${tx + 7}" cy="${y + h / 2}" r="7.5" fill="${c.dot}" stroke="${P.ink}"/>`;
-    tx += 22;
-   }
-   band += `<text x="${tx}" y="${y + h / 2 + V.fs(6)}" font-size="${V.fs(16)}"`
+   band += `<text x="${x + 9}" y="${y + h / 2 + V.fs(FS_CHIP * 0.36)}" font-size="${V.fs(FS_CHIP)}"`
     + ` font-weight="700" fill="${c.fg}">${esc(c.t)}</text>`;
    x += w + 9;
   });

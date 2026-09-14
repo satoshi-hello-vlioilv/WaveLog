@@ -378,9 +378,12 @@ body.bs-mode .bs-shell{display:flex}
 /* ロット番号の下の条幅（§9.378、利用者の指摘「ロット№の下の幅の表示が
    小さすぎて読みにくい」）。**これは寸法**なので、いちばん小さい字で出さない
    ——区分の欄で読むのはロット番号と幅の2つだけで、どちらも読ませる値。 */
-.bs-gw{display:inline-block;font-size:var(--fs-sm);font-weight:700;color:var(--ink-2);
+.bs-gw{display:inline-block;font-size:var(--fs-base-sm);font-weight:700;color:var(--ink-2);
   font-variant-numeric:tabular-nums;margin-inline-end:4px}
 .bs-gw.is-flip{color:var(--teal-dark);font-weight:700}
+/* 模式図の条ごとの寸法（§9.380）。大きさは図の側が器から決めるので、
+   ここでは指定しない——CSSで上書きすると、狭い条でつぶれる。 */
+.bs-mw{opacity:.85}
 .bs-lno{display:inline-grid;place-items:center;width:1.3em;height:1.3em;
   border-radius:var(--radius-round);background:var(--rs-slate);color:#fff;
   font-size:var(--fs-tiny);margin-inline-end:4px}
