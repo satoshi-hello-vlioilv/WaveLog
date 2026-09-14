@@ -45,6 +45,8 @@
  let seededSkip = 0;
  /* 予定から運んだ「本数・1本目の材料」（§9.382）。刃組の記録へそのまま残す。 */
  let seededRun = null;
+ /* どの段取りの行から開いたか（§9.383）。記録と予定の行を結ぶ鍵。 */
+ let seededStopId = '';
 
  /* ---------- 幅ごとの色 ----------
     最大9種の条幅が入り混じっても見分けられるよう、淡い塗りで差を付ける。
@@ -409,6 +411,7 @@
   /* その段取りで切る本数と、1本目に切る材料（§9.382）。**予定から来た
      ものだけ**を控える——手で開いたときは空のままにして、記録にも
      「予定から開いていない」と分かる形で残す（§9.231 0で埋めない）。 */
+  seededStopId = String(o.stopId || '');
   seededRun = (o.seed && (o.seed.planned || o.seed.first))
    ? { planned: Math.max(0, (o.seed.planned) | 0), first: o.seed.first || null }
    : null;
@@ -1936,6 +1939,7 @@
      予定から開いていないときは `run` を置かない（空の器を作らない）。 */
   if (seededRun) detail.run = { planned: seededRun.planned, first: seededRun.first };
   detail.from = seededFrom || '';
+  detail.stopId = seededStopId || '';
   const c = detail.cond || {};
   const at = new Date().toISOString().slice(0, 16).replace('T', ' ');
   const note = `${B.METHOD_NAME[LAST.method]}／Φ${st.knife.toFixed(1)}／${B.holdName(st, M)}／`

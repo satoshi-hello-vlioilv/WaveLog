@@ -139,6 +139,51 @@ try:
         ms.release_lock(held)
     rec('解放すればまた取れる', ms.lock_status().get('locked') is False)
 
+    # ---- 4.5 自分の錠に自分が弾かれない（§9.384、利用者の不具合報告） ----
+    # 報告: 「他の端末がマスタを更新中です（Norio-Mori／NLM-NGY-260522、あと約19秒）」
+    # の**その端末が報告者自身**で、56件の変更が409で全部落ちて消えた。
+    # `release_lock()` は共有・クラウド越しでは**消せないことがある**
+    # （消せなくても「TTLで自動的に切れます」と警告だけ残して先へ進む）ので、
+    # 残った自分の錠が自分を締め出していた。同じ端末の同時書込は
+    # プロセス内の RLock が既に1本にしているので、引き継いで構わない。
+    mine = ms.acquire_lock('me', 'PC1')
+    try:
+        again = None
+        try:
+            again = ms.acquire_lock('me', 'PC1')
+        except ms.MasterLockHeld as e:
+            again = e
+        rec('自分の錠が残っていても自分は取れる（合言葉は新しくなる）',
+            isinstance(again, str) and again and again != mine, str(again)[:40])
+        rec('引き継いでも錠は掛かったまま（すき間を作らない）',
+            ms.lock_status().get('locked') is True, str(ms.lock_status()))
+        # 端末が違えば今までどおり断る（引き継ぎを広げすぎない）
+        other = None
+        try:
+            ms.acquire_lock('me', 'PC-OTHER')
+        except ms.MasterLockHeld as e:
+            other = e
+        rec('端末が違えば今までどおり断る', other is not None, str(other)[:60])
+        # ログインが違っても断る（同じPCの別の人は別の人）
+        who = None
+        try:
+            ms.acquire_lock('someone-else', 'PC1')
+        except ms.MasterLockHeld as e:
+            who = e
+        rec('同じ端末でもログインが違えば断る', who is not None, str(who)[:60])
+        # **名乗れない端末を「自分」と言わない**（空の呼び名で全部引き継げると、
+        # 端末名を取れない環境で排他が消える）
+        anon = None
+        try:
+            ms.acquire_lock('', '')
+        except ms.MasterLockHeld as e:
+            anon = e
+        rec('名乗れない端末は「自分」と言わない', anon is not None, str(anon)[:60])
+    finally:
+        ms.release_lock(ms._read_lock().get('token') if ms._read_lock() else None)
+    rec('後始末で錠は空へ戻る', ms.lock_status().get('locked') is False,
+        str(ms.lock_status()))
+
     # ---- 5. 何も変わっていなければ押し出さない --------------------------
     before = share.stat().st_mtime_ns
     cyc = ms.begin_write('tester', 'PC1')

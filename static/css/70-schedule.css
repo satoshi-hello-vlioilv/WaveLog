@@ -2381,4 +2381,28 @@ div.sc-view-row{cursor:default}
 .sc-frame-where{margin:0 0 var(--space-2);padding:var(--pad-card);
  border-left:3px solid var(--teal);border-radius:var(--radius-sm);
  background:var(--pale);color:var(--ink)}
+
+/* ---------- 刃組スケジュール一覧（§9.383、利用者の指示） ----------
+   同じ予定を**段取りの側から**見る表。値の出どころ（記録済み／これから）を
+   字で言い、色は添えるだけ（§CLAUDE 3 状態は色だけで伝えない）。 */
+.sc-blade{display:flex;flex-direction:column;min-height:0;flex:1 1 auto}
+.sc-blade[hidden]{display:none}
+.sc-blade-head{display:flex;align-items:baseline;gap:var(--space-2);
+  padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--line)}
+.sc-blade-note{font-size:var(--fs-sm);color:var(--muted)}
+/* 列が多い表なので**横スクロールは表の器だけ**（画面ごと動かさない・§CLAUDE）。 */
+.sc-blade-wrap{overflow:auto;min-height:0;flex:1 1 auto}
+.sc-blade-tbl{border-collapse:collapse;width:100%;font-size:var(--tbl-fs)}
+.sc-blade-tbl th,.sc-blade-tbl td{border-bottom:1px solid var(--line);
+  padding:var(--space-1) var(--space-2);text-align:left;white-space:nowrap}
+.sc-blade-tbl thead th{position:sticky;top:0;z-index:1;
+  background:var(--header-bar-bg);color:var(--header-bar-fg);font-weight:700}
+.sc-blade-tbl tbody tr:hover{background:var(--pale)}
+.sc-blade-n{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+.sc-blade-done{color:var(--teal-dark);font-weight:700}
+.sc-blade-done small{display:block;font-weight:400;color:var(--muted)}
+.sc-blade-todo{color:var(--ink-2)}
+/* 「未記録」は空欄と別物（0に見せない・§9.231）。 */
+.sc-blade-na{color:var(--muted);font-size:var(--fs-sm)}
+.sc-blade-empty{padding:var(--space-4);color:var(--muted);text-align:center}
 }

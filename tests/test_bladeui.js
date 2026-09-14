@@ -766,6 +766,42 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         && (run2.first.thickness === null || run2.first.thickness === undefined
             || run2.first.thickness === ''), JSON.stringify(run2.first));
 
+    /* ---- 10) 刃組スケジュール一覧（§9.383、利用者の指示） ----
+       「作業スケジュールを切り替えて刃組スケジュール一覧としても出せるように」。
+       ここで固定するのは**利用者が挙げた項目が1つも欠けていないこと**と、
+       **記録が無い段取りを空欄にしない**こと（空欄は0に見える・§9.231）。 */
+    const cols = await page.evaluate(() => WL.scheduleView.bladeColumns());
+    const needCols = ['台車', '刃セット', '板押さえ', 'ゴムリング／フィンガー', 'スペーサー',
+                      'クリアランス', 'ラップ', '1本目に切る材料', '予定本数'];
+    const labels = cols.map(c => c.label);
+    rec('利用者が挙げた項目が列にそろっている',
+        needCols.every(w => labels.indexOf(w) >= 0),
+        needCols.filter(w => labels.indexOf(w) < 0).join(',') || labels.join(','));
+    /* 「種類×数」は**種類の数と本数の両方**を言う（1種10本と10種1本ずつは
+       段取りの手間がまるで違う）。 */
+    const ct = await page.evaluate(() =>
+      WL.scheduleView.bladeCountText({ 100: 2, 50: 1, 30: 1, 15: 4 }));
+    rec('部材は「種類×数」と「何種・何本」の両方を言う',
+        /100×2/.test(ct) && /4種/.test(ct) && /8本/.test(ct), ct);
+    /* **大きい寸法から**並べる（用意する側は大きいものから積む）。
+       `Object.keys` は数字の鍵を小さい順に返すので、そのままだと
+       いちばん大きい寸法が「ほかN種」へ隠れる（実際に隠れていた）。 */
+    rec('部材は大きい寸法から並べる（大きいものを隠さない）',
+        ct.indexOf('100×2') === 0, ct);
+    rec('部材が無ければ空（0本と書かない）',
+        (await page.evaluate(() => WL.scheduleView.bladeCountText({}))) === '');
+    /* 予定の中の刃組の停止を拾えること（拾う側が壊れると一覧ごと空になる）。 */
+    const stops = await page.evaluate((stopName) => WL.scheduleView.bladeStops([
+      { kind: '作業', lotNo: 'A' },
+      { kind: '設備停止', id: 's1', title: stopName },
+      { kind: '作業', lotNo: 'B' },
+      { kind: '設備停止', id: 's2', title: '休憩' },
+      { kind: '設備停止', id: 's3', title: stopName }
+    ]), TAG + '刃組み');
+    rec('刃組の停止だけを拾う（ふつうの停止は並べない）',
+        stops.length === 2 && stops[0].id === 's1' && stops[1].id === 's3',
+        JSON.stringify(stops));
+
     rec('JSエラーが出ていない', errs.length === 0, errs.slice(0, 2).join(' / '));
 
   } finally {

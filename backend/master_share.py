@@ -319,19 +319,46 @@ def writes_master(blueprint, method, endpoint=''):
     return str(blueprint or '') in WRITING_BLUEPRINTS
 
 
+def _is_mine(lock, login_id, pc_name):
+    """その錠は**この端末のもの**か（§9.384、利用者の不具合報告）。
+
+    見分けるのは端末の呼び名とログインID。`release_lock()` は**消せないことが
+    ある**（共有・クラウド越しでは削除が失敗しうる。そのときは
+    「TTLで自動的に切れます」と警告だけ残して先へ進む）ので、残った自分の錠に
+    自分が弾かれる——利用者の報告がまさにこれで、
+    「他の端末がマスタを更新中です（Norio-Mori／NLM-NGY-260522）」の
+    **その端末が報告者自身**だった（56件の変更が409で全部落ちた）。
+
+    同じ端末の中の同時書込は `_write_lock`（RLock・プロセス内）が既に1本に
+    しているので、ここで自分の錠を引き継いでも排他は壊れない。
+    """
+    if not lock:
+        return False
+    pc = str(pc_name or '').strip()
+    if not pc:
+        return False                     # 名乗れない端末は「自分」と言わない
+    return (str(lock.get('holder_pc', '')).strip() == pc
+            and str(lock.get('holder_login', '')).strip() == str(login_id or '').strip())
+
+
 def acquire_lock(login_id='', pc_name='', ttl_sec=None):
     p = _lock_path()
     if p is None:
         raise MasterShareUnavailable('共有マスタの置き場が決まっていません。')
     ttl = LOCK_TTL_SEC_DEFAULT if ttl_sec is None else ttl_sec
     cur = _read_lock()
-    if cur and not _expired(cur):
+    if cur and not _expired(cur) and not _is_mine(cur, login_id, pc_name):
         remaining = 1
         try:
             remaining = max(1, int((datetime.fromisoformat(cur['expires_at']) - datetime.now()).total_seconds()))
         except Exception as _e:
             quiet('日時として読めない（無いものとして続ける）',_e)
         raise MasterLockHeld(cur.get('holder_login', ''), cur.get('holder_pc', ''), remaining)
+    if cur and not _expired(cur):
+        # 自分の錠が残っていた。**消し直さず引き継ぐ**——消してから取り直すと、
+        # そのすき間に他の端末が入れる。新しい合言葉で上書きして期限を延ばす。
+        app_logger().info('前回の錠が残っていたので引き継ぎます（%s／%s）',
+                          login_id or '?', pc_name or '?')
     token = uuid.uuid4().hex
     now = datetime.now()
     payload = {'token': token, 'holder_login': login_id, 'holder_pc': pc_name,

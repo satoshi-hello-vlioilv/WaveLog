@@ -688,6 +688,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  let scReclaiming=false;
  // ---------- 編集セッション(§9.11新設)・書込キュー ----------
  let scSessionTimer=null,scSessionHeldFor=null,scTempIdSeq=0;
+/* 共有マスタの錠（409）の待ちにどこまで粘るか（§9.384）。
+   共有マスタの錠は既定20秒ほどなので、**それを越えるまで**は捨てない。
+   700ms×n で伸ばし、1回の待ちは4秒で頭打ち——合計はおよそ25秒。 */
+const SC_LOCK_RETRIES=9;
+const SC_LOCK_WAIT_MAX_MS=4000;
  let scWriteQueue=[],scQueueRunning=false,scQueueFlushTimer=null;
  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
@@ -735,6 +740,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      <div class="sc-mode-toggle" id="scModeToggle" hidden>
       <button type="button" class="sc-mode-toggle-btn" id="scModeBoard" data-mode="board"><i class="fa-solid fa-table-cells" aria-hidden="true"></i> 全体</button>
       <button type="button" class="sc-mode-toggle-btn" id="scModeSingle" data-mode="single"><i class="fa-solid fa-list" aria-hidden="true"></i> 個別</button>
+      <!-- 刃組スケジュール一覧（§9.383、利用者の指示「作業スケジュールを切り替えて
+           刃組スケジュール一覧としても出せるようにしてください」）。同じ予定を
+           **段取りの側から**見る形で、器を入れ替えるだけ。 -->
+      <button type="button" class="sc-mode-toggle-btn" id="scModeBlade" data-mode="blade" title="この設備の刃組（段取り）を一覧にします"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> 刃組</button>
      </div>
      <select class="sc-equipment-select" id="scEquipmentSelect" hidden></select>
      <span class="sc-equipment-fixed" id="scEquipmentFixed" hidden></span>
@@ -841,6 +850,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
         「0件選択中」と出ているのは読まれない飾りにしかならない。 -->
    <div class="sc-pick-bar" id="scPickBar" hidden></div>
    <div class="sc-board" id="scBoard" hidden></div>
+   <div class="sc-blade" id="scBladeBody" hidden></div>
    <div class="sc-body" id="scSingleBody">
     <div class="sc-timeline" id="scTimeline"></div>
     <!-- 広く使っているあいだの戻り道（§9.292 ⑦）。**常に見えている1つ**
@@ -1008,6 +1018,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   },true);
   $('#scModeBoard').onclick=()=>switchToBoard();
   $('#scModeSingle').onclick=()=>switchToSingle();
+  { const b=$('#scModeBlade'); if(b)b.onclick=()=>switchToBlade(); }
   $('#scListModalBtn').onclick=()=>listModalOpen?closeListModal():openListModal();
   $('#scStopModalBtn').onclick=()=>stopModalOpen?closeStopModal():openStopModal();
   /* コメントは**掴んで落とす**こともできる(§9.191、利用者の指示
@@ -2094,14 +2105,177 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  window.openScheduleView=openScheduleView;
 
+ /* ================= 刃組スケジュール一覧（§9.383、利用者の指示） =================
+    「作業スケジュールを切り替えて刃組スケジュール一覧としても出せるように
+      してください。その場合、使用台車、使用刃、板押さえ種類、ゴムリング
+      またはフィンガーの使用種類と使用数、スペーサー使用種類と使用数、
+      クリアランス設定、ラップ設定値、刃組後1本目に切る材料(材質、板厚、板幅、
+      用途名)、そのスケジュールで対象の刃組で切る予定本数。」
+
+    **同じ予定を段取りの側から見る**もので、行は予定の中の「刃組の停止」1つずつ。
+    値の出どころは2つで、**どちらから来たかを必ず書く**（§CLAUDE 6）:
+      記録済み … 刃組完了で残した1件（`刃組履歴マスタ`）がそのまま出る
+      これから … 予定から数えられるぶん（本数・1本目の材料）だけ出し、
+                 部材は「未記録」と書く——**空欄と0を区別する**（§9.231）。 */
+ let scBladeRows=[];
+ const scBladeHistory={equipment:'',items:null};
+
+ async function loadBladeHistory(force){
+  const eq=scState.equipment||'';
+  if(!eq){scBladeHistory.equipment='';scBladeHistory.items=[];return}
+  if(!force&&scBladeHistory.equipment===eq&&scBladeHistory.items)return;
+  scBladeHistory.equipment=eq;scBladeHistory.items=null;
+  try{
+   const r=await api('/api/bladeset/history?equipment='+encodeURIComponent(eq));
+   if(scBladeHistory.equipment===eq)scBladeHistory.items=(r&&r.items)||[];
+  }catch(err){
+   WL.quiet.note('刃組の記録を読めない（予定から出せるぶんだけ出す）',err);
+   if(scBladeHistory.equipment===eq)scBladeHistory.items=[];
+  }
+ }
+ /* 予定の中の「刃組の停止」を、上から順に拾う。 */
+ function bladeStops(list){
+  const all=list||[];
+  const out=[];
+  all.forEach((x,i)=>{ if(x&&x.kind==='設備停止'&&stopLinkRowOf(x))out.push({entry:x,at:i}); });
+  return out;
+ }
+ /* その段取りの記録。**行の id で結ぶ**（§9.383）——時刻で当てると、
+    同じ日に2回組んだときにどちらか分からない。古い記録（idを持たないもの）は
+    結ばない＝「未記録」として出す（嘘の結び付けを作らない）。 */
+ function bladeRecordFor(entry){
+  const id=entry&&entry.id!=null?String(entry.id):'';
+  if(!id)return null;
+  return (scBladeHistory.items||[]).find(
+   h=>String(((h.detail||{}).stopId)||'')===id)||null;
+ }
+ /* 「種類×数」の並び。**種類の数と本数の両方**を出す（1種を10本と、10種を1本ずつは
+    段取りの手間がまるで違う）。 */
+ function bladeCountText(map){
+  /* **大きい寸法から並べる**（スペーサーマスタと同じ順・§9.383）。
+     `Object.keys` は数字の鍵を**小さい順**で返すので、そのまま先頭3つを出すと
+     いちばん大きい寸法が「ほかN種」へ隠れる——用意する側は大きいものから
+     積むので、隠れてよいのは小さいほうである（実際に 100 が隠れていた）。 */
+  const keys=Object.keys(map||{}).sort((a,b)=>{
+   const x=Number(a),y=Number(b);
+   return (Number.isFinite(x)&&Number.isFinite(y))?y-x:String(a).localeCompare(String(b));
+  });
+  if(!keys.length)return '';
+  const tot=keys.reduce((a,k)=>a+(+map[k]||0),0);
+  const head=keys.slice(0,3).map(k=>`${k}×${map[k]}`).join(' ');
+  return `${head}${keys.length>3?` ほか${keys.length-3}種`:''}（${keys.length}種 ${tot}本）`;
+ }
+ function bladeRingText(detail){
+  const r=(detail||{}).ring||{},f=(detail||{}).finger||{};
+  if(Object.keys(f).length)return bladeCountText(f);
+  /* ゴムリングの鍵は「外径|幅」。**幅ごとの本数**にまとめて出す。 */
+  const by={};
+  Object.keys(r).forEach(k=>{const w=String(k).split('|')[1]||k;by[w]=(by[w]||0)+(+r[k]||0)});
+  return bladeCountText(by);
+ }
+ function bladeFirstText(run){
+  const f=(run||{}).first||null;
+  if(!f)return '';
+  const bits=[f.material,f.thickness!=null&&f.thickness!==''?`t${f.thickness}`:'',
+              f.width!=null&&f.width!==''?`幅${f.width}`:'',f.purpose]
+   .map(x=>String(x||'').trim()).filter(Boolean);
+  return `${f.lot||''}${bits.length?`（${bits.join(' / ')}）`:''}`;
+ }
+ const bladeNum=(v,d)=>(v==null||v===''||!Number.isFinite(+v))?'':(+v).toFixed(d);
+
+ function buildBladeRows(){
+  const list=scState.entries||[];
+  return bladeStops(list).map(({entry,at})=>{
+   const rec=bladeRecordFor(entry);
+   const d=(rec&&rec.detail)||null;
+   const c=(d&&d.cond)||{};
+   /* 予定から数えられるぶんは**記録が無くても出す**（これから組む段取りでも
+      「何本切るか・1本目は何か」は分かる）。記録があるときは記録を正とする
+      ——組んだ後で予定が動いても、組んだ事実は変わらない。 */
+   const plan=bladeRunPlan(list,at+1);
+   const run=(d&&d.run)||plan;
+   return {
+    id:entry.id,title:String(entry.title||'設備停止'),
+    day:String(entry.workDate||entry.date||''),shift:String(entry.shift||''),
+    done:!!rec, at:rec?String(rec.at||''):'',
+    carriage:rec?String(rec.carriage||''):'',
+    set:d?String(d.set||''):'',
+    knife:d?bladeNum(c.knife,1):'',
+    hold:d?String(c.hold||''):'',
+    holdParts:d?bladeRingText(d):'',
+    spacer:d?bladeCountText(d.spacer||{}):'',
+    clearance:d?bladeNum(c.clearance,2):'',
+    overlap:d?bladeNum(c.overlap,2):'',
+    strips:d?(c.strips||''):'',
+    first:bladeFirstText(run),
+    planned:(run&&run.planned)||0
+   };
+  });
+ }
+
+ const SC_BLADE_COLS=[
+  ['日付','day'],['直','shift'],['段取り','title'],['状態','state'],
+  ['台車','carriage'],['刃セット','set'],['刃径','knife'],
+  ['板押さえ','hold'],['ゴムリング／フィンガー','holdParts'],
+  ['スペーサー','spacer'],['クリアランス','clearance'],['ラップ','overlap'],
+  ['条数','strips'],['1本目に切る材料','first'],['予定本数','planned']
+ ];
+ function renderBladeList(){
+  const box=$('#scBladeBody');if(!box)return;
+  if(!scState.equipment){
+   box.innerHTML='<div class="sc-blade-empty">設備を選んでください。</div>';return;
+  }
+  if(scBladeHistory.items===null){
+   box.innerHTML='<div class="sc-blade-empty">読み込んでいます…</div>';return;
+  }
+  scBladeRows=buildBladeRows();
+  if(!scBladeRows.length){
+   box.innerHTML='<div class="sc-blade-empty">この表示範囲に刃組の段取りがありません。<br>'
+    +'作業スケジュールへ<b>刃組ガイダンスを連携した設備停止</b>を入れると、ここに並びます。</div>';
+   return;
+  }
+  const head=SC_BLADE_COLS.map(([l])=>`<th>${esc(l)}</th>`).join('');
+  const body=scBladeRows.map(r=>{
+   const cells=SC_BLADE_COLS.map(([,k])=>{
+    if(k==='state'){
+     /* **色だけで言わない**（§CLAUDE 3）——分類名を字で出す。 */
+     return r.done?`<td class="sc-blade-done">記録済み<small>${esc(r.at)}</small></td>`
+                  :'<td class="sc-blade-todo">これから</td>';
+    }
+    if(k==='planned')return `<td class="sc-blade-n">${r.planned?esc(r.planned)+' 本':'—'}</td>`;
+    const v=r[k];
+    /* 記録が無い段取りの部材欄は「未記録」と書く（空欄＝0に見せない・§9.231）。 */
+    if((v===''||v==null)&&!r.done&&['carriage','set','knife','hold','holdParts',
+        'spacer','clearance','overlap','strips'].indexOf(k)>=0){
+     return '<td class="sc-blade-na">未記録</td>';
+    }
+    return `<td>${esc(v===''||v==null?'—':v)}</td>`;
+   }).join('');
+   return `<tr data-id="${esc(r.id)}">${cells}</tr>`;
+  }).join('');
+  box.innerHTML=`<div class="sc-blade-head"><b>刃組スケジュール</b>`
+   +`<span class="sc-blade-note">${esc(scState.equipment)}／${scBladeRows.length}件`
+   +`（記録済み ${scBladeRows.filter(r=>r.done).length}）</span></div>`
+   +`<div class="sc-blade-wrap"><table class="sc-blade-tbl"><thead><tr>${head}</tr></thead>`
+   +`<tbody>${body}</tbody></table></div>`;
+ }
+
  /* ---------- 全体/個別の表示切替(§9.9) ---------- */
  function applyBoardModeUi(){
+  const inBlade=scState.boardMode==='blade';
   const inBoard=scState.boardMode==='board';
-  const toggle=$('#scModeToggle');if(toggle)toggle.hidden=!scState.pickerEnabled;
+  /* 段の器は**刃組の段があるので常に出す**（§9.383）。「全体」は設備を選べる
+     ときだけ意味を持つので、そのボタンだけ伏せる——器ごと消すと、自設備
+     固定の端末から刃組一覧へ行けなくなる。 */
+  const toggle=$('#scModeToggle');if(toggle)toggle.hidden=false;
+  const boardBtn=$('#scModeBoard');
+  if(boardBtn)boardBtn.hidden=!scState.pickerEnabled;
   $('#scModeBoard').classList.toggle('active',inBoard);
-  $('#scModeSingle').classList.toggle('active',!inBoard);
+  $('#scModeSingle').classList.toggle('active',!inBoard&&!inBlade);
+  { const b=$('#scModeBlade'); if(b)b.classList.toggle('active',inBlade); }
   $('#scBoard').hidden=!inBoard;
-  $('#scSingleBody').hidden=inBoard;
+  { const b=$('#scBladeBody'); if(b)b.hidden=!inBlade; }
+  $('#scSingleBody').hidden=inBoard||inBlade;
   $('#scBoardWindow').hidden=!inBoard;
   const histWrap=$('#scHistoryRange');if(histWrap)histWrap.hidden=inBoard;
   updateHistoryFromUi();
@@ -2161,6 +2335,19 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   }else{
    note.hidden=true;note.classList.remove('is-warn');
   }
+ }
+ /* 刃組スケジュール一覧へ（§9.383）。**予定はそのまま**で、見せ方だけ替える
+    ——同じ`scState.entries`を段取りの側から読む。記録は設備ごとなので、
+    ここで取りに行く（開いていないあいだは取りに行かない）。 */
+ async function switchToBlade(){
+  scState.boardMode='blade';
+  applyFieldReorderPermission();
+  applyBoardModeUi();
+  if(!scState.equipment){renderBladeList();return}
+  if(!(scState.entries||[]).length)await refreshAll();
+  renderBladeList();
+  await loadBladeHistory(true);
+  if(scState.boardMode==='blade')renderBladeList();
  }
  async function switchToSingle(){
   scState.boardMode='single';
@@ -4827,8 +5014,12 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  const SC_LINK_TARGETS={
   bladeset:{
    ready:()=>!!(WL.bladeGuide&&typeof WL.bladeGuide.open==='function'),
+   /* **どの段取りの行から開いたか**（`stopId`）も渡す（§9.383）。刃組の記録と
+      予定の行を結ぶ鍵で、これが無いと刃組スケジュール一覧が「この段取りは
+      記録済みか」を時刻で当てるしかなくなる（同じ日に2回組むと当たらない）。 */
    open:e=>WL.bladeGuide.open({equipment:scState.equipment,
                                seed:bladeSeedFromEntry(e),
+                               stopId:e&&e.id!=null?String(e.id):'',
                                from:`${e.title||'設備停止'}（${scState.equipment||''}）`})
   }
  };
@@ -6775,7 +6966,19 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      // 再試行に意味があるのは共有ファイルのロック待ち・一時的な通信不良
      // (423/409/503やネットワーク例外)だけ。
      const permanent=e&&typeof e.status==='number'&&e.status>=400&&e.status<500&&e.status!==409&&e.status!==423;
-     if(permanent||op.attempts>=3){
+     /* **錠の待ちは「錠が切れるまで」待てる回数にする**（§9.384、利用者の報告）。
+        共有マスタの錠は既定で20秒ほど持たれるが、再試行は3回＝約4秒で尽きて
+        いた——**待てば通ったはずの書込を捨てて巻き戻していた**
+        （報告では56件が一度に消えた）。
+        **粘るのは409（共有マスタの錠）だけ。** 423（編集権を他の人が持った）は
+        錠と違って**待っても戻らない**——状態が変わったという知らせなので、
+        上で読み取り専用へ落としたうえで早く言うほうがよい（9回粘ると知らせが
+        25秒遅れる。自分の網が「失敗したら行は戻る」で赤くなって気づいた）。
+        4xxの取り違え（権限・入力不正）は今までどおり即あきらめる——
+        何度やっても同じ結果で、同じ知らせが回数ぶん並ぶだけ。 */
+     const waiting=e&&e.status===409;
+     const budget=waiting?SC_LOCK_RETRIES:3;
+     if(permanent||op.attempts>=budget){
       scWriteQueue.shift();e.__op=op.op&&op.op.op;failures.push(e);
       /* **`onFailure`があることを「知らせた」と数えない**（§9.372）。
          以前はここで`e.__reported=true`を立てていたが、`onFailure`の中身は
@@ -6789,7 +6992,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
        try{op.onFailure(e)}catch(err){WL.quiet.note('ロールバック自体の失敗はここでは無視(諦めたことは既にfailuresへ記録済み)',err)}
       }
      }
-     else await sleep(700*op.attempts);
+     else await sleep(Math.min(SC_LOCK_WAIT_MAX_MS,700*op.attempts));
     }
    }
   }finally{
@@ -9041,6 +9244,13 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      ようにここから出す（画面を組み立てずに条の選び方だけを見る）。 */
   bladeSeedLots:(list,from)=>bladeSeedLots(list,from||0),
   bladeRunPlan:(list,from)=>bladeRunPlan(list,from||0),
+  /* 刃組スケジュール一覧の材料（§9.383）。**画面を触らずに確かめられる形**で
+     出す——表のHTMLではなく、行の値そのものを見る。 */
+  bladeStops:list=>bladeStops(list).map(x=>({id:x.entry.id,at:x.at})),
+  bladeRows:()=>buildBladeRows(),
+  bladeColumns:()=>SC_BLADE_COLS.map(([l,k])=>({label:l,key:k})),
+  bladeCountText:m=>bladeCountText(m),
+  switchToBlade:()=>switchToBlade(),
   forgetWorkPresence:()=>forgetWorkPresence(),
   /* いま描いているタイムラインの列レイアウトの対象（§9.239 ④）。
      紙が「手で決めた揃え」を引くのに使う——**判定は`WL.columnAlign`の
