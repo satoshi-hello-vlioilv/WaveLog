@@ -65,7 +65,10 @@
   const fingers = (c.fingers || [])
    .map(x => ({ name: x.name || '', width: num(x.width),
                 qty: Math.max(0, num(x.qty) || 0), minQty: num(x.minQty) || 0,
-                maxThickness: num(x.maxThickness) }))
+                maxThickness: num(x.maxThickness),
+                /* 形（§9.379）。**図がここから寸法を取る**ので落とさない。 */
+                length: num(x.length), thickness: num(x.thickness),
+                grindRun: num(x.grindRun), grindDrop: num(x.grindDrop) }))
    .filter(x => x.width > 0);
   const blades = (c.blades || [])
    .map(x => ({ name: x.name || '', group: x.group || '',
@@ -73,11 +76,24 @@
                 qty: Math.max(0, num(x.qty) || 0), minQty: num(x.minQty) || 0,
                 lastGrind: x.lastGrind || '', grindCount: num(x.grindCount) || 0,
                 status: x.status || '' }));
+  /* **サーバーが渡したものを落とさない**（§9.381）。ここは「読みやすい形へ
+     直す」場所であって、**選り分ける場所ではない**——`picks`（刃選択の決まり）と
+     語彙を落としていたため、盤では当たるのにガイダンスでは一度も当たらない、
+     という最も分かりにくい壊れ方をしていた（§9.306「サーバーが正しく答えても、
+     画面が引かなければ何も変わらない」）。足した鍵はここにも書くこと。 */
   return { P, spacers, rings, fingers, blades,
            history: (c.history || []).slice(),
+           designs: (c.designs || []).slice(),
+           picks: (c.picks || []).slice(),
+           pickFields: (c.pickFields || []).slice(),
+           pickOps: (c.pickOps || []).slice(),
            equipment: c.equipment || '',
            standardStored: !!c.standardStored,
            bladeStatus: c.bladeStatus || [], spacerUses: c.spacerUses || [],
+           bladeGeneral: c.bladeGeneral || '一般',
+           bladeSpecial: c.bladeSpecial || '専用',
+           bladeMaint: c.bladeMaint || 'メンテナンス中',
+           fingerShape: Object.assign({}, c.fingerShape || {}),
            ringColors: c.ringColors || [] };
  }
 

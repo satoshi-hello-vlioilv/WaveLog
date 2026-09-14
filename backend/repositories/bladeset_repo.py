@@ -1189,6 +1189,9 @@ def context(c, equipment):
         'fingers': finger_rows(c, False, eq),
         'history': history_rows(c, False, eq),
         'picks': pick_rows(c, False, eq),
+        # 条の設計（§9.381）。**測定が読むのと同じ行**を画面へも渡す
+        # ——「記録済みか」を別の口で数えると、答えが2つに割れる。
+        'designs': design_rows(c, False, eq),
         # 語彙（画面へ書き写さない）
         'bladeStatus': list(BLADE_STATUS),
         'bladeGeneral': BLADE_GENERAL,

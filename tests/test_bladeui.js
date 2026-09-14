@@ -55,6 +55,12 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     }
    }
    for (const x of (c.history || [])) await post('/api/bladeset/history/delete', { id: x.id });
+   /* **条の設計も消す**（§9.284）。`db/master.sqlite3` はgitが持たないので、
+      片付け損ねた1行が次の実行へそのまま残る——実際にこれで「未記録と言う」の
+      網が2回目から赤になった（1回目に自分が記録した行が生き残っていた）。 */
+   for (const x of (c.designs || [])) {
+    await post('/api/bladeset/strip-design/delete', { id: x.id });
+   }
   };
   await wipe();
 
@@ -603,8 +609,81 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      const e = document.querySelector('#bsFPick');
      return e ? { t: (e.textContent || '').trim(), title: e.title || '' } : null;
     });
+    /* **サーバーの答えが画面まで届いているか**（§9.381、§9.306の教訓）。
+       ここを見ていなかったので、`normalize()` が `picks` と語彙を落として
+       いても気づけなかった——盤では当たるのにガイダンスでは一度も当たらない、
+       という最も分かりにくい壊れ方をしていた。判定の関数を直に呼ぶ網
+       （上の 7.5）は**通ってしまう**ので、器（`M`）の側も見る。 */
+    const ctxKeys = await page.evaluate(() => {
+     const M = WL.bladeGuide.masters || {};
+     return { picks: Array.isArray(M.picks), fields: (M.pickFields || []).length,
+              gen: M.bladeGeneral, sp: M.bladeSpecial, maint: M.bladeMaint,
+              shape: !!(M.fingerShape && M.fingerShape.thickness),
+              designs: Array.isArray(M.designs),
+              fingerTh: ((M.fingers || [])[0] || {}).thickness };
+    });
+    rec('刃選択の決まりと語彙が画面まで届く（途中で落とさない）',
+        ctxKeys.picks && ctxKeys.fields > 0 && !!ctxKeys.gen && !!ctxKeys.sp
+        && !!ctxKeys.maint, JSON.stringify(ctxKeys));
+    rec('フィンガーの形（厚み）がマスタから届く',
+        ctxKeys.shape && +ctxKeys.fingerTh > 0, JSON.stringify(ctxKeys));
+    rec('条の設計も同じ文脈で届く（測定と同じ行を見る）', ctxKeys.designs);
+
     rec('刃の選び方を画面に出す（既定は「一般」と書く）',
         !!pf && pf.t === '一般' && /一般/.test(pf.title), JSON.stringify(pf));
+
+    /* ---- 7.8) 条の設計は、記録すると測定が読む（§9.381、利用者の指示） ----
+       「刃組ガイダンスから設定した条の設計は、測定するときにも活かせるように
+         連携してください」。ここで固定するのは**同じ1行を両側が見ている**こと
+       ——記録した並びが `条設計マスタ` に入り、測定が読む API から同じ順で
+       返ること。片側だけ見ると「記録したのに測定が既定の並びで始まる」を
+       見逃す（§9.306）。 */
+    /* 7) で作業スケジュールへ戻っているので、**刃組の画面を開き直す**
+       （閉じた画面の札は押せない）。条の設計の節は幅構成の段の中にあるので、
+       窓も開いてから触る（人が押すときも同じ道）。 */
+    await page.evaluate(() => WL.bladeGuide.open({}));
+    await W.until(page, () => document.querySelectorAll('#bsStage rect').length > 20,
+                  null, { ms: 15000, what: '刃組ガイダンスを開き直す' });
+    await page.keyboard.press('Escape');
+    await W.until(page, () => !document.querySelector('.bs-step.is-open'), null,
+                  { ms: 5000, what: '開いている窓を閉じる' });
+    await page.click('[data-step-open="bsV3"]');
+    await page.waitForSelector('#bsDsSave', { timeout: 8000 });
+    const ds0 = await page.evaluate(() => {
+     const e = document.querySelector('#bsDsState');
+     return e ? { t: (e.textContent || '').trim(), cls: e.className } : null;
+    });
+    rec('記録していない条の設計は「未記録」と言う（黙って既定で始めない）',
+        !!ds0 && /未記録/.test(ds0.t), JSON.stringify(ds0));
+    await page.click('#bsDsSave');
+    await W.until(page, () => /記録済み/.test(
+      (document.querySelector('#bsDsState') || {}).textContent || ''), null,
+      { ms: 15000, what: '条の設計が記録済みになる' });
+    /* **測定が読む口から**引き直す（画面の控えではなく、サーバーの行を見る）。 */
+    const want = await page.evaluate(() => {
+     const BC = WL.bladeSet, st = WL.bladeGuide.state;
+     return BC.designByParent(st).map(d => ({
+      parent: d.parent, sig: (d.groups || []).map(g => `${g.lot}:${g.count}`).join('|') }));
+    });
+    let got = [];
+    for (const w of want) {
+     const r = await (await fetch(B + '/api/bladeset/strip-design?equipment='
+       + encodeURIComponent(EQ) + '&lot=' + encodeURIComponent(w.parent))).json();
+     got.push({ parent: w.parent,
+                sig: ((r.item || {}).groups || []).map(g => `${g.lot}:${g.count}`).join('|') });
+    }
+    rec('記録した並びが測定の読む口から同じ順で返る',
+        want.length > 0 && want.every((w, i) => got[i] && got[i].sig === w.sig),
+        JSON.stringify({ want, got }));
+    /* 画面の並びを変えると「記録と違う」と言う（測定が古い並びで始まるのを防ぐ）。 */
+    await page.evaluate(() => {
+     const st = WL.bladeGuide.state;
+     if ((st.order || []).length > 1) st.order = st.order.slice().reverse();
+    });
+    /* 窓を閉じて次の節へ（開いたままだと図の札に手が届かない・§9.380）。 */
+    await page.keyboard.press('Escape');
+    await W.until(page, () => !document.querySelector('.bs-step.is-open'), null,
+                  { ms: 5000, what: '幅構成の窓が閉じる' });
 
     /* ---- 8) 分割ありの親ロットは条にならない（§9.378） ----
        利用者の指示「分割ロットの場合、測定画面では親ロットは測定データ格納
@@ -658,8 +737,10 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     const left = await getj('/api/bladeset/context?equipment=' + encodeURIComponent(EQ));
     rec('後始末で刃組マスタが空へ戻る',
         !(left.spacers || []).length && !(left.rings || []).length
-        && !(left.blades || []).length && !(left.fingers || []).length,
-        `sp=${(left.spacers || []).length} ring=${(left.rings || []).length}`);
+        && !(left.blades || []).length && !(left.fingers || []).length
+        && !(left.designs || []).length,
+        `sp=${(left.spacers || []).length} ring=${(left.rings || []).length}`
+        + ` design=${(left.designs || []).length}`);
     /* 論理削除で残る行を素の表から消す。**消した件数で確かめる**（§9.362 ①
        「後片付けは『消えた』で確かめる」）。 */
     const dropped = await H.dropNewMasterRows(snapM);

@@ -310,6 +310,16 @@
    <p class="bs-ordhint" id="bsOrdHint"></p>
   </div>
   <div class="bs-kpis" id="bsKpis"></div>
+  <!-- **条の設計＝ここで決めた並び**（§9.381、利用者の指示「刃組ガイダンスから
+       設定した条の設計は、測定するときにも活かせるように連携してください」）。
+       元板巾・ロット・幅・本数・並びの5つがそのまま条の設計なので、**別の画面を
+       作らず、決めたその場で記録する**（§CLAUDE 14 視覚導線と作業導線を一致）。
+       記録すると測定画面がこの並びで条を埋める。 -->
+  <div class="bs-dz">
+   <div class="bs-dzh"><b>条の設計</b><span class="bs-dzs" id="bsDsState">—</span></div>
+   <p class="bs-note" id="bsDsNote"></p>
+   <button type="button" class="bs-btn is-primary bs-wide" id="bsDsSave">この並びを条の設計として記録する</button>
+  </div>
   <p class="bs-note" id="bsHint3"></p>`;
 
  const step4Html = () => `
@@ -643,6 +653,7 @@
    : `<span class="bs-ng">条合計 ${w.total.toFixed(2)} が元板巾 ${st.W} を超えています`
      + `（不足 ${(w.total - st.W).toFixed(2)} mm）。幅・本数を見直してください。</span>`;
   if (w.even) $('#bsOsTrim').value = w.osTrim;
+  renderDesignState();
  }
 
  function renderStep4(res) {
@@ -1681,6 +1692,29 @@
    st.order = st.order.filter(i => i !== gone).map(i => (i > gone ? i - 1 : i));
    renderLots(); renderOrder(); scheduleRender();
   });
+  /* 条の設計を**その場で記録**（§9.381）。刃組完了のときにも記録するが、
+     測定が先に始まることがあるので、**完了を待たずに残せる**ようにする。 */
+  $('#bsDsSave').addEventListener('click', async () => {
+   const btn = $('#bsDsSave');
+   if (!designState().total) {
+    await alertModal('ロットがありません。元板巾とロットを入れてください。');
+    return;
+   }
+   btn.disabled = true;
+   try {
+    const n = await saveDesigns();
+    if (!n) {
+     await alertModal('条の設計を記録できませんでした。ロット番号が空かもしれません。');
+    } else {
+     await loadContext(st.equipment);
+     renderDesignState();
+     showToast('条の設計を記録しました',
+               `${n}ロット分。測定画面はこの並びで条を埋めます。`, 3800);
+    }
+   } catch (e) {
+    await alertModal('条の設計を記録できませんでした：' + (e && e.message ? e.message : e));
+   } finally { btn.disabled = false; }
+  });
   $('#bsAddLot').addEventListener('click', () => {
    st.lots.push({ name: 'LOT' + (st.lots.length + 1), w: 200, n: 1 });
    renderLots(); renderOrder(); scheduleRender();
@@ -1905,6 +1939,55 @@
  }
  /* 条の設計を親ロットごとに書く。**失敗しても刃組の記録は残す**——先に書いた
     履歴まで巻き戻すと、組んだ事実が消える。失敗は理由を残して件数に数えない。 */
+ /* いまの並びが**記録済みか**を言う（§9.381）。測定はここへ記録した並びで
+    条を埋めるので、**記録していないことに気づけない**と、測定が既定の並びで
+    始まってしまう（§CLAUDE 推測させない）。
+    比べるのは「どの子ロットを何本・どの順で」——幅は条の設計の従属値。 */
+ function designSignature(groups) {
+  return (groups || []).map(g => `${g.lot}:${g.count}`).join('|');
+ }
+ function designState() {
+  const list = BS().designByParent(st);
+  const saved = (M && M.designs) || [];
+  const out = { total: list.length, same: 0, diff: 0, none: 0, parents: [] };
+  list.forEach(d => {
+   const hit = saved.find(x => x.lot === d.parent);
+   const state = !hit ? 'none'
+    : (designSignature(hit.groups) === designSignature(d.groups) ? 'same' : 'diff');
+   out[state] += 1;
+   out.parents.push({ parent: d.parent, state });
+  });
+  return out;
+ }
+ function renderDesignState() {
+  const el = $('#bsDsState'), note = $('#bsDsNote');
+  if (!el) return;
+  const d = designState();
+  if (!d.total) {
+   el.textContent = 'ロットがありません';
+   el.className = 'bs-dzs';
+   if (note) note.textContent = '元板巾とロットを入れると、その並びが条の設計になります。';
+   return;
+  }
+  /* **色だけで言わない**（§CLAUDE 3）——分類名と件数を字で出す。 */
+  if (d.diff) {
+   el.textContent = `記録と違う ${d.diff}件`;
+   el.className = 'bs-dzs is-diff';
+  } else if (d.none) {
+   el.textContent = `未記録 ${d.none}件`;
+   el.className = 'bs-dzs is-none';
+  } else {
+   el.textContent = `記録済み ${d.same}件`;
+   el.className = 'bs-dzs is-same';
+  }
+  if (note) {
+   note.textContent = d.diff
+    ? '画面の並びと、記録してある並びが違います。記録し直すと測定もこの並びになります。'
+    : (d.none
+       ? '記録すると、測定画面がこの並びで条を埋めます。記録しないと測定は既定の並びで始まります。'
+       : '測定画面はこの並びで条を埋めます。');
+  }
+ }
  async function saveDesigns() {
   const at = new Date().toISOString().slice(0, 16).replace('T', ' ');
   const list = BS().designByParent(st);

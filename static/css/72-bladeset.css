@@ -548,6 +548,16 @@ body.bs-mode .bs-shell{display:flex}
   .bs-side{max-height:9rem;overflow:auto}
 }
 
+/* 条の設計の節（§9.381）。記録したかどうかを**字で**言い、色は添えるだけ。 */
+.bs-dz{margin-block-start:var(--space-2);padding:var(--space-2);
+  border:1px solid var(--line);border-radius:var(--radius-md);background:var(--bg)}
+.bs-dzh{display:flex;align-items:center;gap:var(--space-2);font-size:var(--fs-base-sm)}
+.bs-dzs{font-size:var(--fs-sm);font-weight:700;color:var(--muted)}
+.bs-dzs.is-same{color:var(--teal-dark)}
+.bs-dzs.is-none{color:var(--warn-fg)}
+.bs-dzs.is-diff{color:var(--danger)}
+.bs-dz .bs-note{margin-block:var(--space-1)}
+
 /* ---------- 刃選択の盤（§9.380、利用者の指示） ----------
    決まりを**文として読める**ようにする。条件は「項目 → 比べ方 → 値」の順に
    1つの札へ収め、札のあいだに「かつ」を置く——表の升目に散らすと、
