@@ -104,6 +104,7 @@ JS_FILES=[
  # 立体図（§9.377 追補）。three.js は**同梱せずCDNから遅延読み込み**するので、
  # このファイル自体は小さい。画面（blade-view.js）より先に読み、`WL.bladeSolid`を
  # 名乗らせる——画面は `attach()` を呼ぶだけになる。
+ 'bladeset/blade-pick.js',   # 刃組: 刃選択マスタの盤（マスタ管理の専用画面）
  'bladeset/blade-3d.js',
  'bladeset/blade-view.js',
  'report/actuals-view.js',

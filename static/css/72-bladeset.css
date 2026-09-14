@@ -547,4 +547,69 @@ body.bs-mode .bs-shell{display:flex}
   .bs-rail{max-height:22rem}
   .bs-side{max-height:9rem;overflow:auto}
 }
+
+/* ---------- 刃選択の盤（§9.380、利用者の指示） ----------
+   決まりを**文として読める**ようにする。条件は「項目 → 比べ方 → 値」の順に
+   1つの札へ収め、札のあいだに「かつ」を置く——表の升目に散らすと、
+   どこまでが1つの決まりなのかを目で囲み直すことになる。 */
+.bp-list{display:flex;flex-direction:column;gap:var(--space-2)}
+.bp-card{border:1px solid var(--card-border);border-radius:var(--radius-md);
+  background:var(--card-bg);padding:var(--space-2) var(--space-3)}
+/* 当たった決まりだけ面で示す（色だけで語らず、札の字でも「この作業はこれ」と言う）。 */
+.bp-card.is-won{border-color:var(--teal);box-shadow:inset 3px 0 0 var(--teal)}
+.bp-card.is-off{opacity:.6}
+.bp-ch{display:flex;align-items:center;gap:var(--space-2);min-height:1.9rem}
+.bp-no{display:inline-grid;place-items:center;min-width:1.5em;height:1.5em;
+  border-radius:var(--radius-xs);background:var(--rs-slate);color:#fff;
+  font-size:var(--fs-sm);font-weight:700}
+.bp-name{font-size:var(--fs-base-sm);color:var(--ink)}
+.bp-won{font-size:var(--fs-sm);font-weight:700;color:var(--teal-dark)}
+.bp-offtag{font-size:var(--fs-sm);color:var(--muted)}
+.bp-cta{margin-inline-start:auto;display:flex;gap:var(--space-1)}
+.bp-cb{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1);
+  padding-block:var(--space-1)}
+.bp-cond{display:inline-flex;align-items:center;gap:4px;padding:2px var(--space-2);
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg);
+  font-size:var(--fs-sm)}
+.bp-cond b{font-weight:700;color:var(--ink)}
+.bp-cond s{text-decoration:none;color:var(--muted)}
+.bp-cond u{text-decoration:none;font-weight:700;font-variant-numeric:tabular-nums}
+/* 試し欄に値があるときだけ○×が付く。**字と色の両方**で言う（§CLAUDE 3）。 */
+.bp-cond.is-ok{border-color:var(--teal);background:var(--teal-soft)}
+.bp-cond.is-ng{border-color:var(--line);background:var(--bg);opacity:.7}
+.bp-hit{font-style:normal;font-weight:700}
+.bp-hit.is-ok{color:var(--teal-dark)}
+.bp-hit.is-ng{color:var(--muted)}
+.bp-and{font-size:var(--fs-sm);color:var(--muted)}
+.bp-none{font-size:var(--fs-sm);color:var(--warn-fg)}
+.bp-cf{font-size:var(--fs-sm);color:var(--ink-2)}
+.bp-arrow{color:var(--muted);margin-inline-end:4px}
+.bp-grp{font-size:var(--fs-base-sm);color:var(--teal-dark)}
+/* 直す窓。行は「項目→比べ方→値」の左から右（CLAUDE 14 決める順）。 */
+.bp-ed{display:flex;flex-direction:column;gap:var(--space-2)}
+.bp-lb{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm);color:var(--muted)}
+.bp-lb input,.bp-lb select{max-width:var(--w-lg)}
+.bp-rows{display:flex;flex-direction:column;gap:var(--space-1)}
+.bp-row{display:flex;align-items:center;gap:var(--space-1);flex-wrap:wrap}
+.bp-row .bp-f{max-width:var(--w-md)}
+.bp-row .bp-o{max-width:var(--w-sm)}
+.bp-row .bp-v,.bp-row .bp-v2{max-width:var(--w-sm)}
+.bp-row [hidden]{display:none}
+.bp-ck{display:flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm)}
+.bp-eda{display:flex;gap:var(--space-2);align-items:center}
+.bp-del{margin-inline-start:auto;color:var(--danger)}
+/* 試し欄（§9.117「書いた本人が確かめられる」と同じ考え）。 */
+.bp-try{margin-block-start:var(--space-2);padding:var(--space-2);
+  border:1px solid var(--line);border-radius:var(--radius-md);background:var(--bg)}
+.bp-tryh{font-size:var(--fs-sm);font-weight:700;color:var(--ink)}
+.bp-tryh s{text-decoration:none;font-weight:400;color:var(--muted);margin-inline-start:var(--space-2)}
+.bp-tryf{display:flex;flex-wrap:wrap;gap:var(--space-2);margin-block:var(--space-2)}
+.bp-pf{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm)}
+.bp-pf s{text-decoration:none;color:var(--muted)}
+.bp-pf input{max-width:var(--w-sm)}
+.bp-trya{display:flex;align-items:center;gap:var(--space-2)}
+.bp-ans{font-size:var(--fs-sm)}
+.bp-ans.is-idle{color:var(--muted)}
+.bp-ans.is-hit{color:var(--teal-dark);font-weight:700}
+.bp-ans.is-none{color:var(--ink-2)}
 }

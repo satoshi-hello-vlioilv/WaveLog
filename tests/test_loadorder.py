@@ -61,9 +61,23 @@ rec('index.html にファイル名の一覧を書き写していない', not lit
 # ---- 4. special: の鍵は全部登録簿へ名乗っている ----
 defs_js = (JS_DIR / 'master' / 'master-defs.js').read_text(encoding='utf-8')
 specials = sorted(set(re.findall(r"special:'([a-z-]+)'", defs_js)))
+# **読み込まれる全部を見る**（§9.380）。以前は master の5本しか見ておらず、
+# 専用画面を別の領域（`bladeset/blade-pick.js`）へ置いたときに「名乗っていない」
+# と誤って落ちた。**本当に見たいのは「宙に浮いた special: が無い」こと**なので、
+# 実際に配られるファイルを全部見るほうが正しく、しかも取りこぼしが減る。
+# ただし `WL.mm.registerSpecial` は盤が作るので、**盤より後で読まれること**まで
+# 見る——先に読まれると名乗れないまま素通りする（数え落としは緩む側に壊れる）。
 registered = set()
-for f in master:
-    registered |= set(re.findall(r"registerSpecial\('([a-z-]+)'", (JS_DIR / f).read_text(encoding='utf-8')))
+late = set()
+for f in JS_FILES:
+    keys = set(re.findall(r"registerSpecial\('([a-z-]+)'", (JS_DIR / f).read_text(encoding='utf-8')))
+    if not keys:
+        continue
+    registered |= keys
+    if idx[f] > idx['master/master-maint.js']:
+        late |= keys
+rec('専用画面は盤（master-maint.js）より後で読まれる',
+    registered == late, str(sorted(registered - late)))
 rec('MASTER_DEFS の special: を全部拾えた', len(specials) >= 10, str(len(specials)))
 rec('special: の鍵は全部 registerSpecial で名乗っている',
     set(specials) <= registered, str(sorted(set(specials) - registered)))
