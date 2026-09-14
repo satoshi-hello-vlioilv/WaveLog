@@ -43,6 +43,8 @@
     **0で埋めずに件数を言う**（§9.231・§CLAUDE 4）——黙って落とすと、
     条が1本足りないことに現場が気づけない。 */
  let seededSkip = 0;
+ /* 予定から運んだ「本数・1本目の材料」（§9.382）。刃組の記録へそのまま残す。 */
+ let seededRun = null;
 
  /* ---------- 幅ごとの色 ----------
     最大9種の条幅が入り混じっても見分けられるよう、淡い塗りで差を付ける。
@@ -404,6 +406,12 @@
   st.equipment = eq;
   seededFrom = o.from || null;
   seededSkip = Math.max(0, (o.seed && o.seed.skipped) | 0);
+  /* その段取りで切る本数と、1本目に切る材料（§9.382）。**予定から来た
+     ものだけ**を控える——手で開いたときは空のままにして、記録にも
+     「予定から開いていない」と分かる形で残す（§9.231 0で埋めない）。 */
+  seededRun = (o.seed && (o.seed.planned || o.seed.first))
+   ? { planned: Math.max(0, (o.seed.planned) | 0), first: o.seed.first || null }
+   : null;
   showEmpty('');
   try {
    await loadContext(eq);
@@ -1888,6 +1896,23 @@
     する場合に必要なデータは入力を促すような工夫」）。人が決めるのは台車と
     刃セットの2つだけで、残りは計算とマスタから入る——だから足りないのが
     どちらなのかを名指しできる（§CLAUDE 4・6）。 */
+ /* 確定保存に載る「本数・1本目の材料」を**押す前に見せる**（§CLAUDE 6 出どころ）。
+    予定から開いていないときは、そう書く——黙って空で残すと、あとから
+    「なぜ本数が無いのか」を探すことになる。 */
+ function runConfirmHtml() {
+  if (!seededRun) {
+   return '<p class="confirm-modal-message bs-note">予定から開いていないため、'
+    + '<b>切る予定本数と1本目の材料は残りません</b>'
+    + '（作業スケジュールの段取りの行から開くと記録されます）。</p>';
+  }
+  const f = seededRun.first || {};
+  const bits = [f.material, f.thickness != null && f.thickness !== '' ? `t${f.thickness}` : '',
+                f.width != null && f.width !== '' ? `幅${f.width}` : '', f.purpose]
+   .map(x => String(x || '').trim()).filter(Boolean);
+  return `<p class="confirm-modal-message"><b>予定本数</b>　${seededRun.planned} 本`
+   + `　<b>1本目</b>　${esc(f.lot || '（読めません）')}`
+   + (bits.length ? `（${esc(bits.join(' / '))}）` : '（材質・寸法が読めません）') + '</p>';
+ }
  async function saveCarriage() {
   if (!LAST) return;
   const B = BS();
@@ -1901,6 +1926,16 @@
   }
   const detail = B.snapshot(st, M, LAST.g);
   detail.set = st.bladeGroup || '';
+  /* **確定保存に載せるもの**（§9.382、利用者の指示）。刃組スケジュール一覧が
+     読むのはこの1件なので、**そのとき決まっていたことを全部ここへ**置く
+     ——別々の場所から集め直すと、後から片方だけ変わって食い違う。
+       台車・刃セット      … `carriage` と `set`
+       板押さえ・部材の員数 … `cond.hold` と `spacer`/`ring`/`finger`
+       クリアランス・ラップ … `cond.clearance` / `cond.overlap`
+       1本目の材料・予定本数 … ここで足す（予定から運んだもの）
+     予定から開いていないときは `run` を置かない（空の器を作らない）。 */
+  if (seededRun) detail.run = { planned: seededRun.planned, first: seededRun.first };
+  detail.from = seededFrom || '';
   const c = detail.cond || {};
   const at = new Date().toISOString().slice(0, 16).replace('T', ' ');
   const note = `${B.METHOD_NAME[LAST.method]}／Φ${st.knife.toFixed(1)}／${B.holdName(st, M)}／`
@@ -1915,7 +1950,8 @@
     + `板厚 ${(+c.thickness || 0).toFixed(2)} ／ Φ${(+c.knife || 0).toFixed(1)} ／ `
     + `${esc(c.method ? B.METHOD_NAME[c.method] || c.method : '')} ／ ${esc(c.hold || '')}</p>`
     + `<p class="confirm-modal-message"><b>刃セット</b>　${esc(st.bladeGroup || '（登録なし）')}`
-    + `　<b>条の設計</b>　${B.designByParent(st).length} ロット分</p>`,
+    + `　<b>条の設計</b>　${B.designByParent(st).length} ロット分</p>`
+    + runConfirmHtml(),
    confirmLabel: '記録する' });
   if (!ok) return;
   try {

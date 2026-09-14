@@ -4848,7 +4848,9 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function bladeSeedFromEntry(e){
   const list=scState.entries||[];
   const at=list.findIndex(x=>String(x.id)===String(e.id));
-  return bladeSeedLots(list,at<0?list.length:at+1);
+  const from=at<0?list.length:at+1;
+  /* 条の割付と、その段取りで切る本数・1本目の材料を**同じ位置から**まとめて渡す。 */
+  return Object.assign(bladeSeedLots(list,from),bladeRunPlan(list,from));
  }
  /* 分割の有無は`WL.split`の1箇所が答える（測定と同じ判定を使う）。
     読めないときは「分割なし」へ倒す——**分割ありを見落とすより、
@@ -4860,6 +4862,36 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  }
  /* 条になる行を選ぶところだけを切り出した**純粋な関数**（網が合成した並びで
     直に呼べる・`WL.scheduleView.bladeSeedLots`）。`from`はその停止の次の位置。 */
+ /* その刃組で**何本切る予定か**と、**1本目に切る材料**（§9.382、利用者の指示
+    「刃組後1本目に切る材料(材質、板厚、板幅、用途名)、そのスケジュールで対象の
+    刃組で切る予定本数」）。
+
+    数えるのは**次の刃組まで**——同じ刃で流せるあいだが1つの段取りの持ち分。
+    条（子ロット）は数えない：**切るのはコイル1本**で、子は同じ1本を割った
+    ものなので、数えると本数が条の数だけ水増しされる。
+    条の割付（`bladeSeedLots`）とは数える単位が違うので、**関数を分ける**
+    ——図に出せる条は9本までで打ち切るが、予定本数は打ち切ってはいけない。 */
+ function bladeRunPlan(list,from){
+  const all=list||[];
+  let planned=0,first=null;
+  for(const x of all.slice(Math.max(0,from))){
+   if(x&&x.kind==='設備停止'&&stopLinkRowOf(x))break;
+   if(!x||x.kind!=='作業')continue;
+   const d=x.detail||{};
+   if(d.__childLot===true)continue;            // 子は親の一部（本数に数えない）
+   planned+=1;
+   if(!first){
+    /* **読めない項目は空のまま渡す**（§9.231 0で埋めない）——記録に
+       「材質 空欄」と残るほうが、嘘の値が残るより直せる。 */
+    first={lot:String(x.lotNo||x.title||''),
+           material:String(contentValueOf(d,'mfgMaterial')||''),
+           thickness:contentValueOf(d,'mfgThickness'),
+           width:contentValueOf(d,'mfgWidth'),
+           purpose:String(contentValueOf(d,'purposeName')||'')};
+   }
+  }
+  return {planned,first};
+ }
  function bladeSeedLots(list,from){
   const all=list||[];
   const n=v=>{const x=Number(v);return Number.isFinite(x)&&x>0?x:null};
@@ -9008,6 +9040,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
      条にならない**という測定と同じ規則を、網が合成した並びで直に確かめられる
      ようにここから出す（画面を組み立てずに条の選び方だけを見る）。 */
   bladeSeedLots:(list,from)=>bladeSeedLots(list,from||0),
+  bladeRunPlan:(list,from)=>bladeRunPlan(list,from||0),
   forgetWorkPresence:()=>forgetWorkPresence(),
   /* いま描いているタイムラインの列レイアウトの対象（§9.239 ④）。
      紙が「手で決めた揃え」を引くのに使う——**判定は`WL.columnAlign`の

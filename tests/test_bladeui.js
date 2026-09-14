@@ -726,6 +726,46 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         `t=${seed.thickness} W=${seed.originalWidth}`);
     rec('渡せなかった行は0で埋めず件数で言う', seed.skipped === 1, String(seed.skipped));
 
+    /* ---- 9) その刃組で切る本数と、1本目の材料（§9.382、利用者の指示） ----
+       数える単位が条（`bladeSeedLots`）と違う——**切るのはコイル1本**で、
+       子ロットは同じ1本を割ったものなので、数えると条の数だけ水増しされる。
+       また条は9本で打ち切るが、**本数は打ち切ってはいけない**。 */
+    /* 停止で区切れるのは**連携に載っている停止だけ**（`stopLinkRowOf`）。
+       綴りを網の側で決め打ちせず、6)で登録した名前をそのまま使う
+       ——名前を書き写すと、マスタの呼び名が変わったとき静かに区切れなくなる。 */
+    const run = await page.evaluate((stopName) => {
+     const mk = (o) => Object.assign({ kind: '作業', lotNo: o.id, detail: {} }, o);
+     const list = [
+      { kind: '設備停止', title: stopName },
+      mk({ id: 'P1', detail: { mfgWidth: 1200, mfgThickness: 1.6, originalWidth: 1200,
+                               mfgMaterial: 'SPCC', purposeName: '外装' } }),
+      mk({ id: 'C1', parentId: 'P1', detail: { __childLot: true, __childWidth: 65, __childStrips: 2 } }),
+      mk({ id: 'C2', parentId: 'P1', detail: { __childLot: true, __childWidth: 50, __childStrips: 3 } }),
+      mk({ id: 'N1', detail: { mfgWidth: 80, boxHorizontalCount: 2 } }),
+      mk({ id: 'N2', detail: { mfgWidth: 80, boxHorizontalCount: 2 } }),
+      { kind: '設備停止', title: stopName },
+      mk({ id: 'X1', detail: { mfgWidth: 70 } })
+     ];
+     return WL.scheduleView.bladeRunPlan(list, 1);
+    }, TAG + '刃組み');
+    /* P1・N1・N2 の3本（子2本は数えない／次の刃組より先は数えない）。
+       ※この網は停止の行が「刃組み」として連携に載っている前提で数える。 */
+    rec('切る予定本数は「コイルの本数」（条で水増ししない）／次の刃組で区切る',
+        run.planned === 3, `${run.planned}本`);
+    rec('1本目の材料を運ぶ（材質・板厚・板幅・用途名）',
+        !!run.first && run.first.lot === 'P1' && run.first.material === 'SPCC'
+        && +run.first.thickness === 1.6 && +run.first.width === 1200
+        && run.first.purpose === '外装', JSON.stringify(run.first));
+    /* **読めない項目は空のまま**（§9.231 0で埋めない）——記録に「材質 空欄」と
+       残るほうが、嘘の値が残るより直せる。 */
+    const run2 = await page.evaluate((stopName) => WL.scheduleView.bladeRunPlan(
+      [{ kind: '設備停止', title: stopName },
+       { kind: '作業', lotNo: 'B1', detail: { mfgWidth: 90 } }], 1), TAG + '刃組み');
+    rec('読めない材質・用途は空のまま渡す（0や既定で埋めない）',
+        !!run2.first && run2.first.material === '' && run2.first.purpose === ''
+        && (run2.first.thickness === null || run2.first.thickness === undefined
+            || run2.first.thickness === ''), JSON.stringify(run2.first));
+
     rec('JSエラーが出ていない', errs.length === 0, errs.slice(0, 2).join(' / '));
 
   } finally {
