@@ -156,6 +156,8 @@
 | ログビュワー（`backend/routes/logs.py`／`static/js/core/log-view.js`）は「1行」でなく「1件」で扱う | `test_logs.py`・`test_logview.js` | [§9.99](docs/decisions/9.99.md) |
 | 新しいキャッシュは`WL.ttlCache()`を使う | — | [§9.67](docs/decisions/9.67.md) |
 | 共有のデータは「読むのは写し・書くのは実物」で揃える | `test_recmirror.py` | [§9.268](docs/decisions/9.268.md) |
+| 共有マスタの錠は「持ち主が自分なら引き継ぐ」。名乗れない端末は自分と言わない | `test_mastershare.py` | [§9.384](docs/decisions/9.384.md) |
+| 錠待ち（409）は錠が切れるまで粘る。編集権(423)は待っても戻らないので即言う | `test_scfail.js`・`test_mastershare.py` | [§9.384](docs/decisions/9.384.md) |
 | 元データは「見る」と「取り込む」を分ける。見るのは全端末・書くのは書ける端末だけ | `test_scperm.js` | [§9.378](docs/decisions/9.378.md) |
 | `config/local.json`のパスは環境変数を展開する。保存は書いたまま | — | [§9.268](docs/decisions/9.268.md) |
 | `config/local.json`を読めなかったことを黙らないこと | — | [§9.271](docs/decisions/9.271.md) |
@@ -496,6 +498,16 @@
 | 軸方向から見たフィンガーは幅×厚みの四角。研削は奥行きの面なので見えない | — | [§9.379](docs/decisions/9.379.md) |
 | 端部（OS/DS）の表は右レール。図の段へ戻すと模式図が7割まで痩せる | `test_bladeui.js` | [§9.379](docs/decisions/9.379.md) |
 | 模式図は器の横幅を使い切っている。`grow`では1pxも広がらない（器の側を削る） | `test_bladeui.js` | [§9.378](docs/decisions/9.378.md) |
+| 向きの切り替えは刃組図の見出し。手順の窓の下に入るので、閉じてから押す | `test_bladeui.js` | [§9.380](docs/decisions/9.380.md) |
+| フィンガーを当てる先は「いちばん外へ寄った板の面」（中心線だと寄った条へ食い込む） | `test_bladeui.js` | [§9.380](docs/decisions/9.380.md) |
+| 刃選択の盤は「文として読める＋試し欄＋条件ごとの○×」。判定は`blade-core`を呼ぶ | `test_bladepick.js` | [§9.380](docs/decisions/9.380.md) |
+| 設定の窓は触るたびに作り直さない。`input`で写し、描き直すのは他のカードだけ | `test_bladepick.js` | [§9.380](docs/decisions/9.380.md) |
+| `normalize()`はサーバーの答えを選り分けない。足した鍵はここにも書く | `test_bladeui.js` | [§9.381](docs/decisions/9.381.md) |
+| 条の設計は決めたその場で記録できる。状態は未記録／記録済み／記録と違うの3つ | `test_bladeui.js` | [§9.381](docs/decisions/9.381.md) |
+| 刃組の確定保存は1件に全部載せる（台車・刃・部材・設定・予定本数・1本目の材料） | `test_bladeui.js` | [§9.382](docs/decisions/9.382.md) |
+| 予定本数はコイルの本数（条では数えない）。範囲は次の刃組まで | `test_bladeui.js` | [§9.382](docs/decisions/9.382.md) |
+| 刃組スケジュール一覧は記録と予定を`stopId`で結ぶ。未記録は字で書く | `test_bladeui.js` | [§9.383](docs/decisions/9.383.md) |
+| 部材の並びは大きい寸法から。「種類×数」と「何種・何本」の両方を言う | `test_bladeui.js` | [§9.383](docs/decisions/9.383.md) |
 
 ### 作業スケジュール（30件）
 
