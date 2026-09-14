@@ -431,6 +431,50 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('器から出ると消える（光ったまま残さない）', hov.afterLeave === hov.before,
         `${hov.onFig}→${hov.afterLeave}`);
 
+    /* ---- 4.5) 連携は「広い的」と「本当に見える強調」で成り立つ（§9.386） ----
+       利用者の指示「マウスオーバーの対象範囲を広げて、反応しやすく視覚的にも
+       強調して」。以前は**記号の札だけが的**（実測 27×29px）で、しかも図側の
+       強調は `background`/`border-color` を当てており **SVG の rect は描かない**
+       ので**1pxも変わっていなかった**（実測 `fill` は前後とも同じ）。 */
+    const link = await page.evaluate(() => {
+     const g = document.querySelector('#bsStage .bs-bhit');
+     if (!g) return { no: true };
+     const bx = el => { try { const b = el.getBBox(); return b.width * b.height; }
+                        catch (_) { return 0; } };
+     const hit = g.querySelector('.bs-zhit'), bdg = g.querySelector('.bs-bdgr');
+     return { hitA: Math.round(bx(hit)), bdgA: Math.round(bx(bdg)),
+              hitW: Math.round(hit.getBBox().width),
+              hitH: Math.round(hit.getBBox().height),
+              /* 塗っていなくても的になること（これが無いと透明な板は素通り）。 */
+              pe: getComputedStyle(hit).pointerEvents };
+    });
+    rec('連携の的は記号の札より広い（区間ぜんたいを的にする）',
+        !link.no && link.hitA > link.bdgA * 4,
+        `的 ${link.hitW}×${link.hitH}=${link.hitA} / 札 ${link.bdgA}`);
+    rec('透明な的でも反応する（pointer-events を持つ）', link.pe === 'all', String(link.pe));
+    /* **強調は SVG に効く言葉で**。`transition` があるので、当たった値ではなく
+       「動き出したか」で見る——描画を1回待ってから読む（当てた直後に読むと
+       遷移前の値が返り、効いていても0に見える。実際にそう見えて一度迷った）。 */
+    const hi = await page.evaluate(() => {
+     const g = document.querySelector('#bsStage .bs-bhit');
+     const hit = g.querySelector('.bs-zhit'), bdg = g.querySelector('.bs-bdgr');
+     const off = { o: getComputedStyle(hit).fillOpacity, f: getComputedStyle(bdg).fill };
+     g.classList.add('is-pick');
+     return off;
+    });
+    await W.paint(page);
+    const hiOn = await page.evaluate(() => {
+     const g = document.querySelector('#bsStage .bs-bhit.is-pick');
+     const hit = g.querySelector('.bs-zhit'), bdg = g.querySelector('.bs-bdgr');
+     const on = { o: getComputedStyle(hit).fillOpacity, f: getComputedStyle(bdg).fill };
+     g.classList.remove('is-pick');
+     return on;
+    });
+    rec('光ると図の面が塗られる（fill-opacity が動く。background では描かれない）',
+        parseFloat(hiOn.o) > parseFloat(hi.o), `${hi.o}→${hiOn.o}`);
+    rec('光ると記号の塗りも変わる（色だけの違いに頼らない）',
+        hiOn.f !== hi.f, `${hi.f}→${hiOn.f}`);
+
     /* ---- 5) 立体図: 器の入れ替え・断り・段取りの順 ----
        **描画そのもの（WebGL の絵）はここでは見ない。** 立体図の部品（three.js）は
        押したときに CDN から取りに行く作りで、検証用のコンテナは外へつながらない。

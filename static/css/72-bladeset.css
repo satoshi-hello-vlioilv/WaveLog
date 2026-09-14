@@ -478,9 +478,27 @@ body.bs-mode .bs-shell{display:flex}
    **`cursor:pointer` は置かない**（§9.385）——押しても何も起きないので、
    指のカーソルは「押せる」という嘘になる（§CLAUDE 4「できないことは、
    できないと書く」）。重ねたときの明るさの変化が、反応していることを言う。 */
-.bs-bhit rect{transition:filter .12s}
-.bs-bhit:hover rect{filter:brightness(1.25)}
+/* **的と強調はこの1枚**（§9.386）。区間ぜんたいを覆う板で、ふつうは透明。
+   `pointer-events:all` は「塗っていなくても的になる」の意で、これが無いと
+   透明な板は素通りする。 */
+.bs-zhit{fill:var(--teal);fill-opacity:0;stroke:var(--teal-dark);stroke-width:0;
+  pointer-events:all;transition:fill-opacity .12s,stroke-width .12s}
+/* **SVGに効く言葉で書く**（§9.386）。以前は束ね規則の
+   `background`/`border-color`/`color` を当てており、`rect` はこれらを
+   描かないので**図側は1pxも変わっていなかった**（実測: `fill` は
+   `rgb(65,83,92)` のまま）。塗りは `fill`、縁は `stroke`。 */
+.bs-bhit.is-pick .bs-zhit{fill-opacity:.16;stroke-width:1.6}
+.bs-bdgr{transition:fill .12s,stroke-width .12s}
+.bs-bhit.is-pick .bs-bdgr{fill:var(--teal-dark);stroke-width:2.2}
+/* 表の側も「どの行か」を面だけでなく**印**で言う（面だけだと、淡い地の
+   行が並ぶ中で境目が読めない）。印は**全行が持つ記号のセル**（`.bs-bd`）へ
+   ——`td:first-child` は区分が `rowspan` で束ねるので、行によって別のセルに
+   なる（群の2行目以降は記号のセルが先頭になる）。
+   記号そのものも図と**同じ色**へ替える。図と表で見た目の言葉をそろえると、
+   どちらを見ていても同じものだと分かる。 */
 .bs-g tr[data-badge]:hover>td{background:var(--pale)}
+.bs-g tr.is-pick>td.bs-bd{box-shadow:inset 3px 0 0 var(--teal-dark)}
+.bs-g tr.is-pick .bs-bdg{background:var(--teal-dark)}
 .bs-bdg{display:inline-grid;place-items:center;min-width:1.5em;padding:0 3px;
   border-radius:var(--radius-xs);background:var(--bs-fig-badge);color:#fff;font-weight:800}
 .bs-rchip{display:inline-grid;place-items:center;width:1.2em;height:1.2em;

@@ -501,6 +501,10 @@
 | 板の場所を答えるのは`matBands()`の1箇所。押さえは**真下の条の面**へ当てる（外枠に固定すると寄った条に板厚1枚ぶんの隙間が残る） | `test_bladeui.js` | [§9.385](docs/decisions/9.385.md) |
 | 押さえの網は「外枠」で見ない。軸と**その条**のあいだに在るか・どの条にも食い込まないかで見る | `test_bladeui.js` | [§9.385](docs/decisions/9.385.md) |
 | 刃組表の区分（ロット番号・条幅）は本文（`--tbl-fs`）より小さくしない | — | [§9.385](docs/decisions/9.385.md) |
+| 図と表の連携の的は**区間ぜんたい**。記号の札だけにしない（実測27×29px→67×136px） | `test_bladeui.js` | [§9.386](docs/decisions/9.386.md) |
+| SVGの図形の強調は`fill`／`stroke`／`fill-opacity`で書く。`background`／`border-color`は描かれない | `test_bladeui.js` | [§9.386](docs/decisions/9.386.md) |
+| 透明な的には`pointer-events:all`を付ける（無いと素通りする） | `test_bladeui.js` | [§9.386](docs/decisions/9.386.md) |
+| 刃組表の行の印は全行が持つ`.bs-bd`へ。`td:first-child`は`rowspan`で行ごとに変わる | — | [§9.386](docs/decisions/9.386.md) |
 | 向きの切り替えは刃組図の見出し。手順の窓の下に入るので、閉じてから押す | `test_bladeui.js` | [§9.380](docs/decisions/9.380.md) |
 | フィンガーを当てる先は「いちばん外へ寄った板の面」（中心線だと寄った条へ食い込む） | `test_bladeui.js` | [§9.380](docs/decisions/9.380.md) |
 | 刃選択の盤は「文として読める＋試し欄＋条件ごとの○×」。判定は`blade-core`を呼ぶ | `test_bladepick.js` | [§9.380](docs/decisions/9.380.md) |
@@ -725,6 +729,7 @@
 | 固定待ち（`waitForTimeout`）とハーネスの写しは増やさない。網の骨組みは`tests/lib/harness.js`、待ちは`wait.js`の道具で | `test_waitlint.py` | [§9.347](docs/decisions/9.347.md) |
 | `page.waitForFunction`の述語にPromiseを返させない（返すと待たずに抜ける・実測82ms）。サーバーへ聞き直す待ちは`wait.js`の`poll()` | `test_waitlint.py` | [§9.376](docs/decisions/9.376.md) |
 | `offsetParent`で「見えているか」を測らない。`position:fixed`と未組み立ての両方で`null`になる | — | [§9.346](docs/decisions/9.346.md) |
+| `transition`を持つ値は当てた直後に読まない（遷移前の値が返る）。1回描かせてから「動き出したか」で見る | `test_bladeui.js` | [§9.386](docs/decisions/9.386.md) |
 | テストが開く／取りに行く`static/js`の道は領域つきで実在するURL（`/static/js/…`）。取れた中身が短ければ落とす | `test_loadorder.py` | [§9.334](docs/decisions/9.334.md) |
 | テストは3層（`--pure`＝サーバー不要・並列／`--smoke`＝各1本／全件は指示があったときだけ）。一覧の宣言は`run_all.sh`の1箇所 | `test_layers.py` | [§9.337](docs/decisions/9.337.md) |
 | 1段目（純粋な網）は「まっさらな取得で通る」ものだけ。確かめ方は`git archive` | `test_layers.py` | [§9.369](docs/decisions/9.369.md) |

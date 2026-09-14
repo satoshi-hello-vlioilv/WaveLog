@@ -1039,8 +1039,16 @@
        クリックすると対象の刃組の準備対象の表の部分が見やすくなるように連動」
        →その後「マウスオーバーしている間だけに変更」と改めて指示があった）。
        同じ記号は上下軸の両方に出るので、塊ごとに記号を名乗らせて一緒に光らせる。 */
+    /* **的は区間ぜんたい**（§9.386、利用者の指示「マウスオーバーの対象範囲を
+       広げて、反応しやすく」）。記号の札だけを的にしていたので**27×29px**しか
+       無く、狙わないと反応しなかった。区間は記号が指している範囲そのものなので、
+       広げても「何に重ねたか」は曖昧にならない。
+       この1枚が的と強調を兼ねる——ふつうは透明、当たると淡く塗る。 */
+    const H = V.hOf(V.maxD);
     o += `<g class="bs-bhit" data-badge="${esc(r.badge)}">`
-     + `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}"`
+     + `<rect class="bs-zhit" x="${a.toFixed(1)}" y="${(cy - H / 2).toFixed(1)}"`
+     + ` width="${Math.max(1, b - a).toFixed(1)}" height="${H.toFixed(1)}" rx="3"/>`
+     + `<rect class="bs-bdgr" x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}"`
      + ` rx="${(h * 0.28).toFixed(1)}" fill="${V.PAL.badge}" stroke="#fff" stroke-width="1.2"/>`
      + `<text x="${cx}" y="${cy + fs * 0.36}" text-anchor="middle" font-size="${fs.toFixed(1)}"`
      + ` font-weight="800" fill="#fff">${r.badge}</text></g>`;

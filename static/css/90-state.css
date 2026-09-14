@@ -580,7 +580,6 @@ body.sc-mode #headerContextSource{display:none}
   .rly-grid-pick>button.is-on{background:var(--nav);color:#fff}
 
   /* 淡い面（5族） */
-  .bs-bhit.is-pick rect,
   .bs-chip.is-on,
   .bs-stage3 .bs-btn.is-on,
   .bs-tg.is-on,
