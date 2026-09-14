@@ -156,6 +156,7 @@
 | ログビュワー（`backend/routes/logs.py`／`static/js/core/log-view.js`）は「1行」でなく「1件」で扱う | `test_logs.py`・`test_logview.js` | [§9.99](docs/decisions/9.99.md) |
 | 新しいキャッシュは`WL.ttlCache()`を使う | — | [§9.67](docs/decisions/9.67.md) |
 | 共有のデータは「読むのは写し・書くのは実物」で揃える | `test_recmirror.py` | [§9.268](docs/decisions/9.268.md) |
+| 元データは「見る」と「取り込む」を分ける。見るのは全端末・書くのは書ける端末だけ | `test_scperm.js` | [§9.378](docs/decisions/9.378.md) |
 | `config/local.json`のパスは環境変数を展開する。保存は書いたまま | — | [§9.268](docs/decisions/9.268.md) |
 | `config/local.json`を読めなかったことを黙らないこと | — | [§9.271](docs/decisions/9.271.md) |
 | 置き場はフォルダで書いてよい。答えるのは`resolve_db_file()`の1箇所 | — | [§9.271](docs/decisions/9.271.md) |
@@ -487,6 +488,14 @@
 | three.jsは同梱しない。読む先と版は`THREE_SRC`の1箇所、取りに行くのは**押したときだけ** | `test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
 | 部品を読めない端末では**字で断る**。模式図はそのまま使える | `test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
 | 段取りの順は`blockReason()`の1箇所。**進める手順が必ず1つ残る** | `test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
+| 入口は段取りの行だけ。左メニューには置かない（文脈の無いまま開かせない） | `test_bladeui.js` | [§9.379](docs/decisions/9.379.md) |
+| 刃の状態は3つ。既定は「一般」、「専用」は`刃選択マスタ`に当たったときだけ | `test_bladeset.py`・`test_bladeui.js` | [§9.379](docs/decisions/9.379.md) |
+| 刃選択の条件は行ごとAND・最初に当たった1行。**条件が空の行は当たらない** | `test_bladeset.py`・`test_bladeui.js` | [§9.379](docs/decisions/9.379.md) |
+| 選べる刃かの判定は`selectable()`の1箇所（外れるのは「メンテナンス中」だけ） | `test_bladeui.js` | [§9.379](docs/decisions/9.379.md) |
+| フィンガーは板押さえ。上下軸と板のあいだ・板の両側へ描く（軸に被せない） | `test_bladeui.js` | [§9.379](docs/decisions/9.379.md) |
+| 軸方向から見たフィンガーは幅×厚みの四角。研削は奥行きの面なので見えない | — | [§9.379](docs/decisions/9.379.md) |
+| 端部（OS/DS）の表は右レール。図の段へ戻すと模式図が7割まで痩せる | `test_bladeui.js` | [§9.379](docs/decisions/9.379.md) |
+| 模式図は器の横幅を使い切っている。`grow`では1pxも広がらない（器の側を削る） | `test_bladeui.js` | [§9.378](docs/decisions/9.378.md) |
 
 ### 作業スケジュール（30件）
 
