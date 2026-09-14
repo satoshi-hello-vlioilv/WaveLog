@@ -37,7 +37,7 @@
   carriage: 'A', bladeGroup: '', flip: true
  };
  let M = null, IX = null, LAST = null;
- let panel = null, railTab = 'bom', loadToken = 0;
+ let panel = null, railTab = 'ends', loadToken = 0;
  let seededFrom = null;     /* どの予定から開いたか（画面に出どころを出す） */
  /* 予定から拾えなかった行の数（分割ありで子ロットの切断巾が読めない等）。
     **0で埋めずに件数を言う**（§9.231・§CLAUDE 4）——黙って落とすと、
@@ -131,8 +131,11 @@
         <button type="button" class="bs-chip" data-fig="3d">立体図</button>
        </div>
        <span class="bs-ph-note" id="bsFigNote"></span></div>
+      <!-- **両脇の表は右レールへ移した**（§9.379、利用者の指示）。ここを1列に
+           したぶん模式図が広がる（実測 760→1112px・+46%）。端部の表は
+           「組む前に一度見る」もので、模式図のように常時見比べるものでは
+           ない——常時載せる面積は「頻度 × 重要度」で配る（§CLAUDE 1）。 -->
       <div class="bs-figrow" id="bsFigRow">
-       <div class="bs-side" id="bsOsSide"></div>
        <div class="bs-figmain">
         <div class="bs-stage"><svg id="bsStage" viewBox="0 0 1000 300"
          preserveAspectRatio="xMidYMid meet" role="img" aria-label="刃組図"></svg></div>
@@ -177,19 +180,26 @@
          <div class="bs-ng3" hidden></div>
         </div>
        </div>
-       <div class="bs-side" id="bsDsSide"></div>
       </div>
      </section>
     </div>
     <aside class="bs-rail" id="bsRail">
-     <div class="bs-ph"><h2>所要・段取</h2>
+     <div class="bs-ph"><h2>刃組の内訳</h2>
       <div class="bs-seg" id="bsRailTabs">
-       <button type="button" class="bs-chip is-on" data-r="bom">所要</button>
+       <button type="button" class="bs-chip is-on" data-r="ends">端部</button>
+       <button type="button" class="bs-chip" data-r="bom">所要</button>
        <button type="button" class="bs-chip" data-r="diff">台車差分</button>
        <button type="button" class="bs-chip" data-r="set">刃の状態</button>
       </div></div>
      <div class="bs-pb">
-      <div data-p="bom">
+      <!-- 端部（OS端／DS端）。表そのものは renderEnds() が id で書き込むので、
+           置き場所を変えても描き手は変わらない。 -->
+      <div data-p="ends">
+       <div class="bs-side" id="bsOsSide"></div>
+       <div class="bs-side" id="bsDsSide"></div>
+       <p class="bs-note">最外刃より外の区間です。<b>OS</b>から先に取り付け、<b>DS</b>が最後になります。</p>
+      </div>
+      <div data-p="bom" hidden>
        <div class="bs-gauges" id="bsGauges"></div>
        <div class="bs-need" id="bsBom"></div>
       </div>
@@ -1805,7 +1815,12 @@
  /* ====================== 画面の登録 ====================== */
  WL.onReady(() => {
   WL.registerView({
-   key: 'bladeset', bodyClass: 'bs-mode', nav: 'openBladeSet',
+   /* **左メニューには置かない**（§9.379、利用者の指示）。刃組は「予定の
+      どの段取りの刃組か」が決まって初めて意味を持つので、入口は作業
+      スケジュールの設備停止行のチップだけにする。文脈の無いまま開けると、
+      どのロットの刃組なのかを人が思い出して入れ直すことになる。
+      そのため `nav` も持たない（選択状態を点ける相手が居ない）。 */
+   key: 'bladeset', bodyClass: 'bs-mode',
    header: ['刃組ガイダンス', ''],
    /* **自分の`bodyClass`は自分で外す**（`enterView`は付けるだけ・他の画面と
       同じ作法）。外し忘れると`.bs-shell`が次の画面の上に居座る。 */
@@ -1817,8 +1832,6 @@
     if (panel) { panel.hidden = true; closePops(); }
    }
   });
-  const nav = document.getElementById('openBladeSet');
-  if (nav) nav.addEventListener('click', () => open({}));
  });
 
  WL.bladeGuide = { open, state: st, get masters() { return M; } };

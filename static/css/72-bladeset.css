@@ -247,12 +247,12 @@ body.bs-mode .bs-shell{display:flex}
 /* ---------- 刃組図 ---------- */
 /* **`min-height:0`を鎖の1段も抜かない**（§9.222）——器→行→図のどこかで
    抜けると、SVGの中身なりの高さが下の刃組表を画面の外へ押し出す。 */
-/* 両脇はOS/DS端部の表。**中身を測って決めた幅**（§9.378・CLAUDE 11「入れ物は
-   中身の長さから決める」）——実測で表の自然幅は156px、器は168pxで12pxずつ
-   遊んでいた。10remで中身ぴったり＋わずかな余裕になり、そのぶん模式図が広がる。
-   なお模式図そのものは**すでに列の横幅を使い切っている**（中身 x=10..1005 /
-   viewBox 0..1000）ので、これ以上横へ伸ばすには器の側を削るしかない。 */
-.bs-figrow{display:grid;grid-template-columns:var(--bs-side-w,10rem) minmax(0,1fr) var(--bs-side-w,10rem);
+/* 図の段は**模式図だけの1列**（§9.379、利用者の指示）。以前は両脇にOS/DS端部の
+   表を置いており、実測で 168px｜760px｜168px——主役の模式図が器の7割しか
+   使えていなかった。端部の表を右レールへ移して1列にし、模式図は 1112px に
+   なった（+46%）。模式図は viewBox の横いっぱいまで中身がある（x=10..1005 /
+   0..1000）ので、広げたぶんがそのまま図の大きさになる。 */
+.bs-figrow{display:grid;grid-template-columns:minmax(0,1fr);
   gap:var(--space-1);padding:var(--space-1);min-height:0;flex:1 1 auto}
 .bs-figrow.is-flip{direction:rtl}
 .bs-figrow.is-flip>*{direction:ltr}
@@ -262,7 +262,10 @@ body.bs-mode .bs-shell{display:flex}
    （立体図に切り替えたのに模式図が並んで出た）。 */
 .bs-stage[hidden]{display:none}
 .bs-stage svg{width:100%;height:100%}
-.bs-side{min-width:0;overflow:auto;font-size:var(--fs-sm)}
+/* 端部の表はレールの中で縦に2つ並ぶ（OS→DS の取り付け順と同じ向き）。 */
+.bs-side{min-width:0;font-size:var(--fs-sm)}
+.bs-side+.bs-side{margin-block-start:var(--space-2);
+  padding-block-start:var(--space-2);border-block-start:1px solid var(--line)}
 .bs-fh{display:flex;align-items:center;gap:4px;margin-bottom:2px}
 .bs-pin{background:var(--rs-slate);color:#fff;border-radius:var(--radius-xs);
   padding:0 var(--space-1);font-size:var(--fs-micro);font-weight:700}
@@ -531,7 +534,6 @@ body.bs-mode .bs-shell{display:flex}
 @media (max-width:1200px){
   .bs-body{grid-template-columns:minmax(0,1fr)}
   .bs-rail{max-height:22rem}
-  .bs-figrow{grid-template-columns:minmax(0,1fr)}
-  .bs-side{max-height:9rem}
+  .bs-side{max-height:9rem;overflow:auto}
 }
 }

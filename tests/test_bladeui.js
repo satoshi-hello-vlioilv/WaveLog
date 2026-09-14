@@ -66,9 +66,14 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await page.goto(B + '/', { waitUntil: 'domcontentloaded' });
     await W.booted(page);
 
-    /* ---- 1) 左メニューから開き、足りないものを言う ---- */
-    rec('左メニューに刃組ガイダンスがある', !!(await page.$('#openBladeSet')));
-    await page.click('#openBladeSet');
+    /* ---- 1) 開いて、足りないものを言う ----
+       **左メニューには入口を置かない**（§9.379、利用者の指示）。刃組は
+       「予定のどの段取りか」が決まって初めて意味を持つので、入口は作業
+       スケジュールの設備停止行のチップだけ（下の 6) で辿る）。ここは
+       画面そのものを確かめたいので、名前空間の口から直に開く。 */
+    rec('左メニューに刃組ガイダンスの入口を置かない（文脈の無いまま開かせない）',
+        !(await page.$('#openBladeSet')));
+    await page.evaluate(() => WL.bladeGuide.open({}));
     await W.until(page, () => !!document.querySelector('#bladeSetPanel:not([hidden])'),
                   null, { ms: 15000, what: '刃組ガイダンスの器' });
     rec('bs-mode になっている',
@@ -91,7 +96,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     const seeded = await (await post('/api/bladeset/seed', { equipment: EQ })).json();
     rec('初期セットを登録できる', seeded && seeded.ok
         && seeded.made && seeded.made.spacer > 0, JSON.stringify(seeded.made || {}));
-    await page.click('#openBladeSet');
+    await page.evaluate(() => WL.bladeGuide.open({}));
     await W.until(page, () => document.querySelectorAll('#bsStage rect').length > 20,
                   null, { ms: 15000, what: '刃組図が描かれる' });
 
@@ -232,31 +237,29 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      const row = document.querySelector('#bsFigRow');
      const cols = row ? getComputedStyle(row).gridTemplateColumns.split(/\s+/)
        .map(v => Math.round(parseFloat(v) || 0)) : [];
-     /* 両脇の表が「中身なりの器」に収まっているか（器が中身より大きく遊んで
-        いると、そのぶん模式図が痩せる・CLAUDE 11）。 */
-     const side = ['#bsOsSide', '#bsDsSide'].map(sel => {
-      const host = document.querySelector(sel);
-      if (!host) return { box: 0, nat: 0 };
-      const t = host.tagName === 'TABLE' ? host : host.querySelector('table');
-      const box = (host.closest('.bs-side') || host.parentElement).getBoundingClientRect().width;
-      let nat = 0;
-      if (t) { const o = t.style.width; t.style.width = 'max-content';
-               nat = t.getBoundingClientRect().width; t.style.width = o; }
-      return { box: Math.round(box), nat: Math.round(nat) };
-     });
-     return { vw: vb[2] || 0, x0: bb ? bb.x : 0, x1: bb ? bb.x + bb.width : 0, cols, side };
+     /* 端部の表は**レールの中**に居る（図の段には居ない）。 */
+     const inRail = ['#bsOsSide', '#bsDsSide']
+       .map(sel => !!document.querySelector('#bsRail ' + sel));
+     const inFig = ['#bsOsSide', '#bsDsSide']
+       .map(sel => !!document.querySelector('#bsFigRow ' + sel));
+     const figW = row ? Math.round(row.getBoundingClientRect().width) : 0;
+     const stW = Math.round(document.querySelector('#bsStage').getBoundingClientRect().width);
+     return { vw: vb[2] || 0, x0: bb ? bb.x : 0, x1: bb ? bb.x + bb.width : 0, cols,
+              inRail, inFig, figW, stW };
     });
     /* 中身が viewBox の横幅の 98% 以上を占めていること（見出しの右端の
        わずかな空きだけを許す）。 */
     rec('模式図は器の横幅を使い切る（左右に何も無い帯を残さない）',
         fill.vw > 0 && (fill.x1 - fill.x0) >= fill.vw * 0.98,
         `中身 ${Math.round(fill.x0)}..${Math.round(fill.x1)} / viewBox 0..${fill.vw}`);
-    rec('両脇の端部の表は中身なりの器に収める（遊ばせたぶん模式図が痩せる）',
-        fill.side.every(x => x.nat > 0 && x.box - x.nat <= 12),
-        fill.side.map(x => `器${x.box}/中身${x.nat}`).join(' '));
-    rec('模式図の列は両脇より広い（主役に面積を配る）',
-        fill.cols.length === 3 && fill.cols[1] > fill.cols[0] + fill.cols[2],
-        fill.cols.join(' | '));
+    /* 端部の表は右レールへ移した（§9.379）。図の段に戻ると模式図が
+       7割まで痩せるので、**どちらに居るか**を両方向から見る。 */
+    rec('端部の表は右レールにある', fill.inRail.every(Boolean), JSON.stringify(fill.inRail));
+    rec('端部の表を図の段に戻さない（主役の模式図が痩せる）',
+        fill.inFig.every(x => !x), JSON.stringify(fill.inFig));
+    rec('図の段は1列（模式図が器をそのまま使う）',
+        fill.cols.length === 1 && fill.stW >= fill.figW * 0.95,
+        `列${fill.cols.join('|')} / 図${fill.stW} 器${fill.figW}`);
 
     /* 強調は**重ねている間だけ**、しかも**図と表の双方向**（§9.378）。 */
     const hov = await page.evaluate(async () => {
