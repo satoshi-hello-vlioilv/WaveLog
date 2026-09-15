@@ -47,6 +47,9 @@
  let seededRun = null;
  /* どの段取りの行から開いたか（§9.383）。記録と予定の行を結ぶ鍵。 */
  let seededStopId = '';
+ /* **1本目に切るコイル（親ロット）**（§9.387）。刃組はこの1本で組み、条の
+    設計もこの1件で引く。予定から開いていないときは空のまま。 */
+ let seededHeadLot = '';
 
  /* ---------- 幅ごとの色 ----------
     最大9種の条幅が入り混じっても見分けられるよう、淡い塗りで差を付ける。
@@ -323,6 +326,10 @@
    <div class="bs-dzh"><b>条の設計</b><span class="bs-dzs" id="bsDsState">—</span></div>
    <p class="bs-note" id="bsDsNote"></p>
    <button type="button" class="bs-btn is-primary bs-wide" id="bsDsSave">この並びを条の設計として記録する</button>
+   <!-- **やり直せる道**（§9.387、利用者の指示「再設計ができる配線」）。
+        記録した並びと画面が違うときだけ出す——同じときに出しても押す理由が
+        無く、押せて何も起きないボタンになる（§CLAUDE 4）。 -->
+   <button type="button" class="bs-btn bs-wide" id="bsDsReset" hidden>記録した並びに戻す</button>
   </div>
   <p class="bs-note" id="bsHint3"></p>`;
 
@@ -412,6 +419,7 @@
      ものだけ**を控える——手で開いたときは空のままにして、記録にも
      「予定から開いていない」と分かる形で残す（§9.231 0で埋めない）。 */
   seededStopId = String(o.stopId || '');
+  seededHeadLot = String((o.seed && o.seed.headLot) || '');
   seededRun = (o.seed && (o.seed.planned || o.seed.first))
    ? { planned: Math.max(0, (o.seed.planned) | 0), first: o.seed.first || null }
    : null;
@@ -474,8 +482,30 @@
    if (!st.lots.length) st.lots = [{ name: 'LOT1', w: 100, n: 1 }];
    st.order = [];
   }
+  /* **条の設計が済んでいれば、その並びで開く**（§9.387、利用者の指示
+     「条設計済みの場合はそのまま開いて」）。予定の写しから組み直すと、
+     現場が決めた並びを**黙って上書き**することになる——記録があるほうが
+     新しい決定なので、そちらを正とする。
+     引くのは**1本目のコイル（親ロット）1件**（`headLot`）——条の設計は
+     親ロットで持つ（§9.378）。 */
+  applyDesign(String(s.headLot || ''));
   void force;
   BS().syncOrder(st);
+ }
+ /* 記録してある条の設計を画面へ載せる。**戻り値は載せたかどうか**。
+    見つからない・中身が読めないときは何もしない（予定から組んだ並びが残る）。 */
+ function applyDesign(parent) {
+  if (!parent) return false;
+  const hit = ((M && M.designs) || []).find(x => String(x.lot) === parent);
+  const gs = hit && Array.isArray(hit.groups) ? hit.groups : null;
+  if (!gs || !gs.length) return false;
+  const lots = gs.map(g => ({ name: String(g.lot || parent), w: +g.width || 0,
+                              n: Math.max(1, g.count | 0), parent }))
+   .filter(L => L.w > 0);
+  if (!lots.length) return false;
+  st.lots = lots;
+  st.order = [];
+  return true;
  }
 
  /* 「この設備では何が足りないか」。**足りないものを言う**（§CLAUDE 4・6）。 */
@@ -1770,6 +1800,18 @@
     await alertModal('条の設計を記録できませんでした：' + (e && e.message ? e.message : e));
    } finally { btn.disabled = false; }
   });
+  /* 記録した並びへ戻す（§9.387、利用者の指示「再設計ができる配線」）。
+     **記録は消さない**——画面を記録の側へ合わせるだけなので、押し間違えても
+     失うものが無い（取り消せない操作を主要動線に置かない・§CLAUDE 5）。 */
+  $('#bsDsReset').addEventListener('click', () => {
+   if (!applyDesign(seededHeadLot)) {
+    alertModal('記録した条の設計を読めませんでした。');
+    return;
+   }
+   BS().syncOrder(st);
+   paintInputs(); renderLots(); renderOrder(); render();
+   showToast('記録した並びに戻しました', '条の設計として残してある並びです。', 3000);
+  });
   $('#bsAddLot').addEventListener('click', () => {
    st.lots.push({ name: 'LOT' + (st.lots.length + 1), w: 200, n: 1 });
    renderLots(); renderOrder(); scheduleRender();
@@ -1972,6 +2014,25 @@
    const sel = $('#bsSetPick'); if (sel && sel.focus) sel.focus();
    return;
   }
+  /* **条の設計が済むまで確定させない**（§9.387、利用者の指示「条設計が必須の
+     流れで、その内容で刃組をしてください」）。刃組はこの並びで組むものなので、
+     記録が無いまま確定すると**測定は既定の並びで始まり、組んだ形と食い違う**。
+     止めるのはここ1箇所だけ——図も刃組表も所要も見られるままにして、
+     「決めた形を残す」手前でだけ断る（見ながら決める動線を壊さない）。
+     **理由と次の一手を字で出す**（§CLAUDE 4 できないことは、できないと書く）。 */
+  const ds = designState();
+  if (!ds.total || ds.none || ds.diff) {
+   const why = !ds.total ? 'ロットがまだ入っていません。'
+    : (ds.none ? `条の設計が未記録です（${ds.none}件）。`
+               : `画面の並びが、記録してある条の設計と違います（${ds.diff}件）。`);
+   await alertModal({ title: '先に条の設計を記録してください',
+     message: why + '〈幅構成〉の「この並びを条の設計として記録する」で残すと、'
+            + 'この並びで刃組を確定でき、測定も同じ並びで条を埋めます。' });
+   const b = $('#bsDsSave');
+   if (b && b.scrollIntoView) b.scrollIntoView({ block: 'center' });
+   if (b && b.focus) b.focus();
+   return;
+  }
   const detail = B.snapshot(st, M, LAST.g);
   detail.set = st.bladeGroup || '';
   /* **確定保存に載せるもの**（§9.382、利用者の指示）。刃組スケジュール一覧が
@@ -2069,9 +2130,18 @@
    note.textContent = d.diff
     ? '画面の並びと、記録してある並びが違います。記録し直すと測定もこの並びになります。'
     : (d.none
-       ? '記録すると、測定画面がこの並びで条を埋めます。記録しないと測定は既定の並びで始まります。'
+       ? '記録すると、測定画面がこの並びで条を埋めます。記録しないと刃組を確定できません。'
        : '測定画面はこの並びで条を埋めます。');
   }
+  /* **押す言葉を状態に合わせる**（§9.387）。「記録する」と「記録し直す」は
+     結果が違う（後者は上書き）ので、同じ字で出すと取り違える。
+     戻す道は**違うときだけ**出す（§CLAUDE 4）。 */
+  const save = $('#bsDsSave'), reset = $('#bsDsReset');
+  if (save) {
+   save.textContent = d.diff ? 'この並びで条の設計を記録し直す'
+                             : 'この並びを条の設計として記録する';
+  }
+  if (reset) reset.hidden = !(d.diff && seededHeadLot);
  }
  async function saveDesigns() {
   const at = new Date().toISOString().slice(0, 16).replace('T', ' ');

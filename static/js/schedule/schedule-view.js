@@ -5029,12 +5029,14 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const t=SC_LINK_TARGETS[String(row.linkKey)];
   return t&&t.ready()?{key:row.linkKey,label:String(row.linkLabel||row.linkKey),open:t.open}:null;
  }
- /* 刃組ガイダンスへ持っていく文脈（§9.377）。
-    **この停止の後ろに並ぶ作業**が、この段取りで流す材料——元コイル幅・
-    ロットごとの切断幅・板厚を、予定の写し（`detail`）から読む。
-      ・次の**同じ連携の停止**まで（次の刃組までが1つの段取り）
-      ・元コイル幅に収まるところまで（条の合計が元幅を超えたら止める）
-      ・多くても9ロット（図で色を9種までしか見分けられない）
+ /* 刃組ガイダンスへ持っていく文脈（§9.377、§9.387で組む単位を直した）。
+    **2つの別々の問いに答える**ので、関数も2つに分けてある:
+      ・`bladeSeedLots` … **何を組むか**＝この停止の**次に切るコイル1本**。
+        分割ありならその子ロットが条、分割なしなら切断巾×内訳の本数。
+      ・`bladeRunPlan`  … **何本流すか**＝次の刃組までのコイルの本数と、
+        1本目の材料（§9.382）。
+    以前は前者も「次の刃組までの作業行を端から」集めていたため、**別々に
+    切るはずのコイルが1本の元板に同居**していた（§9.387 利用者の報告）。
     **読めない項目は渡さない**——0で埋めると、そこだけ嘘の値になる（§9.231）。 */
  function bladeSeedFromEntry(e){
   const list=scState.entries||[];
@@ -5094,34 +5096,58 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    if(x.parentId!=null)kidded.add(String(x.parentId));
   });
   const lots=[];
-  let thickness=null,originalWidth=null,total=0,skipped=0;
-  for(const x of all.slice(Math.max(0,from))){
-   if(x.kind==='設備停止'&&stopLinkRowOf(x))break;   // 次の刃組から先は別の段取り
-   if(x.kind!=='作業')continue;
-   const d=x.detail||{};
-   /* 板厚と元コイル幅は**親の行からも読む**——元コイル幅を持っているのは親。 */
-   if(thickness===null)thickness=n(contentValueOf(d,'mfgThickness'));
-   if(originalWidth===null)originalWidth=n(contentValueOf(d,'originalWidth'));
-   const child=d.__childLot===true;
-   const hasKid=kidded.has(String(x.id));
-   /* **分割ありの親ロットは条にならない。** 子が並んでいない（取得に失敗した）
-      ときも同じ——親が持つ幅は元コイル幅なので、条幅として使うと1本で元幅を
-      使い切る。飛ばしたことは数えて画面に出す（§CLAUDE 4）。 */
-   if(!child&&(hasKid||hasSplitDetail(d))){if(!hasKid)skipped++;continue}
-   const w=child?n(d.__childWidth):n(contentValueOf(d,'mfgWidth'));
-   const cnt=Math.max(1,Math.round(
-    (child?n(d.__childStrips):n(contentValueOf(d,'boxHorizontalCount')))||1));
-   if(!w){if(child)skipped++;continue}   // 切断巾が読めない子は渡さない（0で埋めない）
-   if(originalWidth&&total+w*cnt>originalWidth+0.001)break;   // 元コイルに載らない
-   total+=w*cnt;
-   /* **どの親ロットの条か**まで運ぶ（§9.378）。条の設計は親ロットで引くので
-      （測定が開くのは親ロット1件）、ここで落とすと後から辿れない。 */
-   const parent=child?(lotById.get(String(x.parentId))||''):'';
-   lots.push({name:String(x.lotNo||x.title||('LOT'+(lots.length+1))),w,n:cnt,
-              parent:parent||String(x.lotNo||x.title||'')});
-   if(lots.length>=9)break;
+  let thickness=null,originalWidth=null,skipped=0;
+  /* **組むのは「1本目に切るコイル」1本だけ**（§9.387、利用者の不具合報告
+     「刃組間に処理するすべてのロットを同時にカットするような組み方になって
+     います。やり方が違います」）。
+     以前は次の刃組までの作業行を端から集めて条にしていたので、**別々に切る
+     はずのコイルが1本の元板に同居**していた（元幅に載るあいだ・最大9ロット）。
+     スリッターが1回の通しで切るのは**コイル1本**で、条はその1本を割った
+     ものなので、集める単位はコイル1本が正しい。
+     何本流すか（予定本数）は別の関数（`bladeRunPlan`）が数える——
+     **組む単位と数える単位は違う**。 */
+  const rest=all.slice(Math.max(0,from));
+  let head=null;
+  for(const x of rest){
+   if(x&&x.kind==='設備停止'&&stopLinkRowOf(x))break;   // 次の刃組から先は別の段取り
+   if(!x||x.kind!=='作業')continue;
+   if((x.detail||{}).__childLot===true)continue;        // 子は親の一部（1本目にならない）
+   head=x;break;
   }
-  return {thickness,originalWidth,lots,skipped};
+  if(!head)return {thickness,originalWidth,lots,skipped,headLot:''};
+  const hd=head.detail||{};
+  thickness=n(contentValueOf(hd,'mfgThickness'));
+  originalWidth=n(contentValueOf(hd,'originalWidth'));
+  const headLot=String(head.lotNo||head.title||'');
+  const hasKid=kidded.has(String(head.id));
+  const push=(name,w,cnt)=>{
+   lots.push({name:String(name||('LOT'+(lots.length+1))),w,n:cnt,parent:headLot});
+  };
+  if(hasKid){
+   /* **1本目が分割ありなら、その子ロットが条**（利用者の指示「1本目が分割
+      ありのものだけ子ロットの情報を使って」）。子は`parentId`付きで親の直後に
+      並ぶので、親の子だけを拾う。 */
+   for(const x of rest){
+    if(!x||String(x.parentId)!==String(head.id))continue;
+    const d=x.detail||{};
+    const w=n(d.__childWidth);
+    const cnt=Math.max(1,Math.round(n(d.__childStrips)||1));
+    if(!w){skipped++;continue}   // 切断巾が読めない子は渡さない（0で埋めない）
+    push(x.lotNo||x.title,w,cnt);
+   }
+  }else if(hasSplitDetail(hd)){
+   /* 分割ありと読めるのに子が並んでいない（取得に失敗した）。**親の幅は
+      元コイル幅**なので条幅として使うと1本で元幅を使い切る——飛ばして数え、
+      画面に出す（§CLAUDE 4 できないことは書く）。 */
+   skipped++;
+  }else{
+   /* 分割なしのコイル。条は「切断巾 × 内訳の本数」で、1本でも図に出す
+      （§9.209 分割の無いロットでも条の図を出す）。 */
+   const w=n(contentValueOf(hd,'mfgWidth'));
+   const cnt=Math.max(1,Math.round(n(contentValueOf(hd,'boxHorizontalCount'))||1));
+   if(w)push(headLot,w,cnt);
+  }
+  return {thickness,originalWidth,lots,skipped,headLot};
  }
  /* 題名の横に置く行き先のチップ。**押すと何が起きるかを字で書く**（§CLAUDE 4）
     ——行そのもののクリックは「選ぶ」（§9.363）、ダブルクリックは「停止の内容を

@@ -800,6 +800,86 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('記録した並びが測定の読む口から同じ順で返る',
         want.length > 0 && want.every((w, i) => got[i] && got[i].sig === w.sig),
         JSON.stringify({ want, got }));
+
+    /* ---- 7.9) 条の設計は必須。未記録・記録違いでは刃組を確定できない ----
+       §9.387、利用者の指示「条設計が必須の流れで、その内容で刃組をしてください」。
+       止めるのは**確定保存の1箇所だけ**（図も刃組表も見られるままにする）。
+       ここは「記録済み」の状態なので、**まず通ること**を見てから、
+       並びを変えて（＝記録と違う状態にして）**断られること**を見る。 */
+    /* 完了のボタンは右レールの「台車差分」の段の中に居る——**段を開いてから
+       押す**（人が触るのと同じ順）。刃セットが未選択だと別の断りが先に出るので、
+       **候補があれば先に選んでおく**（そこで止まると条の設計の判定まで届かない）。 */
+    await page.click('#bsRailTabs [data-r="diff"]');
+    await page.waitForSelector('#bsSaveCar', { state: 'visible', timeout: 8000 });
+    await page.evaluate(() => {
+     const sel = document.querySelector('#bsSetPick');
+     if (!sel || sel.disabled) return;
+     const opt = [...sel.options].map(o => o.value).filter(Boolean)[0];
+     if (!opt) return;
+     sel.value = opt;
+     sel.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    /* 窓の題を読んで、**どちらの窓が出たか**で見分ける。器は `#appConfirm` の
+       1枚だけ（§9.342）なので、題で判じて「やめる」で閉じる。 */
+    const trySave = async () => {
+     await page.click('#bsRailTabs [data-r="diff"]');
+     await page.waitForSelector('#bsSaveCar', { state: 'visible', timeout: 8000 });
+     await page.click('#bsSaveCar');
+     await W.until(page, () => {
+      const m = document.querySelector('#appConfirmModal');
+      return !!m && !m.hidden;
+     }, null, { ms: 8000, what: '確定保存の窓' });
+     const t = await page.evaluate(() =>
+      ((document.querySelector('#appConfirmTitle') || {}).textContent || '').trim());
+     /* お知らせ（`alertModal`）は「やめる」を伏せるので、**必ず在る×**で閉じる
+        （`#appConfirmCancel` は hidden のことがあり、押しに行くと固まる）。 */
+     await page.click('#closeAppConfirm');
+     await W.until(page, () => {
+      const m = document.querySelector('#appConfirmModal');
+      return !m || m.hidden;
+     }, null, { ms: 8000, what: '窓が閉じる' });
+     return t;
+    };
+    const t0 = await trySave();
+    rec('条の設計が記録済みなら、刃組の確定（記録の確認）へ進める',
+        /記録します/.test(t0), t0);
+    /* 並びを変える＝記録と違う状態。**この状態では確定させない**——確定すると
+       測定は記録した古い並びで条を埋め、組んだ形と食い違う。 */
+    await page.click('[data-step-open="bsV3"]');
+    await page.waitForSelector('#bsDsSave', { timeout: 8000 });
+    /* **人が触るのと同じ道**で変える（本数の欄を打つ）——控えを直に書き換えると
+       描き直しの配線を通らず、画面と控えが食い違ったまま測ることになる。 */
+    await page.evaluate(() => {
+     const el = document.querySelector('#bsLotTbl input[data-lot="0"][data-k="n"]');
+     el.value = String((+el.value || 1) + 1);
+     el.dispatchEvent(new Event('input', { bubbles: true }));
+     el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await W.until(page, () => /記録と違う/.test(
+      (document.querySelector('#bsDsState') || {}).textContent || ''), null,
+      { ms: 8000, what: '記録と違うになる' });
+    rec('記録と違うときは「記録し直す」と書く（上書きだと分かる字にする）',
+        await page.evaluate(() => /記録し直す/.test(
+         (document.querySelector('#bsDsSave') || {}).textContent || '')),
+        await page.evaluate(() => ((document.querySelector('#bsDsSave') || {}).textContent || '').trim()));
+    await page.keyboard.press('Escape');
+    await W.until(page, () => !document.querySelector('.bs-step.is-open'), null,
+                  { ms: 5000, what: '幅構成の窓が閉じる' });
+    const t1 = await trySave();
+    rec('記録と違うときは刃組を確定させない（理由と次の一手を字で出す）',
+        /先に条の設計/.test(t1), t1);
+    /* 元の並びへ戻して、以降の判定を「記録済み」から始める。 */
+    await page.click('[data-step-open="bsV3"]');
+    await page.waitForSelector('#bsDsSave', { timeout: 8000 });
+    await page.evaluate(() => {
+     const el = document.querySelector('#bsLotTbl input[data-lot="0"][data-k="n"]');
+     el.value = String(Math.max(1, (+el.value || 2) - 1));
+     el.dispatchEvent(new Event('input', { bubbles: true }));
+     el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await W.until(page, () => /記録済み/.test(
+      (document.querySelector('#bsDsState') || {}).textContent || ''), null,
+      { ms: 8000, what: '記録済みへ戻る' });
     /* 画面の並びを変えると「記録と違う」と言う（測定が古い並びで始まるのを防ぐ）。 */
     await page.evaluate(() => {
      const st = WL.bladeGuide.state;
@@ -818,38 +898,71 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
        親が持つ幅は元コイル幅なので、条に混ぜると二重計上のうえ1本で元幅を
        使い切る（実際にそうなっていた）。
        ここは画面を組み立てず、**選び方の関数だけ**を合成した並びで見る。 */
+    /* **組むのは「1本目に切るコイル」1本だけ**（§9.387、利用者の不具合報告
+       「刃組間に処理するすべてのロットを同時にカットするような組み方に
+       なっています。やり方が違います」）。以前は次の刃組までの作業行を端から
+       集めていたので、別々に切るはずのコイルが1本の元板に同居していた。 */
     const seed = await page.evaluate(() => {
      const mk = o => Object.assign({ kind: '作業', lotNo: o.id, detail: {} }, o);
      const list = [
       mk({ id: 'stop', kind: '設備停止', title: 'この停止' }),
-      /* ① 分割ありの親＋子2本 */
+      /* ① 1本目＝分割ありの親＋子2本 */
       mk({ id: 'P1', detail: { mfgWidth: 1200, mfgThickness: 1.6, originalWidth: 1200 } }),
       mk({ id: 'C1', parentId: 'P1', detail: { __childLot: true, __childWidth: 65, __childStrips: 2 } }),
       mk({ id: 'C2', parentId: 'P1', detail: { __childLot: true, __childWidth: 50, __childStrips: 3 } }),
-      /* ② 分割なしの行は従来どおり */
+      /* ② 2本目以降は**別の通し**なので、この刃組の条には入らない */
       mk({ id: 'N1', detail: { mfgWidth: 80, boxHorizontalCount: 2 } }),
-      /* ③ 切断巾が読めない子（0で埋めず、飛ばして数える） */
-      mk({ id: 'P2', detail: { mfgWidth: 900 } }),
-      mk({ id: 'C3', parentId: 'P2', detail: { __childLot: true, __childStrips: 1 } })
+      mk({ id: 'P2', detail: { mfgWidth: 900 } })
      ];
      return WL.scheduleView.bladeSeedLots(list, 1);
     });
     const names = (seed.lots || []).map(L => L.name).join(',');
+    rec('刃組は1本目のコイルだけで組む（2本目以降を同じ元板に混ぜない）',
+        !/N1|P2/.test(names), names);
     rec('分割ありの親ロットは条にならない（親の幅＝元コイル幅を条に混ぜない）',
-        !/P1|P2/.test(names), names);
-    rec('条になるのは子ロット。幅は切断巾・本数は条数',
+        !/P1/.test(names), names);
+    rec('1本目が分割ありなら、条になるのはその子ロット。幅は切断巾・本数は条数',
         JSON.stringify(seed.lots) === JSON.stringify(
          [{ name: 'C1', w: 65, n: 2, parent: 'P1' },
-          { name: 'C2', w: 50, n: 3, parent: 'P1' },
-          { name: 'N1', w: 80, n: 2, parent: 'N1' }]),
+          { name: 'C2', w: 50, n: 3, parent: 'P1' }]),
         JSON.stringify(seed.lots));
     rec('どの親ロットの条かまで運ぶ（条の設計は親ロットで引くため）',
-        (seed.lots || []).every(L => !!L.parent),
+        (seed.lots || []).every(L => L.parent === 'P1'),
         (seed.lots || []).map(L => `${L.name}<-${L.parent}`).join(','));
-    rec('板厚・元コイル幅は親の行からも読む',
+    rec('1本目のコイル（親ロット）を名乗る（条の設計をこの1件で引く）',
+        seed.headLot === 'P1', String(seed.headLot));
+    rec('板厚・元コイル幅は1本目の行から読む',
         seed.thickness === 1.6 && seed.originalWidth === 1200,
         `t=${seed.thickness} W=${seed.originalWidth}`);
-    rec('渡せなかった行は0で埋めず件数で言う', seed.skipped === 1, String(seed.skipped));
+
+    /* 1本目が**分割なし**なら、そのコイル1件が条（切断巾×内訳の本数）。 */
+    const seedN = await page.evaluate(() => {
+     const mk = o => Object.assign({ kind: '作業', lotNo: o.id, detail: {} }, o);
+     return WL.scheduleView.bladeSeedLots([
+      mk({ id: 'stop', kind: '設備停止', title: 'この停止' }),
+      mk({ id: 'N1', detail: { mfgWidth: 80, boxHorizontalCount: 4,
+                               mfgThickness: 1.2, originalWidth: 400 } }),
+      mk({ id: 'N2', detail: { mfgWidth: 70, boxHorizontalCount: 2 } })
+     ], 1);
+    });
+    rec('1本目が分割なしなら、そのコイル1件が条（切断巾×内訳の本数）',
+        JSON.stringify(seedN.lots) === JSON.stringify(
+         [{ name: 'N1', w: 80, n: 4, parent: 'N1' }]),
+        JSON.stringify(seedN.lots));
+
+    /* 1本目が分割ありなのに子が読めないときは、**0で埋めず件数で言う**。
+       親の幅は元コイル幅なので、条幅に使うと1本で元幅を使い切る。 */
+    const seedS = await page.evaluate(() => {
+     const mk = o => Object.assign({ kind: '作業', lotNo: o.id, detail: {} }, o);
+     return WL.scheduleView.bladeSeedLots([
+      mk({ id: 'stop', kind: '設備停止', title: 'この停止' }),
+      mk({ id: 'P2', detail: { mfgWidth: 900, originalWidth: 900 } }),
+      mk({ id: 'C3', parentId: 'P2', detail: { __childLot: true, __childStrips: 1 } })
+     ], 1);
+    });
+    rec('切断巾が読めない子は渡さず、件数で言う（0で埋めない）',
+        (seedS.lots || []).length === 0 && seedS.skipped === 1,
+        `条${(seedS.lots || []).length}／skipped=${seedS.skipped}`);
 
     /* ---- 9) その刃組で切る本数と、1本目の材料（§9.382、利用者の指示） ----
        数える単位が条（`bladeSeedLots`）と違う——**切るのはコイル1本**で、

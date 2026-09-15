@@ -505,6 +505,11 @@
 | SVGの図形の強調は`fill`／`stroke`／`fill-opacity`で書く。`background`／`border-color`は描かれない | `test_bladeui.js` | [§9.386](docs/decisions/9.386.md) |
 | 透明な的には`pointer-events:all`を付ける（無いと素通りする） | `test_bladeui.js` | [§9.386](docs/decisions/9.386.md) |
 | 刃組表の行の印は全行が持つ`.bs-bd`へ。`td:first-child`は`rowspan`で行ごとに変わる | — | [§9.386](docs/decisions/9.386.md) |
+| 刃組は**1本目に切るコイル1本**で組む（`bladeSeedLots`）。次の刃組までの全ロットを同じ元板に混ぜない | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
+| 組む単位（コイル1本）と数える単位（次の刃組までの本数・`bladeRunPlan`）は別。関数を分けたまま保つ | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
+| 1本目が分割ありなら子ロットが条。子が読めないときは条にせず件数で言う | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
+| 条の設計は必須。止めるのは**確定保存の1箇所**だけ（図・刃組表・所要は見せたまま） | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
+| 条の設計が済んでいればその並びで開く（予定の写しで黙って上書きしない）。戻す道は記録を消さない | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
 | 向きの切り替えは刃組図の見出し。手順の窓の下に入るので、閉じてから押す | `test_bladeui.js` | [§9.380](docs/decisions/9.380.md) |
 | フィンガーを当てる先は「いちばん外へ寄った板の面」（中心線だと寄った条へ食い込む） | `test_bladeui.js` | [§9.380](docs/decisions/9.380.md) |
 | 刃選択の盤は「文として読める＋試し欄＋条件ごとの○×」。判定は`blade-core`を呼ぶ | `test_bladepick.js` | [§9.380](docs/decisions/9.380.md) |
@@ -730,6 +735,9 @@
 | `page.waitForFunction`の述語にPromiseを返させない（返すと待たずに抜ける・実測82ms）。サーバーへ聞き直す待ちは`wait.js`の`poll()` | `test_waitlint.py` | [§9.376](docs/decisions/9.376.md) |
 | `offsetParent`で「見えているか」を測らない。`position:fixed`と未組み立ての両方で`null`になる | — | [§9.346](docs/decisions/9.346.md) |
 | `transition`を持つ値は当てた直後に読まない（遷移前の値が返る）。1回描かせてから「動き出したか」で見る | `test_bladeui.js` | [§9.386](docs/decisions/9.386.md) |
+| 断りを「〜でないこと」で判定しない。別の理由で止まっても素通りする——**出た窓の題**で見分ける | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
+| 窓の器は`#appConfirmModal`、閉じるのは`#closeAppConfirm`（`alertModal`は「やめる」を伏せる） | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
+| 網は控えを直に書き換えず**欄を打って**変える（直に書くと描き直しの配線を通らない） | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
 | テストが開く／取りに行く`static/js`の道は領域つきで実在するURL（`/static/js/…`）。取れた中身が短ければ落とす | `test_loadorder.py` | [§9.334](docs/decisions/9.334.md) |
 | テストは3層（`--pure`＝サーバー不要・並列／`--smoke`＝各1本／全件は指示があったときだけ）。一覧の宣言は`run_all.sh`の1箇所 | `test_layers.py` | [§9.337](docs/decisions/9.337.md) |
 | 1段目（純粋な網）は「まっさらな取得で通る」ものだけ。確かめ方は`git archive` | `test_layers.py` | [§9.369](docs/decisions/9.369.md) |
