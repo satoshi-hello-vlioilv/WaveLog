@@ -96,9 +96,18 @@ const made={perm:[],cat:[]};
   rec('スケジュール系マスタが同じグループに集まる',
     ['stopReason','shiftMaster','loadFactor'].every(k=>inSchedGroup.includes(k)),inSchedGroup.join(','));
   /* **群の中は決める順に並ぶ**（§9.264、利用者の指摘「並びが不規則」）。
-     配列に書いた順のままだと、マスタを足すたびに並びが崩れる。 */
-  rec('群の中が決める順に並ぶ（勤務形態→換算係数→分類→設備停止）',
-    inSchedGroup.join(',')==='shiftMaster,loadFactor,stopCategory,stopReason',
+     配列に書いた順（`MASTER_DEFS`の順）のままだと、マスタを足すたびに並びが
+     崩れる。設備停止は§9.389で**分類 → 停止内容 → 内訳 → 時間**の4枚になった。
+
+     **並びは「前後関係」で見る**（§9.389 の追補）。以前はこの群の顔ぶれを
+     文字列で丸ごと固定していたので、**正しい位置へ1枚足しただけで落ちた**
+     （実測: 内訳と時間を足した通しでこの1件だけが赤）。見張りたいのは
+     「決める順に並んでいるか」であって「何枚あるか」ではない。 */
+  const wantOrder=['shiftMaster','loadFactor','stopCategory','stopReason','stopSub','stopMinutes'];
+  const atSched=k=>inSchedGroup.indexOf(k);
+  rec('群の中が決める順に並ぶ（勤務形態→換算係数→分類→停止内容→内訳→時間）',
+    wantOrder.every(k=>atSched(k)>=0)
+    &&wantOrder.every((k,i)=>i===0||atSched(wantOrder[i-1])<atSched(k)),
     inSchedGroup.join(','));
   /* 名前と中身が合っていること——「設備」の群に設備そのものが入っている。 */
   const byGroup=await page.evaluate(()=>{
