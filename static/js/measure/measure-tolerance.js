@@ -21,9 +21,10 @@
   /* 板厚・板幅は別々の入力内容(§9.138)。どちらも寸法系なので、判定公差は
      従来どおり製造/オーダー公差から引く（旧名も残す——保存済みレコードを
      `ensureMeasureShape`を通さずに読む帳票側から渡ってくることがある）。 */
-  /* 母材・丈は§9.160で1項目(`WL.measureItem.MATERIAL`)へまとめた。旧名も
-     残す——保存済みレコードを開いた瞬間に判定が変わるのを避ける。 */
-  var DIMENSIONAL={'板厚':1,'板幅':1,'板厚/板幅':1,'母材':1,'揃い/肉厚/長さ':1,
+  /* 母材・丈毎は§9.391で2項目へ分けた（§9.160でまとめたものを戻した）。
+     **旧名も全部残す**——保存済みレコードを開いた瞬間に判定が変わるのを
+     避ける。 */
+  var DIMENSIONAL={'板厚':1,'板幅':1,'板厚/板幅':1,'母材':1,'丈毎':1,'揃い/肉厚/長さ':1,
                    '母材・揃い/肉厚/長さ':1,'母材/丈毎':1};
   function norm(s){return (typeof normalizedFieldName==='function')?normalizedFieldName(s):String(s||'').normalize('NFKC').replace(/[\s　]+/g,'').toLowerCase();}
   function currentType(){return ($('#measureType')&&$('#measureType').value)||(S.measure&&S.measure.settings&&S.measure.settings.measureType)||'';}

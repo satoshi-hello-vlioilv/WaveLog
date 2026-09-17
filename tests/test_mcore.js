@@ -25,8 +25,10 @@ const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_m
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
-/* 入力内容の統合後の名前（§9.160）。画面の`WL.measureItem.MATERIAL`と同じ。 */
-const MATERIAL='母材/丈毎';
+/* 入力内容の名前（§9.391で「母材」と「丈毎」の2つに分けた）。
+   画面の`WL.measureItem.MATERIAL`／`.PIECE`と同じ。 */
+const MATERIAL='母材';
+const PIECE='丈毎';
 const setMode=m=>fetch(API+'/api/access-mode',{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
 

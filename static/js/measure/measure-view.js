@@ -17,28 +17,45 @@ WL.measureItem={
     時点で今の名前へ寄せる。板幅が条ごと・板厚が丈ごとなので、旧名は
     「条ごと」側＝板幅として開く。 */
  LEGACY:'板厚/板幅',
- /* 「母材」と「揃い/肉厚/長さ」は**1つの項目**（§9.160、利用者の指示）。
-    どちらも測定器を使わない手入力で、どちらもロットを開いた最初に入れる。
-    保存済みレコードは旧名を持つので、読み込む時点でこの名前へ寄せる
+ /* **「母材」と「丈毎」は別々の項目**（§9.391、利用者の指示「母材と丈毎を
+    入力内容の項目が一緒になっていますが、ボタンを分けて1枚のカードに
+    配置するように変更してください」）。§9.160で1つにまとめていたが、
+    2枚のカードが縦に積まれるため**どちらも半分の高さしか使えず**、
+    丈が多いロットでは丈ごとの表が先に潰れていた。項目を分ければ、
+    選んだ側が**面いっぱいの1枚**になる（§CLAUDE 1「面積は頻度×重要度」）。
+
+    保存済みレコードは旧名を持つので、読み込む時点で今の名前へ寄せる
     （選択肢に無い値を`select.value`へ入れると空文字＝どの項目でもない
-    状態で開く。`LEGACY`と同じ扱い）。 */
- /* 呼び名は**画面のまとまりと同じ**（§9.208 ②、利用者の指示）。この項目の
-    面には「母材」と「丈ごと」の2枚が縦に並ぶので、名前もそのとおりに読む。
-    以前の`母材・揃い/肉厚/長さ`は器（チップ1枚）に対して長すぎ、
-    「未測定が9項目あります（母材・揃い/肉厚/長さ・板厚 ほか）」のように
-    **中黒がどこの区切りなのか読めない**文も作っていた。 */
- MATERIAL:'母材/丈毎',
- LEGACY_MATERIAL:['母材','揃い/肉厚/長さ','母材・揃い/肉厚/長さ'],
- /* 旧名（母材／板厚/板幅）も残す——保存済みレコードを開いた瞬間に
+    状態で開く。`LEGACY`と同じ扱い）。**まとめていた頃の`母材/丈毎`は
+    「母材」へ寄せる**——先に入れる側なので、開いた人が次にすることが
+    変わらない。 */
+ MATERIAL:'母材',
+ PIECE:'丈毎',
+ /* **入力内容の顔ぶれは、ここ1箇所**（並びは画面の`#measureType`と同じ）。
+    以前はマスタ側（「開く条件」の札）が`#measureType`のDOMを読んでいたが、
+    設備ごとに項目を伏せられるようになると（§9.392）、**伏せた項目を
+    条件に選べなくなる**——マスタは全部の語彙を見て決めるものなので、
+    画面に出ている顔ぶれとは別に持つ。 */
+ ALL:['母材','丈毎','板厚','板幅','ラテラルボー','バリ','テレスコープ','巻ずれ','フラットネス'],
+ LEGACY_MATERIAL:['母材/丈毎','母材・揃い/肉厚/長さ'],
+ LEGACY_PIECE:['揃い/肉厚/長さ'],
+ /* 旧名（母材/丈毎／板厚/板幅）も残す——保存済みレコードを開いた瞬間に
     `WL.measureInput.activeMeasureKey()`の答えが変わらないようにするため。 */
- KEYS:{'母材/丈毎':'mother','母材・揃い/肉厚/長さ':'mother',母材:'mother',板厚:'thickness',板幅:'width',
+ KEYS:{母材:'mother',丈毎:'piece','母材/丈毎':'mother','母材・揃い/肉厚/長さ':'mother',
+  '揃い/肉厚/長さ':'piece',板厚:'thickness',板幅:'width',
   ラテラルボー:'lateral',バリ:'burr',
   テレスコープ:'telescope',巻ずれ:'offset',フラットネス:'flatness','板厚/板幅':'width'},
  normalize(type){const t=String(type??'');
   if(t===this.LEGACY)return '板幅';
-  return this.LEGACY_MATERIAL.indexOf(t)>=0?this.MATERIAL:t;},
- /* 手入力の面（母材＋丈）か。 */
- isMaterial(type){return this.normalize(type??this.current())===this.MATERIAL},
+  if(this.LEGACY_MATERIAL.indexOf(t)>=0)return this.MATERIAL;
+  return this.LEGACY_PIECE.indexOf(t)>=0?this.PIECE:t;},
+ /* 母材の面（ロットに1つ）か。 */
+ isMother(type){return this.normalize(type??this.current())===this.MATERIAL},
+ /* 丈毎の面（縦割りした丈 1〜N）か。 */
+ isPiece(type){return this.normalize(type??this.current())===this.PIECE},
+ /* 手入力の面（母材・丈毎のどちらか）か。**測定器から受けない面**を
+    ひとまとめに聞きたいところだけが使う（入力欄の保護・案内の札）。 */
+ isMaterial(type){const t=type??this.current();return this.isMother(t)||this.isPiece(t)},
  /* 板厚・板幅か（＝製造/オーダー公差を選べる寸法系か）。 */
  isDimensional(type){const t=String(type??'');return t==='板厚'||t==='板幅'||t===this.LEGACY},
  /* ---------- 「公差」と「基準」を言い分ける（§9.242 ⑤、利用者の指示） ----------
@@ -295,7 +312,11 @@ function updateMotherCalcLength(){
 }
 /* 公開は名前空間へ（素の`window.*`を増やさない。`test_globallint`）。 */
 window.WL.motherCalc={length:motherCalcLength,refresh:updateMotherCalcLength};
-function activateWorkspace(name){document.querySelectorAll('[data-worktab]').forEach(b=>b.classList.toggle('active',b.dataset.worktab===name));document.querySelectorAll('[data-workpanel]').forEach(p=>p.hidden=p.dataset.workpanel!==name)}
+/* 面の呼び名 → 器（`data-workpanel`）。**母材と丈毎は同じ器を使う**
+   （§9.391）——中で出す`.mat-block`が違うだけで、器を2つに割ると
+   `.measure-shell.mstep-2`の割り付けも2箇所に増える。 */
+const WORKPANEL_OF={mother:'material',piece:'material'};
+function activateWorkspace(name){const panel=WORKPANEL_OF[name]||name;document.querySelectorAll('[data-worktab]').forEach(b=>b.classList.toggle('active',b.dataset.worktab===name||b.dataset.worktab===panel));document.querySelectorAll('[data-workpanel]').forEach(p=>p.hidden=p.dataset.workpanel!==panel)}
 /* 丈位置・条数のセレクト内容とフラットネス備考の入出力。 */
 function updateLengthOptions(count){const el=$('#lengthPos');if(!el)return;const current=el.value||S.measure?.settings?.lengthPos||'1(頭)',n=Math.max(1,Math.min(9,+count||1)),values=[];for(let i=1;i<=n;i++)values.push(`${i}(頭)`);values.push(`${n}(尾)`);el.innerHTML=[...new Set(values)].map(v=>`<option>${v}</option>`).join('');el.value=[...el.options].some(o=>o.value===current)?current:values[0]}
 /* 横割数(条数)の入力上限を、この設備の最大条数(設備マスタ)へ合わせる。
@@ -346,15 +367,19 @@ function bindMotherInputs(){
 }
 window.WL.motherInputs={bind:bindMotherInputs};
 function rightLayoutFor(type){
- return WL.measureItem.isMaterial(type)?'material':'measure';
+ /* **母材と丈毎は別の面**（§9.391）——選んだ側だけを1枚のカードで出す。 */
+ if(WL.measureItem.isMother(type))return 'mother';
+ if(WL.measureItem.isPiece(type))return 'piece';
+ return 'measure';
 }
 function applyRightLayout(){
  if(!S.measure)return;
  const type=$('#measureType').value, layout=rightLayoutFor(type), pane=$('.right-pane');
- pane.classList.remove('layout-material','layout-measure');
+ pane.classList.remove('layout-mother','layout-piece','layout-measure');
  pane.classList.add('layout-'+layout); activateWorkspace(layout);
  if(layout==='measure'){WL.measureInput.renderMeasureGrid();updateMeasurementHeading()}
- if(layout==='material'){renderProductPanel();updateMotherCalcLength();bindMotherInputs()}
+ if(layout==='mother'){updateMotherCalcLength();bindMotherInputs()}
+ if(layout==='piece')renderProductPanel();
  /* 手入力の案内は**入れる場所のすぐ上**（§9.233 ③）。段は変わらないので
     `WL.measureSteps.refresh()`は走らない——ここから書き直す。 */
  if(window.WL&&WL.measureSteps&&WL.measureSteps.materialNote)WL.measureSteps.materialNote();
@@ -702,7 +727,7 @@ if($('#productAllOk'))$('#productAllOk').onclick=()=>{
   Object.assign(row,{alignmentCode:'',edgeShape:PRODUCT_EDGE_OK,occurrencePosition:'',regularity:'',direction:'',pitch:'',alignmentValue:''})}
  renderProductPanel();markDirty();
 };
-$('#verticalCount')?.addEventListener('change',()=>{if(WL.measureItem.isMaterial($('#measureType').value))renderProductPanel()});
+$('#verticalCount')?.addEventListener('change',()=>{if(WL.measureItem.isPiece($('#measureType').value))renderProductPanel()});
 /* 測定種ごとに運用が固定されているため、入力モードの切替UI自体を出さない。
    - 板厚・板幅・バリ: 測定器からの自動転送のみ。
    - ラテラルボー・テレスコープ・巻ずれ・フラットネス: 実運用は手動入力のみ
@@ -903,15 +928,18 @@ function activeRequiredControlsCore(){
   ['operator','inspector'].forEach(id=>controls.push({el:$('#'+id),label:id==='operator'?'オペレータ':'検査員'}));
  }
  const type=$('#measureType')?.value;
- /* 母材と丈は**同じ面にある**ので、必須も一緒に見る（§9.160。以前は
-    項目が2つに割れており、片方を開かないともう片方の未入力に気づけなかった）。 */
- if(WL.measureItem.isMaterial(type)){
+ /* **見ているのは「いま出している面」だけ**（§9.391）。母材と丈毎は別の
+    項目になったので、丈毎を開いていないのに丈の欄を必須に数えると、
+    画面に出ていない欄で赤が出る（全項目の取りこぼしは`measure-progress.js`の
+    完了前の確認が別に見ている）。 */
+ if(WL.measureItem.isMother(type)){
   /* **ラベルは画面から読む**（§9.232）。以前はDOMの順番で決め打ちの配列を
      引いていたので、マスタで名前を変えても並べ替えても古い呼び名が出た
      ——母材の欄は操業データの項目になり、**順番も名前も現場が決める**。
      名前は`motherFieldLabel()`の1箇所が答える（同じ欄を2通りに呼ばない）。 */
   document.querySelectorAll('[data-mother]').forEach(el=>
    controls.push({el,label:motherFieldLabel(el)}));
+ }else if(WL.measureItem.isPiece(type)){
   const fieldLabels={productLength:'長さ',wallThickness:'肉厚',edgeShape:'揃い(エッジ形状)'};
   /* **行番号で数えない**(§9.203)——内訳の段(`.prt-detail`)が挟まるので、
      `forEach`の添字は丈の番号と一致しない。`data-row`で引く。 */

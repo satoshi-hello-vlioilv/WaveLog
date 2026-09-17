@@ -465,7 +465,7 @@
            **内径のプリセット**も同じで、`ｺｲﾙ_内径目標`がここで現れうる。 */
         if(typeof WL.measureView.renderQualityGradePanel==='function')WL.measureView.renderQualityGradePanel();
         if(typeof WL.measureView.renderProductPanel==='function'
-           &&WL.measureItem.isMaterial($('#measureType')?.value))WL.measureView.renderProductPanel();
+           &&WL.measureItem.isPiece($('#measureType')?.value))WL.measureView.renderProductPanel();
         /* 当て方は1箇所（measure-view.js）が持つ。ここは呼ぶだけ。 */
         if(WL.innerDiameter)WL.innerDiameter.apply(S.measure.source);
       }

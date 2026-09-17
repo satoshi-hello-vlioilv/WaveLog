@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（573件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（577件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -397,7 +397,7 @@
 | 「どれが仕掛でどれが品質か」はキーでなく`データソースマスタ`の`[役割]` | `test_datasource.py`・`test_dskeylint.py`・`test_dsnav.js` | [決まり](docs/decisions/rules-misc.md) |
 | 仕掛から消えたロットは実績で突き合わせる。在席は「仕掛にも在る列」だけで見る | `test_actualmatch.py` | [§9.364](docs/decisions/9.364.md) |
 
-### 測定画面（83件）
+### 測定画面（87件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -428,6 +428,10 @@
 | 操業データ項目の保存は`opSaveItem()`の`body`に全部載せる | — | [§9.287](docs/decisions/9.287.md) |
 | 「誰が・どの端末で」は登録と更新を分けて持つ | `test_audittrail.js` | [§9.180](docs/decisions/9.180.md) |
 | 測定画面は「準備→測定→確認」の3段 | `test_msteps.js` | [§9.123](docs/decisions/9.123.md) |
+| 入力内容の「母材」と「丈毎」は**別々の項目**。出すのは選んだ側のカード1枚だけ（§9.160を撤回） | `test_msteps.js` | [§9.391](docs/decisions/9.391.md) |
+| 入力内容の語彙は`WL.measureItem.ALL`の1箇所。画面の`#measureType`とは別に持つ | `test_msteps.js` | [§9.391](docs/decisions/9.391.md) |
+| 測定値の器を持たない鍵は**名前で避けず、器の有無で見る**（`m.measurements[key]`） | `test_msteps.js` | [§9.391](docs/decisions/9.391.md) |
+| 必須に数えるのは**いま出している面の欄だけ**（取りこぼしは完了前の確認が見る） | `test_msteps.js`・`test_opmother.js` | [§9.391](docs/decisions/9.391.md) |
 | ②測定は「項目リスト＋測定表」で、表は使う条数ぶんだけ描く | — | [§9.124](docs/decisions/9.124.md) |
 | 測定中の巡回キーは持たない | `test_msteps.js` | [§9.160](docs/decisions/9.160.md) |
 | 入力内容の「母材」と「揃い/肉厚/長さ」は1つの項目 | `test_mcore.js`・`test_msteps.js`・`test_opmother.js` | [§9.160](docs/decisions/9.160.md) |

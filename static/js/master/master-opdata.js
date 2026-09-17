@@ -85,7 +85,7 @@
   '準備':'①準備の「操業データ」カード（横3マス×縦2マス）',
   '入力内容':'②測定の「入力内容」カード（畳んでおき、下の「開く条件」に当たる項目を選ぶと開きます）',
   /* §9.232。**畳みの対象ではない**——面ごと出し分けるので「開く条件」は効かない。 */
-  '母材':'②測定の「母材」カード（入力内容が「母材・揃い/肉厚/長さ」のときだけ出る面）',
+  '母材':'②測定の「母材」カード（入力内容が「母材」のときだけ出る面）',
  };
  /* 型の一言。**選ばせる前に何が起きるかを書く**（§CLAUDE 6）。 */
  const OP_TYPE_NOTE={
@@ -1512,7 +1512,11 @@
  }
  /* いま画面にある測定項目の一覧（開く条件で選ばせる）。**ここへ書き写さない**
     ——`index.html`の`#measureType`が正で、増減したときに2箇所を直すことになる。 */
+ /* **全部の語彙を出す**（§9.391）——設備で伏せた項目も条件に選べること。
+    画面のDOM（`#measureType`）は「いまの設備で使う項目」しか持たない。 */
  function opMeasureTypes(){
+  const all=(typeof WL!=='undefined'&&WL.measureItem&&WL.measureItem.ALL)||null;
+  if(all&&all.length)return all.slice();
   const el=document.getElementById('measureType');
   if(!el)return [];
   return [...el.options].map(o=>String(o.text||'').trim()).filter(Boolean);

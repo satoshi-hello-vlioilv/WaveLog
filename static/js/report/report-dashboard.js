@@ -1814,7 +1814,11 @@
  }
  function rpShowProduct(x){
   const has=(x.product?.rows||[]).some(r=>r&&WL.measureView.PRODUCT_FILLED_KEYS.some(k=>String(r[k]||'').trim()!==''));
-  return WL.measureItem.isMaterial(x.settings?.measureType)||has;
+  /* **丈毎の面を選んだ記録か、丈の行が1つでも埋まっていれば出す**
+     （§9.391）。母材だけを選んで丈を1行も書いていない記録に、空の
+     「丈別データ」を刷らない。旧名（母材/丈毎）は母材へ寄るので、
+     その頃の記録は`has`のほうで拾う。 */
+  return WL.measureItem.isPiece(x.settings?.measureType)||has;
  }
  /* 並び。**知らない名前は捨て、登録済みで並びに無いものは末尾へ**（一覧の
     `listColumnKeys`と同じ作法。項目が増えても設定が壊れない）。 */

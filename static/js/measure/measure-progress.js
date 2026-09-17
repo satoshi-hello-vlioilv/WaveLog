@@ -19,12 +19,14 @@
 
 /* 入力内容の並びは #measureType の選択肢と同順にする(画面と対応を取るため)。
    scope はデータの持ち方の違い:
-     material = 母材(ロットに1つ) ＋ 丈ごと(縦割りした丈 … m.product.rows)。
-                **1つの項目**にまとめてある(§9.160、利用者の指示)。どちらも
-                測定器を使わない手入力で、同じ1枚のパネルに並ぶ。
+     mother   = 母材(ロットに1つ … m.mother)
+     piece    = 丈ごと(縦割りした丈 … m.product.rows)
+                **2つの項目**（§9.391、利用者の指示）。どちらも測定器を
+                使わない手入力だが、面（カード）は1枚ずつに分けた。
      length   = 丈位置(頭/尾)ごと × 条ごと (m.measurements[key][丈位置][条]) */
 const ITEM_DEFS=[
- {name:WL.measureItem.MATERIAL, scope:'material'},
+ {name:WL.measureItem.MATERIAL, scope:'mother'},
+ {name:WL.measureItem.PIECE,    scope:'piece'},
  /* 板厚と板幅は**枠の数がまるで違う**ので別々の項目にした(§9.138)。
     板厚は丈ごとに3点(エッジOS・中央CL・エッジDS)、板幅は条ごと。
     1つの項目のままだと進捗が「3+条数」の合算になり、板幅だけ終わって
@@ -83,16 +85,18 @@ function countsOf(m){
 /* 1項目分の進捗。perLength は丈位置ごとの充足数(length scope のみ)。 */
 function itemProgress(m,def){
  const c=countsOf(m),out={name:def.name,filled:0,total:0,perLength:[]};
- if(def.scope==='material'){
-  /* 母材8欄＋丈N本。**合算して1つの進捗にする**——同じ面に並ぶので、
-     片方だけ済みという状態を別々の数で出しても読む側の手数が増える。 */
+ if(def.scope==='mother'){
+  /* 母材の欄だけ（§9.391）。**丈と合算しない**——面が分かれたので、
+     合算すると「どちらが残っているか」がチップの数字から読めない。 */
   const mother=m.mother||{};
-  const rows=(m.product&&Array.isArray(m.product.rows))?m.product.rows:[];
-  const pieces=Array.from({length:c.vertical},(_,i)=>rows[i])
-   .filter(r=>productFilledKeys().some(k=>filled(r&&r[k]))).length;
   const fields=motherFields();
-  out.total=fields.length+c.vertical;
-  out.filled=fields.filter(k=>filled(mother[k])).length+pieces;
+  out.total=fields.length;
+  out.filled=fields.filter(k=>filled(mother[k])).length;
+ }else if(def.scope==='piece'){
+  const rows=(m.product&&Array.isArray(m.product.rows))?m.product.rows:[];
+  out.total=c.vertical;
+  out.filled=Array.from({length:c.vertical},(_,i)=>rows[i])
+   .filter(r=>productFilledKeys().some(k=>filled(r&&r[k]))).length;
  }else{
   const ms=m.measurements||{};
   for(let li=0;li<c.lengthSlots;li++){

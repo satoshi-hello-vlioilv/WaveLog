@@ -288,13 +288,12 @@ let b=null;
    return n;
   });
   rec('割り付けの最後に進捗を塗り直す（無いと分母が古いまま残る）',called>0,String(called));
-  /* **分母は「鍵＋丈の数」ちょうど**（§9.234 ⑧）。`分母>=鍵`では丈が必ず1本
-     以上あるので**常に真＝何も確かめていない**（実際にそう書いて素通りした）。
-     受け皿（`MOTHER_FIELDS_FALLBACK`）は8欄で、いま有効な欄も8欄なので、
-     **全部有効なうちは古い値と新しい値が区別できない**——だから等式で締める。 */
+  /* **分母は「母材の欄数」ちょうど**（§9.234 ⑧ → §9.391で丈毎を別の項目へ
+     分けたので、丈は足さない）。`分母>=鍵`のような不等号では**常に真＝何も
+     確かめていない**（実際にそう書いて素通りした）ので、等式で締める。 */
   const vertical=await page.evaluate(()=>Number((S.measure&&S.measure.settings&&S.measure.settings.verticalCount)||1));
-  rec('前提: 分母は「母材の欄数＋丈の数」ちょうど',
-      before.分母===before.鍵+vertical,JSON.stringify({...before,丈:vertical}));
+  rec('前提: 分母は「母材の欄数」ちょうど（丈は別の項目・§9.391）',
+      before.分母===before.鍵,JSON.stringify({...before,丈:vertical}));
 
   await saveItem({...target,name:'全長'+TAG,enabled:false});
   await openMeasure();

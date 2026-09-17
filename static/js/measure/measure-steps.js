@@ -512,19 +512,28 @@
   try{paintFinish()}catch(e){WL.quiet.note('確認の段を塗り直せない（次の描き直しで追いつく）',e)}
  }
 
- /* 母材の手入力の案内（§9.233 ③）。**文言はここ1箇所**——帯から母材の
-    カードへ移しただけで、同じことを2通りに書かない。 */
- const MATERIAL_NOTE={text:'母材・丈は手入力です',
-   title:'母材と丈（揃い/肉厚/長さ）は手入力の項目です。測定器から受けるには入力内容を切り替えてください。'};
+ /* 母材・丈毎の手入力の案内（§9.233 ③）。**文言はここ1箇所**——帯から
+    カードへ移しただけで、同じことを2通りに書かない。
+    §9.391で面が2つに割れたので、**札も面ごとに1枚**（出ていない面の札を
+    塗らない）。 */
+ const MATERIAL_NOTES={
+  materialManualNote:{on:t=>WL.measureItem.isMother(t),text:'母材は手入力です',
+    title:'母材（ロットに1つ）は手入力の項目です。測定器から受けるには入力内容を切り替えてください。'},
+  pieceManualNote:{on:t=>WL.measureItem.isPiece(t),text:'丈は手入力です',
+    title:'丈毎（長さ・肉厚・揃い）は手入力の項目です。測定器から受けるには入力内容を切り替えてください。'},
+ };
  function paintMaterialNote(){
-  const el=document.getElementById('materialManualNote');
-  if(!el)return;
   const type=document.querySelector('#measureType')?.value||'';
-  const on=!!(measuring()&&WL.measureItem.isMaterial(type));
-  el.hidden=!on;
-  if(!on)return;
-  el.textContent=MATERIAL_NOTE.text;
-  el.title=MATERIAL_NOTE.title;
+  Object.keys(MATERIAL_NOTES).forEach(id=>{
+   const el=document.getElementById(id);
+   if(!el)return;
+   const def=MATERIAL_NOTES[id];
+   const on=!!(measuring()&&def.on(type));
+   el.hidden=!on;
+   if(!on)return;
+   el.textContent=def.text;
+   el.title=def.title;
+  });
  }
 
  /* リストボックスの高さは**`size`（行数）で決める**。CSSのpx指定では

@@ -17,8 +17,10 @@ const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_m
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
-/* 入力内容の統合後の名前（§9.160）。画面の`WL.measureItem.MATERIAL`と同じ。 */
-const MATERIAL='母材/丈毎';
+/* 入力内容の名前（§9.391で「母材」と「丈毎」の2つに分けた）。
+   画面の`WL.measureItem.MATERIAL`／`.PIECE`と同じ。 */
+const MATERIAL='母材';
+const PIECE='丈毎';
 const setMode=m=>fetch(API+'/api/access-mode',{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
 
@@ -137,9 +139,19 @@ let b=null,page=null;
       ref2a.length===1&&ref2a.includes('basic')&&split2,
       JSON.stringify(ref2a)+' split='+split2);
   /* 板厚と板幅は枠の数がまるで違うので別々の項目にした（§9.138）＝9項目。 */
-  /* 項目は8つ（§9.160で母材と揃いを1つにまとめた）。 */
-  rec('②に入力内容の一覧（8項目）が出る',items.一覧===8,JSON.stringify(items));
+  /* 項目は9つ（§9.391で「母材」と「丈毎」を2つに分けた）。 */
+  rec('②に入力内容の一覧（9項目）が出る',items.一覧===9,JSON.stringify(items));
   rec('②では1回決めるだけの設定を出さない',items.ほかの設定===0,JSON.stringify(items));
+  /* **語彙（`WL.measureItem.ALL`）と画面の選択肢は同じ**（§9.391）。
+     マスタの「開く条件」は語彙のほうを読むので、片方だけ足すと
+     **画面に無い条件／条件に選べない項目**ができる。 */
+  const vocab=await page.evaluate(()=>({
+   語彙:(WL.measureItem.ALL||[]).slice(),
+   選択肢:[...document.querySelectorAll('#measureType option')].map(o=>o.text.trim()),
+  }));
+  rec('入力内容の語彙と画面の選択肢が一致する（§9.391）',
+      vocab.語彙.join('/')===vocab.選択肢.join('/')&&vocab.語彙.length===9,
+      JSON.stringify(vocab));
   /* **丈位置は②に出す（§9.125）。** `PageUp/PageDown`で動かせるのに、
      以前はどの段にも出ておらず「いま何丈目か」は`#stepStatus`の文でしか
      分からなかった。高さは選択肢の数ぶん——7行固定だと空白が並ぶ。 */
@@ -150,7 +162,7 @@ let b=null,page=null;
   /* **同じものを選ぶ道具を2つ置かない**（§9.129）。列見出しが選択を兼ねる
      ので、一覧（リストボックス）は②から降ろした。 */
   rec('丈位置の一覧は②に出さない',items.一覧を出していない===true,JSON.stringify(items));
-  rec('一覧の各項目に残り件数が文字で付く',items.件数の文字===8,JSON.stringify(items));
+  rec('一覧の各項目に残り件数が文字で付く',items.件数の文字===9,JSON.stringify(items));
   /* 測定表は本体のいちばん広いカード。骨子（§9.137）で`2×3`＝**本体の半分**
      と決めたので、しきい値も半分ちょうどで見る（以前は3列＝3/4だった）。
      丈位置×条の1つの表（§9.136）は最大10列×40行なので2マス幅で足りる。 */
@@ -1013,7 +1025,7 @@ let b=null,page=null;
      1つだけ見ると、そのとき選ばれていた項目しか網に掛からない
      （最初はそうなっており、板厚の3点入力と備考欄を取りこぼした）。 */
   await go('2');
-  for(const t of ['板幅',MATERIAL]){
+  for(const t of ['板幅',MATERIAL,PIECE]){
    await setType(t);
    const over=await wideBoxes(SLACK);
    rec(`②「${t}」に中身より${SLACK}px以上広い欄が無い`,over.length===0,over.join(' / '));
@@ -1218,10 +1230,20 @@ let b=null,page=null;
   const e2=await emptyRate();
   rec('②（板幅）の空きを記録した',true,JSON.stringify(e2));
 
-  /* 母材と丈は**1枚のパネル**（§9.160、利用者の指示「選択1つにまとめ、
-     入力欄はわかりやすく整理して」）。丈は全丈を1つの表で出す（丈番号タブは
-     §9.131で廃止）。 */
+  /* **母材と丈毎は別々の面**（§9.391、利用者の指示「ボタンを分けて1枚の
+     カードに配置するように変更してください」）。器（`.work-panel`）は1つの
+     ままで、**出るカードが入れ替わる**。丈は全丈を1つの表で出す（丈番号
+     タブは§9.131で廃止）。 */
   await setType(MATERIAL);
+  const onlyMother=await page.evaluate(()=>{
+   const vis=e=>!!e&&e.getBoundingClientRect().height>0;
+   return {母材:vis(document.querySelector('.material-grid')),
+     表:vis(document.querySelector('.product-rows-table')),
+     面の数:[...document.querySelectorAll('.work-panel')].filter(vis).length};
+  });
+  rec('②で「母材」を選ぶと、出るのは母材のカード1枚だけ',
+      onlyMother.母材&&!onlyMother.表&&onlyMother.面の数===1,JSON.stringify(onlyMother));
+  await setType(PIECE);
   const prod=await page.evaluate(()=>{
    const t=document.querySelector('.product-rows-table');
    const tabs=document.getElementById('productLengthTabs');
@@ -1236,8 +1258,8 @@ let b=null,page=null;
      溢れ:t?Math.round(t.getBoundingClientRect().right
        -document.querySelector('.right-pane').getBoundingClientRect().right):0};
   });
-  rec('②の母材・丈は1枚の面に母材と全丈表が両方出る',
-      prod.母材&&prod.表&&prod.行===prod.丈&&prod.面の数===1,JSON.stringify(prod));
+  rec('②で「丈毎」を選ぶと、出るのは全丈の表1枚だけ',
+      prod.表&&!prod.母材&&prod.行===prod.丈&&prod.面の数===1,JSON.stringify(prod));
   rec('②の揃いに丈番号タブを出さない',prod.タブ===false,JSON.stringify(prod));
   rec('②の全丈表が横に溢れない',prod.溢れ<=0,JSON.stringify(prod));
   /* **入力欄が見切れない**（§9.160、利用者の指摘）。見出しの文字数で列幅が
@@ -1785,9 +1807,11 @@ let b=null,page=null;
   await go('2');
   await setType(MATERIAL);
   const cnt=await page.evaluate(async()=>{
-   const chip=()=>{
+   /* **チップは項目ごと**（§9.391で母材と丈毎に分かれた）——どちらの数が
+      動いたのかを名前で引く。 */
+   const chip=name=>{
     const c=[...document.querySelectorAll('.type-chip')]
-      .find(x=>x.dataset.typeChip===WL.measureItem.MATERIAL);
+      .find(x=>x.dataset.typeChip===name);
     return c?c.querySelector('.type-chip-state').textContent.trim():'';
    };
    /* まっさらから始める（前の節が値を入れている） */
@@ -1796,26 +1820,36 @@ let b=null,page=null;
    (S.measure.product.rows||[]).forEach(r=>Object.keys(r).forEach(k=>r[k]=''));
    WL.measureView.renderProductPanel();refreshMeasureProgress();
    await new Promise(r=>setTimeout(r,120));
-   const before=chip();
+   const M=WL.measureItem.MATERIAL,P=WL.measureItem.PIECE;
+   const before=chip(M),beforePiece=chip(P);
    const el=document.querySelector('[data-mother]');
    el.value='1234.5';el.dispatchEvent(new Event('input',{bubbles:true}));
    await new Promise(r=>setTimeout(r,120));
-   const afterMother=chip(),motherKept=String(S.measure.mother[el.dataset.mother]||'');
+   const afterMother=chip(M),motherKept=String(S.measure.mother[el.dataset.mother]||'');
    const len=document.querySelector('#productRowsBody tr[data-row="0"] [data-product-field="productLength"]');
    len.value='2500';len.dispatchEvent(new Event('input',{bubbles:true}));
    await new Promise(r=>setTimeout(r,120));
-   return{before,afterMother,motherKept,afterPiece:chip(),
-          名前:WL.measureItem.MATERIAL,
+   return{before,beforePiece,afterMother,motherKept,
+          afterPiece:chip(P),motherUnchanged:chip(M),
+          名前:[M,P],
           チップ名:[...document.querySelectorAll('.type-chip .type-chip-name')].map(x=>x.textContent.trim())};
   });
   const num=t=>Number(String(t).split('/')[0]);
   rec('母材を1つ打つと入力数がその場で増える（§9.208 ②）',
       num(cnt.afterMother)===num(cnt.before)+1,`${cnt.before} → ${cnt.afterMother}`);
   rec('母材の値は保存を待たずレコードへ入る',cnt.motherKept==='1234.5',cnt.motherKept);
-  rec('丈を1つ打つと入力数がさらに増える（§9.208 ②）',
-      num(cnt.afterPiece)===num(cnt.afterMother)+1,`${cnt.afterMother} → ${cnt.afterPiece}`);
-  rec('入力内容の呼び名は「母材/丈毎」（§9.208 ②）',
-      cnt.名前==='母材/丈毎'&&cnt.チップ名[0]==='母材/丈毎',JSON.stringify(cnt.チップ名));
+  /* **数えるのは自分の項目だけ**（§9.391）——丈を打って増えるのは「丈毎」で、
+     「母材」は動かない。合算していた頃はどちらが残っているか読めなかった。 */
+  /* **埋まりきると札は「済」になる**ので、数だけで見ない（丈が1本の
+     ロットでは 0/1 → 済 になり、`num()`がNaNになる）。 */
+  const stepUp=(a,b)=>/済/.test(b)?!/済/.test(a):num(b)===num(a)+1;
+  rec('丈を1つ打つと「丈毎」の入力数が増える（§9.208 ②・§9.391）',
+      stepUp(cnt.beforePiece,cnt.afterPiece),`${cnt.beforePiece} → ${cnt.afterPiece}`);
+  rec('丈を打っても「母材」の入力数は動かない（§9.391）',
+      cnt.motherUnchanged===cnt.afterMother,`${cnt.afterMother} → ${cnt.motherUnchanged}`);
+  rec('入力内容の呼び名は「母材」と「丈毎」の2つ（§9.391）',
+      cnt.名前[0]==='母材'&&cnt.名前[1]==='丈毎'
+      &&cnt.チップ名[0]==='母材'&&cnt.チップ名[1]==='丈毎',JSON.stringify(cnt.チップ名));
 
   /* ---- ② 角は1種類にそろえる（利用者の指示「四角の入力欄はすべて丸角に」） ---- */
   const radii=await page.evaluate(()=>{

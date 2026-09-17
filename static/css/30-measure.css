@@ -1661,9 +1661,9 @@ th.col-sorted:hover{background:#c7e7ea}
 .work-tabs{display:flex;position:sticky;top:0;z-index:4;margin-top:8px;background:#f5f5f3;border-bottom:1px solid var(--line)}
 .work-tabs button{flex:1;border-radius:var(--radius-tab) var(--radius-tab) 0 0;padding:8px 5px;font-weight:700;border:1px solid transparent;background:transparent;color:var(--ink-3);box-shadow:none}
 .work-tabs button:hover{border-color:transparent;background:var(--bg)}
-.right-pane.layout-material .work-tabs,
+.right-pane:is(.layout-mother,.layout-piece) .work-tabs,
 .right-pane.layout-measure .work-tabs{display:none}
-.right-pane.layout-material .input-status{display:none}
+.right-pane:is(.layout-mother,.layout-piece) .input-status{display:none}
 .work-panel{padding-top:var(--space-2)}
 /* 題は**他のカードと同じ位置から**始める（§9.210 ③、利用者の指摘「他の
    カードと見比べるとタイトルの位置が少し下がっていたりして…カードの設計
@@ -1672,19 +1672,20 @@ th.col-sorted:hover{background:#c7e7ea}
    いた**——実測で他のカードの題が上9pxなのに測定カードだけ20px。
    タブが出ている面では区切りとして要るので、畳んでいる面だけ落とす。 */
 .right-pane.layout-measure>.work-panel,
-.right-pane.layout-material>.work-panel{padding-top:0}
+.right-pane:is(.layout-mother,.layout-piece)>.work-panel{padding-top:0}
 /* ---------- ②の作業パネルは中身なりに並べる（§9.131） ----------
    母材は入力12個・製品は9個しかないのに、器の1fr（実測1427px）へ横いっぱいに
    広げていたため、1つの欄が239〜420pxになり、下には483〜542pxの空きが
    残っていた。**横は中身なりに詰め、隣り合わせに置く**——母材の値と
    品質情報は一緒に読むもので、離すと視線が往復する。 */
-/* 「母材」と「揃い/肉厚/長さ」は**1枚のパネル**（§9.160、利用者の指示
-   「選択1つにまとめ、入力欄はわかりやすく整理して」）。以前は入力内容の
-   選択肢を切り替えて別々のパネルを出しており、**同じ手入力の作業が2つに
-   割れていた**（どちらも測定器を使わず、どちらもロットを開いた最初に入れる）。
-   上下に積む——右の作業面は実測853pxで、丈の表(11列)と母材の4列を横に
-   並べると入らない。読み順（母材＝コイル全体 → 丈＝切り分けた製品）が
-   そのまま上から下になる。 */
+/* 「母材」と「丈毎」は**入力内容の別々の項目**（§9.391、利用者の指示
+   「ボタンを分けて1枚のカードに配置するように変更してください」）。
+   §9.160では1つの項目にまとめて2枚のカードを上下に積んでいたが、
+   **どちらも面の半分しか使えず**、丈が多いロットでは丈の表が先に潰れた。
+   器は今までどおり1つで、**出すのは選んだ側の1枚だけ**にする
+   （§CLAUDE 1「面積は頻度×重要度で配る」）。 */
+.right-pane.layout-mother .mat-product,
+.right-pane.layout-piece .mat-mother{display:none}
 .measure-shell.mstep-2 .work-panel[data-workpanel="material"]{
   display:grid;grid-template-columns:minmax(0,1fr);grid-auto-rows:min-content;
   gap:var(--gap-section);align-content:start;

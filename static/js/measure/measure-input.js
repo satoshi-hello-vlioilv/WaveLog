@@ -185,7 +185,10 @@ function numberlinePendingKind(raw){
  if(type==='バリ')return['micrometer','manual'].includes(p.device)?'burr':null;
  if(type==='テレスコープ')return['depth','manual'].includes(p.device)?'telescope':null;
  const key=activeMeasureKey();
- return(key==='mother'||key==='flatness')?null:key;
+ /* 手入力の面（母材・丈毎）とフラットネスは数直線を持たない。
+    **器の有無で見る**（§9.391。項目名を並べると面を足すたびに増える）。 */
+ if(key==='flatness')return null;
+ return (S.measure&&S.measure.measurements&&S.measure.measurements[key])?key:null;
 }
 function updateNumberlinePending(raw){
  const marker=$('#numberlinePending');if(!marker)return;
@@ -548,7 +551,7 @@ function makeMeasureInputV29(key,i,j,value,active=true){
 function applyInputProtection(){
  if(!S.measure)return;const manual=S.measure.settings.inputMode==='manual';document.querySelectorAll('[data-mkey]').forEach(el=>{el.readOnly=!manual;el.classList.toggle('auto-locked',!manual);el.tabIndex=manual?0:-1;el.title=manual?'手入力可能':'自動転送中。クリックは入力位置の選択のみです。'});document.querySelectorAll('[data-mother]').forEach(el=>{el.readOnly=!manual;el.tabIndex=manual?0:-1})
 
- const mother=WL.measureItem.isMaterial($('#measureType')?.value);
+ const mother=WL.measureItem.isMother($('#measureType')?.value);
  if(mother)document.querySelectorAll('[data-mother]').forEach(el=>{el.readOnly=false;el.disabled=false;el.tabIndex=0;el.classList.remove('auto-locked');el.title='母材は手動入力できます'});
  /* フラットネスは測定器転送の対象外(〇/△/×または自由記述)のため、
     転送モードに関わらず常にセルへ直接入力できるようにする。 */
@@ -887,7 +890,12 @@ document.addEventListener('click',e=>{
    ——違いは**枠の数と呼び名だけ**で、それは`WL.measureItem`が答える。 */
 function renderMeasureGridVertical(){
  const type=$('#measureType').value,key=activeMeasureKey(),m=S.measure,li=lengthIndex(),count=Math.max(1,Math.min(40,+$('#horizontalCount').value||1));
- const actualKey=key==='mother'?'width':key;
+ /* **手入力の面（母材・丈毎）は測定値の器を持たない**（§9.391）。
+    描き手はここへ来ることがあるので、**器のある鍵へ寄せる**——`measurements`に
+    無い鍵をそのまま添字にすると`undefined[li]`で落ちる（丈毎を足した直後に
+    実測: 「Cannot read properties of undefined (reading '1')」が2件）。
+    項目名で並べず**器の有無で見る**ので、面を足しても直し忘れない。 */
+ const actualKey=(m.measurements&&m.measurements[key])?key:'width';
  const slots=WL.measureItem.slotCount(actualKey,count);
  const values=m.measurements[actualKey][li],done=values.slice(0,slots).filter(v=>v!=='').length;
  /* ---------- フラットネスの一括入力（§9.233 ④、利用者の指示） ----------

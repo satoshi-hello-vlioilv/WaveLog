@@ -2667,7 +2667,10 @@
    /* 群の幅（§9.226 ③）。**1つでも指定があればそれ**——畳むと同じ読み方に
       そろえる（群の中で食い違ったときにどちらが正かを決めておく）。 */
    if(!g.span&&Number(d.groupSpan)>0)g.span=Math.min(gridCols,Number(d.groupSpan));
-   (d.showWhen||[]).forEach(x=>g.showWhen.add(String(x).trim()));
+   /* **条件も今の名前へ寄せる**（§9.391）——マスタに旧名（母材/丈毎 等）で
+      入っている行があり、寄せないと当たらない群ができる（畳んだまま開かない）。 */
+   (d.showWhen||[]).forEach(x=>g.showWhen.add(
+     ((typeof WL!=='undefined'&&WL.measureItem)?WL.measureItem.normalize(x):String(x)).trim()));
   });
   /* 中身が1枚も無い群は「全部が空き」ではない（初期値のtrueを落とす）。 */
   out.forEach(g=>{if(!g.items.length)g.pad=false;g.dummy=g.pad});
