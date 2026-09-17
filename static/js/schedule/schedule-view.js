@@ -5147,7 +5147,37 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    const cnt=Math.max(1,Math.round(n(contentValueOf(hd,'boxHorizontalCount'))||1));
    if(w)push(headLot,w,cnt);
   }
-  return {thickness,originalWidth,lots,skipped,headLot};
+  return {thickness,originalWidth,lots,skipped,headLot,headSplit:hasKid||hasSplitDetail(hd)};
+ }
+ /* 1本目のコイルの「幅の事実」を**完全な生データ**から読む（§9.388、利用者の
+    報告「分割対象ではないものも…幅何条取りといったデータは持っていますが、
+    それをガイダンスでは活用しきれていません…1条取り確定になってしまって
+    いるので、測定メイン画面の時のように仕掛データから連携して」）。
+
+    予定の写し（`detail`）は**一覧の行**から作る（`buildScheduleDetail`）ので、
+    **列表示マスタで一覧に出していない列は最初から入っていない**。
+    `BOX設計_横割数`は表に出す列ではないので、写しからは読めず、条数が
+    いつも1になっていた。測定画面は同じ問題を`refreshSelfSourceFull()`で
+    解いている——**完全な生データを取り直す**。ここも同じ口を使う。
+
+    **純粋な関数にしてある**（`bladeSeedLots`と同じ作法）——網が合成した行で
+    直に呼べる。取りに行くのは呼ぶ側の仕事。
+    条数の範囲（1〜40）は測定画面の`defaultHorizontalCount`と同じ
+    ——**2つの画面で条数の考えが食い違わない**ようにする。 */
+ function bladeLotsFromSource(row,lotNo){
+  if(!row)return null;
+  const n=v=>{const x=Number(v);return Number.isFinite(x)&&x>0?x:null};
+  const hn=Number(pick(row,'boxHorizontalCount'));
+  const strips=Number.isFinite(hn)&&hn>=1&&hn<=40?Math.round(hn):null;
+  const width=n(pick(row,'mfgWidth'));
+  const name=String(lotNo||pick(row,'lotNo')||'');
+  return {thickness:n(pick(row,'mfgThickness')),
+          originalWidth:n(pick(row,'originalWidth')),
+          width,strips,
+          /* 幅が読めないときは条を作らない（0で埋めない・§9.231）。
+             条数が読めないときは1本——**幅は分かっているのに出さない**より、
+             読めたぶんで出すほうが直せる。 */
+          lots:width?[{name,w:width,n:strips||1,parent:name}]:[]};
  }
  /* 題名の横に置く行き先のチップ。**押すと何が起きるかを字で書く**（§CLAUDE 4）
     ——行そのもののクリックは「選ぶ」（§9.363）、ダブルクリックは「停止の内容を
@@ -9270,6 +9300,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      ようにここから出す（画面を組み立てずに条の選び方だけを見る）。 */
   bladeSeedLots:(list,from)=>bladeSeedLots(list,from||0),
   bladeRunPlan:(list,from)=>bladeRunPlan(list,from||0),
+  bladeLotsFromSource,
   /* 刃組スケジュール一覧の材料（§9.383）。**画面を触らずに確かめられる形**で
      出す——表のHTMLではなく、行の値そのものを見る。 */
   bladeStops:list=>bladeStops(list).map(x=>({id:x.entry.id,at:x.at})),

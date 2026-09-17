@@ -50,6 +50,9 @@
  /* **1本目に切るコイル（親ロット）**（§9.387）。刃組はこの1本で組み、条の
     設計もこの1件で引く。予定から開いていないときは空のまま。 */
  let seededHeadLot = '';
+ /* 1本目が分割ありか（§9.388）。分割ありのときは幅を持っているのが
+    子ロットなので、仕掛データからの取り直しは当てない。 */
+ let seededHeadSplit = false;
 
  /* ---------- 幅ごとの色 ----------
     最大9種の条幅が入り混じっても見分けられるよう、淡い塗りで差を付ける。
@@ -420,6 +423,7 @@
      「予定から開いていない」と分かる形で残す（§9.231 0で埋めない）。 */
   seededStopId = String(o.stopId || '');
   seededHeadLot = String((o.seed && o.seed.headLot) || '');
+  seededHeadSplit = !!(o.seed && o.seed.headSplit);
   seededRun = (o.seed && (o.seed.planned || o.seed.first))
    ? { planned: Math.max(0, (o.seed.planned) | 0), first: o.seed.first || null }
    : null;
@@ -430,8 +434,10 @@
    showEmpty(`刃組マスタを読み込めませんでした：${esc(e && e.message ? e.message : e)}`);
    return;
   }
-  if (o.seed) applySeed(o.seed, changed);
-  else if (changed) BS().syncOrder(st);
+  if (o.seed) {
+   /* 記録が勝ったときは取り直さない（§9.387 記録のほうが新しい決定）。 */
+   if (!applySeed(o.seed, changed)) await fillFromSource();
+  } else if (changed) BS().syncOrder(st);
   fillBladePick();
   fillRingSelects();
   paintInputs();
@@ -488,9 +494,42 @@
      新しい決定なので、そちらを正とする。
      引くのは**1本目のコイル（親ロット）1件**（`headLot`）——条の設計は
      親ロットで持つ（§9.378）。 */
-  applyDesign(String(s.headLot || ''));
+  const used = applyDesign(String(s.headLot || ''));
   void force;
   BS().syncOrder(st);
+  return used;
+ }
+ /* **幅と条数は仕掛データから取り直す**（§9.388、利用者の報告
+    「分割対象ではないものも…幅何条取りといったデータは持っていますが…
+    1条取り確定になってしまっている」）。
+    予定の写しは一覧の行から作るので、**列表示マスタに出していない列
+    （`BOX設計_横割数`）は最初から入っていない**。測定画面が
+    `refreshSelfSourceFull()` でしているのと同じく、完全な生データを取り直す。
+
+    当てないのは2つ:
+      ・**条の設計が記録済み**のとき（記録のほうが新しい決定・§9.387）
+      ・**1本目が分割あり**のとき（幅を持っているのは子ロット） */
+ async function fillFromSource() {
+  if (!seededHeadLot || seededHeadSplit) return false;
+  const get = WL.split && WL.split.lotRow;
+  if (typeof get !== 'function') return false;
+  let row = null;
+  try { row = await get(seededHeadLot); }
+  catch (e) {
+   WL.quiet.note('仕掛データを読み直せない（予定の写しの値で進む）', e);
+   return false;
+  }
+  const f = WL.scheduleView.bladeLotsFromSource(row, seededHeadLot);
+  if (!f) return false;
+  if (f.thickness > 0 && f.thickness !== st.thick) { st.thick = f.thickness; syncClearance(); }
+  if (f.originalWidth > 0) st.W = f.originalWidth;
+  if (!f.lots.length) return false;
+  st.lots = f.lots.map(L => ({ name: String(L.name || 'LOT'), w: +L.w || 0,
+                               n: Math.max(1, L.n | 0),
+                               parent: String(L.parent || L.name || '') }));
+  st.order = [];
+  BS().syncOrder(st);
+  return true;
  }
  /* 記録してある条の設計を画面へ載せる。**戻り値は載せたかどうか**。
     見つからない・中身が読めないときは何もしない（予定から組んだ並びが残る）。 */

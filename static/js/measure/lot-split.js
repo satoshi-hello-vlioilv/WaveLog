@@ -585,6 +585,11 @@
     hasSplit:rowHasSplitData,
     childLots:expectedChildLotsForRow,
     childRowsForRow,
+    /* ロット1件の**完全な生データ**（非表示列を含む）を1箇所で答える（§9.388）。
+       一覧の行は列表示マスタで列が欠けうるので、幅・条数のように
+       「表に出していなくても要る」値は、ここから取り直す。
+       測定画面が `refreshSelfSourceFull()` で使っているのと同じ口。 */
+    lotRow:fetchChildLotRow,
   });
 
   // 割った後の材料はすべて子ロットになり、開いている親ロット自身の「持ち分」

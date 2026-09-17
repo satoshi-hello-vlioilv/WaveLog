@@ -510,6 +510,10 @@
 | 1本目が分割ありなら子ロットが条。子が読めないときは条にせず件数で言う | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
 | 条の設計は必須。止めるのは**確定保存の1箇所**だけ（図・刃組表・所要は見せたまま） | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
 | 条の設計が済んでいればその並びで開く（予定の写しで黙って上書きしない）。戻す道は記録を消さない | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
+| 分割なしのコイルの幅・条数は**仕掛データの完全な行**から読む（写しは一覧の行から作るので、表に出していない列は入っていない） | `test_bladeui.js` | [§9.388](docs/decisions/9.388.md) |
+| 完全な生データを取る口は`WL.split.lotRow`の1つ。判定は`bladeLotsFromSource`の純粋な関数へ切り出す | `test_bladeui.js` | [§9.388](docs/decisions/9.388.md) |
+| 条数の範囲（1〜40）は測定画面の`defaultHorizontalCount`と同じにそろえる | `test_bladeui.js` | [§9.388](docs/decisions/9.388.md) |
+| 取り直した値を当てないのは2つ——条の設計が記録済み／1本目が分割あり | `test_bladeui.js` | [§9.388](docs/decisions/9.388.md) |
 | 向きの切り替えは刃組図の見出し。手順の窓の下に入るので、閉じてから押す | `test_bladeui.js` | [§9.380](docs/decisions/9.380.md) |
 | フィンガーを当てる先は「いちばん外へ寄った板の面」（中心線だと寄った条へ食い込む） | `test_bladeui.js` | [§9.380](docs/decisions/9.380.md) |
 | 刃選択の盤は「文として読める＋試し欄＋条件ごとの○×」。判定は`blade-core`を呼ぶ | `test_bladepick.js` | [§9.380](docs/decisions/9.380.md) |

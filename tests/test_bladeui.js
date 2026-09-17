@@ -964,6 +964,48 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         (seedS.lots || []).length === 0 && seedS.skipped === 1,
         `条${(seedS.lots || []).length}／skipped=${seedS.skipped}`);
 
+    /* ---- 8.5) 分割なしの条数は**仕掛データ**から読む（§9.388） ----
+       利用者の報告「分割対象ではないものも…幅何条取りといったデータは
+       持っていますが…1条取り確定になってしまっている」。
+       予定の写しは**一覧の行**から作るので、列表示マスタに出していない
+       `BOX設計_横割数` は最初から入っていない。測定画面が
+       `refreshSelfSourceFull()` でしているのと同じく、完全な生データを
+       取り直す。ここは**選び方の純粋な関数**を合成した行で見る。 */
+    const src = await page.evaluate(() => {
+     const f = WL.scheduleView.bladeLotsFromSource;
+     const raw = { 'ロット番号': 'S1', '製造板幅': 120, '製造板厚': 1.2,
+                   'BOX実績_板幅': 1000, 'BOX設計_横割数': 8 };
+     return { hit: f(raw, 'S1'),
+              /* 条数が読めない行は1本（幅が分かっているのに出さない、をしない）。 */
+              noCnt: f({ '製造板幅': 120 }, 'S2'),
+              /* 幅が読めなければ条を作らない（0で埋めない・§9.231）。 */
+              noW: f({ 'BOX設計_横割数': 4 }, 'S3'),
+              /* 範囲外（1〜40）は測定画面と同じく採らない。 */
+              over: f({ '製造板幅': 120, 'BOX設計_横割数': 99 }, 'S4'),
+              none: f(null, 'S5') };
+    });
+    rec('仕掛データの横割数がそのまま条数になる（1条取り確定をやめる）',
+        JSON.stringify(src.hit.lots) === JSON.stringify(
+         [{ name: 'S1', w: 120, n: 8, parent: 'S1' }]),
+        JSON.stringify(src.hit.lots));
+    rec('板厚・元コイル幅も同じ行から読む',
+        src.hit.thickness === 1.2 && src.hit.originalWidth === 1000,
+        `t=${src.hit.thickness} W=${src.hit.originalWidth}`);
+    rec('条数が読めない行は1本（幅が分かっているのに出さない、をしない）',
+        src.noCnt.lots.length === 1 && src.noCnt.lots[0].n === 1,
+        JSON.stringify(src.noCnt.lots));
+    rec('幅が読めなければ条を作らない（0で埋めない）',
+        src.noW.lots.length === 0, JSON.stringify(src.noW.lots));
+    rec('条数は1〜40の外なら採らない（測定画面と同じ考え）',
+        src.over.strips === null && src.over.lots[0].n === 1,
+        `strips=${src.over.strips}`);
+    rec('行が無ければ何も言わない（写しの値のまま進ませる）',
+        src.none === null, String(src.none));
+    /* 取りに行く口が**1つ**であること。測定画面と同じ`WL.split.lotRow`を
+       使う——別の口を作ると、2つの画面で「完全な行」の定義が割れる。 */
+    rec('完全な生データを取る口は WL.split.lotRow の1つ',
+        await page.evaluate(() => typeof (WL.split || {}).lotRow === 'function'));
+
     /* ---- 9) その刃組で切る本数と、1本目の材料（§9.382、利用者の指示） ----
        数える単位が条（`bladeSeedLots`）と違う——**切るのはコイル1本**で、
        子ロットは同じ1本を割ったものなので、数えると条の数だけ水増しされる。
