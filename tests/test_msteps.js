@@ -578,8 +578,10 @@ let b=null,page=null;
   rec('残りの件数は段3の状態が言う（§9.234 ④）',
       barFit.every(x=>/\d+\s*項目|確認できます|終了 済/.test(x.段3)),
       JSON.stringify(barFit.map(x=>[x.k,x.段3])));
+  /* **項目名は語彙から引く**（§9.389 の教訓）——綴りを直に書くと、
+     正しい改名をしただけで落ちる（§9.396で`母材`→`全長`にしたとき実際に落ちた）。 */
   rec('未測定の項目名は段3のtitleが持つ（幅を使わない）',
-      /母材/.test(barFit[1].段3のtitle||''),barFit[1].段3のtitle||'(無し)');
+      (barFit[1].段3のtitle||'').includes(MATERIAL),barFit[1].段3のtitle||'(無し)');
 
   /* ---- 5b) ③の公差一覧（§9.157、利用者の指摘） ----
      「公差指示がラテラルボーしか出ていませんが、板厚、板幅、板丈の公差が
@@ -1889,9 +1891,11 @@ let b=null,page=null;
       stepUp(cnt.beforePiece,cnt.afterPiece),`${cnt.beforePiece} → ${cnt.afterPiece}`);
   rec('丈を打っても「母材」の入力数は動かない（§9.391）',
       cnt.motherUnchanged===cnt.afterMother,`${cnt.afterMother} → ${cnt.motherUnchanged}`);
-  rec('入力内容の呼び名は「母材」と「丈毎」の2つ（§9.391）',
-      cnt.名前[0]==='母材'&&cnt.名前[1]==='丈毎'
-      &&cnt.チップ名[0]==='母材'&&cnt.チップ名[1]==='丈毎',JSON.stringify(cnt.チップ名));
+  /* 先頭2つは**手入力の面**（母材の「全長」と製品の「寸法・外観」）。
+     **綴りは語彙から引く**——直に書くと改名のたびに落ちる（§9.389）。 */
+  rec('入力内容の先頭2つは手入力の面（母材の全長・製品の寸法・外観）',
+      cnt.名前[0]===MATERIAL&&cnt.名前[1]===PIECE
+      &&cnt.チップ名[0]===MATERIAL&&cnt.チップ名[1]===PIECE,JSON.stringify(cnt.チップ名));
 
   /* ---- ② 角は1種類にそろえる（利用者の指示「四角の入力欄はすべて丸角に」） ---- */
   const radii=await page.evaluate(()=>{
