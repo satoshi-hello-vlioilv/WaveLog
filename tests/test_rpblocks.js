@@ -512,8 +512,65 @@ const endArrange=async page=>{
   rec('合否の根拠（切断面等級と基準）を紙に書く',
       !!both&&/切断面 3級/.test(both.note)&&/客先の個別要求/.test(both.note),both?both.note:'');
 
+  /* ---- 外観・巻ズレは「中身のある列だけ」出す（§9.393、指示の7件目） ----
+     上の2件は外観も巻ズレも書いていないので、**列ごと出ないこと**。
+     書いた記録では**列が出て値が載ること**。片側だけ見ると、いつも出す実装も
+     いつも出さない実装も素通しする。 */
+  const prodHeads=()=>page.evaluate(()=>{
+   const sec=[...document.querySelectorAll('.rp-section')]
+     .find(s=>/丈別データ/.test(s.querySelector('h3')?.textContent||''));
+   if(!sec)return null;
+   return {見出し:[...sec.querySelectorAll('thead th')].map(t=>t.textContent.trim()),
+           列数:[...sec.querySelectorAll('tbody tr')][0]
+             ?[...sec.querySelectorAll('tbody tr')][0].children.length:0};
+  });
+  const noLook=await prodHeads();
+  rec('外観・巻ズレを1件も書いていない記録では、その列を紙に出さない（§9.393）',
+      !!noLook&&noLook.見出し.join('/')==='丈/長さ/肉厚/揃い/備考',
+      JSON.stringify(noLook));
+  await page.evaluate(async()=>{
+   const rec=WL.measureView.ensureMeasureShape({
+    id:'RPPROD-LOOK',status:'編集中',updatedAt:new Date().toISOString(),
+    registeredEquipment:'テスト設備A',basic:{lotNo:'RPPROD-LOOK'},
+    qualityGrades:{'切断面':'3'},
+    settings:{registeredEquipment:'テスト設備A',verticalCount:2,
+      measureType:WL.measureItem.PIECE},
+    product:{rows:[
+     {productLength:'1000',wallThickness:'0.50',edgeShape:'揃い綺麗',
+      appearance:'〇',offsetOs:'0.5',offsetDs:'0.7',note:''},
+     {productLength:'1000',wallThickness:'0.50',edgeShape:'揃い綺麗',
+      appearance:'△',offsetOs:'1.2',offsetDs:'',note:''},
+    ]},
+   });
+   await WL.records.reliablePut(rec);
+  });
+  await page.evaluate(id=>window.openReportForRecord(id),'RPPROD-LOOK');
+  await page.waitForSelector('#reportContent .rp-blocks',{timeout:20000});
+  await settle(page);
+  const look=await prodHeads();
+  rec('外観・巻ズレを書いた記録では、その列が紙に出る（§9.393）',
+      !!look&&look.見出し.join('/')==='丈/長さ/肉厚/揃い/外観/巻ズレ OS/巻ズレ DS/備考'
+      &&look.列数===8,JSON.stringify(look));
+  const looks=await page.evaluate(()=>{
+   const sec=[...document.querySelectorAll('.rp-section')]
+     .find(s=>/丈別データ/.test(s.querySelector('h3')?.textContent||''));
+   const tr=[...sec.querySelectorAll('tbody tr')];
+   return tr.map(r=>[...r.children].slice(4,7).map(c=>c.textContent.trim()).join('|'));
+  });
+  rec('書いた値がそのまま紙に載る（空欄は「-」）',
+      looks[0]==='〇|0.5|0.7'&&looks[1]==='△|1.2|-',JSON.stringify(looks));
+
+  /* **使い終わった見本はその場で消す**（§9.351）——残すと以降の節が
+     「いちばん新しい記録」としてこの2丈の記録を開き、紙が小さくなって
+     詰めの検査が一度も詰めずに通る（実際にそうなって4件が赤になった）。 */
+  await page.evaluate(id=>WL.records.reliableDelete(id),'RPPROD-LOOK');
+
   /* ---- 等級はこの紙のレコードから引く ---- */
-  const g3=both&&both.rows[1].judge;
+  await page.evaluate(id=>window.openReportForRecord(id),'RPPROD-G3');
+  await page.waitForSelector('#reportContent .rp-blocks',{timeout:20000});
+  await settle(page);
+  const backG3=await readProduct();
+  const g3=backG3&&backG3.rows[1].judge;
   await page.evaluate(id=>window.openReportForRecord(id),'RPPROD-G4');
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:20000});
   await settle(page);

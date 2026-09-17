@@ -1297,6 +1297,48 @@ let b=null,page=null;
    return out;
   });
   rec('②の丈の入力欄が値を切り落とさない',clipped.length===0,clipped.join(' / '));
+
+  /* ---- 丈毎の「外観」「巻ズレ OS/DS」（§9.393、利用者の指示） ----
+     「丈毎の項目に、外観を追加し『○』『△』『×』を入れられるように」
+     「丈毎の項目に、巻ズレの項目を追加し、OSDSを分けて入力できるように」
+     **記号はフラットネスと同じ3つ**（〇/△/×）で、条ごとの入力内容
+     「巻ずれ」とは別物（あちらは条ごと・測定器から受ける値）。 */
+  const pk=await page.evaluate(async()=>{
+   const head=[...document.querySelectorAll('.product-rows-table thead th')]
+     .map(t=>t.textContent.trim());
+   const sel=document.querySelector('#productRowsBody tr[data-row="0"] [data-product-field="appearance"]');
+   const opts=sel?[...sel.options].map(o=>o.text.trim()):[];
+   const put=(k,v)=>{const el=document.querySelector(
+     `#productRowsBody tr[data-row="0"] [data-product-field="${k}"]`);
+    if(!el)return false;
+    el.value=v;el.dispatchEvent(new Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));
+    return true;};
+   const ok=[put('appearance','△'),put('offsetOs','0.8'),put('offsetDs','1.2')];
+   await new Promise(r=>setTimeout(r,150));
+   const row=S.measure.product.rows[0]||{};
+   /* **内訳の段には出さない**——外観は主役の列の欄で、異常の内訳ではない。 */
+   const inDetail=!!document.querySelector('.prt-detail [data-product-field="appearance"]');
+   return {見出し:head,選択肢:opts,打てた:ok,
+     記録:[row.appearance,row.offsetOs,row.offsetDs],内訳に出た:inDetail};
+  });
+  rec('丈毎の表に「外観」「巻ズレ OS」「巻ズレ DS」の列がある（§9.393）',
+      pk.見出し.join('/')==='丈/長さ/肉厚/判定/外観/巻ズレ OS/巻ズレ DS/エッジ形状/備考',
+      JSON.stringify(pk.見出し));
+  rec('外観は〇/△/×から選ぶ（記号はフラットネスと同じ）',
+      pk.選択肢.filter(t=>t==='〇'||t==='△'||t==='×').length===3,
+      JSON.stringify(pk.選択肢));
+  rec('外観・巻ズレは打った時点でレコードへ入る（保存を待たない）',
+      pk.打てた.every(Boolean)&&pk.記録.join('/')==='△/0.8/1.2',
+      JSON.stringify(pk.記録));
+  rec('外観は内訳の段には出さない（主役の列の欄なので）',
+      pk.内訳に出た===false,String(pk.内訳に出た));
+  /* 列を3つ足したので、**表が横に溢れていないか**を測り直す（§CLAUDE 11）。 */
+  const wide2=await page.evaluate(()=>{
+   const t=document.querySelector('.product-rows-table');
+   return Math.round(t.getBoundingClientRect().right
+     -document.querySelector('.right-pane').getBoundingClientRect().right);
+  });
+  rec('列を足しても全丈表が横に溢れない（§9.393）',wide2<=0,String(wide2));
   await page.evaluate(()=>{
    document.querySelectorAll('#productRowsBody tr[data-row="0"] input,#productRowsBody tr[data-row="0"] select')
     .forEach(el=>{if(el.value){el.value='';

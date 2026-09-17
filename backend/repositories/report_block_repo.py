@@ -655,6 +655,12 @@ def _sample_product_rows():
             'direction': '' if k == 0 else ('OS' if k == 1 else 'DS'),
             'pitch': '' if k == 0 else ('120' if k == 1 else '245'),
             'alignmentValue': _SAMPLE_ALIGN_VALUES[k],
+            # 外観・巻ズレ(OS/DS)は§9.393で足した丈ごとの手入力。
+            # **見本にも入れる**——空のままだと「中身のある列だけ出す」紙の
+            # 決まりに当たって、見本では列ごと消えて確かめられない。
+            'appearance': ('〇' if k == 0 else ('△' if k == 1 else '×')),
+            'offsetOs': ('%.1f' % (0.5 + 0.1 * (i % 4))),
+            'offsetDs': ('%.1f' % (0.4 + 0.1 * (i % 3))),
             'note': ('良' if k == 0 else ('要観察' if k == 1 else '選別対象')),
         })
     return rows

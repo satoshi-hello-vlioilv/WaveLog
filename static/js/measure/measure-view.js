@@ -425,7 +425,11 @@ function applyRightLayout(){
    戻した（②の作業面は実測1059×920pxあり、9丈×9項目は横スクロールなしで
    収まる）。読み書きするDOMは`#productRowsBody`の1本だけで、
    `collect()`・`activeRequiredControls()`も同じものを見る。 */
-function blankProductRow(){return{productLength:'',wallThickness:'',alignmentCode:'',edgeShape:'',occurrencePosition:'',regularity:'',direction:'',pitch:'',alignmentValue:'',note:''}}
+/* 丈1本の器。**外観（〇/△/×）と巻ズレ（OS/DS）は§9.393で足した**
+   （利用者の指示「丈毎の項目に、外観を追加し…巻ズレの項目を追加し、
+   OSDSを分けて入力できるように」）。巻ズレは条ごとの入力内容『巻ずれ』とは
+   別物——あちらは条ごと・測定器から受ける値で、こちらは**丈ごとの手入力**。 */
+function blankProductRow(){return{productLength:'',wallThickness:'',alignmentCode:'',edgeShape:'',appearance:'',offsetOs:'',offsetDs:'',occurrencePosition:'',regularity:'',direction:'',pitch:'',alignmentValue:'',note:''}}
 /* ---------- 揃いの記録(§9.203、利用者の指示) ----------
    「揃いコードで打ち込むところを、選ばせて記録する形に変更したい」
    「コードを作らず廃止、エッジ形状・発生位置・規則性・方向・ピッチ・値の
@@ -494,6 +498,9 @@ function edgeLimitOf(shape,grades){
 }
 const PRODUCT_CHOICES=[
  {k:'edgeShape',          label:'エッジ形状',opts:[PRODUCT_EDGE_OK,'のこぎり状','テレスコープ状']},
+ /* 外観（§9.393）。**記号はフラットネスと同じ3つ**（`〇`＝U+3007）——同じ
+    意味の記号を画面ごとに変えない（§CLAUDE 3。読む側が別物だと思う）。 */
+ {k:'appearance',         label:'外観',      opts:['〇','△','×']},
  {k:'occurrencePosition', label:'発生位置',  opts:['2/3以上発生','1/3〜2/3発生','1/3未満発生']},
  {k:'regularity',         label:'規則性',    opts:['不規則','規則的']},
  {k:'direction',          label:'方向',      opts:['OS','DS']},
@@ -623,7 +630,7 @@ function productRowCount(){return Math.max(1,Math.min(9,+$('#verticalCount')?.va
 /* 1丈を「入力済み」とみなす項目。**判定の起点(エッジ形状)を含める**
    ——揃いコードを廃止したので、旧`alignmentCode`だけを見ると
    新しく入力した行が1件も数えられない。 */
-const PRODUCT_FILLED_KEYS=['productLength','wallThickness','edgeShape','alignmentCode'];
+const PRODUCT_FILLED_KEYS=['productLength','wallThickness','edgeShape','alignmentCode','appearance','offsetOs','offsetDs'];
 function judgeAlignmentCode(code){code=String(code||'').trim();if(!code)return '';return code==='0000'?'OK':'NG'}
 function updateProductStatus(){
  const m=S.measure;if(!m?.product?.rows)return;
@@ -676,13 +683,16 @@ function renderProductPanel(){
     .map(b=>`<span class="prt-sum-item"><i>${esc(b.label)}</i>${esc(b.text)}</span>`).join('');
   const detail=ok||!String(r.edgeShape||'')
    ?''
-   :`<tr class="prt-detail${folded?' is-folded':''}" data-row="${i}"><td colspan="6"><div class="prt-detail-in">`
+   :`<tr class="prt-detail${folded?' is-folded':''}" data-row="${i}"><td colspan="9"><div class="prt-detail-in">`
      +`<button type="button" class="prt-fold" data-prt-fold="${i}" aria-expanded="${folded?'false':'true'}"`
      +` title="${folded?'内訳の入力欄を開きます':'内訳の入力欄を畳みます（記録は残ります）'}">`
      +`<span class="prt-detail-lead">丈${i+1}の内訳</span><span class="prt-chev" aria-hidden="true"></span></button>`
      +(folded
        ?`<span class="prt-sum">${sum||'<i class="prt-sum-none">まだ書いていません</i>'}</span>`
-       :PRODUCT_CHOICES.filter(d=>d.k!=='edgeShape')
+       /* **内訳に出すのは`PRODUCT_DETAIL_KEYS`の欄だけ**（§9.393）——
+          「エッジ形状以外」で選ぶと、主役の列へ欄を1つ足すたびに
+          内訳へも勝手に現れる（外観を足した時にそうなった）。 */
+       :PRODUCT_CHOICES.filter(d=>PRODUCT_DETAIL_KEYS.indexOf(d.k)>=0)
          .map(d=>`<label class="prt-df"><span>${esc(d.label)}</span>${sel(d.k)}</label>`).join('')
         +`<label class="prt-df"><span>ピッチ(mm)</span>${field('pitch','number')}</label>`
         +`<label class="prt-df prt-df-val${over?' is-over':''}"><span>値(mm)</span>${field('alignmentValue','number')}`
@@ -693,6 +703,9 @@ function renderProductPanel(){
    +`<td><span class="product-judge${productJudgeClass(judge)}" data-product-judge="${i}"`
    +` title="${esc(judgeReasonOf(r,judge))}">${esc(judge)}</span>`
    +(oldCode?`<small class="prt-old" title="4桁の揃いコードで記録された旧データです。エッジ形状を選び直すと、そちらが判定に使われます">旧 ${esc(oldCode)}</small>`:'')+`</td>`
+   /* 外観・巻ズレOS/DS（§9.393）。**判定には効かない**——揃いの合否は
+      エッジ形状と値(mm)から出す（§9.204）ので、ここで色を付けない。 */
+   +`<td>${sel('appearance')}</td><td>${field('offsetOs','number')}</td><td>${field('offsetDs','number')}</td>`
    +`<td>${sel('edgeShape')}</td><td>${field('note')}</td></tr>`+detail;
  }).join('');
  body.querySelectorAll('[data-product-field]').forEach(el=>{

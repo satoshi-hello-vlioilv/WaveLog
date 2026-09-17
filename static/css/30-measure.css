@@ -1748,6 +1748,10 @@ th.col-sorted:hover{background:#c7e7ea}
 /* エッジ形状(いちばん長い「のこぎり状」)。**内訳は行の下の段へ出す**ので、
    横に並ぶ選択欄はこの1つだけ(§9.203)。 */
 .prt-c-sel{width:12.6em}
+/* 外観（§9.393）。中身は記号1文字（〇/△/×）と「選ばない」の札なので、
+   **エッジ形状と同じ幅を与えない**——1文字しか入らない欄に12.6emを配ると、
+   備考の取り分が消える（§CLAUDE 11「入れ物は中身の長さから決める」）。 */
+.prt-c-look{width:6.2em}
 /* 備考だけ残りを取る(自由記述は長いほどよい)。col に width を書かない。 */
 .product-rows-table th,.product-rows-table td{
   padding:var(--pad-row);border-right:1px solid var(--line-soft);

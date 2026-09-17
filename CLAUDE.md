@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（582件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（587件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -400,7 +400,7 @@
 | 「どれが仕掛でどれが品質か」はキーでなく`データソースマスタ`の`[役割]` | `test_datasource.py`・`test_dskeylint.py`・`test_dsnav.js` | [決まり](docs/decisions/rules-misc.md) |
 | 仕掛から消えたロットは実績で突き合わせる。在席は「仕掛にも在る列」だけで見る | `test_actualmatch.py` | [§9.364](docs/decisions/9.364.md) |
 
-### 測定画面（88件）
+### 測定画面（90件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -433,6 +433,8 @@
 | 測定画面は「準備→測定→確認」の3段 | `test_msteps.js` | [§9.123](docs/decisions/9.123.md) |
 | 入力内容の「母材」と「丈毎」は**別々の項目**。出すのは選んだ側のカード1枚だけ（§9.160を撤回） | `test_msteps.js` | [§9.391](docs/decisions/9.391.md) |
 | **値が入っている項目は、設備で外してあっても伏せない**。答えは`hiddenItems()`の1箇所（選択肢もチップも同じ） | `test_measitems.js` | [§9.392](docs/decisions/9.392.md) |
+| 丈毎は「外観（〇/△/×）」と「巻ズレ OS/DS」を持つ。条ごとの入力内容「巻ずれ」とは**別物**（単位が違う） | `test_msteps.js` | [§9.393](docs/decisions/9.393.md) |
+| 集合を「〜以外」で作らない（内訳の顔ぶれは`PRODUCT_DETAIL_KEYS`。主役の列へ足した欄が裏へ漏れる） | `test_msteps.js` | [§9.393](docs/decisions/9.393.md) |
 | 入力内容の語彙は`WL.measureItem.ALL`の1箇所。画面の`#measureType`とは別に持つ | `test_msteps.js` | [§9.391](docs/decisions/9.391.md) |
 | 測定値の器を持たない鍵は**名前で避けず、器の有無で見る**（`m.measurements[key]`） | `test_msteps.js` | [§9.391](docs/decisions/9.391.md) |
 | 必須に数えるのは**いま出している面の欄だけ**（取りこぼしは完了前の確認が見る） | `test_msteps.js`・`test_opmother.js` | [§9.391](docs/decisions/9.391.md) |
@@ -585,11 +587,12 @@
 | 分割ありの親ロットは子ロットをぶら下げて予定へ入る | `test_scsplit.js` | [決まり](docs/decisions/rules-misc.md) |
 | 見積の出どころは4段で、順番を入れ替えないこと | `test_eqstd.py` | [§9.114](docs/decisions/9.114.md) |
 
-### 帳票と紙（89件）
+### 帳票と紙（90件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 紙は画面で開いている子ロットを出す。載せるかどうかを決めるのは`buildPages`の1箇所 | `test_scprint.js` | [§9.357](docs/decisions/9.357.md) |
+| 丈別データの外観・巻ズレは**中身のある列だけ**出す。列幅は出す列だけで100%に配り直す | `test_rpblocks.js` | [§9.393](docs/decisions/9.393.md) |
 | 紙まわり（用紙・`@page`・mm換算・列幅の配分・刷り出し）は`print-core.js`の1本 | `test_printcore.py` | [§9.332](docs/decisions/9.332.md) |
 | ピッチ判定・異常位置判定の欄の見せ方は利用者が選べる | `test_rpdefect.js` | [§9.323](docs/decisions/9.323-1.md) |
 | 作業予定表の印刷は「紙のための別の割り付け」 | `test_scprint.js` | [§9.115](docs/decisions/9.115.md) |
@@ -748,7 +751,7 @@
 | 「何で選ばせるか」と「どう見えるか」は別の軸 | — | [§9.223](docs/decisions/9.223.md) |
 | 公差外・基準外は確認カードの色で気づかせる。NGの記録はその行の中 | `test_ngcard.js` | [§9.242](docs/decisions/9.242.md) |
 
-### 検証（テスト）（31件）
+### 検証（テスト）（32件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -761,6 +764,7 @@
 | マスタは1本ごとに丸ごと戻す。汚した本は指紋で名指しする。落ちた本は単独で2回、待ちは黙らない | `test_layers.py`・`test_waitlint.py` | [§9.360](docs/decisions/9.360.md) |
 | 「いま」から引き直す値は幅で見る。言い切りは自分が作った行に限る。最初の描画は1回で測る | `test_wkfast.js`・`test_scsplit.js` | [§9.358](docs/decisions/9.358.md) |
 | 実績を置く網は自分で消す。「作業中」を見る網は開始を打刻してから保存する（一時保存だけでは「予定」のまま） | `test_scsync.js`・`test_startwork.js` | [§9.351](docs/decisions/9.351.md) |
+| 注ぎ込んだ見本の記録は**その場で消す**。後片付けを最後にまとめると、あいだの節が別の材料を見る | `test_rpblocks.js` | [§9.393](docs/decisions/9.393.md) |
 | 文書が指す名前・撮る道具の選択子は実在させる。関数の中の`import`は増やさない（理由は`# 遅延:`） | `test_docindex.py`・`test_importlint.py` | [§9.349](docs/decisions/9.349.md) |
 | 固定待ち（`waitForTimeout`）とハーネスの写しは増やさない。網の骨組みは`tests/lib/harness.js`、待ちは`wait.js`の道具で | `test_waitlint.py` | [§9.347](docs/decisions/9.347.md) |
 | `page.waitForFunction`の述語にPromiseを返させない（返すと待たずに抜ける・実測82ms）。サーバーへ聞き直す待ちは`wait.js`の`poll()` | `test_waitlint.py` | [§9.376](docs/decisions/9.376.md) |

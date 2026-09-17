@@ -1075,6 +1075,21 @@
      いま開いている測定の等級で判定してしまい、一括印刷では途中から全部
      同じ基準になる。 */
   const grades=x.qualityGrades||{};
+  /* ---------- 中身のある列だけ出す（§9.393、利用者の指示の7件目） ----------
+     「１）〜６）の対応により帳票の連動が必要な部分はフレキシブルに対応し
+      連動して正しく表示・非表示するように」
+
+     外観・巻ズレ(OS/DS)は**丈ごとの手入力**で、書かない現場もある。
+     **1件も書いていない列は紙に出さない**——空欄の列は紙の幅を食うだけで、
+     読む側には「まだ書いていない」のか「この設備では測らない」のかも
+     分からない（§CLAUDE 4・§9.107）。
+     **`外観`はもともと見出しだけ在って中身が空だった**（列を作った当時、
+     記録する場所が無かった）。§9.393で記録できるようになったので、
+     ここで初めて中身が入る。 */
+  const filledIn=k=>rows.slice(0,shownRows).some(r=>String((r||{})[k]||'').trim()!=='');
+  const extra=[{k:'appearance',label:'外観',w:8},
+               {k:'offsetOs',label:'巻ズレ OS',w:10},
+               {k:'offsetDs',label:'巻ズレ DS',w:10}].filter(c=>filledIn(c.k));
   const body=Array.from({length:shownRows},(_,i)=>{
    /* 揃いの判定は`judgeProductRow`の1箇所が答える(§9.203)。
       4桁コードを廃止したので、`alignmentCode`だけを見ると新しい記録が
@@ -1088,13 +1103,19 @@
      :'';
    return `<tr><th>${i+1}</th><td>${esc(r.productLength||'-')}</td><td>${esc(r.wallThickness||'-')}</td>`
      +`<td class="${showBreak?'rp-product-cell':''}">${badge}${brHtml}</td>`
-     +`<td></td><td>${esc(r.note||'-')}</td></tr>`;
+     +extra.map(c=>`<td>${esc(r[c.k]||'-')}</td>`).join('')
+     +`<td>${esc(r.note||'-')}</td></tr>`;
   }).join('');
   /* 内訳を出すときは**揃いの列へ幅を回す**——6等分のままだと1行に2〜3文字
      しか入らず、内訳が縦に伸びて紙が溢れる（§11「入れ物は中身の長さから」）。
      合否だけのときは**今までの紙のまま**にする（列幅を触らない）。 */
-  const cg=showBreak
-    ? `<colgroup><col style="width:6%"><col style="width:11%"><col style="width:11%"><col style="width:44%"><col style="width:10%"><col style="width:18%"></colgroup>`
+  /* 列幅は**出す列だけで100%に配り直す**（§CLAUDE 11）。合否だけで追加の
+     列も無いときは**今までの紙のまま**にする（列幅を1つも触らない）。 */
+  const widths=showBreak||extra.length
+    ? [6,11,11,showBreak?44:14,...extra.map(c=>c.w),18]
+    : null;
+  const cg=widths
+    ? `<colgroup>${widths.map(w=>`<col style="width:${(w*100/widths.reduce((a,b)=>a+b,0)).toFixed(1)}%">`).join('')}</colgroup>`
     : '';
   /* **合否の根拠は紙にも書く**（§6）。紙には`title`が出ないので、画面の帯と
      同じ材料から作った1行を節の下へ置く。**内訳だけのときは書かない**
@@ -1102,7 +1123,9 @@
   const note=showJudge?`<p class="rp-note">${esc(WL.product.paperNote(grades))}</p>`:'';
   return `<section class="rp-section"><h3>丈別データ（長さ・肉厚・揃い）</h3>`
    +`<table class="rp-dim-table rp-product-table">${cg}`
-   +`<thead><tr><th>丈</th><th>長さ</th><th>肉厚</th><th>揃い</th><th>外観</th><th>備考</th></tr></thead>`
+   +`<thead><tr><th>丈</th><th>長さ</th><th>肉厚</th><th>揃い</th>`
+   +extra.map(c=>`<th>${esc(c.label)}</th>`).join('')
+   +`<th>備考</th></tr></thead>`
    +`<tbody>${body}</tbody></table>${note}</section>`;
  }
  /* 作業班構成: オペレータ・検査員は既存データから、梱包員は現状データ未実装
