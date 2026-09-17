@@ -148,8 +148,8 @@ MEASURE_ITEM_DISABLED_COLUMN='無効入力内容'
 # (綴り, 札の字, 添え書き)。並びは測定画面の一覧と同じ（決める順ではなく
 # **画面と同じ順**——マスタで並べ替えると、どれを外したのか探すことになる）。
 MEASURE_ITEMS=(
- ('母材','母材','ロットに1つの手入力（元幅・全長・オフセット）'),
- ('丈毎','丈毎','縦割りした丈ごとの手入力（長さ・肉厚・揃い）'),
+ ('全長','全長','母材（コイル1本ごと）の手入力。手計算・MIN/MAX・前後オフ'),
+ ('寸法・外観','寸法・外観','製品（丈ごと）の手入力。長さ・肉厚・外観・巻ズレ・エッジ形状・備考'),
  ('板厚','板厚','丈位置ごとに3点（OS・CL・DS）'),
  ('板幅','板幅','条ごと'),
  ('ラテラルボー','ラテラルボー','条ごと'),
@@ -159,6 +159,15 @@ MEASURE_ITEMS=(
  ('フラットネス','フラットネス','条ごと（〇/△/×）'),
 )
 MEASURE_ITEM_KEYS=tuple(k for k,_l,_n in MEASURE_ITEMS)
+# 旧綴り → いまの保存値（§9.396）。画面側の`WL.measureItem.LEGACY_*`と**同じ対応**を
+# サーバーも持つ——設備マスタの`無効入力内容`に旧綴りで保存された行は、読み替えないと
+# **黙って捨てられる**（`normalize_measure_items`は知らない綴りを落とすため）。
+# その結果「外してあったはずの項目が復活する」という、遠い壊れ方をする。
+MEASURE_ITEM_ALIASES={
+ '母材':'全長','母材/丈毎':'全長','母材・揃い/肉厚/長さ':'全長',
+ '丈毎':'寸法・外観','揃い/肉厚/長さ':'寸法・外観',
+ '板厚/板幅':'板幅',
+}
 
 
 def normalize_measure_items(value):
@@ -175,6 +184,7 @@ def normalize_measure_items(value):
  out=[]
  for x in items:
   k=str(x or '').strip()
+  k=MEASURE_ITEM_ALIASES.get(k,k)
   if k in MEASURE_ITEM_KEYS and k not in out:out.append(k)
  return ','.join(k for k in MEASURE_ITEM_KEYS if k in out)
 

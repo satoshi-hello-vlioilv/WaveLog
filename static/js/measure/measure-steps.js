@@ -518,9 +518,9 @@
     塗らない）。 */
  const MATERIAL_NOTES={
   materialManualNote:{on:t=>WL.measureItem.isMother(t),text:'母材は手入力です',
-    title:'母材（ロットに1つ）は手入力の項目です。測定器から受けるには入力内容を切り替えてください。'},
+    title:'母材の「全長」（コイル1本ごと）は手入力の項目です。測定器から受けるには入力内容を切り替えてください。'},
   pieceManualNote:{on:t=>WL.measureItem.isPiece(t),text:'丈は手入力です',
-    title:'丈毎（長さ・肉厚・揃い）は手入力の項目です。測定器から受けるには入力内容を切り替えてください。'},
+    title:'製品の「寸法・外観」（丈ごと）は手入力の項目です。測定器から受けるには入力内容を切り替えてください。'},
  };
  function paintMaterialNote(){
   const type=document.querySelector('#measureType')?.value||'';

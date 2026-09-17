@@ -24,7 +24,9 @@
   /* 母材・丈毎は§9.391で2項目へ分けた（§9.160でまとめたものを戻した）。
      **旧名も全部残す**——保存済みレコードを開いた瞬間に判定が変わるのを
      避ける。 */
-  var DIMENSIONAL={'板厚':1,'板幅':1,'板厚/板幅':1,'母材':1,'丈毎':1,'揃い/肉厚/長さ':1,
+  var DIMENSIONAL={'板厚':1,'板幅':1,'板厚/板幅':1,'全長':1,'寸法・外観':1,
+   /* 旧綴り（§9.396で改名する前の保存値）も残す——開いた瞬間に答えが変わらないように。 */
+   '母材':1,'丈毎':1,'揃い/肉厚/長さ':1,
                    '母材・揃い/肉厚/長さ':1,'母材/丈毎':1};
   function norm(s){return (typeof normalizedFieldName==='function')?normalizedFieldName(s):String(s||'').normalize('NFKC').replace(/[\s　]+/g,'').toLowerCase();}
   function currentType(){return ($('#measureType')&&$('#measureType').value)||(S.measure&&S.measure.settings&&S.measure.settings.measureType)||'';}

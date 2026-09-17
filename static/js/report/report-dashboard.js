@@ -1162,8 +1162,8 @@
  const RP_ITEM_VALUE_KEYS={板厚:['thickness'],板幅:['width'],ラテラルボー:['lateral'],
    バリ:['burr'],テレスコープ:['telescope'],巻ずれ:['offset'],フラットネス:['flatness']};
  function rpItemHasValue(x,name){
-  if(name==='母材')return Object.values(x.mother||{}).some(v=>String(v??'').trim()!=='');
-  if(name==='丈毎')return (x.product?.rows||[]).some(r=>r&&WL.measureView.PRODUCT_FILLED_KEYS
+  if(name===WL.measureItem.MATERIAL)return Object.values(x.mother||{}).some(v=>String(v??'').trim()!=='');
+  if(name===WL.measureItem.PIECE)return (x.product?.rows||[]).some(r=>r&&WL.measureView.PRODUCT_FILLED_KEYS
     .some(k=>String(r[k]||'').trim()!==''));
   const keys=RP_ITEM_VALUE_KEYS[name];
   return keys?hasMeasurementValues(x,keys):true;   /* 知らない名前は伏せない */
@@ -1286,7 +1286,7 @@
     ['コイル止め',s.coilStop||(s.innerTape===undefined?'':(s.innerTape?'内巻両面テープ':'指定なし'))]],4)}},
   {k:'作業班構成',span:4,html:x=>crewSection(x)},
   /* 母材も設備で外せる（§9.392／§9.395）。**値があれば出す。** */
-  {k:'母材実績／カード指示',span:6,html:x=>rpItemOff(x,'母材')?'':motherSection(x)},
+  {k:'母材実績／カード指示',span:6,html:x=>rpItemOff(x,WL.measureItem.MATERIAL)?'':motherSection(x)},
   {k:'丈別データ',span:6,html:x=>rpShowProduct(x)?productRowsSection(x):''},
   {k:'板厚の測定データ',span:12,html:x=>rpIsDimensional(x)?thicknessMeasurementSection(x):''},
   {k:RP_MEAS_COMBINED,span:12,html:x=>rpShowWidthTable(x)?widthMeasurementSection(x):''},
