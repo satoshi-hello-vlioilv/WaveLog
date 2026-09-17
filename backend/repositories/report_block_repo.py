@@ -194,6 +194,10 @@ FIELD_CATALOG = (
 CALC_CATALOG = (
     ('登録設備', 'calc.equipment'),
     ('コイル止め（旧データ込み）', 'calc.coilStop'),
+    # §9.394: 手で入れた基準（そのロットだけ）。出どころ「（手入力）」込み。
+    ('手入力の基準', 'calc.manualLimit'),
+    # §9.391: 入力内容（旧名は今の名前へ寄せたもの）。
+    ('入力内容（今の名前）', 'calc.measureType'),
     ('作業人数（N名班）', 'calc.crewSize'),
     ('作業開始時刻', 'calc.workStart'),
     ('作業終了時刻', 'calc.workEnd'),
@@ -496,6 +500,8 @@ SAMPLE_VALUES = {
     'updatedAt': '2026-08-27T02:42:37.000Z',
     'calc.equipment': 'スリッター1号',
     'calc.coilStop': 'テープ止め',
+    'calc.manualLimit': 'ラテラルボー 0〜2.5（手入力）',
+    'calc.measureType': '板幅',
     'calc.crewSize': '2名班',
     'calc.workStart': '2026-08-27 08:15',
     'calc.workEnd': '2026-08-27 11:40',
@@ -1373,7 +1379,7 @@ BUILTIN_SEEDS = (
      '縦割数=settings.verticalCount\n横割数=settings.horizontalCount\n巻出方向=settings.unwind\n'
      '内径=settings.innerDiameter\nスプール=settings.spool\n板厚測定器=settings.thicknessGauge\n'
      '板幅測定器=settings.widthGauge\n条入力順=settings.widthOrder\n方向=settings.widthDirection\n'
-     'バリ揃え=settings.burr\nコイル止め=calc.coilStop', '', ''),
+     'バリ揃え=settings.burr\nコイル止め=calc.coilStop\n手入力の基準=calc.manualLimit', '', ''),
     ('作業班構成', 4, 0, 0,
      'オペレータ=settings.operator\n検査員=settings.inspector\n梱包員=settings.packer\n'
      '作業人数=calc.crewSize', '', ''),

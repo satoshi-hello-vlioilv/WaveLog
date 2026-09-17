@@ -65,6 +65,10 @@
   keys:()=>RP_BLOCKS.map(b=>b.k),
   /* いま紙に出せる塊ぜんぶ（既定＋自作）。`keys()`と**役が違う**ので名前も分ける。 */
   allKeys:()=>rpBlockKeys(),
+  /* 帳票の「道」（`calc.*`）が1件に対して返す値（§9.395）。**紙のどこへ
+     置くかは帳票ブロックマスタが決める**ので、網が見るのは「道が答えるか」。 */
+  calcFor:id=>{const x=(rpState.items||[]).find(r=>String(r.id)===String(id));
+   return x?rpCalc(x):null},
   forget:()=>{rpUserBlocks=[];rpMasterRows=[];rpBuiltinOff=new Set();rpUserBlocksFor=null;
    /* 設備ごとの写しも一緒に捨てる（§9.239 ③）。片方だけ捨てると
       「マスタで直したのに紙が変わらない」が残る。 */
@@ -1018,7 +1022,8 @@
    +`<div class="rp-wide-wrap">${tables}</div></section>`;
  }
  function widthMeasurementSection(x){
-  const groups=rpMeasGroupsFor('combined');
+  /* 設備で外した項目の群は落とす（§9.395）。**値があれば落とさない。** */
+  const groups=rpMeasGroupsFor('combined').filter(g=>!rpItemOff(x,g.g));
   if(!groups.length)return '';
   const s=x.settings||{},actual=Math.max(1,Math.min(40,+s.horizontalCount||1));
   const {tailLabel}=lengthLabels(s);
@@ -1037,10 +1042,11 @@
  function measSoloSection(x,g){
   const gr=RP_MEAS_GROUP_BY.get(g);
   if(!gr||rpMeasSolo(g)!==true||!rpMeasVisibleCols(g).length)return '';
+  if(rpItemOff(x,g))return '';           /* 設備で外した項目（§9.395） */
   return measSectionHtml(x,`測定データ（${g}）`,'',[gr],rpMeasSoloKey(g));
  }
  /* 丈(1..N)別の長さ・肉厚・揃い判定。旧帳票の「丈」テーブル（長さ/肉厚/揃い/外観/備考）に対応。
-    「外観」列は旧帳票でも実データが書き込まれない控え欄のため、空欄のまま残す。
+    「外観」列は§9.393で記録できるようになった（それまでは見出しだけの空欄）。
     旧B5帳票と同じ「丈を行に、指標を列に」持つ構成に統一する。以前は丈数
     (最大9)ぶんを列に転置していたが、丈数が多いと列がセルの表示幅に収まらず、
     テキストが隣接セル(この帳票では板厚/板幅の実測値テーブル)の領域まで
@@ -1144,6 +1150,29 @@
  function hasMeasurementValues(x,keys){
   return keys.some(key=>(x.measurements?.[key]||[]).some(row=>(row||[]).some(v=>String(v??'').trim()!=='')));
  }
+ /* ---------- 設備で使わない入力内容は紙にも出さない（§9.395、指示の7件目） ----------
+    「１）〜６）の対応により帳票の連動が必要な部分はフレキシブルに対応し
+     連動して正しく表示・非表示するように改修してください」
+
+    出どころは設備マスタ（§9.392）で、記録が`settings.measureItemsOff`として
+    持っている。**画面と同じ答え方**にする——**値が1つでも入っていれば出す**
+    （§9.107。記録したものを紙から消さない。設備の設定を変えたあとに古い
+    ロットを刷ると、測った値が紙から消えてしまう）。
+    **判定はここ1箇所**——節ごとに書くと、片方だけ消える紙ができる。 */
+ const RP_ITEM_VALUE_KEYS={板厚:['thickness'],板幅:['width'],ラテラルボー:['lateral'],
+   バリ:['burr'],テレスコープ:['telescope'],巻ずれ:['offset'],フラットネス:['flatness']};
+ function rpItemHasValue(x,name){
+  if(name==='母材')return Object.values(x.mother||{}).some(v=>String(v??'').trim()!=='');
+  if(name==='丈毎')return (x.product?.rows||[]).some(r=>r&&WL.measureView.PRODUCT_FILLED_KEYS
+    .some(k=>String(r[k]||'').trim()!==''));
+  const keys=RP_ITEM_VALUE_KEYS[name];
+  return keys?hasMeasurementValues(x,keys):true;   /* 知らない名前は伏せない */
+ }
+ function rpItemOff(x,name){
+  const off=(x.settings||{}).measureItemsOff;
+  if(!Array.isArray(off)||off.indexOf(name)<0)return false;
+  return !rpItemHasValue(x,name);
+ }
  /* ======================================================================
     帳票の中身は「塊（ブロック）の並び」（§9.169、利用者の指示
     「データの塊ごとに(カードのように扱い)表示非表示を修正できるように／
@@ -1246,12 +1275,18 @@
   {k:'品質情報（仕掛）',span:4,html:x=>qualityInfoSection(x)},
   {k:'測定条件',span:8,html:x=>{const s=x.settings||{};
    const equipment=s.registeredEquipment||x.registeredEquipment||x.snapshot?.registeredEquipment||'-';
+   /* **手で入れた基準（§9.394）はここへ直に書かない。** この塊のマスは
+      帳票ブロックマスタが持っており（`測定条件`は種つき）、**マスの並びが
+      あればそれが紙の正**（§9.278）——コードの側へ行を足しても出ない
+      （実測: 足しても紙は1行も変わらなかった）。道は`calc.manualLimit`で、
+      盤から置けるようにしてある（§9.395）。 */
    return reportSection('測定条件',[['登録設備',equipment],['入力内容',s.measureType],['丈位置',s.lengthPos],['縦割数',s.verticalCount],['横割数',s.horizontalCount],['巻出方向',s.unwind],['内径',s.innerDiameter],['スプール',s.spool],['板厚測定器',s.thicknessGauge],['板幅測定器',s.widthGauge],['条入力順',s.widthOrder],['方向',s.widthDirection],['バリ揃え',s.burr],
     /* コイル止めはマスタ化前まで「内巻両面テープ」チェックボックス(真偽値)
        だった。過去の帳票が空欄にならないよう旧値も読む。 */
     ['コイル止め',s.coilStop||(s.innerTape===undefined?'':(s.innerTape?'内巻両面テープ':'指定なし'))]],4)}},
   {k:'作業班構成',span:4,html:x=>crewSection(x)},
-  {k:'母材実績／カード指示',span:6,html:x=>motherSection(x)},
+  /* 母材も設備で外せる（§9.392／§9.395）。**値があれば出す。** */
+  {k:'母材実績／カード指示',span:6,html:x=>rpItemOff(x,'母材')?'':motherSection(x)},
   {k:'丈別データ',span:6,html:x=>rpShowProduct(x)?productRowsSection(x):''},
   {k:'板厚の測定データ',span:12,html:x=>rpIsDimensional(x)?thicknessMeasurementSection(x):''},
   {k:RP_MEAS_COMBINED,span:12,html:x=>rpShowWidthTable(x)?widthMeasurementSection(x):''},
@@ -1401,6 +1436,16 @@
       だった。過去の帳票が空欄にならないよう旧値も読む。 */
    coilStop:s.coilStop||(s.innerTape===undefined?'':(s.innerTape?'内巻両面テープ':'指定なし')),
    crewSize:(s.crewSize&&s.crewSize!=='-')?`${s.crewSize}名班`:'-',
+   /* 手で入れた基準（§9.394）。**出どころを添える**——同じ「0〜2.5」でも、
+      仕掛から引いた基準と人が打った基準では当たる見込みが違う（§CLAUDE 6）。
+      入れていないロットは空（マスは「—」と出る）。 */
+   manualLimit:Object.entries(s.manualLimits||{})
+     .filter(([,v])=>Number.isFinite(Number(v&&v.value))&&Number(v.value)>0)
+     .map(([k,v])=>`${k} 0〜${v.value}`).join('／')
+     +(Object.keys(s.manualLimits||{}).length?'（手入力）':''),
+   /* **入力内容は今の名前で答える**（§9.391）——保存済みの旧名（母材/丈毎）を
+      そのまま出すと、画面に無い項目名が紙にだけ残る。 */
+   measureType:(window.WL&&WL.measureItem)?WL.measureItem.normalize(s.measureType):s.measureType,
    workStart:WL.measureView.formatWorkTime(w.startAt),workEnd:WL.measureView.formatWorkTime(w.endAt),workDuration:dur,
    status:WL.base.statusLabel(x.status),updatedAt:fmtDT(x.updatedAt),
   };
@@ -1828,6 +1873,7 @@
     見る——落とすと過去の帳票からその節が黙って消える。 */
  function rpIsDimensional(x){
   const t=x.settings?.measureType;
+  if(rpItemOff(x,'板厚'))return false;    /* 設備で外した項目（§9.395） */
   return t==='板厚'||t==='板幅'||t==='板厚/板幅'||hasMeasurementValues(x,['thickness']);
  }
  function rpShowWidthTable(x){
@@ -1837,11 +1883,13 @@
  }
  function rpShowProduct(x){
   const has=(x.product?.rows||[]).some(r=>r&&WL.measureView.PRODUCT_FILLED_KEYS.some(k=>String(r[k]||'').trim()!==''));
-  /* **丈毎の面を選んだ記録か、丈の行が1つでも埋まっていれば出す**
-     （§9.391）。母材だけを選んで丈を1行も書いていない記録に、空の
-     「丈別データ」を刷らない。旧名（母材/丈毎）は母材へ寄るので、
-     その頃の記録は`has`のほうで拾う。 */
-  return WL.measureItem.isPiece(x.settings?.measureType)||has;
+  /* **手入力の面（母材・丈毎）の記録か、丈の行が1つでも埋まっていれば出す。**
+     §9.391で項目を2つに割ったとき`isPiece`だけにしたが、**それでは
+     「最大」で刷る白紙の控え欄が出せなくなる**（§9.132／§9.309。丈の表を
+     空欄のまま刷って手で書く現場がある）。**触っていない現場の紙を勝手に
+     変えない**ほうを採る——`isMaterial`は母材・丈毎のどちらでも真なので、
+     §9.391より前とまったく同じ顔ぶれになる（§9.395）。 */
+  return WL.measureItem.isMaterial(x.settings?.measureType)||has;
  }
  /* 並び。**知らない名前は捨て、登録済みで並びに無いものは末尾へ**（一覧の
     `listColumnKeys`と同じ作法。項目が増えても設定が壊れない）。 */

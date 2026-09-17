@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（591件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（593件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -590,12 +590,14 @@
 | 分割ありの親ロットは子ロットをぶら下げて予定へ入る | `test_scsplit.js` | [決まり](docs/decisions/rules-misc.md) |
 | 見積の出どころは4段で、順番を入れ替えないこと | `test_eqstd.py` | [§9.114](docs/decisions/9.114.md) |
 
-### 帳票と紙（90件）
+### 帳票と紙（92件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 紙は画面で開いている子ロットを出す。載せるかどうかを決めるのは`buildPages`の1箇所 | `test_scprint.js` | [§9.357](docs/decisions/9.357.md) |
 | 丈別データの外観・巻ズレは**中身のある列だけ**出す。列幅は出す列だけで100%に配り直す | `test_rpblocks.js` | [§9.393](docs/decisions/9.393.md) |
+| 設備で外した入力内容は紙からも落とす。**値があれば出す**。判定は`rpItemOff()`の1箇所 | `test_rpblocks.js` | [§9.395](docs/decisions/9.395.md) |
+| 種を持つ塊（`測定条件`等）は**コードへ行を足しても紙が変わらない**。足す先は道（`calc.*`） | `test_rpblocks.js` | [§9.395](docs/decisions/9.395.md) |
 | 紙まわり（用紙・`@page`・mm換算・列幅の配分・刷り出し）は`print-core.js`の1本 | `test_printcore.py` | [§9.332](docs/decisions/9.332.md) |
 | ピッチ判定・異常位置判定の欄の見せ方は利用者が選べる | `test_rpdefect.js` | [§9.323](docs/decisions/9.323-1.md) |
 | 作業予定表の印刷は「紙のための別の割り付け」 | `test_scprint.js` | [§9.115](docs/decisions/9.115.md) |

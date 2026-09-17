@@ -560,6 +560,55 @@ const endArrange=async page=>{
   rec('書いた値がそのまま紙に載る（空欄は「-」）',
       looks[0]==='〇|0.5|0.7'&&looks[1]==='△|1.2|-',JSON.stringify(looks));
 
+  /* ---- 設備で外した入力内容は紙にも出さない（§9.395、指示の7件目） ----
+     **値があれば出す**（§9.107。記録したものを紙から消さない）。
+     片側だけ見ると、いつも消す実装もいつも出す実装も素通しする。 */
+  const measTitle=()=>page.evaluate(()=>{
+   const sec=[...document.querySelectorAll('.rp-section h3')]
+     .map(h=>h.textContent.trim()).filter(t=>/^測定データ/.test(t));
+   return sec.join('｜');
+  });
+  const seedOff=async(off,withBurr)=>page.evaluate(async a=>{
+   const m=WL.measureView.ensureMeasureShape({
+    id:'RPPROD-OFF',status:'編集中',updatedAt:new Date().toISOString(),
+    registeredEquipment:'テスト設備A',basic:{lotNo:'RPPROD-OFF'},
+    settings:{registeredEquipment:'テスト設備A',verticalCount:1,horizontalCount:2,
+      measureType:'母材/丈毎',measureItemsOff:a.off,
+      manualLimits:{'ラテラルボー':{value:2.5,by:'tester',at:new Date().toISOString()}}},
+   });
+   m.measurements.width[0][0]='1000.0';
+   if(a.withBurr)m.measurements.burr[0][0]='0.05';
+   await WL.records.reliablePut(m);
+  },{off,withBurr});
+  await seedOff(['バリ'],false);
+  await page.evaluate(id=>window.openReportForRecord(id),'RPPROD-OFF');
+  await page.waitForSelector('#reportContent .rp-blocks',{timeout:20000});
+  await settle(page);
+  const t1=await measTitle();
+  rec('設備で外した入力内容（バリ）は紙の測定データから落ちる（§9.395）',
+      /測定データ/.test(t1)&&!/バリ/.test(t1),t1);
+  await seedOff(['バリ'],true);
+  await page.evaluate(id=>window.openReportForRecord(id),'RPPROD-OFF');
+  await page.waitForSelector('#reportContent .rp-blocks',{timeout:20000});
+  await settle(page);
+  const t2=await measTitle();
+  rec('外してあっても値が入っていれば紙に出す（記録を消さない）',
+      /バリ/.test(t2),t2);
+  /* **`測定条件`のマスは帳票ブロックマスタが持つ**（§9.278「マスの並びが
+     あればそれが紙の正」）。だからコードの側へ行を足しても紙は変わらない
+     ——**足す先は「道（`calc.*`）」**で、そこへ足せば盤から置ける（§9.395）。
+     道が答えを返すことをここで見る（どこへ置くかは現場が決める）。 */
+  const paths=await page.evaluate(id=>{
+   const r=WL.reportBlocks.calcFor(id);
+   return r?{基準:r.manualLimit||'',入力内容:r.measureType||''}:null;
+  },'RPPROD-OFF');
+  rec('手入力の基準は帳票の道（calc.manualLimit）が出どころつきで答える（§9.394）',
+      !!paths&&/ラテラルボー 0〜2\.5/.test(paths.基準)&&/（手入力）/.test(paths.基準),
+      JSON.stringify(paths));
+  rec('入力内容の道は今の名前で答える（旧名 母材/丈毎 → 母材・§9.391）',
+      !!paths&&paths.入力内容==='母材',JSON.stringify(paths));
+  await page.evaluate(id=>WL.records.reliableDelete(id),'RPPROD-OFF');
+
   /* **使い終わった見本はその場で消す**（§9.351）——残すと以降の節が
      「いちばん新しい記録」としてこの2丈の記録を開き、紙が小さくなって
      詰めの検査が一度も詰めずに通る（実際にそうなって4件が赤になった）。 */
