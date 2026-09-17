@@ -36,6 +36,50 @@ import functools
 from flask import jsonify
 from werkzeug.exceptions import HTTPException
 
+from ..repositories import schedule_repo as sr
+
+
+# ---------------------------------------------------------------------------
+# 設定系マスタ（master.sqlite3）の読み書き（§9.389 で `routes/schedule.py`
+# から移した）
+# ---------------------------------------------------------------------------
+# 稼働カレンダー・設備停止（分類／内訳／時間）・勤務形態・換算係数上書きは
+# **共有スケジュールDBではなく手元の `master.sqlite3`** にあるので、
+# `schedule_sync` のロック→取得→適用→反映サイクル（§4.2）を通らない。
+# ネットワーク共有が不調でもマスタ管理は使える、という狙いのまま。
+#
+# **ここへ移した理由**は Blueprint をまたいだこと。設備停止の内訳と時間の
+# CRUD は `routes/masters/`（Blueprint `masters`）に置いた——`schedule.py` は
+# 41ルートで上限に張り付いている（§9.333 の `PINNED`）。2つの段が同じ
+# 開き方を必要とするので、**写しを作らず1箇所に置く**（§9.96）。
+def cfg_read(fn):
+ """設定系マスタの読み取り。`fn(mc)` の戻り値をそのまま返す。"""
+ sr.migrate_config_masters_from_shared()
+ mc=sr.config_master_conn()
+ try:
+  sr.ensure_config_master_tables(mc)
+  return fn(mc)
+ finally:
+  mc.close()
+
+
+def cfg_write_response(apply_fn):
+ """設定系マスタの書込。他のマスタと同じ素直な「開く→書く→commit」で済む
+ （共有DBのロック→取得→適用→反映サイクルは不要）。"""
+ sr.migrate_config_masters_from_shared()
+ mc=sr.config_master_conn()
+ try:
+  sr.ensure_config_master_tables(mc)
+  result=apply_fn(mc)
+  mc.commit()
+  return jsonify(ok=True,**(result or {}))
+ except ValueError as e:
+  return jsonify(error=str(e)),400
+ except Exception as e:
+  return jsonify(error=str(e)),500
+ finally:
+  mc.close()
+
 
 def api_guard(fail, bad=None, bad_status=400):
  """`fail`: 500のときの文言（`: {e}` はここが足す）。

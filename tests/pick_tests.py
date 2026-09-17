@@ -166,6 +166,8 @@ G['実績'] = ['test_actuals', 'test_opsheet', 'test_eqscope']
 # どれを触っても3本まとめて回す（計算はサーバー不要の1本、画面は1本）。
 G['刃組'] = ['test_bladeset', 'test_bladeui', 'test_bladepick', 'test_stopeq']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
+               # §9.389: 設備停止の内訳（サブカテゴリ）と時間の選択肢
+               'test_stopsub',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd',
                'test_workdate', 'test_measstore', 'test_roll', 'test_rollio',
                # §9.241 ①: 束ねた見出しの開閉／④: ロールの読み込み経路
@@ -346,6 +348,8 @@ RULES = [
     ('backend/repositories/bladeset_repo.py', g('刃組', 'マスタ')),
     ('backend/routes/masters/bladeset.py', g('刃組', 'test_crudroutes')),
     ('backend/routes/masters/bladeset_parts.py', g('刃組', 'test_crudroutes')),
+    # 設備停止の内訳・時間（§9.389）。設備停止マスタの隣なので「スケジュール」も回す。
+    ('backend/routes/masters/stop_detail.py', g('マスタ', 'スケジュール', 'test_crudroutes')),
     ('static/js/bladeset/blade-core.js', g('刃組')),
     ('static/js/bladeset/blade-pick.js', g('刃組', 'マスタ')),
     ('static/js/bladeset/blade-3d.js', g('刃組')),
@@ -482,7 +486,7 @@ RULES = [
     # 操業データの入力欄（§9.215）。測定画面①の中身なので測定一式へ。
     ('static/js/measure/measure-opdata.js', g('操業データ', '測定', '見た目', 'モーダル', '操業意匠')),
     # §9.325: 読む側は写しに書かない（1秒未満のサーバー側の網）
-    ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq', 'test_workdate', 'test_scsnapread')),
+    ('backend/repositories/schedule_repo.py', g('スケジュール', 'test_stopeq', 'test_stopsub', 'test_workdate', 'test_scsnapread')),
     ('backend/schedule_calc.py', g('スケジュール', 'test_eqstd', 'test_workdate',
                                    'test_actualmatch', 'test_finishjoin')),
     # 仕掛から消えたロットの突合（§9.364・§9.365）。

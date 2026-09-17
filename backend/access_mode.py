@@ -145,6 +145,19 @@ _ENDPOINT_EXTRA_MODES={
  'masters.bladeset_design_delete':{'schedule'},
  'masters.bladeset_history_add':{'schedule'},
  'masters.bladeset_history_delete':{'schedule'},
+ # 設備停止の内訳（サブカテゴリ）と時間の選択肢（§9.389）。**設備停止マスタと
+ # 同じ「設定値」**なので、あちらと同じ2つのモードから触れる必要がある——
+ # 設備停止マスタ側は`schedule.stop_reason_*`がscheduleを既定で持ちeditを
+ # ここで足しているが、こちらは`masters`のBlueprintなので**逆向きに**
+ # scheduleを足す（editは`masters`の既定で元から書ける）。
+ # **8本とも載せること**——1本開け忘れると、その操作だけが403で黙って
+ # 弾かれる（画面には「押しても何も起きないボタン」として出る・§CLAUDE 4）。
+ 'masters.stop_sub_register':{'schedule'},
+ 'masters.stop_sub_update':{'schedule'},
+ 'masters.stop_sub_delete_route':{'schedule'},
+ 'masters.stop_minutes_register':{'schedule'},
+ 'masters.stop_minutes_update':{'schedule'},
+ 'masters.stop_minutes_delete_route':{'schedule'},
  'masters.schedule_column_master_save':{'schedule'},
  'masters.schedule_content_master_save':{'schedule'},
  # 作業スケジュールの履歴(作業中・完了)を消す導線(§9.61)。計画外実績は

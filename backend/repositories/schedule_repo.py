@@ -154,7 +154,7 @@ def _next_plan_order(c_share,equipment):
  cur.execute('SELECT Max([表示順]) FROM [作業予定] WHERE [設備名]=? AND ([有効] IS NULL OR [有効]<>0)',[equipment])
  return int(cur.fetchone()[0] or 0)+1
 
-def plan_add(c_share,equipment,kind,uid,pc='',position='end',lot_no='',inspection_no='',casting_no='',title='',detail=None,stop_reason_id=None,estimate_minutes=None,fixed_start=None,remark='',children=None):
+def plan_add(c_share,equipment,kind,uid,pc='',position='end',lot_no='',inspection_no='',casting_no='',title='',detail=None,stop_reason_id=None,stop_sub_id=None,estimate_minutes=None,fixed_start=None,remark='',children=None):
  # §8.2。kind='作業'はdetail(仕掛行スナップショット、辞書)をそのままJSON化して
  # 持つ(サーバー側で仕掛を引き直さない。フロントが送った時点の見え方を固定)。
  # kind='設備停止'はstopReasonIdから設備停止マスタの[名称]をスナップショットし、
@@ -189,6 +189,24 @@ def plan_add(c_share,equipment,kind,uid,pc='',position='end',lot_no='',inspectio
   if not stop_equipment_matches(row[0],equipment):
    raise ValueError('指定の停止理由は別の設備に登録されています。')
   title_snapshot=str(row[1] or '').strip()
+  # 内訳(サブカテゴリ・§9.389)。**[予定名称]は親の名称のまま**にする
+  # ——利用者の言う「同じ刃組というグループには入れておきたい」がこれで、
+  # 集計は今までどおり名称で束ねたまま、内訳でだけ割れる。
+  # 置き場は[明細JSON]。作業の行の写しと同じ器だが、**設備停止の行の
+  # 明細JSONは今まで空文字**（`plan_merge_detail`が種別='作業'だけを触るのも
+  # そのため）なので、意味が混ざらない。列を足すと共有DBの移行が要る。
+  if stop_sub_id not in (None,''):
+   mc2=config_master_conn()
+   try:
+    sub=stop_sub_row(mc2,int(stop_sub_id))
+   finally:
+    mc2.close()
+   if not sub:raise ValueError('指定のサブカテゴリが見つかりません。')
+   if int(sub[1] or 0)!=int(stop_reason_id):
+    raise ValueError('そのサブカテゴリは別の設備停止のものです。')
+   if not (True if sub[5] is None else bool(sub[5])):
+    raise ValueError('そのサブカテゴリは削除されています。')
+   detail_json=_json.dumps({'stopSubId':int(sub[0]),'stopSub':str(sub[2] or '').strip()},ensure_ascii=False)
   # [見積分]はestimate_minutes(明示上書き)が無ければNULLのままにする(§5.1)。
   # マスタの標準所要分は固定値としてここでスナップショットしない。マスタの
   # 標準所要分を後から編集したら、まだ見積を上書きしていない予定には反映
@@ -358,6 +376,41 @@ def plan_merge_detail(c_share,plan_id,uid,changes,pc=''):
   detail[key]='' if v is None else str(v)[:200]
  cur.execute('UPDATE [作業予定] SET [明細JSON]=?,[更新者ID]=?,[更新端末名]=?,[更新日時]=Now() WHERE [予定ID]=?',
              [_json.dumps(detail,ensure_ascii=False),uid,pc,plan_id])
+ return cur.rowcount
+
+def plan_set_stop_sub(c_share,plan_id,uid,sub_id,pc=''):
+ """入れた設備停止の**内訳(サブカテゴリ)を後から直す**(§9.389)。
+ `sub_id`が空なら内訳なしへ戻す。
+
+ **種別が設備停止の行だけ。** 作業の行の明細JSONは仕掛の写しで、
+ 別物を同じ器へ入れると「写しが消えた」としか見えなくなる
+ (`plan_merge_detail`が作業の行だけを触るのと表裏)。
+
+ **[予定名称]は動かさない**——名称は集計の軸(§9.389の「同じグループに
+ 入れておきたい」)で、内訳を変えるたびに束ね方が変わってはいけない。"""
+ ensure_plan_table(c_share)
+ cur=c_share.cursor()
+ cur.execute('SELECT [予定ID],[種別],[設備名],[予定名称] FROM [作業予定] WHERE [予定ID]=?',[plan_id])
+ row=cur.fetchone()
+ if not row:raise ValueError('指定の予定が見つかりません。')
+ if str(row[1] or '')!='設備停止':
+  raise ValueError('サブカテゴリを持てるのは設備停止の行だけです。')
+ payload=''
+ if sub_id not in (None,''):
+  mc=config_master_conn()
+  try:
+   sub=stop_sub_row(mc,int(sub_id))
+   if not sub:raise ValueError('指定のサブカテゴリが見つかりません。')
+   parent=stop_reason_id_of(mc,row[2],row[3])
+  finally:
+   mc.close()
+  if parent is None:
+   raise ValueError('この行の設備停止が設備停止マスタに見つかりません。')
+  if int(sub[1] or 0)!=int(parent):
+   raise ValueError('そのサブカテゴリは別の設備停止のものです。')
+  payload=_json.dumps({'stopSubId':int(sub[0]),'stopSub':str(sub[2] or '').strip()},ensure_ascii=False)
+ cur.execute('UPDATE [作業予定] SET [明細JSON]=?,[更新者ID]=?,[更新端末名]=?,[更新日時]=Now() WHERE [予定ID]=?',
+             [payload,uid,pc,plan_id])
  return cur.rowcount
 
 def plan_add_child(c_share,parent_id,equipment,uid,lot_no='',inspection_no='',casting_no='',detail=None,order=None,pc=''):
@@ -1019,6 +1072,20 @@ def stop_reason_delete(c_master,stop_reason_id,uid):
  cur.execute('UPDATE [設備停止マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [停止理由ID]=?',[uid,stop_reason_id])
  return cur.rowcount
 
+def stop_reason_id_of(c_master,equipment,name):
+ """(対象設備,名称)から[停止理由ID]を引く。予定の行はIDを持たず名称の写し
+    しか持たないので、**予定から内訳を足すときの親探しはここ1箇所**
+    (§9.163)。照合は`stop_reason_standard_minutes`と同じ方式。"""
+ ensure_stop_reason_table(c_master)
+ cur=c_master.cursor()
+ cur.execute('SELECT [停止理由ID],[設備名],[名称],[有効] FROM [設備停止マスタ]')
+ target=str(name or '').strip()
+ for sid,eq,nm,active in cur.fetchall():
+  active=True if active is None else bool(active)
+  if active and str(nm or '').strip()==target and stop_equipment_matches(eq,equipment):
+   return sid
+ return None
+
 def stop_reason_standard_minutes(c_master,equipment,name):
  # §5.1: 設備停止の予定は[見積分]がNULLなら、追加時点ではなく展開の都度
  # このマスタの現在値を引く(スナップショットしない。plan_addのコメント参照)。
@@ -1034,6 +1101,230 @@ def stop_reason_standard_minutes(c_master,equipment,name):
   active=True if active is None else bool(active)
   if active and str(nm or '').strip()==target_name and stop_equipment_matches(eq,equipment):
    return minutes
+ return None
+
+# ========================================================================
+# 設備停止サブカテゴリマスタ(§9.389、利用者の指示)
+# ------------------------------------------------------------------------
+# 「設備停止マスタにサブカテゴリを登録できるようにしてください。例えば、
+#  刃組待ちだったら、ゴムリングとフィンガーと刃出しの3種類があります。
+#  そのような種類の違いも後でわかるようにしたいが同じ刃組というグループには
+#  入れておきたい」
+#
+# **3階層になる**: 分類(全設備共通) → 設備停止(設備ごと) → サブカテゴリ。
+# 集計の軸として見ると「刃組待ち」で束ねたまま、内訳でゴムリング/フィンガー/
+# 刃出しへ割れる——これが利用者の言う「同じグループには入れておきたい」。
+#
+# **親は設備停止マスタの1行**([停止理由ID])。分類のように全設備共通にしない
+# ——サブカテゴリは「その停止内容の内訳」で、停止内容そのものが設備ごとの
+# 登録だから、内訳だけを設備から切り離すと親の無い子が作れてしまう。
+#
+# **自然キーは(停止理由ID,名称)**。設備停止マスタの(設備名,名称)と違い
+# 親のIDで割る——別の停止内容が同じ名前の内訳を持つのは普通のこと
+# (「刃組待ち>刃出し」と「段取り待ち>刃出し」は別物)。
+#
+# [標準所要分]は**空にできる**。空＝親の標準所要分をそのまま使う
+# (§9.212 ②と同じ「触っていない」の表し方)。刃出しだけ時間が違う、という
+# ときにその1行だけ持てばよく、全部の内訳へ同じ数字を書き写さずに済む。
+# ========================================================================
+STOP_SUB_TABLE='設備停止サブカテゴリマスタ'
+
+def ensure_stop_sub_table(c_master):
+ names=tables(c_master);created=False
+ if STOP_SUB_TABLE not in names:
+  cur=c_master.cursor()
+  cur.execute('CREATE TABLE [設備停止サブカテゴリマスタ] ([サブカテゴリID] INTEGER PRIMARY KEY AUTOINCREMENT, [停止理由ID] INTEGER, [名称] TEXT, [標準所要分] REAL, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE UNIQUE INDEX [UX_設備停止サブカテゴリマスタ_名称] ON [設備停止サブカテゴリマスタ] ([停止理由ID],[名称])')
+  c_master.commit();created=True
+ return created
+
+def stop_sub_rows(c_master,stop_reason_id=None):
+ """有効なサブカテゴリ。r: サブカテゴリID,停止理由ID,名称,標準所要分,表示順,有効,更新日時,更新者ID"""
+ ensure_stop_sub_table(c_master)
+ cur=c_master.cursor()
+ cur.execute('SELECT [サブカテゴリID],[停止理由ID],[名称],[標準所要分],[表示順],[有効],[更新日時],[更新者ID] FROM [設備停止サブカテゴリマスタ] ORDER BY [停止理由ID],[表示順],[名称]')
+ rows=[]
+ target=None if stop_reason_id in (None,'') else int(stop_reason_id)
+ for r in cur.fetchall():
+  if not (True if r[5] is None else bool(r[5])):continue
+  if target is not None and int(r[1] or 0)!=target:continue
+  rows.append(r)
+ return rows
+
+def stop_sub_row(c_master,sub_id):
+ """1件。**無効化済みも返す**(消えた内訳を参照している予定の名前を出すため)。"""
+ ensure_stop_sub_table(c_master)
+ cur=c_master.cursor()
+ cur.execute('SELECT [サブカテゴリID],[停止理由ID],[名称],[標準所要分],[表示順],[有効],[更新日時],[更新者ID] FROM [設備停止サブカテゴリマスタ] WHERE [サブカテゴリID]=?',[sub_id])
+ return cur.fetchone()
+
+def stop_sub_upsert(c_master,stop_reason_id,name,uid,standard_minutes=None,sub_id=None):
+ """内訳の登録・改名。照合の順番は設備停止マスタと同じ3段
+    (①IDが来ていればその行 ②(停止理由ID,名称)の自然キー ③新規)。"""
+ ensure_stop_sub_table(c_master)
+ ensure_stop_reason_table(c_master)
+ name=str(name or '').strip()
+ if not name:raise ValueError('サブカテゴリ名を入力してください。')
+ pid=None if stop_reason_id in (None,'') else int(stop_reason_id)
+ if pid is None:raise ValueError('どの設備停止の内訳かを選んでください。')
+ cur=c_master.cursor()
+ cur.execute('SELECT [停止理由ID] FROM [設備停止マスタ] WHERE [停止理由ID]=?',[pid])
+ if not cur.fetchone():raise ValueError('指定の設備停止が見つかりません。')
+ cur.execute('SELECT [サブカテゴリID],[停止理由ID],[名称] FROM [設備停止サブカテゴリマスタ]')
+ rows=cur.fetchall()
+ target_id=int(sub_id) if str(sub_id or '').strip() else None
+ if target_id is not None and not any(r[0]==target_id for r in rows):
+  raise ValueError('指定のサブカテゴリが見つかりません。')
+ # **無効化済みの行も照合の対象**(削除は論理削除なので、同じ名前を登録し
+ # 直したら元の行が戻る。設備停止マスタと同じ挙動・UNIQUE INDEXの実体とも合う)。
+ same=next((r for r in rows if int(r[1] or 0)==pid and str(r[2] or '').strip()==name),None)
+ if target_id is None and same:target_id=same[0]
+ if target_id is not None and same and same[0]!=target_id:
+  raise ValueError(f'「{name}」はこの設備停止に既に登録されています。')
+ if target_id is not None:
+  cur.execute('UPDATE [設備停止サブカテゴリマスタ] SET [停止理由ID]=?,[名称]=?,[標準所要分]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [サブカテゴリID]=?',
+              [pid,name,standard_minutes,uid,target_id])
+  return target_id,False
+ # 表示順は**その親の中での最大+10**(内訳は親ごとに並ぶので、全体の最大に
+ # すると別の親を足すたびに番号が飛ぶ)。
+ cur.execute('SELECT Max([表示順]) FROM [設備停止サブカテゴリマスタ] WHERE [停止理由ID]=?',[pid])
+ order=int((cur.fetchone()[0]) or 0)+10
+ cur.execute('INSERT INTO [設備停止サブカテゴリマスタ] ([停止理由ID],[名称],[標準所要分],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,-1,?,?,Now(),Now())',
+             [pid,name,standard_minutes,order,uid,uid])
+ return cur.lastrowid,True
+
+def stop_sub_delete(c_master,sub_id,uid):
+ ensure_stop_sub_table(c_master)
+ cur=c_master.cursor()
+ cur.execute('UPDATE [設備停止サブカテゴリマスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [サブカテゴリID]=?',[uid,sub_id])
+ return cur.rowcount
+
+def stop_sub_counts(c_master):
+ """{停止理由ID: 件数}。一覧が「内訳を持つ停止内容」を1度の問い合わせで
+    見分けられるようにする(行ごとに聞き直すと設備停止の数だけ往復する)。"""
+ out={}
+ for r in stop_sub_rows(c_master):
+  pid=int(r[1] or 0)
+  out[pid]=out.get(pid,0)+1
+ return out
+
+# ========================================================================
+# 設備停止時間マスタ(§9.389、利用者の指示)
+# ------------------------------------------------------------------------
+# 「設備停止マスタから、時間を切り離して、設備停止時間マスタに分割し…
+#  設備停止内容を選択し、その後時間を選択して登録するようにしたい。
+#  そうした方が集計の時にすっきり集計しやすくなる」
+#  「時間のマスタは全体で共通、時間の選択マスタとしては機能させる。
+#   数値として扱うものなのであくまで選択肢を作るマスタ」
+#
+# **持つのは分だけ**。名前も色も分類も持たない——「30分」は全設備で30分で、
+# 呼び名を付けると設備ごとに別の意味を持たせたくなる(分類マスタと逆の判断:
+# あちらは意味の軸なので名前が要る)。書式は`WL.duration`の1箇所が答える
+# (§9.341)ので、ここに「1時間30分」のような文字は持たせない。
+#
+# **設備停止マスタの[標準所要分]は残す**(利用者の指示「既定値として残す」)。
+# あちらは「この停止はふつう何分か」で、こちらは「選ばせる刻み」——役割が
+# 違うので片方に寄せられない。登録の画面は標準所要分を最初から選んだ状態で
+# 開き、違うときだけ選び直す(§CLAUDE 2「次にすることを常に1つだけ指す」)。
+# ========================================================================
+STOP_MINUTES_TABLE='設備停止時間マスタ'
+# 初回作成時に入れておく選択肢。**現場が足せる**ので、ここは「よくある刻み」
+# だけ。5分刻みの細かい値まで並べると、選ぶ側が数える羽目になる(§CLAUDE 2)。
+STOP_MINUTES_SEEDS=(10,15,20,30,45,60,90,120,180,240)
+# スライダーの刻み。**選択肢の間を埋めるためのもの**なので、選択肢そのものの
+# 刻みより細かくてよい(60分の選択肢から65分へ寄せる、という使い方)。
+STOP_MINUTES_STEP=5
+
+def ensure_stop_minutes_table(c_master):
+ names=tables(c_master);created=False
+ if STOP_MINUTES_TABLE not in names:
+  cur=c_master.cursor()
+  cur.execute('CREATE TABLE [設備停止時間マスタ] ([時間ID] INTEGER PRIMARY KEY AUTOINCREMENT, [分] REAL, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE UNIQUE INDEX [UX_設備停止時間マスタ_分] ON [設備停止時間マスタ] ([分])')
+  c_master.commit();created=True
+  for i,m in enumerate(STOP_MINUTES_SEEDS):
+   cur.execute('INSERT INTO [設備停止時間マスタ] ([分],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,-1,?,?,Now(),Now())',
+               [float(m),(i+1)*10,'migrate:seed','migrate:seed'])
+  c_master.commit()
+ return created
+
+def stop_minutes_normalize(value):
+ """保存する分。**0以下・数でないものは断る**(0分の停止は行を置く意味が
+    無く、負の時間は後続の予定を前へ引っ張る)。0.1分まで持つ。"""
+ try:m=float(value)
+ except (TypeError,ValueError):raise ValueError('時間は数値で入力してください。')
+ if not (m>0):raise ValueError('時間は0より大きい値を入力してください。')
+ return round(m,1)
+
+def stop_minutes_rows(c_master):
+ """r: 時間ID,分,表示順,有効,更新日時,更新者ID。**分の小さい順**に返す
+    ——数の並びは1通りしかないので、[表示順]で並べ替えさせない
+    (並べ替えられる形にすると「120の次が45」の一覧を作れてしまう)。"""
+ ensure_stop_minutes_table(c_master)
+ cur=c_master.cursor()
+ cur.execute('SELECT [時間ID],[分],[表示順],[有効],[更新日時],[更新者ID] FROM [設備停止時間マスタ]')
+ rows=[r for r in cur.fetchall() if (True if r[3] is None else bool(r[3]))]
+ return sorted(rows,key=lambda r:float(r[1] or 0))
+
+def stop_minutes_values(c_master):
+ return [float(r[1] or 0) for r in stop_minutes_rows(c_master)]
+
+def stop_minutes_upsert(c_master,minutes,uid,minutes_id=None):
+ ensure_stop_minutes_table(c_master)
+ m=stop_minutes_normalize(minutes)
+ cur=c_master.cursor()
+ cur.execute('SELECT [時間ID],[分] FROM [設備停止時間マスタ]')
+ rows=cur.fetchall()
+ target_id=int(minutes_id) if str(minutes_id or '').strip() else None
+ if target_id is not None and not any(r[0]==target_id for r in rows):
+  raise ValueError('指定の時間が見つかりません。')
+ same=next((r for r in rows if abs(float(r[1] or 0)-m)<0.05),None)
+ if target_id is None and same:target_id=same[0]
+ if target_id is not None and same and same[0]!=target_id:
+  raise ValueError('その時間は既に登録されています。')
+ if target_id is not None:
+  cur.execute('UPDATE [設備停止時間マスタ] SET [分]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [時間ID]=?',[m,uid,target_id])
+  return target_id,False
+ cur.execute('SELECT Max([表示順]) FROM [設備停止時間マスタ]')
+ order=int((cur.fetchone()[0]) or 0)+10
+ cur.execute('INSERT INTO [設備停止時間マスタ] ([分],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,-1,?,?,Now(),Now())',
+             [m,order,uid,uid])
+ return cur.lastrowid,True
+
+def stop_minutes_delete(c_master,minutes_id,uid):
+ ensure_stop_minutes_table(c_master)
+ cur=c_master.cursor()
+ cur.execute('UPDATE [設備停止時間マスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [時間ID]=?',[uid,minutes_id])
+ return cur.rowcount
+
+def stop_minutes_slider(c_master):
+ """スライダーの範囲。**選択肢そのものから作る**(§9.163)——別の設定値に
+    すると「選択肢には240分があるのにスライダーは120分で止まる」が起きる。
+    選択肢が1件以下なら`None`。画面はそのときスライダーを出さない
+    (動かせない目盛りを置かない・§CLAUDE 4)。"""
+ vals=stop_minutes_values(c_master)
+ if len(vals)<2:return None
+ lo,hi=min(vals),max(vals)
+ if hi<=lo:return None
+ return {'min':lo,'max':hi,'step':float(STOP_MINUTES_STEP)}
+
+def stop_default_minutes(c_master,stop_reason_id,sub_id=None):
+ """登録の画面を開いたときに**最初から選ばれている分**。
+    効く順は「サブカテゴリの標準所要分 → 設備停止の標準所要分 → 無し」。
+    **答えるのはここ1箇所**(§9.163)——画面とサーバーで順番がずれると、
+    出ている数字と実際に入る数字が食い違う。"""
+ if sub_id not in (None,''):
+  sub=stop_sub_row(c_master,int(sub_id))
+  if sub and sub[3] is not None and str(sub[3]).strip()!='':
+   try:return float(sub[3])
+   except (TypeError,ValueError):quiet('サブカテゴリの標準所要分を読めない（親の値へ倒す）',None)
+ ensure_stop_reason_table(c_master)
+ cur=c_master.cursor()
+ cur.execute('SELECT [標準所要分] FROM [設備停止マスタ] WHERE [停止理由ID]=?',[stop_reason_id])
+ row=cur.fetchone()
+ if row and row[0] is not None and str(row[0]).strip()!='':
+  try:return float(row[0])
+  except (TypeError,ValueError):quiet('設備停止の標準所要分を読めない（既定なしで続ける）',None)
  return None
 
 # ========================================================================
@@ -1410,6 +1701,10 @@ def ensure_config_master_tables(mc):
  ensure_stop_reason_table(mc)
  # 分類マスタは設備停止マスタの後に作る(初回作成時に既存の分類値を取り込むため)
  ensure_stop_category_table(mc)
+ # 内訳(サブカテゴリ)と時間の選択肢(§9.389)。どちらも設備停止マスタの後
+ # ——内訳は[停止理由ID]で親を指すので、親の表が先に無いと参照が宙に浮く。
+ ensure_stop_sub_table(mc)
+ ensure_stop_minutes_table(mc)
  ensure_row_style_table(mc)
  ensure_load_factor_override_table(mc)
  ensure_shift_table(mc)

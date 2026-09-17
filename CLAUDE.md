@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（552件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（558件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -207,10 +207,12 @@
 | 作り直せるファイルの置き場は`paths.work_dir()`が決める | `test_localwork.py` | [§9.109](docs/decisions/9.109.md) |
 | 参照データを増やすときは`データソースマスタ`の1行 | `test_datasource.py` | [決まり](docs/decisions/rules-misc.md) |
 
-### APIとルート（16件）
+### APIとルート（18件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 新しいマスタのAPIは`routes/masters/`の段へ足す（`schedule.py`は41ルートで上限・上げられない） | `test_routesplit.py` | [§9.389](docs/decisions/9.389.md) |
+| 設定系マスタの開き方は`routes/common.py`の`cfg_read`／`cfg_write_response`の1箇所 | `test_importlint.py` | [§9.389](docs/decisions/9.389.md) |
 | 権限区分（開発者／メンテナンス者／一般ユーザー）は「何を触れるか」と別の軸 | — | [§9.272](docs/decisions/9.272.md) |
 | マスタのAPIは11の段（1段20ルートまで）。Blueprintは`_base.py`の1つのまま | `test_routesplit.py` | [§9.333](docs/decisions/9.333.md) |
 | 画面から来るJSONは`body(spec)`で読む。鍵は必ず宣言する | `test_body.py` | [§9.330](docs/decisions/9.330.md) |
@@ -228,10 +230,13 @@
 | 編集可能モード/閲覧モード/スケジュールモード | `test_modeguard.py` | [決まり](docs/decisions/rules-misc.md) |
 | 作業スケジュール表の「見えるもの」はモードで変えない | `test_scmodecols.js` | [§9.246](docs/decisions/9.246.md) |
 
-### マスタ（サーバー側）（16件）
+### マスタ（サーバー側）（19件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 設備停止は3階層（分類→停止内容→内訳）。**内訳は名称を割らない**（集計は名称で束ねる） | `test_stopsub.py` | [§9.389](docs/decisions/9.389.md) |
+| 時間マスタが持つのは「分」だけ。スライダーの両端は**選択肢そのもの**から作る | `test_stopsub.py` | [§9.389](docs/decisions/9.389.md) |
+| 既定の分は「サブ → 親 → 無し」の3段。空欄を0にしない | `test_stopsub.py` | [§9.389](docs/decisions/9.389.md) |
 | エラーを捨てるときは理由を1行残す。黙って捨てない | `test_quietlint.py` | [§9.328](docs/decisions/9.328.md) |
 | マスタ1表の列定義は`TableDef`の1箇所 | `test_tabledef.py` | [§9.324](docs/decisions/9.324-1.md) |
 | 測定画面から選択肢マスタへ足せる。既定は足せない | `test_opinline.js` | [§9.323](docs/decisions/9.323-1.md) |
@@ -525,10 +530,11 @@
 | 刃組スケジュール一覧は記録と予定を`stopId`で結ぶ。未記録は字で書く | `test_bladeui.js` | [§9.383](docs/decisions/9.383.md) |
 | 部材の並びは大きい寸法から。「種類×数」と「何種・何本」の両方を言う | `test_bladeui.js` | [§9.383](docs/decisions/9.383.md) |
 
-### 作業スケジュール（30件）
+### 作業スケジュール（31件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 予定の内訳（サブカテゴリ）は`[明細JSON]`。触れるのは**設備停止の行だけ**（作業の写しを潰さない） | `test_stopsub.py` | [§9.389](docs/decisions/9.389.md) |
 | 作業スケジュールの「開始」は着手できる**全行**に出す（次の1本は現場が自由に選ぶ。先頭N行に絞らない） | `test_workable.js` | [§9.339](docs/decisions/9.339.md) |
 | 設備停止の行き先は`設備停止マスタ`の`[連携機能]`。行は持たない・語彙はサーバー | `test_bladeset.py`・`test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
 | 行き先の的は題名の横に別に立てる（行いっぱいは「選ぶ」・ダブルクリックは「直す」） | `test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |

@@ -31,6 +31,7 @@ from ..repositories.master_repo import normalize_equipment_name, equipment_maste
 from ..db_access import connect, path_config_value, DBS
 from ..access_mode import request_user_id, request_pc_name
 from .body import body, flag, any_
+from .common import cfg_read, cfg_write_response
 from ..access_mode import current_login_id, current_pc_name, get_mode, current_permission_flags
 from ..logging_setup import app_logger
 from ..quiet import quiet
@@ -243,34 +244,11 @@ def _read(fn,timings=None):
   c.close()
  return result,stale,None
 
-def _cfg_read(fn):
- """設定系マスタ(稼働カレンダー・設備停止・勤務形態・換算係数上書き)の読み取り。
- これらはmaster.sqlite3(ローカル)にあるため、共有DBのスナップショット取得も
- ロックも要らない。ネットワーク共有が不調でもマスタ管理は使えるようにする狙い。"""
- sr.migrate_config_masters_from_shared()
- mc=sr.config_master_conn()
- try:
-  sr.ensure_config_master_tables(mc)
-  return fn(mc)
- finally:
-  mc.close()
-
-def _cfg_write_response(apply_fn):
- """設定系マスタの書込。他のマスタ(routes/masters.py)と同じ素直な
- 「開く→書く→commit」で済む(共有DBのロック→取得→適用→反映サイクルは不要)。"""
- sr.migrate_config_masters_from_shared()
- mc=sr.config_master_conn()
- try:
-  sr.ensure_config_master_tables(mc)
-  result=apply_fn(mc)
-  mc.commit()
-  return jsonify(ok=True,**(result or {}))
- except ValueError as e:
-  return jsonify(error=str(e)),400
- except Exception as e:
-  return jsonify(error=str(e)),500
- finally:
-  mc.close()
+# 設定系マスタの読み書きは`routes/common.py`の1箇所（§9.389）。設備停止の
+# 内訳・時間のCRUDが`routes/masters/`（別のBlueprint）に居るので、写しを
+# 作らずそちらから同じ関数を呼ぶ。ここは呼び名だけ今までどおりにしてある。
+_cfg_read=cfg_read
+_cfg_write_response=cfg_write_response
 
 def _write_response(apply_fn):
  """POST系共通。schedule_sync.with_write()の例外を§8.0のエラー応答形式へ
@@ -527,7 +505,7 @@ def plan_list():
 def plan_add():
  x=body({'equipment': str,'kind': str,'lotNo': str,'inspectionNo': str,'castingNo': str,
          'estimateMinutes': any_,'fixedStart': any_,'remark': str,'title': str,
-         'stopReasonId': any_,'position': str,'children': any_,'detail': any_})
+         'stopReasonId': any_,'stopSubId': any_,'position': str,'children': any_,'detail': any_})
  equipment=str(x.get('equipment') or '').strip()
  kind=str(x.get('kind') or '').strip()
  if not equipment:return jsonify(error='どの設備の予定か指定してください。'),400
@@ -537,6 +515,7 @@ def plan_add():
                    lot_no=str(x.get('lotNo') or ''),inspection_no=str(x.get('inspectionNo') or ''),
                    casting_no=str(x.get('castingNo') or ''),title=str(x.get('title') or ''),
                    detail=x.get('detail') or {},stop_reason_id=x.get('stopReasonId'),
+                   stop_sub_id=x.get('stopSubId'),
                    estimate_minutes=x.get('estimateMinutes'),fixed_start=x.get('fixedStart'),
                    remark=str(x.get('remark') or ''),
                    children=_plan_children(x.get('children')))
@@ -560,7 +539,7 @@ def _plan_children(raw):
 @bp.post('/api/schedule/plan/update')
 def plan_update():
  x=body({'id': any_,'frame': any_,'estimateMinutes': any_,'fixedStart': any_,'remark': any_,'state': any_,'title': any_,
-         'detail': any_})
+         'detail': any_,'stopSubId': any_})
  plan_id=x.get('id')
  if plan_id is None:return jsonify(error='更新対象の予定IDがありません。'),400
  # titleは申し送り(コメント)の本文(§9.191)。他の種別では repo が弾く。
@@ -571,11 +550,16 @@ def plan_update():
  # detail=元データ(仕掛)から取り込み直す項目(§9.375)。**重ねる**だけで、
  # 渡さなかった項目は触らない。
  detail=x.get('detail') if isinstance(x.get('detail'),dict) else None
+ # stopSubId=設備停止の内訳(§9.389)。**空文字が「内訳なしへ戻す」**なので、
+ # 送っていない(鍵そのものが無い)のと区別する——`or`で倒すと、外す操作が
+ # 「触っていない」になって効かない。
+ stop_sub='stopSubId' in x
  def fn(c):
   row=sr.plan_row(c,plan_id)
   if row:_check_session(row[1])
   n=0
   if frame is not None:n+=sr.plan_set_frame(c,plan_id,request_user_id(x),frame,pc=request_pc_name(x))
+  if stop_sub:n+=sr.plan_set_stop_sub(c,plan_id,request_user_id(x),x.get('stopSubId'),pc=request_pc_name(x))
   if detail:n+=sr.plan_merge_detail(c,plan_id,request_user_id(x),detail,pc=request_pc_name(x))
   if fields:n+=sr.plan_update(c,plan_id,request_user_id(x),pc=request_pc_name(x),**fields)
   if n==0:raise ValueError('指定の予定が見つからないか、更新項目がありません。')
@@ -625,6 +609,7 @@ def _apply_plan_op(c,op,uid,pc=''):
                    lot_no=str(op.get('lotNo') or ''),inspection_no=str(op.get('inspectionNo') or ''),
                    casting_no=str(op.get('castingNo') or ''),title=str(op.get('title') or ''),
                    detail=op.get('detail') or {},stop_reason_id=op.get('stopReasonId'),
+                   stop_sub_id=op.get('stopSubId'),
                    estimate_minutes=op.get('estimateMinutes'),fixed_start=op.get('fixedStart'),
                    remark=str(op.get('remark') or ''),
                    children=_plan_children(op.get('children')))
@@ -639,8 +624,10 @@ def _apply_plan_op(c,op,uid,pc=''):
   frame=op.get('frame') if isinstance(op.get('frame'),dict) else None
   # 元データの取り込み(§9.375)。まとめ書込でも1件ずつと同じ経路を通す。
   detail=op.get('detail') if isinstance(op.get('detail'),dict) else None
+  # 設備停止の内訳(§9.389)。まとめ書込でも1件ずつと同じ経路を通す。
   n=0
   if frame is not None:n+=sr.plan_set_frame(c,plan_id,uid,frame,pc=pc)
+  if 'stopSubId' in op:n+=sr.plan_set_stop_sub(c,plan_id,uid,op.get('stopSubId'),pc=pc)
   if detail:n+=sr.plan_merge_detail(c,plan_id,uid,detail,pc=pc)
   if fields:n+=sr.plan_update(c,plan_id,uid,pc=pc,**fields)
   if n==0:raise ValueError('指定の予定が見つからないか、更新項目がありません。')
