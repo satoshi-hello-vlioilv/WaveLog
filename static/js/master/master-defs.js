@@ -752,8 +752,45 @@
             hint:'この停止の行を押したときの**行き先**です。「なし」なら今までどおり、押しても移動しません。'
               +'\n刃組ガイダンスを選ぶと、作業スケジュールのその行から刃組ガイダンスを開けるようになります'
               +'（**その行より後ろに並ぶ作業**の元コイル幅・切断幅・板厚をそのまま持っていきます）。'}],
-   cols:[{k:'equipment',label:'対象設備',grow:2,format:'equipmentTarget'},{k:'category',label:'分類',grow:1},{k:'name',label:'名称',grow:2},{k:'standardMinutes',label:'標準所要分',grow:1},{k:'linkLabel',label:'連携機能',grow:1}],
+   cols:[{k:'equipment',label:'対象設備',grow:2,format:'equipmentTarget'},{k:'category',label:'分類',grow:1},{k:'name',label:'名称',grow:2},{k:'standardMinutes',label:'標準所要分',grow:1},
+         /* 内訳を持つかは**この一覧から見える**ようにする（§9.389）。
+            持っていることが分からないと、内訳のタブを開く理由に気づけない。 */
+         {k:'subCount',label:'内訳',grow:1,format:'subCount'},
+         {k:'linkLabel',label:'連携機能',grow:1}],
    hint:'作業スケジュール(docs/SCHEDULE_MODE_DESIGN.md §5.3)の設備停止予定で選べる名称と、標準所要分(分)です。1件の停止内容を複数の設備へまとめて登録できます。「すべての設備」を選べば、設備が増えても登録し直す必要がありません。標準所要分が設備ごとに違う場合は、設備を分けて別々に登録してください(同じ名称で対象設備が重なる登録はできません。どちらの時間が効くのか決まらなくなるためです)。「突発停止」は現場からの連絡を受けた計画担当が投入する運用のため、名称に登録しておくだけで自動では動きません。'},
+  /* ---------- 設備停止の内訳（サブカテゴリ）（§9.389、利用者の指示） ----------
+     「刃組待ちだったら、ゴムリングとフィンガーと刃出しの3種類があります。
+      そのような種類の違いも後でわかるようにしたいが**同じ刃組というグループ
+      には入れておきたい**」
+
+     **3階層が1枚で見える**ようにする（分類 → 停止内容 → 内訳）。左が
+     分類で束ねた停止内容、右がその内訳。`op-choice`と同じ2ペインの作法
+     （§9.221 ②）——1行＝1内訳の平らな一覧にすると、どの停止の内訳なのかを
+     行ごとに読み直すことになる。
+     `fields`/`cols`は残す——編集モーダルの部品としてではなく、
+     `tests/test_crudroutes.py`が4本のCRUDを見張る材料になっている。 */
+  {group:'schedule',key:'stopSub',label:'設備停止の内訳',icon:'訳',endpoint:'/api/schedule/stop-sub-master',hasDelete:true,special:'stop-sub',
+   titleText:'設備停止の内訳 — 分類 → 停止内容 → 内訳',
+   fields:[{k:'stopReasonId',label:'どの設備停止の内訳か',required:true,key:true},
+           {k:'name',label:'内訳名',required:true,key:true},
+           {k:'standardMinutes',label:'標準所要分',type:'number',unit:'分',step:5,min:0}],
+   cols:[{k:'stopReasonLabel',label:'設備停止',grow:2},{k:'name',label:'内訳名',grow:2},
+         {k:'standardMinutes',label:'標準所要分',grow:1}],
+   hint:'設備停止を**もう1段細かく**分けるための内訳です（例: 刃組待ち → ゴムリング／フィンガー／刃出し）。**集計の軸になる「名称」は割りません**——「刃組待ち」で束ねたまま、内訳でだけ割れます。標準所要分を空欄にすると、親の設備停止の標準所要分をそのまま使います。'},
+  /* ---------- 設備停止の時間（§9.389、利用者の指示） ----------
+     「設備停止マスタから、時間を切り離して、設備停止時間マスタに分割し…
+      その後時間を選択して登録するようにしたい。そうした方が集計の時に
+      すっきり集計しやすくなる」
+      「時間のマスタは全体で共通…数値として扱うものなのであくまで
+       **選択肢を作るマスタ**」
+
+     持つのは「分」だけ。名前も色も分類も持たせない——**「30分」は全設備で
+     30分**で、呼び名を付けると設備ごとに別の意味を持たせたくなる。 */
+  {group:'schedule',key:'stopMinutes',label:'設備停止の時間',icon:'分',endpoint:'/api/schedule/stop-minutes-master',hasDelete:true,special:'stop-minutes',
+   titleText:'設備停止の時間 — 予定へ入れるときに選ばせる分',
+   fields:[{k:'minutes',label:'分',required:true,key:true,type:'number',unit:'分',step:5,min:1}],
+   cols:[{k:'minutes',label:'分',grow:1}],
+   hint:'作業スケジュールへ設備停止を入れるとき、**選ばせる時間の一覧**です。全設備で共通です。登録のときはこの選択肢からひとつ選び、**スライダーで細かく直せます**（スライダーの範囲はこの一覧の最小〜最大から作ります）。設備停止マスタの「標準所要分」は残っていて、最初から選ばれている値として使います。'},
   {group:'schedule',key:'shiftMaster',label:'勤務形態',icon:'勤',special:'shift-pattern',endpoint:'/api/schedule/shift-pattern-master'},
   /* 測定データの置き場(§9.202、利用者の指示)。**3段あることを図で示す**
      ——「入力したのに完了に出ない」「DBへ同期が何をするのか分からない」
@@ -819,7 +856,7 @@
   {key:'bladeset',label:'刃組',hint:'刃組ガイダンスが使う部材と、このラインの諸元',
    items:['bladesetStandard','bladesetBlade','bladesetSpacer','bladesetRing','bladesetFinger']},
   {key:'schedule',label:'作業スケジュール',hint:'計画の時間計算に使う設定',
-   items:['shiftMaster','loadFactor','stopCategory','stopReason']},
+   items:['shiftMaster','loadFactor','stopCategory','stopReason','stopSub','stopMinutes']},
   {key:'data',label:'データと接続',hint:'どこから読み、どこへ置くか',
    items:['dataSource','queryJoin','measStorage','importBackup','pathConfig']},
   {key:'system',label:'管理',hint:'権限・後片付け・生データ',

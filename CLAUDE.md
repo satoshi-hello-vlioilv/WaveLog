@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（558件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（559件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -254,10 +254,11 @@
 | 設備停止マスタの`[設備名]`は「対象設備」 | `test_stopeq.js` | [決まり](docs/decisions/rules-misc.md) |
 | ③「記録した値」は操業データ項目マスタが決める | `test_recvalues.js` | [§9.242](docs/decisions/9.242.md) |
 
-### マスタ管理の画面（13件）
+### マスタ管理の画面（14件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 設備停止の内訳は「左＝停止内容（分類ごと）／右＝内訳」の2ペイン。時間は札＋スライダーの見本 | `test_stopsubui.js` | [§9.389](docs/decisions/9.389.md) |
 | マスタ管理のJSは「定義／盤／専用画面」の5本。受け渡しは`WL.mm`の1つ | `test_loadorder.py` | [§9.324](docs/decisions/9.324-1.md) |
 | 盤を入れた段は縦積みにする。折り返す横並びのままだと高さが決まらない | `test_rbmodal.js` | [§9.291](docs/decisions/9.291.md) |
 | 器の高さを与えないと窓は中身なりで止まる | `test_rbmodal.js` | [§9.254](docs/decisions/9.254.md) |

@@ -878,7 +878,7 @@ def row_style_delete_route():
 # ========================================================================
 # 設備停止マスタ
 # ========================================================================
-def _stop_reason_entry(r):
+def _stop_reason_entry(r,sub_counts=None):
  # r: 停止理由ID,設備名,分類,名称,標準所要分,色キー,表示順,有効,更新日時,更新者ID,連携機能
  # equipment は保存値そのまま(複数設備はカンマ区切り、全設備は'*'。§9.81)。
  # 画面が書式を解釈し直さずに済むよう、配列と表示用の文字列も添える。
@@ -886,6 +886,10 @@ def _stop_reason_entry(r):
  return {'id':r[0],'equipment':r[1],
          'equipmentList':sr.stop_equipment_list(r[1]),
          'equipmentLabel':sr.stop_equipment_label(r[1]),
+         # 内訳(サブカテゴリ)の件数(§9.389)。**一覧が1度で見分けられる**ように
+         # ここへ載せる——行ごとに聞き直すと設備停止の数だけ往復する。
+         # 予定の登録画面も「サブを選ばせるか」をこの数で決める。
+         'subCount':int((sub_counts or {}).get(int(r[0]),0)),
          'category':r[2],'name':r[3],
          'standardMinutes':r[4],'colorKey':r[5],
          # 連携機能(§9.377)。鍵と**人が読む形**の両方を返す——画面が
@@ -896,7 +900,10 @@ def _stop_reason_entry(r):
 @bp.get('/api/schedule/stop-reason-master')
 def stop_reason_list():
  equipment=str(request.args.get('equipment') or '').strip()
- items=_cfg_read(lambda mc:[_stop_reason_entry(r) for r in sr.stop_reason_rows(mc,equipment or None)])
+ def _fn(mc):
+  counts=sr.stop_sub_counts(mc)
+  return [_stop_reason_entry(r,counts) for r in sr.stop_reason_rows(mc,equipment or None)]
+ items=_cfg_read(_fn)
  # **選べる行き先はサーバーが答える**(§9.163)。マスタ管理の札も、予定の行が
  # 「押せるかどうか」も、この一覧を見て決める。
  return jsonify(ok=True,configured=True,items=items,stale=False,

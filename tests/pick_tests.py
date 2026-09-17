@@ -167,7 +167,7 @@ G['実績'] = ['test_actuals', 'test_opsheet', 'test_eqscope']
 G['刃組'] = ['test_bladeset', 'test_bladeui', 'test_bladepick', 'test_stopeq']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                # §9.389: 設備停止の内訳（サブカテゴリ）と時間の選択肢
-               'test_stopsub',
+               'test_stopsub', 'test_stopsubui',
                'test_shift', 'test_dbequip', 'test_crudroutes', 'test_setpage', 'test_eqstd',
                'test_workdate', 'test_measstore', 'test_roll', 'test_rollio',
                # §9.241 ①: 束ねた見出しの開閉／④: ロールの読み込み経路

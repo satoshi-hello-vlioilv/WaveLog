@@ -671,6 +671,12 @@
    if(!v.trim())return '';
    return v+(col.row&&col.row.outputExists===false?'  （未作成）':'');
   }
+  /* 内訳（サブカテゴリ）の件数（§9.389）。**0は「—」で言う**——`0`のままだと
+     「0件」なのか「まだ数えていない」のか読めない（§CLAUDE 3）。 */
+  if(col.format==='subCount'){
+   const n=Number(v||0);
+   return n>0?`${n}件`:'—';
+  }
   if(col.format==='equipmentTarget'){
    if(!v.trim())return '';
    return v.trim()===EQUIPMENT_ALL?'すべての設備':v.replace(/、/g,',').split(',').map(s=>s.trim()).filter(Boolean).join(' / ');

@@ -3460,6 +3460,365 @@
    <div class="mm-raw-scroll"><table class="mm-raw-table"><thead><tr>${head}</tr></thead><tbody>${body||`<tr><td colspan="${cols.length}">データがありません。</td></tr>`}</tbody></table></div>`;
  }
 
+ /* ============================================================
+    設備停止の内訳（サブカテゴリ）— 分類 → 停止内容 → 内訳の3階層（§9.389）
+    ------------------------------------------------------------
+    利用者の指示「刃組待ちだったら、ゴムリングとフィンガーと刃出しの3種類が
+    あります。そのような種類の違いも後でわかるようにしたいが**同じ刃組という
+    グループには入れておきたい**」。
+
+    **平らな一覧にしない。** 1行＝1内訳の表にすると、「どの停止の内訳か」を
+    行ごとに読み直すことになり、3階層のどこに居るのかが画面から消える。
+    左に**分類で束ねた停止内容**、右に**その内訳**（`op-choice`と同じ2ペインの
+    作法・§9.221 ②）。器→ペイン→一覧の3段に`flex:1;min-height:0`を通して、
+    スクロールは内側だけにする（§9.222 ⑤）。
+
+    **触ったら保存**（§9.113）。内訳は「名前」と「分」の2つしか無いので、
+    行を編集モードへ切り替える手間のほうが大きい。欄を離れた（または Enter）
+    時点で保存し、結果は帯の1箇所（`#ssbState`）で言う（§9.212）。
+    ============================================================ */
+ const ssbState={stops:[],subs:[],picked:0,q:'',minutes:[]};
+ function ssbSay(text,bad){
+  const el=$('#ssbState');if(!el)return;
+  el.textContent=text||'';el.classList.toggle('is-bad',!!bad);
+ }
+ function ssbSubsOf(id){
+  return (ssbState.subs||[]).filter(s=>Number(s.stopReasonId)===Number(id));
+ }
+ function ssbPickedId(){
+  const ids=(ssbState.stops||[]).map(s=>Number(s.id));
+  if(ssbState.picked&&ids.includes(Number(ssbState.picked)))return Number(ssbState.picked);
+  return ids[0]||0;
+ }
+ function ssbStop(id){
+  return (ssbState.stops||[]).find(s=>Number(s.id)===Number(id))||null;
+ }
+ async function loadStopSubMaint(force){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  form.classList.remove('mm-form-compact');
+  if(!list.querySelector('.ssb-edit'))list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
+  try{
+   /* **2つを1度に取る**——別々に待つと、左が出てから右が出るまでのあいだ
+      「内訳が0件」に見える（§9.331 と同じ「いつの分か」の取り違え）。 */
+   const [rs,ss]=await Promise.all([
+    api('/api/schedule/stop-reason-master'),
+    api('/api/schedule/stop-sub-master'),
+   ]);
+   ssbState.stops=(rs.items||[]).map(x=>({...x}));
+   ssbState.subs=(ss.items||[]).map(x=>({...x}));
+   renderStopSub();
+  }catch(e){
+   list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message||String(e))}</div>`;
+  }
+  if(force===true)ssbSay('');
+ }
+ function renderStopSub(){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  const picked=ssbPickedId();
+  ssbState.picked=picked;
+  list.classList.add('is-fill');
+  list.parentElement&&list.parentElement.classList.add('is-fill');
+  form.innerHTML=`<div class="op-bar">`
+   +`<span class="op-bar-note">左が<b>設備停止</b>（分類ごと）、右がその<b>内訳</b>です。`
+   +`内訳は<b>集計のときだけ</b>分かれ、名称（例: 刃組待ち）では1つにまとまります。</span>`
+   +`<span class="op-bar-state" id="ssbState"></span></div>`;
+  list.innerHTML=`<div class="ssb-edit">${ssbStopPaneHtml(picked)}${ssbSubPaneHtml(picked)}</div>`;
+  bindStopSub();
+ }
+ /* 左＝分類で束ねた停止内容。**節の見出しは分類**（3階層の1段目）。
+    分類が空の行は「分類なし」で最後にまとめる（推測させない・§CLAUDE 3）。 */
+ function ssbStopPaneHtml(picked){
+  const q=String(ssbState.q||'').trim().normalize('NFKC').toLowerCase();
+  const all=ssbState.stops||[];
+  const hit=q?all.filter(s=>`${s.name||''} ${s.category||''} ${s.equipmentLabel||''} `
+    .concat(ssbSubsOf(s.id).map(x=>x.name).join(' '))
+    .normalize('NFKC').toLowerCase().includes(q)):all;
+  const cats=[];
+  hit.forEach(s=>{const c=String(s.category||'').trim();if(!cats.includes(c))cats.push(c)});
+  cats.sort((a,b)=>(a?0:1)-(b?0:1));
+  const secs=cats.map(c=>{
+   const rows=hit.filter(s=>String(s.category||'').trim()===c);
+   return `<div class="ssb-cat"><span>${esc(c||'分類なし')}</span><em>${rows.length}件</em></div>`
+    +rows.map(s=>{
+     const n=ssbSubsOf(s.id).length;
+     return `<button type="button" class="ssb-stop${Number(s.id)===Number(picked)?' is-on':''}" data-ssb-stop="${s.id}"
+       title="${esc(s.name||'')}／${esc(s.equipmentLabel||'')}／内訳${n}件">
+      <b>${esc(s.name||'')}</b>
+      <span class="ssb-stop-sub">
+       <span class="ssb-stop-eq">${esc(s.equipmentLabel||'')}</span>
+       <span class="ssb-stop-n${n?'':' is-blank'}">${n?`内訳${n}件`:'内訳なし'}</span>
+      </span>
+     </button>`;
+    }).join('');
+  }).join('');
+  return `<div class="ssb-stops">
+    <div class="ssb-stops-head">
+     <b>設備停止</b><span class="ssb-count">${all.length}件</span>
+     <input type="search" id="ssbSearch" value="${esc(ssbState.q||'')}" placeholder="名称・分類・設備・内訳で絞る" autocomplete="off">
+    </div>
+    <div class="ssb-stop-list">${secs
+      ||`<p class="mm-empty">${q?'絞り込みに当たる設備停止がありません。':'設備停止マスタがまだ空です。「設備停止」タブで登録してください。'}</p>`}</div>
+   </div>`;
+ }
+ /* 右＝その停止の内訳。**親の標準所要分をここに出す**（§CLAUDE 6「出どころを
+    画面に出す」）——内訳の分を空欄にしたとき何分になるのかが、見なくても
+    分かる形にしておく。 */
+ function ssbSubPaneHtml(id){
+  const stop=ssbStop(id);
+  if(!stop)return `<div class="ssb-subs"><p class="mm-empty">左で<b>設備停止</b>を選ぶと、その内訳がここに出ます。</p></div>`;
+  const rows=ssbSubsOf(id);
+  const base=stop.standardMinutes;
+  const blank=(base===null||base===undefined||base==='');
+  const baseText=blank?'未設定':WL.duration.text(Number(base));
+  /* 欄の中は**数だけ**（器が7em なので「1時間30分」は入らない）。読み下した
+     形は欄の外（ヘッダと案内の1行）が言う。 */
+  const baseNum=blank?'':String(base);
+  return `<div class="ssb-subs">
+    <div class="ssb-subs-head">
+     <b class="ssb-title">${esc(stop.name||'')}</b>
+     <span class="ssb-eq">${esc(stop.equipmentLabel||'')}</span>
+     <span class="ssb-base">標準所要分 <b>${esc(baseText)}</b><small>内訳の分を空欄にすると、この時間になります</small></span>
+    </div>
+    <div class="ssb-table" role="table">
+     <div class="ssb-row is-head" role="row"><span>内訳名</span><span>標準所要分</span><span></span><span></span></div>
+     <div class="ssb-table-scroll">${rows.map(r=>ssbRowHtml(r,baseText,baseNum)).join('')
+       ||'<p class="mm-empty">内訳はまだありません。下の欄から足せます。</p>'}</div>
+    </div>
+    <div class="ssb-add">
+     <input type="text" id="ssbNewName" placeholder="内訳名（例: ゴムリング）" autocomplete="off" maxlength="60">
+     <input type="text" id="ssbNewMin" placeholder="分" autocomplete="off" inputmode="decimal"
+       title="この内訳だけ時間が違うときに入れます。空欄なら親の標準所要分です。">
+     <button type="button" id="ssbAdd" class="mm-btn-primary">内訳を追加</button>
+     <small class="ssb-add-note">分を空欄にすると <b>${esc(baseText)}</b>（この設備停止の標準所要分）になります。</small>
+    </div>
+   </div>`;
+ }
+ function ssbRowHtml(r,baseText,baseNum){
+  const m=(r.standardMinutes===null||r.standardMinutes===undefined||r.standardMinutes==='')
+    ?'':String(r.standardMinutes);
+  return `<div class="ssb-row" role="row" data-ssb-id="${r.id}">
+    <input type="text" class="ssb-f" data-ssb-k="name" value="${esc(r.name||'')}" maxlength="60" autocomplete="off">
+    <input type="text" class="ssb-f" data-ssb-k="min" value="${esc(m)}" placeholder="${esc(baseNum)}"
+      title="空欄なら親の標準所要分（${esc(baseText)}）です。" autocomplete="off" inputmode="decimal">
+    <button type="button" class="mm-btn-ghost sm danger" data-ssb-del="${r.id}" title="この内訳を消します">×</button>
+    <span></span>
+   </div>`;
+ }
+ /* 入力した分の読み方。**空欄は「親に任せる」**で、0ではない（§9.231）。
+    読めない字は`undefined`を返し、呼ぶ側が断る。 */
+ function ssbMinutes(raw){
+  const v=String(raw==null?'':raw).trim();
+  if(!v)return null;
+  const n=Number(v);
+  return (Number.isFinite(n)&&n>0)?n:undefined;
+ }
+ async function ssbSave(body,okText){
+  const uid=requireMaintUser();if(uid===null)return false;
+  try{
+   await api('/api/schedule/stop-sub-master'+(body.id?'/update':''),
+     {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({...body,user_id:uid})});
+   await loadStopSubMaint(true);
+   ssbSay(okText||'保存しました');
+   return true;
+  }catch(e){
+   ssbSay(`保存できませんでした: ${e.message||String(e)}`,true);
+   return false;
+  }
+ }
+ function bindStopSub(){
+  const list=$('#masterMaintList');if(!list)return;
+  const search=$('#ssbSearch');
+  if(search){
+   search.oninput=()=>{ssbState.q=search.value;
+    const pane=list.querySelector('.ssb-stops');
+    if(!pane)return;
+    pane.outerHTML=ssbStopPaneHtml(ssbPickedId());
+    bindStopSub();
+    const s2=$('#ssbSearch');
+    if(s2){try{s2.focus({preventScroll:true})}catch(err){WL.quiet.note('絞り込み欄へ戻せない（打ち直せる）',err);s2.focus()}
+     s2.setSelectionRange(s2.value.length,s2.value.length)}
+   };
+  }
+  /* 左を押したとき**右だけ差し替える**（§9.226 ①）——一覧を作り直すと
+     `scrollTop`が0へ戻り、上から数え直すことになる。 */
+  list.querySelectorAll('[data-ssb-stop]').forEach(btn=>{
+   btn.onclick=()=>{
+    const id=Number(btn.dataset.ssbStop);
+    if(Number(ssbState.picked)===id)return;
+    ssbState.picked=id;
+    const pane=list.querySelector('.ssb-subs');
+    if(!pane){renderStopSub();return}
+    pane.outerHTML=ssbSubPaneHtml(id);
+    list.querySelectorAll('[data-ssb-stop]').forEach(b=>
+      b.classList.toggle('is-on',Number(b.dataset.ssbStop)===id));
+    bindStopSub();
+   };
+  });
+  list.querySelectorAll('.ssb-row[data-ssb-id] .ssb-f').forEach(inp=>{
+   const row=inp.closest('.ssb-row');
+   const id=Number(row.dataset.ssbId);
+   const before=inp.value;
+   inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();inp.blur()}};
+   inp.onchange=async()=>{
+    const cur=(ssbState.subs||[]).find(s=>Number(s.id)===id);
+    if(!cur)return;
+    const name=inp.dataset.ssbK==='name'?inp.value.trim():String(cur.name||'');
+    const minRaw=inp.dataset.ssbK==='min'?inp.value
+      :(cur.standardMinutes==null?'':String(cur.standardMinutes));
+    const min=ssbMinutes(minRaw);
+    if(min===undefined){ssbSay('分は0より大きい数で入れてください。',true);inp.value=before;return}
+    if(!name){ssbSay('内訳名を空にはできません。',true);inp.value=before;return}
+    await ssbSave({id,stopReasonId:cur.stopReasonId,name,standardMinutes:min},
+                  `「${name}」を保存しました`);
+   };
+  });
+  const add=$('#ssbAdd');
+  if(add){
+   add.onclick=async()=>{
+    const nameEl=$('#ssbNewName'),minEl=$('#ssbNewMin');
+    const name=String(nameEl&&nameEl.value||'').trim();
+    if(!name){ssbSay('内訳名を入れてください。',true);nameEl&&nameEl.focus();return}
+    const min=ssbMinutes(minEl&&minEl.value);
+    if(min===undefined){ssbSay('分は0より大きい数で入れてください。',true);minEl&&minEl.focus();return}
+    if(await ssbSave({stopReasonId:ssbPickedId(),name,standardMinutes:min},`「${name}」を足しました`)){
+     const again=$('#ssbNewName');
+     if(again){again.value='';try{again.focus({preventScroll:true})}catch(err){WL.quiet.note('入力欄へ戻せない（押し直せる）',err)}}
+     const m2=$('#ssbNewMin');if(m2)m2.value='';
+    }
+   };
+  }
+  list.querySelectorAll('[data-ssb-del]').forEach(btn=>{
+   btn.onclick=async()=>{
+    const id=Number(btn.dataset.ssbDel);
+    const cur=(ssbState.subs||[]).find(s=>Number(s.id)===id);
+    if(!cur)return;
+    if(!(await confirmModal(`「${cur.name}」を内訳から消しますか？\n`
+      +'これまでに入れた予定の内訳の記録は、その予定の中に残ります。')))return;
+    const uid=requireMaintUser();if(uid===null)return;
+    try{
+     await api('/api/schedule/stop-sub-master/delete',
+       {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({id,user_id:uid})});
+     await loadStopSubMaint(true);
+     ssbSay(`「${cur.name}」を消しました`);
+    }catch(e){ssbSay(`消せませんでした: ${e.message||String(e)}`,true)}
+   };
+  });
+ }
+
+ /* ============================================================
+    設備停止の時間 — 予定へ入れるときに選ばせる分（§9.389）
+    ------------------------------------------------------------
+    利用者の指示「時間のマスタは全体で共通、時間の選択マスタとしては
+    機能させる。数値として扱うものなので**あくまで選択肢を作るマスタ**。
+    登録時には、**選択肢＋スライダー**で時間を変更して登録もできる」。
+
+    持つのは「分」だけなので、**表にしない**——1列の表は見出しのぶんだけ
+    場所を取って、何も語らない。札（チップ）を並べて、**そのまま予定の
+    登録画面に出る形**を見せる（§CLAUDE 「選ばせるものは選ぶ前に見える」）。
+    スライダーの両端は**この一覧の最小〜最大**なので、下に同じ目盛りを
+    出して「ここまで動かせる」を先に見せる（§9.163: 答えるのはサーバー）。
+    ============================================================ */
+ const smnState={items:[],slider:null};
+ function smnSay(text,bad){
+  const el=$('#smnState');if(!el)return;
+  el.textContent=text||'';el.classList.toggle('is-bad',!!bad);
+ }
+ async function loadStopMinutesMaint(){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  form.classList.remove('mm-form-compact');
+  if(!list.querySelector('.smn-wrap'))list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
+  try{
+   const r=await api('/api/schedule/stop-minutes-master');
+   smnState.items=(r.items||[]).map(x=>({...x}));
+   smnState.slider=r.slider||null;
+   renderStopMinutes();
+  }catch(e){
+   list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message||String(e))}</div>`;
+  }
+ }
+ function renderStopMinutes(){
+  const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  list.classList.remove('is-fill');
+  list.parentElement&&list.parentElement.classList.remove('is-fill');
+  const items=smnState.items||[];
+  const sl=smnState.slider;
+  form.innerHTML=`<div class="op-bar">`
+   +`<span class="op-bar-note">作業スケジュールへ設備停止を入れるときに`
+   +`<b>選ばせる時間</b>です。<b>全設備で共通</b>。</span>`
+   +`<span class="op-bar-state" id="smnState"></span></div>`;
+  list.innerHTML=`<div class="smn-wrap">
+    <div class="smn-card">
+     <div class="smn-card-head"><b>選択肢</b><span class="smn-count">${items.length}件</span>
+      <small>予定の登録画面には、この並び（分の小さい順）でそのまま出ます。</small></div>
+     <div class="smn-chips">${items.map(r=>
+       `<span class="smn-chip"><b>${esc(WL.duration.text(Number(r.minutes)))}</b>`
+       +`<button type="button" data-smn-del="${r.id}" title="この選択肢を消します">×</button></span>`).join('')
+       ||'<p class="mm-empty">選択肢がまだありません。下の欄から足せます。</p>'}</div>
+     <div class="smn-add">
+      <input type="text" id="smnNew" placeholder="分（例: 45）" autocomplete="off" inputmode="decimal">
+      <button type="button" id="smnAdd" class="mm-btn-primary">選択肢を追加</button>
+     </div>
+    </div>
+    <div class="smn-card">
+     <div class="smn-card-head"><b>スライダーの範囲</b>
+      <small>選択肢から選んだあと、登録の画面でこの範囲だけ細かく直せます。</small></div>
+     ${sl?`<div class="smn-preview">
+       <div class="smn-range"><span>${esc(WL.duration.text(sl.min))}</span>
+        <input type="range" min="${sl.min}" max="${sl.max}" step="${sl.step}" value="${sl.min}" disabled aria-label="スライダーの範囲の見本">
+        <span>${esc(WL.duration.text(sl.max))}</span></div>
+       <p class="smn-note"><b>${esc(WL.duration.text(sl.min))}</b> 〜 <b>${esc(WL.duration.text(sl.max))}</b>を
+        <b>${sl.step}分きざみ</b>で動かせます。両端は<b>上の選択肢そのもの</b>なので、
+        もっと長い時間まで動かしたいときは、その時間を選択肢に足してください。</p>
+      </div>`
+      :`<p class="mm-empty">選択肢が1件以下のあいだは、スライダーは出しません（動かせる幅がありません）。</p>`}
+    </div>
+   </div>`;
+  bindStopMinutes();
+ }
+ function bindStopMinutes(){
+  const list=$('#masterMaintList');if(!list)return;
+  const add=$('#smnAdd');
+  if(add){
+   add.onclick=async()=>{
+    const el=$('#smnNew');
+    const n=Number(String(el&&el.value||'').trim());
+    if(!(Number.isFinite(n)&&n>0)){smnSay('分は0より大きい数で入れてください。',true);el&&el.focus();return}
+    const uid=requireMaintUser();if(uid===null)return;
+    try{
+     await api('/api/schedule/stop-minutes-master',
+       {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({minutes:n,user_id:uid})});
+     await loadStopMinutesMaint();
+     smnSay(`${WL.duration.text(n)}を足しました`);
+     const again=$('#smnNew');
+     if(again){again.value='';try{again.focus({preventScroll:true})}catch(err){WL.quiet.note('入力欄へ戻せない（押し直せる）',err)}}
+    }catch(e){smnSay(`足せませんでした: ${e.message||String(e)}`,true)}
+   };
+  }
+  const el=$('#smnNew');
+  if(el)el.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();add&&add.click()}};
+  list.querySelectorAll('[data-smn-del]').forEach(btn=>{
+   btn.onclick=async()=>{
+    const id=Number(btn.dataset.smnDel);
+    const cur=(smnState.items||[]).find(x=>Number(x.id)===id);
+    if(!cur)return;
+    const label=WL.duration.text(Number(cur.minutes));
+    if(!(await confirmModal(`「${label}」を選択肢から消しますか？\n`
+      +'これまでに入れた予定の時間は変わりません（消えるのは選択肢だけです）。')))return;
+    const uid=requireMaintUser();if(uid===null)return;
+    try{
+     await api('/api/schedule/stop-minutes-master/delete',
+       {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({id,user_id:uid})});
+     await loadStopMinutesMaint();
+     smnSay(`${label}を消しました`);
+    }catch(e){smnSay(`消せませんでした: ${e.message||String(e)}`,true)}
+   };
+  });
+ }
+
 
  /* 盤の登録簿へ名乗る（§9.324 R3）。 */
  WL.mm.registerSpecial('meas-storage',{load:loadMeasStorageMaint});
@@ -3472,5 +3831,7 @@
  WL.mm.registerSpecial('cleanup',{load:loadCleanupMaint});
  WL.mm.registerSpecial('raw-table',{load:loadRawTableMaint});
  WL.mm.registerSpecial('presence',{load:loadPresenceMaint});
+ WL.mm.registerSpecial('stop-sub',{load:loadStopSubMaint});
+ WL.mm.registerSpecial('stop-minutes',{load:loadStopMinutesMaint});
  Object.assign(WL.mm,{dropRetiredTable,loadMasterTableCatalog,mtState});
 })();
