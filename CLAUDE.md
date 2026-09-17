@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（577件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（582件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -207,7 +207,7 @@
 | 作り直せるファイルの置き場は`paths.work_dir()`が決める | `test_localwork.py` | [§9.109](docs/decisions/9.109.md) |
 | 参照データを増やすときは`データソースマスタ`の1行 | `test_datasource.py` | [決まり](docs/decisions/rules-misc.md) |
 
-### APIとルート（18件）
+### APIとルート（19件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -216,6 +216,7 @@
 | 権限区分（開発者／メンテナンス者／一般ユーザー）は「何を触れるか」と別の軸 | — | [§9.272](docs/decisions/9.272.md) |
 | マスタのAPIは11の段（1段20ルートまで）。Blueprintは`_base.py`の1つのまま | `test_routesplit.py` | [§9.333](docs/decisions/9.333.md) |
 | 画面から来るJSONは`body(spec)`で読む。鍵は必ず宣言する | `test_body.py` | [§9.330](docs/decisions/9.330.md) |
+| 「送られてきた鍵だけ書く」更新は`sets`/`vals`を組み立てる。`if in x`で分岐を2の冪に増やさない | `test_measitems.js` | [§9.392](docs/decisions/9.392.md) |
 | ルートの「失敗の受け方」は`api_guard`の1箇所 | `test_apiguard.py` | [§9.324](docs/decisions/9.324-1.md) |
 | 区分は4つ。「設備作業者」はマスタを出さない。段は`マスタ編集`の1列 | `test_roleperm.py`・`test_roleui.js` | [§9.163](docs/decisions/9.163.md) |
 | データ一覧の「0件」は「無い」とは限らない | `test_recperm.js` | [§9.107](docs/decisions/9.107.md) |
@@ -230,7 +231,7 @@
 | 編集可能モード/閲覧モード/スケジュールモード | `test_modeguard.py` | [決まり](docs/decisions/rules-misc.md) |
 | 作業スケジュール表の「見えるもの」はモードで変えない | `test_scmodecols.js` | [§9.246](docs/decisions/9.246.md) |
 
-### マスタ（サーバー側）（22件）
+### マスタ（サーバー側）（23件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -244,6 +245,7 @@
 | マスタ1表の列定義は`TableDef`の1箇所 | `test_tabledef.py` | [§9.324](docs/decisions/9.324-1.md) |
 | 測定画面から選択肢マスタへ足せる。既定は足せない | `test_opinline.js` | [§9.323](docs/decisions/9.323-1.md) |
 | 設備の有効・無効は「機能ごと」。保存値は「使わない機能」 | `test_eqfeature.js` | [§9.132](docs/decisions/9.132.md) |
+| 入力内容も設備ごとに出し分ける。保存値は「使わない入力内容」・**すべては外せない**（400で断り、行き先まで言う） | `test_measitems.js` | [§9.392](docs/decisions/9.392.md) |
 | 移行済みの旧マスタは「無ければ作らない」 | `test_rawmaster.py` | [§9.255](docs/decisions/9.255.md) |
 | 設備マスタは表が主役・修正はモーダル | — | [§9.250](docs/decisions/9.250.md) |
 | 既定の品質データ結合は解除できる | — | [§9.194](docs/decisions/9.194.md) |
@@ -257,12 +259,13 @@
 | 設備停止マスタの`[設備名]`は「対象設備」 | `test_stopeq.js` | [決まり](docs/decisions/rules-misc.md) |
 | ③「記録した値」は操業データ項目マスタが決める | `test_recvalues.js` | [§9.242](docs/decisions/9.242.md) |
 
-### マスタ管理の画面（15件）
+### マスタ管理の画面（16件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 設備停止の内訳は「左＝停止内容（分類ごと）／右＝内訳」の2ペイン。時間は札＋スライダーの見本 | `test_stopsubui.js` | [§9.389](docs/decisions/9.389.md) |
 | 2段目を作る道は1段目の行の「＋ 下へ」。**足す先を先に言う**（押してから気づかせない） | `test_stopsubui.js` | [§9.390](docs/decisions/9.390.md) |
+| 入切の札（`check-set`）の器は横いっぱい。`mmFieldSize()`の並びに載せないと1列に縦積みになる | `test_measitems.js` | [§9.392](docs/decisions/9.392.md) |
 | マスタ管理のJSは「定義／盤／専用画面」の5本。受け渡しは`WL.mm`の1つ | `test_loadorder.py` | [§9.324](docs/decisions/9.324-1.md) |
 | 盤を入れた段は縦積みにする。折り返す横並びのままだと高さが決まらない | `test_rbmodal.js` | [§9.291](docs/decisions/9.291.md) |
 | 器の高さを与えないと窓は中身なりで止まる | `test_rbmodal.js` | [§9.254](docs/decisions/9.254.md) |
@@ -397,7 +400,7 @@
 | 「どれが仕掛でどれが品質か」はキーでなく`データソースマスタ`の`[役割]` | `test_datasource.py`・`test_dskeylint.py`・`test_dsnav.js` | [決まり](docs/decisions/rules-misc.md) |
 | 仕掛から消えたロットは実績で突き合わせる。在席は「仕掛にも在る列」だけで見る | `test_actualmatch.py` | [§9.364](docs/decisions/9.364.md) |
 
-### 測定画面（87件）
+### 測定画面（88件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -429,6 +432,7 @@
 | 「誰が・どの端末で」は登録と更新を分けて持つ | `test_audittrail.js` | [§9.180](docs/decisions/9.180.md) |
 | 測定画面は「準備→測定→確認」の3段 | `test_msteps.js` | [§9.123](docs/decisions/9.123.md) |
 | 入力内容の「母材」と「丈毎」は**別々の項目**。出すのは選んだ側のカード1枚だけ（§9.160を撤回） | `test_msteps.js` | [§9.391](docs/decisions/9.391.md) |
+| **値が入っている項目は、設備で外してあっても伏せない**。答えは`hiddenItems()`の1箇所（選択肢もチップも同じ） | `test_measitems.js` | [§9.392](docs/decisions/9.392.md) |
 | 入力内容の語彙は`WL.measureItem.ALL`の1箇所。画面の`#measureType`とは別に持つ | `test_msteps.js` | [§9.391](docs/decisions/9.391.md) |
 | 測定値の器を持たない鍵は**名前で避けず、器の有無で見る**（`m.measurements[key]`） | `test_msteps.js` | [§9.391](docs/decisions/9.391.md) |
 | 必須に数えるのは**いま出している面の欄だけ**（取りこぼしは完了前の確認が見る） | `test_msteps.js`・`test_opmother.js` | [§9.391](docs/decisions/9.391.md) |

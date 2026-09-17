@@ -187,8 +187,12 @@ G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 't
                # §9.285 ②③④: 既定の中身を写す・書式・候補に無い道の印
                'test_rbcatalog',
                # §9.302: 設備の有効・無効を機能別に（測定・作業予定・帳票）
-               'test_eqfeature']
+               'test_eqfeature',
+               # §9.392: 設備ごとに使う入力内容
+               'test_measitems']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
+             # §9.392: 設備ごとに使う入力内容（選択肢とチップから伏せる）
+             'test_measitems',
              # §9.286 ⑥: 未入力・未選択の配色と、増やした色
              'test_opblanktint',
              'test_master', 'test_waiting', 'test_mcore', 'test_msteps',
@@ -373,6 +377,8 @@ RULES = [
                                      'test_recperm', 'test_reccols', 'test_lcpanel',
                                      # §9.302: 使用設備の候補を「測定」で絞る
                                      'test_eqfeature',
+                                     # §9.392: 設備ごとに使う入力内容
+                                     'test_measitems',
                                      'test_audittrail', 'test_recdel',
                                      # §9.317: 参照データが読めなくても測定は始められる
                                      'test_ctxfail',

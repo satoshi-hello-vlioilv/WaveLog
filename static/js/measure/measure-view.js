@@ -372,6 +372,40 @@ function rightLayoutFor(type){
  if(WL.measureItem.isPiece(type))return 'piece';
  return 'measure';
 }
+/* ---------- 設備で使わない入力内容を伏せる（§9.392、利用者の指示） ----------
+   「測定画面の入力内容を、設備ごとに使う使わないと切り替えられるように」
+
+   **伏せるかどうかの答えは`WL.measureReview.hiddenItems()`の1箇所**
+   （設備マスタの設定 ＋ その記録に値が入っているか）。ここは並べるだけ。
+
+   **選んでいた項目が伏せられたら、残っている先頭へ移す**——`select.value`へ
+   候補に無い値を入れると空文字になり、**どの項目でもない状態**で開く
+   （§9.204。`optionFill()`が候補に無い現在値を黙って捨てるのと同じ罠）。 */
+function applyMeasureItemOptions(){
+ const el=$('#measureType');if(!el)return;
+ const all=WL.measureItem.ALL||[];
+ const hidden=(WL.measureReview&&typeof WL.measureReview.hiddenItems==='function')
+   ?WL.measureReview.hiddenItems():new Set();
+ const show=all.filter(n=>!hidden.has(n));
+ if(!show.length)return;   /* 全部伏せる設定は作れない（サーバーが断る）が、念のため */
+ const now=WL.measureItem.normalize(el.value||S.measure?.settings?.measureType||'');
+ const want=show.indexOf(now)>=0?now:show[0];
+ /* **同じ顔ぶれなら作り直さない**——選択肢を毎回組み直すと、開いている
+    リストのスクロール位置が先頭へ戻る。 */
+ const cur=[...el.options].map(o=>o.text.trim()).join('/');
+ if(cur!==show.join('/')){
+  el.innerHTML=show.map(n=>`<option>${esc(n)}</option>`).join('');
+  /* 器の高さは**選択肢の数ぶん**（§9.125）——7行固定だと空白が並ぶ。 */
+  el.size=show.length;
+ }
+ if(el.value!==want){
+  el.value=want;
+  if(S.measure)S.measure.settings.measureType=want;
+  el.dispatchEvent(new Event('change',{bubbles:true}));
+ }else if(S.measure&&S.measure.settings.measureType!==want){
+  S.measure.settings.measureType=want;
+ }
+}
 function applyRightLayout(){
  if(!S.measure)return;
  const type=$('#measureType').value, layout=rightLayoutFor(type), pane=$('.right-pane');
@@ -1519,6 +1553,7 @@ function lockCounts(){const has=Object.values(S.measure.measurements).some(a=>a.
 WL.measureView={
  ensureMeasureShape,blankMeasure,blankProductRow,collect,
  renderMeasurement,renderProductPanel,renderQualityGradePanel,renderRecordedValues,
+ applyMeasureItemOptions,
  renderCourseHierarchy,renderResidualCourseEverywhere,paintQualityInfo,
  refreshScheduleInfo,applyRightLayout,
  updateValidationVisuals,showValidationMessage,activeRequiredControls,

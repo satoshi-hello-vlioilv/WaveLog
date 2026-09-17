@@ -132,6 +132,79 @@ def equipment_allows(disabled_value,feature):
  return f not in equipment_disabled_features(disabled_value)
 
 
+# ---------------------------------------------------------------------------
+# 設備ごとに使う「入力内容」（§9.392、利用者の指示「測定画面の入力内容を、
+# 設備ごとに使う使わないと切り替えられるようにしてください」）
+# ---------------------------------------------------------------------------
+# **保存するのは「使わない入力内容」のほう**（`[無効入力内容]`。カンマ区切り）。
+# `[無効機能]`（§9.302）と同じ作法で、空欄＝すべて使える。
+#  ・**触っていない現場は1つも変わらない**
+#  ・**あとで入力内容を1つ足しても、既存の設備で黙って無効にならない**
+#
+# 語彙は**画面の`WL.measureItem.ALL`と同じ綴り・同じ並び**。ここが保存値
+# なので、綴りを変えないこと（変えると保存済みの設定が「知らない項目」に
+# なる・§9.204）。
+MEASURE_ITEM_DISABLED_COLUMN='無効入力内容'
+# (綴り, 札の字, 添え書き)。並びは測定画面の一覧と同じ（決める順ではなく
+# **画面と同じ順**——マスタで並べ替えると、どれを外したのか探すことになる）。
+MEASURE_ITEMS=(
+ ('母材','母材','ロットに1つの手入力（元幅・全長・オフセット）'),
+ ('丈毎','丈毎','縦割りした丈ごとの手入力（長さ・肉厚・揃い）'),
+ ('板厚','板厚','丈位置ごとに3点（OS・CL・DS）'),
+ ('板幅','板幅','条ごと'),
+ ('ラテラルボー','ラテラルボー','条ごと'),
+ ('バリ','バリ','条ごと'),
+ ('テレスコープ','テレスコープ','条ごと'),
+ ('巻ずれ','巻ずれ','条ごと'),
+ ('フラットネス','フラットネス','条ごと（〇/△/×）'),
+)
+MEASURE_ITEM_KEYS=tuple(k for k,_l,_n in MEASURE_ITEMS)
+
+
+def normalize_measure_items(value):
+ """入力を保存値（**使わない入力内容**のカンマ区切り）へ。
+
+ **知らない綴りは捨てる**（`normalize_equipment_features`と同じ理由）。
+ **全部を外すのは許さない**のはここではなく呼び出し側の役目——この関数は
+ 「保存できる形へ直す」だけで、断りの文はルートが出す（§9.324 の`api_guard`と
+ 同じ分担）。
+ """
+ if value is None:return ''
+ if isinstance(value,(list,tuple,set)):items=list(value)
+ else:items=str(value).replace('、',',').split(',')
+ out=[]
+ for x in items:
+  k=str(x or '').strip()
+  if k in MEASURE_ITEM_KEYS and k not in out:out.append(k)
+ return ','.join(k for k in MEASURE_ITEM_KEYS if k in out)
+
+
+def equipment_disabled_measure_items(value):
+ """保存値 → 使わない入力内容の集合。"""
+ return set(normalize_measure_items(value).split(',')) - {''}
+
+
+def read_equipment_measure_items_off(c,equipment):
+ """設備名から「使わない入力内容」を引く。**読み取り専用接続でも使う**
+    （測定画面の`/api/measurement/context`が呼ぶ）。
+    列が無い・読めないときは**空**（＝すべて使える）を返す——伏せる側へ
+    倒すと、設定していない現場で項目が消える。
+ """
+ name=normalize_equipment_name(equipment)
+ if not name or EQUIPMENT_MASTER_TABLE not in tables(c):return []
+ try:
+  if MEASURE_ITEM_DISABLED_COLUMN not in set(cols(c,EQUIPMENT_MASTER_TABLE)):return []
+  cur=c.cursor()
+  cur.execute(f'SELECT {qi("設備名")},{qi(MEASURE_ITEM_DISABLED_COLUMN)},{qi("有効")} '
+              f'FROM {qi(EQUIPMENT_MASTER_TABLE)}')
+  for r in cur.fetchall():
+   active=True if r[2] is None else bool(r[2])
+   if active and normalize_equipment_name(r[0])==name:
+    return [k for k in MEASURE_ITEM_KEYS if k in equipment_disabled_measure_items(r[1])]
+ except Exception as _e:quiet('列を読めない（入力内容はすべて使えるものとして扱う）',_e)
+ return []
+
+
 def normalize_max_line_speed(value):
  """入力を保存値へ。空欄・数にならないもの・0以下はNone(=未設定)。"""
  s=str(value if value is not None else '').strip()
@@ -199,7 +272,8 @@ def ensure_equipment_master_table(c):
   add_missing_columns(c,EQUIPMENT_MASTER_TABLE,
                       ((MAX_STRIPS_COLUMN,'INTEGER'),(EQUIPMENT_KIND_COLUMN,'TEXT'),
                        (STANDARD_MINUTES_COLUMN,'REAL'),(MAX_LINE_SPEED_COLUMN,'REAL'),
-                       (EQUIPMENT_DISABLED_COLUMN,'TEXT')))
+                       (EQUIPMENT_DISABLED_COLUMN,'TEXT'),
+                       (MEASURE_ITEM_DISABLED_COLUMN,'TEXT')))
  except Exception as _e:quiet('後から足した列を用意できない（在る列だけで読む）',_e)
  ensure_audit_columns(c,EQUIPMENT_MASTER_TABLE)
  return created
@@ -244,12 +318,13 @@ def equipment_master_rows(c,feature=None):
  （§9.302）——名前の綴り寄せ・改名の追跡・存在確認では渡さないこと。
  絞ると、その機能を切った設備のロールや過去の設定が引けなくなる。
 
- 戻り値の末尾に`[無効機能]`が付く（既存の添字は1つも動かさない）。"""
+ 戻り値の末尾に`[無効機能]`・`[無効入力内容]`が付く（既存の添字は1つも
+ 動かさない。§9.392で1つ足した）。"""
  ensure_equipment_master_table(c)
  cur=c.cursor()
  # 全行取得後にPython側で有効判定する。
  cur.execute('SELECT [設備ID],[設備名],[表示順],[有効],[更新日時],[更新者ID],[最大条数],[区分],[標準時間分],'
-             '[最大ライン速度],[無効機能] FROM [設備マスタ] ORDER BY [表示順],[設備名]')
+             '[最大ライン速度],[無効機能],[無効入力内容] FROM [設備マスタ] ORDER BY [表示順],[設備名]')
  rows=[]
  for r in cur.fetchall():
   active=True if r[3] is None else bool(r[3])

@@ -653,14 +653,22 @@
      一覧で知りたいのは「どこに出るか」。全部使えるのがふつうなので、そこは
      1語で済ませて（「すべて」）、外してある行だけが目に留まるようにする。
      **0個は「なし」と書き切る**（空欄にすると「まだ決めていない」と読める・§4）。 */
-  if(col.format==='equipmentFeatures'){
-   const all=(maintState.meta&&Array.isArray(maintState.meta.equipmentFeatures))?maintState.meta.equipmentFeatures:[];
+  /* **`check-set`の一覧は1つの書き方**（§9.392で2つ目が増えたので束ねた）。
+     語彙は`meta[metaKey]`、保存値は行の`rowKey`（「使わないほう」）。 */
+  const checkSetSummary=(metaKey,rowKey,noneWord)=>{
+   const all=(maintState.meta&&Array.isArray(maintState.meta[metaKey]))?maintState.meta[metaKey]:[];
    if(!all.length)return '';
-   const off=new Set(Array.isArray(col.row&&col.row.disabledFeatures)?col.row.disabledFeatures
+   const off=new Set(Array.isArray(col.row&&col.row[rowKey])?col.row[rowKey]
     :String(v).split(',').map(t=>t.trim()).filter(Boolean));
    const on=all.filter(o=>!off.has(o.key));
-   return !on.length?'なし（どこにも出ません）':on.length===all.length?'すべて':on.map(o=>o.label).join(' / ');
-  }
+   return !on.length?noneWord:on.length===all.length?'すべて':on.map(o=>o.label).join(' / ');
+  };
+  if(col.format==='equipmentFeatures')
+   return checkSetSummary('equipmentFeatures','disabledFeatures','なし（どこにも出ません）');
+  /* 使う入力内容（§9.392）。**「なし」は作れない**（サーバーが断る）が、
+     古いデータで全部外れていることはあり得るので言葉は用意しておく。 */
+  if(col.format==='measureItems')
+   return checkSetSummary('measureItems','disabledMeasureItems','なし（測定できません）');
   /* 設定した場所に実物があるか。設定と実態のずれは、値だけ眺めていても
      気づけない(「登録したのに動かない」の大半がこれ)。 */
   if(col.format==='rneState'){
@@ -871,7 +879,12 @@
    /* 見て選ぶ欄は横いっぱい（札が折り返さないように・§9.249 ③）。 */
    /* §9.311 D/E 幅・高さは「− 数 ＋」1つに畳んだので、行を丸ごと使わない
       （利用者の指示「無駄にスペースを使っている部分は節約」）。 */
-   'choice-card':'full','span-grid':'md','rows-pick':'md','tag-set':'full'};
+   /* **入切の札も横いっぱい**（§9.392）——`check-set`だけこの並びから
+      漏れており、器が210pxで止まって**札が1列に縦積み**になっていた
+      （実測: 使える機能3枚で3段、入力内容9枚で9段・高さ560px）。
+      器を728pxまで広げれば3列で収まる。 */
+   'choice-card':'full','span-grid':'md','rows-pick':'md','tag-set':'full',
+   'check-set':'full'};
  function mmFieldSize(f){
   if(f.size)return f.size;
   const t=String(f.type||'text');
@@ -1119,7 +1132,14 @@
       +`<span class="mm-card-txt"><b>${esc(o.label)}</b>`
       +`${o.note?`<small>${esc(o.note)}</small>`:''}</span></button>`;
     }).join('');
-    return `<div class="mm-field mm-field-area mm-cards" data-checkset-box="${f.k}">${fieldLabelHtml(f)}
+    /* **一言は定義が持てる**（§9.392）——同じ箱を「機能」と「入力内容」で
+       使い回すので、文言を`機能`に固定すると片方が別のことを言う。
+       `{names}`は札の名前に置き換える。 */
+    const w=f.checkWords||{};
+    return `<div class="mm-field mm-field-area mm-cards" data-checkset-box="${f.k}"
+      data-checkset-all="${esc(w.all||'すべての機能で使えます（既定）。')}"
+      data-checkset-none="${esc(w.none||'どの機能でも使いません。設備マスタには残りますが、{names}のどこにも出ません。')}"
+      data-checkset-some="${esc(w.some||'{names}では使いません。')}">${fieldLabelHtml(f)}
       <div class="mm-card-row">${cards}</div>
       <input type="hidden" data-field="${f.k}" value="${esc([...off].join(','))}">
       <small class="mm-field-hint" data-checkset-note="${f.k}"></small>
@@ -1788,10 +1808,11 @@
      const on=btns.length-off.length;
      /* **呼び名は札から読む**（§9.163）——文言へ書き写すと、機能を1つ
         足したり呼び名を変えたときに、ここだけ古いことを言い続ける。 */
+     const say=(t,list)=>String(t||'').replace('{names}',names(list));
      note.textContent=!btns.length?''
-      :on===btns.length?'すべての機能で使えます（既定）。'
-      :on===0?`どの機能でも使いません。設備マスタには残りますが、${names(btns)}のどこにも出ません。`
-      :`${names(off)}では使いません。`;
+      :on===btns.length?say(box.dataset.checksetAll,btns)
+      :on===0?say(box.dataset.checksetNone,btns)
+      :say(box.dataset.checksetSome,off);
      note.classList.toggle('is-warn',on===0);
     }
    };

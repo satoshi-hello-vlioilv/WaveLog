@@ -13,7 +13,9 @@ from .body import body, flag, any_
 # read_operator_names が今もここに当たり、廃止した経路が現役だと誤読される
 # (§9.87 で「同じ判定が2箇所に散って実際に壊れた」のと同じ入口)。
 # ensure_* は /api/measurement/diagnose が今も表の作成を確かめるので残る。
-from ..repositories.master_repo import read_equipment_max_strips, read_equipment_kind, STRIP_LIMIT, DEFAULT_MAX_STRIPS
+from ..repositories.master_repo import (read_equipment_max_strips, read_equipment_kind,
+                                        read_equipment_measure_items_off, MEASURE_ITEM_KEYS,
+                                        STRIP_LIMIT, DEFAULT_MAX_STRIPS)
 from ..repositories.master_repo import choice_usage_for, choice_usage_bump
 from .. import records_export
 from ..logging_setup import app_logger
@@ -25,7 +27,7 @@ bp=Blueprint('measurement',__name__)
 def measurement_context():
  try:
   lot=request.args.get('lot','').strip();equipment=request.args.get('equipment','').strip()
-  result={'quality':[],'operators':[],'inspectors':[],'packers':[],'thickness_gauges':[],'width_gauges':[],'inner_diameters':[],'spools':[],'burr_types':[],'coil_stops':[],'max_strips':DEFAULT_MAX_STRIPS,'strip_limit':STRIP_LIMIT,'equipment_kind':'','diagnostics':{'master_path':str(DBS['MASTER']['path']),'master_exists':path_exists_safe(DBS['MASTER']['path']),'tables':[],'matches':{}}}
+  result={'quality':[],'operators':[],'inspectors':[],'packers':[],'thickness_gauges':[],'width_gauges':[],'inner_diameters':[],'spools':[],'burr_types':[],'coil_stops':[],'max_strips':DEFAULT_MAX_STRIPS,'strip_limit':STRIP_LIMIT,'equipment_kind':'','measure_items_off':[],'measure_items':list(MEASURE_ITEM_KEYS),'diagnostics':{'master_path':str(DBS['MASTER']['path']),'master_exists':path_exists_safe(DBS['MASTER']['path']),'tables':[],'matches':{}}}
   def norm(v):return str(v or '').strip()
   def matching_table(ts,aliases):
    for a in aliases:
@@ -166,6 +168,12 @@ def measurement_context():
     # (§9.157)。未設定は''で返し、画面側は「板」と決め付けない。
     result['equipment_kind']=read_equipment_kind(c,equipment)
     result['diagnostics']['matches']['設備マスタ_区分']={'equipment':equipment,'value':result['equipment_kind']}
+    # この設備で**使わない入力内容**(設備マスタ。§9.392)。**ここへ相乗りさせる**
+    # ——選択肢と同時に要るので、別のAPIにすると「一覧は出たが出し分けは
+    # 前のまま」という瞬間ができる(上の choice_usage と同じ理由)。
+    result['measure_items_off']=read_equipment_measure_items_off(c,equipment)
+    result['diagnostics']['matches']['設備マスタ_無効入力内容']={
+      'equipment':equipment,'value':result['measure_items_off']}
     # 設備ごとの使用回数(§9.133)。**ここへ相乗りさせる**——選択肢を並べる
     # ためだけに往復を増やさない(選択肢そのものと同時に要るデータなので、
     # 別のAPIにすると「選択肢は出たが並びは前のまま」という瞬間ができる)。

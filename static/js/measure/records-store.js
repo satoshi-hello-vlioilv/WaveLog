@@ -169,6 +169,13 @@ function applyContextChoices(x){
     **未設定('')はそのまま持つ**——「板」と決め付けると、コイルの設備で
     出どころの分からない公差が並ぶ。 */
  if(typeof x.equipment_kind==='string')m.settings.equipmentKind=x.equipment_kind;
+ /* この設備で**使わない入力内容**(設備マスタ。§9.392)。**配列が来たときだけ
+    差し替える**——取れなかったときに空で潰すと、伏せていた項目が一瞬出る。 */
+ if(Array.isArray(x.measure_items_off)){
+  m.settings.measureItemsOff=x.measure_items_off.slice();
+  if(typeof WL.measureView.applyMeasureItemOptions==='function')
+   WL.measureView.applyMeasureItemOptions();
+ }
  /* **打った値を印へ届ける**——`.value`への代入では`change`が飛ばないので、
     選ばせ方を被せている欄はボタンの選択状態が古いまま残る（§9.223 ③）。 */
  if(window.WL&&WL.opData&&WL.opData.syncWidgets)WL.opData.syncWidgets();
@@ -176,7 +183,7 @@ function applyContextChoices(x){
 /* 控えのうち**マスタの設定**にあたるもの。取り直したらここだけ差し替える。 */
 const CONTEXT_CHOICE_KEYS=['choice_usage','operators','inspectors','packers',
   'thickness_gauges','width_gauges','inner_diameters','spools','burr_types',
-  'coil_stops','max_strips','equipment_kind'];
+  'coil_stops','max_strips','equipment_kind','measure_items_off'];
 /* 参照データの不足を**画面に出るところで1箇所**が覚える（§9.317）。
    記録（`S.measure`）へは入れない——`WL.measureView.collect()`が保存するので、その場限りの
    事情がロットの記録として残ってしまう。 */

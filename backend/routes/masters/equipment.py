@@ -22,6 +22,12 @@ from ...repositories.master_repo import (
  EQUIPMENT_FEATURE_KEYS,
  normalize_equipment_features,
  equipment_disabled_features,
+ MEASURE_ITEMS,
+ MEASURE_ITEM_KEYS,
+ MEASURE_ITEM_DISABLED_COLUMN,
+ EQUIPMENT_DISABLED_COLUMN,
+ normalize_measure_items,
+ equipment_disabled_measure_items,
  equipment_allows,
  STRIP_LIMIT,
  DEFAULT_MAX_STRIPS,
@@ -37,6 +43,34 @@ from ...repositories.master_repo import (
  rename_equipment_references,
  field_reorder_terminal_count,
 )
+
+
+def _measure_items_off(value):
+ """本文の「使わない入力内容」を保存値へ。**全部は外せない**（§9.392）
+    ——1つも選べない測定画面は、押しても何も起きない画面になる（§CLAUDE 4）。
+    測定そのものを止めたいときは`[無効機能]`の「測定」を外す道がある。 """
+ off=normalize_measure_items(value)
+ if off and len(equipment_disabled_measure_items(off))>=len(MEASURE_ITEM_KEYS):
+  raise ValueError('入力内容をすべて外すことはできません（1つ以上は使う形にしてください）。'
+                   'この設備で測定そのものを止めるときは、「使える機能」の「測定」を外してください。')
+ return off
+
+
+def _insert_equipment(cur,name,x,order,uid):
+ """設備マスタへ1行足す。**書き方はここ1箇所**——同じINSERTが2箇所にあり、
+    列を1つ足すたびに片方だけ直す事故が起きる（§9.392で`[無効入力内容]`を
+    足したときに気づいた）。"""
+ cur.execute(
+  f'INSERT INTO [設備マスタ] ([設備名],[区分],[最大条数],[標準時間分],[最大ライン速度],'
+  f'[{EQUIPMENT_DISABLED_COLUMN}],[{MEASURE_ITEM_DISABLED_COLUMN}],[表示順],[有効],'
+  '[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,-1,?,?,Now(),Now())',
+  [name,normalize_equipment_kind(x.get('kind')),
+   (None if x.text('maxStrips')=='' else clamp_max_strips(x.get('maxStrips'))),
+   normalize_standard_minutes(x.get('standardMinutes')),
+   normalize_max_line_speed(x.get('maxLineSpeed')),
+   normalize_equipment_features(x.get('disabledFeatures')),
+   _measure_items_off(x.get('disabledMeasureItems')),
+   order,uid,uid])
 
 
 @bp.get('/api/equipment-master')
@@ -65,7 +99,12 @@ def equipment_master_list():
             'features':{k:equipment_allows(r[10] if len(r)>10 else '',k)
                         for k in EQUIPMENT_FEATURE_KEYS},
             'disabledFeatures':sorted(equipment_disabled_features(r[10] if len(r)>10 else ''),
-                                      key=lambda k:EQUIPMENT_FEATURE_KEYS.index(k))}
+                                      key=lambda k:EQUIPMENT_FEATURE_KEYS.index(k)),
+            # 使う入力内容（§9.392）。**並びは語彙の順**——保存値の書き順に
+            # 引きずられると、画面の札が設備ごとに違う順で並ぶ。
+            'disabledMeasureItems':[k for k in MEASURE_ITEM_KEYS
+                                    if k in equipment_disabled_measure_items(
+                                      r[11] if len(r)>11 else '')]}
            for r in rows]
   return jsonify(ok=True,items=items,table=EQUIPMENT_MASTER_TABLE,created=not before,empty=len(items)==0,
                  stripLimit=STRIP_LIMIT,defaultMaxStrips=DEFAULT_MAX_STRIPS,
@@ -75,17 +114,24 @@ def equipment_master_list():
                  # 機能の語彙は**サーバーが答える**（§9.163）——画面へ写すと、
                  # 機能を1つ足したときに直す場所が2つになる。
                  equipmentFeatures=[{'key':k,'label':l,'note':n} for k,l,n in EQUIPMENT_FEATURES],
+                 # 入力内容の語彙も**サーバーが答える**（§9.163）。
+                 measureItems=[{'key':k,'label':l,'note':n} for k,l,n in MEASURE_ITEMS],
                  master_path=str(path))
  except Exception as e:return jsonify(error=f'設備マスタ読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 
 @bp.post('/api/equipment-master')
 def equipment_master_register():
  try:
-  x=body({'disabledFeatures': any_, 'kind': any_, 'maxLineSpeed': any_, 'maxStrips': any_, 
+  x=body({'disabledFeatures': any_, 'disabledMeasureItems': any_, 'kind': any_,
+          'maxLineSpeed': any_, 'maxStrips': any_,
           'name': any_, 'reuseExisting': any_, 'standardMinutes': any_});name=x.text('name');uid=request_user_id(x)
   # reuseExisting: True=同じ設備として復元/False=別の新しい設備として登録/
   # 未指定(None)=無効化された同名設備があれば選択を求める(下記参照)。
   reuse_existing=x.get('reuseExisting')
+  # **断りは400で、そのまま画面へ出す文で返す**（§CLAUDE 4）。
+  # DBを触る前に見る——書いてから戻すと、失敗した設定が一瞬効く。
+  try:_measure_items_off(x.get('disabledMeasureItems'))
+  except ValueError as _e:return jsonify(error=str(_e)),400
   if not name:return jsonify(error='設備名を入力してください。'),400
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
@@ -126,14 +172,14 @@ def equipment_master_register():
     cur.execute('UPDATE [設備マスタ] SET [設備名]=?,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[retired_name,uid,existing[0]])
     renamed=rename_equipment_references(c,name,retired_name)
     cur.execute('SELECT Max([表示順]) FROM [設備マスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-    cur.execute('INSERT INTO [設備マスタ] ([設備名],[区分],[最大条数],[標準時間分],[最大ライン速度],[無効機能],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,-1,?,?,Now(),Now())',[name,normalize_equipment_kind(x.get('kind')),(None if x.text('maxStrips')=='' else clamp_max_strips(x.get('maxStrips'))),normalize_standard_minutes(x.get('standardMinutes')),normalize_max_line_speed(x.get('maxLineSpeed')),normalize_equipment_features(x.get('disabledFeatures')),order,uid,uid])
+    _insert_equipment(cur,name,x,order,uid)
     c.commit()
     return jsonify(ok=True,name=name,registered=True,reused=False,retiredAs=retired_name,retiredReferences=renamed,updated_by=uid,
                     message=f'「{name}」を新しい設備として登録しました。過去の設備は「{retired_name}」として履歴に残ります。')
 
    # 同名の既存行が無い場合: 通常の新規登録。
    cur.execute('SELECT Max([表示順]) FROM [設備マスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-   cur.execute('INSERT INTO [設備マスタ] ([設備名],[区分],[最大条数],[標準時間分],[最大ライン速度],[無効機能],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,-1,?,?,Now(),Now())',[name,normalize_equipment_kind(x.get('kind')),(None if x.text('maxStrips')=='' else clamp_max_strips(x.get('maxStrips'))),normalize_standard_minutes(x.get('standardMinutes')),normalize_max_line_speed(x.get('maxLineSpeed')),normalize_equipment_features(x.get('disabledFeatures')),order,uid,uid]);c.commit()
+   _insert_equipment(cur,name,x,order,uid);c.commit()
    return jsonify(ok=True,name=name,registered=True,reused=False,updated_by=uid,
                    message='設備マスタへ新規登録しました。次回から設備リストに表示されます。')
  except Exception as e:return jsonify(error=f'設備マスタ登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
@@ -141,9 +187,14 @@ def equipment_master_register():
 @bp.post('/api/equipment-master/update')
 def equipment_master_update():
  try:
-  x=body({'disabledFeatures': any_, 'id': any_, 'kind': any_, 'maxLineSpeed': any_, 
+  x=body({'disabledFeatures': any_, 'disabledMeasureItems': any_, 'id': any_, 'kind': any_,
+          'maxLineSpeed': any_,
           'maxStrips': any_, 'name': any_, 'standardMinutes': any_});eid=x.get('id');name=x.text('name');uid=request_user_id(x)
   if eid is None:return jsonify(error='更新対象IDがありません。'),400
+  # **断りは400で、そのまま画面へ出す文で返す**（§CLAUDE 4）。
+  # DBを触る前に見る——書いてから戻すと、失敗した設定が一瞬効く。
+  try:_measure_items_off(x.get('disabledMeasureItems'))
+  except ValueError as _e:return jsonify(error=str(_e)),400
   if not name:return jsonify(error='設備名を入力してください。'),400
   path=DBS['MASTER']['path']
   with connect(path,False) as c:
@@ -157,10 +208,20 @@ def equipment_master_update():
    # 使える機能（§9.302）。**送られてこなければ今の値を残す**——他の画面が
    # 一部だけを送ってきたときに、触っていない設定が黙って消えないように
    # （§9.212 ②と同じ約束）。
-   if 'disabledFeatures' in x:
-    cur.execute('UPDATE [設備マスタ] SET [設備名]=?,[区分]=?,[最大条数]=?,[標準時間分]=?,[最大ライン速度]=?,[無効機能]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[name,normalize_equipment_kind(x.get('kind')),max_strips,normalize_standard_minutes(x.get('standardMinutes')),normalize_max_line_speed(x.get('maxLineSpeed')),normalize_equipment_features(x.get('disabledFeatures')),uid,eid])
-   else:
-    cur.execute('UPDATE [設備マスタ] SET [設備名]=?,[区分]=?,[最大条数]=?,[標準時間分]=?,[最大ライン速度]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [設備ID]=?',[name,normalize_equipment_kind(x.get('kind')),max_strips,normalize_standard_minutes(x.get('standardMinutes')),normalize_max_line_speed(x.get('maxLineSpeed')),uid,eid])
+   sets=['[設備名]=?','[区分]=?','[最大条数]=?','[標準時間分]=?','[最大ライン速度]=?']
+   vals=[name,normalize_equipment_kind(x.get('kind')),max_strips,
+         normalize_standard_minutes(x.get('standardMinutes')),
+         normalize_max_line_speed(x.get('maxLineSpeed'))]
+   # **送られてきた鍵だけ書く**（§9.212 ②）。列が増えても分岐は増やさない
+   # ——`if 'A' in x`／`if 'B' in x`の組み合わせでSQLを2の冪だけ書き分けると、
+   # 足すたびに書き漏らす（§9.392で2列目を足したときに畳んだ）。
+   for key,col,norm in (('disabledFeatures',EQUIPMENT_DISABLED_COLUMN,normalize_equipment_features),
+                        ('disabledMeasureItems',MEASURE_ITEM_DISABLED_COLUMN,_measure_items_off)):
+    if key in x:
+     sets.append(f'[{col}]=?');vals.append(norm(x.get(key)))
+   sets+=['[有効]=-1','[更新者ID]=?','[更新日時]=Now()']
+   vals+=[uid,eid]
+   cur.execute('UPDATE [設備マスタ] SET '+','.join(sets)+' WHERE [設備ID]=?',vals)
    # 設備名は他マスタ(オペレータ設備マスタ・操業データ選択肢マスタ[対象設備]等、
    # equipment_name_references()参照)から
    # 文字列で参照されているため、改名時はそちら側も追従させる(改名連動)。

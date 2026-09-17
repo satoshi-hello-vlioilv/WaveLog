@@ -116,11 +116,42 @@ function itemProgress(m,def){
  return out;
 }
 
+/* ---------- 設備ごとに使わない入力内容（§9.392、利用者の指示） ----------
+   「測定画面の入力内容を、設備ごとに使う使わないと切り替えられるように
+    してください」
+
+   出どころは**設備マスタの`[無効入力内容]`**（`/api/measurement/context`が
+   `measure_items_off`で返し、`S.measure.settings.measureItemsOff`が持つ）。
+   保存するのは「**使わない**ほう」なので、**触っていない現場は1つも
+   変わらない**（`[無効機能]`と同じ作法・§9.302）。
+
+   **書いた値がある項目は伏せない。** 設備の設定を変えたあとに古い記録を
+   開くと、入力済みの項目が画面から消えてしまう——見えないものは直せない
+   （§9.107「0件は『無い』とは限らない」の裏返し）。伏せるのは
+   「外してあり、かつこの記録にまだ1件も入っていない」ものだけ。
+
+   **答えはここ1箇所**（§9.163）——選択肢（`#measureType`）も進捗のチップも、
+   同じ`hiddenItems()`を読む。2箇所で判断すると、片方だけ消えた状態が作れる。 */
+function hiddenItems(m){
+ if(!m)return new Set();
+ const off=(m.settings&&m.settings.measureItemsOff)||[];
+ if(!off.length)return new Set();
+ const set=new Set();
+ ITEM_DEFS.forEach(def=>{
+  if(off.indexOf(def.name)<0)return;
+  let filled=0;
+  try{filled=itemProgress(m,def).filled}catch(e){filled=0}
+  if(!filled)set.add(def.name);
+ });
+ return set;
+}
+
 /* 全項目の進捗。excluded は集計から外す。 */
 function progressOf(m){
  if(!m)return null;
  const excluded=new Set(measureScopeOf(m).excluded);
- const items=ITEM_DEFS.map(def=>{
+ const hidden=hiddenItems(m);
+ const items=ITEM_DEFS.filter(def=>!hidden.has(def.name)).map(def=>{
   const p=itemProgress(m,def);
   p.excluded=excluded.has(def.name);
   if(p.excluded)p.state='skip';
@@ -355,5 +386,8 @@ window.refreshMeasureProgress=refreshMeasureProgress;
 window.measureCompletionReview=completionReview;
 window.toggleMeasureExcluded=toggleExcluded;
 window.measureItemNames=()=>ITEM_DEFS.map(d=>d.name);
+/* 設備で伏せる入力内容（§9.392）。選択肢を作る側（`measure-view.js`）も
+   これを読む。 */
+WL.measureReview.hiddenItems=m=>hiddenItems(m===undefined?S.measure:m);
 
 })();
