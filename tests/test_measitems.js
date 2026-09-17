@@ -203,9 +203,9 @@ H.run('test_measitems: 入力内容を設備ごとに出し分ける（§9.392�
   await page.evaluate(()=>{const b=document.getElementById('maintEditorClose');if(b)b.click();
     const d=document.getElementById('maintEditorModal');if(d)d.hidden=true;
     const c=document.getElementById('closeMasterMaint');if(c)c.click()});
-  await page.waitForFunction(()=>{const d=document.getElementById('maintEditorModal');
-    const p=document.getElementById('masterMaintPanel');
-    return (!d||d.hidden)&&(!p||p.hidden||getComputedStyle(p).display==='none')},null,{timeout:15000});
+  /* **ここに待ちは要らない。** 次の`openMeasure()`は`page.goto()`で
+     ページごと読み直すので、盤が閉じ切るのを待っても意味が無い（元は
+     固定待ち400msだった）。「待つ理由を言えない待ち」は置かない。 */
 
   /* ---- 6) 測定画面から消える ---- */
   const target=await one(EQ);
