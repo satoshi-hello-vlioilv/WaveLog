@@ -3477,7 +3477,10 @@
     行を編集モードへ切り替える手間のほうが大きい。欄を離れた（または Enter）
     時点で保存し、結果は帯の1箇所（`#ssbState`）で言う（§9.212）。
     ============================================================ */
- const ssbState={stops:[],subs:[],picked:0,q:'',minutes:[]};
+ /* `addUnder`＝下の欄で足す先（§9.390）。0＝停止内容の直下、>0＝その内訳の下。
+    **どこへ足すのかは字で出す**——同じ「追加」ボタンが2つの意味を持つので、
+    押す前に読めないと取り違える（§CLAUDE 2「推測させない」）。 */
+ const ssbState={stops:[],subs:[],picked:0,q:'',minutes:[],addUnder:0};
  function ssbSay(text,bad){
   const el=$('#ssbState');if(!el)return;
   el.textContent=text||'';el.classList.toggle('is-bad',!!bad);
@@ -3540,9 +3543,14 @@
    const rows=hit.filter(s=>String(s.category||'').trim()===c);
    return `<div class="ssb-cat"><span>${esc(c||'分類なし')}</span><em>${rows.length}件</em></div>`
     +rows.map(s=>{
-     const n=ssbSubsOf(s.id).length;
+     /* 数えるのは**1段目だけ**（§9.390）——設備停止の一覧の「内訳」列と
+        同じ数にする。合計にすると、同じ言葉が2箇所で違う数を言う
+        （§CLAUDE 8）。その下の件数は`title`で言う。 */
+     const all=ssbSubsOf(s.id);
+     const n=all.filter(x=>!Number(x.parentSubId||0)).length;
+     const deep=all.length-n;
      return `<button type="button" class="ssb-stop${Number(s.id)===Number(picked)?' is-on':''}" data-ssb-stop="${s.id}"
-       title="${esc(s.name||'')}／${esc(s.equipmentLabel||'')}／内訳${n}件">
+       title="${esc(s.name||'')}／${esc(s.equipmentLabel||'')}／内訳${n}件${deep?`（その下にさらに${deep}件）`:''}">
       <b>${esc(s.name||'')}</b>
       <span class="ssb-stop-sub">
        <span class="ssb-stop-eq">${esc(s.equipmentLabel||'')}</span>
@@ -3573,6 +3581,12 @@
   /* 欄の中は**数だけ**（器が7em なので「1時間30分」は入らない）。読み下した
      形は欄の外（ヘッダと案内の1行）が言う。 */
   const baseNum=blank?'':String(base);
+  /* 足す先（§9.390）。選んだ停止内容が変わったら直下へ戻す——別の停止内容の
+     内訳の下へ足そうとしていた状態を持ち越さない。 */
+  const under=ssbState.addUnder?rows.find(r=>Number(r.id)===Number(ssbState.addUnder)):null;
+  if(!under)ssbState.addUnder=0;
+  const um=under&&under.standardMinutes;
+  const underBase=(um===null||um===undefined||um==='')?'':WL.duration.text(Number(um));
   return `<div class="ssb-subs">
     <div class="ssb-subs-head">
      <b class="ssb-title">${esc(stop.name||'')}</b>
@@ -3585,24 +3599,42 @@
        ||'<p class="mm-empty">内訳はまだありません。下の欄から足せます。</p>'}</div>
     </div>
     <div class="ssb-add">
-     <input type="text" id="ssbNewName" placeholder="内訳名（例: ゴムリング）" autocomplete="off" maxlength="60">
+     ${ssbAddWhereHtml(stop,under)}
+     <input type="text" id="ssbNewName" placeholder="${esc(under?'内訳名（例: 交換）':'内訳名（例: ゴムリング）')}" autocomplete="off" maxlength="60">
      <input type="text" id="ssbNewMin" placeholder="分" autocomplete="off" inputmode="decimal"
-       title="この内訳だけ時間が違うときに入れます。空欄なら親の標準所要分です。">
-     <button type="button" id="ssbAdd" class="mm-btn-primary">内訳を追加</button>
-     <small class="ssb-add-note">分を空欄にすると <b>${esc(baseText)}</b>（この設備停止の標準所要分）になります。</small>
+       title="この内訳だけ時間が違うときに入れます。空欄なら1つ上の標準所要分です。">
+     <button type="button" id="ssbAdd" class="mm-btn-primary">${esc(under?'この下へ追加':'内訳を追加')}</button>
+     <small class="ssb-add-note">分を空欄にすると <b>${esc(underBase||baseText)}</b>（${
+       esc(under?`「${under.name}」`:'この設備停止')}の標準所要分）になります。</small>
     </div>
    </div>`;
  }
+ /* 1行＝1内訳。**2段目は字下げして「└」を付ける**（§9.390）——同じ幅の行が
+    並ぶだけだと、どれがどれの下なのかが読み取れない（§CLAUDE 14）。
+    1段目には「＋ 下へ」を置く。**押すと下の欄の足す先が変わるだけ**で、
+    その場に欄は生えない（欄が2箇所に増えると、どちらで打つのか迷う）。 */
  function ssbRowHtml(r,baseText,baseNum){
   const m=(r.standardMinutes===null||r.standardMinutes===undefined||r.standardMinutes==='')
     ?'':String(r.standardMinutes);
-  return `<div class="ssb-row" role="row" data-ssb-id="${r.id}">
-    <input type="text" class="ssb-f" data-ssb-k="name" value="${esc(r.name||'')}" maxlength="60" autocomplete="off">
+  const deep=Number(r.parentSubId||0)>0;
+  const on=!deep&&Number(ssbState.addUnder)===Number(r.id);
+  return `<div class="ssb-row${deep?' is-deep':''}" role="row" data-ssb-id="${r.id}" data-ssb-depth="${deep?2:1}">
+    <span class="ssb-name">${deep?'<i class="ssb-tee" aria-hidden="true">└</i>':''}
+     <input type="text" class="ssb-f" data-ssb-k="name" value="${esc(r.name||'')}" maxlength="60" autocomplete="off"></span>
     <input type="text" class="ssb-f" data-ssb-k="min" value="${esc(m)}" placeholder="${esc(baseNum)}"
-      title="空欄なら親の標準所要分（${esc(baseText)}）です。" autocomplete="off" inputmode="decimal">
-    <button type="button" class="mm-btn-ghost sm danger" data-ssb-del="${r.id}" title="この内訳を消します">×</button>
-    <span></span>
+      title="空欄なら1つ上の標準所要分（${esc(baseText)}）です。" autocomplete="off" inputmode="decimal">
+    <button type="button" class="mm-btn-ghost sm danger" data-ssb-del="${r.id}" title="${
+      deep?'この内訳を消します':'この内訳と、その下の内訳をまとめて消します'}">×</button>
+    ${deep?'<span></span>'
+     :`<button type="button" class="ssb-under${on?' is-on':''}" data-ssb-under="${r.id}"
+        title="「${esc(r.name||'')}」の下へ内訳をもう1段足します">${on?'足す先 ✓':'＋ 下へ'}</button>`}
    </div>`;
+ }
+ /* 足す先を**字で言う**（§CLAUDE 2）。直下のときは何も言わない——それが既定。 */
+ function ssbAddWhereHtml(stop,under){
+  if(!under)return '';
+  return `<span class="ssb-add-where">「<b>${esc(under.name||'')}</b>」の下へ`
+   +`<button type="button" id="ssbUnderClear" title="「${esc(stop.name||'')}」の直下へ戻します">直下へ戻す</button></span>`;
  }
  /* 入力した分の読み方。**空欄は「親に任せる」**で、0ではない（§9.231）。
     読めない字は`undefined`を返し、呼ぶ側が断る。 */
@@ -3617,7 +3649,7 @@
   try{
    await api('/api/schedule/stop-sub-master'+(body.id?'/update':''),
      {method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({...body,user_id:uid})});
+      body:JSON.stringify({parentSubId:0,...body,user_id:uid})});
    await loadStopSubMaint(true);
    ssbSay(okText||'保存しました');
    return true;
@@ -3646,7 +3678,7 @@
    btn.onclick=()=>{
     const id=Number(btn.dataset.ssbStop);
     if(Number(ssbState.picked)===id)return;
-    ssbState.picked=id;
+    ssbState.picked=id;ssbState.addUnder=0;
     const pane=list.querySelector('.ssb-subs');
     if(!pane){renderStopSub();return}
     pane.outerHTML=ssbSubPaneHtml(id);
@@ -3669,7 +3701,10 @@
     const min=ssbMinutes(minRaw);
     if(min===undefined){ssbSay('分は0より大きい数で入れてください。',true);inp.value=before;return}
     if(!name){ssbSay('内訳名を空にはできません。',true);inp.value=before;return}
-    await ssbSave({id,stopReasonId:cur.stopReasonId,name,standardMinutes:min},
+    /* **親は動かさない**（§9.212 ②）。名前や分を直しただけで段が変わると、
+       2段目が1段目へ跳ね上がる。 */
+    await ssbSave({id,stopReasonId:cur.stopReasonId,name,standardMinutes:min,
+                   parentSubId:Number(cur.parentSubId||0)},
                   `「${name}」を保存しました`);
    };
   });
@@ -3681,19 +3716,34 @@
     if(!name){ssbSay('内訳名を入れてください。',true);nameEl&&nameEl.focus();return}
     const min=ssbMinutes(minEl&&minEl.value);
     if(min===undefined){ssbSay('分は0より大きい数で入れてください。',true);minEl&&minEl.focus();return}
-    if(await ssbSave({stopReasonId:ssbPickedId(),name,standardMinutes:min},`「${name}」を足しました`)){
+    const under=Number(ssbState.addUnder||0);
+    if(await ssbSave({stopReasonId:ssbPickedId(),name,standardMinutes:min,parentSubId:under},
+                     `「${name}」を足しました`)){
      const again=$('#ssbNewName');
      if(again){again.value='';try{again.focus({preventScroll:true})}catch(err){WL.quiet.note('入力欄へ戻せない（押し直せる）',err)}}
      const m2=$('#ssbNewMin');if(m2)m2.value='';
     }
    };
   }
+  list.querySelectorAll('[data-ssb-under]').forEach(btn=>{
+   btn.onclick=()=>{
+    const id=Number(btn.dataset.ssbUnder);
+    ssbState.addUnder=(Number(ssbState.addUnder)===id)?0:id;
+    renderStopSub();
+    const el=$('#ssbNewName');
+    if(el){try{el.focus({preventScroll:true})}catch(err){WL.quiet.note('入力欄へ移せない（押して打てる）',err)}}
+   };
+  });
+  const clr=$('#ssbUnderClear');
+  if(clr)clr.onclick=()=>{ssbState.addUnder=0;renderStopSub()};
   list.querySelectorAll('[data-ssb-del]').forEach(btn=>{
    btn.onclick=async()=>{
     const id=Number(btn.dataset.ssbDel);
     const cur=(ssbState.subs||[]).find(s=>Number(s.id)===id);
     if(!cur)return;
+    const kids=ssbSubsOf(ssbPickedId()).filter(x=>Number(x.parentSubId||0)===Number(id));
     if(!(await confirmModal(`「${cur.name}」を内訳から消しますか？\n`
+      +(kids.length?`この下の内訳 ${kids.length}件（${kids.map(k=>k.name).join('、')}）も一緒に消えます。\n`:'')
       +'これまでに入れた予定の内訳の記録は、その予定の中に残ります。')))return;
     const uid=requireMaintUser();if(uid===null)return;
     try{

@@ -199,6 +199,7 @@ def plan_add(c_share,equipment,kind,uid,pc='',position='end',lot_no='',inspectio
    mc2=config_master_conn()
    try:
     sub=stop_sub_row(mc2,int(stop_sub_id))
+    up=stop_sub_parent_of(mc2,int(stop_sub_id)) if sub else None
    finally:
     mc2.close()
    if not sub:raise ValueError('指定のサブカテゴリが見つかりません。')
@@ -206,7 +207,7 @@ def plan_add(c_share,equipment,kind,uid,pc='',position='end',lot_no='',inspectio
     raise ValueError('そのサブカテゴリは別の設備停止のものです。')
    if not (True if sub[5] is None else bool(sub[5])):
     raise ValueError('そのサブカテゴリは削除されています。')
-   detail_json=_json.dumps({'stopSubId':int(sub[0]),'stopSub':str(sub[2] or '').strip()},ensure_ascii=False)
+   detail_json=_json.dumps(stop_sub_detail(sub,up),ensure_ascii=False)
   # [見積分]はestimate_minutes(明示上書き)が無ければNULLのままにする(§5.1)。
   # マスタの標準所要分は固定値としてここでスナップショットしない。マスタの
   # 標準所要分を後から編集したら、まだ見積を上書きしていない予定には反映
@@ -378,6 +379,17 @@ def plan_merge_detail(c_share,plan_id,uid,changes,pc=''):
              [_json.dumps(detail,ensure_ascii=False),uid,pc,plan_id])
  return cur.rowcount
 
+def stop_sub_detail(sub,parent=None):
+ """予定の[明細JSON]へ入れる内訳の写し（§9.390）。**1段目は`stopSub`のまま**
+    ——集計は今までどおり`stopSub`で束ねられ、2段目（`stopSub2`）でだけ割れる。
+    `sub`が2段目なら`parent`（1段目の行）を渡すこと。"""
+ if not sub:return {}
+ name=str(sub[2] or '').strip()
+ if parent:
+  return {'stopSubId':int(sub[0]),'stopSub':str(parent[2] or '').strip(),
+          'stopSub2':name,'stopSubTopId':int(parent[0])}
+ return {'stopSubId':int(sub[0]),'stopSub':name}
+
 def plan_set_stop_sub(c_share,plan_id,uid,sub_id,pc=''):
  """入れた設備停止の**内訳(サブカテゴリ)を後から直す**(§9.389)。
  `sub_id`が空なら内訳なしへ戻す。
@@ -401,6 +413,7 @@ def plan_set_stop_sub(c_share,plan_id,uid,sub_id,pc=''):
   try:
    sub=stop_sub_row(mc,int(sub_id))
    if not sub:raise ValueError('指定のサブカテゴリが見つかりません。')
+   up=stop_sub_parent_of(mc,int(sub_id))
    parent=stop_reason_id_of(mc,row[2],row[3])
   finally:
    mc.close()
@@ -408,7 +421,7 @@ def plan_set_stop_sub(c_share,plan_id,uid,sub_id,pc=''):
    raise ValueError('この行の設備停止が設備停止マスタに見つかりません。')
   if int(sub[1] or 0)!=int(parent):
    raise ValueError('そのサブカテゴリは別の設備停止のものです。')
-  payload=_json.dumps({'stopSubId':int(sub[0]),'stopSub':str(sub[2] or '').strip()},ensure_ascii=False)
+  payload=_json.dumps(stop_sub_detail(sub,up),ensure_ascii=False)
  cur.execute('UPDATE [作業予定] SET [明細JSON]=?,[更新者ID]=?,[更新端末名]=?,[更新日時]=Now() WHERE [予定ID]=?',
              [payload,uid,pc,plan_id])
  return cur.rowcount
@@ -1128,39 +1141,101 @@ def stop_reason_standard_minutes(c_master,equipment,name):
 # ときにその1行だけ持てばよく、全部の内訳へ同じ数字を書き写さずに済む。
 # ========================================================================
 STOP_SUB_TABLE='設備停止サブカテゴリマスタ'
+# ------------------------------------------------------------------------
+# もう1階層（§9.390、利用者の指示「設備停止の内訳はもう1階層増やすことが
+# できるようにしてください」）
+# ------------------------------------------------------------------------
+# 内訳の下にもう1段だけ置ける（分類 → 停止内容 → 内訳 → 内訳の内訳）。
+# **親は同じ表の行**（`[親サブカテゴリID]`）で、**深さは2段まで**——
+# 底なしの木にすると、予定へ入れる手順が何段になるか決められない
+# （§CLAUDE 2「次にすることを常に1つだけ指す」）。
+#
+# **親なしは`0`で持つ。`NULL`にしない。** SQLiteのUNIQUE INDEXは
+# **NULL同士を別物として扱う**ので、親をNULLにすると
+# `(停止理由ID,親,名称)`の重複を1つも止められない（同じ名前の1段目が
+# いくつでも作れてしまう）。
+STOP_SUB_PARENT_COLUMN='親サブカテゴリID'
+STOP_SUB_ROOT=0
+# 名前の自然キー。**親まで入れる**——「刃組待ち>ゴムリング>交換」と
+# 「刃組待ち>フィンガー>交換」は別物で、親を入れないと2つ目が作れない。
+_STOP_SUB_INDEX='UX_設備停止サブカテゴリマスタ_名称'
+_STOP_SUB_COLS=('[サブカテゴリID],[停止理由ID],[名称],[標準所要分],[表示順],[有効],'
+                '[更新日時],[更新者ID],[親サブカテゴリID]')
 
 def ensure_stop_sub_table(c_master):
  names=tables(c_master);created=False
  if STOP_SUB_TABLE not in names:
   cur=c_master.cursor()
-  cur.execute('CREATE TABLE [設備停止サブカテゴリマスタ] ([サブカテゴリID] INTEGER PRIMARY KEY AUTOINCREMENT, [停止理由ID] INTEGER, [名称] TEXT, [標準所要分] REAL, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
-  cur.execute('CREATE UNIQUE INDEX [UX_設備停止サブカテゴリマスタ_名称] ON [設備停止サブカテゴリマスタ] ([停止理由ID],[名称])')
+  cur.execute('CREATE TABLE [設備停止サブカテゴリマスタ] ([サブカテゴリID] INTEGER PRIMARY KEY AUTOINCREMENT, [停止理由ID] INTEGER, [親サブカテゴリID] INTEGER, [名称] TEXT, [標準所要分] REAL, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute(f'CREATE UNIQUE INDEX [{_STOP_SUB_INDEX}] ON [設備停止サブカテゴリマスタ] ([停止理由ID],[親サブカテゴリID],[名称])')
   c_master.commit();created=True
+  return created
+ # 後から足した列は`add_missing_columns()`の1箇所（§9.216）。
+ add_missing_columns(c_master,STOP_SUB_TABLE,[(STOP_SUB_PARENT_COLUMN,'INTEGER')])
+ cur=c_master.cursor()
+ # **足した列のNULLは0へ寄せる**（親なし）。NULLのままだと自然キーの照合も
+ # UNIQUEも効かない（上のコメント）。
+ cur.execute('UPDATE [設備停止サブカテゴリマスタ] SET [親サブカテゴリID]=? WHERE [親サブカテゴリID] IS NULL',[STOP_SUB_ROOT])
+ # 古い索引（親を含まない）は張り替える。**索引は導出物**なので作り直して
+ # よい（行は1つも触らない）。名前が同じでも中身が違うので、列の顔ぶれで見る。
+ try:
+  cols=[r[2] for r in cur.execute(f'PRAGMA index_info([{_STOP_SUB_INDEX}])').fetchall()]
+  if cols and STOP_SUB_PARENT_COLUMN not in cols:
+   cur.execute(f'DROP INDEX [{_STOP_SUB_INDEX}]')
+   cur.execute(f'CREATE UNIQUE INDEX [{_STOP_SUB_INDEX}] ON [設備停止サブカテゴリマスタ] ([停止理由ID],[親サブカテゴリID],[名称])')
+ except Exception as _e:
+  quiet('内訳の索引を張り替えられない（重複の見張りが緩むだけ）',_e)
+ c_master.commit()
  return created
 
 def stop_sub_rows(c_master,stop_reason_id=None):
- """有効なサブカテゴリ。r: サブカテゴリID,停止理由ID,名称,標準所要分,表示順,有効,更新日時,更新者ID"""
+ """有効なサブカテゴリ。
+    r: サブカテゴリID,停止理由ID,名称,標準所要分,表示順,有効,更新日時,更新者ID,親サブカテゴリID
+    **並びは「親 → その子」**（`[親サブカテゴリID]`が0の行が先）。"""
  ensure_stop_sub_table(c_master)
  cur=c_master.cursor()
- cur.execute('SELECT [サブカテゴリID],[停止理由ID],[名称],[標準所要分],[表示順],[有効],[更新日時],[更新者ID] FROM [設備停止サブカテゴリマスタ] ORDER BY [停止理由ID],[表示順],[名称]')
+ cur.execute(f'SELECT {_STOP_SUB_COLS} FROM [設備停止サブカテゴリマスタ] ORDER BY [停止理由ID],[表示順],[名称]')
  rows=[]
  target=None if stop_reason_id in (None,'') else int(stop_reason_id)
  for r in cur.fetchall():
   if not (True if r[5] is None else bool(r[5])):continue
   if target is not None and int(r[1] or 0)!=target:continue
   rows.append(r)
- return rows
+ # 親を先に、その直後へ子を並べる（画面が木を組み直さずに描ける）。
+ top=[r for r in rows if not int(r[8] or 0)]
+ kids={}
+ for r in rows:
+  p=int(r[8] or 0)
+  if p:kids.setdefault(p,[]).append(r)
+ out=[]
+ for r in top:
+  out.append(r)
+  out.extend(kids.pop(int(r[0]),[]))
+ # 親を失った子（親だけ消された）も落とさない——見えないと消せない。
+ for rest in kids.values():out.extend(rest)
+ return out
 
 def stop_sub_row(c_master,sub_id):
  """1件。**無効化済みも返す**(消えた内訳を参照している予定の名前を出すため)。"""
  ensure_stop_sub_table(c_master)
  cur=c_master.cursor()
- cur.execute('SELECT [サブカテゴリID],[停止理由ID],[名称],[標準所要分],[表示順],[有効],[更新日時],[更新者ID] FROM [設備停止サブカテゴリマスタ] WHERE [サブカテゴリID]=?',[sub_id])
+ cur.execute(f'SELECT {_STOP_SUB_COLS} FROM [設備停止サブカテゴリマスタ] WHERE [サブカテゴリID]=?',[sub_id])
  return cur.fetchone()
 
-def stop_sub_upsert(c_master,stop_reason_id,name,uid,standard_minutes=None,sub_id=None):
+def stop_sub_parent_of(c_master,sub_id):
+ """その内訳の親の行（1段目）。親なし・見つからないときは None。"""
+ row=stop_sub_row(c_master,sub_id)
+ if not row:return None
+ p=int(row[8] or 0)
+ return stop_sub_row(c_master,p) if p else None
+
+def stop_sub_upsert(c_master,stop_reason_id,name,uid,standard_minutes=None,sub_id=None,
+                    parent_sub_id=None):
  """内訳の登録・改名。照合の順番は設備停止マスタと同じ3段
-    (①IDが来ていればその行 ②(停止理由ID,名称)の自然キー ③新規)。"""
+    (①IDが来ていればその行 ②(停止理由ID,親,名称)の自然キー ③新規)。
+
+    `parent_sub_id`＝同じ停止内容の**1段目の内訳**（§9.390）。省略・0なら
+    1段目そのもの。**深さは2段まで**——子を親にはできない。"""
  ensure_stop_sub_table(c_master)
  ensure_stop_reason_table(c_master)
  name=str(name or '').strip()
@@ -1170,40 +1245,59 @@ def stop_sub_upsert(c_master,stop_reason_id,name,uid,standard_minutes=None,sub_i
  cur=c_master.cursor()
  cur.execute('SELECT [停止理由ID] FROM [設備停止マスタ] WHERE [停止理由ID]=?',[pid])
  if not cur.fetchone():raise ValueError('指定の設備停止が見つかりません。')
- cur.execute('SELECT [サブカテゴリID],[停止理由ID],[名称] FROM [設備停止サブカテゴリマスタ]')
+ cur.execute('SELECT [サブカテゴリID],[停止理由ID],[名称],[親サブカテゴリID] FROM [設備停止サブカテゴリマスタ]')
  rows=cur.fetchall()
  target_id=int(sub_id) if str(sub_id or '').strip() else None
  if target_id is not None and not any(r[0]==target_id for r in rows):
   raise ValueError('指定のサブカテゴリが見つかりません。')
+ parent=int(parent_sub_id) if str(parent_sub_id or '').strip() else STOP_SUB_ROOT
+ if parent:
+  up=next((r for r in rows if r[0]==parent),None)
+  if not up:raise ValueError('親の内訳が見つかりません。')
+  if int(up[1] or 0)!=pid:raise ValueError('親の内訳は別の設備停止のものです。')
+  if int(up[3] or 0):raise ValueError('内訳の階層は2段までです（内訳の内訳を、さらに分けることはできません）。')
+  if target_id is not None and parent==target_id:
+   raise ValueError('自分自身を親にはできません。')
+ elif target_id is not None and any(int(r[3] or 0)==target_id for r in rows):
+  # 子を持つ行は1段目のまま。子ごと動かす操作は用意していない（§CLAUDE 4）。
+  if str(parent_sub_id or '').strip():
+   raise ValueError('内訳の内訳を持つ行は、ほかの内訳の下へ移せません。')
  # **無効化済みの行も照合の対象**(削除は論理削除なので、同じ名前を登録し
  # 直したら元の行が戻る。設備停止マスタと同じ挙動・UNIQUE INDEXの実体とも合う)。
- same=next((r for r in rows if int(r[1] or 0)==pid and str(r[2] or '').strip()==name),None)
+ same=next((r for r in rows if int(r[1] or 0)==pid and int(r[3] or 0)==parent
+            and str(r[2] or '').strip()==name),None)
  if target_id is None and same:target_id=same[0]
  if target_id is not None and same and same[0]!=target_id:
-  raise ValueError(f'「{name}」はこの設備停止に既に登録されています。')
+  raise ValueError(f'「{name}」はこの場所に既に登録されています。')
  if target_id is not None:
-  cur.execute('UPDATE [設備停止サブカテゴリマスタ] SET [停止理由ID]=?,[名称]=?,[標準所要分]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [サブカテゴリID]=?',
-              [pid,name,standard_minutes,uid,target_id])
+  cur.execute('UPDATE [設備停止サブカテゴリマスタ] SET [停止理由ID]=?,[親サブカテゴリID]=?,[名称]=?,[標準所要分]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [サブカテゴリID]=?',
+              [pid,parent,name,standard_minutes,uid,target_id])
   return target_id,False
  # 表示順は**その親の中での最大+10**(内訳は親ごとに並ぶので、全体の最大に
  # すると別の親を足すたびに番号が飛ぶ)。
- cur.execute('SELECT Max([表示順]) FROM [設備停止サブカテゴリマスタ] WHERE [停止理由ID]=?',[pid])
+ cur.execute('SELECT Max([表示順]) FROM [設備停止サブカテゴリマスタ] WHERE [停止理由ID]=? AND [親サブカテゴリID]=?',[pid,parent])
  order=int((cur.fetchone()[0]) or 0)+10
- cur.execute('INSERT INTO [設備停止サブカテゴリマスタ] ([停止理由ID],[名称],[標準所要分],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,-1,?,?,Now(),Now())',
-             [pid,name,standard_minutes,order,uid,uid])
+ cur.execute('INSERT INTO [設備停止サブカテゴリマスタ] ([停止理由ID],[親サブカテゴリID],[名称],[標準所要分],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,-1,?,?,Now(),Now())',
+             [pid,parent,name,standard_minutes,order,uid,uid])
  return cur.lastrowid,True
 
 def stop_sub_delete(c_master,sub_id,uid):
+ """内訳を消す。**子も一緒に消す**（§9.390）——親だけ消すと、どこにも
+    ぶら下がっていない内訳が予定の選択肢に出続ける（§CLAUDE 4）。"""
  ensure_stop_sub_table(c_master)
  cur=c_master.cursor()
- cur.execute('UPDATE [設備停止サブカテゴリマスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [サブカテゴリID]=?',[uid,sub_id])
+ cur.execute('UPDATE [設備停止サブカテゴリマスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [サブカテゴリID]=? OR [親サブカテゴリID]=?',
+             [uid,sub_id,sub_id])
  return cur.rowcount
 
 def stop_sub_counts(c_master):
- """{停止理由ID: 件数}。一覧が「内訳を持つ停止内容」を1度の問い合わせで
-    見分けられるようにする(行ごとに聞き直すと設備停止の数だけ往復する)。"""
+ """{停止理由ID: 1段目の件数}。一覧が「内訳を持つ停止内容」を1度の
+    問い合わせで見分けられるようにする(行ごとに聞き直すと設備停止の数だけ
+    往復する)。**数えるのは1段目だけ**——2段目まで足すと、同じ「3件」が
+    「3つに分かれる」なのか「3つの内訳の合計」なのか読めない。"""
  out={}
  for r in stop_sub_rows(c_master):
+  if int(r[8] or 0):continue
   pid=int(r[1] or 0)
   out[pid]=out.get(pid,0)+1
  return out
@@ -1313,11 +1407,16 @@ def stop_default_minutes(c_master,stop_reason_id,sub_id=None):
     効く順は「サブカテゴリの標準所要分 → 設備停止の標準所要分 → 無し」。
     **答えるのはここ1箇所**(§9.163)——画面とサーバーで順番がずれると、
     出ている数字と実際に入る数字が食い違う。"""
- if sub_id not in (None,''):
-  sub=stop_sub_row(c_master,int(sub_id))
-  if sub and sub[3] is not None and str(sub[3]).strip()!='':
+ # **内訳が2段になった**（§9.390）ので、下から順に見る
+ # （内訳の内訳 → 内訳 → 停止内容 → 無し）。
+ sid=None if sub_id in (None,'') else int(sub_id)
+ while sid:
+  sub=stop_sub_row(c_master,sid)
+  if not sub:break
+  if sub[3] is not None and str(sub[3]).strip()!='':
    try:return float(sub[3])
    except (TypeError,ValueError):quiet('サブカテゴリの標準所要分を読めない（親の値へ倒す）',None)
+  sid=int(sub[8] or 0)
  ensure_stop_reason_table(c_master)
  cur=c_master.cursor()
  cur.execute('SELECT [標準所要分] FROM [設備停止マスタ] WHERE [停止理由ID]=?',[stop_reason_id])

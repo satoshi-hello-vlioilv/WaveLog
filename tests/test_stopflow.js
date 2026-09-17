@@ -37,9 +37,13 @@ H.run('test_stopflow: 設備停止を入れる手順（§9.389）',async({page,r
  const NAME=TAG+'刃組待ち';
  const stop=await api('/api/schedule/stop-reason-master',
    {equipment:EQ,name:NAME,category:'待ち',standardMinutes:60});
- await api('/api/schedule/stop-sub-master',{stopReasonId:stop.id,name:'ゴムリング'});
+ const ring=await api('/api/schedule/stop-sub-master',{stopReasonId:stop.id,name:'ゴムリング'});
  await api('/api/schedule/stop-sub-master',{stopReasonId:stop.id,name:'刃出し',standardMinutes:90});
- rec('材料（内訳を2つ持つ設備停止）を作れた',!!stop.id,String(stop.id));
+ /* もう1階層（§9.390）。「ゴムリング」の下にだけ2段目を置く——**下を持つ
+    内訳と持たない内訳が混ざった状態**が、段の増え方を確かめる材料になる。 */
+ await api('/api/schedule/stop-sub-master',{stopReasonId:stop.id,name:'交換',parentSubId:ring.id,standardMinutes:20});
+ await api('/api/schedule/stop-sub-master',{stopReasonId:stop.id,name:'増し締め',parentSubId:ring.id});
+ rec('材料（内訳2件＋その下に2件）を作れた',!!stop.id&&!!ring.id,`${stop.id}/${ring.id}`);
 
  /* **浮き窓から開く**（`#scStopModalBtn`）。側パネルは畳まれていることが
     あり、DOMに在るだけのボタンは押せない（実測: `page.click`が30秒で落ちた）。
@@ -66,7 +70,9 @@ H.run('test_stopflow: 設備停止を入れる手順（§9.389）',async({page,r
  rec('段は「内訳を選ぶ」→「時間を選ぶ」の2つ',
      s1.steps.join('/')==='内訳を選ぶ/時間を選ぶ'&&s1.nums.join('')==='12',
      s1.steps.join('/')+' / '+s1.nums.join(''));
- rec('内訳の札が2つ出る',s1.subs.join('/')==='ゴムリング/刃出し',s1.subs.join('/'));
+ rec('内訳の札が2つ出る',s1.subs.join('/').replace(/＋\d/g,'')==='ゴムリング/刃出し',s1.subs.join('/'));
+ rec('下を持つ内訳には「＋N」の印が出る（押す前に段が増えると分かる）',
+     /ゴムリング＋2/.test(s1.subs.join('/')),s1.subs.join('/'));
  rec('内訳を選ぶまで追加できない（理由をボタンの字で言う）',
      s1.goOff&&s1.go.includes('内訳を選んでください'),`${s1.go} off=${s1.goOff}`);
  rec('時間は親の標準所要分（60分）で始まる',/60/.test(s1.pick[1]||''),s1.pick.join(' | '));
@@ -99,6 +105,58 @@ H.run('test_stopflow: 設備停止を入れる手順（§9.389）',async({page,r
  rec('選んだ内訳の札は、選んでいない札と色が違う（印が効いている）',
      !!tint.on&&tint.on!==tint.off,`${tint.on} / ${tint.off}`);
 
+ // ---- ②b 下を持つ内訳を選ぶと、段がもう1つ増える（§9.390） -------------
+ await page.evaluate(()=>{
+  const b=[...document.querySelectorAll('[data-sp-sub]')].find(x=>/ゴムリング/.test(x.textContent));
+  if(b)b.click();
+ });
+ await page.waitForFunction(()=>document.querySelectorAll('.sc-sp-t').length===3,null,{timeout:8000})
+   .catch(e=>{throw new Error('②b-1 段が3つにならない: '+e.message.slice(0,60))});
+ const s2b=await page.evaluate(()=>({
+  steps:[...document.querySelectorAll('.sc-sp-t')].map(x=>x.textContent.trim()),
+  nums:[...document.querySelectorAll('.sc-sp-n')].map(x=>x.textContent.trim()),
+  kids:[...document.querySelectorAll('[data-sp-sub2]')].map(x=>x.textContent.trim()),
+  go:(document.querySelector('#scSpGo')||{}).textContent||'',
+  goOff:!!(document.querySelector('#scSpGo')||{}).disabled,
+ }));
+ rec('段が3つになり、2段目の見出しは親の名前',
+     s2b.steps.length===3&&/ゴムリング/.test(s2b.steps[1])&&s2b.nums.join('')==='123',
+     s2b.steps.join('/'));
+ rec('2段目の札が2つ出る',s2b.kids.join('/')==='交換/増し締め',s2b.kids.join('/'));
+ rec('2段目を選ぶまで追加できない（理由をボタンの字で言う）',
+     s2b.goOff&&/ゴムリング/.test(s2b.go),`${s2b.go} off=${s2b.goOff}`);
+ await page.evaluate(()=>{
+  const b=[...document.querySelectorAll('[data-sp-sub2]')].find(x=>x.textContent.trim()==='交換');
+  if(b)b.click();
+ });
+ await page.waitForFunction(()=>!(document.querySelector('#scSpGo')||{}).disabled,null,{timeout:8000})
+   .catch(e=>{throw new Error('②b-2 2段目を選んでも押せない: '+e.message.slice(0,60))});
+ const s2c=await page.evaluate(()=>
+   [...document.querySelectorAll('.sc-sp-pick')].map(x=>x.textContent.trim()));
+ rec('2段目の標準所要分（20分）が時間に入る',/20/.test(s2c[2]||''),s2c.join(' | '));
+ /* 1段目を選び直したら2段目は捨てる（画面に出ていない値で登録しない）。 */
+ const pickSub=async name=>{
+  await page.evaluate(n=>{
+   const b=[...document.querySelectorAll('[data-sp-sub]')].find(x=>x.textContent.includes(n));
+   if(b)b.click();
+  },name);
+  await page.waitForFunction(n=>{
+   const p=[...document.querySelectorAll('.sc-sp-pick')];
+   return p.length&&p[0].textContent.includes(n);
+  },name,{timeout:8000}).catch(e=>{throw new Error(`内訳「${name}」を選べない: `+e.message.slice(0,50))});
+ };
+ /* **段の数は「時間」を数えて見る**（§9.390）——下を持つ内訳を選ぶと段が
+    増えるので、`.sc-sp-pick`の件数を決め打ちにすると、ここだけ落ちる。
+    いちばん下の札（＝時間）は`last`で拾う。 */
+ const lastPick=()=>page.evaluate(()=>{
+  const p=[...document.querySelectorAll('.sc-sp-pick')];
+  return p.length?p[p.length-1].textContent.trim():'';
+ });
+ await pickSub('刃出し');
+ await page.waitForFunction(()=>document.querySelectorAll('.sc-sp-t').length===2,null,{timeout:8000})
+   .catch(e=>{throw new Error('②b-3 段が2つへ戻らない: '+e.message.slice(0,60))});
+ rec('1段目を選び直すと2段目の段ごと消える',true);
+
  // ---- ③ スライダーで直すと、選び直しても戻らない ----------------------
  const sl=await page.evaluate(()=>{
   const r=document.getElementById('scSpRange');
@@ -109,25 +167,24 @@ H.run('test_stopflow: 設備停止を入れる手順（§9.389）',async({page,r
  });
  rec('スライダーで時間を直せる（札がその場で追いつく）',
      !!sl&&/\d/.test(sl.txt),JSON.stringify(sl));
- await page.evaluate(()=>{
-  const b=[...document.querySelectorAll('[data-sp-sub]')].find(x=>x.textContent.trim()==='ゴムリング');
-  if(b)b.click();
- });
- await page.waitForFunction(()=>{
-  const p=[...document.querySelectorAll('.sc-sp-pick')];
-  return p.length===2&&/ゴムリング/.test(p[0].textContent);
- },null,{timeout:8000});
- const s3=await page.evaluate(()=>
-   (document.querySelectorAll('.sc-sp-pick')[1]||{}).textContent||'');
+ await pickSub('ゴムリング');
+ const s3=await lastPick();
  rec('手で触った時間は、内訳を選び直しても勝手に戻さない',
-     !/^60分$/.test(s3.trim()),s3.trim());
+     !/^60分$/.test(s3)&&!/^20分$/.test(s3),s3);
 
  // ---- ④⑤ 追加すると名称はそのまま・内訳は明細・行に札 ------------------
- const mins=await page.evaluate(()=>{
+ /* 2段目まで選んだ状態で入れる（§9.390）——`stopSub`＝1段目・`stopSub2`＝2段目。 */
+ await page.evaluate(()=>{
+  const b=[...document.querySelectorAll('[data-sp-sub2]')].find(x=>x.textContent.trim()==='交換');
+  if(b)b.click();
+ });
+ await page.waitForFunction(()=>!(document.querySelector('#scSpGo')||{}).disabled,null,{timeout:8000})
+   .catch(e=>{throw new Error('④ 2段目を選んでも押せない: '+e.message.slice(0,60))});
+ await page.evaluate(()=>{
   const b=[...document.querySelectorAll('[data-sp-min]')].find(x=>/30/.test(x.textContent));
   if(b)b.click();
-  return (document.querySelectorAll('.sc-sp-pick')[1]||{}).textContent||'';
  });
+ const mins=await lastPick();
  rec('選択肢からも時間を選べる',/30/.test(mins),mins);
  await page.click('#scSpGo');
  const after=await WW.poll(plan,es=>es.some(e=>e.kind==='設備停止'&&e.title===NAME),20000);
@@ -136,6 +193,8 @@ H.run('test_stopflow: 設備停止を入れる手順（§9.389）',async({page,r
      !!added&&added.title===NAME,added&&added.title);
  rec('内訳は明細に入る（名称を割らない）',
      !!added&&(added.detail||{}).stopSub==='ゴムリング',JSON.stringify(added&&added.detail));
+ rec('2段目も明細に入る（stopSub＝1段目／stopSub2＝2段目・§9.390）',
+     !!added&&(added.detail||{}).stopSub2==='交換',JSON.stringify(added&&added.detail));
  rec('選んだ時間が見積になる',!!added&&Number((added.estimate||{}).minutes)===30,
      JSON.stringify(added&&added.estimate));
  await page.waitForFunction(n=>[...document.querySelectorAll('.sc-row-nonwork')]
@@ -145,7 +204,8 @@ H.run('test_stopflow: 設備停止を入れる手順（§9.389）',async({page,r
   const sub=el&&el.querySelector('.sc-nw-sub');
   return {sub:sub?sub.textContent.trim():'',title:el?el.getAttribute('title'):''};
  },NAME);
- rec('予定の行に内訳の札が出る',row.sub==='ゴムリング',JSON.stringify(row).slice(0,140));
+ rec('予定の行の札は「1段目 / 2段目」の1枚（§9.390）',
+     row.sub==='ゴムリング / 交換',JSON.stringify(row).slice(0,140));
  rec('題名そのものは名前のまま（札は別の物）',
      (row.title||'').startsWith(NAME),String(row.title).slice(0,60));
 

@@ -2149,12 +2149,34 @@
 .ssb-row{display:grid;
   grid-template-columns:minmax(0,var(--w-xl)) var(--w-sm) var(--ctl-h-sm) minmax(0,1fr);
   align-items:center;gap:var(--gap-inline);padding:var(--space-1) var(--space-2)}
+.ssb-row.is-head>span:last-child{font-size:var(--fs-micro)}
 .ssb-row.is-head{position:sticky;top:0;z-index:1;background:var(--surface-2);
   border-bottom:1px solid var(--line-soft)}
 .ssb-row.is-head>span{font-size:var(--fs-micro);font-weight:700;color:var(--ink-3)}
 .ssb-row[data-ssb-id]:nth-of-type(even){background:var(--surface-2)}
 .ssb-row input.ssb-f{height:var(--ctl-h-sm);min-width:0;width:100%;padding:0 var(--space-2);
   border:1px solid var(--line);border-radius:var(--radius-sm);font-size:var(--fs-sm)}
+/* もう1階層（§9.390）。**2段目は字下げして「└」を付ける**——同じ幅の行が
+   並ぶだけでは、どれがどれの下なのか読み取れない（§CLAUDE 14）。
+   字下げは`--space-4`ぶんだけ（深くすると1段目の名前と縦がそろわなくなる）。 */
+.ssb-name{display:flex;align-items:center;gap:var(--gap-tight);min-width:0}
+.ssb-name>input{flex:1;min-width:0}
+.ssb-row.is-deep .ssb-name{padding-left:var(--space-4)}
+.ssb-tee{flex:none;font-style:normal;color:var(--muted);line-height:1}
+/* 「＋ 下へ」は**足す先を切り替えるだけ**（その場に欄は生えない）。選んで
+   いる間は印を付け、下の欄の見出しが「◯◯の下へ」と字で言う（§CLAUDE 2）。 */
+/* **中身の長さで止める**（§CLAUDE 11）——4列目は`1fr`なので、放っておくと
+   器いっぱい（実測350px）まで伸びて「＋ 下へ」が押し出される。余りは空白。 */
+.ssb-under{justify-self:start;height:var(--ctl-h-xs);padding:0 var(--space-2);white-space:nowrap;
+  border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:var(--surface);
+  font-size:var(--fs-micro);font-weight:700;color:var(--ink-3);cursor:pointer}
+.ssb-under:hover{border-color:var(--teal);color:var(--teal-dark)}
+.ssb-add-where{flex:1 1 100%;display:flex;align-items:center;gap:var(--gap-inline);
+  font-size:var(--fs-badge);color:var(--ink-2)}
+.ssb-add-where>b{color:var(--teal-dark)}
+.ssb-add-where>button{height:var(--ctl-h-xs);padding:0 var(--space-2);
+  border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:var(--surface);
+  font-size:var(--fs-micro);font-weight:700;color:var(--ink-3);cursor:pointer}
 .ssb-add{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);flex:none}
 .ssb-add input{height:var(--ctl-h-sm);padding:0 var(--space-2);
   border:1px solid var(--line);border-radius:var(--radius-sm);font-size:var(--fs-sm)}

@@ -566,6 +566,12 @@
  font-size:var(--fs-sm);font-weight:700;color:var(--ink-2);cursor:pointer;white-space:nowrap}
 .sc-sp-opt:hover{border-color:var(--teal);background:var(--pale)}
 .sc-sp-empty{font-size:var(--fs-micro);color:var(--muted)}
+/* 「この下にさらにN件ある」の印（§9.390）。**押す前に段が増えると分かる**
+   ——押してから段が生えると、何手で終わるのか読めない（§CLAUDE 2）。 */
+.sc-sp-more{margin-left:var(--gap-tight);padding:0 var(--space-1);font-style:normal;
+ font-size:var(--fs-micro);font-weight:800;line-height:1.5;
+ border-radius:var(--radius-xs);background:var(--surface-2);color:var(--ink-3)}
+.sc-sp-opt.is-on .sc-sp-more{background:var(--pale);color:var(--teal-dark)}
 .sc-sp-slider{display:flex;align-items:center;gap:var(--space-2);min-width:0}
 .sc-sp-slider>input[type=range]{flex:1;min-width:0}
 .sc-sp-slider>b{flex:none;font-size:var(--fs-sm);font-weight:800;color:var(--teal-dark)}

@@ -40,6 +40,10 @@ def _sub_entry(r, parents):
          # 「片方だけ古い」が起きる。
          'stopReasonName': p.get('name', ''),
          'stopReasonLabel': p.get('label', ''),
+         # もう1階層（§9.390）。`parentSubId`が0なら1段目。
+         # **深さも返す**——画面が0かどうかを数え直さずに段を描ける。
+         'parentSubId': int(r[8] or 0),
+         'depth': 2 if int(r[8] or 0) else 1,
          'name': r[2], 'standardMinutes': r[3], 'order': r[4],
          'updatedAt': r[6].isoformat() if r[6] else None,
          'updatedBy': str(r[7] or '')}
@@ -71,7 +75,9 @@ def stop_sub_list():
           [dict(v, id=k) for k, v in sorted(parents.items(), key=lambda kv: kv[1]['label'])])
  items, parents = cfg_read(fn)
  # **選べる親はサーバーが答える**（§9.163）。盤は返ってきた一覧を並べるだけ。
- return jsonify(ok=True, configured=True, items=items, stale=False, parents=parents)
+ # `maxDepth`＝内訳の段の上限（§9.390）。画面へ数を書き写さない。
+ return jsonify(ok=True, configured=True, items=items, stale=False, parents=parents,
+                maxDepth=2)
 
 
 def _sub_save(x, sub_id=None):
@@ -80,19 +86,22 @@ def _sub_save(x, sub_id=None):
   gid, created = sr.stop_sub_upsert(mc, x.get('stopReasonId'), x.get('name'),
                                     request_user_id(x),
                                     standard_minutes=x.get('standardMinutes'),
-                                    sub_id=sub_id)
+                                    sub_id=sub_id,
+                                    parent_sub_id=x.get('parentSubId'))
   return {'id': gid, 'created': created}
  return cfg_write_response(fn)
 
 
 @bp.post('/api/schedule/stop-sub-master')
 def stop_sub_register():
- return _sub_save(body({'id': any_, 'stopReasonId': any_, 'name': str, 'standardMinutes': any_}))
+ return _sub_save(body({'id': any_, 'stopReasonId': any_, 'name': str,
+                        'standardMinutes': any_, 'parentSubId': any_}))
 
 
 @bp.post('/api/schedule/stop-sub-master/update')
 def stop_sub_update():
- x = body({'id': any_, 'stopReasonId': any_, 'name': str, 'standardMinutes': any_})
+ x = body({'id': any_, 'stopReasonId': any_, 'name': str,
+           'standardMinutes': any_, 'parentSubId': any_})
  if x.get('id') in (None, ''):
   return jsonify(error='更新対象IDがありません。'), 400
  return _sub_save(x, sub_id=x.get('id'))

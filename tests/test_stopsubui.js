@@ -104,7 +104,36 @@ H.run('test_stopsubui: 設備停止の内訳と時間のマスタ画面（§9.38
      &&srv.filter(x=>x.endsWith(':ゴムリング')).length===1,
      srv.join(' / '));
 
+ // ---- ②b もう1階層（§9.390） ------------------------------------------
+ await pick(idA);
+ const under=async name=>page.evaluate(n=>{
+  const row=[...document.querySelectorAll('.ssb-row[data-ssb-id]')]
+    .find(r=>(r.querySelector('input[data-ssb-k="name"]')||{}).value===n);
+  const b=row&&row.querySelector('[data-ssb-under]');
+  if(b)b.click();
+  return !!b;
+ },name);
+ rec('1段目の行に「＋ 下へ」がある',await under('ゴムリング'));
+ await page.waitForSelector('#ssbUnderClear',{timeout:8000});
+ const where=await page.textContent('.ssb-add-where');
+ rec('足す先が字で出る（どこへ足すか推測させない）',
+     /ゴムリング/.test(where||''),(where||'').replace(/\s+/g,' ').trim());
+ await addSub('交換',null);
+ await page.evaluate(()=>{const b=document.getElementById('ssbUnderClear');if(b)b.click()});
+ await page.waitForFunction(()=>!document.querySelector('.ssb-add-where'),null,{timeout:8000});
+ const tree=await page.evaluate(()=>[...document.querySelectorAll('.ssb-row[data-ssb-id]')]
+   .map(r=>`${r.dataset.ssbDepth}:${(r.querySelector('input[data-ssb-k="name"]')||{}).value}`));
+ rec('2段目が親の直後へ字下げで並ぶ',
+     tree.join('/')==='1:ゴムリング/2:交換/1:刃出し',tree.join('/'));
+ const srv2=await page.evaluate(async i=>{
+  const j=await (await fetch('/api/schedule/stop-sub-master')).json();
+  return (j.items||[]).filter(x=>Number(x.stopReasonId)===Number(i))
+    .map(x=>`${x.depth}:${x.name}:${x.parentSubId}`);
+ },idA);
+ rec('サーバーも段と親を返す',srv2.some(x=>/^2:交換:/.test(x)),srv2.join(' / '));
+
  // ---- ③ 親の標準所要分が画面に出ている（出どころ・§CLAUDE 6） ---------
+ await pick(idB);
  const baseTxt=await page.textContent('.ssb-base');
  rec('右のヘッダに親の標準所要分が出る',/30/.test(baseTxt||''),(baseTxt||'').trim().slice(0,60));
  rec('分の欄のプレースホルダが「空欄ならこの時間」を言う',

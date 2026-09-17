@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（565件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（573件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -230,11 +230,14 @@
 | 編集可能モード/閲覧モード/スケジュールモード | `test_modeguard.py` | [決まり](docs/decisions/rules-misc.md) |
 | 作業スケジュール表の「見えるもの」はモードで変えない | `test_scmodecols.js` | [§9.246](docs/decisions/9.246.md) |
 
-### マスタ（サーバー側）（19件）
+### マスタ（サーバー側）（22件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 設備停止は3階層（分類→停止内容→内訳）。**内訳は名称を割らない**（集計は名称で束ねる） | `test_stopsub.py` | [§9.389](docs/decisions/9.389.md) |
+| 内訳の下はもう1段だけ（**深さは2段まで**）。親なしは`0`——`NULL`にするとUNIQUEが1件も止めない | `test_stopsub.py` | [§9.390](docs/decisions/9.390.md) |
+| 内訳の並びは「親 → その子」をサーバーが作る。親を消すと**子も消える**。数えるのは1段目だけ | `test_stopsub.py` | [§9.390](docs/decisions/9.390.md) |
+| 既定の分は「2段目 → 1段目 → 停止内容 → 無し」の4段。たどるのは`stop_default_minutes()`の1箇所 | `test_stopsub.py` | [§9.390](docs/decisions/9.390.md) |
 | 時間マスタが持つのは「分」だけ。スライダーの両端は**選択肢そのもの**から作る | `test_stopsub.py` | [§9.389](docs/decisions/9.389.md) |
 | 既定の分は「サブ → 親 → 無し」の3段。空欄を0にしない | `test_stopsub.py` | [§9.389](docs/decisions/9.389.md) |
 | エラーを捨てるときは理由を1行残す。黙って捨てない | `test_quietlint.py` | [§9.328](docs/decisions/9.328.md) |
@@ -254,11 +257,12 @@
 | 設備停止マスタの`[設備名]`は「対象設備」 | `test_stopeq.js` | [決まり](docs/decisions/rules-misc.md) |
 | ③「記録した値」は操業データ項目マスタが決める | `test_recvalues.js` | [§9.242](docs/decisions/9.242.md) |
 
-### マスタ管理の画面（14件）
+### マスタ管理の画面（15件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 設備停止の内訳は「左＝停止内容（分類ごと）／右＝内訳」の2ペイン。時間は札＋スライダーの見本 | `test_stopsubui.js` | [§9.389](docs/decisions/9.389.md) |
+| 2段目を作る道は1段目の行の「＋ 下へ」。**足す先を先に言う**（押してから気づかせない） | `test_stopsubui.js` | [§9.390](docs/decisions/9.390.md) |
 | マスタ管理のJSは「定義／盤／専用画面」の5本。受け渡しは`WL.mm`の1つ | `test_loadorder.py` | [§9.324](docs/decisions/9.324-1.md) |
 | 盤を入れた段は縦積みにする。折り返す横並びのままだと高さが決まらない | `test_rbmodal.js` | [§9.291](docs/decisions/9.291.md) |
 | 器の高さを与えないと窓は中身なりで止まる | `test_rbmodal.js` | [§9.254](docs/decisions/9.254.md) |
@@ -533,11 +537,13 @@
 | 刃組スケジュール一覧は記録と予定を`stopId`で結ぶ。未記録は字で書く | `test_bladeui.js` | [§9.383](docs/decisions/9.383.md) |
 | 部材の並びは大きい寸法から。「種類×数」と「何種・何本」の両方を言う | `test_bladeui.js` | [§9.383](docs/decisions/9.383.md) |
 
-### 作業スケジュール（33件）
+### 作業スケジュール（35件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 設備停止は「内容 →（内訳）→ 時間」の手順で入れる。窓は開かず一覧と入れ替える | `test_stopflow.js` | [§9.389](docs/decisions/9.389.md) |
+| 段が増えるのは**下を持つ内訳を選んだときだけ**（空の段を出さない）。1段目を選び直したら2段目は捨てる | `test_stopflow.js` | [§9.390](docs/decisions/9.390.md) |
+| 予定へ渡すのは**いちばん下の内訳のID**1つ。1段目は`stopSub`のまま・2段目は`stopSub2`（既存の集計を割らない） | `test_stopsub.py`・`test_stopflow.js` | [§9.390](docs/decisions/9.390.md) |
 | 内訳の札は題名の一部ではない。答えるのは`nonWorkSubText()`の1箇所（紙も同じ1本） | `test_stopflow.js` | [§9.389](docs/decisions/9.389.md) |
 | 予定の内訳（サブカテゴリ）は`[明細JSON]`。触れるのは**設備停止の行だけ**（作業の写しを潰さない） | `test_stopsub.py` | [§9.389](docs/decisions/9.389.md) |
 | 作業スケジュールの「開始」は着手できる**全行**に出す（次の1本は現場が自由に選ぶ。先頭N行に絞らない） | `test_workable.js` | [§9.339](docs/decisions/9.339.md) |

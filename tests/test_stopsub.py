@@ -102,6 +102,47 @@ rec('内訳の件数を親ごとに数えられる（一覧が1度で見分け�
     sr.stop_sub_counts(c) == {blade: 3, setup: 1}, sr.stop_sub_counts(c))
 
 # ---------------------------------------------------------------------------
+# 1b. もう1階層（§9.390、利用者の指示「内訳はもう1階層増やせるように」）
+# ---------------------------------------------------------------------------
+have2 = set(cols(c, '設備停止サブカテゴリマスタ'))
+rec('内訳の表が親の列を持つ', '親サブカテゴリID' in have2, sorted(have2))
+k_ring, _ = sr.stop_sub_upsert(c, blade, '交換', 'u', parent_sub_id=s_ring)
+k_fing, _ = sr.stop_sub_upsert(c, blade, '交換', 'u', parent_sub_id=s_fing)
+rec('親が違えば同じ名前の「内訳の内訳」が両立する',
+    k_ring != k_fing, f'{k_ring} vs {k_fing}')
+ok, why = refused(lambda: sr.stop_sub_upsert(c, blade, '交換', 'u', parent_sub_id=s_ring))
+rec('同じ親の下の同名は増えない（既存の行が戻る）',
+    not ok and sr.stop_sub_upsert(c, blade, '交換', 'u', parent_sub_id=s_ring) == (k_ring, False),
+    why)
+ok, why = refused(lambda: sr.stop_sub_upsert(c, blade, 'さらに下', 'u', parent_sub_id=k_ring))
+rec('段は2つまで（内訳の内訳を、さらに分けられない）', ok and '2段' in why, why)
+ok, why = refused(lambda: sr.stop_sub_upsert(c, setup, 'よそ', 'u', parent_sub_id=s_ring))
+rec('別の設備停止の内訳は親にできない', ok and '別の設備停止' in why, why)
+
+order = [(r[2], int(r[8] or 0)) for r in sr.stop_sub_rows(c, blade)]
+rec('並びは「親 → その子」（画面が木を組み直さずに描ける）',
+    order.index(('交換', s_ring)) == order.index(('ゴムリング', 0)) + 1, order)
+rec('1段目だけを数える（3件のまま。2段目を足しても増えない）',
+    sr.stop_sub_counts(c) == {blade: 3, setup: 1}, sr.stop_sub_counts(c))
+rec('親をたどれる', (sr.stop_sub_parent_of(c, k_ring) or [None] * 3)[2] == 'ゴムリング')
+rec('1段目の親は None', sr.stop_sub_parent_of(c, s_ring) is None)
+
+# 予定へ写す形。**1段目は`stopSub`のまま**（集計は名称と1段目で束ねられる）。
+d1 = sr.stop_sub_detail(sr.stop_sub_row(c, s_ring))
+d2 = sr.stop_sub_detail(sr.stop_sub_row(c, k_ring), sr.stop_sub_row(c, s_ring))
+rec('1段目の写しは stopSub だけ', d1.get('stopSub') == 'ゴムリング' and 'stopSub2' not in d1, d1)
+rec('2段目の写しは stopSub＝親／stopSub2＝自分',
+    d2.get('stopSub') == 'ゴムリング' and d2.get('stopSub2') == '交換', d2)
+
+# 消すと子も消える（どこにもぶら下がらない内訳を選択肢に残さない）。
+sr.stop_sub_delete(c, s_fing, 'u')
+rec('親を消すと子も消える',
+    not any(int(r[0]) in (s_fing, k_fing) for r in sr.stop_sub_rows(c, blade)),
+    [r[2] for r in sr.stop_sub_rows(c, blade)])
+sr.stop_sub_upsert(c, blade, 'フィンガー', 'u')   # 戻す（下の 2. が使う）
+sr.stop_sub_delete(c, k_ring, 'u')
+
+# ---------------------------------------------------------------------------
 # 2. 削除は論理削除、入れ直すと戻る
 # ---------------------------------------------------------------------------
 sr.stop_sub_delete(c, s_fing, 'u')
@@ -119,6 +160,15 @@ rec('同じ名前を入れ直すと元の行が戻る（IDが増えない）',
 # ---------------------------------------------------------------------------
 rec('サブに標準所要分があればそれ', sr.stop_default_minutes(c, blade, s_out) == 90.0,
     sr.stop_default_minutes(c, blade, s_out))
+# 2段目（§9.390）。**下から順に見る**——自分が空なら親の内訳、それも空なら停止内容。
+deep_a, _ = sr.stop_sub_upsert(c, blade, '粗出し', 'u', standard_minutes=45, parent_sub_id=s_out)
+deep_b, _ = sr.stop_sub_upsert(c, blade, '仕上げ', 'u', parent_sub_id=s_out)
+rec('2段目に値があればそれ', sr.stop_default_minutes(c, blade, deep_a) == 45.0,
+    sr.stop_default_minutes(c, blade, deep_a))
+rec('2段目が空なら1段目（90分）', sr.stop_default_minutes(c, blade, deep_b) == 90.0,
+    sr.stop_default_minutes(c, blade, deep_b))
+sr.stop_sub_delete(c, deep_a, 'u')
+sr.stop_sub_delete(c, deep_b, 'u')
 rec('サブが空欄なら親の標準所要分', sr.stop_default_minutes(c, blade, s_ring) == 60.0,
     sr.stop_default_minutes(c, blade, s_ring))
 rec('サブを選んでいなければ親の標準所要分', sr.stop_default_minutes(c, blade) == 60.0)

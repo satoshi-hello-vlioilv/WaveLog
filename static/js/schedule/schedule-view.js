@@ -5272,7 +5272,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     食い違う。 */
  function nonWorkSubText(e){
   if(!e||e.kind!=='設備停止')return '';
-  return String((e.detail||{}).stopSub||'').trim();
+  const d=e.detail||{};
+  const a=String(d.stopSub||'').trim();
+  /* もう1段（§9.390）。**2段目があれば「親 / 子」で1枚に出す**——札を2つ
+     並べると、どちらが上位なのか読めない（§CLAUDE 14）。 */
+  const b=String(d.stopSub2||'').trim();
+  return a&&b?`${a} / ${b}`:(a||b);
  }
  function rowStyleClass(e){
   const c=rowStyleOf(e).colorKey;
@@ -8217,16 +8222,30 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  function stopSubsOf(reasonId){
   return (scState.stopSubs||[]).filter(s=>Number(s.stopReasonId)===Number(reasonId));
  }
+ /* 内訳は**2段**（§9.390）。1段目＝`parentSubId`が0、2段目＝その下。 */
+ function stopSubTopOf(reasonId){
+  return stopSubsOf(reasonId).filter(s=>!Number(s.parentSubId||0));
+ }
+ function stopSubKidsOf(reasonId,subId){
+  if(!subId)return [];
+  return stopSubsOf(reasonId).filter(s=>Number(s.parentSubId||0)===Number(subId));
+ }
  function stopReasonById(id){
   return (scState.stopReasons||[]).find(s=>Number(s.id)===Number(id))||null;
  }
  /* 最初から選ばれている分。**効く順はサーバーと同じ**「サブ → 停止内容 →
     選択肢の真ん中」（§9.389 の`stop_default_minutes`）——画面が別の順で
     決めると、出ている数字と入る数字が食い違う。 */
- function stopPickDefaultMinutes(reasonId,subId){
-  const sub=subId?stopSubsOf(reasonId).find(s=>Number(s.id)===Number(subId)):null;
+ /* 効く順はサーバーの`stop_default_minutes`と同じ（§9.390）——
+    **2段目 → 1段目 → 停止内容 → 選択肢の真ん中**。画面が別の順で決めると、
+    出ている数字と入る数字が食い違う。 */
+ function stopPickDefaultMinutes(reasonId,subId,subId2){
   const n=v=>{const x=Number(v);return Number.isFinite(x)&&x>0?x:null};
-  if(sub){const m=n(sub.standardMinutes);if(m)return m}
+  const find=id=>id?stopSubsOf(reasonId).find(s=>Number(s.id)===Number(id)):null;
+  for(const id of [subId2,subId]){
+   const sub=find(id);
+   if(sub){const m=n(sub.standardMinutes);if(m)return m}
+  }
   const r=stopReasonById(reasonId);
   if(r){const m=n(r.standardMinutes);if(m)return m}
   const list=scState.stopMinutes||[];
@@ -8239,9 +8258,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    showToast&&showToast('追加できません',sessionHolderMessage(),4000);
    return;
   }
-  const subs=stopSubsOf(reasonId);
+  const subs=stopSubTopOf(reasonId);
   scState.stopPick={id:reasonId,label:String(label||''),
-    subId:'',minutes:stopPickDefaultMinutes(reasonId,''),touched:false,
+    subId:'',subId2:'',minutes:stopPickDefaultMinutes(reasonId,'',''),touched:false,
     /* 位置は**ここで控える**（開いている間に別の行を選んでも動かない）。 */
     before:takeInsertBefore(),subs};
   renderStopList();
@@ -8260,19 +8279,32 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const mins=scState.stopMinutes||[];
   const sl=scState.stopSlider;
   const step=sl?Number(sl.step||5):5;
+  const sub=p.subId?subs.find(s=>Number(s.id)===Number(p.subId)):null;
+  /* もう1段（§9.390）。**その内訳が下を持つときだけ段が増える**——空の段を
+     出すと「選び忘れた」と読まれる（§CLAUDE 4）。 */
+  const kids=sub?stopSubKidsOf(p.id,p.subId):[];
+  const sub2=p.subId2?kids.find(s=>Number(s.id)===Number(p.subId2)):null;
   let no=0;
   const subStep=subs.length?(++no):0;
+  const kidStep=kids.length?(++no):0;
   const minStep=(++no);
-  const sub=p.subId?subs.find(s=>Number(s.id)===Number(p.subId)):null;
-  const ready=!subs.length||!!sub;
+  const ready=(!subs.length||!!sub)&&(!kids.length||!!sub2);
   const minsHtml=mins.map(m=>
     `<button type="button" class="sc-sp-opt${Number(p.minutes)===Number(m)?' is-on':''}"
       data-sp-min="${m}">${esc(WL.duration.text(m))}</button>`).join('')
     ||'<span class="sc-sp-empty">時間の選択肢がまだありません（マスタ管理 &gt; 設備停止の時間）。</span>';
   const subsHtml=subs.map(s=>{
-    const m=stopPickDefaultMinutes(p.id,s.id);
+    const m=stopPickDefaultMinutes(p.id,s.id,'');
+    const n=stopSubKidsOf(p.id,s.id).length;
     return `<button type="button" class="sc-sp-opt${Number(p.subId)===Number(s.id)?' is-on':''}"
-      data-sp-sub="${s.id}" title="${esc(s.name)}${m?`／既定 ${WL.duration.text(m)}`:''}">${esc(s.name)}</button>`;
+      data-sp-sub="${s.id}" title="${esc(s.name)}${m?`／既定 ${WL.duration.text(m)}`:''}${
+        n?`／この下にさらに${n}件`:''}">${esc(s.name)}${
+        n?`<i class="sc-sp-more" aria-hidden="true">＋${n}</i>`:''}</button>`;
+   }).join('');
+  const kidsHtml=kids.map(s=>{
+    const m=stopPickDefaultMinutes(p.id,p.subId,s.id);
+    return `<button type="button" class="sc-sp-opt${Number(p.subId2)===Number(s.id)?' is-on':''}"
+      data-sp-sub2="${s.id}" title="${esc(s.name)}${m?`／既定 ${WL.duration.text(m)}`:''}">${esc(s.name)}</button>`;
    }).join('');
   /* スライダーは**選択肢の外の値も入れるため**にある（§9.389）。選択肢が
      1件以下なら出さない——動かせない目盛りを置かない（§CLAUDE 4）。 */
@@ -8294,6 +8326,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
        <span class="sc-sp-pick">${sub?esc(sub.name):'未選択'}</span></div>
       <div class="sc-sp-opts">${subsHtml}</div>
      </div>`:''}
+    ${kidStep?`<div class="sc-sp-step${sub2?' is-done':''}">
+      <div class="sc-sp-line"><span class="sc-sp-n">${kidStep}</span>
+       <span class="sc-sp-t">${esc(sub?sub.name:'内訳')}のどれか</span>
+       <span class="sc-sp-pick">${sub2?esc(sub2.name):'未選択'}</span></div>
+      <div class="sc-sp-opts">${kidsHtml}</div>
+     </div>`:''}
     <div class="sc-sp-step is-done">
      <div class="sc-sp-line"><span class="sc-sp-n">${minStep}</span>
       <span class="sc-sp-t">時間を選ぶ</span>
@@ -8302,7 +8340,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      ${sliderHtml}
     </div>
     <button type="button" class="sc-sp-go" id="scSpGo"${ready?'':' disabled'}>${
-      ready?'この内容で追加':'内訳を選んでください'}</button>
+      ready?'この内容で追加'
+        :(sub&&kids.length?`${esc(sub.name)}のどれかを選んでください`:'内訳を選んでください')}</button>
    </div>`;
  }
  function bindStopPicker(){
@@ -8313,9 +8352,20 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    b.onclick=()=>{
     const id=Number(b.dataset.spSub);
     p.subId=(Number(p.subId)===id)?'':id;
+    /* **1段目を選び直したら2段目は捨てる**（§9.390）——別の内訳の下の
+       選択が残ると、画面に出ていない値で登録される。 */
+    p.subId2='';
     /* **手で時間を触っていなければ、内訳の既定へ合わせる**（§CLAUDE 2
        「先回りして提示する」）。触っていたら勝手に戻さない。 */
-    if(!p.touched)p.minutes=stopPickDefaultMinutes(p.id,p.subId);
+    if(!p.touched)p.minutes=stopPickDefaultMinutes(p.id,p.subId,'');
+    renderStopList();
+   };
+  });
+  document.querySelectorAll('[data-sp-sub2]').forEach(b=>{
+   b.onclick=()=>{
+    const id=Number(b.dataset.spSub2);
+    p.subId2=(Number(p.subId2)===id)?'':id;
+    if(!p.touched)p.minutes=stopPickDefaultMinutes(p.id,p.subId,p.subId2);
     renderStopList();
    };
   });
@@ -8343,7 +8393,13 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const p=scState.stopPick;if(!p)return;
   const subs=p.subs||[];
   const sub=p.subId?subs.find(s=>Number(s.id)===Number(p.subId)):null;
+  const kids=sub?stopSubKidsOf(p.id,p.subId):[];
+  const sub2=p.subId2?kids.find(s=>Number(s.id)===Number(p.subId2)):null;
   if(subs.length&&!sub)return;
+  if(kids.length&&!sub2)return;
+  /* サーバーへ渡すのは**いちばん下の内訳のID**（§9.390）。写しの
+     `stopSub`（1段目）と`stopSub2`はサーバーが1箇所で組む。 */
+  const leaf=sub2||sub;
   if(sessionBlocked()){
    showToast&&showToast('追加できません',sessionHolderMessage(),4000);
    return;
@@ -8353,16 +8409,18 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* 画面へ先に置く（楽観追加）。**[予定名称]は停止内容の名前のまま**で、
      内訳は明細へ入れる（§9.389。名称で束ねたまま内訳で割れる）。 */
   const entry=makeOptimisticEntry('設備停止',{title:p.label,
-    detail:sub?{stopSubId:sub.id,stopSub:sub.name}:{},
+    detail:leaf?(sub2?{stopSubId:sub2.id,stopSub:sub.name,stopSub2:sub2.name,stopSubTopId:sub.id}
+                     :{stopSubId:sub.id,stopSub:sub.name}):{},
     estimate:p.minutes==null?null:{minutes:p.minutes,source:'override'}});
   insertEntriesAt(before,[entry]);
   renderTimeline();
   queuePlanOp({op:'add',equipment:target,kind:'設備停止',
    position:before?`before:${before}`:'end',stopReasonId:p.id,
-   stopSubId:sub?sub.id:'',
+   stopSubId:leaf?leaf.id:'',
    estimateMinutes:p.minutes==null?null:p.minutes,
    onSuccess:r=>resolveOptimisticEntry(entry,r),onFailure:()=>discardOptimisticEntry(entry)});
-  const what=p.label+(sub?`（${sub.name}）`:'')+(p.minutes==null?'':`・${WL.duration.text(p.minutes)}`);
+  const what=p.label+(sub?`（${sub.name}${sub2?' / '+sub2.name:''}）`:'')
+    +(p.minutes==null?'':`・${WL.duration.text(p.minutes)}`);
   showToast&&showToast('設備停止を追加しました',`${target}の予定に追加しました（${what}）`,3200);
   scState.stopPick=null;
   renderStopList();renderStopWhere();
