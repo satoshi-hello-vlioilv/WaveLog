@@ -1756,15 +1756,35 @@
     const n=Number(raw);
     return Number.isFinite(n)?n:NaN;
   }
+  /* 屑幅の式は**ここ1つ**（§9.160の追補・§9.389）。`scrapWidthInfo()`は
+     測定画面の控え（`S.measure`）を読むので、予定の行からは呼べない——
+     作業スケジュールの「耳屑幅(片耳)」の列（§9.389 段4）も同じ式で出したい
+     ので、数だけを受ける純粋な関数へ切り出す。**片耳は両耳合計÷2**
+     （利用者の決め: 均等）。読めない値は`null`で、0にしない（§9.231）。 */
+  function scrapWidthsOf(originalWidth,slitTotal){
+    /* **`Number('')`は0になる**（JSの仕様。この罠はすぐ上の
+       `scrapWidthInfo()`でも踏んだ）。空欄・null を「0mm の元幅」として
+       通すと、**架空の巨大な屑幅**が出る（実測: 元幅空欄で -480）。
+       読めないものは読めないと返す（§9.231）。 */
+    const num=v=>{
+      if(v===undefined||v===null||String(v).trim()==='')return null;
+      const x=Number(v);
+      return Number.isFinite(x)?x:null;
+    };
+    const o=num(originalWidth),s=num(slitTotal);
+    if(o===null||s===null)return null;
+    const scrap=o-s;
+    return {original:o,slit:s,scrap,even:scrap/2};
+  }
   function scrapWidthInfo(){
     // Number('')は0になってしまう(JSの仕様)ため、元幅（実績）が未取得/空欄の
     // 場合を「0扱い」にせず、計算不可として扱う(架空の巨大な屑幅を出さない)。
     const rawOriginal=S.measure?.basic?.originalWidth;
     if(rawOriginal===undefined||rawOriginal===null||String(rawOriginal).trim()==='')return null;
-    const original=Number(rawOriginal);
-    const slit=slitWidthTotal();
-    if(!Number.isFinite(original)||!Number.isFinite(slit))return null;
-    const scrap=original-slit,even=scrap/2,set=scrapOsSetting();
+    const base=scrapWidthsOf(rawOriginal,slitWidthTotal());
+    if(!base)return null;
+    const original=base.original,slit=base.slit,scrap=base.scrap,even=base.even;
+    const set=scrapOsSetting();
     const manual=Number.isFinite(set)&&scrap>0;
     const os=manual?Math.min(Math.max(set,0),scrap):even;
     return{original,slit,scrap,even,os,ds:scrap-os,manual,
@@ -1800,7 +1820,10 @@
      (defect-locator.js)は**同じ答えを使う**——片寄せしているのに
      「屑は左右均等」で計算すると、条の番号が半分ぶんずれる。 */
   window.WL.split=Object.assign(window.WL.split||{},
-    {scrapInfo:scrapWidthInfo,stripCountLimit});
+    /* `scrapWidths`は**画面を知らない純粋な式**（§9.389 段4）。作業
+       スケジュールの列がこれを呼ぶ——式を書き写すと、測定画面と予定表で
+       違う屑幅が出る。 */
+    {scrapInfo:scrapWidthInfo,scrapWidths:scrapWidthsOf,stripCountLimit});
   function updateScrapWidthDisplay(){
     renderScrapAllocEditor();
     /* 自動で入る値（§9.234 ②）。条数・製品幅合計を欄として置けるように

@@ -642,6 +642,12 @@
 .sc-row-flags{display:flex;gap:var(--gap-tight);font-size:var(--tbl-fs-mark);align-items:center;
  line-height:1.2;max-height:100%;white-space:nowrap;overflow:hidden}
 .sc-flag-overdue{color:var(--danger);font-weight:800}
+/* 耳屑幅（片耳）（§9.389 段4）。**数は右へ揃える**——桁の位置がそろわないと
+   大小を目で比べられない（§CLAUDE 9 と同じ理由）。読めなかった行は「—」で、
+   **地の色を薄くして数と見分ける**（0と取り違えさせない・§9.231）。 */
+.sc-row-scrap{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;
+ overflow:hidden;text-overflow:ellipsis}
+.sc-row-scrap.is-blank{color:var(--muted)}
 /* 操作(開始・固定・帳票・削除)は**普通の列**（§9.207、利用者の指示
    「操作ボタンの列固定は不要です。…通常の列と同じ扱いにしてください」）。
    以前は右端へ貼り付けていた(position:sticky)が、§9.176で操作の列も

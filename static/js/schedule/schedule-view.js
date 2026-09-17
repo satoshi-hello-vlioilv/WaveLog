@@ -4133,6 +4133,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    note:'勤務の日付補正を当てた現場の日付。日を跨ぐ勤務は同じ日にまとまる'},
   {key:'__caldate__',label:'日付(太陽暦)',w:50,
    note:'時計どおりの暦の日付（現場歴とずれることがある）',off:true},
+  /* 耳屑幅（片耳）（§9.389 段4、利用者の指示）。**材料の事実**なので
+     内容欄のすぐ後ろ（`SC_COL_AFTER`の先頭）に置く。**既定では出さない**
+     ——毎回見るものではないので場所を取らせない（§CLAUDE 1）。 */
+  {key:'__scrap__',label:'耳屑幅(片耳)',w:84,
+   note:'元幅から条幅の合計を引いた両耳ぶんの半分（均等）。分割ありは子ロットの条幅を合計します',off:true},
   {key:'__time__',label:'時刻',w:112,note:'開始〜終了'},
   {key:'__shift__',label:'勤務',w:58,note:'勤務形態マスタの名称'},
   {key:'__rel__',label:'残り',w:88,note:'開始までの目安時間'},
@@ -4150,7 +4155,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  ];
  const SC_COL_MAP=new Map(SC_COL_DEFS.map(d=>[d.key,d]));
  const SC_COL_BEFORE=['__cat__','__workable__','__date__','__caldate__','__time__','__shift__','__rel__'];
- const SC_COL_AFTER=['__est__','__actual__','__flags__','__by__','__pc__','__upby__','__uppc__','__actions__'];
+ /* **`SC_COL_DEFS`の全部が、`SC_COL_BEFORE`か`SC_COL_AFTER`のどちらかに
+    載っていること**（§9.389 段4）。載せ忘れると、定義はあるのに
+    `timelineAllColumnKeys()`へ入らず、**設定パネルにも出ず・保存しても
+    出ない列**になる（実測で踏んだ。`test_scscrap`が数える）。 */
+ const SC_COL_AFTER=['__scrap__','__est__','__actual__','__flags__','__by__','__pc__','__upby__','__uppc__','__actions__'];
  const scIsFixedCol=k=>SC_COL_MAP.has(k);
  /* **一度も保存していないうちは出さない列**(§9.180)。列レイアウトマスタの
     hiddenは空なので、そのまま使うと足した列がいきなり全員の画面に並ぶ
@@ -5295,6 +5304,74 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    map.get(e.parentId).push(e);
   });
   return map;
+ }
+ /* ---------- 耳屑幅（片耳）の列（§9.389 段4、利用者の指示） ----------
+    「VER2.282.0で修正の内容で、元幅データや板幅データや条数をしっかり
+     取り扱えるようになったと思いますが、その設計の中で作業スケジュールの
+     データとして列データに取り込める情報の1つとして**各作業単位のロット毎に
+     表示できるように耳屑の幅(片耳)を算出**してほしいです」
+
+    **式は`WL.split.scrapWidths()`の1箇所**（§9.160の追補）——測定画面と
+    別々に書くと、同じロットで違う屑幅が出る。片耳は**両耳合計÷2**
+    （利用者の決め: 均等）。
+
+    条幅の合計の出どころは2つで、**分割ありは子ロットが持つ**（§9.388）:
+      分割あり … 子ロットの `__childWidth × __childStrips` の合計
+      分割なし … 製品幅 × 条数（条数が読めないときは1条・§9.388と同じ約束）
+    **子ロットの行そのものには出さない**——耳屑は元コイル1本の事実で、
+    条ごとに分けられるものではない（子に出すと同じ数字が条の数だけ並ぶ）。
+
+    **読めないときは空にする**（§9.231「引けなかった値を0にしない」）。
+    0と書くと「屑が出ない」に読めるが、実際は「元幅か条数が写しに無い」
+    （§9.388。列表示マスタに出していない列は予定の写しに入らない）。 */
+ const SCRAP_DECIMALS=1;
+ function scrapInfoOf(e){
+  if(!e||e.kind!=='作業'||e.parentId!=null)return null;
+  const d=e.detail||{};
+  const n=v=>{const x=Number(v);return Number.isFinite(x)?x:null};
+  const original=n(contentValueOf(d,'originalWidth'));
+  if(original===null||original<=0)return {reason:'元幅が予定の写しにありません'};
+  const kids=(childEntriesByParent().get(e.id)||[]);
+  let slit=null,parts='';
+  if(kids.length){
+   let sum=0,ok=0;
+   for(const k of kids){
+    const kd=k.detail||{};
+    const w=n(kd.__childWidth);
+    if(w===null||w<=0)continue;
+    const cnt=Math.max(1,Math.round(n(kd.__childStrips)||1));
+    sum+=w*cnt;ok++;
+   }
+   if(!ok)return {reason:'子ロットの切断巾が読めません'};
+   if(ok<kids.length)return {reason:`子ロット${kids.length}件のうち${kids.length-ok}件の切断巾が読めません`};
+   slit=sum;parts=`子ロット${kids.length}件の条幅合計 ${sum}`;
+  }else{
+   const w=n(contentValueOf(d,'mfgWidth'));
+   if(w===null||w<=0)return {reason:'製品幅が予定の写しにありません'};
+   const cnt=Math.max(1,Math.round(n(contentValueOf(d,'boxHorizontalCount'))||1));
+   slit=w*cnt;parts=`${w} × ${cnt}条`;
+  }
+  const r=WL.split&&typeof WL.split.scrapWidths==='function'
+    ? WL.split.scrapWidths(original,slit):null;
+  if(!r)return {reason:'屑幅を計算できません'};
+  return Object.assign({parts},r);
+ }
+ function scrapCellText(e){
+  const info=scrapInfoOf(e);
+  if(!info||info.reason===undefined&&!Number.isFinite(info.even))return '';
+  if(info.reason)return '';
+  return info.even.toFixed(SCRAP_DECIMALS);
+ }
+ /* **根拠を画面に出す**（§CLAUDE 6）。同じ「12.5」でも、元幅と条幅合計を
+    見なければ確かめようがない。読めなかったときは**理由をそのまま書く**。 */
+ function scrapCellTitle(e){
+  const info=scrapInfoOf(e);
+  if(!info)return '';
+  if(info.reason)return `耳屑幅を出せません: ${info.reason}`;
+  const head=`元幅 ${info.original} − ${info.parts} = 両耳 ${info.scrap.toFixed(SCRAP_DECIMALS)}`;
+  return info.scrap<0
+   ? `${head}\n屑幅がマイナスです（元幅か条数を確かめてください）`
+   : `${head}\n片耳はその半分（均等）です`;
  }
  function visibleEntries(){
   /* 隠した件数を数える(§9.366)。**「済んだ行が無い」と「隠している」を
@@ -6460,7 +6537,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const dash=v=>{const t=String(v==null?'':v).trim();return t||'-'};
   const createdBy=dash(e.createdBy),createdPc=dash(e.createdPc);
   const updatedBy=dash(e.updatedBy),updatedPc=dash(e.updatedPc);
-  return {cat,locked,workable,wk,wkTitle,dateText,dateTitle,dateShifted:shifted,
+  /* 耳屑幅（§9.389 段4）。**答えるのは`scrapInfoOf()`の1箇所**で、
+     行の組み立ても設定パネルの見本も同じ表を見る。 */
+  const scrapText=scrapCellText(e),scrapTitle=scrapCellTitle(e);
+  return {scrapText,scrapTitle,
+          cat,locked,workable,wk,wkTitle,dateText,dateTitle,dateShifted:shifted,
           calDateText,calDateTitle,timeText,timeTitle,shiftText,
           relText,estText,estSrc,estProvisional,estNote,actualText,flags,flagList,
           createdBy,createdPc,updatedBy,updatedPc,
@@ -6478,6 +6559,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   '__est__':i=>(i.estProvisional?'~':'')+i.estText,
   '__actual__':i=>i.actualText,
   '__flags__':i=>(i.flagList||[]).map(f=>f.text).join(' '),
+  '__scrap__':i=>i.scrapText,
   '__by__':i=>i.createdBy,
   '__pc__':i=>i.createdPc,
   '__upby__':i=>i.updatedBy,
@@ -6593,6 +6675,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     '__est__':`<span class="sc-row-est${estProvisional?' sc-est-default':''}${estSrc==='equipment-standard'?' sc-est-standard':''}" data-col="__est__" title="${esc(estNote)}">${estProvisional?'~':''}${esc(estText)}</span>`,
     '__actual__':`<span class="sc-row-actual" data-col="__actual__">${esc(actualText)}</span>`,
     '__flags__':`<span class="sc-row-flags" data-col="__flags__">${flags}</span>`,
+    '__scrap__':`<span class="sc-row-scrap${info.scrapText?'':' is-blank'}" data-col="__scrap__" title="${esc(info.scrapTitle)}">${esc(info.scrapText||'—')}</span>`,
     '__actions__':`<span class="sc-row-actions" data-col="__actions__">
      ${canStart?startBtnHtml():''}
      ${canLock?`<button type="button" class="sc-row-btn sc-row-lock${locked?' active':''}" title="${locked?'固定を解除して通常の並びへ戻します':'今の予定日時でこの行を固定します(以降ずれません)'}">${locked?'解除':'固定'}</button>`:''}
@@ -9552,6 +9635,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      別のPCが色を変えたときも、盤で選んだときも、ここを通って画面が揃う。 */
   reloadRowStyles:async()=>{await loadRowStyles(true);renderRowStylePop();renderTimeline()},
 
+  /* 網のための読み口（§9.389 段4）。**定義した固定列が「選べる並び」へ
+     載っているか**を外から数えられるようにする——載せ忘れは
+     「定義はあるのに設定パネルにも出ない列」として静かに出る。 */
+  columnKeysForTest:()=>({defs:SC_COL_DEFS.map(d=>d.key),all:timelineAllColumnKeys()}),
   columnEffWidthPx:k=>columnEffWidthPx(k),
   /* 「見える範囲の列」（§9.236）——画面をスクロールせずに見えている列だけ。 */
   visibleColumnKeys:()=>visibleColumnKeys(),

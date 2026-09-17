@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（562件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（564件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -273,10 +273,12 @@
 | 「記録した値」の並べ方は専用の盤が持つ | — | [§9.243](docs/decisions/9.243.md) |
 | 「既定へ戻す」は本当に空へ帰す | — | [§9.243](docs/decisions/9.243.md) |
 
-### 一覧と列（113件）
+### 一覧と列（115件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 屑幅の式は`WL.split.scrapWidths()`の1箇所（片耳＝両耳合計÷2）。読めない値は`null`で0にしない | `test_scscrap.js` | [§9.389](docs/decisions/9.389.md) |
+| スケジュールの固定列は`SC_COL_BEFORE`／`SC_COL_AFTER`のどちらかに必ず載せる（載せ忘れると選べない列になる） | `test_scscrap.js` | [§9.389](docs/decisions/9.389.md) |
 | 一覧を描き直すときはスクロール位置を`renderGrid()`の入口で控える（戻すのは並べ終えてから） | `test_scpick.js` | [§9.357](docs/decisions/9.357.md) |
 | 仕掛一覧から伏せるロットは`WL.scheduleView.hiddenLotSet()`の1箇所が答える | `test_wipgone.js` | [§9.368](docs/decisions/9.368.md) |
 | 一覧のJS（`list-view.js`）は閉じてある。外から呼ぶのは`WL.list`の17個。`typeof`の判定も名前空間で書く | `test_eslint.py` | [§9.355](docs/decisions/9.355.md) |
