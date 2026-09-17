@@ -268,7 +268,7 @@ let b=null;
      1件」が残る**（§9.227 ③と同じ罠）。 */
   const total=()=>page.evaluate(()=>{
    const c=[...document.querySelectorAll('#measureTypeChips .type-chip')]
-     .find(x=>/母材/.test(x.dataset.typeChip||''));
+     .find(x=>x.dataset.typeChip===WL.measureItem.MATERIAL);
    const t=c&&c.querySelector('.type-chip-state')?.textContent||'';
    const m=/^(\d+)\/(\d+)$/.exec(t.trim());
    return {文:t,分母:m?Number(m[2]):null,鍵:(WL.opData.motherKeys()||[]).length};

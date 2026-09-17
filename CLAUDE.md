@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（593件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（598件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -434,9 +434,13 @@
 | 操業データ項目の保存は`opSaveItem()`の`body`に全部載せる | — | [§9.287](docs/decisions/9.287.md) |
 | 「誰が・どの端末で」は登録と更新を分けて持つ | `test_audittrail.js` | [§9.180](docs/decisions/9.180.md) |
 | 測定画面は「準備→測定→確認」の3段 | `test_msteps.js` | [§9.123](docs/decisions/9.123.md) |
-| 入力内容の「母材」と「丈毎」は**別々の項目**。出すのは選んだ側のカード1枚だけ（§9.160を撤回） | `test_msteps.js` | [§9.391](docs/decisions/9.391.md) |
+| 入力内容は3層。**左＝群（母材／製品）・右の小見出し＝単位・その下が量**。顔ぶれは`WL.measureItem.GROUPS`の1箇所 | `test_msteps.js` | [§9.396](docs/decisions/9.396.md) |
+| 葉の呼び名は**量**でそろえる（`母材`→`全長`／`丈毎`→`寸法・外観`）。`丈毎`は語として消え、「毎」は見出しの「丈ごと」が持つ | `test_msteps.js`・`test_measitems.js` | [§9.396](docs/decisions/9.396.md) |
+| 中身の説明（2行目）を持つのは`DETAIL`の2つだけ。9項目すべてに付けると器から溢れる（実測 md 11px・lg 40px） | `test_msteps.js` | [§9.396](docs/decisions/9.396.md) |
+| 旧綴りは**画面とサーバーの両方**で読み替える（`LEGACY_*`と`MEASURE_ITEM_ALIASES`）。片方だけだと外した項目が復活する | `test_measitems.js` | [§9.396](docs/decisions/9.396.md) |
+| 入力内容の「母材」と「丈毎」は**別々の項目**。出すのは選んだ側のカード1枚だけ（§9.160を撤回。呼び名は§9.396で改めた） | `test_msteps.js` | [§9.391](docs/decisions/9.391.md) |
 | **値が入っている項目は、設備で外してあっても伏せない**。答えは`hiddenItems()`の1箇所（選択肢もチップも同じ） | `test_measitems.js` | [§9.392](docs/decisions/9.392.md) |
-| 丈毎は「外観（〇/△/×）」と「巻ズレ OS/DS」を持つ。条ごとの入力内容「巻ずれ」とは**別物**（単位が違う） | `test_msteps.js` | [§9.393](docs/decisions/9.393.md) |
+| 「寸法・外観」（旧 丈毎）は「外観（〇/△/×）」と「巻ズレ OS/DS」を持つ。条ごとの入力内容「巻ずれ」とは**別物**（単位が違う） | `test_msteps.js` | [§9.393](docs/decisions/9.393.md) |
 | 集合を「〜以外」で作らない（内訳の顔ぶれは`PRODUCT_DETAIL_KEYS`。主役の列へ足した欄が裏へ漏れる） | `test_msteps.js` | [§9.393](docs/decisions/9.393.md) |
 | 入力内容の語彙は`WL.measureItem.ALL`の1箇所。画面の`#measureType`とは別に持つ | `test_msteps.js` | [§9.391](docs/decisions/9.391.md) |
 | 測定値の器を持たない鍵は**名前で避けず、器の有無で見る**（`m.measurements[key]`） | `test_msteps.js` | [§9.391](docs/decisions/9.391.md) |
@@ -693,6 +697,7 @@
 | --- | --- | --- |
 | 拡張は登録表へ: あとに足す`on`／前で断る`gate`／丸ごと持つ`own`（`WL.measureHooks`・`WL.listHooks`）。被せも全置換も作らない | `test_patchlint.py`・`test_tolscale.js` | [§9.352](docs/decisions/9.352.md) |
 | 押す形をやめたら`cursor:pointer`も消す。押しても何も起きない物に指のカーソルを出さない | — | [§9.385](docs/decisions/9.385.md) |
+| マウスを乗せたら**押せることを動きで**言い（1px持ち上げ）、**仲間は群ごと薄く光らせる**（9%）。濃くすると選択中と誤読される | `test_msteps.js` | [§9.396](docs/decisions/9.396.md) |
 | 初回の案内は帯の1箇所。空の器は「ここに何が出るか」だけを言う | `test_uiux.js` | [§9.343](docs/decisions/9.343.md) |
 | 窓は`confirmModal`／`alertModal`／`promptModal`の3つだけ。素の`alert`/`confirm`/`prompt`は呼ばない | `test_patchlint.py`・`test_modalkeep.js` | [§9.342](docs/decisions/9.342.md) |
 | 窓は1枚しかない。窓の中から窓を開かない（名前を直すのはその場、消すのは行の中で2手） | `test_lotcopy.js` | [§9.368](docs/decisions/9.368.md) |

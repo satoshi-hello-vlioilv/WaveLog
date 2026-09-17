@@ -80,7 +80,7 @@ async function cleanup(){
   const m0=await master();
   const vocab=m0.measureItems||[];
   rec('入力内容の語彙をサーバーが返す（9項目・呼び名・一言つき）',
-   vocab.length===9&&vocab.map(v=>v.key).join(',')==='母材,丈毎,板厚,板幅,ラテラルボー,バリ,テレスコープ,巻ずれ,フラットネス'
+   vocab.length===9&&vocab.map(v=>v.key).join(',')==='全長,寸法・外観,板厚,板幅,ラテラルボー,バリ,テレスコープ,巻ずれ,フラットネス'
    &&vocab.every(v=>v.label&&v.note),JSON.stringify(vocab.map(v=>v.key)));
   /* **画面のJSに綴りの一覧を書き写していないこと**（§9.163）。マスタ側の
      定義は`source.key`でサーバーの戻りを読むだけ、という作りを固定する。
@@ -162,7 +162,7 @@ async function cleanup(){
   await pickEquipTab();
   const some=await cellOf(NAME);
   rec('一覧に「使う入力内容」の列があり、残る項目の名前が並ぶ',
-   !some.列なし&&!some.行なし&&/母材/.test(some.文字||'')&&!/バリ/.test(some.文字||''),
+   !some.列なし&&!some.行なし&&/全長/.test(some.文字||'')&&!/バリ/.test(some.文字||''),
    JSON.stringify(some));
   await post('/api/equipment-master/update',{id:eid,name:NAME,disabledMeasureItems:[]});
   await pickEquipTab();

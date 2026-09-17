@@ -3821,4 +3821,55 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
 /* 選んだ札のほうが濃い（§9.229 ②）。合図は面と文字の2つまで。 */
 .rv-conf-row button.is-on{background:var(--pale);border-color:var(--teal);
   color:var(--teal-dark);font-weight:700}
+
+/* ---------- ②の「入力内容」は3層（§9.396、利用者との設計検討） ----------
+   左のラベル列＝**群（もの）**: 母材／製品。右の小見出し＝**単位（分け方）**:
+   コイル1本ごと／丈ごと／丈位置 × 条ごと。その下が**量**のボタン。
+   9項目を1列に並べていたころは、`母材`（対象物）と`丈毎`（単位）と
+   残る7つ（量）が同じ顔で並んでいた——層の言葉を上へ上げ、並ぶボタンを
+   量だけにそろえるための組み方。
+
+   **ラベル列の幅は単位の文字ではなく群の名前で決まる**（`母材`/`製品`＝2文字）。
+   `--fs * 2.6`＝36px で、チップは 306−36−8＝262px 取れる。単位を左へ置くと
+   `丈位置×条ごと`の7文字が幅を決めてしまい、チップが 211px まで痩せる。 */
+.mt-rail{display:grid;grid-template-columns:calc(var(--fs) * 2.6) minmax(0,1fr);
+  gap:var(--space-2);align-content:start;width:100%}
+.mt-sep{grid-column:1/-1;border:0;border-top:1px solid var(--line-soft);margin:0}
+.mt-k{display:flex;align-items:center;padding-left:6px;position:relative;min-width:0}
+.mt-k b{font-size:var(--fs-base-sm);font-weight:800;color:var(--nav);white-space:nowrap}
+/* いま開いている面がどの群にあるか。**選択中のチップの枠とは別の軸**——枠は
+   1枚を指し、この縦線は「どの層に居るか」を言う。位置で読めるので色に頼らない。 */
+.mt-k.is-here::before{content:"";position:absolute;left:0;top:1px;bottom:1px;width:3px;
+  border-radius:var(--radius-pill);background:var(--nav)}
+.mt-v{display:flex;flex-direction:column;gap:var(--space-2);min-width:0}
+.mt-ug{display:flex;flex-direction:column;gap:var(--space-2);border-radius:var(--radius-sm)}
+.mt-unit{display:flex;align-items:center;gap:6px;font-size:var(--fs-tiny);
+  color:var(--ink-soft);line-height:1.3}
+.mt-unit b{font-weight:800;color:var(--ink-3);white-space:nowrap}
+.mt-unit i{flex:1 1 auto;height:1px;background:var(--line-soft)}
+.mt-ug .type-chip{flex:0 0 auto}
+/* 中身の説明を持つ項目（全長・寸法・外観）だけ2行。1行目＝名前と件数、
+   2行目＝その面で入れる欄の顔ぶれ。**押す前に中身が読める**ようにするため。 */
+/* **器（`.mt-ug`）を頭に付けて詳細度を上げる。** `.type-chip`の
+   `align-items:center` / `justify-content:space-between` は`70-schedule.css`に
+   あり、同じ詳細度だと**後に読まれる70が勝つ**——名前と件数が縦の真ん中へ
+   寄って、両端に分かれなくなる（実際にそうなった）。 */
+.mt-ug .type-chip--two{flex-direction:column;align-items:stretch;justify-content:center;gap:0;
+  min-height:calc(var(--ctl-h-sm) + 13px);padding-top:3px;padding-bottom:3px}
+.tc-top{display:flex;align-items:center;justify-content:space-between;gap:var(--space-1)}
+.tc-sub{font-size:var(--fs-tiny);font-weight:600;opacity:.82;text-align:left;line-height:1.35;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ---------- マウスを乗せたときだけ起きること（§9.396） ----------
+   ① 押せることを**動き**で言う（1px持ち上げて影）——色覚に依存しない。
+   ② 同じ単位の仲間が**まとめて薄く光り**、小見出しの文字と罫線もティールへ。
+      「この7つは丈位置×条ごとの仲間だ」という**階層そのものを体験で教える**。
+   **淡さが命**（9%）——濃くすると「選ばれている」と誤読され、選択中の枠と競う。
+   色は必ずトークンから作る（`color-mix`。`rgba()`のリテラルを増やさない）。 */
+.mt-rail .type-chip:hover{transform:translateY(-1px);
+  box-shadow:0 2px 5px color-mix(in srgb,var(--nav) 20%,transparent)}
+.mt-ug:hover{background:color-mix(in srgb,var(--teal) 9%,transparent);
+  box-shadow:0 0 0 5px color-mix(in srgb,var(--teal) 9%,transparent)}
+.mt-ug:hover .mt-unit b{color:var(--teal)}
+.mt-ug:hover .mt-unit i{background:var(--teal);opacity:.4}
+@media(prefers-reduced-motion:reduce){.mt-rail .type-chip:hover{transform:none}}
 }

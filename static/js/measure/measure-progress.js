@@ -215,18 +215,49 @@ function outOfToleranceOf(m){
 
 const STATE_LABEL={done:'済',part:'一部',todo:'未',skip:'対象外'};
 
+/* 1枚のチップ。**中身の説明（`DETAIL`）を持つ項目だけ2行**にする（§9.396）
+   ——条の7つは名前がそのまま量なので、書くと「条1〜9」を繰り返すだけになる。 */
+function chipHtml(x,current){
+ const cls=['type-chip','type-chip--'+x.state];
+ if(x.name===current)cls.push('is-current');
+ const st=x.excluded?'対象外':x.state==='done'?'済':`${x.filled}/${x.total}`;
+ const unit=WL.measureItem.unitOf(x.name),detail=WL.measureItem.detailOf(x.name);
+ const title=x.excluded
+  ?`${x.name}: 対象外に設定しています。右クリックで対象に戻します`
+  :`${x.name}（${unit}）: ${x.filled}/${x.total} 入力済み。右クリックで対象外にします`;
+ const name=`<span class="type-chip-name">${esc(x.name)}</span><span class="type-chip-state">${esc(st)}</span>`;
+ const body=detail
+  ?`<span class="tc-top">${name}</span><span class="tc-sub">${esc(detail)}</span>`
+  :name;
+ if(detail)cls.push('type-chip--two');
+ return `<button type="button" class="${cls.join(' ')}" data-type-chip="${esc(x.name)}" title="${esc(title)}">${body}</button>`;
+}
+
+/* 入力内容の並びは**3層**（§9.396）: 左のラベル列＝群（もの: 母材／製品）、
+   右の小見出し＝単位（分け方: コイル1本ごと／丈ごと／丈位置 × 条ごと）、
+   その下が量のボタン。**顔ぶれと並びは`WL.measureItem.GROUPS`の1箇所**が持つ
+   ——ここで並べ直さない（2箇所に持つと、項目を足したとき片方だけ直る）。
+   設備で伏せた項目（`hiddenItems`）が群ごと消えたら、**その小見出しも出さない**
+   ——見出しだけが残ると「押せるものが無い行」ができる。 */
 function chipsHtml(p){
- const current=$('#measureType')?.value;
- return p.items.map(x=>{
-  const cls=['type-chip','type-chip--'+x.state];
-  if(x.name===current)cls.push('is-current');
-  const detail=x.excluded?'対象外':x.state==='done'?'済':`${x.filled}/${x.total}`;
-  const title=x.excluded
-   ?`${x.name}: 対象外に設定しています。右クリックで対象に戻します`
-   :`${x.name}: ${x.filled}/${x.total} 入力済み。右クリックで対象外にします`;
-  return `<button type="button" class="${cls.join(' ')}" data-type-chip="${esc(x.name)}" title="${esc(title)}">`
-   +`<span class="type-chip-name">${esc(x.name)}</span><span class="type-chip-state">${esc(detail)}</span></button>`;
- }).join('');
+ const current=WL.measureItem.normalize($('#measureType')?.value||'');
+ const by=Object.create(null);p.items.forEach(x=>{by[x.name]=x});
+ const parts=[];
+ WL.measureItem.GROUPS.forEach(g=>{
+  const units=g.units
+   .map(u=>({unit:u.unit,items:u.items.map(n=>by[n]).filter(Boolean)}))
+   .filter(u=>u.items.length);
+  if(!units.length)return;
+  /* いま開いている面がこの群の中にあるか。**選択中のチップの枠とは別の印**
+     ——枠は1枚を指し、この縦線は「どの層に居るか」を言う。 */
+  const here=units.some(u=>u.items.some(x=>x.name===current));
+  if(parts.length)parts.push('<hr class="mt-sep">');
+  parts.push(`<div class="mt-k${here?' is-here':''}"><b>${esc(g.group)}</b></div>`);
+  parts.push('<div class="mt-v">'+units.map(u=>
+    `<div class="mt-ug"><div class="mt-unit"><b>${esc(u.unit)}</b><i></i></div>`
+    +u.items.map(x=>chipHtml(x,current)).join('')+'</div>').join('')+'</div>');
+ });
+ return `<div class="mt-rail">${parts.join('')}</div>`;
 }
 
 /* ヘッダーのミニ進捗バーは**廃止した**（§9.147、利用者の指示「役に立って

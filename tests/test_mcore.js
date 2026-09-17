@@ -27,8 +27,8 @@ const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 /* 入力内容の名前（§9.391で「母材」と「丈毎」の2つに分けた）。
    画面の`WL.measureItem.MATERIAL`／`.PIECE`と同じ。 */
-const MATERIAL='母材';
-const PIECE='丈毎';
+const MATERIAL='全長';        /* §9.396で改名 */
+const PIECE='寸法・外観';     /* §9.396で改名 */
 const setMode=m=>fetch(API+'/api/access-mode',{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
 

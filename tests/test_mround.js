@@ -158,7 +158,7 @@ let b=null,page=null;
      ========================================================== */
   /* 丈別データは**母材/丈毎**の面（§9.160）。項目を切り替えてから触る。 */
   await page.evaluate(()=>{const s=document.querySelector('#measureType');
-    s.value='母材/丈毎';s.dispatchEvent(new Event('change',{bubbles:true}))});
+    s.value=WL.measureItem.PIECE;s.dispatchEvent(new Event('change',{bubbles:true}))});
   await page.waitForTimeout(600);
   const align=await page.evaluate(async()=>{
    const sel=document.querySelector('#productRowsBody [data-product-field="edgeShape"]');
