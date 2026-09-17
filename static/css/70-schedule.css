@@ -531,6 +531,59 @@
   white-space:nowrap;line-height:1.6}
 .sc-nw-link:hover{background:var(--teal);color:#fff}
 .sp-nw-time{margin-left:0.6mm;font-weight:600;opacity:.75}
+/* ---------- 設備停止を入れる手順（§9.389、利用者の指示） ----------
+   「設備停止内容(サブカテゴリがある設備停止はそのあとサブカテゴリも選択)を
+    選択し、その後時間を選択して登録する」
+   **一覧と同じ器の中で入れ替える**（窓を重ねない）。段は番号で言い、
+   いま決めるものを1つだけ指す（§CLAUDE 2）。 */
+.sc-sp{display:flex;flex-direction:column;gap:var(--space-2);min-width:0}
+.sc-sp-head{display:flex;align-items:center;gap:var(--gap-inline);min-width:0}
+/* **戻る道は必ず1つ見えている**（§9.292）——手順に入ったら一覧が消えるので、
+   戻り方が画面に無いと閉じ込められる。 */
+.sc-sp-back{flex:none;height:var(--ctl-h-sm);padding:0 var(--space-2);
+ border:1px solid var(--line-mid);border-radius:var(--radius-xs);background:var(--surface);
+ font-size:var(--fs-micro);font-weight:700;color:var(--ink-2);cursor:pointer}
+.sc-sp-back:hover{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
+.sc-sp-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+ font-size:var(--fs-base-sm);font-weight:800;color:var(--ink)}
+.sc-sp-step{display:flex;flex-direction:column;gap:var(--gap-tight);min-width:0;
+ padding:var(--pad-row);border:1px solid var(--line-soft);border-radius:var(--radius-sm);
+ background:var(--surface-2)}
+.sc-sp-line{display:flex;align-items:baseline;gap:var(--gap-inline);min-width:0}
+/* 段の番号。**決める順をそのまま数で言う**（§CLAUDE 14 視覚導線＝作業導線）。 */
+.sc-sp-n{flex:none;display:inline-flex;align-items:center;justify-content:center;
+ width:var(--ctl-h-xs);height:var(--ctl-h-xs);border-radius:var(--radius-pill);
+ background:var(--line-mid);color:var(--surface);font-size:var(--fs-micro);font-weight:800}
+.sc-sp-step.is-done .sc-sp-n{background:var(--teal-dark)}
+.sc-sp-t{font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
+/* いま何が選ばれているかを**段の見出しに出す**（§CLAUDE 2 思い出させない）。 */
+.sc-sp-pick{margin-left:auto;font-size:var(--fs-micro);font-weight:800;color:var(--teal-dark);
+ min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-sp-step:not(.is-done) .sc-sp-pick{color:var(--muted);font-weight:600}
+.sc-sp-opts{display:flex;flex-wrap:wrap;gap:var(--gap-inline);min-width:0}
+.sc-sp-opt{height:var(--ctl-h-sm);padding:0 var(--space-3);
+ border:1px solid var(--line-mid);border-radius:var(--radius-xs);background:var(--surface);
+ font-size:var(--fs-sm);font-weight:700;color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.sc-sp-opt:hover{border-color:var(--teal);background:var(--pale)}
+.sc-sp-empty{font-size:var(--fs-micro);color:var(--muted)}
+.sc-sp-slider{display:flex;align-items:center;gap:var(--space-2);min-width:0}
+.sc-sp-slider>input[type=range]{flex:1;min-width:0}
+.sc-sp-slider>b{flex:none;font-size:var(--fs-sm);font-weight:800;color:var(--teal-dark)}
+.sc-sp-hint{font-size:var(--fs-micro);color:var(--muted)}
+/* **できないことは、できないと書く**（§CLAUDE 4）——内訳が要るのに選んで
+   いないときは、押せない形にしたうえで**ボタンの字で理由を言う**。 */
+.sc-sp-go{height:var(--ctl-h-md);border:1px solid var(--teal-dark);border-radius:var(--radius-sm);
+ background:var(--teal-dark);color:var(--surface);font-size:var(--fs-sm);font-weight:800;
+ cursor:pointer}
+.sc-sp-go:disabled{border-color:var(--line-mid);background:var(--surface-2);
+ color:var(--muted);cursor:not-allowed}
+/* 内訳（サブカテゴリ）の札（§9.389）。**名前の次に強く、時間より強い**
+   ——「刃組待ちの何か」を見分けるための印なので、添え物の時間とは重みが違う。 */
+.sc-nw-sub{margin-left:var(--space-1);padding:0 var(--space-1);
+ border:1px solid var(--line-mid);border-radius:var(--radius-xs);
+ background:var(--surface-2);color:var(--ink-2);
+ font-size:var(--fs-micro);font-weight:700;white-space:nowrap}
+.sp-nw-sub{margin-left:0.6mm;font-weight:700}
 .sc-nw-face{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;
  white-space:nowrap;vertical-align:middle;font-weight:800}
 .sc-row-nonwork[data-nw-look="バッジ"] .sc-nw-face{

@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（559件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（562件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -531,10 +531,12 @@
 | 刃組スケジュール一覧は記録と予定を`stopId`で結ぶ。未記録は字で書く | `test_bladeui.js` | [§9.383](docs/decisions/9.383.md) |
 | 部材の並びは大きい寸法から。「種類×数」と「何種・何本」の両方を言う | `test_bladeui.js` | [§9.383](docs/decisions/9.383.md) |
 
-### 作業スケジュール（31件）
+### 作業スケジュール（33件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 設備停止は「内容 →（内訳）→ 時間」の手順で入れる。窓は開かず一覧と入れ替える | `test_stopflow.js` | [§9.389](docs/decisions/9.389.md) |
+| 内訳の札は題名の一部ではない。答えるのは`nonWorkSubText()`の1箇所（紙も同じ1本） | `test_stopflow.js` | [§9.389](docs/decisions/9.389.md) |
 | 予定の内訳（サブカテゴリ）は`[明細JSON]`。触れるのは**設備停止の行だけ**（作業の写しを潰さない） | `test_stopsub.py` | [§9.389](docs/decisions/9.389.md) |
 | 作業スケジュールの「開始」は着手できる**全行**に出す（次の1本は現場が自由に選ぶ。先頭N行に絞らない） | `test_workable.js` | [§9.339](docs/decisions/9.339.md) |
 | 設備停止の行き先は`設備停止マスタ`の`[連携機能]`。行は持たない・語彙はサーバー | `test_bladeset.py`・`test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
@@ -730,10 +732,11 @@
 | 「何で選ばせるか」と「どう見えるか」は別の軸 | — | [§9.223](docs/decisions/9.223.md) |
 | 公差外・基準外は確認カードの色で気づかせる。NGの記録はその行の中 | `test_ngcard.js` | [§9.242](docs/decisions/9.242.md) |
 
-### 検証（テスト）（29件）
+### 検証（テスト）（30件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 素の表を消す後片付けは**editモードで**（scheduleのままだと403で黙って弾かれる） | `test_stopflow.js` | [§9.389](docs/decisions/9.389.md) |
 | 片付けようの無いもの（`sqlite_sequence`）を指紋で数えない | `test_bladeset.py` | [§9.377](docs/decisions/9.377.md) |
 | 網が当てにする物は「誰が作るか」を書けること。この端末の名乗りと権限はフィクスチャが持つ | `test_layers.py` | [§9.370](docs/decisions/9.370.md) |
 | 後片付けは「消えた」で確かめる。ランナーの道は絶対、テストは名前空間で呼ぶ | `test_layers.py`・`test_waitlint.py` | [§9.362](docs/decisions/9.362.md) |

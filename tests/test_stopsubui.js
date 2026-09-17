@@ -92,12 +92,16 @@ H.run('test_stopsubui: 設備停止の内訳と時間のマスタ画面（§9.38
  }));
  rec('別の停止にも同じ名前（刃出し）の内訳を足せる',subs.rows.length===1&&subs.rows[0]==='刃出し',
      subs.rows.join('/'));
- const srv=await page.evaluate(async()=>{
+ /* **数えるのは自分が作った親のぶんだけ**（§9.284）。全体の件数で見ると、
+    前の実行の置き土産や他の本の行まで数えてしまう（実測で11件を数えた）。 */
+ const srv=await page.evaluate(async ids=>{
   const r=await fetch('/api/schedule/stop-sub-master');const j=await r.json();
-  return (j.items||[]).map(x=>`${x.stopReasonId}:${x.name}`);
- });
- rec('サーバー側にも3件（同名2件は親が違う）',
-     srv.filter(x=>x.endsWith(':刃出し')).length===2&&srv.filter(x=>x.endsWith(':ゴムリング')).length===1,
+  return (j.items||[]).filter(x=>ids.includes(Number(x.stopReasonId)))
+    .map(x=>`${x.stopReasonId}:${x.name}`);
+ },[idA,idB]);
+ rec('この2つの親のもとに3件（同名2件は親が違う）',
+     srv.length===3&&srv.filter(x=>x.endsWith(':刃出し')).length===2
+     &&srv.filter(x=>x.endsWith(':ゴムリング')).length===1,
      srv.join(' / '));
 
  // ---- ③ 親の標準所要分が画面に出ている（出どころ・§CLAUDE 6） ---------
@@ -118,6 +122,16 @@ H.run('test_stopsubui: 設備停止の内訳と時間のマスタ画面（§9.38
  },[idA]);
  rec('左のDOMを作り直していない（位置が飛ばない）',keep.same&&keep.after===keep.before,
      `${keep.before}→${keep.after} same=${keep.same}`);
+ /* 選んだ行が濃く見えることを**実測する**（§9.386）——クラスは付くのに
+    規則の置き場がずれていて1pxも変わらない、が実際に起きた。 */
+ const tint=await page.evaluate(()=>{
+  const on=document.querySelector('.ssb-stop.is-on');
+  const off=[...document.querySelectorAll('.ssb-stop')].find(x=>!x.classList.contains('is-on'));
+  const g=el=>el?getComputedStyle(el).backgroundColor:'';
+  return {on:g(on),off:g(off)};
+ });
+ rec('選んだ停止内容は、選んでいない行と色が違う（印が効いている）',
+     !!tint.on&&tint.on!==tint.off,`${tint.on} / ${tint.off}`);
 
  // ---- ⑤ 設備停止の一覧に「内訳」列 -------------------------------------
  await openTab('stopReason');

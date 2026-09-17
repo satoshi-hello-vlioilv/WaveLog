@@ -520,7 +520,7 @@ for t in test_stopcat test_stopsubui test_workable test_wkbg test_mcore test_bur
 
 echo "--- スケジュール (テスト側でモードを切り替える) ---"
 for t in test_screport test_startwork test_scsync test_sccat test_scbalance test_scbatch \
-         test_screorder test_scperm test_scperf test_wkfast test_scsplit test_splitlive test_scprint test_scdrop test_scpick test_sccontent test_recperm test_sctimecols test_scinsert test_audittrail test_scstop test_scwarm test_scundecided test_scwatchui test_sccomment test_scframe test_scrowstyle test_schistory test_scbar test_scsave test_scwho test_scmodecols test_wipgone test_lotcopy test_scfail test_feedback test_scdragscroll test_srcsync test_defectlink test_appquit; do run $NODE $t.js; done
+         test_screorder test_scperm test_scperf test_wkfast test_scsplit test_splitlive test_scprint test_scdrop test_scpick test_sccontent test_recperm test_sctimecols test_scinsert test_audittrail test_scstop test_stopflow test_scwarm test_scundecided test_scwatchui test_sccomment test_scframe test_scrowstyle test_schistory test_scbar test_scsave test_scwho test_scmodecols test_wipgone test_lotcopy test_scfail test_feedback test_scdragscroll test_srcsync test_defectlink test_appquit; do run $NODE $t.js; done
 
 echo "--- スケジュール (scheduleモード固定) ---"
 mode schedule

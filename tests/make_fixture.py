@@ -173,6 +173,11 @@ _CHOICES = {
 _JUNK_EQUIPMENT = ("設備名 LIKE 'RT%新設備'", "設備名 LIKE 'RT%消える設備'",
                    "設備名 LIKE '回帰_%'")
 _JUNK_SHIFT = ("名称 LIKE '回帰_%'", "名称 LIKE '複数設備テスト%'")
+# テストが作った設備停止の屑（§9.389）。**名前で見分けられるものだけ**
+# （§9.284）——内訳を持つ親を消し残すと、次の実行の「件数」がずれる。
+_JUNK_STOP = ("[名称] LIKE 'FLW%'", "[名称] LIKE 'SSB%'", "[名称] LIKE 'CAP%'")
+# 時間の選択肢の種（`schedule_repo.STOP_MINUTES_SEEDS`と同じ並び）。
+_STOP_MINUTES_SEEDS = (10, 15, 20, 30, 45, 60, 90, 120, 180, 240)
 # テストが作った操業データ項目の屑（§9.362 ⑤の続き）。**通しの開始時に
 # 控えを取る前へ効かせる**——ここに残った1行が通し全体の前提になる。
 # 実際に `test_opui` の `opui-<pid> 色`（入力方法=タブ）が焼き付き、
@@ -541,6 +546,33 @@ def fix_master(quiet: bool = False) -> None:
                           'WHERE [組み込みキー]=? AND ([内容] IS NOT ? OR '
                           'COALESCE([内訳列数],0) IS NOT ?)',
                           [content, cols, key, content, cols])
+        # 9b) 設備停止の内訳と時間の選択肢（§9.389）。**名前で見分けられる屑**
+        #     だけ消し、時間の種は足りなければ戻す（`ensure_stop_minutes_table`は
+        #     表が無いときしか種を入れないので、全部消されると二度と戻らない）。
+        if '設備停止マスタ' in have and '設備停止サブカテゴリマスタ' in have:
+            for w in _JUNK_STOP:
+                junk = [r[0] for r in c.execute(
+                    'SELECT [停止理由ID] FROM [設備停止マスタ] WHERE ' + w).fetchall()]
+                for sid in junk:
+                    c.execute('DELETE FROM [設備停止サブカテゴリマスタ] '
+                              'WHERE [停止理由ID]=?', [sid])
+                    c.execute('DELETE FROM [設備停止マスタ] WHERE [停止理由ID]=?', [sid])
+            # 親を失った内訳（親だけ消した本の置き土産）。
+            c.execute('DELETE FROM [設備停止サブカテゴリマスタ] WHERE [停止理由ID] '
+                      'NOT IN (SELECT [停止理由ID] FROM [設備停止マスタ])')
+        if '設備停止時間マスタ' in have:
+            for m in _STOP_MINUTES_SEEDS:
+                row = c.execute('SELECT [時間ID] FROM [設備停止時間マスタ] '
+                                'WHERE abs([分]-?)<0.05', [float(m)]).fetchone()
+                if row:
+                    c.execute('UPDATE [設備停止時間マスタ] SET [有効]=-1 WHERE [時間ID]=?',
+                              [row[0]])
+                else:
+                    c.execute('INSERT INTO [設備停止時間マスタ] ([分],[表示順],[有効],'
+                              '[登録者ID],[更新者ID],[登録日時],[更新日時]) '
+                              "VALUES (?,?,-1,'fixture','fixture',"
+                              "datetime('now'),datetime('now'))",
+                              [float(m), int(m)])
         # 10) 半自動の塊の「既定セル」再種まき（§9.320-E の追補）
         # 上のUPDATEは`_builtin_block_seeds()`（＝`BUILTIN_SEEDS`の`[内容]`）
         # へ戻すので、**既定セルしか持たない4塊**（品質等級・寸法・品質情報・

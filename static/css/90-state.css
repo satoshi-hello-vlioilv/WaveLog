@@ -529,7 +529,7 @@ body.sc-mode #headerContextSource{display:none}
      ここは `@layer state`。component 層のどの規則よりも後に効く。
      ============================================================ */
 
-  /* 濃い面（縁つき）（21族） */
+  /* 濃い面（縁つき）（22族） */
   #reportArrange.is-on,
   .ac-chip.is-on,
   .db-presets button.active,
@@ -548,6 +548,7 @@ body.sc-mode #headerContextSource{display:none}
   .product-length-tabs button.active,
   .rp-bar-btn.is-on,
   .rp-form-ctl button.is-on,
+  .sc-sp-opt.is-on,
   .sp-zoom-btn.is-on,
   .status-filter-btn.active,
   .suggest-chip.active{background:var(--teal);border-color:var(--teal);color:#fff}
@@ -561,9 +562,10 @@ body.sc-mode #headerContextSource{display:none}
   .sc-mode-toggle-btn.active,
   .work-tabs button.active{background:var(--teal);color:#fff}
 
-  /* 濃い面（字は各自）（4族） */
+  /* 濃い面（字は各自）（5族） */
   .bs-tg.is-on::before,
   .oc-group.is-on,
+  .ssb-stop.is-on,
   .op-span-pick button.is-on,
   .rly-paper.is-on,
   .shift-list-item.active{background:var(--teal);border-color:var(--teal)}
@@ -597,8 +599,9 @@ body.sc-mode #headerContextSource{display:none}
   .sp-pat.is-on,
   .sp-pv-tab.is-on{background:var(--pale);border-color:var(--teal)}
 
-  /* 濃い面の中の字（5族） */
+  /* 濃い面の中の字（6族） */
   .fb-cat.is-on>i,
+  .ssb-stop.is-on>b, .ssb-stop.is-on .ssb-stop-eq, .ssb-stop.is-on .ssb-stop-n,
   .oc-group.is-on>b, .oc-group.is-on .oc-group-meta, .oc-group.is-on .oc-group-use,
   .rly-paper.is-on>b, .rly-paper.is-on .rly-paper-meta, .rly-paper.is-on .rly-paper-gone,
   .shift-eq-tag.is-on>i,

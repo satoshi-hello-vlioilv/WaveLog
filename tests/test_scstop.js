@@ -120,6 +120,26 @@ async function cleanup(){
      日本語を打っている最中を再現するため、先に絞り込み欄へ入っておく。 */
   await page.click('#scStopSearch');
   await page.click(`.sc-stop-button[data-id="${hit.id}"]`);
+  /* 押すと**手順**が開く（§9.389、利用者の指示「設備停止内容を選択し、
+     その後時間を選択して登録する」）。内訳を持たない停止なので段は
+     「時間を選ぶ」の1つだけで、標準所要分が最初から選ばれている。 */
+  await page.waitForSelector('.sc-sp',{timeout:10000});
+  const step=await page.evaluate(()=>({
+   title:(document.querySelector('.sc-sp-title')||{}).textContent||'',
+   steps:[...document.querySelectorAll('.sc-sp-t')].map(x=>x.textContent.trim()),
+   pick:(document.querySelector('.sc-sp-pick')||{}).textContent||'',
+   go:(document.querySelector('#scSpGo')||{}).textContent||'',
+   goOff:!!(document.querySelector('#scSpGo')||{}).disabled,
+   listGone:!document.querySelector('.sc-stop-button'),
+   back:!!document.querySelector('#scSpBack'),
+  }));
+  rec('押すと手順が開く（一覧と入れ替わる・戻る道がある）',
+      step.listGone&&step.back&&step.title.includes(NEW),JSON.stringify(step).slice(0,160));
+  rec('内訳を持たない停止では段は「時間を選ぶ」だけ',
+      step.steps.length===1&&step.steps[0]==='時間を選ぶ',step.steps.join('/'));
+  rec('標準所要分（25分）が最初から選ばれている',/25/.test(step.pick),step.pick);
+  rec('内訳が要らないので、そのまま追加できる',!step.goOff&&step.go.includes('追加'),step.go);
+  await page.click('#scSpGo');
   /* 予定へ入ったことは**サーバーの答え**で待つ（時間で待たない）。 */
   const after=await W.poll(planEntries,es=>es.some(e=>e.kind==='設備停止'&&e.title===NEW));
   const added=after.find(e=>e.kind==='設備停止'&&e.title===NEW);

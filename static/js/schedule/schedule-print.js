@@ -200,8 +200,11 @@
       ——紙で判定をやり直さない（§9.163）。 */
    const nonWorkTime=(nonWorkTitle&&typeof view.nonWorkTime==='function')
      ?String(view.nonWorkTime(e)||''):'';
+   /* 設備停止の内訳（§9.389）。**判定は画面の1本**（`view.nonWorkSub`）。 */
+   const nonWorkSub=(nonWorkTitle&&typeof view.nonWorkSub==='function')
+     ?String(view.nonWorkSub(e)||''):'';
    index.get(key).rows.push({e,start,end:useActual?e.actual.endAt:e.plannedEnd,group,cells,kids,
-                             kidCount:allKids.length,rowStyle,nonWorkTitle,nonWorkTime,dayKey});
+                             kidCount:allKids.length,rowStyle,nonWorkTitle,nonWorkTime,nonWorkSub,dayKey});
   });
   /* 紙の列は**1つの紙の中で変えない**ので、まとめて1回だけ決める。 */
   const cols=printColumns(opt);
@@ -843,11 +846,14 @@
      const look=String((item.rowStyle&&item.rowStyle.titleLook)||'');
      const align=String((item.rowStyle&&item.rowStyle.titleAlign)||'');
      const time=String(item.nonWorkTime||'');
-     const body=esc(item.nonWorkTitle)+(time?`<span class="sp-nw-time">${esc(time)}</span>`:'');
+     const sub=String(item.nonWorkSub||'');
+     const body=esc(item.nonWorkTitle)
+      +(sub?`<span class="sp-nw-sub">${esc(sub)}</span>`:'')
+      +(time?`<span class="sp-nw-time">${esc(time)}</span>`:'');
      const inner=look?`<b class="sp-nw-face">${body}</b>`:body;
      return `<td class="sp-c-nonwork"${run.span>1?` colspan="${run.span}"`:''}`
       +(look?` data-nw-look="${esc(look)}"`:'')+(align?` data-nw-align="${esc(align)}"`:'')
-      +` title="${esc(item.nonWorkTitle)}${esc(time)}">${inner}</td>`;
+      +` title="${esc(item.nonWorkTitle)}${sub?esc('（'+sub+'）'):''}${esc(time)}">${inner}</td>`;
     }
     if(ci>run.at&&ci<run.at+run.span)return '';
    }
