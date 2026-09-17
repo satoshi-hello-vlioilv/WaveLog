@@ -3854,8 +3854,14 @@ select.validation-ng~.opf-widget .opf-dot{border-color:var(--danger)}
    `align-items:center` / `justify-content:space-between` は`70-schedule.css`に
    あり、同じ詳細度だと**後に読まれる70が勝つ**——名前と件数が縦の真ん中へ
    寄って、両端に分かれなくなる（実際にそうなった）。 */
-.mt-ug .type-chip--two{flex-direction:column;align-items:stretch;justify-content:center;gap:0;
-  min-height:calc(var(--ctl-h-sm) + 13px);padding-top:3px;padding-bottom:3px}
+.mt-ug .type-chip--two{flex-direction:column;align-items:stretch;justify-content:center;gap:0}
+/* **高さはトークンから選ぶ**（`--ctl-h`＝36px。`tests/test_scale.js`が見張る）。
+   中身なり（実測34px）に任せると**トークンに無い高さ**になる。
+   ここだけ`#measureTypeGroup`を頭に付けるのは、②の
+   `.measure-shell.mstep-2 #measureTypeGroup .type-chip{min-height:var(--ctl-h-sm)}`
+   が**IDを含む詳細度**で勝つため——`.mt-ug .type-chip--two`では届かず、
+   `min-height`も`padding`も黙って捨てられていた（実測で気づいた）。 */
+.measure-shell.mstep-2 #measureTypeGroup .type-chip--two{min-height:var(--ctl-h)}
 .tc-top{display:flex;align-items:center;justify-content:space-between;gap:var(--space-1)}
 .tc-sub{font-size:var(--fs-tiny);font-weight:600;opacity:.82;text-align:left;line-height:1.35;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

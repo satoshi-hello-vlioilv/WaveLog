@@ -17,16 +17,13 @@
    **「札が並ぶ」だけを見ないこと**——測定画面から実際に消えること・
    消えないことの両方を見る（片側だけの網は、消しすぎる実装も
    消さない実装も素通しする）。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
-const API='http://127.0.0.1:5029';
+const H=require('./lib/harness.js');
+const API=H.B;
 const PRE='入力内容テスト設備';
 const NAME=PRE+Date.now().toString().slice(-6);
 const EQ='テスト設備A';   /* 測定画面を開いて確かめる設備 */
 
-let b=null,page=null;
-const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
-const H=require('./lib/harness.js');
+let page=null;
 let snapM=null,eqBack=null;
 
 /* 作った設備は消し、**借りた設備（テスト設備A）は元の設定へ戻す**（§9.362）。
@@ -51,12 +48,12 @@ async function cleanup(){
  catch(e){console.log('  [cleanup] 増えた行を消せませんでした: '+(e&&e.message||e))}
 }
 
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- page=await b.newPage({viewport:{width:1700,height:1000}});
- page.on('dialog',d=>d.accept());
- page.on('pageerror',e=>console.log('  [pageerror]',e.message));
- try{
+/* **起動を書き写さない**（§9.347）——写しが増えると、横断の変更が本の数だけの
+   問題になる。土台は `tests/lib/harness.js`。 */
+H.run('test_measitems: 入力内容を設備ごとに出し分ける（§9.392／§9.396）',
+ async({page:pg,rec,paint,W})=>{
+  page=pg;
+  try{
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
   await page.evaluate(e=>{localStorage.setItem('AccessMeasurementUserId','tester');
@@ -145,7 +142,7 @@ async function cleanup(){
    });
    await page.waitForFunction(()=>document.querySelectorAll('#masterMaintList .mm-row').length>1,
      null,{timeout:15000});
-   await page.waitForTimeout(400);
+   await paint();
   };
   const cellOf=n=>page.evaluate(name=>{
    const head=[...document.querySelectorAll('#masterMaintList .mm-row.head>span')].map(s=>s.textContent.trim());
@@ -195,15 +192,20 @@ async function cleanup(){
   rec('札を押すと隠し欄が「使わない入力内容」で裏返り、一言もこの欄の言葉で言う',
    p1.隠し==='バリ'&&/測定画面に出しません/.test(p1.注記),JSON.stringify({隠:p1.隠し,注:p1.注記}));
   await page.click('#maintEditorSave');
-  await page.waitForTimeout(1500);
-  const saved=await one(NAME);
+  /* **時間ではなく「サーバーへ入った」を待つ**（§9.102／§9.347）。
+     **サーバーへ聞き直す待ちは`poll()`**——`waitForFunction`の述語に Promise を
+     返させると**待たずに抜ける**（§9.376。実際にここで一度書いてしまった）。 */
+  const saved=await W.poll(()=>one(NAME),
+    x=>!!x&&(x.disabledMeasureItems||[]).join(',')==='バリ',20000);
   rec('窓から保存すると設備マスタへ入る',
    !!saved&&saved.disabledMeasureItems.join(',')==='バリ',
    JSON.stringify(saved&&saved.disabledMeasureItems));
   await page.evaluate(()=>{const b=document.getElementById('maintEditorClose');if(b)b.click();
     const d=document.getElementById('maintEditorModal');if(d)d.hidden=true;
     const c=document.getElementById('closeMasterMaint');if(c)c.click()});
-  await page.waitForTimeout(400);
+  await page.waitForFunction(()=>{const d=document.getElementById('maintEditorModal');
+    const p=document.getElementById('masterMaintPanel');
+    return (!d||d.hidden)&&(!p||p.hidden||getComputedStyle(p).display==='none')},null,{timeout:15000});
 
   /* ---- 6) 測定画面から消える ---- */
   const target=await one(EQ);
@@ -228,7 +230,7 @@ async function cleanup(){
    await page.waitForFunction(
      ()=>Array.isArray(S.measure&&S.measure.settings&&S.measure.settings.measureItemsOff),
      null,{timeout:20000});
-   await page.waitForTimeout(400);
+   await paint();
   };
   const shown=()=>page.evaluate(()=>({
    選択肢:[...document.querySelectorAll('#measureType option')].map(o=>o.text.trim()),
@@ -260,16 +262,7 @@ async function cleanup(){
    kept.選択肢.includes('テレスコープ')&&!kept.選択肢.includes('フラットネス')
    &&kept.チップ.includes('テレスコープ'),JSON.stringify(kept.選択肢));
 
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
-  await cleanup();
-  await b.close();
-  process.exit(ng.length?1:0);
- }catch(e){
-  console.log('FATAL: '+(e&&e.message));
-  await cleanup();
-  if(b)await b.close();
-  process.exit(2);
- }
-})();
+  /* **後片付けは`finally`で**（§9.362）——落ちても借りた設備を戻す。
+     集計と終了コードは土台（`H.run`）が持つ。 */
+  }finally{await cleanup()}
+ },{viewport:{width:1700,height:1000}});

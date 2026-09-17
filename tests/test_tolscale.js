@@ -468,7 +468,15 @@ let b=null;
   const setType=async t=>{
    await page.evaluate(v=>{const el=document.getElementById('measureType');
      el.value=v;el.dispatchEvent(new Event('change',{bubbles:true}))},t);
-   await page.waitForTimeout(600);
+   /* **時間ではなく「その項目で描き終わった」を待つ**（§9.102／§9.347）。
+      終わりの形は2つ——札が出ているか、札そのものが伏せられているか。 */
+   await page.waitForFunction(v=>{
+     const el=document.getElementById('measureType');
+     if(!el||el.value!==v)return false;
+     const b=document.getElementById('toleranceSummary');
+     return !b||b.hidden||!!b.querySelector('.tol-pill');
+   },t,{timeout:8000});
+   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
   };
   /* **入口は項目で違う面に出る。** 指示型（ラテラルボー）は上の札を
      `measure-worklog.js`が伏せているので、入口は測定表の隣の
@@ -521,7 +529,9 @@ let b=null;
       JSON.stringify(dlg));
   await page.fill('#appPromptInput','2.5');
   await page.click('#appConfirmOk');
-  await page.waitForTimeout(700);
+  await page.waitForFunction(()=>{const b=document.getElementById('toleranceSummary');
+    const el=b&&!b.hidden?b.querySelector('.tol-pill'):null;
+    return !!el&&el.classList.contains('is-manual')},null,{timeout:8000});
   const c1=await card();
   rec('入れた基準が札に出て、出どころは「手入力」と書く（§CLAUDE 6）',
       !!c1&&c1.手入力&&/手入力基準/.test(c1.字)&&/2\.5/.test(c1.字),JSON.stringify(c1));
@@ -549,7 +559,9 @@ let b=null;
   await page.waitForSelector('#appConfirmModal:not([hidden]) #appPromptInput',{timeout:8000});
   await page.fill('#appPromptInput','');
   await page.click('#appConfirmOk');
-  await page.waitForTimeout(700);
+  await page.waitForFunction(()=>{const b=document.getElementById('toleranceSummary');
+    const el=b&&!b.hidden?b.querySelector('.tol-pill'):null;
+    return !!el&&!el.classList.contains('is-manual')},null,{timeout:8000});
   const c4=await card();
   rec('空欄で決定すると手入力の基準を取り消す',
       !!c4&&!c4.手入力&&/基準なし/.test(c4.字),JSON.stringify(c4));
@@ -565,7 +577,8 @@ let b=null;
   rec('数にならない値は理由を書いて断る（0にしない）',
       /使えません/.test(ng)&&/0より大きい数/.test(ng),ng.slice(0,60));
   await page.click('#appConfirmOk');
-  await page.waitForTimeout(500);
+  await page.waitForFunction(()=>{const m=document.getElementById('appConfirmModal');
+    return !m||m.hidden},null,{timeout:8000});
   const c5=await card();
   rec('断ったあとも基準は入らないまま（黙って0を入れない）',
       !!c5&&!c5.手入力,JSON.stringify(c5));

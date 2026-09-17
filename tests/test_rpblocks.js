@@ -605,8 +605,11 @@ const endArrange=async page=>{
   rec('手入力の基準は帳票の道（calc.manualLimit）が出どころつきで答える（§9.394）',
       !!paths&&/ラテラルボー 0〜2\.5/.test(paths.基準)&&/（手入力）/.test(paths.基準),
       JSON.stringify(paths));
-  rec('入力内容の道は今の名前で答える（旧名 母材/丈毎 → 母材・§9.391）',
-      !!paths&&paths.入力内容==='母材',JSON.stringify(paths));
+  /* **綴りは語彙から引く**（§9.389／§9.396）——直に書くと、正しい改名を
+     しただけで落ちる（§9.396で`母材`→`全長`にしたとき実際に落ちた）。 */
+  rec('入力内容の道は今の名前で答える（旧名は読み替える・§9.391／§9.396）',
+      !!paths&&paths.入力内容===await page.evaluate(()=>WL.measureItem.MATERIAL),
+      JSON.stringify(paths));
   await page.evaluate(id=>WL.records.reliableDelete(id),'RPPROD-OFF');
 
   /* **使い終わった見本はその場で消す**（§9.351）——残すと以降の節が
