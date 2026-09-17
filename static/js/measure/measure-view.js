@@ -1376,7 +1376,10 @@ function updateMeasurementHeadingCore(){
    word==='公差'
     ?'選択した公差区分に使用可能なプラス・マイナス値がありません。判定は行いません。'
     :'この項目には判定に使える基準が登録されていません。判定は行いません。');
- const labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示基準'},sourceLabel=labels[detail.source],requestedLabel=labels[WL.measureInput.configuredToleranceSource()],fallback=detail.fallback?`${requestedLabel}が不足しているため製造公差を使用`:'';
+ /* **出どころの呼び名はここ1箇所**。`manual`は§9.394で足した
+    「このロットだけの手入力」——同じ数字でも当たる見込みが違うので、
+    札の字で必ず言い分ける（§CLAUDE 6）。 */
+ const labels={manufacturing:'製造公差',order:'オーダー公差',instruction:'指示基準',manual:'手入力基準'},sourceLabel=labels[detail.source],requestedLabel=labels[WL.measureInput.configuredToleranceSource()],fallback=detail.fallback?`${requestedLabel}が不足しているため製造公差を使用`:'';
  /* 片側だけの基準は「0〜上限」なので、±の内訳を出しても読む値が無い。 */
  /* **桁は測定値と同じにそろえる**（§9.320-B、利用者の報告「板厚製造公差の
     表示が桁数溢れしている」）。生の`range`は`1.475`が

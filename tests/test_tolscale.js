@@ -34,11 +34,32 @@ let b=null;
      読んで固定する**——1つ登録し忘れると、その分の公差が黙って製造公差に
      化ける（A/Bで分割ロットの提供者を外すと、この網が6件落ちる）。 */
   const reg=await page.evaluate(()=>({providers:WL.tolerance.providers(),hooks:WL.measureHooks.count()}));
-  rec('公差の提供者は3つ（分割ロット→指示型→指示型・単一）が priority の順に並ぶ',
-      reg.providers.map(p=>p.name).join('／')==='分割ロット（条ごと）／指示型（指示_項目の値）／指示型（単一の指示値）'
-      &&reg.providers.every((p,i,a)=>i===0||a[i-1].priority>p.priority),JSON.stringify(reg.providers));
-  rec('描いたあとのフックは登録で足す（afterRender 4・afterHeading 2）',
-      reg.hooks.afterRender===4&&reg.hooks.afterHeading===2,JSON.stringify(reg.hooks));
+  /* **顔ぶれを文字列で丸ごと固定しない**（§9.389 §10）——正しい位置へ
+     提供者を1つ足しただけで落ちる。見るのは
+     ①要る提供者が全部居るか ②priorityが降順か ③同じ数が並んでいないか
+     （同数だと順番が読み込み順で決まる＝§9.348が畳んだ依存が戻る）。 */
+  const WANT_PROVIDERS=['分割ロット（条ごと）','指示型（指示_項目の値）','指示型（単一の指示値）',
+                        '手入力の基準（このロットだけ）'];
+  const names=reg.providers.map(p=>p.name);
+  rec('要る公差の提供者が全部居る',
+      WANT_PROVIDERS.every(n=>names.indexOf(n)>=0),JSON.stringify(names));
+  /* **`facts`／`scale`だけの提供者は同じ priority で並んでよい**（§9.394）
+     ——`detail`の相棒として同じ族に属する。順番が意味を持つのは`detail`の
+     ほうなので、そちらだけ同数を禁じる。 */
+  const detailOrder=reg.providers.filter(p=>!/・カード$/.test(p.name));
+  rec('提供者は priority の降順で、答えを出す提供者は同じ priority が並ばない',
+      reg.providers.every((p,i,a)=>i===0||a[i-1].priority>=p.priority)
+      &&detailOrder.every((p,i,a)=>i===0||a[i-1].priority>p.priority),
+      JSON.stringify(reg.providers.map(p=>p.name+':'+p.priority)));
+  /* **手入力は指示型より先**（§9.394）——人がこのロットのために打った値を、
+     あとから届いた指示値で黙って上書きしない。 */
+  rec('手入力の基準は指示型より先に当たる',
+      names.indexOf('手入力の基準（このロットだけ）')<names.indexOf('指示型（単一の指示値）'),
+      names.join('／'));
+  /* **件数は下限で見る**（§9.389 §10）——正しく1つ足しただけで落ちない。
+     0件になったら「登録で足す」という作りが壊れている。 */
+  rec('描いたあとのフックは登録で足す（afterRender・afterHeading とも1つ以上）',
+      reg.hooks.afterRender>=1&&reg.hooks.afterHeading>=1,JSON.stringify(reg.hooks));
   await page.click('#openSchedule');
   await page.waitForSelector('.sc-row-line',{timeout:20000});
   const started=await page.evaluate(()=>{
@@ -424,6 +445,130 @@ let b=null;
    clicked.count===1&&clicked.idx[0]===0,JSON.stringify(clicked));
   rec('強調された条の点は他の条より大きい',
    clicked.強調>clicked.通常,`強調${clicked.強調}px / 通常${clicked.通常}px`);
+
+  /* ==========================================================
+     基準が引けないときは手で入れる（§9.394、利用者の指示）
+     「ラテラルボーおよびバリの項目について、基準が取得できない場合、
+      基準なしと出るだけでなく、手動で入力できるように、そのバッジを
+      ボタン化するなどして入力モーダルを出して入力したら手動で基準を
+      表示させる機能を追加してください」
+     **そのロットだけ**（確認して決めた）。出どころは「手入力」と出す。
+     ========================================================== */
+  /* **前の節が開けた窓を閉じてから始める。** 上で手動入力へ切り替えており、
+     その警告（`alertModal`「手動入力は例外操作です」）が開いたままここへ
+     来る——**窓は1枚しかない**（§9.342）ので、開いていると後ろの操作が
+     すべて覆われる（実際に押せずに30秒待って落ちた）。 */
+  await page.evaluate(()=>{
+   const m=document.getElementById('appConfirmModal');
+   if(m&&!m.hidden){const b=document.getElementById('appConfirmOk')
+     ||document.getElementById('closeAppConfirm');if(b)b.click()}
+  });
+  await page.waitForFunction(()=>{const m=document.getElementById('appConfirmModal');
+    return !m||m.hidden},null,{timeout:8000});
+  const setType=async t=>{
+   await page.evaluate(v=>{const el=document.getElementById('measureType');
+     el.value=v;el.dispatchEvent(new Event('change',{bubbles:true}))},t);
+   await page.waitForTimeout(600);
+  };
+  /* **入口は項目で違う面に出る。** 指示型（ラテラルボー）は上の札を
+     `measure-worklog.js`が伏せているので、入口は測定表の隣の
+     「指示値」カード。バリは指示型ではないので上の札（ピル）が出る。
+     **見えているほうを見る**——伏せた札をボタンにしても押せない（§CLAUDE 4）。 */
+  const entry=()=>page.evaluate(()=>{
+   const el=document.querySelector('[data-tol-manual]');
+   const box=document.getElementById('toleranceSummary');
+   const pill=box&&!box.hidden?box.querySelector('.tol-pill'):null;
+   const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect();return r.width>0&&r.height>0};
+   return {入口:!!el,面:el?(el.closest('#toleranceSummary')?'札':'カード'):'',
+     字:el?el.textContent.replace(/\s+/g,' ').trim():'',
+     見えている:vis(el),指:el?getComputedStyle(el).cursor:'',
+     札の字:pill?pill.textContent.trim():''};
+  });
+  const card=()=>page.evaluate(()=>{
+   const box=document.getElementById('toleranceSummary');
+   const el=box&&!box.hidden?box.querySelector('.tol-pill'):null;
+   return el?{字:el.textContent.replace(/\s+/g,' ').trim(),
+     手入力:el.classList.contains('is-manual')}:null;
+  });
+  await setType('ラテラルボー');
+  const e0=await entry();
+  /* **指示値が読めないときは札を伏せない**（§9.394）——伏せると基準について
+     画面が何も言わなくなる（指示値のカードは図の無い項目では捨てられる）。 */
+  rec('基準が引けないラテラルボーでも札が出て、それが手入力の入口になる（§9.394）',
+      e0.入口&&e0.面==='札'&&e0.見えている&&/基準なし/.test(e0.字),JSON.stringify(e0));
+  rec('押すと何が起きるかを字で書く（押せる形も与える）',
+      /手入力/.test(e0.字)&&e0.指==='pointer',JSON.stringify(e0));
+  /* **窓から入れる**（`WL.manualLimit.set`を直に呼ばない）——押しても窓が
+     出ない実装や、決定を拾えない実装をここで捕まえる。 */
+  /* **押せないときは「何に覆われているか」を出す**——30秒待って落ちると
+     理由が残らない（§CLAUDE 4）。 */
+  const topOf=()=>page.evaluate(()=>{
+   const el=document.querySelector('[data-tol-manual]');
+   if(!el)return '(入口が無い)';
+   const r=el.getBoundingClientRect();
+   const t=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
+   const open=[...document.querySelectorAll('.record-modal')].filter(m=>!m.hidden).map(m=>(m.id||'(id無)')+'『'+(m.textContent||'').replace(/\s+/g,' ').trim().slice(0,50)+'』');return `${Math.round(r.width)}x${Math.round(r.height)}@${Math.round(r.x)},${Math.round(r.y)} 上=${t?t.tagName+'#'+(t.id||'')+'.'+(t.className||''):'(なし)'} 開いている窓=${open.join(',')}`;
+  });
+  const top0=await topOf();
+  await page.click('[data-tol-manual]',{timeout:8000})
+    .catch(e=>{throw new Error('入口を押せない: '+top0+' / '+e.message.slice(0,60))});
+  await page.waitForSelector('#appConfirmModal:not([hidden]) #appPromptInput',{timeout:8000});
+  const dlg=await page.evaluate(()=>({
+   題:(document.getElementById('appConfirmTitle')||{}).textContent||'',
+   本文:(document.getElementById('appConfirmBody')||{}).textContent||''}));
+  rec('入力の窓が「このロットだけ」と書いている（マスタに残さないこと）',
+      /ラテラルボー/.test(dlg.題)&&/ロットだけ/.test(dlg.本文)&&/マスタには残しません/.test(dlg.本文),
+      JSON.stringify(dlg));
+  await page.fill('#appPromptInput','2.5');
+  await page.click('#appConfirmOk');
+  await page.waitForTimeout(700);
+  const c1=await card();
+  rec('入れた基準が札に出て、出どころは「手入力」と書く（§CLAUDE 6）',
+      !!c1&&c1.手入力&&/手入力基準/.test(c1.字)&&/2\.5/.test(c1.字),JSON.stringify(c1));
+  const kept=await page.evaluate(()=>{
+   const d=WL.measureInput.toleranceDetail(WL.measureItem.kindOf('ラテラルボー'),0,'ラテラルボー');
+   const store=(S.measure.settings.manualLimits||{})['ラテラルボー']||{};
+   return {出どころ:d&&d.source,範囲:d&&String(d.range),いつ:!!store.at};
+  });
+  rec('手入力の基準は判定にも使う（範囲0〜2.5・出どころmanual）',
+      kept.出どころ==='manual'&&kept.範囲==='0,2.5',JSON.stringify(kept));
+  rec('いつ入れたかも一緒に残す（§9.180）',kept.いつ===true,JSON.stringify(kept));
+  /* **バリにも同じ道がある**（利用者が挙げた2つ目）。こちらは上の札が入口。 */
+  await setType('バリ');
+  const e2=await entry();
+  rec('バリでは上の札（ピル）が入口になる',
+      e2.入口&&e2.面==='札'&&e2.見えている&&/基準なし/.test(e2.字)&&/手入力/.test(e2.字),
+      JSON.stringify(e2));
+  /* **寸法系（板幅）には手入力の道を混ぜない**（公差の出どころが別に在る）。 */
+  await setType('板幅');
+  const e3=await entry();
+  rec('板幅（寸法系）には手入力の入口を出さない',e3.入口===false,JSON.stringify(e3));
+  /* 空欄で決定 ＝ 取り消し。 */
+  await setType('ラテラルボー');
+  await page.click('[data-tol-manual]');
+  await page.waitForSelector('#appConfirmModal:not([hidden]) #appPromptInput',{timeout:8000});
+  await page.fill('#appPromptInput','');
+  await page.click('#appConfirmOk');
+  await page.waitForTimeout(700);
+  const c4=await card();
+  rec('空欄で決定すると手入力の基準を取り消す',
+      !!c4&&!c4.手入力&&/基準なし/.test(c4.字),JSON.stringify(c4));
+  /* **数にならない値は断る**（黙って0にしない・§9.231）。 */
+  await page.click('[data-tol-manual]');
+  await page.waitForSelector('#appConfirmModal:not([hidden]) #appPromptInput',{timeout:8000});
+  await page.fill('#appPromptInput','abc');
+  await page.click('#appConfirmOk');
+  await page.waitForSelector('#appConfirmModal:not([hidden]) #appConfirmOk',{timeout:8000});
+  await page.waitForFunction(()=>/使えません/.test(
+    (document.getElementById('appConfirmBody')||{}).textContent||''),null,{timeout:8000});
+  const ng=await page.evaluate(()=>(document.getElementById('appConfirmBody')||{}).textContent||'');
+  rec('数にならない値は理由を書いて断る（0にしない）',
+      /使えません/.test(ng)&&/0より大きい数/.test(ng),ng.slice(0,60));
+  await page.click('#appConfirmOk');
+  await page.waitForTimeout(500);
+  const c5=await card();
+  rec('断ったあとも基準は入らないまま（黙って0を入れない）',
+      !!c5&&!c5.手入力,JSON.stringify(c5));
 
   await page.evaluate(async()=>{
    if(typeof S!=='undefined'&&S.measure&&typeof WL.records.reliableDelete==='function')

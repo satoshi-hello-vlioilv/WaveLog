@@ -620,7 +620,15 @@ function applyInstructionToleranceForOtherTargets(kind){const p=instructedTolera
    読み替えると非寸法の項目に製造公差が当たってしまう。 */
 const toleranceProviders=[];
 function registerToleranceProvider(p){
- if(!p||typeof p.detail!=='function')return;
+ /* **`detail`を持たない提供者も受ける**（§9.394）。以前は`detail`が関数で
+    なければ**黙って捨てて**おり、`facts`／`scale`だけを持つ提供者
+    （指示型の「指示値」カード）が**一度も走らなかった**——`WL.tolerance.providers()`
+    にも現れないので、画面に何も出ないことに誰も気づけない。
+    ラテラルボーで基準が出ないのはこれが原因（上の札は
+    `measure-worklog.js`が伏せ、カードはここで捨てられていた）。
+    **捨てるときは理由を1行残す**（§9.328）。 */
+ const ok=p&&['detail','facts','scale'].some(k=>typeof p[k]==='function');
+ if(!ok){WL.quiet.note('公差の提供者を登録できない（detail/facts/scale がどれも関数でない）',p);return}
  toleranceProviders.push({name:String(p.name||''),priority:Number(p.priority)||0,detail:p.detail,facts:p.facts,scale:p.scale});
  toleranceProviders.sort((a,b)=>b.priority-a.priority);
 }
@@ -636,6 +644,8 @@ function resolveToleranceSlot(slot,...args){
 }
 function resolveTolerance(kind,index=0,typeName){
  for(const p of toleranceProviders){
+  /* `facts`／`scale`だけの提供者は答えを持たない（§9.394）。 */
+  if(typeof p.detail!=='function')continue;
   let r;
   try{r=p.detail(kind,index,typeName)}
   catch(e){console.error('公差の提供者「'+p.name+'」で例外（次の提供者へ）',e);continue}

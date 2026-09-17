@@ -123,8 +123,11 @@ let b=null,page=null;
       !!pWidth&&/公差/.test(pWidth.文)&&!/基準なし/.test(pWidth.文),JSON.stringify(pWidth));
   await setType('バリ');
   const pBurr=await pill();
+  /* **見るのは言葉の使い分け**（基準か公差か）。札の字を丸ごと固定しない
+     ——§9.394で手入力の入口（「／手入力」）が同じ札へ付いたので、
+     完全一致で見ると正しい追加で落ちる（§9.389 §10と同じ）。 */
   rec('バリでは「基準なし」と言う（公差とは言わない）',
-      !!pBurr&&pBurr.文==='基準なし'&&!/公差/.test(pBurr.文),JSON.stringify(pBurr));
+      !!pBurr&&/^基準なし/.test(pBurr.文)&&!/公差/.test(pBurr.文),JSON.stringify(pBurr));
   rec('バリでは理由も基準の言葉で書く',
       !!pBurr&&/基準/.test(pBurr.説明)&&!/公差区分/.test(pBurr.説明),pBurr&&pBurr.説明);
 

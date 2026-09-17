@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（587件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（591件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -400,11 +400,14 @@
 | 「どれが仕掛でどれが品質か」はキーでなく`データソースマスタ`の`[役割]` | `test_datasource.py`・`test_dskeylint.py`・`test_dsnav.js` | [決まり](docs/decisions/rules-misc.md) |
 | 仕掛から消えたロットは実績で突き合わせる。在席は「仕掛にも在る列」だけで見る | `test_actualmatch.py` | [§9.364](docs/decisions/9.364.md) |
 
-### 測定画面（90件）
+### 測定画面（93件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 公差の答えは`WL.tolerance`の登録表。描いたあとに足すのは`WL.measureHooks`へ登録し、被せない | `test_patchlint.py`・`test_tolscale.js` | [§9.348](docs/decisions/9.348.md) |
+| 基準が引けないラテラルボー・バリは、札をボタンにして**そのロットだけ**手で入れられる（出どころは「手入力」） | `test_tolscale.js` | [§9.394](docs/decisions/9.394.md) |
+| `WL.tolerance.register()`は`facts`／`scale`だけの提供者も受ける。捨てるなら理由を1行残す | `test_tolscale.js` | [§9.394](docs/decisions/9.394.md) |
+| 札を伏せてよいのは**代わりに出す物があるとき**だけ（指示値が読めないなら札を残す） | `test_tolscale.js` | [§9.394](docs/decisions/9.394.md) |
 | テストの待ちは`tests/lib/wait.js`の道具で「条件」で置く | — | [§9.324](docs/decisions/9.324-1.md) |
 | 紙の「混入位置」の何条目かは赤太字。赤は1つ | — | [§9.323](docs/decisions/9.323-1.md) |
 | 異常位置の条混入位置は3か所まで。1か所ぶんの計算は`spotOf()`の1箇所 | `test_rpdefect.js` | [§9.323](docs/decisions/9.323-1.md) |
@@ -751,7 +754,7 @@
 | 「何で選ばせるか」と「どう見えるか」は別の軸 | — | [§9.223](docs/decisions/9.223.md) |
 | 公差外・基準外は確認カードの色で気づかせる。NGの記録はその行の中 | `test_ngcard.js` | [§9.242](docs/decisions/9.242.md) |
 
-### 検証（テスト）（32件）
+### 検証（テスト）（33件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -765,6 +768,7 @@
 | 「いま」から引き直す値は幅で見る。言い切りは自分が作った行に限る。最初の描画は1回で測る | `test_wkfast.js`・`test_scsplit.js` | [§9.358](docs/decisions/9.358.md) |
 | 実績を置く網は自分で消す。「作業中」を見る網は開始を打刻してから保存する（一時保存だけでは「予定」のまま） | `test_scsync.js`・`test_startwork.js` | [§9.351](docs/decisions/9.351.md) |
 | 注ぎ込んだ見本の記録は**その場で消す**。後片付けを最後にまとめると、あいだの節が別の材料を見る | `test_rpblocks.js` | [§9.393](docs/decisions/9.393.md) |
+| 節の頭で**前の節が開けた窓を閉じる**。「押せない」は`elementFromPoint`で何に覆われたかを出す | `test_tolscale.js` | [§9.394](docs/decisions/9.394.md) |
 | 文書が指す名前・撮る道具の選択子は実在させる。関数の中の`import`は増やさない（理由は`# 遅延:`） | `test_docindex.py`・`test_importlint.py` | [§9.349](docs/decisions/9.349.md) |
 | 固定待ち（`waitForTimeout`）とハーネスの写しは増やさない。網の骨組みは`tests/lib/harness.js`、待ちは`wait.js`の道具で | `test_waitlint.py` | [§9.347](docs/decisions/9.347.md) |
 | `page.waitForFunction`の述語にPromiseを返させない（返すと待たずに抜ける・実測82ms）。サーバーへ聞き直す待ちは`wait.js`の`poll()` | `test_waitlint.py` | [§9.376](docs/decisions/9.376.md) |

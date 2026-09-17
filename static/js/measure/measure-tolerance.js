@@ -65,6 +65,143 @@
     }
     return undefined;
   }});
+
+  /* ---------- 基準が引けないときは手で入れる（§9.394、利用者の指示） ----------
+     「ラテラルボーおよびバリの項目について、基準が取得できない場合、
+      基準なしと出るだけでなく、手動で入力できるように、そのバッジを
+      ボタン化するなどして入力モーダルを出して入力したら手動で基準を
+      表示させる機能を追加してください」
+
+     確認して決めたこと: **そのロットだけ**。マスタへは書かない——1本の
+     ロットのための例外をマスタに書くと、**次のロットへ黙って効く**。
+     置き場は測定データの中（`settings.manualLimits`）で、誰が・いつ
+     入れたかも一緒に持つ（§9.180 と同じ作法）。
+
+     **出どころは必ず「手入力」と書く**（§CLAUDE 6）——同じ「0〜2.5」でも、
+     仕掛から引いた基準と人が打った基準では当たる見込みが違う。
+
+     **手で入れた基準は判定にも効く。** 基準がある＝判定できる、という
+     筋を項目ごとに変えない（画面の札が「手入力基準」と言い続けるので、
+     どちらの根拠で赤が出ているかは読める）。
+
+     **足せる項目はここ1箇所**。利用者が挙げたのはラテラルボーとバリの2つ。 */
+  var MANUAL_LIMIT_TYPES={'ラテラルボー':1,'バリ':1};
+  function manualLimits(){
+    if(!S.measure)return null;
+    S.measure.settings=S.measure.settings||{};
+    if(!S.measure.settings.manualLimits||typeof S.measure.settings.manualLimits!=='object')
+      S.measure.settings.manualLimits={};
+    return S.measure.settings.manualLimits;
+  }
+  /* その項目の手入力の基準。**0以下・数にならないものは「無い」**
+     ——0mm以下という通らない基準を作らない（§9.231 と同じ）。 */
+  function manualLimitOf(type){
+    var all=manualLimits();if(!all)return null;
+    var hit=all[WL.measureItem.normalize(type)];
+    if(!hit)return null;
+    var v=Number(hit.value);
+    return (Number.isFinite(v)&&v>0)?{value:v,by:hit.by||'',at:hit.at||''}:null;
+  }
+  function setManualLimit(type,value){
+    var all=manualLimits();if(!all)return;
+    var key=WL.measureItem.normalize(type);
+    if(value===null){delete all[key]}
+    else{
+      all[key]={value:value,at:new Date().toISOString(),
+        by:(window.WL&&WL.terminal&&WL.terminal.userId&&WL.terminal.userId())
+           ||(typeof currentUserId==='function'&&currentUserId())||''};
+    }
+    if(typeof markDirty==='function')markDirty();
+    if(WL.measureInput&&typeof WL.measureInput.renderMeasureGrid==='function')
+      WL.measureInput.renderMeasureGrid();
+    if(WL.measureView&&typeof WL.measureView.updateMeasurementHeading==='function')
+      WL.measureView.updateMeasurementHeading();
+    if(typeof refreshMeasureProgress==='function')refreshMeasureProgress();
+  }
+  /* **登録表へ足す**（§9.348）。指示型より先に当たる——人がこのロットのために
+     打った値なので、あとから届いた指示値で黙って上書きしない。
+     手入力が無ければ`undefined`＝次の提供者へ（何も変えない）。 */
+  /* **priorityは25**（指示型の20より上）。同じ数にすると順番が読み込み順で
+     決まってしまい、§9.348で畳んだはずの依存が戻る。 */
+  WL.tolerance.register({name:'手入力の基準（このロットだけ）',priority:25,detail:function(kind,index,typeName){
+    var type=typeName||currentType();
+    if(!MANUAL_LIMIT_TYPES[WL.measureItem.normalize(type)])return undefined;
+    var hit=manualLimitOf(type);
+    if(!hit)return undefined;
+    return {range:[0,hit.value],source:'manual',fallback:false,plus:hit.value,minus:0,
+      plusKey:'',minusKey:'',base:0,single:true,instructionType:type,
+      manual:true,manualBy:hit.by,manualAt:hit.at};
+  }});
+  /* **公差カード（`facts`）の提供者はここでは足さない。**
+     `WL.tolerance.register()`は`detail`を持たない提供者を**黙って捨てる**
+     （`if(typeof p.detail!=='function')return`）ので、`facts`だけの提供者は
+     一度も走らない——上の「指示型（単一の指示値）・カード」も同じ形で、
+     `WL.tolerance.providers()`に現れない（`tests/test_tolscale.js`が
+     3つと数えているのがその証拠）。**登録の取りこぼしを直すのは別の仕事**
+     なので、ここでは核の答えをそのまま使う（札は「手入力基準」と言う）。 */
+
+  /* 札をボタンにする（§9.394）。**描いたあとに足すのは登録表から**
+     （`WL.measureHooks`。被せない・§9.352）。 */
+  function limitLabel(type){return WL.measureItem.limitWord(type)}
+  async function askManualLimit(type){
+    var cur=manualLimitOf(type);
+    var word=limitLabel(type);
+    var v=await promptModal({
+      eyebrow:'手入力',title:type+'の'+word+'を手で入れる',
+      message:'この項目の'+word+'は仕掛データから引けませんでした。'
+        +'いま開いているロットだけの'+word+'として手で入れます（マスタには残しません）。',
+      label:word+'（これ以下）',value:cur?String(cur.value):'',placeholder:'例: 2.5',
+      hint:'単位はmm。空欄のまま決定すると、手入力の'+word+'を取り消します。'
+        +'入れた'+word+'は判定にも使われ、画面には「手入力」と出ます。',
+      confirmLabel:'この'+word+'を使う'});
+    if(v===null)return;                       /* やめた */
+    if(v===''){setManualLimit(type,null);return}
+    var n=Number(v);
+    /* **断る理由を書く**（§CLAUDE 4）。黙って0にしない（§9.231）。 */
+    if(!Number.isFinite(n)||!(n>0)){
+      await alertModal('「'+v+'」は'+word+'として使えません。0より大きい数（例: 2.5）を入れてください。');
+      return;
+    }
+    setManualLimit(type,n);
+  }
+  WL.measureHooks.on('afterHeading',function(){
+    var box=document.getElementById('toleranceSummary');if(!box)return;
+    var type=currentType();
+    if(!MANUAL_LIMIT_TYPES[WL.measureItem.normalize(type)])return;
+    /* **見えていない札はボタンにしない**（§CLAUDE 4）——指示型の項目では
+       `measure-worklog.js`が`#toleranceSummary`ごと伏せており、押せない
+       ボタンだけが残る。あちらの面（指示値のカード）が入口を持つ。 */
+    if(box.hidden)return;
+    var pill=box.querySelector('.tol-pill');if(!pill)return;
+    var hit=manualLimitOf(type),word=limitLabel(type);
+    var btn=document.createElement('button');
+    btn.type='button';
+    btn.className=pill.className+' tol-pill-act'+(hit?' is-manual':'');
+    btn.dataset.tolManual=type;
+    /* **押すと何が起きるかを字で書く**（§CLAUDE 4・§3）。色と鉛筆だけに
+       しない——「基準なし」のままでも押せることが読めない。 */
+    btn.textContent=hit?(pill.textContent+'（直す）'):(pill.textContent+'／手入力');
+    btn.title=hit
+      ?(word+' 0〜'+hit.value+'（手入力'+(hit.by?'・'+hit.by:'')+'）。押すと直せます。'
+        +'空欄にして決定すると取り消します。')
+      :(pill.title+'　押すと、このロットだけの'+word+'を手で入れられます。');
+    pill.replaceWith(btn);
+  });
+  /* **押す口は1つ**（§9.163）。札（`#toleranceSummary`）と指示値のカード
+     （`measure-worklog.js`）の両方から押せるので、個別に配線せず
+     `data-tol-manual`へ委譲する——カードは測定表を描き直すたびに
+     作り直されるので、直に`onclick`を張ると張り忘れる面ができる。 */
+  document.addEventListener('click',function(ev){
+    var el=ev.target&&ev.target.closest?ev.target.closest('[data-tol-manual]'):null;
+    if(!el)return;
+    ev.preventDefault();
+    askManualLimit(el.dataset.tolManual);
+  });
+  /* 網から呼べるようにする（素の`window.*`は増やさない・§9.359）。 */
+  WL.manualLimit={types:function(){return Object.keys(MANUAL_LIMIT_TYPES)},
+    allows:function(type){return !!MANUAL_LIMIT_TYPES[WL.measureItem.normalize(type)]},
+    get:function(type){return this.allows(type)?manualLimitOf(type):null},
+    set:setManualLimit,ask:askManualLimit};
 })();
 
 

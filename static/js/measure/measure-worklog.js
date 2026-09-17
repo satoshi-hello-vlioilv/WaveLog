@@ -91,7 +91,17 @@
     }});
 
   // 上部の要約(#toleranceSummary)は指示型では抑止（内容がふさわしくないため）。
-  function suppressSummaryForInstruction(){var type=currentType();if(isInstructionType(type)){var s=$('#toleranceSummary');if(s)s.hidden=true;}}
+  /* 上部の要約(#toleranceSummary)は指示型では抑止する——**ただし、指示値が
+     読めるときだけ**（§9.394）。読めないときに抑止すると、**基準について
+     画面が何も言わなくなる**（指示値のカードは図が無い項目では捨てられる
+     ので、代わりに出る物が無い）。利用者の報告「基準が取得できない場合、
+     基準なしと出る」が指しているのはこの札で、ここが手入力の入口になる。 */
+  function suppressSummaryForInstruction(){
+    var type=currentType();
+    if(!isInstructionType(type))return;
+    if(!instructionInfo(type))return;      /* 言う物が無いなら札を残す */
+    var s=$('#toleranceSummary');if(s)s.hidden=true;
+  }
   WL.measureHooks.on('afterGridVertical',()=>suppressSummaryForInstruction());
   WL.measureHooks.afterHeading(()=>suppressSummaryForInstruction());
   /* ③の公差一覧が指示型の項目も並べられるように口を出す（§9.157）。
