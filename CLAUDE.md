@@ -576,7 +576,7 @@
 | 設備停止は「内容 →（内訳）→ 時間」の手順で入れる。窓は開かず一覧と入れ替える | `test_stopflow.js` | [§9.389](docs/decisions/9.389.md) |
 | 一覧の上端は動かさない。案内は一覧の**下**の「知らせの棚」（`#scNotices`）へ | `test_scbar.js` | [§9.397](docs/decisions/9.397.md) |
 | 行の右クリックは**作業導線の順に群で束ねる**（進める→直す→増やす・写す→選ぶ・並べる→画面→外す）。群は5件以下、**中身の無い群は出さない** | `test_scstop.js` | [§9.399](docs/decisions/9.399.md) |
-| 複製を出すのは「もう1件あり得る」ものだけ（設備停止・申し送り）。作業と枠には出さない。断りは`duplicateBlockReason()`の1箇所 | `test_scstop.js` | [§9.399](docs/decisions/9.399.md) |
+| 予定の行の複製を出すのは**申し送りだけ**。設備停止・作業・枠には出さない（顔ぶれは`DUPLICABLE_KINDS`の1箇所） | `test_scstop.js` | [§9.401](docs/decisions/9.401.md) |
 | Deleteで外すのも`removeEntries()`の1本を通す。欄・IME変換中・窓が開いている間は取らない。Backspaceは取らない | `test_scpick.js` | [§9.399](docs/decisions/9.399.md) |
 | 帯（ヘッダーの操作列）は1行のまま。譲るのは**状態の文字だけ**（押せる物は縮ませない） | `test_scbar.js` | [§9.397](docs/decisions/9.397.md) |
 | 設備停止は左＝一覧／右＝設定の2ペイン。一覧と入れ替えない（§9.389の作法を撤回） | `test_stopflow.js` | [§9.397](docs/decisions/9.397.md) |

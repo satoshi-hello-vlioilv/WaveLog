@@ -39,7 +39,7 @@ async function cleanup(){
   for(const x of (r.items||[]))
    if(x.name===NEW||x.name===NEW+'（写し）'||SEED.some(s=>s[1]===x.name))
     await post('/api/schedule/stop-reason-master/delete',{id:x.id});
- }catch(e){}
+ }catch(e){console.log('片付け（停止内容の論理削除）を飛ばした: '+e.message)}
  try{
   await post('/api/access-mode',{mode:'edit'});
   const j=await fetch(B+'/api/master-table/'+encodeURIComponent('設備停止マスタ')+'?limit=2000')
@@ -47,7 +47,7 @@ async function cleanup(){
   for(const row of (j.items||[]))
    if(String(row['名称']||'').trim()===NEW+'（写し）')
     await post('/api/master-table/'+encodeURIComponent('設備停止マスタ')+'/delete',{id:row.id});
- }catch(e){}
+ }catch(e){console.log('片付け（素の表からの物理削除）を飛ばした: '+e.message)}
 }
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
@@ -233,32 +233,55 @@ async function cleanup(){
    rec('中身の無い群は出さない',grouped.空の群.length===0,grouped.空の群.join('/'));
    /* **鍵盤でできることはその場に書く**（§CLAUDE 2「思い出させない」）。 */
    rec('「予定から外す」にDeleteの札が付く',grouped.鍵.includes('Delete'),grouped.鍵.join('/'));
-   rec('設備停止の行には「もう1件足す」がある（押せる）',
-       grouped.複製.join('')==='on',JSON.stringify(grouped.複製));
-   /* 本当に1件増えて、**内訳も見積も同じ**まま入ること。 */
-   const dupBefore=(await planEntries()).filter(e=>e.title===NEW).length;
+   /* §9.401（利用者の指示「申し送りのみOKとします。予定＝ロットのデータは
+      ×です」）: **設備停止の行には出さない**。§9.399では出していたが、
+      利用者が欲しかったのは**停止内容そのもの（マスタの行）の複製**で
+      （§9.400で実装ずみ）、予定の行を複製しても同じ停止が2件並ぶだけ。
+      **道は「設備停止を追加」の一覧1本**にする。 */
+   rec('設備停止の行には「もう1件足す」を出さない（§9.401）',
+       grouped.複製.length===0,JSON.stringify(grouped.複製));
+   await page.keyboard.press('Escape');
+   /* **申し送りには出る**（同じ文をもう1行、は普通にある）。
+      入口は画面の「申し送り」ボタン（§9.189）——APIで足しても画面は
+      描き直さないので、**利用者と同じ道で入れる**。 */
+   const CM='回帰_申し送り'+Date.now();
+   await page.click('#scCommentBtn');
+   await page.waitForSelector('#scCommentText',{timeout:8000});
+   await page.fill('#scCommentText',CM);
+   await page.click('#appConfirmOk');
+   await page.waitForFunction(t=>(WL.scheduleView.entries()||[])
+     .some(e=>e.kind==='コメント'&&e.title===t&&!e.__pending),CM,{timeout:20000});
+   const cmMenu=await page.evaluate(t=>{
+    const e=(WL.scheduleView.entries()||[]).find(x=>x.kind==='コメント'&&x.title===t);
+    const row=e&&[...document.querySelectorAll('.sc-row-line')]
+      .find(r=>String(r.dataset.id)===String(e.id));
+    if(!row)return {行が無い:true};
+    row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:400,clientY:300}));
+    const m=document.querySelector('.sc-row-menu');
+    return {複製:[...(m?m.querySelectorAll('button'):[])]
+      .filter(b=>/もう1件足す/.test(b.textContent)).map(b=>b.disabled?'off':'on')};
+   },CM);
+   rec('申し送りの行には「もう1件足す」がある（押せる）',
+       cmMenu.複製&&cmMenu.複製.join('')==='on',JSON.stringify(cmMenu));
    await page.evaluate(()=>{
     const b=[...document.querySelectorAll('.sc-row-menu button')]
       .find(x=>/もう1件足す/.test(x.textContent));
     if(b)b.click();
    });
-   const dupAfter=await W.poll(planEntries,es=>es.filter(e=>e.title===NEW).length>dupBefore,20000);
-   const dups=dupAfter.filter(e=>e.title===NEW);
-   rec('複製すると同じ内容の行が1件増える',dups.length===dupBefore+1,
-       `${dupBefore} → ${dups.length}`);
-   rec('複製は見積も写す',dups.length>1
-       &&String(dups[0].estimateMinutes||'')===String(dups[1].estimateMinutes||''),
-       JSON.stringify(dups.map(x=>x.estimateMinutes)));
+   const cms=await W.poll(planEntries,es=>es.filter(e=>e.title===CM).length===2,20000)
+     .then(es=>es.filter(e=>e.title===CM)).catch(()=>[]);
+   rec('申し送りを複製すると同じ文の行が1件増える',cms.length===2,
+       `1 → ${cms.length}`);
    /* **すぐ下へ入る**——探させない（§CLAUDE 2）。 */
-   const order=dupAfter.filter(e=>e.kind==='設備停止'&&e.title===NEW).map(e=>String(e.id));
-   const all=dupAfter.map(e=>String(e.id));
-   rec('複製はその行のすぐ下へ入る',
-       order.length===2&&all.indexOf(order[1])===all.indexOf(order[0])+1,
-       `${all.indexOf(order[0])} → ${all.indexOf(order[1])}`);
-   /* 片付け: 増やした1件はここで外す（この本の後始末は元の1件だけを見る）。 */
-   const extra=dups.find(e=>String(e.id)!==String(added.id));
-   if(extra)await post('/api/schedule/plan/delete',{id:extra.id,user_id:'test'});
-   await W.poll(planEntries,es=>es.filter(e=>e.title===NEW).length===dupBefore,15000);
+   const cmAll=(await planEntries()).map(e=>String(e.id));
+   rec('申し送りの複製もその行のすぐ下へ入る',
+       cms.length===2
+       &&cmAll.indexOf(String(cms[1].id))===cmAll.indexOf(String(cms[0].id))+1,
+       cms.map(c=>cmAll.indexOf(String(c.id))).join(' → '));
+   await page.keyboard.press('Escape');
+   /* 後始末: 入れた申し送りは2件とも外す（次の節は元の1件だけを見る）。 */
+   for(const c of cms)await post('/api/schedule/plan/delete',{id:c.id,user_id:'test'});
+   await W.poll(planEntries,es=>es.filter(e=>e.title===CM).length===0,15000);
    await page.evaluate(id=>{
     const row=[...document.querySelectorAll('.sc-row-line')]
       .find(r=>String(r.dataset.id)===String(id));

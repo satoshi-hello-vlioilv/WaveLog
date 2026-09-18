@@ -6941,16 +6941,18 @@ const SC_LOCK_WAIT_MAX_MS=4000;
                           t.classList.toggle('active',!detailEl.hidden)}}}},
 
      {group:'増やす・写す'},
-     /* 複製（§9.399、利用者の指示「停止内容の複製追加といった複製機能」）。
-        **できるものにだけ出す**——作業（同じロットを2回流す実体が無い）と
-        枠（同じ日・直の枠が2つあっても何も変わらない）には出さない。
+     /* 複製（§9.399 → §9.401で申し送りだけに絞った）。**できるものにだけ
+        出す**——作業（同じロットを2回流す実体が無い）・枠（同じ日・直の枠が
+        2つあっても何も変わらない）・設備停止（同じ停止が2件並ぶだけ。
+        入れ直すのと手数が変わらないので「設備停止を追加」の一覧へ道を
+        1本化した）には出さない。
         止まっているときは**理由を書いて残す**（§4）。 */
      duplicableKind(e)&&{label:`${duplicableKind(e)}をもう1件足す`,
        /* **できるときは1行に収める**（§CLAUDE 1）——「もう1件足す」で
           何が起きるかは読めば分かる。詳しくは`title`が持つ。
           できないときだけ理由を本文へ出す（§4。`rowMenuItemsHtml`が
           `disabled`のとき自動で出す）。 */
-       note:duplicableEntry(e)?'同じ内容（内訳・見積・備考）のまま、この行のすぐ下へ入れます'
+       note:duplicableEntry(e)?'同じ文（備考も）のまま、この行のすぐ下へ入れます'
          :duplicateBlockReason(e),
        disabled:!duplicableEntry(e),run:()=>duplicateEntry(e.id)},
      /* ICASコピー（§9.368）。**押せばすぐコピー**、横に開く子で
@@ -8906,38 +8908,35 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     選び直す**しかなかった。**その行のすぐ下へ、同じ内容で1件足す**。
 
     **複製できるのは「もう1件あり得る」ものだけ**（§CLAUDE 4）:
-      設備停止 … 同じ停止をもう1回する、は普通にある
-      申し送り … 同じ文をもう1行、も普通にある
+      申し送り … 同じ文をもう1行、は普通にある
+      設備停止 … **出さない**（§9.401で撤回。下に理由）
       作業     … **出さない**。同じロットを2回流すという実体が無い
       枠       … **出さない**。同じ日・同じ直の枠が2つあっても何も変わらない
+
+    **設備停止を複製の対象から外した**（§9.401、利用者の指示「申し送りのみ
+    OKとします。予定＝ロットのデータは×です」）。§9.399で入れたときは
+    「同じ停止をもう1回する、は普通にある」と読んだが、**利用者が欲しかった
+    のは予定の行ではなく停止内容そのもの（マスタの行）の複製**だった
+    （§9.400で実装ずみ——一覧の右クリックから写す）。予定の行のほうを
+    複製すると**同じ停止が2件並ぶだけ**で、入れ直すのと手数が変わらない。
+    設備停止をもう1件入れるときは**「設備停止を追加」の一覧から入れる**
+    ——道は1本にする。
+
     できない理由は`duplicateBlockReason()`の1箇所が答える（メニューの断り書きと
     押したときのトーストを同じ言葉にする・§9.372）。 */
- const DUPLICABLE_KINDS={'設備停止':'この停止','コメント':'この申し送り'};
+ const DUPLICABLE_KINDS={'コメント':'この申し送り'};
  function duplicableKind(e){return e?DUPLICABLE_KINDS[e.kind]||'':''}
- /* 設備停止の複製には**停止理由のID**が要る（`plan_add`が名称をマスタから
-    写すため）。予定の行はIDを持たない（§9.163の`stop_reason_id_of`と同じ
-    事情）ので、**いま読み込んである選択肢から名前で引く**。
-    引けない＝マスタから消された停止なので、複製はできない（理由を書く）。 */
- function stopReasonIdOfEntry(e){
-  const name=String((e&&e.title)||'').trim();
-  if(!name)return 0;
-  const hit=(scState.stopReasons||[]).find(s=>String(s.name||'').trim()===name);
-  return hit?hit.id:0;
- }
  function duplicableEntry(e){
   return !!(e&&duplicableKind(e)&&e.state==='予定'&&!e.__pending
-    &&scState.fullControl&&!sessionBlocked()
-    &&(e.kind!=='設備停止'||stopReasonIdOfEntry(e)));
+    &&scState.fullControl&&!sessionBlocked());
  }
  function duplicateBlockReason(e){
   if(!e||!duplicableKind(e))
-   return '同じものをもう1件作れるのは、設備停止と申し送りだけです';
+   return '同じものをもう1件作れるのは、申し送りだけです';
   if(e.__pending)return 'サーバーへ反映中です。反映されたら複製できます';
   if(e.state!=='予定')return '着手・完了した行は複製できません（実績と食い違うため）';
   if(!scState.fullControl)return 'この画面では予定を変えられません（スケジュールモードで開くと足せます）';
   if(sessionBlocked())return sessionHolderMessage();
-  if(e.kind==='設備停止'&&!stopReasonIdOfEntry(e))
-   return `「${String(e.title||'').trim()}」が設備停止マスタにありません（登録し直すと複製できます）`;
   return '';
  }
  /* すぐ下へ入れる。**「その行の次」は「次の行の前」**——`position`は
@@ -8954,49 +8953,17 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    showToast&&showToast('複製できません',duplicateBlockReason(e),4500);
    return;
   }
-  const target=scState.equipment;
   const before=nextEntryIdOf(e);
-  const minutes=(e.estimateMinutes==null||e.estimateMinutes==='')?null:Number(e.estimateMinutes);
   const remark=String(e.remark||'');
-  if(e.kind==='コメント'){
-   const entry=makeOptimisticEntry('コメント',{title:String(e.title||''),remark});
-   insertEntriesAt(before,[entry]);
-   renderTimeline();
-   queuePlanOp({op:'add',equipment:target,kind:'コメント',title:String(e.title||''),
-    remark,position:before?`before:${before}`:'end',
-    onSuccess:r=>resolveOptimisticEntry(entry,r),
-    onFailure:()=>discardOptimisticEntry(entry)});
-   showToast&&showToast('申し送りを複製しました',
-     `${String(e.title||'').slice(0,40)}／すぐ下へ入れました`,3200);
-   return;
-  }
-  const rid=stopReasonIdOfEntry(e);
-  const sub=(e.detail&&e.detail.stopSubId)||'';
-  /* 画面へ先に置く（楽観追加）。**明細（内訳）ごと写す**ので、行の札も
-     そのまま出る（§9.390の`nonWorkSubText()`が明細を読む）。 */
-  const entry=makeOptimisticEntry('設備停止',{title:String(e.title||''),remark,
-    detail:Object.assign({},e.detail||{}),
-    estimate:minutes==null?null:{minutes,source:'override'},estimateMinutes:minutes});
+  const entry=makeOptimisticEntry('コメント',{title:String(e.title||''),remark});
   insertEntriesAt(before,[entry]);
   renderTimeline();
-  queuePlanOp({op:'add',equipment:target,kind:'設備停止',
-   position:before?`before:${before}`:'end',
-   stopReasonId:rid,stopSubId:sub,estimateMinutes:minutes,remark,
-   onSuccess:r=>{
-    resolveOptimisticEntry(entry,r);
-    /* **名前を直してある行は、直した名前のまま複製する**。`plan_add`は
-       設備停止の`[予定名称]`をマスタから写す（§5.3）ので、その場では
-       マスタの名前になる——直してあったときだけ、続けて名前を戻す。
-       **いつも送らないこと**（同じ名前を書き戻す更新が毎回飛ぶ）。 */
-    const master=((scState.stopReasons||[]).find(x=>x.id===rid)||{}).name||'';
-    const mine=String(e.title||'').trim();
-    if(mine&&mine!==String(master).trim()&&r&&r.id)
-     queuePlanOp({op:'update',id:r.id,title:mine});
-   },
+  queuePlanOp({op:'add',equipment:scState.equipment,kind:'コメント',
+   title:String(e.title||''),remark,position:before?`before:${before}`:'end',
+   onSuccess:r=>resolveOptimisticEntry(entry,r),
    onFailure:()=>discardOptimisticEntry(entry)});
-  const what=String(e.title||'')+(nonWorkSubText(e)?`（${nonWorkSubText(e)}）`:'')
-    +(minutes==null?'':`・${WL.duration.text(minutes)}`);
-  showToast&&showToast('設備停止を複製しました',`${what}／すぐ下へ入れました`,3200);
+  showToast&&showToast('申し送りを複製しました',
+    `${String(e.title||'').slice(0,40)}／すぐ下へ入れました`,3200);
  }
 
  /* ---------- 申し送り（コメント）を挟む(§9.189、利用者の指示) ----------
