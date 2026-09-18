@@ -49,6 +49,26 @@ COMPILE_FILES = ('program/app.py', 'program/start_app.py',
                  'program/setup_app.py', 'program/process_manager.py',
                  '_pycache_bootstrap.py')
 
+# 置き場・名前が変わったもの（§9.404・§9.405）。**現場は上書きコピーで更新する**
+# ので、古いほうは消えずに残る——しかも古い`setup.bat`は`python setup_app.py`と
+# いう**移した前の行**を持っているので、押すと失敗する（押せるのに何も起きない
+# 物を残さない・§CLAUDE 画面の基準4）。
+#
+# **消してよい理由は「新しいほうが在る」こと**。§9.249の「消えても取り直せる
+# ものだけ」とは別の話で、ここで消すのは**中身が新しい場所に在る写し**
+# ——だから**片方しか無いうちは1バイトも触らない**（更新の途中や、混ざった
+# 配置で消してしまわないため）。
+MOVED_AWAY = (
+    ('app.py', 'program/app.py'),
+    ('start_app.py', 'program/start_app.py'),
+    ('setup_app.py', 'program/setup_app.py'),
+    ('process_manager.py', 'program/process_manager.py'),
+    ('loading.html', 'program/loading.html'),
+    ('requirements.txt', 'program/requirements.txt'),
+    ('requirements-dev.txt', 'program/requirements-dev.txt'),
+    ('setup.bat', 'update.bat'),
+)
+
 
 def _no_window():
     """pythonw(コンソール非表示)から子プロセスを起動しても黒い画面を出さない。"""
@@ -221,12 +241,19 @@ def promote_waiting_page(say=None):
 
 
 def sweep_shared_leftovers(say=None):
-    """以前の版がアプリ本体の隣へ書いていた進捗ファイルを片付ける(§9.225)。
+    """以前の版がアプリ本体の隣へ残したものを片付ける(§9.225・§9.404・§9.405)。
 
-    置き場を端末ごとへ移したので、共有側に残った1個は**誰も読まない**。
+    2種類ある:
+      ① 進捗ファイル(`boot_status.js`)——置き場を端末ごとへ移したので、
+         共有側に残った1個は**誰も読まない**。
+      ② 置き場・名前が変わった実行ファイル(`MOVED_AWAY`)——**新しいほうが
+         在るときだけ**片付ける。古い`setup.bat`は押すと失敗するので、
+         残すほうが害がある。
+
     放っておくと共有フォルダーに意味の分からないファイルが残り続け、
     「これは何か」を次に触る人に調べさせることになる。**消せなくても
-    黙って進む**——読み取り専用の共有に置いている現場もある。"""
+    黙って進む**——読み取り専用の共有に置いている現場もある。
+    **消したことは黙らない**（`say`で1件ずつ言う）。"""
     old = APP_ROOT / 'boot_status.js'
     try:
         if old.exists():
@@ -235,6 +262,19 @@ def sweep_shared_leftovers(say=None):
                 say('以前の進捗ファイルを片付けました: %s' % old)
     except Exception as _e:
         quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
+    for old_name, new_name in MOVED_AWAY:
+        stale = APP_ROOT / old_name
+        moved = APP_ROOT / new_name
+        try:
+            # **両方が揃っているときだけ**。片方しか無いのは「まだ移して
+            # いない」か「もう片付いた」のどちらかで、どちらも触る場面ではない。
+            if stale.is_file() and moved.is_file():
+                stale.unlink()
+                if say:
+                    say('置き場が変わった古いファイルを片付けました: %s（いまは %s）'
+                        % (old_name, new_name))
+        except Exception as _e:
+            quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
 
 
 def run(say, write_stamp=True):

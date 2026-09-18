@@ -392,6 +392,37 @@ try:
     rec('_pycache_bootstrap.py はリポジトリ直下のまま（探索先に在ることが役目）',
         (ROOT / '_pycache_bootstrap.py').exists())
 
+    # ---- 7c) 置き場・名前が変わった古いファイルを片付ける（§9.405） ----
+    # 現場は**上書きコピー**で更新するので、古い`setup.bat`や直下の`app.py`は
+    # 消えずに残る。古い`setup.bat`は`python setup_app.py`（§9.404で移す前の行）
+    # を持っているので、**押すと失敗する**——押せるのに何も起きない物を残さない。
+    #
+    # **本物の`APP_ROOT`では試さない。** 消す網なので、作った場所だけで見る
+    # （`setup_check.APP_ROOT`を差し替え、`finally`で必ず戻す）。
+    # 見たいのは2つで、**どちらが欠けても網にならない**——
+    #   ① 新しいほうが在れば古いほうが消える
+    #   ② 新しいほうが**無ければ1バイトも触らない**（更新の途中・混ざった配置）
+    _real_root = setup_check.APP_ROOT
+    with tempfile.TemporaryDirectory() as _td:
+        fake = Path(_td)
+        try:
+            setup_check.APP_ROOT = fake
+            (fake / 'program').mkdir()
+            (fake / 'program' / 'app.py').write_text('new', encoding='utf-8')
+            (fake / 'app.py').write_text('old', encoding='utf-8')          # 片付く
+            (fake / 'setup.bat').write_text('old', encoding='utf-8')       # まだ片付かない
+            setup_check.sweep_shared_leftovers()
+            rec('新しいほうが在る古いファイルは片付ける（§9.405）',
+                not (fake / 'app.py').exists() and (fake / 'program' / 'app.py').exists())
+            rec('新しいほうが無いうちは1バイトも触らない（更新の途中で消さない）',
+                (fake / 'setup.bat').exists())
+            (fake / 'update.bat').write_text('new', encoding='utf-8')
+            setup_check.sweep_shared_leftovers()
+            rec('改名した古い入口も、新しい入口が在れば片付ける（§9.405）',
+                not (fake / 'setup.bat').exists() and (fake / 'update.bat').exists())
+        finally:
+            setup_check.APP_ROOT = _real_root
+
     # ---- 8) 刻印があっても無くても起動できる ----
     stop_app()
     ready.write()

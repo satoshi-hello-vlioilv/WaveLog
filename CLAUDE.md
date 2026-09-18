@@ -116,9 +116,9 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（678件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（679件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
-### 起動・停止・監視（31件）
+### 起動・停止・監視（32件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -128,6 +128,7 @@
 | ファイルを移すときは見張り（`pick_tests.py`・lintの対象・CI）も一緒に動かす | `test_pick.py` | [§9.404](docs/decisions/9.404.md) |
 | 起動前の確認は`update.bat`（旧`setup.bat`）が受け持ち、刻印で飛ばす | `test_faststart.py` | [§9.225](docs/decisions/9.225.md) |
 | 入口の名前は「いつ押すか」を言う。旧名を入口として残さない（入口は1つ） | `test_faststart.py` | [§9.405](docs/decisions/9.405.md) |
+| 置き場・名前が変わった古いファイルは`MOVED_AWAY`で片付ける。**新しいほうが在るときだけ**（片方しか無いうちは触らない） | `test_faststart.py` | [§9.405](docs/decisions/9.405.md) |
 | サーバー再起動 | — | [決まり](docs/decisions/rules-misc.md) |
 | 起動基盤に触るとき | — | [決まり](docs/decisions/rules-misc.md) |
 | 「開いているタブが0件」は2つの意味を持つ | `test_tabclose.py` | [§9.98](docs/decisions/9.98.md) |
