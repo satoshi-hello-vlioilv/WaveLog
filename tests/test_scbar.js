@@ -536,6 +536,69 @@ let b=null;
   rec('全体俯瞰では「表示」の入口ごと消える',inBoard.btn&&inBoard.group&&inBoard.pop,
       JSON.stringify(inBoard));
 
+  /* ---- 5) 表示位置が動かない（§9.397、利用者の指摘） ----
+     「メッセージが長くなったり追加表示のメッセージが出てくるときに行数が
+      増えることで表示位置がガタガタズレる…ターゲットがずれるため非常に
+      使いにくい」「何かクリックしたときにメッセージのために1行一時的に
+      増えるとかもそうです」
+
+     見るのは**一覧の上端と行のy座標**。実測では帯が98→174px・行が最大235px
+     下へ逃げていた（狙っていたロットが指の下から消える）。
+     直し方は2つで、どちらも「器の要る場所を中身の長さから切り離す」:
+      ・帯は折り返さない（状態の文字だけが縮む）
+      ・案内6本は一覧の**下**へ置く（出ても上端が動かない）
+     **文字を入れるのは製品と同じ器へ**——`hidden`を外して中身を入れるだけ
+     なので、実際に出たときと同じ高さになる。 */
+  await page.evaluate(()=>{const b=document.getElementById('scModeSingle');if(b)b.click()});
+  /* **待つ理由を言える待ちにする**（§9.347）——黙って捨てる`.catch(()=>{})`は
+     「行が出なかった」を素通りさせる。出なければ`WAIT-TIMEOUT`が理由を書く。 */
+  await W.until(page,()=>!!document.querySelector('.sc-row-line'),null,
+                {ms:15000,what:'個別の行が出る'});
+  await idle(400,8000);
+  const probe=()=>page.evaluate(()=>{
+   const r=s=>{const e=document.querySelector(s);return e?e.getBoundingClientRect():null};
+   const row=document.querySelector('.sc-row-line');
+   return {head:Math.round(r('main>header').height),
+           bar:Math.round(r('.hd-viewbar').height),
+           top:Math.round(r('#scTimeline').top),
+           row:row?Math.round(row.getBoundingClientRect().top):-1};
+  });
+  const base=await probe();
+  await page.evaluate(()=>{
+   const put=(id,html)=>{const el=document.getElementById(id);if(!el)return;el.hidden=false;el.innerHTML=html};
+   /* 帯の中で伸び縮みするもの（読込時点・段取りの注記・書込中の印）。 */
+   put('scSyncChip','<i class="fa-solid fa-clock-rotate-left"></i>'
+     +'<span class="sc-sync-txt">08:57 時点(たった今) ・ 読み込み 1.8秒 ・ 同期エラー</span>'
+     +'<span class="hd-caret">▾</span>');
+   const n=document.getElementById('scFieldReorderNote');
+   if(n){n.hidden=false;n.textContent='現場段取りの対象設備は「テスト設備B」です'}
+   const l=document.getElementById('scLockBadge');
+   if(l){l.hidden=false;l.textContent='書き込み中…'}
+   /* 案内の帯（他PCの変更・元データの変更・未定・選択件数）。 */
+   put('scSyncBanner','<span><b>他のPCが予定を変えました。</b>いま出ているのは変更前の内容です。</span><button type="button">読み直す</button>');
+   put('scUndecided','<div class="sc-undecided-main"><b>時刻が決まっていない予定が 3件</b><button class="sc-undecided-fix">直す</button></div>');
+   put('scPickBar','<span><b>2件</b>選択中</span><button type="button">まとめて外す</button>');
+  });
+  await paint();await paint();
+  const after=await probe();
+  rec('帯の文字が伸びても帯の高さが変わらない（1行のまま）',
+      after.head===base.head&&after.bar===base.bar,
+      JSON.stringify({before:base,after}));
+  rec('案内が3本出ても一覧の上端が動かない',after.top===base.top,`${base.top} → ${after.top}`);
+  rec('案内が3本出ても行のy座標が動かない（狙った行が逃げない）',
+      after.row===base.row,`${base.row} → ${after.row}`);
+  /* 案内は**一覧の下**に居ること（DOMの前後関係で見る。上に戻すと、
+     出るたびに上端が下がる形へ戻ってしまう）。 */
+  const below=await page.evaluate(()=>{
+   const box=document.getElementById('scNotices'),tl=document.getElementById('scTimeline');
+   return !!box&&!!tl&&!!(box.compareDocumentPosition(tl)&2);
+  });
+  rec('知らせの棚は一覧より後ろに居る（上へ戻すとまたずれる）',below);
+  await page.evaluate(()=>{
+   ['scSyncChip','scFieldReorderNote','scLockBadge','scSyncBanner','scUndecided','scPickBar']
+    .forEach(id=>{const el=document.getElementById(id);if(el){el.hidden=true;el.innerHTML=''}});
+  });
+
  }catch(e){console.log('FATAL',e.message)}finally{
   try{
    for(const id of made)await page.evaluate(async i=>{

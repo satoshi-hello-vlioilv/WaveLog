@@ -823,7 +823,15 @@ function renderProductPanel(){
        付け替えでは描き直さない——選んだ欄からフォーカスが外れる。 */
     const had=!!prevEdge&&prevEdge!==PRODUCT_EDGE_OK;
     const has=!!el.value&&!isOk;
-    if(had!==has){renderProductPanel();markDirty();return}
+    if(had!==has){
+     /* **書くことが増えたら、畳みは手放す**（§9.397）。§9.206の「手で畳める」は
+        見せ方の好みだが、異常を選んだ瞬間に**書かないと判定が出ない欄**が
+        生まれる——畳んだままだと、開けと言われないまま「値待ち」で止まる
+        （§CLAUDE 2「次にすることを常に1つだけ指す」）。明示の畳みを捨てて
+        `prtFoldDefault()`へ返す（無くなった側も、備考の有無で決まる）。 */
+     prtFold.delete(i);
+     renderProductPanel();markDirty();return;
+    }
    }
    /* 値(mm)は判定に効く(§9.204)。**同じ行の判定とその理由を必ず言い直す**。 */
    const j=judgeProductRow(row);

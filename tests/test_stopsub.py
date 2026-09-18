@@ -156,6 +156,53 @@ rec('同じ名前を入れ直すと元の行が戻る（IDが増えない）',
     again == s_fing and not created3, f'{again} / {s_fing}')
 
 # ---------------------------------------------------------------------------
+# 2b. 既定の内訳（§9.397、利用者の指示「内訳は1つしかない場合はそれを既定に。
+#     2つ以上あっても既定のものを設定して登録できるようにしてください」）
+# ---------------------------------------------------------------------------
+have3 = set(cols(c, '設備停止サブカテゴリマスタ'))
+rec('内訳の表が既定の列を持つ', '既定' in have3, sorted(have3))
+# 「刃組待ち」は3件（ゴムリング／刃出し／フィンガー）＝印が無ければ既定なし。
+rec('2件以上あって印が無ければ既定なし（推測で選ばない）',
+    sr.stop_default_sub(c, blade) is None, sr.stop_default_sub(c, blade))
+# 「段取り待ち」は1件だけ＝**印を付けなくてもそれが既定**。
+rec('1件しかなければ印が無くてもそれが既定',
+    sr.stop_default_sub(c, setup) == s_out2, f"{sr.stop_default_sub(c, setup)} / {s_out2}")
+# **標準所要分は一緒に渡すこと**——`stop_sub_upsert`は渡した値をそのまま書くので、
+# 省くと`None`（空欄＝親に任せる）で上書きされる。画面（`ssbSave`）も今の値を
+# 必ず載せている。ここを省いたせいで下の「3.」が2件落ちた（実測）。
+sr.stop_sub_upsert(c, blade, '刃出し', 'u', standard_minutes=90, sub_id=s_out, is_default=True)
+rec('印を付ければ2件以上でもそれが既定', sr.stop_default_sub(c, blade) == s_out,
+    sr.stop_default_sub(c, blade))
+sr.stop_sub_upsert(c, blade, 'ゴムリング', 'u', sub_id=s_ring, is_default=True)
+flags = {r[2]: bool(r[9]) for r in sr.stop_sub_rows(c, blade)}
+rec('印は兄弟のうち1つだけ（立てると他は降りる）',
+    sum(1 for v in flags.values() if v) == 1 and flags.get('ゴムリング'), flags)
+# **鍵が来ていなければ触らない**（§9.212 ②）。名前を直しただけで既定が
+# 落ちると、直した人には何が起きたか分からない。
+sr.stop_sub_upsert(c, blade, 'ゴムリング2', 'u', sub_id=s_ring)
+rec('名前を直しても既定は落ちない（送らない鍵は触らない）',
+    sr.stop_default_sub(c, blade) == s_ring, sr.stop_default_sub(c, blade))
+sr.stop_sub_upsert(c, blade, 'ゴムリング', 'u', sub_id=s_ring, is_default=False)
+rec('印は外せる（外すと既定なしへ戻る）', sr.stop_default_sub(c, blade) is None,
+    sr.stop_default_sub(c, blade))
+# 2段目にも同じ規則が効く（親ごとに1つ）。
+kid_a, _ = sr.stop_sub_upsert(c, blade, '交換', 'u', parent_sub_id=s_ring)
+kid_b, _ = sr.stop_sub_upsert(c, blade, '増し締め', 'u', parent_sub_id=s_ring)
+rec('2段目も2件なら既定なし', sr.stop_default_sub(c, blade, s_ring) is None,
+    sr.stop_default_sub(c, blade, s_ring))
+sr.stop_sub_upsert(c, blade, '増し締め', 'u', sub_id=kid_b, parent_sub_id=s_ring, is_default=True)
+rec('2段目の既定は親ごとに持てる', sr.stop_default_sub(c, blade, s_ring) == kid_b,
+    sr.stop_default_sub(c, blade, s_ring))
+rec('1段目の既定は2段目の印に引きずられない', sr.stop_default_sub(c, blade) is None,
+    sr.stop_default_sub(c, blade))
+m = sr.stop_default_sub_map(c)
+rec('まとめて答える表も同じ答えを返す（画面が数え直さない）',
+    m.get('%d:%d' % (blade, s_ring)) == kid_b and ('%d:0' % blade) not in m
+    and m.get('%d:0' % setup) == s_out2, m)
+sr.stop_sub_delete(c, kid_a, 'u')
+sr.stop_sub_delete(c, kid_b, 'u')
+
+# ---------------------------------------------------------------------------
 # 3. 既定の分は「サブ → 親 → 無し」の3段
 # ---------------------------------------------------------------------------
 rec('サブに標準所要分があればそれ', sr.stop_default_minutes(c, blade, s_out) == 90.0,

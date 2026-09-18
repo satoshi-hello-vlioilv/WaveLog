@@ -59,6 +59,10 @@ let b=null,page=null;
       :(document.getElementById('materialManualNote')?.textContent||'')};
  });
  const go=async s=>{await page.evaluate(v=>WL.measureSteps.go(v),s);await page.waitForTimeout(450)};
+ /* 割り付けが確定するまで（§9.102「待ちは時間でなく条件で置く」）。道具は
+    `tests/lib/wait.js`の1箇所——固定待ちを書き写さない（§9.347）。 */
+ const W=require('./lib/wait.js');
+ const paint=()=>W.paint(page);
 
  try{
   await setMode('edit');
@@ -1347,6 +1351,61 @@ let b=null,page=null;
       el.dispatchEvent(new Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}))}});
   });
 
+  /* ---- 備考は「畳んだ広い行」（§9.397、利用者の指示） ----
+     「備考は通常使わないので、行数増やして対応しつつ折りたたんでおくように
+      したいです」
+
+     主役の9列目に置いていたときの取り分は**実測58px**で、2文字も読めなかった
+     （エッジ形状12.6em・外観6.2em…を引いた残りが備考の幅だったため）。
+     自由記述は器の幅がそのまま使い勝手なので、**列ではなく行**を与える。
+     既定は畳む——畳んでいる丈では1pxも場所を取らない（§CLAUDE 1）。 */
+  const note0=await page.evaluate(()=>{
+   const body=document.getElementById('productRowsBody');
+   const btn=body.querySelector('tr[data-row="0"] .prt-note-btn');
+   return {段:body.querySelectorAll('tr.prt-detail').length,
+     入口:!!btn,入口の字:btn?btn.textContent.trim():'',
+     入口幅:btn?Math.round(btn.getBoundingClientRect().width):0,
+     主役にtextarea:!!body.querySelector('tr:not(.prt-detail) textarea')};
+  });
+  rec('備考は既定で畳んである（段を出さない）',note0.段===0&&!note0.主役にtextarea,
+      JSON.stringify(note0));
+  rec('主役の行に残るのは開閉の入口だけ（書いていなければ「—」）',
+      note0.入口&&/^—/.test(note0.入口の字),JSON.stringify(note0));
+  await page.click('#productRowsBody tr[data-row="0"] .prt-note-btn');
+  await paint();await paint();
+  const note1=await page.evaluate(()=>{
+   const ta=document.querySelector('#productRowsBody tr.prt-detail[data-row="0"] textarea[data-product-field="note"]');
+   return {欄:!!ta,幅:ta?Math.round(ta.getBoundingClientRect().width):0,
+     行数:ta?Number(ta.rows||0):0};
+  });
+  rec('押すと備考の欄が開き、主役の列より広い（実測58px→400px以上）',
+      note1.欄&&note1.幅>=400&&note1.行数>=2,JSON.stringify({...note0,...note1}));
+  await page.fill('#productRowsBody tr.prt-detail[data-row="0"] textarea[data-product-field="note"]',
+                  '耳やけ気味。次工程へ申し送り。');
+  await paint();
+  const noteKept=await page.evaluate(()=>S.measure.product.rows[0].note);
+  rec('打った備考は保存を待たずレコードへ入る',
+      noteKept==='耳やけ気味。次工程へ申し送り。',String(noteKept));
+  await page.click('#productRowsBody tr.prt-detail[data-row="0"] .prt-fold');
+  await paint();await paint();
+  const note2=await page.evaluate(()=>{
+   const body=document.getElementById('productRowsBody');
+   return {要約:(body.querySelector('tr.prt-detail[data-row="0"] .prt-sum')||{}).textContent||'',
+     入口の字:(body.querySelector('tr[data-row="0"] .prt-note-btn .prt-note-txt')||{}).textContent||''};
+  });
+  /* **畳んでも値は読める**（§9.125）。主役の列は58pxしか無いので本文は
+     写さず「あり/—」だけを言い（§CLAUDE 8）、本文は横いっぱいの要約が持つ。 */
+  rec('畳んでも書いた備考が読める（要約が横いっぱいで持つ）',
+      /耳やけ/.test(note2.要約),JSON.stringify(note2));
+  rec('主役の列は「あるか無いか」だけを言う（同じ文を2箇所に出さない）',
+      note2.入口の字.trim()==='あり',note2.入口の字);
+  await page.evaluate(()=>{
+   const ta=document.querySelector('#productRowsBody textarea[data-product-field="note"]');
+   if(ta){ta.value='';ta.dispatchEvent(new Event('input',{bubbles:true}))}
+   if(S.measure&&S.measure.product)S.measure.product.rows.forEach(r=>{if(r)r.note=''});
+   WL.measureView.renderProductPanel&&WL.measureView.renderProductPanel();
+  });
+
   /* ---- 揃いは「選んで記録」（§9.203、利用者の指示） ----
      4桁の揃いコードは**廃止**した。判定の起点はエッジ形状で、
      「揃い綺麗」ならそこで終わり（内訳は書かせない）。 */
@@ -1481,8 +1540,11 @@ let b=null,page=null;
   });
   rec('内訳を手で畳める',fold.ある&&fold.畳んだ===true,JSON.stringify(fold).slice(0,140));
   rec('畳んでも値は読める',fold.ある&&/1\/3未満発生/.test(fold.要約||''),String(fold.要約).slice(0,80));
+  /* 開いた段に居る欄は**内訳5つ＋備考**の6つ（§9.397で備考が列から
+     この段へ移った）。数を決め打ちにしているのは「開き直したら欄が戻る」を
+     見るためで、欄が増えたらここも一緒に直す。 */
   rec('畳んでも記録は消さない・もう一度開ける',
-      fold.ある&&fold.値==='1/3未満発生'&&fold.戻る===5,JSON.stringify(fold).slice(0,140));
+      fold.ある&&fold.値==='1/3未満発生'&&fold.戻る===6,JSON.stringify(fold).slice(0,140));
 
   /* 旧データ(4桁コード)は**消さずに読める**こと。 */
   /* **必ず在る行(0)で見る**——縦割数が1のときは行1が無く、
