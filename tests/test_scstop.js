@@ -190,6 +190,59 @@ async function cleanup(){
    },added.id);
    rec('右クリックに「停止の内容を変える」がある',
        (menu.項目||[]).some(t=>/停止の内容を変える/.test(t)),JSON.stringify(menu.項目));
+   /* ---- §9.399: 群で束ねて読む／複製できる ----
+      利用者の指示「右クリックメニューを改良し、最新の内容に合わせて
+      より分かりやすく、見やすく表示内容・機能を再構成してください」
+      「追加の機能として、停止内容の複製追加といった複製機能を実装して
+       ください」 */
+   const grouped=await page.evaluate(()=>{
+    const m=document.querySelector('.sc-row-menu');
+    const kids=[...(m?m.children:[])];
+    return {群:kids.filter(k=>k.classList.contains('chm-group')).map(k=>k.textContent.trim()),
+      /* **中身の無い群を出さない**——見出しだけが残ると「この下に何か
+         あるはず」と探させる（§CLAUDE 4）。 */
+      空の群:kids.filter((k,i)=>k.classList.contains('chm-group')
+        &&(!kids[i+1]||kids[i+1].classList.contains('chm-group'))).map(k=>k.textContent.trim()),
+      鍵:[...(m?m.querySelectorAll('.chm-key'):[])].map(k=>k.textContent.trim()),
+      複製:[...(m?m.querySelectorAll('button'):[])]
+        .filter(b=>/もう1件足す/.test(b.textContent)).map(b=>b.disabled?'off':'on')};
+   });
+   rec('右クリックは群で束ねて読める（平らな1本の並びにしない）',
+       grouped.群.length>=3,grouped.群.join('/'));
+   rec('中身の無い群は出さない',grouped.空の群.length===0,grouped.空の群.join('/'));
+   /* **鍵盤でできることはその場に書く**（§CLAUDE 2「思い出させない」）。 */
+   rec('「予定から外す」にDeleteの札が付く',grouped.鍵.includes('Delete'),grouped.鍵.join('/'));
+   rec('設備停止の行には「もう1件足す」がある（押せる）',
+       grouped.複製.join('')==='on',JSON.stringify(grouped.複製));
+   /* 本当に1件増えて、**内訳も見積も同じ**まま入ること。 */
+   const dupBefore=(await planEntries()).filter(e=>e.title===NEW).length;
+   await page.evaluate(()=>{
+    const b=[...document.querySelectorAll('.sc-row-menu button')]
+      .find(x=>/もう1件足す/.test(x.textContent));
+    if(b)b.click();
+   });
+   const dupAfter=await W.poll(planEntries,es=>es.filter(e=>e.title===NEW).length>dupBefore,20000);
+   const dups=dupAfter.filter(e=>e.title===NEW);
+   rec('複製すると同じ内容の行が1件増える',dups.length===dupBefore+1,
+       `${dupBefore} → ${dups.length}`);
+   rec('複製は見積も写す',dups.length>1
+       &&String(dups[0].estimateMinutes||'')===String(dups[1].estimateMinutes||''),
+       JSON.stringify(dups.map(x=>x.estimateMinutes)));
+   /* **すぐ下へ入る**——探させない（§CLAUDE 2）。 */
+   const order=dupAfter.filter(e=>e.kind==='設備停止'&&e.title===NEW).map(e=>String(e.id));
+   const all=dupAfter.map(e=>String(e.id));
+   rec('複製はその行のすぐ下へ入る',
+       order.length===2&&all.indexOf(order[1])===all.indexOf(order[0])+1,
+       `${all.indexOf(order[0])} → ${all.indexOf(order[1])}`);
+   /* 片付け: 増やした1件はここで外す（この本の後始末は元の1件だけを見る）。 */
+   const extra=dups.find(e=>String(e.id)!==String(added.id));
+   if(extra)await post('/api/schedule/plan/delete',{id:extra.id,user_id:'test'});
+   await W.poll(planEntries,es=>es.filter(e=>e.title===NEW).length===dupBefore,15000);
+   await page.evaluate(id=>{
+    const row=[...document.querySelectorAll('.sc-row-line')]
+      .find(r=>String(r.dataset.id)===String(id));
+    if(row)row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:400,clientY:300}));
+   },added.id);
    const menuEmoji=(menu.項目||[]).join('');
    rec('右クリックの項目に絵文字が無い',!EMOJI.test(menuEmoji),
        (menuEmoji.match(EMOJI)||[]).join('')||'なし');

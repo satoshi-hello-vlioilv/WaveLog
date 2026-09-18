@@ -301,6 +301,62 @@ let b=null;
   rec('外したあと選択バーは引っ込む（件数だけ残らない）',after.hidden&&!after.text,
       `${after.hidden} "${after.text.slice(0,40)}"`);
 
+  /* ---- 7b) Delete キーで、選んだ予定を外す（§9.399、利用者の指示） ----
+     「DELETEキーで作業スケジュールの選択対象を削除する機能も実装してほしい」
+
+     **通るのは`removeEntries()`の1本だけ**——確認の文言も、外したロットを
+     仕掛一覧へ戻す知らせも、選択バーの「選んだN件を予定から外す」と同じに
+     なる（§CLAUDE 8。同じ操作を2通りの顔で持たない）。
+     **打っている最中は取らない**ことまで見る（鍵盤の事故を作らない）。 */
+  const had2=new Set(await page.evaluate(()=>[...document.querySelectorAll('.sc-row-line')].map(r=>r.dataset.id)));
+  await page.evaluate(()=>{
+   [...document.querySelectorAll('#grid tbody tr .plan-select-checkbox')].slice(0,2)
+    .forEach(bx=>{bx.checked=true;bx.dispatchEvent(new Event('change',{bubbles:true}))});
+  });
+  await settle();
+  await page.click('#planSelectAdd');
+  await page.waitForFunction(n=>[...document.querySelectorAll('.sc-row-line')]
+    .filter(r=>!/^tmp-/.test(r.dataset.id)).length>=n,had2.size+2,{timeout:30000});
+  await page.waitForTimeout(1500);
+  const del2=(await page.evaluate(()=>[...document.querySelectorAll('.sc-row-line')].map(r=>r.dataset.id)))
+    .filter(id=>!had2.has(id)&&!/^tmp-/.test(id));
+  del2.forEach(id=>made.push(id));
+  rec('Deleteの題材を2件入れた',del2.length===2,del2.join('/'));
+  await page.evaluate(ids=>{ids.forEach(id=>{
+    const r=document.querySelector('.sc-row-line[data-id="'+id+'"]');if(r)r.click()})},del2);
+  await settle();
+  rec('2件を選べた',
+      await page.evaluate(()=>document.querySelectorAll('.sc-row-line.is-picked').length)===2);
+  /* **欄に居るあいだは取らない**——打っている文字を消すつもりのDeleteで
+     予定が消えては事故になる（§CLAUDE 5）。 */
+  await page.evaluate(()=>{const i=document.querySelector('#search');if(i)i.focus()});
+  await page.keyboard.press('Delete');
+  await settle();
+  rec('欄に居るあいだのDeleteは予定を外さない',
+      await page.evaluate(()=>document.querySelectorAll('.sc-row-line.is-picked').length)===2);
+  await page.evaluate(()=>{const i=document.querySelector('#search');if(i)i.blur()});
+  await page.keyboard.press('Delete');
+  await page.waitForSelector('#appConfirmModal:not([hidden])',{timeout:8000});
+  const delText=await page.evaluate(()=>
+    document.getElementById('appConfirmModal').textContent.replace(/\s+/g,' '));
+  /* **受け皿へ落としたときと同じ確認**（§CLAUDE 8）。 */
+  rec('Deleteの確認は受け皿と同じ言葉（2件・戻り先・測定データは残る）',
+      /2件/.test(delText)&&/仕掛一覧へ戻ります/.test(delText)&&/測定データはそのまま/.test(delText),
+      delText.slice(0,140));
+  await page.click('#appConfirmOk');
+  await page.waitForFunction(ids=>ids.every(id=>!document.querySelector('.sc-row-line[data-id="'+id+'"]')),
+    del2,{timeout:15000});
+  await page.waitForTimeout(2000);
+  const left2=await planIds();
+  rec('Deleteでサーバーからも消える',del2.every(id=>!left2.includes(id)),
+      `残り: ${del2.filter(id=>left2.includes(id)).join('/')||'なし'}`);
+  /* 1件も選んでいなければ何も起きない（押しても何も起きない鍵にしない・§4）。 */
+  const beforeIdle=await planIds();
+  await page.keyboard.press('Delete');
+  await page.waitForTimeout(600);
+  rec('1件も選んでいないDeleteでは何も消えない',
+      (await planIds()).length===beforeIdle.length,`${beforeIdle.length}件`);
+
   /* ---- 8) 権限の無いモードでは道具ごと出さない ---- */
   await post('/api/access-mode',{mode:'edit'});
   await page.reload({waitUntil:'domcontentloaded'});

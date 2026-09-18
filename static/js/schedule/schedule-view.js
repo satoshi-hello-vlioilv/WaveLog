@@ -5664,12 +5664,41 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     分からない。理由は`note`に入れ、`title`だけでなく本文にも出す
     ——ツールチップは触らないと読めない。 */
  function rowMenuItemsHtml(list){
-  return list.map((it,i)=>it.sep?'<div class="chm-sep"></div>'
-    :`<button type="button" data-i="${i}"${it.disabled?' disabled':''}`
+  return list.map((it,i)=>{
+   if(it.sep)return '<div class="chm-sep"></div>';
+   /* 群の見出し（§9.399）。**押せない字**なので`button`にしない
+      ——`10-roles.css`が`.col-head-menu button`へ行き先の寸法を配るので、
+      見出しまで行き先と同じ顔になる（§9.264と同じ罠）。 */
+   if(it.group)return `<div class="chm-group">${esc(it.group)}</div>`;
+   return `<button type="button" data-i="${i}"${it.disabled?' disabled':''}`
      +` class="${[it.danger?'chm-danger':'',it.sub?'chm-has-sub':''].filter(Boolean).join(' ')}"`
-     +`${it.note?` title="${esc(it.note)}"`:''}>${esc(it.label)}`
+     +`${it.note?` title="${esc(it.note)}"`:''}>`
+     +`<span class="chm-text">${esc(it.label)}</span>`
+     /* 鍵盤でできることは**その場に書く**（§CLAUDE 2「思い出させない」）。 */
+     +`${it.keys?`<kbd class="chm-key">${esc(it.keys)}</kbd>`:''}`
      +`${it.sub?'<span class="chm-sub-mark" aria-hidden="true">▸</span>':''}`
-     +`${it.note&&(it.disabled||it.showNote)?`<small class="chm-why">${esc(it.note)}</small>`:''}</button>`).join('');
+     +`${it.note&&(it.disabled||it.showNote)?`<small class="chm-why">${esc(it.note)}</small>`:''}</button>`;
+  }).join('');
+ }
+ /* 中身の無い群を出さない（§CLAUDE 4）。行によって出る項目が変わるので、
+    見出しだけが残ると「この下に何かあるはず」と探させる。
+    区切りが連続したときも1本へ畳む。**並べ替えはしない**——並びは
+    呼ぶ側が決める（作業導線そのものなので・§CLAUDE 14）。 */
+ function pruneMenuGroups(list){
+  const out=[];
+  list.forEach(it=>{
+   if(it.group){
+    while(out.length&&(out[out.length-1].group||out[out.length-1].sep))out.pop();
+    out.push(it);return;
+   }
+   if(it.sep){
+    if(!out.length||out[out.length-1].sep||out[out.length-1].group)return;
+    out.push(it);return;
+   }
+   out.push(it);
+  });
+  while(out.length&&(out[out.length-1].group||out[out.length-1].sep))out.pop();
+  return out;
  }
  /* 押したときの配線も1箇所。`sub`を持つ項目は**触れると横に開く**——
     親そのものも押せる（押したら`run`が動く）ので、押しても何も起きない
@@ -5698,8 +5727,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  }
  function openRowMenu(ev,title,note,items){
   closeRowMenu();
-  const list=items.filter(Boolean);
-  if(!list.length)return;
+  const list=pruneMenuGroups(items.filter(Boolean));
+  if(!list.some(it=>!it.sep&&!it.group))return;
   const m=document.createElement('div');
   m.className='col-head-menu sc-row-menu';
   scRowMenuEl=m;
@@ -6864,12 +6893,44 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     ev.preventDefault();ev.stopPropagation();
     const picked=scState.picked.has(String(e.id));
     const canPick=!!removableEntry(e)||!!canDrag;
+    /* ---------- 並びは「作業導線」そのもの（§9.399、利用者の指示） ----------
+       「右クリックメニューを改良し、最新の内容に合わせてより分かりやすく、
+        見やすく表示内容・機能を再構成してください」
+
+       §9.207で足し始めてから項目が13へ増え、**平らな1本の並び**になって
+       いた（実測: 区切り2本だけ）。何がどこにあるのかを毎回読み直すことに
+       なるので、**「この行で何をするか」の順に群へ束ねる**（§CLAUDE 14）:
+
+         進める → 直す → 増やす・写す → 選ぶ・並べる → 画面 → 外す
+
+       群は1つ5件以下（一度に見渡せる粒度）。**中身の無い群は出さない**
+       （`pruneMenuGroups`）ので、行によっては群ごと消える。
+       **危ない操作はいちばん下の群へ離す**（§CLAUDE 5）。 */
     openRowMenu(ev,scRowMenuTitle(e),scRowMenuNote(e),[
+     {group:'進める'},
      canStart&&{label:'作業を開始する',note:'この予定の測定画面を開きます',
                 run:()=>startWorkFromEntry(e)},
      canResume&&{label:'測定を再開する',note:'続きから開きます',
                  run:()=>startWorkFromEntry(e)},
      canReport&&{label:'帳票を開く',run:()=>openEntryReport(e)},
+     /* 連携機能（§9.377）。**行き先があるときだけ出す**——無い行に
+        「開く」を並べても、押して何も起きない項目になる（§CLAUDE 4）。 */
+     (()=>{const l=stopLinkOf(e);return l&&{label:`${l.label}を開く`,
+       note:'この行より後ろに並ぶ作業の元コイル幅・切断幅・板厚を持っていきます',
+       showNote:true,run:()=>openRowLink(e)}})(),
+
+     {group:'この行を直す'},
+     /* §9.220 2①。**できないときも並べて理由を書く**（§4）——メニューから
+        消すと「直せる場所が無い」のか「この行は直せない」のかが読めない。 */
+     e.kind==='設備停止'&&e.state==='予定'&&{label:'停止の内容を変える',
+       note:stopEditable(e)?'名称・所要分・備考を直します':stopEditBlockReason(e),
+       disabled:!stopEditable(e),run:()=>editStopEntry(e.id)},
+     commentEditable(e)&&{label:'申し送りを書き直す',run:()=>startCommentEdit(e.id)},
+     /* 日付・直の枠(§9.238 ②)。**できないときも並べて理由を書く**（§4）。 */
+     e.kind==='枠'&&e.state==='予定'&&{label:'枠の日付・直を変える',
+       note:frameEditable(e)?'ここから先を、どの日・どの直から並べるか'
+         :(e.__pending?'サーバーへ反映中です':sessionHolderMessage()),
+       disabled:!frameEditable(e),run:()=>openFramePicker(e.id)},
      canLock&&{label:locked?'日時の固定を解除する':'いまの日時で固定する',
                note:locked?'通常の並びへ戻します':'以降ずれなくなります',
                run:()=>toggleEntryLock(e)},
@@ -6878,22 +6939,29 @@ const SC_LOCK_WAIT_MAX_MS=4000;
                     const t=row.querySelector('.sc-row-detail-toggle');
                     if(t){t.textContent=detailEl.hidden?'▾':'▴';
                           t.classList.toggle('active',!detailEl.hidden)}}}},
-     /* 連携機能（§9.377）。**行き先があるときだけ出す**——無い行に
-        「開く」を並べても、押して何も起きない項目になる（§CLAUDE 4）。 */
-     (()=>{const l=stopLinkOf(e);return l&&{label:`${l.label}を開く`,
-       note:'この行より後ろに並ぶ作業の元コイル幅・切断幅・板厚を持っていきます',
-       showNote:true,run:()=>openRowLink(e)}})(),
-     commentEditable(e)&&{label:'申し送りを書き直す',run:()=>startCommentEdit(e.id)},
-     /* §9.220 2①。**できないときも並べて理由を書く**（§4）——メニューから
-        消すと「直せる場所が無い」のか「この行は直せない」のかが読めない。 */
-     e.kind==='設備停止'&&e.state==='予定'&&{label:'停止の内容を変える',
-       note:stopEditable(e)?'名称・所要分・備考を直します':stopEditBlockReason(e),
-       disabled:!stopEditable(e),run:()=>editStopEntry(e.id)},
-     /* 日付・直の枠(§9.238 ②)。**できないときも並べて理由を書く**（§4）。 */
-     e.kind==='枠'&&e.state==='予定'&&{label:'枠の日付・直を変える',
-       note:frameEditable(e)?'ここから先を、どの日・どの直から並べるか'
-         :(e.__pending?'サーバーへ反映中です':sessionHolderMessage()),
-       disabled:!frameEditable(e),run:()=>openFramePicker(e.id)},
+
+     {group:'増やす・写す'},
+     /* 複製（§9.399、利用者の指示「停止内容の複製追加といった複製機能」）。
+        **できるものにだけ出す**——作業（同じロットを2回流す実体が無い）と
+        枠（同じ日・直の枠が2つあっても何も変わらない）には出さない。
+        止まっているときは**理由を書いて残す**（§4）。 */
+     duplicableKind(e)&&{label:`${duplicableKind(e)}をもう1件足す`,
+       /* **できるときは1行に収める**（§CLAUDE 1）——「もう1件足す」で
+          何が起きるかは読めば分かる。詳しくは`title`が持つ。
+          できないときだけ理由を本文へ出す（§4。`rowMenuItemsHtml`が
+          `disabled`のとき自動で出す）。 */
+       note:duplicableEntry(e)?'同じ内容（内訳・見積・備考）のまま、この行のすぐ下へ入れます'
+         :duplicateBlockReason(e),
+       disabled:!duplicableEntry(e),run:()=>duplicateEntry(e.id)},
+     /* ICASコピー（§9.368）。**押せばすぐコピー**、横に開く子で
+        つなぎ方を選ぶ・設定を開く。理由（何件を・どのルールで）は
+        本文にも出す（`showNote`）——次に何が起きるかを推測させない（§2）。 */
+     ...lotCopyMenuItems(e),
+
+     {group:'選ぶ・並べる'},
+     canPick&&{label:picked?'選択を外す':'この行を選ぶ',
+               note:'選んだ行はまとめて動かす・まとめて外せます',
+               run:()=>setPicked(e.id,!picked)},
      /* ---------- 作業日・直を直す道を、行から辿れるようにする（§9.376） ----------
         利用者の指摘⑥「作業日の変更はどのようにしたら出来ますか」
         「自動で作業日と作業直が入りますが日付修正する機能も必要です」。
@@ -6909,17 +6977,16 @@ const SC_LOCK_WAIT_MAX_MS=4000;
          :(sessionBlocked()?sessionHolderMessage():'この画面では予定を変えられません（閲覧のみ）'),
        disabled:!frameInsertable(),showNote:true,
        run:()=>openFramePicker(null,{before:e.id})},
-     canPick&&{label:picked?'選択を外す':'この行を選ぶ',
-               note:'選んだ行はまとめて動かす・まとめて外せます',
-               run:()=>setPicked(e.id,!picked)},
-     /* ICASコピー（§9.368）。**押せばすぐコピー**、横に開く子で
-        つなぎ方を選ぶ・設定を開く。理由（何件を・どのルールで）は
-        本文にも出す（`showNote`）——次に何が起きるかを推測させない（§2）。 */
-     ...lotCopyMenuItems(e),
-     {sep:true},
+
+     {group:'画面'},
      {label:'表示列の設定を開く…',run:()=>openContentPanel()},
-     (canDelete||canDeleteHistory)&&{sep:true},
-     canDelete&&{label:'予定から外す',danger:true,run:()=>deleteEntry(e.id)},
+
+     (canDelete||canDeleteHistory)&&{group:'外す'},
+     /* **鍵盤でもできることは、その場に書く**（§9.399）。選んでいる行を
+        Deleteで外せる——メニューを開いた人がその道を知らないままにしない。 */
+     canDelete&&{label:'予定から外す',danger:true,keys:'Delete',
+                 note:'行を選んでおくと、Deleteキーでまとめて外せます',
+                 run:()=>deleteEntry(e.id)},
      canDeleteHistory&&{label:'実績（測定データ）を削除',danger:true,
                         note:'取り消せません',run:()=>deleteHistoryEntry(e)},
     ]);
@@ -7646,6 +7713,46 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    `${scState.equipment}／仕掛にまだ在るものは一覧へ戻ります`,3800);
   noteRemovedLots(targets);
  }
+
+ /* ---------- Delete で、選んだ予定を外す（§9.399、利用者の指示） ----------
+    「DELETEキーで作業スケジュールの選択対象を削除する機能も実装してほしい」
+
+    **通るのは`removeEntries()`の1本だけ**——確認の文言も、外したロットを
+    仕掛一覧へ戻す知らせも、選択バーの「選んだN件を予定から外す」と同じに
+    なる（§CLAUDE 8。同じ操作を2通りの顔で持たない）。
+
+    **打っている最中は取らない**（§CLAUDE 5「危ない操作を主要動線に置かない」の
+    裏返しで、鍵盤の事故を作らない）:
+      ・欄（`input`/`textarea`/`select`/`contentEditable`）に居るとき
+      ・日本語を変換している最中（`isComposing`／`keyCode===229`）
+      ・窓・浮き窓・印刷プレビューが開いているとき
+      ・作業スケジュールの画面に居ないとき／1件も選んでいないとき
+    **Backspaceは取らない**——利用者の指示はDeleteで、Backspaceは
+    「1つ前へ戻る」と結び付いている鍵盤が多い。 */
+ function scDeleteKeyBlocked(){
+  if(!document.body.classList.contains('sc-mode'))return true;
+  if(!canPickEntries()||!scState.picked.size)return true;
+  if(document.querySelector('.modal:not([hidden]),.sc-float-win:not([hidden]),'
+    +'#listColumnPanel:not([hidden]),#schedulePrintPreview:not([hidden])'))return true;
+  const a=document.activeElement;
+  if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'||a.isContentEditable))return true;
+  return false;
+ }
+ document.addEventListener('keydown',ev=>{
+  if(ev.key!=='Delete')return;
+  if(ev.isComposing||ev.keyCode===229)return;
+  if(scDeleteKeyBlocked())return;
+  const ids=[...scState.picked].filter(id=>removableEntry(id));
+  if(!ids.length){
+   /* **押しても何も起きない鍵にしない**（§CLAUDE 4）——選んではいるが
+      外せない（日時を固定した予定）ときは、その理由を言う。 */
+   showToast&&showToast('外せる予定がありません',
+     '選んでいるのは日時を固定した予定です。固定を解除すると外せます',4200);
+   return;
+  }
+  ev.preventDefault();
+  removeEntries(ids);
+ });
 
  function showRemoveZone(id){
   const z=$('#scDropRemove');if(!z)return;
@@ -8672,6 +8779,108 @@ const SC_LOCK_WAIT_MAX_MS=4000;
       （同じ問い合わせが2本飛ぶ）。 */
    onFailure:()=>{Object.assign(e,undo);renderTimeline();
     showToast&&showToast('設備停止を変えられませんでした','元の内容へ戻しました',6000)}});
+ }
+
+/* ================= 予定を複製する（§9.399、利用者の指示） =================
+    「追加の機能として、**停止内容の複製追加といった複製機能**を実装して
+      ください」
+
+    同じ設備停止を続けて2件入れる（午前と午後の点検、2台ぶんの刃替え…）は
+    現場でふつうに起きるが、今までは**一覧を開いて探し直して、内訳と時間を
+    選び直す**しかなかった。**その行のすぐ下へ、同じ内容で1件足す**。
+
+    **複製できるのは「もう1件あり得る」ものだけ**（§CLAUDE 4）:
+      設備停止 … 同じ停止をもう1回する、は普通にある
+      申し送り … 同じ文をもう1行、も普通にある
+      作業     … **出さない**。同じロットを2回流すという実体が無い
+      枠       … **出さない**。同じ日・同じ直の枠が2つあっても何も変わらない
+    できない理由は`duplicateBlockReason()`の1箇所が答える（メニューの断り書きと
+    押したときのトーストを同じ言葉にする・§9.372）。 */
+ const DUPLICABLE_KINDS={'設備停止':'この停止','コメント':'この申し送り'};
+ function duplicableKind(e){return e?DUPLICABLE_KINDS[e.kind]||'':''}
+ /* 設備停止の複製には**停止理由のID**が要る（`plan_add`が名称をマスタから
+    写すため）。予定の行はIDを持たない（§9.163の`stop_reason_id_of`と同じ
+    事情）ので、**いま読み込んである選択肢から名前で引く**。
+    引けない＝マスタから消された停止なので、複製はできない（理由を書く）。 */
+ function stopReasonIdOfEntry(e){
+  const name=String((e&&e.title)||'').trim();
+  if(!name)return 0;
+  const hit=(scState.stopReasons||[]).find(s=>String(s.name||'').trim()===name);
+  return hit?hit.id:0;
+ }
+ function duplicableEntry(e){
+  return !!(e&&duplicableKind(e)&&e.state==='予定'&&!e.__pending
+    &&scState.fullControl&&!sessionBlocked()
+    &&(e.kind!=='設備停止'||stopReasonIdOfEntry(e)));
+ }
+ function duplicateBlockReason(e){
+  if(!e||!duplicableKind(e))
+   return '同じものをもう1件作れるのは、設備停止と申し送りだけです';
+  if(e.__pending)return 'サーバーへ反映中です。反映されたら複製できます';
+  if(e.state!=='予定')return '着手・完了した行は複製できません（実績と食い違うため）';
+  if(!scState.fullControl)return 'この画面では予定を変えられません（スケジュールモードで開くと足せます）';
+  if(sessionBlocked())return sessionHolderMessage();
+  if(e.kind==='設備停止'&&!stopReasonIdOfEntry(e))
+   return `「${String(e.title||'').trim()}」が設備停止マスタにありません（登録し直すと複製できます）`;
+  return '';
+ }
+ /* すぐ下へ入れる。**「その行の次」は「次の行の前」**——`position`は
+    `before:<id>`と`end`しか無いので、次の行が無ければ末尾。 */
+ function nextEntryIdOf(e){
+  const list=scState.entries||[];
+  const i=list.findIndex(x=>String(x.id)===String(e.id));
+  return (i>=0&&i+1<list.length)?String(list[i+1].id):'';
+ }
+ function duplicateEntry(id){
+  const e=(scState.entries||[]).find(x=>String(x.id)===String(id));
+  if(!e)return;
+  if(!duplicableEntry(e)){
+   showToast&&showToast('複製できません',duplicateBlockReason(e),4500);
+   return;
+  }
+  const target=scState.equipment;
+  const before=nextEntryIdOf(e);
+  const minutes=(e.estimateMinutes==null||e.estimateMinutes==='')?null:Number(e.estimateMinutes);
+  const remark=String(e.remark||'');
+  if(e.kind==='コメント'){
+   const entry=makeOptimisticEntry('コメント',{title:String(e.title||''),remark});
+   insertEntriesAt(before,[entry]);
+   renderTimeline();
+   queuePlanOp({op:'add',equipment:target,kind:'コメント',title:String(e.title||''),
+    remark,position:before?`before:${before}`:'end',
+    onSuccess:r=>resolveOptimisticEntry(entry,r),
+    onFailure:()=>discardOptimisticEntry(entry)});
+   showToast&&showToast('申し送りを複製しました',
+     `${String(e.title||'').slice(0,40)}／すぐ下へ入れました`,3200);
+   return;
+  }
+  const rid=stopReasonIdOfEntry(e);
+  const sub=(e.detail&&e.detail.stopSubId)||'';
+  /* 画面へ先に置く（楽観追加）。**明細（内訳）ごと写す**ので、行の札も
+     そのまま出る（§9.390の`nonWorkSubText()`が明細を読む）。 */
+  const entry=makeOptimisticEntry('設備停止',{title:String(e.title||''),remark,
+    detail:Object.assign({},e.detail||{}),
+    estimate:minutes==null?null:{minutes,source:'override'},estimateMinutes:minutes});
+  insertEntriesAt(before,[entry]);
+  renderTimeline();
+  queuePlanOp({op:'add',equipment:target,kind:'設備停止',
+   position:before?`before:${before}`:'end',
+   stopReasonId:rid,stopSubId:sub,estimateMinutes:minutes,remark,
+   onSuccess:r=>{
+    resolveOptimisticEntry(entry,r);
+    /* **名前を直してある行は、直した名前のまま複製する**。`plan_add`は
+       設備停止の`[予定名称]`をマスタから写す（§5.3）ので、その場では
+       マスタの名前になる——直してあったときだけ、続けて名前を戻す。
+       **いつも送らないこと**（同じ名前を書き戻す更新が毎回飛ぶ）。 */
+    const master=((scState.stopReasons||[]).find(x=>x.id===rid)||{}).name||'';
+    const mine=String(e.title||'').trim();
+    if(mine&&mine!==String(master).trim()&&r&&r.id)
+     queuePlanOp({op:'update',id:r.id,title:mine});
+   },
+   onFailure:()=>discardOptimisticEntry(entry)});
+  const what=String(e.title||'')+(nonWorkSubText(e)?`（${nonWorkSubText(e)}）`:'')
+    +(minutes==null?'':`・${WL.duration.text(minutes)}`);
+  showToast&&showToast('設備停止を複製しました',`${what}／すぐ下へ入れました`,3200);
  }
 
  /* ---------- 申し送り（コメント）を挟む(§9.189、利用者の指示) ----------

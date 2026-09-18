@@ -736,6 +736,38 @@
 /* できない項目（§9.220 2①）。**消さずに理由を添えて残す**（§4）。 */
 .col-head-menu button:disabled{color:var(--muted);cursor:not-allowed}
 .col-head-menu button:disabled:hover{background:none}
+/* ---------- 群の見出し（§9.399、利用者の指示） ----------
+   「右クリックメニューを…より分かりやすく、見やすく表示内容・機能を
+    再構成してください」
+
+   §9.207で足し始めてから項目が13へ増え、区切り2本だけの**平らな1本の
+   並び**になっていた。何がどこにあるのかを毎回読み直すことになるので、
+   「この行で何をするか」の順に群へ束ねる（§CLAUDE 14）。
+   **見出しは押せない字**——`.col-head-menu button`の寸法を配らないよう、
+   `button`ではなく`div`で組む（§9.264と同じ罠）。 */
+.col-head-menu .chm-group{
+  padding:var(--space-2) var(--space-2) 2px;
+  font-size:var(--fs-micro);font-weight:800;color:var(--teal-dark);letter-spacing:.04em;
+}
+.col-head-menu .chm-group:first-child{padding-top:var(--space-1)}
+/* 見出しの直前には区切りを引かない（見出しそのものが区切りなので、
+   線と見出しが二重になる。§CLAUDE 10「装飾で情報を増やさない」）。 */
+.col-head-menu .chm-sep+.chm-group{padding-top:2px}
+/* 項目は「字 ＋ 鍵盤 ＋ ▸」の横並び。**字だけが縮む**（鍵盤と印は短い）。
+   説明の1行は下へ落とすので、器は折り返せるままにする。
+   `20-shell.css`の`.col-head-menu button`（`display:block`）と同じ詳細度
+   （0,1,1）なので、**後ろに読まれるこのファイルが勝つ**——行の右クリックの
+   メニューだけに効かせたいので、あちらは触らない。 */
+.sc-row-menu button{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline)}
+.sc-row-menu .chm-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 鍵盤でできることは**その場に書く**（§CLAUDE 2「思い出させない」）。 */
+.sc-row-menu .chm-key{
+  flex:none;padding:0 var(--space-1);border:1px solid var(--line-mid);border-radius:var(--radius-xs);
+  background:var(--surface-2);color:var(--muted);
+  font-family:inherit;font-size:var(--fs-micro);font-weight:700;line-height:1.6;
+}
+/* 説明の1行は横並びから外して下へ落とす（`flex`の器なので`100%`で段を割る）。 */
+.sc-row-menu .chm-why{flex:1 0 100%}
 .col-head-menu .chm-why{display:block;color:var(--ink-3);font-size:var(--fs-micro);line-height:1.5}
 .col-head-menu .chm-danger{color:var(--danger)}
 .col-head-menu .chm-danger:hover{background:var(--danger-bg)}
