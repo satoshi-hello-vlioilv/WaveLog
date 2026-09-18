@@ -43,33 +43,35 @@
 
 | ファイル | 役割 |
 |---|---|
-| `setup.bat` | 起動前の確認(§9.225)。導入時と更新後に1回。`setup_app.py`を実行する |
-| `Start.vbs` | 通常起動。コンソールを表示せず `start_app.py` を実行する |
-| `start_app.bat` | 診断起動。コンソールを表示したまま同じ `start_app.py` を実行する |
-| `stop.bat` | 明示停止。`process_manager.py stop` を呼ぶ |
-| `setup_app.py` | `setup.bat`の中身。確認の実処理は`backend/launcher/setup_check.py`にあり、起動時のフォールバックと共有する |
+| `setup.bat` | 起動前の確認(§9.225)。導入時と更新後に1回。`program/setup_app.py`を実行する |
+| `Start.vbs` | 通常起動。コンソールを表示せず `program/start_app.py` を実行する |
+| `start_app.bat` | 診断起動。コンソールを表示したまま同じ `program/start_app.py` を実行する |
+| `stop.bat` | 明示停止。`program/process_manager.py stop` を呼ぶ |
+| `program/setup_app.py` | `setup.bat`の中身。確認の実処理は`backend/launcher/setup_check.py`にあり、起動時のフォールバックと共有する |
 | `backend/launcher/setup_check.py` | 起動前の確認一式(部品の導入・バイトコードの事前コンパイル・旧DB取り込み・待機画面の写し)。**setup.batと起動時のフォールバックが同じここを通る** |
 | `backend/launcher/ready.py` | 「この端末では確認が済んでいる」刻印(`%LOCALAPPDATA%\WaveLog\runtime\ready.json`)。**速さのための門であって正しさの門ではない**ので、食い違ったら止めずに確認し直す |
-| `start_app.py` | Python側の起動開始点。ログ初期化→待機画面を開く→多重起動判定→**刻印が合えば確認を飛ばす**→サーバー起動 |
+| `program/start_app.py` | Python側の起動開始点。ログ初期化→待機画面を開く→多重起動判定→**刻印が合えば確認を飛ばす**→サーバー起動 |
 | `backend/launcher/guard.py`(旧`launch_guard.py`) | ポートの使用状況と `app_id` の照合による多重起動判定(`OURS`/`FOREIGN`/`UNRESPONSIVE`/`FREE`)、起動中インスタンスの記録。`UNRESPONSIVE`(ポート使用中だがHTTP応答が無い)は自プロセスが重い処理でブロックされている可能性を含むため、即座に別アプリ(`FOREIGN`)と決め付けず`process_manager.py`側でinstance.jsonのapp_root照合による強制終了判断へ委ねる |
 | `backend/launcher/server.py`(旧`server.py`) | Webサーバーの起動のみ。起動監視とWeb処理の境界 |
-| `process_manager.py` | 対象アプリだけの安全な停止（正常終了要求→記録済みPID。プロセス名では判定しない） |
-| `loading.html` | 起動待機画面。サーバーより先に `file://` で開かれ、`/api/ready.js` の応答を待ってからアプリへ遷移する。段階表示は `boot_status.js` を読んで**実際の進捗**を出す。進捗バーはサーバー6段階＋ブラウザ4段階の10段階ぶんで、6/10(60%)まで進めてアプリ側の起動オーバーレイへ引き渡す |
+| `program/process_manager.py` | 対象アプリだけの安全な停止（正常終了要求→記録済みPID。プロセス名では判定しない） |
+| `program/loading.html` | 起動待機画面。サーバーより先に `file://` で開かれ、`/api/ready.js` の応答を待ってからアプリへ遷移する。段階表示は `boot_status.js` を読んで**実際の進捗**を出す。進捗バーはサーバー6段階＋ブラウザ4段階の10段階ぶんで、6/10(60%)まで進めてアプリ側の起動オーバーレイへ引き渡す |
 | `backend/boot_status.py` | 起動の段階を**端末ごとの置き場**(`%LOCALAPPDATA%\WaveLog\runtime\boot_status.js`。§9.225)へ書き出す。待機画面も同じ場所へ写して開くので、共有配置でも端末どうしが混ざらない。サーバー側6段階(`STEPS`)とブラウザ側4段階(`BROWSER_STEPS`)の定義、合計数(`TOTAL_STEPS`)、バージョン番号の供給元。待機画面はまだサーバーが無い状態なので、`<script src>` で読み取れるJSファイルを介す。書き込みに失敗しても起動は止めない。`/api/ready.js` で削除する(`.gitignore`済み) |
 | `templates/index.html` の `#appBoot` / `static/css/95-boot.css` | アプリ内の起動オーバーレイ。待機画面から意匠と段階リストを引き継ぎ、**画面が組み上がるまで本体を見せない**(下記) |
-| `_pycache_bootstrap.py` | `.pyc` キャッシュをローカル領域へ逃がす。`sys.pycache_prefix` は最初のimportより前に設定する必要があるため、各エントリポイントの一番最初のimportにする |
+| `_pycache_bootstrap.py` | `.pyc` キャッシュをローカル領域へ逃がす。`sys.pycache_prefix` は最初のimportより前に設定する必要があるため、各エントリポイントの一番最初のimportにする。**リポジトリ直下に残す1本**（§9.404。`tests/`が素のモジュール名でimportしており、探索先に在ることそのものが役目） |
+| `program/_approot.py` | `program/`の4本が**いちばん最初に**通す1行（§9.404）。リポジトリ直下を`sys.path`へ足す——これが無いと`backend`もこの`_pycache_bootstrap`も読めない |
 | `config/local.json` | マスタDB自体の置き場所を決める3項目(`db_dir`/`master_db_path`/`records_db_path`)専用のブートストラップ設定(値をマスタDBの中に保存すると読みに行く先が分からなくなるため、この3つだけは唯一この方式が残る)。未配置なら既定の`db/`のまま。それ以外(`sikalotnow_path`/`sikalotdef_path`等)はパス設定マスタ(下記)へ移行済み |
 | `backend/config.py` | アプリID・表示名・ポート・監視しきい値などアプリ固有値の集約先 |
 | `backend/paths.py` | `%LOCALAPPDATA%` 配下の解決、共有フォルダー配置の検出、`config/local.json` の読込(`load_local_config`/`configured_path`。マスタDB自体の置き場所を決める3項目専用のブートストラップ設定。それ以外の運用設定はパス設定マスタ(`db_access.py`)へ移行済み) |
 | `backend/logging_setup.py` | ログ初期化。`launcher.log`(起動・停止) と `app.log`(本体) の2系統 |
 | `backend/watchdog.py` | プロセスの生存管理。ハートビート監視・明示停止(`/api/shutdown`) |
 
-`_pycache_bootstrap.py` は `start_app.py`・`process_manager.py`・
-`app.py` の3つすべてで最初にimportしている(直接実行され得るのはこの3本。
+`_pycache_bootstrap.py` は `program/start_app.py`・`program/process_manager.py`・
+`program/setup_app.py`・`program/app.py` の4つすべてで、`_approot`の**次に**
+importしている(直接実行され得るのはこの4本。
 `backend/launcher/server.py` はimportされるだけになったので不要になった)。
 単独で起動され得る経路が複数
 あり、1箇所だけに書くと別経路で `.pyc` がアプリ側へ生成されてしまう
-(`process_manager.py stop` を単体実行した際にこれが起きることを実測で確認し、
+(`program/process_manager.py stop` を単体実行した際にこれが起きることを実測で確認し、
 全エントリポイントへ追加した)。
 
 起動待機画面は `file://` から開かれるため `fetch` ではCORSで応答を読めない。
@@ -127,12 +129,12 @@
 
 ## バックエンド構成
 
-`app.py` はFlaskインスタンスの生成とBlueprint登録のみを行う薄いエントリ
+`program/app.py` はFlaskインスタンスの生成とBlueprint登録のみを行う薄いエントリ
 ポイント(405行→43行)。業務APIは目的別に `backend/routes/` へ分離してある。
 
 | ファイル | 役割 |
 |---|---|
-| `app.py` | Flask本体の組み立て。Blueprint登録・キャッシュ無効化ヘッダ・ウォッチドッグ組み込みのみ |
+| `program/app.py` | Flask本体の組み立て。Blueprint登録・キャッシュ無効化ヘッダ・ウォッチドッグ組み込みのみ |
 | `backend/routes/core.py` | トップページ・`/api/build`・`/api/ready.js`・`/api/whoami`・`/api/changelog` |
 | `backend/routes/tables.py` | 汎用DB一覧API(`/api/catalog`・`/api/tables`・`/api/table`・`/api/table-columns`・クエリ結合の引き当て`/api/query-join/keys`・`/api/query-join/resolve`) |
 | `backend/routes/measurement.py` | 測定コンテキスト・マスタ診断・バックアップAPI |
@@ -155,13 +157,13 @@
 | `backend/rne_worker.py` | `rne_extract.extract_one`をサブプロセスとして実行するエントリポイント(`python -m backend.rne_worker`) |
 | `backend/rne_scheduler.py` | 仕掛/品質データのローカル運用(`sikalot_source=local`)時、RNE抽出を定期的に並列実行する背景スレッド |
 
-依存方向は `start_app.py → backend.launcher.server → app.py → backend.routes.* →
+依存方向は `program/start_app.py → backend.launcher.server → program/app.py → backend.routes.* →
 backend.repositories.master_repo → backend.db_access`（逆参照なし）。
 `backend.routes.tables`/`backend.routes.measurement` は
 `backend.repositories.master_repo` の読み取り関数(`hidden_columns_for_db`/
 `read_*_names`/`ensure_*_master`)に依存する。`backend.config` は他へ
 依存せず、`backend.paths`/`logging_setup`/`watchdog` がこれを参照する。
-`backend.changelog_data` は独立。`app.py`・`backend.routes.*` からは絶対
+`backend.changelog_data` は独立。`program/app.py`・`backend.routes.*` からは絶対
 import(`from backend.xxx import ...`)、`backend` 内のモジュール同士は
 相対import(`from .db_access import ...`、`backend.routes.*` からは
 `from ..db_access import ...`、`from ..repositories.master_repo import ...`)
@@ -1943,8 +1945,8 @@ A4縦は `fit` 倍率が**高さで決まる**（210×297mm を横長の画面�
 ## 開発・検証の約束事
 
 - **サーバー再起動が必須**: テンプレート/静的ファイルの自動リロードは無効。
-  `app.py`・`templates`・`static` を変更したら Flask を再起動して確認する
-  (`python3 process_manager.py stop` → `python3 -u start_app.py`)。プロセス名で
+  `program/app.py`・`templates`・`static` を変更したら Flask を再起動して確認する
+  (`python3 program/process_manager.py stop` → `python3 -u program/start_app.py`)。プロセス名で
   一括終了する `pkill` は、同じPCの他のPythonを巻き添えにするため使わない。
 - **回帰テスト**: `tests/` に常設（実行は `tests/run_all.sh` のみ）。
   接続先が全てSQLiteになったため、仕掛/品質データ(`/api/table` 等)もマスタ

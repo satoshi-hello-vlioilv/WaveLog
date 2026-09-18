@@ -32,6 +32,7 @@ def rec(n, ok, d=''):
     print(('PASS' if ok else 'FAIL') + ': ' + n + (' -- ' + str(d) if d else ''))
 
 
+import apppath  # noqa: F401 `program/` を探索先へ（§9.404）
 import app as appmod  # noqa: E402
 from backend.access_mode import _READ_ONLY_POST_ENDPOINTS as READ_ONLY  # noqa: E402
 

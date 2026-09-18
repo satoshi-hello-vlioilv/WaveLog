@@ -56,7 +56,8 @@ def rec(name, ok, detail=''):
 
 
 def py_files():
-    for name in ('app.py', 'start_app.py', 'process_manager.py'):
+    for name in ('program/app.py', 'program/start_app.py',
+                 'program/process_manager.py'):
         p = ROOT / name
         if p.exists():
             yield p

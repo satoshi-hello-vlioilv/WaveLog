@@ -226,9 +226,9 @@ server_up(){ curl -s -m 3 -o /dev/null "$API/" 2>/dev/null; }
 # --user-data-dirで絞るので、Playwrightが起動したものだけが対象。
 reap_browsers(){ pkill -f -- '--user-data-dir=/tmp/playwright_chromiumdev_profile' >/dev/null 2>&1; true; }
 restart_server(){
-  ( cd "$ROOT" && python3 process_manager.py stop >/dev/null 2>&1 )
+  ( cd "$ROOT" && python3 program/process_manager.py stop >/dev/null 2>&1 )
   sleep 1
-  ( cd "$ROOT" && nohup python3 -u start_app.py >"$ROOT/tests/server.log" 2>&1 & )
+  ( cd "$ROOT" && nohup python3 -u program/start_app.py >"$ROOT/tests/server.log" 2>&1 & )
   for _ in $(seq 1 30); do server_up && return 0; sleep 1; done
   echo "!! サーバーを起動できませんでした ($ROOT/tests/server.log を確認)" >&2
   return 1

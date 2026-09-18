@@ -119,6 +119,7 @@ try:
         str(unreadable))
 
     # ---- 6/7/8. 切断 -----------------------------------------------------
+    import apppath  # noqa: F401 `program/` を探索先へ（§9.404）
     import app as appmod
     c = appmod.app.test_client()
 

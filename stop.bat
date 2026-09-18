@@ -6,6 +6,6 @@ rem falls back to the recorded process id, so other Python programs on the
 rem same PC are never touched.
 cd /d "%~dp0"
 
-python process_manager.py stop
+python program\process_manager.py stop
 
 pause

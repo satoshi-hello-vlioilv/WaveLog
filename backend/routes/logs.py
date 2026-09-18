@@ -267,8 +267,8 @@ def boot_places():
   except Exception as e:out.append({'label':label,'path':'','exists':None,'size':None,
                                     'mtime':'','readable':None,'note':note,
                                     'error':f'{type(e).__name__}: {e}'})
- add('アプリ本体',lambda:P.APP_ROOT,'start_app.py などの置き場')
- add('本体の待機画面',lambda:P.APP_ROOT/'loading.html','意匠の出どころ（写しの元）')
+ add('アプリ本体',lambda:P.APP_ROOT,'program/start_app.py などの置き場')
+ add('本体の待機画面',lambda:P.PROGRAM_DIR/'loading.html','意匠の出どころ（写しの元）')
  add('ローカル領域',lambda:P.local_root(),'%LOCALAPPDATA%\\'+APP_ID+' 相当。書ける場所を順に探した結果')
  add('ログ',lambda:P.logs_dir())
  add('runtime',lambda:P.runtime_dir(),'待機画面の写し・進捗・刻印の置き場')

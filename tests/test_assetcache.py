@@ -34,6 +34,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import apppath  # noqa: F401 `program/` を探索先へ（§9.404）
 import app as flask_app  # noqa: E402
 
 R = []

@@ -46,6 +46,7 @@ import _pycache_bootstrap  # noqa: E402,F401 副作用のためのimport（.pyc�
 from backend import boot_status  # noqa: E402
 from backend import paths as P  # noqa: E402
 from backend.launcher import setup_check  # noqa: E402
+import apppath  # noqa: F401 `program/` を探索先へ（§9.404）
 import start_app  # noqa: E402
 
 R = []

@@ -287,6 +287,7 @@ def main():
   so._write_marker(saved_marker);so._state['marker']=saved_marker
 
   # 7) 中継されてきたものを中継し返さない
+  import apppath  # noqa: F401 `program/` を探索先へ（§9.404）
   from app import app as flask_app
   from backend.routes import schedule as sched_routes
   hdr={so.HDR_TOKEN:token,so.HDR_LOGIN:'relay_login',so.HDR_PC:'RELAY-PC',so.HDR_MODE:'schedule'}
@@ -487,6 +488,7 @@ def main():
  finally:
   # 後始末: 入れた予定を消す(§9.121。置き土産は遠いテストを落とす)
   try:
+   import apppath  # noqa: F401 `program/` を探索先へ（§9.404）
    from app import app as flask_app
    with flask_app.test_client() as c:
     for pid in added:

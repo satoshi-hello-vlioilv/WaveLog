@@ -16,7 +16,7 @@ import）。使っていないimportは「どこから読んでいるか」を�
 ------------------------------------------------------------
 約束
 ------------------------------------------------------------
- * 対象は直接実行される4本（`app.py`等）と`backend/`・`tests/`の全部。
+ * 対象は直接実行される4本（`program/app.py`等）と`backend/`・`tests/`の全部。
  * **`# noqa`を書いた行は数えない**——副作用のためのimport
    （`import _pycache_bootstrap`＝`.pyc`の置き場を決める）と、名前を引き継ぐ
    ためのimport（`atomic_io.cloud_sync_hint`）は使わなくてよいものなので、
@@ -24,7 +24,7 @@ import）。使っていないimportは「どこから読んでいるか」を�
    この網が読む）。理由の無い`noqa`は書かないこと。
  * 網そのものが素通りしないことを確かめる（欠陥を1つ注いで1件になる）。
  * pyflakes が無い環境では**落とす**（黙って通さない・§CLAUDE 4）。
-   入れ方は `pip install -r requirements-dev.txt`。
+   入れ方は `pip install -r program/requirements-dev.txt`。
 ============================================================
 """
 import os
@@ -35,8 +35,8 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-TARGETS = ['app.py', 'start_app.py', 'process_manager.py', '_pycache_bootstrap.py',
-           'backend', 'tests']
+TARGETS = ['program/app.py', 'program/start_app.py', 'program/process_manager.py',
+           '_pycache_bootstrap.py', 'backend', 'tests']
 R = []
 
 
@@ -84,7 +84,7 @@ def run(cmd, targets):
 
 def main():
     cmd = pyflakes_cmd()
-    rec('pyflakes が使える（無ければ pip install -r requirements-dev.txt）', bool(cmd))
+    rec('pyflakes が使える（無ければ pip install -r program/requirements-dev.txt）', bool(cmd))
     if not cmd:
         return
     found, skipped = run(cmd, TARGETS)

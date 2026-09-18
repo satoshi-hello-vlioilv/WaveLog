@@ -30,7 +30,11 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+PROGRAM = ROOT / 'program'   # 直接実行する4本の置き場（§9.404）
 sys.path.insert(0, str(ROOT))
+# `import start_app`（下の 5b）が通るように。**本物と同じ探索先**で読む
+# ——`program/_approot.py`がリポジトリ直下を足すので、素の名前で読める。
+sys.path.insert(0, str(PROGRAM))
 import _pycache_bootstrap  # noqa: E402,F401 副作用のためのimport（.pycの置き場）
 from backend import boot_status  # noqa: E402
 from backend.launcher import ready, setup_check  # noqa: E402
@@ -50,7 +54,7 @@ def say(_message, bad=False):
 
 
 def stop_app():
-    subprocess.run([sys.executable, 'process_manager.py', 'stop'], cwd=ROOT,
+    subprocess.run([sys.executable, 'program/process_manager.py', 'stop'], cwd=ROOT,
                    capture_output=True, timeout=90)
     time.sleep(1.0)
 
@@ -58,7 +62,7 @@ def stop_app():
 def start_and_time(timeout=90):
     """起動してトップページが返るまでの秒数。返らなければ None。"""
     t0 = time.monotonic()
-    subprocess.Popen([sys.executable, '-u', 'start_app.py'], cwd=ROOT,
+    subprocess.Popen([sys.executable, '-u', 'program/start_app.py'], cwd=ROOT,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     while time.monotonic() - t0 < timeout:
         try:
@@ -107,7 +111,7 @@ try:
         any('確認の仕組みの版' in x for x in ready.mismatch()), str(ready.mismatch()))
 
     # ---- 5) 待機画面の写しは中身が同じ ----
-    src = (APP_ROOT / 'loading.html').read_bytes()
+    src = (PROGRAM / 'loading.html').read_bytes()
     # 写す先は**次の起動用**（§9.314）なので、実際に使う名前へは
     # `promote_waiting_page()`で移る。2つで1組。
     setup_check.copy_waiting_page()
@@ -195,7 +199,7 @@ try:
             _page.write_bytes(_backup)
     # ③ 候補は3段（渡された置き場 → 手元の runtime → 一時フォルダー）。
     #    **1つでも欠けると「1つもブラウザが開かない」経路が戻る。**
-    _starter_src = (ROOT / 'start_app.py').read_text(encoding='utf-8')
+    _starter_src = (PROGRAM / 'start_app.py').read_text(encoding='utf-8')
     rec('書き出し先の候補に一時フォルダーがある（③）',
         'tempfile.gettempdir()' in _starter_src)
     # **コメントを落としてから見る**——この行の説明そのものに
@@ -277,7 +281,7 @@ try:
         not _after, '差し替え: ' + (' / '.join(_after) or 'なし'))
     rec('裏の写し直しは「次の起動用」の名前へ書く（§9.314）',
         any(d == str(_staged) for _t, d in _replaced)
-        or setup_check.waiting_page().read_bytes() == (APP_ROOT / 'loading.html').read_bytes(),
+        or setup_check.waiting_page().read_bytes() == (PROGRAM / 'loading.html').read_bytes(),
         '書いた先: ' + (' / '.join(sorted({Path(d).name for _t, d in _replaced})) or 'なし'))
 
     # 開く直前に消えていても、書き直して開く（外の掃除・ウイルス対策の隔離）。
@@ -339,7 +343,7 @@ try:
         _page.write_bytes(_backup)
 
     # ---- 6) 確認の実処理は1箇所（起動側に写しを作らない） ----
-    starter = (ROOT / 'start_app.py').read_text(encoding='utf-8')
+    starter = (PROGRAM / 'start_app.py').read_text(encoding='utf-8')
     rec('起動側にパッケージ導入の写しを作っていない',
         'pip' not in starter and 'find_spec' not in starter)
     rec('起動側に旧DB取り込みの写しを作っていない',
@@ -375,8 +379,14 @@ try:
         crlf = raw.count(b'\r\n')
         rec(f'{name} はCRLF改行（LFだけだとcmd.exeが行の途中から実行する）',
             lf > 0 and lf == crlf, f'LF={lf} CRLF={crlf}')
-    rec('setup_app.py はリポジトリ直下（直接実行されるもの）',
-        (ROOT / 'setup_app.py').exists())
+    rec('直接実行する4本は program/ にある（§9.404）',
+        all((PROGRAM / n).exists() for n in
+            ('setup_app.py', 'start_app.py', 'app.py', 'process_manager.py')),
+        str(PROGRAM))
+    # `_pycache_bootstrap.py`だけは**リポジトリ直下に残す**——tests が素の
+    # モジュール名でimportしており、探索先に在ることそのものが役目。
+    rec('_pycache_bootstrap.py はリポジトリ直下のまま（探索先に在ることが役目）',
+        (ROOT / '_pycache_bootstrap.py').exists())
 
     # ---- 8) 刻印があっても無くても起動できる ----
     stop_app()
@@ -405,7 +415,7 @@ try:
         str(APP_ROOT / 'boot_status.js'))
 
     # ---- 10) 待機画面の聞き方（体感の取りこぼし） ----
-    html = (APP_ROOT / 'loading.html').read_text(encoding='utf-8')
+    html = (PROGRAM / 'loading.html').read_text(encoding='utf-8')
     m = re.search(r'POLL_FAST_MS\s*=\s*(\d+)', html)
     rec('待機画面は立ち上がりを細かく聞く（500ms固定にしない）',
         bool(m) and int(m.group(1)) <= 200, m.group(1) if m else '見つからない')

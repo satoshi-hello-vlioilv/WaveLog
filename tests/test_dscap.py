@@ -31,6 +31,7 @@ import pathlib, sqlite3, sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import apppath  # noqa: F401 `program/` を探索先へ（§9.404）
 import app as flask_app                                    # noqa: E402
 from backend import db_access, query_join, source_capability  # noqa: E402
 from backend.routes import tables as tables_route          # noqa: E402

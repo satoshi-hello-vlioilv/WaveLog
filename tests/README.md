@@ -101,7 +101,7 @@ python3 tests/pick_tests.py backend/routes/logs.py   # ファイルを直接指�
 
 - **分からないものは全部回す。** 当たる規則が無いファイルを「関係なし」と
   読むと、道具が黙って安全網を外す。
-- **土台を触ったら全部回す**(`base.js` / `index.html` / `app.py` /
+- **土台を触ったら全部回す**(`base.js` / `index.html` / `program/app.py` /
   `backend/config.py` / `run_all.sh`)。
 - **安い静的検査は常に混ぜる**(`test_patchlint` / `test_globallint` /
   `test_dskeylint` / `test_csslint` / `test_docindex`)。変更したファイルからは
@@ -122,8 +122,8 @@ python3 tests/pick_tests.py backend/routes/logs.py   # ファイルを直接指�
 | `WAVELOG_CHROMIUM` | `/opt/pw-browsers/chromium-1194/chrome-linux/chrome` |
 | `WAVELOG_ESLINT` | PATHの`eslint` → `WAVELOG_NODE`と同じ場所の`eslint`（`test_eslint`が使う。`npm i -g eslint`） |
 
-Python側の静的解析（`test_pyflakes`）は`pip install -r requirements-dev.txt`で入れる
-（現場の端末には要らない。`requirements.txt`は`flask`だけ）。
+Python側の静的解析（`test_pyflakes`）は`pip install -r program/requirements-dev.txt`で入れる
+（現場の端末には要らない。`program/requirements.txt`は`flask`だけ）。
 
 診断用（既定は無効。指定したときだけ出力する）:
 

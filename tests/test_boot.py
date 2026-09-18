@@ -29,14 +29,14 @@ def read_status():
 
 
 # --- 停止してから起動し直し、進捗ファイルの推移を細かく拾う ---
-subprocess.run([sys.executable, 'process_manager.py', 'stop'], cwd=ROOT,
+subprocess.run([sys.executable, 'program/process_manager.py', 'stop'], cwd=ROOT,
                capture_output=True, timeout=60)
 time.sleep(1.0)
 if STATUS.exists():
     STATUS.unlink()
 
 log = open(Path(__file__).resolve().parent / 'boot_probe.log', 'w')   # tests/配下へ(.gitignore済み)
-proc = subprocess.Popen([sys.executable, '-u', 'start_app.py'], cwd=ROOT, stdout=log, stderr=log)
+proc = subprocess.Popen([sys.executable, '-u', 'program/start_app.py'], cwd=ROOT, stdout=log, stderr=log)
 
 seen = []          # (index, label, elapsed)
 t0 = time.time()
@@ -70,7 +70,7 @@ rec('起動処理が進捗ファイル(boot_status.js)を書き出す', len(seen
 sys.path.insert(0, str(ROOT))
 boot_status = _bs
 
-src = (ROOT / 'start_app.py').read_text(encoding='utf-8')
+src = (ROOT / 'program' / 'start_app.py').read_text(encoding='utf-8')
 missing = [k for k, _ in boot_status.STEPS if ("boot_status.report('%s'" % k) not in src]
 rec('定義された全段階(6つ)が起動処理から実際に報告される',
     not missing, '未報告=' + (','.join(missing) or 'なし'))
@@ -107,7 +107,7 @@ rec('起動完了後は進捗ファイルを残さない(次回起動で古い�
     cleared_by_server, 'cleared=%s' % cleared_by_server)
 
 # --- 起動時に必ず開くページが実際に描画できるか(loading.html) ---
-html = (ROOT / 'loading.html').read_text(encoding='utf-8')
+html = (ROOT / 'program' / 'loading.html').read_text(encoding='utf-8')
 rec('loading.htmlが進捗ファイルを読み込むコールバックを持つ',
     'window.wavelogBootStatus' in html and 'boot_status.js' in html)
 rec('時間だけで段階を決める旧ロジック(stageFor)は残っていない', 'stageFor' not in html)

@@ -32,7 +32,7 @@ jobs:
       - name: 道具を入れる
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
+          pip install -r program/requirements.txt -r program/requirements-dev.txt
           npm install -g eslint
       - name: 回す
         run: tests/run_all.sh --pure
@@ -52,7 +52,7 @@ jobs:
       - name: 道具を入れる
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r program/requirements.txt
           npm install -g playwright
           npx --yes playwright install --with-deps chromium
       - name: 回す

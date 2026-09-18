@@ -9,7 +9,8 @@
 「動かなくなる」ことはない。速さのためのものである、という位置づけを
 崩さないこと。
 """
-import _pycache_bootstrap  # 他のimportより前に。必ず1行目のimportにすること
+import _approot  # noqa: F401 **必ず1行目のimport**（program/から実行されるので、リポジトリ直下をimportの探索先へ入れる・§9.404）
+import _pycache_bootstrap  # noqa: E402 `_approot`の次に
 
 import sys
 

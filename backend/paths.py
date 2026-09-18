@@ -33,6 +33,11 @@ from .config import LOCAL_DIR_NAME
 from .quiet import quiet
 
 APP_ROOT=Path(__file__).resolve().parent.parent
+# **直接実行するPythonと、その連れ（待機画面・部品の一覧）の置き場**（§9.404）。
+# リポジトリ直下に並んでいたものを1つ下げた——現場の人がエクスプローラで開く
+# 場所に、触ってよい物（`db/`・`config/`）と触らない物が混ざっていた。
+# **答えるのはここ1箇所**（起動スクリプトのbat/vbsだけは自分で綴りを持つ）。
+PROGRAM_DIR=APP_ROOT/'program'
 
 # ========================================================================
 # 任意の設定ファイル(config/local.json)によるブートストラップ設定の上書き

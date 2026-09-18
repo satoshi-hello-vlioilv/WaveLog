@@ -265,7 +265,8 @@ RULES = [
     # index.html は全画面のマークアップと起動ローダーを1枚で持っている。
     ('templates/index.html', [ALL]),
     # app.py はアプリの組み立て(Blueprint登録・キャッシュ方針・書込ガード)。
-    ('app.py', [ALL]),
+    # 直接実行する4本は`program/`（§9.404）。
+    ('program/app.py', [ALL]),
     ('backend/config.py', [ALL]),
 
     # --- 画面(JS) ----------------------------------------------------
@@ -531,12 +532,16 @@ RULES = [
     ('backend/launcher/', g('起動')),
 
     # --- 起動まわりの直接実行スクリプト --------------------------------
-    ('start_app.py', g('起動', 'test_bootreport')),
-    ('setup_app.py', g('起動')),
+    # `program/`（§9.404）。受け皿の`program/`は**この下**に置く——`hit`は
+    # 当たった規則を全部足すので、`program/app.py`は[ALL]のまま残る。
+    ('program/start_app.py', g('起動', 'test_bootreport')),
+    ('program/setup_app.py', g('起動')),
     ('setup.bat', g('起動')),
-    ('loading.html', g('起動')),
-    ('process_manager.py', g('起動')),
+    ('program/loading.html', g('起動')),
+    ('program/process_manager.py', g('起動')),
+    ('program/requirements.txt', g('起動', 'test_noaccess')),
     ('_pycache_bootstrap.py', g('起動')),
+    ('program/', g('起動')),
 
     # --- ドキュメント --------------------------------------------------
     ('docs/', ['test_docindex']),
@@ -558,6 +563,8 @@ RULES = [
     ('.github/', g('test_layers')),
     ('tests/make_fixture.py', [ALL]),
     ('tests/setperm.py', [ALL]),
+    # `import app` の探索先の答え（§9.404）。18本が読むので全部へ倒す。
+    ('tests/apppath.py', [ALL]),
     ('tests/make_split_fixture.py', g('test_scsplit')),
     ('tests/orphan_lot.js', g('test_audit', 'test_nav', 'test_orphan')),
     ('tests/audit_scale.js', g('test_audit')),
@@ -568,7 +575,7 @@ RULES = [
     ('tests/fixtures/color_baseline.json', ['test_csslint']),
     ('tests/fixtures/import_baseline.json', ['test_importlint']),
     ('tests/fixtures/wait_baseline.json', ['test_waitlint']),
-    ('requirements-dev.txt', ['test_pyflakes']),
+    ('program/requirements-dev.txt', ['test_pyflakes']),
     ('tests/README.md', ['test_docindex']),
 ]
 

@@ -7,14 +7,14 @@ CLAUDE.md の規則のうち、決定記録（§9.x）に対応する節を持�
 
 CLAUDE.md には見出しの1行だけを残してある。ここが本文。
 
-- **サーバー再起動**: `app.py`/`templates`/`static` を変更したら
-  `python3 process_manager.py stop` → `python3 -u start_app.py` で再起動してから
+- **サーバー再起動**: `program/app.py`/`templates`/`static` を変更したら
+  `python3 program/process_manager.py stop` → `python3 -u program/start_app.py` で再起動してから
   確認する（自動リロード無効。再起動忘れは過去に誤診断の原因になった）。
   `pkill`でPythonをプロセス名だけで一括終了しないこと（他のPythonを巻き添えに
   する。停止は必ず`process_manager.py`経由）。
-- **起動基盤に触るとき**: 起動・停止・監視の処理は `start_app.py` /
+- **起動基盤に触るとき**: 起動・停止・監視の処理は `program/start_app.py` /
   `backend/launcher/guard.py` / `backend/launcher/server.py` /
-  `process_manager.py` / `backend/watchdog.py` が所有する。業務APIをこれらへ足さない（逆に`app.py`へ起動制御を戻さない）。
+  `program/process_manager.py` / `backend/watchdog.py` が所有する。業務APIをこれらへ足さない（逆に`program/app.py`へ起動制御を戻さない）。
   ポート・アプリID・表示名などのアプリ固有値は `backend/config.py` に集約
   してあるので、他ファイルへ直接書かない。`backend/launcher/server.py`の`flask_app.run(...)`から
   **`threaded=True`を外さないこと**（既定のシングルスレッドに戻すと、仕掛/
@@ -213,12 +213,19 @@ CLAUDE.md には見出しの1行だけを残してある。ここが本文。
   参照、`.gitignore`済み）。検証後は`sikalot_source`を戻し忘れないこと
   （上記と同じ理由）。詳細は`docs/ARCHITECTURE.md`の「仕掛/品質データの
   ローカル運用」節を参照。
-- **フォルダ構成**: リポジトリ直下のPythonは**直接実行されるものだけ**
-  (`app.py`/`start_app.py`/`process_manager.py`/`_pycache_bootstrap.py`)。
+- **フォルダ構成**: 直接実行されるPythonと、その道連れの資材は
+  **`program/`**へまとめる(`app.py`/`start_app.py`/`setup_app.py`/
+  `process_manager.py`/`loading.html`/`requirements.txt`/
+  `requirements-dev.txt`。§9.404)。リポジトリ直下に残すPythonは
+  `_pycache_bootstrap.py`**1本だけ**——`tests/`が素のモジュール名で
+  importしており、**探索先が通っている場所に在ることそのものが役目**
+  なので、`program/`へ入れると意味が変わる。
+  `program/`の4本は先頭で`import _approot`を通す(リポジトリ直下を
+  `sys.path`へ足す1箇所。これが無いと`backend`が読めない)。
   importされるだけの起動部品は`backend/launcher/`へ置く
   (`guard.py`=旧launch_guard.py、`server.py`)。起動スクリプト
-  (`Start.vbs`/`start_app.bat`/`stop.bat`)が直接呼ぶのは残留組だけなので、
-  **CP932の`start_app.bat`に触る必要はない**。
+  (`Start.vbs`/`start_app.bat`/`stop.bat`/`setup.bat`)は`program\…`を呼ぶ
+  ——**CRLF・CP932のまま**触ること(§9.229)。
   それ以外のバックエンドPythonは`backend/`パッケージへ、ローカルDB
   (`master.sqlite3`/`records.sqlite3`、無ければ初回書き込み時に自動生成)は
   `db/`フォルダへまとめている。旧Access資産(`マスタ.accdb`等)は移行完了済みの

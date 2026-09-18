@@ -83,7 +83,7 @@ rec('画面のコードがデータソースのキーを決め打ちしていな
     ' / '.join(hits[:6]))
 
 # ---- 2) サーバー ----
-py = sorted(set(list((ROOT / 'backend').rglob('*.py')) + [ROOT / 'app.py']))
+py = sorted(set(list((ROOT / 'backend').rglob('*.py')) + [ROOT / 'program' / 'app.py']))
 hits = scan(py, strip_comments_py)
 rec('サーバーのコードがデータソースのキーを決め打ちしていない', not hits,
     ' / '.join(hits[:6]))

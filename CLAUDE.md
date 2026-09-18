@@ -116,12 +116,15 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（673件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（676件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
-### 起動・停止・監視（26件）
+### 起動・停止・監視（29件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 直接実行する4本とその資材は`program/`。直下に残すPythonは`_pycache_bootstrap.py`の1本だけ | `test_faststart.py` | [§9.404](docs/decisions/9.404.md) |
+| `program/`の4本はいちばん最初に`import _approot`を通す（探索先の答えは1箇所） | `test_faststart.py` | [§9.404](docs/decisions/9.404.md) |
+| ファイルを移すときは見張り（`pick_tests.py`・lintの対象・CI）も一緒に動かす | `test_pick.py` | [§9.404](docs/decisions/9.404.md) |
 | 起動前の確認は`setup.bat`が受け持ち、刻印で飛ばす | `test_faststart.py` | [§9.225](docs/decisions/9.225.md) |
 | サーバー再起動 | — | [決まり](docs/decisions/rules-misc.md) |
 | 起動基盤に触るとき | — | [決まり](docs/decisions/rules-misc.md) |
@@ -846,7 +849,7 @@
 | バージョン更新 | — | [決まり](docs/decisions/rules-misc.md) |
 | フラットネスの全〇は「印を持つボタンだけ」を拾う | — | [§9.320](docs/decisions/9.320.md) |
 | 畳んでよいのは「言い回し」だけ。単位・できること・取り違えを防ぐ事実は別 | — | [§9.255](docs/decisions/9.255.md) |
-| `requirements.txt`は`flask`だけ。増やしたら網も書き直す | `test_noaccess.py` | [§9.268](docs/decisions/9.268.md) |
+| `program/requirements.txt`は`flask`だけ。増やしたら網も書き直す | `test_noaccess.py` | [§9.268](docs/decisions/9.268.md) |
 | 折り返す横並びの器へ「1行ぶんの物」を入れるときは`flex:1 0 100%` | — | [§9.250](docs/decisions/9.250.md) |
 | 画面が出す「切」の呼び名は`flags.OFF_WORDS`へ全部並べる | `test_bladeset.py`・`test_flags.py` | [§9.377](docs/decisions/9.377.md) |
 | 「選ばない」の札は値を持たない | `test_opblank.js` | [§9.286](docs/decisions/9.286.md) |
@@ -934,7 +937,7 @@
   表しかない。**ただし「コミット前は必ず引数なしで通しを回す」は撤回した**
   （冒頭の「作業の進め方」A。**通しを回すかどうかは利用者が決める**ので、
   絞り込みで回したことと、通していないことを報告に書く）。分からない
-  ファイル・土台（`base.js`/`index.html`/`app.py`/`backend/config.py`/
+  ファイル・土台（`base.js`/`index.html`/`program/app.py`/`backend/config.py`/
   `run_all.sh`/`db/`）は全件へ倒れる。**テストやソースを足したら対応表にも
   足すこと**——`tests/test_pick.py`が「実体の無いテスト名」「どの規則からも
   呼ばれないテスト」「どの規則にも当たらないソース」で落ちる。

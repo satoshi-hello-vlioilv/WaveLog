@@ -376,7 +376,7 @@ measurement-worklogを開く」状態が誤読・誤編集の温床**(§9.68の�
 どれが「内部部品」か見分けが付かない。ただし**全部を移すのは正しくない**:
 直接実行される4本には実行契約(基準0.2-1)があり、動かすと
 `Start.vbs`/`start_app.bat`/`stop.bat`/CLAUDE.mdの起動コマンド
-(`python3 process_manager.py stop` 等)がすべて変わる。
+(`python3 program/process_manager.py stop` 等)がすべて変わる。
 
 **作業**: importされるだけの2本を`backend/launcher/`へ移す。
 
@@ -387,6 +387,11 @@ measurement-worklogを開く」状態が誤読・誤編集の温床**(§9.68の�
 | `app.py` | **ルート残留** | エントリポイント(CLAUDE.mdの規約)。`python app.py`単独実行にも対応 |
 | `start_app.py` | **ルート残留** | `Start.vbs`/`start_app.bat`が直接実行(日常の起動入口) |
 | `process_manager.py` | **ルート残留** | `stop.bat`と開発規約(`python3 process_manager.py stop`)が直接実行 |
+
+> **【§9.404で改めた】**「ルート残留」の3本＋`setup_app.py`・`loading.html`・
+> `requirements*.txt` は **`program/` へ移した**。直下に残すPythonは
+> `_pycache_bootstrap.py` の1本だけ（`tests/`が素のモジュール名でimportする）。
+> 詳細は [`docs/decisions/9.404.md`](decisions/9.404.md)。
 | `_pycache_bootstrap.py` | **ルート残留** | 直接実行される各スクリプトの「最初のimport」である必要(pycache_prefixは対象module読み込み前に設定必須) |
 
 - `start_app.bat`(CP932)・`Start.vbs`・`stop.bat`は**変更不要**

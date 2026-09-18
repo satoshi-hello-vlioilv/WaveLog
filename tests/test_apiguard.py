@@ -94,6 +94,7 @@ rec('正常系はそのまま', r.status_code == 200 and r.get_json() == {'ok': 
 rec('関数名（エンドポイント名）が残る', boom.__name__ == 'boom' and 'boom' in app.view_functions, ','.join(app.view_functions))
 
 # ---- 2. 本物のルートで --------------------------------------------------
+import apppath  # noqa: F401 `program/` を探索先へ（§9.404）
 import app as flask_app  # noqa: E402
 # 差し替える先は**その関数が名前を引く段**（§9.333で`masters`を段へ分けた）。
 # パッケージ側（`backend.routes.masters`）へ差しても、`columns.py`の中の

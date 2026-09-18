@@ -30,7 +30,7 @@
 import json
 import sys
 
-from ..paths import APP_ROOT, local_root, runtime_dir
+from ..paths import APP_ROOT, PROGRAM_DIR, local_root, runtime_dir
 from ..quiet import quiet
 
 # 刻印そのものの形。**作りを変えたら上げること**——上げないと、古い形の
@@ -45,7 +45,7 @@ def stamp_file():
 def _requirements_mark():
     """`requirements.txt`の指紋。**中身は読まない**(共有越しの読みを増やさない)。
     無ければ空文字＝「無い」という状態として記録する。"""
-    path = APP_ROOT / 'requirements.txt'
+    path = PROGRAM_DIR / 'requirements.txt'
     try:
         st = path.stat()
         return f'{st.st_size}:{int(st.st_mtime)}'

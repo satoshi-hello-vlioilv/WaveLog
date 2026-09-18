@@ -22,7 +22,7 @@
 分けると、内部の話に見える本物の不具合修正を伏せてしまう——付いていない=
 利用者向け、という安全側にしてある。
 """
-APP_VERSION='2.301.0'
+APP_VERSION='2.302.0'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
@@ -37,6 +37,26 @@ def is_dev(entry):
 
 
 CHANGELOG=[
+ {'version':'2.302.0','dev':True,'notes':[
+  'リポジトリ直下に平置きになっていた**直接実行するファイル**を`program/`へ'
+  'まとめた（§9.404。`app.py`／`start_app.py`／`setup_app.py`／'
+  '`process_manager.py`／`loading.html`／`requirements.txt`／'
+  '`requirements-dev.txt`の7本）。**画面の動きは変えていない。**'
+  '4本は先頭で`program/_approot.py`を通し、リポジトリ直下を`sys.path`へ足す。'
+  '`backend/paths.py`の`APP_ROOT`は`backend/`基準のままなので、'
+  '`db/`・`config/local.json`の解決は1バイトも変わらない。',
+  '直下に残したのは`_pycache_bootstrap.py`と`eslint.config.mjs`の2本。'
+  '前者は`tests/`が素のモジュール名でimportしており「探索先に在ること」'
+  'そのものが役目で、後者はESLint v9のflat configが`files:`のglobを'
+  '設定ファイルのフォルダ基準で解決し`..`を拒否するため、移すと'
+  '**lintが0件で緑になる**（緩む側に壊れる）。',
+  '移動で静かに外れる見張りを5つ直した——`tests/test_pick.py`の走査先、'
+  '`tests/pick_tests.py`の対応表、`test_pyflakes`の`TARGETS`、'
+  '`test_quietlint`の3本（無ければ黙って飛ばしていた）、CI'
+  '（`.github/workflows/nets.yml`の`pip install -r`）。'
+  '`test_faststart`に「4本が`program/`にある」「`_pycache_bootstrap.py`は'
+  '直下のまま」を足した。',
+ ]},
  {'version':'2.301.0','notes':[
   '**ICASコピーで、ルールが1本も無いときは区切らずにつなぐ**ようにしました'
   '（利用者のご指示）。これまでは半角スペースでつないでいましたが、'

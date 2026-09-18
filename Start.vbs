@@ -8,7 +8,7 @@ Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 root = fso.GetParentFolderName(WScript.ScriptFullName)
 sh.CurrentDirectory = root
-target = """" & root & "\start_app.py"""
+target = """" & root & "\program\start_app.py"""
 
 On Error Resume Next
 sh.Run "pythonw.exe " & target, 0, False

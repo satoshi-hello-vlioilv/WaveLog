@@ -25,7 +25,7 @@
  * `db_access`と`access_mode`／`master_share`／`master_repo`の相互importは0。
  * **`import backend.db_access`はどのファイルも変えない**（別プロセスで
    `db/`の中身をハッシュして突き合わせる）。書くのは`bootstrap()`だけで、
-   それを呼ぶのは`app.py`の1箇所。
+   それを呼ぶのは`program/app.py`の1箇所。
  * 網そのものが素通りしないことを確かめる（欠陥を注いで落ちる）。
 ============================================================
 """
@@ -206,10 +206,10 @@ def main():
     else:
         rec('import backend.db_access が db/ の中身を変えない', not changed, changed)
 
-    # 5) 書くのは bootstrap()。呼ぶのは app.py の1箇所
+    # 5) 書くのは bootstrap()。呼ぶのは program/app.py の1箇所
     rec('db_access.bootstrap() がある', 'def bootstrap()' in (BACKEND / 'db_access.py').read_text(encoding='utf-8'))
-    app = '\n'.join(l.split('#')[0] for l in (ROOT / 'app.py').read_text(encoding='utf-8').split('\n'))
-    rec('app.py が bootstrap() を1回だけ呼ぶ', app.count('db_access.bootstrap()') == 1,
+    app = '\n'.join(l.split('#')[0] for l in (ROOT / 'program' / 'app.py').read_text(encoding='utf-8').split('\n'))
+    rec('program/app.py が bootstrap() を1回だけ呼ぶ', app.count('db_access.bootstrap()') == 1,
         app.count('db_access.bootstrap()'))
 
     # 6) 網そのものが素通りしないこと——欠陥を注いで落ちることを見る

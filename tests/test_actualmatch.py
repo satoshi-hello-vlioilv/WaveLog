@@ -37,6 +37,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 # noqa: E402 は「ROOT を sys.path へ入れてから import する」ため（ほかの網と同じ作法）。
+import apppath  # noqa: F401 `program/` を探索先へ（§9.404）
 import app as flask_app                                    # noqa: E402 パスを通してから読む
 from backend import db_access, actual_match, schedule_sync  # noqa: E402 パスを通してから読む
 from backend.repositories import schedule_repo as sr       # noqa: E402 パスを通してから読む

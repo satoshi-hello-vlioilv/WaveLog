@@ -67,8 +67,8 @@ Windows環境では **`Start.vbs` をダブルクリック**します（通常�
 
 ```
 pip install flask
-python start_app.py       # 通常の起動経路(推奨)
-python app.py             # 同じ経路へ委譲されます
+python program/start_app.py   # 通常の起動経路(推奨)
+python program/app.py         # 同じ経路へ委譲されます
 ```
 
 ### ログの場所
@@ -117,15 +117,18 @@ setup.bat                  起動前の確認(導入時・更新後に1回。次
 Start.vbs                  通常起動(コンソール非表示)
 start_app.bat              診断起動(コンソール表示)
 stop.bat                   明示停止
-setup_app.py               setup.batの中身(確認・部品導入・バイトコードの事前用意・刻印)
-start_app.py               Python側の起動開始点(刻印を見て確認を飛ばす→多重起動判定→サーバー起動)
-process_manager.py         対象アプリだけを安全に停止する
+program/                   直接実行するものと、その道連れの資材だけを置く
+  setup_app.py               setup.batの中身(確認・部品導入・バイトコードの事前用意・刻印)
+  start_app.py               Python側の起動開始点(刻印を見て確認を飛ばす→多重起動判定→サーバー起動)
+  process_manager.py         対象アプリだけを安全に停止する
+  app.py                     Flask本体・一覧/測定コンテキスト/バックアップ/品質分析API
+  loading.html               起動待機画面(サーバーより先に開かれる)
+  requirements.txt           必要パッケージ
+  requirements-dev.txt       開発用の道具(pyflakes等。現場の端末には要らない)
+  _approot.py                上の4本がいちばん最初に通す1行(リポジトリ直下をsys.pathへ足す)
 _pycache_bootstrap.py      .pycキャッシュをローカル領域へ逃がす(各エントリポイントの最初のimport)
 backend/launcher/guard.py  多重起動の防止・起動中インスタンスの記録(旧launch_guard.py)
 backend/launcher/server.py Webサーバーの起動のみ(起動監視とWeb処理の境界。旧server.py)
-loading.html               起動待機画面(サーバーより先に開かれる)
-app.py                     Flask本体・一覧/測定コンテキスト/バックアップ/品質分析API
-requirements.txt           必要パッケージ
 config/
   local.example.json         DBパス上書き設定の雛形(コピーしてlocal.jsonに)
 backend/                   Flask本体以外のバックエンドロジック(Pythonパッケージ)

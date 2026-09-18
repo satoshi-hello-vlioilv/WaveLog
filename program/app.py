@@ -6,11 +6,13 @@
 (キャッシュ無効化)、ウォッチドッグの組み込みのみを行う(起動制御と業務
 ロジックを分ける方針。詳細はdocs/ARCHITECTURE.md・docs/REBUILD_PLAN.mdを参照)。
 """
-import _pycache_bootstrap  # noqa: F401 副作用のためのimport。他のimportより前に。単独実行(python app.py)される場合に備える
+import _approot  # noqa: F401 副作用のためのimport。**いちばん最初に**（program/から実行されるので、リポジトリ直下をimportの探索先へ入れる・§9.404）
+import _pycache_bootstrap  # noqa: F401,E402 副作用のためのimport。単独実行(python program/app.py)される場合に備える
 
 from flask import Flask, request
 
 from backend.logging_setup import app_logger
+from backend.paths import APP_ROOT
 
 # **Flaskが app.logger へ触れるより前に**、こちらのファイル出力を付けておく。
 # Flaskはハンドラの無いロガーに既定のStreamHandler(標準エラー)を勝手に足し、
@@ -18,7 +20,13 @@ from backend.logging_setup import app_logger
 # 未処理例外のtracebackを取り逃がさないための1行(§9.77)。
 app_logger()
 
-app=Flask(__name__)
+# **画面の資材の置き場は明示する**（§9.404）。`Flask(__name__)`は
+# 「このファイルの隣」を`templates/`・`static/`とみなすので、`program/`へ
+# 移した瞬間に`TemplateNotFound: index.html`（トップページが500）になる。
+# 答えは`backend/paths.py`の`APP_ROOT`（`backend/`基準なので動いていない）。
+app=Flask(__name__,
+          template_folder=str(APP_ROOT/'templates'),
+          static_folder=str(APP_ROOT/'static'))
 
 from backend import watchdog, records_export, access_mode, rne_scheduler, errors, file_cleanup, db_access
 from backend.routes.core import bp as core_bp

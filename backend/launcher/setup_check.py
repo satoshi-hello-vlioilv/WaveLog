@@ -26,7 +26,7 @@ import subprocess
 import sys
 
 from ..config import REQUIRED_PACKAGES
-from ..paths import APP_ROOT, browser_dir, ensure_local_dirs
+from ..paths import APP_ROOT, PROGRAM_DIR, browser_dir, ensure_local_dirs
 from . import ready
 from ..quiet import quiet
 
@@ -41,7 +41,12 @@ LEGACY_DB = (
 # 事前コンパイルの対象。アプリのコードだけ(site-packagesは触らない——
 # 共有でも他人の環境でもないし、pipが入れた時点で済んでいる)。
 COMPILE_TARGETS = ('backend',)
-COMPILE_FILES = ('app.py', 'start_app.py', 'process_manager.py', '_pycache_bootstrap.py')
+# 直接実行する4本は`program/`（§9.404）。`_pycache_bootstrap.py`だけは
+# **リポジトリ直下に残す**——`tests/`が素のモジュール名でimportしており、
+# 探索先が通っている場所に在ることそのものが役目のため。
+COMPILE_FILES = ('program/app.py', 'program/start_app.py',
+                 'program/setup_app.py', 'program/process_manager.py',
+                 '_pycache_bootstrap.py')
 
 
 def _no_window():
@@ -63,7 +68,7 @@ def ensure_packages(say):
     say('必要な部品: %s が不足しています。導入を試みます' % ', '.join(missing))
     try:
         result = subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', '-r', str(APP_ROOT / 'requirements.txt')],
+            [sys.executable, '-m', 'pip', 'install', '-r', str(PROGRAM_DIR / 'requirements.txt')],
             capture_output=True, text=True, **_no_window())
     except Exception as e:
         say('必要な部品: 導入を実行できませんでした: %s' % e, bad=True)
@@ -156,7 +161,7 @@ def copy_waiting_page(say=None):
     `write_bytes`だと**読んでいる途中の半分だけの画面**を見せうるし、
     Windowsでは掴まれている置き換えが`WinError 5`になる（§9.108）。"""
     from .. import atomic_io
-    src = APP_ROOT / 'loading.html'
+    src = PROGRAM_DIR / 'loading.html'
     dst = staged_waiting_page()
     tmp = dst.with_suffix(dst.suffix + '.tmp')
     try:

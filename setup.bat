@@ -11,7 +11,7 @@ rem endings cmd.exe resumes the batch at the wrong byte offset and runs
 rem fragments of these very lines as commands.
 cd /d "%~dp0"
 
-python setup_app.py
+python program\setup_app.py
 set RC=%ERRORLEVEL%
 
 echo.

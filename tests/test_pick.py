@@ -58,6 +58,9 @@ def main():
     watched += sorted(str(p.relative_to(ROOT)) for p in (ROOT / 'static/css').glob('*.css'))
     watched += sorted(str(p.relative_to(ROOT)) for p in (ROOT / 'templates').glob('*.html'))
     watched += sorted(str(p.relative_to(ROOT)) for p in ROOT.glob('*.py'))
+    # 直接実行する4本は`program/`へ移した（§9.404）。移した先も見張る
+    # ——見張りを一緒に動かさないと、移動そのものが監視を外す。
+    watched += sorted(str(p.relative_to(ROOT)) for p in (ROOT / 'program').glob('*.py'))
     watched = [w for w in watched if '__pycache__' not in w]
     miss = [w for w in watched
             if not any(P._match(w, pat) for pat, _t in P.RULES + P.FALLBACKS)]
@@ -97,7 +100,7 @@ def main():
         ' / '.join(bad) if bad else f'{len(cases)}件')
 
     # 7. 土台を触ったら全部回す(base.js / index.html / app.py)。
-    bad = [p for p in ('static/js/core/base.js', 'templates/index.html', 'app.py',
+    bad = [p for p in ('static/js/core/base.js', 'templates/index.html', 'program/app.py',
                        'backend/config.py', 'tests/run_all.sh')
            if P.pick([p])[0] != set()]
     rec('土台を触ったときは全部回す', not bad, ' '.join(bad) if bad else '5件')
