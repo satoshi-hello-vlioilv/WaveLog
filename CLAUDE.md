@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（598件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（649件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -149,7 +149,7 @@
 | フォルダ構成 | — | [決まり](docs/decisions/rules-misc.md) |
 | 起動スクリプトは CRLF 改行で保存する | `test_faststart.py` | [§9.229](docs/decisions/9.229.md) |
 
-### データの置き場と共有（50件）
+### データの置き場と共有（53件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -231,11 +231,14 @@
 | 編集可能モード/閲覧モード/スケジュールモード | `test_modeguard.py` | [決まり](docs/decisions/rules-misc.md) |
 | 作業スケジュール表の「見えるもの」はモードで変えない | `test_scmodecols.js` | [§9.246](docs/decisions/9.246.md) |
 
-### マスタ（サーバー側）（23件）
+### マスタ（サーバー側）（26件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 設備停止は3階層（分類→停止内容→内訳）。**内訳は名称を割らない**（集計は名称で束ねる） | `test_stopsub.py` | [§9.389](docs/decisions/9.389.md) |
+| 最初から選ばれる内訳は`stop_default_sub()`の1箇所（①1件ならそれ ②`[既定]`の印 ③無し） | `test_stopsub.py` | [§9.397](docs/decisions/9.397.md) |
+| `[既定]`は兄弟のうち1つだけ。立てるとき兄弟を降ろす。**送らない鍵は触らない** | `test_stopsub.py` | [§9.397](docs/decisions/9.397.md) |
+| `stop_sub_upsert()`の`standard_minutes`は**渡した値をそのまま書く**（省くと消える） | `test_stopsub.py` | [§9.397](docs/decisions/9.397.md) |
 | 内訳の下はもう1段だけ（**深さは2段まで**）。親なしは`0`——`NULL`にするとUNIQUEが1件も止めない | `test_stopsub.py` | [§9.390](docs/decisions/9.390.md) |
 | 内訳の並びは「親 → その子」をサーバーが作る。親を消すと**子も消える**。数えるのは1段目だけ | `test_stopsub.py` | [§9.390](docs/decisions/9.390.md) |
 | 既定の分は「2段目 → 1段目 → 停止内容 → 無し」の4段。たどるのは`stop_default_minutes()`の1箇所 | `test_stopsub.py` | [§9.390](docs/decisions/9.390.md) |
@@ -259,11 +262,14 @@
 | 設備停止マスタの`[設備名]`は「対象設備」 | `test_stopeq.js` | [決まり](docs/decisions/rules-misc.md) |
 | ③「記録した値」は操業データ項目マスタが決める | `test_recvalues.js` | [§9.242](docs/decisions/9.242.md) |
 
-### マスタ管理の画面（16件）
+### マスタ管理の画面（19件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 設備停止の内訳は「左＝停止内容（分類ごと）／右＝内訳」の2ペイン。時間は札＋スライダーの見本 | `test_stopsubui.js` | [§9.389](docs/decisions/9.389.md) |
+| 設備停止マスタは**1枚の3ペイン**（左＝分類／中＝停止内容／右＝内訳）。タブを分けない | `test_stopsubui.js`・`test_master.js` | [§9.397](docs/decisions/9.397.md) |
+| 他へ統合した定義は消さずに`navHidden`で伏せる（APIとCRUDの見張りは残す） | `test_crudroutes.py`・`test_master.js` | [§9.397](docs/decisions/9.397.md) |
+| `COVERED_BY`の行き先は**実在するタブ**を指す（伏せたタブを指さない） | `test_rawmaster.py` | [§9.397](docs/decisions/9.397.md) |
 | 2段目を作る道は1段目の行の「＋ 下へ」。**足す先を先に言う**（押してから気づかせない） | `test_stopsubui.js` | [§9.390](docs/decisions/9.390.md) |
 | 入切の札（`check-set`）の器は横いっぱい。`mmFieldSize()`の並びに載せないと1列に縦積みになる | `test_measitems.js` | [§9.392](docs/decisions/9.392.md) |
 | マスタ管理のJSは「定義／盤／専用画面」の5本。受け渡しは`WL.mm`の1つ | `test_loadorder.py` | [§9.324](docs/decisions/9.324-1.md) |
@@ -400,11 +406,13 @@
 | 「どれが仕掛でどれが品質か」はキーでなく`データソースマスタ`の`[役割]` | `test_datasource.py`・`test_dskeylint.py`・`test_dsnav.js` | [決まり](docs/decisions/rules-misc.md) |
 | 仕掛から消えたロットは実績で突き合わせる。在席は「仕掛にも在る列」だけで見る | `test_actualmatch.py` | [§9.364](docs/decisions/9.364.md) |
 
-### 測定画面（93件）
+### 測定画面（99件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 公差の答えは`WL.tolerance`の登録表。描いたあとに足すのは`WL.measureHooks`へ登録し、被せない | `test_patchlint.py`・`test_tolscale.js` | [§9.348](docs/decisions/9.348.md) |
+| 備考は**列ではなく行**（実測58px→693px）。既定は畳む。畳みは3値（`prtFoldDefault()`） | `test_msteps.js` | [§9.397](docs/decisions/9.397.md) |
+| 書くことが増えたら（異常のエッジ形状）**手で畳んだ状態を手放す** | `test_msteps.js` | [§9.397](docs/decisions/9.397.md) |
 | 基準が引けないラテラルボー・バリは、札をボタンにして**そのロットだけ**手で入れられる（出どころは「手入力」） | `test_tolscale.js` | [§9.394](docs/decisions/9.394.md) |
 | `WL.tolerance.register()`は`facts`／`scale`だけの提供者も受ける。捨てるなら理由を1行残す | `test_tolscale.js` | [§9.394](docs/decisions/9.394.md) |
 | 札を伏せてよいのは**代わりに出す物があるとき**だけ（指示値が読めないなら札を残す） | `test_tolscale.js` | [§9.394](docs/decisions/9.394.md) |
@@ -502,7 +510,7 @@
 | 「選ばない」の札は空文字だけではない | `test_opblank.js` | [§9.246](docs/decisions/9.246.md) |
 | ロールは「設備名＋ロール名＋接触面＋径MAX＋径MIN＋備考」で1本 | `test_rollio.py` | [§9.246](docs/decisions/9.246.md) |
 
-### 刃組ガイダンス（13件）
+### 刃組ガイダンス（47件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -554,11 +562,15 @@
 | 刃組スケジュール一覧は記録と予定を`stopId`で結ぶ。未記録は字で書く | `test_bladeui.js` | [§9.383](docs/decisions/9.383.md) |
 | 部材の並びは大きい寸法から。「種類×数」と「何種・何本」の両方を言う | `test_bladeui.js` | [§9.383](docs/decisions/9.383.md) |
 
-### 作業スケジュール（35件）
+### 作業スケジュール（39件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 設備停止は「内容 →（内訳）→ 時間」の手順で入れる。窓は開かず一覧と入れ替える | `test_stopflow.js` | [§9.389](docs/decisions/9.389.md) |
+| 一覧の上端は動かさない。案内は一覧の**下**の「知らせの棚」（`#scNotices`）へ | `test_scbar.js` | [§9.397](docs/decisions/9.397.md) |
+| 帯（ヘッダーの操作列）は1行のまま。譲るのは**状態の文字だけ**（押せる物は縮ませない） | `test_scbar.js` | [§9.397](docs/decisions/9.397.md) |
+| 設備停止は左＝一覧／右＝設定の2ペイン。一覧と入れ替えない（§9.389の作法を撤回） | `test_stopflow.js` | [§9.397](docs/decisions/9.397.md) |
+| 内訳と時間は**最初から選ばれている**。進むボタンの字は「いま入るもの」そのもの | `test_stopflow.js` | [§9.397](docs/decisions/9.397.md) |
 | 段が増えるのは**下を持つ内訳を選んだときだけ**（空の段を出さない）。1段目を選び直したら2段目は捨てる | `test_stopflow.js` | [§9.390](docs/decisions/9.390.md) |
 | 予定へ渡すのは**いちばん下の内訳のID**1つ。1段目は`stopSub`のまま・2段目は`stopSub2`（既存の集計を割らない） | `test_stopsub.py`・`test_stopflow.js` | [§9.390](docs/decisions/9.390.md) |
 | 内訳の札は題名の一部ではない。答えるのは`nonWorkSubText()`の1箇所（紙も同じ1本） | `test_stopflow.js` | [§9.389](docs/decisions/9.389.md) |
@@ -691,7 +703,7 @@
 | 紙に出すのは「帳票だけの1枚もの」 | `test_rpprint.js` | [§9.244](docs/decisions/9.244.md) |
 | 帳票ブロックの中身はマトリクスで並べられる | `test_blockbuild.js` | [§9.245](docs/decisions/9.245.md) |
 
-### 画面の土台（11件）
+### 画面の土台（13件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -709,11 +721,12 @@
 | モーダルは背景クリックで閉じない | `test_modalkeep.js` | [§9.221](docs/decisions/9.221.md) |
 | マスタの1行を直す窓は汎用モーダル1枚 | — | [§9.222](docs/decisions/9.222.md) |
 
-### 見た目（CSS・寸法・色）（47件）
+### 見た目（CSS・寸法・色）（48件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 色のリテラルは増やさない（上限は`tests/fixtures/color_baseline.json`）。トークンと同じ値は`var()`で書く | `test_csslint.py` | [§9.350](docs/decisions/9.350.md) |
+| 出入りする物の見た目は変えてよいが、**場所は動かさない**（動かすなら`opacity`だけ） | `test_scbar.js` | [§9.397](docs/decisions/9.397.md) |
 | 選ばれた札の見た目は`90-state.css`の束ね規則1箇所。族ごとに同じ3行を書かない | `test_csslint.py` | [§9.353](docs/decisions/9.353.md) |
 | 色帯は「面」とセットのときだけ出す。面の無い帯は括弧に見え、列の罫線とも競合する | `test_density.js` | [§9.344](docs/decisions/9.344.md) |
 | 目に見えない字（空白・タブ・改行）を見せる記号は`visibleChars()`の1箇所で1文字ずつ当てる | `test_lotcopy.js` | [§9.371](docs/decisions/9.371.md) |
@@ -761,7 +774,7 @@
 | 「何で選ばせるか」と「どう見えるか」は別の軸 | — | [§9.223](docs/decisions/9.223.md) |
 | 公差外・基準外は確認カードの色で気づかせる。NGの記録はその行の中 | `test_ngcard.js` | [§9.242](docs/decisions/9.242.md) |
 
-### 検証（テスト）（33件）
+### 検証（テスト）（37件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
