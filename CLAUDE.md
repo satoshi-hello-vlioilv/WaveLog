@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（672件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（673件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -743,6 +743,7 @@
 | 色のリテラルは増やさない（上限は`tests/fixtures/color_baseline.json`）。トークンと同じ値は`var()`で書く | `test_csslint.py` | [§9.350](docs/decisions/9.350.md) |
 | 選択肢の札に添える印は**2つまで・短く**。溢れると名前のほうが切れる | `test_stopflow.js` | [§9.400](docs/decisions/9.400.md) |
 | 連続して押すボタンは**大きさより「いつも同じ場所」**。手応えは結果を字で返すほうが受け持つ（実測 66→36px） | `test_scstop.js` | [§9.402](docs/decisions/9.402.md) |
+| 入れた直後の時刻は**分からない**（前の行に`plannedEnd`が無い）。控えずに`—:—`と書き、予定が戻ってから入れる | `test_stopflow.js` | [§9.402](docs/decisions/9.402.md) |
 | カードのラベル列は**固定幅で右揃え**（`auto`だと行ごとに値の左端がずれる） | `test_scstop.js` | [§9.402](docs/decisions/9.402.md) |
 | 出入りする物の見た目は変えてよいが、**場所は動かさない**（動かすなら`opacity`だけ） | `test_scbar.js` | [§9.397](docs/decisions/9.397.md) |
 | 選ばれた札の見た目は`90-state.css`の束ね規則1箇所。族ごとに同じ3行を書かない | `test_csslint.py` | [§9.353](docs/decisions/9.353.md) |

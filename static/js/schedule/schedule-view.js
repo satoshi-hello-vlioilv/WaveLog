@@ -8750,8 +8750,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     <div class="sc-sc-row">
      <span class="sc-sc-k">入るもの</span>
      <b class="sc-sc-what" title="${esc(what)}">${esc(p.label)}${
-       subs.length?`<small>（${esc((sub?sub.name:'内訳')+(sub2?' / '+sub2.name:''))}）</small>`
-        :'<small>（内訳なし）</small>'}</b>
+       !subs.length?'<small>（内訳なし）</small>'
+        :sub?`<small>（${esc(sub.name+(sub2?' / '+sub2.name:''))}）</small>`
+        :'<small>（内訳はこれから）</small>'}</b>
      <button type="button" class="sc-sc-go" id="scSpGo"${ready?'':' disabled'}
        title="${esc(what)} を ${esc(eq)} の ${esc(where)} へ入れます">${
        ready?`＋ ${esc(where)}へ追加`
@@ -8874,7 +8875,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   }
   const inner=live.map((a,i)=>`<div class="sc-sl-hit">`
    +`<b title="${esc(a.what)}">${esc(a.what)}</b>`
-   +`<span class="sc-sl-hit-m"><i>${esc(stopHHMM(liveStart(a))||stopHHMM(a.at)||'—:—')}</i>`
+   +`<span class="sc-sl-hit-m"><i>${esc(stopHHMM(liveStart(a))||'—:—')}</i>`
    +`${a.minutes==null?'':esc(WL.duration.text(a.minutes))}`
    +`<button type="button" class="sc-sl-undo" data-undo="${i}"`
    +` title="この1件を予定から外します">取り消す</button></span></div>`).join('');
@@ -8975,9 +8976,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* **入れたものを控える**（§9.402）。控えるのは行そのもの（参照）——
      楽観追加の仮IDはサーバーの答えで書き換わる（`resolveOptimisticEntry`が
      同じ物を書き換える）ので、IDを写すと取り消しが効かなくなる。 */
-  const when=stopPlanWhen(p.minutes);
+  /* 時刻は**控えない**（§9.402の追補）。入れた直後は前の行に`plannedEnd`が
+     まだ無いので、`stopPlanWhen()`は**1件前と同じ時刻**を返す——2件続けて
+     入れると同じ時刻が2つ並ぶ（実測）。予定が戻るまでは`—:—`と書き、
+     戻ったら`applyPlanResult`の描き直しで本当の時刻が入る。 */
   (scState.stopAdded=scState.stopAdded||[]).push(
-    {entry,reasonId:p.id,what,minutes:p.minutes,at:when&&when.start?when.start:null});
+    {entry,reasonId:p.id,what,minutes:p.minutes});
   /* 「続けて入れる」なら**選んだままにする**——同じ停止をもう1件、
      別の停止を続けて、のどちらも選び直しから始まらない（§CLAUDE 2）。
      切なら選択を解いて一覧へ戻す（今までどおり）。 */
