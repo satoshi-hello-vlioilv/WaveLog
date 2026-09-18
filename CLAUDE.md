@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（651件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（656件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -568,6 +568,9 @@
 | --- | --- | --- |
 | 設備停止は「内容 →（内訳）→ 時間」の手順で入れる。窓は開かず一覧と入れ替える | `test_stopflow.js` | [§9.389](docs/decisions/9.389.md) |
 | 一覧の上端は動かさない。案内は一覧の**下**の「知らせの棚」（`#scNotices`）へ | `test_scbar.js` | [§9.397](docs/decisions/9.397.md) |
+| 行の右クリックは**作業導線の順に群で束ねる**（進める→直す→増やす・写す→選ぶ・並べる→画面→外す）。群は5件以下、**中身の無い群は出さない** | `test_scstop.js` | [§9.399](docs/decisions/9.399.md) |
+| 複製を出すのは「もう1件あり得る」ものだけ（設備停止・申し送り）。作業と枠には出さない。断りは`duplicateBlockReason()`の1箇所 | `test_scstop.js` | [§9.399](docs/decisions/9.399.md) |
+| Deleteで外すのも`removeEntries()`の1本を通す。欄・IME変換中・窓が開いている間は取らない。Backspaceは取らない | `test_scpick.js` | [§9.399](docs/decisions/9.399.md) |
 | 帯（ヘッダーの操作列）は1行のまま。譲るのは**状態の文字だけ**（押せる物は縮ませない） | `test_scbar.js` | [§9.397](docs/decisions/9.397.md) |
 | 設備停止は左＝一覧／右＝設定の2ペイン。一覧と入れ替えない（§9.389の作法を撤回） | `test_stopflow.js` | [§9.397](docs/decisions/9.397.md) |
 | 内訳と時間は**最初から選ばれている**。進むボタンの字は「いま入るもの」そのもの | `test_stopflow.js` | [§9.397](docs/decisions/9.397.md) |
@@ -715,6 +718,7 @@
 | 窓は1枚しかない。窓の中から窓を開かない（名前を直すのはその場、消すのは行の中で2手） | `test_lotcopy.js` | [§9.368](docs/decisions/9.368.md) |
 | メニューの入れ子は本体へ足す。1項目のHTMLと配線は`rowMenuItemsHtml`/`bindRowMenuItems`の1箇所 | `test_lotcopy.js` | [§9.368](docs/decisions/9.368.md) |
 | 入れ子のメニューを閉じるのは「別の項目に留まったとき」だけ。子の中では閉じない | `test_lotcopy.js` | [§9.398](docs/decisions/9.398.md) |
+| メニューの群の見出しは`button`にしない（`.col-head-menu button`が行き先の寸法を配る）。鍵盤でできることは`kbd`でその場に書く | `test_scstop.js` | [§9.399](docs/decisions/9.399.md) |
 | 画面の`bodyClass`は自分の`exit`で外す（`enterView`は付けるだけ） | `test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
 | `window.*`への新規公開は名前空間経由 | `test_globallint.py` | [決まり](docs/decisions/rules-misc.md) |
 | 画面のJSは領域フォルダ。綴りは1つ | `test_loadorder.py` | [§9.334](docs/decisions/9.334.md) |
@@ -781,6 +785,7 @@
 | --- | --- | --- |
 | 並びを見張るときは**前後関係**で見る。群の顔ぶれを文字列で丸ごと固定しない（正しい位置へ1枚足しただけで落ちる） | `test_master.js` | [§9.389](docs/decisions/9.389.md) |
 | 素の表を消す後片付けは**editモードで**（scheduleのままだと403で黙って弾かれる） | `test_stopflow.js` | [§9.389](docs/decisions/9.389.md) |
+| 欠陥注入は**1件ずつ入れて、その場で戻す**。まとめて入れると途中で落ちたとき何を入れたか外から読めない | — | [§9.399](docs/decisions/9.399.md) |
 | 片付けようの無いもの（`sqlite_sequence`）を指紋で数えない | `test_bladeset.py` | [§9.377](docs/decisions/9.377.md) |
 | 網が当てにする物は「誰が作るか」を書けること。この端末の名乗りと権限はフィクスチャが持つ | `test_layers.py` | [§9.370](docs/decisions/9.370.md) |
 | 後片付けは「消えた」で確かめる。ランナーの道は絶対、テストは名前空間で呼ぶ | `test_layers.py`・`test_waitlint.py` | [§9.362](docs/decisions/9.362.md) |
