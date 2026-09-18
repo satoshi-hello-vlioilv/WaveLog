@@ -52,6 +52,7 @@ ARCH_ALLOW = {
     'config/local.json': '端末ごとの設定。.gitignore（雛形は local.example.json）',
     'masters.py': '3-10 で分けた旧ファイル。「から分離」の経緯として残す',
     'launch_guard.py': '旧名（いまは backend/launcher/guard.py）。「旧」と併記',
+    'setup.bat': '旧名（いまは update.bat・§9.405）。「旧名」と併記',
     'count_io.py': 'scratchpad の計測道具。経緯として残す',
     'probe_scale3/4.js': 'scratchpad の計測道具。経緯として残す',
 }

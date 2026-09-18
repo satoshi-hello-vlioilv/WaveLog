@@ -8,12 +8,12 @@
   信じることになる（Pythonの場所も版も端末ごとに違う）。
 - **刻印は速さの門であって正しさの門ではない**。刻印を消しても起動できる
   （その場で確認し直す＝利用者の指示①の自己修復）。
-- **確認の実処理は1箇所**。setup.bat と起動時のフォールバックが同じ
-  `setup_check.run()`を通る——2つ持つと「setup.batでは通るのに起動では
+- **確認の実処理は1箇所**。update.bat と起動時のフォールバックが同じ
+  `setup_check.run()`を通る——2つ持つと「update.batでは通るのに起動では
   失敗する」が作れる。
 - **進捗ファイル(boot_status.js)と待機画面の写しも端末ごと**。共有へ書くと
   2台が同時に起動したとき相手の進捗が自分の画面に出る。
-- setup.bat は **CP932**（UTF-8の日本語だとcmd.exeが誤読する）。
+- update.bat（旧`setup.bat`・§9.405）は **CP932**（UTF-8の日本語だとcmd.exeが誤読する）。
 - 起動スクリプトは **CRLF改行**（LFだけだとcmd.exeが行の途中から実行する）。
 
 **確かめ方の注意**: 刻印を消した状態で「起動できること」まで見ること。
@@ -351,9 +351,13 @@ try:
     rec('起動側は確認の1箇所を呼ぶ',
         'setup_check.run(' in starter, '')
 
-    # ---- 7) setup.bat / setup_app.py ----
-    bat = ROOT / 'setup.bat'
-    rec('setup.bat がある', bat.exists())
+    # ---- 7) update.bat / setup_app.py ----
+    # 名前は`update.bat`（§9.405）。**押すのは「版が変わったら1回」**なので、
+    # 名前がその時機を言う。旧`setup.bat`は残さない（入口を2つ持たない）。
+    bat = ROOT / 'update.bat'
+    rec('update.bat がある', bat.exists())
+    rec('旧 setup.bat を入口として残していない（入口は1つ）',
+        not (ROOT / 'setup.bat').exists())
     if bat.exists():
         raw = bat.read_bytes()
         try:
@@ -361,7 +365,7 @@ try:
             utf8 = True
         except UnicodeDecodeError:
             utf8 = False
-        rec('setup.bat はCP932（UTF-8の日本語だとcmd.exeが誤読する）',
+        rec('update.bat はCP932（UTF-8の日本語だとcmd.exeが誤読する）',
             not utf8 and b'setup_app.py' in raw)
     # ---- 7b) 起動スクリプトはCRLF ----
     # **LFだけだとcmd.exeがバッチを読み進める位置がずれる**（§9.229 ①）。
@@ -369,7 +373,7 @@ try:
     # 「'after' は、内部コマンドまたは…」が並んだ。**2バイト文字の途中で
     # 切れる**（'ｫませんでした。'）ので、記号や引用符の問題では説明が付かない。
     # ここは**内容ではなく改行そのもの**を見る。
-    for name in ('setup.bat', 'start_app.bat', 'stop.bat', 'Start.vbs'):
+    for name in ('update.bat', 'start_app.bat', 'stop.bat', 'Start.vbs'):
         f = ROOT / name
         if not f.exists():
             rec(f'{name} がある', False)

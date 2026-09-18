@@ -14,11 +14,11 @@ Start.vbs(通常起動)と start_app.bat(診断起動)は、どちらも最終�
      取り込みをその場で行う
   5. Webサーバーを起動する
 
-4の確認は`setup.bat`(→`setup_app.py`)が受け持ち、済むと端末ごとの刻印
+4の確認は`update.bat`(→`setup_app.py`)が受け持ち、済むと端末ごとの刻印
 (`%LOCALAPPDATA%\\WaveLog\\runtime\\ready.json`)が残る。**刻印は速さの
 ための門であって正しさの門ではない**ので、食い違ったときは止めずに
 その場で同じ確認をやり直す(利用者の指示①)。実処理は
-`backend/launcher/setup_check.py`の1箇所で、setup.batと共有する。
+`backend/launcher/setup_check.py`の1箇所で、update.batと共有する。
 
 2を先に行うのは、以降のどの段階で失敗しても利用者の画面には必ず待機画面が
 表示され、規定時間後に「起動できません」と確認手順まで案内されるため。
@@ -505,10 +505,10 @@ def open_app_if_unseen_later(log):
 
 
 def run_full_check(log,why):
- """刻印が無い/合わないときの完全な確認(§9.225)。**setup.batと同じ処理を
-    同じ場所から呼ぶ**——2つ持つと「setup.batでは通るのに起動では失敗する」
+ """刻印が無い/合わないときの完全な確認(§9.225)。**update.batと同じ処理を
+    同じ場所から呼ぶ**——2つ持つと「update.batでは通るのに起動では失敗する」
     が作れる。"""
- log.info('起動前の確認: %s。この起動でまとめて確かめます（setup.batを実行しておくと次回から速くなります）',
+ log.info('起動前の確認: %s。この起動でまとめて確かめます（update.batを実行しておくと次回から速くなります）',
           ' / '.join(why) if why else '刻印がありません')
  def say(message,bad=False):
   (log.warning if bad else log.info)('起動前の確認: %s',message)
@@ -604,7 +604,7 @@ def main():
    log.error('起動中止: 必須パッケージが揃いませんでした')
    return 1
  else:
-  boot_status.report('packages','確認済みです（setup.batで確認しました）')
+  boot_status.report('packages','確認済みです（update.batで確認しました）')
   log.info('起動前の確認: 済んでいます。飛ばします')
 
  boot_status.report('data','データの置き場所を確認しています')

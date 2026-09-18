@@ -1,4 +1,4 @@
-"""setup_app.py: 起動前の確認と下ごしらえ(§9.225)。`setup.bat`から呼ばれる。
+"""setup_app.py: 起動前の確認と下ごしらえ(§9.225)。`update.bat`から呼ばれる。
 
 **導入時と、アプリを更新したあとに1回だけ**実行する。ここで済ませた確認は
 刻印(`%LOCALAPPDATA%\\WaveLog\\runtime\\ready.json`)に残り、毎日の起動

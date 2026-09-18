@@ -29,7 +29,7 @@
 
 ## ディレクトリ構成
 
-起動・停止に関わるファイル(`setup.bat`/`Start.vbs`/`start_app.bat`/`stop.bat`/
+起動・停止に関わるファイル(`update.bat`/`Start.vbs`/`start_app.bat`/`stop.bat`/
 `setup_app.py`/`start_app.py`/`backend/launcher/guard.py`/`backend/launcher/server.py`/`process_manager.py`/
 `loading.html`)と `app.py` をルート直下に置く。それ以外のバックエンド
 ロジックは `backend/` パッケージへ、ローカルDBファイルは `db/` フォルダへ
@@ -43,12 +43,12 @@
 
 | ファイル | 役割 |
 |---|---|
-| `setup.bat` | 起動前の確認(§9.225)。導入時と更新後に1回。`program/setup_app.py`を実行する |
+| `update.bat` | 起動前の確認(§9.225)。**アプリを新しくしたあとに1回**(導入時も1回)。`program/setup_app.py`を実行する。旧名`setup.bat`(§9.405) |
 | `Start.vbs` | 通常起動。コンソールを表示せず `program/start_app.py` を実行する |
 | `start_app.bat` | 診断起動。コンソールを表示したまま同じ `program/start_app.py` を実行する |
 | `stop.bat` | 明示停止。`program/process_manager.py stop` を呼ぶ |
-| `program/setup_app.py` | `setup.bat`の中身。確認の実処理は`backend/launcher/setup_check.py`にあり、起動時のフォールバックと共有する |
-| `backend/launcher/setup_check.py` | 起動前の確認一式(部品の導入・バイトコードの事前コンパイル・旧DB取り込み・待機画面の写し)。**setup.batと起動時のフォールバックが同じここを通る** |
+| `program/setup_app.py` | `update.bat`の中身。確認の実処理は`backend/launcher/setup_check.py`にあり、起動時のフォールバックと共有する |
+| `backend/launcher/setup_check.py` | 起動前の確認一式(部品の導入・バイトコードの事前コンパイル・旧DB取り込み・待機画面の写し)。**update.batと起動時のフォールバックが同じここを通る** |
 | `backend/launcher/ready.py` | 「この端末では確認が済んでいる」刻印(`%LOCALAPPDATA%\WaveLog\runtime\ready.json`)。**速さのための門であって正しさの門ではない**ので、食い違ったら止めずに確認し直す |
 | `program/start_app.py` | Python側の起動開始点。ログ初期化→待機画面を開く→多重起動判定→**刻印が合えば確認を飛ばす**→サーバー起動 |
 | `backend/launcher/guard.py`(旧`launch_guard.py`) | ポートの使用状況と `app_id` の照合による多重起動判定(`OURS`/`FOREIGN`/`UNRESPONSIVE`/`FREE`)、起動中インスタンスの記録。`UNRESPONSIVE`(ポート使用中だがHTTP応答が無い)は自プロセスが重い処理でブロックされている可能性を含むため、即座に別アプリ(`FOREIGN`)と決め付けず`process_manager.py`側でinstance.jsonのapp_root照合による強制終了判断へ委ねる |

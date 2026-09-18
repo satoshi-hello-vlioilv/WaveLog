@@ -224,7 +224,7 @@ CLAUDE.md には見出しの1行だけを残してある。ここが本文。
   `sys.path`へ足す1箇所。これが無いと`backend`が読めない)。
   importされるだけの起動部品は`backend/launcher/`へ置く
   (`guard.py`=旧launch_guard.py、`server.py`)。起動スクリプト
-  (`Start.vbs`/`start_app.bat`/`stop.bat`/`setup.bat`)は`program\…`を呼ぶ
+  (`Start.vbs`/`start_app.bat`/`stop.bat`/`update.bat`)は`program\…`を呼ぶ
   ——**CRLF・CP932のまま**触ること(§9.229)。
   それ以外のバックエンドPythonは`backend/`パッケージへ、ローカルDB
   (`master.sqlite3`/`records.sqlite3`、無ければ初回書き込み時に自動生成)は
