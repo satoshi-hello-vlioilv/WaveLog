@@ -69,11 +69,17 @@ async function cleanup(){
   await page.waitForSelector('#scStopModal:not([hidden])',{timeout:8000});
   await page.waitForTimeout(800);
 
-  /* ---- 1) どこへ入るのか（§9.400で**帯の中**へ移した） ----
-     専用の帯を上に1段持つのはやめた（§CLAUDE 8「同じ情報を2箇所に出さない」）
-     ——入る先は**追加ボタンの字**と帯の案内の1行が言う。 */
-  const where=await page.evaluate(()=>document.querySelector('.sc-sb')?.textContent.replace(/\s+/g,' ').trim()||'');
-  rec('どこへ入るのかが帯に書いてある',where.includes(EQ)&&/いちばん後ろ/.test(where),where.slice(0,80));
+  /* ---- 1) どこへ入るのか（§9.402） ----
+     **設備名は窓の題**が言い、**入る位置はカード**が言う（同じ情報を
+     2箇所に出さない・§CLAUDE 8）。 */
+  const where=await page.evaluate(()=>({
+    title:(document.getElementById('scStopModalTitle')||{}).textContent||'',
+    card:(document.querySelector('.sc-sc')||{}).textContent?.replace(/\s+/g,' ').trim()||''}));
+  rec('設備名は窓の題が言う（カードには出さない）',
+      where.title.includes(EQ)&&!where.card.includes(EQ),
+      `${where.title} / ${where.card.slice(0,60)}`);
+  rec('どこへ入るのかがカードに書いてある',
+      /いちばん後ろ/.test(where.card),where.card.slice(0,80));
 
   /* ---- 2) 分類は分類マスタの名前で ---- */
   const groups=await page.evaluate(()=>[...document.querySelectorAll('.sc-stop-group-title')]
@@ -145,24 +151,29 @@ async function cleanup(){
      **一覧は消えない**——1つの作業を2画面に割らないため（利用者の指摘
      「ステップが多い印象」）。内訳を持たない停止なので決めるのは時間だけで、
      標準所要分が最初から選ばれている。 */
-  await page.waitForSelector('.sc-sb:not(.is-empty)',{timeout:10000});
+  await page.waitForSelector('.sc-sc:not(.is-empty)',{timeout:10000});
   const step=await page.evaluate(()=>({
-   title:(document.querySelector('.sc-sb-what')||{}).textContent||'',
-   sels:document.querySelectorAll('.sc-sb-sel').length,
-   min:(document.getElementById('scSbMinutes')||{}).value,
+   title:(document.querySelector('.sc-sc-what')||{}).textContent||'',
+   min:(document.querySelector('.sc-sc-val')||{}).textContent||'',
+   ticks:document.querySelectorAll('.sc-sc-tick').length,
    go:(document.querySelector('#scSpGo')||{}).textContent||'',
    goOff:!!(document.querySelector('#scSpGo')||{}).disabled,
    listKept:!!document.querySelector('.sc-stop-button'),
    on:[...document.querySelectorAll('.sc-stop-button.is-on b')].map(x=>x.textContent.trim()),
-   clear:!!document.querySelector('#scSpBack'),
   }));
-  rec('押すと足元の帯が開き、一覧は消えない（戻る道を覚えなくてよい）',
-      step.listKept&&step.clear&&step.title.includes(NEW),JSON.stringify(step).slice(0,180));
+  rec('押すと右上のカードが開き、一覧は消えない（戻る道を覚えなくてよい）',
+      step.listKept&&step.ticks>0&&step.title.includes(NEW),JSON.stringify(step).slice(0,180));
   rec('いま設定しているものが一覧でも印で分かる',
       step.on.includes(NEW),JSON.stringify(step.on));
-  rec('内訳を持たない停止では決めるのは「時間」だけ（内訳の選択肢は出ない）',
-      step.sels===0&&step.min!=='',`選択肢${step.sels} / 分${step.min}`);
-  rec('標準所要分（25分）が最初から選ばれている',/25分/.test(step.go),step.go);
+  /* 内訳を持たない停止では、**内訳の列を置かずに「どこへ入るか」を出す**
+     （§9.402。空の器を置かない・§CLAUDE 12）。 */
+  const heads=await page.evaluate(()=>
+    [...document.querySelectorAll('#scStopCols .sc-sl-h b')].map(x=>x.textContent.trim()));
+  rec('内訳を持たない停止では、内訳の列を置かず「どこへ入るか」を出す',
+      !heads.includes('内訳')&&heads.includes('どこへ入るか'),JSON.stringify(heads));
+  rec('内訳が無いことはカードの見出しが言う（探させない）',
+      /（内訳なし）/.test(step.title),step.title);
+  rec('標準所要分（25分）が最初から選ばれている',/25分/.test(step.min),step.min);
   rec('内訳が要らないので、そのまま追加できる',!step.goOff&&step.go.includes('追加'),step.go);
   await page.click('#scSpGo');
   /* 予定へ入ったことは**サーバーの答え**で待つ（時間で待たない）。 */
@@ -328,38 +339,42 @@ async function cleanup(){
   }
   if(added)await post('/api/schedule/plan/delete',{id:added.id});
 
-  /* ---- 5.9) §9.400: 分類チップ・2列の一覧・停止内容の複製 ----
-     利用者の指示「もっとすっきり使いやすいデザインでUIUX検討してください」
-     （案B＝上＝一覧の2列／下＝決める帯）と、
-     「設備停止内容複製機能の追加／右クリックメニューにないので追加して
-      ください」「停止内容(マスタから引っ張ってくるもの)を複製したいです」。 */
+  /* ---- 5.9) §9.402: 左＝停止内容の全高1列／右上＝カード／右下＝列 ----
+     利用者の指示「停止内容を上から下まで伸ばし、時間は2/3幅に縮小、
+     停止内容は一番左」「決定ボタンはもっと小さくても大丈夫」。 */
   const look=await page.evaluate(()=>{
    const btns=[...document.querySelectorAll('.sc-stop-button')];
    const tops=[...new Set(btns.map(b=>Math.round(b.getBoundingClientRect().top)))];
-   return {cats:[...document.querySelectorAll('.sc-stop-cat')].map(x=>x.textContent.trim()),
-    /* **2列**は「同じ高さに2枚ある行がある」ことで見る（`grid-template-columns`
+   const left=document.querySelector('.sc-stop-left');
+   const card=document.querySelector('.sc-stop-card');
+   const list=document.querySelector('.sc-stop-list');
+   const r=e=>e?e.getBoundingClientRect():null;
+   return {
+    /* **1列**は「同じ高さに2枚ある行が無い」ことで見る（`grid-template-columns`
        を読むと、CSSの書き方を変えただけで落ちる網になる）。 */
     列:Math.max(...tops.map(t=>btns.filter(b=>Math.round(b.getBoundingClientRect().top)===t).length)),
-    帯:!!document.querySelector('.sc-stop-bar'),
-    古い右ペイン:!!document.querySelector('.sc-stop-detail')};
+    左:r(left)?Math.round(r(left).width):0,
+    左高:r(left)?Math.round(r(left).height):0,
+    カード:r(card)?Math.round(r(card).width):0,
+    左端:r(left)&&r(card)?r(left).left<r(card).left:null,
+    スクロール:list?list.scrollHeight>list.clientHeight+1:null,
+    古い帯:!!document.querySelector('.sc-stop-bar'),
+    古いチップ:!!document.querySelector('.sc-stop-cat')};
   });
-  rec('分類はチップで絞れる（「すべて」＋分類ごと）',
-      look.cats.length>=3&&/すべて/.test(look.cats[0]),JSON.stringify(look.cats));
-  rec('一覧は2列（窓いっぱいを使う）',look.列===2,`同じ高さに最大${look.列}枚`);
-  rec('決めるのは足元の1本の帯（左右2ペインはやめた）',
-      look.帯&&!look.古い右ペイン,JSON.stringify(look));
-  /* 分類チップを押すと、その分類だけになる。 */
-  const filt2=await page.evaluate(()=>{
-   const c=[...document.querySelectorAll('.sc-stop-cat')].find(x=>/保全/.test(x.textContent));
-   if(c)c.click();
-   return [...document.querySelectorAll('.sc-stop-group-title')].map(x=>x.textContent.replace(/\s+/g,' ').trim());
-  });
-  rec('分類チップを押すとその分類だけになる',
-      filt2.length===1&&/保全/.test(filt2[0]),JSON.stringify(filt2));
-  await page.evaluate(()=>{
-   const c=[...document.querySelectorAll('.sc-stop-cat')].find(x=>/すべて/.test(x.textContent));
-   if(c)c.click();
-  });
+  rec('停止内容の一覧は1列（列が窓の1/3なので2列に割らない）',
+      look.列===1,`同じ高さに最大${look.列}枚`);
+  rec('停止内容は一番左で、カードより左にある',look.左端===true,JSON.stringify(look));
+  rec('時間のカードは残りの2/3幅（左:カード ≒ 1:2）',
+      look.カード>look.左*1.6&&look.カード<look.左*2.4,`左${look.左}px / カード${look.カード}px`);
+  rec('一覧はスクロールしない（この設備の件数なら全部見える）',
+      look.スクロール===false,String(look.スクロール));
+  rec('古い形（足元の帯・分類チップ）は残っていない',
+      !look.古い帯&&!look.古いチップ,JSON.stringify(look));
+  /* 分類は**左の列の見出し**が持つ（チップの1段はやめた・§9.402）。 */
+  const cats2=await page.evaluate(()=>
+    [...document.querySelectorAll('.sc-stop-group-title')].map(x=>x.textContent.replace(/\s+/g,' ').trim()));
+  rec('分類は左の列の見出しが持つ（件数つき）',
+      cats2.length>=2&&cats2.every(t=>/件/.test(t)),JSON.stringify(cats2));
   /* **停止内容そのものの複製**（右クリック）。予定の行の複製とは別物。 */
   const dupTarget=await page.evaluate(n=>{
    const b=[...document.querySelectorAll('.sc-stop-button')].find(x=>x.textContent.includes(n));
@@ -405,7 +420,7 @@ async function cleanup(){
   const inSide=await page.evaluate(()=>({box:!!document.querySelector('#scSide #scStopButtons'),
     search:!!document.querySelector('#scSide #scStopSearch'),
     add:!!document.querySelector('#scSide #scStopNewToggle'),
-    where:!!document.querySelector('#scSide .sc-stop-bar')}));
+    where:!!document.querySelector('#scSide .sc-stop-card')}));
   rec('側パネルでも同じ道具が出る（実装は1つ）',
       inSide.box&&inSide.search&&inSide.add&&inSide.where,JSON.stringify(inSide));
 

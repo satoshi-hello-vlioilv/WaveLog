@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（663件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（672件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -570,8 +570,11 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
-| 設備停止の追加は**上＝一覧（2列）／下＝決める帯（1本）**。左右2ペインは§9.400で撤回 | `test_stopflow.js`・`test_scstop.js` | [§9.400](docs/decisions/9.400.md) |
-| 帯の時間は「− 数 ＋」の1組。**−＋は時間マスタの選択肢を送り**、間の分は打てば入る | `test_stopflow.js` | [§9.400](docs/decisions/9.400.md) |
+| 設備停止の追加は**左＝停止内容（全高・1列）／右上＝カード（2/3幅）／右下＝内訳の列＋いま入れた**。足元の帯は§9.402で撤回 | `test_stopflow.js`・`test_scstop.js` | [§9.402](docs/decisions/9.402.md) |
+| 時間は**目盛り**。顔ぶれは時間マスタの選択肢そのもの。無い分は「その他の分…」で打ち、**打った分は目盛りに1本足して**つまみを立てる | `test_stopflow.js` | [§9.402](docs/decisions/9.402.md) |
+| 設備名は**窓の題**が言う（カードの行き先には出さない）。入る位置と時刻はカードの1行 | `test_scstop.js` | [§9.402](docs/decisions/9.402.md) |
+| 入れたものは「いま入れた」の列に並び、**窓を閉じるまで取り消せる**（合計も出す）。外す道は`removeEntries()`の1本 | `test_stopflow.js` | [§9.402](docs/decisions/9.402.md) |
+| 内訳を持たない停止内容では**空の列を置かず「どこへ入るか」を出す**。無いことはカードの見出しが言う | `test_scstop.js` | [§9.402](docs/decisions/9.402.md) |
 | ICASコピーは**ルールが1本も無くても必ずつなぐ**（素のつなぎ方）。無いことを断る理由にしない | `test_lotcopy.js` | [§9.400](docs/decisions/9.400.md) |
 | 設備停止は「内容 →（内訳）→ 時間」の手順で入れる。窓は開かず一覧と入れ替える | `test_stopflow.js` | [§9.389](docs/decisions/9.389.md) |
 | 一覧の上端は動かさない。案内は一覧の**下**の「知らせの棚」（`#scNotices`）へ | `test_scbar.js` | [§9.397](docs/decisions/9.397.md) |
@@ -739,6 +742,8 @@
 | --- | --- | --- |
 | 色のリテラルは増やさない（上限は`tests/fixtures/color_baseline.json`）。トークンと同じ値は`var()`で書く | `test_csslint.py` | [§9.350](docs/decisions/9.350.md) |
 | 選択肢の札に添える印は**2つまで・短く**。溢れると名前のほうが切れる | `test_stopflow.js` | [§9.400](docs/decisions/9.400.md) |
+| 連続して押すボタンは**大きさより「いつも同じ場所」**。手応えは結果を字で返すほうが受け持つ（実測 66→36px） | `test_scstop.js` | [§9.402](docs/decisions/9.402.md) |
+| カードのラベル列は**固定幅で右揃え**（`auto`だと行ごとに値の左端がずれる） | `test_scstop.js` | [§9.402](docs/decisions/9.402.md) |
 | 出入りする物の見た目は変えてよいが、**場所は動かさない**（動かすなら`opacity`だけ） | `test_scbar.js` | [§9.397](docs/decisions/9.397.md) |
 | 選ばれた札の見た目は`90-state.css`の束ね規則1箇所。族ごとに同じ3行を書かない | `test_csslint.py` | [§9.353](docs/decisions/9.353.md) |
 | 色帯は「面」とセットのときだけ出す。面の無い帯は括弧に見え、列の罫線とも競合する | `test_density.js` | [§9.344](docs/decisions/9.344.md) |
@@ -810,6 +815,8 @@
 | `transition`を持つ値は当てた直後に読まない（遷移前の値が返る）。1回描かせてから「動き出したか」で見る | `test_bladeui.js` | [§9.386](docs/decisions/9.386.md) |
 | 断りを「〜でないこと」で判定しない。別の理由で止まっても素通りする——**出た窓の題**で見分ける | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
 | 触れて開く物は**本物のマウス移動**で辿る。`el.click()`は`mouseenter`の道を1度も通らない | `test_lotcopy.js` | [§9.398](docs/decisions/9.398.md) |
+| `new Date(null)`は1970年になる。**空は空のまま返す**（時刻が`00:00`と出る） | `test_stopflow.js` | [§9.402](docs/decisions/9.402.md) |
+| 楽観追加の仮IDは**サーバーの答えで書き換わる**。控えるのは行そのもの、IDは押した時点で読む | `test_stopflow.js` | [§9.402](docs/decisions/9.402.md) |
 | 窓の器は`#appConfirmModal`、閉じるのは`#closeAppConfirm`（`alertModal`は「やめる」を伏せる） | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
 | 網は控えを直に書き換えず**欄を打って**変える（直に書くと描き直しの配線を通らない） | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
 | テストが開く／取りに行く`static/js`の道は領域つきで実在するURL（`/static/js/…`）。取れた中身が短ければ落とす | `test_loadorder.py` | [§9.334](docs/decisions/9.334.md) |

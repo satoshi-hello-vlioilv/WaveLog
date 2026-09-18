@@ -73,56 +73,60 @@
    字そのものに入っている（同じことを2箇所に出さない・§CLAUDE 8）。 */
 .sc-stop-head{flex:0 0 auto;display:flex;flex-direction:column;gap:var(--gap-tight)}
 .sc-stop-search{height:var(--ctl-h-sm);font-size:var(--fs-sm)}
-/* ---------- 上＝一覧／下＝決める帯（§9.400、利用者が選んだ案B） ----------
-   §9.397で左右2ペインにしたが、**右ペインの半分を時間の札10枚が占めて**
-   いた（実測で4段に折り返し、スライダーはスクロールの外）。決めることは
-   内訳と時間の2つで、どちらも最初から入っている——いちばん広い場所を
-   いちばん触らないものに配っていた（§CLAUDE 1）。
+/* ---------- 左＝停止内容（全高）／右上＝カード／右下＝列（§9.402） ----------
+   利用者の指示「停止内容を上から下まで伸ばし、時間は2/3幅に縮小、停止内容は
+   一番左、クリックしたら既定で基本的には確定。目線導線も基本上げたまま」。
 
-   一覧を**窓いっぱいの2列**にし、決めることは**足元の1本の帯**へ。
-   一覧は9件なら折り返しもスクロールも無しで全部見える。 */
-.sc-stop-cats{display:flex;flex-wrap:wrap;gap:var(--gap-inline)}
-.sc-stop-cat{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
- border:1px solid var(--line-mid);border-radius:var(--radius-xs);background:var(--surface);
- font-size:var(--fs-micro);font-weight:700;color:var(--ink-2);cursor:pointer;white-space:nowrap}
-.sc-stop-cat:hover{border-color:var(--teal);background:var(--pale)}
-.sc-stop-cat em{font-style:normal;margin-left:var(--gap-hair);opacity:.75}
-.sc-stop-list{flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;
- gap:var(--space-2)}
-.sc-stop-group-title{display:flex;align-items:center;gap:var(--gap-tight);font-size:var(--fs-micro);font-weight:800;color:var(--muted);margin-bottom:3px}
-.sc-stop-group-count{margin-left:auto;color:var(--ink-soft);font-weight:700}
-/* **1列に積む**（§9.397）。以前は折り返す札の並びで、名前の長さごとに
-   左端がずれて「整列された印象」が出なかった（利用者の指摘）。
-   1列なら左端が1本にそろい、内訳の件数と見積も同じ位置で読める。 */
-/* **2列**（§9.400）。左右の分割をやめて一覧が窓いっぱいになったので、
-   1列のままだと6文字の名前に1600pxの器を与えることになる（§CLAUDE 11）。
-   左端は2本にそろう。狭い器（側パネル）では1列へ落とす。 */
-.sc-stop-buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
- gap:var(--gap-hair) var(--space-2)}
+   §9.400の「上＝一覧／下＝決める帯」をやめた理由は**目線**: 決める帯が
+   足元にあると、押すたびに視線が下まで落ちて一覧へ戻る。既定が入っている
+   以上ふつうは押すだけなので、**決める物は上に置いて、変えたいときだけ
+   下を見る**ほうが往復が少ない。
+   横は **1 : 2**（実測 262px : 524px）。左は9件がスクロール無しで全部見え、
+   右は目盛り10本が1つ46pxで並ぶ幅。 */
+.sc-stop-main{flex:1 1 auto;min-height:0;display:grid;gap:var(--space-2);min-width:0;
+ grid-template-columns:minmax(0,1fr) 2fr}
+.sc-stop-left{min-width:0;display:flex;flex-direction:column;border:1px solid var(--line);
+ border-radius:var(--radius-sm);background:var(--surface);overflow:hidden}
+.sc-stop-lh{flex:0 0 auto;display:flex;align-items:center;gap:var(--gap-tight);
+ padding:2px var(--space-2);background:var(--surface-2);
+ border-bottom:1px solid var(--line-soft);font-size:var(--fs-micro);font-weight:800;
+ color:var(--muted)}
+.sc-stop-lh em{font-style:normal;margin-left:auto;color:var(--ink-soft)}
+.sc-stop-left .sc-stop-search{flex:0 0 auto;margin:var(--gap-hair) var(--space-1)}
+.sc-stop-right{min-width:0;display:flex;flex-direction:column;gap:var(--space-2)}
+/* 狭い器（側パネル）では縦に積む。左右に割ると、どちらも中身より狭くなる。 */
 @container scstop (max-width: 46em){
- .sc-stop-buttons{grid-template-columns:minmax(0,1fr)}
+ .sc-stop-main{grid-template-columns:minmax(0,1fr)}
 }
-/* 1つの停止理由。**名前は左・添え物は右**（1行）。名前が長ければ名前が
-   縮む（添え物は短いので、そちらを縮めても読めなくなるだけ）。 */
-/* 余白と角は`10-roles.css`が持つ（同じ宣言を2ファイルに書かない・§9.324 R6）。 */
+.sc-stop-list{flex:1 1 auto;min-height:0;overflow:auto;padding:0 var(--gap-hair) var(--gap-hair);
+ display:flex;flex-direction:column;gap:var(--space-1)}
+.sc-stop-group-title{display:flex;align-items:center;gap:var(--gap-tight);
+ padding:2px var(--space-2) 0;font-size:var(--fs-micro);font-weight:800;color:var(--muted);
+ margin-bottom:1px}
+.sc-stop-group-count{margin-left:auto;color:var(--ink-soft);font-weight:700}
+/* **1列**（§9.402）。列が窓の1/3幅になったので、2列に割ると1マスが
+   120pxになり名前が切れる。1列なら左端が1本にそろい、9件が全部見える。 */
+.sc-stop-buttons{display:flex;flex-direction:column;gap:1px}
 .sc-stop-button{display:flex;flex-direction:row;align-items:center;gap:var(--gap-inline);
  width:100%;min-height:var(--ctl-h-sm);
  border:1px solid var(--line);background:var(--surface);
  cursor:grab;text-align:left}
 .sc-stop-button b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
  font-size:var(--fs-sm);font-weight:800;color:var(--ink)}
-.sc-stop-meta{flex:none;display:inline-flex;align-items:center;gap:var(--gap-tight)}
+.sc-stop-mine{flex:none;height:18px;padding:0 4px;border-radius:var(--radius-xs);
+ background:var(--teal-dark);color:var(--surface);
+ font-size:var(--fs-micro);font-weight:800;display:inline-flex;align-items:center}
+.sc-stop-button.is-on .sc-stop-mine{background:var(--surface);color:var(--teal-dark)}
+.sc-stop-button .arw{flex:none;color:var(--ink-soft)}
+.sc-stop-button.is-on .arw{color:inherit}
 .sc-stop-button small{font-size:var(--fs-micro);color:var(--muted);white-space:nowrap}
-/* 内訳を持つことは**一覧から読める**（§9.389 の一覧の「内訳」列と同じ趣旨）
-   ——持っていると分からないと、右で段が増える理由に気づけない。 */
-.sc-stop-subs{padding:0 var(--space-1);font-style:normal;font-size:var(--fs-micro);
- font-weight:800;border-radius:var(--radius-xs);background:var(--surface-2);color:var(--ink-3)}
+/* 内訳を持つことは**「›」の1文字**で言う（§9.402）。列が262pxなので、
+   「内訳3」の札を足すと名前のほうが切れる（§CLAUDE 11）。 */
 .sc-stop-button:hover{border-color:var(--teal);background:var(--pale)}
 /* いま右に出している行の見た目は**`90-state.css`の束ね規則**が持つ（§9.353）
    ——「選んだ札のほうが濃い」を族ごとに書かない。ここは添え物の色だけ、
    濃い面の上で読めるように上書きする。 */
-.sc-stop-button.is-on small,.sc-stop-button.is-on .sc-stop-subs{color:inherit}
-.sc-stop-button.is-on .sc-stop-subs{background:var(--teal-dark)}
+.sc-stop-button.is-on small{color:inherit}
 .sc-stop-button.is-new{border-color:var(--success);background:var(--success-bg)}
 /* 予定に入れられないもの。**理由を文字で書く**（§4。押せるのに何も起きない
    ボタンを残さない）。 */
@@ -563,45 +567,132 @@
   white-space:nowrap;line-height:1.6}
 .sc-nw-link:hover{background:var(--teal);color:#fff}
 .sp-nw-time{margin-left:0.6mm;font-weight:600;opacity:.75}
-/* ---------- 足元の「決める帯」（§9.400、利用者が選んだ案B） ----------
-   決めることは内訳と時間の2つで、どちらも最初から入っている。**1行で足りる。**
-   横並びはそのまま決める順（名前 › 内訳 › 内訳 · 時間 → 追加）なので、
-   左から右へ読めば入るものが文になる（§CLAUDE 14）。
-   **追加は右端の大きな的**で、入る先まで字に入っている（§CLAUDE 8）。 */
-.sc-stop-bar{flex:0 0 auto;margin-top:var(--space-2);padding:var(--space-2) var(--space-3);
+/* ---------- 右上のカード（§9.402、利用者が選んだ形） ----------
+   3行で「入るもの＋追加／時間＋目盛り／行き先＋続けて入れる」。
+   **ラベルは4.2emの固定幅で右揃え**——`auto`だと行ごとに値の左端がずれ、
+   視線が列を追えない（§CLAUDE 9）。 */
+.sc-stop-card{flex:0 0 auto;min-width:0}
+.sc-sc{display:grid;gap:var(--gap-tight);padding:var(--space-2) var(--space-3);
  border:1px solid var(--teal);border-radius:var(--radius-sm);background:var(--pale)}
-.sc-sb{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;min-width:0}
-.sc-sb-what{flex:none;max-width:var(--w-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
- font-size:var(--fs-base);font-weight:800;color:var(--nav)}
-.sc-sb.is-empty .sc-sb-what{font-size:var(--fs-sm);color:var(--ink-2);max-width:none}
-.sc-sb-sep{flex:none;font-weight:800;color:var(--teal-dark)}
-.sc-sb-sel{height:var(--ctl-h-sm);max-width:var(--w-lg);font-size:var(--fs-sm)}
-/* 数の器は操業データと同じ`mm-num`を使い回す（§9.247）。単位は器の外へ
-   出す——欄の中に入れると、打つたびに単位ごと消したり残したりになる。 */
-.sc-sb-num{flex:none}
-.sc-sb-min{width:var(--w-xs);text-align:center}
-.sc-sb-unit{flex:none;margin-left:calc(var(--gap-inline) * -1);
- font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
-/* **追加は必ず自分の1行**（§9.400）。入る先まで字に入るので長さが行ごとに
-   変わり、同じ行へ置くと「決める物」の並びが名前の長さで動く（実測で
-   「選び直す」が全幅ボタンの右へ弾き出された）。`flex:1 0 100%`で1行を取る
-   ——次にすることが必ず1つだけ、同じ場所に出る（§CLAUDE 2）。 */
-.sc-sb-go{flex:1 0 100%;min-width:0;height:var(--ctl-h-md);padding:0 var(--space-3);
+.sc-sc-row{display:flex;align-items:center;gap:var(--space-2);min-width:0;
+ min-height:var(--ctl-h-md)}
+.sc-sc-k{flex:none;width:4.2em;text-align:right;white-space:nowrap;
+ font-size:var(--fs-micro);font-weight:800;color:var(--ink-3)}
+.sc-sc-what{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+ font-size:var(--fs-lg);font-weight:800;color:var(--nav);line-height:1.2}
+.sc-sc-what small{margin-left:var(--gap-tight);font-size:var(--fs-micro);font-weight:700;
+ color:var(--ink-3)}
+.sc-sc.is-empty .sc-sc-what{font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
+.sc-sc-val{flex:none;font-size:var(--fs-xl);font-weight:800;color:var(--teal-dark);
+ line-height:1;white-space:nowrap;font-variant-numeric:tabular-nums}
+/* **実行ボタンは114×36px**（§9.402）。連続して押す物なので、大きさより
+   「いつも同じ場所にある」ことが効く——手応えは「いま入れた」の列が返す。 */
+.sc-sc-go{flex:none;height:36px;padding:0 var(--space-3);
  border:1px solid var(--teal-dark);border-radius:var(--radius-sm);background:var(--teal-dark);
- color:var(--surface);font-size:var(--fs-sm);font-weight:800;cursor:pointer;
- overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sc-sb-go:disabled{border-color:var(--line-mid);background:var(--surface-2);
+ color:var(--surface);font-size:var(--fs-base);font-weight:800;cursor:pointer;
+ white-space:nowrap;max-width:var(--w-xl);overflow:hidden;text-overflow:ellipsis}
+.sc-sc-go:disabled{border-color:var(--line-mid);background:var(--surface-2);
  color:var(--muted);cursor:not-allowed}
-/* 「選び直す」は**1行目の右端**（`margin-left:auto`）。やめる操作なので
-   主要動線（追加）と同じ行に並べない（§CLAUDE 5）。 */
-.sc-sb-clear{flex:none;margin-left:auto;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-xs);
+.sc-sc-other{flex:none;height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
  border:1px solid var(--line-mid);border-radius:var(--radius-xs);background:var(--surface);
- font-size:var(--fs-micro);font-weight:700;color:var(--ink-2);cursor:pointer}
-.sc-sb-clear:hover{border-color:var(--teal);background:var(--surface);color:var(--teal-dark)}
-/* 出どころの1行は**帯の中の最後**（§CLAUDE 6）。折り返す横並びの器へ
-   1行ぶんの物を入れるので`flex:1 0 100%`。 */
-.sc-sb-note{flex:1 0 100%;font-size:var(--fs-micro);color:var(--ink-3);line-height:1.5}
-.sc-sb-note b{color:var(--teal-dark)}
+ font-size:var(--fs-micro);font-weight:700;color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.sc-sc-other{color:var(--teal-dark)}
+.sc-sc-other:hover{border-color:var(--teal);color:var(--teal-dark)}
+/* 行き先＝先回りの1行。**出どころも警告も同じ位置**に出す（場所は動かさない
+   ・§9.397）。 */
+.sc-sc-where{flex:1;min-width:0;display:flex;align-items:center;gap:var(--gap-tight);
+ overflow:hidden;white-space:nowrap;font-size:var(--fs-micro);color:var(--ink-3)}
+.sc-sc-where b{color:var(--teal-dark)}
+.sc-sc-where>span{overflow:hidden;text-overflow:ellipsis}
+.sc-sc-arw{flex:none;color:var(--ink-soft)}
+.sc-sc-where.is-warn,.sc-sc-where.is-warn b{color:var(--warn-fg)}
+.sc-sc-warn{flex:none;padding:1px var(--space-1);border-radius:var(--radius-xs);
+ background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-fg);
+ font-size:var(--fs-micro);font-weight:800;white-space:nowrap}
+.sc-sc-keep{flex:none;display:flex;align-items:center;gap:var(--gap-hair);
+ font-size:var(--fs-micro);font-weight:700;color:var(--ink-2);white-space:nowrap;cursor:pointer}
+.sc-sc-keep input{width:14px;height:14px;accent-color:var(--teal-dark)}
+/* ---------- 時間の目盛り（§9.402） ----------
+   目盛りの顔ぶれは**設備停止時間マスタの選択肢そのもの**（§9.389）。
+   押しても掴んでも決まる。レールは**最初と最後の目盛りの中心**を結ぶので、
+   半マスぶん（`50% / 本数`）を両端から空ける。 */
+.sc-sc-scale{position:relative;flex:1;min-width:var(--w-lg);
+ display:grid;grid-template-columns:repeat(var(--sc-ticks),minmax(0,1fr));padding-top:9px}
+.sc-sc-rail{position:absolute;left:calc(50% / var(--sc-ticks));
+ right:calc(50% / var(--sc-ticks));top:7px;height:4px;border-radius:var(--radius-pill);
+ background:var(--line-mid)}
+.sc-sc-on{position:absolute;left:0;top:0;height:100%;border-radius:var(--radius-pill);background:var(--teal)}
+.sc-sc-tick{position:relative;display:flex;flex-direction:column;align-items:center;gap:1px;
+ padding-top:9px;border:0;background:transparent;cursor:pointer}
+.sc-sc-tick i{position:absolute;top:-6px;width:2px;height:9px;border-radius:var(--radius-pill);
+ background:var(--line-mid)}
+.sc-sc-tick span{font-size:var(--fs-micro);font-weight:700;color:var(--ink-3);line-height:1.2}
+.sc-sc-tick:hover span{color:var(--teal-dark)}
+.sc-sc-tick.is-on i{background:var(--teal-dark)}
+.sc-sc-tick.is-on span{color:var(--teal-dark);font-weight:800}
+.sc-sc-tick.is-free span{font-style:italic}
+.sc-sc-thumb{position:absolute;top:-11px;left:50%;width:18px;height:18px;margin-left:-9px;
+ border:3px solid var(--teal-dark);border-radius:var(--radius-pill);background:var(--surface);
+ box-shadow:0 1px 3px color-mix(in srgb,var(--nav) 30%,transparent);pointer-events:none}
+.sc-sc-none{flex:1;min-width:0;font-size:var(--fs-micro);color:var(--muted)}
+/* ---------- 右下の列（内訳／どこへ入るか／いま入れた・§9.402） ---------- */
+.sc-stop-cols{flex:1 1 auto;min-height:0;display:grid;gap:var(--space-2);min-width:0;
+ grid-template-columns:repeat(3,minmax(0,1fr))}
+.sc-stop-cols[data-cols="1"]{grid-template-columns:minmax(0,1fr)}
+.sc-stop-cols[data-cols="2"]{grid-template-columns:repeat(2,minmax(0,1fr))}
+.sc-sl{min-width:0;display:flex;flex-direction:column;border:1px solid var(--line);
+ border-radius:var(--radius-sm);background:var(--surface);overflow:hidden}
+.sc-sl-h{flex:0 0 auto;display:flex;align-items:center;gap:var(--gap-tight);
+ padding:3px var(--space-2);background:var(--surface-2);
+ border-bottom:1px solid var(--line-soft);font-size:var(--fs-micro);font-weight:800;
+ color:var(--muted);min-width:0}
+.sc-sl-h b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+ font-weight:800;color:var(--muted)}
+.sc-sl-h em{flex:none;font-style:normal;color:var(--ink-soft)}
+.sc-sl-b{flex:1;min-height:0;overflow:auto;padding:var(--gap-hair);
+ display:flex;flex-direction:column;gap:1px}
+.sc-sl-f{flex:0 0 auto;display:flex;align-items:center;gap:var(--gap-tight);
+ padding:3px var(--space-2);border-top:1px solid var(--line-soft);background:var(--surface-2);
+ font-size:var(--fs-micro);color:var(--muted);min-width:0;overflow:hidden;white-space:nowrap}
+.sc-sl-f b{color:var(--teal-dark);font-weight:800}
+.sc-sl-cell{display:flex;align-items:center;gap:var(--gap-tight);width:100%;height:30px;
+ padding:0 var(--space-2);border:0;border-radius:var(--radius-xs);background:transparent;
+ font-size:var(--fs-sm);color:var(--ink-2);cursor:pointer;text-align:left}
+.sc-sl-cell b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+ font-weight:600}
+.sc-sl-cell small{flex:none;font-size:var(--fs-micro);color:var(--muted);
+ font-variant-numeric:tabular-nums}
+.sc-sl-cell .arw{flex:none;color:var(--ink-soft)}
+.sc-sl-cell:hover{background:var(--surface-2);transform:translateY(-1px)}
+.sc-sl-cell.is-on small,.sc-sl-cell.is-on .arw{color:inherit}
+.sc-sl-cell.is-on b{font-weight:800}
+.sc-sl-def{flex:none;padding:0 3px;border-radius:var(--radius-xs);background:var(--pale);
+ color:var(--teal-dark);font-size:var(--fs-micro);font-weight:800}
+.sc-sl-cell.is-on .sc-sl-def{background:var(--surface)}
+/* 空の器は「ここに何が出るか」だけを言う（§9.343）。 */
+.sc-sl-empty{margin:auto;padding:var(--space-3);text-align:center;
+ font-size:var(--fs-micro);color:var(--muted);line-height:1.7}
+.sc-sl-empty b{display:block;margin-bottom:2px;font-size:var(--fs-sm);color:var(--ink-3)}
+/* 入れた1件／予定の先回り。**予定の行と同じ地の色**（左に3pxの線）で、
+   「これは予定に入った物だ」を見た目でも言う（§9.374）。 */
+.sc-sl-hit,.sc-sl-prev{display:grid;gap:0;min-width:0;
+ padding:var(--space-1) var(--space-2);border-radius:var(--radius-xs);
+ background:var(--pale);border-left:3px solid var(--teal)}
+.sc-sl-prev{background:var(--surface-2);border-left-color:var(--line-mid)}
+.sc-sl-prev.is-new{background:var(--pale);border:1px dashed var(--teal);
+ border-left:3px solid var(--teal)}
+.sc-sl-hit b,.sc-sl-prev b{font-size:var(--fs-sm);font-weight:700;color:var(--nav);
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-sl-hit-m,.sc-sl-prev-m{display:flex;align-items:center;gap:var(--gap-tight);min-width:0;
+ font-size:var(--fs-micro);color:var(--ink-3);font-variant-numeric:tabular-nums}
+.sc-sl-hit-m i,.sc-sl-prev-m i{font-style:normal;font-weight:800;color:var(--teal-dark)}
+/* 「取り消す」は主要動線ではないので**小さく**。ただし押せることは
+   枠で言う（§CLAUDE 4）。 */
+.sc-sl-undo{margin-left:auto;flex:none;height:18px;padding:0 4px;
+ border:1px solid var(--line-mid);border-radius:var(--radius-xs);
+ background:var(--surface);font-size:var(--fs-micro);font-weight:700;color:var(--ink-3);
+ cursor:pointer;white-space:nowrap}
+.sc-sl-undo:hover{border-color:var(--warn-border);color:var(--warn-fg)}
 .sc-nw-sub{margin-left:var(--space-1);padding:0 var(--space-1);
  border:1px solid var(--line-mid);border-radius:var(--radius-xs);
  background:var(--surface-2);color:var(--ink-2);
