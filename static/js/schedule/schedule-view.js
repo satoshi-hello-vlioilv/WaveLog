@@ -3822,6 +3822,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* 読み込みの内訳(§9.198)。サーバーが測った値をそのまま持つ。 */
   scLastTimings=r.timings?Object.assign({},r.timings):null;
   scState.entries=r.entries||[];scState.anchor=r.anchor;scState.warnings=r.warnings||[];
+  /* 予定を取り直したら**設備停止の追加パネルも描き直す**（§9.402の追補）。
+     「いま入れた」の列は`scState.entries`を見て「まだ生きているか」と
+     「何時に入ったか」を出すので、ここで描き直さないと**差し替わる前の
+     時刻と件数のまま**残る（器が開いているときだけ）。 */
+  if(document.getElementById('scStopCard'))renderStopPane();
   scState.anchorRounded=r.anchorRounded||null;
   /* さかのぼりの起点は**サーバーの答えが正**(§9.366)。控えから描くときも
      そのときの答えを一緒に持っているので、同じ位置で切れる。 */
@@ -8849,7 +8854,16 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  /* 「いま入れた」。**この窓を閉じるまで取り消せる**——押すのが怖くなくなる
     のが本当の効き目（§CLAUDE 5の裏返し）。 */
  function stopAddedHtml(){
-  const live=(scState.stopAdded||[]).filter(a=>(scState.entries||[]).includes(a.entry));
+  /* **生きているかはIDで見る**（§9.402の追補）。予定は書込のたびに
+     サーバーから取り直す（§9.185）ので、`scState.entries`は**別の物へ
+     丸ごと差し替わる**——参照の一致（`includes`）で見ると、入れた直後に
+     「いま入れた」が空になる。IDは`resolveOptimisticEntry`が仮IDを
+     本物へ書き換えるので、控えの行を通して読めば追いつく。 */
+  const ids=new Set((scState.entries||[]).map(x=>String(x.id)));
+  /* 時刻は**取り直した行**から読む（控えの行は差し替え前の物になり得る）。 */
+  const liveStart=a=>((scState.entries||[])
+    .find(x=>String(x.id)===String(a.entry.id))||{}).plannedStart||null;
+  const live=(scState.stopAdded||[]).filter(a=>a&&a.entry&&ids.has(String(a.entry.id)));
   scState.stopAdded=live;
   const total=live.reduce((n,a)=>n+(Number(a.minutes)||0),0);
   if(!live.length){
@@ -8860,7 +8874,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   }
   const inner=live.map((a,i)=>`<div class="sc-sl-hit">`
    +`<b title="${esc(a.what)}">${esc(a.what)}</b>`
-   +`<span class="sc-sl-hit-m"><i>${esc(stopHHMM(a.entry.plannedStart)||stopHHMM(a.at)||'—:—')}</i>`
+   +`<span class="sc-sl-hit-m"><i>${esc(stopHHMM(liveStart(a))||stopHHMM(a.at)||'—:—')}</i>`
    +`${a.minutes==null?'':esc(WL.duration.text(a.minutes))}`
    +`<button type="button" class="sc-sl-undo" data-undo="${i}"`
    +` title="この1件を予定から外します">取り消す</button></span></div>`).join('');
@@ -10244,6 +10258,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      網が「既定を付けたら最初から選ばれる」を確かめるのにも使う——画面の
      字を数えるのではなく、**同じ口を通して取り直してから**見る。 */
   reloadStopReasons:()=>loadStopReasons(),
+  /* 予定を取り直す（§9.402の追補）。書込のたびに`scState.entries`は
+     **別の物へ丸ごと差し替わる**ので、「いま入れた」が参照ではなくIDで
+     生きているかを見ていることを、網が**同じ口を通して**確かめられる。 */
+  reloadPlan:()=>loadPlan(true),
   /* 元データの取り込み（§9.375）の状態。**答えは1箇所**——網も報告も
      ここを読む（画面の字を数えると、言い回しを直すたびに嘘になる）。 */
   sourceSync:()=>({mode:scSourceSyncMode,keys:sourceSyncKeys(),

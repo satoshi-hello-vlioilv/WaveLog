@@ -27,6 +27,8 @@ const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_m
 const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
+/* 待ちは「時間」でなく「条件」で置く（§9.347、tests/lib/wait.js）。 */
+const W=require('./lib/wait');
 
 let b=null;
 (async()=>{
@@ -110,7 +112,10 @@ let b=null;
   await page.click('#planSelectAdd');
   await page.waitForFunction(n=>[...document.querySelectorAll('.sc-row-line')]
     .filter(r=>!/^tmp-/.test(r.dataset.id)).length>=n,had.size+3,{timeout:30000});
-  await page.waitForTimeout(1500);
+  /* **仮IDが1つも残っていない**まで待つ（§9.347。固定待ちは速い画面では
+     無駄に待ち、遅い画面では足りない）。 */
+  await page.waitForFunction(()=>![...document.querySelectorAll('.sc-row-line')]
+    .some(r=>/^tmp-/.test(r.dataset.id)),null,{timeout:30000});
   const fresh=await page.evaluate(()=>[...document.querySelectorAll('.sc-row-line')].map(r=>r.dataset.id));
   fresh.filter(id=>!had.has(id)&&!/^tmp-/.test(id)).forEach(id=>made.push(id));
   rec('まとめて投入した3件が予定へ入る',made.length===3,made.join('/'));
@@ -288,8 +293,8 @@ let b=null;
   await page.click('#appConfirmOk');
   await page.waitForFunction(ids=>ids.every(id=>!document.querySelector('.sc-row-line[data-id="'+id+'"]')),
     made,{timeout:15000});
-  await page.waitForTimeout(2500);
-  const left=await planIds();
+  /* サーバーの答えが条件を満たすまで取り直す（§9.347の`poll`）。 */
+  const left=await W.poll(planIds,ids=>made.every(id=>!ids.includes(id)),15000);
   rec('落とすとサーバーからもまとめて消える',made.every(id=>!left.includes(id)),
       `残り: ${made.filter(id=>left.includes(id)).join('/')||'なし'}`);
 
@@ -317,7 +322,8 @@ let b=null;
   await page.click('#planSelectAdd');
   await page.waitForFunction(n=>[...document.querySelectorAll('.sc-row-line')]
     .filter(r=>!/^tmp-/.test(r.dataset.id)).length>=n,had2.size+2,{timeout:30000});
-  await page.waitForTimeout(1500);
+  await page.waitForFunction(()=>![...document.querySelectorAll('.sc-row-line')]
+    .some(r=>/^tmp-/.test(r.dataset.id)),null,{timeout:30000});
   const del2=(await page.evaluate(()=>[...document.querySelectorAll('.sc-row-line')].map(r=>r.dataset.id)))
     .filter(id=>!had2.has(id)&&!/^tmp-/.test(id));
   del2.forEach(id=>made.push(id));
@@ -346,8 +352,7 @@ let b=null;
   await page.click('#appConfirmOk');
   await page.waitForFunction(ids=>ids.every(id=>!document.querySelector('.sc-row-line[data-id="'+id+'"]')),
     del2,{timeout:15000});
-  await page.waitForTimeout(2000);
-  const left2=await planIds();
+  const left2=await W.poll(planIds,ids=>del2.every(id=>!ids.includes(id)),15000);
   rec('Deleteでサーバーからも消える',del2.every(id=>!left2.includes(id)),
       `残り: ${del2.filter(id=>left2.includes(id)).join('/')||'なし'}`);
   /* 1件も選んでいなければ何も起きない（押しても何も起きない鍵にしない・§4）。 */

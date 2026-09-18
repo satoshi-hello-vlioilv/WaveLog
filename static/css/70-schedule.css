@@ -602,8 +602,8 @@
    ・§9.397）。 */
 .sc-sc-where{flex:1;min-width:0;display:flex;align-items:center;gap:var(--gap-tight);
  overflow:hidden;white-space:nowrap;font-size:var(--fs-micro);color:var(--ink-3)}
-.sc-sc-where b{color:var(--teal-dark)}
-.sc-sc-where>span{overflow:hidden;text-overflow:ellipsis}
+.sc-sc-where b{flex:none;color:var(--teal-dark)}
+.sc-sc-where>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .sc-sc-arw{flex:none;color:var(--ink-soft)}
 .sc-sc-where.is-warn,.sc-sc-where.is-warn b{color:var(--warn-fg)}
 .sc-sc-warn{flex:none;padding:1px var(--space-1);border-radius:var(--radius-xs);

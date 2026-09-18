@@ -303,6 +303,24 @@ H.run('test_stopflow: 設備停止を入れる画面（§9.397）',async({page,r
      added8.still===true,String(added8.still));
  rec('左の一覧にも「この窓で入れた件数」が字で出る（§CLAUDE 3）',
      added8.mine==='1件',added8.mine);
+ /* **予定を取り直しても控えは残る**（§9.402の追補）。書込のたびに
+    `scState.entries`は**別の物へ丸ごと差し替わる**ので、参照の一致で
+    見ていると入れた直後に「いま入れた」が空になる（実際に踏んだ）。
+    取り直しを明示的に起こしてから、まだ並んでいることを見る。 */
+ /* **取り直しが終わるまで待ってから見る**（`page.evaluate`は返った
+    Promiseを待つ）。待たずに数えると、差し替わる前の画面を見て素通りする
+    ——実際に欠陥注入で素通りした。 */
+ const swapped=await page.evaluate(async()=>{
+  const before=(WL.scheduleView.entries()||[])[0];
+  await WL.scheduleView.reloadPlan();
+  const after=(WL.scheduleView.entries()||[])[0];
+  return {差し替わった:!!before&&!!after&&before!==after,
+    件数:document.querySelectorAll('.sc-sl-hit').length};
+ });
+ rec('予定の取り直しで行そのものが差し替わっている（この網の前提）',
+     swapped.差し替わった===true,JSON.stringify(swapped));
+ rec('予定を取り直しても「いま入れた」は残る（参照でなくIDで見る）',
+     swapped.件数===1,`${swapped.件数}件`);
  /* **取り消しは`removeEntries()`の1本**（§9.399）。1件だけなので窓は出ない。 */
  await page.waitForFunction(()=>!(WL.scheduleView.entries()||[])
    .some(e=>e.kind==='設備停止'&&e.__pending),null,{timeout:20000});

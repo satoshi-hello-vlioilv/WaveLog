@@ -247,7 +247,9 @@ let b=null;
   if(subBox.other){
    await page.mouse.move(subBox.other.x,subBox.other.y,{steps:6});
    await page.waitForFunction(()=>!document.querySelector('.sc-row-submenu'),
-     null,{timeout:4000}).catch(()=>{});
+     null,{timeout:4000})
+    .catch(e=>console.log('子が閉じるのを待てなかった（次のrecが本当のことを言う）: '
+      +e.message.slice(0,40)));
    rec('別の項目に留まれば子は閉じる（居座らない）',
        await page.evaluate(()=>!document.querySelector('.sc-row-submenu')));
   }
