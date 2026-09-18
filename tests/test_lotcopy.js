@@ -19,6 +19,10 @@
        何文字でも書けて、**空白だけ**でも構わない。
     4. **右クリックに「ICASコピー」があり、入れ子のメニューが開く**。
        親は押せる（押したらコピー）——押しても何も起きない見出しにしない。
+    4b. **子へカーソルを移しても消えない**（§9.398、利用者の報告）。
+       子は`document.body`直下なので、親の項目の上を斜めに横切ることが
+       ある——**通り過ぎただけでは閉じない**。別の項目に留まれば閉じる
+       （開きっぱなしで居座らせない）。
     5. **設定は専用モーダルで、見本が出る**。触ると見本がその場で変わる。
     6. **ルールは複数持て、消せる**。「触れない既定」を作らない（§9.367）。
     7. **本当にクリップボードへ入る**。
@@ -152,6 +156,53 @@ let b=null;
   });
   rec('入れ子のメニューが親に重ならない', gap.ok, JSON.stringify(gap));
   rec('入れ子のメニューが画面からはみ出さない', gap.inView, JSON.stringify(gap));
+
+  /* ---- 4b. 子へカーソルを移しても消えない（§9.398、利用者の報告） ----
+     「入れ子構造のメニューの子側にカーソルを移した瞬間消えるので設定が
+      できません」
+
+     **本物のマウスで動かすこと。** `el.click()`や`page.evaluate`の合成
+     クリックは**カーソルを1pxも動かさない**ので、`mouseenter`の筋道を
+     一度も通らない——この網は元からあったのに、**その通り道だけを一度も
+     見ていなかった**（直す前でも全部PASSした）。§9.220 2② と同じ教訓。 */
+  const subBox=await page.evaluate(()=>{
+   const sub=document.querySelector('.sc-row-submenu');
+   const bs=[...sub.querySelectorAll('button')];
+   const mid=el=>{const r=el.getBoundingClientRect();
+     return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}};
+   const own=document.querySelector('.sc-row-menu .chm-has-sub').getBoundingClientRect();
+   const others=[...document.querySelectorAll('.sc-row-menu:not(.sc-row-submenu) button')]
+     .filter(b=>!b.classList.contains('chm-has-sub')&&!b.disabled);
+   return {first:mid(bs[0]),last:mid(bs[bs.length-1]),
+           own:{x:Math.round(own.left+20),y:Math.round(own.top+own.height/2)},
+           other:others.length?mid(others[others.length-1]):null};
+  });
+  await page.mouse.move(subBox.first.x,subBox.first.y,{steps:12});
+  await settle();
+  rec('子の1つ目へカーソルを移しても消えない',
+      await page.evaluate(()=>!!document.querySelector('.sc-row-submenu')));
+  await page.mouse.move(subBox.last.x,subBox.last.y,{steps:12});
+  await settle();
+  rec('いちばん下（コピーの設定…）まで下ろしても消えない',
+      await page.evaluate(()=>!!document.querySelector('.sc-row-submenu')));
+  /* 親の別項目の上を**斜めに一気に**横切る筋道（実際の使い方）。 */
+  await page.mouse.move(subBox.own.x,subBox.own.y,{steps:4});
+  await page.mouse.move(subBox.last.x,subBox.last.y,{steps:24});
+  await settle();
+  rec('親の別項目の上を斜めに横切っても消えない',
+      await page.evaluate(()=>!!document.querySelector('.sc-row-submenu')));
+  /* **居座らせない**——別の項目に留まれば閉じる（開きっぱなしは、押した
+     つもりの無い子を押せる状態を残す）。 */
+  if(subBox.other){
+   await page.mouse.move(subBox.other.x,subBox.other.y,{steps:6});
+   await page.waitForFunction(()=>!document.querySelector('.sc-row-submenu'),
+     null,{timeout:4000}).catch(()=>{});
+   rec('別の項目に留まれば子は閉じる（居座らない）',
+       await page.evaluate(()=>!document.querySelector('.sc-row-submenu')));
+  }
+  /* 次の節のために開き直す。 */
+  await page.hover('.sc-row-menu .chm-has-sub');
+  await page.waitForSelector('.sc-row-submenu',{timeout:8000});
 
   /* ---- 7. 押したら本当にクリップボードへ入る ----------------------- */
   await page.click('.sc-row-menu .chm-has-sub');

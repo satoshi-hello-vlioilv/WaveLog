@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（649件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（651件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -703,7 +703,7 @@
 | 紙に出すのは「帳票だけの1枚もの」 | `test_rpprint.js` | [§9.244](docs/decisions/9.244.md) |
 | 帳票ブロックの中身はマトリクスで並べられる | `test_blockbuild.js` | [§9.245](docs/decisions/9.245.md) |
 
-### 画面の土台（13件）
+### 画面の土台（14件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -714,6 +714,7 @@
 | 窓は`confirmModal`／`alertModal`／`promptModal`の3つだけ。素の`alert`/`confirm`/`prompt`は呼ばない | `test_patchlint.py`・`test_modalkeep.js` | [§9.342](docs/decisions/9.342.md) |
 | 窓は1枚しかない。窓の中から窓を開かない（名前を直すのはその場、消すのは行の中で2手） | `test_lotcopy.js` | [§9.368](docs/decisions/9.368.md) |
 | メニューの入れ子は本体へ足す。1項目のHTMLと配線は`rowMenuItemsHtml`/`bindRowMenuItems`の1箇所 | `test_lotcopy.js` | [§9.368](docs/decisions/9.368.md) |
+| 入れ子のメニューを閉じるのは「別の項目に留まったとき」だけ。子の中では閉じない | `test_lotcopy.js` | [§9.398](docs/decisions/9.398.md) |
 | 画面の`bodyClass`は自分の`exit`で外す（`enterView`は付けるだけ） | `test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
 | `window.*`への新規公開は名前空間経由 | `test_globallint.py` | [決まり](docs/decisions/rules-misc.md) |
 | 画面のJSは領域フォルダ。綴りは1つ | `test_loadorder.py` | [§9.334](docs/decisions/9.334.md) |
@@ -774,7 +775,7 @@
 | 「何で選ばせるか」と「どう見えるか」は別の軸 | — | [§9.223](docs/decisions/9.223.md) |
 | 公差外・基準外は確認カードの色で気づかせる。NGの記録はその行の中 | `test_ngcard.js` | [§9.242](docs/decisions/9.242.md) |
 
-### 検証（テスト）（37件）
+### 検証（テスト）（38件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -795,6 +796,7 @@
 | `offsetParent`で「見えているか」を測らない。`position:fixed`と未組み立ての両方で`null`になる | — | [§9.346](docs/decisions/9.346.md) |
 | `transition`を持つ値は当てた直後に読まない（遷移前の値が返る）。1回描かせてから「動き出したか」で見る | `test_bladeui.js` | [§9.386](docs/decisions/9.386.md) |
 | 断りを「〜でないこと」で判定しない。別の理由で止まっても素通りする——**出た窓の題**で見分ける | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
+| 触れて開く物は**本物のマウス移動**で辿る。`el.click()`は`mouseenter`の道を1度も通らない | `test_lotcopy.js` | [§9.398](docs/decisions/9.398.md) |
 | 窓の器は`#appConfirmModal`、閉じるのは`#closeAppConfirm`（`alertModal`は「やめる」を伏せる） | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
 | 網は控えを直に書き換えず**欄を打って**変える（直に書くと描き直しの配線を通らない） | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
 | テストが開く／取りに行く`static/js`の道は領域つきで実在するURL（`/static/js/…`）。取れた中身が短ければ落とす | `test_loadorder.py` | [§9.334](docs/decisions/9.334.md) |

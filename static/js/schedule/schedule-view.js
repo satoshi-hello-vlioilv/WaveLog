@@ -5637,9 +5637,26 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     下へ離す**（§5。「完了」の隣に「削除」を置かない）。
     見た目は見出しの右クリックと同じ`.col-head-menu`を使い回す
     ——2つの流儀を覚えさせない。 */
- let scRowMenuEl=null,scRowSubEl=null;
- function closeRowSubMenu(){if(scRowSubEl){scRowSubEl.remove();scRowSubEl=null}}
+ let scRowMenuEl=null,scRowSubEl=null,scRowSubTimer=null;
+ function cancelRowSubClose(){if(scRowSubTimer){clearTimeout(scRowSubTimer);scRowSubTimer=null}}
+ function closeRowSubMenu(){cancelRowSubClose();if(scRowSubEl){scRowSubEl.remove();scRowSubEl=null}}
  function closeRowMenu(){closeRowSubMenu();if(scRowMenuEl){scRowMenuEl.remove();scRowMenuEl=null}}
+ /* ---------- 子のメニューを閉じるのは「留まったとき」だけ（§9.398） ----------
+    利用者の報告「入れ子構造のメニューの子側にカーソルを移した瞬間消えるので
+    設定ができません」。
+
+    子は`document.body`直下に置いてある（§9.368。親の枠で切られないため）ので、
+    親の項目から子へ行くには**親のメニューの上を斜めに横切る**ことがある。
+    別の項目へ`mouseenter`した瞬間に閉じていたため、**通り過ぎただけで消えて**
+    いた。閉じるのは「別の項目の上に留まったとき」だけにする。
+    **子の中へ入れば取り消す**（下の`cancelRowSubClose`）ので、狙って動かして
+    いる限り消えない。 */
+ const SC_SUB_CLOSE_MS=260;
+ function scheduleRowSubClose(){
+  cancelRowSubClose();
+  if(!scRowSubEl)return;
+  scRowSubTimer=setTimeout(()=>{scRowSubTimer=null;closeRowSubMenu()},SC_SUB_CLOSE_MS);
+ }
  /* **1項目ぶんのHTMLは1箇所**（§9.163）。親のメニューと入れ子のメニューで
     2通り書くと、片方だけ直した見た目が並ぶ。
     **できない項目も並べて理由を書く**（§4／§9.220 2①）。メニューから
@@ -5661,8 +5678,13 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   box.querySelectorAll('[data-i]').forEach(b=>{
    const it=list[Number(b.dataset.i)];
    const enter=()=>{
-    if(it&&it.sub&&openSub)openSub(b,it);
-    else closeRowSubMenu();
+    /* **子のメニューの中では何もしない**（§9.398）。ここは`openSub`を
+       持たない＝自分が子のメニュー——閉じると、**子の項目へカーソルを
+       乗せた瞬間に自分自身が消える**（利用者の報告そのもの）。
+       むしろ「閉じる」の予約を取り消す（子へ辿り着けたのだから）。 */
+    if(!openSub){cancelRowSubClose();return}
+    if(it&&it.sub)openSub(b,it);
+    else scheduleRowSubClose();
    };
    b.addEventListener('mouseenter',enter);
    b.addEventListener('focus',enter);
@@ -5696,15 +5718,24 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     右に入らなければ左へ返す。閉じるのは親と同じ規則（外を押す・Esc）で、
     子も`.sc-row-menu`を名乗るので押しても閉じない。 */
  function openRowSubMenu(btn,parent){
+  /* **同じ親項目なら開き直さない**（§9.398）。子から親の項目へ戻ると
+     `mouseenter`がもう一度飛ぶので、作り直すと**その場でちらつき、
+     カーソルの下の項目が入れ替わる**。 */
+  if(scRowSubEl&&scRowSubEl.__owner===btn){cancelRowSubClose();return}
   closeRowSubMenu();
   const raw=typeof parent.sub==='function'?parent.sub():parent.sub;
   const list=(raw||[]).filter(Boolean);
   if(!list.length)return;
   const m=document.createElement('div');
   m.className='col-head-menu sc-row-menu sc-row-submenu';
+  m.__owner=btn;
   scRowSubEl=m;
   m.innerHTML=rowMenuItemsHtml(list);
   document.body.append(m);
+  /* **器へ入ったら「閉じる」の予約を取り消す**（§9.398）。項目と項目の
+     すき間（枠や区切り）へ乗ったときも消えないように、器そのものでも受ける。 */
+  m.addEventListener('mouseenter',cancelRowSubClose);
+  m.addEventListener('mousemove',cancelRowSubClose);
   /* **横に置く基準は「親のメニューの端」**——押した項目の端で置くと、
      メニューの内側の余白のぶんだけ親に重なる（実測。どの項目を押して
      いるのか分からなくなる）。縦は押した項目の高さに合わせる。 */
