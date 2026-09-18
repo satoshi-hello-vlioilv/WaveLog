@@ -176,19 +176,33 @@ let b=null;
    if(!badge||!head||!who||!left)return null;
    const hid=badge.hidden,html=badge.innerHTML;
    badge.hidden=false;badge.textContent='書込中: yamada@SLIT-PC1';
-   const 帯へ置いたまま=Math.round(head.getBoundingClientRect().height);
+   /* §9.397 で操作列は**折り返さなくなった**ので、置き場を間違えても
+      「2行になる」形では現れない。現れるのは**状態の文字が削られること**
+      （譲るのはいちばん重要度の低いものから・§9.397）。器の余りで測る。 */
+   const 余り=()=>{
+    const st=document.getElementById('scToolsState');
+    return {高さ:Math.round(head.getBoundingClientRect().height),
+            状態の幅:st?Math.round(st.getBoundingClientRect().width):0,
+            溢れ:Math.max(0,head.scrollWidth-head.clientWidth)};
+   };
+   const 帯へ置いたまま=余り();
    /* 同じ条件で操作列へ戻してみる（すぐ戻す）。 */
    const home=who.parentNode,next=who.nextSibling;
    left.appendChild(who);
-   const 操作列へ戻すと=Math.round(head.getBoundingClientRect().height);
+   const 操作列へ戻すと=余り();
    home.insertBefore(who,next);
    badge.hidden=hid;badge.innerHTML=html;
    return {帯へ置いたまま,操作列へ戻すと};
   });
   rec('書込中の印が出ても操作列は1行のまま（表が跳ねない）',
-      !!oneLine&&oneLine.帯へ置いたまま<=36,JSON.stringify(oneLine));
-  rec('この網は効いている（操作列へ戻すと2行になる）',
-      !!oneLine&&oneLine.操作列へ戻すと>oneLine.帯へ置いたまま,JSON.stringify(oneLine));
+      !!oneLine&&oneLine.帯へ置いたまま.高さ<=36,JSON.stringify(oneLine));
+  /* **この網が効いていること**の確認（片方だけだと、器が広い画面では何も
+     確かめないまま通る）。操作列へ戻すと、そのぶん**状態の文字が削られる**
+     か、器から溢れる。 */
+  rec('この網は効いている（操作列へ戻すと状態の文字が削られる／溢れる）',
+      !!oneLine&&(oneLine.操作列へ戻すと.状態の幅<oneLine.帯へ置いたまま.状態の幅
+                  ||oneLine.操作列へ戻すと.溢れ>oneLine.帯へ置いたまま.溢れ),
+      JSON.stringify(oneLine));
   rec('自分が持っているときは読み取り専用にしない',mine.ロック===false,String(mine.ロック));
   rec('自分が持っているときは奪うボタンを出さない（意味の無いボタンを置かない）',
       mine.奪うボタン===false,String(mine.奪うボタン));

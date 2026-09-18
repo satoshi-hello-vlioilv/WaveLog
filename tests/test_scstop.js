@@ -10,6 +10,7 @@
     4. 絞り込みが効き、**入力欄のフォーカスが飛ばない**
     5. その場で登録でき、登録したものがすぐ押せる（印が付く）
     6. モーダルと側パネルの**どちらでも同じもの**が出る（実装は1つ）
+    7. 押しても**一覧は消えない**（§9.397で左右2ペインへ組み直した）
    ============================================================ */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
 const B='http://127.0.0.1:5029';
@@ -120,24 +121,27 @@ async function cleanup(){
      日本語を打っている最中を再現するため、先に絞り込み欄へ入っておく。 */
   await page.click('#scStopSearch');
   await page.click(`.sc-stop-button[data-id="${hit.id}"]`);
-  /* 押すと**手順**が開く（§9.389、利用者の指示「設備停止内容を選択し、
-     その後時間を選択して登録する」）。内訳を持たない停止なので段は
-     「時間を選ぶ」の1つだけで、標準所要分が最初から選ばれている。 */
+  /* 押すと**右のペイン**が開く（§9.389 → §9.397で左右2ペインへ組み直した）。
+     **一覧は消えない**——1つの作業を2画面に割らないため（利用者の指摘
+     「ステップが多い印象」）。内訳を持たない停止なので決めるのは時間だけで、
+     標準所要分が最初から選ばれている。 */
   await page.waitForSelector('.sc-sp',{timeout:10000});
   const step=await page.evaluate(()=>({
    title:(document.querySelector('.sc-sp-title')||{}).textContent||'',
-   steps:[...document.querySelectorAll('.sc-sp-t')].map(x=>x.textContent.trim()),
-   pick:(document.querySelector('.sc-sp-pick')||{}).textContent||'',
+   rows:[...document.querySelectorAll('.sc-sp-label')].map(x=>x.firstChild.textContent.trim()),
    go:(document.querySelector('#scSpGo')||{}).textContent||'',
    goOff:!!(document.querySelector('#scSpGo')||{}).disabled,
-   listGone:!document.querySelector('.sc-stop-button'),
-   back:!!document.querySelector('#scSpBack'),
+   listKept:!!document.querySelector('.sc-stop-button'),
+   on:[...document.querySelectorAll('.sc-stop-button.is-on b')].map(x=>x.textContent.trim()),
+   clear:!!document.querySelector('#scSpBack'),
   }));
-  rec('押すと手順が開く（一覧と入れ替わる・戻る道がある）',
-      step.listGone&&step.back&&step.title.includes(NEW),JSON.stringify(step).slice(0,160));
-  rec('内訳を持たない停止では段は「時間を選ぶ」だけ',
-      step.steps.length===1&&step.steps[0]==='時間を選ぶ',step.steps.join('/'));
-  rec('標準所要分（25分）が最初から選ばれている',/25/.test(step.pick),step.pick);
+  rec('押すと右に設定が開き、一覧は消えない（戻る道を覚えなくてよい）',
+      step.listKept&&step.clear&&step.title.includes(NEW),JSON.stringify(step).slice(0,180));
+  rec('いま設定しているものが一覧でも印で分かる',
+      step.on.includes(NEW),JSON.stringify(step.on));
+  rec('内訳を持たない停止では決めるのは「時間」だけ',
+      step.rows.length===1&&step.rows[0]==='時間',step.rows.join('/'));
+  rec('標準所要分（25分）が最初から選ばれている',/25分/.test(step.go),step.go);
   rec('内訳が要らないので、そのまま追加できる',!step.goOff&&step.go.includes('追加'),step.go);
   await page.click('#scSpGo');
   /* 予定へ入ったことは**サーバーの答え**で待つ（時間で待たない）。 */
