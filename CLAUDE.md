@@ -116,14 +116,15 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（676件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（677件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
-### 起動・停止・監視（29件）
+### 起動・停止・監視（30件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 直接実行する4本とその資材は`program/`。直下に残すPythonは`_pycache_bootstrap.py`の1本だけ | `test_faststart.py` | [§9.404](docs/decisions/9.404.md) |
 | `program/`の4本はいちばん最初に`import _approot`を通す（探索先の答えは1箇所） | `test_faststart.py` | [§9.404](docs/decisions/9.404.md) |
+| `backend`から素の`from app import app`を書かない。答えは`app_module.flask_app()`の1箇所 | `test_scowner.py` | [§9.404](docs/decisions/9.404.md) |
 | ファイルを移すときは見張り（`pick_tests.py`・lintの対象・CI）も一緒に動かす | `test_pick.py` | [§9.404](docs/decisions/9.404.md) |
 | 起動前の確認は`setup.bat`が受け持ち、刻印で飛ばす | `test_faststart.py` | [§9.225](docs/decisions/9.225.md) |
 | サーバー再起動 | — | [決まり](docs/decisions/rules-misc.md) |

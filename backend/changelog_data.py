@@ -22,7 +22,7 @@
 分けると、内部の話に見える本物の不具合修正を伏せてしまう——付いていない=
 利用者向け、という安全側にしてある。
 """
-APP_VERSION='2.302.0'
+APP_VERSION='2.302.1'
 
 # 更新履歴。画面の「VERx.y.z」バッジから一覧表示する。APP_VERSIONを
 # 上げるたびに、このリストの先頭に新しいバージョンを追記すること。
@@ -37,6 +37,19 @@ def is_dev(entry):
 
 
 CHANGELOG=[
+ {'version':'2.302.1','dev':True,'notes':[
+  '**中継の受け口（`schedule_owner`）が書き込みを500で返していた**のを直した'
+  '（§9.404の取りこぼし。通しで4件が赤）。原因は`backend`の中に'
+  '素の`from app import app`が2箇所あったこと——`program/start_app.py`から'
+  '起動したときは`program/`が`sys.path[0]`なので読めるが、'
+  '**入口を通らない経路**（テストが`backend`だけ読み込む）では'
+  '`No module named \'app\'`になる。「隣に在るから読める」に頼ると、'
+  '呼ばれ方で答えが変わる。',
+  '答えを`backend/app_module.py`の`flask_app()`1箇所へ置いた。'
+  '置き場は`paths.PROGRAM_DIR`が答え、探索先に無ければ自分で足す。'
+  '読むのは呼ばれたときだけ（`app`は`backend`を読むので、読み込み時に'
+  '読むと§9.329で0にした輪が戻る）。',
+ ]},
  {'version':'2.302.0','dev':True,'notes':[
   'リポジトリ直下に平置きになっていた**直接実行するファイル**を`program/`へ'
   'まとめた（§9.404。`app.py`／`start_app.py`／`setup_app.py`／'

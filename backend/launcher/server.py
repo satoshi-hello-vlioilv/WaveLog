@@ -14,7 +14,8 @@ from backend.logging_setup import launcher_logger
 def run():
  """ウォッチドッグを開始し、Flaskの開発サーバーを実行する(ブロックする)。"""
  log=launcher_logger()
- from app import app as flask_app          # Flaskアプリ本体(業務機能)
+ from backend.app_module import flask_app as _app   # 素の`from app import`を書かない（§9.404）
+ flask_app=_app()                          # Flaskアプリ本体(業務機能)
  watchdog.start()
  # 共有上の読み取り専用DBを手元へ写す背景処理(§9.89)。共有の更新と読み取りが
  # 重なると正しく読めないため、画面は常に手元の写しを読む。写せなくても

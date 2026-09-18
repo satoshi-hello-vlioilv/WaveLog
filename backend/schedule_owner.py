@@ -382,7 +382,8 @@ class _Handler(BaseHTTPRequestHandler):
            HDR_PC:str(payload.get('pc') or ''),
            HDR_MODE:str(payload.get('mode') or '')}
   try:
-   from app import app as flask_app
+   from .app_module import flask_app as _app   # 素の`from app import`を書かない（§9.404）
+   flask_app=_app()
    # **自分のFlaskへ入れ直す**。routes/schedule.py の処理をそのまま通すので、
    # ロック・改訂番号・編集セッションの決まりは1本のまま(書き写さない)。
    with flask_app.test_client() as c:
