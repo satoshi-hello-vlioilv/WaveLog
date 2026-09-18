@@ -103,15 +103,25 @@ let b=null;
    box.hidden=false;
    box.innerHTML=`<span><b>他のPCが予定を変えました。</b>いま出ているのは変更前の内容です。</span>
     <button type="button" id="scSyncReload">読み直す</button>`;
+   /* 帯は**一覧の下**（§9.397）。上に置くと出るたびに一覧の上端が下がり、
+      狙っていた行が指の下から逃げる（実測235px）。`compareDocumentPosition`
+      の`&2`＝この器より**前**に居る＝一覧のほうが上。 */
    const out={text:box.innerText.replace(/\s+/g,' '),btn:!!box.querySelector('#scSyncReload'),
-              上に出る:box.compareDocumentPosition(document.getElementById('scTimeline'))&4?true:false};
+              下に出る:box.compareDocumentPosition(document.getElementById('scTimeline'))&2?true:false,
+              上端:Math.round(document.getElementById('scTimeline').getBoundingClientRect().top)};
    box.hidden=true;box.innerHTML='';
+   out.上端閉=Math.round(document.getElementById('scTimeline').getBoundingClientRect().top);
    return out;
   });
   rec('帯は何が起きたかを文字で言う',banner&&/他のPCが予定を変えました/.test(banner.text),
       banner?banner.text.slice(0,80):'なし');
   rec('帯に「読み直す」を置く',!!(banner&&banner.btn));
-  rec('帯はタイムラインより上に出る',!!(banner&&banner.上に出る));
+  /* §9.397（利用者の指摘「メッセージのために1行一時的に増える…表示位置が
+     ガタガタズレる」）。帯は**一覧の下**へ移した——出ても一覧の上端が
+     動かないので、狙っている行が逃げない。 */
+  rec('帯はタイムラインより下に出る（一覧の上端を動かさない）',!!(banner&&banner.下に出る));
+  rec('帯が出ても一覧の上端が動かない',!!(banner&&banner.上端===banner.上端閉),
+      banner?`${banner.上端閉} -> ${banner.上端}`:'なし');
  }catch(e){
   console.error('FATAL',e);rec('例外なく終わる',false,e.message);
  }finally{

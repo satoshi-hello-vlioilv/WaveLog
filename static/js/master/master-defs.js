@@ -738,11 +738,25 @@
        +'対象設備は複数選べ、「すべての設備」を選ぶと全設備が対象になります'
        +'（開発・保守用。設備が増えても権限行を足さずに済みます）。'}]},
   {group:'schedule',key:'loadFactor',label:'換算係数',icon:'率',special:'load-factor',endpoint:'/api/schedule/load-factors'},
-  {group:'schedule',key:'stopCategory',label:'設備停止分類',icon:'類',endpoint:'/api/schedule/stop-category-master',hasDelete:true,
+  /* ---------- 分類は「設備停止マスタ」の左ペインへ統合した（§9.397） ----------
+     利用者の指示「設備停止分類と内訳と設備停止名の登録をシームレスにマスタ
+     連携できていないので…『設備停止マスタ』としてマスタ統合してほしい」。
+     **定義は残す**（`navHidden`）——APIは今までどおりで、
+     `tests/test_crudroutes.py`が4本のCRUDを見張る材料でもある。
+     消すとその見張りだけが静かに減る。 */
+  {group:'schedule',key:'stopCategory',label:'設備停止分類',icon:'類',endpoint:'/api/schedule/stop-category-master',hasDelete:true,navHidden:true,
    fields:[{k:'name',label:'分類名',required:true,key:true}],
    cols:[{k:'name',label:'分類名',grow:2}],
    hint:'設備停止マスタの「分類」の選択肢です。分類は設備をまたいだ集計・色分けに使うため、設備ごとではなく全設備共通で持ちます。設備停止マスタで未登録の分類を入力して保存すると、ここへも自動で登録されます(先にこの画面で作っておく必要はありません)。使用中の分類を削除しようとすると、何件で使われているかを確認したうえで消します。'},
-  {group:'schedule',key:'stopReason',label:'設備停止',icon:'停',endpoint:'/api/schedule/stop-reason-master',hasDelete:true,
+  /* ---------- 設備停止マスタ（§9.389 → §9.397で1枚へ統合） ----------
+     分類・停止内容・内訳が3つのタブに割れていて、1つの階層を作るのに
+     タブ往復が2回要った（利用者の指摘「シームレスにマスタ連携できていない」）。
+     **左＝分類／中＝停止内容／右＝内訳**の3ペイン1枚にする（`special`）。
+     `fields`/`cols`は**そのまま残す**——停止内容そのものの編集は
+     汎用の編集窓（`WL.mm.openMaintEditor`）を統合画面から開いて使い回す
+     ので、欄の定義がここに無いと窓が空になる。 */
+  {group:'schedule',key:'stopReason',label:'設備停止',icon:'停',endpoint:'/api/schedule/stop-reason-master',hasDelete:true,special:'stop-master',
+   titleText:'設備停止マスタ — 分類 → 停止内容 → 内訳',
    fields:[{k:'equipment',label:'対象設備',type:'equipment-multi-text',required:true,key:true,
             tagHint:'この停止内容をどの設備で選べるようにするかです。複数選べます。「すべての設備」を選ぶと、これから増える設備でも自動的に選べます。'},
            {k:'category',label:'分類',type:'master-combo',source:{endpoint:'/api/schedule/stop-category-master',valueKey:'name'},
@@ -769,7 +783,7 @@
             持っていることが分からないと、内訳のタブを開く理由に気づけない。 */
          {k:'subCount',label:'内訳',grow:1,format:'subCount'},
          {k:'linkLabel',label:'連携機能',grow:1}],
-   hint:'作業スケジュール(docs/SCHEDULE_MODE_DESIGN.md §5.3)の設備停止予定で選べる名称と、標準所要分(分)です。1件の停止内容を複数の設備へまとめて登録できます。「すべての設備」を選べば、設備が増えても登録し直す必要がありません。標準所要分が設備ごとに違う場合は、設備を分けて別々に登録してください(同じ名称で対象設備が重なる登録はできません。どちらの時間が効くのか決まらなくなるためです)。「突発停止」は現場からの連絡を受けた計画担当が投入する運用のため、名称に登録しておくだけで自動では動きません。'},
+   hint:'**分類 → 停止内容 → 内訳**を1枚で作ります（§9.397）。左で分類、中でその分類の停止内容、右でその内訳を決めます——どの段もその場で足せるので、タブを移る必要はありません。内訳の「既定」を押すと、作業スケジュールへ入れるときに**最初からその内訳が選ばれます**（内訳が1つしかない段では、印を付けなくても最初から選ばれます）。\n以下は停止内容そのものの決まりです。作業スケジュール(docs/SCHEDULE_MODE_DESIGN.md §5.3)の設備停止予定で選べる名称と、標準所要分(分)です。1件の停止内容を複数の設備へまとめて登録できます。「すべての設備」を選べば、設備が増えても登録し直す必要がありません。標準所要分が設備ごとに違う場合は、設備を分けて別々に登録してください(同じ名称で対象設備が重なる登録はできません。どちらの時間が効くのか決まらなくなるためです)。「突発停止」は現場からの連絡を受けた計画担当が投入する運用のため、名称に登録しておくだけで自動では動きません。'},
   /* ---------- 設備停止の内訳（サブカテゴリ）（§9.389、利用者の指示） ----------
      「刃組待ちだったら、ゴムリングとフィンガーと刃出しの3種類があります。
       そのような種類の違いも後でわかるようにしたいが**同じ刃組というグループ
@@ -781,7 +795,9 @@
      行ごとに読み直すことになる。
      `fields`/`cols`は残す——編集モーダルの部品としてではなく、
      `tests/test_crudroutes.py`が4本のCRUDを見張る材料になっている。 */
-  {group:'schedule',key:'stopSub',label:'設備停止の内訳',icon:'訳',endpoint:'/api/schedule/stop-sub-master',hasDelete:true,special:'stop-sub',
+  /* 内訳も「設備停止マスタ」の右ペインへ統合した（§9.397）。定義を残す
+     理由は分類と同じ（APIとCRUDの見張り）。 */
+  {group:'schedule',key:'stopSub',label:'設備停止の内訳',icon:'訳',endpoint:'/api/schedule/stop-sub-master',hasDelete:true,navHidden:true,
    titleText:'設備停止の内訳 — 分類 → 停止内容 → 内訳',
    fields:[{k:'stopReasonId',label:'どの設備停止の内訳か',required:true,key:true},
            {k:'name',label:'内訳名',required:true,key:true},
@@ -868,7 +884,7 @@
   {key:'bladeset',label:'刃組',hint:'刃組ガイダンスが使う部材と、このラインの諸元',
    items:['bladesetStandard','bladesetBlade','bladesetSpacer','bladesetRing','bladesetFinger']},
   {key:'schedule',label:'作業スケジュール',hint:'計画の時間計算に使う設定',
-   items:['shiftMaster','loadFactor','stopCategory','stopReason','stopSub','stopMinutes']},
+   items:['shiftMaster','loadFactor','stopReason','stopMinutes']},
   {key:'data',label:'データと接続',hint:'どこから読み、どこへ置くか',
    items:['dataSource','queryJoin','measStorage','importBackup','pathConfig']},
   {key:'system',label:'管理',hint:'権限・後片付け・生データ',

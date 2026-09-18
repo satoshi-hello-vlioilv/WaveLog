@@ -549,6 +549,7 @@ body.sc-mode #headerContextSource{display:none}
   .rp-bar-btn.is-on,
   .rp-form-ctl button.is-on,
   .sc-sp-opt.is-on,
+  .sc-stop-button.is-on,
   .ssb-under.is-on,
   .sp-zoom-btn.is-on,
   .status-filter-btn.active,
@@ -566,6 +567,7 @@ body.sc-mode #headerContextSource{display:none}
   /* 濃い面（字は各自）（5族） */
   .bs-tg.is-on::before,
   .oc-group.is-on,
+  .ssb-cat-row.is-on,
   .ssb-stop.is-on,
   .op-span-pick button.is-on,
   .rly-paper.is-on,

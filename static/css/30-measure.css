@@ -1862,6 +1862,39 @@ th.col-sorted:hover{background:#c7e7ea}
    **選択欄は右端に▼の場所が要る**ので、文字幅ぴったりでは切れる（§9.206）。 */
 .prt-df select{width:10.8em}
 .prt-df input{width:6.4em}
+/* ---------- 備考（§9.397、利用者の指示） ----------
+   「備考は通常使わないので、行数増やして対応しつつ折りたたんでおく」
+
+   **主役の列に置くのをやめた。** 9列目の取り分は実測40px前後しか無く、
+   2文字も読めなかった（列の幅は他の列を引いた残りなので、列を足すたびに
+   細っていく）。自由記述は器の幅がそのまま使い勝手なので、**行を与えて
+   畳む**——畳んだ丈では1pxも場所を取らない（§CLAUDE 1）。 */
+/* 主役の行に残すのは**開閉の入口**。書いた文の先頭をここに出すので、
+   畳んだままでも「書いてあるか」が読める（§9.125）。 */
+.product-rows-table td.prt-note-cell{padding:0}
+.prt-note-btn{
+  display:flex;align-items:center;gap:var(--gap-tight);
+  width:100%;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-xs);
+  border:0;background:transparent;color:var(--muted);
+  font-size:var(--fs-tiny);text-align:left;cursor:pointer;
+}
+.prt-note-btn:hover{background:var(--pale);color:var(--teal-dark)}
+/* 書いてあるときは**文字の濃さで**言う（色だけで伝えない・§CLAUDE 3。
+   畳んだ先に何かある、が「—」との違いで読める）。 */
+.prt-note-btn.has-note{color:var(--ink-2);font-weight:700}
+.prt-note-txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prt-note-btn .prt-chev{flex:0 0 auto}
+/* 開いた側の欄。**段いっぱい**に伸ばす（自由記述は長いほどよい）。
+   `.prt-detail-in`は折り返す横並びなので、1行ぶんの物は`flex:1 0 100%`で
+   段を割る（§CLAUDE そのほか「折り返す横並びの器へ1行ぶんの物を入れるとき」）。 */
+.prt-note-field{flex:1 0 100%;display:flex;align-items:flex-start;gap:var(--gap-tight);min-width:0}
+.prt-note-field>span{flex:0 0 auto;padding-top:4px;font-size:var(--fs-tiny);color:var(--muted);white-space:nowrap}
+.prt-note-field textarea{
+  flex:1;min-width:0;height:auto;padding:var(--space-1) var(--ctl-pad-x-xs);
+  border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:#fff;color:var(--ink-2);font-size:var(--fs-sm);line-height:1.45;resize:vertical;
+}
+.prt-sum-note{color:var(--ink-2)}
 /* ---------- 8. 測定エディタ ---------- */
 /* **高さは器から分ける**（§9.146）。以前は`height:calc(100% - 82px)`という
    直値で、上に居たはずのタブ（`.right-pane.layout-measure .work-tabs`で

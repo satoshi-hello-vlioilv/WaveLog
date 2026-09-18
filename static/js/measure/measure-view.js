@@ -682,14 +682,37 @@ function updateProductStatus(){
    `collect()`・`activeRequiredControls()`が読むのは元から`#productRowsBody`
    なので、**読み書きの経路は1本のまま**になる。 */
 /* 畳んだ丈（§9.206）。**レコードには持たせない**——見せ方の好みであって
-   測定した内容ではない（保存すると他のPCで開いたときに畳まれる）。 */
-const prtFolded=new Set();let prtFoldedFor='';
+   測定した内容ではない（保存すると他のPCで開いたときに畳まれる）。
+
+   §9.397（利用者の指示「備考は通常使わないので、行数増やして対応しつつ
+   折りたたんでおくようにしたい」）で**Setから Map へ変えた**。Setは
+   「畳んだ丈の集合」＝**既定が必ず「開く」**で、備考のように「ふだんは
+   閉じておきたい」ものを表せない。Mapは `true`=畳む／`false`=開く／
+   **無い＝既定に従う**の3値を持てる（§9.212 ②と同じ「触っていない」の
+   表し方）。既定を答えるのは `prtFoldDefault()` の1箇所。 */
+const prtFold=new Map();let prtFoldedFor='';
+/* 既定の開閉。**書くべきこと・書いてあることがあるときだけ開く**（§CLAUDE 2
+   「次にすることを常に1つだけ指す」）。
+    ・内訳（エッジ形状が異常）… 書かないと判定が出ないので**開く**
+    ・備考に文字がある        … 畳んだままだと書いたことを忘れる（§9.125）ので**開く**
+    ・どちらも無い            … **畳む**（備考は通常使わない・利用者の指示） */
+function prtHasDetail(r){
+ const edge=normalizeEdgeShape(r&&r.edgeShape);
+ return !!edge&&edge!==PRODUCT_EDGE_OK;
+}
+function prtFoldDefault(r){
+ return !(prtHasDetail(r)||String((r&&r.note)||'').trim()!=='');
+}
+function prtIsFolded(i,r){
+ const v=prtFold.get(i);
+ return v===undefined?prtFoldDefault(r):!!v;
+}
 function renderProductPanel(){
  const m=S.measure;const body=$('#productRowsBody'),tabs=$('#productLengthTabs'),fields=$('#productLengthFields');
  if(!body||!m)return;
  /* 別のロットを開いたら畳みは持ち越さない（丈の番号は使い回されるので、
     前のロットで畳んだ丈が新しいロットで畳まれて見える）。 */
- if(prtFoldedFor!==(m.id||'')){prtFolded.clear();prtFoldedFor=m.id||''}
+ if(prtFoldedFor!==(m.id||'')){prtFold.clear();prtFoldedFor=m.id||''}
  if(!m.product||!Array.isArray(m.product.rows))m.product={rows:Array.from({length:WL.base.LENGTH_SLOTS},blankProductRow)};
  const n=productRowCount();
  /* 1丈ずつの器は使わない。**残骸を残さない**（空のタブ列が細い帯として残る）。 */
@@ -697,7 +720,6 @@ function renderProductPanel(){
  if(fields){fields.innerHTML='';fields.hidden=true}
  body.innerHTML=Array.from({length:n},(_,i)=>{
   const r=m.product.rows[i]||(m.product.rows[i]=blankProductRow());
-  const ok=String(r.edgeShape||'')===PRODUCT_EDGE_OK;
   const field=(key,type)=>`<input data-product-field="${key}" value="${esc(r[key]||'')}" type="${type||'text'}"`
    +(type==='number'?' inputmode="decimal" step="any"':'')+'>';
   const sel=k=>productSelectHtml(PRODUCT_CHOICES.find(d=>d.k===k),r[k]);
@@ -715,27 +737,68 @@ function renderProductPanel(){
      ロットで表が縦に伸びて全体を見渡せない。
      **畳んでも値は読めること**（§9.125）——畳んだ側には要約を出す。隠した
      ものが何かを書かずに隠すと、書いたこと自体を忘れる。 */
-  const folded=prtFolded.has(i);
+  const hasDetail=prtHasDetail(r);
+  const folded=prtIsFolded(i,r);
+  const note=String(r.note||'');
   const sum=productBreakdownOf(r).filter(b=>b.k!=='edgeShape')
-    .map(b=>`<span class="prt-sum-item"><i>${esc(b.label)}</i>${esc(b.text)}</span>`).join('');
-  const detail=ok||!String(r.edgeShape||'')
-   ?''
-   :`<tr class="prt-detail${folded?' is-folded':''}" data-row="${i}"><td colspan="9"><div class="prt-detail-in">`
+    .map(b=>`<span class="prt-sum-item"><i>${esc(b.label)}</i>${esc(b.text)}</span>`).join('')
+   +(note?`<span class="prt-sum-item prt-sum-note"><i>備考</i>${esc(note)}</span>`:'');
+  /* ---------- 備考は「広い1行」へ移す（§9.397、利用者の指示） ----------
+     「備考は通常使わないので、行数増やして対応しつつ折りたたんでおく
+      ようにしたいです」
+
+     以前は主役の9列目に押し込んでいたが、器は**実測40px前後**しか無く
+     2文字も読めなかった（エッジ形状12.6em・外観6.2em…を引いた残りが
+     備考の取り分だったため）。自由記述は「長いほどよい」ものなので、
+     **列ではなく行**を与える——畳めば場所を取らないので、面積は
+     頻度×重要度どおりに配れる（§CLAUDE 1）。
+
+     開く条件は`prtFoldDefault()`の1箇所（内訳がある／備考に文字がある）。
+     **畳んでいるあいだも値は読める**（§9.125）——主役の行の「備考」列は
+     開閉のボタンになっていて、そこに書いた文の先頭が出る。 */
+  const noteFieldHtml=`<label class="prt-note-field"><span>備考</span>`
+   +`<textarea data-product-field="note" rows="2" maxlength="200"`
+   +` placeholder="この丈について書き残すことがあれば（通常は空欄のままで構いません）">${esc(note)}</textarea></label>`;
+  /* 詳細の段を描くのは「開いているとき」か「畳んだ中身があるとき」だけ。
+     **何も無い行では段ごと出さない**——9丈ぶんの空の段が並ぶと表の高さが
+     倍になり、全体を見渡せなくなる（§9.126「中身を減らしたら器も減らす」）。
+     **書いてある行は畳んでも段を残す**——主役の列の取り分は実測58pxしか
+     無く、そこだけでは書いた文が読めない（§9.125「畳んでも値は読めること」）。
+     段に出す要約は横いっぱいなので、畳んだままでも全文が読める。 */
+  const detail=(!folded||hasDetail||note.trim()!=='')
+   ?`<tr class="prt-detail${folded?' is-folded':''}" data-row="${i}"><td colspan="9"><div class="prt-detail-in">`
      +`<button type="button" class="prt-fold" data-prt-fold="${i}" aria-expanded="${folded?'false':'true'}"`
-     +` title="${folded?'内訳の入力欄を開きます':'内訳の入力欄を畳みます（記録は残ります）'}">`
-     +`<span class="prt-detail-lead">丈${i+1}の内訳</span><span class="prt-chev" aria-hidden="true"></span></button>`
+     +` title="${folded?'この丈の備考・内訳を開きます':'この丈の備考・内訳を畳みます（書いた内容は残ります）'}">`
+     +`<span class="prt-detail-lead">丈${i+1}の${hasDetail?'内訳・備考':'備考'}</span><span class="prt-chev" aria-hidden="true"></span></button>`
      +(folded
        ?`<span class="prt-sum">${sum||'<i class="prt-sum-none">まだ書いていません</i>'}</span>`
        /* **内訳に出すのは`PRODUCT_DETAIL_KEYS`の欄だけ**（§9.393）——
           「エッジ形状以外」で選ぶと、主役の列へ欄を1つ足すたびに
           内訳へも勝手に現れる（外観を足した時にそうなった）。 */
-       :PRODUCT_CHOICES.filter(d=>PRODUCT_DETAIL_KEYS.indexOf(d.k)>=0)
-         .map(d=>`<label class="prt-df"><span>${esc(d.label)}</span>${sel(d.k)}</label>`).join('')
-        +`<label class="prt-df"><span>ピッチ(mm)</span>${field('pitch','number')}</label>`
-        +`<label class="prt-df prt-df-val${over?' is-over':''}"><span>値(mm)</span>${field('alignmentValue','number')}`
-        +(limit!==null?`<em class="prt-lim-inline">≤ ${limit.toFixed(1)}</em>`:'<em class="prt-lim-inline is-none">基準なし</em>')
-        +`</label>`)
-     +`</div></td></tr>`;
+       :(hasDetail
+         ?PRODUCT_CHOICES.filter(d=>PRODUCT_DETAIL_KEYS.indexOf(d.k)>=0)
+           .map(d=>`<label class="prt-df"><span>${esc(d.label)}</span>${sel(d.k)}</label>`).join('')
+          +`<label class="prt-df"><span>ピッチ(mm)</span>${field('pitch','number')}</label>`
+          +`<label class="prt-df prt-df-val${over?' is-over':''}"><span>値(mm)</span>${field('alignmentValue','number')}`
+          +(limit!==null?`<em class="prt-lim-inline">≤ ${limit.toFixed(1)}</em>`:'<em class="prt-lim-inline is-none">基準なし</em>')
+          +`</label>`
+         :'')
+        +noteFieldHtml)
+     +`</div></td></tr>`
+   :'';
+  /* 主役の行の「備考」列は**開閉の入口**（§9.397）。畳んだままでも
+     「書いてあるか／何が書いてあるか」が読める（§CLAUDE 2「思い出させない」）。
+     押せば必ずその丈の欄が開くので、**押しても何も起きない物にはならない**
+     （§CLAUDE 4）。 */
+  /* **ここは「あるか無いか」だけを言う**（§CLAUDE 8「同じ情報を2箇所に
+     出さない」）。中身は下の段（開いていれば欄、畳んでいれば要約）が
+     横いっぱいで持つ——58pxの器へ本文を写しても読めないうえ、同じ文が
+     2箇所に出て「違うものかもしれない」と読み直させる。 */
+  const noteBtn=`<button type="button" class="prt-note-btn${note?' has-note':''}"`
+   +` data-prt-fold="${i}" aria-expanded="${folded?'false':'true'}"`
+   +` title="${esc(note?'備考: '+note:'この丈の備考を書きます（通常は空欄のままで構いません）')}">`
+   +`<span class="prt-note-txt">${note?'あり':'—'}</span>`
+   +`<span class="prt-chev" aria-hidden="true"></span></button>`;
   return `<tr data-row="${i}"><th>${i+1}</th><td>${field('productLength','number')}</td><td>${field('wallThickness','number')}</td>`
    +`<td><span class="product-judge${productJudgeClass(judge)}" data-product-judge="${i}"`
    +` title="${esc(judgeReasonOf(r,judge))}">${esc(judge)}</span>`
@@ -743,7 +806,7 @@ function renderProductPanel(){
    /* 外観・巻ズレOS/DS（§9.393）。**判定には効かない**——揃いの合否は
       エッジ形状と値(mm)から出す（§9.204）ので、ここで色を付けない。 */
    +`<td>${sel('appearance')}</td><td>${field('offsetOs','number')}</td><td>${field('offsetDs','number')}</td>`
-   +`<td>${sel('edgeShape')}</td><td>${field('note')}</td></tr>`+detail;
+   +`<td>${sel('edgeShape')}</td><td class="prt-note-cell">${noteBtn}</td></tr>`+detail;
  }).join('');
  body.querySelectorAll('[data-product-field]').forEach(el=>{
   const apply=()=>{
@@ -793,10 +856,20 @@ function renderProductPanel(){
    el.value=v;apply();
   };
  });
+ /* 開閉の入口は2つ（詳細の段の見出し／主役の行の「備考」）。**どちらも
+    同じことをする**ので、判定も1箇所にまとめる（§CLAUDE 「入口を2つにしても
+    やることは1つ」）。**畳みは明示の3値**（§9.397）——`set`で覚えるので、
+    「既定は畳む」のまま**手で開いた丈だけ開いたまま**にできる。 */
  body.querySelectorAll('[data-prt-fold]').forEach(btn=>btn.onclick=()=>{
   const i=+btn.dataset.prtFold;
-  if(prtFolded.has(i))prtFolded.delete(i);else prtFolded.add(i);
+  prtFold.set(i,!prtIsFolded(i,m.product.rows[i]));
   renderProductPanel();
+  /* 開いたら**そこへ手を運ぶ**（§CLAUDE 2「探させない」）。押した先に
+     何をする場所があるのかを、指ごと連れて行く。 */
+  if(!prtIsFolded(i,m.product.rows[i])){
+   const ta=document.querySelector(`#productRowsBody tr.prt-detail[data-row="${i}"] textarea[data-product-field="note"]`);
+   if(ta)try{ta.focus({preventScroll:true})}catch(err){WL.quiet.note('備考欄へ移せない（押して打てる）',err)}
+  }
  });
  renderCutFaceNote();
  upgradeManualInputTypes();updateProductStatus();

@@ -3461,26 +3461,38 @@
  }
 
  /* ============================================================
-    設備停止の内訳（サブカテゴリ）— 分類 → 停止内容 → 内訳の3階層（§9.389）
+    設備停止マスタ — 分類 → 停止内容 → 内訳（§9.389 → §9.397で1枚へ統合）
     ------------------------------------------------------------
-    利用者の指示「刃組待ちだったら、ゴムリングとフィンガーと刃出しの3種類が
-    あります。そのような種類の違いも後でわかるようにしたいが**同じ刃組という
-    グループには入れておきたい**」。
+    利用者の指示（§9.397）:
+    「設備停止分類と内訳と設備停止名の登録をシームレスにマスタ連携できて
+      いないので、使いやすくなるように改めて『設備停止マスタ』として
+      マスタ統合してほしいです」
 
-    **平らな一覧にしない。** 1行＝1内訳の表にすると、「どの停止の内訳か」を
-    行ごとに読み直すことになり、3階層のどこに居るのかが画面から消える。
-    左に**分類で束ねた停止内容**、右に**その内訳**（`op-choice`と同じ2ペインの
-    作法・§9.221 ②）。器→ペイン→一覧の3段に`flex:1;min-height:0`を通して、
-    スクロールは内側だけにする（§9.222 ⑤）。
+    §9.389／§9.390 では**3つのタブ**（設備停止分類／設備停止／設備停止の内訳）
+    に分かれていた。同じ1つの階層を3枚に割っていたので、
+     ・分類を足す → タブを移る → 停止内容を足す → またタブを移る → 内訳を足す
+       という**タブ往復が2回**要り、
+     ・いま作っている分類がどの停止内容で使われているのか、
+       その停止内容がどんな内訳を持つのかが**1画面のどこにも出ていなかった**。
+    「シームレスに連携できていない」はこの構造そのものを指している。
 
-    **触ったら保存**（§9.113）。内訳は「名前」と「分」の2つしか無いので、
+    **1枚の3ペインにする。** 左＝分類／中＝その分類の停止内容／右＝その
+    停止内容の内訳。視覚導線（左→右）が作業導線（大きい区分→小さい区分）と
+    同じ向きに並ぶ（§CLAUDE 14）。どの段でもその場で足せるので、
+    タブを移る手が1度も要らない。
+
+    **触ったら保存**（§9.113）。内訳は「名前・分・既定」の3つしか無いので、
     行を編集モードへ切り替える手間のほうが大きい。欄を離れた（または Enter）
     時点で保存し、結果は帯の1箇所（`#ssbState`）で言う（§9.212）。
+    停止内容だけは欄が5つ（対象設備・分類・名称・標準所要分・連携機能）
+    あるので、**汎用の編集窓**（`WL.mm.openMaintEditor`）をそのまま開く
+    ——同じマスタの編集の作法を2通り持たない（§CLAUDE 8）。
     ============================================================ */
  /* `addUnder`＝下の欄で足す先（§9.390）。0＝停止内容の直下、>0＝その内訳の下。
     **どこへ足すのかは字で出す**——同じ「追加」ボタンが2つの意味を持つので、
-    押す前に読めないと取り違える（§CLAUDE 2「推測させない」）。 */
- const ssbState={stops:[],subs:[],picked:0,q:'',minutes:[],addUnder:0};
+    押す前に読めないと取り違える（§CLAUDE 2「推測させない」）。
+    `cat`＝左で選んでいる分類（`null`＝すべて）。 */
+ const ssbState={stops:[],subs:[],defaults:{},cats:[],picked:0,q:'',minutes:[],addUnder:0,cat:null};
  function ssbSay(text,bad){
   const el=$('#ssbState');if(!el)return;
   el.textContent=text||'';el.classList.toggle('is-bad',!!bad);
@@ -3488,27 +3500,51 @@
  function ssbSubsOf(id){
   return (ssbState.subs||[]).filter(s=>Number(s.stopReasonId)===Number(id));
  }
+ /* 最初から選ばれる内訳（§9.397）。**答えるのはサーバー**（§9.163）——
+    「1つしかないから既定」も「印が付いているから既定」もここでは数えない。
+    予定の登録画面（`schedule-view.js`）とこの画面が同じ答えを読むので、
+    「既定」と出ている内訳と実際に選ばれる内訳が食い違わない。 */
+ function ssbDefaultOf(reasonId,parentSubId){
+  const v=(ssbState.defaults||{})[`${Number(reasonId)||0}:${Number(parentSubId)||0}`];
+  return v===undefined||v===null?0:Number(v);
+ }
+ /* 分類ごとの停止内容。**分類なしは空文字の群**でまとめる（§CLAUDE 3）。 */
+ function ssbStopsOfCat(){
+  const all=ssbState.stops||[];
+  if(ssbState.cat===null)return all;
+  return all.filter(s=>String(s.category||'').trim()===ssbState.cat);
+ }
  function ssbPickedId(){
-  const ids=(ssbState.stops||[]).map(s=>Number(s.id));
+  const ids=ssbStopsOfCat().filter(ssbStopMatches).map(s=>Number(s.id));
   if(ssbState.picked&&ids.includes(Number(ssbState.picked)))return Number(ssbState.picked);
   return ids[0]||0;
  }
  function ssbStop(id){
   return (ssbState.stops||[]).find(s=>Number(s.id)===Number(id))||null;
  }
+ function ssbStopMatches(s){
+  const q=String(ssbState.q||'').trim().normalize('NFKC').toLowerCase();
+  if(!q)return true;
+  return `${s.name||''} ${s.category||''} ${s.equipmentLabel||''} `
+   .concat(ssbSubsOf(s.id).map(x=>x.name).join(' '))
+   .normalize('NFKC').toLowerCase().includes(q);
+ }
  async function loadStopSubMaint(force){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
   form.classList.remove('mm-form-compact');
   if(!list.querySelector('.ssb-edit'))list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   try{
-   /* **2つを1度に取る**——別々に待つと、左が出てから右が出るまでのあいだ
+   /* **3つを1度に取る**——別々に待つと、左が出てから右が出るまでのあいだ
       「内訳が0件」に見える（§9.331 と同じ「いつの分か」の取り違え）。 */
-   const [rs,ss]=await Promise.all([
+   const [rs,ss,cs]=await Promise.all([
     api('/api/schedule/stop-reason-master'),
     api('/api/schedule/stop-sub-master'),
+    api('/api/schedule/stop-category-master'),
    ]);
    ssbState.stops=(rs.items||[]).map(x=>({...x}));
    ssbState.subs=(ss.items||[]).map(x=>({...x}));
+   ssbState.defaults=ss.defaults||{};
+   ssbState.cats=(cs.items||[]).map(x=>({...x}));
    renderStopSub();
   }catch(e){
    list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message||String(e))}</div>`;
@@ -3522,50 +3558,84 @@
   list.classList.add('is-fill');
   list.parentElement&&list.parentElement.classList.add('is-fill');
   form.innerHTML=`<div class="op-bar">`
-   +`<span class="op-bar-note">左が<b>設備停止</b>（分類ごと）、右がその<b>内訳</b>です。`
+   +`<span class="op-bar-note">左から<b>分類</b>→<b>停止内容</b>→<b>内訳</b>の順に決めます。`
    +`内訳は<b>集計のときだけ</b>分かれ、名称（例: 刃組待ち）では1つにまとまります。</span>`
    +`<span class="op-bar-state" id="ssbState"></span></div>`;
-  list.innerHTML=`<div class="ssb-edit">${ssbStopPaneHtml(picked)}${ssbSubPaneHtml(picked)}</div>`;
+  list.innerHTML=`<div class="ssb-edit">${ssbCatPaneHtml()}${ssbStopPaneHtml(picked)}${ssbSubPaneHtml(picked)}</div>`;
   bindStopSub();
  }
- /* 左＝分類で束ねた停止内容。**節の見出しは分類**（3階層の1段目）。
-    分類が空の行は「分類なし」で最後にまとめる（推測させない・§CLAUDE 3）。 */
- function ssbStopPaneHtml(picked){
-  const q=String(ssbState.q||'').trim().normalize('NFKC').toLowerCase();
+ /* 左＝分類（3階層の1段目）。**件数はその分類の停止内容の数**で、
+    内訳までは数えない（同じ言葉が2箇所で違う数を言わない・§CLAUDE 8）。 */
+ function ssbCatPaneHtml(){
   const all=ssbState.stops||[];
-  const hit=q?all.filter(s=>`${s.name||''} ${s.category||''} ${s.equipmentLabel||''} `
-    .concat(ssbSubsOf(s.id).map(x=>x.name).join(' '))
-    .normalize('NFKC').toLowerCase().includes(q)):all;
-  const cats=[];
-  hit.forEach(s=>{const c=String(s.category||'').trim();if(!cats.includes(c))cats.push(c)});
-  cats.sort((a,b)=>(a?0:1)-(b?0:1));
-  const secs=cats.map(c=>{
-   const rows=hit.filter(s=>String(s.category||'').trim()===c);
-   return `<div class="ssb-cat"><span>${esc(c||'分類なし')}</span><em>${rows.length}件</em></div>`
-    +rows.map(s=>{
-     /* 数えるのは**1段目だけ**（§9.390）——設備停止の一覧の「内訳」列と
-        同じ数にする。合計にすると、同じ言葉が2箇所で違う数を言う
-        （§CLAUDE 8）。その下の件数は`title`で言う。 */
-     const all=ssbSubsOf(s.id);
-     const n=all.filter(x=>!Number(x.parentSubId||0)).length;
-     const deep=all.length-n;
-     return `<button type="button" class="ssb-stop${Number(s.id)===Number(picked)?' is-on':''}" data-ssb-stop="${s.id}"
-       title="${esc(s.name||'')}／${esc(s.equipmentLabel||'')}／内訳${n}件${deep?`（その下にさらに${deep}件）`:''}">
-      <b>${esc(s.name||'')}</b>
-      <span class="ssb-stop-sub">
-       <span class="ssb-stop-eq">${esc(s.equipmentLabel||'')}</span>
-       <span class="ssb-stop-n${n?'':' is-blank'}">${n?`内訳${n}件`:'内訳なし'}</span>
-      </span>
-     </button>`;
-    }).join('');
+  const names=[];
+  (ssbState.cats||[]).forEach(c=>{const n=String(c.name||'').trim();if(n&&!names.includes(n))names.push(n)});
+  /* **どこにも属さない分類を消さない**——マスタに無いのに使われている分類が
+     あれば、それも出す（消せない行を画面から隠さない・§9.390 3）。 */
+  all.forEach(s=>{const n=String(s.category||'').trim();if(n&&!names.includes(n))names.push(n)});
+  const blank=all.filter(s=>!String(s.category||'').trim()).length;
+  const row=(key,label,n,extra)=>{
+   const on=ssbState.cat===key;
+   return `<button type="button" class="ssb-cat-row${on?' is-on':''}" data-ssb-cat="${key===null?'*':esc(key)}"
+     title="${esc(label)}｜停止内容 ${n}件">
+    <b>${esc(label)}</b><span class="ssb-cat-n">${n}</span>${extra||''}</button>`;
+  };
+  const rows=row(null,'すべて',all.length)
+   +names.map(n=>row(n,n,all.filter(s=>String(s.category||'').trim()===n).length,
+     `<span class="ssb-cat-del" data-ssb-cat-del="${esc(n)}" role="button" tabindex="-1"
+       title="分類「${esc(n)}」をマスタから消します（停止内容そのものは消えません）">×</span>`)).join('')
+   +(blank?row('','分類なし',blank):'');
+  return `<div class="ssb-cats">
+    <div class="ssb-pane-head"><b>分類</b><span class="ssb-count">${names.length}件</span></div>
+    <div class="ssb-cat-list">${rows}</div>
+    <div class="ssb-add ssb-add-cat">
+     <input type="text" id="ssbNewCat" placeholder="分類名（例: 保全）" autocomplete="off" maxlength="40">
+     <button type="button" id="ssbAddCat" class="mm-btn-primary">分類を追加</button>
+     <small class="ssb-add-note">分類は<b>全設備で共通</b>です。停止内容の「分類」欄の選択肢になります。</small>
+    </div>
+   </div>`;
+ }
+ /* 中＝その分類の停止内容。**設備名も出す**（§CLAUDE 6）——設備が違えば
+    同じ名前の停止が並ぶので、名前だけでは選べない。 */
+ function ssbStopPaneHtml(picked){
+  const rows=ssbStopsOfCat().filter(ssbStopMatches);
+  const items=rows.map(s=>{
+   /* 数えるのは**1段目だけ**（§9.390）。合計にすると、同じ言葉が2箇所で
+      違う数を言う（§CLAUDE 8）。その下の件数は`title`で言う。 */
+   const subs=ssbSubsOf(s.id);
+   const n=subs.filter(x=>!Number(x.parentSubId||0)).length;
+   const deep=subs.length-n;
+   const m=s.standardMinutes;
+   const blank=(m===null||m===undefined||m==='');
+   return `<div class="ssb-stop-row" data-ssb-stop="${s.id}">
+    <button type="button" class="ssb-stop${Number(s.id)===Number(picked)?' is-on':''}" data-ssb-pick="${s.id}"
+      title="${esc(s.name||'')}／${esc(s.equipmentLabel||'')}／内訳${n}件${deep?`（その下にさらに${deep}件）`:''}">
+     <b>${esc(s.name||'')}</b>
+     <span class="ssb-stop-sub">
+      <span class="ssb-stop-eq">${esc(s.equipmentLabel||'')}</span>
+      <span class="ssb-stop-n${n?'':' is-blank'}">${n?`内訳${n}件`:'内訳なし'}</span>
+      <span class="ssb-stop-min">${blank?'標準所要分なし':esc(WL.duration.text(Number(m)))}</span>
+     </span></button>
+    <button type="button" class="mm-btn-ghost sm" data-ssb-edit="${s.id}"
+      title="対象設備・分類・名称・標準所要分・連携機能を直します">編集</button>
+    <button type="button" class="mm-btn-ghost sm danger" data-ssb-stop-del="${s.id}"
+      title="この停止内容と、その内訳をまとめて消します">×</button>
+   </div>`;
   }).join('');
   return `<div class="ssb-stops">
-    <div class="ssb-stops-head">
-     <b>設備停止</b><span class="ssb-count">${all.length}件</span>
-     <input type="search" id="ssbSearch" value="${esc(ssbState.q||'')}" placeholder="名称・分類・設備・内訳で絞る" autocomplete="off">
+    <div class="ssb-pane-head">
+     <b>停止内容</b><span class="ssb-count">${rows.length}件</span>
+     <input type="search" id="ssbSearch" value="${esc(ssbState.q||'')}" placeholder="名称・設備・内訳で絞る" autocomplete="off">
     </div>
-    <div class="ssb-stop-list">${secs
-      ||`<p class="mm-empty">${q?'絞り込みに当たる設備停止がありません。':'設備停止マスタがまだ空です。「設備停止」タブで登録してください。'}</p>`}</div>
+    <div class="ssb-stop-list">${items
+      ||`<p class="mm-empty">${ssbState.q?'絞り込みに当たる停止内容がありません。'
+         :(ssbState.cat===null?'設備停止マスタがまだ空です。下の「＋ 停止内容を足す」から作れます。'
+           :'この分類の停止内容はまだありません。下の「＋ 停止内容を足す」から作れます。')}</p>`}</div>
+    <div class="ssb-add">
+     <button type="button" id="ssbAddStop" class="mm-btn-primary">＋ 停止内容を足す</button>
+     <small class="ssb-add-note">対象設備・分類・標準所要分・連携機能を決める窓が開きます${
+       ssbState.cat?`（分類は「<b>${esc(ssbState.cat)}</b>」で開きます）`:''}。</small>
+    </div>
    </div>`;
  }
  /* 右＝その停止の内訳。**親の標準所要分をここに出す**（§CLAUDE 6「出どころを
@@ -3573,7 +3643,7 @@
     分かる形にしておく。 */
  function ssbSubPaneHtml(id){
   const stop=ssbStop(id);
-  if(!stop)return `<div class="ssb-subs"><p class="mm-empty">左で<b>設備停止</b>を選ぶと、その内訳がここに出ます。</p></div>`;
+  if(!stop)return `<div class="ssb-subs"><p class="mm-empty">中の一覧で<b>停止内容</b>を選ぶと、その内訳がここに出ます。</p></div>`;
   const rows=ssbSubsOf(id);
   const base=stop.standardMinutes;
   const blank=(base===null||base===undefined||base==='');
@@ -3588,13 +3658,13 @@
   const um=under&&under.standardMinutes;
   const underBase=(um===null||um===undefined||um==='')?'':WL.duration.text(Number(um));
   return `<div class="ssb-subs">
-    <div class="ssb-subs-head">
+    <div class="ssb-pane-head">
      <b class="ssb-title">${esc(stop.name||'')}</b>
      <span class="ssb-eq">${esc(stop.equipmentLabel||'')}</span>
      <span class="ssb-base">標準所要分 <b>${esc(baseText)}</b><small>内訳の分を空欄にすると、この時間になります</small></span>
     </div>
     <div class="ssb-table" role="table">
-     <div class="ssb-row is-head" role="row"><span>内訳名</span><span>標準所要分</span><span></span><span></span></div>
+     <div class="ssb-row is-head" role="row"><span>内訳名</span><span>標準所要分</span><span>既定</span><span></span><span></span></div>
      <div class="ssb-table-scroll">${rows.map(r=>ssbRowHtml(r,baseText,baseNum)).join('')
        ||'<p class="mm-empty">内訳はまだありません。下の欄から足せます。</p>'}</div>
     </div>
@@ -3612,17 +3682,28 @@
  /* 1行＝1内訳。**2段目は字下げして「└」を付ける**（§9.390）——同じ幅の行が
     並ぶだけだと、どれがどれの下なのかが読み取れない（§CLAUDE 14）。
     1段目には「＋ 下へ」を置く。**押すと下の欄の足す先が変わるだけ**で、
-    その場に欄は生えない（欄が2箇所に増えると、どちらで打つのか迷う）。 */
+    その場に欄は生えない（欄が2箇所に増えると、どちらで打つのか迷う）。
+    「既定」は**兄弟のうち1つだけ**（§9.397）。1件しか無い群では、印を
+    付けなくても既定に当たるので**押せなくして理由を書く**（§CLAUDE 4）。 */
  function ssbRowHtml(r,baseText,baseNum){
   const m=(r.standardMinutes===null||r.standardMinutes===undefined||r.standardMinutes==='')
     ?'':String(r.standardMinutes);
   const deep=Number(r.parentSubId||0)>0;
   const on=!deep&&Number(ssbState.addUnder)===Number(r.id);
+  const parent=Number(r.parentSubId||0);
+  const sibs=ssbSubsOf(r.stopReasonId).filter(x=>Number(x.parentSubId||0)===parent);
+  const only=sibs.length<=1;
+  const isDef=Number(ssbDefaultOf(r.stopReasonId,parent))===Number(r.id);
   return `<div class="ssb-row${deep?' is-deep':''}" role="row" data-ssb-id="${r.id}" data-ssb-depth="${deep?2:1}">
     <span class="ssb-name">${deep?'<i class="ssb-tee" aria-hidden="true">└</i>':''}
      <input type="text" class="ssb-f" data-ssb-k="name" value="${esc(r.name||'')}" maxlength="60" autocomplete="off"></span>
     <input type="text" class="ssb-f" data-ssb-k="min" value="${esc(m)}" placeholder="${esc(baseNum)}"
       title="空欄なら1つ上の標準所要分（${esc(baseText)}）です。" autocomplete="off" inputmode="decimal">
+    <button type="button" class="ssb-def${isDef?' is-on':''}" data-ssb-def="${r.id}"${only?' disabled':''}
+      title="${only?'この段の内訳は1つだけなので、印を付けなくても最初から選ばれます'
+        :(isDef?'予定へ入れるとき、最初からこれが選ばれます（押すと外します）'
+              :'予定へ入れるとき、最初からこれが選ばれるようにします')}">${
+      isDef?'既定':(only?'—':'既定にする')}</button>
     <button type="button" class="mm-btn-ghost sm danger" data-ssb-del="${r.id}" title="${
       deep?'この内訳を消します':'この内訳と、その下の内訳をまとめて消します'}">×</button>
     ${deep?'<span></span>'
@@ -3672,19 +3753,112 @@
      s2.setSelectionRange(s2.value.length,s2.value.length)}
    };
   }
-  /* 左を押したとき**右だけ差し替える**（§9.226 ①）——一覧を作り直すと
+  /* 分類を選ぶと、**中と右を描き直す**（左はそのまま）。選んでいる分類の
+     停止内容が1件も無ければ右は案内に戻る——見えていない行の設定を
+     出したままにしない。 */
+  list.querySelectorAll('[data-ssb-cat]').forEach(btn=>{
+   btn.onclick=e=>{
+    if(e.target.closest('[data-ssb-cat-del]'))return;
+    const v=btn.dataset.ssbCat;
+    ssbState.cat=(v==='*')?null:v;
+    ssbState.picked=0;ssbState.addUnder=0;
+    renderStopSub();
+   };
+  });
+  list.querySelectorAll('[data-ssb-cat-del]').forEach(el=>{
+   el.onclick=async ev=>{
+    ev.stopPropagation();
+    const name=el.dataset.ssbCatDel;
+    const used=(ssbState.stops||[]).filter(s=>String(s.category||'').trim()===name).length;
+    const row=(ssbState.cats||[]).find(c=>String(c.name||'').trim()===name);
+    if(!row){ssbSay(`「${name}」は分類マスタに登録されていません（停止内容の側で使われているだけです）。`,true);return}
+    if(!(await confirmModal(`分類「${name}」をマスタから消しますか？\n`
+      +(used?`この分類を使っている停止内容が ${used}件 あります。停止内容そのものは消えませんが、分類の選択肢からは消えます。\n`:'')
+      +'これまでに入れた予定の記録は、その予定の中に残ります。')))return;
+    const uid=requireMaintUser();if(uid===null)return;
+    try{
+     await api('/api/schedule/stop-category-master/delete',
+       {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({id:row.id,user_id:uid})});
+     if(ssbState.cat===name)ssbState.cat=null;
+     await loadStopSubMaint(true);
+     ssbSay(`分類「${name}」を消しました`);
+    }catch(e){ssbSay(`消せませんでした: ${e.message||String(e)}`,true)}
+   };
+  });
+  const addCat=$('#ssbAddCat');
+  if(addCat){
+   addCat.onclick=async()=>{
+    const el=$('#ssbNewCat');
+    const name=String(el&&el.value||'').trim();
+    if(!name){ssbSay('分類名を入れてください。',true);el&&el.focus();return}
+    const uid=requireMaintUser();if(uid===null)return;
+    try{
+     await api('/api/schedule/stop-category-master',
+       {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({name,user_id:uid})});
+     ssbState.cat=name;
+     await loadStopSubMaint(true);
+     ssbSay(`分類「${name}」を足しました`);
+     const again=$('#ssbNewCat');
+     if(again){again.value='';try{again.focus({preventScroll:true})}catch(err){WL.quiet.note('入力欄へ戻せない（押し直せる）',err)}}
+    }catch(e){ssbSay(`足せませんでした: ${e.message||String(e)}`,true)}
+   };
+  }
+  const nc=$('#ssbNewCat');
+  if(nc)nc.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addCat&&addCat.click()}};
+  /* 中を押したとき**右だけ差し替える**（§9.226 ①）——一覧を作り直すと
      `scrollTop`が0へ戻り、上から数え直すことになる。 */
-  list.querySelectorAll('[data-ssb-stop]').forEach(btn=>{
+  list.querySelectorAll('[data-ssb-pick]').forEach(btn=>{
    btn.onclick=()=>{
-    const id=Number(btn.dataset.ssbStop);
+    const id=Number(btn.dataset.ssbPick);
     if(Number(ssbState.picked)===id)return;
     ssbState.picked=id;ssbState.addUnder=0;
     const pane=list.querySelector('.ssb-subs');
     if(!pane){renderStopSub();return}
     pane.outerHTML=ssbSubPaneHtml(id);
-    list.querySelectorAll('[data-ssb-stop]').forEach(b=>
-      b.classList.toggle('is-on',Number(b.dataset.ssbStop)===id));
+    list.querySelectorAll('[data-ssb-pick]').forEach(b=>
+      b.classList.toggle('is-on',Number(b.dataset.ssbPick)===id));
     bindStopSub();
+   };
+  });
+  /* 停止内容そのものの編集は**汎用の編集窓**（§9.397）。欄が5つ
+     （対象設備・分類・名称・標準所要分・連携機能）あるので、その場の
+     入力欄では収まらない——同じマスタの編集の作法を2通り持たない。 */
+  list.querySelectorAll('[data-ssb-edit]').forEach(btn=>{
+   btn.onclick=()=>{
+    const row=ssbStop(Number(btn.dataset.ssbEdit));
+    if(row&&WL.mm.openMaintEditor)WL.mm.openMaintEditor(row);
+   };
+  });
+  const addStop=$('#ssbAddStop');
+  if(addStop)addStop.onclick=()=>{
+   if(!WL.mm.openMaintEditor)return;
+   /* **いま見ている分類を連れて行く**（§CLAUDE 2「思い出させない」）。
+      「すべて」を見ているときは空のまま開く。 */
+   WL.mm.openMaintEditor(null);
+   if(ssbState.cat){
+    const el=document.querySelector('#maintEditorForm [data-field="category"]');
+    if(el){el.value=ssbState.cat;el.dispatchEvent(new Event('change',{bubbles:true}))}
+   }
+  };
+  list.querySelectorAll('[data-ssb-stop-del]').forEach(btn=>{
+   btn.onclick=async()=>{
+    const row=ssbStop(Number(btn.dataset.ssbStopDel));
+    if(!row)return;
+    const subs=ssbSubsOf(row.id);
+    if(!(await confirmModal(`停止内容「${row.name}」を消しますか？\n`
+      +(subs.length?`その内訳 ${subs.length}件（${subs.map(x=>x.name).join('、')}）も一緒に消えます。\n`:'')
+      +'これまでに入れた予定の記録は、その予定の中に残ります。')))return;
+    const uid=requireMaintUser();if(uid===null)return;
+    try{
+     await api('/api/schedule/stop-reason-master/delete',
+       {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({id:row.id,user_id:uid})});
+     ssbState.picked=0;
+     await loadStopSubMaint(true);
+     ssbSay(`「${row.name}」を消しました`);
+    }catch(e){ssbSay(`消せませんでした: ${e.message||String(e)}`,true)}
    };
   });
   list.querySelectorAll('.ssb-row[data-ssb-id] .ssb-f').forEach(inp=>{
@@ -3702,10 +3876,27 @@
     if(min===undefined){ssbSay('分は0より大きい数で入れてください。',true);inp.value=before;return}
     if(!name){ssbSay('内訳名を空にはできません。',true);inp.value=before;return}
     /* **親は動かさない**（§9.212 ②）。名前や分を直しただけで段が変わると、
-       2段目が1段目へ跳ね上がる。 */
+       2段目が1段目へ跳ね上がる。**既定の印も送らない**——送らなければ
+       サーバーは触らない（§9.397）。 */
     await ssbSave({id,stopReasonId:cur.stopReasonId,name,standardMinutes:min,
                    parentSubId:Number(cur.parentSubId||0)},
                   `「${name}」を保存しました`);
+   };
+  });
+  /* 既定の印（§9.397）。**立てるのも降ろすのも同じボタン**——2つ置くと、
+     どちらが今の状態なのかを押して確かめることになる。 */
+  list.querySelectorAll('[data-ssb-def]').forEach(btn=>{
+   btn.onclick=async()=>{
+    const id=Number(btn.dataset.ssbDef);
+    const cur=(ssbState.subs||[]).find(s=>Number(s.id)===id);
+    if(!cur)return;
+    const parent=Number(cur.parentSubId||0);
+    const nowDef=Number(ssbDefaultOf(cur.stopReasonId,parent))===id;
+    await ssbSave({id,stopReasonId:cur.stopReasonId,name:cur.name,
+                   standardMinutes:cur.standardMinutes,parentSubId:parent,
+                   isDefault:!nowDef},
+                  nowDef?`「${cur.name}」の既定を外しました`
+                        :`「${cur.name}」を既定にしました（予定へ入れるとき最初から選ばれます）`);
    };
   });
   const add=$('#ssbAdd');
@@ -3881,7 +4072,10 @@
  WL.mm.registerSpecial('cleanup',{load:loadCleanupMaint});
  WL.mm.registerSpecial('raw-table',{load:loadRawTableMaint});
  WL.mm.registerSpecial('presence',{load:loadPresenceMaint});
- WL.mm.registerSpecial('stop-sub',{load:loadStopSubMaint});
+ /* 統合した設備停止マスタ（§9.397）。名乗りは `stop-master` の1つ——
+    分類・停止内容・内訳を1枚で受け持つ。停止内容そのものの編集は汎用の
+    編集窓を開いて使い回すので、窓を閉じたら描き直す（`onEditorClose`）。 */
+ WL.mm.registerSpecial('stop-master',{load:loadStopSubMaint,onEditorClose:()=>renderStopSub()});
  WL.mm.registerSpecial('stop-minutes',{load:loadStopMinutesMaint});
  Object.assign(WL.mm,{dropRetiredTable,loadMasterTableCatalog,mtState});
 })();

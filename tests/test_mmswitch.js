@@ -35,9 +35,12 @@ let b=null;
   await page.waitForSelector('#masterMaintForm',{timeout:10000});
   // 遅い盤の取得が終わる前に、汎用の一覧を持つタブへ移る。
   await wait(300);
+  /* **汎用の一覧を持つタブ**を選ぶこと（見るのは「追加が押せる一覧が出るか」）。
+     設備停止マスタは§9.397で専用画面（3ペイン）になったので、ここでは使わない
+     ——`.op-bar`を持つ専用画面なので「前のタブの盤が残っている」と誤判定する。 */
   const moved=await page.evaluate(()=>{
-   const b=document.querySelector('[data-master="stopReason"]');if(!b)return false;b.click();return true;});
-  rec('設備停止マスタのタブがある',moved);
+   const b=document.querySelector('[data-master="bladesetBlade"]');if(!b)return false;b.click();return true;});
+  rec('刃マスタのタブがある',moved);
 
   // 前のタブの応答（2秒後）が届いたあとまで待つ。
   await wait(3500);
@@ -47,7 +50,7 @@ let b=null;
    追加:!!document.getElementById('masterMaintAdd'),
    前の盤:!!document.querySelector('#masterMaintForm #opEqPick, #masterMaintForm .op-bar'),
   }));
-  rec('見出しは切り替えた先のマスタ',/設備停止/.test(st.見出し),st.見出し||'なし');
+  rec('見出しは切り替えた先のマスタ',/刃/.test(st.見出し),st.見出し||'なし');
   rec('前のタブの盤が残っていない',!st.前の盤,JSON.stringify(st));
   /* **「見出しが変わった」だけを見ないこと**——見出しは取りに行く前に書くので、
      上書きされていても必ず通る。中身（押せる「追加」）まで見る。 */
@@ -64,18 +67,18 @@ let b=null;
      行が今のタブの一覧に並ぶと、見出しと中身が食い違ったまま操作できてしまう
      （消すつもりで別のマスタの行を消せる）。 */
   await page.unroute('**/api/operation-item-master*');
-  await page.route('**/api/schedule/stop-reason-master*',async route=>{
+  await page.route('**/api/bladeset-blade-master*',async route=>{
    await new Promise(r=>setTimeout(r,2000));
    await route.continue();
   });
-  await page.evaluate(()=>{const b=document.querySelector('[data-master="stopReason"]');if(b)b.click()});
+  await page.evaluate(()=>{const b=document.querySelector('[data-master="bladesetBlade"]');if(b)b.click()});
   await wait(300);
   await page.evaluate(()=>{const b=document.querySelector('[data-master="equipment"]');if(b)b.click()});
   await wait(3500);
   const g=await page.evaluate(()=>({
    見出し:(document.querySelector('#masterMaintTitle,.mm-title')||{}).textContent||'',
    一覧:(document.getElementById('masterMaintList')||{}).textContent||''}));
-  rec('見出しは設備マスタ',/^設備/.test(g.見出し)&&!/設備停止/.test(g.見出し),g.見出し||'なし');
+  rec('見出しは設備マスタ',/^設備/.test(g.見出し)&&!/刃/.test(g.見出し),g.見出し||'なし');
   rec('前のタブの行が一覧に残っていない',
       g.一覧.indexOf('テスト設備A')>=0,(g.一覧||'').slice(0,120));
  }catch(e){

@@ -54,7 +54,10 @@ let b=null;
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintForm',{timeout:10000});
   await page.evaluate(()=>{const b=document.querySelector('[data-master="stopReason"]');if(b)b.click()});
-  await settle(1400);
+  /* §9.397 で「設備停止マスタ」は3ペインの専用画面になった。窓を開く入口は
+     `#ssbAddStop`（汎用の`#masterMaintAdd`は出ない）。 */
+  await page.waitForSelector('#ssbAddStop',{timeout:15000});
+  await settle(600);
   await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'test-stopeq');
  };
  const made=[];
@@ -66,7 +69,7 @@ let b=null;
 
   /* ---- 1) 入力欄が複数選択+「すべての設備」になっている ---- */
   await openStopTab();
-  await page.click('#masterMaintAdd');
+  await page.click('#ssbAddStop');
   await page.waitForSelector('#maintEditorModal:not([hidden])',{timeout:5000});
   await settle(900);
   const form=await page.evaluate(()=>{
@@ -112,8 +115,12 @@ let b=null;
   rec('複数設備を1行で登録できる',!!many&&many.equipmentList.length===2,JSON.stringify(many&&many.equipmentList));
   rec('保存は1行のまま(設備の数だけ増えない)',
       (await listFor()).filter(x=>x.name===TAG+'_多').length===1);
-  const cellMany=await page.$$eval('#masterMaintList .mm-row:not(.head)',
-    (rs,t)=>{const r=rs.find(x=>x.innerText.includes(t));return r?r.innerText.split('\n')[0].trim():''},TAG+'_多');
+  /* §9.397 で設備停止マスタは3ペインの専用画面になったので、一覧は
+     中のペイン（`.ssb-stop`）。**見るものは同じ**——複数設備を1行で
+     登録したとき、設備名が人の読む形で並ぶこと（§CLAUDE 6）。 */
+  const cellMany=await page.$$eval('[data-ssb-pick]',
+    (rs,t)=>{const r=rs.find(x=>(x.querySelector('b')||{}).textContent.trim()===t);
+      return r?((r.querySelector('.ssb-stop-eq')||{}).textContent||'').trim():''},TAG+'_多');
   rec('一覧では設備名が読める形で並ぶ',cellMany===`${EQ_A} / ${EQ_B}`,cellMany);
 
   /* ---- 4) それぞれの設備から引ける ---- */

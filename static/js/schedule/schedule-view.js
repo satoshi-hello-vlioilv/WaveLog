@@ -95,8 +95,11 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  let scState={equipment:'',entries:[],anchor:null,anchorRounded:null,warnings:[],configured:true,
               editable:false,pickerEnabled:false,stopReasons:[],dragId:null,insertBefore:'',
               /* 設備停止の内訳と時間の選択肢（§9.389）。`stopPick`＝いま
-                 手順の途中（内容→内訳→時間）。`null`なら一覧を出す。 */
-              stopSubs:[],stopMinutes:[],stopSlider:null,stopPick:null,
+                 右のペインに出している停止内容（§9.397で一覧と入れ替える
+                 形をやめ、左右に並べた）。`null`なら右は案内だけ。
+                 `stopSubDefaults`＝最初から選ばれている内訳（§9.397。
+                 答えるのはサーバーの1箇所）。 */
+              stopSubs:[],stopSubDefaults:{},stopMinutes:[],stopSlider:null,stopPick:null,
               editingComment:null,   // 申し送りをその場で書いている行のID(§9.191)
               focusComment:null,     // 落として入れた枠。描き終わりで開く
               /* まとめて外す(§9.170)。選んだ予定のid(文字列)と、掴んでいる
@@ -835,23 +838,6 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      </div>
     </div>
    </div>
-   <div class="sc-session-banner" id="scSessionBanner" hidden></div>
-   <!-- 他のPCが共有を書き換えたときの案内(§9.188)。**触っている最中は
-        勝手に読み直さない**——並べ替えの途中で行が入れ替わると、掴んで
-        いたものが分からなくなる。 -->
-   <div class="sc-sync-banner" id="scSyncBanner" hidden></div>
-   <!-- 元データ（仕掛）が変わったときの案内(§9.375)。**「確認して更新」の
-        ときだけ**出す。自動のときは取り込んでから知らせるので帯は要らない。 -->
-   <div class="sc-sync-banner sc-src-banner" id="scSrcBanner" hidden></div>
-   <div class="sc-warnings" id="scWarnings" hidden></div>
-   <!-- 時刻が決まっていない予定の案内(§9.185)。**残っているときだけ出す**。
-        「未定」という言葉は行の中にも出るが、行は下へ流れるので、
-        何件あるのか・次に何をすればよいのかは上でまとめて言う。 -->
-   <div class="sc-undecided" id="scUndecided" hidden></div>
-   <!-- まとめて外す(§9.170)。仕掛一覧の選択件数バー(plan-select-bar)と
-        同じ形・同じ言葉にしてある。**0件のときは出さない**——常時
-        「0件選択中」と出ているのは読まれない飾りにしかならない。 -->
-   <div class="sc-pick-bar" id="scPickBar" hidden></div>
    <div class="sc-board" id="scBoard" hidden></div>
    <div class="sc-blade" id="scBladeBody" hidden></div>
    <div class="sc-body" id="scSingleBody">
@@ -948,6 +934,43 @@ const SC_LOCK_WAIT_MAX_MS=4000;
       <div class="sc-stop-groups" id="scStopButtons" hidden><div class="sc-empty-note">設備停止マスタが未登録です</div></div>
      </div>
     </div>
+   </div>
+   <!-- ---------- 知らせの棚（§9.397、利用者の指摘） ----------
+        「メッセージが長くなったり追加表示のメッセージが出てくるときに
+         行数が増えることで表示位置がガタガタズレる…何かクリックしたときに
+         メッセージのために1行一時的に増えるとかもそうです」
+
+        6本の案内（編集権・共有の変更・元データの変更・警告・未定・選択件数）は
+        **一覧の上**に並んでいた。出るたびに一覧の上端が下がり、実測で
+        **行が最大235px下へ逃げて**いた。狙っていたロットが指の下から消えるので、
+        押し間違いに直結する。
+
+        **一覧の上端は動かさない。** 棚を一覧の**下**へ移すと、案内が出ても
+        減るのは器の下端だけで、**行のy座標は1pxも動かない**（スクロール器は
+        上を基準に中身を置くため）。§9.292 ②で下端には既に余白（#scTailSpace）
+        を確保してあるので、ふだんは何も覆わない。
+        中身・id・hiddenの約束は**1文字も変えていない**——変えたのは置き場だけ。
+
+        ※このコメントはテンプレートリテラルの中なので**バッククォートを
+          書かないこと**（§9.211 ③。そこで文字列が閉じて画面が組み上がらない）。 -->
+   <div class="sc-notices" id="scNotices">
+    <div class="sc-session-banner" id="scSessionBanner" hidden></div>
+    <!-- 他のPCが共有を書き換えたときの案内(§9.188)。**触っている最中は
+         勝手に読み直さない**——並べ替えの途中で行が入れ替わると、掴んで
+         いたものが分からなくなる。 -->
+    <div class="sc-sync-banner" id="scSyncBanner" hidden></div>
+    <!-- 元データ（仕掛）が変わったときの案内(§9.375)。**「確認して更新」の
+         ときだけ**出す。自動のときは取り込んでから知らせるので帯は要らない。 -->
+    <div class="sc-sync-banner sc-src-banner" id="scSrcBanner" hidden></div>
+    <div class="sc-warnings" id="scWarnings" hidden></div>
+    <!-- 時刻が決まっていない予定の案内(§9.185)。**残っているときだけ出す**。
+         「未定」という言葉は行の中にも出るが、何件あるのか・次に何をすれば
+         よいのかは棚でまとめて言う。 -->
+    <div class="sc-undecided" id="scUndecided" hidden></div>
+    <!-- まとめて外す(§9.170)。仕掛一覧の選択件数バー(plan-select-bar)と
+         同じ形・同じ言葉にしてある。**0件のときは出さない**——常時
+         「0件選択中」と出ているのは読まれない飾りにしかならない。 -->
+    <div class="sc-pick-bar" id="scPickBar" hidden></div>
    </div>`;
   const grid=$('#grid');
   if(grid&&grid.parentNode)grid.parentNode.insertBefore(panel,grid);else document.body.appendChild(panel);
@@ -7934,6 +7957,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    ]);
    scState.stopReasons=(r.items||[]);
    scState.stopSubs=(ss.items||[]);
+   /* 最初から選ばれている内訳（§9.397）。**数え直さない**——「1つしかない
+      からそれ」も「既定の印が付いているからそれ」も、答えるのはサーバーの
+      `stop_default_sub_map()`の1箇所（§9.163）。画面が別に数えると、
+      マスタ管理で「既定」と出ている内訳と、ここで選ばれる内訳が食い違う。 */
+   scState.stopSubDefaults=(ss.defaults||{});
    scState.stopMinutes=(mm.items||[]).map(x=>Number(x.minutes))
      .filter(n=>Number.isFinite(n)&&n>0);
    scState.stopSlider=mm.slider||null;
@@ -7979,13 +8007,32 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  function ensureStopUi(box){
   if(box.dataset.stopUi)return;
   box.dataset.stopUi='1';
+  /* ---------- 2ペインにする（§9.397、利用者の指摘） ----------
+     「小さくてわかりにくく使いづらい、ステップが多い印象もある…さらに
+      整列された印象もほしく、より直感的に、考えなくてもわかるくらいに」
+
+     以前は**同じ器を一覧と手順で入れ替えて**いた（§9.389）。画面が
+     丸ごと差し替わるので、押した直後に「何が起きたのか」を読み直す必要が
+     あり、戻るには「← 一覧へ」を押すしかなかった——**1つの作業が2画面に
+     割れていた**のが「ステップが多い」の正体。
+
+     左＝何を入れるか（停止内容の一覧）／右＝どう入れるか（内訳・時間）を
+     **同時に出す**。選ぶと右が変わるだけなので、画面は動かない（§9.397 ①の
+     「表示位置をころころ変えない」と同じ趣旨）。左右とも常に見えているので、
+     選び直しも1手で済む（「戻る」が要らない）。
+     狭い器（側パネル）では`@container`で1列へ落とす。 */
   box.innerHTML=`
    <div class="sc-stop-head">
     <div class="sc-stop-where" id="scStopWhere"></div>
     <input type="search" class="sc-stop-search" id="scStopSearch" autocomplete="off"
      placeholder="名称・分類で絞り込み">
    </div>
-   <div class="sc-stop-list" id="scStopList"></div>
+   <div class="sc-stop-main">
+    <div class="sc-stop-left">
+     <div class="sc-stop-list" id="scStopList"></div>
+    </div>
+    <div class="sc-stop-detail" id="scStopDetail"></div>
+   </div>
    <div class="sc-stop-new">
     <button type="button" class="sc-stop-new-toggle" id="scStopNewToggle"
      title="この設備の設備停止マスタへ、新しい停止理由を登録します">＋ 停止理由を登録</button>
@@ -8084,6 +8131,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   ensureStopUi(box);
   renderStopWhere();
   renderStopList();
+  renderStopDetail();
   if(!document.getElementById('scStopNewForm')?.hidden)renderStopNewCats();
  }
  function stopMatches(s){
@@ -8093,19 +8141,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  }
  function renderStopList(){
   const list=document.getElementById('scStopList');if(!list)return;
-  /* 手順の途中は**一覧と入れ替える**（§9.389）。絞り込み欄と「＋ 停止理由を
-     登録」も伏せる——いま決めるのは1つだけ（§CLAUDE 2）。 */
-  const search=document.getElementById('scStopSearch');
-  const newBox=document.querySelector('#scStopButtons .sc-stop-new');
-  if(stopPickerOpen()){
-   if(search)search.hidden=true;
-   if(newBox)newBox.hidden=true;
-   list.innerHTML=stopPickerHtml();
-   bindStopPicker();
-   return;
-  }
-  if(search)search.hidden=false;
-  if(newBox)newBox.hidden=false;
+  /* §9.397で**一覧と手順を入れ替えるのをやめた**（§9.389の作法を撤回）。
+     左は常に一覧、右が設定。絞り込み欄と「＋ 停止理由を登録」も出したまま
+     ——選び直しが1手で済み、「戻る」を覚えなくてよい。 */
   /* 作り直すと、押したボタン（＝いまフォーカスがある要素）ごと消える。
      消えたあとに`<body>`へ落ちるとIMEが切れるので、打つ場所へ返す
      （§9.220 2②）。**外にフォーカスがあるときは触らない**。 */
@@ -8133,11 +8171,23 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   });
   const label=c=>c||'分類なし';
   list.innerHTML=stopCategoryOrder().filter(c=>groups.has(c)).map(cat=>{
-   const items=groups.get(cat).map(s=>
-    `<button type="button" class="sc-stop-button" data-id="${s.id}" draggable="true"
-      title="押すと予定へ入ります／ドラッグで入れる位置を選べます">`
+   /* 行は**幅いっぱいの1列**（§9.397）。以前は折り返す札の並びで、名前の
+      長さごとに左端がずれて「整列された印象」が出なかった（利用者の指摘）。
+      1列にすると左端が1本にそろい、内訳の件数も同じ位置で読める。
+      **いま選んでいる行に印を付ける**——右のペインが何の設定なのかを、
+      右の見出しだけでなく左でも言う（§CLAUDE 2「探させない」）。 */
+   const items=groups.get(cat).map(s=>{
+    const subs=stopSubTopOf(s.id).length;
+    const on=scState.stopPick&&Number(scState.stopPick.id)===Number(s.id);
+    return `<button type="button" class="sc-stop-button${on?' is-on':''}" data-id="${s.id}" draggable="true"
+      aria-pressed="${on?'true':'false'}"
+      title="押すと右で内訳と時間を決められます／ドラッグすると入れる位置を選べます">`
     +`<b>${esc(s.name)}</b>`
-    +`<small>${s.standardMinutes?esc(WL.duration.text(s.standardMinutes)):'見積は自動'}</small></button>`).join('');
+    +`<span class="sc-stop-meta">`
+    +(subs?`<em class="sc-stop-subs">内訳${subs}</em>`:'')
+    +`<small>${s.standardMinutes?esc(WL.duration.text(s.standardMinutes)):'見積は自動'}</small>`
+    +`</span></button>`;
+   }).join('');
    return `<div class="sc-stop-group">
     <div class="sc-stop-group-title">${esc(label(cat))}
      <span class="sc-stop-group-count">${groups.get(cat).length}件</span></div>
@@ -8240,18 +8290,47 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     **2段目 → 1段目 → 停止内容 → 選択肢の真ん中**。画面が別の順で決めると、
     出ている数字と入る数字が食い違う。 */
  function stopPickDefaultMinutes(reasonId,subId,subId2){
+  return stopDefaultMinutesInfo(reasonId,subId,subId2).minutes;
+ }
+ /* **どこから来た分なのかも一緒に答える**（§CLAUDE 6「出どころ・単位・根拠を
+    画面に出す」）。同じ「30分」でも、内訳の標準所要分と選択肢の真ん中では
+    当たる見込みが違う——出どころが読めれば、直すかどうかを判断できる。
+    段の順は`stop_default_minutes()`（サーバー）と同じ4段。 */
+ function stopDefaultMinutesInfo(reasonId,subId,subId2){
   const n=v=>{const x=Number(v);return Number.isFinite(x)&&x>0?x:null};
   const find=id=>id?stopSubsOf(reasonId).find(s=>Number(s.id)===Number(id)):null;
   for(const id of [subId2,subId]){
    const sub=find(id);
-   if(sub){const m=n(sub.standardMinutes);if(m)return m}
+   if(sub){const m=n(sub.standardMinutes);if(m)return {minutes:m,from:`内訳「${sub.name}」の標準所要分`}}
   }
   const r=stopReasonById(reasonId);
-  if(r){const m=n(r.standardMinutes);if(m)return m}
+  if(r){const m=n(r.standardMinutes);if(m)return {minutes:m,from:'この停止内容の標準所要分'}}
   const list=scState.stopMinutes||[];
-  return list.length?list[Math.floor(list.length/2)]:null;
+  return list.length
+   ?{minutes:list[Math.floor(list.length/2)],from:'選択肢の真ん中（標準所要分が未設定）'}
+   :{minutes:null,from:'時間の選択肢がありません'};
  }
- function stopPickerOpen(){return !!scState.stopPick}
+ /* ---------- 最初から選ばれている内訳（§9.397、利用者の指示） ----------
+    「内訳は1つしかない場合はそれを既定に。2つ以上あっても既定のものを
+     設定して登録できるようにしてください」
+
+    **数えるのはサーバー**（`stop_default_sub_map()`・§9.163）。ここは
+    受け取った答えを引くだけで、「1つなら」「印があれば」の判定を書き写さない
+    ——マスタ管理の「既定」の札と、ここで選ばれる内訳が食い違わないように。
+    鍵は`停止理由ID:親サブカテゴリID`（1段目は親が`0`）。 */
+ function stopDefaultSubOf(reasonId,parentSubId){
+  const key=`${Number(reasonId)||0}:${Number(parentSubId)||0}`;
+  const id=(scState.stopSubDefaults||{})[key];
+  return id===undefined||id===null?'':id;
+ }
+ /* 内訳の段を**下まで**先回りして決める（§CLAUDE 2「先回りして提示する」）。
+    1段目に既定があり、その下にも既定があれば2段目まで埋める——入れる前に
+    「あと何を選ぶのか」が1目で分かる。 */
+ function stopPickPreset(reasonId){
+  const subId=stopDefaultSubOf(reasonId,0);
+  const subId2=subId?stopDefaultSubOf(reasonId,subId):'';
+  return {subId,subId2};
+ }
  function openStopPicker(reasonId,label){
   if(!scState.equipment)return;
   if(sessionBlocked()){
@@ -8259,11 +8338,15 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    return;
   }
   const subs=stopSubTopOf(reasonId);
+  const pre=stopPickPreset(reasonId);
   scState.stopPick={id:reasonId,label:String(label||''),
-    subId:'',subId2:'',minutes:stopPickDefaultMinutes(reasonId,'',''),touched:false,
-    /* 位置は**ここで控える**（開いている間に別の行を選んでも動かない）。 */
-    before:takeInsertBefore(),subs};
-  renderStopList();
+    subId:pre.subId,subId2:pre.subId2,
+    minutes:stopPickDefaultMinutes(reasonId,pre.subId,pre.subId2),touched:false,
+    /* 位置は**ここで控える**（開いている間に別の行を選んでも動かない）。
+       **既に控えてあるなら奪わない**——左の一覧で選び直すたびに
+       `takeInsertBefore()`を呼ぶと、落とした位置が2件目で消える。 */
+    before:(scState.stopPick&&scState.stopPick.before)||takeInsertBefore(),subs};
+  renderStopList();renderStopDetail();renderStopWhere();
  }
  function closeStopPicker(keepPin){
   const p=scState.stopPick;
@@ -8271,41 +8354,60 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* やめたときは**控えた位置を返す**——押し直すつもりの人が、もう一度
      行を選び直さずに済む（§CLAUDE 2「思い出させない」）。 */
   if(keepPin&&p&&p.before)scState.insertBefore=p.before;
-  renderStopList();renderStopWhere();
+  renderStopList();renderStopDetail();renderStopWhere();
  }
- function stopPickerHtml(){
-  const p=scState.stopPick;if(!p)return '';
+ /* ---------- 右のペイン＝「どう入れるか」（§9.397） ----------
+    決めることは**内訳**と**時間**の2つだけ。両方とも**最初から選ばれて**
+    いるので（内訳は`stopDefaultSubOf()`、時間は`stopPickDefaultMinutes()`）、
+    ふつうは**押すだけ**で入る（§CLAUDE 2「次にすることを常に1つだけ指す」）。
+
+    並びは**ラベル列を固定幅にした2列**（§CLAUDE 9）——以前は段ごとに番号・
+    題・状態が横に流れ、選択肢の左端が段ごとにずれていた（利用者の指摘
+    「整列された印象もほしく」）。値の左端が1本の線にそろうので、視線が
+    列を追える。
+
+    **番号（①②③）は付けない。** 順に進む手順ではなく、既に埋まっている
+    設定を見直す画面になったので、番号は「まだやることが3つある」と
+    読ませるだけになる（§CLAUDE 2）。 */
+ function stopDetailHtml(){
+  const p=scState.stopPick;
+  if(!p){
+   const n=(scState.stopReasons||[]).filter(x=>!stopLockedReason(x.name)).length;
+   return `<div class="sc-sp-empty">
+     <b>左から停止内容を選びます</b>
+     <small>${n?`この設備で選べるのは${n}件です。`:''}選ぶと、ここで<b>内訳</b>と<b>時間</b>を決められます。</small>
+     <small>内訳と時間は<b>最初から選ばれています</b>。そのままでよければ、そのまま追加できます。</small>
+    </div>`;
+  }
   const subs=p.subs||[];
   const mins=scState.stopMinutes||[];
   const sl=scState.stopSlider;
   const step=sl?Number(sl.step||5):5;
-  const sub=p.subId?subs.find(s=>Number(s.id)===Number(p.subId)):null;
+  const sub=p.subId?subs.find(x=>Number(x.id)===Number(p.subId)):null;
   /* もう1段（§9.390）。**その内訳が下を持つときだけ段が増える**——空の段を
      出すと「選び忘れた」と読まれる（§CLAUDE 4）。 */
   const kids=sub?stopSubKidsOf(p.id,p.subId):[];
-  const sub2=p.subId2?kids.find(s=>Number(s.id)===Number(p.subId2)):null;
-  let no=0;
-  const subStep=subs.length?(++no):0;
-  const kidStep=kids.length?(++no):0;
-  const minStep=(++no);
+  const sub2=p.subId2?kids.find(x=>Number(x.id)===Number(p.subId2)):null;
   const ready=(!subs.length||!!sub)&&(!kids.length||!!sub2);
-  const minsHtml=mins.map(m=>
-    `<button type="button" class="sc-sp-opt${Number(p.minutes)===Number(m)?' is-on':''}"
-      data-sp-min="${m}">${esc(WL.duration.text(m))}</button>`).join('')
-    ||'<span class="sc-sp-empty">時間の選択肢がまだありません（マスタ管理 &gt; 設備停止の時間）。</span>';
-  const subsHtml=subs.map(s=>{
-    const m=stopPickDefaultMinutes(p.id,s.id,'');
-    const n=stopSubKidsOf(p.id,s.id).length;
-    return `<button type="button" class="sc-sp-opt${Number(p.subId)===Number(s.id)?' is-on':''}"
-      data-sp-sub="${s.id}" title="${esc(s.name)}${m?`／既定 ${WL.duration.text(m)}`:''}${
-        n?`／この下にさらに${n}件`:''}">${esc(s.name)}${
+  const reason=stopReasonById(p.id)||{};
+  const optHtml=(list,attr,cur,extra)=>list.map(x=>{
+    const on=Number(cur)===Number(x.id);
+    const def=stopDefaultSubOf(p.id,Number(x.parentSubId||0));
+    const isDef=Number(def)===Number(x.id);
+    const m=extra(x);
+    const n=stopSubKidsOf(p.id,x.id).length;
+    return `<button type="button" class="sc-sp-opt${on?' is-on':''}" ${attr}="${x.id}"
+      aria-pressed="${on?'true':'false'}"
+      title="${esc(x.name)}${m?`／既定 ${WL.duration.text(m)}`:''}${
+        n?`／この下にさらに${n}件`:''}${isDef?'／この停止内容の既定の内訳です':''}">${esc(x.name)}${
+        isDef?'<i class="sc-sp-def" aria-hidden="true">既定</i>':''}${
         n?`<i class="sc-sp-more" aria-hidden="true">＋${n}</i>`:''}</button>`;
    }).join('');
-  const kidsHtml=kids.map(s=>{
-    const m=stopPickDefaultMinutes(p.id,p.subId,s.id);
-    return `<button type="button" class="sc-sp-opt${Number(p.subId2)===Number(s.id)?' is-on':''}"
-      data-sp-sub2="${s.id}" title="${esc(s.name)}${m?`／既定 ${WL.duration.text(m)}`:''}">${esc(s.name)}</button>`;
-   }).join('');
+  const minsHtml=mins.map(m=>
+    `<button type="button" class="sc-sp-opt${Number(p.minutes)===Number(m)?' is-on':''}"
+      aria-pressed="${Number(p.minutes)===Number(m)?'true':'false'}"
+      data-sp-min="${m}">${esc(WL.duration.text(m))}</button>`).join('')
+    ||'<span class="sc-sp-empty-note">時間の選択肢がまだありません（マスタ管理 &gt; 設備停止の時間）。</span>';
   /* スライダーは**選択肢の外の値も入れるため**にある（§9.389）。選択肢が
      1件以下なら出さない——動かせない目盛りを置かない（§CLAUDE 4）。 */
   const sliderHtml=sl?`<div class="sc-sp-slider">
@@ -8315,62 +8417,67 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      <b id="scSpMin">${esc(p.minutes==null?'—':WL.duration.text(p.minutes))}</b>
     </div>
     <small class="sc-sp-hint">${esc(WL.duration.text(sl.min))}〜${esc(WL.duration.text(sl.max))}を${step}分きざみで直せます</small>`:'';
+  const row=(name,note,body)=>`<div class="sc-sp-row">
+    <span class="sc-sp-label">${esc(name)}${note?`<small>${esc(note)}</small>`:''}</span>
+    <div class="sc-sp-val">${body}</div></div>`;
+  /* **入れる前に、入るものを1行で言う**（§CLAUDE 6「出どころ・単位を出す」）。
+     ボタンの字がそのまま結果になるので、押す前に読めば取り違えない。 */
+  const what=p.label+(sub?`（${sub.name}${sub2?' / '+sub2.name:''}）`:'')
+    +(p.minutes==null?'':`・${WL.duration.text(p.minutes)}`);
   return `<div class="sc-sp">
     <div class="sc-sp-head">
-     <button type="button" class="sc-sp-back" id="scSpBack" title="停止内容の一覧へ戻ります">← 一覧へ</button>
      <b class="sc-sp-title">${esc(p.label)}</b>
+     <span class="sc-sp-sub">${esc(reason.category||'分類なし')} ・ ${esc(scState.equipment||'')}</span>
+     <button type="button" class="sc-sp-clear" id="scSpBack" title="選ぶのをやめます（一覧はそのままです）">選び直す</button>
     </div>
-    ${subStep?`<div class="sc-sp-step${sub?' is-done':''}">
-      <div class="sc-sp-line"><span class="sc-sp-n">${subStep}</span>
-       <span class="sc-sp-t">内訳を選ぶ</span>
-       <span class="sc-sp-pick">${sub?esc(sub.name):'未選択'}</span></div>
-      <div class="sc-sp-opts">${subsHtml}</div>
-     </div>`:''}
-    ${kidStep?`<div class="sc-sp-step${sub2?' is-done':''}">
-      <div class="sc-sp-line"><span class="sc-sp-n">${kidStep}</span>
-       <span class="sc-sp-t">${esc(sub?sub.name:'内訳')}のどれか</span>
-       <span class="sc-sp-pick">${sub2?esc(sub2.name):'未選択'}</span></div>
-      <div class="sc-sp-opts">${kidsHtml}</div>
-     </div>`:''}
-    <div class="sc-sp-step is-done">
-     <div class="sc-sp-line"><span class="sc-sp-n">${minStep}</span>
-      <span class="sc-sp-t">時間を選ぶ</span>
-      <span class="sc-sp-pick">${esc(p.minutes==null?'未選択':WL.duration.text(p.minutes))}</span></div>
-     <div class="sc-sp-opts">${minsHtml}</div>
-     ${sliderHtml}
+    <div class="sc-sp-rows">
+     ${subs.length?row('内訳',sub?'':'選んでください',optHtml(subs,'data-sp-sub',p.subId,
+        x=>stopPickDefaultMinutes(p.id,x.id,''))):''}
+     ${kids.length?row(sub?sub.name:'内訳',sub2?'':'選んでください',optHtml(kids,'data-sp-sub2',p.subId2,
+        x=>stopPickDefaultMinutes(p.id,p.subId,x.id))):''}
+     ${row('時間',p.touched?'手で選んだ分':stopDefaultMinutesInfo(p.id,p.subId,p.subId2).from,minsHtml+sliderHtml)}
     </div>
     <button type="button" class="sc-sp-go" id="scSpGo"${ready?'':' disabled'}>${
-      ready?'この内容で追加'
+      ready?esc(what)+' を追加'
         :(sub&&kids.length?`${esc(sub.name)}のどれかを選んでください`:'内訳を選んでください')}</button>
    </div>`;
+ }
+ function renderStopDetail(){
+  const box=document.getElementById('scStopDetail');if(!box)return;
+  box.innerHTML=stopDetailHtml();
+  bindStopPicker();
  }
  function bindStopPicker(){
   const p=scState.stopPick;if(!p)return;
   const back=document.getElementById('scSpBack');
   if(back)back.onclick=()=>closeStopPicker(true);
-  document.querySelectorAll('[data-sp-sub]').forEach(b=>{
+  /* **配線するのは右のペインの中だけ**（§9.397）。`document`から拾うと、
+     左の一覧のボタンや別の浮き窓の同名の印まで巻き込む。 */
+  const pane=document.getElementById('scStopDetail')||document;
+  pane.querySelectorAll('[data-sp-sub]').forEach(b=>{
    b.onclick=()=>{
     const id=Number(b.dataset.spSub);
     p.subId=(Number(p.subId)===id)?'':id;
     /* **1段目を選び直したら2段目は捨てる**（§9.390）——別の内訳の下の
-       選択が残ると、画面に出ていない値で登録される。 */
-    p.subId2='';
+       選択が残ると、画面に出ていない値で登録される。
+       **選び直した先に既定があるなら、そこまで先回りする**（§9.397）。 */
+    p.subId2=p.subId?stopDefaultSubOf(p.id,p.subId):'';
     /* **手で時間を触っていなければ、内訳の既定へ合わせる**（§CLAUDE 2
        「先回りして提示する」）。触っていたら勝手に戻さない。 */
-    if(!p.touched)p.minutes=stopPickDefaultMinutes(p.id,p.subId,'');
-    renderStopList();
+    if(!p.touched)p.minutes=stopPickDefaultMinutes(p.id,p.subId,p.subId2);
+    renderStopDetail();
    };
   });
-  document.querySelectorAll('[data-sp-sub2]').forEach(b=>{
+  pane.querySelectorAll('[data-sp-sub2]').forEach(b=>{
    b.onclick=()=>{
     const id=Number(b.dataset.spSub2);
     p.subId2=(Number(p.subId2)===id)?'':id;
     if(!p.touched)p.minutes=stopPickDefaultMinutes(p.id,p.subId,p.subId2);
-    renderStopList();
+    renderStopDetail();
    };
   });
-  document.querySelectorAll('[data-sp-min]').forEach(b=>{
-   b.onclick=()=>{p.minutes=Number(b.dataset.spMin);p.touched=true;renderStopList()};
+  pane.querySelectorAll('[data-sp-min]').forEach(b=>{
+   b.onclick=()=>{p.minutes=Number(b.dataset.spMin);p.touched=true;renderStopDetail()};
   });
   const range=document.getElementById('scSpRange');
   if(range){
@@ -8380,14 +8487,26 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     p.minutes=Number(range.value);p.touched=true;
     const out=document.getElementById('scSpMin');
     if(out)out.textContent=WL.duration.text(p.minutes);
-    document.querySelectorAll('[data-sp-min]').forEach(b=>
+    pane.querySelectorAll('[data-sp-min]').forEach(b=>
       b.classList.toggle('is-on',Number(b.dataset.spMin)===Number(p.minutes)));
-    const pick=document.querySelector('.sc-sp-step:last-of-type .sc-sp-pick');
-    if(pick)pick.textContent=WL.duration.text(p.minutes);
+    /* **入れるものを言う札も一緒に直す**（§9.397）——動かしている間だけ
+       ボタンの字が古い分のままだと、押す直前に読んだものと入るものが違う。 */
+    stopGoLabel();
    };
   }
   const go=document.getElementById('scSpGo');
   if(go)go.onclick=()=>commitStopPick();
+ }
+ /* 進むボタンの字＝**いま入るもの**（§9.397）。スライダーを動かしている間は
+    全部を描き直さない（掴んでいる取っ手ごと消える・§9.211）ので、字だけを
+    書き換える口を1つ持つ。 */
+ function stopGoLabel(){
+  const p=scState.stopPick,go=document.getElementById('scSpGo');
+  if(!p||!go||go.disabled)return;
+  const sub=p.subId?(p.subs||[]).find(x=>Number(x.id)===Number(p.subId)):null;
+  const sub2=p.subId2?stopSubKidsOf(p.id,p.subId).find(x=>Number(x.id)===Number(p.subId2)):null;
+  go.textContent=p.label+(sub?`（${sub.name}${sub2?' / '+sub2.name:''}）`:'')
+    +(p.minutes==null?'':`・${WL.duration.text(p.minutes)}`)+' を追加';
  }
  function commitStopPick(){
   const p=scState.stopPick;if(!p)return;
@@ -8423,7 +8542,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     +(p.minutes==null?'':`・${WL.duration.text(p.minutes)}`);
   showToast&&showToast('設備停止を追加しました',`${target}の予定に追加しました（${what}）`,3200);
   scState.stopPick=null;
-  renderStopList();renderStopWhere();
+  renderStopList();renderStopDetail();renderStopWhere();
   keepStopTyping();
  }
  /* ---------- 入れた設備停止を直す（§9.220 2①、利用者の指示） ----------
@@ -8858,7 +8977,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   modal.querySelector('#scStopModalClose').onclick=()=>closeStopModal();
   /* 既定を変えたら**保存キーも変える**——古い値を覚えている端末に新しい
      既定が届かない(§9.105と同じ約束)。絞り込みと登録の欄が増えたぶん広げる。 */
-  WL.makeFloatingWindow(modal,{storageKey:'scStopModalRectV2',defaultWidth:460,defaultHeight:560,defaultTop:80,minWidth:320,minHeight:320});
+  /* 器は**中身から決める**（§CLAUDE 11）。§9.397で左右2ペインにしたので、
+     460pxでは左が一覧・右が設定を並べられない（実測: 左は名前＋内訳件数＋
+     見積で約300px、右は時間の札が7枚並ぶので約400px）。
+     **既定を変えたら保存キーも変える**——古い値を覚えている端末に新しい
+     既定が届かない（§9.105と同じ約束）。 */
+  WL.makeFloatingWindow(modal,{storageKey:'scStopModalRectV3',defaultWidth:820,defaultHeight:560,defaultTop:80,minWidth:360,minHeight:320});
   return modal;
  }
  function openStopModal(){
@@ -9614,6 +9738,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
 
  WL.scheduleView={
   equipment:()=>scState.equipment||'',
+  /* 設備停止の選択肢を取り直す（§9.397）。**既定の内訳はサーバーが答える**
+     （§9.163）ので、マスタを直したあとに画面へ届けるにはここを通す。
+     網が「既定を付けたら最初から選ばれる」を確かめるのにも使う——画面の
+     字を数えるのではなく、**同じ口を通して取り直してから**見る。 */
+  reloadStopReasons:()=>loadStopReasons(),
   /* 元データの取り込み（§9.375）の状態。**答えは1箇所**——網も報告も
      ここを読む（画面の字を数えると、言い回しを直すたびに嘘になる）。 */
   sourceSync:()=>({mode:scSourceSyncMode,keys:sourceSyncKeys(),

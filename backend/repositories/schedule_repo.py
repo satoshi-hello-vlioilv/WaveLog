@@ -1159,19 +1159,26 @@ STOP_SUB_ROOT=0
 # 名前の自然キー。**親まで入れる**——「刃組待ち>ゴムリング>交換」と
 # 「刃組待ち>フィンガー>交換」は別物で、親を入れないと2つ目が作れない。
 _STOP_SUB_INDEX='UX_設備停止サブカテゴリマスタ_名称'
+# 既定の内訳（§9.397、利用者の指示「内訳は1つしかない場合はそれを既定に。
+# 2つ以上あっても既定のものを設定して登録できるように」）。
+# **兄弟のうち1つだけ**が持つ印（同じ`[停止理由ID]`・同じ`[親サブカテゴリID]`
+# の中で1つ）。UNIQUEでは守れない（0が何行あってもよいので）ため、
+# `stop_sub_upsert()`が立てるときに兄弟を降ろす——**守るのは1箇所**。
+STOP_SUB_DEFAULT_COLUMN='既定'
 _STOP_SUB_COLS=('[サブカテゴリID],[停止理由ID],[名称],[標準所要分],[表示順],[有効],'
-                '[更新日時],[更新者ID],[親サブカテゴリID]')
+                '[更新日時],[更新者ID],[親サブカテゴリID],[既定]')
 
 def ensure_stop_sub_table(c_master):
  names=tables(c_master);created=False
  if STOP_SUB_TABLE not in names:
   cur=c_master.cursor()
-  cur.execute('CREATE TABLE [設備停止サブカテゴリマスタ] ([サブカテゴリID] INTEGER PRIMARY KEY AUTOINCREMENT, [停止理由ID] INTEGER, [親サブカテゴリID] INTEGER, [名称] TEXT, [標準所要分] REAL, [表示順] INTEGER, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
+  cur.execute('CREATE TABLE [設備停止サブカテゴリマスタ] ([サブカテゴリID] INTEGER PRIMARY KEY AUTOINCREMENT, [停止理由ID] INTEGER, [親サブカテゴリID] INTEGER, [名称] TEXT, [標準所要分] REAL, [表示順] INTEGER, [有効] INTEGER, [既定] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME)')
   cur.execute(f'CREATE UNIQUE INDEX [{_STOP_SUB_INDEX}] ON [設備停止サブカテゴリマスタ] ([停止理由ID],[親サブカテゴリID],[名称])')
   c_master.commit();created=True
   return created
  # 後から足した列は`add_missing_columns()`の1箇所（§9.216）。
- add_missing_columns(c_master,STOP_SUB_TABLE,[(STOP_SUB_PARENT_COLUMN,'INTEGER')])
+ add_missing_columns(c_master,STOP_SUB_TABLE,[(STOP_SUB_PARENT_COLUMN,'INTEGER'),
+                                             (STOP_SUB_DEFAULT_COLUMN,'INTEGER')])
  cur=c_master.cursor()
  # **足した列のNULLは0へ寄せる**（親なし）。NULLのままだと自然キーの照合も
  # UNIQUEも効かない（上のコメント）。
@@ -1190,7 +1197,7 @@ def ensure_stop_sub_table(c_master):
 
 def stop_sub_rows(c_master,stop_reason_id=None):
  """有効なサブカテゴリ。
-    r: サブカテゴリID,停止理由ID,名称,標準所要分,表示順,有効,更新日時,更新者ID,親サブカテゴリID
+    r: サブカテゴリID,停止理由ID,名称,標準所要分,表示順,有効,更新日時,更新者ID,親サブカテゴリID,既定
     **並びは「親 → その子」**（`[親サブカテゴリID]`が0の行が先）。"""
  ensure_stop_sub_table(c_master)
  cur=c_master.cursor()
@@ -1230,12 +1237,17 @@ def stop_sub_parent_of(c_master,sub_id):
  return stop_sub_row(c_master,p) if p else None
 
 def stop_sub_upsert(c_master,stop_reason_id,name,uid,standard_minutes=None,sub_id=None,
-                    parent_sub_id=None):
+                    parent_sub_id=None,is_default=None):
  """内訳の登録・改名。照合の順番は設備停止マスタと同じ3段
     (①IDが来ていればその行 ②(停止理由ID,親,名称)の自然キー ③新規)。
 
     `parent_sub_id`＝同じ停止内容の**1段目の内訳**（§9.390）。省略・0なら
-    1段目そのもの。**深さは2段まで**——子を親にはできない。"""
+    1段目そのもの。**深さは2段まで**——子を親にはできない。
+
+    `is_default`＝既定の内訳（§9.397）。**`None`は「触っていない」**で、
+    今の印をそのまま残す（§9.212 ②）——名前や分を直すたびに既定が落ちると、
+    直した人は何が起きたか分からない。真を渡したときだけ**兄弟の印を降ろす**
+    （同じ親の下で既定は1つ。守るのはここ1箇所）。"""
  ensure_stop_sub_table(c_master)
  ensure_stop_reason_table(c_master)
  name=str(name or '').strip()
@@ -1272,14 +1284,29 @@ def stop_sub_upsert(c_master,stop_reason_id,name,uid,standard_minutes=None,sub_i
  if target_id is not None:
   cur.execute('UPDATE [設備停止サブカテゴリマスタ] SET [停止理由ID]=?,[親サブカテゴリID]=?,[名称]=?,[標準所要分]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [サブカテゴリID]=?',
               [pid,parent,name,standard_minutes,uid,target_id])
+  _stop_sub_set_default(cur,pid,parent,target_id,is_default,uid)
   return target_id,False
  # 表示順は**その親の中での最大+10**(内訳は親ごとに並ぶので、全体の最大に
  # すると別の親を足すたびに番号が飛ぶ)。
  cur.execute('SELECT Max([表示順]) FROM [設備停止サブカテゴリマスタ] WHERE [停止理由ID]=? AND [親サブカテゴリID]=?',[pid,parent])
  order=int((cur.fetchone()[0]) or 0)+10
- cur.execute('INSERT INTO [設備停止サブカテゴリマスタ] ([停止理由ID],[親サブカテゴリID],[名称],[標準所要分],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,-1,?,?,Now(),Now())',
+ cur.execute('INSERT INTO [設備停止サブカテゴリマスタ] ([停止理由ID],[親サブカテゴリID],[名称],[標準所要分],[表示順],[有効],[既定],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,-1,0,?,?,Now(),Now())',
              [pid,parent,name,standard_minutes,order,uid,uid])
- return cur.lastrowid,True
+ new_id=cur.lastrowid
+ _stop_sub_set_default(cur,pid,parent,new_id,is_default,uid)
+ return new_id,True
+
+def _stop_sub_set_default(cur,pid,parent,sub_id,is_default,uid):
+ """既定の印を立てる／降ろす（§9.397）。**`None`は触らない**。
+    立てるときは**同じ親の兄弟をまとめて降ろす**——2つ既定があると、
+    どちらが最初から選ばれるのかを決められない（§CLAUDE 「推測させない」）。"""
+ if is_default is None:return
+ if is_default:
+  cur.execute('UPDATE [設備停止サブカテゴリマスタ] SET [既定]=0,[更新者ID]=?,[更新日時]=Now() '
+              'WHERE [停止理由ID]=? AND [親サブカテゴリID]=? AND [サブカテゴリID]<>?',[uid,pid,parent,sub_id])
+  cur.execute('UPDATE [設備停止サブカテゴリマスタ] SET [既定]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [サブカテゴリID]=?',[uid,sub_id])
+ else:
+  cur.execute('UPDATE [設備停止サブカテゴリマスタ] SET [既定]=0,[更新者ID]=?,[更新日時]=Now() WHERE [サブカテゴリID]=?',[uid,sub_id])
 
 def stop_sub_delete(c_master,sub_id,uid):
  """内訳を消す。**子も一緒に消す**（§9.390）——親だけ消すと、どこにも
@@ -1289,6 +1316,42 @@ def stop_sub_delete(c_master,sub_id,uid):
  cur.execute('UPDATE [設備停止サブカテゴリマスタ] SET [有効]=0,[更新者ID]=?,[更新日時]=Now() WHERE [サブカテゴリID]=? OR [親サブカテゴリID]=?',
              [uid,sub_id,sub_id])
  return cur.rowcount
+
+def stop_default_sub(c_master,stop_reason_id,parent_sub_id=STOP_SUB_ROOT):
+ """最初から選ばれている内訳のID（§9.397、利用者の指示）。
+
+ 「内訳は1つしかない場合はそれを既定に。2つ以上あっても既定のものを
+   設定して登録できるようにしてください」
+
+    順は **①候補が1つならそれ ②`[既定]`の印がある行 ③無し（未選択）**。
+    ①を①に置くのは利用者の言葉どおりで、**印を付け忘れていても迷わせない**
+    ため——選択肢が1つしかない場面で「選んでください」と出すのは、
+    できないことを聞いているのと同じ（§CLAUDE 2）。
+
+    **答えるのはここ1箇所**（§9.163）。予定の登録画面とマスタ管理の両方が
+    この答えを読む——2つの画面が別々に数えると、「既定」と出ている内訳と
+    実際に選ばれる内訳が食い違う。"""
+ pid=int(stop_reason_id or 0);parent=int(parent_sub_id or 0)
+ kids=[r for r in stop_sub_rows(c_master,pid) if int(r[8] or 0)==parent]
+ if not kids:return None
+ if len(kids)==1:return kids[0][0]
+ hit=next((r for r in kids if (r[9] if len(r)>9 else 0)),None)
+ return hit[0] if hit else None
+
+def stop_default_sub_map(c_master):
+ """{'停止理由ID:親サブカテゴリID': サブカテゴリID}。画面が段ごとに
+    聞き直さずに済むよう、1度の問い合わせで全部答える。"""
+ groups={}
+ for r in stop_sub_rows(c_master):
+  groups.setdefault((int(r[1] or 0),int(r[8] or 0)),[]).append(r)
+ out={}
+ for (pid,parent),kids in groups.items():
+  if len(kids)==1:pick=kids[0][0]
+  else:
+   hit=next((r for r in kids if (r[9] if len(r)>9 else 0)),None)
+   pick=hit[0] if hit else None
+  if pick is not None:out['%d:%d'%(pid,parent)]=pick
+ return out
 
 def stop_sub_counts(c_master):
  """{停止理由ID: 1段目の件数}。一覧が「内訳を持つ停止内容」を1度の

@@ -2088,40 +2088,69 @@
 .oc-eq-tag.is-all{background:var(--pale);border-color:var(--teal);color:var(--teal-dark)}
 
 /* ================================================================
-   設備停止の内訳（§9.389、利用者の指示「刃組待ちだったら、ゴムリングと
-   フィンガーと刃出しの3種類があります…同じ刃組というグループには入れて
-   おきたい」）
+   設備停止マスタ（§9.389 → §9.397で1枚へ統合）
    ----------------------------------------------------------------
-   左＝**分類で束ねた停止内容**（親）／右＝その**内訳**（子）。
-   `op-choice`と同じ2ペインの作法（§9.221 ②）だが、**クラスは分ける**
-   （`report-layout`も同じ判断）——見た目を揃えたいのであって、
-   片方を直したらもう片方が動く関係にはしたくない。
-   器→ペイン→一覧の3段に`flex:1;min-height:0`を通し、スクロールは
-   内側だけにする（§9.222 ⑤）。
+   利用者の指示（§9.397）「設備停止分類と内訳と設備停止名の登録を
+   シームレスにマスタ連携できていないので…『設備停止マスタ』として
+   マスタ統合してほしいです」。
+
+   **左＝分類／中＝停止内容／右＝内訳の3ペイン。** 視覚導線（左→右）が
+   作業導線（大きい区分→小さい区分）と同じ向きに並ぶ（§CLAUDE 14）。
+   以前は3つのタブに割れており、1つの階層を作るのにタブ往復が2回要った。
+
+   幅は**中身から決める**（§CLAUDE 11）——分類は名前1つなので狭く、
+   停止内容は名前＋設備＋内訳件数＋分で中くらい、内訳は表なので残り全部。
+   `op-choice`と同じペインの作法（§9.221 ②）だが、**クラスは分ける**
+   ——見た目を揃えたいのであって、片方を直したらもう片方が動く関係には
+   したくない。器→ペイン→一覧の3段に`flex:1;min-height:0`を通し、
+   スクロールは内側だけにする（§9.222 ⑤）。
    ================================================================ */
-.ssb-edit{display:grid;grid-template-columns:minmax(var(--w-lg),var(--w-xl)) minmax(0,1fr);
+.ssb-edit{display:grid;
+  grid-template-columns:minmax(var(--w-md),var(--w-lg)) minmax(var(--w-lg),var(--w-2xl)) minmax(0,1fr);
   gap:var(--space-3);flex:1;min-height:0;align-items:stretch}
-.ssb-stops,.ssb-subs{display:flex;flex-direction:column;gap:var(--space-2);
+.ssb-cats,.ssb-stops,.ssb-subs{display:flex;flex-direction:column;gap:var(--space-2);
   min-width:0;min-height:0;border:1px solid var(--line);border-radius:var(--radius-md);
   background:var(--surface);padding:var(--pad-card)}
-.ssb-stops-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);flex:none}
-.ssb-stops-head>b{font-size:var(--fs-base-sm);color:var(--teal-dark)}
+/* ペインの見出しは**3つとも同じ形**（§CLAUDE 「同じ役割には同じ形」）。 */
+.ssb-pane-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);flex:none}
+.ssb-pane-head>b{font-size:var(--fs-base-sm);color:var(--teal-dark)}
 .ssb-count{font-size:var(--fs-badge);color:var(--muted);font-weight:700}
-.ssb-stops-head input[type=search]{flex:1 1 100%;height:var(--ctl-h-sm);min-width:0;
+.ssb-pane-head input[type=search]{flex:1 1 100%;height:var(--ctl-h-sm);min-width:0;
   padding:0 var(--space-2);border:1px solid var(--line);border-radius:var(--radius-sm);
   font-size:var(--fs-sm)}
+/* ---- 左＝分類（§9.397） ---- */
+.ssb-cat-list{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow:auto}
+.ssb-cat-row{display:flex;align-items:center;gap:var(--gap-inline);width:100%;
+  min-height:var(--ctl-h-sm);padding:var(--space-1) var(--space-2);text-align:left;
+  border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;cursor:pointer}
+.ssb-cat-row:hover{background:var(--surface-2)}
+.ssb-cat-row>b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:var(--fs-sm);font-weight:700;color:var(--ink)}
+/* 件数は**その分類の停止内容の数**（内訳までは数えない・§CLAUDE 8）。 */
+.ssb-cat-n{flex:none;font-size:var(--fs-micro);font-weight:700;color:var(--muted)}
+/* 消す道は**行の中の小さな的**（§CLAUDE 5「危ない操作を主要動線に置かない」）
+   ——選ぶ的（行いっぱい）とは別の物であることが、大きさの違いで読める。 */
+.ssb-cat-del{flex:none;width:var(--ctl-h-xs);text-align:center;border-radius:var(--radius-xs);
+  font-size:var(--fs-micro);font-weight:700;color:var(--muted);cursor:pointer}
+.ssb-cat-del:hover{background:var(--danger-bg);color:var(--danger)}
+.ssb-cat-row.is-on .ssb-cat-n,.ssb-cat-row.is-on .ssb-cat-del{color:inherit}
+.ssb-add-cat input{flex:1 1 100%}
+/* ---- 中＝停止内容（§9.397） ---- */
 .ssb-stop-list{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow:auto}
-/* 3階層の1段目＝分類。**節の見出しで区切る**（§9.264「群の中は決める順」）
-   ——停止内容だけを並べると、分類がどこにも出ず2階層に見える。 */
-.ssb-cat{display:flex;align-items:baseline;gap:var(--gap-tight);
-  padding:var(--space-1) var(--space-2) 0;font-size:var(--fs-micro);font-weight:800;
-  color:var(--teal-dark);text-transform:none}
-.ssb-cat>em{font-style:normal;font-weight:700;color:var(--muted)}
+/* 1行＝停止内容1件。**選ぶ的（名前）と直す・消すを横に分ける**——
+   同じ行に並べても、押す物が違えば大きさと位置で見分けられる（§CLAUDE 5）。 */
+.ssb-stop-row{display:grid;grid-template-columns:minmax(0,1fr) max-content max-content;
+  align-items:center;gap:var(--gap-tight);border-radius:var(--radius-sm)}
 /* **1件は2行**（§9.222 ⑤）。3行にすると器いっぱいでも10件しか見えない。 */
 .ssb-stop{display:grid;gap:0;width:100%;text-align:left;padding:2px var(--space-2);
   border:1px solid transparent;border-radius:var(--radius-sm);background:transparent;
   cursor:pointer}
 .ssb-stop:hover{background:var(--surface-2)}
+.ssb-stop-min{font-size:var(--fs-micro);color:var(--muted)}
+/* 選んだ行の見た目は`90-state.css`の束ね規則（§9.353）。濃い面の上で
+   読めるよう、中の添え物だけ色を親から継がせる。 */
+.ssb-stop.is-on>b,.ssb-stop.is-on .ssb-stop-eq,
+.ssb-stop.is-on .ssb-stop-n,.ssb-stop.is-on .ssb-stop-min{color:inherit}
 .ssb-stop>b{font-size:var(--fs-sm);font-weight:800;color:var(--ink)}
 .ssb-stop-sub{display:flex;flex-wrap:nowrap;gap:var(--space-2);min-width:0}
 .ssb-stop-sub>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -2130,7 +2159,6 @@
    「内訳を作っていない」のか「読めていない」のかが分からない。 */
 .ssb-stop-n{font-size:var(--fs-micro);font-weight:700;color:var(--teal-dark)}
 .ssb-stop-n.is-blank{font-weight:400;color:var(--muted)}
-.ssb-subs-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline);flex:none}
 .ssb-title{font-size:var(--fs-base);font-weight:800;color:var(--ink)}
 .ssb-eq{font-size:var(--fs-badge);font-weight:700;line-height:1;white-space:nowrap;
   padding:2px var(--space-2);border:1px solid var(--teal);border-radius:var(--radius-sm);
@@ -2146,9 +2174,19 @@
 .ssb-table-scroll{flex:1;min-height:0;overflow:auto}
 /* 列は「内訳名／分／消す」の3つだけ。**分は中身の長さから決める**
    （§CLAUDE 11）——3桁しか入らない欄に器いっぱいを与えない。 */
+/* 列は「内訳名／分／既定／消す／＋下へ」の5つ。**分は中身の長さから決める**
+   （§CLAUDE 11）——3桁しか入らない欄に器いっぱいを与えない。
+   「既定」は字が入る幅だけ（§9.397）。 */
 .ssb-row{display:grid;
-  grid-template-columns:minmax(0,var(--w-xl)) var(--w-sm) var(--ctl-h-sm) minmax(0,1fr);
+  grid-template-columns:minmax(0,var(--w-xl)) var(--w-sm) var(--w-sm) var(--ctl-h-sm) minmax(0,1fr);
   align-items:center;gap:var(--gap-inline);padding:var(--space-1) var(--space-2)}
+/* 既定の印（§9.397）。**押せるのに効かない物は、効かないと書く**（§CLAUDE 4）
+   ——1件しか無い段では印を付けなくても最初から選ばれるので、押せなくする。 */
+.ssb-def{height:var(--ctl-h-xs);padding:0 var(--space-2);white-space:nowrap;
+  border:1px solid var(--line-mid);border-radius:var(--radius-sm);background:var(--surface);
+  font-size:var(--fs-micro);font-weight:700;color:var(--ink-3);cursor:pointer}
+.ssb-def:hover:not(:disabled){border-color:var(--teal);color:var(--teal-dark)}
+.ssb-def:disabled{border-color:transparent;background:transparent;color:var(--muted);cursor:default}
 .ssb-row.is-head>span:last-child{font-size:var(--fs-micro)}
 .ssb-row.is-head{position:sticky;top:0;z-index:1;background:var(--surface-2);
   border-bottom:1px solid var(--line-soft)}

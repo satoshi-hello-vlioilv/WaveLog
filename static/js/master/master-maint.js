@@ -69,6 +69,10 @@
  // 開けるようにしつつ(設備停止マスタはscheduleモードでのみ書込可能なため)、
  // タブは自分のBlueprintで書けるものだけに絞る。
  function maintDefVisible(def){
+  /* **他のタブへ統合した定義はナビに出さない**（§9.397）。設備停止の分類と
+     内訳は「設備停止マスタ」の1枚へ畳んだが、**定義そのものは残す**
+     ——APIの綴りと`tests/test_crudroutes.py`の見張りがここを読む。 */
+  if(def.navHidden)return false;
   const mode=(window.accessMode&&window.accessMode.mode)||'edit';
   if(mode!=='schedule')return true;
   // 読み取り専用のタブ(テーブル生データ)は書込権限と無関係なのでどのモードでも

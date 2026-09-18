@@ -63,6 +63,38 @@ main>header:has(>.hd-viewbar.is-inline) #headerContextSource{display:none}
 }
 .hd-viewbar .sc-head-left,.hd-viewbar .sc-head-right{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);min-width:0}
 .hd-viewbar .sc-head-right{margin-left:auto}
+/* ---------- 帯は1行のまま（§9.397、利用者の指摘） ----------
+   「メッセージが長くなったり追加表示のメッセージが出てくるときに行数が
+    増えることで表示位置がガタガタズレる…ターゲットがずれるため非常に
+    使いにくい」
+
+   **原因は「文字の長さが器の幅を決めていた」こと。** 操作列は折り返せる
+   まま（§9.199）で、状態の文字（読込時点・段取りの注記・書込中の印）が
+   伸びると1行に収まらなくなり、**行が1つ増えて本文が76px下がって**いた
+   （実測: 帯98→174px・一覧の上端186→262px。`scratchpad/eval_shift.js`）。
+
+   直し方は**器の要る幅を中身の長さから切り離す**こと:
+    ① この帯は折り返さない（`nowrap`）。1行であることを作りで保証する。
+    ② 代わりに**状態の文字だけが縮む**（`flex:0 1 auto`＋省略記号）。
+       いちばん重要度の低いものから譲るので、ボタンは1つも欠けない
+       （§CLAUDE 1「面積は頻度×重要度」）。全文は`title`が持つ。
+   **押せる物を縮ませないこと**——切れたボタンは`title`では救えない（§9.222）。 */
+.hd-viewbar .sc-head{flex-wrap:nowrap}
+.hd-viewbar .sc-head-left,.hd-viewbar .sc-head-right{flex-wrap:nowrap}
+/* 譲る側（状態の文字）。**ここだけが縮む**。 */
+.hd-viewbar #scToolsState{flex:0 1 auto;min-width:0;overflow:hidden}
+.hd-viewbar .sc-sync-chip{flex:0 1 auto;min-width:0}
+.hd-viewbar .sc-sync-chip .sc-sync-txt{
+  display:block;min-width:0;max-width:var(--w-xl);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.hd-viewbar .sc-field-reorder-note{
+  flex:0 1 auto;min-width:0;max-width:var(--w-lg);overflow:hidden;text-overflow:ellipsis;
+}
+.hd-viewbar .sc-lock-badge{flex:none;max-width:var(--w-md);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 譲らない側（押せる物）。**縮むと文字が切れて読めなくなる**ので固定する。 */
+.hd-viewbar #scToolsAdd,.hd-viewbar #scToolsView,.hd-viewbar #scToolsAct,
+.hd-viewbar .sc-mode-toggle,.hd-viewbar .sc-board-window{flex:none}
 .hd-viewbar label{display:inline-flex;align-items:center;gap:var(--space-1);white-space:nowrap;font-size:var(--fs-sm);color:var(--muted)}
 .hd-viewbar select,.hd-viewbar input{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;color:var(--ink-2);font-size:var(--fs-sm)}
 .hd-viewbar button{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);font-size:var(--fs-sm);border-radius:var(--radius-sm);border:1px solid var(--line);background:#fff;

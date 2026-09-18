@@ -24,6 +24,7 @@ from ..common import api_guard, cfg_read, cfg_write_response
 from ...access_mode import request_user_id
 from ..body import body, any_
 from ...repositories import schedule_repo as sr
+from ... import flags
 from ._base import bp
 
 
@@ -31,7 +32,7 @@ from ._base import bp
 # 設備停止サブカテゴリマスタ
 # =====================================================================
 def _sub_entry(r, parents):
- # r: サブカテゴリID,停止理由ID,名称,標準所要分,表示順,有効,更新日時,更新者ID
+ # r: サブカテゴリID,停止理由ID,名称,標準所要分,表示順,有効,更新日時,更新者ID,親サブカテゴリID,既定
  pid = int(r[1] or 0)
  p = parents.get(pid) or {}
  return {'id': r[0], 'stopReasonId': pid,
@@ -44,6 +45,10 @@ def _sub_entry(r, parents):
          # **深さも返す**——画面が0かどうかを数え直さずに段を描ける。
          'parentSubId': int(r[8] or 0),
          'depth': 2 if int(r[8] or 0) else 1,
+         # 既定の内訳の印（§9.397）。**「1つしかないから既定」は含めない**——
+         # ここは登録された印そのもので、当たる内訳は`defaults`が答える
+         # （2つを混ぜると、印を外したのに既定のままに見える）。
+         'isDefault': bool(r[9]) if len(r) > 9 else False,
          'name': r[2], 'standardMinutes': r[3], 'order': r[4],
          'updatedAt': r[6].isoformat() if r[6] else None,
          'updatedBy': str(r[7] or '')}
@@ -72,12 +77,17 @@ def stop_sub_list():
   parents = _parents(mc)
   rows = sr.stop_sub_rows(mc, pid or None)
   return ([_sub_entry(r, parents) for r in rows],
-          [dict(v, id=k) for k, v in sorted(parents.items(), key=lambda kv: kv[1]['label'])])
- items, parents = cfg_read(fn)
+          [dict(v, id=k) for k, v in sorted(parents.items(), key=lambda kv: kv[1]['label'])],
+          sr.stop_default_sub_map(mc))
+ items, parents, defaults = cfg_read(fn)
  # **選べる親はサーバーが答える**（§9.163）。盤は返ってきた一覧を並べるだけ。
  # `maxDepth`＝内訳の段の上限（§9.390）。画面へ数を書き写さない。
+ # `defaults`＝最初から選ばれている内訳（§9.397）。鍵は`停止理由ID:親ID`。
+ # **「1つしかない」も含めた答え**なので、画面は数え直さない（§9.163）
+ # ——予定の登録画面とマスタ管理が別々に数えると、「既定」と出ている内訳と
+ # 実際に選ばれる内訳が食い違う。
  return jsonify(ok=True, configured=True, items=items, stale=False, parents=parents,
-                maxDepth=2)
+                maxDepth=2, defaults=defaults)
 
 
 def _sub_save(x, sub_id=None):
@@ -87,7 +97,12 @@ def _sub_save(x, sub_id=None):
                                     request_user_id(x),
                                     standard_minutes=x.get('standardMinutes'),
                                     sub_id=sub_id,
-                                    parent_sub_id=x.get('parentSubId'))
+                                    parent_sub_id=x.get('parentSubId'),
+                                    # **鍵が来ていないときは`None`**＝触らない
+                                    # （§9.212 ②。名前を直しただけで既定が
+                                    #  落ちると、直した人は何が起きたか分からない）。
+                                    is_default=flags.flag_of(x.get('isDefault'))
+                                    if x.sent('isDefault') else None)
   return {'id': gid, 'created': created}
  return cfg_write_response(fn)
 
@@ -95,13 +110,14 @@ def _sub_save(x, sub_id=None):
 @bp.post('/api/schedule/stop-sub-master')
 def stop_sub_register():
  return _sub_save(body({'id': any_, 'stopReasonId': any_, 'name': str,
-                        'standardMinutes': any_, 'parentSubId': any_}))
+                        'standardMinutes': any_, 'parentSubId': any_,
+                        'isDefault': any_}))
 
 
 @bp.post('/api/schedule/stop-sub-master/update')
 def stop_sub_update():
  x = body({'id': any_, 'stopReasonId': any_, 'name': str,
-           'standardMinutes': any_, 'parentSubId': any_})
+           'standardMinutes': any_, 'parentSubId': any_, 'isDefault': any_})
  if x.get('id') in (None, ''):
   return jsonify(error='更新対象IDがありません。'), 400
  return _sub_save(x, sub_id=x.get('id'))

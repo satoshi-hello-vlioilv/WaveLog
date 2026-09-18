@@ -82,18 +82,22 @@ let b=null;
  await page.waitForSelector('#openMasterMaint',{timeout:15000});
  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'test');
 
- // ---- (1) 分類マスタのタブが存在し、既定の分類が入っている ----
- await openTab('stopCategory');
+ // ---- (1) 分類は「設備停止マスタ」の左ペインに並ぶ（§9.397で統合） ----
+ /* 分類の独立したタブは無くなった（利用者の指示「設備停止分類と内訳と
+    設備停止名の登録を…『設備停止マスタ』としてマスタ統合してほしい」）。
+    見るものは同じ——**既定の分類が読める**こと。 */
+ await openTab('stopReason');
+ await page.waitForSelector('.ssb-cat-row',{timeout:15000});
  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'test');
- const cats=await page.$$eval('#masterMaintList .mm-row',rs=>rs.map(r=>r.innerText.split('\n')[0].trim()));
- rec('設備停止分類マスタのタブがある',cats.length>0,cats.join('/'));
+ const cats=await page.$$eval('.ssb-cat-row b',rs=>rs.map(r=>r.textContent.trim()));
+ rec('設備停止マスタの左ペインに分類が並ぶ',cats.length>0,cats.join('/'));
  rec('既定の分類(保全・段取り・待ち・突発)が入っている',
    ['保全','段取り','待ち','突発'].every(c=>cats.some(x=>x.includes(c))),cats.join('/'));
 
  // ---- (2) 設備停止マスタの「分類」が分類マスタ連動の選択欄になっている ----
- await openTab('stopReason');
- await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'test');
- await page.click('#masterMaintAdd');
+ /* 停止内容そのものの編集は**汎用の編集窓**を使い回す（§9.397）。入口は
+    統合画面の「＋ 停止内容を足す」——同じマスタの編集の作法を2通り持たない。 */
+ await page.click('#ssbAddStop');
  await page.waitForSelector('#maintEditorModal:not([hidden])',{timeout:5000});
  await page.waitForTimeout(900);
  const combo=await page.evaluate(()=>{
@@ -157,10 +161,11 @@ let b=null;
  });
  rec('未登録の分類が分類マスタへ自動登録される',catsAfter.includes(uniq),catsAfter.join('/'));
 
- // 分類マスタのタブを開き直すと、増えた分類が一覧に出る
- await openTab('stopCategory');
- const cats2=await page.$$eval('#masterMaintList .mm-row',rs=>rs.map(r=>r.innerText.split('\n')[0].trim()));
- rec('分類マスタの一覧にも反映される',cats2.some(c=>c.includes(uniq)),cats2.join('/'));
+ // 設備停止マスタを開き直すと、増えた分類が左ペインに出る（§9.397）
+ await openTab('stopReason');
+ await page.waitForSelector('.ssb-cat-row',{timeout:15000});
+ const cats2=await page.$$eval('.ssb-cat-row b',rs=>rs.map(r=>r.textContent.trim()));
+ rec('左ペインの分類にも反映される',cats2.some(c=>c.includes(uniq)),cats2.join('/'));
 
  // ---- (5) 使用中の分類は確認なしに消さない ----
  const del=await page.evaluate(async u=>{

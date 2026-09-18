@@ -103,11 +103,16 @@ const made={perm:[],cat:[]};
      文字列で丸ごと固定していたので、**正しい位置へ1枚足しただけで落ちた**
      （実測: 内訳と時間を足した通しでこの1件だけが赤）。見張りたいのは
      「決める順に並んでいるか」であって「何枚あるか」ではない。 */
-  const wantOrder=['shiftMaster','loadFactor','stopCategory','stopReason','stopSub','stopMinutes'];
+  /* §9.397 で分類・停止内容・内訳を**1枚（設備停止マスタ）へ統合**したので、
+     この群は4枚になった。並びは今までどおり決める順。 */
+  const wantOrder=['shiftMaster','loadFactor','stopReason','stopMinutes'];
   const atSched=k=>inSchedGroup.indexOf(k);
-  rec('群の中が決める順に並ぶ（勤務形態→換算係数→分類→停止内容→内訳→時間）',
+  rec('群の中が決める順に並ぶ（勤務形態→換算係数→設備停止→時間）',
     wantOrder.every(k=>atSched(k)>=0)
-    &&wantOrder.every((k,i)=>i===0||atSched(wantOrder[i-1])<atSched(k)),
+    &&wantOrder.every((k,i)=>i===0||atSched(wantOrder[i-1])<atSched(k))
+    /* **統合した2枚がナビに残っていないこと**（§9.397）——定義は残して
+       あるので、伏せ忘れるとタブだけが復活する。 */
+    &&!inSchedGroup.includes('stopCategory')&&!inSchedGroup.includes('stopSub'),
     inSchedGroup.join(','));
   /* 名前と中身が合っていること——「設備」の群に設備そのものが入っている。 */
   const byGroup=await page.evaluate(()=>{
@@ -237,51 +242,45 @@ const made={perm:[],cat:[]};
   rec('編集モーダルからの更新がサーバーへ反映される',updated==='PC-AFTER','pcName='+updated);
 
   /* ---- ② 分類: 少項目マスタはインライン（旧 test_p11 / test_p11c） ----
-     少項目マスタの代表は**設備停止分類**（1項目）。スプール種別マスタは
-     §9.221 ③で操業データ選択肢マスタへ統合して撤去した。 */
-  await clickTab('設備停止分類');
-  /* **一覧が描き終わるまで待つ**（§9.102「待ちは時間でなく条件で置く」）。
-     上のフォームは同期に組み上がるが、一覧はサーバーから引いたあとなので、
-     フォームだけを待つと**まだ空の`#masterMaintList`**を測ることがある
-     ——実測で3回に1回、見出しが0個のまま次の行を読んでいた（詳細が空欄の
-     FAILとして出るので、原因が読み取れない形で落ちる）。 */
-  await page.waitForFunction(
-    ()=>document.querySelectorAll('#masterMaintForm [data-field]').length>0
-      &&[...document.querySelectorAll('.mm-row.head>span')]
-          .some(s=>s.textContent.trim()==='分類名'),
-    null,{timeout:15000});
+     **§9.397 で設備停止分類のタブは「設備停止マスタ」の左ペインへ統合した**
+     ので、少項目＝その場で足せる、という約束はそちらで確かめる（見るものは
+     同じ——1項目しかないものに窓を開かせない・§CLAUDE 2）。 */
+  await clickTab('設備停止');
+  await page.waitForSelector('.ssb-cat-row',{timeout:15000});
   const inline=await page.evaluate(()=>({
-    compact:document.querySelector('#masterMaintForm')?.classList.contains('mm-form-compact'),
-    fieldCount:document.querySelectorAll('#masterMaintForm [data-field]').length,
-    labels:[...document.querySelectorAll('.mm-row.head>span')].map(s=>s.textContent),
+    cats:document.querySelectorAll('.ssb-cat-row').length,
+    input:!!document.getElementById('ssbNewCat'),
+    add:!!document.getElementById('ssbAddCat'),
+    modal:!document.querySelector('#maintEditorModal')
+      ||document.querySelector('#maintEditorModal').hidden,
   }));
-  rec('少項目マスタ(設備停止分類1項目)は従来どおり上部インラインフォーム',
-      inline.compact===false&&inline.fieldCount>0,JSON.stringify({c:inline.compact,f:inline.fieldCount}));
-  rec('列数が少ないマスタでは更新者・更新日時も列として出す',
-      inline.labels.includes('更新者')&&inline.labels.includes('更新日時'),inline.labels.join(','));
+  rec('1項目しかない分類は、窓を開かずその場の欄で足せる',
+      inline.input&&inline.add&&inline.modal,JSON.stringify(inline));
   const sname='分類'+Date.now().toString().slice(-6);
-  await page.fill('#masterMaintForm [data-field="name"]',sname);
+  await page.fill('#ssbNewCat',sname);
   const catSaved=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('stop-category-master'),{timeout:15000}).catch(()=>null);
-  await page.click('#masterMaintForm button[type="submit"]');
+  await page.click('#ssbAddCat');
   await catSaved;await idle(400,8000);
   const cats=(await get('/api/schedule/stop-category-master')).items||[];
   const cat=cats.find(i=>i.name===sname);
   if(cat)made.cat.push(cat.id);
-  rec('少項目マスタは従来どおりインラインフォームから登録できる',!!cat);
+  rec('その場の欄から分類マスタへ登録できる',!!cat);
+  await page.waitForFunction(n=>[...document.querySelectorAll('.ssb-cat-row b')]
+    .some(b=>b.textContent.trim()===n),sname,{timeout:10000}).catch(()=>{});
+  rec('足した分類がそのまま左ペインに出る（タブを移らない）',
+      await page.evaluate(n=>[...document.querySelectorAll('.ssb-cat-row b')]
+        .some(b=>b.textContent.trim()===n),sname));
 
-  /* ---- ② 分類: 多項目マスタはモーダル（旧 test_p11） ---- */
-  await clickTab('設備停止');
-  await page.waitForFunction(
-    ()=>document.querySelector('#masterMaintForm')?.classList.contains('mm-form-compact')
-        &&!!document.querySelector('#masterMaintAdd'),null,{timeout:15000});
+  /* ---- ② 停止内容: 多項目マスタはモーダル（旧 test_p11） ---- */
+  /* 統合画面でも**編集の作法は1つ**（§9.397）——欄が5つある停止内容は
+     汎用の編集窓を開いて直す。入口は「＋ 停止内容を足す」。 */
   const modal=await page.evaluate(()=>({
-    compact:document.querySelector('#masterMaintForm')?.classList.contains('mm-form-compact'),
+    addBtn:!!document.getElementById('ssbAddStop'),
     inlineFields:document.querySelectorAll('#masterMaintForm [data-field]').length,
-    addBtn:!!document.querySelector('#masterMaintAdd'),
   }));
-  rec('多項目マスタ(設備停止)は上部フォームを畳み追加ボタンのみ',
-      modal.compact===true&&modal.inlineFields===0&&modal.addBtn,JSON.stringify(modal));
-  await page.click('#masterMaintAdd');
+  rec('多項目マスタ(停止内容)は上部フォームに欄を出さず、窓を開く入口だけ置く',
+      modal.addBtn&&modal.inlineFields===0,JSON.stringify(modal));
+  await page.click('#ssbAddStop');
   await page.waitForSelector('#maintEditorModal',{state:'visible',timeout:8000});
   /* 数えるのは入力欄の器(.mm-field)。専用コントロール(設備の複数選択タグ入力
      など)は素の [data-field] を持たないので、そちらで数えると項目が

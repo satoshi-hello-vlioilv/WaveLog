@@ -129,7 +129,9 @@ let b=null;
    rec('引くと列が実際に狭くなる',after.w<grip.w-60,`${grip.w} → ${after.w}`);
    rec('列幅を触ったことを文字で出す',/幅/.test(after.mark),after.mark);
    /* **覚えていること**——別のタブへ行って戻っても残る。 */
-   await page.click('#masterMaintNav [data-master="stopCategory"]');
+   /* 別のタブへ行って戻る。**設備停止の分類は§9.397で「設備停止マスタ」へ
+      統合した**ので、ここは残っているタブ（設備停止の時間）を使う。 */
+   await page.click('#masterMaintNav [data-master="stopMinutes"]');
    await page.waitForTimeout(900);
    await page.click('#masterMaintNav [data-master="equipment"]');
    await page.waitForTimeout(1200);
