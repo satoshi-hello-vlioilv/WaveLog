@@ -2177,8 +2177,12 @@
 /* 列は「内訳名／分／既定／消す／＋下へ」の5つ。**分は中身の長さから決める**
    （§CLAUDE 11）——3桁しか入らない欄に器いっぱいを与えない。
    「既定」は字が入る幅だけ（§9.397）。 */
+/* **名前の列が残りを取る**（§CLAUDE 11）。`--w-xl`（22em）を先に配ると、
+   分7em＋既定7em＋消す＋「＋ 下へ」で器（実測519px）を越え、**いちばん右の
+   「＋ 下へ」が切れる**（実測。3ペインにして右が狭くなったぶん顕在化した）。
+   固定するのは中身の長さが決まっている列だけにして、名前は`1fr`で縮ませる。 */
 .ssb-row{display:grid;
-  grid-template-columns:minmax(0,var(--w-xl)) var(--w-sm) var(--w-sm) var(--ctl-h-sm) minmax(0,1fr);
+  grid-template-columns:minmax(0,1fr) var(--w-sm) var(--w-sm) var(--ctl-h-sm) max-content;
   align-items:center;gap:var(--gap-inline);padding:var(--space-1) var(--space-2)}
 /* 既定の印（§9.397）。**押せるのに効かない物は、効かないと書く**（§CLAUDE 4）
    ——1件しか無い段では印を付けなくても最初から選ばれるので、押せなくする。 */

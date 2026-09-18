@@ -89,7 +89,10 @@
 .sc-stop-main{flex:1 1 auto;min-height:0;display:grid;
  grid-template-columns:minmax(0,var(--w-2xl)) minmax(0,1fr);gap:var(--space-3)}
 .sc-stop-left{min-width:0;min-height:0;display:flex;flex-direction:column}
-.sc-stop-detail{min-width:0;min-height:0;overflow:auto;
+/* 右のペインは**器の高さを中まで届ける鎖**（§9.222 ⑤）。頭（停止内容の名前）と
+   足（追加）は動かさず、**決めることの並びだけ**がスクロールする。
+   鎖は1段でも抜かない——抜いた段で高さが中身なりに戻り、足が外へ出る。 */
+.sc-stop-detail{min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden;
  padding-left:var(--space-3);border-left:1px solid var(--line-soft)}
 /* 狭い器（側パネル・小さい窓）では1列へ落とす。**仕切りも向きを変える**
    ——縦に積んだまま左に線が残ると、まとまりの境目が読めない。 */
@@ -578,8 +581,8 @@
    ——番号は「まだやることが3つある」と読ませるだけになる。
    並びは**ラベル列を固定幅にした2列**（§CLAUDE 9）。値の左端が1本の線に
    そろうので、視線が列を追える。 */
-.sc-sp{display:flex;flex-direction:column;gap:var(--space-3);min-width:0}
-.sc-sp-head{display:flex;align-items:baseline;gap:var(--gap-inline);min-width:0;
+.sc-sp{flex:1;display:flex;flex-direction:column;gap:var(--space-3);min-width:0;min-height:0}
+.sc-sp-head{flex:none;display:flex;align-items:baseline;gap:var(--gap-inline);min-width:0;
  padding-bottom:var(--space-1);border-bottom:1px solid var(--line-soft)}
 .sc-sp-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
  font-size:var(--fs-base);font-weight:800;color:var(--ink)}
@@ -599,7 +602,8 @@
 .sc-sp-empty-note{font-size:var(--fs-micro);color:var(--muted)}
 /* 決めることの並び。**ラベル列は固定幅**（§CLAUDE 9。autoだと行ごとに
    値の左端がずれ、視線が列を追えない）。 */
-.sc-sp-rows{display:grid;gap:var(--space-2);min-width:0}
+.sc-sp-rows{flex:1;min-height:0;overflow:auto;display:grid;align-content:start;
+ gap:var(--space-2);min-width:0}
 .sc-sp-row{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);
  align-items:start;gap:var(--gap-inline);min-width:0}
 .sc-sp-label{display:flex;flex-direction:column;gap:0;padding-top:5px;
@@ -631,8 +635,14 @@
 .sc-sp-slider>b{flex:none;font-size:var(--fs-sm);font-weight:800;color:var(--teal-dark)}
 .sc-sp-hint{font-size:var(--fs-micro);color:var(--muted)}
 /* **できないことは、できないと書く**（§CLAUDE 4）——内訳が要るのに選んで
-   いないときは、押せない形にしたうえで**ボタンの字で理由を言う**。 */
-.sc-sp-go{height:var(--ctl-h-md);border:1px solid var(--teal-dark);border-radius:var(--radius-sm);
+   いないときは、押せない形にしたうえで**ボタンの字で理由を言う**。
+   **次にすることは必ず見えている**（§CLAUDE 2）——時間の札は選択肢の数だけ
+   折り返すので、器が低いと「追加」がスクロールの外へ出る（実測: 窓560pxで
+   札が4段になると隠れた）。**スクロールするのは決めることの並びだけ**にして、
+   ボタンは器の足元に置く（`position:sticky`は器の高さが中身なりだと効かない
+   ——実際に効かなかった）。 */
+.sc-sp-go{flex:none;
+ height:var(--ctl-h-md);border:1px solid var(--teal-dark);border-radius:var(--radius-sm);
  background:var(--teal-dark);color:var(--surface);font-size:var(--fs-sm);font-weight:800;
  cursor:pointer}
 .sc-sp-go:disabled{border-color:var(--line-mid);background:var(--surface-2);

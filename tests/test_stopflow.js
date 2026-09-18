@@ -99,6 +99,17 @@ H.run('test_stopflow: 設備停止を入れる画面（§9.397）',async({page,r
      s1.goOff&&s1.go.includes('内訳を選んでください'),`${s1.go} off=${s1.goOff}`);
  rec('時間の出どころを字で出す（§CLAUDE 6）',
      s1.出どころ.some(t=>/標準所要分|選択肢/.test(t)),s1.出どころ.join(' | '));
+ /* **次にすることは必ず見えている**（§CLAUDE 2）。時間の札は選択肢の数だけ
+    折り返すので、器が低いと「追加」がスクロールの外へ出る——実際に出た
+    （窓560px・札が4段）。スクロールするのは決めることの並びだけにしてある。 */
+ const goSeen=await page.evaluate(()=>{
+  const go=document.getElementById('scSpGo'),box=document.getElementById('scStopDetail');
+  if(!go||!box)return null;
+  const g=go.getBoundingClientRect(),b=box.getBoundingClientRect();
+  return {下:Math.round(g.bottom-b.bottom),高さ:Math.round(g.height)};
+ });
+ rec('「追加」は器の中に必ず見えている（スクロールの外へ出ない）',
+     !!goSeen&&goSeen.下<=1&&goSeen.高さ>0,JSON.stringify(goSeen));
 
  // ---- ② 内訳が1件なら、最初から選ばれている（§9.397 ③） ---------------
  await page.click(`.sc-stop-button[data-id="${one.id}"]`);

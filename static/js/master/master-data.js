@@ -3665,7 +3665,18 @@
     </div>
     <div class="ssb-table" role="table">
      <div class="ssb-row is-head" role="row"><span>内訳名</span><span>標準所要分</span><span>既定</span><span></span><span></span></div>
-     <div class="ssb-table-scroll">${rows.map(r=>ssbRowHtml(r,baseText,baseNum)).join('')
+     <div class="ssb-table-scroll">${rows.map(r=>{
+       /* **空欄にしたとき何分になるか**は行ごとに違う（§9.390 の4段）。
+          2段目は「1つ上の内訳 → 停止内容」の順で、1段目は停止内容。
+          **全部に停止内容の分を出さないこと**——「増し締め」の空欄は
+          ゴムリングの30分になるのに60分と書いてあった（実測）。 */
+       const up=Number(r.parentSubId||0)?rows.find(x=>Number(x.id)===Number(r.parentSubId)):null;
+       const um2=up&&up.standardMinutes;
+       const blankUp=(um2===null||um2===undefined||um2==='');
+       const bText=blankUp?baseText:WL.duration.text(Number(um2));
+       const bNum=blankUp?baseNum:String(um2);
+       return ssbRowHtml(r,bText,bNum);
+      }).join('')
        ||'<p class="mm-empty">内訳はまだありません。下の欄から足せます。</p>'}</div>
     </div>
     <div class="ssb-add">
