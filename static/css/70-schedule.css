@@ -67,40 +67,26 @@
 .sc-stop-groups{display:flex;flex-direction:column;gap:var(--space-2);min-height:0;
  container-type:inline-size;container-name:scstop}
 /* ---------- 設備停止を入れる(§9.181) ----------
-   縦は「どこへ入るか → 絞り込み → 一覧 → 登録」の順（作業導線と視覚導線を
-   合わせる。§14）。一覧だけが伸び縮みし、頭と足は常に見える。 */
+   縦は「絞り込み → 分類 → 一覧 → 決める帯 → 登録」の順（作業導線と視覚導線を
+   合わせる。§14）。一覧だけが伸び縮みし、頭と足は常に見える。
+   **「どこへ入るか」の専用の帯は§9.400でやめた**——入る先は追加ボタンの
+   字そのものに入っている（同じことを2箇所に出さない・§CLAUDE 8）。 */
 .sc-stop-head{flex:0 0 auto;display:flex;flex-direction:column;gap:var(--gap-tight)}
-.sc-stop-where{display:flex;flex-direction:column;padding:var(--pad-row);
- border:1px solid var(--teal);border-radius:var(--radius-xs);background:var(--pale);
- font-size:var(--fs-sm);color:var(--teal-dark)}
-.sc-stop-where b{color:var(--nav)}
-.sc-stop-where-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-hair)}
-.sc-stop-where-at{font-weight:800}
-.sc-stop-where small{color:var(--ink-2);font-size:var(--fs-micro);font-weight:600}
 .sc-stop-search{height:var(--ctl-h-sm);font-size:var(--fs-sm)}
-/* ---------- 左＝何を入れるか／右＝どう入れるか（§9.397、利用者の指摘） ----------
-   「小さくてわかりにくく使いづらい、ステップが多い印象もある…整列された
-    印象もほしく、より直感的に、考えなくてもわかるくらいに」
+/* ---------- 上＝一覧／下＝決める帯（§9.400、利用者が選んだ案B） ----------
+   §9.397で左右2ペインにしたが、**右ペインの半分を時間の札10枚が占めて**
+   いた（実測で4段に折り返し、スライダーはスクロールの外）。決めることは
+   内訳と時間の2つで、どちらも最初から入っている——いちばん広い場所を
+   いちばん触らないものに配っていた（§CLAUDE 1）。
 
-   以前は**同じ器を一覧と手順で入れ替えて**いた（§9.389）。1つの作業が
-   2画面に割れていたのが「ステップが多い」の正体で、戻るには「← 一覧へ」を
-   押すしかなかった。左右に並べると、選ぶ→決める→追加が**1画面**で終わる。
-   **左は固定幅**（一覧は名前の長さで決まる）、右が残りを取る。 */
-.sc-stop-main{flex:1 1 auto;min-height:0;display:grid;
- grid-template-columns:minmax(0,var(--w-2xl)) minmax(0,1fr);gap:var(--space-3)}
-.sc-stop-left{min-width:0;min-height:0;display:flex;flex-direction:column}
-/* 右のペインは**器の高さを中まで届ける鎖**（§9.222 ⑤）。頭（停止内容の名前）と
-   足（追加）は動かさず、**決めることの並びだけ**がスクロールする。
-   鎖は1段でも抜かない——抜いた段で高さが中身なりに戻り、足が外へ出る。 */
-.sc-stop-detail{min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden;
- padding-left:var(--space-3);border-left:1px solid var(--line-soft)}
-/* 狭い器（側パネル・小さい窓）では1列へ落とす。**仕切りも向きを変える**
-   ——縦に積んだまま左に線が残ると、まとまりの境目が読めない。 */
-@container scstop (max-width: 46em){
- .sc-stop-main{grid-template-columns:minmax(0,1fr);grid-auto-rows:minmax(0,auto)}
- .sc-stop-detail{padding-left:0;border-left:0;
-  padding-top:var(--space-2);border-top:1px solid var(--line-soft)}
-}
+   一覧を**窓いっぱいの2列**にし、決めることは**足元の1本の帯**へ。
+   一覧は9件なら折り返しもスクロールも無しで全部見える。 */
+.sc-stop-cats{display:flex;flex-wrap:wrap;gap:var(--gap-inline)}
+.sc-stop-cat{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
+ border:1px solid var(--line-mid);border-radius:var(--radius-xs);background:var(--surface);
+ font-size:var(--fs-micro);font-weight:700;color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.sc-stop-cat:hover{border-color:var(--teal);background:var(--pale)}
+.sc-stop-cat em{font-style:normal;margin-left:var(--gap-hair);opacity:.75}
 .sc-stop-list{flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;
  gap:var(--space-2)}
 .sc-stop-group-title{display:flex;align-items:center;gap:var(--gap-tight);font-size:var(--fs-micro);font-weight:800;color:var(--muted);margin-bottom:3px}
@@ -108,7 +94,14 @@
 /* **1列に積む**（§9.397）。以前は折り返す札の並びで、名前の長さごとに
    左端がずれて「整列された印象」が出なかった（利用者の指摘）。
    1列なら左端が1本にそろい、内訳の件数と見積も同じ位置で読める。 */
-.sc-stop-buttons{display:flex;flex-direction:column;gap:var(--gap-hair)}
+/* **2列**（§9.400）。左右の分割をやめて一覧が窓いっぱいになったので、
+   1列のままだと6文字の名前に1600pxの器を与えることになる（§CLAUDE 11）。
+   左端は2本にそろう。狭い器（側パネル）では1列へ落とす。 */
+.sc-stop-buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+ gap:var(--gap-hair) var(--space-2)}
+@container scstop (max-width: 46em){
+ .sc-stop-buttons{grid-template-columns:minmax(0,1fr)}
+}
 /* 1つの停止理由。**名前は左・添え物は右**（1行）。名前が長ければ名前が
    縮む（添え物は短いので、そちらを縮めても読めなくなるだけ）。 */
 /* 余白と角は`10-roles.css`が持つ（同じ宣言を2ファイルに書かない・§9.324 R6）。 */
@@ -570,85 +563,45 @@
   white-space:nowrap;line-height:1.6}
 .sc-nw-link:hover{background:var(--teal);color:#fff}
 .sp-nw-time{margin-left:0.6mm;font-weight:600;opacity:.75}
-/* ---------- 右のペイン＝どう入れるか（§9.389→§9.397で組み直し） ----------
-   「設備停止内容(サブカテゴリがある設備停止はそのあとサブカテゴリも選択)を
-    選択し、その後時間を選択して登録する」（§9.389）
-   「小さくてわかりにくく…ステップが多い印象…整列された印象もほしく」（§9.397）
-
-   §9.389では**一覧と同じ器で入れ替える**番号つきの3段だったが、§9.397で
-   **左右に並べる**形へ変えた。決めることは内訳と時間の2つだけで、どちらも
-   最初から選ばれている（§9.397 ③）ので、番号で順路を示す必要が無くなった
-   ——番号は「まだやることが3つある」と読ませるだけになる。
-   並びは**ラベル列を固定幅にした2列**（§CLAUDE 9）。値の左端が1本の線に
-   そろうので、視線が列を追える。 */
-.sc-sp{flex:1;display:flex;flex-direction:column;gap:var(--space-3);min-width:0;min-height:0}
-.sc-sp-head{flex:none;display:flex;align-items:baseline;gap:var(--gap-inline);min-width:0;
- padding-bottom:var(--space-1);border-bottom:1px solid var(--line-soft)}
-.sc-sp-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
- font-size:var(--fs-base);font-weight:800;color:var(--ink)}
-/* **どの分類の・どの設備の停止か**を見出しの隣で言う（§CLAUDE 6）。
-   同じ名前の停止が設備ごとに並ぶので、名前だけでは取り違える。 */
-.sc-sp-sub{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
- font-size:var(--fs-micro);color:var(--muted)}
-.sc-sp-clear{flex:none;height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
+/* ---------- 足元の「決める帯」（§9.400、利用者が選んだ案B） ----------
+   決めることは内訳と時間の2つで、どちらも最初から入っている。**1行で足りる。**
+   横並びはそのまま決める順（名前 › 内訳 › 内訳 · 時間 → 追加）なので、
+   左から右へ読めば入るものが文になる（§CLAUDE 14）。
+   **追加は右端の大きな的**で、入る先まで字に入っている（§CLAUDE 8）。 */
+.sc-stop-bar{flex:0 0 auto;margin-top:var(--space-2);padding:var(--space-2) var(--space-3);
+ border:1px solid var(--teal);border-radius:var(--radius-sm);background:var(--pale)}
+.sc-sb{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;min-width:0}
+.sc-sb-what{flex:none;max-width:var(--w-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+ font-size:var(--fs-base);font-weight:800;color:var(--nav)}
+.sc-sb.is-empty .sc-sb-what{font-size:var(--fs-sm);color:var(--ink-2);max-width:none}
+.sc-sb-sep{flex:none;font-weight:800;color:var(--teal-dark)}
+.sc-sb-sel{height:var(--ctl-h-sm);max-width:var(--w-lg);font-size:var(--fs-sm)}
+/* 数の器は操業データと同じ`mm-num`を使い回す（§9.247）。単位は器の外へ
+   出す——欄の中に入れると、打つたびに単位ごと消したり残したりになる。 */
+.sc-sb-num{flex:none}
+.sc-sb-min{width:var(--w-xs);text-align:center}
+.sc-sb-unit{flex:none;margin-left:calc(var(--gap-inline) * -1);
+ font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
+/* **追加は必ず自分の1行**（§9.400）。入る先まで字に入るので長さが行ごとに
+   変わり、同じ行へ置くと「決める物」の並びが名前の長さで動く（実測で
+   「選び直す」が全幅ボタンの右へ弾き出された）。`flex:1 0 100%`で1行を取る
+   ——次にすることが必ず1つだけ、同じ場所に出る（§CLAUDE 2）。 */
+.sc-sb-go{flex:1 0 100%;min-width:0;height:var(--ctl-h-md);padding:0 var(--space-3);
+ border:1px solid var(--teal-dark);border-radius:var(--radius-sm);background:var(--teal-dark);
+ color:var(--surface);font-size:var(--fs-sm);font-weight:800;cursor:pointer;
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-sb-go:disabled{border-color:var(--line-mid);background:var(--surface-2);
+ color:var(--muted);cursor:not-allowed}
+/* 「選び直す」は**1行目の右端**（`margin-left:auto`）。やめる操作なので
+   主要動線（追加）と同じ行に並べない（§CLAUDE 5）。 */
+.sc-sb-clear{flex:none;margin-left:auto;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-xs);
  border:1px solid var(--line-mid);border-radius:var(--radius-xs);background:var(--surface);
  font-size:var(--fs-micro);font-weight:700;color:var(--ink-2);cursor:pointer}
-.sc-sp-clear:hover{border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
-/* 選ぶ前の案内。**空の器は「ここに何が出るか」だけを言う**（§9.343）。 */
-.sc-sp-empty{display:flex;flex-direction:column;gap:var(--gap-tight);padding:var(--pad-card);
- border:1px dashed var(--line-mid);border-radius:var(--radius-sm);background:var(--surface-2)}
-.sc-sp-empty>b{font-size:var(--fs-sm);color:var(--ink-2)}
-.sc-sp-empty>small{font-size:var(--fs-micro);color:var(--muted);line-height:1.5}
-.sc-sp-empty-note{font-size:var(--fs-micro);color:var(--muted)}
-/* 決めることの並び。**ラベル列は固定幅**（§CLAUDE 9。autoだと行ごとに
-   値の左端がずれ、視線が列を追えない）。 */
-.sc-sp-rows{flex:1;min-height:0;overflow:auto;display:grid;align-content:start;
- gap:var(--space-2);min-width:0}
-.sc-sp-row{display:grid;grid-template-columns:var(--w-sm) minmax(0,1fr);
- align-items:start;gap:var(--gap-inline);min-width:0}
-.sc-sp-label{display:flex;flex-direction:column;gap:0;padding-top:5px;
- font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
-.sc-sp-label>small{font-size:var(--fs-micro);font-weight:600;color:var(--muted)}
-.sc-sp-val{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);min-width:0}
-.sc-sp-opt{height:var(--ctl-h-sm);padding:0 var(--space-3);
- border:1px solid var(--line-mid);border-radius:var(--radius-xs);background:var(--surface);
- font-size:var(--fs-sm);font-weight:700;color:var(--ink-2);cursor:pointer;white-space:nowrap}
-.sc-sp-opt:hover{border-color:var(--teal);background:var(--pale)}
-/* 「この下にさらにN件ある」の印（§9.390）。**押す前に段が増えると分かる**
-   ——押してから段が生えると、何手で終わるのか読めない（§CLAUDE 2）。 */
-.sc-sp-more{margin-left:var(--gap-tight);padding:0 var(--space-1);font-style:normal;
- font-size:var(--fs-micro);font-weight:800;line-height:1.5;
- border-radius:var(--radius-xs);background:var(--surface-2);color:var(--ink-3)}
-.sc-sp-opt.is-on .sc-sp-more{background:var(--pale);color:var(--teal-dark)}
-/* 既定の内訳の印（§9.397）。**なぜ最初から選ばれているのかを字で言う**
-   ——印が無いと「勝手に選ばれた」と読まれる（§CLAUDE 「推測させない」）。 */
-.sc-sp-def{margin-left:var(--gap-tight);padding:0 var(--space-1);font-style:normal;
- font-size:var(--fs-micro);font-weight:800;line-height:1.5;
- border-radius:var(--radius-xs);background:var(--pale);color:var(--teal-dark)}
-.sc-sp-opt.is-on .sc-sp-def{background:var(--surface);color:var(--teal-dark)}
-/* スライダーは**選択肢の行の中**へ入れる（§9.397）。「時間」の行の値として
-   同じ列に置くので、札とスライダーの左端がそろう。折り返す横並びの器へ
-   1行ぶんの物を入れるので`flex:1 0 100%`（§CLAUDE そのほか）。 */
-.sc-sp-slider{flex:1 0 100%;display:flex;align-items:center;gap:var(--space-2);min-width:0}
-.sc-sp-hint{flex:1 0 100%}
-.sc-sp-slider>input[type=range]{flex:1;min-width:0}
-.sc-sp-slider>b{flex:none;font-size:var(--fs-sm);font-weight:800;color:var(--teal-dark)}
-.sc-sp-hint{font-size:var(--fs-micro);color:var(--muted)}
-/* **できないことは、できないと書く**（§CLAUDE 4）——内訳が要るのに選んで
-   いないときは、押せない形にしたうえで**ボタンの字で理由を言う**。
-   **次にすることは必ず見えている**（§CLAUDE 2）——時間の札は選択肢の数だけ
-   折り返すので、器が低いと「追加」がスクロールの外へ出る（実測: 窓560pxで
-   札が4段になると隠れた）。**スクロールするのは決めることの並びだけ**にして、
-   ボタンは器の足元に置く（`position:sticky`は器の高さが中身なりだと効かない
-   ——実際に効かなかった）。 */
-.sc-sp-go{flex:none;
- height:var(--ctl-h-md);border:1px solid var(--teal-dark);border-radius:var(--radius-sm);
- background:var(--teal-dark);color:var(--surface);font-size:var(--fs-sm);font-weight:800;
- cursor:pointer}
-.sc-sp-go:disabled{border-color:var(--line-mid);background:var(--surface-2);
- color:var(--muted);cursor:not-allowed}
-/* 内訳（サブカテゴリ）の札（§9.389）。**名前の次に強く、時間より強い**
-   ——「刃組待ちの何か」を見分けるための印なので、添え物の時間とは重みが違う。 */
+.sc-sb-clear:hover{border-color:var(--teal);background:var(--surface);color:var(--teal-dark)}
+/* 出どころの1行は**帯の中の最後**（§CLAUDE 6）。折り返す横並びの器へ
+   1行ぶんの物を入れるので`flex:1 0 100%`。 */
+.sc-sb-note{flex:1 0 100%;font-size:var(--fs-micro);color:var(--ink-3);line-height:1.5}
+.sc-sb-note b{color:var(--teal-dark)}
 .sc-nw-sub{margin-left:var(--space-1);padding:0 var(--space-1);
  border:1px solid var(--line-mid);border-radius:var(--radius-xs);
  background:var(--surface-2);color:var(--ink-2);

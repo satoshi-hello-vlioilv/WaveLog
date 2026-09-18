@@ -355,7 +355,8 @@ RULES = [
     ('backend/routes/masters/bladeset.py', g('刃組', 'test_crudroutes')),
     ('backend/routes/masters/bladeset_parts.py', g('刃組', 'test_crudroutes')),
     # 設備停止の内訳・時間（§9.389）。設備停止マスタの隣なので「スケジュール」も回す。
-    ('backend/routes/masters/stop_detail.py', g('マスタ', 'スケジュール', 'test_crudroutes')),
+    # §9.400: 停止内容の複製（`/duplicate`）もここ。画面は設備停止の一覧から呼ぶ。
+    ('backend/routes/masters/stop_detail.py', g('マスタ', 'スケジュール', 'test_crudroutes', 'test_scstop')),
     ('static/js/bladeset/blade-core.js', g('刃組')),
     ('static/js/bladeset/blade-pick.js', g('刃組', 'マスタ')),
     ('static/js/bladeset/blade-3d.js', g('刃組')),

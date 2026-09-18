@@ -152,6 +152,10 @@ _ENDPOINT_EXTRA_MODES={
  # scheduleを足す（editは`masters`の既定で元から書ける）。
  # **8本とも載せること**——1本開け忘れると、その操作だけが403で黙って
  # 弾かれる（画面には「押しても何も起きないボタン」として出る・§CLAUDE 4）。
+ # 停止内容の複製（§9.400、利用者の指示）。**作業スケジュールの画面から
+ # 押す**ので、`masters`のBlueprintだがscheduleモードを足す（上の8本と
+ # 同じ事情。載せ忘れると押しても403で黙って弾かれる）。
+ 'masters.stop_reason_duplicate_route':{'schedule'},
  'masters.stop_sub_register':{'schedule'},
  'masters.stop_sub_update':{'schedule'},
  'masters.stop_sub_delete_route':{'schedule'},

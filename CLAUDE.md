@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（656件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（663件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（26件）
 
@@ -153,6 +153,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 端末に持つ設定の例（seed）は**読んだその場で保存する**。IDを時刻から作らない | `test_lotcopy.js` | [§9.400](docs/decisions/9.400.md) |
+| 保存された`[]`は「まだ作っていない」ではなく**「利用者が空にした」**。見分けるのは鍵の有無 | `test_lotcopy.js` | [§9.400](docs/decisions/9.400.md) |
 | ログビュワー（`backend/routes/logs.py`／`static/js/core/log-view.js`）は「1行」でなく「1件」で扱う | `test_logs.py`・`test_logview.js` | [§9.99](docs/decisions/9.99.md) |
 | 新しいキャッシュは`WL.ttlCache()`を使う | — | [§9.67](docs/decisions/9.67.md) |
 | 共有のデータは「読むのは写し・書くのは実物」で揃える | `test_recmirror.py` | [§9.268](docs/decisions/9.268.md) |
@@ -212,6 +214,7 @@
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 新しいマスタのAPIは`routes/masters/`の段へ足す（`schedule.py`は41ルートで上限・上げられない） | `test_routesplit.py` | [§9.389](docs/decisions/9.389.md) |
+| 「同じ内容をもう1行作る」は**登録とは別のルート**（登録は自然キーで既存行の更新に倒れる） | `test_scstop.js` | [§9.400](docs/decisions/9.400.md) |
 | 設定系マスタの開き方は`routes/common.py`の`cfg_read`／`cfg_write_response`の1箇所 | `test_importlint.py` | [§9.389](docs/decisions/9.389.md) |
 | 権限区分（開発者／メンテナンス者／一般ユーザー）は「何を触れるか」と別の軸 | — | [§9.272](docs/decisions/9.272.md) |
 | マスタのAPIは11の段（1段20ルートまで）。Blueprintは`_base.py`の1つのまま | `test_routesplit.py` | [§9.333](docs/decisions/9.333.md) |
@@ -236,6 +239,7 @@
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 設備停止は3階層（分類→停止内容→内訳）。**内訳は名称を割らない**（集計は名称で束ねる） | `test_stopsub.py` | [§9.389](docs/decisions/9.389.md) |
+| 停止内容の複製は**内訳の木ごと**写す。写しの名前を数えるのは`stop_reason_copy_name()`の1箇所 | `test_scstop.js` | [§9.400](docs/decisions/9.400.md) |
 | 最初から選ばれる内訳は`stop_default_sub()`の1箇所（①1件ならそれ ②`[既定]`の印 ③無し） | `test_stopsub.py` | [§9.397](docs/decisions/9.397.md) |
 | `[既定]`は兄弟のうち1つだけ。立てるとき兄弟を降ろす。**送らない鍵は触らない** | `test_stopsub.py` | [§9.397](docs/decisions/9.397.md) |
 | `stop_sub_upsert()`の`standard_minutes`は**渡した値をそのまま書く**（省くと消える） | `test_stopsub.py` | [§9.397](docs/decisions/9.397.md) |
@@ -566,6 +570,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 設備停止の追加は**上＝一覧（2列）／下＝決める帯（1本）**。左右2ペインは§9.400で撤回 | `test_stopflow.js`・`test_scstop.js` | [§9.400](docs/decisions/9.400.md) |
+| 帯の時間は「− 数 ＋」の1組。**−＋は時間マスタの選択肢を送り**、間の分は打てば入る | `test_stopflow.js` | [§9.400](docs/decisions/9.400.md) |
+| ICASコピーは**ルールが1本も無くても必ずつなぐ**（素のつなぎ方）。無いことを断る理由にしない | `test_lotcopy.js` | [§9.400](docs/decisions/9.400.md) |
 | 設備停止は「内容 →（内訳）→ 時間」の手順で入れる。窓は開かず一覧と入れ替える | `test_stopflow.js` | [§9.389](docs/decisions/9.389.md) |
 | 一覧の上端は動かさない。案内は一覧の**下**の「知らせの棚」（`#scNotices`）へ | `test_scbar.js` | [§9.397](docs/decisions/9.397.md) |
 | 行の右クリックは**作業導線の順に群で束ねる**（進める→直す→増やす・写す→選ぶ・並べる→画面→外す）。群は5件以下、**中身の無い群は出さない** | `test_scstop.js` | [§9.399](docs/decisions/9.399.md) |
@@ -731,6 +738,7 @@
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 色のリテラルは増やさない（上限は`tests/fixtures/color_baseline.json`）。トークンと同じ値は`var()`で書く | `test_csslint.py` | [§9.350](docs/decisions/9.350.md) |
+| 選択肢の札に添える印は**2つまで・短く**。溢れると名前のほうが切れる | `test_stopflow.js` | [§9.400](docs/decisions/9.400.md) |
 | 出入りする物の見た目は変えてよいが、**場所は動かさない**（動かすなら`opacity`だけ） | `test_scbar.js` | [§9.397](docs/decisions/9.397.md) |
 | 選ばれた札の見た目は`90-state.css`の束ね規則1箇所。族ごとに同じ3行を書かない | `test_csslint.py` | [§9.353](docs/decisions/9.353.md) |
 | 色帯は「面」とセットのときだけ出す。面の無い帯は括弧に見え、列の罫線とも競合する | `test_density.js` | [§9.344](docs/decisions/9.344.md) |

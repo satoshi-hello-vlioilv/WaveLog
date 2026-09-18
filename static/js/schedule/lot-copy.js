@@ -79,16 +79,38 @@
  const MARKS={' ':'␣','\u3000':'▫','\t':'→','\n':'⏎'};
  const visibleChars=v=>String(v||'').replace(/[ \u3000\t\n]/g,c=>MARKS[c]);
 
- /* 最初の1回だけ書き込む例。**触れない既定ではない**——名前も中身も変えられ、
-    消せる（消したら「ルールがありません」と書く・§4）。 */
+ /* ---------- 最初の1回だけ書き込む例（§9.400、利用者の報告①） ----------
+    **触れない既定ではない**——名前も中身も変えられ、消せる。
+
+    **`id`を時刻から作らないこと。** 以前は`'r'+Date.now()`だったが、
+    seedは**保存していなかった**ので読み込むたびに作り直され、`id`が
+    毎回変わっていた。そのため
+      ・「最後に使ったルール」(`PICK_KEY`)が次の起動では引けない
+      ・窓を2枚開いていると、片方の保存がもう片方の`id`を知らず、
+        直したはずの行が**別の行として増えたように見える**
+    という壊れ方をしていた（利用者の報告「設定変更しようとしたら、その内容は
+    追加扱いになりました」）。**決め打ちの`id`にして、作ったその場で保存する**
+    （`rules()`）ので、以後はただの1行として直せる・消せる。 */
  function seed(){
   return [
-   {id:'r'+Date.now(),name:'ICAS（半角スペース）',
+   {id:'r_icas_space',name:'ICAS（半角スペース）',
     seps:[{kind:'space',text:'',count:1,every:1}]},
-   {id:'r'+(Date.now()+1),name:'半角スペース＋10件ごとに改行',
+   {id:'r_icas_space_nl10',name:'半角スペース＋10件ごとに改行',
     seps:[{kind:'space',text:'',count:1,every:1},{kind:'nl',text:'',count:1,every:10}]},
   ];
  }
+ /* ---------- ルールが1本も無いときの「素のつなぎ方」（§9.400、利用者の指示） ----------
+    「ルールなしの場合コピーはロットナンバーだけの連結コピーになるなど、
+      ルールがないとしてコピーができないではじくみたいなことのないように」
+
+    **コピーを断る理由に「ルールが無い」を使わない。** ルールは貼り付け先に
+    合わせるためのもので、**無ければ無いなりにつなげばよい**。区切りは
+    **半角スペース1つ**——「ICASコピー」という名前のとおり貼り先が求める形で、
+    区切り無しの棒つなぎ（`A1A2A3`）は貼っても使えないため。
+    **この行は一覧に出さない**（出すと§9.367で撤回した「触れない既定」に戻る）。
+    代わりに**名前で状態を言う**ので、メニューにも結果にもそのまま出る。 */
+ const PLAIN={id:'',name:'ルールなし（半角スペースでつなぐ）',
+              seps:[{kind:'space',text:'',count:1,every:1}]};
  const clampInt=(v,lo,hi)=>{
   const n=Math.round(Number(v));
   return Number.isFinite(n)?Math.min(hi,Math.max(lo,n)):lo;
@@ -107,12 +129,27 @@
           seps:seps.length?seps:[normSep({})]};
  }
  let cache=null;
+ /* ---------- 読み出し（§9.400、利用者の報告①） ----------
+    **「まだ作っていない」と「利用者が空にした」を見分ける。** 鍵そのものが
+    無いときだけ例を書き込み、**その場で保存する**（以後は本物の行）。
+    保存されているのが空配列`[]`なら、それは**消した結果**なのでそのまま空。
+
+    以前は`raw.length`が0なら`seed()`へ倒していたため、
+      ・例の2本は**どこにも保存されていない**のに「登録済み」に見え
+      ・全部消すと、その場では「ルールがありません」と言うのに
+        **再読込で復活した**（利用者の報告「内部的にルールがある状態」）
+    という食い違いが起きていた。 */
  function rules(){
   if(cache)return cache;
-  let raw=null;
-  try{raw=JSON.parse(localStorage.getItem(KEY)||'null')}
-  catch(e){WL.quiet.note('保存された値を読めない（既定で続ける）',e);raw=null}
-  cache=Array.isArray(raw)&&raw.length?raw.map(normRule):seed();
+  let raw=null,had=false;
+  try{
+   const s=localStorage.getItem(KEY);
+   had=(s!==null);
+   raw=JSON.parse(s||'null');
+  }catch(e){WL.quiet.note('保存された値を読めない（例を書き直して続ける）',e);raw=null;had=false}
+  if(had&&Array.isArray(raw)){cache=raw.map(normRule);return cache}
+  cache=seed().map(normRule);
+  save();                       // **例も本物の行にする**（直せる・消せる）
   return cache;
  }
  function save(){
@@ -130,9 +167,11 @@
   try{localStorage.setItem(PICK_KEY,String(id||''))}
   catch(e){WL.quiet.note('保存できなくても今回のコピーは効く',e)}
  }
+ /* いま使うつなぎ方。**必ず1つ返す**（§9.400）——1本も無ければ`PLAIN`。
+    呼ぶ側に「無いときの扱い」を書かせない（はじく分岐がそこで増える）。 */
  function currentRule(){
   const list=rules();
-  return list.find(r=>r.id===currentId())||list[0]||null;
+  return list.find(r=>r.id===currentId())||list[0]||PLAIN;
  }
 
  /* ---------- つなぎ方（②） ----------
@@ -208,10 +247,6 @@
    showToast&&showToast('コピーできません','ロット番号のある予定が選ばれていません',4000);
    return false;
   }
-  if(!use){
-   showToast&&showToast('コピーできません','つなぎ方のルールが1つもありません（設定から追加できます）',5000);
-   return false;
-  }
   const text=joinLots(list,use);
   const ok=await writeClipboard(text);
   if(ok)showToast&&showToast(`${list.length}件のロット番号をコピーしました`,
@@ -236,8 +271,12 @@
    note:previewLine(lots,r),showNote:true,
    run:()=>{setCurrentId(r.id);copyLots(lots,r)},
   }));
-  if(!list.length)items.push({label:'ルールがありません',disabled:true,
-    note:'「コピーの設定…」から作れます'});
+  /* **1本も無くてもコピーできる**（§9.400、利用者の指示）。押せない項目で
+     「ありません」と言うだけにすると、**そこで手が止まる**——素のつなぎ方を
+     押せる形で出し、作る道はその下の「コピーの設定…」が持つ。 */
+  if(!list.length)items.push({label:'● '+PLAIN.name,
+    note:previewLine(lots,PLAIN)+'／ルールを作ると、ここに並びます',showNote:true,
+    run:()=>copyLots(lots,PLAIN)});
   items.push({sep:true});
   items.push({label:'コピーの設定…',note:'区切り文字・数・入れる頻度を決めます',
               run:()=>openSettings(lots)});
@@ -279,11 +318,17 @@
  }
  function sampleNote(){
   const real=((ui&&ui.lots)||[]).length,n=(ui&&ui.count)||12;
-  if(!real)return `見本のロット番号${n}件（予定を選んでから開くと、選んだロットで見えます）`;
-  if(real>=n)return `選んでいる${real}件のうち先頭${n}件`;
-  return `選んでいる${real}件＋見本${n-real}件`;
+  /* **どのつなぎ方で見えているのかを添える**（§9.400）——ルールが1本も無い
+     ときは素のつなぎ方なので、それを名前で言わないと出どころが読めない。 */
+  const via=rules().length?'':`／${PLAIN.name}`;
+  if(!real)return `見本のロット番号${n}件（予定を選んでから開くと、選んだロットで見えます）${via}`;
+  if(real>=n)return `選んでいる${real}件のうち先頭${n}件${via}`;
+  return `選んでいる${real}件＋見本${n-real}件${via}`;
 }
  function ruleNow(){return rules().find(r=>r.id===(ui&&ui.ruleId))||null}
+ /* 見本に使うつなぎ方。**1本も無いときは素のつなぎ方**（§9.400）——
+    「ルールを選んでください」と書くと、**作るまで何も起きない画面**に見える。 */
+ function sampleRule(){return ruleNow()||(rules().length?null:PLAIN)}
 
  function render(){
   const box=document.getElementById('iccModal');
@@ -310,7 +355,7 @@
      </span></span>
    </div>
    <output class="icc-sample-out${ui.marks?' is-marked':''}" id="iccSample">${
-     rule?sampleHtml(sampleLots(),rule,ui.marks)
+     (rule||sampleRule())?sampleHtml(sampleLots(),rule||sampleRule(),ui.marks)
         :'<span class="icc-empty">ルールを選んでください</span>'}</output>
   </section>`;
  }
@@ -342,7 +387,9 @@
   }).join('');
   return `<section class="icc-panel icc-panel-rules">
    <h3><span class="icc-no">1</span>どのルールでつなぐか</h3>
-   <ul class="icc-rule-list">${rows||'<li class="icc-empty-row">ルールがありません。「＋ ルールを追加」から作れます。</li>'}</ul>
+   <ul class="icc-rule-list">${rows||`<li class="icc-empty-row"><b>ルールはありません。</b>
+     いまは <b>${esc(PLAIN.name.replace(/^ルールなし（|）$/g,''))}</b> でコピーします。
+     別のつなぎ方にしたいときは「＋ ルールを追加」から作れます。</li>`}</ul>
    <button type="button" class="icc-add" id="iccAddRule"${list.length>=MAX_RULES?' disabled title="これ以上は増やせません"':''}>＋ ルールを追加</button>
   </section>`;
  }
@@ -501,7 +548,7 @@
     消えてカーソルが飛ぶ）。 */
  function paintSample(){
   const out=document.getElementById('iccSample');
-  const rule=ruleNow();
+  const rule=ruleNow()||sampleRule();
   if(!out||!rule)return;
   out.classList.toggle('is-marked',!!ui.marks);
   out.innerHTML=sampleHtml(sampleLots(),rule,ui.marks);
@@ -509,5 +556,5 @@
   if(src)src.textContent=sampleNote();
  }
 
- WL.lotCopy={rules,currentRule,joinLots,copyLots,menuItems,openSettings};
+ WL.lotCopy={rules,currentRule,joinLots,copyLots,menuItems,openSettings,PLAIN};
 })();

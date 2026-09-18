@@ -24,11 +24,29 @@ const planEntries=async()=>(await (await fetch(B+'/api/schedule/plan?equipment='
 const W=require('./lib/wait');
 const SEED=[['保全','定期メンテナンス',120],['保全','刃物交換',30],['段取り','段取り替え',45],
             ['突発','突発停止',0],['','清掃',15]];
+/* ---------- 後片付け ----------
+   製品の「削除」は**論理削除**（`有効=0`）なので、**行そのものは残る**。
+   `NEW`やSEEDは同じ(設備,名称)を登録し直すと元の行が戻る（`stop_reason_upsert`）
+   ので行数は増えないが、§9.400で足した**「（写し）」は新しい名前＝新しい行**
+   なので、論理削除だけでは**1行ずつ積み上がる**（実測: ランナーが
+   「設備停止マスタ +1」と報告した）。**素の表から本当に消す**こと。
+
+   **素の表の書込はeditモードだけ**（§9.389）——scheduleのまま消しにいくと
+   403で黙って弾かれる。 */
 async function cleanup(){
  try{
   const r=await reasons();
   for(const x of (r.items||[]))
-   if(x.name===NEW||SEED.some(s=>s[1]===x.name))await post('/api/schedule/stop-reason-master/delete',{id:x.id});
+   if(x.name===NEW||x.name===NEW+'（写し）'||SEED.some(s=>s[1]===x.name))
+    await post('/api/schedule/stop-reason-master/delete',{id:x.id});
+ }catch(e){}
+ try{
+  await post('/api/access-mode',{mode:'edit'});
+  const j=await fetch(B+'/api/master-table/'+encodeURIComponent('設備停止マスタ')+'?limit=2000')
+    .then(x=>x.json()).catch(()=>({}));
+  for(const row of (j.items||[]))
+   if(String(row['名称']||'').trim()===NEW+'（写し）')
+    await post('/api/master-table/'+encodeURIComponent('設備停止マスタ')+'/delete',{id:row.id});
  }catch(e){}
 }
 (async()=>{
@@ -51,9 +69,11 @@ async function cleanup(){
   await page.waitForSelector('#scStopModal:not([hidden])',{timeout:8000});
   await page.waitForTimeout(800);
 
-  /* ---- 1) どこへ入るのか ---- */
-  const where=await page.evaluate(()=>document.querySelector('#scStopWhere')?.textContent.replace(/\s+/g,' ').trim()||'');
-  rec('どこへ入るのかが先に書いてある',where.includes(EQ)&&/いちばん後ろ/.test(where),where.slice(0,80));
+  /* ---- 1) どこへ入るのか（§9.400で**帯の中**へ移した） ----
+     専用の帯を上に1段持つのはやめた（§CLAUDE 8「同じ情報を2箇所に出さない」）
+     ——入る先は**追加ボタンの字**と帯の案内の1行が言う。 */
+  const where=await page.evaluate(()=>document.querySelector('.sc-sb')?.textContent.replace(/\s+/g,' ').trim()||'');
+  rec('どこへ入るのかが帯に書いてある',where.includes(EQ)&&/いちばん後ろ/.test(where),where.slice(0,80));
 
   /* ---- 2) 分類は分類マスタの名前で ---- */
   const groups=await page.evaluate(()=>[...document.querySelectorAll('.sc-stop-group-title')]
@@ -125,22 +145,23 @@ async function cleanup(){
      **一覧は消えない**——1つの作業を2画面に割らないため（利用者の指摘
      「ステップが多い印象」）。内訳を持たない停止なので決めるのは時間だけで、
      標準所要分が最初から選ばれている。 */
-  await page.waitForSelector('.sc-sp',{timeout:10000});
+  await page.waitForSelector('.sc-sb:not(.is-empty)',{timeout:10000});
   const step=await page.evaluate(()=>({
-   title:(document.querySelector('.sc-sp-title')||{}).textContent||'',
-   rows:[...document.querySelectorAll('.sc-sp-label')].map(x=>x.firstChild.textContent.trim()),
+   title:(document.querySelector('.sc-sb-what')||{}).textContent||'',
+   sels:document.querySelectorAll('.sc-sb-sel').length,
+   min:(document.getElementById('scSbMinutes')||{}).value,
    go:(document.querySelector('#scSpGo')||{}).textContent||'',
    goOff:!!(document.querySelector('#scSpGo')||{}).disabled,
    listKept:!!document.querySelector('.sc-stop-button'),
    on:[...document.querySelectorAll('.sc-stop-button.is-on b')].map(x=>x.textContent.trim()),
    clear:!!document.querySelector('#scSpBack'),
   }));
-  rec('押すと右に設定が開き、一覧は消えない（戻る道を覚えなくてよい）',
+  rec('押すと足元の帯が開き、一覧は消えない（戻る道を覚えなくてよい）',
       step.listKept&&step.clear&&step.title.includes(NEW),JSON.stringify(step).slice(0,180));
   rec('いま設定しているものが一覧でも印で分かる',
       step.on.includes(NEW),JSON.stringify(step.on));
-  rec('内訳を持たない停止では決めるのは「時間」だけ',
-      step.rows.length===1&&step.rows[0]==='時間',step.rows.join('/'));
+  rec('内訳を持たない停止では決めるのは「時間」だけ（内訳の選択肢は出ない）',
+      step.sels===0&&step.min!=='',`選択肢${step.sels} / 分${step.min}`);
   rec('標準所要分（25分）が最初から選ばれている',/25分/.test(step.go),step.go);
   rec('内訳が要らないので、そのまま追加できる',!step.goOff&&step.go.includes('追加'),step.go);
   await page.click('#scSpGo');
@@ -284,6 +305,71 @@ async function cleanup(){
   }
   if(added)await post('/api/schedule/plan/delete',{id:added.id});
 
+  /* ---- 5.9) §9.400: 分類チップ・2列の一覧・停止内容の複製 ----
+     利用者の指示「もっとすっきり使いやすいデザインでUIUX検討してください」
+     （案B＝上＝一覧の2列／下＝決める帯）と、
+     「設備停止内容複製機能の追加／右クリックメニューにないので追加して
+      ください」「停止内容(マスタから引っ張ってくるもの)を複製したいです」。 */
+  const look=await page.evaluate(()=>{
+   const btns=[...document.querySelectorAll('.sc-stop-button')];
+   const tops=[...new Set(btns.map(b=>Math.round(b.getBoundingClientRect().top)))];
+   return {cats:[...document.querySelectorAll('.sc-stop-cat')].map(x=>x.textContent.trim()),
+    /* **2列**は「同じ高さに2枚ある行がある」ことで見る（`grid-template-columns`
+       を読むと、CSSの書き方を変えただけで落ちる網になる）。 */
+    列:Math.max(...tops.map(t=>btns.filter(b=>Math.round(b.getBoundingClientRect().top)===t).length)),
+    帯:!!document.querySelector('.sc-stop-bar'),
+    古い右ペイン:!!document.querySelector('.sc-stop-detail')};
+  });
+  rec('分類はチップで絞れる（「すべて」＋分類ごと）',
+      look.cats.length>=3&&/すべて/.test(look.cats[0]),JSON.stringify(look.cats));
+  rec('一覧は2列（窓いっぱいを使う）',look.列===2,`同じ高さに最大${look.列}枚`);
+  rec('決めるのは足元の1本の帯（左右2ペインはやめた）',
+      look.帯&&!look.古い右ペイン,JSON.stringify(look));
+  /* 分類チップを押すと、その分類だけになる。 */
+  const filt2=await page.evaluate(()=>{
+   const c=[...document.querySelectorAll('.sc-stop-cat')].find(x=>/保全/.test(x.textContent));
+   if(c)c.click();
+   return [...document.querySelectorAll('.sc-stop-group-title')].map(x=>x.textContent.replace(/\s+/g,' ').trim());
+  });
+  rec('分類チップを押すとその分類だけになる',
+      filt2.length===1&&/保全/.test(filt2[0]),JSON.stringify(filt2));
+  await page.evaluate(()=>{
+   const c=[...document.querySelectorAll('.sc-stop-cat')].find(x=>/すべて/.test(x.textContent));
+   if(c)c.click();
+  });
+  /* **停止内容そのものの複製**（右クリック）。予定の行の複製とは別物。 */
+  const dupTarget=await page.evaluate(n=>{
+   const b=[...document.querySelectorAll('.sc-stop-button')].find(x=>x.textContent.includes(n));
+   return b?b.dataset.id:'';
+  },NEW);
+  if(dupTarget){
+   await page.click(`.sc-stop-button[data-id="${dupTarget}"]`,{button:'right'});
+   await page.waitForSelector('.sc-row-menu',{timeout:8000});
+   const menu=await page.evaluate(()=>({
+    txt:document.querySelector('.sc-row-menu').textContent.replace(/\s+/g,' ').trim(),
+    off:[...document.querySelectorAll('.sc-row-menu button')].map(b=>b.disabled)}));
+   rec('停止内容の右クリックに「複製」があり、押せる',
+       /複製/.test(menu.txt)&&menu.off.every(x=>!x),menu.txt.slice(0,110));
+   await page.evaluate(()=>{
+    const b=[...document.querySelectorAll('.sc-row-menu button')].find(x=>/複製/.test(x.textContent));
+    if(b)b.click();
+   });
+   /* サーバーが名前を決める（`名称（写し）`）。**一覧に出るまで待つ**——
+      押した直後は取り直しの往復がある（時間で待たない）。 */
+   await page.waitForFunction(n=>[...document.querySelectorAll('.sc-stop-button b')]
+     .some(x=>x.textContent.trim()===n+'（写し）'),NEW,{timeout:15000})
+     .catch(e=>{throw new Error('複製した行が一覧に出ない: '+e.message.slice(0,60))});
+   const copies=await reasons();
+   const copy=(copies.items||[]).find(x=>String(x.name||'').trim()===NEW+'（写し）');
+   rec('複製すると「（写し）」がマスタへ1行増える',!!copy,copy&&copy.name);
+   /* **中身も写る**——分類・標準所要分（内訳はこの停止内容には無い）。
+      写さないと「同じ名前なのに空の行」ができる。 */
+   rec('複製は分類と標準所要分ごと写す',
+       !!copy&&String(copy.category||'')==='保全'&&Number(copy.standardMinutes)===25,
+       JSON.stringify(copy&&{c:copy.category,m:copy.standardMinutes}));
+   if(copy)await post('/api/schedule/stop-reason-master/delete',{id:copy.id});
+  }else rec('停止内容の右クリックに「複製」があり、押せる',false,'複製元が一覧に無い');
+
   /* ---- 6) 側パネルでも同じもの ---- */
   await page.click('#scStopModalClose');
   await page.waitForTimeout(600);
@@ -296,7 +382,7 @@ async function cleanup(){
   const inSide=await page.evaluate(()=>({box:!!document.querySelector('#scSide #scStopButtons'),
     search:!!document.querySelector('#scSide #scStopSearch'),
     add:!!document.querySelector('#scSide #scStopNewToggle'),
-    where:!!document.querySelector('#scSide #scStopWhere')}));
+    where:!!document.querySelector('#scSide .sc-stop-bar')}));
   rec('側パネルでも同じ道具が出る（実装は1つ）',
       inSide.box&&inSide.search&&inSide.add&&inSide.where,JSON.stringify(inSide));
 

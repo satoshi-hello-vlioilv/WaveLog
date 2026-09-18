@@ -1079,6 +1079,73 @@ def stop_reason_upsert(c_master,equipment,name,uid,category='',standard_minutes=
              [equipment,category,name,standard_minutes,color_key,link or STOP_LINK_NONE,order,uid,uid])
  return cur.lastrowid,True
 
+def stop_reason_copy_name(c_master,equipment,name):
+ """複製先の名前を決める（§9.400）。`名称（写し）`、それも埋まっていれば
+    `名称（写し2）`…と数える。
+
+    **同じ名前では2行目を作れない**（`[設備名]`×`[名称]`はUNIQUEで、
+    `stop_reason_upsert()`は同じ自然キーを見つけると既存行の更新に倒れる）
+    ので、**名前だけは必ず変える**。使われているかは**無効化済みの行も
+    数える**——論理削除なので、同じ名前を登録し直すと消した行が戻ってくる。"""
+ ensure_stop_reason_table(c_master)
+ base=str(name or '').strip()
+ cur=c_master.cursor()
+ cur.execute('SELECT [設備名],[名称] FROM [設備停止マスタ]')
+ used={str(nm or '').strip() for eq,nm in cur.fetchall()
+       if _stop_equipment_overlaps(eq,equipment)}
+ for i in range(1,100):
+  cand=f'{base}（写し）' if i==1 else f'{base}（写し{i}）'
+  if cand not in used:return cand
+ # **勝手な名前を作らない**（§CLAUDE 4）。99通り埋まっているのは、
+ # 写しを整理していないということなので、そう言う。
+ raise ValueError(f'「{base}」の写しが多すぎます。使っていない写しを消してください。')
+
+def stop_reason_duplicate(c_master,stop_reason_id,uid,name=None):
+ """停止内容を1件まるごと写す（§9.400、利用者の指示「停止内容(マスタから
+    引っ張ってくるもの)を複製したいです」）。
+
+    **写すのは「その停止内容が持っているもの全部」**——分類・標準所要分・
+    色キー・連携機能と、**内訳の木（2段とも・既定の印つき）**。内訳を置いて
+    いくと、写した側は「同じ名前なのに選べる内訳が無い」ことになり、
+    複製した意味が消える（§CLAUDE 4「できないことは、できないと書く」の前に、
+    そもそも中途半端な行を作らない）。
+
+    **対象設備は写さない**——写し元と同じ設備に同じ内容が2つ並ぶのが
+    ふつうの使い方（名前を変えて枝分かれさせる）なので、設備まで変えたい
+    ときは出来た行を普通に直す（入口を2つにしない）。"""
+ ensure_stop_reason_table(c_master)
+ cur=c_master.cursor()
+ cur.execute('SELECT [停止理由ID],[設備名],[分類],[名称],[標準所要分],[色キー],[連携機能],[有効] '
+             'FROM [設備停止マスタ] WHERE [停止理由ID]=?',[stop_reason_id])
+ src=cur.fetchone()
+ if not src:raise ValueError('複製元の設備停止が見つかりません。')
+ if not (True if src[7] is None else bool(src[7])):
+  raise ValueError('消された設備停止は複製できません。')
+ equipment=src[1]
+ want=str(name or '').strip() or stop_reason_copy_name(c_master,equipment,src[3])
+ new_id,created=stop_reason_upsert(c_master,equipment,want,uid,
+                                   category=str(src[2] or ''),
+                                   standard_minutes=src[4],
+                                   color_key=str(src[5] or ''),
+                                   link_key=src[6])
+ if not created:
+  # 既にある行を書き換えてしまった＝名前が重なっている。**黙って上書きしない**。
+  raise ValueError(f'「{want}」は既に登録されています。別の名前を指定してください。')
+ # 内訳の木を写す。**1段目を先に作り、その新しいIDを親にして2段目を作る**
+ # （`stop_sub_rows()`が「親 → その子」の順で返すので、1周で足りる）。
+ idmap={}
+ subs=0
+ for r in stop_sub_rows(c_master,int(src[0])):
+  parent=int(r[8] or 0)
+  if parent and parent not in idmap:continue      # 親を写せていない子は置いていく
+  gid,_made=stop_sub_upsert(c_master,new_id,str(r[2] or ''),uid,
+                            standard_minutes=r[3],
+                            parent_sub_id=idmap.get(parent,0) if parent else 0,
+                            is_default=bool(r[9]) if len(r)>9 else None)
+  if not parent:idmap[int(r[0])]=gid
+  subs+=1
+ return {'id':new_id,'name':want,'subs':subs}
+
 def stop_reason_delete(c_master,stop_reason_id,uid):
  ensure_stop_reason_table(c_master)
  cur=c_master.cursor()

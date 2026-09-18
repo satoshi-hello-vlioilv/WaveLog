@@ -26,6 +26,13 @@
     5. **設定は専用モーダルで、見本が出る**。触ると見本がその場で変わる。
     6. **ルールは複数持て、消せる**。「触れない既定」を作らない（§9.367）。
     7. **本当にクリップボードへ入る**。
+    8. **例の2本は「本当に登録された行」**（§9.400、利用者の報告）。作った
+       その場で保存され、`id`は毎回変わらない——保存していなかったため
+       「登録済みに見えるのに実体が無い」状態になっていた。
+    9. **全部消したら、消えたまま**（再読込で復活しない）。`[]`は「まだ
+       作っていない」ではなく「利用者が空にした」。
+    10. **ルールが1本も無くてもコピーできる**（利用者の指示）。素のつなぎ方
+       （半角スペース）でつなぎ、「ルールが無い」を断る理由に使わない。
 
    後片付けは finally で必ず行う（自分が足した予定と、書いた設定を消す）。
    落ちてもブラウザを閉じる。
@@ -61,6 +68,50 @@ let b=null;
                           localStorage.removeItem('scLotCopyRulesV1');
                           localStorage.removeItem('scLotCopyRuleV1')},EQ);
   await post('/api/access-mode',{mode:'schedule'});
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
+  await page.waitForSelector('#openSchedule',{timeout:25000});
+
+  /* ---- 8〜10. 既定のルールと「ルールなし」（§9.400、利用者の報告） ----
+     **ここは他より先に見る**——このあとの節が設定を書き換えるので、
+     「まっさらな端末で最初に開いたとき」を見られるのはこの時点だけ。 */
+  const seed1=await page.evaluate(()=>{
+   const list=WL.lotCopy.rules();
+   return {names:list.map(r=>r.name),ids:list.map(r=>r.id),
+           stored:localStorage.getItem('scLotCopyRulesV1')};
+  });
+  rec('例の2本は読んだその場で保存される（「登録済みに見えるのに実体が無い」を作らない）',
+      seed1.stored!==null&&JSON.parse(seed1.stored).length===seed1.names.length&&seed1.names.length===2,
+      String(seed1.stored).slice(0,120));
+  rec('例の id は時刻から作らない（再読込でも同じ行を指せる）',
+      seed1.ids.every(id=>id&&!/^r\d{10,}$/.test(id)), JSON.stringify(seed1.ids));
+  /* **全部消したら消えたまま。** 以前は`[]`を「まだ作っていない」と読んで
+     例を作り直していたので、「ルールがありません」と言った直後の再読込で
+     復活していた（利用者の報告「内部的にルールがある状態」）。 */
+  await page.evaluate(()=>localStorage.setItem('scLotCopyRulesV1','[]'));
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
+  const empty=await page.evaluate(async()=>{
+   const list=WL.lotCopy.rules();
+   const cur=WL.lotCopy.currentRule();
+   const text=WL.lotCopy.joinLots(['A1','A2','A3'],cur);
+   const ok=await WL.lotCopy.copyLots(['A1','A2','A3']);
+   return {n:list.length,cur:cur?cur.name:null,text,ok,
+           menu:WL.lotCopy.menuItems(['A1','A2','A3'])
+                 .map(x=>({label:x.label||'',off:!!x.disabled}))};
+  });
+  rec('全部消したら消えたまま（再読込で復活しない）', empty.n===0, JSON.stringify(empty.n));
+  rec('ルールが1本も無くても、つなぎ方は必ず1つ決まる',
+      !!empty.cur&&/ルールなし/.test(empty.cur), String(empty.cur));
+  rec('ルールが1本も無くても半角スペースでつながる',
+      empty.text==='A1 A2 A3', JSON.stringify(empty.text));
+  rec('ルールが1本も無くてもコピーがはじかれない', empty.ok===true, String(empty.ok));
+  rec('子メニューは「ありません（押せない）」で手を止めない',
+      empty.menu.some(x=>/ルールなし/.test(x.label)&&!x.off),
+      JSON.stringify(empty.menu).slice(0,200));
+  /* 元の状態（例の2本）へ戻してから続ける。 */
+  await page.evaluate(()=>{localStorage.removeItem('scLotCopyRulesV1');
+                           localStorage.removeItem('scLotCopyRuleV1')});
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
   await page.waitForSelector('#openSchedule',{timeout:25000});
