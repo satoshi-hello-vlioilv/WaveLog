@@ -95,6 +95,12 @@ _WRITE_ALLOWED_MODES={
 # 一般ユーザー)は「何を触れるか」とは別の軸で、閲覧モードの開発者でも
 # 切断はできる。実際に断るのは`master_repo.role_can()`の1箇所。
 _WRITE_ALLOWED_MODES['presence']={'edit','view','schedule'}
+# システム系(§9.410)。**宣言が無いと fail-open**（`_guard_write`は
+# `allowed is None`を素通しにする）で、下の`_ENDPOINT_EXTRA_MODES`は
+# 効いているように見えて**一度も効いていなかった**。既定は安全側の`edit`だけに
+# し、ショートカット作成だけを3モードへ開ける（この端末のデスクトップにしか
+# 触らないので、現場・閲覧の端末こそ入口のアイコンが要る）。
+_WRITE_ALLOWED_MODES['core']={'edit'}
 
 _ENDPOINT_EXTRA_MODES={
  'schedule.plan_reorder':{'edit'},

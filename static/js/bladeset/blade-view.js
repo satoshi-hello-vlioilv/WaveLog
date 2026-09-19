@@ -129,8 +129,12 @@
        <!-- 模式図／立体図（§9.377 追補）。**同じ割付から**作るので、どちらを
             見ても食い違わない。立体図の部品（three.js）は**押したときだけ**
             取りに行く（起動を遅くしない・回線が無くても模式図は使える）。 -->
+       <!-- 断面図（§9.412、利用者の指示）。**立体図と同じ模型**を、機械まわりを
+            伏せて・平行投影の真横から・軸の中心で切って見る。模式図の読み取り
+            やすさ（真横・同じ並び）と、立体の質感を両方持たせるための1枚。 -->
        <div class="bs-seg" id="bsFigTabs">
         <button type="button" class="bs-chip is-on" data-fig="2d">模式図</button>
+        <button type="button" class="bs-chip" data-fig="cut" title="立体の模型を軸の中心で切り、真横から平行投影で見ます。寸法は模式図と同じ読み方ができます">断面図</button>
         <button type="button" class="bs-chip" data-fig="3d">立体図</button>
        </div>
        <!-- **向きの切り替えは図の見出しへ置く**（§9.380、利用者の指示
@@ -164,7 +168,8 @@
             <dd>DS 側から部材を入れ、OS 側へ詰めます。材料の入側は、ラインを正面に見て左です。</dd>
             <dt>視点</dt>
             <dd>ドラッグ＝回す／ホイール＝寄る／Shift＋ドラッグ（または右ドラッグ）＝平行移動／
-              「視点を戻す」で元へ</dd>
+              「視点を戻す」で元へ。<b>断面図では視点は動かせません</b>（真横に固定して、
+              寸法を目で比べられるようにしています）。</dd>
             <dt>表示</dt>
             <dd>下で板・刃・ゴムリング・スペーサーを消せます。点が付いているものが出ています。</dd>
            </dl>
@@ -177,7 +182,7 @@
            <button type="button" class="bs-tg is-on" data-show="ring" data-show-name="ゴムリング" aria-pressed="true">ゴムリング</button>
            <button type="button" class="bs-tg is-on" data-show="liner" data-show-name="スペーサー" aria-pressed="true">スペーサー</button>
           </div>
-          <div class="bs-hud-grp"><span class="bs-hud-cap">段取り</span>
+          <div class="bs-hud-grp bs-hud-grp--rig"><span class="bs-hud-cap">段取り</span>
            <button type="button" class="bs-btn is-sm is-on bs-step3-pull">①ラインへ戻す</button>
            <button type="button" class="bs-btn is-sm is-on bs-step3-open">②軸端部を戻す</button>
            <button type="button" class="bs-btn is-sm bs-step3-spin">③台車を回す</button>
@@ -1726,17 +1731,24 @@
 
  const closePops = () => panel.querySelectorAll('.bs-step').forEach(p => p.classList.remove('is-open'));
 
- /* 模式図／立体図。**器の出し入れはここが持ち、中身は`WL.bladeSolid`が持つ**。 */
+ /* 模式図／断面図／立体図。**器の出し入れはここが持ち、中身は`WL.bladeSolid`が
+    持つ**。顔ぶれは`FIG_KINDS`の1箇所（増やすときはここと札だけ・§9.412）。 */
+ const FIG_KINDS = ['2d', 'cut', '3d'];
+ const FIG_SOLID = { cut: true, '3d': true };    /* 立体の模型を使う図 */
  let figKind = '2d';
  function figMode(mode) {
-  figKind = mode === '3d' ? '3d' : '2d';
+  figKind = FIG_KINDS.includes(mode) ? mode : '2d';
+  const solid = !!FIG_SOLID[figKind];
   panel.querySelectorAll('#bsFigTabs [data-fig]')
    .forEach(b => b.classList.toggle('is-on', b.dataset.fig === figKind));
-  panel.querySelector('.bs-stage').hidden = figKind === '3d';
-  $('#bsStage3').hidden = figKind !== '3d';
+  panel.querySelector('.bs-stage').hidden = solid;
+  $('#bsStage3').hidden = !solid;
+  /* 断面図では機械まわりを伏せているので、**段取りの3つは押しても何も起きない**
+     ——押せるのに何も起きない的を残さない（§CLAUDE 4）。器ごと伏せる。 */
+  $('#bsStage3').classList.toggle('is-cut', figKind === 'cut');
   if (!WL.bladeSolid) return;
   WL.bladeSolid.sync({ st, M, res: LAST, ringHex: hexOf });
-  WL.bladeSolid.setMode(figKind === '3d');
+  WL.bladeSolid.setMode(solid, figKind);
  }
 
  function wire() {

@@ -116,7 +116,7 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（690件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（691件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
 ### 起動・停止・監視（37件）
 
@@ -525,7 +525,7 @@
 | 「選ばない」の札は空文字だけではない | `test_opblank.js` | [§9.246](docs/decisions/9.246.md) |
 | ロールは「設備名＋ロール名＋接触面＋径MAX＋径MIN＋備考」で1本 | `test_rollio.py` | [§9.246](docs/decisions/9.246.md) |
 
-### 刃組ガイダンス（50件）
+### 刃組ガイダンス（51件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -545,6 +545,7 @@
 | 刃組スケジュール一覧の行からも入れる（的は題名の横・道は`openRowLink()`の1本） | `test_bladeui.js` | [§9.408](docs/decisions/9.408.md) |
 | 標準の条件（既定値・基準値・刃の選び方）は`blade-core.js`の1箇所。刃は**材料を当ててから選ぶ** | `test_bladeui.js` | [§9.408](docs/decisions/9.408.md) |
 | 記録が無い段取りは標準の計算値を出し、**記録と見込みを字で書き分ける**（読めなければ計算しない） | `test_bladeui.js` | [§9.408](docs/decisions/9.408.md) |
+| 断面図は台車を回さない（裏返すのはカメラ側だけ）。切り口は面を置いて塞ぐ | `test_bladeui.js` | [§9.412](docs/decisions/9.412.md) |
 | 入口は段取りの行だけ。左メニューには置かない（文脈の無いまま開かせない） | `test_bladeui.js` | [§9.379](docs/decisions/9.379.md) |
 | 刃の状態は3つ。既定は「一般」、「専用」は`刃選択マスタ`に当たったときだけ | `test_bladeset.py`・`test_bladeui.js` | [§9.379](docs/decisions/9.379.md) |
 | 刃選択の条件は行ごとAND・最初に当たった1行。**条件が空の行は当たらない** | `test_bladeset.py`・`test_bladeui.js` | [§9.379](docs/decisions/9.379.md) |
@@ -553,7 +554,7 @@
 | 軸方向から見たフィンガーは幅×厚みの四角。研削は奥行きの面なので見えない | — | [§9.379](docs/decisions/9.379.md) |
 | 端部（OS/DS）の表は右レール。図の段へ戻すと模式図が7割まで痩せる | `test_bladeui.js` | [§9.379](docs/decisions/9.379.md) |
 | 模式図は器の横幅を使い切っている。`grow`では1pxも広がらない（器の側を削る） | `test_bladeui.js` | [§9.378](docs/decisions/9.378.md) |
-| 板の場所を答えるのは`matBands()`の1箇所。押さえは**真下の条の面**へ当てる（外枠に固定すると寄った条に板厚1枚ぶんの隙間が残る） | `test_bladeui.js` | [§9.385](docs/decisions/9.385.md) |
+| 板の場所を答えるのは`matBands()`の1箇所。押さえは**真下の条の面**へ当てる（外枠だと隙間が残る） | `test_bladeui.js` | [§9.385](docs/decisions/9.385.md) |
 | 押さえの網は「外枠」で見ない。軸と**その条**のあいだに在るか・どの条にも食い込まないかで見る | `test_bladeui.js` | [§9.385](docs/decisions/9.385.md) |
 | 刃組表の区分（ロット番号・条幅）は本文（`--tbl-fs`）より小さくしない | — | [§9.385](docs/decisions/9.385.md) |
 | 図と表の連携の的は**区間ぜんたい**。記号の札だけにしない（実測27×29px→67×136px） | `test_bladeui.js` | [§9.386](docs/decisions/9.386.md) |
@@ -565,7 +566,7 @@
 | 1本目が分割ありなら子ロットが条。子が読めないときは条にせず件数で言う | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
 | 条の設計は必須。止めるのは**確定保存の1箇所**だけ（図・刃組表・所要は見せたまま） | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
 | 条の設計が済んでいればその並びで開く（予定の写しで黙って上書きしない）。戻す道は記録を消さない | `test_bladeui.js` | [§9.387](docs/decisions/9.387.md) |
-| 分割なしのコイルの幅・条数は**仕掛データの完全な行**から読む（写しは一覧の行から作るので、表に出していない列は入っていない） | `test_bladeui.js` | [§9.388](docs/decisions/9.388.md) |
+| 分割なしのコイルの幅・条数は**仕掛データの完全な行**から読む（写しには表に出していない列が無い） | `test_bladeui.js` | [§9.388](docs/decisions/9.388.md) |
 | 完全な生データを取る口は`WL.split.lotRow`の1つ。判定は`bladeLotsFromSource`の純粋な関数へ切り出す | `test_bladeui.js` | [§9.388](docs/decisions/9.388.md) |
 | 条数の範囲（1〜40）は測定画面の`defaultHorizontalCount`と同じにそろえる | `test_bladeui.js` | [§9.388](docs/decisions/9.388.md) |
 | 取り直した値を当てないのは2つ——条の設計が記録済み／1本目が分割あり | `test_bladeui.js` | [§9.388](docs/decisions/9.388.md) |

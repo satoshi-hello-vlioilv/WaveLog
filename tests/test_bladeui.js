@@ -561,6 +561,65 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     });
     rec('同梱した部品で立体図が実際に描ける（回線に依らない）',
         drew.w > 100 && drew.h > 100 && !drew.ng, JSON.stringify(drew));
+
+    /* ---- 5b) 断面図（§9.412、利用者の指示） ----
+       **同じ模型を使い回す**のが要点。ここで固定するのは「1枚足りたこと」ではなく、
+       ①機械まわりを伏せること ②平行投影で真横から見ること ③軸の中心で切ること
+       ④視点を動かせないと**見た目でも**言うこと（押せるのに何も起きない的を残さない）。 */
+    await page.click('#bsFigTabs [data-fig="cut"]');
+    await W.until(page, () => {
+     const v = window.WL.bladeSolid && window.WL.bladeSolid.view();
+     return !!(v && v.cut && v.ortho);
+    }, null, { ms: 20000, what: '断面図に切り替わる' });
+    const cut = await page.evaluate(() => {
+     const st3 = document.querySelector('#bsStage3'), cv = st3.querySelector('canvas');
+     const rig = st3.querySelector('.bs-hud-grp--rig');
+     return Object.assign({}, window.WL.bladeSolid.view(), {
+      stage2: document.querySelector('.bs-stage').hidden,
+      stage3: st3.hidden, isCut: st3.classList.contains('is-cut'),
+      w: cv ? cv.width : 0, h: cv ? cv.height : 0,
+      rigShown: rig ? getComputedStyle(rig).display !== 'none' : true,
+      cursor: cv ? getComputedStyle(cv).cursor : '',
+      tabs: [...document.querySelectorAll('#bsFigTabs [data-fig]')].map(b => b.dataset.fig)
+     });
+    });
+    rec('刃組図の札は模式図／断面図／立体図の3枚', cut.tabs.join('/') === '2d/cut/3d',
+        cut.tabs.join('/'));
+    rec('断面図は立体の器で描く（模式図の器は伏せる）',
+        cut.stage2 === true && cut.stage3 === false && cut.w > 100 && cut.h > 100,
+        JSON.stringify([cut.stage2, cut.stage3, cut.w, cut.h]));
+    rec('断面図は平行投影（遠近を付けない＝寸法を目で比べられる）', cut.ortho === true);
+    rec('軸の中心で切る面を1枚だけ持つ', cut.clips === 1, `${cut.clips}枚`);
+    rec('機械まわりの段取りは断面図では出さない（押せるのに何も起きない的を残さない）',
+        cut.isCut === true && cut.rigShown === false,
+        JSON.stringify([cut.isCut, cut.rigShown]));
+    rec('視点を動かせないことを見た目でも言う（掴める指のカーソルを出さない）',
+        cut.cursor === 'default', cut.cursor);
+    /* 向きの切り替えは断面図でも効く。**台車は回さず**、見る側とどちらを残すかを
+       入れ替える（回すと切断面まで一緒に回り、カメラ側の入れ替えと打ち消し合う）。
+       **いまどちら向きかを当てにしない**——ここへ来るまでに裏返っていることがある。 */
+    const was = cut.flip;
+    await page.click('#bsFlip');
+    await W.until(page, w => (window.WL.bladeSolid.view() || {}).flip !== w,
+                  was, { ms: 8000, what: '断面図の向きが裏返る' });
+    const flipped = await page.evaluate(() => window.WL.bladeSolid.view());
+    rec('断面図でも向きを裏返せる（残す側も一緒に入れ替わる）',
+        flipped.flip === !was && flipped.keep === (flipped.flip ? 1 : -1) && flipped.cut === true,
+        JSON.stringify([was, flipped]));
+    /* **台車は回っていない**こと（回すと切断面まで回る）。 */
+    rec('断面図では台車を回さない（裏返してもカメラ側だけが入れ替わる）',
+        await page.evaluate(() => Math.abs(WL.bladeSolid.view().rotY) < 1e-6));
+    await page.click('#bsFlip');
+    await W.until(page, w => (window.WL.bladeSolid.view() || {}).flip === w,
+                  was, { ms: 8000, what: '向きを戻す' });
+    /* 立体図へ戻すと、切る面は外れる（同じ模型がそのまま立体図に戻る）。 */
+    await page.click('#bsFigTabs [data-fig="3d"]');
+    await W.until(page, () => (window.WL.bladeSolid.view() || {}).cut === false,
+                  null, { ms: 20000, what: '立体図へ戻る' });
+    const back3 = await page.evaluate(() => window.WL.bladeSolid.view());
+    rec('立体図へ戻すと切る面が外れる（同じ模型がそのまま戻る）',
+        back3.cut === false && back3.clips === 0, JSON.stringify(back3));
+
     await page.click('#bsFigTabs [data-fig="2d"]');
     await W.until(page, () => !document.querySelector('.bs-stage').hidden,
                   null, { ms: 8000, what: '模式図へ戻る' });

@@ -7,7 +7,7 @@ from flask import Blueprint, render_template, request, jsonify, Response
 import json, os, re, subprocess, time
 
 from ..config import APP_ID, PORT
-from .. import boot_status, desktop_shortcut
+from .. import app_icon, boot_status, desktop_shortcut
 from ..changelog_data import APP_VERSION, CHANGELOG, is_dev
 from ..paths import APP_ROOT as BASE
 from ..logging_setup import app_logger
@@ -311,7 +311,6 @@ def app_icon_png():
  """既定のアイコンの**見本**（§9.410）。設定の画面が「どの絵で作るか」を
     見せるのに使う——**見本は実物と同じ物で描く**（§9.374）。`.ico`の中身を
     描いているのと同じ`app_icon.render()`を通すので、絵を書き写さない。"""
- from .. import app_icon
  size=48
  try:size=max(16,min(256,int(request.args.get('size',48))))
  except (TypeError,ValueError) as e:
