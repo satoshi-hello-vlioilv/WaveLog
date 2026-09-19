@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<title>起動モーダル v6 — 横の流れ／濃いめ／ステータスバー／動き（リール・波紋）</title>
+<style>
+ :root{--pg:#eceff2;--pgink:#1d2b33;--pgink2:#5b6f7a;--pgline:#d5dee4}
+ *{box-sizing:border-box}
+ body{margin:0;background:var(--pg);color:var(--pgink);
+  font:14px/1.7 "Yu Gothic UI","Meiryo",system-ui,sans-serif;padding:22px 26px 60px}
+ h1{font-size:20px;margin:0 0 6px}
+ .lead{color:var(--pgink2);margin:0 0 14px;max-width:82em}
+ .fix{background:#fff;border:1px solid var(--pgline);border-radius:10px;padding:12px 16px;margin:0 0 18px}
+ .fix h2{font-size:13px;margin:0 0 6px}
+ .fix ul{margin:0;padding-left:1.3em;font-size:12.5px;color:var(--pgink2)}
+ .fix b{color:var(--pgink)}
+ .switch{display:flex;gap:8px;align-items:center;margin:0 0 18px;position:sticky;top:0;
+  background:var(--pg);padding:10px 0;z-index:5;border-bottom:1px solid var(--pgline)}
+ .switch span{color:var(--pgink2);font-size:12px;margin-right:4px}
+ .switch button{font:inherit;font-size:12px;padding:6px 12px;border:1px solid var(--pgline);
+  background:#fff;border-radius:8px;cursor:pointer;color:var(--pgink)}
+ .switch button.on{background:#173842;color:#fff;border-color:#173842}
+ .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(720px,1fr));gap:20px}
+ .case{background:#fff;border:1px solid var(--pgline);border-radius:12px;overflow:hidden}
+ .case>h2{font-size:15px;margin:0;padding:11px 16px;border-bottom:1px solid var(--pgline);
+  display:flex;align-items:center;gap:9px;background:#f7f9fa}
+ .case>h2 i{font-style:normal;background:#173842;color:#fff;border-radius:6px;
+  min-width:30px;text-align:center;padding:2px 7px;font-size:12px;font-weight:700}
+ .why{margin:0;padding:10px 16px;color:var(--pgink2);font-size:12.5px;
+  border-bottom:1px solid var(--pgline);background:#f7f9fa}
+ .why b{color:var(--pgink)}
+
+ /* ======== アプリの実トークン（static/css/00-base.css をそのまま写す） ======== */
+ .P{--nav:#173842;--teal:#087c89;--teal-soft:#9cd6ce;--teal-dark:#096b75;--pale:#dcecef;
+  --line:#b7c7cc;--bg:#eef2f4;--ink:#173842;--ink2:#3a565d;--ink3:#4a6169;--inkSoft:#7b8e95;
+  --warn:#f5a30a;--warnFg:#7a2f00;--warnBg:#fff0d6;--warnBorder:#d58d16;
+  --danger:#a32424;--dangerBg:#fdeaea;--dangerBorder:#e0a3a3;
+  --r:18px;--track:#c3d3d8}
+
+ /* 器は 560 → **680px**。余白は「詰める」ではなく「置く」（§CLAUDE 1） */
+ .screen{padding:28px 20px;display:flex;justify-content:center;background:var(--bg)}
+ .card{width:100%;max-width:680px;border-radius:var(--r);overflow:hidden;color:var(--ink);
+  box-shadow:0 18px 44px rgba(23,56,66,.18),0 3px 8px rgba(23,56,66,.10);
+  background:#fff;border:1px solid #b9cbd1}
+
+ /* ---------------- 頭（濃い面＝本体のナビと同じ地） ---------------- */
+ .head{display:flex;align-items:center;gap:14px;padding:16px 22px;
+  background:var(--headBg,var(--nav));color:var(--headInk,#fff)}
+ .head .t{flex:1;min-width:0}
+ .head h3{margin:0;font-size:17px;font-weight:700;letter-spacing:.01em}
+ .head .sub{margin:2px 0 0;font-size:10.5px;letter-spacing:.16em;color:var(--headSub,#9cd6ce)}
+ .ver{font-size:11.5px;white-space:nowrap;font-variant-numeric:tabular-nums;
+  border:1px solid var(--verLine,rgba(156,214,206,.45));border-radius:99px;padding:3px 11px;
+  color:var(--headSub,#9cd6ce);background:var(--verBg,rgba(255,255,255,.06))}
+ .mark{flex:none;display:block;line-height:0}
+
+ .body{padding:20px 22px 18px;background:var(--bodyBg,#fff)}
+
+ /* ---------------- ステータスバー（共通・どの案も必ず持つ） ---------------- */
+ .bar{height:12px;border-radius:99px;background:var(--track);overflow:hidden;position:relative}
+ /* **目盛りはバーそのもの**。10段の刻みをバーの上に重ね、進み具合は1本だけが言う */
+ .bar.notch{border-radius:8px;height:16px;display:flex;gap:3px;background:none;overflow:visible}
+ .bar.notch i{flex:1;border-radius:4px;background:var(--track);position:relative;overflow:hidden}
+ .bar.notch i.done{background:linear-gradient(180deg,var(--teal),var(--teal-dark))}
+ .bar.notch i.now{background:var(--teal-dark);box-shadow:0 0 0 3px rgba(8,124,137,.22)}
+ .bar.notch i.now::after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.75),transparent);
+  animation:sheen 1.2s linear infinite}
+ .bar.notch i.upd{background:var(--warn);box-shadow:0 0 0 3px rgba(245,163,10,.28)}
+ .bar.notch i.err{background:var(--danger);box-shadow:0 0 0 3px rgba(163,36,36,.22)}
+ .dk .bar.notch i{background:rgba(255,255,255,.16)}
+ .dk .bar.notch i.done{background:linear-gradient(180deg,#7fe3d8,#2fb9ae)}
+ .dk .bar.notch i.now{background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.28)}
+ /* ↑と同じ詳細度なので、琥珀・赤も**濃い地ぶんを書く**（書かないと打ち消される） */
+ .dk .bar.notch i.upd{background:var(--warn);box-shadow:0 0 0 3px rgba(245,163,10,.35)}
+ .dk .bar.notch i.err{background:#ff7d7d;box-shadow:0 0 0 3px rgba(255,125,125,.3)}
+ .bar .fill{height:100%;border-radius:99px;transition:width .5s cubic-bezier(.2,.7,.3,1);
+  background:linear-gradient(90deg,var(--teal-dark),var(--teal));position:relative;overflow:hidden}
+ /* 流れている＝止まっていない、を光の帯で言う（字は下の行が言う） */
+ .bar .fill::after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);
+  animation:sheen 1.5s linear infinite}
+ @keyframes sheen{to{transform:translateX(100%)}}
+ .bar.is-upd .fill{background:linear-gradient(90deg,#d58d16,var(--warn))}
+ .bar.is-fail .fill{background:var(--danger)}
+ .bar.is-fail .fill::after{animation:none;background:none}
+ .barmeta{display:flex;align-items:baseline;gap:12px;margin:8px 0 0;font-size:12px;color:var(--ink3)}
+ .barmeta .n{font-size:19px;font-weight:700;color:var(--teal-dark);
+  font-variant-numeric:tabular-nums;line-height:1}
+ .barmeta .sp{margin-left:auto}
+ .dk .barmeta{color:#b7d7d4}.dk .barmeta .n{color:#7fe3d8}
+
+ /* ---------------- 段の目盛り（10段を横に） ---------------- */
+ .segs{display:flex;gap:3px;margin:0 0 9px}
+ .segs i{flex:1;height:7px;border-radius:3px;background:var(--track);position:relative}
+ .segs i.done{background:var(--teal)}
+ .segs i.now{background:var(--teal-dark);box-shadow:0 0 0 2px rgba(8,124,137,.22)}
+ .segs i.upd{background:var(--warn);box-shadow:0 0 0 2px rgba(245,163,10,.25)}
+ .segs i.err{background:var(--danger)}
+ .segends{display:flex;justify-content:space-between;margin:0 0 4px;
+  font-size:10.5px;color:var(--inkSoft);letter-spacing:.02em}
+
+ /* ---------------- 文字のリール（横に入れ替わる） ---------------- */
+ .reel{position:relative;overflow:hidden;height:var(--reelH,58px)}
+ .reel .ln{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center}
+ .reel .ln.in{animation:inR .44s cubic-bezier(.2,.75,.3,1) both}
+ .reel .ln.out{animation:outL .44s cubic-bezier(.4,0,.75,.4) both}
+ @keyframes inR{from{transform:translateX(38px);opacity:0}to{transform:none;opacity:1}}
+ @keyframes outL{from{transform:none;opacity:1}to{transform:translateX(-38px);opacity:0}}
+ .reel b{font-size:22px;font-weight:700;line-height:1.25;display:block}
+ .reel small{font-size:12.5px;color:var(--ink3);display:block;margin-top:2px}
+ .dk .reel small{color:#b7d7d4}
+ .past{display:flex;gap:6px;align-items:center;font-size:11.5px;color:var(--inkSoft);
+  margin:0 0 6px;min-height:19px}
+ .past em{font-style:normal;background:var(--pale);border-radius:5px;padding:1px 8px;color:var(--ink2)}
+ .dk .past em{background:rgba(255,255,255,.10);color:#cfe8e5}
+ .dk .past{color:#8fb4b2}
+ @media (prefers-reduced-motion:reduce){
+  .reel .ln.in,.reel .ln.out{animation:none}.bar .fill::after{animation:none}
+ }
+
+ /* ---------------- 更新の節（有無を同じ場所で言い分ける・§9.411） ---------------- */
+ /* **名前は1つの意味だけ持つ**: `upd`は目盛りの状態に使っているので、札は`updnode` */
+ .updnode{margin:14px 0 0;border-radius:12px;padding:11px 14px;
+  background:var(--pale);border:1px solid #bcd3d8}
+ .updnode.on{background:var(--warnBg);border-color:var(--warnBorder)}
+ .updnode>b{display:block;font-size:13.5px;font-weight:700;color:var(--ink)}
+ .updnode.on>b{color:var(--warnFg)}
+ .updnode .kv{display:grid;grid-template-columns:6.4em 1fr;gap:2px 12px;margin:6px 0 0;font-size:12.5px}
+ .updnode .kv dt{color:var(--ink3);white-space:nowrap}
+ .updnode .kv dd{margin:0;color:var(--ink)}
+ .dk .updnode{background:rgba(255,255,255,.10);border-color:rgba(156,214,206,.32)}
+ .dk .updnode>b{color:#dff3f1}.dk .updnode .kv dt{color:#96bdba}.dk .updnode .kv dd{color:#eaf6f5}
+
+ /* ---------------- 失敗 ---------------- */
+ .fail{margin:14px 0 0;border:1px solid var(--dangerBorder);background:var(--dangerBg);
+  border-radius:12px;padding:12px 15px}
+ .fail>b{display:block;color:var(--danger);font-weight:700;font-size:13.5px}
+ .fail .one{display:block;margin:4px 0 0;font-size:13px}
+ .fail code{font-family:Consolas,monospace;font-size:12.5px;background:#fff;
+  border:1px solid var(--dangerBorder);border-radius:5px;padding:1px 5px}
+ .fail details{margin:6px 0 0;font-size:12.5px;color:var(--ink3)}
+ .fail .acts{display:flex;gap:9px;margin:11px 0 0}
+ .fail button{font:inherit;font-size:13px;padding:7px 16px;border-radius:9px;cursor:pointer;
+  border:1px solid var(--teal-dark);background:var(--teal);color:#fff;font-weight:700}
+ .fail button.ghost{background:#fff;color:var(--ink);border-color:var(--line);font-weight:400}
+
+ /* ================= S2 カードが横に流れる ================= */
+ .flow{display:flex;align-items:stretch;gap:10px;margin:0 0 14px;min-height:96px}
+ .fc{border-radius:13px;padding:10px 13px;display:flex;flex-direction:column;justify-content:center;
+  transition:all .45s cubic-bezier(.2,.75,.3,1)}
+ .fc.old{flex:0 0 152px;background:var(--pale);border:1px solid #c2d6da;color:var(--ink2);font-size:12px}
+ .fc.cur{flex:1 1 auto;background:linear-gradient(135deg,var(--teal-dark),var(--teal));
+  color:#fff;box-shadow:0 6px 16px rgba(8,124,137,.28)}
+ .fc.cur.updn{background:linear-gradient(135deg,#c9820d,var(--warn));box-shadow:0 6px 16px rgba(245,163,10,.3)}
+ .fc.cur.errn{background:linear-gradient(135deg,#7e1c1c,var(--danger));box-shadow:0 6px 16px rgba(163,36,36,.3)}
+ .fc.cur b{font-size:20px;font-weight:700;display:block;line-height:1.25}
+ .fc.cur small{font-size:12.5px;color:rgba(255,255,255,.88);display:block;margin-top:2px}
+ .fc.next{flex:0 0 152px;background:#fff;border:1px dashed var(--line);color:var(--inkSoft);font-size:12px}
+ .fc .cap{font-size:10.5px;letter-spacing:.1em;opacity:.8;display:block;margin-bottom:2px}
+
+ /* ================= S3 波紋 ================= */
+ .pool{position:relative;height:162px;display:flex;align-items:center;justify-content:center;
+  margin:0 0 10px;overflow:hidden;border-radius:14px;background:
+   radial-gradient(120% 120% at 50% 42%,#0c8f9c 0%,var(--teal) 45%,var(--teal-dark) 100%)}
+ .pool .rip{position:absolute;width:64px;height:64px;border-radius:50%;
+  border:3px solid rgba(255,255,255,.9);animation:rip 2.4s ease-out infinite}
+ .pool .rip:nth-child(2){animation-delay:.6s}.pool .rip:nth-child(3){animation-delay:1.2s}
+ .pool .rip:nth-child(4){animation-delay:1.8s}
+ /* 輪の上限（64×2.2＝141px）は**器の高さ162pxの内側**。はみ出すと途中で切れる */
+ @keyframes rip{0%{transform:scale(.7);opacity:.95}70%{opacity:.55}100%{transform:scale(2.2);opacity:0}}
+ .pool .core{position:relative;z-index:2;background:#fff;border-radius:20px;padding:10px;
+  box-shadow:0 8px 22px rgba(23,56,66,.16)}
+ .pool.updp{background:radial-gradient(120% 120% at 50% 42%,#ffc352 0%,var(--warn) 45%,#c9820d 100%)}
+ .pool.errp{background:radial-gradient(120% 120% at 50% 42%,#c33a3a 0%,var(--danger) 45%,#7e1c1c 100%)}
+ /* 失敗したら**波紋が止まる**（動きが止まった＝進んでいない、を形でも言う） */
+ .pool.errp .rip{animation:none;opacity:.35;transform:scale(1.5)}
+ .dots{display:flex;gap:6px;justify-content:center;margin:0 0 12px}
+ .dots i{width:9px;height:9px;border-radius:50%;background:var(--track)}
+ .dots i.done{background:var(--teal)}.dots i.now{background:var(--teal-dark);transform:scale(1.35)}
+ .dots i.upd{background:var(--warn);transform:scale(1.35)}.dots i.err{background:var(--danger)}
+ .ctr{text-align:center}
+
+ /* ================= S4 流れる帯（ティッカー） ================= */
+ .band{background:linear-gradient(90deg,var(--teal-dark),var(--teal));border-radius:14px;
+  padding:15px 0;overflow:hidden;position:relative;margin:0 0 14px}
+ .band.updb{background:linear-gradient(90deg,#c9820d,var(--warn))}
+ .band.errb{background:linear-gradient(90deg,#7e1c1c,var(--danger))}
+ .band::before,.band::after{content:"";position:absolute;top:0;bottom:0;width:132px;z-index:2}
+ .band::before{left:0;background:linear-gradient(90deg,rgba(9,107,117,1),transparent)}
+ .band::after{right:0;background:linear-gradient(270deg,rgba(8,124,137,1),transparent)}
+ .band.updb::before{background:linear-gradient(90deg,rgba(201,130,13,1),transparent)}
+ .band.updb::after{background:linear-gradient(270deg,rgba(245,163,10,1),transparent)}
+ .band.errb::before{background:linear-gradient(90deg,rgba(126,28,28,1),transparent)}
+ .band.errb::after{background:linear-gradient(270deg,rgba(163,36,36,1),transparent)}
+ .tick{display:flex;align-items:center;gap:26px;transition:transform .55s cubic-bezier(.2,.75,.3,1);
+  white-space:nowrap;padding:0 50%}
+ .tick span{font-size:14px;color:rgba(255,255,255,.5)}
+ .tick span.done{color:rgba(255,255,255,.62)}
+ .tick span.now{font-size:22px;font-weight:700;color:#fff}
+ .tick span.sep{color:rgba(255,255,255,.3)}
+ .bandsub{margin:8px 0 0;font-size:12.5px;color:var(--ink3);text-align:center}
+ .bandsub.bad b{color:var(--danger);font-size:15px}
+
+ /* ================= S5 濃いティール面 ================= */
+ .dk{--headBg:#04525c;--headInk:#fff;--headSub:#8fd8d0;--bodyBg:linear-gradient(160deg,#07636e,#065a66);
+  --track:rgba(255,255,255,.18)}
+ .dk .card{border-color:#04454e}
+ .dk .reel b{color:#fff}
+ .dk .bar .fill{background:linear-gradient(90deg,#2fb9ae,#7fe3d8)}
+ .dk .fail{background:rgba(255,255,255,.95)}
+ .dk .segs i{background:rgba(255,255,255,.18)}
+ .dk .segs i.done{background:#7fe3d8}.dk .segs i.now{background:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.3)}
+ .dk .segends{color:#8fb4b2}
+
+ /* ================= アイコン ================= */
+ .icons{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px;
+  background:#fff;border:1px solid var(--pgline);border-radius:12px;padding:16px;margin:22px 0 0}
+ .icons h3{margin:0 0 4px;font-size:14px}
+ .icons p{margin:0 0 10px;font-size:12.5px;color:var(--pgink2)}
+ .sizes,.onwin{display:flex;align-items:flex-end;gap:14px;padding:11px 13px;border-radius:10px}
+ .sizes{background:#f2f5f7;border:1px solid var(--pgline);margin:0 0 8px}
+ .onwin{background:#1d5288}
+ .lab{display:block;text-align:center;font-size:10.5px;color:var(--pgink2);margin-top:3px}
+ .onwin .lab{color:#cfe0f3}
+</style></head>
+<body>
+<h1>起動モーダル v6 — 横の流れ／濃いめ／ステータスバー／動き</h1>
+<p class="lead">R2（節をカードに）とR3（横の流れ）の系統だけを残し、<b>縦に積むだけの形はやめました</b>。
+5案とも<b>ステータスバーを持ち</b>、器は <b>680px</b>（v5は560px）。色は薄い面を減らして
+<b>ティールの面を広く取り</b>、頭は本体のナビと同じ濃い地です。動きは
+<b>文字が横に入れ替わるリール</b>と<b>波紋</b>の2系統を試しました。</p>
+
+<div class="fix">
+ <h2>5案に共通して守ったこと</h2>
+ <ul>
+  <li><b>ステータスバー</b>は必ず1本。<b>%はバーの脇の1箇所だけ</b>に出す（同じ数字を2箇所に出さない・§CLAUDE 8）。</li>
+  <li><b>更新の有無は同じ場所で言い分ける</b>——飛ばした起動でも同じ位置に「更新なし」が立つ（§9.411）。</li>
+  <li><b>動きだけで伝えない。</b>リールも波紋も、同じことを必ず<b>字で</b>書いてある（§CLAUDE 3）。
+      <code>prefers-reduced-motion</code> で動きを止めても読める。</li>
+  <li>色は<b>本体のトークンそのまま</b>（<code>--nav #173842</code>／<code>--teal #087c89</code>／
+      <code>--warn #f5a30a</code>）。新しい色は1つも作っていない。</li>
+ </ul>
+</div>
+
+<div class="switch">
+ <span>状態:</span>
+ <button class="on" data-state="skip">更新なし（ふだんの起動）</button>
+ <button data-state="upd">更新を反映中</button>
+ <button data-state="fail">起動できませんでした</button>
+ <span style="margin-left:18px">段:</span>
+ <button class="stp" data-at="1">前</button><button class="stp" data-at="+1">次へ（リールが動く）</button>
+</div>
+
+<div class="grid" id="grid"></div>
+<div class="icons" id="icons"></div>
+
+<script>
+"use strict";
+const STEPS=['実行環境を確認','起動中のアプリを確認','必要な部品を確認','データの置き場所を確認',
+ 'アプリを読み込み','Webサーバーを起動','画面部品を読み込み','権限を確認','一覧を読み込み','表示を整える'];
+const DET=['この端末のPythonと版','いま動いているものが無いか','flask を確認しています','共有フォルダーへ届くか',
+ 'flask を確認しています','ポート 5029 を開いています','画面の部品を配っています','この人が何を触れるか',
+ '仕掛データを読んでいます','列と幅を当てています'];
+const T='#087c89',TD='#096b75',A='#f5a30a',PALE='#dcecef',INK='#173842';
+
+/* ---- アイコン: 気に入っていただいた J1（予定の帯＋測点）と J4（予定表＋測定線）を磨く ---- */
+const ICONS={
+ J1:(s)=>`<svg viewBox="0 0 64 64" width="${s}" height="${s}">
+  <rect width="64" height="64" rx="13" fill="#eaf3f4" stroke="#bcd8db" stroke-width="2"/>
+  <rect x="12" y="16" width="30" height="7" rx="3.5" fill="${T}"/>
+  <rect x="20" y="28.5" width="30" height="7" rx="3.5" fill="${TD}"/>
+  <rect x="12" y="41" width="22" height="7" rx="3.5" fill="${PALE}" stroke="${T}" stroke-width="1.6"/>
+  <circle cx="46" cy="44.5" r="6" fill="${A}"/></svg>`,
+ /* J1改: 地を**ティールの面**にして濃くした（薄いという指摘への答え） */
+ J1b:(s)=>`<svg viewBox="0 0 64 64" width="${s}" height="${s}">
+  <rect width="64" height="64" rx="13" fill="${TD}"/>
+  <rect x="12" y="16" width="30" height="7.5" rx="3.7" fill="#bff0e9"/>
+  <rect x="20" y="28.2" width="30" height="7.5" rx="3.7" fill="#7fe3d8"/>
+  <rect x="12" y="40.4" width="21" height="7.5" rx="3.7" fill="rgba(255,255,255,.28)"/>
+  <circle cx="46" cy="44.1" r="6.4" fill="${A}"/></svg>`,
+ /* J4改: 16pxで潰れた原因は**中の線が3本**だったこと。枠を太く・線を1本にした */
+ J4b:(s)=>`<svg viewBox="0 0 64 64" width="${s}" height="${s}">
+  <rect width="64" height="64" rx="13" fill="#eaf3f4" stroke="#bcd8db" stroke-width="2"/>
+  <rect x="9" y="14" width="46" height="40" rx="7" fill="#fff" stroke="${TD}" stroke-width="4.5"/>
+  <path d="M9 26h46" stroke="${TD}" stroke-width="5"/>
+  <path d="M17 44c6-13 10 6 14-3s8 6 12-3" fill="none" stroke="${T}"
+   stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="46" cy="36" r="5.4" fill="${A}"/></svg>`,
+ /* J1×J4: 予定表の枠の中に**予定の帯**。測った点は琥珀のまま */
+ J14:(s)=>`<svg viewBox="0 0 64 64" width="${s}" height="${s}">
+  <rect width="64" height="64" rx="13" fill="${TD}"/>
+  <rect x="9" y="13" width="46" height="42" rx="7" fill="#fff"/>
+  <rect x="9" y="13" width="46" height="11" rx="7" fill="${T}"/>
+  <rect x="9" y="19" width="46" height="5" fill="${T}"/>
+  <rect x="15" y="30" width="24" height="6.4" rx="3.2" fill="${T}"/>
+  <rect x="22" y="40" width="24" height="6.4" rx="3.2" fill="${TD}"/>
+  <circle cx="45" cy="33.2" r="5.2" fill="${A}"/></svg>`
+};
+
+const CASES=[
+ {k:'S1',dk:false,name:'目盛り＋文字リール（Step Reel）',
+  why:'<b>形:</b> 10段を<b>横の目盛り</b>にして上に敷き、その下でいまの段の文字が<b>右から入り左へ抜ける</b>。<br>'
+     +'<b>流れ:</b> 目盛りが埋まる＝連鎖が進む。抜けた段は左に小さな札として残る。<br>'
+     +'<b>効き目:</b> R3の骨格そのまま。<b>「いま何を待っているか」が文字で入れ替わる</b>ので止まって見えない。'},
+ {k:'S2',dk:false,name:'カードが横に流れる（Card Reel）',
+  why:'<b>形:</b> R2の節カードを<b>横に並べて流す</b>。済み（左・小）→ いま（中央・大・濃いティール面）→ これから（右・薄）。<br>'
+     +'<b>流れ:</b> 段が進むとカードが左へ送られ、右から次のカードが入る。<br>'
+     +'<b>効き目:</b> 色の面積がいちばん大きい。更新中は中央のカードが<b>琥珀の面</b>に変わる。'},
+ {k:'S3',dk:false,name:'波紋（Ripple）',
+  why:'<b>形:</b> アプリのマークから<b>水の波紋</b>が広がる。段は下の点列、文字はリールで入れ替わる。<br>'
+     +'<b>流れ:</b> 波紋が出ている＝動いている。止まれば波紋も止まる。<br>'
+     +'<b>効き目:</b> いちばん静か。更新中は水面が琥珀に、失敗すると<b>波紋が止まって赤く凪ぐ</b>。'},
+ {k:'S4',dk:false,name:'流れる帯（Stream / Ticker）',
+  why:'<b>形:</b> 太い帯の中を<b>10段の名前が一列に流れる</b>。いまの段が中央で大きく、両端は霞む。<br>'
+     +'<b>流れ:</b> フィルムのコマ送りそのもの。<b>これから来るものが右に見えている</b>。<br>'
+     +'<b>効き目:</b> 「次に何が来るか」まで読める唯一の案。帯が広いので色が濃く出る。'},
+ {k:'S5',dk:true,name:'ティール面（Teal Ground）',
+  why:'<b>形:</b> S1と同じ骨格を<b>面ごと濃いティール</b>に。文字は白、バーは明るいティール。<br>'
+     +'<b>流れ:</b> リールは同じ。濃い地なので目盛りとバーのコントラストが最大。<br>'
+     +'<b>効き目:</b> <b>薄いという指摘にいちばん直接の答え。</b>起動の数秒だけ現れる画面なので、濃くても疲れない。'}
+];
+
+document.getElementById('grid').innerHTML=CASES.map(c=>`
+ <div class="case P ${c.dk?'dk':''}" data-k="${c.k}">
+  <h2><i>${c.k}</i> ${c.name}</h2>
+  <p class="why">${c.why}</p>
+  <div class="screen"><div class="card"><div class="head">
+    <span class="mark">${ICONS.J1(40)}</span>
+    <div class="t"><h3>測定伝送システム</h3><p class="sub">STARTING UP</p></div>
+    <span class="ver">VER2.306.0</span>
+   </div><div class="body" data-body></div></div></div>
+ </div>`).join('');
+
+document.getElementById('icons').innerHTML=[
+ {k:'J1',n:'J1 予定の帯＋測点（そのまま）',p:'ずれて並ぶ3本の帯＝スケジュール、琥珀の丸＝測った点。'},
+ {k:'J1b',n:'J1改 濃いティール地',p:'同じ絵を<b>ティールの面</b>に。「薄い」への答え。白いデスクトップで輪郭が立つ。'},
+ {k:'J4b',n:'J4改 予定表＋測定線',p:'16pxで潰れた原因は<b>中の線が3本</b>だったこと。枠を太く・折れ線を1本にした。'},
+ {k:'J14',n:'J1×J4 予定表の中に予定の帯',p:'枠（予定表）と帯（予定）と点（測定）を1枚に。意味がいちばん濃い。'}
+].map(x=>`
+ <div><h3>${x.n}</h3><p>${x.p}</p>
+  <div class="sizes">${[16,24,32,48,64].map(s=>
+   `<span><span style="display:block">${ICONS[x.k](s)}</span><b class="lab">${s}px</b></span>`).join('')}</div>
+  <div class="onwin">${[16,32,48].map(s=>
+   `<span><span style="display:block">${ICONS[x.k](s)}</span><b class="lab">${s}px</b></span>`).join('')}
+   <b class="lab" style="margin-left:auto">デスクトップの地の上</b></div>
+ </div>`).join('');
+
+let state='skip',at=4,prev=null;
+const isUpd=()=>state==='upd',isFail=()=>state==='fail';
+const pct=()=>isFail()?0:Math.round((at+.5)/10*100);
+const elapsed=()=>isFail()?90:(isUpd()?7:2);
+
+/* ステータスバーは**1本だけ**。`notch`は10段の刻みをバー自身に持たせた形で、
+   「どこまで進んだか」を出すのはこの1本（段の目盛りを別に持たない・§CLAUDE 8） */
+function barHtml(notch){
+ const cls=isFail()?'is-fail':(isUpd()?'is-upd':'');
+ const body=notch
+  ? `<div class="bar notch">${STEPS.map((x,i)=>{
+      const c=isFail()&&i===at?'err':(i<at?'done':(i===at?(isUpd()?'upd':'now'):''));
+      return `<i class="${c}"></i>`;}).join('')}</div>`
+  : `<div class="bar ${cls}"><div class="fill" style="width:${isFail()?Math.max(pct(),6):pct()}%"></div></div>`;
+ return (notch?`<div class="segends"><span>${STEPS[0]}</span><span>${STEPS[9]}</span></div>`:'')
+  +body
+  +`<p class="barmeta"><span class="n">${isFail()?'—':pct()+'%'}</span>`
+  +`<span>${isFail()?'待機時間（90秒）を過ぎました':(isUpd()?'目安 30〜60 秒':'目安 3 秒')}</span>`
+  +`<span class="sp">経過 ${elapsed()} 秒</span></p>`;
+}
+/* 見出しの字は1箇所（リール／カード／帯が持つ）。ここは名前と1行の中身だけ返す */
+function nowText(){
+ if(isFail())return ['起動できませんでした','「'+STEPS[at]+'」で止まりました'];
+ if(isUpd())return ['更新を反映しています','バイトコードを作り直しています'];
+ return [STEPS[at],DET[at]];
+}
+function updHtml(){
+ if(isFail())return '';
+ return isUpd()
+  ? `<div class="updnode on"><b>ふだんより長い</b>`
+    +`<dl class="kv"><dt>変わった点</dt><dd>アプリの版（2.305.0 → 2.306.0）</dd>`
+    +`<dt>いまの作業</dt><dd>バイトコードの作り直し・部品の確認</dd></dl></div>`
+  : `<div class="updnode"><b>更新なし</b>`
+    +`<dl class="kv"><dt>前回の確認</dt><dd>update.bat（版 2.306.0 で確認済み）</dd></dl></div>`;
+}
+function failHtml(){
+ if(!isFail())return '';
+ return `<div class="fail"><b>次の一手</b>`
+  +`<span class="one">まず <code>program\\start_app.bat</code> をダブルクリックし、黒い画面に出るエラーを読んでください。</span>`
+  +`<details><summary>ほかに調べること</summary><p>・Python が入っているか（コマンド <code>python</code> が通るか）<br>`
+  +`・ポート 5029 を別のアプリが使っていないか<br>・共有フォルダー（データの置き場所）へ届いているか</p></details>`
+  +`<div class="acts"><button>もう一度試す</button><button class="ghost">ログを開く</button></div></div>`;
+}
+function pastHtml(){
+ if(at<1)return `<p class="past"></p>`;
+ const near=STEPS.slice(Math.max(0,at-2),at).map(s=>`<em>${s.replace('を確認','')}</em>`).join('');
+ return `<p class="past">${at>2?`済み ${at} 段`:'済み'} ${near}</p>`;
+}
+/* リール: 前の行を左へ抜かし、新しい行を右から入れる（**字は必ず両方に在る**） */
+function reelHtml(anim){
+ const [b,s]=nowText();
+ const old=anim&&prev?`<span class="ln out"><b>${prev[0]}</b><small>${prev[1]}</small></span>`:'';
+ return `<div class="reel">${old}<span class="ln ${anim?'in':''}"><b>${b}</b><small>${s}</small></span></div>`;
+}
+
+function paint(anim){
+ document.querySelectorAll('.case').forEach(box=>{
+  const k=box.dataset.k,el=box.querySelector('[data-body]');
+  const [b,s]=nowText();
+  if(k==='S2'){
+   const cut=x=>x.replace('を確認','');
+   const oldN=at>0?cut(STEPS[at-1]):'—',nxt=at<9?cut(STEPS[at+1]):'—';
+   el.innerHTML=`<div class="flow">`
+    +`<div class="fc old"><span class="cap">済み</span>${oldN}</div>`
+    +`<div class="fc cur ${isUpd()?'updn':''} ${isFail()?'errn':''}"><span class="cap">いま</span>`
+    +`<b>${b}</b><small>${s}</small></div>`
+    +`<div class="fc next"><span class="cap">つぎ</span>${isFail()?'—':nxt}</div></div>`
+    +barHtml()+updHtml()+failHtml();
+  }else if(k==='S3'){
+   el.innerHTML=`<div class="pool ${isUpd()?'updp':''} ${isFail()?'errp':''}">`
+    +`<i class="rip"></i><i class="rip"></i><i class="rip"></i><i class="rip"></i>`
+    +`<span class="core">${ICONS.J1(48)}</span></div>`
+    +`<div class="ctr">${reelHtml(anim)}</div>`
+    +barHtml(true)+updHtml()+failHtml();
+  }else if(k==='S4'){
+   const items=STEPS.map((x,i)=>{
+     const c=isFail()&&i===at?'now':(i<at?'done':(i===at?'now':''));
+     return `<span class="${c}" data-i="${i}">${isUpd()&&i===at?'更新を反映しています':x}</span>`;}).join('');
+   /* 帯は**段の名前**を出す器なので、失敗したことは帯の下の行が言う
+      （帯の中で言い換えると、どこで止まったのかが読めなくなる） */
+   el.innerHTML=`<div class="band ${isUpd()?'updb':''} ${isFail()?'errb':''}"><div class="tick">${items}</div></div>`
+    +`<p class="bandsub ${isFail()?'bad':''}">${isFail()?'<b>起動できませんでした</b>':s}</p>`
+    +barHtml()+updHtml()+failHtml();
+   const tick=el.querySelector('.tick'),cur=tick.querySelector('.now');
+   requestAnimationFrame(()=>{
+    if(!cur)return;
+    const x=cur.offsetLeft+cur.offsetWidth/2-tick.parentElement.clientWidth/2;
+    tick.style.transform=`translateX(${-x}px)`;
+   });
+  }else{ /* S1・S5 */
+   el.innerHTML=pastHtml()+reelHtml(anim)+barHtml(true)+updHtml()+failHtml();
+  }
+ });
+ prev=nowText();
+}
+function go(n,anim){prev=nowText();at=Math.max(0,Math.min(9,n));paint(anim);}
+window.setAt=(n)=>go(n,false);   /* 画面を撮るときに段を決め打ちする口 */
+document.querySelectorAll('.switch button[data-state]').forEach(bt=>bt.onclick=()=>{
+ document.querySelectorAll('.switch button[data-state]').forEach(x=>x.classList.toggle('on',x===bt));
+ state=bt.dataset.state;at=state==='upd'?2:(state==='fail'?4:4);paint(false);
+});
+document.querySelectorAll('.switch .stp').forEach(bt=>bt.onclick=()=>{
+ go(bt.dataset.at==='+1'?at+1:at-1,true);
+});
+paint(false);
+/* 見本なので自動で進める（実物はサーバーの進捗で進む）。
+   画面を撮るときは `clearInterval(window.__auto)` で止める——止めずに撮ると、
+   撮っている最中に段が進んで**案ごとに違う段**が写る（実際に踏んだ） */
+window.__auto=setInterval(()=>{if(state==='skip')go(at>=9?0:at+1,true);},2200);
+</script>
+</body></html>
