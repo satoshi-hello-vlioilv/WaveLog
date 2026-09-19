@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<title>起動モーダル 美観5案（P4 Tinted Head ＋ アイコンC／UIUX調整版）</title>
+<style>
+ :root{--pg:#f2f5f7;--pgink:#1d2b33;--pgink2:#5b6f7a;--pgline:#dbe3e8}
+ *{box-sizing:border-box}
+ body{margin:0;background:var(--pg);color:var(--pgink);
+  font:14px/1.7 "Yu Gothic UI","Meiryo",system-ui,sans-serif;padding:24px 28px 60px}
+ h1{font-size:20px;margin:0 0 6px}
+ .lead{color:var(--pgink2);margin:0 0 14px;max-width:80em}
+ .fix{background:#fff;border:1px solid var(--pgline);border-radius:10px;padding:12px 16px;margin:0 0 18px}
+ .fix h2{font-size:13px;margin:0 0 6px}
+ .fix ol{margin:0;padding-left:1.4em;font-size:12.5px;color:var(--pgink2)}
+ .fix ol b{color:var(--pgink)}
+ .switch{display:flex;gap:8px;align-items:center;margin:0 0 18px;position:sticky;top:0;
+  background:var(--pg);padding:10px 0;z-index:5;border-bottom:1px solid var(--pgline)}
+ .switch span{color:var(--pgink2);font-size:12px;margin-right:4px}
+ .switch button{font:inherit;font-size:12px;padding:6px 12px;border:1px solid var(--pgline);
+  background:#fff;border-radius:8px;cursor:pointer;color:var(--pgink)}
+ .switch button.on{background:#16323c;color:#fff;border-color:#16323c}
+ .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:20px}
+ .case{background:#fff;border:1px solid var(--pgline);border-radius:12px;overflow:hidden}
+ .case>h2{font-size:15px;margin:0;padding:11px 16px;border-bottom:1px solid var(--pgline);
+  display:flex;align-items:center;gap:9px;background:#fbfcfd}
+ .case>h2 i{font-style:normal;background:#16323c;color:#fff;border-radius:6px;
+  min-width:30px;text-align:center;padding:2px 7px;font-size:12px;font-weight:700}
+ .why{margin:0;padding:10px 16px;color:var(--pgink2);font-size:12.5px;
+  border-bottom:1px solid var(--pgline);background:#fbfcfd}
+ .why b{color:var(--pgink)}
+
+ /* ================= 共通の骨格（UIUX調整版・5案で同じ） ================= */
+ .screen{padding:24px 18px;display:flex;justify-content:center;
+  background:linear-gradient(160deg,#eef4f7,#dfeaef 60%,#e9f1f4)}
+ .card{width:100%;max-width:396px;background:#fff;border:1px solid var(--line);
+  border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden;color:var(--ink)}
+
+ /* 頭（案ごとに質感が変わるのはここ） */
+ .head{display:flex;align-items:center;gap:12px;padding:var(--headpad,14px 18px);
+  background:var(--headBg);border-bottom:1px solid var(--headLine)}
+ .head .t{flex:1;min-width:0}
+ .head h3{margin:0;font-size:15px;font-weight:700;color:var(--headInk);letter-spacing:var(--titlels,0)}
+ .sub{margin:1px 0 0;font-size:10px;letter-spacing:.14em;color:var(--headSub)}
+ .ver{font-size:11px;color:var(--headSub);white-space:nowrap;font-variant-numeric:tabular-nums}
+ .mark{display:grid;place-items:center;border-radius:var(--markr,0);padding:var(--markpad,0);
+  background:var(--markBg,transparent)}
+
+ .body{padding:16px 18px 14px}
+
+ /* ① 段ドット（10段階）＋ 完了数 —— 「このあと…」の列挙をやめた */
+ .dots{display:flex;align-items:center;gap:5px;margin:0 0 12px}
+ .dots i{width:var(--dotw,11px);height:var(--doth,5px);border-radius:var(--dotr,3px);
+  background:var(--track);flex:1 1 auto;transition:background .3s}
+ .dots i.done{background:var(--accent)}
+ .dots i.now{background:var(--accent);box-shadow:0 0 0 3px var(--accentBg)}
+ .dots i.err{background:var(--danger)}
+ .dots em{font-style:normal;font-size:11px;color:var(--ink3);white-space:nowrap;margin-left:5px;
+  font-variant-numeric:tabular-nums}
+
+ /* ② いまの段（主役） */
+ .now{display:flex;align-items:baseline;gap:10px;margin:0 0 5px}
+ .now b{font-size:var(--nowfs,18px);font-weight:700;flex:1;min-width:0;letter-spacing:-.01em}
+ .pct{font-size:13px;color:var(--ink2);font-variant-numeric:tabular-nums}
+ .detail{margin:0;font-size:11.5px;color:var(--ink3)}
+
+ /* ③ 更新の帯（同じ場所で言い分ける・ラベル列は固定幅） */
+ .work{margin:14px 0 0;padding:10px 12px;border:1px solid var(--line);
+  border-radius:var(--workr,10px);background:var(--workBg);font-size:12px}
+ .work .wt{display:flex;align-items:center;gap:7px;margin-bottom:5px}
+ .work .wt b{font-size:12.5px;color:var(--ink)}
+ .work .wt .tag{font-size:10px;padding:1px 7px;border-radius:99px;
+  background:var(--tagBg);color:var(--tagInk);border:1px solid var(--tagLine);white-space:nowrap}
+ .kv{display:grid;grid-template-columns:6.4em 1fr;gap:3px 10px;font-size:11.5px}
+ .kv dt{color:var(--ink3);white-space:nowrap}
+ .kv dd{margin:0;color:var(--ink2)}
+ .work.upd{background:var(--warnBg);border-color:var(--warnLine)}
+ .work.upd .wt b{color:var(--warn)}
+ .work.upd .tag{background:var(--warn);color:#fff;border-color:var(--warn)}
+
+ /* ④ 足元 */
+ .meta{display:flex;gap:10px;margin:12px 0 0;padding-top:9px;font-size:11px;color:var(--ink3);
+  border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+ .meta .r{margin-left:auto}
+
+ /* ⑤ 失敗（次の一手は1つだけ太字・残りは畳む） */
+ .fail{margin:13px 0 0;padding:11px 12px;border:1px solid var(--dangerLine);
+  border-radius:var(--workr,10px);background:var(--dangerBg);font-size:12px}
+ .fail>b{display:block;color:var(--danger);margin-bottom:4px;font-size:12.5px}
+ .fail .one{color:var(--ink);font-weight:700}
+ .fail details{margin-top:6px}
+ .fail summary{cursor:pointer;color:var(--ink2);font-size:11.5px}
+ .fail details p{margin:5px 0 0;color:var(--ink2);font-size:11.5px;line-height:1.7}
+ .acts{display:flex;gap:8px;margin-top:10px}
+ .acts button{padding:7px 13px;border:0;border-radius:var(--btnr,8px);font:inherit;font-weight:700;
+  font-size:12px;color:#fff;background:var(--accent);cursor:pointer}
+ .acts button.ghost{background:transparent;border:1px solid var(--line);color:var(--ink2)}
+ [hidden]{display:none!important}
+
+ /* ================= 土台の色（P4 Tinted Head） ================= */
+ .P{--ink:#16323c;--ink2:#4e6874;--ink3:#7b909b;--line:#dfe6ea;
+  --accent:#0d8f88;--accentBg:#d9f1ee;--track:#e4ecf0;
+  --warn:#8a5a00;--warnBg:#fff6e6;--warnLine:#f0d5a2;
+  --danger:#a32424;--dangerBg:#fdeaea;--dangerLine:#e6b3b3;
+  --tagBg:#eef3f5;--tagInk:#5b7480;--tagLine:#dbe4e8;
+  --headBg:#e6f7f5;--headLine:#bfe4df;--headInk:#0b5f5a;--headSub:#4f8f8a;
+  --workBg:#f7fafb;--r:18px;--workr:12px;
+  --shadow:0 12px 30px rgba(22,50,60,.14),0 2px 6px rgba(22,50,60,.08)}
+
+ /* --- Q1 濃い頭 --- */
+ .Q1{--headBg:linear-gradient(180deg,#0f7d77,#0b5f5a);--headLine:#0b5f5a;
+  --headInk:#ffffff;--headSub:#a8ded9;--markBg:rgba(255,255,255,.10);--markr:10px;--markpad:4px}
+
+ /* --- Q2 淡く広い頭 --- */
+ .Q2{--headpad:18px 18px 16px;--headBg:linear-gradient(180deg,#eefaf8,#e2f4f1);
+  --headLine:#cfe9e5;--r:20px}
+ .Q2 .head{align-items:flex-start}
+ .Q2 .body{padding-top:14px}
+
+ /* --- Q3 鋼の頭（アイコンと同じ地） --- */
+ .Q3{--headBg:linear-gradient(180deg,#2b3339,#20272c);--headLine:#39444d;
+  --headInk:#f0f2f3;--headSub:#a3b0b8;--r:12px;--workr:8px;--btnr:6px;--dotr:2px}
+ .Q3 .mark{filter:drop-shadow(0 0 0 transparent)}
+
+ /* --- Q4 頭を札にする（内側に浮かせる） --- */
+ .Q4{--headpad:0;--headBg:transparent;--headLine:transparent;--r:20px;--workr:14px}
+ .Q4 .head{margin:14px 14px 0;padding:11px 13px;background:#e6f7f5;
+  border:1px solid #bfe4df;border-radius:14px}
+ .Q4 .body{padding-top:14px}
+ .Q4 .mark{background:#fff;border-radius:11px;padding:3px}
+
+ /* --- Q5 帯の頭（低く・段ドットを頭へ） --- */
+ .Q5{--headpad:10px 16px;--headBg:#eaf6f4;--headLine:#cbe6e2;--r:14px;--dotw:9px;--doth:4px}
+ .Q5 .head h3{font-size:14px}
+ .Q5 .body{padding-top:13px}
+ .Q5 .now b{font-size:20px}
+
+ /* アイコン実寸 */
+ .icons{display:flex;gap:18px;align-items:flex-end;padding:11px 16px;
+  border-top:1px solid var(--pgline);background:#fbfcfd;flex-wrap:wrap}
+ .icons small{color:var(--pgink2);font-size:11px;width:100%;margin-bottom:2px}
+ .icons .lab{display:block;font-size:10px;color:var(--pgink2);text-align:center;font-weight:400}
+</style></head><body>
+
+<h1>起動モーダル 美観5案 — <b>P4 Tinted Head ＋ アイコンC</b>（UIUX調整版）</h1>
+<p class="lead">土台（頭に淡い面／白い本体）と絵（C 鋼帯＋琥珀の刃）は<b>確定ぶんのまま</b>です。
+ 変えたのは<b>頭の質感・形・字づかい</b>だけ。下の「今回そろえた直し」は<b>5案とも同じ</b>なので、
+ <b>見栄えだけ</b>を見比べてください。</p>
+
+<div class="fix">
+ <h2>今回そろえたUI/UXの直し（5案共通）</h2>
+ <ol>
+  <li><b>「このあと: ○○・○○・○○」の列挙をやめ、10段階を10個の目盛り</b>にした。
+   済み／いま／これから が<b>数えずに</b>読める（§CLAUDE 2・8。文字は「完了 4/10」だけ）。</li>
+  <li><b>更新中は「あとどれくらいか」を書く</b>——「ふだんより長くかかります（目安30〜60秒）」。
+   待たされる理由と見込みを出す（§CLAUDE 6。推測させない）。</li>
+  <li><b>更新の中身はラベル列を固定幅の2列</b>にした（変わった点／いまの作業）。<b>幅はいちばん長いラベルから決める</b>——
+   値の左端がそろう（§CLAUDE 9）。</li>
+  <li><b>状態の札（更新なし／更新を反映中）を字でも出す</b>。色だけで伝えない（§CLAUDE 3）。</li>
+  <li><b>失敗したときは「次の一手」を1つだけ太字</b>にし、残りは「ほかに調べること」へ畳む。
+   同時に3つ指さない（§CLAUDE 2）。</li>
+  <li><b>いまの段のすぐ下に、その段の詳しい一言</b>を置いた（離れていると別の話に見える）。</li>
+ </ol>
+</div>
+
+<div class="switch">
+ <span>状態</span>
+ <button class="on" data-state="skip">更新なし（ふだんの起動）</button>
+ <button data-state="upd">更新を反映中</button>
+ <button data-state="fail">起動できなかった</button>
+</div>
+<div class="grid" id="grid"></div>
+
+<script>
+"use strict";
+const STEPS=['実行環境を確認','起動中のアプリを確認','必要な部品を確認','データの置き場所を確認',
+ 'アプリを読み込み','Webサーバーを起動','画面部品を読み込み','権限を確認','一覧を読み込み','表示を整える'];
+
+const ICON=(s,u)=>`<svg viewBox="0 0 64 64" width="${s}" height="${s}"><defs>
+  <linearGradient id="g${u}" x1="0" y1="0" x2="0" y2="1">
+  <stop offset="0" stop-color="#2b3339"/><stop offset="1" stop-color="#171c20"/></linearGradient></defs>
+ <rect width="64" height="64" rx="11" fill="url(#g${u})"/>
+ <rect x="7" y="20" width="50" height="24" rx="4" fill="#c9d2d8"/>
+ <path d="M24 16v32M40 16v32" stroke="#f5a30a" stroke-width="5.5" stroke-linecap="round"/></svg>`;
+
+const CASES=[
+ {k:'Q1',name:'濃い頭（Deep Head）',
+  why:'<b>頭:</b> 濃いティールの面に白文字。アイコンは白い薄膜の上へ置く。<br>'
+     +'<b>効き目:</b> 5案でいちばん<b>コントラストが強い</b>。鋼＋琥珀のアイコンが濃地に映える。明るい事務所でも頭が沈まない。'},
+ {k:'Q2',name:'淡く広い頭（Wide Wash）',
+  why:'<b>頭:</b> いまより<b>淡く・高く</b>。上下の余白を増やし、角丸20px。<br>'
+     +'<b>効き目:</b> いちばん低刺激。朝いちばんに目へ飛び込まない。白い本体との境目がやわらかい。'},
+ {k:'Q3',name:'鋼の頭（Steel Head）',
+  why:'<b>頭:</b> ティールをやめ<b>アイコンと同じ鋼色</b>に。角は12px、目盛りは角を立てる。<br>'
+     +'<b>効き目:</b> アイコンが頭へ<b>完全に溶け込む</b>（四角の縁が見えない）。ティールは進み具合だけが持つ。'},
+ {k:'Q4',name:'頭を札にする（Inset Card）',
+  why:'<b>頭:</b> 全幅の帯をやめ、<b>内側に浮かせた角丸の札</b>にする。アイコンは白地に置く。<br>'
+     +'<b>効き目:</b> 「これは何のアプリか」が1枚の札として独立する。角丸20pxで最も柔らかい。'},
+ {k:'Q5',name:'低い帯（Ribbon）',
+  why:'<b>頭:</b> 高さを抑えた帯。そのぶん<b>いまの段を20px</b>まで上げる。<br>'
+     +'<b>効き目:</b> 面積を「頻度×重要度」で配り直した形（§CLAUDE 1）——名前は1回読めば済み、<b>毎秒変わるのは段の名前</b>。'}
+];
+
+document.getElementById('grid').innerHTML=CASES.map(c=>`
+ <section class="case P ${c.k}" data-k="${c.k}">
+  <h2><i>${c.k}</i>${c.name}</h2>
+  <p class="why">${c.why}</p>
+  <div class="screen">
+   <div class="card">
+    <div class="head">
+     <span class="mark">${ICON(36,c.k)}</span>
+     <div class="t"><h3>測定伝送システム</h3><p class="sub">STARTING UP</p></div>
+     <span class="ver">VER2.306.0</span>
+    </div>
+    <div class="body">
+     <div class="dots" data-dots></div>
+     <p class="now"><b data-now></b><span class="pct" data-pct></span></p>
+     <p class="detail" data-detail></p>
+     <div class="work" data-work>
+      <div class="wt"><b data-workt></b><span class="tag" data-tag></span></div>
+      <dl class="kv" data-kv></dl>
+     </div>
+     <p class="meta"><span>経過 <span data-sec></span> 秒</span>
+      <span class="r" data-eta></span></p>
+     <div class="fail" data-fail hidden>
+      <b>次の一手</b>
+      <span class="one">まず <code>program\\start_app.bat</code> をダブルクリックし、黒い画面に出るエラーを読んでください。</span>
+      <details><summary>ほかに調べること</summary>
+       <p>・Python が入っているか（コマンド <code>python</code> が通るか）<br>
+        ・ポート 5029 を別のアプリが使っていないか<br>
+        ・共有フォルダー（データの置き場所）へ届いているか</p></details>
+      <div class="acts"><button>もう一度試す</button><button class="ghost">ログを開く</button></div>
+     </div>
+    </div>
+   </div>
+  </div>
+  <div class="icons"><small>アイコン実寸（デスクトップのショートカットも同じ絵）</small>
+   ${[16,24,32,48].map(s=>`<span><span style="display:block">${ICON(s,c.k+s)}</span><b class="lab">${s}px</b></span>`).join('')}
+  </div>
+ </section>`).join('');
+
+let state='skip';
+function render(){
+ const upd=state==='upd',fail=state==='fail';
+ const at=upd?2:4,pct=fail?Math.round((at+.5)/10*100):Math.round((at+.5)/10*100);
+ document.querySelectorAll('.case').forEach(box=>{
+  const q=s=>box.querySelector(s);
+  q('[data-dots]').innerHTML=STEPS.map((_,i)=>
+   `<i class="${fail&&i===at?'err':(i<at?'done':(i===at?'now':''))}"></i>`).join('')
+   +`<em>${fail?'この段で止まりました':'完了 '+at+'/10'}</em>`;
+  q('[data-now]').textContent=fail?'起動できませんでした':(upd?'更新を反映しています':STEPS[at]);
+  q('[data-pct]').textContent=fail?'':pct+'%';
+  q('[data-detail]').textContent=fail?('「'+STEPS[at]+'」で待機時間を過ぎました')
+   :(upd?'バイトコードを作り直しています':'flask を確認しています');
+  const w=q('[data-work]');
+  w.className='work '+(upd?'upd':'');
+  w.hidden=fail;
+  q('[data-workt]').textContent=upd?'更新を反映中':'更新なし';
+  q('[data-tag]').textContent=upd?'ふだんより長くかかります':'前回の確認のまま';
+  q('[data-kv]').innerHTML=upd
+   ?'<dt>変わった点</dt><dd>アプリの版（2.305.0 → 2.306.0）</dd>'
+    +'<dt>いまの作業</dt><dd>バイトコードの作り直し・部品の確認</dd>'
+   :'<dt>前回の確認</dt><dd>update.bat（版 2.306.0 で確認済み）</dd>';
+  q('[data-sec]').textContent=fail?90:(upd?7:2);
+  q('[data-eta]').textContent=fail?'':(upd?'目安 30〜60 秒':'目安 3 秒');
+  q('[data-fail]').hidden=!fail;
+ });
+}
+document.querySelectorAll('.switch button').forEach(b=>b.onclick=()=>{
+ document.querySelectorAll('.switch button').forEach(x=>x.classList.toggle('on',x===b));
+ state=b.dataset.state;render();
+});
+render();
+</script>
+</body></html>
