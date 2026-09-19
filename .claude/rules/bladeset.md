@@ -1,4 +1,4 @@
-# 刃組ガイダンス（56件）
+# 刃組ガイダンス（62件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -28,6 +28,12 @@
 | 拡大図の字は部材の中に入れず、等間隔のスロットへ引き出してそろえる | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
 | 部材の寸法は**丸めない**（`10.025`→`10.03` は在庫に無い別の部材の名前） | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
 | 拡大図は押した区間の反対側の半分へ出す（押した区間を覆わない） | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
+| 断面図の板は**厚みを誇張する**（実寸では1pxも出ない）。倍率は字で言う | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
+| `matShift()`は模式図の座標で答える。立体へ写すときは**Yの符号を返す** | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
+| 板の札は軸の外へ出す（板と軸のあいだは実寸60mm弱しかない） | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
+| 断面図は板幅の中心を起点に回せる。±1.15radで止め、寄る・引くは持たない | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
+| 「視点を戻す」は段取りの群の外（断面図では段取りごと伏せる） | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
+| `setPointerCapture`は掴めないと投げる。回すこと自体には要らない | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
 | 刃組スケジュール一覧の行からも入れる（的は題名の横・道は`openRowLink()`の1本） | `test_bladeui.js` | [§9.408](../../docs/decisions/9.408.md) |
 | 標準の条件（既定値・基準値・刃の選び方）は`blade-core.js`の1箇所。刃は**材料を当ててから選ぶ** | `test_bladeui.js` | [§9.408](../../docs/decisions/9.408.md) |
 | 記録が無い段取りは標準の計算値を出し、**記録と見込みを字で書き分ける**（読めなければ計算しない） | `test_bladeui.js` | [§9.408](../../docs/decisions/9.408.md) |

@@ -184,8 +184,9 @@
             <dd>DS 側から部材を入れ、OS 側へ詰めます。材料の入側は、ラインを正面に見て左です。</dd>
             <dt>視点</dt>
             <dd>ドラッグ＝回す／ホイール＝寄る／Shift＋ドラッグ（または右ドラッグ）＝平行移動／
-              「視点を戻す」で元へ。<b>断面図では視点は動かせません</b>（真横に固定して、
-              寸法を目で比べられるようにしています）。</dd>
+              「視点を戻す」で元へ。<b>断面図では板幅の中心を起点に回ります</b>
+              （寄る・引くはできません。平行投影の倍率を変えないので、
+              どの向きから見ても寸法を並べて比べられます）。</dd>
             <dt>表示</dt>
             <dd>下で板・刃・ゴムリング・スペーサーを消せます。点が付いているものが出ています。</dd>
            </dl>
@@ -202,7 +203,10 @@
            <button type="button" class="bs-btn is-sm is-on bs-step3-pull">①ラインへ戻す</button>
            <button type="button" class="bs-btn is-sm is-on bs-step3-open">②軸端部を戻す</button>
            <button type="button" class="bs-btn is-sm bs-step3-spin">③台車を回す</button>
-           <span class="bs-hud-sep"></span>
+          </div>
+          <!-- **「視点を戻す」は段取りの外**（§9.413 追補）。断面図では段取りの
+               群ごと伏せるが、断面図でも視点は回せるので戻す道が要る。 -->
+          <div class="bs-hud-grp"><span class="bs-hud-cap">視点</span>
            <button type="button" class="bs-btn is-sm bs-step3-reset">視点を戻す</button>
           </div>
          </div>

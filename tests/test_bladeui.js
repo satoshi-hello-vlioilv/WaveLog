@@ -610,10 +610,13 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('見せる部材の入切は板・刃・ゴムリング・スペーサーの4つ（言葉は部材の名前で固定）',
         st3.show.join('/') === '板:true/刃:true/ゴムリング:true/スペーサー:true',
         st3.show.join('/'));
-    rec('HUDは「表示」と「段取り」の2群', st3.caps.join('/') === '表示/段取り',
+    rec('HUDは「表示」「段取り」「視点」の3群', st3.caps.join('/') === '表示/段取り/視点',
         st3.caps.join('/'));
-    rec('段取りは3手順＋視点を戻すの4つ',
-        st3.steps.length === 4 && /③台車を回す/.test(st3.steps[2]), st3.steps.join('/'));
+    /* **「視点を戻す」は段取りの外**（§9.413 追補）。断面図では段取りの群ごと
+       伏せるので、同じ群に入れると戻す道まで消える。 */
+    rec('段取りは3手順、視点を戻すは別の群',
+        st3.steps.length === 4 && /③台車を回す/.test(st3.steps[2])
+        && /視点を戻す/.test(st3.steps[3]), st3.steps.join('/'));
     /* 段取りの順は`blockReason()`の1箇所が答える。**内部の今の状態を写さず、
        どの状態でも成り立つことだけ**を見る——①できない手順は何を先にするかを
        字で言う、②進める手順が必ず1つ残る（手詰まりを作らない）。 */
@@ -661,6 +664,9 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
       stage3: st3.hidden, isCut: st3.classList.contains('is-cut'),
       w: cv ? cv.width : 0, h: cv ? cv.height : 0,
       rigShown: rig ? getComputedStyle(rig).display !== 'none' : true,
+      resetShown: (() => { const b = st3.querySelector('.bs-step3-reset');
+        return !!b && getComputedStyle(b).display !== 'none'
+               && getComputedStyle(b.parentNode).display !== 'none'; })(),
       cursor: cv ? getComputedStyle(cv).cursor : '',
       tabs: [...document.querySelectorAll('#bsFigTabs [data-fig]')].map(b => b.dataset.fig)
      });
@@ -675,8 +681,58 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('機械まわりの段取りは断面図では出さない（押せるのに何も起きない的を残さない）',
         cut.isCut === true && cut.rigShown === false,
         JSON.stringify([cut.isCut, cut.rigShown]));
-    rec('視点を動かせないことを見た目でも言う（掴める指のカーソルを出さない）',
-        cut.cursor === 'default', cut.cursor);
+    /* §9.412 では真横に固定していたが、利用者の指示で**板幅の中心を起点に
+       回せる**ようにした（§9.413 追補）。掴める見た目は残し、戻す道が
+       断面図でも見えていること、寄る・引くは持たないことを固定する。 */
+    rec('断面図でも掴んで回せる（掴める見た目のまま）', cut.cursor === 'grab', cut.cursor);
+    rec('視点を戻す道は断面図でも見えている', cut.resetShown === true,
+        String(cut.resetShown));
+    const spin = await page.evaluate(async () => {
+     const cv = document.querySelector('#bsStage3 canvas');
+     const r = cv.getBoundingClientRect();
+     const at = (t, dx, dy) => cv.dispatchEvent(new PointerEvent(t, { bubbles: true,
+       pointerId: 7, clientX: r.left + r.width / 2 + dx, clientY: r.top + r.height / 2 + dy }));
+     const before = window.WL.bladeSolid.view();
+     at('pointerdown', 0, 0); at('pointermove', -160, 90); at('pointerup', -160, 90);
+     const after = window.WL.bladeSolid.view();
+     /* **90°までは回さない**（真横を越えるとカメラが切り落とす側へ回り込む）。 */
+     let az = after.cutAz, el = after.cutEl;
+     for (let i = 0; i < 40; i++) {
+      at('pointerdown', 0, 0); at('pointermove', -400, 400); at('pointerup', -400, 400);
+      az = window.WL.bladeSolid.view().cutAz; el = window.WL.bladeSolid.view().cutEl;
+     }
+     document.querySelector('.bs-step3-reset').click();
+     const back = window.WL.bladeSolid.view();
+     return { b: before, a: after, az, el, back, marks: after.marks };
+    });
+    rec('掴んで引くと左右にも上下にも回る（板幅の中心が起点）',
+        spin.a.cutAz !== spin.b.cutAz && spin.a.cutEl !== spin.b.cutEl,
+        JSON.stringify([spin.b.cutAz, spin.b.cutEl, spin.a.cutAz, spin.a.cutEl]));
+    rec('真横（±90°）までは回らない（切り落とす側へ回り込まない）',
+        Math.abs(spin.az) < Math.PI / 2 && Math.abs(spin.el) < Math.PI / 2,
+        `az ${spin.az.toFixed(2)} / el ${spin.el.toFixed(2)}`);
+    rec('「視点を戻す」で断面図の角度も戻る',
+        spin.back.cutAz === 0 && spin.back.cutEl === 0,
+        JSON.stringify([spin.back.cutAz, spin.back.cutEl]));
+    /* 板と耳屑の札（§9.413 追補、利用者の指示「2Dの表示のようにラベルもほしい」）。
+       **模式図と同じ数だけ**出る——並びは同じ `materialRun()` から作るので、
+       数が食い違ったらどちらかが落としている。 */
+    const lab = await page.evaluate(() => {
+     const els = [...document.querySelectorAll('#bsStage3 .bs-t3-mk')].filter(e => !e.hidden);
+     return { n: els.length,
+              txt: els.map(e => (e.querySelector('b') || {}).textContent).join('/'),
+              sub: els.map(e => (e.querySelector('small') || {}).textContent),
+              kinds: [...new Set(els.map(e => e.className.replace(/.*is-/, '')))].sort(),
+              mag: (document.querySelector('#bsStage3 .bs-o3').textContent || '') };
+    });
+    rec('断面図にも板・耳屑の札が出る（模式図と同じ言葉）',
+        lab.n > 0 && /耳/.test(lab.txt), `${lab.n}枚 ${lab.txt}`);
+    rec('札には幅が添う（条幅・耳屑幅）',
+        lab.sub.length === lab.n && lab.sub.every(t => /^\d+(\.\d+)?$/.test(t)),
+        lab.sub.join('/'));
+    rec('条と耳屑は札の色でも見分けられる', lab.kinds.length >= 2, lab.kinds.join('/'));
+    /* **誇張したら倍率を書く**（§CLAUDE 6）。板厚 1.3mm は実寸では1pxも出ない。 */
+    rec('板厚を誇張していることを字で言う', /板厚.*倍/.test(lab.mag), lab.mag.slice(0, 60));
     /* 向きの切り替えは断面図でも効く。**台車は回さず**、見る側とどちらを残すかを
        入れ替える（回すと切断面まで一緒に回り、カメラ側の入れ替えと打ち消し合う）。
        **いまどちら向きかを当てにしない**——ここへ来るまでに裏返っていることがある。 */

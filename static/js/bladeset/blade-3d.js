@@ -44,6 +44,10 @@
     カメラの居る側の反対を残す（カメラと断面のあいだに物が無い状態にする）。 */
  const D3 = { on:false, cut:false, keep:-1, built:false, dirty:true, open:true, out:true,
    rot:Math.PI, carX:0,
+   /* 断面図の視点（§9.413 追補）。**板幅の中心を起点に**左右（`cutAz`）と
+      上下（`cutEl`）へ回す。切る面は世界に固定したままなので、回しても
+      切り口は動かない——動くのは見る位置だけ。 */
+   cutAz:0, cutEl:0, marks:[],
    spin:false, busy:false, failed:false, decals:[],
    /* 立体図で見せる部材。刃だけを見たいときなど、邪魔なものを消せるようにする。 */
    show:{ mat:true, knife:true, ring:true, liner:true } };
@@ -186,14 +190,29 @@
   return v || fallback;
  }
 
+ /* 断面図で回せる角度の上限（ラジアン）。真横（±π/2）の手前で止める。 */
+ const CUT_LIM = 1.15;
  /* 見る向きの操作。回す・寄せる・平行移動の3つ。 */
  function bindPointer(cv) {
   let drag = null;
   cv.addEventListener('pointerdown', e => {
-   /* 断面図は**真横に固定**（§9.412）。動かせると、平行投影で寸法を比べられる
-      という狙いがその場で崩れる。掴める見た目もCSSで外してある。 */
-   if (D3.cut) return;
-   cv.setPointerCapture(e.pointerId);
+   /* **掴み損ねても回せる。** `setPointerCapture` は器の外まで追うためのもので、
+      回すこと自体には要らない。掴めない入力（合成した `pointerId` など）で
+      ここが例外を投げると、**この先の配線まで丸ごと止まる**（実際に止めた）。 */
+   try { cv.setPointerCapture(e.pointerId); } catch (err) {
+    WL.quiet.note('つまみを掴む先が無い（器の外までは追えないが、向きは動く）', err);
+   }
+   /* 断面図も**板幅の中心を起点に回せる**（§9.413 追補、利用者の指示
+      「今の視点から板幅の中心を起点に上下左右に視点を回転させることが
+      できるように」）。§9.412 では真横に固定していたが、切り口は世界に
+      固定した面なので、**見る位置を回しても切り口は動かない**——
+      平行投影のまま、斜めから積み重なりを見られる。
+      寄る・引くは持たない（平行投影の倍率が変わると、寸法を並べて
+      比べるという狙いが崩れる）。 */
+   if (D3.cut) {
+    drag = { x: e.clientX, y: e.clientY, cut: true, az: D3.cutAz, el: D3.cutEl };
+    return;
+   }
    D3.moved = true;
    drag = Object.assign({ x: e.clientX, y: e.clientY,
                           pan: e.shiftKey || e.button === 1 || e.button === 2 }, CAM);
@@ -202,6 +221,14 @@
   cv.addEventListener('pointermove', e => {
    if (!drag) return;
    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+   if (drag.cut) {
+    /* **90°まで回さない**（`CUT_LIM`）。真横を越えるとカメラが切り落とす側へ
+       回り込み、切り口ではなく「何も無いほう」を見ることになる。 */
+    D3.cutAz = Math.max(-CUT_LIM, Math.min(CUT_LIM, drag.az - dx * 0.005));
+    D3.cutEl = Math.max(-CUT_LIM, Math.min(CUT_LIM, drag.el + dy * 0.005));
+    render();
+    return;
+   }
    if (drag.pan) {
     /* 平行移動は世界の軸ではなく、いま見ている向きに合わせる。そうしないと、
        見ている向きによっては横へ引いても横に動かない。画面の右向き・上向きを
@@ -548,7 +575,7 @@
   const off = x => x - L / 2, th = Math.max(0.2, ctx.st.thick);
   const run = BS().materialRun(A, segs), IN = 620, OUT = 760;
   /* 板は見せ消しできる。大きさ（IN・OUT）は返すので、消しても画面の収まりは変わらない。 */
-  if (!D3.show.mat) return { IN, OUT };
+  if (!D3.show.mat) { D3.marks = []; return { IN, OUT }; }
   const sheet = matOf(T, 'sheet', { color: '#c5ccd4', metalness: .62, roughness: .24 });
   const trim = matOf(T, 'trim', { color: '#b0a48d', metalness: .45, roughness: .5 });
   const w0 = run.length ? run[0].from : 0, w1 = run.length ? run[run.length - 1].to : 0;
@@ -560,21 +587,49 @@
      切った瞬間に消える——断面をまたいで置き、どちら側から見ても写るようにする。 */
   if (D3.cut) {
    const DEP = 420;
+   /* **板は薄すぎて素のままでは1pxも出ない**（§9.413 追補）。板厚 1.3mm に対し
+      軸まわりは 1,000mm 級なので、実寸で描くと「板が無い図」になる。模式図が
+      `minKnifePx` で刃の厚みに下限を置いているのと同じ考えで、**見える下限まで
+      厚みを誇張する**。誇張した倍率は画面の左上（`.bs-o3`）が字で言う
+      ——出どころと倍率を書かずに歪めない（§CLAUDE 6）。 */
+   const box = D3.cutBox || { h: 800 };
+   const TH = Math.max(th, (box.h || 800) / 70);
+   D3.matMag = TH / th;
+   /* **`matShift` は模式図（SVGのY＝下向き）の答え**なので、立体（Yは上向き）へ
+      写すときは符号を返す。返さないと、条の千鳥が模式図と上下逆に出る。 */
+   const yOf = i => -BS().matShift(A, run, i) * TH;
    const face = f => run.map((r, i) => ({ r, i })).filter(({ r }) => f(r)).map(({ r, i }) =>
-    ({ x: off((r.from + r.to) / 2), y: BS().matShift(A, run, i) * th, z: 0,
-       l: Math.max(1, r.to - r.from - 3), r: th, d: DEP }));
+    ({ x: off((r.from + r.to) / 2), y: yOf(i), z: 0,
+       l: Math.max(1, r.to - r.from - 3), r: TH, d: DEP }));
    [[r => r.sg.type === 'strip', sheet], [r => r.sg.type !== 'strip', trim]].forEach(([f, mat]) => {
     const list = face(f);
     cut(list, mat);
-    cap(T, g, list.map(q => ({ x: q.x, y: q.y, l: q.l })), th / 2, 0, mat);
+    cap(T, g, list.map(q => ({ x: q.x, y: q.y, l: q.l })), TH / 2, 0, mat);
+   });
+   /* 板の札（§9.413 追補、利用者の指示「2Dの表示のようにラベルもほしい」）。
+      模式図と**同じ言葉・同じ側**で出す——条の番号は板が寄った側、耳は「耳」。
+      値は模式図と同じ2桁（条幅・耳屑幅は割り付けの計算値）。 */
+   /* 札は**軸の外へ出す**。板と軸のあいだは実寸で 60mm 弱しかないので、
+      そこへ置くと札が軸に乗って読めない（実際に乗った）。上へ寄った条の札は
+      上軸の上・下へ寄った条の札は下軸の下——**寄った側は模式図と同じ**。 */
+   const tagY = (box.h || 800) / 2 - 55;
+   D3.marks = run.map(({ sg, from, to }, i) => {
+    const strip = sg.type === 'strip', up = BS().matShift(A, run, i) < 0;
+    return { x: off((from + to) / 2), y: (up ? 1 : -1) * tagY, z: 0,
+             kind: strip ? 'strip' : (sg.type === 'scrap' ? 'scrap' : 'trim'),
+             text: strip ? String((sg.lotIx | 0) + 1) : (sg.type === 'scrap' ? '屑' : '耳'),
+             sub: (+sg.w).toFixed(2) };
    });
    return { IN, OUT };
   }
   /* 入側：1枚の元板 */
   cut([{ x: off((w0 + w1) / 2), y: 0, z: -IN / 2, l: Math.max(1, w1 - w0), r: th, d: IN }], sheet);
   /* 出側：条ごとに分かれ、板厚ぶん上下に食い違う */
+  D3.marks = [];
+  D3.matMag = 1;
+  /* 符号を返すのは断面図と同じ理由（`matShift` は模式図の座標で答える）。 */
   const after = f => run.map((r, i) => ({ r, i })).filter(({ r }) => f(r)).map(({ r, i }) =>
-   ({ x: off((r.from + r.to) / 2), y: BS().matShift(A, run, i) * th, z: OUT / 2,
+   ({ x: off((r.from + r.to) / 2), y: -BS().matShift(A, run, i) * th, z: OUT / 2,
       l: Math.max(1, r.to - r.from - 3), r: th, d: OUT }));
   cut(after(r => r.sg.type === 'strip'), sheet);
   cut(after(r => r.sg.type !== 'strip'), trim);
@@ -693,12 +748,17 @@
   const L = A.arborLen, M = MACH;
   const cd = Math.max(1, ctx.st.knife - ctx.st.ov);   /* 上下軸の中心間距離＝刃径−ラップ */
   const m = machine(T, g, A, segs, zp, L, cd, ctx.st.tk);
+  /* 断面図で見せる範囲（§9.412）。**軸まわりだけ**——機械まわりを伏せるので、
+     台座や床まで入れて縮める必要がない。実寸から出すので刃径を変えても崩れない。
+     **板より先に決める**（§9.413 追補）——板の厚みの誇張はこの高さから出すので、
+     あとから決めると初回だけ誇張が効かない。 */
+  const ods0 = m.out.ring.filter(q => q.hold.kind === 'ring').map(q => q.hold.od);
+  const rad = Math.max(ctx.st.knife, +ctx.M.P.spacerOD || 240, ...(ods0.length ? ods0 : [0])) / 2;
+  D3.cutBox = { cx: 0, cy: 0, w: L + 160, h: (cd / 2 + rad) * 2 + 120 };
   const mt = material(T, g, A, segs, L);
   const st2 = site(T, m.baseL, m.bcx, m.bedTop, m.railTop);
   /* 画面に収まる見はじめの位置。実寸から出すので、アーバー長や刃径を変えても崩れない。
      一度でも視点を動かしたあとは動かさない（見ているところを取り上げない）。 */
-  const ods = m.out.ring.filter(q => q.hold.kind === 'ring').map(q => q.hold.od);
-  const rad = Math.max(ctx.st.knife, +ctx.M.P.spacerOD || 240, ...(ods.length ? ods : [0])) / 2;
   /* OS・DS の札は有効長の両端の真上に置く。台車を回せば札も一緒に回る。 */
   const endY = cd / 2 + rad + (D3.cut ? 90 : 330);
   D3.tag = { os: { x: -(L / 2 + 120), y: endY, z: 0 }, ds: { x: L / 2 + 120, y: endY, z: 0 } };
@@ -716,10 +776,6 @@
   Object.assign(HOME, { tx: (a0 + a1) / 2, ty: m.yBot / 3, tz: (mt.OUT - mt.IN) / 2 + 160,
                         r: sz / 2 / Math.sin(D3.cam.fov * Math.PI / 360) * 1.15, az: -0.62, el: 0.42 });
   if (!D3.moved) Object.assign(CAM, HOME);
-  /* 断面図で見せる範囲（§9.412）。**軸まわりだけ**——機械まわりを伏せるので、
-     台座や床まで入れて縮める必要がない。実寸から出すので刃径を変えても崩れない。 */
-  /* 余白は控えめに。機械まわりを伏せているので、台座や床のぶんを空ける必要がない。 */
-  D3.cutBox = { cx: 0, cy: 0, w: L + 160, h: (cd / 2 + rad) * 2 + 120 };
   D3.built = true;
   D3.dirty = false;
   render();
@@ -764,7 +820,13 @@
    const px = D3.pivot ? D3.pivot.position.x : 0;
    /* 台車の走行ぶんを足した、軸の中心の真正面。台車を回していても断面は動かさない。 */
    const cx = px + (D3.g ? D3.g.position.x : 0) + b.cx;
-   oc.position.set(cx, b.cy, (D3.flip ? -1 : 1) * 12000);
+   /* **起点は板幅の中心**（§9.413 追補）。`b.cx` は有効長の中央なので、
+      そこを見たまま左右・上下へ回る。切る面は世界に固定したままなので、
+      回しても切り口そのものは動かない。 */
+   const sg = D3.flip ? -1 : 1, ce = Math.cos(D3.cutEl), R = 12000;
+   oc.position.set(cx + sg * R * ce * Math.sin(D3.cutAz),
+                   b.cy + R * Math.sin(D3.cutEl),
+                   sg * R * ce * Math.cos(D3.cutAz));
    oc.up.set(0, 1, 0);
    oc.lookAt(cx, b.cy, 0);
    /* 見ている側から当てる。少し斜めにして、切り口が真っ平らに潰れないようにする。 */
@@ -792,7 +854,23 @@
   tags(w, h);
  }
 
- /* 札（OS・DS）を、立体の点の見えている位置へ置く。台車を回しても付いてくる。 */
+ /* 板の札（§9.413 追補）。数が材料の並びで変わるので**要るだけ作って使い回す**
+    ——毎回作り直すと、回しているあいだ DOM を作り続けることになる。 */
+ function markEls(n) {
+  const host3 = host;
+  if (!host3) return [];
+  let pool = D3.markEls || (D3.markEls = []);
+  while (pool.length < n) {
+   const el = document.createElement('span');
+   el.className = 'bs-t3 bs-t3-mk';
+   el.hidden = true;
+   host3.appendChild(el);
+   pool.push(el);
+  }
+  pool.forEach((el, i) => { if (i >= n) el.hidden = true; });
+  return pool;
+ }
+ /* 札（OS・DS・板）を、立体の点の見えている位置へ置く。台車を回しても付いてくる。 */
  const TAG_KEYS = ['os', 'ds'];
  function tags(w, h, camOverride) {
   const T = D3.T, t = D3.tag;
@@ -800,17 +878,33 @@
   const v = new T.Vector3();
   D3.pivot.updateMatrixWorld(true);
   const at = {}, put = [];
+  const cam = camOverride || D3.cam;
   TAG_KEYS.forEach(key => {
    const el = $h('.bs-t3-' + key), p = t[key];
    if (!el) return;
    if (!p) { el.hidden = true; return; }
-   v.set(p.x, p.y, p.z).applyMatrix4(D3.g.matrixWorld).project(camOverride || D3.cam);
+   v.set(p.x, p.y, p.z).applyMatrix4(D3.g.matrixWorld).project(cam);
    const on = v.z > -1 && v.z < 1;
    el.hidden = !on;
    if (!on) return;
    at[key] = v.x;
    put.push({ el, x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h,
               w: el.offsetWidth || 60, h: el.offsetHeight || 20 });
+  });
+  const marks = D3.cut ? (D3.marks || []) : [];
+  const pool = markEls(marks.length);
+  marks.forEach((q, i) => {
+   const el = pool[i];
+   if (!el) return;
+   v.set(q.x, q.y, q.z).applyMatrix4(D3.g.matrixWorld).project(cam);
+   const on = v.z > -1 && v.z < 1;
+   el.hidden = !on;
+   if (!on) return;
+   const want = `<b>${esc(q.text)}</b><small>${esc(q.sub)}</small>`;
+   if (el.dataset.k !== want) { el.innerHTML = want; el.dataset.k = want; }
+   el.className = 'bs-t3 bs-t3-mk is-' + q.kind;
+   put.push({ el, x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h,
+              w: el.offsetWidth || 44, h: el.offsetHeight || 26 });
   });
   place(put, w, h);
   sides(at);
@@ -850,7 +944,12 @@
   if (!('os' in at) || !('ds' in at)) { el.hidden = true; return; }
   const l = at.os <= at.ds ? 'os' : 'ds', r = l === 'os' ? 'ds' : 'os';
   const nm = k => `<i class="is-${k}">${k.toUpperCase()}</i>`;
-  el.innerHTML = `<s>画面左</s>${nm(l)}<s>／</s><s>右</s>${nm(r)}`;
+  /* **誇張したら倍率を書く**（§CLAUDE 6 出どころ・単位・根拠を画面に出す）。
+     板厚は実寸だと1pxも出ないので断面図でだけ太らせている（§9.413 追補）。 */
+  const mag = D3.cut && D3.matMag > 1.05 && ctx
+   ? `<s>／板厚</s><i>${(+ctx.st.thick).toFixed(1)}</i><s>は図では約${Math.round(D3.matMag)}倍</s>`
+   : '';
+  el.innerHTML = `<s>画面左</s>${nm(l)}<s>／</s><s>右</s>${nm(r)}${mag}`;
   el.hidden = false;
  }
 
@@ -958,6 +1057,8 @@
     if (onSpinDone) onSpinDone();    /* 向きの切替は画面が持つ（模式図と同じ1つの状態） */
    });
    if (b.classList.contains('bs-step3-reset')) {
+    /* 断面図では**断面図の角度**を戻す（立体図の視点は別に持っている）。 */
+    D3.cutAz = 0; D3.cutEl = 0;
     D3.moved = false; Object.assign(CAM, HOME); render(); return undefined;
    }
    if (b.dataset.show) return toggleShow(b);
@@ -1045,6 +1146,7 @@
   return { cut: !!D3.cut, flip: !!D3.flip, keep: D3.keep,
            /* 台車がいま回っているか。断面図では**回さない**のが決まり（§9.412）。 */
            rotY: D3.pivot ? D3.pivot.rotation.y : 0,
+           cutAz: D3.cutAz, cutEl: D3.cutEl, marks: (D3.marks || []).length,
            ortho: !!(D3.cut && D3.ocam), clips: D3.r ? (D3.r.clippingPlanes || []).length : 0 };
  }
 
