@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
+import apppath  # noqa: F401 `program/` を探索先へ（§9.406）
 import _pycache_bootstrap  # noqa: E402,F401 副作用のためのimport（.pycの置き場）
 from backend import sqlite_io  # noqa: E402
 from backend.db_access import DBS, add_missing_columns, connect  # noqa: E402

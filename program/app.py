@@ -6,8 +6,8 @@
 (キャッシュ無効化)、ウォッチドッグの組み込みのみを行う(起動制御と業務
 ロジックを分ける方針。詳細はdocs/ARCHITECTURE.md・docs/REBUILD_PLAN.mdを参照)。
 """
-import _approot  # noqa: F401 副作用のためのimport。**いちばん最初に**（program/から実行されるので、リポジトリ直下をimportの探索先へ入れる・§9.404）
-import _pycache_bootstrap  # noqa: F401,E402 副作用のためのimport。単独実行(python program/app.py)される場合に備える
+import _pycache_bootstrap  # noqa: F401 副作用のためのimport。**いちばん最初に**（.pycの置き場を決める。`program/`の隣に在るので探索先の用意は要らない・§9.406）
+import _approot  # noqa: F401,E402 副作用のためのimport。リポジトリ直下（`backend`の在り処）を探索先へ入れる・§9.404
 
 from flask import Flask, request
 

@@ -536,11 +536,10 @@ RULES = [
     # 当たった規則を全部足すので、`program/app.py`は[ALL]のまま残る。
     ('program/start_app.py', g('起動', 'test_bootreport')),
     ('program/setup_app.py', g('起動')),
-    ('update.bat', g('起動')),
+    ('program/update.bat', g('起動')),
     ('program/loading.html', g('起動')),
     ('program/process_manager.py', g('起動')),
     ('program/requirements.txt', g('起動', 'test_noaccess')),
-    ('_pycache_bootstrap.py', g('起動')),
     ('program/', g('起動')),
 
     # --- ドキュメント --------------------------------------------------

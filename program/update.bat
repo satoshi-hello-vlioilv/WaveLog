@@ -9,7 +9,7 @@ rem
 rem Save this file with CRLF line endings (and CP932). With LF-only
 rem endings cmd.exe resumes the batch at the wrong byte offset and runs
 rem fragments of these very lines as commands.
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 python program\setup_app.py
 set RC=%ERRORLEVEL%

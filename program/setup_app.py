@@ -9,8 +9,8 @@
 「動かなくなる」ことはない。速さのためのものである、という位置づけを
 崩さないこと。
 """
-import _approot  # noqa: F401 **必ず1行目のimport**（program/から実行されるので、リポジトリ直下をimportの探索先へ入れる・§9.404）
-import _pycache_bootstrap  # noqa: E402 `_approot`の次に
+import _pycache_bootstrap  # noqa: F401 副作用のためのimport。**いちばん最初に**（.pycの置き場を決める。`program/`の隣に在るので探索先の用意は要らない・§9.406）
+import _approot  # noqa: F401,E402 副作用のためのimport。リポジトリ直下（`backend`の在り処）を探索先へ入れる・§9.404
 
 import sys
 

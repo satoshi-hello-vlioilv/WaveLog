@@ -12,8 +12,8 @@
   python process_manager.py stop     停止する
   python process_manager.py status   起動状況を表示する
 """
-import _approot  # noqa: F401 副作用のためのimport。**いちばん最初に**（program/から実行されるので、リポジトリ直下をimportの探索先へ入れる・§9.404）
-import _pycache_bootstrap  # noqa: F401,E402 副作用のためのimport。stop.bat等から単独実行されるため必要
+import _pycache_bootstrap  # noqa: F401 副作用のためのimport。**いちばん最初に**（.pycの置き場を決める。`program/`の隣に在るので探索先の用意は要らない・§9.406）
+import _approot  # noqa: F401,E402 副作用のためのimport。リポジトリ直下（`backend`の在り処）を探索先へ入れる・§9.404
 
 import json
 import os

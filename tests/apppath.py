@@ -10,8 +10,8 @@
     import apppath  # noqa: F401  (`program/` を探索先へ・§9.404)
     import app as flask_app  # noqa: E402
 
-リポジトリ直下も一緒に足す——`app.py`は`backend`を読むし、
-`_pycache_bootstrap`も直下に在る（§9.404）。
+`_pycache_bootstrap`（§9.406で`program/`へ移した）を読む本も、先にここを通す。
+リポジトリ直下も一緒に足す——`app.py`が`backend`を読むため。
 """
 import pathlib
 import sys

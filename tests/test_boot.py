@@ -5,6 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent   # tests/ の1つ上がリポジトリルート
 sys.path.insert(0, str(ROOT))
+import apppath  # noqa: F401 `program/` を探索先へ（§9.406）
 import _pycache_bootstrap  # noqa: E402,F401  (置き場をアプリ外へ。他より先に)
 from backend import boot_status as _bs  # noqa: E402
 # 進捗ファイルは**端末ごとの置き場**へ移した(§9.225)。パスを書き写さず、

@@ -16,7 +16,7 @@ import）。使っていないimportは「どこから読んでいるか」を�
 ------------------------------------------------------------
 約束
 ------------------------------------------------------------
- * 対象は直接実行される4本（`program/app.py`等）と`backend/`・`tests/`の全部。
+ * 対象は`program/`（直接実行される4本とその道具）・`backend/`・`tests/`の全部。
  * **`# noqa`を書いた行は数えない**——副作用のためのimport
    （`import _pycache_bootstrap`＝`.pyc`の置き場を決める）と、名前を引き継ぐ
    ためのimport（`atomic_io.cloud_sync_hint`）は使わなくてよいものなので、
@@ -35,8 +35,7 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-TARGETS = ['program/app.py', 'program/start_app.py', 'program/process_manager.py',
-           '_pycache_bootstrap.py', 'backend', 'tests']
+TARGETS = ['program', 'backend', 'tests']
 R = []
 
 

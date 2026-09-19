@@ -217,14 +217,17 @@ CLAUDE.md には見出しの1行だけを残してある。ここが本文。
   **`program/`**へまとめる(`app.py`/`start_app.py`/`setup_app.py`/
   `process_manager.py`/`loading.html`/`requirements.txt`/
   `requirements-dev.txt`。§9.404)。リポジトリ直下に残すPythonは
-  `_pycache_bootstrap.py`**1本だけ**——`tests/`が素のモジュール名で
-  importしており、**探索先が通っている場所に在ることそのものが役目**
-  なので、`program/`へ入れると意味が変わる。
-  `program/`の4本は先頭で`import _approot`を通す(リポジトリ直下を
-  `sys.path`へ足す1箇所。これが無いと`backend`が読めない)。
+**1本も無い**(§9.406で`_pycache_bootstrap.py`も移した)。
+  `.bat`3本(`start_app.bat`/`stop.bat`/`update.bat`)も`program/`。
+  直下に残るのは毎日の入口`Start.vbs`と、**移すと黙って効かなくなる**
+  `.gitignore`(gitはそのフォルダ以下にしか当てない)・`eslint.config.mjs`
+  (`program/`へ移すと規則が1件も当たらないのに**エラーにならない**。
+  実測306件→0件・§9.406)の2つだけ。
+  `program/`の4本は`import _pycache_bootstrap`→`import _approot`の順で
+  通す(前者が`.pyc`の置き場、後者がリポジトリ直下を`sys.path`へ足す1箇所)。
   importされるだけの起動部品は`backend/launcher/`へ置く
   (`guard.py`=旧launch_guard.py、`server.py`)。起動スクリプト
-  (`Start.vbs`/`start_app.bat`/`stop.bat`/`update.bat`)は`program\…`を呼ぶ
+  (直下の`Start.vbs`と`program/`の`start_app.bat`/`stop.bat`/`update.bat`)は`program\…`を呼ぶ
   ——**CRLF・CP932のまま**触ること(§9.229)。
   それ以外のバックエンドPythonは`backend/`パッケージへ、ローカルDB
   (`master.sqlite3`/`records.sqlite3`、無ければ初回書き込み時に自動生成)は
@@ -255,11 +258,11 @@ CLAUDE.md には見出しの1行だけを残してある。ここが本文。
   ハンドラ側でも権限を二重チェックする。
   詳細は`docs/SCHEDULE_MODE_DESIGN.md`§3を参照。フロント側の入口ガード・
   閲覧データの読み込みは`static/js/core/access-mode.js`(最後に読み込むファイル)が持つ。
-- **start_app.batの文字コード**: このファイルは**CP932(Shift-JIS)で保存する**
+- **start_app.batの文字コード**: `program/`の`.bat`は**CP932(Shift-JIS)で保存する**
   こと(UTF-8で日本語を含めるとWindowsのcmd.exeが誤読しコマンドが壊れる。
   実際に発生した不具合)。編集時はUTF-8で書いてから
-  `iconv -f UTF-8 -t CP932//TRANSLIT start_app.bat -o start_app.bat` で変換する。
-  `file start_app.bat` が `Non-ISO extended-ASCII text` になっていればCP932。
+  `iconv -f UTF-8 -t CP932//TRANSLIT program/start_app.bat -o program/start_app.bat` で変換する。
+  `file program/start_app.bat` が `Non-ISO extended-ASCII text` になっていればCP932。
   可能な限り非ASCII文字(REMコメント等)は使わず、`マスタ.sqlite3`等の
   実ファイル名の一致に必要な箇所のみ日本語を使う。
 

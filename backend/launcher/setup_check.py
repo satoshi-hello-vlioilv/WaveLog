@@ -42,12 +42,11 @@ LEGACY_DB = (
 # 事前コンパイルの対象。アプリのコードだけ(site-packagesは触らない——
 # 共有でも他人の環境でもないし、pipが入れた時点で済んでいる)。
 COMPILE_TARGETS = ('backend',)
-# 直接実行する4本は`program/`（§9.404）。`_pycache_bootstrap.py`だけは
-# **リポジトリ直下に残す**——`tests/`が素のモジュール名でimportしており、
-# 探索先が通っている場所に在ることそのものが役目のため。
+# 直接実行する4本と、その道具は`program/`（§9.404・§9.406）。
+# リポジトリ直下に置くPythonは**1本も無い**。
 COMPILE_FILES = ('program/app.py', 'program/start_app.py',
                  'program/setup_app.py', 'program/process_manager.py',
-                 '_pycache_bootstrap.py')
+                 'program/_pycache_bootstrap.py', 'program/_approot.py')
 
 # 置き場・名前が変わったもの（§9.404・§9.405）。**現場は上書きコピーで更新する**
 # ので、古いほうは消えずに残る——しかも古い`setup.bat`は`python setup_app.py`と
@@ -67,6 +66,11 @@ MOVED_AWAY = (
     ('requirements.txt', 'program/requirements.txt'),
     ('requirements-dev.txt', 'program/requirements-dev.txt'),
     ('setup.bat', 'update.bat'),
+    # §9.406。**`Start.vbs`は直下のまま**（毎日の入口なので動かさない）。
+    ('_pycache_bootstrap.py', 'program/_pycache_bootstrap.py'),
+    ('start_app.bat', 'program/start_app.bat'),
+    ('stop.bat', 'program/stop.bat'),
+    ('update.bat', 'program/update.bat'),
 )
 
 
@@ -240,6 +244,33 @@ def promote_waiting_page(say=None):
         return None
 
 
+def _sweep_orphan_pycache(say=None):
+    """アプリの置き場の直下に残った`__pycache__`を片付ける（§9.406）。
+
+    直下に`.py`が**1本も無くなった**（`_pycache_bootstrap.py`も`program/`へ
+    移した）ので、そこの`.pyc`は**もう誰も作り直さないし、誰も読まない**。
+    §9.249の「消えても取り直せるものだけ」より更に手前——取り直されもしない。
+
+    **`.pyc`だけで出来ているときに限る。** 中に別の物が入っていたら、それは
+    こちらの知らない物なので触らない。直下にまだ`.py`が在るなら、その
+    `__pycache__`は現役かもしれないので触らない。
+    """
+    d = APP_ROOT / '__pycache__'
+    try:
+        if not d.is_dir() or any(APP_ROOT.glob('*.py')):
+            return
+        kids = list(d.iterdir())
+        if not kids or not all(k.is_file() and k.suffix == '.pyc' for k in kids):
+            return
+        for k in kids:
+            k.unlink()
+        d.rmdir()
+        if say:
+            say('もう読まれない __pycache__ を片付けました: %s' % d)
+    except Exception as _e:
+        quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
+
+
 def sweep_shared_leftovers(say=None):
     """以前の版がアプリ本体の隣へ残したものを片付ける(§9.225・§9.404・§9.405)。
 
@@ -262,6 +293,7 @@ def sweep_shared_leftovers(say=None):
                 say('以前の進捗ファイルを片付けました: %s' % old)
     except Exception as _e:
         quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
+    _sweep_orphan_pycache(say)
     for old_name, new_name in MOVED_AWAY:
         stale = APP_ROOT / old_name
         moved = APP_ROOT / new_name

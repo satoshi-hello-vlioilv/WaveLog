@@ -354,10 +354,10 @@ try:
     # ---- 7) update.bat / setup_app.py ----
     # 名前は`update.bat`（§9.405）。**押すのは「版が変わったら1回」**なので、
     # 名前がその時機を言う。旧`setup.bat`は残さない（入口を2つ持たない）。
-    bat = ROOT / 'update.bat'
-    rec('update.bat がある', bat.exists())
+    bat = PROGRAM / 'update.bat'
+    rec('update.bat がある（§9.406で program/ へ）', bat.exists())
     rec('旧 setup.bat を入口として残していない（入口は1つ）',
-        not (ROOT / 'setup.bat').exists())
+        not (ROOT / 'setup.bat').exists() and not (PROGRAM / 'setup.bat').exists())
     if bat.exists():
         raw = bat.read_bytes()
         try:
@@ -373,7 +373,9 @@ try:
     # 「'after' は、内部コマンドまたは…」が並んだ。**2バイト文字の途中で
     # 切れる**（'ｫませんでした。'）ので、記号や引用符の問題では説明が付かない。
     # ここは**内容ではなく改行そのもの**を見る。
-    for name in ('update.bat', 'start_app.bat', 'stop.bat', 'Start.vbs'):
+    # `Start.vbs`だけ直下（毎日の入口）、`.bat`3本は`program/`（§9.406）。
+    for name in ('program/update.bat', 'program/start_app.bat',
+                 'program/stop.bat', 'Start.vbs'):
         f = ROOT / name
         if not f.exists():
             rec(f'{name} がある', False)
@@ -383,14 +385,25 @@ try:
         crlf = raw.count(b'\r\n')
         rec(f'{name} はCRLF改行（LFだけだとcmd.exeが行の途中から実行する）',
             lf > 0 and lf == crlf, f'LF={lf} CRLF={crlf}')
-    rec('直接実行する4本は program/ にある（§9.404）',
+    rec('直接実行する4本とその道具は program/ にある（§9.404・§9.406）',
         all((PROGRAM / n).exists() for n in
-            ('setup_app.py', 'start_app.py', 'app.py', 'process_manager.py')),
+            ('setup_app.py', 'start_app.py', 'app.py', 'process_manager.py',
+             '_pycache_bootstrap.py', '_approot.py')),
         str(PROGRAM))
-    # `_pycache_bootstrap.py`だけは**リポジトリ直下に残す**——tests が素の
-    # モジュール名でimportしており、探索先に在ることそのものが役目。
-    rec('_pycache_bootstrap.py はリポジトリ直下のまま（探索先に在ることが役目）',
-        (ROOT / '_pycache_bootstrap.py').exists())
+    # **リポジトリ直下にPythonは1本も置かない**（§9.406）。`.bat`も同じ
+    # ——直下に残るのは`Start.vbs`（毎日の入口）と、移すと黙って無効になる
+    # 2つ（`.gitignore`／`eslint.config.mjs`。理由は§9.406）だけ。
+    stray = sorted(p.name for p in ROOT.glob('*.py')) + \
+        sorted(p.name for p in ROOT.glob('*.bat'))
+    rec('リポジトリ直下に .py / .bat を置かない（§9.406）', not stray, ', '.join(stray))
+    rec('Start.vbs は直下のまま（毎日の入口は動かさない）',
+        (ROOT / 'Start.vbs').exists())
+    # 動かせない2つ。**移すと落ちるのではなく「黙って効かなくなる」**ので、
+    # 在ることを機械で押さえる（§9.406の実測: eslint は 306件→0件）。
+    rec('.gitignore は直下（gitはそのフォルダ以下にしか当てない）',
+        (ROOT / '.gitignore').exists())
+    rec('eslint.config.mjs は直下（program/へ移すと規則が1件も当たらない）',
+        (ROOT / 'eslint.config.mjs').exists())
 
     # ---- 7c) 置き場・名前が変わった古いファイルを片付ける（§9.405） ----
     # 現場は**上書きコピー**で更新するので、古い`setup.bat`や直下の`app.py`は
@@ -420,6 +433,23 @@ try:
             setup_check.sweep_shared_leftovers()
             rec('改名した古い入口も、新しい入口が在れば片付ける（§9.405）',
                 not (fake / 'setup.bat').exists() and (fake / 'update.bat').exists())
+            # 直下の孤児 __pycache__（§9.406）。`.py`が1本も無いので誰も
+            # 作り直さない。**`.pyc`だけのときに限って**消す。
+            pyc = fake / '__pycache__'
+            pyc.mkdir()
+            (pyc / 'x.cpython-311.pyc').write_bytes(b'x')
+            (pyc / 'memo.txt').write_text('触るな', encoding='utf-8')
+            setup_check.sweep_shared_leftovers()
+            rec('`.pyc`以外が混ざった __pycache__ は触らない（§9.406）', pyc.is_dir())
+            (pyc / 'memo.txt').unlink()
+            setup_check.sweep_shared_leftovers()
+            rec('直下の孤児 __pycache__ を片付ける（§9.406）', not pyc.exists())
+            # 直下に .py が在るうちは現役かもしれないので触らない
+            pyc.mkdir()
+            (pyc / 'x.cpython-311.pyc').write_bytes(b'x')
+            (fake / 'なにか.py').write_text('x', encoding='utf-8')
+            setup_check.sweep_shared_leftovers()
+            rec('直下に .py が在るうちは __pycache__ を触らない（§9.406）', pyc.is_dir())
         finally:
             setup_check.APP_ROOT = _real_root
 
