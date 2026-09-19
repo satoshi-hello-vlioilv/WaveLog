@@ -122,7 +122,8 @@ ALL_LABELS = [label for _, label in boot_status.STEPS] + \
 def li_labels(src, pattern):
     return re.findall(pattern, src)
 
-wait_labels = li_labels(html, r'<li[^>]*data-step="\d+"><b></b><span>([^<]+)</span></li>')
+STEP_LI = r'<li[^>]*data-step="\d+"[^>]*><span>([^<]+)</span></li>'
+wait_labels = li_labels(html, STEP_LI)
 rec('待機画面の段階リストがboot_status.pyと一致する',
     wait_labels == ALL_LABELS, '待機画面=%s' % '/'.join(wait_labels))
 rec('待機画面の分母が合計段階数と一致する',
@@ -159,7 +160,7 @@ rec('更新の状態は色だけでなく字でも出す(分類名を書く)',
     '更新を反映中' in html and '更新なし' in html)
 
 index = (ROOT / 'templates' / 'index.html').read_text(encoding='utf-8')
-over_labels = li_labels(index, r'<li[^>]*><b></b><span>([^<]+)</span></li>')
+over_labels = li_labels(index, STEP_LI)
 rec('アプリ内の起動オーバーレイの段階リストがboot_status.pyと一致する',
     over_labels == ALL_LABELS, 'オーバーレイ=%s' % '/'.join(over_labels))
 # ブラウザ側の4段階だけがJSから進む(data-boot-step)。

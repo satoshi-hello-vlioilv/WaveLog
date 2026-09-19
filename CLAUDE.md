@@ -116,9 +116,9 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（689件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（690件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
-### 起動・停止・監視（36件）
+### 起動・停止・監視（37件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -128,7 +128,8 @@
 | `program/`の4本は`import _pycache_bootstrap`→`import _approot`の順で通す（置き場が先・探索先が次） | `test_faststart.py` | [§9.406](docs/decisions/9.406.md) |
 | `backend`から素の`from app import app`を書かない。答えは`app_module.flask_app()`の1箇所 | `test_scowner.py` | [§9.404](docs/decisions/9.404.md) |
 | ファイルを移すときは見張り（`pick_tests.py`・lintの対象・CI）も一緒に動かす | `test_pick.py` | [§9.404](docs/decisions/9.404.md) |
-| 起動モーダルは更新を当てているかを言い分ける（`skip`／`update`と、何が変わったかの理由） | `test_boot.py` | [§9.411](docs/decisions/9.411.md) |
+| 起動画面は待機画面と`#appBoot`が**同じ意匠・同じ色**。更新の有無は同じ場所で言い分ける | `test_boot.py` | [§9.411](docs/decisions/9.411.md) |
+| 波紋はヘッダーの帯の中だけ（`overflow:hidden`）。輪は**幅と高さ**で広げる（`scale`は線まで太る） | `test_theme.js` | [§9.411](docs/decisions/9.411.md) |
 | ショートカットの行き先は`Start.vbs`1本、アイコンは`app_icon.py`が描く。作れない端末は理由を返す | `test_shortcut.py` | [§9.410](docs/decisions/9.410.md) |
 | 起動前の確認は`update.bat`（旧`setup.bat`）が受け持ち、刻印で飛ばす | `test_faststart.py` | [§9.225](docs/decisions/9.225.md) |
 | 入口の名前は「いつ押すか」を言う。旧名を入口として残さない（入口は1つ） | `test_faststart.py` | [§9.405](docs/decisions/9.405.md) |

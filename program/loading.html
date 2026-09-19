@@ -31,77 +31,110 @@
   (tests/test_boot.py が3箇所の一致を固定している)。
 -->
 <style>
+ /* 配色は**アプリ本体のトークンと同じ値**（static/css/00-base.css）。この画面は
+    file:// から開かれるので外部CSSを読めず、同じ色を写してある。**新しい色を
+    足さないこと**——本体と1色でもずれると、引き継いだ瞬間に色が飛ぶ（§9.411）。 */
  :root{
-  --ink:#eaf3f5; --ink-2:#9fb9c0; --ink-3:#6f8c95;
-  --teal:#2ec9c0; --teal-2:#0f8f9b; --amber:#f5a30a; --danger:#ff6b6b;
-  --card:rgba(255,255,255,.055); --card-line:rgba(255,255,255,.115);
-  --track:rgba(255,255,255,.10);
+  --nav:#173842; --teal:#087c89; --teal-dark:#096b75; --teal-soft:#9cd6ce;
+  --pale:#dcecef; --bg:#eef2f4; --line:#b7c7cc; --track:#e3ebee;
+  --ink:#173842; --ink-3:#4a6169; --ink-soft:#7b8e95;
+  --warn:#f5a30a; --warn-fg:#7a2f00; --warn-bg:#fff0d6; --warn-line:#d58d16;
+  --danger:#a32424; --danger-bg:#fdeaea; --danger-line:#e0a3a3;
  }
  *{box-sizing:border-box}
  html,body{height:100%}
  body{
   margin:0; display:flex; align-items:center; justify-content:center;
-  color:var(--ink);
-  font-family:"Segoe UI","Meiryo",system-ui,sans-serif; font-size:14px; line-height:1.45;
-  /* 深い紺(アプリのナビと同系)に、斜めの光を2つ重ねる。単色より奥行きが出る。 */
-  background:
-   radial-gradient(120% 90% at 12% -10%, rgba(46,201,192,.10), transparent 58%),
-   radial-gradient(90% 80% at 108% 108%, rgba(245,163,10,.06), transparent 55%),
-   linear-gradient(158deg, #0d2029 0%, #12313a 46%, #0b1a21 100%);
-  background-attachment:fixed;
+  background:var(--bg); color:var(--ink);
+  font-family:"Yu Gothic UI","Meiryo","Segoe UI",system-ui,sans-serif;
+  font-size:14px; line-height:1.6;
  }
- /* ゆっくり呼吸する光。動きがあると「止まっていない」ことが伝わる。 */
- body::after{
-  content:""; position:fixed; inset:-30vmax; pointer-events:none;
-  background:radial-gradient(closest-side, rgba(46,201,192,.055), transparent 70%);
-  animation:drift 22s ease-in-out infinite alternate;
- }
- @keyframes drift{
-  from{transform:translate3d(-6vmax,-3vmax,0) scale(.9)}
-  to  {transform:translate3d( 6vmax, 4vmax,0) scale(1.1)}
- }
-
  .card{
-  position:relative; z-index:1;
-  width:min(93vw,520px); padding:30px 34px 26px;
-  background:var(--card); border:1px solid var(--card-line); border-radius:20px;
-  box-shadow:0 18px 44px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.07);
-  backdrop-filter:blur(18px) saturate(120%);
-  -webkit-backdrop-filter:blur(18px) saturate(120%);
-  animation:rise .5s cubic-bezier(.2,.7,.3,1) both;
+  width:min(94vw,680px); border-radius:18px; overflow:hidden;
+  background:#fff; border:1px solid var(--line);
+  box-shadow:0 18px 44px rgba(23,56,66,.18), 0 3px 8px rgba(23,56,66,.10);
+  animation:rise .45s cubic-bezier(.2,.7,.3,1) both;
  }
- @keyframes rise{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+ @keyframes rise{from{opacity:0;transform:translateY(10px) scale(.99)}to{opacity:1;transform:none}}
 
- /* ---- 見出し(マーク・アプリ名・バージョン) ---- */
- .head{display:flex; align-items:center; gap:13px; margin-bottom:24px}
- .logo{width:42px;height:42px;flex:0 0 auto;border-radius:12px;display:block;
-       box-shadow:0 6px 18px rgba(0,0,0,.35)}
+ /* ---- 頭（マーク・アプリ名・バージョン）＝**波紋の器** ----
+    波紋はこの帯の中だけで完結させる（利用者の指示・§9.411）。`overflow:hidden`
+    で切るので白い本文へは1pxも出ない。文字・版・マークは`z-index:2`で、
+    **輪は必ず文字の下をくぐる**。 */
+ .head{
+  display:flex; align-items:center; gap:14px; padding:16px 22px;
+  background:var(--nav); color:#fff; position:relative; overflow:hidden;
+ }
+ .head>.logo,.head>.title,.head>.ver{position:relative; z-index:2}
+ .logo{width:40px;height:40px;flex:0 0 auto;display:block}
  .title{min-width:0;flex:1 1 auto}
- h1{margin:0; font-size:17px; font-weight:650; letter-spacing:.01em}
- .sub{margin:2px 0 0; font-size:11px; color:var(--ink-3); letter-spacing:.22em}
+ h1{margin:0; font-size:17px; font-weight:700; letter-spacing:.01em}
+ .sub{margin:2px 0 0; font-size:10.5px; color:var(--teal-soft); letter-spacing:.16em}
  .ver{
-  flex:0 0 auto; align-self:flex-start;
-  padding:4px 10px; border-radius:999px; font-size:11px; font-weight:600;
-  letter-spacing:.04em; color:var(--teal);
-  background:rgba(46,201,192,.12); border:1px solid rgba(46,201,192,.30);
+  flex:0 0 auto; padding:3px 11px; border-radius:999px; font-size:11.5px;
+  color:var(--teal-soft); background:rgba(255,255,255,.06);
+  border:1px solid rgba(156,214,206,.45);
   font-variant-numeric:tabular-nums; white-space:nowrap;
  }
+ /* 波紋。**輪の太さを一定にするため`transform:scale()`を使わず幅と高さを動かす**
+    ——scaleだと線まで一緒に拡大され、遠くへ行くほど輪が太くなる（狙いの逆）。
+    広がりは`linear`。加速する曲線だと、不透明度が上がりきる前に輪が遠くへ
+    行ってしまい、**マークから立ち上がる瞬間が見えない**。 */
+ .ring{
+  position:absolute; left:42px; top:50%; transform:translate(-50%,-50%);
+  width:34px; height:34px; border-radius:50%; opacity:0; z-index:0;
+  border:1.5px solid var(--teal-soft); pointer-events:none;
+  animation:ripple 4.6s linear infinite; animation-delay:var(--d,0s);
+ }
+ @keyframes ripple{
+  0%{width:34px;height:34px;opacity:0}
+  4%{opacity:.32}
+  30%{opacity:.15}
+  100%{width:1080px;height:1080px;opacity:0}
+ }
 
- /* ---- 現在の段階 + 進捗バー ---- */
- .stage{display:flex; align-items:baseline; gap:10px; margin:0 0 10px}
- .stage b{font-size:15px; font-weight:600; letter-spacing:.01em}
- .pct{margin-left:auto; font-size:13px; font-weight:650; color:var(--teal);
-      font-variant-numeric:tabular-nums}
- .bar{height:7px; border-radius:999px; background:var(--track); overflow:hidden; position:relative}
+ .body{padding:20px 22px 18px}
+
+ /* ---- 帯（いま何をしているか）----
+    10段の名前を一列に流し、いまの段を中央で大きく出す。両端が霞むのは
+    「まだ来ていない／もう済んだ」を形で言うため。 */
+ .band{
+  background:linear-gradient(90deg,var(--teal-dark),var(--teal));
+  border-radius:14px; padding:15px 0; margin:0 0 8px;
+  position:relative; overflow:hidden;
+ }
+ .edge{position:absolute; top:0; bottom:0; width:132px; z-index:4; pointer-events:none}
+ .edge.l{left:0;  background:linear-gradient(90deg,var(--teal-dark),transparent)}
+ .edge.r{right:0; background:linear-gradient(270deg,var(--teal),transparent)}
+ .steps{
+  list-style:none; margin:0; padding:0 50%; display:flex; align-items:center;
+  gap:26px; white-space:nowrap; position:relative; z-index:3;
+  transition:transform .55s cubic-bezier(.2,.75,.3,1);
+ }
+ .steps li{font-size:14px; color:rgba(255,255,255,.5); transition:color .25s,font-size .25s}
+ .steps li.done{color:rgba(255,255,255,.62)}
+ .steps li.on{font-size:22px; font-weight:700; color:#fff}
+ .detail{margin:0; font-size:12.5px; color:var(--ink-3); text-align:center; min-height:1.6em}
+
+ /* ---- ステータスバー（進み具合を答えるのは**この1本だけ**）---- */
+ .bar{height:12px; border-radius:999px; background:var(--track);
+      overflow:hidden; position:relative; margin:14px 0 0}
  .bar i{
-  display:block; height:100%; width:4%; border-radius:999px;
-  background:linear-gradient(90deg, var(--teal-2), var(--teal));
+  display:block; height:100%; width:4%; border-radius:999px; position:relative; overflow:hidden;
+  background:linear-gradient(90deg,var(--teal-dark),var(--teal));
   transition:width .45s cubic-bezier(.25,.8,.3,1);
  }
- .meta{display:flex; gap:8px; margin:9px 0 0; font-size:11.5px; color:var(--ink-3);
-       font-variant-numeric:tabular-nums}
- .meta .detail{margin-left:auto; text-align:right; min-width:0;
-               overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+ /* 流れている＝止まっていない、を光で言う（字は下の行が言う）。 */
+ .bar i::after{
+  content:""; position:absolute; inset:0; transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);
+  animation:sheen 1.5s linear infinite;
+ }
+ @keyframes sheen{to{transform:translateX(100%)}}
+ .meta{display:flex; align-items:baseline; gap:12px; margin:8px 0 0;
+       font-size:12px; color:var(--ink-3); font-variant-numeric:tabular-nums}
+ .pct{font-size:20px; font-weight:700; color:var(--teal-dark); line-height:1}
+ .meta .sp{margin-left:auto}
 
  /* ---- 更新を当てているか(§9.411、利用者の指示③) ----
     「アップデートなども実施してくれると思うので、実施しているときと
@@ -110,74 +143,45 @@
     今の話か分からない。色は状態の分類（作業中=琥珀／無し=中立）で、
     **字にも分類名を書く**（色だけで伝えない）。 */
  .work{
-  display:flex; align-items:flex-start; gap:8px; margin:12px 0 0;
-  padding:9px 11px; border-radius:11px; font-size:12px;
-  border:1px solid var(--card-line); background:rgba(255,255,255,.04);
+  margin:14px 0 0; padding:11px 14px; border-radius:12px; font-size:12.5px;
+  background:var(--pale); border:1px solid #bcd3d8;
  }
- .work b{flex:0 0 auto; font-weight:700}
- .work span{min-width:0; color:var(--ink-3); overflow:hidden; text-overflow:ellipsis}
- .work.is-update{border-color:rgba(245,163,10,.38); background:rgba(245,163,10,.10)}
- .work.is-update b{color:var(--amber)}
- .work.is-skip b{color:var(--ink-2)}
+ .work b{display:block; font-size:13.5px; font-weight:700; color:var(--ink)}
+ .work span{display:block; margin:4px 0 0; color:var(--ink-3)}
+ .work.is-update{background:var(--warn-bg); border-color:var(--warn-line)}
+ .work.is-update b{color:var(--warn-fg)}
  .work[hidden]{display:none}
 
- /* ---- 段階の一覧(2列) ---- */
- .steps{
-  list-style:none; margin:22px 0 0; padding:18px 0 0;
-  border-top:1px solid rgba(255,255,255,.09);
-  /* 縦に読み下せる並び。左列が1〜5、右列が6〜10。 */
-  display:grid; grid-auto-flow:column; grid-template-rows:repeat(5,auto); gap:7px 18px;
- }
- .steps li{
-  display:flex; align-items:center; gap:9px; min-width:0;
-  font-size:12px; color:var(--ink-3); transition:color .25s;
- }
- .steps li span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
- .steps li b{
-  flex:0 0 auto; width:14px; height:14px; border-radius:50%;
-  border:1.5px solid currentColor; position:relative; transition:all .25s;
- }
- .steps li.on{color:var(--teal); font-weight:600}
- .steps li.on b{border-color:var(--teal); box-shadow:0 0 0 4px rgba(46,201,192,.10)}
- .steps li.on b::after{
-  content:""; position:absolute; inset:2.5px; border-radius:50%;
-  background:var(--teal); animation:pulse 1.8s ease-in-out infinite;
- }
- @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
- .steps li.done{color:var(--ink-2)}
- .steps li.done b{background:var(--teal-2); border-color:var(--teal-2)}
- .steps li.done b::after{
-  content:""; position:absolute; left:3.5px; top:.5px;
-  width:3px; height:7px; border:solid #08222a; border-width:0 1.8px 1.8px 0;
-  transform:rotate(45deg);
- }
- /* ブラウザ側で進む段階(7〜10)は、この画面では最後まで進まない。
-    「これから続きがある」ことが分かるよう、控えめな見た目にしておく。 */
- .steps li.later{opacity:.55}
-
  /* ---- 失敗時 ---- */
- .error{display:none}
- .error h2{margin:0 0 10px; font-size:15px; color:var(--danger)}
- .error p{margin:0 0 12px; font-size:13px; color:var(--ink-2)}
- .error ul{margin:0; padding-left:1.15em; font-size:12.5px; color:var(--ink-2)}
- .error li{margin-bottom:6px}
+ .error{display:none; margin:14px 0 0; padding:12px 15px; border-radius:12px;
+        background:var(--danger-bg); border:1px solid var(--danger-line)}
+ .error h2{margin:0; font-size:13.5px; color:var(--danger)}
+ .error p{margin:4px 0 0; font-size:13px}
+ .error ul{margin:8px 0 0; padding-left:1.2em; font-size:12.5px; color:var(--ink-3)}
+ .error li{margin-bottom:4px}
+ .error b{font-family:Consolas,monospace; font-size:12.5px; background:#fff;
+          border:1px solid var(--danger-line); border-radius:5px; padding:1px 5px}
  .retry{
-  margin-top:18px; width:100%; padding:11px; font-size:14px; font-family:inherit;
-  font-weight:600; color:#06222a; border:0; border-radius:11px; cursor:pointer;
-  background:linear-gradient(90deg, var(--teal), var(--teal-2));
+  margin-top:11px; padding:8px 18px; font-size:13px; font-family:inherit; font-weight:700;
+  color:#fff; border:1px solid var(--teal-dark); border-radius:9px; cursor:pointer;
+  background:var(--teal);
  }
  .retry:hover{filter:brightness(1.08)}
  body.failed .live{display:none}
  body.failed .error{display:block}
+ /* 失敗したら波紋も止める（「動いている＝進んでいる」を崩さない）。 */
+ body.failed .ring{animation-play-state:paused; opacity:0}
  @media (prefers-reduced-motion:reduce){
   *{animation:none!important; transition:none!important}
+  .ring{opacity:0}
  }
 </style>
 </head>
 <body>
 <div class="card">
  <div class="head">
-  <svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#0f2c35"/><path d="M10 40c6-16 10 8 16-6s10 10 16-4 8 4 12-2" fill="none" stroke="#2ec9c0" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="50" cy="20" r="5" fill="#f5a30a"/></svg>
+  <i class="ring" style="--d:0s"></i><i class="ring" style="--d:1.53s"></i><i class="ring" style="--d:3.06s"></i>
+  <svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="13" fill="#eaf3f4" stroke="#bcd8db" stroke-width="2"/><rect x="10" y="12" width="44" height="40" rx="6" fill="#fff" stroke="#087c89" stroke-width="3.5"/><path d="M10 23h44" stroke="#087c89" stroke-width="3.5"/><path d="M22 12v-4M42 12v-4" stroke="#096b75" stroke-width="4" stroke-linecap="round"/><path d="M17 41c5-10 8 5 12-4s7 7 11-2" fill="none" stroke="#096b75" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="46" cy="33" r="4.5" fill="#f5a30a"/></svg>
   <div class="title">
    <h1>測定伝送システム</h1>
    <p class="sub">STARTING UP</p>
@@ -185,37 +189,44 @@
   <span class="ver" id="ver">起動中</span>
  </div>
 
- <div class="live">
-  <p class="stage"><b id="stage">実行環境を確認</b><span class="pct" id="pct">0%</span></p>
-  <div class="bar" role="progressbar" id="bar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="fill"></i></div>
-  <p class="meta"><span id="elapsed">経過 0 秒</span><span class="detail" id="detail"></span></p>
-  <!-- 更新を当てているか(§9.411)。**分かるまでは出さない**——「更新なし」と
-       先に書いてしまうと、直後に更新が始まったときに嘘になる。 -->
-  <p class="work" id="work" hidden><b id="workTitle"></b><span id="workWhy"></span></p>
-  <ul class="steps" id="steps">
-   <li data-step="0"><b></b><span>実行環境を確認</span></li>
-   <li data-step="1"><b></b><span>起動中のアプリを確認</span></li>
-   <li data-step="2"><b></b><span>必要な部品を確認</span></li>
-   <li data-step="3"><b></b><span>データの置き場所を確認</span></li>
-   <li data-step="4"><b></b><span>アプリを読み込み</span></li>
-   <li data-step="5"><b></b><span>Webサーバーを起動</span></li>
-   <li class="later" data-step="6"><b></b><span>画面部品を読み込み</span></li>
-   <li class="later" data-step="7"><b></b><span>権限を確認</span></li>
-   <li class="later" data-step="8"><b></b><span>一覧を読み込み</span></li>
-   <li class="later" data-step="9"><b></b><span>表示を整える</span></li>
-  </ul>
- </div>
+ <div class="body">
+  <div class="live">
+   <!-- いまの段の名前は**帯が言う**（同じ字を2箇所に出さない・§CLAUDE 8）。 -->
+   <div class="band" id="band">
+    <ul class="steps" id="steps">
+    <li data-step="0"><span>実行環境を確認</span></li>
+    <li data-step="1"><span>起動中のアプリを確認</span></li>
+    <li data-step="2"><span>必要な部品を確認</span></li>
+    <li data-step="3"><span>データの置き場所を確認</span></li>
+    <li data-step="4"><span>アプリを読み込み</span></li>
+    <li data-step="5"><span>Webサーバーを起動</span></li>
+    <li data-step="6"><span>画面部品を読み込み</span></li>
+    <li data-step="7"><span>権限を確認</span></li>
+    <li data-step="8"><span>一覧を読み込み</span></li>
+    <li data-step="9"><span>表示を整える</span></li>
+    </ul>
+    <i class="edge l"></i><i class="edge r"></i>
+   </div>
+   <p class="detail" id="detail"></p>
+   <div class="bar" role="progressbar" id="bar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="fill"></i></div>
+   <p class="meta"><span class="pct" id="pct">0%</span><span id="hint">目安 3 秒</span><span class="sp" id="elapsed">経過 0 秒</span></p>
+   <!-- 更新を当てているか(§9.411)。**分かるまでは出さない**——「更新なし」と
+        先に書いてしまうと、直後に更新が始まったときに嘘になる。 -->
+   <div class="work" id="work" hidden><b id="workTitle"></b><span id="workWhy"></span></div>
+  </div>
 
- <div class="error" id="error">
-  <h2>アプリを起動できませんでした</h2>
-  <p>待機時間内にアプリが応答しませんでした。次を確認してください。</p>
-  <ul>
-   <li><b>start_app.bat</b> を直接ダブルクリックし、黒い画面に出るエラー内容を確認する</li>
-   <li>Python がインストールされているか</li>
-   <li>ポート <b id="errPort">5029</b> を他のアプリが使用していないか</li>
-   <li>それでも直らない場合は、黒い画面の内容を管理者へ伝える</li>
-  </ul>
-  <button class="retry" type="button" id="retry">もう一度確認する</button>
+  <div class="error" id="error">
+   <h2>起動できませんでした</h2>
+   <p>待機時間（90秒）内にアプリが応答しませんでした。次の順で確認してください。</p>
+   <ul>
+    <li>まず <b>program\start_app.bat</b> をダブルクリックし、黒い画面に出るエラーを読む</li>
+    <li>Python が入っているか（コマンド <b>python</b> が通るか）</li>
+    <li>ポート <b id="errPort">5029</b> を別のアプリが使っていないか</li>
+    <li>共有フォルダー（データの置き場所）へ届いているか</li>
+    <li>それでも直らないときは、黒い画面の内容を管理者へ伝える</li>
+   </ul>
+   <button class="retry" type="button" id="retry">もう一度試す</button>
+  </div>
  </div>
 </div>
 
@@ -237,7 +248,8 @@
  var TOTAL_STEPS=10, SERVER_STEPS=6;
  var started=Date.now(), timer=null, polling=true;
 
- var stageEl=document.getElementById('stage');
+ var bandEl=document.getElementById('band');
+ var hintEl=document.getElementById('hint');
  var elapsedEl=document.getElementById('elapsed');
  var detailEl=document.getElementById('detail');
  var pctEl=document.getElementById('pct');
@@ -274,23 +286,31 @@
   if(work!=='update' && work!=='skip'){ workEl.hidden=true; return }
   workEl.hidden=false;
   workEl.className='work '+(work==='update'?'is-update':'is-skip');
-  workTitleEl.textContent=work==='update'?'更新を反映中':'更新なし';
+  workTitleEl.textContent=work==='update'?'更新を反映中 — ふだんより長い':'更新なし';
   workWhyEl.textContent=work==='update'
    ? (reasons.length?('変わったもの: '+reasons.join(' / ')):'必要な部品とバイトコードを確かめています')
    : '前回の確認（update.bat）のまま起動します';
+  /* 見込みの時間は**更新の有無で桁が違う**ので、同じ行で言い換える。 */
+  hintEl.textContent=work==='update'?'目安 30〜60 秒':'目安 3 秒';
  }
  function showVersion(v){ if(v) verEl.textContent='VER'+v }
 
  /* 進捗は「完了した段階の数 / 全段階」。実行中の段階は半分だけ進めて
     おくと、次の段階へ移るまでの待ちでもバーが止まって見えない。 */
+ /* 帯はいまの段を**中央へ寄せる**。器の幅とマスの位置は描かれてからでないと
+    測れないので、次の描画の合図で測る（先に測ると0が返る）。 */
+ function centerBand(li){
+  if(!li||!bandEl)return;
+  requestAnimationFrame(function(){
+   var x=li.offsetLeft+li.offsetWidth/2-bandEl.clientWidth/2;
+   document.getElementById('steps').style.transform='translateX('+(-x)+'px)';
+  });
+ }
  function paint(active){
   for(var i=0;i<steps.length;i++){
-   /* まだ来ていない段階のうち、ブラウザ側(7〜10)は「この画面では
-      進まない」ので控えめに出す。 */
-   steps[i].className = i<active ? 'done'
-                      : i===active ? 'on'
-                      : (i>=SERVER_STEPS ? 'later' : '');
+   steps[i].className = i<active ? 'done' : i===active ? 'on' : '';
   }
+  centerBand(steps[active]);
   var pct=Math.min(100,Math.round((active+.5)/TOTAL_STEPS*100));
   fillEl.style.width=pct+'%';
   pctEl.textContent=pct+'%';
@@ -300,9 +320,7 @@
   var sec=Math.floor((Date.now()-started)/1000);
   elapsedEl.textContent='経過 '+sec+' 秒';
   detailEl.textContent=bootDetail||'';
-  var s=bootStep<0?0:bootStep;
-  stageEl.textContent=bootLabel||'実行環境を確認';
-  paint(s);
+  paint(bootStep<0?0:bootStep);
   if(Date.now()-started>TIMEOUT_MS) fail();
  }
  /* 起動処理が書き出す進捗ファイルを読み込む(file://同士のためfetchは
@@ -322,11 +340,12 @@
   if(!info||info.app!==APP_ID||!info.ready) return; // 別アプリが同じポートに居る場合は無視して待ち続ける
   polling=false; clearInterval(timer);
   showVersion(info.version);
-  stageEl.textContent='画面を準備しています';
+  detailEl.textContent='画面を準備しています';
   /* サーバー側の6段階はここで完了。残り4段階はアプリ側の起動
      オーバーレイが続ける(バーの値も引き継ぐ)。 */
   paint(SERVER_STEPS-1);
   for(var i=0;i<SERVER_STEPS;i++) steps[i].className='done';
+  centerBand(steps[SERVER_STEPS]);
   var pct=Math.round(SERVER_STEPS/TOTAL_STEPS*100);
   fillEl.style.width=pct+'%'; pctEl.textContent=pct+'%';
   barEl.setAttribute('aria-valuenow',String(pct));

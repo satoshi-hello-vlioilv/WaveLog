@@ -120,7 +120,7 @@ let b=null;
   rec('サーバーは生きたまま',alive===true,String(alive));
 
   /* ---- 4) 未保存の測定があれば、それを先に言う（§9.202） ---------- */
-  await page.evaluate(()=>{try{markDirty()}catch(e){}});
+  await page.evaluate(()=>{try{markDirty()}catch(e){/* 測定画面が出ていない回は関数が無い（この節では汚せていなくてよい） */}});
   await page.click('#appQuit');
   await page.waitForSelector('#appConfirmModal:not([hidden])',{timeout:10000});
   const dirty=await page.evaluate(()=>({
@@ -142,7 +142,7 @@ let b=null;
   await page.evaluate(()=>{
    window.__closeTried=0;
    window.close=()=>{window.__closeTried++};   // 断るブラウザのふり
-   try{window.measureDirty=false}catch(e){}
+   try{window.measureDirty=false}catch(e){/* 封じた控えには書けないことがある（後片付けなので失敗してよい） */}
   });
   await page.click('#appQuit');
   await page.waitForSelector('#appConfirmModal:not([hidden])',{timeout:10000});
@@ -247,9 +247,9 @@ let b=null;
  }catch(e){
   console.error('FATAL',e);rec('例外なく終わる',false,e.message);
  }finally{
-  try{await page.unroute('**/api/app/quit')}catch(_){}
+  try{await page.unroute('**/api/app/quit')}catch(_){/* 既に外れていれば何もしない（後片付け） */}
   try{await page.evaluate(async()=>{await fetch('/api/access-mode',{method:'POST',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'edit'})})})}catch(_){}
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'edit'})})})}catch(_){/* 落ちた後のページでは戻せない（次の本がモードを入れ直す） */}
   if(b)await b.close().catch(()=>{});
  }
  console.log('\n=== SUMMARY ===');

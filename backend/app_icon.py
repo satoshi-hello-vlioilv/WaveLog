@@ -28,23 +28,33 @@ ICON_FILENAME='wavelog.ico'
 # 避けたい中間（64/128）も入れておく（合計で20KB程度にしかならない）。
 SIZES=(16,24,32,48,64,128,256)
 # 作りを変えたら上げること。**上げないと古い絵が残る**（作り直しの判定に使う）。
-ICON_VERSION=1
+ICON_VERSION=2
 
 # ---------------------------------------------------------------------------
-# 絵（`loading.html`の`<svg viewBox="0 0 64 64">`と同じ）
-#   ・角丸の四角     rx=14   #0f2c35
-#   ・波の折れ線     太さ4   #2ec9c0（3本の3次ベジェ）
-#   ・右上の丸       r=5     #f5a30a  中心(50,20)
+# 絵（`loading.html`の`<svg viewBox="0 0 64 64">`と同じ・§9.411で「J4」へ改めた）
+#   予定表の枠＝スケジュール、中の折れ線＝測定、琥珀の丸＝測った点。
+#
+# **SVGの`stroke`は「線の中心」に太さの半分ずつ乗る**ので、ここでは
+# 塗りつぶしだけで同じ絵を作る——枠線は「太い角丸を塗って、内側を白で抜く」。
 # 曲線はSVGの`c`/`s`をそのまま展開したもの（`s`は前の制御点の反射）。
+#
+# 描く順はSVGと同じ（後のものが上に乗る）。**形を変えるときはここだけ**を直し、
+# `loading.html`／`templates/index.html`のSVGと`ICON_VERSION`も一緒に動かすこと。
 # ---------------------------------------------------------------------------
-MARK={
- 'box':(0,0,64,64),'radius':14,'bg':(0x0f,0x2c,0x35),
- 'wave':[((10,40),(16,24),(20,48),(26,34)),
-         ((26,34),(32,20),(36,44),(42,30)),
-         ((42,30),(48,16),(50,34),(54,28))],
- 'wave_width':4,'wave_color':(0x2e,0xc9,0xc0),
- 'dot':(50,20,5),'dot_color':(0xf5,0xa3,0x0a),
-}
+EDGE=(0xbc,0xd8,0xdb); FACE=(0xea,0xf3,0xf4); WHITE=(0xff,0xff,0xff)
+TEAL=(0x08,0x7c,0x89); TEAL_D=(0x09,0x6b,0x75); AMBER=(0xf5,0xa3,0x0a)
+MARK=(
+ ('rrect', 0,    0,    64,   64,   13,   EDGE),   # 外枠（stroke 2 の外側）
+ ('rrect', 1,    1,    62,   62,   12,   FACE),   # 地
+ ('rrect', 8.25, 10.25,47.5, 43.5, 7.75, TEAL),   # 予定表の枠（stroke 3.5）
+ ('rrect', 11.75,13.75,40.5, 36.5, 4.25, WHITE),  # 枠の中
+ ('rrect', 10,   21.25,44,   3.5,  0,    TEAL),   # 見出しの帯（M10 23h44）
+ ('line',  22,   8,    22,   12,   4,    TEAL_D), # 綴じ（M22 12v-4）
+ ('line',  42,   8,    42,   12,   4,    TEAL_D), # 綴じ（M42 12v-4）
+ ('curve', (17,41),(22,31),(25,46),(29,37), 4, TEAL_D),   # 測定の折れ線
+ ('curve', (29,37),(33,28),(36,44),(40,35), 4, TEAL_D),
+ ('dot',   46,   33,   4.5,  AMBER),              # 測った点
+)
 
 
 def _bezier(p0,p1,p2,p3,steps):
@@ -67,15 +77,26 @@ def _blend(dst,i,color,cov):
  dst[i+3]=int(round(dst[i+3]+(255-dst[i+3])*cov))
 
 
-def _round_rect_coverage(x,y,w,h,r):
+def _round_rect_coverage(px,py,x,y,w,h,r):
  """角丸四角の内側なら1、境目なら0..1（符号付き距離で滑らかにする）。"""
  # 中心から測った距離で、角だけ丸くする（いわゆる角丸のSDF）。
- cx,cy=w/2.0,h/2.0
- dx=abs(x-cx)-(w/2.0-r);dy=abs(y-cy)-(h/2.0-r)
- if dx<0:dx=0.0
- if dy<0:dy=0.0
- d=(dx*dx+dy*dy)**0.5-r
+ cx,cy=x+w/2.0,y+h/2.0
+ qx=abs(px-cx)-(w/2.0-r);qy=abs(py-cy)-(h/2.0-r)
+ # **内側を負にする項（`min(max(qx,qy),0)`）を落とさないこと。**
+ # これが無いと、内側でも`qx`/`qy`が0に潰れて距離が`-r`止まりになり、
+ # **角丸半径0の四角が半分の濃さでしか塗れない**（見出しの帯で実際に踏んだ）。
+ d=(max(qx,0.0)**2+max(qy,0.0)**2)**0.5+min(max(qx,qy),0.0)-r
  return max(0.0,min(1.0,0.5-d))
+
+
+def _fill_rrect(dst,size,x,y,w,h,r,color,s):
+ """角丸四角を塗る。**その四角の周りだけ**を走る（毎回全画素は要らない）。"""
+ x0=max(0,int(x*s)-1);x1=min(size-1,int((x+w)*s)+1)
+ y0=max(0,int(y*s)-1);y1=min(size-1,int((y+h)*s)+1)
+ for py in range(y0,y1+1):
+  for px in range(x0,x1+1):
+   cov=_round_rect_coverage(px+0.5,py+0.5,x*s,y*s,w*s,h*s,r*s)
+   if cov>0:_blend(dst,(py*size+px)*4,color,cov)
 
 
 def _stamp(dst,size,px,py,radius,color):
@@ -89,25 +110,39 @@ def _stamp(dst,size,px,py,radius,color):
    if cov>0:_blend(dst,(y*size+x)*4,color,cov)
 
 
+def _draw_line(dst,size,x0,y0,x1,y1,width,color,s):
+ """丸い筆で線を引く。**点で描かずに線で描く**——点の間隔を筆の半径より
+    細かくすれば、継ぎ目は出ない（丸い筆＝丸い端と角）。"""
+ radius=width*s/2.0
+ n=max(2,int(((x1-x0)**2+(y1-y0)**2)**0.5*s)+2)
+ for i in range(n+1):
+  t=i/n
+  _stamp(dst,size,(x0+(x1-x0)*t)*s,(y0+(y1-y0)*t)*s,radius,color)
+
+
 def render(size):
- """1辺`size`画素のRGBA（`bytearray`）を作る。"""
+ """1辺`size`画素のRGBA（`bytearray`）を作る。**`MARK`の順に重ねるだけ**。"""
  s=size/64.0
  buf=bytearray(size*size*4)
- bg=MARK['bg'];r=MARK['radius']*s
- for y in range(size):
-  for x in range(size):
-   cov=_round_rect_coverage(x+0.5,y+0.5,size,size,r)
-   if cov>0:_blend(buf,(y*size+x)*4,bg,cov)
- # 波。**点で描かずに線で描く**——点の間隔を筆の半径より細かくすれば、
- # 折れ線でも継ぎ目は出ない（丸い筆＝丸い端と角）。
- radius=MARK['wave_width']*s/2.0
- steps=max(8,int(24*s)+8)
- for seg in MARK['wave']:
-  pts=_bezier(*[(p[0]*s,p[1]*s) for p in seg],steps=steps)
-  for (px,py) in pts:
-   _stamp(buf,size,px,py,radius,MARK['wave_color'])
- dx,dy,dr=MARK['dot']
- _stamp(buf,size,dx*s,dy*s,dr*s,MARK['dot_color'])
+ for op in MARK:
+  kind=op[0]
+  if kind=='rrect':
+   _,x,y,w,h,r,color=op
+   _fill_rrect(buf,size,x,y,w,h,r,color,s)
+  elif kind=='line':
+   _,x0,y0,x1,y1,width,color=op
+   _draw_line(buf,size,x0,y0,x1,y1,width,color,s)
+  elif kind=='curve':
+   _,p0,p1,p2,p3,width,color=op
+   radius=width*s/2.0
+   pts=_bezier(*[(p[0]*s,p[1]*s) for p in (p0,p1,p2,p3)],steps=max(8,int(24*s)+8))
+   for (px,py) in pts:
+    _stamp(buf,size,px,py,radius,color)
+  elif kind=='dot':
+   _,cx,cy,r,color=op
+   _stamp(buf,size,cx*s,cy*s,r*s,color)
+  else:
+   raise ValueError('知らない描き方: %r'%(kind,))
  return buf
 
 
@@ -129,7 +164,7 @@ def _png(size,rgba):
 def _dib(size,rgba):
  """32bitのDIB（BMP）。**小さい絵はこちら**——古いシェルはPNG入りの
     `.ico`を小さい寸法で読まないことがあり、そこだけ絵が出なくなる。
-    高さはAND маскのぶんも数えて2倍で書く（`.ico`の決まり）。"""
+    高さはAND マスクのぶんも数えて2倍で書く（`.ico`の決まり）。"""
  head=struct.pack('<IiiHHIIiiII',40,size,size*2,1,32,0,size*size*4,0,0,0,0)
  body=bytearray()
  for y in range(size-1,-1,-1):        # 下から上へ
