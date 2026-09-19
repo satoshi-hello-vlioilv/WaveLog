@@ -103,6 +103,24 @@
  .meta .detail{margin-left:auto; text-align:right; min-width:0;
                overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 
+ /* ---- 更新を当てているか(§9.411、利用者の指示③) ----
+    「アップデートなども実施してくれると思うので、実施しているときと
+      していないときの違いも分かるように」
+    **同じ場所で言い分ける**——出たり消えたりする帯を2つ持つと、どちらが
+    今の話か分からない。色は状態の分類（作業中=琥珀／無し=中立）で、
+    **字にも分類名を書く**（色だけで伝えない）。 */
+ .work{
+  display:flex; align-items:flex-start; gap:8px; margin:12px 0 0;
+  padding:9px 11px; border-radius:11px; font-size:12px;
+  border:1px solid var(--card-line); background:rgba(255,255,255,.04);
+ }
+ .work b{flex:0 0 auto; font-weight:700}
+ .work span{min-width:0; color:var(--ink-3); overflow:hidden; text-overflow:ellipsis}
+ .work.is-update{border-color:rgba(245,163,10,.38); background:rgba(245,163,10,.10)}
+ .work.is-update b{color:var(--amber)}
+ .work.is-skip b{color:var(--ink-2)}
+ .work[hidden]{display:none}
+
  /* ---- 段階の一覧(2列) ---- */
  .steps{
   list-style:none; margin:22px 0 0; padding:18px 0 0;
@@ -171,6 +189,9 @@
   <p class="stage"><b id="stage">実行環境を確認</b><span class="pct" id="pct">0%</span></p>
   <div class="bar" role="progressbar" id="bar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="fill"></i></div>
   <p class="meta"><span id="elapsed">経過 0 秒</span><span class="detail" id="detail"></span></p>
+  <!-- 更新を当てているか(§9.411)。**分かるまでは出さない**——「更新なし」と
+       先に書いてしまうと、直後に更新が始まったときに嘘になる。 -->
+  <p class="work" id="work" hidden><b id="workTitle"></b><span id="workWhy"></span></p>
   <ul class="steps" id="steps">
    <li data-step="0"><b></b><span>実行環境を確認</span></li>
    <li data-step="1"><b></b><span>起動中のアプリを確認</span></li>
@@ -242,7 +263,22 @@
   if(typeof info.index==='number' && info.index>=bootStep){
    bootStep=info.index; bootLabel=info.label||''; bootDetail=info.detail||'';
   }
+  showWork(info.work||'', info.reasons||[]);
  };
+ /* 更新を当てているか(§9.411)。**判定はサーバーが持つ**(起動処理が刻印を
+    見て決める)ので、ここは答えを字にするだけ。 */
+ var workEl=document.getElementById('work');
+ var workTitleEl=document.getElementById('workTitle');
+ var workWhyEl=document.getElementById('workWhy');
+ function showWork(work, reasons){
+  if(work!=='update' && work!=='skip'){ workEl.hidden=true; return }
+  workEl.hidden=false;
+  workEl.className='work '+(work==='update'?'is-update':'is-skip');
+  workTitleEl.textContent=work==='update'?'更新を反映中':'更新なし';
+  workWhyEl.textContent=work==='update'
+   ? (reasons.length?('変わったもの: '+reasons.join(' / ')):'必要な部品とバイトコードを確かめています')
+   : '前回の確認（update.bat）のまま起動します';
+ }
  function showVersion(v){ if(v) verEl.textContent='VER'+v }
 
  /* 進捗は「完了した段階の数 / 全段階」。実行中の段階は半分だけ進めて

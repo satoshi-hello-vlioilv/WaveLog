@@ -1934,8 +1934,28 @@ WL.quitApp=async function(){
   return;
  }
  if(note)note.innerHTML='<ul class="confirm-modal-list">'+what.map(x=>'<li>'+x+'</li>').join('')+'</ul>';
- if(box)box.hidden=false;
+ /* **タブも閉じる**（§9.409、利用者の指示④「アプリ終了ボタンで終了時、
+    タブに残らず、そのままスッキリ終了させてください」）。
+    `window.close()`が通るのは**スクリプトが開いた窓**だけ——毎日の入口
+    （Start.vbs → 既定のブラウザ）で開いたタブは**ブラウザが開いた**ものなので、
+    断られる端末がある。断られたかどうかは**その場では分からない**（閉じられれば
+    この先は1行も動かない）ので、**少し待って生きていたら断られた**と読む。
+    そのときだけ今までの画面を出す（黙って何も起きないのが最悪・§CLAUDE 4）。 */
+ closeThisTab(box);
 };
+/* 閉じてみて、閉じられなかったら案内を出す。**「閉じました」と言わない**
+   ——言った直後に閉じないと、その字そのものが嘘になる。 */
+function closeThisTab(box){
+ try{window.close()}catch(e){WL.quiet.note('タブを閉じられない（案内を出す）',e)}
+ setTimeout(()=>{
+  /* ここへ来た＝ブラウザが閉じるのを断った。**理由と次の一手**を書く。 */
+  if(box)box.hidden=false;
+ },QUIT_CLOSE_WAIT_MS);
+}
+/* 閉じる判断を待つ時間。短いと閉じる直前に案内が一瞬見え、長いと終了後に
+   何も出ない間ができる。描画1回ぶん（16ms）では足りず、実機の破棄まで
+   数十msかかるので、その上を取る。 */
+const QUIT_CLOSE_WAIT_MS=350;
 WL.onReady(()=>{
  const q=document.getElementById('appQuit');
  if(q)q.onclick=()=>WL.quitApp();

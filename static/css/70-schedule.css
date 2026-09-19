@@ -2630,7 +2630,22 @@ div.sc-view-row{cursor:default}
 .sc-blade-done{color:var(--teal-dark);font-weight:700}
 .sc-blade-done small{display:block;font-weight:400;color:var(--muted)}
 .sc-blade-todo{color:var(--ink-2)}
+.sc-blade-todo small{display:block;font-weight:400;color:var(--muted)}
 /* 「未記録」は空欄と別物（0に見せない・§9.231）。 */
 .sc-blade-na{color:var(--muted);font-size:var(--fs-sm)}
 .sc-blade-empty{padding:var(--space-4);color:var(--muted);text-align:center}
+/* ---------- 標準の計算値（§9.408、利用者の指示②） ----------
+   記録（組んだ事実）と見込み（これから組む段取りの計算値）が同じ表に並ぶ。
+   **濃さで「確かさ」を言う**——記録は本文の濃さ、見込みは一段薄い字。
+   色だけに頼らず、状態の欄に「標準の計算値」と字で書き、各セルの`title`でも
+   出どころが読める（§CLAUDE 3・6）。 */
+.sc-blade-calc{color:var(--muted)}
+.sc-blade-tbl tr.is-calc .sc-blade-title span{color:var(--ink-2)}
+/* 行き先のチップは題名の横（§9.377）。押す的は行の「選ぶ」と分ける。 */
+.sc-blade-title{display:flex;align-items:center;gap:var(--space-2)}
+/* 見本は**実物と同じ見た目**で描く（色を書き写さない・§9.374）。 */
+.sc-blade-legend{margin-left:auto;display:flex;align-items:center;gap:var(--space-1);
+  font-size:var(--fs-sm);color:var(--muted)}
+.sc-blade-legend b{color:var(--ink-2)}
+.sc-blade-swatch{width:var(--space-3);height:2px;background:var(--muted);display:inline-block}
 }

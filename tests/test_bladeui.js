@@ -640,6 +640,78 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     /* **記録が無い段取りを空欄にしない**（空欄は0に見える・§9.231）。 */
     rec('まだ組んでいない段取りは「これから」「未記録」と書く',
         bl.todo >= 1 && bl.na >= 1, `これから${bl.todo} 未記録${bl.na}`);
+
+    /* ---- 6.6) 一覧から刃組ガイダンスへ行ける（§9.408、利用者の指示②） ----
+       「刃組メインのスケジュールなのに刃組ガイダンスに行けないのは微妙です」
+       **行き先の的は題名の横**（§9.377）。一覧のどの行からでも入れること。 */
+    const openChip = await page.evaluate(() => {
+     const b = document.querySelector('#scBladeBody [data-open-blade]');
+     return b ? { text: b.textContent, title: b.title, id: b.dataset.openBlade } : null;
+    });
+    rec('刃組スケジュール一覧の行から刃組ガイダンスへ入れる',
+        !!openChip && openChip.text === '刃組ガイダンス', JSON.stringify(openChip));
+    rec('押すと何が起きるかを字で言う（一覧の側でも）',
+        !!openChip && /開きます/.test(openChip.title || ''), openChip && openChip.title);
+
+    /* ---- 6.7) 標準の計算値（§9.408） ----
+       記録が無い段取りでも「標準どおり組んだら何をどれだけ使うか」は出せる。
+       **同じ口を通して確かめる**（画面の字を数えない・§9.362）——計算は
+       刃組ガイダンスと同じ`WL.bladeSet`の1箇所を通る。 */
+    const fc = await page.evaluate(() => {
+     const api = WL.scheduleView;
+     if (!api || typeof api.bladeForecast !== 'function') return { missing: true };
+     const got = api.bladeForecast({ thickness: 1.6, originalWidth: 1200,
+       lots: [{ name: 'F1', w: 280, n: 4, parent: 'F1' }] });
+     if (!got) return { nothing: true };
+     const sp = got.snap.spacer || {};
+     return { spacerKinds: Object.keys(sp).length,
+              spacerTotal: Object.values(sp).reduce((a, b) => a + (+b || 0), 0),
+              strips: got.snap.cond.strips, hold: got.snap.cond.hold,
+              clearance: got.snap.cond.clearance, knife: got.snap.cond.knife };
+    });
+    rec('予定の材料から使用スペーサーを計算できる',
+        !!fc && fc.spacerKinds > 0 && fc.spacerTotal > 0, JSON.stringify(fc));
+    rec('計算値は条数・板押さえ・クリアランス・刃径まで揃う',
+        !!fc && fc.strips === 4 && !!fc.hold && fc.clearance > 0 && fc.knife > 0,
+        JSON.stringify(fc));
+    /* **材料が読めない段取りでは計算しない**（既定の見本で埋めない・§9.231）。 */
+    const none = await page.evaluate(() =>
+     WL.scheduleView.bladeForecast({ thickness: 1.6, originalWidth: 1200, lots: [] }));
+    rec('条が1本も読めないときは計算せず、既定の見本で埋めない', none === null, String(none));
+    const todoNote = await page.evaluate(() => {
+     const td = document.querySelector('#scBladeBody .sc-blade-todo small');
+     return td ? { text: td.textContent, title: td.title } : null;
+    });
+    rec('見込みを出せない行は「これから」に理由を添える',
+        !!todoNote && (/標準の計算値/.test(todoNote.text) || !!todoNote.title),
+        JSON.stringify(todoNote));
+
+    /* ---- 6.8) 来た道を戻る（§9.407、利用者の指摘①） ----
+       「戻るボタンから戻ったときに、作業スケジュール一覧に戻れず、全体の
+         スケジュール一覧に戻ってしまう」
+       **送り出した段へ返す**こと。ここは刃組の段から送り出しているので、
+       戻り先も刃組の段でなければならない。 */
+    await page.click('#scBladeBody [data-open-blade]');
+    await W.until(page, () => !!document.querySelector('#bladeSetPanel:not([hidden])'),
+                  null, { ms: 15000, what: '一覧から刃組ガイダンスへ' });
+    const backLabel = await page.evaluate(() => {
+     const e = document.querySelector('#bsFrom');
+     return e && !e.hidden ? (e.textContent || '') : '';
+    });
+    rec('戻るボタンが戻り先を名指しする（思い出させない）',
+        /刃組スケジュール一覧へ戻る/.test(backLabel), backLabel.slice(0, 40));
+    await page.click('#bsFrom');
+    await W.until(page, () => {
+     const b = document.querySelector('#scBladeBody');
+     return document.body.classList.contains('sc-mode') && !!b && !b.hidden;
+    }, null, { ms: 20000, what: '刃組スケジュール一覧へ戻る' });
+    const backTo = await page.evaluate(() => ({
+     blade: !(document.querySelector('#scBladeBody') || {}).hidden,
+     board: !(document.querySelector('#scBoard') || {}).hidden
+    }));
+    rec('来た段（刃組スケジュール一覧）へ戻る（俯瞰ボードへ落ちない）',
+        backTo.blade && !backTo.board, JSON.stringify(backTo));
+
     /* 戻れること（行き止まりを作らない・§CLAUDE 4）。 */
     await page.click('#scModeSingle');
     await W.until(page, () => {

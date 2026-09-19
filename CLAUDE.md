@@ -116,9 +116,9 @@
 「くわしく」の先**（[`docs/decisions/`](docs/decisions/README.md)）にある。
 直す場所が分かっている規則は、そこを開いてから触る。
 
-（681件。「固定する網」は `tests/run_all.sh <名前>` で回す）
+（689件。「固定する網」は `tests/run_all.sh <名前>` で回す）
 
-### 起動・停止・監視（34件）
+### 起動・停止・監視（36件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -128,6 +128,8 @@
 | `program/`の4本は`import _pycache_bootstrap`→`import _approot`の順で通す（置き場が先・探索先が次） | `test_faststart.py` | [§9.406](docs/decisions/9.406.md) |
 | `backend`から素の`from app import app`を書かない。答えは`app_module.flask_app()`の1箇所 | `test_scowner.py` | [§9.404](docs/decisions/9.404.md) |
 | ファイルを移すときは見張り（`pick_tests.py`・lintの対象・CI）も一緒に動かす | `test_pick.py` | [§9.404](docs/decisions/9.404.md) |
+| 起動モーダルは更新を当てているかを言い分ける（`skip`／`update`と、何が変わったかの理由） | `test_boot.py` | [§9.411](docs/decisions/9.411.md) |
+| ショートカットの行き先は`Start.vbs`1本、アイコンは`app_icon.py`が描く。作れない端末は理由を返す | `test_shortcut.py` | [§9.410](docs/decisions/9.410.md) |
 | 起動前の確認は`update.bat`（旧`setup.bat`）が受け持ち、刻印で飛ばす | `test_faststart.py` | [§9.225](docs/decisions/9.225.md) |
 | 入口の名前は「いつ押すか」を言う。旧名を入口として残さない（入口は1つ） | `test_faststart.py` | [§9.405](docs/decisions/9.405.md) |
 | 置き場・名前が変わった古いファイルは`MOVED_AWAY`で片付ける。**新しいほうが在るときだけ**（片方しか無いうちは触らない） | `test_faststart.py` | [§9.405](docs/decisions/9.405.md) |
@@ -522,7 +524,7 @@
 | 「選ばない」の札は空文字だけではない | `test_opblank.js` | [§9.246](docs/decisions/9.246.md) |
 | ロールは「設備名＋ロール名＋接触面＋径MAX＋径MIN＋備考」で1本 | `test_rollio.py` | [§9.246](docs/decisions/9.246.md) |
 
-### 刃組ガイダンス（47件）
+### 刃組ガイダンス（50件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -539,6 +541,9 @@
 | three.jsは同梱しない。読む先と版は`THREE_SRC`の1箇所、取りに行くのは**押したときだけ** | `test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
 | 部品を読めない端末では**字で断る**。模式図はそのまま使える | `test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
 | 段取りの順は`blockReason()`の1箇所。**進める手順が必ず1つ残る** | `test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
+| 刃組スケジュール一覧の行からも入れる（的は題名の横・道は`openRowLink()`の1本） | `test_bladeui.js` | [§9.408](docs/decisions/9.408.md) |
+| 標準の条件（既定値・基準値・刃の選び方）は`blade-core.js`の1箇所。刃は**材料を当ててから選ぶ** | `test_bladeui.js` | [§9.408](docs/decisions/9.408.md) |
+| 記録が無い段取りは標準の計算値を出し、**記録と見込みを字で書き分ける**（読めなければ計算しない） | `test_bladeui.js` | [§9.408](docs/decisions/9.408.md) |
 | 入口は段取りの行だけ。左メニューには置かない（文脈の無いまま開かせない） | `test_bladeui.js` | [§9.379](docs/decisions/9.379.md) |
 | 刃の状態は3つ。既定は「一般」、「専用」は`刃選択マスタ`に当たったときだけ | `test_bladeset.py`・`test_bladeui.js` | [§9.379](docs/decisions/9.379.md) |
 | 刃選択の条件は行ごとAND・最初に当たった1行。**条件が空の行は当たらない** | `test_bladeset.py`・`test_bladeui.js` | [§9.379](docs/decisions/9.379.md) |
@@ -574,7 +579,7 @@
 | 刃組スケジュール一覧は記録と予定を`stopId`で結ぶ。未記録は字で書く | `test_bladeui.js` | [§9.383](docs/decisions/9.383.md) |
 | 部材の並びは大きい寸法から。「種類×数」と「何種・何本」の両方を言う | `test_bladeui.js` | [§9.383](docs/decisions/9.383.md) |
 
-### 作業スケジュール（39件）
+### 作業スケジュール（40件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
@@ -597,6 +602,7 @@
 | 内訳の札は題名の一部ではない。答えるのは`nonWorkSubText()`の1箇所（紙も同じ1本） | `test_stopflow.js` | [§9.389](docs/decisions/9.389.md) |
 | 予定の内訳（サブカテゴリ）は`[明細JSON]`。触れるのは**設備停止の行だけ**（作業の写しを潰さない） | `test_stopsub.py` | [§9.389](docs/decisions/9.389.md) |
 | 作業スケジュールの「開始」は着手できる**全行**に出す（次の1本は現場が自由に選ぶ。先頭N行に絞らない） | `test_workable.js` | [§9.339](docs/decisions/9.339.md) |
+| 送り出した画面は**来た道の段へ戻す**（`open({mode})`）。段の名前は`SC_MODES`の1箇所 | `test_bladeui.js` | [§9.407](docs/decisions/9.407.md) |
 | 設備停止の行き先は`設備停止マスタ`の`[連携機能]`。行は持たない・語彙はサーバー | `test_bladeset.py`・`test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
 | 行き先の的は題名の横に別に立てる（行いっぱいは「選ぶ」・ダブルクリックは「直す」） | `test_bladeui.js` | [§9.377](docs/decisions/9.377.md) |
 | 予定の写しは「画面に出している項目だけ」元データから取り込み直す。空は「変わった」と読まない | `test_srcsync.js` | [§9.375](docs/decisions/9.375.md) |
@@ -724,10 +730,11 @@
 | 紙に出すのは「帳票だけの1枚もの」 | `test_rpprint.js` | [§9.244](docs/decisions/9.244.md) |
 | 帳票ブロックの中身はマトリクスで並べられる | `test_blockbuild.js` | [§9.245](docs/decisions/9.245.md) |
 
-### 画面の土台（14件）
+### 画面の土台（15件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 終了したらタブも閉じる。断られたときだけ案内を出す（「閉じました」と言わない） | `test_appquit.js` | [§9.409](docs/decisions/9.409.md) |
 | 拡張は登録表へ: あとに足す`on`／前で断る`gate`／丸ごと持つ`own`（`WL.measureHooks`・`WL.listHooks`）。被せも全置換も作らない | `test_patchlint.py`・`test_tolscale.js` | [§9.352](docs/decisions/9.352.md) |
 | 押す形をやめたら`cursor:pointer`も消す。押しても何も起きない物に指のカーソルを出さない | — | [§9.385](docs/decisions/9.385.md) |
 | マウスを乗せたら**押せることを動きで**言い（1px持ち上げ）、**仲間は群ごと薄く光らせる**（9%）。濃くすると選択中と誤読される | `test_msteps.js` | [§9.396](docs/decisions/9.396.md) |
@@ -744,10 +751,11 @@
 | モーダルは背景クリックで閉じない | `test_modalkeep.js` | [§9.221](docs/decisions/9.221.md) |
 | マスタの1行を直す窓は汎用モーダル1枚 | — | [§9.222](docs/decisions/9.222.md) |
 
-### 見た目（CSS・寸法・色）（48件）
+### 見た目（CSS・寸法・色）（49件）
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 濃い地に`--danger-bg`／`--muted`を当てない（実測1.1:1）。`--nav-*`から選び**重ねた色で測る** | `test_theme.js` | [§9.409](docs/decisions/9.409.md) |
 | 色のリテラルは増やさない（上限は`tests/fixtures/color_baseline.json`）。トークンと同じ値は`var()`で書く | `test_csslint.py` | [§9.350](docs/decisions/9.350.md) |
 | 選択肢の札に添える印は**2つまで・短く**。溢れると名前のほうが切れる | `test_stopflow.js` | [§9.400](docs/decisions/9.400.md) |
 | 連続して押すボタンは**大きさより「いつも同じ場所」**。手応えは結果を字で返すほうが受け持つ（実測 66→36px） | `test_scstop.js` | [§9.402](docs/decisions/9.402.md) |

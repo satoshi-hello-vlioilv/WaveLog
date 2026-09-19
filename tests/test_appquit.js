@@ -131,6 +131,37 @@ let b=null;
   await closed();
   rec('ここまで一度も終了していない',quitCalls===0,`quit=${quitCalls}回`);
 
+  /* ---- 4.5) 終了したらタブも閉じる（§9.409、利用者の指示④） --------
+     「アプリ終了ボタンで終了時、タブに残らず、そのままスッキリ終了させて
+       ください」
+     `window.close()`が通るのは**スクリプトが開いた窓**だけなので、毎日の
+     入口（Start.vbs → 既定のブラウザ）で開いたタブでは断られる端末がある。
+     ここでは**閉じようとすること**と、**断られたときだけ案内が出る**ことを
+     見る（本当に閉じるとこの先のテストが動かないので、`close`は差し替える）。
+     終了の口は上のルートが受け止めるので、サーバーは落ちない。 */
+  await page.evaluate(()=>{
+   window.__closeTried=0;
+   window.close=()=>{window.__closeTried++};   // 断るブラウザのふり
+   try{window.measureDirty=false}catch(e){}
+  });
+  await page.click('#appQuit');
+  await page.waitForSelector('#appConfirmModal:not([hidden])',{timeout:10000});
+  await page.click('#appConfirmOk');
+  await page.waitForFunction(()=>window.__closeTried>0,null,{timeout:10000});
+  rec('終了したらタブを閉じにいく',quitCalls===1,`quit=${quitCalls}回 close=`
+      +String(await page.evaluate(()=>window.__closeTried)));
+  await page.waitForFunction(()=>!document.getElementById('appQuitDone').hidden,
+                             null,{timeout:10000});
+  const done=await page.evaluate(()=>({
+   文:(document.getElementById('appQuitDone')||{}).innerText.replace(/\s+/g,' ')}));
+  rec('閉じられなかったときだけ案内を出す（黙って何も起きないを残さない）',
+      /終了しました/.test(done.文),done.文.slice(0,60));
+  /* **「閉じました」と言わない**——言った直後に閉じなければ、その字が嘘になる。 */
+  rec('閉じられなかった理由まで書く',/自動で閉じられませんでした/.test(done.文),
+      done.文.slice(0,140));
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
+
   /* ---- 5) 書込役が応答しないときの引き取り（§9.301 ①） -----------
      **応答を差し替えて「応答しない書込役」を作る**——実機でその状態を
      待つことはできないし、判定はサーバーが持つので画面は答えを出すだけ
@@ -211,7 +242,8 @@ let b=null;
   await page.waitForFunction(()=>window.__takeDone||true,null,{timeout:2000}).catch(()=>{});
   await page.waitForTimeout(1200);
   rec('確認してから引き取る（口を1回だけ叩く）',takeCalls===1,`take=${takeCalls}回`);
-  rec('最後まで一度も終了していない',quitCalls===0,`quit=${quitCalls}回`);
+  /* 押したのは 4.5) の1回だけ（そこも口はルートが受け止めている）。 */
+  rec('終了の口を叩いたのは「終了する」を押した1回だけ',quitCalls===1,`quit=${quitCalls}回`);
  }catch(e){
   console.error('FATAL',e);rec('例外なく終わる',false,e.message);
  }finally{

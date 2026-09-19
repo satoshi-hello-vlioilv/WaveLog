@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>起動モーダル 見栄え5案（骨格は案1＋案2の複合）</title>
+<!--
+  §9.411 第2回。利用者の指示:
+   「案1と案2の複合が良いのですが、**見栄えデザインとアイコンを変えたい**です。
+     さらに5案練ってください。」
+
+  **骨格は5案とも同じ**（案1のカード＋案2の畳み）:
+    ① 見出し … マーク・アプリ名・版
+    ② いまの段階（大きく）＋ %（右）＋ 進捗バー
+    ③ 済んだ段は **1行に畳む**（「実行環境を確認ほか2件 完了」）
+    ④ **更新の帯**（反映中／なし）——同じ場所で言い分ける
+    ⑤ これからの段を薄く1行 ＋ 経過秒・いま何をしているか
+  変えたのは **配色・質感・字づかい・アイコン** だけ。
+  上の切り替えで「更新なし／反映中／失敗」を5案いっぺんに見比べられる。
+-->
+<style>
+ *{box-sizing:border-box}
+ body{margin:0;padding:26px 22px 60px;background:#0b1118;color:#e8eef2;
+  font-family:"Segoe UI","Meiryo",system-ui,sans-serif;font-size:14px;line-height:1.5}
+ h1{font-size:19px;margin:0 0 6px}
+ .lead{margin:0 0 16px;color:#9fb0ba;font-size:13px;max-width:82ch}
+ .lead b{color:#e8eef2}
+ .switch{display:flex;gap:8px;align-items:center;margin:0 0 24px;flex-wrap:wrap}
+ .switch span{font-size:12px;color:#7c8f9a;margin-right:4px}
+ .switch button{padding:7px 14px;border-radius:999px;border:1px solid #27343d;
+  background:#141c24;color:#9fb0ba;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
+ .switch button.on{background:#2ec9c0;border-color:#2ec9c0;color:#06222a}
+ .grid{display:grid;gap:24px;grid-template-columns:repeat(auto-fill,minmax(540px,1fr));align-items:start}
+ .case{border:1px solid #1f2a33;border-radius:16px;padding:16px;background:#0e151c}
+ .case h2{margin:0 0 4px;font-size:15px}
+ .case h2 i{font-style:normal;color:#2ec9c0;margin-right:7px}
+ .case .why{margin:0 0 12px;font-size:12.5px;color:#8ea0ab}
+ .case .why b{color:#c7d4db}
+ .icons{display:flex;align-items:flex-end;gap:12px;margin:12px 0 0;padding:10px 12px;
+  border:1px dashed #263440;border-radius:10px;background:#0b1118}
+ .icons small{color:#7c8f9a;font-size:11px;margin-right:2px}
+ .icons .lab{font-size:10px;color:#6d808c;text-align:center;display:block;margin-top:3px}
+ .screen{display:flex;justify-content:center;padding:20px 12px;border-radius:12px}
+
+ /* ============ 骨格（5案で共通・ここは変えない） ============ */
+ .card{width:100%;max-width:490px;padding:24px 26px 20px;border-radius:var(--r,16px);
+  background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow)}
+ .head{display:flex;align-items:center;gap:12px;margin-bottom:var(--headgap,18px)}
+ .head .mark{flex:0 0 auto}
+ .head .t{flex:1;min-width:0}
+ .head h3{margin:0;font-size:var(--titlefs,15px);font-weight:var(--titlefw,650);
+  letter-spacing:var(--titlels,0);color:var(--ink)}
+ .head .sub{margin:2px 0 0;font-size:10.5px;color:var(--ink3);letter-spacing:.2em}
+ .ver{padding:3px 9px;border-radius:var(--chipr,999px);font-size:11px;font-weight:700;
+  color:var(--accent);background:var(--accentBg);border:1px solid var(--accentLine);white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+ .now{display:flex;align-items:baseline;gap:10px;margin:0 0 9px}
+ .now b{font-size:var(--nowfs,17px);font-weight:var(--nowfw,650);color:var(--ink)}
+ .now .pct{margin-left:auto;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums;
+  font-size:14px}
+ .bar{height:var(--barh,6px);border-radius:var(--barr,999px);background:var(--track);overflow:hidden}
+ .bar i{display:block;height:100%;border-radius:inherit;background:var(--fill);transition:width .4s}
+ .folded{display:flex;align-items:center;gap:8px;margin:12px 0 0;font-size:12px;color:var(--ink3)}
+ .folded .ck{width:15px;height:15px;border-radius:var(--ckr,50%);background:var(--doneBg);
+  color:var(--doneFg);display:grid;place-items:center;font-size:9px;flex:0 0 auto}
+ .work{display:flex;gap:9px;align-items:flex-start;margin:10px 0 0;padding:8px 11px;
+  border-radius:var(--workr,10px);font-size:12px;border:1px solid var(--line);background:var(--workBg)}
+ .work b{flex:0 0 auto;color:var(--ink2)}
+ .work.upd{border-color:var(--warnLine);background:var(--warnBg)}
+ .work.upd b{color:var(--warn)}
+ .work span{color:var(--ink3);min-width:0}
+ .rest{margin:11px 0 0;font-size:11.5px;color:var(--ink3);opacity:.85}
+ .meta{display:flex;gap:8px;margin:10px 0 0;padding-top:9px;border-top:1px solid var(--line);
+  font-size:11.5px;color:var(--ink3);font-variant-numeric:tabular-nums}
+ .meta .r{margin-left:auto;text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .fail{margin:11px 0 0;padding:9px 11px;border-radius:var(--workr,10px);font-size:12px;
+  border:1px solid var(--dangerLine);background:var(--dangerBg);color:var(--ink2)}
+ .fail b{color:var(--danger)}
+ .fail .acts{display:flex;gap:8px;margin-top:9px}
+ .fail button{padding:7px 12px;border:0;border-radius:8px;font:inherit;font-weight:700;
+  font-size:12px;color:var(--btnFg);background:var(--btnBg);cursor:pointer}
+ .fail button.ghost{background:transparent;border:1px solid var(--line);color:var(--ink2)}
+ [hidden]{display:none!important}
+
+ /* ============ A) Aurora Glass ============ */
+ .A{--card:rgba(255,255,255,.055);--line:rgba(255,255,255,.12);--ink:#eaf3f5;--ink2:#9fb9c0;
+  --ink3:#6f8c95;--accent:#2ec9c0;--accentBg:rgba(46,201,192,.12);--accentLine:rgba(46,201,192,.32);
+  --track:rgba(255,255,255,.10);--fill:linear-gradient(90deg,#0f8f9b,#2ec9c0);--doneBg:#0f8f9b;--doneFg:#06222a;
+  --workBg:rgba(255,255,255,.04);--warn:#f5a30a;--warnBg:rgba(245,163,10,.10);--warnLine:rgba(245,163,10,.38);
+  --danger:#ff6b6b;--dangerBg:rgba(255,107,107,.10);--dangerLine:rgba(255,107,107,.38);
+  --btnBg:linear-gradient(90deg,#2ec9c0,#0f8f9b);--btnFg:#06222a;--r:20px;--shadow:0 18px 44px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.07)}
+ .A .screen{background:radial-gradient(120% 90% at 12% -10%,rgba(46,201,192,.12),transparent 58%),
+  radial-gradient(90% 80% at 108% 108%,rgba(245,163,10,.07),transparent 55%),
+  linear-gradient(158deg,#0d2029,#12313a 46%,#0b1a21)}
+ .A .card{backdrop-filter:blur(16px)}
+
+ /* ============ B) Blueprint ============ */
+ .B{--card:rgba(10,30,48,.72);--line:rgba(120,190,230,.22);--ink:#dff0fb;--ink2:#a8c8de;
+  --ink3:#7699b1;--accent:#5fc8ff;--accentBg:rgba(95,200,255,.10);--accentLine:rgba(95,200,255,.35);
+  --track:rgba(120,190,230,.14);--fill:repeating-linear-gradient(90deg,#5fc8ff 0 7px,#3ba6dd 7px 12px);
+  --doneBg:#2f7fae;--doneFg:#04131f;--workBg:rgba(120,190,230,.07);
+  --warn:#ffcc55;--warnBg:rgba(255,204,85,.10);--warnLine:rgba(255,204,85,.38);
+  --danger:#ff8a8a;--dangerBg:rgba(255,138,138,.10);--dangerLine:rgba(255,138,138,.36);
+  --btnBg:#5fc8ff;--btnFg:#04131f;--r:6px;--chipr:4px;--workr:5px;--ckr:3px;--barh:8px;--barr:3px;
+  --titlels:.04em;--shadow:0 14px 34px rgba(0,0,0,.34)}
+ .B .screen{background:
+  repeating-linear-gradient(0deg,rgba(120,190,230,.07) 0 1px,transparent 1px 28px),
+  repeating-linear-gradient(90deg,rgba(120,190,230,.07) 0 1px,transparent 1px 28px),
+  linear-gradient(160deg,#07202f,#0a2a3d 55%,#061722)}
+ .B .now b,.B .ver,.B .meta{font-family:"Consolas","SF Mono",ui-monospace,monospace}
+
+ /* ============ C) Steel & Amber ============ */
+ .C{--card:linear-gradient(180deg,#232a30,#1a2025);--line:#39444d;--ink:#f0f2f3;--ink2:#b9c3ca;
+  --ink3:#8a969f;--accent:#f5a30a;--accentBg:rgba(245,163,10,.12);--accentLine:rgba(245,163,10,.40);
+  --track:#2b3339;--fill:linear-gradient(90deg,#b97407,#f5a30a);--doneBg:#6f7b84;--doneFg:#12171b;
+  --workBg:rgba(255,255,255,.04);--warn:#ffc355;--warnBg:rgba(245,163,10,.14);--warnLine:rgba(245,163,10,.45);
+  --danger:#ff7b6b;--dangerBg:rgba(255,123,107,.12);--dangerLine:rgba(255,123,107,.4);
+  --btnBg:linear-gradient(90deg,#f5a30a,#c07d05);--btnFg:#1a1204;--r:10px;--chipr:6px;--workr:8px;--ckr:4px;
+  --shadow:0 16px 36px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.06)}
+ .C .screen{background:linear-gradient(180deg,#14191d,#0d1114 70%),
+  repeating-linear-gradient(115deg,rgba(255,255,255,.025) 0 2px,transparent 2px 9px)}
+
+ /* ============ D) Soft Light ============ */
+ .D{--card:#ffffff;--line:#dfe6ea;--ink:#16323c;--ink2:#4e6874;--ink3:#7b909b;
+  --accent:#0d8f88;--accentBg:#e6f7f5;--accentLine:#a8ded9;--track:#e8eef1;
+  --fill:linear-gradient(90deg,#0d8f88,#2ec9c0);--doneBg:#0d8f88;--doneFg:#fff;--workBg:#f4f8fa;
+  --warn:#9a6200;--warnBg:#fff5e2;--warnLine:#f0cf95;--danger:#a32424;--dangerBg:#fdeaea;--dangerLine:#e0a3a3;
+  --btnBg:#0d8f88;--btnFg:#fff;--r:18px;--chipr:999px;--workr:12px;
+  --shadow:0 12px 30px rgba(22,50,60,.14),0 2px 6px rgba(22,50,60,.08)}
+ .D .screen{background:linear-gradient(160deg,#eef4f7,#dfeaef 60%,#e9f1f4)}
+
+ /* ============ E) Monochrome Precision ============ */
+ .E{--card:#101316;--line:#2a3035;--ink:#ffffff;--ink2:#c3cace;--ink3:#8b959b;
+  --accent:#2ec9c0;--accentBg:transparent;--accentLine:#2ec9c0;--track:#1c2124;
+  --fill:#2ec9c0;--doneBg:#ffffff;--doneFg:#101316;--workBg:#15191c;
+  --warn:#ffd34d;--warnBg:#1d1a10;--warnLine:#6b5a1d;--danger:#ff5a5a;--dangerBg:#1e1213;--dangerLine:#6b2626;
+  --btnBg:#ffffff;--btnFg:#101316;--r:2px;--chipr:2px;--workr:2px;--ckr:2px;--barh:10px;--barr:0;
+  --nowfs:20px;--nowfw:800;--titlefw:800;--titlels:-.01em;--headgap:22px;
+  --shadow:0 0 0 1px #000,0 20px 40px rgba(0,0,0,.5)}
+ .E .screen{background:#05070a}
+ .E .now b{letter-spacing:-.01em}
+ .E .pct{font-size:17px}
+</style>
+</head>
+<body>
+<h1>起動モーダル 見栄え5案（骨格は案1＋案2の複合で固定）</h1>
+<p class="lead">骨格は5案とも同じです——<b>いまの段階を大きく／済んだ段は1行に畳む／更新の帯は同じ場所／これからは薄く1行</b>。
+ 変えたのは<b>配色・質感・字づかい・アイコン</b>だけなので、<b>見栄えとアイコンだけ</b>を見比べてください。
+ 各案の下に<b>アイコンの実寸（16/24/32/48px）</b>を並べてあります（デスクトップのショートカットにも同じ絵を使います）。</p>
+<div class="switch">
+ <span>状態</span>
+ <button class="on" data-state="skip">更新なし（ふだんの起動）</button>
+ <button data-state="upd">更新を反映中</button>
+ <button data-state="fail">起動できなかった</button>
+</div>
+<div class="grid" id="grid"></div>
+
+<script>
+"use strict";
+const STEPS=['実行環境を確認','起動中のアプリを確認','必要な部品を確認','データの置き場所を確認',
+ 'アプリを読み込み','Webサーバーを起動','画面部品を読み込み','権限を確認','一覧を読み込み','表示を整える'];
+
+/* ---- アイコン（案ごとに別の絵）。1つのSVGで全寸法をまかなう ---- */
+const ICONS={
+ A:s=>`<svg viewBox="0 0 64 64" width="${s}" height="${s}">
+  <defs><linearGradient id="ag${s}" x1="0" y1="0" x2="1" y2="1">
+   <stop offset="0" stop-color="#14424e"/><stop offset="1" stop-color="#0c2530"/></linearGradient></defs>
+  <rect width="64" height="64" rx="16" fill="url(#ag${s})"/>
+  <path d="M8 40c7-17 11 9 17-6s11 11 17-4 9 5 13-3" fill="none" stroke="#2ec9c0"
+   stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="50" cy="19" r="6" fill="#f5a30a"/></svg>`,
+ B:s=>`<svg viewBox="0 0 64 64" width="${s}" height="${s}">
+  <rect width="64" height="64" rx="5" fill="#07202f" stroke="#3ba6dd" stroke-width="3"/>
+  <circle cx="32" cy="32" r="19" fill="none" stroke="#5fc8ff" stroke-width="5"/>
+  <circle cx="32" cy="32" r="6" fill="#5fc8ff"/>
+  <path d="M32 8v10M32 46v10" stroke="#ffcc55" stroke-width="5" stroke-linecap="round"/></svg>`,
+ C:s=>`<svg viewBox="0 0 64 64" width="${s}" height="${s}">
+  <defs><linearGradient id="cg${s}" x1="0" y1="0" x2="0" y2="1">
+   <stop offset="0" stop-color="#2b3339"/><stop offset="1" stop-color="#171c20"/></linearGradient></defs>
+  <rect width="64" height="64" rx="11" fill="url(#cg${s})"/>
+  <rect x="7" y="20" width="50" height="24" rx="4" fill="#c9d2d8"/>
+  <path d="M24 16v32M40 16v32" stroke="#f5a30a" stroke-width="5.5" stroke-linecap="round"/></svg>`,
+ D:s=>`<svg viewBox="0 0 64 64" width="${s}" height="${s}">
+  <rect width="64" height="64" rx="18" fill="#e6f7f5" stroke="#a8ded9" stroke-width="2"/>
+  <path d="M9 41c7-16 11 8 17-6s11 10 17-4 8 4 12-2" fill="none" stroke="#0d8f88"
+   stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="50" cy="19" r="6" fill="#f0a500"/></svg>`,
+ E:s=>`<svg viewBox="0 0 64 64" width="${s}" height="${s}">
+  <rect width="64" height="64" rx="3" fill="#101316"/>
+  <path d="M8 12l10 32 14-20 14 20 10-32" fill="none" stroke="#ffffff" stroke-width="7"
+   stroke-linejoin="round" stroke-linecap="square"/>
+  <path d="M8 56h48" stroke="#2ec9c0" stroke-width="6"/></svg>`
+};
+
+const CASES=[
+ {k:'A',name:'Aurora Glass（いまの系統を磨く）',
+  why:'<b>質感:</b> 紺のグラデにティールの光、すりガラスの層。丸み20px。<br>'
+     +'<b>アイコン:</b> いまの波形を整理（線を太く・ドットを大きく）——<b>見慣れた絵のまま可読性だけ上げる</b>。<br>'
+     +'<b>効き目:</b> 現場の「いつもの画面」の印象を壊さない。いちばん穏当。'},
+ {k:'B',name:'Blueprint（設計図）',
+  why:'<b>質感:</b> 方眼の地、細い罫、角は5px。数字と段階名は等幅。<br>'
+     +'<b>アイコン:</b> コイルを正面から見た環＋芯、上下に切り込み（琥珀）。<b>製品そのものを絵にする</b>。<br>'
+     +'<b>効き目:</b> 道具としての性格が出る。数字が読みやすい（等幅）。'},
+ {k:'C',name:'Steel &amp; Amber（鋼と琥珀）',
+  why:'<b>質感:</b> 鋼のような中性グレーに斜めのヘアライン、主役色は琥珀。<br>'
+     +'<b>アイコン:</b> 鋼帯を琥珀の刃で切り分ける形（この仕事そのもの）。16pxでも形が崩れない。<br>'
+     +'<b>効き目:</b> 設備の色味に近い。ティールを使わないので<b>他のアプリと混ざらない</b>。'},
+ {k:'D',name:'Soft Light（明るい・低刺激）',
+  why:'<b>質感:</b> 白いカードに淡い影。暗い画面が眩しい／浮く現場向け。<br>'
+     +'<b>アイコン:</b> 淡いティールのタイルに濃い波形。<b>白いデスクトップでも沈まない</b>。<br>'
+     +'<b>効き目:</b> 昼の現場・明るい事務所で見やすい。起動後のアプリ本体（明るい画面）と<b>地続き</b>。'},
+ {k:'E',name:'Monochrome Precision（計器）',
+  why:'<b>質感:</b> ほぼ黒＋白、角は立てる（2px）、進捗バーは太く10px。アクセントは1色だけ。<br>'
+     +'<b>アイコン:</b> 「W」を1本の折れ線で立て、ティールの基線を敷く。<br>'
+     +'<b>効き目:</b> 情報だけが立つ。<b>遠目・低視力でもいちばん読める</b>（文字を太く大きく）。'}
+];
+
+const grid=document.getElementById('grid');
+grid.innerHTML=CASES.map(c=>`
+ <section class="case ${c.k}">
+  <h2><i>${c.k}</i>${c.name}</h2>
+  <p class="why">${c.why}</p>
+  <div class="screen">
+   <div class="card">
+    <div class="head">
+     <span class="mark">${ICONS[c.k](40)}</span>
+     <div class="t"><h3>測定伝送システム</h3><p class="sub">STARTING UP</p></div>
+     <span class="ver">VER2.306.0</span>
+    </div>
+    <p class="now"><b data-now>アプリを読み込み</b><span class="pct" data-pct>45%</span></p>
+    <div class="bar"><i data-fill style="width:45%"></i></div>
+    <p class="folded" data-folded><span class="ck">✓</span><span data-foldedt></span></p>
+    <div class="work" data-work><b data-workt></b><span data-workw></span></div>
+    <p class="rest" data-rest></p>
+    <p class="meta"><span>経過 <span data-sec>2</span> 秒</span><span class="r" data-detail></span></p>
+    <div class="fail" data-fail hidden>
+     <b>次の一手</b> start_app.bat を直接ダブルクリックし、黒い画面のエラーを見る／Python が入っているか／ポート5029が空いているか
+     <div class="acts"><button>もう一度確認する</button><button class="ghost">ログを開く</button></div>
+    </div>
+   </div>
+  </div>
+  <div class="icons"><small>アイコン実寸</small>
+   ${[16,24,32,48].map(s=>`<span><span style="display:block">${ICONS[c.k](s)}</span><b class="lab">${s}px</b></span>`).join('')}
+  </div>
+ </section>`).join('');
+
+let state='skip';
+function render(){
+ const upd=state==='upd',fail=state==='fail';
+ const at=upd?2:4,pct=fail?100:Math.round((at+.5)/10*100);
+ document.querySelectorAll('.case').forEach(box=>{
+  const q=s=>box.querySelector(s);
+  q('[data-now]').textContent=fail?'起動できませんでした':(upd?'更新を反映しています':STEPS[at]);
+  q('[data-pct]').textContent=pct+'%';
+  q('[data-fill]').style.width=pct+'%';
+  q('[data-fill]').style.background=fail?'#c0392b':'';
+  q('[data-foldedt]').textContent=`${STEPS[0]}ほか${at-1}件 完了`;
+  q('[data-folded]').hidden=at<1;
+  const w=q('[data-work]');
+  w.className='work '+(upd?'upd':'');
+  w.hidden=fail;
+  q('[data-workt]').textContent=upd?'更新を反映中':'更新なし';
+  q('[data-workw]').textContent=upd
+   ?'変わったもの: アプリの版（2.305.0 → 2.306.0）／バイトコードを作り直しています'
+   :'前回の確認（update.bat）のまま起動します';
+  q('[data-rest]').textContent=fail?'':`このあと: ${STEPS.slice(at+1,6).join('・')} ／ 画面を組み立て（4段階）`;
+  q('[data-sec]').textContent=fail?90:(upd?7:2);
+  q('[data-detail]').textContent=fail?'待機時間内に応答がありません'
+   :(upd?'バイトコードを作り直しています':'flask を確認しています');
+  q('[data-fail]').hidden=!fail;
+ });
+}
+document.querySelectorAll('.switch button').forEach(b=>b.onclick=()=>{
+ document.querySelectorAll('.switch button').forEach(x=>x.classList.toggle('on',x===b));
+ state=b.dataset.state;render();
+});
+render();
+</script>
+</body>
+</html>

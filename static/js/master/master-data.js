@@ -1917,6 +1917,112 @@
   db_mirror_enabled:{auto:'auto: 写して読む',on:'on: 写して読む',off:'off: 共有を直接読む'},
   rne_extract_enabled:{auto:'auto: localのときだけ',on:'on: 定期実行',off:'off: 手動のみ'},
  };
+ /* ---------- デスクトップの起動アイコン（§9.410、利用者の指示⑤） ----------
+    「デスクトップにWaveLogの起動ショートカットを作成する機能が欲しいです。
+      アイコンも設定できますか？」
+
+    **この端末の話**なので「この端末」の章に置く（§9.208 ⑨の章立て）。
+    作れるか・どこへ作るか・行き先は**サーバーが答える**（§9.163）ので、
+    画面はその答えを出すだけ——作れない端末では**ボタンごと出さず理由を書く**
+    （押せるのに何も起きない的を残さない・§CLAUDE 4）。
+    絵は2つから選べる（利用者の問い「アイコンも設定できますか？」）。 */
+ const shortcutState={loaded:false,info:null,error:''};
+
+ function pcShortcutHtml(){
+  return `<div class="pc-sc" id="pcShortcut">
+   <div class="pc-sc-head"><b>デスクトップの起動アイコン</b>
+    <span class="pc-sc-state" id="pcScState">確認しています…</span></div>
+   <div class="pc-sc-body" id="pcScBody" hidden>
+    <label class="mm-field"><span>アイコンの名前</span>
+     <input id="pcScName" type="text" maxlength="40" autocomplete="off" spellcheck="false">
+     <small class="mm-field-hint">デスクトップに出る字です。同じ名前が既にあれば作り直します。</small></label>
+    <div class="mm-field"><span>絵</span>
+     <div class="pc-sc-icon">
+      <!-- **見本は実物と同じ絵**（§9.374）。サーバーが .ico を描くのと同じ
+           1箇所（app_icon.render()）から出すので、色を書き写さない。 -->
+      <label><input type="radio" name="pcScIcon" value="default" checked data-sc-icon>
+       <img class="pc-sc-mark" src="/api/app/icon.png?size=64" alt="" width="22" height="22">
+       <span>アプリのマーク</span></label>
+      <label><input type="radio" name="pcScIcon" value="file" data-sc-icon>
+       <span>ファイルを指定</span></label>
+     </div>
+     <span class="mm-path" data-path-drop="shortcut_icon" id="pcScIconPath" hidden>
+      <input data-field="shortcut_icon" id="pcScIconFile" type="text"
+        placeholder="例: D:\\icons\\wavelog.ico" autocomplete="off" spellcheck="false">
+      <button type="button" class="mm-path-browse" data-path-browse="shortcut_icon" data-path-mode="file">参照…</button>
+     </span>
+     <small class="mm-field-hint">.ico / .exe / .dll が使えます（.exe・.dll は中の1つ目の絵を使います）。</small></div>
+    <div class="pc-sc-act">
+     <button type="button" class="mm-btn-primary" id="pcScMake">デスクトップに作る</button>
+     <small class="pc-sc-where" id="pcScWhere"></small>
+    </div>
+   </div>
+  </div>`;
+ }
+ /* 状態を画面へ。**「作れない」も同じ場所で言う**（探させない）。 */
+ function renderShortcut(){
+  const state=$('#pcScState'),box=$('#pcScBody'),where=$('#pcScWhere');
+  if(!state)return;
+  const info=shortcutState.info;
+  if(shortcutState.error){
+   state.className='pc-sc-state is-bad';state.textContent=shortcutState.error;
+   if(box)box.hidden=true;return;
+  }
+  if(!shortcutState.loaded||!info){state.className='pc-sc-state';state.textContent='確認しています…';return}
+  if(!info.supported){
+   state.className='pc-sc-state is-bad';state.textContent=info.why||'この端末では作れません';
+   if(box)box.hidden=true;return;
+  }
+  state.className='pc-sc-state '+(info.exists?'is-done':'is-todo');
+  state.textContent=info.exists?`作成済み（${info.updatedAt||'日時不明'}）`:'まだ作っていません';
+  if(box)box.hidden=false;
+  const name=$('#pcScName');
+  if(name&&!name.value)name.value=info.name||info.defaultName||'';
+  if(name)name.placeholder=info.defaultName||'';
+  /* **作成先と行き先を書く**（§CLAUDE 6 出どころを出す）——どこに何ができるのか
+     分からないまま押させない。 */
+  if(where)where.innerHTML=`作成先 <code>${esc(info.link||'')}</code><br>`
+   +`起動するもの <code>${esc(info.target||'')}</code>`;
+ }
+ async function loadShortcut(){
+  try{
+   shortcutState.info=await api('/api/app/shortcut');
+   shortcutState.error='';
+  }catch(e){
+   shortcutState.info=null;
+   shortcutState.error='ショートカットの状態を読めませんでした: '+(e&&e.message||e);
+  }
+  shortcutState.loaded=true;
+  renderShortcut();
+ }
+ /* 作る。**結果は同じ場所で言う**（トーストは消えるので、状態の字も直す）。 */
+ async function makeShortcut(){
+  const btn=$('#pcScMake');if(!btn)return;
+  const picked=document.querySelector('[data-sc-icon]:checked');
+  const useFile=picked&&picked.value==='file';
+  const iconEl=$('#pcScIconFile');
+  const icon=useFile?String((iconEl&&iconEl.value)||'').trim():'';
+  if(useFile&&!icon){
+   showToast('アイコンのファイルを指定してください','「参照…」から .ico / .exe / .dll を選べます',5000);
+   if(iconEl)iconEl.focus();
+   return;
+  }
+  const label=btn.textContent;
+  btn.disabled=true;btn.textContent='作っています…';
+  try{
+   const r=await api('/api/app/shortcut',{method:'POST',
+     headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({name:String(($('#pcScName')||{}).value||'').trim(),icon})});
+   shortcutState.info=r;shortcutState.error='';shortcutState.loaded=true;
+   renderShortcut();
+   showToast('デスクトップに作りました',r.link||'',4600);
+  }catch(e){
+   showToast('作れませんでした',String(e&&e.message||e),6000);
+  }finally{
+   btn.disabled=false;btn.textContent=label;
+  }
+ }
+
  function renderPathConfigForm(){
   const form=$('#masterMaintForm');if(!form)return;
   const v=pathConfigState.values||{};
@@ -1958,6 +2064,7 @@
      <small class="mm-field-hint">アクセス権限マスタとの照合・記録の「更新端末名」・編集中の持ち主表示は、
       <b>すべてこの名前</b>を見ます。自動で取れない端末だけここで名乗ってください。</small>
      ${pcStateHtml('pc_name')}</label>
+    ${pcShortcutHtml()}
     <div id="pcNotes"></div>`);
   const SEC_READ=group('read','どこから読むか','サーバー再起動後に反映','is-restart',`
     <div class="pc-source-list" id="pcSourceList"></div>
@@ -2096,6 +2203,16 @@
    document.querySelector(`#masterMaintNav [data-master="${b.dataset.pcGoto}"]`)?.click();
   });
   bindInputHelpers(form);
+  /* デスクトップの起動アイコン（§9.410）。**状態は開いたときに取りに行く**
+     ——押すまで分からないと、作ってあるかどうかで迷う（思い出させない）。 */
+  const scMake=$('#pcScMake');if(scMake)scMake.onclick=()=>makeShortcut();
+  form.querySelectorAll('[data-sc-icon]').forEach(r=>{r.onchange=()=>{
+   const box=$('#pcScIconPath');
+   if(box)box.hidden=r.value!=='file'||!r.checked;
+   if(!box||box.hidden)return;
+   const el=$('#pcScIconFile');if(el)el.focus();
+  }});
+  renderShortcut();loadShortcut();
   /* 他の画面から「置き場で決める」で来たときは、その段を開いて印を付ける。
      **一度きり**——次に共通設定を開いたときまで覚えていると、身に覚えの
      無い段が開く。 */

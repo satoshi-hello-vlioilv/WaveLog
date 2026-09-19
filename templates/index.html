@@ -45,7 +45,9 @@ try{window.__wlTabId=(self.crypto&&crypto.randomUUID)?crypto.randomUUID()
 <div class="app-quit-done" id="appQuitDone" hidden role="status">
  <div class="aq-card">
   <b>アプリを終了しました</b>
-  <p class="aq-note">このタブは閉じてかまいません。もう一度使うときは、いつもの起動ファイル（Start.vbs / start_app.bat）から開いてください。</p>
+  <!-- ここが見えている＝**ブラウザがタブを閉じるのを断った**（§9.409）。
+       「閉じてください」ではなく、なぜ閉じないのかまで書く（推測させない）。 -->
+  <p class="aq-note">このタブは自動で閉じられませんでした（ブラウザが開いたタブは、ページから閉じられないことがあります）。<b>このタブは閉じてかまいません。</b>もう一度使うときは、いつもの起動ファイル（Start.vbs / デスクトップのショートカット）から開いてください。</p>
   <div class="aq-what" id="appQuitWhat"></div>
  </div>
 </div>

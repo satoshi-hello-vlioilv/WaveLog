@@ -179,6 +179,11 @@ _ENDPOINT_EXTRA_MODES={
  # scheduleへ開けているのと同じ理由でここも開ける。
  # 対象モードごとに保存先が分かれるので、scheduleで作った条件がeditの一覧へ
  # 混ざることはない。
+ # デスクトップの起動ショートカット（§9.410）。**この端末のデスクトップに
+ # `.lnk`を1本置くだけ**で、共有にもマスタにも測定データにも触れない。
+ # 現場の端末（scheduleモード）・閲覧専用の端末こそ入口のアイコンが要るので、
+ # 3モードとも通す（ここを開け忘れると、押しても403で黙って弾かれる）。
+ 'core.app_shortcut_create':{'edit','view','schedule'},
  'masters.filter_preset_register':{'schedule'},
  'masters.filter_preset_delete':{'schedule'},
  'masters.filter_preset_use':{'schedule'},
