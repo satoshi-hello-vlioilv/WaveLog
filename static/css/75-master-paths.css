@@ -215,6 +215,38 @@
 .pc-who b{font-size:var(--fs);color:var(--ink)}
 .pc-who i{font-style:normal;font-size:var(--fs-micro);color:var(--muted)}
 
+/* ---- デスクトップの起動アイコン（§9.410、利用者の指示⑤） ----
+   「この端末」の章の中の1ブロック。**状態は見出しの横で1度だけ言い**
+   （作成済み／まだ／作れない）、作成先と行き先は押す前に読めるところへ置く
+   （§CLAUDE 6 出どころ・§CLAUDE 2 次にすることを1つだけ指す）。 */
+.pc-sc{display:flex;flex-direction:column;gap:var(--gap-inline);
+  padding:var(--space-2);border:1px solid var(--line-soft);
+  border-radius:var(--radius-sm);background:var(--surface-2)}
+.pc-sc-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline)}
+.pc-sc-head b{font-size:var(--fs-sm);color:var(--ink)}
+/* 状態は**色だけで言わない**（§CLAUDE 3）——字が分類名そのもの。 */
+.pc-sc-state{font-size:var(--fs-micro);font-weight:700;color:var(--muted)}
+.pc-sc-state.is-done{color:var(--teal-dark)}
+.pc-sc-state.is-todo{color:var(--ink-3)}
+.pc-sc-state.is-bad{color:var(--danger)}
+.pc-sc-body{display:flex;flex-direction:column;gap:var(--gap-inline)}
+.pc-sc-body[hidden]{display:none}
+/* 器は中身の長さから決める（§CLAUDE 11）——40字までの名前に器いっぱいを
+   与えない。幅は規格（`--w-*`）へ丸める。 */
+.pc-sc-body #pcScName{max-width:var(--w-lg)}
+/* パスは長いが、器いっぱい（実測1100px）は要らない。本文1行ぶんの規格幅
+   （--w-2xl）へ丸め、余りは空白にする（§CLAUDE 11）。 */
+.pc-sc-body .mm-path{max-width:var(--w-2xl)}
+.pc-sc-icon{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap}
+.pc-sc-icon label{display:flex;align-items:center;gap:var(--space-1);
+  font-size:var(--fs-sm);color:var(--ink-2);cursor:pointer}
+/* 見本は**実物と同じ絵**（§9.374）——`.ico`を描くのと同じ1箇所から
+   `/api/app/icon.png`で取る。ここで描き直さない。 */
+.pc-sc-mark{border-radius:var(--radius-xs);display:inline-block;vertical-align:middle}
+.pc-sc-act{display:flex;align-items:center;gap:var(--gap-section);flex-wrap:wrap}
+.pc-sc-where{font-size:var(--fs-micro);color:var(--muted);line-height:1.5}
+.pc-sc-where code{font-size:var(--fs-micro)}
+
 /* ---- 共有の置き場を1枚で（§9.260） ----
    作業予定・測定データ・マスタの3行。**ラベル列は固定幅**で縦にそろえる
    （CLAUDE 画面基準 9。autoだと行ごとに値の左端がずれる）。 */

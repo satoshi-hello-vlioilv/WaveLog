@@ -134,8 +134,17 @@
    ——普段は補助文字の色で、触れたときだけ危険の色になる（§3。色だけで
    伝えないので、文字は「アプリを終了」と書いてある）。 */
 .nav-foot{margin-top:auto;padding-top:var(--space-3);border-top:1px solid #2c4750}
-.nav-foot .nav-item--quit{color:var(--muted)}
-.nav-foot .nav-item--quit:hover{background:var(--danger-bg,#5b2b2b);color:#ffd7d7}
+/* 素の状態も**濃い地用のトークン**で書く（§9.409）。`--muted`は明るい地用で、
+   ナビの地（--nav）へ載せると 2.55:1＝本文の線（4.5:1）を下回っていた。
+   控えめに置くこと（§CLAUDE 5 危ない操作を主要動線に置かない）と、
+   読めないことは別。 */
+.nav-foot .nav-item--quit{color:var(--nav-ink-2)}
+/* 濃い地の上の「危ない操作」はトークンから選ぶ（§9.409）。以前は明るい地用の
+   `--danger-bg`（#fdeaea）に薄い赤の字（#ffd7d7）で、重ねると1.1:1＝読めない。 */
+.nav-foot .nav-item--quit:hover{background:var(--nav-danger-bg);color:var(--nav-danger-fg);
+  border-color:var(--nav-danger-border)}
+.nav-foot .nav-item--quit:hover .nav-icon{opacity:1}
+.nav-foot .nav-item--quit:focus-visible{background:var(--nav-danger-bg);color:var(--nav-danger-fg)}
 /* 終了したあとの覆い。**事故のように見せない**（§3）——自分で終了したので、
    「接続が切れました」の帯は出さずにこちらを出す。 */
 .app-quit-done{
@@ -220,7 +229,7 @@
 .nav-item--view.active .nav-icon{opacity:1}
 .nav-item--view.active:hover{background:var(--teal)}
 /* 管理（低頻度操作。視覚的に控えめにして主要導線と区別する） */
-.nav-item--admin{color:#84a3a9;font-weight:600}
+.nav-item--admin{color:var(--nav-ink-2);font-weight:600}
 .nav-item--admin .nav-icon{opacity:.6}
 .nav-item--admin:hover{background:#22434d;color:#cfe6ea}
 /* 選択中(現在地)の見た目は種類を問わず揃える。以前は nav-item--view だけに

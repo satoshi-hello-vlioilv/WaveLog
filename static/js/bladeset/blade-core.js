@@ -898,6 +898,109 @@
   return null;
  }
 
+ /* ====================== 標準の条件（§9.408、利用者の指示②） ======================
+    「刃組の標準の計算値で使用スペーサなど一覧内に関連情報が出るようにしてほしい」
+
+    **画面を開かずに「この予定を標準どおり組んだらどうなるか」を出せる**ように、
+    今まで画面（`blade-view.js`）だけが持っていた3つ——既定値・基準値の当て方・
+    刃の選び方——をここへ移した。刃組スケジュール一覧の見込みと、刃組
+    ガイダンスの画面が**同じ1箇所**を通るようにするため（2箇所で計算すると、
+    一覧の「使用スペーサー」と画面の刃組表が静かに食い違う）。 */
+
+ /* 画面で選んでいない状態の出発点。**ここが既定の唯一の置き場**。 */
+ function defaultState() {
+  return {
+   equipment: '',
+   align: 'none', canNk: true, nkWidth: 30,
+   knife: 318.2, thick: 1.3, tk: 10, clr: 0.15, ov: 0.2,
+   /* クリアランスは**板厚の10%が基本**（§9.378）。板厚を変えたら引き直す。
+      手で打った時点で `clrAuto` を落とし、以降は触らない——利用者が入れた値を
+      「保存されていない既定」にしない（§9.367 と同じ考え方）。 */
+   clrAuto: true,
+   W: 1170, trimMode: 'even', osTrim: 20,
+   lots: [{ name: 'LOT1', w: 279.8, n: 4 }],
+   order: [0, 0, 0, 0],
+   bigMode: 'auto', smallMode: 'auto', bigTh: 39.5, smallTh: 38.0,
+   /* 刃組の道具なので、はじめから段取り向き（DS左＝部材を入れる側から見た並び）。 */
+   carriage: 'A', bladeGroup: '', flip: true
+  };
+ }
+ /* クリアランスの答えは**ここ1箇所**（§9.378、利用者の指示「目安として板厚の
+    10％としておいてもらい、将来的には材質の条件も増える可能性がありますが
+    マスタ化するなどでクリアランスマスタから常に取れるようにするつもりです」）。
+    いまは率（`刃組基準値マスタ`の`クリアランス率`）×板厚。材質ごとの値が
+    要るようになったら、**この関数の中だけ**をマスタ引きへ差し替える。
+    桁は板厚と同じ 0.01 まで（測る側が読める桁に合わせる）。 */
+ function clearanceRate(M) {
+  const r = M && M.P ? +M.P.clearanceRate : NaN;
+  return Number.isFinite(r) && r > 0 ? r : 0.1;
+ }
+ function clearanceFor(M, t) {
+  const v = (+t || 0) * clearanceRate(M);
+  return v > 0 ? +v.toFixed(2) : 0;
+ }
+ /* 使う刃を決める（§9.379、利用者の指示2）。
+      ふつう … 状態が「一般」の刃
+      例外 …… `刃選択マスタ` の条件に当たったら、その組の「専用」の刃
+    「メンテナンス中」は**どちらでも選ばない**。
+    決めたら `st.pick` に「なぜその組か」を残す——画面が理由を出せないと、
+    利用者には「勝手に別の刃になった」としか見えない（§CLAUDE 6 出どころを出す）。 */
+ function applyBladePick(st, M) {
+  const gen = M.bladeGeneral || '一般', sp = M.bladeSpecial || '専用';
+  const hit = pickGroup(M.picks, pickCtx(st, M), M.pickFields);
+  st.pick = hit ? { group: hit.group, rule: hit.rule } : null;
+  const ok = b => b.currentDia && (hit
+   ? (b.status === sp && b.group === hit.group)
+   : b.status === gen);
+  let use = (M.blades || []).filter(ok);
+  /* 条件に当たったのに、その組の刃が1枚も無い——**黙って一般へ落とさない**。
+     理由を持ったまま一般で描き、画面が「当たったが刃が無い」と言えるようにする。 */
+  if (hit && !use.length) {
+   st.pick = { group: hit.group, rule: hit.rule, missing: true };
+   use = (M.blades || []).filter(b => b.currentDia && b.status === gen);
+  }
+  use = use.sort((a, b) => (b.thickness || 0) - (a.thickness || 0));
+  if (use.length) { st.knife = use[0].currentDia; if (use[0].thickness) st.tk = use[0].thickness; }
+  return st;
+ }
+ /* 基準値から**既定値**を入れる。**利用者が触った値は上書きしない**のは
+    呼ぶ側の責任（画面は設備を開き直したときだけ呼ぶ・§9.361）。 */
+ function applyStandards(st, M) {
+  const P = (M && M.P) || {};
+  if (P.bladeThickness != null) st.tk = +P.bladeThickness;
+  if (P.clearance != null) st.clr = +P.clearance;
+  if (P.overlap != null) st.ov = +P.overlap;
+  if (P.scrapWidth != null) st.nkWidth = +P.scrapWidth;
+  st.canNk = P.canNakanuki !== false;
+  applyBladePick(st, M);
+  return st;
+ }
+ /* 予定1件（`seed`）を標準どおり組んだ状態。**条が1本も読めないときは`null`**
+    ——既定の見本（LOT1×4）で計算すると、予定と何の関係も無い数字が
+    「使用スペーサー」として並ぶ（0で埋めないのと同じ理由・§9.231）。
+    刃の選び方は**材料を当てたあとに**決める（条数・板厚・幅が条件になるので、
+    既定のまま選ぶと当たる行が変わる）。 */
+ function standardState(seed, M) {
+  const s = seed || {};
+  const lots = (Array.isArray(s.lots) ? s.lots : []).map(L => ({
+   name: String((L && L.name) || 'LOT'), w: +(L && L.w) || 0,
+   n: Math.max(1, (L && L.n) | 0), parent: String((L && (L.parent || L.name)) || '')
+  })).filter(L => L.w > 0);
+  if (!lots.length) return null;
+  const st = defaultState();
+  if (+s.thickness > 0) st.thick = +s.thickness;
+  if (+s.originalWidth > 0) st.W = +s.originalWidth;
+  st.lots = lots;
+  st.order = [];
+  syncOrder(st);
+  applyStandards(st, M);
+  /* 板厚から引くクリアランス（`clrAuto`）は基準値の固定値より後。順を
+     入れ替えると、基準値に値がある設備で板厚10%が消える。 */
+  const c = clearanceFor(M, st.thick);
+  if (c) st.clr = c;
+  return st;
+ }
+
  function snapshot(st, M, g) {
   const ring = {};
   Object.keys(g.ring).forEach(od => Object.keys(g.ring[od]).forEach(sz => {
@@ -910,6 +1013,7 @@
  }
 
  WL.bladeSet = {
+  defaultState, clearanceRate, clearanceFor, applyStandards, applyBladePick, standardState,
   normalize, buildIndex, ringMeta, thOf, odFromTh, odOfType, ringType, oppBurr,
   method, isFinger, holdName, contact, recommend, syncOrder, reorder,
   buildSegs, widths, buildLayout, buildFiller, fillWith, planZones,

@@ -1934,8 +1934,28 @@ WL.quitApp=async function(){
   return;
  }
  if(note)note.innerHTML='<ul class="confirm-modal-list">'+what.map(x=>'<li>'+x+'</li>').join('')+'</ul>';
- if(box)box.hidden=false;
+ /* **タブも閉じる**（§9.409、利用者の指示④「アプリ終了ボタンで終了時、
+    タブに残らず、そのままスッキリ終了させてください」）。
+    `window.close()`が通るのは**スクリプトが開いた窓**だけ——毎日の入口
+    （Start.vbs → 既定のブラウザ）で開いたタブは**ブラウザが開いた**ものなので、
+    断られる端末がある。断られたかどうかは**その場では分からない**（閉じられれば
+    この先は1行も動かない）ので、**少し待って生きていたら断られた**と読む。
+    そのときだけ今までの画面を出す（黙って何も起きないのが最悪・§CLAUDE 4）。 */
+ closeThisTab(box);
 };
+/* 閉じてみて、閉じられなかったら案内を出す。**「閉じました」と言わない**
+   ——言った直後に閉じないと、その字そのものが嘘になる。 */
+function closeThisTab(box){
+ try{window.close()}catch(e){WL.quiet.note('タブを閉じられない（案内を出す）',e)}
+ setTimeout(()=>{
+  /* ここへ来た＝ブラウザが閉じるのを断った。**理由と次の一手**を書く。 */
+  if(box)box.hidden=false;
+ },QUIT_CLOSE_WAIT_MS);
+}
+/* 閉じる判断を待つ時間。短いと閉じる直前に案内が一瞬見え、長いと終了後に
+   何も出ない間ができる。描画1回ぶん（16ms）では足りず、実機の破棄まで
+   数十msかかるので、その上を取る。 */
+const QUIT_CLOSE_WAIT_MS=350;
 WL.onReady(()=>{
  const q=document.getElementById('appQuit');
  if(q)q.onclick=()=>WL.quitApp();
@@ -2306,29 +2326,38 @@ const bootGate=(()=>{
  const HINT={assets:'画面部品を読み込んでいます',permission:'この端末のモードを確認しています',
              list:'仕掛一覧を取得しています',layout:'画面の寸法を確定しています'};
  const el=id=>overlay&&overlay.querySelector('#'+id);
+ /* 帯はいまの段を**中央へ寄せる**(§9.411)。器の幅とマスの位置は描かれて
+    からでないと測れないので、次の描画の合図で測る(先に測ると0が返る)。
+    ずらす量はカスタムプロパティで渡す——見た目の指定はCSS側に残す。 */
+ function centerBand(li){
+  const band=el('bootBand'),strip=el('bootSteps');
+  if(!band||!strip||!li)return;
+  requestAnimationFrame(()=>{
+   const x=li.offsetLeft+li.offsetWidth/2-band.clientWidth/2;
+   strip.style.setProperty('--boot-shift',(-x)+'px');
+  });
+ }
  function paint(){
   if(!overlay)return;
-  let current='';
+  let current='',currentLi=null;
   overlay.querySelectorAll('[data-boot-step]').forEach(li=>{
    const key=li.dataset.bootStep,isDone=done.has(key);
    li.classList.toggle('is-done',isDone);
    const isCurrent=!isDone&&!current;
    li.classList.toggle('is-current',isCurrent);
-   if(isCurrent)current=key;
+   if(isCurrent){current=key;currentLi=li}
   });
+  centerBand(currentLi);
   const pct=Math.min(100,Math.round((BOOT_SERVER_STEPS+done.size)/BOOT_TOTAL_STEPS*100));
-  const bar=el('bootBar'),fill=el('bootFill'),stage=el('bootStage'),
+  const bar=el('bootBar'),fill=el('bootFill'),
         pctEl=el('bootPct'),detail=el('bootDetail');
   /* 幅はカスタムプロパティで渡す(見た目の指定はCSS側に残す)。 */
   if(fill)fill.style.setProperty('--boot-pct',pct+'%');
   if(bar)bar.setAttribute('aria-valuenow',String(pct));
   if(pctEl)pctEl.textContent=pct+'%';
-  if(stage)stage.textContent=current?stageLabel(current):'起動完了';
-  if(detail)detail.textContent=current?(HINT[current]||''):'';
- }
- function stageLabel(key){
-  const li=overlay&&overlay.querySelector(`[data-boot-step="${key}"] span`);
-  return li?li.textContent:'';
+  /* いまの段の**名前は帯が出している**ので、ここは一言だけ
+     (同じ字を2箇所に出さない・§CLAUDE 8)。 */
+  if(detail)detail.textContent=current?(HINT[current]||''):'起動しました';
  }
  function tick(){
   const sec=Math.floor((Date.now()-startedAt)/1000);

@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<title>起動モーダル v7 — 標準形はS4で固定。動きの案6つ（波紋をどこへ入れるか）</title>
+<style>
+ :root{--pg:#eceff2;--pgink:#1d2b33;--pgink2:#5b6f7a;--pgline:#d5dee4}
+ *{box-sizing:border-box}
+ body{margin:0;background:var(--pg);color:var(--pgink);
+  font:14px/1.7 "Yu Gothic UI","Meiryo",system-ui,sans-serif;padding:22px 26px 60px}
+ h1{font-size:20px;margin:0 0 6px}
+ h2.sec{font-size:16px;margin:26px 0 10px;padding:0 0 6px;border-bottom:2px solid #173842}
+ .lead{color:var(--pgink2);margin:0 0 14px;max-width:82em}
+ .fix{background:#fff;border:1px solid var(--pgline);border-radius:10px;padding:12px 16px;margin:0 0 18px}
+ .fix h3{font-size:13px;margin:0 0 6px}
+ .fix ul{margin:0;padding-left:1.3em;font-size:12.5px;color:var(--pgink2)}
+ .fix b{color:var(--pgink)}
+ .switch{display:flex;gap:8px;align-items:center;margin:0 0 16px;position:sticky;top:0;
+  background:var(--pg);padding:10px 0;z-index:5;border-bottom:1px solid var(--pgline)}
+ .switch span{color:var(--pgink2);font-size:12px;margin-right:4px}
+ .switch button{font:inherit;font-size:12px;padding:6px 12px;border:1px solid var(--pgline);
+  background:#fff;border-radius:8px;cursor:pointer;color:var(--pgink)}
+ .switch button.on{background:#173842;color:#fff;border-color:#173842}
+ .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(720px,1fr));gap:18px}
+ .case{background:#fff;border:1px solid var(--pgline);border-radius:12px;overflow:hidden}
+ .case>h3{font-size:15px;margin:0;padding:11px 16px;border-bottom:1px solid var(--pgline);
+  display:flex;align-items:center;gap:9px;background:#f7f9fa}
+ .case>h3 i{font-style:normal;background:#173842;color:#fff;border-radius:6px;
+  min-width:34px;text-align:center;padding:2px 7px;font-size:12px;font-weight:700}
+ .why{margin:0;padding:10px 16px;color:var(--pgink2);font-size:12.5px;
+  border-bottom:1px solid var(--pgline);background:#f7f9fa}
+ .why b{color:var(--pgink)}
+
+ /* ======== アプリの実トークン（static/css/00-base.css をそのまま写す） ======== */
+ .P{--nav:#173842;--teal:#087c89;--teal-soft:#9cd6ce;--teal-dark:#096b75;--pale:#dcecef;
+  --line:#b7c7cc;--bg:#eef2f4;--ink:#173842;--ink2:#3a565d;--ink3:#4a6169;--inkSoft:#7b8e95;
+  --warn:#f5a30a;--warnFg:#7a2f00;--warnBg:#fff0d6;--warnBorder:#d58d16;
+  --danger:#a32424;--dangerBg:#fdeaea;--dangerBorder:#e0a3a3;
+  --r:18px;--track:#c3d3d8}
+ .screen{padding:26px 20px;display:flex;justify-content:center;background:var(--bg)}
+ .card{width:100%;max-width:680px;border-radius:var(--r);overflow:hidden;color:var(--ink);
+  box-shadow:0 18px 44px rgba(23,56,66,.18),0 3px 8px rgba(23,56,66,.10);
+  background:#fff;border:1px solid #b9cbd1}
+
+ /* ---------- 頭 ---------- */
+ .head{display:flex;align-items:center;gap:14px;padding:16px 22px;background:var(--nav);color:#fff}
+ .head .t{flex:1;min-width:0}
+ .head h4{margin:0;font-size:17px;font-weight:700}
+ .head .sub{margin:2px 0 0;font-size:10.5px;letter-spacing:.16em;color:#9cd6ce}
+ .ver{font-size:11.5px;white-space:nowrap;font-variant-numeric:tabular-nums;
+  border:1px solid rgba(156,214,206,.45);border-radius:99px;padding:3px 11px;
+  color:#9cd6ce;background:rgba(255,255,255,.06)}
+ .mark{flex:none;position:relative;display:flex;align-items:center;justify-content:center}
+ .mark svg{position:relative;z-index:2}
+ .body{padding:20px 22px 18px}
+
+ /* ---------- 帯（ティッカー）＝ S4 の骨格。**ここは動かさない** ---------- */
+ .band{background:linear-gradient(90deg,var(--teal-dark),var(--teal));border-radius:14px;
+  padding:15px 0;overflow:hidden;position:relative;margin:0 0 8px;isolation:isolate}
+ .band.updb{background:linear-gradient(90deg,#c9820d,var(--warn))}
+ .band.errb{background:linear-gradient(90deg,#7e1c1c,var(--danger))}
+ .band .edge{position:absolute;top:0;bottom:0;width:132px;z-index:4;pointer-events:none}
+ .band .edge.l{left:0;background:linear-gradient(90deg,var(--teal-dark),transparent)}
+ .band .edge.r{right:0;background:linear-gradient(270deg,var(--teal),transparent)}
+ .band.updb .edge.l{background:linear-gradient(90deg,#c9820d,transparent)}
+ .band.updb .edge.r{background:linear-gradient(270deg,var(--warn),transparent)}
+ .band.errb .edge.l{background:linear-gradient(90deg,#7e1c1c,transparent)}
+ .band.errb .edge.r{background:linear-gradient(270deg,var(--danger),transparent)}
+ .tick{display:flex;align-items:center;gap:26px;white-space:nowrap;padding:0 50%;
+  position:relative;z-index:3;transition:transform .55s cubic-bezier(.2,.75,.3,1)}
+ .tick span{font-size:14px;color:rgba(255,255,255,.5)}
+ .tick span.done{color:rgba(255,255,255,.62)}
+ .tick span.now{font-size:22px;font-weight:700;color:#fff}
+ .bandsub{margin:8px 0 0;font-size:12.5px;color:var(--ink3);text-align:center}
+ .bandsub.bad b{color:var(--danger);font-size:15px}
+
+ /* ---------- ステータスバー（1本だけ） ---------- */
+ .bar{height:12px;border-radius:99px;background:var(--track);overflow:hidden;position:relative;margin:14px 0 0}
+ .bar .fill{height:100%;border-radius:99px;position:relative;overflow:hidden;
+  transition:width .5s cubic-bezier(.2,.7,.3,1);
+  background:linear-gradient(90deg,var(--teal-dark),var(--teal))}
+ .bar .fill::after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);
+  animation:sheen 1.5s linear infinite;animation-delay:var(--d,0s)}
+ @keyframes sheen{to{transform:translateX(100%)}}
+ .bar.is-upd .fill{background:linear-gradient(90deg,#d58d16,var(--warn))}
+ .bar.is-fail .fill{background:var(--danger)}
+ .bar.is-fail .fill::after{animation:none;background:none}
+ .barmeta{display:flex;align-items:baseline;gap:12px;margin:8px 0 0;font-size:12px;color:var(--ink3)}
+ .barmeta .n{font-size:19px;font-weight:700;color:var(--teal-dark);
+  font-variant-numeric:tabular-nums;line-height:1}
+ .barmeta .sp{margin-left:auto}
+
+ /* ---------- 更新の札 ---------- */
+ .updnode{margin:14px 0 0;border-radius:12px;padding:11px 14px;background:var(--pale);border:1px solid #bcd3d8}
+ .updnode.on{background:var(--warnBg);border-color:var(--warnBorder)}
+ .updnode>b{display:block;font-size:13.5px;font-weight:700;color:var(--ink)}
+ .updnode.on>b{color:var(--warnFg)}
+ .updnode .kv{display:grid;grid-template-columns:6.4em 1fr;gap:2px 12px;margin:6px 0 0;font-size:12.5px}
+ .updnode .kv dt{color:var(--ink3);white-space:nowrap}
+ .updnode .kv dd{margin:0;color:var(--ink)}
+ .fail{margin:14px 0 0;border:1px solid var(--dangerBorder);background:var(--dangerBg);
+  border-radius:12px;padding:12px 15px}
+ .fail>b{display:block;color:var(--danger);font-weight:700;font-size:13.5px}
+ .fail .one{display:block;margin:4px 0 0;font-size:13px}
+ .fail code{font-family:Consolas,monospace;font-size:12.5px;background:#fff;
+  border:1px solid var(--dangerBorder);border-radius:5px;padding:1px 5px}
+ .fail .acts{display:flex;gap:9px;margin:11px 0 0}
+ .fail button{font:inherit;font-size:13px;padding:7px 16px;border-radius:9px;cursor:pointer;
+  border:1px solid var(--teal-dark);background:var(--teal);color:#fff;font-weight:700}
+ .fail button.ghost{background:#fff;color:var(--ink);border-color:var(--line);font-weight:400}
+
+ /* =======================================================================
+    動きの層。**骨格には一切触らない**——被せるだけ（外せば標準形に戻る）
+    ======================================================================= */
+ /* 共通の輪（波紋）。止めて撮れるよう、ずらしは --d が持つ */
+ /* **既定は出さない。** 波紋を使う案だけが点ける——既定で動かすと、
+    どの案にも同じ波紋が出て「案ごとの違い」が消える（実際に踏んだ） */
+ .ring{position:absolute;border-radius:50%;border:2px solid rgba(255,255,255,.85);
+  left:50%;top:50%;margin:-32px 0 0 -32px;width:64px;height:64px;pointer-events:none;
+  opacity:0;animation:none;animation-delay:var(--d,0s)}
+ @keyframes rip{0%{transform:scale(.6);opacity:.95}70%{opacity:.5}100%{transform:scale(3.4);opacity:0}}
+
+ /* --- M1 頭のマークから波紋（帯はそのまま） --- */
+ .m1 .mark .ring{width:44px;height:44px;margin:-22px 0 0 -22px;border-color:rgba(156,214,206,.85);
+  animation:rip 3s ease-out infinite;animation-delay:var(--d,0s)}
+
+ /* --- M2 帯の下を水が流れる --- */
+ .m2 .band .stream{position:absolute;inset:0;z-index:1;opacity:.45;
+  background:
+   radial-gradient(60px 22px at 0% 78%,rgba(255,255,255,.55),transparent 70%),
+   radial-gradient(60px 22px at 25% 84%,rgba(255,255,255,.4),transparent 70%),
+   radial-gradient(60px 22px at 50% 76%,rgba(255,255,255,.5),transparent 70%),
+   radial-gradient(60px 22px at 75% 86%,rgba(255,255,255,.35),transparent 70%);
+  background-size:200% 100%;background-repeat:repeat-x;
+  animation:drift 3.4s linear infinite;animation-delay:var(--d,0s)}
+ @keyframes drift{to{background-position:200% 0}}
+
+ /* --- M3 段が進んだ瞬間だけ波紋（合図） --- */
+ .m3 .band.pulse .ring{animation:ripOnce .95s cubic-bezier(.15,.75,.3,1) both;animation-delay:var(--d,0s)}
+ @keyframes ripOnce{0%{transform:scale(.5);opacity:.9}100%{transform:scale(4);opacity:0}}
+
+ /* --- M4 ステータスバーが水面 --- */
+ .m4 .bar{height:16px}
+ .m4 .bar .fill::before{content:"";position:absolute;inset:0;
+  background:radial-gradient(28px 10px at 0% 120%,rgba(255,255,255,.6),transparent 70%)
+             0 0/56px 100% repeat-x;
+  animation:drift2 1.9s linear infinite;animation-delay:var(--d,0s)}
+ @keyframes drift2{to{background-position:56px 0}}
+ .m4 .bar .crest{position:absolute;top:50%;width:14px;height:14px;margin-top:-7px;
+  border-radius:50%;background:rgba(255,255,255,.9);z-index:2;
+  animation:bob 1.4s ease-in-out infinite;animation-delay:var(--d,0s)}
+ @keyframes bob{0%,100%{transform:translateY(-3px) scale(1)}50%{transform:translateY(3px) scale(.85)}}
+
+ /* --- M5 帯の中に波紋が出つづける --- */
+ .m5 .band .ring{border-color:rgba(255,255,255,.55);
+  animation:rip 2.6s ease-out infinite;animation-delay:var(--d,0s)}
+
+ /* --- M6 文字が波に乗って入れ替わる --- */
+ .m6 .band .stream{position:absolute;inset:0;z-index:1;opacity:.3;
+  background:radial-gradient(70px 26px at 50% 88%,rgba(255,255,255,.6),transparent 70%)
+             0 0/140px 100% repeat-x;
+  animation:drift3 2.8s linear infinite;animation-delay:var(--d,0s)}
+ @keyframes drift3{to{background-position:140px 0}}
+ .m6 .tick{transition:transform .62s cubic-bezier(.3,1.5,.4,1)}
+ .m6 .tick span.now{animation:rise .62s cubic-bezier(.2,.8,.3,1) both}
+ @keyframes rise{from{transform:translateY(9px);opacity:.25}to{transform:none;opacity:1}}
+
+ @media (prefers-reduced-motion:reduce){
+  .ring,.stream,.bar .fill::after,.bar .fill::before,.crest,.tick span.now{animation:none!important}
+  .ring{opacity:0}
+ }
+
+ /* ---------- アイコンの段 ---------- */
+ .icons{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;
+  background:#fff;border:1px solid var(--pgline);border-radius:12px;padding:16px}
+ .icons h4{margin:0 0 4px;font-size:14px}
+ .icons p{margin:0 0 10px;font-size:12.5px;color:var(--pgink2)}
+ .sizes,.onwin{display:flex;align-items:flex-end;gap:14px;padding:11px 13px;border-radius:10px}
+ .sizes{background:#f2f5f7;border:1px solid var(--pgline);margin:0 0 8px}
+ .onwin{background:#1d5288}
+ .lab{display:block;text-align:center;font-size:10.5px;color:var(--pgink2);margin-top:3px}
+ .onwin .lab{color:#cfe0f3}
+</style></head>
+<body>
+<h1>起動モーダル v7 — 標準形は <b>S4（流れる帯）</b>で固定。動きの案を6つ</h1>
+<p class="lead"><b>骨格・配色・文字・ステータスバー・更新の札は S4 のまま1pxも動かしていません。</b>
+違うのは<b>動きの層だけ</b>で、どれも被せて外せる作りです（動きを外すと標準形に戻る）。
+波紋を「どこに置くか」で6通り振りました。</p>
+
+<div class="fix">
+ <h3>動きを足すときに守ったこと</h3>
+ <ul>
+  <li><b>動きだけで伝えない。</b>どの案も、動きが言っていることは必ず<b>字でも</b>書いてある（§CLAUDE 3）。
+      <code>prefers-reduced-motion</code> で全部止めても、読めるものは1つも減らない。</li>
+  <li><b>骨格に触らない。</b>動きは <code>.m1</code>〜<code>.m6</code> を器に足すだけ。
+      帯・バー・札のHTMLは共通の1本（<b>意匠を選んでも作りは分岐しない</b>）。</li>
+  <li><b>失敗したら動きは止まる。</b>「動いている＝進んでいる」を崩さない。</li>
+  <li>ふだんの起動は<b>約3秒で10段</b>＝1段0.3秒。動きの長さはこれに収まる範囲で選んだ。</li>
+ </ul>
+</div>
+
+<div class="switch">
+ <span>状態:</span>
+ <button class="on" data-state="skip">更新なし（ふだんの起動）</button>
+ <button data-state="upd">更新を反映中</button>
+ <button data-state="fail">起動できませんでした</button>
+ <span style="margin-left:18px">段:</span>
+ <button class="stp" data-at="-1">前</button><button class="stp" data-at="+1">次へ</button>
+</div>
+
+<h2 class="sec">決まった形（S4）— ここは動かさない</h2>
+<div class="grid" id="std"></div>
+
+<h2 class="sec">動きの案（波紋をどこへ入れるか）</h2>
+<div class="grid" id="mv"></div>
+
+<h2 class="sec">アイコン J4</h2>
+<div class="icons" id="icons"></div>
+
+<script>
+"use strict";
+const STEPS=['実行環境を確認','起動中のアプリを確認','必要な部品を確認','データの置き場所を確認',
+ 'アプリを読み込み','Webサーバーを起動','画面部品を読み込み','権限を確認','一覧を読み込み','表示を整える'];
+const DET=['この端末のPythonと版','いま動いているものが無いか','flask を確認しています','共有フォルダーへ届くか',
+ 'flask を確認しています','ポート 5029 を開いています','画面の部品を配っています','この人が何を触れるか',
+ '仕掛データを読んでいます','列と幅を当てています'];
+const T='#087c89',TD='#096b75',A='#f5a30a';
+
+/* J4（お選びいただいた絵・v5のまま） */
+const J4=(s)=>`<svg viewBox="0 0 64 64" width="${s}" height="${s}">
+  <rect width="64" height="64" rx="13" fill="#eaf3f4" stroke="#bcd8db" stroke-width="2"/>
+  <rect x="10" y="12" width="44" height="40" rx="6" fill="#fff" stroke="${T}" stroke-width="3.5"/>
+  <path d="M10 23h44" stroke="${T}" stroke-width="3.5"/>
+  <path d="M22 12v-4M42 12v-4" stroke="${TD}" stroke-width="4" stroke-linecap="round"/>
+  <path d="M17 41c5-10 8 5 12-4s7 7 11-2" fill="none" stroke="${TD}"
+   stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="46" cy="33" r="4.5" fill="${A}"/></svg>`;
+/* J4の**16px用**: 絵は変えず、この寸法で潰れる線（上の2本のツメ・折れ線の山）だけ間引く。
+   `.ico`は寸法ごとに別の絵を持てるので、48/64pxはJ4そのままで両立する */
+const J4small=(s)=>`<svg viewBox="0 0 64 64" width="${s}" height="${s}">
+  <rect width="64" height="64" rx="13" fill="#eaf3f4" stroke="#bcd8db" stroke-width="2"/>
+  <rect x="9" y="14" width="46" height="40" rx="7" fill="#fff" stroke="${T}" stroke-width="5"/>
+  <path d="M9 26h46" stroke="${T}" stroke-width="5.5"/>
+  <path d="M18 43c7-11 12 7 16-2" fill="none" stroke="${TD}"
+   stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="46" cy="36" r="5.6" fill="${A}"/></svg>`;
+
+const MOVES=[
+ {k:'M1',name:'頭のマークから波紋',
+  why:'<b>置き場所:</b> 頭のアイコンの後ろ。帯は今までどおり流れる。<br>'
+     +'<b>言っていること:</b> 「アプリが息をしている」。段の進みとは無関係に、ゆっくり一定。<br>'
+     +'<b>効き目:</b> <b>いちばん控えめ。</b>帯の文字の邪魔を一切しない。3秒でも60秒でも同じ顔。'},
+ {k:'M2',name:'帯の下を水が流れる',
+  why:'<b>置き場所:</b> 帯の中、文字の<b>下半分</b>を左→右に水面が流れる。<br>'
+     +'<b>言っていること:</b> 帯そのものが川。文字はその上を流れていく板のように見える。<br>'
+     +'<b>効き目:</b> 波紋というより<b>流れ</b>。「流れる帯」という名前といちばん噛み合う。'},
+ {k:'M3',name:'段が進んだ瞬間だけ波紋',
+  why:'<b>置き場所:</b> 帯の中央。<b>1段進むたびに1回だけ</b>輪が広がって消える。<br>'
+     +'<b>言っていること:</b> 波紋＝「いま1つ進んだ」。<b>動きに意味がある唯一の案。</b><br>'
+     +'<b>効き目:</b> 待っている間は静かで、進んだ時だけ動く。ただし3秒起動では0.3秒ごとに鳴る。'},
+ {k:'M4',name:'ステータスバーが水面',
+  why:'<b>置き場所:</b> バーの中。満ちた側がさざ波立ち、<b>水位の先端に雫が上下する</b>。<br>'
+     +'<b>言っていること:</b> 「ここまで水が来ている」。進み具合そのものが水位になる。<br>'
+     +'<b>効き目:</b> 波紋を<b>いちばん意味のある場所</b>に置ける。帯の可読性は完全に無傷。'},
+ {k:'M5',name:'帯の中に波紋が出つづける',
+  why:'<b>置き場所:</b> 帯の中央から輪が広がりつづける（帯の外へは出ない）。<br>'
+     +'<b>言っていること:</b> 「いまの段を処理している」。<br>'
+     +'<b>効き目:</b> 波紋が<b>いちばんはっきり見える</b>。ただし文字と同じ面で動くので、'
+     +'長い更新待ちでは少しうるさい。'},
+ {k:'M6',name:'文字が波に乗って入れ替わる',
+  why:'<b>置き場所:</b> 帯の底に薄い波。文字は横へ滑ると同時に<b>波で少し持ち上がる</b>。<br>'
+     +'<b>言っていること:</b> 流れと入れ替わりが1つの動きになる。<br>'
+     +'<b>効き目:</b> <b>いちばん「リールらしい」。</b>動きの量は多いので、好みが分かれる。'}
+];
+
+const cardHtml=(cls)=>`<div class="screen"><div class="card ${cls}">
+  <div class="head"><span class="mark">${J4(40)}<i class="ring" style="--d:0s"></i>`
+  +`<i class="ring" style="--d:1s"></i><i class="ring" style="--d:2s"></i></span>
+   <div class="t"><h4>測定伝送システム</h4><p class="sub">STARTING UP</p></div>
+   <span class="ver">VER2.306.0</span></div>
+  <div class="body" data-body></div></div></div>`;
+
+document.getElementById('std').innerHTML=
+ `<div class="case P" data-k="STD">
+   <h3><i>S4</i> 流れる帯（決定した標準形）</h3>
+   <p class="why"><b>帯:</b> 10段の名前が一列に流れ、いまの段が中央で大きい。両端は霞んで「まだ来ていない／もう済んだ」を示す。<br>
+    <b>バー:</b> 進み具合は<b>この1本だけ</b>が答える（%もここにしか出さない）。<br>
+    <b>札:</b> 更新の有無を同じ場所で言い分ける。失敗したら「次の一手」に差し替わる。</p>
+   ${cardHtml('')}
+  </div>`;
+
+document.getElementById('mv').innerHTML=MOVES.map(m=>`
+ <div class="case P" data-k="${m.k}">
+  <h3><i>${m.k}</i> ${m.name}</h3>
+  <p class="why">${m.why}</p>
+  ${cardHtml(m.k.toLowerCase())}
+ </div>`).join('');
+
+document.getElementById('icons').innerHTML=[
+ {f:J4,n:'J4（お選びいただいた絵・そのまま）',
+  p:'枠＝予定表、上の2本＝綴じ、折れ線＝測定、琥珀の丸＝測った点。<b>48px・64pxではよく読める。</b>'},
+ {f:J4small,n:'J4 の16px用（同じ絵・線だけ間引く）',
+  p:'<b>16pxでJ4が潰れるのは中の線が3本あるため</b>（実測）。<code>.ico</code>は寸法ごとに別の絵を'
+   +'持てるので、<b>32px以上はJ4そのまま・16pxだけこれ</b>にすれば両立する。'}
+].map(x=>`
+ <div><h4>${x.n}</h4><p>${x.p}</p>
+  <div class="sizes">${[16,24,32,48,64].map(s=>
+   `<span><span style="display:block">${x.f(s)}</span><b class="lab">${s}px</b></span>`).join('')}</div>
+  <div class="onwin">${[16,32,48].map(s=>
+   `<span><span style="display:block">${x.f(s)}</span><b class="lab">${s}px</b></span>`).join('')}
+   <b class="lab" style="margin-left:auto">デスクトップの地の上</b></div>
+ </div>`).join('');
+
+let state='skip',at=4;
+const isUpd=()=>state==='upd',isFail=()=>state==='fail';
+const pct=()=>isFail()?0:Math.round((at+.5)/10*100);
+const elapsed=()=>isFail()?90:(isUpd()?7:2);
+function barHtml(){
+ const cls=isFail()?'is-fail':(isUpd()?'is-upd':'');
+ return `<div class="bar ${cls}"><div class="fill" style="width:${isFail()?Math.max(pct(),6):pct()}%">`
+  +`</div><i class="crest" style="left:calc(${isFail()?6:pct()}% - 7px)"></i></div>`
+  +`<p class="barmeta"><span class="n">${isFail()?'—':pct()+'%'}</span>`
+  +`<span>${isFail()?'待機時間（90秒）を過ぎました':(isUpd()?'目安 30〜60 秒':'目安 3 秒')}</span>`
+  +`<span class="sp">経過 ${elapsed()} 秒</span></p>`;
+}
+function tailHtml(){
+ if(isFail())return `<div class="fail"><b>次の一手</b>`
+  +`<span class="one">まず <code>program\\start_app.bat</code> をダブルクリックし、黒い画面に出るエラーを読んでください。</span>`
+  +`<div class="acts"><button>もう一度試す</button><button class="ghost">ログを開く</button></div></div>`;
+ return isUpd()
+  ? `<div class="updnode on"><b>ふだんより長い</b><dl class="kv">`
+    +`<dt>変わった点</dt><dd>アプリの版（2.305.0 → 2.306.0）</dd>`
+    +`<dt>いまの作業</dt><dd>バイトコードの作り直し・部品の確認</dd></dl></div>`
+  : `<div class="updnode"><b>更新なし</b><dl class="kv">`
+    +`<dt>前回の確認</dt><dd>update.bat（版 2.306.0 で確認済み）</dd></dl></div>`;
+}
+function paint(){
+ document.querySelectorAll('.case').forEach(box=>{
+  const el=box.querySelector('[data-body]');
+  const items=STEPS.map((x,i)=>{
+   const c=i<at?'done':(i===at?'now':'');
+   return `<span class="${c}">${isUpd()&&i===at?'更新を反映しています':x}</span>`;}).join('');
+  el.innerHTML=`<div class="band ${isUpd()?'updb':''} ${isFail()?'errb':''}">`
+   +`<i class="ring" style="--d:0s"></i><i class="ring" style="--d:.9s"></i><i class="ring" style="--d:1.8s"></i>`
+   +`<i class="stream"></i><div class="tick">${items}</div>`
+   +`<i class="edge l"></i><i class="edge r"></i></div>`
+   +`<p class="bandsub ${isFail()?'bad':''}">${isFail()?'<b>起動できませんでした</b>':DET[at]}</p>`
+   +barHtml()+tailHtml();
+  const tick=el.querySelector('.tick'),cur=tick.querySelector('.now'),band=el.querySelector('.band');
+  requestAnimationFrame(()=>{
+   if(cur)tick.style.transform=`translateX(${-(cur.offsetLeft+cur.offsetWidth/2-band.clientWidth/2)}px)`;
+  });
+ });
+}
+/* M3 は「進んだ瞬間」に1回だけ鳴らす。`pulse`を付け直して撃ち直す */
+function pulse(){
+ document.querySelectorAll('.m3 .band').forEach(b=>{
+  b.classList.remove('pulse');void b.offsetWidth;b.classList.add('pulse');});
+}
+function go(n,ev){at=Math.max(0,Math.min(9,n));paint();if(ev&&!isFail())pulse();}
+window.setAt=(n,ev)=>go(n,ev);
+document.querySelectorAll('.switch button[data-state]').forEach(bt=>bt.onclick=()=>{
+ document.querySelectorAll('.switch button[data-state]').forEach(x=>x.classList.toggle('on',x===bt));
+ state=bt.dataset.state;at=state==='upd'?2:4;paint();
+});
+document.querySelectorAll('.switch .stp').forEach(bt=>bt.onclick=()=>go(bt.dataset.at==='+1'?at+1:at-1,true));
+paint();
+/* 見本なので自動で進める。撮るときは clearInterval(window.__auto) で止める */
+window.__auto=setInterval(()=>{if(state==='skip')go(at>=9?0:at+1,true);},2200);
+</script>
+</body></html>

@@ -61,6 +61,64 @@ run('test_theme: 色と文字サイズはトークンから',async({page,rec,W,i
   const kinds=new Set(neutrals).size;
   rec('中間色(枠線・面・補助文字)の種類が抑えられている',kinds<=95,`${kinds}種`);
 
+  /* ---- 3.5) 終了ボタンのマウスオーバーが読めるか（§9.409、利用者の指摘④） ----
+     「アプリ終了ボタンがマウスオーバーの際に視認できないコントラスト」
+     以前は**明るい地用の`--danger-bg`（#fdeaea）に薄い赤の字（#ffd7d7）**を
+     重ねており、実測コントラストは 1.1:1（字が消える）。目で見て直すのでは
+     また戻るので、**実際に重ねて測る**。4.5:1 はWCAG AAの本文の線。 */
+  const lum=c=>{const [r,g,b]=c.slice(0,3)
+    .map(v=>{const x=v/255;return x<=0.03928?x/12.92:Math.pow((x+0.055)/1.055,2.4)});
+   return 0.2126*r+0.7152*g+0.0722*b};
+  /* **重ねた結果の色**を読む（§9.386）。`transition`を持つ値は当てた直後だと
+     途中の値が返るので、**同じ値が2回続くまで**待つ。透けている面は親の地へ
+     重ねて畳む——alphaを捨てて測ると、薄い面を濃い面として数えてしまう。 */
+  const paintedColors=sel=>page.evaluate(async s=>{
+   const rgba=v=>(v.match(/[\d.]+/g)||[0,0,0]).map(Number);
+   const frame=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   const read=()=>{
+    const el=document.querySelector(s);
+    const fg=rgba(getComputedStyle(el).color).slice(0,3);
+    let out=null,node=el;
+    while(node){
+     const c=rgba(getComputedStyle(node).backgroundColor);
+     const a=c.length>3?c[3]:1;
+     if(a>0){
+      out=out?out:{c:[c[0],c[1],c[2]],a};
+      if(out.a>=1)break;
+      // 手前の面を奥の面へ重ねる（source-over）
+      out={c:out.c.map((v,i)=>v*out.a+c[i]*(1-out.a)*a),a:out.a+(1-out.a)*a};
+      if(out.a>=1)break;
+     }
+     node=node.parentElement;
+    }
+    const bg=out?out.c.map(v=>Math.round(v)):[255,255,255];
+    return {fg,bg,key:fg.join()+'|'+bg.join()};
+   };
+   let prev=read();
+   for(let i=0;i<40;i++){
+    await frame();
+    const now=read();
+    if(now.key===prev.key)return now;
+    prev=now;
+   }
+   return prev;
+  },sel);
+  const restQ=await paintedColors('#appQuit');
+  await page.hover('#appQuit');
+  const hoverQ=await paintedColors('#appQuit');
+  const ratio=(a,b)=>{const x=lum(a),y=lum(b);return (Math.max(x,y)+0.05)/(Math.min(x,y)+0.05)};
+  rec('終了ボタンは重ねてもコントラストが保たれる（4.5:1以上）',
+   ratio(hoverQ.fg,hoverQ.bg)>=4.5,
+   `重ね ${ratio(hoverQ.fg,hoverQ.bg).toFixed(2)}:1 (rgb(${hoverQ.fg}) on rgb(${hoverQ.bg}))`
+   +` / 素 ${ratio(restQ.fg,restQ.bg).toFixed(2)}:1`);
+  rec('重ねると見た目が変わる（押せることが分かる）',
+   hoverQ.key!==restQ.key,`${restQ.bg}→${hoverQ.bg}`);
+  /* 素の状態も本文の線を割らない。**控えめに置くことと、読めないことは別**
+     （以前は明るい地用の`--muted`をそのまま濃いナビへ載せて 2.55:1）。 */
+  rec('終了ボタンは素の状態でも読める（4.5:1以上）',
+   ratio(restQ.fg,restQ.bg)>=4.5,`素 ${ratio(restQ.fg,restQ.bg).toFixed(2)}:1`);
+  await page.mouse.move(0,0);
+
   /* ---- 4) 測定画面の地色が一覧画面と同じ ---- */
   await page.click('#openSchedule');
   await page.waitForSelector('.sc-row-line',{timeout:20000});

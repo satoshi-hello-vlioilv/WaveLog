@@ -38,7 +38,12 @@
 
  /* 立体図のはじめの状態は「刃組をはじめる状態」。
     ①引き出し ②軸端部を外し ③台車を半回転させた、そこから刃を組む姿にする。 */
- const D3 = { on:false, built:false, dirty:true, open:true, out:true, rot:Math.PI, carX:0,
+ /* `cut` は断面図（§9.412、利用者の指示）。**同じ模型を使い回す**——部品を
+    作り直さず、機械まわりを伏せ・視点を平行投影の真横へ・軸の中心で切るだけ。
+    `keep` は切ったあと**どちら側を残すか**（+1: z≧0 を残す／-1: z≦0 を残す）で、
+    カメラの居る側の反対を残す（カメラと断面のあいだに物が無い状態にする）。 */
+ const D3 = { on:false, cut:false, keep:-1, built:false, dirty:true, open:true, out:true,
+   rot:Math.PI, carX:0,
    spin:false, busy:false, failed:false, decals:[],
    /* 立体図で見せる部材。刃だけを見たいときなど、邪魔なものを消せるようにする。 */
    show:{ mat:true, knife:true, ring:true, liner:true } };
@@ -137,13 +142,28 @@
   const sc = new T.Scene();
   sc.background = new T.Color(cssColor('--bs-3d-bg', '#dfe5ec'));
   const cam = new T.PerspectiveCamera(32, 1, 10, 30000);
+  /* 断面図は**平行投影**（§9.412）。遠近が付かないので、離れた位置の部材どうしでも
+     寸法を目で比べられる——模式図と同じ読み方ができる、というのがこの図の狙い。 */
+  const ocam = new T.OrthographicCamera(-1, 1, 1, -1, 1, 60000);
+  D3.ocam = ocam;
+  /* 切断面は1枚。向き（どちら側を残すか）は毎フレーム`keep`から決める。 */
+  D3.clip = new T.Plane(new T.Vector3(0, 0, -1), 0);
+  r.localClippingEnabled = true;
   /* 光は3つ。上からの主光・手前からの補助・地明かり。金属が白飛びしない配分。 */
   sc.add(new T.HemisphereLight('#e8eef5', '#5e6772', 0.45));
   const k = new T.DirectionalLight('#ffffff', 1.05); k.position.set(-1200, 1800, 1500); sc.add(k);
   const f = new T.DirectionalLight('#cfdcec', 0.38); f.position.set(1500, -600, 1100); sc.add(f);
+  /* 断面図の切り口は**カメラのほうを向いた平らな面**なので、上や奥からの光では
+     暗いままになる（実際に踏んだ: 軸の切り口が真っ黒に見えた）。見ている側から
+     当てる光を1つ持ち、断面図のときだけ点ける。 */
+  const cl = new T.DirectionalLight('#ffffff', 0.62); cl.visible = false; sc.add(cl);
+  D3.cutLight = cl;
   /* 台車は自分の中心で回る。回す軸をここに置き、その子として中身を持つ。 */
   const pivot = new T.Group(); sc.add(pivot);    /* 回転テーブルの中心 */
   const g = new T.Group(); pivot.add(g);         /* 回る台車。走行ぶんは位置で持つ */
+  /* 機械まわり（台座・ギヤボックス・軸受・走行・送り軸）。**断面図では丸ごと伏せる**
+     ——模式図が描いているのは軸・刃・スペーサー・保持層・板の5つだけ（§9.412）。 */
+  const rig = new T.Group(); g.add(rig); D3.rig = rig;
   const deck = new T.Group(); pivot.add(deck);   /* 回転テーブルの甲板。台車と一緒に回る */
   const fix = new T.Group(); sc.add(fix);        /* 外した軸端部。走行には付いていくが回らない */
   const world = new T.Group(); sc.add(world);    /* 床・レール・ピット・着地土台。動かない */
@@ -170,6 +190,9 @@
  function bindPointer(cv) {
   let drag = null;
   cv.addEventListener('pointerdown', e => {
+   /* 断面図は**真横に固定**（§9.412）。動かせると、平行投影で寸法を比べられる
+      という狙いがその場で崩れる。掴める見た目もCSSで外してある。 */
+   if (D3.cut) return;
    cv.setPointerCapture(e.pointerId);
    D3.moved = true;
    drag = Object.assign({ x: e.clientX, y: e.clientY,
@@ -203,6 +226,7 @@
   cv.addEventListener('pointerup', stop);
   cv.addEventListener('pointercancel', stop);
   cv.addEventListener('wheel', e => {
+   if (D3.cut) return;                 /* 断面図は寄る・引くもしない（§9.412） */
    e.preventDefault();
    D3.moved = true;
    CAM.r = Math.max(260, Math.min(9000, CAM.r * (e.deltaY > 0 ? 1.12 : 0.89)));
@@ -250,6 +274,30 @@
   m.instanceMatrix.needsUpdate = true;
   return m;
  }
+ /* 切り口の面（§9.412）。**切っただけでは中が空洞に見える**——管も箱も閉じた殻
+    なので、断面で切ると内側の壁が見えてしまう。軸の中心で切った断面は必ず
+    「長方形」なので、**その長方形を薄い板で置く**（丸刃・スペーサー・保持層＝
+    内径のぶんを抜いた上下2枚、軸と板＝1枚）。模式図と同じ形が、同じ色で出る。
+    置く場所は断面のほんの内側——面の上に置くと、切断面に切り取られて消える。 */
+ const CAP_T = 1.2;
+ function capRects(items, ro, ri) {
+  const z = D3.keep * (CAP_T / 2 + 0.05), out = [];
+  items.forEach(q => {
+   if (ri > 0.01) {
+    out.push({ x: q.x, y: q.y + (ri + ro) / 2, z, l: q.l, r: ro - ri, d: CAP_T });
+    out.push({ x: q.x, y: q.y - (ri + ro) / 2, z, l: q.l, r: ro - ri, d: CAP_T });
+   } else {
+    out.push({ x: q.x, y: q.y, z, l: q.l, r: ro * 2, d: CAP_T });
+   }
+  });
+  return out;
+ }
+ function cap(T, g, items, ro, ri, mat) {
+  if (!D3.cut) return;
+  const m = batch(T, D3.box, mat, capRects(items, ro, ri));
+  if (m) g.add(m);
+ }
+
  /* 同じ寸法のものをまとめる。まとめ描きは寸法ごとに1回。 */
  function groupBy(list, key) {
   const m = new Map();
@@ -296,12 +344,16 @@
   /* 外した軸端部は台車と一緒には回らないので、別の入れ物へ入れる。 */
   const stay = D3.fix;
   const put = (o, geo, mat, list) => { const m = batch(T, geo, mat, list); if (m) o.add(m); };
-  const bx = (list, mat, o) => put(o || g, D3.box, mat, list);
-  const cy = (list, mat, o) => put(o || g, D3.cyl, mat, list);
-  const cyZ = (list, mat, o) => put(o || g, D3.cylZ, mat, list);
+  /* **既定の行き先は`rig`（機械まわり）**。断面図では`rig`ごと伏せるので、
+     ここへ足したものは自動的に断面図から外れる。断面図にも出したい物だけ、
+     行き先に`g`を明示する（いまは軸の有効長だけ・§9.412）。 */
+  const rig = D3.rig;
+  const bx = (list, mat, o) => put(o || rig, D3.box, mat, list);
+  const cy = (list, mat, o) => put(o || rig, D3.cyl, mat, list);
+  const cyZ = (list, mat, o) => put(o || rig, D3.cylZ, mat, list);
   const tube = (x, y, len, ro, ri, mat, o) => {
    const m = new T.Mesh(tubeGeo(T, ro, ri), mat);
-   m.position.set(x, y, 0); m.scale.set(len, 1, 1); (o || g).add(m); return m;
+   m.position.set(x, y, 0); m.scale.set(len, 1, 1); (o || rig).add(m); return m;
   };
   /* 円周にボルトを並べる。フランジが板に見えないようにする。 */
   const bolts = (x, r, n, hr, hl, o) => {
@@ -310,7 +362,7 @@
     const a = i / n * Math.PI * 2 + Math.PI / n;
     list.push({ x, y: Math.sin(a) * r, z: Math.cos(a) * r, l: hl, r: hr });
    }
-   put(o || g, D3.cyl, dark, list);
+   put(o || rig, D3.cyl, dark, list);
   };
   const osEnd = -half, dsEnd = half;
 
@@ -393,8 +445,12 @@
 
   /* ---- 軸：有効長は Φ200 の研磨面。その外に首・駆動端の継手・キー溝 ---- */
   const r0 = sd / 2;
+  /* 有効長の研磨面だけは**断面図にも出す**（模式図が描いている5つの1つ）。
+     首・継手は機械まわりなので`rig`のまま。 */
+  const shafts = [yU, yL].map(y => ({ x: 0, y, l: L, r: r0 }));
+  cy(shafts, steel, g);
+  cap(T, g, shafts.map(q => ({ x: q.x, y: q.y, l: q.l })), r0, 0, steel);
   cy([yU, yL].flatMap(y => [
-   { x: 0, y, l: L, r: r0 },
    { x: dsEnd + M.gapDS / 2 + 34, y, l: M.gapDS + 68, r: r0 * 0.82 },
    { x: osEnd - M.gapOS / 2 - 10, y, l: M.gapOS + 40, r: r0 * 0.90 },
    { x: dsEnd + M.gapDS + 40, y, l: 60, r: r0 * 0.55 }
@@ -455,9 +511,10 @@
   /* 部材は図面どおり内径の開いた輪。軸が通って見えるので、そのまま管で描く。
      スペーサーは1枚ずつの区切りが分かるよう、外周だけ細い帯を濃い色で重ねる。 */
   const put = (list, ro, ri, mat) => {
-   const m = batch(T, tubeGeo(T, ro, ri), mat,
-                   list.map(q => ({ x: off(q.x), y: q.y, l: q.len, r: 1, d: 1 })));
+   const items = list.map(q => ({ x: off(q.x), y: q.y, l: q.len, r: 1, d: 1 }));
+   const m = batch(T, tubeGeo(T, ro, ri), mat, items);
    if (m) g.add(m);
+   cap(T, g, items, ro, ri, mat);      /* 断面図のときだけ切り口を置く（§9.412） */
   };
   const sh = D3.show;
   const linerR = (+ctx.M.P.spacerOD || 240) / 2;
@@ -496,6 +553,23 @@
   const trim = matOf(T, 'trim', { color: '#b0a48d', metalness: .45, roughness: .5 });
   const w0 = run.length ? run[0].from : 0, w1 = run.length ? run[run.length - 1].to : 0;
   const cut = (list, mat) => { const b = batch(T, D3.box, mat, list); if (b) g.add(b); };
+  /* ---- 断面図（§9.412）----
+     **模式図と同じものを出す**。模式図が描いているのは「切ったあとの条」
+     （`matShift`で板厚のぶん上下に食い違う姿）なので、断面図でもそれを出す。
+     入側・出側の2枚に分けると、**切断面から見て片方は必ず向こう側**になり、
+     切った瞬間に消える——断面をまたいで置き、どちら側から見ても写るようにする。 */
+  if (D3.cut) {
+   const DEP = 420;
+   const face = f => run.map((r, i) => ({ r, i })).filter(({ r }) => f(r)).map(({ r, i }) =>
+    ({ x: off((r.from + r.to) / 2), y: BS().matShift(A, run, i) * th, z: 0,
+       l: Math.max(1, r.to - r.from - 3), r: th, d: DEP }));
+   [[r => r.sg.type === 'strip', sheet], [r => r.sg.type !== 'strip', trim]].forEach(([f, mat]) => {
+    const list = face(f);
+    cut(list, mat);
+    cap(T, g, list.map(q => ({ x: q.x, y: q.y, l: q.l })), th / 2, 0, mat);
+   });
+   return { IN, OUT };
+  }
   /* 入側：1枚の元板 */
   cut([{ x: off((w0 + w1) / 2), y: 0, z: -IN / 2, l: Math.max(1, w1 - w0), r: th, d: IN }], sheet);
   /* 出側：条ごとに分かれ、板厚ぶん上下に食い違う */
@@ -611,7 +685,9 @@
   const T = D3.T, g = D3.g, res = ctx.res;
   /* 形と材質は使い回しているので消さない。まとめ描きの持ち物だけ解放する。 */
   const clear = o => { while (o.children.length) { const c = o.children.pop(); if (c.dispose) c.dispose(); } };
-  clear(g); clear(D3.fix); clear(D3.deck); clear(D3.world);
+  /* `rig`は`g`の子なので、`g`を空にすると一緒に外れる。**先に中身だけ捨て、
+     空になった入れ物を戻す**——作り直すと、伏せている状態の持ち主が入れ替わる。 */
+  clear(D3.rig); clear(g); g.add(D3.rig); clear(D3.fix); clear(D3.deck); clear(D3.world);
   D3.decals = [];
   const A = res.A, segs = res.segs, zp = res.zp;
   const L = A.arborLen, M = MACH;
@@ -624,14 +700,15 @@
   const ods = m.out.ring.filter(q => q.hold.kind === 'ring').map(q => q.hold.od);
   const rad = Math.max(ctx.st.knife, +ctx.M.P.spacerOD || 240, ...(ods.length ? ods : [0])) / 2;
   /* OS・DS の札は有効長の両端の真上に置く。台車を回せば札も一緒に回る。 */
-  const endY = cd / 2 + rad + 330;
+  const endY = cd / 2 + rad + (D3.cut ? 90 : 330);
   D3.tag = { os: { x: -(L / 2 + 120), y: endY, z: 0 }, ds: { x: L / 2 + 120, y: endY, z: 0 } };
   D3.bcx = m.bcx;
   D3.carX = D3.out ? -m.bcx : -M.ttX;
   D3.pivot.position.x = M.ttX;
   g.position.x = D3.carX;
   D3.fix.position.x = M.ttX + D3.carX;
-  D3.pivot.rotation.y = D3.rot;
+  D3.pivot.rotation.y = D3.cut ? 0 : D3.rot;
+  applyCut();
   /* 主役は機械まわり。引き出したあとはテーブルと着地土台まで入れて見る。 */
   const shift = M.ttX + D3.carX;
   const a0 = m.x0 + shift, a1 = (D3.out ? st2.sepX1 + 200 : m.xw + shift);
@@ -639,9 +716,33 @@
   Object.assign(HOME, { tx: (a0 + a1) / 2, ty: m.yBot / 3, tz: (mt.OUT - mt.IN) / 2 + 160,
                         r: sz / 2 / Math.sin(D3.cam.fov * Math.PI / 360) * 1.15, az: -0.62, el: 0.42 });
   if (!D3.moved) Object.assign(CAM, HOME);
+  /* 断面図で見せる範囲（§9.412）。**軸まわりだけ**——機械まわりを伏せるので、
+     台座や床まで入れて縮める必要がない。実寸から出すので刃径を変えても崩れない。 */
+  /* 余白は控えめに。機械まわりを伏せているので、台座や床のぶんを空ける必要がない。 */
+  D3.cutBox = { cx: 0, cy: 0, w: L + 160, h: (cd / 2 + rad) * 2 + 120 };
   D3.built = true;
   D3.dirty = false;
   render();
+ }
+
+ /* 断面図の当て方（§9.412）。**部品は作り直さない**——機械まわりを伏せ、
+    切断面を入れるだけ。外せばそのまま立体図に戻る。 */
+ function applyCut() {
+  const on = D3.cut;
+  [D3.rig, D3.fix, D3.deck, D3.world].forEach(o => { if (o) o.visible = !on; });
+  if (D3.cutLight) D3.cutLight.visible = on;
+  /* **断面図では台車を回さない。** 回すとX（OS/DSの左右）もZ（切る向き）も一緒に
+     入れ替わり、カメラを置く側の入れ替えと**打ち消し合って裏返しが効かない**
+     （実際に踏んだ: どちらの向きでもOSが左に出ていた）。裏返しはカメラ側だけで持つ。 */
+  if (D3.pivot) D3.pivot.rotation.y = on ? 0 : D3.rot;
+  /* 板の札（入側・出側）は立体図のもの。断面図では板そのものを置き換えている。 */
+  D3.decals.forEach(m => { m.visible = !on; });
+  if (!D3.r) return;
+  /* カメラは**残す側の反対**に置く（あいだに物が無い状態にする）。
+     図面向き（OS左）なら +Z 側から見て z≦0 を残す。裏返すと両方入れ替わる。 */
+  D3.keep = D3.flip ? 1 : -1;
+  if (D3.clip) D3.clip.set(new D3.T.Vector3(0, 0, D3.keep), 0);
+  D3.r.clippingPlanes = on && D3.clip ? [D3.clip] : [];
  }
 
  function render() {
@@ -651,6 +752,26 @@
   if (cv.width !== Math.round(w * D3.r.getPixelRatio()) || D3.w !== w || D3.h !== h) {
    D3.r.setSize(w, h, false); D3.cam.aspect = w / h; D3.cam.updateProjectionMatrix();
    D3.w = w; D3.h = h;
+  }
+  /* ---- 断面図（§9.412）。平行投影で真横から見る ---- */
+  if (D3.cut) {
+   const b = D3.cutBox || { cx: 0, cy: 0, w: 2000, h: 1000 };
+   const oc = D3.ocam, ar = w / h, pad = 1.06;
+   let vw = b.w * pad, vh = b.h * pad;
+   if (vw / vh < ar) vw = vh * ar; else vh = vw / ar;   /* 収まる側に合わせる */
+   oc.left = -vw / 2; oc.right = vw / 2; oc.top = vh / 2; oc.bottom = -vh / 2;
+   oc.near = 1; oc.far = 60000; oc.updateProjectionMatrix();
+   const px = D3.pivot ? D3.pivot.position.x : 0;
+   /* 台車の走行ぶんを足した、軸の中心の真正面。台車を回していても断面は動かさない。 */
+   const cx = px + (D3.g ? D3.g.position.x : 0) + b.cx;
+   oc.position.set(cx, b.cy, (D3.flip ? -1 : 1) * 12000);
+   oc.up.set(0, 1, 0);
+   oc.lookAt(cx, b.cy, 0);
+   /* 見ている側から当てる。少し斜めにして、切り口が真っ平らに潰れないようにする。 */
+   if (D3.cutLight) D3.cutLight.position.set(cx - 900, b.cy + 1400, oc.position.z * 0.55);
+   D3.r.render(D3.sc, oc);
+   tags(w, h, oc);
+   return;
   }
   const c = CAM, ce = Math.cos(c.el);
   /* 見ている先は模型の中の点。台車を回したぶんだけ、その点も一緒に回る。 */
@@ -673,7 +794,7 @@
 
  /* 札（OS・DS）を、立体の点の見えている位置へ置く。台車を回しても付いてくる。 */
  const TAG_KEYS = ['os', 'ds'];
- function tags(w, h) {
+ function tags(w, h, camOverride) {
   const T = D3.T, t = D3.tag;
   if (!t) return;
   const v = new T.Vector3();
@@ -683,7 +804,7 @@
    const el = $h('.bs-t3-' + key), p = t[key];
    if (!el) return;
    if (!p) { el.hidden = true; return; }
-   v.set(p.x, p.y, p.z).applyMatrix4(D3.g.matrixWorld).project(D3.cam);
+   v.set(p.x, p.y, p.z).applyMatrix4(D3.g.matrixWorld).project(camOverride || D3.cam);
    const on = v.z > -1 && v.z < 1;
    el.hidden = !on;
    if (!on) return;
@@ -796,6 +917,10 @@
  /* 台車を回して OS・DS を入れ替える。模型を回すだけなので、部材の並びも
     送りの向きもそのまま付いてくる。 */
  function spinTo(to) {
+  /* **裏返しは断面図でも要る**が、断面図は台車を回さない（回すと切断面まで
+     回ってしまう）。どちら向きで見るかだけを覚え、カメラを置く側で入れ替える。 */
+  D3.flip = Math.abs(to) > 1e-3;
+  if (D3.cut) { D3.rot = to; applyCut(); render(); return; }
   if (!D3.pivot) { D3.rot = to; return; }
   if (Math.abs(D3.rot - to) < 1e-6) return;
   const from = D3.rot, t0 = performance.now(), ms = 2200;
@@ -888,8 +1013,13 @@
   D3.dirty = true;
   if (D3.on) build();
  }
- /* 模式図／立体図の切り替え。**立体図に切り替えたときだけ**部品を取りに行く。 */
- async function setMode(on) {
+ /* 模式図／断面図／立体図の切り替え。**立体を使う図に切り替えたときだけ**
+    部品を取りに行く。断面図と立体図は**同じ模型**なので、行き来しても
+    組み直さない（伏せる物と視点が変わるだけ・§9.412）。 */
+ async function setMode(on, kind) {
+  const wantCut = kind === 'cut';
+  const changed = D3.cut !== wantCut;
+  D3.cut = wantCut;
   D3.on = !!on;
   if (!D3.on) return true;
   clearFail();
@@ -904,12 +1034,22 @@
    }
   }
   if (!init()) return false;
-  if (D3.dirty) build(); else render();
+  /* 切り口の面は**断面図のときだけ**作るので、行き来したら組み直す。 */
+  if (D3.dirty || changed) build(); else { applyCut(); render(); }
   return true;
  }
 
+ /* いまどの図を、どちら向きで、どちら側を残して見ているか。**答えるのはここ1箇所**
+    ——画面（`blade-view.js`）は器の出し入れだけを持ち、模型の状態は持たない。 */
+ function view() {
+  return { cut: !!D3.cut, flip: !!D3.flip, keep: D3.keep,
+           /* 台車がいま回っているか。断面図では**回さない**のが決まり（§9.412）。 */
+           rotY: D3.pivot ? D3.pivot.rotation.y : 0,
+           ortho: !!(D3.cut && D3.ocam), clips: D3.r ? (D3.r.clippingPlanes || []).length : 0 };
+ }
+
  WL.bladeSolid = {
-  attach, sync, setMode, render, spinTo, note, blockReason,
+  attach, sync, setMode, render, spinTo, note, blockReason, view,
   get on() { return D3.on; },
   get ready() { return !!D3.r; },
   get show() { return Object.assign({}, D3.show); },

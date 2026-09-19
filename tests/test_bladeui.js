@@ -561,6 +561,65 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     });
     rec('同梱した部品で立体図が実際に描ける（回線に依らない）',
         drew.w > 100 && drew.h > 100 && !drew.ng, JSON.stringify(drew));
+
+    /* ---- 5b) 断面図（§9.412、利用者の指示） ----
+       **同じ模型を使い回す**のが要点。ここで固定するのは「1枚足りたこと」ではなく、
+       ①機械まわりを伏せること ②平行投影で真横から見ること ③軸の中心で切ること
+       ④視点を動かせないと**見た目でも**言うこと（押せるのに何も起きない的を残さない）。 */
+    await page.click('#bsFigTabs [data-fig="cut"]');
+    await W.until(page, () => {
+     const v = window.WL.bladeSolid && window.WL.bladeSolid.view();
+     return !!(v && v.cut && v.ortho);
+    }, null, { ms: 20000, what: '断面図に切り替わる' });
+    const cut = await page.evaluate(() => {
+     const st3 = document.querySelector('#bsStage3'), cv = st3.querySelector('canvas');
+     const rig = st3.querySelector('.bs-hud-grp--rig');
+     return Object.assign({}, window.WL.bladeSolid.view(), {
+      stage2: document.querySelector('.bs-stage').hidden,
+      stage3: st3.hidden, isCut: st3.classList.contains('is-cut'),
+      w: cv ? cv.width : 0, h: cv ? cv.height : 0,
+      rigShown: rig ? getComputedStyle(rig).display !== 'none' : true,
+      cursor: cv ? getComputedStyle(cv).cursor : '',
+      tabs: [...document.querySelectorAll('#bsFigTabs [data-fig]')].map(b => b.dataset.fig)
+     });
+    });
+    rec('刃組図の札は模式図／断面図／立体図の3枚', cut.tabs.join('/') === '2d/cut/3d',
+        cut.tabs.join('/'));
+    rec('断面図は立体の器で描く（模式図の器は伏せる）',
+        cut.stage2 === true && cut.stage3 === false && cut.w > 100 && cut.h > 100,
+        JSON.stringify([cut.stage2, cut.stage3, cut.w, cut.h]));
+    rec('断面図は平行投影（遠近を付けない＝寸法を目で比べられる）', cut.ortho === true);
+    rec('軸の中心で切る面を1枚だけ持つ', cut.clips === 1, `${cut.clips}枚`);
+    rec('機械まわりの段取りは断面図では出さない（押せるのに何も起きない的を残さない）',
+        cut.isCut === true && cut.rigShown === false,
+        JSON.stringify([cut.isCut, cut.rigShown]));
+    rec('視点を動かせないことを見た目でも言う（掴める指のカーソルを出さない）',
+        cut.cursor === 'default', cut.cursor);
+    /* 向きの切り替えは断面図でも効く。**台車は回さず**、見る側とどちらを残すかを
+       入れ替える（回すと切断面まで一緒に回り、カメラ側の入れ替えと打ち消し合う）。
+       **いまどちら向きかを当てにしない**——ここへ来るまでに裏返っていることがある。 */
+    const was = cut.flip;
+    await page.click('#bsFlip');
+    await W.until(page, w => (window.WL.bladeSolid.view() || {}).flip !== w,
+                  was, { ms: 8000, what: '断面図の向きが裏返る' });
+    const flipped = await page.evaluate(() => window.WL.bladeSolid.view());
+    rec('断面図でも向きを裏返せる（残す側も一緒に入れ替わる）',
+        flipped.flip === !was && flipped.keep === (flipped.flip ? 1 : -1) && flipped.cut === true,
+        JSON.stringify([was, flipped]));
+    /* **台車は回っていない**こと（回すと切断面まで回る）。 */
+    rec('断面図では台車を回さない（裏返してもカメラ側だけが入れ替わる）',
+        await page.evaluate(() => Math.abs(WL.bladeSolid.view().rotY) < 1e-6));
+    await page.click('#bsFlip');
+    await W.until(page, w => (window.WL.bladeSolid.view() || {}).flip === w,
+                  was, { ms: 8000, what: '向きを戻す' });
+    /* 立体図へ戻すと、切る面は外れる（同じ模型がそのまま立体図に戻る）。 */
+    await page.click('#bsFigTabs [data-fig="3d"]');
+    await W.until(page, () => (window.WL.bladeSolid.view() || {}).cut === false,
+                  null, { ms: 20000, what: '立体図へ戻る' });
+    const back3 = await page.evaluate(() => window.WL.bladeSolid.view());
+    rec('立体図へ戻すと切る面が外れる（同じ模型がそのまま戻る）',
+        back3.cut === false && back3.clips === 0, JSON.stringify(back3));
+
     await page.click('#bsFigTabs [data-fig="2d"]');
     await W.until(page, () => !document.querySelector('.bs-stage').hidden,
                   null, { ms: 8000, what: '模式図へ戻る' });
@@ -640,6 +699,78 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     /* **記録が無い段取りを空欄にしない**（空欄は0に見える・§9.231）。 */
     rec('まだ組んでいない段取りは「これから」「未記録」と書く',
         bl.todo >= 1 && bl.na >= 1, `これから${bl.todo} 未記録${bl.na}`);
+
+    /* ---- 6.6) 一覧から刃組ガイダンスへ行ける（§9.408、利用者の指示②） ----
+       「刃組メインのスケジュールなのに刃組ガイダンスに行けないのは微妙です」
+       **行き先の的は題名の横**（§9.377）。一覧のどの行からでも入れること。 */
+    const openChip = await page.evaluate(() => {
+     const b = document.querySelector('#scBladeBody [data-open-blade]');
+     return b ? { text: b.textContent, title: b.title, id: b.dataset.openBlade } : null;
+    });
+    rec('刃組スケジュール一覧の行から刃組ガイダンスへ入れる',
+        !!openChip && openChip.text === '刃組ガイダンス', JSON.stringify(openChip));
+    rec('押すと何が起きるかを字で言う（一覧の側でも）',
+        !!openChip && /開きます/.test(openChip.title || ''), openChip && openChip.title);
+
+    /* ---- 6.7) 標準の計算値（§9.408） ----
+       記録が無い段取りでも「標準どおり組んだら何をどれだけ使うか」は出せる。
+       **同じ口を通して確かめる**（画面の字を数えない・§9.362）——計算は
+       刃組ガイダンスと同じ`WL.bladeSet`の1箇所を通る。 */
+    const fc = await page.evaluate(() => {
+     const api = WL.scheduleView;
+     if (!api || typeof api.bladeForecast !== 'function') return { missing: true };
+     const got = api.bladeForecast({ thickness: 1.6, originalWidth: 1200,
+       lots: [{ name: 'F1', w: 280, n: 4, parent: 'F1' }] });
+     if (!got) return { nothing: true };
+     const sp = got.snap.spacer || {};
+     return { spacerKinds: Object.keys(sp).length,
+              spacerTotal: Object.values(sp).reduce((a, b) => a + (+b || 0), 0),
+              strips: got.snap.cond.strips, hold: got.snap.cond.hold,
+              clearance: got.snap.cond.clearance, knife: got.snap.cond.knife };
+    });
+    rec('予定の材料から使用スペーサーを計算できる',
+        !!fc && fc.spacerKinds > 0 && fc.spacerTotal > 0, JSON.stringify(fc));
+    rec('計算値は条数・板押さえ・クリアランス・刃径まで揃う',
+        !!fc && fc.strips === 4 && !!fc.hold && fc.clearance > 0 && fc.knife > 0,
+        JSON.stringify(fc));
+    /* **材料が読めない段取りでは計算しない**（既定の見本で埋めない・§9.231）。 */
+    const none = await page.evaluate(() =>
+     WL.scheduleView.bladeForecast({ thickness: 1.6, originalWidth: 1200, lots: [] }));
+    rec('条が1本も読めないときは計算せず、既定の見本で埋めない', none === null, String(none));
+    const todoNote = await page.evaluate(() => {
+     const td = document.querySelector('#scBladeBody .sc-blade-todo small');
+     return td ? { text: td.textContent, title: td.title } : null;
+    });
+    rec('見込みを出せない行は「これから」に理由を添える',
+        !!todoNote && (/標準の計算値/.test(todoNote.text) || !!todoNote.title),
+        JSON.stringify(todoNote));
+
+    /* ---- 6.8) 来た道を戻る（§9.407、利用者の指摘①） ----
+       「戻るボタンから戻ったときに、作業スケジュール一覧に戻れず、全体の
+         スケジュール一覧に戻ってしまう」
+       **送り出した段へ返す**こと。ここは刃組の段から送り出しているので、
+       戻り先も刃組の段でなければならない。 */
+    await page.click('#scBladeBody [data-open-blade]');
+    await W.until(page, () => !!document.querySelector('#bladeSetPanel:not([hidden])'),
+                  null, { ms: 15000, what: '一覧から刃組ガイダンスへ' });
+    const backLabel = await page.evaluate(() => {
+     const e = document.querySelector('#bsFrom');
+     return e && !e.hidden ? (e.textContent || '') : '';
+    });
+    rec('戻るボタンが戻り先を名指しする（思い出させない）',
+        /刃組スケジュール一覧へ戻る/.test(backLabel), backLabel.slice(0, 40));
+    await page.click('#bsFrom');
+    await W.until(page, () => {
+     const b = document.querySelector('#scBladeBody');
+     return document.body.classList.contains('sc-mode') && !!b && !b.hidden;
+    }, null, { ms: 20000, what: '刃組スケジュール一覧へ戻る' });
+    const backTo = await page.evaluate(() => ({
+     blade: !(document.querySelector('#scBladeBody') || {}).hidden,
+     board: !(document.querySelector('#scBoard') || {}).hidden
+    }));
+    rec('来た段（刃組スケジュール一覧）へ戻る（俯瞰ボードへ落ちない）',
+        backTo.blade && !backTo.board, JSON.stringify(backTo));
+
     /* 戻れること（行き止まりを作らない・§CLAUDE 4）。 */
     await page.click('#scModeSingle');
     await W.until(page, () => {

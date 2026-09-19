@@ -72,13 +72,38 @@ def _path():
  return status_path()
 
 
-def report(step,detail='',failed=False):
- """現在の段階を書き出す。step は STEPS のキー。"""
+# 更新の作業をしているか（§9.411、利用者の指示③「アップデートなども実施して
+# くれると思うので、実施しているときとしていないときの違いも分かるように」）。
+# **3つしかない**——分からないうちは空（推測して「していない」と言わない）。
+WORK_NONE=''        # まだ分からない／その段は更新と関係ない
+WORK_SKIP='skip'    # 前回の確認のままで済んだ（飛ばした）
+WORK_UPDATE='update'  # いま確認・導入・作り直しをしている
+# 何が変わったから確認しているか（`ready.mismatch()`の答え）。**直近の1回を
+# 覚えておく**——確認の途中の細かい進捗を書くたびに理由を渡し直さずに済む。
+_work=WORK_NONE
+_reasons=[]
+
+
+def set_work(work,reasons=None):
+ """この起動が更新の作業をしているかを決める。**決めるのは1箇所**
+    （`start_app`の刻印の判定）——ここは覚えるだけ。"""
+ global _work,_reasons
+ _work=work or WORK_NONE
+ if reasons is not None:_reasons=[str(x) for x in reasons]
+
+
+def report(step,detail='',failed=False,work=None,reasons=None):
+ """現在の段階を書き出す。step は STEPS のキー。
+
+ `work`/`reasons` を渡すと、以降の書き出しにも同じものが付く（§9.411）
+ ——待機画面は「更新を反映しています」と「更新なし」を**同じ場所**で
+ 言い分ける。"""
+ if work is not None or reasons is not None:set_work(work if work is not None else _work,reasons)
  index=_STEP_INDEX.get(step)
  if index is None:return
  payload={'step':step,'index':index,'total':TOTAL_STEPS,
           'label':STEPS[index][1],'detail':str(detail or ''),
-          'version':APP_VERSION,
+          'version':APP_VERSION,'work':_work,'reasons':list(_reasons),
           'failed':bool(failed),'at':time.time(),'elapsed':round(time.time()-_started,1)}
  try:
   _path().write_text('window.wavelogBootStatus&&window.wavelogBootStatus('

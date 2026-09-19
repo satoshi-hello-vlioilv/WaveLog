@@ -20,25 +20,20 @@
  const WL = (window.WL = window.WL || {});
  const BS = () => WL.bladeSet;
 
- /* ---------- 状態（画面で選んでいる条件。保存はしない） ---------- */
- const st = {
-  equipment: '',
-  align: 'none', canNk: true, nkWidth: 30,
-  knife: 318.2, thick: 1.3, tk: 10, clr: 0.15, ov: 0.2,
-  /* クリアランスは**板厚の10%が基本**（§9.378、利用者の指示）。板厚を変えたら
-     引き直す。手で打った時点で `clrAuto` を落とし、以降は触らない——利用者が
-     入れた値を「保存されていない既定」にしない（§9.367 と同じ考え方）。 */
-  clrAuto: true,
-  W: 1170, trimMode: 'even', osTrim: 20,
-  lots: [{ name: 'LOT1', w: 279.8, n: 4 }],
-  order: [0, 0, 0, 0],
-  bigMode: 'auto', smallMode: 'auto', bigTh: 39.5, smallTh: 38.0,
-  /* 刃組の道具なので、はじめから段取り向き（DS左＝部材を入れる側から見た並び）。 */
-  carriage: 'A', bladeGroup: '', flip: true
- };
+ /* ---------- 状態（画面で選んでいる条件。保存はしない） ----------
+    **既定値は`blade-core.js`の`defaultState()`が持つ**（§9.408）。刃組
+    スケジュール一覧が「標準どおり組んだらどうなるか」を同じ既定から計算する
+    ので、ここに書き写すと2箇所になる（片方だけ直すと一覧と画面が食い違う）。 */
+ const st = BS().defaultState();
  let M = null, IX = null, LAST = null;
  let panel = null, railTab = 'ends', loadToken = 0;
  let seededFrom = null;     /* どの予定から開いたか（画面に出どころを出す） */
+ /* **来た道**（§9.407、利用者の指摘①「戻るボタンで作業スケジュール一覧に
+    戻れず、全体のスケジュール一覧に戻ってしまう」）。作業スケジュールは段を
+    3つ持つ（全体／個別／刃組）ので、**開いた段をそのまま返す**。
+    `{mode}`だけを持ち、段の呼び名は向こう（`WL.scheduleView.modeName()`）が
+    答える——こちらに綴りを写すと、札の字を直したときにここだけ古くなる。 */
+ let seededBack = null;
  /* 予定から拾えなかった行の数（分割ありで子ロットの切断巾が読めない等）。
     **0で埋めずに件数を言う**（§9.231・§CLAUDE 4）——黙って落とすと、
     条が1本足りないことに現場が気づけない。 */
@@ -134,8 +129,12 @@
        <!-- 模式図／立体図（§9.377 追補）。**同じ割付から**作るので、どちらを
             見ても食い違わない。立体図の部品（three.js）は**押したときだけ**
             取りに行く（起動を遅くしない・回線が無くても模式図は使える）。 -->
+       <!-- 断面図（§9.412、利用者の指示）。**立体図と同じ模型**を、機械まわりを
+            伏せて・平行投影の真横から・軸の中心で切って見る。模式図の読み取り
+            やすさ（真横・同じ並び）と、立体の質感を両方持たせるための1枚。 -->
        <div class="bs-seg" id="bsFigTabs">
         <button type="button" class="bs-chip is-on" data-fig="2d">模式図</button>
+        <button type="button" class="bs-chip" data-fig="cut" title="立体の模型を軸の中心で切り、真横から平行投影で見ます。寸法は模式図と同じ読み方ができます">断面図</button>
         <button type="button" class="bs-chip" data-fig="3d">立体図</button>
        </div>
        <!-- **向きの切り替えは図の見出しへ置く**（§9.380、利用者の指示
@@ -169,7 +168,8 @@
             <dd>DS 側から部材を入れ、OS 側へ詰めます。材料の入側は、ラインを正面に見て左です。</dd>
             <dt>視点</dt>
             <dd>ドラッグ＝回す／ホイール＝寄る／Shift＋ドラッグ（または右ドラッグ）＝平行移動／
-              「視点を戻す」で元へ</dd>
+              「視点を戻す」で元へ。<b>断面図では視点は動かせません</b>（真横に固定して、
+              寸法を目で比べられるようにしています）。</dd>
             <dt>表示</dt>
             <dd>下で板・刃・ゴムリング・スペーサーを消せます。点が付いているものが出ています。</dd>
            </dl>
@@ -182,7 +182,7 @@
            <button type="button" class="bs-tg is-on" data-show="ring" data-show-name="ゴムリング" aria-pressed="true">ゴムリング</button>
            <button type="button" class="bs-tg is-on" data-show="liner" data-show-name="スペーサー" aria-pressed="true">スペーサー</button>
           </div>
-          <div class="bs-hud-grp"><span class="bs-hud-cap">段取り</span>
+          <div class="bs-hud-grp bs-hud-grp--rig"><span class="bs-hud-cap">段取り</span>
            <button type="button" class="bs-btn is-sm is-on bs-step3-pull">①ラインへ戻す</button>
            <button type="button" class="bs-btn is-sm is-on bs-step3-open">②軸端部を戻す</button>
            <button type="button" class="bs-btn is-sm bs-step3-spin">③台車を回す</button>
@@ -367,42 +367,12 @@
   applyStandards();
   return true;
  }
- /* 基準値から**画面の既定値**を入れる。**利用者が触った値は上書きしない**
-    （§9.361と同じ約束）——設備を開き直したときだけ入れ直す。 */
- function applyStandards() {
-  const P = M.P;
-  if (P.bladeThickness != null) st.tk = +P.bladeThickness;
-  if (P.clearance != null) st.clr = +P.clearance;
-  if (P.overlap != null) st.ov = +P.overlap;
-  if (P.scrapWidth != null) st.nkWidth = +P.scrapWidth;
-  st.canNk = P.canNakanuki !== false;
-  applyBladePick();
- }
-
- /* 使う刃を決める（§9.379、利用者の指示2）。
-      ふつう … 状態が「一般」の刃
-      例外 …… `刃選択マスタ` の条件に当たったら、その組の「専用」の刃
-    「メンテナンス中」は**どちらでも選ばない**。
-    決めたら `st.pick` に「なぜその組か」を残す——画面が理由を出せないと、
-    利用者には「勝手に別の刃になった」としか見えない（§CLAUDE 6 出どころを出す）。 */
- function applyBladePick() {
-  const BS_ = BS();
-  const gen = M.bladeGeneral || '一般', sp = M.bladeSpecial || '専用';
-  const hit = BS_.pickGroup(M.picks, BS_.pickCtx(st, M), M.pickFields);
-  st.pick = hit ? { group: hit.group, rule: hit.rule } : null;
-  const ok = b => b.currentDia && (hit
-   ? (b.status === sp && b.group === hit.group)
-   : b.status === gen);
-  let use = (M.blades || []).filter(ok);
-  /* 条件に当たったのに、その組の刃が1枚も無い——**黙って一般へ落とさない**。
-     理由を持ったまま一般で描き、画面が「当たったが刃が無い」と言えるようにする。 */
-  if (hit && !use.length) {
-   st.pick = { group: hit.group, rule: hit.rule, missing: true };
-   use = (M.blades || []).filter(b => b.currentDia && b.status === gen);
-  }
-  use = use.sort((a, b) => (b.thickness || 0) - (a.thickness || 0));
-  if (use.length) { st.knife = use[0].currentDia; if (use[0].thickness) st.tk = use[0].thickness; }
- }
+ /* 基準値から**画面の既定値**を入れ、使う刃を決める。**中身は
+    `blade-core.js`の1箇所**（§9.408）——一覧の見込みと同じ答えを通す。
+    **利用者が触った値は上書きしない**（§9.361と同じ約束）ので、呼ぶのは
+    設備を開き直したときだけ。 */
+ function applyStandards() { BS().applyStandards(st, M); }
+ function applyBladePick() { BS().applyBladePick(st, M); }
 
  /* ====================== 入口 ======================
     `seed`は作業スケジュールから来る文脈（§9.377）。**渡された項目だけ**入れる
@@ -417,6 +387,7 @@
   const changed = eq !== st.equipment;
   st.equipment = eq;
   seededFrom = o.from || null;
+  seededBack = (o.back && o.back.mode) ? { mode: String(o.back.mode) } : null;
   seededSkip = Math.max(0, (o.seed && o.seed.skipped) | 0);
   /* その段取りで切る本数と、1本目に切る材料（§9.382）。**予定から来た
      ものだけ**を控える——手で開いたときは空のままにして、記録にも
@@ -437,6 +408,10 @@
   if (o.seed) {
    /* 記録が勝ったときは取り直さない（§9.387 記録のほうが新しい決定）。 */
    if (!applySeed(o.seed, changed)) await fillFromSource();
+   /* **材料が決まってから刃を選ぶ**（§9.408）。刃選択マスタの条件は板厚・
+      条数・幅なので、既定のまま選ぶと当たる行が変わる——刃組スケジュール
+      一覧の見込み（`standardState()`）と同じ順にそろえる。 */
+   applyBladePick();
   } else if (changed) BS().syncOrder(st);
   fillBladePick();
   fillRingSelects();
@@ -449,20 +424,20 @@
   if (miss) showEmptyMissing(miss);
  }
 
- /* クリアランスの答えは**ここ1箇所**（§9.378、利用者の指示「目安として板厚の
-    10％としておいてもらい、将来的には材質の条件も増える可能性がありますが
-    マスタ化するなどでクリアランスマスタから常に取れるようにするつもりです」）。
-    いまは率（`刃組基準値マスタ`の`クリアランス率`）×板厚。材質ごとの値が
-    要るようになったら、**この関数の中だけ**をマスタ引きへ差し替える。
-    桁は板厚と同じ 0.01 まで（測る側が読める桁に合わせる）。 */
- const clearanceRate = () => {
-  const r = M && M.P ? +M.P.clearanceRate : NaN;
-  return Number.isFinite(r) && r > 0 ? r : 0.1;
- };
- function clearanceFor(t) {
-  const v = (+t || 0) * clearanceRate();
-  return v > 0 ? +v.toFixed(2) : 0;
+ /* 戻り先の呼び名（§9.407）。**答えるのは作業スケジュール側**——段の札の字と
+    同じ表から引くので、札を直せばこの字も一緒に変わる。読めないときは総称
+    （`作業スケジュール`）で書く：嘘の段名を出さない。 */
+ function backName() {
+  const api = WL.scheduleView;
+  const name = (seededBack && api && typeof api.modeName === 'function')
+   ? String(api.modeName(seededBack.mode) || '') : '';
+  return name || '作業スケジュール';
  }
+
+ /* クリアランスの答えは**`blade-core.js`の1箇所**（§9.378・§9.408）。
+    ここは今見ているマスタ（`M`）を渡すだけの薄い口。 */
+ const clearanceRate = () => BS().clearanceRate(M);
+ const clearanceFor = t => BS().clearanceFor(M, t);
  function syncClearance() {
   if (!st.clrAuto) return false;
   const v = clearanceFor(st.thick);
@@ -680,9 +655,13 @@
   if (from) {
    from.hidden = !seededFrom;
    if (seededFrom) {
+    /* **戻る先を名指しする**（§9.407）。「この予定から」だけだと、押したあと
+       どの段へ出るのかが分からない（実際に俯瞰へ落ちていた）。段の呼び名は
+       作業スケジュール側の1箇所が答える——読めないときは総称で書く。 */
+    const to = backName();
     from.innerHTML = `<i aria-hidden="true">←</i>`
-     + `<span><s>この予定から</s><b>${esc(seededFrom)}</b></span>`;
-    from.title = `作業スケジュールへ戻ります（${seededFrom}）`;
+     + `<span><s>${esc(to)}へ戻る</s><b>${esc(seededFrom)}</b></span>`;
+    from.title = `${to}へ戻ります（${seededFrom}）`;
    }
    const skip = panel.querySelector('#bsSkip');
    if (skip) {
@@ -1752,17 +1731,24 @@
 
  const closePops = () => panel.querySelectorAll('.bs-step').forEach(p => p.classList.remove('is-open'));
 
- /* 模式図／立体図。**器の出し入れはここが持ち、中身は`WL.bladeSolid`が持つ**。 */
+ /* 模式図／断面図／立体図。**器の出し入れはここが持ち、中身は`WL.bladeSolid`が
+    持つ**。顔ぶれは`FIG_KINDS`の1箇所（増やすときはここと札だけ・§9.412）。 */
+ const FIG_KINDS = ['2d', 'cut', '3d'];
+ const FIG_SOLID = { cut: true, '3d': true };    /* 立体の模型を使う図 */
  let figKind = '2d';
  function figMode(mode) {
-  figKind = mode === '3d' ? '3d' : '2d';
+  figKind = FIG_KINDS.includes(mode) ? mode : '2d';
+  const solid = !!FIG_SOLID[figKind];
   panel.querySelectorAll('#bsFigTabs [data-fig]')
    .forEach(b => b.classList.toggle('is-on', b.dataset.fig === figKind));
-  panel.querySelector('.bs-stage').hidden = figKind === '3d';
-  $('#bsStage3').hidden = figKind !== '3d';
+  panel.querySelector('.bs-stage').hidden = solid;
+  $('#bsStage3').hidden = !solid;
+  /* 断面図では機械まわりを伏せているので、**段取りの3つは押しても何も起きない**
+     ——押せるのに何も起きない的を残さない（§CLAUDE 4）。器ごと伏せる。 */
+  $('#bsStage3').classList.toggle('is-cut', figKind === 'cut');
   if (!WL.bladeSolid) return;
   WL.bladeSolid.sync({ st, M, res: LAST, ringHex: hexOf });
-  WL.bladeSolid.setMode(figKind === '3d');
+  WL.bladeSolid.setMode(solid, figKind);
  }
 
  function wire() {
@@ -1937,7 +1923,10 @@
                  message: '左のメニューの「作業スケジュール」から開いてください。' });
     return;
    }
-   Promise.resolve(api.open()).catch(e => {
+   /* **来た道を返す**（§9.407）。渡さないと向こうの既定（設備を選べる端末は
+      俯瞰ボード）で開き直すので、個別のタイムラインや刃組スケジュール一覧から
+      来た人は「戻れていない」ように見える。 */
+   Promise.resolve(api.open(seededBack ? { mode: seededBack.mode } : undefined)).catch(e => {
     WL.quiet.note('作業スケジュールへ戻れない', e);
     alertModal({ title: '作業スケジュールへ戻れません',
                  message: String((e && e.message) || e || '') });

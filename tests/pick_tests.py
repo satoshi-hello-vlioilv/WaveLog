@@ -212,7 +212,9 @@ G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'tes
                'test_gridhead']
 G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 'test_tabclose',
              # §9.318: 待機画面が見えなくてもアプリへ辿り着ける（保険・置き場の判定）
-             'test_faststart', 'test_bootopen']
+             'test_faststart', 'test_bootopen',
+             # §9.410: デスクトップの起動ショートカットとアイコン（入口を作る側）
+             'test_shortcut']
 G['接続'] = ['test_mastershare', 'test_storage', 'test_storageui', 'test_recmirror', 'test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
              'test_atomicio', 'test_localwork', 'test_dscap',
              'test_qjoin', 'test_qjoinui',
@@ -517,6 +519,10 @@ RULES = [
                                     'test_recsplit')),
     ('backend/logging_setup.py', g('ログ')),
     ('backend/boot_status.py', g('起動')),
+    # デスクトップの起動ショートカットとアイコン（§9.410）。設定の画面は
+    # 共通設定の「この端末」の章なので、そちらの網も一緒に回す。
+    ('backend/desktop_shortcut.py', g('test_shortcut', 'test_setpage')),
+    ('backend/app_icon.py', g('test_shortcut')),
     # 終わる前の片付けと終了ボタン（§9.301 ②）も watchdog が持つ。
     ('backend/watchdog.py', g('test_tabclose', 'test_boot', 'test_presence',
                               'test_appquit', 'test_scowner')),

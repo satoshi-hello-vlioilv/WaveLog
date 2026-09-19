@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<title>起動モーダル 美観パターン（アイコン=C／配色=D を土台に）</title>
+<style>
+ :root{--pg:#f2f5f7;--pgink:#1d2b33;--pgink2:#5b6f7a;--pgline:#dbe3e8}
+ *{box-sizing:border-box}
+ body{margin:0;background:var(--pg);color:var(--pgink);
+  font:14px/1.7 "Yu Gothic UI","Meiryo",system-ui,sans-serif;padding:26px 30px 60px}
+ h1{font-size:20px;margin:0 0 6px}
+ .lead{color:var(--pgink2);margin:0 0 18px;max-width:78em}
+ .switch{display:flex;gap:8px;align-items:center;margin:0 0 20px;position:sticky;top:0;
+  background:var(--pg);padding:10px 0;z-index:5;border-bottom:1px solid var(--pgline)}
+ .switch span{color:var(--pgink2);font-size:12px;margin-right:4px}
+ .switch button{font:inherit;font-size:12px;padding:6px 12px;border:1px solid var(--pgline);
+  background:#fff;border-radius:8px;cursor:pointer;color:var(--pgink)}
+ .switch button.on{background:#16323c;color:#fff;border-color:#16323c}
+ .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:22px}
+ .case{background:#fff;border:1px solid var(--pgline);border-radius:12px;overflow:hidden}
+ .case>h2{font-size:15px;margin:0;padding:12px 16px;border-bottom:1px solid var(--pgline);
+  display:flex;align-items:center;gap:9px;background:#fbfcfd}
+ .case>h2 i{font-style:normal;background:#16323c;color:#fff;border-radius:6px;
+  min-width:30px;text-align:center;padding:2px 7px;font-size:12px;font-weight:700}
+ .why{margin:0;padding:11px 16px;color:var(--pgink2);font-size:12.5px;
+  border-bottom:1px solid var(--pgline);background:#fbfcfd}
+ .why b{color:var(--pgink)}
+
+ /* ---------- 共通の骨格（案1＋案2の複合・v2から変えていない） ---------- */
+ .screen{padding:26px 18px;display:flex;justify-content:center}
+ .card{width:100%;max-width:394px;background:var(--card);border:1px solid var(--line);
+  border-radius:var(--r);box-shadow:var(--shadow);padding:var(--pad,20px);color:var(--ink);position:relative;overflow:hidden}
+ .head{display:flex;align-items:center;gap:12px;margin-bottom:var(--headgap,16px)}
+ .head .t{flex:1;min-width:0}
+ .head h3{margin:0;font-size:15px;font-weight:var(--titlefw,700);letter-spacing:var(--titlels,0)}
+ .sub{margin:1px 0 0;font-size:10px;letter-spacing:.14em;color:var(--ink3)}
+ .ver{font-size:11px;color:var(--ink3);white-space:nowrap}
+ .now{display:flex;align-items:baseline;gap:10px;margin:0 0 8px}
+ .now b{font-size:var(--nowfs,17px);font-weight:var(--nowfw,700);flex:1;min-width:0}
+ .pct{font-size:14px;color:var(--ink2);font-variant-numeric:tabular-nums}
+ .bar{height:var(--barh,7px);background:var(--track);border-radius:var(--barr,99px);overflow:hidden}
+ .bar i{display:block;height:100%;width:45%;background:var(--fill);border-radius:inherit;transition:width .3s}
+ .folded{display:flex;align-items:center;gap:7px;margin:11px 0 0;font-size:12px;color:var(--ink2)}
+ .ck{width:15px;height:15px;border-radius:var(--ckr,99px);background:var(--doneBg);color:var(--doneFg);
+  font-size:10px;display:grid;place-items:center;flex:none}
+ .work{margin:11px 0 0;padding:9px 11px;border:1px solid var(--line);border-radius:var(--workr,10px);
+  background:var(--workBg);font-size:12px}
+ .work b{display:block;font-size:12.5px;margin-bottom:1px;color:var(--ink)}
+ .work span{color:var(--ink2)}
+ .rest{margin:10px 0 0;font-size:11.5px;color:var(--ink3);line-height:1.6}
+ .meta{display:flex;gap:10px;margin:12px 0 0;font-size:11px;color:var(--ink3);
+  border-top:1px solid var(--line);padding-top:9px}
+ .meta .r{margin-left:auto;text-align:right}
+ .fail{margin:11px 0 0;padding:10px 12px;border:1px solid var(--dangerLine);border-radius:var(--workr,10px);
+  background:var(--dangerBg);font-size:12px;color:var(--ink)}
+ .fail b{display:block;color:var(--danger);margin-bottom:3px}
+ .acts{display:flex;gap:8px;margin-top:9px}
+ .acts button{padding:7px 12px;border:0;border-radius:8px;font:inherit;font-weight:700;
+  font-size:12px;color:var(--btnFg);background:var(--btnBg);cursor:pointer}
+ .acts button.ghost{background:transparent;border:1px solid var(--line);color:var(--ink2)}
+ [hidden]{display:none!important}
+
+ /* ---------- 土台（D Soft Light の色調）。全パターン共通 ---------- */
+ .P{--card:#ffffff;--line:#dfe6ea;--ink:#16323c;--ink2:#4e6874;--ink3:#7b909b;
+  --accent:#0d8f88;--accentBg:#e6f7f5;--accentLine:#a8ded9;--track:#e8eef1;
+  --fill:linear-gradient(90deg,#0d8f88,#2ec9c0);--doneBg:#0d8f88;--doneFg:#fff;--workBg:#f4f8fa;
+  --warn:#9a6200;--warnBg:#fff5e2;--warnLine:#f0cf95;
+  --danger:#a32424;--dangerBg:#fdeaea;--dangerLine:#e0a3a3;
+  --btnBg:#0d8f88;--btnFg:#fff;--r:18px;--workr:12px;
+  --shadow:0 12px 30px rgba(22,50,60,.14),0 2px 6px rgba(22,50,60,.08)}
+ .P .screen{background:linear-gradient(160deg,#eef4f7,#dfeaef 60%,#e9f1f4)}
+ /* 更新中の帯（既定＝ティール。琥珀はアイコン専用） */
+ .P .work.upd{background:var(--accentBg);border-color:var(--accentLine)}
+ .P .work.upd b{color:var(--accent)}
+
+ /* ---------- P1 そのまま磨く ---------- */
+ /* 追加なし（土台そのもの） */
+
+ /* ---------- P2 罫で組む ---------- */
+ .P2{--r:10px;--workr:7px;--ckr:3px;--barh:6px;--barr:2px;--workBg:transparent;
+  --shadow:0 0 0 1px rgba(22,50,60,.04)}
+ .P2 .screen{background:#eef2f4}
+ .P2 .card{border-color:#cfdae0}
+ .P2 .work{border-width:0 0 0 3px;border-left-style:solid;border-radius:0;padding-left:10px;
+  border-left-color:var(--accentLine)}
+ .P2 .work.upd{border-left-color:#f5a30a;background:transparent}
+ .P2 .work.upd b{color:#8a5a00}
+ .P2 .ver,.P2 .pct,.P2 .meta{font-family:"Consolas",ui-monospace,monospace}
+
+ /* ---------- P3 鋼のレール ---------- */
+ .P3{--pad:20px 20px 20px 26px}
+ .P3 .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:7px;
+  background:linear-gradient(180deg,#9aa8b1,#6f7d86);transition:background .3s}
+ .P3 .card.upd::before{background:linear-gradient(180deg,#f5a30a,#c07d05)}
+ .P3 .card.fail::before{background:linear-gradient(180deg,#d05b4c,#a32424)}
+ .P3 .work.upd{background:#fff5e2;border-color:var(--warnLine)}
+ .P3 .work.upd b{color:var(--warn)}
+
+ /* ---------- P4 見出しを面に ---------- */
+ .P4{--pad:0}
+ .P4 .head{margin:0;padding:15px 18px;background:var(--accentBg);
+  border-bottom:1px solid var(--accentLine)}
+ .P4 .head h3,.P4 .sub,.P4 .ver{color:#0b5f5a}
+ .P4 .now,.P4 .bar,.P4 .folded,.P4 .work,.P4 .rest,.P4 .meta,.P4 .fail{margin-left:18px;margin-right:18px}
+ .P4 .now{margin-top:16px}
+ .P4 .meta{margin-bottom:0;padding-bottom:14px;border-top:1px solid var(--line)}
+ .P4 .work.upd{background:#fff5e2;border-color:var(--warnLine)}
+ .P4 .work.upd b{color:var(--warn)}
+
+ /* ---------- P5 大きく・静かに ---------- */
+ .P5{--nowfs:25px;--nowfw:800;--headgap:20px;--pad:24px;--barh:9px;--workBg:transparent;
+  --shadow:0 10px 26px rgba(22,50,60,.10)}
+ .P5 .screen{background:#f3f7f9}
+ .P5 .fill,.P5 .bar i{background:var(--accent)}
+ .P5 .work{border:0;border-top:1px solid var(--line);border-radius:0;padding:10px 0 0;font-size:12.5px}
+ .P5 .work b{font-size:13.5px}
+ .P5 .work.upd b{color:var(--accent)}
+ .P5 .work.upd::after{content:"";display:block;height:2px;width:56px;background:var(--accent);
+  margin-top:7px;border-radius:2px}
+ .P5 .rest{font-size:12px}
+
+ /* ---------- アイコン実寸 ---------- */
+ .icons{display:flex;gap:18px;align-items:flex-end;padding:12px 16px;border-top:1px solid var(--pgline);
+  background:#fbfcfd;flex-wrap:wrap}
+ .icons small{color:var(--pgink2);font-size:11px;width:100%;margin-bottom:2px}
+ .icons .lab{display:block;font-size:10px;color:var(--pgink2);text-align:center;font-weight:400}
+ .iconrow{background:#fff;border:1px solid var(--pgline);border-radius:12px;margin-top:22px;overflow:hidden}
+ .iconrow h2{font-size:15px;margin:0;padding:12px 16px;border-bottom:1px solid var(--pgline);background:#fbfcfd}
+ .ic{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+ .ic>div{padding:14px 16px;border-right:1px solid var(--pgline)}
+ .ic>div:last-child{border-right:0}
+ .ic h3{margin:0 0 3px;font-size:13px}
+ .ic p{margin:0 0 10px;font-size:12px;color:var(--pgink2)}
+ .sizes{display:flex;gap:16px;align-items:flex-end}
+ .onwin{display:flex;gap:16px;align-items:flex-end;margin-top:12px;padding:10px 12px;
+  border-radius:8px;background:#1f5b8f}
+ .onwin .lab{color:#dbe9f5}
+</style></head><body>
+
+<h1>起動モーダル 美観パターン（アイコン＝C ／ 配色＝D を土台に）</h1>
+<p class="lead">骨格（案1＋案2の複合）と配色（D Soft Light）と絵（C 鋼帯＋琥珀の刃）は<b>変えていません</b>。
+ 変えたのは<b>質感・余白・状態の見せ方</b>だけです。<br>
+ <b>琥珀の扱いがパターンごとに違います</b>——Cのアイコンは琥珀が主役、Dは「更新を反映中」が琥珀。
+ 同じカードに両方あると<b>琥珀が2つの意味を持つ</b>ので、解き方を変えてあります。</p>
+
+<div class="switch">
+ <span>状態</span>
+ <button class="on" data-state="skip">更新なし（ふだんの起動）</button>
+ <button data-state="upd">更新を反映中</button>
+ <button data-state="fail">起動できなかった</button>
+</div>
+<div class="grid" id="grid"></div>
+
+<div class="iconrow">
+ <h2>アイコン（C）を 16px でも読める形へ — 3案</h2>
+ <div class="ic" id="ic"></div>
+</div>
+
+<script>
+"use strict";
+const STEPS=['実行環境を確認','起動中のアプリを確認','必要な部品を確認','データの置き場所を確認',
+ 'アプリを読み込み','Webサーバーを起動','画面部品を読み込み','権限を確認','一覧を読み込み','表示を整える'];
+
+/* C（決定した絵）と、小さい寸法で形が残るように詰めた2案 */
+const ICONS={
+ C:(s,u)=>`<svg viewBox="0 0 64 64" width="${s}" height="${s}"><defs>
+   <linearGradient id="g${u}" x1="0" y1="0" x2="0" y2="1">
+   <stop offset="0" stop-color="#2b3339"/><stop offset="1" stop-color="#171c20"/></linearGradient></defs>
+  <rect width="64" height="64" rx="11" fill="url(#g${u})"/>
+  <rect x="7" y="20" width="50" height="24" rx="4" fill="#c9d2d8"/>
+  <path d="M24 16v32M40 16v32" stroke="#f5a30a" stroke-width="5.5" stroke-linecap="round"/></svg>`,
+ C1:(s,u)=>`<svg viewBox="0 0 64 64" width="${s}" height="${s}"><defs>
+   <linearGradient id="g${u}" x1="0" y1="0" x2="0" y2="1">
+   <stop offset="0" stop-color="#2b3339"/><stop offset="1" stop-color="#171c20"/></linearGradient></defs>
+  <rect width="64" height="64" rx="12" fill="url(#g${u})"/>
+  <rect x="5" y="17" width="54" height="30" rx="4" fill="#d7dee3"/>
+  <path d="M23 11v42M41 11v42" stroke="#f5a30a" stroke-width="7" stroke-linecap="butt"/></svg>`,
+ C2:(s,u)=>`<svg viewBox="0 0 64 64" width="${s}" height="${s}"><defs>
+   <linearGradient id="g${u}" x1="0" y1="0" x2="0" y2="1">
+   <stop offset="0" stop-color="#2b3339"/><stop offset="1" stop-color="#171c20"/></linearGradient></defs>
+  <rect width="64" height="64" rx="12" fill="url(#g${u})"/>
+  <rect x="6" y="16"  width="52" height="14" rx="3" fill="#d7dee3"/>
+  <rect x="6" y="34" width="52" height="14" rx="3" fill="#9aa6ae"/>
+  <path d="M32 6v52" stroke="#f5a30a" stroke-width="8" stroke-linecap="butt"/></svg>`
+};
+
+const CASES=[
+ {k:'P1',name:'そのまま磨く（Clean）',
+  why:'<b>質感:</b> Dの白カードのまま。影は2段（近い影＋遠い影）で浮かせる。角丸18px。<br>'
+     +'<b>琥珀の扱い:</b> <b>アイコン専用</b>。「更新を反映中」はティールの面にする——進行中は"注意"ではなく"アクセント"。<br>'
+     +'<b>効き目:</b> いちばん素直。起動後のアプリ本体（明るい画面）と地続き。'},
+ {k:'P2',name:'罫で組む（Paper）',
+  why:'<b>質感:</b> 影を捨てて<b>1pxの罫と余白だけ</b>で構造を出す。角丸10px、数字は等幅。<br>'
+     +'<b>琥珀の扱い:</b> 更新中は<b>左の細線だけ</b>琥珀（面を持たない）。アイコンの琥珀と面積で住み分ける。<br>'
+     +'<b>効き目:</b> 印刷物のような落ち着き。情報が詰まって見えず、罫が段を数えさせる。'},
+ {k:'P3',name:'鋼のレール（Steel Rail）',
+  why:'<b>質感:</b> カードの<b>左端に鋼色の縦帯</b>。アイコンの鋼をモーダルへ少しだけ持ち込む。<br>'
+     +'<b>琥珀の扱い:</b> 更新中は<b>その帯ごと琥珀</b>に変わる。状態が「位置・色・字」の3つで出る。<br>'
+     +'<b>効き目:</b> 遠目でも「いつもと違う起動」が分かる。設備の色味にいちばん近い。'},
+ {k:'P4',name:'見出しを面に（Tinted Head）',
+  why:'<b>質感:</b> 頭だけ淡いティールの面。アイコン・名前・版が<b>ひとまとまり</b>になり、本体は白のまま。<br>'
+     +'<b>琥珀の扱い:</b> 頭がティールなので、更新の帯は<b>琥珀の面のまま</b>でも混ざらない。<br>'
+     +'<b>効き目:</b> 「何のアプリか」と「いま何をしているか」が層で分かれる。'},
+ {k:'P5',name:'大きく・静かに（Airy）',
+  why:'<b>質感:</b> いまの段を<b>25px</b>まで上げ、色数を最小に（ティール1色）。枠を減らし余白で切る。<br>'
+     +'<b>琥珀の扱い:</b> モーダルから<b>琥珀を外す</b>。アイコンだけが琥珀を持つ。<br>'
+     +'<b>効き目:</b> 遠目・低視力でいちばん読める。刺激がいちばん少ない。'}
+];
+
+document.getElementById('grid').innerHTML=CASES.map(c=>`
+ <section class="case P ${c.k}" data-k="${c.k}">
+  <h2><i>${c.k}</i>${c.name}</h2>
+  <p class="why">${c.why}</p>
+  <div class="screen">
+   <div class="card" data-card>
+    <div class="head">
+     <span class="mark">${ICONS.C(38,c.k)}</span>
+     <div class="t"><h3>測定伝送システム</h3><p class="sub">STARTING UP</p></div>
+     <span class="ver">VER2.306.0</span>
+    </div>
+    <p class="now"><b data-now></b><span class="pct" data-pct></span></p>
+    <div class="bar"><i data-fill></i></div>
+    <p class="folded" data-folded><span class="ck">✓</span><span data-foldedt></span></p>
+    <div class="work" data-work><b data-workt></b><span data-workw></span></div>
+    <p class="rest" data-rest></p>
+    <p class="meta"><span>経過 <span data-sec></span> 秒</span><span class="r" data-detail></span></p>
+    <div class="fail" data-fail hidden>
+     <b>次の一手</b> program\\start_app.bat を直接ダブルクリックし、黒い画面のエラーを見る
+     ／ Python が入っているか ／ ポート5029が空いているか
+     <div class="acts"><button>もう一度確認する</button><button class="ghost">ログを開く</button></div>
+    </div>
+   </div>
+  </div>
+  <div class="icons"><small>アイコン実寸（デスクトップのショートカットも同じ絵）</small>
+   ${[16,24,32,48].map(s=>`<span><span style="display:block">${ICONS.C(s,c.k+s)}</span><b class="lab">${s}px</b></span>`).join('')}
+  </div>
+ </section>`).join('');
+
+const IC=[
+ {k:'C',n:'C そのまま',p:'鋼帯 24／刃 5.5px・2本。32px以上ははっきり読めるが、<b>16pxでは帯が6px弱</b>になり刃と潰れる。'},
+ {k:'C1',n:'C′ 帯を厚く',p:'帯を 24→30、刃を 5.5→7px、角を立てる。<b>同じ絵のまま</b>小さい寸法の余白を稼ぐ。'},
+ {k:'C2',n:'C″ 切り分けた形',p:'刃を1本にし、<b>切られた帯が上下にずれた</b>形にする。16pxでも「切っている」が残る。'}
+];
+document.getElementById('ic').innerHTML=IC.map(x=>`
+ <div><h3>${x.n}</h3><p>${x.p}</p>
+  <div class="sizes">${[16,24,32,48,64].map(s=>
+   `<span><span style="display:block">${ICONS[x.k](s,'r'+x.k+s)}</span><b class="lab">${s}px</b></span>`).join('')}</div>
+  <div class="onwin">${[16,32,48].map(s=>
+   `<span><span style="display:block">${ICONS[x.k](s,'w'+x.k+s)}</span><b class="lab">${s}px</b></span>`).join('')}
+   <b class="lab" style="margin-left:auto">デスクトップの地の上</b></div>
+ </div>`).join('');
+
+let state='skip';
+function render(){
+ const upd=state==='upd',fail=state==='fail';
+ const at=upd?2:4,pct=fail?100:Math.round((at+.5)/10*100);
+ document.querySelectorAll('.case').forEach(box=>{
+  const q=s=>box.querySelector(s);
+  q('[data-card]').className='card'+(fail?' fail':(upd?' upd':''));
+  q('[data-now]').textContent=fail?'起動できませんでした':(upd?'更新を反映しています':STEPS[at]);
+  q('[data-pct]').textContent=pct+'%';
+  q('[data-fill]').style.width=pct+'%';
+  q('[data-fill]').style.background=fail?'#a32424':'';
+  q('[data-foldedt]').textContent=`${STEPS[0]}ほか${at-1}件 完了`;
+  q('[data-folded]').hidden=at<1||fail;
+  const w=q('[data-work]');
+  w.className='work '+(upd?'upd':'');
+  w.hidden=fail;
+  q('[data-workt]').textContent=upd?'更新を反映中':'更新なし';
+  q('[data-workw]').textContent=upd
+   ?'変わったもの: アプリの版（2.305.0 → 2.306.0）／バイトコードを作り直しています'
+   :'前回の確認（update.bat）のまま起動します';
+  q('[data-rest]').textContent=fail?'':`このあと: ${STEPS.slice(at+1,6).join('・')} ／ 画面を組み立て（4段階）`;
+  q('[data-sec]').textContent=fail?90:(upd?7:2);
+  q('[data-detail]').textContent=fail?'待機時間内に応答がありません'
+   :(upd?'バイトコードを作り直しています':'flask を確認しています');
+  q('[data-fail]').hidden=!fail;
+ });
+}
+document.querySelectorAll('.switch button').forEach(b=>b.onclick=()=>{
+ document.querySelectorAll('.switch button').forEach(x=>x.classList.toggle('on',x===b));
+ state=b.dataset.state;render();
+});
+render();
+</script>
+</body></html>

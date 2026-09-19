@@ -1,4 +1,5 @@
-"""core.py: システム系ルート — トップページ・起動確認・バージョン情報。
+"""core.py: システム系ルート — トップページ・起動確認・バージョン情報・
+   デスクトップのショートカット（§9.410）。
 
 app.pyから移設。ロジックは変更していない(移動のみ)。
 """
@@ -6,11 +7,13 @@ from flask import Blueprint, render_template, request, jsonify, Response
 import json, os, re, subprocess, time
 
 from ..config import APP_ID, PORT
-from .. import boot_status
+from .. import app_icon, boot_status, desktop_shortcut
 from ..changelog_data import APP_VERSION, CHANGELOG, is_dev
 from ..paths import APP_ROOT as BASE
 from ..logging_setup import app_logger
 from ..quiet import quiet
+from .body import body
+from .common import api_guard
 
 bp=Blueprint('core',__name__)
 
@@ -286,6 +289,48 @@ def whoami():
  # IDが出ているのに権限は空のIDで判定される、が作れる）。
  from ..access_mode import current_login_id
  return jsonify(username=current_login_id())
+# ========================================================================
+# デスクトップの起動ショートカット（§9.410、利用者の指示⑤）
+# ------------------------------------------------------------------------
+# 「デスクトップにWaveLogの起動ショートカットを作成する機能が欲しいです。
+#   アイコンも設定できますか？」
+#
+# **判定と組み立ては`desktop_shortcut.py`の1箇所**（§9.163）——画面はここの
+# 答えをそのまま出す。作れない端末（Windows以外・入口が無い）は`supported`が
+# `false`で理由を持って返るので、画面は**ボタンを出さずに理由を書く**
+# （押せるのに何も起きない的を残さない・§CLAUDE 4）。
+# ========================================================================
+@bp.get('/api/app/shortcut')
+@api_guard('ショートカットの状態を読めません')
+def app_shortcut_status():
+ return jsonify(**desktop_shortcut.status(request.args.get('name','')))
+
+@bp.get('/api/app/icon.png')
+@api_guard('アイコンを描けません')
+def app_icon_png():
+ """既定のアイコンの**見本**（§9.410）。設定の画面が「どの絵で作るか」を
+    見せるのに使う——**見本は実物と同じ物で描く**（§9.374）。`.ico`の中身を
+    描いているのと同じ`app_icon.render()`を通すので、絵を書き写さない。"""
+ size=48
+ try:size=max(16,min(256,int(request.args.get('size',48))))
+ except (TypeError,ValueError) as e:
+  quiet('見本の大きさを読めない（既定の48で描く）',e)
+ return Response(app_icon.png(size),mimetype='image/png',
+                 headers={'Cache-Control':'public, max-age=3600'})
+
+@bp.post('/api/app/shortcut')
+@api_guard('ショートカットを作れません')
+def app_shortcut_create():
+ """作る（既に在れば作り直す）。**この端末のデスクトップにしか触らない**ので、
+    どのモードの端末からでも通す（`access_mode._ENDPOINT_EXTRA_MODES`）。"""
+ x=body({'name':str,'icon':str},strict=True)
+ out=desktop_shortcut.create(x.name,x.icon)
+ if not out.get('ok'):
+  # **断る理由は画面へそのまま出す**（§CLAUDE 4・6）。作れない理由は
+  # 端末ごとに違う（WSHが無効・デスクトップが同期中・指定の絵が無い）。
+  return jsonify(error=out.get('error') or 'ショートカットを作れませんでした'),400
+ return jsonify(**out)
+
 @bp.get('/api/changelog')
 def changelog():
  # 「開発の記録か」は changelog_data.is_dev() の1箇所が答える(§9.336)。

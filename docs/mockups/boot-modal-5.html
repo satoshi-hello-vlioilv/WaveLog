@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>起動モーダル デザイン5案（§9.411）</title>
+<!--
+  起動待機画面（program/loading.html）の作り替え案。利用者の指示③
+  「デザインも新たにゼロから一新したいのでモーダルのデザイン案を5案出してください」
+
+  **この1枚は見比べるための見本**で、製品には載らない（docs/mockups/）。
+  どの案も次の3つを必ず満たす形で描いてある:
+    ① 10段階の進み具合（サーバー6＋ブラウザ4）が読める
+    ② **更新を当てているか／当てていないか**が同じ場所で読み分けられる
+    ③ 失敗したときに「次に何をすればよいか」がその場に出る
+  上の切り替えで「更新なし／更新あり／失敗」を全案いっぺんに見比べられる。
+-->
+<style>
+ :root{
+  --ink:#eaf3f5; --ink-2:#9fb9c0; --ink-3:#6f8c95;
+  --teal:#2ec9c0; --teal-2:#0f8f9b; --amber:#f5a30a; --danger:#ff6b6b;
+  --card:rgba(255,255,255,.055); --line:rgba(255,255,255,.115);
+  --track:rgba(255,255,255,.10);
+ }
+ *{box-sizing:border-box}
+ body{
+  margin:0; padding:28px 24px 64px; color:var(--ink);
+  font-family:"Segoe UI","Meiryo",system-ui,sans-serif; font-size:14px; line-height:1.5;
+  background:
+   radial-gradient(120% 90% at 12% -10%, rgba(46,201,192,.10), transparent 58%),
+   radial-gradient(90% 80% at 108% 108%, rgba(245,163,10,.06), transparent 55%),
+   linear-gradient(158deg,#0d2029 0%,#12313a 46%,#0b1a21 100%);
+  background-repeat:no-repeat; background-size:cover; background-color:#0b1a21; min-height:100vh;
+ }
+ h1{font-size:19px;margin:0 0 6px}
+ .lead{margin:0 0 18px;color:var(--ink-2);font-size:13px;max-width:78ch}
+ .lead b{color:var(--ink)}
+ .switch{display:flex;gap:8px;align-items:center;margin:0 0 26px;flex-wrap:wrap}
+ .switch span{font-size:12px;color:var(--ink-3);margin-right:4px}
+ .switch button{
+  padding:7px 14px;border-radius:999px;border:1px solid var(--line);
+  background:rgba(255,255,255,.04);color:var(--ink-2);font:inherit;font-size:12.5px;
+  font-weight:700;cursor:pointer;
+ }
+ .switch button.on{background:var(--teal);border-color:var(--teal);color:#06222a}
+ .grid{display:grid;gap:26px;grid-template-columns:repeat(auto-fill,minmax(520px,1fr));align-items:start}
+ .case{border:1px solid var(--line);border-radius:18px;padding:18px;background:rgba(0,0,0,.14)}
+ .case>h2{margin:0 0 4px;font-size:15px}
+ .case>h2 i{font-style:normal;color:var(--teal);margin-right:7px}
+ .case>p{margin:0 0 14px;font-size:12.5px;color:var(--ink-3)}
+ .case>p b{color:var(--ink-2)}
+ .stage-wrap{display:flex;justify-content:center}
+
+ /* ------- 共通の部品 ------- */
+ .card{
+  width:100%;max-width:520px;padding:26px 28px 22px;background:var(--card);
+  border:1px solid var(--line);border-radius:18px;
+  box-shadow:0 18px 44px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.07);
+ }
+ .logo{width:38px;height:38px;border-radius:11px;flex:0 0 auto}
+ .bar{height:6px;border-radius:999px;background:var(--track);overflow:hidden}
+ .bar i{display:block;height:100%;border-radius:999px;
+   background:linear-gradient(90deg,var(--teal-2),var(--teal))}
+ .ver{padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;color:var(--teal);
+  background:rgba(46,201,192,.12);border:1px solid rgba(46,201,192,.30);white-space:nowrap}
+ .muted{color:var(--ink-3)}
+ .work{display:flex;gap:8px;align-items:flex-start;padding:8px 11px;border-radius:10px;
+  font-size:12px;border:1px solid var(--line);background:rgba(255,255,255,.04)}
+ .work b{flex:0 0 auto}
+ .work.upd{border-color:rgba(245,163,10,.38);background:rgba(245,163,10,.10)}
+ .work.upd b{color:var(--amber)}
+ .work.skip b{color:var(--ink-2)}
+ .fail{color:var(--danger)}
+ .btn{padding:9px 14px;border:0;border-radius:10px;font:inherit;font-weight:700;
+  color:#06222a;background:linear-gradient(90deg,var(--teal),var(--teal-2));cursor:pointer}
+ .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink-2)}
+
+ /* ------- 1) ステータスカード ------- */
+ .d1 .head{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+ .d1 h3{margin:0;font-size:16px;font-weight:650}
+ .d1 .sub{margin:2px 0 0;font-size:11px;color:var(--ink-3);letter-spacing:.2em}
+ .d1 .now{display:flex;align-items:baseline;gap:10px;margin:0 0 9px}
+ .d1 .now b{font-size:15px}
+ .d1 .now .pct{margin-left:auto;font-weight:700;color:var(--teal)}
+ .d1 .meta{display:flex;gap:8px;margin:8px 0 0;font-size:11.5px;color:var(--ink-3)}
+ .d1 .meta .r{margin-left:auto}
+ .d1 .steps{list-style:none;margin:18px 0 0;padding:16px 0 0;border-top:1px solid var(--line);
+  display:grid;grid-auto-flow:column;grid-template-rows:repeat(5,auto);gap:6px 18px}
+ .d1 .steps li{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-3)}
+ .d1 .steps li b{width:13px;height:13px;border-radius:50%;border:1.5px solid currentColor;flex:0 0 auto}
+ .d1 .steps li.done{color:var(--ink-2)}
+ .d1 .steps li.done b{background:var(--teal-2);border-color:var(--teal-2)}
+ .d1 .steps li.on{color:var(--teal);font-weight:700}
+ .d1 .steps li.later{opacity:.5}
+
+ /* ------- 2) タイムライン（済みは畳む） ------- */
+ .d2 .head{display:flex;align-items:center;gap:11px;margin-bottom:16px}
+ .d2 h3{margin:0;font-size:15px}
+ .d2 .rail{position:relative;margin:0;padding:0 0 0 26px;list-style:none}
+ .d2 .rail::before{content:"";position:absolute;left:6px;top:6px;bottom:8px;width:2px;
+  background:linear-gradient(180deg,var(--teal-2),rgba(255,255,255,.08))}
+ .d2 .rail li{position:relative;padding:0 0 12px}
+ .d2 .rail li::before{content:"";position:absolute;left:-26px;top:4px;width:14px;height:14px;
+  border-radius:50%;background:#0d2029;border:2px solid var(--teal-2)}
+ .d2 .rail li.folded{color:var(--ink-3);font-size:12px;padding-bottom:10px}
+ .d2 .rail li.now{font-weight:700}
+ .d2 .rail li.now::before{border-color:var(--teal);box-shadow:0 0 0 5px rgba(46,201,192,.12)}
+ .d2 .rail li.todo{color:var(--ink-3);opacity:.6;font-size:12.5px}
+ .d2 .rail li.todo::before{border-color:rgba(255,255,255,.22)}
+ .d2 .rail li.upd::before{border-color:var(--amber);background:#2a1f0d}
+ .d2 .rail small{display:block;font-weight:400;color:var(--ink-3);font-size:11.5px}
+ .d2 .foot{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:11.5px;color:var(--ink-3)}
+ .d2 .foot .bar{flex:1}
+
+ /* ------- 3) 2ペイン ------- */
+ .d3 .card{display:grid;grid-template-columns:168px 1fr;gap:22px;align-items:start;max-width:560px}
+ .d3 .left{text-align:center;padding-top:6px}
+ .d3 .left .logo{width:64px;height:64px;border-radius:18px;margin:0 auto 10px;display:block}
+ .d3 .left h3{margin:0 0 2px;font-size:14px}
+ .d3 .left .sub{margin:0 0 12px;font-size:10.5px;color:var(--ink-3);letter-spacing:.18em}
+ .d3 .right .now{display:flex;align-items:baseline;gap:8px;margin:0 0 8px}
+ .d3 .right .now b{font-size:15px}
+ .d3 .right .now .pct{margin-left:auto;color:var(--teal);font-weight:700}
+ .d3 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 0}
+ .d3 .chip{font-size:11px;padding:4px 9px;border-radius:8px;border:1px solid var(--line);
+  color:var(--ink-3);background:rgba(255,255,255,.03)}
+ .d3 .chip.done{color:var(--ink-2);border-color:rgba(46,201,192,.30);background:rgba(46,201,192,.08)}
+ .d3 .chip.on{color:#06222a;background:var(--teal);border-color:var(--teal);font-weight:700}
+
+ /* ------- 4) ミニマル（既定は1行・詳しくで開く） ------- */
+ .d4 .card{max-width:440px;padding:22px 24px}
+ .d4 .row{display:flex;align-items:center;gap:12px}
+ .d4 .row .logo{width:30px;height:30px;border-radius:9px}
+ .d4 .row b{font-size:14px}
+ .d4 .row .pct{margin-left:auto;color:var(--teal);font-weight:700;font-size:13px}
+ .d4 .bar{margin:12px 0 0;height:4px}
+ .d4 .line{margin:9px 0 0;font-size:11.5px;color:var(--ink-3);display:flex;gap:8px}
+ .d4 .line .r{margin-left:auto}
+ .d4 details{margin:12px 0 0;border-top:1px solid var(--line);padding-top:10px}
+ .d4 summary{font-size:11.5px;color:var(--ink-2);cursor:pointer}
+ .d4 ol{margin:10px 0 0;padding-left:1.3em;font-size:11.5px;color:var(--ink-3);columns:2;gap:16px}
+
+ /* ------- 5) ダッシュボード ------- */
+ .d5 .card{max-width:560px}
+ .d5 .head{display:flex;align-items:center;gap:11px;margin-bottom:16px}
+ .d5 h3{margin:0;font-size:15px}
+ .d5 .facts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:0 0 14px}
+ .d5 .fact{padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.03)}
+ .d5 .fact small{display:block;font-size:10px;color:var(--ink-3);font-weight:700;letter-spacing:.04em}
+ .d5 .fact b{font-size:13px}
+ .d5 .now{display:flex;align-items:baseline;gap:10px;margin:0 0 8px}
+ .d5 .now .pct{margin-left:auto;color:var(--teal);font-weight:700}
+ .d5 table{width:100%;border-collapse:collapse;margin:14px 0 0;font-size:11.5px}
+ .d5 td{padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.06);color:var(--ink-3)}
+ .d5 td.k{width:22px;color:var(--teal-2)}
+ .d5 tr.done td{color:var(--ink-2)}
+ .d5 tr.on td{color:var(--teal);font-weight:700}
+ .d5 td.t{text-align:right;font-variant-numeric:tabular-nums}
+
+ [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<h1>起動モーダル デザイン5案</h1>
+<p class="lead">program/loading.html（Start.vbs から最初に出る画面）の作り替え案です。
+ どの案も <b>①10段階の進み具合</b>／<b>②更新を当てているかどうか</b>／<b>③失敗したときの次の一手</b> を必ず出します。
+ 下のボタンで<b>状態を切り替えて</b>、5案を同じ条件で見比べてください。</p>
+<div class="switch">
+ <span>状態</span>
+ <button class="on" data-state="skip">更新なし（ふだんの起動）</button>
+ <button data-state="upd">更新を反映中（版が上がった）</button>
+ <button data-state="fail">起動できなかった</button>
+</div>
+
+<div class="grid">
+
+ <!-- ===== 1 ===== -->
+ <section class="case d1">
+  <h2><i>案1</i>ステータスカード（今の作りの正統進化）</h2>
+  <p><b>変えるところ:</b> 見出しを小さく、いまの段階を主役に。更新の帯を進捗バーの直下へ固定。<br>
+   <b>向いている場面:</b> いまの見え方を大きく変えたくない。<b>迷いが少ない</b>が、驚きも少ない。</p>
+  <div class="stage-wrap"><div class="card">
+   <div class="head">
+    <svg class="logo" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#0f2c35"/><path d="M10 40c6-16 10 8 16-6s10 10 16-4 8 4 12-2" fill="none" stroke="#2ec9c0" stroke-width="4" stroke-linecap="round"/><circle cx="50" cy="20" r="5" fill="#f5a30a"/></svg>
+    <div style="flex:1"><h3>測定伝送システム</h3><p class="sub">STARTING UP</p></div>
+    <span class="ver">VER2.306.0</span>
+   </div>
+   <p class="now"><b data-t="stage">アプリを読み込み</b><span class="pct" data-t="pct">45%</span></p>
+   <div class="bar"><i data-t="fill" style="width:45%"></i></div>
+   <p class="meta"><span>経過 <span data-t="sec">2</span> 秒</span><span class="r" data-t="detail">flask を確認しています</span></p>
+   <div class="work skip" data-t="work" style="margin-top:12px">
+    <b data-t="workT">更新なし</b><span data-t="workW">前回の確認（update.bat）のまま起動します</span></div>
+   <ul class="steps" data-t="steps"></ul>
+  </div></div>
+ </section>
+
+ <!-- ===== 2 ===== -->
+ <section class="case d2">
+  <h2><i>案2</i>タイムライン（済んだ段は畳む）</h2>
+  <p><b>変えるところ:</b> 10個を並べず、<b>済んだ段は1行に畳む</b>。いま何をしているかだけが大きい。
+   更新があるときだけ<b>レールに「更新」の節が挿し込まれる</b>——段が増えたことが目で分かる。<br>
+   <b>向いている場面:</b> 「どこで待たされているか」を最短で読ませたい。</p>
+  <div class="stage-wrap"><div class="card">
+   <div class="head">
+    <svg class="logo" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#0f2c35"/><path d="M10 40c6-16 10 8 16-6s10 10 16-4 8 4 12-2" fill="none" stroke="#2ec9c0" stroke-width="4" stroke-linecap="round"/><circle cx="50" cy="20" r="5" fill="#f5a30a"/></svg>
+    <div style="flex:1"><h3>測定伝送システムを起動しています</h3></div>
+    <span class="ver">VER2.306.0</span>
+   </div>
+   <ul class="rail" data-t="rail"></ul>
+   <div class="foot"><span data-t="sec2">経過 2 秒</span><div class="bar"><i data-t="fill2" style="width:45%"></i></div><span data-t="pct2">45%</span></div>
+  </div></div>
+ </section>
+
+ <!-- ===== 3 ===== -->
+ <section class="case d3">
+  <h2><i>案3</i>2ペイン（左＝アプリの顔／右＝進み具合）</h2>
+  <p><b>変えるところ:</b> 左に大きなマークと版、右に進み具合。段階は<b>札を並べて</b>、済み・いま・これからを色と濃さで示す。<br>
+   <b>向いている場面:</b> 起動が数秒かかる端末。<b>待つ時間が「読み物」になる</b>。</p>
+  <div class="stage-wrap"><div class="card">
+   <div class="left">
+    <svg class="logo" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#0f2c35"/><path d="M10 40c6-16 10 8 16-6s10 10 16-4 8 4 12-2" fill="none" stroke="#2ec9c0" stroke-width="4" stroke-linecap="round"/><circle cx="50" cy="20" r="5" fill="#f5a30a"/></svg>
+    <h3>測定伝送システム</h3><p class="sub">WAVELOG</p>
+    <span class="ver">VER2.306.0</span>
+   </div>
+   <div class="right">
+    <p class="now"><b data-t="stage3">アプリを読み込み</b><span class="pct" data-t="pct3">45%</span></p>
+    <div class="bar"><i data-t="fill3" style="width:45%"></i></div>
+    <p class="meta" style="margin:8px 0 0;font-size:11.5px;color:var(--ink-3)" data-t="detail3">flask を確認しています</p>
+    <div class="work skip" data-t="work3" style="margin-top:12px">
+     <b data-t="workT3">更新なし</b><span data-t="workW3">前回の確認のまま起動します</span></div>
+    <div class="chips" data-t="chips3"></div>
+   </div>
+  </div></div>
+ </section>
+
+ <!-- ===== 4 ===== -->
+ <section class="case d4">
+  <h2><i>案4</i>ミニマル（既定は1行・「詳しく」で開く）</h2>
+  <p><b>変えるところ:</b> ふだんは<b>1行＋細いバー</b>だけ。段階の一覧は畳んでおき、押した人にだけ見せる。
+   更新があるときは<b>自分から開いて</b>理由を出す（黙って長く待たせない）。<br>
+   <b>向いている場面:</b> 起動が1〜2秒で終わる端末。<b>画面が静か</b>。</p>
+  <div class="stage-wrap"><div class="card">
+   <div class="row">
+    <svg class="logo" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#0f2c35"/><path d="M10 40c6-16 10 8 16-6s10 10 16-4 8 4 12-2" fill="none" stroke="#2ec9c0" stroke-width="4" stroke-linecap="round"/><circle cx="50" cy="20" r="5" fill="#f5a30a"/></svg>
+    <b data-t="stage4">アプリを読み込み</b><span class="pct" data-t="pct4">45%</span>
+   </div>
+   <div class="bar"><i data-t="fill4" style="width:45%"></i></div>
+   <p class="line"><span data-t="detail4">flask を確認しています</span><span class="r">経過 <span data-t="sec4">2</span> 秒</span></p>
+   <div class="work upd" data-t="work4" hidden style="margin-top:10px">
+    <b>更新を反映中</b><span data-t="workW4">アプリの版（2.305.0 → 2.306.0）</span></div>
+   <details data-t="det4"><summary>段階を詳しく見る（10段階）</summary><ol data-t="ol4"></ol></details>
+  </div></div>
+ </section>
+
+ <!-- ===== 5 ===== -->
+ <section class="case d5">
+  <h2><i>案5</i>ダッシュボード（起きていることを全部出す）</h2>
+  <p><b>変えるところ:</b> 版・更新・経過・ポートを<b>4つの札</b>で頭に出し、段階は<b>所要秒つきの表</b>にする。
+   遅い端末で「どの段が何秒かかったか」がその場で分かる。<br>
+   <b>向いている場面:</b> 起動の遅さを追いかけたい。<b>情報は最多・静けさは最少</b>。</p>
+  <div class="stage-wrap"><div class="card">
+   <div class="head">
+    <svg class="logo" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#0f2c35"/><path d="M10 40c6-16 10 8 16-6s10 10 16-4 8 4 12-2" fill="none" stroke="#2ec9c0" stroke-width="4" stroke-linecap="round"/><circle cx="50" cy="20" r="5" fill="#f5a30a"/></svg>
+    <div style="flex:1"><h3>起動しています</h3></div>
+   </div>
+   <div class="facts">
+    <div class="fact"><small>バージョン</small><b>2.306.0</b></div>
+    <div class="fact"><small>更新</small><b data-t="fact5">なし</b></div>
+    <div class="fact"><small>経過</small><b><span data-t="sec5">2</span> 秒</b></div>
+    <div class="fact"><small>ポート</small><b>5029</b></div>
+   </div>
+   <p class="now"><b data-t="stage5">アプリを読み込み</b><span class="pct" data-t="pct5">45%</span></p>
+   <div class="bar"><i data-t="fill5" style="width:45%"></i></div>
+   <table><tbody data-t="tb5"></tbody></table>
+  </div></div>
+ </section>
+
+</div>
+
+<script>
+"use strict";
+const STEPS=['実行環境を確認','起動中のアプリを確認','必要な部品を確認','データの置き場所を確認',
+             'アプリを読み込み','Webサーバーを起動','画面部品を読み込み','権限を確認','一覧を読み込み','表示を整える'];
+const SECS=[0.2,0.3,0.1,0.2,1.1,0.3,0.6,0.2,0.4,0.2];
+const $=s=>document.querySelectorAll(`[data-t="${s}"]`);
+const set=(s,v)=>$(s).forEach(e=>{e.textContent=v});
+const html=(s,v)=>$(s).forEach(e=>{e.innerHTML=v});
+let state='skip';
+
+function render(){
+ const upd=state==='upd', fail=state==='fail';
+ /* 更新があるときは「必要な部品を確認」で止まっている絵、ふだんは「アプリを
+    読み込み」まで進んだ絵にする（実際にそこが長い段）。 */
+ const at=upd?2:4, pct=fail?100:Math.round((at+.5)/10*100);
+ const stage=fail?'起動できませんでした':(upd?'更新を反映しています':STEPS[at]);
+ const detail=fail?'待機時間内にアプリが応答しませんでした'
+   :(upd?'バイトコードを作り直しています':'flask を確認しています');
+ const sec=fail?90:(upd?7:2);
+ [['stage',''],['stage3',''],['stage4',''],['stage5','']].forEach(([k])=>set(k,stage));
+ ['pct','pct2','pct3','pct4','pct5'].forEach(k=>set(k,pct+'%'));
+ ['fill','fill2','fill3','fill4','fill5'].forEach(k=>$(k).forEach(e=>{
+  e.style.width=pct+'%';
+  e.style.background=fail?'linear-gradient(90deg,#8a2b2b,#ff6b6b)':'';
+ }));
+ ['detail','detail3','detail4'].forEach(k=>set(k,detail));
+ ['sec','sec4','sec5'].forEach(k=>set(k,sec));
+ set('sec2','経過 '+sec+' 秒');
+ // 更新の帯（案1・3）
+ [['work','workT','workW'],['work3','workT3','workW3']].forEach(([w,t,d])=>{
+  $(w).forEach(e=>{e.className='work '+(upd?'upd':'skip');e.hidden=fail});
+  set(t,upd?'更新を反映中':'更新なし');
+  set(d,upd?'変わったもの: アプリの版（2.305.0 → 2.306.0）':'前回の確認（update.bat）のまま起動します');
+ });
+ $('work4').forEach(e=>{e.hidden=!upd});
+ $('det4').forEach(e=>{e.open=upd});
+ set('fact5',upd?'反映中':'なし');
+ // 案1: 10個の丸
+ html('steps',STEPS.map((s,i)=>`<li class="${i<at?'done':i===at?'on':(i>=6?'later':'')}"><b></b><span>${s}</span></li>`).join(''));
+ // 案2: 済みは畳む
+ const rail=[];
+ if(at>0)rail.push(`<li class="folded">${STEPS.slice(0,at).join('・')} <b>完了</b></li>`);
+ if(upd)rail.push(`<li class="upd now">更新を反映しています<small>アプリの版（2.305.0 → 2.306.0）／バイトコードを作り直しています</small></li>`);
+ else rail.push(`<li class="now">${STEPS[at]}<small>${detail}</small></li>`);
+ rail.push(`<li class="todo">${STEPS.slice(at+1,6).join('・')}</li>`);
+ rail.push(`<li class="todo">画面を組み立て（4段階）</li>`);
+ html('rail',rail.join(''));
+ // 案3: 札
+ html('chips3',STEPS.map((s,i)=>`<span class="chip ${i<at?'done':i===at?'on':''}">${s}</span>`).join(''));
+ // 案4: 畳んだ一覧
+ html('ol4',STEPS.map((s,i)=>`<li${i<at?' style="color:var(--ink-2)"':''}>${s}</li>`).join(''));
+ // 案5: 所要つきの表
+ html('tb5',STEPS.map((s,i)=>`<tr class="${i<at?'done':i===at?'on':''}"><td class="k">${i<at?'✓':(i===at?'▶':'')}</td><td>${s}</td><td class="t">${i<at?SECS[i].toFixed(1)+'s':(i===at?'…':'')}</td></tr>`).join(''));
+ // 失敗のとき：案1だけ「次の一手」を出す見本（採用案に同じものを載せる）
+ document.querySelectorAll('[data-fail]').forEach(e=>e.remove());
+ if(fail){
+  document.querySelectorAll('.d1 .card,.d2 .card,.d3 .right,.d4 .card,.d5 .card').forEach(c=>{
+   const box=document.createElement('div');
+   box.dataset.fail='1';box.style.marginTop='14px';
+   box.innerHTML='<div class="work" style="border-color:rgba(255,107,107,.4);background:rgba(255,107,107,.10)">'
+    +'<b class="fail">次の一手</b><span>start_app.bat を直接ダブルクリックし、黒い画面のエラーを見る／'
+    +'Python が入っているか／ポート5029を他のアプリが使っていないか</span></div>'
+    +'<div style="display:flex;gap:8px;margin-top:10px"><button class="btn">もう一度確認する</button>'
+    +'<button class="btn ghost">ログを開く</button></div>';
+   c.appendChild(box);
+  });
+ }
+}
+document.querySelectorAll('.switch button').forEach(b=>b.onclick=()=>{
+ document.querySelectorAll('.switch button').forEach(x=>x.classList.toggle('on',x===b));
+ state=b.dataset.state;render();
+});
+render();
+</script>
+</body>
+</html>

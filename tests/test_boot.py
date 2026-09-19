@@ -122,15 +122,45 @@ ALL_LABELS = [label for _, label in boot_status.STEPS] + \
 def li_labels(src, pattern):
     return re.findall(pattern, src)
 
-wait_labels = li_labels(html, r'<li[^>]*data-step="\d+"><b></b><span>([^<]+)</span></li>')
+STEP_LI = r'<li[^>]*data-step="\d+"[^>]*><span>([^<]+)</span></li>'
+wait_labels = li_labels(html, STEP_LI)
 rec('待機画面の段階リストがboot_status.pyと一致する',
     wait_labels == ALL_LABELS, '待機画面=%s' % '/'.join(wait_labels))
 rec('待機画面の分母が合計段階数と一致する',
     ('TOTAL_STEPS=%d' % boot_status.TOTAL_STEPS) in html.replace(' ', '') and
     ('SERVER_STEPS=%d' % len(boot_status.STEPS)) in html.replace(' ', ''))
 
+# --- 更新を当てているかが待機画面で読み分けられる(§9.411、利用者の指示③) ---
+# 「アップデートなども実施してくれると思うので、実施しているときとして
+#   いないときの違いも分かるように」
+# **判定はサーバー側の1箇所**（`start_app`が刻印を見て決める）。ここで固定するのは
+# 「3つの状態が在ること」「起動処理がその両方を渡していること」「待機画面が
+# 同じ場所で言い分けること」の3つ。
+rec('進捗に「更新の作業」の3状態がある(無印/飛ばした/やっている)',
+    boot_status.WORK_NONE == '' and boot_status.WORK_SKIP == 'skip'
+    and boot_status.WORK_UPDATE == 'update')
+_probe = {}
+boot_status.set_work(boot_status.WORK_UPDATE, ['アプリの版（1.0.0 → 1.0.1）'])
+boot_status.report('packages', '確かめています')
+_probe = read_status() or {}
+rec('進捗ファイルが「更新中」と理由を運ぶ',
+    _probe.get('work') == 'update' and _probe.get('reasons') == ['アプリの版（1.0.0 → 1.0.1）'],
+    json.dumps({k: _probe.get(k) for k in ('work', 'reasons')}, ensure_ascii=False))
+boot_status.set_work(boot_status.WORK_NONE, [])
+boot_status.clear()
+start_app_src = (ROOT / 'program' / 'start_app.py').read_text(encoding='utf-8')
+rec('起動処理が「更新あり」「更新なし」の両方を渡している',
+    'WORK_UPDATE' in start_app_src and 'WORK_SKIP' in start_app_src)
+rec('刻印の食い違い（理由）を待機画面へ渡している',
+    'reasons=why' in start_app_src)
+rec('待機画面が更新の状態を同じ場所で言い分ける',
+    'showWork' in html and "work==='update'" in html.replace(' ', '')
+    and 'id="work"' in html)
+rec('更新の状態は色だけでなく字でも出す(分類名を書く)',
+    '更新を反映中' in html and '更新なし' in html)
+
 index = (ROOT / 'templates' / 'index.html').read_text(encoding='utf-8')
-over_labels = li_labels(index, r'<li[^>]*><b></b><span>([^<]+)</span></li>')
+over_labels = li_labels(index, STEP_LI)
 rec('アプリ内の起動オーバーレイの段階リストがboot_status.pyと一致する',
     over_labels == ALL_LABELS, 'オーバーレイ=%s' % '/'.join(over_labels))
 # ブラウザ側の4段階だけがJSから進む(data-boot-step)。

@@ -741,15 +741,45 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  }
 
  /* ---------- パネルDOM ---------- */
+/* ---------- 段（表示の切り替え）の顔ぶれ（§9.407、利用者の指摘①） ----------
+    **段の鍵と「外向きの名前」はこの1つの表**が持つ。札に出る短い字（`全体`）は
+    帯のボタンそのものだが、**送り出した先へ渡すのは長い名**（`作業スケジュール
+    一覧`）——刃組ガイダンスの戻るボタンが「どこへ戻るのか」を字で言えるように
+    するため（利用者に思い出させない・§CLAUDE）。呼ぶ側に綴りを書かせない。 */
+ const SC_MODES=[
+  ['board','全体','スケジュール全体（俯瞰）'],
+  ['single','個別','作業スケジュール一覧'],
+  ['blade','刃組','刃組スケジュール一覧']
+ ];
+ const SC_MODE_KEYS=SC_MODES.map(m=>m[0]);
+ /* 段の長い名。分からない鍵には答えない（**推測しない**）。 */
+ function scModeName(key){
+  const hit=SC_MODES.find(m=>m[0]===String(key||''));
+  return hit?hit[2]:'';
+ }
+ /* 開いたときに出す段（§9.407）。**来た道があればそこへ戻る**——刃組
+    ガイダンスのように送り出した先から戻ってきたときは、送り出した段が正。
+    渡されていないときが今までの既定（設備を選べる端末は俯瞰から・自設備
+    固定の端末は個別から）。「全体」は設備を選べる端末しか持たない段なので、
+    そこだけは落とす（押せるのに何も起きない段へ戻さない・§CLAUDE 4）。 */
+ function boardModeOnOpen(want){
+  const w=SC_MODE_KEYS.indexOf(String(want||''))>=0?String(want):'';
+  if(w==='board'&&!scState.pickerEnabled)return 'single';
+  if(w)return w;
+  return scState.pickerEnabled?'board':'single';
+ }
+
  function ensurePanel(){
   let panel=$('#schedulePanel');if(panel)return panel;
   panel=document.createElement('section');panel.className='sc-panel';panel.id='schedulePanel';panel.hidden=true;
   panel.innerHTML=`
    <div class="sc-head" id="scHead">
     <div class="sc-head-left">
+     <!-- 段（表示の切り替え）。**鍵と外向きの名前は SC_MODES が持つ**（§9.407）
+          ので、段を足すときはあちらにも1行足すこと（戻り先の名前が空になる）。 -->
      <div class="sc-mode-toggle" id="scModeToggle" hidden>
-      <button type="button" class="sc-mode-toggle-btn" id="scModeBoard" data-mode="board"><i class="fa-solid fa-table-cells" aria-hidden="true"></i> 全体</button>
-      <button type="button" class="sc-mode-toggle-btn" id="scModeSingle" data-mode="single"><i class="fa-solid fa-list" aria-hidden="true"></i> 個別</button>
+      <button type="button" class="sc-mode-toggle-btn" id="scModeBoard" data-mode="board" title="全設備の空き具合を俯瞰します"><i class="fa-solid fa-table-cells" aria-hidden="true"></i> 全体</button>
+      <button type="button" class="sc-mode-toggle-btn" id="scModeSingle" data-mode="single" title="この設備の作業予定と実績を1本の表にします"><i class="fa-solid fa-list" aria-hidden="true"></i> 個別</button>
       <!-- 刃組スケジュール一覧（§9.383、利用者の指示「作業スケジュールを切り替えて
            刃組スケジュール一覧としても出せるようにしてください」）。同じ予定を
            **段取りの側から**見る形で、器を入れ替えるだけ。 -->
@@ -2086,7 +2116,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  WL.registerView({key:'schedule',bodyClass:'sc-mode',nav:'openSchedule',toolbar:'#scHead',ownPrint:true,
   header:['作業スケジュール','設備ごとの作業予定と実績'],exit:exitScheduleView});
 
- async function openScheduleView(){
+ /* 作業スケジュールを開く（§9.407で`opts`を足した）。
+    `opts.mode` … 出す段（`board`/`single`/`blade`）。**来た道を渡す口**で、
+                  刃組ガイダンスの戻るボタンがここへ「送り出した段」を返す。 */
+ async function openScheduleView(opts){
+  const o=opts||{};
   WL.enterView('schedule');
   const panel=ensurePanel();panel.hidden=false;
   WL.syncViewToolbar('schedule');   // 操作列(#scHead)はパネル生成後にヘッダーへ載せる
@@ -2123,7 +2157,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   // schedule/viewモードでは、設備を1つ選ぶ前に「全設備の中でどこが空いて
   // いるか」を見せる俯瞰ボードを既定表示にする(§9.9)。editモードは自設備
   // 固定のため俯瞰ボードの意味が無く、常に個別タイムラインのみ。
-  scState.boardMode=scState.pickerEnabled?'board':'single';
+  scState.boardMode=boardModeOnOpen(o.mode);
   /* **開いたときの表示**をここで当てる(§9.179)。`last`(既定)は今までどおり
      前回の折りたたみ状態のまま——わざわざ選んでいない人の見え方を変えない。 */
   if(scLayout.open==='split')splitListCollapsed=false;
@@ -2131,6 +2165,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   await renderEquipmentControl(am);
   applyBoardModeUi();
   if(scState.boardMode==='board')await loadOverviewBoard();
+  /* 刃組の段は**その段の道をそのまま通る**（§9.407）——予定に加えて刃組の
+     記録も要るので、ここで一覧だけ描くと「未記録」しか出ない段になる。 */
+  else if(scState.boardMode==='blade')await switchToBlade();
   else if(scState.equipment)await refreshAll();
   else renderTimelineMessage('設備を選択してください。');
   startLockPolling();
@@ -2165,6 +2202,63 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    if(scBladeHistory.equipment===eq)scBladeHistory.items=[];
   }
  }
+ /* ---------- 標準の計算値（§9.408、利用者の指示②） ----------
+    「刃組の標準の計算値で使用スペーサなど一覧内に関連情報が出るようにしてほしい」
+
+    記録が無い段取りでも、**標準どおり組んだら何をどれだけ使うか**は計算できる
+    ——刃組ガイダンスが開いたときに出すのと同じ答えを、同じ1箇所
+    （`WL.bladeSet.standardState()`＋`solve()`＋`snapshot()`）から引く。
+    画面（`blade-view.js`）を組み立てずに計算だけを借りるので、刃組ガイダンスを
+    一度も開いていない端末でも出る。
+
+    **出どころは必ず書く**（§CLAUDE 6）——記録＝組んだ事実、見込み＝いまの予定と
+    `刃組基準値マスタ`から計算した値。取り違えると「もう組んだ」と読める。
+    部材は設備ごとなので、開いている設備のぶんだけ取りに行く（§9.377）。 */
+ const scBladeCtx={equipment:'',data:null,index:null,failed:''};
+
+ async function loadBladeContext(force){
+  const eq=scState.equipment||'';
+  if(!eq){scBladeCtx.equipment='';scBladeCtx.data=null;scBladeCtx.index=null;scBladeCtx.failed='';return}
+  if(!force&&scBladeCtx.equipment===eq&&scBladeCtx.data)return;
+  scBladeCtx.equipment=eq;scBladeCtx.data=null;scBladeCtx.index=null;scBladeCtx.failed='';
+  const B=WL.bladeSet;
+  if(!B||typeof B.standardState!=='function'){
+   scBladeCtx.failed='刃組の計算を読み込めていません';return;
+  }
+  try{
+   const r=await api('/api/bladeset/context?equipment='+encodeURIComponent(eq));
+   if(scBladeCtx.equipment!==eq)return;      // 取りに行く間に設備が変わった（§9.331）
+   scBladeCtx.data=B.normalize(r);
+   scBladeCtx.index=B.buildIndex(scBladeCtx.data);
+  }catch(err){
+   WL.quiet.note('刃組マスタを読めない（見込みは出さず「未記録」のままにする）',err);
+   if(scBladeCtx.equipment===eq)scBladeCtx.failed='刃組マスタを読めませんでした';
+  }
+ }
+ /* この予定を**標準どおり**組んだときの部材と条件。計算できないときは `null`
+    ——既定の見本で埋めると、予定と何の関係も無い数字が「使用スペーサー」として
+    並ぶ（0で埋めないのと同じ理由・§9.231）。理由は呼ぶ側が字で出す。 */
+ function bladeForecast(seed){
+  const M=scBladeCtx.data,IX=scBladeCtx.index,B=WL.bladeSet;
+  if(!M||!IX||!B)return null;
+  try{
+   const st=B.standardState(seed,M);
+   if(!st)return null;                       // 条が1本も読めない（幅が無い）
+   const res=B.solve(st,M,IX);
+   return {snap:B.snapshot(st,M,res.g),st,res};
+  }catch(err){
+   WL.quiet.note('刃組の見込みを計算できない（「未記録」のままにする）',err);
+   return null;
+  }
+ }
+ /* 見込みが出せない理由。**押しても出ないものは理由を書く**（§CLAUDE 4・6）。 */
+ function bladeForecastWhy(seed){
+  if(scBladeCtx.failed)return scBladeCtx.failed;
+  if(!scBladeCtx.data)return '刃組マスタを読み込んでいません';
+  if(!seed||!(seed.lots||[]).length)return 'この段取りの次に切る材料（条の幅）が予定から読めません';
+  return '標準の条件では計算できませんでした';
+ }
+
  /* 予定の中の「刃組の停止」を、上から順に拾う。 */
  function bladeStops(list){
   const all=list||[];
@@ -2220,25 +2314,37 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   return bladeStops(list).map(({entry,at})=>{
    const rec=bladeRecordFor(entry);
    const d=(rec&&rec.detail)||null;
-   const c=(d&&d.cond)||{};
    /* 予定から数えられるぶんは**記録が無くても出す**（これから組む段取りでも
       「何本切るか・1本目は何か」は分かる）。記録があるときは記録を正とする
       ——組んだ後で予定が動いても、組んだ事実は変わらない。 */
    const plan=bladeRunPlan(list,at+1);
    const run=(d&&d.run)||plan;
+   /* **記録が無い段取りは標準の計算値を出す**（§9.408、利用者の指示②）。
+      記録があるときは計算しない——組んだ事実のほうが新しい決定（§9.387）。 */
+   const seed=d?null:bladeSeedFromEntry(entry);
+   const fc=d?null:bladeForecast(seed);
+   const src=d||(fc&&fc.snap)||null;         // 値の出どころ（記録 or 見込み）
+   const c=(src&&src.cond)||{};
    return {
     id:entry.id,title:String(entry.title||'設備停止'),
+    /* 行き先の呼び名（`設備停止マスタ`の`[連携機能]`）。**行は持たない**のが
+       §9.377の約束なので、描くたびにマスタから引いた答えをここへ載せる。 */
+    link:(stopLinkOf(entry)||{}).label||'',
     day:String(entry.workDate||entry.date||''),shift:String(entry.shift||''),
     done:!!rec, at:rec?String(rec.at||''):'',
+    /* 値が見込みか（画面が出どころを字で書くための印）。 */
+    calc:!d&&!!fc, why:(!d&&!fc)?bladeForecastWhy(seed):'',
+    /* 台車と刃セットは**組むときに人が選ぶもの**なので見込みを出さない
+       （計算で決まる値と、まだ決まっていない値を並べない・§CLAUDE 6）。 */
     carriage:rec?String(rec.carriage||''):'',
     set:d?String(d.set||''):'',
-    knife:d?bladeNum(c.knife,1):'',
-    hold:d?String(c.hold||''):'',
-    holdParts:d?bladeRingText(d):'',
-    spacer:d?bladeCountText(d.spacer||{}):'',
-    clearance:d?bladeNum(c.clearance,2):'',
-    overlap:d?bladeNum(c.overlap,2):'',
-    strips:d?(c.strips||''):'',
+    knife:src?bladeNum(c.knife,1):'',
+    hold:src?String(c.hold||''):'',
+    holdParts:src?bladeRingText(src):'',
+    spacer:src?bladeCountText(src.spacer||{}):'',
+    clearance:src?bladeNum(c.clearance,2):'',
+    overlap:src?bladeNum(c.overlap,2):'',
+    strips:src?(c.strips||''):'',
     first:bladeFirstText(run),
     planned:(run&&run.planned)||0
    };
@@ -2267,29 +2373,71 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    return;
   }
   const head=SC_BLADE_COLS.map(([l])=>`<th>${esc(l)}</th>`).join('');
+  /* 計算で決まる欄と、組むときに人が選ぶ欄を分けて扱う（§9.408）。 */
+  const CALC_KEYS=['knife','hold','holdParts','spacer','clearance','overlap','strips'];
+  const PICK_KEYS=['carriage','set'];
+  const CALC_TIP='標準の計算値（まだ記録ではありません）。刃組基準値マスタと'
+   +'この段取りの次に切る条の幅から、刃組ガイダンスと同じ計算で出しています';
   const body=scBladeRows.map(r=>{
    const cells=SC_BLADE_COLS.map(([,k])=>{
+    if(k==='title'){
+     /* **行き先の的は題名の横に別に立てる**（§9.377）。一覧のどの行からでも
+        刃組ガイダンスへ入れる（§9.408、利用者の指示②「刃組メインの
+        スケジュールなのに刃組ガイダンスに行けないのは微妙です」）。 */
+     const chip=r.link?`<button type="button" class="sc-nw-link" data-open-blade="${esc(r.id)}"`
+      +` title="${esc(r.link)}をこの段取りの文脈で開きます">${esc(r.link)}</button>`:'';
+     return `<td class="sc-blade-title"><span>${esc(r.title)}</span>${chip}</td>`;
+    }
     if(k==='state'){
-     /* **色だけで言わない**（§CLAUDE 3）——分類名を字で出す。 */
-     return r.done?`<td class="sc-blade-done">記録済み<small>${esc(r.at)}</small></td>`
-                  :'<td class="sc-blade-todo">これから</td>';
+     /* **色だけで言わない**（§CLAUDE 3）——分類名を字で出す。見込みで埋めた行は
+        「これから」に**値の出どころ**を添える（記録と取り違えさせない）。 */
+     if(r.done)return `<td class="sc-blade-done">記録済み<small>${esc(r.at)}</small></td>`;
+     if(r.calc)return '<td class="sc-blade-todo">これから<small>標準の計算値</small></td>';
+     return `<td class="sc-blade-todo">これから<small title="${esc(r.why)}">計算できず</small></td>`;
     }
     if(k==='planned')return `<td class="sc-blade-n">${r.planned?esc(r.planned)+' 本':'—'}</td>`;
     const v=r[k];
-    /* 記録が無い段取りの部材欄は「未記録」と書く（空欄＝0に見せない・§9.231）。 */
-    if((v===''||v==null)&&!r.done&&['carriage','set','knife','hold','holdParts',
-        'spacer','clearance','overlap','strips'].indexOf(k)>=0){
-     return '<td class="sc-blade-na">未記録</td>';
+    if((v===''||v==null)&&!r.done){
+     /* 組むときに人が選ぶ欄は「未定」、計算できなかった欄は「未記録」＋理由
+        （空欄＝0に見せない・§9.231／できないことは書く・§CLAUDE 4）。 */
+     if(PICK_KEYS.indexOf(k)>=0){
+      return '<td class="sc-blade-na" title="刃組ガイダンスで選び、確定保存すると記録されます">未定</td>';
+     }
+     if(CALC_KEYS.indexOf(k)>=0){
+      return `<td class="sc-blade-na" title="${esc(r.why||CALC_TIP)}">未記録</td>`;
+     }
+    }
+    if(r.calc&&CALC_KEYS.indexOf(k)>=0){
+     return `<td class="sc-blade-calc" title="${esc(CALC_TIP)}">${esc(v)}</td>`;
     }
     return `<td>${esc(v===''||v==null?'—':v)}</td>`;
    }).join('');
-   return `<tr data-id="${esc(r.id)}">${cells}</tr>`;
+   return `<tr data-id="${esc(r.id)}"${r.calc?' class="is-calc"':''}>${cells}</tr>`;
   }).join('');
+  const done=scBladeRows.filter(r=>r.done).length;
+  const calc=scBladeRows.filter(r=>r.calc).length;
   box.innerHTML=`<div class="sc-blade-head"><b>刃組スケジュール</b>`
    +`<span class="sc-blade-note">${esc(scState.equipment)}／${scBladeRows.length}件`
-   +`（記録済み ${scBladeRows.filter(r=>r.done).length}）</span></div>`
+   +`（記録済み ${done}${calc?` ・ 標準の計算値 ${calc}`:''}）</span>`
+   /* **出どころを画面に出す**（§CLAUDE 6）。同じ表に記録と見込みが並ぶので、
+      どちらがどちらかを1箇所で言う（各セルの`title`でも読める）。 */
+   +(calc?`<span class="sc-blade-legend"><i class="sc-blade-swatch"></i>`
+     +`薄い字＝まだ組んでいない段取りの<b>標準の計算値</b>（刃組基準値マスタと予定の条幅から計算）`
+     +`</span>`:'')
+   +`</div>`
    +`<div class="sc-blade-wrap"><table class="sc-blade-tbl"><thead><tr>${head}</tr></thead>`
    +`<tbody>${body}</tbody></table></div>`;
+  /* 行き先を押したとき（§9.408）。**同じ道を通す**——タイムラインの
+     チップと同じ`openRowLink()`なので、開けない理由の言い方も1箇所。 */
+  box.onclick=ev=>{
+   const b=ev.target.closest('[data-open-blade]');
+   if(!b)return;
+   ev.preventDefault();
+   const id=String(b.dataset.openBlade);
+   const e=(scState.entries||[]).find(x=>String(x.id)===id);
+   if(!e){showToast&&showToast('この行の予定が見つかりません','一覧を取り直してから開いてください',4600);return}
+   openRowLink(e);
+  };
  }
 
  /* ---------- 全体/個別の表示切替(§9.9) ---------- */
@@ -2378,7 +2526,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(!scState.equipment){renderBladeList();return}
   if(!(scState.entries||[]).length)await refreshAll();
   renderBladeList();
-  await loadBladeHistory(true);
+  /* 記録と刃組マスタは**同時に**取りに行く（直列にすると段の切り替えが遅い）。
+     マスタは設備ごとに1回だけ——部材の登録を直すのは稀なので、毎回は読まない
+     （「再計算」を押したときは`refreshCurrentMode`が取り直す）。 */
+  await Promise.all([loadBladeHistory(true),loadBladeContext(false)]);
   if(scState.boardMode==='blade')renderBladeList();
  }
  async function switchToSingle(){
@@ -2403,6 +2554,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* **在席の控えも捨てる**（§9.368）。「いま分かることを全部見直す」操作
      なので、前に「消えた」と決めたロットも仕掛から引き直す。 */
   if(force)forgetWorkPresence();
+  /* 刃組の段では**刃組マスタと記録も取り直す**（§9.408）。押した人が
+     期待しているのは「いま分かることを全部見直す」こと——部材の登録を直した
+     直後でも、押せば見込みが新しい部材で出る。 */
+  if(force&&scState.boardMode==='blade'){
+   await Promise.all([loadBladeHistory(true),loadBladeContext(true)]);
+  }
   const r=await (scState.boardMode==='board'?loadOverviewBoard(force):refreshAll(force));
   if(force&&scState.boardMode!=='board'&&scState.equipment
      &&typeof refreshWorkableInBackground==='function')
@@ -3837,6 +3994,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   setSourceSyncMode(r);
   scState.planFetchedAt=fetchedAt;
   renderWarnings();renderTimeline();updateFreshnessUi(fetchedAt);
+  /* 刃組の段は**同じ予定を段取りの側から見ている**（§9.383）ので、予定が
+     差し替わったらこちらも描き直す（§9.408）——でないと、行を足しても
+     並べ替えても刃組の表だけ古いまま残る。 */
+  if(scState.boardMode==='blade')renderBladeList();
   updateHistoryFromUi();updateRefreshHint();
   scheduleWorkableWatch();   // 可でない行が残っていれば裏で追いかける(§9.51)
   /* 結合の値は**描き終えてから・手が空いてから**当てる(§9.94と同じ作法)。
@@ -5063,9 +5224,13 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    /* **どの段取りの行から開いたか**（`stopId`）も渡す（§9.383）。刃組の記録と
       予定の行を結ぶ鍵で、これが無いと刃組スケジュール一覧が「この段取りは
       記録済みか」を時刻で当てるしかなくなる（同じ日に2回組むと当たらない）。 */
+   /* **来た道も渡す**（§9.407）。刃組ガイダンスの戻るボタンはこの段へ返す
+      ——渡さないと向こうは既定（俯瞰ボード）で開き直し、個別のタイムラインや
+      刃組スケジュール一覧から来た人は「戻れていない」ように見える。 */
    open:e=>WL.bladeGuide.open({equipment:scState.equipment,
                                seed:bladeSeedFromEntry(e),
                                stopId:e&&e.id!=null?String(e.id):'',
+                               back:{mode:scState.boardMode},
                                from:`${e.title||'設備停止'}（${scState.equipment||''}）`})
   }
  };
@@ -10282,7 +10447,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* 作業スケジュールを開く（§9.378）。刃組ガイダンスのように**この画面から
      送り出した先**が戻ってくるための口——入口を2つにしないため、左メニューの
      ボタンと同じ `openScheduleView()` をそのまま呼ぶ。 */
-  open:()=>openScheduleView(),
+  /* `opts.mode`で**戻る段**を指定できる（§9.407）。渡さなければ今までどおり。 */
+  open:opts=>openScheduleView(opts),
+  /* 段の長い名（`作業スケジュール一覧`等）。**呼ぶ側に綴りを書かせない**
+     ——刃組ガイダンスの戻るボタンがこの字を出す。 */
+  modeName:key=>scModeName(key),
   hiddenLotSet:()=>hiddenLotSet(),
   /* 刃組ガイダンスへ渡す「条になる行」の選び方（§9.378）。**分割ありの親は
      条にならない**という測定と同じ規則を、網が合成した並びで直に確かめられる
@@ -10294,6 +10463,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      出す——表のHTMLではなく、行の値そのものを見る。 */
   bladeStops:list=>bladeStops(list).map(x=>({id:x.entry.id,at:x.at})),
   bladeRows:()=>buildBladeRows(),
+  /* 標準の計算値（§9.408）。**画面を組み立てずに計算だけを確かめられる形**
+     ——刃組ガイダンスと同じ`WL.bladeSet`を通っていることを、網が直に見る。 */
+  bladeForecast:seed=>bladeForecast(seed),
   bladeColumns:()=>SC_BLADE_COLS.map(([l,k])=>({label:l,key:k})),
   bladeCountText:m=>bladeCountText(m),
   switchToBlade:()=>switchToBlade(),

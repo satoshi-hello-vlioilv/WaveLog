@@ -507,11 +507,19 @@ def open_app_if_unseen_later(log):
 def run_full_check(log,why):
  """刻印が無い/合わないときの完全な確認(§9.225)。**update.batと同じ処理を
     同じ場所から呼ぶ**——2つ持つと「update.batでは通るのに起動では失敗する」
-    が作れる。"""
+    が作れる。
+
+    **していることを待機画面へも流す**（§9.411、利用者の指示③「アップデート
+    なども実施してくれると思うので、実施しているときとしていないときの違いも
+    分かるように」）。ここは何秒もかかる段（部品の導入・バイトコードの作り直し）
+    なので、黙っていると「止まっている」ようにしか見えない。"""
  log.info('起動前の確認: %s。この起動でまとめて確かめます（update.batを実行しておくと次回から速くなります）',
           ' / '.join(why) if why else '刻印がありません')
+ boot_status.set_work(boot_status.WORK_UPDATE,why or ['刻印がありません'])
  def say(message,bad=False):
   (log.warning if bad else log.info)('起動前の確認: %s',message)
+  # **同じ言葉を画面にも出す**——ログと画面で言い方を変えない（§9.163）。
+  boot_status.report('packages',message,failed=bad)
  ok,_reason=setup_check.run(say)
  return ok
 
@@ -598,13 +606,19 @@ def main():
  # 判定するので、飛ばして困るのは「速くならない」ことだけ。
  why=ready.mismatch()
  if why:
-  boot_status.report('packages','必要な部品が揃っているか確認しています')
+  # **何が変わったから確認するのか**を待機画面へ渡す（§9.411）。
+  # 「アプリの版（2.304.0 → 2.305.0）」のように理由が読めれば、待たされて
+  # いるのが更新のせいだと分かる（推測させない・§CLAUDE 6）。
+  boot_status.report('packages','更新を反映しています（必要な部品とバイトコードを確認）',
+                     work=boot_status.WORK_UPDATE,reasons=why)
   if not run_full_check(log,why):
    boot_status.report('packages','必要な部品を用意できませんでした',failed=True)
    log.error('起動中止: 必須パッケージが揃いませんでした')
    return 1
+  boot_status.report('packages','更新を反映しました')
  else:
-  boot_status.report('packages','確認済みです（update.batで確認しました）')
+  boot_status.report('packages','更新はありません（前回の確認のまま起動します）',
+                     work=boot_status.WORK_SKIP,reasons=[])
   log.info('起動前の確認: 済んでいます。飛ばします')
 
  boot_status.report('data','データの置き場所を確認しています')
