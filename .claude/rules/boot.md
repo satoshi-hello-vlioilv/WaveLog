@@ -1,0 +1,49 @@
+# 起動・停止・監視（37件）
+
+索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
+
+`program/` の4本・`Start.vbs`・`#appBoot`・更新の刻印・在席の監視
+
+行は**守ることだけ**を書いてある。なぜそうなのか・実測値・撤回した案・踏んだ罠は
+「くわしく」の先（[`docs/decisions/`](../../docs/decisions/README.md)）にある。
+**直す前にその先を開くこと。**「固定する網」は `tests/run_all.sh <名前>` で回す。
+
+| 守ること | 固定する網 | くわしく |
+| --- | --- | --- |
+| 直接実行する4本とその資材は`program/`。**リポジトリ直下に`.py`も`.bat`も置かない** | `test_faststart.py` | [§9.406](../../docs/decisions/9.406.md) |
+| 直下に残すのは`Start.vbs`（毎日の入口）と、移すと**黙って効かなくなる**`.gitignore`／`eslint.config.mjs`だけ | `test_faststart.py` | [§9.406](../../docs/decisions/9.406.md) |
+| 直下の孤児`__pycache__`は片付ける。**`.py`が1本も無い**かつ**中身が`.pyc`だけ**のときに限る | `test_faststart.py` | [§9.406](../../docs/decisions/9.406.md) |
+| `program/`の4本は`import _pycache_bootstrap`→`import _approot`の順で通す（置き場が先・探索先が次） | `test_faststart.py` | [§9.406](../../docs/decisions/9.406.md) |
+| `backend`から素の`from app import app`を書かない。答えは`app_module.flask_app()`の1箇所 | `test_scowner.py` | [§9.404](../../docs/decisions/9.404.md) |
+| ファイルを移すときは見張り（`pick_tests.py`・lintの対象・CI）も一緒に動かす | `test_pick.py` | [§9.404](../../docs/decisions/9.404.md) |
+| 起動画面は待機画面と`#appBoot`が**同じ意匠・同じ色**。更新の有無は同じ場所で言い分ける | `test_boot.py` | [§9.411](../../docs/decisions/9.411.md) |
+| 波紋はヘッダーの帯の中だけ（`overflow:hidden`）。輪は**幅と高さ**で広げる（`scale`は線まで太る） | `test_theme.js` | [§9.411](../../docs/decisions/9.411.md) |
+| ショートカットの行き先は`Start.vbs`1本、アイコンは`app_icon.py`が描く。作れない端末は理由を返す | `test_shortcut.py` | [§9.410](../../docs/decisions/9.410.md) |
+| 起動前の確認は`update.bat`（旧`setup.bat`）が受け持ち、刻印で飛ばす | `test_faststart.py` | [§9.225](../../docs/decisions/9.225.md) |
+| 入口の名前は「いつ押すか」を言う。旧名を入口として残さない（入口は1つ） | `test_faststart.py` | [§9.405](../../docs/decisions/9.405.md) |
+| 置き場・名前が変わった古いファイルは`MOVED_AWAY`で片付ける。**新しいほうが在るときだけ**（片方しか無いうちは触らない） | `test_faststart.py` | [§9.405](../../docs/decisions/9.405.md) |
+| サーバー再起動 | — | [決まり](../../docs/decisions/rules-misc.md) |
+| 起動基盤に触るとき | — | [決まり](../../docs/decisions/rules-misc.md) |
+| 「開いているタブが0件」は2つの意味を持つ | `test_tabclose.py` | [§9.98](../../docs/decisions/9.98.md) |
+| 起動オーバーレイ（`#appBoot`） | `test_boot.py`・`test_bootui.js` | [決まり](../../docs/decisions/rules-misc.md) |
+| 枠線なしでも「区切り」と「設備停止」を見分けられるようにする | — | [§9.295](../../docs/decisions/9.295.md) |
+| 作業以外の行は「題名だけ」。内容の列を束ねて置く | `test_scprint.js` | [§9.294](../../docs/decisions/9.294.md) |
+| 渡したことと、見えていることは別。見えていなければアプリを直接開く | `test_bootopen.py` | [§9.318](../../docs/decisions/9.318.md) |
+| 起動できない端末のことは、その端末から言えるようにする | `test_bootreport.js` | [§9.163](../../docs/decisions/9.163.md) |
+| ブラウザへ渡したファイルを、その起動のあいだ差し替えない | `test_faststart.py` | [§9.255](../../docs/decisions/9.255.md) |
+| 「0件になった時刻」はタブが名乗った時点で捨てる | `test_tabclose.py` | [§9.98](../../docs/decisions/9.98.md) |
+| 起動の白画面は入り口が5つとも塞がっている。残るのは`import`の21秒 | — | [§9.255](../../docs/decisions/9.255.md) |
+| 説明文（docstring）にWindowsのパスをそのまま書かない | `test_pywarn.py` | [§9.275](../../docs/decisions/9.275.md) |
+| 掃除してよいのは「消えても取り直せるもの」だけ | `test_cleanup.py` | [§9.249](../../docs/decisions/9.249.md) |
+| テストをまとめる線引きは「同じ画面を見るために同じ起動を待っているか」 | — | [§9.249](../../docs/decisions/9.249.md) |
+| 設備停止の入口は`#scStopButtons`の1つ | `test_scstop.js` | [§9.181](../../docs/decisions/9.181.md) |
+| データソースは「名称」も再起動待ち | `test_dsrestart.js` | [§9.183](../../docs/decisions/9.183.md) |
+| データソースの読み込み先は「今マスタにある行」から作る | — | [§9.163](../../docs/decisions/9.163.md) |
+| 「どこから読むか」はデータソースの行が1つだけ持つ | `test_datasource.py`・`test_dscap.py` | [§9.168](../../docs/decisions/9.168.md) |
+| 「更新は届いたが再起動していない」をサーバーが答える | — | [§9.200](../../docs/decisions/9.200.md) |
+| この端末の呼び名は起動時に1回だけ決めて持つ | `test_pcname.py` | [§9.208](../../docs/decisions/9.208.md) |
+| 資材(JS/CSS)は`?t=`付きなら長期キャッシュへ回す | `test_assetcache.py` | [§9.97](../../docs/decisions/9.97.md) |
+| ループバック(127.0.0.1)への問い合わせはプロキシを通さない | — | [決まり](../../docs/decisions/rules-misc.md) |
+| 仕掛/品質データのローカル運用 | — | [決まり](../../docs/decisions/rules-misc.md) |
+| フォルダ構成 | — | [決まり](../../docs/decisions/rules-misc.md) |
+| 起動スクリプトは CRLF 改行で保存する | `test_faststart.py` | [§9.229](../../docs/decisions/9.229.md) |

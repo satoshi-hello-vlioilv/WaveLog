@@ -32,10 +32,15 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEC = ROOT / 'docs' / 'decisions'
 IX = DEC / 'README.md'
 CL = ROOT / 'CLAUDE.md'
+RULES = ROOT / '.claude' / 'rules'
+RULES_IX = RULES / 'README.md'
 DOC = ROOT / 'docs' / 'SCHEDULE_MODE_DESIGN.md'
 
-# CLAUDE.md の上限。**規則の表だけ**なら十分に収まる（現状 81KB）。
-CLAUDE_MAX = 120 * 1024
+# CLAUDE.md の上限（§9.414、利用者の指示「200行以下目標」「.claude/rules/ に
+# よる分散管理も活用したい」）。**入口だけ**なら十分に収まる（現状 111行）。
+# 行で見るのは、利用者がそう言ったからであり、かつ**読む側が一息で読めるか**は
+# バイト数ではなく行数で決まるから。
+CLAUDE_MAX_LINES = 200
 
 ARCH = ROOT / 'docs' / 'ARCHITECTURE.md'
 CAP = ROOT / 'tests' / 'visual' / 'capture.js'
@@ -164,25 +169,59 @@ def main():
     rec('仕様と経緯の両方が使われている',
         0 < marks.count('経緯') < len(marks), f'経緯{marks.count("経緯")} / 全{len(marks)}')
 
-    # ---- CLAUDE.md は規則の表だけ ----
-    rec('CLAUDE.md に「作業の進め方」が残っている', '## 作業の進め方' in cl)
-    rec('CLAUDE.md に「画面を作るときの基準」が残っている', '## 画面を作るときの基準' in cl)
-    rec('CLAUDE.md は規則の表になっている', '## 必ず守ること（不変条件の表）' in cl)
-    size = CL.stat().st_size
-    rec(f'CLAUDE.md が上限（{CLAUDE_MAX // 1024}KB）に収まっている',
-        size <= CLAUDE_MAX, f'{size // 1024}KB')
+    # ---- CLAUDE.md は「入口」だけ（§9.414） ----
+    # 利用者の指示: 200行以下・責務は別ファイルへ分散・終わったことは書かない。
+    cl_lines = cl.rstrip('\n').split('\n')
+    rec('CLAUDE.md に「作業の進め方」が残っている（最優先の恒久指示）',
+        '## 作業の進め方' in cl)
+    rec(f'CLAUDE.md が {CLAUDE_MAX_LINES} 行以下に収まっている',
+        len(cl_lines) <= CLAUDE_MAX_LINES, f'{len(cl_lines)}行')
+    # **入口に表を書き戻さない**——規則の表が戻ってくると、また1枚に戻る。
+    # 索引の表（`| 触る場所 | 開く1枚 |`）は2列なので、3列の規則表だけを数える。
+    back = re.findall(r'^\| (?!触る場所|---)(.+?) \| (.+?) \| (.+?) \|$', cl, re.M)
+    rec('CLAUDE.md へ規則の表を書き戻していない', not back, f'{len(back)}行')
+    rec('CLAUDE.md が規則の置き場を指している',
+        '.claude/rules/README.md' in cl and '.claude/rules/ui-principles.md' in cl)
 
-    # 表の「くわしく」が全部たどれる
-    dead = sorted({t for t in re.findall(r'\]\(docs/decisions/([0-9A-Za-z.\-]+\.md)\)', cl)
+    # ---- 規則の本体は .claude/rules/（領域別） ----
+    rule_files = sorted(p for p in RULES.glob('*.md') if p.name != 'README.md')
+    rix = RULES_IX.read_text(encoding='utf-8')
+    rec('規則が領域別に分かれている', len(rule_files) >= 14, f'{len(rule_files)}枚')
+    rlinked = set(re.findall(r'\]\(([0-9A-Za-z.\-]+\.md)\)', rix))
+    rnames = {p.name for p in rule_files}
+    rec('規則の索引に載っていない1枚が無い（足したら載せる）',
+        not (rnames - rlinked), ', '.join(sorted(rnames - rlinked)[:6]))
+    rec('規則の索引が実在しない1枚を指していない',
+        not (rlinked - rnames), ', '.join(sorted(rlinked - rnames)[:6]))
+    # **CLAUDE.md からも全部たどれる**（索引だけに載っていても入口から行けない）
+    cl_linked = set(re.findall(r'\]\(\.claude/rules/([0-9A-Za-z.\-]+\.md)\)', cl))
+    rec('入口（CLAUDE.md）からどの1枚へも行ける', not (rnames - cl_linked),
+        ', '.join(sorted(rnames - cl_linked)[:6]))
+    noback = [p.name for p in rule_files
+              if '](README.md)' not in p.read_text(encoding='utf-8')
+              or '](../../CLAUDE.md)' not in p.read_text(encoding='utf-8')]
+    rec('どの1枚からも索引と入口へ戻れる', not noback, ', '.join(noback[:6]))
+
+    # ---- 規則の表そのもの（置き場が変わっても中身の決まりは同じ） ----
+    rtext = '\n'.join(p.read_text(encoding='utf-8') for p in rule_files)
+    dead = sorted({t for t in re.findall(r'\]\(\.\./\.\./docs/decisions/([0-9A-Za-z.\-]+\.md)\)', rtext)
                    if t not in names and t != 'README.md'})
     rec('表の「くわしく」が全部たどれる', not dead, ', '.join(dead[:6]))
-    rows = re.findall(r'^\| (?!守ること|---)(.+?) \| (.+?) \| (.+?) \|$', cl, re.M)
+    rows = re.findall(r'^\| (?!守ること|---)(.+?) \| (.+?) \| (.+?) \|$', rtext, re.M)
     rec('表の行を読めている', len(rows) >= 400, f'{len(rows)}行')
-    nolink = [r[0][:28] for r in rows if '](docs/decisions/' not in r[2]]
+    nolink = [r[0][:28] for r in rows if '](../../docs/decisions/' not in r[2]]
     rec('どの規則にも「くわしく」の行き先がある', not nolink, ', '.join(nolink[:4]))
     # **経緯を表へ書き戻さない**——1行が長くなったら、それは本文が戻ってきた合図
     longs = [r[0][:30] for r in rows if len(r[0]) > 90]
     rec('表の1行に本文を書き戻していない（見出しだけ）', not longs, ', '.join(longs[:4]))
+    # **同じ規則を2行に持たない**（§9.414。置き場を分けると気づきにくくなる）
+    seen, dup = {}, []
+    for r in rows:
+        k = re.sub(r'[\s`*（）()「」、。]', '', r[0])
+        if k in seen:
+            dup.append(r[0][:30])
+        seen[k] = 1
+    rec('同じ規則を2行に持っていない', not dup, ', '.join(dup[:4]))
 
     # ---- 3-20（§9.349）: 構成の説明と撮る道具が腐っていない ----
     # 「規則」と「経緯」は分けたが、**構成の説明（ARCHITECTURE.md）と撮る道具
@@ -212,7 +251,8 @@ def main():
     rec('設計書が decisions を指している', 'decisions/README.md' in doc)
 
     print(f'\n== {sum(R)}/{len(R)} PASS ==')
-    print(f'  CLAUDE.md {size // 1024}KB / 決定記録 {len(files)}ファイル / 索引 {len(linked)}リンク')
+    print(f'  CLAUDE.md {len(cl_lines)}行 / 規則 {len(rule_files)}枚 {len(rows)}行'
+          f' / 決定記録 {len(files)}ファイル / 索引 {len(linked)}リンク')
     sys.exit(0 if all(R) else 1)
 
 

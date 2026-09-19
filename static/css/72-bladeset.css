@@ -264,7 +264,7 @@ body.bs-mode .bs-shell{display:flex}
   gap:var(--space-1);padding:var(--space-1);min-height:0;flex:1 1 auto}
 .bs-figrow.is-flip{direction:rtl}
 .bs-figrow.is-flip>*{direction:ltr}
-.bs-figmain{min-width:0;min-height:0;display:flex}
+.bs-figmain{min-width:0;min-height:0;display:flex;position:relative}
 .bs-stage{flex:1 1 auto;min-width:0;min-height:0;display:flex}
 /* **`display:flex` は UA の `[hidden]` を上書きする**ので、伏せ方をここに書く
    （立体図に切り替えたのに模式図が並んで出た）。 */
@@ -489,6 +489,9 @@ body.bs-mode .bs-shell{display:flex}
    透明な板は素通りする。 */
 .bs-zhit{fill:var(--teal);fill-opacity:0;stroke:var(--teal-dark);stroke-width:0;
   pointer-events:all;transition:fill-opacity .12s,stroke-width .12s}
+/* **押せるものには指を出す**（§9.385 の裏返し）。区間は押すと拡大図が開く
+   （§9.413）ので、重ねた時点でそれが分かるようにする。 */
+.bs-bhit{cursor:pointer}
 /* **SVGに効く言葉で書く**（§9.386）。以前は束ね規則の
    `background`/`border-color`/`color` を当てており、`rect` はこれらを
    描かないので**図側は1pxも変わっていなかった**（実測: `fill` は
@@ -652,4 +655,28 @@ body.bs-mode .bs-shell{display:flex}
 .bp-ans.is-idle{color:var(--muted)}
 .bp-ans.is-hit{color:var(--teal-dark);font-weight:700}
 .bp-ans.is-none{color:var(--ink-2)}
+
+/* ---------- 区間の拡大（§9.413） ----------
+   模式図の区間を押すと、その区間だけを大きく描いた図が**押した区間の真下**へ
+   出る。器は模式図と立体図を載せている `.bs-figmain` なので、図の外へは
+   出ない。横位置は `--bs-zoom-x` が運ぶ（JSが器の縁で止める）。 */
+.bs-zoom{position:absolute;inset-block-start:var(--bs-zoom-y,var(--space-2));
+  inset-inline-start:var(--bs-zoom-x,0);width:min(760px,100%);z-index:var(--z-popover);
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-md);
+  box-shadow:var(--shadow-pop);padding:var(--space-2);display:flex;flex-direction:column;
+  gap:var(--space-1)}
+.bs-zoom[hidden]{display:none}
+.bs-zoom-hd{display:flex;align-items:center;gap:var(--space-2)}
+.bs-zoom-bd{display:inline-grid;place-items:center;min-width:1.8em;height:1.8em;padding:0 4px;
+  border-radius:var(--radius-xs);background:var(--teal-dark);color:#fff;
+  font-size:var(--fs-title);font-weight:800}
+.bs-zoom-tx{display:flex;flex-direction:column;line-height:1.25;min-width:0}
+.bs-zoom-tx b{font-size:var(--fs-base-sm);font-weight:700;color:var(--ink)}
+.bs-zoom-tx small{font-size:var(--fs-micro);color:var(--muted)}
+.bs-zoom-x{margin-inline-start:auto;background:transparent;border:1px solid var(--line);
+  border-radius:var(--radius-xs);color:var(--ink-2);cursor:pointer;
+  width:1.9em;height:1.9em;line-height:1;font-size:var(--fs-sm)}
+.bs-zoom-x:hover{background:var(--pale);border-color:var(--teal)}
+.bs-zoom svg{width:100%;height:auto;display:block}
+.bs-zoom-note{margin:0;font-size:var(--fs-micro);color:var(--muted);line-height:1.5}
 }

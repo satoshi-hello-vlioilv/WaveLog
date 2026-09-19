@@ -1,0 +1,61 @@
+# 作業スケジュール（49件）
+
+索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
+
+予定の行・設備停止の登録・写しの同期・ロット番号のコピー
+
+行は**守ることだけ**を書いてある。なぜそうなのか・実測値・撤回した案・踏んだ罠は
+「くわしく」の先（[`docs/decisions/`](../../docs/decisions/README.md)）にある。
+**直す前にその先を開くこと。**「固定する網」は `tests/run_all.sh <名前>` で回す。
+
+| 守ること | 固定する網 | くわしく |
+| --- | --- | --- |
+| 設備停止の追加は**左＝停止内容（全高・1列）／右上＝カード（2/3幅）／右下＝内訳の列＋いま入れた**。足元の帯は§9.402で撤回 | `test_stopflow.js`・`test_scstop.js` | [§9.402](../../docs/decisions/9.402.md) |
+| 時間は**目盛り**。顔ぶれは時間マスタの選択肢そのもの。無い分は「その他の分…」で打ち、**打った分は目盛りに1本足して**つまみを立てる | `test_stopflow.js` | [§9.402](../../docs/decisions/9.402.md) |
+| 設備名は**窓の題**が言う（カードの行き先には出さない）。入る位置と時刻はカードの1行 | `test_scstop.js` | [§9.402](../../docs/decisions/9.402.md) |
+| 入れたものは「いま入れた」の列に並び、**窓を閉じるまで取り消せる**（合計も出す）。外す道は`removeEntries()`の1本 | `test_stopflow.js` | [§9.402](../../docs/decisions/9.402.md) |
+| 内訳を持たない停止内容では**空の列を置かず「どこへ入るか」を出す**。無いことはカードの見出しが言う | `test_scstop.js` | [§9.402](../../docs/decisions/9.402.md) |
+| ICASコピーは**ルールが1本も無くても必ずつなぐ**。素のつなぎ方は**区切り無しの連結**（§9.403で半角スペースから改めた）。無いことを断る理由にしない | `test_lotcopy.js` | [§9.403](../../docs/decisions/9.403.md) |
+| 設備停止は「内容 →（内訳）→ 時間」の手順で入れる。窓は開かず一覧と入れ替える | `test_stopflow.js` | [§9.389](../../docs/decisions/9.389.md) |
+| 一覧の上端は動かさない。案内は一覧の**下**の「知らせの棚」（`#scNotices`）へ | `test_scbar.js` | [§9.397](../../docs/decisions/9.397.md) |
+| 行の右クリックは**作業導線の順に群で束ねる**（進める→直す→増やす・写す→選ぶ・並べる→画面→外す）。群は5件以下、**中身の無い群は出さない** | `test_scstop.js` | [§9.399](../../docs/decisions/9.399.md) |
+| 予定の行の複製を出すのは**申し送りだけ**。設備停止・作業・枠には出さない（顔ぶれは`DUPLICABLE_KINDS`の1箇所） | `test_scstop.js` | [§9.401](../../docs/decisions/9.401.md) |
+| Deleteで外すのも`removeEntries()`の1本を通す。欄・IME変換中・窓が開いている間は取らない。Backspaceは取らない | `test_scpick.js` | [§9.399](../../docs/decisions/9.399.md) |
+| 帯（ヘッダーの操作列）は1行のまま。譲るのは**状態の文字だけ**（押せる物は縮ませない） | `test_scbar.js` | [§9.397](../../docs/decisions/9.397.md) |
+| 設備停止は左＝一覧／右＝設定の2ペイン。一覧と入れ替えない（§9.389の作法を撤回） | `test_stopflow.js` | [§9.397](../../docs/decisions/9.397.md) |
+| 内訳と時間は**最初から選ばれている**。進むボタンの字は「いま入るもの」そのもの | `test_stopflow.js` | [§9.397](../../docs/decisions/9.397.md) |
+| 段が増えるのは**下を持つ内訳を選んだときだけ**（空の段を出さない）。1段目を選び直したら2段目は捨てる | `test_stopflow.js` | [§9.390](../../docs/decisions/9.390.md) |
+| 予定へ渡すのは**いちばん下の内訳のID**1つ。1段目は`stopSub`のまま・2段目は`stopSub2`（既存の集計を割らない） | `test_stopsub.py`・`test_stopflow.js` | [§9.390](../../docs/decisions/9.390.md) |
+| 内訳の札は題名の一部ではない。答えるのは`nonWorkSubText()`の1箇所（紙も同じ1本） | `test_stopflow.js` | [§9.389](../../docs/decisions/9.389.md) |
+| 予定の内訳（サブカテゴリ）は`[明細JSON]`。触れるのは**設備停止の行だけ**（作業の写しを潰さない） | `test_stopsub.py` | [§9.389](../../docs/decisions/9.389.md) |
+| 作業スケジュールの「開始」は着手できる**全行**に出す（次の1本は現場が自由に選ぶ。先頭N行に絞らない） | `test_workable.js` | [§9.339](../../docs/decisions/9.339.md) |
+| 送り出した画面は**来た道の段へ戻す**（`open({mode})`）。段の名前は`SC_MODES`の1箇所 | `test_bladeui.js` | [§9.407](../../docs/decisions/9.407.md) |
+| 設備停止の行き先は`設備停止マスタ`の`[連携機能]`。行は持たない・語彙はサーバー | `test_bladeset.py`・`test_bladeui.js` | [§9.377](../../docs/decisions/9.377.md) |
+| 行き先の的は題名の横に別に立てる（行いっぱいは「選ぶ」・ダブルクリックは「直す」） | `test_bladeui.js` | [§9.377](../../docs/decisions/9.377.md) |
+| 予定の写しは「画面に出している項目だけ」元データから取り込み直す。空は「変わった」と読まない | `test_srcsync.js` | [§9.375](../../docs/decisions/9.375.md) |
+| 写しへ書き戻すのは`plan_merge_detail()`の1箇所。渡した鍵だけ重ね、作業の行だけ | `test_srcsync.js` | [§9.375](../../docs/decisions/9.375.md) |
+| 外した予定は「仕掛にまだ在るとき」だけ一覧へ戻す。在席は3値・不明なら戻す | `test_wipgone.js` | [§9.368](../../docs/decisions/9.368.md) |
+| 選んだ予定のロット番号はつないでコピーできる。つなぎ方は`WL.lotCopy.joinLots()`の1箇所 | `test_lotcopy.js` | [§9.368](../../docs/decisions/9.368.md) |
+| 書込が失敗したら必ず理由を言う。`onFailure`があることを「知らせた」と数えない（見出しは`SC_OP_LABEL`の1箇所） | `test_scfail.js` | [§9.372](../../docs/decisions/9.372.md) |
+| 失敗は「開発へ報告できる形」で残す。文脈は画面が`WL.feedback.provide()`で名乗る（土台に画面の知識を書かない） | `test_feedback.js` | [§9.373](../../docs/decisions/9.373.md) |
+| 報告は「人が読む形＋機械で読む1行（`WLFB1`）」。足あとは必ず失敗で終わる。版は控えてから使う | `test_feedback.js` | [§9.373](../../docs/decisions/9.373.md) |
+| 掴んでいる間は器の縁で表を送る。判定は「予定の画面の上でドラッグ中か」の1つ（掴んでいる物で数えない） | `test_scdragscroll.js` | [§9.374](../../docs/decisions/9.374.md) |
+| 色と濃さの意味は「表示」に畳む。見本は**実物と同じクラス**で描く（色を書き写さない） | `test_scdragscroll.js` | [§9.374](../../docs/decisions/9.374.md) |
+| 動かせない行は掴んだ時点で理由を言う。判定は`reorderableEntry()`と同じ順で見る | `test_scfail.js` | [§9.372](../../docs/decisions/9.372.md) |
+| 区切りは「あたった決まりを書いた順にぜんぶ重ねる」。区切り文字は1文字に限らない（空白だけでも可） | `test_lotcopy.js` | [§9.371](../../docs/decisions/9.371.md) |
+| さかのぼりの起点はサーバーの`history_from()`が1箇所で答える | `test_schistory.js` | [§9.366](../../docs/decisions/9.366.md) |
+| 済んだ行の代表時刻は`actual.startAt`→`actual.endAt`→`finishedAt`の順 | `test_schistory.js`・`test_scrowstyle.js` | [§9.366](../../docs/decisions/9.366.md) |
+| 稼働カレンダーは足りなくなったら伸びる | `test_scload.py` | [§9.291](../../docs/decisions/9.291.md) |
+| 開始ボタンを作る場所は2つある。文字とHTMLは1箇所 | `test_workable.js` | [§9.51](../../docs/decisions/9.51.md) |
+| 作業日・直を直す道は行の右クリックからも辿れる。判定は`frameInsertable()`の1箇所、窓は「どこへ入るか」を先に言う | `test_scframe.js` | [§9.376](../../docs/decisions/9.376.md) |
+| 空の日付・直の枠は「ここから先の起点を進めるだけ」 | `test_scframe.js` | [§9.238](../../docs/decisions/9.238.md) |
+| 申し送り（コメント）は時間を取らない | `test_sccomment.js` | [§9.189](../../docs/decisions/9.189.md) |
+| 書込のあとは予定の時刻を取り直す | `test_scundecided.js` | [§9.185](../../docs/decisions/9.185.md) |
+| 現場歴の日付補正は勤務区分マスタの1列 | `test_workdate.py` | [§9.195](../../docs/decisions/9.195.md) |
+| 同じ材料なら作り直さない | — | [§9.198](../../docs/decisions/9.198.md) |
+| 予定の起点は5分刻みへ切り上げる | — | [§9.198](../../docs/decisions/9.198.md) |
+| 「表示範囲」は「さかのぼり」と言い、起点の日時を出す | — | [§9.198](../../docs/decisions/9.198.md) |
+| 取りに行った応答は「いつの分か」で捨てる | `test_scsave.js` | [§9.200](../../docs/decisions/9.200.md) |
+| 赤いまま残っている網は網ではない | — | [§9.200](../../docs/decisions/9.200.md) |
+| 分割ありの親ロットは子ロットをぶら下げて予定へ入る | `test_scsplit.js` | [決まり](../../docs/decisions/rules-misc.md) |
+| 見積の出どころは4段で、順番を入れ替えないこと | `test_eqstd.py` | [§9.114](../../docs/decisions/9.114.md) |

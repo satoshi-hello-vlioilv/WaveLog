@@ -1,0 +1,102 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>起動画面の地（背景）の案</title>
+<!-- 利用者の指示: 「起動モーダル画面の背景部分はイメージと違って殺風景な感じが
+     してしまいました。要するに以前の背景色の方がモーダルの表示と合っていたように
+     思いました。色トークン内で選択できる別の組み合わせがあるか、モーダルが透過で
+     浮いているように見えてよかったのかもしれない」
+     → 地だけを5通りに振る。**カードの中身は5枚とも同じ**（いま動いているもの）。 -->
+<link rel="stylesheet" href="../../static/css/00-base.css">
+<link rel="stylesheet" href="../../static/css/95-boot.css">
+<style>
+ body{margin:0;background:var(--bg);color:var(--ink);
+   font-family:system-ui,"Segoe UI","Meiryo",sans-serif}
+ h1{font-size:20px;margin:18px 20px 4px}
+ .lead{margin:0 20px 16px;font-size:13px;color:var(--muted);line-height:1.7;max-width:900px}
+ .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(520px,1fr));gap:18px;padding:0 20px 28px}
+ .demo{position:relative;height:340px;border:1px solid var(--line);
+   border-radius:var(--radius-md);overflow:hidden}
+ .demo>#appBoot,.demo>.boot{position:absolute;inset:0;z-index:1}
+ .cap{display:flex;align-items:baseline;gap:10px;margin:0 0 6px;padding:0 2px}
+ .cap b{font-size:14px}
+ .cap small{font-size:12px;color:var(--muted)}
+ .tag{display:inline-grid;place-items:center;min-width:2em;height:1.7em;padding:0 6px;
+   border-radius:var(--radius-xs);background:var(--teal);color:#fff;font-weight:800;font-size:12px}
+ /* 器の中で動かすので fixed をやめる。中身のCSSはそのまま使う。 */
+ .boot{display:flex;align-items:center;justify-content:center;
+   transition:none!important}
+ .boot .boot-card{transform:scale(.72);transform-origin:center}
+
+ /* ---- A: いま（平らな --bg） ---- */
+ .bgA{background:var(--bg)}
+ /* ---- B: 以前の地（深い紺＋斜めの光）。カードは今の白のまま ---- */
+ .bgB{background:
+   radial-gradient(120% 90% at 12% -10%, color-mix(in srgb, var(--teal) 10%, transparent), transparent 58%),
+   radial-gradient(90% 80% at 108% 108%, color-mix(in srgb, var(--warn) 6%, transparent), transparent 55%),
+   linear-gradient(158deg,
+     color-mix(in srgb, var(--nav) 60%, black) 0%,
+     color-mix(in srgb, var(--nav) 88%, black) 46%,
+     color-mix(in srgb, var(--nav) 48%, black) 100%)}
+ /* ---- C: 明るいまま奥行きだけ足す（teal と amber をごく薄く） ---- */
+ .bgC{background:
+   radial-gradient(110% 85% at 10% -8%, color-mix(in srgb, var(--teal) 14%, transparent), transparent 60%),
+   radial-gradient(95% 80% at 105% 106%, color-mix(in srgb, var(--warn) 8%, transparent), transparent 58%),
+   var(--bg)}
+ /* ---- D: 淡い teal の面（--pale → --bg の斜め） ---- */
+ .bgD{background:linear-gradient(158deg, var(--pale) 0%, var(--bg) 52%, var(--surface-3) 100%)}
+ /* ---- E: 濃い地＋カードが透けて浮く（以前の作り方に近い） ---- */
+ .bgE{background:
+   radial-gradient(120% 90% at 12% -10%, color-mix(in srgb, var(--teal) 16%, transparent), transparent 58%),
+   linear-gradient(158deg,
+     color-mix(in srgb, var(--nav) 72%, black) 0%,
+     color-mix(in srgb, var(--nav) 96%, black) 55%,
+     color-mix(in srgb, var(--nav) 58%, black) 100%)}
+ .bgE .boot-card{background:color-mix(in srgb, var(--surface) 88%, transparent);
+   backdrop-filter:blur(14px) saturate(115%);
+   border-color:color-mix(in srgb, white 46%, transparent);
+   box-shadow:0 22px 52px rgba(0,0,0,.42)}
+</style>
+<h1>起動画面の「地」の案（カードの中身は5枚とも同じ）</h1>
+<p class="lead">いま動いているのは <b>A</b>。地が平らな <code>--bg</code> 一色で、
+白いカードとの差が小さく、奥行きが出ていません。<b>B</b> が §9.411 より前の地
+（深い紺＋斜めの光）、<b>E</b> はそれに「カードが透けて浮く」を足したもの。
+<b>C・D</b> は明るいまま奥行きだけ足す案です。<b>色はすべてトークンから作って
+います</b>（新しい16進は1つも足していません）。</p>
+<div class="grid" id="grid"></div>
+<script>
+const CARD = document.createElement('template');
+CARD.innerHTML = `<div class="boot-card">
+<div class="boot-head"><i class="boot-ring" style="--d:0s"></i><i class="boot-ring" style="--d:1.53s"></i><i class="boot-ring" style="--d:3.06s"></i><svg class="boot-logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="13" fill="#eaf3f4" stroke="#bcd8db" stroke-width="2"/><rect x="10" y="12" width="44" height="40" rx="6" fill="#fff" stroke="#087c89" stroke-width="3.5"/><path d="M10 23h44" stroke="#087c89" stroke-width="3.5"/><path d="M22 12v-4M42 12v-4" stroke="#096b75" stroke-width="4" stroke-linecap="round"/><path d="M17 41c5-10 8 5 12-4s7 7 11-2" fill="none" stroke="#096b75" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="46" cy="33" r="4.5" fill="#f5a30a"/></svg><div class="boot-title"><h1>測定伝送システム</h1><p>STARTING UP</p></div><span class="boot-ver">VER2.309.0</span></div>
+<div class="boot-body">
+<div class="boot-band"><ul class="boot-steps"><li data-step="0" class="is-done"><span>実行環境を確認</span></li><li data-step="1" class="is-done"><span>起動中のアプリを確認</span></li><li data-step="2" class="is-done"><span>必要な部品を確認</span></li><li data-step="3" class="is-done"><span>データの置き場所を確認</span></li><li data-step="4" class="is-done"><span>アプリを読み込み</span></li><li data-step="5" class="is-done"><span>Webサーバーを起動</span></li><li data-step="6" class="is-current"><span>画面部品を読み込み</span></li><li data-step="7"><span>権限を確認</span></li><li data-step="8"><span>一覧を読み込み</span></li><li data-step="9"><span>表示を整える</span></li></ul><i class="boot-edge boot-edge--l"></i><i class="boot-edge boot-edge--r"></i></div>
+<p class="boot-detail">画面の部品を配っています</p>
+<div class="boot-bar"><i style="width:62%"></i></div>
+<p class="boot-meta"><span class="boot-pct">62%</span><span>目安 3 秒</span><span class="boot-elapsed">経過 2 秒</span></p>
+</div></div>`;
+const CASES = [
+ ['A', 'bgA', 'いま', '平らな --bg 一色。カードとの差が小さい'],
+ ['B', 'bgB', '以前の地', '深い紺＋斜めの光（teal 10% / amber 6%）。カードは白のまま'],
+ ['C', 'bgC', '明るいまま奥行き', '--bg に teal 14% / amber 8% をごく薄く重ねる'],
+ ['D', 'bgD', '淡い面', '--pale → --bg → --surface-3 の斜め。teal 寄りの明るい地'],
+ ['E', 'bgE', '濃い地＋透けて浮く', 'B より濃い地。カードは --surface 88% ＋ぼかし'],
+];
+const g = document.getElementById('grid');
+CASES.forEach(([k, cls, name, note]) => {
+ const wrap = document.createElement('div');
+ wrap.innerHTML = `<p class="cap"><span class="tag">${k}</span><b>${name}</b><small>${note}</small></p>
+   <div class="demo"><div class="boot ${cls}"></div></div>`;
+ wrap.querySelector('.boot').appendChild(CARD.content.cloneNode(true));
+ g.appendChild(wrap);
+});
+/* 帯の中央寄せは base.js の centerBand と同じ計算。値を手で書くと、
+   器の幅が変わったとたんに「いまの段」が画面の外へ出る。 */
+requestAnimationFrame(() => {
+ document.querySelectorAll('.boot-band').forEach(band => {
+  const li = band.querySelector('.is-current');
+  const strip = band.querySelector('.boot-steps');
+  if (!li || !strip) return;
+  const x = li.offsetLeft + li.offsetWidth / 2 - band.clientWidth / 2;
+  strip.style.setProperty('--boot-shift', (-x) + 'px');
+ });
+});
+</script>

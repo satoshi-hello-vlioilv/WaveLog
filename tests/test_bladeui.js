@@ -475,6 +475,88 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('光ると記号の塗りも変わる（色だけの違いに頼らない）',
         hiOn.f !== hi.f, `${hi.f}→${hiOn.f}`);
 
+    /* ---- 4.6) 区間の拡大と耳屑の幅（§9.413） ----
+       利用者の指示①「2D表示は耳屑の計算幅の表示が欲しい」
+       利用者の指示⑤「アルファベットをクリックしたら、ポップオーバーでその
+       部分だけの組み合わせを拡大した図を見られるように…すべてのサイズのものに
+       ラベルを貼って詳しく並びと対象の寸法を伝える」。
+       模式図は軸ぜんたいを1枚に収めるので**部材の幅は字が入らず出していない**。
+       ここで固定するのは「押すと開く／全部の寸法に字がある／閉じる道がある」。 */
+    const trim = await page.evaluate(() => {
+     const mw = [...document.querySelectorAll('#bsStage .bs-mw[data-side="edge"]')];
+     const mk = [...document.querySelectorAll('#bsStage .bs-mk[data-side="edge"]')];
+     return { n: mw.length, txt: mw.map(t => t.textContent),
+              ear: mk.map(t => t.textContent) };
+    });
+    rec('耳屑の計算幅が模式図に出る（OS・DSの2つ）', trim.n === 2,
+        `${trim.n}個 ${trim.txt.join('/')}`);
+    rec('幅は「耳」の字と対で出る（どの塊の値か迷わせない）',
+        trim.ear.length === trim.n && trim.ear.every(t => t === '耳'),
+        trim.ear.join('/'));
+    rec('耳屑の幅は数として読める', trim.txt.every(t => /^\d+(\.\d+)?$/.test(t)),
+        trim.txt.join('/'));
+
+    const zoom = await page.evaluate(() => {
+     const g = document.querySelector('#bsStage .bs-bhit');
+     if (!g) return { no: true };
+     g.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+     const box = document.getElementById('bsZoom');
+     const svg = document.getElementById('bsZoomFig');
+     /* 部材（軸の並び）の数と、引き出し線・値の字の数がそろっていること
+        ——1つでも落ちていれば「全部にラベル」になっていない。 */
+     const parts = svg.querySelectorAll('rect').length;
+     const leads = svg.querySelectorAll('path.bs-zl').length;
+     const nums = [...svg.querySelectorAll('text')]
+      .map(t => t.textContent).filter(t => /^\d+(\.\d+)?$/.test(t));
+     const all = [...svg.querySelectorAll('text')].map(t => t.textContent);
+     return { open: !box.hidden, badge: document.getElementById('bsZoomBadge').textContent,
+              figBadge: g.dataset.badge, parts, leads, nums: nums.length,
+              span: all.some(t => /^区間 [\d.]+ mm$/.test(t)),
+              names: all.filter(t => /スペーサー|刃（厚み）|隙間/.test(t)).length,
+              /* 保持層の名前は**群に1回**（枚数ぶん繰り返さない・§CLAUDE 8）。 */
+              hold: all.filter(t => /ゴムリング|フィンガー/.test(t)).length,
+              /* マスタの寸法をそのまま出しているか（2桁へ丸めると 10.025 が
+                 10.03 になり、在庫に無い別の部材の名前になる）。 */
+              exact: nums.some(t => /^\d+\.\d{3}$/.test(t)) || nums.every(t => !/\.\d{3}/.test(t)),
+              nums3: nums.join(','),
+              note: (document.getElementById('bsZoomNote').textContent || '') };
+    });
+    rec('区間を押すと拡大図が開く', !zoom.no && zoom.open === true, JSON.stringify(zoom.open));
+    rec('開いたのは押した区間（記号が一致する）', zoom.badge === zoom.figBadge,
+        `${zoom.figBadge}→${zoom.badge}`);
+    rec('引き出し線の数だけ値の字がある（寸法を1つも落とさない）',
+        zoom.leads > 0 && zoom.nums === zoom.leads, `線${zoom.leads}／値${zoom.nums}`);
+    rec('軸に並ぶ部材はすべて名前が添う（値だけを並べない）',
+        zoom.names > 0 && zoom.names + zoom.hold <= zoom.leads,
+        `名前${zoom.names}／保持層${zoom.hold}／線${zoom.leads}`);
+    rec('保持層の名前は群に1回だけ（枚数ぶん繰り返さない）', zoom.hold <= 1,
+        `${zoom.hold}回`);
+    rec('寸法はマスタの値そのまま（10.025 を 10.03 へ丸めない）', zoom.exact === true,
+        zoom.nums3);
+    rec('区間ぜんたいの寸法も出す', zoom.span === true, String(zoom.span));
+    rec('図が言えないこと（どの区間に入るか）を添える', /区間/.test(zoom.note),
+        zoom.note.slice(0, 40));
+
+    const zclose = await page.evaluate(() => {
+     const box = document.getElementById('bsZoom');
+     const g = document.querySelector('#bsStage .bs-bhit');
+     /* 同じ区間をもう一度押すと閉じる（開く道と閉じる道が同じ的）。 */
+     g.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+     const afterToggle = box.hidden;
+     g.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+     const reopened = !box.hidden;
+     /* 図の外を押したら閉じる。 */
+     document.body.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+     const afterOutside = box.hidden;
+     g.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+     return { afterToggle, reopened, afterOutside, afterEsc: box.hidden };
+    });
+    rec('もう一度押すと閉じる', zclose.afterToggle === true, String(zclose.afterToggle));
+    rec('押し直すと開く', zclose.reopened === true, String(zclose.reopened));
+    rec('図の外を押すと閉じる', zclose.afterOutside === true, String(zclose.afterOutside));
+    rec('Escでも閉じる', zclose.afterEsc === true, String(zclose.afterEsc));
+
     /* ---- 5) 立体図: 器の入れ替え・断り・段取りの順 ----
        **描画そのもの（WebGL の絵）はここでは見ない。** 立体図の部品（three.js）は
        押したときに CDN から取りに行く作りで、検証用のコンテナは外へつながらない。
