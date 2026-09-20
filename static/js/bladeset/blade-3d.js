@@ -189,6 +189,9 @@
   return true;
  }
  /* 図の色は**器が宣言したトークンから読む**（模式図と同じ作法・§CLAUDE 7）。 */
+ /* 断面図のときだけ**模式図の色**を借りる（§9.415／§9.416）。立体図は機械の
+    見た目のまま——同じ物でも、図によって見えるべきものが違う。 */
+ const cutColor = (name, base) => (D3.cut ? cssColor(name, base) : base);
  function cssColor(name, fallback) {
   if (!host) return fallback;
   const v = getComputedStyle(host).getPropertyValue(name).trim();
@@ -414,7 +417,12 @@
       そこに残ったまま本体だけが回る */
  function frame(T, g, L, yU, yL) {
   const half = L / 2, sd = +ctx.M.P.shaftDia || 200, M = MACH;
-  const steel = matOf(T, 'steel', { color: '#b9c1c9', metalness: .74, roughness: .22 });
+  /* 軸は断面図では**模式図と同じ色**（§9.416）。立体図の軸は機械の中の1本として
+     見るので明るい鋼色でよいが、断面図では**スペーサーと隣り合う**ので、
+     同じ明るさだと境目が読めない（実測 1.1:1）。模式図の軸の色を借りると、
+     2つの図で同じ物が同じ色になり（§CLAUDE 8）、スペーサーとも差が付く。 */
+  const steel = matOf(T, 'steel',
+    { color: cutColor('--bs-fig-shaft', '#b9c1c9'), metalness: .74, roughness: .22 });
   const steelD = matOf(T, 'steelD', { color: '#8f99a4', metalness: .70, roughness: .30 });
   const blue = matOf(T, 'blue', { color: '#2f63b0', metalness: .24, roughness: .48 });
   const blueD = matOf(T, 'blueD', { color: '#24518f', metalness: .24, roughness: .54 });
@@ -602,8 +610,10 @@
   const fr = frame(T, g, L, yU, yL);
   const sd = +ctx.M.P.shaftDia || 200, bore = sd / 2;
   const blade = matOf(T, 'blade', { color: '#3f4854', metalness: .78, roughness: .16 });
-  const liner = matOf(T, 'liner', { color: '#a8b2bd', metalness: .38, roughness: .46 });
-  const edge = matOf(T, 'linerEdge', { color: '#5d6975', metalness: .42, roughness: .55 });
+  const liner = matOf(T, 'liner',
+    { color: cutColor('--bs-fig-spacer', '#a8b2bd'), metalness: .38, roughness: .46 });
+  const edge = matOf(T, 'linerEdge',
+    { color: cutColor('--bs-fig-spacer-edge', '#5d6975'), metalness: .42, roughness: .55 });
   /* 部材は図面どおり内径の開いた輪。軸が通って見えるので、そのまま管で描く。
      スペーサーは1枚ずつの区切りが分かるよう、外周だけ細い帯を濃い色で重ねる。 */
   const put = (list, ro, ri, mat) => {
@@ -651,7 +661,6 @@
      明るい鋼色のままだと地に溶ける（実測: 輝度231に対し地が241、差は10）。
      模式図の板・耳の色（`--bs-fig-strip`／`--bs-fig-trim`）を借りると、
      **2つの図で同じ物が同じ色**になり（§CLAUDE 8）、地との差も付く。 */
-  const cutColor = (name, base) => (D3.cut ? cssColor(name, base) : base);
   const sheet = matOf(T, 'sheet',
     { color: cutColor('--bs-fig-strip', '#c5ccd4'), metalness: .62, roughness: .24 });
   const trim = matOf(T, 'trim',

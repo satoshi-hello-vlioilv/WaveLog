@@ -897,6 +897,42 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('立体図の部材は磨いたまま（断面図だけの手当てになっている）',
         gloss3 > 0.5, `立体 metalness ${gloss3}`);
 
+    /* ---- 5b') 刃 → 軸 → スペーサーの3段（§9.416、利用者の指摘「軸の色と
+       スペーサーがほぼ同じ色でわかりにくい」） ----
+       色の**近さ**は目で見ても言えないので、`--bs-fig-*` の実際の値から
+       相対輝度を出して**隣り合う段の比**で見る。以前は軸 `--line`(.553)／
+       スペーサー `--rs-slate-border`(.509) で **1.1:1** しかなく、断面図では
+       まったく見分けられなかった。**2:1 を下回らせない**（実測 2.5:1 / 2.6:1）。 */
+    const lad = await page.evaluate(() => {
+     const sh = document.querySelector('.bs-shell');
+     if (!sh) return null;
+     const cs = getComputedStyle(sh);
+     /* 相対輝度（WCAG）。`getPropertyValue` は `var()` を解いた値を返す。 */
+     const lum = (name) => {
+      const v = cs.getPropertyValue(name).trim();
+      const m = /^#?([0-9a-f]{6})$/i.exec(v.replace(/^#/, '#'));
+      if (!m) return null;
+      const ch = [0, 2, 4].map(i => {
+       const c = parseInt(m[1].slice(i, i + 2), 16) / 255;
+       return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      });
+      return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+     };
+     const r = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+     const knife = lum('--bs-fig-knife'), shaft = lum('--bs-fig-shaft'),
+           spacer = lum('--bs-fig-spacer');
+     if (knife === null || shaft === null || spacer === null) return null;
+     return { knife: +knife.toFixed(3), shaft: +shaft.toFixed(3),
+              spacer: +spacer.toFixed(3),
+              ks: +r(knife, shaft).toFixed(2), ss: +r(shaft, spacer).toFixed(2) };
+    });
+    rec('刃・軸・スペーサーは暗い順に3段（軸はスペーサーより暗い）',
+        !!lad && lad.knife < lad.shaft && lad.shaft < lad.spacer,
+        lad ? `刃 ${lad.knife} / 軸 ${lad.shaft} / スペーサー ${lad.spacer}` : '読めない');
+    rec('隣り合う段の差は2:1以上（軸とスペーサーが同じ色に見えない）',
+        !!lad && lad.ks >= 2 && lad.ss >= 2,
+        lad ? `刃↔軸 ${lad.ks}:1 / 軸↔スペーサー ${lad.ss}:1` : '読めない');
+
     /* ---- 5c) 模式図の「物」は直角（§9.415、利用者の指示「2Dのエッジ部分の
        丸角は無しにしてほしい」） ----
        この図は実寸を目で比べるためのもので、角丸は縁を実際より短く見せる

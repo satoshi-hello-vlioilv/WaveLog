@@ -15,9 +15,16 @@
    **ここが唯一の定義**。`blade-view.js` の `figPalette()` が1回だけ読み、
    SVGの`fill`へ渡す。ゴムリングの色だけは**マスタの値**なので入っていない。 */
 .bs-shell{
-  --bs-fig-shaft:var(--line);
-  --bs-fig-shaft-edge:var(--rs-slate-border);
-  --bs-fig-sheen:var(--bg);
+  /* **軸はスペーサーより暗くする**（§9.416、利用者の指摘「軸の色とスペーサーが
+     ほぼ同じ色でわかりにくい」）。以前は軸 `--line`（輝度.553）／スペーサー
+     `--rs-slate-border`（.509）で**差が1.1:1しか無く**、模式図では軸のグラデー
+     ションで辛うじて、断面図では**まったく**見分けられなかった。
+     刃(.034)→軸(.164)→スペーサー(.509)の3段にして、隣り合う段の差を
+     2.5:1 ／ 2.6:1 にそろえる。艶（`sheen`）は暗い面の上のハイライトなので、
+     地の色ではなく**軸より明るい線の色**から取る。 */
+  --bs-fig-shaft:var(--muted);
+  --bs-fig-shaft-edge:var(--rs-slate);
+  --bs-fig-sheen:var(--line-strong);
   --bs-fig-cap:var(--rs-indigo);
   --bs-fig-spacer:var(--rs-slate-border);
   --bs-fig-spacer-edge:var(--rs-slate);

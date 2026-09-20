@@ -1,4 +1,4 @@
-# 刃組ガイダンス（78件）
+# 刃組ガイダンス（80件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 軸はスペーサーより暗い（刃→軸→スペーサーの3段）。隣り合う差は**2:1以上**——輝度で測る | `test_bladeui.js` | [§9.416](../../docs/decisions/9.416.md) |
+| 断面図が模式図の色を借りるのは`cutColor()`の1箇所。立体図は機械の見た目のまま | `test_bladeui.js` | [§9.416](../../docs/decisions/9.416.md) |
 | 光の配分は図ごとに別（断面図＝地明かり主役）。艶も落とす——正対した面は材質の色でなく光の色を返す | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
 | 断面図の板・耳屑は**模式図と同じ色**（`--bs-fig-strip`／`--bs-fig-trim`）。明るい鋼色だと地に溶ける | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
 | 器の大きさは`ResizeObserver`で見張る（`resize`は窓しか見ない）。図を離れるときも`applyCut()`を通す | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
