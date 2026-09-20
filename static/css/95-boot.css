@@ -33,10 +33,23 @@
 #appBoot{
  position:fixed; inset:0; z-index:var(--z-boot);
  display:flex; align-items:center; justify-content:center;
- color:var(--ink);
- /* **loading.html と同じ明るい地。** 本体の画面そのものが明るいので、
-    起動だけ暗いと引き継いだ瞬間に色が飛ぶ(§9.411で作り替えた)。 */
- background:var(--bg);
+ /* 地の上には**何も置いていない**（字も札もカードの中）。それでも濃い地の
+    既定の字色は明るいほうへ倒しておく——`--ink`のままだと、あとから1つでも
+    地の上へ出したときに黒地に黒で消える(§9.409)。 */
+ color:var(--pale);
+ /* **loading.html と同じ地**（§9.413 追補、利用者の指示「以前の背景色の方が
+    モーダルの表示と合っていた」）。平らな`--bg`一色だと白いカードとの明度差が
+    小さく、カードが浮かない。深い紺に斜めの光をうっすら重ねてカードを立てる。
+    **カードは不透明な白のまま**——透かすと本文のコントラストが落ちるうえ、
+    `backdrop-filter`は起動時の描画でいちばん重い（起動を見せる画面を
+    起動で重くしない）。光は控えめに(teal 10% / amber 6%・§9.86)。 */
+ background:
+  radial-gradient(120% 90% at 12% -10%, color-mix(in srgb, var(--teal) 10%, transparent), transparent 58%),
+  radial-gradient(90% 80% at 108% 108%, color-mix(in srgb, var(--warn) 6%, transparent), transparent 55%),
+  linear-gradient(158deg,
+   color-mix(in srgb, var(--nav) 60%, black) 0%,
+   color-mix(in srgb, var(--nav) 88%, black) 46%,
+   color-mix(in srgb, var(--nav) 48%, black) 100%);
  opacity:1; transition:opacity .34s ease;
 }
 .boot-card{
@@ -165,9 +178,11 @@ html.app-booting.boot-cold body>*:not(#appBoot){content-visibility:hidden}
 /* **起動中の地の色も先に決めておく(§9.86)。**
    ブラウザは新しいページの中身を描くまで、素の下地(白)を映す。ここを
    待機画面と同じ地にしておくと、引き渡した瞬間の色の飛びが無くなる。
-   §9.411で待機画面を明るくしたので、ここも本体と同じ --bg にする
-   (以前は暗い地＋color-scheme:dark だった)。 */
-html.app-booting{background:var(--bg)}
+   §9.413 追補で待機画面の地を深い紺へ戻したので、ここも合わせる。
+   **`color-scheme:dark`は戻さない**——スクロールバーや素の部品の見た目が
+   起動のあいだだけ暗くなるが、`#appBoot`は`position:fixed; inset:0`の1枚で
+   本体は`visibility:hidden`なので、そもそも素の部品が見えない。 */
+html.app-booting{background:color-mix(in srgb, var(--nav) 70%, black)}
 
 /* 実行中の段階。**帯の中で大きくなる**のが「いまここ」の合図。 */
 .boot-steps li.is-current{font-size:var(--fs-xl); font-weight:700; color:white}

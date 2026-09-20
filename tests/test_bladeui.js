@@ -475,6 +475,129 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('光ると記号の塗りも変わる（色だけの違いに頼らない）',
         hiOn.f !== hi.f, `${hi.f}→${hiOn.f}`);
 
+    /* ---- 4.6) 区間の拡大と耳屑の幅（§9.413） ----
+       利用者の指示①「2D表示は耳屑の計算幅の表示が欲しい」
+       利用者の指示⑤「アルファベットをクリックしたら、ポップオーバーでその
+       部分だけの組み合わせを拡大した図を見られるように…すべてのサイズのものに
+       ラベルを貼って詳しく並びと対象の寸法を伝える」。
+       模式図は軸ぜんたいを1枚に収めるので**部材の幅は字が入らず出していない**。
+       ここで固定するのは「押すと開く／全部の寸法に字がある／閉じる道がある」。 */
+    const trim = await page.evaluate(() => {
+     const mw = [...document.querySelectorAll('#bsStage .bs-mw[data-side="edge"]')];
+     const mk = [...document.querySelectorAll('#bsStage .bs-mk[data-side="edge"]')];
+     return { n: mw.length, txt: mw.map(t => t.textContent),
+              ear: mk.map(t => t.textContent) };
+    });
+    rec('耳屑の計算幅が模式図に出る（OS・DSの2つ）', trim.n === 2,
+        `${trim.n}個 ${trim.txt.join('/')}`);
+    rec('幅は「耳」の字と対で出る（どの塊の値か迷わせない）',
+        trim.ear.length === trim.n && trim.ear.every(t => t === '耳'),
+        trim.ear.join('/'));
+    rec('耳屑の幅は数として読める', trim.txt.every(t => /^\d+(\.\d+)?$/.test(t)),
+        trim.txt.join('/'));
+
+    const zoom = await page.evaluate(() => {
+     const g = document.querySelector('#bsStage .bs-bhit');
+     if (!g) return { no: true };
+     g.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+     const box = document.getElementById('bsZoom');
+     const svg = document.getElementById('bsZoomFig');
+     /* 部材（軸の並び）の数と、引き出し線・値の字の数がそろっていること
+        ——1つでも落ちていれば「全部にラベル」になっていない。 */
+     const parts = svg.querySelectorAll('rect').length;
+     const leads = svg.querySelectorAll('path.bs-zl').length;
+     const nums = [...svg.querySelectorAll('text')]
+      .map(t => t.textContent).filter(t => /^\d+(\.\d+)?$/.test(t));
+     const all = [...svg.querySelectorAll('text')].map(t => t.textContent);
+     return { open: !box.hidden, badge: document.getElementById('bsZoomBadge').textContent,
+              figBadge: g.dataset.badge, parts, leads, nums: nums.length,
+              span: all.some(t => /^区間 [\d.]+ mm$/.test(t)),
+              names: all.filter(t => /スペーサー|刃（厚み）|隙間/.test(t)).length,
+              clrLabel: all.filter(t => /^クリアランス$/.test(t)).length,
+              dashed: svg.querySelectorAll('[stroke-dasharray]').length,
+              dims: +svg.dataset.dims, inside: +svg.dataset.inside, lead: +svg.dataset.lead,
+              /* 引き出し線の始点と終点を読み、順番が入れ替わっている数を数える。
+                 同じ段（終点のyが同じ）どうしだけを見る（段が違えば交差しない）。 */
+              cross: (() => {
+               const seg = [...svg.querySelectorAll('path.bs-zl')].map(el => {
+                const m = [...el.getAttribute('d').matchAll(/([ML])([-\d.]+) ([-\d.]+)/g)];
+                return { x0: +m[0][2], x1: +m[3][2], y: +m[3][3] };
+               });
+               let bad = 0;
+               for (let i = 0; i < seg.length; i++) {
+                for (let j = i + 1; j < seg.length; j++) {
+                 if (Math.abs(seg[i].y - seg[j].y) > 1) continue;
+                 if ((seg[i].x0 - seg[j].x0) * (seg[i].x1 - seg[j].x1) < 0) bad++;
+                }
+               }
+               return bad;
+              })(),
+              /* 保持層の名前は**群に1回**（枚数ぶん繰り返さない・§CLAUDE 8）。 */
+              hold: all.filter(t => /ゴムリング|フィンガー/.test(t)).length,
+              /* マスタの寸法をそのまま出しているか（2桁へ丸めると 10.025 が
+                 10.03 になり、在庫に無い別の部材の名前になる）。 */
+              exact: nums.some(t => /^\d+\.\d{3}$/.test(t)) || nums.every(t => !/\.\d{3}/.test(t)),
+              nums3: nums.join(','),
+              note: (document.getElementById('bsZoomNote').textContent || '') };
+    });
+    rec('区間を押すと拡大図が開く', !zoom.no && zoom.open === true, JSON.stringify(zoom.open));
+    rec('開いたのは押した区間（記号が一致する）', zoom.badge === zoom.figBadge,
+        `${zoom.figBadge}→${zoom.badge}`);
+    /* **字は器の幅で置き分ける**（§9.413 追補、利用者の指示「幅が十分あるものは
+       その内部にラベルを貼って、狭い部分は…今の表示方式に」）。置き分けるので
+       「引き出し線の数＝値の数」では見られない。**足し算で見る**——出すべき
+       寸法の数が、中に書いた数と引き出した数に過不足なく割れていること。 */
+    rec('寸法を1つも落としていない（中に書いた数＋引き出した数＝出すべき数）',
+        zoom.dims > 0 && zoom.inside + zoom.lead === zoom.dims,
+        `中${zoom.inside}＋外${zoom.lead}＝${zoom.dims}`);
+    rec('幅のある部材は中に書く（狭いもののためにスロットを空ける）',
+        zoom.inside > 0, `中${zoom.inside}件`);
+    rec('狭い部材は引き出して外に書く', zoom.lead > 0 && zoom.leads === zoom.lead,
+        `外${zoom.lead}件／線${zoom.leads}本`);
+    rec('値の字は出すべき寸法の数だけある', zoom.nums === zoom.dims,
+        `値${zoom.nums}／寸法${zoom.dims}`);
+    rec('軸に並ぶ部材はすべて名前が添う（値だけを並べない）',
+        zoom.names > 0, `名前${zoom.names}`);
+    /* **引き出し線どうしが交差しない**（同上の指示）。交差すると、どの札が
+       どの部材のものか読めなくなる。始点の順と終点の順が同じなら交差しない。 */
+    rec('引き出し線どうしが交差しない（始点の順と終点の順が同じ）',
+        zoom.cross === 0, `交差${zoom.cross}件`);
+    rec('保持層の名前は群に1回だけ（枚数ぶん繰り返さない）', zoom.hold <= 1,
+        `${zoom.hold}回`);
+    rec('寸法はマスタの値そのまま（10.025 を 10.03 へ丸めない）', zoom.exact === true,
+        zoom.nums3);
+    rec('区間ぜんたいの寸法も出す', zoom.span === true, String(zoom.span));
+    /* **クリアランスも寸法の1つ**（§9.413 追補、利用者の指示「拡大表示は
+       クリアランスも表示対象にして」）。実寸では図の上で1px未満なので、
+       反対側の軸の刃を**破線で見える幅まで離して**描き、値は真の値を出す。 */
+    rec('拡大図にクリアランスが出る（反対側の軸の刃を破線で添える）',
+        zoom.clrLabel > 0 && zoom.dashed > 0,
+        `札${zoom.clrLabel}／破線${zoom.dashed}`);
+    rec('クリアランスを誇張したことを足元で言う', /見える幅まで離して/.test(zoom.note),
+        zoom.note.slice(-60));
+    rec('図が言えないこと（どの区間に入るか）を添える', /区間/.test(zoom.note),
+        zoom.note.slice(0, 40));
+
+    const zclose = await page.evaluate(() => {
+     const box = document.getElementById('bsZoom');
+     const g = document.querySelector('#bsStage .bs-bhit');
+     /* 同じ区間をもう一度押すと閉じる（開く道と閉じる道が同じ的）。 */
+     g.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+     const afterToggle = box.hidden;
+     g.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+     const reopened = !box.hidden;
+     /* 図の外を押したら閉じる。 */
+     document.body.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+     const afterOutside = box.hidden;
+     g.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+     return { afterToggle, reopened, afterOutside, afterEsc: box.hidden };
+    });
+    rec('もう一度押すと閉じる', zclose.afterToggle === true, String(zclose.afterToggle));
+    rec('押し直すと開く', zclose.reopened === true, String(zclose.reopened));
+    rec('図の外を押すと閉じる', zclose.afterOutside === true, String(zclose.afterOutside));
+    rec('Escでも閉じる', zclose.afterEsc === true, String(zclose.afterEsc));
+
     /* ---- 5) 立体図: 器の入れ替え・断り・段取りの順 ----
        **描画そのもの（WebGL の絵）はここでは見ない。** 立体図の部品（three.js）は
        押したときに CDN から取りに行く作りで、検証用のコンテナは外へつながらない。
@@ -528,10 +651,13 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('見せる部材の入切は板・刃・ゴムリング・スペーサーの4つ（言葉は部材の名前で固定）',
         st3.show.join('/') === '板:true/刃:true/ゴムリング:true/スペーサー:true',
         st3.show.join('/'));
-    rec('HUDは「表示」と「段取り」の2群', st3.caps.join('/') === '表示/段取り',
+    rec('HUDは「表示」「段取り」「視点」の3群', st3.caps.join('/') === '表示/段取り/視点',
         st3.caps.join('/'));
-    rec('段取りは3手順＋視点を戻すの4つ',
-        st3.steps.length === 4 && /③台車を回す/.test(st3.steps[2]), st3.steps.join('/'));
+    /* **「視点を戻す」は段取りの外**（§9.413 追補）。断面図では段取りの群ごと
+       伏せるので、同じ群に入れると戻す道まで消える。 */
+    rec('段取りは3手順、視点を戻すは別の群',
+        st3.steps.length === 4 && /③台車を回す/.test(st3.steps[2])
+        && /視点を戻す/.test(st3.steps[3]), st3.steps.join('/'));
     /* 段取りの順は`blockReason()`の1箇所が答える。**内部の今の状態を写さず、
        どの状態でも成り立つことだけ**を見る——①できない手順は何を先にするかを
        字で言う、②進める手順が必ず1つ残る（手詰まりを作らない）。 */
@@ -579,6 +705,9 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
       stage3: st3.hidden, isCut: st3.classList.contains('is-cut'),
       w: cv ? cv.width : 0, h: cv ? cv.height : 0,
       rigShown: rig ? getComputedStyle(rig).display !== 'none' : true,
+      resetShown: (() => { const b = st3.querySelector('.bs-step3-reset');
+        return !!b && getComputedStyle(b).display !== 'none'
+               && getComputedStyle(b.parentNode).display !== 'none'; })(),
       cursor: cv ? getComputedStyle(cv).cursor : '',
       tabs: [...document.querySelectorAll('#bsFigTabs [data-fig]')].map(b => b.dataset.fig)
      });
@@ -593,8 +722,92 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('機械まわりの段取りは断面図では出さない（押せるのに何も起きない的を残さない）',
         cut.isCut === true && cut.rigShown === false,
         JSON.stringify([cut.isCut, cut.rigShown]));
-    rec('視点を動かせないことを見た目でも言う（掴める指のカーソルを出さない）',
-        cut.cursor === 'default', cut.cursor);
+    /* §9.412 では真横に固定していたが、利用者の指示で**板幅の中心を起点に
+       回せる**ようにした（§9.413 追補）。掴める見た目は残し、戻す道が
+       断面図でも見えていること、寄る・引くは持たないことを固定する。 */
+    rec('断面図でも掴んで回せる（掴める見た目のまま）', cut.cursor === 'grab', cut.cursor);
+    rec('視点を戻す道は断面図でも見えている', cut.resetShown === true,
+        String(cut.resetShown));
+    const spin = await page.evaluate(async () => {
+     const cv = document.querySelector('#bsStage3 canvas');
+     const r = cv.getBoundingClientRect();
+     const at = (t, dx, dy) => cv.dispatchEvent(new PointerEvent(t, { bubbles: true,
+       pointerId: 7, clientX: r.left + r.width / 2 + dx, clientY: r.top + r.height / 2 + dy }));
+     const before = window.WL.bladeSolid.view();
+     at('pointerdown', 0, 0); at('pointermove', -160, 90); at('pointerup', -160, 90);
+     const after = window.WL.bladeSolid.view();
+     /* **90°までは回さない**（真横を越えるとカメラが切り落とす側へ回り込む）。 */
+     let az = after.cutAz, el = after.cutEl;
+     for (let i = 0; i < 40; i++) {
+      at('pointerdown', 0, 0); at('pointermove', -400, 400); at('pointerup', -400, 400);
+      az = window.WL.bladeSolid.view().cutAz; el = window.WL.bladeSolid.view().cutEl;
+     }
+     document.querySelector('.bs-step3-reset').click();
+     const back = window.WL.bladeSolid.view();
+     return { b: before, a: after, az, el, back, marks: after.marks };
+    });
+    rec('掴んで引くと左右にも上下にも回る（板幅の中心が起点）',
+        spin.a.cutAz !== spin.b.cutAz && spin.a.cutEl !== spin.b.cutEl,
+        JSON.stringify([spin.b.cutAz, spin.b.cutEl, spin.a.cutAz, spin.a.cutEl]));
+    rec('真横（±90°）までは回らない（切り落とす側へ回り込まない）',
+        Math.abs(spin.az) < Math.PI / 2 && Math.abs(spin.el) < Math.PI / 2,
+        `az ${spin.az.toFixed(2)} / el ${spin.el.toFixed(2)}`);
+    rec('「視点を戻す」で断面図の角度も戻る',
+        spin.back.cutAz === 0 && spin.back.cutEl === 0,
+        JSON.stringify([spin.back.cutAz, spin.back.cutEl]));
+    /* **光はカメラと一緒に動く**（§9.413 追補、利用者の指摘「中空の物はない
+       はずなので断面図注意して」）。止めておくと、回した先の面（軸や青い印の
+       端の丸）に光が1つも当たらず真っ黒になり、**穴に見える**。
+       真横から見ている間は端の丸が見えないので、回さないと気づけない。 */
+    const lit = await page.evaluate(() => {
+     const cv = document.querySelector('#bsStage3 canvas');
+     const r = cv.getBoundingClientRect();
+     const at = (t, dx, dy) => cv.dispatchEvent(new PointerEvent(t, { bubbles: true,
+       pointerId: 13, clientX: r.left + r.width / 2 + dx, clientY: r.top + r.height / 2 + dy }));
+     at('pointerdown', 0, 0); at('pointermove', -180, 70); at('pointerup', -180, 70);
+     const v = window.WL.bladeSolid.view();
+     document.querySelector('.bs-step3-reset').click();
+     return v;
+    });
+    rec('断面図の光はカメラと同じ側に居る（回した先の面が黒くならない）',
+        !!lit.cutCam && !!lit.cutLit
+        && Math.sign(lit.cutLit[2]) === Math.sign(lit.cutCam[2])
+        && Math.abs(lit.cutLit[0] - lit.cutCam[0]) < 1200,
+        `cam ${(lit.cutCam || []).map(n => Math.round(n)).join(',')}`
+        + ` / light ${(lit.cutLit || []).map(n => Math.round(n)).join(',')}`);
+    /* 有効幅の境目の青い印（§9.413 追補、利用者の指示「上下軸のend部分は青色で
+       明示しているので3D断面も分かるようにして」）。模式図と**同じ色・同じ径**。 */
+    rec('断面図にも有効幅の境目の青い印がある（上下軸に1つずつ・両端）',
+        lit.endCaps === 4, `${lit.endCaps}個`);
+    /* 板と耳屑の札（§9.413 追補、利用者の指示「2Dの表示のようにラベルもほしい」）。
+       **模式図と同じ数だけ**出る——並びは同じ `materialRun()` から作るので、
+       数が食い違ったらどちらかが落としている。 */
+    const lab = await page.evaluate(() => {
+     const els = [...document.querySelectorAll('#bsStage3 .bs-t3-mk')].filter(e => !e.hidden);
+     return { n: els.length,
+              txt: els.map(e => (e.querySelector('b') || {}).textContent).join('/'),
+              sub: els.map(e => (e.querySelector('small') || {}).textContent),
+              kinds: [...new Set(els.map(e => e.className.replace(/.*is-/, '')))].sort(),
+              mag: (document.querySelector('#bsStage3 .bs-o3').textContent || '') };
+    });
+    rec('断面図にも板・耳屑の札が出る（模式図と同じ言葉）',
+        lab.n > 0 && /耳/.test(lab.txt), `${lab.n}枚 ${lab.txt}`);
+    rec('札には幅が添う（条幅・耳屑幅）',
+        lab.sub.length === lab.n && lab.sub.every(t => /^\d+(\.\d+)?$/.test(t)),
+        lab.sub.join('/'));
+    rec('条と耳屑は札の色でも見分けられる', lab.kinds.length >= 2, lab.kinds.join('/'));
+    /* **誇張したら倍率を書く**（§CLAUDE 6）。板厚 1.3mm は実寸では1pxも出ない。 */
+    rec('板厚を誇張していることを字で言う', /板厚.*倍/.test(lab.mag), lab.mag.slice(0, 60));
+    rec('上下軸を離していることも字で言う', /上下軸.*離/.test(lab.mag), lab.mag.slice(0, 80));
+    /* **板が刃へめり込まない**（§9.413 追補、利用者の指摘「板がめり込んでいる」）。
+       板は千鳥で上下へ寄るので**見かけの厚みの3倍**の高さを占める。刃先のあいだの
+       隙間がそれより狭いと、太らせた板が刃を突き抜ける。判定は実測ではなく
+       **図を組み立てている値そのもの**で見る（絵を数えると、たまたま隠れただけで
+       通ってしまう）。 */
+    const room = await page.evaluate(() => window.WL.bladeSolid.view());
+    rec('刃先のあいだの隙間が、板の占める高さより広い（板がめり込まない）',
+        room.cutGap > room.matSpan,
+        `隙間 ${(room.cutGap || 0).toFixed(1)} / 板 ${(room.matSpan || 0).toFixed(1)}`);
     /* 向きの切り替えは断面図でも効く。**台車は回さず**、見る側とどちらを残すかを
        入れ替える（回すと切断面まで一緒に回り、カメラ側の入れ替えと打ち消し合う）。
        **いまどちら向きかを当てにしない**——ここへ来るまでに裏返っていることがある。 */

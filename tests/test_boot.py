@@ -113,6 +113,48 @@ rec('loading.htmlが進捗ファイルを読み込むコールバックを持つ
     'window.wavelogBootStatus' in html and 'boot_status.js' in html)
 rec('時間だけで段階を決める旧ロジック(stageFor)は残っていない', 'stageFor' not in html)
 
+# --- 待機画面とアプリ内オーバーレイの「地」が同じ色か(§9.411／§9.413 追補) ---
+# 規則は「起動画面は待機画面と #appBoot が**同じ意匠・同じ色**」だが、
+# これまで機械で見張っていたのは**段のリストだけ**だった。色は人が見比べる
+# しかなく、実際§9.411では手で13項目を突き合わせて確かめている。
+# 地は2箇所に別々に書いてある（loading.html は file:// から開くので外部CSSを
+# 読めず、トークンを写してある）ので、**片方だけ直すと黙ってずれる**。
+# ここで固定するのは2つ:
+#   ① 写してあるトークンの値が本体(00-base.css)と1文字も違わないこと
+#   ② 地の指定そのもの(background)が2箇所で同じ文字列であること
+BASE_CSS = (ROOT / 'static' / 'css' / '00-base.css').read_text(encoding='utf-8')
+BOOT_CSS = (ROOT / 'static' / 'css' / '95-boot.css').read_text(encoding='utf-8')
+
+
+def _tokens(src):
+    """最初の `:root{...}` から `--名前: 値` を拾う。"""
+    m = re.search(r':root\s*\{(.*?)\}', src, re.S)
+    if not m:
+        return {}
+    return {k: v.strip() for k, v in re.findall(r'(--[a-z0-9-]+)\s*:\s*([^;]+);', m.group(1))}
+
+
+def _decl(src, selector, prop):
+    """`selector{...}` の中の `prop: ...;` を空白を潰して返す。"""
+    m = re.search(re.escape(selector) + r'\s*\{(.*?)\n\}', src, re.S)
+    if not m:
+        return ''
+    d = re.search(r'(?<![-\w])' + prop + r'\s*:(.*?);', m.group(1), re.S)
+    return re.sub(r'\s+', '', d.group(1)) if d else ''
+
+
+base_tok, wait_tok = _tokens(BASE_CSS), _tokens(html)
+bad = sorted(k for k, v in wait_tok.items() if k in base_tok and base_tok[k] != v)
+rec('待機画面へ写したトークンが本体(00-base.css)と一致する(新しい色を足さない)',
+    not bad and len(wait_tok) > 5,
+    ', '.join('%s %s≠%s' % (k, wait_tok[k], base_tok[k]) for k in bad[:4]) or '%d色' % len(wait_tok))
+ground_app = _decl(BOOT_CSS, '#appBoot', 'background')
+ground_wait = _decl(html, ' body', 'background')
+rec('待機画面とアプリ内オーバーレイの地が同じ指定になっている',
+    bool(ground_app) and ground_app == ground_wait,
+    ('同じ: ' + ground_app[:60]) if ground_app == ground_wait
+    else 'overlay=%s / wait=%s' % (ground_app[:70], ground_wait[:70]))
+
 # --- 段階の一覧が3箇所(Python / 待機画面 / アプリ内オーバーレイ)で一致する ---
 # ここがずれると、進捗バーの分母と段階リストが食い違って「90%のまま
 # 終わる」「一覧に無い段階が現在になる」といった表示になる(§9.76)。
