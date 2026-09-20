@@ -326,6 +326,8 @@ body.bs-mode .bs-shell{display:flex}
 .bs-t3-mk{display:grid;place-items:center;gap:0;padding:0;border:0;background:none;
   font-size:var(--fs-micro);line-height:1.2;
   text-shadow:0 0 3px var(--surface),0 0 3px var(--surface),0 0 2px var(--surface)}
+/* 材料の帯の中は1行しか入らない（§9.418）。名前と幅を横に並べる。 */
+.bs-t3-mk.is-row{grid-auto-flow:column;align-items:baseline;gap:3px}
 .bs-t3-mk b{font-size:var(--fs-sm);font-weight:800}
 .bs-t3-mk small{font-weight:700;font-variant-numeric:tabular-nums;color:var(--muted)}
 .bs-t3-mk.is-strip{color:var(--teal-dark)}
@@ -335,6 +337,20 @@ body.bs-mode .bs-shell{display:flex}
    **強調の見え方は模式図と同じ数**——淡い塗り16%＋1.6pxの縁（`.bs-zhit`）。
    区間の板は**光るだけで押せない**（`pointer-events:none`）。立体は掴んで
    回すので、区間ぜんたいを的にすると回す道をふさぐ——押せるのは記号の札だけ。 */
+/* 寸法の層（§9.418）。刃の上下のずれの縦破線と、部材の幅の字・引き出し線。
+   器いっぱいに重ね、**的は持たない**（掴んで回す道をふさがない）。 */
+.bs-t3v{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+.bs-t3v[hidden]{display:none}
+/* 切断の位置を示す縦の破線（§9.418）。**断面図だけ**——模式図は刃そのものを
+   上下に描き分けているので、線を足すと同じことを2回言うことになる。 */
+.bs-kl{stroke-width:1.1;fill:none;pointer-events:none}
+.bs-kl.is-cut{stroke:var(--rs-blue)}
+.bs-t3v .bs-lead{stroke:var(--line-strong);stroke-width:.8;fill:none}
+/* 字の大きさは`blade-3d.js`の`DIM_FS`が属性で渡す（幅の見当を同じ値から
+   出しているので、ここに書くと2箇所が食い違う）。 */
+.bs-t3v text{font-weight:700;font-variant-numeric:tabular-nums;
+  fill:var(--ink);paint-order:stroke;stroke:var(--surface);stroke-width:2.4px}
+.bs-t3v text.is-ring{fill:var(--rs-brown)}
 .bs-t3z{position:absolute;pointer-events:none;border-radius:var(--radius-xs);
   background:transparent;border:1.6px solid transparent;
   transition:background .12s,border-color .12s}

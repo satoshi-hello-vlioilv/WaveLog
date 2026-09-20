@@ -47,7 +47,7 @@
    /* 断面図の視点（§9.413 追補）。**板幅の中心を起点に**左右（`cutAz`）と
       上下（`cutEl`）へ回す。切る面は世界に固定したままなので、回しても
       切り口は動かない——動くのは見る位置だけ。 */
-   cutAz:0, cutEl:0, marks:[], zmarks:[], zr:0,
+   cutAz:0, cutEl:0, marks:[], zmarks:[], zr:0, dims:[], knives:[],
    spin:false, busy:false, failed:false, decals:[],
    /* 立体図で見せる部材。刃だけを見たいときなど、邪魔なものを消せるようにする。 */
    show:{ mat:true, knife:true, ring:true, liner:true } };
@@ -224,7 +224,10 @@
     ほぼ1枚ぶんずつ余裕を取った値。模式図（`FIG.openGap` に対し板は 10%）ほど
     大きくは開けない——断面図は刃もスペーサーも**実寸の丸のまま**描くので、
     そこだけ極端に開けると図が読めなくなる。 */
- const CUT_OPEN = 5;
+ /* **札を貼る場所を作るため 5 → 7 へ広げた**（§9.418、利用者の指示「3D断面
+    ラベル貼り付けにくければ、上下軸は少し広げてOKです」）。広げた量は
+    図の上の1行が字で言う。 */
+ const CUT_OPEN = 7;
  /* 有効幅の境目に置く青い印の径。**模式図の `FIG.capD` と同じ値**
     （片方だけ変えると、2つの図で同じ印が別の大きさに見える）。 */
  const CUT_CAP_D = 300;
@@ -390,13 +393,34 @@
  }
 
  /* 区間の中身を、OS 側から順に実寸で並べる。 */
+ /* 積みが区間長をほんの少し超えることがある（割り付けの丸め）。**そこで最後の
+    1枚を落とすと10mm級の穴が開く**ので、刻みぶんの行き過ぎは許す（§9.418）。
+    それでも入らないものは落とす——落ちた長さは下の「端数」が受ける。 */
+ const PACK_EPS = 0.03;
  function zone(out, from, to, y, parts) {
   const expand = BS().expand;
+  const pk = D3.pack;
   let at = from;
-  for (const sz of expand(parts.spacer)) {
-   if (at + sz > to + 1e-6) break;
+  const all = expand(parts.spacer);
+  const want = all.reduce((a, sz) => a + sz, 0);
+  /* **1枚も超えてはいけない**ので、許容は浮動小数の誤差ぶんだけ（`PACK_EPS`
+     より桁が小さい）。`PACK_EPS` は「図が落とさない」ための許容で、
+     「割り付けが正しい」の物差しではない——同じ数を両方に使うと、
+     割り付けの丸めの誤りを図の許容が隠す（実際に隠した）。 */
+  if (pk && want - (to - from) > 1e-6) {
+   pk.over++; pk.worst = Math.max(pk.worst, +(want - (to - from)).toFixed(4));
+  }
+  for (const sz of all) {
+   if (at + sz > to + PACK_EPS) { if (pk) pk.drop++; break; }
    out.liner.push({ x: at + sz / 2, y, sz });
    at += sz;
+  }
+  /* **端数は端数として描く**（模式図の `fillZone` と同じ・§9.418）。空けたままに
+     すると「軸に何も載っていない区間」に見えるが、実際は割り付けで埋め切れ
+     なかったぶんで、別の色で置くのが模式図の作法。 */
+  if (to - at > 0.01) {
+   out.liner.push({ x: (at + to) / 2, y, sz: to - at, filler: true });
+   if (pk) { pk.filler++; pk.fillerMm = +(pk.fillerMm + (to - at)).toFixed(3); }
   }
   if (!parts.hold) return;
   /* 保持層（ゴムリング／フィンガー）は刻みしかないので区間にぴったり合うとは
@@ -405,7 +429,7 @@
   const run = pieces.reduce((a, sz) => a + sz, 0);
   at = from + Math.max(0, (to - from - run)) / 2;
   for (const sz of pieces) {
-   if (at + sz > to + 1e-6) break;
+   if (at + sz > to + PACK_EPS) break;
    out.ring.push({ x: at + sz / 2, y, sz, hold: parts.hold });
    at += sz;
   }
@@ -508,13 +532,18 @@
 
   /* ---- 軸受ハウジング。OS 側はギヤボックスが持つので台車と一緒に回り、
          DS 側は軸端部の柱が持つので、外すと軸から離れる ---- */
+  /* **既定の行き先は`rig`**（この関数の頭に書いてあるとおり）。ここだけ`g`に
+     なっており、`o`を渡さないOS側の軸受だけが**断面図に残っていた**
+     （§9.418、利用者の指摘「OS側のエンドの青オブジェクトの上下軸の外々に線が
+     付着している」）。切り口の面を持たない筒なので、塗りは出ず**輪郭の1本だけ**
+     が線として残る——「何の線か分からない線」になっていた。 */
   const bearing = (x, o) => [yU, yL].forEach(y => {
-   put(o || g, D3.cyl, dark, [{ x, y, l: M.brgW, r: M.brgD / 2 }]);
+   put(o || rig, D3.cyl, dark, [{ x, y, l: M.brgW, r: M.brgD / 2 }]);
    tube(x - M.brgW / 2 - 11, y, 22, M.brgD / 2 * 1.34, sd / 2 + 6, blueD, o);
    tube(x + M.brgW / 2 + 11, y, 22, M.brgD / 2 * 1.34, sd / 2 + 6, blueD, o);
    bolts(x - M.brgW / 2 - 11, M.brgD / 2 * 1.12, 6, 13, 34, o);
    bolts(x + M.brgW / 2 + 11, M.brgD / 2 * 1.12, 6, 13, 34, o);
-   put(o || g, D3.cyl, steelD, [{ x, y: y + M.brgD / 2 * 0.9, z: 0, l: 30, r: 20 }]);
+   put(o || rig, D3.cyl, steelD, [{ x, y: y + M.brgD / 2 * 0.9, z: 0, l: 30, r: 20 }]);
   });
 
   /* ---- 軸端部（DS 端スタンド）。330 送り出すと着地土台に降りる ---- */
@@ -598,6 +627,10 @@
  /* 軸まわり（軸・軸受・スペーサー・保持層・刃）を実寸で置く。 */
  function machine(T, g, A, segs, zp, L, cd, tk) {
   const half = L / 2, off = x => x - half, yU = cd / 2, yL = -cd / 2;
+  /* 詰めの事実（§9.418）。**割り付けが区間より長くないか**・**図が部材を
+     落としていないか**・**端数がどれだけ残ったか**を数で残す。落ちた1枚は
+     10mm級の穴になるので、絵ではなく数で見張る。 */
+  D3.pack = { over: 0, worst: 0, drop: 0, filler: 0, fillerMm: 0 };
   const out = { liner: [], ring: [], knife: [] };
   /* 区間の記号（§9.417）。**模式図と同じ対応表**（`res.badges`）を読む——
      図ごとに割り当て直すと、同じ区間が図と表で別の記号になり得る。
@@ -637,9 +670,16 @@
   const linerR = (+ctx.M.P.spacerOD || 240) / 2;
   const ringBore = (+ctx.M.P.ringBore || 241) / 2;
   if (sh.liner) {
-   const ls = out.liner.map(q => ({ x: q.x, y: q.y, len: q.sz - 0.8 }));
+   const real = out.liner.filter(q => !q.filler);
+   const ls = real.map(q => ({ x: q.x, y: q.y, len: q.sz - 0.8 }));
    put(ls, linerR, bore, liner);
    put(ls, linerR, linerR - 1.2, edge);     /* 外周の細い帯で1枚ずつの区切りを見せる */
+   /* 端数（模式図と同じ色）。**部材ではない**ので、幅の字も出さない。 */
+   const pad = out.liner.filter(q => q.filler).map(q => ({ x: q.x, y: q.y, len: q.sz }));
+   if (pad.length) {
+    put(pad, linerR, bore, matOf(T, 'filler',
+      { color: cutColor('--bs-fig-filler', '#dfe4ea'), metalness: .3, roughness: .6 }));
+   }
   }
   if (sh.ring) {
    /* 保持層は**ゴムリングでもフィンガーでも同じ層**（§9.377）。色はゴムリングだけ
@@ -654,6 +694,25 @@
    });
   }
   if (sh.knife) put(out.knife.map(q => ({ x: q.x, y: q.y, len: tk })), ctx.st.knife / 2, bore, blade);
+  /* 寸法の層が使う控え（§9.418）。**描いた物そのもの**から作るので、
+     図に出ていない部材の字が出ることはない。 */
+  D3.dims = [];
+  /* **字はその部材の帯の中へ**（§9.418、利用者の指摘「50や30のゴムリングは
+     内部に表示できるはずです」）。輪の切り口は軸の上下に分かれた2本の帯なので、
+     軸の中心に置くと**軸の上に字が乗り、部材の上には1文字も乗らない**。
+     内径と外径を控えて、そのまんなか（帯の中心）へ置く——スペーサーの帯と
+     ゴムリングの帯は重ならないので、互いに避ける必要もない。 */
+  if (sh.liner) out.liner.filter(q => !q.filler).forEach(q => D3.dims.push(
+   { x: off(q.x), y: q.y, w: q.sz, ri: bore, r: linerR, kind: 'sp' }));
+  if (sh.ring) out.ring.forEach(q => D3.dims.push(
+   { x: off(q.x), y: q.y, w: q.sz, kind: 'ring',
+     ri: q.hold.kind === 'ring' ? ringBore : linerR,
+     r: (q.hold.kind === 'ring' ? +q.hold.od : linerR * 2 + 20) / 2 }));
+  /* 上下の刃の対（§9.418）。同じ切断の上刃と下刃は**クリアランスのぶんだけ
+     軸方向にずれて**いて、そのずれが鋏の噛み合わせそのもの。 */
+  D3.knives = [];
+  if (sh.knife) A.U.forEach((u, i) => D3.knives.push(
+   { xu: off(u), xl: off(A.Lo[i]), yU, yL, r: ctx.st.knife / 2 }));
   return Object.assign({ out }, fr);
  }
 
@@ -685,7 +744,6 @@
      切った瞬間に消える——断面をまたいで置き、どちら側から見ても写るようにする。 */
   if (D3.cut) {
    const DEP = 420;
-   const box = D3.cutBox || { h: 800 };
    /* 見かけの厚みは `build()` が先に決める（軸を離す量がこれで決まるため）。 */
    const TH = D3.matTh || th;
    /* **`matShift` は模式図（SVGのY＝下向き）の答え**なので、立体（Yは上向き）へ
@@ -701,17 +759,24 @@
    });
    /* 板の札（§9.413 追補、利用者の指示「2Dの表示のようにラベルもほしい」）。
       模式図と**同じ言葉・同じ側**で出す——条の番号は板が寄った側、耳は「耳」。
-      値は模式図と同じ2桁（条幅・耳屑幅は割り付けの計算値）。 */
-   /* 札は**軸の外へ出す**。板と軸のあいだは実寸で 60mm 弱しかないので、
-      そこへ置くと札が軸に乗って読めない（実際に乗った）。上へ寄った条の札は
-      上軸の上・下へ寄った条の札は下軸の下——**寄った側は模式図と同じ**。 */
-   /* **部材の外へ出す**（§9.417）。以前は 55 だけ内へ寄せており、値の行が
-      いちばん外の部材の縁に乗っていた（区間を光らせると、その上に重なって
-      読めなくなる）。器の余白（上下60）のうち 22 だけ残して外へ置く。 */
-   const tagY = (box.h || 800) / 2 - 22;
+      値は模式図と同じ2桁（条幅・耳屑幅は割り付けの計算値）。
+      **指し示す物のすぐそばへ置く**（§9.418、利用者の指示「指し示すものの近くに
+      ラベルが欲しい。耳とかラベルを板に寄せて」）。§9.413 では器の縁まで出して
+      いたが、そこは板から実寸で 300mm 以上離れていて「どの条の番号か」を目で
+      辿り直すことになる。板と軸のあいだには実寸 55mm ほどの空きがあるので、
+      **画面の座標で**そのあいだへ置く（世界の座標で置くと、視点を回したときに
+      板から離れる）。耳は板の外側の縁へ、模式図と同じ置き方。 */
+   /* 札は**材料の帯の、条が寄っていない側**へ置く（§9.418、利用者の指示
+      「ラベルは板の上下交互に配置している余白の部分に配置してください」
+      「板幅は、ゴムリングではなく材料の部分にラベルしてください」）。
+      材料の帯は見かけの板厚の3倍の高さがあり、条はそのうち1/3を占めて
+      上下どちらかへ寄る。**空くのは寄った側の反対**なので、そこへ置けば
+      条にも部材にもかからない——板と軸のあいだには実寸で数mmしか無く、
+      外へ出すと必ずゴムリングの帯に乗る（実際に乗っていた）。
+      置き場は板の帯の中なので**1行**にする（2行は入らない）。 */
    D3.marks = run.map(({ sg, from, to }, i) => {
-    const strip = sg.type === 'strip', up = BS().matShift(A, run, i) < 0;
-    return { x: off((from + to) / 2), y: (up ? 1 : -1) * tagY, z: 0,
+    const strip = sg.type === 'strip';
+    return { x: off((from + to) / 2), y: -yOf(i) / 2, z: 0, row: true,
              kind: strip ? 'strip' : (sg.type === 'scrap' ? 'scrap' : 'trim'),
              text: strip ? String((sg.lotIx | 0) + 1) : (sg.type === 'scrap' ? '屑' : '耳'),
              sub: (+sg.w).toFixed(2) };
@@ -830,6 +895,28 @@
   return { tR, sepX0, sepX1, floorY };
  }
 
+ /* 有効長＋青い印より外に残っている物の数（§9.418）。まとめ描きは1つの器に
+    何百も入るので、**入れ物ではなく1つずつの場所**で見る。 */
+ function strayCount(L) {
+  const T = D3.T;
+  if (!T || !D3.g) return 0;
+  const lim = L / 2 + Math.max(24, L * 0.018) + 1, m4 = new T.Matrix4();
+  let n = 0;
+  const walk = o => {
+   if (!o || o === D3.rig) return;
+   if (o.isMesh) {
+    const c = o.count == null ? 1 : o.count;
+    for (let i = 0; i < c; i++) {
+     if (o.isInstancedMesh) o.getMatrixAt(i, m4); else m4.copy(o.matrix);
+     if (Math.abs(m4.elements[12]) > lim) { n++; break; }
+    }
+   }
+   (o.children || []).forEach(walk);
+  };
+  walk(D3.g);
+  return n;
+ }
+
  /* 立体図を組み直す。模式図と同じ A・segs・zp から作る。 */
  function build() {
   if (!ctx || !ctx.res || !init()) return;
@@ -874,6 +961,11 @@
   /* 区間の的の高さ（§9.417）。**いちばん外まで出ている部材の半径**で取る
      ——模式図の的も部材の高さぶんを覆う（§9.386）。 */
   D3.zr = rad;
+  /* **断面図に出てよいのは有効長と青い印まで**（§9.418、利用者の指摘「OS側の
+     エンドの青オブジェクトの上下軸の外々に線が付着している」）。機械まわりは
+     `rig` ごと伏せるので、その外に物が残っていれば**行き先を間違えた**しるし。
+     絵で探すと「1本の線」にしか見えず、何の線か分からない。 */
+  D3.stray = strayCount(L);
   const mt = material(T, g, A, segs, L);
   const st2 = site(T, m.baseL, m.bcx, m.bedTop, m.railTop);
   /* 画面に収まる見はじめの位置。実寸から出すので、アーバー長や刃径を変えても崩れない。
@@ -1061,11 +1153,15 @@
    if (!on) return;
    const want = `<b>${esc(q.text)}</b><small>${esc(q.sub)}</small>`;
    if (el.dataset.k !== want) { el.innerHTML = want; el.dataset.k = want; }
-   el.className = 'bs-t3 bs-t3-mk is-' + q.kind;
+   /* 種類の印は**最後**に置く（前に足すと、末尾で種類を読む網が別の印を拾う）。
+      読む側は `dataset.kind` を見ればよい——印の並びに頼らせない（§9.418）。 */
+   el.className = 'bs-t3 bs-t3-mk' + (q.row ? ' is-row' : '') + ' is-' + q.kind;
+   if (el.dataset.kind !== q.kind) el.dataset.kind = q.kind;
    put.push({ el, x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h,
               w: el.offsetWidth || 44, h: el.offsetHeight || 26 });
   });
   zones(w, h, cam, v);
+  dims(w, h, cam, v);
   place(put, w, h);
   sides(at);
  }
@@ -1114,6 +1210,107 @@
    + `font-size:${fs.toFixed(1)}px`;
   });
   badgeSig(zs.map(q => q.badge).join('/'));
+ }
+ /* ====== 寸法の層（§9.418）======================================
+    利用者の指示「刃の上下位置が重ならないようにクリアランス設計も正確に反映
+    描画してください。刃の交差する部分切断面に縦の破線を入れて刃が上下正確に
+    ズレて鋏のように切断できる状態を確認できるようにしてください」
+    「板幅、スペーサー幅、ゴムリング幅、重ならないようにラベルを表示できませんか。
+    重なる場合は引き出し線を、引き出し線も重なる場合は表示不要。細かくなって
+    表示しきれないときは、拡大表示に任せる形」 */
+ /* 寸法の字（`10.025`）は**丸めない**（§9.413）——0.005 違えば在庫に無い別の
+    部材の名前になる。末尾の0だけ落とす。 */
+ const dmm = v => (+v).toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+ /* 字の幅の見当（和字＝1em・欧字＝0.58em）。`zoomTextW()` と同じ見方。 */
+ const dimTextW = (t, fs) => [...String(t)]
+   .reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? fs : fs * 0.58), 0);
+ const DIM_FS = 9, DIM_PAD = 3, DIM_SLOT = 4;
+ function dims(w, h, cam, v) {
+  const el = host && host.querySelector('.bs-t3v');
+  if (!el) return;
+  if (!D3.cut) { el.hidden = true; el.innerHTML = ''; D3.dimShown = null; return; }
+  el.hidden = false;
+  el.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  /* 字の大きさは**この1箇所**が決める（幅の見当もここから出しているので、
+     CSSに書くと2箇所が食い違う）。 */
+  el.setAttribute('font-size', String(DIM_FS));
+  const P = (x, y) => {
+   v.set(x, y, 0).applyMatrix4(D3.g.matrixWorld).project(cam);
+   return { x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h };
+  };
+  let o = '';
+  /* ---- ① 切断の位置（縦の破線）----
+     **材料のところには刃が描けない**（刃は軸のまわりの丸で、切り口では
+     材料の高さまで届かない）ので、そこに切断の位置を破線で引く（§9.418、
+     利用者の指示「3Dの部分は材料の部分に刃の図がないので破線を入れたい。
+     破線は刃の端部同士の位置が一致するはずなので1本で上下引けるはず」）。
+     **1本で引く**——上下の刃のずれ（クリアランス 0.1mm台）はこの縮尺では
+     0.1pxにもならず、2本に割ると「離れている」ではなく「線が2本ある」に
+     しか見えない。ずれそのものは**模式図が刃を上下に描き分けて**示し、
+     値は拡大図が持つ（§CLAUDE 8 同じことを2箇所で言わない）。 */
+  const kn = D3.knives || [];
+  D3.cutLines = 0;
+  kn.forEach(k => {
+   const x = (k.xu + k.xl) / 2;
+   const a = P(x, k.yU - k.r), b = P(x, k.yL + k.r);
+   o += `<line class="bs-kl is-cut" x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}"`
+      + ` x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke-dasharray="5 4"/>`;
+   D3.cutLines++;
+  });
+  /* ---- ② 部材の幅（入るものは中へ・入らないものは引き出し線・それも無理なら出さない）----
+     **入る／入らないは器の幅で決める**（§9.413 の拡大図と同じ考え）。引き出す先は
+     部材の列の外側（上軸は上・下軸は下）で、**1段だけ**。同じ段で隣とぶつかる
+     ものは出さない——細かくて出しきれないぶんは拡大図が受け持つ。 */
+  const list = (D3.dims || []).map(q => {
+   /* 帯の中心（軸から見て外側の帯）。上軸ぶんは上の帯、下軸ぶんは下の帯へ——
+      板の側の帯は板の札とぶつかる。 */
+   const sgn = q.y > 0 ? 1 : -1;
+   const mid = q.y + sgn * ((q.ri || 0) + q.r) / 2;
+   const a = P(q.x - q.w / 2, mid), b = P(q.x + q.w / 2, mid);
+   const inn = P(q.x, q.y + sgn * (q.ri || 0)), outr = P(q.x, q.y + sgn * q.r);
+   const t = dmm(q.w);
+   return { t, kind: q.kind, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2,
+            pw: Math.abs(b.x - a.x), up: q.y > 0,
+            band: Math.abs(outr.y - inn.y),
+            top: Math.min(inn.y, outr.y), bot: Math.max(inn.y, outr.y),
+            tw: dimTextW(t, DIM_FS) };
+  }).filter(q => q.cx > -50 && q.cx < w + 50);
+  const outs = [];
+  let inside = 0;
+  list.forEach(q => {
+   /* 中へ書けるのは**横にも縦にも入る**とき。帯が字より低ければ、いくら
+      横に広くても中には書けない。 */
+   if (q.pw >= q.tw + DIM_PAD * 2 && q.band >= DIM_FS + 1) {
+    const y = q.cy + DIM_FS * 0.36;
+    o += `<text x="${q.cx.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle"`
+       + `${q.kind === 'ring' ? ' class="is-ring"' : ''}>${esc(q.t)}</text>`;
+    inside++;
+    return;
+   }
+   outs.push(q);
+  });
+  /* 引き出す先。上軸ぶんは部材の上、下軸ぶんは部材の下へ、**x の順に**詰める
+     （順に配ると引き出し線が交差しない・§9.413）。入らなくなったら出さない。 */
+  let lead = 0;
+  [[true, -1], [false, 1]].forEach(([wantUp, dir]) => {
+   const g0 = outs.filter(q => q.up === wantUp).sort((a, b) => a.cx - b.cx);
+   if (!g0.length) return;
+   const edge = wantUp ? Math.min(...g0.map(q => q.top)) : Math.max(...g0.map(q => q.bot));
+   const y = edge + dir * 16;
+   let at = -Infinity;
+   g0.forEach(q => {
+    const x0 = q.cx - q.tw / 2;
+    if (x0 < at + DIM_SLOT || q.cx + q.tw / 2 > w - 2 || x0 < 2) return;
+    at = q.cx + q.tw / 2;
+    o += `<line class="bs-lead" x1="${q.cx.toFixed(1)}" y1="${edge.toFixed(1)}"`
+       + ` x2="${q.cx.toFixed(1)}" y2="${(y + dir * -2).toFixed(1)}"/>`
+       + `<text x="${q.cx.toFixed(1)}" y="${(y + (wantUp ? 0 : DIM_FS * 0.8)).toFixed(1)}"`
+       + ` text-anchor="middle"${q.kind === 'ring' ? ' class="is-ring"' : ''}>${esc(q.t)}</text>`;
+    lead++;
+   });
+  });
+  D3.dimShown = { inside, lead, off: list.length - inside - lead, all: list.length };
+  el.innerHTML = o;
  }
  /* 記号の顔ぶれが変わったときだけ画面へ知らせる（**毎フレームではない**）。
     知らせる相手は `paintBadgePick()` で、器ぜんたいを走査するので、
@@ -1164,7 +1361,11 @@
    ? `<s>／板厚</s><i>${(+ctx.st.thick).toFixed(1)}</i>`
      + `<s>は図では約${Math.round(D3.matMag)}倍。上下軸はそのぶん離しています</s>`
    : '';
-  el.innerHTML = `<s>画面左</s>${nm(l)}<s>／</s><s>右</s>${nm(r)}${mag}`;
+  /* 破線が何を指しているかは**字で言う**（§CLAUDE 6）。ずれの値そのものは
+     チップの帯と拡大図が持つので、ここでは繰り返さない。 */
+  const sep = D3.cut && D3.cutLines
+   ? '<s>／破線は切断の位置（材料のところは刃を描けないため）</s>' : '';
+  el.innerHTML = `<s>画面左</s>${nm(l)}<s>／</s><s>右</s>${nm(r)}${mag}${sep}`;
   el.hidden = false;
  }
 
@@ -1395,6 +1596,12 @@
            /* 区間の記号の数（§9.417）。模式図と同じ対応表から出しているので、
               模式図の記号の数と一致するはず——網が突き合わせる。 */
            zones: (D3.cut ? (D3.zmarks || []) : []).length,
+           /* 寸法の層（§9.418）。出した字の内訳と、刃のずれを広げた量。 */
+           dims: D3.dimShown || null, knives: (D3.knives || []).length,
+           cutLines: D3.cutLines | 0,
+           /* 詰めの事実と、行き先を間違えた物の数（§9.418）。 */
+           pack: D3.pack || null, stray: D3.stray | 0,
+           dimSep: D3.dimSep || 0,
            /* 断面図で刃先のあいだに空けた隙間と、板が占める高さ（§9.413 追補）。
               **板がめり込まないこと**を網が数字で見るための2つ。 */
            cutGap: D3.cutGap || 0, matSpan: (D3.matTh || 0) * 3, matMag: D3.matMag || 1,

@@ -374,7 +374,15 @@
  function fillWith(table, len) {
   const want = Math.max(0, +(+len).toFixed(3));
   if (!table) return { out: [], rem: want };
-  const u = table.floor[Math.min(Math.round(want / FILL_STEP), table.U - 1)];
+  /* **区間より長い積みを作らない**（§9.418、利用者の指摘「エンド部分まで
+     スペーサーが詰まっていないといけないが、隙間が目立つ」）。以前は
+     `Math.round` で刻みへ丸めており、**区間長を最大で刻みの半分（0.0125mm）
+     超える**積みを選び得た。超えたぶんは `rem` が `Math.max(0, …)` で0に
+     潰れて見えなくなり、図の側は「入らない最後の1枚」を落とす——**10mm の
+     部材が丸ごと消えて穴になっていた**（実測: 下軸のDS端と中間の3区間）。
+     積みは区間を超えてはならない（超えれば刃の位置が動く）ので、**切り下げる**。
+     `1e-9` は「ちょうど割り切れる長さ」が浮動小数で 0.9999… になる取りこぼし避け。 */
+  const u = table.floor[Math.min(Math.floor(want / FILL_STEP + 1e-9), table.U - 1)];
   const by = new Map();
   for (let v = u; v > 0;) {
    const i = table.pick[v];

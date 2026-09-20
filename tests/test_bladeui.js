@@ -787,7 +787,8 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      return { n: els.length,
               txt: els.map(e => (e.querySelector('b') || {}).textContent).join('/'),
               sub: els.map(e => (e.querySelector('small') || {}).textContent),
-              kinds: [...new Set(els.map(e => e.className.replace(/.*is-/, '')))].sort(),
+              /* 種類は**印の並びではなく** `data-kind` で読む（§9.418）。 */
+              kinds: [...new Set(els.map(e => e.dataset.kind || ''))].sort(),
               mag: (document.querySelector('#bsStage3 .bs-o3').textContent || '') };
     });
     rec('断面図にも板・耳屑の札が出る（模式図と同じ言葉）',
@@ -799,6 +800,87 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     /* **誇張したら倍率を書く**（§CLAUDE 6）。板厚 1.3mm は実寸では1pxも出ない。 */
     rec('板厚を誇張していることを字で言う', /板厚.*倍/.test(lab.mag), lab.mag.slice(0, 60));
     rec('上下軸を離していることも字で言う', /上下軸.*離/.test(lab.mag), lab.mag.slice(0, 80));
+    /* ---- 4.8) 詰め・クリアランス・寸法の字（§9.418） ----
+       利用者の指摘「エンド部分までスペーサーが詰まっていないといけないが、
+       隙間が目立つ」「OS側のエンドの青オブジェクトの上下軸の外々に線が付着
+       している」、利用者の指示「刃の交差する部分切断面に縦の破線を入れて…」
+       「板幅、スペーサー幅、ゴムリング幅、重ならないようにラベルを表示…」
+       「ラベルは板の上下交互に配置している余白の部分に配置して」 */
+    const pk = await page.evaluate(() => window.WL.bladeSolid.view());
+    /* **割り付けが区間より長くない**。長い積みは物理的に入らず、はみ出したぶん
+       だけ刃の位置が動く。丸めを`round`でやっていたため最大0.0125mm超えていた。 */
+    rec('割り付けが区間長を超えていない（超えると刃の位置が動く）',
+        !!pk.pack && pk.pack.over === 0,
+        pk.pack ? `超えた区間 ${pk.pack.over} / 最大 ${pk.pack.worst}mm` : '読めない');
+    /* **図が部材を落としていない**。丸めのせいで最後の1枚を落とすと、10mm級の
+       穴が開く（実測: 下軸のDS端 10.025mm・中間区間 9mm）。 */
+    rec('詰めるときに部材を1枚も落としていない',
+        !!pk.pack && pk.pack.drop === 0,
+        pk.pack ? `落とした枚数 ${pk.pack.drop}` : '読めない');
+    /* 残った端数は**空けずに置く**（模式図の`fillZone`と同じ作法）。 */
+    rec('端数は空けずに埋めてある（端数の合計は刻み数枚ぶん以内）',
+        !!pk.pack && pk.pack.fillerMm < 1,
+        pk.pack ? `端数 ${pk.pack.filler}か所・計 ${pk.pack.fillerMm}mm` : '読めない');
+    /* **断面図に機械まわりが残っていない**。軸受の行き先だけ`rig`でなく`g`に
+       なっており、OS側の1つが切り口の無い筒として「線」だけ残していた。 */
+    rec('有効長と青い印より外に物が残っていない（機械まわりは断面図に出ない）',
+        pk.stray === 0, `外に残った物 ${pk.stray}`);
+    /* ---- 切断の位置の破線（§9.418） ----
+       模式図は刃そのものを上下に描き分けているので線を足さない。断面図だけが
+       「材料のところに刃を描けない」ので引く。**1本**で上下を通す。 */
+    const kl = await page.evaluate(() => {
+     const svg = document.querySelector('#bsStage3 .bs-t3v');
+     const fig = document.querySelector('#bsStage');
+     if (!svg) return null;
+     const ln = [...svg.querySelectorAll('.bs-kl.is-cut')];
+     return { n: ln.length,
+              /* 上下がつながっている＝1本が材料の高さを越えて伸びている。 */
+              span: ln.length ? Math.abs(+ln[0].getAttribute('y2') - +ln[0].getAttribute('y1')) : 0,
+              dash: ln.length ? ln[0].getAttribute('stroke-dasharray') : '',
+              pair: ln.length ? svg.querySelectorAll('.bs-kl.is-up,.bs-kl.is-lo').length : -1,
+              /* 模式図には引かない。 */
+              fig2: fig ? fig.querySelectorAll('.bs-kl').length : -1 };
+    });
+    rec('断面図に切断の位置の破線が出る（刃の対と同じ数・1本ずつ）',
+        !!kl && kl.n > 0 && kl.n === pk.knives && kl.pair === 0,
+        kl ? `破線 ${kl.n} / 刃の対 ${pk.knives} / 2本組 ${kl.pair}` : '読めない');
+    rec('破線は上下がつながっている（材料の高さより長い）',
+        !!kl && kl.span > 20 && !!kl.dash, kl ? `${kl.span}px / ${kl.dash}` : '読めない');
+    /* **模式図には引かない**（§9.418、利用者の指摘「2Dは正しく刃が並んで
+       いるので破線を引く必要がない」）。同じことを2回言わない（§CLAUDE 8）。 */
+    rec('模式図には破線を引かない（刃そのものが上下に描き分けてある）',
+        !!kl && kl.fig2 === 0, kl ? `模式図の破線 ${kl.fig2}本` : '読めない');
+    /* 何の線かを図の上で言う（§CLAUDE 6）。 */
+    const magNow = await page.evaluate(() =>
+      (document.querySelector('#bsStage3 .bs-o3') || {}).textContent || '');
+    rec('破線が何を指しているかを図の上で言う',
+        /破線は切断の位置/.test(magNow), magNow.slice(0, 140));
+    /* ---- 部材の幅の字（入る／引き出す／出さない） ---- */
+    rec('部材の幅の字が出ている（中に書いたぶん＋引き出したぶん）',
+        !!pk.dims && pk.dims.inside > 0 && pk.dims.inside + pk.dims.lead > 0,
+        pk.dims ? `中 ${pk.dims.inside} / 引き出し ${pk.dims.lead} / 出さない ${pk.dims.off}`
+                : '読めない');
+    /* **出しきれないものは出さない**（引き出し先も埋まっているとき）。
+       全部出していたら、それは重なっているということ。 */
+    rec('出しきれない幅は出していない（重ねて出さない）',
+        !!pk.dims && pk.dims.inside + pk.dims.lead + pk.dims.off === pk.dims.all,
+        pk.dims ? `${pk.dims.inside}+${pk.dims.lead}+${pk.dims.off} = ${pk.dims.all}` : '読めない');
+    /* ---- 板の札は「千鳥の空き」に入る ---- */
+    const mlab = await page.evaluate(() => {
+     const els = [...document.querySelectorAll('#bsStage3 .bs-t3-mk')].filter(e => !e.hidden);
+     const cv = document.querySelector('#bsStage3 .bs-c3');
+     const h = cv ? cv.clientHeight : 0;
+     const ys = els.map(e => parseFloat(e.style.top) || 0);
+     return { n: els.length, h, ys,
+              /* 器の上下の縁からどれだけ内側か（端へ寄せていないこと）。 */
+              near: ys.filter(y => y > h * 0.25 && y < h * 0.75).length };
+    });
+    rec('板の札は器の端ではなく板のそばに居る（千鳥の空きの中）',
+        mlab.n > 0 && mlab.near === mlab.n, `${mlab.near}/${mlab.n} 枚が中ほど（器 ${mlab.h}px）`);
+    /* 上下に振り分かれていること（同じ段に並べない）。 */
+    rec('板の札は上下へ振り分かれている（千鳥に乗る）',
+        new Set(mlab.ys.map(y => (y < mlab.h / 2 ? 'u' : 'd'))).size === 2,
+        mlab.ys.map(y => (y < mlab.h / 2 ? 'u' : 'd')).join(''));
     /* ---- 4.7) 断面図の区間の記号・表とのリンク・拡大図（§9.417） ----
        利用者の指示「断面3Dのラベルの付け方は2Dを参考にもう少し修正してほしい。
        強調も入れたい」「断面3Dの強調は2Dと同じ、表とのリンクで、クリックによる

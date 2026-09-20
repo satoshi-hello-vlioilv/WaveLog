@@ -170,6 +170,11 @@
         </div>
         <div class="bs-stage3" id="bsStage3" hidden>
          <canvas class="bs-c3"></canvas>
+         <!-- **寸法の層**（§9.418）。刃の上下のずれを示す縦の破線と、部材の幅の
+              字を置く。図形の上に重ねる線と字なので、WebGL の中ではなく SVG で
+              描く（破線・引き出し線・字の縁取りが素直に書け、色もトークンから
+              選べる）。押す的は持たない（掴んで回す道をふさがない）。 -->
+         <svg class="bs-t3v" id="bsCutDim" aria-hidden="true"></svg>
          <span class="bs-t3 bs-t3-os is-os" hidden title="OS 側。刃組ではこちらへ詰めていきます">OS</span>
          <span class="bs-t3 bs-t3-ds is-ds" hidden title="DS 側。軸端部を外し、こちらから部材を入れます">DS</span>
          <div class="bs-hud is-tl"><div class="bs-o3" hidden></div></div>
@@ -1273,6 +1278,11 @@
    `<rect x="${(cx - w / 2).toFixed(1)}" y="${(dir > 0 ? y - reach : y).toFixed(1)}"`
    + ` width="${w.toFixed(1)}" height="${reach.toFixed(1)}"`
    + ` fill="${V.PAL.knife}" stroke="${V.PAL['knife-edge']}" stroke-width=".6"/>`;
+  /* **模式図に破線は引かない**（§9.418、利用者の指摘「2Dは正しく刃が並んで
+     いるので破線を引く必要がない」）。この図は刃そのものを上下それぞれの
+     位置に描いており（`knifePx()` が見える量まで広げている）、線を足しても
+     同じことを2回言うだけになる（§CLAUDE 8）。破線が要るのは**刃を描けない
+     断面図の材料の部分**だけ。 */
   let o = '';
   V.KX.forEach(k => { o += blade(k.u, +1) + blade(k.l, -1); });
   return o;
