@@ -973,6 +973,73 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await page.keyboard.press('Escape');
     await W.until(page, () => document.querySelector('#bsZoom').hidden, null,
                   { ms: 4000, what: '拡大図を閉じる' });
+    /* ---- 4.9) 現実的な構成でも同じことが言えるか（§9.418） ----
+       利用者の指摘「サンプルが若干悪い気もする。よくあるパターンでは50mmくらいの
+       板幅で22条くらい。屑幅は製品幅より大きくならず、片耳35mm以下、通常は
+       15mmくらいがメジャー」。検証用フィクスチャのロットは 120mm×5条／片耳225mm
+       で、**屑幅が製品幅より大きい**——現場に無い形なので、これだけで図の見え方を
+       決めると「条が少なく耳が広い」ときしか確かめていないことになる。
+       **状態を差し替えて描き直し、確かめたら必ず戻す**（後の節が別の材料を見る）。 */
+    const wasLots = await page.evaluate(() => {
+     const st = window.WL.bladeGuide.state;
+     const keep = { lots: st.lots, order: st.order, W: st.W, trimMode: st.trimMode };
+     st.lots = [{ name: 'LOT1', w: 50, n: 22 }];
+     st.order = Array.from({ length: 22 }, () => 0);
+     st.W = 1130; st.trimMode = 'even';
+     const el = document.querySelector('#bsKnife');
+     el.value = st.knife;
+     el.dispatchEvent(new Event('input', { bubbles: true }));
+     return keep;
+    });
+    /* 刃の数は「条の数−1」ではない——耳屑も1つの区間なので、24区間で23本に
+       なる。**数を決め打ちせず「増えたこと」で待ち**、本数どうしの一致は
+       下で突き合わせる（決め打ちして外すと、待ちが黙って素通りする）。 */
+    await W.until(page, () => (window.WL.bladeSolid.view() || {}).knives > 15,
+                  null, { ms: 8000, what: '22条で描き直す' });
+    const many = await page.evaluate(() => {
+     const v = window.WL.bladeSolid.view();
+     const vis = sel => [...document.querySelectorAll(sel)].filter(e => !e.hidden);
+     const mk = vis('#bsStage3 .bs-t3-mk').map(e => ({
+      x: parseFloat(e.style.left) || 0, y: parseFloat(e.style.top) || 0,
+      w: e.offsetWidth, h: e.offsetHeight }));
+     /* 札どうしが重なっていないか（狭い条が並ぶと、ここで初めて出る）。 */
+     let hit = 0;
+     for (let i = 0; i < mk.length; i++) {
+      for (let j = i + 1; j < mk.length; j++) {
+       if (Math.abs(mk[i].x - mk[j].x) < (mk[i].w + mk[j].w) / 2
+        && Math.abs(mk[i].y - mk[j].y) < (mk[i].h + mk[j].h) / 2) hit++;
+      }
+     }
+     return { pack: v.pack, stray: v.stray, cutLines: v.cutLines, dims: v.dims,
+              knives: v.knives, marks: mk.length, hit,
+              badges: vis('#bsStage3 .bs-t3b').length };
+    });
+    rec('22条でも割り付けが区間長を超えず、部材を落とさない',
+        !!many.pack && many.pack.over === 0 && many.pack.drop === 0,
+        many.pack ? `超過 ${many.pack.over} / 落とし ${many.pack.drop}`
+                  : '読めない');
+    rec('22条でも端数は埋めてある', !!many.pack && many.pack.fillerMm < 1,
+        many.pack ? `${many.pack.filler}か所・計 ${many.pack.fillerMm}mm` : '読めない');
+    rec('22条でも機械まわりは断面図に出ない', many.stray === 0, `外に残った物 ${many.stray}`);
+    rec('22条で描き直せている（刃が増えている）', many.knives > 15, `刃 ${many.knives}本`);
+    rec('22条でも切断の破線は刃の対と同じ数',
+        many.cutLines === many.knives, `破線 ${many.cutLines} / 刃 ${many.knives}`);
+    /* **札は重ならない**。50mm の条が22本並ぶと、120mm×5条では出なかった
+       混み方になる——ここで初めて「入らない」が出る。 */
+    rec('22条でも板の札どうしが重ならない', many.marks > 0 && many.hit === 0,
+        `札 ${many.marks}枚 / 重なり ${many.hit}組`);
+    rec('22条でも区間の記号は出る', many.badges > 0, `${many.badges}枚`);
+    /* **必ず戻す**（§9.393 注ぎ込んだ見本はその場で片付ける）。 */
+    await page.evaluate(keep => {
+     const st = window.WL.bladeGuide.state;
+     Object.assign(st, keep);
+     const el = document.querySelector('#bsKnife');
+     el.value = st.knife;
+     el.dispatchEvent(new Event('input', { bubbles: true }));
+    }, wasLots);
+    await W.until(page, () => (window.WL.bladeSolid.view() || {}).knives < 15,
+                  null, { ms: 8000, what: '元の構成へ戻す' });
+
     /* **板が刃へめり込まない**（§9.413 追補、利用者の指摘「板がめり込んでいる」）。
        板は千鳥で上下へ寄るので**見かけの厚みの3倍**の高さを占める。刃先のあいだの
        隙間がそれより狭いと、太らせた板が刃を突き抜ける。判定は実測ではなく
