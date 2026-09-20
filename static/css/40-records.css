@@ -351,10 +351,10 @@
 .waiting-overlay b,.waiting-overlay small,.waiting-progress,.waiting-steps{grid-column:2}
 .save-overlay b{display:block;font-size:var(--fs-title);font-weight:800;color:var(--nav);margin-bottom:4px}
 .save-overlay small{color:#587078}
-.waiting-spinner{grid-column:1;grid-row:1/4;position:relative;width:36px;height:36px}
-.waiting-spinner-ring{position:absolute;inset:0;border:3px solid var(--pale);border-top-color:var(--teal);border-radius:var(--radius-round);animation:waiting-spin 1s cubic-bezier(.5,.1,.5,.9) infinite}
-.waiting-spinner-dot{position:absolute;inset:0;margin:auto;width:7px;height:7px;border-radius:var(--radius-round);background:var(--teal);animation:waiting-pulse 1s ease-in-out infinite}
-@keyframes waiting-spin{to{transform:rotate(360deg)}}
+/* 保存オーバーレイのローダー。**見せ方は`89-loaders.css`が持つ**（§9.421）
+   ——ここは器の席（グリッドのどこに置くか）だけを決める。輪と点の作りは
+   `[data-loader="ring"]`へ移した。 */
+.waiting-spinner{grid-column:1;grid-row:1/4}
 @keyframes waiting-pulse{0%,100%{opacity:.35;transform:scale(.85)}50%{opacity:1;transform:scale(1.15)}}
 /* ステップドット: 2段階の現在地を示す(1=受付/準備, 2=データ取得/反映)。
    activeは強調、doneは完了済みの塗り。テキストの「N/3」表記に頼らず、

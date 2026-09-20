@@ -22,8 +22,8 @@
 | 刃組ガイダンス（`blade-*.js`）・部材・刃選択 | [bladeset.md](bladeset.md) | 100 |
 | 作業スケジュール・設備停止の登録・写しの同期 | [schedule.md](schedule.md) | 49 |
 | `print-core.js`・帳票ブロック・用紙と余白 | [report.md](report.md) | 92 |
-| `WL` 名前空間・窓・メニュー・拡張の登録表 | [ui-core.md](ui-core.md) | 16 |
-| 色・文字サイズ・寸法の刻み・状態の見せ方 | [style.md](style.md) | 54 |
+| `WL` 名前空間・窓・メニュー・拡張の登録表 | [ui-core.md](ui-core.md) | 19 |
+| 色・文字サイズ・寸法の刻み・状態の見せ方 | [style.md](style.md) | 55 |
 | テストを書く・回す・後片付け | [testing.md](testing.md) | 46 |
 | どの束にも入らないもの | [misc.md](misc.md) | 17 |
 

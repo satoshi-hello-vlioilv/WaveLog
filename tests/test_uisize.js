@@ -96,6 +96,77 @@ let b=null;
   rec(`廃止した段(${old})の保存値は近い段(${want})へ寄せる`,m.size===want,JSON.stringify(m));
  }
 
+ /* ---------- 読み込み中の見せ方（§9.421） ----------
+    loaders.css（MIT）から写した6種を同梱し、「表示」バッジの3つめの節で選ぶ。
+    **同梱**なので、回線の無い端末でも動く——外部CDNへ取りに行かない。 */
+ await page.evaluate(()=>localStorage.removeItem('MeasurementLoaderV1'));
+ await page.reload({waitUntil:'domcontentloaded'});
+ await page.waitForSelector('#uiSizeBadge',{timeout:15000});
+ const ld0=await page.evaluate(()=>({
+  attr:document.documentElement.dataset.loader,
+  style:window.WL.loader.style(),
+  n:window.WL.loader.STYLES.length,
+  keys:window.WL.loader.STYLES.map(l=>l.key).join(','),
+ }));
+ rec('既定は「輪と点」（これまでの見せ方）',
+     ld0.attr==='ring'&&ld0.style==='ring',JSON.stringify(ld0));
+ rec('選べるのは6種（loaders.css から写したもの＋既定）',
+     ld0.n===6&&/ball-pulse/.test(ld0.keys),ld0.keys);
+ /* **並びは1つ**（`<i>`が5つ）。種類を変えてもDOMを作り直さないので、
+    動いている最中に切り替えても飛ばない。 */
+ const mk=await page.evaluate(()=>{
+  const d=document.createElement('div');
+  d.innerHTML=window.WL.loader.html(16);
+  const el=d.firstElementChild;
+  return {cls:el.className,kids:el.children.length,
+          size:el.getAttribute('style')||'',
+          tags:[...el.children].map(c=>c.tagName).join(',')};
+ });
+ rec('並びを作るのは`WL.loader.html()`の1箇所（`<i>`が5つ）',
+     mk.cls==='wl-ld'&&mk.kids===5&&/--wl-ld:\s*16px/.test(mk.size),JSON.stringify(mk));
+ /* 保存オーバーレイも同じ並びに載っている（呼び出しが自前の形を持たない）。 */
+ const ov=await page.evaluate(()=>{
+  const el=document.querySelector('#saveOverlay .wl-ld');
+  return el?{kids:el.children.length,cls:el.className}:null;
+ });
+ rec('保存オーバーレイのローダーも同じ並びに載っている',
+     !!ov&&ov.kids===5,JSON.stringify(ov));
+ /* 選ぶと`html[data-loader]`が変わるだけ（見た目はCSSが持つ）。 */
+ await page.click('#uiSizeBadge');
+ const ldOpts=await page.$$eval('#uiSizeMenu [data-loader-option]',es=>es.map(e=>e.dataset.loaderOption));
+ rec('「表示」バッジの3つめの節に6種が並ぶ',ldOpts.length===6,ldOpts.join(','));
+ /* **札に見本そのものを出す**（§9.200 選ばせるものは選ぶ前に見える）。 */
+ const sample=await page.$$eval('#uiSizeMenu [data-loader-option] .ld-sample',
+   es=>es.map(e=>e.dataset.loader+':'+e.querySelectorAll('.wl-ld > i').length));
+ rec('札は見本そのものを出す（種類ごとに動きが見える）',
+     sample.length===6&&sample.every(t=>t.endsWith(':5')),sample.join(' '));
+ await page.click('#uiSizeMenu [data-loader-option="line-scale"]');
+ const ld1=await page.evaluate(()=>({
+  attr:document.documentElement.dataset.loader,
+  saved:localStorage.getItem('MeasurementLoaderV1'),
+  /* 実際に動いているか——CSSが当たっていれば棒に動きが付く。 */
+  anim:(()=>{const el=document.querySelector('#saveOverlay .wl-ld > i');
+    return el?getComputedStyle(el).animationName:''})(),
+  shown:(()=>{const el=document.querySelector('#saveOverlay .wl-ld > i:nth-child(5)');
+    return el?getComputedStyle(el).display:''})(),
+ }));
+ rec('選ぶと端末に覚え、`html[data-loader]`へ流れる',
+     ld1.attr==='line-scale'&&ld1.saved==='line-scale',JSON.stringify(ld1));
+ rec('選んだ種類の動きが当たっている（同梱のCSSが効いている）',
+     ld1.anim==='wl-ld-line'&&ld1.shown!=='none',JSON.stringify(ld1));
+ /* 既定（輪と点）では5本目は伏せる——同じ並びのまま種類だけが変わる。 */
+ await page.click('#uiSizeBadge');
+ await page.click('#uiSizeMenu [data-loader-option="ring"]');
+ const ld2=await page.evaluate(()=>{
+  const el=document.querySelector('#saveOverlay .wl-ld > i:nth-child(5)');
+  const r=document.querySelector('#saveOverlay .wl-ld > i:nth-child(1)');
+  return {fifth:el?getComputedStyle(el).display:'',
+          first:r?getComputedStyle(r).animationName:''};
+ });
+ rec('種類が変わると使わない`<i>`は伏せる（並びは同じまま）',
+     ld2.fifth==='none'&&ld2.first==='wl-ld-rotate',JSON.stringify(ld2));
+ await page.evaluate(()=>localStorage.removeItem('MeasurementLoaderV1'));
+
  /* ---------- 時間の書き方（§9.341） ---------- */
  await page.evaluate(()=>localStorage.removeItem('WaveLogDurationStyleV1'));
  await page.reload({waitUntil:'domcontentloaded'});
@@ -126,8 +197,13 @@ let b=null;
   hints:[...document.querySelectorAll('#uiSizeMenu [data-duration-style] small')].map(x=>x.textContent.trim()),
   current:document.querySelector('#uiSizeMenu [data-duration-style].is-current')?.dataset.durationStyle,
  }));
- rec('1つのバッジに2つの節が名前つきで並ぶ（入口を2つに増やさない）',
-   menu.heads.length===2&&menu.heads[0]==='文字の大きさ'&&menu.heads[1]==='時間の書き方',
+ /* **節の数を決め打ちしない**（§9.389）。「この端末の見え方」は増えるので
+    （§9.421 で3つめが入った）、見るのは**どれも名前を持つこと**と
+    **前後関係**——正しい位置へ1枚足しただけで落ちる網にしない。 */
+ rec('1つのバッジに節が名前つきで並ぶ（入口を2つに増やさない）',
+   menu.heads.length>=2&&menu.heads.every(h=>h.length>0)
+   &&menu.heads.indexOf('文字の大きさ')===0
+   &&menu.heads.indexOf('時間の書き方')===1,
    menu.heads.join('／'));
  rec('文字の大きさ3段と時間の書き方2種が同居する',
    menu.sizes===3&&menu.durs.join(',')==='min,hm',`${menu.sizes}段 / ${menu.durs.join(',')}`);

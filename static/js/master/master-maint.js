@@ -2239,7 +2239,7 @@
   const dialog=$('#masterMaintPanel .mm-dialog');if(!dialog)return;
   let box=dialog.querySelector(':scope > .mm-loading');
   if(show){
-   if(!box){box=document.createElement('div');box.className='mm-loading';box.innerHTML='<div class="mm-loading-box"><span class="mini-spinner"></span><b></b></div>';dialog.appendChild(box)}
+   if(!box){box=document.createElement('div');box.className='mm-loading';box.innerHTML='<div class="mm-loading-box">'+WL.loader.html(16)+'<b></b></div>';dialog.appendChild(box)}
    box.querySelector('b').textContent=text||'処理しています…';box.hidden=false;
   }else if(box){box.hidden=true}
  }

@@ -333,7 +333,6 @@
 /* インライン・ローディング（バー右端に小さく表示。ブロックしない軽処理向け） */
 .filter-inline-loading{flex:0 0 auto;display:inline-flex;align-items:center;gap:var(--gap-inline);padding:2px 9px;border-radius:var(--radius-md);background:#e9f6f8;border:1px solid #9fc3c8;color:#0a6570;font-size:var(--fs-micro);font-weight:700;white-space:nowrap}
 .filter-inline-loading[hidden]{display:none}
-.mini-spinner{width:13px;height:13px;border:2px solid #bcd9dd;border-top-color:var(--teal);border-radius:var(--radius-round);animation:waiting-spin .8s linear infinite}
 /* 登録フィルタ一覧モーダル */
 .filter-preset-dialog{width:min(1040px,95vw);height:min(700px,90vh);background:var(--surface-2);border-radius:var(--radius-md);overflow:hidden;box-shadow:0 20px 60px #0005;display:flex;flex-direction:column}
 .filter-preset-dialog>header{display:flex;align-items:center;justify-content:space-between;padding:var(--pad-dialog);background:var(--nav);color:#fff}
@@ -528,7 +527,6 @@
 .panel-loading{position:absolute;inset:0;z-index:5;display:grid;place-items:center;background:#ffffffcc;backdrop-filter:blur(1px)}
 .panel-loading[hidden]{display:none}
 .panel-loading .pl-box{display:flex;align-items:center;gap:var(--gap-section);padding:var(--pad-dialog);border:1px solid #bcd9dd;border-radius:var(--radius-md);background:#fff;box-shadow:0 10px 30px #0b2b3322;color:#0a6570;font-weight:800}
-.panel-loading .mini-spinner{width:18px;height:18px;border-width:3px}
 /* ============================================================
    Hotfix 2026-07-21: 指示値カード（ラテラルボー等 / ②）
    板厚・板幅以外の測定種で、指示値(例 2.0/2M)と評価単位を明示する。
