@@ -365,6 +365,9 @@ body.bs-mode .bs-shell{display:flex}
   border:1.2px solid var(--surface);transition:background .12s,transform .12s}
 .bs-t3b[hidden]{display:none}
 .bs-t3b.is-pick{background:var(--teal-dark);transform:translate(-50%,-50%) scale(1.14)}
+/* 寸法の突き合わせ（§9.418 追補）。図の読み方（`bs-o3`）と同じ見た目で、
+   段だけ分ける——どちらも図の上に載る添え書き。 */
+.bs-len3[hidden]{display:none}
 .bs-hud{position:absolute;display:flex;align-items:center;gap:var(--space-1);
   max-width:calc(100% - 20px)}
 .bs-hud.is-tl{left:10px;top:10px;flex-direction:column;align-items:flex-start}
@@ -403,11 +406,11 @@ body.bs-mode .bs-shell{display:flex}
 /* 選ばれた札（`.is-on`）と、その点の塗りは`90-state.css`の束ね規則が持つ（§9.353）。 */
 .bs-tg:hover{border-color:var(--teal)}
 /* いま画面のどちら側が OS／DS か。視点を回しても言葉が合うよう、見えている位置から出す。 */
-.bs-o3{display:flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm);font-weight:700;
-  color:var(--muted);background:var(--valid-bg);border:1px solid var(--line);
+.bs-o3,.bs-len3{display:flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm);
+  font-weight:700;color:var(--muted);background:var(--valid-bg);border:1px solid var(--line);
   border-radius:var(--radius-xs);padding:4px var(--space-2);pointer-events:none}
 .bs-o3[hidden]{display:none}
-.bs-o3 i{font-style:normal;font-weight:800;letter-spacing:.04em}
+.bs-o3 i,.bs-len3 i{font-style:normal;font-weight:800;letter-spacing:.04em;color:var(--ink)}
 .bs-o3 i.is-os{color:var(--rs-slate)}
 .bs-o3 i.is-ds{color:var(--rs-brown)}
 .bs-o3 s{text-decoration:none;color:var(--muted);font-weight:600}

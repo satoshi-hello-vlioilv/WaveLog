@@ -818,6 +818,29 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         !!pk.pack && pk.pack.drop === 0,
         pk.pack ? `落とした枚数 ${pk.pack.drop}` : '読めない');
     /* 残った端数は**空けずに置く**（模式図の`fillZone`と同じ作法）。 */
+    /* **有効長を基準に描く**（§9.418 追補、利用者の指示「有効長よりエンドto
+       エンドが長くなっていないか確認してほしい」）。区間の和＋刃は作りのうえで
+       有効長ちょうどになるが、**図が実際に置いた物**で見る——置き方を間違えれば
+       計算が合っていても絵は溢れる。 */
+    rec('端から端が有効長を超えていない（有効長を基準に描いている）',
+        !!pk.pack && pk.pack.x0 >= -0.05 && pk.pack.x1 <= pk.pack.arbor + 0.05,
+        pk.pack ? `${pk.pack.x0} 〜 ${pk.pack.x1} / 有効長 ${pk.pack.arbor}` : '読めない');
+    /* 端まで使っていること（超えないだけでなく、余らせてもいない）。 */
+    rec('端から端が有効長ぶんある（端を余らせていない）',
+        !!pk.pack && pk.pack.x0 <= 0.6 && pk.pack.arbor - pk.pack.x1 <= 0.6,
+        pk.pack ? `左の空き ${pk.pack.x0} / 右の空き ${(pk.pack.arbor - pk.pack.x1).toFixed(3)}`
+                : '読めない');
+    /* **設定有効長と、組んだときの上下それぞれの合計長を出す**（§9.418 追補、
+       利用者の指示）。差も一緒に出して、合っているかを引き算させない。 */
+    const len3 = await page.evaluate(() =>
+      (document.querySelector('#bsStage3 .bs-len3') || {}).textContent || '');
+    rec('設定有効長と、組んだときの上下それぞれの合計長を出す',
+        /有効長/.test(len3) && /上軸/.test(len3) && /下軸/.test(len3)
+        && len3.indexOf(String(pk.pack.arbor)) >= 0, len3.slice(0, 120));
+    rec('組んだ合計長は有効長を超えない（上下とも）',
+        !!pk.pack && pk.pack.sumU <= pk.pack.arbor + 1e-6
+        && pk.pack.sumL <= pk.pack.arbor + 1e-6,
+        pk.pack ? `上 ${pk.pack.sumU} / 下 ${pk.pack.sumL} / 有効長 ${pk.pack.arbor}` : '読めない');
     rec('端数は空けずに埋めてある（端数の合計は刻み数枚ぶん以内）',
         !!pk.pack && pk.pack.fillerMm < 1,
         pk.pack ? `端数 ${pk.pack.filler}か所・計 ${pk.pack.fillerMm}mm` : '読めない');
@@ -862,6 +885,27 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
                 : '読めない');
     /* **出しきれないものは出さない**（引き出し先も埋まっているとき）。
        全部出していたら、それは重なっているということ。 */
+    /* **スペーサーとゴムリングの字が混ざらない**（§9.418 追補、利用者の指摘
+       「ゴムリングとスペーサーの表示がごちゃ混ぜでわかりにくい」）。
+       スペーサーは軸の上・そのスペーサーの側へ寄せ、ゴムリングは輪の帯の中。 */
+    const mix = await page.evaluate(() => {
+     const svg = document.querySelector('#bsStage3 .bs-t3v');
+     if (!svg) return null;
+     const ts = [...svg.querySelectorAll('text')];
+     const sp = ts.filter(e => !e.classList.contains('is-ring'));
+     const rg = ts.filter(e => e.classList.contains('is-ring'));
+     const ys = a => a.map(e => Math.round(+e.getAttribute('y')));
+     /* 引き出し線は必ず対象へ届いている（宙に浮いた線を作らない）。 */
+     const ln = [...svg.querySelectorAll('.bs-lead')];
+     return { sp: sp.length, rg: rg.length, spY: ys(sp), rgY: ys(rg), lines: ln.length,
+              loose: ln.filter(l => Math.abs(+l.getAttribute('y2') - +l.getAttribute('y1')) < 3).length };
+    });
+    rec('スペーサーとゴムリングの字が同じ高さに混ざらない',
+        !!mix && mix.sp > 0 && mix.rg > 0
+        && mix.spY.every(y => mix.rgY.indexOf(y) < 0),
+        mix ? `スペーサー ${mix.sp} / ゴムリング ${mix.rg}` : '読めない');
+    rec('引き出し線は対象まで届いている（宙に浮かせない）',
+        !!mix && mix.loose === 0, mix ? `${mix.lines}本中 ${mix.loose}本が宙ぶらりん` : '読めない');
     rec('出しきれない幅は出していない（重ねて出さない）',
         !!pk.dims && pk.dims.inside + pk.dims.lead + pk.dims.off === pk.dims.all,
         pk.dims ? `${pk.dims.inside}+${pk.dims.lead}+${pk.dims.off} = ${pk.dims.all}` : '読めない');
@@ -1018,6 +1062,9 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         !!many.pack && many.pack.over === 0 && many.pack.drop === 0,
         many.pack ? `超過 ${many.pack.over} / 落とし ${many.pack.drop}`
                   : '読めない');
+    rec('22条でも端から端が有効長を超えていない',
+        !!many.pack && many.pack.x0 >= -0.05 && many.pack.x1 <= many.pack.arbor + 0.05,
+        many.pack ? `${many.pack.x0} 〜 ${many.pack.x1} / 有効長 ${many.pack.arbor}` : '読めない');
     rec('22条でも端数は埋めてある', !!many.pack && many.pack.fillerMm < 1,
         many.pack ? `${many.pack.filler}か所・計 ${many.pack.fillerMm}mm` : '読めない');
     rec('22条でも機械まわりは断面図に出ない', many.stray === 0, `外に残った物 ${many.stray}`);

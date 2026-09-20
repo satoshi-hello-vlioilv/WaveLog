@@ -177,7 +177,12 @@
          <svg class="bs-t3v" id="bsCutDim" aria-hidden="true"></svg>
          <span class="bs-t3 bs-t3-os is-os" hidden title="OS 側。刃組ではこちらへ詰めていきます">OS</span>
          <span class="bs-t3 bs-t3-ds is-ds" hidden title="DS 側。軸端部を外し、こちらから部材を入れます">DS</span>
-         <div class="bs-hud is-tl"><div class="bs-o3" hidden></div></div>
+         <!-- **設定有効長と、組んだときの上下それぞれの合計長**（§9.418 追補、
+              利用者の指示）。図の読み方の段とは別に置く——あちらは
+              「どう見るか」、こちらは「合っているか」の突き合わせ。
+              （この中は文字列リテラルの中なので、逆引用符は書けない） -->
+         <div class="bs-hud is-tl"><div class="bs-o3" hidden></div>
+          <div class="bs-len3" hidden></div></div>
          <div class="bs-hud is-tr">
           <button type="button" class="bs-hlp bs-help3" aria-expanded="false">使い方</button>
           <div class="bs-hpop" hidden>
