@@ -198,7 +198,12 @@
               （寄る・引くはできません。平行投影の倍率を変えないので、
               どの向きから見ても寸法を並べて比べられます）。</dd>
             <dt>表示</dt>
-            <dd>下で板・刃・ゴムリング・スペーサーを消せます。点が付いているものが出ています。</dd>
+            <dd>下で板・刃・ゴムリング・スペーサーを消せます。点が付いているものが出ています。
+              <b>消したものを</b>「薄く」（薄く残す）／「線だけ」（輪郭のワイヤーフレーム）／
+              「出さない」（まったく描かない）から選べます。刃だけを見たいけれど
+              <b>スペーサーがどこに居たかも知りたい</b>ときは「薄く」が読みやすく、
+              位置だけを確かめたいときは「線だけ」、何も邪魔されたくないときは
+              「出さない」です。</dd>
            </dl>
           </div>
          </div>
@@ -208,6 +213,17 @@
            <button type="button" class="bs-tg is-on" data-show="knife" data-show-name="刃" aria-pressed="true">刃</button>
            <button type="button" class="bs-tg is-on" data-show="ring" data-show-name="ゴムリング" aria-pressed="true">ゴムリング</button>
            <button type="button" class="bs-tg is-on" data-show="liner" data-show-name="スペーサー" aria-pressed="true">スペーサー</button>
+           <!-- **隠し方は「表示」と同じ群の中**（§9.422）。消したものをどう出すかは
+                上の入切に**かかる設定**なので、別の群に離すと何に効くのか読めない。
+                1つだけ選ぶのでセグメント（押した札が濃い）で、入切のトグルとは
+                作りを分ける（§9.247）。既定は「出さない」＝今までの動き。 -->
+           <span class="bs-hud-sep"></span>
+           <span class="bs-hud-cap">消したものは</span>
+           <div class="bs-hide" role="group" aria-label="消した部材の見せ方">
+            <button type="button" data-hide="ghost" aria-pressed="false">薄く</button>
+            <button type="button" data-hide="wire" aria-pressed="false">線だけ</button>
+            <button type="button" class="is-on" data-hide="gone" aria-pressed="true">出さない</button>
+           </div>
           </div>
           <div class="bs-hud-grp bs-hud-grp--rig"><span class="bs-hud-cap">段取り</span>
            <button type="button" class="bs-btn is-sm is-on bs-step3-pull">①ラインへ戻す</button>

@@ -50,7 +50,12 @@
    cutAz:0, cutEl:0, marks:[], zmarks:[], zr:0, dims:[], knives:[],
    spin:false, busy:false, failed:false, decals:[],
    /* 立体図で見せる部材。刃だけを見たいときなど、邪魔なものを消せるようにする。 */
-   show:{ mat:true, knife:true, ring:true, liner:true } };
+   show:{ mat:true, knife:true, ring:true, liner:true },
+   /* 消した部材の**見せ方**（§9.422、利用者の指示）。`gone`＝出さない（今までの
+      動き）／`ghost`＝薄く残す／`wire`＝線だけ。消すのは「邪魔だから」であって
+      「無いことにしたい」わけではない——薄く残せば、隠れていた刃を見ながら
+      **どこにスペーサーが居たか**も同時に読める。 */
+   hide:'gone' };
 
  /* 機械まわりの寸法。図面 SL-1458-01S と外観図から取る。
     分かっている値はそのまま、外形の幅・高さ・奥行は外観図に合わせた概寸。 */
@@ -332,6 +337,28 @@
    return cache.get(k);
   };
  })();
+ /* ---- 消した部材の見せ方（§9.422）------------------------------------
+    「表示」で切った部材を**どう出すか**は`D3.hide`の1つが決める。
+    ・`gone`  … 描かない（今までの動き）
+    ・`ghost` … **同じ色のまま薄く**残す（色を変えると何の部材か読めなくなる）
+    ・`wire`  … 輪郭の線だけ
+    材質は**元の材質の写し**を隠し方ごとに作る（名前に隠し方が入るので、
+    描いた物そのものから「透かして在る」ことを数えられる）。 */
+ const HIDE_SPEC = {
+  ghost: { transparent: true, opacity: .13, depthWrite: false },
+  wire: { wireframe: true, transparent: true, opacity: .38, depthWrite: false }
+ };
+ /* その部材の材質。切ってあるときは隠し方の写しを返し、`gone`なら`null`。
+    **呼ぶ側は「材質が無ければ描かない」の1本で書ける**（`if (sh.liner)`のような
+    入切の分岐を部材ごとに増やさない）。 */
+ function skin(T, on, key, o) {
+  if (on) return matOf(T, key, o);
+  const spec = HIDE_SPEC[D3.hide];
+  return spec ? matOf(T, key + '~' + D3.hide, Object.assign({}, o, spec)) : null;
+ }
+ /* その部材を**組み立てるか**。切ってあっても`gone`以外なら組み立てる
+    （透かす・線だけにするには、物がそこに無いといけない）。 */
+ const drawn = k => !!(D3.show[k] || HIDE_SPEC[D3.hide]);
  /* 内径の開いた管。丸刃・スペーサー・ゴムリングは図面どおり中心に穴が開いている。
     同じ寸法は使い回す（区間ごとに何十枚も並ぶため）。 */
  const TUBES = new Map();
@@ -654,10 +681,13 @@
   D3.zmarks = zmk;
   const fr = frame(T, g, L, yU, yL);
   const sd = +ctx.M.P.shaftDia || 200, bore = sd / 2;
-  const blade = matOf(T, 'blade', { color: '#3f4854', metalness: .78, roughness: .16 });
-  const liner = matOf(T, 'liner',
+  const sh = D3.show;
+  /* 材質は**隠し方まで込みで**受け取る（§9.422）。切ってあれば薄い写し・
+     `gone`なら`null`が返るので、以下は「材質が無ければ描かない」だけで書ける。 */
+  const blade = skin(T, sh.knife, 'blade', { color: '#3f4854', metalness: .78, roughness: .16 });
+  const liner = skin(T, sh.liner, 'liner',
     { color: cutColor('--bs-fig-spacer', '#a8b2bd'), metalness: .38, roughness: .46 });
-  const edge = matOf(T, 'linerEdge',
+  const edge = skin(T, sh.liner, 'linerEdge',
     { color: cutColor('--bs-fig-spacer-edge', '#5d6975'), metalness: .42, roughness: .55 });
   /* 部材は図面どおり内径の開いた輪。軸が通って見えるので、そのまま管で描く。
      スペーサーは1枚ずつの区切りが分かるよう、外周だけ細い帯を濃い色で重ねる。 */
@@ -667,10 +697,9 @@
    if (m) g.add(m);
    cap(T, g, items, ro, ri, mat);      /* 断面図のときだけ切り口を置く（§9.412） */
   };
-  const sh = D3.show;
   const linerR = (+ctx.M.P.spacerOD || 240) / 2;
   const ringBore = (+ctx.M.P.ringBore || 241) / 2;
-  if (sh.liner) {
+  if (liner) {
    const real = out.liner.filter(q => !q.filler);
    const ls = real.map(q => ({ x: q.x, y: q.y, len: q.sz - 0.8 }));
    put(ls, linerR, bore, liner);
@@ -678,11 +707,11 @@
    /* 端数（模式図と同じ色）。**部材ではない**ので、幅の字も出さない。 */
    const pad = out.liner.filter(q => q.filler).map(q => ({ x: q.x, y: q.y, len: q.sz }));
    if (pad.length) {
-    put(pad, linerR, bore, matOf(T, 'filler',
+    put(pad, linerR, bore, skin(T, sh.liner, 'filler',
       { color: cutColor('--bs-fig-filler', '#dfe4ea'), metalness: .3, roughness: .6 }));
    }
   }
-  if (sh.ring) {
+  if (drawn('ring')) {
    /* 保持層は**ゴムリングでもフィンガーでも同じ層**（§9.377）。色はゴムリングだけ
       マスタの値で、フィンガーは1色（樹脂の押さえ）。 */
    groupBy(out.ring, q => (q.hold.kind === 'ring' ? 'r' + q.hold.od : 'f')).forEach((list, key) => {
@@ -691,10 +720,10 @@
     const color = isRing ? (ctx.ringHex(od) || '#8d97a6') : '#6f7d8c';
     put(list.map(q => ({ x: q.x, y: q.y, len: q.sz - 1.0 })), od / 2,
         isRing ? ringBore : linerR,
-        matOf(T, 'hold' + key, { color, metalness: .02, roughness: .9 }));
+        skin(T, sh.ring, 'hold' + key, { color, metalness: .02, roughness: .9 }));
    });
   }
-  if (sh.knife) put(out.knife.map(q => ({ x: q.x, y: q.y, len: tk })), ctx.st.knife / 2, bore, blade);
+  if (blade) put(out.knife.map(q => ({ x: q.x, y: q.y, len: tk })), ctx.st.knife / 2, bore, blade);
   /* **端から端が有効長を超えていないか**（§9.418 追補、利用者の指示「有効長より
      エンドtoエンドが長くなっていないか確認してほしい。この有効長を基準に描画する
      必要があります」）。区間の和＋刃の厚みは作りのうえで有効長ちょうどになるが、
@@ -792,17 +821,19 @@
  function material(T, g, A, segs, L) {
   const off = x => x - L / 2, th = Math.max(0.2, ctx.st.thick);
   const run = BS().materialRun(A, segs), IN = 620, OUT = 760;
-  /* 板は見せ消しできる。大きさ（IN・OUT）は返すので、消しても画面の収まりは変わらない。 */
-  if (!D3.show.mat) { D3.marks = []; return { IN, OUT }; }
+  /* 板は見せ消しできる。大きさ（IN・OUT）は返すので、消しても画面の収まりは変わらない。
+     **消しても「出さない」以外なら物は組み立てる**（§9.422。薄く残す・線だけ）。 */
+  const matOn = D3.show.mat;
+  if (!drawn('mat')) { D3.marks = []; return { IN, OUT }; }
   /* 板と耳屑は、断面図では**模式図と同じ色**にする（§9.415）。立体図の板は
      ロールの上に載った1枚として機械の中で見るので明るい鋼色でよいが、断面図の
      板は**いちばん薄い物**（見かけの厚みを8倍に誇張してなお数px）なので、
      明るい鋼色のままだと地に溶ける（実測: 輝度231に対し地が241、差は10）。
      模式図の板・耳の色（`--bs-fig-strip`／`--bs-fig-trim`）を借りると、
      **2つの図で同じ物が同じ色**になり（§CLAUDE 8）、地との差も付く。 */
-  const sheet = matOf(T, 'sheet',
+  const sheet = skin(T, matOn, 'sheet',
     { color: cutColor('--bs-fig-strip', '#c5ccd4'), metalness: .62, roughness: .24 });
-  const trim = matOf(T, 'trim',
+  const trim = skin(T, matOn, 'trim',
     { color: cutColor('--bs-fig-trim', '#b0a48d'), metalness: .45, roughness: .5 });
   const w0 = run.length ? run[0].from : 0, w1 = run.length ? run[run.length - 1].to : 0;
   const cut = (list, mat) => { const b = batch(T, D3.box, mat, list); if (b) g.add(b); };
@@ -848,7 +879,9 @@
       条にも部材にもかからない——板と軸のあいだには実寸で数mmしか無く、
       外へ出すと必ずゴムリングの帯に乗る（実際に乗っていた）。
       置き場は板の帯の中なので**1行**にする（2行は入らない）。 */
-   D3.marks = run.map(({ sg, from, to }, i) => {
+   /* **切ってある板の札は出さない**（§9.422）。薄く残すのは「そこに在る」ことを
+      見せるためで、寸法まで並べると読む物が増えるだけになる。 */
+   D3.marks = !matOn ? [] : run.map(({ sg, from, to }, i) => {
     const strip = sg.type === 'strip';
     return { x: off((from + to) / 2), y: -yOf(i), z: 0, row: true,
              kind: strip ? 'strip' : (sg.type === 'scrap' ? 'scrap' : 'trim'),
@@ -871,8 +904,10 @@
   /* 入側・出側の札は板そのものに貼る。立体の中にあるので、軸や部材の向こうに
      回れば隠れる（手前にあるものが手前に見える）。 */
   const mcx = off((w0 + w1) / 2), dy = th / 2 + 105;
-  decal(T, g, '入側', '元板（切断前）', mcx, dy, -IN / 2);
-  decal(T, g, '出側', '切断後', mcx, dy + th, OUT / 2);
+  if (matOn) {
+   decal(T, g, '入側', '元板（切断前）', mcx, dy, -IN / 2);
+   decal(T, g, '出側', '切断後', mcx, dy + th, OUT / 2);
+  }
   return { IN, OUT };
  }
 
@@ -989,6 +1024,23 @@
   };
   walk(D3.g);
   return n;
+ }
+
+ /* 隠した部材が**そこに在るか**を、描いた物そのものから数える（§9.422）。
+    材質の名前に隠し方が入る（`liner~ghost`）ので、絵の見た目ではなく
+    **組み立てている物**で「透かして在る」と「物ごと無い」を見分けられる。 */
+ function skinCount() {
+  let skinned = 0, mesh = 0;
+  const walk = o => {
+   if (!o) return;
+   if (o.isMesh) {
+    mesh++;
+    if (/~(ghost|wire)/.test((o.material && o.material.name) || '')) skinned++;
+   }
+   (o.children || []).forEach(walk);
+  };
+  walk(D3.g);
+  return { skinned, mesh };
  }
 
  /* 立体図を組み直す。模式図と同じ A・segs・zp から作る。 */
@@ -1613,6 +1665,7 @@
     D3.moved = false; Object.assign(CAM, HOME); render(); return undefined;
    }
    if (b.dataset.show) return toggleShow(b);
+   if (b.dataset.hide) return pickHide(b);
    if (b.classList.contains('bs-help3')) return toggleHelp(b);
    return undefined;
   });
@@ -1649,6 +1702,10 @@
   note(D3.open ? '軸端部を 330mm 送り出しました。テーブルの外の土台に降り、軸の先が剥き出しです。'
                : '軸端部を戻しました。');
  }
+ /* 消した部材の見せ方の呼び名（§9.422）。**画面の札と同じ言葉**を1箇所に持つ
+    ——知らせの文が「消しました」で終わると、薄く残っている物を見て
+    「消えていない」と読まれる。 */
+ const HIDE_WORD = { gone: '出しません', ghost: '薄く残します', wire: '線だけで描きます' };
  /* 見せる部材の入切。**言葉は部材の名前で固定**し、点が付いているかどうかで
     入切を示す（押すたびに言葉が変わると読み違える）。 */
  function toggleShow(b) {
@@ -1657,8 +1714,34 @@
   b.classList.toggle('is-on', on);
   b.setAttribute('aria-pressed', String(on));
   build();
-  note(`${b.dataset.showName || key}を${on ? '表示' : '非表示'}にしました。`);
+  /* 消したときは**いまの隠し方まで**言う（§9.422、§CLAUDE 6）。同じ「非表示」でも
+     画面に残るかどうかが違うので、言わないと「効いていない」と読まれる。 */
+  note(on ? `${b.dataset.showName || key}を表示にしました。`
+          : `${b.dataset.showName || key}を非表示にしました（${HIDE_WORD[D3.hide]}）。`);
   return undefined;
+ }
+ /* 消した部材の見せ方を選ぶ（§9.422、利用者の指示）。**1つだけ選ぶ**ので
+    セグメント（押した札のほうが濃い）で、入切のトグルとは作りを分ける（§9.247）。 */
+ function pickHide(b) {
+  const key = b.dataset.hide;
+  if (!key || !(key in HIDE_WORD) || D3.hide === key) return undefined;
+  D3.hide = key;
+  paintHide();
+  build();
+  const off = Object.keys(D3.show).filter(k => !D3.show[k]).length;
+  note(`消した部材は${HIDE_WORD[key]}。`
+     + (off ? '' : '（いまは何も消していないので、「表示」で切ったときに効きます）'));
+  return undefined;
+ }
+ /* 選んだ見せ方の札を塗る。**帯のHTMLは`ensurePanel()`が一度だけ作って使い回す**
+    ので（開き直しても作り直されない）、塗るのは押されたときだけでよい。 */
+ function paintHide() {
+  if (!host) return;
+  host.querySelectorAll('[data-hide]').forEach(el => {
+   const on = el.dataset.hide === D3.hide;
+   el.classList.toggle('is-on', on);
+   el.setAttribute('aria-pressed', String(on));
+  });
  }
  function toggleHelp(b) {
   const pop = $h('.bs-hpop');
@@ -1735,6 +1818,9 @@
            cutLines: D3.cutLines | 0, spanLine: D3.spanLine || null,
            /* 詰めの事実と、行き先を間違えた物の数（§9.418）。 */
            pack: D3.pack || null, stray: D3.stray | 0,
+           /* 消した部材の見せ方と、その結果（§9.422）。`skinned`＝薄く／線だけで
+              残っている物の数、`mesh`＝組み立てている物の数。 */
+           hide: D3.hide, skins: skinCount(),
            dimSep: D3.dimSep || 0,
            /* 断面図で刃先のあいだに空けた隙間と、板が占める高さ（§9.413 追補）。
               **板がめり込まないこと**を網が数字で見るための2つ。 */
@@ -1758,6 +1844,7 @@
   get on() { return D3.on; },
   get ready() { return !!D3.r; },
   get show() { return Object.assign({}, D3.show); },
+  get hide() { return D3.hide; },
   get stage() { return { out: D3.out, open: D3.open, rot: D3.rot }; },
   THREE_SRC
  };

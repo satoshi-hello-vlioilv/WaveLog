@@ -641,7 +641,11 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      show: [...document.querySelectorAll('#bsStage3 [data-show]')]
        .map(b => b.textContent + ':' + b.getAttribute('aria-pressed')),
      steps: [...document.querySelectorAll('#bsStage3 .bs-hud.is-bot .bs-btn')]
-       .map(b => b.textContent)
+       .map(b => b.textContent),
+     hide: [...document.querySelectorAll('#bsStage3 [data-hide]')]
+       .map(b => b.textContent + ':' + b.getAttribute('aria-pressed')),
+     hideIn: !!document.querySelector('#bsStage3 [data-show]')
+       ?.closest('.bs-hud-grp')?.querySelector('[data-hide]')
     }));
     rec('立体図にすると模式図の器を伏せ、立体図の器だけを出す（横に2つ並べない）',
         st3.stage2 === true && st3.stage3 === false && st3.shown,
@@ -653,8 +657,20 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('見せる部材の入切は板・刃・ゴムリング・スペーサーの4つ（言葉は部材の名前で固定）',
         st3.show.join('/') === '板:true/刃:true/ゴムリング:true/スペーサー:true',
         st3.show.join('/'));
-    rec('HUDは「表示」「段取り」「視点」の3群', st3.caps.join('/') === '表示/段取り/視点',
+    /* **顔ぶれを文字列で丸ごと固定しない**（§9.389）。正しい位置へ1枚足しただけで
+       落ちるので、前後関係で見る——「表示」が先頭・「段取り」「視点」がその後ろ。 */
+    rec('HUDは「表示」から始まり、「段取り」「視点」がその後ろに並ぶ',
+        st3.caps[0] === '表示'
+        && st3.caps.indexOf('段取り') > 0
+        && st3.caps.indexOf('視点') > st3.caps.indexOf('段取り'),
         st3.caps.join('/'));
+    /* 隠し方は**「表示」と同じ群の中**（§9.422）。消したものをどう出すかは上の
+       入切にかかる設定なので、別の群へ離すと何に効くのか読めない。 */
+    rec('消した部材の見せ方は「表示」の群の中にある',
+        st3.hideIn === true && st3.caps.indexOf('消したものは') === 1,
+        String(st3.hideIn) + '/' + st3.caps.join('/'));
+    rec('見せ方は「薄く／線だけ／出さない」の3つで、既定は「出さない」（今までの動き）',
+        st3.hide.join('/') === '薄く:false/線だけ:false/出さない:true', st3.hide.join('/'));
     /* **「視点を戻す」は段取りの外**（§9.413 追補）。断面図では段取りの群ごと
        伏せるので、同じ群に入れると戻す道まで消える。 */
     rec('段取りは3手順、視点を戻すは別の群',
@@ -1043,6 +1059,63 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await page.keyboard.press('Escape');
     await W.until(page, () => document.querySelector('#bsZoom').hidden, null,
                   { ms: 4000, what: '拡大図を閉じる' });
+    /* ---- 4.8b) 消した部材の見せ方（§9.422、利用者の指示） ----
+       「表示」で切った部材を **そのまま消す／薄く残す／線だけ** から選べる。
+       **絵の見た目ではなく、組み立てている物の数で見る**——「薄く残す」は
+       「描かない」ではなく「薄い材質で描く」なので、材質の名前で数えれば
+       「透かして在る」と「物ごと無い」が数字で分かれる。 */
+    const hideAt = () => page.evaluate(() => {
+     const v = window.WL.bladeSolid.view();
+     return { hide: v.hide, mesh: (v.skins || {}).mesh | 0,
+              skinned: (v.skins || {}).skinned | 0, dims: (v.dims || {}).all | 0 };
+    });
+    const h0 = await hideAt();
+    rec('既定は「出さない」（今までの動き）で、薄く残っている物は1つも無い',
+        h0.hide === 'gone' && h0.skinned === 0 && h0.mesh > 0, JSON.stringify(h0));
+    await page.click('#bsStage3 [data-show="liner"]');
+    await W.until(page, m => window.WL.bladeSolid.view().skins.mesh < m, h0.mesh,
+                  { ms: 8000, what: 'スペーサーを消す' });
+    const hGone = await hideAt();
+    rec('「出さない」でスペーサーを切ると、物ごと無くなる',
+        hGone.mesh < h0.mesh && hGone.skinned === 0,
+        `物 ${h0.mesh} → ${hGone.mesh} / 薄い物 ${hGone.skinned}`);
+    await page.click('#bsStage3 [data-hide="ghost"]');
+    await W.until(page, () => window.WL.bladeSolid.view().skins.skinned > 0, null,
+                  { ms: 8000, what: '薄く残す' });
+    const hGhost = await hideAt();
+    rec('「薄く」にすると、切った部材が物として戻る（薄い材質で描かれる）',
+        hGhost.hide === 'ghost' && hGhost.skinned > 0 && hGhost.mesh > hGone.mesh,
+        `物 ${hGone.mesh} → ${hGhost.mesh} / 薄い物 ${hGhost.skinned}`);
+    /* **薄く残しても字は増やさない**。残すのは「そこに在る」ことを見せるためで、
+       寸法まで並べると、消して減らしたはずの読む物が戻ってしまう。 */
+    rec('薄く残した部材の寸法の字は出さない（読む物を増やさない）',
+        hGhost.dims === hGone.dims && hGhost.dims < h0.dims,
+        `出さない ${hGone.dims} / 薄く ${hGhost.dims} / 全部出す ${h0.dims}`);
+    await page.click('#bsStage3 [data-hide="wire"]');
+    await W.until(page, () => window.WL.bladeSolid.view().hide === 'wire', null,
+                  { ms: 8000, what: '線だけにする' });
+    const hWire = await hideAt();
+    rec('「線だけ」でも物はそこに在る（輪郭で位置が読める）',
+        hWire.hide === 'wire' && hWire.skinned > 0 && hWire.mesh === hGhost.mesh,
+        `物 ${hWire.mesh} / 薄い物 ${hWire.skinned}`);
+    /* 選べるのは**1つだけ**（セグメント）。2つ光っていたら、どちらが効いて
+       いるのかを押した人が推測することになる。 */
+    const hOn = await page.evaluate(() =>
+     [...document.querySelectorAll('#bsStage3 [data-hide]')]
+      .filter(b => b.classList.contains('is-on')).map(b => b.dataset.hide));
+    rec('見せ方は1つだけ選ばれている（押した札だけが濃い）',
+        hOn.length === 1 && hOn[0] === 'wire', hOn.join('/'));
+    /* **確かめたら戻す**（後の節が別の姿を見る）。 */
+    await page.click('#bsStage3 [data-show="liner"]');
+    await page.click('#bsStage3 [data-hide="gone"]');
+    await W.until(page, m => { const v = window.WL.bladeSolid.view();
+      return v.hide === 'gone' && v.skins.skinned === 0 && v.skins.mesh === m; }, h0.mesh,
+                  { ms: 8000, what: '元へ戻す' });
+    const hBack = await hideAt();
+    rec('元へ戻せる（物の数も字の数も元どおり）',
+        hBack.mesh === h0.mesh && hBack.skinned === 0 && hBack.dims === h0.dims,
+        JSON.stringify(hBack) + ' / ' + JSON.stringify(h0));
+
     /* ---- 4.9) 現実的な構成でも同じことが言えるか（§9.418） ----
        利用者の指摘「サンプルが若干悪い気もする。よくあるパターンでは50mmくらいの
        板幅で22条くらい。屑幅は製品幅より大きくならず、片耳35mm以下、通常は

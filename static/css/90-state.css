@@ -532,6 +532,7 @@ body.sc-mode #headerContextSource{display:none}
   /* 濃い面（縁つき）（24族） */
   #reportArrange.is-on,
   .ac-chip.is-on,
+  .bs-hide button.is-on,
   .db-presets button.active,
   .db-seg button.active,
   .filter-search-row-actions #filterAdhocToggle.is-on,
