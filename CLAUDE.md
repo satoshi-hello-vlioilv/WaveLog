@@ -1,7 +1,7 @@
 # WaveLog 開発メモ（AIアシスタント向け）
 
 **この1枚は入口だけを持つ。** 規則の本体は
-[`.claude/rules/`](.claude/rules/README.md)（701件・領域別の15枚）、
+[`.claude/rules/`](.claude/rules/README.md)（703件・領域別の15枚）、
 なぜそうなのか（実測値・撤回した案・踏んだ罠）は
 [`docs/decisions/`](docs/decisions/README.md)（376の決定記録＋主題別の索引）。
 **コードを触る前に、触る領域の1枚を開くこと。**

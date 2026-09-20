@@ -1,4 +1,4 @@
-# 起動・停止・監視（37件）
+# 起動・停止・監視（39件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -17,6 +17,8 @@
 | `backend`から素の`from app import app`を書かない。答えは`app_module.flask_app()`の1箇所 | `test_scowner.py` | [§9.404](../../docs/decisions/9.404.md) |
 | ファイルを移すときは見張り（`pick_tests.py`・lintの対象・CI）も一緒に動かす | `test_pick.py` | [§9.404](../../docs/decisions/9.404.md) |
 | 起動画面は待機画面と`#appBoot`が**同じ意匠・同じ色**。更新の有無は同じ場所で言い分ける | `test_boot.py` | [§9.411](../../docs/decisions/9.411.md) |
+| 起動画面の地は深い紺＋斜めの光。**カードは不透明な白のまま**（透かすと本文が薄れ、描画も重い） | `test_boot.py` | [§9.411](../../docs/decisions/9.411.md) |
+| 待機画面へ写したトークンは本体と1文字も違わないこと。地の指定も2箇所で同じ | `test_boot.py` | [§9.411](../../docs/decisions/9.411.md) |
 | 波紋はヘッダーの帯の中だけ（`overflow:hidden`）。輪は**幅と高さ**で広げる（`scale`は線まで太る） | `test_theme.js` | [§9.411](../../docs/decisions/9.411.md) |
 | ショートカットの行き先は`Start.vbs`1本、アイコンは`app_icon.py`が描く。作れない端末は理由を返す | `test_shortcut.py` | [§9.410](../../docs/decisions/9.410.md) |
 | 起動前の確認は`update.bat`（旧`setup.bat`）が受け持ち、刻印で飛ばす | `test_faststart.py` | [§9.225](../../docs/decisions/9.225.md) |
