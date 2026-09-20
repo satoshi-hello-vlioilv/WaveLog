@@ -131,24 +131,32 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('手順ボタンに今の条件が出る（畳んでいても読める）',
         s1.steps.length === 4 && s1.steps.every(t => t && t !== '—'), s1.steps.join(' / '));
 
-    /* ---- 3) 幅を変えると、図・表・所要が同じ1回で追従する ---- */
+    /* ---- 3) 幅を変えると、図・表・所要が同じ1回で追従する ----
+       **打つのは現場でよくある形**（§9.423、利用者の指示「検証用フィクスチャの
+       ロットは変更して」）。以前は 120mm×6条／元板巾1170 を打っており、
+       **片耳が225mm**＝製品幅より屑幅のほうが広い、現場に無い形だった
+       （利用者の指摘「屑幅は製品幅より大きくならず、片耳35mm以下、通常は
+       15mmくらいがメジャー」）。ここを既定の材料にしておくと、**以降の節が
+       全部その形でしか確かめていない**ことになる。
+       50mm×22条／元板巾1130 なら片耳15mm——条が混み、屑が細い、通常の形。 */
     await page.click('[data-step-open="bsV3"]');
     await page.waitForSelector('#bsLotTbl input[data-k="w"]', { timeout: 8000 });
     await page.evaluate(() => {
-     const el = document.querySelector('#bsLotTbl input[data-k="w"]');
-     el.value = '120';
-     el.dispatchEvent(new Event('input', { bubbles: true }));
-     const n = document.querySelector('#bsLotTbl input[data-k="n"]');
-     n.value = '6';
-     n.dispatchEvent(new Event('input', { bubbles: true }));
+     const put = (el, v) => { el.value = String(v);
+       el.dispatchEvent(new Event('input', { bubbles: true })); };
+     /* **元板巾を先に**（条の合計が入らない幅のままだと、屑幅が負になる条数を
+        受け付けない＝§9.210 で弾かれる）。 */
+     put(document.querySelector('#bsW'), 1130);
+     put(document.querySelector('#bsLotTbl input[data-k="w"]'), 50);
+     put(document.querySelector('#bsLotTbl input[data-k="n"]'), 22);
     });
-    await W.until(page, () => /120/.test(document.querySelector('#bsV3').textContent),
+    await W.until(page, () => /50/.test(document.querySelector('#bsV3').textContent),
                   null, { ms: 8000, what: '手順3の現在値' });
     const s2 = await snap();
     rec('幅を変えると図が描き直される', s2.rects !== s1.rects || s2.rows !== s1.rows,
         `rects ${s1.rects}→${s2.rects} / rows ${s1.rows}→${s2.rows}`);
     rec('条の並びが本数どおりになる',
-        (await page.evaluate(() => document.querySelectorAll('#bsOrdList .bs-oc').length)) === 6);
+        (await page.evaluate(() => document.querySelectorAll('#bsOrdList .bs-oc').length)) === 22);
     const kpi = await page.evaluate(() => document.querySelector('#bsKpis').textContent);
     rec('割付の内訳（耳・条・刃の対数）が出る', /OS耳/.test(kpi) && /刃 対数/.test(kpi),
         kpi.replace(/\s+/g, ' ').slice(0, 60));
@@ -1116,29 +1124,29 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         hBack.mesh === h0.mesh && hBack.skinned === 0 && hBack.dims === h0.dims,
         JSON.stringify(hBack) + ' / ' + JSON.stringify(h0));
 
-    /* ---- 4.9) 現実的な構成でも同じことが言えるか（§9.418） ----
-       利用者の指摘「サンプルが若干悪い気もする。よくあるパターンでは50mmくらいの
-       板幅で22条くらい。屑幅は製品幅より大きくならず、片耳35mm以下、通常は
-       15mmくらいがメジャー」。検証用フィクスチャのロットは 120mm×5条／片耳225mm
-       で、**屑幅が製品幅より大きい**——現場に無い形なので、これだけで図の見え方を
-       決めると「条が少なく耳が広い」ときしか確かめていないことになる。
+    /* ---- 4.9) もう一方の端（幅の広い条が少し）でも同じことが言えるか ----
+       **片方だけで決めない**（§9.418）。手順3で打つ既定を「50mm×22条／片耳15mm」
+       ＝混んだ通常の形にした（§9.423）ので、ここで確かめるのは**反対の端**
+       ——幅の広い条が少しだけ並ぶ形（279.8mm×4条／元板巾1170＝片耳25.4mm。
+       画面の既定値そのもので、これも現場にある形）。札が入るかは混んだ側で、
+       札が離れすぎないか・区間が長くなっても詰めが崩れないかは広い側で出る。
        **状態を差し替えて描き直し、確かめたら必ず戻す**（後の節が別の材料を見る）。 */
     const wasLots = await page.evaluate(() => {
      const st = window.WL.bladeGuide.state;
      const keep = { lots: st.lots, order: st.order, W: st.W, trimMode: st.trimMode };
-     st.lots = [{ name: 'LOT1', w: 50, n: 22 }];
-     st.order = Array.from({ length: 22 }, () => 0);
-     st.W = 1130; st.trimMode = 'even';
+     st.lots = [{ name: 'LOT1', w: 279.8, n: 4 }];
+     st.order = [0, 0, 0, 0];
+     st.W = 1170; st.trimMode = 'even';
      const el = document.querySelector('#bsKnife');
      el.value = st.knife;
      el.dispatchEvent(new Event('input', { bubbles: true }));
      return keep;
     });
-    /* 刃の数は「条の数−1」ではない——耳屑も1つの区間なので、24区間で23本に
-       なる。**数を決め打ちせず「増えたこと」で待ち**、本数どうしの一致は
-       下で突き合わせる（決め打ちして外すと、待ちが黙って素通りする）。 */
-    await W.until(page, () => (window.WL.bladeSolid.view() || {}).knives > 15,
-                  null, { ms: 8000, what: '22条で描き直す' });
+    /* 刃の数は「条の数−1」ではない——耳屑も1つの区間なので、6区間で5本になる。
+       **数を決め打ちせず「減ったこと」で待ち**、本数どうしの一致は下で突き合わせる
+       （決め打ちして外すと、待ちが黙って素通りする）。 */
+    await W.until(page, () => (window.WL.bladeSolid.view() || {}).knives < 15,
+                  null, { ms: 8000, what: '4条で描き直す' });
     const many = await page.evaluate(() => {
      const v = window.WL.bladeSolid.view();
      const vis = sel => [...document.querySelectorAll(sel)].filter(e => !e.hidden);
@@ -1157,24 +1165,25 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
               knives: v.knives, marks: mk.length, hit,
               badges: vis('#bsStage3 .bs-t3b').length };
     });
-    rec('22条でも割り付けが区間長を超えず、部材を落とさない',
+    rec('幅の広い4条でも割り付けが区間長を超えず、部材を落とさない',
         !!many.pack && many.pack.over === 0 && many.pack.drop === 0,
         many.pack ? `超過 ${many.pack.over} / 落とし ${many.pack.drop}`
                   : '読めない');
-    rec('22条でも端から端が有効長を超えていない',
+    rec('幅の広い4条でも端から端が有効長を超えていない',
         !!many.pack && many.pack.x0 >= -0.05 && many.pack.x1 <= many.pack.arbor + 0.05,
         many.pack ? `${many.pack.x0} 〜 ${many.pack.x1} / 有効長 ${many.pack.arbor}` : '読めない');
-    rec('22条でも端数は埋めてある', !!many.pack && many.pack.fillerMm < 1,
+    rec('幅の広い4条でも端数は埋めてある', !!many.pack && many.pack.fillerMm < 1,
         many.pack ? `${many.pack.filler}か所・計 ${many.pack.fillerMm}mm` : '読めない');
-    rec('22条でも機械まわりは断面図に出ない', many.stray === 0, `外に残った物 ${many.stray}`);
-    rec('22条で描き直せている（刃が増えている）', many.knives > 15, `刃 ${many.knives}本`);
-    rec('22条でも切断の破線は刃の対と同じ数',
+    rec('幅の広い4条でも機械まわりは断面図に出ない', many.stray === 0, `外に残った物 ${many.stray}`);
+    rec('幅の広い4条で描き直せている（刃が減っている）', many.knives > 0 && many.knives < 15,
+        `刃 ${many.knives}本`);
+    rec('幅の広い4条でも切断の破線は刃の対と同じ数',
         many.cutLines === many.knives, `破線 ${many.cutLines} / 刃 ${many.knives}`);
-    /* **札は重ならない**。50mm の条が22本並ぶと、120mm×5条では出なかった
-       混み方になる——ここで初めて「入らない」が出る。 */
-    rec('22条でも板の札どうしが重ならない', many.marks > 0 && many.hit === 0,
+    /* 札の重なりは**混んだ側**（既定の50mm×22条）で出る。ここは広い側なので、
+       札が落ちていないこと・重なっていないことの両方を見る。 */
+    rec('幅の広い4条でも板の札どうしが重ならない', many.marks > 0 && many.hit === 0,
         `札 ${many.marks}枚 / 重なり ${many.hit}組`);
-    rec('22条でも区間の記号は出る', many.badges > 0, `${many.badges}枚`);
+    rec('幅の広い4条でも区間の記号は出る', many.badges > 0, `${many.badges}枚`);
     /* **必ず戻す**（§9.393 注ぎ込んだ見本はその場で片付ける）。 */
     await page.evaluate(keep => {
      const st = window.WL.bladeGuide.state;
@@ -1183,8 +1192,8 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      el.value = st.knife;
      el.dispatchEvent(new Event('input', { bubbles: true }));
     }, wasLots);
-    await W.until(page, () => (window.WL.bladeSolid.view() || {}).knives < 15,
-                  null, { ms: 8000, what: '元の構成へ戻す' });
+    await W.until(page, () => (window.WL.bladeSolid.view() || {}).knives > 15,
+                  null, { ms: 8000, what: '元の構成（50mm×22条）へ戻す' });
 
     /* **板が刃へめり込まない**（§9.413 追補、利用者の指摘「板がめり込んでいる」）。
        板は千鳥で上下へ寄るので**見かけの厚みの3倍**の高さを占める。刃先のあいだの
