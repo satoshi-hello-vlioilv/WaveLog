@@ -318,13 +318,37 @@ body.bs-mode .bs-shell{display:flex}
 .bs-t3.is-os{color:var(--rs-slate);border-color:var(--rs-slate-border);background:var(--rs-slate-bg)}
 .bs-t3.is-ds{color:var(--rs-brown);border-color:var(--rs-brown-border);background:var(--rs-brown-bg)}
 /* 板の札（§9.413 追補）。模式図と**同じ言葉**（条の番号・耳）で、値を下へ添える。
-   条と耳屑は図の中で色が違うので、札の色もそれに合わせる。 */
-.bs-t3-mk{display:grid;place-items:center;gap:0;padding:1px var(--space-1);
-  font-size:var(--fs-micro);line-height:1.25;background:var(--surface)}
+   条と耳屑は図の中で色が違うので、札の色もそれに合わせる。
+   **枠は持たない**（§9.417、利用者の指示「断面3Dのラベルの付け方は2Dを参考に
+   もう少し修正してほしい」）。模式図は枠の無い色の字で出している。枠を付けると
+   読み取り専用の値が押せる物に見え（§CLAUDE 10）、押せる記号の札とも紛れる。
+   立体の上でも読めるよう、地の色の縁取りだけ添える。 */
+.bs-t3-mk{display:grid;place-items:center;gap:0;padding:0;border:0;background:none;
+  font-size:var(--fs-micro);line-height:1.2;
+  text-shadow:0 0 3px var(--surface),0 0 3px var(--surface),0 0 2px var(--surface)}
 .bs-t3-mk b{font-size:var(--fs-sm);font-weight:800}
 .bs-t3-mk small{font-weight:700;font-variant-numeric:tabular-nums;color:var(--muted)}
-.bs-t3-mk.is-strip{color:var(--teal-dark);border-color:var(--teal)}
-.bs-t3-mk.is-trim,.bs-t3-mk.is-scrap{color:var(--rs-brown);border-color:var(--rs-brown-border)}
+.bs-t3-mk.is-strip{color:var(--teal-dark)}
+.bs-t3-mk.is-trim,.bs-t3-mk.is-scrap{color:var(--rs-brown)}
+/* 区間の的と記号（§9.417、利用者の指示「断面3Dの強調は2Dと同じ、表との
+   リンクで、クリックによる拡大表示も同じように欲しい」）。
+   **強調の見え方は模式図と同じ数**——淡い塗り16%＋1.6pxの縁（`.bs-zhit`）。
+   区間の板は**光るだけで押せない**（`pointer-events:none`）。立体は掴んで
+   回すので、区間ぜんたいを的にすると回す道をふさぐ——押せるのは記号の札だけ。 */
+.bs-t3z{position:absolute;pointer-events:none;border-radius:var(--radius-xs);
+  background:transparent;border:1.6px solid transparent;
+  transition:background .12s,border-color .12s}
+.bs-t3z[hidden]{display:none}
+.bs-t3z.is-pick{background:color-mix(in srgb,var(--teal) 16%,transparent);
+  border-color:var(--teal-dark)}
+/* 記号の札は刃組表の記号（`.bs-bdg`）と**同じ形・同じ色**。図と表で同じ物を
+   同じ顔で出す。押すと拡大図が開くので、重ねた時点で指を出す（`.bs-bhit`）。 */
+.bs-t3b{position:absolute;transform:translate(-50%,-50%);display:grid;place-items:center;
+  min-width:1.7em;height:1.7em;padding:0 3px;border-radius:var(--radius-xs);
+  background:var(--bs-fig-badge);color:#fff;font-weight:800;line-height:1;
+  border:1.2px solid var(--surface);transition:background .12s,transform .12s}
+.bs-t3b[hidden]{display:none}
+.bs-t3b.is-pick{background:var(--teal-dark);transform:translate(-50%,-50%) scale(1.14)}
 .bs-hud{position:absolute;display:flex;align-items:center;gap:var(--space-1);
   max-width:calc(100% - 20px)}
 .bs-hud.is-tl{left:10px;top:10px;flex-direction:column;align-items:flex-start}

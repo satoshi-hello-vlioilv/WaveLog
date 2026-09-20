@@ -2413,7 +2413,12 @@
   if (WL.bladeSolid) {
    WL.bladeSolid.attach($('#bsStage3'), { onSpin: () => {
     setFlip(!st.flip); renderOrder(); scheduleRender();
-   } });
+   },
+   /* 断面図の区間の記号が組み直されたら**印を塗り直す**（§9.417）。
+      記号は図を描くたびに作り直されるので、塗らないと重ねている最中に
+      光りが消える。呼ばれるのは**顔ぶれが変わったときだけ**（回している
+      あいだ毎フレームではない）。 */
+   onBadges: () => { paintBadgePick(); syncZoneZoom(); } });
   }
   /* 右の段 */
   /* 段の切り替え。**足元の「刃の状態を見る」も同じ道を通る**（入口を2つに

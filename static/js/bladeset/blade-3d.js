@@ -47,7 +47,7 @@
    /* 断面図の視点（§9.413 追補）。**板幅の中心を起点に**左右（`cutAz`）と
       上下（`cutEl`）へ回す。切る面は世界に固定したままなので、回しても
       切り口は動かない——動くのは見る位置だけ。 */
-   cutAz:0, cutEl:0, marks:[],
+   cutAz:0, cutEl:0, marks:[], zmarks:[], zr:0,
    spin:false, busy:false, failed:false, decals:[],
    /* 立体図で見せる部材。刃だけを見たいときなど、邪魔なものを消せるようにする。 */
    show:{ mat:true, knife:true, ring:true, liner:true } };
@@ -87,7 +87,8 @@
     器と、いま何を描くかだけを受け取る。 */
  let host = null;         /* `.bs-stage3` の器 */
  let ctx = null;          /* {st, M, res, ringHex} */
- let onSpinDone = null;   /* 台車を回し終えたことを画面へ知らせる */
+ let onSpinDone = null;  /* 台車を回し終えたことを画面へ知らせる */
+ let onBadges = null;    /* 区間の記号の顔ぶれが変わったことを画面へ知らせる */
 
  const $h = sel => (host ? host.querySelector(sel) : null);
 
@@ -598,15 +599,25 @@
  function machine(T, g, A, segs, zp, L, cd, tk) {
   const half = L / 2, off = x => x - half, yU = cd / 2, yL = -cd / 2;
   const out = { liner: [], ring: [], knife: [] };
+  /* 区間の記号（§9.417）。**模式図と同じ対応表**（`res.badges`）を読む——
+     図ごとに割り当て直すと、同じ区間が図と表で別の記号になり得る。
+     端の2区間（最外刃より外）は模式図でも記号を出さない（右レールの
+     端部の表が持つ）ので、ここでも出さない。 */
+  const bmap = (ctx.res && ctx.res.badges) || { up: {}, lo: {} };
+  const zmk = [];
   [[true, yU, A.U], [false, yL, A.Lo]].forEach(([upper, y, pos]) => {
    const side = upper ? 'up' : 'lo', n = pos.length;
-   zone(out, 0, pos[0] - tk / 2, y, zp.zones[0][side]);
-   for (let j = 0; j < segs.length; j++) {
-    zone(out, pos[j] + tk / 2, pos[j + 1] - tk / 2, y, zp.zones[j + 1][side]);
-   }
-   zone(out, pos[n - 1] + tk / 2, L, y, zp.zones[A.zones.length - 1][side]);
+   const spans = [[0, pos[0] - tk / 2]];
+   for (let j = 0; j < segs.length; j++) spans.push([pos[j] + tk / 2, pos[j + 1] - tk / 2]);
+   spans.push([pos[n - 1] + tk / 2, L]);
+   spans.forEach(([a, b], k) => {
+    zone(out, a, b, y, zp.zones[k][side]);
+    const r = (k > 0 && k < spans.length - 1) ? bmap[side][k] : null;
+    if (r) zmk.push({ badge: String(r.badge), x0: off(a), x1: off(b), y });
+   });
    pos.forEach(x => out.knife.push({ x, y }));
   });
+  D3.zmarks = zmk;
   const fr = frame(T, g, L, yU, yL);
   const sd = +ctx.M.P.shaftDia || 200, bore = sd / 2;
   const blade = matOf(T, 'blade', { color: '#3f4854', metalness: .78, roughness: .16 });
@@ -694,7 +705,10 @@
    /* 札は**軸の外へ出す**。板と軸のあいだは実寸で 60mm 弱しかないので、
       そこへ置くと札が軸に乗って読めない（実際に乗った）。上へ寄った条の札は
       上軸の上・下へ寄った条の札は下軸の下——**寄った側は模式図と同じ**。 */
-   const tagY = (box.h || 800) / 2 - 55;
+   /* **部材の外へ出す**（§9.417）。以前は 55 だけ内へ寄せており、値の行が
+      いちばん外の部材の縁に乗っていた（区間を光らせると、その上に重なって
+      読めなくなる）。器の余白（上下60）のうち 22 だけ残して外へ置く。 */
+   const tagY = (box.h || 800) / 2 - 22;
    D3.marks = run.map(({ sg, from, to }, i) => {
     const strip = sg.type === 'strip', up = BS().matShift(A, run, i) < 0;
     return { x: off((from + to) / 2), y: (up ? 1 : -1) * tagY, z: 0,
@@ -857,6 +871,9 @@
   const ods0 = m.out.ring.filter(q => q.hold.kind === 'ring').map(q => q.hold.od);
   const rad = Math.max(ctx.st.knife, +ctx.M.P.spacerOD || 240, ...(ods0.length ? ods0 : [0])) / 2;
   D3.cutBox = { cx: 0, cy: 0, w: L + 160, h: (cd / 2 + rad) * 2 + 120 };
+  /* 区間の的の高さ（§9.417）。**いちばん外まで出ている部材の半径**で取る
+     ——模式図の的も部材の高さぶんを覆う（§9.386）。 */
+  D3.zr = rad;
   const mt = material(T, g, A, segs, L);
   const st2 = site(T, m.baseL, m.bcx, m.bedTop, m.railTop);
   /* 画面に収まる見はじめの位置。実寸から出すので、アーバー長や刃径を変えても崩れない。
@@ -986,6 +1003,32 @@
   pool.forEach((el, i) => { if (i >= n) el.hidden = true; });
   return pool;
  }
+ /* 区間の的と記号（§9.417、利用者の指示「断面3Dの強調は2Dと同じ、表との
+    リンクで、クリックによる拡大表示も同じように欲しい」）。
+    **模式図と同じ名札を名乗る**——`data-badge` を持てば重ねたときの連動
+    （`paintBadgePick`）が、`.bs-bhit` を名乗れば押したときの拡大図
+    （`openZoneZoom`）が、どちらも**模式図の配線のまま**効く。図ごとに
+    connect し直さない（§9.352 の登録表と同じ考え）。
+    的は2枚に分ける——**区間ぜんたいの板は「光る」だけ**（`pointer-events:none`）、
+    **押せるのは記号の札だけ**。区間ぜんたいを押せる的にすると、立体の上では
+    掴んで回す道をふさぐ（模式図には回す操作が無いので、あちらは区間ぜんたいで
+    受けてよい・§9.386）。 */
+ function zoneEls(n) {
+  const host3 = host;
+  if (!host3) return [];
+  const pool = D3.zoneEls || (D3.zoneEls = []);
+  while (pool.length < n) {
+   const box = document.createElement('div');
+   box.className = 'bs-t3z';
+   const chip = document.createElement('span');
+   chip.className = 'bs-t3b bs-bhit';
+   box.hidden = true; chip.hidden = true;
+   host3.appendChild(box); host3.appendChild(chip);
+   pool.push({ box, chip });
+  }
+  pool.forEach((q, i) => { if (i >= n) { q.box.hidden = true; q.chip.hidden = true; } });
+  return pool;
+ }
  /* 札（OS・DS・板）を、立体の点の見えている位置へ置く。台車を回しても付いてくる。 */
  const TAG_KEYS = ['os', 'ds'];
  function tags(w, h, camOverride) {
@@ -1022,8 +1065,63 @@
    put.push({ el, x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h,
               w: el.offsetWidth || 44, h: el.offsetHeight || 26 });
   });
+  zones(w, h, cam, v);
   place(put, w, h);
   sides(at);
+ }
+ /* 区間の的と記号を、いまの見え方へ置く（§9.417）。断面図のときだけ出す——
+    立体図では機械まわりが手前に来るので、区間の上に札を置いても「何の上に
+    乗っているのか」が読めない。 */
+ function zones(w, h, cam, v) {
+  const zs = D3.cut ? (D3.zmarks || []) : [];
+  const pool = zoneEls(zs.length);
+  if (!zs.length) { badgeSig(''); return; }
+  const zr = D3.zr || 200;
+  const boxes = zs.map(q => {
+   /* 区間の四隅（軸方向の両端 × 部材のいちばん外）を写して、囲む箱を取る。
+      断面図は回せるので、**箱は軸に平行とはかぎらない**——四隅から作る。 */
+   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, on = false;
+   [[q.x0, q.y - zr], [q.x1, q.y - zr], [q.x0, q.y + zr], [q.x1, q.y + zr]].forEach(([X, Y]) => {
+    v.set(X, Y, 0).applyMatrix4(D3.g.matrixWorld).project(cam);
+    if (v.z > -1 && v.z < 1) on = true;
+    const sx = (v.x * 0.5 + 0.5) * w, sy = (-v.y * 0.5 + 0.5) * h;
+    x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+   });
+   return { on, x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
+  });
+  /* 字の大きさは**いちばん狭い区間**に合わせる（模式図と同じ考え・§9.413）。
+     区間ごとに変えると、同じ記号が場所によって別の大きさで出る。
+     読めない大きさまでは落とさない（下限9px）。 */
+  const len = Math.max(1, ...zs.map(q => q.badge.length));
+  const narrow = Math.min(...boxes.filter(b => b.on).map(b => b.w));
+  const fs = Math.max(9, Math.min(13,
+    Number.isFinite(narrow) ? (narrow - 4) / (0.72 * len + 0.7) : 13));
+  zs.forEach((q, i) => {
+   const b = boxes[i], el = pool[i];
+   if (!el) return;
+   el.box.hidden = !b.on; el.chip.hidden = !b.on;
+   if (!b.on) return;
+   if (el.box.dataset.badge !== q.badge) {
+    el.box.dataset.badge = q.badge;
+    el.chip.dataset.badge = q.badge;
+    el.chip.textContent = q.badge;
+   }
+   el.box.style.cssText =
+     `left:${b.x.toFixed(1)}px;top:${b.y.toFixed(1)}px;`
+   + `width:${b.w.toFixed(1)}px;height:${b.h.toFixed(1)}px`;
+   el.chip.style.cssText =
+     `left:${(b.x + b.w / 2).toFixed(1)}px;top:${(b.y + b.h / 2).toFixed(1)}px;`
+   + `font-size:${fs.toFixed(1)}px`;
+  });
+  badgeSig(zs.map(q => q.badge).join('/'));
+ }
+ /* 記号の顔ぶれが変わったときだけ画面へ知らせる（**毎フレームではない**）。
+    知らせる相手は `paintBadgePick()` で、器ぜんたいを走査するので、
+    回しているあいだ毎フレーム呼ぶと図が重くなる。 */
+ function badgeSig(sig) {
+  if (D3.bsig === sig) return;
+  D3.bsig = sig;
+  if (onBadges) onBadges();
  }
  /* 札の渋滞をほどく。指し示す横の位置は動かさず、重なったぶんだけ上下へ分ける。
     四隅は操作の道具が使っているので、そこへは入れない。 */
@@ -1165,6 +1263,7 @@
  function attach(el, opts) {
   host = el;
   onSpinDone = (opts && opts.onSpin) || null;
+  onBadges = (opts && opts.onBadges) || null;
   host.addEventListener('click', e => {
    const b = e.target.closest('button');
    if (!b) return;
@@ -1293,6 +1392,9 @@
            /* 台車がいま回っているか。断面図では**回さない**のが決まり（§9.412）。 */
            rotY: D3.pivot ? D3.pivot.rotation.y : 0,
            cutAz: D3.cutAz, cutEl: D3.cutEl, marks: (D3.marks || []).length,
+           /* 区間の記号の数（§9.417）。模式図と同じ対応表から出しているので、
+              模式図の記号の数と一致するはず——網が突き合わせる。 */
+           zones: (D3.cut ? (D3.zmarks || []) : []).length,
            /* 断面図で刃先のあいだに空けた隙間と、板が占める高さ（§9.413 追補）。
               **板がめり込まないこと**を網が数字で見るための2つ。 */
            cutGap: D3.cutGap || 0, matSpan: (D3.matTh || 0) * 3, matMag: D3.matMag || 1,

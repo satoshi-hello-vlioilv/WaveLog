@@ -799,6 +799,98 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     /* **誇張したら倍率を書く**（§CLAUDE 6）。板厚 1.3mm は実寸では1pxも出ない。 */
     rec('板厚を誇張していることを字で言う', /板厚.*倍/.test(lab.mag), lab.mag.slice(0, 60));
     rec('上下軸を離していることも字で言う', /上下軸.*離/.test(lab.mag), lab.mag.slice(0, 80));
+    /* ---- 4.7) 断面図の区間の記号・表とのリンク・拡大図（§9.417） ----
+       利用者の指示「断面3Dのラベルの付け方は2Dを参考にもう少し修正してほしい。
+       強調も入れたい」「断面3Dの強調は2Dと同じ、表とのリンクで、クリックによる
+       拡大表示も同じように欲しい」。
+       **模式図と同じ対応表から出す**ので、記号の顔ぶれは模式図と一致するはず。
+       ここは「同じ数」ではなく**同じ顔ぶれ**で見る——数だけだと、別の区間へ
+       ずれて振られても通ってしまう。 */
+    const zb = await page.evaluate(() => {
+     const vis = sel => [...document.querySelectorAll(sel)].filter(e => !e.hidden);
+     const chips = vis('#bsStage3 .bs-t3b'), boxes = vis('#bsStage3 .bs-t3z');
+     const sorted = a => [...new Set(a)].sort();
+     return { n: chips.length, zones: window.WL.bladeSolid.view().zones,
+              cut: sorted(chips.map(e => e.dataset.badge)),
+              fig2: sorted([...document.querySelectorAll('#bsStage .bs-bhit')]
+                     .map(g => g.dataset.badge)),
+              /* 区間の板は**光るだけ**（押せるのは記号の札だけ）。塗りを的に
+                 すると、立体を掴んで回す道をふさぐ。 */
+              zonePe: boxes.length ? getComputedStyle(boxes[0]).pointerEvents : '',
+              chipCur: chips.length ? getComputedStyle(chips[0]).cursor : '',
+              hit: chips.length ? chips[0].classList.contains('bs-bhit') : false };
+    });
+    rec('断面図にも区間の記号が出る', zb.n > 0 && zb.zones === zb.n,
+        `札 ${zb.n}枚 / view().zones ${zb.zones}`);
+    rec('記号の顔ぶれは模式図と同じ（同じ対応表から出している）',
+        zb.cut.length > 0 && zb.cut.join(',') === zb.fig2.join(','),
+        `断面 ${zb.cut.join('')} / 模式 ${zb.fig2.join('')}`);
+    rec('区間の板は的にしない（掴んで回す道をふさがない）', zb.zonePe === 'none', zb.zonePe);
+    rec('記号の札は押せる（指のカーソル＋模式図と同じ印）',
+        zb.chipCur === 'pointer' && zb.hit === true, `${zb.chipCur} / bs-bhit ${zb.hit}`);
+    /* **本物のマウス移動で辿る**（§9.398）。`pointerover` は `el.click()` では
+       1度も通らない。 */
+    const chipBox = await page.locator('#bsStage3 .bs-t3b').first().boundingBox();
+    await page.mouse.move(chipBox.x + chipBox.width / 2, chipBox.y + chipBox.height / 2);
+    await W.paint(page);
+    const litA = await page.evaluate(() => {
+     const chip = document.querySelector('#bsStage3 .bs-t3b.is-pick');
+     const b = chip ? chip.dataset.badge : '';
+     const zone = document.querySelector('#bsStage3 .bs-t3z.is-pick');
+     return { b, zone: !!zone,
+              /* 淡い塗りが本当に入ったか（`transparent` のままなら効いていない）。 */
+              fill: zone ? getComputedStyle(zone).backgroundColor : '',
+              row: !!(b && document.querySelector(`.bs-g tr.is-pick[data-badge="${b}"]`)) };
+    });
+    rec('記号に重ねると、その区間が光る（模式図と同じ 16%の塗り）',
+        litA.zone && !/rgba?\([^)]*,\s*0\)/.test(litA.fill), `${litA.b} / ${litA.fill}`);
+    rec('記号に重ねると刃組表の行も光る（図と表が同じ印でつながる）',
+        litA.row === true, litA.b || '記号が光っていない');
+    /* 逆向きも同じ配線で効く——**表に重ねたら断面図の区間が光る**。 */
+    const rowBox = await page.evaluate(b => {
+     const tr = document.querySelector(`.bs-g tr[data-badge="${b}"]`);
+     if (!tr) return null;
+     const r = tr.getBoundingClientRect();
+     return { x: r.left + Math.min(40, r.width / 2), y: r.top + r.height / 2 };
+    }, litA.b);
+    if (rowBox) {
+     await page.mouse.move(rowBox.x, rowBox.y);
+     await W.paint(page);
+    }
+    const litB = await page.evaluate(b => ({
+     chip: !!document.querySelector(`#bsStage3 .bs-t3b.is-pick[data-badge="${b}"]`),
+     zone: !!document.querySelector('#bsStage3 .bs-t3z.is-pick') }), litA.b);
+    rec('表の行に重ねると断面図の区間と記号が光る（連動は双方向）',
+        !!rowBox && litB.chip && litB.zone, `行 ${litA.b}`);
+    /* **押したら模式図と同じ拡大窓**（§9.413 と同じ `openZoneZoom`）。 */
+    /* **先に閉じてから押す。** 前の節で開いた窓が残っていると、押しても
+       何も起きなくなったことに気づけない——欠陥注入（記号から `.bs-bhit` を
+       外す）で**そのまま素通りした**（記号がたまたま同じだったため）。 */
+    await page.keyboard.press('Escape');
+    await W.until(page, () => document.querySelector('#bsZoom').hidden, null,
+                  { ms: 4000, what: '拡大図を一度閉じる' });
+    await page.mouse.click(chipBox.x + chipBox.width / 2, chipBox.y + chipBox.height / 2);
+    await W.until(page, () => !document.querySelector('#bsZoom').hidden, null,
+                  { ms: 6000, what: '断面図から拡大図が開く' });
+    const zcut = await page.evaluate(() => {
+     const box = document.querySelector('#bsZoom'), fig = document.querySelector('#bsZoomFig');
+     const r = box.getBoundingClientRect();
+     return { shown: !box.hidden,
+              badge: (document.querySelector('#bsZoomBadge').textContent || '').trim(),
+              dims: +(fig.dataset.dims || 0), inside: +(fig.dataset.inside || 0),
+              lead: +(fig.dataset.lead || 0), w: Math.round(r.width) };
+    });
+    /* **「開いている」ことまで見る**。`#bsZoomBadge` の字は閉じても残るので、
+       記号だけを見ると**窓が出ていなくても通る**（欠陥注入でそうなった）。 */
+    rec('押した区間の拡大図が開く（記号が一致する）',
+        zcut.shown === true && zcut.badge === litA.b,
+        `出ている ${zcut.shown} / ${zcut.badge} / 押したのは ${litA.b}`);
+    rec('拡大図の中身は模式図から開いたときと同じ（寸法を1つも落とさない）',
+        zcut.shown === true && zcut.dims > 0 && zcut.dims === zcut.inside + zcut.lead,
+        `出す ${zcut.dims} = 中 ${zcut.inside} + 引き出し ${zcut.lead}`);
+    await page.keyboard.press('Escape');
+    await W.until(page, () => document.querySelector('#bsZoom').hidden, null,
+                  { ms: 4000, what: '拡大図を閉じる' });
     /* **板が刃へめり込まない**（§9.413 追補、利用者の指摘「板がめり込んでいる」）。
        板は千鳥で上下へ寄るので**見かけの厚みの3倍**の高さを占める。刃先のあいだの
        隙間がそれより狭いと、太らせた板が刃を突き抜ける。判定は実測ではなく
