@@ -825,6 +825,46 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await page.click('#bsFlip');
     await W.until(page, w => (window.WL.bladeSolid.view() || {}).flip === w,
                   was, { ms: 8000, what: '向きを戻す' });
+    /* **断面図は白へ飛ばない**（§9.415、利用者の指摘「暗すぎるか明るすぎるか
+       反射の状況が悪すぎて見にくい」）。立体図の配分（主光1.05＋補助＋手前光）の
+       まま切ると、**カメラをまっすぐ向いた切り口**へ3つの光が重なる。実測では
+       **画面の36.7%が真っ白（輝度246以上）**になり、軸もスペーサーも板も地
+       （`--bs-3d-bg`）と見分けが付かなかった。
+       **描いた絵そのものを数える**——光の強さだけ見ても、材質の艶（`metalness`）で
+       飛ぶぶんを見落とす（艶も断面図では落としてある）。WebGLの描画バッファは
+       次の合成で消えるので、`render()`の**直後に同じタスクの中で**2Dへ写す。 */
+    const tone = await page.evaluate(() => {
+     const cv = document.querySelector('#bsStage3 canvas');
+     window.WL.bladeSolid.render();
+     const w = Math.min(420, cv.clientWidth), h = Math.min(280, cv.clientHeight);
+     const c2 = document.createElement('canvas'); c2.width = w; c2.height = h;
+     const cx = c2.getContext('2d');
+     cx.drawImage(cv, 0, 0, w, h);
+     const d = cx.getImageData(0, 0, w, h).data;
+     const L = i => 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+     const bg = L(0);                       /* 隅は地の色 */
+     let parts = 0, sum = 0, blown = 0;
+     for (let i = 0; i < d.length; i += 4) {
+      const v = L(i);
+      if (Math.abs(v - bg) <= 6) continue;  /* 地は数えない */
+      parts++; sum += v;
+      if (v >= 246) blown++;
+     }
+     return { bg: +bg.toFixed(1), parts, mean: parts ? +(sum / parts).toFixed(1) : null,
+              blownPct: parts ? +(blown / parts * 100).toFixed(2) : null,
+              lit: window.WL.bladeSolid.view().lit,
+              gloss: window.WL.bladeSolid.view().gloss };
+    });
+    rec('断面図に部材が描かれている（絵を数える土台が効いている）',
+        tone.parts > 500, `${tone.parts}px`);
+    rec('断面図が白へ飛んでいない（部材の白飛びが1%未満）',
+        tone.blownPct !== null && tone.blownPct < 1, `${tone.blownPct}%`);
+    /* 地との差は**35以上**（実測: 直した図で53.9）。立体図の配分のまま切ると
+       26まで落ちる——「白くは飛んでいないが地に溶けている」を通さないための線。 */
+    rec('断面図の部材が地と見分けられる（平均でΔL≧35）',
+        tone.mean !== null && Math.abs(tone.mean - tone.bg) >= 35,
+        `部材 ${tone.mean} / 地 ${tone.bg} / 差 ${tone.mean === null ? '-'
+          : Math.abs(tone.mean - tone.bg).toFixed(1)}`);
     /* 立体図へ戻すと、切る面は外れる（同じ模型がそのまま立体図に戻る）。 */
     await page.click('#bsFigTabs [data-fig="3d"]');
     await W.until(page, () => (window.WL.bladeSolid.view() || {}).cut === false,
@@ -836,6 +876,84 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await page.click('#bsFigTabs [data-fig="2d"]');
     await W.until(page, () => !document.querySelector('.bs-stage').hidden,
                   null, { ms: 8000, what: '模式図へ戻る' });
+
+    /* **光の配分は図ごとに別**（§9.415）。立体図は機械まわりが主役なので
+       斜め上からの主光で形を立ち上げ、断面図は地明かりで平らに照らす。
+       同じ配分を使い回すと、上の「白飛び」が戻る。 */
+    const lit3 = await page.evaluate(() => window.WL.bladeSolid.view().lit);
+    rec('光の配分は立体図と断面図で別（同じ配分を使い回さない）',
+        !!lit3 && !!tone.lit && lit3.key > tone.lit.key && lit3.hemi < tone.lit.hemi,
+        `立体 ${JSON.stringify(lit3)} / 断面 ${JSON.stringify(tone.lit)}`);
+    rec('手前からの光は断面図のときだけ点ける',
+        !!lit3 && lit3.cam === 0 && tone.lit.cam > 0,
+        `立体 ${lit3 && lit3.cam} / 断面 ${tone.lit && tone.lit.cam}`);
+    /* **断面図は艶を落とす**（§9.415、利用者の指摘「反射の状況が悪すぎて
+       見にくい」）。立体図の部材は金属として磨いてある（`metalness` .6〜.8）ので、
+       面がカメラをまっすぐ向く断面図では**材質の色ではなく光の色（白）**が出る
+       ——鋼も板も耳も同じ白になって見分けが付かなかった。 */
+    const gloss3 = await page.evaluate(() => window.WL.bladeSolid.view().gloss);
+    rec('断面図の部材は艶を落としてある（映り込みで材質の色を消さない）',
+        tone.gloss !== null && tone.gloss <= 0.1, `断面 metalness ${tone.gloss}`);
+    rec('立体図の部材は磨いたまま（断面図だけの手当てになっている）',
+        gloss3 > 0.5, `立体 metalness ${gloss3}`);
+
+    /* ---- 5c) 模式図の「物」は直角（§9.415、利用者の指示「2Dのエッジ部分の
+       丸角は無しにしてほしい」） ----
+       この図は実寸を目で比べるためのもので、角丸は縁を実際より短く見せる
+       （幅1.2pxの部材に rx=2 が付いていた）。**角丸を残すのは文字の器だけ**
+       ——記号バッジ（`bs-bdgr`）と設定の帯（`bs-chip-band`）。 */
+    const TEXT_HOLDERS = ['bs-bdgr', 'bs-chip-band'];
+    const fig2 = await page.evaluate(holders => {
+     const stage = document.querySelector('#bsStage');
+     const round = [...stage.querySelectorAll('rect')]
+      .filter(r => { const v = r.getAttribute('rx'); return v && parseFloat(v) > 0; })
+      .map(r => (r.getAttribute('class') || '(無印)').trim());
+     const texts = [...stage.querySelectorAll('text')].map(t => ({
+       cls: (t.getAttribute('class') || '').trim(),
+       fs: parseFloat(getComputedStyle(t).fontSize) }));
+     const mk = texts.filter(t => t.cls === 'bs-mk').map(t => t.fs);
+     return { kinds: [...new Set(round)].sort(),
+              stray: round.filter(c => !holders.includes(c)).length,
+              nRect: stage.querySelectorAll('rect').length,
+              maxFs: texts.length ? Math.max(...texts.map(t => t.fs)) : 0,
+              mkFs: mk.length ? Math.max(...mk) : 0, nText: texts.length };
+    }, TEXT_HOLDERS);
+    rec('模式図に部材が描かれている（角の判定が空振りしていない）',
+        fig2.nRect > 20 && fig2.nText > 5, `rect ${fig2.nRect} / text ${fig2.nText}`);
+    rec('模式図で角丸を持つのは文字の器だけ（軸・青い印・部材・板／条／耳・刃は直角）',
+        fig2.stray === 0, fig2.kinds.join(' / ') || '角丸なし');
+    /* **読み取る値より大きい札を作らない**（§9.415、利用者の指示「やや文字が
+       大きすぎてバランスが悪い」）。DS/OS と行見出し（上軸・下軸・材料）は
+       「どこを見ているか」の目印で、条番号・条幅より大きいのは順序が逆
+       （実測 20.8px / 18.4px 対 15.9px）。 */
+    rec('図のいちばん大きい字が、条の番号の段を超えない',
+        fig2.mkFs > 0 && fig2.maxFs <= fig2.mkFs * 1.05,
+        `最大 ${fig2.maxFs}px / 条番号 ${fig2.mkFs}px`);
+
+    /* ---- 5d) 記録が無い台車でも差分が出る（基準は標準構成・§9.415） ----
+       以前は記録が1件も無いと台車の列が全部「—」になり、**部材を1つ残らず
+       棚から持ち出す**という読みになっていた（実測: そのまま使える0／持ち出す14）
+       ——台車が空だとは分かっていないので、これは事実ではない。
+       既定の刃組設定で組んだ標準構成を基準に置き、**出どころを字で書き分ける**。 */
+    await page.click('#bsRailTabs [data-r="diff"]');
+    await page.waitForSelector('#bsDiff tbody tr', { timeout: 8000 });
+    const dif = await page.evaluate(() => ({
+     head: (document.querySelector('#bsDiffHead') || {}).textContent || '',
+     cols: [...document.querySelectorAll('#bsDiff thead th')].map(t => t.textContent.trim()),
+     secs: [...document.querySelectorAll('#bsDiff tbody tr.bs-sec')].map(t => t.textContent.trim()),
+     rows: document.querySelectorAll('#bsDiff tbody tr').length,
+     base: [...document.querySelectorAll('#bsDiff tbody tr:not(.bs-sec)')]
+      .map(r => (r.children[1] || {}).textContent)
+    }));
+    rec('記録が無くても差分の行が出る', dif.rows > 0 && dif.secs.length > 0,
+        `${dif.rows}行 / ${dif.secs.join(',')}`);
+    rec('比べる相手が標準構成だと字で言う（組んだ事実ではないと書く）',
+        /標準構成と比べています/.test(dif.head) && /計算値/.test(dif.head),
+        dif.head.replace(/\s+/g, ' ').slice(0, 80));
+    rec('列の見出しも「標準」にする（記録と同じ字で並べない）',
+        dif.cols[1] === '標準', dif.cols.join('/'));
+    rec('標準の列が「—」で埋まっていない（台車が空という嘘をつかない）',
+        dif.base.some(t => t && t !== '—'), dif.base.join(','));
 
     /* ---- 6) 設備停止 → 行き先のチップ ---- */
     const mk = await (await post('/api/schedule/stop-reason-master',

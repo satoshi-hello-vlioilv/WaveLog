@@ -1,4 +1,4 @@
-# 刃組ガイダンス（72件）
+# 刃組ガイダンス（78件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,12 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 光の配分は図ごとに別（断面図＝地明かり主役）。艶も落とす——正対した面は材質の色でなく光の色を返す | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
+| 断面図の板・耳屑は**模式図と同じ色**（`--bs-fig-strip`／`--bs-fig-trim`）。明るい鋼色だと地に溶ける | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
+| 器の大きさは`ResizeObserver`で見張る（`resize`は窓しか見ない）。図を離れるときも`applyCut()`を通す | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
+| 模式図に描く「物」は**直角**。角丸を残すのは文字の器（`bs-bdgr`・`bs-chip-band`）だけ | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
+| 図の札（DS/OS・上軸/下軸/材料）は**読み取る値（条番号・条幅）より大きくしない** | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
+| 台車差分の基準は「記録 → 標準構成 → 無し」の3段。標準は列の見出しも「標準」にし、事実でないと断る | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
 | 刃組の計算は`blade-core.js`（画面を知らない）、画面は`blade-view.js`の2本 | `test_bladeui.js` | [§9.377](../../docs/decisions/9.377.md) |
 | 部材は設備ごと。「すべての設備」は受け付けない | `test_bladeset.py` | [§9.377](../../docs/decisions/9.377.md) |
 | ゴムリングは色（＝外径）×幅で1本。同じ色をそろえるのは`ring_upsert()`の1箇所 | `test_bladeset.py` | [§9.377](../../docs/decisions/9.377.md) |

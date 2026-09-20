@@ -293,15 +293,25 @@
  var workTitleEl=document.getElementById('workTitle');
  var workWhyEl=document.getElementById('workWhy');
  function showWork(work, reasons){
-  if(work!=='update' && work!=='skip'){ workEl.hidden=true; return }
+  var long = (work==='update' || work==='setup');   /* ふだんより長い段 */
+  if(!long && work!=='skip'){ workEl.hidden=true; return }
   workEl.hidden=false;
-  workEl.className='work '+(work==='update'?'is-update':'is-skip');
-  workTitleEl.textContent=work==='update'?'更新を反映中 — ふだんより長い':'更新なし';
-  workWhyEl.textContent=work==='update'
-   ? (reasons.length?('変わったもの: '+reasons.join(' / ')):'必要な部品とバイトコードを確かめています')
+  workEl.className='work '+(long?'is-update':'is-skip');
+  /* 題は**いましていること**を言う（§9.415）。`update`＝アプリの版が上がった、
+     `setup`＝版は同じだが確認をやり直している（初めての起動・Pythonの
+     入れ替え・部品の一覧の変更）。**版が上がっていないのに「更新を反映中」と
+     言わない**——どちらなのかを決めるのはサーバー（起動処理が刻印を見る）で、
+     ここは答えを字にするだけ。 */
+  workTitleEl.textContent = !long ? '更新なし'
+   : (work==='update' ? '更新を反映中 — ふだんより長い' : '起動前の確認中 — ふだんより長い');
+  /* 理由は**それだけで読める1文**が並ぶ（`ready.diff()`）ので、
+     「変わったもの:」のような頭を付けない——付けると
+     「変わったもの: この端末では初めての起動です」のように文にならない。 */
+  workWhyEl.textContent = long
+   ? (reasons.length?reasons.join(' / '):'必要な部品とバイトコードを確かめています')
    : '前回の確認（update.bat）のまま起動します';
   /* 見込みの時間は**更新の有無で桁が違う**ので、同じ行で言い換える。 */
-  hintEl.textContent=work==='update'?'目安 30〜60 秒':'目安 3 秒';
+  hintEl.textContent=long?'目安 30〜60 秒':'目安 3 秒';
  }
  function showVersion(v){ if(v) verEl.textContent='VER'+v }
 

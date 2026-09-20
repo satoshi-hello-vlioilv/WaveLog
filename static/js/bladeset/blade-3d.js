@@ -153,15 +153,20 @@
   /* 切断面は1枚。向き（どちら側を残すか）は毎フレーム`keep`から決める。 */
   D3.clip = new T.Plane(new T.Vector3(0, 0, -1), 0);
   r.localClippingEnabled = true;
-  /* 光は3つ。上からの主光・手前からの補助・地明かり。金属が白飛びしない配分。 */
-  sc.add(new T.HemisphereLight('#e8eef5', '#5e6772', 0.45));
-  const k = new T.DirectionalLight('#ffffff', 1.05); k.position.set(-1200, 1800, 1500); sc.add(k);
-  const f = new T.DirectionalLight('#cfdcec', 0.38); f.position.set(1500, -600, 1100); sc.add(f);
+  /* 光は4つ。上からの主光・手前からの補助・地明かり・断面図用の手前光。
+     **強さは図ごとに配り直す**（`LIGHT`・`applyCut()`）——同じ配分を使い回すと
+     断面図が白飛びする（§9.415）。 */
+  const hemi = new T.HemisphereLight('#e8eef5', '#5e6772', LIGHT.solid.hemi); sc.add(hemi);
+  const k = new T.DirectionalLight('#ffffff', LIGHT.solid.key);
+  k.position.set(-1200, 1800, 1500); sc.add(k);
+  const f = new T.DirectionalLight('#cfdcec', LIGHT.solid.fill);
+  f.position.set(1500, -600, 1100); sc.add(f);
   /* 断面図の切り口は**カメラのほうを向いた平らな面**なので、上や奥からの光では
      暗いままになる（実際に踏んだ: 軸の切り口が真っ黒に見えた）。見ている側から
      当てる光を1つ持ち、断面図のときだけ点ける。 */
-  const cl = new T.DirectionalLight('#ffffff', 0.62); cl.visible = false; sc.add(cl);
+  const cl = new T.DirectionalLight('#ffffff', LIGHT.cut.cam); cl.visible = false; sc.add(cl);
   D3.cutLight = cl;
+  D3.lights = { hemi, key: k, fill: f, cam: cl };
   /* 台車は自分の中心で回る。回す軸をここに置き、その子として中身を持つ。 */
   const pivot = new T.Group(); sc.add(pivot);    /* 回転テーブルの中心 */
   const g = new T.Group(); pivot.add(g);         /* 回る台車。走行ぶんは位置で持つ */
@@ -190,6 +195,24 @@
   return v || fallback;
  }
 
+ /* 光の配分。**図ごとに別の答えを持つ**（§9.415、利用者の指摘「暗すぎるか
+    明るすぎるか反射の状況が悪すぎて見にくい」）。
+
+    立体図は**機械まわりが主役**で、斜め上からの主光が形を立ち上げる配分。
+    そのまま断面図へ持ち込むと**切り口が白へ飛ぶ**——断面図の面は
+    ①カメラのほうをまっすぐ向いていて ②そこへ手前光（`cam`）まで当たるので、
+    主光＋補助＋手前光＋地明かりが**同じ面に重なる**。実測では画面の
+    **36.7% が真っ白（輝度246以上）**になり、軸もスペーサーも板も地の色
+    （`--bs-3d-bg`）と見分けが付かなかった。
+
+    断面図は**地明かりを主役**にして平らに照らし、向きのある光は形が潰れない
+    ぶんだけ残す。**材質の色の差**（軸・スペーサーの鋼／刃の濃い鋼／板／耳）が
+    そのまま読める明るさが狙い——模式図と同じ読み方ができる、という
+    この図の目的（§9.412）に合う。 */
+ const LIGHT = {
+  solid: { hemi: 0.45, key: 1.05, fill: 0.38, cam: 0 },
+  cut:   { hemi: 0.78, key: 0.22, fill: 0.10, cam: 0.26 }
+ };
  /* 断面図で回せる角度の上限（ラジアン）。真横（±π/2）の手前で止める。 */
  const CUT_LIM = 1.15;
  /* 断面図で刃先のあいだに空ける隙間＝見かけの板厚の何倍か（§9.413 追補）。
@@ -274,15 +297,32 @@
   }, { passive: false });
  }
 
+ /* 断面図は**艶を落とした写し**を使う（§9.415、利用者の指摘「反射の状況が
+    悪すぎて見にくい」）。立体図の部材は金属として磨いてある（`metalness` .6〜.8）
+    ので、断面図のように**面がカメラをまっすぐ向く**と手前光がそのまま映り込み、
+    材質の色ではなく**光の色（白）**が出る——鋼も板も耳も同じ白になり、
+    見分けが付かなかった（実測: 板の面が輝度229、地が241で差は12しかない）。
+    断面図では艶を落として**その部材の色そのもの**を出す。
+
+    **分けるのはここ1箇所**。部材を作っているところ（`machine()`・`material()`）は
+    今までどおり1つの綴りで呼ぶ——両方の図で同じ色・同じ名前のまま、艶だけが
+    変わる。図を切り替えるたびに`build()`が材質を取り直すので、写しは
+    名前（`…·cut`）で分けて両方を持っておく。 */
+ const CUT_METAL = 0.10, CUT_ROUGH = 0.80;
  const matOf = (() => {
   const cache = new Map();
   return (T, key, o) => {
-   if (!cache.has(key)) {
-    const m = new T.MeshStandardMaterial(o);
-    m.name = key;                 /* 干渉検査でどの部材かを名で見分ける */
-    cache.set(key, m);
+   const k = D3.cut ? key + '·cut' : key;
+   if (!cache.has(k)) {
+    const spec = D3.cut
+     ? Object.assign({}, o, { metalness: Math.min(+o.metalness || 0, CUT_METAL),
+                              roughness: Math.max(+o.roughness || 0, CUT_ROUGH) })
+     : o;
+    const m = new T.MeshStandardMaterial(spec);
+    m.name = k;                   /* 干渉検査でどの部材かを名で見分ける */
+    cache.set(k, m);
    }
-   return cache.get(key);
+   return cache.get(k);
   };
  })();
  /* 内径の開いた管。丸刃・スペーサー・ゴムリングは図面どおり中心に穴が開いている。
@@ -605,8 +645,17 @@
   const run = BS().materialRun(A, segs), IN = 620, OUT = 760;
   /* 板は見せ消しできる。大きさ（IN・OUT）は返すので、消しても画面の収まりは変わらない。 */
   if (!D3.show.mat) { D3.marks = []; return { IN, OUT }; }
-  const sheet = matOf(T, 'sheet', { color: '#c5ccd4', metalness: .62, roughness: .24 });
-  const trim = matOf(T, 'trim', { color: '#b0a48d', metalness: .45, roughness: .5 });
+  /* 板と耳屑は、断面図では**模式図と同じ色**にする（§9.415）。立体図の板は
+     ロールの上に載った1枚として機械の中で見るので明るい鋼色でよいが、断面図の
+     板は**いちばん薄い物**（見かけの厚みを8倍に誇張してなお数px）なので、
+     明るい鋼色のままだと地に溶ける（実測: 輝度231に対し地が241、差は10）。
+     模式図の板・耳の色（`--bs-fig-strip`／`--bs-fig-trim`）を借りると、
+     **2つの図で同じ物が同じ色**になり（§CLAUDE 8）、地との差も付く。 */
+  const cutColor = (name, base) => (D3.cut ? cssColor(name, base) : base);
+  const sheet = matOf(T, 'sheet',
+    { color: cutColor('--bs-fig-strip', '#c5ccd4'), metalness: .62, roughness: .24 });
+  const trim = matOf(T, 'trim',
+    { color: cutColor('--bs-fig-trim', '#b0a48d'), metalness: .45, roughness: .5 });
   const w0 = run.length ? run[0].from : 0, w1 = run.length ? run[run.length - 1].to : 0;
   const cut = (list, mat) => { const b = batch(T, D3.box, mat, list); if (b) g.add(b); };
   /* ---- 断面図（§9.412）----
@@ -830,6 +879,13 @@
  function applyCut() {
   const on = D3.cut;
   [D3.rig, D3.fix, D3.deck, D3.world].forEach(o => { if (o) o.visible = !on; });
+  /* **光は図ごとに配り直す**（§9.415）。部品は作り直さないので、ここで
+     強さを入れ替えるだけで両方の図が「その図に合った明るさ」になる。 */
+  const L = on ? LIGHT.cut : LIGHT.solid, li = D3.lights;
+  if (li) {
+   li.hemi.intensity = L.hemi; li.key.intensity = L.key;
+   li.fill.intensity = L.fill; li.cam.intensity = L.cam;
+  }
   if (D3.cutLight) D3.cutLight.visible = on;
   /* **断面図では台車を回さない。** 回すとX（OS/DSの左右）もZ（切る向き）も一緒に
      入れ替わり、カメラを置く側の入れ替えと**打ち消し合って裏返しが効かない**
@@ -1125,6 +1181,16 @@
    const b = $h('.bs-help3'); if (b) b.setAttribute('aria-expanded', 'false');
   });
   window.addEventListener('resize', () => { if (D3.on) render(); });
+  /* **器の大きさが変わったら描き直す**（§9.415）。`resize`は窓の大きさしか
+     見ていないので、**図を切り替えて器の幅・高さが変わった**ときは呼ばれない
+     ——描き終えたあとに器が動くと、前の大きさのまま引き伸ばされた絵が残る
+     （切り替えた瞬間に断面図に見えない、の芽）。器そのものを見張る。 */
+  if (window.ResizeObserver) {
+   const ro = new ResizeObserver(() => { if (D3.on) render(); });
+   try { ro.observe(host); } catch (err) {
+    WL.quiet.note('器の大きさを見張れない（窓の大きさの変化だけで描き直す）', err);
+   }
+  }
  }
  function act(step, run) {
   const why = blockReason(step);
@@ -1174,7 +1240,11 @@
   const changed = D3.cut !== wantCut;
   D3.cut = wantCut;
   D3.on = !!on;
-  if (!D3.on) return true;
+  /* **図を離れるときも状態をそろえる**（§9.415）。以前はここで戻っていたので、
+     模式図へ移ったあとも**切断面と断面図の光が場面に残った**まま`D3.cut`だけ
+     false になり、次に何かが描いた1枚が「断面図でも立体図でもない絵」になり得た
+     （切り替えた瞬間に断面図に見えない、の芽）。伏せる前に1回そろえる。 */
+  if (!D3.on) { applyCut(); return true; }
   clearFail();
   if (!window.THREE) {
    note('立体図の部品を読み込んでいます…');
@@ -1194,8 +1264,23 @@
 
  /* いまどの図を、どちら向きで、どちら側を残して見ているか。**答えるのはここ1箇所**
     ——画面（`blade-view.js`）は器の出し入れだけを持ち、模型の状態は持たない。 */
+ /* いま画に出ている部材のうち、**いちばん光るもの**の `metalness`（§9.415）。
+    断面図は艶を落としてあるはずなので、1つでも磨いたままなら**その面だけ
+    白く飛ぶ**——網が名指しで見られるように数で答える。機械まわり（`rig`）は
+    断面図では伏せてあるので、たどらない。 */
+ function gloss() {
+  let m = 0;
+  const walk = o => {
+   if (!o || o === D3.rig || o.visible === false) return;
+   if (o.material && o.material.metalness != null) m = Math.max(m, +o.material.metalness || 0);
+   (o.children || []).forEach(walk);
+  };
+  walk(D3.g);
+  return +m.toFixed(3);
+ }
+
  function view() {
-  return { cut: !!D3.cut, flip: !!D3.flip, keep: D3.keep,
+  return { cut: !!D3.cut, flip: !!D3.flip, keep: D3.keep, gloss: gloss(),
            /* 台車がいま回っているか。断面図では**回さない**のが決まり（§9.412）。 */
            rotY: D3.pivot ? D3.pivot.rotation.y : 0,
            cutAz: D3.cutAz, cutEl: D3.cutEl, marks: (D3.marks || []).length,
@@ -1205,6 +1290,11 @@
            /* 断面図の光が**カメラと同じ側に居るか**を網が見るための2つ（§9.413 追補）。
               離れると、回した先の面が黒くなって穴に見える。 */
            endCaps: D3.endCaps || 0,
+           /* 光の配分（§9.415）。**断面図の配分が立体図のまま残っていないか**を
+              網が数で見る——残ると切り口が白へ飛ぶ。 */
+           lit: D3.lights ? { hemi: D3.lights.hemi.intensity, key: D3.lights.key.intensity,
+                              fill: D3.lights.fill.intensity, cam: D3.lights.cam.intensity }
+                          : null,
            cutCam: D3.ocam ? [D3.ocam.position.x, D3.ocam.position.y, D3.ocam.position.z] : null,
            cutLit: D3.cutLight
             ? [D3.cutLight.position.x, D3.cutLight.position.y, D3.cutLight.position.z] : null,
