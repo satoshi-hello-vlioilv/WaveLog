@@ -732,20 +732,36 @@
      ・スペーサー幅 … **軸の上**、ただし**そのスペーサーの側へ寄せて**書く
      引き出し線は**その部材の縁から**引く（`r` は縁の半径。字の位置 `labY` とは
      別に持つ）——線が宙に浮くと、どれを指しているのか読めない。 */
-  if (sh.liner) out.liner.filter(q => !q.filler).forEach(q => D3.dims.push(
-   { x: off(q.x), y: q.y, w: q.sz, ri: bore, r: linerR, kind: 'sp',
-     labY: q.y + Math.sign(q.y) * bore * 0.62, band: bore * 0.6 }));
+  if (sh.liner) out.liner.filter(q => !q.filler).forEach(q => {
+   const sg = Math.sign(q.y);
+   D3.dims.push({ x: off(q.x), y: q.y, w: q.sz, ri: bore, r: linerR, kind: 'sp',
+                  /* 字は**軸の上・そのスペーサーの側**（§9.418 追補）。 */
+                  labY: q.y + sg * bore * 0.62, band: bore * 0.5,
+                  /* 入らないものの段も**軸の上**（1段内側）。線はスペーサーの
+                     内側の縁まで引いて**現物に引っ付ける**（§9.419）。 */
+                  leadY: q.y + sg * bore * 0.28, leadTo: q.y + sg * bore });
+  });
   if (sh.ring) out.ring.forEach(q => {
+   const sg = Math.sign(q.y);
    const ri = q.hold.kind === 'ring' ? ringBore : linerR;
    const ro = (q.hold.kind === 'ring' ? +q.hold.od : linerR * 2 + 20) / 2;
    D3.dims.push({ x: off(q.x), y: q.y, w: q.sz, kind: 'ring', ri, r: ro,
-                  labY: q.y + Math.sign(q.y) * (ri + ro) / 2, band: ro - ri });
+                  labY: q.y + sg * (ri + ro) / 2, band: ro - ri,
+                  /* ゴムリングは輪が広いのでたいてい中へ入る。入らないものだけ
+                     外の段へ出し、線は**輪の外の縁から**引く。 */
+                  leadY: null, leadTo: q.y + sg * ro });
   });
   /* 上下の刃の対（§9.418）。同じ切断の上刃と下刃は**クリアランスのぶんだけ
      軸方向にずれて**いて、そのずれが鋏の噛み合わせそのもの。 */
   D3.knives = [];
   if (sh.knife) A.U.forEach((u, i) => D3.knives.push(
    { xu: off(u), xl: off(A.Lo[i]), yU, yL, r: ctx.st.knife / 2 }));
+  /* **上下の刃がすれ違えるか**（§9.419）。同じ切断の上刃と下刃は円周が食い違う
+     ので、軸方向に**刃の身のぶん**離れていないと円周でぶつかって切れない。
+     いちばん近い対で見る。 */
+  D3.pack.knifeGap = D3.knives.length
+   ? +Math.min(...D3.knives.map(k => Math.abs(k.xu - k.xl))).toFixed(3) : null;
+  D3.pack.tk = tk;
   return Object.assign({ out }, fr);
  }
 
@@ -1304,17 +1320,17 @@
      部材の列の外側（上軸は上・下軸は下）で、**1段だけ**。同じ段で隣とぶつかる
      ものは出さない——細かくて出しきれないぶんは拡大図が受け持つ。 */
   const list = (D3.dims || []).map(q => {
-   /* 字の場所（`labY`）と、引き出し線の根もと（部材の縁 `r`）は**別に持つ**。
-      上軸ぶんは上、下軸ぶんは下——板の側は板の札とぶつかる。 */
-   const sgn = q.y > 0 ? 1 : -1;
+   /* 字の場所（`labY`）・引き出しの段（`leadY`）・線が触る先（`leadTo`）は
+      **控えるときに決める**（どれも部材ごとに違う）。ここは写すだけ。 */
    const a = P(q.x - q.w / 2, q.labY), b = P(q.x + q.w / 2, q.labY);
    const mid = P(q.x, q.labY);
    const hi = P(q.x, q.labY + q.band / 2), lo = P(q.x, q.labY - q.band / 2);
-   const edge = P(q.x, q.y + sgn * q.r);
+   const hit = P(q.x, q.leadTo);
+   const lead = q.leadY === null ? null : P(q.x, q.leadY).y;
    const t = dmm(q.w);
    return { t, kind: q.kind, cx: (a.x + b.x) / 2, cy: mid.y,
             pw: Math.abs(b.x - a.x), up: q.y > 0,
-            band: Math.abs(hi.y - lo.y), edge: edge.y,
+            band: Math.abs(hi.y - lo.y), hit: hit.y, lead,
             tw: dimTextW(t, DIM_FS) };
   }).filter(q => q.cx > -50 && q.cx < w + 50);
   const outs = [];
@@ -1339,20 +1355,25 @@
    if (!g0.length) return;
    /* 段は部材の種類ごとに分ける（§9.418 追補）。スペーサーとゴムリングを同じ段へ
       混ぜると、どちらの寸法か読めない。 */
-   ['sp', 'ring'].forEach((kind, ki) => {
+   ['sp', 'ring'].forEach(kind => {
     const g1 = g0.filter(q => q.kind === kind);
     if (!g1.length) return;
-    const far = wantUp ? Math.min(...g1.map(q => q.edge)) : Math.max(...g1.map(q => q.edge));
-    const y = far + dir * (14 + ki * 13);
+    /* 段は**軸の上**（`leadY` を持つもの）か、持たないものは部材の外側。
+       どちらの場合も、線は`hit`（その部材の縁）まで引いて引っ付ける。 */
+    const own = g1[0].lead;
+    const y = own !== null && own !== undefined
+     ? own
+     : (wantUp ? Math.min(...g1.map(q => q.hit)) : Math.max(...g1.map(q => q.hit))) + dir * 14;
     let at = -Infinity;
     g1.forEach(q => {
      const x0 = q.cx - q.tw / 2;
      if (x0 < at + DIM_SLOT || q.cx + q.tw / 2 > w - 2 || x0 < 2) return;
      at = q.cx + q.tw / 2;
-     /* **線は対象の縁から**引く（宙に浮かせない）。 */
-     o += `<line class="bs-lead" x1="${q.cx.toFixed(1)}" y1="${q.edge.toFixed(1)}"`
-        + ` x2="${q.cx.toFixed(1)}" y2="${(y + dir * -2).toFixed(1)}"/>`
-        + `<text x="${q.cx.toFixed(1)}" y="${(y + (wantUp ? 0 : DIM_FS * 0.8)).toFixed(1)}"`
+     /* **線は字のきわから対象の縁まで**（どちらの端も浮かせない）。 */
+     const y1 = y + (y < q.hit ? DIM_FS * 0.55 : -DIM_FS * 0.55);
+     o += `<line class="bs-lead" x1="${q.cx.toFixed(1)}" y1="${y1.toFixed(1)}"`
+        + ` x2="${q.cx.toFixed(1)}" y2="${q.hit.toFixed(1)}"/>`
+        + `<text x="${q.cx.toFixed(1)}" y="${(y + DIM_FS * 0.36).toFixed(1)}"`
         + ` text-anchor="middle"${kind === 'ring' ? ' class="is-ring"' : ''}>${esc(q.t)}</text>`;
      lead++;
     });

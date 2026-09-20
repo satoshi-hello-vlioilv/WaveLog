@@ -276,11 +276,20 @@
 
  /* 軸上の刃位置と、刃と刃のあいだに残るスペーサー区間の長さ。
 
-    上下の刃は同じ切断位置で向かい合い、軸方向にはクリアランスのぶんだけずれる。
-    どちら側へずれるかはバリ方向で決まり、千鳥では切断位置ごとに交互になる。
-    そのため上下のスペーサー長はどちらも板幅に近く、違いはクリアランス分だけ:
-      中間の区間 … 両端の切断でずれの向きが逆になるので クリアランス×2
-      端部の区間 … 切断が片側だけなので クリアランス×1 */
+    **上下の刃は「刃厚＋クリアランス」だけ軸方向にずれる**（§9.419、利用者の
+    指摘「上下の刃は刃厚分ズレてないと切れません」）。同じ切断の上刃と下刃は
+    円周が食い違う（ラップ）ので、軸方向にも**刃の身がすれ違うだけ**離れて
+    いなければ、円周でぶつかって切れない。向かい合うのは**面と面**で、その
+    あいだの隙間がクリアランス——中心どうしは `刃厚/2 + クリアランス + 刃厚/2`
+    だけ離れる。
+    **切断の位置（材料が切れる面）は変わらない。** 面は中心から刃厚の半分だけ
+    内側なので、上下の面は公称の切断位置をはさんでクリアランスの半分ずつ——
+    条幅の出方は以前と同じ。変わるのは**刃がどこに載るか**＝スペーサーの寸法。
+    どちら側へずれるかはバリ方向で決まり、千鳥では切断位置ごとに交互になる:
+      中間の区間 … 両端の切断でずれの向きが逆になるので （刃厚＋クリアランス）×2
+      端部の区間 … 切断が片側だけなので 刃厚＋クリアランス
+    以前は**クリアランスだけ**ずらしており、上下の刃の身が 9.87mm 重なっていた
+    （実測・刃厚10／クリアランス0.13）——物として組めない配置だった。 */
  function buildLayout(st, M, segs) {
   const tk = st.tk, n = segs.length;
   const arborLen = num(M.P.arborLen) || 1600, clr = st.clr;
@@ -301,13 +310,15 @@
      手持ちでそれを埋められる寸法は限られるので、材料の位置を1刻み未満だけ
      寄せて端数を消す。ずれる量は耳の左右差として現れるが、刻み未満なので
      耳には影響しない。 */
+  /* 上下の刃の中心どうしの距離（§9.419）。面と面のあいだがクリアランス。 */
+  const dKnife = +(tk + clr).toFixed(3);
   const nominal = +((arborLen - st.W) / 2).toFixed(3);
-  const edge0 = nominal + w.osTrim - tk / 2 + sign[0] * clr / 2;   /* OS端（上軸）の区間長 */
+  const edge0 = nominal + w.osTrim - tk / 2 + sign[0] * dKnife / 2;   /* OS端（上軸）の区間長 */
   const slip = +(edge0 - Math.round(edge0 / grid) * grid).toFixed(4);
   const matStart = +(nominal - slip).toFixed(4);
   const origin = matStart + w.osTrim;
-  const U = cuts.map((c, i) => +(origin + c + sign[i] * clr / 2).toFixed(3));
-  const Lo = cuts.map((c, i) => +(origin + c - sign[i] * clr / 2).toFixed(3));
+  const U = cuts.map((c, i) => +(origin + c + sign[i] * dKnife / 2).toFixed(3));
+  const Lo = cuts.map((c, i) => +(origin + c - sign[i] * dKnife / 2).toFixed(3));
   const zones = [
    { key: 'OS端', type: 'end', burr: oppBurr(segs[0].burr),
      up: +(U[0] - tk / 2).toFixed(3), lo: +(Lo[0] - tk / 2).toFixed(3) },
@@ -318,9 +329,10 @@
      lo: +(arborLen - (Lo[n] + tk / 2)).toFixed(3) }
   ];
   return { U, Lo, zones, arborLen, grid,
-           dReal: clr,                    /* 同じ切断での上下刃のずれ */
-           dZone: +(clr * 2).toFixed(3),  /* 中間区間での上下スペーサー長の差 */
-           dEdge: clr,                    /* 端部区間での差 */
+           dKnife,                          /* 同じ切断での上下刃の中心間（刃厚＋クリアランス） */
+           dReal: clr,                      /* 面と面のあいだ＝クリアランス（画面に出す値） */
+           dZone: +(dKnife * 2).toFixed(3), /* 中間区間での上下スペーサー長の差 */
+           dEdge: dKnife,                   /* 端部区間での差 */
            errs: zones.filter(z => z.up < 0 || z.lo < 0), matStart, slip, sign, w };
  }
 
