@@ -1,4 +1,4 @@
-# 見た目（CSS・寸法・色）（53件）
+# 見た目（CSS・寸法・色）（54件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| `<s>`は取り消し線の要素。薄い字に使うなら**器を増やすたび打ち消しの1行も増やす** | `test_bladeui.js` | [§9.420](../../docs/decisions/9.420.md) |
 | 濃い地に`--danger-bg`／`--muted`を当てない（実測1.1:1）。`--nav-*`から選び**重ねた色で測る** | `test_theme.js` | [§9.409](../../docs/decisions/9.409.md) |
 | 色のリテラルは増やさない（上限は`tests/fixtures/color_baseline.json`）。トークンと同じ値は`var()`で書く | `test_csslint.py` | [§9.350](../../docs/decisions/9.350.md) |
 | 選択肢の札に添える印は**2つまで・短く**。溢れると名前のほうが切れる | `test_stopflow.js` | [§9.400](../../docs/decisions/9.400.md) |

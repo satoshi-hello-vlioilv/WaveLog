@@ -329,7 +329,7 @@
    <div class="bs-f"><label for="bsClr">クリアランス</label><input type="number" id="bsClr" step="0.01" min="0"><small>mm</small></div>
    <div class="bs-f"><label for="bsOv">ラップ</label><input type="number" id="bsOv" step="0.05" min="0"><small>mm</small></div>
   </div>
-  <p class="bs-note">同じ切断で向かい合う上下の刃は、軸方向に<b>クリアランスのぶんだけ</b>＝<b id="bsDVal">—</b> mm ずれます。そのため上下のスペーサー長はどちらも板幅に近く、違いは<b>中間の区間でクリアランス×2</b>、<b>端部の区間は切断が片側だけなのでクリアランス×1</b> になります。</p>
+  <p class="bs-note">同じ切断で向かい合う上下の刃は、軸方向に<b>刃厚＋クリアランス</b>＝<b id="bsDVal">—</b> mm だけ中心がずれます（向かい合うのは面と面で、そのあいだの隙間がクリアランスです）。刃どうしは円周が食い違うので、これだけ離れていないと円周でぶつかって切れません。バリの向きで切断ごとに左右が入れ替わるため、<b>千鳥では上下のスペーサー長が「刃1枚ぶん広い／狭い」の交互</b>になります。</p>
   <p class="bs-note" id="bsHold2"></p>`;
 
  const step3Html = () => `
@@ -681,7 +681,9 @@
    ? `${st.lots[0].w}×${st.lots[0].n}` : `${st.lots.length}ロット`;
   $('#bsV4').textContent = res.finger ? 'フィンガー（不要）'
    : `${colorOf(res.bigOd)}${res.bigOd} / ${colorOf(res.smOd)}${res.smOd}`;
-  $('#bsDVal').textContent = res.A.dReal.toFixed(2);
+  /* 出すのは**中心間**（説明文がそう言っている）。クリアランスそのものは
+     「クリアランス」の欄とチップの帯が持つ（§9.420）。 */
+  $('#bsDVal').textContent = (res.A.dKnife || res.A.dReal).toFixed(2);
   $('#bsHold2').innerHTML = `板を保持する方式は<b>${B.holdName(st, M)}</b>です。`
    + (res.finger
     ? `板厚 ${st.thick.toFixed(1)} は ${M.P.fingerMax} 未満のため、板押さえ（フィンガー）で保持します。軸はスペーサーのみで構成します。`
@@ -1050,9 +1052,10 @@
   }
   return o;
  }
- /* 図の上での刃の位置。クリアランスは実寸 0.15mm ほどで、アーバー全長を 800px に
-    写すと 0.07px になり上下のずれが見えない。ずれの**向き**はそのままに、
-    見てわかる最小限の量（刃厚ぶん）まで広げて描く。 */
+ /* 図の上での刃の位置。**上下のずれは刃厚＋クリアランス**（§9.419）なので、
+    ふつうはそのまま描いても見える（アーバー全長を 800px に写して約5px）。
+    それでも足りない縮尺のために、ずれの**向き**はそのままに、見てわかる
+    最小限の量（刃厚ぶん）までは広げる。 */
  function knifePx(V, A) {
   const min = Math.max(V.kw, 3.5);
   return A.U.map((u, i) => {
@@ -1588,8 +1591,10 @@
    items.push({ cx: q.cx, name: q.name, val: zmm(q.mm), w: q.b - q.a, h: hOf(dia[q.kind]),
                 ink: q.kind === 'knife' ? '#fff' : PAL.ink, halo: q.kind === 'knife' });
    if (q.clrX !== undefined) {
-    /* クリアランスは**部材ではなく隙間**なので、中には書けない。必ず引き出す。 */
-    items.push({ cx: (q.cx + q.clrX + (q.b - q.a) / 2) / 2, name: 'クリアランス',
+    /* **中心間**（＝刃厚＋クリアランス）。隙間ではなく2つの刃の位置の差なので、
+       中には書けない——必ず引き出す。クリアランスそのものは、2枚の刃の
+       **面と面のあいだ**に見えている（§9.420）。 */
+    items.push({ cx: (q.cx + q.clrX + (q.b - q.a) / 2) / 2, name: '上下刃の中心間',
                  val: zmm(clrMm), w: 0, h: 0 });
    }
   });
@@ -1658,9 +1663,10 @@
   if (lo.length) where.push(`下軸 ${lo.join('・')}`);
   const bits = [`この組み方が入る区間：${where.join(' ／ ') || 'なし'}`];
   bits.push(`刃 Φ${(+st.knife).toFixed(1)}`);
-  /* **誇張したら、誇張したと書く**（§CLAUDE 6）。破線は反対側の軸の刃で、
-     実寸のずれは図の上で1px未満なので見える幅まで離して描いている。 */
-  if (clrMm > 0) bits.push('破線は反対側の軸の刃（クリアランスは見える幅まで離して描いています）');
+  /* 破線は反対側の軸の刃。**中心間は刃厚＋クリアランス**あるので、この縮尺でも
+     そのまま描ける（§9.420。以前はクリアランスだけのずれで1px未満だった）。
+     クリアランスは2枚の刃の**面と面のあいだ**に見えている。 */
+  if (clrMm > 0) bits.push(`破線は反対側の軸の刃（面と面のあいだがクリアランス ${(+st.clr).toFixed(2)}）`);
   if (ring) bits.push(`内径 Φ${+M.P.ringBore || 241}`);
   if (finger) bits.push(`フィンガー（板押さえ）は板の側へ入るので、ここでは軸の上下に置いています`);
   if (P.rem > 0.001) bits.push(`隙間は刻みの余りです（許容 0〜${M.P.gapMax}）`);

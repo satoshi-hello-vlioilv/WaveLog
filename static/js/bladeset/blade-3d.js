@@ -732,27 +732,47 @@
      ・スペーサー幅 … **軸の上**、ただし**そのスペーサーの側へ寄せて**書く
      引き出し線は**その部材の縁から**引く（`r` は縁の半径。字の位置 `labY` とは
      別に持つ）——線が宙に浮くと、どれを指しているのか読めない。 */
-  if (sh.liner) out.liner.filter(q => !q.filler).forEach(q => {
+  /* **同じ寸法が続くぶんは「×枚数」で1つにまとめる**（§9.420、利用者の指示
+     「複数枚の場合、×枚数とかで、スペースを有効活用しながらわかりやすく」）。
+     `100` を4つ並べるより `100×4` の1つのほうが、場所も要らず「4枚要る」と
+     いう事実もそのまま読める。まとめるのは**隣り合って・同じ軸で・同じ寸法**の
+     ものだけ（離れた同寸法をまとめると、どこの話か分からなくなる）。 */
+  const runs = (list, key) => {
+   const out2 = [];
+   list.forEach(q => {
+    const last = out2[out2.length - 1];
+    if (last && last.y === q.y && last.sz === q.sz && key(last) === key(q)
+     && Math.abs(last.x1 - (q.x - q.sz / 2)) < 0.02) {
+     last.x1 = q.x + q.sz / 2; last.n++;
+     return;
+    }
+    out2.push({ y: q.y, sz: q.sz, n: 1, x0: q.x - q.sz / 2, x1: q.x + q.sz / 2, src: q });
+   });
+   return out2.map(r => Object.assign(r, { x: (r.x0 + r.x1) / 2, w: r.x1 - r.x0 }));
+  };
+  if (sh.liner) runs(out.liner.filter(q => !q.filler), () => 'sp').forEach(q => {
    const sg = Math.sign(q.y);
-   D3.dims.push({ x: off(q.x), y: q.y, w: q.sz, ri: bore, r: linerR, kind: 'sp',
-                  /* 字は**軸の上・そのスペーサーの側**（§9.418 追補）。 */
-                  labY: q.y + sg * bore * 0.62, band: bore * 0.5,
-                  /* 入らないものの段も**軸の上**（1段内側）。線はスペーサーの
-                     内側の縁まで引いて**現物に引っ付ける**（§9.419）。 */
-                  leadY: q.y + sg * bore * 0.28, leadTo: q.y + sg * bore });
+   D3.dims.push({ x: off(q.x), y: q.y, w: q.w, mm: q.sz, n: q.n,
+                  ri: bore, r: linerR, kind: 'sp',
+                  /* 字は**軸の上・そのスペーサーの側**へ、記号（A・B…）から
+                     離して置く（§9.420、利用者の指摘「アルファベットに干渉」）。
+                     記号は軸の中心なので、**軸の外寄り 3/4 より外**を使う。 */
+                  labY: q.y + sg * bore * 0.80, band: bore * 0.36,
+                  leadY: q.y + sg * bore * 0.52, leadTo: q.y + sg * bore });
   });
-  if (sh.ring) out.ring.forEach(q => {
-   const sg = Math.sign(q.y);
-   const ri = q.hold.kind === 'ring' ? ringBore : linerR;
-   const ro = (q.hold.kind === 'ring' ? +q.hold.od : linerR * 2 + 20) / 2;
-   D3.dims.push({ x: off(q.x), y: q.y, w: q.sz, kind: 'ring', ri, r: ro,
+  if (sh.ring) runs(out.ring, q => (q.src || q).hold.kind + '|'
+                                 + ((q.src || q).hold.od || '')).forEach(q => {
+   const sg = Math.sign(q.y), hold = q.src.hold;
+   const ri = hold.kind === 'ring' ? ringBore : linerR;
+   const ro = (hold.kind === 'ring' ? +hold.od : linerR * 2 + 20) / 2;
+   D3.dims.push({ x: off(q.x), y: q.y, w: q.w, mm: q.sz, n: q.n, kind: 'ring', ri, r: ro,
                   labY: q.y + sg * (ri + ro) / 2, band: ro - ri,
                   /* ゴムリングは輪が広いのでたいてい中へ入る。入らないものだけ
                      外の段へ出し、線は**輪の外の縁から**引く。 */
                   leadY: null, leadTo: q.y + sg * ro });
   });
-  /* 上下の刃の対（§9.418）。同じ切断の上刃と下刃は**クリアランスのぶんだけ
-     軸方向にずれて**いて、そのずれが鋏の噛み合わせそのもの。 */
+  /* 上下の刃の対（§9.418・§9.419）。同じ切断の上刃と下刃は**刃厚＋クリアランス**
+     だけ軸方向に中心がずれていて、そのずれが鋏の噛み合わせそのもの。 */
   D3.knives = [];
   if (sh.knife) A.U.forEach((u, i) => D3.knives.push(
    { xu: off(u), xl: off(A.Lo[i]), yU, yL, r: ctx.st.knife / 2 }));
@@ -1327,7 +1347,7 @@
    const hi = P(q.x, q.labY + q.band / 2), lo = P(q.x, q.labY - q.band / 2);
    const hit = P(q.x, q.leadTo);
    const lead = q.leadY === null ? null : P(q.x, q.leadY).y;
-   const t = dmm(q.w);
+   const t = dmm(q.mm) + (q.n > 1 ? '\u00d7' + q.n : '');
    return { t, kind: q.kind, cx: (a.x + b.x) / 2, cy: mid.y,
             pw: Math.abs(b.x - a.x), up: q.y > 0,
             band: Math.abs(hi.y - lo.y), hit: hit.y, lead,
@@ -1379,6 +1399,30 @@
     });
    });
   });
+  /* ---- ③ 有効長がどの区間か（§9.420、利用者の指示「有効長がどの区間か、
+     視覚的にも表示を追加して」）。**寸法線**で言う——字だけだと「どこからどこ
+     まで」が図の上で辿れない。端は立て線、あいだは1本、真ん中に値を置く。 */
+  const pk = D3.pack;
+  if (pk && pk.arbor) {
+   const half = pk.arbor / 2;
+   const a = P(-half, 0), b = P(half, 0);
+   /* 足元の帯（表示の切替・視点）は 9px から 30px ぶんを使っているので、
+      その上へ置く（§9.420）。重ねると線が札の裏へ隠れる。 */
+   const y = h - 54;
+   const tick = 7;
+   const t = `有効長 ${dmm(pk.arbor)}`;
+   const tw = dimTextW(t, DIM_FS) / 2 + 5;
+   const cx = (a.x + b.x) / 2;
+   o += `<line class="bs-span" x1="${a.x.toFixed(1)}" y1="${(y - tick).toFixed(1)}"`
+      + ` x2="${a.x.toFixed(1)}" y2="${(y + tick).toFixed(1)}"/>`
+      + `<line class="bs-span" x1="${b.x.toFixed(1)}" y1="${(y - tick).toFixed(1)}"`
+      + ` x2="${b.x.toFixed(1)}" y2="${(y + tick).toFixed(1)}"/>`
+      + `<line class="bs-span" x1="${a.x.toFixed(1)}" y1="${y}" x2="${(cx - tw).toFixed(1)}" y2="${y}"/>`
+      + `<line class="bs-span" x1="${(cx + tw).toFixed(1)}" y1="${y}" x2="${b.x.toFixed(1)}" y2="${y}"/>`
+      + `<text class="is-span" x="${cx.toFixed(1)}" y="${(y + DIM_FS * 0.36).toFixed(1)}"`
+      + ` text-anchor="middle">${esc(t)}</text>`;
+   D3.spanLine = { x0: +a.x.toFixed(1), x1: +b.x.toFixed(1) };
+  }
   D3.dimShown = { inside, lead, off: list.length - inside - lead, all: list.length };
   el.innerHTML = o;
  }
@@ -1688,7 +1732,7 @@
            zones: (D3.cut ? (D3.zmarks || []) : []).length,
            /* 寸法の層（§9.418）。出した字の内訳と、刃のずれを広げた量。 */
            dims: D3.dimShown || null, knives: (D3.knives || []).length,
-           cutLines: D3.cutLines | 0,
+           cutLines: D3.cutLines | 0, spanLine: D3.spanLine || null,
            /* 詰めの事実と、行き先を間違えた物の数（§9.418）。 */
            pack: D3.pack || null, stray: D3.stray | 0,
            dimSep: D3.dimSep || 0,

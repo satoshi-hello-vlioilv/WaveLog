@@ -513,7 +513,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
               figBadge: g.dataset.badge, parts, leads, nums: nums.length,
               span: all.some(t => /^区間 [\d.]+ mm$/.test(t)),
               names: all.filter(t => /スペーサー|刃（厚み）|隙間/.test(t)).length,
-              clrLabel: all.filter(t => /^クリアランス$/.test(t)).length,
+              clrLabel: all.filter(t => /^上下刃の中心間$/.test(t)).length,
               dashed: svg.querySelectorAll('[stroke-dasharray]').length,
               dims: +svg.dataset.dims, inside: +svg.dataset.inside, lead: +svg.dataset.lead,
               /* 引き出し線の始点と終点を読み、順番が入れ替わっている数を数える。
@@ -567,13 +567,15 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('寸法はマスタの値そのまま（10.025 を 10.03 へ丸めない）', zoom.exact === true,
         zoom.nums3);
     rec('区間ぜんたいの寸法も出す', zoom.span === true, String(zoom.span));
-    /* **クリアランスも寸法の1つ**（§9.413 追補、利用者の指示「拡大表示は
-       クリアランスも表示対象にして」）。実寸では図の上で1px未満なので、
-       反対側の軸の刃を**破線で見える幅まで離して**描き、値は真の値を出す。 */
-    rec('拡大図にクリアランスが出る（反対側の軸の刃を破線で添える）',
+    /* **上下刃のずれも寸法の1つ**（§9.413 追補、利用者の指示「拡大表示は
+       クリアランスも表示対象にして」）。反対側の軸の刃を破線で添え、
+       **中心間（刃厚＋クリアランス）**を札で出す——クリアランスそのものは
+       2枚の刃の**面と面のあいだ**に見えている（§9.420）。 */
+    rec('拡大図に上下刃のずれが出る（反対側の軸の刃を破線で添える）',
         zoom.clrLabel > 0 && zoom.dashed > 0,
         `札${zoom.clrLabel}／破線${zoom.dashed}`);
-    rec('クリアランスを誇張したことを足元で言う', /見える幅まで離して/.test(zoom.note),
+    rec('破線が何かとクリアランスの在りかを足元で言う',
+        /面と面のあいだがクリアランス/.test(zoom.note),
         zoom.note.slice(-60));
     rec('図が言えないこと（どの区間に入るか）を添える', /区間/.test(zoom.note),
         zoom.note.slice(0, 40));
@@ -838,6 +840,22 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('上下の刃が刃の身のぶんすれ違う（円周でぶつからない）',
         !!pk.pack && pk.pack.knifeGap !== null && pk.pack.knifeGap >= pk.pack.tk,
         pk.pack ? `中心間 ${pk.pack.knifeGap}mm / 刃厚 ${pk.pack.tk}mm` : '読めない');
+    /* **有効長がどの区間かを図の上で言う**（§9.420、利用者の指示）。字だけだと
+       「どこからどこまで」が辿れないので、寸法線で端から端を示す。 */
+    const span = await page.evaluate(() => {
+     const svg = document.querySelector('#bsStage3 .bs-t3v');
+     if (!svg) return null;
+     const ln = [...svg.querySelectorAll('.bs-span')];
+     const tx = svg.querySelector('text.is-span');
+     return { n: ln.length, t: tx ? tx.textContent : '' };
+    });
+    rec('有効長がどの区間かを寸法線で出す（端の立て線2本＋あいだの線）',
+        !!span && span.n >= 4 && /有効長/.test(span.t), span ? `${span.n}本 ${span.t}` : '読めない');
+    /* 寸法線の端は**軸の端そのもの**（青い印の位置）を指している。 */
+    /* 向きを裏返すと左右が入れ替わるので、**差の絶対値**で見る。 */
+    rec('寸法線の端は軸の端をさしている',
+        !!pk.spanLine && Math.abs(pk.spanLine.x1 - pk.spanLine.x0) > 200,
+        pk.spanLine ? `${pk.spanLine.x0} 〜 ${pk.spanLine.x1}px` : '読めない');
     /* **設定有効長と、組んだときの上下それぞれの合計長を出す**（§9.418 追補、
        利用者の指示）。差も一緒に出して、合っているかを引き算させない。 */
     const len3 = await page.evaluate(() =>
