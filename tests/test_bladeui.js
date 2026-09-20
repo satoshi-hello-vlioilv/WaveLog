@@ -513,6 +513,8 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
               figBadge: g.dataset.badge, parts, leads, nums: nums.length,
               span: all.some(t => /^区間 [\d.]+ mm$/.test(t)),
               names: all.filter(t => /スペーサー|刃（厚み）|隙間/.test(t)).length,
+              clrLabel: all.filter(t => /^クリアランス$/.test(t)).length,
+              dashed: svg.querySelectorAll('[stroke-dasharray]').length,
               /* 保持層の名前は**群に1回**（枚数ぶん繰り返さない・§CLAUDE 8）。 */
               hold: all.filter(t => /ゴムリング|フィンガー/.test(t)).length,
               /* マスタの寸法をそのまま出しているか（2桁へ丸めると 10.025 が
@@ -534,6 +536,14 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('寸法はマスタの値そのまま（10.025 を 10.03 へ丸めない）', zoom.exact === true,
         zoom.nums3);
     rec('区間ぜんたいの寸法も出す', zoom.span === true, String(zoom.span));
+    /* **クリアランスも寸法の1つ**（§9.413 追補、利用者の指示「拡大表示は
+       クリアランスも表示対象にして」）。実寸では図の上で1px未満なので、
+       反対側の軸の刃を**破線で見える幅まで離して**描き、値は真の値を出す。 */
+    rec('拡大図にクリアランスが出る（反対側の軸の刃を破線で添える）',
+        zoom.clrLabel > 0 && zoom.dashed > 0,
+        `札${zoom.clrLabel}／破線${zoom.dashed}`);
+    rec('クリアランスを誇張したことを足元で言う', /見える幅まで離して/.test(zoom.note),
+        zoom.note.slice(-60));
     rec('図が言えないこと（どの区間に入るか）を添える', /区間/.test(zoom.note),
         zoom.note.slice(0, 40));
 
@@ -733,6 +743,16 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('条と耳屑は札の色でも見分けられる', lab.kinds.length >= 2, lab.kinds.join('/'));
     /* **誇張したら倍率を書く**（§CLAUDE 6）。板厚 1.3mm は実寸では1pxも出ない。 */
     rec('板厚を誇張していることを字で言う', /板厚.*倍/.test(lab.mag), lab.mag.slice(0, 60));
+    rec('上下軸を離していることも字で言う', /上下軸.*離/.test(lab.mag), lab.mag.slice(0, 80));
+    /* **板が刃へめり込まない**（§9.413 追補、利用者の指摘「板がめり込んでいる」）。
+       板は千鳥で上下へ寄るので**見かけの厚みの3倍**の高さを占める。刃先のあいだの
+       隙間がそれより狭いと、太らせた板が刃を突き抜ける。判定は実測ではなく
+       **図を組み立てている値そのもの**で見る（絵を数えると、たまたま隠れただけで
+       通ってしまう）。 */
+    const room = await page.evaluate(() => window.WL.bladeSolid.view());
+    rec('刃先のあいだの隙間が、板の占める高さより広い（板がめり込まない）',
+        room.cutGap > room.matSpan,
+        `隙間 ${(room.cutGap || 0).toFixed(1)} / 板 ${(room.matSpan || 0).toFixed(1)}`);
     /* 向きの切り替えは断面図でも効く。**台車は回さず**、見る側とどちらを残すかを
        入れ替える（回すと切断面まで一緒に回り、カメラ側の入れ替えと打ち消し合う）。
        **いまどちら向きかを当てにしない**——ここへ来るまでに裏返っていることがある。 */

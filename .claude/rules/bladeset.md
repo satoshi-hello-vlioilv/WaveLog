@@ -1,4 +1,4 @@
-# 刃組ガイダンス（62件）
+# 刃組ガイダンス（66件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -28,6 +28,10 @@
 | 拡大図の字は部材の中に入れず、等間隔のスロットへ引き出してそろえる | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
 | 部材の寸法は**丸めない**（`10.025`→`10.03` は在庫に無い別の部材の名前） | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
 | 拡大図は押した区間の反対側の半分へ出す（押した区間を覆わない） | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
+| 誇張は**片側だけ入れない**。板を太らせたら上下軸も離す（でないと刃へめり込む） | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
+| 刃先の隙間は見かけの板厚の5倍（`CUT_OPEN`）。板が占めるのは3倍ぶん | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
+| 「めり込まない」は絵ではなく**組み立てている値**で見る（`cutGap`と`matSpan`） | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
+| 拡大図のクリアランスは反対側の軸の刃を破線で添える。値は真の値 | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
 | 断面図の板は**厚みを誇張する**（実寸では1pxも出ない）。倍率は字で言う | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
 | `matShift()`は模式図の座標で答える。立体へ写すときは**Yの符号を返す** | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
 | 板の札は軸の外へ出す（板と軸のあいだは実寸60mm弱しかない） | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |

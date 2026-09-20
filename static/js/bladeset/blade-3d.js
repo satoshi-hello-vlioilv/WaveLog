@@ -192,6 +192,16 @@
 
  /* 断面図で回せる角度の上限（ラジアン）。真横（±π/2）の手前で止める。 */
  const CUT_LIM = 1.15;
+ /* 断面図で刃先のあいだに空ける隙間＝見かけの板厚の何倍か（§9.413 追補）。
+    板は千鳥で上下へ寄るので**見かけの厚みの3倍**の高さを占める。その両側へ
+    ほぼ1枚ぶんずつ余裕を取った値。模式図（`FIG.openGap` に対し板は 10%）ほど
+    大きくは開けない——断面図は刃もスペーサーも**実寸の丸のまま**描くので、
+    そこだけ極端に開けると図が読めなくなる。 */
+ const CUT_OPEN = 5;
+ /* 部材のいちばん外側の半径。中心間距離を決める前に要るので、`machine()` の
+    答えを待たずにマスタと設定から出す。 */
+ const ringRadius = c => Math.max(c.st.knife, +c.M.P.spacerOD || 240,
+   ...(c.M.rings || []).map(r => +r.od || 0)) / 2;
  /* 見る向きの操作。回す・寄せる・平行移動の3つ。 */
  function bindPointer(cv) {
   let drag = null;
@@ -587,14 +597,9 @@
      切った瞬間に消える——断面をまたいで置き、どちら側から見ても写るようにする。 */
   if (D3.cut) {
    const DEP = 420;
-   /* **板は薄すぎて素のままでは1pxも出ない**（§9.413 追補）。板厚 1.3mm に対し
-      軸まわりは 1,000mm 級なので、実寸で描くと「板が無い図」になる。模式図が
-      `minKnifePx` で刃の厚みに下限を置いているのと同じ考えで、**見える下限まで
-      厚みを誇張する**。誇張した倍率は画面の左上（`.bs-o3`）が字で言う
-      ——出どころと倍率を書かずに歪めない（§CLAUDE 6）。 */
    const box = D3.cutBox || { h: 800 };
-   const TH = Math.max(th, (box.h || 800) / 70);
-   D3.matMag = TH / th;
+   /* 見かけの厚みは `build()` が先に決める（軸を離す量がこれで決まるため）。 */
+   const TH = D3.matTh || th;
    /* **`matShift` は模式図（SVGのY＝下向き）の答え**なので、立体（Yは上向き）へ
       写すときは符号を返す。返さないと、条の千鳥が模式図と上下逆に出る。 */
    const yOf = i => -BS().matShift(A, run, i) * TH;
@@ -746,12 +751,31 @@
   D3.decals = [];
   const A = res.A, segs = res.segs, zp = res.zp;
   const L = A.arborLen, M = MACH;
-  const cd = Math.max(1, ctx.st.knife - ctx.st.ov);   /* 上下軸の中心間距離＝刃径−ラップ */
-  const m = machine(T, g, A, segs, zp, L, cd, ctx.st.tk);
+  /* 実寸の中心間距離＝刃径−ラップ。上下の刃は**ラップのぶん食い違って**いて、
+     刃先のあいだに隙間は無い（だから板が切れる）。 */
+  const cd0 = Math.max(1, ctx.st.knife - ctx.st.ov);
   /* 断面図で見せる範囲（§9.412）。**軸まわりだけ**——機械まわりを伏せるので、
      台座や床まで入れて縮める必要がない。実寸から出すので刃径を変えても崩れない。
      **板より先に決める**（§9.413 追補）——板の厚みの誇張はこの高さから出すので、
      あとから決めると初回だけ誇張が効かない。 */
+  const rad0 = ringRadius(ctx);
+  const h0 = (cd0 / 2 + rad0) * 2 + 120;
+  /* **板は薄すぎて素のままでは1pxも出ない**（§9.413 追補）。板厚 1.3mm に対し
+     軸まわりは 1,000mm 級なので、実寸で描くと「板が無い図」になる。模式図が
+     `minKnifePx` で刃の厚みに下限を置いているのと同じ考えで、**見える下限まで
+     厚みを誇張する**。倍率は画面の左上（`.bs-o3`）が字で言う（§CLAUDE 6）。 */
+  const th0 = Math.max(0.2, ctx.st.thick);
+  D3.matTh = D3.cut ? Math.max(th0, h0 / 70) : th0;
+  D3.matMag = D3.matTh / th0;
+  /* **断面図では上下軸を離す**（§9.413 追補、利用者の指示「板がめり込んでいるので
+     上下軸を適度な位置まで離して2Dに近い表現を試みて」）。板を見える厚みまで
+     太らせると、刃先のあいだに隙間が無いぶん**板が刃へめり込む**。模式図も
+     同じ理由で上下を離して板を通している（`FIG.openGap`）ので、ここも刃先の
+     あいだに隙間を作る。条は千鳥で板厚ぶん上下へ寄るので、**板が占める高さは
+     見かけの厚みの3倍**（±1.5倍）——その両側へ余裕を取る。 */
+  const cd = D3.cut ? ctx.st.knife + D3.matTh * CUT_OPEN : cd0;
+  D3.cutGap = D3.cut ? cd - ctx.st.knife : 0;   /* 刃先のあいだに残る隙間 */
+  const m = machine(T, g, A, segs, zp, L, cd, ctx.st.tk);
   const ods0 = m.out.ring.filter(q => q.hold.kind === 'ring').map(q => q.hold.od);
   const rad = Math.max(ctx.st.knife, +ctx.M.P.spacerOD || 240, ...(ods0.length ? ods0 : [0])) / 2;
   D3.cutBox = { cx: 0, cy: 0, w: L + 160, h: (cd / 2 + rad) * 2 + 120 };
@@ -947,7 +971,8 @@
   /* **誇張したら倍率を書く**（§CLAUDE 6 出どころ・単位・根拠を画面に出す）。
      板厚は実寸だと1pxも出ないので断面図でだけ太らせている（§9.413 追補）。 */
   const mag = D3.cut && D3.matMag > 1.05 && ctx
-   ? `<s>／板厚</s><i>${(+ctx.st.thick).toFixed(1)}</i><s>は図では約${Math.round(D3.matMag)}倍</s>`
+   ? `<s>／板厚</s><i>${(+ctx.st.thick).toFixed(1)}</i>`
+     + `<s>は図では約${Math.round(D3.matMag)}倍。上下軸はそのぶん離しています</s>`
    : '';
   el.innerHTML = `<s>画面左</s>${nm(l)}<s>／</s><s>右</s>${nm(r)}${mag}`;
   el.hidden = false;
@@ -1147,6 +1172,9 @@
            /* 台車がいま回っているか。断面図では**回さない**のが決まり（§9.412）。 */
            rotY: D3.pivot ? D3.pivot.rotation.y : 0,
            cutAz: D3.cutAz, cutEl: D3.cutEl, marks: (D3.marks || []).length,
+           /* 断面図で刃先のあいだに空けた隙間と、板が占める高さ（§9.413 追補）。
+              **板がめり込まないこと**を網が数字で見るための2つ。 */
+           cutGap: D3.cutGap || 0, matSpan: (D3.matTh || 0) * 3, matMag: D3.matMag || 1,
            ortho: !!(D3.cut && D3.ocam), clips: D3.r ? (D3.r.clippingPlanes || []).length : 0 };
  }
 

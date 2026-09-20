@@ -1365,16 +1365,20 @@
  };
  /* `dir` ＝ 字を置く向き（+1 図の下・-1 図の上）。引き出し線は部材の縁から
     スロットへ降り、**字はその先**に置く——線の途中に字を置くと線が字を貫く。 */
- function zoomLabel(x0, y0, x1, y1, name, val, color, PAL, dir) {
+ function zoomLabel(x0, y0, x1, y1, name, val, color, PAL, dir, slotW) {
   const d = dir || 1;
   const vy = d > 0 ? y1 + 14 : y1 - 4, ny = d > 0 ? y1 + 28 : y1 - 18;
+  /* 名前の字は**器（スロット）の幅から決める**（§CLAUDE 11）。11px のままだと
+     「クリアランス」（6字）が隣のスロットへはみ出す。読めない大きさまでは
+     下げない——下限を割るなら出さないのと同じなので、そこで止める。 */
+  const nfs = slotW ? Math.max(8, Math.min(11, (slotW - 4) / ([...name].length * 0.98))) : 11;
   return `<path class="bs-zl" d="M${x0.toFixed(1)} ${y0.toFixed(1)}`
    + `L${x0.toFixed(1)} ${(y0 + d * 7).toFixed(1)}L${x1.toFixed(1)} ${(y1 - d * 7).toFixed(1)}`
    + `L${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${color}" stroke-width="1"/>`
    + `<text x="${x1.toFixed(1)}" y="${vy.toFixed(1)}" text-anchor="middle" font-size="14"`
    + ` font-weight="800" fill="${PAL.ink}" font-variant-numeric="tabular-nums">${esc(val)}</text>`
-   + (name ? `<text x="${x1.toFixed(1)}" y="${ny.toFixed(1)}" text-anchor="middle" font-size="11"`
-   + ` font-weight="600" fill="${PAL.label}">${esc(name)}</text>` : '');
+   + (name ? `<text x="${x1.toFixed(1)}" y="${ny.toFixed(1)}" text-anchor="middle"`
+   + ` font-size="${nfs.toFixed(1)}" font-weight="600" fill="${PAL.label}">${esc(name)}</text>` : '');
  }
  /* 全体の寸法線（両端に立ち上がり）。 */
  function zoomSpan(a, b, y, text, PAL) {
@@ -1419,10 +1423,21 @@
   const core = B.expand(P.spacer).map(mm => ({ mm, kind: 'spacer', name: 'スペーサー' }));
   if (P.rem > 0.001) core.push({ mm: P.rem, kind: 'gap', name: '隙間' });
   const run = st.flip ? core.slice().reverse() : core.slice();
+  /* **クリアランスは「反対側の軸の刃とのずれ」**（§9.413 追補、利用者の指示
+     「拡大表示はクリアランスも表示対象にして」）。同じ切断点の刃は上下で
+     クリアランスのぶん食い違うので、**その刃の番号**を持たせておく。
+     並びは `machine()` と同じ——区間 i を挟むのは自分の軸の刃 i-1 と i。 */
+  const own = (z0.upper ? res.A.U : res.A.Lo) || [];
+  const opp = (z0.upper ? res.A.Lo : res.A.U) || [];
+  const kIx = twoKnife
+   ? (st.flip ? [z0.i, z0.i - 1] : [z0.i - 1, z0.i])
+   : [r.endSide === 'OS' ? 0 : own.length - 1];
+  let kn = 0;
+  const knife = () => ({ mm: tk, kind: 'knife', name: '刃（厚み）', k: kIx[kn++] });
   const seq = [];
-  if (knifeLeft) seq.push({ mm: tk, kind: 'knife', name: '刃（厚み）' });
+  if (knifeLeft) seq.push(knife());
   run.forEach(q => seq.push(q));
-  if (knifeRight) seq.push({ mm: tk, kind: 'knife', name: '刃（厚み）' });
+  if (knifeRight) seq.push(knife());
   const face = { spacer: PAL.spacer, gap: PAL.filler, knife: PAL.knife };
   const edge = { spacer: PAL['spacer-edge'], gap: PAL['filler-edge'], knife: PAL['knife-edge'] };
   const dia = { spacer: spacerD, gap: spacerD, knife: knifeD };
@@ -1446,6 +1461,25 @@
     + ` text-anchor="${knifeLeft ? 'end' : 'start'}" font-size="11" font-weight="700"`
     + ` fill="${PAL.label}">有効幅の端</text>`;
   }
+  /* 反対側の軸の刃（クリアランス）。**実寸では 0.13mm ＝ 図の上で 0.6px** しか
+     なく、そのまま描いても見えない。板の厚みと同じ考えで**見える最小まで離して
+     描き、値は真の値を書く**（誇張したことは足元の一言が言う・§CLAUDE 6）。
+     向きは計算の答えそのまま——クリアランスは切断点ごとに左右が入れ替わる。 */
+  const CLR_MIN = 7;
+  let clr = '', clrMm = 0;
+  seq.filter(q => q.kind === 'knife' && opp.length && own.length).forEach(q => {
+   const d = (+opp[q.k] || 0) - (+own[q.k] || 0);
+   if (!Number.isFinite(d) || Math.abs(d) < 1e-6) return;
+   clrMm = Math.abs(d);
+   const dir = (d < 0 ? -1 : 1) * (st.flip ? -1 : 1);
+   const px = dir * Math.max(Math.abs(d) * S, CLR_MIN);
+   const h = hOf(knifeD);
+   q.clrX = q.a + px;
+   clr += `<rect x="${(q.a + px).toFixed(1)}" y="${(cy - h / 2).toFixed(1)}"`
+    + ` width="${Math.max(1.2, q.b - q.a).toFixed(1)}" height="${h.toFixed(1)}" rx="2"`
+    + ` fill="none" stroke="${PAL['knife-edge']}" stroke-width="1.2"`
+    + ` stroke-dasharray="6 4" opacity=".85"/>`;
+  });
   /* 保持層（ゴムリング／フィンガー）。模式図と同じく軸の上下へ重ねる。 */
   let hold = '';
   if (ring || finger) {
@@ -1481,23 +1515,32 @@
     + ` text-anchor="middle" font-size="11" font-weight="700"`
     + ` fill="${PAL.label}">${esc(nm)}</text>`;
   }
-  /* 軸の並びの字。等間隔のスロットへ降ろす。 */
-  const slots = zoomSlots(seq.length, ZOOM.side, ZOOM.vw - ZOOM.side);
+  /* 軸の並びの字。等間隔のスロットへ降ろす。**クリアランスも1つの寸法**として
+     同じ並びに載せる（別扱いにすると、どこの寸法なのか辿り直すことになる）。 */
+  const items = [];
+  seq.forEach(q => {
+   items.push({ cx: q.cx, name: q.name, val: zmm(q.mm) });
+   if (q.clrX !== undefined) {
+    items.push({ cx: (q.cx + q.clrX + (q.b - q.a) / 2) / 2, name: 'クリアランス', val: zmm(clrMm) });
+   }
+  });
+  const slots = zoomSlots(items.length, ZOOM.side, ZOOM.vw - ZOOM.side);
+  const slotW = (ZOOM.vw - ZOOM.side * 2) / Math.max(1, items.length);
   let marks = '';
-  seq.forEach((q, i) => {
-   marks += zoomLabel(q.cx, botY + 2, slots[i], slotY, q.name, zmm(q.mm), PAL.label, PAL, 1);
+  items.forEach((q, i) => {
+   marks += zoomLabel(q.cx, botY + 2, slots[i], slotY, q.name, q.val, PAL.label, PAL, 1, slotW);
   });
   const spans = zoomSpan(zoneA, zoneB, spanY, `区間 ${P.len.toFixed(2)} mm`, PAL);
   return {
    vh,
-   svg: `${body}${hold}${marks}${spans}`,
+   svg: `${body}${clr}${hold}${marks}${spans}`,
    /* 図が言えないことだけを添える（§CLAUDE 8 同じ情報を2箇所に出さない）。 */
-   note: zoomNote(res, r, P, ring, finger)
+   note: zoomNote(res, r, P, ring, finger, clrMm)
   };
  }
  /* 図の外で言うこと。**図に出ている寸法は繰り返さない**——繰り返すと、
     読む側は「違うものかもしれない」と数え直すことになる（§CLAUDE 8）。 */
- function zoomNote(res, r, P, ring, finger) {
+ function zoomNote(res, r, P, ring, finger, clrMm) {
   const up = (r.zones || []).filter(z => z.upper).map(z => z.i);
   const lo = (r.zones || []).filter(z => !z.upper).map(z => z.i);
   const where = [];
@@ -1505,6 +1548,9 @@
   if (lo.length) where.push(`下軸 ${lo.join('・')}`);
   const bits = [`この組み方が入る区間：${where.join(' ／ ') || 'なし'}`];
   bits.push(`刃 Φ${(+st.knife).toFixed(1)}`);
+  /* **誇張したら、誇張したと書く**（§CLAUDE 6）。破線は反対側の軸の刃で、
+     実寸のずれは図の上で1px未満なので見える幅まで離して描いている。 */
+  if (clrMm > 0) bits.push('破線は反対側の軸の刃（クリアランスは見える幅まで離して描いています）');
   if (ring) bits.push(`内径 Φ${+M.P.ringBore || 241}`);
   if (finger) bits.push(`フィンガー（板押さえ）は板の側へ入るので、ここでは軸の上下に置いています`);
   if (P.rem > 0.001) bits.push(`隙間は刻みの余りです（許容 0〜${M.P.gapMax}）`);
