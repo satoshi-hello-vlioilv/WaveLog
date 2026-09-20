@@ -198,6 +198,9 @@
     大きくは開けない——断面図は刃もスペーサーも**実寸の丸のまま**描くので、
     そこだけ極端に開けると図が読めなくなる。 */
  const CUT_OPEN = 5;
+ /* 有効幅の境目に置く青い印の径。**模式図の `FIG.capD` と同じ値**
+    （片方だけ変えると、2つの図で同じ印が別の大きさに見える）。 */
+ const CUT_CAP_D = 300;
  /* 部材のいちばん外側の半径。中心間距離を決める前に要るので、`machine()` の
     答えを待たずにマスタと設定から出す。 */
  const ringRadius = c => Math.max(c.st.knife, +c.M.P.spacerOD || 240,
@@ -487,6 +490,22 @@
   const shafts = [yU, yL].map(y => ({ x: 0, y, l: L, r: r0 }));
   cy(shafts, steel, g);
   cap(T, g, shafts.map(q => ({ x: q.x, y: q.y, l: q.l })), r0, 0, steel);
+  /* **有効幅の境目の青い印**（§9.413 追補、利用者の指示「上下軸のend部分は
+     青色で明示しているので3D断面も分かるようにして」）。模式図は `drawShafts()`
+     で有効幅の**外側**へ同じ印を置いている（§9.378）。断面図は機械まわり
+     （首・継手・軸受）を丸ごと伏せるので、これが無いと**どこまでが有効幅なのか
+     図から読めない**。色も径も模式図と同じ（`--bs-fig-cap` ／ Φ300）。
+     立体図では本物の機械が見えているので、印は**断面図のときだけ**出す。 */
+  if (D3.cut) {
+   const capD = CUT_CAP_D, capL = Math.max(24, L * 0.018), cr = capD / 2;
+   const capM = matOf(T, 'endcap', { color: cssColor('--bs-fig-cap', '#4a5aa8'),
+                                     metalness: .18, roughness: .52 });
+   const ends = [yU, yL].flatMap(y => [-1, 1].map(sgn => ({
+    x: sgn * (L / 2 + capL / 2), y, l: capL, r: cr })));
+   D3.endCaps = ends.length;
+   cy(ends, capM, g);
+   cap(T, g, ends.map(q => ({ x: q.x, y: q.y, l: q.l })), cr, 0, capM);
+  }
   cy([yU, yL].flatMap(y => [
    { x: dsEnd + M.gapDS / 2 + 34, y, l: M.gapDS + 68, r: r0 * 0.82 },
    { x: osEnd - M.gapOS / 2 - 10, y, l: M.gapOS + 40, r: r0 * 0.90 },
@@ -773,6 +792,7 @@
      同じ理由で上下を離して板を通している（`FIG.openGap`）ので、ここも刃先の
      あいだに隙間を作る。条は千鳥で板厚ぶん上下へ寄るので、**板が占める高さは
      見かけの厚みの3倍**（±1.5倍）——その両側へ余裕を取る。 */
+  D3.endCaps = 0;
   const cd = D3.cut ? ctx.st.knife + D3.matTh * CUT_OPEN : cd0;
   D3.cutGap = D3.cut ? cd - ctx.st.knife : 0;   /* 刃先のあいだに残る隙間 */
   const m = machine(T, g, A, segs, zp, L, cd, ctx.st.tk);
@@ -853,8 +873,15 @@
                    sg * R * ce * Math.cos(D3.cutAz));
    oc.up.set(0, 1, 0);
    oc.lookAt(cx, b.cy, 0);
-   /* 見ている側から当てる。少し斜めにして、切り口が真っ平らに潰れないようにする。 */
-   if (D3.cutLight) D3.cutLight.position.set(cx - 900, b.cy + 1400, oc.position.z * 0.55);
+   /* **見ている側から当てる。光もカメラと一緒に動かす**（§9.413 追補、利用者の
+      指摘「中空の物はないはずなので断面図注意して」）。視点を回せるように
+      したのに光を止めていたので、回した先の面——軸や青い印の**端の丸**——に
+      光が1つも当たらず真っ黒になり、**穴が開いているように見えていた**
+      （真横から見ている間は端の丸が見えないので気づかなかった）。
+      少し上・左へずらすのは変えない。切り口が真っ平らに潰れないようにするため。 */
+   if (D3.cutLight) {
+    D3.cutLight.position.set(oc.position.x - 900, oc.position.y + 1400, oc.position.z);
+   }
    D3.r.render(D3.sc, oc);
    tags(w, h, oc);
    return;
@@ -1175,6 +1202,12 @@
            /* 断面図で刃先のあいだに空けた隙間と、板が占める高さ（§9.413 追補）。
               **板がめり込まないこと**を網が数字で見るための2つ。 */
            cutGap: D3.cutGap || 0, matSpan: (D3.matTh || 0) * 3, matMag: D3.matMag || 1,
+           /* 断面図の光が**カメラと同じ側に居るか**を網が見るための2つ（§9.413 追補）。
+              離れると、回した先の面が黒くなって穴に見える。 */
+           endCaps: D3.endCaps || 0,
+           cutCam: D3.ocam ? [D3.ocam.position.x, D3.ocam.position.y, D3.ocam.position.z] : null,
+           cutLit: D3.cutLight
+            ? [D3.cutLight.position.x, D3.cutLight.position.y, D3.cutLight.position.z] : null,
            ortho: !!(D3.cut && D3.ocam), clips: D3.r ? (D3.r.clippingPlanes || []).length : 0 };
  }
 

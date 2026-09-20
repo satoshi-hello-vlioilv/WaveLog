@@ -1358,11 +1358,25 @@
     `10.03` になり、**在庫に無い別の部材の名前**になってしまう（実測で出た）。
     3桁まで持ち、末尾の0は落として読みやすくする。 */
  const zmm = v => (+v || 0).toFixed(3).replace(/\.?0+$/, '') || '0';
- /* 等間隔のスロット。引き出し先の中心を返す。 */
- const zoomSlots = (n, a, b) => {
-  const w = (b - a) / Math.max(1, n);
-  return Array.from({ length: n }, (_, i) => a + w * (i + 0.5));
- };
+ /* 字の幅の見積り。SVGは描く前に測れないので、**和字＝1em・欧字＝0.58em**で数える
+    （部材の中に入るかどうかの判定に使う）。 */
+ const zoomTextW = (t, fs) => [...String(t || '')]
+  .reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? fs : fs * 0.58), 0);
+ /* 引き出し先の位置決め（§9.413 追補、利用者の指示「引き出し線が重ならないように
+    見やすく工夫して」）。**望んだ位置（部材の真下）へなるべく寄せつつ、最小間隔を
+    守る。** 並び順は変えないので、線どうしが交差しない——交差すると、どの札が
+    どの部材のものか読めなくなる。左から押して右で受け、もう一度左から整える。 */
+ function spreadSlots(want, a, b, gap) {
+  const n = want.length;
+  if (!n) return [];
+  const out = want.slice();
+  for (let i = 1; i < n; i++) out[i] = Math.max(out[i], out[i - 1] + gap);
+  out[n - 1] = Math.min(out[n - 1], b);
+  for (let i = n - 2; i >= 0; i--) out[i] = Math.min(out[i], out[i + 1] - gap);
+  out[0] = Math.max(out[0], a);
+  for (let i = 1; i < n; i++) out[i] = Math.max(out[i], out[i - 1] + gap);
+  return out;
+ }
  /* `dir` ＝ 字を置く向き（+1 図の下・-1 図の上）。引き出し線は部材の縁から
     スロットへ降り、**字はその先**に置く——線の途中に字を置くと線が字を貫く。 */
  function zoomLabel(x0, y0, x1, y1, name, val, color, PAL, dir, slotW) {
@@ -1417,8 +1431,6 @@
   const cy = holdTop + half;
   const botY = cy + half;
   const slotY = botY + ZOOM.lead;
-  const spanY = slotY + ZOOM.slotH + 22;
-  const vh = spanY + 14;
   /* 軸の並び。模式図と同じ順（OS側→DS側）で、`flip` のときだけ左右を返す。 */
   const core = B.expand(P.spacer).map(mm => ({ mm, kind: 'spacer', name: 'スペーサー' }));
   if (P.rem > 0.001) core.push({ mm: P.rem, kind: 'gap', name: '隙間' });
@@ -1466,6 +1478,11 @@
      描き、値は真の値を書く**（誇張したことは足元の一言が言う・§CLAUDE 6）。
      向きは計算の答えそのまま——クリアランスは切断点ごとに左右が入れ替わる。 */
   const CLR_MIN = 7;
+  /* **1つも落としていないことを数で言えるようにする**（§9.413 追補）。
+     字を中へ書いたか外へ引き出したかは幅で変わるので、絵を数えても
+     「出ているはずの寸法が出ていない」を見分けられない。**出すべき数**と
+     **中に書いた数**と**引き出した数**を持ち、網はその足し算を見る。 */
+  let zDims = 0, zIn = 0;
   let clr = '', clrMm = 0;
   seq.filter(q => q.kind === 'knife' && opp.length && own.length).forEach(q => {
    const d = (+opp[q.k] || 0) - (+own[q.k] || 0);
@@ -1503,15 +1520,32 @@
      + ` height="${th.toFixed(1)}" rx="2" fill="${hex}" stroke="${PAL.ink}" stroke-width="1"/>`;
     at += w;
    });
-   const hslots = zoomSlots(list.length, ZOOM.side, ZOOM.vw - ZOOM.side);
    /* **名前は群に1回**（§CLAUDE 8）。枚数ぶん繰り返すと同じ字が3つ並び、
       読む側は「違うものかもしれない」と見比べ直すことになる。 */
    const nm = ring ? `ゴムリング（${ring.ringT === 'big' ? '大' : '小'} Φ${ring.od}）` : 'フィンガー（幅）';
-   list.forEach((q, i) => {
-    hold += zoomLabel(q.cx, cy - ro - 2, hslots[i], ZOOM.holdH - 14, '',
-                      zmm(q.mm), PAL.label, PAL, -1);
+   /* **帯に入る幅のものは帯の中へ書く**（§9.413 追補、利用者の指示）。名前は
+      群の見出しが言っているので、中に書くのは値だけでよい。地が色なので
+      白字＋縁取り（模式図の大小の札と同じ作法）。 */
+   const hIn = Math.min(12, th - 5), hOut = [];
+   zDims += list.length;
+   list.forEach(q => {
+    const w = Math.max(1.2, q.mm * S), t = zmm(q.mm);
+    if (hIn >= 8 && w >= zoomTextW(t, hIn) + 8) {
+     hold += `<text x="${q.cx.toFixed(1)}" y="${(cy - ro + th / 2 + hIn * 0.36).toFixed(1)}"`
+      + ` text-anchor="middle" font-size="${hIn.toFixed(1)}" font-weight="800" fill="#fff"`
+      + ` stroke="${PAL.ink}" stroke-width="${(hIn * 0.16).toFixed(2)}"`
+      + ` style="paint-order:stroke" font-variant-numeric="tabular-nums">${t}</text>`;
+     zIn++;
+    } else hOut.push(q);
    });
-   hold += `<text x="${((hslots[0] + hslots[hslots.length - 1]) / 2).toFixed(1)}" y="11"`
+   const hgap = 46;
+   const hslots = spreadSlots(hOut.map(q => q.cx), ZOOM.side, ZOOM.vw - ZOOM.side, hgap);
+   hOut.forEach((q, i) => {
+    hold += zoomLabel(q.cx, cy - ro - 2, hslots[i], ZOOM.holdH - 14, '',
+                      zmm(q.mm), PAL.label, PAL, -1, hgap);
+   });
+   const capX = list.length ? (list[0].cx + list[list.length - 1].cx) / 2 : (zoneA + zoneB) / 2;
+   hold += `<text x="${capX.toFixed(1)}" y="11"`
     + ` text-anchor="middle" font-size="11" font-weight="700"`
     + ` fill="${PAL.label}">${esc(nm)}</text>`;
   }
@@ -1519,20 +1553,64 @@
      同じ並びに載せる（別扱いにすると、どこの寸法なのか辿り直すことになる）。 */
   const items = [];
   seq.forEach(q => {
-   items.push({ cx: q.cx, name: q.name, val: zmm(q.mm) });
+   items.push({ cx: q.cx, name: q.name, val: zmm(q.mm), w: q.b - q.a, h: hOf(dia[q.kind]),
+                ink: q.kind === 'knife' ? '#fff' : PAL.ink, halo: q.kind === 'knife' });
    if (q.clrX !== undefined) {
-    items.push({ cx: (q.cx + q.clrX + (q.b - q.a) / 2) / 2, name: 'クリアランス', val: zmm(clrMm) });
+    /* クリアランスは**部材ではなく隙間**なので、中には書けない。必ず引き出す。 */
+    items.push({ cx: (q.cx + q.clrX + (q.b - q.a) / 2) / 2, name: 'クリアランス',
+                 val: zmm(clrMm), w: 0, h: 0 });
    }
   });
-  const slots = zoomSlots(items.length, ZOOM.side, ZOOM.vw - ZOOM.side);
-  const slotW = (ZOOM.vw - ZOOM.side * 2) / Math.max(1, items.length);
-  let marks = '';
-  items.forEach((q, i) => {
-   marks += zoomLabel(q.cx, botY + 2, slots[i], slotY, q.name, q.val, PAL.label, PAL, 1, slotW);
+  /* 字の置き方は**器の幅で決める**（§9.413 追補、利用者の指示「幅が十分あるものは
+     その内部にラベルを貼って、狭い部分は…今の表示方式にして、狭い幅のために
+     スペースを空けて」）。§9.413 では「入る部材だけ中に書くと出ている物と出て
+     いない物が混ざる」として全部を外へ出していたが、**利用者の指示で改めた**
+     ——広い部材の字まで外へ出すと、**狭い部材のためのスロットを食ってしまう**。 */
+  const VFS = 14, NFS = 11;
+  const inside = [], outs = [];
+  items.forEach(q => {
+   const need = Math.max(zoomTextW(q.val, VFS), zoomTextW(q.name, NFS)) + 10;
+   if (q.w >= need && q.h >= VFS + NFS + 10) inside.push(q); else outs.push(q);
   });
+  zDims += items.length;
+  zIn += inside.length;
+  let marks = '';
+  inside.forEach(q => {
+   const halo = q.halo
+    ? ` stroke="${PAL.ink}" stroke-width="${(VFS * 0.14).toFixed(2)}" style="paint-order:stroke"` : '';
+   marks += `<text x="${q.cx.toFixed(1)}" y="${(cy - 1).toFixed(1)}" text-anchor="middle"`
+    + ` font-size="${VFS}" font-weight="800" fill="${q.ink}"`
+    + ` font-variant-numeric="tabular-nums"${halo}>${esc(q.val)}</text>`
+    + `<text x="${q.cx.toFixed(1)}" y="${(cy + NFS + 4).toFixed(1)}" text-anchor="middle"`
+    + ` font-size="${NFS}" font-weight="600" fill="${q.ink}"${halo}>${esc(q.name)}</text>`;
+  });
+  /* 外へ出すぶん**だけ**でスロットを配る。1段に収まらないときは2段へ振り分け、
+     同じ段の間隔を倍にする（字を読めない大きさまで縮めない）。 */
+  const wide = outs.length
+   ? Math.max(...outs.map(q => Math.max(zoomTextW(q.val, VFS), zoomTextW(q.name, NFS)))) + 10
+   : 0;
+  /* **x の順に並べてから配る。** 配りは「順番を変えない」ことで交差を防ぐので、
+     渡す並びが x 順でないとその前提が崩れる——右の刃のクリアランスは破線が
+     内側（左）へ出るため、部材の順（刃→クリアランス）と x の順が逆になる
+     （実際にここで1件交差した）。 */
+  outs.sort((a, b) => a.cx - b.cx);
+  const room = (ZOOM.vw - ZOOM.side * 2) / Math.max(1, outs.length);
+  const lanes = wide > room ? 2 : 1;
+  const slotW = room * lanes;
+  const lane = [[], []];
+  outs.forEach((q, i) => lane[lanes === 1 ? 0 : i % 2].push(q));
+  lane.forEach((row, li) => {
+   const xs = spreadSlots(row.map(q => q.cx), ZOOM.side, ZOOM.vw - ZOOM.side, slotW);
+   row.forEach((q, i) => {
+    marks += zoomLabel(q.cx, botY + 2, xs[i], slotY + li * ZOOM.slotH,
+                       q.name, q.val, PAL.label, PAL, 1, slotW);
+   });
+  });
+  const spanY = slotY + ZOOM.slotH * lanes + 22;
+  const vh = spanY + 14;
   const spans = zoomSpan(zoneA, zoneB, spanY, `区間 ${P.len.toFixed(2)} mm`, PAL);
   return {
-   vh,
+   vh, dims: zDims, inside: zIn, lead: zDims - zIn,
    svg: `${body}${clr}${hold}${marks}${spans}`,
    /* 図が言えないことだけを添える（§CLAUDE 8 同じ情報を2箇所に出さない）。 */
    note: zoomNote(res, r, P, ring, finger, clrMm)
@@ -1584,6 +1662,10 @@
    : `バリ ${r.sg.burr === 'down' ? '下' : '上'}／同じ組み方の区間 ${r.n} か所`;
   const svg = $('#bsZoomFig');
   svg.setAttribute('viewBox', `0 0 ${ZOOM.vw} ${fig.vh}`);
+  /* 出すべき寸法の数と、その内訳（中に書いた／引き出した）。網が足し算を見る。 */
+  svg.dataset.dims = String(fig.dims);
+  svg.dataset.inside = String(fig.inside);
+  svg.dataset.lead = String(fig.lead);
   svg.innerHTML = fig.svg;
   $('#bsZoomNote').textContent = fig.note;
   box.hidden = false;

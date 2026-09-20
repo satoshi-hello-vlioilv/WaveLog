@@ -515,6 +515,23 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
               names: all.filter(t => /スペーサー|刃（厚み）|隙間/.test(t)).length,
               clrLabel: all.filter(t => /^クリアランス$/.test(t)).length,
               dashed: svg.querySelectorAll('[stroke-dasharray]').length,
+              dims: +svg.dataset.dims, inside: +svg.dataset.inside, lead: +svg.dataset.lead,
+              /* 引き出し線の始点と終点を読み、順番が入れ替わっている数を数える。
+                 同じ段（終点のyが同じ）どうしだけを見る（段が違えば交差しない）。 */
+              cross: (() => {
+               const seg = [...svg.querySelectorAll('path.bs-zl')].map(el => {
+                const m = [...el.getAttribute('d').matchAll(/([ML])([-\d.]+) ([-\d.]+)/g)];
+                return { x0: +m[0][2], x1: +m[3][2], y: +m[3][3] };
+               });
+               let bad = 0;
+               for (let i = 0; i < seg.length; i++) {
+                for (let j = i + 1; j < seg.length; j++) {
+                 if (Math.abs(seg[i].y - seg[j].y) > 1) continue;
+                 if ((seg[i].x0 - seg[j].x0) * (seg[i].x1 - seg[j].x1) < 0) bad++;
+                }
+               }
+               return bad;
+              })(),
               /* 保持層の名前は**群に1回**（枚数ぶん繰り返さない・§CLAUDE 8）。 */
               hold: all.filter(t => /ゴムリング|フィンガー/.test(t)).length,
               /* マスタの寸法をそのまま出しているか（2桁へ丸めると 10.025 が
@@ -526,11 +543,25 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('区間を押すと拡大図が開く', !zoom.no && zoom.open === true, JSON.stringify(zoom.open));
     rec('開いたのは押した区間（記号が一致する）', zoom.badge === zoom.figBadge,
         `${zoom.figBadge}→${zoom.badge}`);
-    rec('引き出し線の数だけ値の字がある（寸法を1つも落とさない）',
-        zoom.leads > 0 && zoom.nums === zoom.leads, `線${zoom.leads}／値${zoom.nums}`);
+    /* **字は器の幅で置き分ける**（§9.413 追補、利用者の指示「幅が十分あるものは
+       その内部にラベルを貼って、狭い部分は…今の表示方式に」）。置き分けるので
+       「引き出し線の数＝値の数」では見られない。**足し算で見る**——出すべき
+       寸法の数が、中に書いた数と引き出した数に過不足なく割れていること。 */
+    rec('寸法を1つも落としていない（中に書いた数＋引き出した数＝出すべき数）',
+        zoom.dims > 0 && zoom.inside + zoom.lead === zoom.dims,
+        `中${zoom.inside}＋外${zoom.lead}＝${zoom.dims}`);
+    rec('幅のある部材は中に書く（狭いもののためにスロットを空ける）',
+        zoom.inside > 0, `中${zoom.inside}件`);
+    rec('狭い部材は引き出して外に書く', zoom.lead > 0 && zoom.leads === zoom.lead,
+        `外${zoom.lead}件／線${zoom.leads}本`);
+    rec('値の字は出すべき寸法の数だけある', zoom.nums === zoom.dims,
+        `値${zoom.nums}／寸法${zoom.dims}`);
     rec('軸に並ぶ部材はすべて名前が添う（値だけを並べない）',
-        zoom.names > 0 && zoom.names + zoom.hold <= zoom.leads,
-        `名前${zoom.names}／保持層${zoom.hold}／線${zoom.leads}`);
+        zoom.names > 0, `名前${zoom.names}`);
+    /* **引き出し線どうしが交差しない**（同上の指示）。交差すると、どの札が
+       どの部材のものか読めなくなる。始点の順と終点の順が同じなら交差しない。 */
+    rec('引き出し線どうしが交差しない（始点の順と終点の順が同じ）',
+        zoom.cross === 0, `交差${zoom.cross}件`);
     rec('保持層の名前は群に1回だけ（枚数ぶん繰り返さない）', zoom.hold <= 1,
         `${zoom.hold}回`);
     rec('寸法はマスタの値そのまま（10.025 を 10.03 へ丸めない）', zoom.exact === true,
@@ -724,6 +755,30 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('「視点を戻す」で断面図の角度も戻る',
         spin.back.cutAz === 0 && spin.back.cutEl === 0,
         JSON.stringify([spin.back.cutAz, spin.back.cutEl]));
+    /* **光はカメラと一緒に動く**（§9.413 追補、利用者の指摘「中空の物はない
+       はずなので断面図注意して」）。止めておくと、回した先の面（軸や青い印の
+       端の丸）に光が1つも当たらず真っ黒になり、**穴に見える**。
+       真横から見ている間は端の丸が見えないので、回さないと気づけない。 */
+    const lit = await page.evaluate(() => {
+     const cv = document.querySelector('#bsStage3 canvas');
+     const r = cv.getBoundingClientRect();
+     const at = (t, dx, dy) => cv.dispatchEvent(new PointerEvent(t, { bubbles: true,
+       pointerId: 13, clientX: r.left + r.width / 2 + dx, clientY: r.top + r.height / 2 + dy }));
+     at('pointerdown', 0, 0); at('pointermove', -180, 70); at('pointerup', -180, 70);
+     const v = window.WL.bladeSolid.view();
+     document.querySelector('.bs-step3-reset').click();
+     return v;
+    });
+    rec('断面図の光はカメラと同じ側に居る（回した先の面が黒くならない）',
+        !!lit.cutCam && !!lit.cutLit
+        && Math.sign(lit.cutLit[2]) === Math.sign(lit.cutCam[2])
+        && Math.abs(lit.cutLit[0] - lit.cutCam[0]) < 1200,
+        `cam ${(lit.cutCam || []).map(n => Math.round(n)).join(',')}`
+        + ` / light ${(lit.cutLit || []).map(n => Math.round(n)).join(',')}`);
+    /* 有効幅の境目の青い印（§9.413 追補、利用者の指示「上下軸のend部分は青色で
+       明示しているので3D断面も分かるようにして」）。模式図と**同じ色・同じ径**。 */
+    rec('断面図にも有効幅の境目の青い印がある（上下軸に1つずつ・両端）',
+        lit.endCaps === 4, `${lit.endCaps}個`);
     /* 板と耳屑の札（§9.413 追補、利用者の指示「2Dの表示のようにラベルもほしい」）。
        **模式図と同じ数だけ**出る——並びは同じ `materialRun()` から作るので、
        数が食い違ったらどちらかが落としている。 */
