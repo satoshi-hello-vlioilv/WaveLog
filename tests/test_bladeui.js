@@ -791,13 +791,24 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     }, null, { ms: 20000, what: '断面図に切り替わる' });
     const swCut = await page.evaluate(() => {
      const v = window.WL.bladeSolid.view();
-     return { builds: v.builds, builtCut: v.builtCut, cut: v.cut, fixups: v.fixups };
+     return { builds: v.builds, builtCut: v.builtCut, cut: v.cut, fixups: v.fixups,
+              matOff: v.matOff, stale: v.stale };
     });
     rec('図を切り替えるとき組むのは1回だけ（前の図のまま組んで1枚描かない）',
         swCut.builds - swBefore === 1, `組んだ回数 ${swBefore} → ${swCut.builds}`);
     rec('場面に在る模型は、いま選ばれている図のもの（断面図）',
         swCut.builtCut === true && swCut.cut === true,
         `組んである図 ${swCut.builtCut} / 選んだ図 ${swCut.cut}`);
+    /* **板と刃は同じ割付から出ている**（§9.433、利用者の報告「断面図・立体図
+       だけ板の位置がずれる」）。材料の並びは`A.matStart`から、刃の位置は
+       `A.U`から出るので、同じ割付なら**1条目の左端＝1本目の切断位置**で
+       `matOff`は0。違う割付の物が混ざると、ここだけが0でなくなる
+       （絵では「板が横へずれている」としか読めない）。
+       `stale`は「組んである模型がいまの割付のものか」。 */
+    rec('断面図の板と刃が同じ割付から出ている（matOff=0）',
+        swCut.matOff === 0, `matOff=${swCut.matOff}`);
+    rec('組んである模型がいまの割付のもの（stale でない）',
+        swCut.stale === false, `stale=${swCut.stale}`);
     /* 逆向きも同じ。**戻ってから断面図へ戻す**（この節の続きは断面図を見る）。 */
     await page.click('#bsFigTabs [data-fig="3d"]');
     await W.until(page, () => window.WL.bladeSolid.view().builtCut === false, null,
@@ -814,6 +825,34 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      const v = window.WL.bladeSolid.view();
      return v.cut === true && v.builtCut === true && v.ortho === true;
     }, null, { ms: 15000, what: '断面図へ戻す' });
+    /* **割付を変えたら模型も入れ替わる**。条数を変えて、板と刃が食い違わない
+       ことと、古い模型が残らないことを見る（§9.433）。 */
+    await page.click('[data-step-open="bsV3"]');
+    await page.waitForSelector('#bsLotTbl input[data-k="w"]', { timeout: 8000 });
+    await page.evaluate(() => {
+     const put = (el, v) => { el.value = String(v);
+       el.dispatchEvent(new Event('input', { bubbles: true })); };
+     put(document.querySelector('#bsW'), 1130);
+     put(document.querySelector('#bsLotTbl input[data-k="w"]'), 50);
+     put(document.querySelector('#bsLotTbl input[data-k="n"]'), 18);
+    });
+    /* 条数は**刃の対数**で見る（n条なら n+1 対）。 */
+    await W.until(page, () => {
+     const v = window.WL.bladeSolid.view();
+     return v.stale === false && v.knives === 19;
+    }, null, { ms: 15000, what: '断面図が新しい割付で組み直される' });
+    const swAgain = await page.evaluate(() => window.WL.bladeSolid.view());
+    rec('割付を変えても板と刃が食い違わない',
+        swAgain.matOff === 0 && swAgain.stale === false,
+        `matOff=${swAgain.matOff} / stale=${swAgain.stale} / 刃 ${swAgain.knives} 対`);
+    /* 元の材料（50mm×22条・§9.423）へ戻す——この節の続きは同じ材料で見る。 */
+    await page.evaluate(() => {
+     const el = document.querySelector('#bsLotTbl input[data-k="n"]');
+     el.value = '22'; el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await W.until(page, () => window.WL.bladeSolid.view().knives === 23, null,
+                  { ms: 15000, what: '22条へ戻す' });
+    await page.click('[data-step-open="bsV3"]');
     const cut = await page.evaluate(() => {
      const st3 = document.querySelector('#bsStage3'), cv = st3.querySelector('canvas');
      const rig = st3.querySelector('.bs-hud-grp--rig');

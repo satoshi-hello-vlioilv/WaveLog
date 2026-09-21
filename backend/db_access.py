@@ -197,6 +197,13 @@ PATH_CONFIG_LIVE_KEYS=('rne_extract_interval_sec','rne_extract_enabled','schedul
                        #   cleanup_keep_generations … 何世代を残すか
                        'cleanup_auto_enabled','cleanup_interval_sec',
                        'cleanup_keep_days','cleanup_keep_generations',
+                       # デスクトップの起動アイコン(§9.410→§9.433)。画面で決めた
+                       # **名前と絵**はここに残す——以前はどこにも保存しておらず、
+                       # 「作る」を押した瞬間だけ使われていたので、画面を切り替えると
+                       # 既定の名前へ戻っていた(利用者の報告)。
+                       #   shortcut_name … デスクトップに出る字(空なら既定の名前)
+                       #   shortcut_icon … 指定した絵のパス(空なら既定の絵)
+                       'shortcut_name','shortcut_icon',
                        # この端末の呼び名(§9.208 ⑧)。空なら OS から解決する。
                        # 権限マスタとの照合・監査列・編集セッションの持ち主表示が
                        # すべてこの1つの答えを見るので、**現場で名乗り直せる**

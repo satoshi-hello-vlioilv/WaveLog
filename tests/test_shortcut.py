@@ -10,6 +10,7 @@
   3. **作れない端末は理由を返す**（黙って失敗しない・§CLAUDE 4）
   4. アイコンの指定は**読めないものを黙って既定へ落とさない**（§9.231）
 """
+import inspect
 import struct
 import sys
 from pathlib import Path
@@ -83,6 +84,34 @@ spec, source, bad = desktop_shortcut._icon_spec('C:/x/icon.png')
 rec('使えない拡張子は理由を付けて断る', not spec and bool(bad) and '.ico' in bad, bad)
 spec, source, bad = desktop_shortcut._icon_spec(str(ROOT / 'Start.vbs'))
 rec('.vbs も断る（絵を持たない）', not spec and bool(bad), bad)
+
+# ---- 5) 名前と絵は共通設定へ残る（§9.433、利用者の報告） -------------------
+# 「名前を変えても画面を切り替えると元に戻ってしまう」——どこにも保存して
+# おらず、「作る」を押した瞬間だけ使われていた。**パス設定マスタの1行**に
+# 残し、渡されなければそこから引く（読むのは`path_config_value()`の1箇所）。
+from backend.db_access import PATH_CONFIG_KEYS                # 遅延: 網の並び順に合わせる
+from backend.routes.path_config import _PATH_CONFIG_TEXT_FIELDS
+rec('名前と絵はパス設定マスタの鍵として宣言してある',
+    'shortcut_name' in PATH_CONFIG_KEYS and 'shortcut_icon' in PATH_CONFIG_KEYS,
+    str([k for k in PATH_CONFIG_KEYS if k.startswith('shortcut')]))
+# **画面から保存できること**まで見る（鍵を足しても受け側に無ければ、触っても
+# 何も起きず開き直すと元に戻る——§9.208 ⑨で実際に3つ踏んだ壊れ方）。
+rec('共通設定の保存が名前と絵を受け付ける',
+    'shortcut_name' in _PATH_CONFIG_TEXT_FIELDS and 'shortcut_icon' in _PATH_CONFIG_TEXT_FIELDS,
+    str(_PATH_CONFIG_TEXT_FIELDS))
+# **渡されなければ保存値を使う**。`saved()`が読めないときも落ちない。
+rec('保存値の読み口があり、読めなくても既定で続ける',
+    isinstance(desktop_shortcut.saved('shortcut_name'), str),
+    repr(desktop_shortcut.saved('shortcut_name')))
+# **作るときは渡された値をそのまま使う**（§9.433）——ここで保存値へ落とすと、
+# 「アプリのマーク」を選んだのに前に指定した絵で作られる。
+src = inspect.getsource(desktop_shortcut.create)
+rec('create() は渡された名前・絵を保存値で上書きしない',
+    "saved('shortcut_icon')" not in src and "saved('shortcut_name')" not in src,
+    '上書きしていない' if "saved(" not in src else src[:80])
+# 状態は保存した名前で見る（既定名に倒れると「まだ作っていません」と言う）。
+rec('status() は名前を渡されなければ保存値を使う',
+    "saved('shortcut_name')" in inspect.getsource(desktop_shortcut.status))
 
 ng = [n for n, ok in R if not ok]
 print(f'\n== {len(R) - len(ng)}/{len(R)} PASS ==')

@@ -165,6 +165,33 @@ let b=null;
  });
  rec('種類が変わると使わない`<i>`は伏せる（並びは同じまま）',
      ld2.fifth==='none'&&ld2.first==='wl-ld-rotate',JSON.stringify(ld2));
+ /* **入口は1つのまま、行き先を出す**（§9.433、利用者の報告「設定画面にない
+    ので設定できるようにしてください」）。設定を探しに来るのは共通設定なので、
+    バッジの説明に節の顔ぶれを書き、「この端末の見え方」を名前空間から
+    まとめて読めるようにした（共通設定の行き先がこの3つを並べて出す）。 */
+ const look=await page.evaluate(()=>({
+  title:document.getElementById('uiSizeBadge').title,
+  size:!!(window.WL&&WL.uiSize&&WL.uiSize.SIZES&&WL.uiSize.size),
+  dur:!!(window.WL&&WL.duration&&WL.duration.STYLES&&WL.duration.style),
+  ld:!!(window.WL&&WL.loader&&WL.loader.STYLES&&WL.loader.style),
+ }));
+ rec('バッジの説明に節を全部書く（畳んだ中に何が在るか外から読める）',
+     /文字の大きさ/.test(look.title)&&/時間の書き方/.test(look.title)
+     &&/読み込み/.test(look.title),look.title);
+ rec('この端末の見え方の3つは同じ形で読める（`SIZES`/`STYLES`と現在値）',
+     look.size&&look.dur&&look.ld,JSON.stringify(look));
+ /* 変わったことを1つの合図で知らせる（受ける側＝共通設定の「いまの値」）。 */
+ const beat=await page.evaluate(()=>new Promise(res=>{
+  let n=0;
+  const on=()=>{n++};
+  document.addEventListener('wl:look-change',on);
+  WL.loader.setStyle('ball-beat');
+  WL.uiSize.setSize('lg');
+  setTimeout(()=>{document.removeEventListener('wl:look-change',on);res(n)},80);
+ }));
+ rec('見え方が変わったら合図を出す（いまの値を出す画面が塗り直せる）',
+     beat>=2,String(beat));
+ await page.evaluate(()=>{WL.uiSize.setSize('md');WL.loader.setStyle('ring')});
  await page.evaluate(()=>localStorage.removeItem('MeasurementLoaderV1'));
 
  /* ---------- 時間の書き方（§9.341） ---------- */

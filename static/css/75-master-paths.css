@@ -219,6 +219,16 @@
    「この端末」の章の中の1ブロック。**状態は見出しの横で1度だけ言い**
    （作成済み／まだ／作れない）、作成先と行き先は押す前に読めるところへ置く
    （§CLAUDE 6 出どころ・§CLAUDE 2 次にすることを1つだけ指す）。 */
+/* この端末の見え方への行き先（§9.433）。**器はショートカットの箱と同じ**
+   ——同じ章に並ぶ「この端末だけの設定」なので、形が違うと別種に見える。 */
+.pc-look{display:flex;flex-direction:column;gap:var(--gap-inline);
+  padding:var(--space-2);border:1px solid var(--line-soft);
+  border-radius:var(--radius-sm);background:var(--surface-2)}
+.pc-look-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--gap-inline)}
+.pc-look-head b{font-size:var(--fs-sm);color:var(--ink)}
+/* いまの値は**状態の字**（色だけで言わない・§CLAUDE 3）。 */
+.pc-look-now{font-size:var(--fs-micro);font-weight:700;color:var(--muted)}
+.pc-look-act{display:flex;flex-wrap:wrap;gap:var(--gap-inline);align-items:center}
 .pc-sc{display:flex;flex-direction:column;gap:var(--gap-inline);
   padding:var(--space-2);border:1px solid var(--line-soft);
   border-radius:var(--radius-sm);background:var(--surface-2)}

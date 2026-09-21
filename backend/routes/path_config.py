@@ -126,7 +126,10 @@ _PATH_CONFIG_CHOICE_FIELDS={
 # `pc_name`はこの端末の呼び名(§9.208 ⑧)——OSから取れない端末が名乗り直すため。
 _PATH_CONFIG_TEXT_FIELDS=('records_backup_export_path','schedule_share_path',
                           'records_share_dir',
-                          'rne_assets_dir','rne_conf_path','pc_name')
+                          'rne_assets_dir','rne_conf_path','pc_name',
+                          # デスクトップの起動アイコン(§9.433)。名前も絵も
+                          # **決めたら残す**——押した瞬間だけの値にしない。
+                          'shortcut_name','shortcut_icon')
 
 
 # ---- 置き場は`backend/storage_layout.py`が答える(§9.260→§9.267) ----------

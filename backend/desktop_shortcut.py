@@ -140,14 +140,37 @@ def _no_window():
  return {'creationflags':getattr(subprocess,'CREATE_NO_WINDOW',0)}
 
 
+def saved(key):
+ """共通設定に残してある値（§9.433）。**決めた名前と絵は残す**——以前は
+    どこにも保存しておらず、画面を切り替えると既定の名前へ戻っていた
+    （利用者の報告）。読むのは`パス設定マスタ`の1箇所で、
+    `path_config_value()`が答える（§data「置き場の答えは1箇所」）。
+
+    **遅延importにする理由**: `db_access`はマスタDBの置き場を解決するため
+    起動の途中で組み上がる。ここを頭で読むと、起動の順番に縛りが増える。"""
+ from .db_access import path_config_value            # 遅延: 起動順に縛りを作らない
+ try:
+  return str(path_config_value(key,'') or '').strip()
+ except Exception as _e:
+  quiet('ショートカットの設定を読めない（既定で続ける）',_e)
+  return ''
+
+
 def status(name=None):
- """いまの状態。**画面はこの答えをそのまま出す**（判定を2箇所に持たない）。"""
+ """いまの状態。**画面はこの答えをそのまま出す**（判定を2箇所に持たない）。
+
+    名前を渡されなければ**共通設定に残した名前**を使う（§9.433）——
+    「作成済みか」は名前から決まるファイルが在るかで見るので、ここが既定名に
+    倒れると、別の名前で作ったショートカットを「まだ作っていません」と言う。"""
  ok,why=supported()
+ if not str(name or '').strip():name=saved('shortcut_name')
  link=None
  try:link=link_path(name)
  except Exception as _e:quiet('デスクトップの場所を決められない',_e)
  out={'ok':True,'supported':ok,'why':why,
       'name':_safe_name(name),'defaultName':DEFAULT_NAME,
+      # 画面が「指定の絵」を選び直せるように、残してある絵のパスも返す。
+      'icon':saved('shortcut_icon'),
       'desktop':str(desktop_dir()) if ok else '',
       'link':str(link) if link else '',
       'target':str(target_path()),
@@ -162,7 +185,11 @@ def status(name=None):
 
 
 def create(name=None,icon=None):
- """デスクトップへ作る（既に在れば作り直す）。戻り値は`status()`＋結果。"""
+ """デスクトップへ作る（既に在れば作り直す）。戻り値は`status()`＋結果。
+
+    **渡された値をそのまま使う**（§9.433）。画面の欄は共通設定に残した値から
+    組み立ててあるので、ここで保存値へ落とすと**「アプリのマーク」を選んだのに
+    前に指定した絵で作られる**（空欄＝既定、を保存値で上書きしてしまう）。"""
  ok,why=supported()
  if not ok:return {'ok':False,'error':why}
  helper=_helper_path()
@@ -189,6 +216,8 @@ def create(name=None,icon=None):
           +(detail[-1] if detail else f'終了コード {p.returncode}')}
  out=status(name)
  out['created']=True
- out['icon']=spec
+ # `icon`は**共通設定に残した値**（status が入れる）。実際に使った絵は
+ # 別の鍵で返す——同じ鍵に2つの意味を持たせない（§CLAUDE 8）。
+ out['iconUsed']=spec
  out['iconSource']=source
  return out

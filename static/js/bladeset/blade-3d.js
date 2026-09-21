@@ -833,6 +833,9 @@
     +X、送りの向きを +Z に取っているので、入側（切断前の元板）は −Z、出側
     （切断後の条）は +Z になる。切られた条は刃に押されて板厚のぶんだけ上下へ
     分かれる（模式図と同じ）。 */
+ /* 条と条のあいだに空ける見た目の隙間（mm）。**切れ目が見えないと1枚の板に
+    見える**ので、実寸には無い隙間を入れている。`matOff`の物差しでもある。 */
+ const MAT_GAP = 3;
  function material(T, g, A, segs, L) {
   const off = x => x - L / 2, th = Math.max(0.2, ctx.st.thick);
   const run = BS().materialRun(A, segs), IN = 620, OUT = 760;
@@ -871,7 +874,16 @@
    const yOf = i => -BS().matShift(A, run, i) * TH / 2;
    const face = f => run.map((r, i) => ({ r, i })).filter(({ r }) => f(r)).map(({ r, i }) =>
     ({ x: off((r.from + r.to) / 2), y: yOf(i), z: 0,
-       l: Math.max(1, r.to - r.from - 3), r: TH, d: DEP }));
+       l: Math.max(1, r.to - r.from - MAT_GAP), r: TH, d: DEP }));
+   /* **材料と刃が同じ割付から出ているかを数で残す**（§9.433、利用者の報告
+      「断面図・立体図だけ板の位置がずれる」）。材料の並びは`A.matStart`から、
+      刃の位置は`A.U`から出るので、同じ`A`なら**1条目の左端と1本目の切断位置は
+      ぴたり同じ**（どちらも`matStart + OS耳`）。0でなければ「違う割付の物が
+      混ざっている」しるし——絵で見ると「板が横へずれている」としか読めないので、
+      網が名指しで見られるように数で答える（`view().matOff`）。 */
+   const first = run.find(r => r.sg.type !== 'trim');
+   D3.matOff = (first && A.U.length)
+    ? +(first.from - (A.U[0] + A.Lo[0]) / 2).toFixed(3) : 0;
    [[r => r.sg.type === 'strip', sheet], [r => r.sg.type !== 'strip', trim]].forEach(([f, mat]) => {
     const list = face(f);
     cut(list, mat);
@@ -1060,7 +1072,12 @@
 
  /* 立体図を組み直す。模式図と同じ A・segs・zp から作る。 */
  function build() {
-  if (!ctx || !ctx.res || !init()) return;
+  /* **組めなかったときは「今の物ではない」と名乗る**（§9.433）。以前はただ
+     戻っていたので、**前の割付・前の図のまま組んである模型**が「今の物」の
+     顔をして場面に残り、`render()`の食い違いの見張りも素通りしていた。
+     組めない理由は2つ（割付がまだ無い・部品がまだ無い）で、どちらも
+     **あとから解消する**ので、控えを落としておけば次の機会に組み直される。 */
+  if (!ctx || !ctx.res || !init()) { D3.builtRes = null; return; }
   const T = D3.T, g = D3.g, res = ctx.res;
   /* 形と材質は使い回しているので消さない。まとめ描きの持ち物だけ解放する。 */
   const clear = o => { while (o.children.length) { const c = o.children.pop(); if (c.dispose) c.dispose(); } };
@@ -1117,7 +1134,12 @@
   const endY = cd / 2 + rad + (D3.cut ? 90 : 330);
   D3.tag = { os: { x: -(L / 2 + 120), y: endY, z: 0 }, ds: { x: L / 2 + 120, y: endY, z: 0 } };
   D3.bcx = m.bcx;
-  D3.carX = D3.out ? -m.bcx : -M.ttX;
+  /* **断面図は必ずライン位置で見る**（§9.433）。段取り（引き出し・回す）は
+     断面図では伏せてあるのに、台車の走行ぶん（`carX`）だけは立体図の状態を
+     引きずっていた——カメラがそのぶんを足して見ているので絵は成り立つが、
+     「いま何を見ているか」が立体図の操作の履歴で変わることになる。
+     断面図は**軸とその上の物だけ**を見る図なので、台車はラインへ置く。 */
+  D3.carX = (D3.out && !D3.cut) ? -m.bcx : -M.ttX;
   D3.pivot.position.x = M.ttX;
   g.position.x = D3.carX;
   D3.fix.position.x = M.ttX + D3.carX;
@@ -1134,6 +1156,14 @@
   /* **組んだ図を控えるのは render() より前**（§9.428）。`render()`は食い違いを
      見つけると組み直すので、後に置くと組み直しが無限に続く。 */
   D3.builtCut = D3.cut;
+  /* **何から組んだかも控える**（§9.433、利用者の報告「断面図・立体図だけ板の
+     位置がずれる」）。模型は`ctx.res`（割付）から作るが、控えていたのは
+     **図の種類だけ**だったので、割付が入れ替わったのに組み直されなかった模型を
+     `render()`が見分けられなかった——材料の並びは`A.matStart`から、刃の位置は
+     `A.U`から出るので、**違う割付の物が混ざると板だけが横へずれる**。
+     控えるのは`res`そのもの（`solve()`は呼ぶたびに新しい物を返すので、
+     同一性の比較がそのまま「同じ割付か」の答えになる）。 */
+  D3.builtRes = res;
   D3.dirty = false;
   D3.builds++;
   render();
@@ -1166,6 +1196,21 @@
   D3.r.clippingPlanes = on && D3.clip ? [D3.clip] : [];
  }
 
+ /* 器を空にする（§9.433）。**組んである模型が今の図の物でないときは、前の図の
+    絵を残さない**——絵は「いま何を見ているか」の答えなので、古い1枚を残すと
+    利用者は押した図が出ていると読む。札（`tags()`が置くHTML）も一緒に伏せる。 */
+ function clearCanvas() {
+  if (!D3.r) return;
+  try { D3.r.clear(); } catch (e) {
+   WL.quiet.note('器を空にできない（前の1枚が残る）', e);
+  }
+  /* 札は**種類ごとに1本の道**で伏せる（増やしたらここへ足す）。 */
+  (D3.markEls || []).forEach(el => { el.hidden = true; });
+  (D3.zoneEls || []).forEach(z => { z.box.hidden = true; z.chip.hidden = true; });
+  TAG_KEYS.forEach(key => { const el = $h('.bs-t3-' + key); if (el) el.hidden = true; });
+  const sv = $h('.bs-t3v'); if (sv) { sv.hidden = true; sv.innerHTML = ''; }
+ }
+
  function render() {
   if (!D3.r || !D3.on) return;
   /* **描くのは、いま選ばれている図の模型だけ**（§9.428、利用者の報告
@@ -1173,8 +1218,22 @@
      ここは切り替え以外の道からも呼ばれる——掴んで回している最中の毎フレーム、
      器の大きさが変わったとき、台車を回す・引き出すの動き。そのどれかが
      切り替えと重なると、**前の図のまま組んである模型**を描いてしまい、
-     もう一度札を押すまで戻らない。食い違っていたら**組み直してから**描く。 */
-  if (D3.built && D3.builtCut !== D3.cut) { D3.fixups++; build(); return; }
+     もう一度札を押すまで戻らない。食い違っていたら**組み直してから**描く。
+
+     **見るのは「図の種類」と「割付」の両方**（§9.433）。以前は図の種類だけを
+     見ていたので、**割付が入れ替わったのに組み直されなかった模型**はそのまま
+     描かれていた（材料の並びと刃の位置が別々の割付から出て、板だけが横へ
+     ずれる）。どちらか食い違えば組み直す——`build()`が両方を控え直すので、
+     組み直しは1回で収まる。 */
+  if (D3.built && (D3.builtCut !== D3.cut || D3.builtRes !== ctx.res)) {
+   D3.fixups++;
+   build();
+   /* 組み直せなかった（割付がまだ無い・部品がまだ無い）なら、**前の図の絵を
+      残さない**。残すと「断面図を押したのに立体図が出たまま」になる
+      （利用者の報告④）——器を空にして、次に組めたときの1枚を待つ。 */
+   if (D3.builtRes !== ctx.res) clearCanvas();
+   return;
+  }
   const T = D3.T, cv = D3.cv, w = cv.clientWidth, h = cv.clientHeight;
   if (w < 8 || h < 8) return;
   if (cv.width !== Math.round(w * D3.r.getPixelRatio()) || D3.w !== w || D3.h !== h) {
@@ -1906,6 +1965,12 @@
            cutCam: D3.ocam ? [D3.ocam.position.x, D3.ocam.position.y, D3.ocam.position.z] : null,
            cutLit: D3.cutLight
             ? [D3.cutLight.position.x, D3.cutLight.position.y, D3.cutLight.position.z] : null,
+           /* **組んである模型はいまの割付の物か**（§9.433）。図を切り替えた直後・
+              割付を変えた直後に「前の物のまま」が場面に残っていないかを、網が
+              1つの真偽で見られるようにする。 */
+           stale: !!(D3.built && ctx && D3.builtRes !== ctx.res),
+           /* 材料と刃の食い違い（§9.433）。同じ割付から出ていれば必ず0。 */
+           matOff: D3.cut ? (D3.matOff || 0) : 0,
            ortho: !!(D3.cut && D3.ocam), clips: D3.r ? (D3.r.clippingPlanes || []).length : 0 };
  }
 

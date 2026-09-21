@@ -2172,6 +2172,7 @@ function applyDurationStyle(key){
     から効く」にすると、直らない画面が必ず残る(選んだのに変わらない、は
     設定が壊れているのと見分けが付かない)。 */
  document.dispatchEvent(new CustomEvent('wl:duration-style',{detail:{style:durationStyle}}));
+ notifyLookChange();
 }
 durationStyle=currentDurationStyle();
 window.WL.duration={
@@ -2225,9 +2226,20 @@ function applyUiSize(key){
  document.querySelectorAll('#uiSizeMenu [data-ui-size-option]').forEach(b=>{
   b.classList.toggle('is-current',b.dataset.uiSizeOption===size);
  });
+ notifyLookChange();
 }
 applyUiSize(currentUiSize());
 window.applyUiSize=applyUiSize;
+/* 表示サイズも**名前空間から読めるようにする**（§ui-core「`window.*`への新規
+   公開は名前空間経由」）。`WL.duration`／`WL.loader`と同じ形にそろえる——
+   「この端末の見え方」の3つは、どれも同じ形で「いまの値」と「顔ぶれ」を
+   答えられないと、まとめて出す側（共通設定の行き先・§9.433）が3通りの
+   読み方を書き分けることになる。 */
+window.WL.uiSize={
+ size:currentUiSize,
+ setSize:applyUiSize,
+ SIZES:UI_SIZES,
+};
 
 /* ---------- 読み込み中の見せ方（ローダー）§9.421 ----------
    利用者の指示「https://connoratherton.com/loaders のloaderを使えるように。
@@ -2241,6 +2253,17 @@ window.applyUiSize=applyUiSize;
    **並びを作るのはここ1箇所**（`WL.loader.html()`）。呼ぶ側が自分で
    `<span class="mini-spinner">`を書いていると、種類を足すたびに全部の
    呼び出しを探すことになる。 */
+/* 「この端末の見え方」が変わったことを1つの合図で知らせる（§9.433）。
+   設定そのものは「表示」バッジの1箇所が持つ（§9.421）が、**いまの値を
+   出している画面**（共通設定の「この端末の見え方」）は別の場所にあるので、
+   変わったことを知る手立てが要る——**知らせる役はここ1箇所**にして、
+   聞く側は`document`で受ける（§9.285「変わったら知らせる」と同じ作法）。 */
+function notifyLookChange(){
+ try{document.dispatchEvent(new CustomEvent('wl:look-change'))}
+ catch(e){WL.quiet.note('見え方が変わったことを知らせられない（画面は次に開いたときに直る）',e)}
+}
+WL.notifyLookChange=notifyLookChange;
+
 const LOADER_KEY='MeasurementLoaderV1';
 const LOADERS=[
  {key:'ring',label:'輪と点',hint:'これまでの見せ方'},
@@ -2264,6 +2287,7 @@ function applyLoader(key){
  document.querySelectorAll('#uiSizeMenu [data-loader-option]').forEach(b=>{
   b.classList.toggle('is-current',b.dataset.loaderOption===k);
  });
+ notifyLookChange();
 }
 /* **中の`<i>`は常に5つ**。使わないぶんはCSSが伏せるので、種類を変えても
    並びはそのまま（作り直さないから、動いている最中に切り替えても飛ばない）。 */

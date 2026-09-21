@@ -755,9 +755,24 @@
  /* 段の見出しに出す一言。**欄の値そのものから作る**——束ごとに文言を
     書き分けると、欄を1つ足したときに書き足す場所が増える。
     空の欄は言わない（「未設定・未設定・未設定」は何も語らない）。 */
+ /* その欄が**いま出ている面に在るか**（§9.433）。段の札の一言は「畳んだ中で
+    何が効いているか」を言うものなので、**伏せてある欄は数えない**——たとえば
+    ショートカットの設定は作れない端末では器ごと伏せてあるのに、その名前が
+    段の札に出て「この端末の名前」と読めてしまっていた（§9.391「必須に数える
+    のはいま出している面の欄だけ」と同じ考え）。
+    見るのは`[hidden]`だけ（`offsetParent`は`position:fixed`と未組み立ての
+    両方で`null`になる・§9.346）。**段そのものの`hidden`は数えない**
+    ——選ばれていない段は伏せてあるので、そこで止めないと全部空になる。 */
+ function mmFieldShown(fld,panel){
+  for(let el=fld;el&&el!==panel;el=el.parentElement){
+   if(el.hasAttribute&&el.hasAttribute('hidden'))return false;
+  }
+  return true;
+ }
  function mmTabSummaryText(panel){
   const parts=[];
   panel.querySelectorAll('.mm-field').forEach(fld=>{
+   if(!mmFieldShown(fld,panel))return;
    /* 設定ページの欄は`data-pc-field`（§9.261で段に分けた）。**両方見る**
       ——片方だけだと、そのページの段だけ一言が空になる。 */
    const el=fld.querySelector('[data-field],[data-pc-field]');

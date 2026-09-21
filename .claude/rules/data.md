@@ -1,4 +1,4 @@
-# データの置き場と共有（55件）
+# データの置き場と共有（57件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| ショートカットの名前と絵は`パス設定マスタ`へ残す。鍵は**保存の受け側にも**足す | `test_shortcut.py` | [§9.433](../../docs/decisions/9.433.md) |
+| 共通設定の欄は`data-pc-field`を名乗れば保存に載る。**値は組み立てるときに入れる** | `test_shortcut.py` | [§9.433](../../docs/decisions/9.433.md) |
 | 端末に持つ設定の例（seed）は**読んだその場で保存する**。IDを時刻から作らない | `test_lotcopy.js` | [§9.400](../../docs/decisions/9.400.md) |
 | 保存された`[]`は「まだ作っていない」ではなく**「利用者が空にした」**。見分けるのは鍵の有無 | `test_lotcopy.js` | [§9.400](../../docs/decisions/9.400.md) |
 | ログビュワー（`backend/routes/logs.py`／`static/js/core/log-view.js`）は「1行」でなく「1件」で扱う | `test_logs.py`・`test_logview.js` | [§9.99](../../docs/decisions/9.99.md) |

@@ -1926,29 +1926,71 @@
     画面はその答えを出すだけ——作れない端末では**ボタンごと出さず理由を書く**
     （押せるのに何も起きない的を残さない・§CLAUDE 4）。
     絵は2つから選べる（利用者の問い「アイコンも設定できますか？」）。 */
+ /* ---------- この端末の見え方への行き先（§9.433、利用者の報告） ----------
+    「ローディング中の動くアイコンをパターンから選んで設定できるようにした
+      はずですが設定画面にないので設定できるようにしてください」
+
+    **設定そのものは「表示」バッジの1箇所のまま**（§9.421「この端末の見え方の
+    入口は1つ。節を足す・入口は増やさない」）。増やすと、同じ設定を直す場所が
+    2つになり、どちらが効くのか分からなくなる（§9.267 と同じ理由）。
+    足りなかったのは**行き先**——設定を探しに来る場所はこの画面なので、
+    ここに「いまどうなっているか」と「どこで決めるか」を置く。
+    作法は他の画面の「共通設定 > 置き場 で決める」と同じ（§9.267）。 */
+ const pcLookHtml=()=>`<div class="pc-look" id="pcLook">
+   <div class="pc-look-head"><b>この端末の見え方</b>
+    <span class="pc-look-now" id="pcLookNow"></span></div>
+   <p class="mm-field-hint">文字の大きさ・時間の書き方・<b>読み込み中の見せ方（動くアイコン）</b>は、
+    <b>この端末だけ</b>に効く設定です。どの画面からも触れるよう、ヘッダーの
+    「表示」に畳んであります。</p>
+   <div class="pc-look-act">
+    <button type="button" class="mm-btn-ghost" id="pcLookOpen">「表示」の設定を開く</button>
+   </div>
+  </div>`;
+ /* いまの値は**設定を持っている1箇所から引く**（字を書き写さない・§9.374）。 */
+ function renderLook(){
+  const el=$('#pcLookNow');if(!el)return;
+  const nameOf=(list,key)=>((list||[]).find(x=>x.key===key)||{}).label||key||'';
+  const parts=[];
+  if(window.WL&&WL.uiSize)parts.push('文字 '+nameOf(WL.uiSize.SIZES,WL.uiSize.size()));
+  if(window.WL&&WL.duration)parts.push('時間 '+nameOf(WL.duration.STYLES,WL.duration.style()));
+  if(window.WL&&WL.loader)parts.push('読み込み '+nameOf(WL.loader.STYLES,WL.loader.style()));
+  el.textContent=parts.join('／');
+ }
+
  const shortcutState={loaded:false,info:null,error:''};
 
+ /* **欄の値は他の`data-pc-field`と同じく、組み立てるときに入れる**（§9.433）。
+    描いたあとから差し込むと、状態の問い合わせ（`/api/app/shortcut`）が
+    戻ってくるまで空欄になり、**保存した名前が一瞬消えてから出る**。
+    ここが読むのは保存値（`pathConfigState.values`）の1箇所。 */
  function pcShortcutHtml(){
+  const v=pathConfigState.values||{};
+  const nm=String(v.shortcut_name||''),ic=String(v.shortcut_icon||'');
   return `<div class="pc-sc" id="pcShortcut">
    <div class="pc-sc-head"><b>デスクトップの起動アイコン</b>
     <span class="pc-sc-state" id="pcScState">確認しています…</span></div>
    <div class="pc-sc-body" id="pcScBody" hidden>
+    <!-- **名前も絵も共通設定の1行として保存する**（§9.433、利用者の報告
+         「名前を変えても画面を切り替えると元に戻ってしまう」）。data-pc-field
+         を名乗れば、この画面の保存（savePathConfigMaint が data-pc-field を
+         集めて送る）にそのまま載る——保存の道を2本目に作らない。 -->
     <label class="mm-field"><span>アイコンの名前</span>
-     <input id="pcScName" type="text" maxlength="40" autocomplete="off" spellcheck="false">
-     <small class="mm-field-hint">デスクトップに出る字です。同じ名前が既にあれば作り直します。</small></label>
+     <input id="pcScName" data-pc-field="shortcut_name" type="text" maxlength="40"
+       value="${esc(nm)}" autocomplete="off" spellcheck="false">
+     <small class="mm-field-hint">デスクトップに出る字です。同じ名前が既にあれば作り直します。空欄なら既定の名前（欄の薄い字）で作ります。</small></label>
     <div class="mm-field"><span>絵</span>
      <div class="pc-sc-icon">
       <!-- **見本は実物と同じ絵**（§9.374）。サーバーが .ico を描くのと同じ
            1箇所（app_icon.render()）から出すので、色を書き写さない。 -->
-      <label><input type="radio" name="pcScIcon" value="default" checked data-sc-icon>
+      <label><input type="radio" name="pcScIcon" value="default"${ic?'':' checked'} data-sc-icon>
        <img class="pc-sc-mark" src="/api/app/icon.png?size=64" alt="" width="22" height="22">
        <span>アプリのマーク</span></label>
-      <label><input type="radio" name="pcScIcon" value="file" data-sc-icon>
+      <label><input type="radio" name="pcScIcon" value="file"${ic?' checked':''} data-sc-icon>
        <span>ファイルを指定</span></label>
      </div>
-     <span class="mm-path" data-path-drop="shortcut_icon" id="pcScIconPath" hidden>
-      <input data-field="shortcut_icon" id="pcScIconFile" type="text"
-        placeholder="例: D:\\icons\\wavelog.ico" autocomplete="off" spellcheck="false">
+     <span class="mm-path" data-path-drop="shortcut_icon" id="pcScIconPath"${ic?'':' hidden'}>
+      <input data-field="shortcut_icon" data-pc-field="shortcut_icon" id="pcScIconFile" type="text"
+        value="${esc(ic)}" placeholder="例: D:\\icons\\wavelog.ico" autocomplete="off" spellcheck="false">
       <button type="button" class="mm-path-browse" data-path-browse="shortcut_icon" data-path-mode="file">参照…</button>
      </span>
      <small class="mm-field-hint">.ico / .exe / .dll が使えます（.exe・.dll は中の1つ目の絵を使います）。</small></div>
@@ -1976,8 +2018,11 @@
   state.className='pc-sc-state '+(info.exists?'is-done':'is-todo');
   state.textContent=info.exists?`作成済み（${info.updatedAt||'日時不明'}）`:'まだ作っていません';
   if(box)box.hidden=false;
+  /* **欄の値はここでは触らない**（§9.433）。組み立てたときに保存値が
+     入っているので、あとから書き戻すと**打っている最中の字を消す**
+     （状態の問い合わせは遅れて戻ってくる）。ここが受け持つのは
+     「作れるか・作ってあるか・どこへ作るか」だけ。 */
   const name=$('#pcScName');
-  if(name&&!name.value)name.value=info.name||info.defaultName||'';
   if(name)name.placeholder=info.defaultName||'';
   /* **作成先と行き先を書く**（§CLAUDE 6 出どころを出す）——どこに何ができるのか
      分からないまま押させない。 */
@@ -2064,6 +2109,7 @@
      <small class="mm-field-hint">アクセス権限マスタとの照合・記録の「更新端末名」・編集中の持ち主表示は、
       <b>すべてこの名前</b>を見ます。自動で取れない端末だけここで名乗ってください。</small>
      ${pcStateHtml('pc_name')}</label>
+    ${pcLookHtml()}
     ${pcShortcutHtml()}
     <div id="pcNotes"></div>`);
   const SEC_READ=group('read','どこから読むか','サーバー再起動後に反映','is-restart',`
@@ -2205,12 +2251,32 @@
   bindInputHelpers(form);
   /* デスクトップの起動アイコン（§9.410）。**状態は開いたときに取りに行く**
      ——押すまで分からないと、作ってあるかどうかで迷う（思い出させない）。 */
+  /* 「表示」の設定へ連れて行く。**押すのはヘッダーのバッジそのもの**——
+     同じポップオーバーを2つ書かない（§9.267 の「置き場で決める」と同じ作法）。 */
+  const look=$('#pcLookOpen');
+  if(look)look.onclick=()=>{
+   const badge=document.getElementById('uiSizeBadge');
+   if(badge){badge.click();return}
+   showToast('「表示」の設定を開けません','ヘッダーの「表示」ボタンが見つかりませんでした',5000);
+  };
+  renderLook();
+  /* **変わったら書き直す**（§9.433）。選ぶ場所（「表示」のポップオーバー）と
+     いまの値を出す場所がここで分かれているので、知らせを受けて塗り直す
+     ——「選んだのに変わらない」は設定が壊れているのと見分けが付かない。
+     この画面は開くたびに器ごと作り直されるが、**渡すのは同じ関数**なので
+     `addEventListener`は積み上がらない（同じ型・同じ関数の登録は1つ）。
+     欄が消えているあいだは`renderLook()`が何もしないで戻る。 */
+  document.addEventListener('wl:look-change',renderLook);
   const scMake=$('#pcScMake');if(scMake)scMake.onclick=()=>makeShortcut();
   form.querySelectorAll('[data-sc-icon]').forEach(r=>{r.onchange=()=>{
-   const box=$('#pcScIconPath');
+   const box=$('#pcScIconPath'),el=$('#pcScIconFile');
    if(box)box.hidden=r.value!=='file'||!r.checked;
+   /* **「アプリのマーク」を選んだら指定は空にする**（§9.433）。欄は保存の輪に
+      載っている（`data-pc-field="shortcut_icon"`）ので、値を残したまま既定を
+      選ぶと**既定を選んだのに前の絵が保存される**（見えない欄が効く）。 */
+   if(box&&box.hidden&&el)el.value='';
    if(!box||box.hidden)return;
-   const el=$('#pcScIconFile');if(el)el.focus();
+   if(el)el.focus();
   }});
   renderShortcut();loadShortcut();
   /* 他の画面から「置き場で決める」で来たときは、その段を開いて印を付ける。

@@ -1,4 +1,4 @@
-# 画面の土台（19件）
+# 画面の土台（22件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 「この端末の見え方」の3つは同じ形で読める（`WL.uiSize`／`WL.duration`／`WL.loader`） | `test_uisize.js` | [§9.433](../../docs/decisions/9.433.md) |
+| 見え方が変わったら`wl:look-change`で知らせる（いまの値を出す画面が塗り直す） | `test_uisize.js` | [§9.433](../../docs/decisions/9.433.md) |
+| 入口は増やさず**行き先**を置く。畳んだ入口の説明には節を全部書く | `test_uisize.js` | [§9.433](../../docs/decisions/9.433.md) |
 | 読み込み中の並びは`WL.loader.html()`の1箇所（`<i>`5つ）。呼ぶ側が自前の形を書かない | `test_uisize.js` | [§9.421](../../docs/decisions/9.421.md) |
 | 「この端末の見え方」の入口は「表示」バッジの1つ。節を足す（入口は増やさない） | `test_uisize.js` | [§9.421](../../docs/decisions/9.421.md) |
 | 第三者のCSS/JSは**同梱**し、許諾は`static/vendor/<名前>/LICENSE`へ置く | `test_uisize.js` | [§9.421](../../docs/decisions/9.421.md) |
