@@ -1281,6 +1281,72 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('拡大図の中身は模式図から開いたときと同じ（寸法を1つも落とさない）',
         zcut.shown === true && zcut.dims > 0 && zcut.dims === zcut.inside + zcut.lead,
         `出す ${zcut.dims} = 中 ${zcut.inside} + 引き出し ${zcut.lead}`);
+
+    /* ---- 4.7b) 引き出し線（§9.437、利用者の指摘「引き出し線が特にラベルと
+       つながっていないように見えるものが残っている」「対象の中心位置から伸ばす
+       ように示して、各段によって少し色を変える」「線も細いのでかなり見づらい」） ----
+       **絵では読めない**（1本の細い線が字に触れているかどうかは目では確かめ
+       られない）ので、**始点と字の枠の距離を px で測る**。以前は段の高さ
+       （2行ぶん）を縁にしていたので、**値だけの1行の札では 12px 浮いて**いた。 */
+    const lead = await page.evaluate(() => {
+     const svg = document.querySelector('#bsZoomFig');
+     const lines = [...svg.querySelectorAll('path.bs-zl')];
+     const dots = [...svg.querySelectorAll('circle.bs-zl-dot')];
+     const texts = [...svg.querySelectorAll('text')];
+     /* 線の始点と、いちばん近い字の枠との距離。 */
+     const gaps = lines.map(l => {
+      const m = /^M([-\d.]+) ([-\d.]+)/.exec(l.getAttribute('d') || '');
+      if (!m) return 999;
+      const px = +m[1], py = +m[2];
+      let best = 1e9;
+      texts.forEach(t => {
+       const bb = t.getBBox();
+       const dx = Math.max(bb.x - px, 0, px - (bb.x + bb.width));
+       const dy = Math.max(bb.y - py, 0, py - (bb.y + bb.height));
+       best = Math.min(best, Math.hypot(dx, dy));
+      });
+      return +best.toFixed(1);
+     });
+     return { n: lines.length, dots: dots.length, gapMax: gaps.length ? Math.max(...gaps) : null,
+              width: lines.length ? +lines[0].getAttribute('stroke-width') : 0,
+              colors: [...new Set(lines.map(l => l.getAttribute('stroke')))],
+              tiers: [...new Set(lines.map(l => l.getAttribute('stroke')))].length };
+    });
+    /* 引き出しが0本のときは測れない——**測っていないと言う**（§9.369）。 */
+    if (!lead.n) {
+     rec('引き出し線は測れなかった（この割付では0本）', true, '0本');
+    } else {
+     rec('引き出し線は字の縁から出る（宙から始まらない）',
+         lead.gapMax <= 4, `いちばん離れている始点で ${lead.gapMax}px`);
+     rec('引き出し線の先は対象の中心（終端に点を打つ・線と同じ数）',
+         lead.dots === lead.n, `線 ${lead.n} / 点 ${lead.dots}`);
+     rec('引き出し線は細すぎない（1.3px。部材より太くはしない）',
+         lead.width >= 1.2 && lead.width <= 1.6, `${lead.width}px`);
+     /* 段が1つしか無いときは色の違いを見られない——そのときは数えない。 */
+     rec('段が2つ以上あれば段ごとに色が違う',
+         lead.n < 2 || lead.tiers >= 1, lead.colors.join(' '));
+    }
+    /* ---- 4.7c) 拡大図の窓は掴んで動かせる（§9.437、利用者の指示） ----
+       **押した区間の真下へ出すのは変えない**（どこを開いたのかを目で辿る）。
+       そのうえで、隠れた物を見たいときに自分でどかせること。 */
+    const zBefore = await page.evaluate(() => {
+     const r = document.querySelector('#bsZoom').getBoundingClientRect();
+     return { x: Math.round(r.left), y: Math.round(r.top) };
+    });
+    const hdBox = await page.locator('#bsZoom .bs-zoom-hd').boundingBox();
+    /* **本物のマウスで掴む**（§9.398）——`el.click()` は pointerdown の道を
+       1度も通らないので、掴む配線が外れていても素通りする。 */
+    await page.mouse.move(hdBox.x + 40, hdBox.y + hdBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(hdBox.x + 40 - 90, hdBox.y + hdBox.height / 2 - 50, { steps: 6 });
+    await page.mouse.up();
+    const zAfter = await page.evaluate(() => {
+     const r = document.querySelector('#bsZoom').getBoundingClientRect();
+     return { x: Math.round(r.left), y: Math.round(r.top) };
+    });
+    rec('拡大図の窓は見出しの帯を掴んで動かせる',
+        zAfter.x - zBefore.x === -90 && zAfter.y - zBefore.y === -50,
+        `動いた量 ${zAfter.x - zBefore.x},${zAfter.y - zBefore.y}（掴んだ量 -90,-50）`);
     await page.keyboard.press('Escape');
     await W.until(page, () => document.querySelector('#bsZoom').hidden, null,
                   { ms: 4000, what: '拡大図を閉じる' });
@@ -2446,6 +2512,114 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('刃組の停止だけを拾う（ふつうの停止は並べない）',
         stops.length === 2 && stops[0].id === 's1' && stops[1].id === 's3',
         JSON.stringify(stops));
+
+    /* ---- 9) 「初めて断面図を押す」道（§9.437、利用者の報告） ----
+       「初回起動、刃組ガイダンスを確認し、初めて断面図を押すと断面ではない
+        3D表示になります。もう一度押すと解消しますが初回だけです」
+
+       **この網はここまで、必ず立体図を見てから断面図へ移っていた**（4.7）ので、
+       この道は1度も通っていなかった。「初回」は2つ同時に成り立つ状態:
+         ① three.js をまだ読んでいない  ② 模型が1度も組まれていない
+       読み込み直してから、**いちばん最初に断面図**を押す。
+
+       見るのは絵ではなく `capSide`——切り口の面（切ったときに中を塞ぐ板）が
+       **いま残している側に在るか**。false だと切り口が切り落とされる側へ行き、
+       中身の無い殻＝立体図と同じ絵になる。 */
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await W.booted(page);
+    /* **利用者の常用環境の寸法にしてから押す**（2160×1440・125% ＝ 1728×1152）。
+       札が帯と重なるかどうかは**器の高さ**で決まる（札は立体の点を写した位置に
+       出る）ので、狭い器のままだと札がもっと下に来て、欠陥を入れても素通りする
+       （実際に素通りした）。**押したあとに広げてもいけない**——描き直しが入り、
+       そのときには帯が埋まっているので、やはり素通りする。 */
+    const vp0 = page.viewportSize();
+    await page.setViewportSize({ width: 1728, height: 900 });
+    await page.evaluate(() => WL.bladeGuide.open({}));
+    await W.until(page, () => document.querySelectorAll('#bsStage rect').length > 20,
+                  null, { ms: 20000, what: '刃組図が描き直される' });
+    const virgin = await page.evaluate(() => ({
+     three: !!window.THREE, builds: window.WL.bladeSolid.view().builds }));
+    rec('「初回」の条件がそろっている（部品も模型もまだ無い）',
+        virgin.three === false && virgin.builds === 0, JSON.stringify(virgin));
+    await page.click('#bsFigTabs [data-fig="cut"]');
+    await W.until(page, () => {
+     const v = window.WL.bladeSolid && window.WL.bladeSolid.view();
+     return !!(v && v.cut && v.ortho && v.builds > 0);
+    }, null, { ms: 25000, what: '初めての断面図が組み上がる' });
+    const first = await page.evaluate(() => {
+     const v = window.WL.bladeSolid.view();
+     return { capSide: v.capSide, capZ: v.capZ, builtKeep: v.builtKeep, keep: v.keep,
+              flip: v.flip, builds: v.builds, clips: v.clips };
+    });
+    rec('初めて断面図を押した1枚目から切り口が残す側に在る（殻にならない）',
+        first.capSide === true && first.builtKeep === first.keep,
+        JSON.stringify(first));
+    /* ---- 9b) OS・DS の札は上の帯と重ならない（§9.437、利用者の指示） ----
+       **見るのは「切り替えた最初の1枚」**。帯（画面左DS…／有効長…）を書くのは
+       `sides()`で、札を置くのは`place()`——**逆順だと最初の1枚だけ帯がまだ空**で、
+       `place()`が「帯は無い」と読んで札を上へ置き、そのあと帯が出て重なる
+       （実測 25×5px）。2枚目からは帯が埋まっているので**ここより後で測ると
+       素通りする**（欠陥注入で素通りした）。
+       **重なりは面積で数える**（「近い」では素通りする）。あわせて、対で出す
+       札なので**同じ高さ**に出ること（片方だけ帯を避けると段違いに見える）。
+
+       **器の高さで、当たるかどうかが変わる**（札は立体の点を写した位置に出る）。
+       器が高いと札はもともと帯のずっと下へ出るので、**重なり0を見ても何も
+       確かめたことにならない**（実測: 器1104×849 で札の上端140・帯の下端66。
+       欠陥を入れてもこの寸法では素通りした）。だから**器を縮めてから測り**、
+       「札が帯のすぐ下で止まっている」＝**止める側が実際に効いた**ことまで見る
+       （§9.369「測れないなら前提を作る」）。 */
+    const lap = await page.evaluate(() => {
+     const st = document.querySelector('#bsStage3');
+     const vis = e => e && !e.hidden && e.getBoundingClientRect().width > 0;
+     const os = st.querySelector('.bs-t3-os'), ds = st.querySelector('.bs-t3-ds');
+     const bars = [...st.querySelectorAll('.bs-o3, .bs-len3')].filter(vis);
+     if (!vis(os) || !vis(ds) || !bars.length) return null;
+     const over = (a, b) => {
+      const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+      const w = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left);
+      const h = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
+      return w > 0 && h > 0 ? Math.round(w * h) : 0;
+     };
+     let area = 0;
+     bars.forEach(b => { area += over(os, b) + over(ds, b); });
+     const sr = st.getBoundingClientRect();
+     return { area, bars: bars.length,
+              stage: [Math.round(sr.width), Math.round(sr.height)],
+              dsTop: Math.round(ds.getBoundingClientRect().top - sr.top),
+              barBot: Math.round(Math.max(...bars.map(x => x.getBoundingClientRect().bottom)) - sr.top),
+              dy: Math.round(Math.abs(os.getBoundingClientRect().top
+                                      - ds.getBoundingClientRect().top)) };
+    });
+    rec('OS・DS の札は上の帯と1px も重ならない',
+        !!lap && lap.area === 0,
+        lap ? `${lap.area}px² / 帯 ${lap.bars}本 / 器 ${lap.stage} / 札の上端 ${lap.dsTop} vs 帯の下端 ${lap.barBot}`
+            : '札か帯が出ていない');
+    rec('帯を避ける仕掛けが実際に効いている（札が帯のすぐ下で止まっている）',
+        !!lap && lap.dsTop >= lap.barBot && lap.dsTop <= lap.barBot + 40,
+        lap ? `札の上端 ${lap.dsTop} / 帯の下端 ${lap.barBot}（器 ${lap.stage}）` : '—');
+    rec('OS と DS は同じ高さに出る（対で出す札）',
+        !!lap && lap.dy <= 1, lap ? `差 ${lap.dy}px` : '—');
+    await page.setViewportSize(vp0);
+    await W.until(page, () => {
+     const st = document.querySelector('#bsStage3');
+     return !!st && st.getBoundingClientRect().width < 1500;
+    }, null, { ms: 6000, what: '器が元の寸法へ戻る' });
+
+
+    /* **裏返しも同じ罠だった**（`spinTo()`は断面図では組み直さない）。
+       向きが変われば `render()` が組み直すことを、組んだ回数で見る。 */
+    const spun = await page.evaluate(async () => {
+     const v0 = window.WL.bladeSolid.view();
+     window.WL.bladeSolid.spinTo(v0.flip ? 0 : Math.PI);
+     window.WL.bladeSolid.render();
+     const v = window.WL.bladeSolid.view();
+     return { before: v0.builds, after: v.builds, capSide: v.capSide, capZ: v.capZ,
+              flip: v.flip, keep: v.keep, builtKeep: v.builtKeep };
+    });
+    rec('段取り向きを裏返しても切り口は残す側に付いてくる（組み直す）',
+        spun.capSide === true && spun.builtKeep === spun.keep && spun.after > spun.before,
+        JSON.stringify(spun));
 
     rec('JSエラーが出ていない', errs.length === 0, errs.slice(0, 2).join(' / '));
 
