@@ -1067,6 +1067,34 @@
            blade: Object.assign({}, g.blade), cond: condOf(st, M) };
  }
 
+ /* 字を置く席を配る（§9.429）。**望んだ位置（指し示す物の真上）へなるべく
+    寄せつつ、最小の間隔を守る。** 並び順は変えないので、引き出し線どうしが
+    交差しない——交差すると、どの札がどの部材のものか読めなくなる。
+    `half[i]` はその字の半分の幅（0を渡せば「席の間隔だけ」で配る）、
+    `a`〜`b` は置いてよい範囲、`gap` は字と字のあいだに必ず空ける量。
+    左から押して → 右で受けて → もう一度左から整える、の3手（右で受けた
+    結果、左がはみ出すことがある）。**入りきらないときは`b`を越えて返す**
+    ——呼ぶ側が「入らなかった」と分かるように、黙って重ねない。
+    模式図の拡大図（`blade-view.js`）と断面図（`blade-3d.js`）の両方が使う。 */
+ function spread(want, half, a, b, gap) {
+  const n = want.length;
+  if (!n) return [];
+  const hw = i => (half && half[i] ? +half[i] || 0 : 0);
+  const g = +gap || 0;
+  const out = want.slice();
+  const push = () => {
+   out[0] = Math.max(out[0], a + hw(0));
+   for (let i = 1; i < n; i++) out[i] = Math.max(out[i], out[i - 1] + hw(i - 1) + hw(i) + g);
+  };
+  push();
+  out[n - 1] = Math.min(out[n - 1], b - hw(n - 1));
+  for (let i = n - 2; i >= 0; i--) {
+   out[i] = Math.min(out[i], out[i + 1] - hw(i + 1) - hw(i) - g);
+  }
+  push();
+  return out;
+ }
+
  WL.bladeSet = {
   defaultState, clearanceRate, clearanceFor, applyStandards, applyBladePick, standardState,
   normalize, buildIndex, ringMeta, thOf, odFromTh, odOfType, ringType, oppBurr,
@@ -1076,7 +1104,7 @@
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum,
   stripDesign, designByParent, condOf, sameCond, seedFromCond,
   pickCtx, pickGroup, condHits, selectable,
-  expand, materialRun, matShift,
+  expand, materialRun, matShift, spread,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP
  };
 })();

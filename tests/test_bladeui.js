@@ -979,8 +979,26 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      const ys = a => a.map(e => Math.round(+e.getAttribute('y')));
      /* 引き出し線は必ず対象へ届いている（宙に浮いた線を作らない）。 */
      const ln = [...svg.querySelectorAll('.bs-lead')];
+     /* **長さで見る**（§9.429）。線は`<line>`から`<path>`（真下へ降ろして
+        から寄せる形）になったので、`y1`/`y2`では測れない——属性が無いと
+        `+null`は0になり、**全部「宙ぶらりん」に見えて**しまう。 */
+     const len = l => { try { return l.getTotalLength(); } catch (e) { return 0; } };
+     /* 字どうしが重なっていないか（§9.429、利用者の指示「重ならないように
+        工夫して」）。落とさずに全部出すのだから、**重ねていないこと**まで
+        見ないと「出ている」と言えない。 */
+     const box = e => { try { const r = e.getBBox();
+       return { a: r.x, b: r.x + r.width, c: r.y, d: r.y + r.height }; } catch (e2) { return null; } };
+     const bs = ts.map(box).filter(Boolean);
+     let hit = 0;
+     for (let i = 0; i < bs.length; i++) {
+      for (let j = i + 1; j < bs.length; j++) {
+       const p = bs[i], q = bs[j];
+       if (p.a < q.b - 0.5 && q.a < p.b - 0.5 && p.c < q.d - 0.5 && q.c < p.d - 0.5) hit++;
+      }
+     }
      return { sp: sp.length, rg: rg.length, spY: ys(sp), rgY: ys(rg), lines: ln.length,
-              loose: ln.filter(l => Math.abs(+l.getAttribute('y2') - +l.getAttribute('y1')) < 3).length };
+              loose: ln.filter(l => len(l) < 3).length, over: hit, texts: bs.length,
+              dims: window.WL.bladeSolid.view().dims };
     });
     rec('スペーサーとゴムリングの字が同じ高さに混ざらない',
         !!mix && mix.sp > 0 && mix.rg > 0
@@ -988,6 +1006,19 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         mix ? `スペーサー ${mix.sp} / ゴムリング ${mix.rg}` : '読めない');
     rec('引き出し線は対象まで届いている（宙に浮かせない）',
         !!mix && mix.loose === 0, mix ? `${mix.lines}本中 ${mix.loose}本が宙ぶらりん` : '読めない');
+    /* **寸法の字は1つも落とさない**（§9.429、利用者の指示「3D断面図で表示
+       できていないラベルがあるので、すべて表示できるように」）。以前は
+       引き出しの段が1段しかなく、そこでぶつかったものを**黙って落として
+       いた**（実測 217件中95件）。数えるのは足し算——中に書いた数＋引き出した
+       数＝出すべき数（§9.413 と同じ見方。絵を数えても落とし物は分からない）。 */
+    rec('断面図の寸法は1つも落とさない（中に書いた数＋引き出した数＝出すべき数）',
+        !!mix && mix.dims && mix.dims.off === 0
+        && mix.dims.inside + mix.dims.lead === mix.dims.all,
+        mix && mix.dims
+         ? `中${mix.dims.inside}＋外${mix.dims.lead}＝${mix.dims.all}（出せなかった ${mix.dims.off}）`
+         : '読めない');
+    rec('断面図の寸法の字どうしが重なっていない',
+        !!mix && mix.over === 0, mix ? `${mix.texts}字中 ${mix.over}組が重なり` : '読めない');
     rec('出しきれない幅は出していない（重ねて出さない）',
         !!pk.dims && pk.dims.inside + pk.dims.lead + pk.dims.off === pk.dims.all,
         pk.dims ? `${pk.dims.inside}+${pk.dims.lead}+${pk.dims.off} = ${pk.dims.all}` : '読めない');

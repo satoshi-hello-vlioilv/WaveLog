@@ -1423,17 +1423,11 @@
     見やすく工夫して」）。**望んだ位置（部材の真下）へなるべく寄せつつ、最小間隔を
     守る。** 並び順は変えないので、線どうしが交差しない——交差すると、どの札が
     どの部材のものか読めなくなる。左から押して右で受け、もう一度左から整える。 */
- function spreadSlots(want, a, b, gap) {
-  const n = want.length;
-  if (!n) return [];
-  const out = want.slice();
-  for (let i = 1; i < n; i++) out[i] = Math.max(out[i], out[i - 1] + gap);
-  out[n - 1] = Math.min(out[n - 1], b);
-  for (let i = n - 2; i >= 0; i--) out[i] = Math.min(out[i], out[i + 1] - gap);
-  out[0] = Math.max(out[0], a);
-  for (let i = 1; i < n; i++) out[i] = Math.max(out[i], out[i - 1] + gap);
-  return out;
- }
+ /* 席の配り方そのものは`blade-core.js`の`spread()`が持つ（§9.429）。
+    断面図（`blade-3d.js`）も同じ配り方をするので、**両方が使う小道具は
+    計算の側へ置く**（§9.377）。ここは「席の間隔だけで配る」呼び方。 */
+ const spreadSlots = (want, a, b, gap) =>
+  BS().spread(want, want.map(() => 0), a, b, gap);
  /* `dir` ＝ 字を置く向き（+1 図の下・-1 図の上）。引き出し線は部材の縁から
     スロットへ降り、**字はその先**に置く——線の途中に字を置くと線が字を貫く。 */
  function zoomLabel(x0, y0, x1, y1, name, val, color, PAL, dir, slotW) {

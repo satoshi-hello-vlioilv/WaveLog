@@ -793,8 +793,15 @@
                   /* 字は**軸の上・そのスペーサーの側**へ、記号（A・B…）から
                      離して置く（§9.420、利用者の指摘「アルファベットに干渉」）。
                      記号は軸の中心なので、**軸の外寄り 3/4 より外**を使う。 */
-                  labY: q.y + sg * bore * 0.80, band: bore * 0.36,
-                  leadY: q.y + sg * bore * 0.52, leadTo: q.y + sg * bore });
+                  labY: q.y + sg * bore * 0.90, band: bore * 0.36,
+                  /* **軸の中に3段**（§9.429、利用者の指示「スペーサー内に表示
+                     したり、軸内3段にするなど、重ならないように工夫して」）。
+                     使えるのは「記号（A・B…）の外側」から「軸の縁」まで。
+                     中へ書くぶんは縁のすぐ内（0.90）、引き出しはその内側へ
+                     3段（0.70／0.50／0.30）。以前は1段しか無く、**実測217件中
+                     95件（44%）を黙って落としていた**。 */
+                  leadYs: [0.70, 0.50, 0.30].map(f => q.y + sg * bore * f),
+                  leadTo: q.y + sg * bore });
   });
   if (sh.ring) runs(out.ring, q => (q.src || q).hold.kind + '|'
                                  + ((q.src || q).hold.od || '')).forEach(q => {
@@ -804,8 +811,9 @@
    D3.dims.push({ x: off(q.x), y: q.y, w: q.w, mm: q.sz, n: q.n, kind: 'ring', ri, r: ro,
                   labY: q.y + sg * (ri + ro) / 2, band: ro - ri,
                   /* ゴムリングは輪が広いのでたいてい中へ入る。入らないものだけ
-                     外の段へ出し、線は**輪の外の縁から**引く。 */
-                  leadY: null, leadTo: q.y + sg * ro });
+                     **輪の外**へ出す（軸の中はスペーサーの席なので混ぜない・
+                     §9.418）。席は`tags()`が画面の座標で2段作る。 */
+                  leadYs: null, leadTo: q.y + sg * ro });
   });
   /* 上下の刃の対（§9.418・§9.419）。同じ切断の上刃と下刃は**刃厚＋クリアランス**
      だけ軸方向に中心がずれていて、そのずれが鋏の噛み合わせそのもの。 */
@@ -1405,22 +1413,36 @@
       + ` x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke-dasharray="5 4"/>`;
    D3.cutLines++;
   });
-  /* ---- ② 部材の幅（入るものは中へ・入らないものは引き出し線・それも無理なら出さない）----
-     **入る／入らないは器の幅で決める**（§9.413 の拡大図と同じ考え）。引き出す先は
-     部材の列の外側（上軸は上・下軸は下）で、**1段だけ**。同じ段で隣とぶつかる
-     ものは出さない——細かくて出しきれないぶんは拡大図が受け持つ。 */
+  /* ---- ② 部材の幅（**全部出す**・§9.429、利用者の指示）----
+     以前は「中へ入るものは中へ／残りは**1段だけ**引き出し／その段でぶつかった
+     ものは出さない」で、**実測217件中95件（44%）を黙って落としていた**
+     （利用者の指摘「3D断面図で表示できていないラベルがある」）。
+     いまはこう置く:
+       ・部材の中に入るものは中へ（今までどおり）
+       ・残りは**軸の中の3段**（ゴムリングは輪の外に2段）へ引き出す
+       ・段は`x`の順に振り分ける——**隣り合う部材の字は必ず別の段**になる
+       ・段の中は`spread()`（`blade-core.js`）で最小の間隔まで押し広げる。
+         **順序を変えないので引き出し線どうしが交差しない**（§9.413）
+       ・線を先に、字を後に描く（線が字の上を通らない）
+     それでも器に入りきらなかった数は`off`に残し、**図の読み方の1行が言う**
+     ——黙って落とさない（§CLAUDE 4）。 */
   const list = (D3.dims || []).map(q => {
-   /* 字の場所（`labY`）・引き出しの段（`leadY`）・線が触る先（`leadTo`）は
+   /* 字の場所（`labY`）・引き出しの段（`leadYs`）・線が触る先（`leadTo`）は
       **控えるときに決める**（どれも部材ごとに違う）。ここは写すだけ。 */
    const a = P(q.x - q.w / 2, q.labY), b = P(q.x + q.w / 2, q.labY);
    const mid = P(q.x, q.labY);
    const hi = P(q.x, q.labY + q.band / 2), lo = P(q.x, q.labY - q.band / 2);
    const hit = P(q.x, q.leadTo);
-   const lead = q.leadY === null ? null : P(q.x, q.leadY).y;
    const t = dmm(q.mm) + (q.n > 1 ? '\u00d7' + q.n : '');
+   /* 段の高さは**その部材の位置から**出す（視点を回しても席が付いてくる）。
+      持っていないもの（ゴムリング）は、部材の縁の外へ画面の座標で2段作る。 */
+   const outDir = Math.sign(hit.y - mid.y) || (q.y > 0 ? -1 : 1);
+   const rows = (q.leadYs && q.leadYs.length)
+    ? q.leadYs.map(yy => P(q.x, yy).y)
+    : [0, 1].map(k => hit.y + outDir * (13 + k * (DIM_FS + 4)));
    return { t, kind: q.kind, cx: (a.x + b.x) / 2, cy: mid.y,
             pw: Math.abs(b.x - a.x), up: q.y > 0,
-            band: Math.abs(hi.y - lo.y), hit: hit.y, lead,
+            band: Math.abs(hi.y - lo.y), hit: hit.y, rows,
             tw: dimTextW(t, DIM_FS) };
   }).filter(q => q.cx > -50 && q.cx < w + 50);
   const outs = [];
@@ -1437,38 +1459,45 @@
    }
    outs.push(q);
   });
-  /* 引き出す先。上軸ぶんは部材の上、下軸ぶんは部材の下へ、**x の順に**詰める
-     （順に配ると引き出し線が交差しない・§9.413）。入らなくなったら出さない。 */
-  let lead = 0;
-  [[true, -1], [false, 1]].forEach(([wantUp, dir]) => {
-   const g0 = outs.filter(q => q.up === wantUp).sort((a, b) => a.cx - b.cx);
-   if (!g0.length) return;
-   /* 段は部材の種類ごとに分ける（§9.418 追補）。スペーサーとゴムリングを同じ段へ
-      混ぜると、どちらの寸法か読めない。 */
+  /* 引き出し。**上軸ぶん・下軸ぶん**を、**部材の種類ごとに**分けて置く
+     （§9.418。スペーサーとゴムリングを同じ段へ混ぜると、どちらの寸法か
+     読めない）。線と字は別に溜めて、**線を先に**描く。 */
+  let lead = 0, off = 0, ln = '', tx = '';
+  [true, false].forEach(wantUp => {
    ['sp', 'ring'].forEach(kind => {
-    const g1 = g0.filter(q => q.kind === kind);
+    const g1 = outs.filter(q => q.up === wantUp && q.kind === kind)
+                   .sort((a, b) => a.cx - b.cx);
     if (!g1.length) return;
-    /* 段は**軸の上**（`leadY` を持つもの）か、持たないものは部材の外側。
-       どちらの場合も、線は`hit`（その部材の縁）まで引いて引っ付ける。 */
-    const own = g1[0].lead;
-    const y = own !== null && own !== undefined
-     ? own
-     : (wantUp ? Math.min(...g1.map(q => q.hit)) : Math.max(...g1.map(q => q.hit))) + dir * 14;
-    let at = -Infinity;
-    g1.forEach(q => {
-     const x0 = q.cx - q.tw / 2;
-     if (x0 < at + DIM_SLOT || q.cx + q.tw / 2 > w - 2 || x0 < 2) return;
-     at = q.cx + q.tw / 2;
-     /* **線は字のきわから対象の縁まで**（どちらの端も浮かせない）。 */
-     const y1 = y + (y < q.hit ? DIM_FS * 0.55 : -DIM_FS * 0.55);
-     o += `<line class="bs-lead" x1="${q.cx.toFixed(1)}" y1="${y1.toFixed(1)}"`
-        + ` x2="${q.cx.toFixed(1)}" y2="${q.hit.toFixed(1)}"/>`
-        + `<text x="${q.cx.toFixed(1)}" y="${(y + DIM_FS * 0.36).toFixed(1)}"`
-        + ` text-anchor="middle"${kind === 'ring' ? ' class="is-ring"' : ''}>${esc(q.t)}</text>`;
-     lead++;
-    });
+    const n = Math.max(1, (g1[0].rows || []).length);
+    g1.forEach((q, i) => { q.tier = i % n; });
+    for (let t = 0; t < n; t++) {
+     const row = g1.filter(q => q.tier === t);
+     if (!row.length) continue;
+     const half = row.map(q => q.tw / 2 + DIM_PAD);
+     const xs = BS().spread(row.map(q => q.cx), half, 2, w - 2, DIM_SLOT);
+     row.forEach((q, i) => {
+      const y = q.rows[Math.min(t, q.rows.length - 1)];
+      /* **入りきらなかったものは置かない**（重ねない）。`spread()`は入らない
+         ときに範囲の外を返すので、そこで分かる。 */
+      if (xs[i] - half[i] < 0 || xs[i] + half[i] > w) { off++; return; }
+      const d = Math.sign(q.hit - y) || 1;
+      const y0 = y + d * DIM_FS * 0.55;
+      /* **線は字のきわから対象の縁まで**（どちらの端も浮かせない）。
+         いったん真下（真上）へ降ろしてから寄せると、どの部材から出た線かを
+         目で追える。 */
+      ln += `<path class="bs-lead" d="M${xs[i].toFixed(1)} ${y0.toFixed(1)}`
+          + `L${xs[i].toFixed(1)} ${(y0 + d * 4).toFixed(1)}`
+          + `L${q.cx.toFixed(1)} ${(q.hit - d * 3).toFixed(1)}`
+          + `L${q.cx.toFixed(1)} ${q.hit.toFixed(1)}"/>`;
+      tx += `<text x="${xs[i].toFixed(1)}" y="${(y + DIM_FS * 0.36).toFixed(1)}"`
+          + ` text-anchor="middle"${kind === 'ring' ? ' class="is-ring"' : ''}>`
+          + `${esc(q.t)}</text>`;
+      lead++;
+     });
+    }
    });
   });
+  o += ln + tx;
   /* ---- ③ 有効長がどの区間か（§9.420、利用者の指示「有効長がどの区間か、
      視覚的にも表示を追加して」）。**寸法線**で言う——字だけだと「どこからどこ
      まで」が図の上で辿れない。端は立て線、あいだは1本、真ん中に値を置く。 */
@@ -1493,7 +1522,7 @@
       + ` text-anchor="middle">${esc(t)}</text>`;
    D3.spanLine = { x0: +a.x.toFixed(1), x1: +b.x.toFixed(1) };
   }
-  D3.dimShown = { inside, lead, off: list.length - inside - lead, all: list.length };
+  D3.dimShown = { inside, lead, off, all: list.length };
   el.innerHTML = o;
  }
  /* 記号の顔ぶれが変わったときだけ画面へ知らせる（**毎フレームではない**）。
@@ -1549,7 +1578,14 @@
      チップの帯と拡大図が持つので、ここでは繰り返さない。 */
   const sep = D3.cut && D3.cutLines
    ? '<s>／破線は切断の位置（材料のところは刃を描けないため）</s>' : '';
-  el.innerHTML = `<s>画面左</s>${nm(l)}<s>／</s><s>右</s>${nm(r)}${mag}${sep}`;
+  /* **入りきらなかった寸法は数で言う**（§9.429、§CLAUDE 4 できないことは
+     できないと書く）。窓が狭いと段を広げても入らないことがあるので、
+     「出ていない字がある」ことと**行き先（拡大図）**をその場で言う。
+     0件のときは何も言わない——いつも出ていると、読む側が数え直す。 */
+  const ds = D3.dimShown;
+  const miss = ds && ds.off > 0
+   ? `<s>／寸法</s><i>${ds.off}</i><s>件は入りきらないので、記号を押して拡大図で</s>` : '';
+  el.innerHTML = `<s>画面左</s>${nm(l)}<s>／</s><s>右</s>${nm(r)}${mag}${sep}${miss}`;
   el.hidden = false;
   lengths();
  }
