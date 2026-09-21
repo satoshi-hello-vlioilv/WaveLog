@@ -837,6 +837,10 @@
    .map(ix => ((st.lots || [])[ix] || {}).w)
    .filter(w => +w > 0).map(w => +(+w).toFixed(2));
   return { strips: widths.length, widths,
+           /* 元板巾（§9.425）。**これが無いと記録から材料を組み直せない**
+              ——条幅の並びだけでは耳屑の幅が出ず、軸の上の割付が決まらない。
+              古い記録には入っていないので、読む側は「無ければ使わない」。 */
+           W: +st.W || 0,
            thickness: +st.thick || 0, knife: +st.knife || 0, tk: +st.tk || 0,
            overlap: +st.ov || 0, clearance: +st.clr || 0,
            method: method(st), hold: holdName(st, M),
@@ -1031,6 +1035,27 @@
   return st;
  }
 
+ /* 記録に残っている条件から、**その材料を組み直すための種**を作る（§9.425）。
+    台車差分の基準は「その台車の記録」が第一だが、記録が無い台車では
+    **前回流した材料**（履歴の直近1件）を既定の刃組設定で組んだ構成を置く
+    ——いまの材料で計算すると、これから流す物と比べることになり、差分が
+    ほとんど出ない（「もう組んである」と読める）。
+
+    **条幅の並び順は要らない。** 区間の長さの顔ぶれ（どの幅が何本か）が同じなら
+    部材の員数も同じなので、同じ幅をまとめて `lots` にしてよい。
+    **元板巾が無い記録は使わない**（§9.231 0で埋めない）——耳屑の幅が出ず、
+    軸の上の割付が決まらないので、読めなかったことにして次の段へ落とす。 */
+ function seedFromCond(cond) {
+  const c = cond || {};
+  const ws = (Array.isArray(c.widths) ? c.widths : []).map(w => +w).filter(w => w > 0);
+  const W = +c.W || 0;
+  if (!ws.length || !(W > 0)) return null;
+  const byW = new Map();
+  ws.forEach(w => byW.set(w, (byW.get(w) || 0) + 1));
+  const lots = [...byW.entries()].map(([w, n], i) => ({ name: '前回' + (i + 1), w, n }));
+  return { thickness: +c.thickness || 0, originalWidth: W, lots };
+ }
+
  function snapshot(st, M, g) {
   const ring = {};
   Object.keys(g.ring).forEach(od => Object.keys(g.ring[od]).forEach(sz => {
@@ -1049,7 +1074,7 @@
   buildSegs, widths, buildLayout, buildFiller, fillWith, planZones,
   compose, buildRows, endRows, badgeMap, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum,
-  stripDesign, designByParent, condOf, sameCond,
+  stripDesign, designByParent, condOf, sameCond, seedFromCond,
   pickCtx, pickGroup, condHits, selectable,
   expand, materialRun, matShift,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP

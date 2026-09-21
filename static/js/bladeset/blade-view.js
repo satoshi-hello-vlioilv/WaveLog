@@ -2005,13 +2005,10 @@
     計算は**スケジュール一覧の見込みと同じ1本**（`standardState()`＋`solve()`＋
     `snapshot()`・§9.408）から引く——2つ持つと「一覧とガイダンスで数が違う」を
     作れてしまう。**出どころは必ず字で書き分ける**（§CLAUDE 6）。 */
- function standardSnapshot() {
+ function standardSnapshot(seed) {
   const B = BS();
   if (!M || !IX || typeof B.standardState !== 'function') return null;
   try {
-   const seed = { thickness: st.thick, originalWidth: st.W,
-                  lots: (st.lots || []).map(L => ({ name: L.name, w: L.w, n: L.n,
-                                                    parent: L.parent || L.name })) };
    const s2 = B.standardState(seed, M);
    if (!s2) return null;                 /* 条が1本も読めない（§9.231: 0で埋めない） */
    s2.carriage = st.carriage;
@@ -2020,6 +2017,26 @@
    WL.quiet.note('標準構成を計算できない（台車の列は「—」のままにする）', err);
    return null;
   }
+ }
+ /* いま画面に入っている材料。**これから流す物**なので、基準に置くのは最後
+    （§9.425）——これで計算すると「もう組んである」と読める差分になる。 */
+ function nowSeed() {
+  return { thickness: st.thick, originalWidth: st.W,
+           lots: (st.lots || []).map(L => ({ name: L.name, w: L.w, n: L.n,
+                                             parent: L.parent || L.name })) };
+ }
+ /* **前回流した材料**（§9.425、利用者の指示「記録が無ければ前回流した材料から
+    標準設定で計算」）。履歴の新しい順に見て、**材料を組み直せる最初の1件**を採る
+    ——元板巾が入っていない古い記録は飛ばす（`seedFromCond` が `null` を返す）。
+    その台車の記録とは限らない（台車に記録が無いとき、その台車が前回何を流したかは
+    どこにも残っていない）ので、**どの記録から起こしたかを字で言う**。 */
+ function prevSeed() {
+  const B = BS();
+  for (const r of (M.history || [])) {
+   const seed = B.seedFromCond(r.detail && r.detail.cond);
+   if (seed) return { seed, rec: r };
+  }
+  return null;
  }
  function diffRows(title, cur, prev, shelf, fmt) {
   const keys = itemKeys(Object.assign({}, prev || {}, cur));
@@ -2057,11 +2074,21 @@
    }
   };
   const pd = prev && prev.detail ? prev.detail : null;
-  /* 比べる相手は「記録 → 標準構成 → 無し」の3段（§9.415）。**記録が最優先**
-     ——実際に組んだ事実のほうが、計算した標準より強い。 */
-  const std = pd ? null : standardSnapshot();
+  /* 比べる相手は**4段**（§9.425。§9.415 の3段を1段増やした）。
+       ① その台車の記録        … 実際に組んだ事実。いちばん強い
+       ② 前回流した材料        … 履歴の直近1件の条件を既定の刃組設定で組んだ計算値
+       ③ いまの材料            … これから流す物。**いちばん弱い**
+       ④ 無し                  … 条の幅が読めない
+     ②を①の次に置くのが §9.425 の要点。以前は①の次が③で、**これから流す材料**で
+     計算していたため差分がほとんど出ず、「もう組んである」と読めた。 */
+  let std = null, stdFrom = null;
+  if (!pd) {
+   const p2 = prevSeed();
+   if (p2) { std = standardSnapshot(p2.seed); if (std) stdFrom = p2.rec; }
+   if (!std) std = standardSnapshot(nowSeed());
+  }
   const base = pd || std;
-  const baseKind = pd ? 'rec' : (std ? 'std' : 'none');
+  const baseKind = pd ? 'rec' : (std ? (stdFrom ? 'prev' : 'std') : 'none');
   const parts = [
    diffRows('スペーサー', cur.spacer, base && base.spacer, shelf.spacer),
    diffRows('ゴムリング', cur.ring, base && base.ring, shelf.ring, k => {
@@ -2083,18 +2110,26 @@
    (busyOther ? `<div class="bs-alert"><b>ラインで稼働中（直前の刃組）</b>　${esc(busyOther.carriage)}<br>`
      + `${esc(busyOther.at)}<br>${esc(busyOther.note)}<br>ここに載っている部材は外せないため、今回は使えません。</div>` : '')
    + (baseKind === 'rec'
-    ? `<div class="bs-alert is-info"><b>組み替える ${esc(st.carriage)} の現在の構成（${back}回前）</b><br>`
+    ? `<div class="bs-alert is-info" data-base="rec"><b>組み替える ${esc(st.carriage)} の現在の構成（${back}回前）</b><br>`
       + `${esc(prev.at)}<br>${esc(prev.note)}<br>ここに載っている部材はそのまま使えます。</div>`
     /* **出どころを書き分ける**（§CLAUDE 6）。「記録＝組んだ事実」と
        「標準構成＝いまの材料を既定の設定で組んだときの計算値」は別物で、
        取り違えると「もう組んである」と読める（§9.408 と同じ線引き）。 */
-    : baseKind === 'std'
-     ? `<div class="bs-alert is-info"><b>${esc(st.carriage)} の記録がありません。`
+    : baseKind === 'prev'
+     ? `<div class="bs-alert is-info" data-base="prev"><b>${esc(st.carriage)} の記録がありません。`
+       + '<u>前回流した材料</u>で組んだ構成と比べています</b><br>'
+       + `<b>「前回」の列</b>＝${esc(stdFrom.at)} の刃組（${esc(stdFrom.carriage)}）に`
+       + '残っている材料を、<b>既定の刃組設定</b>（刃組基準値マスタ）で組んだときの'
+       + '<b>計算値</b>。組んだ事実ではありません。<br>'
+       + 'この台車で刃組を終えて記録すると、次回からは実際に組んだ構成と比べます。</div>'
+     : baseKind === 'std'
+     ? `<div class="bs-alert is-info" data-base="std"><b>${esc(st.carriage)} の記録がありません。`
        + '<u>標準構成</u>と比べています</b><br>'
-       + '<b>「標準」の列</b>＝いまの材料を<b>既定の刃組設定</b>（刃組基準値マスタ）で'
+       + '<b>「標準」の列</b>＝<b>いまの材料</b>を<b>既定の刃組設定</b>（刃組基準値マスタ）で'
        + '組んだときの<b>計算値</b>。組んだ事実ではありません。<br>'
-       + '刃組を終えるたびに記録すると、次回からは実際に組んだ構成と比べます。</div>'
-     : `<div class="bs-alert">${esc(st.carriage)} に組み替え対象となる記録がなく、`
+       + '<b>これから流す材料</b>で計算しているので、差分は小さく出ます'
+       + '——この設備で刃組を1件でも記録すると、そのときの材料と比べます。</div>'
+     : `<div class="bs-alert" data-base="none">${esc(st.carriage)} に組み替え対象となる記録がなく、`
        + '標準構成も計算できません（条の幅がまだ読めません）。'
        + '手順3で条の幅を入れると、標準構成との差分が出ます。</div>');
   const total = k => parts.reduce((a, x) => a + x[k], 0);
@@ -2105,8 +2140,13 @@
    + `<div class="bs-kpi is-ng"><span>棚に戻す</span><b>${total('back')}</b></div></div>`
    + (short.length ? `<div class="bs-alert is-bad">棚にも足りない部材が ${short.length} 種あります。数を確かめてください。</div>` : '');
   /* 列の見出しで**どちらと比べているか**を言う（§CLAUDE 6・§9.415）。
-     同じ「台車」の字で記録と計算値を並べない。 */
-  const baseCol = baseKind === 'std'
+     同じ「台車」の字で記録と計算値を並べない。断りの器は `data-base` で
+     **どの段か**を名乗る（§9.425）——字で見分けると、稼働中の断りに同じ
+     言葉が入っただけで網が取り違える（実際に取り違えた）。 */
+  const baseCol = baseKind === 'prev'
+   ? `<th title="${esc(stdFrom.at)} の刃組（${esc(stdFrom.carriage)}）に残っている材料を`
+     + '、既定の刃組設定で組んだときの構成（計算値）">前回</th>'
+   : baseKind === 'std'
    ? '<th title="いまの材料を既定の刃組設定で組んだときの構成（計算値）">標準</th>'
    : `<th title="${esc(st.carriage)} にいま載っている構成（刃組の記録）">台車</th>`;
   $('#bsDiff').innerHTML = `<thead><tr><th class="bs-a">部品</th>${baseCol}<th>今回</th>`

@@ -1370,6 +1370,10 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await page.click('#bsRailTabs [data-r="diff"]');
     await page.waitForSelector('#bsDiff tbody tr', { timeout: 8000 });
     const dif = await page.evaluate(() => ({
+     /* **どの段と比べているかは器が名乗る**（§9.425）。頭の帯には「稼働中」の
+        断りも入るので、字で見分けると取り違える（実際に取り違えた）。 */
+     kind: (document.querySelector('#bsDiffHead [data-base]') || {}).dataset?.base || '',
+     note: (document.querySelector('#bsDiffHead [data-base]') || {}).textContent || '',
      head: (document.querySelector('#bsDiffHead') || {}).textContent || '',
      cols: [...document.querySelectorAll('#bsDiff thead th')].map(t => t.textContent.trim()),
      secs: [...document.querySelectorAll('#bsDiff tbody tr.bs-sec')].map(t => t.textContent.trim()),
@@ -1386,6 +1390,94 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         dif.cols[1] === '標準', dif.cols.join('/'));
     rec('標準の列が「—」で埋まっていない（台車が空という嘘をつかない）',
         dif.base.some(t => t && t !== '—'), dif.base.join(','));
+    rec('比べる相手は「標準構成」の段だと器が名乗る', dif.kind === 'std', dif.kind);
+    rec('いまの材料で計算していることを字で断る（差分が小さく出る理由）',
+        /これから流す材料/.test(dif.note), dif.note.replace(/\s+/g, ' ').slice(0, 120));
+
+    /* ---- 5d') 記録が無い台車は「前回流した材料」と比べる（§9.425） ----
+       利用者の指示「記録が無ければ前回流した材料から標準設定で計算」。
+       **いまの材料で計算すると、これから流す物と比べることになり差分がほとんど
+       出ない**（「もう組んである」と読める）。履歴に1件でも材料を組み直せる
+       記録があれば、そちらを基準に置く。
+       **注ぎ込んだ見本はその場で消す**（§9.393）。 */
+    const recAt = '2026-02-03 09:00';
+    const prevHist = await (await post('/api/bladeset/history',
+      { equipment: EQ, carriage: 'B台車', at: recAt, note: TAG + '前回材料',
+        detail: { spacer: {}, ring: {}, finger: {}, blade: {},
+                  /* **いまの材料（50mm×22条／元板巾1130）とは別の形**にする
+                     ——同じにすると、どちらで計算しても同じ答えになり、
+                     網が「前回の材料を見た」ことを言えない。 */
+                  cond: { strips: 10, widths: Array(10).fill(100), W: 1050,
+                          thickness: 1.3 } } })).json();
+    try {
+     await page.evaluate(() => WL.bladeGuide.open({}));
+     await W.until(page, () => document.querySelectorAll('#bsCarPick [data-car]').length === 2,
+                   null, { ms: 10000, what: '刃組ガイダンスを開き直す' });
+     await page.click('#bsRailTabs [data-r="diff"]');
+     await page.waitForSelector('#bsDiff tbody tr', { timeout: 8000 });
+     const pv = await page.evaluate(() => ({
+      picked: WL.bladeGuide.state.carriage,
+      kind: (document.querySelector('#bsDiffHead [data-base]') || {}).dataset?.base || '',
+      note: (document.querySelector('#bsDiffHead [data-base]') || {}).textContent || '',
+      cols: [...document.querySelectorAll('#bsDiff thead th')].map(t => t.textContent.trim()),
+      base: [...document.querySelectorAll('#bsDiff tbody tr:not(.bs-sec)')]
+       .map(r => (r.children[1] || {}).textContent)
+     }));
+     rec('記録が無い台車を選んでいる（A台車）', pv.picked === 'A台車', pv.picked);
+     rec('記録が無い台車は「前回流した材料」の段と比べる（器が名乗る）',
+         pv.kind === 'prev' && /前回流した材料/.test(pv.note),
+         pv.kind + ' / ' + pv.note.replace(/\s+/g, ' ').slice(0, 90));
+     rec('どの記録から起こした材料かを字で言う（出どころを出す）',
+         pv.note.includes(recAt) && pv.note.includes('B台車'),
+         pv.note.replace(/\s+/g, ' ').slice(0, 130));
+     rec('列の見出しも「前回」にする（記録と同じ字で並べない）',
+         pv.cols[1] === '前回', pv.cols.join('/'));
+     rec('組んだ事実ではないと断る', /計算値/.test(pv.note) && /事実ではありません/.test(pv.note),
+         pv.note.replace(/\s+/g, ' ').slice(0, 130));
+     /* **いまの材料で計算したときとは違う答え**になる（前回の材料を見ている証拠）。
+        比べるのは**この節の中の2枚**——記録を消して開き直すと「いまの材料」の段へ
+        落ちるので、そのときの基準の列と突き合わせる。**離れた節の数字と比べない**
+        （あいだで板厚などが変わり、材料以外の理由で差が出る＝素通りする網になる。
+        実際に欠陥注入で素通りした）。 */
+     if (prevHist && prevHist.id) {
+      await post('/api/bladeset/history/delete', { id: prevHist.id });
+      prevHist.id = null;
+      await page.evaluate(() => WL.bladeGuide.open({}));
+      await W.until(page, () => (document.querySelector('#bsDiffHead [data-base]') || {})
+                                 .dataset?.base === 'std',
+                    null, { ms: 10000, what: '記録を消して「いまの材料」の段へ落ちる' });
+      await page.click('#bsRailTabs [data-r="diff"]');
+      await page.waitForSelector('#bsDiff tbody tr', { timeout: 8000 });
+      const now2 = await page.evaluate(() => ({
+       kind: (document.querySelector('#bsDiffHead [data-base]') || {}).dataset?.base || '',
+       base: [...document.querySelectorAll('#bsDiff tbody tr:not(.bs-sec)')]
+        .map(r => (r.children[1] || {}).textContent)
+      }));
+      rec('記録を消すと「いまの材料」の段へ落ちる', now2.kind === 'std', now2.kind);
+      rec('前回の材料で計算している（いまの材料で組んだ構成とは別の答え）',
+          pv.base.join(',') !== now2.base.join(','),
+          `前回 ${pv.base.slice(0, 8).join(',')} / いま ${now2.base.slice(0, 8).join(',')}`);
+     }
+     /* **元板巾が無い記録は使わない**（§9.231 0で埋めない）——耳屑の幅が出ず、
+        軸の上の割付が決まらない。古い記録しか無ければ「いまの材料」へ落ちる。 */
+     const oldCond = await page.evaluate(() =>
+      WL.bladeSet.seedFromCond({ strips: 2, widths: [100, 100], thickness: 1.3 }));
+     rec('元板巾の無い記録からは材料を組み直さない', oldCond === null, JSON.stringify(oldCond));
+     const okCond = await page.evaluate(() =>
+      WL.bladeSet.seedFromCond({ strips: 3, widths: [100, 100, 80], W: 1050, thickness: 1.3 }));
+     rec('同じ幅はまとめて1つの束にする（並び順は員数に効かない）',
+         !!okCond && okCond.originalWidth === 1050 && okCond.lots.length === 2
+         && okCond.lots[0].n === 2 && okCond.lots[1].n === 1,
+         JSON.stringify(okCond));
+    } finally {
+     if (prevHist && prevHist.id) {
+      await post('/api/bladeset/history/delete', { id: prevHist.id });
+     }
+    }
+    await page.evaluate(() => WL.bladeGuide.open({}));
+    await W.until(page, () => document.querySelectorAll('#bsDiff thead th').length > 0
+                           && document.querySelectorAll('#bsCarPick [data-car]').length === 2,
+                  null, { ms: 10000, what: '見本を消して開き直す' });
 
     /* ---- 5e) 台車の札は台車マスタが作る（§9.424、利用者の指示） ----
        「台車マスタは、A台車、B台車を登録しておいてください。設備ごとですが
@@ -1456,12 +1548,15 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      await page.click('#bsRailTabs [data-r="diff"]');
      await page.waitForSelector('#bsDiff tbody tr', { timeout: 8000 });
      const solo = await page.evaluate(() => ({
+      kind: (document.querySelector('#bsDiffHead [data-base]') || {}).dataset?.base || '',
+      note: (document.querySelector('#bsDiffHead [data-base]') || {}).textContent || '',
       head: (document.querySelector('#bsDiffHead') || {}).textContent || '',
       cols: [...document.querySelectorAll('#bsDiff thead th')].map(t => t.textContent.trim())
      }));
      rec('台車が1つなら直前の刃組と比べる（1つ古い記録へずらさない）',
-         /組み替える A台車 の現在の構成（1回前）/.test(solo.head.replace(/\s+/g, ' ')),
-         solo.head.replace(/\s+/g, ' ').slice(0, 90));
+         solo.kind === 'rec'
+         && /組み替える A台車 の現在の構成（1回前）/.test(solo.note.replace(/\s+/g, ' ')),
+         solo.kind + ' / ' + solo.note.replace(/\s+/g, ' ').slice(0, 90));
      rec('台車が1つなら「稼働中だから外せない」と断らない',
          !/ラインで稼働中/.test(solo.head), solo.head.replace(/\s+/g, ' ').slice(0, 60));
      rec('比べる相手が記録なら列の見出しは「台車」', solo.cols[1] === '台車',

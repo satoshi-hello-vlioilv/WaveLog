@@ -1,4 +1,4 @@
-# 刃組ガイダンス（109件）
+# 刃組ガイダンス（113件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,10 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 差分の基準は**4段**（記録 → 前回流した材料 → いまの材料 → 無し）。②③は計算値だと断り、②は出どころを言う | `test_bladeui.js` | [§9.425](../../docs/decisions/9.425.md) |
+| 記録には**元板巾**（`cond.W`）も残す。無い記録からは材料を組み直さない（0で埋めない） | `test_bladeui.js` | [§9.425](../../docs/decisions/9.425.md) |
+| どの段と比べているかは**器が名乗る**（`data-base`）。網は字で見分けない（稼働中の断りに当たる） | `test_bladeui.js` | [§9.425](../../docs/decisions/9.425.md) |
+| 「材料が違えば答えも違う」は**同じ節の中の2枚**で見る。離れた節の数字と比べない | `test_bladeui.js` | [§9.425](../../docs/decisions/9.425.md) |
 | 台車は**台車マスタ**（設備ごと1台1行）。札の顔ぶれも台数もここが決める——画面へ`A`/`B`を書かない | `test_bladeui.js`・`test_bladeset.py` | [§9.424](../../docs/decisions/9.424.md) |
 | 台車が入るのは**初期セット**（`A台車`・`B台車`）。`replace`でも消さない（記録が名前で結び付く） | `test_bladeset.py` | [§9.424](../../docs/decisions/9.424.md) |
 | 「台車なし」は**自動で入れない**。綴りは`CARRIAGE_NONE`の1箇所で、1行足せば選べる | `test_bladeset.py` | [§9.424](../../docs/decisions/9.424.md) |
@@ -46,7 +50,7 @@
 | 器の大きさは`ResizeObserver`で見張る（`resize`は窓しか見ない）。図を離れるときも`applyCut()`を通す | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
 | 模式図に描く「物」は**直角**。角丸を残すのは文字の器（`bs-bdgr`・`bs-chip-band`）だけ | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
 | 図の札（DS/OS・上軸/下軸/材料）は**読み取る値（条番号・条幅）より大きくしない** | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
-| 台車差分の基準は「記録 → 標準構成 → 無し」の3段。標準は列の見出しも「標準」にし、事実でないと断る | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
+| 【§9.425で4段にした】台車差分の基準は「記録 → 標準構成 → 無し」の3段 | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
 | 刃組の計算は`blade-core.js`（画面を知らない）、画面は`blade-view.js`の2本 | `test_bladeui.js` | [§9.377](../../docs/decisions/9.377.md) |
 | 部材は設備ごと。「すべての設備」は受け付けない | `test_bladeset.py` | [§9.377](../../docs/decisions/9.377.md) |
 | ゴムリングは色（＝外径）×幅で1本。同じ色をそろえるのは`ring_upsert()`の1箇所 | `test_bladeset.py` | [§9.377](../../docs/decisions/9.377.md) |
