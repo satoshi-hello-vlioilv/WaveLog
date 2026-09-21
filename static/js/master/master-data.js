@@ -1835,6 +1835,17 @@
  /* 他の画面から「置き場で決める」で来たときの行き先（§9.267）。共通設定は
     非同期で組み上がるので、押した時点ではまだ段が無い。 */
  let pcPendingSection='';
+ let pcPendingLook=false;
+ /* 「表示」バッジの行き先（§9.436）。**この画面の作りを知っているのは
+    ここだけ**なので、base.js の口（`WL.openLookSettings`）へ実体を入れる。
+    「この端末」の段を開いたうえで、読み込みの見せ方の盤まで連れて行く
+    ——「共通設定を開く」だけだと、どの段に在るかを自分で探すことになる
+    （§CLAUDE 2「次にすることを1つだけ指す」）。 */
+ WL.openLookSettings=()=>{
+  pcPendingSection='terminal';pcPendingLook=true;
+  if(typeof window.openMasterMaint==='function')window.openMasterMaint('pathConfig');
+  else showToast('共通設定を開けません','マスタ管理を読み込めていません',5000);
+ };
  let pathConfigState={values:{},defaults:{},active:{},sources:[],storage:null,storageError:"",loaded:false};
  /* 再起動しないと反映されない項目。データソースぶんは登録内容から作るので
     ここには固定で書かない(§9.81)。以前は「仕掛(SIKALOTNOW)」等が直接
@@ -1936,15 +1947,59 @@
     足りなかったのは**行き先**——設定を探しに来る場所はこの画面なので、
     ここに「いまどうなっているか」と「どこで決めるか」を置く。
     作法は他の画面の「共通設定 > 置き場 で決める」と同じ（§9.267）。 */
+ /* 読み込みの見せ方は**ここで選ぶ**（§9.436、利用者の指示「読み込みの見せ方を
+    マスタに持ってきて、広いエリアでわかりやすく選べるように」）。
+
+    なぜ「表示」バッジから移したか（実測）
+    ------------------------------------------------------------------
+    種類が6→29になり、**あのポップオーバーには入らない**——1種46px＝29種で
+    1334px、画面の高さ（実測1152px）を超える。狭い縦1列で29種を数えさせるのは
+    「探させない」に反する。**広い場所で、形の族ごとに、見本を大きく**出す。
+
+    ・見本は44px（バッジの15pxの約9倍の面積）。**選ぶ前に動きが見える**
+      （§9.200「選ばせるものは選ぶ前に見える」）。
+    ・族（輪・波紋・球…）で束ね、族ごとに一言を添える。29回の見比べを
+      「族を1つ選ぶ＋その中の4〜5枚」に減らす。
+    ・使用中は**枠の色＋「使用中」の字**の両方で言う（色だけで言わない・
+      §CLAUDE 3）。札は絶対配置なので、選び直しても**1pxも動かない**
+      （§9.227）。
+    ・札の幅は**いちばん長い名前**（「棒が5本（中から外へ・速い）」）から
+      決め、余りは空白にする（器を1マスぶんに伸ばさない・§CLAUDE 11）。
+
+    **設定の持ち主は`WL.loader`の1箇所のまま**。ここは面を1つ足しただけで、
+    押すと`WL.loader.setStyle()`を呼び、`wl:look-change`で「表示」バッジ側の
+    いまの値も塗り直る（§9.433）。 */
+ const pcLdCard=l=>`<button type="button" class="pc-ld-card" data-loader-option="${esc(l.key)}">
+    <span class="pc-ld-fig">${WL.loader.html(44,'',l.key)}</span>
+    <b>${esc(l.label)}</b><small>${esc(l.hint)}</small>
+    <em class="pc-ld-on">使用中</em></button>`;
+ const pcLdGroupHtml=g=>{
+  const cards=WL.loader.STYLES.filter(l=>l.group===g.key).map(pcLdCard).join('');
+  if(!cards)return '';
+  return `<section class="pc-ld-group">
+    <h6>${esc(g.name)}<small>${esc(g.note)}</small></h6>
+    <div class="pc-ld-grid">${cards}</div></section>`;
+ };
  const pcLookHtml=()=>`<div class="pc-look" id="pcLook">
    <div class="pc-look-head"><b>この端末の見え方</b>
     <span class="pc-look-now" id="pcLookNow"></span></div>
-   <p class="mm-field-hint">文字の大きさ・時間の書き方・<b>読み込み中の見せ方（動くアイコン）</b>は、
-    <b>この端末だけ</b>に効く設定です。どの画面からも触れるよう、ヘッダーの
-    「表示」に畳んであります。</p>
+   <p class="mm-field-hint">この端末だけに効く設定です。押したその場で全画面に反映し、
+    <b>この端末に覚えます</b>（サーバーへは送りません）。</p>
    <div class="pc-look-act">
+    <span class="pc-look-lead">文字の大きさ・時間の書き方は、どの画面からも触れるようヘッダーの「表示」に畳んであります。</span>
     <button type="button" class="mm-btn-ghost" id="pcLookOpen">「表示」の設定を開く</button>
    </div>
+   <details class="pc-acc pc-ld" id="pcLd">
+    <summary><span class="ld-sample">${WL.loader.html(16)}</span><b>読み込みの見せ方</b>
+     <span class="pc-acc-now pc-ld-now" id="pcLdNow"></span></summary>
+    <div class="pc-acc-body">
+     <p class="mm-field-hint">データを待っているあいだに出る動くしるしです。
+      <a href="https://connoratherton.com/loaders" target="_blank" rel="noopener">loaders.css</a>（MIT）から
+      ${WL.loader.STYLES.length-1}種を写して<b>同梱</b>しています（回線が無い端末でも動きます）。
+      仲間ごとに並べてあります——まず仲間を1つ選び、その中の4〜5枚を見比べてください。</p>
+     ${WL.loader.GROUPS.map(pcLdGroupHtml).join('')}
+    </div>
+   </details>
   </div>`;
  /* いまの値は**設定を持っている1箇所から引く**（字を書き写さない・§9.374）。 */
  function renderLook(){
@@ -1955,6 +2010,12 @@
   if(window.WL&&WL.duration)parts.push('時間 '+nameOf(WL.duration.STYLES,WL.duration.style()));
   if(window.WL&&WL.loader)parts.push('読み込み '+nameOf(WL.loader.STYLES,WL.loader.style()));
   el.textContent=parts.join('／');
+  const now=$('#pcLdNow');
+  if(now&&window.WL&&WL.loader){
+   now.textContent=`全${WL.loader.STYLES.length}種・いま「${WL.loader.labelOf()}」`;
+   /* 描いた直後は札にまだ印が無い（印を付ける役は`WL.loader`の1箇所）。 */
+   WL.loader.mark();
+  }
  }
 
  const shortcutState={loaded:false,info:null,error:''};
@@ -2259,6 +2320,14 @@
    if(badge){badge.click();return}
    showToast('「表示」の設定を開けません','ヘッダーの「表示」ボタンが見つかりませんでした',5000);
   };
+  /* 読み込みの見せ方の札（§9.436）。**押すのは`WL.loader.setStyle()`の1箇所**
+     ——印の付け替えも、いまの値の書き直しも、あちらが出す`wl:look-change`が
+     受け持つ（ここでクラスを触らない）。器ごと作り直されるので委譲で受ける。 */
+  const ld=$('#pcLd');
+  if(ld)ld.onclick=ev=>{
+   const b=ev.target.closest('[data-loader-option]');if(!b)return;
+   WL.loader.setStyle(b.dataset.loaderOption);
+  };
   renderLook();
   /* **変わったら書き直す**（§9.433）。選ぶ場所（「表示」のポップオーバー）と
      いまの値を出す場所がここで分かれているので、知らせを受けて塗り直す
@@ -2282,6 +2351,19 @@
   /* 他の画面から「置き場で決める」で来たときは、その段を開いて印を付ける。
      **一度きり**——次に共通設定を開いたときまで覚えていると、身に覚えの
      無い段が開く。 */
+  /* 「表示」から来たときは盤まで見せる（§9.436）。**一度きり**——次に
+     共通設定を開いたときまで覚えていると、身に覚えの無い場所へ飛ぶ。 */
+  if(pcPendingLook){
+   pcPendingLook=false;
+   requestAnimationFrame(()=>{
+    const el=$('#pcLd');if(!el)return;
+    /* **開いてから連れて行く**（畳んだままだと、来た先に何も無いように見える）。 */
+    el.open=true;
+    el.scrollIntoView({block:'start',behavior:'smooth'});
+    el.classList.add('is-lit');
+    setTimeout(()=>el.classList.remove('is-lit'),1600);
+   });
+  }
   if(pcPendingSection){
    const want=pcPendingSection;pcPendingSection='';
    const btn=form.querySelector(`[data-pc-jump="${want}"]`);

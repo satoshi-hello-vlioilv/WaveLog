@@ -1,97 +1,407 @@
 /* ========================================================================
-   読み込み中の見せ方（ローダー）  §9.421
+   読み込み中の見せ方（ローダー）  §9.421 → §9.436
    ------------------------------------------------------------------------
    利用者の指示「https://connoratherton.com/loaders のloaderを使えるように
-   してください。設定で切り替えて選べるようにしてほしいです」。
+   してください。設定で切り替えて選べるようにしてほしいです」（§9.421）、
+   続いて「読み込みの見せ方をマスタに持ってきて、広いエリアでわかりやすく
+   選べるようにしてください。ここから移植しているので元は28種類くらいある
+   はずです。水の波紋のようなものも使いたいです」（§9.436）。
 
-   **loaders.css（Connor Atherton／MIT）から6種を写して同梱している。**
+   **loaders.css（Connor Atherton／MIT）の28種を写して同梱している。**
    CDNへは取りに行かない——この画面はオフラインの端末でも動く必要がある
    （three.jsだけは押したときに取りに行く例外・§9.377）。
      元: https://github.com/ConnorAtherton/loaders.css
      Copyright (c) 2015 Connor Atherton / MIT License
      許諾の全文: static/vendor/loaders/LICENSE.txt
 
-   写すときに直した3点（元のままでは、この画面では使えない）:
+   **水の波紋**は`ball-scale-ripple`（1つの輪）と`ball-scale-ripple-multiple`
+   （4つの輪が次々に広がる）の2種（利用者の指示）。
+
+   写すときに直した4点（元のままでは、この画面では使えない）:
      1. **色は `currentColor`**。元は `#fff` 固定なので、地が白の器では
         消える。呼ぶ側の字の色をそのまま使う。
-     2. **大きさは `--wl-ld` の1つから作る**。元は 15px/35px の決め打ちで、
-        13px の小さな器にも 36px のオーバーレイにも同じ物を置けない。
+     2. **寸法は `--wl-ld` の1つから作る**。元は 15px/35px/50px の決め打ちで、
+        13px の小さな器にも 44px の見本にも同じ物を置けない。**px の値は
+        1つも写していない**——すべて `--wl-ld` に対する比へ直してある。
      3. **`@keyframes` の名前に印を付ける**（`wl-ld-`）。元は `scale`／
         `rotate` という短い名前を**別々の中身で何度も**定義しており、
         1枚に束ねると後の定義が前を上書きする（実際に上書きされる）。
+     4. **動きが `transform` を使う種類では、置き場所に `transform` を
+        使わない**（`margin-left`／`margin-top` で寄せる）。元は器ごと
+        `transform:translate(...)` で寄せており、中で `transform` を動かす
+        種類と食い違う。
 
-   **並びは1つ**——器は `.wl-ld`、中の `<i>` は**常に5つ**。どの種類でも
-   同じ形を出しておき、使わない `<i>` はその種類の規則が伏せる。
-   こうしておくと、**設定を変えても DOM を作り直さなくてよい**
-   （`html[data-loader]` が変わるだけで見た目が入れ替わる）。
+   写さなかった2種と、その理由（§捨てるなら理由を1行残す）:
+     ・`ball-spin-loader` … 元のCSSが `> span` に位置を書き `> div` に玉を
+       描いており、**元の配布物のままでは何も出ない**（`background:green`）。
+     ・`ball-scale-random` … `ball-scale-multiple` と見分けが付かない
+       （同じ輪が3つ広がるだけで、違いは数pxのずれ）。
+
+   型の当て先は「要素そのもの」（§9.436）
+   ------------------------------------------------------------------------
+   §9.421 では `html[data-loader]` の**子孫**として当てていたが、**見本を
+   並べる盤では取り違える**——`html[data-loader="pacman"]` の中に
+   `[data-loader="ring"]` の見本を置くと、`<i>` の1つ1つに対して両方の
+   規則が当たり（詳細度が同じ）、**後に書いたほうが勝つ**。29種を並べる盤
+   では、どの札も「ファイルの最後に書いた種類」に化ける。
+   そこで**当て先を `.wl-ld[data-ld]` （器そのもの）へ移した**。1つの器に
+   当たる種類は必ず1つなので、入れ子にしても混ざらない。
+   いまの種類を器へ書くのは `WL.loader` の1箇所（`html()` と `applyLoader()`）。
+
+   **並びは1つ**——器は `.wl-ld`、中の `<i>` は**常に9つ**（`WL.loader.SLOTS`。
+   9は格子の3×3が要る数）。どの種類でも同じ形を出しておき、使わない `<i>`
+   はその種類の規則が伏せる。こうしておくと、**設定を変えても DOM を
+   作り直さなくてよい**（`data-ld` が変わるだけで見た目が入れ替わる＝動いて
+   いる最中に切り替えても飛ばない）。
    ======================================================================== */
 @layer component {
  /* 器。高さは `--wl-ld`、横は中身なり（球3つなら少し横長になる）。
-    呼ぶ側は `--wl-ld` を渡すだけでよい。 */
- .wl-ld{--wl-ld:16px;display:inline-flex;align-items:center;justify-content:center;
+    呼ぶ側は `--wl-ld` を渡すだけでよい。`--ld-line` は輪の太さで、
+    小さいときに線が消えないよう 2px を下限にする。 */
+ .wl-ld{--wl-ld:16px;--ld-line:max(2px,calc(var(--wl-ld) * .085));
+   position:relative;display:inline-flex;align-items:center;justify-content:center;
    gap:calc(var(--wl-ld) * .12);height:var(--wl-ld);
    color:var(--teal);vertical-align:middle;line-height:0}
  .wl-ld[hidden]{display:none}
- /* 選ぶ札の見本（§9.421・§9.200「選ばせるものは選ぶ前に見える」）。
-    札そのものが`data-loader`を名乗るので、**いま選んでいる物と並べて**
-    どう動くかを見比べられる。席は文字の見本（`.ui-size-swatch`）と同じ幅。 */
- .ld-sample{display:inline-grid;place-items:center;width:22px}
  .wl-ld > i{display:none;animation-fill-mode:both;background-color:currentColor}
+ /* 「表示」バッジの行き先に出す見本の席。**文字の見本（`.ui-size-swatch`）と
+    同じ幅**にして、3つの節で左端がそろうようにする。 */
+ .ld-sample{display:inline-grid;place-items:center;width:22px}
 
- /* ---- 既定: いまのもの（輪＋中の点）。§9.421 で他と同じ並びへ載せ替えた ---- */
- [data-loader="ring"] .wl-ld{position:relative}
- [data-loader="ring"] .wl-ld > i:nth-child(-n+2){display:block;position:absolute}
- [data-loader="ring"] .wl-ld > i:nth-child(1){inset:0;background:none;
-   border:max(2px, calc(var(--wl-ld) * .085)) solid var(--pale);
-   border-top-color:currentColor;border-radius:var(--radius-round);
+ /* 中を絶対配置で組む種類は、器に幅が要る（中身が無いと0になる）。 */
+ .wl-ld[data-ld="ring"],.wl-ld[data-ld="ball-clip-rotate"],
+ .wl-ld[data-ld="ball-clip-rotate-pulse"],.wl-ld[data-ld="ball-clip-rotate-multiple"],
+ .wl-ld[data-ld="semi-circle-spin"],.wl-ld[data-ld="ball-rotate"],
+ .wl-ld[data-ld="ball-scale-ripple"],.wl-ld[data-ld="ball-scale-ripple-multiple"],
+ .wl-ld[data-ld="ball-scale"],.wl-ld[data-ld="ball-scale-multiple"],
+ .wl-ld[data-ld="ball-grid-pulse"],.wl-ld[data-ld="ball-grid-beat"],
+ .wl-ld[data-ld="ball-spin-fade-loader"],.wl-ld[data-ld="line-spin-fade-loader"],
+ .wl-ld[data-ld="ball-zig-zag"],.wl-ld[data-ld="ball-zig-zag-deflect"],
+ .wl-ld[data-ld="ball-triangle-path"],.wl-ld[data-ld="cube-transition"],
+ .wl-ld[data-ld="square-spin"],.wl-ld[data-ld="triangle-skew-spin"]{width:var(--wl-ld)}
+
+ /* ====================================================================
+    群1 輪・弧（回る）
+    ==================================================================== */
+ /* ---- ring（既定）: いまのもの。輪＋中の点 ---- */
+ .wl-ld[data-ld="ring"] > i:nth-child(-n+2){display:block;position:absolute}
+ .wl-ld[data-ld="ring"] > i:nth-child(1){inset:0;background:none;
+   border:var(--ld-line) solid var(--pale);border-top-color:currentColor;
+   border-radius:var(--radius-round);
    animation:wl-ld-rotate 1s cubic-bezier(.5,.1,.5,.9) infinite}
- [data-loader="ring"] .wl-ld > i:nth-child(2){inset:0;margin:auto;
+ .wl-ld[data-ld="ring"] > i:nth-child(2){inset:0;margin:auto;
    width:calc(var(--wl-ld) * .2);height:calc(var(--wl-ld) * .2);
    border-radius:var(--radius-round);animation:wl-ld-pulse 1s ease-in-out infinite}
- [data-loader="ring"] .wl-ld{width:var(--wl-ld)}
+
+ /* ---- ball-clip-rotate: 切れた輪が回る ---- */
+ .wl-ld[data-ld="ball-clip-rotate"] > i:nth-child(1){display:block;
+   width:var(--wl-ld);height:var(--wl-ld);background:none;
+   border:var(--ld-line) solid currentColor;border-bottom-color:transparent;
+   border-radius:var(--radius-round);animation:wl-ld-rotate .75s linear infinite}
+
+ /* ---- ball-clip-rotate-pulse: 輪の中で球が脈打つ ---- */
+ .wl-ld[data-ld="ball-clip-rotate-pulse"] > i:nth-child(-n+2){display:block;
+   position:absolute;inset:0;margin:auto;border-radius:var(--radius-round)}
+ .wl-ld[data-ld="ball-clip-rotate-pulse"] > i:nth-child(1){
+   width:calc(var(--wl-ld) * .45);height:calc(var(--wl-ld) * .45);
+   animation:wl-ld-beatscale 1s cubic-bezier(.09,.57,.49,.9) infinite}
+ .wl-ld[data-ld="ball-clip-rotate-pulse"] > i:nth-child(2){
+   width:var(--wl-ld);height:var(--wl-ld);background:none;
+   border:var(--ld-line) solid;
+   border-color:currentColor transparent currentColor transparent;
+   animation:wl-ld-rotate-shrink 1s cubic-bezier(.09,.57,.49,.9) infinite}
+
+ /* ---- ball-clip-rotate-multiple: 2つの弧が逆に回る ---- */
+ .wl-ld[data-ld="ball-clip-rotate-multiple"] > i:nth-child(-n+2){display:block;
+   position:absolute;inset:0;margin:auto;background:none;
+   border:var(--ld-line) solid currentColor;border-radius:var(--radius-round)}
+ .wl-ld[data-ld="ball-clip-rotate-multiple"] > i:nth-child(1){
+   width:var(--wl-ld);height:var(--wl-ld);
+   border-bottom-color:transparent;border-top-color:transparent;
+   animation:wl-ld-rotate 1s ease-in-out infinite}
+ .wl-ld[data-ld="ball-clip-rotate-multiple"] > i:nth-child(2){
+   width:calc(var(--wl-ld) * .45);height:calc(var(--wl-ld) * .45);
+   border-color:currentColor transparent currentColor transparent;
+   animation:wl-ld-rotate .5s ease-in-out infinite reverse}
+
+ /* ---- semi-circle-spin: 半月が回る ---- */
+ .wl-ld[data-ld="semi-circle-spin"]{overflow:hidden;border-radius:var(--radius-round)}
+ .wl-ld[data-ld="semi-circle-spin"] > i:nth-child(1){display:block;
+   position:absolute;inset:0;background:none;border-radius:var(--radius-round);
+   background-image:linear-gradient(transparent 0%,transparent 70%,currentColor 30%,currentColor 100%);
+   animation:wl-ld-rotate .6s linear infinite}
+
+ /* ---- ball-rotate: 3つの球が1本の軸で回る ---- */
+ .wl-ld[data-ld="ball-rotate"] > i:nth-child(1){display:block;position:absolute;
+   inset:0;margin:auto;width:calc(var(--wl-ld) * .26);height:calc(var(--wl-ld) * .26);
+   border-radius:var(--radius-round);
+   animation:wl-ld-rotate 1s cubic-bezier(.7,-.13,.22,.86) infinite}
+ .wl-ld[data-ld="ball-rotate"] > i:nth-child(1)::before,
+ .wl-ld[data-ld="ball-rotate"] > i:nth-child(1)::after{content:"";position:absolute;
+   top:0;width:calc(var(--wl-ld) * .26);height:calc(var(--wl-ld) * .26);
+   background-color:currentColor;border-radius:var(--radius-round);opacity:.8}
+ .wl-ld[data-ld="ball-rotate"] > i:nth-child(1)::before{left:calc(var(--wl-ld) * -.37)}
+ .wl-ld[data-ld="ball-rotate"] > i:nth-child(1)::after{left:calc(var(--wl-ld) * .37)}
+
+ /* ====================================================================
+    群2 波紋（広がって消える）  ← 利用者の指示「水の波紋のようなもの」
+    ==================================================================== */
+ /* ---- ball-scale-ripple: 波紋が1つ ---- */
+ .wl-ld[data-ld="ball-scale-ripple"] > i:nth-child(1){display:block;
+   position:absolute;inset:0;background:none;border-radius:var(--radius-round);
+   border:var(--ld-line) solid currentColor;
+   animation:wl-ld-ripple 1s cubic-bezier(.21,.53,.56,.8) infinite}
+
+ /* ---- ball-scale-ripple-multiple: 波紋が次々に広がる ---- */
+ .wl-ld[data-ld="ball-scale-ripple-multiple"] > i:nth-child(-n+4){display:block;
+   position:absolute;inset:0;background:none;border-radius:var(--radius-round);
+   border:var(--ld-line) solid currentColor;
+   animation:wl-ld-ripple 1.25s cubic-bezier(.21,.53,.56,.8) infinite}
+ .wl-ld[data-ld="ball-scale-ripple-multiple"] > i:nth-child(1){animation-delay:-.8s}
+ .wl-ld[data-ld="ball-scale-ripple-multiple"] > i:nth-child(2){animation-delay:-.6s}
+ .wl-ld[data-ld="ball-scale-ripple-multiple"] > i:nth-child(3){animation-delay:-.4s}
+ .wl-ld[data-ld="ball-scale-ripple-multiple"] > i:nth-child(4){animation-delay:-.2s}
+
+ /* ---- ball-scale: 面が1つ広がって消える ---- */
+ .wl-ld[data-ld="ball-scale"] > i:nth-child(1){display:block;position:absolute;
+   inset:0;border-radius:var(--radius-round);
+   animation:wl-ld-bscale 1s ease-in-out infinite}
+
+ /* ---- ball-scale-multiple: 面が次々に広がって消える ---- */
+ .wl-ld[data-ld="ball-scale-multiple"] > i:nth-child(-n+3){display:block;
+   position:absolute;inset:0;opacity:0;border-radius:var(--radius-round);
+   animation:wl-ld-bscalem 1s linear infinite}
+ .wl-ld[data-ld="ball-scale-multiple"] > i:nth-child(2){animation-delay:-.4s}
+ .wl-ld[data-ld="ball-scale-multiple"] > i:nth-child(3){animation-delay:-.2s}
+
+ /* ====================================================================
+    群3 球が並ぶ（横1列）
+    ==================================================================== */
+ .wl-ld[data-ld="ball-pulse"] > i:nth-child(-n+3),
+ .wl-ld[data-ld="ball-beat"] > i:nth-child(-n+3),
+ .wl-ld[data-ld="ball-pulse-sync"] > i:nth-child(-n+3){display:inline-block;
+   width:calc(var(--wl-ld) * .3);height:calc(var(--wl-ld) * .3);
+   border-radius:var(--radius-round)}
 
  /* ---- ball-pulse（球が3つ、順に縮む） ---- */
- [data-loader="ball-pulse"] .wl-ld > i:nth-child(-n+3){display:inline-block;
-   width:calc(var(--wl-ld) * .3);height:calc(var(--wl-ld) * .3);
-   border-radius:var(--radius-round);
+ .wl-ld[data-ld="ball-pulse"] > i:nth-child(-n+3){
    animation:wl-ld-scale .75s infinite cubic-bezier(.2,.68,.18,1.08)}
- [data-loader="ball-pulse"] .wl-ld > i:nth-child(1){animation-delay:-.24s}
- [data-loader="ball-pulse"] .wl-ld > i:nth-child(2){animation-delay:-.12s}
+ .wl-ld[data-ld="ball-pulse"] > i:nth-child(1){animation-delay:-.24s}
+ .wl-ld[data-ld="ball-pulse"] > i:nth-child(2){animation-delay:-.12s}
 
  /* ---- ball-beat（球が3つ、交互に薄くなる） ---- */
- [data-loader="ball-beat"] .wl-ld > i:nth-child(-n+3){display:inline-block;
-   width:calc(var(--wl-ld) * .3);height:calc(var(--wl-ld) * .3);
-   border-radius:var(--radius-round);animation:wl-ld-beat .7s 0s infinite linear}
- [data-loader="ball-beat"] .wl-ld > i:nth-child(2n-1){animation-delay:-.35s}
+ .wl-ld[data-ld="ball-beat"] > i:nth-child(-n+3){
+   animation:wl-ld-beat .7s infinite linear}
+ .wl-ld[data-ld="ball-beat"] > i:nth-child(2n-1){animation-delay:-.35s}
+
+ /* ---- ball-pulse-sync（球が3つ、波のように上下する） ---- */
+ .wl-ld[data-ld="ball-pulse-sync"] > i:nth-child(-n+3){
+   animation:wl-ld-sync .6s infinite ease-in-out}
+ .wl-ld[data-ld="ball-pulse-sync"] > i:nth-child(1){animation-delay:-.14s}
+ .wl-ld[data-ld="ball-pulse-sync"] > i:nth-child(2){animation-delay:-.07s}
+
+ /* ---- ball-pulse-rise（球が5つ、すれ違って上下する） ---- */
+ .wl-ld[data-ld="ball-pulse-rise"] > i{display:inline-block;
+   width:calc(var(--wl-ld) * .2);height:calc(var(--wl-ld) * .2);
+   border-radius:var(--radius-round);
+   animation-duration:1s;animation-iteration-count:infinite;
+   animation-timing-function:cubic-bezier(.15,.46,.9,.6)}
+ .wl-ld[data-ld="ball-pulse-rise"] > i:nth-child(n+6){display:none}
+ .wl-ld[data-ld="ball-pulse-rise"] > i:nth-child(2n){animation-name:wl-ld-rise-even}
+ .wl-ld[data-ld="ball-pulse-rise"] > i:nth-child(2n-1){animation-name:wl-ld-rise-odd}
+
+ /* ====================================================================
+    群4 球が集まる（格子・円周）
+    ==================================================================== */
+ /* ---- ball-grid-pulse / ball-grid-beat（3×3の格子。9つ全部を使う） ---- */
+ .wl-ld[data-ld="ball-grid-pulse"],.wl-ld[data-ld="ball-grid-beat"]{
+   flex-wrap:wrap;align-content:center;height:var(--wl-ld);
+   gap:calc(var(--wl-ld) * .11)}
+ .wl-ld[data-ld="ball-grid-pulse"] > i,.wl-ld[data-ld="ball-grid-beat"] > i{
+   display:block;width:calc(var(--wl-ld) * .26);height:calc(var(--wl-ld) * .26);
+   border-radius:var(--radius-round);animation-iteration-count:infinite}
+ .wl-ld[data-ld="ball-grid-pulse"] > i{animation-name:wl-ld-grid-pulse}
+ .wl-ld[data-ld="ball-grid-beat"] > i{animation-name:wl-ld-grid-beat}
+ /* 揺らぎ（速さと出だし）は元のまま写す——そろえると機械的に見える。 */
+ .wl-ld[data-ld="ball-grid-pulse"] > i:nth-child(1){animation-delay:.22s;animation-duration:.9s}
+ .wl-ld[data-ld="ball-grid-pulse"] > i:nth-child(2){animation-delay:.64s;animation-duration:1s}
+ .wl-ld[data-ld="ball-grid-pulse"] > i:nth-child(3){animation-delay:-.15s;animation-duration:.63s}
+ .wl-ld[data-ld="ball-grid-pulse"] > i:nth-child(4){animation-delay:-.03s;animation-duration:1.24s}
+ .wl-ld[data-ld="ball-grid-pulse"] > i:nth-child(5){animation-delay:.08s;animation-duration:1.37s}
+ .wl-ld[data-ld="ball-grid-pulse"] > i:nth-child(6){animation-delay:.43s;animation-duration:1.55s}
+ .wl-ld[data-ld="ball-grid-pulse"] > i:nth-child(7){animation-delay:.05s;animation-duration:.7s}
+ .wl-ld[data-ld="ball-grid-pulse"] > i:nth-child(8){animation-delay:.05s;animation-duration:.97s}
+ .wl-ld[data-ld="ball-grid-pulse"] > i:nth-child(9){animation-delay:.3s;animation-duration:.63s}
+ .wl-ld[data-ld="ball-grid-beat"] > i:nth-child(1){animation-delay:.15s;animation-duration:1.45s}
+ .wl-ld[data-ld="ball-grid-beat"] > i:nth-child(2){animation-delay:-.02s;animation-duration:.97s}
+ .wl-ld[data-ld="ball-grid-beat"] > i:nth-child(3){animation-delay:.66s;animation-duration:1.23s}
+ .wl-ld[data-ld="ball-grid-beat"] > i:nth-child(4){animation-delay:.64s;animation-duration:1.24s}
+ .wl-ld[data-ld="ball-grid-beat"] > i:nth-child(5){animation-delay:-.19s;animation-duration:1.13s}
+ .wl-ld[data-ld="ball-grid-beat"] > i:nth-child(6){animation-delay:.69s;animation-duration:1.42s}
+ .wl-ld[data-ld="ball-grid-beat"] > i:nth-child(7){animation-delay:.58s;animation-duration:1.14s}
+ .wl-ld[data-ld="ball-grid-beat"] > i:nth-child(8){animation-delay:.21s;animation-duration:1.17s}
+ .wl-ld[data-ld="ball-grid-beat"] > i:nth-child(9){animation-delay:-.18s;animation-duration:.65s}
+
+ /* ---- ball-spin-fade-loader（8つの球が円周で順に薄くなる） ----
+    置き場所は `margin-*` で寄せる（動きが `transform` を使うので、
+    寄せにも `transform` を使うと打ち消し合う）。半径は .36、球は .24。 */
+ .wl-ld[data-ld="ball-spin-fade-loader"] > i{display:block;position:absolute;
+   width:calc(var(--wl-ld) * .24);height:calc(var(--wl-ld) * .24);
+   left:calc(50% - var(--wl-ld) * .12);top:calc(50% - var(--wl-ld) * .12);
+   border-radius:var(--radius-round);
+   animation:wl-ld-spin-fade 1s infinite linear}
+ .wl-ld[data-ld="ball-spin-fade-loader"] > i:nth-child(9){display:none}
+ .wl-ld[data-ld="ball-spin-fade-loader"] > i:nth-child(1){margin-top:calc(var(--wl-ld) * .36);animation-delay:-.96s}
+ .wl-ld[data-ld="ball-spin-fade-loader"] > i:nth-child(2){margin-top:calc(var(--wl-ld) * .2546);margin-left:calc(var(--wl-ld) * .2546);animation-delay:-.84s}
+ .wl-ld[data-ld="ball-spin-fade-loader"] > i:nth-child(3){margin-left:calc(var(--wl-ld) * .36);animation-delay:-.72s}
+ .wl-ld[data-ld="ball-spin-fade-loader"] > i:nth-child(4){margin-top:calc(var(--wl-ld) * -.2546);margin-left:calc(var(--wl-ld) * .2546);animation-delay:-.6s}
+ .wl-ld[data-ld="ball-spin-fade-loader"] > i:nth-child(5){margin-top:calc(var(--wl-ld) * -.36);animation-delay:-.48s}
+ .wl-ld[data-ld="ball-spin-fade-loader"] > i:nth-child(6){margin-top:calc(var(--wl-ld) * -.2546);margin-left:calc(var(--wl-ld) * -.2546);animation-delay:-.36s}
+ .wl-ld[data-ld="ball-spin-fade-loader"] > i:nth-child(7){margin-left:calc(var(--wl-ld) * -.36);animation-delay:-.24s}
+ .wl-ld[data-ld="ball-spin-fade-loader"] > i:nth-child(8){margin-top:calc(var(--wl-ld) * .2546);margin-left:calc(var(--wl-ld) * -.2546);animation-delay:-.12s}
+
+ /* ====================================================================
+    群5 棒が並ぶ
+    ==================================================================== */
+ .wl-ld[data-ld="line-scale"] > i,
+ .wl-ld[data-ld="line-scale-pulse-out"] > i,
+ .wl-ld[data-ld="line-scale-pulse-out-rapid"] > i,
+ .wl-ld[data-ld="line-scale-party"] > i{display:inline-block;
+   width:calc(var(--wl-ld) * .14);height:var(--wl-ld);border-radius:var(--radius-xs)}
+ .wl-ld[data-ld="line-scale"] > i:nth-child(n+6),
+ .wl-ld[data-ld="line-scale-pulse-out"] > i:nth-child(n+6),
+ .wl-ld[data-ld="line-scale-pulse-out-rapid"] > i:nth-child(n+6),
+ .wl-ld[data-ld="line-scale-party"] > i:nth-child(n+5){display:none}
 
  /* ---- line-scale（棒が5本、順に縮む） ---- */
- [data-loader="line-scale"] .wl-ld > i{display:inline-block;
-   width:calc(var(--wl-ld) * .14);height:var(--wl-ld);
-   border-radius:var(--radius-xs);
+ .wl-ld[data-ld="line-scale"] > i{
    animation:wl-ld-line 1s infinite cubic-bezier(.2,.68,.18,1.08)}
- [data-loader="line-scale"] .wl-ld > i:nth-child(1){animation-delay:-.4s}
- [data-loader="line-scale"] .wl-ld > i:nth-child(2){animation-delay:-.3s}
- [data-loader="line-scale"] .wl-ld > i:nth-child(3){animation-delay:-.2s}
- [data-loader="line-scale"] .wl-ld > i:nth-child(4){animation-delay:-.1s}
+ .wl-ld[data-ld="line-scale"] > i:nth-child(1){animation-delay:-.4s}
+ .wl-ld[data-ld="line-scale"] > i:nth-child(2){animation-delay:-.3s}
+ .wl-ld[data-ld="line-scale"] > i:nth-child(3){animation-delay:-.2s}
+ .wl-ld[data-ld="line-scale"] > i:nth-child(4){animation-delay:-.1s}
 
  /* ---- line-scale-pulse-out（棒が5本、真ん中から外へ） ---- */
- [data-loader="line-scale-pulse-out"] .wl-ld > i{display:inline-block;
-   width:calc(var(--wl-ld) * .14);height:var(--wl-ld);
-   border-radius:var(--radius-xs);
+ .wl-ld[data-ld="line-scale-pulse-out"] > i{
    animation:wl-ld-line .9s -.6s infinite cubic-bezier(.85,.25,.37,.85)}
- [data-loader="line-scale-pulse-out"] .wl-ld > i:nth-child(2),
- [data-loader="line-scale-pulse-out"] .wl-ld > i:nth-child(4){animation-delay:-.4s}
- [data-loader="line-scale-pulse-out"] .wl-ld > i:nth-child(1),
- [data-loader="line-scale-pulse-out"] .wl-ld > i:nth-child(5){animation-delay:-.2s}
+ .wl-ld[data-ld="line-scale-pulse-out"] > i:nth-child(2),
+ .wl-ld[data-ld="line-scale-pulse-out"] > i:nth-child(4){animation-delay:-.4s}
+ .wl-ld[data-ld="line-scale-pulse-out"] > i:nth-child(1),
+ .wl-ld[data-ld="line-scale-pulse-out"] > i:nth-child(5){animation-delay:-.2s}
 
- /* ---- ball-clip-rotate（切れた輪が回る） ---- */
- [data-loader="ball-clip-rotate"] .wl-ld{width:var(--wl-ld)}
- [data-loader="ball-clip-rotate"] .wl-ld > i:nth-child(1){display:block;
-   width:var(--wl-ld);height:var(--wl-ld);background:none;
-   border:max(2px, calc(var(--wl-ld) * .085)) solid currentColor;
-   border-bottom-color:transparent;border-radius:var(--radius-round);
-   animation:wl-ld-rotate .75s 0s linear infinite}
- /* 動きの名前には印を付ける（元の `scale`／`rotate` は短すぎて衝突する）。 */
+ /* ---- line-scale-pulse-out-rapid（棒が5本、速く外へ） ---- */
+ .wl-ld[data-ld="line-scale-pulse-out-rapid"] > i{
+   animation:wl-ld-line-rapid .9s -.5s infinite cubic-bezier(.11,.49,.38,.78)}
+ .wl-ld[data-ld="line-scale-pulse-out-rapid"] > i:nth-child(2),
+ .wl-ld[data-ld="line-scale-pulse-out-rapid"] > i:nth-child(4){animation-delay:-.25s}
+ .wl-ld[data-ld="line-scale-pulse-out-rapid"] > i:nth-child(1),
+ .wl-ld[data-ld="line-scale-pulse-out-rapid"] > i:nth-child(5){animation-delay:0s}
+
+ /* ---- line-scale-party（棒が4本、ばらばらに縮む） ---- */
+ .wl-ld[data-ld="line-scale-party"] > i{
+   animation-name:wl-ld-party;animation-iteration-count:infinite}
+ .wl-ld[data-ld="line-scale-party"] > i:nth-child(1){animation-delay:.48s;animation-duration:.54s}
+ .wl-ld[data-ld="line-scale-party"] > i:nth-child(2){animation-delay:-.15s;animation-duration:1.15s}
+ .wl-ld[data-ld="line-scale-party"] > i:nth-child(3){animation-delay:.04s;animation-duration:.77s}
+ .wl-ld[data-ld="line-scale-party"] > i:nth-child(4){animation-delay:-.12s;animation-duration:.61s}
+
+ /* ---- line-spin-fade-loader（8本の棒が円周で順に薄くなる） ----
+    傾きは静止した `transform`。動きは `opacity` だけなので打ち消さない。 */
+ .wl-ld[data-ld="line-spin-fade-loader"] > i{display:block;position:absolute;
+   width:calc(var(--wl-ld) * .12);height:calc(var(--wl-ld) * .3);
+   left:calc(50% - var(--wl-ld) * .06);top:calc(50% - var(--wl-ld) * .15);
+   border-radius:var(--radius-xs);
+   animation:wl-ld-spin-line 1.2s infinite ease-in-out}
+ .wl-ld[data-ld="line-spin-fade-loader"] > i:nth-child(9){display:none}
+ .wl-ld[data-ld="line-spin-fade-loader"] > i:nth-child(1){margin-top:calc(var(--wl-ld) * .32);animation-delay:-.84s}
+ .wl-ld[data-ld="line-spin-fade-loader"] > i:nth-child(2){margin-top:calc(var(--wl-ld) * .2263);margin-left:calc(var(--wl-ld) * .2263);transform:rotate(-45deg);animation-delay:-.72s}
+ .wl-ld[data-ld="line-spin-fade-loader"] > i:nth-child(3){margin-left:calc(var(--wl-ld) * .32);transform:rotate(90deg);animation-delay:-.6s}
+ .wl-ld[data-ld="line-spin-fade-loader"] > i:nth-child(4){margin-top:calc(var(--wl-ld) * -.2263);margin-left:calc(var(--wl-ld) * .2263);transform:rotate(45deg);animation-delay:-.48s}
+ .wl-ld[data-ld="line-spin-fade-loader"] > i:nth-child(5){margin-top:calc(var(--wl-ld) * -.32);animation-delay:-.36s}
+ .wl-ld[data-ld="line-spin-fade-loader"] > i:nth-child(6){margin-top:calc(var(--wl-ld) * -.2263);margin-left:calc(var(--wl-ld) * -.2263);transform:rotate(-45deg);animation-delay:-.24s}
+ .wl-ld[data-ld="line-spin-fade-loader"] > i:nth-child(7){margin-left:calc(var(--wl-ld) * -.32);transform:rotate(90deg);animation-delay:-.12s}
+ .wl-ld[data-ld="line-spin-fade-loader"] > i:nth-child(8){margin-top:calc(var(--wl-ld) * .2263);margin-left:calc(var(--wl-ld) * -.2263);transform:rotate(45deg)}
+
+ /* ====================================================================
+    群6 道を描く
+    ==================================================================== */
+ /* ---- ball-zig-zag / ball-zig-zag-deflect（2つの球がすれ違う） ---- */
+ .wl-ld[data-ld="ball-zig-zag"] > i:nth-child(-n+2),
+ .wl-ld[data-ld="ball-zig-zag-deflect"] > i:nth-child(-n+2){display:block;
+   position:absolute;inset:0;margin:auto;
+   width:calc(var(--wl-ld) * .22);height:calc(var(--wl-ld) * .22);
+   border-radius:var(--radius-round)}
+ .wl-ld[data-ld="ball-zig-zag"] > i:nth-child(1){animation:wl-ld-zig .7s infinite linear}
+ .wl-ld[data-ld="ball-zig-zag"] > i:nth-child(2){animation:wl-ld-zag .7s infinite linear}
+ .wl-ld[data-ld="ball-zig-zag-deflect"] > i:nth-child(1){animation:wl-ld-zig-deflect 1.5s infinite linear}
+ .wl-ld[data-ld="ball-zig-zag-deflect"] > i:nth-child(2){animation:wl-ld-zag-deflect 1.5s infinite linear}
+
+ /* ---- ball-triangle-path（3つの輪が三角をまわる） ----
+    三角の1辺は `--wl-ld * .6`。頂点は左下・上・右下で、動きはその3点を
+    順に渡る（元の 50px を `--wl-ld * .6` へ直しただけで、比は同じ）。 */
+ .wl-ld[data-ld="ball-triangle-path"] > i:nth-child(-n+3){display:block;
+   position:absolute;background:none;
+   width:calc(var(--wl-ld) * .17);height:calc(var(--wl-ld) * .17);
+   left:calc(50% - var(--wl-ld) * .085);top:calc(50% - var(--wl-ld) * .085);
+   border:max(1px,calc(var(--wl-ld) * .045)) solid currentColor;
+   border-radius:var(--radius-round);
+   animation-duration:2s;animation-timing-function:ease-in-out;
+   animation-iteration-count:infinite}
+ .wl-ld[data-ld="ball-triangle-path"] > i:nth-child(1){
+   margin-left:calc(var(--wl-ld) * -.3);margin-top:calc(var(--wl-ld) * .3);
+   animation-name:wl-ld-tri-1}
+ .wl-ld[data-ld="ball-triangle-path"] > i:nth-child(2){
+   margin-top:calc(var(--wl-ld) * -.3);animation-name:wl-ld-tri-2}
+ .wl-ld[data-ld="ball-triangle-path"] > i:nth-child(3){
+   margin-left:calc(var(--wl-ld) * .3);margin-top:calc(var(--wl-ld) * .3);
+   animation-name:wl-ld-tri-3}
+
+ /* ---- pacman（口を開け閉めしながら玉を食べる） ----
+    器だけは横長（食べる道のぶん）。上下の半円は「0×0の箱＋太い枠」で作る
+    （元と同じ手）ので、直径は枠の太さ×2＝`--wl-ld * .72`。 */
+ .wl-ld[data-ld="pacman"]{width:calc(var(--wl-ld) * 1.7)}
+ .wl-ld[data-ld="pacman"] > i:nth-child(-n+2){display:block;position:absolute;
+   width:0;height:0;background:none;left:0;top:calc(50% - var(--wl-ld) * .36);
+   border:calc(var(--wl-ld) * .36) solid currentColor;
+   border-right-color:transparent;border-radius:var(--radius-round);
+   animation-duration:.5s;animation-iteration-count:infinite}
+ .wl-ld[data-ld="pacman"] > i:nth-child(1){animation-name:wl-ld-pac-up}
+ .wl-ld[data-ld="pacman"] > i:nth-child(2){animation-name:wl-ld-pac-down}
+ .wl-ld[data-ld="pacman"] > i:nth-child(n+3):nth-child(-n+6){display:block;
+   position:absolute;width:calc(var(--wl-ld) * .16);height:calc(var(--wl-ld) * .16);
+   left:calc(var(--wl-ld) * 1.5);top:calc(50% - var(--wl-ld) * .08);
+   border-radius:var(--radius-round);
+   animation:wl-ld-pac-ball 1s infinite linear}
+ .wl-ld[data-ld="pacman"] > i:nth-child(3){animation-delay:-.99s}
+ .wl-ld[data-ld="pacman"] > i:nth-child(4){animation-delay:-.66s}
+ .wl-ld[data-ld="pacman"] > i:nth-child(5){animation-delay:-.33s}
+
+ /* ====================================================================
+    群7 形が変わる
+    ==================================================================== */
+ /* ---- square-spin（四角が裏返りながら回る） ---- */
+ .wl-ld[data-ld="square-spin"] > i:nth-child(1){display:block;position:absolute;
+   inset:0;animation:wl-ld-flip 3s cubic-bezier(.09,.57,.49,.9) infinite}
+
+ /* ---- triangle-skew-spin（三角が裏返りながら回る） ---- */
+ .wl-ld[data-ld="triangle-skew-spin"] > i:nth-child(1){display:block;
+   position:absolute;inset:0;margin:auto;width:0;height:0;background:none;
+   border-left:calc(var(--wl-ld) * .5) solid transparent;
+   border-right:calc(var(--wl-ld) * .5) solid transparent;
+   border-bottom:calc(var(--wl-ld) * .5) solid currentColor;
+   animation:wl-ld-flip 3s cubic-bezier(.09,.57,.49,.9) infinite}
+
+ /* ---- cube-transition（2つの四角が角をまわる） ---- */
+ .wl-ld[data-ld="cube-transition"] > i:nth-child(-n+2){display:block;
+   position:absolute;width:calc(var(--wl-ld) * .32);height:calc(var(--wl-ld) * .32);
+   left:calc(50% - var(--wl-ld) * .4);top:calc(50% - var(--wl-ld) * .4);
+   animation:wl-ld-cube 1.6s ease-in-out infinite}
+ .wl-ld[data-ld="cube-transition"] > i:nth-child(2){animation-delay:-.8s}
+
+ /* ====================================================================
+    動きの定義。**名前には印を付ける**（元の `scale`／`rotate` は短すぎて
+    衝突する）。長さを持つものは `--wl-ld` から引く（`<i>` は器から継ぐ）。
+    ==================================================================== */
  @keyframes wl-ld-scale{
   0%{transform:scale(1);opacity:1}
   45%{transform:scale(.1);opacity:.7}
@@ -101,18 +411,155 @@
   50%{opacity:.2;transform:scale(.75)}
   100%{opacity:1;transform:scale(1)}
  }
+ @keyframes wl-ld-sync{
+  33%{transform:translateY(calc(var(--wl-ld) * .22))}
+  66%{transform:translateY(calc(var(--wl-ld) * -.22))}
+  100%{transform:translateY(0)}
+ }
+ @keyframes wl-ld-rise-even{
+  0%{transform:scale(1.1)}
+  25%{transform:translateY(calc(var(--wl-ld) * -.4))}
+  50%{transform:scale(.4)}
+  75%{transform:translateY(calc(var(--wl-ld) * .4))}
+  100%{transform:scale(1)}
+ }
+ @keyframes wl-ld-rise-odd{
+  0%{transform:scale(.4)}
+  25%{transform:translateY(calc(var(--wl-ld) * .4))}
+  50%{transform:scale(1.1)}
+  75%{transform:translateY(calc(var(--wl-ld) * -.4))}
+  100%{transform:scale(.75)}
+ }
  @keyframes wl-ld-line{
   0%{transform:scaleY(1)}
   50%{transform:scaleY(.4)}
   100%{transform:scaleY(1)}
+ }
+ @keyframes wl-ld-line-rapid{
+  0%{transform:scaleY(1)}
+  80%{transform:scaleY(.3)}
+  90%{transform:scaleY(1)}
+ }
+ @keyframes wl-ld-party{
+  0%{transform:scale(1)}
+  50%{transform:scale(.5)}
+  100%{transform:scale(1)}
  }
  @keyframes wl-ld-rotate{
   0%{transform:rotate(0deg)}
   50%{transform:rotate(180deg)}
   100%{transform:rotate(360deg)}
  }
+ @keyframes wl-ld-rotate-shrink{
+  0%{transform:rotate(0deg) scale(1)}
+  50%{transform:rotate(180deg) scale(.6)}
+  100%{transform:rotate(360deg) scale(1)}
+ }
+ @keyframes wl-ld-beatscale{
+  30%{transform:scale(.3)}
+  100%{transform:scale(1)}
+ }
  @keyframes wl-ld-pulse{
   0%,100%{transform:scale(1);opacity:1}
   50%{transform:scale(.4);opacity:.45}
+ }
+ @keyframes wl-ld-ripple{
+  0%{transform:scale(.1);opacity:1}
+  70%{transform:scale(1);opacity:.7}
+  100%{opacity:0}
+ }
+ @keyframes wl-ld-bscale{
+  0%{transform:scale(0)}
+  100%{transform:scale(1);opacity:0}
+ }
+ @keyframes wl-ld-bscalem{
+  0%{transform:scale(0);opacity:0}
+  5%{opacity:1}
+  100%{transform:scale(1);opacity:0}
+ }
+ @keyframes wl-ld-grid-pulse{
+  0%{transform:scale(1)}
+  50%{transform:scale(.5);opacity:.7}
+  100%{transform:scale(1);opacity:1}
+ }
+ @keyframes wl-ld-grid-beat{
+  50%{opacity:.7}
+  100%{opacity:1}
+ }
+ @keyframes wl-ld-spin-fade{
+  50%{opacity:.3;transform:scale(.4)}
+  100%{opacity:1;transform:scale(1)}
+ }
+ @keyframes wl-ld-spin-line{
+  50%{opacity:.3}
+  100%{opacity:1}
+ }
+ @keyframes wl-ld-zig{
+  33%{transform:translate(calc(var(--wl-ld) * -.22),calc(var(--wl-ld) * -.38))}
+  66%{transform:translate(calc(var(--wl-ld) * .22),calc(var(--wl-ld) * -.38))}
+  100%{transform:translate(0,0)}
+ }
+ @keyframes wl-ld-zag{
+  33%{transform:translate(calc(var(--wl-ld) * .22),calc(var(--wl-ld) * .38))}
+  66%{transform:translate(calc(var(--wl-ld) * -.22),calc(var(--wl-ld) * .38))}
+  100%{transform:translate(0,0)}
+ }
+ @keyframes wl-ld-zig-deflect{
+  17%{transform:translate(calc(var(--wl-ld) * -.22),calc(var(--wl-ld) * -.38))}
+  34%{transform:translate(calc(var(--wl-ld) * .22),calc(var(--wl-ld) * -.38))}
+  50%{transform:translate(0,0)}
+  67%{transform:translate(calc(var(--wl-ld) * .22),calc(var(--wl-ld) * -.38))}
+  84%{transform:translate(calc(var(--wl-ld) * -.22),calc(var(--wl-ld) * -.38))}
+  100%{transform:translate(0,0)}
+ }
+ @keyframes wl-ld-zag-deflect{
+  17%{transform:translate(calc(var(--wl-ld) * .22),calc(var(--wl-ld) * .38))}
+  34%{transform:translate(calc(var(--wl-ld) * -.22),calc(var(--wl-ld) * .38))}
+  50%{transform:translate(0,0)}
+  67%{transform:translate(calc(var(--wl-ld) * -.22),calc(var(--wl-ld) * .38))}
+  84%{transform:translate(calc(var(--wl-ld) * .22),calc(var(--wl-ld) * .38))}
+  100%{transform:translate(0,0)}
+ }
+ /* 三角の3点をまわる（辺＝`--wl-ld * .6`）。 */
+ @keyframes wl-ld-tri-1{
+  33%{transform:translate(calc(var(--wl-ld) * .3),calc(var(--wl-ld) * -.6))}
+  66%{transform:translate(calc(var(--wl-ld) * .6),0)}
+  100%{transform:translate(0,0)}
+ }
+ @keyframes wl-ld-tri-2{
+  33%{transform:translate(calc(var(--wl-ld) * .3),calc(var(--wl-ld) * .6))}
+  66%{transform:translate(calc(var(--wl-ld) * -.3),calc(var(--wl-ld) * .6))}
+  100%{transform:translate(0,0)}
+ }
+ @keyframes wl-ld-tri-3{
+  33%{transform:translate(calc(var(--wl-ld) * -.6),0)}
+  66%{transform:translate(calc(var(--wl-ld) * -.3),calc(var(--wl-ld) * -.6))}
+  100%{transform:translate(0,0)}
+ }
+ @keyframes wl-ld-pac-up{
+  0%{transform:rotate(270deg)}
+  50%{transform:rotate(360deg)}
+  100%{transform:rotate(270deg)}
+ }
+ @keyframes wl-ld-pac-down{
+  0%{transform:rotate(90deg)}
+  50%{transform:rotate(0deg)}
+  100%{transform:rotate(90deg)}
+ }
+ @keyframes wl-ld-pac-ball{
+  75%{opacity:.7}
+  100%{transform:translateX(calc(var(--wl-ld) * -1.25))}
+ }
+ @keyframes wl-ld-flip{
+  25%{transform:perspective(100px) rotateX(180deg) rotateY(0)}
+  50%{transform:perspective(100px) rotateX(180deg) rotateY(180deg)}
+  75%{transform:perspective(100px) rotateX(0) rotateY(180deg)}
+  100%{transform:perspective(100px) rotateX(0) rotateY(0)}
+ }
+ @keyframes wl-ld-cube{
+  25%{transform:translateX(calc(var(--wl-ld) * .48)) scale(.5) rotate(-90deg)}
+  50%{transform:translate(calc(var(--wl-ld) * .48),calc(var(--wl-ld) * .48)) rotate(-180deg)}
+  75%{transform:translateY(calc(var(--wl-ld) * .48)) scale(.5) rotate(-270deg)}
+  100%{transform:rotate(-360deg)}
  }
 }

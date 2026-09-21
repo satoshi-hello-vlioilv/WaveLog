@@ -63,6 +63,7 @@
                    'filler', 'filler-edge', 'knife', 'knife-edge', 'badge',
                    'strip', 'strip-edge', 'scrap', 'scrap-edge', 'trim',
                    'trim-edge', 'finger', 'label', 'ink', 'sheen',
+                   'lead0', 'lead1', 'lead2',
                    'chip-bg', 'chip-fg', 'chip-bd',
                    'chip-clr-bg', 'chip-clr-fg', 'chip-clr-bd',
                    'chip-ov-bg', 'chip-ov-fg', 'chip-ov-bd'];
@@ -159,7 +160,10 @@
              **部材の幅は字が入らないので出していない**。ここは1区間だけを
              器いっぱいに使うので、全部の寸法に字を添えられる。 -->
         <div class="bs-zoom" id="bsZoom" hidden role="dialog" aria-label="区間の拡大">
-         <div class="bs-zoom-hd">
+         <!-- 見出しの帯は**掴んで動かす取っ手**（§9.437、利用者の指示）。
+              押せるのに何も起きない的を作らないため、カーソルの形と説明の字の
+              両方で言う。（この中は文字列リテラルの中なので、逆引用符は書けない） -->
+         <div class="bs-zoom-hd" title="この帯をドラッグすると、拡大図の位置を変えられます">
           <span class="bs-zoom-bd" id="bsZoomBadge">A</span>
           <span class="bs-zoom-tx"><b id="bsZoomTitle">—</b><small id="bsZoomSub">—</small></span>
           <button type="button" class="bs-zoom-x" id="bsZoomClose" title="閉じる（Esc）" aria-label="閉じる">✕</button>
@@ -1786,24 +1790,43 @@
       置き場は「字の塊の上端」で持つ——値と名前の2行ぶんの高さがあるので、
       中心だけで置くと片側が軸心を越える（実際に越えた）。 */
    const top = sg < 0 ? cl - 6 - (t + 1) * rowH : cl + 6 + t * rowH;
-   const near = sg < 0 ? top : top + rowH;      /* 部材に近いほうの縁 */
+   /* **段ごとに色を変える**（§9.437、利用者の指示）。線と字を同じ色にして、
+      「同じ色＝同じ組」を辿れるようにする。 */
+   const tint = PAL['lead' + (t % 3)] || PAL['lead0'] || '#fff';
    row.forEach((q, i) => {
     if (xs[i] - half[i] < 0 || xs[i] + half[i] > ZOOM.vw) { off++; return; }
-    const hitY = q.bd ? (sg < 0 ? q.bd.y + q.bd.h : q.bd.y) : cl;
-    /* 線も**軸の地の上**を通るので、字と同じ白で引く（薄い灰だと消える）。 */
-    ln += `<path class="bs-zl" fill="none" stroke="#fff" stroke-width="1" opacity=".85"`
+    /* **線は字の縁から出す**（§9.437、利用者の指摘「引き出し線がラベルと
+       つながっていないように見える」）。以前は段の高さ（2行ぶん＝`rowH`）を
+       そのまま縁にしていたので、**1行しか書かない札（値だけ）では 13px の
+       空白**が字と線のあいだに開いていた——線が宙から始まって見える。
+       いま何行書くかは `q.plain` が決めるので、その高さから縁を出す。 */
+    const blk = VFS + (q.plain ? 0 : NFS + 2);
+    const near = sg < 0 ? top - 1 : top + blk + 2;
+    /* **行き先は対象の中心**（§9.437、利用者の指示「対象の中心位置から
+       伸ばすように示して」）。以前は部材の**縁**で止めていた（§9.418）ので、
+       隣り合う細い部材では「どちらの縁か」が読めなかった。中心まで引き、
+       **終端に点を打つ**——線の先が物の中で終わるので、どの部材のことかを
+       絵だけで言い切れる。§9.418 の「縁から引く」はここで撤回する。 */
+    const hitY = q.bd ? q.bd.y + q.bd.h / 2 : cl;
+    /* 線は**軸の地の上**を通るので、字と同じ明るい色で引く（薄い灰だと消える）。
+       太さは 1 → 1.3（利用者の指摘「線も細いのでかなり見づらい」）。
+       これ以上太くすると、1mm 台の部材の幅より線のほうが太くなる。 */
+    ln += `<path class="bs-zl" fill="none" stroke="${tint}" stroke-width="1.3" opacity=".95"`
+     + ` stroke-linejoin="round" stroke-linecap="round"`
      + ` d="M${xs[i].toFixed(1)} ${near.toFixed(1)}`
-     + `L${xs[i].toFixed(1)} ${(near + sg * 4).toFixed(1)}`
-     + `L${q.cx.toFixed(1)} ${hitY.toFixed(1)}"/>`;
-    /* **軸の地は中間の灰色**なので、字は白＋濃い縁取りで置く（§9.432）。
+     + `L${xs[i].toFixed(1)} ${(near + sg * 5).toFixed(1)}`
+     + `L${q.cx.toFixed(1)} ${hitY.toFixed(1)}"/>`
+     + `<circle class="bs-zl-dot" cx="${q.cx.toFixed(1)}" cy="${hitY.toFixed(1)}" r="2.2"`
+     + ` fill="${tint}" stroke="${PAL.ink}" stroke-width=".7"/>`;
+    /* **軸の地は中間の灰色**なので、字は明るい色＋濃い縁取りで置く（§9.432）。
        薄い字（`--bs-fig-label`）だと地に溶けて読めない（実際に消えた）。 */
     const hl = ` stroke="${PAL.ink}" stroke-width="${(VFS * 0.14).toFixed(2)}"`
      + ' style="paint-order:stroke"';
     marks += `<text x="${xs[i].toFixed(1)}" y="${(top + VFS).toFixed(1)}"`
-     + ` text-anchor="middle" font-size="${VFS}" font-weight="800" fill="#fff"`
+     + ` text-anchor="middle" font-size="${VFS}" font-weight="800" fill="${tint}"`
      + ` font-variant-numeric="tabular-nums"${hl}>${esc(q.val)}</text>`
      + (q.plain ? '' : `<text x="${xs[i].toFixed(1)}" y="${(top + VFS + NFS + 2).toFixed(1)}"`
-       + ` text-anchor="middle" font-size="${NFS}" font-weight="600" fill="#fff"${hl}>`
+       + ` text-anchor="middle" font-size="${NFS}" font-weight="600" fill="${tint}"${hl}>`
        + `${esc(q.name)}</text>`);
     lead++;
    });
@@ -1852,6 +1875,43 @@
   if (P.rem > 0.001) bits.push(`隙間は刻みの余りです（許容 0〜${M.P.gapMax}）`);
   return bits.join('　/　');
  }
+ /* 拡大図の窓は**掴んで動かせる**（§9.437、利用者の指示「拡大図のポップオーバー
+    モーダルは表示位置調整できるようにしてください」）。押した区間の真下へ出すのは
+    変えない（どこを開いたのかを目で辿れる）——そのうえで、隠れてしまった物を
+    見たいときに利用者が自分でどかせるようにする。
+    掴むのは**見出しの帯だけ**（図そのものを掴めると、図の中の的を押す道をふさぐ）。
+    はみ出す側は器の縁で止める（画面の外へ持って行かれると戻せない）。 */
+ function bindZoomDrag(box) {
+  const hd = box.querySelector('.bs-zoom-hd');
+  if (!hd || hd.dataset.drag === '1') return;
+  hd.dataset.drag = '1';
+  let st = null;
+  hd.addEventListener('pointerdown', e => {
+   if (e.button !== 0 || e.target.closest('button')) return;
+   const main = box.parentNode.getBoundingClientRect();
+   const r = box.getBoundingClientRect();
+   st = { dx: e.clientX - r.left, dy: e.clientY - r.top, main, w: r.width, h: r.height };
+   box.classList.add('is-dragging');
+   /* `setPointerCapture`は掴めないと投げる（§9.413）。掴めなくても動かすこと
+      自体はできるので、理由を1行残して続ける（黙って捨てない・§9.328）。 */
+   try { hd.setPointerCapture(e.pointerId); } catch (err) {
+    WL.quiet.note('拡大図の窓を掴めない（動かすこと自体はできる）', err);
+   }
+   e.preventDefault();
+  });
+  hd.addEventListener('pointermove', e => {
+   if (!st) return;
+   const x = Math.min(Math.max(0, st.main.width - st.w),
+                      Math.max(0, e.clientX - st.main.left - st.dx));
+   const y = Math.min(Math.max(0, st.main.height - st.h),
+                      Math.max(0, e.clientY - st.main.top - st.dy));
+   box.style.setProperty('--bs-zoom-x', x.toFixed(1) + 'px');
+   box.style.setProperty('--bs-zoom-y', y.toFixed(1) + 'px');
+  });
+  const end = () => { if (!st) return; st = null; box.classList.remove('is-dragging'); };
+  hd.addEventListener('pointerup', end);
+  hd.addEventListener('pointercancel', end);
+ }
  /* 開く・閉じる。**器は1枚**（開き直しは中身の差し替えだけ）。 */
  function closeZoneZoom() {
   zoomBadge = '';
@@ -1890,6 +1950,7 @@
   svg.innerHTML = fig.svg;
   $('#bsZoomNote').textContent = fig.note;
   box.hidden = false;
+  bindZoomDrag(box);
   /* 押した区間の**真下**へ置く（どこを開いたのかを目で辿らせない）。
      器からはみ出す側は端で止める。描き直しのときは `hit` が無いので、
      **いまの位置のまま**中身だけ差し替える（窓が飛ぶと探し直しになる）。 */

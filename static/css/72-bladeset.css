@@ -50,6 +50,14 @@
   --bs-fig-trim-edge:var(--rs-yellow);
   --bs-fig-label:var(--muted);
   --bs-fig-ink:var(--nav);
+  /* 拡大図の引き出し線の段（§9.437、利用者の指示「各段によって少し色を
+     変えるなどできますか？」）。軸の地（`--muted`・輝度.19）の上に3段ぶん
+     引くので、**段ごとに色みだけを変える**——1色だと、どの線がどの段の字から
+     出ているのか辿れない。明度は3段とも高いまま（地との比 8:1 前後）で、
+     **線と字は同じ色**にする（同じ色＝同じ組、が辿る手がかりになる）。 */
+  --bs-fig-lead0:var(--card-bg);
+  --bs-fig-lead1:var(--look-amber-pale);
+  --bs-fig-lead2:var(--rs-blue-bg);
   /* 立体図の地。**`blade-3d.js` が読み取って場面の背景にする**（§CLAUDE 7）。 */
   --bs-3d-bg:var(--bg);
   /* 図の上端の帯。**クリアランスとラップは刃組の要**なので強く出し、
@@ -757,7 +765,11 @@ body.bs-mode .bs-shell{display:flex}
   box-shadow:var(--shadow-pop);padding:var(--space-2);display:flex;flex-direction:column;
   gap:var(--space-1)}
 .bs-zoom[hidden]{display:none}
-.bs-zoom-hd{display:flex;align-items:center;gap:var(--space-2)}
+/* 見出しの帯は取っ手（§9.437）。`touch-action:none` が無いと、掴んだ指が
+   器のスクロールに取られる。 */
+.bs-zoom-hd{display:flex;align-items:center;gap:var(--space-2);
+  cursor:move;touch-action:none;user-select:none}
+.bs-zoom.is-dragging{box-shadow:var(--shadow-pop),0 0 0 2px var(--teal)}
 .bs-zoom-bd{display:inline-grid;place-items:center;min-width:1.8em;height:1.8em;padding:0 4px;
   border-radius:var(--radius-xs);background:var(--teal-dark);color:#fff;
   font-size:var(--fs-title);font-weight:800}

@@ -50,7 +50,7 @@
       この2つが食い違ったまま描くと「切り替えたのに前の図」の1枚になる。
       `seq`は切り替えの通し番号。部品の読み込みを待つあいだに別の図を
       押されたとき、**遅れて戻ってきたほうに描かせない**ために持つ。 */
-   builtCut:null, seq:0, builds:0, fixups:0,
+   builtCut:null, builtKeep:null, capZ:null, seq:0, builds:0, fixups:0,
    /* 断面図の視点（§9.413 追補）。**板幅の中心を起点に**左右（`cutAz`）と
       上下（`cutEl`）へ回す。切る面は世界に固定したままなので、回しても
       切り口は動かない——動くのは見る位置だけ。 */
@@ -401,8 +401,22 @@
     内径のぶんを抜いた上下2枚、軸と板＝1枚）。模式図と同じ形が、同じ色で出る。
     置く場所は断面のほんの内側——面の上に置くと、切断面に切り取られて消える。 */
  const CAP_T = 1.2;
+ /* **残す側は「向き」から決まる。控えずに、要るたびに引く**（§9.437、利用者の
+    報告「初めて断面図を押すと断面ではない3D表示になる。もう一度押すと直る」）。
+    以前は `D3.keep` という控えを `applyCut()` が書いていたが、**読むのは
+    `build()` の中**（切り口の面を置く `capRects()`）で、その `applyCut()` は
+    `build()` の終わりに呼ばれる——つまり**初回の組み立ては1つ前の値で切り口を
+    置いていた**。初期値は `-1`、いまの向き（DS左）の答えは `+1` なので、
+    切り口の面だけが**切り落とされる側**（z<0）へ置かれ、**中身の無い殻＝
+    立体図と同じ絵**になっていた。2回目は控えが正しくなっているので直る。
+    引く関数にすれば、順番に依らず必ず今の向きの答えが返る。 */
+ const keepSide = () => (D3.flip ? 1 : -1);
  function capRects(items, ro, ri) {
-  const z = D3.keep * (CAP_T / 2 + 0.05), out = [];
+  const z = keepSide() * (CAP_T / 2 + 0.05), out = [];
+  /* **実際に置いた z を控える**（§9.437）。控えの`builtKeep`が正しくても、
+     ここが1つ前の値で置いていれば切り口は切り落とされる——網は
+     「どちら向きで組んだと言っているか」ではなく**どこへ置いたか**を見る。 */
+  D3.capZ = z;
   items.forEach(q => {
    if (ri > 0.01) {
     out.push({ x: q.x, y: q.y + (ri + ro) / 2, z, l: q.l, r: ro - ri, d: CAP_T });
@@ -1164,6 +1178,11 @@
      控えるのは`res`そのもの（`solve()`は呼ぶたびに新しい物を返すので、
      同一性の比較がそのまま「同じ割付か」の答えになる）。 */
   D3.builtRes = res;
+  /* **どちら側を残す向きで組んだかも控える**（§9.437）。切り口の面は組む時に
+     置き場所が決まるので、向きが変わったら**組み直さないと切り口が反対側に
+     残る**——`spinTo()`は断面図では`applyCut()`しか呼ばないので、控えが無いと
+     裏返した瞬間に初回と同じ「中身の無い殻」になる。 */
+  D3.builtKeep = keepSide();
   D3.dirty = false;
   D3.builds++;
   render();
@@ -1191,7 +1210,7 @@
   if (!D3.r) return;
   /* カメラは**残す側の反対**に置く（あいだに物が無い状態にする）。
      図面向き（OS左）なら +Z 側から見て z≦0 を残す。裏返すと両方入れ替わる。 */
-  D3.keep = D3.flip ? 1 : -1;
+  D3.keep = keepSide();
   if (D3.clip) D3.clip.set(new D3.T.Vector3(0, 0, D3.keep), 0);
   D3.r.clippingPlanes = on && D3.clip ? [D3.clip] : [];
  }
@@ -1220,12 +1239,13 @@
      切り替えと重なると、**前の図のまま組んである模型**を描いてしまい、
      もう一度札を押すまで戻らない。食い違っていたら**組み直してから**描く。
 
-     **見るのは「図の種類」と「割付」の両方**（§9.433）。以前は図の種類だけを
+     **見るのは「図の種類」と「割付」と「残す向き」の3つ**（§9.433・§9.437）。以前は図の種類だけを
      見ていたので、**割付が入れ替わったのに組み直されなかった模型**はそのまま
      描かれていた（材料の並びと刃の位置が別々の割付から出て、板だけが横へ
      ずれる）。どちらか食い違えば組み直す——`build()`が両方を控え直すので、
      組み直しは1回で収まる。 */
-  if (D3.built && (D3.builtCut !== D3.cut || D3.builtRes !== ctx.res)) {
+  if (D3.built && (D3.builtCut !== D3.cut || D3.builtRes !== ctx.res
+                   || (D3.cut && D3.builtKeep !== keepSide()))) {
    D3.fixups++;
    build();
    /* 組み直せなかった（割付がまだ無い・部品がまだ無い）なら、**前の図の絵を
@@ -1352,8 +1372,10 @@
    el.hidden = !on;
    if (!on) return;
    at[key] = v.x;
+   /* OS と DS は**対**（両端の呼び名）。片方だけ帯を避けて下がると、同じ物の
+      名前が段違いに見えるので、`place()`が同じ高さへそろえる（§9.437）。 */
    put.push({ el, x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h,
-              w: el.offsetWidth || 60, h: el.offsetHeight || 20 });
+              w: el.offsetWidth || 60, h: el.offsetHeight || 20, pair: 'ends' });
   });
   const marks = D3.cut ? (D3.marks || []) : [];
   const pool = markEls(marks.length);
@@ -1375,8 +1397,12 @@
   });
   zones(w, h, cam, v);
   dims(w, h, cam, v);
-  place(put, w, h);
+  /* **帯を先に書いてから札を置く**（§9.437）。`sides()`が左上の帯（画面左DS…／
+     有効長…）を出すので、逆順だと**切り替えた最初の1枚だけ帯がまだ空**で、
+     `place()`が「帯は無い」と読んで札を帯の下へ持ち上げる——そのあと帯が出て
+     重なる（実測 25×5px）。帯の中身は札の位置に依らないので、先に書いてよい。 */
   sides(at);
+  place(put, w, h);
  }
  /* 区間の的と記号を、いまの見え方へ置く（§9.417）。断面図のときだけ出す——
     立体図では機械まわりが手前に来るので、区間の上に札を置いても「何の上に
@@ -1594,8 +1620,37 @@
  }
  /* 札の渋滞をほどく。指し示す横の位置は動かさず、重なったぶんだけ上下へ分ける。
     四隅は操作の道具が使っているので、そこへは入れない。 */
+ /* 帯（`.bs-hud`）が占めている場所は**測って決める**（§9.437、利用者の指示
+    「OS,DSラベルの重なりも解消してほしい」）。以前は `TOP = 42` / `BOT = 44` の
+    決め打ちだったが、断面図の左上の帯は**2行に増えている**（画面左DS…／有効長…）
+    ので実測56px——DSの札が帯へ**25×5px** 食い込んでいた。
+    固定の数に足して追いかけると、行が増えるたびにまた重なる（§9.250）。
+    **横も見る**——左上の帯の下でも、帯より右に居る札は下げなくてよい。 */
+ function hudBox(w, h) {
+  const st = host;
+  const out = { tops: [], bot: 10 };
+  if (!st) return out;
+  const s = st.getBoundingClientRect();
+  st.querySelectorAll('.bs-hud').forEach(el => {
+   if (el.hidden || !el.offsetWidth) return;
+   const r = el.getBoundingClientRect();
+   if (el.classList.contains('is-bot')) { out.bot = Math.max(out.bot, s.bottom - r.top); return; }
+   out.tops.push({ x0: r.left - s.left, x1: r.right - s.left, y: r.bottom - s.top });
+  });
+  return out;
+ }
  function place(put, w, h) {
-  const PAD = 6, TOP = 42, BOT = 44;
+  const PAD = 6;
+  const hud = hudBox(w, h);
+  /* その札の真上に帯が在るときだけ、帯の下まで下げる。 */
+  const topAt = (x, tw) => {
+   let t = PAD;
+   hud.tops.forEach(b => {
+    if (x + tw / 2 + PAD > b.x0 && x - tw / 2 - PAD < b.x1) t = Math.max(t, b.y + PAD);
+   });
+   return t;
+  };
+  const BOT = hud.bot + PAD;
   for (let pass = 0; pass < 6; pass++) {
    let moved = false;
    for (let i = 0; i < put.length; i++) {
@@ -1612,9 +1667,17 @@
    }
    if (!moved) break;
   }
+  const clampX = q => Math.max(q.w / 2 + PAD, Math.min(w - q.w / 2 - PAD, q.x));
+  /* 対で出す札（OS・DS）は**いちばん下がる側にそろえる**。 */
+  const pairTop = {};
   put.forEach(q => {
-   const x = Math.max(q.w / 2 + PAD, Math.min(w - q.w / 2 - PAD, q.x));
-   const y = Math.max(TOP + q.h / 2, Math.min(h - BOT - q.h / 2, q.y));
+   if (!q.pair) return;
+   pairTop[q.pair] = Math.max(pairTop[q.pair] || 0, topAt(clampX(q), q.w) + q.h / 2);
+  });
+  put.forEach(q => {
+   const x = clampX(q);
+   const lo = q.pair ? pairTop[q.pair] : topAt(x, q.w) + q.h / 2;
+   const y = Math.max(lo, Math.min(h - BOT - q.h / 2, q.y));
    q.el.style.left = `${x}px`;
    q.el.style.top = `${y}px`;
   });
@@ -1969,6 +2032,11 @@
               割付を変えた直後に「前の物のまま」が場面に残っていないかを、網が
               1つの真偽で見られるようにする。 */
            stale: !!(D3.built && ctx && D3.builtRes !== ctx.res),
+           /* **組んである切り口は今の向きの物か**（§9.437）。食い違うと切り口の
+              面が切り落とされる側に残り、殻だけの「立体図と同じ絵」になる。 */
+           builtKeep: D3.builtKeep == null ? null : D3.builtKeep,
+           capSide: (D3.cut && D3.capZ != null) ? (Math.sign(D3.capZ) === keepSide()) : null,
+           capZ: D3.capZ == null ? null : +D3.capZ.toFixed(2),
            /* 材料と刃の食い違い（§9.433）。同じ割付から出ていれば必ず0。 */
            matOff: D3.cut ? (D3.matOff || 0) : 0,
            ortho: !!(D3.cut && D3.ocam), clips: D3.r ? (D3.r.clippingPlanes || []).length : 0 };

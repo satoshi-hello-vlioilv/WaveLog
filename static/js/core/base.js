@@ -2265,14 +2265,65 @@ function notifyLookChange(){
 WL.notifyLookChange=notifyLookChange;
 
 const LOADER_KEY='MeasurementLoaderV1';
-const LOADERS=[
- {key:'ring',label:'輪と点',hint:'これまでの見せ方'},
- {key:'ball-pulse',label:'球が3つ（順に）',hint:'loaders.css ball-pulse'},
- {key:'ball-beat',label:'球が3つ（交互）',hint:'loaders.css ball-beat'},
- {key:'line-scale',label:'棒が5本（順に）',hint:'loaders.css line-scale'},
- {key:'line-scale-pulse-out',label:'棒が5本（中から外へ）',hint:'loaders.css line-scale-pulse-out'},
- {key:'ball-clip-rotate',label:'切れた輪',hint:'loaders.css ball-clip-rotate'},
+/* **顔ぶれは群で持つ**（§9.436、利用者の指示「広いエリアでわかりやすく
+   選べるように」）。29種を平らに並べると、選ぶ側は29回見比べることになる
+   ——「輪」「波紋」「球」…という**形の族**で束ねると、まず族を1つ選んで
+   その中の数枚だけを見比べればよい（見比べる回数 29 → 7＋4程度）。
+   族の名前は**画面に出る見出しそのもの**。順は「静か → にぎやか」で、
+   業務画面に置いても落ち着いて見える族を先に出す。
+   `label`は**何が見えるか**（形＋数＋動き）、`hint`は**元の綴り**
+   （loaders.css のどれを写したかを画面から辿れるようにする・§CLAUDE 6）。 */
+const LOADER_GROUPS=[
+ {key:'ring',   name:'輪・弧',   note:'回り続ける。いちばん静か'},
+ {key:'ripple', name:'波紋',     note:'中心から広がって消える'},
+ {key:'ball',   name:'球が並ぶ', note:'横1列で上下・伸び縮み'},
+ {key:'swarm',  name:'球が集まる',note:'格子や円周に散る'},
+ {key:'line',   name:'棒が並ぶ', note:'等幅の棒が伸び縮み'},
+ {key:'path',   name:'道を描く', note:'決まった道筋をまわる'},
+ {key:'shape',  name:'形が変わる',note:'面そのものが裏返る'},
 ];
+const LOADERS=[
+ /* ---- 輪・弧 ---- */
+ {key:'ring',group:'ring',label:'輪と点',hint:'WaveLog 既定（これまでの見せ方）'},
+ {key:'ball-clip-rotate',group:'ring',label:'切れた輪',hint:'ball-clip-rotate'},
+ {key:'ball-clip-rotate-pulse',group:'ring',label:'切れた輪と脈打つ球',hint:'ball-clip-rotate-pulse'},
+ {key:'ball-clip-rotate-multiple',group:'ring',label:'2つの弧が逆に回る',hint:'ball-clip-rotate-multiple'},
+ {key:'semi-circle-spin',group:'ring',label:'半月が回る',hint:'semi-circle-spin'},
+ /* ---- 波紋（利用者の指示「水の波紋のようなものも使いたい」） ---- */
+ {key:'ball-scale-ripple-multiple',group:'ripple',label:'波紋が次々に広がる',hint:'ball-scale-ripple-multiple'},
+ {key:'ball-scale-ripple',group:'ripple',label:'波紋が1つ広がる',hint:'ball-scale-ripple'},
+ {key:'ball-scale-multiple',group:'ripple',label:'円が次々に広がる（塗り）',hint:'ball-scale-multiple'},
+ {key:'ball-scale',group:'ripple',label:'円が1つ広がる（塗り）',hint:'ball-scale'},
+ /* ---- 球が並ぶ ---- */
+ {key:'ball-pulse',group:'ball',label:'球が3つ（順に縮む）',hint:'ball-pulse'},
+ {key:'ball-beat',group:'ball',label:'球が3つ（交互に薄く）',hint:'ball-beat'},
+ {key:'ball-pulse-sync',group:'ball',label:'球が3つ（波のように上下）',hint:'ball-pulse-sync'},
+ {key:'ball-pulse-rise',group:'ball',label:'球が5つ（すれ違って上下）',hint:'ball-pulse-rise'},
+ /* ---- 球が集まる ---- */
+ {key:'ball-grid-pulse',group:'swarm',label:'球が9つ（格子・伸び縮み）',hint:'ball-grid-pulse'},
+ {key:'ball-grid-beat',group:'swarm',label:'球が9つ（格子・明滅）',hint:'ball-grid-beat'},
+ {key:'ball-spin-fade-loader',group:'swarm',label:'球が8つ（円周で順に薄く）',hint:'ball-spin-fade-loader'},
+ {key:'ball-rotate',group:'swarm',label:'球が3つ（1本の軸で回る）',hint:'ball-rotate'},
+ /* ---- 棒が並ぶ ---- */
+ {key:'line-scale',group:'line',label:'棒が5本（順に）',hint:'line-scale'},
+ {key:'line-scale-pulse-out',group:'line',label:'棒が5本（中から外へ）',hint:'line-scale-pulse-out'},
+ {key:'line-scale-pulse-out-rapid',group:'line',label:'棒が5本（中から外へ・速い）',hint:'line-scale-pulse-out-rapid'},
+ {key:'line-scale-party',group:'line',label:'棒が4本（ばらばらに）',hint:'line-scale-party'},
+ {key:'line-spin-fade-loader',group:'line',label:'棒が8本（円周で順に薄く）',hint:'line-spin-fade-loader'},
+ /* ---- 道を描く ---- */
+ {key:'ball-zig-zag',group:'path',label:'球が2つ（すれ違う）',hint:'ball-zig-zag'},
+ {key:'ball-zig-zag-deflect',group:'path',label:'球が2つ（跳ね返る）',hint:'ball-zig-zag-deflect'},
+ {key:'ball-triangle-path',group:'path',label:'輪が3つ（三角をまわる）',hint:'ball-triangle-path'},
+ {key:'pacman',group:'path',label:'口を開けて食べる',hint:'pacman'},
+ /* ---- 形が変わる ---- */
+ {key:'square-spin',group:'shape',label:'四角が裏返る',hint:'square-spin'},
+ {key:'triangle-skew-spin',group:'shape',label:'三角が裏返る',hint:'triangle-skew-spin'},
+ {key:'cube-transition',group:'shape',label:'四角が2つ（角をまわる）',hint:'cube-transition'},
+];
+/* **`<i>`の数**。9は格子（3×3）が要る数で、いちばん多い種類に合わせる。
+   ここが答えの1箇所——盤も保存オーバーレイも、この数だけ`<i>`を置く。 */
+const LOADER_SLOTS=9;
+const LOADER_DOTS='<i></i>'.repeat(LOADER_SLOTS);
 function currentLoader(){
  try{
   const v=localStorage.getItem(LOADER_KEY);
@@ -2280,29 +2331,58 @@ function currentLoader(){
  }catch(e){WL.quiet.note('端末の覚えが読めない（既定で続ける）',e)}
  return 'ring';
 }
+/* 種類を当てる先は**器そのもの**（`.wl-ld[data-ld]`・§9.436）。
+   以前は`html[data-loader]`の子孫として当てていたが、**見本を並べる盤では
+   取り違える**——祖先の種類と札の種類の規則が同じ詳細度で当たり、後に
+   書いたほうが勝つ。器へ直に書けば、1つの器に当たる種類は必ず1つになる。
+   `data-ld-fixed`を名乗る器（盤の見本）は、いまの設定に引きずられない。 */
+function paintLoaders(k){
+ document.querySelectorAll('.wl-ld:not([data-ld-fixed])').forEach(el=>{el.dataset.ld=k});
+}
+/* 「いまこれを使っている」の印。**選ぶ面が2つある**（「表示」バッジの
+   行き先と、共通設定の盤）ので、**印を付ける役も1箇所**にまとめる
+   ——描いた直後に呼べば、どちらの面でも同じ見え方になる。 */
+function markLoaderOptions(k){
+ document.querySelectorAll('[data-loader-option]').forEach(b=>{
+  const on=b.dataset.loaderOption===(k||currentLoader());
+  b.classList.toggle('is-current',on);
+  if(b.tagName==='BUTTON')b.setAttribute('aria-pressed',String(on));
+ });
+}
 function applyLoader(key){
  const k=LOADERS.some(l=>l.key===key)?key:'ring';
  document.documentElement.dataset.loader=k;
  try{localStorage.setItem(LOADER_KEY,k)}catch(e){WL.quiet.note('保存できなくても表示自体は継続する',e)}
- document.querySelectorAll('#uiSizeMenu [data-loader-option]').forEach(b=>{
-  b.classList.toggle('is-current',b.dataset.loaderOption===k);
- });
+ paintLoaders(k);
+ markLoaderOptions(k);
  notifyLookChange();
 }
-/* **中の`<i>`は常に5つ**。使わないぶんはCSSが伏せるので、種類を変えても
+/* **中の`<i>`は常に9つ**。使わないぶんはCSSが伏せるので、種類を変えても
    並びはそのまま（作り直さないから、動いている最中に切り替えても飛ばない）。 */
 WL.loader={
  STYLES:LOADERS,
+ GROUPS:LOADER_GROUPS,
+ SLOTS:LOADER_SLOTS,
  style:currentLoader,
  setStyle:applyLoader,
- /* `size`＝器の大きさ（px）。渡さなければ器のCSSが決める。 */
- html(size,cls){
+ mark:markLoaderOptions,
+ /* いまの種類の名前（盤・行き先の「いまどうなっているか」が読む）。 */
+ labelOf(key){const l=LOADERS.find(x=>x.key===(key||currentLoader()));return l?l.label:''},
+ /* `size`＝器の大きさ（px）。渡さなければ器のCSSが決める。
+    `fixed`＝この器は設定に追従しない（盤の見本）。 */
+ html(size,cls,fixed){
   const st=size?` style="--wl-ld:${(+size||16)}px"`:'';
-  return `<span class="wl-ld${cls?' '+cls:''}"${st} aria-hidden="true">`
-   +'<i></i><i></i><i></i><i></i><i></i></span>';
+  const kind=(typeof fixed==='string'&&fixed)?fixed:currentLoader();
+  return `<span class="wl-ld${cls?' '+cls:''}" data-ld="${kind}"`
+   +`${fixed?' data-ld-fixed':''}${st} aria-hidden="true">${LOADER_DOTS}</span>`;
  },
 };
 applyLoader(currentLoader());
+/* 「読み込みの見せ方を決める場所」への行き先（§9.436）。**base.js は
+   マスタ画面の作りを知らない**ので、口だけ置き、実体はマスタ画面が
+   `WL.openLookSettings` を名乗って入れる（§9.373「土台に画面の知識を
+   書かない」と同じ作法）。名乗り手が居ない場面では静かに何もしない。 */
+WL.openLookSettings=null;
 
 /* 「表示」のポップオーバー。モードバッジ(.access-mode-menu)と同じ
    「小さなボタン→選択肢を並べたポップオーバー」の言語で揃える
@@ -2355,21 +2435,24 @@ applyLoader(currentLoader());
    btn.addEventListener('click',()=>{WL.duration.setStyle(d.key);closeMenu()});
    menu.appendChild(btn);
   });
-  /* 読み込み中の見せ方（§9.421）。**札に見本そのものを出す**——名前だけでは
-     どう動くのかは選ぶ前に分からない（§9.200「選ばせるものは選ぶ前に見える」）。
-     見本は`html[data-loader]`ではなく札自身の印で描くので、いま選んでいる
-     ものと並べて見比べられる。 */
+  /* 読み込み中の見せ方（§9.421 → §9.436）。**ここは行き先だけ**にした。
+     種類が6→29に増え、このポップオーバーには入らない（実測: 1種46px＝
+     29種で1334px、画面の高さ1152pxを超える）。狭い器へ押し込むと、29種を
+     スクロールで数えることになり「探させない」に反する。
+     **選ぶのは共通設定＞この端末の盤**（広い場所で見本を大きく並べる）。
+     ここには**いまどれか**と**どこで決めるか**だけを置く（§9.433 と同じ作法
+     ——設定の持ち主は`WL.loader`の1箇所のまま、面が2つあるだけ）。 */
   head('読み込みの見せ方');
-  const curLd=WL.loader.style();
-  WL.loader.STYLES.forEach(l=>{
+  {
    const btn=document.createElement('button');
-   btn.type='button';btn.dataset.loaderOption=l.key;
-   if(l.key===curLd)btn.classList.add('is-current');
-   btn.innerHTML=`<span><span class="ld-sample" data-loader="${l.key}">`
-    +`${WL.loader.html(15)}</span>${l.label}</span><small>${l.hint}</small>`;
-   btn.addEventListener('click',()=>{WL.loader.setStyle(l.key);closeMenu()});
+   btn.type='button';btn.id='uiSizeLoaderLink';
+   btn.innerHTML=`<span><span class="ld-sample">${WL.loader.html(15)}</span>`
+    +`<b class="ui-size-now"></b></span><small>共通設定 &gt; この端末 で選ぶ`
+    +`（全${WL.loader.STYLES.length}種）</small>`;
+   btn.querySelector('.ui-size-now').textContent=WL.loader.labelOf();
+   btn.addEventListener('click',()=>{closeMenu();WL.openLookSettings&&WL.openLookSettings()});
    menu.appendChild(btn);
-  });
+  }
   document.body.appendChild(menu);
   const rect=anchor.getBoundingClientRect();
   menu.style.top=`${rect.bottom+6}px`;
@@ -2383,6 +2466,10 @@ applyLoader(currentLoader());
  });
  // ラベルの初期表示(applyUiSizeはDOM構築前に走るため、ここで一度描き直す)。
  if(typeof applyUiSize==='function'&&typeof currentUiSize==='function')applyUiSize(currentUiSize());
+ /* 読み込みの見せ方も同じ理由でもう一度当てる——`applyLoader`はDOMが
+    組み上がる前に走るので、`index.html`が持つ**静的な器**
+    （`#saveOverlay`の`.wl-ld`）にはまだ種類が書かれていない（§9.436）。 */
+ if(typeof applyLoader==='function'&&typeof currentLoader==='function')applyLoader(currentLoader());
 })();
 
 /* ---------- 起動オーバーレイ(#appBoot)の進行と解除 ----------
