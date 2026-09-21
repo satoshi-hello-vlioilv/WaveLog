@@ -44,6 +44,13 @@
     カメラの居る側の反対を残す（カメラと断面のあいだに物が無い状態にする）。 */
  const D3 = { on:false, cut:false, keep:-1, built:false, dirty:true, open:true, out:true,
    rot:Math.PI, carX:0,
+   /* **どの図として組んであるか**（§9.428）。`cut`は「いま選ばれている図」、
+      `builtCut`は「いま場面に在る模型がどちらの図のものか」——同じ模型を
+      使い回すが**組み方が違う**（切り口の面・板の誇張・機械まわり）ので、
+      この2つが食い違ったまま描くと「切り替えたのに前の図」の1枚になる。
+      `seq`は切り替えの通し番号。部品の読み込みを待つあいだに別の図を
+      押されたとき、**遅れて戻ってきたほうに描かせない**ために持つ。 */
+   builtCut:null, seq:0, builds:0, fixups:0,
    /* 断面図の視点（§9.413 追補）。**板幅の中心を起点に**左右（`cutAz`）と
       上下（`cutEl`）へ回す。切る面は世界に固定したままなので、回しても
       切り口は動かない——動くのは見る位置だけ。 */
@@ -1116,7 +1123,11 @@
                         r: sz / 2 / Math.sin(D3.cam.fov * Math.PI / 360) * 1.15, az: -0.62, el: 0.42 });
   if (!D3.moved) Object.assign(CAM, HOME);
   D3.built = true;
+  /* **組んだ図を控えるのは render() より前**（§9.428）。`render()`は食い違いを
+     見つけると組み直すので、後に置くと組み直しが無限に続く。 */
+  D3.builtCut = D3.cut;
   D3.dirty = false;
+  D3.builds++;
   render();
  }
 
@@ -1149,6 +1160,13 @@
 
  function render() {
   if (!D3.r || !D3.on) return;
+  /* **描くのは、いま選ばれている図の模型だけ**（§9.428、利用者の報告
+     「3D断面図が切り替え直後には出ません（通常の3Dモデルが出る）」）。
+     ここは切り替え以外の道からも呼ばれる——掴んで回している最中の毎フレーム、
+     器の大きさが変わったとき、台車を回す・引き出すの動き。そのどれかが
+     切り替えと重なると、**前の図のまま組んである模型**を描いてしまい、
+     もう一度札を押すまで戻らない。食い違っていたら**組み直してから**描く。 */
+  if (D3.built && D3.builtCut !== D3.cut) { D3.fixups++; build(); return; }
   const T = D3.T, cv = D3.cv, w = cv.clientWidth, h = cv.clientHeight;
   if (w < 8 || h < 8) return;
   if (cv.width !== Math.round(w * D3.r.getPixelRatio()) || D3.w !== w || D3.h !== h) {
@@ -1761,11 +1779,18 @@
  /* 模式図／断面図／立体図の切り替え。**立体を使う図に切り替えたときだけ**
     部品を取りに行く。断面図と立体図は**同じ模型**なので、行き来しても
     組み直さない（伏せる物と視点が変わるだけ・§9.412）。 */
- async function setMode(on, kind) {
+ async function setMode(on, kind, next) {
+  /* **切り替えの通し番号**（§9.428）。部品の読み込みを待つあいだに別の図を
+     押されたら、遅れて戻ってきたほうは何もしない。 */
+  const seq = ++D3.seq;
   const wantCut = kind === 'cut';
-  const changed = D3.cut !== wantCut;
   D3.cut = wantCut;
   D3.on = !!on;
+  /* **いまの割付はここで受ける**（§9.428）。以前は画面が`sync()`を呼んでから
+     `setMode()`を呼んでいたので、`sync()`が**前の図のまま**1回組んで1枚描き、
+     そのあとここで組み直していた——同じ割付を2回組み、あいだに「切り替えた
+     のに前の図」の1枚が挟まる。受け取るのはこの1箇所にして、組むのは1回。 */
+  if (next) { ctx = next; D3.dirty = true; }
   /* **図を離れるときも状態をそろえる**（§9.415）。以前はここで戻っていたので、
      模式図へ移ったあとも**切断面と断面図の光が場面に残った**まま`D3.cut`だけ
      false になり、次に何かが描いた1枚が「断面図でも立体図でもない絵」になり得た
@@ -1776,6 +1801,9 @@
    note('立体図の部品を読み込んでいます…');
    const ok = await loadLibrary();
    note('');
+   /* **待っているあいだに別の図を押されていたら、ここで描かない**（§9.428）。
+      `D3.cut`はもう次の図のものなので、この続きで組むと押した図と食い違う。 */
+   if (seq !== D3.seq) return false;
    if (!ok) {
     fail('立体図を表示する部品（three.js）を読み込めませんでした。<br>'
        + `取りに行った先: ${esc(THREE_SRC)}<br><b>模式図はそのまま使えます。</b>`);
@@ -1784,7 +1812,9 @@
   }
   if (!init()) return false;
   /* 切り口の面は**断面図のときだけ**作るので、行き来したら組み直す。 */
-  if (D3.dirty || changed) build(); else { applyCut(); render(); }
+  /* 組み直すのは「割付が変わった」か「**組んである図が違う**」ときだけ。
+     行き来しても組み直さない、は§9.412のまま（同じ模型を使い回す）。 */
+  if (D3.dirty || D3.builtCut !== D3.cut) build(); else { applyCut(); render(); }
   return true;
  }
 
@@ -1807,6 +1837,10 @@
 
  function view() {
   return { cut: !!D3.cut, flip: !!D3.flip, keep: D3.keep, gloss: gloss(),
+           /* 組んだ回数と、組んである図（§9.428）。**網はここを見る**——
+              「切り替えのたびに2回組んでいないか」「描いている絵が選んだ図か」は
+              絵を見ても分からない。`fixups`は`render()`が食い違いを直した回数。 */
+           builds: D3.builds | 0, builtCut: D3.builtCut, fixups: D3.fixups | 0,
            /* 台車がいま回っているか。断面図では**回さない**のが決まり（§9.412）。 */
            rotY: D3.pivot ? D3.pivot.rotation.y : 0,
            cutAz: D3.cutAz, cutEl: D3.cutEl, marks: (D3.marks || []).length,

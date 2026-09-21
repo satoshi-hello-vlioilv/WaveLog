@@ -718,11 +718,43 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
        **同じ模型を使い回す**のが要点。ここで固定するのは「1枚足りたこと」ではなく、
        ①機械まわりを伏せること ②平行投影で真横から見ること ③軸の中心で切ること
        ④視点を動かせないと**見た目でも**言うこと（押せるのに何も起きない的を残さない）。 */
+    /* **切り替えは1回で組み、描くのは選んだ図の模型**（§9.428、利用者の報告
+       「3D断面図が切り替え直後には出ません（通常の3Dモデルが出る）」）。
+       絵を見ても「2回組んだ」「前の図のまま1枚描いた」は分からないので、
+       **組んだ回数**と**いま場面に在る模型がどちらの図のものか**を数で見る。
+       以前は画面が`sync()`→`setMode()`の順に呼んでおり、`sync()`が前の図の
+       ままもう1回組んで1枚描いていた。 */
+    const swBefore = await page.evaluate(() => window.WL.bladeSolid.view().builds);
     await page.click('#bsFigTabs [data-fig="cut"]');
     await W.until(page, () => {
      const v = window.WL.bladeSolid && window.WL.bladeSolid.view();
      return !!(v && v.cut && v.ortho);
     }, null, { ms: 20000, what: '断面図に切り替わる' });
+    const swCut = await page.evaluate(() => {
+     const v = window.WL.bladeSolid.view();
+     return { builds: v.builds, builtCut: v.builtCut, cut: v.cut, fixups: v.fixups };
+    });
+    rec('図を切り替えるとき組むのは1回だけ（前の図のまま組んで1枚描かない）',
+        swCut.builds - swBefore === 1, `組んだ回数 ${swBefore} → ${swCut.builds}`);
+    rec('場面に在る模型は、いま選ばれている図のもの（断面図）',
+        swCut.builtCut === true && swCut.cut === true,
+        `組んである図 ${swCut.builtCut} / 選んだ図 ${swCut.cut}`);
+    /* 逆向きも同じ。**戻ってから断面図へ戻す**（この節の続きは断面図を見る）。 */
+    await page.click('#bsFigTabs [data-fig="3d"]');
+    await W.until(page, () => window.WL.bladeSolid.view().builtCut === false, null,
+                  { ms: 15000, what: '立体図へ戻す' });
+    const swSolid = await page.evaluate(() => {
+     const v = window.WL.bladeSolid.view();
+     return { builds: v.builds, builtCut: v.builtCut, cut: v.cut };
+    });
+    rec('立体図へ戻すときも組むのは1回だけ',
+        swSolid.builds - swCut.builds === 1,
+        `組んだ回数 ${swCut.builds} → ${swSolid.builds}`);
+    await page.click('#bsFigTabs [data-fig="cut"]');
+    await W.until(page, () => {
+     const v = window.WL.bladeSolid.view();
+     return v.cut === true && v.builtCut === true && v.ortho === true;
+    }, null, { ms: 15000, what: '断面図へ戻す' });
     const cut = await page.evaluate(() => {
      const st3 = document.querySelector('#bsStage3'), cv = st3.querySelector('canvas');
      const rig = st3.querySelector('.bs-hud-grp--rig');

@@ -2335,8 +2335,10 @@
      ——押せるのに何も起きない的を残さない（§CLAUDE 4）。器ごと伏せる。 */
   $('#bsStage3').classList.toggle('is-cut', figKind === 'cut');
   if (!WL.bladeSolid) return;
-  WL.bladeSolid.sync({ st, M, res: LAST, ringHex: hexOf });
-  WL.bladeSolid.setMode(solid, figKind);
+  /* **切り替えは1回で組む**（§9.428）。以前はここで`sync()`を呼んでから
+     `setMode()`を呼んでおり、`sync()`が**前の図のまま**1回組んで1枚描いて
+     いた（組むのも2回）。いまの割付は`setMode()`へ渡す。 */
+  WL.bladeSolid.setMode(solid, figKind, { st, M, res: LAST, ringHex: hexOf });
  }
 
  function wire() {
