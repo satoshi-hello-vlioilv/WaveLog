@@ -52,6 +52,24 @@ if m:
     got=[x.strip() for x in m.group(1).split(',')]
     rec('レイヤの順序が設計どおり',got==EXPECTED,f'{got}')
 
+# ---- 1b) 使っているレイヤ名は、宣言した8つの中にある（§9.427） ----
+# **宣言に無い名前を書くと、そこは「全部の後ろ」の別レイヤになる**——
+# `!important`より静かで、`!important`より強い。実際に`72-bladeset.css`が
+# `@layer components`（複数形）と書いており、刃組画面では`state`レイヤの
+# 「選ばれた札の見た目」（§9.353）が**1つも効いていなかった**
+# （表示の入切4つが全部「入」なのに点が白いまま。利用者の報告
+# 「ONOFFの状態がバッジから読み取れません」）。
+# 上の 3) は「レイヤの外に書いていないか」を見るが、**名前が正しいか**は
+# 見ていない——綴り違いは「レイヤの中」なので素通りする。
+bad_layer=[]
+for name in CSS_ORDER:
+    for mm in re.finditer(r'@layer\s+([A-Za-z][\w-]*)\s*\{',
+                          re.sub(r'/\*[\s\S]*?\*/','',(CSS_DIR/name).read_text(encoding='utf-8'))):
+        if mm.group(1) not in EXPECTED:
+            bad_layer.append(f'{name}: @layer {mm.group(1)}')
+rec('使っているレイヤ名が宣言した並びの中にある（綴り違いは全部の後ろへ回る）',
+    not bad_layer,'; '.join(bad_layer[:4]))
+
 # ---- 2) !important が無い ----
 imp=[(i+1,l.strip()[:110]) for i,l in enumerate(CODE.split('\n')) if '!important' in l]
 rec('!important が1つも無い',not imp,'; '.join(f'L{n} {t}' for n,t in imp[:6]))

@@ -1087,6 +1087,38 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('「出さない」でスペーサーを切ると、物ごと無くなる',
         hGone.mesh < h0.mesh && hGone.skinned === 0,
         `物 ${h0.mesh} → ${hGone.mesh} / 薄い物 ${hGone.skinned}`);
+    /* ---- 4.8c) 選ばれている札は「見た目」で分かる（§9.427、利用者の報告
+       「3D断面図バッジのONOFFの状態がバッジから読み取れません」） ----
+       `72-bladeset.css`が`@layer components`（複数形）と書いていたため、
+       **宣言に無い名前＝全部の後ろの別レイヤ**になり、`90-state.css`が持つ
+       「選ばれた札の見た目」（§9.353）が刃組画面では**1つも効いていなかった**
+       ——入切4つが全部「入」なのに点が白いままだった。綴りそのものは
+       `test_csslint.py`が見る。ここは**実際に描かれた色**で見る——レイヤの
+       並びが正しくても、当てる先を間違えれば同じ結果になるので、
+       「入と切が見分けられる」ことを画面の側からも固定する。
+       いまスペーサーだけが「切」なので、同じ群の中で入と切を比べられる。 */
+    const look = await page.evaluate(() => {
+     const bg = (el, pe) => (el ? getComputedStyle(el, pe || null).backgroundColor : '');
+     const pair = sel => {
+      const all = [...document.querySelectorAll(sel)];
+      return { on: all.find(b => b.classList.contains('is-on')),
+               off: all.find(b => !b.classList.contains('is-on')) };
+     };
+     const tg = pair('#bsStage3 [data-show]'), fig = pair('#bsFigTabs [data-fig]');
+     const rail = pair('#bsRailTabs [data-r]'), hide = pair('#bsStage3 [data-hide]');
+     return { tg: [bg(tg.on), bg(tg.off)],
+              dot: [bg(tg.on, '::before'), bg(tg.off, '::before')],
+              fig: [bg(fig.on), bg(fig.off)], rail: [bg(rail.on), bg(rail.off)],
+              hide: [bg(hide.on), bg(hide.off)] };
+    });
+    const differs = q => !!q[0] && !!q[1] && q[0] !== q[1];
+    rec('入切の札は「入」と「切」で地の色が違う', differs(look.tg), look.tg.join(' / '));
+    rec('入切の札の点は「入」だけ塗られている', differs(look.dot), look.dot.join(' / '));
+    rec('図の札（模式図／断面図／立体図）は選ばれている1枚だけ地が違う',
+        differs(look.fig), look.fig.join(' / '));
+    rec('刃組の内訳の札も選ばれている1枚だけ地が違う',
+        differs(look.rail), look.rail.join(' / '));
+    rec('隠し方の札も選ばれている1枚だけ地が違う', differs(look.hide), look.hide.join(' / '));
     await page.click('#bsStage3 [data-hide="ghost"]');
     await W.until(page, () => window.WL.bladeSolid.view().skins.skinned > 0, null,
                   { ms: 8000, what: '薄く残す' });

@@ -25,7 +25,7 @@
    こうしておくと、**設定を変えても DOM を作り直さなくてよい**
    （`html[data-loader]` が変わるだけで見た目が入れ替わる）。
    ======================================================================== */
-@layer components {
+@layer component {
  /* 器。高さは `--wl-ld`、横は中身なり（球3つなら少し横長になる）。
     呼ぶ側は `--wl-ld` を渡すだけでよい。 */
  .wl-ld{--wl-ld:16px;display:inline-flex;align-items:center;justify-content:center;

@@ -9,7 +9,13 @@
        .bs-bar  … ①バリ方向 →②刃・板厚 →③幅構成 →④ゴムリング（決める順）
        .bs-body … 左＝刃組表（上）＋刃組図（下） ／ 右＝所要・段取
 */
-@layer components {
+/* **レイヤの綴りは`component`（単数）。** 宣言してあるのは`00-base.css`の
+   1枚の宣言（reset→tokens→base→component→state→mode→print→utility）だけで、
+   **宣言に無い名前を書くと「全部の後ろ」の別レイヤになる**——`components`と
+   書いていたせいで、このファイルが`state`より後になり、90-state.cssが持つ
+   「選ばれた札の見た目」（§9.353）が刃組画面では1つも効いていなかった
+   （§9.427。実測: 表示の入切4つが全部「入」なのに点が白いまま）。 */
+@layer component {
 
 /* ---------- 図の色（JSが読み取る） ----------
    **ここが唯一の定義**。`blade-view.js` の `figPalette()` が1回だけ読み、
