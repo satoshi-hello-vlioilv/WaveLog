@@ -267,9 +267,14 @@
        <!-- 完了に必要なのは「どの台車へ」と「どの刃セットで」の2つ（§9.378）。
             **員数・条件・条の設計は計算とマスタから入る**ので、人が決めるのは
             ここだけ——決める場所を1つにまとめ、完了のボタンのすぐ上に置く。 -->
+       <!-- **台車の札は台車マスタが作る**（§9.424、利用者の指示「台車マスタは
+            A台車、B台車を登録しておいて」「刃組ガイダンス使う設備＝台車マスタ
+            必要」）。ここに A／B を直に書いていたので、3台あるラインを
+            登録できず、呼び名も変えられなかった。器だけ置いて中身は
+            renderCarPick() が作る。
+            **この中は文字列リテラルの中なので、逆引用符は書けない**（§9.420）。 -->
        <div class="bs-carbar"><span class="bs-lbl">台車</span>
-        <button type="button" class="bs-chip is-on" data-car="A">A</button>
-        <button type="button" class="bs-chip" data-car="B">B</button>
+        <span id="bsCarPick" class="bs-carpick"></span>
         <span class="bs-lbl">刃セット</span>
         <select id="bsSetPick" class="bs-sel is-sm"></select></div>
        <div id="bsDiffHead"></div><div id="bsDiffSum"></div>
@@ -411,6 +416,7 @@
   M = BS().normalize(r);
   IX = BS().buildIndex(M);
   applyStandards();
+  syncCarriage();          /* 台車マスタの顔ぶれに合わせる（§9.424） */
   return true;
  }
  /* 基準値から**画面の既定値**を入れ、使う刃を決める。**中身は
@@ -1971,9 +1977,19 @@
   const pa = a.split('|').map(Number), pb = b.split('|').map(Number);
   return (pb[0] - pa[0]) || ((pb[1] || 0) - (pa[1] || 0));
  });
+ /* 組み替える台車に**いま載っている**記録を探す。
+    2台を交互に使うラインでは、直前の刃組（`h[0]`）はラインで稼働中なので
+    飛ばす——いま組み替える台車に載っているのは、その前の記録。
+    **台車が1つのラインでは飛ばさない**（§9.424、利用者の指示「ごくまれに
+    スリッターがある設備でも、台車なしというパターンがありました」）。
+    台車を使わないラインでは、**いま機械に載っているのが直前の刃組そのもの**で、
+    それが組み替える相手になる。飛ばすと1つ古い記録と比べてしまう。 */
  function targetRecord() {
   const h = M.history || [];
-  for (let i = 1; i < h.length; i++) if (h[i].carriage === st.carriage) return { rec: h[i], back: i + 1 };
+  const from = carriageNames().length > 1 ? 1 : 0;
+  for (let i = from; i < h.length; i++) {
+   if (h[i].carriage === st.carriage) return { rec: h[i], back: i + 1 };
+  }
   return { rec: null, back: 0 };
  }
  /* **記録が無い台車の基準は「標準構成」**（§9.415、利用者の指示「差分が
@@ -2059,22 +2075,26 @@
     return `Φ${esc(dia)}${tk ? `<small>刃厚 ${esc(tk)}</small>` : ''}`;
    })
   ];
+  /* 「稼働中なので使えない」と言えるのは**別の台車**のときだけ（§9.424）。
+     台車が1つのラインでは、稼働中の構成そのものを組み替えるので、
+     その部材は**外して使える**——ここで断ると事実と食い違う。 */
+  const busyOther = inUse && inUse.carriage !== st.carriage ? inUse : null;
   $('#bsDiffHead').innerHTML =
-   (inUse ? `<div class="bs-alert"><b>ラインで稼働中（直前の刃組）</b>　台車 ${esc(inUse.carriage)}<br>`
-     + `${esc(inUse.at)}<br>${esc(inUse.note)}<br>ここに載っている部材は外せないため、今回は使えません。</div>` : '')
+   (busyOther ? `<div class="bs-alert"><b>ラインで稼働中（直前の刃組）</b>　${esc(busyOther.carriage)}<br>`
+     + `${esc(busyOther.at)}<br>${esc(busyOther.note)}<br>ここに載っている部材は外せないため、今回は使えません。</div>` : '')
    + (baseKind === 'rec'
-    ? `<div class="bs-alert is-info"><b>組み替える台車 ${esc(st.carriage)} の現在の構成（${back}回前）</b><br>`
+    ? `<div class="bs-alert is-info"><b>組み替える ${esc(st.carriage)} の現在の構成（${back}回前）</b><br>`
       + `${esc(prev.at)}<br>${esc(prev.note)}<br>ここに載っている部材はそのまま使えます。</div>`
     /* **出どころを書き分ける**（§CLAUDE 6）。「記録＝組んだ事実」と
        「標準構成＝いまの材料を既定の設定で組んだときの計算値」は別物で、
        取り違えると「もう組んである」と読める（§9.408 と同じ線引き）。 */
     : baseKind === 'std'
-     ? `<div class="bs-alert is-info"><b>台車 ${esc(st.carriage)} の記録がありません。`
+     ? `<div class="bs-alert is-info"><b>${esc(st.carriage)} の記録がありません。`
        + '<u>標準構成</u>と比べています</b><br>'
        + '<b>「標準」の列</b>＝いまの材料を<b>既定の刃組設定</b>（刃組基準値マスタ）で'
        + '組んだときの<b>計算値</b>。組んだ事実ではありません。<br>'
        + '刃組を終えるたびに記録すると、次回からは実際に組んだ構成と比べます。</div>'
-     : `<div class="bs-alert">台車 ${esc(st.carriage)} に組み替え対象となる記録がなく、`
+     : `<div class="bs-alert">${esc(st.carriage)} に組み替え対象となる記録がなく、`
        + '標準構成も計算できません（条の幅がまだ読めません）。'
        + '手順3で条の幅を入れると、標準構成との差分が出ます。</div>');
   const total = k => parts.reduce((a, x) => a + x[k], 0);
@@ -2088,14 +2108,14 @@
      同じ「台車」の字で記録と計算値を並べない。 */
   const baseCol = baseKind === 'std'
    ? '<th title="いまの材料を既定の刃組設定で組んだときの構成（計算値）">標準</th>'
-   : `<th title="台車 ${esc(st.carriage)} にいま載っている構成（刃組の記録）">台車</th>`;
+   : `<th title="${esc(st.carriage)} にいま載っている構成（刃組の記録）">台車</th>`;
   $('#bsDiff').innerHTML = `<thead><tr><th class="bs-a">部品</th>${baseCol}<th>今回</th>`
    + '<th>追加</th><th>戻す</th></tr></thead><tbody>'
    + parts.map(x => x.html).join('') + '</tbody>';
   $('#bsHist').innerHTML = h.length
    ? h.slice(0, 6).map((r, i) => `<div class="bs-hrow${i === 0 ? ' is-use' : ''}${prev && r === prev ? ' is-tgt' : ''}">`
      + `<span class="bs-hi">${i === 0 ? '1回前 稼働中' : (i + 1) + '回前'}</span>`
-     + `<span class="bs-hc">台車 ${esc(r.carriage)}</span><span class="bs-hn">${esc(r.at)}</span>`
+     + `<span class="bs-hc">${esc(r.carriage)}</span><span class="bs-hn">${esc(r.at)}</span>`
      + `<button type="button" class="bs-btn is-sm" data-hdel="${esc(r.id)}">削除</button></div>`).join('')
    : '<div class="bs-hempty">記録がありません</div>';
   /* 刃セットの候補は**刃マスタの「組」**から作る（§9.378、利用者の指示
@@ -2113,7 +2133,45 @@
    sel.title = gs.length ? '刃マスタの「組」から選びます'
                          : '刃マスタに「組」の登録がありません';
   }
-  $('#bsSaveCar').textContent = `刃組完了：台車 ${st.carriage} として記録`;
+  renderCarPick();
+ }
+ /* 台車の札（§9.424）。**顔ぶれは台車マスタ**で、1行も無ければ札を出さずに
+    「登録がない」と言い、記録も止める——**できないことは、できないと書く**
+    （§CLAUDE 4）。勝手に A／B を作ると、無い台車の差分を出せてしまう。 */
+ function carriageNames() {
+  return (M && M.carriages ? M.carriages : []).map(x => String(x.name || '').trim())
+   .filter(Boolean);
+ }
+ function renderCarPick() {
+  const names = carriageNames();
+  const box = $('#bsCarPick');
+  if (!box) return;
+  box.innerHTML = names.length
+   ? names.map(n => `<button type="button" class="bs-chip${n === st.carriage ? ' is-on' : ''}"`
+      + ` data-car="${esc(n)}">${esc(n)}</button>`).join('')
+   : '<span class="bs-none">登録がありません</span>';
+  const save = $('#bsSaveCar');
+  if (!save) return;
+  if (!names.length) {
+   save.disabled = true;
+   save.textContent = '台車マスタに登録がないため記録できません';
+   /* **直し方をその場に書く**（§CLAUDE 4）。綴りはサーバーが持つ値を使う
+      ——ここに書き写すと、片方だけ変わったときに案内だけが古くなる。 */
+   save.title = '手順1の「初期セット」で ' + (M.carriageSeed || []).join('・')
+    + ' が入ります。台車を使わないラインでは、マスタ管理の「テーブル」→ 台車マスタへ'
+    + '「' + (M.carriageNone || '台車なし') + '」を1行足すと選べます。';
+   return;
+  }
+  save.disabled = false;
+  save.title = '';
+  save.textContent = `刃組完了：${st.carriage} として記録`;
+ }
+ /* いま選んでいる台車を、台車マスタの顔ぶれに合わせる。**無い台車は選ばない**
+    ——設備を替えたときに前の設備の台車名が残ると、その名前で記録してしまう。 */
+ function syncCarriage() {
+  const names = carriageNames();
+  if (!names.length) { st.carriage = ''; return; }
+  if (!names.includes(st.carriage)) st.carriage = names[0];
  }
 
  /* ====================== 刃の状態 ====================== */
@@ -2468,11 +2526,14 @@
     .forEach(x => x.classList.toggle('is-on', x.dataset.r === railTab));
    panel.querySelectorAll('.bs-pb [data-p]').forEach(p => { p.hidden = p.dataset.p !== railTab; });
   });
-  panel.querySelectorAll('[data-car]').forEach(b => b.addEventListener('click', () => {
-   panel.querySelectorAll('[data-car]').forEach(x => x.classList.toggle('is-on', x === b));
+  /* 台車の札は**描き直されるたびに作り替わる**（台車マスタが顔ぶれを決める）
+     ので、配線は**器**で受ける（§9.424）。 */
+  $('#bsCarPick').addEventListener('click', e => {
+   const b = e.target.closest('[data-car]');
+   if (!b) return;
    st.carriage = b.dataset.car;
    scheduleRender();
-  }));
+  });
   $('#bsSetPick').addEventListener('change', e => { st.bladeGroup = e.target.value; });
   $('#bsSaveCar').addEventListener('click', saveCarriage);
   $('#bsHist').addEventListener('click', e => {
@@ -2591,7 +2652,7 @@
   /* **何が残るかを見せてから**記録する。取り消せる操作ではあるが、次の段取りの
      差分がこの1件から出るので、条件を目で確かめられるようにする。 */
   const ok = await confirmModal({
-   title: `台車 ${st.carriage} の刃組を記録します`,
+   title: `${st.carriage} の刃組を記録します`,
    bodyHtml: '<p class="confirm-modal-message">この内容で残します。'
     + '次の段取りは、この記録との差分から「持ち出す／戻す／そのまま使える」を出します。</p>'
     + `<p class="confirm-modal-message"><b>条件</b>　${c.strips || 0}条 ／ `
@@ -2613,7 +2674,7 @@
       記録は**親ロット1件ごと**（測定が開くのは親ロット1件）。 */
    const designs = await saveDesigns();
    showToast('刃組の記録',
-             `台車 ${st.carriage} として残しました`
+             `${st.carriage} として残しました`
              + (designs ? `／条の設計 ${designs} ロット分` : ''), 3800);
    await loadContext(st.equipment);
    render();
@@ -2693,7 +2754,7 @@
      body: JSON.stringify(withUserId({
       equipment: st.equipment, lot: d.parent, strips: d.strips,
       coilWidth: st.W, thickness: st.thick, groups: d.groups, at,
-      note: `刃組（台車 ${st.carriage}）` }))
+      note: `刃組（${st.carriage}）` }))
     });
     done += 1;
    } catch (e) {

@@ -592,6 +592,11 @@ body.bs-mode .bs-shell{display:flex}
 
 /* ---------- 台車差分 ---------- */
 .bs-carbar{display:flex;align-items:center;gap:var(--space-1);margin-bottom:var(--space-2)}
+/* 台車の札は台車マスタが作る（§9.424）。3台以上のラインでは折り返す
+   ——横に押し出すと帯が崩れる。 */
+.bs-carpick{display:flex;align-items:center;gap:var(--space-1);flex-wrap:wrap}
+/* 「登録がありません」。**押せない物は押せる顔をしない**（§9.385）。 */
+.bs-none{font-size:var(--fs-tiny);font-weight:700;color:var(--invalid)}
 .bs-lbl{font-size:var(--fs-sm);color:var(--muted)}
 .bs-l{width:100%;border-collapse:collapse;font-size:var(--tbl-fs)}
 .bs-l th,.bs-l td{border:1px solid var(--line);padding:1px var(--space-1);text-align:end}

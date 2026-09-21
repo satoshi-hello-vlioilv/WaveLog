@@ -2943,7 +2943,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const now=(scCarState||[]).find(x=>x.role==='稼働中');
   if(!now){box.hidden=true;box.innerHTML='';return}
   box.hidden=false;
-  box.innerHTML=`<s>台車</s><b>${esc(now.carriage)}</b>`
+  /* 名前そのものが「A台車」なので、**添え字に「台車」を重ねない**（§9.424）。 */
+  box.innerHTML=`<b>${esc(now.carriage)}</b>`
    +(now.cond?`<s>${esc(scCondText(now.cond))}</s>`:'<s>条件の記録なし</s>')
    +(now.set?`<s>刃${esc(now.set)}</s>`:'');
   box.title='押すと台車ごとの刃組状態を開きます';
@@ -2953,7 +2954,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  async function openCarriageState(){
   await loadCarriageState(true);
   const list=scCarState||[];
-  const row=x=>`<p class="confirm-modal-message"><b>台車 ${esc(x.carriage)}</b>`
+  const row=x=>`<p class="confirm-modal-message"><b>${esc(x.carriage)}</b>`
    +`（${esc(x.role)}）　${esc(scCondText(x.cond)||'条件の記録なし')}`
    +(x.set?`　刃セット ${esc(x.set)}`:'')
    +(x.at?`<br><s>${esc(x.at)}</s>`:'')+'</p>';

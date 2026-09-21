@@ -87,6 +87,11 @@
            history: (c.history || []).slice(),
            designs: (c.designs || []).slice(),
            picks: (c.picks || []).slice(),
+           /* 台車（§9.424）。**無いときは空の並び**——画面が A/B を作らない。
+              呼び名（初期セットの顔ぶれ・台車なしの綴り）はサーバーが持つ。 */
+           carriages: (c.carriages || []).slice(),
+           carriageSeed: (c.carriageSeed || []).slice(),
+           carriageNone: c.carriageNone || '台車なし',
            pickFields: (c.pickFields || []).slice(),
            pickOps: (c.pickOps || []).slice(),
            equipment: c.equipment || '',
@@ -944,7 +949,10 @@
    order: [0, 0, 0, 0],
    bigMode: 'auto', smallMode: 'auto', bigTh: 39.5, smallTh: 38.0,
    /* 刃組の道具なので、はじめから段取り向き（DS左＝部材を入れる側から見た並び）。 */
-   carriage: 'A', bladeGroup: '', flip: true
+   /* 台車は**マスタが決める**（§9.424）。既定は空で、画面が台車マスタの
+      先頭を選ぶ——ここに `'A'` と書くと、A台車の無いラインでも「A」が
+      選ばれたまま記録できてしまう。 */
+   carriage: '', bladeGroup: '', flip: true
   };
  }
  /* クリアランスの答えは**ここ1箇所**（§9.378、利用者の指示「目安として板厚の

@@ -1387,6 +1387,98 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('標準の列が「—」で埋まっていない（台車が空という嘘をつかない）',
         dif.base.some(t => t && t !== '—'), dif.base.join(','));
 
+    /* ---- 5e) 台車の札は台車マスタが作る（§9.424、利用者の指示） ----
+       「台車マスタは、A台車、B台車を登録しておいてください。設備ごとですが
+        スリッターがない設備もあるので。」「刃組ガイダンス使う設備＝台車マスタ必要」
+       以前は画面のHTMLに `A`／`B` を直に書いていたので、**3台あるラインを
+       登録できず、呼び名も変えられなかった。** 顔ぶれはマスタが決める。 */
+    const car0 = await page.evaluate(() => ({
+     chips: [...document.querySelectorAll('#bsCarPick [data-car]')].map(b => b.dataset.car),
+     on: [...document.querySelectorAll('#bsCarPick [data-car].is-on')].map(b => b.dataset.car),
+     picked: WL.bladeGuide.state.carriage,
+     save: (document.querySelector('#bsSaveCar') || {}).textContent || '',
+     disabled: !!(document.querySelector('#bsSaveCar') || {}).disabled,
+     /* **HTMLに直書きが残っていないこと**——器の外に `data-car` があれば、
+        それはマスタを通っていない札。 */
+     stray: [...document.querySelectorAll('[data-car]')]
+       .filter(b => !b.closest('#bsCarPick')).length
+    }));
+    rec('台車の札は初期セットで入った顔ぶれ（A台車・B台車）',
+        car0.chips.join('/') === 'A台車/B台車', car0.chips.join('/'));
+    rec('器の外に台車の札を直書きしていない', car0.stray === 0, `${car0.stray}枚`);
+    rec('はじめから1つ選ばれている（選ばせ直さない）',
+        car0.on.length === 1 && car0.on[0] === car0.picked && car0.picked === 'A台車',
+        `${car0.on.join('/')} / state=${car0.picked}`);
+    rec('完了のボタンは選んでいる台車の名前を言う',
+        car0.disabled === false && car0.save.includes('A台車'), car0.save);
+    /* **台車を足せば札も増える**（3台あるラインを登録できる）。
+       **確かめたら必ず消す**（§9.393。残すと後の節が別の顔ぶれを見る）。 */
+    /* 汎用CRUDの鍵は**その表の列そのもの**（`values`で包まない・§9.249 ②）。 */
+    const addCar = await (await post('/api/master-table/台車マスタ',
+      { 設備名: EQ, 台車名: TAG + 'C台車', 表示順: 30, 有効: -1 })).json();
+    const carId = addCar && addCar.id;
+    try {
+     await page.evaluate(() => WL.bladeGuide.open({}));
+     await W.until(page, () => document.querySelectorAll('#bsCarPick [data-car]').length > 2,
+                   null, { ms: 10000, what: '3台目の札が出る' });
+     const car3 = await page.evaluate(() =>
+      [...document.querySelectorAll('#bsCarPick [data-car]')].map(b => b.dataset.car));
+     rec('台車マスタへ足すと札も増える（2台の決め打ちではない）',
+         car3.length === 3 && car3[2].includes('C台車'), car3.join('/'));
+    } finally {
+     if (carId) {
+      await post('/api/master-table/台車マスタ/delete', { id: carId });
+     }
+    }
+    await page.evaluate(() => WL.bladeGuide.open({}));
+    await W.until(page, () => document.querySelectorAll('#bsCarPick [data-car]').length === 2,
+                  null, { ms: 10000, what: '台車を2台へ戻す' });
+
+    /* ---- 5f) 台車が1つのラインでは、直前の刃組が組み替える相手（§9.424） ----
+       利用者の指示「ごくまれにスリッターがある設備でも、台車なしというパターンが
+       ありました」。2台を交互に使うラインでは直前の刃組はラインで稼働中なので
+       飛ばすが、**台車が1つなら、いま機械に載っているのがその直前の刃組**
+       ——飛ばすと1つ古い記録と比べ、「稼働中だから外せない」と嘘の断りも出る。
+       **確かめたら必ず元へ戻す**（台車も履歴も後の節が見る）。 */
+    const rowsOf = async () => (await getj('/api/master-table/台車マスタ')).items || [];
+    const bRow = (await rowsOf()).find(r => String(r['台車名'] || '') === 'B台車'
+                                         && String(r['設備名'] || '') === EQ);
+    let soloHist = null;
+    try {
+     if (bRow) await post('/api/master-table/台車マスタ/delete', { id: bRow.id });
+     const hr = await (await post('/api/bladeset/history',
+       { equipment: EQ, carriage: 'A台車', at: '2026-01-05 08:00', note: TAG + '単台',
+         detail: { spacer: { 10: 4 }, ring: {}, finger: {}, blade: {} } })).json();
+     soloHist = hr && hr.id;
+     await page.evaluate(() => WL.bladeGuide.open({}));
+     await W.until(page, () => document.querySelectorAll('#bsCarPick [data-car]').length === 1,
+                   null, { ms: 10000, what: '台車が1つになる' });
+     await page.click('#bsRailTabs [data-r="diff"]');
+     await page.waitForSelector('#bsDiff tbody tr', { timeout: 8000 });
+     const solo = await page.evaluate(() => ({
+      head: (document.querySelector('#bsDiffHead') || {}).textContent || '',
+      cols: [...document.querySelectorAll('#bsDiff thead th')].map(t => t.textContent.trim())
+     }));
+     rec('台車が1つなら直前の刃組と比べる（1つ古い記録へずらさない）',
+         /組み替える A台車 の現在の構成（1回前）/.test(solo.head.replace(/\s+/g, ' ')),
+         solo.head.replace(/\s+/g, ' ').slice(0, 90));
+     rec('台車が1つなら「稼働中だから外せない」と断らない',
+         !/ラインで稼働中/.test(solo.head), solo.head.replace(/\s+/g, ' ').slice(0, 60));
+     rec('比べる相手が記録なら列の見出しは「台車」', solo.cols[1] === '台車',
+         solo.cols.join('/'));
+    } finally {
+     if (soloHist) await post('/api/bladeset/history/delete', { id: soloHist });
+     if (bRow) {
+      await post('/api/master-table/台車マスタ',
+        { 設備名: EQ, 台車名: 'B台車', 表示順: 20, 有効: -1 });
+     }
+    }
+    await page.evaluate(() => WL.bladeGuide.open({}));
+    await W.until(page, () => document.querySelectorAll('#bsCarPick [data-car]').length === 2,
+                  null, { ms: 10000, what: '台車を2台へ戻す（後始末）' });
+    await page.click('#bsRailTabs [data-r="diff"]');
+    await page.waitForSelector('#bsDiff tbody tr', { timeout: 8000 });
+
     /* ---- 6) 設備停止 → 行き先のチップ ---- */
     const mk = await (await post('/api/schedule/stop-reason-master',
      { equipment: EQ, name: TAG + '刃組み', standardMinutes: 60, linkKey: 'bladeset' })).json();
