@@ -883,7 +883,7 @@
       網が名指しで見られるように数で答える（`view().matOff`）。 */
    const first = run.find(r => r.sg.type !== 'trim');
    D3.matOff = (first && A.U.length)
-    ? +(first.from - (A.U[0] + A.Lo[0]) / 2).toFixed(3) : 0;
+    ? +(first.from - BS().cutFace(A, ctx.st.tk, 0, true)).toFixed(3) : 0;
    [[r => r.sg.type === 'strip', sheet], [r => r.sg.type !== 'strip', trim]].forEach(([f, mat]) => {
     const list = face(f);
     cut(list, mat);

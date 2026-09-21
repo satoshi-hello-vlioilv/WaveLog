@@ -172,9 +172,20 @@
  const holdName = (st, M) => (isFinger(st, M) ? 'フィンガー' : 'ゴムリング');
  const oppBurr = b => (b === 'down' ? 'up' : 'down');
  const oppRing = t => (t === 'big' ? 'small' : 'big');
- /* 同一条の両側は同じリング。上軸と下軸では大小が入れ替わる。 */
+ /* 同一条の両側は同じリング。上軸と下軸では大小が入れ替わる。
+
+    **広げた側（内々）が小径・製品幅を作る側（外々）が大径**（§9.434、
+    利用者の指示）:
+
+      下バリ → 上刃を広く → 上刃側にクリアランス分を追加 → **上側が小径**
+      上バリ → 下刃を広く → 下刃側にクリアランス分を追加 → **下側が小径**
+
+    外々の対＝製品幅を作る刃は、**製品の面のすぐ下（上）に身がある**。
+    大径リングは刃先より外まで張り出しているので、板をその刃から浮かせて
+    傷の混入を防ぐ。広げた側の刃は製品から逃げているので、そちらは小径で
+    ラップを稼ぐ。**以前は逆に当てていた**（内々の側に大径）。 */
  const ringType = (burr, upper) => {
-  const t = burr === 'down' ? 'big' : 'small';
+  const t = burr === 'down' ? 'small' : 'big';
   return upper ? t : oppRing(t);
  };
  const odFromTh = (M, th) => Math.round((num(M.P.ringBore) || 0) + th * 2);
@@ -289,14 +300,42 @@
     いなければ、円周でぶつかって切れない。向かい合うのは**面と面**で、その
     あいだの隙間がクリアランス——中心どうしは `刃厚/2 + クリアランス + 刃厚/2`
     だけ離れる。
-    **切断の位置（材料が切れる面）は変わらない。** 面は中心から刃厚の半分だけ
-    内側なので、上下の面は公称の切断位置をはさんでクリアランスの半分ずつ——
-    条幅の出方は以前と同じ。変わるのは**刃がどこに載るか**＝スペーサーの寸法。
     どちら側へずれるかはバリ方向で決まり、千鳥では切断位置ごとに交互になる:
       中間の区間 … 両端の切断でずれの向きが逆になるので （刃厚＋クリアランス）×2
       端部の区間 … 切断が片側だけなので 刃厚＋クリアランス
     以前は**クリアランスだけ**ずらしており、上下の刃の身が 9.87mm 重なっていた
-    （実測・刃厚10／クリアランス0.13）——物として組めない配置だった。 */
+    （実測・刃厚10／クリアランス0.13）——物として組めない配置だった。
+
+    **製品幅はクリアランスで痩せさせない**（§9.434、利用者の指摘「板幅は確保
+    して組みます。ここにクリアランスでマイナス公差側には寄せません」）:
+
+      板幅50・クリアランス0.1 のとき
+        上刃：刃の**内々**寸法 ＝ 製品幅＋クリアランス×2 ＝ 50.2
+        下刃：刃の**外々**寸法 ＝ 製品幅          ＝ 50.0   （下バリ。上バリは逆）
+
+    条の端を決めるのは「その条の側を向いていない面」で、**外々の対が製品幅を
+    そのまま作る**。内々の対はその外側をクリアランスぶん逃がすので、
+    内々＝製品幅＋クリアランス×2 になる。
+
+    §9.419 までは上下の刃を**公称の切断位置の中心に**振り分けていた
+    （`U=X+d/2`／`Lo=X-d/2`）ので、外々も内々も公称からクリアランスの半分ずつ
+    ずれ、**どの条も一律に「製品幅−クリアランス」**で出ていた
+    （実測: 板幅50・クリアランス0.1 で全条 49.9）。これは注文幅に対する
+    マイナス公差そのもので、現場の組み方と逆だった。
+
+    いまは**刃が作る境目**（`edge`）を起点に置く。境目は条幅ではなく
+    **条幅＋クリアランス**ずつ進む——1つの切断が作る2つの端は、上下の刃の
+    面がクリアランスぶん離れているぶんだけ食い違うため。
+
+      edge[i] = origin + c_i + (i − 1) × クリアランス
+      U[i]    = edge[i] − 刃厚/2 + d × (sign[i] + 1) / 2
+      Lo[i]   = edge[i] − 刃厚/2 + d × (1 − sign[i]) / 2
+
+    起点をこう取ると、**1条目の左端がちょうど`origin`**（材料の並びの1条目の
+    左端）になるので、図の材料と刃が OS 側でぴたりと合う。DS 側へ向かって
+    最大 (条数−1)×クリアランス（22条・0.1で2.1mm）だけ、材料の並びと境目が
+    食い違う——材料は連続した1枚なのに、端の測り方が条ごとに上下入れ替わる
+    ことから来る差で、**耳が吸う**。 */
  function buildLayout(st, M, segs) {
   const tk = st.tk, n = segs.length;
   const arborLen = num(M.P.arborLen) || 1600, clr = st.clr;
@@ -320,12 +359,16 @@
   /* 上下の刃の中心どうしの距離（§9.419）。面と面のあいだがクリアランス。 */
   const dKnife = +(tk + clr).toFixed(3);
   const nominal = +((arborLen - st.W) / 2).toFixed(3);
-  const edge0 = nominal + w.osTrim - tk / 2 + sign[0] * dKnife / 2;   /* OS端（上軸）の区間長 */
+  /* 刃が作る境目と、そこから起こす上下の刃の中心（§9.434。式は上の説明どおり）。 */
+  const edgeOf = (base, i) => base + cuts[i] + (i - 1) * clr;
+  const upOf = (base, i) => edgeOf(base, i) - tk / 2 + dKnife * (sign[i] + 1) / 2;
+  const loOf = (base, i) => edgeOf(base, i) - tk / 2 + dKnife * (1 - sign[i]) / 2;
+  const edge0 = upOf(nominal + w.osTrim, 0) - tk / 2;   /* OS端（上軸）の区間長 */
   const slip = +(edge0 - Math.round(edge0 / grid) * grid).toFixed(4);
   const matStart = +(nominal - slip).toFixed(4);
   const origin = matStart + w.osTrim;
-  const U = cuts.map((c, i) => +(origin + c + sign[i] * dKnife / 2).toFixed(3));
-  const Lo = cuts.map((c, i) => +(origin + c - sign[i] * dKnife / 2).toFixed(3));
+  const U = cuts.map((c, i) => +upOf(origin, i).toFixed(3));
+  const Lo = cuts.map((c, i) => +loOf(origin, i).toFixed(3));
   const zones = [
    { key: 'OS端', type: 'end', burr: oppBurr(segs[0].burr),
      up: +(U[0] - tk / 2).toFixed(3), lo: +(Lo[0] - tk / 2).toFixed(3) },
@@ -734,6 +777,17 @@
   return j >= n ? A.sign[n] : -A.sign[j + 1];
  };
 
+ /* 条の端（製品の幅を決める面）を答える（§9.434）。**判定はここ1箇所**——
+    「その条の側を向いていない刃の面」が端を作るので、切断ごとに上下どちらの
+    刃かが入れ替わる。`i`＝切断の番号、`right`＝その切断の**右側**の条の端か。
+    図の材料と刃が同じ割付から出ているかを見る網（`view().matOff`）も、
+    条幅の検算もここを通す。 */
+ const cutFace = (A, tk, i, right) => {
+  const s = A.sign[i];
+  return right ? ((s < 0 ? A.Lo[i] : A.U[i]) - tk / 2)
+               : ((s < 0 ? A.U[i] : A.Lo[i]) + tk / 2);
+ };
+
  /* 適正帯を外れたら要注意、不適帯まで外れたら不適。 */
  const judge = (v, b) => ((v < b.hardMin || v > b.hardMax) ? 'bad'
   : ((v < b.min || v > b.max) ? 'warn' : 'good'));
@@ -1101,7 +1155,7 @@
   method, isFinger, holdName, contact, recommend, syncOrder, reorder,
   buildSegs, widths, buildLayout, buildFiller, fillWith, planZones,
   compose, buildRows, endRows, badgeMap, aggregate, assemblyError,
-  judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum,
+  judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum, cutFace,
   stripDesign, designByParent, condOf, sameCond, seedFromCond,
   pickCtx, pickGroup, condHits, selectable,
   expand, materialRun, matShift, spread,

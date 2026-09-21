@@ -161,6 +161,62 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('割付の内訳（耳・条・刃の対数）が出る', /OS耳/.test(kpi) && /刃 対数/.test(kpi),
         kpi.replace(/\s+/g, ' ').slice(0, 60));
 
+    /* ---- 3b) 製品幅はクリアランスで痩せない（§9.434、利用者の指摘） ----
+       「板幅は確保して組みます。ここにクリアランスでマイナス公差側には
+        寄せません」。板幅50・クリアランス0.1 なら
+          上刃：刃の内々 ＝ 50.2 ／ 下刃：刃の外々 ＝ 50
+       **絵では読めない**（0.1mmは1pxも出ない）ので、割付の値そのものを見る。 */
+    const geo = await page.evaluate(() => {
+     const B2 = WL.bladeSet, M2 = WL.bladeGuide.masters, s2 = WL.bladeGuide.state;
+     const keep = { W: s2.W, lots: s2.lots, order: s2.order, clr: s2.clr, align: s2.align };
+     s2.W = 1130; s2.lots = [{ name: 'L1', w: 50, n: 4 }]; s2.order = [];
+     s2.clr = 0.1; s2.align = 'none';
+     const r2 = B2.solve(s2, M2, B2.buildIndex(M2)), A2 = r2.A, tk = s2.tk;
+     const out = r2.segs.map((sg, j) => ({
+      burr: sg.burr, want: sg.w,
+      got: +(B2.cutFace(A2, tk, j + 1, false) - B2.cutFace(A2, tk, j, true)).toFixed(4),
+      upIn: +A2.zones[j + 1].up.toFixed(3), loOut: +(A2.zones[j + 1].lo + 2 * tk).toFixed(3),
+      ringUp: r2.zp.zones[j + 1].up.hold.ringT, ringLo: r2.zp.zones[j + 1].lo.hold.ringT,
+     }));
+     Object.assign(s2, keep);
+     return out;
+    });
+    rec('どの条も指示幅ちょうどに出る（クリアランスで痩せさせない）',
+        geo.every(g => Math.abs(g.got - g.want) < 1e-6),
+        geo.map(g => `${g.want}→${g.got}`).join(' '));
+    /* 下バリの条は**上刃を広く**（内々＝幅＋クリアランス×2）、**下刃の外々が幅**。 */
+    const d1 = geo.find(g => g.burr === 'down');
+    rec('下バリ：上刃の内々＝幅＋クリアランス×2／下刃の外々＝幅',
+        !!d1 && Math.abs(d1.upIn - 50.2) < 1e-6 && Math.abs(d1.loOut - 50) < 1e-6,
+        d1 ? `上内々 ${d1.upIn} / 下外々 ${d1.loOut}` : 'なし');
+    /* ---- 3c) ゴムリングは「広げた側が小径」（§9.434、利用者の指示） ----
+       下バリ → 上刃を広く → **上側が小径**。上バリはその逆。
+       製品幅を作る側（外々）の刃は製品のすぐ裏に身があるので、そちらを大径で
+       浮かせて傷の混入を防ぐ。 */
+    rec('広げた側（内々）が小径・製品幅を作る側（外々）が大径',
+        geo.every(g => (g.burr === 'down'
+          ? g.ringUp === 'small' && g.ringLo === 'big'
+          : g.ringUp === 'big' && g.ringLo === 'small')),
+        geo.map(g => `${g.burr}:上${g.ringUp}/下${g.ringLo}`).join(' '));
+
+    /* ---- 3d) 刃が作る寸法とゴムリング径が画面で読める（§9.434 追補） ---- */
+    const shown = await page.evaluate(() => ({
+     spans: [...document.querySelectorAll('#bsStage .bs-zspan')].map(t => t.textContent),
+     rings: [...new Set([...document.querySelectorAll('#bsStage text')]
+       .map(t => t.textContent).filter(t => /^[大小]/.test(t)))],
+     chip: [...document.querySelectorAll('#bsStage text')]
+       .map(t => t.textContent).find(t => /板押さえ/.test(t)) || '',
+     tbl: [...document.querySelectorAll('#bsTables .bs-kgap')].map(t => t.textContent),
+     head: [...document.querySelectorAll('#bsTables thead th')].map(t => t.textContent),
+    }));
+    /* **表はいつでも読める**——図の字は狭い区間では入らないので、
+       落ちない置き場を1つ持つ（§CLAUDE 4 できないことを黙らない）。 */
+    rec('刃が作る寸法（内／外）が刃組表で読める',
+        shown.tbl.length > 0 && shown.tbl.every(t => /^[内外]\d/.test(t))
+        && shown.head.some(h => /刃の間隔/.test(h)), shown.tbl.join(' '));
+    rec('ゴムリングの径と色と大小を上の帯が言い切る',
+        /大\s*\S*Φ\d+／小\s*\S*Φ\d+/.test(shown.chip), shown.chip);
+
     /* ---- 4) 板厚をフィンガー切替より下げると保持層が替わる ---- */
     await page.click('[data-step-open="bsV2"]');
     await page.waitForSelector('#bsThick', { timeout: 8000 });

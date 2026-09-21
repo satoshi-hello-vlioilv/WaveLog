@@ -1002,12 +1002,22 @@
      出す——出ないと「小は省略されているのか」を読む側が確かめられない。
      大きさは`V.zoneMin`でそろえ、帯の厚みにも収める。 */
   const cap = Math.min(V.fs(16), th * 0.86);
-  const fit = V.zoneMin > 0 ? (V.zoneMin - 2) / 1.1 : cap;
-  const fs = Math.max(V.fs(7), Math.min(cap, fit));
+  /* **径も帯の上で読めるようにする**（§9.433 追補、利用者の指示「ゴムリングの
+     色だけでなく、ゴムリング径もガイダンス上でわかるように」）。色は外径その
+     ものだが、**色と径の対応は覚えていないと引けない**（§CLAUDE「思い出させ
+     ない」）。入るときは`大Φ319`、入らなければ`大`だけ——落とすのは大小では
+     なく**添え物の径**のほうで、径は図の上の帯と所要がいつでも言う。 */
+  const word = z.hold.ringT === 'big' ? '大' : '小';
+  const full = `${word}Φ${od}`;
+  const room = V.zoneMin > 0 ? V.zoneMin : Math.abs(xb - xa);
+  const fsFull = Math.min(cap, fitFs(V, full, room, 16, 7));
+  const label = fsFull > 0 ? full : word;
+  const fs = fsFull > 0 ? fsFull
+   : Math.max(V.fs(7), Math.min(cap, room > 0 ? (room - 2) / 1.1 : cap));
   o += `<text x="${(xa + xb) / 2}" y="${cy - ri - th / 2 + fs * 0.36}" text-anchor="middle"`
    + ` font-size="${fs.toFixed(1)}" font-weight="800" fill="#fff" stroke="${V.PAL.ink}"`
    + ` stroke-width="${(fs * 0.16).toFixed(2)}" style="paint-order:stroke">`
-   + `${z.hold.ringT === 'big' ? '大' : '小'}</text>`;
+   + `${esc(label)}</text>`;
   return o;
  }
 
@@ -1114,6 +1124,19 @@
     （「×8」とまとめるとどの区間を指すのか分からなくなる）。 */
  /* いちばん狭い区間の幅（図の座標）。上下の両軸を見る——片方だけで決めると、
     もう片方の狭い区間で文字が隣へはみ出す。 */
+ /* 字の幅（em）。全角は1・半角は0.62で数える。**測るのはここ1箇所**——
+    「入るかどうか」を場所ごとに別の係数で見積もると、片方だけ溢れる。 */
+ const txtEm = t => [...String(t || '')]
+   .reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 1 : 0.62), 0);
+ /* 幅`w`の席へ字を入れるときの文字サイズ。入らなければ`0`（呼ぶ側が短い字へ
+    落とすか、出すのをやめる）。 */
+ function fitFs(V, t, w, max, min) {
+  const em = txtEm(t);
+  if (em <= 0) return 0;
+  const fs = Math.min(V.fs(max), (w - 4) / em);
+  return fs >= V.fs(min) ? fs : 0;
+ }
+
  function minZoneSpan(V, segs) {
   const half = V.dir * V.kw / 2;
   let m = Infinity;
@@ -1172,6 +1195,71 @@
      + `<text x="${cx}" y="${cy + fs * 0.36}" text-anchor="middle" font-size="${fs.toFixed(1)}"`
      + ` font-weight="800" fill="#fff">${r.badge}</text></g>`;
    }
+  });
+  return o;
+ }
+
+ /* ---- 刃が作る寸法（§9.433 追補、利用者の指示） ----
+    「今は純粋な板幅しか表示がないので、クリアランス分の計算が入った寸法で
+      上下正確に刃の幅を示すラベルも必要かもしれません」
+
+    条幅（材料の行の`259.80`）は**注文の幅**で、刃が実際に作る幅ではない。
+    同じ切断でも上下の刃は**刃厚＋クリアランス**だけ軸方向にずれている
+    （§9.419）ので、1つの条を挟む寸法は軸ごとに違う:
+
+      内々 … 区間の両端の刃の**内側の面どうし**（＝スペーサーの合計＝区間長）
+      外々 … 同じ2枚の**外側の面どうし**（＝内々＋刃厚×2）
+
+    条幅に当たるのは、**どちらか一方の軸の内々と、もう一方の軸の外々**で、
+    その2つが条幅をクリアランスの半分ずつ挟む（下バリなら上軸が内々・
+    下軸が外々、上バリはその逆）。**どちらがどちらかは図の上で読めること**が
+    ここの狙いなので、数だけでなく`内`／`外`の字も添える。
+
+    置き場は**記号の札のすぐ下**（その区間の中）。指し示す物の上に置くので
+    引き出し線が要らず、隣の区間とも混ざらない（§9.430）。狭くて入らない
+    ぶんは出さない——**区間長は刃組表と拡大図がいつでも言う**（§9.429 と
+    同じ逃がし方）。 */
+ /* 区間長（＝刃の内々）と条幅から、**条幅を作っているのは内々か外々か**を
+    答える（§9.434）。**幅から決める**——バリ方向の規則をここへ写すと、規則を
+    直したときに図と表だけが古いことを言う（§CLAUDE 8）。
+    答えるのはここ1箇所で、図・刃組表・拡大図が同じ言葉を使う。 */
+ function bladeSpan(len, w) {
+  const tk = st.tk;
+  return (Math.abs(len - w) <= Math.abs(len + 2 * tk - w))
+   ? { word: '内', v: len } : { word: '外', v: len + 2 * tk };
+ }
+ /* 字は「内／外」＋値。**丸めは条幅と同じ2桁**（§9.413 の部材とは別物——
+    これは割り付けの計算値なので、在庫の寸法名にはならない）。 */
+ const spanText = p => `${p.word}${(+p.v).toFixed(2)}`;
+ function drawZoneSpans(V, A, segs) {
+  const half = V.dir * V.kw / 2;
+  const pick = bladeSpan;
+  /* 大きさは**いちばん長い字といちばん狭い区間**で1つ決める（§9.378 群の中は
+     そろえる）。1つでも入らなければ全部出さない——出ている区間と出ていない
+     区間が混ざるほうが読み違えのもとになる。 */
+  let longest = '';
+  segs.forEach((sg, j) => {
+   [A.zones[j + 1].up, A.zones[j + 1].lo].forEach(len => {
+    const t = spanText(pick(len, sg.w));
+    if (txtEm(t) > txtEm(longest)) longest = t;
+   });
+  });
+  const fs = fitFs(V, longest, V.zoneMin, 11, 7);
+  if (!fs) return '';
+  const bh = fs * 1.5;                       /* 記号の札の高さ（同じ組み立て） */
+  let o = '';
+  [[true, V.upC, 'up'], [false, V.loC, 'lo']].forEach(([upper, cy, side]) => {
+   segs.forEach((sg, j) => {
+    const a = kxOf(V.KX, j, upper) + half, b = kxOf(V.KX, j + 1, upper) - half;
+    const cx = (a + b) / 2;
+    const p = pick(A.zones[j + 1][side], sg.w);
+    o += `<text class="bs-zspan" x="${cx.toFixed(1)}"`
+     + ` y="${(cy + bh / 2 + fs * 0.95).toFixed(1)}" text-anchor="middle"`
+     + ` font-size="${fs.toFixed(1)}" font-weight="700" fill="${V.PAL.label}"`
+     + ` stroke="${V.PAL.sheen}" stroke-width="${(fs * 0.22).toFixed(2)}"`
+     + ` style="paint-order:stroke" font-variant-numeric="tabular-nums">`
+     + `${esc(spanText(p))}</text>`;
+   });
   });
   return o;
  }
@@ -1327,6 +1415,13 @@
     切断ごとに変わる）。ゴムリングは色が外径そのものなので、色の意味だけを
     図の中に置く——それ以外（スペーサー・刃・屑条・耳）は形と並びで読める。
     帯が長くなったときは全体を縮めて収め、折り返しや欠けを起こさない。 */
+ /* 「大 緑Φ319」の1つぶん。色の名前は`ゴムリングマスタ`が持つ（外径から
+    引く・§9.377）。登録の無い径では色名が空になるので、そのときは出さない。 */
+ function ringWord(t) {
+  const od = BS().odOfType(st, M, t);
+  const color = (BS().ringMeta(M, IX, od) || {}).color || '';
+  return `${t === 'big' ? '大' : '小'} ${color}Φ${od}`;
+ }
  function drawChipBand(V, finger) {
   const textW = t => [...t].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 16 : 9), 0);
   const P = V.PAL;
@@ -1334,12 +1429,19 @@
      言い添え（目安の割合・手入力・ゴムリング無し・大径小径の値）は**手順バーと
      刃組表がすでに言っている**ので、図の上でもう一度言わない（§CLAUDE 8）。
      図が答えるのは「いまどの設定で組むか」の3点だけ。 */
+  /* **色と径の対応をここで言い切る**（§9.433 追補、利用者の指示「ゴムリングの
+     色だけでなく、ゴムリング径もガイダンス上でわかるように」）。色は外径その
+     ものだが（§9.377）、**どの色が何ミリかは覚えていないと引けない**。帯の上の
+     字が狭い区間で落ちても、ここは必ず読める（§CLAUDE 6 出どころを出す）。
+     チップは3つのまま——増やさずに中身を具体的にする（§9.380）。 */
+  const hold = finger ? 'フィンガー'
+   : `ゴムリング ${ringWord('big')}／${ringWord('small')}`;
   const chips = [
    { t: `クリアランス：${st.clr.toFixed(2)}mm`,
      bg: P['chip-clr-bg'], fg: P['chip-clr-fg'], bd: P['chip-clr-bd'] },
    { t: `ラップ：${st.ov.toFixed(2)}mm`,
      bg: P['chip-ov-bg'], fg: P['chip-ov-fg'], bd: P['chip-ov-bd'] },
-   { t: `板押さえ：${finger ? 'フィンガー' : 'ゴムリング'}`,
+   { t: `板押さえ：${hold}`,
      bg: P['chip-bg'], fg: P['chip-fg'], bd: P['chip-bd'] }
   ];
   const CW = chips.map(c => V.fs(18 + textW(c.t) * FS_CHIP / 16));
@@ -1395,6 +1497,7 @@
    + drawStack(V, res.A, res.segs, false, res.zp)
    + drawKnives(V) + mat.back + drawLap(V);
   const front = shafts.front + drawBadges(V, res.A, res.badges)
+   + drawZoneSpans(V, res.A, res.segs)
    + mat.front + drawEdgeLabels(V) + drawChipBand(V, res.finger);
   svg.setAttribute('viewBox', `0 0 ${FIG.vw} ${V.vh}`);
   svg.innerHTML = `<defs><linearGradient id="bsSh" x1="0" y1="0" x2="0" y2="1">`
@@ -1731,6 +1834,12 @@
   if (lo.length) where.push(`下軸 ${lo.join('・')}`);
   const bits = [`この組み方が入る区間：${where.join(' ／ ') || 'なし'}`];
   bits.push(`刃 Φ${(+st.knife).toFixed(1)}`);
+  /* この区間の刃どうしの寸法（§9.434）。条幅は注文の幅、こちらは**刃が実際に
+     作る寸法**——同じ数字に見えて別物なので、両方を並べて言う。 */
+  if (r && r.sg && !r.end) {
+   bits.push(`刃の間隔 ${spanText(bladeSpan(r.c.len, r.sg.w))}`
+     + `（条幅 ${(+r.sg.w).toFixed(2)}）`);
+  }
   /* 破線は反対側の軸の刃。**中心間は刃厚＋クリアランス**あるので、この縮尺でも
      そのまま描ける（§9.420。以前はクリアランスだけのずれで1px未満だった）。
      クリアランスは2枚の刃の**面と面のあいだ**に見えている。 */
@@ -1825,6 +1934,10 @@
      <th class="bs-grp" rowspan="2">区分<small>ロット・条幅</small></th>
      <th class="bs-bd" rowspan="2">記号</th>
      <th class="bs-it bs-sep" colspan="2">取付位置<small>バリ／OS側から何番目の区間か／区間数</small></th>
+     <!-- **刃が作る寸法は表にも置く**（§9.434、利用者の指示「クリアランス分の
+          計算が入った寸法で上下正確に刃の幅を示すラベル」）。図の上の字は
+          狭い区間では入らないので、**必ず読める場所**をここに持つ。 -->
+     <th class="bs-sep" rowspan="2">刃の間隔<small>内＝刃の内々／外＝刃の外々</small></th>
      ${Ss.length ? `<th colspan="${Ss.length}" class="bs-sep">スペーサー</th>` : ''}
      ${Gs.length ? `<th colspan="${Gs.length}" class="bs-sep">${holdLabel}</th>` : ''}
      ${hasRem ? `<th rowspan="2" class="bs-sep">隙間<small>許容 0〜${M.P.gapMax}</small></th>` : ''}
@@ -1849,6 +1962,9 @@
    return `<tr data-badge="${esc(r.badge)}">${head0}`
     + `<td class="bs-bd"><span class="bs-bdg">${r.badge}</span></td>`
     + usesCell(r, 'up', true) + usesCell(r, 'lo')
+    + `<td class="bs-num bs-sep bs-kgap" title="この区間の刃どうしの寸法。`
+    + `条幅 ${r.sg.w.toFixed(2)} を作っている側を出しています">`
+    + `${esc(spanText(bladeSpan(r.c.len, r.sg.w)))}</td>`
     + Ss.map((x, i2) => `<td class="bs-num${i2 ? '' : ' bs-sep'}">${num(r.c.sp[x])}</td>`).join('')
     + Gs.map((x, i2) => `<td class="bs-num${i2 ? '' : ' bs-sep'}">${num(r.c.G[x])}</td>`).join('')
     + (hasRem ? `<td class="bs-num bs-sep ${gapCell(r.c.rem)}">`
