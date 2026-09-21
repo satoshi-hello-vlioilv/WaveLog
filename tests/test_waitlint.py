@@ -159,6 +159,22 @@ def main(update=False):
         print('   注: 上限を下げられます（python3 tests/test_waitlint.py --update）: '
               + '; '.join(under[:8]) + (' …' if len(under) > 8 else ''))
     rec('baseline がある（無いと「増えた」を言えない）', BASELINE.exists(), str(BASELINE.relative_to(ROOT)))
+    # **調べるための一時的な細工を網へ残さない**（§9.432 ⑤。実際に残した）。
+    # 画面を撮る細工そのものは在ってよい（`test_defect.js` は見た目の確認に使う）。
+    # ただし**指定が無い環境では1行も動かないこと**——`WAVELOG_SHOT` が未設定のまま
+    # `path: undefined + '/x.png'` へ書こうとして落ちる。コミットまで残ると、
+    # 撮る指定をしない通常の実行とCIが落ちる（実際にそうなった）。
+    # 見るのは2つ: ①`/*PROBE*/` の印が残っていない ②撮る本には必ず
+    # `if (process.env.WAVELOG_SHOT)` の囲いがある。
+    leftovers = []
+    for p in files:
+        txt = p.read_text(encoding='utf-8')
+        if '/*PROBE*/' in txt:
+            leftovers.append(f'{p.name} 調べ用の印が残っている')
+        if 'WAVELOG_SHOT' in txt and not re.search(r'if\s*\(\s*process\.env\.WAVELOG_SHOT', txt):
+            leftovers.append(f'{p.name} 撮る細工に囲いが無い')
+    rec('調べるための細工は指定があるときだけ動く（印も残さない）',
+        not leftovers, '; '.join(leftovers[:6]))
     # 印のある行は数えない——印の書き方が変わると黙って全部が数から外れる。
     # 印のある行が実在し、かつその本の数に入っていないことを見る。
     marked = [(p.name, i) for p in files

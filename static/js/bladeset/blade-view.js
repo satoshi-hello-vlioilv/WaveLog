@@ -1410,7 +1410,10 @@
     字は**部材の中には入れない**。狭い部材（隙間は1mm台）では入らないので、
     入る部材だけ中に書くと「出ている物と出ていない物」が混ざる。等間隔の
     スロットへ引き出し線で降ろし、**名前と値を縦にそろえる**（§CLAUDE 9）。 */
- const ZOOM = { vw: 760, side: 52, band: 150, lead: 18, slotH: 34, holdH: 44 };
+ /* 拡大図の器。**縦は半径**（§9.432）——`rad`が「軸心から外周まで」の px、
+    `cap`は外周の外に空ける余白、`dim`は軸心の反対側へ出す区間の寸法線ぶん。
+    左の余白（`sideL`）は層の名前（軸・スペーサー・ゴムリング・刃）を置く席。 */
+ const ZOOM = { vw: 760, sideL: 78, sideR: 44, rad: 190, cap: 16, dim: 30 };
  /* 部材の寸法は**マスタの値そのまま**を出す。2桁へ丸めると `10.025` が
     `10.03` になり、**在庫に無い別の部材の名前**になってしまう（実測で出た）。
     3桁まで持ち、末尾の0は落として読みやすくする。 */
@@ -1419,15 +1422,6 @@
     （部材の中に入るかどうかの判定に使う）。 */
  const zoomTextW = (t, fs) => [...String(t || '')]
   .reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? fs : fs * 0.58), 0);
- /* 引き出し先の位置決め（§9.413 追補、利用者の指示「引き出し線が重ならないように
-    見やすく工夫して」）。**望んだ位置（部材の真下）へなるべく寄せつつ、最小間隔を
-    守る。** 並び順は変えないので、線どうしが交差しない——交差すると、どの札が
-    どの部材のものか読めなくなる。左から押して右で受け、もう一度左から整える。 */
- /* 席の配り方そのものは`blade-core.js`の`spread()`が持つ（§9.429）。
-    断面図（`blade-3d.js`）も同じ配り方をするので、**両方が使う小道具は
-    計算の側へ置く**（§9.377）。ここは「席の間隔だけで配る」呼び方。 */
- const spreadSlots = (want, a, b, gap) =>
-  BS().spread(want, want.map(() => 0), a, b, gap);
  /* **縦書きの字**（§9.430、利用者の指示「拡大図はスペースがあるので、ラベルを
     直接表示したいものに貼って」）。拡大図は1区間だけを器いっぱいに使うので、
     **横に入らない部材でも縦になら入る**——実測 S≒2.2px/mm なので、9mm の
@@ -1441,23 +1435,6 @@
      + ' style="paint-order:stroke"' : '')
    + ` font-variant-numeric="tabular-nums">${esc(t)}</text>`;
  }
- /* `dir` ＝ 字を置く向き（+1 図の下・-1 図の上）。引き出し線は部材の縁から
-    スロットへ降り、**字はその先**に置く——線の途中に字を置くと線が字を貫く。 */
- function zoomLabel(x0, y0, x1, y1, name, val, color, PAL, dir, slotW) {
-  const d = dir || 1;
-  const vy = d > 0 ? y1 + 14 : y1 - 4, ny = d > 0 ? y1 + 28 : y1 - 18;
-  /* 名前の字は**器（スロット）の幅から決める**（§CLAUDE 11）。11px のままだと
-     「クリアランス」（6字）が隣のスロットへはみ出す。読めない大きさまでは
-     下げない——下限を割るなら出さないのと同じなので、そこで止める。 */
-  const nfs = slotW ? Math.max(8, Math.min(11, (slotW - 4) / ([...name].length * 0.98))) : 11;
-  return `<path class="bs-zl" d="M${x0.toFixed(1)} ${y0.toFixed(1)}`
-   + `L${x0.toFixed(1)} ${(y0 + d * 7).toFixed(1)}L${x1.toFixed(1)} ${(y1 - d * 7).toFixed(1)}`
-   + `L${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${color}" stroke-width="1"/>`
-   + `<text x="${x1.toFixed(1)}" y="${vy.toFixed(1)}" text-anchor="middle" font-size="14"`
-   + ` font-weight="800" fill="${PAL.ink}" font-variant-numeric="tabular-nums">${esc(val)}</text>`
-   + (name ? `<text x="${x1.toFixed(1)}" y="${ny.toFixed(1)}" text-anchor="middle"`
-   + ` font-size="${nfs.toFixed(1)}" font-weight="600" fill="${PAL.label}">${esc(name)}</text>` : '');
- }
  /* 全体の寸法線（両端に立ち上がり）。 */
  function zoomSpan(a, b, y, text, PAL) {
   return `<path d="M${a.toFixed(1)} ${(y - 6).toFixed(1)}L${a.toFixed(1)} ${(y + 6).toFixed(1)}`
@@ -1468,7 +1445,23 @@
    + ` font-size="13" font-weight="800" fill="${PAL.ink}"`
    + ` font-variant-numeric="tabular-nums">${esc(text)}</text>`;
  }
- /* 区間1つぶんの拡大図。`null` を返したときは開かない（描けないものは出さない）。 */
+ /* 区間1つぶんの拡大図。`null` を返したときは開かない（描けないものは出さない）。
+
+    **縦は「半径」**（§9.432、利用者の指摘「軸がスペーサーみたいな表示になって
+    いて軸の位置が無視されているので、比率が圧倒的におかしい。選択した軸の
+    上半分か下半分を表示してほしい」）。以前は部材の**直径**ぶんの塊を中心に
+    置いて描いていたので、**軸（Φ200）がどこにも描かれず**、スペーサーは
+    Φ240 の塊に見えていた——実物は軸に嵌まる**厚さ20mmの輪**である。
+    中心線から外へ、実際の半径で描けば比率がそのまま出る:
+
+      刃      100 〜 159.1（刃径の半分）
+      ゴムリング 120.5 〜 外径の半分
+      スペーサー 100 〜 120
+      軸        0 〜 100
+      ─── 軸心（中心線）───
+
+    **選んだ軸の側の半分を出す**——上軸の区間なら中心線が下、下軸なら上。
+    押した区間と同じ向きに見えるので、どちらの軸の話か迷わない。 */
  function zoomFigure(res, r) {
   const z0 = (r.zones || [])[0];
   if (!z0 || !res.zp || !res.zp.zones[z0.i]) return null;
@@ -1484,25 +1477,33 @@
   const nK = (knifeLeft ? 1 : 0) + (knifeRight ? 1 : 0);
   const totalMm = P.len + tk * nK;
   if (!(totalMm > 0)) return null;
-  const S = (ZOOM.vw - ZOOM.side * 2) / totalMm;
-  const knifeD = st.knife, spacerD = +M.P.spacerOD || 240;
+  const S = (ZOOM.vw - ZOOM.sideL - ZOOM.sideR) / totalMm;
+  /* ---- 縦（半径方向）の物差し ---- */
   const ring = P.hold && P.hold.kind === 'ring' ? P.hold : null;
   const finger = P.hold && P.hold.kind === 'finger';
-  const maxD = Math.max(knifeD, spacerD, ring ? ring.od : 0, 1);
-  const hOf = d => ZOOM.band * d / maxD;
-  const half = hOf(maxD) / 2;
-  const holdTop = ring || finger ? ZOOM.holdH : 6;
-  const cy = holdTop + half;
-  const botY = cy + half;
-  const slotY = botY + ZOOM.lead;
+  const shaftR = (+M.P.shaftDia || 200) / 2;
+  const spacerR = (+M.P.spacerOD || 240) / 2;
+  const knifeR = (+st.knife || 0) / 2;
+  const holdIn = ring ? (+M.P.ringBore || 241) / 2 : spacerR;
+  const holdOut = ring ? (+ring.od || 0) / 2 : spacerR + 10;
+  const maxR = Math.max(knifeR, spacerR, (ring || finger) ? holdOut : 0, 1);
+  const k = ZOOM.rad / maxR;
+  const up = !!z0.upper;
+  const sg = up ? -1 : 1;                     /* 半径が増える向き（画面のy） */
+  /* 軸心の位置。下軸のときは**区間の寸法線が上に来る**ので、その字（寸法線の
+     10px 上に置く）が器からはみ出さないだけの余白を足す（実測で切れた）。 */
+  const cl = up ? ZOOM.cap + ZOOM.rad : ZOOM.cap + ZOOM.dim + 10;
+  const Yr = rr => cl + sg * rr * k;
+  const band = (r0, r1) => {
+   const a = Yr(r0), b = Yr(r1);
+   return { y: Math.min(a, b), h: Math.max(1, Math.abs(b - a)) };
+  };
   /* 軸の並び。模式図と同じ順（OS側→DS側）で、`flip` のときだけ左右を返す。 */
   const core = B.expand(P.spacer).map(mm => ({ mm, kind: 'spacer', name: 'スペーサー' }));
   if (P.rem > 0.001) core.push({ mm: P.rem, kind: 'gap', name: '隙間' });
   const run = st.flip ? core.slice().reverse() : core.slice();
-  /* **クリアランスは「反対側の軸の刃とのずれ」**（§9.413 追補、利用者の指示
-     「拡大表示はクリアランスも表示対象にして」）。同じ切断点の刃は上下で
-     クリアランスのぶん食い違うので、**その刃の番号**を持たせておく。
-     並びは `machine()` と同じ——区間 i を挟むのは自分の軸の刃 i-1 と i。 */
+  /* **クリアランスは「反対側の軸の刃とのずれ」**（§9.413 追補）。同じ切断点の
+     刃は上下でクリアランスのぶん食い違うので、**その刃の番号**を持たせておく。 */
   const own = (z0.upper ? res.A.U : res.A.Lo) || [];
   const opp = (z0.upper ? res.A.Lo : res.A.U) || [];
   const kIx = twoKnife
@@ -1516,37 +1517,41 @@
   if (knifeRight) seq.push(knife());
   const face = { spacer: PAL.spacer, gap: PAL.filler, knife: PAL.knife };
   const edge = { spacer: PAL['spacer-edge'], gap: PAL['filler-edge'], knife: PAL['knife-edge'] };
-  const dia = { spacer: spacerD, gap: spacerD, knife: knifeD };
-  let x = ZOOM.side, body = '', zoneA = null, zoneB = null;
+  const topR = { spacer: spacerR, gap: spacerR, knife: knifeR };
+  let x = ZOOM.sideL, body = '', zoneA = null, zoneB = null;
   seq.forEach(q => {
-   const w = Math.max(1.2, q.mm * S), h = hOf(dia[q.kind]);
-   q.a = x; q.b = x + w; q.cx = x + w / 2;
-   body += `<rect x="${x.toFixed(1)}" y="${(cy - h / 2).toFixed(1)}" width="${w.toFixed(1)}"`
-    + ` height="${h.toFixed(1)}" fill="${face[q.kind]}" stroke="${edge[q.kind]}"`
+   const w = Math.max(1.2, q.mm * S), bd = band(shaftR, topR[q.kind]);
+   q.a = x; q.b = x + w; q.cx = x + w / 2; q.bd = bd;
+   body += `<rect x="${x.toFixed(1)}" y="${bd.y.toFixed(1)}" width="${w.toFixed(1)}"`
+    + ` height="${bd.h.toFixed(1)}" fill="${face[q.kind]}" stroke="${edge[q.kind]}"`
     + ` stroke-width="1.2"/>`;
    if (q.kind !== 'knife') { if (zoneA === null) zoneA = x; zoneB = x + w; }
    x += w;
   });
-  if (zoneA === null) { zoneA = ZOOM.side; zoneB = x; }
+  if (zoneA === null) { zoneA = ZOOM.sideL; zoneB = x; }
+  /* **軸は1本で通す**（§9.432）。部材はこの上に載るので、先に描く。 */
+  const sb = band(0, shaftR);
+  body = `<rect x="${ZOOM.sideL.toFixed(1)}" y="${sb.y.toFixed(1)}"`
+   + ` width="${(x - ZOOM.sideL).toFixed(1)}" height="${sb.h.toFixed(1)}"`
+   + ` fill="${PAL.shaft}" stroke="${PAL['shaft-edge']}" stroke-width="1.2"/>` + body;
+  /* 軸心（一点鎖線）。**半断面であることは、この線が言う。** */
+  body += `<path class="bs-zc" d="M${(ZOOM.sideL - 24).toFixed(1)} ${cl.toFixed(1)}`
+   + `L${(x + 16).toFixed(1)} ${cl.toFixed(1)}" fill="none" stroke="${PAL.label}"`
+   + ` stroke-width="1" stroke-dasharray="14 4 3 4"/>`;
   /* 有効幅の端（刃の無い側）。 */
   if (!twoKnife) {
-   const ex = knifeLeft ? x : ZOOM.side;
-   body += `<path d="M${ex.toFixed(1)} ${(cy - half).toFixed(1)}L${ex.toFixed(1)} ${(cy + half).toFixed(1)}"`
-    + ` stroke="${PAL.label}" stroke-width="1.6" stroke-dasharray="5 4" fill="none"/>`
-    + `<text x="${ex.toFixed(1)}" y="${(cy - half - 6).toFixed(1)}"`
+   const ex = knifeLeft ? x : ZOOM.sideL;
+   const kb = band(shaftR, knifeR);
+   body += `<path d="M${ex.toFixed(1)} ${kb.y.toFixed(1)}L${ex.toFixed(1)}`
+    + ` ${(kb.y + kb.h).toFixed(1)}" stroke="${PAL.label}" stroke-width="1.6"`
+    + ` stroke-dasharray="5 4" fill="none"/>`
+    + `<text x="${ex.toFixed(1)}" y="${(Yr(knifeR) + sg * -6).toFixed(1)}"`
     + ` text-anchor="${knifeLeft ? 'end' : 'start'}" font-size="11" font-weight="700"`
     + ` fill="${PAL.label}">有効幅の端</text>`;
   }
-  /* 反対側の軸の刃（クリアランス）。**実寸では 0.13mm ＝ 図の上で 0.6px** しか
-     なく、そのまま描いても見えない。板の厚みと同じ考えで**見える最小まで離して
-     描き、値は真の値を書く**（誇張したことは足元の一言が言う・§CLAUDE 6）。
-     向きは計算の答えそのまま——クリアランスは切断点ごとに左右が入れ替わる。 */
+  /* 反対側の軸の刃（クリアランス）。実寸 0.13mm は図で 0.3px しかないので、
+     **見える最小まで離して描き、値は真の値を書く**（§9.413）。 */
   const CLR_MIN = 7;
-  /* **1つも落としていないことを数で言えるようにする**（§9.413 追補）。
-     字を中へ書いたか外へ引き出したかは幅で変わるので、絵を数えても
-     「出ているはずの寸法が出ていない」を見分けられない。**出すべき数**と
-     **中に書いた数**と**引き出した数**を持ち、網はその足し算を見る。 */
-  let zDims = 0, zIn = 0;
   let clr = '', clrMm = 0;
   seq.filter(q => q.kind === 'knife' && opp.length && own.length).forEach(q => {
    const d = (+opp[q.k] || 0) - (+own[q.k] || 0);
@@ -1554,20 +1559,18 @@
    clrMm = Math.abs(d);
    const dir = (d < 0 ? -1 : 1) * (st.flip ? -1 : 1);
    const px = dir * Math.max(Math.abs(d) * S, CLR_MIN);
-   const h = hOf(knifeD);
    q.clrX = q.a + px;
-   clr += `<rect x="${(q.a + px).toFixed(1)}" y="${(cy - h / 2).toFixed(1)}"`
-    + ` width="${Math.max(1.2, q.b - q.a).toFixed(1)}" height="${h.toFixed(1)}"`
+   clr += `<rect x="${(q.a + px).toFixed(1)}" y="${q.bd.y.toFixed(1)}"`
+    + ` width="${Math.max(1.2, q.b - q.a).toFixed(1)}" height="${q.bd.h.toFixed(1)}"`
     + ` fill="none" stroke="${PAL['knife-edge']}" stroke-width="1.2"`
     + ` stroke-dasharray="6 4" opacity=".85"/>`;
   });
-  /* 保持層（ゴムリング／フィンガー）。模式図と同じく軸の上下へ重ねる。 */
+  /* 保持層（ゴムリング／フィンガー）。**スペーサーの外側の輪**なので、
+     軸の上下ではなく**半径の続き**に1本だけ置く（§9.432）。 */
   let hold = '';
+  const holdList = [];
   if (ring || finger) {
-   const bore = +M.P.ringBore || 241;
-   const ri = ring ? hOf(bore) / 2 : hOf(spacerD) / 2;
-   const ro = ring ? hOf(ring.od) / 2 : ri + 11;
-   const th = Math.max(4, ro - ri);
+   const hb = band(holdIn, holdOut);
    const hex = ring ? hexOf(ring.od) : PAL.finger;
    const list = (st.flip ? B.expand(P.gom).reverse() : B.expand(P.gom))
     .map(mm => ({ mm, cx: 0 }));
@@ -1577,142 +1580,143 @@
    let at = zoneA + Math.max(0, (zoneB - zoneA - wsum) / 2);
    list.forEach(q => {
     const w = Math.max(1.2, q.mm * S);
-    q.cx = at + w / 2;
-    hold += `<rect x="${at.toFixed(1)}" y="${(cy - ro).toFixed(1)}" width="${w.toFixed(1)}"`
-     + ` height="${th.toFixed(1)}" fill="${hex}" stroke="${PAL.ink}" stroke-width="1"/>`
-     + `<rect x="${at.toFixed(1)}" y="${(cy + ri).toFixed(1)}" width="${w.toFixed(1)}"`
-     + ` height="${th.toFixed(1)}" fill="${hex}" stroke="${PAL.ink}" stroke-width="1"/>`;
+    q.cx = at + w / 2; q.w = w; q.bd = hb;
+    hold += `<rect x="${at.toFixed(1)}" y="${hb.y.toFixed(1)}" width="${w.toFixed(1)}"`
+     + ` height="${hb.h.toFixed(1)}" fill="${hex}" stroke="${PAL.ink}" stroke-width="1"/>`;
     at += w;
+    holdList.push(q);
    });
-   /* **名前は群に1回**（§CLAUDE 8）。枚数ぶん繰り返すと同じ字が3つ並び、
-      読む側は「違うものかもしれない」と見比べ直すことになる。 */
-   const nm = ring ? `ゴムリング（${ring.ringT === 'big' ? '大' : '小'} Φ${ring.od}）` : 'フィンガー（幅）';
-   /* **帯に入る幅のものは帯の中へ書く**（§9.413 追補、利用者の指示）。名前は
-      群の見出しが言っているので、中に書くのは値だけでよい。地が色なので
-      白字＋縁取り（模式図の大小の札と同じ作法）。 */
-   const hIn = Math.min(12, th - 5), hOut = [];
-   zDims += list.length;
-   list.forEach(q => {
-    const w = Math.max(1.2, q.mm * S), t = zmm(q.mm);
-    if (hIn >= 8 && w >= zoomTextW(t, hIn) + 8) {
-     hold += `<text x="${q.cx.toFixed(1)}" y="${(cy - ro + th / 2 + hIn * 0.36).toFixed(1)}"`
-      + ` text-anchor="middle" font-size="${hIn.toFixed(1)}" font-weight="800" fill="#fff"`
-      + ` stroke="${PAL.ink}" stroke-width="${(hIn * 0.16).toFixed(2)}"`
-      + ` style="paint-order:stroke" font-variant-numeric="tabular-nums">${t}</text>`;
-     zIn++;
-    } else if (w >= 9 && th >= zoomTextW(t, 10) + 5) {
-     /* **横に入らなくても縦なら入る**（§9.430）。輪の帯は狭いが、細い
-        ゴムリングでも幅は10px近くあるので、回せば帯の中へ貼れる。 */
-     hold += zoomVText(q.cx, cy - ro + th / 2, t, 10, '#fff', PAL.ink, 800);
-     zIn++;
-    } else hOut.push(q);
-   });
-   const hgap = 46;
-   const hslots = spreadSlots(hOut.map(q => q.cx), ZOOM.side, ZOOM.vw - ZOOM.side, hgap);
-   hOut.forEach((q, i) => {
-    hold += zoomLabel(q.cx, cy - ro - 2, hslots[i], ZOOM.holdH - 14, '',
-                      zmm(q.mm), PAL.label, PAL, -1, hgap);
-   });
-   const capX = list.length ? (list[0].cx + list[list.length - 1].cx) / 2 : (zoneA + zoneB) / 2;
-   hold += `<text x="${capX.toFixed(1)}" y="11"`
-    + ` text-anchor="middle" font-size="11" font-weight="700"`
-    + ` fill="${PAL.label}">${esc(nm)}</text>`;
   }
-  /* 軸の並びの字。等間隔のスロットへ降ろす。**クリアランスも1つの寸法**として
-     同じ並びに載せる（別扱いにすると、どこの寸法なのか辿り直すことになる）。 */
+  /* ---- 層の名前は**左の余白に1回ずつ**（§9.432・§CLAUDE 8）----
+     部材1枚ずつに「スペーサー」と書くと、同じ字が10個並ぶ。層の名前は
+     縦位置が言えるので、左の縁へ1回だけ置く。 */
+  const layers = [['軸', 0, shaftR], ['スペーサー', shaftR, spacerR]];
+  if (ring) layers.push(['ゴムリング', holdIn, holdOut]);
+  else if (finger) layers.push(['フィンガー', holdIn, holdOut]);
+  let caps = '';
+  const cap = (x, y, nm, at) => `<text x="${x.toFixed(1)}" y="${(y + 3.5).toFixed(1)}"`
+   + ` text-anchor="${at}" font-size="10" font-weight="700" fill="${PAL.label}">${esc(nm)}</text>`;
+  layers.forEach(([nm, r0, r1]) => {
+   caps += cap(ZOOM.sideL - 8, (Yr(r0) + Yr(r1)) / 2, nm, 'end');
+  });
+  caps += cap(ZOOM.sideL - 8, cl, '軸心', 'end');
+  /* **刃は右の余白へ**。刃の張り出し（軸の外〜刃先）は保持層と半径が重なるので、
+     同じ側に置くと字がぶつかる（実際にぶつかった）。 */
+  caps += cap(x + 8, (Yr(spacerR) + Yr(knifeR)) / 2, '刃', 'start');
+  /* ---- 寸法の字 ----
+     **入るものはその部材の中へ**（§9.430。横→縦の順）。入らないものは
+     **軸の帯の中へ**引き出す（§9.429 の断面図と同じ作法・段は`x`順に振り分け、
+     段の中は`spread()`で押し広げる）——軸は半径100mmぶんの高さがあり、
+     この図でいちばん広く空いている場所である。 */
+  const VFS = 13, NFS = 10;
   const items = [];
   seq.forEach(q => {
-   items.push({ cx: q.cx, name: q.name, val: zmm(q.mm), w: q.b - q.a, h: hOf(dia[q.kind]),
+   /* `plain`＝層の名前（左の余白）で言えている部材。**引き出すときは値だけ**
+      書く（§CLAUDE 8 同じ情報を2箇所に出さない）——「スペーサー」が段に何度も
+      並ぶより、値が読めるほうが要る。隙間と上下刃の中心間はそうではないので、
+      名前も添える（どちらも部材ではない）。 */
+   items.push({ cx: q.cx, name: q.name, val: zmm(q.mm), w: q.b - q.a, bd: q.bd,
+                plain: q.kind === 'spacer' || q.kind === 'knife',
                 ink: q.kind === 'knife' ? '#fff' : PAL.ink, halo: q.kind === 'knife' });
    if (q.clrX !== undefined) {
     /* **中心間**（＝刃厚＋クリアランス）。隙間ではなく2つの刃の位置の差なので、
-       中には書けない——必ず引き出す。クリアランスそのものは、2枚の刃の
-       **面と面のあいだ**に見えている（§9.420）。 */
+       貼る相手が無い——必ず引き出す。 */
     items.push({ cx: (q.cx + q.clrX + (q.b - q.a) / 2) / 2, name: '上下刃の中心間',
-                 val: zmm(clrMm), w: 0, h: 0 });
+                 val: zmm(clrMm), w: 0, bd: null });
    }
   });
-  /* 字の置き方は**器の幅で決める**（§9.413 追補、利用者の指示「幅が十分あるものは
-     その内部にラベルを貼って、狭い部分は…今の表示方式にして、狭い幅のために
-     スペースを空けて」）。§9.413 では「入る部材だけ中に書くと出ている物と出て
-     いない物が混ざる」として全部を外へ出していたが、**利用者の指示で改めた**
-     ——広い部材の字まで外へ出すと、**狭い部材のためのスロットを食ってしまう**。 */
-  const VFS = 14, NFS = 11;
-  /* **ラベルは指し示す物へ直に貼る**（§9.430、利用者の指示「スペーサーや刃や
-     ゴムリングのラベルは基本的に拡大されていて対象にそのまま貼れるほど
-     スペースがあるので、ラベルを直接表示したいものに貼って」）。
-     置き方は3つ——①横に入れば横（値＋名前の2行）②横に入らなくても
-     **縦になら入る**なら縦（値、幅があれば名前も横に並べて2列）③どちらも
-     入らないものだけ引き出す。**部材でない寸法**（上下刃の中心間は2枚の刃の
-     位置の差）は貼る相手が無いので、必ず③。 */
+  holdList.forEach(q => {
+   items.push({ cx: q.cx, name: '', val: zmm(q.mm), w: q.w, bd: q.bd,
+                ink: '#fff', halo: true });
+  });
   const inside = [], vert = [], outs = [];
   items.forEach(q => {
    const wv = zoomTextW(q.val, VFS), wn = zoomTextW(q.name, NFS);
-   if (q.w >= Math.max(wv, wn) + 10 && q.h >= VFS + NFS + 10) { inside.push(q); return; }
-   /* 縦なら「幅＝字の高さ」「高さ＝字の長さ」で入るかを見る。名前も入れるのは
-      **2列ぶんの幅**があるときだけ（無ければ値だけ——値のほうが読む物）。 */
-   if (q.w >= VFS + 4 && q.h >= wv + 10) {
-    q.vName = q.w >= VFS + NFS + 6 && q.h >= wn + 10;
+   const h = q.bd ? q.bd.h : 0;
+   if (q.w >= Math.max(wv, wn) + 8 && h >= VFS + (q.name ? NFS + 6 : 4)) {
+    inside.push(q); return;
+   }
+   if (q.w >= wv + 8 && h >= VFS + 3) { q.valOnly = true; inside.push(q); return; }
+   if (q.w >= VFS + 3 && h >= wv + 8) {
+    q.vName = q.name && q.w >= VFS + NFS + 6 && h >= wn + 8;
     vert.push(q);
     return;
    }
    outs.push(q);
   });
-  zDims += items.length;
-  zIn += inside.length + vert.length;
   let marks = '';
   inside.forEach(q => {
+   const mid = q.bd.y + q.bd.h / 2;
    const halo = q.halo
     ? ` stroke="${PAL.ink}" stroke-width="${(VFS * 0.14).toFixed(2)}" style="paint-order:stroke"` : '';
-   marks += `<text x="${q.cx.toFixed(1)}" y="${(cy - 1).toFixed(1)}" text-anchor="middle"`
-    + ` font-size="${VFS}" font-weight="800" fill="${q.ink}"`
-    + ` font-variant-numeric="tabular-nums"${halo}>${esc(q.val)}</text>`
-    + `<text x="${q.cx.toFixed(1)}" y="${(cy + NFS + 4).toFixed(1)}" text-anchor="middle"`
-    + ` font-size="${NFS}" font-weight="600" fill="${q.ink}"${halo}>${esc(q.name)}</text>`;
-  });
-  vert.forEach(q => {
-   const halo = q.halo ? PAL.ink : '';
-   /* 2列にするときは、値を右・名前を左へ置く（横書きの「値が上・名前が下」と
-      同じ並びを90度回したもの——読む順が図の向きで変わらない）。 */
-   const vx = q.vName ? q.cx + NFS / 2 + 1 : q.cx;
-   marks += zoomVText(vx, cy, q.val, VFS, q.ink, halo, 800);
-   if (q.vName) {
-    marks += zoomVText(q.cx - VFS / 2 - 1, cy, q.name, NFS, q.ink, halo, 600);
+   const one = q.valOnly || !q.name;
+   marks += `<text x="${q.cx.toFixed(1)}" y="${(one ? mid + VFS * 0.36 : mid - 1).toFixed(1)}"`
+    + ` text-anchor="middle" font-size="${VFS}" font-weight="800" fill="${q.ink}"`
+    + ` font-variant-numeric="tabular-nums"${halo}>${esc(q.val)}</text>`;
+   if (!one) {
+    marks += `<text x="${q.cx.toFixed(1)}" y="${(mid + NFS + 3).toFixed(1)}"`
+     + ` text-anchor="middle" font-size="${NFS}" font-weight="600" fill="${q.ink}"${halo}>`
+     + `${esc(q.name)}</text>`;
    }
   });
-  /* 外へ出すぶん**だけ**でスロットを配る。1段に収まらないときは2段へ振り分け、
-     同じ段の間隔を倍にする（字を読めない大きさまで縮めない）。 */
-  const wide = outs.length
-   ? Math.max(...outs.map(q => Math.max(zoomTextW(q.val, VFS), zoomTextW(q.name, NFS)))) + 10
-   : 0;
-  /* **x の順に並べてから配る。** 配りは「順番を変えない」ことで交差を防ぐので、
-     渡す並びが x 順でないとその前提が崩れる——右の刃のクリアランスは破線が
-     内側（左）へ出るため、部材の順（刃→クリアランス）と x の順が逆になる
-     （実際にここで1件交差した）。 */
-  outs.sort((a, b) => a.cx - b.cx);
-  const room = (ZOOM.vw - ZOOM.side * 2) / Math.max(1, outs.length);
-  const lanes = wide > room ? 2 : 1;
-  const slotW = room * lanes;
-  const lane = [[], []];
-  outs.forEach((q, i) => lane[lanes === 1 ? 0 : i % 2].push(q));
-  lane.forEach((row, li) => {
-   const xs = spreadSlots(row.map(q => q.cx), ZOOM.side, ZOOM.vw - ZOOM.side, slotW);
-   row.forEach((q, i) => {
-    marks += zoomLabel(q.cx, botY + 2, xs[i], slotY + li * ZOOM.slotH,
-                       q.name, q.val, PAL.label, PAL, 1, slotW);
-   });
+  vert.forEach(q => {
+   const mid = q.bd.y + q.bd.h / 2;
+   const halo = q.halo ? PAL.ink : '';
+   const vx = q.vName ? q.cx + NFS / 2 + 1 : q.cx;
+   marks += zoomVText(vx, mid, q.val, VFS, q.ink, halo, 800);
+   if (q.vName) marks += zoomVText(q.cx - VFS / 2 - 1, mid, q.name, NFS, q.ink, halo, 600);
   });
-  const spanY = slotY + ZOOM.slotH * lanes + 22;
-  const vh = spanY + 14;
+  /* 軸の帯の中の段。**段は`x`の順に振り分ける**ので、隣り合う部材の字は
+     必ず別の段になる。字の下に名前を添えるので、1段は 2行ぶん取る。 */
+  const rowH = VFS + NFS + 5;
+  const rows = Math.max(1, Math.min(3, Math.floor((sb.h - 6) / rowH)));
+  outs.sort((a, b) => a.cx - b.cx);
+  outs.forEach((q, i) => { q.tier = i % rows; });
+  let lead = 0, off = 0, ln = '';
+  for (let t = 0; t < rows; t++) {
+   const row = outs.filter(q => q.tier === t);
+   if (!row.length) continue;
+   const half = row.map(q => Math.max(zoomTextW(q.val, VFS),
+                                      q.plain ? 0 : zoomTextW(q.name, NFS)) / 2 + 3);
+   const xs = B.spread(row.map(q => q.cx), half, ZOOM.sideL, ZOOM.vw - 4, 4);
+   /* 段は**軸心のそばから軸の中へ**積む（軸心の向こう側へはみ出さない）。
+      置き場は「字の塊の上端」で持つ——値と名前の2行ぶんの高さがあるので、
+      中心だけで置くと片側が軸心を越える（実際に越えた）。 */
+   const top = sg < 0 ? cl - 6 - (t + 1) * rowH : cl + 6 + t * rowH;
+   const near = sg < 0 ? top : top + rowH;      /* 部材に近いほうの縁 */
+   row.forEach((q, i) => {
+    if (xs[i] - half[i] < 0 || xs[i] + half[i] > ZOOM.vw) { off++; return; }
+    const hitY = q.bd ? (sg < 0 ? q.bd.y + q.bd.h : q.bd.y) : cl;
+    /* 線も**軸の地の上**を通るので、字と同じ白で引く（薄い灰だと消える）。 */
+    ln += `<path class="bs-zl" fill="none" stroke="#fff" stroke-width="1" opacity=".85"`
+     + ` d="M${xs[i].toFixed(1)} ${near.toFixed(1)}`
+     + `L${xs[i].toFixed(1)} ${(near + sg * 4).toFixed(1)}`
+     + `L${q.cx.toFixed(1)} ${hitY.toFixed(1)}"/>`;
+    /* **軸の地は中間の灰色**なので、字は白＋濃い縁取りで置く（§9.432）。
+       薄い字（`--bs-fig-label`）だと地に溶けて読めない（実際に消えた）。 */
+    const hl = ` stroke="${PAL.ink}" stroke-width="${(VFS * 0.14).toFixed(2)}"`
+     + ' style="paint-order:stroke"';
+    marks += `<text x="${xs[i].toFixed(1)}" y="${(top + VFS).toFixed(1)}"`
+     + ` text-anchor="middle" font-size="${VFS}" font-weight="800" fill="#fff"`
+     + ` font-variant-numeric="tabular-nums"${hl}>${esc(q.val)}</text>`
+     + (q.plain ? '' : `<text x="${xs[i].toFixed(1)}" y="${(top + VFS + NFS + 2).toFixed(1)}"`
+       + ` text-anchor="middle" font-size="${NFS}" font-weight="600" fill="#fff"${hl}>`
+       + `${esc(q.name)}</text>`);
+    lead++;
+   });
+  }
+  /* 区間の寸法線は**軸心の反対側**（半断面の外）。図と重ならない。 */
+  const spanY = cl - sg * ZOOM.dim;
   const spans = zoomSpan(zoneA, zoneB, spanY, `区間 ${P.len.toFixed(2)} mm`, PAL);
+  const vh = up ? spanY + 16 : cl + ZOOM.rad + 16;
   /* **引き出した「部材」のいちばん広い幅**（§9.430）。ラベルは対象へ直に貼る
      ので、引き出しに落ちてよいのは「貼る相手が無いもの」（上下刃の中心間）と
-     「字が縦にも入らないほど細い部材」（刻みの余り＝0.025mm など）だけ。
-     ここが字の高さを超えたら、**貼れるはずの物を引き出している**。 */
+     「字が入らないほど細い部材」だけ。ここが字の高さを超えたら、**貼れるはずの
+     物を引き出している**。 */
   const leadWmax = outs.filter(q => q.w > 0).reduce((m, q) => Math.max(m, q.w), 0);
   return {
-   vh, dims: zDims, inside: zIn, lead: zDims - zIn, leadWmax,
-   svg: `${body}${clr}${hold}${marks}${spans}`,
+   vh, dims: items.length, inside: inside.length + vert.length, lead, off, leadWmax,
+   svg: `${body}${clr}${hold}${caps}${ln}${marks}${spans}`,
    /* 図が言えないことだけを添える（§CLAUDE 8 同じ情報を2箇所に出さない）。 */
    note: zoomNote(res, r, P, ring, finger, clrMm)
   };
@@ -1731,7 +1735,10 @@
      そのまま描ける（§9.420。以前はクリアランスだけのずれで1px未満だった）。
      クリアランスは2枚の刃の**面と面のあいだ**に見えている。 */
   if (clrMm > 0) bits.push(`破線は反対側の軸の刃（面と面のあいだがクリアランス ${(+st.clr).toFixed(2)}）`);
-  if (ring) bits.push(`内径 Φ${+M.P.ringBore || 241}`);
+  if (ring) {
+   bits.push(`ゴムリング ${ring.ringT === 'big' ? '大' : '小'} Φ${ring.od}`
+     + `（内径 Φ${+M.P.ringBore || 241}）`);
+  }
   if (finger) bits.push(`フィンガー（板押さえ）は板の側へ入るので、ここでは軸の上下に置いています`);
   if (P.rem > 0.001) bits.push(`隙間は刻みの余りです（許容 0〜${M.P.gapMax}）`);
   return bits.join('　/　');
@@ -1769,6 +1776,8 @@
   svg.dataset.inside = String(fig.inside);
   svg.dataset.lead = String(fig.lead);
   svg.dataset.leadw = String(Math.round(fig.leadWmax || 0));
+  /* **出しきれなかった数**（§9.432）。0でないときだけ足元の一言が言う。 */
+  svg.dataset.off = String(fig.off || 0);
   svg.innerHTML = fig.svg;
   $('#bsZoomNote').textContent = fig.note;
   box.hidden = false;

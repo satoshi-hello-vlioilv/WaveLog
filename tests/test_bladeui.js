@@ -528,13 +528,33 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
                 .filter(t => /rotate\(-90/.test(t.getAttribute('transform') || '')).length,
               dashed: svg.querySelectorAll('[stroke-dasharray]').length,
               dims: +svg.dataset.dims, inside: +svg.dataset.inside, lead: +svg.dataset.lead,
-              leadw: +svg.dataset.leadw,
+              leadw: +svg.dataset.leadw, off: +svg.dataset.off,
+              /* **半断面の比**（§9.432）。縦は半径なので、帯の高さの比が
+                 そのまま「軸100 : スペーサー20 : 刃の張り出し59.1」になる。
+                 色で部材を見分ける（塗りは器が宣言したトークンそのもの）。 */
+              geo: (() => {
+               const cs = getComputedStyle(document.querySelector('.bs-shell'));
+               const col = n => (cs.getPropertyValue('--bs-fig-' + n) || '').trim();
+               const rcs = [...svg.querySelectorAll('rect')];
+               const at = c => rcs.find(x => (x.getAttribute('fill') || '') === c);
+               const hOf = c => { const e = at(c); return e ? +e.getAttribute('height') : 0; };
+               const sh = at(col('shaft'));
+               return { shaft: hOf(col('shaft')), spacer: hOf(col('spacer')),
+                        knife: hOf(col('knife')),
+                        shaftW: sh ? +sh.getAttribute('width') : 0,
+                        wide: rcs.reduce((m, e) => Math.max(m, +e.getAttribute('width')), 0),
+                        P: window.WL.bladeGuide.masters.P,
+                        knifeD: window.WL.bladeGuide.state.knife };
+              })(),
               /* 引き出し線の始点と終点を読み、順番が入れ替わっている数を数える。
                  同じ段（終点のyが同じ）どうしだけを見る（段が違えば交差しない）。 */
               cross: (() => {
+               /* 線は「字のきわ → いったん真下（真上） → 部材の縁」の3点
+                  （§9.432。以前は4点だった）。**最初と最後**で見る。 */
                const seg = [...svg.querySelectorAll('path.bs-zl')].map(el => {
                 const m = [...el.getAttribute('d').matchAll(/([ML])([-\d.]+) ([-\d.]+)/g)];
-                return { x0: +m[0][2], x1: +m[3][2], y: +m[3][3] };
+                const last = m[m.length - 1];
+                return { x0: +last[2], x1: +m[0][2], y: +m[0][3] };
                });
                let bad = 0;
                for (let i = 0; i < seg.length; i++) {
@@ -577,6 +597,30 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
        引き出している」かどうかは幅そのものが言う（字の高さ14pxが下限）。 */
     rec('引き出すのは「貼る相手が無い寸法」と「字が入らないほど細い部材」だけ',
         zoom.leadw < 18, `引き出した部材の最大幅 ${zoom.leadw}px（字の高さ14px）`);
+    /* ---- 拡大図は「選んだ軸の半断面」（§9.432、利用者の指摘「軸がスペーサー
+       みたいな表示になっていて軸の位置が無視されている。比率が圧倒的におかしい。
+       選択した軸の上半分か下半分を表示してほしい」）----
+       以前は部材の**直径**ぶんの塊を中心に置いており、**軸（Φ200）が図のどこにも
+       無かった**。縦を半径にすれば、帯の高さの比が実物の比そのものになる。
+       **絵ではなく高さの比で見る**——見た目の印象では「おかしい」を数にできない。 */
+    const gz = zoom.geo || {};
+    const rS = gz.P ? (+gz.P.shaftDia || 200) / 2 : 0;
+    const rP = gz.P ? (+gz.P.spacerOD || 240) / 2 : 0;
+    const rK = (+gz.knifeD || 0) / 2;
+    const near = (a, b) => Math.abs(a - b) <= 0.08;
+    rec('拡大図に軸が描かれている（部材の下を1本で通っている）',
+        gz.shaft > 0 && Math.abs(gz.shaftW - gz.wide) < 0.6,
+        `軸 高さ${gz.shaft}px／幅${gz.shaftW}px（いちばん広い物 ${gz.wide}px）`);
+    rec('縦は半径の比そのもの（軸 : スペーサー : 刃の張り出し）',
+        gz.spacer > 0 && rP > rS && rK > rS
+        && near(gz.shaft / gz.spacer, rS / (rP - rS))
+        && near(gz.knife / gz.spacer, (rK - rS) / (rP - rS)),
+        `軸/スペーサー ${(gz.shaft / gz.spacer).toFixed(2)}`
+        + `（期待 ${(rS / (rP - rS)).toFixed(2)}）／`
+        + `刃/スペーサー ${(gz.knife / gz.spacer).toFixed(2)}`
+        + `（期待 ${((rK - rS) / (rP - rS)).toFixed(2)}）`);
+    rec('拡大図も寸法を1つも落とさない（出しきれなかった数が0）',
+        zoom.off === 0, `出せなかった ${zoom.off}件`);
     rec('値の字は出すべき寸法の数だけある', zoom.nums === zoom.dims,
         `値${zoom.nums}／寸法${zoom.dims}`);
     rec('軸に並ぶ部材はすべて名前が添う（値だけを並べない）',
@@ -1309,7 +1353,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
      const svg = document.getElementById('bsZoomFig');
      const ts = [...svg.querySelectorAll('text')];
-     return { leadw: +svg.dataset.leadw, dims: +svg.dataset.dims,
+     return { leadw: +svg.dataset.leadw, off: +svg.dataset.off, dims: +svg.dataset.dims,
               inside: +svg.dataset.inside, lead: +svg.dataset.lead,
               shown: !document.getElementById('bsZoom').hidden,
               /* **値の字だけ**を数える（ゴムリングの帯の中の字は10px・別の道で
@@ -1320,9 +1364,12 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('広い側の拡大図でも、横に入らない部材には縦に貼る（引き出しへ落とさない）',
         !!zw && zw.shown === true && zw.vert > 0,
         zw ? `縦書き ${zw.vert}件／引き出し ${zw.lead}件` : '読めない');
-    rec('広い側の拡大図でも、引き出すのは貼れないほど細い物だけ',
-        !!zw && zw.leadw < 18,
-        zw ? `引き出した部材の最大幅 ${zw.leadw}px（字の高さ14px）` : '読めない');
+    /* **幅だけで見る網は半断面では使えない**（§9.432）。スペーサーの帯は
+       半径方向に20mm＝24pxしかないので、広い側では**幅が23pxあっても縦に
+       入らない**——そこは軸の帯の段へ引き出すのが正しい姿。見るのは
+       「1つも落としていないこと」。 */
+    rec('広い側の拡大図でも寸法を1つも落とさない',
+        !!zw && zw.off === 0, zw ? `出せなかった ${zw.off}件` : '読めない');
     await page.keyboard.press('Escape');
     await W.until(page, () => document.querySelector('#bsZoom').hidden, null,
                   { ms: 4000, what: '拡大図を閉じる' });
@@ -2305,29 +2352,6 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         stops.length === 2 && stops[0].id === 's1' && stops[1].id === 's3',
         JSON.stringify(stops));
 
-    /*PROBE*/ {
-      const S = process.env.WAVELOG_SHOT;
-      await page.keyboard.press('Escape');
-      await page.click('#bsFigTabs [data-fig="cut"]');
-      await page.evaluate(() => new Promise(r => setTimeout(r, 800)));
-      await page.screenshot({ path: S + '/p_page.png' });
-      for (const [sel, name] of [['#bsStage3 .bs-hud.is-bot', 'hud'],
-                                 ['#bsFigTabs', 'figtabs'], ['#bsRailTabs', 'railtabs']]) {
-        const el = await page.$(sel);
-        if (el) await el.screenshot({ path: S + '/p_' + name + '.png' });
-      }
-      const g = await page.$('#bsStage .bs-bhit');
-      if (g) {
-        await page.click('#bsFigTabs [data-fig="2d"]');
-        await page.evaluate(() => {
-          const x = document.querySelector('#bsStage .bs-bhit');
-          x.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-        });
-        await page.evaluate(() => new Promise(r => setTimeout(r, 400)));
-        const z = await page.$('#bsZoom');
-        if (z) await z.screenshot({ path: S + '/p_zoom.png' });
-      }
-    }
     rec('JSエラーが出ていない', errs.length === 0, errs.slice(0, 2).join(' / '));
 
   } finally {
