@@ -1,4 +1,4 @@
-# 画面の土台（16件）
+# 画面の土台（19件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 読み込み中の並びは`WL.loader.html()`の1箇所（`<i>`5つ）。呼ぶ側が自前の形を書かない | `test_uisize.js` | [§9.421](../../docs/decisions/9.421.md) |
+| 「この端末の見え方」の入口は「表示」バッジの1つ。節を足す（入口は増やさない） | `test_uisize.js` | [§9.421](../../docs/decisions/9.421.md) |
+| 第三者のCSS/JSは**同梱**し、許諾は`static/vendor/<名前>/LICENSE`へ置く | `test_uisize.js` | [§9.421](../../docs/decisions/9.421.md) |
 | 終了したらタブも閉じる。断られたときだけ案内を出す（「閉じました」と言わない） | `test_appquit.js` | [§9.409](../../docs/decisions/9.409.md) |
 | 拡張は登録表へ: あとに足す`on`／前で断る`gate`／丸ごと持つ`own`（`WL.measureHooks`・`WL.listHooks`）。被せも全置換も作らない | `test_patchlint.py`・`test_tolscale.js` | [§9.352](../../docs/decisions/9.352.md) |
 | 押す形をやめたら`cursor:pointer`も消す。押しても何も起きない物に指のカーソルを出さない | — | [§9.385](../../docs/decisions/9.385.md) |

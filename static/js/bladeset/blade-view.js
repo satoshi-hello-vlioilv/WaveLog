@@ -170,9 +170,19 @@
         </div>
         <div class="bs-stage3" id="bsStage3" hidden>
          <canvas class="bs-c3"></canvas>
+         <!-- **寸法の層**（§9.418）。刃の上下のずれを示す縦の破線と、部材の幅の
+              字を置く。図形の上に重ねる線と字なので、WebGL の中ではなく SVG で
+              描く（破線・引き出し線・字の縁取りが素直に書け、色もトークンから
+              選べる）。押す的は持たない（掴んで回す道をふさがない）。 -->
+         <svg class="bs-t3v" id="bsCutDim" aria-hidden="true"></svg>
          <span class="bs-t3 bs-t3-os is-os" hidden title="OS 側。刃組ではこちらへ詰めていきます">OS</span>
          <span class="bs-t3 bs-t3-ds is-ds" hidden title="DS 側。軸端部を外し、こちらから部材を入れます">DS</span>
-         <div class="bs-hud is-tl"><div class="bs-o3" hidden></div></div>
+         <!-- **設定有効長と、組んだときの上下それぞれの合計長**（§9.418 追補、
+              利用者の指示）。図の読み方の段とは別に置く——あちらは
+              「どう見るか」、こちらは「合っているか」の突き合わせ。
+              （この中は文字列リテラルの中なので、逆引用符は書けない） -->
+         <div class="bs-hud is-tl"><div class="bs-o3" hidden></div>
+          <div class="bs-len3" hidden></div></div>
          <div class="bs-hud is-tr">
           <button type="button" class="bs-hlp bs-help3" aria-expanded="false">使い方</button>
           <div class="bs-hpop" hidden>
@@ -188,7 +198,12 @@
               （寄る・引くはできません。平行投影の倍率を変えないので、
               どの向きから見ても寸法を並べて比べられます）。</dd>
             <dt>表示</dt>
-            <dd>下で板・刃・ゴムリング・スペーサーを消せます。点が付いているものが出ています。</dd>
+            <dd>下で板・刃・ゴムリング・スペーサーを消せます。点が付いているものが出ています。
+              <b>消したものを</b>「薄く」（薄く残す）／「線だけ」（輪郭のワイヤーフレーム）／
+              「出さない」（まったく描かない）から選べます。刃だけを見たいけれど
+              <b>スペーサーがどこに居たかも知りたい</b>ときは「薄く」が読みやすく、
+              位置だけを確かめたいときは「線だけ」、何も邪魔されたくないときは
+              「出さない」です。</dd>
            </dl>
           </div>
          </div>
@@ -198,6 +213,17 @@
            <button type="button" class="bs-tg is-on" data-show="knife" data-show-name="刃" aria-pressed="true">刃</button>
            <button type="button" class="bs-tg is-on" data-show="ring" data-show-name="ゴムリング" aria-pressed="true">ゴムリング</button>
            <button type="button" class="bs-tg is-on" data-show="liner" data-show-name="スペーサー" aria-pressed="true">スペーサー</button>
+           <!-- **隠し方は「表示」と同じ群の中**（§9.422）。消したものをどう出すかは
+                上の入切に**かかる設定**なので、別の群に離すと何に効くのか読めない。
+                1つだけ選ぶのでセグメント（押した札が濃い）で、入切のトグルとは
+                作りを分ける（§9.247）。既定は「出さない」＝今までの動き。 -->
+           <span class="bs-hud-sep"></span>
+           <span class="bs-hud-cap">消したものは</span>
+           <div class="bs-hide" role="group" aria-label="消した部材の見せ方">
+            <button type="button" data-hide="ghost" aria-pressed="false">薄く</button>
+            <button type="button" data-hide="wire" aria-pressed="false">線だけ</button>
+            <button type="button" class="is-on" data-hide="gone" aria-pressed="true">出さない</button>
+           </div>
           </div>
           <div class="bs-hud-grp bs-hud-grp--rig"><span class="bs-hud-cap">段取り</span>
            <button type="button" class="bs-btn is-sm is-on bs-step3-pull">①ラインへ戻す</button>
@@ -241,9 +267,14 @@
        <!-- 完了に必要なのは「どの台車へ」と「どの刃セットで」の2つ（§9.378）。
             **員数・条件・条の設計は計算とマスタから入る**ので、人が決めるのは
             ここだけ——決める場所を1つにまとめ、完了のボタンのすぐ上に置く。 -->
+       <!-- **台車の札は台車マスタが作る**（§9.424、利用者の指示「台車マスタは
+            A台車、B台車を登録しておいて」「刃組ガイダンス使う設備＝台車マスタ
+            必要」）。ここに A／B を直に書いていたので、3台あるラインを
+            登録できず、呼び名も変えられなかった。器だけ置いて中身は
+            renderCarPick() が作る。
+            **この中は文字列リテラルの中なので、逆引用符は書けない**（§9.420）。 -->
        <div class="bs-carbar"><span class="bs-lbl">台車</span>
-        <button type="button" class="bs-chip is-on" data-car="A">A</button>
-        <button type="button" class="bs-chip" data-car="B">B</button>
+        <span id="bsCarPick" class="bs-carpick"></span>
         <span class="bs-lbl">刃セット</span>
         <select id="bsSetPick" class="bs-sel is-sm"></select></div>
        <div id="bsDiffHead"></div><div id="bsDiffSum"></div>
@@ -319,7 +350,7 @@
    <div class="bs-f"><label for="bsClr">クリアランス</label><input type="number" id="bsClr" step="0.01" min="0"><small>mm</small></div>
    <div class="bs-f"><label for="bsOv">ラップ</label><input type="number" id="bsOv" step="0.05" min="0"><small>mm</small></div>
   </div>
-  <p class="bs-note">同じ切断で向かい合う上下の刃は、軸方向に<b>クリアランスのぶんだけ</b>＝<b id="bsDVal">—</b> mm ずれます。そのため上下のスペーサー長はどちらも板幅に近く、違いは<b>中間の区間でクリアランス×2</b>、<b>端部の区間は切断が片側だけなのでクリアランス×1</b> になります。</p>
+  <p class="bs-note">同じ切断で向かい合う上下の刃は、軸方向に<b>刃厚＋クリアランス</b>＝<b id="bsDVal">—</b> mm だけ中心がずれます（向かい合うのは面と面で、そのあいだの隙間がクリアランスです）。刃どうしは円周が食い違うので、これだけ離れていないと円周でぶつかって切れません。バリの向きで切断ごとに左右が入れ替わるため、<b>千鳥では上下のスペーサー長が「刃1枚ぶん広い／狭い」の交互</b>になります。</p>
   <p class="bs-note" id="bsHold2"></p>`;
 
  const step3Html = () => `
@@ -385,6 +416,7 @@
   M = BS().normalize(r);
   IX = BS().buildIndex(M);
   applyStandards();
+  syncCarriage();          /* 台車マスタの顔ぶれに合わせる（§9.424） */
   return true;
  }
  /* 基準値から**画面の既定値**を入れ、使う刃を決める。**中身は
@@ -671,7 +703,9 @@
    ? `${st.lots[0].w}×${st.lots[0].n}` : `${st.lots.length}ロット`;
   $('#bsV4').textContent = res.finger ? 'フィンガー（不要）'
    : `${colorOf(res.bigOd)}${res.bigOd} / ${colorOf(res.smOd)}${res.smOd}`;
-  $('#bsDVal').textContent = res.A.dReal.toFixed(2);
+  /* 出すのは**中心間**（説明文がそう言っている）。クリアランスそのものは
+     「クリアランス」の欄とチップの帯が持つ（§9.420）。 */
+  $('#bsDVal').textContent = (res.A.dKnife || res.A.dReal).toFixed(2);
   $('#bsHold2').innerHTML = `板を保持する方式は<b>${B.holdName(st, M)}</b>です。`
    + (res.finger
     ? `板厚 ${st.thick.toFixed(1)} は ${M.P.fingerMax} 未満のため、板押さえ（フィンガー）で保持します。軸はスペーサーのみで構成します。`
@@ -847,10 +881,16 @@
     ringHex: t => hexOf(t === 'big' ? bigD : smallD) };
  }
 
+ /* 模式図に描く「物」は**角を落とさない**（§9.415、利用者の指示「2Dのエッジ
+    部分の丸角は無しにしてほしい」）。この図は実寸を目で比べるためのものなので、
+    角丸は縁を実際より短く見せる——0.05mm刻みのスペーサーが何枚も並ぶ図で、
+    1枚ぶんの幅が角丸2つに食われる（実測: 幅 1.2px の部材に rx=2）。
+    **角丸を残すのは文字の器だけ**——記号バッジ（`bs-bdgr`）と設定の帯。
+    部材・軸・青い印・板／条／耳・刃、そして拡大図の同じものは、すべて直角。 */
  /* 軸に通す部材1個。径をそのまま高さに写すので、太い部材ほど背が高く見える。 */
  function block(V, cx, cy, w, dia, fill, stroke, label) {
   const h = V.hOf(dia);
-  let o = `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" rx="2"`
+  let o = `<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}"`
    + ` fill="${fill}" stroke="${stroke || V.PAL['spacer-edge']}"/>`;
   if (label && w > 15) {
    o += `<text x="${cx}" y="${cy + V.fs(8)}" text-anchor="middle" font-size="${V.fs(21)}"`
@@ -864,10 +904,15 @@
      被っている」）。§9.378 で青い印を有効幅の外側（`x0 - capW`）へ出したので、
      軸の左端は `FIG.left - FIG.capW` まで伸びている。見出しの席をそのままに
      していたため、字の右端（`FIG.left - 10`）と印（85〜100）が重なっていた。
-     字も1段小さくする（読めればよい添え字で、主役は部材の並び）。 */
+     字も1段小さくする（読めればよい添え字で、主役は部材の並び）。
+
+     **大きさは条の番号と同じ段（13）まで落とす**（§9.415、利用者の指示
+     「やや文字が大きすぎてバランスが悪い表示を見直してほしい」）。ここは
+     「どこを見ているか」の目印で、読み取る値（条番号・条幅・耳屑幅）より
+     大きいのは**順序が逆**だった（実測 18.4px 対 15.9px）。 */
   const edge = FIG.left - FIG.capW - 8;
   const room = edge - 6;
-  const fs = Math.min(V.fs(15), room / Math.max(1, name.length));
+  const fs = Math.min(V.fs(13), room / Math.max(1, name.length));
   return `<text x="${edge}" y="${cy + fs * 0.36}" text-anchor="end"`
    + ` font-size="${fs.toFixed(1)}" font-weight="700" fill="${fill || V.PAL.label}">${name}</text>`;
  }
@@ -885,12 +930,12 @@
   let back = '', front = '';
   [[V.upC, '上軸'], [V.loC, '下軸']].forEach(([cy, name]) => {
    back += `<rect class="bs-shaft" x="${sx}" y="${cy - V.hOf(V.shaftD) / 2}"`
-    + ` width="${sw}" height="${V.hOf(V.shaftD)}" rx="5"`
+    + ` width="${sw}" height="${V.hOf(V.shaftD)}"`
     + ` fill="url(#bsSh)" stroke="${V.PAL['shaft-edge']}"/>`
     + `<rect class="bs-cap" x="${sx}" y="${cy - V.hOf(FIG.capD) / 2}" width="${cw}"`
-    + ` height="${V.hOf(FIG.capD)}" rx="3" fill="${V.PAL.cap}"/>`
+    + ` height="${V.hOf(FIG.capD)}" fill="${V.PAL.cap}"/>`
     + `<rect class="bs-cap" x="${x0 + w}" y="${cy - V.hOf(FIG.capD) / 2}"`
-    + ` width="${cw}" height="${V.hOf(FIG.capD)}" rx="3" fill="${V.PAL.cap}"/>`;
+    + ` width="${cw}" height="${V.hOf(FIG.capD)}" fill="${V.PAL.cap}"/>`;
    front += rowLabel(V, name, cy);
   });
   return { back, front };
@@ -949,8 +994,8 @@
    const w = V.pw(sz) * s;
    if ((at + d * w - xb) * d > 0.6) break;
    const x = Math.min(at, at + d * w) + 0.4, ww = Math.max(1.2, w - 0.8);
-   o += `<rect x="${x}" y="${cy - ro}" width="${ww}" height="${th}" rx="2" fill="${hex}" stroke="${V.PAL.ink}"/>`
-      + `<rect x="${x}" y="${cy + ri}" width="${ww}" height="${th}" rx="2" fill="${hex}" stroke="${V.PAL.ink}"/>`;
+   o += `<rect x="${x}" y="${cy - ro}" width="${ww}" height="${th}" fill="${hex}" stroke="${V.PAL.ink}"/>`
+      + `<rect x="${x}" y="${cy + ri}" width="${ww}" height="${th}" fill="${hex}" stroke="${V.PAL.ink}"/>`;
    at += d * w;
   }
   /* **落とさない**（§9.378）。大小はラップ構成そのものを表すので、狭い区間でも
@@ -1029,9 +1074,10 @@
   }
   return o;
  }
- /* 図の上での刃の位置。クリアランスは実寸 0.15mm ほどで、アーバー全長を 800px に
-    写すと 0.07px になり上下のずれが見えない。ずれの**向き**はそのままに、
-    見てわかる最小限の量（刃厚ぶん）まで広げて描く。 */
+ /* 図の上での刃の位置。**上下のずれは刃厚＋クリアランス**（§9.419）なので、
+    ふつうはそのまま描いても見える（アーバー全長を 800px に写して約5px）。
+    それでも足りない縮尺のために、ずれの**向き**はそのままに、見てわかる
+    最小限の量（刃厚ぶん）までは広げる。 */
  function knifePx(V, A) {
   const min = Math.max(V.kw, 3.5);
   return A.U.map((u, i) => {
@@ -1120,7 +1166,7 @@
     const H = V.hOf(V.maxD);
     o += `<g class="bs-bhit" data-badge="${esc(r.badge)}">`
      + `<rect class="bs-zhit" x="${a.toFixed(1)}" y="${(cy - H / 2).toFixed(1)}"`
-     + ` width="${Math.max(1, b - a).toFixed(1)}" height="${H.toFixed(1)}" rx="3"/>`
+     + ` width="${Math.max(1, b - a).toFixed(1)}" height="${H.toFixed(1)}"/>`
      + `<rect class="bs-bdgr" x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}"`
      + ` rx="${(h * 0.28).toFixed(1)}" fill="${V.PAL.badge}" stroke="#fff" stroke-width="1.2"/>`
      + `<text x="${cx}" y="${cy + fs * 0.36}" text-anchor="middle" font-size="${fs.toFixed(1)}"`
@@ -1172,7 +1218,7 @@
    botMost = Math.max(botMost, bot);
    topMost = Math.min(topMost, top);
    back += `<rect class="bs-mat" x="${a + 0.6}" y="${top}" width="${Math.max(1.6, w - 1.2)}"`
-    + ` height="${h}" rx="1" fill="${face}" stroke="${edge}" stroke-width="1"/>`;
+    + ` height="${h}" fill="${face}" stroke="${edge}" stroke-width="1"/>`;
    if (strip || (trim && (i === 0 || i === last))) {
     /* `up`＝この条の板が中心より上へ寄っているか（§9.378、利用者の指示
        「板がある側に番号バッジを出してください」）。番号は板を指すものなので、
@@ -1260,8 +1306,13 @@
   const y = V.midY, reach = V.matH * FIG.reachShare, w = Math.max(2.4, V.kw);
   const blade = (cx, dir) =>
    `<rect x="${(cx - w / 2).toFixed(1)}" y="${(dir > 0 ? y - reach : y).toFixed(1)}"`
-   + ` width="${w.toFixed(1)}" height="${reach.toFixed(1)}" rx="1.5"`
+   + ` width="${w.toFixed(1)}" height="${reach.toFixed(1)}"`
    + ` fill="${V.PAL.knife}" stroke="${V.PAL['knife-edge']}" stroke-width=".6"/>`;
+  /* **模式図に破線は引かない**（§9.418、利用者の指摘「2Dは正しく刃が並んで
+     いるので破線を引く必要がない」）。この図は刃そのものを上下それぞれの
+     位置に描いており（`knifePx()` が見える量まで広げている）、線を足しても
+     同じことを2回言うだけになる（§CLAUDE 8）。破線が要るのは**刃を描けない
+     断面図の材料の部分**だけ。 */
   let o = '';
   V.KX.forEach(k => { o += blade(k.u, +1) + blade(k.l, -1); });
   return o;
@@ -1300,16 +1351,22 @@
   let x = side / fit + Math.max(0, (room / fit - total) / 2), band = '';
   chips.forEach((c, i) => {
    const w = CW[i], h = V.fs(25), y = 8;
-   band += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="9" fill="${c.bg}" stroke="${c.bd}"/>`;
+   /* **角丸を持ってよいのは文字の器だけ**（§9.415）。名前を付けておく——
+      「部材はすべて直角」を網が名指しで見られるようにするため。 */
+   band += `<rect class="bs-chip-band" x="${x}" y="${y}" width="${w}" height="${h}" rx="9"`
+    + ` fill="${c.bg}" stroke="${c.bd}"/>`;
    band += `<text x="${x + 9}" y="${y + h / 2 + V.fs(FS_CHIP * 0.36)}" font-size="${V.fs(FS_CHIP)}"`
     + ` font-weight="700" fill="${c.fg}">${esc(c.t)}</text>`;
    x += w + 9;
   });
   return fit < 1 ? `<g transform="scale(${fit.toFixed(4)})">${band}</g>` : band;
  }
+ /* 図の左右がどちら側かの目印。**図の中でいちばん大きい字にしない**（§9.415）
+    ——向きは位置（左右の端）と太さで読めるので、大きさは要らない。
+    読み取る値（条番号・条幅・耳屑幅）と同じ段（13）へそろえる。 */
  const drawEdgeLabels = V =>
-  `<text x="10" y="${V.fs(24)}" font-size="${V.fs(17)}" font-weight="800" fill="${V.PAL.label}">${st.flip ? 'DS' : 'OS'}</text>`
-  + `<text x="${FIG.vw - 10}" y="${V.fs(24)}" text-anchor="end" font-size="${V.fs(17)}"`
+  `<text x="10" y="${V.fs(19)}" font-size="${V.fs(13)}" font-weight="800" fill="${V.PAL.label}">${st.flip ? 'DS' : 'OS'}</text>`
+  + `<text x="${FIG.vw - 10}" y="${V.fs(19)}" text-anchor="end" font-size="${V.fs(13)}"`
   + ` font-weight="800" fill="${V.PAL.label}">${st.flip ? 'OS' : 'DS'}</text>`;
 
  function drawFigure(res) {
@@ -1458,7 +1515,7 @@
    const w = Math.max(1.2, q.mm * S), h = hOf(dia[q.kind]);
    q.a = x; q.b = x + w; q.cx = x + w / 2;
    body += `<rect x="${x.toFixed(1)}" y="${(cy - h / 2).toFixed(1)}" width="${w.toFixed(1)}"`
-    + ` height="${h.toFixed(1)}" rx="2" fill="${face[q.kind]}" stroke="${edge[q.kind]}"`
+    + ` height="${h.toFixed(1)}" fill="${face[q.kind]}" stroke="${edge[q.kind]}"`
     + ` stroke-width="1.2"/>`;
    if (q.kind !== 'knife') { if (zoneA === null) zoneA = x; zoneB = x + w; }
    x += w;
@@ -1493,7 +1550,7 @@
    const h = hOf(knifeD);
    q.clrX = q.a + px;
    clr += `<rect x="${(q.a + px).toFixed(1)}" y="${(cy - h / 2).toFixed(1)}"`
-    + ` width="${Math.max(1.2, q.b - q.a).toFixed(1)}" height="${h.toFixed(1)}" rx="2"`
+    + ` width="${Math.max(1.2, q.b - q.a).toFixed(1)}" height="${h.toFixed(1)}"`
     + ` fill="none" stroke="${PAL['knife-edge']}" stroke-width="1.2"`
     + ` stroke-dasharray="6 4" opacity=".85"/>`;
   });
@@ -1515,9 +1572,9 @@
     const w = Math.max(1.2, q.mm * S);
     q.cx = at + w / 2;
     hold += `<rect x="${at.toFixed(1)}" y="${(cy - ro).toFixed(1)}" width="${w.toFixed(1)}"`
-     + ` height="${th.toFixed(1)}" rx="2" fill="${hex}" stroke="${PAL.ink}" stroke-width="1"/>`
+     + ` height="${th.toFixed(1)}" fill="${hex}" stroke="${PAL.ink}" stroke-width="1"/>`
      + `<rect x="${at.toFixed(1)}" y="${(cy + ri).toFixed(1)}" width="${w.toFixed(1)}"`
-     + ` height="${th.toFixed(1)}" rx="2" fill="${hex}" stroke="${PAL.ink}" stroke-width="1"/>`;
+     + ` height="${th.toFixed(1)}" fill="${hex}" stroke="${PAL.ink}" stroke-width="1"/>`;
     at += w;
    });
    /* **名前は群に1回**（§CLAUDE 8）。枚数ぶん繰り返すと同じ字が3つ並び、
@@ -1556,8 +1613,10 @@
    items.push({ cx: q.cx, name: q.name, val: zmm(q.mm), w: q.b - q.a, h: hOf(dia[q.kind]),
                 ink: q.kind === 'knife' ? '#fff' : PAL.ink, halo: q.kind === 'knife' });
    if (q.clrX !== undefined) {
-    /* クリアランスは**部材ではなく隙間**なので、中には書けない。必ず引き出す。 */
-    items.push({ cx: (q.cx + q.clrX + (q.b - q.a) / 2) / 2, name: 'クリアランス',
+    /* **中心間**（＝刃厚＋クリアランス）。隙間ではなく2つの刃の位置の差なので、
+       中には書けない——必ず引き出す。クリアランスそのものは、2枚の刃の
+       **面と面のあいだ**に見えている（§9.420）。 */
+    items.push({ cx: (q.cx + q.clrX + (q.b - q.a) / 2) / 2, name: '上下刃の中心間',
                  val: zmm(clrMm), w: 0, h: 0 });
    }
   });
@@ -1626,9 +1685,10 @@
   if (lo.length) where.push(`下軸 ${lo.join('・')}`);
   const bits = [`この組み方が入る区間：${where.join(' ／ ') || 'なし'}`];
   bits.push(`刃 Φ${(+st.knife).toFixed(1)}`);
-  /* **誇張したら、誇張したと書く**（§CLAUDE 6）。破線は反対側の軸の刃で、
-     実寸のずれは図の上で1px未満なので見える幅まで離して描いている。 */
-  if (clrMm > 0) bits.push('破線は反対側の軸の刃（クリアランスは見える幅まで離して描いています）');
+  /* 破線は反対側の軸の刃。**中心間は刃厚＋クリアランス**あるので、この縮尺でも
+     そのまま描ける（§9.420。以前はクリアランスだけのずれで1px未満だった）。
+     クリアランスは2枚の刃の**面と面のあいだ**に見えている。 */
+  if (clrMm > 0) bits.push(`破線は反対側の軸の刃（面と面のあいだがクリアランス ${(+st.clr).toFixed(2)}）`);
   if (ring) bits.push(`内径 Φ${+M.P.ringBore || 241}`);
   if (finger) bits.push(`フィンガー（板押さえ）は板の側へ入るので、ここでは軸の上下に置いています`);
   if (P.rem > 0.001) bits.push(`隙間は刻みの余りです（許容 0〜${M.P.gapMax}）`);
@@ -1917,10 +1977,66 @@
   const pa = a.split('|').map(Number), pb = b.split('|').map(Number);
   return (pb[0] - pa[0]) || ((pb[1] || 0) - (pa[1] || 0));
  });
+ /* 組み替える台車に**いま載っている**記録を探す。
+    2台を交互に使うラインでは、直前の刃組（`h[0]`）はラインで稼働中なので
+    飛ばす——いま組み替える台車に載っているのは、その前の記録。
+    **台車が1つのラインでは飛ばさない**（§9.424、利用者の指示「ごくまれに
+    スリッターがある設備でも、台車なしというパターンがありました」）。
+    台車を使わないラインでは、**いま機械に載っているのが直前の刃組そのもの**で、
+    それが組み替える相手になる。飛ばすと1つ古い記録と比べてしまう。 */
  function targetRecord() {
   const h = M.history || [];
-  for (let i = 1; i < h.length; i++) if (h[i].carriage === st.carriage) return { rec: h[i], back: i + 1 };
+  const from = carriageNames().length > 1 ? 1 : 0;
+  for (let i = from; i < h.length; i++) {
+   if (h[i].carriage === st.carriage) return { rec: h[i], back: i + 1 };
+  }
   return { rec: null, back: 0 };
+ }
+ /* **記録が無い台車の基準は「標準構成」**（§9.415、利用者の指示「差分が
+    デフォルトでも出るように、デフォルトの刃組設定で決定している状態にして、
+    それを基に差分を出してください」）。
+
+    以前は記録が1件も無いと台車の列が全部「—」になり、**部材を1つ残らず棚から
+    持ち出す**（実測: そのまま使える 0 ／ 持ち出す 14）という読みになっていた
+    ——台車が空であることは分かっていないので、これは事実ではない。
+    既定の刃組設定（`刃組基準値マスタ`＋既定値）でこの材料を組んだ構成を
+    「載っているとみなす」基準に置くと、**標準から何を動かしたか**が差分に出る。
+
+    計算は**スケジュール一覧の見込みと同じ1本**（`standardState()`＋`solve()`＋
+    `snapshot()`・§9.408）から引く——2つ持つと「一覧とガイダンスで数が違う」を
+    作れてしまう。**出どころは必ず字で書き分ける**（§CLAUDE 6）。 */
+ function standardSnapshot(seed) {
+  const B = BS();
+  if (!M || !IX || typeof B.standardState !== 'function') return null;
+  try {
+   const s2 = B.standardState(seed, M);
+   if (!s2) return null;                 /* 条が1本も読めない（§9.231: 0で埋めない） */
+   s2.carriage = st.carriage;
+   return B.snapshot(s2, M, B.solve(s2, M, IX).g);
+  } catch (err) {
+   WL.quiet.note('標準構成を計算できない（台車の列は「—」のままにする）', err);
+   return null;
+  }
+ }
+ /* いま画面に入っている材料。**これから流す物**なので、基準に置くのは最後
+    （§9.425）——これで計算すると「もう組んである」と読める差分になる。 */
+ function nowSeed() {
+  return { thickness: st.thick, originalWidth: st.W,
+           lots: (st.lots || []).map(L => ({ name: L.name, w: L.w, n: L.n,
+                                             parent: L.parent || L.name })) };
+ }
+ /* **前回流した材料**（§9.425、利用者の指示「記録が無ければ前回流した材料から
+    標準設定で計算」）。履歴の新しい順に見て、**材料を組み直せる最初の1件**を採る
+    ——元板巾が入っていない古い記録は飛ばす（`seedFromCond` が `null` を返す）。
+    その台車の記録とは限らない（台車に記録が無いとき、その台車が前回何を流したかは
+    どこにも残っていない）ので、**どの記録から起こしたかを字で言う**。 */
+ function prevSeed() {
+  const B = BS();
+  for (const r of (M.history || [])) {
+   const seed = B.seedFromCond(r.detail && r.detail.cond);
+   if (seed) return { seed, rec: r };
+  }
+  return null;
  }
  function diffRows(title, cur, prev, shelf, fmt) {
   const keys = itemKeys(Object.assign({}, prev || {}, cur));
@@ -1958,27 +2074,64 @@
    }
   };
   const pd = prev && prev.detail ? prev.detail : null;
+  /* 比べる相手は**4段**（§9.425。§9.415 の3段を1段増やした）。
+       ① その台車の記録        … 実際に組んだ事実。いちばん強い
+       ② 前回流した材料        … 履歴の直近1件の条件を既定の刃組設定で組んだ計算値
+       ③ いまの材料            … これから流す物。**いちばん弱い**
+       ④ 無し                  … 条の幅が読めない
+     ②を①の次に置くのが §9.425 の要点。以前は①の次が③で、**これから流す材料**で
+     計算していたため差分がほとんど出ず、「もう組んである」と読めた。 */
+  let std = null, stdFrom = null;
+  if (!pd) {
+   const p2 = prevSeed();
+   if (p2) { std = standardSnapshot(p2.seed); if (std) stdFrom = p2.rec; }
+   if (!std) std = standardSnapshot(nowSeed());
+  }
+  const base = pd || std;
+  const baseKind = pd ? 'rec' : (std ? (stdFrom ? 'prev' : 'std') : 'none');
   const parts = [
-   diffRows('スペーサー', cur.spacer, pd && pd.spacer, shelf.spacer),
-   diffRows('ゴムリング', cur.ring, pd && pd.ring, shelf.ring, k => {
+   diffRows('スペーサー', cur.spacer, base && base.spacer, shelf.spacer),
+   diffRows('ゴムリング', cur.ring, base && base.ring, shelf.ring, k => {
     const [od, sz] = String(k).split('|');
     return `<span class="bs-swc"><i style="--bs-dot:${esc(hexOf(+od))}"></i>`
      + `${esc(colorOf(+od))}${esc(od)}<small>幅 ${esc(sz)}</small></span>`;
    }),
-   diffRows('フィンガー', cur.finger, pd && pd.finger, shelf.finger),
-   diffRows('刃', cur.blade, pd && pd.blade, shelf.blade, k => {
+   diffRows('フィンガー', cur.finger, base && base.finger, shelf.finger),
+   diffRows('刃', cur.blade, base && base.blade, shelf.blade, k => {
     const [dia, tk] = String(k).split('|');
     return `Φ${esc(dia)}${tk ? `<small>刃厚 ${esc(tk)}</small>` : ''}`;
    })
   ];
+  /* 「稼働中なので使えない」と言えるのは**別の台車**のときだけ（§9.424）。
+     台車が1つのラインでは、稼働中の構成そのものを組み替えるので、
+     その部材は**外して使える**——ここで断ると事実と食い違う。 */
+  const busyOther = inUse && inUse.carriage !== st.carriage ? inUse : null;
   $('#bsDiffHead').innerHTML =
-   (inUse ? `<div class="bs-alert"><b>ラインで稼働中（直前の刃組）</b>　台車 ${esc(inUse.carriage)}<br>`
-     + `${esc(inUse.at)}<br>${esc(inUse.note)}<br>ここに載っている部材は外せないため、今回は使えません。</div>` : '')
-   + (prev
-    ? `<div class="bs-alert is-info"><b>組み替える台車 ${esc(st.carriage)} の現在の構成（${back}回前）</b><br>`
+   (busyOther ? `<div class="bs-alert"><b>ラインで稼働中（直前の刃組）</b>　${esc(busyOther.carriage)}<br>`
+     + `${esc(busyOther.at)}<br>${esc(busyOther.note)}<br>ここに載っている部材は外せないため、今回は使えません。</div>` : '')
+   + (baseKind === 'rec'
+    ? `<div class="bs-alert is-info" data-base="rec"><b>組み替える ${esc(st.carriage)} の現在の構成（${back}回前）</b><br>`
       + `${esc(prev.at)}<br>${esc(prev.note)}<br>ここに載っている部材はそのまま使えます。</div>`
-    : `<div class="bs-alert">台車 ${esc(st.carriage)} に組み替え対象となる記録がありません。`
-      + '刃組を終えるたびに記録すると、次回から2回前の構成との差分が出ます。</div>');
+    /* **出どころを書き分ける**（§CLAUDE 6）。「記録＝組んだ事実」と
+       「標準構成＝いまの材料を既定の設定で組んだときの計算値」は別物で、
+       取り違えると「もう組んである」と読める（§9.408 と同じ線引き）。 */
+    : baseKind === 'prev'
+     ? `<div class="bs-alert is-info" data-base="prev"><b>${esc(st.carriage)} の記録がありません。`
+       + '<u>前回流した材料</u>で組んだ構成と比べています</b><br>'
+       + `<b>「前回」の列</b>＝${esc(stdFrom.at)} の刃組（${esc(stdFrom.carriage)}）に`
+       + '残っている材料を、<b>既定の刃組設定</b>（刃組基準値マスタ）で組んだときの'
+       + '<b>計算値</b>。組んだ事実ではありません。<br>'
+       + 'この台車で刃組を終えて記録すると、次回からは実際に組んだ構成と比べます。</div>'
+     : baseKind === 'std'
+     ? `<div class="bs-alert is-info" data-base="std"><b>${esc(st.carriage)} の記録がありません。`
+       + '<u>標準構成</u>と比べています</b><br>'
+       + '<b>「標準」の列</b>＝<b>いまの材料</b>を<b>既定の刃組設定</b>（刃組基準値マスタ）で'
+       + '組んだときの<b>計算値</b>。組んだ事実ではありません。<br>'
+       + '<b>これから流す材料</b>で計算しているので、差分は小さく出ます'
+       + '——この設備で刃組を1件でも記録すると、そのときの材料と比べます。</div>'
+     : `<div class="bs-alert" data-base="none">${esc(st.carriage)} に組み替え対象となる記録がなく、`
+       + '標準構成も計算できません（条の幅がまだ読めません）。'
+       + '手順3で条の幅を入れると、標準構成との差分が出ます。</div>');
   const total = k => parts.reduce((a, x) => a + x[k], 0);
   const short = parts.flatMap(x => x.short);
   $('#bsDiffSum').innerHTML = '<div class="bs-kpis">'
@@ -1986,13 +2139,23 @@
    + `<div class="bs-kpi is-good"><span>棚から持ち出す</span><b>${total('add')}</b></div>`
    + `<div class="bs-kpi is-ng"><span>棚に戻す</span><b>${total('back')}</b></div></div>`
    + (short.length ? `<div class="bs-alert is-bad">棚にも足りない部材が ${short.length} 種あります。数を確かめてください。</div>` : '');
-  $('#bsDiff').innerHTML = '<thead><tr><th class="bs-a">部品</th><th>台車</th><th>今回</th>'
+  /* 列の見出しで**どちらと比べているか**を言う（§CLAUDE 6・§9.415）。
+     同じ「台車」の字で記録と計算値を並べない。断りの器は `data-base` で
+     **どの段か**を名乗る（§9.425）——字で見分けると、稼働中の断りに同じ
+     言葉が入っただけで網が取り違える（実際に取り違えた）。 */
+  const baseCol = baseKind === 'prev'
+   ? `<th title="${esc(stdFrom.at)} の刃組（${esc(stdFrom.carriage)}）に残っている材料を`
+     + '、既定の刃組設定で組んだときの構成（計算値）">前回</th>'
+   : baseKind === 'std'
+   ? '<th title="いまの材料を既定の刃組設定で組んだときの構成（計算値）">標準</th>'
+   : `<th title="${esc(st.carriage)} にいま載っている構成（刃組の記録）">台車</th>`;
+  $('#bsDiff').innerHTML = `<thead><tr><th class="bs-a">部品</th>${baseCol}<th>今回</th>`
    + '<th>追加</th><th>戻す</th></tr></thead><tbody>'
    + parts.map(x => x.html).join('') + '</tbody>';
   $('#bsHist').innerHTML = h.length
    ? h.slice(0, 6).map((r, i) => `<div class="bs-hrow${i === 0 ? ' is-use' : ''}${prev && r === prev ? ' is-tgt' : ''}">`
      + `<span class="bs-hi">${i === 0 ? '1回前 稼働中' : (i + 1) + '回前'}</span>`
-     + `<span class="bs-hc">台車 ${esc(r.carriage)}</span><span class="bs-hn">${esc(r.at)}</span>`
+     + `<span class="bs-hc">${esc(r.carriage)}</span><span class="bs-hn">${esc(r.at)}</span>`
      + `<button type="button" class="bs-btn is-sm" data-hdel="${esc(r.id)}">削除</button></div>`).join('')
    : '<div class="bs-hempty">記録がありません</div>';
   /* 刃セットの候補は**刃マスタの「組」**から作る（§9.378、利用者の指示
@@ -2010,7 +2173,45 @@
    sel.title = gs.length ? '刃マスタの「組」から選びます'
                          : '刃マスタに「組」の登録がありません';
   }
-  $('#bsSaveCar').textContent = `刃組完了：台車 ${st.carriage} として記録`;
+  renderCarPick();
+ }
+ /* 台車の札（§9.424）。**顔ぶれは台車マスタ**で、1行も無ければ札を出さずに
+    「登録がない」と言い、記録も止める——**できないことは、できないと書く**
+    （§CLAUDE 4）。勝手に A／B を作ると、無い台車の差分を出せてしまう。 */
+ function carriageNames() {
+  return (M && M.carriages ? M.carriages : []).map(x => String(x.name || '').trim())
+   .filter(Boolean);
+ }
+ function renderCarPick() {
+  const names = carriageNames();
+  const box = $('#bsCarPick');
+  if (!box) return;
+  box.innerHTML = names.length
+   ? names.map(n => `<button type="button" class="bs-chip${n === st.carriage ? ' is-on' : ''}"`
+      + ` data-car="${esc(n)}">${esc(n)}</button>`).join('')
+   : '<span class="bs-none">登録がありません</span>';
+  const save = $('#bsSaveCar');
+  if (!save) return;
+  if (!names.length) {
+   save.disabled = true;
+   save.textContent = '台車マスタに登録がないため記録できません';
+   /* **直し方をその場に書く**（§CLAUDE 4）。綴りはサーバーが持つ値を使う
+      ——ここに書き写すと、片方だけ変わったときに案内だけが古くなる。 */
+   save.title = '手順1の「初期セット」で ' + (M.carriageSeed || []).join('・')
+    + ' が入ります。台車を使わないラインでは、マスタ管理の「テーブル」→ 台車マスタへ'
+    + '「' + (M.carriageNone || '台車なし') + '」を1行足すと選べます。';
+   return;
+  }
+  save.disabled = false;
+  save.title = '';
+  save.textContent = `刃組完了：${st.carriage} として記録`;
+ }
+ /* いま選んでいる台車を、台車マスタの顔ぶれに合わせる。**無い台車は選ばない**
+    ——設備を替えたときに前の設備の台車名が残ると、その名前で記録してしまう。 */
+ function syncCarriage() {
+  const names = carriageNames();
+  if (!names.length) { st.carriage = ''; return; }
+  if (!names.includes(st.carriage)) st.carriage = names[0];
  }
 
  /* ====================== 刃の状態 ====================== */
@@ -2347,7 +2548,12 @@
   if (WL.bladeSolid) {
    WL.bladeSolid.attach($('#bsStage3'), { onSpin: () => {
     setFlip(!st.flip); renderOrder(); scheduleRender();
-   } });
+   },
+   /* 断面図の区間の記号が組み直されたら**印を塗り直す**（§9.417）。
+      記号は図を描くたびに作り直されるので、塗らないと重ねている最中に
+      光りが消える。呼ばれるのは**顔ぶれが変わったときだけ**（回している
+      あいだ毎フレームではない）。 */
+   onBadges: () => { paintBadgePick(); syncZoneZoom(); } });
   }
   /* 右の段 */
   /* 段の切り替え。**足元の「刃の状態を見る」も同じ道を通る**（入口を2つに
@@ -2360,11 +2566,14 @@
     .forEach(x => x.classList.toggle('is-on', x.dataset.r === railTab));
    panel.querySelectorAll('.bs-pb [data-p]').forEach(p => { p.hidden = p.dataset.p !== railTab; });
   });
-  panel.querySelectorAll('[data-car]').forEach(b => b.addEventListener('click', () => {
-   panel.querySelectorAll('[data-car]').forEach(x => x.classList.toggle('is-on', x === b));
+  /* 台車の札は**描き直されるたびに作り替わる**（台車マスタが顔ぶれを決める）
+     ので、配線は**器**で受ける（§9.424）。 */
+  $('#bsCarPick').addEventListener('click', e => {
+   const b = e.target.closest('[data-car]');
+   if (!b) return;
    st.carriage = b.dataset.car;
    scheduleRender();
-  }));
+  });
   $('#bsSetPick').addEventListener('change', e => { st.bladeGroup = e.target.value; });
   $('#bsSaveCar').addEventListener('click', saveCarriage);
   $('#bsHist').addEventListener('click', e => {
@@ -2483,7 +2692,7 @@
   /* **何が残るかを見せてから**記録する。取り消せる操作ではあるが、次の段取りの
      差分がこの1件から出るので、条件を目で確かめられるようにする。 */
   const ok = await confirmModal({
-   title: `台車 ${st.carriage} の刃組を記録します`,
+   title: `${st.carriage} の刃組を記録します`,
    bodyHtml: '<p class="confirm-modal-message">この内容で残します。'
     + '次の段取りは、この記録との差分から「持ち出す／戻す／そのまま使える」を出します。</p>'
     + `<p class="confirm-modal-message"><b>条件</b>　${c.strips || 0}条 ／ `
@@ -2505,7 +2714,7 @@
       記録は**親ロット1件ごと**（測定が開くのは親ロット1件）。 */
    const designs = await saveDesigns();
    showToast('刃組の記録',
-             `台車 ${st.carriage} として残しました`
+             `${st.carriage} として残しました`
              + (designs ? `／条の設計 ${designs} ロット分` : ''), 3800);
    await loadContext(st.equipment);
    render();
@@ -2585,7 +2794,7 @@
      body: JSON.stringify(withUserId({
       equipment: st.equipment, lot: d.parent, strips: d.strips,
       coilWidth: st.W, thickness: st.thick, groups: d.groups, at,
-      note: `刃組（台車 ${st.carriage}）` }))
+      note: `刃組（${st.carriage}）` }))
     });
     done += 1;
    } catch (e) {

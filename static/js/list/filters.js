@@ -343,7 +343,7 @@
   function setPanelLoading(container,show,text){
     if(!container)return;let box=container.querySelector(':scope > .panel-loading');
     if(show){
-      if(!box){box=document.createElement('div');box.className='panel-loading';box.innerHTML='<div class="pl-box"><span class="mini-spinner"></span><span class="pl-text"></span></div>';container.appendChild(box)}
+      if(!box){box=document.createElement('div');box.className='panel-loading';box.innerHTML='<div class="pl-box">'+WL.loader.html(16)+'<span class="pl-text"></span></div>';container.appendChild(box)}
       box.querySelector('.pl-text').textContent=text||'読み込んでいます...';box.hidden=false;
     }else if(box){box.hidden=true}
   }
@@ -1125,7 +1125,7 @@
           <input class="filter-token-search" id="filterTokenSearch" autocomplete="off" placeholder="列名・値で検索">
         </div>
         <div class="filter-suggest" id="filterSuggest" hidden></div>
-        <span class="filter-inline-loading" id="filterInlineLoading" hidden><span class="mini-spinner"></span><span id="filterInlineLoadingText">読込中</span></span>
+        <span class="filter-inline-loading" id="filterInlineLoading" hidden>${WL.loader.html(13)}<span id="filterInlineLoadingText">読込中</span></span>
         <div class="filter-search-row-actions">
           <button id="filterAdhocToggle" class="filter-adhoc-toggle" type="button" aria-expanded="false" aria-controls="filterAdhocRow">その場フィルタ</button>
           <button id="filterMoreBtn" class="fb-more-btn" type="button" aria-haspopup="true" aria-expanded="false"
@@ -1859,7 +1859,7 @@
   async function openIoPanel(kind){
     const panel=$('#filterIoPanel');if(!panel)return;
     panel.hidden=false;
-    panel.innerHTML='<div class="fp-io-loading"><span class="mini-spinner"></span>この端末の登録フィルタを数えています…</div>';
+    panel.innerHTML='<div class="fp-io-loading">'+WL.loader.html(14)+'この端末の登録フィルタを数えています…</div>';
     let all=[],dbKeys=null;
     try{all=await ioFetchAll()}
     catch(e){panel.innerHTML=`<div class="fp-io-error">登録フィルタを読めませんでした: ${esc(e.message)}</div>`;return}

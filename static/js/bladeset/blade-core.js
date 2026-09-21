@@ -20,10 +20,12 @@
         → 揃える かつ 中抜き不可 : 交互反転巻き（刃は千鳥、1行おきに反転して巻く）
         → 揃えない               : 千鳥
    幾何モデル
-     同じ切断で向かい合う上下の刃は、軸方向にクリアランスのぶんだけずれる。
-     どちら側へずれるかはバリ方向で決まり、千鳥では切断位置ごとに交互になる。
-     そのため上下のスペーサー長はどちらも板幅に近く、違いは
-       中間の区間 … クリアランス×2 ／ 端部の区間（切断が片側だけ）… ×1
+     同じ切断で向かい合う上下の刃は、軸方向に**刃厚＋クリアランス**だけ中心が
+     ずれる（§9.419）。向かい合うのは面と面で、そのあいだの隙間がクリアランス。
+     刃どうしは円周が食い違う（ラップ）ので、これだけ離れていないと円周で
+     ぶつかって切れない。どちら側へずれるかはバリ方向で決まり、千鳥では切断
+     位置ごとに交互になるので、上下のスペーサー長は
+       中間の区間 … 刃1枚ぶん広い／狭いが交互 ／ 端部の区間 … 刃厚＋クリアランス
    部材の二重構造
      スペーサーが軸方向の寸法を作り、その上に保持層（ゴムリング／フィンガー）が
      製品幅のぶんだけ載る（リング内径 ＞ スペーサー外径）。最外刃より外の
@@ -85,6 +87,11 @@
            history: (c.history || []).slice(),
            designs: (c.designs || []).slice(),
            picks: (c.picks || []).slice(),
+           /* 台車（§9.424）。**無いときは空の並び**——画面が A/B を作らない。
+              呼び名（初期セットの顔ぶれ・台車なしの綴り）はサーバーが持つ。 */
+           carriages: (c.carriages || []).slice(),
+           carriageSeed: (c.carriageSeed || []).slice(),
+           carriageNone: c.carriageNone || '台車なし',
            pickFields: (c.pickFields || []).slice(),
            pickOps: (c.pickOps || []).slice(),
            equipment: c.equipment || '',
@@ -276,11 +283,20 @@
 
  /* 軸上の刃位置と、刃と刃のあいだに残るスペーサー区間の長さ。
 
-    上下の刃は同じ切断位置で向かい合い、軸方向にはクリアランスのぶんだけずれる。
-    どちら側へずれるかはバリ方向で決まり、千鳥では切断位置ごとに交互になる。
-    そのため上下のスペーサー長はどちらも板幅に近く、違いはクリアランス分だけ:
-      中間の区間 … 両端の切断でずれの向きが逆になるので クリアランス×2
-      端部の区間 … 切断が片側だけなので クリアランス×1 */
+    **上下の刃は「刃厚＋クリアランス」だけ軸方向にずれる**（§9.419、利用者の
+    指摘「上下の刃は刃厚分ズレてないと切れません」）。同じ切断の上刃と下刃は
+    円周が食い違う（ラップ）ので、軸方向にも**刃の身がすれ違うだけ**離れて
+    いなければ、円周でぶつかって切れない。向かい合うのは**面と面**で、その
+    あいだの隙間がクリアランス——中心どうしは `刃厚/2 + クリアランス + 刃厚/2`
+    だけ離れる。
+    **切断の位置（材料が切れる面）は変わらない。** 面は中心から刃厚の半分だけ
+    内側なので、上下の面は公称の切断位置をはさんでクリアランスの半分ずつ——
+    条幅の出方は以前と同じ。変わるのは**刃がどこに載るか**＝スペーサーの寸法。
+    どちら側へずれるかはバリ方向で決まり、千鳥では切断位置ごとに交互になる:
+      中間の区間 … 両端の切断でずれの向きが逆になるので （刃厚＋クリアランス）×2
+      端部の区間 … 切断が片側だけなので 刃厚＋クリアランス
+    以前は**クリアランスだけ**ずらしており、上下の刃の身が 9.87mm 重なっていた
+    （実測・刃厚10／クリアランス0.13）——物として組めない配置だった。 */
  function buildLayout(st, M, segs) {
   const tk = st.tk, n = segs.length;
   const arborLen = num(M.P.arborLen) || 1600, clr = st.clr;
@@ -301,13 +317,15 @@
      手持ちでそれを埋められる寸法は限られるので、材料の位置を1刻み未満だけ
      寄せて端数を消す。ずれる量は耳の左右差として現れるが、刻み未満なので
      耳には影響しない。 */
+  /* 上下の刃の中心どうしの距離（§9.419）。面と面のあいだがクリアランス。 */
+  const dKnife = +(tk + clr).toFixed(3);
   const nominal = +((arborLen - st.W) / 2).toFixed(3);
-  const edge0 = nominal + w.osTrim - tk / 2 + sign[0] * clr / 2;   /* OS端（上軸）の区間長 */
+  const edge0 = nominal + w.osTrim - tk / 2 + sign[0] * dKnife / 2;   /* OS端（上軸）の区間長 */
   const slip = +(edge0 - Math.round(edge0 / grid) * grid).toFixed(4);
   const matStart = +(nominal - slip).toFixed(4);
   const origin = matStart + w.osTrim;
-  const U = cuts.map((c, i) => +(origin + c + sign[i] * clr / 2).toFixed(3));
-  const Lo = cuts.map((c, i) => +(origin + c - sign[i] * clr / 2).toFixed(3));
+  const U = cuts.map((c, i) => +(origin + c + sign[i] * dKnife / 2).toFixed(3));
+  const Lo = cuts.map((c, i) => +(origin + c - sign[i] * dKnife / 2).toFixed(3));
   const zones = [
    { key: 'OS端', type: 'end', burr: oppBurr(segs[0].burr),
      up: +(U[0] - tk / 2).toFixed(3), lo: +(Lo[0] - tk / 2).toFixed(3) },
@@ -318,9 +336,10 @@
      lo: +(arborLen - (Lo[n] + tk / 2)).toFixed(3) }
   ];
   return { U, Lo, zones, arborLen, grid,
-           dReal: clr,                    /* 同じ切断での上下刃のずれ */
-           dZone: +(clr * 2).toFixed(3),  /* 中間区間での上下スペーサー長の差 */
-           dEdge: clr,                    /* 端部区間での差 */
+           dKnife,                          /* 同じ切断での上下刃の中心間（刃厚＋クリアランス） */
+           dReal: clr,                      /* 面と面のあいだ＝クリアランス（画面に出す値） */
+           dZone: +(dKnife * 2).toFixed(3), /* 中間区間での上下スペーサー長の差 */
+           dEdge: dKnife,                   /* 端部区間での差 */
            errs: zones.filter(z => z.up < 0 || z.lo < 0), matStart, slip, sign, w };
  }
 
@@ -374,7 +393,15 @@
  function fillWith(table, len) {
   const want = Math.max(0, +(+len).toFixed(3));
   if (!table) return { out: [], rem: want };
-  const u = table.floor[Math.min(Math.round(want / FILL_STEP), table.U - 1)];
+  /* **区間より長い積みを作らない**（§9.418、利用者の指摘「エンド部分まで
+     スペーサーが詰まっていないといけないが、隙間が目立つ」）。以前は
+     `Math.round` で刻みへ丸めており、**区間長を最大で刻みの半分（0.0125mm）
+     超える**積みを選び得た。超えたぶんは `rem` が `Math.max(0, …)` で0に
+     潰れて見えなくなり、図の側は「入らない最後の1枚」を落とす——**10mm の
+     部材が丸ごと消えて穴になっていた**（実測: 下軸のDS端と中間の3区間）。
+     積みは区間を超えてはならない（超えれば刃の位置が動く）ので、**切り下げる**。
+     `1e-9` は「ちょうど割り切れる長さ」が浮動小数で 0.9999… になる取りこぼし避け。 */
+  const u = table.floor[Math.min(Math.floor(want / FILL_STEP + 1e-9), table.U - 1)];
   const by = new Map();
   for (let v = u; v > 0;) {
    const i = table.pick[v];
@@ -810,6 +837,10 @@
    .map(ix => ((st.lots || [])[ix] || {}).w)
    .filter(w => +w > 0).map(w => +(+w).toFixed(2));
   return { strips: widths.length, widths,
+           /* 元板巾（§9.425）。**これが無いと記録から材料を組み直せない**
+              ——条幅の並びだけでは耳屑の幅が出ず、軸の上の割付が決まらない。
+              古い記録には入っていないので、読む側は「無ければ使わない」。 */
+           W: +st.W || 0,
            thickness: +st.thick || 0, knife: +st.knife || 0, tk: +st.tk || 0,
            overlap: +st.ov || 0, clearance: +st.clr || 0,
            method: method(st), hold: holdName(st, M),
@@ -922,7 +953,10 @@
    order: [0, 0, 0, 0],
    bigMode: 'auto', smallMode: 'auto', bigTh: 39.5, smallTh: 38.0,
    /* 刃組の道具なので、はじめから段取り向き（DS左＝部材を入れる側から見た並び）。 */
-   carriage: 'A', bladeGroup: '', flip: true
+   /* 台車は**マスタが決める**（§9.424）。既定は空で、画面が台車マスタの
+      先頭を選ぶ——ここに `'A'` と書くと、A台車の無いラインでも「A」が
+      選ばれたまま記録できてしまう。 */
+   carriage: '', bladeGroup: '', flip: true
   };
  }
  /* クリアランスの答えは**ここ1箇所**（§9.378、利用者の指示「目安として板厚の
@@ -1001,6 +1035,27 @@
   return st;
  }
 
+ /* 記録に残っている条件から、**その材料を組み直すための種**を作る（§9.425）。
+    台車差分の基準は「その台車の記録」が第一だが、記録が無い台車では
+    **前回流した材料**（履歴の直近1件）を既定の刃組設定で組んだ構成を置く
+    ——いまの材料で計算すると、これから流す物と比べることになり、差分が
+    ほとんど出ない（「もう組んである」と読める）。
+
+    **条幅の並び順は要らない。** 区間の長さの顔ぶれ（どの幅が何本か）が同じなら
+    部材の員数も同じなので、同じ幅をまとめて `lots` にしてよい。
+    **元板巾が無い記録は使わない**（§9.231 0で埋めない）——耳屑の幅が出ず、
+    軸の上の割付が決まらないので、読めなかったことにして次の段へ落とす。 */
+ function seedFromCond(cond) {
+  const c = cond || {};
+  const ws = (Array.isArray(c.widths) ? c.widths : []).map(w => +w).filter(w => w > 0);
+  const W = +c.W || 0;
+  if (!ws.length || !(W > 0)) return null;
+  const byW = new Map();
+  ws.forEach(w => byW.set(w, (byW.get(w) || 0) + 1));
+  const lots = [...byW.entries()].map(([w, n], i) => ({ name: '前回' + (i + 1), w, n }));
+  return { thickness: +c.thickness || 0, originalWidth: W, lots };
+ }
+
  function snapshot(st, M, g) {
   const ring = {};
   Object.keys(g.ring).forEach(od => Object.keys(g.ring[od]).forEach(sz => {
@@ -1019,7 +1074,7 @@
   buildSegs, widths, buildLayout, buildFiller, fillWith, planZones,
   compose, buildRows, endRows, badgeMap, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum,
-  stripDesign, designByParent, condOf, sameCond,
+  stripDesign, designByParent, condOf, sameCond, seedFromCond,
   pickCtx, pickGroup, condHits, selectable,
   expand, materialRun, matShift,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP

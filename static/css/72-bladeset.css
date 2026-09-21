@@ -15,9 +15,16 @@
    **ここが唯一の定義**。`blade-view.js` の `figPalette()` が1回だけ読み、
    SVGの`fill`へ渡す。ゴムリングの色だけは**マスタの値**なので入っていない。 */
 .bs-shell{
-  --bs-fig-shaft:var(--line);
-  --bs-fig-shaft-edge:var(--rs-slate-border);
-  --bs-fig-sheen:var(--bg);
+  /* **軸はスペーサーより暗くする**（§9.416、利用者の指摘「軸の色とスペーサーが
+     ほぼ同じ色でわかりにくい」）。以前は軸 `--line`（輝度.553）／スペーサー
+     `--rs-slate-border`（.509）で**差が1.1:1しか無く**、模式図では軸のグラデー
+     ションで辛うじて、断面図では**まったく**見分けられなかった。
+     刃(.034)→軸(.164)→スペーサー(.509)の3段にして、隣り合う段の差を
+     2.5:1 ／ 2.6:1 にそろえる。艶（`sheen`）は暗い面の上のハイライトなので、
+     地の色ではなく**軸より明るい線の色**から取る。 */
+  --bs-fig-shaft:var(--muted);
+  --bs-fig-shaft-edge:var(--rs-slate);
+  --bs-fig-sheen:var(--line-strong);
   --bs-fig-cap:var(--rs-indigo);
   --bs-fig-spacer:var(--rs-slate-border);
   --bs-fig-spacer-edge:var(--rs-slate);
@@ -311,13 +318,59 @@ body.bs-mode .bs-shell{display:flex}
 .bs-t3.is-os{color:var(--rs-slate);border-color:var(--rs-slate-border);background:var(--rs-slate-bg)}
 .bs-t3.is-ds{color:var(--rs-brown);border-color:var(--rs-brown-border);background:var(--rs-brown-bg)}
 /* 板の札（§9.413 追補）。模式図と**同じ言葉**（条の番号・耳）で、値を下へ添える。
-   条と耳屑は図の中で色が違うので、札の色もそれに合わせる。 */
-.bs-t3-mk{display:grid;place-items:center;gap:0;padding:1px var(--space-1);
-  font-size:var(--fs-micro);line-height:1.25;background:var(--surface)}
+   条と耳屑は図の中で色が違うので、札の色もそれに合わせる。
+   **枠は持たない**（§9.417、利用者の指示「断面3Dのラベルの付け方は2Dを参考に
+   もう少し修正してほしい」）。模式図は枠の無い色の字で出している。枠を付けると
+   読み取り専用の値が押せる物に見え（§CLAUDE 10）、押せる記号の札とも紛れる。
+   立体の上でも読めるよう、地の色の縁取りだけ添える。 */
+.bs-t3-mk{display:grid;place-items:center;gap:0;padding:0;border:0;background:none;
+  font-size:var(--fs-micro);line-height:1.2;
+  text-shadow:0 0 3px var(--surface),0 0 3px var(--surface),0 0 2px var(--surface)}
+/* 材料の帯の中は1行しか入らない（§9.418）。名前と幅を横に並べる。 */
+.bs-t3-mk.is-row{grid-auto-flow:column;align-items:baseline;gap:3px}
 .bs-t3-mk b{font-size:var(--fs-sm);font-weight:800}
 .bs-t3-mk small{font-weight:700;font-variant-numeric:tabular-nums;color:var(--muted)}
-.bs-t3-mk.is-strip{color:var(--teal-dark);border-color:var(--teal)}
-.bs-t3-mk.is-trim,.bs-t3-mk.is-scrap{color:var(--rs-brown);border-color:var(--rs-brown-border)}
+.bs-t3-mk.is-strip{color:var(--teal-dark)}
+.bs-t3-mk.is-trim,.bs-t3-mk.is-scrap{color:var(--rs-brown)}
+/* 区間の的と記号（§9.417、利用者の指示「断面3Dの強調は2Dと同じ、表との
+   リンクで、クリックによる拡大表示も同じように欲しい」）。
+   **強調の見え方は模式図と同じ数**——淡い塗り16%＋1.6pxの縁（`.bs-zhit`）。
+   区間の板は**光るだけで押せない**（`pointer-events:none`）。立体は掴んで
+   回すので、区間ぜんたいを的にすると回す道をふさぐ——押せるのは記号の札だけ。 */
+/* 寸法の層（§9.418）。刃の上下のずれの縦破線と、部材の幅の字・引き出し線。
+   器いっぱいに重ね、**的は持たない**（掴んで回す道をふさがない）。 */
+.bs-t3v{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+.bs-t3v[hidden]{display:none}
+/* 切断の位置を示す縦の破線（§9.418）。**断面図だけ**——模式図は刃そのものを
+   上下に描き分けているので、線を足すと同じことを2回言うことになる。 */
+.bs-kl{stroke-width:1.1;fill:none;pointer-events:none}
+.bs-kl.is-cut{stroke:var(--rs-blue)}
+.bs-t3v .bs-lead{stroke:var(--line-strong);stroke-width:.8;fill:none}
+/* 有効長の寸法線（§9.420）。どこからどこまでが有効長かを図の上で言う。 */
+.bs-t3v .bs-span{stroke:var(--rs-indigo);stroke-width:1.2;fill:none}
+.bs-t3v text.is-span{fill:var(--rs-indigo)}
+/* 字の大きさは`blade-3d.js`の`DIM_FS`が属性で渡す（幅の見当を同じ値から
+   出しているので、ここに書くと2箇所が食い違う）。 */
+.bs-t3v text{font-weight:700;font-variant-numeric:tabular-nums;
+  fill:var(--ink);paint-order:stroke;stroke:var(--surface);stroke-width:2.4px}
+.bs-t3v text.is-ring{fill:var(--rs-brown)}
+.bs-t3z{position:absolute;pointer-events:none;border-radius:var(--radius-xs);
+  background:transparent;border:1.6px solid transparent;
+  transition:background .12s,border-color .12s}
+.bs-t3z[hidden]{display:none}
+.bs-t3z.is-pick{background:color-mix(in srgb,var(--teal) 16%,transparent);
+  border-color:var(--teal-dark)}
+/* 記号の札は刃組表の記号（`.bs-bdg`）と**同じ形・同じ色**。図と表で同じ物を
+   同じ顔で出す。押すと拡大図が開くので、重ねた時点で指を出す（`.bs-bhit`）。 */
+.bs-t3b{position:absolute;transform:translate(-50%,-50%);display:grid;place-items:center;
+  min-width:1.7em;height:1.7em;padding:0 3px;border-radius:var(--radius-xs);
+  background:var(--bs-fig-badge);color:#fff;font-weight:800;line-height:1;
+  border:1.2px solid var(--surface);transition:background .12s,transform .12s}
+.bs-t3b[hidden]{display:none}
+.bs-t3b.is-pick{background:var(--teal-dark);transform:translate(-50%,-50%) scale(1.14)}
+/* 寸法の突き合わせ（§9.418 追補）。図の読み方（`bs-o3`）と同じ見た目で、
+   段だけ分ける——どちらも図の上に載る添え書き。 */
+.bs-len3[hidden]{display:none}
 .bs-hud{position:absolute;display:flex;align-items:center;gap:var(--space-1);
   max-width:calc(100% - 20px)}
 .bs-hud.is-tl{left:10px;top:10px;flex-direction:column;align-items:flex-start}
@@ -355,15 +408,30 @@ body.bs-mode .bs-shell{display:flex}
   border:1.5px solid var(--line);background:transparent}
 /* 選ばれた札（`.is-on`）と、その点の塗りは`90-state.css`の束ね規則が持つ（§9.353）。 */
 .bs-tg:hover{border-color:var(--teal)}
+/* 消した部材の見せ方（§9.422）。**1つだけ選ぶ**ので、入切のトグル（`.bs-tg`）とは
+   作りを分ける——セグメントは「1枚の枠を割った形」で、点を持たない（§9.247）。
+   並びは**残る量の多い順**（薄く → 線だけ → 出さない）にして、押す先が
+   「どれだけ残るか」の1本の物差しで読めるようにする。 */
+.bs-hide{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-pill);
+  overflow:hidden;background:var(--valid-bg)}
+.bs-hide button{font:inherit;font-size:var(--fs-tiny);font-weight:700;color:var(--muted);
+  white-space:nowrap;cursor:pointer;background:transparent;border:0;
+  border-inline-start:1px solid var(--line);padding:2px var(--space-2)}
+.bs-hide button:first-child{border-inline-start:0}
+.bs-hide button:hover{color:var(--teal-dark);background:var(--pale)}
 /* いま画面のどちら側が OS／DS か。視点を回しても言葉が合うよう、見えている位置から出す。 */
-.bs-o3{display:flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm);font-weight:700;
-  color:var(--muted);background:var(--valid-bg);border:1px solid var(--line);
+.bs-o3,.bs-len3{display:flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm);
+  font-weight:700;color:var(--muted);background:var(--valid-bg);border:1px solid var(--line);
   border-radius:var(--radius-xs);padding:4px var(--space-2);pointer-events:none}
 .bs-o3[hidden]{display:none}
-.bs-o3 i{font-style:normal;font-weight:800;letter-spacing:.04em}
+.bs-o3 i,.bs-len3 i{font-style:normal;font-weight:800;letter-spacing:.04em;color:var(--ink)}
 .bs-o3 i.is-os{color:var(--rs-slate)}
 .bs-o3 i.is-ds{color:var(--rs-brown)}
-.bs-o3 s{text-decoration:none;color:var(--muted);font-weight:600}
+/* **`<s>` は取り消し線の要素**（§9.420、利用者の指摘「この取り消し線みたいな
+   表示はなんでしょうか？」）。この図では「添え字」の意味で使っているので線を
+   消しているが、**器を増やしたらこの1行も一緒に増やす**——書き忘れると、
+   新しい器の中だけ取り消し線が出る（実際に出た）。 */
+.bs-o3 s,.bs-len3 s{text-decoration:none;color:var(--muted);font-weight:600}
 /* 済んだ段取りの札は**選ばれた札と同じ見た目**（`90-state.css` の束ね規則・§9.353）。
    橙は「設定要」に1つの意味で使う（§9.338）ので、状態の言い分けには使わない
    ——いまどの段取りに居るかは札の字（①引き出す／①ラインへ戻す）が言う。 */
@@ -524,6 +592,11 @@ body.bs-mode .bs-shell{display:flex}
 
 /* ---------- 台車差分 ---------- */
 .bs-carbar{display:flex;align-items:center;gap:var(--space-1);margin-bottom:var(--space-2)}
+/* 台車の札は台車マスタが作る（§9.424）。3台以上のラインでは折り返す
+   ——横に押し出すと帯が崩れる。 */
+.bs-carpick{display:flex;align-items:center;gap:var(--space-1);flex-wrap:wrap}
+/* 「登録がありません」。**押せない物は押せる顔をしない**（§9.385）。 */
+.bs-none{font-size:var(--fs-tiny);font-weight:700;color:var(--invalid)}
 .bs-lbl{font-size:var(--fs-sm);color:var(--muted)}
 .bs-l{width:100%;border-collapse:collapse;font-size:var(--tbl-fs)}
 .bs-l th,.bs-l td{border:1px solid var(--line);padding:1px var(--space-1);text-align:end}

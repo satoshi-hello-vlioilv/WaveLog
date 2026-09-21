@@ -87,8 +87,8 @@ try:
     # ---- 2) 刻印が無ければ理由を言う ----
     ready.clear()
     why = ready.mismatch()
-    rec('刻印が無いときは「まだ確認していません」と言う',
-        why == ['まだ確認していません'], str(why))
+    rec('刻印が無いときは「初めての起動」と1文で言う（§9.415）',
+        why == ['この端末では初めての起動です'], str(why))
 
     # ---- 3) 確認を通すと刻印が合う ----
     ok, reason = setup_check.run(say)
@@ -107,8 +107,56 @@ try:
     ready.stamp_file().write_text(
         json.dumps(dict(stamp, stampVersion=stamp.get('stampVersion', 0) - 1),
                    ensure_ascii=False), encoding='utf-8')
-    rec('刻印の形が古ければ確認し直す',
-        any('確認の仕組みの版' in x for x in ready.mismatch()), str(ready.mismatch()))
+    # **形が変わったときは、それだけを言う**（§9.415）。古い形の刻印と新しい
+    # 指紋を1つずつ比べても「全部変わりました」としか出ず、手掛かりにならない。
+    rec('刻印の形が古ければ確認し直す（理由はその1件だけ）',
+        ready.mismatch() == ['起動前の確認の仕組みが新しくなりました'],
+        str(ready.mismatch()))
+
+    # ---- 4b) `pythonw.exe` と `python.exe` を同じものとして数える（§9.415） ----
+    # **update.bat はコンソールの`python.exe`、Start.vbs は`pythonw.exe`**で
+    # 同じ環境を起動する。実行ファイル名をそのまま控えると**永久に食い違い**、
+    # update.bat を実行した次の起動が必ず完全な確認（30〜60秒）へ落ちて、
+    # 待機画面に「Pythonの場所（…python.exe → …pythonw.exe）」が出ていた。
+    W = r'C:\Py\pythoncore-3.14-64\pythonw.exe'
+    E = r'C:\Py\pythoncore-3.14-64\python.exe'
+    rec('pythonw.exe の指紋は python.exe と同じ', ready.python_mark(W) == E,
+        f'{ready.python_mark(W)} / {E}')
+    rec('python.exe の指紋は変えない', ready.python_mark(E) == E, ready.python_mark(E))
+    rec('Pythonを別の場所へ移したら食い違いとして出る',
+        ready.python_mark(r'D:\Other\python.exe') != E,
+        ready.python_mark(r'D:\Other\python.exe'))
+    # **`python`で始まる名前のときだけ**末尾のwを落とす（綴りの似た別物を潰さない）
+    rec('pythonで始まらない名前の末尾wは落とさない',
+        ready.python_mark(r'C:\Py\myw.exe') == r'C:\Py\myw.exe',
+        ready.python_mark(r'C:\Py\myw.exe'))
+    # 刻印ごしでも同じことを見る（本番の食い違いはここで起きていた）
+    ready.stamp_file().write_text(
+        json.dumps(dict(stamp, python=W), ensure_ascii=False), encoding='utf-8')
+    saved_exe = sys.executable
+    try:
+        sys.executable = E
+        rec('update.bat(python.exe)の刻印を pythonw.exe の起動が「合っている」と読む',
+            not any('Python' in x for x in ready.mismatch()), str(ready.mismatch()))
+        sys.executable = W
+        rec('pythonw.exe どうしでも合っている',
+            not any('Python' in x for x in ready.mismatch()), str(ready.mismatch()))
+    finally:
+        sys.executable = saved_exe
+
+    # ---- 4c) 理由は**それだけで読める1文**（§9.415） ----
+    # 「変わったもの: まだ確認していません」のような、文として成り立たない
+    # 並びを画面へ出さない。長い置き場は末尾だけ残して読める長さにする。
+    ready.stamp_file().write_text(
+        json.dumps(dict(stamp, appRoot=r'C:\とても\長い\共有の\置き場\WaveLog\アプリ本体'),
+                   ensure_ascii=False), encoding='utf-8')
+    why = ready.mismatch()
+    rec('理由は「〜ました／〜です」と読める1文（頭に「変わったもの:」を付けない）',
+        bool(why) and all(('ました' in x) or x.endswith('です') for x in why), str(why))
+    rec('長い置き場は末尾だけ残して短くする（…で始める）',
+        any('…' in x for x in why), str(why)[:120])
+    rec('鍵つきでも取れる（画面の題の言い分けに使う）',
+        [k for k, _t in ready.diff()] == ['appRoot'], str(ready.diff()))
 
     # ---- 5) 待機画面の写しは中身が同じ ----
     src = (PROGRAM / 'loading.html').read_bytes()

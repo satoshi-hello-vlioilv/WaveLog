@@ -484,6 +484,91 @@ def pick_delete(c, row_id):
 
 
 # ---------------------------------------------------------------------------
+# 9 台車マスタ（§9.424、利用者の指示）
+# ---------------------------------------------------------------------------
+# 利用者の言葉:「台車マスタは、A台車、B台車を登録しておいてください。設備ごと
+# ですがスリッターがない設備もあるので。」「刃組ガイダンス使う設備＝台車マスタ必要」
+#
+# **台車は設備の持ち物**（何台あるか・何と呼ぶか）で、設備によって台数が違う。
+# 以前は画面のHTMLに `A`/`B` を直に書いていたので、**3台目のあるラインを
+# 登録できず**、呼び名も変えられなかった。
+#
+# **行を持つのは刃組ガイダンスを使う設備だけ。** スリッターの無い設備には
+# 1行も作らない——「全設備に2台ある」ことにすると、無い物の差分を出せる
+# 画面ができてしまう。入れ方は初期セット（`seed_standard_parts`）で、
+# 部材と同じ1回の操作にまとめる（別々に覚えさせない・§CLAUDE 2）。
+CARRIAGE_TABLE = '台車マスタ'
+CARRIAGE_COLUMNS = (
+    ('設備名', 'TEXT'), ('台車名', 'TEXT'), ('備考', 'TEXT'),
+    ('表示順', 'INTEGER'), ('有効', 'INTEGER'),
+)
+CARRIAGE_DEF = TableDef(CARRIAGE_TABLE, '台車ID', CARRIAGE_COLUMNS,
+                        order_by='[設備名],[表示順],[台車ID]')
+# 初期セットで入れる顔ぶれ。**呼び名はここ1箇所**（画面へ書き写さない）。
+CARRIAGE_SEED = ('A台車', 'B台車')
+# 台車を使わないラインの呼び名（§9.424、利用者の指示「ごくまれにスリッターが
+# ある設備でも、台車なしというパターンがありました。自動で組み込む必要は
+# ないですが、スケジュール上の選択肢として使えるようにしてください」）。
+# **初期セットでは入れない**——めったに無い形なので、既定で2台＋1行にすると
+# ふつうのラインの札が3つになる。台車マスタへ1行足せばそのまま選べるので、
+# **綴りだけをここが持つ**（画面はこれを案内に出し、利用者が打ち間違えない）。
+CARRIAGE_NONE = '台車なし'
+
+
+def _carriage_row(d):
+    return {'id': d['台車ID'], 'equipment': _txt(d['設備名']),
+            'name': _txt(d['台車名']), 'note': _txt(d['備考']),
+            'order': _int(d['表示順']), 'enabled': _alive(d['有効'])}
+
+
+def carriage_rows(c, include_disabled=False, equipment=None):
+    return _rows(c, CARRIAGE_DEF, _carriage_row, include_disabled, equipment)
+
+
+def carriage_upsert(c, uid, row_id=None, equipment=None, name=None,
+                    note=None, order=None, enabled=None):
+    """1台ぶん。**設備名と台車名は必須**——どちらが欠けても、その行は
+    どの設備のどの台車か言えない（§9.377「部材は設備ごと」と同じ）。"""
+    eq = _txt(equipment)
+    nm = _txt(name)
+    if row_id is None and (not eq or not nm):
+        raise ValueError('設備名と台車名を入れてください。')
+    vals = {}
+    if equipment is not None:
+        vals['設備名'] = eq
+    if name is not None:
+        vals['台車名'] = nm
+    if note is not None:
+        vals['備考'] = _txt(note)
+    if order is not None:
+        vals['表示順'] = _int(order)
+    if enabled is not None:
+        vals['有効'] = 1 if flag_of(enabled) else 0
+    return _put(c, CARRIAGE_DEF, row_id, vals, uid, eq)
+
+
+def carriage_delete(c, row_id):
+    _delete(c, CARRIAGE_DEF, int(row_id))
+
+
+def seed_carriages(c, uid, equipment):
+    """その設備に A台車・B台車 を用意する。**2度押しても増えない**
+    （§9.377 初期セットは足し算にならない）——同じ名前が在れば何もしない。"""
+    eq = _txt(equipment)
+    if not eq:
+        return 0
+    have = {r['name'] for r in carriage_rows(c, True, eq)}
+    made = 0
+    for i, nm in enumerate(CARRIAGE_SEED):
+        if nm in have:
+            continue
+        carriage_upsert(c, uid, None, equipment=eq, name=nm, note='',
+                        order=(i + 1) * 10, enabled=True)
+        made += 1
+    return made
+
+
+# ---------------------------------------------------------------------------
 # 8 刃組履歴マスタ
 # ---------------------------------------------------------------------------
 # ラインは2台の台車を交互に使う。直前の刃組はラインで稼働中なので、
@@ -503,11 +588,11 @@ HISTORY_KEEP = 20        # 1設備あたり残す件数（古いものから捨�
 # 表を作る・足す
 # ---------------------------------------------------------------------------
 _ALL_DEFS = (BLADE_DEF, SPACER_DEF, RING_DEF, FINGER_DEF, STANDARD_DEF,
-             HISTORY_DEF, DESIGN_DEF, BLADEPICK_DEF)
+             HISTORY_DEF, DESIGN_DEF, BLADEPICK_DEF, CARRIAGE_DEF)
 
 
 def ensure_tables(c):
-    """8枚をまとめて用意する。**足すのは `add_missing()` の1箇所**（§9.315）。"""
+    """9枚をまとめて用意する。**足すのは `add_missing()` の1箇所**（§9.315）。"""
     have = tables(c)
     created = []
     for d in _ALL_DEFS:
@@ -1022,12 +1107,19 @@ def carriage_state(c, equipment):
     刃組待ちができるかどうかが決まるので、スケジュール上でもその設備で登録中の
     台車がどの刃のセット状態かわかるように」。
 
-    ラインは2台の台車を交互に使う。
+    ふつうは2台の台車を交互に使う。
       直前の刃組 … ラインで**稼働中**（その部材は外せない）
       その次に見つかる別の台車 … いま**組み替える**台車に載っている構成
     画面が履歴を数え直さなくて済むよう、役割まで付けて返す。
+
+    **何台あるかは台車マスタが決める**（§9.424）——ここに 2 を書いていたので、
+    3台のラインでは3台目が出ず、台車を使わないライン（`台車なし` の1行）では
+    無い2台目を探し続けていた。登録が無いときだけ、履歴に出てくる顔ぶれで
+    数える（古い記録しか無い設備でも、今までどおり見える）。
     """
     rows = history_rows(c, False, equipment)     # 新しい順
+    known = [r['name'] for r in carriage_rows(c, False, equipment) if r['name']]
+    limit = len(known) if known else 2
     out, seen = [], set()
     for r in rows:
         car = r['carriage']
@@ -1042,7 +1134,7 @@ def carriage_state(c, equipment):
             'set': _txt(d.get('set')),
             'cond': d.get('cond') if isinstance(d.get('cond'), dict) else None,
         })
-        if len(out) >= 2:
+        if len(out) >= limit:
             break
     return out
 
@@ -1105,7 +1197,7 @@ def seed_standard_parts(c, uid, equipment, replace=False):
     戻りは登録した件数の内訳。"""
     eq = _check_equipment(equipment)
     ensure_tables(c)
-    made = {'blade': 0, 'spacer': 0, 'ring': 0, 'finger': 0}
+    made = {'blade': 0, 'spacer': 0, 'ring': 0, 'finger': 0, 'carriage': 0}
     existing = {'blade': blade_rows(c, True, eq), 'spacer': spacer_rows(c, True, eq),
                 'ring': ring_rows(c, True, eq), 'finger': finger_rows(c, True, eq)}
     if replace:
@@ -1164,6 +1256,11 @@ def seed_standard_parts(c, uid, equipment, replace=False):
                 '研削量': FINGER_SHAPE['grindDrop'],
                 '表示順': order, '有効': -1}, uid)
             made['finger'] += 1
+    # 台車（§9.424、利用者の指示）。**刃組ガイダンスを使う設備＝台車が要る**ので、
+    # 部材と同じ1回の操作で A台車・B台車 を用意する。`replace` では消さない
+    # ——部材を入れ替えても台車そのものは同じ物で、記録（`刃組履歴マスタ.台車`）が
+    # 名前で結び付いている。2度押しても増えない（同じ名前が在れば何もしない）。
+    made['carriage'] = seed_carriages(c, uid, eq)
     c.commit()
     return made
 
@@ -1189,6 +1286,11 @@ def context(c, equipment):
         'fingers': finger_rows(c, False, eq),
         'history': history_rows(c, False, eq),
         'picks': pick_rows(c, False, eq),
+        # 台車（§9.424）。**行が無い設備は「台車の登録がない」と言う**
+        # ——画面が勝手に A/B を作ると、無い台車の差分を出せてしまう。
+        'carriages': carriage_rows(c, False, eq),
+        'carriageSeed': list(CARRIAGE_SEED),
+        'carriageNone': CARRIAGE_NONE,
         # 条の設計（§9.381）。**測定が読むのと同じ行**を画面へも渡す
         # ——「記録済みか」を別の口で数えると、答えが2つに割れる。
         'designs': design_rows(c, False, eq),

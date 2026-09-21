@@ -200,6 +200,18 @@ rec('待機画面が更新の状態を同じ場所で言い分ける',
     and 'id="work"' in html)
 rec('更新の状態は色だけでなく字でも出す(分類名を書く)',
     '更新を反映中' in html and '更新なし' in html)
+# **「更新」と「確認」を言い分ける**（§9.415）。アプリの版が上がっていない
+# のに「更新を反映中」と出すと、画面が事実と食い違う——初めての起動・
+# Pythonの入れ替え・部品の一覧の変更でも同じ段（30〜60秒）を通る。
+rec('版が上がっていないときの題を別に持つ（更新と確認を言い分ける）',
+    '起動前の確認中' in html and "work==='setup'" in html.replace(' ', ''))
+rec('起動処理が「確認だけ」の状態も渡している（WORK_SETUP）',
+    'WORK_SETUP' in start_app_src and 'WORK_SETUP' in
+    (ROOT / 'backend' / 'boot_status.py').read_text(encoding='utf-8'))
+# **理由は「変わったもの: 〇〇」の断片ではなく1文**（§9.415）。以前は
+# 「変わったもの: まだ確認していません」のように文にならない並びが出ていた。
+rec('理由に見出しの頭を継ぎ足さず、1文をそのまま出す',
+    "変わったもの: '+" not in html and "reasons.join(' / ')" in html)
 
 index = (ROOT / 'templates' / 'index.html').read_text(encoding='utf-8')
 over_labels = li_labels(index, STEP_LI)

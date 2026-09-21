@@ -53,12 +53,12 @@ EQ = 'テスト設備A'
 # ---------------------------------------------------------------------------
 c = fresh()
 made = bs.ensure_tables(c)
-rec('まっさらなDBで8枚できる', len(made) == 8, str(made))
+rec('まっさらなDBで9枚できる', len(made) == 9, str(made))
 have = set(tables(c))
 rec('表の名前が定義どおり',
     {d.table for d in (bs.BLADE_DEF, bs.SPACER_DEF, bs.RING_DEF, bs.FINGER_DEF,
                        bs.STANDARD_DEF, bs.HISTORY_DEF, bs.DESIGN_DEF,
-                       bs.BLADEPICK_DEF)} <= have,
+                       bs.BLADEPICK_DEF, bs.CARRIAGE_DEF)} <= have,
     str(sorted(have)))
 # CREATE に全列が入っている（§9.324 R1。後から足す口に頼らない）
 for d in (bs.BLADE_DEF, bs.SPACER_DEF, bs.RING_DEF, bs.FINGER_DEF, bs.STANDARD_DEF):
@@ -164,12 +164,42 @@ again = bs.seed_standard_parts(c4, 'u', EQ)
 rec('2度押しても増えない', sum(again.values()) == 0
     and len(bs.spacer_rows(c4, True, EQ)) == before, str(again))
 swap = bs.seed_standard_parts(c4, 'u', EQ, replace=True)
-rec('入れ替えなら作り直す', sum(swap.values()) == sum(first.values()), str(swap))
+PARTS = ('blade', 'spacer', 'ring', 'finger')
+rec('入れ替えなら部材を作り直す',
+    sum(swap[k] for k in PARTS) == sum(first[k] for k in PARTS), str(swap))
+# ---- 台車マスタ（§9.424、利用者の指示） ----
+# **初期セットで A台車・B台車 が入る**（刃組ガイダンスを使う設備＝台車が要る）。
+rec('初期セットで台車が入る', first['carriage'] == len(bs.CARRIAGE_SEED), str(first))
+rec('入れた台車の名前は CARRIAGE_SEED のとおり',
+    [x['name'] for x in bs.carriage_rows(c4, True, EQ)] == list(bs.CARRIAGE_SEED),
+    str([x['name'] for x in bs.carriage_rows(c4, True, EQ)]))
+# **`replace` は台車を消さない**——部材を入れ替えても台車そのものは同じ物で、
+# 記録（`刃組履歴マスタ.台車`）が名前で結び付いている。消すと差分の相手を失う。
+rec('入れ替えでも台車は消えない・増えない',
+    swap['carriage'] == 0
+    and [x['name'] for x in bs.carriage_rows(c4, True, EQ)] == list(bs.CARRIAGE_SEED),
+    str(swap['carriage']))
+rec('台車も設備ごと（別の設備へは混ざらない）',
+    not bs.carriage_rows(c4, True, 'テスト設備B'))
+rec('設備名か台車名が空なら断る',
+    _reject(lambda: bs.carriage_upsert(c4, 'u', None, equipment=EQ, name=''))
+    and _reject(lambda: bs.carriage_upsert(c4, 'u', None, equipment='', name='C台車')))
+# **「台車なし」は自動で入れない**（利用者の指示「自動で組み込む必要はないですが、
+# スケジュール上の選択肢として使えるように」）。綴りはサーバーが持ち、
+# 1行足せばそのまま選べる。
+rec('「台車なし」は初期セットに入らない',
+    bs.CARRIAGE_NONE not in [x['name'] for x in bs.carriage_rows(c4, True, EQ)],
+    bs.CARRIAGE_NONE)
 rec('別の設備へは混ざらない', not bs.spacer_rows(c4, True, 'テスト設備B'))
 ctx = bs.context(c4, EQ)
 rec('1往復で1画面ぶんが揃う',
     {'standard', 'blades', 'spacers', 'rings', 'fingers', 'history',
+     'carriages', 'carriageSeed', 'carriageNone',
      'bladeStatus', 'spacerUses', 'ringColors'} <= set(ctx), str(sorted(ctx)))
+rec('台車も1往復で届く（画面が別の口を叩かない）',
+    [x['name'] for x in ctx['carriages']] == list(bs.CARRIAGE_SEED)
+    and ctx['carriageNone'] == bs.CARRIAGE_NONE,
+    str([x['name'] for x in ctx['carriages']]))
 rec('語彙もサーバーが届ける',
     ctx['bladeStatus'] and ctx['spacerUses'] and ctx['ringColors'])
 # 履歴は設備ごと・新しい順

@@ -604,18 +604,27 @@ def main():
  # 確認済みの刻印があれば、ここは飛ばす(§9.225)。**刻印は速さのための門で
  # あって正しさの門ではない**——バイトコードが古いかどうかはPython自身が
  # 判定するので、飛ばして困るのは「速くならない」ことだけ。
- why=ready.mismatch()
+ # **鍵つきで受ける**（§9.415）。理由の字だけでは「アプリの版が上がった」のか
+ # 「初めての起動」なのかを綴りで探すことになり、同じ言葉を2箇所が持つ。
+ changes=ready.diff()
+ why=[text for _k,text in changes]
  if why:
   # **何が変わったから確認するのか**を待機画面へ渡す（§9.411）。
-  # 「アプリの版（2.304.0 → 2.305.0）」のように理由が読めれば、待たされて
-  # いるのが更新のせいだと分かる（推測させない・§CLAUDE 6）。
-  boot_status.report('packages','更新を反映しています（必要な部品とバイトコードを確認）',
-                     work=boot_status.WORK_UPDATE,reasons=why)
+  # 「アプリの版が上がりました（2.304.0 → 2.305.0）」のように理由が読めれば、
+  # 待たされているのが更新のせいだと分かる（推測させない・§CLAUDE 6）。
+  # **版が上がっていないなら「更新」と言わない**（§9.415）——初めての起動も
+  # Pythonの入れ替えも同じ段を通るので、題は`WORK_SETUP`で言い分ける。
+  upd=any(k=='appVersion' for k,_t in changes)
+  work=boot_status.WORK_UPDATE if upd else boot_status.WORK_SETUP
+  boot_status.report('packages',
+                     ('更新を反映しています' if upd else '起動前の確認をしています')
+                     +'（必要な部品とバイトコードを確認）',
+                     work=work,reasons=why)
   if not run_full_check(log,why):
    boot_status.report('packages','必要な部品を用意できませんでした',failed=True)
    log.error('起動中止: 必須パッケージが揃いませんでした')
    return 1
-  boot_status.report('packages','更新を反映しました')
+  boot_status.report('packages','更新を反映しました' if upd else '起動前の確認が済みました')
  else:
   boot_status.report('packages','更新はありません（前回の確認のまま起動します）',
                      work=boot_status.WORK_SKIP,reasons=[])

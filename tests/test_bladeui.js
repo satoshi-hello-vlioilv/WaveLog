@@ -131,24 +131,32 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('手順ボタンに今の条件が出る（畳んでいても読める）',
         s1.steps.length === 4 && s1.steps.every(t => t && t !== '—'), s1.steps.join(' / '));
 
-    /* ---- 3) 幅を変えると、図・表・所要が同じ1回で追従する ---- */
+    /* ---- 3) 幅を変えると、図・表・所要が同じ1回で追従する ----
+       **打つのは現場でよくある形**（§9.423、利用者の指示「検証用フィクスチャの
+       ロットは変更して」）。以前は 120mm×6条／元板巾1170 を打っており、
+       **片耳が225mm**＝製品幅より屑幅のほうが広い、現場に無い形だった
+       （利用者の指摘「屑幅は製品幅より大きくならず、片耳35mm以下、通常は
+       15mmくらいがメジャー」）。ここを既定の材料にしておくと、**以降の節が
+       全部その形でしか確かめていない**ことになる。
+       50mm×22条／元板巾1130 なら片耳15mm——条が混み、屑が細い、通常の形。 */
     await page.click('[data-step-open="bsV3"]');
     await page.waitForSelector('#bsLotTbl input[data-k="w"]', { timeout: 8000 });
     await page.evaluate(() => {
-     const el = document.querySelector('#bsLotTbl input[data-k="w"]');
-     el.value = '120';
-     el.dispatchEvent(new Event('input', { bubbles: true }));
-     const n = document.querySelector('#bsLotTbl input[data-k="n"]');
-     n.value = '6';
-     n.dispatchEvent(new Event('input', { bubbles: true }));
+     const put = (el, v) => { el.value = String(v);
+       el.dispatchEvent(new Event('input', { bubbles: true })); };
+     /* **元板巾を先に**（条の合計が入らない幅のままだと、屑幅が負になる条数を
+        受け付けない＝§9.210 で弾かれる）。 */
+     put(document.querySelector('#bsW'), 1130);
+     put(document.querySelector('#bsLotTbl input[data-k="w"]'), 50);
+     put(document.querySelector('#bsLotTbl input[data-k="n"]'), 22);
     });
-    await W.until(page, () => /120/.test(document.querySelector('#bsV3').textContent),
+    await W.until(page, () => /50/.test(document.querySelector('#bsV3').textContent),
                   null, { ms: 8000, what: '手順3の現在値' });
     const s2 = await snap();
     rec('幅を変えると図が描き直される', s2.rects !== s1.rects || s2.rows !== s1.rows,
         `rects ${s1.rects}→${s2.rects} / rows ${s1.rows}→${s2.rows}`);
     rec('条の並びが本数どおりになる',
-        (await page.evaluate(() => document.querySelectorAll('#bsOrdList .bs-oc').length)) === 6);
+        (await page.evaluate(() => document.querySelectorAll('#bsOrdList .bs-oc').length)) === 22);
     const kpi = await page.evaluate(() => document.querySelector('#bsKpis').textContent);
     rec('割付の内訳（耳・条・刃の対数）が出る', /OS耳/.test(kpi) && /刃 対数/.test(kpi),
         kpi.replace(/\s+/g, ' ').slice(0, 60));
@@ -513,7 +521,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
               figBadge: g.dataset.badge, parts, leads, nums: nums.length,
               span: all.some(t => /^区間 [\d.]+ mm$/.test(t)),
               names: all.filter(t => /スペーサー|刃（厚み）|隙間/.test(t)).length,
-              clrLabel: all.filter(t => /^クリアランス$/.test(t)).length,
+              clrLabel: all.filter(t => /^上下刃の中心間$/.test(t)).length,
               dashed: svg.querySelectorAll('[stroke-dasharray]').length,
               dims: +svg.dataset.dims, inside: +svg.dataset.inside, lead: +svg.dataset.lead,
               /* 引き出し線の始点と終点を読み、順番が入れ替わっている数を数える。
@@ -567,13 +575,15 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('寸法はマスタの値そのまま（10.025 を 10.03 へ丸めない）', zoom.exact === true,
         zoom.nums3);
     rec('区間ぜんたいの寸法も出す', zoom.span === true, String(zoom.span));
-    /* **クリアランスも寸法の1つ**（§9.413 追補、利用者の指示「拡大表示は
-       クリアランスも表示対象にして」）。実寸では図の上で1px未満なので、
-       反対側の軸の刃を**破線で見える幅まで離して**描き、値は真の値を出す。 */
-    rec('拡大図にクリアランスが出る（反対側の軸の刃を破線で添える）',
+    /* **上下刃のずれも寸法の1つ**（§9.413 追補、利用者の指示「拡大表示は
+       クリアランスも表示対象にして」）。反対側の軸の刃を破線で添え、
+       **中心間（刃厚＋クリアランス）**を札で出す——クリアランスそのものは
+       2枚の刃の**面と面のあいだ**に見えている（§9.420）。 */
+    rec('拡大図に上下刃のずれが出る（反対側の軸の刃を破線で添える）',
         zoom.clrLabel > 0 && zoom.dashed > 0,
         `札${zoom.clrLabel}／破線${zoom.dashed}`);
-    rec('クリアランスを誇張したことを足元で言う', /見える幅まで離して/.test(zoom.note),
+    rec('破線が何かとクリアランスの在りかを足元で言う',
+        /面と面のあいだがクリアランス/.test(zoom.note),
         zoom.note.slice(-60));
     rec('図が言えないこと（どの区間に入るか）を添える', /区間/.test(zoom.note),
         zoom.note.slice(0, 40));
@@ -639,7 +649,11 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      show: [...document.querySelectorAll('#bsStage3 [data-show]')]
        .map(b => b.textContent + ':' + b.getAttribute('aria-pressed')),
      steps: [...document.querySelectorAll('#bsStage3 .bs-hud.is-bot .bs-btn')]
-       .map(b => b.textContent)
+       .map(b => b.textContent),
+     hide: [...document.querySelectorAll('#bsStage3 [data-hide]')]
+       .map(b => b.textContent + ':' + b.getAttribute('aria-pressed')),
+     hideIn: !!document.querySelector('#bsStage3 [data-show]')
+       ?.closest('.bs-hud-grp')?.querySelector('[data-hide]')
     }));
     rec('立体図にすると模式図の器を伏せ、立体図の器だけを出す（横に2つ並べない）',
         st3.stage2 === true && st3.stage3 === false && st3.shown,
@@ -651,8 +665,20 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('見せる部材の入切は板・刃・ゴムリング・スペーサーの4つ（言葉は部材の名前で固定）',
         st3.show.join('/') === '板:true/刃:true/ゴムリング:true/スペーサー:true',
         st3.show.join('/'));
-    rec('HUDは「表示」「段取り」「視点」の3群', st3.caps.join('/') === '表示/段取り/視点',
+    /* **顔ぶれを文字列で丸ごと固定しない**（§9.389）。正しい位置へ1枚足しただけで
+       落ちるので、前後関係で見る——「表示」が先頭・「段取り」「視点」がその後ろ。 */
+    rec('HUDは「表示」から始まり、「段取り」「視点」がその後ろに並ぶ',
+        st3.caps[0] === '表示'
+        && st3.caps.indexOf('段取り') > 0
+        && st3.caps.indexOf('視点') > st3.caps.indexOf('段取り'),
         st3.caps.join('/'));
+    /* 隠し方は**「表示」と同じ群の中**（§9.422）。消したものをどう出すかは上の
+       入切にかかる設定なので、別の群へ離すと何に効くのか読めない。 */
+    rec('消した部材の見せ方は「表示」の群の中にある',
+        st3.hideIn === true && st3.caps.indexOf('消したものは') === 1,
+        String(st3.hideIn) + '/' + st3.caps.join('/'));
+    rec('見せ方は「薄く／線だけ／出さない」の3つで、既定は「出さない」（今までの動き）',
+        st3.hide.join('/') === '薄く:false/線だけ:false/出さない:true', st3.hide.join('/'));
     /* **「視点を戻す」は段取りの外**（§9.413 追補）。断面図では段取りの群ごと
        伏せるので、同じ群に入れると戻す道まで消える。 */
     rec('段取りは3手順、視点を戻すは別の群',
@@ -787,7 +813,8 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      return { n: els.length,
               txt: els.map(e => (e.querySelector('b') || {}).textContent).join('/'),
               sub: els.map(e => (e.querySelector('small') || {}).textContent),
-              kinds: [...new Set(els.map(e => e.className.replace(/.*is-/, '')))].sort(),
+              /* 種類は**印の並びではなく** `data-kind` で読む（§9.418）。 */
+              kinds: [...new Set(els.map(e => e.dataset.kind || ''))].sort(),
               mag: (document.querySelector('#bsStage3 .bs-o3').textContent || '') };
     });
     rec('断面図にも板・耳屑の札が出る（模式図と同じ言葉）',
@@ -799,6 +826,375 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     /* **誇張したら倍率を書く**（§CLAUDE 6）。板厚 1.3mm は実寸では1pxも出ない。 */
     rec('板厚を誇張していることを字で言う', /板厚.*倍/.test(lab.mag), lab.mag.slice(0, 60));
     rec('上下軸を離していることも字で言う', /上下軸.*離/.test(lab.mag), lab.mag.slice(0, 80));
+    /* ---- 4.8) 詰め・クリアランス・寸法の字（§9.418） ----
+       利用者の指摘「エンド部分までスペーサーが詰まっていないといけないが、
+       隙間が目立つ」「OS側のエンドの青オブジェクトの上下軸の外々に線が付着
+       している」、利用者の指示「刃の交差する部分切断面に縦の破線を入れて…」
+       「板幅、スペーサー幅、ゴムリング幅、重ならないようにラベルを表示…」
+       「ラベルは板の上下交互に配置している余白の部分に配置して」 */
+    const pk = await page.evaluate(() => window.WL.bladeSolid.view());
+    /* **割り付けが区間より長くない**。長い積みは物理的に入らず、はみ出したぶん
+       だけ刃の位置が動く。丸めを`round`でやっていたため最大0.0125mm超えていた。 */
+    rec('割り付けが区間長を超えていない（超えると刃の位置が動く）',
+        !!pk.pack && pk.pack.over === 0,
+        pk.pack ? `超えた区間 ${pk.pack.over} / 最大 ${pk.pack.worst}mm` : '読めない');
+    /* **図が部材を落としていない**。丸めのせいで最後の1枚を落とすと、10mm級の
+       穴が開く（実測: 下軸のDS端 10.025mm・中間区間 9mm）。 */
+    rec('詰めるときに部材を1枚も落としていない',
+        !!pk.pack && pk.pack.drop === 0,
+        pk.pack ? `落とした枚数 ${pk.pack.drop}` : '読めない');
+    /* 残った端数は**空けずに置く**（模式図の`fillZone`と同じ作法）。 */
+    /* **有効長を基準に描く**（§9.418 追補、利用者の指示「有効長よりエンドto
+       エンドが長くなっていないか確認してほしい」）。区間の和＋刃は作りのうえで
+       有効長ちょうどになるが、**図が実際に置いた物**で見る——置き方を間違えれば
+       計算が合っていても絵は溢れる。 */
+    rec('端から端が有効長を超えていない（有効長を基準に描いている）',
+        !!pk.pack && pk.pack.x0 >= -0.05 && pk.pack.x1 <= pk.pack.arbor + 0.05,
+        pk.pack ? `${pk.pack.x0} 〜 ${pk.pack.x1} / 有効長 ${pk.pack.arbor}` : '読めない');
+    /* 端まで使っていること（超えないだけでなく、余らせてもいない）。 */
+    rec('端から端が有効長ぶんある（端を余らせていない）',
+        !!pk.pack && pk.pack.x0 <= 0.6 && pk.pack.arbor - pk.pack.x1 <= 0.6,
+        pk.pack ? `左の空き ${pk.pack.x0} / 右の空き ${(pk.pack.arbor - pk.pack.x1).toFixed(3)}`
+                : '読めない');
+    /* **上下の刃は刃の身のぶんすれ違う**（§9.419、利用者の指摘「上下の刃は刃厚分
+       ズレてないと切れません」）。同じ切断の上刃と下刃は円周が食い違う（ラップ）
+       ので、軸方向に刃厚ぶん離れていないと**円周でぶつかって切れない**。
+       以前はクリアランス（0.13mm）だけずらしており、刃の身が 9.87mm 重なって
+       いた——物として組めない配置だった。 */
+    rec('上下の刃が刃の身のぶんすれ違う（円周でぶつからない）',
+        !!pk.pack && pk.pack.knifeGap !== null && pk.pack.knifeGap >= pk.pack.tk,
+        pk.pack ? `中心間 ${pk.pack.knifeGap}mm / 刃厚 ${pk.pack.tk}mm` : '読めない');
+    /* **有効長がどの区間かを図の上で言う**（§9.420、利用者の指示）。字だけだと
+       「どこからどこまで」が辿れないので、寸法線で端から端を示す。 */
+    const span = await page.evaluate(() => {
+     const svg = document.querySelector('#bsStage3 .bs-t3v');
+     if (!svg) return null;
+     const ln = [...svg.querySelectorAll('.bs-span')];
+     const tx = svg.querySelector('text.is-span');
+     return { n: ln.length, t: tx ? tx.textContent : '' };
+    });
+    rec('有効長がどの区間かを寸法線で出す（端の立て線2本＋あいだの線）',
+        !!span && span.n >= 4 && /有効長/.test(span.t), span ? `${span.n}本 ${span.t}` : '読めない');
+    /* 寸法線の端は**軸の端そのもの**（青い印の位置）を指している。 */
+    /* 向きを裏返すと左右が入れ替わるので、**差の絶対値**で見る。 */
+    rec('寸法線の端は軸の端をさしている',
+        !!pk.spanLine && Math.abs(pk.spanLine.x1 - pk.spanLine.x0) > 200,
+        pk.spanLine ? `${pk.spanLine.x0} 〜 ${pk.spanLine.x1}px` : '読めない');
+    /* **設定有効長と、組んだときの上下それぞれの合計長を出す**（§9.418 追補、
+       利用者の指示）。差も一緒に出して、合っているかを引き算させない。 */
+    const len3 = await page.evaluate(() =>
+      (document.querySelector('#bsStage3 .bs-len3') || {}).textContent || '');
+    rec('設定有効長と、組んだときの上下それぞれの合計長を出す',
+        /有効長/.test(len3) && /上軸/.test(len3) && /下軸/.test(len3)
+        && len3.indexOf(String(pk.pack.arbor)) >= 0, len3.slice(0, 120));
+    rec('組んだ合計長は有効長を超えない（上下とも）',
+        !!pk.pack && pk.pack.sumU <= pk.pack.arbor + 1e-6
+        && pk.pack.sumL <= pk.pack.arbor + 1e-6,
+        pk.pack ? `上 ${pk.pack.sumU} / 下 ${pk.pack.sumL} / 有効長 ${pk.pack.arbor}` : '読めない');
+    rec('端数は空けずに埋めてある（端数の合計は刻み数枚ぶん以内）',
+        !!pk.pack && pk.pack.fillerMm < 1,
+        pk.pack ? `端数 ${pk.pack.filler}か所・計 ${pk.pack.fillerMm}mm` : '読めない');
+    /* **断面図に機械まわりが残っていない**。軸受の行き先だけ`rig`でなく`g`に
+       なっており、OS側の1つが切り口の無い筒として「線」だけ残していた。 */
+    rec('有効長と青い印より外に物が残っていない（機械まわりは断面図に出ない）',
+        pk.stray === 0, `外に残った物 ${pk.stray}`);
+    /* ---- 切断の位置の破線（§9.418） ----
+       模式図は刃そのものを上下に描き分けているので線を足さない。断面図だけが
+       「材料のところに刃を描けない」ので引く。**1本**で上下を通す。 */
+    const kl = await page.evaluate(() => {
+     const svg = document.querySelector('#bsStage3 .bs-t3v');
+     const fig = document.querySelector('#bsStage');
+     if (!svg) return null;
+     const ln = [...svg.querySelectorAll('.bs-kl.is-cut')];
+     return { n: ln.length,
+              /* 上下がつながっている＝1本が材料の高さを越えて伸びている。 */
+              span: ln.length ? Math.abs(+ln[0].getAttribute('y2') - +ln[0].getAttribute('y1')) : 0,
+              dash: ln.length ? ln[0].getAttribute('stroke-dasharray') : '',
+              pair: ln.length ? svg.querySelectorAll('.bs-kl.is-up,.bs-kl.is-lo').length : -1,
+              /* 模式図には引かない。 */
+              fig2: fig ? fig.querySelectorAll('.bs-kl').length : -1 };
+    });
+    rec('断面図に切断の位置の破線が出る（刃の対と同じ数・1本ずつ）',
+        !!kl && kl.n > 0 && kl.n === pk.knives && kl.pair === 0,
+        kl ? `破線 ${kl.n} / 刃の対 ${pk.knives} / 2本組 ${kl.pair}` : '読めない');
+    rec('破線は上下がつながっている（材料の高さより長い）',
+        !!kl && kl.span > 20 && !!kl.dash, kl ? `${kl.span}px / ${kl.dash}` : '読めない');
+    /* **模式図には引かない**（§9.418、利用者の指摘「2Dは正しく刃が並んで
+       いるので破線を引く必要がない」）。同じことを2回言わない（§CLAUDE 8）。 */
+    rec('模式図には破線を引かない（刃そのものが上下に描き分けてある）',
+        !!kl && kl.fig2 === 0, kl ? `模式図の破線 ${kl.fig2}本` : '読めない');
+    /* 何の線かを図の上で言う（§CLAUDE 6）。 */
+    const magNow = await page.evaluate(() =>
+      (document.querySelector('#bsStage3 .bs-o3') || {}).textContent || '');
+    rec('破線が何を指しているかを図の上で言う',
+        /破線は切断の位置/.test(magNow), magNow.slice(0, 140));
+    /* ---- 部材の幅の字（入る／引き出す／出さない） ---- */
+    rec('部材の幅の字が出ている（中に書いたぶん＋引き出したぶん）',
+        !!pk.dims && pk.dims.inside > 0 && pk.dims.inside + pk.dims.lead > 0,
+        pk.dims ? `中 ${pk.dims.inside} / 引き出し ${pk.dims.lead} / 出さない ${pk.dims.off}`
+                : '読めない');
+    /* **出しきれないものは出さない**（引き出し先も埋まっているとき）。
+       全部出していたら、それは重なっているということ。 */
+    /* **スペーサーとゴムリングの字が混ざらない**（§9.418 追補、利用者の指摘
+       「ゴムリングとスペーサーの表示がごちゃ混ぜでわかりにくい」）。
+       スペーサーは軸の上・そのスペーサーの側へ寄せ、ゴムリングは輪の帯の中。 */
+    const mix = await page.evaluate(() => {
+     const svg = document.querySelector('#bsStage3 .bs-t3v');
+     if (!svg) return null;
+     const ts = [...svg.querySelectorAll('text')];
+     const sp = ts.filter(e => !e.classList.contains('is-ring'));
+     const rg = ts.filter(e => e.classList.contains('is-ring'));
+     const ys = a => a.map(e => Math.round(+e.getAttribute('y')));
+     /* 引き出し線は必ず対象へ届いている（宙に浮いた線を作らない）。 */
+     const ln = [...svg.querySelectorAll('.bs-lead')];
+     return { sp: sp.length, rg: rg.length, spY: ys(sp), rgY: ys(rg), lines: ln.length,
+              loose: ln.filter(l => Math.abs(+l.getAttribute('y2') - +l.getAttribute('y1')) < 3).length };
+    });
+    rec('スペーサーとゴムリングの字が同じ高さに混ざらない',
+        !!mix && mix.sp > 0 && mix.rg > 0
+        && mix.spY.every(y => mix.rgY.indexOf(y) < 0),
+        mix ? `スペーサー ${mix.sp} / ゴムリング ${mix.rg}` : '読めない');
+    rec('引き出し線は対象まで届いている（宙に浮かせない）',
+        !!mix && mix.loose === 0, mix ? `${mix.lines}本中 ${mix.loose}本が宙ぶらりん` : '読めない');
+    rec('出しきれない幅は出していない（重ねて出さない）',
+        !!pk.dims && pk.dims.inside + pk.dims.lead + pk.dims.off === pk.dims.all,
+        pk.dims ? `${pk.dims.inside}+${pk.dims.lead}+${pk.dims.off} = ${pk.dims.all}` : '読めない');
+    /* ---- 板の札は「千鳥の空き」に入る ---- */
+    const mlab = await page.evaluate(() => {
+     const els = [...document.querySelectorAll('#bsStage3 .bs-t3-mk')].filter(e => !e.hidden);
+     const cv = document.querySelector('#bsStage3 .bs-c3');
+     const h = cv ? cv.clientHeight : 0;
+     const ys = els.map(e => parseFloat(e.style.top) || 0);
+     return { n: els.length, h, ys,
+              /* 器の上下の縁からどれだけ内側か（端へ寄せていないこと）。 */
+              near: ys.filter(y => y > h * 0.25 && y < h * 0.75).length };
+    });
+    rec('板の札は器の端ではなく板のそばに居る（千鳥の空きの中）',
+        mlab.n > 0 && mlab.near === mlab.n, `${mlab.near}/${mlab.n} 枚が中ほど（器 ${mlab.h}px）`);
+    /* 上下に振り分かれていること（同じ段に並べない）。 */
+    rec('板の札は上下へ振り分かれている（千鳥に乗る）',
+        new Set(mlab.ys.map(y => (y < mlab.h / 2 ? 'u' : 'd'))).size === 2,
+        mlab.ys.map(y => (y < mlab.h / 2 ? 'u' : 'd')).join(''));
+    /* ---- 4.7) 断面図の区間の記号・表とのリンク・拡大図（§9.417） ----
+       利用者の指示「断面3Dのラベルの付け方は2Dを参考にもう少し修正してほしい。
+       強調も入れたい」「断面3Dの強調は2Dと同じ、表とのリンクで、クリックによる
+       拡大表示も同じように欲しい」。
+       **模式図と同じ対応表から出す**ので、記号の顔ぶれは模式図と一致するはず。
+       ここは「同じ数」ではなく**同じ顔ぶれ**で見る——数だけだと、別の区間へ
+       ずれて振られても通ってしまう。 */
+    const zb = await page.evaluate(() => {
+     const vis = sel => [...document.querySelectorAll(sel)].filter(e => !e.hidden);
+     const chips = vis('#bsStage3 .bs-t3b'), boxes = vis('#bsStage3 .bs-t3z');
+     const sorted = a => [...new Set(a)].sort();
+     return { n: chips.length, zones: window.WL.bladeSolid.view().zones,
+              cut: sorted(chips.map(e => e.dataset.badge)),
+              fig2: sorted([...document.querySelectorAll('#bsStage .bs-bhit')]
+                     .map(g => g.dataset.badge)),
+              /* 区間の板は**光るだけ**（押せるのは記号の札だけ）。塗りを的に
+                 すると、立体を掴んで回す道をふさぐ。 */
+              zonePe: boxes.length ? getComputedStyle(boxes[0]).pointerEvents : '',
+              chipCur: chips.length ? getComputedStyle(chips[0]).cursor : '',
+              hit: chips.length ? chips[0].classList.contains('bs-bhit') : false };
+    });
+    rec('断面図にも区間の記号が出る', zb.n > 0 && zb.zones === zb.n,
+        `札 ${zb.n}枚 / view().zones ${zb.zones}`);
+    rec('記号の顔ぶれは模式図と同じ（同じ対応表から出している）',
+        zb.cut.length > 0 && zb.cut.join(',') === zb.fig2.join(','),
+        `断面 ${zb.cut.join('')} / 模式 ${zb.fig2.join('')}`);
+    rec('区間の板は的にしない（掴んで回す道をふさがない）', zb.zonePe === 'none', zb.zonePe);
+    rec('記号の札は押せる（指のカーソル＋模式図と同じ印）',
+        zb.chipCur === 'pointer' && zb.hit === true, `${zb.chipCur} / bs-bhit ${zb.hit}`);
+    /* **本物のマウス移動で辿る**（§9.398）。`pointerover` は `el.click()` では
+       1度も通らない。 */
+    const chipBox = await page.locator('#bsStage3 .bs-t3b').first().boundingBox();
+    await page.mouse.move(chipBox.x + chipBox.width / 2, chipBox.y + chipBox.height / 2);
+    await W.paint(page);
+    const litA = await page.evaluate(() => {
+     const chip = document.querySelector('#bsStage3 .bs-t3b.is-pick');
+     const b = chip ? chip.dataset.badge : '';
+     const zone = document.querySelector('#bsStage3 .bs-t3z.is-pick');
+     return { b, zone: !!zone,
+              /* 淡い塗りが本当に入ったか（`transparent` のままなら効いていない）。 */
+              fill: zone ? getComputedStyle(zone).backgroundColor : '',
+              row: !!(b && document.querySelector(`.bs-g tr.is-pick[data-badge="${b}"]`)) };
+    });
+    rec('記号に重ねると、その区間が光る（模式図と同じ 16%の塗り）',
+        litA.zone && !/rgba?\([^)]*,\s*0\)/.test(litA.fill), `${litA.b} / ${litA.fill}`);
+    rec('記号に重ねると刃組表の行も光る（図と表が同じ印でつながる）',
+        litA.row === true, litA.b || '記号が光っていない');
+    /* 逆向きも同じ配線で効く——**表に重ねたら断面図の区間が光る**。 */
+    const rowBox = await page.evaluate(b => {
+     const tr = document.querySelector(`.bs-g tr[data-badge="${b}"]`);
+     if (!tr) return null;
+     const r = tr.getBoundingClientRect();
+     return { x: r.left + Math.min(40, r.width / 2), y: r.top + r.height / 2 };
+    }, litA.b);
+    if (rowBox) {
+     await page.mouse.move(rowBox.x, rowBox.y);
+     await W.paint(page);
+    }
+    const litB = await page.evaluate(b => ({
+     chip: !!document.querySelector(`#bsStage3 .bs-t3b.is-pick[data-badge="${b}"]`),
+     zone: !!document.querySelector('#bsStage3 .bs-t3z.is-pick') }), litA.b);
+    rec('表の行に重ねると断面図の区間と記号が光る（連動は双方向）',
+        !!rowBox && litB.chip && litB.zone, `行 ${litA.b}`);
+    /* **押したら模式図と同じ拡大窓**（§9.413 と同じ `openZoneZoom`）。 */
+    /* **先に閉じてから押す。** 前の節で開いた窓が残っていると、押しても
+       何も起きなくなったことに気づけない——欠陥注入（記号から `.bs-bhit` を
+       外す）で**そのまま素通りした**（記号がたまたま同じだったため）。 */
+    await page.keyboard.press('Escape');
+    await W.until(page, () => document.querySelector('#bsZoom').hidden, null,
+                  { ms: 4000, what: '拡大図を一度閉じる' });
+    await page.mouse.click(chipBox.x + chipBox.width / 2, chipBox.y + chipBox.height / 2);
+    await W.until(page, () => !document.querySelector('#bsZoom').hidden, null,
+                  { ms: 6000, what: '断面図から拡大図が開く' });
+    const zcut = await page.evaluate(() => {
+     const box = document.querySelector('#bsZoom'), fig = document.querySelector('#bsZoomFig');
+     const r = box.getBoundingClientRect();
+     return { shown: !box.hidden,
+              badge: (document.querySelector('#bsZoomBadge').textContent || '').trim(),
+              dims: +(fig.dataset.dims || 0), inside: +(fig.dataset.inside || 0),
+              lead: +(fig.dataset.lead || 0), w: Math.round(r.width) };
+    });
+    /* **「開いている」ことまで見る**。`#bsZoomBadge` の字は閉じても残るので、
+       記号だけを見ると**窓が出ていなくても通る**（欠陥注入でそうなった）。 */
+    rec('押した区間の拡大図が開く（記号が一致する）',
+        zcut.shown === true && zcut.badge === litA.b,
+        `出ている ${zcut.shown} / ${zcut.badge} / 押したのは ${litA.b}`);
+    rec('拡大図の中身は模式図から開いたときと同じ（寸法を1つも落とさない）',
+        zcut.shown === true && zcut.dims > 0 && zcut.dims === zcut.inside + zcut.lead,
+        `出す ${zcut.dims} = 中 ${zcut.inside} + 引き出し ${zcut.lead}`);
+    await page.keyboard.press('Escape');
+    await W.until(page, () => document.querySelector('#bsZoom').hidden, null,
+                  { ms: 4000, what: '拡大図を閉じる' });
+    /* ---- 4.8b) 消した部材の見せ方（§9.422、利用者の指示） ----
+       「表示」で切った部材を **そのまま消す／薄く残す／線だけ** から選べる。
+       **絵の見た目ではなく、組み立てている物の数で見る**——「薄く残す」は
+       「描かない」ではなく「薄い材質で描く」なので、材質の名前で数えれば
+       「透かして在る」と「物ごと無い」が数字で分かれる。 */
+    const hideAt = () => page.evaluate(() => {
+     const v = window.WL.bladeSolid.view();
+     return { hide: v.hide, mesh: (v.skins || {}).mesh | 0,
+              skinned: (v.skins || {}).skinned | 0, dims: (v.dims || {}).all | 0 };
+    });
+    const h0 = await hideAt();
+    rec('既定は「出さない」（今までの動き）で、薄く残っている物は1つも無い',
+        h0.hide === 'gone' && h0.skinned === 0 && h0.mesh > 0, JSON.stringify(h0));
+    await page.click('#bsStage3 [data-show="liner"]');
+    await W.until(page, m => window.WL.bladeSolid.view().skins.mesh < m, h0.mesh,
+                  { ms: 8000, what: 'スペーサーを消す' });
+    const hGone = await hideAt();
+    rec('「出さない」でスペーサーを切ると、物ごと無くなる',
+        hGone.mesh < h0.mesh && hGone.skinned === 0,
+        `物 ${h0.mesh} → ${hGone.mesh} / 薄い物 ${hGone.skinned}`);
+    await page.click('#bsStage3 [data-hide="ghost"]');
+    await W.until(page, () => window.WL.bladeSolid.view().skins.skinned > 0, null,
+                  { ms: 8000, what: '薄く残す' });
+    const hGhost = await hideAt();
+    rec('「薄く」にすると、切った部材が物として戻る（薄い材質で描かれる）',
+        hGhost.hide === 'ghost' && hGhost.skinned > 0 && hGhost.mesh > hGone.mesh,
+        `物 ${hGone.mesh} → ${hGhost.mesh} / 薄い物 ${hGhost.skinned}`);
+    /* **薄く残しても字は増やさない**。残すのは「そこに在る」ことを見せるためで、
+       寸法まで並べると、消して減らしたはずの読む物が戻ってしまう。 */
+    rec('薄く残した部材の寸法の字は出さない（読む物を増やさない）',
+        hGhost.dims === hGone.dims && hGhost.dims < h0.dims,
+        `出さない ${hGone.dims} / 薄く ${hGhost.dims} / 全部出す ${h0.dims}`);
+    await page.click('#bsStage3 [data-hide="wire"]');
+    await W.until(page, () => window.WL.bladeSolid.view().hide === 'wire', null,
+                  { ms: 8000, what: '線だけにする' });
+    const hWire = await hideAt();
+    rec('「線だけ」でも物はそこに在る（輪郭で位置が読める）',
+        hWire.hide === 'wire' && hWire.skinned > 0 && hWire.mesh === hGhost.mesh,
+        `物 ${hWire.mesh} / 薄い物 ${hWire.skinned}`);
+    /* 選べるのは**1つだけ**（セグメント）。2つ光っていたら、どちらが効いて
+       いるのかを押した人が推測することになる。 */
+    const hOn = await page.evaluate(() =>
+     [...document.querySelectorAll('#bsStage3 [data-hide]')]
+      .filter(b => b.classList.contains('is-on')).map(b => b.dataset.hide));
+    rec('見せ方は1つだけ選ばれている（押した札だけが濃い）',
+        hOn.length === 1 && hOn[0] === 'wire', hOn.join('/'));
+    /* **確かめたら戻す**（後の節が別の姿を見る）。 */
+    await page.click('#bsStage3 [data-show="liner"]');
+    await page.click('#bsStage3 [data-hide="gone"]');
+    await W.until(page, m => { const v = window.WL.bladeSolid.view();
+      return v.hide === 'gone' && v.skins.skinned === 0 && v.skins.mesh === m; }, h0.mesh,
+                  { ms: 8000, what: '元へ戻す' });
+    const hBack = await hideAt();
+    rec('元へ戻せる（物の数も字の数も元どおり）',
+        hBack.mesh === h0.mesh && hBack.skinned === 0 && hBack.dims === h0.dims,
+        JSON.stringify(hBack) + ' / ' + JSON.stringify(h0));
+
+    /* ---- 4.9) もう一方の端（幅の広い条が少し）でも同じことが言えるか ----
+       **片方だけで決めない**（§9.418）。手順3で打つ既定を「50mm×22条／片耳15mm」
+       ＝混んだ通常の形にした（§9.423）ので、ここで確かめるのは**反対の端**
+       ——幅の広い条が少しだけ並ぶ形（279.8mm×4条／元板巾1170＝片耳25.4mm。
+       画面の既定値そのもので、これも現場にある形）。札が入るかは混んだ側で、
+       札が離れすぎないか・区間が長くなっても詰めが崩れないかは広い側で出る。
+       **状態を差し替えて描き直し、確かめたら必ず戻す**（後の節が別の材料を見る）。 */
+    const wasLots = await page.evaluate(() => {
+     const st = window.WL.bladeGuide.state;
+     const keep = { lots: st.lots, order: st.order, W: st.W, trimMode: st.trimMode };
+     st.lots = [{ name: 'LOT1', w: 279.8, n: 4 }];
+     st.order = [0, 0, 0, 0];
+     st.W = 1170; st.trimMode = 'even';
+     const el = document.querySelector('#bsKnife');
+     el.value = st.knife;
+     el.dispatchEvent(new Event('input', { bubbles: true }));
+     return keep;
+    });
+    /* 刃の数は「条の数−1」ではない——耳屑も1つの区間なので、6区間で5本になる。
+       **数を決め打ちせず「減ったこと」で待ち**、本数どうしの一致は下で突き合わせる
+       （決め打ちして外すと、待ちが黙って素通りする）。 */
+    await W.until(page, () => (window.WL.bladeSolid.view() || {}).knives < 15,
+                  null, { ms: 8000, what: '4条で描き直す' });
+    const many = await page.evaluate(() => {
+     const v = window.WL.bladeSolid.view();
+     const vis = sel => [...document.querySelectorAll(sel)].filter(e => !e.hidden);
+     const mk = vis('#bsStage3 .bs-t3-mk').map(e => ({
+      x: parseFloat(e.style.left) || 0, y: parseFloat(e.style.top) || 0,
+      w: e.offsetWidth, h: e.offsetHeight }));
+     /* 札どうしが重なっていないか（狭い条が並ぶと、ここで初めて出る）。 */
+     let hit = 0;
+     for (let i = 0; i < mk.length; i++) {
+      for (let j = i + 1; j < mk.length; j++) {
+       if (Math.abs(mk[i].x - mk[j].x) < (mk[i].w + mk[j].w) / 2
+        && Math.abs(mk[i].y - mk[j].y) < (mk[i].h + mk[j].h) / 2) hit++;
+      }
+     }
+     return { pack: v.pack, stray: v.stray, cutLines: v.cutLines, dims: v.dims,
+              knives: v.knives, marks: mk.length, hit,
+              badges: vis('#bsStage3 .bs-t3b').length };
+    });
+    rec('幅の広い4条でも割り付けが区間長を超えず、部材を落とさない',
+        !!many.pack && many.pack.over === 0 && many.pack.drop === 0,
+        many.pack ? `超過 ${many.pack.over} / 落とし ${many.pack.drop}`
+                  : '読めない');
+    rec('幅の広い4条でも端から端が有効長を超えていない',
+        !!many.pack && many.pack.x0 >= -0.05 && many.pack.x1 <= many.pack.arbor + 0.05,
+        many.pack ? `${many.pack.x0} 〜 ${many.pack.x1} / 有効長 ${many.pack.arbor}` : '読めない');
+    rec('幅の広い4条でも端数は埋めてある', !!many.pack && many.pack.fillerMm < 1,
+        many.pack ? `${many.pack.filler}か所・計 ${many.pack.fillerMm}mm` : '読めない');
+    rec('幅の広い4条でも機械まわりは断面図に出ない', many.stray === 0, `外に残った物 ${many.stray}`);
+    rec('幅の広い4条で描き直せている（刃が減っている）', many.knives > 0 && many.knives < 15,
+        `刃 ${many.knives}本`);
+    rec('幅の広い4条でも切断の破線は刃の対と同じ数',
+        many.cutLines === many.knives, `破線 ${many.cutLines} / 刃 ${many.knives}`);
+    /* 札の重なりは**混んだ側**（既定の50mm×22条）で出る。ここは広い側なので、
+       札が落ちていないこと・重なっていないことの両方を見る。 */
+    rec('幅の広い4条でも板の札どうしが重ならない', many.marks > 0 && many.hit === 0,
+        `札 ${many.marks}枚 / 重なり ${many.hit}組`);
+    rec('幅の広い4条でも区間の記号は出る', many.badges > 0, `${many.badges}枚`);
+    /* **必ず戻す**（§9.393 注ぎ込んだ見本はその場で片付ける）。 */
+    await page.evaluate(keep => {
+     const st = window.WL.bladeGuide.state;
+     Object.assign(st, keep);
+     const el = document.querySelector('#bsKnife');
+     el.value = st.knife;
+     el.dispatchEvent(new Event('input', { bubbles: true }));
+    }, wasLots);
+    await W.until(page, () => (window.WL.bladeSolid.view() || {}).knives > 15,
+                  null, { ms: 8000, what: '元の構成（50mm×22条）へ戻す' });
+
     /* **板が刃へめり込まない**（§9.413 追補、利用者の指摘「板がめり込んでいる」）。
        板は千鳥で上下へ寄るので**見かけの厚みの3倍**の高さを占める。刃先のあいだの
        隙間がそれより狭いと、太らせた板が刃を突き抜ける。判定は実測ではなく
@@ -825,6 +1221,46 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await page.click('#bsFlip');
     await W.until(page, w => (window.WL.bladeSolid.view() || {}).flip === w,
                   was, { ms: 8000, what: '向きを戻す' });
+    /* **断面図は白へ飛ばない**（§9.415、利用者の指摘「暗すぎるか明るすぎるか
+       反射の状況が悪すぎて見にくい」）。立体図の配分（主光1.05＋補助＋手前光）の
+       まま切ると、**カメラをまっすぐ向いた切り口**へ3つの光が重なる。実測では
+       **画面の36.7%が真っ白（輝度246以上）**になり、軸もスペーサーも板も地
+       （`--bs-3d-bg`）と見分けが付かなかった。
+       **描いた絵そのものを数える**——光の強さだけ見ても、材質の艶（`metalness`）で
+       飛ぶぶんを見落とす（艶も断面図では落としてある）。WebGLの描画バッファは
+       次の合成で消えるので、`render()`の**直後に同じタスクの中で**2Dへ写す。 */
+    const tone = await page.evaluate(() => {
+     const cv = document.querySelector('#bsStage3 canvas');
+     window.WL.bladeSolid.render();
+     const w = Math.min(420, cv.clientWidth), h = Math.min(280, cv.clientHeight);
+     const c2 = document.createElement('canvas'); c2.width = w; c2.height = h;
+     const cx = c2.getContext('2d');
+     cx.drawImage(cv, 0, 0, w, h);
+     const d = cx.getImageData(0, 0, w, h).data;
+     const L = i => 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+     const bg = L(0);                       /* 隅は地の色 */
+     let parts = 0, sum = 0, blown = 0;
+     for (let i = 0; i < d.length; i += 4) {
+      const v = L(i);
+      if (Math.abs(v - bg) <= 6) continue;  /* 地は数えない */
+      parts++; sum += v;
+      if (v >= 246) blown++;
+     }
+     return { bg: +bg.toFixed(1), parts, mean: parts ? +(sum / parts).toFixed(1) : null,
+              blownPct: parts ? +(blown / parts * 100).toFixed(2) : null,
+              lit: window.WL.bladeSolid.view().lit,
+              gloss: window.WL.bladeSolid.view().gloss };
+    });
+    rec('断面図に部材が描かれている（絵を数える土台が効いている）',
+        tone.parts > 500, `${tone.parts}px`);
+    rec('断面図が白へ飛んでいない（部材の白飛びが1%未満）',
+        tone.blownPct !== null && tone.blownPct < 1, `${tone.blownPct}%`);
+    /* 地との差は**35以上**（実測: 直した図で53.9）。立体図の配分のまま切ると
+       26まで落ちる——「白くは飛んでいないが地に溶けている」を通さないための線。 */
+    rec('断面図の部材が地と見分けられる（平均でΔL≧35）',
+        tone.mean !== null && Math.abs(tone.mean - tone.bg) >= 35,
+        `部材 ${tone.mean} / 地 ${tone.bg} / 差 ${tone.mean === null ? '-'
+          : Math.abs(tone.mean - tone.bg).toFixed(1)}`);
     /* 立体図へ戻すと、切る面は外れる（同じ模型がそのまま立体図に戻る）。 */
     await page.click('#bsFigTabs [data-fig="3d"]');
     await W.until(page, () => (window.WL.bladeSolid.view() || {}).cut === false,
@@ -836,6 +1272,307 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await page.click('#bsFigTabs [data-fig="2d"]');
     await W.until(page, () => !document.querySelector('.bs-stage').hidden,
                   null, { ms: 8000, what: '模式図へ戻る' });
+
+    /* **光の配分は図ごとに別**（§9.415）。立体図は機械まわりが主役なので
+       斜め上からの主光で形を立ち上げ、断面図は地明かりで平らに照らす。
+       同じ配分を使い回すと、上の「白飛び」が戻る。 */
+    const lit3 = await page.evaluate(() => window.WL.bladeSolid.view().lit);
+    rec('光の配分は立体図と断面図で別（同じ配分を使い回さない）',
+        !!lit3 && !!tone.lit && lit3.key > tone.lit.key && lit3.hemi < tone.lit.hemi,
+        `立体 ${JSON.stringify(lit3)} / 断面 ${JSON.stringify(tone.lit)}`);
+    rec('手前からの光は断面図のときだけ点ける',
+        !!lit3 && lit3.cam === 0 && tone.lit.cam > 0,
+        `立体 ${lit3 && lit3.cam} / 断面 ${tone.lit && tone.lit.cam}`);
+    /* **断面図は艶を落とす**（§9.415、利用者の指摘「反射の状況が悪すぎて
+       見にくい」）。立体図の部材は金属として磨いてある（`metalness` .6〜.8）ので、
+       面がカメラをまっすぐ向く断面図では**材質の色ではなく光の色（白）**が出る
+       ——鋼も板も耳も同じ白になって見分けが付かなかった。 */
+    const gloss3 = await page.evaluate(() => window.WL.bladeSolid.view().gloss);
+    rec('断面図の部材は艶を落としてある（映り込みで材質の色を消さない）',
+        tone.gloss !== null && tone.gloss <= 0.1, `断面 metalness ${tone.gloss}`);
+    rec('立体図の部材は磨いたまま（断面図だけの手当てになっている）',
+        gloss3 > 0.5, `立体 metalness ${gloss3}`);
+
+    /* ---- 5b') 刃 → 軸 → スペーサーの3段（§9.416、利用者の指摘「軸の色と
+       スペーサーがほぼ同じ色でわかりにくい」） ----
+       色の**近さ**は目で見ても言えないので、`--bs-fig-*` の実際の値から
+       相対輝度を出して**隣り合う段の比**で見る。以前は軸 `--line`(.553)／
+       スペーサー `--rs-slate-border`(.509) で **1.1:1** しかなく、断面図では
+       まったく見分けられなかった。**2:1 を下回らせない**（実測 2.5:1 / 2.6:1）。 */
+    const lad = await page.evaluate(() => {
+     const sh = document.querySelector('.bs-shell');
+     if (!sh) return null;
+     const cs = getComputedStyle(sh);
+     /* 相対輝度（WCAG）。`getPropertyValue` は `var()` を解いた値を返す。 */
+     const lum = (name) => {
+      const v = cs.getPropertyValue(name).trim();
+      const m = /^#?([0-9a-f]{6})$/i.exec(v.replace(/^#/, '#'));
+      if (!m) return null;
+      const ch = [0, 2, 4].map(i => {
+       const c = parseInt(m[1].slice(i, i + 2), 16) / 255;
+       return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      });
+      return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+     };
+     const r = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+     const knife = lum('--bs-fig-knife'), shaft = lum('--bs-fig-shaft'),
+           spacer = lum('--bs-fig-spacer');
+     if (knife === null || shaft === null || spacer === null) return null;
+     return { knife: +knife.toFixed(3), shaft: +shaft.toFixed(3),
+              spacer: +spacer.toFixed(3),
+              ks: +r(knife, shaft).toFixed(2), ss: +r(shaft, spacer).toFixed(2) };
+    });
+    rec('刃・軸・スペーサーは暗い順に3段（軸はスペーサーより暗い）',
+        !!lad && lad.knife < lad.shaft && lad.shaft < lad.spacer,
+        lad ? `刃 ${lad.knife} / 軸 ${lad.shaft} / スペーサー ${lad.spacer}` : '読めない');
+    rec('隣り合う段の差は2:1以上（軸とスペーサーが同じ色に見えない）',
+        !!lad && lad.ks >= 2 && lad.ss >= 2,
+        lad ? `刃↔軸 ${lad.ks}:1 / 軸↔スペーサー ${lad.ss}:1` : '読めない');
+
+    /* ---- 5c) 模式図の「物」は直角（§9.415、利用者の指示「2Dのエッジ部分の
+       丸角は無しにしてほしい」） ----
+       この図は実寸を目で比べるためのもので、角丸は縁を実際より短く見せる
+       （幅1.2pxの部材に rx=2 が付いていた）。**角丸を残すのは文字の器だけ**
+       ——記号バッジ（`bs-bdgr`）と設定の帯（`bs-chip-band`）。 */
+    const TEXT_HOLDERS = ['bs-bdgr', 'bs-chip-band'];
+    const fig2 = await page.evaluate(holders => {
+     const stage = document.querySelector('#bsStage');
+     const round = [...stage.querySelectorAll('rect')]
+      .filter(r => { const v = r.getAttribute('rx'); return v && parseFloat(v) > 0; })
+      .map(r => (r.getAttribute('class') || '(無印)').trim());
+     const texts = [...stage.querySelectorAll('text')].map(t => ({
+       cls: (t.getAttribute('class') || '').trim(),
+       fs: parseFloat(getComputedStyle(t).fontSize) }));
+     const mk = texts.filter(t => t.cls === 'bs-mk').map(t => t.fs);
+     return { kinds: [...new Set(round)].sort(),
+              stray: round.filter(c => !holders.includes(c)).length,
+              nRect: stage.querySelectorAll('rect').length,
+              maxFs: texts.length ? Math.max(...texts.map(t => t.fs)) : 0,
+              mkFs: mk.length ? Math.max(...mk) : 0, nText: texts.length };
+    }, TEXT_HOLDERS);
+    rec('模式図に部材が描かれている（角の判定が空振りしていない）',
+        fig2.nRect > 20 && fig2.nText > 5, `rect ${fig2.nRect} / text ${fig2.nText}`);
+    rec('模式図で角丸を持つのは文字の器だけ（軸・青い印・部材・板／条／耳・刃は直角）',
+        fig2.stray === 0, fig2.kinds.join(' / ') || '角丸なし');
+    /* **読み取る値より大きい札を作らない**（§9.415、利用者の指示「やや文字が
+       大きすぎてバランスが悪い」）。DS/OS と行見出し（上軸・下軸・材料）は
+       「どこを見ているか」の目印で、条番号・条幅より大きいのは順序が逆
+       （実測 20.8px / 18.4px 対 15.9px）。 */
+    rec('図のいちばん大きい字が、条の番号の段を超えない',
+        fig2.mkFs > 0 && fig2.maxFs <= fig2.mkFs * 1.05,
+        `最大 ${fig2.maxFs}px / 条番号 ${fig2.mkFs}px`);
+
+    /* ---- 5d) 記録が無い台車でも差分が出る（基準は標準構成・§9.415） ----
+       以前は記録が1件も無いと台車の列が全部「—」になり、**部材を1つ残らず
+       棚から持ち出す**という読みになっていた（実測: そのまま使える0／持ち出す14）
+       ——台車が空だとは分かっていないので、これは事実ではない。
+       既定の刃組設定で組んだ標準構成を基準に置き、**出どころを字で書き分ける**。 */
+    await page.click('#bsRailTabs [data-r="diff"]');
+    await page.waitForSelector('#bsDiff tbody tr', { timeout: 8000 });
+    const dif = await page.evaluate(() => ({
+     /* **どの段と比べているかは器が名乗る**（§9.425）。頭の帯には「稼働中」の
+        断りも入るので、字で見分けると取り違える（実際に取り違えた）。 */
+     kind: (document.querySelector('#bsDiffHead [data-base]') || {}).dataset?.base || '',
+     note: (document.querySelector('#bsDiffHead [data-base]') || {}).textContent || '',
+     head: (document.querySelector('#bsDiffHead') || {}).textContent || '',
+     cols: [...document.querySelectorAll('#bsDiff thead th')].map(t => t.textContent.trim()),
+     secs: [...document.querySelectorAll('#bsDiff tbody tr.bs-sec')].map(t => t.textContent.trim()),
+     rows: document.querySelectorAll('#bsDiff tbody tr').length,
+     base: [...document.querySelectorAll('#bsDiff tbody tr:not(.bs-sec)')]
+      .map(r => (r.children[1] || {}).textContent)
+    }));
+    rec('記録が無くても差分の行が出る', dif.rows > 0 && dif.secs.length > 0,
+        `${dif.rows}行 / ${dif.secs.join(',')}`);
+    rec('比べる相手が標準構成だと字で言う（組んだ事実ではないと書く）',
+        /標準構成と比べています/.test(dif.head) && /計算値/.test(dif.head),
+        dif.head.replace(/\s+/g, ' ').slice(0, 80));
+    rec('列の見出しも「標準」にする（記録と同じ字で並べない）',
+        dif.cols[1] === '標準', dif.cols.join('/'));
+    rec('標準の列が「—」で埋まっていない（台車が空という嘘をつかない）',
+        dif.base.some(t => t && t !== '—'), dif.base.join(','));
+    rec('比べる相手は「標準構成」の段だと器が名乗る', dif.kind === 'std', dif.kind);
+    rec('いまの材料で計算していることを字で断る（差分が小さく出る理由）',
+        /これから流す材料/.test(dif.note), dif.note.replace(/\s+/g, ' ').slice(0, 120));
+
+    /* ---- 5d') 記録が無い台車は「前回流した材料」と比べる（§9.425） ----
+       利用者の指示「記録が無ければ前回流した材料から標準設定で計算」。
+       **いまの材料で計算すると、これから流す物と比べることになり差分がほとんど
+       出ない**（「もう組んである」と読める）。履歴に1件でも材料を組み直せる
+       記録があれば、そちらを基準に置く。
+       **注ぎ込んだ見本はその場で消す**（§9.393）。 */
+    const recAt = '2026-02-03 09:00';
+    const prevHist = await (await post('/api/bladeset/history',
+      { equipment: EQ, carriage: 'B台車', at: recAt, note: TAG + '前回材料',
+        detail: { spacer: {}, ring: {}, finger: {}, blade: {},
+                  /* **いまの材料（50mm×22条／元板巾1130）とは別の形**にする
+                     ——同じにすると、どちらで計算しても同じ答えになり、
+                     網が「前回の材料を見た」ことを言えない。 */
+                  cond: { strips: 10, widths: Array(10).fill(100), W: 1050,
+                          thickness: 1.3 } } })).json();
+    try {
+     await page.evaluate(() => WL.bladeGuide.open({}));
+     await W.until(page, () => document.querySelectorAll('#bsCarPick [data-car]').length === 2,
+                   null, { ms: 10000, what: '刃組ガイダンスを開き直す' });
+     await page.click('#bsRailTabs [data-r="diff"]');
+     await page.waitForSelector('#bsDiff tbody tr', { timeout: 8000 });
+     const pv = await page.evaluate(() => ({
+      picked: WL.bladeGuide.state.carriage,
+      kind: (document.querySelector('#bsDiffHead [data-base]') || {}).dataset?.base || '',
+      note: (document.querySelector('#bsDiffHead [data-base]') || {}).textContent || '',
+      cols: [...document.querySelectorAll('#bsDiff thead th')].map(t => t.textContent.trim()),
+      base: [...document.querySelectorAll('#bsDiff tbody tr:not(.bs-sec)')]
+       .map(r => (r.children[1] || {}).textContent)
+     }));
+     rec('記録が無い台車を選んでいる（A台車）', pv.picked === 'A台車', pv.picked);
+     rec('記録が無い台車は「前回流した材料」の段と比べる（器が名乗る）',
+         pv.kind === 'prev' && /前回流した材料/.test(pv.note),
+         pv.kind + ' / ' + pv.note.replace(/\s+/g, ' ').slice(0, 90));
+     rec('どの記録から起こした材料かを字で言う（出どころを出す）',
+         pv.note.includes(recAt) && pv.note.includes('B台車'),
+         pv.note.replace(/\s+/g, ' ').slice(0, 130));
+     rec('列の見出しも「前回」にする（記録と同じ字で並べない）',
+         pv.cols[1] === '前回', pv.cols.join('/'));
+     rec('組んだ事実ではないと断る', /計算値/.test(pv.note) && /事実ではありません/.test(pv.note),
+         pv.note.replace(/\s+/g, ' ').slice(0, 130));
+     /* **いまの材料で計算したときとは違う答え**になる（前回の材料を見ている証拠）。
+        比べるのは**この節の中の2枚**——記録を消して開き直すと「いまの材料」の段へ
+        落ちるので、そのときの基準の列と突き合わせる。**離れた節の数字と比べない**
+        （あいだで板厚などが変わり、材料以外の理由で差が出る＝素通りする網になる。
+        実際に欠陥注入で素通りした）。 */
+     if (prevHist && prevHist.id) {
+      await post('/api/bladeset/history/delete', { id: prevHist.id });
+      prevHist.id = null;
+      await page.evaluate(() => WL.bladeGuide.open({}));
+      await W.until(page, () => (document.querySelector('#bsDiffHead [data-base]') || {})
+                                 .dataset?.base === 'std',
+                    null, { ms: 10000, what: '記録を消して「いまの材料」の段へ落ちる' });
+      await page.click('#bsRailTabs [data-r="diff"]');
+      await page.waitForSelector('#bsDiff tbody tr', { timeout: 8000 });
+      const now2 = await page.evaluate(() => ({
+       kind: (document.querySelector('#bsDiffHead [data-base]') || {}).dataset?.base || '',
+       base: [...document.querySelectorAll('#bsDiff tbody tr:not(.bs-sec)')]
+        .map(r => (r.children[1] || {}).textContent)
+      }));
+      rec('記録を消すと「いまの材料」の段へ落ちる', now2.kind === 'std', now2.kind);
+      rec('前回の材料で計算している（いまの材料で組んだ構成とは別の答え）',
+          pv.base.join(',') !== now2.base.join(','),
+          `前回 ${pv.base.slice(0, 8).join(',')} / いま ${now2.base.slice(0, 8).join(',')}`);
+     }
+     /* **元板巾が無い記録は使わない**（§9.231 0で埋めない）——耳屑の幅が出ず、
+        軸の上の割付が決まらない。古い記録しか無ければ「いまの材料」へ落ちる。 */
+     const oldCond = await page.evaluate(() =>
+      WL.bladeSet.seedFromCond({ strips: 2, widths: [100, 100], thickness: 1.3 }));
+     rec('元板巾の無い記録からは材料を組み直さない', oldCond === null, JSON.stringify(oldCond));
+     const okCond = await page.evaluate(() =>
+      WL.bladeSet.seedFromCond({ strips: 3, widths: [100, 100, 80], W: 1050, thickness: 1.3 }));
+     rec('同じ幅はまとめて1つの束にする（並び順は員数に効かない）',
+         !!okCond && okCond.originalWidth === 1050 && okCond.lots.length === 2
+         && okCond.lots[0].n === 2 && okCond.lots[1].n === 1,
+         JSON.stringify(okCond));
+    } finally {
+     if (prevHist && prevHist.id) {
+      await post('/api/bladeset/history/delete', { id: prevHist.id });
+     }
+    }
+    await page.evaluate(() => WL.bladeGuide.open({}));
+    await W.until(page, () => document.querySelectorAll('#bsDiff thead th').length > 0
+                           && document.querySelectorAll('#bsCarPick [data-car]').length === 2,
+                  null, { ms: 10000, what: '見本を消して開き直す' });
+
+    /* ---- 5e) 台車の札は台車マスタが作る（§9.424、利用者の指示） ----
+       「台車マスタは、A台車、B台車を登録しておいてください。設備ごとですが
+        スリッターがない設備もあるので。」「刃組ガイダンス使う設備＝台車マスタ必要」
+       以前は画面のHTMLに `A`／`B` を直に書いていたので、**3台あるラインを
+       登録できず、呼び名も変えられなかった。** 顔ぶれはマスタが決める。 */
+    const car0 = await page.evaluate(() => ({
+     chips: [...document.querySelectorAll('#bsCarPick [data-car]')].map(b => b.dataset.car),
+     on: [...document.querySelectorAll('#bsCarPick [data-car].is-on')].map(b => b.dataset.car),
+     picked: WL.bladeGuide.state.carriage,
+     save: (document.querySelector('#bsSaveCar') || {}).textContent || '',
+     disabled: !!(document.querySelector('#bsSaveCar') || {}).disabled,
+     /* **HTMLに直書きが残っていないこと**——器の外に `data-car` があれば、
+        それはマスタを通っていない札。 */
+     stray: [...document.querySelectorAll('[data-car]')]
+       .filter(b => !b.closest('#bsCarPick')).length
+    }));
+    rec('台車の札は初期セットで入った顔ぶれ（A台車・B台車）',
+        car0.chips.join('/') === 'A台車/B台車', car0.chips.join('/'));
+    rec('器の外に台車の札を直書きしていない', car0.stray === 0, `${car0.stray}枚`);
+    rec('はじめから1つ選ばれている（選ばせ直さない）',
+        car0.on.length === 1 && car0.on[0] === car0.picked && car0.picked === 'A台車',
+        `${car0.on.join('/')} / state=${car0.picked}`);
+    rec('完了のボタンは選んでいる台車の名前を言う',
+        car0.disabled === false && car0.save.includes('A台車'), car0.save);
+    /* **台車を足せば札も増える**（3台あるラインを登録できる）。
+       **確かめたら必ず消す**（§9.393。残すと後の節が別の顔ぶれを見る）。 */
+    /* 汎用CRUDの鍵は**その表の列そのもの**（`values`で包まない・§9.249 ②）。 */
+    const addCar = await (await post('/api/master-table/台車マスタ',
+      { 設備名: EQ, 台車名: TAG + 'C台車', 表示順: 30, 有効: -1 })).json();
+    const carId = addCar && addCar.id;
+    try {
+     await page.evaluate(() => WL.bladeGuide.open({}));
+     await W.until(page, () => document.querySelectorAll('#bsCarPick [data-car]').length > 2,
+                   null, { ms: 10000, what: '3台目の札が出る' });
+     const car3 = await page.evaluate(() =>
+      [...document.querySelectorAll('#bsCarPick [data-car]')].map(b => b.dataset.car));
+     rec('台車マスタへ足すと札も増える（2台の決め打ちではない）',
+         car3.length === 3 && car3[2].includes('C台車'), car3.join('/'));
+    } finally {
+     if (carId) {
+      await post('/api/master-table/台車マスタ/delete', { id: carId });
+     }
+    }
+    await page.evaluate(() => WL.bladeGuide.open({}));
+    await W.until(page, () => document.querySelectorAll('#bsCarPick [data-car]').length === 2,
+                  null, { ms: 10000, what: '台車を2台へ戻す' });
+
+    /* ---- 5f) 台車が1つのラインでは、直前の刃組が組み替える相手（§9.424） ----
+       利用者の指示「ごくまれにスリッターがある設備でも、台車なしというパターンが
+       ありました」。2台を交互に使うラインでは直前の刃組はラインで稼働中なので
+       飛ばすが、**台車が1つなら、いま機械に載っているのがその直前の刃組**
+       ——飛ばすと1つ古い記録と比べ、「稼働中だから外せない」と嘘の断りも出る。
+       **確かめたら必ず元へ戻す**（台車も履歴も後の節が見る）。 */
+    const rowsOf = async () => (await getj('/api/master-table/台車マスタ')).items || [];
+    const bRow = (await rowsOf()).find(r => String(r['台車名'] || '') === 'B台車'
+                                         && String(r['設備名'] || '') === EQ);
+    let soloHist = null;
+    try {
+     if (bRow) await post('/api/master-table/台車マスタ/delete', { id: bRow.id });
+     const hr = await (await post('/api/bladeset/history',
+       { equipment: EQ, carriage: 'A台車', at: '2026-01-05 08:00', note: TAG + '単台',
+         detail: { spacer: { 10: 4 }, ring: {}, finger: {}, blade: {} } })).json();
+     soloHist = hr && hr.id;
+     await page.evaluate(() => WL.bladeGuide.open({}));
+     await W.until(page, () => document.querySelectorAll('#bsCarPick [data-car]').length === 1,
+                   null, { ms: 10000, what: '台車が1つになる' });
+     await page.click('#bsRailTabs [data-r="diff"]');
+     await page.waitForSelector('#bsDiff tbody tr', { timeout: 8000 });
+     const solo = await page.evaluate(() => ({
+      kind: (document.querySelector('#bsDiffHead [data-base]') || {}).dataset?.base || '',
+      note: (document.querySelector('#bsDiffHead [data-base]') || {}).textContent || '',
+      head: (document.querySelector('#bsDiffHead') || {}).textContent || '',
+      cols: [...document.querySelectorAll('#bsDiff thead th')].map(t => t.textContent.trim())
+     }));
+     rec('台車が1つなら直前の刃組と比べる（1つ古い記録へずらさない）',
+         solo.kind === 'rec'
+         && /組み替える A台車 の現在の構成（1回前）/.test(solo.note.replace(/\s+/g, ' ')),
+         solo.kind + ' / ' + solo.note.replace(/\s+/g, ' ').slice(0, 90));
+     rec('台車が1つなら「稼働中だから外せない」と断らない',
+         !/ラインで稼働中/.test(solo.head), solo.head.replace(/\s+/g, ' ').slice(0, 60));
+     rec('比べる相手が記録なら列の見出しは「台車」', solo.cols[1] === '台車',
+         solo.cols.join('/'));
+    } finally {
+     if (soloHist) await post('/api/bladeset/history/delete', { id: soloHist });
+     if (bRow) {
+      await post('/api/master-table/台車マスタ',
+        { 設備名: EQ, 台車名: 'B台車', 表示順: 20, 有効: -1 });
+     }
+    }
+    await page.evaluate(() => WL.bladeGuide.open({}));
+    await W.until(page, () => document.querySelectorAll('#bsCarPick [data-car]').length === 2,
+                  null, { ms: 10000, what: '台車を2台へ戻す（後始末）' });
+    await page.click('#bsRailTabs [data-r="diff"]');
+    await page.waitForSelector('#bsDiff tbody tr', { timeout: 8000 });
 
     /* ---- 6) 設備停止 → 行き先のチップ ---- */
     const mk = await (await post('/api/schedule/stop-reason-master',

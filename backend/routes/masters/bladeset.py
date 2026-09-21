@@ -66,9 +66,9 @@ def bladeset_seed():
  n = sum(made.values())
  return jsonify(ok=True, made=made,
                 message=('初期セットを登録しました（刃 %d・スペーサー %d・'
-                         'ゴムリング %d・フィンガー %d）。'
+                         'ゴムリング %d・フィンガー %d・台車 %d）。'
                          % (made['blade'], made['spacer'], made['ring'],
-                            made['finger'])) if n
+                            made['finger'], made['carriage'])) if n
                 else '既に登録があるため、何も足しませんでした。')
 
 

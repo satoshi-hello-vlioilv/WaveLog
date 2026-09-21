@@ -2229,6 +2229,57 @@ function applyUiSize(key){
 applyUiSize(currentUiSize());
 window.applyUiSize=applyUiSize;
 
+/* ---------- 読み込み中の見せ方（ローダー）§9.421 ----------
+   利用者の指示「https://connoratherton.com/loaders のloaderを使えるように。
+   設定で切り替えて選べるようにしてほしい」。
+
+   **入口は「表示」バッジの3つめの節**。文字の大きさ・時間の書き方と同じ
+   「この端末の見え方」なので、入口を増やさない（§9.207・§9.341）。
+   選んだ値は`html[data-loader]`へ流すだけ——見た目は`89-loaders.css`が
+   持ち、**DOMは作り直さない**（どの種類でも並びは同じ`<i>`5つ）。
+
+   **並びを作るのはここ1箇所**（`WL.loader.html()`）。呼ぶ側が自分で
+   `<span class="mini-spinner">`を書いていると、種類を足すたびに全部の
+   呼び出しを探すことになる。 */
+const LOADER_KEY='MeasurementLoaderV1';
+const LOADERS=[
+ {key:'ring',label:'輪と点',hint:'これまでの見せ方'},
+ {key:'ball-pulse',label:'球が3つ（順に）',hint:'loaders.css ball-pulse'},
+ {key:'ball-beat',label:'球が3つ（交互）',hint:'loaders.css ball-beat'},
+ {key:'line-scale',label:'棒が5本（順に）',hint:'loaders.css line-scale'},
+ {key:'line-scale-pulse-out',label:'棒が5本（中から外へ）',hint:'loaders.css line-scale-pulse-out'},
+ {key:'ball-clip-rotate',label:'切れた輪',hint:'loaders.css ball-clip-rotate'},
+];
+function currentLoader(){
+ try{
+  const v=localStorage.getItem(LOADER_KEY);
+  if(LOADERS.some(l=>l.key===v))return v;
+ }catch(e){WL.quiet.note('端末の覚えが読めない（既定で続ける）',e)}
+ return 'ring';
+}
+function applyLoader(key){
+ const k=LOADERS.some(l=>l.key===key)?key:'ring';
+ document.documentElement.dataset.loader=k;
+ try{localStorage.setItem(LOADER_KEY,k)}catch(e){WL.quiet.note('保存できなくても表示自体は継続する',e)}
+ document.querySelectorAll('#uiSizeMenu [data-loader-option]').forEach(b=>{
+  b.classList.toggle('is-current',b.dataset.loaderOption===k);
+ });
+}
+/* **中の`<i>`は常に5つ**。使わないぶんはCSSが伏せるので、種類を変えても
+   並びはそのまま（作り直さないから、動いている最中に切り替えても飛ばない）。 */
+WL.loader={
+ STYLES:LOADERS,
+ style:currentLoader,
+ setStyle:applyLoader,
+ /* `size`＝器の大きさ（px）。渡さなければ器のCSSが決める。 */
+ html(size,cls){
+  const st=size?` style="--wl-ld:${(+size||16)}px"`:'';
+  return `<span class="wl-ld${cls?' '+cls:''}"${st} aria-hidden="true">`
+   +'<i></i><i></i><i></i><i></i><i></i></span>';
+ },
+};
+applyLoader(currentLoader());
+
 /* 「表示」のポップオーバー。モードバッジ(.access-mode-menu)と同じ
    「小さなボタン→選択肢を並べたポップオーバー」の言語で揃える
    (アプリ内で同じ役割のUIは同じ見た目・同じ操作にする)。
@@ -2278,6 +2329,21 @@ window.applyUiSize=applyUiSize;
    if(d.key===curDur)btn.classList.add('is-current');
    btn.innerHTML=`<span>${d.label}</span><small>${d.hint}</small>`;
    btn.addEventListener('click',()=>{WL.duration.setStyle(d.key);closeMenu()});
+   menu.appendChild(btn);
+  });
+  /* 読み込み中の見せ方（§9.421）。**札に見本そのものを出す**——名前だけでは
+     どう動くのかは選ぶ前に分からない（§9.200「選ばせるものは選ぶ前に見える」）。
+     見本は`html[data-loader]`ではなく札自身の印で描くので、いま選んでいる
+     ものと並べて見比べられる。 */
+  head('読み込みの見せ方');
+  const curLd=WL.loader.style();
+  WL.loader.STYLES.forEach(l=>{
+   const btn=document.createElement('button');
+   btn.type='button';btn.dataset.loaderOption=l.key;
+   if(l.key===curLd)btn.classList.add('is-current');
+   btn.innerHTML=`<span><span class="ld-sample" data-loader="${l.key}">`
+    +`${WL.loader.html(15)}</span>${l.label}</span><small>${l.hint}</small>`;
+   btn.addEventListener('click',()=>{WL.loader.setStyle(l.key);closeMenu()});
    menu.appendChild(btn);
   });
   document.body.appendChild(menu);

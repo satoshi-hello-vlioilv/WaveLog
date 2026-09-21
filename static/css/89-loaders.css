@@ -1,0 +1,118 @@
+/* ========================================================================
+   読み込み中の見せ方（ローダー）  §9.421
+   ------------------------------------------------------------------------
+   利用者の指示「https://connoratherton.com/loaders のloaderを使えるように
+   してください。設定で切り替えて選べるようにしてほしいです」。
+
+   **loaders.css（Connor Atherton／MIT）から6種を写して同梱している。**
+   CDNへは取りに行かない——この画面はオフラインの端末でも動く必要がある
+   （three.jsだけは押したときに取りに行く例外・§9.377）。
+     元: https://github.com/ConnorAtherton/loaders.css
+     Copyright (c) 2015 Connor Atherton / MIT License
+     許諾の全文: static/vendor/loaders/LICENSE.txt
+
+   写すときに直した3点（元のままでは、この画面では使えない）:
+     1. **色は `currentColor`**。元は `#fff` 固定なので、地が白の器では
+        消える。呼ぶ側の字の色をそのまま使う。
+     2. **大きさは `--wl-ld` の1つから作る**。元は 15px/35px の決め打ちで、
+        13px の小さな器にも 36px のオーバーレイにも同じ物を置けない。
+     3. **`@keyframes` の名前に印を付ける**（`wl-ld-`）。元は `scale`／
+        `rotate` という短い名前を**別々の中身で何度も**定義しており、
+        1枚に束ねると後の定義が前を上書きする（実際に上書きされる）。
+
+   **並びは1つ**——器は `.wl-ld`、中の `<i>` は**常に5つ**。どの種類でも
+   同じ形を出しておき、使わない `<i>` はその種類の規則が伏せる。
+   こうしておくと、**設定を変えても DOM を作り直さなくてよい**
+   （`html[data-loader]` が変わるだけで見た目が入れ替わる）。
+   ======================================================================== */
+@layer components {
+ /* 器。高さは `--wl-ld`、横は中身なり（球3つなら少し横長になる）。
+    呼ぶ側は `--wl-ld` を渡すだけでよい。 */
+ .wl-ld{--wl-ld:16px;display:inline-flex;align-items:center;justify-content:center;
+   gap:calc(var(--wl-ld) * .12);height:var(--wl-ld);
+   color:var(--teal);vertical-align:middle;line-height:0}
+ .wl-ld[hidden]{display:none}
+ /* 選ぶ札の見本（§9.421・§9.200「選ばせるものは選ぶ前に見える」）。
+    札そのものが`data-loader`を名乗るので、**いま選んでいる物と並べて**
+    どう動くかを見比べられる。席は文字の見本（`.ui-size-swatch`）と同じ幅。 */
+ .ld-sample{display:inline-grid;place-items:center;width:22px}
+ .wl-ld > i{display:none;animation-fill-mode:both;background-color:currentColor}
+
+ /* ---- 既定: いまのもの（輪＋中の点）。§9.421 で他と同じ並びへ載せ替えた ---- */
+ [data-loader="ring"] .wl-ld{position:relative}
+ [data-loader="ring"] .wl-ld > i:nth-child(-n+2){display:block;position:absolute}
+ [data-loader="ring"] .wl-ld > i:nth-child(1){inset:0;background:none;
+   border:max(2px, calc(var(--wl-ld) * .085)) solid var(--pale);
+   border-top-color:currentColor;border-radius:var(--radius-round);
+   animation:wl-ld-rotate 1s cubic-bezier(.5,.1,.5,.9) infinite}
+ [data-loader="ring"] .wl-ld > i:nth-child(2){inset:0;margin:auto;
+   width:calc(var(--wl-ld) * .2);height:calc(var(--wl-ld) * .2);
+   border-radius:var(--radius-round);animation:wl-ld-pulse 1s ease-in-out infinite}
+ [data-loader="ring"] .wl-ld{width:var(--wl-ld)}
+
+ /* ---- ball-pulse（球が3つ、順に縮む） ---- */
+ [data-loader="ball-pulse"] .wl-ld > i:nth-child(-n+3){display:inline-block;
+   width:calc(var(--wl-ld) * .3);height:calc(var(--wl-ld) * .3);
+   border-radius:var(--radius-round);
+   animation:wl-ld-scale .75s infinite cubic-bezier(.2,.68,.18,1.08)}
+ [data-loader="ball-pulse"] .wl-ld > i:nth-child(1){animation-delay:-.24s}
+ [data-loader="ball-pulse"] .wl-ld > i:nth-child(2){animation-delay:-.12s}
+
+ /* ---- ball-beat（球が3つ、交互に薄くなる） ---- */
+ [data-loader="ball-beat"] .wl-ld > i:nth-child(-n+3){display:inline-block;
+   width:calc(var(--wl-ld) * .3);height:calc(var(--wl-ld) * .3);
+   border-radius:var(--radius-round);animation:wl-ld-beat .7s 0s infinite linear}
+ [data-loader="ball-beat"] .wl-ld > i:nth-child(2n-1){animation-delay:-.35s}
+
+ /* ---- line-scale（棒が5本、順に縮む） ---- */
+ [data-loader="line-scale"] .wl-ld > i{display:inline-block;
+   width:calc(var(--wl-ld) * .14);height:var(--wl-ld);
+   border-radius:var(--radius-xs);
+   animation:wl-ld-line 1s infinite cubic-bezier(.2,.68,.18,1.08)}
+ [data-loader="line-scale"] .wl-ld > i:nth-child(1){animation-delay:-.4s}
+ [data-loader="line-scale"] .wl-ld > i:nth-child(2){animation-delay:-.3s}
+ [data-loader="line-scale"] .wl-ld > i:nth-child(3){animation-delay:-.2s}
+ [data-loader="line-scale"] .wl-ld > i:nth-child(4){animation-delay:-.1s}
+
+ /* ---- line-scale-pulse-out（棒が5本、真ん中から外へ） ---- */
+ [data-loader="line-scale-pulse-out"] .wl-ld > i{display:inline-block;
+   width:calc(var(--wl-ld) * .14);height:var(--wl-ld);
+   border-radius:var(--radius-xs);
+   animation:wl-ld-line .9s -.6s infinite cubic-bezier(.85,.25,.37,.85)}
+ [data-loader="line-scale-pulse-out"] .wl-ld > i:nth-child(2),
+ [data-loader="line-scale-pulse-out"] .wl-ld > i:nth-child(4){animation-delay:-.4s}
+ [data-loader="line-scale-pulse-out"] .wl-ld > i:nth-child(1),
+ [data-loader="line-scale-pulse-out"] .wl-ld > i:nth-child(5){animation-delay:-.2s}
+
+ /* ---- ball-clip-rotate（切れた輪が回る） ---- */
+ [data-loader="ball-clip-rotate"] .wl-ld{width:var(--wl-ld)}
+ [data-loader="ball-clip-rotate"] .wl-ld > i:nth-child(1){display:block;
+   width:var(--wl-ld);height:var(--wl-ld);background:none;
+   border:max(2px, calc(var(--wl-ld) * .085)) solid currentColor;
+   border-bottom-color:transparent;border-radius:var(--radius-round);
+   animation:wl-ld-rotate .75s 0s linear infinite}
+ /* 動きの名前には印を付ける（元の `scale`／`rotate` は短すぎて衝突する）。 */
+ @keyframes wl-ld-scale{
+  0%{transform:scale(1);opacity:1}
+  45%{transform:scale(.1);opacity:.7}
+  80%{transform:scale(1);opacity:1}
+ }
+ @keyframes wl-ld-beat{
+  50%{opacity:.2;transform:scale(.75)}
+  100%{opacity:1;transform:scale(1)}
+ }
+ @keyframes wl-ld-line{
+  0%{transform:scaleY(1)}
+  50%{transform:scaleY(.4)}
+  100%{transform:scaleY(1)}
+ }
+ @keyframes wl-ld-rotate{
+  0%{transform:rotate(0deg)}
+  50%{transform:rotate(180deg)}
+  100%{transform:rotate(360deg)}
+ }
+ @keyframes wl-ld-pulse{
+  0%,100%{transform:scale(1);opacity:1}
+  50%{transform:scale(.4);opacity:.45}
+ }
+}

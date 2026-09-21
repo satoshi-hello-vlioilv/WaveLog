@@ -1,4 +1,4 @@
-# 刃組ガイダンス（72件）
+# 刃組ガイダンス（113件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,47 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 差分の基準は**4段**（記録 → 前回流した材料 → いまの材料 → 無し）。②③は計算値だと断り、②は出どころを言う | `test_bladeui.js` | [§9.425](../../docs/decisions/9.425.md) |
+| 記録には**元板巾**（`cond.W`）も残す。無い記録からは材料を組み直さない（0で埋めない） | `test_bladeui.js` | [§9.425](../../docs/decisions/9.425.md) |
+| どの段と比べているかは**器が名乗る**（`data-base`）。網は字で見分けない（稼働中の断りに当たる） | `test_bladeui.js` | [§9.425](../../docs/decisions/9.425.md) |
+| 「材料が違えば答えも違う」は**同じ節の中の2枚**で見る。離れた節の数字と比べない | `test_bladeui.js` | [§9.425](../../docs/decisions/9.425.md) |
+| 台車は**台車マスタ**（設備ごと1台1行）。札の顔ぶれも台数もここが決める——画面へ`A`/`B`を書かない | `test_bladeui.js`・`test_bladeset.py` | [§9.424](../../docs/decisions/9.424.md) |
+| 台車が入るのは**初期セット**（`A台車`・`B台車`）。`replace`でも消さない（記録が名前で結び付く） | `test_bladeset.py` | [§9.424](../../docs/decisions/9.424.md) |
+| 「台車なし」は**自動で入れない**。綴りは`CARRIAGE_NONE`の1箇所で、1行足せば選べる | `test_bladeset.py` | [§9.424](../../docs/decisions/9.424.md) |
+| 台車が1つなら**直前の刃組が組み替える相手**（飛ばさない）。「稼働中で外せない」は別の台車のときだけ | `test_bladeui.js` | [§9.424](../../docs/decisions/9.424.md) |
+| 「表示」で消した部材の見せ方は3つ（薄く／線だけ／出さない）。答えは`skin()`の1箇所——材質を返し、無ければ描かない | `test_bladeui.js` | [§9.422](../../docs/decisions/9.422.md) |
+| 隠し方の札は**「表示」と同じ群の中**（別の群に離すと何に効くか読めない）。並びは残る量の多い順 | `test_bladeui.js` | [§9.422](../../docs/decisions/9.422.md) |
+| 薄く残しても**字は増やさない**（寸法・札は`D3.show`で落としたまま）。色も変えない | `test_bladeui.js` | [§9.422](../../docs/decisions/9.422.md) |
+| 消したときの知らせは**いまの隠し方まで**言う。呼び名は`HIDE_WORD`の1箇所 | `test_bladeui.js` | [§9.422](../../docs/decisions/9.422.md) |
+| 同じ寸法が続くぶんは**「×枚数」で1つ**（隣り合って・同じ軸で・同じ寸法のときだけ） | `test_bladeui.js` | [§9.420](../../docs/decisions/9.420.md) |
+| 部材の字は記号（A・B…）の席を避ける（記号は軸の中心・字は軸の外寄り） | `test_bladeui.js` | [§9.420](../../docs/decisions/9.420.md) |
+| 有効長は**寸法線**で言う（端の立て線2本＋あいだの線＋値）。足元の帯へ重ねない | `test_bladeui.js` | [§9.420](../../docs/decisions/9.420.md) |
+| 同じ切断の上下の刃は**刃厚＋クリアランス**だけ中心がずれる（重なると円周でぶつかる） | `test_bladeui.js` | [§9.419](../../docs/decisions/9.419.md) |
+| 直すのは刃の載る位置＝スペーサー寸法だけ。**条幅の出方は変わらない**（面はクリアランスの半分ずつ） | `test_bladeui.js` | [§9.419](../../docs/decisions/9.419.md) |
+| 端から端は**有効長ちょうど**。設定有効長と上下それぞれの合計長を差つきで出す | `test_bladeui.js` | [§9.418](../../docs/decisions/9.418.md) |
+| 断面図の板のずれは**板厚1枚ぶん**（模式図と同じ量）。2倍ずらさない | `test_bladeui.js` | [§9.418](../../docs/decisions/9.418.md) |
+| スペーサーの字は**軸の上・そのスペーサーの側**、ゴムリングの字は**輪の帯の中**（混ぜない） | `test_bladeui.js` | [§9.418](../../docs/decisions/9.418.md) |
+| 引き出し線は**対象の縁から**引く（宙に浮かせない）。段は部材の種類ごとに分ける | `test_bladeui.js` | [§9.418](../../docs/decisions/9.418.md) |
+| 網が打つ材料は**現場でよくある形**（50mm×22条・元板巾1130＝片耳15mm）。元板巾を先に打つ | `test_bladeui.js` | [§9.423](../../docs/decisions/9.423.md) |
+| 図は**両の端で**確かめる（混んだ50mm×22条と、幅の広い279.8mm×4条）。片方だけで決めない | `test_bladeui.js` | [§9.418](../../docs/decisions/9.418.md)・[§9.423](../../docs/decisions/9.423.md) |
+| 区間より長い積みを作らない（`fillWith`は切り下げ）。超えれば刃の位置が動く | `test_bladeui.js` | [§9.418](../../docs/decisions/9.418.md) |
+| 図は丸めのせいで部材を落とさない（`PACK_EPS`）。端数は空けずに端数の色で置く | `test_bladeui.js` | [§9.418](../../docs/decisions/9.418.md) |
+| 断面図に出てよいのは有効長と青い印まで。機械まわりの既定の行き先は`rig` | `test_bladeui.js` | [§9.418](../../docs/decisions/9.418.md) |
+| 板の札は材料の帯の**条が寄っていない側**へ1行で。外へ出すとゴムリングに乗る | `test_bladeui.js` | [§9.418](../../docs/decisions/9.418.md) |
+| 部材の幅はその部材の帯の中へ（輪の切り口は軸の上下2本の帯）。入る判定は横と縦の両方 | `test_bladeui.js` | [§9.418](../../docs/decisions/9.418.md) |
+| 切断の破線は断面図だけ・1本（模式図は刃そのものが上下に並ぶ） | `test_bladeui.js` | [§9.418](../../docs/decisions/9.418.md) |
+| 断面図の区間も`data-badge`と`.bs-bhit`を名乗る。連動も拡大図も**模式図の配線のまま** | `test_bladeui.js` | [§9.417](../../docs/decisions/9.417.md) |
+| 断面図の的は2枚——区間ぜんたいは光るだけ、押せるのは記号の札だけ（回す道をふさがない） | `test_bladeui.js` | [§9.417](../../docs/decisions/9.417.md) |
+| 図の札は枠を持たない（読み取り専用の値を押せる物に見せない）。部材の外へ置く | `test_bladeui.js` | [§9.417](../../docs/decisions/9.417.md) |
+| 記号の印の塗り直しは「顔ぶれが変わったとき」だけ（回すたびに器を走査しない） | `test_bladeui.js` | [§9.417](../../docs/decisions/9.417.md) |
+| 軸はスペーサーより暗い（刃→軸→スペーサーの3段）。隣り合う差は**2:1以上**——輝度で測る | `test_bladeui.js` | [§9.416](../../docs/decisions/9.416.md) |
+| 断面図が模式図の色を借りるのは`cutColor()`の1箇所。立体図は機械の見た目のまま | `test_bladeui.js` | [§9.416](../../docs/decisions/9.416.md) |
+| 光の配分は図ごとに別（断面図＝地明かり主役）。艶も落とす——正対した面は材質の色でなく光の色を返す | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
+| 断面図の板・耳屑は**模式図と同じ色**（`--bs-fig-strip`／`--bs-fig-trim`）。明るい鋼色だと地に溶ける | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
+| 器の大きさは`ResizeObserver`で見張る（`resize`は窓しか見ない）。図を離れるときも`applyCut()`を通す | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
+| 模式図に描く「物」は**直角**。角丸を残すのは文字の器（`bs-bdgr`・`bs-chip-band`）だけ | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
+| 図の札（DS/OS・上軸/下軸/材料）は**読み取る値（条番号・条幅）より大きくしない** | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
+| 【§9.425で4段にした】台車差分の基準は「記録 → 標準構成 → 無し」の3段 | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
 | 刃組の計算は`blade-core.js`（画面を知らない）、画面は`blade-view.js`の2本 | `test_bladeui.js` | [§9.377](../../docs/decisions/9.377.md) |
 | 部材は設備ごと。「すべての設備」は受け付けない | `test_bladeset.py` | [§9.377](../../docs/decisions/9.377.md) |
 | ゴムリングは色（＝外径）×幅で1本。同じ色をそろえるのは`ring_upsert()`の1箇所 | `test_bladeset.py` | [§9.377](../../docs/decisions/9.377.md) |
