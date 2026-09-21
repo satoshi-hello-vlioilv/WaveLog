@@ -1,8 +1,11 @@
-# 検証（テスト）（49件）
+# 検証（テスト）（46件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
 テストの層・後片付け・待ち方・踏んだ罠
+
+**文書の置き場そのものの決まり**（入口／規則／経緯の使い分け・§番号・CLAUDE.mdの上限）は
+[CLAUDE.md「3つの置き場の使い分け」](../../CLAUDE.md)へ移した（汎用のため）。網は同じ`test_docindex.py`。
 
 行は**守ることだけ**を書いてある。なぜそうなのか・実測値・撤回した案・踏んだ罠は
 「くわしく」の先（[`docs/decisions/`](../../docs/decisions/README.md)）にある。
@@ -45,9 +48,6 @@
 | 「物が無い」を欠陥として記録しない。測れないなら前提を作るか、測っていないと書く | `test_ddllint.py`・`test_layers.py` | [§9.369](../../docs/decisions/9.369.md) |
 | 並列で回している網に、共有の`db/`の差分を自分のせいにさせない | `test_dblayer.py` | [§9.369](../../docs/decisions/9.369.md) |
 | 更新履歴は版ごとに「利用者向け／開発の記録（`'dev':True`）」。判定は`changelog_data.is_dev()`の1箇所、画面は`e.dev`を読むだけ | `test_changelog.py`・`test_changelogui.js` | [§9.336](../../docs/decisions/9.336.md) |
-| 知識の置き場は「入口＝CLAUDE.md／規則＝`.claude/rules/`／経緯＝`docs/decisions/`」 | `test_docindex.py` | [§9.335](../../docs/decisions/9.335.md)・[§9.414](../../docs/decisions/9.414.md) |
-| §番号は振り直さない。規則を足したら領域の1枚と索引の件数も直す | `test_docindex.py` | [§9.414](../../docs/decisions/9.414.md) |
-| CLAUDE.md は200行以下。表を書き戻さない・終わったことを書き足さない | `test_docindex.py` | [§9.414](../../docs/decisions/9.414.md) |
 | 画面のJSの`no-undef`は0件。globalsは実物から作るので、IIFEで閉じると外からの呼び出しが出る | `test_eslint.py` | [§9.354](../../docs/decisions/9.354.md) |
 | 画面のJS32本は全部閉じてある。土台は短い名前のまま`window.X=X`で明示公開、他は`WL.<領域>` | `test_globallint.py`・`test_eslint.py` | [§9.359](../../docs/decisions/9.359.md) |
 | 標準の静的解析（pyflakes／eslint）は網の一部。規則は`eslint.config.mjs`の1箇所 | `test_eslint.py`・`test_pyflakes.py` | [§9.326](../../docs/decisions/9.326.md) |
