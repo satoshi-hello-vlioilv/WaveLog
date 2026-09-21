@@ -522,8 +522,13 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
               span: all.some(t => /^区間 [\d.]+ mm$/.test(t)),
               names: all.filter(t => /スペーサー|刃（厚み）|隙間/.test(t)).length,
               clrLabel: all.filter(t => /^上下刃の中心間$/.test(t)).length,
+              /* 縦に貼った字の数（§9.430）。横に入らない部材へ**直に**貼る
+                 やり方なので、0なら「貼れているつもり」で引き出しへ落ちている。 */
+              vert: [...svg.querySelectorAll('text')]
+                .filter(t => /rotate\(-90/.test(t.getAttribute('transform') || '')).length,
               dashed: svg.querySelectorAll('[stroke-dasharray]').length,
               dims: +svg.dataset.dims, inside: +svg.dataset.inside, lead: +svg.dataset.lead,
+              leadw: +svg.dataset.leadw,
               /* 引き出し線の始点と終点を読み、順番が入れ替わっている数を数える。
                  同じ段（終点のyが同じ）どうしだけを見る（段が違えば交差しない）。 */
               cross: (() => {
@@ -562,6 +567,16 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         zoom.inside > 0, `中${zoom.inside}件`);
     rec('狭い部材は引き出して外に書く', zoom.lead > 0 && zoom.leads === zoom.lead,
         `外${zoom.lead}件／線${zoom.leads}本`);
+    /* **ラベルは指し示す物へ直に貼る**（§9.430、利用者の指示「拡大されていて
+       対象にそのまま貼れるほどスペースがあるので、ラベルを直接表示したいものに
+       貼って」）。拡大図は1区間だけを器いっぱいに使うので、横に入らない部材でも
+       **縦になら入る**。引き出しに落ちてよいのは2つだけ——**貼る相手が無い寸法**
+       （上下刃の中心間＝2枚の刃の位置の差）と、**字が縦にも入らないほど細い
+       部材**（刻みの余り 0.025mm など）。
+       **数ではなく幅で見る**——材料の形で本数は変わるが、「貼れる広さの物を
+       引き出している」かどうかは幅そのものが言う（字の高さ14pxが下限）。 */
+    rec('引き出すのは「貼る相手が無い寸法」と「字が入らないほど細い部材」だけ',
+        zoom.leadw < 18, `引き出した部材の最大幅 ${zoom.leadw}px（字の高さ14px）`);
     rec('値の字は出すべき寸法の数だけある', zoom.nums === zoom.dims,
         `値${zoom.nums}／寸法${zoom.dims}`);
     rec('軸に並ぶ部材はすべて名前が添う（値だけを並べない）',
@@ -1279,6 +1294,38 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('幅の広い4条でも板の札どうしが重ならない', many.marks > 0 && many.hit === 0,
         `札 ${many.marks}枚 / 重なり ${many.hit}組`);
     rec('幅の広い4条でも区間の記号は出る', many.badges > 0, `${many.badges}枚`);
+    /* **拡大図のラベルは対象へ直に貼る**（§9.430、利用者の指示「拡大されていて
+       対象にそのまま貼れるほどスペースがあるので、ラベルを直接表示したいものに
+       貼って」）。**貼り方の網はこの節でしか効かない**——混んだ側（50mm×22条）は
+       1区間が70mmしかなく拡大図の縮尺が 9.4px/mm あるので全部が横に入る。
+       広い側は1区間300mmで 2.2px/mm まで落ち、9mm のスペーサーが20pxになる
+       ——**横に入らない部材が出るのはこちら**。 */
+    await page.keyboard.press('Escape');
+    await W.until(page, () => document.querySelector('#bsZoom').hidden, null,
+                  { ms: 4000, what: '拡大図を一度閉じる' });
+    const zw = await page.evaluate(() => {
+     const b = document.querySelector('#bsStage3 .bs-t3b');
+     if (!b) return null;
+     b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+     const svg = document.getElementById('bsZoomFig');
+     const ts = [...svg.querySelectorAll('text')];
+     return { leadw: +svg.dataset.leadw, dims: +svg.dataset.dims,
+              inside: +svg.dataset.inside, lead: +svg.dataset.lead,
+              shown: !document.getElementById('bsZoom').hidden,
+              /* **値の字だけ**を数える（ゴムリングの帯の中の字は10px・別の道で
+                 貼っている）。混ぜると、部材への貼り方が壊れても素通りする。 */
+              vert: ts.filter(t => /rotate\(-90/.test(t.getAttribute('transform') || '')
+                                && +(t.getAttribute('font-size') || 0) >= 12).length };
+    });
+    rec('広い側の拡大図でも、横に入らない部材には縦に貼る（引き出しへ落とさない）',
+        !!zw && zw.shown === true && zw.vert > 0,
+        zw ? `縦書き ${zw.vert}件／引き出し ${zw.lead}件` : '読めない');
+    rec('広い側の拡大図でも、引き出すのは貼れないほど細い物だけ',
+        !!zw && zw.leadw < 18,
+        zw ? `引き出した部材の最大幅 ${zw.leadw}px（字の高さ14px）` : '読めない');
+    await page.keyboard.press('Escape');
+    await W.until(page, () => document.querySelector('#bsZoom').hidden, null,
+                  { ms: 4000, what: '拡大図を閉じる' });
     /* **必ず戻す**（§9.393 注ぎ込んだ見本はその場で片付ける）。 */
     await page.evaluate(keep => {
      const st = window.WL.bladeGuide.state;
@@ -2258,6 +2305,29 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         stops.length === 2 && stops[0].id === 's1' && stops[1].id === 's3',
         JSON.stringify(stops));
 
+    /*PROBE*/ {
+      const S = process.env.WAVELOG_SHOT;
+      await page.keyboard.press('Escape');
+      await page.click('#bsFigTabs [data-fig="cut"]');
+      await page.evaluate(() => new Promise(r => setTimeout(r, 800)));
+      await page.screenshot({ path: S + '/p_page.png' });
+      for (const [sel, name] of [['#bsStage3 .bs-hud.is-bot', 'hud'],
+                                 ['#bsFigTabs', 'figtabs'], ['#bsRailTabs', 'railtabs']]) {
+        const el = await page.$(sel);
+        if (el) await el.screenshot({ path: S + '/p_' + name + '.png' });
+      }
+      const g = await page.$('#bsStage .bs-bhit');
+      if (g) {
+        await page.click('#bsFigTabs [data-fig="2d"]');
+        await page.evaluate(() => {
+          const x = document.querySelector('#bsStage .bs-bhit');
+          x.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        });
+        await page.evaluate(() => new Promise(r => setTimeout(r, 400)));
+        const z = await page.$('#bsZoom');
+        if (z) await z.screenshot({ path: S + '/p_zoom.png' });
+      }
+    }
     rec('JSエラーが出ていない', errs.length === 0, errs.slice(0, 2).join(' / '));
 
   } finally {

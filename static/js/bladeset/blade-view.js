@@ -1428,6 +1428,19 @@
     計算の側へ置く**（§9.377）。ここは「席の間隔だけで配る」呼び方。 */
  const spreadSlots = (want, a, b, gap) =>
   BS().spread(want, want.map(() => 0), a, b, gap);
+ /* **縦書きの字**（§9.430、利用者の指示「拡大図はスペースがあるので、ラベルを
+    直接表示したいものに貼って」）。拡大図は1区間だけを器いっぱいに使うので、
+    **横に入らない部材でも縦になら入る**——実測 S≒2.2px/mm なので、9mm の
+    スペーサーでも幅20px あり、帯の高さは110px ある（字は35px）。
+    回す中心はその字の置き場そのもの（`rotate(-90 x y)`）。 */
+ function zoomVText(x, y, t, fs, fill, halo, weight) {
+  return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle"`
+   + ` transform="rotate(-90 ${x.toFixed(1)} ${y.toFixed(1)})"`
+   + ` font-size="${fs}" font-weight="${weight || 800}" fill="${fill}"`
+   + (halo ? ` stroke="${halo}" stroke-width="${(fs * 0.14).toFixed(2)}"`
+     + ' style="paint-order:stroke"' : '')
+   + ` font-variant-numeric="tabular-nums">${esc(t)}</text>`;
+ }
  /* `dir` ＝ 字を置く向き（+1 図の下・-1 図の上）。引き出し線は部材の縁から
     スロットへ降り、**字はその先**に置く——線の途中に字を置くと線が字を貫く。 */
  function zoomLabel(x0, y0, x1, y1, name, val, color, PAL, dir, slotW) {
@@ -1587,6 +1600,11 @@
       + ` stroke="${PAL.ink}" stroke-width="${(hIn * 0.16).toFixed(2)}"`
       + ` style="paint-order:stroke" font-variant-numeric="tabular-nums">${t}</text>`;
      zIn++;
+    } else if (w >= 9 && th >= zoomTextW(t, 10) + 5) {
+     /* **横に入らなくても縦なら入る**（§9.430）。輪の帯は狭いが、細い
+        ゴムリングでも幅は10px近くあるので、回せば帯の中へ貼れる。 */
+     hold += zoomVText(q.cx, cy - ro + th / 2, t, 10, '#fff', PAL.ink, 800);
+     zIn++;
     } else hOut.push(q);
    });
    const hgap = 46;
@@ -1620,13 +1638,28 @@
      いない物が混ざる」として全部を外へ出していたが、**利用者の指示で改めた**
      ——広い部材の字まで外へ出すと、**狭い部材のためのスロットを食ってしまう**。 */
   const VFS = 14, NFS = 11;
-  const inside = [], outs = [];
+  /* **ラベルは指し示す物へ直に貼る**（§9.430、利用者の指示「スペーサーや刃や
+     ゴムリングのラベルは基本的に拡大されていて対象にそのまま貼れるほど
+     スペースがあるので、ラベルを直接表示したいものに貼って」）。
+     置き方は3つ——①横に入れば横（値＋名前の2行）②横に入らなくても
+     **縦になら入る**なら縦（値、幅があれば名前も横に並べて2列）③どちらも
+     入らないものだけ引き出す。**部材でない寸法**（上下刃の中心間は2枚の刃の
+     位置の差）は貼る相手が無いので、必ず③。 */
+  const inside = [], vert = [], outs = [];
   items.forEach(q => {
-   const need = Math.max(zoomTextW(q.val, VFS), zoomTextW(q.name, NFS)) + 10;
-   if (q.w >= need && q.h >= VFS + NFS + 10) inside.push(q); else outs.push(q);
+   const wv = zoomTextW(q.val, VFS), wn = zoomTextW(q.name, NFS);
+   if (q.w >= Math.max(wv, wn) + 10 && q.h >= VFS + NFS + 10) { inside.push(q); return; }
+   /* 縦なら「幅＝字の高さ」「高さ＝字の長さ」で入るかを見る。名前も入れるのは
+      **2列ぶんの幅**があるときだけ（無ければ値だけ——値のほうが読む物）。 */
+   if (q.w >= VFS + 4 && q.h >= wv + 10) {
+    q.vName = q.w >= VFS + NFS + 6 && q.h >= wn + 10;
+    vert.push(q);
+    return;
+   }
+   outs.push(q);
   });
   zDims += items.length;
-  zIn += inside.length;
+  zIn += inside.length + vert.length;
   let marks = '';
   inside.forEach(q => {
    const halo = q.halo
@@ -1636,6 +1669,16 @@
     + ` font-variant-numeric="tabular-nums"${halo}>${esc(q.val)}</text>`
     + `<text x="${q.cx.toFixed(1)}" y="${(cy + NFS + 4).toFixed(1)}" text-anchor="middle"`
     + ` font-size="${NFS}" font-weight="600" fill="${q.ink}"${halo}>${esc(q.name)}</text>`;
+  });
+  vert.forEach(q => {
+   const halo = q.halo ? PAL.ink : '';
+   /* 2列にするときは、値を右・名前を左へ置く（横書きの「値が上・名前が下」と
+      同じ並びを90度回したもの——読む順が図の向きで変わらない）。 */
+   const vx = q.vName ? q.cx + NFS / 2 + 1 : q.cx;
+   marks += zoomVText(vx, cy, q.val, VFS, q.ink, halo, 800);
+   if (q.vName) {
+    marks += zoomVText(q.cx - VFS / 2 - 1, cy, q.name, NFS, q.ink, halo, 600);
+   }
   });
   /* 外へ出すぶん**だけ**でスロットを配る。1段に収まらないときは2段へ振り分け、
      同じ段の間隔を倍にする（字を読めない大きさまで縮めない）。 */
@@ -1662,8 +1705,13 @@
   const spanY = slotY + ZOOM.slotH * lanes + 22;
   const vh = spanY + 14;
   const spans = zoomSpan(zoneA, zoneB, spanY, `区間 ${P.len.toFixed(2)} mm`, PAL);
+  /* **引き出した「部材」のいちばん広い幅**（§9.430）。ラベルは対象へ直に貼る
+     ので、引き出しに落ちてよいのは「貼る相手が無いもの」（上下刃の中心間）と
+     「字が縦にも入らないほど細い部材」（刻みの余り＝0.025mm など）だけ。
+     ここが字の高さを超えたら、**貼れるはずの物を引き出している**。 */
+  const leadWmax = outs.filter(q => q.w > 0).reduce((m, q) => Math.max(m, q.w), 0);
   return {
-   vh, dims: zDims, inside: zIn, lead: zDims - zIn,
+   vh, dims: zDims, inside: zIn, lead: zDims - zIn, leadWmax,
    svg: `${body}${clr}${hold}${marks}${spans}`,
    /* 図が言えないことだけを添える（§CLAUDE 8 同じ情報を2箇所に出さない）。 */
    note: zoomNote(res, r, P, ring, finger, clrMm)
@@ -1720,6 +1768,7 @@
   svg.dataset.dims = String(fig.dims);
   svg.dataset.inside = String(fig.inside);
   svg.dataset.lead = String(fig.lead);
+  svg.dataset.leadw = String(Math.round(fig.leadWmax || 0));
   svg.innerHTML = fig.svg;
   $('#bsZoomNote').textContent = fig.note;
   box.hidden = false;
