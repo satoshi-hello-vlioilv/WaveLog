@@ -49,7 +49,9 @@ def rec(name, ok, detail=''):
     print(('PASS' if ok else 'FAIL') + ': ' + name + (' -- ' + str(detail) if detail else ''))
 
 
-def say(_message, bad=False):
+def say(_message, bad=False, quiet=False):
+    """`setup_check.run()` が呼ぶ口（§9.431）。**`quiet=True` は記録だけ**
+    ——受けられないと、そこを通った起動が TypeError で止まる。"""
     pass
 
 
@@ -398,6 +400,46 @@ try:
         'マスタ.sqlite3' not in starter)
     rec('起動側は確認の1箇所を呼ぶ',
         'setup_check.run(' in starter, '')
+
+    # ---- 6z) say の作法は1つ（§9.431） ----
+    # `setup_check.run()` は「画面に出す／記録だけ」を`quiet`で言い分ける。
+    # **渡す側が受けられないと、そこを通った起動が TypeError で止まる**
+    # （update.bat の道と、刻印が食い違ったときの起動の道の2つがある）。
+    # 綴りを追いかけるのではなく、**両方の`say`の引数**をここで見る。
+    for name in ('program/setup_app.py', 'program/start_app.py'):
+        src = (ROOT / name).read_text(encoding='utf-8')
+        m = re.search(r'def say\(([^)]*)\)', src)
+        rec(f'{name} の say は quiet を受ける（記録だけの行を渡せる）',
+            bool(m) and 'quiet' in m.group(1), m.group(1) if m else 'say が無い')
+    # **画面に出す言葉は setup_app.py の1箇所**（§9.431）。update.bat 側に
+    # 「OK/NG」の言い分けを写すと、直したときに片方だけ古くなる。
+    # 例外は「python が通っていない」——そのときは setup_app.py が動かない。
+    bat_raw = (PROGRAM / 'update.bat').read_bytes()
+    bat_txt = bat_raw.decode('cp932', errors='replace')
+    rec('update.bat は結果の言い分けを持たない（言葉は setup_app.py の1箇所）',
+        '準備ができました' not in bat_txt and bat_txt.count('goto ') <= 2,
+        f"goto {bat_txt.count('goto ')}個")
+
+    # ---- 6y) update.bat の画面は「結果と次にすること」だけ（§9.431） ----
+    # 利用者の指摘「一般的には不要な情報が多いのでわかりにくい」。
+    # **いちばん大きかったのは時刻つきの記録**——`launcher_logger()`が既定で
+    # 画面にも出すので、`log_environment()`の6行を含めて記録がそのまま流れて
+    # いた。記録は launcher.log に残し、画面は結果だけにする。
+    # **実際に動かして出た字で見る**（呼び方を見るのではなく、出たものを見る）。
+    setup_out = subprocess.run([sys.executable, 'program/setup_app.py'], cwd=ROOT,
+                               capture_output=True, text=True, timeout=300)
+    setup_txt = (setup_out.stdout or '')
+    stamps = [x for x in setup_txt.splitlines() if re.match(r'^\d{4}-\d\d-\d\d \d\d:', x)]
+    rec('update.bat の画面に時刻つきの記録を混ぜない（記録は launcher.log へ）',
+        not stamps, f'{len(stamps)}行 混ざっている')
+    rec('画面は「結果」と「次にすること」を言う',
+        '準備ができました' in setup_txt and '次にすること' in setup_txt,
+        setup_txt.replace('\n', ' / ')[:70])
+    # **置き場の道は画面に出さない**（毎回同じで、読んでも打つ手が変わらない）。
+    rec('置き場の道（刻印・バイトコード・写し）は画面に出さない',
+        'ready.json' not in setup_txt and 'pycache' not in setup_txt
+        and 'loading.html' not in setup_txt,
+        setup_txt.replace('\n', ' / ')[:70])
 
     # ---- 7) update.bat / setup_app.py ----
     # 名前は`update.bat`（§9.405）。**押すのは「版が変わったら1回」**なので、

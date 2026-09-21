@@ -64,8 +64,15 @@ def get_logger(name,filename,to_console=True):
   logger.addHandler(console)
  return logger
 
-def launcher_logger():
- return get_logger('launcher','launcher.log')
+def launcher_logger(to_console=True):
+ """起動まわりの記録。
+
+ **`to_console=False` は画面に出さない**（§9.431）。`update.bat` の画面は
+ 「結果」と「次にすること」だけにしたいので、時刻つきの記録が混ざると
+ 読むものが増える——利用者の指摘「一般的には不要な情報が多い」はここが
+ いちばん大きかった（`log_environment()` だけで6行出る）。
+ **記録そのものは launcher.log に残る**ので、調べる材料は減らない。"""
+ return get_logger('launcher','launcher.log',to_console)
 
 def app_logger():
  return get_logger('app','app.log')

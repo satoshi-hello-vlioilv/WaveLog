@@ -12,7 +12,7 @@
 | 触る場所 | 開く1枚 | 件数 |
 | --- | --- | --- |
 | どの画面でも（見た目・情報の並べ方の基準） | [ui-principles.md](ui-principles.md) | 14 |
-| `program/`・`Start.vbs`・`#appBoot`・更新・在席 | [boot.md](boot.md) | 42 |
+| `program/`・`Start.vbs`・`#appBoot`・更新・在席 | [boot.md](boot.md) | 44 |
 | 共有DB・写し・錠・`config/local.json`・SQLite | [data.md](data.md) | 55 |
 | `backend/routes/`・`body(spec)`・`api_guard`・権限 | [api.md](api.md) | 20 |
 | `TableDef`・マスタのサーバー側・既定値 | [master-server.md](master-server.md) | 27 |

@@ -16,40 +16,75 @@ import sys
 
 from backend.launcher import ready, setup_check
 from backend.logging_setup import launcher_logger, log_environment
-from backend.paths import APP_ROOT, ensure_local_dirs, is_network_path
+from backend.paths import (APP_ROOT, ensure_local_dirs, is_network_path,
+                           local_root, logs_dir)
 
 
 def main():
+    """**画面に出すのは「結果」と「次にすること」だけ**（§9.431、利用者の指示
+    「ユーザーが読んで知っておくべき情報をもっとわかりやすく表示する。一般的には
+    不要な情報が多い」）。置き場の道・刻印・写しの行き先は**記録（ログ）へ**回す
+    ——毎回同じで、読んでも打つ手が変わらない。"""
     ensure_local_dirs()
-    log = launcher_logger()
+    # **記録は launcher.log へ、画面は結果だけ**（§9.431）。時刻つきの記録を
+    # 混ぜない——`log_environment()` だけで6行出て、読むものが倍になる。
+    log = launcher_logger(to_console=False)
     log.info('--- 起動前の確認 (setup) ---')
     log_environment(log)
-    print('WaveLog: 起動前の確認')
-    print('  アプリの置き場所: %s' % APP_ROOT)
+    line = '=' * 60
+    bad_seen = []
+    print('')
+    print(line)
+    print('  WaveLog  起動の準備')
+    print(line)
+    print('  アプリの置き場所   %s' % APP_ROOT)
+    print('  この端末の作業場所 %s' % local_root())
+    print('')
 
-    def say(message, bad=False):
+    def say(message, bad=False, quiet=False):
+        """`quiet=True` は**記録だけ**（画面に出さない）。
+
+        画面に出る行は**そのまま読める短い1行**にする——頭に `[OK]`／`[NG]` が
+        付くので、文は「何を確かめたか」だけでよい。"""
         text = str(message)
-        print(('  [!] ' if bad else '  ') + text)
         (log.warning if bad else log.info)('setup: %s', text)
+        if bad:
+            bad_seen.append(text)
+        if quiet:
+            return
+        print(('  [NG] ' if bad else '  [OK] ') + text)
 
     before = ready.mismatch()
-    if before:
-        say('前回からの違い: ' + ' / '.join(before))
-    else:
-        say('前回の確認から変わっていません（もう一度確かめます）')
+    say('前回の確認からの違い: ' + (' / '.join(before) if before else 'なし'), quiet=True)
 
     ok, why = setup_check.run(say)
     if is_network_path(APP_ROOT):
-        say('アプリ本体は共有フォルダーにあります。バイトコード・進捗ファイル・'
-            '写しはこの端末の中へ置きます（共有には書きません）')
+        say('アプリ本体は共有フォルダーにあります'
+            '（この端末の中だけへ書きます。共有には書きません）')
     print('')
+    print('-' * 60)
     if ok:
-        print('  確認できました。次回からの起動が速くなります。')
-        print('  ※ アプリを更新したあとは、もう一度このファイルを実行してください')
-        print('    （忘れても起動はします。そのときだけ少し遅くなります）')
+        print('  準備ができました。')
+        print('')
+        print('  次にすること')
+        print('    デスクトップの「WaveLog」から起動してください。')
+        print('')
+        print('  覚えておくこと')
+        print('    アプリを更新したら、この update.bat をもう一度実行してください。')
+        print('    （忘れても起動はできます。その1回だけ起動が遅くなります）')
     else:
-        print('  確認できませんでした: %s' % why)
-        print('  この状態でも起動は試みますが、失敗する可能性があります。')
+        print('  準備できていません: %s' % why)
+        print('')
+        print('  次にすること')
+        print('    上の [NG] の行を直してから、もう一度 update.bat を実行してください。')
+        print('    この状態でも起動は試みますが、失敗することがあります。')
+    # **困ったときの行き先は、困ったときだけ出す**（§CLAUDE 2 次にすることを
+    # 1つだけ指す）。うまくいった回に道を並べても、読む側は打つ手を選べない。
+    if bad_seen:
+        print('')
+        print('  記録（うまくいかないときはこの中を見てください）')
+        print('    %s' % logs_dir())
+    print(line)
     log.info('--- 起動前の確認 完了 (%s) ---', '合格' if ok else '不合格')
     return 0 if ok else 1
 

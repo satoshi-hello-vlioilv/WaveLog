@@ -88,20 +88,20 @@ def missing_packages():
 def ensure_packages(say):
     missing = missing_packages()
     if not missing:
-        say('必要な部品: 揃っています (%s)' % ', '.join(REQUIRED_PACKAGES))
+        say('必要な部品（%s）' % ', '.join(REQUIRED_PACKAGES))
         return True
-    say('必要な部品: %s が不足しています。導入を試みます' % ', '.join(missing))
+    say('必要な部品が足りません（%s）。いま導入します' % ', '.join(missing))
     try:
         result = subprocess.run(
             [sys.executable, '-m', 'pip', 'install', '-r', str(PROGRAM_DIR / 'requirements.txt')],
             capture_output=True, text=True, **_no_window())
     except Exception as e:
-        say('必要な部品: 導入を実行できませんでした: %s' % e, bad=True)
+        say('必要な部品を導入できませんでした: %s' % e, bad=True)
         return False
     if result.returncode != 0:
-        say('必要な部品: 導入に失敗しました\n%s' % (result.stderr or '').strip()[:2000], bad=True)
+        say('必要な部品を導入できませんでした\n%s' % (result.stderr or '').strip()[:2000], bad=True)
         return False
-    say('必要な部品: 導入しました')
+    say('必要な部品（%s）を導入しました' % ', '.join(missing))
     return True
 
 
@@ -111,7 +111,7 @@ def precompile(say):
     if sys.pycache_prefix is None:
         # `_pycache_bootstrap`を通さずに呼ばれた場合。元ファイルの隣へ書くと
         # 共有を汚すので、**何もしない**方を選ぶ(黙って場所を変えない)。
-        say('バイトコード: 置き場が決まっていないので飛ばします', bad=True)
+        say('起動を速くする準備を飛ばしました（置き場が決まっていません）', bad=True)
         return False
     ok = True
     for name in COMPILE_TARGETS:
@@ -125,9 +125,12 @@ def precompile(say):
         if path.exists():
             ok = compileall.compile_file(str(path), quiet=1, force=False) and ok
     if ok:
-        say('バイトコード: 事前に用意しました（置き場: %s）' % sys.pycache_prefix)
+        say('起動を速くする準備（事前コンパイル）')
+        # **置き場の道は記録だけ**（§9.431）。毎回同じで、読んでも打つ手が変わらない。
+        say('バイトコードの置き場: %s' % sys.pycache_prefix, quiet=True)
     else:
-        say('バイトコード: 一部を用意できませんでした（その場でコンパイルされます）', bad=True)
+        say('一部のバイトコードを用意できませんでした'
+            '（起動はできます。その回だけ少し遅くなります）', bad=True)
     return ok
 
 
@@ -139,9 +142,9 @@ def adopt_legacy_databases(say):
         if old.exists() and not new.exists():
             try:
                 old.rename(new)
-                say('旧DBを取り込みました: %s -> %s' % (old_name, new_name))
+                say('古いDBを取り込みました: %s → %s' % (old_name, new_name))
             except Exception as e:
-                say('旧DBを取り込めませんでした(%s): %s' % (old_name, e), bad=True)
+                say('古いDBを取り込めませんでした（%s）: %s' % (old_name, e), bad=True)
 
 
 def waiting_page():
@@ -199,14 +202,15 @@ def copy_waiting_page(say=None):
                 except Exception as _e:
                     quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
                 if say:
-                    say('起動待機画面の写しは最新です: %s' % waiting_page())
+                    say('起動画面の写しは最新です: %s' % waiting_page(), quiet=True)
                 return waiting_page()
         except Exception as _e:
             quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
         tmp.write_bytes(data)
         atomic_io.replace(tmp, dst, label='loading.next.html')
         if say:
-            say('起動待機画面を手元へ写しました（次の起動から使います）: %s' % dst)
+            say('起動画面を新しくしました（次の起動から使います）')
+            say('起動画面の写しの置き場: %s' % dst, quiet=True)
         return dst
     except Exception as e:
         try:
@@ -214,7 +218,7 @@ def copy_waiting_page(say=None):
         except Exception as _e:
             quiet('いらないファイルを消せない（次の掃除で片付く）',_e)
         if say:
-            say('起動待機画面を写せませんでした（いまの写しのまま開きます）: %s' % e, bad=True)
+            say('起動画面を写せませんでした（いまの写しのまま開きます）: %s' % e, bad=True)
         return None
 
 
@@ -236,11 +240,11 @@ def promote_waiting_page(say=None):
     try:
         atomic_io.replace(src, dst, label='loading.html(promote)')
         if say:
-            say('起動待機画面の写しを新しくしました: %s' % dst)
+            say('起動画面の写しを新しくしました: %s' % dst, quiet=True)
         return dst
     except Exception as e:
         if say:
-            say('起動待機画面の写しを新しくできませんでした（いまの写しで開きます）: %s' % e, bad=True)
+            say('起動画面の写しを新しくできませんでした（いまの写しで開きます）: %s' % e, bad=True)
         return None
 
 
@@ -320,7 +324,7 @@ def run(say, write_stamp=True):
     sweep_shared_leftovers(say)
     if write_stamp:
         if ready.write():
-            say('確認の刻印を書きました: %s' % ready.stamp_file())
+            say('確認の刻印を書きました: %s' % ready.stamp_file(), quiet=True)
         else:
-            say('確認の刻印を書けませんでした（次回も確認します）', bad=True)
+            say('確認の刻印を書けませんでした（次の起動でもう一度確かめます）', bad=True)
     return True, ''

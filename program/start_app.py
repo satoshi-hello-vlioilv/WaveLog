@@ -516,8 +516,11 @@ def run_full_check(log,why):
  log.info('起動前の確認: %s。この起動でまとめて確かめます（update.batを実行しておくと次回から速くなります）',
           ' / '.join(why) if why else '刻印がありません')
  boot_status.set_work(boot_status.WORK_UPDATE,why or ['刻印がありません'])
- def say(message,bad=False):
+ def say(message,bad=False,quiet=False):
   (log.warning if bad else log.info)('起動前の確認: %s',message)
+  # **`quiet` は記録だけ**（§9.431）。置き場の道・刻印の行き先は毎回同じで、
+  # 待っている人の打つ手が変わらない——待機画面には出さない。
+  if quiet:return
   # **同じ言葉を画面にも出す**——ログと画面で言い方を変えない（§9.163）。
   boot_status.report('packages',message,failed=bad)
  ok,_reason=setup_check.run(say)
