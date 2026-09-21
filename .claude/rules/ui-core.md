@@ -1,4 +1,4 @@
-# 画面の土台（22件）
+# 画面の土台（25件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -13,7 +13,10 @@
 | 「この端末の見え方」の3つは同じ形で読める（`WL.uiSize`／`WL.duration`／`WL.loader`） | `test_uisize.js` | [§9.433](../../docs/decisions/9.433.md) |
 | 見え方が変わったら`wl:look-change`で知らせる（いまの値を出す画面が塗り直す） | `test_uisize.js` | [§9.433](../../docs/decisions/9.433.md) |
 | 入口は増やさず**行き先**を置く。畳んだ入口の説明には節を全部書く | `test_uisize.js` | [§9.433](../../docs/decisions/9.433.md) |
-| 読み込み中の並びは`WL.loader.html()`の1箇所（`<i>`5つ）。呼ぶ側が自前の形を書かない | `test_uisize.js` | [§9.421](../../docs/decisions/9.421.md) |
+| 読み込み中の並びは`WL.loader.html()`の1箇所（`<i>`は`WL.loader.SLOTS`＝9つ）。呼ぶ側が自前の形を書かない | `test_uisize.js` | [§9.436](../../docs/decisions/9.436.md) |
+| 見た目の型は**器そのもの**が名乗る（`.wl-ld[data-ld]`）。祖先に付けると、見本を並べた盤で取り違える | `test_uisize.js` | [§9.436](../../docs/decisions/9.436.md) |
+| 顔ぶれが器に入らなくなったら**広い場所へ移し、狭い入口には行き先といまの値だけ**を残す | `test_uisize.js` | [§9.436](../../docs/decisions/9.436.md) |
+| 選ぶ面が2つ以上あるとき、**印を付ける役も1箇所**（`WL.loader.mark()`）。描いた直後に呼ぶ | `test_uisize.js` | [§9.436](../../docs/decisions/9.436.md) |
 | 「この端末の見え方」の入口は「表示」バッジの1つ。節を足す（入口は増やさない） | `test_uisize.js` | [§9.421](../../docs/decisions/9.421.md) |
 | 第三者のCSS/JSは**同梱**し、許諾は`static/vendor/<名前>/LICENSE`へ置く | `test_uisize.js` | [§9.421](../../docs/decisions/9.421.md) |
 | 終了したらタブも閉じる。断られたときだけ案内を出す（「閉じました」と言わない） | `test_appquit.js` | [§9.409](../../docs/decisions/9.409.md) |

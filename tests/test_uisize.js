@@ -96,8 +96,9 @@ let b=null;
   rec(`廃止した段(${old})の保存値は近い段(${want})へ寄せる`,m.size===want,JSON.stringify(m));
  }
 
- /* ---------- 読み込み中の見せ方（§9.421） ----------
-    loaders.css（MIT）から写した6種を同梱し、「表示」バッジの3つめの節で選ぶ。
+ /* ---------- 読み込み中の見せ方（§9.421 → §9.436） ----------
+    loaders.css（MIT）から写した28種＋既定の29種を同梱し、**選ぶのは
+    共通設定＞この端末の盤**（「表示」バッジには行き先だけを置く）。
     **同梱**なので、回線の無い端末でも動く——外部CDNへ取りに行かない。 */
  await page.evaluate(()=>localStorage.removeItem('MeasurementLoaderV1'));
  await page.reload({waitUntil:'domcontentloaded'});
@@ -106,80 +107,151 @@ let b=null;
   attr:document.documentElement.dataset.loader,
   style:window.WL.loader.style(),
   n:window.WL.loader.STYLES.length,
+  slots:window.WL.loader.SLOTS,
   keys:window.WL.loader.STYLES.map(l=>l.key).join(','),
+  /* 族は全部が中身を持つこと（空の見出しを出さない）。 */
+  groups:window.WL.loader.GROUPS.map(g=>g.key+':'+window.WL.loader.STYLES.filter(l=>l.group===g.key).length).join(' '),
+  orphan:window.WL.loader.STYLES.filter(l=>!window.WL.loader.GROUPS.some(g=>g.key===l.group)).map(l=>l.key).join(','),
+  empty:window.WL.loader.GROUPS.filter(g=>!window.WL.loader.STYLES.some(l=>l.group===g.key)).map(g=>g.key).join(','),
  }));
  rec('既定は「輪と点」（これまでの見せ方）',
-     ld0.attr==='ring'&&ld0.style==='ring',JSON.stringify(ld0));
- rec('選べるのは6種（loaders.css から写したもの＋既定）',
-     ld0.n===6&&/ball-pulse/.test(ld0.keys),ld0.keys);
- /* **並びは1つ**（`<i>`が5つ）。種類を変えてもDOMを作り直さないので、
-    動いている最中に切り替えても飛ばない。 */
+     ld0.attr==='ring'&&ld0.style==='ring',JSON.stringify({a:ld0.attr,s:ld0.style}));
+ rec('選べるのは29種（loaders.css から写した28種＋既定）',
+     ld0.n===29&&/ball-pulse/.test(ld0.keys),String(ld0.n));
+ /* **水の波紋は要件**（利用者の指示「水の波紋のようなものも使いたいです」）。 */
+ rec('水の波紋（広がって消える輪）が在る',
+     /ball-scale-ripple\b/.test(ld0.keys)&&/ball-scale-ripple-multiple/.test(ld0.keys),ld0.keys.slice(0,80));
+ /* 族は「見出し＝中身が在るもの」だけ。**どちらの向きにも取りこぼさない**
+    ——族の無い種類も、中身の無い族も出さない（§9.436）。 */
+ rec('29種はすべて族に属し、空の族は無い',
+     !ld0.orphan&&!ld0.empty,ld0.groups+' orphan='+ld0.orphan+' empty='+ld0.empty);
+ /* **並びは1つ**（`<i>`が9つ＝格子3×3に要る数）。種類を変えてもDOMを
+    作り直さないので、動いている最中に切り替えても飛ばない。 */
  const mk=await page.evaluate(()=>{
   const d=document.createElement('div');
   d.innerHTML=window.WL.loader.html(16);
   const el=d.firstElementChild;
-  return {cls:el.className,kids:el.children.length,
+  return {cls:el.className,kids:el.children.length,ld:el.dataset.ld,
           size:el.getAttribute('style')||'',
           tags:[...el.children].map(c=>c.tagName).join(',')};
  });
- rec('並びを作るのは`WL.loader.html()`の1箇所（`<i>`が5つ）',
-     mk.cls==='wl-ld'&&mk.kids===5&&/--wl-ld:\s*16px/.test(mk.size),JSON.stringify(mk));
+ rec('並びを作るのは`WL.loader.html()`の1箇所（`<i>`が9つ・種類は器が名乗る）',
+     mk.cls==='wl-ld'&&mk.kids===9&&mk.ld==='ring'&&/--wl-ld:\s*16px/.test(mk.size),JSON.stringify(mk));
  /* 保存オーバーレイも同じ並びに載っている（呼び出しが自前の形を持たない）。 */
  const ov=await page.evaluate(()=>{
   const el=document.querySelector('#saveOverlay .wl-ld');
-  return el?{kids:el.children.length,cls:el.className}:null;
+  return el?{kids:el.children.length,cls:el.className,ld:el.dataset.ld}:null;
  });
  rec('保存オーバーレイのローダーも同じ並びに載っている',
-     !!ov&&ov.kids===5,JSON.stringify(ov));
- /* 選ぶと`html[data-loader]`が変わるだけ（見た目はCSSが持つ）。 */
+     !!ov&&ov.kids===9&&ov.ld==='ring',JSON.stringify(ov));
+ /* **「表示」バッジには行き先だけ**（§9.436）。29種はポップオーバーに入らない
+    （実測: 1種50pxで29種＝1450px、画面の高さ1152pxを超える）。 */
  await page.click('#uiSizeBadge');
- const ldOpts=await page.$$eval('#uiSizeMenu [data-loader-option]',es=>es.map(e=>e.dataset.loaderOption));
- rec('「表示」バッジの3つめの節に6種が並ぶ',ldOpts.length===6,ldOpts.join(','));
- /* **札に見本そのものを出す**（§9.200 選ばせるものは選ぶ前に見える）。 */
- const sample=await page.$$eval('#uiSizeMenu [data-loader-option] .ld-sample',
-   es=>es.map(e=>e.dataset.loader+':'+e.querySelectorAll('.wl-ld > i').length));
- rec('札は見本そのものを出す（種類ごとに動きが見える）',
-     sample.length===6&&sample.every(t=>t.endsWith(':5')),sample.join(' '));
- await page.click('#uiSizeMenu [data-loader-option="line-scale"]');
+ await page.waitForSelector('#uiSizeMenu',{timeout:4000});
+ const link=await page.evaluate(()=>{
+  const b=document.getElementById('uiSizeLoaderLink');
+  return {has:!!b,txt:b?b.innerText:'',
+    opts:document.querySelectorAll('#uiSizeMenu [data-loader-option]').length,
+    menuH:Math.round(document.getElementById('uiSizeMenu').getBoundingClientRect().height),
+    vh:window.innerHeight};
+ });
+ rec('「表示」バッジの3つめの節は行き先1つ（29種は狭い器に入らない）',
+     link.has&&link.opts===0&&/共通設定/.test(link.txt)&&link.menuH<link.vh,
+     JSON.stringify(link));
+ rec('行き先にはいまの種類の名前が出る（押す前に読める）',
+     /輪と点/.test(link.txt),link.txt.replace(/\n/g,' | '));
+ /* ---- 広い選び場（共通設定＞この端末）。§9.436 の主役 ---- */
+ await page.click('#uiSizeLoaderLink');
+ await page.waitForSelector('#pcLd .pc-ld-card',{timeout:25000});
+ /* **章は畳んである**（§9.261。29種をそのまま置くと1687pxになり、728pxの
+    器に収まらない——`test_setpage.js`が見張る）。「表示」から来たときだけ
+    開いて連れて行くので、ここでは開いている。 */
+ rec('盤は共通設定の畳み（`.pc-acc`）に載り、「表示」から来ると開く',
+     await page.$eval('#pcLd',e=>e.tagName==='DETAILS'&&e.classList.contains('pc-acc')&&e.open));
+ const gal=await page.evaluate(()=>{
+  const cards=[...document.querySelectorAll('#pcLd .pc-ld-card')];
+  /* **見本は札ごとに別の種類**（入れ子でも取り違えない・§9.436）。
+     器そのものが`data-ld`を名乗り、`data-ld-fixed`でいまの設定に
+     引きずられない。 */
+  const wrong=cards.filter(c=>{
+   const f=c.querySelector('.wl-ld');
+   return !f||f.dataset.ld!==c.dataset.loaderOption
+          ||!f.hasAttribute('data-ld-fixed')||f.children.length!==9;
+  }).map(c=>c.dataset.loaderOption);
+  /* 見本は**大きさを持って描かれている**（0×0の札を「選べる」と言わない）。 */
+  const flat=cards.filter(c=>{
+   const r=c.querySelector('.pc-ld-fig .wl-ld').getBoundingClientRect();
+   return r.width<8||r.height<8;
+  }).map(c=>c.dataset.loaderOption);
+  const r0=cards[0].getBoundingClientRect();
+  const f0=cards[0].querySelector('.pc-ld-fig .wl-ld').getBoundingClientRect();
+  return {n:cards.length,wrong:wrong.join(','),flat:flat.join(','),
+    groups:document.querySelectorAll('#pcLd .pc-ld-group').length,
+    cur:(document.querySelector('#pcLd .pc-ld-card.is-current')||{}).dataset?.loaderOption,
+    now:(document.getElementById('pcLdNow')||{}).textContent||'',
+    cell:Math.round(r0.width*r0.height),fig:Math.round(f0.width*f0.height)};
+ });
+ rec('共通設定＞この端末に29種の盤が出る（族ごとに束ねる）',
+     gal.n===29&&gal.groups===7,JSON.stringify({n:gal.n,g:gal.groups}));
+ rec('札の見本は札ごとの種類で描かれる（入れ子でも取り違えない）',
+     !gal.wrong&&!gal.flat,'wrong='+gal.wrong+' flat='+gal.flat);
+ /* **選ぶ前に見える量**（§9.200）。バッジの見本は22×15の席で約330px²
+    しか無かった。盤では見本だけで2000px²前後を持つ。 */
+ rec('見本は札の面積の1割以上を占める（バッジの3.4%から広げた）',
+     gal.fig>1200&&gal.fig/gal.cell>0.08,`fig=${gal.fig} cell=${gal.cell} 比=${(gal.fig/gal.cell).toFixed(3)}`);
+ rec('いま使っているものに印が付き、字でも言う（色だけで言わない）',
+     gal.cur==='ring'&&/輪と点/.test(gal.now),gal.cur+' / '+gal.now);
+ /* 選ぶと`WL.loader`が覚え、**使っている側の器が全部入れ替わる**。 */
+ await page.click('#pcLd [data-loader-option="ball-scale-ripple-multiple"]');
  const ld1=await page.evaluate(()=>({
   attr:document.documentElement.dataset.loader,
   saved:localStorage.getItem('MeasurementLoaderV1'),
-  /* 実際に動いているか——CSSが当たっていれば棒に動きが付く。 */
+  ov:(document.querySelector('#saveOverlay .wl-ld')||{}).dataset?.ld,
+  /* 実際に動いているか——CSSが当たっていれば輪に動きが付く。 */
   anim:(()=>{const el=document.querySelector('#saveOverlay .wl-ld > i');
     return el?getComputedStyle(el).animationName:''})(),
-  shown:(()=>{const el=document.querySelector('#saveOverlay .wl-ld > i:nth-child(5)');
+  shown:(()=>{const el=document.querySelector('#saveOverlay .wl-ld > i:nth-child(4)');
     return el?getComputedStyle(el).display:''})(),
+  /* 盤の見本は**いまの設定に引きずられない**（`ring`の札は`ring`のまま）。 */
+  sample:(document.querySelector('#pcLd [data-loader-option="ring"] .wl-ld')||{}).dataset?.ld,
+  cur:(document.querySelector('#pcLd .pc-ld-card.is-current')||{}).dataset?.loaderOption,
  }));
- rec('選ぶと端末に覚え、`html[data-loader]`へ流れる',
-     ld1.attr==='line-scale'&&ld1.saved==='line-scale',JSON.stringify(ld1));
+ rec('選ぶと端末に覚え、使っている器の種類が入れ替わる',
+     ld1.attr==='ball-scale-ripple-multiple'&&ld1.saved==='ball-scale-ripple-multiple'
+     &&ld1.ov==='ball-scale-ripple-multiple',JSON.stringify(ld1));
  rec('選んだ種類の動きが当たっている（同梱のCSSが効いている）',
-     ld1.anim==='wl-ld-line'&&ld1.shown!=='none',JSON.stringify(ld1));
- /* 既定（輪と点）では5本目は伏せる——同じ並びのまま種類だけが変わる。 */
- await page.click('#uiSizeBadge');
- await page.click('#uiSizeMenu [data-loader-option="ring"]');
+     ld1.anim==='wl-ld-ripple'&&ld1.shown!=='none',JSON.stringify({a:ld1.anim,s:ld1.shown}));
+ rec('盤の見本はいまの設定に引きずられない（`data-ld-fixed`）',
+     ld1.sample==='ring',String(ld1.sample));
+ rec('印は選んだ札へ移る',ld1.cur==='ball-scale-ripple-multiple',String(ld1.cur));
+ /* 既定（輪と点）に戻すと、使わない`<i>`はまた伏せる——並びは同じまま。 */
+ await page.click('#pcLd [data-loader-option="ring"]');
  const ld2=await page.evaluate(()=>{
-  const el=document.querySelector('#saveOverlay .wl-ld > i:nth-child(5)');
+  const el=document.querySelector('#saveOverlay .wl-ld > i:nth-child(4)');
   const r=document.querySelector('#saveOverlay .wl-ld > i:nth-child(1)');
-  return {fifth:el?getComputedStyle(el).display:'',
+  return {fourth:el?getComputedStyle(el).display:'',
           first:r?getComputedStyle(r).animationName:''};
  });
  rec('種類が変わると使わない`<i>`は伏せる（並びは同じまま）',
-     ld2.fifth==='none'&&ld2.first==='wl-ld-rotate',JSON.stringify(ld2));
+     ld2.fourth==='none'&&ld2.first==='wl-ld-rotate',JSON.stringify(ld2));
  /* **入口は1つのまま、行き先を出す**（§9.433、利用者の報告「設定画面にない
     ので設定できるようにしてください」）。設定を探しに来るのは共通設定なので、
     バッジの説明に節の顔ぶれを書き、「この端末の見え方」を名前空間から
-    まとめて読めるようにした（共通設定の行き先がこの3つを並べて出す）。 */
+    まとめて読めるようにした（共通設定の盤がこの3つを並べて出す）。 */
  const look=await page.evaluate(()=>({
   title:document.getElementById('uiSizeBadge').title,
   size:!!(window.WL&&WL.uiSize&&WL.uiSize.SIZES&&WL.uiSize.size),
   dur:!!(window.WL&&WL.duration&&WL.duration.STYLES&&WL.duration.style),
   ld:!!(window.WL&&WL.loader&&WL.loader.STYLES&&WL.loader.style),
+  open:typeof (window.WL&&WL.openLookSettings),
  }));
  rec('バッジの説明に節を全部書く（畳んだ中に何が在るか外から読める）',
      /文字の大きさ/.test(look.title)&&/時間の書き方/.test(look.title)
      &&/読み込み/.test(look.title),look.title);
  rec('この端末の見え方の3つは同じ形で読める（`SIZES`/`STYLES`と現在値）',
      look.size&&look.dur&&look.ld,JSON.stringify(look));
+ rec('行き先の実体はマスタ画面が名乗る（土台は口だけ持つ）',
+     look.open==='function',look.open);
  /* 変わったことを1つの合図で知らせる（受ける側＝共通設定の「いまの値」）。 */
  const beat=await page.evaluate(()=>new Promise(res=>{
   let n=0;
@@ -193,6 +265,8 @@ let b=null;
      beat>=2,String(beat));
  await page.evaluate(()=>{WL.uiSize.setSize('md');WL.loader.setStyle('ring')});
  await page.evaluate(()=>localStorage.removeItem('MeasurementLoaderV1'));
+ await page.reload({waitUntil:'domcontentloaded'});
+ await page.waitForSelector('#uiSizeBadge',{timeout:15000});
 
  /* ---------- 時間の書き方（§9.341） ---------- */
  await page.evaluate(()=>localStorage.removeItem('WaveLogDurationStyleV1'));

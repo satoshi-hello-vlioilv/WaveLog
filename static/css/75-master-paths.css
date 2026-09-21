@@ -229,6 +229,53 @@
 /* いまの値は**状態の字**（色だけで言わない・§CLAUDE 3）。 */
 .pc-look-now{font-size:var(--fs-micro);font-weight:700;color:var(--muted)}
 .pc-look-act{display:flex;flex-wrap:wrap;gap:var(--gap-inline);align-items:center}
+/* 行き先の一言は**ボタンの左**（何のための行き先かを押す前に読める）。 */
+.pc-look-lead{flex:1 1 var(--w-2xl);min-width:var(--w-xl);
+  font-size:var(--fs-micro);color:var(--ink-3);line-height:1.6}
+
+/* ---- 読み込みの見せ方の盤（§9.436、利用者の指示「広いエリアでわかりやすく
+   選べるように」）。29種を**族ごとに**並べ、見本を大きく出す。 ---- */
+/* 器は**共通設定の他の節と同じ畳み**（`.pc-acc`・§9.261「設定ページは段＋畳み」）。
+   29種の盤をそのまま置くと章が1687pxになり、**畳んだ値打ちが消える**
+   （器は728px・`test_setpage.js`が見張っている）。畳んだままでも、
+   summaryが**いまの見せ方そのもの**を動かして見せる（§9.433「畳んだ入口の
+   説明には節を全部書く」）ので、開かずに今どれかが読める。 */
+.pc-ld{scroll-margin-top:var(--space-4)}
+/* 「表示」から連れて来られたときだけ、どこへ来たのかを一瞬だけ言う
+   （§9.397「出入りする物の場所は動かさない」——光るのは影だけ）。 */
+.pc-ld.is-lit{box-shadow:0 0 0 3px var(--teal-soft)}
+.pc-ld-group{display:flex;flex-direction:column;gap:var(--space-1)}
+/* 族の見出しは**何が仲間か**を言う。名前と一言は同じ行（縦を食わない）。 */
+.pc-ld-group h6{margin:var(--space-2) 0 0;display:flex;flex-wrap:wrap;
+  align-items:baseline;gap:var(--gap-inline);
+  font-size:var(--fs-micro);font-weight:800;color:var(--ink-2);letter-spacing:.04em}
+.pc-ld-group h6 small{font-weight:600;color:var(--ink-soft);letter-spacing:0}
+/* 札は**中身の長さから決めた固定幅**（いちばん長い名前が1行で入る幅）。
+   `1fr`で伸ばすと族ごとに幅が変わり、列がそろわない（§CLAUDE 11）。
+   余りは空白のまま残す（列を増やして詰めない・§CLAUDE 13）。 */
+.pc-ld-grid{display:grid;grid-template-columns:repeat(auto-fill,var(--pc-ld-w));
+  justify-content:start;gap:var(--space-2);--pc-ld-w:168px}
+.pc-ld-card{position:relative;display:grid;justify-items:center;align-content:start;
+  gap:var(--space-1);padding:var(--space-2) var(--space-1);
+  background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--radius-sm);cursor:pointer;text-align:center;
+  color:var(--ink-2);font:inherit}
+.pc-ld-card:hover{border-color:var(--teal);background:var(--surface-2)}
+/* 見本の席は**高さを固定**する（種類ごとに中身の高さが違うので、揃えないと
+   名前の行がガタつく）。色は本文と同じ濃さ——見本だけ浮かせない。 */
+.pc-ld-fig{display:grid;place-items:center;width:100%;height:52px;color:var(--teal-dark)}
+.pc-ld-card b{font-size:var(--fs-micro);font-weight:700;color:var(--ink);line-height:1.4}
+.pc-ld-card small{font-size:var(--fs-tiny);color:var(--ink-soft);
+  word-break:break-all;line-height:1.3}
+/* 使用中は**枠の色と字の両方**で言う（色だけで言わない・§CLAUDE 3）。
+   字は絶対配置なので、選び直しても札の寸法は1pxも動かない（§9.227）。 */
+.pc-ld-card.is-current{border-color:var(--teal);background:var(--pale);
+  box-shadow:inset 0 0 0 1px var(--teal)}
+.pc-ld-on{position:absolute;top:var(--space-1);right:var(--space-1);
+  display:none;padding:0 var(--space-1);border-radius:var(--radius-xs);
+  background:var(--teal);color:var(--card-bg);
+  font-size:var(--fs-tiny);font-style:normal;font-weight:800;line-height:1.6}
+.pc-ld-card.is-current .pc-ld-on{display:block}
 .pc-sc{display:flex;flex-direction:column;gap:var(--gap-inline);
   padding:var(--space-2);border:1px solid var(--line-soft);
   border-radius:var(--radius-sm);background:var(--surface-2)}

@@ -3,10 +3,20 @@ https://github.com/ConnorAtherton/loaders.css
 Copyright (c) 2015 Connor Atherton
 License: MIT （package.json の "license": "MIT" による）
 
-WaveLog は loaders.css のアニメーション6種を `static/css/89-loaders.css` へ
-写して同梱している（CDNへ取りに行かない。§9.421）。写すときに、色を
-`currentColor` へ・大きさを `--wl-ld` から作る形へ・`@keyframes` の名前へ
-`wl-ld-` の印を付ける、の3点を直している。元のファイルそのものは置いていない。
+WaveLog は loaders.css のアニメーション28種（公開ページに並ぶもの全部）を
+`static/css/89-loaders.css` へ写して同梱している（CDNへ取りに行かない。
+§9.421・§9.436）。写すときに次の4点を直している。元のファイルそのものは
+置いていない。
+
+  1. 色を `currentColor` へ（元は #fff 固定）
+  2. 寸法を `--wl-ld` から作る比へ（元の px の値は1つも写していない）
+  3. `@keyframes` の名前へ `wl-ld-` の印（元の `scale`／`rotate` は衝突する）
+  4. 置き場所を `margin-*` へ（元の器ごとの `transform:translate` は、
+     中で `transform` を動かす種類と食い違う）
+
+配布物に在る残り2種は写していない（§9.436 ②）:
+  ・ball-spin-loader  … 元のCSSのままでは何も描かれない
+  ・ball-scale-random … ball-scale-multiple と見分けが付かない
 
 --- MIT License ---
 
