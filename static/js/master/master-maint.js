@@ -486,7 +486,7 @@
   closeHintMenu();
   const cur=hintLevel();
   const m=document.createElement('div');
-  m.className='access-mode-menu mm-hint-menu';m.id='mmHintMenu';
+  m.className='wl-menu access-mode-menu mm-hint-menu';m.id='mmHintMenu';
   m.innerHTML=HINT_LEVELS.map(x=>`<button type="button" data-hint-lv="${esc(x.v)}"`
     +` class="${x.v===cur?'is-current':''}"><span>${esc(x.label)}</span>`
     +`<small>${esc(x.note||'')}</small></button>`).join('');

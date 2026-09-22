@@ -798,11 +798,9 @@
    線と見出しが二重になる。§CLAUDE 10「装飾で情報を増やさない」）。 */
 .col-head-menu .chm-sep+.chm-group{padding-top:2px}
 /* 項目は「字 ＋ 鍵盤 ＋ ▸」の横並び。**字だけが縮む**（鍵盤と印は短い）。
-   説明の1行は下へ落とすので、器は折り返せるままにする。
-   `20-shell.css`の`.col-head-menu button`（`display:block`）と同じ詳細度
-   （0,1,1）なので、**後ろに読まれるこのファイルが勝つ**——行の右クリックの
-   メニューだけに効かせたいので、あちらは触らない。 */
-.sc-row-menu button{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline)}
+   横並び・字の大きさ・高さは`.wl-menu button`が持つ（§9.448）ので、
+   ここが足すのは**折り返せること**だけ——説明の1行を下へ落とすため。 */
+.sc-row-menu button{flex-wrap:wrap}
 .sc-row-menu .chm-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 鍵盤でできることは**その場に書く**（§CLAUDE 2「思い出させない」）。 */
 .sc-row-menu .chm-key{

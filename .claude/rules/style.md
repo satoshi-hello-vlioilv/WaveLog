@@ -1,4 +1,4 @@
-# 見た目（CSS・寸法・色）（56件）
+# 見た目（CSS・寸法・色）（57件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -25,6 +25,7 @@
 | 目に見えない字（空白・タブ・改行）を見せる記号は`visibleChars()`の1箇所で1文字ずつ当てる | `test_lotcopy.js` | [§9.371](../../docs/decisions/9.371.md) |
 | 所要時間の書き方は`WL.duration`の1箇所。既定は「分」、切り替えは「表示」バッジの1枚に畳む。時点（〜前／〜後）と間隔（〜ごと）は別の軸 | `test_patchlint.py`・`test_uisize.js` | [§9.341](../../docs/decisions/9.341.md) |
 | 状態チップの色は「正常＝中立／設定要＝橙／赤は取り消せない操作だけ」。同じ橙に2つの意味を持たせない | `test_headbar.js` | [§9.338](../../docs/decisions/9.338.md) |
+| 土台の規則は**修飾子より前**に書く（同点なので後が勝ち、修飾子が黙って効かなくなる） | `test_popmenu.js` | [§9.448](../../docs/decisions/9.448.md) |
 | 寸法は文字サイズから作る | `test_fit.js`・`test_typescale.js` | [§9.90](../../docs/decisions/9.90.md) |
 | 色と文字サイズは`:root`のトークンから選ぶ | `test_theme.js` | [決まり](../../docs/decisions/rules-misc.md) |
 | 表示件数の「全件」は「250件ずつ最後まで取り続ける」 | `test_allrows.js` | [§9.95](../../docs/decisions/9.95.md) |

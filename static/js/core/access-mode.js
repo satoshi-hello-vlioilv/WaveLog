@@ -176,14 +176,13 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
   }
  }
 
+ /* 閉じる道は`WL.popMenu`の1本（§9.448）。外クリック・Escの配線は土台が持つ。
+    **バッジの上では閉じない**のも土台の`owner`が受け持つ。 */
  function closeAccessModeMenu(){
   const existing=document.querySelector('.access-mode-menu');
-  if(existing)existing.remove();
-  document.removeEventListener('click',onOutsideMenuClick,true);
- }
- function onOutsideMenuClick(e){
-  const menu=document.querySelector('.access-mode-menu');
-  if(menu&&!menu.contains(e.target)&&!e.target.closest('#accessModeBadge'))closeAccessModeMenu();
+  if(!existing)return;
+  existing.remove();
+  WL.popMenu.close();
  }
 
  async function switchAccessMode(nextMode){
@@ -220,7 +219,7 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
   const modes=allowedModes();
   if(modes.length<=1)return;
   const menu=document.createElement('div');
-  menu.className='access-mode-menu';
+  menu.className='wl-menu access-mode-menu';
   modes.forEach(m=>{
    const btn=document.createElement('button');
    btn.type='button';
@@ -230,10 +229,8 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
    menu.appendChild(btn);
   });
   document.body.appendChild(menu);
-  const rect=anchor.getBoundingClientRect();
-  menu.style.top=`${rect.bottom+6}px`;
-  menu.style.left=`${Math.max(8,rect.right-menu.offsetWidth)}px`;
-  requestAnimationFrame(()=>document.addEventListener('click',onOutsideMenuClick,true));
+  /* 置き場所・外クリック・Esc・矢印キー・`role`は`WL.popMenu`の1箇所（§9.448）。 */
+  WL.popMenu.open(menu,{anchor,owner:anchor,onClose:closeAccessModeMenu});
  }
  document.addEventListener('click',e=>{const t=e.target.closest('#accessModeBadge');if(!t||t.disabled)return;openAccessModeMenu(t)});
 

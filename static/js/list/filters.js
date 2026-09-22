@@ -999,7 +999,7 @@
     const entries=presetEntries();
     const cur=selectedPresetKey();
     const menu=document.createElement('div');
-    menu.className='access-mode-menu fb-preset-menu';menu.id='filterPresetMenu';
+    menu.className='wl-menu access-mode-menu fb-preset-menu';menu.id='filterPresetMenu';
     menu.setAttribute('role','menu');
     const combos=entries.filter(e=>e.kind==='combo');
     const ones=entries.filter(e=>e.kind==='single');
@@ -1390,7 +1390,7 @@
     if(!rows.length){closeCondMenu();return}
     const first=!condMenuEl;
     const menu=condMenuEl||document.createElement('div');
-    menu.className='access-mode-menu fb-cond-menu';menu.id='filterCondMenu';
+    menu.className='wl-menu access-mode-menu fb-cond-menu';menu.id='filterCondMenu';
     const line=r=>{
       if(r.kind==='adhoc')
         return '<div class="fb-cond-row is-adhoc">'

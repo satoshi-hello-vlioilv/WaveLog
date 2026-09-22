@@ -644,13 +644,12 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
 }
 WL.bindColumnHeaderTools=bindColumnHeaderTools;
 
+/* 閉じる道は`WL.popMenu`の1本（§9.448）。外クリック・Escの配線と
+   「閉じたら器を消す」は`open()`へ渡した`onClose`が受け持つ。 */
 function closeColumnHeaderMenu(){
+ WL.popMenu.close();
  document.querySelector('.col-head-menu')?.remove();
- document.removeEventListener('mousedown',onColumnMenuOutside,true);
- document.removeEventListener('keydown',onColumnMenuKey,true);
 }
-function onColumnMenuOutside(e){if(!e.target.closest('.col-head-menu'))closeColumnHeaderMenu()}
-function onColumnMenuKey(e){if(e.key==='Escape'){e.stopPropagation();closeColumnHeaderMenu()}}
 /* 幅の状態の呼び名(§9.119)。**画面の言葉を1箇所に持つ**——メニューと
    設定パネルで違う言い方をすると、同じものだと分からなくなる。 */
 const WIDTH_MODE_LABEL={auto:'内容に合わせる（自動）',manual:'手で決めた幅',locked:'固定（動かさない）'};
@@ -723,7 +722,7 @@ function openColumnHeaderMenu(ev,col,target,allColumns,src){
                ...hiddenAll.filter(k=>!ordered.includes(k))];
  const nameOf=k=>S2.label(k);
  const menu=document.createElement('div');
- menu.className='col-head-menu';
+ menu.className='wl-menu col-head-menu';
  const item=(label,cls)=>`<button type="button" class="${cls||''}">${esc(label)}</button>`;
  /* 隠している列は**この場で戻せる**。多いときは全部は並べない
     (メニューが画面を覆うと、それ自体が操作の邪魔になる)。 */
@@ -751,9 +750,9 @@ function openColumnHeaderMenu(ev,col,target,allColumns,src){
     +item('すべての列を表示','chm-all'):'')
   +`<div class="chm-sep"></div>`+item('表示列の設定を開く…','chm-panel');
  document.body.appendChild(menu);
- const w=menu.offsetWidth,h=menu.offsetHeight;
- menu.style.left=`${Math.max(6,Math.min(ev.clientX,innerWidth-w-6))}px`;
- menu.style.top=`${Math.max(6,Math.min(ev.clientY,innerHeight-h-6))}px`;
+ /* 置き場所・外クリック・Esc・矢印キー・`role`は`WL.popMenu`の1箇所（§9.448）。 */
+ WL.popMenu.open(menu,{at:{x:ev.clientX,y:ev.clientY},owner:target,
+   onClose:()=>{document.querySelector('.col-head-menu')?.remove()}});
 
  /* **触った項目だけを送る**(§9.212 ②③)。材料は保存済みから取る
     ——`get()`は列の設定パネルの未保存の下書きを含むので、そこから作ると
@@ -853,10 +852,6 @@ function openColumnHeaderMenu(ev,col,target,allColumns,src){
   closeColumnHeaderMenu();
   S2.openPanel();
  };
- requestAnimationFrame(()=>{
-  document.addEventListener('mousedown',onColumnMenuOutside,true);
-  document.addEventListener('keydown',onColumnMenuKey,true);
- });
 }
 WL.openColumnHeaderMenu=openColumnHeaderMenu;
 
@@ -1151,7 +1146,7 @@ function openTableMenu(anchor){
  if(tableMenuEl){closeTableMenu();return}
  const list=S.tables||[];
  const menu=document.createElement('div');
- menu.className='access-mode-menu hd-table-menu';menu.id='tableMenu';
+ menu.className='wl-menu access-mode-menu hd-table-menu';menu.id='tableMenu';
  menu.setAttribute('role','menu');
  menu.innerHTML='<p class="hd-table-head">表を選ぶ<small>'
   +`${esc(WL.base.databaseLabel(S.db))} の中の表 ${list.length}件。ふだんは変える必要はありません</small></p>`
@@ -2986,7 +2981,7 @@ function onReloadOutside(e){
 async function openReloadMenu(anchor){
  closeReloadMenu();
  const menu=document.createElement('div');
- menu.className='access-mode-menu reload-menu';menu.id='reloadMenu';
+ menu.className='wl-menu access-mode-menu reload-menu';menu.id='reloadMenu';
  /* 読み込みの内訳（§9.340）。チップは遅いときしか出さないので、**速いときに
     内訳へ辿り着ける場所はここだけ**——入口ごと消さない（§4）。 */
  const bd=lastLoadBreakdown;
