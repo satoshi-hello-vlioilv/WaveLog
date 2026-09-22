@@ -291,13 +291,32 @@ let b=null;
 
  await page.click('#uiSizeBadge');
  await page.waitForSelector('#uiSizeMenu',{timeout:4000});
- const menu=await page.evaluate(()=>({
+ const menu=await page.evaluate(()=>{
+  const m=document.getElementById('uiSizeMenu');
+  const r=m.getBoundingClientRect();
+  const fs=[...m.querySelectorAll('*')].filter(e=>(e.textContent||'').trim())
+    .map(e=>parseFloat(getComputedStyle(e).fontSize)).filter(Boolean);
+  return {
+  幅:Math.round(r.width),字の最小px:Math.min(...fs),
+  入口:[...document.querySelectorAll('button')]
+    .filter(b=>b.offsetParent&&/^表示$/.test((b.innerText||'').trim())).length,
   heads:[...document.querySelectorAll('#uiSizeMenu .ui-size-menu-head')].map(h=>h.textContent.trim()),
   sizes:document.querySelectorAll('#uiSizeMenu [data-ui-size-option]').length,
   durs:[...document.querySelectorAll('#uiSizeMenu [data-duration-style]')].map(b=>b.dataset.durationStyle),
   hints:[...document.querySelectorAll('#uiSizeMenu [data-duration-style] small')].map(x=>x.textContent.trim()),
   current:document.querySelector('#uiSizeMenu [data-duration-style].is-current')?.dataset.durationStyle,
- }));
+ };});
+ /* ---- 入口は1つ・字は小さくしすぎない（§9.444、利用者の指示「表示という
+    ボタンがそもそも2つあるのでわかりにくい」「文字が小さくなりすぎないように
+    わかりやすく再構成して」）----
+    実測（直す前）: 「表示」という名のボタンが2つ／この窓は236×399pxで
+    **いちばん小さい字が節の見出しの9.5px**だった（見出しが本文より小さい）。 */
+ rec('「表示」という名のボタンは1つだけ（§9.444）',
+   menu.入口===1,`${menu.入口}個`);
+ rec('節の見出しを含めて字を11px未満にしない（§9.444）',
+   menu.字の最小px>=11,`最小 ${menu.字の最小px}px`);
+ rec('節が増えたぶん器を広げてある（折り返しで縦に伸ばさない）',
+   menu.幅>=320,`${menu.幅}px`);
  /* **節の数を決め打ちしない**（§9.389）。「この端末の見え方」は増えるので
     （§9.421 で3つめが入った）、見るのは**どれも名前を持つこと**と
     **前後関係**——正しい位置へ1枚足しただけで落ちる網にしない。 */

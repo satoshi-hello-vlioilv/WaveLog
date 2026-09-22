@@ -695,7 +695,9 @@
    spans.forEach(([a, b], k) => {
     zone(out, a, b, y, zp.zones[k][side]);
     const r = (k > 0 && k < spans.length - 1) ? bmap[side][k] : null;
-    if (r) zmk.push({ badge: String(r.badge), x0: off(a), x1: off(b), y });
+    /* **どちらの軸かも持って帰る**（§9.442）——記号の札は押すと拡大図が開く
+       ので、軸を渡さないと下軸を押しても上軸の図が出る（模式図と同じ作法）。 */
+    if (r) zmk.push({ badge: String(r.badge), x0: off(a), x1: off(b), y, up: !!upper });
    });
    pos.forEach(x => out.knife.push({ x, y }));
   });
@@ -734,11 +736,17 @@
   }
   if (drawn('ring')) {
    /* 保持層は**ゴムリングでもフィンガーでも同じ層**（§9.377）。色はゴムリングだけ
-      マスタの値で、フィンガーは1色（樹脂の押さえ）。 */
+      マスタの値で、フィンガーは1色（布入ベークライトの茶）。
+      **模式図と同じトークンから引く**（§9.441、利用者の指示「フィンガーの色は
+      ベークライトの一般的な茶色ベースにしてほしい」）——以前はここだけ
+      `#6f7d8c` という灰青のリテラルで、**スペーサーと見分けが付かず**、
+      模式図の茶（`--bs-fig-finger`）とも食い違っていた（色リテラルを
+      増やさない・§9.350／色は1箇所が答える・§CLAUDE 8）。 */
    groupBy(out.ring, q => (q.hold.kind === 'ring' ? 'r' + q.hold.od : 'f')).forEach((list, key) => {
     const isRing = key.charAt(0) === 'r';
     const od = isRing ? +key.slice(1) : linerR * 2 + 20;
-    const color = isRing ? (ctx.ringHex(od) || '#8d97a6') : '#6f7d8c';
+    const color = isRing ? (ctx.ringHex(od) || '#8d97a6')
+                         : cssColor('--bs-fig-finger', '#7a5232');
     put(list.map(q => ({ x: q.x, y: q.y, len: q.sz - 1.0 })), od / 2,
         isRing ? ringBore : linerR,
         skin(T, sh.ring, 'hold' + key, { color, metalness: .02, roughness: .9 }));
@@ -1439,6 +1447,7 @@
    if (el.box.dataset.badge !== q.badge) {
     el.box.dataset.badge = q.badge;
     el.chip.dataset.badge = q.badge;
+    el.chip.dataset.axis = q.up ? 'up' : 'lo';
     el.chip.textContent = q.badge;
    }
    el.box.style.cssText =
@@ -1530,12 +1539,69 @@
             band: Math.abs(hi.y - lo.y), hit: hit.y, rows,
             tw: dimTextW(t, DIM_FS) };
   }).filter(q => q.cx > -50 && q.cx < w + 50);
+  /* **引き出した字も、部材の中の字も帯を避ける**（§9.443、利用者の指示「図の
+     縦方向の表示エリアが30%小さくなっても表示ラベルなどが重ならないように」）。
+     §9.437 で帯よけ（`hudBox`）を入れたのは**HTMLの札（OS・DS）だけ**で、
+     寸法の字は通っていなかった——器が縮むと投影した席が上へ寄り、左上の帯へ
+     食い込む（実測: 器の高さ 819→459px で 4件、いちばん大きいもので 100px²）。 */
+  const hudD = hudBox(w, h);
+  const dimTop = (x, tw) => {
+   let t = DIM_PAD;
+   hudD.tops.forEach(b => {
+    if (x + tw / 2 + DIM_PAD > b.x0 && x - tw / 2 - DIM_PAD < b.x1) t = Math.max(t, b.y + DIM_PAD);
+   });
+   return t;
+  };
+  const dimBot = h - hudD.bot - DIM_PAD;
+  /* **置く前に空いているか確かめる**（§9.443）。器が縮んでも字の数は変わらない
+     （実測226枚）ので、**全部を置こうとすれば必ずどこかで重なる**。§9.429 が
+     すでに決めているとおり、入りきらないものは**置かずに数える**（`off`）
+     ——図の読み方の1行がその数を言う（§CLAUDE 4 黙って落とさない）。
+     ふさがっている物は3つ: 帯（`.bs-hud`）・記号の札（`zones()`が先に置く）・
+     すでに置いた字。 */
+  const taken = [];
+  hudD.tops.forEach(b => taken.push({ x0: b.x0, x1: b.x1, y0: 0, y1: b.y, k: 'hud' }));
+  taken.push({ x0: 0, x1: w, y0: h - hudD.bot, y1: h, k: 'hud' });
+  if (host) {
+   const sb = host.getBoundingClientRect();
+   (D3.zoneEls || []).forEach(z => {
+    if (!z.chip || z.chip.hidden || !z.chip.offsetWidth) return;
+    const r = z.chip.getBoundingClientRect();
+    taken.push({ x0: r.left - sb.left, x1: r.right - sb.left,
+                 y0: r.top - sb.top, y1: r.bottom - sb.top, k: 'chip' });
+   });
+  }
+  const boxOf = (x, y, tw) => ({ x0: x - tw / 2 - 2, x1: x + tw / 2 + 2,
+                                 y0: y - DIM_FS * 0.6 - 1, y1: y + DIM_FS * 0.6 + 1 });
+  const why = { hud: 0, chip: 0, text: 0, wide: 0 };
+  const hitOf = b => taken.find(o => b.x0 < o.x1 && b.x1 > o.x0 && b.y0 < o.y1 && b.y1 > o.y0);
+  const free = b => !hitOf(b);
+  /* **有効長の寸法線の字も先に席を取る**（§9.443）。描くのは下の ③ だが、
+     **後から描く物は席を取れない**——実際に 70% の高さで寸法の字が2件
+     この上へ乗った。場所は`pack`だけで決まるので、ここで確保できる。 */
+  const pk0 = D3.pack;
+  let span0 = null;
+  if (pk0 && pk0.arbor) {
+   const ha = pk0.arbor / 2;
+   const sa = P(-ha, 0), sb2 = P(ha, 0);
+   const st0 = `有効長 ${dmm(pk0.arbor)}`;
+   span0 = { cx: (sa.x + sb2.x) / 2, y: h - 54, t: st0,
+             tw: dimTextW(st0, DIM_FS), a: sa, b: sb2 };
+   taken.push(boxOf(span0.cx, span0.y, span0.tw + 10));
+  }
   const outs = [];
   let inside = 0;
   list.forEach(q => {
    /* 中へ書けるのは**横にも縦にも入る**とき。帯が字より低ければ、いくら
       横に広くても中には書けない。 */
-   if (q.pw >= q.tw + DIM_PAD * 2 && q.band >= DIM_FS + 1) {
+   /* **帯の下に来る字は「中に書ける」と数えない**（§9.443）。中の字は
+      その部材の位置に縛られていて動かせないので、帯と重なるなら
+      **引き出しへ回す**——動かせるのはそちらだけ。 */
+   const at = boxOf(q.cx, q.cy, q.tw);
+   const roomOK = q.cy - DIM_FS * 0.6 >= dimTop(q.cx, q.tw)
+               && q.cy + DIM_FS * 0.6 <= dimBot && free(at);
+   if (roomOK && q.pw >= q.tw + DIM_PAD * 2 && q.band >= DIM_FS + 1) {
+    taken.push(at);
     const y = q.cy + DIM_FS * 0.36;
     o += `<text x="${q.cx.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle"`
        + `${q.kind === 'ring' ? ' class="is-ring"' : ''}>${esc(q.t)}</text>`;
@@ -1547,6 +1613,8 @@
   /* 引き出し。**上軸ぶん・下軸ぶん**を、**部材の種類ごとに**分けて置く
      （§9.418。スペーサーとゴムリングを同じ段へ混ぜると、どちらの寸法か
      読めない）。線と字は別に溜めて、**線を先に**描く。 */
+  /* **段ごとにまとめて押す**——1つずつ動かすと段の高さがばらけて、どの字が
+     同じ段なのか読めなくなる（§9.429 の「段は`x`順に振り分ける」が死ぬ）。 */
   let lead = 0, off = 0, ln = '', tx = '';
   [true, false].forEach(wantUp => {
    ['sp', 'ring'].forEach(kind => {
@@ -1555,18 +1623,54 @@
     if (!g1.length) return;
     const n = Math.max(1, (g1[0].rows || []).length);
     g1.forEach((q, i) => { q.tier = i % n; });
+    /* 席（横の位置）を先に配ってから、**群ぜんたいを1つの量で押す**（§9.443）。
+       段ごとに別々の量で押すと、**押した段と押さなかった段が同じ高さに来て**
+       字どうしが重なる（実測: 器の高さ459pxで64件）。段の間隔は`rows`が
+       持っているので、群ごと動かせば間隔はそのまま保たれる。 */
+    const tiers = [];
+    let shift = 0, down = 0, up = 0;
     for (let t = 0; t < n; t++) {
      const row = g1.filter(q => q.tier === t);
-     if (!row.length) continue;
+     if (!row.length) { tiers.push(null); continue; }
      const half = row.map(q => q.tw / 2 + DIM_PAD);
      const xs = BS().spread(row.map(q => q.cx), half, 2, w - 2, DIM_SLOT);
+     tiers.push({ row, half, xs, t });
      row.forEach((q, i) => {
-      const y = q.rows[Math.min(t, q.rows.length - 1)];
+      const y0 = q.rows[Math.min(t, q.rows.length - 1)];
+      down = Math.max(down, dimTop(xs[i], q.tw) + DIM_FS * 0.6 - y0);
+      up = Math.max(up, y0 - (dimBot - DIM_FS * 0.6));
+     });
+    }
+    /* 上の帯からは下へ、下の帯からは上へ逃がす。**どちらも群ごと1つの量**
+       （§9.443）——1つずつ丸めると、下の帯に当たった字が**全部同じ高さへ
+       重なって**潰し合う（実測: 153件中39件が置けなくなった）。 */
+    shift = down - up;
+    tiers.forEach(g => {
+     if (!g) return;
+     const { row, half, xs, t } = g;
+     row.forEach((q, i) => {
+      const y = q.rows[Math.min(t, q.rows.length - 1)] + shift;
       /* **入りきらなかったものは置かない**（重ねない）。`spread()`は入らない
-         ときに範囲の外を返すので、そこで分かる。 */
-      if (xs[i] - half[i] < 0 || xs[i] + half[i] > w) { off++; return; }
-      const d = Math.sign(q.hit - y) || 1;
-      const y0 = y + d * DIM_FS * 0.55;
+         ときに範囲の外を返すので、そこで分かる。**ふさがっている席も同じ**
+         ——帯・記号の札・すでに置いた字と重なるなら置かずに数える（§9.443）。 */
+      if (xs[i] - half[i] < 0 || xs[i] + half[i] > w) { off++; why.wide++; return; }
+      /* **落とすのは最後の手段**（§9.443）。席がふさがっていたら、まず
+         **同じ字の別の段**を試す——横の位置（`xs[i]`）はそのままなので、
+         引き出し線の向きも交差の無さも変わらない（§9.413）。
+         どの段も空いていなければ置かずに数える（§9.429 の`off`）。 */
+      let yy = y, slot = boxOf(xs[i], yy, q.tw);
+      if (!free(slot)) {
+       let ok = false;
+       for (let k = 0; k < q.rows.length && !ok; k++) {
+        const cand = q.rows[k] + shift;
+        const bx = boxOf(xs[i], cand, q.tw);
+        if (free(bx)) { yy = cand; slot = bx; ok = true; }
+       }
+       if (!ok) { off++; const hb = hitOf(slot); why[(hb && hb.k) || 'text']++; return; }
+      }
+      taken.push(slot);
+      const d = Math.sign(q.hit - yy) || 1;
+      const y0 = yy + d * DIM_FS * 0.55;
       /* **線は字のきわから対象の縁まで**（どちらの端も浮かせない）。
          いったん真下（真上）へ降ろしてから寄せると、どの部材から出た線かを
          目で追える。 */
@@ -1574,29 +1678,28 @@
           + `L${xs[i].toFixed(1)} ${(y0 + d * 4).toFixed(1)}`
           + `L${q.cx.toFixed(1)} ${(q.hit - d * 3).toFixed(1)}`
           + `L${q.cx.toFixed(1)} ${q.hit.toFixed(1)}"/>`;
-      tx += `<text x="${xs[i].toFixed(1)}" y="${(y + DIM_FS * 0.36).toFixed(1)}"`
+      tx += `<text x="${xs[i].toFixed(1)}" y="${(yy + DIM_FS * 0.36).toFixed(1)}"`
           + ` text-anchor="middle"${kind === 'ring' ? ' class="is-ring"' : ''}>`
           + `${esc(q.t)}</text>`;
       lead++;
      });
-    }
+    });
    });
   });
   o += ln + tx;
   /* ---- ③ 有効長がどの区間か（§9.420、利用者の指示「有効長がどの区間か、
      視覚的にも表示を追加して」）。**寸法線**で言う——字だけだと「どこからどこ
      まで」が図の上で辿れない。端は立て線、あいだは1本、真ん中に値を置く。 */
-  const pk = D3.pack;
-  if (pk && pk.arbor) {
-   const half = pk.arbor / 2;
-   const a = P(-half, 0), b = P(half, 0);
+  if (span0) {
+   const a = span0.a, b = span0.b;
    /* 足元の帯（表示の切替・視点）は 9px から 30px ぶんを使っているので、
-      その上へ置く（§9.420）。重ねると線が札の裏へ隠れる。 */
-   const y = h - 54;
+      その上へ置く（§9.420）。重ねると線が札の裏へ隠れる。
+      **席は上で確保済み**（§9.443）——ここは描くだけ。 */
+   const y = span0.y;
    const tick = 7;
-   const t = `有効長 ${dmm(pk.arbor)}`;
-   const tw = dimTextW(t, DIM_FS) / 2 + 5;
-   const cx = (a.x + b.x) / 2;
+   const t = span0.t;
+   const tw = span0.tw / 2 + 5;
+   const cx = span0.cx;
    o += `<line class="bs-span" x1="${a.x.toFixed(1)}" y1="${(y - tick).toFixed(1)}"`
       + ` x2="${a.x.toFixed(1)}" y2="${(y + tick).toFixed(1)}"/>`
       + `<line class="bs-span" x1="${b.x.toFixed(1)}" y1="${(y - tick).toFixed(1)}"`
@@ -1607,7 +1710,7 @@
       + ` text-anchor="middle">${esc(t)}</text>`;
    D3.spanLine = { x0: +a.x.toFixed(1), x1: +b.x.toFixed(1) };
   }
-  D3.dimShown = { inside, lead, off, all: list.length };
+  D3.dimShown = { inside, lead, off, all: list.length, why };
   el.innerHTML = o;
  }
  /* 記号の顔ぶれが変わったときだけ画面へ知らせる（**毎フレームではない**）。
@@ -1692,14 +1795,19 @@
   const nm = k => `<i class="is-${k}">${k.toUpperCase()}</i>`;
   /* **誇張したら倍率を書く**（§CLAUDE 6 出どころ・単位・根拠を画面に出す）。
      板厚は実寸だと1pxも出ないので断面図でだけ太らせている（§9.413 追補）。 */
+  /* **散文は「使い方」が持つ**（§9.443、利用者の指示「表示が重ならないように」）。
+     帯は図の上に浮いていて、**1行増えるたびに寸法の字の置き場が減る**
+     （実測: 3行で103px、器619pxのうち17%）。ここに要るのは**値**だけで、
+     「上下軸はそのぶん離しています」「材料のところは刃を描けないため」は
+     いつも同じ事実——読む場所は1つでよい（§CLAUDE 8）。 */
   const mag = D3.cut && D3.matMag > 1.05 && ctx
    ? `<s>／板厚</s><i>${(+ctx.st.thick).toFixed(1)}</i>`
-     + `<s>は図では約${Math.round(D3.matMag)}倍。上下軸はそのぶん離しています</s>`
+     + `<s>は図では約${Math.round(D3.matMag)}倍</s>`
    : '';
   /* 破線が何を指しているかは**字で言う**（§CLAUDE 6）。ずれの値そのものは
      チップの帯と拡大図が持つので、ここでは繰り返さない。 */
   const sep = D3.cut && D3.cutLines
-   ? '<s>／破線は切断の位置（材料のところは刃を描けないため）</s>' : '';
+   ? '<s>／破線＝切断の位置</s>' : '';
   /* **入りきらなかった寸法は数で言う**（§9.429、§CLAUDE 4 できないことは
      できないと書く）。窓が狭いと段を広げても入らないことがあるので、
      「出ていない字がある」ことと**行き先（拡大図）**をその場で言う。

@@ -39,6 +39,14 @@
   --bs-fig-knife:var(--nav);
   --bs-fig-knife-edge:var(--nav);
   --bs-fig-badge:var(--rs-slate);
+  /* 記号は**どちらの軸か**でも色を分ける（§9.442、利用者の指示「アルファベットも
+     少し色がわかっていると違いが出てわかりやすい」）。押した記号の軸で拡大図が
+     変わるので、**押す前にどちらの図が出るか**が色から読める。
+     字は同じまま——記号が指すのは「同じ組み方」で、軸はその置き場所だから
+     （状態を色だけで語らない・§CLAUDE 3。軸は位置と刃組表の列がすでに言う）。
+     色リテラルを増やさない（§9.350）——既存の族のトークンから選ぶ。 */
+  --bs-fig-badge-up:var(--rs-indigo);
+  --bs-fig-badge-lo:var(--rs-cyan);
   --bs-fig-strip:var(--line);
   --bs-fig-strip-edge:var(--teal);
   --bs-fig-scrap:var(--rs-brown-border);
@@ -380,11 +388,30 @@ body.bs-mode .bs-shell{display:flex}
   min-width:1.7em;height:1.7em;padding:0 3px;border-radius:var(--radius-xs);
   background:var(--bs-fig-badge);color:#fff;font-weight:800;line-height:1;
   border:1.2px solid var(--surface);transition:background .12s,transform .12s}
+/* **軸で色を分ける**（§9.442）。押した記号の軸で拡大図が変わるので、
+   押す前にどちらの図が出るかが色から読める（字は同じまま）。 */
+.bs-t3b[data-axis="up"]{background:var(--bs-fig-badge-up)}
+.bs-t3b[data-axis="lo"]{background:var(--bs-fig-badge-lo)}
 .bs-t3b[hidden]{display:none}
 .bs-t3b.is-pick{background:var(--teal-dark);transform:translate(-50%,-50%) scale(1.14)}
 /* 寸法の突き合わせ（§9.418 追補）。図の読み方（`bs-o3`）と同じ見た目で、
    段だけ分ける——どちらも図の上に載る添え書き。 */
 .bs-len3[hidden]{display:none}
+/* 断面図の設定（§9.443）。**左上の帯の3行目**——帯を新しく作ると左上の帯と
+   真上で重なる（実測5364px2）。中身は模式図の帯と同じ1箇所が作る。 */
+.bs-cutset{display:flex;align-items:center;gap:var(--space-1);flex-wrap:nowrap}
+.bs-cutset[hidden]{display:none}
+.bs-cutchip{display:inline-flex;align-items:baseline;gap:var(--space-1);
+  padding:0 var(--space-2);height:var(--ctl-h-xs);border-radius:var(--radius-xs);
+  font-size:var(--fs-micro);white-space:nowrap;
+  background:var(--bs-fig-chip-bg);color:var(--bs-fig-chip-fg);
+  border:1px solid var(--bs-fig-chip-bd)}
+.bs-cutchip[data-k="chip-clr"]{background:var(--bs-fig-chip-clr-bg);
+  color:var(--bs-fig-chip-clr-fg);border-color:var(--bs-fig-chip-clr-bd)}
+.bs-cutchip[data-k="chip-ov"]{background:var(--bs-fig-chip-ov-bg);
+  color:var(--bs-fig-chip-ov-fg);border-color:var(--bs-fig-chip-ov-bd)}
+.bs-cutchip>s{text-decoration:none;opacity:.78;font-weight:600}
+.bs-cutchip>b{font-weight:800;font-variant-numeric:tabular-nums}
 .bs-hud{position:absolute;display:flex;align-items:center;gap:var(--space-1);
   max-width:calc(100% - 20px)}
 .bs-hud.is-tl{left:10px;top:10px;flex-direction:column;align-items:flex-start}
@@ -505,6 +532,14 @@ body.bs-mode .bs-shell{display:flex}
 .bs-num.is-zero{background:var(--success-bg)}
 .bs-num.is-ok{background:var(--warn-bg)}
 .bs-num.is-bad{background:var(--danger-bg);color:var(--danger);font-weight:700}
+/* **0が正の列**は見出しから「直すもの」と分かるようにする（§9.441）。
+   色だけで語らないので、見出しの小さな字が「0 が正（出たら不具合）」と言う。 */
+.bs-g th.bs-bad{background:var(--danger-bg);color:var(--danger)}
+/* ゴムリングの色・外径（§9.441）。**色は見本を添えて言い切る**——色名だけだと
+   現物のどれかを思い出す必要がある（§CLAUDE 思い出させない）。 */
+.bs-ringid{white-space:nowrap}
+.bs-ringdot{display:inline-block;width:.7em;height:.7em;margin-right:var(--space-1);
+ border:1px solid var(--line);border-radius:var(--radius-xs);vertical-align:-1px}
 
 /* ---------- 右の段（所要・段取） ---------- */
 .bs-rail{background:var(--card-bg);border:1px solid var(--card-border);

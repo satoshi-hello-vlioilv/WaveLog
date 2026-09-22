@@ -1,4 +1,4 @@
-# 画面の土台（25件）
+# 画面の土台（29件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -11,6 +11,10 @@
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 「この端末の見え方」の3つは同じ形で読める（`WL.uiSize`／`WL.duration`／`WL.loader`） | `test_uisize.js` | [§9.433](../../docs/decisions/9.433.md) |
+| **「表示」という名のボタンは1つだけ**（ヘッダー）。画面は`WL.lookSettings.register()`で節を名乗る | `test_uisize.js`・`test_scbar.js` | [§9.444](../../docs/decisions/9.444.md) |
+| 土台は画面の作りを知らない。器だけ渡し、出すのは`when()`が真のときだけ。同じ`key`は差し替わる | `test_uisize.js` | [§9.444](../../docs/decisions/9.444.md) |
+| **この端末の見え方を「予定を動かせる権限」で塞がない**（別の軸。§9.207が列で踏んだのと同じ取り違え） | `test_scinsert.js` | [§9.444](../../docs/decisions/9.444.md) |
+| **節の見出しを本文より小さくしない**（`--fs-tiny`＝9.5pxは付随情報の寸法）。窓は320px以上 | `test_uisize.js` | [§9.444](../../docs/decisions/9.444.md) |
 | 見え方が変わったら`wl:look-change`で知らせる（いまの値を出す画面が塗り直す） | `test_uisize.js` | [§9.433](../../docs/decisions/9.433.md) |
 | 入口は増やさず**行き先**を置く。畳んだ入口の説明には節を全部書く | `test_uisize.js` | [§9.433](../../docs/decisions/9.433.md) |
 | 読み込み中の並びは`WL.loader.html()`の1箇所（`<i>`は`WL.loader.SLOTS`＝9つ）。呼ぶ側が自前の形を書かない | `test_uisize.js` | [§9.436](../../docs/decisions/9.436.md) |

@@ -483,6 +483,8 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .lc-step-fx .lc-fx-note{margin:var(--space-2) 0 0;font-size:var(--fs-micro);
   line-height:1.6;color:var(--ink-3)}
 .lc-step-fx .lc-fx-del{margin-top:var(--space-2);color:var(--danger,#9d2020)}
+/* 選択肢の添え字。**11px を下限にする**（§9.444）——ここを下げると、
+   選ぶ前に「何が起きるか」を読む字がいちばん小さくなる。 */
 .access-mode-menu button small{font-weight:500;color:#687a81;font-size:var(--fs-micro)}
 /* 表示サイズ切替(アプリ全体)。モードバッジと同じ言語で揃えつつ、
    意味が違う(権限ではなく見た目の設定)ので彩度を落とした中立色にする。 */
@@ -499,9 +501,22 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 /* 「表示」の節見出し(§9.341)。1枚に2つの節（文字の大きさ／時間の書き方）を
    置くので、**どこからどこまでが1つの選択か**を字で言う。2つ目の節の上に
    だけ線を引く（先頭に引くと窓の縁と二重になる）。 */
+/* **節の見出しをいちばん小さい字にしない**（§9.444、利用者の指示「文字が
+   小さくなりすぎないようにわかりやすく再構成して」）。`--fs-tiny`（9.5px）は
+   フィルタの件数のような付随情報の寸法で、**どこからどこまでが1つの選択か**を
+   言う見出しに当てる字ではなかった（実測: この窓でいちばん小さいのが見出し）。
+   本文と同じ段（`--fs-sm` 12px）まで上げ、色と字間で「見出し」だと示す。 */
 .ui-size-menu-head{margin:0;padding:var(--space-1) var(--ctl-pad-x) calc(var(--space-1) / 2);
- font-size:var(--fs-tiny);font-weight:800;color:var(--muted);letter-spacing:.04em}
+ font-size:var(--fs-sm);font-weight:800;color:var(--ink-2);letter-spacing:.04em}
 .ui-size-menu-head~.ui-size-menu-head{margin-top:var(--space-1);border-top:1px solid var(--line);padding-top:var(--space-2)}
+/* 画面が名乗った節の器（§9.444）。中身は画面が描くので、ここは並べ方だけ。 */
+.ui-size-sec{display:flex;flex-direction:column;gap:calc(var(--space-1) / 2);
+ padding:0 var(--ctl-pad-x) var(--space-1)}
+.ui-size-sec:empty{display:none}
+/* **1枚に入る節が増えたので、器を広げて読みやすさを保つ**（§9.444）。
+   狭いままだと説明の字が折り返し、窓が縦に伸びて画面から溢れる。 */
+.ui-size-menu{min-width:320px;max-width:min(420px,92vw);
+ max-height:min(78vh,720px);overflow:auto}
  /* ---------- 見出しの操作: 列の並べ替えと列幅(§9.88) ----------
     よく使う操作は設定画面を開かずに表の上で完結させる。取っ手は普段は
     目立たせず、その列に触れたときだけ出す(常時見えていると、値より先に

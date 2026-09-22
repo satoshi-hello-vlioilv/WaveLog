@@ -2384,6 +2384,24 @@ applyLoader(currentLoader());
    書かない」と同じ作法）。名乗り手が居ない場面では静かに何もしない。 */
 WL.openLookSettings=null;
 
+/* 「この端末の見え方」へ**画面が節を足す口**（§9.444、利用者の指示「表示という
+   ボタンがそもそも2つあるのでわかりにくい」→「入口を1つに寄せる」）。
+   **土台は画面の作りを知らない**（§9.373 と同じ作法）——画面が名乗りに来る。
+     key    … 節の鍵（同じ鍵で登録し直すと差し替わる。描き直しで増えない）
+     title  … 節の見出し
+     when() … いまこの節を出すか（画面を開いているときだけ、等）
+     render(host) … 中身を`host`へ描く
+   **入口は増やさない**（§9.421）。増やすのは節だけ。 */
+const LOOK_SECTIONS=[];
+WL.lookSettings={
+ register(sec){
+  if(!sec||!sec.key)return;
+  const i=LOOK_SECTIONS.findIndex(x=>x.key===sec.key);
+  if(i>=0)LOOK_SECTIONS[i]=sec;else LOOK_SECTIONS.push(sec);
+ },
+ sections(){return LOOK_SECTIONS.filter(x=>!x.when||x.when())},
+};
+
 /* 「表示」のポップオーバー。モードバッジ(.access-mode-menu)と同じ
    「小さなボタン→選択肢を並べたポップオーバー」の言語で揃える
    (アプリ内で同じ役割のUIは同じ見た目・同じ操作にする)。
@@ -2453,6 +2471,18 @@ WL.openLookSettings=null;
    btn.addEventListener('click',()=>{closeMenu();WL.openLookSettings&&WL.openLookSettings()});
    menu.appendChild(btn);
   }
+  /* 画面が名乗った節（§9.444）。**土台は中身を知らない**——器だけ用意して
+     `render()`に渡す。出すのは`when()`が真のものだけ（押しても何も起きない
+     節を残さない・§CLAUDE 4）。 */
+  WL.lookSettings.sections().forEach(sec=>{
+   head(sec.title||'');
+   const box=document.createElement('div');
+   box.className='ui-size-sec';
+   box.dataset.lookSection=sec.key;
+   menu.appendChild(box);
+   try{sec.render(box,closeMenu)}
+   catch(e){WL.quiet.note('この節を描けない（ほかの節は出す）',e);box.remove()}
+  });
   document.body.appendChild(menu);
   const rect=anchor.getBoundingClientRect();
   menu.style.top=`${rect.bottom+6}px`;
