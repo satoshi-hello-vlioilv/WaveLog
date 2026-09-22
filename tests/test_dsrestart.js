@@ -68,7 +68,7 @@ let b=null;
    return {text:el.innerText.replace(/\s+/g,' '),title:el.title,
            inNav:!!el.closest('#nav')};
   });
-  rec('左メニュー（一覧を見る）の中に出る',note.inNav,JSON.stringify(note).slice(0,140));
+  rec('左メニュー（元データ）の中に出る',note.inNav,JSON.stringify(note).slice(0,140));
   rec('件数と何が待っているかを文字で出す',
       /1件が再起動待ち/.test(note.text)&&/名称/.test(note.text),note.text.slice(0,120));
   rec('いまの名前も添える（どちらが今なのか分かる）',

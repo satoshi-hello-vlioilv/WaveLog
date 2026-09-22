@@ -372,9 +372,37 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
    モードで起動する端末もある。クリックで(権限のあるモードの範囲で)切り替えられる。 */
 .access-mode-badge{height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1.5px solid var(--success-border);border-radius:var(--radius-pill);background:var(--success-bg);color:var(--success);font-weight:800;font-size:var(--fs-base-sm);cursor:pointer;white-space:nowrap;position:relative}
 .access-mode-badge:disabled{cursor:not-allowed;opacity:.7}
-.access-mode-menu{position:fixed;z-index:var(--z-popover);min-width:190px;padding:var(--space-2);border:1px solid var(--line);border-radius:var(--radius-md);background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.16)}
-.access-mode-menu button{display:flex;flex-direction:column;align-items:flex-start;gap:var(--gap-hair);width:100%;padding:var(--pad-card);border:0;border-radius:var(--radius-sm);background:transparent;text-align:left;font-weight:700;font-size:var(--fs-base-sm);color:var(--ink,#222);cursor:pointer}
-.access-mode-menu button:hover{background:var(--bg)}
+/* ---------- 浮きメニューの器は1つ（§9.448） ----------
+   列見出し・予定の行・測定データ一覧・モード/同期・フィルタの組み合わせ・
+   同期の状態——**押すと浮いて出る面は全部この器**。違いは修飾子
+   （`.col-head-menu` / `.rec-row-menu` / `.access-mode-menu` …）だけが持つ。
+   置き場所・外を押して閉じる・Esc・矢印キー・`role`は`WL.popMenu`
+   （`core/pop-menu.js`）の1箇所。**器を新しく作らないこと**——以前は
+   210/210/240/190px・影3種・項目の高さ 24/24/32/34px と、同じ役目の物が
+   ばらばらの寸法で4つあった（§CLAUDE「同じ役目の物を2つ作らない」）。 */
+.wl-menu{position:fixed;z-index:var(--z-popover);
+  min-width:var(--menu-w);max-width:var(--menu-w-max);max-height:70vh;overflow:auto;
+  padding:var(--menu-pad);border:1px solid var(--line);border-radius:var(--radius-md);
+  background:var(--surface);box-shadow:var(--menu-shadow)}
+/* 項目の高さは**押す物の標準**（`--ctl-h`≒36px）。左メニューの行き先も
+   ボタンも36pxなので、同じアプリの中で押す物の大きさを2種類にしない
+   （実測: 24/24/32/34px の4種あった）。字も1つ（`--fs-base-sm`＝13px）
+   ——**小さいほうへ揃えない**。 */
+.wl-menu button{display:flex;align-items:center;gap:var(--gap-inline);
+  min-height:var(--menu-item-h);width:100%;
+  padding:var(--space-1) var(--space-2);border:0;border-radius:var(--radius-sm);
+  background:transparent;text-align:left;
+  font-size:var(--fs-base-sm);font-weight:700;color:var(--ink);cursor:pointer}
+.wl-menu button:hover:not(:disabled){background:var(--surface-2)}
+.wl-menu button:focus-visible{outline:2px solid var(--teal);outline-offset:-2px}
+.wl-menu button:disabled{color:var(--muted);cursor:not-allowed;opacity:1}
+
+/* ---- ここから下は修飾子。**土台より後に書くこと**（同点なので後が勝つ） ---- */
+/* この面の札は「名前＋その下に一言」の縦積み（`.wl-menu button`は横並び）。
+   **器の内余白は土台のまま**（`--menu-pad`）——札の中の余白（`--pad-card`）が
+   あるので、器の側で足すと2重になる。 */
+.access-mode-menu button{flex-direction:column;align-items:flex-start;gap:var(--gap-hair);
+  padding:var(--pad-card)}
 /* 再読込メニューの「読み込みの内訳」（§9.340）。読み込みのチップは遅いときしか
    出さないので、**速いときに内訳へ辿り着ける場所はここだけ**。押せる物と
    見分けが付くよう、面を持たせて字を小さくする（ボタンではない）。 */
@@ -382,20 +410,14 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  margin-bottom:var(--space-1);padding:var(--pad-card);border-radius:var(--radius-sm);
  background:var(--surface-2);font-size:var(--fs-micro);color:var(--ink-3)}
 .reload-menu-note b{font-size:var(--fs-sm);color:var(--ink-2)}
+
 /* 一覧の見出しを右クリックしたときの小さなメニュー(§9.110)。
    列を1つ隠すためだけに設定パネルを開かせない。**戻す操作も同じ場所**に
    置く——隠した本人が次に探すのはここなので、別の場所を覚えさせない。 */
-.col-head-menu{position:fixed;z-index:var(--z-popover);min-width:210px;max-width:320px;
-  max-height:70vh;overflow:auto;padding:var(--space-1);border:1px solid var(--line);
-  border-radius:var(--radius-md);background:#fff;box-shadow:0 10px 28px rgba(0,0,0,.18)}
 .col-head-menu .chm-head{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
   margin-bottom:var(--space-1);font-size:var(--fs-micro);font-weight:800;color:var(--ink-3);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.col-head-menu button{display:block;width:100%;padding:var(--space-1) var(--space-2);border:0;
-  border-radius:var(--radius-sm);background:transparent;text-align:left;font-size:var(--fs-sm);
-  font-weight:700;color:var(--ink);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.col-head-menu button:hover{background:var(--surface-2)}
-.col-head-menu button:focus-visible{outline:2px solid var(--teal);outline-offset:-2px}
+.col-head-menu button{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .col-head-menu .chm-sep{margin:var(--space-1) 0;border-top:1px solid var(--line-soft)}
 .col-head-menu .chm-label{padding:var(--space-1) var(--space-2);font-size:var(--fs-micro);
   font-weight:800;color:var(--muted)}

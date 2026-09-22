@@ -136,7 +136,7 @@ const cleanup=async()=>{for(const id of MADE){
   const acOk=await page.evaluate(()=>{
    const b=document.getElementById('openActuals')
         ||[...document.querySelectorAll('[data-view],button')]
-          .find(x=>/実績データ|実績一覧/.test(x.textContent||''));
+          .find(x=>/測定実績|実績データ|実績一覧/.test(x.textContent||''));
    if(b){b.click();return true}return false;
   });
   if(acOk){

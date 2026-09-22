@@ -1363,7 +1363,7 @@
    e.preventDefault();
    if(opPrevInfoEl){opClosePrevInfo();return}
    const pop=document.createElement('div');
-   pop.className='access-mode-menu op-prev-info-pop';pop.id='opPrevInfoPop';
+   pop.className='wl-menu access-mode-menu op-prev-info-pop';pop.id='opPrevInfoPop';
    pop.innerHTML='<p class="op-prev-info-head">この項目の素性<small>1回読めば足りる話です</small></p>'+html;
    document.body.append(pop);
    opPrevInfoEl=pop;

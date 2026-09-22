@@ -181,7 +181,7 @@ let b=null;
      伸びるため、表示サイズを上げるほど足りなくなり特大でボタンが
      「続きか…」「帳…」と切れていた。ここに入っていれば出す前に分かった
      （CLAUDE.md §9.127「規格へ寄せるのと巡回に加えるのは2つで一組」）。 */
-  await visit('データ一覧',async()=>{
+  await visit('測定データ一覧',async()=>{
    await page.evaluate(()=>document.querySelector('[data-open-records]')?.click());
    await page.waitForSelector('#recordList',{timeout:15000}).catch(()=>{});
    await idle();
@@ -192,7 +192,7 @@ let b=null;
   await paint();
   await visit('作業スケジュール',()=>page.click('#openSchedule'));
   await visit('ダッシュボード',()=>page.click('#openDashboard'));
-  await visit('実績カレンダー',()=>page.click('#openCalendar'));
+  await visit('測定実績カレンダー',()=>page.click('#openCalendar'));
   await visit('マスタ管理',()=>page.click('#openMasterMaint'));
   /* 測定画面。左ペインが一番きつい(VER1.85.0で3px溢れを踏んだ場所)。 */
   await page.click('aside [data-db-key="SIKALOTNOW"]');

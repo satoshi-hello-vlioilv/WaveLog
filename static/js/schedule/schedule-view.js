@@ -570,7 +570,7 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
  function openSyncMenu(anchor){
   closeSyncMenu();
   const menu=document.createElement('div');
-  menu.className='access-mode-menu sc-sync-menu';menu.id='scSyncMenu';
+  menu.className='wl-menu access-mode-menu sc-sync-menu';menu.id='scSyncMenu';
   /* **打つ手は読む場所と同じところに置く**（§9.300 ①）。読み直す先が
      2つある（この画面／共有）ので、ボタンも2つ並べて**どちらが何を
      やり直すのかを書く**。 */
@@ -5828,8 +5828,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     ——2つの流儀を覚えさせない。 */
  let scRowMenuEl=null,scRowSubEl=null,scRowSubTimer=null;
  function cancelRowSubClose(){if(scRowSubTimer){clearTimeout(scRowSubTimer);scRowSubTimer=null}}
- function closeRowSubMenu(){cancelRowSubClose();if(scRowSubEl){scRowSubEl.remove();scRowSubEl=null}}
- function closeRowMenu(){closeRowSubMenu();if(scRowMenuEl){scRowMenuEl.remove();scRowMenuEl=null}}
+ function closeRowSubMenu(){cancelRowSubClose();
+  if(scRowSubEl){WL.popMenu.forget(scRowSubEl);scRowSubEl.remove();scRowSubEl=null}}
+ function closeRowMenu(){closeRowSubMenu();
+  if(scRowMenuEl){const m=scRowMenuEl;scRowMenuEl=null;WL.popMenu.close();m.remove()}}
  /* ---------- 子のメニューを閉じるのは「留まったとき」だけ（§9.398） ----------
     利用者の報告「入れ子構造のメニューの子側にカーソルを移した瞬間消えるので
     設定ができません」。
@@ -5919,15 +5921,16 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const list=pruneMenuGroups(items.filter(Boolean));
   if(!list.some(it=>!it.sep&&!it.group))return;
   const m=document.createElement('div');
-  m.className='col-head-menu sc-row-menu';
+  m.className='wl-menu col-head-menu sc-row-menu';
   scRowMenuEl=m;
   m.innerHTML=`<div class="chm-head" title="${esc(title)}">${esc(title)}</div>`
    +(note?`<div class="chm-label">${esc(note)}</div>`:'')
    +rowMenuItemsHtml(list);
   document.body.append(m);
-  const w=m.offsetWidth,h=m.offsetHeight;
-  m.style.left=`${Math.max(6,Math.min(ev.clientX,innerWidth-w-6))}px`;
-  m.style.top=`${Math.max(6,Math.min(ev.clientY,innerHeight-h-6))}px`;
+  /* 置き場所・外クリック・Esc・矢印キー・`role`は`WL.popMenu`の1箇所（§9.448）。
+     入れ子の器は`adopt()`で家族へ足すので、**子の中を押しても親は閉じない**
+     （§9.398の作法はそのまま）。 */
+  WL.popMenu.open(m,{at:{x:ev.clientX,y:ev.clientY},onClose:closeRowMenu});
   bindRowMenuItems(m,list,openRowSubMenu);
  }
  /* ---------- 入れ子のポップオーバー（§9.368） ----------
@@ -5945,7 +5948,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const list=(raw||[]).filter(Boolean);
   if(!list.length)return;
   const m=document.createElement('div');
-  m.className='col-head-menu sc-row-menu sc-row-submenu';
+  m.className='wl-menu col-head-menu sc-row-menu sc-row-submenu';
   m.__owner=btn;
   scRowSubEl=m;
   m.innerHTML=rowMenuItemsHtml(list);
@@ -5964,12 +5967,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(left+w>innerWidth-6)left=Math.max(6,owner.left-w-2);
   m.style.left=`${left}px`;
   m.style.top=`${Math.max(6,Math.min(r.top-6,innerHeight-h-6))}px`;
+  WL.popMenu.adopt(m);
   bindRowMenuItems(m,list,null);
  }
- document.addEventListener('mousedown',ev=>{
-  if(scRowMenuEl&&!ev.target.closest('.sc-row-menu'))closeRowMenu();
- },true);
- document.addEventListener('keydown',ev=>{if(ev.key==='Escape')closeRowMenu()},true);
+ /* 外クリックとEscの配線は`WL.popMenu`が1箇所で持つ（§9.448）。
+    ここに書き写さないこと——写しがあると、矢印キーのような横断の改良が
+    3箇所の問題になる。 */
  /* **どの行のメニューかを頭に出す**——右クリックは行の上で開くが、開いた
     メニューは行を覆うので、押す時点で対象が見えなくなる。 */
  function scRowMenuTitle(e){

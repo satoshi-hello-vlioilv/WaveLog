@@ -259,13 +259,13 @@
      いなければ探せなくなる)。 */
   /* **アクセスモードではなく「どこで開いた一覧か」で分ける**(§9.184)。
      以前は`accessMode.mode==='schedule'`で決めていたため、スケジュール
-     モードの端末では「一覧を見る」から開いた仕掛一覧まで同じ置き場を使い、
+     モードの端末では「元データ」から開いた仕掛一覧まで同じ置き場を使い、
      ①スケジュール作成中の条件が普通の一覧にも当たり ②モードが変わると
      どちらの置き場も入れ替わる、という2つの困りごとになっていた。
      列構成が変わるのは**スケジュール画面の中の仕掛一覧**（品質データを
      結合する）なので、判定もそこに合わせる。 */
   function presetMode(){return document.body.classList.contains('sc-mode')?'schedule':''}
-  const SCENE_LABEL={'schedule':'スケジュール作成中の仕掛一覧','':'「一覧を見る」の一覧'};
+  const SCENE_LABEL={'schedule':'スケジュール作成中の仕掛一覧','':'「元データ」の一覧'};
   function sceneLabel(){return SCENE_LABEL[presetMode()]||'この一覧'}
   function usageScopeKey(){return `${S.db||''}\u001f${S.table||''}\u001f${presetMode()}`}
   function scopedUsage(){
@@ -999,7 +999,7 @@
     const entries=presetEntries();
     const cur=selectedPresetKey();
     const menu=document.createElement('div');
-    menu.className='access-mode-menu fb-preset-menu';menu.id='filterPresetMenu';
+    menu.className='wl-menu access-mode-menu fb-preset-menu';menu.id='filterPresetMenu';
     menu.setAttribute('role','menu');
     const combos=entries.filter(e=>e.kind==='combo');
     const ones=entries.filter(e=>e.kind==='single');
@@ -1390,7 +1390,7 @@
     if(!rows.length){closeCondMenu();return}
     const first=!condMenuEl;
     const menu=condMenuEl||document.createElement('div');
-    menu.className='access-mode-menu fb-cond-menu';menu.id='filterCondMenu';
+    menu.className='wl-menu access-mode-menu fb-cond-menu';menu.id='filterCondMenu';
     const line=r=>{
       if(r.kind==='adhoc')
         return '<div class="fb-cond-row is-adhoc">'
@@ -2304,7 +2304,7 @@
       summary.append(who,document.createTextNode(
         `　自分だけ ${mineCount}件 / みんな ${forThis.length-mineCount}件`
         /* **どの場面の設定かを書く**(§9.184)。同じ仕掛一覧でも、
-           スケジュール作成中と「一覧を見る」で置き場が別なので、
+           スケジュール作成中と「元データ」で置き場が別なので、
            書かないと「登録したのに出てこない」と読まれる。 */
         +`（${S.db||'-'} / ${S.table||'-'} ／ ${sceneLabel()}）`
         +`　保存先: ${S.filterPresetSource==='master'?'master.sqlite3':'この端末（マスタ未接続）'}`));

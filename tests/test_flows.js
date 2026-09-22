@@ -86,7 +86,7 @@ let b=null;
   },{settle:3000});
 
   // --- 測定作業導線 ---
-  await check('データ一覧',()=>page.click('#homeDrafts'),{header:'データ一覧',settle:2500});
+  await check('測定データ一覧',()=>page.click('#homeDrafts'),{header:'測定データ一覧',settle:2500});
   /* 一覧の見出しは**データソースマスタの表示名**(§9.87)。コード内に
      固定で書いていた頃は、左メニュー(表示名)とヘッダー(固定文字列)で
      別の名前が出ていた。表示名を変えても追随するよう、期待値もマスタから取る。 */
@@ -104,7 +104,7 @@ let b=null;
 
   // --- 分析導線 ---
   await check('ダッシュボード',()=>page.click('#openDashboard'),{header:'ダッシュボード',settle:3000});
-  await check('実績カレンダー',()=>page.click('#openCalendar'),{header:'実績カレンダー',settle:3000});
+  await check('測定実績カレンダー',()=>page.click('#openCalendar'),{header:'測定実績カレンダー',settle:3000});
 
   // --- メンテナンス導線(マスタ管理の各タブ) ---
   await check('マスタ管理',()=>page.click('#openMasterMaint'),{header:'マスタ管理',settle:2500});

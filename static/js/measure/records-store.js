@@ -940,7 +940,7 @@ async function openRecords(status){
  recordListState.items=allRecords;recordListState.query='';recordListState.sort='updated-desc';
  // 未同期件数の表示にも今読んだ配列を渡す(渡さないと全件読みがもう1回走る)
  updateRecordListTitle();syncStatusFilterButtons();$('#recordModal').hidden=false;refreshSyncStatusUI(allRecords);
- WL.base.setHeaderContext('データ一覧','この端末と共有DBの測定データ');
+ WL.base.setHeaderContext('測定データ一覧','この端末と共有DBの測定データ');
  const search=$('#recordSearch'),sort=$('#recordSort'),clear=$('#clearRecordSearch');if(search){search.value='';search.oninput=()=>{recordListState.query=search.value;renderRecordListRows()}}if(sort){sort.value='updated-desc';sort.onchange=()=>{recordListState.sort=sort.value;renderRecordListRows()}}if(clear)clear.onclick=()=>{recordListState.query='';if(search)search.value='';renderRecordListRows()};
  bindRecordColumnsBtn();
  renderRecordListRows();requestAnimationFrame(()=>search?.focus())
@@ -1023,25 +1023,20 @@ function confirmDeleteRecord(x){
    消せない行では削除を`disabled`にし、**理由を文字で**添える
    （スケジュールの行メニューと同じ作法・§9.207）。 */
 let recordRowMenuEl=null;
+/* 閉じる道は`WL.popMenu`の1本（§9.448）。外クリック・Escの配線は土台が持ち、
+   ここは**控えを空へ戻して器を消す**だけ。
+   **持ち主の`⋯`の上では閉じない**のも土台の`owner`が受け持つ——ここで
+   閉じると直後の`click`がそのまま開き直すので、`openRecordRowMenu()`の
+   「同じボタンなら閉じる」分岐へ一度も入らない（押した本人には
+   「もう一度押しても閉じない」と見える）。 */
 function closeRecordRowMenu(){
  if(!recordRowMenuEl)return;
- const owner=recordRowMenuEl._owner;
+ const el=recordRowMenuEl,owner=el._owner;
+ recordRowMenuEl=null;
  if(owner)owner.setAttribute('aria-expanded','false');
- recordRowMenuEl.remove();recordRowMenuEl=null;
- document.removeEventListener('mousedown',onRecordRowMenuAway,true);
- document.removeEventListener('keydown',onRecordRowMenuKey,true);
+ WL.popMenu.close();
+ el.remove();
 }
-function onRecordRowMenuAway(e){
- if(!recordRowMenuEl)return;
- if(recordRowMenuEl.contains(e.target))return;
- /* **持ち主の`⋯`の上では閉じない。** ここで閉じると、直後の`click`が
-    そのまま開き直すので`openRecordRowMenu()`の「同じボタンなら閉じる」
-    分岐へ一度も入らない——押した本人には「もう一度押しても閉じない」と
-    見える（閉じる手立てがEscと他所クリックだけになる）。 */
- if(recordRowMenuEl._owner&&recordRowMenuEl._owner.contains(e.target))return;
- closeRecordRowMenu();
-}
-function onRecordRowMenuKey(e){if(e.key==='Escape'&&!e.isComposing){e.stopPropagation();closeRecordRowMenu()}}
 /* 削除できない理由。**判定は1箇所**——ボタンの出し分けと、押したときの
    断りが別々だと片方だけ直った状態が作れる。 */
 function recordDeleteBlockReason(x){
@@ -1055,7 +1050,7 @@ function openRecordRowMenu(btn,x){
  closeRecordRowMenu();
  const why=recordDeleteBlockReason(x);
  const el=document.createElement('div');
- el.className='rec-row-menu';el.setAttribute('role','menu');
+ el.className='wl-menu rec-row-menu';
  /* 削除が押せないときは器そのものへ焦点を移す（理由を読ませたい）。
     **`tabindex`が無いと`focus()`は何もしない**ので、器にも受け口を置く。 */
  el.tabIndex=-1;
@@ -1073,22 +1068,16 @@ function openRecordRowMenu(btn,x){
     同じものかは、**閉じる操作で確かめること**。 */
  recordRowMenuEl=el;
  el._owner=btn;btn.setAttribute('aria-expanded','true');
- const r=btn.getBoundingClientRect();
- /* 画面の外へ出さない。**器の外(body直下)へ`fixed`で出す**（§9.201。
-    一覧は`overflow:auto`なので、中に置くと切り落とされる）。 */
- const w=el.offsetWidth,h=el.offsetHeight;
- el.style.left=Math.max(8,Math.min(window.innerWidth-w-8,r.right-w))+'px';
- el.style.top=(r.bottom+h+8>window.innerHeight?Math.max(8,r.top-h-4):r.bottom+4)+'px';
+ /* 置き場所・外クリック・Esc・矢印キー・`role`は`WL.popMenu`の1箇所（§9.448）。
+    **器の外(body直下)へ`fixed`で出す**（§9.201。一覧は`overflow:auto`なので
+    中に置くと切り落とされる）。 */
+ WL.popMenu.open(el,{anchor:btn,owner:btn,onClose:closeRecordRowMenu});
  const del=el.querySelector('.rrm-item');
  if(!why)del.onclick=async ev=>{
   ev.stopPropagation();closeRecordRowMenu();
   const proceed=recordHasAnyInput(x)?await confirmDeleteRecord(x):true;
   if(proceed){await reliableDelete(x.id);await refreshDraftCount();await refreshRecordList()}
  };
- setTimeout(()=>{
-  document.addEventListener('mousedown',onRecordRowMenuAway,true);
-  document.addEventListener('keydown',onRecordRowMenuKey,true);
- },0);
  (why?el:del).focus?.();
 }
 /* 分割(条割変更)が実際に行われたかどうか: splitGroupsが2ロット以上に
@@ -1588,8 +1577,8 @@ function bindRecordHeadTools(list,keys){
 function recordColumnPanelSource(){
  return {
   key:'records',
-  eyebrow:'データ一覧',
-  title:()=>'表示列の設定（データ一覧）',
+  eyebrow:'測定データ一覧',
+  title:()=>'表示列の設定（測定データ一覧）',
   lead:'左で<b>出す列と並び</b>を決め、右で<b>選んだ1列の見え方</b>を整えます。'
       +'触った結果はすぐ一覧に出ます（<b>保存するまでは元に戻せます</b>）。',
   target:()=>RECORD_LIST_TARGET,
@@ -1698,7 +1687,7 @@ function equipmentSettingsHtml(){
    <section class="eqset-sec" aria-labelledby="eqsetH1">
     <h3 id="eqsetH1"><span class="eqset-no">①</span>この端末で使う設備
      <b class="eqset-now" id="equipmentSettingStatus">未登録</b></h3>
-    <p class="eqset-lead">この設備で<b>測定を開始</b>し、データ一覧・実績データも<b>この設備のぶんだけ</b>出します。仕掛データの「設計_設備ｺｰｽ」に入っていないロットは、測定画面の上で知らせます。</p>
+    <p class="eqset-lead">この設備で<b>測定を開始</b>し、測定データ一覧・測定実績も<b>この設備のぶんだけ</b>出します。仕掛データの「設計_設備ｺｰｽ」に入っていないロットは、測定画面の上で知らせます。</p>
     <div class="eqset-pick">
      <label class="eqset-field"><span>設備名</span>
       <select id="configuredEquipment"><option value="">設備マスタを読み込んでいます</option></select></label>

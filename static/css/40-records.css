@@ -155,20 +155,18 @@
   letter-spacing:.08em}
 .record-list-actions .rec-more:hover{background:var(--surface-3);color:var(--ink)}
 .record-list-actions .rec-more[aria-expanded="true"]{background:var(--teal);color:#fff;border-color:var(--teal)}
-.rec-row-menu{position:fixed;z-index:var(--z-popover);min-width:calc(240px * var(--ui-scale));
-  max-width:calc(340px * var(--ui-scale));background:var(--surface);
-  border:1px solid var(--line);border-radius:var(--radius-md);
-  box-shadow:0 10px 28px #0b2b3320;padding:var(--space-1);display:flex;
-  flex-direction:column;gap:var(--space-1)}
+/* 器は`.wl-menu`（§9.448）。この面が足すのは「項目を縦に並べる」だけ。 */
+.rec-row-menu{display:flex;flex-direction:column;gap:var(--space-1)}
 .rec-row-menu .rrm-head{font-size:var(--fs-micro);font-weight:800;color:var(--muted);
   padding:var(--space-1) var(--space-2) 0}
-.rec-row-menu .rrm-item{display:flex;flex-direction:column;align-items:flex-start;
-  gap:2px;width:100%;text-align:left;height:auto;padding:var(--space-2);
-  font-size:var(--fs-sm);font-weight:700;background:transparent;border:0;
-  border-radius:var(--radius-sm);color:var(--ink)}
+/* 項目は「字＋その下に理由」の縦積み（`.wl-menu button`は横並び）。 */
+.rec-row-menu .rrm-item{flex-direction:column;align-items:flex-start;
+  gap:2px;height:auto;padding:var(--space-2)}
 .rec-row-menu .rrm-item.is-danger{color:var(--danger)}
-.rec-row-menu .rrm-item:hover:not(:disabled){background:var(--danger-bg)}
-.rec-row-menu .rrm-item:disabled{color:var(--muted);cursor:not-allowed;opacity:1}
+/* **赤くするのは危ない項目だけ**（§9.448）。以前は`.rrm-item:hover`が
+   全項目を危険色にしていた——いまは削除の1件しか無いので露見していないが、
+   2項目目を足した瞬間に**無関係な項目が赤く光る**。 */
+.rec-row-menu .rrm-item.is-danger:hover:not(:disabled){background:var(--danger-bg)}
 .rec-row-menu .rrm-why{font-size:var(--fs-micro);font-weight:500;color:var(--muted);
   white-space:normal;line-height:1.45}
 .record-toolbar{display:flex;justify-content:space-between;align-items:center;padding:var(--pad-card);background:#eef8f9;border-bottom:1px solid var(--line)}

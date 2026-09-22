@@ -644,13 +644,12 @@ function bindColumnHeaderTools(table,target,visibleColumns,allColumns){
 }
 WL.bindColumnHeaderTools=bindColumnHeaderTools;
 
+/* 閉じる道は`WL.popMenu`の1本（§9.448）。外クリック・Escの配線と
+   「閉じたら器を消す」は`open()`へ渡した`onClose`が受け持つ。 */
 function closeColumnHeaderMenu(){
+ WL.popMenu.close();
  document.querySelector('.col-head-menu')?.remove();
- document.removeEventListener('mousedown',onColumnMenuOutside,true);
- document.removeEventListener('keydown',onColumnMenuKey,true);
 }
-function onColumnMenuOutside(e){if(!e.target.closest('.col-head-menu'))closeColumnHeaderMenu()}
-function onColumnMenuKey(e){if(e.key==='Escape'){e.stopPropagation();closeColumnHeaderMenu()}}
 /* 幅の状態の呼び名(§9.119)。**画面の言葉を1箇所に持つ**——メニューと
    設定パネルで違う言い方をすると、同じものだと分からなくなる。 */
 const WIDTH_MODE_LABEL={auto:'内容に合わせる（自動）',manual:'手で決めた幅',locked:'固定（動かさない）'};
@@ -723,7 +722,7 @@ function openColumnHeaderMenu(ev,col,target,allColumns,src){
                ...hiddenAll.filter(k=>!ordered.includes(k))];
  const nameOf=k=>S2.label(k);
  const menu=document.createElement('div');
- menu.className='col-head-menu';
+ menu.className='wl-menu col-head-menu';
  const item=(label,cls)=>`<button type="button" class="${cls||''}">${esc(label)}</button>`;
  /* 隠している列は**この場で戻せる**。多いときは全部は並べない
     (メニューが画面を覆うと、それ自体が操作の邪魔になる)。 */
@@ -751,9 +750,9 @@ function openColumnHeaderMenu(ev,col,target,allColumns,src){
     +item('すべての列を表示','chm-all'):'')
   +`<div class="chm-sep"></div>`+item('表示列の設定を開く…','chm-panel');
  document.body.appendChild(menu);
- const w=menu.offsetWidth,h=menu.offsetHeight;
- menu.style.left=`${Math.max(6,Math.min(ev.clientX,innerWidth-w-6))}px`;
- menu.style.top=`${Math.max(6,Math.min(ev.clientY,innerHeight-h-6))}px`;
+ /* 置き場所・外クリック・Esc・矢印キー・`role`は`WL.popMenu`の1箇所（§9.448）。 */
+ WL.popMenu.open(menu,{at:{x:ev.clientX,y:ev.clientY},owner:target,
+   onClose:()=>{document.querySelector('.col-head-menu')?.remove()}});
 
  /* **触った項目だけを送る**(§9.212 ②③)。材料は保存済みから取る
     ——`get()`は列の設定パネルの未保存の下書きを含むので、そこから作ると
@@ -853,14 +852,10 @@ function openColumnHeaderMenu(ev,col,target,allColumns,src){
   closeColumnHeaderMenu();
   S2.openPanel();
  };
- requestAnimationFrame(()=>{
-  document.addEventListener('mousedown',onColumnMenuOutside,true);
-  document.addEventListener('keydown',onColumnMenuKey,true);
- });
 }
 WL.openColumnHeaderMenu=openColumnHeaderMenu;
 
-/* 「一覧を見る」のボタンを、データソースマスタの内容そのままに組み直す(§9.87)。
+/* 「元データ」のボタンを、データソースマスタの内容そのままに組み直す(§9.87)。
    ------------------------------------------------------------
    **左メニューはカタログが唯一の正**。以前はindex.htmlに仕掛・品質データの
    ボタンを直接置き、カタログには「無ければ足す」だけをしていた。そのため
@@ -877,6 +872,16 @@ const DB_NAV_ICONS={
  work:'<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
  quality:'<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
  other:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/>',
+};
+/* 役割ごとの「何が見られるか」（§9.447）。綴りはサーバーの`PURPOSE_*`と同じ。
+   **役割を増やしたらここにも1行足す**——載っていない役割は`__other`に倒れる
+   ので黙って壊れはしないが、その行だけ用途を言わない説明になる。 */
+const DB_NAV_WHAT={
+ '仕掛':'作業対象のロット一覧。測定を始める・作業予定へ入れるのはここから選びます',
+ '品質':'ロットの品質データ。測定画面の品質情報と帳票がここを読みます',
+ '実績':'前工程の実績。仕掛から消えたロットはここと突き合わせます',
+ 'スケジュール':'作業予定の本体（共有スケジュールDB）',
+ __other:'元データの一覧（読むだけ）',
 };
 function renderDbNav(){
  const nav=$('#nav');if(!nav)return;
@@ -899,7 +904,13 @@ function renderDbNav(){
             :WL.dataSource.isQuality(x.key)?DB_NAV_ICONS.quality:DB_NAV_ICONS.other;
   const svg=b.querySelector('.nav-icon');if(svg)svg.innerHTML=icon;
   (b.querySelector('span')||b).textContent=x.label;
-  b.title=`${x.label}（キー: ${x.key} / ファイル: ${x.file_name||'—'}）`;
+  /* 説明は**「何が見られるか」が先**（§9.447）。以前は`（キー: SIKALOTNOW /
+     ファイル: sikalotnow_test.sqlite3）`とだけ書いており、**現場の人に
+     ファイル名は意味を持たない**。出どころを言うのは正しい（§CLAUDE 6）が、
+     先に来るのは用途のほう。用途は**役割（purpose）から引く**ので、
+     データソースを1行足せば説明も付いてくる（画面へ書き足さない）。 */
+  b.title=`${x.label}｜${DB_NAV_WHAT[x.purpose]||DB_NAV_WHAT.__other}`
+   +`\n出どころ: ${x.file_name||'—'}（キー ${x.key}）`;
   b.onclick=()=>selectDb(x.key,b);
   // マスタの表示順どおりに並べ直す(行を入れ替えたら画面もその順になる)。
   if(prev)prev.after(b);else nav.prepend(b);
@@ -1135,7 +1146,7 @@ function openTableMenu(anchor){
  if(tableMenuEl){closeTableMenu();return}
  const list=S.tables||[];
  const menu=document.createElement('div');
- menu.className='access-mode-menu hd-table-menu';menu.id='tableMenu';
+ menu.className='wl-menu access-mode-menu hd-table-menu';menu.id='tableMenu';
  menu.setAttribute('role','menu');
  menu.innerHTML='<p class="hd-table-head">表を選ぶ<small>'
   +`${esc(WL.base.databaseLabel(S.db))} の中の表 ${list.length}件。ふだんは変える必要はありません</small></p>`
@@ -2970,7 +2981,7 @@ function onReloadOutside(e){
 async function openReloadMenu(anchor){
  closeReloadMenu();
  const menu=document.createElement('div');
- menu.className='access-mode-menu reload-menu';menu.id='reloadMenu';
+ menu.className='wl-menu access-mode-menu reload-menu';menu.id='reloadMenu';
  /* 読み込みの内訳（§9.340）。チップは遅いときしか出さないので、**速いときに
     内訳へ辿り着ける場所はここだけ**——入口ごと消さない（§4）。 */
  const bd=lastLoadBreakdown;

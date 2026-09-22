@@ -33,7 +33,7 @@ let b=null;
 const VIEWS=[
  ['作業スケジュール','openSchedule','scHead'],
  ['ダッシュボード','openDashboard','dbHeadActions'],
- ['実績カレンダー','openCalendar','calToolbar'],
+ ['測定実績カレンダー','openCalendar','calToolbar'],
  ['マスタ管理','openMasterMaint','mmHead'],
  ['ログ・診断','openLogView','lgHead'],
 ];
@@ -197,8 +197,8 @@ const VIEWS=[
  let c=await ctx();
  rec('仕掛(現在): 画面名が主・ファイル名が副',
    c.title===await navLabel('SIKALOTNOW')&&/sikalotnow/i.test(c.src),JSON.stringify(c));
- for(const [sel,want] of [['#homeDrafts','データ一覧'],['#openDashboard','ダッシュボード'],
-                          ['#openCalendar','実績カレンダー'],['#openSchedule','作業スケジュール'],
+ for(const [sel,want] of [['#homeDrafts','測定データ一覧'],['#openDashboard','ダッシュボード'],
+                          ['#openCalendar','測定実績カレンダー'],['#openSchedule','作業スケジュール'],
                           ['#openMasterMaint','マスタ管理']]){
   await go(sel,2200);c=await ctx();
   rec(`${want}: 見出しが画面名になる`,c.title===want,JSON.stringify(c));
@@ -207,7 +207,7 @@ const VIEWS=[
  await go('[data-db-key="SIKALOTDEF"]',2500);c=await ctx();
  rec('品質データ: 画面名が主',c.title===await navLabel('SIKALOTDEF'),JSON.stringify(c));
  await go('#homeDrafts',2200);c=await ctx();
- rec('品質データ→データ一覧でも名残なし',c.title==='データ一覧'&&!/sikalot/i.test(c.src),JSON.stringify(c));
+ rec('品質データ→測定データ一覧でも名残なし',c.title==='測定データ一覧'&&!/sikalot/i.test(c.src),JSON.stringify(c));
 
  const bar=await page.evaluate(()=>{
   const el=document.querySelector('#recordSyncBar');

@@ -75,6 +75,9 @@ JS_FILES=[
  # どの画面よりも先に在れば、読み込みの途中で起きた失敗も拾える。
  'core/feedback.js',
  'core/wl-window.js',
+ # 浮きメニューの器のふるまい（§9.448）。置き場所・外クリック・Esc・
+ # 矢印キー・role を1箇所で持つ。**画面より先**——どの面も開くときに呼ぶ。
+ 'core/pop-menu.js',
  'list/list-view.js',
  'list/list-formula.js',
  'list/list-columns.js',

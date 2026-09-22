@@ -129,7 +129,7 @@ let b=null,measureId='';
   await page.click('[data-qa-tab="raw"]');await settle(600);
   await visit('作業スケジュール',()=>page.click('#openSchedule'));
   await visit('ダッシュボード',()=>page.click('#openDashboard'));
-  await visit('実績カレンダー',()=>page.click('#openCalendar'));
+  await visit('測定実績カレンダー',()=>page.click('#openCalendar'));
   await visit('マスタ管理',()=>page.click('#openMasterMaint'));
   /* **測定画面も網に載せる（§9.127）。** ここが巡回に入っていなかったため、
      アプリ全体の寸法を揃えた後も測定画面だけが取り残されていた

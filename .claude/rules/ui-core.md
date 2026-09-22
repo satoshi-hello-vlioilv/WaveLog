@@ -1,4 +1,4 @@
-# 画面の土台（32件）
+# 画面の土台（36件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -31,6 +31,10 @@
 | 押す形をやめたら`cursor:pointer`も消す。押しても何も起きない物に指のカーソルを出さない | — | [§9.385](../../docs/decisions/9.385.md) |
 | マウスを乗せたら**押せることを動きで**言い（1px持ち上げ）、**仲間は群ごと薄く光らせる**（9%）。濃くすると選択中と誤読される | `test_msteps.js` | [§9.396](../../docs/decisions/9.396.md) |
 | 初回の案内は帯の1箇所。空の器は「ここに何が出るか」だけを言う | `test_uiux.js` | [§9.343](../../docs/decisions/9.343.md) |
+| **浮いて出る面は`.wl-menu`の1つ**を名乗る（器を新しく作らない）。違いは修飾子だけが持つ | `test_popmenu.js` | [§9.448](../../docs/decisions/9.448.md) |
+| 置き場所・外クリック・Esc・矢印キー・`role`は`WL.popMenu`の1箇所。呼ぶ側へ書き写さない | `test_popmenu.js` | [§9.448](../../docs/decisions/9.448.md) |
+| 項目の高さは`--menu-item-h`（＝`--ctl-h`≒36px）・字は`--fs-base-sm`。**小さいほうへ揃えない** | `test_popmenu.js` | [§9.448](../../docs/decisions/9.448.md) |
+| `role=menu`を名乗るのは**項目を選ぶ面**だけ。読ませる浮きパネルに名乗らせない | `test_popmenu.js` | [§9.448](../../docs/decisions/9.448.md) |
 | 窓は`confirmModal`／`alertModal`／`promptModal`の3つだけ。素の`alert`/`confirm`/`prompt`は呼ばない | `test_patchlint.py`・`test_modalkeep.js` | [§9.342](../../docs/decisions/9.342.md) |
 | 窓は1枚しかない。窓の中から窓を開かない（名前を直すのはその場、消すのは行の中で2手） | `test_lotcopy.js` | [§9.368](../../docs/decisions/9.368.md) |
 | メニューの入れ子は本体へ足す。1項目のHTMLと配線は`rowMenuItemsHtml`/`bindRowMenuItems`の1箇所 | `test_lotcopy.js` | [§9.368](../../docs/decisions/9.368.md) |

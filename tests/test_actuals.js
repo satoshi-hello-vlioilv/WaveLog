@@ -257,9 +257,9 @@ async function mk(o){
             keys:(WL.actuals&&WL.actuals.columnKeys()||[]).length,
             err:/組み立てられません/.test((document.getElementById('lcList')||{}).textContent||'')};
    });
-   rec('実績データの「表示列」で窓が開く',win.w>0&&win.h>0,JSON.stringify(win));
+   rec('測定実績の「表示列」で窓が開く',win.w>0&&win.h>0,JSON.stringify(win));
    rec('窓は画面の中に開く（前より小さい画面でも外へ出ない）',win.inView,JSON.stringify(win));
-   rec('その一覧の設定だと見出しで分かる',/実績データリスト/.test(win.title),win.title);
+   rec('その一覧の設定だと見出しで分かる',/測定実績/.test(win.title),win.title);
    rec('候補の列が並ぶ（空の窓を出して終わりにしない）',win.items>10,JSON.stringify(win).slice(0,220));
    /* **真因はここ**（§9.292 ④）——差し替え口の`initialHidden`は
       「まだ一度も保存していないときの既定」を答える口で、**保存済みなら
@@ -333,7 +333,7 @@ async function mk(o){
   /* **データ一覧の入口は左メニューの`#homeDrafts`**（§9.320-Gで測定レールの
      `#openDrafts`を外した）。`if(!b)return false`で飛ばす作りなので、綴りが
      古いままだと**落ちずに黙って1画面ぶん見なくなる**（§CLAUDE「素通りする網」）。 */
-  const views=[['実績データ','#openActuals'],['データ一覧','#homeDrafts'],
+  const views=[['測定実績','#openActuals'],['測定データ一覧','#homeDrafts'],
                ['作業スケジュール','#openSchedule'],['マスタ管理','#openMasterMaint']];
   const left=[];
   for(const [name,sel] of views){

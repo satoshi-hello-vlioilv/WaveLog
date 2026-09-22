@@ -2428,7 +2428,7 @@ WL.lookSettings={
  function openMenu(anchor){
   closeMenu();
   const menu=document.createElement('div');
-  menu.className='access-mode-menu ui-size-menu';menu.id='uiSizeMenu';
+  menu.className='wl-menu access-mode-menu ui-size-menu';menu.id='uiSizeMenu';
   const head=t=>{const h=document.createElement('h6');h.className='ui-size-menu-head';h.textContent=t;menu.appendChild(h)};
   head('文字の大きさ');
   const cur=(typeof currentUiSize==='function')?currentUiSize():'md';
