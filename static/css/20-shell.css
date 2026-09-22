@@ -372,37 +372,49 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
    モードで起動する端末もある。クリックで(権限のあるモードの範囲で)切り替えられる。 */
 .access-mode-badge{height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1.5px solid var(--success-border);border-radius:var(--radius-pill);background:var(--success-bg);color:var(--success);font-weight:800;font-size:var(--fs-base-sm);cursor:pointer;white-space:nowrap;position:relative}
 .access-mode-badge:disabled{cursor:not-allowed;opacity:.7}
-/* ---------- 浮きメニューの器は1つ（§9.448） ----------
-   列見出し・予定の行・測定データ一覧・モード/同期・フィルタの組み合わせ・
-   同期の状態——**押すと浮いて出る面は全部この器**。違いは修飾子
-   （`.col-head-menu` / `.rec-row-menu` / `.access-mode-menu` …）だけが持つ。
-   置き場所・外を押して閉じる・Esc・矢印キー・`role`は`WL.popMenu`
-   （`core/pop-menu.js`）の1箇所。**器を新しく作らないこと**——以前は
-   210/210/240/190px・影3種・項目の高さ 24/24/32/34px と、同じ役目の物が
-   ばらばらの寸法で4つあった（§CLAUDE「同じ役目の物を2つ作らない」）。 */
-.wl-menu{position:fixed;z-index:var(--z-popover);
-  min-width:var(--menu-w);max-width:var(--menu-w-max);max-height:70vh;overflow:auto;
+/* ---------- 浮きメニューの器は1つ（§9.448、寸法の扱いは§9.449で改めた） ----------
+   押すと浮いて出る面は13ある——列見出し・予定の行・その入れ子・測定データ一覧・
+   モード・同期の状態・表の切り替え・再読込・フィルタの組み合わせ・条件・
+   説明のヒント・見本の情報・「表示」。**器は全部これ**で、置き場所・外を
+   押して閉じる・Esc・矢印キー・`role`は`WL.popMenu`（`core/pop-menu.js`）の1箇所。
+
+   **揃えるのは「値」ではなく「値の置き場」**（§9.449、利用者の判断
+   「文字の変更と行の高さの変更はあまり有益ではない」）。面ごとに寸法が
+   違うのは、面ごとに中身が違うからで、揃えること自体に用は無い。
+   ここが持つのは**名前**だけ——既定は列見出しの値で、違う面は自分の
+   ブロックで**同じ名前を宣言し直す**（その面の値はそこ1箇所で読める）。 */
+.wl-menu{
+  --menu-w:210px;                /* 最小幅 */
+  --menu-w-max:320px;            /* 最大幅 */
+  --menu-max-h:70vh;             /* 高さの上限 */
+  --menu-overflow:auto;          /* 溢れたとき */
+  --menu-pad:var(--space-1);     /* 器の内余白 */
+  --menu-shadow:0 10px 28px rgba(0,0,0,.18);
+  --menu-fs:var(--fs-sm);        /* 項目の字 */
+  --menu-item-pad:var(--space-1) var(--space-2);
+  --menu-item-hover:var(--surface-2);
+  position:fixed;z-index:var(--z-popover);
+  min-width:var(--menu-w);max-width:var(--menu-w-max);
+  max-height:var(--menu-max-h);overflow:var(--menu-overflow);
   padding:var(--menu-pad);border:1px solid var(--line);border-radius:var(--radius-md);
   background:var(--surface);box-shadow:var(--menu-shadow)}
-/* 項目の高さは**押す物の標準**（`--ctl-h`≒36px）。左メニューの行き先も
-   ボタンも36pxなので、同じアプリの中で押す物の大きさを2種類にしない
-   （実測: 24/24/32/34px の4種あった）。字も1つ（`--fs-base-sm`＝13px）
-   ——**小さいほうへ揃えない**。 */
-.wl-menu button{display:flex;align-items:center;gap:var(--gap-inline);
-  min-height:var(--menu-item-h);width:100%;
-  padding:var(--space-1) var(--space-2);border:0;border-radius:var(--radius-sm);
-  background:transparent;text-align:left;
-  font-size:var(--fs-base-sm);font-weight:700;color:var(--ink);cursor:pointer}
-.wl-menu button:hover:not(:disabled){background:var(--surface-2)}
+.wl-menu button{display:block;width:100%;padding:var(--menu-item-pad);border:0;
+  border-radius:var(--radius-sm);background:transparent;text-align:left;
+  font-size:var(--menu-fs);font-weight:700;color:var(--ink);cursor:pointer}
+.wl-menu button:hover:not(:disabled){background:var(--menu-item-hover)}
 .wl-menu button:focus-visible{outline:2px solid var(--teal);outline-offset:-2px}
 .wl-menu button:disabled{color:var(--muted);cursor:not-allowed;opacity:1}
 
-/* ---- ここから下は修飾子。**土台より後に書くこと**（同点なので後が勝つ） ---- */
-/* この面の札は「名前＋その下に一言」の縦積み（`.wl-menu button`は横並び）。
-   **器の内余白は土台のまま**（`--menu-pad`）——札の中の余白（`--pad-card`）が
-   あるので、器の側で足すと2重になる。 */
-.access-mode-menu button{flex-direction:column;align-items:flex-start;gap:var(--gap-hair);
-  padding:var(--pad-card)}
+/* ---- ここから下は面ごとの値。**土台より後に書くこと**（同点なので後が勝つ） ---- */
+/* モード・同期・表の切り替え・再読込・フィルタ・ヒント・見本・「表示」の8面が
+   これを土台にする。札は「名前＋その下に一言」の縦積み。 */
+.access-mode-menu{
+  --menu-w:190px;--menu-w-max:none;--menu-max-h:none;--menu-overflow:visible;
+  --menu-pad:var(--space-2);--menu-shadow:0 8px 24px rgba(0,0,0,.16);
+  --menu-fs:var(--fs-base-sm);--menu-item-pad:var(--pad-card);
+  --menu-item-hover:var(--bg)}
+.access-mode-menu button{display:flex;flex-direction:column;align-items:flex-start;
+  gap:var(--gap-hair)}
 /* 再読込メニューの「読み込みの内訳」（§9.340）。読み込みのチップは遅いときしか
    出さないので、**速いときに内訳へ辿り着ける場所はここだけ**。押せる物と
    見分けが付くよう、面を持たせて字を小さくする（ボタンではない）。 */

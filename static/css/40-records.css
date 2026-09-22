@@ -155,13 +155,17 @@
   letter-spacing:.08em}
 .record-list-actions .rec-more:hover{background:var(--surface-3);color:var(--ink)}
 .record-list-actions .rec-more[aria-expanded="true"]{background:var(--teal);color:#fff;border-color:var(--teal)}
-/* 器は`.wl-menu`（§9.448）。この面が足すのは「項目を縦に並べる」だけ。 */
-.rec-row-menu{display:flex;flex-direction:column;gap:var(--space-1)}
+/* 器は`.wl-menu`。この面の値をここで宣言し直す（§9.449）。 */
+.rec-row-menu{
+  --menu-w:calc(240px * var(--ui-scale));--menu-w-max:calc(340px * var(--ui-scale));
+  --menu-max-h:none;--menu-overflow:visible;
+  --menu-shadow:0 10px 28px #0b2b3320;--menu-item-pad:var(--space-2);
+  display:flex;flex-direction:column;gap:var(--space-1)}
 .rec-row-menu .rrm-head{font-size:var(--fs-micro);font-weight:800;color:var(--muted);
   padding:var(--space-1) var(--space-2) 0}
-/* 項目は「字＋その下に理由」の縦積み（`.wl-menu button`は横並び）。 */
-.rec-row-menu .rrm-item{flex-direction:column;align-items:flex-start;
-  gap:2px;height:auto;padding:var(--space-2)}
+/* 項目は「字＋その下に理由」の縦積み（`.wl-menu button`は`display:block`）。 */
+.rec-row-menu .rrm-item{display:flex;flex-direction:column;align-items:flex-start;
+  gap:2px;height:auto}
 .rec-row-menu .rrm-item.is-danger{color:var(--danger)}
 /* **赤くするのは危ない項目だけ**（§9.448）。以前は`.rrm-item:hover`が
    全項目を危険色にしていた——いまは削除の1件しか無いので露見していないが、
