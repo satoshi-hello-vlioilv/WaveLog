@@ -2462,14 +2462,22 @@ WL.lookSettings={
      ——設定の持ち主は`WL.loader`の1箇所のまま、面が2つあるだけ）。 */
   head('読み込みの見せ方');
   {
-   const btn=document.createElement('button');
-   btn.type='button';btn.id='uiSizeLoaderLink';
-   btn.innerHTML=`<span><span class="ld-sample">${WL.loader.html(15)}</span>`
-    +`<b class="ui-size-now"></b></span><small>共通設定 &gt; この端末 で選ぶ`
+   /* **行き先が開けないときは押す形にしない**（§9.445、§CLAUDE 4）。共通設定は
+      スケジュールモードでは出ないので、以前はここを押すと**身に覚えの無い
+      タブ（換算係数マスタ）が開いて**いた。開けるかを答えるのは名乗り手
+      （`WL.openLookSettings.available()`）——土台は画面の作りを知らない。 */
+   const live=!!(WL.openLookSettings&&(!WL.openLookSettings.available||WL.openLookSettings.available()));
+   const el=document.createElement(live?'button':'div');
+   if(live)el.type='button';
+   el.className=live?'':'ui-size-flat';
+   el.id='uiSizeLoaderLink';
+   el.innerHTML=`<span><span class="ld-sample">${WL.loader.html(15)}</span>`
+    +`<b class="ui-size-now"></b></span><small>${live?'共通設定 &gt; この端末 で選ぶ'
+      :'選ぶのは共通設定 &gt; この端末（このモードでは開けません）'}`
     +`（全${WL.loader.STYLES.length}種）</small>`;
-   btn.querySelector('.ui-size-now').textContent=WL.loader.labelOf();
-   btn.addEventListener('click',()=>{closeMenu();WL.openLookSettings&&WL.openLookSettings()});
-   menu.appendChild(btn);
+   el.querySelector('.ui-size-now').textContent=WL.loader.labelOf();
+   if(live)el.addEventListener('click',()=>{closeMenu();WL.openLookSettings()});
+   menu.appendChild(el);
   }
   /* 画面が名乗った節（§9.444）。**土台は中身を知らない**——器だけ用意して
      `render()`に渡す。出すのは`when()`が真のものだけ（押しても何も起きない

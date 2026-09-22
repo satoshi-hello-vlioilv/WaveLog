@@ -43,17 +43,26 @@ ICON_SUFFIXES=('.ico','.exe','.dll')
 
 # 補助スクリプトは**ASCIIだけ**で書く。WSHはBOMの無い`.vbs`をANSIとして
 # 読むので、日本語を入れると端末の言語設定によっては文字化けで落ちる。
+# **道は1本**（§9.410）。作るのも読むのも同じ1枚で、先頭の引数が用途を言う
+# （`MAKE`／`READ`）。2枚目の`.vbs`を置くと、片方だけ古い状態が作れる。
+# `READ`は行き先（`TargetPath`）を1行で返す——**自分が作ったものかを
+# 確かめてから上書き・片付けをする**ため（§9.446）。無いファイルを読むと
+# `CreateShortcut`は空の器を返すので、行き先は空文字になる。
 _HELPER=(
  'Option Explicit\r\n'
  'Dim a, sh, lnk\r\n'
  'Set a = WScript.Arguments\r\n'
  'Set sh = CreateObject("WScript.Shell")\r\n'
- 'Set lnk = sh.CreateShortcut(a(0))\r\n'
- 'lnk.TargetPath = a(1)\r\n'
- 'lnk.WorkingDirectory = a(2)\r\n'
- 'lnk.Description = a(4)\r\n'
- 'If Len(a(3)) > 0 Then lnk.IconLocation = a(3)\r\n'
- 'lnk.Save\r\n'
+ 'Set lnk = sh.CreateShortcut(a(1))\r\n'
+ 'If UCase(a(0)) = "READ" Then\r\n'
+ '  WScript.Echo lnk.TargetPath\r\n'
+ 'Else\r\n'
+ '  lnk.TargetPath = a(2)\r\n'
+ '  lnk.WorkingDirectory = a(3)\r\n'
+ '  lnk.Description = a(5)\r\n'
+ '  If Len(a(4)) > 0 Then lnk.IconLocation = a(4)\r\n'
+ '  lnk.Save\r\n'
+ 'End If\r\n'
 )
 
 
@@ -140,6 +149,74 @@ def _no_window():
  return {'creationflags':getattr(subprocess,'CREATE_NO_WINDOW',0)}
 
 
+def _same_path(a,b):
+ """同じ場所を指しているか。Windowsは大文字小文字を区別しないので
+    `normcase`で揃える（`C:\\WaveLog`と`c:\\wavelog`は同じ）。"""
+ if not a or not b:return False
+ try:
+  return os.path.normcase(os.path.abspath(str(a)))==os.path.normcase(os.path.abspath(str(b)))
+ except Exception as _e:
+  quiet('道を比べられない（別物として扱う）',_e)
+  return False
+
+
+def link_target(path):
+ """その`.lnk`が指している先（§9.446）。**読めなければ空**。
+
+    上書き・片付けの前に「**自分が作ったものか**」を確かめるために要る——
+    同じ名前の、利用者が自分で作った別のショートカットを黙って消さない
+    （§CLAUDE 5「危ない操作を主要動線に置かない」）。読むのもWSHの1枚
+    （`_HELPER`の`READ`）で、道を2本にしない。"""
+ if sys.platform!='win32':return ''
+ helper=_helper_path()
+ if helper is None:return ''
+ try:
+  p=subprocess.run(['cscript','//nologo',str(helper),'READ',str(path)],
+                   capture_output=True,text=True,timeout=20,**_no_window())
+ except (FileNotFoundError,subprocess.TimeoutExpired) as _e:
+  quiet('ショートカットの行き先を読めない（別物として扱う）',_e)
+  return ''
+ return (p.stdout or '').strip()
+
+
+def is_ours(path):
+ """このアプリが作ったショートカットか（行き先が`Start.vbs`か）。"""
+ return _same_path(link_target(path),target_path())
+
+
+def rename_from(prev,name):
+ """名前を変えて作り直すとき、**片付ける前の名前**（§9.446）。
+
+    変えていない・前の名前が無いなら空。ここは**字だけで決まる**ので、
+    ファイルを見ない（見るのは呼ぶ側）——判断を1箇所に置き、網から直に
+    確かめられるようにする。"""
+ prev=_safe_name(prev) if str(prev or '').strip() else ''
+ if not prev:return ''
+ return '' if prev==_safe_name(name) else prev
+
+
+def remember(name,icon,uid=None):
+ """**作ったときの名前と絵を残す**（§9.445）。`saved()`と対になる書き込みで、
+    読む先と同じ`パス設定マスタ`の1箇所へ書く。
+
+    なぜここで書くか
+    ---------------------------------------------------------------------
+    以前は共通設定の画面の欄（`data-pc-field`）だけが保存の道だった（§9.433）。
+    その画面は**スケジュールモードでは出ない**ので、現場の端末では「作った
+    名前」がどこにも残らず、次に開くと既定の名前に戻り、**作ってあるのに
+    「まだ作っていません」**と出る（`status()`は名前からファイルを探す）。
+    残すのは**この2つの鍵だけ**——置き場・読み込み先といった他の設定は
+    ここからは一切触らない（あちらは編集モードの画面が持つ）。"""
+ from .db_access import DBS, connect, set_path_config   # 遅延: 起動順に縛りを作らない
+ try:
+  with connect(DBS['MASTER']['path'],False) as c:
+   set_path_config(c,'shortcut_name',str(name or '').strip(),uid or '')
+   set_path_config(c,'shortcut_icon',str(icon or '').strip(),uid or '')
+ except Exception as _e:
+  # 作れてはいるので**作成そのものは成功**として返す（黙って捨てない・§9.328）。
+  quiet('ショートカットの設定を残せない（作成自体は成功している）',_e)
+
+
 def saved(key):
  """共通設定に残してある値（§9.433）。**決めた名前と絵は残す**——以前は
     どこにも保存しておらず、画面を切り替えると既定の名前へ戻っていた
@@ -171,25 +248,47 @@ def status(name=None):
       'name':_safe_name(name),'defaultName':DEFAULT_NAME,
       # 画面が「指定の絵」を選び直せるように、残してある絵のパスも返す。
       'icon':saved('shortcut_icon'),
+      # **残してある名前そのもの**（§9.445）。`name`は「空なら既定へ倒した
+      # 結果」なので、欄へ出すと**決めていない名前を決めたように見える**。
+      # 欄が出すのはこちら（空欄なら既定の名前が薄い字で出る）。
+      'savedName':saved('shortcut_name'),
       'desktop':str(desktop_dir()) if ok else '',
       'link':str(link) if link else '',
       'target':str(target_path()),
       'exists':bool(link and link.exists()),
+      # **同じ名前の物が自分のものか**まで答える（§9.446）。画面はこれを見て
+      # 「作り直す（自分の）」と「上書きする（別の物）」を言い分ける
+      # ——判定はここの1箇所で、画面に書き写さない（§9.163）。
+      'linkTarget':'','mine':False,
       'updatedAt':'','iconSuffixes':list(ICON_SUFFIXES)}
  try:
   if out['exists']:
    out['updatedAt']=time.strftime('%Y-%m-%d %H:%M',time.localtime(link.stat().st_mtime))
  except Exception as _e:
   quiet('ショートカットの更新時刻を読めない（時刻を出さない）',_e)
+ if out['exists']:
+  out['linkTarget']=link_target(link)
+  out['mine']=_same_path(out['linkTarget'],target_path())
  return out
 
 
-def create(name=None,icon=None):
- """デスクトップへ作る（既に在れば作り直す）。戻り値は`status()`＋結果。
+def create(name=None,icon=None,uid=None,overwrite=False):
+ """デスクトップへ作る。戻り値は`status()`＋結果。
 
     **渡された値をそのまま使う**（§9.433）。画面の欄は共通設定に残した値から
     組み立ててあるので、ここで保存値へ落とすと**「アプリのマーク」を選んだのに
-    前に指定した絵で作られる**（空欄＝既定、を保存値で上書きしてしまう）。"""
+    前に指定した絵で作られる**（空欄＝既定、を保存値で上書きしてしまう）。
+
+    すでに在るときの振る舞い（§9.446、利用者の指示「すでにある場合は上書きして
+    書き換える」）
+    ---------------------------------------------------------------------
+    ・**自分が作ったもの**（行き先が`Start.vbs`）なら、そのまま**上書き**する
+      ——名前も絵も、いま決めた内容へ書き換わる。
+    ・**別のショートカット**（行き先が違う）は`overwrite`が真のときだけ上書き
+      する。既定では断り、`needConfirm`と行き先を返す——利用者が自分で作った
+      同名のアイコンを、黙って消さないため（§CLAUDE 5）。
+    ・**名前を変えたとき**は、前に作ったほうを片付ける（`rename_from()`）。
+      置いていくと同じ物が2つデスクトップに並ぶ——「書き換え」にならない。"""
  ok,why=supported()
  if not ok:return {'ok':False,'error':why}
  helper=_helper_path()
@@ -198,6 +297,11 @@ def create(name=None,icon=None):
  spec,source,bad=_icon_spec(icon)
  if bad:return {'ok':False,'error':bad}
  link=link_path(name)
+ # **別の物の上は、断ってから**（黙って消さない・§CLAUDE 4）。
+ if link.exists() and not overwrite and not is_ours(link):
+  return {'ok':False,'needConfirm':True,'link':str(link),
+          'linkTarget':link_target(link),
+          'error':'同じ名前の別のショートカットがあります: %s'%link}
  try:
   link.parent.mkdir(parents=True,exist_ok=True)
  except Exception as _e:
@@ -214,8 +318,26 @@ def create(name=None,icon=None):
   detail=(p.stderr or p.stdout or '').strip().splitlines()
   return {'ok':False,'error':'ショートカットを作れませんでした: '
           +(detail[-1] if detail else f'終了コード {p.returncode}')}
+ # **名前を変えたなら、前に作ったほうを片付ける**（§9.446）。片付けるのは
+ # **自分が作った物だけ**——同じ名前で利用者が置いた別の物は触らない。
+ dropped=''
+ prev=rename_from(saved('shortcut_name'),name)
+ if prev:
+  old=link_path(prev)
+  try:
+   if old.exists() and is_ours(old):
+    old.unlink();dropped=prev
+  except Exception as _e:
+   # 新しいほうは出来ているので、**作成は成功として返す**（理由は1行残す）。
+   quiet('前の名前のショートカットを片付けられない',_e)
+ # **作った内容を残す**（§9.445）。次に開いたとき、この名前で「作成済み」と
+ # 言えるようにする（画面の保存ボタンに頼らない）。
+ remember(name,icon,uid)
  out=status(name)
  out['created']=True
+ # **何をしたかを言う**（§CLAUDE 4・6）——作ったのか、書き換えたのか、
+ # 付け替えたのかで、画面が返す言葉が変わる。
+ out['renamedFrom']=dropped
  # `icon`は**共通設定に残した値**（status が入れる）。実際に使った絵は
  # 別の鍵で返す——同じ鍵に2つの意味を持たせない（§CLAUDE 8）。
  out['iconUsed']=spec

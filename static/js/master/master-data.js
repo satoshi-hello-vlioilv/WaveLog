@@ -1846,6 +1846,12 @@
   if(typeof window.openMasterMaint==='function')window.openMasterMaint('pathConfig');
   else showToast('共通設定を開けません','マスタ管理を読み込めていません',5000);
  };
+ /* **いま開けるか**を口そのものが答える（§9.445）。共通設定はスケジュール
+    モードでは出ない（`maintDefVisible()`）ので、行き先を押せる形で出すと
+    **身に覚えのないタブへ飛ぶ**（実測: 換算係数マスタが開いた）。
+    ——「できないことは、できないと書く」（§CLAUDE 4）。 */
+ WL.openLookSettings.available=()=>!!(WL.mm&&typeof WL.mm.maintTabOpenable==='function'
+  &&WL.mm.maintTabOpenable('pathConfig')&&typeof window.openMasterMaint==='function');
  let pathConfigState={values:{},defaults:{},active:{},sources:[],storage:null,storageError:"",loaded:false};
  /* 再起動しないと反映されない項目。データソースぶんは登録内容から作るので
     ここには固定で書かない(§9.81)。以前は「仕掛(SIKALOTNOW)」等が直接
@@ -2018,115 +2024,308 @@
   }
  }
 
- const shortcutState={loaded:false,info:null,error:''};
+ /* ---------- デスクトップの起動アイコン（§9.410 → §9.445） ----------
+    **盤はヘッダーの「表示」の節**（§9.445、利用者の指示「どのモードからも
+    使えるように」）。以前はここ（共通設定＞この端末）が唯一の面だったが、
+    **共通設定はスケジュールモードでは出ない**（`maintDefVisible()`は
+    `/api/schedule/`のマスタだけを残す）ので、**現場の端末からは作れなかった**
+    ——サーバーは3モードとも通していた（`access_mode._ENDPOINT_EXTRA_MODES`の
+    `core.app_shortcut_create`）のに、画面の入口だけが無い状態。
+    入口を増やさず（§9.421）、**どの画面からも開ける「表示」へ節を1つ足す**。
+    ここ（共通設定）に残すのは**いまの状態と行き先だけ**（§9.433 の作法）。 */
+ const shortcutState={loaded:false,loading:null,info:null,error:''};
 
- /* **欄の値は他の`data-pc-field`と同じく、組み立てるときに入れる**（§9.433）。
-    描いたあとから差し込むと、状態の問い合わせ（`/api/app/shortcut`）が
-    戻ってくるまで空欄になり、**保存した名前が一瞬消えてから出る**。
-    ここが読むのは保存値（`pathConfigState.values`）の1箇所。 */
- function pcShortcutHtml(){
-  const v=pathConfigState.values||{};
-  const nm=String(v.shortcut_name||''),ic=String(v.shortcut_icon||'');
-  return `<div class="pc-sc" id="pcShortcut">
-   <div class="pc-sc-head"><b>デスクトップの起動アイコン</b>
-    <span class="pc-sc-state" id="pcScState">確認しています…</span></div>
-   <div class="pc-sc-body" id="pcScBody" hidden>
-    <!-- **名前も絵も共通設定の1行として保存する**（§9.433、利用者の報告
-         「名前を変えても画面を切り替えると元に戻ってしまう」）。data-pc-field
-         を名乗れば、この画面の保存（savePathConfigMaint が data-pc-field を
-         集めて送る）にそのまま載る——保存の道を2本目に作らない。 -->
-    <label class="mm-field"><span>アイコンの名前</span>
-     <input id="pcScName" data-pc-field="shortcut_name" type="text" maxlength="40"
-       value="${esc(nm)}" autocomplete="off" spellcheck="false">
-     <small class="mm-field-hint">デスクトップに出る字です。同じ名前が既にあれば作り直します。空欄なら既定の名前（欄の薄い字）で作ります。</small></label>
-    <div class="mm-field"><span>絵</span>
-     <div class="pc-sc-icon">
-      <!-- **見本は実物と同じ絵**（§9.374）。サーバーが .ico を描くのと同じ
-           1箇所（app_icon.render()）から出すので、色を書き写さない。 -->
-      <label><input type="radio" name="pcScIcon" value="default"${ic?'':' checked'} data-sc-icon>
-       <img class="pc-sc-mark" src="/api/app/icon.png?size=64" alt="" width="22" height="22">
-       <span>アプリのマーク</span></label>
-      <label><input type="radio" name="pcScIcon" value="file"${ic?' checked':''} data-sc-icon>
-       <span>ファイルを指定</span></label>
-     </div>
-     <span class="mm-path" data-path-drop="shortcut_icon" id="pcScIconPath"${ic?'':' hidden'}>
-      <input data-field="shortcut_icon" data-pc-field="shortcut_icon" id="pcScIconFile" type="text"
-        value="${esc(ic)}" placeholder="例: D:\\icons\\wavelog.ico" autocomplete="off" spellcheck="false">
-      <button type="button" class="mm-path-browse" data-path-browse="shortcut_icon" data-path-mode="file">参照…</button>
-     </span>
-     <small class="mm-field-hint">.ico / .exe / .dll が使えます（.exe・.dll は中の1つ目の絵を使います）。</small></div>
-    <div class="pc-sc-act">
-     <button type="button" class="mm-btn-primary" id="pcScMake">デスクトップに作る</button>
-     <small class="pc-sc-where" id="pcScWhere"></small>
+ /* 状態の字は**1箇所**（作成済み／まだ／作れない理由）。面が2つあるので、
+    どちらかにだけ書くと食い違う。色だけで言わない（§CLAUDE 3）。 */
+ function shortcutFace(){
+  if(shortcutState.error)return {cls:'is-bad',text:shortcutState.error};
+  const info=shortcutState.info;
+  if(!shortcutState.loaded||!info)return {cls:'',text:'確認しています…'};
+  if(!info.supported)return {cls:'is-bad',text:info.why||'この端末では作れません'};
+  return info.exists?{cls:'is-done',text:`作成済み（${info.updatedAt||'日時不明'}）`}
+                    :{cls:'is-todo',text:'まだ作っていません'};
+ }
+ /* 塗る役も1箇所（§9.436 の`WL.loader.mark()`と同じ作法）。器を名指しせず、
+    **`[data-sc-state]`を名乗る物**を塗る——面が増えてもここは触らない。 */
+ function paintShortcut(){
+  const f=shortcutFace();
+  document.querySelectorAll('[data-sc-state]').forEach(el=>{
+   el.className='lnk-state'+(f.cls?' '+f.cls:'');
+   el.textContent=f.text;
+  });
+  renderShortcutPanel();
+ }
+ /* 「表示」の節の中身。**値はサーバーの答えから入れる**（§9.163）——共通設定を
+    一度も開いていない端末でも、残してある名前と絵が読める。
+
+    並びは**することの順**（§CLAUDE 2・14）: いまどうか → 作る → どこへ出来るか。
+    **名前と絵は畳む**（§CLAUDE 1 面積は「頻度 × 重要度」）——端末ごとに1回
+    決めれば済むものに、常時3行を割かない。畳んだ札には**いまの値を書く**
+    （§9.433「畳んだ入口の説明には節を全部書く」）ので、開かずに読める。 */
+ function shortcutPanelHtml(){
+  return `<div class="lnk" id="lnkPanel">
+   <p class="lnk-state" data-sc-state>確認しています…</p>
+   <div class="lnk-body" id="lnkBody" hidden>
+    <!-- **押すと何が起きるかを先に言う**（§9.446・§CLAUDE 4・14）——作るのか、
+         自分のを作り直すのか、別の物へ上書きするのか、前の名前を付け替えるのか。
+         **ボタンより上**に置く（読む順と押す順を合わせる）。 -->
+    <p class="lnk-plan" id="lnkPlan" hidden></p>
+    <div class="lnk-act">
+     <button type="button" class="mm-btn-primary" id="lnkMake">デスクトップに作る</button>
     </div>
+    <!-- **作成先と行き先は押す前に読める**（§CLAUDE 6 出どころ）。 -->
+    <p class="lnk-where" id="lnkWhere"></p>
+    <details class="lnk-more" id="lnkMore">
+     <summary>名前と絵を変える<small id="lnkNow"></small></summary>
+     <div class="lnk-more-body">
+      <label class="lnk-field"><span>アイコンの名前</span>
+       <input id="lnkName" type="text" maxlength="40" autocomplete="off" spellcheck="false">
+       <small>デスクトップに出る字です。空欄なら既定の名前（欄の薄い字）で作ります。</small></label>
+      <div class="lnk-field"><span>絵</span>
+       <div class="lnk-icon">
+        <!-- **見本は実物と同じ絵**（§9.374）。.ico を描くのと同じ1箇所
+             （app_icon.render）から取るので、色を書き写さない。 -->
+        <label><input type="radio" name="lnkIcon" value="default" data-sc-icon checked>
+         <img class="lnk-mark" src="/api/app/icon.png?size=64" alt="" width="20" height="20">
+         <span>アプリのマーク</span></label>
+        <label><input type="radio" name="lnkIcon" value="file" data-sc-icon>
+         <span>ファイルを指定</span></label>
+       </div>
+       <span class="mm-path" data-path-drop="shortcut_icon" id="lnkIconPath" hidden>
+        <input data-field="shortcut_icon" id="lnkIconFile" type="text"
+          placeholder="例: D:\\icons\\wavelog.ico" autocomplete="off" spellcheck="false">
+        <button type="button" class="mm-path-browse" data-path-browse="shortcut_icon" data-path-mode="file">参照…</button>
+       </span>
+       <small>.ico / .exe / .dll が使えます（.exe・.dll は中の1つ目の絵を使います）。</small></div>
+     </div>
+    </details>
    </div>
   </div>`;
  }
- /* 状態を画面へ。**「作れない」も同じ場所で言う**（探させない）。 */
- function renderShortcut(){
-  const state=$('#pcScState'),box=$('#pcScBody'),where=$('#pcScWhere');
-  if(!state)return;
+ /* 押すと何が起きるか（§9.446）。**答えはここ1箇所**——ボタンの字も、
+    その下の1行も、同じ判断から出す（言い分けが2箇所にあると食い違う）。
+      make    … 新しく作る
+      remake  … 自分が作ったものを作り直す（上書き）
+      replace … 同じ名前の**別の**ショートカットへ上書きする（確認を挟む）
+    `renameFrom`＝名前を変えたので片付ける前の名前（無ければ空）。 */
+ function shortcutPlan(){
+  const info=shortcutState.info||{};
+  const kind=!info.exists?'make':(info.mine?'remake':'replace');
+  /* 付け替えは**残してある名前**と、いま作ろうとしている名前の違いで決まる
+     （判定そのものはサーバーの`rename_from()`と同じ形）。 */
+  const now=String(info.name||'').trim();
+  const prev=String(info.savedName||'').trim();
+  return {kind,renameFrom:(prev&&prev!==now)?prev:'',
+          label:{make:'デスクトップに作る',remake:'作り直す',replace:'上書きして作る'}[kind]};
+ }
+ /* 畳んだ札に出す「いまの値」。**欄から読む**（打ち換えたその場で書き直る）。 */
+ function shortcutNowText(root){
+  const name=String((root.querySelector('#lnkName')||{}).value||'').trim();
+  const info=shortcutState.info||{};
+  const pick=root.querySelector('[data-sc-icon]:checked');
+  const file=String((root.querySelector('#lnkIconFile')||{}).value||'').trim();
+  const icon=(pick&&pick.value==='file')
+   ?(file?file.split(/[\\/]/).pop():'ファイル未指定')
+   :'アプリのマーク';
+  return `いま: ${name||info.defaultName||''}／${icon}`;
+ }
+
+ /* 盤を描き直す。**打っている最中の欄は触らない**（§9.433）——状態の問い合わせは
+    遅れて戻るので、後から書き戻すと入力中の字が消える。値を入れるのは
+    「まだ一度も入れていないとき」と「作った直後」だけ。 */
+ function renderShortcutPanel(){
+  const panel=document.getElementById('lnkPanel');if(!panel)return;
+  const body=panel.querySelector('#lnkBody'),where=panel.querySelector('#lnkWhere');
   const info=shortcutState.info;
-  if(shortcutState.error){
-   state.className='pc-sc-state is-bad';state.textContent=shortcutState.error;
-   if(box)box.hidden=true;return;
-  }
-  if(!shortcutState.loaded||!info){state.className='pc-sc-state';state.textContent='確認しています…';return}
-  if(!info.supported){
-   state.className='pc-sc-state is-bad';state.textContent=info.why||'この端末では作れません';
-   if(box)box.hidden=true;return;
-  }
-  state.className='pc-sc-state '+(info.exists?'is-done':'is-todo');
-  state.textContent=info.exists?`作成済み（${info.updatedAt||'日時不明'}）`:'まだ作っていません';
-  if(box)box.hidden=false;
-  /* **欄の値はここでは触らない**（§9.433）。組み立てたときに保存値が
-     入っているので、あとから書き戻すと**打っている最中の字を消す**
-     （状態の問い合わせは遅れて戻ってくる）。ここが受け持つのは
-     「作れるか・作ってあるか・どこへ作るか」だけ。 */
-  const name=$('#pcScName');
+  const ok=!!(shortcutState.loaded&&info&&info.supported&&!shortcutState.error);
+  if(body)body.hidden=!ok;
+  if(!ok)return;
+  const name=panel.querySelector('#lnkName');
   if(name)name.placeholder=info.defaultName||'';
-  /* **作成先と行き先を書く**（§CLAUDE 6 出どころを出す）——どこに何ができるのか
-     分からないまま押させない。 */
+  if(panel.dataset.filled!=='1'){
+   /* 欄に出すのは**残してある名前そのもの**（`savedName`）。`name`は「空なら
+      既定へ倒した結果」なので、そちらを入れると**決めていない名前を決めた
+      ように見える**（空欄なら既定が薄い字で出る）。 */
+   if(name)name.value=String(info.savedName||'');
+   const file=panel.querySelector('#lnkIconFile'),box=panel.querySelector('#lnkIconPath');
+   if(file)file.value=String(info.icon||'');
+   const pick=panel.querySelector(`[data-sc-icon][value="${info.icon?'file':'default'}"]`);
+   if(pick)pick.checked=true;
+   if(box)box.hidden=!info.icon;
+   panel.dataset.filled='1';
+  }
   if(where)where.innerHTML=`作成先 <code>${esc(info.link||'')}</code><br>`
    +`起動するもの <code>${esc(info.target||'')}</code>`;
- }
- async function loadShortcut(){
-  try{
-   shortcutState.info=await api('/api/app/shortcut');
-   shortcutState.error='';
-  }catch(e){
-   shortcutState.info=null;
-   shortcutState.error='ショートカットの状態を読めませんでした: '+(e&&e.message||e);
+  const now=panel.querySelector('#lnkNow');
+  if(now)now.textContent=shortcutNowText(panel);
+  /* **押す前に何が起きるかを字で言う**（§9.446・§CLAUDE 4・6）。
+     色だけで言わない——分類名（上書き／作り直し／付け替え）を書く。 */
+  const plan=shortcutPlan();
+  const make=panel.querySelector('#lnkMake');
+  if(make&&!make.disabled)make.textContent=plan.label;
+  const line=panel.querySelector('#lnkPlan');
+  if(line){
+   const bits=[];
+   if(plan.kind==='remake')bits.push('同じ名前でいま在るものを<b>上書き</b>します。');
+   if(plan.kind==='replace')bits.push('同じ名前の<b>別のショートカット</b>があります（行き先 <code>'
+     +esc(info.linkTarget||'不明')+'</code>）。押すと<b>上書き</b>します（確認します）。');
+   if(plan.renameFrom)bits.push(`前の「${esc(plan.renameFrom)}」は<b>付け替え</b>ます（2つ残しません）。`);
+   line.innerHTML=bits.join('<br>');
+   line.hidden=!bits.length;
+   line.className='lnk-plan'+(plan.kind==='replace'?' is-warn':'');
   }
-  shortcutState.loaded=true;
-  renderShortcut();
  }
- /* 作る。**結果は同じ場所で言う**（トーストは消えるので、状態の字も直す）。 */
- async function makeShortcut(){
-  const btn=$('#pcScMake');if(!btn)return;
-  const picked=document.querySelector('[data-sc-icon]:checked');
+ /* 盤の配線。**器を渡されるだけ**（§9.444）——土台は中身を知らない。 */
+ function bindShortcutPanel(root){
+  const make=root.querySelector('#lnkMake');
+  if(make)make.onclick=()=>makeShortcut(root);
+  root.querySelectorAll('[data-sc-icon]').forEach(r=>{r.onchange=()=>{
+   const box=root.querySelector('#lnkIconPath'),el=root.querySelector('#lnkIconFile');
+   if(box)box.hidden=r.value!=='file'||!r.checked;
+   /* **「アプリのマーク」を選んだら指定は空にする**（§9.433）——値を残したまま
+      既定を選ぶと、見えない欄のほうが効いてしまう。 */
+   if(box&&box.hidden&&el)el.value='';
+   paintNow();
+   if(box&&!box.hidden&&el)el.focus();
+  }});
+  /* 畳んだ札の「いまの値」は**打ったその場で書き直す**（§9.433）——畳んだ先の
+     値が古いままだと、開くまで何が効いているのか分からない。 */
+  function paintNow(){
+   const now=root.querySelector('#lnkNow');
+   if(now)now.textContent=shortcutNowText(root);
+  }
+  root.querySelectorAll('#lnkName,#lnkIconFile').forEach(el=>{
+   el.addEventListener('input',paintNow);
+   el.addEventListener('change',paintNow);
+  });
+  /* **打った名前で状態を取り直す**（§9.446）。作成先も「作り直しか・別の物へ
+     の上書きか・付け替えか」も、**その名前で決まる**ので、打ったままの名前で
+     聞き直さないと画面が嘘をつく（§CLAUDE「推測させない」）。
+     打つたびには聞かない（落ち着いてから1回）。 */
+  const nameEl=root.querySelector('#lnkName');
+  if(nameEl)nameEl.addEventListener('input',()=>{
+   clearTimeout(shortcutState.probeTimer);
+   shortcutState.probeTimer=setTimeout(()=>probeShortcut(String(nameEl.value||'').trim()),350);
+  });
+  /* 「参照…」とドラッグ&ドロップは**マスタ画面の道具をそのまま使う**
+     （§9.49。同じ役目の物を2つ作らない）。 */
+  bindPathFields(root);
+ }
+ /* 状態は**1回だけ取りに行く**（開くたびに聞き直さない）。作った直後だけ
+    `force`で取り直す。 */
+ function loadShortcut(force){
+  if(shortcutState.loading)return shortcutState.loading;
+  if(shortcutState.loaded&&!force){paintShortcut();return Promise.resolve()}
+  shortcutState.loading=(async()=>{
+   try{
+    shortcutState.info=await api('/api/app/shortcut');
+    shortcutState.error='';
+   }catch(e){
+    shortcutState.info=null;
+    shortcutState.error='ショートカットの状態を読めませんでした: '+(e&&e.message||e);
+   }
+   shortcutState.loaded=true;shortcutState.loading=null;
+   paintShortcut();
+  })();
+  return shortcutState.loading;
+ }
+ /* その名前での状態を取り直す（§9.446）。**判定はサーバーの1箇所**
+    （`status()`）が答えるので、画面は聞いて出すだけ。読めなければ**黙って
+    前の答えのまま**——打っている最中に断りを出しても直しようがない
+    （押したときは`create()`が改めて断る）。 */
+ async function probeShortcut(name){
+  if(!document.getElementById('lnkPanel'))return;
+  try{
+   const info=await api('/api/app/shortcut?name='+encodeURIComponent(name||''));
+   if(!document.getElementById('lnkPanel'))return;
+   shortcutState.info=info;shortcutState.error='';shortcutState.loaded=true;
+   paintShortcut();
+  }catch(e){WL.quiet.note('打った名前での状態を取り直せない（前の答えのまま出す）',e)}
+ }
+ /* 作る。**結果は同じ場所で言う**（トーストは消えるので、状態の字も直す）。
+    名前と絵は**サーバーが作ったときに残す**（§9.445）——共通設定の保存に
+    頼っていると、その画面が出ないモードでは名前が毎回既定へ戻る。 */
+ async function makeShortcut(root){
+  const btn=root.querySelector('#lnkMake');if(!btn)return;
+  const picked=root.querySelector('[data-sc-icon]:checked');
   const useFile=picked&&picked.value==='file';
-  const iconEl=$('#pcScIconFile');
+  const iconEl=root.querySelector('#lnkIconFile');
   const icon=useFile?String((iconEl&&iconEl.value)||'').trim():'';
   if(useFile&&!icon){
    showToast('アイコンのファイルを指定してください','「参照…」から .ico / .exe / .dll を選べます',5000);
    if(iconEl)iconEl.focus();
    return;
   }
+  const name=String((root.querySelector('#lnkName')||{}).value||'').trim();
   const label=btn.textContent;
   btn.disabled=true;btn.textContent='作っています…';
+  /* 投げるのは1箇所（`send`）。**上書きしてよいか**だけを変えて投げ直す
+     ——同じ組み立てを2箇所に書かない。 */
+  const send=overwrite=>api('/api/app/shortcut',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name,icon,overwrite:!!overwrite})});
   try{
-   const r=await api('/api/app/shortcut',{method:'POST',
-     headers:{'Content-Type':'application/json'},
-     body:JSON.stringify({name:String(($('#pcScName')||{}).value||'').trim(),icon})});
+   let r;
+   try{r=await send(false)}
+   catch(e){
+    /* **他人の物の上書きは、確認してから**（§9.446・§CLAUDE 5）。
+       確認すれば進めるものだけ聞き直す（それ以外はそのまま断る）。 */
+    if(!(e&&e.needConfirm))throw e;
+    /* 名前は**実際に作られる名前**で言う（空欄なら既定の名前）——
+       「（既定の名前）」とだけ書くと、どのアイコンの話か分からない。 */
+    const shown=name||String((shortcutState.info||{}).defaultName||'');
+    const okGo=await confirmModal({title:'同じ名前のショートカットがあります',
+      message:`デスクトップの「${shown}」は、このアプリが作ったものではありません。\n`
+        +`いまの行き先: ${e.linkTarget||'不明'}\n\n`
+        +'上書きすると、そのショートカットは測定伝送システムの起動用に書き換わります。よろしいですか？',
+      confirmLabel:'上書きする',danger:true});
+    if(!okGo){showToast('上書きをやめました','デスクトップのショートカットはそのままです',3600);return}
+    r=await send(true);
+   }
    shortcutState.info=r;shortcutState.error='';shortcutState.loaded=true;
-   renderShortcut();
-   showToast('デスクトップに作りました',r.link||'',4600);
+   /* 作った内容で入れ直す（名前を空欄のまま作ると既定の名前が付く）。 */
+   const panel=document.getElementById('lnkPanel');
+   if(panel)panel.dataset.filled='';
+   paintShortcut();
+   /* **何をしたかを言う**（作った／書き換えた／付け替えた）。 */
+   const head=r.renamedFrom?'デスクトップのショートカットを付け替えました':'デスクトップに作りました';
+   const detail=(r.renamedFrom?`「${r.renamedFrom}」→ `:'')+(r.link||'');
+   showToast(head,detail,4600);
   }catch(e){
    showToast('作れませんでした',String(e&&e.message||e),6000);
   }finally{
    btn.disabled=false;btn.textContent=label;
+   /* 控えた字を戻したあとに描き直す（作ったあとは「作り直す」になる）。 */
+   renderShortcutPanel();
   }
+ }
+ /* **ヘッダーの「表示」へ節を名乗る**（§9.444 の口・§9.445）。`when`を持たない
+    ＝どの画面・どのモードでも出す——これがこの節の値打ちそのもの。
+    作れない端末では盤を伏せ、**理由を字で書く**（§CLAUDE 4）。 */
+ WL.lookSettings.register({
+  key:'shortcut',
+  title:'デスクトップの起動アイコン',
+  render(host){
+   host.innerHTML=shortcutPanelHtml();
+   bindShortcutPanel(host);
+   paintShortcut();
+   loadShortcut();
+  },
+ });
+ /* 共通設定（この端末）に残すのは**いまの状態と行き先だけ**（§9.445。作法は
+    §9.433「読み込みの見せ方」と同じ——設定の持ち主は1箇所で、面が2つ）。 */
+ function pcShortcutHtml(){
+  /* **1行に収める**（§9.126「中身を減らしたら器も減らす」）——ここは行き先
+     なので、章の高さを食わせない（器は728px・`test_setpage.js`が見張る）。 */
+  return `<div class="pc-look" id="pcShortcut">
+   <div class="pc-look-head"><b>デスクトップの起動アイコン</b>
+    <span class="lnk-state" data-sc-state>確認しています…</span></div>
+   <div class="pc-look-act">
+    <span class="pc-look-lead">毎日の入口（<b>Start.vbs</b>）へのショートカットを作ります。決めるのはヘッダーの「表示」——
+     <b>どのモードからも開けます</b>。</span>
+    <button type="button" class="mm-btn-ghost" id="pcScOpen">「表示」から作る</button>
+   </div>
+  </div>`;
  }
 
  function renderPathConfigForm(){
@@ -2310,16 +2509,14 @@
    document.querySelector(`#masterMaintNav [data-master="${b.dataset.pcGoto}"]`)?.click();
   });
   bindInputHelpers(form);
-  /* デスクトップの起動アイコン（§9.410）。**状態は開いたときに取りに行く**
-     ——押すまで分からないと、作ってあるかどうかで迷う（思い出させない）。 */
   /* 「表示」の設定へ連れて行く。**押すのはヘッダーのバッジそのもの**——
-     同じポップオーバーを2つ書かない（§9.267 の「置き場で決める」と同じ作法）。 */
-  const look=$('#pcLookOpen');
-  if(look)look.onclick=()=>{
+     同じポップオーバーを2つ書かない（§9.267 の「置き場で決める」と同じ作法）。
+     行き先は2つ（見え方・起動アイコン）だが、**開け方は1箇所**（§9.445）。 */
+  form.querySelectorAll('#pcLookOpen,#pcScOpen').forEach(b=>{b.onclick=()=>{
    const badge=document.getElementById('uiSizeBadge');
    if(badge){badge.click();return}
    showToast('「表示」の設定を開けません','ヘッダーの「表示」ボタンが見つかりませんでした',5000);
-  };
+  }});
   /* 読み込みの見せ方の札（§9.436）。**押すのは`WL.loader.setStyle()`の1箇所**
      ——印の付け替えも、いまの値の書き直しも、あちらが出す`wl:look-change`が
      受け持つ（ここでクラスを触らない）。器ごと作り直されるので委譲で受ける。 */
@@ -2336,18 +2533,9 @@
      `addEventListener`は積み上がらない（同じ型・同じ関数の登録は1つ）。
      欄が消えているあいだは`renderLook()`が何もしないで戻る。 */
   document.addEventListener('wl:look-change',renderLook);
-  const scMake=$('#pcScMake');if(scMake)scMake.onclick=()=>makeShortcut();
-  form.querySelectorAll('[data-sc-icon]').forEach(r=>{r.onchange=()=>{
-   const box=$('#pcScIconPath'),el=$('#pcScIconFile');
-   if(box)box.hidden=r.value!=='file'||!r.checked;
-   /* **「アプリのマーク」を選んだら指定は空にする**（§9.433）。欄は保存の輪に
-      載っている（`data-pc-field="shortcut_icon"`）ので、値を残したまま既定を
-      選ぶと**既定を選んだのに前の絵が保存される**（見えない欄が効く）。 */
-   if(box&&box.hidden&&el)el.value='';
-   if(!box||box.hidden)return;
-   if(el)el.focus();
-  }});
-  renderShortcut();loadShortcut();
+  /* デスクトップの起動アイコン（§9.445）。**ここは行き先だけ**なので、
+     することは「いまの状態を取りに行って塗る」の1つ（盤は「表示」の節）。 */
+  paintShortcut();loadShortcut();
   /* 他の画面から「置き場で決める」で来たときは、その段を開いて印を付ける。
      **一度きり**——次に共通設定を開いたときまで覚えていると、身に覚えの
      無い段が開く。 */
