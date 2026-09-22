@@ -778,13 +778,76 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('寸法はマスタの値そのまま（10.025 を 10.03 へ丸めない）', zoom.exact === true,
         zoom.nums3);
     rec('区間ぜんたいの寸法も出す', zoom.span === true, String(zoom.span));
-    /* **上下刃のずれも寸法の1つ**（§9.413 追補、利用者の指示「拡大表示は
-       クリアランスも表示対象にして」）。反対側の軸の刃を破線で添え、
-       **中心間（刃厚＋クリアランス）**を札で出す——クリアランスそのものは
-       2枚の刃の**面と面のあいだ**に見えている（§9.420）。 */
-    rec('拡大図に上下刃のずれが出る（反対側の軸の刃を破線で添える）',
-        zoom.clrLabel > 0 && zoom.dashed > 0,
-        `札${zoom.clrLabel}／破線${zoom.dashed}`);
+    /* **上下刃のずれは絵で言う**（§9.413 追補 → §9.442 で字を落とした）。
+       反対側の軸の刃を破線で添えるのは残す——クリアランスの向きは絵でしか
+       読めない。**「上下刃の中心間」の字は出さない**（利用者の指示「上下刃の
+       中心線は、拡大図に不要です。表示が重ならないように注意して」）——
+       貼る相手が無いので必ず引き出すことになり、席を1つ余計に食っていた。 */
+    rec('拡大図に上下刃のずれが絵で出る（反対側の軸の刃を破線で添える）',
+        zoom.dashed > 0, `破線${zoom.dashed}`);
+    rec('「上下刃の中心間」の字は拡大図に出さない（§9.442）',
+        zoom.clrLabel === 0, `札${zoom.clrLabel}`);
+
+    /* ---- 拡大図は**押した軸**の半断面（§9.442、利用者の指示「上軸は上の図、
+       下軸は下の図を選ぶようにしてほしい」）----
+       同じ記号は上下の両方に出るので、軸を渡さないと`r.zones[0]`＝先に来た
+       ほうで開き、**下軸を押したのに上軸の図**が出ていた。
+       **絵ではなく「どの区間から組んだか」で見る**——上下で同じ寸法になる
+       材料では、絵が同じでも取り違えは起きている。 */
+    const axPick = await page.evaluate(() => {
+     const hits = [...document.querySelectorAll('#bsStage .bs-bhit[data-axis]')];
+     const byBadge = new Map();
+     hits.forEach(h => {
+      const k = h.dataset.badge;
+      const v = byBadge.get(k) || new Set();
+      v.add(h.dataset.axis); byBadge.set(k, v);
+     });
+     /* 上下の両方に出ている記号を探す（取り違えが起きうるのはそこだけ）。 */
+     let both = null;
+     byBadge.forEach((v, k) => { if (!both && v.size > 1) both = k; });
+     const pick = ax => {
+      const h = hits.find(x => x.dataset.badge === (both || hits[0].dataset.badge)
+                          && x.dataset.axis === ax);
+      if (!h) return null;
+      h.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      const svg = document.getElementById('bsZoomFig');
+      return { asked: ax, got: svg ? svg.dataset.axis : '',
+               zone: svg ? svg.dataset.zone : '' };
+     };
+     const up = pick('up'), lo = pick('lo');
+     return { both, hits: hits.length, up, lo,
+              axes: [...new Set(hits.map(h => h.dataset.axis))].sort() };
+    });
+    rec('模式図の区間は「どちらの軸か」も名乗る（§9.442）',
+        axPick.axes.join(',') === 'lo,up', JSON.stringify(axPick.axes));
+    rec('上軸を押せば上軸、下軸を押せば下軸の拡大図が開く（§9.442）',
+        !!axPick.up && !!axPick.lo && axPick.up.got === 'up' && axPick.lo.got === 'lo'
+        && axPick.up.zone !== axPick.lo.zone,
+        JSON.stringify({ up: axPick.up, lo: axPick.lo, both: axPick.both }));
+    /* **記号の色を軸で分ける**（利用者の指示「アルファベットも少し色が
+       わかっていると違いが出てわかりやすい」）。押す前にどちらの図が出るかが
+       読める。字は同じまま——記号が指すのは「同じ組み方」だから。 */
+    const badgeCol = await page.evaluate(() => {
+     const at = ax => {
+      const g = document.querySelector(`#bsStage .bs-bhit[data-axis="${ax}"] .bs-bdgr`);
+      return g ? g.getAttribute('fill') : '';
+     };
+     return { up: at('up'), lo: at('lo') };
+    });
+    rec('記号は上軸と下軸で色が違う（§9.442）',
+        !!badgeCol.up && !!badgeCol.lo && badgeCol.up !== badgeCol.lo,
+        `上${badgeCol.up}／下${badgeCol.lo}`);
+    /* **次の節が見る形へ戻してから渡す**（§9.394 と同じ作法）。この節は
+       区間を押して回るので、閉じっぱなし・別の区間で開きっぱなしのまま
+       進むと、次の「もう一度押すと閉じる」が成り立たない（実際に2件落ちた）。
+       いちばん最初の区間で**開いた状態**にして渡す。 */
+    await page.evaluate(() => {
+     const b = document.getElementById('bsZoomClose'); if (b) b.click();
+     const g = document.querySelector('#bsStage .bs-bhit');
+     if (g) g.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await W.until(page, () => document.getElementById('bsZoom').hidden === false,
+                  null, { ms: 8000, what: '最初の区間で拡大図が開き直る' });
     rec('破線が何かとクリアランスの在りかを足元で言う',
         /面と面のあいだがクリアランス/.test(zoom.note),
         zoom.note.slice(-60));

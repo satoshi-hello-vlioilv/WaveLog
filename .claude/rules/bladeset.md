@@ -1,4 +1,4 @@
-# 刃組ガイダンス（150件）
+# 刃組ガイダンス（154件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -13,6 +13,10 @@
 | **製品幅はクリアランスで痩せさせない**。刃が作る境目は「条幅＋クリアランス」ずつ進む | `test_bladeui.js` | [§9.434](../../docs/decisions/9.434.md) |
 | 最初に出す図は**断面図**。答えは`FIG_DEFAULT`の1箇所（札の印・器の出し入れ・倒れ先が同じ定数を見る） | `test_bladeui.js` | [§9.440](../../docs/decisions/9.440.md) |
 | **余りは層ごとに別**。`rem`＝スペーサーの端数（**0が正**・赤で出す）／`holdRem`＝板押さえの空き（わずかなら可） | `test_bladeui.js` | [§9.441](../../docs/decisions/9.441.md) |
+| 拡大図は**押した軸**の半断面。的が`data-axis`を名乗り、`zoomFigure()`がその軸の区間を選ぶ（描き直しでも同じ軸） | `test_bladeui.js` | [§9.442](../../docs/decisions/9.442.md) |
+| 網は**絵でなく「どの区間から組んだか」**で見る（器が`data-axis`／`data-zone`を名乗る） | `test_bladeui.js` | [§9.442](../../docs/decisions/9.442.md) |
+| 図の記号は**軸で色を分ける**（`--bs-fig-badge-up`／`-lo`）。字は同じ。刃組表の記号は分けない | `test_bladeui.js` | [§9.442](../../docs/decisions/9.442.md) |
+| 【§9.432を撤回】「上下刃の中心間」は拡大図に出さない（値は見出しが持つ）。**破線の刃は残す** | `test_bladeui.js` | [§9.442](../../docs/decisions/9.442.md) |
 | 「許容 0〜gapMax」をやめた。直すべき端数を「許してよいもの」として緑で見せない | `test_bladeui.js` | [§9.441](../../docs/decisions/9.441.md) |
 | 組んでみて初めて分かる断りは`res.fit`の1箇所が数える（`spacerGap`／`bareHold`）。表の上へ帯で出す | `test_bladeui.js` | [§9.441](../../docs/decisions/9.441.md) |
 | 板押さえは**OS側から先着順**で在庫を使う。狭い区間は入る幅が1つしか無く先に飢える——**空になった区間を名指しする** | `test_bladeui.js` | [§9.441](../../docs/decisions/9.441.md) |

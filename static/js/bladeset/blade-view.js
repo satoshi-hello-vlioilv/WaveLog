@@ -61,6 +61,7 @@
     同じ作法）。ゴムリングの色だけは**マスタの値**なので、ここには入れない。 */
  const FIG_VARS = ['shaft', 'shaft-edge', 'cap', 'spacer', 'spacer-edge',
                    'filler', 'filler-edge', 'knife', 'knife-edge', 'badge',
+                   'badge-up', 'badge-lo',
                    'strip', 'strip-edge', 'scrap', 'scrap-edge', 'trim',
                    'trim-edge', 'finger', 'label', 'ink', 'sheen',
                    'lead0', 'lead1', 'lead2',
@@ -1209,11 +1210,17 @@
        広げても「何に重ねたか」は曖昧にならない。
        この1枚が的と強調を兼ねる——ふつうは透明、当たると淡く塗る。 */
     const H = V.hOf(V.maxD);
-    o += `<g class="bs-bhit" data-badge="${esc(r.badge)}">`
+    /* **的は「どちらの軸か」も名乗る**（§9.442、利用者の指示「上軸は上の図、
+       下軸は下の図を選ぶようにしてほしい」）。同じ記号は上下の両方に出るので、
+       軸を渡さないと拡大図が`r.zones[0]`＝先に来たほうで開き、
+       **下軸を押したのに上軸の図**が出ていた。
+       記号の色も軸で分ける——押す前にどちらの図が出るかが読める。 */
+    const badgeFill = (upper ? V.PAL['badge-up'] : V.PAL['badge-lo']) || V.PAL.badge;
+    o += `<g class="bs-bhit" data-badge="${esc(r.badge)}" data-axis="${side}">`
      + `<rect class="bs-zhit" x="${a.toFixed(1)}" y="${(cy - H / 2).toFixed(1)}"`
      + ` width="${Math.max(1, b - a).toFixed(1)}" height="${H.toFixed(1)}"/>`
      + `<rect class="bs-bdgr" x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}"`
-     + ` rx="${(h * 0.28).toFixed(1)}" fill="${V.PAL.badge}" stroke="#fff" stroke-width="1.2"/>`
+     + ` rx="${(h * 0.28).toFixed(1)}" fill="${badgeFill}" stroke="#fff" stroke-width="1.2"/>`
      + `<text x="${cx}" y="${cy + fs * 0.36}" text-anchor="middle" font-size="${fs.toFixed(1)}"`
      + ` font-weight="800" fill="#fff">${r.badge}</text></g>`;
    }
@@ -1587,8 +1594,14 @@
 
     **選んだ軸の側の半分を出す**——上軸の区間なら中心線が下、下軸なら上。
     押した区間と同じ向きに見えるので、どちらの軸の話か迷わない。 */
- function zoomFigure(res, r) {
-  const z0 = (r.zones || [])[0];
+ /* `axis`＝押した軸（`'up'`／`'lo'`）。**同じ記号は上下の両方に出る**ので、
+    渡された軸の区間を選ぶ（§9.442）。その軸に無ければ元どおり先頭へ倒す。 */
+ function zoomFigure(res, r, axis) {
+  const zs = r.zones || [];
+  const want = axis === 'up' ? true : (axis === 'lo' ? false : null);
+  const z0 = (want === null ? null : zs.find(z => !!z.upper === want)) || zs[0];
+  /* **どの区間から組んだか**を器が名乗る（§9.442）。上下で寸法が同じ材料では
+     絵が同じになるので、**絵では取り違えを確かめられない**——網は数で見る。 */
   if (!z0 || !res.zp || !res.zp.zones[z0.i]) return null;
   const P = res.zp.zones[z0.i][z0.upper ? 'up' : 'lo'];
   if (!P || !(P.len > 0)) return null;
@@ -1743,12 +1756,11 @@
    items.push({ cx: q.cx, name: q.name, val: zmm(q.mm), w: q.b - q.a, bd: q.bd,
                 plain: q.kind === 'spacer' || q.kind === 'knife',
                 ink: q.kind === 'knife' ? '#fff' : PAL.ink, halo: q.kind === 'knife' });
-   if (q.clrX !== undefined) {
-    /* **中心間**（＝刃厚＋クリアランス）。隙間ではなく2つの刃の位置の差なので、
-       貼る相手が無い——必ず引き出す。 */
-    items.push({ cx: (q.cx + q.clrX + (q.b - q.a) / 2) / 2, name: '上下刃の中心間',
-                 val: zmm(clrMm), w: 0, bd: null });
-   }
+   /* **「上下刃の中心間」は拡大図には出さない**（§9.442、利用者の指示
+      「上下刃の中心線は、拡大図に不要です。表示が重ならないように注意して」）。
+      貼る相手が無いので必ず引き出すことになり、**席を1つ余計に食って**
+      他の寸法を押し出していた。値は刃組図の見出し（`#bsDVal`）が持つ。
+      破線の刃そのものは残す——クリアランスの向きは絵でしか読めない。 */
   });
   holdList.forEach(q => {
    items.push({ cx: q.cx, name: '', val: zmm(q.mm), w: q.w, bd: q.bd,
@@ -1860,6 +1872,7 @@
   const leadWmax = outs.filter(q => q.w > 0).reduce((m, q) => Math.max(m, q.w), 0);
   return {
    vh, dims: items.length, inside: inside.length + vert.length, lead, off, leadWmax,
+   axis: z0.upper ? 'up' : 'lo', zone: z0.i,
    svg: `${body}${clr}${hold}${caps}${ln}${marks}${spans}`,
    /* 図が言えないことだけを添える（§CLAUDE 8 同じ情報を2箇所に出さない）。 */
    note: zoomNote(res, r, P, ring, finger, clrMm)
@@ -1933,6 +1946,7 @@
  /* 開く・閉じる。**器は1枚**（開き直しは中身の差し替えだけ）。 */
  function closeZoneZoom() {
   zoomBadge = '';
+  zoomAxis = '';          // 次に開くときは押した軸から決め直す（§9.442）
   const box = $('#bsZoom');
   if (box && !box.hidden) {
    box.hidden = true;
@@ -1940,15 +1954,20 @@
    box.style.removeProperty('--bs-zoom-y');
   }
  }
- function openZoneZoom(badge, hit) {
+ /* いま開いている拡大図の軸（§9.442）。描き直し（`syncZoneZoom`）でも
+    **同じ軸のまま**開き直す——軸が飛ぶと、見ていたのと違う図が出る。 */
+ let zoomAxis = '';
+ function openZoneZoom(badge, hit, axis) {
   const box = $('#bsZoom');
   if (!box || !LAST) return;
   const r = (LAST.rows || []).concat(LAST.ends || [])
    .find(q => String(q.badge) === String(badge));
   if (!r) { closeZoneZoom(); return; }
-  const fig = zoomFigure(LAST, r);
+  const ax = axis || (hit && hit.dataset ? hit.dataset.axis : '') || zoomAxis;
+  const fig = zoomFigure(LAST, r, ax);
   if (!fig) { closeZoneZoom(); return; }
   zoomBadge = String(badge);
+  zoomAxis = ax || '';
   $('#bsZoomBadge').textContent = r.badge;
   $('#bsZoomTitle').textContent = r.end
    ? `${r.name}の組み合わせ`
@@ -1965,6 +1984,8 @@
   svg.dataset.leadw = String(Math.round(fig.leadWmax || 0));
   /* **出しきれなかった数**（§9.432）。0でないときだけ足元の一言が言う。 */
   svg.dataset.off = String(fig.off || 0);
+  svg.dataset.axis = String(fig.axis || '');
+  svg.dataset.zone = String(fig.zone);
   svg.innerHTML = fig.svg;
   $('#bsZoomNote').textContent = fig.note;
   box.hidden = false;
@@ -1987,7 +2008,7 @@
   box.style.setProperty('--bs-zoom-y', y.toFixed(1) + 'px');
  }
  /* 描き直したあとの追従。開いていなければ何もしない。 */
- const syncZoneZoom = () => { if (zoomBadge) openZoneZoom(zoomBadge, null); };
+ const syncZoneZoom = () => { if (zoomBadge) openZoneZoom(zoomBadge, null, zoomAxis); };
  /* ====================== 刃組表 ====================== */
  const K = () => BS().sizeKeys;
  function usesCell(row, k, sep) {
@@ -2826,7 +2847,7 @@
    const hit = e.target.closest('.bs-bhit');
    if (!hit || !panel.contains(hit)) return;
    if (zoomBadge === String(hit.dataset.badge)) { closeZoneZoom(); return; }
-   openZoneZoom(hit.dataset.badge, hit);
+   openZoneZoom(hit.dataset.badge, hit, hit.dataset.axis);
   });
   /* 記号に**重ねている間だけ**図と表を連動させる（§9.378）。**図でも表でも
      同じ的**（`[data-badge]`）で受けるので、重ねる場所によって効き方が

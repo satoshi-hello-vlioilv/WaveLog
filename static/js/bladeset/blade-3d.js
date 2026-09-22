@@ -695,7 +695,9 @@
    spans.forEach(([a, b], k) => {
     zone(out, a, b, y, zp.zones[k][side]);
     const r = (k > 0 && k < spans.length - 1) ? bmap[side][k] : null;
-    if (r) zmk.push({ badge: String(r.badge), x0: off(a), x1: off(b), y });
+    /* **どちらの軸かも持って帰る**（§9.442）——記号の札は押すと拡大図が開く
+       ので、軸を渡さないと下軸を押しても上軸の図が出る（模式図と同じ作法）。 */
+    if (r) zmk.push({ badge: String(r.badge), x0: off(a), x1: off(b), y, up: !!upper });
    });
    pos.forEach(x => out.knife.push({ x, y }));
   });
@@ -1445,6 +1447,7 @@
    if (el.box.dataset.badge !== q.badge) {
     el.box.dataset.badge = q.badge;
     el.chip.dataset.badge = q.badge;
+    el.chip.dataset.axis = q.up ? 'up' : 'lo';
     el.chip.textContent = q.badge;
    }
    el.box.style.cssText =
