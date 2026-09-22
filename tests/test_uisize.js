@@ -34,6 +34,8 @@
    見る——ここは元の指摘（4-4 ⑰「150分と出ている」）そのものの画面。
    ============================================================ */
 const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+/* 待ちは`tests/lib/wait.js`の道具で置く（固定待ちを増やさない・§9.347）。 */
+const W=require('./lib/wait.js');
 let b=null;
 (async()=>{
  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
@@ -498,6 +500,90 @@ let b=null;
  }
  await page.unroute('**/api/app/shortcut*');
  await setMode('edit');
+
+ /* ---------- すでに在るときは上書き・名前を変えたら付け替え（§9.446、
+    利用者の指示「すでにある場合は上書きして書き換える機能も」）----------
+    **押す前に何が起きるかを言う**（作り直し／別の物への上書き／付け替え）。
+    ここも Windows の状態をサーバーの答えとして差し替えて見る——作成（POST）も
+    差し替え、**何を送ったか**（`overwrite`）と**確認を挟んだか**まで見る。 */
+ const SC={ok:true,supported:true,why:'',defaultName:'測定伝送システム',icon:'',
+   desktop:'C:\\Users\\x\\Desktop',target:'D:\\WaveLog\\Start.vbs',
+   iconSuffixes:['.ico','.exe','.dll'],updatedAt:''};
+ const posts=[];
+ const stubShortcut=async st=>{
+  await page.unroute('**/api/app/shortcut*').catch(()=>{});
+  await page.route('**/api/app/shortcut*',r=>{
+   const req=r.request();
+   if(req.method()==='GET')return r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(st)});
+   const body=JSON.parse(req.postData()||'{}');posts.push(body);
+   /* 別の物の上は、**確認してから**でないと断る（サーバーと同じ約束）。 */
+   if(st.exists&&!st.mine&&!body.overwrite)
+    return r.fulfill({status:400,contentType:'application/json',
+      body:JSON.stringify({error:'同じ名前の別のショートカットがあります: '+st.link,
+        needConfirm:true,linkTarget:st.linkTarget,link:st.link})});
+   return r.fulfill({status:200,contentType:'application/json',
+     body:JSON.stringify({...st,exists:true,mine:true,linkTarget:st.target,created:true,
+       updatedAt:'2026-09-22 13:00',renamedFrom:st.savedName&&st.savedName!==st.name?st.savedName:''})});
+  });
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForSelector('#uiSizeBadge',{timeout:15000});
+  await openLook();
+ };
+ const planRead=async()=>page.evaluate(()=>({
+   btn:(document.getElementById('lnkMake')||{}).textContent||'',
+   plan:(document.getElementById('lnkPlan')||{}).textContent||'',
+   warn:/is-warn/.test((document.getElementById('lnkPlan')||{className:''}).className)}));
+
+ // ① 自分が作ったものが在る → 「作り直す」（＝上書き）と字で言う
+ await stubShortcut({...SC,name:'測定伝送システム',savedName:'測定伝送システム',exists:true,mine:true,
+   link:'C:\\Users\\x\\Desktop\\測定伝送システム.lnk',linkTarget:'D:\\WaveLog\\Start.vbs',
+   updatedAt:'2026-09-20 09:10'});
+ let pl=await planRead();
+ rec('すでに在る（自分の）ときはボタンが「作り直す」になり、上書きすると字で言う',
+   pl.btn==='作り直す'&&/上書き/.test(pl.plan)&&!pl.warn,`${pl.btn} / ${pl.plan}`);
+ await page.evaluate(()=>document.getElementById('lnkMake').click());
+ await page.waitForFunction(()=>/2026-09-22 13:00/.test(
+   (document.querySelector('#lnkPanel [data-sc-state]')||{}).textContent||''),{timeout:8000});
+ rec('自分のものの作り直しは確認を挟まず、そのまま上書きする',
+   posts.length===1&&posts[0].overwrite===false,JSON.stringify(posts));
+
+ // ② 同じ名前の**別の**ショートカットが在る → 確認してから上書き
+ posts.length=0;
+ await stubShortcut({...SC,name:'測定伝送システム',savedName:'',exists:true,mine:false,
+   link:'C:\\Users\\x\\Desktop\\測定伝送システム.lnk',linkTarget:'D:\\old\\start_app.bat',
+   updatedAt:'2025-04-01 08:00'});
+ pl=await planRead();
+ rec('別のショートカットが在るときは行き先を出し、上書きすると先に言う',
+   pl.btn==='上書きして作る'&&/別のショートカット/.test(pl.plan)&&/start_app\.bat/.test(pl.plan)&&pl.warn,
+   `${pl.btn} / ${pl.plan.slice(0,60)}`);
+ await page.evaluate(()=>document.getElementById('lnkMake').click());
+ await page.waitForFunction(()=>{
+   const m=document.getElementById('appConfirmModal');return !!(m&&!m.hidden)},{timeout:8000});
+ const ask=await page.evaluate(()=>({
+   title:document.getElementById('appConfirmTitle').textContent,
+   body:document.getElementById('appConfirmBody').textContent,
+   ok:document.getElementById('appConfirmOk').textContent,
+   cancel:!document.getElementById('appConfirmCancel').hidden}));
+ rec('他人のものへ上書きする前に、行き先を見せて確認する（黙って消さない）',
+   /start_app\.bat/.test(ask.body)&&ask.ok==='上書きする'&&ask.cancel,
+   `${ask.title} / ${ask.ok}`);
+ rec('確認する前は1度も作りに行かない（断られた1回だけ）',
+   posts.length===1&&posts[0].overwrite===false,JSON.stringify(posts));
+ await page.evaluate(()=>document.getElementById('appConfirmOk').click());
+ /* 2本目が届くまでは**条件で待つ**（時間で待たない・§9.102）。 */
+ await W.poll(()=>posts.length,n=>n>=2,8000,50);
+ rec('「上書きする」を押すと、上書きしてよいと伝えて作り直す',
+   posts.length===2&&posts[1].overwrite===true,JSON.stringify(posts));
+
+ // ③ 名前を変えたら、前のものは付け替える（デスクトップに2つ残さない）
+ posts.length=0;
+ await stubShortcut({...SC,name:'現場PC-A',savedName:'測定伝送システム',exists:false,mine:false,
+   link:'C:\\Users\\x\\Desktop\\現場PC-A.lnk',linkTarget:''});
+ pl=await planRead();
+ rec('名前を変えたときは、前の名前を付け替えると先に言う',
+   /前の「測定伝送システム」/.test(pl.plan)&&/付け替え/.test(pl.plan)&&/2つ残しません/.test(pl.plan),
+   pl.plan);
+ await page.unroute('**/api/app/shortcut*');
 
  console.log('\n=== SUMMARY ===');
  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);

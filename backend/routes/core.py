@@ -16,7 +16,7 @@ from ..changelog_data import APP_VERSION, CHANGELOG, is_dev
 from ..paths import APP_ROOT as BASE
 from ..logging_setup import app_logger
 from ..quiet import quiet
-from .body import body
+from .body import body, flag
 from .common import api_guard
 
 bp=Blueprint('core',__name__)
@@ -327,14 +327,20 @@ def app_icon_png():
 def app_shortcut_create():
  """作る（既に在れば作り直す）。**この端末のデスクトップにしか触らない**ので、
     どのモードの端末からでも通す（`access_mode._ENDPOINT_EXTRA_MODES`）。"""
- x=body({'name':str,'icon':str},strict=True)
+ # `overwrite`＝同じ名前の**別の**ショートカットに上書きしてよいか（§9.446）。
+ # 自分が作った物の上書き（作り直し）には要らない——断るのは「他人の物」だけ。
+ x=body({'name':str,'icon':str,'overwrite':flag},strict=True)
  # **作ったときの名前と絵は残す**（§9.445）。更新者IDは名乗るだけで、
  # 答えるのは`current_login_id()`の1箇所（§9.276）。
- out=desktop_shortcut.create(x.name,x.icon,current_login_id())
+ out=desktop_shortcut.create(x.name,x.icon,current_login_id(),x.overwrite is True)
  if not out.get('ok'):
   # **断る理由は画面へそのまま出す**（§CLAUDE 4・6）。作れない理由は
   # 端末ごとに違う（WSHが無効・デスクトップが同期中・指定の絵が無い）。
-  return jsonify(error=out.get('error') or 'ショートカットを作れませんでした'),400
+  # **確認すれば進めるもの**は、そのことと行き先まで返す（画面が聞き直す）。
+  return jsonify(error=out.get('error') or 'ショートカットを作れませんでした',
+                 needConfirm=bool(out.get('needConfirm')),
+                 linkTarget=out.get('linkTarget') or '',
+                 link=out.get('link') or ''),400
  return jsonify(**out)
 
 @bp.get('/api/changelog')

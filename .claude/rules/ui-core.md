@@ -1,4 +1,4 @@
-# 画面の土台（31件）
+# 画面の土台（32件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -14,6 +14,7 @@
 | **「表示」という名のボタンは1つだけ**（ヘッダー）。画面は`WL.lookSettings.register()`で節を名乗る | `test_uisize.js`・`test_scbar.js` | [§9.444](../../docs/decisions/9.444.md) |
 | デスクトップの起動アイコンの盤は「表示」の節（`when`を持たない＝どのモードでも）。共通設定に残すのは状態と行き先だけ | `test_uisize.js`・`test_setpage.js` | [§9.445](../../docs/decisions/9.445.md) |
 | 開けない行き先は押す形にしない。開けるかは名乗り手が答える（`WL.openLookSettings.available()`） | `test_uisize.js` | [§9.445](../../docs/decisions/9.445.md) |
+| 押すと何が起きるか（作る／作り直す／上書き／付け替え）は`shortcutPlan()`の1箇所。ボタンの字も注意の1行も同じ答えから出す | `test_uisize.js` | [§9.446](../../docs/decisions/9.446.md) |
 | 土台は画面の作りを知らない。器だけ渡し、出すのは`when()`が真のときだけ。同じ`key`は差し替わる | `test_uisize.js` | [§9.444](../../docs/decisions/9.444.md) |
 | **この端末の見え方を「予定を動かせる権限」で塞がない**（別の軸。§9.207が列で踏んだのと同じ取り違え） | `test_scinsert.js` | [§9.444](../../docs/decisions/9.444.md) |
 | **節の見出しを本文より小さくしない**（`--fs-tiny`＝9.5pxは付随情報の寸法）。窓は320px以上 | `test_uisize.js` | [§9.444](../../docs/decisions/9.444.md) |

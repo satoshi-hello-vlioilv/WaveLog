@@ -556,6 +556,16 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .lnk-where{margin:0;font-size:var(--fs-micro);color:var(--muted);line-height:1.5;
  word-break:break-all}
 .lnk-where code{font-size:var(--fs-micro)}
+/* 押すと何が起きるか（§9.446）。**色だけで言わない**ので、字が分類名
+   （上書き／作り直し／付け替え）そのもの。別の物へ上書きするときだけ、
+   気づかせる色を足す（`--warn-*`は「設定要」の橙・§9.338）。 */
+.lnk-plan{margin:0;font-size:var(--fs-micro);color:var(--ink-3);line-height:1.6;
+ word-break:break-all}
+.lnk-plan[hidden]{display:none}
+.lnk-plan code{font-size:var(--fs-micro)}
+.lnk-plan.is-warn{padding:var(--space-1) var(--ctl-pad-x-sm);
+ border-left:3px solid var(--warn-fg);border-radius:var(--radius-xs);
+ background:var(--warn-bg);color:var(--warn-fg)}
 /* 名前と絵は**畳む**（§CLAUDE 1）。札は本文と同じ段の字で、いまの値を添える
    （§9.433）。押せることは三角と下線で言い、枠は付けない（§CLAUDE 10）。 */
 .lnk-more>summary{cursor:pointer;font-size:var(--fs-sm);font-weight:700;

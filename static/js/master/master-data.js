@@ -2066,6 +2066,10 @@
   return `<div class="lnk" id="lnkPanel">
    <p class="lnk-state" data-sc-state>確認しています…</p>
    <div class="lnk-body" id="lnkBody" hidden>
+    <!-- **押すと何が起きるかを先に言う**（§9.446・§CLAUDE 4・14）——作るのか、
+         自分のを作り直すのか、別の物へ上書きするのか、前の名前を付け替えるのか。
+         **ボタンより上**に置く（読む順と押す順を合わせる）。 -->
+    <p class="lnk-plan" id="lnkPlan" hidden></p>
     <div class="lnk-act">
      <button type="button" class="mm-btn-primary" id="lnkMake">デスクトップに作る</button>
     </div>
@@ -2097,6 +2101,22 @@
     </details>
    </div>
   </div>`;
+ }
+ /* 押すと何が起きるか（§9.446）。**答えはここ1箇所**——ボタンの字も、
+    その下の1行も、同じ判断から出す（言い分けが2箇所にあると食い違う）。
+      make    … 新しく作る
+      remake  … 自分が作ったものを作り直す（上書き）
+      replace … 同じ名前の**別の**ショートカットへ上書きする（確認を挟む）
+    `renameFrom`＝名前を変えたので片付ける前の名前（無ければ空）。 */
+ function shortcutPlan(){
+  const info=shortcutState.info||{};
+  const kind=!info.exists?'make':(info.mine?'remake':'replace');
+  /* 付け替えは**残してある名前**と、いま作ろうとしている名前の違いで決まる
+     （判定そのものはサーバーの`rename_from()`と同じ形）。 */
+  const now=String(info.name||'').trim();
+  const prev=String(info.savedName||'').trim();
+  return {kind,renameFrom:(prev&&prev!==now)?prev:'',
+          label:{make:'デスクトップに作る',remake:'作り直す',replace:'上書きして作る'}[kind]};
  }
  /* 畳んだ札に出す「いまの値」。**欄から読む**（打ち換えたその場で書き直る）。 */
  function shortcutNowText(root){
@@ -2138,10 +2158,22 @@
    +`起動するもの <code>${esc(info.target||'')}</code>`;
   const now=panel.querySelector('#lnkNow');
   if(now)now.textContent=shortcutNowText(panel);
-  /* **押す前に何が起きるかを字で言う**（§CLAUDE 4・6）——すでに在るなら、
-     押して起きるのは「作る」ではなく「同じ名前のものを作り直す」。 */
+  /* **押す前に何が起きるかを字で言う**（§9.446・§CLAUDE 4・6）。
+     色だけで言わない——分類名（上書き／作り直し／付け替え）を書く。 */
+  const plan=shortcutPlan();
   const make=panel.querySelector('#lnkMake');
-  if(make&&!make.disabled)make.textContent=info.exists?'作り直す':'デスクトップに作る';
+  if(make&&!make.disabled)make.textContent=plan.label;
+  const line=panel.querySelector('#lnkPlan');
+  if(line){
+   const bits=[];
+   if(plan.kind==='remake')bits.push('同じ名前でいま在るものを<b>上書き</b>します。');
+   if(plan.kind==='replace')bits.push('同じ名前の<b>別のショートカット</b>があります（行き先 <code>'
+     +esc(info.linkTarget||'不明')+'</code>）。押すと<b>上書き</b>します（確認します）。');
+   if(plan.renameFrom)bits.push(`前の「${esc(plan.renameFrom)}」は<b>付け替え</b>ます（2つ残しません）。`);
+   line.innerHTML=bits.join('<br>');
+   line.hidden=!bits.length;
+   line.className='lnk-plan'+(plan.kind==='replace'?' is-warn':'');
+  }
  }
  /* 盤の配線。**器を渡されるだけ**（§9.444）——土台は中身を知らない。 */
  function bindShortcutPanel(root){
@@ -2166,6 +2198,15 @@
    el.addEventListener('input',paintNow);
    el.addEventListener('change',paintNow);
   });
+  /* **打った名前で状態を取り直す**（§9.446）。作成先も「作り直しか・別の物へ
+     の上書きか・付け替えか」も、**その名前で決まる**ので、打ったままの名前で
+     聞き直さないと画面が嘘をつく（§CLAUDE「推測させない」）。
+     打つたびには聞かない（落ち着いてから1回）。 */
+  const nameEl=root.querySelector('#lnkName');
+  if(nameEl)nameEl.addEventListener('input',()=>{
+   clearTimeout(shortcutState.probeTimer);
+   shortcutState.probeTimer=setTimeout(()=>probeShortcut(String(nameEl.value||'').trim()),350);
+  });
   /* 「参照…」とドラッグ&ドロップは**マスタ画面の道具をそのまま使う**
      （§9.49。同じ役目の物を2つ作らない）。 */
   bindPathFields(root);
@@ -2188,6 +2229,19 @@
   })();
   return shortcutState.loading;
  }
+ /* その名前での状態を取り直す（§9.446）。**判定はサーバーの1箇所**
+    （`status()`）が答えるので、画面は聞いて出すだけ。読めなければ**黙って
+    前の答えのまま**——打っている最中に断りを出しても直しようがない
+    （押したときは`create()`が改めて断る）。 */
+ async function probeShortcut(name){
+  if(!document.getElementById('lnkPanel'))return;
+  try{
+   const info=await api('/api/app/shortcut?name='+encodeURIComponent(name||''));
+   if(!document.getElementById('lnkPanel'))return;
+   shortcutState.info=info;shortcutState.error='';shortcutState.loaded=true;
+   paintShortcut();
+  }catch(e){WL.quiet.note('打った名前での状態を取り直せない（前の答えのまま出す）',e)}
+ }
  /* 作る。**結果は同じ場所で言う**（トーストは消えるので、状態の字も直す）。
     名前と絵は**サーバーが作ったときに残す**（§9.445）——共通設定の保存に
     頼っていると、その画面が出ないモードでは名前が毎回既定へ戻る。 */
@@ -2202,18 +2256,41 @@
    if(iconEl)iconEl.focus();
    return;
   }
+  const name=String((root.querySelector('#lnkName')||{}).value||'').trim();
   const label=btn.textContent;
   btn.disabled=true;btn.textContent='作っています…';
+  /* 投げるのは1箇所（`send`）。**上書きしてよいか**だけを変えて投げ直す
+     ——同じ組み立てを2箇所に書かない。 */
+  const send=overwrite=>api('/api/app/shortcut',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name,icon,overwrite:!!overwrite})});
   try{
-   const r=await api('/api/app/shortcut',{method:'POST',
-     headers:{'Content-Type':'application/json'},
-     body:JSON.stringify({name:String((root.querySelector('#lnkName')||{}).value||'').trim(),icon})});
+   let r;
+   try{r=await send(false)}
+   catch(e){
+    /* **他人の物の上書きは、確認してから**（§9.446・§CLAUDE 5）。
+       確認すれば進めるものだけ聞き直す（それ以外はそのまま断る）。 */
+    if(!(e&&e.needConfirm))throw e;
+    /* 名前は**実際に作られる名前**で言う（空欄なら既定の名前）——
+       「（既定の名前）」とだけ書くと、どのアイコンの話か分からない。 */
+    const shown=name||String((shortcutState.info||{}).defaultName||'');
+    const okGo=await confirmModal({title:'同じ名前のショートカットがあります',
+      message:`デスクトップの「${shown}」は、このアプリが作ったものではありません。\n`
+        +`いまの行き先: ${e.linkTarget||'不明'}\n\n`
+        +'上書きすると、そのショートカットは測定伝送システムの起動用に書き換わります。よろしいですか？',
+      confirmLabel:'上書きする',danger:true});
+    if(!okGo){showToast('上書きをやめました','デスクトップのショートカットはそのままです',3600);return}
+    r=await send(true);
+   }
    shortcutState.info=r;shortcutState.error='';shortcutState.loaded=true;
    /* 作った内容で入れ直す（名前を空欄のまま作ると既定の名前が付く）。 */
    const panel=document.getElementById('lnkPanel');
    if(panel)panel.dataset.filled='';
    paintShortcut();
-   showToast('デスクトップに作りました',r.link||'',4600);
+   /* **何をしたかを言う**（作った／書き換えた／付け替えた）。 */
+   const head=r.renamedFrom?'デスクトップのショートカットを付け替えました':'デスクトップに作りました';
+   const detail=(r.renamedFrom?`「${r.renamedFrom}」→ `:'')+(r.link||'');
+   showToast(head,detail,4600);
   }catch(e){
    showToast('作れませんでした',String(e&&e.message||e),6000);
   }finally{

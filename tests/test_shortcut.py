@@ -107,9 +107,15 @@ rec('保存値の読み口があり、読めなくても既定で続ける',
 # **作るときは渡された値をそのまま使う**（§9.433）——ここで保存値へ落とすと、
 # 「アプリのマーク」を選んだのに前に指定した絵で作られる。
 src = inspect.getsource(desktop_shortcut.create)
-rec('create() は渡された名前・絵を保存値で上書きしない',
-    "saved('shortcut_icon')" not in src and "saved('shortcut_name')" not in src,
-    '上書きしていない' if "saved(" not in src else src[:80])
+# **作る物は引数で決まる**。保存値を読むのは §9.446 で足した「前の名前の片付け」
+# の1回だけで、**作る名前・絵には使わない**（使うと、アプリのマークを選んだのに
+# 前に指定した絵で作られる）。
+rec('create() は渡された名前・絵を保存値で上書きしない（作る物は引数で決まる）',
+    'link_path(name)' in src and '_icon_spec(icon)' in src
+    and "saved('shortcut_icon')" not in src
+    and src.count("saved('shortcut_name')") == 1
+    and "rename_from(saved('shortcut_name'),name)" in src,
+    '保存値を読むのは片付けの1回だけ' if src.count('saved(') == 1 else f'saved() が{src.count("saved(")}回')
 # 状態は保存した名前で見る（既定名に倒れると「まだ作っていません」と言う）。
 rec('status() は名前を渡されなければ保存値を使う',
     "saved('shortcut_name')" in inspect.getsource(desktop_shortcut.status))
@@ -131,6 +137,49 @@ rec('残すのは shortcut_name / shortcut_icon の2鍵だけ（置き場・読�
     str(re.findall(r"set_path_config\(c,'([a-z_]+)'", rsrc)))
 rec('残せなくても作成そのものは失敗にしない（黙って捨てない・§9.328）',
     'quiet(' in rsrc and 'except' in rsrc)
+
+# ---- 7) すでに在るときは上書き・名前を変えたら付け替え（§9.446、利用者の指示） ----
+# 「すでにある場合は上書きして書き換える機能も実装して下さい」
+# ・**自分が作ったもの**（行き先が Start.vbs）は、そのまま上書きする。
+# ・**別のショートカット**は `overwrite` が真のときだけ上書きする（黙って消さない）。
+# ・**名前を変えたとき**は前のほうを片付ける（デスクトップに2つ残さない）。
+rec('補助スクリプトは1枚で、作る(MAKE)と読む(READ)の両方を持つ',
+    'READ' in desktop_shortcut._HELPER and 'lnk.Save' in desktop_shortcut._HELPER
+    and desktop_shortcut._HELPER.isascii(),
+    '行き先を読む道がある' if 'READ' in desktop_shortcut._HELPER else desktop_shortcut._HELPER[:60])
+rec('行き先を読めない端末では空を返す（落ちない・別物として扱う）',
+    desktop_shortcut.link_target(ROOT / 'Start.vbs') == '',
+    repr(desktop_shortcut.link_target(ROOT / 'Start.vbs')))
+rec('同じ道は書き方が違っても同じと見る（`..`は畳む）',
+    desktop_shortcut._same_path(ROOT / 'Start.vbs', ROOT / 'db' / '..' / 'Start.vbs')
+    and not desktop_shortcut._same_path(ROOT / 'a.lnk', ROOT / 'b.lnk'))
+# 大文字小文字の揺れ（`C:\WaveLog` と `c:\wavelog`）は **Windowsでだけ**畳む。
+# この端末はLinuxで`normcase`が何もしないので、**ここでは測っていない**
+# ——道具に任せていることだけを確かめる（§9.369「測れないなら測っていないと書く」）。
+rec('大文字小文字の揺れは os.path.normcase に任せる（Windowsで畳まれる）',
+    'normcase' in inspect.getsource(desktop_shortcut._same_path))
+rec('空の行き先は「自分のもの」と見ない（読めなかったものを消さない）',
+    not desktop_shortcut._same_path('', str(desktop_shortcut.target_path())))
+# 付け替えの判断は**字だけで決まる**ので、ここで直に確かめられる。
+rec('名前を変えたときだけ前の名前を返す（変えていなければ空）',
+    desktop_shortcut.rename_from('旧名', '新名') == '旧名'
+    and desktop_shortcut.rename_from('同じ名前', '同じ名前') == ''
+    and desktop_shortcut.rename_from('', '新名') == '',
+    desktop_shortcut.rename_from('旧名', '新名'))
+rec('前の名前も使えない字を落としてから比べる（見た目が違うだけで消さない）',
+    desktop_shortcut.rename_from('a/b', 'ab') == '', desktop_shortcut.rename_from('a/b', 'ab'))
+rec('status() は「同じ名前の物が自分のものか」まで答える',
+    'mine' in st and 'linkTarget' in st, str({k: st[k] for k in ('mine', 'linkTarget')}))
+# 断りは**確認すれば進める**ことまで返す（画面が聞き直せる・§CLAUDE 4）。
+rec('別のショートカットの上は、確認を求めて断る（overwriteが真なら進む）',
+    "needConfirm" in src and 'is_ours(link)' in src and 'overwrite' in src,
+    '確認の道がある' if 'needConfirm' in src else src[:100])
+# 片付けるのは**自分が作った物だけ**。利用者が置いた同名の物は触らない。
+rec('前の名前を片付けるのは、それが自分の作った物のときだけ',
+    'rename_from(' in src and 'is_ours(old)' in src and 'unlink()' in src,
+    '片付けの条件がある' if 'is_ours(old)' in src else src[-200:])
+rec('片付けられなくても作成は失敗にしない（理由は1行残す）',
+    src.count('quiet(') >= 1 and "out['renamedFrom']" in src)
 
 ng = [n for n, ok in R if not ok]
 print(f'\n== {len(R) - len(ng)}/{len(R)} PASS ==')
