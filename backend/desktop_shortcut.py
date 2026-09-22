@@ -140,6 +140,28 @@ def _no_window():
  return {'creationflags':getattr(subprocess,'CREATE_NO_WINDOW',0)}
 
 
+def remember(name,icon,uid=None):
+ """**作ったときの名前と絵を残す**（§9.445）。`saved()`と対になる書き込みで、
+    読む先と同じ`パス設定マスタ`の1箇所へ書く。
+
+    なぜここで書くか
+    ---------------------------------------------------------------------
+    以前は共通設定の画面の欄（`data-pc-field`）だけが保存の道だった（§9.433）。
+    その画面は**スケジュールモードでは出ない**ので、現場の端末では「作った
+    名前」がどこにも残らず、次に開くと既定の名前に戻り、**作ってあるのに
+    「まだ作っていません」**と出る（`status()`は名前からファイルを探す）。
+    残すのは**この2つの鍵だけ**——置き場・読み込み先といった他の設定は
+    ここからは一切触らない（あちらは編集モードの画面が持つ）。"""
+ from .db_access import DBS, connect, set_path_config   # 遅延: 起動順に縛りを作らない
+ try:
+  with connect(DBS['MASTER']['path'],False) as c:
+   set_path_config(c,'shortcut_name',str(name or '').strip(),uid or '')
+   set_path_config(c,'shortcut_icon',str(icon or '').strip(),uid or '')
+ except Exception as _e:
+  # 作れてはいるので**作成そのものは成功**として返す（黙って捨てない・§9.328）。
+  quiet('ショートカットの設定を残せない（作成自体は成功している）',_e)
+
+
 def saved(key):
  """共通設定に残してある値（§9.433）。**決めた名前と絵は残す**——以前は
     どこにも保存しておらず、画面を切り替えると既定の名前へ戻っていた
@@ -171,6 +193,10 @@ def status(name=None):
       'name':_safe_name(name),'defaultName':DEFAULT_NAME,
       # 画面が「指定の絵」を選び直せるように、残してある絵のパスも返す。
       'icon':saved('shortcut_icon'),
+      # **残してある名前そのもの**（§9.445）。`name`は「空なら既定へ倒した
+      # 結果」なので、欄へ出すと**決めていない名前を決めたように見える**。
+      # 欄が出すのはこちら（空欄なら既定の名前が薄い字で出る）。
+      'savedName':saved('shortcut_name'),
       'desktop':str(desktop_dir()) if ok else '',
       'link':str(link) if link else '',
       'target':str(target_path()),
@@ -184,7 +210,7 @@ def status(name=None):
  return out
 
 
-def create(name=None,icon=None):
+def create(name=None,icon=None,uid=None):
  """デスクトップへ作る（既に在れば作り直す）。戻り値は`status()`＋結果。
 
     **渡された値をそのまま使う**（§9.433）。画面の欄は共通設定に残した値から
@@ -214,6 +240,9 @@ def create(name=None,icon=None):
   detail=(p.stderr or p.stdout or '').strip().splitlines()
   return {'ok':False,'error':'ショートカットを作れませんでした: '
           +(detail[-1] if detail else f'終了コード {p.returncode}')}
+ # **作った内容を残す**（§9.445）。次に開いたとき、この名前で「作成済み」と
+ # 言えるようにする（画面の保存ボタンに頼らない）。
+ remember(name,icon,uid)
  out=status(name)
  out['created']=True
  # `icon`は**共通設定に残した値**（status が入れる）。実際に使った絵は

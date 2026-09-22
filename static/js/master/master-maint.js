@@ -81,6 +81,14 @@
   return !!(def.endpoint&&def.endpoint.indexOf('/api/schedule/')===0);
  }
  function firstVisibleDefKey(){const d=allDefs().find(maintDefVisible);return d?d.key:MASTER_DEFS[0].key}
+ /* **そのタブをいま開けるか**（§9.445）。行き先を出す側（「表示」の節・他の
+    画面の「〜で決める」）が、押す前に確かめるための口。判定は
+    `maintDefVisible()`の1箇所のまま——問い合わせ口を足すだけで、規則を写さない
+    （写すと、モードの見分けが2箇所になる）。 */
+ function maintTabOpenable(key){
+  const def=allDefs().find(d=>d.key===key);
+  return !!(def&&maintDefVisible(def));
+ }
  /* マスタ種別のグループ(情報アーキテクチャ): 13種を平坦に並べると
     「どれが何の設定か」を毎回読んで探すことになるため、利用者の頭の中の
     分類(誰が・何を使うか / 作業スケジュールの設定 / システム寄りの設定)で
@@ -2878,6 +2886,6 @@
  },true);
  /* 盤が専用画面へ渡すもの（§9.324 R3）。**ここに無い名前は他のファイルから
     見えない**——足すときは使う側の`const {…}=WL.mm`と対で。 */
- Object.assign(WL.mm,{CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
+ Object.assign(WL.mm,{CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,EQUIPMENT_ALL,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,fbCatalog,firstVisibleDefKey,maintTabOpenable,fmtDT,hintHtml,loadMaint,maintState,mmFracText,mmSetHidden,numFieldHtml,numRaw,openMaintEditor,openMasterMaint,pageFoldHtml,pageTabsHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav});
  WL.mm.setRawDefs=v=>{rawDefs=v};   // 生の表の一覧はデータ側が届ける（§9.249 ②）
 })();

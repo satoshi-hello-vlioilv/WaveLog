@@ -523,7 +523,9 @@ RULES = [
     ('backend/boot_status.py', g('起動')),
     # デスクトップの起動ショートカットとアイコン（§9.410）。設定の画面は
     # 共通設定の「この端末」の章なので、そちらの網も一緒に回す。
-    ('backend/desktop_shortcut.py', g('test_shortcut', 'test_setpage')),
+    # 盤はヘッダーの「表示」の節（§9.445）。共通設定は「状態と行き先」だけなので、
+    # あちらの網（test_setpage）と「表示」の網（test_uisize）の両方を回す。
+    ('backend/desktop_shortcut.py', g('test_shortcut', 'test_setpage', 'test_uisize')),
     ('backend/app_icon.py', g('test_shortcut')),
     # 終わる前の片付けと終了ボタン（§9.301 ②）も watchdog が持つ。
     ('backend/watchdog.py', g('test_tabclose', 'test_boot', 'test_presence',

@@ -404,6 +404,101 @@ let b=null;
  rec('横スクロールバーが出ない(大)',await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1));
  await set('md');
 
+ /* ---------- デスクトップの起動アイコンは「表示」から（§9.445、利用者の指示
+    「どのモードからも使えるショートカット作成」）----------
+    元の困りごと: 盤は**共通設定＞この端末**にしか無く、共通設定は
+    スケジュールモードのマスタ管理には出ない（`/api/schedule/`のマスタだけが
+    残る）ので、**現場の端末からは作れなかった**——サーバーは3モードとも
+    通していたのに、画面の入口だけが無い状態。
+    入口は増やさず（§9.421）、**どの画面からも開ける「表示」へ節を1つ**。
+
+    この端末はWindowsではないので、**盤そのもの**はサーバーの答え
+    （`GET /api/app/shortcut`）を差し替えて見る。差し替えるのは
+    **状態の読み取りだけ**で、作成（POST）は投げない。 */
+ const setMode=async m=>{await fetch('http://127.0.0.1:5029/api/access-mode',{method:'POST',
+   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
+ const openLook=async()=>{
+  await page.evaluate(()=>{
+   const m=document.getElementById('uiSizeMenu');if(m)m.remove();
+   document.getElementById('uiSizeBadge').click();
+  });
+  await page.waitForSelector('#lnkPanel',{timeout:8000});
+  /* 「確認しています…」が答えに変わるまで待つ（時間ではなく条件で・§9.102）。 */
+  await page.waitForFunction(()=>{
+   const s=document.querySelector('#lnkPanel [data-sc-state]');
+   return !!(s&&s.textContent&&s.textContent.indexOf('確認しています')<0);
+  },{timeout:10000});
+ };
+ const lookRead=async()=>page.evaluate(()=>{
+  const menu=document.getElementById('uiSizeMenu'),panel=document.getElementById('lnkPanel');
+  const body=document.getElementById('lnkBody'),more=document.getElementById('lnkMore');
+  const vis=el=>!!(el&&el.offsetParent);
+  return {
+   heads:[...menu.querySelectorAll('.ui-size-menu-head')].map(h=>h.textContent.trim()),
+   state:(panel.querySelector('[data-sc-state]')||{}).textContent||'',
+   bodyShown:vis(body),
+   makes:[...document.querySelectorAll('button')].filter(b=>vis(b)&&/作る|作り直す/.test(b.textContent)).length,
+   where:(document.getElementById('lnkWhere')||{}).textContent||'',
+   folded:!!(more&&!more.open),
+   now:(document.getElementById('lnkNow')||{}).textContent||'',
+   ldLink:document.getElementById('uiSizeLoaderLink').tagName,
+   ldNote:(document.querySelector('#uiSizeLoaderLink small')||{}).textContent||'',
+   minFs:Math.min(...[...menu.querySelectorAll('*')]
+     .filter(e=>e.textContent.trim()&&!e.children.length)
+     .map(e=>parseFloat(getComputedStyle(e).fontSize))),
+   menuH:Math.round(menu.getBoundingClientRect().height),
+   menuMax:parseFloat(getComputedStyle(menu).maxHeight),
+  };
+ });
+ await page.reload({waitUntil:'domcontentloaded'});
+ await page.waitForSelector('#uiSizeBadge',{timeout:15000});
+ await openLook();
+ const sc0=await lookRead();
+ rec('「表示」に「デスクトップの起動アイコン」の節が在る（§9.445）',
+   sc0.heads.indexOf('デスクトップの起動アイコン')===sc0.heads.length-1,sc0.heads.join('／'));
+ /* **作れない端末では、できないと書く**（§CLAUDE 4）——理由を出し、
+    押しても何も起きないボタンは1つも見せない。 */
+ rec('作れない端末では理由を字で出し、作るボタンを見せない',
+   /Windows/.test(sc0.state)&&!sc0.bodyShown&&sc0.makes===0,
+   `${sc0.state} / ボタン${sc0.makes}個`);
+
+ await page.route('**/api/app/shortcut*',r=>r.request().method()==='GET'
+  ? r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+      ok:true,supported:true,why:'',name:'測定伝送システム',defaultName:'測定伝送システム',
+      savedName:'',icon:'',desktop:'C:\\Users\\x\\Desktop',
+      link:'C:\\Users\\x\\Desktop\\測定伝送システム.lnk',
+      target:'D:\\WaveLog\\Start.vbs',exists:false,updatedAt:'',
+      iconSuffixes:['.ico','.exe','.dll']})})
+  : r.continue());
+ for(const mode of ['edit','view','schedule']){
+  await setMode(mode);
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForSelector('#uiSizeBadge',{timeout:15000});
+  await openLook();
+  const sc=await lookRead();
+  rec(`${mode}モードでも「表示」から作れる（入口は1つのまま）`,
+    sc.heads.includes('デスクトップの起動アイコン')&&sc.bodyShown&&sc.makes===1,
+    `${sc.state} / ボタン${sc.makes}個`);
+  rec(`${mode}: 作成先と起動するものを押す前に読める（出どころ・§CLAUDE 6）`,
+    /作成先/.test(sc.where)&&/Start\.vbs/.test(sc.where),sc.where.slice(0,80));
+  if(mode==='edit'){
+   /* 名前と絵は**畳む**（§CLAUDE 1 面積は頻度×重要度）。畳んだ札には
+      いまの値を書く（§9.433）——開かずに何が効いているか読める。 */
+   rec('名前と絵は畳んであり、畳んだ札にいまの値が出る',
+     sc.folded&&/いま:/.test(sc.now)&&/測定伝送システム/.test(sc.now),`${sc.folded} ${sc.now}`);
+   rec('節が増えても字を11px未満にしない・窓は縦に溢れない（§9.444）',
+     sc.minFs>=11&&sc.menuH<=sc.menuMax+1,`最小${sc.minFs}px / ${sc.menuH}px≦${sc.menuMax}px`);
+  }
+  /* **開けない行き先は押す形にしない**（§9.445・§CLAUDE 4）。共通設定は
+     スケジュールモードでは開けないので、以前は押すと換算係数マスタが開いた。 */
+  rec(`${mode}: 読み込みの見せ方の行き先は、開けるときだけボタン`,
+    mode==='schedule'?(sc.ldLink!=='BUTTON'&&/開けません/.test(sc.ldNote))
+                     :(sc.ldLink==='BUTTON'&&!/開けません/.test(sc.ldNote)),
+    `${sc.ldLink} / ${sc.ldNote}`);
+ }
+ await page.unroute('**/api/app/shortcut*');
+ await setMode('edit');
+
  console.log('\n=== SUMMARY ===');
  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
  f.forEach(x=>console.log(' -',x.n,x.d||''));

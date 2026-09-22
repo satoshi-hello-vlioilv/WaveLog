@@ -93,6 +93,20 @@ let b=null;
     並びだけ出す）。入力欄が残っていたら2画面に同じ設定がある状態。 */
  const dup=p.fields.filter(k=>/_path$/.test(k)&&!['schedule_share_path','records_backup_export_path','rne_conf_path'].includes(k));
  rec('データソースごとの読み込み先の欄は共通設定に無い',dup.length===0,dup.join(','));
+ /* **起動アイコンの盤はここに無い**（§9.445）。盤はヘッダーの「表示」へ移した
+    ——共通設定はスケジュールモードでは出ないので、あそこだけに置くと現場の
+    端末からは作れない。ここに残るのは**いまの状態と行き先**だけで、
+    名前・絵の欄（`data-pc-field`）は1つも無いこと（設定を直す面を2つにしない）。 */
+ const sc=await page.evaluate(()=>({
+   欄:[...document.querySelectorAll('[data-pc-field]')].map(e=>e.dataset.pcField)
+     .filter(k=>/^shortcut_/.test(k)),
+   状態:!!document.querySelector('#pcShortcut [data-sc-state]'),
+   行き先:!!document.getElementById('pcScOpen'),
+   作る:!!document.getElementById('lnkMake')}));
+ rec('起動アイコンの名前・絵の欄は共通設定に無い（盤は「表示」の1箇所）',
+   sc.欄.length===0&&!sc.作る,sc.欄.join(',')||'なし');
+ rec('共通設定にはいまの状態と行き先が残る（探させない）',
+   sc.状態&&sc.行き先,`状態${sc.状態} 行き先${sc.行き先}`);
  rec('反映タイミングがまとまりごとに示されている',p.badges>=4,p.badges+'個');
  rec('保存ボタンが常にパネル内に見えている',p.saveInsidePanel);
  rec('設定ページでは下段の一覧枠を畳む',p.listWrap==='none',p.listWrap);

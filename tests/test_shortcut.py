@@ -11,6 +11,7 @@
   4. アイコンの指定は**読めないものを黙って既定へ落とさない**（§9.231）
 """
 import inspect
+import re
 import struct
 import sys
 from pathlib import Path
@@ -112,6 +113,24 @@ rec('create() は渡された名前・絵を保存値で上書きしない',
 # 状態は保存した名前で見る（既定名に倒れると「まだ作っていません」と言う）。
 rec('status() は名前を渡されなければ保存値を使う',
     "saved('shortcut_name')" in inspect.getsource(desktop_shortcut.status))
+
+# ---- 6) 作ったときの名前と絵は「作った側」が残す（§9.445、利用者の指示） ----
+# 盤はヘッダーの「表示」へ移した（どのモードからも開ける）。共通設定の画面は
+# **スケジュールモードでは出ない**ので、あちらの保存ボタンに頼っていると、
+# 現場の端末では名前がどこにも残らず、作ってあるのに「まだ作っていません」と
+# 出続ける（status() は名前からファイルを探すため）。
+rec('残してある名前そのものを status() が返す（欄はこれを出す）',
+    'savedName' in st and isinstance(st['savedName'], str), repr(st.get('savedName')))
+rec('画面へ出す名前は「空なら既定へ倒した結果」と別の鍵で返す（同じ鍵に2つの意味を持たせない）',
+    st.get('name') == desktop_shortcut._safe_name('回帰_shortcut'), str(st.get('name')))
+rec('create() は作れたら名前と絵を残す（画面の保存ボタンに頼らない）',
+    'remember(' in src, 'remember を呼んでいる' if 'remember(' in src else src[-120:])
+rsrc = inspect.getsource(desktop_shortcut.remember)
+rec('残すのは shortcut_name / shortcut_icon の2鍵だけ（置き場・読み込み先は触らない）',
+    sorted(re.findall(r"set_path_config\(c,'([a-z_]+)'", rsrc)) == ['shortcut_icon', 'shortcut_name'],
+    str(re.findall(r"set_path_config\(c,'([a-z_]+)'", rsrc)))
+rec('残せなくても作成そのものは失敗にしない（黙って捨てない・§9.328）',
+    'quiet(' in rsrc and 'except' in rsrc)
 
 ng = [n for n, ok in R if not ok]
 print(f'\n== {len(R) - len(ng)}/{len(R)} PASS ==')
