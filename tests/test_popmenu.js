@@ -108,15 +108,16 @@ run('test_popmenu: 浮きメニューの器は1つ（§9.448）', async ({page,r
  rec('Endで最後の項目へ飛ぶ',!!fEnd&&fEnd!==f1,fEnd);
 
  await page.keyboard.press('Escape');
- await page.waitForSelector('.col-head-menu',{state:'detached',timeout:5000}).catch(()=>{});
- const gone=await page.evaluate(()=>!document.querySelector('.col-head-menu'));
- rec('Escで閉じる',gone);
+ /* **黙って待たない**（§9.360）。閉じないなら、それがこの網の見るべき失敗。 */
+ await page.waitForSelector('.col-head-menu',{state:'detached',timeout:5000});
+ rec('Escで閉じる',
+     await page.evaluate(()=>!document.querySelector('.col-head-menu')));
 
  /* ---- 4. 外を押すと閉じる ---- */
  await page.mouse.click(box.x+box.width/2, box.y+box.height/2, {button:'right'});
  await page.waitForSelector('.col-head-menu',{timeout:8000});
  await page.mouse.click(5,5);
- await page.waitForSelector('.col-head-menu',{state:'detached',timeout:5000}).catch(()=>{});
+ await page.waitForSelector('.col-head-menu',{state:'detached',timeout:5000});
  rec('外を押すと閉じる',
      await page.evaluate(()=>!document.querySelector('.col-head-menu')));
 }, {mode:'edit', viewport:{width:1728,height:1030}});

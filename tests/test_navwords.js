@@ -24,7 +24,9 @@ const MACH=/キー |キー:|ファイル:|\.sqlite3|[A-Z]{4,}/;
 run('test_navwords: 左メニューの言葉と説明（§9.447）', async ({page,rec,B,W,idle})=>{
  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
  await W.booted(page); await idle();
- await page.waitForSelector('#nav [data-db-key]',{timeout:15000}).catch(()=>{});
+ /* 元データのボタンはカタログから組む（§9.87）。**黙って待たない**
+    （§9.360）——出ないなら、それ自体がこの網の見るべき失敗。 */
+ await page.waitForSelector('#nav [data-db-key]',{timeout:15000});
  await idle();
  const items=await page.evaluate(()=>{
   const out=[];
