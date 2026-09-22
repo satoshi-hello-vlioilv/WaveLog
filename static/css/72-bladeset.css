@@ -397,6 +397,21 @@ body.bs-mode .bs-shell{display:flex}
 /* 寸法の突き合わせ（§9.418 追補）。図の読み方（`bs-o3`）と同じ見た目で、
    段だけ分ける——どちらも図の上に載る添え書き。 */
 .bs-len3[hidden]{display:none}
+/* 断面図の設定（§9.443）。**左上の帯の3行目**——帯を新しく作ると左上の帯と
+   真上で重なる（実測5364px2）。中身は模式図の帯と同じ1箇所が作る。 */
+.bs-cutset{display:flex;align-items:center;gap:var(--space-1);flex-wrap:nowrap}
+.bs-cutset[hidden]{display:none}
+.bs-cutchip{display:inline-flex;align-items:baseline;gap:var(--space-1);
+  padding:0 var(--space-2);height:var(--ctl-h-xs);border-radius:var(--radius-xs);
+  font-size:var(--fs-micro);white-space:nowrap;
+  background:var(--bs-fig-chip-bg);color:var(--bs-fig-chip-fg);
+  border:1px solid var(--bs-fig-chip-bd)}
+.bs-cutchip[data-k="chip-clr"]{background:var(--bs-fig-chip-clr-bg);
+  color:var(--bs-fig-chip-clr-fg);border-color:var(--bs-fig-chip-clr-bd)}
+.bs-cutchip[data-k="chip-ov"]{background:var(--bs-fig-chip-ov-bg);
+  color:var(--bs-fig-chip-ov-fg);border-color:var(--bs-fig-chip-ov-bd)}
+.bs-cutchip>s{text-decoration:none;opacity:.78;font-weight:600}
+.bs-cutchip>b{font-weight:800;font-variant-numeric:tabular-nums}
 .bs-hud{position:absolute;display:flex;align-items:center;gap:var(--space-1);
   max-width:calc(100% - 20px)}
 .bs-hud.is-tl{left:10px;top:10px;flex-direction:column;align-items:flex-start}

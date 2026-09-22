@@ -1173,7 +1173,14 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('条と耳屑は札の色でも見分けられる', lab.kinds.length >= 2, lab.kinds.join('/'));
     /* **誇張したら倍率を書く**（§CLAUDE 6）。板厚 1.3mm は実寸では1pxも出ない。 */
     rec('板厚を誇張していることを字で言う', /板厚.*倍/.test(lab.mag), lab.mag.slice(0, 60));
-    rec('上下軸を離していることも字で言う', /上下軸.*離/.test(lab.mag), lab.mag.slice(0, 80));
+    /* **散文は「使い方」が持つ**（§9.443）。帯は図の上に浮いていて、1行増える
+       たびに寸法の字の置き場が減る（実測: 3行で103px・器619pxの17%）。
+       いつも同じ事実は読む場所を1つにする（§CLAUDE 8）——帯には**値**だけ。 */
+    const howto = await page.evaluate(() =>
+      (document.querySelector('#bsStage3 .bs-hpop') || {}).textContent || '');
+    rec('上下軸を離していることは「使い方」が言う（帯には値だけ・§9.443）',
+        /上下軸.*離/.test(howto) && !/上下軸.*離/.test(lab.mag),
+        `使い方:${/上下軸.*離/.test(howto)} 帯:${lab.mag.slice(0, 40)}`);
     /* ---- 4.8) 詰め・クリアランス・寸法の字（§9.418） ----
        利用者の指摘「エンド部分までスペーサーが詰まっていないといけないが、
        隙間が目立つ」「OS側のエンドの青オブジェクトの上下軸の外々に線が付着
@@ -1274,8 +1281,14 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     /* 何の線かを図の上で言う（§CLAUDE 6）。 */
     const magNow = await page.evaluate(() =>
       (document.querySelector('#bsStage3 .bs-o3') || {}).textContent || '');
-    rec('破線が何を指しているかを図の上で言う',
-        /破線は切断の位置/.test(magNow), magNow.slice(0, 140));
+    /* 帯は**値だけ**（§9.443）。「材料のところは刃を描けないため」という理由は
+       いつも同じ事実なので「使い方」が1箇所で持つ。 */
+    const howto2 = await page.evaluate(() =>
+      (document.querySelector('#bsStage3 .bs-hpop') || {}).textContent || '');
+    rec('破線が何かは図の上で言い、理由は「使い方」が持つ（§9.443）',
+        /破線＝切断の位置/.test(magNow) && /刃を描けない/.test(howto2)
+        && !/刃を描けない/.test(magNow),
+        magNow.slice(0, 100));
     /* ---- 部材の幅の字（入る／引き出す／出さない） ---- */
     rec('部材の幅の字が出ている（中に書いたぶん＋引き出したぶん）',
         !!pk.dims && pk.dims.inside > 0 && pk.dims.inside + pk.dims.lead > 0,
@@ -1322,22 +1335,98 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         mix ? `スペーサー ${mix.sp} / ゴムリング ${mix.rg}` : '読めない');
     rec('引き出し線は対象まで届いている（宙に浮かせない）',
         !!mix && mix.loose === 0, mix ? `${mix.lines}本中 ${mix.loose}本が宙ぶらりん` : '読めない');
-    /* **寸法の字は1つも落とさない**（§9.429、利用者の指示「3D断面図で表示
-       できていないラベルがあるので、すべて表示できるように」）。以前は
-       引き出しの段が1段しかなく、そこでぶつかったものを**黙って落として
-       いた**（実測 217件中95件）。数えるのは足し算——中に書いた数＋引き出した
-       数＝出すべき数（§9.413 と同じ見方。絵を数えても落とし物は分からない）。 */
-    rec('断面図の寸法は1つも落とさない（中に書いた数＋引き出した数＝出すべき数）',
-        !!mix && mix.dims && mix.dims.off === 0
-        && mix.dims.inside + mix.dims.lead === mix.dims.all,
+    /* **数え落としはしない。置けない字は数えて言う**（§9.429 → §9.443 で
+       言い直した）。§9.429 は「1つも落とさない」と決めていたが、それは
+       **重なってでも置く**作りのときの約束だった。利用者の指示
+       「表示ラベルなどが重ならないように」を入れたいま、**器が縮めば
+       どうしても置けない字が出る**——器の高さは変わっても字の数
+       （実測150件）は変わらないため。
+       だから見るのは2つ:
+         ① 足し算が合う（中＋外＋置けなかった ＝ 出すべき数）——数え落としが無い
+         ② 置けなかったのは**ごく一部**（2割まで）。半分落ちたら作りが悪い
+       **重なっていないこと**は下の網が別に見る（そちらが本体）。
+       置けなかった数は図の読み方の1行が言う（§CLAUDE 4）。 */
+    rec('断面図の寸法は数え落とさない（中＋外＋置けなかった＝出すべき数）',
+        !!mix && mix.dims
+        && mix.dims.inside + mix.dims.lead + mix.dims.off === mix.dims.all,
         mix && mix.dims
-         ? `中${mix.dims.inside}＋外${mix.dims.lead}＝${mix.dims.all}（出せなかった ${mix.dims.off}）`
+         ? `中${mix.dims.inside}＋外${mix.dims.lead}＋置けず${mix.dims.off}＝${mix.dims.all}`
+         : '読めない');
+    rec('置けなかった寸法はごく一部（2割まで・§9.443）',
+        !!mix && mix.dims && mix.dims.all > 0
+        && mix.dims.off <= mix.dims.all * 0.2,
+        mix && mix.dims
+         ? `${mix.dims.off}/${mix.dims.all}件`
+           + `（${Math.round(100 * mix.dims.off / mix.dims.all)}%）`
+           + ` 内訳 ${JSON.stringify(mix.dims.why || {})}`
          : '読めない');
     rec('断面図の寸法の字どうしが重なっていない',
         !!mix && mix.over === 0, mix ? `${mix.texts}字中 ${mix.over}組が重なり` : '読めない');
     rec('出しきれない幅は出していない（重ねて出さない）',
         !!pk.dims && pk.dims.inside + pk.dims.lead + pk.dims.off === pk.dims.all,
         pk.dims ? `${pk.dims.inside}+${pk.dims.lead}+${pk.dims.off} = ${pk.dims.all}` : '読めない');
+
+    /* ---- 断面図でも設定が読める（§9.443、利用者の指示「断面図でも板押さえ
+       （フィンガーまたはゴムリングの色や外径）の情報、ラップなど必要な情報を
+       良い感じに表示を」）----
+       模式図の帯には在ったが、断面図には**1つも出ていなかった**（実測: 4項目中
+       3項目が読めない）。中身は同じ1箇所（`chipBandItems`）が作る。 */
+    const cutSet = await page.evaluate(() => {
+     const st = document.getElementById('bsStage3');
+     const t = (st.innerText || '').replace(/\s+/g, ' ');
+     return { chips: [...st.querySelectorAll('.bs-cutchip')].map(x => x.textContent.trim()),
+              clr: /クリアランス/.test(t), ov: /ラップ/.test(t),
+              hold: /板押さえ/.test(t), od: /Φ\d+/.test(t) };
+    });
+    rec('断面図でクリアランス・ラップ・板押さえ・色と外径が読める（§9.443）',
+        cutSet.clr && cutSet.ov && cutSet.hold && cutSet.od,
+        JSON.stringify({ clr: cutSet.clr, ov: cutSet.ov, hold: cutSet.hold, od: cutSet.od }));
+    rec('設定は3つの札で出す（模式図の帯と同じ顔ぶれ）',
+        cutSet.chips.length === 3, cutSet.chips.join(' / ').slice(0, 90));
+
+    /* ---- 器の縦が30%縮んでも札が重ならない（§9.443、利用者の指示）----
+       **絵ではなく矩形の交差で数える**（「近い」では素通りする）。面積4px²
+       以上を重なりと数える——1pxの接触は重なりではない。
+       直す前は器の高さ819→459pxで**4件**重なっていた（いちばん大きいもの
+       100px²）。器の高さは`ResizeObserver`が見ているので、窓を縮めれば効く。 */
+    const overlapAt = async ht => {
+     await page.setViewportSize({ width: 1700, height: ht });
+     await W.settle(page, 900);
+     return page.evaluate(() => {
+      const st = document.getElementById('bsStage3');
+      const vis = el => { const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && !el.hidden; };
+      const rs = [...st.querySelectorAll('.bs-t3,.bs-t3b,.bs-m3,.bs-o3,.bs-len3,'
+                  + '.bs-t3v text,.bs-cutchip')].filter(vis)
+        .map(e => { const r = e.getBoundingClientRect();
+          return { t: (e.textContent || '').trim().slice(0, 16),
+                   x: r.left, y: r.top, w: r.width, h: r.height }; });
+      let hits = 0, worst = null;
+      for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) {
+       const a = rs[i], b = rs[j];
+       const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+       const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+       if (ox > 0 && oy > 0 && ox * oy >= 4) {
+        hits++; if (!worst || ox * oy > worst.area) worst = { a: a.t, b: b.t, area: Math.round(ox * oy) };
+       }
+      }
+      return { n: rs.length, hits, worst,
+               h: Math.round(st.getBoundingClientRect().height) };
+     });
+    };
+    const ovFull = await overlapAt(1000);
+    /* **器の高さで30%**（利用者の指示）。窓の高さと器の高さは同じではない
+       ——器の外に帯・見出し・レールがあるぶん（実測 約381px）を引いてから
+       決める。窓 1000px で器 619px なので、器 433px（＝70%）は窓 814px。 */
+    const ovThin = await overlapAt(814);
+    await page.setViewportSize({ width: 1700, height: 1000 });
+    await W.settle(page, 900);
+    rec('断面図の札が重ならない（いまの高さ・§9.443）',
+        ovFull.hits === 0, `器${ovFull.h}px・札${ovFull.n}枚 → 重なり${ovFull.hits}`
+        + (ovFull.worst ? ` ${JSON.stringify(ovFull.worst)}` : ''));
+    rec('縦が30%縮んでも断面図の札が重ならない（§9.443）',
+        ovThin.hits === 0, `器${ovThin.h}px・札${ovThin.n}枚 → 重なり${ovThin.hits}`
+        + (ovThin.worst ? ` ${JSON.stringify(ovThin.worst)}` : ''));
     /* ---- 板の札は「千鳥の空き」に入る ---- */
     const mlab = await page.evaluate(() => {
      const els = [...document.querySelectorAll('#bsStage3 .bs-t3-mk')].filter(e => !e.hidden);

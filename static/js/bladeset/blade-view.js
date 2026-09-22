@@ -186,8 +186,15 @@
               利用者の指示）。図の読み方の段とは別に置く——あちらは
               「どう見るか」、こちらは「合っているか」の突き合わせ。
               （この中は文字列リテラルの中なので、逆引用符は書けない） -->
+         <!-- **断面図にも設定を出す**（§9.443、利用者の指示）。**帯は増やさない**
+              ——この左上の帯が既に「この図の読み方（bs-o3）」と「突き合わせ
+              （bs-len3）」を積んでいる、いまの設定の置き場。3行目として載せる
+              （帯を新しく作ると、左上の帯と真上で重なった・実測5364px2）。
+              中身は模式図の帯と同じ1箇所（chipBandItems）が作る。
+              （この中は文字列リテラルの中なので、逆引用符は書けない） -->
          <div class="bs-hud is-tl"><div class="bs-o3" hidden></div>
-          <div class="bs-len3" hidden></div></div>
+          <div class="bs-len3" hidden></div>
+          <div class="bs-cutset" hidden></div></div>
          <div class="bs-hud is-tr">
           <button type="button" class="bs-hlp bs-help3" aria-expanded="false">使い方</button>
           <div class="bs-hpop" hidden>
@@ -197,6 +204,11 @@
               テーブルの外の土台に降ろす）→③台車を回す（テーブルごと 180°）</dd>
             <dt>向き</dt>
             <dd>DS 側から部材を入れ、OS 側へ詰めます。材料の入側は、ラインを正面に見て左です。</dd>
+            <dt>断面図の見え方</dt>
+            <dd>板厚は実寸だと1pxも出ないので、断面図でだけ<b>太らせています</b>
+              （倍率は左上に出ます）。<b>上下軸はそのぶん離して</b>あります。
+              <b>破線は切断の位置</b>——材料のところは刃を描けない（刃は軸のまわりの
+              丸で、切り口では材料の高さまで届かない）ためです。</dd>
             <dt>視点</dt>
             <dd>ドラッグ＝回す／ホイール＝寄る／Shift＋ドラッグ（または右ドラッグ）＝平行移動／
               「視点を戻す」で元へ。<b>断面図では板幅の中心を起点に回ります</b>
@@ -709,6 +721,14 @@
   /* **「表示」の保持層の札は、いまの方式の名前で出す**（§9.441）。器は1つの
      まま（`data-show="ring"`）で字だけ差し替える——押す物を増やさない
      （§CLAUDE 4 できないことは書く／§9.422 隠し方の札と同じ群）。 */
+  /* 断面図の設定の帯（§9.443）。**模式図と同じ`chipBandItems()`**から作る。
+     立体図では出さない——あちらは機械の見た目を見る図で、設定の値は主役でない。 */
+  const cs = panel.querySelector('.bs-cutset');
+  if (cs) {
+   cs.innerHTML = chipBandItems(res.finger).map(c =>
+    `<span class="bs-cutchip" data-k="${c.k}"><s>${esc(c.name)}</s>`
+    + `<b>${esc(c.val)}</b></span>`).join('');
+  }
   panel.querySelectorAll('[data-show="ring"]').forEach(b => {
    const nm = BS().holdName(st, M);
    b.textContent = nm;
@@ -1451,6 +1471,22 @@
   const color = (BS().ringMeta(M, IX, od) || {}).color || '';
   return `${t === 'big' ? '大' : '小'} ${color}Φ${od}`;
  }
+ /* 帯に出す3つ（§9.443、利用者の指示「断面図でも板押さえ（フィンガーまたは
+    ゴムリングの色や外径）の情報、ラップなど必要な情報を良い感じに表示を」）。
+    **顔ぶれと字は、ここ1箇所が答える**——模式図のSVGの帯と、断面図の
+    HTMLの帯が同じものを読む（§CLAUDE 8 同じ情報を2箇所に出さない、の逆で
+    「同じ情報は1箇所が作る」）。色の鍵（`k`）はパレットの接頭辞。 */
+ function chipBandItems(finger) {
+  const hold = finger ? 'フィンガー'
+   : `ゴムリング ${ringWord('big')}／${ringWord('small')}`;
+  return [
+   { k: 'chip-clr', name: 'クリアランス', val: `${st.clr.toFixed(2)}mm`,
+     t: `クリアランス：${st.clr.toFixed(2)}mm` },
+   { k: 'chip-ov', name: 'ラップ', val: `${st.ov.toFixed(2)}mm`,
+     t: `ラップ：${st.ov.toFixed(2)}mm` },
+   { k: 'chip', name: '板押さえ', val: hold, t: `板押さえ：${hold}` }
+  ];
+ }
  function drawChipBand(V, finger) {
   const textW = t => [...t].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 16 : 9), 0);
   const P = V.PAL;
@@ -1463,16 +1499,8 @@
      ものだが（§9.377）、**どの色が何ミリかは覚えていないと引けない**。帯の上の
      字が狭い区間で落ちても、ここは必ず読める（§CLAUDE 6 出どころを出す）。
      チップは3つのまま——増やさずに中身を具体的にする（§9.380）。 */
-  const hold = finger ? 'フィンガー'
-   : `ゴムリング ${ringWord('big')}／${ringWord('small')}`;
-  const chips = [
-   { t: `クリアランス：${st.clr.toFixed(2)}mm`,
-     bg: P['chip-clr-bg'], fg: P['chip-clr-fg'], bd: P['chip-clr-bd'] },
-   { t: `ラップ：${st.ov.toFixed(2)}mm`,
-     bg: P['chip-ov-bg'], fg: P['chip-ov-fg'], bd: P['chip-ov-bd'] },
-   { t: `板押さえ：${hold}`,
-     bg: P['chip-bg'], fg: P['chip-fg'], bd: P['chip-bd'] }
-  ];
+  const chips = chipBandItems(finger).map(c => ({
+   t: c.t, bg: P[c.k + '-bg'], fg: P[c.k + '-fg'], bd: P[c.k + '-bd'] }));
   const CW = chips.map(c => V.fs(18 + textW(c.t) * FS_CHIP / 16));
   const total = CW.reduce((a, w) => a + w, 0) + (chips.length - 1) * 9;
   /* 帯は図の上端の中央。左右の隅は OS・DS の見出しが使っているので、その分を
@@ -2663,6 +2691,9 @@
   /* 断面図では機械まわりを伏せているので、**段取りの3つは押しても何も起きない**
      ——押せるのに何も起きない的を残さない（§CLAUDE 4）。器ごと伏せる。 */
   $('#bsStage3').classList.toggle('is-cut', figKind === 'cut');
+  /* 設定の帯は**断面図だけ**（§9.443）。立体図は機械の見た目を見る図。 */
+  const cutSet = panel.querySelector('.bs-cutset');
+  if (cutSet) cutSet.hidden = figKind !== 'cut';
   if (!WL.bladeSolid) return;
   /* **切り替えは1回で組む**（§9.428）。以前はここで`sync()`を呼んでから
      `setMode()`を呼んでおり、`sync()`が**前の図のまま**1回組んで1枚描いて
