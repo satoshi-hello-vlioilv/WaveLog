@@ -1,4 +1,4 @@
-# 作業スケジュール（53件）
+# 作業スケジュール（58件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -11,6 +11,11 @@
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | 追加は**操作に身元（`操作ID`）を持たせ、同じ身元は2回適用しない**（再送は止めない） | `test_plandup.js` | [§9.438](../../docs/decisions/9.438.md) |
+| 行間の差し込みの札が書くのは**「どこへ入るか」だけ**。何ができるかは線の`title`と`#scSplitHint`が持つ | `test_scinsert.js` | [§9.439](../../docs/decisions/9.439.md) |
+| 札は**当たり判定を持たない**（押せるのは線だけ）。押せる箱を2つ重ねると下の行のボタンを食う | `test_scinsert.js` | [§9.439](../../docs/decisions/9.439.md) |
+| 位置を決めた札に**「やめる」は持たない**（窓を閉じれば`clearInsertPin()`を通る。外す道は1本） | `test_scinsert.js` | [§9.439](../../docs/decisions/9.439.md) |
+| 差し込み案内は**3段**（`SC_INSERT_GUIDES`）。`off`でも**掴んで運ぶ間の線は出す**（`insertByDrag`） | `test_scinsert.js` | [§9.439](../../docs/decisions/9.439.md) |
+| `off`を選んだら**できないと書く**。固定したあとは`line`でも札を出す（状態を色だけで伝えない） | `test_scinsert.js` | [§9.439](../../docs/decisions/9.439.md) |
 | 身元は**行と同じINSERTで**入れる。有効・無効は見ない（消した予定も適用済み） | `test_plandup.js` | [§9.438](../../docs/decisions/9.438.md) |
 | 身元を足すのは**追加だけ**（更新・削除・並べ替えは2回書いても増えない） | `test_plandup.js` | [§9.438](../../docs/decisions/9.438.md) |
 | 身元は**積むときに1回だけ**作る（投げ直しで作り直さない・時刻から作らない） | `test_plandup.js` | [§9.438](../../docs/decisions/9.438.md) |

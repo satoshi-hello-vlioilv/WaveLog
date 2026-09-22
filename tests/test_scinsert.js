@@ -100,7 +100,7 @@ const W=require('./lib/wait');
      「境目にカーソルを置くと帯が出る」「行の中央は掴む場所」に直した。
      **どちらも書いてあること**を見る——片方だけだと、掴めることが伝わらない。 */
   rec('その状態では行間クリックで入れられると分かる',
-      only.insertable&&only.hint.includes('境目にカーソルを置くと帯が出て')
+      only.insertable&&only.hint.includes('境目にカーソルを置くと線が出て')
       &&only.hint.includes('行の中央は掴む場所'),
       only.hint.slice(0,110));
 
@@ -129,7 +129,8 @@ const W=require('./lib/wait');
            overAct:ab?Math.round(tb.right-ab.left):null,
            rows:[...document.querySelectorAll('.sc-row-line')]
              .map(r=>Math.round(r.getBoundingClientRect().top)),
-           before:g.dataset.beforeId,txt:g.textContent.replace(/\s+/g,' ').trim()}});
+           before:g.dataset.beforeId,txt:g.textContent.replace(/\s+/g,' ').trim(),
+           title:(g.querySelector('.sc-insert-line')||{}).title||''}});
   rec('境目に帯が出る（掴める太さがある）',
       !!ghost&&ghost.lineH>=6&&ghost.lineW>100,JSON.stringify(ghost&&{h:ghost.lineH,w:ghost.lineW}));
   rec('表は1pxも動かない（ボタンが逃げない）',
@@ -137,8 +138,14 @@ const W=require('./lib/wait');
       JSON.stringify({before:before.slice(0,4),after:(ghost&&ghost.rows||[]).slice(0,4)}));
   rec('吹き出しが操作の列にかからない',
       !!ghost&&(ghost.overAct===null||ghost.overAct<=0),String(ghost&&ghost.overAct));
-  rec('隙間に何ができるか書いてある',!!ghost&&ghost.txt.includes('クリック')&&ghost.txt.includes('設備停止'),
+  /* **札は「どこへ入るか」だけ**（§9.439、利用者の指示）。何ができるかは
+     線の`title`と一覧の下の案内が持つ——境目ごとに変わらない事実を、
+     境目ごとに書き直さない（基準8）。 */
+  rec('隙間の札は「どこへ入るか」を言う',!!ghost&&/へ入れる$/.test(ghost.txt),
       String(ghost&&ghost.txt).slice(0,70));
+  rec('何ができるかは線の`title`が持つ（札へ重ねない・§9.439）',
+      !!ghost&&ghost.title.includes('クリック')&&ghost.title.includes('設備停止'),
+      String(ghost&&ghost.title).slice(0,70));
   /* **操作の列ではマウスオーバーに反応しない**(利用者の指示)。 */
   const actAt=await page.evaluate(()=>{
    const cell=document.querySelector('.sc-row-line [data-col="__actions__"]');
@@ -175,9 +182,10 @@ const W=require('./lib/wait');
    await page.waitForTimeout(300);
   };
   await popOpen(true);
-  const tipPref=await page.evaluate(()=>[...document.querySelectorAll('#scLayoutPop input[name=scInsertTip]')].map(r=>r.value));
-  rec('案内のON/OFFを選べる',tipPref.join(',')==='on,off',JSON.stringify(tipPref));
-  await page.click('#scLayoutPop input[name=scInsertTip][value=off]');
+  const tipPref=await page.evaluate(()=>[...document.querySelectorAll('#scLayoutPop input[name=scInsertGuide]')].map(r=>r.value));
+  rec('行間の案内は3段から選べる（案内つき／線だけ／出さない・§9.439）',
+      tipPref.join(',')==='tip,line,off',JSON.stringify(tipPref));
+  await page.click('#scLayoutPop input[name=scInsertGuide][value=line]');
   await page.waitForTimeout(300);
   await popOpen(false);
   await page.mouse.move(t.x,t.y+40);await page.waitForTimeout(150);
@@ -191,18 +199,68 @@ const W=require('./lib/wait');
            saved:localStorage.getItem('scLayoutPrefsV1')||''}});
   rec('案内を切ると吹き出しが出ない',!!quiet&&quiet.quiet&&!quiet.tipShown,JSON.stringify(quiet));
   rec('切っても入る位置の線は残る',!!quiet&&quiet.lineH>=6&&quiet.lineW>100,JSON.stringify(quiet));
-  rec('切ったことを端末に覚える',!!quiet&&/"tip":false/.test(quiet.saved),String(quiet&&quiet.saved));
+  rec('切ったことを端末に覚える',!!quiet&&/"insert":"line"/.test(quiet.saved),String(quiet&&quiet.saved));
+
+  /* ---- 「出さない」（§9.439、利用者の指示「表示自体もONOFFできるように」）
+     ——カーソルでは線も出さない。**できないことは案内に書く**（基準4）。 ---- */
   await popOpen(true);
-  await page.click('#scLayoutPop input[name=scInsertTip][value=on]');
-  await page.waitForTimeout(300);
+  await page.click('#scLayoutPop input[name=scInsertGuide][value=off]');
+  /* **「条件」で待つ**（§9.102）——選んだ瞬間に引っ込むので、消えたことで見る。 */
+  await W.until(page,()=>!document.querySelector('#scInsertGhost'),null,
+                {ms:8000,what:'「出さない」で行間の案内が引っ込む'});
   await popOpen(false);
-  await page.mouse.move(t.x,t.y+40);await page.waitForTimeout(150);
-  await page.mouse.move(t.x,t.y);await page.waitForTimeout(500);
+  await page.mouse.move(t.x,t.y+40);await W.paint(page);
+  await page.mouse.move(t.x,t.y);await W.paint(page);
+  const off=await page.evaluate(()=>{
+   const g=document.querySelector('#scInsertGhost');
+   return {shown:!!(g&&g.parentNode),
+           hint:(document.querySelector('#scSplitHint')||{}).textContent||'',
+           saved:localStorage.getItem('scLayoutPrefsV1')||''}});
+  rec('「出さない」ではカーソルで線も札も出ない（§9.439）',off.shown===false,JSON.stringify({shown:off.shown}));
+  rec('「出さない」のときは、できないことを案内に書く（§9.439）',
+      /行間からは入れられません/.test(off.hint),off.hint.slice(0,80));
+  rec('「出さない」も端末に覚える',/"insert":"off"/.test(off.saved),off.saved);
+
+  await popOpen(true);
+  await page.click('#scLayoutPop input[name=scInsertGuide][value=tip]');
+  await popOpen(false);
+  await page.mouse.move(t.x,t.y+40);await W.paint(page);
+  await page.mouse.move(t.x,t.y);
+  await W.until(page,()=>!!(document.querySelector('#scInsertGhost .sc-insert-tip')||{}).offsetWidth,
+                null,{ms:8000,what:'戻すと札がまた出る'});
   const backOn=await page.evaluate(()=>{const g=document.querySelector('#scInsertGhost');
    if(!g||!g.parentNode)return null;
    const tb=g.querySelector('.sc-insert-tip').getBoundingClientRect();
    return {tipShown:tb.width>0&&tb.height>0}});
   rec('戻すと吹き出しが出る',!!backOn&&backOn.tipShown,JSON.stringify(backOn));
+
+  /* ---- 札はカーソルの邪魔をしない（§9.439、利用者の指示） ----
+     物差しは3つ。①札の字数（境目ごとに書き直すのは「どこへ入るか」だけ）
+     ②札の当たり判定（押せるのは線のほうだけ＝下の行のボタンを食わない）
+     ③札の高さ（行を丸ごと覆わない）。数で見る——「短くなった気がする」は
+     測ったことにならない。 */
+  const chip=await page.evaluate(()=>{
+   const g=document.querySelector('#scInsertGhost');
+   const tip=g&&g.querySelector('.sc-insert-tip');
+   const row=document.querySelector('.sc-row-line');
+   if(!tip||!row)return null;
+   const b=tip.getBoundingClientRect(),rh=row.getBoundingClientRect().height;
+   return {chars:(tip.innerText||'').replace(/\s/g,'').length,
+           pe:getComputedStyle(tip).pointerEvents,
+           w:Math.round(b.width),h:Math.round(b.height),
+           rows:rh?+(b.height/rh).toFixed(2):0,
+           cancel:!!tip.querySelector('.sc-insert-cancel'),
+           lineTitle:(g.querySelector('.sc-insert-line')||{}).title||''};
+  });
+  rec('札が書くのは「どこへ入るか」だけ（20字以内・実測40字→）',
+      !!chip&&chip.chars>0&&chip.chars<=20,JSON.stringify(chip&&{chars:chip.chars}));
+  rec('札は当たり判定を持たない（押せるのは線だけ・§9.439）',
+      !!chip&&chip.pe==='none',JSON.stringify(chip&&{pe:chip.pe}));
+  rec('札は行を丸ごと覆わない（1行未満）',!!chip&&chip.rows>0&&chip.rows<1,
+      JSON.stringify(chip&&{h:chip.h,rows:chip.rows}));
+  rec('操作の仕方は線の`title`が持つ（札へ書き写さない）',
+      !!chip&&/クリック/.test(chip.lineTitle)&&/ダブルクリック/.test(chip.lineTitle),
+      (chip&&chip.lineTitle||'').slice(0,40));
 
   /* ---- クリックとダブルクリックを分ける(§9.179改訂) ----
      利用者の指摘「クリックでもダブルクリックでも仕掛表が開きました」。
@@ -235,12 +293,18 @@ const W=require('./lib/wait');
   const modal=await page.evaluate(()=>({list:document.querySelector('#scListModal')?.hidden===false,
     stop:document.querySelector('#scStopModal')?.hidden===false,
     pinned:!!document.querySelector('#scInsertGhost.is-pinned'),
+    cancel:!!document.querySelector('#scInsertGhost .sc-insert-cancel'),
     txt:document.querySelector('#scInsertGhost')?.textContent.replace(/\s+/g,' ').trim()||''}));
   rec('ダブルクリックで仕掛一覧のモーダルが開く',modal.list===true&&modal.stop===false,
       JSON.stringify({l:modal.list,s:modal.stop}));
   /* **開いている間ゴーストを残す**(利用者の指示)。どこへ入るのか読めなくなる。 */
   rec('仕掛表を開いている間も入る位置が見えている',
-      modal.pinned===true&&/ここへ入ります/.test(modal.txt),modal.txt.slice(0,60));
+      modal.pinned===true&&/へ入ります/.test(modal.txt),modal.txt.slice(0,60));
+  /* **「やめる」は持たない**（§9.439、利用者の指示「やめるボタンも不要」）。
+     位置の固定は**窓を閉じれば外れる**（`closeListModal`／`closeStopModal`が
+     `clearInsertPin()`を通る）ので、外す道を2つ持つ必要が無い。 */
+  rec('位置を決めた札に「やめる」を持たない（外す道は窓を閉じる1本・§9.439）',
+      modal.cancel===false,JSON.stringify({cancel:modal.cancel}));
   await page.waitForSelector('#scListModal #grid tbody tr',{timeout:20000});
   /* 行のダブルクリックでその位置へ入る(位置を決めて開いたときだけ効く)。 */
   const lot=await page.evaluate(()=>{

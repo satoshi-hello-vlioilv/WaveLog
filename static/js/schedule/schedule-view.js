@@ -1205,11 +1205,24 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   ['split','分割で開く','仕掛一覧とスケジュールを並べて開きます'],
   ['schedule','スケジュールだけで開く','仕掛一覧は畳んで開きます。表の行間をクリックすると、その位置へ予定を入れられます'],
  ];
- /* 挿入位置の**吹き出しの案内**を出すかどうか(§9.197、利用者の指示
-    「慣れたら不要な感じがした。ONOFFできるようにしたい」)。既定は出す
-    ——初めて開いた人には「行間を押せば入れられる」ことが読めない。
-    切っても**挿入位置の線は残す**（どこへ入るかが分からなくなるのは
-    案内が多いことより悪い）。 */
+ /* 行間の差し込み案内の見せ方(§9.439、利用者の指示「過剰なコメントは控えて、
+    ユーザーのカーソルの邪魔にならないようにしたい……表示自体もONOFFできる
+    ようにしたい」)。**3段**にしてある:
+      tip （既定）… 線＋「どこへ入るか」の札。札は**どこへ入るか**だけを言う
+                     ——操作の仕方（クリック／ダブルクリック）は境目ごとに
+                     変わらない事実なので、境目ごとに書き直さない（基準8）。
+                     顔ぶれは一覧の下の案内（`#scSplitHint`）と線の`title`が持つ。
+      line       … 線だけ。慣れた人向け。**どこへ入るかの線は残す**
+                     （分からなくなるのは、案内が多いことよりずっと悪い）。
+      off        … 出さない。**行間をカーソルで狙う道そのものを閉じる**ので、
+                     そのことを札の説明に書く（基準4）。ただし
+                     **掴んで運んでいる間の線は出す**——掴んでいる手は
+                     すでに行き先を決めているので、線が邪魔をしようがない。 */
+ const SC_INSERT_GUIDES=[
+  ['tip','入る位置と行き先を出す','線と「どこへ入るか」の札が出ます（既定）。操作の仕方は一覧の下の案内が持ちます'],
+  ['line','線だけにする','入る位置の線だけが出ます。慣れたらこちらが静かです'],
+  ['off','出さない','行間にカーソルを置いても何も出ません。行間から入れる操作はできなくなります（掴んで運ぶときの線は出ます）'],
+ ];
  /* 親ロットの行に付ける印(§9.199、利用者の指摘「数字がついているので、
     この付け方だと『子』の方が意味的に適切です」)。**2通りから選べる**:
      - `count`（既定）… 「子3」= 畳んである子ロットの件数。数字が何の数か
@@ -1226,7 +1239,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   try{
    const v=JSON.parse(localStorage.getItem(SC_LAYOUT_KEY)||'{}');
    return {swap:!!(v&&v.swap),open:(v&&SC_OPEN_MODES.some(m=>m[0]===v.open))?v.open:'last',
-           tip:!(v&&v.tip===false),
+           /* 旧: `tip`(真偽)。**古い保存値も読む**——切っていた人の設定を
+              黙って既定へ戻さない（`false`＝線だけ）。 */
+           insert:(v&&SC_INSERT_GUIDES.some(m=>m[0]===v.insert))?v.insert
+                  :((v&&v.tip===false)?'line':'tip'),
            childBadge:(v&&SC_CHILD_BADGES.some(m=>m[0]===v.childBadge))?v.childBadge:'count',
            /* §9.235 ②、利用者の指示「子ロットのバッジの位置は、一番左固定
               ではなく、どの列にも付けられるように…デフォルトはロット番号」。
@@ -1237,7 +1253,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
            /* 上の帯を畳んで一覧を広く使う（§9.292 ⑦）。**既定はoff**
               ——わざわざ選んでいない人の見え方を変えない。 */
            wide:!!(v&&v.wide)};
-  }catch(e){return {swap:false,open:'last',tip:true,childBadge:'count',childBadgeCol:'',wide:false}}
+  }catch(e){return {swap:false,open:'last',insert:'tip',childBadge:'count',childBadgeCol:'',wide:false}}
  })();
  function saveScLayout(){
   try{localStorage.setItem(SC_LAYOUT_KEY,JSON.stringify(scLayout))}catch(e){WL.quiet.note('保存できなくても表示は続く',e)}
@@ -1310,9 +1326,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     <label><input type="radio" name="scSide" value="right"${scLayout.swap?' checked':''}><span><b>右</b><small>スケジュールは左</small></span></label>
    </div>
    <div class="sc-layout-sec">
-    <b>行間に出す「ここへ入れる」の案内</b>
-    <label><input type="radio" name="scInsertTip" value="on"${scLayout.tip?' checked':''}><span><b>吹き出しで説明する</b><small>何ができるかを毎回書きます（既定）</small></span></label>
-    <label><input type="radio" name="scInsertTip" value="off"${scLayout.tip?'':' checked'}><span><b>線だけにする</b><small>入る位置の線は出ます。慣れたらこちらが静かです</small></span></label>
+    <b>行間の差し込み案内</b>
+    ${SC_INSERT_GUIDES.map(([v,label,note])=>`<label><input type="radio" name="scInsertGuide" value="${v}"${scLayout.insert===v?' checked':''}><span><b>${esc(label)}</b><small>${esc(note)}</small></span></label>`).join('')}
    </div>
    <div class="sc-layout-sec">
     <b>親ロットの印</b>
@@ -1337,10 +1352,14 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     scLayout.swap=(r.value==='right');saveScLayout();applySplitSide();renderLayoutPop();
    };
   });
-  pop.querySelectorAll('input[name=scInsertTip]').forEach(r=>{
+  pop.querySelectorAll('input[name=scInsertGuide]').forEach(r=>{
    r.onchange=()=>{
-    scLayout.tip=(r.value==='on');saveScLayout();
+    scLayout.insert=r.value;saveScLayout();
+    /* 「出さない」を選んだら**いま出ているものも引っ込める**（固定中は残す）
+       ——選んだ結果がその場で見えないと、効いているのか確かめられない。 */
+    if(scLayout.insert==='off')hideInsertGhost();
     insertGhostLabel();          // いま出ている案内へその場で当てる
+    updateInsertHintUi();        // 一覧の下の案内も言い直す
     renderLayoutPop();
    };
   });
@@ -6122,6 +6141,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     どこに差し込まれるかわかるように」)。固定していないと、モーダルへ手を
     伸ばした時点でカーソルが表から外れ、どこへ入るのか分からなくなる。 */
  let insertPinned=false;
+ /* 掴んで運んでいる最中か。**「出さない」を選んでいても線は出す**——
+    掴んでいる手はすでに行き先を決めているので、線が邪魔をしようがなく、
+    どこへ落ちるかが分からないほうがずっと困る（§9.439）。 */
+ let insertByDrag=false;
  let insertClickTimer=null;
  function ensureInsertGhost(){
   if(insertGhostEl)return insertGhostEl;
@@ -6132,7 +6155,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      上下し、鍵の印・詳細・削除のボタンを押そうとすると逃げていった。
      今は器の座標に**浮かせて**置き、下の行は動かさない——「どこへ入るか」
      は境目の帯で示し、何ができるかは説明の吹き出しで言う。 */
-  g.innerHTML='<span class="sc-insert-line"></span><span class="sc-insert-tip"></span>';
+  /* 操作の仕方は**線の`title`**が持つ(§9.439)。素のツールチップは置いた手が
+     止まってから出て、当たり判定も持たないので、カーソルの邪魔をしない。 */
+  g.innerHTML='<span class="sc-insert-line" title="クリック: 設備停止を入れる／'
+             +'ダブルクリック: 仕掛一覧から選んで入れる"></span>'
+             +'<span class="sc-insert-tip"></span>';
   /* **クリックとダブルクリックを分ける**(利用者の指摘「クリックでもダブル
      クリックでも仕掛表が開きました」)。clickは2回目でも飛ぶので、少し待って
      からdblclickが来ていなければ単クリックとして扱う。
@@ -6151,8 +6178,13 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   insertGhostEl=g;
   return g;
  }
- /* 隙間の文字。**今できることを書き換える**——位置を決めたあとは「ここへ
-    入ります」と言い、次にする操作(一覧の行をダブルクリック／ドロップ)を指す。 */
+ /* 隙間の札。**書くのは「どこへ入るか」だけ**(§9.439、利用者の指示
+    「過剰なコメントは控えて、ユーザーのカーソルの邪魔にならないように」)。
+    操作の仕方（クリック／ダブルクリック／ドロップ）は**境目ごとに変わらない
+    事実**なので、境目ごとに書き直さない（基準8「同じ情報を2箇所に出さない」）
+    ——顔ぶれは一覧の下の案内（`#scSplitHint`）と、線そのものの`title`が持つ。
+    「入れる」(これから)と「入ります」(決まった)の言い分けで状態も字に出す
+    （基準3「状態は色だけで伝えない」）。 */
  function insertGhostLabel(){
   renderStopPane();        // 設備停止の帯にも同じ位置を出す(§9.181・§9.400)
   const g=insertGhostEl;if(!g)return;
@@ -6162,26 +6194,19 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const refId=insertPinned?scState.insertBefore:((g.dataset.beforeId)||'');
   const where=refId
    ?`${pickedLotOf(pickableEntry(refId))||'この行'}の前`:'いちばん後ろ';
-  /* 案内を切っているときは**線だけ**にする(§9.197)。ただし位置を固定した
-     あとは出す——「やめる」がここにしか無く、押した結果を確かめる先も
-     ここだけなので、切ってよい案内とは別のもの。 */
-  const quiet=!scLayout.tip&&!insertPinned;
+  /* 札を伏せるのは「線だけ」を選んでいるとき。ただし**位置を固定したあとは
+     出す**——決まった位置を字で言うのはここだけで、色（緑）だけで伝えては
+     いけない（基準3）。掴んで運んでいる間も出す（行き先が要る）。 */
+  const quiet=scLayout.insert!=='tip'&&!insertPinned&&!insertByDrag;
   g.classList.toggle('is-quiet',quiet);
   tip.hidden=quiet;
   if(quiet){tip.innerHTML='';return}
-  tip.innerHTML=insertPinned
-   ?`<span class="sc-insert-mark">▼</span>`
-    +`<span class="sc-insert-text">ここへ入ります（${esc(where)}）`
-    +`<small>仕掛一覧の行を<b>ダブルクリック</b>、またはこの位置へ<b>ドロップ</b></small></span>`
-    +`<button type="button" class="sc-insert-cancel" title="この位置を解除します">やめる</button>`
-   :`<span class="sc-insert-mark">＋</span>`
-    +`<span class="sc-insert-text">ここへ入れる（${esc(where)}）`
-    +'<small><b>クリック</b>: 設備停止／<b>ダブルクリック</b>: 仕掛から選ぶ</small></span>';
-  const cancel=tip.querySelector('.sc-insert-cancel');
-  if(cancel)cancel.onclick=e=>{e.stopPropagation();clearInsertPin()};
+  tip.innerHTML=`<span class="sc-insert-mark">${insertPinned?'▼':'＋'}</span>`
+   +`<span class="sc-insert-text">${esc(where)}へ入${insertPinned?'ります':'れる'}</span>`;
  }
  function hideInsertGhost(force){
   if(insertPinned&&!force)return;
+  insertByDrag=false;
   if(insertGhostEl&&insertGhostEl.parentNode)insertGhostEl.remove();
  }
  /* 位置の固定をやめる。**モーダルを閉じたら必ず通る**——固定したままにすると、
@@ -6297,14 +6322,22 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const tl=$('#scTimeline');
   if(tl)tl.classList.toggle('sc-insertable',on);
   if(!on&&!insertPinned)hideInsertGhost(true);
+  /* **操作の仕方を書く場所はここ1つ**(§9.439)。境目の札からは外したので、
+     「行間から入れられる」ことを読める場所はここと線の`title`だけになる。
+     「出さない」を選んでいるときは**できないと書く**（基準4）——押しても
+     何も出ない道を、できるかのように書き残さない。 */
   const hint=$('#scSplitHint');
+  const gap=scLayout.insert==='off'
+   ?'<b>行間の案内は「出さない」にしてあります</b>（「表示」→「行間の差し込み案内」で戻せます）。'
+    +'いまは行間からは入れられません——左端の帯を押して仕掛一覧を開き、ドラッグで入れてください。'
+   :'<b>行と行の境目にカーソルを置くと線が出て</b>、'
+    +'<b>クリックで設備停止</b>／<b>ダブルクリックで仕掛から選んで</b>、その位置へ入れられます。';
   if(hint)hint.innerHTML=on
-   ?'<p class="sc-drop-hint">仕掛一覧を畳んでいます。<b>行と行の境目にカーソルを置くと帯が出て</b>、'
-    +'<b>クリックで設備停止</b>／<b>ダブルクリックで仕掛から選んで</b>、その位置へ入れられます。'
+   ?'<p class="sc-drop-hint">仕掛一覧を畳んでいます。'+gap
     +'<b>行の中央は掴む場所</b>なので、予定はそのままドラッグで並べ替えられます。'
     +'左端の帯を押すと仕掛一覧が戻り、今までどおりドラッグでも追加できます。</p>'
    :'<p class="sc-drop-hint">左の仕掛一覧からロットをドラッグ、またはチェックボックスで複数選択してこのパネルへドロップすると、この設備の予定へ追加されます。'
-    +'<b>落とした位置へ差し込めます</b>（行と行のあいだに隙間が出ます）。</p>';
+    +'<b>落とした位置へ差し込めます</b>（行と行のあいだに線が出ます）。</p>';
  }
  /* 差し込み位置を出してよい場面。**ドラッグ中は仕掛一覧を出していても出す**
     ——「一番最後でなく指定位置に差し込みたい」(利用者の指示)ため。 */
@@ -6316,6 +6349,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   timeline.dataset.insertWired='1';
   timeline.addEventListener('mousemove',e=>{
    if(insertPinned)return;      // 位置を決めたあとは動かさない
+   /* **「出さない」を選んでいるときは、カーソルでは出さない**(§9.439)。
+      掴んで運ぶときの線（`showAt`）はこの道を通らないので残る。 */
+   if(scLayout.insert==='off'){hideInsertGhost();return}
+   insertByDrag=false;
    if(!scheduleOnlyView()||sessionBlocked()||scState.dragId){hideInsertGhost();return}
    /* 帯・吹き出しの上に来たら動かさない（別の境目へ飛ぶと掴めない）。 */
    if(e.target.closest&&e.target.closest('#scInsertGhost'))return;
@@ -6382,6 +6419,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    const slot=insertSlotAt(clientY);
    if(!slot)return;
    insertPinned=false;                 // ドラッグ中は指に追従させる
+   insertByDrag=true;                  // 「出さない」でも線と行き先は出す(§9.439)
    placeInsertGhost(slot);
   },
   takeDropTarget:()=>{
