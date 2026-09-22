@@ -47,11 +47,22 @@ const W=require('./lib/wait');
   await W.openSchedule(page,EQ);
 
   // ---- 1. 設定ポップ
-  await openView();
-  await page.click('#scLayoutBtn');
-  await page.waitForTimeout(500);
-  const pop=await page.evaluate(()=>{const x=document.getElementById('scLayoutPop');
-   return x&&!x.hidden?{modes:[...x.querySelectorAll('input[name=scOpenMode]')].map(r=>r.value),
+  /* 「この端末の見え方」は**ヘッダーの「表示」へ移した**（§9.444、利用者の
+     指示「表示というボタンが2つあるのでわかりにくい」→「入口を1つに寄せる」）。
+     押す場所が1つになったので、網も同じ1本の道を通る。 */
+  const openLook=async()=>{
+   if(!(await page.$('#uiSizeMenu')))await page.click('#uiSizeBadge');
+   await page.waitForSelector('#uiSizeMenu .sc-layout-sec',{timeout:8000});
+   await W.paint(page);
+  };
+  const closeLook=async()=>{
+   await page.evaluate(()=>document.body.click());
+   await W.until(page,()=>!document.getElementById('uiSizeMenu'),null,
+                 {ms:5000,what:'「表示」が閉じる'});
+  };
+  await openLook();
+  const pop=await page.evaluate(()=>{const x=document.getElementById('uiSizeMenu');
+   return x?{modes:[...x.querySelectorAll('input[name=scOpenMode]')].map(r=>r.value),
      sides:[...x.querySelectorAll('input[name=scSide]')].map(r=>r.value),
      txt:x.textContent.replace(/\s+/g,' ').trim()}:null});
   rec('開いたときの表示を選べる',!!pop&&pop.modes.join(',')==='last,split,schedule',JSON.stringify(pop&&pop.modes));
@@ -62,18 +73,18 @@ const W=require('./lib/wait');
   // ---- 2. 左右入れ替え
   const posBefore=await page.evaluate(()=>({g:Math.round(document.querySelector('#grid').getBoundingClientRect().x),
    p:Math.round(document.querySelector('.sc-panel').getBoundingClientRect().x)}));
-  await page.click('#scLayoutPop input[name=scSide][value=right]');
+  await page.click('#uiSizeMenu input[name=scSide][value=right]');
   await page.waitForTimeout(700);
   const posAfter=await page.evaluate(()=>({g:Math.round(document.querySelector('#grid').getBoundingClientRect().x),
    p:Math.round(document.querySelector('.sc-panel').getBoundingClientRect().x),
    cls:document.querySelector('.sc-split-wrap').className}));
   rec('「右」で仕掛一覧が右へ動く',posBefore.g<posBefore.p&&posAfter.g>posAfter.p,
       JSON.stringify({before:posBefore,after:posAfter}));
-  await page.click('#scLayoutPop input[name=scSide][value=left]');
+  await page.click('#uiSizeMenu input[name=scSide][value=left]');
   await page.waitForTimeout(500);
 
   // ---- 3. 「スケジュールだけで開く」
-  await page.click('#scLayoutPop input[name=scOpenMode][value=schedule]');
+  await page.click('#uiSizeMenu input[name=scOpenMode][value=schedule]');
   await page.waitForTimeout(400);
   await page.reload({waitUntil:'domcontentloaded'});
   await W.booted(page);
@@ -84,12 +95,11 @@ const W=require('./lib/wait');
   rec('「スケジュールだけ」で開くと仕掛一覧が畳まれる',only.collapsed,String(only.collapsed));
   /* **選んだ瞬間に効く**(§9.179改訂。利用者の指摘「切り替えた直後に
      スケジュール表だけになりません」)。 */
-  await openView();
-  await page.click('#scLayoutBtn');await page.waitForTimeout(400);
-  await page.click('#scLayoutPop input[name=scOpenMode][value=split]');
+  await openLook();
+  await page.click('#uiSizeMenu input[name=scOpenMode][value=split]');
   await page.waitForTimeout(900);
   const nowSplit=await page.evaluate(()=>!document.querySelector('.sc-split-wrap.sc-list-collapsed'));
-  await page.click('#scLayoutPop input[name=scOpenMode][value=schedule]');
+  await page.click('#uiSizeMenu input[name=scOpenMode][value=schedule]');
   await page.waitForTimeout(900);
   const nowOnly=await page.evaluate(()=>!!document.querySelector('.sc-split-wrap.sc-list-collapsed'));
   await page.evaluate(()=>document.body.click());
@@ -169,23 +179,13 @@ const W=require('./lib/wait');
    /* 段そのものは「表示」パネル(§9.199)の中なので、まず親を開ける。
       畳むときは親ごと畳む——開いたままだと右上のパネルが表の上に
       かぶさり、このあと確かめる差し込みの帯と重なる。 */
-   if(on)await openView();
-   await page.evaluate(want=>{
-    const p=document.querySelector('#scLayoutPop');
-    if(!p)return;
-    /* 開けたい(want=true)のに畳んでいる／畳みたいのに開いている、のときだけ
-       押す。**条件を取り違えると押さないまま進み**、次のクリックが
-       「見えない」で落ちる（実際に落ちた）。 */
-    if(p.hidden===want)document.querySelector('#scLayoutBtn').click();
-   },on);
-   if(!on)await page.evaluate(()=>WL.scheduleView.closeViewPop());
-   await page.waitForTimeout(300);
+   if(on)await openLook();else await closeLook();
   };
   await popOpen(true);
-  const tipPref=await page.evaluate(()=>[...document.querySelectorAll('#scLayoutPop input[name=scInsertGuide]')].map(r=>r.value));
+  const tipPref=await page.evaluate(()=>[...document.querySelectorAll('#uiSizeMenu input[name=scInsertGuide]')].map(r=>r.value));
   rec('行間の案内は3段から選べる（案内つき／線だけ／出さない・§9.439）',
       tipPref.join(',')==='tip,line,off',JSON.stringify(tipPref));
-  await page.click('#scLayoutPop input[name=scInsertGuide][value=line]');
+  await page.click('#uiSizeMenu input[name=scInsertGuide][value=line]');
   await page.waitForTimeout(300);
   await popOpen(false);
   await page.mouse.move(t.x,t.y+40);await page.waitForTimeout(150);
@@ -204,7 +204,7 @@ const W=require('./lib/wait');
   /* ---- 「出さない」（§9.439、利用者の指示「表示自体もONOFFできるように」）
      ——カーソルでは線も出さない。**できないことは案内に書く**（基準4）。 ---- */
   await popOpen(true);
-  await page.click('#scLayoutPop input[name=scInsertGuide][value=off]');
+  await page.click('#uiSizeMenu input[name=scInsertGuide][value=off]');
   /* **「条件」で待つ**（§9.102）——選んだ瞬間に引っ込むので、消えたことで見る。 */
   await W.until(page,()=>!document.querySelector('#scInsertGhost'),null,
                 {ms:8000,what:'「出さない」で行間の案内が引っ込む'});
@@ -222,7 +222,7 @@ const W=require('./lib/wait');
   rec('「出さない」も端末に覚える',/"insert":"off"/.test(off.saved),off.saved);
 
   await popOpen(true);
-  await page.click('#scLayoutPop input[name=scInsertGuide][value=tip]');
+  await page.click('#uiSizeMenu input[name=scInsertGuide][value=tip]');
   await popOpen(false);
   await page.mouse.move(t.x,t.y+40);await W.paint(page);
   await page.mouse.move(t.x,t.y);

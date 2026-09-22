@@ -854,8 +854,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
       <button type="button" class="sc-split-toggle sc-ico-btn" id="scContentModalBtn" hidden
         title="この表に出す列・並び・幅・書式を設定します（設備ごとに保存）"><i class="fa-solid fa-table-columns" aria-hidden="true"></i><span>表示列</span></button>
       <button type="button" class="sc-split-toggle sc-view-menu-btn" id="scViewMenuBtn" hidden
-        aria-expanded="false" title="この画面の見え方（まとめ・さかのぼり・行の色・配置）をまとめて設定します。予定そのものは変わりません">
-       <i class="fa-solid fa-sliders" aria-hidden="true"></i><span class="sc-vm-txt">表示</span><b class="sc-vm-state" id="scViewState"></b><span class="hd-caret">▾</span>
+        aria-expanded="false" title="この表の見せ方（まとめ・さかのぼり・行の色とアイコン）をまとめて設定します。予定そのものは変わりません。この端末に覚える設定はヘッダーの「表示」にあります">
+       <i class="fa-solid fa-sliders" aria-hidden="true"></i><span class="sc-vm-txt">表の見せ方</span><b class="sc-vm-state" id="scViewState"></b><span class="hd-caret">▾</span>
       </button>
       <!-- 広く使う（§9.292 ⑦、利用者の指示「スケジュール作成時に、とにかく
            仕掛のデータを多く表示したいです。その時上部のメニューのほぼ
@@ -949,12 +949,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
       </button>
       <div class="sc-layout-pop sc-rowstyle-pop" id="scRowStylePop" hidden></div>
      </div>
-     <div class="sc-view-acc" id="scViewAccLayout" hidden>
-      <button type="button" class="sc-view-sec" id="scLayoutBtn" aria-expanded="false">
-       <i>🖥</i><span>この端末の見え方<small>開いたときの表示・仕掛一覧の位置・案内・親ロットの印（この端末だけ）</small></span><em class="sc-view-chev">▾</em>
-      </button>
-      <div class="sc-layout-pop" id="scLayoutPop" hidden></div>
-     </div>
+     <!-- 「この端末の見え方」の節は**ヘッダーの「表示」へ移した**（§9.444、
+          利用者の指示「表示というボタンが2つあるのでわかりにくい」→
+          「入口を1つに寄せる」）。この端末に覚える設定の置き場は1つ
+          （§9.421）で、画面は WL.lookSettings へ名乗るだけ。
+          （この中は文字列リテラルの中なので、逆引用符は書けない） -->
     </div>
     <button type="button" class="sc-side-tab" id="scSideToggle" hidden title="設備停止・案内パネルの表示/非表示">◀</button>
     <div class="sc-side" id="scSide" hidden>
@@ -1047,7 +1046,6 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      +'#listColumnPanel:not([hidden]),#schedulePrintPreview:not([hidden])'))return;
    setWide(false);
   });
-  $('#scLayoutBtn').onclick=e=>{e.stopPropagation();toggleLayoutPop()};
   $('#scRowStyleBtn').onclick=e=>{e.stopPropagation();toggleRowStylePop()};
   /* 色と濃さの意味（§9.374）。**開くときに組む**——中身は動かないが、
      器を作った時点では見本のクラスがまだCSSに当たっていないことがある。 */
@@ -1313,8 +1311,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   return !!scState.fullControl&&scState.boardMode==='single'&&!!scState.equipment
          &&!listModalOpen&&(splitListCollapsed||!document.body.classList.contains('sc-split'));
  }
- function renderLayoutPop(){
-  const pop=$('#scLayoutPop');if(!pop)return;
+ /* この端末に覚える見え方（§9.444）。**器はヘッダーの「表示」が用意する**
+    ——画面は中身を描くだけで、どこに出るかは知らない（§9.373 と同じ作法）。 */
+ let lookHost=null;
+ function renderLayoutPop(host){
+  const pop=host||lookHost;if(!pop)return;
+  lookHost=pop;
   pop.innerHTML=`
    <div class="sc-layout-sec">
     <b>開いたときの表示</b>
@@ -1344,12 +1346,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    r.onchange=()=>{
     scLayout.open=r.value;saveScLayout();
     if(r.value==='split'||r.value==='schedule')applyOpenMode(r.value==='schedule');
-    renderLayoutPop();
+    renderLayoutPop(pop);
    };
   });
   pop.querySelectorAll('input[name=scSide]').forEach(r=>{
    r.onchange=()=>{
-    scLayout.swap=(r.value==='right');saveScLayout();applySplitSide();renderLayoutPop();
+    scLayout.swap=(r.value==='right');saveScLayout();applySplitSide();renderLayoutPop(pop);
    };
   });
   pop.querySelectorAll('input[name=scInsertGuide]').forEach(r=>{
@@ -1360,7 +1362,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     if(scLayout.insert==='off')hideInsertGhost();
     insertGhostLabel();          // いま出ている案内へその場で当てる
     updateInsertHintUi();        // 一覧の下の案内も言い直す
-    renderLayoutPop();
+    renderLayoutPop(pop);
    };
   });
   /* 親ロットの印(§9.199)。**選んだ瞬間に表へ当てる**——設定を触った結果が
@@ -1370,7 +1372,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    r.onchange=()=>{
     scLayout.childBadge=r.value;saveScLayout();
     renderTimeline();
-    renderLayoutPop();
+    renderLayoutPop(pop);
    };
   });
   /* バッジを付ける列(§9.235 ②)。**選んだ瞬間に表へ当てる**（同じ作法）。 */
@@ -1378,7 +1380,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(badgeCol)badgeCol.onchange=()=>{
    scLayout.childBadgeCol=badgeCol.value;saveScLayout();
    renderTimeline();
-   renderLayoutPop();
+   renderLayoutPop(pop);
   };
  }
  /* バッジを付ける列の選択肢(§9.235 ②)。**いま画面に出ている列だけ**
@@ -1390,7 +1392,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   return `<option value=""${cur?'':' selected'}>自動（既定＝ロット番号）</option>`+opts.join('');
  }
  /* ---------- 行の見せ方のパネル(§9.198) ----------
-    **その場で当てて、その場で保存する**（#scLayoutPopと同じ作法）。
+    **その場で当てて、その場で保存する**（この端末の見え方の節と同じ作法）。
     保存を別ボタンにすると「効いているのに保存されていない」状態が作れる。
     設定は**全員に効く**ので、そのことをパネルに書く。 */
  function rowStyleTargets(){
@@ -1657,7 +1659,6 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   pop.hidden=!open;
   if(btn)btn.classList.toggle('active',open);
   if(open){
-   closeLayoutPop();
    /* 分類の一覧が未読なら読む（押した時点で出す。押しても空、にしない）。 */
    Promise.all([loadRowStyles(true),loadStopCategories()]).then(()=>renderRowStylePop());
    renderRowStylePop();
@@ -1671,22 +1672,18 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const btn=$('#scRowStyleBtn');
   if(btn){btn.classList.remove('active');btn.setAttribute('aria-expanded','false')}
  }
- function toggleLayoutPop(){
-  const pop=$('#scLayoutPop'),btn=$('#scLayoutBtn');
-  if(!pop)return;
-  const open=pop.hidden;
-  pop.hidden=!open;
-  if(btn){btn.classList.toggle('active',open);btn.setAttribute('aria-expanded',open?'true':'false')}
-  /* **開くのは常に1つ**(§9.199)。以前は「行の見せ方」だけが相手を畳んで
-     おり、逆順に押すと2枚重なって出ていた（浮きパネル同士だったので
-     重なりが見えていなかっただけ）。 */
-  if(open){closeRowStylePop();renderLayoutPop()}
- }
- function closeLayoutPop(){
-  const pop=$('#scLayoutPop');if(pop&&!pop.hidden)pop.hidden=true;
-  const btn=$('#scLayoutBtn');
-  if(btn){btn.classList.remove('active');btn.setAttribute('aria-expanded','false')}
- }
+ /* **ヘッダーの「表示」へ節を名乗る**（§9.444、利用者の指示「入口を1つに
+    寄せる」）。出すのは**作業スケジュールの画面を開いているとき**だけ——
+    押しても何も起きない節を残さない（§CLAUDE 4）。
+    **予定を動かせる権限（`fullControl`）では塞がない。** ここは「この端末に
+    覚える見え方」で、予定を動かす話ではない——同じ取り違えを §9.207 が
+    列の設定で踏んでいる（測定する端末で列が1本も動かせなかった）。 */
+ WL.lookSettings.register({
+  key:'schedule',
+  title:'作業スケジュールの見え方',
+  when:()=>document.body.classList.contains('sc-mode'),
+  render:host=>renderLayoutPop(host),
+ });
  /* ---------- 「表示」パネル(§9.199) ----------
     見え方の設定の入口。**中身が1つも無いときはボタンごと消す**(§4)
     ——全体俯瞰では、まとめも列も配置も効かない。 */
@@ -1704,7 +1701,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(btn){btn.classList.remove('active');btn.setAttribute('aria-expanded','false')}
   /* 中の段も畳む——次に開いたとき、前に開いていた段がそのまま出ると
      「どこを見ていたか」より「なぜこれが開いているのか」が先に来る。 */
-  closeRowStylePop();closeLayoutPop();
+  closeRowStylePop();
  }
  /* 入口のボタンに**いまの設定を書く**。畳んだ先の値が読めないと、
     開くまで思い出せない（§「思い出させない」）。長い名前は要約して出し、
@@ -1712,7 +1709,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  function updateViewMenuUi(){
   const btn=$('#scViewMenuBtn');if(!btn)return;
   const secs=[$('#scGroupRange'),$('#scHistoryRange'),
-              $('#scViewAccRowStyle'),$('#scViewAccLayout')];
+              $('#scViewAccRowStyle')];
   const any=secs.some(el=>el&&!el.hidden);
   btn.hidden=!any;
   if(!any){closeViewPop();updateToolGroups();return}
@@ -1870,10 +1867,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const contentBtn=$('#scContentModalBtn');
   const colApplicable=scState.boardMode==='single'&&!!scState.equipment;
   if(contentBtn){contentBtn.hidden=!colApplicable;contentBtn.classList.toggle('active',contentPanelOpen())}
-  /* 表示の設定(§9.179)は分割表示が意味を持つ場面だけ。 */
-  const layoutBtn=$('#scLayoutBtn');
-  if(layoutBtn){layoutBtn.hidden=!applicable;if(layoutBtn.hidden)closeLayoutPop()}
-  const accLay=$('#scViewAccLayout');if(accLay)accLay.hidden=!applicable;
+  /* 「この端末の見え方」はヘッダーの「表示」へ移した（§9.444）。ここでは
+     場面ごとの出し入れをしない——出す・出さないは`when()`が答える。 */
   /* 行の見せ方(§9.198)は**列の設定と同じ場面**で出す（見え方の設定なので
      予定を動かせる権限は要らない。保存できるかはサーバーが判定し、
      できなければその場で理由を出す）。 */

@@ -209,40 +209,46 @@ let b=null;
    cols:!!document.querySelector('#scToolsView #scContentModalBtn'),
    colsInPop:!!document.querySelector('#scViewPop #scContentModalBtn'),
    rowstyle:!!document.querySelector('#scViewPop #scRowStyleBtn'),
+   /* 「この端末の見え方」は**ヘッダーの「表示」へ移した**（§9.444、利用者の
+      指示「表示というボタンが2つあるのでわかりにくい」→「入口を1つに寄せる」）。
+      ここに残っていたら、入口がまた2つに戻っている。 */
    layout:!!document.querySelector('#scViewPop #scLayoutBtn'),
    who:document.getElementById('scViewPop').textContent.replace(/\s+/g,' '),
   }));
-  rec('まとめ・さかのぼり・行の色・配置が1枚のパネルに集まる',
-      pop.group&&pop.hist&&pop.rowstyle&&pop.layout,JSON.stringify(pop));
+  rec('まとめ・さかのぼり・行の色が1枚のパネルに集まる',
+      pop.group&&pop.hist&&pop.rowstyle,JSON.stringify(pop));
+  rec('この端末の見え方はここに置かない（ヘッダーの「表示」が持つ・§9.444）',
+      pop.layout===false,JSON.stringify({ここ:pop.layout}));
   /* **よく使うものは畳まない**（§9.207）。同じ入口を2箇所に置かない
       （§8。どちらを押せばよいのか読む側が数え直すことになる）。 */
   rec('表示列はメニューに直接出す（パネルの中には置かない）',
       pop.cols&&!pop.colsInPop,JSON.stringify({bar:pop.cols,pop:pop.colsInPop}));
   rec('誰に効く設定かを段ごとに書く',
-      /全員に効きます/.test(pop.who)&&/この端末だけ/.test(pop.who),
-      pop.who.slice(0,140));
-  /* **開くのは常に1つ**——2枚開くと、長い中身のどちらを見ているのか
-     分からなくなる。逆順でも効くことを見る（片方だけが相手を畳む実装だと
-     押す順で結果が変わる）。 */
-  await page.click('#scLayoutBtn');await paint();
+      /全員に効きます/.test(pop.who),pop.who.slice(0,140));
+  /* 畳む段はもう1つ（行の色とアイコン）。**押せば開き、もう一度押せば閉じる**。 */
   await page.click('#scRowStyleBtn');await paint();
-  const acc1=await page.evaluate(()=>({lay:document.getElementById('scLayoutPop').hidden,
-                                       rs:document.getElementById('scRowStylePop').hidden}));
-  await page.click('#scLayoutBtn');await paint();
-  const acc2=await page.evaluate(()=>({lay:document.getElementById('scLayoutPop').hidden,
-                                       rs:document.getElementById('scRowStylePop').hidden}));
-  rec('開く段は常に1つ（どちらの順でも）',
-      acc1.lay===true&&acc1.rs===false&&acc2.lay===false&&acc2.rs===true,
-      JSON.stringify({acc1,acc2}));
+  const acc1=await page.evaluate(()=>document.getElementById('scRowStylePop').hidden);
+  await page.click('#scRowStyleBtn');await paint();
+  const acc2=await page.evaluate(()=>document.getElementById('scRowStylePop').hidden);
+  rec('畳んだ段は押すと開き、もう一度押すと閉じる',
+      acc1===false&&acc2===true,JSON.stringify({開いた:!acc1,閉じた:acc2}));
+  await closeView();
 
-  /* ---- 5) 親ロットの印を切り替えられる ---- */
-  const badgeOpts=await page.evaluate(()=>[...document.querySelectorAll('#scLayoutPop input[name=scChildBadge]')]
+  /* ---- 5) 親ロットの印を切り替えられる（ヘッダーの「表示」の中・§9.444）---- */
+  const openLook=async()=>{
+   if(!(await page.$('#uiSizeMenu')))await page.click('#uiSizeBadge');
+   await page.waitForSelector('#uiSizeMenu .sc-layout-sec',{timeout:8000});
+   await paint();
+  };
+  const closeLook=async()=>{await page.evaluate(()=>document.body.click());await paint()};
+  await openLook();
+  const badgeOpts=await page.evaluate(()=>[...document.querySelectorAll('#uiSizeMenu input[name=scChildBadge]')]
     .map(r=>({v:r.value,on:r.checked})));
   rec('親ロットの印は2通りから選べる',
       badgeOpts.length===2&&badgeOpts.some(o=>o.v==='count')&&badgeOpts.some(o=>o.v==='parent'),
       JSON.stringify(badgeOpts));
   rec('既定は件数つき（子N）',(badgeOpts.find(o=>o.v==='count')||{}).on===true,JSON.stringify(badgeOpts));
-  await closeView();
+  await closeLook();
 
   // 分割ありの親を1件入れて、実際のバッジを見る
   // 追加はまとめ待ち→書込→応答。**押す前に**応答待ちを仕掛ける（§9.347 追補）
@@ -272,8 +278,8 @@ let b=null;
   rec('既定のバッジは「子」＋件数',
       !!bCount&&/子/.test(bCount.t)&&/2/.test(bCount.t)&&bCount.vis,JSON.stringify(bCount));
   await openView();
-  await page.click('#scLayoutBtn');await paint();
-  await page.click('#scLayoutPop input[name=scChildBadge][value=parent]');
+  await openLook();
+  await page.click('#uiSizeMenu input[name=scChildBadge][value=parent]');
   await idle(300,5000);  // 印の切り替えで行を描き直す
   await closeView();
   const bParent=await badge();
@@ -287,8 +293,8 @@ let b=null;
       await page.evaluate(()=>{try{return JSON.parse(localStorage.getItem('scLayoutPrefsV1')||'{}').childBadge==='parent'}catch(e){return false}}));
   // 既定へ戻す
   await openView();
-  await page.click('#scLayoutBtn');await paint();
-  await page.click('#scLayoutPop input[name=scChildBadge][value=count]');
+  await openLook();
+  await page.click('#uiSizeMenu input[name=scChildBadge][value=count]');
   await idle(300,5000);
   await closeView();
   rec('「子N」へ戻せる',/子/.test(((await badge())||{}).t||''),JSON.stringify(await badge()));
@@ -320,7 +326,7 @@ let b=null;
   const altKey=selInfo.keys.find(k=>k!=='lotNo');
   if(altKey){
    await openView();
-   await page.click('#scLayoutBtn');await paint();
+   await openLook();
    await page.selectOption('#scChildBadgeCol',altKey);
    await idle(300,5000);
    await closeView();
@@ -333,7 +339,7 @@ let b=null;
          catch(e){return null}}))===altKey);
    // 自動へ戻す（デフォルトのロット番号を確かめてから、後始末を兼ねて戻す）
    await openView();
-   await page.click('#scLayoutBtn');await paint();
+   await openLook();
    await page.selectOption('#scChildBadgeCol','');
    await idle(300,5000);
    await closeView();
