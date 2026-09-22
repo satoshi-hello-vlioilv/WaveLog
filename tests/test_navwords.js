@@ -8,7 +8,8 @@
      W  ラベルのはみ出し          0         → 0
 
    ここが見張るのは「**行き先は必ず説明を持つ**」「**説明は用途が先・
-   出どころが後**」「**曖昧語を取り去ると何も残らない名前を作らない**」の3つ。
+   出どころが後**」「**曖昧語を取り去ると何も残らない名前を作らない**」、
+   そして「**数えられなかったときに理由が読める**」（§9.450）の4つ。
    畳んだ左メニューの浮き出し（§9.265）は`title`を本文に使うので、
    説明が無い行き先は**畳んだ瞬間に名前だけ**になる。
    ============================================================ */
@@ -87,4 +88,26 @@ run('test_navwords: 左メニューの言葉と説明（§9.447）', async ({pag
  const act=items.filter(x=>x.label.startsWith('実績'));
  rec('「実績」で始まる行き先は1つまで（元データの前工程実績だけ）',
      act.length<=1,act.map(x=>`${x.label}(${x.group})`).join('・'));
+
+ /* ---- 件数を数えられなかったときに、理由が読めること（§9.450） ----
+    以前は`!`の1文字だけで、何が起きたのか・次に何をすればよいのかが
+    **画面にも記録にも残らなかった**。取り替えは`WL.measureHooks`の
+    `own`（§9.352）で行い、**その場で戻す**（§9.399）。 */
+ const bad=await page.evaluate(async()=>{
+  const prev=WL.measureHooks.owner('reliableAll');
+  WL.measureHooks.own('reliableAll',()=>{throw new Error('読めません（網の細工）')});
+  try{
+   await WL.records.refreshDraftCount();
+   const b=document.getElementById('homeDraftCount');
+   return {txt:(b.textContent||'').trim(),title:b.getAttribute('title')||'',
+           marked:b.classList.contains('is-bad')};
+  }finally{
+   WL.measureHooks.own('reliableAll',prev||null);
+   await WL.records.refreshDraftCount().catch(()=>{});
+  }
+ });
+ rec('数えられなかったら理由と次の手立てを字で出す（黙って`!`だけにしない）',
+     bad.txt==='!'&&bad.title.includes('読めません（網の細工）')&&/ログ・診断/.test(bad.title),
+     JSON.stringify(bad).slice(0,160));
+ rec('印は色だけでなく字も伴う（§CLAUDE 3）',bad.marked&&!!bad.title,String(bad.marked));
 }, {mode:'edit', viewport:{width:1728,height:1030}});

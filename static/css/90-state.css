@@ -26,6 +26,9 @@ body.col-resizing .col-resize{opacity:1}
    以前はここが赤（danger）で、赤は「取り消せない・危ない」の色（実績削除の
    `.sc-row-btn-danger`など）。設定が足りないだけの状態に使うと、色が
    実際より重い意味を語る。 */
+/* 数えられなかった件数バッジ（§9.450）。**色だけで伝えない**ので、
+   理由は`title`が持つ（`records-store.js`の`refreshDraftCount`）。 */
+.nav-item b.is-bad{background:var(--danger);color:var(--surface)}
 .hd-chip-static.is-warn{background:var(--warn-bg);border-color:var(--warn-border)}
 .hd-chip-static.is-warn .hd-chip-val{color:var(--warn-fg)}
 .equipment-header-button.is-unset{border-color:var(--warn-border);background:var(--warn-bg);color:var(--warn-fg)}

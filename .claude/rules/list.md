@@ -1,4 +1,4 @@
-# 一覧と列（118件）
+# 一覧と列（119件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -112,6 +112,7 @@
 | 行の印は既定で付けない | — | [§9.201](../../docs/decisions/9.201.md) |
 | スケジュール表の列の既定は1箇所でだけ判断する | `test_scbar.js`・`test_sctimecols.js` | [§9.207](../../docs/decisions/9.207.md) |
 | 横スクロールする一覧の地と罫線はセルが持つ | — | [§9.208](../../docs/decisions/9.208.md) |
+| 状態を出す欄が失敗したら**理由と次の手立てを字で**出す（印だけ・色だけにしない） | `test_navwords.js` | [§9.450](../../docs/decisions/9.450.md) |
 | 畳んだ左メニューの行き先は浮き出しで示す | `test_nav.js` | [§9.265](../../docs/decisions/9.265.md) |
 | 左メニューの行き先は**必ず説明を持つ**（畳むと浮き出しが`title`を本文に使う） | `test_navwords.js` | [§9.447](../../docs/decisions/9.447.md) |
 | 元データの説明は**用途が先・出どころが後**。用途は`DB_NAV_WHAT`の1箇所（役割から引く） | `test_navwords.js` | [§9.447](../../docs/decisions/9.447.md) |
