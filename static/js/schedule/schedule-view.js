@@ -7303,8 +7303,21 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     共有DBの書込は1回ごとにロック取得→検証待ち→取得→反映のサイクルを丸ごと
     踏むため(§4.2)、件数ぶん固定費が積み上がっていた(実測1件約1.5秒)。
     desc: {op:'add'|'update'|'delete'|'reorder', ...payload, onSuccess, onFailure} */
+ /* 追加操作の身元（§9.438、利用者の報告「同じロットが2つ表示される」）。
+    **積むときに1回だけ作る**——`run`の中で作ると、投げ直すたびに別の身元に
+    なり、サーバーは別の操作として受けてしまう（それでは何も変わらない）。
+    時刻から作らない（§9.400）——同じミリ秒に2件積むことがある。 */
+ function newOpId(){
+  try{if(window.crypto&&crypto.randomUUID)return crypto.randomUUID()}
+  catch(e){WL.quiet.note('身元を作れない（下の作り方で続ける）',e)}
+  const r=()=>Math.random().toString(36).slice(2,10);
+  return 'op-'+r()+r()+r();
+ }
  function queuePlanOp(desc){
   const {onSuccess,onFailure,...op}=desc;
+  /* **追加だけが二重になりうる**——更新・削除・並べ替えは同じ結果を2回
+     書いても行は増えない（べき等）。足すのは増えるものだけにする。 */
+  if(op.op==='add'&&!op.opId)op.opId=newOpId();
   queueScheduleWrite(
    // まとめられなかった場合(scheduleモード以外・単発)はこの経路で個別に投げる。
    async()=>{

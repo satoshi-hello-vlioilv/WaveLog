@@ -153,6 +153,8 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_wipgone', 'test_lotcopy',
                      # §9.372: 書込が失敗したら必ず理由を言う（黙って巻き戻さない）
                      'test_scfail',
+                     # §9.438: 応答が届かなかった追加を、再送で二重に入れない
+                     'test_plandup',
                      # §9.373: 失敗を開発へ報告できる形で残す（コピー1手）
                      'test_feedback',
                      # §9.374: 掴んだまま表を送る／色と濃さの意味

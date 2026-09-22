@@ -505,7 +505,10 @@ def plan_list():
 def plan_add():
  x=body({'equipment': str,'kind': str,'lotNo': str,'inspectionNo': str,'castingNo': str,
          'estimateMinutes': any_,'fixedStart': any_,'remark': str,'title': str,
-         'stopReasonId': any_,'stopSubId': any_,'position': str,'children': any_,'detail': any_})
+         'stopReasonId': any_,'stopSubId': any_,'position': str,'children': any_,'detail': any_,
+         # この追加操作そのものの身元(§9.438)。**再送されても行は1つ**にする
+         # ためだけの値で、画面が1操作につき1回だけ作る(投げ直しでは作り直さない)。
+         'opId': str})
  equipment=str(x.get('equipment') or '').strip()
  kind=str(x.get('kind') or '').strip()
  if not equipment:return jsonify(error='どの設備の予定か指定してください。'),400
@@ -518,7 +521,8 @@ def plan_add():
                    stop_sub_id=x.get('stopSubId'),
                    estimate_minutes=x.get('estimateMinutes'),fixed_start=x.get('fixedStart'),
                    remark=str(x.get('remark') or ''),
-                   children=_plan_children(x.get('children')))
+                   children=_plan_children(x.get('children')),
+                   op_id=str(x.get('opId') or ''))
   return {'id':pid}
  return _write_response(fn)
 
@@ -612,7 +616,11 @@ def _apply_plan_op(c,op,uid,pc=''):
                    stop_sub_id=op.get('stopSubId'),
                    estimate_minutes=op.get('estimateMinutes'),fixed_start=op.get('fixedStart'),
                    remark=str(op.get('remark') or ''),
-                   children=_plan_children(op.get('children')))
+                   children=_plan_children(op.get('children')),
+                   # **まとめて適用するときも身元を通す**(§9.438)。まとめ書込が
+                   # 落ちると書込キューは個別経路で投げ直すので、ここを落とすと
+                   # 「まとめた1回目」と「個別の再送」が別の行になる。
+                   op_id=str(op.get('opId') or ''))
   return {'id':pid}
  if kind=='update':
   plan_id=op.get('id')
