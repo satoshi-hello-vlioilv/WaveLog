@@ -256,7 +256,7 @@
   const p=$id('actualsPanel');if(p)p.hidden=true;
  }
  WL.registerView({key:'actuals',bodyClass:'ac-mode',nav:'openActuals',
-   toolbar:'#acHead',header:['実績データ',''],exit:exitActualsView});
+   toolbar:'#acHead',header:['測定実績','共有された測定記録を設備と期間で読みます（閲覧のみ）'],exit:exitActualsView});
 
  const RANGE_PRESETS=[{d:1,label:'今日'},{d:7,label:'7日'},{d:31,label:'31日'},
                       {d:92,label:'3か月'},{d:3650,label:'全期間'}];
@@ -583,8 +583,8 @@
      `WL.records.recordColumnPanelSource()`と同じ作法で、パネル自体には手を入れない
      （§9.120。同じパネルを使い回す）。 */
   WL.listColumns.open({
-   key:'actuals',eyebrow:'実績データ',
-   title:()=>`表示列の設定（実績データリスト${acState.equipment?'：'+acState.equipment:''}）`,
+   key:'actuals',eyebrow:'測定実績',
+   title:()=>`表示列の設定（測定実績${acState.equipment?'：'+acState.equipment:''}）`,
    lead:'左で<b>出す列と並び</b>を決め、右で<b>選んだ1列の見え方</b>を整えます。'
        +'設備や期間を変えても同じ設定が使われます（<b>保存するまでは元に戻せます</b>）。'
        /* **出せないものは名前で言う**（§4／§9.288 ⑧）——統計と子ロットは
@@ -592,7 +592,7 @@
           候補から落とすと「探しても無い」になり、打つ手を持てない。 */
        +(acState.fieldNote?'<br>'+acState.fieldNote:''),
    target:()=>AC_TARGET,
-   savedToast:'実績データリストの表示列を保存しました',
+   savedToast:'測定実績の表示列を保存しました',
    savedNote:'次に開いたときも同じ形で出ます',
    keys:()=>allColumnKeys(),
    healed:()=>null,
@@ -657,7 +657,7 @@
  WL.onReady(()=>{
   const btn=$id('openActuals');
   if(btn)btn.onclick=()=>openActuals().catch(e=>
-    showToast&&showToast('実績データを開けませんでした',e&&e.message||String(e),6000));
+    showToast&&showToast('測定実績を開けませんでした',e&&e.message||String(e),6000));
  });
  WL.actuals={open:openActuals,state:acState,columns:allColumns,columnKeys:allColumnKeys,
              labelOf,rowView,cellText,target:AC_TARGET,localStamp};

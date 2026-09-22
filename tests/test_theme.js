@@ -327,7 +327,7 @@ run('test_theme: 色と文字サイズはトークンから',async({page,rec,W,i
    Object.values(views).every(v=>v.dupes.length===0),
    JSON.stringify(Object.fromEntries(Object.entries(views).map(([k,v])=>[k,v.dupes]))));
   for(const [key,label] of [['schedule','作業スケジュール'],['dashboard','ダッシュボード'],
-                            ['calendar','実績カレンダー'],['master','マスタ管理'],['records','データ一覧']]){
+                            ['calendar','測定実績カレンダー'],['master','マスタ管理'],['records','測定データ一覧']]){
    rec(`${label}の操作列がヘッダーへ載る`,views[key].mounted===1,JSON.stringify(views[key]));
   }
   rec('一覧画面へ戻ると操作列は元へ戻る(持ち越さない)',views.list.mounted===0,JSON.stringify(views.list));

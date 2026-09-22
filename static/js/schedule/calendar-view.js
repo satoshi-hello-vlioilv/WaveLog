@@ -69,7 +69,7 @@
  async function ensureData(force){
   if(calState.loaded&&!force)return calState.items;
   if(typeof WL.records.withWaiting!=='function')return ensureDataInner();
-  return WL.records.withWaiting({title:'実績カレンダーを読み込んでいます',detail:'この端末の測定データを集計しています',
+  return WL.records.withWaiting({title:'測定実績カレンダーを読み込んでいます',detail:'この端末の測定データを集計しています',
    progress:'保存済みのロットを日付ごとに集計しています'},()=>ensureDataInner());
  }
  async function ensureDataInner(){
@@ -104,8 +104,9 @@
  function ensureNavButton(){
   const nav=document.querySelector('#analysisNav');if(!nav||$id('openCalendar'))return;
   const b=document.createElement('button');b.type='button';b.id='openCalendar';b.className='db nav-item nav-item--view';
-  b.innerHTML='<svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg><span>実績カレンダー</span>';
-  b.title='端末保存済みの測定データを、日ごとの作業実績としてカレンダー表示します';
+  b.innerHTML='<svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg><span>測定実績カレンダー</span>';
+  b.title='この端末に保存された測定データを、日ごとの作業実績として集計します。'
+  +'元データの「実績」（前工程）とは別のものです';
   b.onclick=openCalendarView;nav.append(b);
  }
  function exitCalendarView(){
@@ -120,7 +121,7 @@
     (WL.enterViewのmountViewToolbar参照)。カレンダーのマスは縦に詰まりやすく、
     バー1本ぶんでも本文へ回したいため。 */
  WL.registerView({key:'calendar',bodyClass:'cal-mode',nav:'openCalendar',toolbar:'#calToolbar',
-  header:['実績カレンダー','この端末に保存された測定データ'],exit:exitCalendarView});
+  header:['測定実績カレンダー','この端末に保存された測定データの日ごとの集計'],exit:exitCalendarView});
 
  async function openCalendarView(){
   WL.enterView('calendar');

@@ -64,7 +64,7 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
 
 # 束ねた呼び名。右辺は実際のテスト名。
 G = {}
-G['一覧'] = ['test_nav', 'test_listcache', 'test_listperf', 'test_allrows',
+G['一覧'] = ['test_nav', 'test_navwords', 'test_listcache', 'test_listperf', 'test_allrows',
              'test_filterio', 'test_filteruser', 'test_filteractive', 'test_filterkeep',
              'test_filterlock', 'test_adhoc',
              'test_cols', 'test_headbar', 'test_dsnav', 'test_dsrestart', 'test_listmodal', 'test_filter',

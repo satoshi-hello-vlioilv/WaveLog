@@ -860,7 +860,7 @@ function openColumnHeaderMenu(ev,col,target,allColumns,src){
 }
 WL.openColumnHeaderMenu=openColumnHeaderMenu;
 
-/* 「一覧を見る」のボタンを、データソースマスタの内容そのままに組み直す(§9.87)。
+/* 「元データ」のボタンを、データソースマスタの内容そのままに組み直す(§9.87)。
    ------------------------------------------------------------
    **左メニューはカタログが唯一の正**。以前はindex.htmlに仕掛・品質データの
    ボタンを直接置き、カタログには「無ければ足す」だけをしていた。そのため
@@ -877,6 +877,16 @@ const DB_NAV_ICONS={
  work:'<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
  quality:'<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
  other:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/>',
+};
+/* 役割ごとの「何が見られるか」（§9.447）。綴りはサーバーの`PURPOSE_*`と同じ。
+   **役割を増やしたらここにも1行足す**——載っていない役割は`__other`に倒れる
+   ので黙って壊れはしないが、その行だけ用途を言わない説明になる。 */
+const DB_NAV_WHAT={
+ '仕掛':'作業対象のロット一覧。測定を始める・作業予定へ入れるのはここから選びます',
+ '品質':'ロットの品質データ。測定画面の品質情報と帳票がここを読みます',
+ '実績':'前工程の実績。仕掛から消えたロットはここと突き合わせます',
+ 'スケジュール':'作業予定の本体（共有スケジュールDB）',
+ __other:'元データの一覧（読むだけ）',
 };
 function renderDbNav(){
  const nav=$('#nav');if(!nav)return;
@@ -899,7 +909,13 @@ function renderDbNav(){
             :WL.dataSource.isQuality(x.key)?DB_NAV_ICONS.quality:DB_NAV_ICONS.other;
   const svg=b.querySelector('.nav-icon');if(svg)svg.innerHTML=icon;
   (b.querySelector('span')||b).textContent=x.label;
-  b.title=`${x.label}（キー: ${x.key} / ファイル: ${x.file_name||'—'}）`;
+  /* 説明は**「何が見られるか」が先**（§9.447）。以前は`（キー: SIKALOTNOW /
+     ファイル: sikalotnow_test.sqlite3）`とだけ書いており、**現場の人に
+     ファイル名は意味を持たない**。出どころを言うのは正しい（§CLAUDE 6）が、
+     先に来るのは用途のほう。用途は**役割（purpose）から引く**ので、
+     データソースを1行足せば説明も付いてくる（画面へ書き足さない）。 */
+  b.title=`${x.label}｜${DB_NAV_WHAT[x.purpose]||DB_NAV_WHAT.__other}`
+   +`\n出どころ: ${x.file_name||'—'}（キー ${x.key}）`;
   b.onclick=()=>selectDb(x.key,b);
   // マスタの表示順どおりに並べ直す(行を入れ替えたら画面もその順になる)。
   if(prev)prev.after(b);else nav.prepend(b);

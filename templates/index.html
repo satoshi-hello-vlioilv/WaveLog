@@ -63,33 +63,30 @@ try{window.__wlTabId=(self.crypto&&crypto.randomUUID)?crypto.randomUUID()
 <div class="registered-equipment-badge unregistered" id="registeredEquipmentBadge"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span class="equip-badge-text">使用設備: 未登録</span></div>
 <nav class="nav-group" aria-label="測定データ">
 <div class="nav-group-label">測定データ</div>
-<button class="db nav-item nav-item--view" data-open-records="編集中" id="homeDrafts" type="button"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>データ一覧</span><b id="homeDraftCount">0</b><i class="sync-warn-dot" id="homeDraftSyncWarn" hidden title="バックアップDBへ未送信のデータがあります" aria-hidden="true"></i></button>
-<!-- 実績データリスト(§9.241 ③)。**データ一覧とは読む先が違う**——こちらは
+<button class="db nav-item nav-item--view" data-open-records="編集中" id="homeDrafts" type="button" title="この端末と共有DBの測定データを一覧します。作業中の続きを開く・完了した記録を見るのはここです"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg><span>測定データ一覧</span><b id="homeDraftCount">0</b><i class="sync-warn-dot" id="homeDraftSyncWarn" hidden title="バックアップDBへ未送信のデータがあります" aria-hidden="true"></i></button>
+<!-- 測定実績（旧「実績データリスト」・§9.241 ③、呼び名は§9.447で改めた）。
+     **測定データ一覧とは読む先が違う**——こちらは
      共有された記録だけを設備＋期間で見る「閲覧のみ」の一覧なので、
      閲覧権限のままでも開ける。 -->
-<button class="db nav-item nav-item--view" id="openActuals" type="button" title="設備と期間を選んで、作業時に記録した実績を一覧します（閲覧のみ）"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4h8a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M9.5 3h5v3h-5z"/><path d="m9.5 13 2 2 3.5-4"/></svg><span>実績データ</span></button>
+<button class="db nav-item nav-item--view" id="openActuals" type="button" title="共有DBに上がった測定記録を、設備と期間で絞って読みます（閲覧のみ・編集しません）。元データの「実績」（前工程）とは別のものです"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4h8a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M9.5 3h5v3h-5z"/><path d="m9.5 13 2 2 3.5-4"/></svg><span>測定実績</span></button>
 </nav>
-<!-- 「一覧を見る」の中身はデータソースマスタから作る(§9.87)。ここへ直接
+<!-- 「元データ」の中身はデータソースマスタから作る(§9.87)。ここへ直接
      ボタンを書かないこと——マスタでキーを変えると、消えない静的ボタンが
      「データベース指定が不正です」を出し、マスタ由来のボタンと二重に並ぶ
      (実機で発生)。組み立ては list-view.js の WL.list.renderDbNav()。 -->
-<nav class="nav-group view-nav" id="nav" aria-label="一覧を見る">
-<div class="nav-group-label">一覧を見る</div>
+<nav class="nav-group view-nav" id="nav" aria-label="元データ">
+<div class="nav-group-label">元データ</div>
 </nav>
 <nav class="nav-group plan-nav" id="planNav" aria-label="計画">
 <div class="nav-group-label">計画</div>
-<button class="db nav-item nav-item--view" id="openSchedule" type="button"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="4" x2="3" y2="20"/><rect x="6" y="5" width="11" height="3.5" rx="1.5"/><rect x="9" y="10.2" width="12" height="3.5" rx="1.5"/><rect x="6" y="15.4" width="8" height="3.5" rx="1.5"/></svg><span>作業スケジュール</span></button>
-<!-- 刃組ガイダンス(§9.377、利用者の指示)。設備停止マスタの「連携機能」から
-     予定の行を押しても開くが、**行き先は左メニューにも置く**——予定を経由
-     しないと辿り着けない画面は「探させる」ことになる(§CLAUDE 2)。 -->
-
+<button class="db nav-item nav-item--view" id="openSchedule" type="button" title="設備ごとの作業予定を並べ、開始と完了を記録します。設備停止・申し送り・日付や直の枠もここへ入れます"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="4" x2="3" y2="20"/><rect x="6" y="5" width="11" height="3.5" rx="1.5"/><rect x="9" y="10.2" width="12" height="3.5" rx="1.5"/><rect x="6" y="15.4" width="8" height="3.5" rx="1.5"/></svg><span>作業スケジュール</span></button>
 </nav>
 <nav class="nav-group analysis-nav" id="analysisNav" aria-label="分析">
 <div class="nav-group-label">分析</div>
 </nav>
 <nav class="nav-group nav-group-admin" id="adminNav" aria-label="管理">
 <div class="nav-group-label">管理</div>
-<button class="db nav-item nav-item--admin" id="openMasterMaint" type="button"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>マスタ管理</span></button>
+<button class="db nav-item nav-item--admin" id="openMasterMaint" type="button" title="設備・操業データ項目・選択肢・列の見せ方などの登録内容を追加・編集します（更新者IDとともに記録します）"><svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>マスタ管理</span></button>
 </nav>
 <!-- 安全な終了(§9.301 ②、利用者の指示「安全なアプリの終了ボタンも欲しいです」)。
      **足元へ置く**——危ない操作を主要動線に置かない(§CLAUDE 5)。押す頻度は

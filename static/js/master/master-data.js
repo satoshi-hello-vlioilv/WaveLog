@@ -697,7 +697,7 @@
  const DS_LIST_COLS=[
   {k:'role',label:'役割',hint:'このデータを何として使うか。仕掛・品質・スケジュールは各1件です。'},
   {k:'name',label:'名称 / キー'},
-  {k:'listed',label:'一覧',hint:'左メニュー「一覧を見る」に出すかどうか。結合の相手としてだけ読むデータは「出さない」にできます。'},
+  {k:'listed',label:'一覧',hint:'左メニュー「元データ」に出すかどうか。結合の相手としてだけ読むデータは「出さない」にできます。'},
   {k:'mode',label:'読み方'},
   {k:'path',label:'いま読んでいる'},
   {k:'caps',label:'できること'},
@@ -744,7 +744,7 @@
     ${pending?`<span class="ds-flag is-pending" title="${esc(kinds.join('・'))}が再起動待ちです">再起動待ち</span>`:''}
    </span>
    <span class="ds-c-listed"><span class="ds-listed${listed?'':' is-off'}" title="${
-     listed?'左メニュー「一覧を見る」に出ます。':'左メニューには出しません（結合の相手としては読めます）。'
+     listed?'左メニュー「元データ」に出ます。':'左メニューには出しません（結合の相手としては読めます）。'
    }">${listed?'出す':'出さない'}</span></span>
    <span class="ds-c-mode">${esc(DS_MODE_SHORT[x.readMode]||'—')}</span>
    <span class="ds-c-path" title="${esc(x.activePath||'')}">${
@@ -1694,7 +1694,7 @@
   return `<div class="ds-edit">
    <section class="ds-edit-zone">
     <h4 class="mm-fieldgroup">① これは何か</h4>
-    ${f('label','表示名',x.label,'required','左メニュー「一覧を見る」に出る名前です。')}
+    ${f('label','表示名',x.label,'required','左メニュー「元データ」に出る名前です。')}
     ${f('key','キー',x.key,'required','半角英数と _。一覧を指す識別子で、変えると この一覧向けの登録フィルタ・表示列の設定が結び付かなくなります。')}
     <label class="mm-field"><span>どのデータとして使うか（役割）</span>
      <select data-field="purpose">${dsPurposeOptions(x)}</select>
@@ -3720,9 +3720,9 @@
  }
  /* 画面の呼び名。**知らない鍵はそのまま出す**（黙って空欄にすると、
     新しい画面が増えたときに「何もしていない」ように見える・§9.204）。 */
- const PZ_VIEWS={list:'一覧',records:'データ一覧',schedule:'作業スケジュール',
+ const PZ_VIEWS={list:'一覧',records:'測定データ一覧',schedule:'作業スケジュール',
   master:'マスタ管理',report:'測定帳票',dashboard:'ダッシュボード',
-  calendar:'カレンダー',actuals:'実績データ',logs:'ログ'};
+  calendar:'測定実績カレンダー',actuals:'測定実績',logs:'ログ'};
  function pzViewLabel(v){const k=String(v||'');return k?(PZ_VIEWS[k]||k):'—'}
  function pzStopTimer(){if(presenceState.timer){clearInterval(presenceState.timer);presenceState.timer=0}}
 

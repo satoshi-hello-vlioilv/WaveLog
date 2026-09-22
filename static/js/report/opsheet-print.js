@@ -428,7 +428,7 @@
   el=document.createElement('div');el.className='os-pv';el.id='osPreview';el.hidden=true;
   el.innerHTML=`<div class="os-pv-dialog" role="dialog" aria-modal="true" aria-labelledby="osPvTitle">
     <header class="os-pv-head">
-     <div><small>実績データ</small><h2 id="osPvTitle">操業データ表</h2></div>
+     <div><small>測定実績</small><h2 id="osPvTitle">操業データ表</h2></div>
      <button type="button" id="osPvClose" class="os-pv-x" aria-label="閉じる">×</button>
     </header>
     <div class="os-pv-body">

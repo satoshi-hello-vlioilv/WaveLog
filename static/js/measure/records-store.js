@@ -940,7 +940,7 @@ async function openRecords(status){
  recordListState.items=allRecords;recordListState.query='';recordListState.sort='updated-desc';
  // 未同期件数の表示にも今読んだ配列を渡す(渡さないと全件読みがもう1回走る)
  updateRecordListTitle();syncStatusFilterButtons();$('#recordModal').hidden=false;refreshSyncStatusUI(allRecords);
- WL.base.setHeaderContext('データ一覧','この端末と共有DBの測定データ');
+ WL.base.setHeaderContext('測定データ一覧','この端末と共有DBの測定データ');
  const search=$('#recordSearch'),sort=$('#recordSort'),clear=$('#clearRecordSearch');if(search){search.value='';search.oninput=()=>{recordListState.query=search.value;renderRecordListRows()}}if(sort){sort.value='updated-desc';sort.onchange=()=>{recordListState.sort=sort.value;renderRecordListRows()}}if(clear)clear.onclick=()=>{recordListState.query='';if(search)search.value='';renderRecordListRows()};
  bindRecordColumnsBtn();
  renderRecordListRows();requestAnimationFrame(()=>search?.focus())
@@ -1588,8 +1588,8 @@ function bindRecordHeadTools(list,keys){
 function recordColumnPanelSource(){
  return {
   key:'records',
-  eyebrow:'データ一覧',
-  title:()=>'表示列の設定（データ一覧）',
+  eyebrow:'測定データ一覧',
+  title:()=>'表示列の設定（測定データ一覧）',
   lead:'左で<b>出す列と並び</b>を決め、右で<b>選んだ1列の見え方</b>を整えます。'
       +'触った結果はすぐ一覧に出ます（<b>保存するまでは元に戻せます</b>）。',
   target:()=>RECORD_LIST_TARGET,
@@ -1698,7 +1698,7 @@ function equipmentSettingsHtml(){
    <section class="eqset-sec" aria-labelledby="eqsetH1">
     <h3 id="eqsetH1"><span class="eqset-no">①</span>この端末で使う設備
      <b class="eqset-now" id="equipmentSettingStatus">未登録</b></h3>
-    <p class="eqset-lead">この設備で<b>測定を開始</b>し、データ一覧・実績データも<b>この設備のぶんだけ</b>出します。仕掛データの「設計_設備ｺｰｽ」に入っていないロットは、測定画面の上で知らせます。</p>
+    <p class="eqset-lead">この設備で<b>測定を開始</b>し、測定データ一覧・測定実績も<b>この設備のぶんだけ</b>出します。仕掛データの「設計_設備ｺｰｽ」に入っていないロットは、測定画面の上で知らせます。</p>
     <div class="eqset-pick">
      <label class="eqset-field"><span>設備名</span>
       <select id="configuredEquipment"><option value="">設備マスタを読み込んでいます</option></select></label>

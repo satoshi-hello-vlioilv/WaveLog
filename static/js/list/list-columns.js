@@ -1451,7 +1451,7 @@
   if(s2.startsWith('timeline:'))return `作業スケジュール表 ${s2.slice(9)}`;
   if(s2.startsWith('print:'))return `スケジュールの印刷 ${s2.slice(6)}`;
   if(s2.startsWith('report:'))return `帳票 ${s2.slice(7)}`;
-  if(s2==='records:list')return 'データ一覧';
+  if(s2==='records:list')return '測定データ一覧';
   return s2;
  }
  const ioCount=b=>((b&&b.order)||[]).length;
