@@ -734,11 +734,17 @@
   }
   if (drawn('ring')) {
    /* 保持層は**ゴムリングでもフィンガーでも同じ層**（§9.377）。色はゴムリングだけ
-      マスタの値で、フィンガーは1色（樹脂の押さえ）。 */
+      マスタの値で、フィンガーは1色（布入ベークライトの茶）。
+      **模式図と同じトークンから引く**（§9.441、利用者の指示「フィンガーの色は
+      ベークライトの一般的な茶色ベースにしてほしい」）——以前はここだけ
+      `#6f7d8c` という灰青のリテラルで、**スペーサーと見分けが付かず**、
+      模式図の茶（`--bs-fig-finger`）とも食い違っていた（色リテラルを
+      増やさない・§9.350／色は1箇所が答える・§CLAUDE 8）。 */
    groupBy(out.ring, q => (q.hold.kind === 'ring' ? 'r' + q.hold.od : 'f')).forEach((list, key) => {
     const isRing = key.charAt(0) === 'r';
     const od = isRing ? +key.slice(1) : linerR * 2 + 20;
-    const color = isRing ? (ctx.ringHex(od) || '#8d97a6') : '#6f7d8c';
+    const color = isRing ? (ctx.ringHex(od) || '#8d97a6')
+                         : cssColor('--bs-fig-finger', '#7a5232');
     put(list.map(q => ({ x: q.x, y: q.y, len: q.sz - 1.0 })), od / 2,
         isRing ? ringBore : linerR,
         skin(T, sh.ring, 'hold' + key, { color, metalness: .02, roughness: .9 }));

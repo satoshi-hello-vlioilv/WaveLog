@@ -705,6 +705,14 @@
   $('#bsV2').textContent = `Φ${st.knife.toFixed(1)} / t${st.thick.toFixed(1)}`;
   $('#bsV3').textContent = st.lots.length === 1
    ? `${st.lots[0].w}×${st.lots[0].n}` : `${st.lots.length}ロット`;
+  /* **「表示」の保持層の札は、いまの方式の名前で出す**（§9.441）。器は1つの
+     まま（`data-show="ring"`）で字だけ差し替える——押す物を増やさない
+     （§CLAUDE 4 できないことは書く／§9.422 隠し方の札と同じ群）。 */
+  panel.querySelectorAll('[data-show="ring"]').forEach(b => {
+   const nm = BS().holdName(st, M);
+   b.textContent = nm;
+   b.dataset.showName = nm;
+  });
   $('#bsV4').textContent = res.finger ? 'フィンガー（不要）'
    : `${colorOf(res.bigOd)}${res.bigOd} / ${colorOf(res.smOd)}${res.smOd}`;
   /* 出すのは**中心間**（説明文がそう言っている）。クリアランスそのものは
@@ -1993,11 +2001,37 @@
   return `<td class="${cls}">${burr}<span class="bs-slot">`
    + `${[...new Set(slots)].sort((a, b) => a - b).join(' ')}</span><span class="bs-ct">${n}</span></td>`;
  }
+ /* 組んでみて初めて分かる断り（§9.441）。マスタの在庫を見る `renderSets()` とは
+    別に、**この割付でどこが埋まらなかったか**を刃組表のすぐ上へ出す
+    ——表の列だけだと、30区間のどこが悪いのかを数えることになる（§CLAUDE 2）。 */
+ function fitAlertHtml(res) {
+  const f = (res && res.fit) || {};
+  const gap = f.spacerGap || [], bare = f.bareHold || [];
+  const cut = (a, n) => a.slice(0, n).join('・') + (a.length > n ? ` ほか${a.length - n}面` : '');
+  let o = '';
+  if (gap.length) {
+   o += `<div class="bs-alert is-bad"><b>スペーサーで埋め切れていない区間が ${gap.length}面あります</b><br>`
+     + '組んだものはOS側へ押し付けて組むので、ここは 0 でなければなりません（計算の不具合です）。<br>'
+     + `${esc(cut(gap, 8))}</div>`;
+  }
+  if (bare.length) {
+   o += `<div class="bs-alert is-bad"><b>${esc(f.holdName || '板押さえ')}が1本も載らない区間が ${bare.length}面あります</b><br>`
+     + `手持ちの幅では埋められませんでした（在庫が尽きたか、その区間に入る幅がありません）。`
+     + `不足は「所要」に出ています。<br>${esc(cut(bare, 10))}</div>`;
+  }
+  return o;
+ }
  function renderTables(res) {
   const rows = res.rows, keys = K();
   const Ss = [...new Set(rows.flatMap(r => keys(r.c.sp)))].sort((a, b) => b - a);
   const Gs = [...new Set(rows.flatMap(r => keys(r.c.G)))].sort((a, b) => b - a);
+  /* **余りは2つに分ける**（§9.441、利用者の指示）。
+       スペーサーの端数 … **0が正**。0でないのは計算の不具合なので、
+                          出たときだけ列を立てて赤く出す。
+       板押さえの空き   … 手持ちの幅で埋め切れないぶん。わずかなら差し支えない
+                          ——**1本も載らない区間**だけは字で名指しする。 */
   const hasRem = rows.some(r => r.c.rem > 0.001);
+  const hasHold = rows.some(r => r.c.kind);
   const holdLabel = res.finger ? 'フィンガー' : 'ゴムリング';
   const num = v => (v ? `<b>${v}</b>` : '<span class="bs-z">·</span>');
   const head = `<thead>
@@ -2010,12 +2044,14 @@
           狭い区間では入らないので、**必ず読める場所**をここに持つ。 -->
      <th class="bs-sep" rowspan="2">刃の間隔<small>内＝刃の内々／外＝刃の外々</small></th>
      ${Ss.length ? `<th colspan="${Ss.length}" class="bs-sep">スペーサー</th>` : ''}
-     ${Gs.length ? `<th colspan="${Gs.length}" class="bs-sep">${holdLabel}</th>` : ''}
-     ${hasRem ? `<th rowspan="2" class="bs-sep">隙間<small>許容 0〜${M.P.gapMax}</small></th>` : ''}
+     ${Gs.length ? `<th colspan="${Gs.length + (res.finger ? 0 : 1)}" class="bs-sep">${holdLabel}</th>` : ''}
+     ${hasHold ? `<th rowspan="2" class="bs-sep">板押さえの空き<small>${esc(holdLabel)}で埋め切れない幅</small></th>` : ''}
+     ${hasRem ? '<th rowspan="2" class="bs-sep bs-bad">スペーサーの端数<small>0 が正（出たら不具合）</small></th>' : ''}
     </tr>
     <tr><th class="bs-ax bs-sep">上軸</th><th class="bs-ax">下軸</th>
      ${Ss.map((x, i) => `<th class="bs-sz${i ? '' : ' bs-sep'}">${x}</th>`).join('')}
-     ${Gs.map((x, i) => `<th class="bs-sz${i ? '' : ' bs-sep'}">${x}</th>`).join('')}</tr>
+     ${Gs.length && !res.finger ? '<th class="bs-sz bs-sep">色・外径</th>' : ''}
+     ${Gs.map((x, i) => `<th class="bs-sz${i || !res.finger ? '' : ' bs-sep'}">${x}</th>`).join('')}</tr>
    </thead>`;
   /* 区分（ロット・屑条）はいちばん左の列にまとめて1回だけ示す（縦に伸ばさない）。 */
   const key = r => (r.sg.type === 'strip' ? r.sg.lot : '屑条');
@@ -2037,17 +2073,39 @@
     + `条幅 ${r.sg.w.toFixed(2)} を作っている側を出しています">`
     + `${esc(spanText(bladeSpan(r.c.len, r.sg.w)))}</td>`
     + Ss.map((x, i2) => `<td class="bs-num${i2 ? '' : ' bs-sep'}">${num(r.c.sp[x])}</td>`).join('')
-    + Gs.map((x, i2) => `<td class="bs-num${i2 ? '' : ' bs-sep'}">${num(r.c.G[x])}</td>`).join('')
-    + (hasRem ? `<td class="bs-num bs-sep ${gapCell(r.c.rem)}">`
-       + `${r.c.rem > 0.001 ? r.c.rem.toFixed(2) : '·'}</td>` : '')
+    /* **ゴムリングは色（＝外径）×幅で1本**（§9.377）。幅だけでは注文できないので、
+       **色と外径も表で読める**ようにする（§9.441、利用者の指示「ゴムリングの色や
+       外径については表の方にもほしいです」）。図の帯の字は狭い区間で落ちるが、
+       ここは必ず読める（§9.434 と同じ「落ちない置き場」）。 */
+    + (Gs.length && !res.finger
+       ? `<td class="bs-num bs-sep bs-ringid" title="このゴムリングの色と外径です。`
+         + `色は外径そのもので、${r.c.ringT === 'big' ? '大径＝製品幅を作る側' : '小径＝広げた側'}です">`
+         + `<span class="bs-ringdot" style="background:${esc(hexOf(r.c.od) || 'transparent')}"></span>`
+         + `${esc(colorOf(r.c.od))}Φ${r.c.od}</td>` : '')
+    + Gs.map((x, i2) => `<td class="bs-num${i2 || !res.finger ? '' : ' bs-sep'}">${num(r.c.G[x])}</td>`).join('')
+    + (hasHold ? `<td class="bs-num bs-sep${r.c.bare ? ' is-bad' : ''}"`
+       + ` title="${esc(holdLabel)}で埋め切れなかった幅です。`
+       + `軸の寸法はスペーサーが作るので、ここが空いても刃の位置は動きません">`
+       + (r.c.kind
+          ? (r.c.bare ? `<b>${r.c.len.toFixed(2)}</b>（1本も載りません）`
+                      : (r.c.holdRem > 0.001 ? r.c.holdRem.toFixed(2) : '·'))
+          : '<span class="bs-z">·</span>') + '</td>' : '')
+    + (hasRem ? `<td class="bs-num bs-sep ${gapCell(r.c.rem)}"`
+       + ' title="スペーサーで区間を埋め切れなかった幅です。組んだものはOS側へ'
+       + '押し付けて組むので、ここは 0 でなければなりません">'
+       + `${r.c.rem > 0.001 ? r.c.rem.toFixed(3) : '·'}</td>` : '')
     + '</tr>';
   }).join('')).join('');
-  $('#bsTables').innerHTML = `<table class="bs-g">${head}<tbody>${body}</tbody></table>`;
+  $('#bsTables').innerHTML = fitAlertHtml(res)
+   + `<table class="bs-g">${head}<tbody>${body}</tbody></table>`;
  }
  /* 端数は、そのまま「刃と刃のあいだに残る隙間」になる。ぴったり埋まったものと
     許容内で隙間があるものを見分けられるようにする。 */
- const gapCell = rem => (rem <= 1e-9 ? 'is-zero'
-  : (rem <= (+M.P.gapMax || 0) + 1e-9 ? 'is-ok' : 'is-bad'));
+ /* **スペーサーの端数は 0 が正**（§9.441、利用者の指示「スペーサー層の余りは
+    本来0のはずで、0でないのは計算の不具合です。組んだものをOS側に押し付けて
+    組んでいくので隙間がなくなります」）。以前は `gapMax`（5mm）までを「許容」と
+    して緑で出していたが、**許容ではなく不具合**なので、0 でなければ赤で出す。 */
+ const gapCell = rem => (rem <= 1e-9 ? 'is-zero' : 'is-bad');
 
  /* ---------- 端部（OS端／DS端）を図の左右へ ---------- */
  function renderEnds(res) {

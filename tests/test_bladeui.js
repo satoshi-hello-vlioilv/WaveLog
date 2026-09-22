@@ -235,6 +235,33 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('ゴムリングの径と色と大小を上の帯が言い切る',
         /大\s*\S*Φ\d+／小\s*\S*Φ\d+/.test(shown.chip), shown.chip);
 
+    /* ---- 余りは層ごとに別（§9.441、利用者の指示） ----
+       スペーサー層の端数は**0が正**（組んだものはOS側へ押し付けて組む）。
+       板押さえの空きは**わずかなら差し支えない**別の数。混ぜて1つの列に
+       すると、直すべき端数と見ていればよい空きが見分けられない。 */
+    const tbl1 = await page.evaluate(() => ({
+     heads: [...document.querySelectorAll('#bsTables thead th')]
+       .map(x => x.textContent.replace(/\s+/g, ' ').trim()),
+     ring: [...document.querySelectorAll('#bsTables .bs-ringid')]
+       .map(x => x.textContent.replace(/\s+/g, ' ').trim()),
+     dots: document.querySelectorAll('#bsTables .bs-ringdot').length,
+     alerts: [...document.querySelectorAll('#bsTables .bs-alert')]
+       .map(x => x.textContent.replace(/\s+/g, ' ').trim()),
+    }));
+    rec('刃組表は「板押さえの空き」の列を持つ（スペーサーの端数とは別・§9.441）',
+        tbl1.heads.some(h => /板押さえの空き/.test(h)), tbl1.heads.join('|').slice(0, 120));
+    /* **0が正**なので、ふだんは列そのものが立たない（立っていたら中身を見る）。 */
+    rec('スペーサーの端数は0——列が立たないか、立っても不具合として出す（§9.441）',
+        !tbl1.heads.some(h => /スペーサーの端数/.test(h))
+        || tbl1.alerts.some(t => /スペーサーで埋め切れていない/.test(t)),
+        tbl1.heads.filter(h => /端数/.test(h)).join('|') + ' / ' + tbl1.alerts.join(' ').slice(0, 80));
+    /* **ゴムリングは色（＝外径）×幅で1本**（§9.377）。幅だけでは注文できない。 */
+    rec('刃組表でゴムリングの色と外径が読める（§9.441）',
+        tbl1.ring.length > 0 && tbl1.ring.every(t => /Φ\d+/.test(t)),
+        tbl1.ring.slice(0, 3).join(' / '));
+    rec('色は見本の丸を添えて言う（色名だけで思い出させない）',
+        tbl1.dots >= tbl1.ring.length && tbl1.dots > 0, `${tbl1.dots}個`);
+
     /* ---- 4) 板厚をフィンガー切替より下げると保持層が替わる ---- */
     await page.click('[data-step-open="bsV2"]');
     await page.waitForSelector('#bsThick', { timeout: 8000 });
@@ -261,6 +288,24 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         f.heads.join('|').slice(0, 80));
     rec('所要は「ゴムリングは使わない」と言う', /フィンガー方式のため使いません/.test(f.bom),
         f.bom.replace(/\s+/g, ' ').slice(0, 90));
+    /* **「表示」の保持層の札は、いまの方式の名前で出す**（§9.441）。器は1つの
+       まま字だけ差し替える——フィンガー方式なのに「ゴムリング」と書いてあると、
+       押しても何が消えるのか読めない（§CLAUDE 4）。 */
+    const holdTg = await page.evaluate(() => [...document.querySelectorAll('[data-show="ring"]')]
+      .map(b => b.textContent.trim() + '|' + (b.dataset.showName || '')));
+    rec('「表示」の保持層の札がフィンガーになる（§9.441）',
+        holdTg.length > 0 && holdTg.every(t => /^フィンガー\|フィンガー$/.test(t)),
+        holdTg.join(' / '));
+    /* **フィンガーは布入ベークライトの茶**（§9.441、利用者の指示）。模式図と
+       断面図が**同じトークン**から引くこと——以前は断面図だけ灰青のリテラル
+       （`#6f7d8c`）で、スペーサーと見分けが付かなかった。 */
+    const finCol = await page.evaluate(() => {
+     const st = document.querySelector('#bsStage3') || document.documentElement;
+     const v = getComputedStyle(st).getPropertyValue('--bs-fig-finger').trim();
+     return { token: v, has: !!v };
+    });
+    rec('フィンガーの色はトークン（ベークライトの茶）から引く（§9.441）',
+        finCol.has && /^#|rgb/.test(finCol.token), finCol.token);
 
     /* フィンガーは**板押さえ**なので、軸のまわりではなく**板の両側**に描く
        （§9.379、利用者の指示4）。以前は輪と同じ場所に出しており、どこを
@@ -2704,6 +2749,23 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
        本物の失敗の上に、片付けの空振りを足して読みにくくしない。 */
     rec('設備停止マスタに置き土産を残さない',
         stopId ? dropped >= 1 : dropped === 0, `${dropped}行`);
+    /* **刃組のマスタを空のまま置いていかない**（§9.284・§9.441）。この網は
+       頭で `wipe()` が**この設備の刃組マスタを全部消す**のに、
+       `dropNewMasterRows()` が消すのは「控えより後に増えた行」だけ——
+       元から在った行は戻らず、**表が空のまま次の実行へ渡る**（ランナーが
+       「ゴムリングマスタ -50 / スペーサーマスタ -26 / フィンガーマスタ -14 /
+       刃マスタ -6」と名指ししていた）。実際にこれで、別の確認が
+       「マスタが登録されていません」を見て遠回りした。
+       **図面どおりの1式を入れ直して返す**（`seed`は足し算にならない・§9.377）。 */
+    const back = await (await post('/api/bladeset/seed', { equipment: EQ })).json()
+      .catch(() => null);
+    const c2 = await getj('/api/bladeset/context?equipment=' + encodeURIComponent(EQ));
+    rec('刃組のマスタを空のまま置いていかない（§9.441）',
+        (c2.spacers || []).length > 0 && (c2.blades || []).length > 0
+        && (c2.fingers || []).length > 0 && (c2.rings || []).length > 0,
+        `sp=${(c2.spacers || []).length} blade=${(c2.blades || []).length}`
+        + ` fin=${(c2.fingers || []).length} ring=${(c2.rings || []).length}`
+        + ` / seed=${JSON.stringify((back && back.made) || {})}`);
   }
  }, { mode: 'edit', viewport: { width: 1700, height: 1000 },
       /* 刃組ガイダンスは**この端末の使用設備**で開く。検証用の端末には

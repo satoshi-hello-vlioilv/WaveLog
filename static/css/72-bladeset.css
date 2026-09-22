@@ -505,6 +505,14 @@ body.bs-mode .bs-shell{display:flex}
 .bs-num.is-zero{background:var(--success-bg)}
 .bs-num.is-ok{background:var(--warn-bg)}
 .bs-num.is-bad{background:var(--danger-bg);color:var(--danger);font-weight:700}
+/* **0が正の列**は見出しから「直すもの」と分かるようにする（§9.441）。
+   色だけで語らないので、見出しの小さな字が「0 が正（出たら不具合）」と言う。 */
+.bs-g th.bs-bad{background:var(--danger-bg);color:var(--danger)}
+/* ゴムリングの色・外径（§9.441）。**色は見本を添えて言い切る**——色名だけだと
+   現物のどれかを思い出す必要がある（§CLAUDE 思い出させない）。 */
+.bs-ringid{white-space:nowrap}
+.bs-ringdot{display:inline-block;width:.7em;height:.7em;margin-right:var(--space-1);
+ border:1px solid var(--line);border-radius:var(--radius-xs);vertical-align:-1px}
 
 /* ---------- 右の段（所要・段取） ---------- */
 .bs-rail{background:var(--card-bg);border:1px solid var(--card-border);

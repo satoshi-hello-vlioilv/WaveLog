@@ -552,7 +552,17 @@
   let ht = null;
   if (hold && !isEnd) ht = hold.kind === 'finger' ? tbl.finger : tbl.ring.get(hold.od);
   const gom = ht ? fillWith(ht, total) : { out: [], rem: 0 };
-  return { len: total, hold: ht ? hold : null, gom, spacer, rem: spacer.rem };
+  /* **余りは層ごとに別の意味を持つ**（§9.441、利用者の指示「スペーサー間や
+     スペーサーと刃の間には計算上の隙間は無い。……わずかに隙間ができてよいのは
+     ゴムリングやフィンガーの部分の板押さえに該当する部分のみ」）。
+       `rem`     … スペーサー層の端数。組んだものをOS側へ押し付けて組むので
+                   **0が正**。0でなければ計算の不具合。
+       `holdRem` … 板押さえ（ゴムリング／フィンガー）の空き。手持ちの幅で
+                   埋め切れないぶんで、**わずかなら差し支えない**。
+     混ぜて1つの数にすると、直さなければならない端数と、見ていればよい空きが
+     見分けられなくなる。 */
+  return { len: total, hold: ht ? hold : null, gom, spacer,
+           rem: spacer.rem, holdRem: ht ? gom.rem : 0 };
  }
 
  /* 区間ごとの中身を、OS側から順に決める。
@@ -631,6 +641,10 @@
   const kind = parts.hold ? parts.hold.kind : '';
   return { len: parts.len, sp, G, od, kind,
            ringT: parts.hold ? parts.hold.ringT || '' : '', rem: parts.rem,
+           holdRem: +(parts.holdRem || 0).toFixed(3),
+           /* **板押さえが1本も載らない区間**（§9.441）。端部は設計どおり
+              持たないので、ここで言うのは「載るはずなのに空」のときだけ。 */
+           bare: !!(kind && !sizeKeys(G).length),
            sig: `${parts.len.toFixed(2)}|${kind}|${od}|${sigOf(sp)}|${sigOf(G)}` };
  }
 
@@ -843,8 +857,22 @@
   const err = assemblyError(A, g);
   const rows = buildRows(segs, zp);
   const ends = endRows(A, zp);
+  /* **割付から出る断り**（§9.441）。マスタだけを見る`warnings()`とは別に、
+     「組んでみて初めて分かること」をここで数える。答えるのはこの1箇所で、
+     刃組表・所要・図はここが出した数を読むだけにする（§CLAUDE 8）。
+       ・スペーサー層の端数 … **0が正**。0でないのは計算の不具合。
+       ・板押さえが空の区間 … 手持ちの幅では1本も載らない（在庫が尽きた等）。 */
+  const bad = [], bare = [];
+  zp.zones.forEach((z, i) => {
+   [['上', z.up], ['下', z.lo]].forEach(([ax, p]) => {
+    if ((p.rem || 0) > 1e-6) bad.push(`${i + 1}${ax}（${p.rem.toFixed(3)}mm）`);
+    if (p.hold && !p.gom.out.length) bare.push(`${i + 1}${ax}`);
+   });
+  });
+  const fit = { spacerGap: bad, bareHold: bare,
+                holdName: holdName(st, M) };
   return { segs, A, zp, g, err, rows, ends, badges: badgeMap(rows.concat(ends)),
-           contact: c, method: method(st), finger: isFinger(st, M),
+           fit, contact: c, method: method(st), finger: isFinger(st, M),
            bigOd: odFromTh(M, st.bigTh), smOd: odFromTh(M, st.smallTh) };
  }
 
