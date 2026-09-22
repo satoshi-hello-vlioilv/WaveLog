@@ -28,7 +28,7 @@ with_write(login_id,pc_name,uid,apply_fn)のapply_fn内から
 import json as _json
 import re as _re
 
-from ..db_access import add_missing_columns, tables
+from ..db_access import add_missing_columns, cols, tables
 from .master_repo import normalize_equipment_name
 from ..quiet import quiet
 
@@ -53,6 +53,17 @@ PLAN_UPDATED_PC_COLUMN='更新端末名'
 # ——実績データは次の抽出で消える（前工程が終わった行は落ちる）ので、
 # 突合できた事実をあちら任せにすると、あとから理由を辿れなくなる。
 PLAN_ACTUAL_JSON_COLUMN='実績JSON'
+# 追加操作そのものの身元(§9.438、利用者の報告「同じロットが2つ表示される」)。
+# **HTTPは「サーバーが書けたか」を答えない**——書けたのに応答だけ落ちると、
+# 画面には失敗としか見えず、書込キューが同じ`add`を投げ直す(通信不良は
+# 待てば通ることがあるので、再送そのものは正しい)。素のINSERTはそのたびに
+# 1行増やし、**どちらも本物の行**なので取り込み直しても消えない。
+# **操作に身元を持たせ、同じ身元は2回適用しない**——再送を止めるのではなく、
+# 2回目が1回目と同じ行を指すようにする(至上1回の配送はネットワーク越しには
+# 作れないが、「何度届いても結果は1つ」なら作れる)。
+# **行そのものが持つ**(別表にしない)。予定と同じ寿命で、共有DBを写しても
+# 一緒に付いていき、消える予定と一緒に消える。
+PLAN_OP_ID_COLUMN='操作ID'
 # 共有DBは既に現場で動いているため、作り直さず「無ければ足す」で移行する
 # (master_repo.ensure_audit_columns 等と同じ方式)。列が増えても
 # plan_rows/plan_row は列名を明示して読むので、古い版のアプリが書いた
@@ -83,7 +94,7 @@ def ensure_plan_table(c_share):
  names=tables(c_share);created=False
  if PLAN_TABLE not in names:
   cur=c_share.cursor()
-  cur.execute('CREATE TABLE [作業予定] ([予定ID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [表示順] INTEGER, [種別] TEXT, [ロット番号] TEXT, [検査番号] TEXT, [鋳造番号] TEXT, [予定名称] TEXT, [明細JSON] TEXT, [固定開始日時] TEXT, [見積分] REAL, [状態] TEXT, [実績測定ID] TEXT, [備考] TEXT, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME, [親予定ID] INTEGER, [登録端末名] TEXT, [更新端末名] TEXT)')
+  cur.execute('CREATE TABLE [作業予定] ([予定ID] INTEGER PRIMARY KEY AUTOINCREMENT, [設備名] TEXT, [表示順] INTEGER, [種別] TEXT, [ロット番号] TEXT, [検査番号] TEXT, [鋳造番号] TEXT, [予定名称] TEXT, [明細JSON] TEXT, [固定開始日時] TEXT, [見積分] REAL, [状態] TEXT, [実績測定ID] TEXT, [備考] TEXT, [有効] INTEGER, [登録者ID] TEXT, [更新者ID] TEXT, [登録日時] DATETIME, [更新日時] DATETIME, [親予定ID] INTEGER, [登録端末名] TEXT, [更新端末名] TEXT, [操作ID] TEXT)')
   cur.execute('CREATE INDEX [IX_作業予定_設備順] ON [作業予定] ([設備名],[表示順])')
   c_share.commit();created=True
   return created
@@ -94,8 +105,25 @@ def ensure_plan_table(c_share):
  add_missing_columns(c_share,'作業予定',
                      ((PLAN_PARENT_COLUMN,'INTEGER'),
                       (PLAN_CREATED_PC_COLUMN,'TEXT'),(PLAN_UPDATED_PC_COLUMN,'TEXT'),
-                      (PLAN_ACTUAL_JSON_COLUMN,'TEXT')))
+                      (PLAN_ACTUAL_JSON_COLUMN,'TEXT'),
+                      (PLAN_OP_ID_COLUMN,'TEXT')))
  return created
+
+def plan_by_op_id(c_share,op_id):
+ """その操作IDで既に入れた予定のID（無ければNone）。**答えるのはここ1箇所**。
+
+ 有効・無効は見ない——**消された予定も「その操作は適用済み」**なので、
+ 再送で作り直してはいけない（外したはずの行が数秒後に戻る）。
+ 列そのものが無い写し（古い版が作った共有DB）は、まだ1件も身元を持って
+ いないので`None`でよい。"""
+ op_id=str(op_id or '').strip()
+ if not op_id:return None
+ if PLAN_TABLE not in tables(c_share):return None
+ if PLAN_OP_ID_COLUMN not in set(cols(c_share,PLAN_TABLE)):return None
+ cur=c_share.cursor()
+ cur.execute(f'SELECT [予定ID] FROM [作業予定] WHERE [{PLAN_OP_ID_COLUMN}]=?',[op_id])
+ row=cur.fetchone()
+ return row[0] if row else None
 
 def plan_rows(c_share,equipment=None,include_inactive=False):
  # **読むだけ**（§9.325）。表が無い写し（共有がまだ空）は0件。
@@ -154,13 +182,19 @@ def _next_plan_order(c_share,equipment):
  cur.execute('SELECT Max([表示順]) FROM [作業予定] WHERE [設備名]=? AND ([有効] IS NULL OR [有効]<>0)',[equipment])
  return int(cur.fetchone()[0] or 0)+1
 
-def plan_add(c_share,equipment,kind,uid,pc='',position='end',lot_no='',inspection_no='',casting_no='',title='',detail=None,stop_reason_id=None,stop_sub_id=None,estimate_minutes=None,fixed_start=None,remark='',children=None):
+def plan_add(c_share,equipment,kind,uid,pc='',position='end',lot_no='',inspection_no='',casting_no='',title='',detail=None,stop_reason_id=None,stop_sub_id=None,estimate_minutes=None,fixed_start=None,remark='',children=None,op_id=''):
  # §8.2。kind='作業'はdetail(仕掛行スナップショット、辞書)をそのままJSON化して
  # 持つ(サーバー側で仕掛を引き直さない。フロントが送った時点の見え方を固定)。
  # kind='設備停止'はstopReasonIdから設備停止マスタの[名称]をスナップショットし、
  # マスタ行の[設備名]がリクエストのequipmentと一致しなければ拒否する(§5.3、
  # 他設備の停止理由IDの誤流用を防ぐ)。
  ensure_plan_table(c_share)
+ # **同じ操作は2回適用しない**（§9.438）。応答が届かなかった追加は書込キューが
+ # 投げ直すので、身元が同じなら**1回目に作った行のIDをそのまま返す**
+ # ——画面から見れば「成功した」と同じで、行は1つのまま。
+ op_id=str(op_id or '').strip()
+ done=plan_by_op_id(c_share,op_id)
+ if done is not None:return done
  equipment=str(equipment or '').strip()
  if not equipment:raise ValueError('設備名を指定してください。')
  # 'コメント'(§9.189): 予定の列に挟む申し送り。**時間を持たない**ので
@@ -268,8 +302,17 @@ def plan_add(c_share,equipment,kind,uid,pc='',position='end',lot_no='',inspectio
   if order is None:order=_next_plan_order(c_share,equipment)
  else:
   order=_next_plan_order(c_share,equipment)
- cur.execute('INSERT INTO [作業予定] ([設備名],[表示順],[種別],[ロット番号],[検査番号],[鋳造番号],[予定名称],[明細JSON],[固定開始日時],[見積分],[状態],[備考],[有効],[登録者ID],[更新者ID],[登録端末名],[更新端末名],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,-1,?,?,?,?,Now(),Now())',
-             [equipment,order,kind,lot_no,inspection_no,casting_no,title_snapshot,detail_json,fixed_start,est,PLAN_REORDERABLE_STATE,remark,uid,uid,pc,pc])
+ # **身元は行と一緒に入れる**（§9.438）。入れたあとで別のUPDATEで書くと、
+ # そのあいだに届いた再送が身元を見つけられず、結局2行になる。
+ # 列そのものが無い写し（古い版が作った共有DB）へは載せない——`ensure_plan_table`
+ # が足すので通常は在るが、足せなかった端末でも**今までどおり動く**側へ倒す。
+ has_op=PLAN_OP_ID_COLUMN in set(cols(c_share,PLAN_TABLE))
+ cur.execute('INSERT INTO [作業予定] ([設備名],[表示順],[種別],[ロット番号],[検査番号],[鋳造番号],[予定名称],[明細JSON],[固定開始日時],[見積分],[状態],[備考],[有効],[登録者ID],[更新者ID],[登録端末名],[更新端末名]'
+             +(f',[{PLAN_OP_ID_COLUMN}]' if has_op else '')
+             +',[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,-1,?,?,?,?'
+             +(',?' if has_op else '')+',Now(),Now())',
+             [equipment,order,kind,lot_no,inspection_no,casting_no,title_snapshot,detail_json,fixed_start,est,PLAN_REORDERABLE_STATE,remark,uid,uid,pc,pc]
+             +([op_id] if has_op else []))
  plan_id=cur.lastrowid
  # 分割ありの親ロット(§9.83)。子ロットは**同じ書込サイクルの中で**まとめて
  # 作る。1件ずつ別の書込にすると、共有DBのロック→取得→適用→反映を子の数

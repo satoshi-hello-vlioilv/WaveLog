@@ -876,29 +876,27 @@
 .sc-insert-tip{position:absolute;top:50%;transform:translateY(-50%);
  left:calc(var(--sc-handle-col,calc(18px * var(--ui-scale))) + var(--space-2) * 2);
  display:flex;align-items:baseline;gap:var(--space-2);
- /* 上限が来ないとき(操作の列を隠しているとき)の逃げ幅。**1行にしたぶん
-    横に伸びる**ので、2段だった頃の32emだと最後の数文字が切れる。 */
- max-width:var(--sc-tip-max,48em);pointer-events:auto;cursor:pointer;
+ /* 上限が来ないとき(操作の列を隠しているとき)の逃げ幅。書くのは
+    「どこへ入るか」だけなので、中身なりで止まる(§9.439)。 */
+ max-width:var(--sc-tip-max,24em);
+ /* **札は当たり判定を持たない**(§9.439、利用者の指示「カーソルの邪魔に
+    ならないように」)。押せるのは線のほうで、札は線が何を指しているかを
+    言うだけ——押せる箱を2つ重ねると、下の行のボタンを食う。 */
+ pointer-events:none;
  padding:0 var(--space-2);
  border:1px solid var(--teal);border-radius:var(--radius-xs);
  background:var(--pale);color:var(--teal-dark);
  box-shadow:0 2px 6px rgba(16,44,52,.18)}
-.sc-insert-tip:hover{background:#d7f0f1;border-color:var(--teal-dark)}
 /* 位置を決めたあと(§9.179改訂)。**塗りを変えて「決まっている」と示す**——
    同じ見た目のままだと、まだ選べるのか決まったのかが分からない。 */
 .sc-insert-ghost.is-pinned .sc-insert-line::before{background:var(--success)}
 .sc-insert-ghost.is-pinned .sc-insert-tip{background:var(--success-bg);
- border-color:var(--success);color:var(--success);cursor:default}
-.sc-insert-cancel{margin-left:auto;height:var(--ctl-h-xs);padding:0 var(--space-2);
- border:1px solid var(--line);border-radius:var(--radius-xs);
- background:var(--surface);color:var(--ink-2);font-size:var(--fs-micro);cursor:pointer}
-.sc-insert-cancel:hover{background:var(--surface-2);color:var(--ink)}
+ border-color:var(--success);color:var(--success)}
 .sc-insert-mark{font-size:var(--fs-sm);font-weight:800;line-height:1}
-/* **1行に収める**(§9.199)。2段だと箱の高さが行を1つ丸ごと覆う。 */
-.sc-insert-text{display:flex;flex-direction:row;align-items:baseline;gap:var(--space-2);
- min-width:0;font-size:var(--fs-sm);font-weight:800;line-height:var(--lh)}
-.sc-insert-text small{font-weight:600;color:var(--ink-2);font-size:var(--fs-micro);white-space:nowrap}
-.sc-insert-text>span,.sc-insert-text small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* **1行に収める**(§9.199)。2段だと箱の高さが行を1つ丸ごと覆う
+   ——実測で「やめる」を持っていた頃は 576×28px＝ちょうど1行ぶんだった(§9.439)。 */
+.sc-insert-text{min-width:0;font-size:var(--fs-sm);font-weight:800;line-height:var(--lh);
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 記号だけのボタンは**正方形**にする。幅の下限を --ctl-h-xs(行の外の
    ボタンの高さ)に置くと、行に合わせて縮んだ高さ(--row-ctl-h)との差が
    そのまま横長の歪みになる(§9.112)。 */
