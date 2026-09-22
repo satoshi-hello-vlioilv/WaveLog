@@ -46,6 +46,24 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
  async ({ page, rec, errs, setMode }) => {
   const snapM = await H.masterSnapshot(SNAP_TABLES);
   /* ---- 下ごしらえ: この設備の刃組マスタを空にしてから始める ---- */
+  /* **模式図を測る前は模式図へ切り替える**（§9.440）。既定が断面図になったので、
+     `.bs-stage` は伏せてある——伏せた SVG の `getBBox()` は 0 を返すので、
+     切り替えずに測ると「中身 0..0」になる（実際にそれで4件落ちた）。 */
+  const toFig = async kind => {
+   /* **先に手順の窓を閉じる**（§9.394）。`.bs-pop` は図の見出しへ垂れ下がる
+      ので、開いたままだと図の切替札が覆われて押せない（実際にここで
+      30秒の FATAL になった）。人が押すときも同じ順になる。 */
+   await page.evaluate(() => document.querySelectorAll('.bs-step.is-open')
+     .forEach(p => p.classList.remove('is-open')));
+   await W.until(page, () => !document.querySelector('.bs-step.is-open'),
+                 null, { ms: 5000, what: '手順の窓が閉じる' });
+   const on = await page.evaluate(k => !!document.querySelector(
+     `#bsFigTabs [data-fig="${k}"].is-on`), kind);
+   if (!on) await page.click(`#bsFigTabs [data-fig="${kind}"]`);
+   await W.until(page, k => document.querySelector(`#bsFigTabs [data-fig="${k}"]`)
+                 .classList.contains('is-on'), kind, { ms: 15000, what: `図を${kind}へ` });
+   await W.paint(page);
+  };
   const wipe = async () => {
    const c = await getj('/api/bladeset/context?equipment=' + encodeURIComponent(EQ));
    for (const [path, list] of [['blade', c.blades], ['spacer', c.spacers],
@@ -225,7 +243,12 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      el.value = '0.4';
      el.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    await W.until(page, () => /フィンガー/.test(document.querySelector('#bsV2').textContent),
+    /* **保持方式を言う欄で待つ**。`#bsV2` は `Φ…/t…`（刃径と板厚）しか持たない
+       ので、そこで「フィンガー」を待っても永久に成立しない——8秒待って諦めて
+       いた（§9.440 で見つけた既存の取り違え）。方式は `#bsV4`（保持層）と
+       `#bsHold2`（説明文）が言う。 */
+    await W.until(page, () => /フィンガー/.test(
+                    (document.querySelector('#bsV4') || {}).textContent || ''),
                   null, { ms: 8000, what: 'フィンガー方式へ切り替わる' });
     const f = await page.evaluate(() => ({
      verdicts: [...document.querySelectorAll('#bsGauges .bs-vb')].map(x => x.textContent),
@@ -243,6 +266,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
        （§9.379、利用者の指示4）。以前は輪と同じ場所に出しており、どこを
        押さえているのかが図から読めなかった。ここで見るのは位置関係だけ
        ——形（先細り）は幅しだいで変わるので数えない。 */
+    await toFig('2d');
     const fg = await page.evaluate(() => {
      const stage = document.querySelector('#bsStage');
      const box = el => {
@@ -428,6 +452,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
        横いっぱいに広がっていれば、器の幅ぶんそのまま描かれる。ここが縮むと
        左右に何も無い帯が生まれる——利用者の「両側に余白がある」はこの形。
        縦の詰まり（`grow`）では横は1pxも動かないので、見るのは**横だけ**。 */
+    await toFig('2d');
     const fill = await page.evaluate(() => {
      const g = document.querySelector('#bsStage');
      const vb = (g.getAttribute('viewBox') || '').split(/\s+/).map(Number);
@@ -443,7 +468,16 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
        .map(sel => !!document.querySelector('#bsFigRow ' + sel));
      const figW = row ? Math.round(row.getBoundingClientRect().width) : 0;
      const stW = Math.round(document.querySelector('#bsStage').getBoundingClientRect().width);
+     /* **軸（アーバー）の中心が viewBox の中心に居るか**（§9.440、利用者の
+        指摘「模式図全体がやや右によっているような感じです」）。軸はいちばん
+        幅の広い `rect`。絵では「やや右」としか読めないので数で見る。 */
+     let ax = 0, aw = 0;
+     g.querySelectorAll('rect').forEach(el => {
+      let b = null; try { b = el.getBBox(); } catch (_) { return; }
+      if (b && b.width > aw) { aw = b.width; ax = b.x; }
+     });
      return { vw: vb[2] || 0, x0: bb ? bb.x : 0, x1: bb ? bb.x + bb.width : 0, cols,
+              axOff: vb[2] ? Math.round(ax + aw / 2 - vb[2] / 2) : null,
               inRail, inFig, figW, stW };
     });
     /* 中身が viewBox の横幅の 98% 以上を占めていること（見出しの右端の
@@ -453,6 +487,15 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         `中身 ${Math.round(fill.x0)}..${Math.round(fill.x1)} / viewBox 0..${fill.vw}`);
     /* 端部の表は右レールへ移した（§9.379）。図の段に戻ると模式図が
        7割まで痩せるので、**どちらに居るか**を両方向から見る。 */
+    /* **中心ずれは 2px まで**（丸めのぶんだけ許す）。実測では直す前が +45px
+       （左の余白100 対 右10）で、直したあとは 0（§9.440）。 */
+    rec('模式図の軸は viewBox の中央に居る（左右に寄らない・§9.440）',
+        fill.axOff !== null && Math.abs(fill.axOff) <= 2, `中心ずれ ${fill.axOff}px`);
+    /* 有効幅の青い印は軸の外へ張り出すので、**器からはみ出さない**ことも見る
+       （直す前は右端が 1005 で viewBox 1000 を 5px はみ出していた）。 */
+    rec('図の中身が viewBox からはみ出さない',
+        fill.x0 >= -1 && fill.x1 <= fill.vw + 1,
+        `中身 ${Math.round(fill.x0)}..${Math.round(fill.x1)} / viewBox 0..${fill.vw}`);
     rec('端部の表は右レールにある', fill.inRail.every(Boolean), JSON.stringify(fill.inRail));
     rec('端部の表を図の段に戻さない（主役の模式図が痩せる）',
         fill.inFig.every(x => !x), JSON.stringify(fill.inFig));
@@ -737,9 +780,14 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await page.keyboard.press('Escape');
     await W.until(page, () => !document.querySelector('.bs-step.is-open'),
                   null, { ms: 5000, what: '手順の窓が閉じる' });
-    rec('立体図の部品は起動時に読まない（押したときだけ取りに行く）',
-        await page.evaluate(() => !window.THREE
-          && ![...document.scripts].some(x => /three/i.test(x.src || ''))));
+    /* **既定が断面図になったので、部品は開いた時点で読む**（§9.440）。
+       §9.377 の「取りに行くのは押したときだけ」は、CDN から取りに行っていた
+       頃の決まり——いまは同梱（`/static/vendor/three/`）なので外へはつながらず、
+       開くたびに読むのは手元のファイル1本。**外を指していないこと**（下の網）が
+       本体で、こちらは「読み終わって断面図が出ている」ことを見る。 */
+    rec('既定の断面図は、部品を読み終えて絵になっている',
+        await page.evaluate(() => !!window.THREE
+          && [...document.scripts].some(x => /three/i.test(x.src || ''))));
     const src3 = await page.evaluate(() => WL.bladeSolid && WL.bladeSolid.THREE_SRC);
     /* **外を指していないこと**（§9.378、利用者の報告「3Dでの表現が表示失敗します」）。
        CDN から読んでいたときは現場の端末で読み込めなかったので、同梱へ倒した。
@@ -750,6 +798,12 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
        行われるので、`/static/...` の相対のままでは1つも当たらない）。 */
     const block3 = '**' + src3;
     await page.route(block3, r => r.abort());
+    /* **部品を読めない端末をここで作る**（§9.440）。既定が断面図になったぶん
+       `window.THREE` は開いた時点でもう載っているので、遮断だけでは
+       `setMode()` が読み込みの道を通らず、断りが出ない。いったん外して
+       同じ道を通す——**製品側の作りは変えない**（§9.267 の追補と同じ立場で、
+       現場で起きない条件を網の側だけで作る）。 */
+    await page.evaluate(() => { window.__threeKeep = window.THREE; window.THREE = undefined; });
     await page.click('#bsFigTabs [data-fig="3d"]');
     await W.until(page, () => {
      const e = document.querySelector('.bs-ng3');
@@ -2537,15 +2591,22 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await page.evaluate(() => WL.bladeGuide.open({}));
     await W.until(page, () => document.querySelectorAll('#bsStage rect').length > 20,
                   null, { ms: 20000, what: '刃組図が描き直される' });
-    const virgin = await page.evaluate(() => ({
-     three: !!window.THREE, builds: window.WL.bladeSolid.view().builds }));
-    rec('「初回」の条件がそろっている（部品も模型もまだ無い）',
-        virgin.three === false && virgin.builds === 0, JSON.stringify(virgin));
-    await page.click('#bsFigTabs [data-fig="cut"]');
+    /* **「初回」の形が変わった**（§9.440、利用者の指示で既定を断面図にした）。
+       以前の初回は「部品も模型もまだ無い状態から、初めて断面図を押す」
+       だったが、いまは**開いた最初の1枚がもう断面図**——押す手が要らない。
+       見る条件はそのまま（初めて組んだ模型が断面になっているか）で、
+       **組んだ回数が1回であること**で「これが最初の1枚」と言い切る。 */
     await W.until(page, () => {
      const v = window.WL.bladeSolid && window.WL.bladeSolid.view();
      return !!(v && v.cut && v.ortho && v.builds > 0);
     }, null, { ms: 25000, what: '初めての断面図が組み上がる' });
+    const virgin = await page.evaluate(() => {
+     const v = window.WL.bladeSolid.view();
+     return { three: !!window.THREE, builds: v.builds, cut: v.cut, ortho: v.ortho };
+    });
+    rec('「初回」の条件がそろっている（開いた最初の1枚が断面図・組んだのは1回）',
+        virgin.builds === 1 && virgin.cut === true && virgin.ortho === true,
+        JSON.stringify(virgin));
     const first = await page.evaluate(() => {
      const v = window.WL.bladeSolid.view();
      return { capSide: v.capSide, capZ: v.capZ, builtKeep: v.builtKeep, keep: v.keep,

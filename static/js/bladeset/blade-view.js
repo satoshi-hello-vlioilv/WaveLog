@@ -134,8 +134,8 @@
             伏せて・平行投影の真横から・軸の中心で切って見る。模式図の読み取り
             やすさ（真横・同じ並び）と、立体の質感を両方持たせるための1枚。 -->
        <div class="bs-seg" id="bsFigTabs">
-        <button type="button" class="bs-chip is-on" data-fig="2d">模式図</button>
-        <button type="button" class="bs-chip" data-fig="cut" title="立体の模型を軸の中心で切り、真横から平行投影で見ます。寸法は模式図と同じ読み方ができます">断面図</button>
+        <button type="button" class="bs-chip" data-fig="2d">模式図</button>
+        <button type="button" class="bs-chip is-on" data-fig="cut" title="立体の模型を軸の中心で切り、真横から平行投影で見ます。寸法は模式図と同じ読み方ができます">断面図</button>
         <button type="button" class="bs-chip" data-fig="3d">立体図</button>
        </div>
        <!-- **向きの切り替えは図の見出しへ置く**（§9.380、利用者の指示
@@ -151,7 +151,7 @@
            ない——常時載せる面積は「頻度 × 重要度」で配る（§CLAUDE 1）。 -->
       <div class="bs-figrow" id="bsFigRow">
        <div class="bs-figmain">
-        <div class="bs-stage"><svg id="bsStage" viewBox="0 0 1000 300"
+        <div class="bs-stage" hidden><svg id="bsStage" viewBox="0 0 1000 300"
          preserveAspectRatio="xMidYMid meet" role="img" aria-label="刃組図"></svg></div>
         <!-- **区間の拡大**（§9.413、利用者の指示「アルファベットをクリックしたら、
              ポップオーバーでその部分だけの組み合わせを拡大した図を…すべての
@@ -172,7 +172,7 @@
           role="img" aria-label="区間の拡大図"></svg>
          <p class="bs-zoom-note" id="bsZoomNote"></p>
         </div>
-        <div class="bs-stage3" id="bsStage3" hidden>
+        <div class="bs-stage3 is-cut" id="bsStage3">
          <canvas class="bs-c3"></canvas>
          <!-- **寸法の層**（§9.418）。刃の上下のずれを示す縦の破線と、部材の幅の
               字を置く。図形の上に重ねる線と字なので、WebGL の中ではなく SVG で
@@ -475,7 +475,7 @@
   render();
   /* 画面を出るときに立体図を止めている（`exit`）ので、戻ってきたら選んで
      あった側へ戻す——利用者が選んだ見方を勝手に変えない。 */
-  figMode(figKind);
+  figMode(figKind, figKind === FIG_DEFAULT && !figChosen);
   const miss = missingMasters();
   if (miss) showEmptyMissing(miss);
  }
@@ -840,7 +840,17 @@
  /* ====================== 図 ======================
     アーバー全長を viewBox に写して描く。実寸 mm と図の座標の対応は V が持つ。 */
  const FIG = {
-  vw: 1000, left: 100, right: 990,
+  /* **軸は viewBox の中央に置く**（§9.440、利用者の指摘「模式図全体がやや右に
+     よっているような感じです」）。以前は `left:100 / right:990` で、左の余白
+     100 に対し右は 10——**軸の中心が中央より 45px 右**に居た（実測）。さらに
+     有効幅の青い印は軸の外へ `capW` だけ張り出すので、右端は 1005 まで伸びて
+     **viewBox を 5px はみ出して**いた（実測）。
+     左右の余白は同じ `60` にする。内訳は左右とも
+     「青い印 15 ＋ 見出しとの間 8 ＋ 見出しの字 ~31 ＋ 縁 6」で、
+     **左の見出し（上軸・下軸）が縮まない最小の幅**から決めてある
+     （これ以上詰めると `rowLabel()` の `room / 字数` が効いて字が小さくなる）。
+     中身に使える幅は 890 → 880（−1.1%）。 */
+  vw: 1000, left: 60, right: 940,
   /* `capW`＝**有効幅の境目に置く青い印**の幅（§9.378、利用者の指示「有効幅の
      両側に目印の青い図形を置くだけにしてください」）。以前は軸を有効幅より
      左右へ 58px 張り出させ、その先端に青を置き、さらに内側へ「積みが続く」
@@ -2549,9 +2559,20 @@
     持つ**。顔ぶれは`FIG_KINDS`の1箇所（増やすときはここと札だけ・§9.412）。 */
  const FIG_KINDS = ['2d', 'cut', '3d'];
  const FIG_SOLID = { cut: true, '3d': true };    /* 立体の模型を使う図 */
- let figKind = '2d';
- function figMode(mode) {
-  figKind = FIG_KINDS.includes(mode) ? mode : '2d';
+ /* **最初に出す図は断面図**（§9.440、利用者の指示「断面図を初期値にして
+    ください」）。答えは1箇所——札の`is-on`・器の出し入れ・`figKind`の初期値・
+    読めない値を受けたときの倒れ先が、ここを見て揃う。 */
+ const FIG_DEFAULT = 'cut';
+ let figKind = FIG_DEFAULT;
+ /* 利用者が自分で図を選んだか。**選んだあとは既定へ戻さない**（開き直しても
+    選んであった側で出す・§9.412）。倒れ先の判断にも使う。 */
+ let figChosen = false;
+ /* 立体の部品（three.js）を読めない端末では**模式図へ倒す**（§9.377「部品を
+    読めない端末では字で断る。模式図はそのまま使える」）。ただし**倒すのは
+    既定で開いたときだけ**——自分で断面図を押した人には断りの字を出す
+    （黙って別の図へ移すと、押した結果が消えたように見える）。 */
+ function figMode(mode, auto) {
+  figKind = FIG_KINDS.includes(mode) ? mode : FIG_DEFAULT;
   const solid = !!FIG_SOLID[figKind];
   panel.querySelectorAll('#bsFigTabs [data-fig]')
    .forEach(b => b.classList.toggle('is-on', b.dataset.fig === figKind));
@@ -2567,7 +2588,17 @@
   /* **切り替えは1回で組む**（§9.428）。以前はここで`sync()`を呼んでから
      `setMode()`を呼んでおり、`sync()`が**前の図のまま**1回組んで1枚描いて
      いた（組むのも2回）。いまの割付は`setMode()`へ渡す。 */
-  WL.bladeSolid.setMode(solid, figKind, { st, M, res: LAST, ringHex: hexOf });
+  const want = figKind;
+  Promise.resolve(WL.bladeSolid.setMode(solid, figKind, { st, M, res: LAST, ringHex: hexOf }))
+   .then(ok => {
+    if (ok || !auto || figKind !== want || want === '2d') return;
+    /* 倒すときは断りの字も引っ込める——模式図はふつうに使えるので、
+       赤い断りだけが残ると「壊れている」と読める。 */
+    const ng = panel.querySelector('.bs-ng3');
+    if (ng) ng.hidden = true;
+    figMode('2d');
+   })
+   .catch(e => WL.quiet.note('図を組めない（模式図はそのまま使える）', e));
  }
 
  function wire() {
@@ -2774,6 +2805,7 @@
   $('#bsFigTabs').addEventListener('click', e => {
    const b = e.target.closest('[data-fig]');
    if (!b) return;
+   figChosen = true;              // 自分で選んだら、以後は既定へ戻さない（§9.440）
    figMode(b.dataset.fig);
   });
   if (WL.bladeSolid) {
