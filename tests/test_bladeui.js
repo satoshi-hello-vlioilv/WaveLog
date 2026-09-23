@@ -677,6 +677,8 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
               vert: [...svg.querySelectorAll('text')]
                 .filter(t => /rotate\(-90/.test(t.getAttribute('transform') || '')).length,
               dashed: svg.querySelectorAll('[stroke-dasharray]').length,
+              /* 刃の形の破線（反対側の軸の刃）。軸心の一点鎖線は数えない。 */
+              knifeDash: svg.querySelectorAll('rect[stroke-dasharray]').length,
               dims: +svg.dataset.dims, inside: +svg.dataset.inside, lead: +svg.dataset.lead,
               leadw: +svg.dataset.leadw, off: +svg.dataset.off,
               /* **半断面の比**（§9.432）。縦は半径なので、帯の高さの比が
@@ -788,13 +790,11 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('寸法はマスタの値そのまま（10.025 を 10.03 へ丸めない）', zoom.exact === true,
         zoom.nums3);
     rec('区間ぜんたいの寸法も出す', zoom.span === true, String(zoom.span));
-    /* **上下刃のずれは絵で言う**（§9.413 追補 → §9.442 で字を落とした）。
-       反対側の軸の刃を破線で添えるのは残す——クリアランスの向きは絵でしか
-       読めない。**「上下刃の中心間」の字は出さない**（利用者の指示「上下刃の
-       中心線は、拡大図に不要です。表示が重ならないように注意して」）——
-       貼る相手が無いので必ず引き出すことになり、席を1つ余計に食っていた。 */
-    rec('拡大図に上下刃のずれが絵で出る（反対側の軸の刃を破線で添える）',
-        zoom.dashed > 0, `破線${zoom.dashed}`);
+    /* **反対側の軸の刃（破線）は描かない**（§9.458、利用者の指示「拡大図の刃の横の
+       点線は消してください」。§9.442 の「破線の刃は残す」は撤回）。クリアランスの
+       値は足元の説明が言う。**「上下刃の中心間」の字も出さない**（§9.442）。 */
+    rec('拡大図に反対側の軸の刃（破線）を描かない（§9.458）',
+        zoom.knifeDash === 0, `刃の形の破線${zoom.knifeDash}`);
     rec('「上下刃の中心間」の字は拡大図に出さない（§9.442）',
         zoom.clrLabel === 0, `札${zoom.clrLabel}`);
 
@@ -864,9 +864,9 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     });
     await W.until(page, () => document.getElementById('bsZoom').hidden === false,
                   null, { ms: 8000, what: '最初の区間で拡大図が開き直る' });
-    rec('破線が何かとクリアランスの在りかを足元で言う',
-        /面と面のあいだがクリアランス/.test(zoom.note),
-        zoom.note.slice(-60));
+    rec('クリアランスの値は足元の説明で言う（破線とは書かない・§9.458）',
+        /クリアランス\s*[\d.]+/.test(zoom.note) && !/破線/.test(zoom.note),
+        zoom.note.slice(-80));
     rec('図が言えないこと（どの区間に入るか）を添える', /区間/.test(zoom.note),
         zoom.note.slice(0, 40));
 
@@ -1102,7 +1102,13 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      /* ② 利用者の形: 104.90×11・板厚0.4・クリアランス0.04 */
      const r1 = solve({ W: 1180, thick: 0.4, clr: 0.04, align: 'none',
                         lots: [{ name: 'L1', w: 104.9, n: 11 }] });
-     const rem1 = r1.zp.zones.flatMap(z => [z.up.rem, z.lo.rem]).filter(v => v > 1e-6).length;
+     /* DS端（最後の区間）は除く——残りはフローティングシートが押さえる（§9.456）。 */
+     const rem1 = r1.zp.zones.slice(0, -1).flatMap(z => [z.up.rem, z.lo.rem]).filter(v => v > 1e-6).length;
+     /* DS端は細かいスペーサーを使わず、残りは押さえ代以内（§9.457）。 */
+     const zl = r1.zp.zones[r1.zp.zones.length - 1];
+     const dsFine = [zl.up, zl.lo].flatMap(p => p.spacer.out)
+      .filter(([sz]) => Math.abs(sz - Math.round(sz)) > 1e-9).reduce((a, [, c]) => a + c, 0);
+     const dsRem = Math.max(zl.up.rem, zl.lo.rem), stroke = B2.floatStroke(M2);
      /* ① 元板巾が条の合計に足りない（利用者の画面の形・W≈106） */
      const r0 = solve({ W: 106 });
      const run0 = B2.materialRun(r0.A, r0.segs), f0 = run0.find(q => q.sg.type !== 'trim');
@@ -1117,7 +1123,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      const tooTight = ringFaces.filter(f => f.p.holdRem < R.gapMin - 1e-6).length;
      const outBand = ringFaces.filter(f => f.p.holdRem > R.gapMax + 1e-6 || f.p.holdRem < R.gapMin - 1e-6).length;
      Object.assign(s0, keep); B2.syncOrder(s0);
-     return { clrUsed: r1.A.clr, clrWant: r1.A.clrWant, step: r1.A.clrStep, rem1,
+     return { clrUsed: r1.A.clr, clrWant: r1.A.clrWant, step: r1.A.clrStep, rem1, dsFine, dsRem, stroke,
               stop0: (r0.stop || []).map(x => x.key), off0, stop1: (r1.stop || []).length,
               R, nRing: ringFaces.length, tooTight, outBand, listed: r2.fit.ringGap.length,
               lubeOk, lubeTotal: r2.g.lube.u + r2.g.lube.l, strips: r2.segs.length };
@@ -1125,8 +1131,12 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('クリアランスは組める値へ四捨五入する（0.04 → 刻み0.025の 0.05）',
         g454.clrWant === 0.04 && Math.abs(g454.clrUsed - 0.05) < 1e-9 && g454.step === 0.025,
         `指定${g454.clrWant} → ${g454.clrUsed}（刻み${g454.step}）`);
-    rec('スペーサーの端数は0面（組んだものはOS側へ押し付けるので隙間は無い）',
+    rec('スペーサーの端数は0面（DS端を除く。組んだものはOS側へ押し付けるので隙間は無い）',
         g454.rem1 === 0, `${g454.rem1}面`);
+    rec('フローティングシートの押さえ代は基準値の既定 0.95mm（図面の F.P.ストローク）',
+        g454.stroke === 0.95, String(g454.stroke));
+    rec('DS端は細かいスペーサーを使わず、残りは押さえ代以内（§9.457）',
+        g454.dsFine === 0 && g454.dsRem <= g454.stroke + 1e-9, `細かい${g454.dsFine}枚 / 残り${g454.dsRem}`);
     rec('元板巾が条の合計に足りない材料は「組めない」と言う',
         g454.stop0.includes('short') && g454.stop1 === 0, JSON.stringify(g454.stop0));
     rec('組めない材料でも板と刃は同じ起点から出る（matOff=0）', g454.off0 === 0, `matOff=${g454.off0}`);

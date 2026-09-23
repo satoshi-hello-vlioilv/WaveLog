@@ -445,7 +445,7 @@
     1枚を落とすと10mm級の穴が開く**ので、刻みぶんの行き過ぎは許す（§9.418）。
     それでも入らないものは落とす——落ちた長さは下の「端数」が受ける。 */
  const PACK_EPS = 0.03;
- function zone(out, from, to, y, parts) {
+ function zone(out, from, to, y, parts, dsEnd) {
   const expand = BS().expand;
   const pk = D3.pack;
   let at = from;
@@ -466,7 +466,11 @@
   /* **端数は端数として描く**（模式図の `fillZone` と同じ・§9.418）。空けたままに
      すると「軸に何も載っていない区間」に見えるが、実際は割り付けで埋め切れ
      なかったぶんで、別の色で置くのが模式図の作法。 */
-  if (to - at > 0.01) {
+  /* **DS端の残りは端数ではない**（§9.457）——フローティングシートが押さえる量なので、
+     端数の色で塞がず、端数の数にも入れない（`pack.float`へ別に控える）。 */
+  if (to - at > 0.01 && dsEnd) {
+   if (pk) pk.float = Math.max(pk.float || 0, +(to - at).toFixed(3));
+  } else if (to - at > 0.01) {
    out.liner.push({ x: (at + to) / 2, y, sz: to - at, filler: true });
    if (pk) { pk.filler++; pk.fillerMm = +(pk.fillerMm + (to - at)).toFixed(3); }
   }
@@ -702,7 +706,7 @@
    for (let j = 0; j < segs.length; j++) spans.push([pos[j] + tk / 2, pos[j + 1] - tk / 2]);
    spans.push([pos[n - 1] + tk / 2, L]);
    spans.forEach(([a, b], k) => {
-    zone(out, a, b, y, zp.zones[k][side]);
+    zone(out, a, b, y, zp.zones[k][side], k === spans.length - 1);
     const r = (k > 0 && k < spans.length - 1) ? bmap[side][k] : null;
     /* **どちらの軸かも持って帰る**（§9.442）——記号の札は押すと拡大図が開く
        ので、軸を渡さないと下軸を押しても上軸の図が出る（模式図と同じ作法）。 */
@@ -1897,10 +1901,13 @@
      「有効長に近づいたときにDSからOS側にフローティングシートで押さえるので、DSエンドまでの
      隙間は発生しない」）。以前は `(-0.05)` と差で出しており、足りない＝隙間に読めた。
      **超えたときだけ**差を出す（有効長を超える積みは組めない）。 */
+  /* 押さえ代（§9.457）を超えたら、そう言う（吸えない＝隙間）。 */
+  const stroke = BS().floatStroke(ctx && ctx.M);
   const gap = v => {
    const d = +(v - pk.arbor).toFixed(3);
    if (d > 0) return `<s>(+${mm(d)} 超過)</s>`;
-   return d === 0 ? '' : `<s>＋フローティングシート ${mm(-d)}</s>`;
+   if (d === 0) return '';
+   return `<s>＋フローティングシート ${mm(-d)}${stroke > 0 && -d > stroke + 1e-6 ? `（押さえ代 ${mm(stroke)} 超過）` : ''}</s>`;
   };
   el.innerHTML = `<s>有効長</s><i>${mm(pk.arbor)}</i>`
    + `<s>／上軸</s><i>${mm(pk.sumU)}</i>${gap(pk.sumU)}`

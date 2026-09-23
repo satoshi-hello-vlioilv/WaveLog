@@ -470,6 +470,47 @@
            rem: Math.max(0, +(want - u * FILL_STEP).toFixed(3)) };
  }
 
+ /* **幅を持たせた積み**（§9.457、利用者の指示「DS端は有効長に近づいたらフローティング
+    シートで押さえる」「粗く積んで残りを任せる」・押さえ代は図面の F.P.ストローク 0.95mm）。
+    長さ `len` から `slack` 短いところまでのあいだで、次の順にいちばん良い積みを取る:
+      ① 細かいスペーサー（1mm の倍数でない寸法＝10.025〜10.9 等）の枚数が少ない
+      ② 総枚数が少ない  ③ 残りが小さい
+    ①を先に置くのは、細かいスペーサーが基準を追い込むための少ない在庫だから
+    （`10.025` は初期セットで2枚）——DS端の残りはフローティングシートが吸う。
+    窓の中に作れる長さが1つも無ければ `null`（呼ぶ側が切り下げの積みへ戻す）。 */
+ const isFine = sz => Math.abs(sz - Math.round(sz)) > 1e-9;
+ function stackOf(table, u) {
+  const by = new Map();
+  for (let v = u; v > 0;) {
+   const i = table.pick[v];
+   if (i < 0) break;
+   const su = table.units[i];
+   const sz = +(su * FILL_STEP).toFixed(3);
+   by.set(sz, (by.get(sz) || 0) + 1);
+   v -= su;
+  }
+  return [...by.entries()].sort((a, b) => b[0] - a[0]);
+ }
+ function fillWithin(table, len, slack) {
+  if (!table) return null;
+  const want = Math.max(0, +(+len).toFixed(3));
+  const hi = Math.min(Math.floor(want / FILL_STEP + 1e-9), table.U - 1);
+  const lo = Math.max(1, Math.ceil((want - slack) / FILL_STEP - 1e-9));
+  let best = null;
+  for (let v = hi; v >= lo; v--) {
+   if (!(table.cnt[v] > 0)) continue;
+   const out = stackOf(table, v);
+   const fine = out.reduce((a, [sz, c]) => a + (isFine(sz) ? c : 0), 0);
+   const key = [fine, table.cnt[v], hi - v];
+   if (!best || key[0] < best.key[0] || (key[0] === best.key[0]
+       && (key[1] < best.key[1] || (key[1] === best.key[1] && key[2] < best.key[2])))) {
+    best = { key, out, u: v };
+   }
+  }
+  if (!best) return null;
+  return { out: best.out, rem: Math.max(0, +(want - best.u * FILL_STEP).toFixed(3)) };
+ }
+
  /* 部材ごとの「いま使える数」。
     ラインは2台の台車を交互に使う。直前の刃組はラインで稼働中なので、そこに
     載っている部材は外せない＝使えない。いま組み替える台車（2回前の構成）に
@@ -564,11 +605,12 @@
     保持層（ゴムリング／フィンガー）にはまず占有幅の枠を割り当てるが、手持ちの
     幅でしか組めない。組めなかった分は枠を空けたままにせず、スペーサー側へ回す
     ——スペーサーは細かい寸法を持つので、端数をそこで最小にできる。 */
- function zoneParts(len, isEnd, hold, tbl, rule) {
+ function zoneParts(len, isEnd, hold, tbl, rule, slack) {
   const total = Math.max(0, +(+len).toFixed(3));
   /* 軸の寸法はスペーサーが作る。区間の全長をスペーサーで組み、刃の位置はこれで
-     決まる。保持層はその上に被せる別の層で、軸方向の寸法には効かない。 */
-  const spacer = fillWith(tbl.spacer, total);
+     決まる。保持層はその上に被せる別の層で、軸方向の寸法には効かない。
+     **DS端だけは幅を持たせる**（`slack`＝フローティングシートの押さえ代・§9.457）。 */
+  const spacer = (slack > 0 && fillWithin(tbl.spacer, total, slack)) || fillWith(tbl.spacer, total);
   /* 保持層は製品幅の上にだけ載るので、最外刃より外（OS端・DS端）はスペーサーのみ。 */
   let ht = null;
   if (hold && !isEnd) ht = hold.kind === 'finger' ? tbl.finger : tbl.ring.get(hold.od);
@@ -646,12 +688,13 @@
      収められるならそちらを使う（対象台車の部材を流用でき、段取りが早くなる）。
      どうしても収まらないときは精度を優先し、足りない分は所要で示す。 */
   const RULE = ringRule(M);
-  const take = (len, isEnd, hold) => {
-   const best = zoneParts(len, isEnd, hold, fillTables(IX, plan, left, span, null, true), RULE);
+  const SLACK = floatStroke(M);
+  const take = (len, isEnd, hold, slack) => {
+   const best = zoneParts(len, isEnd, hold, fillTables(IX, plan, left, span, null, true), RULE, slack);
    let parts = best;
    const blocked = new Set();
    for (let attempt = 0; attempt < 16; attempt++) {
-    const cand = zoneParts(len, isEnd, hold, fillTables(IX, plan, left, span, blocked), RULE);
+    const cand = zoneParts(len, isEnd, hold, fillTables(IX, plan, left, span, blocked), RULE, slack);
     const overS = cand.spacer.out.find(([sz, c]) => c > (left.sp.get(String(sz)) || 0));
     const holdKey = cand.hold
      ? (cand.hold.kind === 'finger' ? 'F' : 'R') : '';
@@ -662,7 +705,8 @@
     if (!overS && !overH) {
      /* 精度が落ちないなら在庫の範囲の組み方を採る。幅公差は絶対に外せないので、
         枚数が増えても精度のほうを優先する。 */
-     if (cand.rem <= best.rem + 1e-9) parts = cand;
+     /* DS端（`slack`あり）は残りが押さえ代に収まれば同じ精度とみなす（§9.457）。 */
+     if (cand.rem <= Math.max(best.rem, slack || 0) + 1e-9) parts = cand;
      break;
     }
     if (overS) blocked.add('S' + overS[0]);
@@ -694,7 +738,9 @@
     const t = ringType(burr, upper);
     return { kind: 'ring', ringT: t, od: odOfType(st, M, t), lube: wide(upper) };
    };
-   return { up: take(z.up, isEnd, mk(true)), lo: take(z.lo, isEnd, mk(false)) };
+   /* 押さえ代の幅を持たせるのは**DS端だけ**（最後の区間）。OS端は押し付ける側なので0が正。 */
+   const sl = i === last ? SLACK : 0;
+   return { up: take(z.up, isEnd, mk(true), sl), lo: take(z.lo, isEnd, mk(false), sl) };
   });
   return { zones, plan, left };
  }
@@ -970,7 +1016,15 @@
                 lubeMissing: !isFinger(st, M) && !!(M.rings || []).length && !(M.lubes || []).length,
                 /* DS端でフローティングシートが押さえる量（上軸・下軸）。0でも正。 */
                 floatSeat: { up: +(zp.zones[lastZ].up.rem || 0).toFixed(3),
-                             lo: +(zp.zones[lastZ].lo.rem || 0).toFixed(3) },
+                             lo: +(zp.zones[lastZ].lo.rem || 0).toFixed(3),
+                             stroke: floatStroke(M),
+                             /* 押さえ代を超える残り（§9.457）。フローティングシートでは
+                                吸えない＝本当の隙間なので、軸ごとに名指しする。 */
+                             over: floatStroke(M) > 0
+                              ? [['上', zp.zones[lastZ].up], ['下', zp.zones[lastZ].lo]]
+                                .filter(([, p]) => (p.rem || 0) > floatStroke(M) + 1e-6)
+                                .map(([ax, p]) => `${lastZ + 1}${ax}（${p.rem.toFixed(3)}mm）`)
+                              : [] },
                 holdName: holdName(st, M) };
   return { segs, A, zp, g, err, rows, ends, badges: badgeMap(rows.concat(ends)),
            fit, stop: stopReasons(st, A), contact: c, method: method(st), finger: isFinger(st, M),
@@ -1226,6 +1280,12 @@
   if (num(P.centerFromOS) > 0) return { value: +P.centerFromOS, from: 'master' };
   return { value: +(arbor / 2).toFixed(3), from: 'mid' };
  }
+ /* フローティングシートの押さえ代（§9.457）。設備ごとの`刃組基準値`（既定は図面の
+    F.P.ストローク 0.95mm・加圧装置1か所）。読めなければ0＝幅を持たせない。 */
+ function floatStroke(M) {
+  const v = num(M && M.P && M.P.floatSeatStroke);
+  return v > 0 ? v : 0;
+ }
  function clearanceUsed(M, tk, want) {
   const step = spacerStep(M), t = +tk || 0, w = +want || 0;
   const n = Math.round(+((t + w) / step).toFixed(6));
@@ -1362,7 +1422,7 @@
  }
 
  WL.bladeSet = {
-  defaultState, clearanceRate, clearanceFor, clearanceUsed, centerOf, spacerStep, ringRule, applyStandards, applyBladePick, standardState,
+  defaultState, clearanceRate, clearanceFor, clearanceUsed, centerOf, floatStroke, fillWithin, spacerStep, ringRule, applyStandards, applyBladePick, standardState,
   normalize, buildIndex, ringMeta, thOf, odFromTh, odOfType, ringType, oppBurr,
   method, isFinger, holdName, contact, recommend, syncOrder, reorder,
   buildSegs, widths, buildLayout, buildFiller, fillWith, planZones,

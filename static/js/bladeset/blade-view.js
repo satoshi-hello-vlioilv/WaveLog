@@ -1042,14 +1042,15 @@
  /* 1区間の中身を描く。軸の寸法はスペーサーが作る。保持層はその上に被さる別の層。
     図の上での区間は刃の位置を見えるように広げたぶん実寸とずれる（最大で刃厚ぶん）
     ので、区間ごとに縮尺を合わせてぴったり埋める。 */
- function fillZone(V, xa, xb, cy, parts) {
+ function fillZone(V, xa, xb, cy, parts, dsEnd) {
   const d = V.dir, span = Math.abs(xb - xa);
   if (span <= 1) return '';
   const k = parts.len > 0 ? span / V.pw(parts.len) : 1;
   const fill = partsRun(V, xa, xb, cy, expand(parts.spacer), V.spacerD,
                         V.PAL.spacer, V.PAL['spacer-edge'], null, k);
   let svg = fill.svg;
-  if ((xb - fill.end) * d > 0.8) {
+  /* DS端の残りはフローティングシートが押さえる量（§9.457）——端数の色で塞がない。 */
+  if (!dsEnd && (xb - fill.end) * d > 0.8) {
    svg += block(V, (fill.end + xb) / 2, cy, Math.abs(xb - fill.end), V.spacerD,
                 V.PAL.filler, V.PAL['filler-edge']);
   }
@@ -1209,7 +1210,7 @@
   for (let j = 0; j < segs.length; j++) {
    svg += fillZone(V, at(j) + half, at(j + 1) - half, cy, zp.zones[j + 1][side]);
   }
-  svg += fillZone(V, at(lastK) + half, V.px(A.arborLen), cy, zp.zones[lastZ][side]);
+  svg += fillZone(V, at(lastK) + half, V.px(A.arborLen), cy, zp.zones[lastZ][side], true);
   return svg;
  }
  function drawKnives(V) {
@@ -1750,15 +1751,7 @@
   const core = B.expand(P.spacer).map(mm => ({ mm, kind: 'spacer', name: 'スペーサー' }));
   if (P.rem > 0.001) core.push({ mm: P.rem, kind: 'gap', name: '隙間' });
   const run = st.flip ? core.slice().reverse() : core.slice();
-  /* **クリアランスは「反対側の軸の刃とのずれ」**（§9.413 追補）。同じ切断点の
-     刃は上下でクリアランスのぶん食い違うので、**その刃の番号**を持たせておく。 */
-  const own = (z0.upper ? res.A.U : res.A.Lo) || [];
-  const opp = (z0.upper ? res.A.Lo : res.A.U) || [];
-  const kIx = twoKnife
-   ? (st.flip ? [z0.i, z0.i - 1] : [z0.i - 1, z0.i])
-   : [r.endSide === 'OS' ? 0 : own.length - 1];
-  let kn = 0;
-  const knife = () => ({ mm: tk, kind: 'knife', name: '刃（厚み）', k: kIx[kn++] });
+  const knife = () => ({ mm: tk, kind: 'knife', name: '刃（厚み）' });
   const seq = [];
   if (knifeLeft) seq.push(knife());
   run.forEach(q => seq.push(q));
@@ -1797,22 +1790,9 @@
     + ` text-anchor="${knifeLeft ? 'end' : 'start'}" font-size="11" font-weight="700"`
     + ` fill="${PAL.label}">有効幅の端</text>`;
   }
-  /* 反対側の軸の刃（クリアランス）。実寸 0.13mm は図で 0.3px しかないので、
-     **見える最小まで離して描き、値は真の値を書く**（§9.413）。 */
-  const CLR_MIN = 7;
-  let clr = '', clrMm = 0;
-  seq.filter(q => q.kind === 'knife' && opp.length && own.length).forEach(q => {
-   const d = (+opp[q.k] || 0) - (+own[q.k] || 0);
-   if (!Number.isFinite(d) || Math.abs(d) < 1e-6) return;
-   clrMm = Math.abs(d);
-   const dir = (d < 0 ? -1 : 1) * (st.flip ? -1 : 1);
-   const px = dir * Math.max(Math.abs(d) * S, CLR_MIN);
-   q.clrX = q.a + px;
-   clr += `<rect x="${(q.a + px).toFixed(1)}" y="${q.bd.y.toFixed(1)}"`
-    + ` width="${Math.max(1.2, q.b - q.a).toFixed(1)}" height="${q.bd.h.toFixed(1)}"`
-    + ` fill="none" stroke="${PAL['knife-edge']}" stroke-width="1.2"`
-    + ` stroke-dasharray="6 4" opacity=".85"/>`;
-  });
+  /* **反対側の軸の刃（破線）は描かない**（§9.458、利用者の指示「拡大図の刃の横の点線は
+     消してください」。§9.442 の「破線の刃は残す」は撤回）。クリアランスの値は足元の
+     説明が言う。 */
   /* 保持層（ゴムリング／フィンガー）。**スペーサーの外側の輪**なので、
      軸の上下ではなく**半径の続き**に1本だけ置く（§9.432）。 */
   let hold = '';
@@ -1882,7 +1862,7 @@
       「上下刃の中心線は、拡大図に不要です。表示が重ならないように注意して」）。
       貼る相手が無いので必ず引き出すことになり、**席を1つ余計に食って**
       他の寸法を押し出していた。値は刃組図の見出し（`#bsDVal`）が持つ。
-      破線の刃そのものは残す——クリアランスの向きは絵でしか読めない。 */
+      反対側の軸の刃（破線）も§9.458で描かなくなった。 */
   });
   holdList.forEach(q => {
    items.push({ cx: q.cx, name: q.name || '', val: zmm(q.mm), w: q.w, bd: q.bd,
@@ -1995,14 +1975,14 @@
   return {
    vh, dims: items.length, inside: inside.length + vert.length, lead, off, leadWmax,
    axis: z0.upper ? 'up' : 'lo', zone: z0.i,
-   svg: `${body}${clr}${hold}${caps}${ln}${marks}${spans}`,
+   svg: `${body}${hold}${caps}${ln}${marks}${spans}`,
    /* 図が言えないことだけを添える（§CLAUDE 8 同じ情報を2箇所に出さない）。 */
-   note: zoomNote(res, r, P, ring, finger, clrMm)
+   note: zoomNote(res, r, P, ring, finger)
   };
  }
  /* 図の外で言うこと。**図に出ている寸法は繰り返さない**——繰り返すと、
     読む側は「違うものかもしれない」と数え直すことになる（§CLAUDE 8）。 */
- function zoomNote(res, r, P, ring, finger, clrMm) {
+ function zoomNote(res, r, P, ring, finger) {
   const up = (r.zones || []).filter(z => z.upper).map(z => z.i);
   const lo = (r.zones || []).filter(z => !z.upper).map(z => z.i);
   const where = [];
@@ -2019,7 +1999,7 @@
   /* 破線は反対側の軸の刃。**中心間は刃厚＋クリアランス**あるので、この縮尺でも
      そのまま描ける（§9.420。以前はクリアランスだけのずれで1px未満だった）。
      クリアランスは2枚の刃の**面と面のあいだ**に見えている。 */
-  if (clrMm > 0) bits.push(`破線は反対側の軸の刃（面と面のあいだがクリアランス ${clrMmText(clrUse().used)}）`);
+  bits.push(`クリアランス ${clrMmText(clrUse().used)}（反対側の軸の刃との面と面のあいだ）`);
   if (ring) {
    bits.push(`ゴムリング ${ring.ringT === 'big' ? '大' : '小'} Φ${ring.od}`
      + `（内径 Φ${+M.P.ringBore || 241}）`);
@@ -2159,6 +2139,14 @@
    o += `<div class="bs-alert is-bad"><b>スペーサーで埋め切れていない区間が ${gap.length}面あります</b><br>`
      + '組んだものはOS側へ押し付けて組むので、ここは 0 でなければなりません（計算の不具合です）。<br>'
      + `${esc(cut(gap, 8))}</div>`;
+  }
+  /* DS端の残りが押さえ代を超える（§9.457）——フローティングシートでは吸えない＝隙間。 */
+  const fo = (f.floatSeat && f.floatSeat.over) || [];
+  if (fo.length) {
+   o += `<div class="bs-alert is-bad"><b>DS端の残りがフローティングシートの押さえ代 ${f.floatSeat.stroke}mm を超えます（${fo.length}面）</b><br>`
+     + 'このままでは隙間が残ります。手持ちのスペーサーでは押さえ代に収まる積みが作れませんでした'
+     + '（在庫が尽きたか、合う寸法がありません）。不足は「所要」に出ています。<br>'
+     + `${esc(cut(fo, 4))}</div>`;
   }
   /* 潤滑リングの行が無い（§9.455）。**入れられないことを言い、足す場所を言う**。 */
   if (f.lubeMissing) {
@@ -2307,12 +2295,15 @@
       隙間ではない——**押さえる量**として常に出す（0でも行は残す＝在ることを言う）。
       OS端の残りは今までどおり「隙間」（0が正・§9.441）。 */
    const openEnd = sd === 'DS';
+   /* 押さえ代（§9.457）。超えたぶんは吸えない＝赤。 */
+   const stroke = BS().floatStroke(M);
    if (openEnd || U.c.rem > 0.001 || L.c.rem > 0.001) {
+    const cls = r => (openEnd ? (stroke > 0 && r.c.rem > stroke + 1e-6 ? 'bs-ng' : '') : gapCell(r.c.rem));
     const gv = r => (r.c.rem > 0.001
-     ? `<span class="${openEnd ? '' : gapCell(r.c.rem)}">${r.c.rem.toFixed(openEnd ? 3 : 2)}</span>`
+     ? `<span class="${cls(r)}">${r.c.rem.toFixed(openEnd ? 3 : 2)}</span>`
      : '<span class="bs-z">·</span>');
-    h += `<tr class="bs-rem"${openEnd ? ' title="有効長に近づいたら、DS側からOS側へフローティングシートで押さえます。その量です（隙間ではありません）"' : ''}>`
-     + `<td class="bs-a">${openEnd ? 'フローティングシート' : '隙間'}</td>${two(gv(U), gv(L))}</tr>`;
+    h += `<tr class="bs-rem"${openEnd ? ` title="有効長に近づいたら、DS側からOS側へフローティングシートで押さえます。その量です（隙間ではありません）。押さえ代は ${stroke}mm まで"` : ''}>`
+     + `<td class="bs-a">${openEnd ? `フローティングシート<small>押さえ代 ${stroke}</small>` : '隙間'}</td>${two(gv(U), gv(L))}</tr>`;
    }
    const why = `${sd === 'OS' ? 'いちばん先に取り付けます' : 'いちばん後に取り付けます'}。`
     + '最外刃より外なのでスペーサーのみです。';

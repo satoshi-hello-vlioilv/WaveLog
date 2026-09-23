@@ -232,7 +232,8 @@ FINGER_DEF = TableDef(FINGER_TABLE, 'フィンガーID', FINGER_COLUMNS,
 STANDARD_TABLE = '刃組基準値マスタ'
 STANDARD_COLUMNS = (
     ('設備名', 'TEXT'),
-    ('アーバー有効長', 'REAL'), ('板の中心', 'REAL'), ('軸外径', 'REAL'),
+    ('アーバー有効長', 'REAL'), ('板の中心', 'REAL'), ('フローティングシート押さえ代', 'REAL'),
+    ('軸外径', 'REAL'),
     ('スペーサー外径', 'REAL'), ('リング内径', 'REAL'),
     ('刃使用限界径', 'REAL'), ('研磨周期日', 'INTEGER'),
     ('フィンガー切替板厚', 'REAL'), ('刃間隙間上限', 'REAL'),
@@ -258,6 +259,11 @@ STANDARD_DEFAULTS = {
     # 設定したい場合があるため、中心位置をOSからの距離として設定できるように」）。
     # **空（None）なら有効長の中央**——数を書き写すと、有効長を直したときに置き去りになる。
     'centerFromOS': None,
+    # フローティングシートの押さえ代（§9.457、利用者の回答と図面）。DS端はスペーサーを
+    # 粗く積み、残りをこの量までフローティングシートが吸う。既定は図面の
+    # 「F.P.ストローク 0.95mm×18本（1個所使用時）」——加圧ピストンのストローク 21mm は
+    # ねじ側の量で、板を押さえる側（輪の横から出るピストン）が出るのは 0.95mm。
+    'floatSeatStroke': 0.95,
     'shaftDia': 200.0,
     'spacerOD': 240.0, 'ringBore': 241.0,
     'minDia': 305.0, 'grindCycleDays': 60,
@@ -286,6 +292,7 @@ STANDARD_DEFAULTS = {
 # DBの列名 ↔ 画面の鍵。**対応はここだけ**（§9.324 R1 と同じ考え方）。
 _STANDARD_MAP = (
     ('アーバー有効長', 'arborLen', 'num'), ('板の中心', 'centerFromOS', 'num'),
+    ('フローティングシート押さえ代', 'floatSeatStroke', 'num'),
     ('軸外径', 'shaftDia', 'num'),
     ('スペーサー外径', 'spacerOD', 'num'), ('リング内径', 'ringBore', 'num'),
     ('刃使用限界径', 'minDia', 'num'), ('研磨周期日', 'grindCycleDays', 'int'),
