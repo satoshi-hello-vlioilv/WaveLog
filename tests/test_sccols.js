@@ -17,22 +17,17 @@
     8. 親子の折りたたみのつまみは**最初の内容セル**の中に入る
        (素の兄弟として足すと1列ぶんずれて全部の桁が合わなくなる)
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const TARGET='timeline:'+EQ;
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 async function cleanup(){
  try{await post('/api/column-layout-master',{target:TARGET,clear:true,order:[],widths:{},hidden:[],names:{},formats:{},rules:{},user_id:'test'})}catch(e){}
  try{await post('/api/schedule-content-master',{equipment:EQ,items:[],user_id:'test'})}catch(e){}
 }
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
+run('test_sccols: タイムラインの内容欄を項目ごとの独立した列へ(§9.88 段6)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await cleanup();
   await post('/api/access-mode',{mode:'edit'});
@@ -40,11 +35,10 @@ async function cleanup(){
   await page.waitForSelector('#openSchedule',{timeout:20000});
   await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForSelector('#openSchedule',{timeout:20000});
-  await page.waitForTimeout(1200);
+  await W.booted(page);
   await page.click('#openSchedule');
   await page.waitForSelector('.sc-row-line',{timeout:25000});
-  await page.waitForTimeout(1500);
+  await W.settleFlags(page); await idle();
 
   const shot=()=>page.evaluate(()=>{
    const tl=document.getElementById('scTimeline');
@@ -98,11 +92,10 @@ async function cleanup(){
    order:keys,widths:{[keys[1]]:210},hidden:[],names:{[keys[1]]:'用途(表示名)'},
    formats:{[keys[2]]:{kind:'text',prefix:'<',suffix:'>'}},rules:{}});
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForSelector('#openSchedule',{timeout:20000});
-  await page.waitForTimeout(1200);
+  await W.booted(page);
   await page.click('#openSchedule');
   await page.waitForSelector('.sc-row-line',{timeout:25000});
-  await page.waitForTimeout(1800);
+  await W.settleFlags(page); await idle();
   v=await shot();
   rec('開き直しても幅の指定が効く',Math.abs(v.headW[1]-210)<=2,`${v.headW[1]}px`);
   rec('開き直しても表示名の指定が効く',v.headText[1]==='用途(表示名)',v.headText[1]);
@@ -122,8 +115,7 @@ async function cleanup(){
   await post('/api/schedule-content-master',{equipment:EQ,items:more,user_id:'test'});
   await post('/api/access-mode',{mode:'schedule'});
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForSelector('#openSchedule',{timeout:20000});
-  await page.waitForTimeout(1200);
+  await W.booted(page);
   await page.click('#openSchedule');
   // scheduleモードは設備を選ぶところから始まる(全設備を扱えるため)。
   await page.waitForSelector('.sc-board-row',{timeout:20000});
@@ -132,7 +124,7 @@ async function cleanup(){
    if(r)r.click();
   },EQ);
   await page.waitForSelector('.sc-row-line',{timeout:25000});
-  await page.waitForTimeout(1800);
+  await W.settleFlags(page); await idle();
   const v2=await shot();
   rec('項目を足すと列が増える',v2.headKeys.length===v.headKeys.length+1,
    `${v.headKeys.length} -> ${v2.headKeys.length}`);
@@ -142,16 +134,9 @@ async function cleanup(){
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
   await post('/api/access-mode',{mode:'edit'});
 
-  console.log('\n=== SUMMARY ===');
-  const bad=R.filter(r=>!r.ok);console.log(`${R.length-bad.length}/${R.length} passed`);
-  bad.forEach(x=>console.log(' -',x.n,x.d||''));
-  await b.close();b=null;
   await cleanup();
-  process.exit(bad.length?1:0);
  }catch(e){
   console.error('FATAL',e);
-  if(b)await b.close().catch(()=>{});
   await cleanup();
-  process.exit(2);
  }
-})();
+}, {viewport:{width:1700,height:1000}});

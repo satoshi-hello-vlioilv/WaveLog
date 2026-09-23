@@ -12,12 +12,11 @@
     ⑤ `config/local.json` の4つも同じ画面から直せる（**画面の外に残さない**）
     ⑤' 保存は**保存値**を送る（効いている値を送り返して焼き付けない・§9.250 ⑩）
     ⑥ 測定データの保存の側に**同じ欄を2つ置かない**（§9.207 入口は1つ） */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const setMode=async m=>{await fetch(B+'/api/access-mode',{method:'POST',
  headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
-const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
-let b=null;
 /* 検証で触るパス設定は必ず元へ戻す（§9.121。置き土産が次の実行を狂わせる）。 */
 let savedShareDir=null;
 const readShareDir=async()=>{
@@ -29,24 +28,24 @@ const writeShareDir=async v=>{
   headers:{'Content-Type':'application/json'},
   body:JSON.stringify({records_share_dir:v,user_id:'test_storageui'})});
 };
-(async()=>{
+run('test_storageui: 置き場を1枚で見せて、その場で直す（§9.267）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
+ try{
  await setMode('edit');
  savedShareDir=await readShareDir();
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
  const tab=async label=>{await page.evaluate(l=>{const t=[...document.querySelectorAll('#masterMaintNav [data-master]')]
-   .find(x=>x.textContent.includes(l));if(t)t.click()},label);await page.waitForTimeout(2200)};
+   .find(x=>x.textContent.includes(l));if(t)t.click()},label);await idle()};
  /* 段は**名前で開く**（番号だと段が1つ増えただけで落ちる・§9.261）。 */
  const openSection=async label=>{await page.evaluate(l=>{
    const t=[...document.querySelectorAll('.mm-tabbar.is-page .mm-tab')].find(x=>x.textContent.includes(l));
-   if(t)t.click();},label);await page.waitForTimeout(600)};
+   if(t)t.click();},label);await idle()};
 
  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openMasterMaint',{timeout:15000});
  await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
- await page.reload({waitUntil:'domcontentloaded'});await page.waitForTimeout(1500);
- await page.click('#openMasterMaint');await page.waitForTimeout(1200);
+ await page.reload({waitUntil:'domcontentloaded'});await W.booted(page);await idle();
+ await page.click('#openMasterMaint');
+ await W.until(page,()=>document.body.classList.contains('mm-mode'),null,{what:'マスタ管理が開く'});
+ await idle();
 
  // ---- 前提: 無い置き場を1つ作っておく（「作る」の道を実際に通すため） ----
  // **材料は自分で注ぎ込む**——共有の置き場が設定済みの保証は無く、
@@ -115,7 +114,7 @@ const writeShareDir=async v=>{
    cfm.items.length>0&&/作る/.test(cfm.ok),JSON.stringify(cfm));
  rec('確認には作られるパスそのものが出る',
    cfm.items.some(x=>x.includes('records')),cfm.items.join(' / '));
- await page.click('#appConfirmCancel');await page.waitForTimeout(400);
+ await page.click('#appConfirmCancel');await page.waitForSelector('#appConfirmModal',{state:'hidden',timeout:8000});
  const stillMissing=await (await fetch(B+'/api/storage-layout')).json();
  rec('キャンセルしたら1つも作らない',
    (stillMissing.items||[]).find(x=>x.key==='recordsShare').exists===false,
@@ -209,7 +208,12 @@ const writeShareDir=async v=>{
  /* **連れて行った先が「置き場」の段であること**まで見る（§2。共通設定を
     開くだけだと、置き場の段を自分で探すことになる）。 */
  await page.evaluate(()=>document.querySelector('[data-ms-goto]').click());
- await page.waitForTimeout(2600);
+ /* 連れて行った先の段が選ばれ、中身が出るまで。 */
+ await W.until(page,()=>{const t=[...document.querySelectorAll('.mm-tabbar.is-page .mm-tab')]
+   .find(x=>x.getAttribute('aria-selected')==='true'||x.classList.contains('is-on'));
+   return !!t&&/置き場/.test(t.textContent)&&document.querySelectorAll('.pc-store-row').length>0},null,
+   {what:'置き場の段へ移る'});
+ await idle();
  const landed=await page.evaluate(()=>{
   const t=[...document.querySelectorAll('.mm-tabbar.is-page .mm-tab')]
     .find(x=>x.getAttribute('aria-selected')==='true'||x.classList.contains('is-on'));
@@ -218,13 +222,8 @@ const writeShareDir=async v=>{
  });
  rec('連れて行った先が「置き場」の段',
    /置き場/.test(landed.tab)&&landed.visible>0,JSON.stringify(landed));
-})().catch(e=>{rec('FATAL',false,e.message)}).finally(async()=>{
- /* **後片付け**——検証で入れたパス設定を必ず戻す（§9.121）。 */
- try{if(savedShareDir!==null)await writeShareDir(savedShareDir)}catch(e){}
- if(b)await b.close();
- const ng=R.filter(x=>!x.ok);
- console.log('\n=== SUMMARY ===');
- console.log(`${R.length-ng.length}/${R.length} passed`);
- ng.forEach(x=>console.log(' -',x.n,x.d||''));
- process.exit(ng.length?1:0);
-});
+ }finally{
+  /* **後片付け**——検証で入れたパス設定を必ず戻す（§9.121）。 */
+  try{if(savedShareDir!==null)await writeShareDir(savedShareDir)}catch(e){console.log('!! 置き場の設定を戻せませんでした: '+(e&&e.message||e))}
+ }
+}, {viewport:{width:1600,height:1000}});

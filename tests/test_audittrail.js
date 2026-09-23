@@ -11,13 +11,14 @@
     5. スケジュール表の行の詳細に「誰が・どの端末で」が必ず出る
     6. 監査の列は**既定では出さない**（保存済みの並びがあるときだけ出る）
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const TARGET='timeline:'+EQ;
 const REC='AUDIT_TEST_REC';
 const AUDIT_COLS=['__by__','__pc__','__upby__','__uppc__'];
-let b=null,madeId=null;
+let madeId=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const getJson=p=>fetch(B+p).then(r=>r.json());
 const planOf=async()=>((await getJson('/api/schedule/plan?equipment='+encodeURIComponent(EQ))).entries||[]);
@@ -26,11 +27,7 @@ async function cleanup(){
  try{await post('/api/measurement/backup/delete',{id:REC})}catch(e){}
  try{await post('/api/column-layout-master',{target:TARGET,clear:true,order:[],widths:{},hidden:[],names:{},formats:{},rules:{},formulas:{},locks:[],user_id:'test'})}catch(e){}
 }
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];page.on('pageerror',e=>errs.push(e.message));
+run('test_audittrail: 誰が・どの端末で(§9.180)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await cleanup();
   /* ---- 1-2) 測定データ: 入力開始者・端末 ----
@@ -82,13 +79,8 @@ async function cleanup(){
   await page.evaluate(e=>{localStorage.setItem('AccessMeasurementConfiguredEquipment',e);
    localStorage.removeItem('scLayoutPrefsV1')},EQ);
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForSelector('#openSchedule',{timeout:20000});
-  await page.waitForTimeout(1200);
-  await page.click('#openSchedule');
-  await page.waitForTimeout(2200);
-  await page.evaluate(e=>{const r=document.querySelector(`[data-equipment="${e}"]`);r&&r.click()},EQ);
-  await page.waitForSelector('.sc-row-line',{timeout:25000});
-  await page.waitForTimeout(1500);
+  await W.booted(page);
+  await W.openSchedule(page,EQ); await idle();
   const heads=await page.evaluate(()=>[...document.querySelectorAll('.sc-row-head [data-col]')].map(h=>h.dataset.col));
   rec('監査の列は既定では出さない',AUDIT_COLS.every(k=>!heads.includes(k)),JSON.stringify(heads.slice(-6)));
   const detail=await page.evaluate(id=>{
@@ -114,13 +106,8 @@ async function cleanup(){
   await post('/api/column-layout-master',{target:TARGET,order:withAudit,widths:{},hidden:[],
     names:{},formats:{},rules:{},formulas:{},locks:[],user_id:'test'});
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForSelector('#openSchedule',{timeout:20000});
-  await page.waitForTimeout(1200);
-  await page.click('#openSchedule');
-  await page.waitForTimeout(2200);
-  await page.evaluate(e=>{const r=document.querySelector(`[data-equipment="${e}"]`);r&&r.click()},EQ);
-  await page.waitForSelector('.sc-row-line',{timeout:25000});
-  await page.waitForTimeout(1500);
+  await W.booted(page);
+  await W.openSchedule(page,EQ); await idle();
   const shown=await page.evaluate(id=>{
    const keys=[...document.querySelectorAll('.sc-row-head [data-col]')].map(h=>h.dataset.col);
    const row=document.querySelector(`.sc-row-line[data-id="${id}"]`);
@@ -133,12 +120,8 @@ async function cleanup(){
       JSON.stringify({by:shown.by,pc:shown.pc}));
 
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
- }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
+ }catch(e){rec('FATAL',false,String(e&&e.message||e))}
  finally{
   await cleanup().catch(()=>{});
-  await b.close();
-  const ok=R.filter(x=>x.ok).length;
-  console.log(`\n=== SUMMARY ===\n${ok}/${R.length} passed`);
-  process.exit(ok===R.length?0:1);
  }
-})();
+}, {viewport:{width:1700,height:1000}});

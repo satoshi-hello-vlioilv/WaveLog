@@ -144,23 +144,38 @@ const paint=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>req
    早すぎる——一覧は描き終えたあと requestIdleCallback で追加の問い合わせを
    出す（§9.94）。ハートビートは画面と無関係なので数から外す。
    cap を超えたら黙って先へ進む（その先の判定で FAIL として出る）。 */
+/* **本体を読まれない応答は終わらない**（実測・§9.451）。ページの JS が
+   `fetch()` の本体を読まないと、Playwright には`requestfinished`が**一度も
+   来ない**（頭は届いて`response`は来る）。網の`page.evaluate(()=>fetch(…))`で
+   よく起きる形で、それが1本あるだけで以降の`idle()`が**毎回上限（6秒）まで**
+   待っていた——条件待ちが黙って固定待ちに化ける（`test_cols`で13→31秒）。
+   応答が届いてから UNREAD_MS 経っても終わらない要求は「読まれない」と見て
+   数えから外す。この環境の応答は数ms で読み終わるので、1秒は十分に長い。 */
+const UNREAD_MS=1000;
 function track(page,{ignore=/\/api\/heartbeat/}={}){
  /* 取得中のものを**要求ごとに**持つ（数だけだと、終わりの合図が来ない
     要求が1つ混ざったときに何が塞いでいるのか分からない）。 */
- const live=new Map();
+ const live=new Map();   // 要求 → {t:出た時刻, res:応答が届いた時刻（未着は0）}
  const counted=r=>!ignore.test(r.url());
- page.on('request',r=>{if(counted(r))live.set(r,Date.now())});
+ page.on('request',r=>{if(counted(r))live.set(r,{t:Date.now(),res:0})});
+ page.on('response',x=>{const e=live.get(x.request());if(e)e.res=Date.now()});
  page.on('requestfinished',r=>{live.delete(r)});
  page.on('requestfailed',r=>{live.delete(r)});
+ const unread=()=>{const now=Date.now();
+  for(const [r,e] of live)if(e.res&&now-e.res>=UNREAD_MS){
+   live.delete(r);
+   if(TRACE)console.log(`[wait] 本体を読まれない応答を数えから外した: ${r.method()} ${r.url().replace(/^https?:\/\/[^/]+/,'')}`);
+  }};
  const idle=async(quiet=400,cap=6000)=>{
   const t0=Date.now();let calm=Date.now();
   while(Date.now()-t0<cap){
+   unread();
    if(live.size>0)calm=Date.now();
    else if(Date.now()-calm>=quiet)break;
    await new Promise(r=>setTimeout(r,50));
   }
   if(TRACE&&live.size)console.log('[wait] idle が上限に当たった。取得中のまま: '
-    +[...live].map(([r,t])=>`${r.method()} ${r.url().replace(/^https?:\/\/[^/]+/,'')} (${Date.now()-t}ms)`).join(' | '));
+    +[...live].map(([r,e])=>`${r.method()} ${r.url().replace(/^https?:\/\/[^/]+/,'')} (${Date.now()-e.t}ms)`).join(' | '));
   await paint(page);
  };
  return {idle,pending:()=>live.size};
