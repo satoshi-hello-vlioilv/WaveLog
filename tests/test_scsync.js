@@ -7,25 +7,19 @@
    の両方が要る。(a)だけでは既に描かれている行は変わらず、(b)だけでは
    取り直しても古いキャッシュが返る。削除(reliableDelete)は以前から(a)を
    していたが、**保存側は両方とも抜けていた**。 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const setMode=async m=>{await fetch(`${API}/api/access-mode`,
  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
+run('test_scsync: 作業途中になったロットが作業スケジュールへ即時反映されるか。', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await setMode('edit');
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:20000});
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForSelector('#openSchedule',{timeout:20000});
-  await page.waitForTimeout(1200);
+  await W.booted(page); await idle();
   await page.click('#openSchedule');
   await page.waitForSelector('.sc-row-line',{timeout:20000});
 
@@ -62,7 +56,7 @@ let b=null;
   const draftId=await page.evaluate(()=>S.measure&&S.measure.id);  // 後始末用（スケジュールへ戻ると S.measure は空になる）
   // 保存でスケジュール側のキャッシュが捨てられる。
   await page.click('#saveDraft');
-  await page.waitForTimeout(3500);
+  await idle();
 
   // 一時保存すると測定画面は閉じ、データ一覧へ遷移する(persistAndTransition)。
   // スケジュールへは利用者が開き直す流れなので、そのとおりに辿る。
@@ -71,7 +65,7 @@ let b=null;
   rec('保存すると測定画面が閉じる',true);
   await page.click('#openSchedule');
   await page.waitForSelector('.sc-row-line',{timeout:20000});
-  await page.waitForTimeout(3000);
+  await W.settleFlags(page); await idle();
 
   // 同じロットの行が「作業中」になっていること(ブラウザを再読込せずに)
   const after=await page.evaluate(id=>{
@@ -94,17 +88,7 @@ let b=null;
   if(draftId)await fetch(`${API}/api/measurement/backup/delete`,{method:'POST',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[draftId]})}).catch(()=>{});
 
-  console.log('\n=== SUMMARY ===');
-  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
-  f.forEach(x=>console.log(' -',x.n,x.d||''));
-  await b.close();process.exit(f.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
-  await b.close().catch(()=>{});
-  process.exit(2);
+  rec('FATAL',false,String(e&&e.message||e));
  }
-})().catch(async e=>{
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1700,height:1000}});

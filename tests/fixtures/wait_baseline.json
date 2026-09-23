@@ -125,12 +125,6 @@
   "ms": 0,
   "silent": 0
  },
- "test_colsort.js": {
-  "count": 12,
-  "harness": 1,
-  "ms": 9900,
-  "silent": 0
- },
  "test_coltint.js": {
   "count": 6,
   "harness": 1,
@@ -300,9 +294,9 @@
   "silent": 0
  },
  "test_listperf.js": {
-  "count": 3,
-  "harness": 1,
-  "ms": 7700,
+  "count": 0,
+  "harness": 0,
+  "ms": 0,
   "silent": 1
  },
  "test_logview.js": {
@@ -334,12 +328,6 @@
   "harness": 1,
   "ms": 7200,
   "silent": 1
- },
- "test_measstore.js": {
-  "count": 6,
-  "harness": 1,
-  "ms": 7900,
-  "silent": 0
  },
  "test_mmfold.js": {
   "count": 0,
@@ -390,9 +378,9 @@
   "silent": 1
  },
  "test_ngdone.js": {
-  "count": 7,
-  "harness": 1,
-  "ms": 7800,
+  "count": 0,
+  "harness": 0,
+  "ms": 0,
   "silent": 1
  },
  "test_opauto.js": {
@@ -738,9 +726,9 @@
   "silent": 0
  },
  "test_scsync.js": {
-  "count": 3,
-  "harness": 1,
-  "ms": 7700,
+  "count": 0,
+  "harness": 0,
+  "ms": 0,
   "silent": 1
  },
  "test_scundecided.js": {
@@ -803,12 +791,6 @@
   "ms": 0,
   "silent": 0
  },
- "test_stopcat.js": {
-  "count": 8,
-  "harness": 1,
-  "ms": 8000,
-  "silent": 0
- },
  "test_stopeq.js": {
   "count": 0,
   "harness": 1,
@@ -839,12 +821,6 @@
   "ms": 4800,
   "silent": 0
  },
- "test_uisize.js": {
-  "count": 8,
-  "harness": 1,
-  "ms": 9950,
-  "silent": 0
- },
  "test_waiting.js": {
   "count": 2,
   "harness": 1,
@@ -870,9 +846,9 @@
   "silent": 1
  },
  "test_workable.js": {
-  "count": 4,
-  "harness": 1,
-  "ms": 8000,
+  "count": 0,
+  "harness": 0,
+  "ms": 0,
   "silent": 1
  }
 }

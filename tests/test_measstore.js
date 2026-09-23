@@ -18,17 +18,11 @@
        未設定なら「いま複製する」は理由を返す
     6. 文字が見切れていない
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
+run('test_measstore: 測定データの保存（§9.202）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
@@ -59,13 +53,13 @@ let b=null;
   await page.waitForSelector('#openMasterMaint',{timeout:20000});
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintForm',{timeout:20000});
-  await page.waitForTimeout(1500);
+  await idle();
   const tab=await page.$('#masterMaintNav [data-master="measStorage"]');
   rec('「測定データの保存」タブがある',!!tab);
   if(tab){
    await tab.click();
    await page.waitForSelector('.ms-flow',{timeout:20000});
-   await page.waitForTimeout(900);
+   await idle();
   }
 
   /* ---- 1) 3段が流れの順に並ぶ ---- */
@@ -128,7 +122,7 @@ let b=null;
      .find(e=>e.textContent.includes(l));
     if(t)t.click();
    },label);
-   await page.waitForTimeout(300);
+   await paint();
   };
   await msTab('閲覧用の複製');
   const cfg=await page.evaluate(()=>({
@@ -156,7 +150,7 @@ let b=null;
   /* 保存できること（空欄でも通る＝複製しない設定） */
   await page.fill('#msExportInterval','300');
   await page.click('#msSaveCfg');
-  await page.waitForTimeout(2500);
+  await idle();
   const saved=await page.evaluate(async()=>{
    const r=await api('/api/path-config-master');
    return {iv:(r.values||{}).records_backup_export_interval_sec,
@@ -172,7 +166,8 @@ let b=null;
      自体が困りごとだったので撤回した。見るのは**二重になっていないこと**
      ——欄は置き場の行に1つだけで、素の`data-pc-field`としては出ない。 */
   await page.click('#masterMaintNav [data-master="pathConfig"]');
-  await page.waitForTimeout(1800);
+  await W.until(page,()=>!!document.querySelector('[data-store-key="export"]'),null,{ms:15000,what:'共通設定の置き場の行'});
+  await idle();
   /* **置き場の行の外に同じ欄が無いこと**を見る。行の中の欄は
      `data-pc-field`を持つ（1つの保存ボタンで送るため）ので、
      「在るかどうか」だけを数えると必ず引っかかる。 */
@@ -189,7 +184,7 @@ let b=null;
   /* ---- 6) 見切れていない ---- */
   await page.click('#masterMaintNav [data-master="measStorage"]');
   await page.waitForSelector('.ms-flow',{timeout:20000});
-  await page.waitForTimeout(900);
+  await idle();
   const clipped=await page.evaluate(()=>{
    const bad=[];
    document.querySelectorAll('#masterMaintForm *').forEach(el=>{
@@ -209,11 +204,5 @@ let b=null;
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({records_backup_export_interval_sec:''})})});
 
- }catch(e){console.log('FATAL '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
- finally{
-  try{await b.close()}catch(e){}
-  const ng=R.filter(x=>!x.ok).length;
-  console.log(`\n${R.length-ng}/${R.length} PASS`);
-  process.exit(ng?1:0);
- }
-})();
+ }catch(e){rec('FATAL',false,String(e&&e.message||e))}
+}, {viewport:{width:1600,height:1000}});

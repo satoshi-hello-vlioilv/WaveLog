@@ -1,21 +1,15 @@
 /* 設備停止分類マスタ(§5.3.1)と入力支援(§9.49)の検証 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 /* 触る前の行を控える（§9.362 ⑤）。製品の「削除」は**論理削除**（`有効=0`）
    なので、APIで消しても行は残る。**この実行で増えた行だけ**を素の表から
    片付ける（名前で拾うと、同じ名前を使う他の網の期待と食い違う・§9.284）。 */
 const H=require('./lib/harness.js');
 const SNAP_TABLES=['設備停止マスタ','設備停止分類マスタ'];
 let snapM=null;
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
+run('test_stopcat: 設備停止分類マスタ(§5.3.1)と入力支援(§9.49)の検証', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  snapM=await H.masterSnapshot(SNAP_TABLES);
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>{errs.push(e.message);console.log('[pageerror]',e.message)});
  page.on('console',m=>{if(m.type()==='error')errs.push('console: '+m.text())});
- page.on('dialog',d=>d.accept());
 
  /* **待つのは時間ではなく条件**（§9.102）。1.2秒の固定待ちだと、
     再起動直後の1本目（マスタDBの列を足す移行がその場で走る）で
@@ -99,7 +93,8 @@ let b=null;
     統合画面の「＋ 停止内容を足す」——同じマスタの編集の作法を2通り持たない。 */
  await page.click('#ssbAddStop');
  await page.waitForSelector('#maintEditorModal:not([hidden])',{timeout:5000});
- await page.waitForTimeout(900);
+ await W.until(page,()=>!!document.querySelector('[data-combo-select="category"]'),null,{ms:8000,what:'分類の選択欄'});
+ await idle();
  const combo=await page.evaluate(()=>{
   const sel=document.querySelector('[data-combo-select="category"]');
   if(!sel)return null;
@@ -150,11 +145,11 @@ let b=null;
  // 対象設備は単一選択のプルダウンから複数選択のタグ入力になった(§9.81)ので、
  // 候補を出してから選ぶ。
  await page.click('[data-equipment-search="equipment"]');
- await page.waitForTimeout(300);
  await page.click('[data-equipment-suggest="equipment"] [data-pick="テスト設備A"]');
  await page.fill('[data-field="name"]','連動テスト'+uniq);
  await page.click('#maintEditorSave');
- await page.waitForTimeout(2500);
+ await W.until(page,()=>document.querySelector('#maintEditorModal').hidden,null,{ms:15000,what:'編集窓が閉じる（保存済み）'});
+ await idle();
  const catsAfter=await page.evaluate(async()=>{
   const r=await fetch('/api/schedule/stop-category-master').then(x=>x.json());
   return (r.items||[]).map(i=>i.name);
@@ -220,7 +215,8 @@ let b=null;
  rec('間隔などの数値欄も増減ボタン付きになる',pc.nums>=3,JSON.stringify(pc));
  rec('RNE抽出の状態表示パネルがある',pc.rne&&pc.runBtn,JSON.stringify(pc));
 
- await page.waitForTimeout(1200);
+ await idle();
+ await W.until(page,()=>(document.querySelector('#rnePanel')?.innerText||'').trim().length>0,null,{ms:8000,what:'RNE抽出の状態が描かれる'});
  const rneText=await page.$eval('#rnePanel',e=>e.innerText.replace(/\n+/g,' | '));
  rec('抽出が停止中の理由と有効化の手順を画面に出す',
    /network|local/.test(rneText)&&/再起動/.test(rneText),rneText.slice(0,160));
@@ -242,7 +238,7 @@ let b=null;
  await page.waitForSelector('[data-path-browse="schedule_share_path"]',{state:'visible',timeout:15000});
  await page.click('[data-path-browse="schedule_share_path"]');
  await page.waitForSelector('#pathPickerModal:not([hidden])',{timeout:5000});
- await page.waitForTimeout(900);
+ await idle();
  const picker=await page.evaluate(()=>({
   path:document.querySelector('#pathPickerPath')?.value||'',
   rows:document.querySelectorAll('.pathpick-row').length,
@@ -257,7 +253,7 @@ let b=null;
     で、`rows>0`は置き場の作り方しだいで落ちる網だった（今までは手前の
     クリックがFATALになっていて、この2件が一度も動いていなかった）。 */
  await page.evaluate(()=>{const p=document.querySelector('.pathpick-place');if(p)p.click()});
- await page.waitForTimeout(900);
+ await idle();
  const jumped=await page.evaluate(()=>({
   path:document.querySelector('#pathPickerPath')?.value||'',
   rows:document.querySelectorAll('.pathpick-row').length,
@@ -266,9 +262,9 @@ let b=null;
  rec('飛んだ先の中身が実際に並ぶ',jumped.rows>0&&jumped.dirs>0,JSON.stringify(jumped));
  // フォルダを1つ潜って「選択」→ 入力欄へ実パスが入る
  await page.evaluate(()=>{const r=[...document.querySelectorAll('.pathpick-row.is-dir')][0];if(r)r.click()});
- await page.waitForTimeout(800);
+ await idle();
  await page.click('#pathPickerPick');
- await page.waitForTimeout(500);
+ await W.until(page,()=>document.querySelector('#pathPickerModal').hidden,null,{ms:5000,what:'フォルダ選択の窓が閉じる'});
  const filled=await page.$eval('[data-pc-field="schedule_share_path"]',i=>i.value);
  /* **潜った先が入ること**まで見る（開いた時点の値がそのまま残っていても
     `/`で始まるので、それだけでは何も確かめていない）。 */
@@ -277,17 +273,4 @@ let b=null;
 
   try{if(snapM)await H.dropNewMasterRows(snapM)}
   catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
- await b.close();
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
-  try{if(snapM)await H.dropNewMasterRows(snapM)}
-  catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1700,height:1000}});
