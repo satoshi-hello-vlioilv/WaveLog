@@ -350,6 +350,12 @@ def _info(d, applied=False, reason='', **kw):
  return out
 
 
+def _right_label(d):
+ """相手のデータソースの呼び名（断りの字に使う）。登録が無ければキーのまま。"""
+ key = d.get('right') or ''
+ return (DBS.get(key) or {}).get('label') or key or '相手'
+
+
 def source_cfg(key):
  """データソースの設定を**読む場所（写し）で**返す。無ければNone。
 
@@ -579,9 +585,18 @@ def _apply_one(d, base_key, base_table, columns, rows):
    index, dup_keys, ambiguous = _read_right(
     c, t, right_cols, rights, rows, lefts, kind['rightOnly'],
     want=list(dict.fromkeys(list(rights) + [src for src, _ in pairs])))
+   # **相手が空なのは「キーが一致しない」とは別の出来事**（利用者の報告: 仕掛一覧が
+   # 出なくなった）。届くはずのデータが無いのに「一致しない」と言うと、直す先
+   # （キーの設定）を取り違える。空なら名指しで言い、この一覧の行はそのまま出す。
+   right_empty = not index and c.cursor().execute(
+    f'SELECT 1 FROM {qi(t)} LIMIT 1').fetchone() is None
  except Exception as e:
   app_logger().warning('クエリ結合「%s」で相手を読めませんでした: %s', d.get('name'), e)
   return columns, rows, _info(d, reason=f'相手のデータへ接続できません: {e}')
+ if right_empty:
+  return columns, rows, _info(
+   d, table=t, reason=f'相手の表「{t}」にデータが1行もありません（{_right_label(d)}の'
+                      'データが届いていないか、置き場が違います）。この一覧の行はそのまま出しています。')
  if add_cols and not pairs:
   return columns, rows, _info(
    d, table=t, matched=0,
@@ -619,6 +634,15 @@ def _apply_one(d, base_key, base_table, columns, rows):
     dropped += 1
     continue
    merged.append(dict(r))
+ # **1行も当たらないのに行を落とすと、一覧が空になる**（利用者の報告「オーダー情報と
+ # 結合できませんと出たとしても、仕掛一覧のデータがあるのであれば表示すべき」）。
+ # 当たらなかった行を落とす結合（内部・右外部）は「当たった行に絞る」のが目的で、
+ # 1行も当たらないのは絞り込みではなく**結合の失敗**——この一覧の行をそのまま出し、
+ # 失敗を理由つきで返す。当たった行が1つでもあれば今までどおり絞る。
+ if rows and not matched and kind['matched'] and not kind['leftOnly']:
+  return columns, rows, _info(
+   d, table=t, reason=f'キーが一致する行が相手にありませんでした（照合先: {t}）。'
+                      '当たった行に絞る結合ですが、1行も当たらないので、この一覧の行をそのまま出しています。')
  # 相手にしかない行を足す（右外部・完全外部・右のみ）。突合キーの列だけは
  # 相手の値で埋める——キーが空の行が並ぶと、どれが何の行か読めない。
  added_rows = 0
@@ -667,7 +691,9 @@ def summarize(infos):
   names += list(i.get('addedColumnNames') or [])
  names = unique_columns(names)
  applied = [i for i in (infos or []) if i.get('applied')]
- failed = [i for i in (infos or []) if not i.get('applied')]
+ # 失敗＝当てられなかった、または当てたが1行も一致しなかった（理由を持つ）。
+ # 「相手に無いものだけ」の結合で一致0件なのは正常なので理由を持たない。
+ failed = [i for i in (infos or []) if not i.get('applied') or i.get('reason')]
  dropped = sum(int(i.get('droppedRows') or 0) for i in applied)
  added = sum(int(i.get('addedRows') or 0) for i in applied)
  return {
@@ -687,6 +713,9 @@ def summarize(infos):
   'rowsAfter': (applied[-1].get('rowsAfter') if applied else 0),
   'note': '／'.join(i.get('note') for i in applied if i.get('note')),
   'reason': '／'.join(f"{i.get('name')}: {i.get('reason')}" for i in failed if i.get('reason')),
+  'failed': len(failed),
+  'failedNames': [i.get('name') for i in failed],
+  'failedReasons': [i.get('reason') or '' for i in failed],
  }
 
 

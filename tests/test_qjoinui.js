@@ -468,6 +468,48 @@ run('test_qjoinui: クエリ結合の画面（§9.193）', async ({page,rec,B,W,
   rec('完了突合の行は普通に編集・削除できる（複製しないと直せない行を残さない）',
       !!finRow&&finRow.edit&&finRow.del&&!finRow.builtin,JSON.stringify(finRow));
 
+  /* ---- 結合に失敗したとき・0行のとき（利用者の報告「VER2.348.0において、仕掛一覧が
+     出なくなってしまいました」「オーダー情報と結合できませんと出たとしても、仕掛一覧の
+     データがあるのであれば表示すべき」「必須データがない場合もエラーが出ないのは問題」）。
+     サーバーの応答を差し替えて見る。写し（tableCache）から描かないよう force で読み直す。 ---- */
+  await page.click(`aside [data-db-key="${WORK}"]`);
+  await W.until(page,()=>document.querySelectorAll('#grid tbody tr').length>0,null,{ms:20000,what:'仕掛一覧が出る'});
+  await idle();
+  const REASON='相手の表「オーダー」にデータが1行もありません（オーダー情報のデータが届いていないか、置き場が違います）。';
+  const jqFail={applied:false,count:1,failed:1,failedNames:['オーダー情報'],failedReasons:[REASON],
+    matched:0,addedColumns:0,addedColumnNames:[],names:[]};
+  const withResponse=async(edit)=>{
+   const h=async route=>{
+    if(!route.request().url().includes('join=1'))return route.continue();
+    const r=await route.fetch();const b=await r.json();edit(b);
+    await route.fulfill({response:r,json:b});
+   };
+   await page.route('**/api/table?**',h);
+   try{await page.evaluate(()=>WL.list.load(true));await idle()}
+   finally{await page.unroute('**/api/table?**',h)}
+   return page.evaluate(()=>({rows:document.querySelectorAll('#grid tbody tr').length,
+     chip:(document.querySelector('#listJoinChip')||{}).textContent||'',
+     err:(document.querySelector('#grid .load-error')||{}).textContent||'',
+     note:(document.querySelector('#grid .record-empty')||{}).textContent||''}));
+  };
+  const jf=await withResponse(b=>{b.joinQuality=jqFail});
+  rec('結合に失敗しても仕掛の行は出す',jf.rows>0,jf.rows+'行');
+  rec('札は「どの結合が・なぜ」を字で言う（マウスを乗せなくても読める）',
+      jf.chip==='結合できません: オーダー情報（相手の表「オーダー」にデータが1行もありません）',jf.chip);
+  const z=await withResponse(b=>{b.rows=[];b.count=0;b.joinQuality=jqFail});
+  rec('元データが0行なら、表の中にエラーとして理由と確かめる先を出す',
+      /データが1行もありません/.test(z.err)&&/データ接続/.test(z.err)&&!z.note,z.err.slice(0,90));
+  rec('結合に失敗した理由も同じ枠に添える',/結合できなかったもの: オーダー情報/.test(z.err),z.err.slice(0,160));
+  await page.evaluate(()=>WL.list.load(true));await idle();
+  await page.fill('#search','QJ存在しないロット');
+  await W.until(page,()=>!!document.querySelector('#grid .record-empty'),null,{ms:10000,what:'検索で0行の案内'});
+  const sf=await page.evaluate(()=>({note:(document.querySelector('#grid .record-empty')||{}).textContent||'',
+    err:!!document.querySelector('#grid .load-error')}));
+  rec('検索で0行なら「絞り込みに当たらない」と言う（エラーにしない）',
+      /検索・絞り込みに当たる行がありません/.test(sf.note)&&!sf.err,sf.note.slice(0,60));
+  await page.fill('#search','');
+  await W.until(page,()=>document.querySelectorAll('#grid tbody tr').length>0,null,{ms:15000,what:'一覧が戻る'});
+
   rec('画面側の例外が出ていない',errs.length===0,errs.slice(0,2).join(' / '));
  }catch(e){
   rec('FATAL',false,e.message);
