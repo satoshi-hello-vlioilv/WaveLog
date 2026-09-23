@@ -16,17 +16,10 @@
    併せて、途中で他の件数へ戻したら**続きの読み込みは止まる**ことも見る
    （止めないと、戻したはずの一覧へ後から行が足される）。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const ctx=await b.newContext({viewport:{width:1500,height:900}});
- await ctx.addInitScript(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
- const page=await ctx.newPage();
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
+run('test_allrows: 表示件数の「全件」(§9.95)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  const tableCalls=[];
  page.on('request',r=>{const u=r.url();if(u.includes('/api/table?'))tableCalls.push(u)});
 
@@ -86,7 +79,7 @@ let b=null;
    const g=document.querySelector('#grid');g.scrollTop=0;
    return document.querySelector('#grid tbody tr:not(.grid-virtual-spacer) td:nth-child(1)')?.textContent;
   });
-  await page.waitForTimeout(300);
+  await paint();
   const deep=await page.evaluate(async()=>{
    const g=document.querySelector('#grid');g.scrollTop=g.scrollHeight*0.6;
    await new Promise(r=>setTimeout(r,600));
@@ -126,7 +119,7 @@ let b=null;
   /* §9.286 ②: ページの札は「1–200」のように**何件目から何件目か**を出す
      （ページ番号は`title`。同じことを2通りで言わない・§CLAUDE 8）。 */
   await page.waitForFunction(()=>/^1[–-]/.test(document.querySelector('#page')?.textContent||''),{timeout:20000});
-  await page.waitForTimeout(2500);
+  await idle(1000,15000);  // 起きないこと（続きが後から足されない）を見る: 裏の読み込みが静まるまで
   const back=await page.evaluate(()=>({rows:S.rows.length,dom:document.querySelectorAll('#grid tbody tr').length,
     prev:document.querySelector('#prev').disabled,next:document.querySelector('#next').disabled}));
   rec('200件へ戻すと200行に戻る（続きの読み込みが後から足さない）',
@@ -135,15 +128,7 @@ let b=null;
 
   rec('コンソールに例外が出ていない',errs.length===0,errs.slice(0,2).join(' / '));
  }catch(e){
-  console.error('FATAL',e);
- }finally{
-  await b.close();
+  rec('FATAL',false,String(e&&e.message||e));
  }
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1500,height:900},
+    init:()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A')});

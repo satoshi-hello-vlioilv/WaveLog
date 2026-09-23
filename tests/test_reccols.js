@@ -12,14 +12,14 @@
    後片付けは finally で必ず行う。**列レイアウトマスタは実行をまたいで
    生き延びる**（§9.121）ので、消し忘れると次の実行が引き継ぐ。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 /* 材料は自分で注ぎ込む（§9.351・§9.362 ⑥）。この網は「取り込める記録が
    ある」ことを前提にするが、**フィクスチャに記録は無い**——今まで見えて
    いたのは前の実行の置き土産で、ランナーが実績を1本ごとに空へ戻すように
    なった（§9.362 ①）とたんに0行になった。片付けは`clearRecords()`。 */
 const {seedRecord,clearRecords}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
 const TARGET='records:list';
 /* 今まで出ていた15列。**この並びを変えないこと**（設定していない端末の
@@ -27,7 +27,6 @@ const TARGET='records:list';
 const DEFAULT_HEAD=['状態','ロット番号','検査番号','製造材質','製造板厚','用途名','コース',
                     'オペレータ','検査員','作業人数','分割','作業開始時刻','更新日時',
                     '実作業時間','操作'];
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 async function cleanup(){
  try{await post('/api/column-layout-master',{target:TARGET,clear:true,order:[],widths:{},hidden:[],
@@ -40,16 +39,10 @@ async function openList(page){
  await page.waitForSelector('.record-list-head',{timeout:20000});
  await settle(page);
 }
-(async()=>{
+run('test_reccols: データ一覧の表示列（§9.162）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  await cleanup();
  await seedRecord();
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
  page.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
- page.on('dialog',d=>d.accept());
  try{
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
@@ -140,7 +133,7 @@ async function openList(page){
   });
   await settle(page);
   await page.click('#lcSave');
-  await page.waitForTimeout(1200);
+  await idle();
   await page.evaluate(()=>WL.listColumns.close());
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
@@ -184,7 +177,7 @@ async function openList(page){
   await page.mouse.down();
   await page.mouse.move(gb.x+gb.width/2+80,gb.y+gb.height/2,{steps:8});
   await page.mouse.up();
-  await page.waitForTimeout(700);
+  await idle();
   const wres=await page.evaluate(()=>({
    w:Math.round(document.querySelector('.record-list-head [data-col="ロット番号"]').getBoundingClientRect().width),
    saved:WL.columnLayout.get('records:list').widths['ロット番号'],
@@ -207,7 +200,7 @@ async function openList(page){
       &&menu.items.some(t=>/固定/.test(t))&&menu.items.includes('表示列の設定を開く…')
       &&menu.labels.some(t=>/^幅:/.test(t)),JSON.stringify(menu.items.slice(0,4)));
   await page.click('.col-head-menu .chm-hide');
-  await page.waitForTimeout(700);
+  await idle();
   const hid=await head(page);
   rec('「この列を隠す」がその場で効く',
       !hid.includes('検査番号')&&hid.length===DEFAULT_HEAD.length-1,hid.join('／'));
@@ -215,7 +208,7 @@ async function openList(page){
   await page.click('.record-list-head [data-col="ロット番号"]',{button:'right'});
   await page.waitForSelector('.col-head-menu',{timeout:5000});
   await page.click('.col-head-menu .chm-autofit');
-  await page.waitForTimeout(700);
+  await idle();
   const auto=await page.evaluate(()=>({
    w:WL.columnLayout.get('records:list').widths['ロット番号'],
    mode:WL.columnLayout.widthMode('records:list','ロット番号')}));
@@ -401,7 +394,7 @@ async function openList(page){
       /隠している列（\d+）/.test(menuHidden.label)&&menuHidden.rows>0,
       JSON.stringify(menuHidden));
   await page.click('.col-head-menu .chm-hide');
-  await page.waitForTimeout(900);
+  await idle();
   const h6=await head(page);
   rec('最初の操作が「この列を隠す」でも1列だけ減る（§9.216 ①）',
       h6.length===DEFAULT_HEAD.length-1&&!h6.includes('検査番号'),
@@ -430,8 +423,8 @@ async function openList(page){
      .find(x=>x.dataset.key==='検査番号');
    if(!b2)throw Error('戻すボタンが無い');
    b2.click();
-  });
-  await page.waitForTimeout(900);
+   });
+   await idle();
   const h7=await head(page);
   rec('同じメニューから戻すと1列だけ増える',
       h7.length===DEFAULT_HEAD.length&&h7.includes('検査番号'),
@@ -442,7 +435,10 @@ async function openList(page){
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
   await page.evaluate(()=>WL.records.openRecordsSafe('編集中')).catch(()=>{});
-  await page.waitForTimeout(1500);
+  /* 一覧が描かれ、取得が静まるまで。見るのは「ボタンを出さない」ことなので、
+     描き終えたあと（出るなら出ている時点）で見る。 */
+  await W.until(page,()=>!!document.querySelector('.record-list-head'),null,{ms:10000,what:'閲覧モードでデータ一覧が描かれる'});
+  await idle(800);
   const hidden=await page.evaluate(()=>{
    const b2=document.getElementById('recordColumnsBtn');
    return !b2||b2.hidden;
@@ -457,9 +453,5 @@ async function openList(page){
   await cleanup();
   /* 置いた実績は自分で消す（§9.351・§9.362）。 */
   try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1700,height:1000}});

@@ -15,19 +15,13 @@
 
    フィクスチャの L9000（親）/ L90001・L90002（子）は
    tests/make_split_fixture.py が作る。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A',PARENT='L9000';
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
- const settle=(ms=700)=>page.waitForTimeout(ms);
+run('test_scsplit: 分割ありの親ロットと子ロットのまとまり（§9.83）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
+
  const setMode=m=>page.evaluate(async mm=>{await fetch('/api/access-mode',{method:'POST',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mm})})},m);
  const post=(p,b2)=>page.evaluate(async a=>{
@@ -51,7 +45,7 @@ let b=null;
   await setMode('schedule');
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
-  await settle(1500);
+  await W.booted(page); await idle();
 
   /* ---- 1) 分割ありと判定できる ---- */
   const split=await page.evaluate(async lot=>{
@@ -75,7 +69,7 @@ let b=null;
   await page.evaluate(e=>{const r=[...document.querySelectorAll('.sc-board-row')]
     .find(x=>x.dataset.equipment===e);if(r)r.click()},EQ);
   await page.waitForSelector('.sc-row-line',{timeout:20000});
-  await settle(1500);
+  await W.settleFlags(page); await idle();
   const beforeEnd=await page.evaluate(async e=>{
    const r=await fetch('/api/schedule/plan?equipment='+encodeURIComponent(e));
    const es=((await r.json()).entries||[]).filter(x=>x.plannedEnd);
@@ -91,7 +85,7 @@ let b=null;
    return true;
   },PARENT);
   rec('分割ありの行を予定へ入れられる',added);
-  await settle(3500);
+  await idle(600,15000);
 
   const entries=await plan();
   const parent=entries.find(e=>e.lotNo===PARENT&&e.parentId==null);
@@ -135,9 +129,10 @@ let b=null;
   /* ---- 4) 画面: 既定は折りたたみ ----
      測る前に行を画面内へ入れる。elementFromPointでの重なり確認は
      ビューポート内でしか効かない(外にあると常にnullで「見えない」判定)。 */
+  await W.until(page,id=>!!document.querySelector(`.sc-row-line[data-id="${id}"] .sc-child-toggle`),parent.id,{ms:10000,what:'入れた親の行が描かれる'});
   await page.evaluate(id=>{const r=document.querySelector(`.sc-row-line[data-id="${id}"]`);
     if(r)r.scrollIntoView({block:'center'})},parent.id);
-  await settle(400);
+  await paint();
   const ui=await page.evaluate(id=>{
    const row=document.querySelector(`.sc-row-line[data-id="${id}"]`);
    const box=document.querySelector(`.sc-child-box[data-parent="${id}"]`);
@@ -173,7 +168,7 @@ let b=null;
 
   /* ---- 5) 開ける・開閉が残る ---- */
   await page.evaluate(id=>{document.querySelector(`.sc-row-line[data-id="${id}"] .sc-child-toggle`).click()},parent.id);
-  await settle(400);
+  await W.until(page,id=>{const b=document.querySelector(`.sc-child-box[data-parent="${id}"]`);return !!b&&!b.hidden},parent.id,{ms:5000,what:'子ロットのまとまりが開く'});
   const opened=await page.evaluate(id=>{
    const box=document.querySelector(`.sc-child-box[data-parent="${id}"]`);
    const first=box.querySelector('.sc-child-line');
@@ -225,22 +220,17 @@ let b=null;
   rec('子も一緒に消える',!after2.some(e=>e.parentId===parent.id||e.lotNo==='L90001'),
       after2.filter(e=>String(e.lotNo).startsWith('L9000')).map(e=>e.lotNo).join(','));
 
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
+
   await cleanup();
-  process.exit(ng.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
+  rec('FATAL',false,String(e&&e.message||e));
   await cleanup();
-  process.exit(2);
  }
- /* 後片付けは process.exit より前に呼ぶこと(exitで即終了しfinallyは走らない)。 */
+ /* 後片付け（成功・失敗のどちらの道でも呼ぶ）。 */
  async function cleanup(){
   try{
    for(const id of made)await post('/api/schedule/plan/delete',{id,equipment:EQ});
    await setMode('edit');
   }catch(e){}
-  if(b)await b.close().catch(()=>{});
  }
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});
+}, {viewport:{width:1700,height:1000}});

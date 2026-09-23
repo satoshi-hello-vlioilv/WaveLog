@@ -1,19 +1,14 @@
 /* メンテナンス導線(マスタ管理)の検証(§9.56)と、
    測定画面 左ペインの再配置(§9.55)の検証 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const call=async(m,p,b)=>{
  const r=await fetch(B+p,{method:m,...(b!==undefined?{headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{})});
  let j={};try{j=await r.json()}catch(e){}
  return {status:r.status,body:j};
 };
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
- page.on('dialog',d=>d.accept());
+run('test_maint: メンテナンス導線(マスタ管理)の検証(§9.56)と、', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  await call('POST','/api/access-mode',{mode:'edit'});
 
  // ---- (1) 勤務体系: 設備割当の有無で削除の成否が変わらない ----
@@ -51,10 +46,10 @@ let b=null;
  await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
  await page.reload({waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openMasterMaint',{timeout:15000});
- await page.waitForTimeout(1200);
+ await W.booted(page);await idle();
  await page.click('#openMasterMaint');
  await page.waitForSelector('#masterMaintForm',{timeout:10000});
- await page.waitForTimeout(1800);
+ await idle();
  const tabs=await page.$$eval('#masterMaintNav [data-master]',ns=>ns.length);
  rec('マスタ管理のタブが揃っている',tabs>=10,tabs+'タブ');
  const noErr=await page.evaluate(()=>!document.querySelector('#masterMaintList .mm-error'));
@@ -66,7 +61,7 @@ let b=null;
  await page.waitForFunction(()=>document.querySelectorAll('#grid table tbody tr').length>0,{timeout:20000});
  await page.click('#grid table tbody tr:first-child .measurement-action-button');
  await page.waitForSelector('#measureModal:not([hidden])',{timeout:15000});
- await page.waitForTimeout(3000);
+ await page.waitForFunction(()=>typeof S!=='undefined'&&!!S.measure,null,{timeout:25000});await idle(600,15000);
  const fit=await page.evaluate(()=>{
   const lp=document.querySelector('.left-pane');
   return {over:lp.scrollHeight-lp.clientHeight,pane:lp.clientHeight};
@@ -140,7 +135,7 @@ let b=null;
   const b=document.querySelector('#stampWorkStart');
   return !!b&&b.getBoundingClientRect().height>0;
  },null,{timeout:5000});
- await page.click('#stampWorkStart');await page.waitForTimeout(400);
+ await page.click('#stampWorkStart');await idle();
  const stamp=await page.evaluate(()=>{
   const i=document.querySelector('#workStartAt');
   return {val:i.value,cut:i.scrollWidth>i.clientWidth+1,w:Math.round(i.getBoundingClientRect().width)};
@@ -159,7 +154,7 @@ let b=null;
  /* 以降は①で測る（基本情報カードは①②③のどこにも出るが、いちばん項目が
     多いのは①）。 */
  await page.evaluate(()=>document.querySelector('.mstep[data-mstep="1"]').click());
- await page.waitForTimeout(300);
+ await idle();
 
  /* 表示サイズを変えても収まる（§9.137）。**測るのは畳んだ状態**——基本情報は
     骨子で`1×2`（実測651px）のカードに固定したので、13項目の詳細を開けば
@@ -172,7 +167,7 @@ let b=null;
  const sizes={};
  for(const s of ['sm','md','lg']){
   await page.evaluate(v=>{document.documentElement.dataset.uiSize=v},s);
-  await page.waitForTimeout(300);
+  await paint();
   sizes[s]=await page.evaluate(()=>{const lp=document.querySelector('.left-pane');return lp.scrollHeight-lp.clientHeight});
  }
  rec('どの表示サイズでも基本情報が収まる',Object.values(sizes).every(v=>v<=0),JSON.stringify(sizes));
@@ -182,7 +177,7 @@ let b=null;
  await page.evaluate(()=>{document.documentElement.dataset.uiSize='lg'});
  await page.click('#basicMore');
  await page.waitForFunction(()=>!document.querySelector('#basicDetail').hidden,null,{timeout:5000});
- await page.waitForTimeout(300);
+ await paint();
  const opened=await page.evaluate(()=>{
   const lp=document.querySelector('.left-pane');
   return {はみ出し:lp.scrollHeight-lp.clientHeight,overflowY:getComputedStyle(lp).overflowY};
@@ -209,15 +204,4 @@ let b=null;
  /* 置いた実績も自分で消す（§9.351・§9.360）。 */
  try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
 
- await b.close();
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1700,height:1000}});

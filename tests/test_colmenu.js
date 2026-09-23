@@ -10,24 +10,20 @@
     4. 最後の1列は隠せない（見出しが無くなると右クリックする場所も消える）
     5. Escで閉じる／外を押すと閉じる
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-let b=null,target='';
+let target='';
 const reset=()=>target?post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],
   names:{},formats:{},rules:{},user_id:'test'}):Promise.resolve();
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- try{
+run('test_colmenu: 一覧の見出しを右クリックして列を出し入れする（§9.110）', async ({page,rec,B,W,idle,paint,errs})=>{
+try{
   await post('/api/access-mode',{mode:'edit'});
-  const ctx=await b.newContext({viewport:{width:1500,height:900}});
-  const page=await ctx.newPage();
-  page.on('pageerror',e=>errs.push(e.message));
+
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
-  await page.waitForSelector('#openSchedule',{timeout:30000});
+  await W.booted(page,30000); await idle();
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#grid table',{timeout:30000});
@@ -81,7 +77,7 @@ const reset=()=>target?post('/api/column-layout-master',{target,clear:true,order
   /* ---- 4) 「すべての列を表示」 ---- */
   await open(other);
   await page.click('.col-head-menu .chm-hide');
-  await page.waitForTimeout(600);
+  await W.until(page,k=>![...document.querySelectorAll('#grid thead th')].some(t=>t.dataset.col===k),other,{ms:8000,what:'隠した列が見出しから消える'});
   await open(pick);
   await page.click('.col-head-menu .chm-all');
   await page.waitForFunction(k=>[...document.querySelectorAll('#grid thead th')]
@@ -95,11 +91,11 @@ const reset=()=>target?post('/api/column-layout-master',{target,clear:true,order
 
   /* ---- 6) 閉じ方 ---- */
   await page.keyboard.press('Escape');
-  await page.waitForTimeout(250);
+  await W.until(page,()=>!document.querySelector('.col-head-menu'),null,{ms:3000,what:'Escでメニューが閉じる'});
   rec('Escで閉じる',await page.evaluate(()=>!document.querySelector('.col-head-menu')));
   await open(pick);
   await page.mouse.click(760,860);
-  await page.waitForTimeout(250);
+  await W.until(page,()=>!document.querySelector('.col-head-menu'),null,{ms:3000,what:'外を押してメニューが閉じる'});
   rec('外を押すと閉じる',await page.evaluate(()=>!document.querySelector('.col-head-menu')));
 
   /* ---- 7) 最後の1列は隠せない ---- */
@@ -111,23 +107,19 @@ const reset=()=>target?post('/api/column-layout-master',{target,clear:true,order
                                  names:v.names,formats:v.formats,rules:v.rules});
    WL.list.renderGrid();
   },keys);
-  await page.waitForTimeout(500);
+  await paint();
   const last=(await heads());
   rec('1列だけ残っている状態を作れた',last.length===1,JSON.stringify(last));
   await open(last[0]);
   await page.click('.col-head-menu .chm-hide');
-  await page.waitForTimeout(700);
+  /* 「隠れない」ことを見る: 隠すなら保存と描き直しの往復が起きるので、それが静まるまで待つ。 */
+  await idle(800);
   rec('最後の1列は隠せない',(await heads()).length===1,JSON.stringify(await heads()));
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
-  console.log('FATAL: '+(e&&e.stack||e));
-  R.push({n:'FATAL',ok:false});
- }finally{
+  rec('FATAL',false,String(e&&e.message||e));
+  }finally{
   try{await reset()}catch(e){}
-  if(b)await b.close();
- }
- const ng=R.filter(x=>!x.ok).length;
- console.log(`\n== ${R.length-ng}/${R.length} PASS ==`);
- process.exit(ng?1:0);
-})();
+  }
+  }, {viewport:{width:1500,height:900}});

@@ -25,16 +25,15 @@
    中身が空の紙でも通る。**値が実際に載っていること**と、**件数が増えて
    いないこと**まで見る。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const {clearLayout}=require('./lib/harness.js');   // 後片付け（§9.360）
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
-let b=null;
 const getj=async p=>(await fetch(B+p)).json();
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 
-(async()=>{
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+run('test_rbsample: 見本のロットで帳票を見る・試し印刷（§9.253、利用者の指示）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await post('/api/access-mode',{mode:'edit'});
 
@@ -118,10 +117,6 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   try{const sum=await getj('/api/measurement/backup/summary');
       before=(sum.items||sum.rows||[]).length}catch(e){before=null}
 
-  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome'),
-                           args:['--no-sandbox','--disable-dev-shm-usage']});
-  const page=await b.newPage({viewport:{width:1600,height:1000}});
-  const errs=[];page.on('pageerror',e=>errs.push(String(e&&e.message||e)));
   /* **リロードしないこと**——タブが0件になった合図でアプリが落ちる（§9.98）。 */
   await page.addInitScript(eq=>{try{localStorage.setItem('AccessMeasurementConfiguredEquipment',eq)}catch(e){}},EQ);
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
@@ -268,7 +263,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
     const c=document.getElementById('reportContent');
     return c&&c.textContent.length>500;
    },null,{timeout:20000});
-   await page.waitForTimeout(700);
+   await idle();
    return noteNow();
   };
   try{
@@ -428,14 +423,13 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      **消す道と出す道は別々に通す**（塊の編集窓／置き場の札）——片方だけを
      見る網は、もう片方が壊れていても通る（§9.278と同じ理由）。 */
   const settleRp=async()=>{
-   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
-   await page.waitForTimeout(300);
+   await idle();   // 入切の保存と紙の描き直しが静まるまで（描画1巡も含む）
    return page.evaluate(()=>({
      長手:!!document.querySelector('.rp-defect-roll'),
      幅方向:!!document.querySelector('.rp-defect-figure')}));
   };
   await page.click('#reportArrange');
-  await page.waitForTimeout(400);
+  await W.until(page,()=>{const b=document.getElementById('rpArrangeBar');return !!b&&!b.hidden},null,{ms:6000,what:'組み換えの帯(#rpArrangeBar)が出る'});
   await page.evaluate(()=>document.querySelector('[data-rp-block="ピッチ判定"] [data-rp-paper]').click());
   await page.waitForFunction(()=>{const m=document.getElementById('rpBlockModal');return !!m&&!m.hidden},null,{timeout:8000});
   await page.click('#rpBlockForm [data-e-vis]');
@@ -455,7 +449,8 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('「出す」に戻すとピッチ判定がまた出る',!!on&&on.長手===true,JSON.stringify(on));
   /* 組み換えを閉じてから先へ（触ったぶんは自動で保存される・§9.303 ③）。 */
   await page.evaluate(()=>{const c=document.getElementById('rpArrangeCancel');if(c&&!document.getElementById('rpArrangeBar')?.hidden)c.click()});
-  await page.waitForTimeout(400);
+  await W.until(page,()=>{const b=document.getElementById('rpArrangeBar');return !b||b.hidden},null,{ms:6000,what:'組み換えの帯が閉じる'});
+  await idle();
 
   /* ---- 5b) 実際に帳票ブロックマスタへ帰る ---- */
   await page.click('#reportBack');
@@ -478,16 +473,12 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 
   rec('画面の例外が出ていない',errs.length===0,errs.join(' / '));
  }catch(e){
-  console.log('FATAL '+(e&&e.message||e));R.push({ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* **後片付け**（§9.360）: 画面を触ると、その帳票・一覧の列レイアウトが
      保存される。**触った網は自分で消す**——残すと、単独で回したときに
      自分のDBを汚し、通しでは「共有状態を残した本」の報告がうるさくなって
      本物の置き土産が埋もれる（§9.284 の`list:`が積み上がる形）。 */
   try{await clearLayout('report:テスト設備A')}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1600,height:1000}});

@@ -18,18 +18,10 @@
      3. それでも列幅の取っ手が見出しの右端に正しく置かれること
         (relativeを外したことで壊れていないか)
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- // 使用設備が未設定だと一覧を出す前に設定バナーで止まる(他のUIテストと同じ前提)。
- const ctx=await b.newContext({viewport:{width:1400,height:900}});
- await ctx.addInitScript(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
- const page=await ctx.newPage();
- const R=[];const rec=(n,ok,d)=>{R.push(ok);console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
+run('test_gridhead: 一覧の列見出しがスクロールしても固定されたままであること', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('aside [data-db-key="SIKALOTNOW"]',{timeout:25000});
@@ -96,11 +88,8 @@ let b=null;
     handle.ある&&Math.abs(handle.右端のずれ)<=16&&Math.abs(handle.高さの差)<=2,
     JSON.stringify(handle));
  }catch(e){
-  console.error('FATAL',e);
- }finally{
-  await b.close();
+  rec('FATAL',false,String(e&&e.message||e));
  }
- const ng=R.filter(x=>!x).length;
- console.log('\n== '+(R.length-ng)+'/'+R.length+' PASS ==');
- process.exit(ng?1:0);
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});
+}, {viewport:{width:1400,height:900},
+    /* 使用設備が未設定だと一覧を出す前に設定バナーで止まる(他のUIテストと同じ前提)。 */
+    init:()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A')});

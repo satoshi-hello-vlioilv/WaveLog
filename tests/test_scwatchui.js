@@ -11,17 +11,12 @@
        勝手に読み直さない**——掴んで動かしている途中に行が入れ替わると、
        何をしていたか分からなくなる。そのときは帯で知らせる
     4. 帯の「読み直す」で読み直せる */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
+run('test_scwatchui: 共有の見張りの見え方（§9.188）', async ({page,rec,B,W,paint,errs,browser})=>{
  const setMode=m=>page.evaluate(async mm=>{await fetch('/api/access-mode',{method:'POST',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mm})})},m);
  try{
@@ -126,10 +121,6 @@ let b=null;
   console.error('FATAL',e);rec('例外なく終わる',false,e.message);
  }finally{
   try{await setMode('edit')}catch(_){}
-  if(b)await b.close().catch(()=>{});
  }
- console.log('\n=== SUMMARY ===');
- const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
- ng.forEach(x=>console.log(' -',x.n,x.d||''));
- process.exit(ng.length?1:0);
-})();
+
+}, {viewport:{width:1700,height:1000}});

@@ -9,32 +9,28 @@
     4. タイムラインで複数選ぶと、掴んだ行と一緒に全部が動く
     5. 選択バーに「まとめて並べ替えられる」ことが文字で出る
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];page.on('pageerror',e=>errs.push(e.message));
+run('test_multidrag: 選んでからまとめて動かす(§9.177)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   // ================= 列の設定パネル =================
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('aside [data-db-key]',{timeout:25000});
-  await page.waitForTimeout(700);
+  await W.booted(page);await idle();
   await page.click('aside [data-db-key]');
   await page.waitForSelector('#grid tbody tr',{timeout:25000});
-  await page.waitForTimeout(1500);
+  await idle();
   await page.click('#listColumnBtn');
   await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:8000});
-  await page.waitForTimeout(800);
+  await idle();
   const keys=await page.evaluate(()=>[...document.querySelectorAll('#lcList .lc-item')].map(x=>x.dataset.key).slice(0,6));
   await page.click(`#lcList .lc-item[data-key="${keys[2]}"]`);
   await page.click(`#lcList .lc-item[data-key="${keys[3]}"]`,{modifiers:['Control']});
   await page.click(`#lcList .lc-item[data-key="${keys[4]}"]`,{modifiers:['Control']});
-  await page.waitForTimeout(400);
+  await paint();
   const m=await page.evaluate(()=>({marked:[...document.querySelectorAll('#lcList .lc-item.is-marked')].map(x=>x.dataset.key),
    count:document.getElementById('lcCount')?.textContent||''}));
   rec('Ctrlクリックで複数の列を選べる',m.marked.length===3,JSON.stringify(m.marked));
@@ -46,13 +42,13 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
    return {x:r.x+120,y:r.y+2}},keys[0]);
   await page.mouse.move(from.x,from.y);await page.mouse.down();
   await page.mouse.move(from.x,from.y-24,{steps:5});
-  await page.waitForTimeout(200);
+  await W.until(page,()=>!!document.querySelector('.lc-ghost'),null,{ms:4000,what:'掴んだ写し(.lc-ghost)が出る'});
   const ghost=await page.evaluate(()=>{const g=document.querySelector('.lc-ghost');
    return g?{n:g.querySelector('.lc-ghost-count')?.textContent||'',dragging:document.querySelectorAll('.lc-item.lc-dragging').length}:null});
   rec('掴んだ写しに件数が出る',!!ghost&&ghost.n==='3列',JSON.stringify(ghost));
   rec('選んだ行がすべて掴まれている',!!ghost&&ghost.dragging===3,JSON.stringify(ghost));
   await page.mouse.move(to.x,to.y,{steps:8});await page.mouse.up();
-  await page.waitForTimeout(800);
+  await idle();
   const after=await page.evaluate(()=>[...document.querySelectorAll('#lcList .lc-item')].map(x=>x.dataset.key).slice(0,6));
   rec('選んだ3列がまとめて先頭へ動く',
       after.slice(0,3).join(',')===[keys[2],keys[3],keys[4]].join(','),
@@ -66,11 +62,5 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      (CLOSED_GRACE_SEC、§9.98)を跨ぐと、テストの途中でアプリが自分から
      終了する(実際にそうなった)。 */
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
- }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
- finally{
-  await b.close();
-  const ok=R.filter(x=>x.ok).length;
-  console.log(`\n=== SUMMARY ===\n${ok}/${R.length} passed`);
-  process.exit(ok===R.length?0:1);
- }
-})();
+ }catch(e){rec('FATAL',false,String(e&&e.message||e))}
+}, {viewport:{width:1700,height:1000}});

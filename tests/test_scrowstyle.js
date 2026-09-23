@@ -16,19 +16,14 @@
     8. さかのぼりは「いまから過去◯時間」で、**起点の日時**を文字で出す
     9. 予定の起点は**5分刻み**（サーバー側）
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1700,height:1000}});
+run('test_scrowstyle: 行の見せ方・操作の整理・基準時刻・さかのぼり（§9.198）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  /* 見え方の設定は「表示」パネル(§9.199)の中にある。触る前に開く。 */
  const openView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.openViewPop&&WL.scheduleView.openViewPop());
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
  const setMode=m=>page.evaluate(async mm=>{await fetch('/api/access-mode',{method:'POST',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mm})})},m);
  const post=(p,body)=>page.evaluate(async a=>{
@@ -92,7 +87,7 @@ let b=null;
       JSON.stringify(opts.map(o=>o.t)));
   await openView();
   await page.selectOption('#scGroupSelect','caldate');
-  await page.waitForTimeout(600);
+  await idle();
   const head=await page.evaluate(()=>{
    const h=document.querySelector('.sc-group-basis');
    return {basis:h?h.textContent.trim():'',paper:WL.scheduleView.groupBasis()};
@@ -101,13 +96,13 @@ let b=null;
   rec('紙も同じまとめ方を見る',head.paper==='cal',JSON.stringify(head));
   await openView();
   await page.selectOption('#scGroupSelect','date');
-  await page.waitForTimeout(500);
+  await idle();
   const head2=await page.evaluate(()=>({basis:(document.querySelector('.sc-group-basis')||{}).textContent||'',
                                         paper:WL.scheduleView.groupBasis()}));
   rec('現場歴に戻すと見出しも紙も現場歴',head2.basis.trim()==='現場歴'&&head2.paper==='work',JSON.stringify(head2));
   await openView();
   await page.selectOption('#scGroupSelect','none');
-  await page.waitForTimeout(400);
+  await idle();
 
   /* ---- 8) さかのぼりの起点（§9.366で「種類→量」の2段になった） ---- */
   const hist=await page.evaluate(()=>{
@@ -165,7 +160,7 @@ let b=null;
   await openView();
   await page.click('#scRowStyleBtn');
   await page.waitForSelector('#scRowStylePop:not([hidden])',{timeout:8000});
-  await page.waitForTimeout(700);
+  await idle();
   const panel=await page.evaluate(()=>({
    rows:[...document.querySelectorAll('.sc-rs-row')].map(r=>r.dataset.rs),
    colors:document.querySelectorAll('.sc-rs-row[data-rs="cat:planned"] [data-rs-color] option').length,
@@ -182,14 +177,14 @@ let b=null;
   rec('設備停止の分類ごとにも決められる',panel.rows.some(k=>k.startsWith('stopcat:')),JSON.stringify(panel.rows));
 
   await page.selectOption('.sc-rs-row[data-rs="cat:planned"] [data-rs-color]','blue');
-  await page.waitForTimeout(800);
+  await idle();
   /* アイコンは§9.200で「絵を見たまま選ぶ盤」になり、§9.201で**行の外**
      （body直下の`#scIconPick`）へ出した——行の中だと浮きパネルの
      `overflow`に切られて下半分が見えなかった。 */
   await page.click('.sc-rs-row[data-rs="cat:planned"] [data-rs-iconbtn]');
   await page.waitForSelector('#scIconPick:not([hidden])',{timeout:8000});
   await page.click('#scIconPick [data-icon-pick="svg:clock"]');
-  await page.waitForTimeout(900);
+  await idle();
   const applied=await page.evaluate(()=>{
    const rows=[...document.querySelectorAll('.sc-row-line')];
    const blue=rows.filter(r=>/\bsc-rs-blue\b/.test(r.className));
@@ -214,9 +209,9 @@ let b=null;
     .map(r=>r.dataset.rs).filter(k=>k.startsWith('stopcat:')));
   if(cats.length){
    await page.selectOption('.sc-rs-row[data-rs="cat:stop"] [data-rs-color]','amber');
-   await page.waitForTimeout(700);
+   await idle();
    await page.selectOption(`.sc-rs-row[data-rs="${cats[0].replace(/"/g,'\\"')}"] [data-rs-color]`,'red');
-   await page.waitForTimeout(800);
+   await idle();
    const won=await page.evaluate(c=>{
     const name=c.slice('stopcat:'.length);
     /* 実際の行が無くても判定は確かめられる——判定の1箇所へ直接聞く。 */
@@ -227,7 +222,7 @@ let b=null;
 
   /* ---- 3) 既定へ戻す＝行を消す ---- */
   await page.click('.sc-rs-row[data-rs="cat:planned"] [data-rs-reset]');
-  await page.waitForTimeout(900);
+  await idle();
   const after=await styles();
   rec('既定へ戻すと行ごと消える（空の設定を残さない）',
       !after.some(x=>x.key==='cat:planned'),JSON.stringify(after.map(x=>x.key)));
@@ -235,15 +230,10 @@ let b=null;
       await page.evaluate(()=>![...document.querySelectorAll('.sc-row-line')]
         .some(r=>/\bsc-rs-blue\b/.test(r.className))));
 
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
   await cleanup();
-  process.exit(ng.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
+  rec('FATAL',false,String(e&&e.message||e));
   await cleanup();
-  process.exit(2);
  }
  /* 行表示マスタはmaster.sqlite3に残り実行をまたいで生き延びる（§9.121）。
     **始めにも終わりにも白紙へ戻す**——後片付け前に落ちた回の設定を次の
@@ -256,6 +246,5 @@ let b=null;
  }
  async function cleanup(){
   try{await cleanStyles();await setMode('edit')}catch(e){}
-  if(b)await b.close().catch(()=>{});
  }
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});
+}, {viewport:{width:1700,height:1000}});

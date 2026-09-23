@@ -1,23 +1,16 @@
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const setMode=async m=>{await fetch('http://127.0.0.1:5029/api/access-mode',
  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
 const plan=async()=>(await (await fetch('http://127.0.0.1:5029/api/schedule/plan?equipment='
  +encodeURIComponent('テスト設備A')+'&history_hours=8')).json());
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const W=require('./lib/wait.js');const {idle}=W.track(page);
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
+run('test_scbatch: --- 一括追加が1リクエストにまとまり、全件保存される ---', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  let n={batch:0,add:0,del:0,reorder:0,update:0};
  page.on('request',r=>{const u=r.url();
   if(u.includes('/plan/batch'))n.batch++;else if(u.includes('/plan/add'))n.add++;
   else if(u.includes('/plan/delete'))n.del++;else if(u.includes('/plan/reorder'))n.reorder++;
   else if(u.includes('/plan/update'))n.update++;});
  const reset=()=>{n={batch:0,add:0,del:0,reorder:0,update:0}};
- await setMode('schedule');
  const open=async()=>{
   await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:15000});
@@ -109,15 +102,4 @@ let b=null;
  rec('編集モードからはまとめ書込を受け付けない(追加の抜け道にしない)',denied.status===403,JSON.stringify(denied));
  await setMode('schedule');
 
- console.log('\n=== SUMMARY ===');
- const f=R.filter(x=>!x.ok);console.log(`${R.length-f.length}/${R.length} passed`);
- f.forEach(x=>console.log(' -',x.n,x.d||''));
- await b.close();process.exit(f.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {mode:'schedule', viewport:{width:1700,height:1000}});

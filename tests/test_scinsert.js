@@ -16,17 +16,15 @@
     7. クリックで仕掛一覧のモーダルが開く
     8. 追加はその位置へ入る（サーバーの並びで確かめる）
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
-let b=null;const made=[];
+const made=[];
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const plan=()=>fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ)).then(r=>r.json());
-/* 待ちは「時間」でなく「条件」で置く（§9.324 R5、tests/lib/wait.js）。 */
-const W=require('./lib/wait');
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
+/* 待ちは「時間」でなく「条件」で置く（§9.324 R5、tests/lib/wait.js。W は土台が渡す）。 */
+run('test_scinsert: 開いたときの表示とカーソル位置への追加(§9.179)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  /* 見え方の設定（まとめ・さかのぼり・表示列・行の色・配置）は「表示」
     パネル(§9.199)の中にある。開く→選ぶ→**閉じる**まで1つの手順にする
     ——開いたままにすると、パネルが表の右上を覆って次のクリックが
@@ -34,8 +32,6 @@ const W=require('./lib/wait');
  const openView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.openViewPop&&WL.scheduleView.openViewPop());
  const closeView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.closeViewPop&&WL.scheduleView.closeViewPop());
  const pickView=async(sel,val)=>{await openView();await page.selectOption(sel,val).catch(()=>{});await closeView()};
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];page.on('pageerror',e=>errs.push(e.message));
  try{
   await post('/api/access-mode',{mode:'schedule'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
@@ -74,18 +70,18 @@ const W=require('./lib/wait');
   const posBefore=await page.evaluate(()=>({g:Math.round(document.querySelector('#grid').getBoundingClientRect().x),
    p:Math.round(document.querySelector('.sc-panel').getBoundingClientRect().x)}));
   await page.click('#uiSizeMenu input[name=scSide][value=right]');
-  await page.waitForTimeout(700);
+  await paint();
   const posAfter=await page.evaluate(()=>({g:Math.round(document.querySelector('#grid').getBoundingClientRect().x),
    p:Math.round(document.querySelector('.sc-panel').getBoundingClientRect().x),
    cls:document.querySelector('.sc-split-wrap').className}));
   rec('「右」で仕掛一覧が右へ動く',posBefore.g<posBefore.p&&posAfter.g>posAfter.p,
       JSON.stringify({before:posBefore,after:posAfter}));
   await page.click('#uiSizeMenu input[name=scSide][value=left]');
-  await page.waitForTimeout(500);
+  await paint();
 
   // ---- 3. 「スケジュールだけで開く」
   await page.click('#uiSizeMenu input[name=scOpenMode][value=schedule]');
-  await page.waitForTimeout(400);
+  await idle();
   await page.reload({waitUntil:'domcontentloaded'});
   await W.booted(page);
   await W.openSchedule(page,EQ);
@@ -97,13 +93,13 @@ const W=require('./lib/wait');
      スケジュール表だけになりません」)。 */
   await openLook();
   await page.click('#uiSizeMenu input[name=scOpenMode][value=split]');
-  await page.waitForTimeout(900);
+  await idle();
   const nowSplit=await page.evaluate(()=>!document.querySelector('.sc-split-wrap.sc-list-collapsed'));
   await page.click('#uiSizeMenu input[name=scOpenMode][value=schedule]');
-  await page.waitForTimeout(900);
+  await idle();
   const nowOnly=await page.evaluate(()=>!!document.querySelector('.sc-split-wrap.sc-list-collapsed'));
   await page.evaluate(()=>document.body.click());
-  await page.waitForTimeout(300);
+  await W.until(page,()=>!document.getElementById('uiSizeMenu'),null,{ms:5000,what:'「表示」が閉じる'});
   rec('選んだ瞬間に表示が切り替わる',nowSplit===true&&nowOnly===true,
       JSON.stringify({split:nowSplit,only:nowOnly}));
   /* §9.199で当たり判定を境目のそばへ絞った（利用者の指摘）ので、案内も
@@ -124,8 +120,8 @@ const W=require('./lib/wait');
      鍵の印・詳細・削除のボタンが逃げて押せなかった。 */
   const before=await page.evaluate(()=>[...document.querySelectorAll('.sc-row-line')]
     .map(r=>Math.round(r.getBoundingClientRect().top)));
-  await page.mouse.move(t.x,t.y+40);await page.waitForTimeout(150);
-  await page.mouse.move(t.x,t.y);await page.waitForTimeout(500);
+  await page.mouse.move(t.x,t.y+40);await paint();
+  await page.mouse.move(t.x,t.y);await paint();
   const ghost=await page.evaluate(()=>{const g=document.querySelector('#scInsertGhost');
    if(!g||!g.parentNode)return null;
    const line=g.querySelector('.sc-insert-line'),tip=g.querySelector('.sc-insert-tip');
@@ -162,11 +158,11 @@ const W=require('./lib/wait');
    if(!cell)return null;const b=cell.getBoundingClientRect();
    return {x:Math.round(b.left+b.width/2),y:Math.round(b.top+1)}});
   if(actAt){
-   await page.mouse.move(actAt.x,actAt.y);await page.waitForTimeout(300);
+   await page.mouse.move(actAt.x,actAt.y);await paint();
    const gone=await page.evaluate(()=>!document.querySelector('#scInsertGhost')?.parentNode);
    rec('操作の列では反応しない（ボタンが隠れない）',gone===true,String(gone));
-   await page.mouse.move(t.x,t.y+40);await page.waitForTimeout(150);
-   await page.mouse.move(t.x,t.y);await page.waitForTimeout(400);
+   await page.mouse.move(t.x,t.y+40);await paint();
+   await page.mouse.move(t.x,t.y);await paint();
   }
   /* ---- 案内のON/OFF(§9.197、利用者の指示「慣れたら不要」) ----
      切ると**吹き出しは出ないが線は残る**（どこへ入るか分からないのは、
@@ -186,10 +182,10 @@ const W=require('./lib/wait');
   rec('行間の案内は3段から選べる（案内つき／線だけ／出さない・§9.439）',
       tipPref.join(',')==='tip,line,off',JSON.stringify(tipPref));
   await page.click('#uiSizeMenu input[name=scInsertGuide][value=line]');
-  await page.waitForTimeout(300);
+  await paint();
   await popOpen(false);
-  await page.mouse.move(t.x,t.y+40);await page.waitForTimeout(150);
-  await page.mouse.move(t.x,t.y);await page.waitForTimeout(500);
+  await page.mouse.move(t.x,t.y+40);await paint();
+  await page.mouse.move(t.x,t.y);await paint();
   const quiet=await page.evaluate(()=>{const g=document.querySelector('#scInsertGhost');
    if(!g||!g.parentNode)return null;
    const tip=g.querySelector('.sc-insert-tip'),line=g.querySelector('.sc-insert-line');
@@ -276,15 +272,15 @@ const W=require('./lib/wait');
   await W.until(page,()=>document.querySelector('#scStopModal')?.hidden!==false);
   const seen=[];
   for(let dy=-5;dy<=5;dy++){
-   await page.mouse.move(t.x,t.y+dy);await page.waitForTimeout(50);
+   await page.mouse.move(t.x,t.y+dy);await paint();
    seen.push(await page.evaluate(()=>{const g=document.querySelector('#scInsertGhost');
     return g&&g.parentNode?g.dataset.beforeId:'-'}));
   }
   rec('少し動かしても隙間がちらつかない',new Set(seen).size===1&&seen[0]!=='-',JSON.stringify([...new Set(seen)]));
 
   /* ---- 7-8. ダブルクリック → 仕掛表 → その位置へ入る ---- */
-  await page.mouse.move(t.x,t.y+40);await page.waitForTimeout(120);
-  await page.mouse.move(t.x,t.y);await page.waitForTimeout(420);
+  await page.mouse.move(t.x,t.y+40);await paint();
+  await page.mouse.move(t.x,t.y);await paint();
   await page.dblclick('#scInsertGhost .sc-insert-line');
   /* 仕掛表が開くまで待ち、単クリックの判定（設備停止が開く道）が
      過ぎるぶんだけ落ち着かせる。 */
@@ -362,7 +358,8 @@ const W=require('./lib/wait');
   if(added2)made.push(added2.id);
   /* 閉じたら忘れる——残ると次の追加が思い出しもしない位置へ入る。 */
   await page.evaluate(()=>document.querySelector('#scListModalClose')?.click());
-  await page.waitForTimeout(800);
+  await W.until(page,()=>document.querySelector('#scListModal')?.hidden!==false,null,{ms:5000,what:'仕掛表が閉じる'});
+  await idle();
   const cleared=await page.evaluate(()=>!!document.querySelector('#scInsertGhost'));
   rec('仕掛表を閉じたら位置の固定も外れる',cleared===false,String(cleared));
 
@@ -371,16 +368,12 @@ const W=require('./lib/wait');
      `renderTimeline()` は `innerHTML=''` で中身を捨てるので、控えておかないと
      必ず先頭へ飛ぶ。1件足すたびに先頭へ戻ると、次の1件を探し直すことになる。 */
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
- }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
+ }catch(e){rec('FATAL',false,String(e&&e.message||e))}
  finally{
   try{
    await post('/api/access-mode',{mode:'schedule'});
    await post('/api/schedule/session/acquire',{equipment:EQ});
    for(const id of made)await post('/api/schedule/plan/delete',{id});
   }catch(e){}
-  await b.close();
-  const ok=R.filter(x=>x.ok).length;
-  console.log(`\n=== SUMMARY ===\n${ok}/${R.length} passed`);
-  process.exit(ok===R.length?0:1);
  }
-})();
+}, {viewport:{width:1700,height:1000}});

@@ -15,8 +15,8 @@
     3. 場面（スケジュール作成中の仕掛一覧 / 「一覧を見る」の仕掛一覧）で
        置き場が分かれること。**アクセスモードでは分けない**
     4. 場面が変わっても、その場面の覚えと既定が当たること */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const NAME='鍵テスト用フィルタ_'+Date.now();
 
@@ -27,13 +27,8 @@ const NAME='鍵テスト用フィルタ_'+Date.now();
 const H=require('./lib/harness.js');
 const SNAP_TABLES=['フィルタプリセットマスタ'];
 let snapM=null;
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
+run('test_filterkeep: 鍵付き・デフォルトのフィルタが外れない（§9.184）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  snapM=await H.masterSnapshot(SNAP_TABLES);
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
  let pid=null;
  const boot=async()=>{
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
@@ -103,7 +98,7 @@ let b=null;
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
   await page.waitForSelector('#grid table',{timeout:30000});
-  await page.waitForTimeout(1200);
+  await idle(800);  // 起きないこと（別の人の印が当たらない）を見る: whoami と一覧の読み込みが静まるまで
   const empty=await page.evaluate(()=>({uid:currentUserId(),
     n:(S.genericFilters||[]).length}));
   /* **「IDが空になること」は見ない**——`/api/whoami`がこの端末のログインIDを
@@ -140,10 +135,5 @@ let b=null;
     .forEach(k=>localStorage.removeItem(k))})}catch(_){}
   try{if(snapM)await H.dropNewMasterRows(snapM)}
   catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
-  if(b)await b.close().catch(()=>{});
  }
- console.log('\n=== SUMMARY ===');
- const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
- ng.forEach(x=>console.log(' -',x.n,x.d||''));
- process.exit(ng.length?1:0);
-})();
+}, {viewport:{width:1600,height:1000}});

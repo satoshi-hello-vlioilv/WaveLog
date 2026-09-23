@@ -16,8 +16,8 @@
     - マスタ管理の盤に「母材」の盤が出る
     - 器からはみ出さない
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const TAG='mo-'+Date.now().toString(36);
 const post=(p,x)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
@@ -25,12 +25,7 @@ const post=(p,x)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/
 const get=p=>fetch(B+p).then(r=>r.json());
 const EQ='テスト設備A';
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1920,height:1080}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('dialog',d=>d.accept());
+run('test_opmother: 母材の欄も操業データの項目にする（§9.232）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  /* 大きい選び物は浮き出しの中（§9.299）。**一度開けば描き直しても開いたまま**
     なので、窓を開くたびに1回でよい（`opState.pop`が覚えている）。 */
  /* **浮き出しは他の欄を覆う**（`position:fixed`）。実機では外側を1回押せば
@@ -122,7 +117,7 @@ let b=null;
     null,{timeout:10000});
   await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="look"]',{timeout:8000});
   await openPop('widget');
-  await page.waitForTimeout(500);
+  await paint();
   const look=await page.evaluate(()=>({
    形の数:document.querySelectorAll('[data-op-widget]').length,
    文:(document.querySelector('#opModalForm')?.textContent||'')}));
@@ -138,7 +133,7 @@ let b=null;
       /画面が値を入れます/.test(look.文)&&/見せ方/.test(look.文),
       look.文.slice(0,120));
   await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="data"]',{timeout:8000});
-  await page.waitForTimeout(400);
+  await paint();
   const what=await page.evaluate(()=>({
    初期値欄:!!document.getElementById('opdInitial'),
    文:(document.querySelector('#opModalForm')?.textContent||'')}));
@@ -307,16 +302,13 @@ let b=null;
       after.分母===before.分母-1&&after.鍵===before.鍵-1,
       JSON.stringify({前:before,後:after}));
 
-  console.log('\n合計 '+R.filter(r=>r.ok).length+'/'+R.length+' PASS'
-    +'  (FAIL: '+R.filter(r=>!r.ok).length+')');
-  process.exitCode=R.some(r=>!r.ok)?1:0;
+
  }catch(e){
-  console.log('FATAL: '+(e&&e.message));process.exitCode=1;
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   for(const x of backup){try{await saveItem(x)}catch(e){}}
   /* 置いた実績は自分で消す（§9.351・§9.362）。残った実績は計画外実績として
      予定表に現れ、無関係な網を落とす。 */
   try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
-})();
+}, {viewport:{width:1920,height:1080}});

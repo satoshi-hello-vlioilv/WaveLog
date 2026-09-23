@@ -19,10 +19,9 @@
     - 空きの群は測定画面で**枠も見出しも文字も持たず**、幅ぶんのマスを取る
     - 空きの群の行は**「記録した値」の分母に入らない**
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-/* 待ちは「時間」でなく「条件」で置く（§9.324 R5、tests/lib/wait.js）。 */
-const W=require('./lib/wait');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
+
 const B='http://127.0.0.1:5029';
 const TAG='pad-'+Date.now().toString(36);
 const post=(p,x)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
@@ -30,14 +29,7 @@ const post=(p,x)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/
 const get=p=>fetch(B+p).then(r=>r.json());
 const EQ='テスト設備A';
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1920,height:1080}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
- page.on('dialog',d=>d.accept());
+run('test_oppad: 角丸ベースの意匠・設定窓の揺れ・空き（ダミー）の群（§9.227）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  /* 大きい選び物は浮き出しの中（§9.299）。**一度開けば描き直しても開いたまま**
     なので、窓を開くたびに1回でよい（`opState.pop`が覚えている）。 */
  /* **浮き出しは他の欄を覆う**（`position:fixed`）。実機では外側を1回押せば
@@ -70,7 +62,7 @@ let b=null;
   await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tests');
   await page.click('#masterMaintNav [data-master="opItem"]');
   await page.waitForSelector('.op-board',{timeout:20000});
-  await page.waitForTimeout(900);
+  await idle();
 
   /* ==========================================================
      1) 設定窓: 選ばせ方を変えても右が動かない／見本が見切れない
@@ -83,10 +75,10 @@ let b=null;
   await page.waitForFunction(()=>{
    const m=document.getElementById('opItemModal');return !!m&&!m.hidden;
   },null,{timeout:10000});
-  await page.waitForTimeout(500);
+  await idle();
   await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="look"]',{timeout:8000});
   await openPop('widget');
-  await page.waitForTimeout(600);
+  await paint();
   const kinds=await page.$$eval('[data-op-widget]',es=>es.map(e=>e.dataset.opWidget));
   rec('前提: 選ばせ方が2つ以上ある（切り替えて比べられる）',kinds.length>=5,String(kinds.length));
   /* **測るのは「動かないこと」なので、素通りしないよう先に前提を固定する**
@@ -132,7 +124,7 @@ let b=null;
   const seen=[];const pillHits=[];let measured=0;
   for(const k of kinds){
    await page.click(`[data-op-widget="${k}"]`).catch(()=>{});
-   await page.waitForTimeout(320);
+   await paint();
    seen.push({k,...(await geo())});
    const n=await page.evaluate(()=>document.querySelectorAll(
      '.op-prev-field .opf-widget, .op-prev-field .opf-widget *').length);
@@ -180,7 +172,7 @@ let b=null;
       前の形のまま測り続けて「タブなのにラジオの数字」が出る（実際に出た）。 */
    await openPop('widget');
    await page.click(`[data-op-widget="${k}"]`);
-   await page.waitForTimeout(320);
+   await paint();
    /* **「—」を選んだままにしない**——選ばれているのが空欄の札だと、
       文字が短すぎて差が出ているかどうかを測れない。 */
    await page.evaluate(()=>{
@@ -188,7 +180,7 @@ let b=null;
       .filter(b=>b.dataset.opv!=='');
     if(bs[0])bs[0].click();
    });
-   await page.waitForTimeout(250);
+   await paint();
    return page.evaluate(()=>{
     /* 明るさ（相対輝度の近似）。**透明は`null`＝面が無い**。 */
     const lum=c=>{
@@ -253,7 +245,7 @@ let b=null;
    if(HEIGHT_KINDS.indexOf(k)<0)continue;
    await openPop('widget');                 /* 見本を押すと畳まれる（§9.299） */
    await page.click(`[data-op-widget="${k}"]`);
-   await page.waitForTimeout(300);
+   await paint();
    hs[k]=await page.evaluate(()=>{
     const host=document.querySelector('.op-prev-field .opf');
     if(!host)return null;
@@ -274,13 +266,13 @@ let b=null;
      わかりにくく、設定色との連携もない」）。白のままだと地（`--surface-2`）と
      ほとんど同じで差にならない。 */
   await page.click('[data-op-widget="セグメント"]').catch(()=>{});
-  await page.waitForTimeout(300);
+  await paint();
   const segFill=async color=>{
    await page.evaluate(c=>{
     const b=document.querySelector(`[data-op-look="color"][data-op-val="${c}"]`);
     if(b)b.click();
    },color);
-   await page.waitForTimeout(320);
+   await paint();
    return page.evaluate(async()=>{
     const bs=[...document.querySelectorAll('.op-prev-field [data-opv]')]
       .filter(b=>b.dataset.opv!=='');
@@ -316,7 +308,7 @@ let b=null;
       JSON.stringify(segA));
 
   await page.evaluate(()=>{const c=document.getElementById('opModalClose');if(c)c.click()});
-  await page.waitForTimeout(300);
+  await W.until(page,()=>{const m=document.getElementById('opItemModal');return !m||m.hidden},null,{ms:5000,what:'設定窓が閉じる'});
 
   /* ==========================================================
      1c) 組み込みの欄も普通の項目として設定できる（§9.229 ③、利用者の指示
@@ -333,7 +325,7 @@ let b=null;
     const m=document.getElementById('opItemModal');return !!m&&!m.hidden;
    },null,{timeout:10000});
    await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="data"]',{timeout:8000});
-   await page.waitForTimeout(500);
+   await idle();
    const ids=await page.$$eval('#opModalForm [id^="opd"]',es=>es.map(e=>e.id));
    /* **判定は族（family）**。`[型]`で見ていたため、`文字`型の組み込み選択欄
       （コイル止め）は選択肢の欄が丸ごと出ていなかった。 */
@@ -344,7 +336,7 @@ let b=null;
    /* **行き止まりにしない**（§4）。「消せません」だけだと外し方が読めない。 */
    rec('「消せません」で終わらせず、外し方へ連れて行く',ids.includes('opdStepOut'));
    await page.click('#opdStepOut');
-   await page.waitForTimeout(400);
+   await W.until(page,()=>!!document.activeElement&&document.activeElement.id==='opdEnabled',null,{ms:4000,what:'「測定画面に出す」へ移る'});
    const jumped=await page.evaluate(()=>({
      ある:!!document.getElementById('opdEnabled'),
      いま:document.activeElement&&document.activeElement.id}));
@@ -352,7 +344,7 @@ let b=null;
        jumped.ある===true&&jumped.いま==='opdEnabled',JSON.stringify(jumped));
    await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="look"]',{timeout:8000});
    await openPop('widget');
-   await page.waitForTimeout(500);
+   await paint();
    const blanks=(await page.$$('[data-op-blank]')).length;
    rec('組み込みの選択欄でも「空欄の札」を決められる',blanks===2,String(blanks));
    /* ---- 窓から名前を変えて保存したら、本当に保存されること ----
@@ -364,7 +356,7 @@ let b=null;
    if(coilBefore){
     renamedCoil=coilBefore;
     await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="data"]',{timeout:8000});
-    await page.waitForTimeout(400);
+    await paint();
     await page.fill('#opdName',TAG+'-止め');
     await W.opSave(page);
     const saved=((await get('/api/operation-item-master')).items||[])
@@ -387,7 +379,7 @@ let b=null;
      const m=document.getElementById('opItemModal');return !!m&&!m.hidden;
     },null,{timeout:10000}).catch(()=>{});
     await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="data"]',{timeout:8000});
-    await page.waitForTimeout(500);
+    await idle();
     const roleTxt=await page.evaluate(()=>{
      const sel=document.getElementById('opdRole');
      if(!sel)return null;
@@ -397,15 +389,15 @@ let b=null;
     rec('役割の一覧に「いまの項目名が担当」と出る（古い名前で終わらせない）',
         !!roleTxt&&roleTxt.indexOf(TAG+'-止め')>=0,JSON.stringify(roleTxt));
     await page.evaluate(()=>{const c=document.getElementById('opModalClose');if(c)c.click()});
-    await page.waitForTimeout(300);
+    await W.until(page,()=>{const m=document.getElementById('opItemModal');return !m||m.hidden},null,{ms:5000,what:'設定窓が閉じる'});
     await post('/api/operation-item-master/update',
       {...coilBefore,id:coilBefore.id,name:coilBefore.name,user_id:'tests'});
     renamedCoil=null;
     await page.evaluate(()=>{if(window.loadOpItemMaint)loadOpItemMaint(true)}).catch(()=>{});
-    await page.waitForTimeout(700);
+    await idle();
    }
    await page.evaluate(()=>{const c=document.getElementById('opModalClose');if(c)c.click()});
-   await page.waitForTimeout(300);
+   await W.until(page,()=>{const m=document.getElementById('opItemModal');return !m||m.hidden},null,{ms:5000,what:'設定窓が閉じる'});
   }
 
   /* ==========================================================
@@ -418,7 +410,7 @@ let b=null;
   await page.click('#opAddPad');
   await page.waitForFunction(n=>document.querySelectorAll('.op-tile').length>n,
     before,{timeout:15000});
-  await page.waitForTimeout(500);
+  await idle();
   const tile=await page.evaluate(()=>{
    const t=document.querySelector('.op-tile.is-pad');
    if(!t)return null;
@@ -459,13 +451,13 @@ let b=null;
   rec('メニューは「よく使うものに絞る」（多すぎない）',menu.総数<=12,String(menu.総数));
   /* **閉じられること**を見る（§9.222 ①。開いたことだけ見る網は素通りする）。 */
   await page.keyboard.press('Escape');
-  await page.waitForTimeout(300);
+  await W.until(page,()=>!document.querySelector('.op-menu'),null,{ms:3000,what:'Escでメニューが閉じる'});
   rec('メニューはEscで閉じる',
       await page.evaluate(()=>!document.querySelector('.op-menu')));
   await page.click('.op-tile.is-pad',{button:'right'});
   await page.waitForSelector('.op-menu',{timeout:8000});
   await page.mouse.click(5,5);
-  await page.waitForTimeout(300);
+  await W.until(page,()=>!document.querySelector('.op-menu'),null,{ms:3000,what:'外側クリックでメニューが閉じる'});
   rec('メニューは外側クリックで閉じる',
       await page.evaluate(()=>!document.querySelector('.op-menu')));
 
@@ -485,7 +477,7 @@ let b=null;
   rec('幅の刻みは増やしても多すぎない',
       (await page.$$eval('.op-menu button',es=>es.length))<=14,'');
   await page.keyboard.press('Escape');
-  await page.waitForTimeout(250);
+  await W.until(page,()=>!document.querySelector('.op-menu'),null,{ms:3000,what:'Escでメニューが閉じる'});
 
   /* ---- ③ 空きのカードも設定窓が開く ---- */
   await page.click('.op-tile.is-pad');
@@ -509,7 +501,7 @@ let b=null;
       !!padModal&&!padModal.tabs.some(t=>/記録|見せ/.test(t)),
       JSON.stringify(padModal&&padModal.tabs));
   await page.evaluate(()=>{const c=document.getElementById('opModalClose');if(c)c.click()});
-  await page.waitForTimeout(300);
+  await W.until(page,()=>{const m=document.getElementById('opItemModal');return !m||m.hidden},null,{ms:5000,what:'設定窓が閉じる'});
 
   /* ---- ① 挿入位置は「カーソルの真下の物」で決める ----
      群は横にも並べられる（§9.226 ③）ので、段だけで探すと同じ段に居る
@@ -653,7 +645,7 @@ let b=null;
    if(r&&r.id)madeIds.push(r.id);
    await page.click('#masterMaintNav [data-master="opItem"]');
    await page.waitForSelector('.op-board',{timeout:20000});
-   await page.waitForTimeout(900);
+   await idle();
    const marked=await page.evaluate(n=>{
     const t=[...document.querySelectorAll('.op-tile')].find(e=>e.textContent.indexOf(n)>=0);
     return t?{見つかった:true,印:t.getAttribute('data-op-auto')||'',
@@ -681,7 +673,7 @@ let b=null;
   await page.evaluate(()=>{const t=document.querySelector('.op-tile');if(t)t.click()});
   await page.waitForFunction(()=>{const m=document.getElementById('opItemModal');return !!m&&!m.hidden},
     null,{timeout:10000});
-  await page.waitForTimeout(600);
+  await idle();
   const only=await page.evaluate(()=>{
    const host=document.getElementById('opPrevField');
    const f=host&&host.querySelector('.opf');
@@ -716,7 +708,7 @@ let b=null;
   /* **後始末**——窓を閉じる（この先の確認は盤と測定画面を見る）。 */
   await page.evaluate(()=>{const c=document.getElementById('opModalClose')
     ||document.querySelector('#opItemModal .mm-close');if(c)c.click()});
-  await page.waitForTimeout(300);
+  await W.until(page,()=>{const m=document.getElementById('opItemModal');return !m||m.hidden},null,{ms:5000,what:'設定窓が閉じる'});
 
   /* ---- 測定画面: 「空き」の文字がどこにも出ない ---- */
   await page.evaluate(()=>{const m=document.getElementById('masterMaintModal');if(m)m.hidden=true});
@@ -733,7 +725,7 @@ let b=null;
   if(!started)throw Error('開始できる行が無い');
   await page.waitForFunction(()=>!document.querySelector('#measureModal')?.hidden,null,{timeout:25000});
   await page.waitForFunction(()=>typeof S!=='undefined'&&!!S.measure,null,{timeout:25000});
-  await page.waitForTimeout(1500);
+  await idle();
   const pad=await page.evaluate(()=>{
    const el=document.querySelector('.selectors>[data-oppad="1"]');
    /* **「空き」という文字が測定画面に出ていないこと**（利用者の指摘）。 */
@@ -804,7 +796,7 @@ let b=null;
    return true;
   });
   if(keptOk){
-   await page.waitForTimeout(1200);
+   await idle();
    const kept=await page.evaluate(()=>{
     const el=document.getElementById('operator');
     return el?{並び:[...el.options].map(o=>o.text).includes('ZZ居ない人'),値:el.value}:null;
@@ -833,7 +825,7 @@ let b=null;
     await WL.opData.load(true);
     WL.opData.layout();
    });
-   await page.waitForTimeout(900);
+   await paint();
    const after=await page.evaluate(()=>{
     const l=document.querySelector('.selectors>[data-f="coilStop"]');
     return l?{文字:l.textContent.trim(),欄:!!l.querySelector('select')}:null;
@@ -885,9 +877,5 @@ let b=null;
      してタイムラインに現れ、行数・作業可否・「作業中」の有無を変える
      ——後片付けを忘れた1本が、無関係な網を落とす。 */
   try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1920,height:1080}});

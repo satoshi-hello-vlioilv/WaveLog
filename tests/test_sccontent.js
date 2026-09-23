@@ -19,17 +19,13 @@
     - **使えない機能はボタンごと消える**こと（並べ替えの決まりは持たない
       ——行の並びは時刻の一本道）。**計算式は§9.207で使えるようにした。**
     - **読み込みは今ある列だけに当て、飛ばした件数を必ず言う**こと。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const TARGET='timeline:'+EQ;
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1700,height:1000}});
+run('test_sccontent: 内容欄の設定を仕掛一覧と同じパネルで開く（§9.120）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  /* 見え方の設定（まとめ・さかのぼり・表示列・行の色・配置）は「表示」
     パネル(§9.199)の中にある。開く→選ぶ→**閉じる**まで1つの手順にする
     ——開いたままにすると、パネルが表の右上を覆って次のクリックが
@@ -37,8 +33,6 @@ let b=null;
  const openView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.openViewPop&&WL.scheduleView.openViewPop());
  const closeView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.closeViewPop&&WL.scheduleView.closeViewPop());
  const pickView=async(sel,val)=>{await openView();await page.selectOption(sel,val).catch(()=>{});await closeView()};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
  page.on('console',m=>{if(m.type()==='error')errs.push('console: '+m.text().slice(0,90))});
  const setMode=m=>page.evaluate(async mm=>{await fetch('/api/access-mode',{method:'POST',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mm})})},m);
@@ -62,7 +56,7 @@ let b=null;
   await openView();
   await page.click('#scContentModalBtn');
   await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:10000});
-  await page.waitForTimeout(600);
+  await idle();
   const p=await page.evaluate(()=>{
    const el=document.getElementById('listColumnPanel');
    const r=el.getBoundingClientRect();
@@ -108,7 +102,7 @@ let b=null;
    const it=[...document.querySelectorAll('#lcList .lc-item')][1];
    it&&it.click();return it?it.dataset.key:'';
   });
-  await page.waitForTimeout(400);
+  await W.until(page,()=>!!document.querySelector('input[name="lcWidthMode"]'),null,{ms:4000,what:'右ペインに1項目ぶんの見え方が出る'});
   const detail=await page.evaluate(()=>({
    幅の3択:[...document.querySelectorAll('input[name="lcWidthMode"]')].map(m=>m.value).join(','),
    書式:!!document.getElementById('lcKinds'),
@@ -233,7 +227,7 @@ let b=null;
   await setMode('edit');
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:30000});
-  await page.waitForTimeout(1200);
+  await idle();
   await page.evaluate(()=>WL.listColumns.open());
   await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:8000});
   const list=await page.evaluate(()=>({
@@ -257,15 +251,11 @@ let b=null;
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
+
   await cleanup();
-  process.exit(ng.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
+  rec('FATAL',false,String(e&&e.message||e));
   await cleanup();
-  process.exit(2);
  }
  async function cleanup(){
   /* 検証で作った設定は消す(次のテストや実機の設定を汚さない)。 */
@@ -277,6 +267,5 @@ let b=null;
     {order:[],hidden:[],widths:{},names:{},formats:{},rules:{},formulas:{},locks:[]});
   },{eq:EQ,target:TARGET})}catch(e){}
   try{await setMode('edit')}catch(e){}
-  if(b)await b.close().catch(()=>{});
  }
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});
+}, {viewport:{width:1700,height:1000}});

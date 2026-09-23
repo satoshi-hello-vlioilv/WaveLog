@@ -18,16 +18,15 @@
 
    **「札が並ぶ」だけを見ないこと**——候補が実際に減ること・減らないことの
    両方を見る（片側だけの網は、絞りすぎる実装も絞らない実装も素通しする）。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const PRE='機能テスト設備';
 const NAME=PRE+Date.now().toString().slice(-6);
 const EQ='テスト設備A';   /* 履歴側の確認に使う設備（記録はこの網が自分で置く） */
 const REC_ID='eqfeature-'+Date.now().toString().slice(-6);  /* 自分で置く記録（§9.351） */
 
-let b=null,page=null;
-const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+let page=null;
 
 /* 作った設備は必ず消す。設備マスタは master.sqlite3 なので、残すと後続の
    俯瞰ボード・設備の件数が変わる（§9.121）。 */
@@ -50,11 +49,9 @@ async function cleanup(){
  catch(e){console.log('  [cleanup] 増えた行を消せませんでした: '+(e&&e.message||e))}
 }
 
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- page=await b.newPage({viewport:{width:1700,height:1000}});
- page.on('dialog',d=>d.accept());
- page.on('pageerror',e=>console.log('  [pageerror]',e.message));
+run('test_eqfeature: 設備の有効・無効を機能別に（§9.302）', async ({page:pg,rec,B,W,idle,paint,errs,browser})=>{
+/* 後片付け（`cleanup()`）が同じ頁を使うので、外の`page`へ渡す。 */
+page=pg;
  try{
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
@@ -138,8 +135,8 @@ async function cleanup(){
    });
    await page.waitForFunction(()=>document.querySelectorAll('#masterMaintList .mm-row').length>1,
      null,{timeout:15000});
-   await page.waitForTimeout(400);
-  };
+     await idle();
+     };
   const openEquipTab=async()=>{
    await page.click('#openMasterMaint');
    await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:15000});
@@ -212,7 +209,7 @@ async function cleanup(){
   await page.click('#maintEditorModal [data-checkset="disabledFeatures"][data-checkset-v="schedule"]');
   await page.click('#maintEditorModal [data-checkset="disabledFeatures"][data-checkset-v="report"]');
   await page.click('#maintEditorSave');
-  await page.waitForTimeout(1500);
+  await idle();
   const saved=await one(NAME);
   rec('窓から保存すると設備マスタへ入る',
    !!saved&&saved.disabledFeatures.join(',')==='measure'&&saved.features.measure===false,
@@ -220,7 +217,7 @@ async function cleanup(){
   await page.evaluate(()=>{const b=document.getElementById('maintEditorClose');if(b)b.click();
     const d=document.getElementById('maintEditorModal');if(d)d.hidden=true});
   await page.evaluate(()=>{const b=document.getElementById('closeMasterMaint');if(b)b.click()});
-  await page.waitForTimeout(400);
+  await idle();
 
   /* ---- 6) 測定の使用設備（measure） ----
      **状態はAPIで作る**——窓からの保存は上の節が別に見ているので、ここで
@@ -230,7 +227,7 @@ async function cleanup(){
    await page.evaluate(()=>{if(typeof WL.records.loadEquipmentMaster==='function')return WL.records.loadEquipmentMaster(true)});
    await page.evaluate(()=>{if(typeof WL.records.openEquipmentSettingsFinal==='function')return WL.records.openEquipmentSettingsFinal('manual','')});
    await page.waitForSelector('#configuredEquipment',{timeout:10000});
-   await page.waitForTimeout(400);
+   await idle();
    return page.evaluate(()=>({
     候補:[...document.querySelectorAll('#configuredEquipment option')].map(o=>o.value),
     助け:(document.getElementById('equipmentMasterHelp')||{}).textContent||''}));
@@ -294,7 +291,7 @@ async function cleanup(){
    /* scheduleモードの既定は全体俯瞰なので、入り直すたびに個別へ戻す。 */
    await page.click('#scModeSingle');
    await page.waitForSelector('#scEquipmentSelect',{state:'visible',timeout:25000});
-   await page.waitForTimeout(800);
+   await idle();
   };
   await setMode('edit');
   await post('/api/equipment-master/update',{id:eid,name:NAME,disabledFeatures:[]});
@@ -304,7 +301,7 @@ async function cleanup(){
   await page.waitForFunction(n=>[...document.querySelectorAll('#scEquipmentSelect option')]
     .some(o=>o.value===n),NAME,{timeout:25000});
   await page.selectOption('#scEquipmentSelect',NAME);
-  await page.waitForTimeout(1500);
+  await idle();
   await setMode('edit');
   await post('/api/equipment-master/update',{id:eid,name:NAME,disabledFeatures:['schedule']});
   await setMode('schedule');
@@ -347,10 +344,10 @@ async function cleanup(){
   await page.waitForSelector('.record-list-row',{timeout:25000});
   await page.click('.record-list-row .report');
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
-  await page.waitForTimeout(1200);
+  await idle();
   await page.click('#reportArrange');
   await page.waitForSelector('#rpArrangeBar:not([hidden])',{timeout:15000});
-  await page.waitForTimeout(600);
+  await idle();
   const rp=await page.evaluate(e=>{
    const s=document.querySelector('#rpArrangeBar [data-rp-eq]');
    if(!s)return {無い:true};
@@ -391,9 +388,6 @@ async function cleanup(){
     headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[REC_ID]})});
   }catch(e){console.log('  [records]',e.message)}
   await cleanup();
-  if(b)await b.close();
  }
- const ng=R.filter(x=>!x.ok).length;
- console.log(`\n${R.length-ng} PASS / ${ng} FAIL`);
- process.exit(ng?1:0);
-})();
+
+}, {viewport:{width:1700,height:1000}});

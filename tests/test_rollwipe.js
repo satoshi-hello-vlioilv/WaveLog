@@ -21,17 +21,16 @@
    実装でも通る。件数・一覧の中身が実際に変わることまで見る。
    材料は自分で注ぎ込む（フィクスチャにロールは1本も無い）。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const TAG='RW'+process.pid;
 const EQ='テスト設備A',EQ2='テスト設備B';
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const getj=async p=>(await fetch(B+p)).json();
 const made=[];
 
-(async()=>{
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+run('test_rollwipe: ロールの全削除・完全入替の画面（§9.251、利用者の指示）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await post('/api/access-mode',{mode:'edit'});
   const mk=async body=>{
@@ -43,10 +42,6 @@ const made=[];
   await mk({equipment:EQ,name:TAG+'A2',contactFace:'下',diaMax:210});
   await mk({equipment:EQ2,name:TAG+'B1',diaMax:300});
 
-  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome'),
-                           args:['--no-sandbox','--disable-dev-shm-usage']});
-  const page=await b.newPage({viewport:{width:1600,height:1000}});
-  const errs=[];page.on('pageerror',e=>errs.push(String(e&&e.message||e)));
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.evaluate(()=>{try{localStorage.removeItem('MasterListFoldV1')}catch(e){}});
   await page.reload({waitUntil:'domcontentloaded'});
@@ -237,16 +232,12 @@ const made=[];
 
   rec('画面の例外が出ていない',errs.length===0,errs.join(' / '));
  }catch(e){
-  console.log('FATAL '+(e&&e.message||e));R.push({ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   try{
    const left=((await getj('/api/roll-master')).items||[]).filter(x=>x.name&&x.name.startsWith(TAG));
    for(const x of left){try{await post('/api/roll-master/delete',{user_id:'test',id:x.id})}catch(_){}}
   }catch(_){}
   for(const id of made){try{await post('/api/roll-master/delete',{user_id:'test',id})}catch(_){}}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1600,height:1000}});

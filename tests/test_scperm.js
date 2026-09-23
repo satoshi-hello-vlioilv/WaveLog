@@ -1,14 +1,9 @@
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const {execSync}=require('child_process');
 // 現場段取り対象設備を差し替える(アクセス権限マスタは毎回読み直されるため再起動不要)
 const setTarget=t=>execSync(`python3 ${__dirname}/setperm.py ${JSON.stringify(t)}`);
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const W=require('./lib/wait.js');const {idle}=W.track(page);
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
+run('test_scperm: 現場段取りの権限と対象設備', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  let posts=0;
  page.on('request',r=>{if(r.url().includes('/plan/reorder'))posts++});
  const open=async()=>{
@@ -126,15 +121,4 @@ let b=null;
  // 検証用に書き換えた対象設備を戻す(他のテストが同じマスタを見るため)
  setTarget('テスト設備A');
 
- console.log('\n=== SUMMARY ===');
- const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
- f.forEach(x=>console.log(' -',x.n,x.d||''));
- await b.close();process.exit(f.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1700,height:1000}});

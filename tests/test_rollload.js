@@ -24,11 +24,11 @@
     4. 入力を消すと**記録にも反映**され、開き直しても戻らない
     5. 開いて眺めただけでは「未保存の変更」を作らない
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const TAG='RL'+process.pid;
 const EQ='テスト設備A';
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const getj=async p=>(await fetch(B+p)).json();
 const made=[];
@@ -39,8 +39,7 @@ async function mkRoll(name,diaMax,extra){
  return r;
 }
 
-(async()=>{
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+run('test_rollload: 異常位置判定②のロール読み込みと、入力の取り消し（§9.241 ④⑤）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await post('/api/access-mode',{mode:'edit'});
   /* **対象設備・ロール名・ロール径MAXだけ**——利用者が「最低でもしっかり
@@ -51,10 +50,6 @@ async function mkRoll(name,diaMax,extra){
   const server=(api.items||[]).filter(x=>String(x.name).startsWith(TAG)).length;
   rec('前提: サーバーはこの設備のロールを返す',server===2,String(server));
 
-  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
-  const page=await b.newPage({viewport:{width:1600,height:1000}});
-  const errs=[];page.on('pageerror',e=>errs.push(String(e&&e.message||e)));
-  page.on('dialog',d=>d.accept());
   /* **取りに行ったことを数える**——これが今回の欠陥の核心（リクエストが
      1本も飛んでいなかった）。画面の文字だけを見る網では捕まらない。 */
   const reqs=[];
@@ -142,7 +137,7 @@ async function mkRoll(name,diaMax,extra){
       JSON.stringify(put));
 
   await page.click('#defectReset');
-  await page.waitForTimeout(200);
+  await idle();
   const cleared=await page.evaluate(()=>{
    const d=S.measure.settings.defectLocation||{};
    return {distance:String(d.distance??''),memo:String(d.memo??'')};
@@ -180,7 +175,7 @@ async function mkRoll(name,diaMax,extra){
   await page.evaluate(()=>WL.defect.open());
   await page.evaluate(()=>WL.defect.setTab('roll'));
   await page.evaluate(()=>WL.defect.setTab('pos'));
-  await page.waitForTimeout(300);
+  await idle(800);  // 起きないこと（未保存の変更を作らない）を見る: ロールの取得が静まるまで
   const dirty=await page.evaluate(()=>({
    dirty:(typeof WL.base.measureDirty!=='undefined')?WL.base.measureDirty:null,
    made:!!(S.measure.settings.defectLocation||S.measure.settings.defectRoll),
@@ -192,7 +187,7 @@ async function mkRoll(name,diaMax,extra){
 
   rec('画面の例外が出ていない',errs.length===0,errs.join(' / '));
  }catch(e){
-  console.log('FATAL '+(e&&e.message||e));R.push({ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   for(const id of made){try{await post('/api/roll-master/delete',{user_id:'test',id})}catch(_){}}
   try{
@@ -202,9 +197,5 @@ async function mkRoll(name,diaMax,extra){
   /* 置いた実績は自分で消す（§9.351・§9.362）。残った実績は計画外実績として
      予定表に現れ、無関係な網を落とす。 */
   try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1600,height:1000}});

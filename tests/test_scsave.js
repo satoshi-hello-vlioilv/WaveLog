@@ -15,22 +15,16 @@
     4. 「更新は届いたが再起動していない」をサーバーが答える
     5. 行の色とアイコン: 絵を見たまま選べて、その場で保存される
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 /* 待ちは「時間」でなく「条件」で置く（§9.324 R5、tests/lib/wait.js）。
    **わざと遅らせた応答を待つ4000msだけは残す**（時間そのものが検証の材料）。 */
 const W=require('./lib/wait');
 const rowStyles=async()=>((await (await fetch('http://127.0.0.1:5029/api/schedule/row-style-master')).json()).items||[]);
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1700,height:1050}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
+run('test_scsave: 変更が戻ってしまう不具合・保存できない不具合（§9.200）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  const setMode=m=>page.evaluate(async mm=>{await fetch('/api/access-mode',{method:'POST',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mm})})},m);
 
@@ -84,7 +78,7 @@ let b=null;
   /* ---- 1) 変更前の応答が遅れて届いても巻き戻さない -------------
      **1本目のGETだけ遅らせる**——全部遅らせると、遅れて届く順番が
      変わらないので競合そのものが起きず、直す前でも通ってしまう。 */
-  let delayed=0;
+  let delayed=0,delivered=0;
   await page.route('**/api/schedule/plan?*',async route=>{
    if(route.request().method()!=='GET'||delayed){await route.continue();return}
    delayed=1;
@@ -95,11 +89,12 @@ let b=null;
    const body=await resp.text();
    await new Promise(r=>setTimeout(r,3000));
    await route.fulfill({response:resp,body});
+   delivered=1;
   });
   const before=await ids();
   // 遅れる1本目を走らせてから、すぐ並べ替える
   await page.evaluate(()=>{WL.scheduleView.refresh(true)});
-  await page.waitForTimeout(250);
+  await W.poll(async()=>delayed,v=>v===1,5000,25);  // 遅らせる1本目がサーバーへ出た
   /* **動かせる行の1つ目**を選ぶ（最後の行はこれ以上下がらないので、
      動かなくても「直っている」と読めてしまう）。フォーカスは要素ハンドルで
      当てる——`click()`だけではキー操作が行へ届かない。 */
@@ -115,7 +110,8 @@ let b=null;
   rec('並べ替えると画面の並びが変わる',!!moved&&moveIds.length>1&&before.join()!==justAfter.join(),
       `${moved} / ${before.slice(0,6).join(',')} → ${justAfter.slice(0,6).join(',')}`);
   // 遅れていた「変更前」の応答が届くのを待つ
-  await page.waitForTimeout(4000);   // 固定待ち: わざと遅らせた応答を待つ（時間そのものが検証の材料）
+  await W.poll(async()=>delivered,v=>v===1,10000,50);   // わざと遅らせた応答を届け終えるまで
+  await idle();
   const afterLate=await ids();
   rec('遅れて届いた変更前の応答で画面を巻き戻さない',afterLate.join()===justAfter.join(),
       `${justAfter.slice(0,6).join(',')} / ${afterLate.slice(0,6).join(',')}`);
@@ -166,7 +162,7 @@ let b=null;
     ra.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:dt}));
     ra.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer:dt}));
    },dragIds[0]);
-   await page.waitForTimeout(900);
+   await idle(800);  // 起きないこと（送らない）を見る: 送るなら送るはずの往復が静まるまで
   }
   rec('掴んで動かさずに離したら何も送らない',reorderPosts===0,`POST ${reorderPosts}回`);
 
@@ -217,10 +213,10 @@ let b=null;
 
   /* ---- 5) 行の色とアイコン ---- */
   await page.evaluate(()=>WL.scheduleView.openViewPop());
-  await page.waitForTimeout(200);
+  await paint();
   await page.click('#scRowStyleBtn');
   await page.waitForSelector('#scRowStylePop:not([hidden])',{timeout:8000});
-  await page.waitForTimeout(800);
+  await idle();
   const panel=await page.evaluate(()=>{
    const btn=document.querySelector('.sc-rs-row[data-rs="cat:stop"] [data-rs-iconbtn]');
    const legend=document.querySelector('.sc-rs-legend');
@@ -261,14 +257,14 @@ let b=null;
   rec('名前で絞り込める',pick.絞り込み,String(pick.絞り込み));
   /* 絞り込みが本当に効くこと（件数が減り、当たったものだけ残る）。 */
   await page.fill('#scIconPickQ','時計');
-  await page.waitForTimeout(250);
+  await W.until(page,n=>{const c=document.querySelectorAll("#scIconPick .sc-icon-cell").length;return c>0&&c<n},pick.n,{ms:4000,what:"アイコンの盤が名前で絞られる"});
   const filtered=await page.evaluate(()=>({
    n:document.querySelectorAll('#scIconPick .sc-icon-cell').length,
    labels:[...document.querySelectorAll('#scIconPick .sc-icon-cell small')].map(x=>x.textContent)}));
   rec('絞り込むと当たったものだけになる',filtered.n>0&&filtered.n<pick.n&&filtered.labels.includes('時計'),
       JSON.stringify(filtered).slice(0,120));
   await page.fill('#scIconPickQ','');
-  await page.waitForTimeout(250);
+  await W.until(page,n=>document.querySelectorAll("#scIconPick .sc-icon-cell").length===n,pick.n,{ms:4000,what:"絞り込みを消すと盤が元の数へ戻る"});
   await page.click('#scIconPick [data-icon-pick="svg:bolt"]');
   await W.poll(rowStyles,xs=>xs.some(x=>x.key==='cat:stop'&&/bolt/.test(String(x.icon||''))),8000);
   const saved=await page.evaluate(async()=>{
@@ -310,7 +306,7 @@ let b=null;
   });
   rec('「⟲ 戻す」で設定の行ごと消える',gone===false,String(gone));
 
- }catch(e){console.log('FATAL',e.message)}finally{
+ }catch(e){rec('FATAL',false,String(e&&e.message||e))}finally{
   try{
    await page.evaluate(async()=>{
     const r=await fetch('/api/schedule/row-style-master');
@@ -320,9 +316,5 @@ let b=null;
    });
    await setMode('edit');
   }catch(e){}
-  await b.close();
-  console.log('\n=== SUMMARY ===');
-  console.log(`${R.filter(r=>r.ok).length}/${R.length} PASS`);
-  R.filter(r=>!r.ok).forEach(r=>console.log('  FAIL '+r.n+(r.d?' -- '+r.d:'')));
  }
-})();
+}, {viewport:{width:1700,height:1050}});

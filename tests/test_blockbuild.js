@@ -17,22 +17,15 @@
     - **保存の形は`ラベル=出どころ`のまま**（既に登録してある塊が読める）
     - 掴んで並べ替えると**その順で保存される**
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const TAG='fb-'+Date.now().toString(36);
 const post=(p,x)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(x)});
 const get=p=>fetch(B+p).then(r=>r.json());
 
-let b=null,page=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- page=await b.newPage({viewport:{width:1760,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
- page.on('dialog',d=>d.accept());
+run('test_blockbuild: 帳票の塊を「選んで組み立てる」（§9.226 ⑥）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  const made=[];
  try{
   await post('/api/access-mode',{mode:'edit'});
@@ -47,7 +40,7 @@ let b=null,page=null;
    const l=document.querySelector('#masterMaintList');
    return !!l&&(l.offsetParent===null||l.children.length>0);
   },null,{timeout:20000});
-  await page.waitForTimeout(400);
+  await idle();
 
   /* ---------- 段（タブ）を開く（§9.250 ④） ----------
      決めることは4つの段に分かれた（縦に積むと窓に入らない・実測227px）。
@@ -61,7 +54,7 @@ let b=null,page=null;
       .find(x=>x.textContent.indexOf(n)>=0);
     if(t)t.click();
    },name);
-   await page.waitForTimeout(200);
+   await paint();
   };
 
   /* ---- 1) 窓を開くと組み立ての盤が出る ---- */
@@ -69,7 +62,7 @@ let b=null,page=null;
   await tab('何を載せるか');
   await page.waitForSelector('[data-fb]',{timeout:10000});
   await page.waitForFunction(()=>document.querySelectorAll('.fb-cat').length>0,null,{timeout:10000});
-  await page.waitForTimeout(300);
+  await paint();
   const board=await page.evaluate(()=>({
    /* **手で道を書く欄は無い**（`textarea`で書かせていたのをやめた）。 */
    手書き:!!document.querySelector('[data-fb] textarea'),
@@ -92,7 +85,7 @@ let b=null,page=null;
   rec('操業データの項目が候補に出る（汎用入力データ）',!!opCat,JSON.stringify(board.出どころ));
   if(opCat){
    await page.click(`[data-fb-cat="${opCat}"]`);
-   await page.waitForTimeout(300);
+   await paint();
    const ops=await page.$$eval('.fb-item',es=>es.slice(0,3).map(e=>e.dataset.fbAdd));
    rec('操業データの候補は settings.opData の道で並ぶ',
        ops.length>0&&ops.every(p=>String(p).indexOf('settings.opData.')===0),
@@ -101,9 +94,9 @@ let b=null,page=null;
 
   /* ---- 3) 押すと増える／もう一度押すと外れる ---- */
   await page.click(`[data-fb-cat="${board.出どころ[0]}"]`);
-  await page.waitForTimeout(250);
+  await paint();
   const picks=await page.$$eval('.fb-item',es=>es.slice(0,3).map(e=>e.dataset.fbAdd));
-  for(const p of picks){await page.click(`[data-fb-add="${p}"]`);await page.waitForTimeout(120)}
+  for(const p of picks){await page.click(`[data-fb-add="${p}"]`);await paint()}
   const added=await page.evaluate(()=>({
    行:document.querySelectorAll('.fb-row').length,
    値:document.querySelector('[data-fb] input[data-field="content"]').value,
@@ -121,7 +114,7 @@ let b=null,page=null;
   rec('1マスの項目は今までどおりの1行（|を足さない）',
       added.値.indexOf('|')<0,JSON.stringify(added.値));
   await page.click(`[data-fb-add="${picks[1]}"]`);
-  await page.waitForTimeout(200);
+  await paint();
   const removed=await page.evaluate(()=>({
    行:document.querySelectorAll('.fb-row').length,
    値:document.querySelector('[data-fb] input[data-field="content"]').value}));
@@ -130,7 +123,7 @@ let b=null,page=null;
 
   /* ---- 4) ラベルはその場で直せる ---- */
   await page.fill('.fb-row:first-child .fb-label',TAG+'ラベル');
-  await page.waitForTimeout(200);
+  await paint();
   const labelled=await page.evaluate(()=>
     document.querySelector('[data-fb] input[data-field="content"]').value);
   rec('ラベルはその場で直せる（保存の形にも入る）',
@@ -145,7 +138,7 @@ let b=null,page=null;
    if(all&&!all.checked){all.checked=true;all.dispatchEvent(new Event('change',{bubbles:true}))}
   });
   await page.click('#maintEditorSave');
-  await page.waitForTimeout(1500);
+  await idle();
   const saved=await get('/api/report-block-master');
   const row=(saved.items||[]).find(x=>x.name===TAG+'塊');
   if(row&&row.id)made.push(row.id);
@@ -172,10 +165,10 @@ let b=null,page=null;
   await tab('何を載せるか');
   await page.waitForSelector('[data-fb]',{timeout:10000});
   await page.waitForFunction(()=>document.querySelectorAll('.fb-cat').length>0,null,{timeout:10000});
-  await page.waitForTimeout(300);
+  await paint();
   await page.click(`[data-fb-cat="${board.出どころ[0]}"]`);
-  await page.waitForTimeout(250);
-  for(const p of picks.slice(0,2)){await page.click(`[data-fb-add="${p}"]`);await page.waitForTimeout(120)}
+  await paint();
+  for(const p of picks.slice(0,2)){await page.click(`[data-fb-add="${p}"]`);await paint()}
   const grid=await page.evaluate(()=>{
    const w=document.querySelector('.fb-rows');
    return {格子:getComputedStyle(w).display,
@@ -219,9 +212,9 @@ let b=null,page=null;
     if(!b||b.disabled)return false;b.click();return true;
    },now<3?'1':'-1');
    if(!ok)break;
-   await page.waitForTimeout(120);
-  }
-  await page.waitForTimeout(200);
+   await paint();
+   }
+   await paint();
   const c3=await page.evaluate(()=>({
    列:getComputedStyle(document.querySelector('.fb-rows')).gridTemplateColumns.split(' ').length,
    欄:document.querySelector('[data-field="cols"]').value,
@@ -258,7 +251,7 @@ let b=null,page=null;
      b.click();await new Promise(r=>setTimeout(r,60));
     }
    },[kind,attr,want]);
-   await page.waitForTimeout(150);
+   await paint();
   };
   c3.つまみ=await topOf('span','span');
   c3.縦つまみ=await topOf('rows','rows');
@@ -330,7 +323,7 @@ let b=null,page=null;
   /* 空きマス（何も出さずに場所だけ取る）。 */
   const before=await page.evaluate(()=>document.querySelectorAll('.fb-row').length);
   await page.click('.fb-blank');
-  await page.waitForTimeout(200);
+  await paint();
   const blanked=await page.evaluate(()=>({
    行:document.querySelectorAll('.fb-row').length,
    空:document.querySelectorAll('.fb-row-blank').length,
@@ -348,7 +341,7 @@ let b=null,page=null;
    if(all&&!all.checked){all.checked=true;all.dispatchEvent(new Event('change',{bubbles:true}))}
   });
   await page.click('#maintEditorSave');
-  await page.waitForTimeout(1500);
+  await idle();
   const saved2=await get('/api/report-block-master');
   const row2=(saved2.items||[]).find(x=>x.name===TAG+'マトリクス');
   if(row2&&row2.id)made.push(row2.id);
@@ -367,9 +360,5 @@ let b=null,page=null;
   for(const id of made){
    try{await post('/api/report-block-master/delete',{id,user_id:'tests'})}catch(e){}
   }
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1760,height:1000}});
