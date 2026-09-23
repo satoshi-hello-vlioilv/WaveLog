@@ -1,4 +1,4 @@
-# 刃組ガイダンス（160件）
+# 刃組ガイダンス（166件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,12 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| **組めない材料**の答えは`stopReasons()`の1箇所（`res.stop`）。空でなければ図も表も描かず、理由と直す場所を1つだけ出す | `test_bladeui.js` | [§9.454](../../docs/decisions/9.454.md) |
+| 板の並び（`materialRun()`）は**刃と同じ`origin`**から出す（耳が負でも`matOff`は0） | `test_bladeui.js` | [§9.454](../../docs/decisions/9.454.md) |
+| クリアランスは**組める値へ四捨五入**（`clearanceUsed()`の1箇所・刻みはスペーサー寸法の最大公約数）。打った値と使った値を両方持ち、違うときだけ並べて言う | `test_bladeui.js` | [§9.454](../../docs/decisions/9.454.md) |
+| ゴムリングは刃のあいだより**下限ぶん以上小さく**組む。帯（`刃組基準値`の`ringGapMin`〜`ringGapMax`）を外れた面は数えて名指しする（橙） | `test_bladeui.js` | [§9.454](../../docs/decisions/9.454.md) |
+| 潤滑リングは**ゴムリング方式で広い側の区間の両端**に1本ずつ。寸法は`刃組基準値`（幅0で入れない）、色は`--bs-fig-lube`（紫） | `test_bladeui.js` | [§9.454](../../docs/decisions/9.454.md) |
+| 断面図の縮尺は**帯（`hudBox()`）を差し引いた高さ**で決める。帯を図に被せない（`view().hudFit`） | `test_bladeui.js` | [§9.454](../../docs/decisions/9.454.md) |
 | **製品幅はクリアランスで痩せさせない**。刃が作る境目は「条幅＋クリアランス」ずつ進む | `test_bladeui.js` | [§9.434](../../docs/decisions/9.434.md) |
 | 最初に出す図は**断面図**。答えは`FIG_DEFAULT`の1箇所（札の印・器の出し入れ・倒れ先が同じ定数を見る） | `test_bladeui.js` | [§9.440](../../docs/decisions/9.440.md) |
 | **余りは層ごとに別**。`rem`＝スペーサーの端数（**0が正**・赤で出す）／`holdRem`＝板押さえの空き（わずかなら可） | `test_bladeui.js` | [§9.441](../../docs/decisions/9.441.md) |

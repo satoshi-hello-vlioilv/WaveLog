@@ -540,8 +540,8 @@ body.bs-mode .bs-shell{display:flex}
 /* ゴムリングの空きが帯を外れた（§9.454）。組めるが詰め切れていない＝橙。 */
 .bs-num.is-warn{background:var(--warn-bg);color:var(--warn-fg);font-weight:700}
 /* 潤滑リングの色見本（図と同じトークン）。 */
-.bs-lubedot{display:inline-block;width:.7em;height:.7em;border-radius:50%;
-  background:var(--bs-fig-lube);margin-inline-end:3px;vertical-align:-1px}
+.bs-lubedot{display:inline-block;width:.7em;height:.7em;border-radius:var(--radius-round);
+  background:var(--bs-fig-lube);margin-right:var(--space-1);vertical-align:-1px}
 /* **0が正の列**は見出しから「直すもの」と分かるようにする（§9.441）。
    色だけで語らないので、見出しの小さな字が「0 が正（出たら不具合）」と言う。 */
 .bs-g th.bs-bad{background:var(--danger-bg);color:var(--danger)}
