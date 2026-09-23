@@ -25,22 +25,15 @@
     5. マスタの値は1つも落ちない（300/400/508/610 が全部並ぶ）
     6. **値を作らない**——プリセットが無ければ未選択のまま（利用者の証拠⑤）
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(body)}).then(async r=>({code:r.status,json:await r.json().catch(()=>({}))}));
 const get=p=>fetch(B+p).then(r=>r.json());
-let b=null;
 
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1800,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
- page.on('dialog',d=>d.accept());
+run('test_opblank: 「空欄の札を出さない」は組み込みの選択欄でも効く（§9.246 ①）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
 
  const items=async()=>(await get('/api/operation-item-master')).items||[];
  const byName=async nm=>(await items()).find(x=>x.name===nm)||{};
@@ -385,8 +378,7 @@ let b=null;
 
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
-  console.log('FATAL: '+(e&&e.stack||e));
-  R.push({n:'FATAL',ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* **組み込みの行は消せないので、触ったら必ず元へ**（§9.121）。
      **戻す先は「拾った値」ではなく種の既定（プルダウン）**——
@@ -399,12 +391,5 @@ let b=null;
      `noBlank`は拾った値へ戻してよい（既定=Falseで、種にも無い）。 */
   try{if(target)await put({noBlank:!!saved,widget:'プルダウン',initial:''})}catch(e){}
   try{await post('/api/access-mode',{mode:'edit'})}catch(e){}
-  /* 置いた実績は自分で消す（§9.351・§9.362）。残った実績は計画外実績として
-     予定表に現れ、無関係な網を落とす。 */
-  try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
- const ng=R.filter(x=>!x.ok).length;
- console.log(`\n${R.length-ng}/${R.length} PASS`);
- process.exit(ng?1:0);
-})();
+}, {viewport:{width:1800,height:1000}});

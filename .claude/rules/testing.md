@@ -1,4 +1,4 @@
-# 検証（テスト）（47件）
+# 検証（テスト）（48件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -33,7 +33,8 @@
 | 注ぎ込んだ見本の記録は**その場で消す**。後片付けを最後にまとめると、あいだの節が別の材料を見る | `test_rpblocks.js` | [§9.393](../../docs/decisions/9.393.md) |
 | 節の頭で**前の節が開けた窓を閉じる**。「押せない」は`elementFromPoint`で何に覆われたかを出す | `test_tolscale.js` | [§9.394](../../docs/decisions/9.394.md) |
 | 文書が指す名前・撮る道具の選択子は実在させる。関数の中の`import`は増やさない（理由は`# 遅延:`） | `test_docindex.py`・`test_importlint.py` | [§9.349](../../docs/decisions/9.349.md) |
-| 固定待ち（`waitForTimeout`）とハーネスの写しは増やさない。網の骨組みは`tests/lib/harness.js`、待ちは`wait.js`の道具で | `test_waitlint.py` | [§9.347](../../docs/decisions/9.347.md) |
+| 理由の無い固定待ちは**0**、ブラウザの起動は土台の1箇所（本は`run()`）。待ちは`wait.js`の道具で | `test_waitlint.py` | [§9.347](../../docs/decisions/9.347.md)・[§9.451](../../docs/decisions/9.451.md) |
+| `idle()`はフォントと本体を読まれない応答を数えない（終わりの合図が来ない）。フォントは`fonts.ready`で待つ | `test_collayout.js`・`test_cols.js` | [§9.451](../../docs/decisions/9.451.md) |
 | `page.waitForFunction`の述語にPromiseを返させない（返すと待たずに抜ける・実測82ms）。サーバーへ聞き直す待ちは`wait.js`の`poll()` | `test_waitlint.py` | [§9.376](../../docs/decisions/9.376.md) |
 | `offsetParent`で「見えているか」を測らない。`position:fixed`と未組み立ての両方で`null`になる | — | [§9.346](../../docs/decisions/9.346.md) |
 | `transition`を持つ値は当てた直後に読まない（遷移前の値が返る）。1回描かせてから「動き出したか」で見る | `test_bladeui.js` | [§9.386](../../docs/decisions/9.386.md) |

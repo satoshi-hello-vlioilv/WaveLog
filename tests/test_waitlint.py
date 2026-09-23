@@ -155,6 +155,16 @@ def main(update=False):
     rec('固定待ちとハーネスの写しが本ごとの上限を超えていない（増えたら落ちる）',
         not over, '; '.join(over[:12]) or
         f'いま 固定待ち {tot_n}箇所 {tot_ms/1000:.0f}秒 ／ ハーネスの写し {tot_h}本')
+    # **3-15 の終点を0と1で固める**（§9.451）。上限（下げる方向だけ）は置き換えの途中の
+    # 見張りで、置き換え終わったら「増えなければよい」では足りない——1本足せば
+    # その1本ぶん上限を上げずに済む形（新しい本は baseline に載っていない）を断つ。
+    unmarked = [f'{n} {d["count"]}箇所' for n, d in now.items() if d['count']]
+    rec('理由の無い固定待ちは0（残すなら行に「固定待ち:」と理由を書く・§9.451）',
+        not unmarked, '; '.join(unmarked[:8]) or '0箇所')
+    selfs = [n for n, d in now.items() if d['harness']]
+    root = (TESTS / 'lib' / 'harness.js').read_text(encoding='utf-8')
+    rec('ブラウザを起動するのは土台（tests/lib/harness.js）の1箇所だけ（本は run() を使う）',
+        not selfs and 'chromium.launch(' in root, '; '.join(selfs[:8]) or 'テストの本 0本')
     if under:
         print('   注: 上限を下げられます（python3 tests/test_waitlint.py --update）: '
               + '; '.join(under[:8]) + (' …' if len(under) > 8 else ''))
@@ -243,8 +253,9 @@ def main(update=False):
                 probe2.unlink()
             except FileNotFoundError:
                 pass
-    top = sorted(now.items(), key=lambda kv: -kv[1]['ms'])[:8]
-    print('  残っている上位: ' + ', '.join(f"{k} {v['ms']/1000:.1f}s/{v['count']}件" for k, v in top))
+    top = sorted(((k, v) for k, v in now.items() if v['count']), key=lambda kv: -kv[1]['ms'])[:8]
+    if top:
+        print('  残っている上位: ' + ', '.join(f"{k} {v['ms']/1000:.1f}s/{v['count']}件" for k, v in top))
     print(f'\n== {sum(R)}/{len(R)} PASS ==')
     sys.exit(0 if all(R) else 1)
 

@@ -22,7 +22,8 @@
    **サーバーだけを見る網では足りない**（§9.322と同じ理由）——口が正しく
    受けても、画面が送らなければ経路は開通していない。
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 /* 実行ごとに一意（§tests/README）。落ちても次の実行とぶつからない。 */
@@ -41,9 +42,8 @@ const get=async u=>await (await fetch(B+u)).json();
 const H=require('./lib/harness.js');
 const SNAP_TABLES=['選択履歴マスタ','操業データ選択肢マスタ'];
 let snapM=null;
-(async()=>{
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- let b=null,item=null;
+run('test_opinline: 測定画面からマスタへ間接登録する（§9.323 ①、利用者の指示）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
+ let item=null;
  try{
   /* 材料は自分で用意する（§9.291 ①）——検証用マスタの欄がどんな設定かに
      頼らない。**組み込みの選択欄で見ること**——`[型]`は`文字`なので、
@@ -54,11 +54,6 @@ let snapM=null;
   rec('選択肢を持つ欄がマスタに在る',!!item,item&&item.name);
   if(!item)throw Error('選択肢を持つ欄が無い');
 
-  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome'),
-                           args:['--no-sandbox','--disable-dev-shm-usage']});
-  const page=await b.newPage({viewport:{width:1600,height:1000}});
-  const errs=[];
-  page.on('pageerror',e=>errs.push(String(e&&e.message||e).slice(0,140)));
   await page.addInitScript(eq=>{try{localStorage.setItem('AccessMeasurementConfiguredEquipment',eq)}catch(e){}},EQ);
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.WL&&WL.opData&&WL.opData.load,null,{timeout:30000});
@@ -159,8 +154,7 @@ let snapM=null;
 
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
-  console.log('FATAL: '+(e&&e.stack||e));
-  R.push({n:'FATAL',ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* 後片付け（§9.121）。**組み込みの行は消せない**ので設定を戻す。
      マスタへ足した値は消す（実行のたびに1行ずつ溜まる）。 */
@@ -173,9 +167,5 @@ let snapM=null;
   }catch(e){console.log('!! 足した選択肢を消せませんでした: '+(e&&e.message||e))}
   try{if(snapM)await H.dropNewMasterRows(snapM)}
  catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
- const ng=R.filter(x=>!x.ok).length;
- console.log(`\n${R.length-ng}/${R.length} PASS`);
- process.exit(ng?1:0);
-})();
+}, {viewport:{width:1600,height:1000}});

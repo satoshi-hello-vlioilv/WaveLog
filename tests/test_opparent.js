@@ -25,9 +25,9 @@
     8. **描き直しても絞りが残る**（`layout()`が当て直す）——`change`だけで
        当てる実装は、入力内容を切り替えた瞬間に絞りが解ける
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
 const TAG='OP'+process.pid;
 const PARENT=TAG+'親', CHILD=TAG+'子';
@@ -37,12 +37,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 const get=p=>fetch(B+p).then(r=>r.json());
 let b=null;const madeChoices=[],madeItems=[];let link=null;
 
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1800,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('!! '+e.message.slice(0,160)));
- page.on('dialog',d=>d.accept());
+run('test_opparent: 親を選ぶと子の候補が絞られる（§9.306-C、利用者の指示）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
 
  /* いま画面に出ているその欄の姿。**`<select>`の候補と器の札を両方見る**
     ——片方だけだと、器を作り直していない実装（札が前のまま）を見逃す。 */
@@ -193,19 +188,11 @@ let b=null;const madeChoices=[],madeItems=[];let link=null;
       JSON.stringify({候補:s.候補,案内:s.案内}));
 
  }catch(e){
-  console.log('FATAL: '+(e&&e.stack||e));
-  R.push({n:'FATAL',ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* **後始末は自分が作ったものだけ**（§9.121。マスタは実行をまたいで残る）。 */
   try{if(link)await post('/api/choice-link-master/delete',{id:link,user_id:'tests'})}catch(e){}
   for(const id of madeItems){try{await post('/api/operation-item-master/delete',{id,user_id:'tests'})}catch(e){}}
   for(const id of madeChoices){try{await post('/api/operation-choice-master/delete',{id,user_id:'tests'})}catch(e){}}
-  /* 置いた実績は自分で消す（§9.351・§9.362）。残った実績は計画外実績として
-     予定表に現れ、無関係な網を落とす。 */
-  try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
- const ng=R.filter(x=>!x.ok).length;
- console.log(`\n${R.length-ng}/${R.length} PASS`);
- process.exit(ng?1:0);
-})();
+}, {viewport:{width:1800,height:1000}});

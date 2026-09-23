@@ -25,7 +25,8 @@
    **後始末を必ずする**（§9.121）——旧`test_p11c.js`は登録した行を消して
    おらず、実行のたびにアクセス権限マスタと分類マスタが1行ずつ増えていた。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const post=(p,x)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(x)});
@@ -36,19 +37,11 @@ const get=p=>fetch(B+p,{cache:'no-store'}).then(r=>r.json());
 const H=require('./lib/harness.js');
 const SNAP_TABLES=['アクセス権限マスタ','設備停止分類マスタ'];
 let snapM=null;
-let b=null;
 const made={perm:[],cat:[]};
 
-(async()=>{
+run('test_master: マスタ管理の画面（統合パネル・タブ・編集の一周）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  await post('/api/access-mode',{mode:'edit'});
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
  snapM=await H.masterSnapshot(SNAP_TABLES);
- const page=await b.newPage({viewport:{width:1400,height:900}});
- const W=require('./lib/wait.js');const {idle}=W.track(page);const paint=()=>W.paint(page);
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('dialog',d=>d.accept());
- page.on('pageerror',e=>{errs.push(e.message);console.log('  [pageerror]',e.message)});
  try{
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openMasterMaint',{timeout:20000});
@@ -352,11 +345,5 @@ const made={perm:[],cat:[]};
   for(const id of made.cat){try{await post('/api/schedule/stop-category-master/delete',{id,user_id:'tester'})}catch(e){}}
   try{if(snapM)await H.dropNewMasterRows(snapM)}
   catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
-  if(b)await b.close().catch(()=>{});
  }
- const ng=R.filter(x=>!x.ok);
- console.log('\n=== SUMMARY ===');
- console.log(`${R.length-ng.length}/${R.length} passed`);
- ng.forEach(x=>console.log(' -',x.n,x.d||''));
- process.exit(ng.length?1:0);
-})();
+}, {viewport:{width:1400,height:900}});

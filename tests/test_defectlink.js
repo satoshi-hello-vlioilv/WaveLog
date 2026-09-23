@@ -17,22 +17,14 @@
    **確かめるときは材料ごと注ぎ込むこと。** 検証用フィクスチャは母材幅を
    持たないので、そのまま開くと条を1本も描けず「0件」で素通りする
    （§CLAUDE「検証用フィクスチャには…材料ごと注ぎ込む」）。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const setMode=m=>fetch(API+'/api/access-mode',{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
 
-let b=null,page=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- page=await b.newPage({viewport:{width:1920,height:1080}});
- const W=require('./lib/wait.js');const {idle}=W.track(page);const paint=()=>W.paint(page);
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
- page.on('dialog',d=>d.accept());
+run('test_defectlink: 異常位置判定と条の設計の連携（§9.226 ④）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await setMode('edit');
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
@@ -271,13 +263,5 @@ let b=null,page=null;
     if(S&&S.measure&&S.measure.settings)delete S.measure.settings.defectLocation;
    });
   }catch(e){}
-  /* **置いた実績は自分で消す**（§9.351・§9.360）。残った実績は計画外実績と
-     してタイムラインに現れ、行数・作業可否・「作業中」の有無を変える
-     ——後片付けを忘れた1本が、無関係な網を落とす。 */
-  try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1920,height:1080}});

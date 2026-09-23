@@ -25,8 +25,8 @@
     6. 利用者IDが**後から**届いても、その人の控えを空で潰さない
        （`ensureMarkMaps()`がIDごとに読み直す）
     7. 保存できなかったときは黙らない */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const NAME='いつも適用テスト_'+Date.now();
 const post=(p,b)=>fetch(API+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})});
@@ -39,13 +39,8 @@ const OTHER_KEY='__別の一覧__::__別の表__::';   // 6) 用。今の一覧�
 const H=require('./lib/harness.js');
 const SNAP_TABLES=['フィルタプリセットマスタ','フィルタ個人設定マスタ'];
 let snapM=null;
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
+run('test_filterlock: 「いつも適用（固定）」は1つの印（§9.190）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  snapM=await H.masterSnapshot(SNAP_TABLES);
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
  let pid=null;
  const boot=async()=>{
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
@@ -219,16 +214,12 @@ let b=null;
       noisy.some(t=>/いつも適用|保存できません/.test(t)),JSON.stringify(noisy).slice(0,300));
 
  }catch(e){
-  console.error('FATAL',e);rec('例外なく終わる',false,e.message);
+  rec('例外なく終わる',false,e.message);
  }finally{
   /* 後始末: 登録した条件を消す（§9.121。置き土産は遠いテストを落とす） */
   try{if(pid!=null)await post('/api/filter-presets/delete',{id:pid,user_id:'tester'})}catch(_){}
   try{await post('/api/access-mode',{mode:'edit'})}catch(_){}
   try{if(snapM)await H.dropNewMasterRows(snapM)}
   catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
-  await b.close();
  }
- const ng=R.filter(x=>!x.ok);
- console.log(`\n${R.length-ng.length}/${R.length} PASS`);
- process.exit(ng.length?1:0);
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close();process.exit(1)});
+}, {viewport:{width:1600,height:1000}});

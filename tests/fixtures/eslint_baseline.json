@@ -53,9 +53,6 @@
  "tests/test_adhoc.js": {
   "no-empty": 1
  },
- "tests/test_appquit.js": {
-  "no-empty": 3
- },
  "tests/test_audittrail.js": {
   "no-empty": 3
  },
@@ -127,7 +124,7 @@
   "no-empty": 4
  },
  "tests/test_histdel.js": {
-  "no-empty": 2
+  "no-empty": 1
  },
  "tests/test_lcpanel.js": {
   "no-empty": 1
@@ -143,9 +140,6 @@
  },
  "tests/test_mcore.js": {
   "no-empty": 2
- },
- "tests/test_measstore.js": {
-  "no-empty": 1
  },
  "tests/test_mmfold.js": {
   "no-empty": 5
@@ -211,9 +205,6 @@
  "tests/test_opwidget.js": {
   "no-empty": 2
  },
- "tests/test_presenceui.js": {
-  "no-empty": 1
- },
  "tests/test_qjoinui.js": {
   "no-empty": 8
  },
@@ -221,7 +212,7 @@
   "no-empty": 1
  },
  "tests/test_rbcells.js": {
-  "no-empty": 9
+  "no-empty": 7
  },
  "tests/test_rbmodal.js": {
   "no-empty": 2
@@ -277,9 +268,6 @@
  "tests/test_rptext.js": {
   "no-empty": 2
  },
- "tests/test_savechip.js": {
-  "no-empty": 1
- },
  "tests/test_scale.js": {
   "no-empty": 1
  },
@@ -330,7 +318,6 @@
   "no-empty": 2
  },
  "tests/test_scstop.js": {
-  "no-empty": 1,
   "no-unused-vars": 1
  },
  "tests/test_sctimecols.js": {
@@ -363,19 +350,16 @@
   "no-unused-vars": 2
  },
  "tests/test_stopcat.js": {
-  "no-empty": 3
+  "no-empty": 2
  },
  "tests/test_stopeq.js": {
   "no-empty": 2
- },
- "tests/test_storageui.js": {
-  "no-empty": 1
  },
  "tests/test_wkbg.js": {
   "no-empty": 1
  },
  "tests/test_wkfast.js": {
-  "no-empty": 2
+  "no-empty": 1
  },
  "tests/test_workable.js": {
   "no-empty": 1,
