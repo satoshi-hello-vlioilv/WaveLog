@@ -54,6 +54,11 @@
   /* フィンガー（布入ベークライト）。図面の褐色に近い既存の茶を使う
      ——色リテラルを増やさない（§9.350）。 */
   --bs-fig-finger:var(--rs-brown);
+  /* 潤滑リング（§9.454、利用者の指示「スペーサーともゴムリングとも区別できる
+     色」）。ゴムリングは色の周期で**赤〜ピンクの10色**（青・黄・緑・茶・灰・橙・
+     黒・水を含む）を使い、スペーサーは灰なので、**どれにも無い紫**を当てる。 */
+  --bs-fig-lube:var(--look-violet);
+  --bs-fig-lube-edge:var(--look-violet-dark);
   --bs-fig-trim:var(--rs-yellow-border);
   --bs-fig-trim-edge:var(--rs-yellow);
   --bs-fig-label:var(--muted);
@@ -532,6 +537,11 @@ body.bs-mode .bs-shell{display:flex}
 .bs-num.is-zero{background:var(--success-bg)}
 .bs-num.is-ok{background:var(--warn-bg)}
 .bs-num.is-bad{background:var(--danger-bg);color:var(--danger);font-weight:700}
+/* ゴムリングの空きが帯を外れた（§9.454）。組めるが詰め切れていない＝橙。 */
+.bs-num.is-warn{background:var(--warn-bg);color:var(--warn-fg);font-weight:700}
+/* 潤滑リングの色見本（図と同じトークン）。 */
+.bs-lubedot{display:inline-block;width:.7em;height:.7em;border-radius:50%;
+  background:var(--bs-fig-lube);margin-inline-end:3px;vertical-align:-1px}
 /* **0が正の列**は見出しから「直すもの」と分かるようにする（§9.441）。
    色だけで語らないので、見出しの小さな字が「0 が正（出たら不具合）」と言う。 */
 .bs-g th.bs-bad{background:var(--danger-bg);color:var(--danger)}
@@ -667,7 +677,18 @@ body.bs-mode .bs-shell{display:flex}
   padding:var(--space-1) var(--space-2);font-size:var(--fs-sm);margin-bottom:var(--space-1)}
 .bs-alert.is-info{background:var(--pale);border-color:var(--teal-soft);color:var(--teal-dark)}
 .bs-alert.is-bad{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
+.bs-alert.is-warn{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)}
 .bs-alert.is-ok{background:var(--success-bg);border-color:var(--success-border);color:var(--success)}
+/* 組めない材料（§9.454）。**図・端部・所要・台車差分を伏せ、刃組表の場所に
+   理由と直す場所を1つ出す**（前の割付の絵を残さない・§9.433）。
+   伏せる器と一言の器は同じ印（`.is-stop`）で入れ替わる。 */
+.bs-stop .bs-stop-acts{display:block;margin-top:var(--space-1)}
+.bs-stopnote{display:none;margin:var(--space-2);font-size:var(--fs-sm);color:var(--muted)}
+.bs-shell.is-stop .bs-stopnote{display:block}
+.bs-shell.is-stop .bs-figrow,
+.bs-shell.is-stop .bs-pb>[data-p="ends"],
+.bs-shell.is-stop .bs-pb>[data-p="bom"],
+.bs-shell.is-stop .bs-pb>[data-p="diff"]{display:none}
 .bs-gh{font-size:var(--fs-sm);font-weight:700;margin:var(--space-3) 0 var(--space-1)}
 .bs-hrow{display:flex;align-items:center;gap:var(--space-1);font-size:var(--fs-micro);
   border:1px solid var(--line);border-radius:var(--radius-xs);padding:2px var(--space-1);

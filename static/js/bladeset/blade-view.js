@@ -63,7 +63,7 @@
                    'filler', 'filler-edge', 'knife', 'knife-edge', 'badge',
                    'badge-up', 'badge-lo',
                    'strip', 'strip-edge', 'scrap', 'scrap-edge', 'trim',
-                   'trim-edge', 'finger', 'label', 'ink', 'sheen',
+                   'trim-edge', 'finger', 'lube', 'lube-edge', 'label', 'ink', 'sheen',
                    'lead0', 'lead1', 'lead2',
                    'chip-bg', 'chip-fg', 'chip-bd',
                    'chip-clr-bg', 'chip-clr-fg', 'chip-clr-bd',
@@ -150,6 +150,7 @@
            したぶん模式図が広がる（実測 760→1112px・+46%）。端部の表は
            「組む前に一度見る」もので、模式図のように常時見比べるものでは
            ない——常時載せる面積は「頻度 × 重要度」で配る（§CLAUDE 1）。 -->
+      <p class="bs-stopnote">組めない材料なので、刃組図は描いていません（理由は刃組表の場所に出ています）。</p>
       <div class="bs-figrow" id="bsFigRow">
        <div class="bs-figmain">
         <div class="bs-stage" hidden><svg id="bsStage" viewBox="0 0 1000 300"
@@ -269,6 +270,7 @@
        <button type="button" class="bs-chip" data-r="set">刃の状態</button>
       </div></div>
      <div class="bs-pb">
+      <p class="bs-stopnote">組めない材料なので、端部・所要・台車差分は出していません。</p>
       <!-- 端部（OS端／DS端）。表そのものは renderEnds() が id で書き込むので、
            置き場所を変えても描き手は変わらない。 -->
       <div data-p="ends">
@@ -671,6 +673,12 @@
   renderStep3(res);
   renderStep4(res);
   renderOrder();
+  /* **組めない材料では図も表も描かない**（§9.454）。負の耳のまま描くと、
+     板だけが横へずれた「組めた顔の図」になる（実測 matOff 523.95）。
+     理由と直す場所は刃組表の場所に出す——いちばん先に読む場所なので。 */
+  const stop = res.stop || [];
+  panel.classList.toggle('is-stop', stop.length > 0);
+  if (stop.length) { renderStop(res); return; }
   drawFigure(res);
   /* 立体図も**同じ割付（res）**から作る（§9.377 追補）。渡すだけで、
      組み直すかどうかは向こうが決める（立体図を出していなければ何もしない）。 */
@@ -685,6 +693,21 @@
   renderDiff(res);
   renderSets();
   paintBadgePick();
+ }
+
+ /* 組めないときの1枚（§9.454）。**何が・どれだけ・どこで直すか**を言い、
+    直す場所の窓を開くボタンを1つだけ置く（§CLAUDE 2 次にすることを1つ）。
+    図・端部・所要・台車差分は`.is-stop`で伏せる（前の絵を残さない・§9.433）。 */
+ function renderStop(res) {
+  const stop = res.stop || [];
+  closeZoneZoom();
+  if (WL.bladeSolid) WL.bladeSolid.sync({ st, M, res: null, ringHex: hexOf });
+  const step = stop[0].step;
+  $('#bsTables').innerHTML = '<div class="bs-alert is-bad bs-stop" data-stop="'
+   + esc(stop.map(x => x.key).join(' ')) + '"><b>この材料では刃組を組めません</b>'
+   + stop.map(x => `<br>${esc(x.text)}。${esc(x.fix)}。`).join('')
+   + `<span class="bs-stop-acts"><button type="button" class="bs-btn is-primary"`
+   + ` data-stop-open="${esc(step)}">幅構成を開いて直す</button></span></div>`;
  }
 
  /* ---------- 手順ボタンの現在値（畳んだ状態でも今の条件が読める） ---------- */
@@ -712,9 +735,13 @@
   }
   $('#bsFMethod').textContent = B.METHOD_NAME[res.method];
   $('#bsFHold').textContent = B.holdName(st, M);
-  $('#bsFClr').textContent = st.clrAuto
-   ? `${st.clr.toFixed(2)}（目安: 板厚の${Math.round(clearanceRate() * 100)}%）`
-   : `${st.clr.toFixed(2)}（手入力）`;
+  /* 出すのは**組んだ値**。打った値と違えば並べ、理由は`title`で言う（§9.454）。 */
+  const cu = clrUse(), fc = $('#bsFClr');
+  const src = st.clrAuto ? `目安: 板厚の${Math.round(clearanceRate() * 100)}%` : '手入力';
+  fc.textContent = cu.rounded
+   ? `${clrMmText(cu.used)}（${src} ${clrMmText(cu.want)} を四捨五入）`
+   : `${clrMmText(cu.used)}（${src}）`;
+  fc.title = clrWhy(cu);
   $('#bsV2').textContent = `Φ${st.knife.toFixed(1)} / t${st.thick.toFixed(1)}`;
   $('#bsV3').textContent = st.lots.length === 1
    ? `${st.lots[0].w}×${st.lots[0].n}` : `${st.lots.length}ロット`;
@@ -1031,11 +1058,26 @@
   const hex = isRing ? V.ringHex(z.hold.ringT) : V.PAL['strip-edge'];
   const d = V.dir, s = k || 1;
   const pieces = expand(z.gom);
-  const slack = Math.max(0, Math.abs(xb - xa) - widthPx(V, pieces) * s);
-  let o = '', at = xa + d * slack / 2;
+  /* **潤滑リング**（§9.454）は刃の内側の両端に1本ずつ。ゴムリングはその
+     あいだに置く（空きもそのあいだに振り分ける）。径は潤滑リング自身の値。 */
+  let o = '', a0 = xa, b0 = xb;
+  if (z.lube) {
+   const lw = V.pw(z.lube.w) * s, lri = V.hOf(z.lube.bore) / 2, lro = V.hOf(z.lube.od) / 2;
+   const lth = Math.max(1, lro - lri), ww = Math.max(1.2, lw - 0.8);
+   [xa, xb - d * lw].forEach(at0 => {
+    const x = Math.min(at0, at0 + d * lw) + 0.4;
+    o += `<rect class="bs-lube" x="${x}" y="${cy - lro}" width="${ww}" height="${lth}"`
+       + ` fill="${V.PAL.lube}" stroke="${V.PAL['lube-edge']}"/>`
+       + `<rect class="bs-lube" x="${x}" y="${cy + lri}" width="${ww}" height="${lth}"`
+       + ` fill="${V.PAL.lube}" stroke="${V.PAL['lube-edge']}"/>`;
+   });
+   a0 = xa + d * lw; b0 = xb - d * lw;
+  }
+  const slack = Math.max(0, Math.abs(b0 - a0) - widthPx(V, pieces) * s);
+  let at = a0 + d * slack / 2;
   for (const sz of pieces) {
    const w = V.pw(sz) * s;
-   if ((at + d * w - xb) * d > 0.6) break;
+   if ((at + d * w - b0) * d > 0.6) break;
    const x = Math.min(at, at + d * w) + 0.4, ww = Math.max(1.2, w - 0.8);
    o += `<rect x="${x}" y="${cy - ro}" width="${ww}" height="${th}" fill="${hex}" stroke="${V.PAL.ink}"/>`
       + `<rect x="${x}" y="${cy + ri}" width="${ww}" height="${th}" fill="${hex}" stroke="${V.PAL.ink}"/>`;
@@ -1476,12 +1518,30 @@
     **顔ぶれと字は、ここ1箇所が答える**——模式図のSVGの帯と、断面図の
     HTMLの帯が同じものを読む（§CLAUDE 8 同じ情報を2箇所に出さない、の逆で
     「同じ情報は1箇所が作る」）。色の鍵（`k`）はパレットの接頭辞。 */
+ /* **組んだクリアランス**（§9.454）。打った値は手持ちの刻みへ四捨五入して
+    使う——答えは`blade-core`の`clearanceUsed()`の1箇所。字は2桁を下限に、
+    刻みが細かい（0.125 等）ときだけ3桁まで出す。 */
+ const clrUse = () => BS().clearanceUsed(M, st.tk, st.clr);
+ const clrMmText = v => (+v || 0).toFixed(3).replace(/0$/, '');
+ /* 丸めたときの出どころ（§CLAUDE 6「推測させない」）。丸めていなければ空。 */
+ function clrWhy(c) {
+  return c.rounded
+   ? `指定 ${clrMmText(c.want)} を、スペーサーの刻み ${c.step} で組める値へ四捨五入しています`
+     + '（刃厚＋クリアランスが刻みの倍数でないと、下軸のOS端に端数が残るため）'
+   : '';
+ }
  function chipBandItems(finger) {
+  /* 潤滑リング（§9.454）は**同じ札の中身**として言う——札は3つのまま
+     （§9.380）。色は紫で、表と所要の色見本と同じトークン。 */
+  const lw = BS().ringRule(M).lubeW;
   const hold = finger ? 'フィンガー'
-   : `ゴムリング ${ringWord('big')}／${ringWord('small')}`;
+   : `ゴムリング ${ringWord('big')}／${ringWord('small')}`
+     + (lw > 0 ? `＋潤滑 Φ${BS().ringRule(M).lubeOd}` : '');
+  const c = clrUse();
   return [
-   { k: 'chip-clr', name: 'クリアランス', val: `${st.clr.toFixed(2)}mm`,
-     t: `クリアランス：${st.clr.toFixed(2)}mm` },
+   { k: 'chip-clr', name: 'クリアランス',
+     val: `${clrMmText(c.used)}mm${c.rounded ? `（指定${clrMmText(c.want)}）` : ''}`,
+     t: `クリアランス：${clrMmText(c.used)}mm${c.rounded ? `（指定${clrMmText(c.want)}）` : ''}` },
    { k: 'chip-ov', name: 'ラップ', val: `${st.ov.toFixed(2)}mm`,
      t: `ラップ：${st.ov.toFixed(2)}mm` },
    { k: 'chip', name: '板押さえ', val: hold, t: `板押さえ：${hold}` }
@@ -1740,10 +1800,22 @@
    const hex = ring ? hexOf(ring.od) : PAL.finger;
    const list = (st.flip ? B.expand(P.gom).reverse() : B.expand(P.gom))
     .map(mm => ({ mm, cx: 0 }));
+   /* **潤滑リング**（§9.454）は刃の内側の両端。ゴムリングはそのあいだ。 */
+   let a0 = zoneA, b0 = zoneB;
+   if (P.lube) {
+    const lb = band(P.lube.bore / 2, P.lube.od / 2), lw = Math.max(1.2, P.lube.w * S);
+    [zoneA, zoneB - lw].forEach(x0 => {
+     const q = { mm: P.lube.w, cx: x0 + lw / 2, w: lw, bd: lb, name: '潤滑' };
+     hold += `<rect class="bs-lube" x="${x0.toFixed(1)}" y="${lb.y.toFixed(1)}" width="${lw.toFixed(1)}"`
+      + ` height="${lb.h.toFixed(1)}" fill="${PAL.lube}" stroke="${PAL['lube-edge']}" stroke-width="1"/>`;
+     holdList.push(q);
+    });
+    a0 = zoneA + lw; b0 = zoneB - lw;
+   }
    /* 幅は刻みしかないので区間にぴったり合うとはかぎらない。余りを片側へ
       寄せるとクリアランスのように見えるので、模式図と同じく中央へ置く。 */
    const wsum = list.reduce((a, q) => a + Math.max(1.2, q.mm * S), 0);
-   let at = zoneA + Math.max(0, (zoneB - zoneA - wsum) / 2);
+   let at = a0 + Math.max(0, (b0 - a0 - wsum) / 2);
    list.forEach(q => {
     const w = Math.max(1.2, q.mm * S);
     q.cx = at + w / 2; q.w = w; q.bd = hb;
@@ -1791,7 +1863,7 @@
       破線の刃そのものは残す——クリアランスの向きは絵でしか読めない。 */
   });
   holdList.forEach(q => {
-   items.push({ cx: q.cx, name: '', val: zmm(q.mm), w: q.w, bd: q.bd,
+   items.push({ cx: q.cx, name: q.name || '', val: zmm(q.mm), w: q.w, bd: q.bd,
                 ink: '#fff', halo: true });
   });
   const inside = [], vert = [], outs = [];
@@ -1925,13 +1997,15 @@
   /* 破線は反対側の軸の刃。**中心間は刃厚＋クリアランス**あるので、この縮尺でも
      そのまま描ける（§9.420。以前はクリアランスだけのずれで1px未満だった）。
      クリアランスは2枚の刃の**面と面のあいだ**に見えている。 */
-  if (clrMm > 0) bits.push(`破線は反対側の軸の刃（面と面のあいだがクリアランス ${(+st.clr).toFixed(2)}）`);
+  if (clrMm > 0) bits.push(`破線は反対側の軸の刃（面と面のあいだがクリアランス ${clrMmText(clrUse().used)}）`);
   if (ring) {
    bits.push(`ゴムリング ${ring.ringT === 'big' ? '大' : '小'} Φ${ring.od}`
      + `（内径 Φ${+M.P.ringBore || 241}）`);
   }
+  if (P.lube) bits.push(`潤滑リング 幅${P.lube.w}×2（刃の内側の両端・Φ${P.lube.od}/Φ${P.lube.bore}）`);
+  if (ring && P.gom.out.length) bits.push(`ゴムリングの空き ${P.holdRem.toFixed(2)}mm`);
   if (finger) bits.push(`フィンガー（板押さえ）は板の側へ入るので、ここでは軸の上下に置いています`);
-  if (P.rem > 0.001) bits.push(`隙間は刻みの余りです（許容 0〜${M.P.gapMax}）`);
+  if (P.rem > 0.001) bits.push(`スペーサーの端数 ${P.rem.toFixed(3)}mm（0 が正）`);
   return bits.join('　/　');
  }
  /* 拡大図の窓は**掴んで動かせる**（§9.437、利用者の指示「拡大図のポップオーバー
@@ -2063,6 +2137,14 @@
      + '組んだものはOS側へ押し付けて組むので、ここは 0 でなければなりません（計算の不具合です）。<br>'
      + `${esc(cut(gap, 8))}</div>`;
   }
+  const rg = f.ringGap || [];
+  if (rg.length) {
+   const R = BS().ringRule(M);
+   o += `<div class="bs-alert is-warn"><b>ゴムリングの空きが ${R.gapMin}〜${R.gapMax}mm に収まらない区間が ${rg.length}面あります</b><br>`
+     + '手持ちの幅では、刃のあいだより少し小さく詰め切れませんでした。'
+     + '幅の違うゴムリングを足すか、「刃組基準値」の「ゴムリングの組み方」を確かめてください。<br>'
+     + `${esc(cut(rg, 8))}</div>`;
+  }
   if (bare.length) {
    o += `<div class="bs-alert is-bad"><b>${esc(f.holdName || '板押さえ')}が1本も載らない区間が ${bare.length}面あります</b><br>`
      + `手持ちの幅では埋められませんでした（在庫が尽きたか、その区間に入る幅がありません）。`
@@ -2082,6 +2164,19 @@
   const hasRem = rows.some(r => r.c.rem > 0.001);
   const hasHold = rows.some(r => r.c.kind);
   const holdLabel = res.finger ? 'フィンガー' : 'ゴムリング';
+  /* 潤滑リング（§9.454）。広い側の区間にだけ両端1本ずつ入る。列は入る区間が
+     1つでもあるときだけ立てる。空きの帯はゴムリング方式のときだけ判定する。 */
+  const hasLube = rows.some(r => r.c.lube > 0);
+  const R = BS().ringRule(M);
+  const ringBand = !res.finger && R.gapMax > 0;
+  const holdCell = r => {
+   if (!r.c.kind) return '<span class="bs-z">·</span>';
+   if (r.c.bare) return `<b>${r.c.len.toFixed(2)}</b>（1本も載りません）`;
+   return r.c.holdRem > 0.001 ? r.c.holdRem.toFixed(2) : '·';
+  };
+  const holdCls = r => (r.c.bare ? ' is-bad'
+   : (ringBand && r.c.kind === 'ring'
+      ? (r.c.holdRem < R.gapMin - 1e-6 || r.c.holdRem > R.gapMax + 1e-6 ? ' is-warn' : ' is-zero') : ''));
   const num = v => (v ? `<b>${v}</b>` : '<span class="bs-z">·</span>');
   const head = `<thead>
     <tr>
@@ -2094,7 +2189,8 @@
      <th class="bs-sep" rowspan="2">刃の間隔<small>内＝刃の内々／外＝刃の外々</small></th>
      ${Ss.length ? `<th colspan="${Ss.length}" class="bs-sep">スペーサー</th>` : ''}
      ${Gs.length ? `<th colspan="${Gs.length + (res.finger ? 0 : 1)}" class="bs-sep">${holdLabel}</th>` : ''}
-     ${hasHold ? `<th rowspan="2" class="bs-sep">板押さえの空き<small>${esc(holdLabel)}で埋め切れない幅</small></th>` : ''}
+     ${hasLube ? `<th rowspan="2" class="bs-sep bs-lubeh" title="刃を潤滑するリングです。広い側（内々）の刃の内側に両側1本ずつ入ります">潤滑リング<small>幅${R.lubeW}・Φ${R.lubeOd}/${R.lubeBore}</small></th>` : ''}
+     ${hasHold ? `<th rowspan="2" class="bs-sep">板押さえの空き<small>${ringBand ? `刃のあいだ−リング／${R.gapMin}〜${R.gapMax} が正` : `${esc(holdLabel)}で埋め切れない幅`}</small></th>` : ''}
      ${hasRem ? '<th rowspan="2" class="bs-sep bs-bad">スペーサーの端数<small>0 が正（出たら不具合）</small></th>' : ''}
     </tr>
     <tr><th class="bs-ax bs-sep">上軸</th><th class="bs-ax">下軸</th>
@@ -2132,13 +2228,13 @@
          + `<span class="bs-ringdot" style="background:${esc(hexOf(r.c.od) || 'transparent')}"></span>`
          + `${esc(colorOf(r.c.od))}Φ${r.c.od}</td>` : '')
     + Gs.map((x, i2) => `<td class="bs-num${i2 || !res.finger ? '' : ' bs-sep'}">${num(r.c.G[x])}</td>`).join('')
-    + (hasHold ? `<td class="bs-num bs-sep${r.c.bare ? ' is-bad' : ''}"`
-       + ` title="${esc(holdLabel)}で埋め切れなかった幅です。`
+    + (hasLube ? `<td class="bs-num bs-sep">${r.c.lube ? `<span class="bs-lubedot"></span><b>${r.c.lube}</b>` : '<span class="bs-z">·</span>'}</td>` : '')
+    + (hasHold ? `<td class="bs-num bs-sep${holdCls(r)}"`
+       + ` title="${ringBand && r.c.kind === 'ring'
+          ? `刃のあいだとリング（潤滑リングを含む）の差です。${R.gapMin}〜${R.gapMax}mm に収めます`
+          : `${esc(holdLabel)}で埋め切れなかった幅です`}。`
        + `軸の寸法はスペーサーが作るので、ここが空いても刃の位置は動きません">`
-       + (r.c.kind
-          ? (r.c.bare ? `<b>${r.c.len.toFixed(2)}</b>（1本も載りません）`
-                      : (r.c.holdRem > 0.001 ? r.c.holdRem.toFixed(2) : '·'))
-          : '<span class="bs-z">·</span>') + '</td>' : '')
+       + holdCell(r) + '</td>' : '')
     + (hasRem ? `<td class="bs-num bs-sep ${gapCell(r.c.rem)}"`
        + ' title="スペーサーで区間を埋め切れなかった幅です。組んだものはOS側へ'
        + '押し付けて組むので、ここは 0 でなければなりません">'
@@ -2314,6 +2410,13 @@
     }));
    }).join('');
    if (!ods.length) html += needGroup('ゴムリング', [], 'この設備のゴムリングが登録されていません');
+   /* 潤滑リング（§9.454）。**在庫のマスタは持たない**ので、本数だけを言い
+      「使える数」は出さない（持っていない数と比べて足りないと言わない）。 */
+   const lb = g.lube || {};
+   if (lb.u + lb.l > 0) {
+    html += needGroup(`<span class="bs-lubedot"></span>潤滑リング`,
+     [needChip(`幅${lb.w}`, lb.u, lb.l, null)], `Φ${lb.od}/Φ${lb.bore}（在庫は数えていません）`);
+   }
   }
   $('#bsBom').innerHTML = html;
  }
@@ -2443,6 +2546,10 @@
      + `${esc(colorOf(+od))}${esc(od)}<small>幅 ${esc(sz)}</small></span>`;
    }),
    diffRows('フィンガー', cur.finger, base && base.finger, shelf.finger),
+   /* 潤滑リング（§9.454）。在庫を持たないので棚の数は出さない（`null`）。
+      古い記録には鍵が無い——無いものは0本として比べる。 */
+   diffRows('潤滑リング', cur.lube || {}, base && (base.lube || {}), null,
+            k => `幅 ${esc(k)}`),
    diffRows('刃', cur.blade, base && base.blade, shelf.blade, k => {
     const [dia, tk] = String(k).split('|');
     return `Φ${esc(dia)}${tk ? `<small>刃厚 ${esc(tk)}</small>` : ''}`;
@@ -2699,7 +2806,7 @@
      `setMode()`を呼んでおり、`sync()`が**前の図のまま**1回組んで1枚描いて
      いた（組むのも2回）。いまの割付は`setMode()`へ渡す。 */
   const want = figKind;
-  Promise.resolve(WL.bladeSolid.setMode(solid, figKind, { st, M, res: LAST, ringHex: hexOf }))
+  Promise.resolve(WL.bladeSolid.setMode(solid, figKind, { st, M, res: (LAST && !(LAST.stop || []).length) ? LAST : null, ringHex: hexOf }))
    .then(ok => {
     if (ok || !auto || figKind !== want || want === '2d') return;
     /* 倒すときは断りの字も引っ込める——模式図はふつうに使えるので、
@@ -2858,6 +2965,16 @@
    closePops();
    if (!was) host.classList.add('is-open');
   }));
+  /* 組めないときの「直す場所を開く」（§9.454）。手順の窓を開く道は1本
+     （`[data-step-open]`）なので、その札を押す。 */
+  $('#bsTables').addEventListener('click', e => {
+   const b = e.target.closest('[data-stop-open]');
+   if (!b) return;
+   e.stopPropagation();
+   const host = panel.querySelector(`.bs-step[data-step="${CSS.escape(b.dataset.stopOpen)}"]`);
+   closePops();
+   if (host) host.classList.add('is-open');
+  });
   document.addEventListener('click', e => {
    if (!panel || panel.hidden) return;
    if (!e.target.closest('.bs-step')) closePops();
@@ -3017,6 +3134,12 @@
  }
  async function saveCarriage() {
   if (!LAST) return;
+  /* 組めない材料は記録しない（§9.454）。ボタンは伏せてあるが、道は1本に絞る。 */
+  if ((LAST.stop || []).length) {
+   await alertModal({ title: 'この材料では刃組を組めません',
+     message: LAST.stop.map(x => `${x.text}。${x.fix}。`).join('\n') });
+   return;
+  }
   const B = BS();
   const gs = [...new Set((M.blades || []).map(k => String(k.group || '').trim()))].filter(Boolean);
   if (gs.length && !st.bladeGroup) {

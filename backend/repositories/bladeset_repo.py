@@ -239,6 +239,8 @@ STANDARD_COLUMNS = (
     ('クリアランス既定', 'REAL'), ('クリアランス率', 'REAL'),
     ('ラップ既定', 'REAL'), ('刃厚既定', 'REAL'),
     ('中抜き可', 'INTEGER'), ('屑条幅既定', 'REAL'), ('寸法刻み', 'REAL'),
+    ('ゴムリング空き下限', 'REAL'), ('ゴムリング空き上限', 'REAL'),
+    ('潤滑リング幅', 'REAL'), ('潤滑リング外径', 'REAL'), ('潤滑リング内径', 'REAL'),
     ('備考', 'TEXT'), ('表示順', 'INTEGER'), ('有効', 'INTEGER'),
 )
 STANDARD_DEF = TableDef(STANDARD_TABLE, '刃組基準ID', STANDARD_COLUMNS,
@@ -265,6 +267,14 @@ STANDARD_DEFAULTS = {
     # `context` が届けた値を使うので、差し替えの影響はこの1箇所に留まる。
     'clearance': 0.15, 'clearanceRate': 0.1, 'overlap': 0.2, 'bladeThickness': 10.0,
     'canNakanuki': True, 'scrapWidth': 30.0, 'sizeStep': 0.05,
+    # ゴムリングの組み方（§9.454、利用者の指示「ゴムリングは刃のあいだに
+    # 収めますが、刃の間の寸法よりも0.2～0.5㎜小さくなるようにセットします。
+    # この値は設備ごとに設定を持てるように」）。
+    'ringGapMin': 0.2, 'ringGapMax': 0.5,
+    # 潤滑リング（§9.454、利用者の指示「幅が10㎜で、製品幅＋クリアランス×2の
+    # 広い側の刃の内側の両側にセットされます。外径はφ270、内径はφ240」）。
+    # **幅を0にするとその設備では入れない**（在庫のマスタは持たない）。
+    'lubeWidth': 10.0, 'lubeOD': 270.0, 'lubeBore': 240.0,
 }
 # DBの列名 ↔ 画面の鍵。**対応はここだけ**（§9.324 R1 と同じ考え方）。
 _STANDARD_MAP = (
@@ -283,6 +293,10 @@ _STANDARD_MAP = (
     ('ラップ既定', 'overlap', 'num'),
     ('刃厚既定', 'bladeThickness', 'num'), ('中抜き可', 'canNakanuki', 'flag'),
     ('屑条幅既定', 'scrapWidth', 'num'), ('寸法刻み', 'sizeStep', 'num'),
+    ('ゴムリング空き下限', 'ringGapMin', 'num'),
+    ('ゴムリング空き上限', 'ringGapMax', 'num'),
+    ('潤滑リング幅', 'lubeWidth', 'num'), ('潤滑リング外径', 'lubeOD', 'num'),
+    ('潤滑リング内径', 'lubeBore', 'num'),
 )
 
 

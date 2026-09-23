@@ -338,7 +338,10 @@
     ことから来る差で、**耳が吸う**。 */
  function buildLayout(st, M, segs) {
   const tk = st.tk, n = segs.length;
-  const arborLen = num(M.P.arborLen) || 1600, clr = st.clr;
+  /* クリアランスは**組める値**を使う（§9.454）。打った値（`st.clr`）は
+     そのまま残し、使った値と両方を`A`が持つ——画面は2つが違うときだけ言う。 */
+  const CL = clearanceUsed(M, tk, st.clr);
+  const arborLen = num(M.P.arborLen) || 1600, clr = CL.used;
   const grid = num(M.P.sizeStep) || 0.05;   /* 手持ちがそろっている刻み */
   const w = widths(st, segs);
   /* 各切断点で、上刃がどちら側へずれるか（下バリなら上刃は OS 側＝−）。 */
@@ -378,7 +381,8 @@
      up: +(arborLen - (U[n] + tk / 2)).toFixed(3),
      lo: +(arborLen - (Lo[n] + tk / 2)).toFixed(3) }
   ];
-  return { U, Lo, zones, arborLen, grid,
+  return { U, Lo, zones, arborLen, grid, origin,
+           clr, clrWant: CL.want, clrStep: CL.step, clrRounded: CL.rounded,
            dKnife,                          /* 同じ切断での上下刃の中心間（刃厚＋クリアランス） */
            dReal: clr,                      /* 面と面のあいだ＝クリアランス（画面に出す値） */
            dZone: +(dKnife * 2).toFixed(3), /* 中間区間での上下スペーサー長の差 */
@@ -543,7 +547,7 @@
     保持層（ゴムリング／フィンガー）にはまず占有幅の枠を割り当てるが、手持ちの
     幅でしか組めない。組めなかった分は枠を空けたままにせず、スペーサー側へ回す
     ——スペーサーは細かい寸法を持つので、端数をそこで最小にできる。 */
- function zoneParts(len, isEnd, hold, tbl) {
+ function zoneParts(len, isEnd, hold, tbl, rule) {
   const total = Math.max(0, +(+len).toFixed(3));
   /* 軸の寸法はスペーサーが作る。区間の全長をスペーサーで組み、刃の位置はこれで
      決まる。保持層はその上に被せる別の層で、軸方向の寸法には効かない。 */
@@ -551,7 +555,20 @@
   /* 保持層は製品幅の上にだけ載るので、最外刃より外（OS端・DS端）はスペーサーのみ。 */
   let ht = null;
   if (hold && !isEnd) ht = hold.kind === 'finger' ? tbl.finger : tbl.ring.get(hold.od);
-  const gom = ht ? fillWith(ht, total) : { out: [], rem: 0 };
+  /* **ゴムリングは刃のあいだより0.2〜0.5mm小さく組む**（§9.454、利用者の
+     指示）。狙うのは「下限ぶんだけ小さい長さ」で、そこを超えない最大の
+     組み合わせを取る——ぴったり（空き0）に組むと刃のあいだへ入らない。
+     **潤滑リング**（広い側の刃の内側の両端・幅10）はその内側に先に置き、
+     残りをゴムリングで埋める。フィンガーは従来どおり区間いっぱいを狙う。 */
+  const R = rule || RING_RULE_NONE;
+  const isRing = !!(ht && hold.kind === 'ring');
+  const lube = isRing && hold.lube && R.lubeW > 0
+   ? { n: 2, w: R.lubeW, od: R.lubeOd, bore: R.lubeBore } : null;
+  const room = +(total - (lube ? lube.n * lube.w : 0)).toFixed(3);
+  const want = isRing ? Math.max(0, +(room - R.gapMin).toFixed(3)) : total;
+  const got = ht ? fillWith(ht, want) : { out: [], rem: 0 };
+  /* 空きは**区間から見た**値（狙いの下限ぶん＋埋め切れなかったぶん）。 */
+  const gom = { out: got.out, rem: ht ? +(room - (want - got.rem)).toFixed(3) : 0 };
   /* **余りは層ごとに別の意味を持つ**（§9.441、利用者の指示「スペーサー間や
      スペーサーと刃の間には計算上の隙間は無い。……わずかに隙間ができてよいのは
      ゴムリングやフィンガーの部分の板押さえに該当する部分のみ」）。
@@ -561,8 +578,30 @@
                    埋め切れないぶんで、**わずかなら差し支えない**。
      混ぜて1つの数にすると、直さなければならない端数と、見ていればよい空きが
      見分けられなくなる。 */
-  return { len: total, hold: ht ? hold : null, gom, spacer,
+  return { len: total, hold: ht ? hold : null, gom, spacer, lube,
            rem: spacer.rem, holdRem: ht ? gom.rem : 0 };
+ }
+ /* ゴムリングの組み方の決まり（§9.454）。**値は設備ごとの`刃組基準値`**
+    （既定はサーバーの`STANDARD_DEFAULTS`）。読めない値は0——空きの帯を
+    持たない・潤滑リングを入れない、に倒れる（勝手な数で埋めない・§9.231）。 */
+ const RING_RULE_NONE = { gapMin: 0, gapMax: 0, lubeW: 0, lubeOd: 0, lubeBore: 0 };
+ function ringRule(M) {
+  const P = (M && M.P) || {}, v = k => Math.max(0, num(P[k]) || 0);
+  const a = v('ringGapMin'), b = v('ringGapMax');
+  return { gapMin: Math.min(a, b || a), gapMax: Math.max(a, b),
+           lubeW: v('lubeWidth'), lubeOd: v('lubeOD'), lubeBore: v('lubeBore') };
+ }
+ /* 空きが帯（下限〜上限）を外れた面。**1本も載らない面は別に数える**
+    （`bareHold`）ので、ここでは言わない。 */
+ function ringGapFaces(zp, M) {
+  const R = ringRule(M), out = [];
+  if (!(R.gapMax > 0)) return out;
+  zp.zones.forEach((z, i) => [['上', z.up], ['下', z.lo]].forEach(([ax, p]) => {
+   if (!p.hold || p.hold.kind !== 'ring' || !p.gom.out.length) return;
+   const g = p.holdRem;
+   if (g < R.gapMin - 1e-6 || g > R.gapMax + 1e-6) out.push(`${i + 1}${ax}（空き ${g.toFixed(2)}mm）`);
+  }));
+  return out;
  }
 
  /* 区間ごとの中身を、OS側から順に決める。
@@ -582,12 +621,13 @@
      ちょうど埋める組み方を出す。そのうえで、精度と枚数を落とさずに在庫の範囲へ
      収められるならそちらを使う（対象台車の部材を流用でき、段取りが早くなる）。
      どうしても収まらないときは精度を優先し、足りない分は所要で示す。 */
+  const RULE = ringRule(M);
   const take = (len, isEnd, hold) => {
-   const best = zoneParts(len, isEnd, hold, fillTables(IX, plan, left, span, null, true));
+   const best = zoneParts(len, isEnd, hold, fillTables(IX, plan, left, span, null, true), RULE);
    let parts = best;
    const blocked = new Set();
    for (let attempt = 0; attempt < 16; attempt++) {
-    const cand = zoneParts(len, isEnd, hold, fillTables(IX, plan, left, span, blocked));
+    const cand = zoneParts(len, isEnd, hold, fillTables(IX, plan, left, span, blocked), RULE);
     const overS = cand.spacer.out.find(([sz, c]) => c > (left.sp.get(String(sz)) || 0));
     const holdKey = cand.hold
      ? (cand.hold.kind === 'finger' ? 'F' : 'R') : '';
@@ -620,11 +660,15 @@
   const zones = A.zones.map((z, i) => {
    const isEnd = (i === 0 || i === last);
    const burr = z.type === 'end' ? z.burr : z.seg.burr;
+   /* **潤滑リングは広い側の刃の内側**（§9.454、利用者の指示「製品幅＋
+      クリアランス×2の広い側の刃の内側の両側」）。広い側＝その条で区間が
+      長いほうの軸（内々の対）。屑条・端部には入れない。 */
+   const wide = upper => z.type === 'strip' && (upper ? z.up > z.lo : z.lo > z.up);
    const mk = upper => {
     if (finger) return IX.fingerWidths.length ? { kind: 'finger' } : null;
     if (!IX.widthsByOd.size) return null;
     const t = ringType(burr, upper);
-    return { kind: 'ring', ringT: t, od: odOfType(st, M, t) };
+    return { kind: 'ring', ringT: t, od: odOfType(st, M, t), lube: wide(upper) };
    };
    return { up: take(z.up, isEnd, mk(true)), lo: take(z.lo, isEnd, mk(false)) };
   });
@@ -639,13 +683,14 @@
   const sp = countMap(parts.spacer), G = countMap(parts.gom);
   const od = parts.hold && parts.hold.kind === 'ring' ? parts.hold.od : 0;
   const kind = parts.hold ? parts.hold.kind : '';
-  return { len: parts.len, sp, G, od, kind,
+  const lube = parts.lube ? parts.lube.n : 0;
+  return { len: parts.len, sp, G, od, kind, lube,
            ringT: parts.hold ? parts.hold.ringT || '' : '', rem: parts.rem,
            holdRem: +(parts.holdRem || 0).toFixed(3),
            /* **板押さえが1本も載らない区間**（§9.441）。端部は設計どおり
               持たないので、ここで言うのは「載るはずなのに空」のときだけ。 */
            bare: !!(kind && !sizeKeys(G).length),
-           sig: `${parts.len.toFixed(2)}|${kind}|${od}|${sigOf(sp)}|${sigOf(G)}` };
+           sig: `${parts.len.toFixed(2)}|${kind}|${od}|${lube}|${sigOf(sp)}|${sigOf(G)}` };
  }
 
  /* ---- 構成記号（バッジ） ----
@@ -719,12 +764,18 @@
     ゴムリングは色（外径）×幅で1本が決まるので、その形のまま数える。 */
  function aggregate(st, M, A, zp) {
   const out = { spacerU: {}, spacerL: {}, ring: {}, finger: {}, blade: {},
-                finger_mode: isFinger(st, M), rem: [] };
+                finger_mode: isFinger(st, M), rem: [],
+                /* 潤滑リング（§9.454）。在庫のマスタは持たないので、本数と寸法だけ。 */
+                lube: { u: 0, l: 0, w: 0, od: 0, bore: 0 } };
   const addInto = (o, d) => { d.out.forEach(([s, c]) => { o[s] = (o[s] || 0) + c; }); return o; };
   const mergeInto = (dst, src) => { Object.keys(src).forEach(k => { dst[k] = (dst[k] || 0) + src[k]; }); return dst; };
   zp.zones.forEach(z => {
    [['U', 'u', z.up], ['L', 'l', z.lo]].forEach(([ax, side, parts]) => {
     addInto(out['spacer' + ax], parts.spacer);
+    if (parts.lube) {
+     out.lube[side] += parts.lube.n;
+     Object.assign(out.lube, { w: parts.lube.w, od: parts.lube.od, bore: parts.lube.bore });
+    }
     if (!parts.hold) return;
     if (parts.hold.kind === 'finger') {
      parts.gom.out.forEach(([sz, c]) => {
@@ -779,7 +830,11 @@
   if (A.w.osTrim > 0) items.push({ w: A.w.osTrim, type: 'trim', label: '耳' });
   segs.forEach(s => items.push(s));
   if (A.w.dsTrim > 0) items.push({ w: A.w.dsTrim, type: 'trim', label: '耳' });
-  let at = A.matStart;
+  /* **起点は刃と同じ`origin`から逆に辿る**（§9.454）。耳が負（元板巾が
+     条の合計に足りない）のときは耳を積まないので、`matStart`から始めると
+     板だけが負の耳のぶん横へずれた（実測 matOff 523.95）。組めない材料は
+     `solve()`が`stop`で断るが、ここも1つの起点から出しておく。 */
+  let at = A.origin - (A.w.osTrim > 0 ? A.w.osTrim : 0);
   return items.map(sg => { const from = at; at += sg.w; return { sg, from, to: at }; });
  }
  /* 板は丸刃で切られ、切られた条は板厚のぶんだけ上下へ分かれる。条は
@@ -869,11 +924,34 @@
     if (p.hold && !p.gom.out.length) bare.push(`${i + 1}${ax}`);
    });
   });
-  const fit = { spacerGap: bad, bareHold: bare,
+  const fit = { spacerGap: bad, bareHold: bare, ringGap: ringGapFaces(zp, M),
                 holdName: holdName(st, M) };
   return { segs, A, zp, g, err, rows, ends, badges: badgeMap(rows.concat(ends)),
-           fit, contact: c, method: method(st), finger: isFinger(st, M),
+           fit, stop: stopReasons(st, A), contact: c, method: method(st), finger: isFinger(st, M),
            bigOd: odFromTh(M, st.bigTh), smOd: odFromTh(M, st.smallTh) };
+ }
+
+ /* **組めない材料**（§9.454、利用者の報告「断面図で板だけが横へずれる」）。
+    答えはここ1箇所で、画面は`res.stop`が空でなければ**図も表も描かず**に
+    これを出す（§CLAUDE 4 できないことはできないと書く／§9.433 組めなかったら
+    器を空にする）。以前は手順3の畳んだ窓の中だけが断っており、図と表は
+    負の耳のまま「組めた顔」で描かれていた。
+    `step`は直す場所（手順の窓の`id`）。字は「何が」「どれだけ」「どうすれば」。 */
+ function stopReasons(st, A) {
+  const out = [], w = A.w, W = +st.W || 0;
+  if (!w.ok) {
+   out.push({ key: 'short', step: 'bsV3',
+              text: `条の合計 ${w.total.toFixed(2)} mm が元板巾 ${W} mm を超えています`
+                  + `（不足 ${(w.total - W).toFixed(2)} mm）`,
+              fix: '元板巾か、条幅・本数を直してください' });
+  }
+  if (W > A.arborLen) {
+   out.push({ key: 'arbor', step: 'bsV3',
+              text: `元板巾 ${W} mm がアーバー有効長 ${A.arborLen} mm を超えています`
+                  + `（${(W - A.arborLen).toFixed(2)} mm 超過）`,
+              fix: 'この板はこのラインに載りません。元板巾を確かめてください' });
+  }
+  return out;
  }
 
  /* 刃組を終えた記録（台車差分の材料）。**部材の顔ぶれごとに形が変わる**ので、
@@ -924,7 +1002,9 @@
               古い記録には入っていないので、読む側は「無ければ使わない」。 */
            W: +st.W || 0,
            thickness: +st.thick || 0, knife: +st.knife || 0, tk: +st.tk || 0,
-           overlap: +st.ov || 0, clearance: +st.clr || 0,
+           overlap: +st.ov || 0,
+           /* 記録するのは**組んだ値**（§9.454）。打った値が違えば並べて残す。 */
+           clearance: clearanceUsed(M, st.tk, st.clr).used, clearanceWant: +st.clr || 0,
            method: method(st), hold: holdName(st, M),
            bigOd: odFromTh(M, st.bigTh), smOd: odFromTh(M, st.smallTh) };
  }
@@ -1055,6 +1135,32 @@
   const v = (+t || 0) * clearanceRate(M);
   return v > 0 ? +v.toFixed(2) : 0;
  }
+ /* 手持ちのスペーサーが作れる長さの刻み（§9.454）。**寸法の最大公約数**——
+    `10.025` が1種でもあれば 0.025、無ければ 0.05 になる。刻みは部材が決める
+    もので、コードの定数（`FILL_STEP`）は表を引く単位にすぎない。
+    0.005mm を1として整数で数える（浮動小数の割り算で公約数を取らない）。 */
+ function spacerStep(M) {
+  const gcd = (a, b) => { while (b) [a, b] = [b, a % b]; return a; };
+  const U = 0.005;
+  const g = ((M && M.spacers) || []).reduce((a, s) => gcd(a, Math.round(s.size / U)), 0);
+  return g > 0 ? +(g * U).toFixed(3) : FILL_STEP;
+ }
+ /* **実際に組めるクリアランス**（§9.454、利用者の指示「四捨五入でもっとも
+    近い確保可能なクリアランスに近づけます」）。答えはここ1箇所。
+
+    上下の軸はどちらもOS側の端から部材を積むので、下軸のOS端の区間は上軸の
+    それと**刃厚＋クリアランス**だけ違う。スペーサーは`step`刻みでしか長さを
+    作れないので、`刃厚＋クリアランス`が刻みの倍数でないと、どちらかの軸に
+    **必ず端数が残る**（0.04 → 下軸OS端 0.015・内々 104.98 → 0.005）。
+    だから`刃厚＋クリアランス`を刻みへ四捨五入し、そこから刃厚を引いた値を
+    使う。0 以下になるときは刻み1つぶん（刃どうしが面で当たる組み方は無い）。 */
+ function clearanceUsed(M, tk, want) {
+  const step = spacerStep(M), t = +tk || 0, w = +want || 0;
+  const n = Math.round(+((t + w) / step).toFixed(6));
+  let used = +(n * step - t).toFixed(4);
+  if (!(used > 0)) used = step;
+  return { want: w, used, step, rounded: Math.abs(used - w) > 1e-6 };
+ }
  /* 使う刃を決める（§9.379、利用者の指示2）。
       ふつう … 状態が「一般」の刃
       例外 …… `刃選択マスタ` の条件に当たったら、その組の「専用」の刃
@@ -1145,7 +1251,10 @@
   }));
   const finger = {};
   Object.keys(g.finger).forEach(sz => { finger[sz] = g.finger[sz].u + g.finger[sz].l; });
-  return { spacer: Object.assign({}, g.spacer), ring, finger,
+  const lube = {};
+  const nl = g.lube ? g.lube.u + g.lube.l : 0;
+  if (nl) lube[g.lube.w] = nl;
+  return { spacer: Object.assign({}, g.spacer), ring, finger, lube,
            blade: Object.assign({}, g.blade), cond: condOf(st, M) };
  }
 
@@ -1178,7 +1287,7 @@
  }
 
  WL.bladeSet = {
-  defaultState, clearanceRate, clearanceFor, applyStandards, applyBladePick, standardState,
+  defaultState, clearanceRate, clearanceFor, clearanceUsed, spacerStep, ringRule, applyStandards, applyBladePick, standardState,
   normalize, buildIndex, ringMeta, thOf, odFromTh, odOfType, ringType, oppBurr,
   method, isFinger, holdName, contact, recommend, syncOrder, reorder,
   buildSegs, widths, buildLayout, buildFiller, fillWith, planZones,

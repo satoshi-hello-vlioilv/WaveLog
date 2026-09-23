@@ -475,9 +475,18 @@
      かぎらない。余りは左右へ均等に振り分け、列を区間の中央に置く（模式図と同じ）。 */
   const pieces = expand(parts.gom);
   const run = pieces.reduce((a, sz) => a + sz, 0);
-  at = from + Math.max(0, (to - from - run)) / 2;
+  /* **潤滑リング**（§9.454）は刃の内側の両端。ゴムリングはそのあいだ
+     （模式図の`holdLayer()`と同じ置き方）。 */
+  let a0 = from, b0 = to;
+  if (parts.lube) {
+   const w = parts.lube.w;
+   out.lube.push({ x: from + w / 2, y, sz: w, lube: parts.lube },
+                 { x: to - w / 2, y, sz: w, lube: parts.lube });
+   a0 = from + w; b0 = to - w;
+  }
+  at = a0 + Math.max(0, (b0 - a0 - run)) / 2;
   for (const sz of pieces) {
-   if (at + sz > to + PACK_EPS) break;
+   if (at + sz > b0 + PACK_EPS) break;
    out.ring.push({ x: at + sz / 2, y, sz, hold: parts.hold });
    at += sz;
   }
@@ -680,7 +689,7 @@
      10mm級の穴になるので、絵ではなく数で見張る。 */
   D3.pack = { over: 0, worst: 0, drop: 0, filler: 0, fillerMm: 0,
               x0: 0, x1: 0, arbor: L };
-  const out = { liner: [], ring: [], knife: [] };
+  const out = { liner: [], ring: [], lube: [], knife: [] };
   /* 区間の記号（§9.417）。**模式図と同じ対応表**（`res.badges`）を読む——
      図ごとに割り当て直すと、同じ区間が図と表で別の記号になり得る。
      端の2区間（最外刃より外）は模式図でも記号を出さない（右レールの
@@ -751,6 +760,14 @@
         isRing ? ringBore : linerR,
         skin(T, sh.ring, 'hold' + key, { color, metalness: .02, roughness: .9 }));
    });
+   /* 潤滑リング（§9.454）。ゴムリングと同じ材質で、径と色だけが違う。
+      色は模式図と同じトークン（紫）——ゴムリングの10色にもスペーサーの灰にも無い。 */
+   if (out.lube.length) {
+    const L0 = out.lube[0].lube;
+    put(out.lube.map(q => ({ x: q.x, y: q.y, len: q.sz - 1.0 })), L0.od / 2, L0.bore / 2,
+        skin(T, sh.ring, 'lube', { color: cssColor('--bs-fig-lube', '#7150c4'),
+                                    metalness: .02, roughness: .9 }));
+   }
   }
   if (blade) put(out.knife.map(q => ({ x: q.x, y: q.y, len: tk })), ctx.st.knife / 2, bore, blade);
   /* **端から端が有効長を超えていないか**（§9.418 追補、利用者の指示「有効長より
@@ -762,6 +779,7 @@
    const e = [];
    out.liner.forEach(q => e.push(q.x - q.sz / 2, q.x + q.sz / 2));
    out.ring.forEach(q => e.push(q.x - q.sz / 2, q.x + q.sz / 2));
+   out.lube.forEach(q => e.push(q.x - q.sz / 2, q.x + q.sz / 2));
    out.knife.forEach(q => e.push(q.x - tk / 2, q.x + tk / 2));
    if (e.length) {
     D3.pack.x0 = +Math.min(...e).toFixed(3);
@@ -1099,7 +1117,12 @@
      顔をして場面に残り、`render()`の食い違いの見張りも素通りしていた。
      組めない理由は2つ（割付がまだ無い・部品がまだ無い）で、どちらも
      **あとから解消する**ので、控えを落としておけば次の機会に組み直される。 */
-  if (!ctx || !ctx.res || !init()) { D3.builtRes = null; return; }
+  if (!ctx || !ctx.res || !init()) {
+   D3.builtRes = null;
+   /* **割付が無い＝組めない材料**（§9.454）。前の割付の絵を残さない。 */
+   if (ctx && !ctx.res) clearCanvas();
+   return;
+  }
   const T = D3.T, g = D3.g, res = ctx.res;
   /* 形と材質は使い回しているので消さない。まとめ描きの持ち物だけ解放する。 */
   const clear = o => { while (o.children.length) { const c = o.children.pop(); if (c.dispose) c.dispose(); } };
@@ -1240,6 +1263,10 @@
 
  function render() {
   if (!D3.r || !D3.on) return;
+  /* 組めない材料（割付が無い）のあいだは何も描かない（§9.454）。場面には
+     前の割付の模型が残っているので、ここで止めないと回す・器の大きさが
+     変わる、の道から前の絵が出てくる。 */
+  if (ctx && !ctx.res) { clearCanvas(); return; }
   /* **描くのは、いま選ばれている図の模型だけ**（§9.428、利用者の報告
      「3D断面図が切り替え直後には出ません（通常の3Dモデルが出る）」）。
      ここは切り替え以外の道からも呼ばれる——掴んで回している最中の毎フレーム、
@@ -1271,10 +1298,23 @@
   /* ---- 断面図（§9.412）。平行投影で真横から見る ---- */
   if (D3.cut) {
    const b = D3.cutBox || { cx: 0, cy: 0, w: 2000, h: 1000 };
-   const oc = D3.ocam, ar = w / h, pad = 1.06;
-   let vw = b.w * pad, vh = b.h * pad;
-   if (vw / vh < ar) vw = vh * ar; else vh = vw / ar;   /* 収まる側に合わせる */
-   oc.left = -vw / 2; oc.right = vw / 2; oc.top = vh / 2; oc.bottom = -vh / 2;
+   const oc = D3.ocam, pad = 1.06;
+   /* **帯の下に図を置かない**（§9.454、利用者の指示「ラップやクリアランスの
+      ラベルと図の重なりも問題がないか」）。以前は器ぜんたいに合わせて縮尺を
+      決めていたので、左上の帯（読み方・有効長・設定の3行）と下の帯（表示・
+      視点）が**上下軸の部材に被っていた**（実測: 帯の下の図の画素 1,801〜
+      12,351）。帯が占める上下の高さを**測って**差し引き、残りの高さに
+      図を収める——字の置き場（`dims()`／`place()`）が帯を測るのと同じ
+      `hudBox()`を使う（固定の数に足して追いかけない・§9.250）。 */
+   const hb = hudBox(w, h);
+   const topIn = hb.tops.reduce((m, t) => Math.max(m, t.y), 0);
+   const avail = Math.max(h * 0.4, h - topIn - hb.bot);
+   const sc = Math.max(b.w * pad / w, b.h * pad / avail);   /* 1pxあたりの世界の長さ */
+   const vw = w * sc, vh = h * sc;
+   /* 図の中心を「空いている帯のあいだ」の中央へ寄せる（画面の下向きが正）。 */
+   const offPx = (topIn + (h - topIn - hb.bot) / 2) - h / 2;
+   oc.left = -vw / 2; oc.right = vw / 2;
+   oc.top = vh / 2 + offPx * sc; oc.bottom = -vh / 2 + offPx * sc;
    oc.near = 1; oc.far = 60000; oc.updateProjectionMatrix();
    const px = D3.pivot ? D3.pivot.position.x : 0;
    /* 台車の走行ぶんを足した、軸の中心の真正面。台車を回していても断面は動かさない。 */
@@ -1299,6 +1339,20 @@
    }
    D3.r.render(D3.sc, oc);
    tags(w, h, oc);
+   /* 帯の中身は`tags()`（→`sides()`）が書くので、**書いたあとの高さ**と
+      食い違っていたら1回だけ描き直す（最初の1枚は帯が空のまま測っている）。
+      同じ高さに落ち着けば2回目は描き直さないので、繰り返しにはならない。 */
+   const hb2 = hudBox(w, h);
+   const top2 = hb2.tops.reduce((m, t) => Math.max(m, t.y), 0);
+   /* 網が見る数（§9.454）: 図の箱の上端・下端（画面の座標）と帯の高さ。
+      正面から見ているときは `figTop ≥ top` かつ `figBot ≤ h − bot` が正。 */
+   D3.hudFit = { top: +topIn.toFixed(1), bot: +hb.bot.toFixed(1), h,
+                 figTop: +((oc.top - b.h / 2) / sc).toFixed(1),
+                 figBot: +((oc.top + b.h / 2) / sc).toFixed(1) };
+   /* 帯の字（入りきらない件数）は縮尺で変わり得るので、**続けて2回まで**。 */
+   const moved = Math.abs(top2 - topIn) > 1 || Math.abs(hb2.bot - hb.bot) > 1;
+   D3.hudRetry = moved ? (D3.hudRetry || 0) + 1 : 0;
+   if (moved && D3.hudRetry <= 2) requestAnimationFrame(render);
    return;
   }
   const c = CAM, ce = Math.cos(c.el);
@@ -2147,6 +2201,7 @@
            capZ: D3.capZ == null ? null : +D3.capZ.toFixed(2),
            /* 材料と刃の食い違い（§9.433）。同じ割付から出ていれば必ず0。 */
            matOff: D3.cut ? (D3.matOff || 0) : 0,
+           hudFit: D3.cut ? (D3.hudFit || null) : null,
            ortho: !!(D3.cut && D3.ocam), clips: D3.r ? (D3.r.clippingPlanes || []).length : 0 };
  }
 

@@ -729,7 +729,11 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         `中${zoom.inside}＋外${zoom.lead}＝${zoom.dims}`);
     rec('幅のある部材は中に書く（狭いもののためにスロットを空ける）',
         zoom.inside > 0, `中${zoom.inside}件`);
-    rec('狭い部材は引き出して外に書く', zoom.lead > 0 && zoom.leads === zoom.lead,
+    /* **引き出した字には必ず線が付く**（字だけ浮かせない）。§9.454 でクリアランスを
+       組める値へ丸めたので、この区間には「隙間 0.005」のような**狭い物が無くなり**、
+       引き出す物が0件になった——「0件でないこと」は材料しだいなので見ない。
+       落としていないことは上の足し算が見ている。 */
+    rec('引き出した字には必ず引き出し線が付く', zoom.leads === zoom.lead,
         `外${zoom.lead}件／線${zoom.leads}本`);
     /* **ラベルは指し示す物へ直に貼る**（§9.430、利用者の指示「拡大されていて
        対象にそのまま貼れるほどスペースがあるので、ラベルを直接表示したいものに
@@ -1070,6 +1074,113 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     });
     await W.until(page, () => window.WL.bladeSolid.view().knives === 23, null,
                   { ms: 15000, what: '22条へ戻す' });
+
+    /* ---- 5b'') 組めない材料・組めるクリアランス・ゴムリングの空き・潤滑リング（§9.454） ----
+       利用者の報告「断面図で板だけが横へずれる」と指示「四捨五入でもっとも近い
+       確保可能なクリアランス」「ゴムリングは刃の間の寸法より0.2〜0.5mm小さく」
+       「潤滑リング（幅10）を広い側の刃の内側の両側に」「ラップやクリアランスの
+       ラベルと図の重なり」。**絵では読めない**（0.005mm は1pxも出ない）ので、
+       割付の値と、器が名乗る数で見る。 */
+    const g454 = await page.evaluate(() => {
+     const B2 = WL.bladeSet, M2 = WL.bladeGuide.masters, s0 = WL.bladeGuide.state;
+     const IX2 = B2.buildIndex(M2);
+     const keep = { W: s0.W, lots: s0.lots, order: s0.order, clr: s0.clr, thick: s0.thick, align: s0.align };
+     const solve = o => { Object.assign(s0, o); s0.order = []; B2.syncOrder(s0);
+       return B2.solve(s0, M2, IX2); };
+     /* ② 利用者の形: 104.90×11・板厚0.4・クリアランス0.04 */
+     const r1 = solve({ W: 1180, thick: 0.4, clr: 0.04, align: 'none',
+                        lots: [{ name: 'L1', w: 104.9, n: 11 }] });
+     const rem1 = r1.zp.zones.flatMap(z => [z.up.rem, z.lo.rem]).filter(v => v > 1e-6).length;
+     /* ① 元板巾が条の合計に足りない（利用者の画面の形・W≈106） */
+     const r0 = solve({ W: 106 });
+     const run0 = B2.materialRun(r0.A, r0.segs), f0 = run0.find(q => q.sg.type !== 'trim');
+     const off0 = +(f0.from - B2.cutFace(r0.A, s0.tk, 0, true)).toFixed(3);
+     /* 2)3) ゴムリング方式（板厚1.3）の 50×22 */
+     const r2 = solve({ W: 1130, thick: 1.3, clr: 0.13, lots: [{ name: 'L1', w: 50, n: 22 }] });
+     const R = B2.ringRule(M2);
+     const faces = r2.zp.zones.slice(1, -1).flatMap((z, j) => [
+       { p: z.up, wide: z.up.len > z.lo.len }, { p: z.lo, wide: z.lo.len > z.up.len }]);
+     const ringFaces = faces.filter(f => f.p.hold && f.p.hold.kind === 'ring' && f.p.gom.out.length);
+     const lubeOk = faces.every(f => (f.p.lube ? f.p.lube.n : 0) === (f.wide ? 2 : 0));
+     const tooTight = ringFaces.filter(f => f.p.holdRem < R.gapMin - 1e-6).length;
+     const outBand = ringFaces.filter(f => f.p.holdRem > R.gapMax + 1e-6 || f.p.holdRem < R.gapMin - 1e-6).length;
+     Object.assign(s0, keep); B2.syncOrder(s0);
+     return { clrUsed: r1.A.clr, clrWant: r1.A.clrWant, step: r1.A.clrStep, rem1,
+              stop0: (r0.stop || []).map(x => x.key), off0, stop1: (r1.stop || []).length,
+              R, nRing: ringFaces.length, tooTight, outBand, listed: r2.fit.ringGap.length,
+              lubeOk, lubeTotal: r2.g.lube.u + r2.g.lube.l, strips: r2.segs.length };
+    });
+    rec('クリアランスは組める値へ四捨五入する（0.04 → 刻み0.025の 0.05）',
+        g454.clrWant === 0.04 && Math.abs(g454.clrUsed - 0.05) < 1e-9 && g454.step === 0.025,
+        `指定${g454.clrWant} → ${g454.clrUsed}（刻み${g454.step}）`);
+    rec('スペーサーの端数は0面（組んだものはOS側へ押し付けるので隙間は無い）',
+        g454.rem1 === 0, `${g454.rem1}面`);
+    rec('元板巾が条の合計に足りない材料は「組めない」と言う',
+        g454.stop0.includes('short') && g454.stop1 === 0, JSON.stringify(g454.stop0));
+    rec('組めない材料でも板と刃は同じ起点から出る（matOff=0）', g454.off0 === 0, `matOff=${g454.off0}`);
+    rec('ゴムリングは刃のあいだより下限ぶん以上小さく組む（ぴったり＝空き0にしない）',
+        g454.nRing > 0 && g454.tooTight === 0, `${g454.nRing}面中 下限割れ${g454.tooTight}`);
+    rec('空きが帯（下限〜上限）を外れた面は、数えて名指しする（数が一致）',
+        g454.outBand === g454.listed, `外れ${g454.outBand} / 名指し${g454.listed}`);
+    rec('潤滑リングは広い側の区間だけに両端1本ずつ（条の数×2本）',
+        g454.lubeOk && g454.lubeTotal === g454.strips * 2, `${g454.lubeTotal}本 / ${g454.strips}条`);
+    /* 画面: 組めない材料では図も表も描かず、直す場所を1つ指す。 */
+    const putW = v => page.evaluate(v => { const el = document.querySelector('#bsW');
+      el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+    const w0 = await page.evaluate(() => WL.bladeGuide.state.W);
+    /* 確定のボタンが居る段を**開いてから**断る——閉じた段のボタンは、伏せなくても見えない。 */
+    const rail0 = await page.evaluate(() => (document.querySelector('#bsRailTabs .is-on') || {}).dataset.r || 'ends');
+    await page.click('#bsRailTabs [data-r="diff"]');
+    await W.until(page, () => { const b = document.querySelector('#bsSaveCar');
+      for (let e = b; e; e = e.parentElement) if (e.hidden || getComputedStyle(e).display === 'none') return false;
+      return !!b; }, null, { ms: 8000, what: '確定のボタンが見える' });
+    await putW(200);
+    await W.until(page, () => document.querySelector('#bladeSetPanel').classList.contains('is-stop'),
+                  null, { ms: 8000, what: '組めない材料の断り' });
+    const stopUi = await page.evaluate(() => {
+     const a = document.querySelector('#bsTables .bs-stop');
+     /* **祖先まで辿る**——確定のボタンは段（`[data-p="diff"]`）ごと伏せるので、
+        ボタン自身の`display`だけ見ると「出ている」と読む（`offsetParent`は使わない・§9.346）。 */
+     const shown = s => { for (let e = document.querySelector(s); e; e = e.parentElement) {
+       if (e.hidden || getComputedStyle(e).display === 'none') return false; } return !!document.querySelector(s); };
+     return { text: a ? a.textContent.replace(/\s+/g, ' ') : '', btn: !!(a && a.querySelector('[data-stop-open]')),
+              fig: shown('#bsFigRow'), table: !!document.querySelector('#bsTables table'),
+              save: shown('#bsSaveCar'), note: shown('.bs-figpanel .bs-stopnote') };
+    });
+    rec('組めない材料では理由（不足の長さ）と直す場所を出す',
+        /組めません/.test(stopUi.text) && /不足/.test(stopUi.text) && stopUi.btn, stopUi.text.slice(0, 80));
+    rec('組めない材料では図・刃組表・確定を出さない（前の絵を残さない）',
+        !stopUi.fig && !stopUi.table && !stopUi.save && stopUi.note, JSON.stringify(stopUi));
+    await page.click('#bsTables [data-stop-open]');
+    rec('「直す」を押すと幅構成の窓が開く',
+        await page.evaluate(() => !!document.querySelector('.bs-step.is-open[data-step="bsV3"]')));
+    await page.keyboard.press('Escape');
+    await putW(w0);
+    await page.click(`#bsRailTabs [data-r="${rail0}"]`);
+    await W.until(page, () => !document.querySelector('#bladeSetPanel').classList.contains('is-stop')
+                  && (window.WL.bladeSolid.view() || {}).stale === false, null,
+                  { ms: 15000, what: '組める材料へ戻す' });
+    await W.paint(page);
+    /* 断面図の帯（読み方・有効長・クリアランス/ラップ/板押さえ）は図に被らない。 */
+    const fit454 = await page.evaluate(() => (window.WL.bladeSolid.view() || {}).hudFit);
+    rec('断面図の帯（クリアランス・ラップ）は図に被らない（上下とも）',
+        !!fit454 && fit454.figTop >= fit454.top - 0.5 && fit454.figBot <= fit454.h - fit454.bot + 0.5,
+        JSON.stringify(fit454));
+    const tbl454 = await page.evaluate(() => {
+     const cs = getComputedStyle(document.querySelector('.bs-shell'));
+     return { lubeCol: !!document.querySelector('#bsTables .bs-lubeh'),
+              lube: cs.getPropertyValue('--bs-fig-lube').trim(),
+              spacer: cs.getPropertyValue('--bs-fig-spacer').trim(),
+              ringHex: [...document.querySelectorAll('#bsTables .bs-ringdot')].map(e => getComputedStyle(e).backgroundColor),
+              lubeDot: (() => { const e = document.querySelector('#bsTables .bs-lubedot'); return e ? getComputedStyle(e).backgroundColor : ''; })(),
+              clrFact: (document.querySelector('#bsFClr') || {}).textContent || '' };
+    });
+    rec('潤滑リングは刃組表に列を持ち、色はスペーサーともゴムリングとも違う',
+        tbl454.lubeCol && !!tbl454.lube && tbl454.lube !== tbl454.spacer
+        && !!tbl454.lubeDot && !tbl454.ringHex.includes(tbl454.lubeDot), JSON.stringify(tbl454));
+    rec('クリアランスを丸めたら、使った値と指定の値を並べて言う',
+        /四捨五入/.test(tbl454.clrFact) && /0\.125/.test(tbl454.clrFact), tbl454.clrFact);
+
     await page.click('[data-step-open="bsV3"]');
     const cut = await page.evaluate(() => {
      const st3 = document.querySelector('#bsStage3'), cv = st3.querySelector('canvas');
@@ -1440,9 +1551,12 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('板の札は器の端ではなく板のそばに居る（千鳥の空きの中）',
         mlab.n > 0 && mlab.near === mlab.n, `${mlab.near}/${mlab.n} 枚が中ほど（器 ${mlab.h}px）`);
     /* 上下に振り分かれていること（同じ段に並べない）。 */
+    /* 分ける線は**札の並びの中ほど**（§9.454）。器の中央で分けていたが、図は
+       帯を避けて「帯のあいだ」の中央へ置くようになったので、器の中央とは限らない。 */
+    const midY = mlab.ys.length ? (Math.min(...mlab.ys) + Math.max(...mlab.ys)) / 2 : 0;
     rec('板の札は上下へ振り分かれている（千鳥に乗る）',
-        new Set(mlab.ys.map(y => (y < mlab.h / 2 ? 'u' : 'd'))).size === 2,
-        mlab.ys.map(y => (y < mlab.h / 2 ? 'u' : 'd')).join(''));
+        new Set(mlab.ys.map(y => (y < midY ? 'u' : 'd'))).size === 2,
+        mlab.ys.map(y => (y < midY ? 'u' : 'd')).join(''));
     /* ---- 4.7) 断面図の区間の記号・表とのリンク・拡大図（§9.417） ----
        利用者の指示「断面3Dのラベルの付け方は2Dを参考にもう少し修正してほしい。
        強調も入れたい」「断面3Dの強調は2Dと同じ、表とのリンクで、クリックによる
@@ -2531,11 +2645,16 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await page.waitForSelector('#bsDsSave', { timeout: 8000 });
     /* **人が触るのと同じ道**で変える（本数の欄を打つ）——控えを直に書き換えると
        描き直しの配線を通らず、画面と控えが食い違ったまま測ることになる。 */
-    await page.evaluate(() => {
+    /* **1本減らす**（§9.454）。増やすと 279.8×5＝1399 が元板巾 1170 を超えて
+       **組めない材料**になり、確定のボタンごと伏せられる（そちらは別の断り）。
+       ここで見たいのは「組めるが記録と違う」なので、組める側で作る。 */
+    const n0 = await page.evaluate(() => {
      const el = document.querySelector('#bsLotTbl input[data-lot="0"][data-k="n"]');
-     el.value = String((+el.value || 1) + 1);
+     const was = +el.value || 2;
+     el.value = String(Math.max(1, was - 1));
      el.dispatchEvent(new Event('input', { bubbles: true }));
      el.dispatchEvent(new Event('change', { bubbles: true }));
+     return was;
     });
     await W.until(page, () => /記録と違う/.test(
       (document.querySelector('#bsDsState') || {}).textContent || ''), null,
@@ -2553,12 +2672,12 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     /* 元の並びへ戻して、以降の判定を「記録済み」から始める。 */
     await page.click('[data-step-open="bsV3"]');
     await page.waitForSelector('#bsDsSave', { timeout: 8000 });
-    await page.evaluate(() => {
+    await page.evaluate(n => {
      const el = document.querySelector('#bsLotTbl input[data-lot="0"][data-k="n"]');
-     el.value = String(Math.max(1, (+el.value || 2) - 1));
+     el.value = String(n);
      el.dispatchEvent(new Event('input', { bubbles: true }));
      el.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    }, n0);
     await W.until(page, () => /記録済み/.test(
       (document.querySelector('#bsDsState') || {}).textContent || ''), null,
       { ms: 8000, what: '記録済みへ戻る' });
