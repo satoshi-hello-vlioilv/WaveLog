@@ -217,6 +217,53 @@ const shown=(id,what)=>W.until(page,a=>{const e=document.getElementById(a);retur
   rec('スケジュールモードの条件は共通側へ混ざらない',
       !common.some(n=>n.startsWith('SC_')),`共通=${common.length}件`);
 
+  /* ---- 0件の案内（利用者の指示「フィルタが効いて、検索結果が1つもない場合も表示部分に
+     わかりやすく情報を出すように」・§9.453）。物差し: 場面ごとに
+     ①効いている条件の字 ②出どころ（検索欄／フィルタ／その場フィルタ）③いつも適用の断り
+     ④案内の中のボタン1つで外れて行が戻る。 ---- */
+  await setMode('edit');
+  await page.goto(API+'/',{waitUntil:'domcontentloaded'});await W.booted(page);await idle();
+  await page.click('aside [data-db-key="SIKALOTNOW"]',{timeout:15000});
+  const rowsBack=what=>W.until(page,()=>document.querySelectorAll('#grid tbody tr').length>0,null,{ms:15000,what});
+  const NONE='QJ無いロット';
+  /* 案内＝表の器の中で、表でないもの。 */
+  const emptyNote=()=>page.evaluate(()=>{
+   const g=document.getElementById('grid');
+   const e=g&&[...g.children].find(c=>c.tagName!=='TABLE');
+   return e?{text:e.innerText.replace(/\s+/g,' '),btn:!!e.querySelector('button')}:{text:'',btn:false};
+  });
+  const waitEmpty=what=>W.until(page,()=>{const g=document.getElementById('grid');
+   return !!g&&!g.querySelector('tbody tr')&&[...g.children].some(c=>c.tagName!=='TABLE')},null,{ms:15000,what});
+  const pressClear=()=>page.evaluate(()=>{const g=document.getElementById('grid');
+   const e=[...g.children].find(c=>c.tagName!=='TABLE');const b=e&&e.querySelector('button');if(b)b.click();return !!b});
+  const setFilters=list=>page.evaluate(l=>{S.genericFilters=l;S.page=1;WL.list.load(true)},list);
+  /* 前の節が掛けた条件はこの端末に覚えられていて（§9.175）、開き直すと戻る。空から始める。 */
+  await setFilters([]);await rowsBack('仕掛一覧が出る');await idle();
+  const scene=async(label,setup,expect,{confirm=false}={})=>{
+   await setup();await waitEmpty(label+'で0件になる');
+   const n=await emptyNote();
+   rec(`0件の案内（${label}）: 効いている条件と出どころを字で言う`,expect.every(x=>n.text.includes(x)),n.text.slice(0,140));
+   const pressed=await pressClear();
+   if(pressed&&confirm)await W.answerConfirm(page,true);
+   const back=pressed&&await rowsBack(label+'を外して行が戻る');
+   rec(`0件の案内（${label}）: 案内の中のボタン1つで外れて行が戻る`,!!back,pressed?'':'ボタンが無い');
+   await idle();
+  };
+  await scene('検索欄',async()=>{await page.fill('#search',NONE)},['検索欄',NONE]);
+  rec('0件の案内（検索欄）: 外すと検索欄も空になる',(await page.inputValue('#search'))==='',await page.inputValue('#search'));
+  await scene('フィルタ',()=>setFilters([{column:'ロット番号',op:'eq',value:NONE}]),['フィルタ','ロット番号',NONE]);
+  await scene('いつも適用',()=>setFilters([{column:'ロット番号',op:'eq',value:NONE,locked:true}]),
+    ['いつも適用','ロット番号',NONE,'開くたび'],{confirm:true});
+  await scene('その場フィルタ',async()=>{
+   await page.click('#filterAdhocToggle');
+   await page.selectOption('#filterAdhocColumn','ロット番号');await page.selectOption('#filterAdhocOp','eq');
+   await page.fill('#filterAdhocValue',NONE);await page.press('#filterAdhocValue','Enter');
+  },['その場フィルタ','ロット番号',NONE]);
+  await scene('検索欄＋フィルタ',async()=>{await page.fill('#search',NONE);await setFilters([{column:'ロット番号',op:'eq',value:NONE}])},
+    ['検索欄','フィルタ','ロット番号']);
+  const left=await page.evaluate(()=>({search:document.getElementById('search').value,filters:S.genericFilters.length}));
+  rec('0件の案内: 1回押すと検索欄とフィルタの両方が外れる',left.search===''&&left.filters===0,JSON.stringify(left));
+
   // 後片付け
   await page.evaluate(async t=>{
    for(const m of ['','schedule']){

@@ -1283,7 +1283,10 @@
      **`clearGenericFilters`という名前にしないこと**——同じ綴りのidを持つ
      ボタンがあり、ブラウザは`window.<id>`でその要素を公開するので、
      関数のつもりで呼ぶと**要素を呼び出してTypeError**になる（実際に踏んだ）。 */
-  async function clearAllFilters(){
+  /* 外すだけ（読み直さない）。0件の案内（§9.453）は検索欄と一緒に外してから
+     1回だけ読み直すので、外す処理と読み直しを分けて持つ。**いつも適用の確認は
+     ここで必ず通る**——入口がいくつ増えても確認を落とした道は作れない。 */
+  async function dropAllFilters({adhoc:withAdhoc=false}={}){
     const lockedList=S.genericFilters.filter(isLockedFilter);
     if(lockedList.length){
       if(await confirmRemoveAllLocked(lockedList))S.genericFilters=[];
@@ -1291,8 +1294,10 @@
     }else{
       S.genericFilters=[];
     }
-    S.page=1;renderGenericFilterBar();WL.list.load();
+    if(withAdhoc)resetAdhoc();
+    S.page=1;renderGenericFilterBar();
   }
+  async function clearAllFilters(){await dropAllFilters();WL.list.load()}
   function updateFilterColumns(){
     ensureGenericFilterBar();const select=$('#filterColumn');if(!select)return;const current=select.value;
     select.innerHTML=(S.columns||[]).map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
@@ -1507,11 +1512,12 @@
     const run=()=>{adhocTimer=null;S.page=1;WL.list.load();};
     if(now)run();else adhocTimer=setTimeout(run,ADHOC_DEBOUNCE_MS);
   }
-  function clearAdhoc(){
+  function resetAdhoc(){
     adhoc.value='';
     const box=$('#filterAdhocValue');if(box)box.value='';
-    renderAdhocRow();applyAdhoc(true);
+    renderAdhocRow();
   }
+  function clearAdhoc(){resetAdhoc();applyAdhoc(true)}
   /* いまの条件を**登録側のトークンへ移す**。「その場」で当たりを付けてから
      残したくなることがあるので、作り直させない（同じ条件を2回打たせない）。 */
   function keepAdhoc(){
@@ -2522,6 +2528,14 @@
     if(list.length)q.set('filters',JSON.stringify(expandFilterList(list)));
   });
   WL.listHooks.onAfter(()=>renderGenericFilterBar());
+  /* 0件の案内へ「いま効いている条件」を名乗る（§9.453）。出どころは2つ——登録・適用した
+     フィルタ（`S.genericFilters`）と、その場フィルタ。いつも適用は印を付ける
+     （外しても開き直すと戻るので、案内が別に断る）。 */
+  WL.listHooks.onNarrow(()=>{
+    const items=S.genericFilters.map(f=>({source:'フィルタ',text:condLabel(f),locked:isLockedFilter(f)}))
+      .concat(adhocFilters().map(f=>({source:'その場フィルタ',text:condLabel(f)})));
+    return items.length?{items,clear:()=>dropAllFilters({adhoc:true})}:null;
+  });
   /* ---------- 使用設備が変わったら、変数の条件は別の条件（§9.285 ①） ----------
      利用者の報告「フィルタの変数『使用設備』が、使用設備を切り替えても
      その切り替えた瞬間に反映されない」。

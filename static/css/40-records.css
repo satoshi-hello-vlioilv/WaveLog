@@ -194,6 +194,16 @@
 /* 見出しは中央でよいが、理由は2〜3行の説明文になる。中央揃えのまま伸ばすと
    行頭が揃わず読みにくいので、幅を決めて左揃えにする。 */
 .record-empty .record-empty-why{max-width:76ch;margin:var(--space-2) auto 0;font-size:var(--fs-sm);line-height:1.7;text-align:left;color:var(--ink-3)}
+/* 絞った結果が0件の案内（§9.453）。**効いている条件は左揃えで縦に並べる**——中央揃えの
+   ままだと行ごとに左端がずれ、条件を1つずつ読めない（画面基準9）。出どころは小札、
+   いつも適用は注意の色（設定要＝橙・§9.338）で字と一緒に出す（色だけで伝えない）。 */
+.list-empty-narrow>b{display:block}
+.list-empty-body{display:inline-block;max-width:76ch;margin-top:var(--space-1);text-align:left}
+.list-empty-conds{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:var(--space-1) var(--space-2);align-items:center;margin:var(--space-2) 0 0;padding:0;list-style:none;color:var(--ink-2)}
+.list-empty-conds li{display:contents}
+.list-empty-src,.list-empty-lock{display:inline-block;padding:0 var(--space-2);border-radius:var(--radius-sm);font-size:var(--fs-sm);line-height:1.6;white-space:nowrap}
+.list-empty-src{background:var(--surface-2);border:1px solid var(--line-soft);color:var(--ink-2)}
+.list-empty-lock{background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-fg)}
 /* ---------- 12. 設備設定モーダル ---------- */
 #appSettingsModal{z-index:var(--z-settings);background:#071c22b8;backdrop-filter:blur(2px)}
 /* **窓は画面より高くならない**（§9.255 ②、利用者の報告「モーダルの範囲が

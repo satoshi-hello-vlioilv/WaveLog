@@ -1480,8 +1480,12 @@ window.fetchTableData=fetchTableData;
      query : 問い合わせの組み立て後に呼ばれる。URLSearchParamsを受け取り、
              条件を足す(戻り値は不要)
      after : 一覧を描き終えた後に呼ばれる */
-const listHooks={query:[],after:[],tabs:[],grid:[],beforeSelectTable:[],select:[]};
+const listHooks={query:[],after:[],tabs:[],grid:[],beforeSelectTable:[],select:[],narrow:[]};
 WL.listHooks={
+ /* narrow : 「いま何が行を絞っているか」を名乗る（0件の案内が読む・§9.453）。
+             `{items:[{source,text,locked}],clear:async()=>{}}` か null を返す。
+             `clear`は**外すだけで読み直さない**（読み直しは案内が1回だけ行う）。 */
+ onNarrow:fn=>{if(typeof fn==='function')listHooks.narrow.push(fn)},
  onQuery:fn=>{if(typeof fn==='function')listHooks.query.push(fn)},
  onAfter:fn=>{if(typeof fn==='function')listHooks.after.push(fn)},
  onTabs:fn=>{if(typeof fn==='function')listHooks.tabs.push(fn)},
@@ -1894,6 +1898,45 @@ WL.virtualColumnLabel=k=>(VIRTUAL_COLUMNS[k]||{}).label||k;
    「本当に無い」の区別がつかない。見る順は、利用者が絞った → 画面で伏せた →
    元データが空。**元データが空なのはエラー**として出す（届くはずのデータが無い）。
    結合に失敗していれば、その理由も同じ枠に添える。 */
+/* ---------- 絞った結果が0件のとき（§9.453、利用者の指示「フィルタが効いて、検索結果が
+   1つもない場合も表示部分にわかりやすく情報を出すように」） ----------
+   **何が効いているかを出どころつきで並べ、外す手を1つだけ置く**。「絞り込みに当たる行が
+   ありません」だけでは、自分で掛けた覚えの無い条件（いつも適用・覚えていた条件）に
+   気づけない——実際に「仕掛一覧が出ない」の原因がそれだった（§9.452）。
+   名乗るのは登録口（`onNarrow`）の各提供者。検索欄はこのファイルが持つので自分で名乗る。 */
+let narrowClears=[];
+function narrowingParts(){
+ const items=[];narrowClears=[];
+ const box=$('#search'),sv=String(box&&box.value||'').trim();
+ if(sv){items.push({source:'検索欄',text:`「${sv}」`});narrowClears.push(()=>{box.value=''})}
+ listHooks.narrow.forEach(fn=>{
+  try{const r=fn();if(r&&(r.items||[]).length){items.push(...r.items);if(r.clear)narrowClears.push(r.clear)}}
+  catch(e){console.error('一覧のnarrowフックで例外',e)}
+ });
+ return items;
+}
+function narrowedNote(label){
+ const items=narrowingParts();
+ const locked=items.some(x=>x.locked);
+ const list=items.map(x=>`<li><span class="list-empty-src">${esc(x.source)}</span><span>${esc(x.text)}`
+  +(x.locked?' <span class="list-empty-lock">いつも適用</span>':'')+'</span></li>').join('');
+ /* 見出しは中央、中身（件数→条件→断り）は左揃えのひと塊、押す物はその下に1つ。
+    条件の並びは出どころの札の列で左端をそろえる（札の幅で字の頭がずれない・画面基準9）。 */
+ return `<div class="record-empty list-empty-narrow" role="status"><b>検索・絞り込みに当たる行がありません</b>`
+  +'<div class="list-empty-body">'
+  +(items.length?`<div class="record-empty-why">いま効いている条件（${items.length}件）</div><ul class="list-empty-conds">${list}</ul>`:'')
+  +(locked?'<div class="record-empty-why">「いつも適用」の条件は、この一覧を開くたびに自動で入ります。'
+    +'毎回入れないようにするには、プリセットのメニューで「いつも適用」を外します。</div>':'')
+  +'</div>'
+  +`<div><button type="button" data-empty-clear>条件を外して${label}の全件を見る</button></div></div>`;
+}
+/* 外すのは各提供者、読み直しはここで1回だけ（提供者ごとに読み直すと往復が重なる）。 */
+async function clearNarrowing(){
+ for(const fn of narrowClears){
+  try{await fn()}catch(e){console.error('絞り込みを外せませんでした',e)}
+ }
+ S.page=1;await load();
+}
 function listEmptyNote(visible){
  if(visible&&visible.length)return '';
  const label=esc(WL.base.databaseLabel(S.db));
@@ -1901,9 +1944,7 @@ function listEmptyNote(visible){
  const joinWhy=(jq&&(jq.failedReasons||[]).length)
   ?`<span>結合できなかったもの: ${esc((jq.failedNames||[]).map((n,i)=>`${n}: ${jq.failedReasons[i]}`).join('／'))}</span>`:'';
  const q=listQuery();
- if(q.get('search')||q.get('filters'))
-  return `<div class="record-empty" role="status">検索・絞り込みに当たる行がありません。`
-   +`<div class="record-empty-why">検索欄の字やフィルタの条件を外すと、${label}の行が出ます。</div></div>`;
+ if(q.get('search')||q.get('filters'))return narrowedNote(label);
  if(S.rows&&S.rows.length)
   return `<div class="record-empty" role="status">読み込んだ${S.rows.length}行は、すべて作業予定に入っているので伏せています。</div>`;
  const file=((S.catalog||[]).find(x=>x.key===S.db)||{}).file_name||'';
@@ -2380,6 +2421,8 @@ function renderGridInner(){
  gridEl.replaceChildren(t);
  const emptyNote=listEmptyNote(visibleRows);
  if(emptyNote)gridEl.insertAdjacentHTML('beforeend',emptyNote);
+ const emptyClear=gridEl.querySelector('[data-empty-clear]');
+ if(emptyClear)emptyClear.onclick=clearNarrowing;
  /* 全件はページの概念が無い(1枚に全部出す)。ページ送りは押せなくする
     ——押せるのに何も起きないボタンは「壊れている」と受け取られる。 */
  allRowsProgress(S.rows.length,S.count);
