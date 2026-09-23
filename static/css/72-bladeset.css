@@ -209,6 +209,8 @@ body.bs-mode .bs-shell{display:flex}
 .bs-f input:disabled,.bs-f select:disabled{background:var(--bg);color:var(--muted)}
 .bs-g2,.bs-g3{display:grid;gap:var(--space-2)}
 .bs-g2{grid-template-columns:1fr 1fr}
+/* 板の中心の出どころ（§9.456）。欄の右に1行で、何が効いているかを言う。 */
+.bs-csrc{margin:0;align-self:end;padding-bottom:var(--space-1);font-size:var(--fs-micro);color:var(--muted)}
 .bs-g3{grid-template-columns:1fr 1fr 1fr}
 .bs-opts{display:flex;flex-direction:column;gap:var(--space-1);margin-bottom:var(--space-2)}
 .bs-opts label{display:flex;gap:var(--space-2);align-items:flex-start;border:1px solid var(--line);

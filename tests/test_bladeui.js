@@ -1230,6 +1230,56 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await reopen();
     rec('種類を潤滑リングへ戻すと、また入る', (await bomLube()).col, '');
 
+    /* ---- 板の中心（OSから）とDS端のフローティングシート（§9.456、利用者の指示
+       「中心位置をOSからの距離として設定できるように」「DSからOS側にフローティング
+       シートで押さえるので、DSエンドまでの隙間は発生しない」） ---- */
+    const c456 = await page.evaluate(() => {
+     const B2 = WL.bladeSet, M2 = WL.bladeGuide.masters, s0 = WL.bladeGuide.state;
+     const IX2 = B2.buildIndex(M2);
+     const keep = { center: s0.center };
+     const at = c => { s0.center = c; const r = B2.solve(s0, M2, IX2);
+       return { mid: +(r.A.matStart + s0.W / 2).toFixed(3), from: r.A.centerFrom,
+                stop: (r.stop || []).map(x => x.key), step: r.A.clrStep,
+                gap: r.fit.spacerGap.length, last: r.zp.zones.length, fs: r.fit.floatSeat,
+                dsFlag: r.fit.spacerGap.filter(t => t.startsWith(r.zp.zones.length + '')).length }; };
+     const out = { def: at(null), c700: at(700), far: at(300) };
+     /* DS端に残りが出るのは**有効長が刻みの倍数でない**とき（中心をずらしても、OS端を
+        刻みへ寄せる`slip`が効くので出ない）。有効長を一時的に刻みから外して見る。 */
+     const a0 = M2.P.arborLen;
+     M2.P.arborLen = 1599.63; out.c7003 = at(700.013); M2.P.arborLen = a0;
+     s0.center = keep.center;
+     return out;
+    });
+    rec('板の中心は指定した位置へ来る（刻み1つ未満のずれだけ）',
+        c456.c700.from === 'job' && Math.abs(c456.c700.mid - 700) <= c456.c700.step,
+        JSON.stringify(c456.c700));
+    rec('中心を打っていなければ既定（基準値 → 有効長の中央）',
+        c456.def.from === 'mid' || c456.def.from === 'master', JSON.stringify(c456.def));
+    rec('板が有効長からはみ出す中心は「組めない」と言う', c456.far.stop.includes('center'),
+        JSON.stringify(c456.far.stop));
+    rec('DS端の残りは「埋め切れていない」と数えない（フローティングシートが押さえる）',
+        c456.c7003.dsFlag === 0 && c456.c7003.fs && (c456.c7003.fs.up > 0 || c456.c7003.fs.lo > 0),
+        JSON.stringify(c456.c7003));
+    await page.evaluate(() => { const el = document.querySelector('#bsCenter');
+      el.value = '700.013'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    await W.until(page, () => /この作業で指定/.test((document.querySelector('#bsCenterSrc') || {}).textContent || '')
+                  && (window.WL.bladeSolid.view() || {}).stale === false, null, { ms: 15000, what: '中心を打つ' });
+    await W.paint(page);
+    const ui456 = await page.evaluate(() => ({
+     src: document.querySelector('#bsCenterSrc').textContent,
+     ds: [...document.querySelectorAll('#bsDsSide .bs-rem .bs-a')].map(e => e.textContent).join('|'),
+     len: (document.querySelector('#bsStage3 .bs-len3') || {}).textContent || '',
+     alert: [...document.querySelectorAll('#bsTables .bs-alert')].some(a => /埋め切れていない/.test(a.textContent)) }));
+    rec('DS端の表は「フローティングシート」の行で押さえる量を言う（隙間と書かない）',
+        /フローティングシート/.test(ui456.ds) && !/隙間|残り/.test(ui456.ds), ui456.ds);
+    rec('DS端の残りでは「埋め切れていない」の帯を出さない', !ui456.alert, String(ui456.alert));
+    rec('断面図の突き合わせは、足りないぶんをフローティングシートと言う（差で出さない）',
+        !/\(-/.test(ui456.len), ui456.len);
+    await page.evaluate(() => { const el = document.querySelector('#bsCenter');
+      el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    await W.until(page, () => !/この作業で指定/.test((document.querySelector('#bsCenterSrc') || {}).textContent || ''),
+                  null, { ms: 8000, what: '中心を既定へ戻す' });
+
     await page.click('[data-step-open="bsV3"]');
     const cut = await page.evaluate(() => {
      const st3 = document.querySelector('#bsStage3'), cv = st3.querySelector('canvas');

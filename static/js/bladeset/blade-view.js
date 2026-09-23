@@ -275,7 +275,7 @@
       <div data-p="ends">
        <div class="bs-side" id="bsOsSide"></div>
        <div class="bs-side" id="bsDsSide"></div>
-       <p class="bs-note">最外刃より外の区間です。<b>OS</b>から先に取り付け、<b>DS</b>が最後になります。</p>
+       <p class="bs-note">最外刃より外の区間です。<b>OS</b>から先に取り付け、<b>DS</b>が最後になります。DS端は<b>フローティングシート</b>で押さえるので、残りは隙間になりません。</p>
       </div>
       <div data-p="bom" hidden>
        <div class="bs-gauges" id="bsGauges"></div>
@@ -377,8 +377,13 @@
   <div class="bs-g2">
    <div class="bs-f"><label for="bsW">元板巾 W</label><input type="number" id="bsW" step="0.1"><small>mm</small></div>
    <div class="bs-f"><label for="bsOsTrim">OS耳</label><input type="number" id="bsOsTrim" step="0.05" min="0" disabled><small>mm</small></div>
+   <!-- 板の中心（§9.456、利用者の指示「中心位置をずらして設定したい場合がある」）。
+        **空欄＝打っていない**（基準値 → 有効長の中央）。出どころは右の一言が言う。
+        （この中は文字列リテラルの中なので、逆引用符は書けない） -->
+   <div class="bs-f"><label for="bsCenter">板の中心</label><input type="number" id="bsCenter" step="0.1" min="0"><small>mm（OSから）</small></div>
+   <p class="bs-csrc" id="bsCenterSrc"></p>
   </div>
-  <label class="bs-sw"><span>耳を左右均等にする（板はセンター通し）</span><input type="checkbox" id="bsTrimEven" checked></label>
+  <label class="bs-sw"><span>耳を左右均等にする（板を中心位置に通す）</span><input type="checkbox" id="bsTrimEven" checked></label>
   <table class="bs-lot" id="bsLotTbl"></table>
   <button type="button" class="bs-btn bs-wide" id="bsAddLot">ロットを追加</button>
   <div class="bs-ordbox">
@@ -835,6 +840,12 @@
    : `<span class="bs-ng">条合計 ${w.total.toFixed(2)} が元板巾 ${st.W} を超えています`
      + `（不足 ${(w.total - st.W).toFixed(2)} mm）。幅・本数を見直してください。</span>`;
   if (w.even) $('#bsOsTrim').value = w.osTrim;
+  /* 板の中心の出どころ（§9.456・§CLAUDE 6）。打っていないときは効いている値を
+     欄の薄い字（placeholder）で見せる——空欄のままでも何が効いているか読める。 */
+  const C = BS().centerOf(st, M);
+  $('#bsCenter').placeholder = C.value.toFixed(2);
+  $('#bsCenterSrc').textContent = C.from === 'job' ? 'この作業で指定'
+   : (C.from === 'master' ? `刃組基準値の ${C.value.toFixed(2)}` : `有効長の中央 ${C.value.toFixed(2)}`);
   renderDesignState();
  }
 
@@ -2291,12 +2302,17 @@
     : '<tr><td colspan="3" class="bs-note">なし</td></tr>';
    const len = r => `<b class="${r.c.len < 0 ? 'bs-ng' : ''}">${r.c.len.toFixed(2)}</b>`;
    h += `<tr class="bs-tot"><td class="bs-a">区間長</td>${two(len(U), len(L))}</tr>`;
-   if (U.c.rem > 0.001 || L.c.rem > 0.001) {
-    const openEnd = sd === 'DS';
+   /* **DS端はフローティングシートが押さえる**（§9.456、利用者の指示）。スペーサーを
+      OSから敷き詰め、有効長に近づいたらDS側からOS側へ押さえるので、DS端の残りは
+      隙間ではない——**押さえる量**として常に出す（0でも行は残す＝在ることを言う）。
+      OS端の残りは今までどおり「隙間」（0が正・§9.441）。 */
+   const openEnd = sd === 'DS';
+   if (openEnd || U.c.rem > 0.001 || L.c.rem > 0.001) {
     const gv = r => (r.c.rem > 0.001
-     ? `<span class="${openEnd ? '' : gapCell(r.c.rem)}">${r.c.rem.toFixed(2)}</span>`
+     ? `<span class="${openEnd ? '' : gapCell(r.c.rem)}">${r.c.rem.toFixed(openEnd ? 3 : 2)}</span>`
      : '<span class="bs-z">·</span>');
-    h += `<tr class="bs-rem"><td class="bs-a">${openEnd ? '残り' : '隙間'}</td>${two(gv(U), gv(L))}</tr>`;
+    h += `<tr class="bs-rem"${openEnd ? ' title="有効長に近づいたら、DS側からOS側へフローティングシートで押さえます。その量です（隙間ではありません）"' : ''}>`
+     + `<td class="bs-a">${openEnd ? 'フローティングシート' : '隙間'}</td>${two(gv(U), gv(L))}</tr>`;
    }
    const why = `${sd === 'OS' ? 'いちばん先に取り付けます' : 'いちばん後に取り付けます'}。`
     + '最外刃より外なのでスペーサーのみです。';
@@ -2746,6 +2762,7 @@
   $('#bsClr').value = st.clr;
   $('#bsOv').value = st.ov;
   $('#bsW').value = st.W;
+  $('#bsCenter').value = st.center > 0 ? st.center : '';
   $('#bsNkWidth').value = st.nkWidth;
   $('#bsCanNk').checked = !!st.canNk;
   $('#bsTrimEven').checked = st.trimMode === 'even';
@@ -2863,6 +2880,12 @@
    scheduleRender();
   });
   $('#bsCanNk').addEventListener('change', e => { st.canNk = e.target.checked; scheduleRender(); });
+  /* 板の中心（§9.456）。**空にしたら「打っていない」へ戻す**（0を入れない）。 */
+  $('#bsCenter').addEventListener('input', e => {
+   const v = e.target.value.trim();
+   st.center = v === '' || !(+v > 0) ? null : +v;
+   scheduleRender();
+  });
   $('#bsTrimEven').addEventListener('change', e => {
    st.trimMode = e.target.checked ? 'even' : 'manual';
    $('#bsOsTrim').disabled = e.target.checked;

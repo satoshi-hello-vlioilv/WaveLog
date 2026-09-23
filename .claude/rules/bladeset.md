@@ -1,4 +1,4 @@
-# 刃組ガイダンス（166件）
+# 刃組ガイダンス（171件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,11 +10,16 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 記号（A・B…）は**文字ごとに1色**。番号（`tone`）は`buildRows()`が振り、表・図は`data-bc`を名乗るだけ | `test_bladeui.js` | [§9.455](../../docs/decisions/9.455.md) |
+| 重ねても**記号の塗りは変えない**（縁の太さと大きさで言う）。光らせる区間の面も記号と同じ色 | `test_bladeui.js` | [§9.455](../../docs/decisions/9.455.md) |
+| 潤滑リングは**ゴムリングマスタの行**（種類＝潤滑リング）。寸法・在庫は同じ欄。行が無ければ「入れられない」と言う | `test_bladeset.py`・`test_bladeui.js` | [§9.455](../../docs/decisions/9.455.md) |
+| 板の中心は**OSからの距離**。`centerOf()`の1箇所（作業の値→基準値→有効長の中央）。はみ出す中心は`stop`で断る | `test_bladeui.js` | [§9.456](../../docs/decisions/9.456.md) |
+| DS端の残りは**フローティングシートが押さえる量**（`fit.floatSeat`）。「埋め切れていない」に数えない・差（−）で出さない | `test_bladeui.js` | [§9.456](../../docs/decisions/9.456.md) |
 | **組めない材料**の答えは`stopReasons()`の1箇所（`res.stop`）。空でなければ図も表も描かず、理由と直す場所を1つだけ出す | `test_bladeui.js` | [§9.454](../../docs/decisions/9.454.md) |
 | 板の並び（`materialRun()`）は**刃と同じ`origin`**から出す（耳が負でも`matOff`は0） | `test_bladeui.js` | [§9.454](../../docs/decisions/9.454.md) |
 | クリアランスは**組める値へ四捨五入**（`clearanceUsed()`の1箇所・刻みはスペーサー寸法の最大公約数）。打った値と使った値を両方持ち、違うときだけ並べて言う | `test_bladeui.js` | [§9.454](../../docs/decisions/9.454.md) |
 | ゴムリングは刃のあいだより**下限ぶん以上小さく**組む。帯（`刃組基準値`の`ringGapMin`〜`ringGapMax`）を外れた面は数えて名指しする（橙） | `test_bladeui.js` | [§9.454](../../docs/decisions/9.454.md) |
-| 潤滑リングは**ゴムリング方式で広い側の区間の両端**に1本ずつ。寸法は`刃組基準値`（幅0で入れない）、色は`--bs-fig-lube`（紫） | `test_bladeui.js` | [§9.454](../../docs/decisions/9.454.md) |
+| 潤滑リングは**ゴムリング方式で広い側の区間の両端**に1本ずつ。色は`--bs-fig-lube`（紫。行に画面の色があればそれ） | `test_bladeui.js` | [§9.454](../../docs/decisions/9.454.md) |
 | 断面図の縮尺は**帯（`hudBox()`）を差し引いた高さ**で決める。帯を図に被せない（`view().hudFit`） | `test_bladeui.js` | [§9.454](../../docs/decisions/9.454.md) |
 | **製品幅はクリアランスで痩せさせない**。刃が作る境目は「条幅＋クリアランス」ずつ進む | `test_bladeui.js` | [§9.434](../../docs/decisions/9.434.md) |
 | 最初に出す図は**断面図**。答えは`FIG_DEFAULT`の1箇所（札の印・器の出し入れ・倒れ先が同じ定数を見る） | `test_bladeui.js` | [§9.440](../../docs/decisions/9.440.md) |
@@ -27,7 +32,7 @@
 | 逃がすのは**群ごと1つの量**（段ごとに違う量で押すと段が同じ高さに来る）。丸めずに群ごと動かす | `test_bladeui.js` | [§9.443](../../docs/decisions/9.443.md) |
 | 【§9.429を言い直した】「1つも落とさない」→ **数え落とさない＋置けないのは2割まで＋重なり0** | `test_bladeui.js` | [§9.443](../../docs/decisions/9.443.md) |
 | 網は**絵でなく「どの区間から組んだか」**で見る（器が`data-axis`／`data-zone`を名乗る） | `test_bladeui.js` | [§9.442](../../docs/decisions/9.442.md) |
-| 図の記号は**軸で色を分ける**（`--bs-fig-badge-up`／`-lo`）。字は同じ。刃組表の記号は分けない | `test_bladeui.js` | [§9.442](../../docs/decisions/9.442.md) |
+| 【§9.455で撤回】図の記号は軸で色を分ける（`--bs-fig-badge-up`／`-lo`） | `test_bladeui.js` | [§9.442](../../docs/decisions/9.442.md) |
 | 【§9.432を撤回】「上下刃の中心間」は拡大図に出さない（値は見出しが持つ）。**破線の刃は残す** | `test_bladeui.js` | [§9.442](../../docs/decisions/9.442.md) |
 | 「許容 0〜gapMax」をやめた。直すべき端数を「許してよいもの」として緑で見せない | `test_bladeui.js` | [§9.441](../../docs/decisions/9.441.md) |
 | 組んでみて初めて分かる断りは`res.fit`の1箇所が数える（`spacerGap`／`bareHold`）。表の上へ帯で出す | `test_bladeui.js` | [§9.441](../../docs/decisions/9.441.md) |

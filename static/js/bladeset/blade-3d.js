@@ -1893,13 +1893,18 @@
   const pk = D3.pack;
   if (!D3.cut || !pk || !pk.arbor) { el.hidden = true; return; }
   const mm = v => (+v).toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+  /* **足りないぶんはDS端のフローティングシートが押さえる**（§9.456、利用者の指示
+     「有効長に近づいたときにDSからOS側にフローティングシートで押さえるので、DSエンドまでの
+     隙間は発生しない」）。以前は `(-0.05)` と差で出しており、足りない＝隙間に読めた。
+     **超えたときだけ**差を出す（有効長を超える積みは組めない）。 */
   const gap = v => {
    const d = +(v - pk.arbor).toFixed(3);
-   return d === 0 ? '±0' : (d > 0 ? '+' : '') + mm(d);
+   if (d > 0) return `<s>(+${mm(d)} 超過)</s>`;
+   return d === 0 ? '' : `<s>＋フローティングシート ${mm(-d)}</s>`;
   };
   el.innerHTML = `<s>有効長</s><i>${mm(pk.arbor)}</i>`
-   + `<s>／上軸</s><i>${mm(pk.sumU)}</i><s>(${gap(pk.sumU)})</s>`
-   + `<s>／下軸</s><i>${mm(pk.sumL)}</i><s>(${gap(pk.sumL)})</s>`;
+   + `<s>／上軸</s><i>${mm(pk.sumU)}</i>${gap(pk.sumU)}`
+   + `<s>／下軸</s><i>${mm(pk.sumL)}</i>${gap(pk.sumL)}`;
   el.hidden = false;
  }
 

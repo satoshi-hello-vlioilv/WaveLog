@@ -237,6 +237,8 @@
             hint:'**1設備に1行**です。同じ設備の2行目は作れません（どちらの値が効くのか決まらなくなるため）。'},
            {k:'arborLen',label:'アーバー有効長',type:'number',step:0.1,min:0,unit:'mm',fieldGroup:'② 機械の寸法',
             hint:'軸に部材を載せられる長さです。**元板巾がこれを超える板は、このラインに載りません。**'},
+           {k:'centerFromOS',label:'板の中心（OSから）',type:'number',step:0.1,min:0,unit:'mm',fieldGroup:'② 機械の寸法',
+            hint:'板を通す中心の位置を、**OS（基準原点）からの距離**で決めます。**空欄なら有効長の中央**です。刃組ガイダンスでは、作業ごとに「幅構成」の段でさらに変えられます。スペーサーはOSから敷き詰め、DS端は**フローティングシート**で押さえるので、DS端の残りは隙間として数えません。'},
            {k:'shaftDia',label:'軸外径',type:'number',step:1,min:0,unit:'mm',fieldGroup:'② 機械の寸法'},
            {k:'spacerOD',label:'スペーサー外径',type:'number',step:1,min:0,unit:'mm',fieldGroup:'② 機械の寸法',
             hint:'**軸方向の寸法を作るのはスペーサー**です。ゴムリングはこの上に被る別の層で、内径がこれより大きいので嵌まります。'},

@@ -365,7 +365,11 @@
      耳には影響しない。 */
   /* 上下の刃の中心どうしの距離（§9.419）。面と面のあいだがクリアランス。 */
   const dKnife = +(tk + clr).toFixed(3);
-  const nominal = +((arborLen - st.W) / 2).toFixed(3);
+  /* 板の中心は**OS（基準原点）からの距離**（§9.456、利用者の指示「中心位置をずらして
+     設定したい場合があるため、中心位置をOSからの距離として設定できるように」）。
+     答えは`centerOf()`の1箇所——既定は有効長の中央（以前はここに固定だった）。 */
+  const C = centerOf(st, M);
+  const nominal = +(C.value - st.W / 2).toFixed(3);
   /* 刃が作る境目と、そこから起こす上下の刃の中心（§9.434。式は上の説明どおり）。 */
   const edgeOf = (base, i) => base + cuts[i] + (i - 1) * clr;
   const upOf = (base, i) => edgeOf(base, i) - tk / 2 + dKnife * (sign[i] + 1) / 2;
@@ -385,7 +389,7 @@
      up: +(arborLen - (U[n] + tk / 2)).toFixed(3),
      lo: +(arborLen - (Lo[n] + tk / 2)).toFixed(3) }
   ];
-  return { U, Lo, zones, arborLen, grid, origin,
+  return { U, Lo, zones, arborLen, grid, origin, center: C.value, centerFrom: C.from,
            clr, clrWant: CL.want, clrStep: CL.step, clrRounded: CL.rounded,
            dKnife,                          /* 同じ切断での上下刃の中心間（刃厚＋クリアランス） */
            dReal: clr,                      /* 面と面のあいだ＝クリアランス（画面に出す値） */
@@ -951,15 +955,22 @@
        ・スペーサー層の端数 … **0が正**。0でないのは計算の不具合。
        ・板押さえが空の区間 … 手持ちの幅では1本も載らない（在庫が尽きた等）。 */
   const bad = [], bare = [];
+  const lastZ = zp.zones.length - 1;
   zp.zones.forEach((z, i) => {
    [['上', z.up], ['下', z.lo]].forEach(([ax, p]) => {
-    if ((p.rem || 0) > 1e-6) bad.push(`${i + 1}${ax}（${p.rem.toFixed(3)}mm）`);
+    /* **DS端の残りは端数ではない**（§9.456、利用者の指示「有効長に近づいたときに
+       DSからOS側にフローティングシートで押さえるので、DSエンドまでの隙間は発生
+       しない」）。数えるのは`floatSeat`（フローティングシートが押さえる量）の側。 */
+    if (i !== lastZ && (p.rem || 0) > 1e-6) bad.push(`${i + 1}${ax}（${p.rem.toFixed(3)}mm）`);
     if (p.hold && !p.gom.out.length) bare.push(`${i + 1}${ax}`);
    });
   });
   const fit = { spacerGap: bad, bareHold: bare, ringGap: ringGapFaces(zp, M),
                 /* ゴムリング方式なのに潤滑リングの行が無い（§9.455）——入れられない。 */
                 lubeMissing: !isFinger(st, M) && !!(M.rings || []).length && !(M.lubes || []).length,
+                /* DS端でフローティングシートが押さえる量（上軸・下軸）。0でも正。 */
+                floatSeat: { up: +(zp.zones[lastZ].up.rem || 0).toFixed(3),
+                             lo: +(zp.zones[lastZ].lo.rem || 0).toFixed(3) },
                 holdName: holdName(st, M) };
   return { segs, A, zp, g, err, rows, ends, badges: badgeMap(rows.concat(ends)),
            fit, stop: stopReasons(st, A), contact: c, method: method(st), finger: isFinger(st, M),
@@ -974,6 +985,18 @@
     `step`は直す場所（手順の窓の`id`）。字は「何が」「どれだけ」「どうすれば」。 */
  function stopReasons(st, A) {
   const out = [], w = A.w, W = +st.W || 0;
+  /* 板が有効長の外へはみ出す（中心をずらしたとき・§9.456）。元板巾そのものが
+     有効長を超えるときは下の`arbor`が言うので、ここは「収まる幅なのに位置が悪い」だけ。 */
+  if (W > 0 && W <= A.arborLen) {
+   const a = A.matStart, b = A.matStart + W;
+   const over = a < -1e-6 ? -a : (b > A.arborLen + 1e-6 ? b - A.arborLen : 0);
+   if (over > 0) {
+    out.push({ key: 'center', step: 'bsV3',
+               text: `板の中心が OS から ${(+A.center).toFixed(2)} mm だと、板が有効長の`
+                   + `${a < 0 ? 'OS' : 'DS'}側へ ${over.toFixed(2)} mm はみ出します`,
+               fix: `板の中心を ${(W / 2).toFixed(2)}〜${(A.arborLen - W / 2).toFixed(2)} mm のあいだにしてください` });
+   }
+  }
   if (!w.ok) {
    out.push({ key: 'short', step: 'bsV3',
               text: `条の合計 ${w.total.toFixed(2)} mm が元板巾 ${W} mm を超えています`
@@ -1040,6 +1063,8 @@
            overlap: +st.ov || 0,
            /* 記録するのは**組んだ値**（§9.454）。打った値が違えば並べて残す。 */
            clearance: clearanceUsed(M, st.tk, st.clr).used, clearanceWant: +st.clr || 0,
+           /* 板の中心（OSから・§9.456）。端部の区間の長さが変わるので控える。 */
+           center: centerOf(st, M).value,
            method: method(st), hold: holdName(st, M),
            bigOd: odFromTh(M, st.bigTh), smOd: odFromTh(M, st.smallTh) };
  }
@@ -1153,7 +1178,9 @@
    /* 台車は**マスタが決める**（§9.424）。既定は空で、画面が台車マスタの
       先頭を選ぶ——ここに `'A'` と書くと、A台車の無いラインでも「A」が
       選ばれたまま記録できてしまう。 */
-   carriage: '', bladeGroup: '', flip: true
+   carriage: '', bladeGroup: '', flip: true,
+   /* 板の中心（OSから・§9.456）。`null`＝打っていない（基準値→有効長の中央）。 */
+   center: null
   };
  }
  /* クリアランスの答えは**ここ1箇所**（§9.378、利用者の指示「目安として板厚の
@@ -1189,6 +1216,16 @@
     **必ず端数が残る**（0.04 → 下軸OS端 0.015・内々 104.98 → 0.005）。
     だから`刃厚＋クリアランス`を刻みへ四捨五入し、そこから刃厚を引いた値を
     使う。0 以下になるときは刻み1つぶん（刃どうしが面で当たる組み方は無い）。 */
+ /* **板の中心（OSからの距離）**の答え（§9.456）。①その作業で打った値 →
+    ②設備の`刃組基準値`の「板の中心」→ ③有効長の中央、の3段。どの段から来たかも
+    返す（画面は出どころを言う・§CLAUDE 6）。 */
+ function centerOf(st, M) {
+  const P = (M && M.P) || {};
+  const arbor = num(P.arborLen) || 1600;
+  if (num(st && st.center) > 0) return { value: +st.center, from: 'job' };
+  if (num(P.centerFromOS) > 0) return { value: +P.centerFromOS, from: 'master' };
+  return { value: +(arbor / 2).toFixed(3), from: 'mid' };
+ }
  function clearanceUsed(M, tk, want) {
   const step = spacerStep(M), t = +tk || 0, w = +want || 0;
   const n = Math.round(+((t + w) / step).toFixed(6));
@@ -1247,6 +1284,7 @@
   const st = defaultState();
   if (+s.thickness > 0) st.thick = +s.thickness;
   if (+s.originalWidth > 0) st.W = +s.originalWidth;
+  if (+s.center > 0) st.center = +s.center;
   st.lots = lots;
   st.order = [];
   syncOrder(st);
@@ -1276,7 +1314,9 @@
   const byW = new Map();
   ws.forEach(w => byW.set(w, (byW.get(w) || 0) + 1));
   const lots = [...byW.entries()].map(([w, n], i) => ({ name: '前回' + (i + 1), w, n }));
-  return { thickness: +c.thickness || 0, originalWidth: W, lots };
+  return { thickness: +c.thickness || 0, originalWidth: W, lots,
+           /* 中心（§9.456）。古い記録には無い——無ければ既定（基準値→中央）で組む。 */
+           center: +c.center > 0 ? +c.center : null };
  }
 
  function snapshot(st, M, g) {
@@ -1322,7 +1362,7 @@
  }
 
  WL.bladeSet = {
-  defaultState, clearanceRate, clearanceFor, clearanceUsed, spacerStep, ringRule, applyStandards, applyBladePick, standardState,
+  defaultState, clearanceRate, clearanceFor, clearanceUsed, centerOf, spacerStep, ringRule, applyStandards, applyBladePick, standardState,
   normalize, buildIndex, ringMeta, thOf, odFromTh, odOfType, ringType, oppBurr,
   method, isFinger, holdName, contact, recommend, syncOrder, reorder,
   buildSegs, widths, buildLayout, buildFiller, fillWith, planZones,

@@ -232,7 +232,7 @@ FINGER_DEF = TableDef(FINGER_TABLE, 'フィンガーID', FINGER_COLUMNS,
 STANDARD_TABLE = '刃組基準値マスタ'
 STANDARD_COLUMNS = (
     ('設備名', 'TEXT'),
-    ('アーバー有効長', 'REAL'), ('軸外径', 'REAL'),
+    ('アーバー有効長', 'REAL'), ('板の中心', 'REAL'), ('軸外径', 'REAL'),
     ('スペーサー外径', 'REAL'), ('リング内径', 'REAL'),
     ('刃使用限界径', 'REAL'), ('研磨周期日', 'INTEGER'),
     ('フィンガー切替板厚', 'REAL'), ('刃間隙間上限', 'REAL'),
@@ -253,7 +253,12 @@ STANDARD_DEF = TableDef(STANDARD_TABLE, '刃組基準ID', STANDARD_COLUMNS,
 # 既定値。出どころは添付の刃組ガイダンス（設備図面 SL-1458-01S のライン）。
 # **画面へ書き写さないこと**——`/api/bladeset/context` がそのまま届ける（§9.163）。
 STANDARD_DEFAULTS = {
-    'arborLen': 1599.6, 'shaftDia': 200.0,
+    'arborLen': 1599.6,
+    # 板の中心（OS＝基準原点からの距離・§9.456、利用者の指示「中心位置をずらして
+    # 設定したい場合があるため、中心位置をOSからの距離として設定できるように」）。
+    # **空（None）なら有効長の中央**——数を書き写すと、有効長を直したときに置き去りになる。
+    'centerFromOS': None,
+    'shaftDia': 200.0,
     'spacerOD': 240.0, 'ringBore': 241.0,
     'minDia': 305.0, 'grindCycleDays': 60,
     'fingerMax': 0.6, 'gapMax': 5.0,
@@ -280,7 +285,8 @@ STANDARD_DEFAULTS = {
 }
 # DBの列名 ↔ 画面の鍵。**対応はここだけ**（§9.324 R1 と同じ考え方）。
 _STANDARD_MAP = (
-    ('アーバー有効長', 'arborLen', 'num'), ('軸外径', 'shaftDia', 'num'),
+    ('アーバー有効長', 'arborLen', 'num'), ('板の中心', 'centerFromOS', 'num'),
+    ('軸外径', 'shaftDia', 'num'),
     ('スペーサー外径', 'spacerOD', 'num'), ('リング内径', 'ringBore', 'num'),
     ('刃使用限界径', 'minDia', 'num'), ('研磨周期日', 'grindCycleDays', 'int'),
     ('フィンガー切替板厚', 'fingerMax', 'num'), ('刃間隙間上限', 'gapMax', 'num'),
