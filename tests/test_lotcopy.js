@@ -202,6 +202,8 @@ run('test_lotcopy: ICASコピー（§9.368）', async ({page,rec,errs})=>{
             lots:btns.map(b=>b?b.dataset.lotDsp:''),opened,
             /* **字そのものは押す形にしない**（ダブルクリックは測定を開く的・§9.377）。 */
             textInBtn:btns.filter(b=>b&&b.textContent.indexOf(b.dataset.lotDsp)>=0).length,
+            /* **的は字を持たない**——セルの字はロット番号だけ（読み替え・コピー・他の網が読む）。 */
+            btnText:btns.map(b=>b?b.textContent.trim():'x').join(''),
             picked:!!(row&&row.classList.contains('is-picked')),
             h0,h:row?row.getBoundingClientRect().height:0,
             other:[...document.querySelectorAll('.sc-row-line .sc-row-title')].length};
@@ -211,6 +213,8 @@ run('test_lotcopy: ICASコピー（§9.368）', async ({page,rec,errs})=>{
       dsp.cells===3&&dsp.btns===3, `セル${dsp.cells}／的${dsp.btns}`);
   rec('ロット番号の字そのものは押す形にしない（ダブルクリックは測定を開く・§9.460）',
       dsp.textInBtn===0, `字を含む的 ${dsp.textInBtn}`);
+  rec('的は字を持たない（セルの字に混ざらない・§9.460）',
+      dsp.btns===3&&dsp.btnText==='', JSON.stringify(dsp.btnText));
   /* LotDspの鍵はロット番号を**7文字**で切る決まり（`lotDspLinkKey`）。この網の材料は
      8文字以上なので、行を取り違えていないことはボタンが名乗るロットで見る。 */
   rec('押すと**その行の**ロット番号でLotDspを開く（§9.460）',

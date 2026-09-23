@@ -566,6 +566,13 @@
   padding:0 var(--space-1);font-size:var(--fs-micro);font-weight:700;cursor:pointer;
   white-space:nowrap;line-height:1.6}
 .sc-nw-link:hover{background:var(--teal);color:#fff}
+/* ロット番号の横のLotDspの的（§9.460）。**字を持たない**アイコンだけの正方形。
+   高さは行の操作ボタンと同じ（`--row-ctl-h`）、色は行き先の的と同じ組み。 */
+.sc-lot-dsp{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;
+  width:var(--row-ctl-h);height:var(--row-ctl-h);margin-left:var(--space-1);padding:0;
+  border:1px solid var(--line);border-radius:var(--radius-xs);background:var(--pale);
+  color:var(--teal-dark);font-size:inherit;cursor:pointer;flex-shrink:0}
+.sc-lot-dsp:hover{background:var(--teal);border-color:var(--teal);color:#fff}
 .sp-nw-time{margin-left:0.6mm;font-weight:600;opacity:.75}
 /* ---------- 右上のカード（§9.402、利用者が選んだ形） ----------
    3行で「入るもの＋追加／時間＋目盛り／行き先＋続けて入れる」。

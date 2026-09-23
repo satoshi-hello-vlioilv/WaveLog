@@ -5408,10 +5408,15 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  /* 題名の横に置く行き先のチップ。**押すと何が起きるかを字で書く**（§CLAUDE 4）
     ——行そのもののクリックは「選ぶ」（§9.363）、ダブルクリックは「停止の内容を
     変える」（§9.220）で既に埋まっているので、**別の的**を立てる。 */
- /* ロット問い合わせ（LotDsp）の的（§9.460）。形は行き先の的（`.sc-nw-link`）と同じ、
-    名乗る属性は`WL.base.lotDspAttrs()`の1箇所、押したときの道は`base.js`の1本。 */
+ /* ロット問い合わせ（LotDsp）の的（§9.460）。**字を持たないアイコンだけの的**——
+    字を持つとセルの字（読み替え・コピー・網が読む）に混ざり、高さも字の大きさも
+    行の規格から外れた（実測: 高さ20px・字11px）。高さは行の操作ボタンと同じ
+    `--row-ctl-h`、何が起きるかは`title`と`aria-label`が言う。名乗る属性は
+    `WL.base.lotDspAttrs()`の1箇所、押したときの道は`base.js`の1本。 */
  const lotDspChipHtml=(lot,cast)=>
-  `<button type="button" class="sc-nw-link sc-lot-dsp"${WL.base.lotDspAttrs(lot,cast)}>問合せ</button>`;
+  `<button type="button" class="sc-lot-dsp" aria-label="ロット問い合わせ"${WL.base.lotDspAttrs(lot,cast)}>`
+  +'<svg class="sc-ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/>'
+  +'<path d="M15.3 15.3L21 21"/></svg></button>';
  function stopLinkChipHtml(e){
   const link=stopLinkOf(e);
   if(!link)return '';

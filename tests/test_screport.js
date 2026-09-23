@@ -102,7 +102,7 @@ run('test_screport: 作業スケジュールの行から帳票・再開を開く
   const doingLot=await page.evaluate(id=>{
    const row=document.querySelector(`.sc-row-line[data-id="${id}"]`);
    const cell=row?.querySelector('.sc-row-title[data-content-col="lotNo"]');
-   /* 字だけを読む（横の「問合せ」の的は数えない）。 */
+   /* 字だけを読む（横のLotDspの的は数えない）。 */
    const c2=cell?cell.cloneNode(true):null;
    if(c2)c2.querySelectorAll('button').forEach(b=>b.remove());
    return (c2?.textContent||'').trim();},doing3.id);
