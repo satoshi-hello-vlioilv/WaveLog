@@ -22,6 +22,9 @@ run('test_flows: 測定・スケジュール・メンテナンスの各導線を
  // --- 収集器(画面ごとに切り分けられるようラベルを差し替える) ---
  let where='起動';
  const errs=[],bad=[];
+ /* 画面の例外もこの網の「JS実行時エラー」に数える（土台の`errs`とは別に、どの画面で
+    起きたかの`where`を付けて集める）。置き換えで一度この配線が抜けていた。 */
+ page.on('pageerror',e=>errs.push(`${where}: ${e.message}`));
  page.on('console',m=>{if(m.type()==='error')errs.push(`${where}[console]: ${m.text().slice(0,160)}`)});
  page.on('response',r=>{
   if(r.status()>=400)bad.push(`${where}: HTTP ${r.status()} ${r.url().replace(API,'')}`);

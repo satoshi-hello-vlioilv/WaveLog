@@ -14,15 +14,15 @@
     6. 紙の割り付け（操業データ表）には切り替えを出さない
        ——同じ名前の紙を2人が刷って中身が違う、が起きるため
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const {clearLayout}=require('./lib/harness.js');   // 後片付け（§9.360）
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(body)}).then(async r=>({code:r.status,json:await r.json().catch(()=>({}))}));
 const UID='tests-colscope-'+Date.now();
 const SCOPE_TBL='列レイアウト個人設定マスタ';
-let b=null,TARGET='',scopeAtStart=new Set();
+let TARGET='',scopeAtStart=new Set();
 /* 表の中身を素で読む口（§9.249 の汎用CRUD）。**持ち主を名指しできる唯一の
    手立て**——列レイアウトを読むAPIは「自分に見えている1人ぶん」しか返さない
    ので、誰の行が残っているかはここからしか分からない。 */
@@ -56,11 +56,7 @@ async function cleanup(){
    await post('/api/master-table/'+encodeURIComponent(SCOPE_TBL)+'/delete',{id:r.id}).catch(()=>{});
 }
 
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('dialog',d=>d.accept());
+run('test_colscopeui: 列の見せ方を「みんなと同じ／自分だけ」で選ぶ・画面側（§9.259）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
@@ -218,19 +214,14 @@ async function cleanup(){
   });
   rec('personalScope:false の口では切り替えが出ない',offHidden===true,String(offHidden));
  }catch(e){
-  console.log('FATAL '+(e&&e.message||e));R.push({n:'FATAL',ok:false,d:String(e&&e.message||e)});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* **消す前に画面を閉じる**（§9.360）。開いたままだと遅れて届いた保存が
      消したあとの表へ書き戻し得る。後片付けの順は「閉じる → 消す」。 */
-  if(b){await b.close();b=null}
+  await page.close().catch(e=>console.log('!! 画面を閉じられませんでした: '+(e&&e.message||e)));
   await cleanup().catch(()=>{});
   /* **`cleanup()`のあとで消す**（§9.360）。あちらは持ち主を戻すために
      書き込むので、先に消しても37行が復活していた（実測）。 */
   try{await clearLayout(TARGET)}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
  }
- const ng=R.filter(x=>!x.ok);
- console.log('\n=== SUMMARY ===');
- console.log(`${R.length-ng.length}/${R.length} passed`);
- ng.forEach(x=>console.log(' - '+x.n+(x.d?' '+x.d:'')));
- process.exit(ng.length?1:0);
-})();
+}, {viewport:{width:1700,height:1000}});
