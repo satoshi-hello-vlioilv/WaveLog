@@ -275,7 +275,7 @@
       <div data-p="ends">
        <div class="bs-side" id="bsOsSide"></div>
        <div class="bs-side" id="bsDsSide"></div>
-       <p class="bs-note">最外刃より外の区間です。<b>OS</b>から先に取り付け、<b>DS</b>が最後になります。DS端は<b>フローティングシート</b>で押さえるので、残りは隙間になりません。</p>
+       <p class="bs-note" id="bsEndsNote"></p>
       </div>
       <div data-p="bom" hidden>
        <div class="bs-gauges" id="bsGauges"></div>
@@ -380,7 +380,7 @@
    <!-- 板の中心（§9.456、利用者の指示「中心位置をずらして設定したい場合がある」）。
         **空欄＝打っていない**（基準値 → 有効長の中央）。出どころは右の一言が言う。
         （この中は文字列リテラルの中なので、逆引用符は書けない） -->
-   <div class="bs-f"><label for="bsCenter">板の中心</label><input type="number" id="bsCenter" step="0.1" min="0"><small>mm（OSから）</small></div>
+   <div class="bs-f"><label for="bsCenter">板の中心</label><input type="number" id="bsCenter" step="0.1" min="0"><small id="bsCenterUnit">mm</small></div>
    <p class="bs-csrc" id="bsCenterSrc"></p>
   </div>
   <label class="bs-sw"><span>耳を左右均等にする（板を中心位置に通す）</span><input type="checkbox" id="bsTrimEven" checked></label>
@@ -843,6 +843,9 @@
   /* 板の中心の出どころ（§9.456・§CLAUDE 6）。打っていないときは効いている値を
      欄の薄い字（placeholder）で見せる——空欄のままでも何が効いているか読める。 */
   const C = BS().centerOf(st, M);
+  /* **中心は基準面から測る**（§9.461、利用者の指示「基準原点を変更したら、中心位置の
+     測り方も連動して」）。どちらから測るかは欄の単位の所が言う（推測させない）。 */
+  $('#bsCenterUnit').textContent = `mm（${C.datum}から）`;
   $('#bsCenter').placeholder = C.value.toFixed(2);
   $('#bsCenterSrc').textContent = C.from === 'job' ? 'この作業で指定'
    : (C.from === 'master' ? `刃組基準値の ${C.value.toFixed(2)}` : `有効長の中央 ${C.value.toFixed(2)}`);
@@ -1042,15 +1045,18 @@
  /* 1区間の中身を描く。軸の寸法はスペーサーが作る。保持層はその上に被さる別の層。
     図の上での区間は刃の位置を見えるように広げたぶん実寸とずれる（最大で刃厚ぶん）
     ので、区間ごとに縮尺を合わせてぴったり埋める。 */
- function fillZone(V, xa, xb, cy, parts, dsEnd) {
+ function fillZone(V, xa, xb, cy, parts, floatAt) {
   const d = V.dir, span = Math.abs(xb - xa);
   if (span <= 1) return '';
   const k = parts.len > 0 ? span / V.pw(parts.len) : 1;
-  const fill = partsRun(V, xa, xb, cy, expand(parts.spacer), V.spacerD,
+  /* フローティングシートがこの区間の**始まりの側**（OS端・§9.461）にあるときは、
+     スペーサーを基準面の側（刃の側）へ寄せて積み、残りを始まりの側へ空ける。 */
+  const lead = floatAt === 'start' ? V.pw(Math.max(0, parts.rem || 0)) * k * d : 0;
+  const fill = partsRun(V, xa + lead, xb, cy, expand(parts.spacer), V.spacerD,
                         V.PAL.spacer, V.PAL['spacer-edge'], null, k);
   let svg = fill.svg;
-  /* DS端の残りはフローティングシートが押さえる量（§9.457）——端数の色で塞がない。 */
-  if (!dsEnd && (xb - fill.end) * d > 0.8) {
+  /* フローティングシートの側の端の残りは押さえる量（§9.457）——端数の色で塞がない。 */
+  if (!floatAt && (xb - fill.end) * d > 0.8) {
    svg += block(V, (fill.end + xb) / 2, cy, Math.abs(xb - fill.end), V.spacerD,
                 V.PAL.filler, V.PAL['filler-edge']);
   }
@@ -1206,11 +1212,14 @@
   const d = V.dir, at = i => kxOf(kx, i, upper), half = d * V.kw / 2;
   /* 有効幅の外へ「積みが続く」ことを示す張り出しは**置かない**（§9.378）——
      端に置くのは有効幅の境目を示す青い印だけ。 */
-  let svg = fillZone(V, V.px(0), at(0) - half, cy, zp.zones[0][side]);
+  /* フローティングシートの側の端（§9.461）。OS端なら区間の始まり、DS端なら終わりが空く。 */
+  const fz = A.floatZ;
+  let svg = fillZone(V, V.px(0), at(0) - half, cy, zp.zones[0][side], fz === 0 ? 'start' : '');
   for (let j = 0; j < segs.length; j++) {
    svg += fillZone(V, at(j) + half, at(j + 1) - half, cy, zp.zones[j + 1][side]);
   }
-  svg += fillZone(V, at(lastK) + half, V.px(A.arborLen), cy, zp.zones[lastZ][side], true);
+  svg += fillZone(V, at(lastK) + half, V.px(A.arborLen), cy, zp.zones[lastZ][side],
+                  fz === lastZ ? 'end' : '');
   return svg;
  }
  function drawKnives(V) {
@@ -1855,7 +1864,7 @@
       書く（§CLAUDE 8 同じ情報を2箇所に出さない）——「スペーサー」が段に何度も
       並ぶより、値が読めるほうが要る。隙間と上下刃の中心間はそうではないので、
       名前も添える（どちらも部材ではない）。 */
-   items.push({ cx: q.cx, name: q.name, val: zmm(q.mm), w: q.b - q.a, bd: q.bd,
+   items.push({ cx: q.cx, name: q.name, val: zmm(q.mm), w: q.b - q.a, bd: q.bd, layer: 'core',
                 plain: q.kind === 'spacer' || q.kind === 'knife',
                 ink: q.kind === 'knife' ? '#fff' : PAL.ink, halo: q.kind === 'knife' });
    /* **「上下刃の中心間」は拡大図には出さない**（§9.442、利用者の指示
@@ -1865,9 +1874,16 @@
       反対側の軸の刃（破線）も§9.458で描かなくなった。 */
   });
   holdList.forEach(q => {
-   items.push({ cx: q.cx, name: q.name || '', val: zmm(q.mm), w: q.w, bd: q.bd,
-                ink: '#fff', halo: true });
+   /* 保持層（ゴムリング／フィンガー）は層の名前が左の余白にあるので値だけ。
+      潤滑リングは名前（「潤滑」）を添える——左の余白は「ゴムリング」としか言わない。 */
+   items.push({ cx: q.cx, name: q.name || '', val: zmm(q.mm), w: q.w, bd: q.bd, layer: 'hold',
+                plain: !q.name, ink: '#fff', halo: true });
   });
+  /* **中へ貼るのを先に試す**（§9.458、利用者の指示「フィンガーやゴムリングもその材料の
+     中に数値ラベル貼れるとおもうので、極力貼って無理やり軸にラベル貼らず」）。
+     13px で入らなければ**読める下限（9px）まで小さくして**中へ貼る——フィンガーの帯は
+     高さ約12pxで、13px 固定では1枚も入らず、全部が軸へ引き出されていた。 */
+  const ZFS_MIN = 9;
   const inside = [], vert = [], outs = [];
   items.forEach(q => {
    const wv = zoomTextW(q.val, VFS), wn = zoomTextW(q.name, NFS);
@@ -1881,6 +1897,11 @@
     vert.push(q);
     return;
    }
+   /* 縦にも入らなければ**字を小さくして**横に貼る（縦の13pxを先に試す——縦なら入る
+      部材の字まで小さくしない）。 */
+   for (let fs = VFS - 1; fs >= ZFS_MIN; fs--) {
+    if (q.w >= zoomTextW(q.val, fs) + 4 && h >= fs + 1) { q.valOnly = true; q.fs = fs; inside.push(q); return; }
+   }
    outs.push(q);
   });
   let marks = '';
@@ -1889,8 +1910,9 @@
    const halo = q.halo
     ? ` stroke="${PAL.ink}" stroke-width="${(VFS * 0.14).toFixed(2)}" style="paint-order:stroke"` : '';
    const one = q.valOnly || !q.name;
-   marks += `<text x="${q.cx.toFixed(1)}" y="${(one ? mid + VFS * 0.36 : mid - 1).toFixed(1)}"`
-    + ` text-anchor="middle" font-size="${VFS}" font-weight="800" fill="${q.ink}"`
+   const fs = q.fs || VFS;
+   marks += `<text x="${q.cx.toFixed(1)}" y="${(one ? mid + fs * 0.36 : mid - 1).toFixed(1)}"`
+    + ` text-anchor="middle" font-size="${fs}" font-weight="800" fill="${q.ink}"`
     + ` font-variant-numeric="tabular-nums"${halo}>${esc(q.val)}</text>`;
    if (!one) {
     marks += `<text x="${q.cx.toFixed(1)}" y="${(mid + NFS + 3).toFixed(1)}"`
@@ -1905,68 +1927,79 @@
    marks += zoomVText(vx, mid, q.val, VFS, q.ink, halo, 800);
    if (q.vName) marks += zoomVText(q.cx - VFS / 2 - 1, mid, q.name, NFS, q.ink, halo, 600);
   });
-  /* 軸の帯の中の段。**段は`x`の順に振り分ける**ので、隣り合う部材の字は
-     必ず別の段になる。字の下に名前を添えるので、1段は 2行ぶん取る。 */
+  /* **引き出す先は層で分ける**（§9.458、利用者の指示「軸に近いスペーサーで書ききれない
+     場合は軸に、ゴムリングやフィンガーで書ききれない場合は軸と反対の外側に」）。
+     スペーサー（と刃）は軸の帯の中の段へ、保持層は部材のいちばん外より**さらに外**の段へ。
+     どちらも作法は同じ（段は`x`順に振り分け・段ごとの色・線は字のきわから対象の中心へ・
+     終端に点）。外の段は図の器の外へはみ出すので、あとで器を広げる（`grow`）。 */
   const rowH = VFS + NFS + 5;
-  const rows = Math.max(1, Math.min(3, Math.floor((sb.h - 6) / rowH)));
-  outs.sort((a, b) => a.cx - b.cx);
-  outs.forEach((q, i) => { q.tier = i % rows; });
-  let lead = 0, off = 0, ln = '';
-  for (let t = 0; t < rows; t++) {
-   const row = outs.filter(q => q.tier === t);
-   if (!row.length) continue;
-   const half = row.map(q => Math.max(zoomTextW(q.val, VFS),
-                                      q.plain ? 0 : zoomTextW(q.name, NFS)) / 2 + 3);
-   const xs = B.spread(row.map(q => q.cx), half, ZOOM.sideL, ZOOM.vw - 4, 4);
-   /* 段は**軸心のそばから軸の中へ**積む（軸心の向こう側へはみ出さない）。
-      置き場は「字の塊の上端」で持つ——値と名前の2行ぶんの高さがあるので、
-      中心だけで置くと片側が軸心を越える（実際に越えた）。 */
-   const top = sg < 0 ? cl - 6 - (t + 1) * rowH : cl + 6 + t * rowH;
-   /* **段ごとに色を変える**（§9.437、利用者の指示）。線と字を同じ色にして、
-      「同じ色＝同じ組」を辿れるようにする。 */
-   const tint = PAL['lead' + (t % 3)] || PAL['lead0'] || '#fff';
-   row.forEach((q, i) => {
-    if (xs[i] - half[i] < 0 || xs[i] + half[i] > ZOOM.vw) { off++; return; }
-    /* **線は字の縁から出す**（§9.437、利用者の指摘「引き出し線がラベルと
-       つながっていないように見える」）。以前は段の高さ（2行ぶん＝`rowH`）を
-       そのまま縁にしていたので、**1行しか書かない札（値だけ）では 13px の
-       空白**が字と線のあいだに開いていた——線が宙から始まって見える。
-       いま何行書くかは `q.plain` が決めるので、その高さから縁を出す。 */
-    const blk = VFS + (q.plain ? 0 : NFS + 2);
-    const near = sg < 0 ? top - 1 : top + blk + 2;
-    /* **行き先は対象の中心**（§9.437、利用者の指示「対象の中心位置から
-       伸ばすように示して」）。以前は部材の**縁**で止めていた（§9.418）ので、
-       隣り合う細い部材では「どちらの縁か」が読めなかった。中心まで引き、
-       **終端に点を打つ**——線の先が物の中で終わるので、どの部材のことかを
-       絵だけで言い切れる。§9.418 の「縁から引く」はここで撤回する。 */
-    const hitY = q.bd ? q.bd.y + q.bd.h / 2 : cl;
-    /* 線は**軸の地の上**を通るので、字と同じ明るい色で引く（薄い灰だと消える）。
-       太さは 1 → 1.3（利用者の指摘「線も細いのでかなり見づらい」）。
-       これ以上太くすると、1mm 台の部材の幅より線のほうが太くなる。 */
-    ln += `<path class="bs-zl" fill="none" stroke="${tint}" stroke-width="1.3" opacity=".95"`
-     + ` stroke-linejoin="round" stroke-linecap="round"`
-     + ` d="M${xs[i].toFixed(1)} ${near.toFixed(1)}`
-     + `L${xs[i].toFixed(1)} ${(near + sg * 5).toFixed(1)}`
-     + `L${q.cx.toFixed(1)} ${hitY.toFixed(1)}"/>`
-     + `<circle class="bs-zl-dot" cx="${q.cx.toFixed(1)}" cy="${hitY.toFixed(1)}" r="2.2"`
-     + ` fill="${tint}" stroke="${PAL.ink}" stroke-width=".7"/>`;
-    /* **軸の地は中間の灰色**なので、字は明るい色＋濃い縁取りで置く（§9.432）。
-       薄い字（`--bs-fig-label`）だと地に溶けて読めない（実際に消えた）。 */
-    const hl = ` stroke="${PAL.ink}" stroke-width="${(VFS * 0.14).toFixed(2)}"`
-     + ' style="paint-order:stroke"';
-    marks += `<text x="${xs[i].toFixed(1)}" y="${(top + VFS).toFixed(1)}"`
-     + ` text-anchor="middle" font-size="${VFS}" font-weight="800" fill="${tint}"`
-     + ` font-variant-numeric="tabular-nums"${hl}>${esc(q.val)}</text>`
-     + (q.plain ? '' : `<text x="${xs[i].toFixed(1)}" y="${(top + VFS + NFS + 2).toFixed(1)}"`
-       + ` text-anchor="middle" font-size="${NFS}" font-weight="600" fill="${tint}"${hl}>`
-       + `${esc(q.name)}</text>`);
-    lead++;
-   });
-  }
+  const coreOuts = outs.filter(q => q.layer !== 'hold'), holdOuts = outs.filter(q => q.layer === 'hold');
+  const shaftRows = Math.max(1, Math.min(3, Math.floor((sb.h - 6) / rowH)));
+  const outerR = Yr(maxR);
+  let lead = 0, off = 0, ln = '', minY = Infinity, maxY = -Infinity;
+  /* `where`＝'shaft'（軸心のそばから軸の中へ）／'outer'（部材の外から外へ）。 */
+  const placeRows = (list, maxRows, where) => {
+   list.sort((a, b) => a.cx - b.cx);
+   /* 外の段は**1段に入るなら1段**（白地の上なので、段を振る理由は「横に入らない」だけ）。 */
+   const need = list.reduce((a, q) => a + Math.max(zoomTextW(q.val, VFS),
+                                                   q.plain ? 0 : zoomTextW(q.name, NFS)) + 10, 0);
+   const rows = where === 'outer' && need <= ZOOM.vw - ZOOM.sideL ? 1 : maxRows;
+   list.forEach((q, i) => { q.tier = i % rows; });
+   for (let t = 0; t < rows; t++) {
+    const row = list.filter(q => q.tier === t);
+    if (!row.length) continue;
+    const half = row.map(q => Math.max(zoomTextW(q.val, VFS),
+                                       q.plain ? 0 : zoomTextW(q.name, NFS)) / 2 + 3);
+    const xs = B.spread(row.map(q => q.cx), half, ZOOM.sideL, ZOOM.vw - 4, 4);
+    /* **段ごとに色を変える**（§9.437）。線と字を同じ色にして「同じ色＝同じ組」を辿れる。 */
+    /* 外の段は白地の上——軸の地に合わせた淡い段の色では線が消えるので、濃い字＋白の縁取り。 */
+    const tint = where === 'outer' ? PAL.ink : (PAL['lead' + (t % 3)] || PAL['lead0'] || '#fff');
+    const rim = where === 'outer' ? '#fff' : PAL.ink;
+    row.forEach((q, i) => {
+     if (xs[i] - half[i] < 0 || xs[i] + half[i] > ZOOM.vw) { off++; return; }
+     /* 字の塊の高さ（値だけ／値＋名前）。**線は字の縁から出す**（§9.437）。 */
+     const blk = VFS + (q.plain ? 0 : NFS + 2);
+     const oRow = blk + 6;
+     /* 段の上端。軸の段は軸心のそばから軸の中へ、外の段は部材の外から外へ積む。 */
+     const top = where === 'shaft'
+      ? (sg < 0 ? cl - 6 - (t + 1) * rowH : cl + 6 + t * rowH)
+      : (sg < 0 ? outerR - 8 - (t + 1) * oRow : outerR + 8 + t * oRow);
+     /* 線が出る縁: 対象のある側の縁（軸の段は外向き、外の段は軸向き）。 */
+     const toward = where === 'shaft' ? sg : -sg;
+     const near = toward < 0 ? top - 1 : top + blk + 2;
+     /* **行き先は対象の中心**（§9.437）。終端に点を打つ。 */
+     const hitY = q.bd ? q.bd.y + q.bd.h / 2 : cl;
+     ln += `<path class="bs-zl" data-zl="${where}" data-layer="${q.layer}" fill="none" stroke="${tint}" stroke-width="1.3" opacity=".95"`
+      + ` stroke-linejoin="round" stroke-linecap="round"`
+      + ` d="M${xs[i].toFixed(1)} ${near.toFixed(1)}`
+      + `L${xs[i].toFixed(1)} ${(near + toward * 5).toFixed(1)}`
+      + `L${q.cx.toFixed(1)} ${hitY.toFixed(1)}"/>`
+      + `<circle class="bs-zl-dot" cx="${q.cx.toFixed(1)}" cy="${hitY.toFixed(1)}" r="2.2"`
+      + ` fill="${tint}" stroke="${rim}" stroke-width=".7"/>`;
+     /* 字は明るい色＋濃い縁取り（§9.432。軸の地でも白地でも読める）。 */
+     const hl = ` stroke="${rim}" stroke-width="${(VFS * 0.14).toFixed(2)}"`
+      + ' style="paint-order:stroke"';
+     marks += `<text x="${xs[i].toFixed(1)}" y="${(top + VFS).toFixed(1)}"`
+      + ` text-anchor="middle" font-size="${VFS}" font-weight="800" fill="${tint}"`
+      + ` font-variant-numeric="tabular-nums"${hl}>${esc(q.val)}</text>`
+      + (q.plain ? '' : `<text x="${xs[i].toFixed(1)}" y="${(top + VFS + NFS + 2).toFixed(1)}"`
+        + ` text-anchor="middle" font-size="${NFS}" font-weight="600" fill="${tint}"${hl}>`
+        + `${esc(q.name)}</text>`);
+     minY = Math.min(minY, top - 2); maxY = Math.max(maxY, top + blk + 4);
+     lead++;
+    });
+   }
+  };
+  placeRows(coreOuts, shaftRows, 'shaft');
+  placeRows(holdOuts, 2, 'outer');
   /* 区間の寸法線は**軸心の反対側**（半断面の外）。図と重ならない。 */
   const spanY = cl - sg * ZOOM.dim;
   const spans = zoomSpan(zoneA, zoneB, spanY, `区間 ${P.len.toFixed(2)} mm`, PAL);
-  const vh = up ? spanY + 16 : cl + ZOOM.rad + 16;
+  let vh = up ? spanY + 16 : cl + ZOOM.rad + 16;
+  /* 外の段が器からはみ出すぶん、器を広げる（上へはみ出すなら全体を下げる）。 */
+  let grow = 0;
+  if (Number.isFinite(minY) && minY < 2) { grow = 2 - minY; vh += grow; }
+  if (Number.isFinite(maxY) && maxY + grow > vh - 2) vh = maxY + grow + 4;
   /* **引き出した「部材」のいちばん広い幅**（§9.430）。ラベルは対象へ直に貼る
      ので、引き出しに落ちてよいのは「貼る相手が無いもの」（上下刃の中心間）と
      「字が入らないほど細い部材」だけ。ここが字の高さを超えたら、**貼れるはずの
@@ -1975,7 +2008,8 @@
   return {
    vh, dims: items.length, inside: inside.length + vert.length, lead, off, leadWmax,
    axis: z0.upper ? 'up' : 'lo', zone: z0.i,
-   svg: `${body}${hold}${caps}${ln}${marks}${spans}`,
+   svg: grow ? `<g transform="translate(0 ${grow.toFixed(1)})">${body}${hold}${caps}${ln}${marks}${spans}</g>`
+    : `${body}${hold}${caps}${ln}${marks}${spans}`,
    /* 図が言えないことだけを添える（§CLAUDE 8 同じ情報を2箇所に出さない）。 */
    note: zoomNote(res, r, P, ring, finger)
   };
@@ -2137,13 +2171,13 @@
   let o = '';
   if (gap.length) {
    o += `<div class="bs-alert is-bad"><b>スペーサーで埋め切れていない区間が ${gap.length}面あります</b><br>`
-     + '組んだものはOS側へ押し付けて組むので、ここは 0 でなければなりません（計算の不具合です）。<br>'
+     + `組んだものは${esc(f.floatSeat ? f.floatSeat.datum : '基準面')}側へ押し付けて組むので、ここは 0 でなければなりません（計算の不具合です）。<br>`
      + `${esc(cut(gap, 8))}</div>`;
   }
-  /* DS端の残りが押さえ代を超える（§9.457）——フローティングシートでは吸えない＝隙間。 */
+  /* フローティングシートの側の端の残りが押さえ代を超える（§9.457）——吸えない＝隙間。 */
   const fo = (f.floatSeat && f.floatSeat.over) || [];
   if (fo.length) {
-   o += `<div class="bs-alert is-bad"><b>DS端の残りがフローティングシートの押さえ代 ${f.floatSeat.stroke}mm を超えます（${fo.length}面）</b><br>`
+   o += `<div class="bs-alert is-bad"><b>${esc(f.floatSeat.side)}端の残りがフローティングシートの押さえ代 ${f.floatSeat.stroke}mm を超えます（${fo.length}面）</b><br>`
      + 'このままでは隙間が残ります。手持ちのスペーサーでは押さえ代に収まる積みが作れませんでした'
      + '（在庫が尽きたか、合う寸法がありません）。不足は「所要」に出ています。<br>'
      + `${esc(cut(fo, 4))}</div>`;
@@ -2290,11 +2324,12 @@
     : '<tr><td colspan="3" class="bs-note">なし</td></tr>';
    const len = r => `<b class="${r.c.len < 0 ? 'bs-ng' : ''}">${r.c.len.toFixed(2)}</b>`;
    h += `<tr class="bs-tot"><td class="bs-a">区間長</td>${two(len(U), len(L))}</tr>`;
-   /* **DS端はフローティングシートが押さえる**（§9.456、利用者の指示）。スペーサーを
-      OSから敷き詰め、有効長に近づいたらDS側からOS側へ押さえるので、DS端の残りは
-      隙間ではない——**押さえる量**として常に出す（0でも行は残す＝在ることを言う）。
-      OS端の残りは今までどおり「隙間」（0が正・§9.441）。 */
-   const openEnd = sd === 'DS';
+   /* **基準面の反対の端はフローティングシートが押さえる**（§9.456／§9.461、利用者の指示）。
+      スペーサーを基準面から敷き詰め、有効長に近づいたら反対の端から押さえるので、その端の
+      残りは隙間ではない——**押さえる量**として常に出す（0でも行は残す＝在ることを言う）。
+      基準面の側の残りは今までどおり「隙間」（0が正・§9.441）。 */
+   const datum = res.A.datum, far = datum === 'OS' ? 'DS' : 'OS';
+   const openEnd = sd === far;
    /* 押さえ代（§9.457）。超えたぶんは吸えない＝赤。 */
    const stroke = BS().floatStroke(M);
    if (openEnd || U.c.rem > 0.001 || L.c.rem > 0.001) {
@@ -2302,10 +2337,12 @@
     const gv = r => (r.c.rem > 0.001
      ? `<span class="${cls(r)}">${r.c.rem.toFixed(openEnd ? 3 : 2)}</span>`
      : '<span class="bs-z">·</span>');
-    h += `<tr class="bs-rem"${openEnd ? ` title="有効長に近づいたら、DS側からOS側へフローティングシートで押さえます。その量です（隙間ではありません）。押さえ代は ${stroke}mm まで"` : ''}>`
+    h += `<tr class="bs-rem"${openEnd ? ` title="有効長に近づいたら、${far}側から${datum}側へフローティングシートで押さえます。その量です（隙間ではありません）。押さえ代は ${stroke}mm まで"` : ''}>`
      + `<td class="bs-a">${openEnd ? `フローティングシート<small>押さえ代 ${stroke}</small>` : '隙間'}</td>${two(gv(U), gv(L))}</tr>`;
    }
-   const why = `${sd === 'OS' ? 'いちばん先に取り付けます' : 'いちばん後に取り付けます'}。`
+   /* 取り付ける順（OS端が先）は入れる向き（DS側から）で決まる機械の事実。基準面とは別（§9.461）。 */
+   const why = `${sd === 'OS' ? 'いちばん先に取り付けます' : 'いちばん後に取り付けます'}`
+    + `（${sd === datum ? '基準面' : 'フローティングシートで押さえる側'}）。`
     + '最外刃より外なのでスペーサーのみです。';
    el.innerHTML = `<div class="bs-fh" title="${esc(why)}">`
     + `<span class="bs-pin">${sd}</span><span class="bs-lr">${at(sd)}</span>`
@@ -2313,6 +2350,10 @@
     + '<table class="bs-e"><thead><tr><th class="bs-a">部材<small>mm</small></th>'
     + '<th>上軸</th><th>下軸</th></tr></thead><tbody>' + h + '</tbody></table>';
   });
+  /* 端部の説明も基準面から言う（§9.461）。 */
+  const dn = res.A.datum, fr = dn === 'OS' ? 'DS' : 'OS', note = $('#bsEndsNote');
+  if (note) note.innerHTML = '最外刃より外の区間です。<b>OS</b>から先に取り付け、<b>DS</b>が最後になります。'
+   + `基準面は<b>${dn}</b>、${fr}端は<b>フローティングシート</b>で押さえるので、残りは隙間になりません。`;
  }
 
  /* ====================== 所要 ====================== */
@@ -2337,7 +2378,7 @@
   }
   paintGauge('push', res.contact.push, res.finger, 0, 1.5);
   paintGauge('nip', res.contact.nip, res.finger, 0, 2.0);
-  paintOffset(res.err);
+  paintOffset(res.err, res.A.datum);
  }
  function paintGauge(kind, value, off, lo, hi) {
   const g = $(`.bs-ga[data-g="${kind}"]`);
@@ -2361,7 +2402,8 @@
   vb.className = 'bs-vb ' + cls;
   vb.textContent = text;
  }
- function paintOffset(e) {
+ function paintOffset(e, datum) {
+  const dn = datum === 'OS' ? 'OS' : 'DS', fr = dn === 'OS' ? 'DS' : 'OS';
   const g = $('.bs-ga[data-g="offset"]');
   if (!g) return;
   const p = M.P, lim = Math.max((+p.offsetHardTol || 0) * 2, 0.02);
@@ -2377,17 +2419,18 @@
   vb.className = 'bs-vb ' + cls;
   vb.textContent = text;
   const shift = Math.min(e.cumU, e.cumL), diff = Math.abs(e.worst);
-  const lines = ['DS側から部材を入れ、OS側へ詰めます。区間を手持ち寸法で埋めきれない分（端数）だけ、それより DS 側の刃は OS 側へ寄ります。'];
+  /* 入れる側（DS・台車の開く側）は機械の事実で、押し付ける側（基準面）とは別の軸（§9.461）。 */
+  const lines = [`DS側から部材を入れ、${dn}側（基準面）へ押し付けて組みます。区間を手持ち寸法で埋めきれない分（端数）だけ、それより ${fr} 側の刃は ${dn} 側へ寄ります。`];
   if (diff > 1e-9) {
    lines.push(`上軸と下軸で端数の出方が違います。差がいちばん大きいのは <b>${e.worstAt + 1} 本目の刃</b>`
     + `（上軸の累積 ${e.cumU.toFixed(3)} ／ 下軸の累積 ${e.cumL.toFixed(3)} mm）。`);
   } else if (shift > 1e-9) lines.push('上下とも同じだけ寄るため、左右差にはなりません。');
   else lines.push('端数は出ていません。手持ち寸法で全区間を割り切れています。');
   if (shift > 1e-9) {
-   lines.push(`刃全体が <b>${shift.toFixed(3)} mm</b> OS 側へ寄ります。OS耳はそのぶん狭く、DS耳は広くなります。`);
+   lines.push(`刃全体が <b>${shift.toFixed(3)} mm</b> ${dn} 側へ寄ります。${dn}耳はそのぶん狭く、${fr}耳は広くなります。`);
   }
   const tail = Math.max(e.tail.up, e.tail.lo);
-  if (tail > 0.001) lines.push(`DS端に残る ${tail.toFixed(2)} mm は開放端の余りで、刃の位置はずらしません。`);
+  if (tail > 0.001) lines.push(`${fr}端に残る ${tail.toFixed(2)} mm はフローティングシートが押さえる余りで、刃の位置はずらしません。`);
   g.querySelector('.bs-oxb').innerHTML = lines.join('<br>');
  }
 

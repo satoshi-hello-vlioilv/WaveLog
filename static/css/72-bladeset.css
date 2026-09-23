@@ -32,6 +32,12 @@
   --bs-fig-shaft-edge:var(--rs-slate);
   --bs-fig-sheen:var(--line-strong);
   --bs-fig-cap:var(--rs-indigo);
+  /* フローティングシート（§9.459）。DS端の青い印の代わりに描く機械部品。
+     **灰の系統を使わない**——軸・スペーサー・端数・刃がすでに灰の4段を使っており、
+     濃い灰（`--rs-slate`）では断面図で軸と見分けられなかった。青は印の色だったので避け、
+     深い青緑にする。ピストンは明るい鋼。 */
+  --bs-fig-fseat:var(--teal-dark);
+  --bs-fig-fseat-pin:var(--line-strong);
   --bs-fig-spacer:var(--rs-slate-border);
   --bs-fig-spacer-edge:var(--rs-slate);
   --bs-fig-filler:var(--rs-slate-bg);

@@ -1,4 +1,4 @@
-# 刃組ガイダンス（174件）
+# 刃組ガイダンス（181件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,14 +10,21 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
-| DS端は**押さえ代（`floatStroke()`・既定0.95）の内**で積む。`fillWithin()`は細かいスペーサー→総枚数→残りの順に少ない積み | `test_bladeui.js` | [§9.457](../../docs/decisions/9.457.md) |
-| 押さえ代を超えるDS端の残りは隙間（`fit.floatSeat.over`・赤）。DS端の残りは端数の色で塞がない・端数に数えない | `test_bladeui.js` | [§9.457](../../docs/decisions/9.457.md) |
+| 基準面（OS／DS・既定**DS**）は`datumOf()`の1箇所。シートは**反対の端**（`A.floatZ`・`fit.floatSeat.side`） | `test_bladeui.js`・`test_bladeset.py` | [§9.461](../../docs/decisions/9.461.md) |
+| 刻みへ寄せるのは**基準面の側の端**（`slip`）。押さえ代・端数に数えない・左右差の向きは`floatZ`を見る | `test_bladeui.js` | [§9.461](../../docs/decisions/9.461.md) |
+| **入れる向き（DS側から）と押し付ける向き（基準面）は別の軸**。取り付ける順の字は基準面で変えない | `test_bladeui.js` | [§9.461](../../docs/decisions/9.461.md) |
+| フローティングシートは**図面の寸法**の3D（`floatSeat()`・`FSEAT`）。青い印は基準面の端だけ | `test_bladeui.js` | [§9.459](../../docs/decisions/9.459.md) |
+| シートの色は`--bs-fig-fseat`（灰の系統は使わない＝軸と見分けられない）。断面図では軸もシートの中を通す | `test_bladeui.js` | [§9.459](../../docs/decisions/9.459.md) |
+| 拡大図の字は**中へ貼るのが先**（13px横→縦→9pxまで縮めて横）。引き出すのは入らないものだけ | `test_bladeui.js` | [§9.458](../../docs/decisions/9.458.md) |
+| 入らない字は**層で引き出し先を分ける**: スペーサーは軸の段へ・保持層は部材の外の段へ（線は`data-zl`） | `test_bladeui.js` | [§9.458](../../docs/decisions/9.458.md) |
+| シートの側の端は**押さえ代（`floatStroke()`・既定0.95）の内**で積む。`fillWithin()`は細かいスペーサー→総枚数→残りの順に少ない積み | `test_bladeui.js` | [§9.457](../../docs/decisions/9.457.md) |
+| 押さえ代を超える残りは隙間（`fit.floatSeat.over`・赤）。シートの側の残りは端数の色で塞がない・数えない | `test_bladeui.js` | [§9.457](../../docs/decisions/9.457.md) |
 | 拡大図に**反対側の軸の刃（破線）を描かない**。クリアランスの値は足元の説明が言う | `test_bladeui.js` | [§9.457](../../docs/decisions/9.457.md) |
 | 記号（A・B…）は**文字ごとに1色**。番号（`tone`）は`buildRows()`が振り、表・図は`data-bc`を名乗るだけ | `test_bladeui.js` | [§9.455](../../docs/decisions/9.455.md) |
 | 重ねても**記号の塗りは変えない**（縁の太さと大きさで言う）。光らせる区間の面も記号と同じ色 | `test_bladeui.js` | [§9.455](../../docs/decisions/9.455.md) |
 | 潤滑リングは**ゴムリングマスタの行**（種類＝潤滑リング）。寸法・在庫は同じ欄。行が無ければ「入れられない」と言う | `test_bladeset.py`・`test_bladeui.js` | [§9.455](../../docs/decisions/9.455.md) |
-| 板の中心は**OSからの距離**。`centerOf()`の1箇所（作業の値→基準値→有効長の中央）。はみ出す中心は`stop`で断る | `test_bladeui.js` | [§9.456](../../docs/decisions/9.456.md) |
-| DS端の残りは**フローティングシートが押さえる量**（`fit.floatSeat`）。「埋め切れていない」に数えない・差（−）で出さない | `test_bladeui.js` | [§9.456](../../docs/decisions/9.456.md) |
+| 板の中心は**基準面からの距離**。`centerOf()`の1箇所（作業の値→基準値→有効長の中央）。はみ出す中心は`stop`で断る | `test_bladeui.js` | [§9.456](../../docs/decisions/9.456.md) |
+| シートの側の端の残りは**押さえる量**（`fit.floatSeat`）。「埋め切れていない」に数えない・差（−）で出さない | `test_bladeui.js` | [§9.456](../../docs/decisions/9.456.md) |
 | **組めない材料**の答えは`stopReasons()`の1箇所（`res.stop`）。空でなければ図も表も描かず、理由と直す場所を1つだけ出す | `test_bladeui.js` | [§9.454](../../docs/decisions/9.454.md) |
 | 板の並び（`materialRun()`）は**刃と同じ`origin`**から出す（耳が負でも`matOff`は0） | `test_bladeui.js` | [§9.454](../../docs/decisions/9.454.md) |
 | クリアランスは**組める値へ四捨五入**（`clearanceUsed()`の1箇所・刻みはスペーサー寸法の最大公約数）。打った値と使った値を両方持ち、違うときだけ並べて言う | `test_bladeui.js` | [§9.454](../../docs/decisions/9.454.md) |

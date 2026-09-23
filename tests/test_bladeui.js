@@ -790,10 +790,10 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('寸法はマスタの値そのまま（10.025 を 10.03 へ丸めない）', zoom.exact === true,
         zoom.nums3);
     rec('区間ぜんたいの寸法も出す', zoom.span === true, String(zoom.span));
-    /* **反対側の軸の刃（破線）は描かない**（§9.458、利用者の指示「拡大図の刃の横の
+    /* **反対側の軸の刃（破線）は描かない**（§9.457、利用者の指示「拡大図の刃の横の
        点線は消してください」。§9.442 の「破線の刃は残す」は撤回）。クリアランスの
        値は足元の説明が言う。**「上下刃の中心間」の字も出さない**（§9.442）。 */
-    rec('拡大図に反対側の軸の刃（破線）を描かない（§9.458）',
+    rec('拡大図に反対側の軸の刃（破線）を描かない（§9.457）',
         zoom.knifeDash === 0, `刃の形の破線${zoom.knifeDash}`);
     rec('「上下刃の中心間」の字は拡大図に出さない（§9.442）',
         zoom.clrLabel === 0, `札${zoom.clrLabel}`);
@@ -853,6 +853,54 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('記号は文字ごとに1色（上下・表で同じ／文字が違えば色も違う・§9.455）',
         badgeCol.n >= 2 && badgeCol.one === badgeCol.n && badgeCol.uniq === badgeCol.n,
         badgeCol.ex);
+    /* **字は層ごとに置き分ける**（§9.458、利用者の指示「フィンガーやゴムリングも
+       その材料の中に数値ラベル貼れる…軸に近いスペーサーで書ききれない場合は軸に、
+       ゴムリングやフィンガーで書ききれない場合は軸と反対の外側に」）。
+       以前はフィンガーの帯（高さ約12px）へ13pxの字が入らず、**フィンガーの字が
+       全部軸へ引き出されていた**（実測12件）。全部の区間・両方の軸を開いて数える:
+       ①保持層の字を軸へ引き出した数＝0 ②線の向き（軸の段は軸へ・外の段は外へ）
+       ③中へ貼った字は読める大きさ（9px以上） ④字は図の器からはみ出さない。 */
+    const zLayer = await page.evaluate(() => {
+     const hits = [...document.querySelectorAll('#bsStage .bs-bhit[data-axis]')];
+     const seen = new Set();
+     const out = { opened: 0, holdShaft: 0, badDir: 0, small: 0, spill: 0,
+                   holdIn: 0, outer: 0, shaft: 0 };
+     hits.forEach(h => {
+      const key = h.dataset.badge + h.dataset.axis;
+      if (seen.has(key)) return; seen.add(key);
+      h.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      const svg = document.getElementById('bsZoomFig');
+      if (!svg || document.getElementById('bsZoom').hidden) return;
+      out.opened++;
+      const up = svg.dataset.axis === 'up';
+      svg.querySelectorAll('path.bs-zl').forEach(el => {
+       const m = [...el.getAttribute('d').matchAll(/([ML])([-\d.]+) ([-\d.]+)/g)];
+       const y0 = +m[0][3], y1 = +m[m.length - 1][3];
+       const where = el.dataset.zl;
+       if (where === 'outer') out.outer++; else out.shaft++;
+       if (el.dataset.layer === 'hold' && where === 'shaft') out.holdShaft++;
+       /* 軸の段: 字は対象より軸心の側（上軸なら下）。外の段: 字は対象より外（上軸なら上）。 */
+       const towardAxis = up ? y0 > y1 : y0 < y1;
+       if ((where === 'outer') === towardAxis) out.badDir++;
+      });
+      const sr = svg.getBoundingClientRect();
+      svg.querySelectorAll('text').forEach(t => {
+       const fs = +t.getAttribute('font-size') || 0;
+       if (/^\d+(\.\d+)?$/.test(t.textContent) && fs && fs < 9) out.small++;
+       if ((t.getAttribute('fill') || '') === '#fff' && fs < 13) out.holdIn++;
+       const r = t.getBoundingClientRect();
+       if (r.width && (r.top < sr.top - 1 || r.bottom > sr.bottom + 1)) out.spill++;
+      });
+     });
+     return out;
+    });
+    rec('保持層（ゴムリング・フィンガー）の字を軸へ引き出さない（§9.458）',
+        zLayer.opened > 0 && zLayer.holdShaft === 0, JSON.stringify(zLayer));
+    rec('引き出し線の向き: スペーサーは軸へ・保持層は外へ（§9.458）',
+        zLayer.badDir === 0, `逆向き${zLayer.badDir}本（軸${zLayer.shaft}／外${zLayer.outer}）`);
+    rec('中へ貼った字は読める大きさ（9px以上）・図の器からはみ出さない（§9.458）',
+        zLayer.small === 0 && zLayer.spill === 0,
+        `9px未満${zLayer.small}／はみ出し${zLayer.spill}`);
     /* **次の節が見る形へ戻してから渡す**（§9.394 と同じ作法）。この節は
        区間を押して回るので、閉じっぱなし・別の区間で開きっぱなしのまま
        進むと、次の「もう一度押すと閉じる」が成り立たない（実際に2件落ちた）。
@@ -864,7 +912,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     });
     await W.until(page, () => document.getElementById('bsZoom').hidden === false,
                   null, { ms: 8000, what: '最初の区間で拡大図が開き直る' });
-    rec('クリアランスの値は足元の説明で言う（破線とは書かない・§9.458）',
+    rec('クリアランスの値は足元の説明で言う（破線とは書かない・§9.457）',
         /クリアランス\s*[\d.]+/.test(zoom.note) && !/破線/.test(zoom.note),
         zoom.note.slice(-80));
     rec('図が言えないこと（どの区間に入るか）を添える', /区間/.test(zoom.note),
@@ -1102,10 +1150,11 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      /* ② 利用者の形: 104.90×11・板厚0.4・クリアランス0.04 */
      const r1 = solve({ W: 1180, thick: 0.4, clr: 0.04, align: 'none',
                         lots: [{ name: 'L1', w: 104.9, n: 11 }] });
-     /* DS端（最後の区間）は除く——残りはフローティングシートが押さえる（§9.456）。 */
-     const rem1 = r1.zp.zones.slice(0, -1).flatMap(z => [z.up.rem, z.lo.rem]).filter(v => v > 1e-6).length;
-     /* DS端は細かいスペーサーを使わず、残りは押さえ代以内（§9.457）。 */
-     const zl = r1.zp.zones[r1.zp.zones.length - 1];
+     /* フローティングシートの側の端（`A.floatZ`・§9.461）は除く——残りはシートが押さえる（§9.456）。 */
+     const rem1 = r1.zp.zones.filter((z, i) => i !== r1.A.floatZ)
+      .flatMap(z => [z.up.rem, z.lo.rem]).filter(v => v > 1e-6).length;
+     /* その端は細かいスペーサーを使わず、残りは押さえ代以内（§9.457）。 */
+     const zl = r1.zp.zones[r1.A.floatZ];
      const dsFine = [zl.up, zl.lo].flatMap(p => p.spacer.out)
       .filter(([sz]) => Math.abs(sz - Math.round(sz)) > 1e-9).reduce((a, [, c]) => a + c, 0);
      const dsRem = Math.max(zl.up.rem, zl.lo.rem), stroke = B2.floatStroke(M2);
@@ -1131,11 +1180,11 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('クリアランスは組める値へ四捨五入する（0.04 → 刻み0.025の 0.05）',
         g454.clrWant === 0.04 && Math.abs(g454.clrUsed - 0.05) < 1e-9 && g454.step === 0.025,
         `指定${g454.clrWant} → ${g454.clrUsed}（刻み${g454.step}）`);
-    rec('スペーサーの端数は0面（DS端を除く。組んだものはOS側へ押し付けるので隙間は無い）',
+    rec('スペーサーの端数は0面（シートの側の端を除く。組んだものは基準面へ押し付けるので隙間は無い）',
         g454.rem1 === 0, `${g454.rem1}面`);
     rec('フローティングシートの押さえ代は基準値の既定 0.95mm（図面の F.P.ストローク）',
         g454.stroke === 0.95, String(g454.stroke));
-    rec('DS端は細かいスペーサーを使わず、残りは押さえ代以内（§9.457）',
+    rec('シートの側の端は細かいスペーサーを使わず、残りは押さえ代以内（§9.457）',
         g454.dsFine === 0 && g454.dsRem <= g454.stroke + 1e-9, `細かい${g454.dsFine}枚 / 残り${g454.dsRem}`);
     rec('元板巾が条の合計に足りない材料は「組めない」と言う',
         g454.stop0.includes('short') && g454.stop1 === 0, JSON.stringify(g454.stop0));
@@ -1246,17 +1295,28 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     const c456 = await page.evaluate(() => {
      const B2 = WL.bladeSet, M2 = WL.bladeGuide.masters, s0 = WL.bladeGuide.state;
      const IX2 = B2.buildIndex(M2);
-     const keep = { center: s0.center };
+     const keep = { center: s0.center, datum: M2.P.datumSide };
+     /* **中心は基準面から測る**（§9.461）。板の中心を基準面からの距離へ直して比べる。 */
      const at = c => { s0.center = c; const r = B2.solve(s0, M2, IX2);
-       return { mid: +(r.A.matStart + s0.W / 2).toFixed(3), from: r.A.centerFrom,
+       const mid0 = r.A.matStart + s0.W / 2;
+       return { mid: +(r.A.datum === 'OS' ? mid0 : r.A.arborLen - mid0).toFixed(3), from: r.A.centerFrom,
+                datum: r.A.datum, floatZ: r.A.floatZ,
                 stop: (r.stop || []).map(x => x.key), step: r.A.clrStep,
                 gap: r.fit.spacerGap.length, last: r.zp.zones.length, fs: r.fit.floatSeat,
-                dsFlag: r.fit.spacerGap.filter(t => t.startsWith(r.zp.zones.length + '')).length }; };
-     const out = { def: at(null), c700: at(700), far: at(300) };
-     /* DS端に残りが出るのは**有効長が刻みの倍数でない**とき（中心をずらしても、OS端を
-        刻みへ寄せる`slip`が効くので出ない）。有効長を一時的に刻みから外して見る。 */
+                /* シートの側の端（区間の番号は1から）を「埋め切れていない」に数えた数。 */
+                fsFlag: r.fit.spacerGap.filter(t => t.startsWith((r.A.floatZ + 1) + '')).length,
+                /* シートの側でない端に残りが出た面（0が正）。 */
+                wrong: [r.zp.zones[r.A.floatZ === 0 ? r.zp.zones.length - 1 : 0]]
+                 .flatMap(z => [z.up.rem, z.lo.rem]).filter(v => v > 1e-6).length }; };
+     const out = { datum0: B2.datumOf(M2), def: at(null), c700: at(700), far: at(300) };
+     /* シートの側の端に残りが出るのは**有効長が刻みの倍数でない**とき（基準面の側を
+        刻みへ寄せる`slip`が効くので、中心をずらしても出ない）。有効長を一時的に外して見る。 */
      const a0 = M2.P.arborLen;
-     M2.P.arborLen = 1599.63; out.c7003 = at(700.013); M2.P.arborLen = a0;
+     M2.P.arborLen = 1599.63; out.c7003 = at(700.013);
+     /* **基準面を入れ替えても同じ答えの形**（§9.461）。OS基準ならシートはDS端。 */
+     M2.P.datumSide = 'OS'; out.os = at(700.013); out.os700 = (M2.P.arborLen = a0, at(700));
+     M2.P.datumSide = 'DS'; out.ds700 = at(700);
+     M2.P.datumSide = keep.datum; M2.P.arborLen = a0;
      s0.center = keep.center;
      return out;
     });
@@ -1267,9 +1327,22 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         c456.def.from === 'mid' || c456.def.from === 'master', JSON.stringify(c456.def));
     rec('板が有効長からはみ出す中心は「組めない」と言う', c456.far.stop.includes('center'),
         JSON.stringify(c456.far.stop));
-    rec('DS端の残りは「埋め切れていない」と数えない（フローティングシートが押さえる）',
-        c456.c7003.dsFlag === 0 && c456.c7003.fs && (c456.c7003.fs.up > 0 || c456.c7003.fs.lo > 0),
-        JSON.stringify(c456.c7003));
+    rec('シートの側の端の残りは「埋め切れていない」と数えない（フローティングシートが押さえる）',
+        c456.c7003.fsFlag === 0 && c456.c7003.wrong === 0 && c456.c7003.fs
+        && (c456.c7003.fs.up > 0 || c456.c7003.fs.lo > 0), JSON.stringify(c456.c7003));
+    /* ---- 基準面（基準原点）の切り替え（§9.461、利用者の指示「逆にもできるように…
+       基準原点を変更したら、中心位置の測り方も連動…デフォルトはDSを基準面にOSに
+       フローティングシート」） ---- */
+    rec('既定の基準面はDS・フローティングシートはOS端（§9.461）',
+        c456.datum0 === 'DS' && c456.def.datum === 'DS' && c456.def.floatZ === 0
+        && c456.def.fs.side === 'OS', JSON.stringify({ d: c456.datum0, z: c456.def.floatZ, s: c456.def.fs.side }));
+    rec('OS基準に切り替えるとシートはDS端・残りもDS端だけに出る（§9.461）',
+        c456.os.datum === 'OS' && c456.os.fs.side === 'DS' && c456.os.floatZ === c456.os.last - 1
+        && c456.os.fsFlag === 0 && c456.os.wrong === 0 && (c456.os.fs.up > 0 || c456.os.fs.lo > 0),
+        JSON.stringify(c456.os));
+    rec('中心は基準面から測る（DS基準でもOS基準でも、指定した700mmへ来る・§9.461）',
+        Math.abs(c456.ds700.mid - 700) <= c456.ds700.step && Math.abs(c456.os700.mid - 700) <= c456.os700.step,
+        `DS基準 ${c456.ds700.mid} / OS基準 ${c456.os700.mid}`);
     await page.evaluate(() => { const el = document.querySelector('#bsCenter');
       el.value = '700.013'; el.dispatchEvent(new Event('input', { bubbles: true })); });
     await W.until(page, () => /この作業で指定/.test((document.querySelector('#bsCenterSrc') || {}).textContent || '')
@@ -1277,12 +1350,20 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await W.paint(page);
     const ui456 = await page.evaluate(() => ({
      src: document.querySelector('#bsCenterSrc').textContent,
-     ds: [...document.querySelectorAll('#bsDsSide .bs-rem .bs-a')].map(e => e.textContent).join('|'),
+     unit: (document.querySelector('#bsCenterUnit') || {}).textContent || '',
+     note: (document.querySelector('#bsEndsNote') || {}).textContent || '',
+     /* シートの側の端（既定はDS基準なのでOS端）の表。 */
+     ds: [...document.querySelectorAll('#bsOsSide .bs-rem .bs-a')].map(e => e.textContent).join('|'),
+     other: [...document.querySelectorAll('#bsDsSide .bs-rem .bs-a')].map(e => e.textContent).join('|'),
      len: (document.querySelector('#bsStage3 .bs-len3') || {}).textContent || '',
      alert: [...document.querySelectorAll('#bsTables .bs-alert')].some(a => /埋め切れていない/.test(a.textContent)) }));
-    rec('DS端の表は「フローティングシート」の行で押さえる量を言う（隙間と書かない）',
-        /フローティングシート/.test(ui456.ds) && !/隙間|残り/.test(ui456.ds), ui456.ds);
-    rec('DS端の残りでは「埋め切れていない」の帯を出さない', !ui456.alert, String(ui456.alert));
+    rec('シートの側の端（既定OS端）の表は「フローティングシート」の行で押さえる量を言う（隙間と書かない）',
+        /フローティングシート/.test(ui456.ds) && !/隙間|残り/.test(ui456.ds) && !/フローティングシート/.test(ui456.other),
+        `${ui456.ds} ／ 反対 ${ui456.other}`);
+    rec('中心の欄は「どちらから測るか」を言い、端部の説明は基準面を言う（§9.461）',
+        /DSから/.test(ui456.unit) && /基準面はDS/.test(ui456.note) && /OS端はフローティングシート/.test(ui456.note),
+        `${ui456.unit} ／ ${ui456.note}`);
+    rec('シートの側の端の残りでは「埋め切れていない」の帯を出さない', !ui456.alert, String(ui456.alert));
     rec('断面図の突き合わせは、足りないぶんをフローティングシートと言う（差で出さない）',
         !/\(-/.test(ui456.len), ui456.len);
     await page.evaluate(() => { const el = document.querySelector('#bsCenter');
@@ -1371,8 +1452,26 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         + ` / light ${(lit.cutLit || []).map(n => Math.round(n)).join(',')}`);
     /* 有効幅の境目の青い印（§9.413 追補、利用者の指示「上下軸のend部分は青色で
        明示しているので3D断面も分かるようにして」）。模式図と**同じ色・同じ径**。 */
-    rec('断面図にも有効幅の境目の青い印がある（上下軸に1つずつ・両端）',
-        lit.endCaps === 4, `${lit.endCaps}個`);
+    /* **シートの側の端は青い印ではなくフローティングシート**（§9.459、利用者の指示「上下軸の
+       DSエンドを青のオブジェクトではなくフローティングシートを図面から3Dで再現」）。
+       青い印は基準面の端の上下軸に1つずつ（2個）、反対の端は図面の寸法の輪が上下軸に1つずつ。 */
+    rec('断面図の青い印は基準面の端だけ（上下軸に1つずつ・§9.459／§9.461）',
+        lit.endCaps === 2, `${lit.endCaps}個`);
+    const fs = lit.fseat || {};
+    const arbor = lit.pack ? lit.pack.arbor : 0;
+    rec('シートの側の端はフローティングシート（図面の寸法: Φ269・幅70・ピストン18本×上下・§9.459）',
+        fs.n === 2 && fs.od === 269 && fs.w === 70 && fs.pistons === 36, JSON.stringify(fs));
+    /* 押さえ板の面は**押さえている量だけ有効長の端より内側**（ピストンがそのぶん伸びる）。
+       押さえている量は刃組の内訳の「フローティングシート押さえ代」と同じ答え。 */
+    /* 置く端は**基準面の反対**（§9.461。既定はDS基準なのでOS端＝座標は−）。 */
+    rec('フローティングシートは基準面の反対の端（既定DS基準＝OS端・§9.461）', fs.side === 'OS',
+        String(fs.side));
+    rec('押さえ板の面は有効長の端から押さえている量だけ内側（上下とも・§9.459）',
+        arbor > 0 && (fs.faces || []).length === 2
+        && fs.faces.every((f, i) => Math.abs(Math.abs(f) - (arbor / 2 - fs.take[i])) < 0.002
+                                    && Math.sign(f) === (fs.side === 'DS' ? 1 : -1))
+        && fs.take.every(t => t >= 0 && t <= 0.95 + 1e-6),
+        `面 ${(fs.faces || []).join('/')}／押さえ ${(fs.take || []).join('/')}／有効長 ${arbor}`);
     /* 板と耳屑の札（§9.413 追補、利用者の指示「2Dの表示のようにラベルもほしい」）。
        **模式図と同じ数だけ**出る——並びは同じ `materialRun()` から作るので、
        数が食い違ったらどちらかが落としている。 */
@@ -1427,10 +1526,14 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         !!pk.pack && pk.pack.x0 >= -0.05 && pk.pack.x1 <= pk.pack.arbor + 0.05,
         pk.pack ? `${pk.pack.x0} 〜 ${pk.pack.x1} / 有効長 ${pk.pack.arbor}` : '読めない');
     /* 端まで使っていること（超えないだけでなく、余らせてもいない）。 */
-    rec('端から端が有効長ぶんある（端を余らせていない）',
-        !!pk.pack && pk.pack.x0 <= 0.6 && pk.pack.arbor - pk.pack.x1 <= 0.6,
-        pk.pack ? `左の空き ${pk.pack.x0} / 右の空き ${(pk.pack.arbor - pk.pack.x1).toFixed(3)}`
-                : '読めない');
+    /* **空いてよいのはフローティングシートの側の端だけ**（§9.461。既定のDS基準ならOS端）。
+       その端の空きはシートが押さえる量で、押さえ代（0.95）以内。基準面の側は空けない。 */
+    const fsSide = pk.fseat ? pk.fseat.side : 'OS';
+    const gapOS = pk.pack ? +pk.pack.x0 : 99, gapDS = pk.pack ? +(pk.pack.arbor - pk.pack.x1).toFixed(3) : 99;
+    rec('端から端が有効長ぶんある（空くのはシートの側の端だけ・押さえ代以内・§9.461）',
+        !!pk.pack && (fsSide === 'OS' ? gapOS <= 0.95 + 1e-6 && gapDS <= 0.6
+                                      : gapDS <= 0.95 + 1e-6 && gapOS <= 0.6),
+        `シート ${fsSide}／左(OS)の空き ${gapOS} / 右(DS)の空き ${gapDS}`);
     /* **上下の刃は刃の身のぶんすれ違う**（§9.419、利用者の指摘「上下の刃は刃厚分
        ズレてないと切れません」）。同じ切断の上刃と下刃は円周が食い違う（ラップ）
        ので、軸方向に刃厚ぶん離れていないと**円周でぶつかって切れない**。

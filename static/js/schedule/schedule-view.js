@@ -6667,7 +6667,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    line.className='sc-child-line'+(c.detail&&c.detail.__childMissing?' is-missing':'');
    line.dataset.id=c.id;
    const summary=childSummary(c);
-   const lotCell=`<span class="sc-child-lot" data-col="${esc(lotKey)}" title="${esc(c.lotNo||'')}">${esc(c.lotNo||'')}</span>`;
+   /* 子ロットのロット番号も同じボタン（§9.460）。 */
+   const lotCell=`<span class="sc-child-lot" data-col="${esc(lotKey)}" title="${esc(c.lotNo||'')}">`
+    +`${c.lotNo?WL.base.lotDspButtonHtml(c.lotNo,entryValueOf(c,'castingNo')):''}</span>`;
    const infoCell=n=>`<span class="sc-child-info" style="grid-column:span ${n}" title="${esc(summary)}">${esc(summary)}</span>`;
    let cells='';
    if(at<0){
@@ -7049,8 +7051,14 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      /* **元の値（式の結果）は`title`に残す**——読み替えで置き換わったことが
         読める（§9.94「切れたセルには生の値の`title`」と同じ約束）。 */
      return `<span class="sc-row-title sc-row-calc${dyn.color?' cell-'+dyn.color:''}" data-col="${esc(k)}" title="${esc(dyn.raw||dyn.text)}">${esc(dyn.text)}</span>`;
-    if(dyn.kind==='content')
-     return `<span class="sc-row-title${dyn.color?' cell-'+dyn.color:''}" data-col="${esc(k)}" data-content-col="${esc(k)}" title="${esc(dyn.raw||dyn.text)}">${esc(dyn.text)}</span>`;
+    if(dyn.kind==='content'){
+     /* **ロット番号はロット問い合わせ（LotDsp）を開くボタン**（§9.460、利用者の指示
+        「仕掛一覧と同じようにロット問い合わせを開けるように」）。字は読み替え・書式を
+        通した表示のまま、開くのは行のロット番号そのもの。作業の行だけ（停止・枠は題名）。 */
+     const lot=(k==='lotNo'&&e.kind==='作業')?String(e.lotNo||dyn.raw||''):'';
+     const inner=lot?WL.base.lotDspButtonHtml(lot,entryValueOf(e,'castingNo'),dyn.text):esc(dyn.text);
+     return `<span class="sc-row-title${dyn.color?' cell-'+dyn.color:''}" data-col="${esc(k)}" data-content-col="${esc(k)}" title="${esc(dyn.raw||dyn.text)}">${inner}</span>`;
+    }
     return `<span data-col="${esc(k)}"></span>`;
    };
    row.innerHTML=`

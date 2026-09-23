@@ -232,7 +232,8 @@ FINGER_DEF = TableDef(FINGER_TABLE, 'フィンガーID', FINGER_COLUMNS,
 STANDARD_TABLE = '刃組基準値マスタ'
 STANDARD_COLUMNS = (
     ('設備名', 'TEXT'),
-    ('アーバー有効長', 'REAL'), ('板の中心', 'REAL'), ('フローティングシート押さえ代', 'REAL'),
+    ('アーバー有効長', 'REAL'), ('基準面', 'TEXT'), ('板の中心', 'REAL'),
+    ('フローティングシート押さえ代', 'REAL'),
     ('軸外径', 'REAL'),
     ('スペーサー外径', 'REAL'), ('リング内径', 'REAL'),
     ('刃使用限界径', 'REAL'), ('研磨周期日', 'INTEGER'),
@@ -255,10 +256,15 @@ STANDARD_DEF = TableDef(STANDARD_TABLE, '刃組基準ID', STANDARD_COLUMNS,
 # **画面へ書き写さないこと**——`/api/bladeset/context` がそのまま届ける（§9.163）。
 STANDARD_DEFAULTS = {
     'arborLen': 1599.6,
-    # 板の中心（OS＝基準原点からの距離・§9.456、利用者の指示「中心位置をずらして
-    # 設定したい場合があるため、中心位置をOSからの距離として設定できるように」）。
+    # 基準面（基準原点・§9.461、利用者の指示「今はOSを基準面にDSにフローティングシート
+    # としていますが、逆にもできるように…デフォルトはDSを基準面にOSにフローティング
+    # シート」）。スペーサーは基準面の側へ押し付けて組み、反対の端をフローティング
+    # シートが押さえる。値は 'DS' か 'OS' の2つだけ（`datum_side()`が読み分ける）。
+    'datumSide': 'DS',
+    # 板の中心（**基準面からの距離**・§9.456／§9.461、利用者の指示「基準原点を変更したら、
+    # 中心位置の測り方も連動して変更」）。
     # **空（None）なら有効長の中央**——数を書き写すと、有効長を直したときに置き去りになる。
-    'centerFromOS': None,
+    'centerFromDatum': None,
     # フローティングシートの押さえ代（§9.457、利用者の回答と図面）。DS端はスペーサーを
     # 粗く積み、残りをこの量までフローティングシートが吸う。既定は図面の
     # 「F.P.ストローク 0.95mm×18本（1個所使用時）」——加圧ピストンのストローク 21mm は
@@ -291,7 +297,8 @@ STANDARD_DEFAULTS = {
 }
 # DBの列名 ↔ 画面の鍵。**対応はここだけ**（§9.324 R1 と同じ考え方）。
 _STANDARD_MAP = (
-    ('アーバー有効長', 'arborLen', 'num'), ('板の中心', 'centerFromOS', 'num'),
+    ('アーバー有効長', 'arborLen', 'num'), ('基準面', 'datumSide', 'side'),
+    ('板の中心', 'centerFromDatum', 'num'),
     ('フローティングシート押さえ代', 'floatSeatStroke', 'num'),
     ('軸外径', 'shaftDia', 'num'),
     ('スペーサー外径', 'spacerOD', 'num'), ('リング内径', 'ringBore', 'num'),
@@ -714,6 +721,8 @@ def _standard_row(d):
         v = d[col]
         if kind == 'int':
             out[key] = _int(v)
+        elif kind == 'side':
+            out[key] = datum_side(v, None)
         elif kind == 'flag':
             on = None if v is None else bool(v)
             out[key] = on
@@ -1081,6 +1090,8 @@ def standard_upsert(c, uid, equipment=None, values=None, note=None,
         v = src[key]
         if kind == 'flag':
             vals[col] = None if v in (None, '') else (-1 if _flagged(v) else 0)
+        elif kind == 'side':
+            vals[col] = datum_side(v, None)
         elif kind == 'int':
             vals[col] = _int(v)
         else:
@@ -1088,6 +1099,16 @@ def standard_upsert(c, uid, equipment=None, values=None, note=None,
     if note is not None:
         vals['備考'] = _txt(note) or None
     return _put(c, STANDARD_DEF, sid, vals, uid, eq)
+
+
+DATUM_SIDES = ('DS', 'OS')
+
+
+def datum_side(v, fallback='DS'):
+    """基準面の呼び名を 'DS'／'OS' へ（§9.461）。読めなければ`fallback`
+    （保存では None＝既定に従う）。**判定はここ1箇所**。"""
+    t = _txt(v).upper()
+    return t if t in DATUM_SIDES else fallback
 
 
 def _flagged(v):

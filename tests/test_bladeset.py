@@ -143,6 +143,19 @@ rec('あとから別の項目を足しても、前の上書きが消えない',
     bs.standard_for(c3, EQ)['values']['arborLen'] == 1600.0)
 rec('同じ設備の2行目を作らない', len(bs.standard_rows(c3, True, EQ)) == 1,
     str(len(bs.standard_rows(c3, True, EQ))))
+# 基準面（§9.461、利用者の指示「逆にもできるように…デフォルトはDSを基準面にOSに
+# フローティングシート」）。値は 'DS'／'OS' の2つだけ、読めない値は書かない（既定に従う）。
+rec('基準面の既定はDS（§9.461）', std['values']['datumSide'] == 'DS', str(std['values'].get('datumSide')))
+bs.standard_upsert(c3, 'u', equipment=EQ, values={'datumSide': 'os'})
+rec('基準面をOSへ切り替えられる（小文字でも読む）',
+    bs.standard_for(c3, EQ)['values']['datumSide'] == 'OS',
+    str(bs.standard_for(c3, EQ)['values']['datumSide']))
+bs.standard_upsert(c3, 'u', equipment=EQ, values={'datumSide': '中央'})
+rec('読めない基準面は空にする（既定のDSに従う）',
+    bs.standard_for(c3, EQ)['values']['datumSide'] == 'DS',
+    str(bs.standard_for(c3, EQ)['values']['datumSide']))
+rec('中心の鍵は「基準面から」の名前（OSから、の鍵は残さない）',
+    'centerFromDatum' in bs.STANDARD_DEFAULTS and 'centerFromOS' not in bs.STANDARD_DEFAULTS)
 bs.standard_delete(c3, srow['id'])
 rec('消すと既定値へ戻るだけ（画面は開ける）',
     bs.standard_for(c3, EQ)['values']['arborLen'] == bs.STANDARD_DEFAULTS['arborLen'])
