@@ -59,11 +59,15 @@
    .map(x => ({ size: num(x.size), qty: Math.max(0, num(x.qty) || 0),
                 minQty: num(x.minQty) || 0, use: x.use || '' }))
    .filter(x => x.size > 0);
-  const rings = (c.rings || [])
+  const ringAll = (c.rings || [])
    .map(x => ({ color: x.color || '', hex: x.hex || '', od: num(x.od),
                 bore: num(x.bore) || num(P.ringBore), width: num(x.width),
-                qty: Math.max(0, num(x.qty) || 0), minQty: num(x.minQty) || 0 }))
+                qty: Math.max(0, num(x.qty) || 0), minQty: num(x.minQty) || 0,
+                lube: !!x.lube }))
    .filter(x => x.od > 0 && x.width > 0);
+  /* **潤滑リングは同じ表の別の役目**（§9.455）。区間を埋めるゴムリングの候補に
+     混ぜると、幅10の潤滑リングが「ゴムリング10」として積まれてしまうので分ける。 */
+  const rings = ringAll.filter(x => !x.lube), lubes = ringAll.filter(x => x.lube);
   const fingers = (c.fingers || [])
    .map(x => ({ name: x.name || '', width: num(x.width),
                 qty: Math.max(0, num(x.qty) || 0), minQty: num(x.minQty) || 0,
@@ -83,7 +87,7 @@
      語彙を落としていたため、盤では当たるのにガイダンスでは一度も当たらない、
      という最も分かりにくい壊れ方をしていた（§9.306「サーバーが正しく答えても、
      画面が引かなければ何も変わらない」）。足した鍵はここにも書くこと。 */
-  return { P, spacers, rings, fingers, blades,
+  return { P, spacers, rings, lubes, fingers, blades,
            history: (c.history || []).slice(),
            designs: (c.designs || []).slice(),
            picks: (c.picks || []).slice(),
@@ -471,7 +475,7 @@
   let onCar = null;
   for (let i = 1; i < h.length; i++) if (h[i].carriage === st.carriage) { onCar = h[i]; break; }
   const at = (rec, kind, key) => ((rec && rec.detail && rec.detail[kind] && rec.detail[kind][key]) || 0);
-  const spacer = new Map(), ring = new Map(), finger = new Map();
+  const spacer = new Map(), ring = new Map(), finger = new Map(), lube = new Map();
   IX.spacerStock.forEach((x, sz) => {
    const total = x.qty, b = at(busy, 'spacer', sz), c = at(onCar, 'spacer', sz);
    spacer.set(sz, { total, busy: b, onCar: Math.min(c, Math.max(0, total - b)),
@@ -488,9 +492,18 @@
    finger.set(w.sz, { total, busy: b, onCar: Math.min(c, Math.max(0, total - b)),
                       free: Math.max(0, total - b) });
   });
+  /* 潤滑リング（§9.455）。数え方はゴムリングと同じ——稼働中の台車に載っている
+     ぶんは使えない。鍵は幅（記録の`detail.lube`と同じ）。 */
+  (M.lubes || []).forEach(x => {
+   const k = String(x.width), cur = lube.get(k);
+   const total = (cur ? cur.total : 0) + x.qty;
+   const b = at(busy, 'lube', k), c = at(onCar, 'lube', k);
+   lube.set(k, { total, busy: b, onCar: Math.min(c, Math.max(0, total - b)),
+                 free: Math.max(0, total - b) });
+  });
   const sig = [st.carriage, busy.at || '-', onCar ? onCar.at : '-',
                M.spacers.length, M.rings.length, M.fingers.length].join('|');
-  return { spacer, ring, finger, busy: h[0] || null, onCar, sig };
+  return { spacer, ring, finger, lube, busy: h[0] || null, onCar, sig };
  }
 
  /* 残っている部材から組み合わせ表を作る。顔ぶれ（使い切った寸法）が
@@ -584,12 +597,19 @@
  /* ゴムリングの組み方の決まり（§9.454）。**値は設備ごとの`刃組基準値`**
     （既定はサーバーの`STANDARD_DEFAULTS`）。読めない値は0——空きの帯を
     持たない・潤滑リングを入れない、に倒れる（勝手な数で埋めない・§9.231）。 */
- const RING_RULE_NONE = { gapMin: 0, gapMax: 0, lubeW: 0, lubeOd: 0, lubeBore: 0 };
+ const RING_RULE_NONE = { gapMin: 0, gapMax: 0, lubeW: 0, lubeOd: 0, lubeBore: 0,
+                          lubeHex: '', lubeColor: '', lubeQty: 0 };
+ /* 空きの帯は`刃組基準値`、**潤滑リングの寸法と在庫はゴムリングマスタの行**
+    （種類＝潤滑リング・§9.455）。行が複数あるときは**表の並びの先頭**（サーバーの
+    並べ方＝外径の大きい順）を使う——幅違いを混ぜて両端の2本が別の幅になるのを防ぐ。
+    行が無ければ幅0（入れない）で、`solve()`の`fit.lubeMissing`がそう言う。 */
  function ringRule(M) {
   const P = (M && M.P) || {}, v = k => Math.max(0, num(P[k]) || 0);
   const a = v('ringGapMin'), b = v('ringGapMax');
+  const L = ((M && M.lubes) || [])[0] || null;
   return { gapMin: Math.min(a, b || a), gapMax: Math.max(a, b),
-           lubeW: v('lubeWidth'), lubeOd: v('lubeOD'), lubeBore: v('lubeBore') };
+           lubeW: L ? L.width : 0, lubeOd: L ? L.od : 0, lubeBore: L ? L.bore : 0,
+           lubeHex: L ? L.hex : '', lubeColor: L ? L.color : '', lubeQty: L ? L.qty : 0 };
  }
  /* 空きが帯（下限〜上限）を外れた面。**1本も載らない面は別に数える**
     （`bareHold`）ので、ここでは言わない。 */
@@ -700,6 +720,14 @@
  const badgeLabel = i => (i < 26
   ? String.fromCharCode(65 + i)
   : String.fromCharCode(65 + Math.floor(i / 26) - 1) + String.fromCharCode(65 + i % 26));
+ /* **記号の色は文字ごとに1色**（§9.455、利用者の指示「A,B,C…のラベルを
+    アルファベットごとに色分けしてわかりやすく。普通に色分けしてほしい」）。
+    色の番号（`tone`）は**記号を振るときに一緒に振る**（`buildRows()`の1箇所）——
+    字面から推し量ると `OS` のような端部の札まで色が付く。表・模式図・断面図・
+    拡大図は同じ番号を`data-bc`で名乗り、色そのものはCSSのトークン
+    （`--bs-badge-0`〜）が持つ。色の数を超えたら同じ順でもう一度使う。
+    端部（OS／DS）は `tone` を持たない（中立の色）。 */
+ const BADGE_TONES = 8;
 
  /* 構成が同じ区間を1行にまとめる入れ物。本体の区間も端部も同じ手順でまとまる。 */
  function rowBucket() {
@@ -728,7 +756,7 @@
    });
   });
   const rows = bucket.rows();
-  rows.forEach((r, i) => { r.badge = badgeLabel(i); });
+  rows.forEach((r, i) => { r.badge = badgeLabel(i); r.tone = i % BADGE_TONES; });
   return rows;
  }
  /* 端部の行（本体と同じ作り方。上軸・下軸で同一なら1行に集約）。 */
@@ -896,6 +924,11 @@
   M.fingers.forEach(f => {
    if (f.minQty && f.qty < f.minQty) a.push({ kind: 'stock', text: `フィンガー${f.name}：在庫${f.qty}本` });
   });
+  (M.lubes || []).forEach(r => {
+   if (r.minQty && r.qty < r.minQty) {
+    a.push({ kind: 'stock', text: `潤滑リング${r.color}${r.od} 幅${r.width}：在庫${r.qty}本` });
+   }
+  });
   return a;
  }
 
@@ -925,6 +958,8 @@
    });
   });
   const fit = { spacerGap: bad, bareHold: bare, ringGap: ringGapFaces(zp, M),
+                /* ゴムリング方式なのに潤滑リングの行が無い（§9.455）——入れられない。 */
+                lubeMissing: !isFinger(st, M) && !!(M.rings || []).length && !(M.lubes || []).length,
                 holdName: holdName(st, M) };
   return { segs, A, zp, g, err, rows, ends, badges: badgeMap(rows.concat(ends)),
            fit, stop: stopReasons(st, A), contact: c, method: method(st), finger: isFinger(st, M),
@@ -1291,7 +1326,7 @@
   normalize, buildIndex, ringMeta, thOf, odFromTh, odOfType, ringType, oppBurr,
   method, isFinger, holdName, contact, recommend, syncOrder, reorder,
   buildSegs, widths, buildLayout, buildFiller, fillWith, planZones,
-  compose, buildRows, endRows, badgeMap, aggregate, assemblyError,
+  compose, buildRows, endRows, badgeMap, BADGE_TONES, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum, cutFace,
   stripDesign, designByParent, condOf, sameCond, seedFromCond,
   pickCtx, pickGroup, condHits, selectable,

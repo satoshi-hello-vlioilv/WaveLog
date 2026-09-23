@@ -13,6 +13,7 @@
 from flask import jsonify
 from ..common import api_guard
 from ...access_mode import request_user_id
+from ...flags import text_or
 from ...repositories import bladeset_repo as bs
 from ..body import body, any_
 from ._base import bp, _op_read
@@ -170,7 +171,9 @@ def _ring_save(x):
       od=x.get('od'), bore=x.get('bore'),
       width=x.get('width'), qty=x.get('qty'),
       min_qty=x.get('minQty'), note=x.get('note'),
-      order=x.get('order'), enabled=_enabled(x), ring_id=_rid(x))
+      order=x.get('order'), enabled=_enabled(x), ring_id=_rid(x),
+      # 種類（§9.455）。**呼び名（`lubeText`）を優先**し、送っていなければ触らない。
+      lube=bs.ring_is_lube(text_or(x, 'lube')))
   return rid, aligned
  rid, aligned = _op_read(fn)
  # **そろえた行があったら言う**（§CLAUDE 6。黙って他の行を書き換えない）。
@@ -182,7 +185,8 @@ def _ring_save(x):
 _RING_SPEC = {'id': any_, 'equipment': any_, 'color': any_, 'hex': any_,
               'od': any_, 'bore': any_, 'width': any_, 'qty': any_,
               'minQty': any_, 'note': any_, 'order': any_,
-              'enabled': any_, 'enabledText': any_}
+              'enabled': any_, 'enabledText': any_,
+              'lube': any_, 'lubeText': any_}
 
 
 @bp.post('/api/bladeset-ring-master')

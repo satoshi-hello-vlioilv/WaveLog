@@ -610,7 +610,8 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     const hi = await page.evaluate(() => {
      const g = document.querySelector('#bsStage .bs-bhit');
      const hit = g.querySelector('.bs-zhit'), bdg = g.querySelector('.bs-bdgr');
-     const off = { o: getComputedStyle(hit).fillOpacity, f: getComputedStyle(bdg).fill };
+     const off = { o: getComputedStyle(hit).fillOpacity, f: getComputedStyle(bdg).fill,
+                   sw: getComputedStyle(bdg).strokeWidth };
      g.classList.add('is-pick');
      return off;
     });
@@ -618,14 +619,19 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     const hiOn = await page.evaluate(() => {
      const g = document.querySelector('#bsStage .bs-bhit.is-pick');
      const hit = g.querySelector('.bs-zhit'), bdg = g.querySelector('.bs-bdgr');
-     const on = { o: getComputedStyle(hit).fillOpacity, f: getComputedStyle(bdg).fill };
+     const on = { o: getComputedStyle(hit).fillOpacity, f: getComputedStyle(bdg).fill,
+                  sw: getComputedStyle(bdg).strokeWidth };
      g.classList.remove('is-pick');
      return on;
     });
     rec('光ると図の面が塗られる（fill-opacity が動く。background では描かれない）',
         parseFloat(hiOn.o) > parseFloat(hi.o), `${hi.o}→${hiOn.o}`);
-    rec('光ると記号の塗りも変わる（色だけの違いに頼らない）',
-        hiOn.f !== hi.f, `${hi.f}→${hiOn.f}`);
+    /* **重ねても記号の色は変えない**（§9.455、利用者の指摘「マウスオーバーでまた
+       色の変化もあり、さらにわかりにくく」）。文字ごとの色が「どの組み方か」を
+       言っているので、重ねたことは縁の太さと大きさで言う。 */
+    rec('重ねても記号の塗りは変わらない（縁と大きさで言う・§9.455）',
+        hiOn.f === hi.f && parseFloat(hiOn.sw) > parseFloat(hi.sw),
+        `塗り ${hi.f}→${hiOn.f} ／ 縁 ${hi.sw}→${hiOn.sw}`);
 
     /* ---- 4.6) 区間の拡大と耳屑の幅（§9.413） ----
        利用者の指示①「2D表示は耳屑の計算幅の表示が欲しい」
@@ -828,19 +834,25 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         !!axPick.up && !!axPick.lo && axPick.up.got === 'up' && axPick.lo.got === 'lo'
         && axPick.up.zone !== axPick.lo.zone,
         JSON.stringify({ up: axPick.up, lo: axPick.lo, both: axPick.both }));
-    /* **記号の色を軸で分ける**（利用者の指示「アルファベットも少し色が
-       わかっていると違いが出てわかりやすい」）。押す前にどちらの図が出るかが
-       読める。字は同じまま——記号が指すのは「同じ組み方」だから。 */
+    /* **記号の色は文字ごとに1色**（§9.455、利用者の指示「アルファベットごとに
+       色分けしてわかりやすく」。§9.442 の「軸で色を分ける」は撤回）。
+       同じ文字は上軸・下軸・刃組表のどこでも同じ色、違う文字は違う色。 */
     const badgeCol = await page.evaluate(() => {
-     const at = ax => {
-      const g = document.querySelector(`#bsStage .bs-bhit[data-axis="${ax}"] .bs-bdgr`);
-      return g ? g.getAttribute('fill') : '';
-     };
-     return { up: at('up'), lo: at('lo') };
+     const by = {};
+     const put = (b, c) => { (by[b] = by[b] || new Set()).add(c); };
+     document.querySelectorAll('#bsStage .bs-bhit').forEach(g =>
+      put(g.dataset.badge, getComputedStyle(g.querySelector('.bs-bdgr')).fill));
+     document.querySelectorAll('#bsTables .bs-bdg').forEach(e =>
+      put(e.textContent.trim(), getComputedStyle(e).backgroundColor));
+     const ks = Object.keys(by);
+     const one = ks.filter(k => by[k].size === 1);
+     const firsts = one.map(k => [...by[k]][0]);
+     return { n: ks.length, one: one.length, uniq: new Set(firsts).size,
+              ex: ks.map(k => `${k}:${[...by[k]].join('|')}`).join(' ') };
     });
-    rec('記号は上軸と下軸で色が違う（§9.442）',
-        !!badgeCol.up && !!badgeCol.lo && badgeCol.up !== badgeCol.lo,
-        `上${badgeCol.up}／下${badgeCol.lo}`);
+    rec('記号は文字ごとに1色（上下・表で同じ／文字が違えば色も違う・§9.455）',
+        badgeCol.n >= 2 && badgeCol.one === badgeCol.n && badgeCol.uniq === badgeCol.n,
+        badgeCol.ex);
     /* **次の節が見る形へ戻してから渡す**（§9.394 と同じ作法）。この節は
        区間を押して回るので、閉じっぱなし・別の区間で開きっぱなしのまま
        進むと、次の「もう一度押すと閉じる」が成り立たない（実際に2件落ちた）。
@@ -1180,6 +1192,43 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         && !!tbl454.lubeDot && !tbl454.ringHex.includes(tbl454.lubeDot), JSON.stringify(tbl454));
     rec('クリアランスを丸めたら、使った値と指定の値を並べて言う',
         /四捨五入/.test(tbl454.clrFact) && /0\.125/.test(tbl454.clrFact), tbl454.clrFact);
+
+    /* ---- 潤滑リングはゴムリングマスタの行（§9.455、利用者の指示「ゴムリングマスタに
+       潤滑リングフラグを立てて、サイズや在庫数を決めるのと同じように」） ----
+       寸法も在庫も**その行**から引く。在庫が足りなければ所要で「足りない」と言い、
+       行が無ければ「入れられない」と言う（黙って入れない・入れたふりをしない）。 */
+    const lubeRow = async () => ((await getj('/api/bladeset/context?equipment=' + encodeURIComponent(EQ)))
+      .rings || []).find(x => x.lube);
+    const reopen = async () => {
+     await page.evaluate(eq => WL.bladeGuide.open({ equipment: eq }), EQ);
+     await W.paint(page);
+    };
+    const bomLube = () => page.evaluate(() => {
+     const g = [...document.querySelectorAll('#bsBom .bs-ng2')].find(e => /潤滑リング/.test(e.textContent));
+     const chip = g ? g.querySelector('.bs-nc') : null;
+     return { has: !!g, chip: chip ? chip.textContent : '', short: !!(chip && chip.classList.contains('is-ng')),
+              note: g ? g.textContent.replace(/\s+/g, ' ') : '',
+              alert: [...document.querySelectorAll('#bsTables .bs-alert')].some(a => /潤滑リングを入れられません/.test(a.textContent)),
+              col: !!document.querySelector('#bsTables .bs-lubeh') };
+    });
+    const L0 = await lubeRow();
+    rec('潤滑リングは初期セットの1行（ゴムリングマスタ・種類＝潤滑リング）が持つ',
+        !!L0 && L0.width === 10 && L0.od === 270 && L0.bore === 240, JSON.stringify(L0));
+    const b0 = await bomLube();
+    rec('所要に潤滑リングが出て、在庫が足りていれば赤くしない', b0.has && !b0.short, JSON.stringify(b0));
+    await post('/api/bladeset-ring-master/update', { id: L0.id, qty: 1 });
+    await reopen();
+    const b1 = await bomLube();
+    rec('潤滑リングの在庫が足りなければ所要で「足りない」と言う（ゴムリングと同じ数え方）',
+        b1.has && b1.short, JSON.stringify(b1));
+    await post('/api/bladeset-ring-master/update', { id: L0.id, lubeText: 'ゴムリング' });
+    await reopen();
+    const b2 = await bomLube();
+    rec('潤滑リングの行が無ければ「入れられない」と言い、表に列を立てない',
+        b2.alert && !b2.col, JSON.stringify(b2));
+    await post('/api/bladeset-ring-master/update', { id: L0.id, lubeText: '潤滑リング', qty: L0.qty });
+    await reopen();
+    rec('種類を潤滑リングへ戻すと、また入る', (await bomLube()).col, '');
 
     await page.click('[data-step-open="bsV3"]');
     const cut = await page.evaluate(() => {

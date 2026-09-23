@@ -706,7 +706,8 @@
     const r = (k > 0 && k < spans.length - 1) ? bmap[side][k] : null;
     /* **どちらの軸かも持って帰る**（§9.442）——記号の札は押すと拡大図が開く
        ので、軸を渡さないと下軸を押しても上軸の図が出る（模式図と同じ作法）。 */
-    if (r) zmk.push({ badge: String(r.badge), x0: off(a), x1: off(b), y, up: !!upper });
+    if (r) zmk.push({ badge: String(r.badge), x0: off(a), x1: off(b), y, up: !!upper,
+                      tone: Number.isInteger(r.tone) ? r.tone : null });
    });
    pos.forEach(x => out.knife.push({ x, y }));
   });
@@ -764,9 +765,11 @@
       色は模式図と同じトークン（紫）——ゴムリングの10色にもスペーサーの灰にも無い。 */
    if (out.lube.length) {
     const L0 = out.lube[0].lube;
+    /* 色はマスタの行（画面の色）で変わり得るので、**色を材質の名前に含める**
+       （材質は名前で使い回すので、同じ名前だと前の色が残る）。 */
+    const lc = cssColor('--bs-fig-lube', '#7150c4');
     put(out.lube.map(q => ({ x: q.x, y: q.y, len: q.sz - 1.0 })), L0.od / 2, L0.bore / 2,
-        skin(T, sh.ring, 'lube', { color: cssColor('--bs-fig-lube', '#7150c4'),
-                                    metalness: .02, roughness: .9 }));
+        skin(T, sh.ring, 'lube' + lc, { color: lc, metalness: .02, roughness: .9 }));
    }
   }
   if (blade) put(out.knife.map(q => ({ x: q.x, y: q.y, len: tk })), ctx.st.knife / 2, bore, blade);
@@ -1504,6 +1507,13 @@
     el.chip.dataset.axis = q.up ? 'up' : 'lo';
     el.chip.textContent = q.badge;
    }
+   /* 記号の色は文字ごと（§9.455）。札と区間の面が同じ番号を名乗る。 */
+   /* 変わったときだけ書く（毎フレーム書くと、そのたびに書式を計算し直す）。 */
+   const bc = q.tone == null ? '' : String(q.tone);
+   [el.box, el.chip].forEach(n => {
+    if ((n.dataset.bc || '') === bc) return;
+    if (bc) n.dataset.bc = bc; else delete n.dataset.bc;
+   });
    el.box.style.cssText =
      `left:${b.x.toFixed(1)}px;top:${b.y.toFixed(1)}px;`
    + `width:${b.w.toFixed(1)}px;height:${b.h.toFixed(1)}px`;

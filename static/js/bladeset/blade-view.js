@@ -61,7 +61,6 @@
     同じ作法）。ゴムリングの色だけは**マスタの値**なので、ここには入れない。 */
  const FIG_VARS = ['shaft', 'shaft-edge', 'cap', 'spacer', 'spacer-edge',
                    'filler', 'filler-edge', 'knife', 'knife-edge', 'badge',
-                   'badge-up', 'badge-lo',
                    'strip', 'strip-edge', 'scrap', 'scrap-edge', 'trim',
                    'trim-edge', 'finger', 'lube', 'lube-edge', 'label', 'ink', 'sheen',
                    'lead0', 'lead1', 'lead2',
@@ -676,6 +675,11 @@
   /* **組めない材料では図も表も描かない**（§9.454）。負の耳のまま描くと、
      板だけが横へずれた「組めた顔の図」になる（実測 matOff 523.95）。
      理由と直す場所は刃組表の場所に出す——いちばん先に読む場所なので。 */
+  /* 潤滑リングの色（§9.455）。**行に「画面の色」があればそれ**、無ければトークン
+     （紫）。器に1回だけ当てるので、表の色見本・模式図・拡大図・断面図が同じ色を読む。 */
+  const lhex = BS().ringRule(M).lubeHex;
+  if (lhex) panel.style.setProperty('--bs-fig-lube', lhex);
+  else panel.style.removeProperty('--bs-fig-lube');
   const stop = res.stop || [];
   panel.classList.toggle('is-stop', stop.length > 0);
   if (stop.length) { renderStop(res); return; }
@@ -1234,6 +1238,13 @@
   return Number.isFinite(m) ? m : 0;
  }
 
+ /* 記号の色の番号（§9.455）。答えは`blade-core`の`buildRows()`が振った`tone`
+    ——ここは名乗らせるだけ。端部の行は持たない（中立の色）。 */
+ const bcAttr = r => (r && Number.isInteger(r.tone) ? ` data-bc="${r.tone}"` : '');
+ const setBc = (el, r) => {
+  if (!el) return;
+  if (r && Number.isInteger(r.tone)) el.dataset.bc = String(r.tone); else delete el.dataset.bc;
+ };
  function drawBadges(V, A, bmap) {
   const half = V.dir * V.kw / 2;
   const zoneX = (upper, k) => {
@@ -1276,13 +1287,13 @@
        下軸は下の図を選ぶようにしてほしい」）。同じ記号は上下の両方に出るので、
        軸を渡さないと拡大図が`r.zones[0]`＝先に来たほうで開き、
        **下軸を押したのに上軸の図**が出ていた。
-       記号の色も軸で分ける——押す前にどちらの図が出るかが読める。 */
-    const badgeFill = (upper ? V.PAL['badge-up'] : V.PAL['badge-lo']) || V.PAL.badge;
-    o += `<g class="bs-bhit" data-badge="${esc(r.badge)}" data-axis="${side}">`
+       **色は文字ごと**（§9.455。§9.442 の「軸で色を分ける」は撤回）——軸は
+       上下の位置が言う。塗りはCSSが`data-bc`から引く（重ねても変えない）。 */
+    o += `<g class="bs-bhit" data-badge="${esc(r.badge)}" data-axis="${side}"${bcAttr(r)}>`
      + `<rect class="bs-zhit" x="${a.toFixed(1)}" y="${(cy - H / 2).toFixed(1)}"`
      + ` width="${Math.max(1, b - a).toFixed(1)}" height="${H.toFixed(1)}"/>`
      + `<rect class="bs-bdgr" x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}"`
-     + ` rx="${(h * 0.28).toFixed(1)}" fill="${badgeFill}" stroke="#fff" stroke-width="1.2"/>`
+     + ` rx="${(h * 0.28).toFixed(1)}" stroke="#fff" stroke-width="1.2"/>`
      + `<text x="${cx}" y="${cy + fs * 0.36}" text-anchor="middle" font-size="${fs.toFixed(1)}"`
      + ` font-weight="800" fill="#fff">${r.badge}</text></g>`;
    }
@@ -2071,6 +2082,7 @@
   zoomBadge = String(badge);
   zoomAxis = ax || '';
   $('#bsZoomBadge').textContent = r.badge;
+  setBc($('#bsZoomBadge'), r);
   $('#bsZoomTitle').textContent = r.end
    ? `${r.name}の組み合わせ`
    : `ロット ${r.sg.lot}／条幅 ${(+r.sg.w).toFixed(2)} mm`;
@@ -2136,6 +2148,12 @@
    o += `<div class="bs-alert is-bad"><b>スペーサーで埋め切れていない区間が ${gap.length}面あります</b><br>`
      + '組んだものはOS側へ押し付けて組むので、ここは 0 でなければなりません（計算の不具合です）。<br>'
      + `${esc(cut(gap, 8))}</div>`;
+  }
+  /* 潤滑リングの行が無い（§9.455）。**入れられないことを言い、足す場所を言う**。 */
+  if (f.lubeMissing) {
+   o += '<div class="bs-alert is-warn"><b>潤滑リングを入れられません</b><br>'
+     + 'ゴムリングマスタに、種類が「潤滑リング」の行がありません。'
+     + '「マスタ管理 &gt; 刃組 &gt; ゴムリング」で、種類を「潤滑リング」にした行（幅・外径・内径・本数）を足してください。</div>';
   }
   const rg = f.ringGap || [];
   if (rg.length) {
@@ -2211,7 +2229,7 @@
     + `<b>${r.sg.type === 'strip' ? `<span class="bs-lno">${(r.sg.lotIx | 0) + 1}</span>` : ''}${esc(k)}</b>`
     + `<span class="bs-gw">${r.sg.w.toFixed(2)}</span>`
     + (r.sg.flip ? '<span class="bs-gw is-flip">反転巻き</span>' : '') + '</td>';
-   return `<tr data-badge="${esc(r.badge)}">${head0}`
+   return `<tr data-badge="${esc(r.badge)}"${bcAttr(r)}>${head0}`
     + `<td class="bs-bd"><span class="bs-bdg">${r.badge}</span></td>`
     + usesCell(r, 'up', true) + usesCell(r, 'lo')
     + `<td class="bs-num bs-sep bs-kgap" title="この区間の刃どうしの寸法。`
@@ -2410,12 +2428,16 @@
     }));
    }).join('');
    if (!ods.length) html += needGroup('ゴムリング', [], 'この設備のゴムリングが登録されていません');
-   /* 潤滑リング（§9.454）。**在庫のマスタは持たない**ので、本数だけを言い
-      「使える数」は出さない（持っていない数と比べて足りないと言わない）。 */
+   /* 潤滑リング（§9.455）。在庫は**ゴムリングマスタの潤滑リングの行**が持つので、
+      ゴムリングと同じく「使える数」と比べる（稼働中の台車に載っているぶんは引く）。 */
    const lb = g.lube || {};
    if (lb.u + lb.l > 0) {
+    const x = g.plan.lube && g.plan.lube.get(String(lb.w));
     html += needGroup(`<span class="bs-lubedot"></span>潤滑リング`,
-     [needChip(`幅${lb.w}`, lb.u, lb.l, null)], `Φ${lb.od}/Φ${lb.bore}（在庫は数えていません）`);
+     [needChip(`幅${lb.w}`, lb.u, lb.l, x ? x.free : 0)], `Φ${lb.od}/Φ${lb.bore}`);
+   } else if (res.fit && res.fit.lubeMissing) {
+    html += needGroup('<span class="bs-lubedot"></span>潤滑リング', [],
+     'ゴムリングマスタに潤滑リングの行がありません');
    }
   }
   $('#bsBom').innerHTML = html;
@@ -2515,6 +2537,7 @@
    spacer: k => { const x = plan.spacer.get(+k); return x ? x.free : 0; },
    ring: k => { const x = plan.ring.get(String(k)); return x ? x.free : 0; },
    finger: k => { const x = plan.finger.get(+k); return x ? x.free : 0; },
+   lube: k => { const x = plan.lube && plan.lube.get(String(k)); return x ? x.free : 0; },
    blade: k => {
     const [dia, tk] = String(k).split('|');
     const x = M.blades.find(y => y.currentDia !== null && Math.abs(y.currentDia - +dia) < 0.05
@@ -2548,7 +2571,7 @@
    diffRows('フィンガー', cur.finger, base && base.finger, shelf.finger),
    /* 潤滑リング（§9.454）。在庫を持たないので棚の数は出さない（`null`）。
       古い記録には鍵が無い——無いものは0本として比べる。 */
-   diffRows('潤滑リング', cur.lube || {}, base && (base.lube || {}), null,
+   diffRows('潤滑リング', cur.lube || {}, base && (base.lube || {}), shelf.lube,
             k => `幅 ${esc(k)}`),
    diffRows('刃', cur.blade, base && base.blade, shelf.blade, k => {
     const [dia, tk] = String(k).split('|');

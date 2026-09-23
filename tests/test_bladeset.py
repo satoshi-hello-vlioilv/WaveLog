@@ -157,8 +157,30 @@ c4 = fresh()
 first = bs.seed_standard_parts(c4, 'u', EQ)
 rec('初期セットが4種そろって入る',
     first['blade'] and first['spacer'] and first['ring'] and first['finger'], str(first))
-rec('ゴムリングは色×幅で数える',
-    first['ring'] == len(bs.RING_COLOR_CYCLE) * len(bs.SEED_RING_WIDTHS), str(first['ring']))
+# ゴムリングは色×幅、**潤滑リングは1行**（§9.455。同じ表の、種類が違う行）。
+rec('ゴムリングは色×幅で数える（＋潤滑リング1行）',
+    first['ring'] == len(bs.RING_COLOR_CYCLE) * len(bs.SEED_RING_WIDTHS) + 1, str(first['ring']))
+lubes4 = [x for x in bs.ring_rows(c4, True, EQ) if x['lube']]
+rec('初期セットの潤滑リングは幅10・外径270・内径240（利用者の指示の寸法）',
+    len(lubes4) == 1 and (lubes4[0]['width'], lubes4[0]['od'], lubes4[0]['bore']) == (10.0, 270.0, 240.0)
+    and lubes4[0]['lubeText'] == bs.RING_KIND_LUBE, str(lubes4))
+rec('潤滑リングには外径の色の周期を当てない（画面の色は空＝紫のトークン）',
+    lubes4 and lubes4[0]['hex'] == '', str(lubes4[0]['hex'] if lubes4 else None))
+# ---- 種類（§9.455）: 画面の呼び名で書ける・送らなければ触らない ----
+lid, _c, _a = bs.ring_upsert(c4, 'u', equipment=EQ, color='潤滑B', od=268, bore=240,
+                             width=12, qty=5, lube=bs.ring_is_lube('潤滑リング'))
+got = [x for x in bs.ring_rows(c4, True, EQ) if x['id'] == lid][0]
+rec('種類「潤滑リング」で書いた行は潤滑リングとして読める', got['lube'] is True, str(got))
+bs.ring_upsert(c4, 'u', ring_id=lid, qty=6, lube=bs.ring_is_lube(None))
+got = [x for x in bs.ring_rows(c4, True, EQ) if x['id'] == lid][0]
+rec('種類を送らない更新では種類を変えない', got['lube'] is True and got['qty'] == 6, str(got))
+bs.ring_upsert(c4, 'u', ring_id=lid, lube=bs.ring_is_lube('ゴムリング'))
+got = [x for x in bs.ring_rows(c4, True, EQ) if x['id'] == lid][0]
+rec('種類「ゴムリング」へ戻せる', got['lube'] is False and got['lubeText'] == bs.RING_KIND_RUBBER, str(got))
+bs.ring_delete(c4, lid)
+rec('潤滑リングの寸法は刃組基準値に置かない（置き場は1つ）',
+    not any(k in bs.STANDARD_DEFAULTS for k in ('lubeWidth', 'lubeOD', 'lubeBore')),
+    str([k for k in bs.STANDARD_DEFAULTS if k.startswith('lube')]))
 before = len(bs.spacer_rows(c4, True, EQ))
 again = bs.seed_standard_parts(c4, 'u', EQ)
 rec('2度押しても増えない', sum(again.values()) == 0

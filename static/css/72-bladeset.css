@@ -39,14 +39,21 @@
   --bs-fig-knife:var(--nav);
   --bs-fig-knife-edge:var(--nav);
   --bs-fig-badge:var(--rs-slate);
-  /* 記号は**どちらの軸か**でも色を分ける（§9.442、利用者の指示「アルファベットも
-     少し色がわかっていると違いが出てわかりやすい」）。押した記号の軸で拡大図が
-     変わるので、**押す前にどちらの図が出るか**が色から読める。
-     字は同じまま——記号が指すのは「同じ組み方」で、軸はその置き場所だから
-     （状態を色だけで語らない・§CLAUDE 3。軸は位置と刃組表の列がすでに言う）。
-     色リテラルを増やさない（§9.350）——既存の族のトークンから選ぶ。 */
-  --bs-fig-badge-up:var(--rs-indigo);
-  --bs-fig-badge-lo:var(--rs-cyan);
+  /* **記号（A・B・C…）は文字ごとに1色**（§9.455、利用者の指示「アルファベット
+     ごとに色分けしてわかりやすく。普通に色分けしてほしい」。§9.442 の「軸で色を
+     分ける」は撤回——同じ A が上下で別の色になり、縞の模様に見えていた）。
+     表・模式図・断面図・拡大図は同じ番号（`data-bc`＝`blade-core`の`tone`）を名乗り、
+     色はここの8色だけが持つ。**白抜きの字が読める濃さ**（白との比 5.0〜8.0）で、
+     隣り合う記号の色相が離れる順に並べる。紫は潤滑リングの色なので使わない。
+     9つ目からは同じ順でもう一度使う（字は違うので取り違えない）。 */
+  --bs-badge-0:var(--rs-blue);
+  --bs-badge-1:var(--look-red);
+  --bs-badge-2:var(--rs-lime);
+  --bs-badge-3:var(--rs-yellow);
+  --bs-badge-4:var(--rs-cyan);
+  --bs-badge-5:var(--rs-pink);
+  --bs-badge-6:var(--rs-brown);
+  --bs-badge-7:var(--rs-slate);
   --bs-fig-strip:var(--line);
   --bs-fig-strip-edge:var(--teal);
   --bs-fig-scrap:var(--rs-brown-border);
@@ -385,20 +392,19 @@ body.bs-mode .bs-shell{display:flex}
   background:transparent;border:1.6px solid transparent;
   transition:background .12s,border-color .12s}
 .bs-t3z[hidden]{display:none}
-.bs-t3z.is-pick{background:color-mix(in srgb,var(--teal) 16%,transparent);
-  border-color:var(--teal-dark)}
+.bs-t3z.is-pick{background:color-mix(in srgb,var(--bs-bc,var(--teal)) 16%,transparent);
+  border-color:var(--bs-bc,var(--teal-dark))}
 /* 記号の札は刃組表の記号（`.bs-bdg`）と**同じ形・同じ色**。図と表で同じ物を
    同じ顔で出す。押すと拡大図が開くので、重ねた時点で指を出す（`.bs-bhit`）。 */
 .bs-t3b{position:absolute;transform:translate(-50%,-50%);display:grid;place-items:center;
   min-width:1.7em;height:1.7em;padding:0 3px;border-radius:var(--radius-xs);
-  background:var(--bs-fig-badge);color:#fff;font-weight:800;line-height:1;
-  border:1.2px solid var(--surface);transition:background .12s,transform .12s}
-/* **軸で色を分ける**（§9.442）。押した記号の軸で拡大図が変わるので、
-   押す前にどちらの図が出るかが色から読める（字は同じまま）。 */
-.bs-t3b[data-axis="up"]{background:var(--bs-fig-badge-up)}
-.bs-t3b[data-axis="lo"]{background:var(--bs-fig-badge-lo)}
+  background:var(--bs-bc,var(--bs-fig-badge));color:#fff;font-weight:800;line-height:1;
+  border:1.2px solid var(--surface);transition:transform .12s}
 .bs-t3b[hidden]{display:none}
-.bs-t3b.is-pick{background:var(--teal-dark);transform:translate(-50%,-50%) scale(1.14)}
+/* 重ねたときは**色を変えない**（§9.455、利用者の指摘「マウスオーバーでまた色の
+   変化もあり、さらにわかりにくく」）。大きさと、同じ色の外輪で言う。 */
+.bs-t3b.is-pick{transform:translate(-50%,-50%) scale(1.14);
+  box-shadow:0 0 0 2px var(--surface),0 0 0 3.5px var(--bs-bc,var(--bs-fig-badge))}
 /* 寸法の突き合わせ（§9.418 追補）。図の読み方（`bs-o3`）と同じ見た目で、
    段だけ分ける——どちらも図の上に載る添え書き。 */
 .bs-len3[hidden]{display:none}
@@ -520,8 +526,6 @@ body.bs-mode .bs-shell{display:flex}
 .bs-lno{display:inline-grid;place-items:center;width:1.3em;height:1.3em;
   border-radius:var(--radius-round);background:var(--rs-slate);color:#fff;
   font-size:var(--fs-tiny);margin-inline-end:4px}
-.bs-bdg{display:inline-block;background:var(--rs-slate);color:#fff;font-weight:800;
-  border-radius:var(--radius-xs);padding:0 var(--space-1);font-size:var(--fs-micro)}
 .bs-bt{display:inline-block;border-radius:var(--radius-xs);padding:0 3px;
   font-size:var(--fs-tiny);font-weight:700;margin-inline-end:2px}
 .bs-bt.is-down{background:var(--rs-blue-bg);color:var(--rs-blue)}
@@ -626,7 +630,7 @@ body.bs-mode .bs-shell{display:flex}
 /* **的と強調はこの1枚**（§9.386）。区間ぜんたいを覆う板で、ふつうは透明。
    `pointer-events:all` は「塗っていなくても的になる」の意で、これが無いと
    透明な板は素通りする。 */
-.bs-zhit{fill:var(--teal);fill-opacity:0;stroke:var(--teal-dark);stroke-width:0;
+.bs-zhit{fill:var(--bs-bc,var(--teal));fill-opacity:0;stroke:var(--bs-bc,var(--teal-dark));stroke-width:0;
   pointer-events:all;transition:fill-opacity .12s,stroke-width .12s}
 /* **押せるものには指を出す**（§9.385 の裏返し）。区間は押すと拡大図が開く
    （§9.413）ので、重ねた時点でそれが分かるようにする。 */
@@ -636,19 +640,31 @@ body.bs-mode .bs-shell{display:flex}
    描かないので**図側は1pxも変わっていなかった**（実測: `fill` は
    `rgb(65,83,92)` のまま）。塗りは `fill`、縁は `stroke`。 */
 .bs-bhit.is-pick .bs-zhit{fill-opacity:.16;stroke-width:1.6}
-.bs-bdgr{transition:fill .12s,stroke-width .12s}
-.bs-bhit.is-pick .bs-bdgr{fill:var(--teal-dark);stroke-width:2.2}
+.bs-bdgr{fill:var(--bs-bc,var(--bs-fig-badge));transition:transform .12s;
+  transform-box:fill-box;transform-origin:center}
+/* 重ねても**塗りは変えない**（§9.455）。大きさで言う（断面図の札と同じ）。 */
+.bs-bhit.is-pick .bs-bdgr{transform:scale(1.14);stroke-width:2.2}
 /* 表の側も「どの行か」を面だけでなく**印**で言う（面だけだと、淡い地の
    行が並ぶ中で境目が読めない）。印は**全行が持つ記号のセル**（`.bs-bd`）へ
    ——`td:first-child` は区分が `rowspan` で束ねるので、行によって別のセルに
    なる（群の2行目以降は記号のセルが先頭になる）。
-   記号そのものも図と**同じ色**へ替える。図と表で見た目の言葉をそろえると、
-   どちらを見ていても同じものだと分かる。 */
+   記号そのものの色は**変えない**（§9.455）——文字ごとの色が「どの組み方か」を
+   言っているので、重ねたことは同じ色の外輪で言う。 */
 .bs-g tr[data-badge]:hover>td{background:var(--pale)}
-.bs-g tr.is-pick>td.bs-bd{box-shadow:inset 3px 0 0 var(--teal-dark)}
-.bs-g tr.is-pick .bs-bdg{background:var(--teal-dark)}
+.bs-g tr.is-pick>td.bs-bd{box-shadow:inset 3px 0 0 var(--bs-bc,var(--teal-dark))}
+.bs-g tr.is-pick .bs-bdg{box-shadow:0 0 0 2px var(--surface),0 0 0 3.5px var(--bs-bc,var(--bs-fig-badge))}
 .bs-bdg{display:inline-grid;place-items:center;min-width:1.5em;padding:0 3px;
-  border-radius:var(--radius-xs);background:var(--bs-fig-badge);color:#fff;font-weight:800}
+  border-radius:var(--radius-xs);background:var(--bs-bc,var(--bs-fig-badge));color:#fff;font-weight:800}
+/* 記号の色の番号（§9.455）。**付ける先は記号を名乗る器**（`data-bc`）で、中の札も
+   表の行もこの1つの変数を読む。 */
+[data-bc="0"]{--bs-bc:var(--bs-badge-0)}
+[data-bc="1"]{--bs-bc:var(--bs-badge-1)}
+[data-bc="2"]{--bs-bc:var(--bs-badge-2)}
+[data-bc="3"]{--bs-bc:var(--bs-badge-3)}
+[data-bc="4"]{--bs-bc:var(--bs-badge-4)}
+[data-bc="5"]{--bs-bc:var(--bs-badge-5)}
+[data-bc="6"]{--bs-bc:var(--bs-badge-6)}
+[data-bc="7"]{--bs-bc:var(--bs-badge-7)}
 .bs-rchip{display:inline-grid;place-items:center;width:1.2em;height:1.2em;
   border-radius:var(--radius-round);color:#fff;font-size:var(--fs-tiny);font-weight:700;
   border:1px solid var(--line);background:var(--bs-dot,transparent)}
@@ -827,7 +843,7 @@ body.bs-mode .bs-shell{display:flex}
   cursor:move;touch-action:none;user-select:none}
 .bs-zoom.is-dragging{box-shadow:var(--shadow-pop),0 0 0 2px var(--teal)}
 .bs-zoom-bd{display:inline-grid;place-items:center;min-width:1.8em;height:1.8em;padding:0 4px;
-  border-radius:var(--radius-xs);background:var(--teal-dark);color:#fff;
+  border-radius:var(--radius-xs);background:var(--bs-bc,var(--bs-fig-badge));color:#fff;
   font-size:var(--fs-title);font-weight:800}
 .bs-zoom-tx{display:flex;flex-direction:column;line-height:1.25;min-width:0}
 .bs-zoom-tx b{font-size:var(--fs-base-sm);font-weight:700;color:var(--ink)}
