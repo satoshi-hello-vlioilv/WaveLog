@@ -194,19 +194,23 @@ run('test_lotcopy: ICASコピー（§9.368）', async ({page,rec,errs})=>{
    window.open=(u,...a)=>{opened.push(String(u));return null};
    try{
     const cells=ids.map(id=>document.querySelector(`.sc-row-line[data-id="${id}"] [data-col="lotNo"]`));
-    const btns=cells.map(c=>c&&c.querySelector('.lot-dsp-link'));
+    const btns=cells.map(c=>c&&c.querySelector('[data-lot-dsp]'));
     const row=document.querySelector(`.sc-row-line[data-id="${ids[1]}"]`);
     const h0=row?row.getBoundingClientRect().height:0;
     if(btns[1])btns[1].click();
     return {cells:cells.filter(Boolean).length,btns:btns.filter(Boolean).length,
-            lots:btns.map(b=>b?b.dataset.lot:''),opened,
+            lots:btns.map(b=>b?b.dataset.lotDsp:''),opened,
+            /* **字そのものは押す形にしない**（ダブルクリックは測定を開く的・§9.377）。 */
+            textInBtn:btns.filter(b=>b&&b.textContent.indexOf(b.dataset.lotDsp)>=0).length,
             picked:!!(row&&row.classList.contains('is-picked')),
             h0,h:row?row.getBoundingClientRect().height:0,
             other:[...document.querySelectorAll('.sc-row-line .sc-row-title')].length};
    }finally{window.open=keep}
   },made);
-  rec('作業スケジュール一覧のロット番号は押せる（LotDspを開くボタン・3/3・§9.460）',
-      dsp.cells===3&&dsp.btns===3, `セル${dsp.cells}／ボタン${dsp.btns}`);
+  rec('作業スケジュール一覧のロット番号の横にLotDspの的がある（3/3・§9.460）',
+      dsp.cells===3&&dsp.btns===3, `セル${dsp.cells}／的${dsp.btns}`);
+  rec('ロット番号の字そのものは押す形にしない（ダブルクリックは測定を開く・§9.460）',
+      dsp.textInBtn===0, `字を含む的 ${dsp.textInBtn}`);
   /* LotDspの鍵はロット番号を**7文字**で切る決まり（`lotDspLinkKey`）。この網の材料は
      8文字以上なので、行を取り違えていないことはボタンが名乗るロットで見る。 */
   rec('押すと**その行の**ロット番号でLotDspを開く（§9.460）',

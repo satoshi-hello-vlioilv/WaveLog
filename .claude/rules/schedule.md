@@ -10,7 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
-| ロット番号は**LotDspを開くボタン**（`WL.base.lotDspButtonHtml()`）。ボタンが`data-lot`を名乗り、道は`base.js`の1本 | `test_lotcopy.js` | [§9.460](../../docs/decisions/9.460.md) |
+| ロット番号の**横に**LotDspの的（字は押す形にしない）。的が`data-lot-dsp`を名乗り、道は`base.js`の1本 | `test_lotcopy.js`・`test_screport.js` | [§9.460](../../docs/decisions/9.460.md) |
 | 追加は**操作に身元（`操作ID`）を持たせ、同じ身元は2回適用しない**（再送は止めない） | `test_plandup.js` | [§9.438](../../docs/decisions/9.438.md) |
 | 行間の差し込みの札が書くのは**「どこへ入るか」だけ**。何ができるかは線の`title`と`#scSplitHint`が持つ | `test_scinsert.js` | [§9.439](../../docs/decisions/9.439.md) |
 | 札は**当たり判定を持たない**（押せるのは線だけ）。押せる箱を2つ重ねると下の行のボタンを食う | `test_scinsert.js` | [§9.439](../../docs/decisions/9.439.md) |

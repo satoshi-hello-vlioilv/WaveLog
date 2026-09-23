@@ -181,17 +181,17 @@ function openLotDsp(lotNo,castingNo,tab){
  window.open(buildLotDspUrl(lotNo,castingNo,tab),'_blank','noopener');
  copyText(lotNo);
 }
-/* 行の中に置くロット№のボタン（§9.460）。**自分のロットを名乗る**（`data-lot`／
-   `data-cast`）ので、押したときの道は下の1本で済む——行ごとに配線しない。 */
-function lotDspButtonHtml(lotNo,castingNo,text){
- return `<button type="button" class="lot-dsp-link grid-lot-link" data-lot="${esc(lotNo)}"`
-  +` data-cast="${esc(castingNo||'')}" title="${esc(lotNo)} ／ クリックでLotDspをこのロット番号で開きます">`
-  +`${esc(text==null?lotNo:text)}</button>`;
+/* 行の中に置くLotDspの的（§9.460）が名乗る属性。**的が自分のロットを名乗る**
+   （`data-lot-dsp`／`data-cast`）ので、押したときの道は下の1本で済む——行ごとに配線しない。
+   的の形（字そのもの／横の小さな的）は置く画面が決める。 */
+function lotDspAttrs(lotNo,castingNo){
+ return ` data-lot-dsp="${esc(lotNo)}" data-cast="${esc(castingNo||'')}"`
+  +` title="${esc(lotNo)} ／ クリックでロット問い合わせ（LotDsp）をこのロット番号で開きます"`;
 }
 document.addEventListener('click',e=>{
- const link=e.target.closest('.lot-dsp-link');if(!link)return;
- /* 名乗っているボタンはそのロット、名乗らないボタン（測定画面の見出し）は測定中のロット。 */
- if(link.dataset.lot!==undefined){openLotDsp(link.dataset.lot,link.dataset.cast,WL.lotDspTab.get());return}
+ const link=e.target.closest('.lot-dsp-link,[data-lot-dsp]');if(!link)return;
+ /* 名乗っている的はそのロット、名乗らないボタン（測定画面の見出し）は測定中のロット。 */
+ if(link.dataset.lotDsp!==undefined){openLotDsp(link.dataset.lotDsp,link.dataset.cast,WL.lotDspTab.get());return}
  openLotDsp(S.measure?.basic?.lotNo,S.measure?.basic?.castingNo,WL.lotDspTab.get());
 });
 /* 段階的開示(.disclosure)の共通トグル。品質データ分析(qa-acc)で確立した
@@ -2652,7 +2652,7 @@ Object.assign(window.WL,{registerView,enterView,withInternalDbSwitch,isInternalD
    ここに載せていない名前（131のうち約80）は、このファイルの中だけのもの。
    ============================================================ */
 window.$=$;window.esc=esc;window.S=S;window.api=api;window.showToast=showToast;window.markDirty=markDirty;window.confirmModal=confirmModal;window.alertModal=alertModal;window.promptModal=promptModal;window.pick=pick;window.setState=setState;window.withUserId=withUserId;window.currentConfiguredEquipment=currentConfiguredEquipment;window.fmtDim=fmtDim;window.lengthIndex=lengthIndex;window.fixedToleranceValue=fixedToleranceValue;window.currentUserId=currentUserId;window.normalizedFieldName=normalizedFieldName;
-WL.base={normalizedLot,durationMs,statusLabel,statusClass,statusShortLabel,aliases,databaseLabel,designCourseValue,actualCourseValue,residualCourseValue,equipmentIsInDesignCourse,escClosesModal,fetchWhoami,fieldFromRows,fixedMeasurementValue,formatDuration,lotKey,measurementDigits,nextPaint,normalizeCourseText,noteMeasureDevice,openLotDsp,lotDspButtonHtml,optionFill,qualityText,setActiveNav,setHeaderContext,setUserId,sourceField,sourceValue,toHalfWidth,ttlCache,widthSequence,bindTabs,
+WL.base={normalizedLot,durationMs,statusLabel,statusClass,statusShortLabel,aliases,databaseLabel,designCourseValue,actualCourseValue,residualCourseValue,equipmentIsInDesignCourse,escClosesModal,fetchWhoami,fieldFromRows,fixedMeasurementValue,formatDuration,lotKey,measurementDigits,nextPaint,normalizeCourseText,noteMeasureDevice,openLotDsp,lotDspAttrs,optionFill,qualityText,setActiveNav,setHeaderContext,setUserId,sourceField,sourceValue,toHalfWidth,ttlCache,widthSequence,bindTabs,
  LENGTH_SLOTS,
  /* `let` の入れ物は **getter** で載せる（値で載せると古い物が固定される）。
     `measureDirty` は外からも倒す（`records-store` が保存し終えて false に

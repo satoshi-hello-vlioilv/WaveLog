@@ -2532,7 +2532,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      const row = [...document.querySelectorAll('.sc-row-line')]
       .find(r => (r.textContent || '').includes(t));
      if (!row) return null;
-     const b2 = row.querySelector('.sc-nw-link');
+     const b2 = row.querySelector('.sc-nw-link[data-sc-link]');
      return b2 ? { text: b2.textContent, title: b2.title } : null;
     }, TAG + '刃組み');
     rec('行き先のチップが行に出る', !!chip && chip.text === '刃組ガイダンス', JSON.stringify(chip));
@@ -2540,7 +2540,8 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         chip && chip.title);
     const others = await page.evaluate(() => {
      const rows = [...document.querySelectorAll('.sc-row-line')];
-     return rows.filter(r => r.querySelector('.sc-nw-link')).length;
+     /* 行き先を名乗る的だけを数える（ロット番号の横のLotDspの的は別の役・§9.460）。 */
+     return rows.filter(r => r.querySelector('.sc-nw-link[data-sc-link]')).length;
     });
     rec('連携の無い行にはチップを出さない（押して何も起きない的を作らない）',
         others === 1, String(others));
@@ -2660,7 +2661,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await page.evaluate(t => {
      const row = [...document.querySelectorAll('.sc-row-line')]
       .find(r => (r.textContent || '').includes(t));
-     row.querySelector('.sc-nw-link').click();
+     row.querySelector('.sc-nw-link[data-sc-link]').click();
     }, TAG + '刃組み');
     await W.until(page, () => !!document.querySelector('#bladeSetPanel:not([hidden])'),
                   null, { ms: 15000, what: '刃組ガイダンスへ遷移' });
