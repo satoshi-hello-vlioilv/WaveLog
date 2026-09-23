@@ -22,21 +22,16 @@
 
    **確かめるときは「枠の次の予定」まで見ること**——枠が行として並ぶことだけを
    見る網は、時刻をまったく動かさない実装でも通る。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const W=require('./lib/wait.js');    // 待ちは1箇所の道具で置く（§9.347）
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 
 const two=n=>String(n).padStart(2,'0');
 const isoDay=d=>`${d.getFullYear()}-${two(d.getMonth()+1)}-${two(d.getDate())}`;
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
+run('test_scframe: 空の日付・直の枠（§9.238 ②）', async ({page,rec,W})=>{
  const setMode=m=>page.evaluate(async mm=>{await fetch('/api/access-mode',{method:'POST',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mm})})},m);
  const post=(p,body)=>page.evaluate(async a=>{
@@ -251,7 +246,7 @@ let b=null;
       dlg.直の数>=1&&dlg.その日の頭,JSON.stringify({数:dlg.直の数,頭:dlg.その日の頭}));
   rec('「時間を使わない」ことを窓に書いてある',/時間を使いません/.test(dlg.説明),dlg.説明.slice(0,60));
   await page.click('#appConfirmCancel');
-  await page.waitForTimeout(400);
+  await W.until(page,()=>{const m=document.getElementById('appConfirmModal');return !m||m.hidden},null,{ms:5000,what:'日付・直の窓が閉じる'});
 
   /* 右クリックにも入口がある（入口を種別ごとに変えない）。 */
   const menu=await page.evaluate(id=>{
@@ -339,8 +334,7 @@ let b=null;
   rec('外したら一覧から消える',gone);
 
  }catch(e){
-  console.log('FATAL: '+e.message);
-  R.push({n:'FATAL',ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* **落ちてもブラウザを閉じる**（tests/README.md）。残ると編集セッションを
      掴んだままになり、後続のスケジュール系が連鎖で落ちる。 */
@@ -353,10 +347,5 @@ let b=null;
   }catch(e){rec('後片付け: 置いた枠が消えている',false,'数えられない: '+e.message)}
   try{await post('/api/schedule/session/release',{equipment:EQ})}catch(_){}
   try{await setMode('edit')}catch(_){}
-  if(b)await b.close();
  }
- const ng=R.filter(x=>!x.ok);
- console.log(`\n=== SUMMARY ===\n${R.length-ng.length}/${R.length} passed`);
- ng.forEach(x=>console.log(' -',x.n,x.d||''));
- process.exit(ng.length?1:0);
-})();
+}, {viewport:{width:1700,height:1000}});

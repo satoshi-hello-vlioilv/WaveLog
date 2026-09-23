@@ -9,7 +9,8 @@
    動いて読み取りにくかった)。
    フィクスチャのコースは短い(最大14文字)ので実機の長さを再現しない。
    **実機相当の長い値を注入して測る**。 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const setMode=async m=>{await fetch(`${API}/api/access-mode`,
  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
@@ -17,21 +18,14 @@ const setMode=async m=>{await fetch(`${API}/api/access-mode`,
 const LONG='テスト設備A C1 テスト設備B C2 テスト設備C C3 テスト設備D C4 テスト設備E C5';
 // 実機の最長ケース: 「3文字+空白」×25 ≒ 100文字。
 const MAXCASE=Array.from({length:25},(_,i)=>['LS4','HOT','AN2','DL2','CL1'][i%5]).join(' ');
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
+run('test_course: 測定画面のコース情報が見切れないこと。', async ({page,rec,W,idle,paint})=>{
  try{
   await setMode('edit');
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:20000});
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForSelector('#openSchedule',{timeout:20000});
-  await page.waitForTimeout(1500);
+  await W.booted(page); await idle();
 
   // 予定から測定画面を開く
   await page.click('#openSchedule');
@@ -54,7 +48,8 @@ let b=null;
    if(typeof WL.measureView.renderResidualCourseEverywhere==='function')WL.measureView.renderResidualCourseEverywhere();
    if(typeof WL.measureView.renderCourseHierarchy==='function')WL.measureView.renderCourseHierarchy();
   },LONG).catch(()=>{});
-  await page.waitForTimeout(1200);
+  /* 描き直しは同期。ただしマスタの非同期読み込みで基本情報が組み直ることがある（下の注記）ので往復も待つ。 */
+  await idle();
   /* コース欄は**「詳細を見る」の中**にある（§9.139で基本情報を常時8項目に
      絞ったとき、識別番号・製品と一緒に畳まれた）。畳んだ要素は寸法が0なので、
      開かずに測ると「幅0・左端0」が返り、**この網は何も確かめていなかった**
@@ -170,7 +165,7 @@ let b=null;
    src['設計_設備ｺｰｽ']='LS4';src['実績_設備ｺｰｽ']='HOT';src['残仕掛設備ｺｰｽ']='AN2';
    if(typeof WL.measureView.renderCourseHierarchy==='function')WL.measureView.renderCourseHierarchy();
   }).catch(()=>{});
-  await page.waitForTimeout(600);
+  await paint();
   const {out:sh}=await probe();
   rec('短い値でも縦1行ずつ・全幅のまま(値の長さで形が変わらない)',
    sh.length>=3&&new Set(sh.map(x=>x.top)).size===sh.length
@@ -187,7 +182,7 @@ let b=null;
   const worst={};
   for(const s of ['sm','md','lg']){
    await page.evaluate(v=>{document.documentElement.dataset.uiSize=v},s);
-   await page.waitForTimeout(400);
+   await paint();
    const p=await probe();worst[s]={over:p.over,cut:p.out.map(x=>x.cut)};
   }
   await page.evaluate(()=>{document.documentElement.dataset.uiSize='md'});
@@ -200,17 +195,7 @@ let b=null;
     await WL.records.reliableDelete(S.measure.id);
   }).catch(()=>{});
 
-  console.log('\n=== SUMMARY ===');
-  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
-  f.forEach(x=>console.log(' -',x.n,x.d||''));
-  await b.close();process.exit(f.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
-  await b.close().catch(()=>{});
-  process.exit(2);
+  rec('FATAL',false,String(e&&e.message||e));
  }
-})().catch(async e=>{
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1600,height:1000}});

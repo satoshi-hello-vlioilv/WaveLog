@@ -15,23 +15,17 @@
     3. 0件の理由(未設定 / 読めない / 該当なし)を言い分ける
     4. 編集モードへ戻す導線が効き、戻したら案内は消えて手元のデータが出る
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
 const TAG='recperm-'+Date.now();
 const LOT='RECP'+String(Date.now()).slice(-5);
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+run('test_recperm: 「データが無い」と「このモードでは見せられない」を言い分ける(§9.107)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await post('/api/access-mode',{mode:'edit'});
-  const ctx=await b.newContext({viewport:{width:1500,height:950}});
-  const page=await ctx.newPage();
-  page.on('pageerror',e=>console.log('[pageerror]',e.message));
 
   /* 閲覧用バックアップの中身はテスト側で決める。実物(パス設定マスタの
      records_backup_export_path)はサーバー起動時に1回だけ確定するため、
@@ -133,14 +127,9 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
     !!v.empty&&/表示できるデータがありません/.test(v.empty)&&!/権限/.test(v.empty),String(v.empty).slice(0,120));
 
  }catch(e){
-  console.log('FATAL: '+(e&&e.stack||e));
-  R.push({n:'FATAL',ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   // 落ちてもブラウザを閉じ、モードを既定へ戻す(tests/README.md)。
   try{await post('/api/access-mode',{mode:'edit'})}catch(e){}
-  if(b)await b.close();
  }
- const ng=R.filter(x=>!x.ok).length;
- console.log(`\n== ${R.length-ng}/${R.length} PASS ==`);
- process.exit(ng?1:0);
-})();
+}, {viewport:{width:1500,height:950}});

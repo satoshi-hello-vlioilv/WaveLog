@@ -1,5 +1,6 @@
 /* §9.68 パス設定を設定ページ形式へ / データ引継ぎの「現状→実行後」可視化 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 /* 材料は自分で注ぎ込む（§9.351・§9.362 ⑥）。この網は「取り込める記録が
    ある」ことを前提にするが、**フィクスチャに記録は無い**——今まで見えて
@@ -8,21 +9,17 @@ const B='http://127.0.0.1:5029';
 const {seedRecord,clearRecords}=require('./lib/harness.js');
 const setMode=async m=>{await fetch(B+'/api/access-mode',{method:'POST',
  headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
-const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
-let b=null;
-(async()=>{
+run('test_setpage: §9.68 パス設定を設定ページ形式へ / データ引継ぎの「現状→実行後」可視化', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  await setMode('edit');
  await seedRecord();
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1600,height:900}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
  const tab=async label=>{await page.evaluate(l=>{const t=[...document.querySelectorAll('#masterMaintNav [data-master]')]
-   .find(x=>x.textContent.includes(l));if(t)t.click()},label);await page.waitForTimeout(2200)};
+   .find(x=>x.textContent.includes(l));if(t)t.click()},label);await idle(400,10000)};
  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openMasterMaint',{timeout:15000});
  await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
- await page.reload({waitUntil:'domcontentloaded'});await page.waitForTimeout(1500);
- await page.click('#openMasterMaint');await page.waitForTimeout(1200);
+ await page.reload({waitUntil:'domcontentloaded'});await W.booted(page);await idle();
+ await page.click('#openMasterMaint');
+ await page.waitForSelector('#masterMaintPanel',{state:'visible',timeout:10000});await idle();
 
  // ---------- 共通設定（旧「パス設定」。§9.168でデータソースぶんを分離） ----------
  await tab('共通設定');
@@ -112,7 +109,7 @@ let b=null;
  rec('設定ページでは下段の一覧枠を畳む',p.listWrap==='none',p.listWrap);
  // 一番下までスクロールしても保存ボタンは見えたまま
  await page.evaluate(()=>{const sc=document.querySelector('.mm-set-scroll');sc.scrollTop=sc.scrollHeight});
- await page.waitForTimeout(400);
+ await paint();
  const bottom=await page.evaluate(()=>{
   const panel=document.querySelector('#masterMaintPanel').getBoundingClientRect();
   const sr=document.querySelector('.mm-set-sticky button').getBoundingClientRect();
@@ -213,7 +210,7 @@ let b=null;
  // 選ぶと変化の予定が出る
  await page.evaluate(()=>{const c=document.querySelector('#masterMaintList [data-imp-id]:not(:disabled)');
    if(c){c.checked=true;c.dispatchEvent(new Event('change',{bubbles:true}))}});
- await page.waitForTimeout(400);
+ await W.until(page,()=>!!document.querySelector('#mmImpPreview')?.classList.contains('is-active'),null,{ms:5000,what:'変化の予定が出る'});
  const d1=await page.evaluate(()=>({
   active:document.querySelector('#mmImpPreview').classList.contains('is-active'),
   txt:document.querySelector('#mmImpPreview').innerText.replace(/\s+/g,' ')}));
@@ -243,15 +240,4 @@ let b=null;
  }
  /* 置いた実績は自分で消す（§9.351・§9.362）。 */
  try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
- await b.close();
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1600,height:900}});

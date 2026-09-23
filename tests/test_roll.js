@@ -25,11 +25,11 @@
    「候補0件」を見ても壊れていても同じ結果になる（§9.239 ⑥の risks）。
    径MAXだけの行・MAX/MIN両方の行・径が空の行の3種を入れる。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const TAG='RT'+process.pid;
 const EQ='テスト設備A',EQ2='テスト設備B';
-let b=null;
 /* 触る前の行を控える（§9.362 ⑤）。製品の「設備を削除」は**論理削除**
    （`有効=0`）なので、APIで消しても行は残る。**この実行で増えた行だけ**を
    素の表から片付ける（名前で拾うと、同じ名前を使う他の網と食い違う）。 */
@@ -38,8 +38,7 @@ let snapM=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const getj=async p=>(await fetch(B+p)).json();
 const made=[];
-(async()=>{
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+run('test_roll: ロールマスタとピッチ判定（§9.239）', async ({page,rec,W,idle,errs,browser})=>{
  try{
   await post('/api/access-mode',{mode:'edit'});
   snapM=await H.masterSnapshot(['設備マスタ']);
@@ -149,8 +148,9 @@ const made=[];
     const orphan=await mk({equipment:EQGONE,name:TAG+'ORPHAN',diaMax:180});
     /* 設備マスタから消す（ロールの行は残る）。 */
     try{await post('/api/equipment-master/delete',{id:gone.id,force:true,user_id:'test'})}catch(_){}
-    b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
-    const page=await b.newPage({viewport:{width:1600,height:1000}});
+    /* この節だけ別の窓で見る（あとの節の画面と混ぜない）。 */
+    const ctx1=await browser.newContext({viewport:{width:1600,height:1000}});
+    const page=await ctx1.newPage();
     try{
      await page.goto(B+'/',{waitUntil:'domcontentloaded'});
      await page.waitForSelector('#openMasterMaint',{timeout:20000});
@@ -186,7 +186,7 @@ const made=[];
      rec('設備マスタに無いことを文字で言う（§4）',
          /設備マスタにありません/.test(String(opened.注記||'')),
          String(opened.注記||'').slice(0,120));
-    }finally{ await b.close(); b=null; }
+    }finally{ await ctx1.close(); }
    }
   }
 
@@ -284,12 +284,9 @@ const made=[];
   }
 
   /* ---- 5) 画面: タブとピッチ判定 ---- */
-  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
-  const page=await b.newPage({viewport:{width:1700,height:1000}});
-  const errs=[];page.on('pageerror',x=>errs.push(x.message));
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('aside [data-db-key]',{timeout:25000});
-  await page.waitForTimeout(600);
+  await W.booted(page); await idle();
   /* 測定を開かずに判定だけ確かめる——**判定は1箇所**(`WL.defect.rollMatches`)
      なので、画面の外から同じ関数を通せる。 */
   const calc=await page.evaluate(rows=>{
@@ -338,7 +335,7 @@ const made=[];
       JSON.stringify(paneSize));
   rec('画面の例外が出ていない',errs.length===0,errs.join(' / '));
  }catch(e){
-  console.log('FATAL '+(e&&e.message||e));R.push({ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* **後片付け**（§9.121）。ロールマスタは実行をまたいで残る。 */
   for(const id of made){
@@ -351,9 +348,5 @@ const made=[];
   /* 論理削除で残る行（設備マスタ）を素の表から片付ける（§9.362 ⑤）。 */
   try{if(snapM)await H.dropNewMasterRows(snapM)}
   catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1700,height:1000}});

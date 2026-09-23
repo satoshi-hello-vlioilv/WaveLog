@@ -5,10 +5,10 @@
    「選べる」「保存される」だけでなく「未設定のまま登録・編集できる」まで見る。
    設備マスタは master.sqlite3 なので、作った行は必ず finally で片付ける
    （残すと後続テストの俯瞰ボードや設備リストの件数が変わる）。 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
-let browser=null,page=null;
-const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+let page=null;   // cleanup() が使う（run() の page を入れる）
 const NAME='区分テスト設備'+Date.now().toString().slice(-6);
 
 /* 触る前の行を控える（§9.362 ⑤）。製品の「設備を削除」は**論理削除**
@@ -31,11 +31,8 @@ async function cleanup(){
  catch(e){console.log('  [cleanup] 増えた行を消せませんでした: '+(e&&e.message||e))}
 }
 
-(async()=>{
- browser=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- page=await browser.newPage({viewport:{width:1600,height:1000}});
- page.on('dialog',d=>d.accept());
- page.on('pageerror',e=>console.log('  [pageerror]',e.message));
+run('test_eqkind: 設備マスタの区分（コイル／板、§9.85）', async ({page:pg,rec,W,idle})=>{
+ page=pg;
  try{
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openMasterMaint',{timeout:20000});
@@ -68,7 +65,8 @@ async function cleanup(){
   await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tester');
   await page.evaluate(()=>{const b=[...document.querySelectorAll('#masterMaintNav [data-master]')]
     .find(x=>x.textContent.includes('設備'));if(b)b.click()});
-  await page.waitForTimeout(1500);
+  await W.until(page,()=>[...document.querySelectorAll('#masterMaintList .mm-row:not(.head)')].some(x=>x.children[0]?.textContent.trim()==='テスト設備A'),null,{ms:10000,what:'設備タブの一覧が描かれる'});
+  await idle();
 
   /* **設備マスタは表が主役で、直すのは窓**（§9.250 ⑦、利用者の指示
      「設備マスタは文字が多くUIの幅も無駄に長いのでもっとコンパクトにする
@@ -110,7 +108,8 @@ async function cleanup(){
   await page.fill('#maintEditorForm [data-field="name"]',NAME);
   await page.selectOption('#maintEditorForm select[data-field="kind"]','コイル');
   await page.click('#maintEditorSave');
-  await page.waitForTimeout(2500);
+  await W.until(page,()=>{const m=document.getElementById('maintEditorModal');return !m||m.hidden},null,{ms:10000,what:'保存して窓が閉じる'});
+  await idle();
   const added=await getEquip(NAME);
   rec('画面から区分つきで新規登録できる',added.item&&added.item.kind==='コイル',
    JSON.stringify(added.item&&{name:added.item.name,kind:added.item.kind}));
@@ -124,15 +123,16 @@ async function cleanup(){
   /* ---- 3) 画面から区分を変える ---- */
   await page.evaluate(n=>{const rows=[...document.querySelectorAll('#masterMaintList .mm-row:not(.head)')];
    const r=rows.find(x=>x.children[0]?.textContent.trim()===n);if(r)r.click()},NAME);
-  await page.waitForTimeout(800);
   await page.waitForSelector('#maintEditorModal',{state:'visible',timeout:8000});
+  await idle();
   const loaded=await page.evaluate(()=>({
    name:document.querySelector('#maintEditorForm [data-field="name"]')?.value,
    kind:document.querySelector('#maintEditorForm select[data-field="kind"]')?.value}));
   rec('行クリックで編集の窓へ区分ごと読み込まれる',loaded.kind==='コイル'&&loaded.name===NAME,JSON.stringify(loaded));
   await page.selectOption('#maintEditorForm select[data-field="kind"]','板');
   await page.click('#maintEditorSave');
-  await page.waitForTimeout(2500);
+  await W.until(page,()=>{const m=document.getElementById('maintEditorModal');return !m||m.hidden},null,{ms:10000,what:'保存して窓が閉じる'});
+  await idle();
   const changed=await getEquip(NAME);
   rec('画面から区分を変更できる',changed.item&&changed.item.kind==='板',
    JSON.stringify(changed.item&&changed.item.kind));
@@ -155,19 +155,9 @@ async function cleanup(){
   rec('選択肢に無い区分は未設定として保存する',bogus.status===200&&afterBogus.item.kind==='',
    `${bogus.status} / kind=${JSON.stringify(afterBogus.item&&afterBogus.item.kind)}`);
 
-  console.log('\n=== SUMMARY ===');
-  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
-  f.forEach(x=>console.log(' -',x.n,x.d||''));
   await cleanup();
-  await browser.close();browser=null;
-  process.exit(f.length?1:0);
  }catch(e){
-  // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
-  // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
-  // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
-  console.error('FATAL',e);
+  rec('FATAL',false,String(e&&e.message||e));
   await cleanup();
-  if(browser)await browser.close().catch(()=>{});
-  process.exit(2);
  }
-})();
+}, {viewport:{width:1600,height:1000}});

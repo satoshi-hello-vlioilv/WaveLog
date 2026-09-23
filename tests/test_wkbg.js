@@ -1,16 +1,11 @@
 /* 作業可否フラグが操作を止めないこと・裏で追いつくこと(§9.51)、
    RNE抽出が取得元に依らず実行できること(§9.50)の検証 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const setMode=async m=>{await fetch(B+'/api/access-mode',{method:'POST',
  headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
+run('test_wkbg: 作業可否フラグが操作を止めないこと・裏で追いつくこと(§9.51)・RNE抽出(§9.50)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  await setMode('edit');
 
  // 仕掛の取得をわざと遅らせ、「可否の取得を待たずに予定が出るか」を見る。
@@ -39,7 +34,9 @@ let b=null;
  await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
  await page.reload({waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openSchedule',{timeout:15000});
- await page.waitForTimeout(1200);
+ /* 遅らせるのは可否索引（page_size=500）だけ。一覧の取得（page_size=1000）は
+    捕まらないので、ここで取得が静まるのを待っても「6秒遅延」は消費しない。 */
+ await W.booted(page); await idle();
 
  const t0=Date.now();
  await page.click('#openSchedule');
@@ -120,7 +117,7 @@ let b=null;
 
  // 画面を出たら止める(無駄な問い合わせを残さない)
  await page.evaluate(()=>window.exitScheduleView());
- await page.waitForTimeout(400);
+ await W.until(page,()=>!window.scheduleWorkableState().watching,null,{ms:4000,what:'裏の見張りが止まる'});
  const stopped=await page.evaluate(()=>!window.scheduleWorkableState().watching);
  rec('画面を出たら裏の見張りを止める',stopped);
 
@@ -154,15 +151,4 @@ let b=null;
  // 一時的に置いた資材を片付ける(リポジトリには残さない)
  made.forEach(f=>{try{fs.unlinkSync(f)}catch(e){}});
 
- await b.close();
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1700,height:1000}});

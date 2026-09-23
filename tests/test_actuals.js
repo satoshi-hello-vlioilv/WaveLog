@@ -20,11 +20,11 @@
    偏っているので、そのまま見ても「絞り込みが効いている」と「たまたま同じ」を
    見分けられない。設備2つ・日付2つ・状態2つを作って入れる。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const TAG='AC'+process.pid;
 const EQ='テスト設備A',EQ2='テスト設備B';
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const getj=async p=>(await fetch(B+p)).json();
 const made=[];
@@ -55,8 +55,7 @@ async function mk(o){
  made.push(id);
 }
 
-(async()=>{
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+run('test_actuals: 実績データリスト（§9.241 ③、利用者の指示）', async ({page,rec,B,idle,errs})=>{
  try{
   await post('/api/access-mode',{mode:'edit'});
   /* 設備Bはマスタに無くてもよい（実績は履歴なので、マスタから消した設備の
@@ -104,10 +103,6 @@ async function mk(o){
       JSON.stringify((all.lotFields||[]).slice(0,3)));
 
   /* ---- 画面 ---- */
-  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
-  const page=await b.newPage({viewport:{width:1600,height:1000}});
-  const errs=[];
-  page.on('pageerror',e=>errs.push(String(e&&e.message||e)));
   const openList=async()=>{
    await page.waitForSelector('#openActuals',{timeout:25000});
    await page.click('#openActuals');
@@ -210,7 +205,7 @@ async function mk(o){
    await page.evaluate(()=>{try{WL.columnLayout.forget()}catch(e){}});
    await openList();
    await setRange();
-   await page.waitForTimeout(2500);
+   await idle();  // 範囲を変えた取り直しが済むまで
    const cell=await page.evaluate(l=>{
     const heads=[...document.querySelectorAll('#acList .ac-row.head>span')].map(x=>x.dataset.col);
     const at=heads.indexOf(l);
@@ -242,7 +237,7 @@ async function mk(o){
    await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
    await openList();
    await setRange();
-   await page.waitForTimeout(1200);
+   await idle();
    await page.waitForSelector('#acColumns:not([hidden])',{timeout:15000});
    await page.click('#acColumns');
    await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:8000});
@@ -339,7 +334,7 @@ async function mk(o){
   for(const [name,sel] of views){
    const ok=await page.evaluate(s=>{const b=document.querySelector(s);if(!b)return false;b.click();return true},sel);
    if(!ok)continue;
-   await page.waitForTimeout(900);
+   await idle();  // その画面の読み込みと描画が済むまで（「残らない」を見るので条件では待てない）
    const c=await chrome();
    if(c.grid||c.tabs||c.bar||c.tool)left.push(name+':'+JSON.stringify(c));
   }
@@ -348,7 +343,7 @@ async function mk(o){
 
   rec('画面の例外が出ていない',errs.length===0,errs.join(' / '));
  }catch(e){
-  console.log('FATAL '+(e&&e.message||e));R.push({ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* **後片付け**（§9.121）。実績も列レイアウトマスタも実行をまたいで残る。 */
   try{await post('/api/measurement/backup/delete',{ids:made})}catch(_){}
@@ -357,9 +352,5 @@ async function mk(o){
      widths:{},names:{},formats:{},rules:{},formulas:{},locks:[],sorts:{},user_id:'test'})}catch(_){}
   }
   try{await post('/api/access-mode',{mode:'edit'})}catch(_){}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1600,height:1000}});

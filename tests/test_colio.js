@@ -9,12 +9,13 @@
     5. 取り込みは「この一覧へ当てる」と「全部マスタへ書き込む」の2つ
     6. 取り込みで実際にマスタが書き換わる
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const fs=require('fs');const os=require('os');const path=require('path');
 const B='http://127.0.0.1:5029';
 const T1='list:__io_test_a__:表A';
 const T2='list:__io_test_b__:表B';
-let b=null,curTarget='';
+let curTarget='';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const layout=t=>fetch(B+'/api/column-layout-master?target='+encodeURIComponent(t)).then(r=>r.json());
 async function cleanup(){
@@ -23,12 +24,7 @@ async function cleanup(){
   try{await post('/api/column-layout-master',{target:t,clear:true,order:[],widths:{},hidden:[],names:{},formats:{},rules:{},formulas:{},locks:[],user_id:'test'})}catch(e){}
  }
 }
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const W=require('./lib/wait.js');const {idle}=W.track(page);const paint=()=>W.paint(page);
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];page.on('pageerror',e=>errs.push(e.message));
+run('test_colio: 列の設定の持ち出し・取り込み(§9.178)', async ({page,rec,B,W,idle,paint,errs})=>{
  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'wl-colio-'));
  try{
   await cleanup();
@@ -159,13 +155,9 @@ async function cleanup(){
       JSON.stringify(afterClose));
 
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
- }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
+ }catch(e){rec('FATAL',false,String(e&&e.message||e))}
  finally{
   await cleanup().catch(()=>{});
   try{fs.rmSync(tmp,{recursive:true,force:true})}catch(e){}
-  await b.close();
-  const ok=R.filter(x=>x.ok).length;
-  console.log(`\n=== SUMMARY ===\n${ok}/${R.length} passed`);
-  process.exit(ok===R.length?0:1);
  }
-})();
+}, {viewport:{width:1700,height:1000}});

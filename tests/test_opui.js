@@ -19,28 +19,23 @@
     5. 選択肢は**その場で足せる**／どの項目が使っているかが分かる
     6. 掴んで動かした先が**狙った境目**になる（元の位置へ戻せる）
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 /* 待ちは「時間」でなく「条件」で置く（§9.324 R5、tests/lib/wait.js）。 */
 const W=require('./lib/wait');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
 const TAG='opui-'+process.pid;
 const post=(p,b)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
 const get=p=>fetch(B+p).then(r=>r.json());
-let b=null;const made=[];const madeChoices=[];
+const made=[];const madeChoices=[];
 /* 組み込みの行の並び・幅・出す出さないは**実行をまたいで生き延びる**
    （§9.121。`db/master.sqlite3`に残る）。落ちた場所によらず戻せるよう、
    触る前に元の姿をここへ積み、`finally`で戻す——途中に書いた戻しだけでは
    FATALが挟まった実行が次の実行を汚す（実際に`test_msteps`が巻き込まれた）。 */
 const restore=[];
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1800,height:1000}});
- const TAG_=TAG;const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
- page.on('dialog',d=>d.accept());
+run('test_opui: 操業データの配置と設定（§9.216 ②④／§9.218 ①②③④）', async ({page,rec,W,idle,paint,errs})=>{
+ const TAG_=TAG;
  /* 大きい選び物は浮き出しの中（§9.299）。**一度開けば描き直しても開いたまま**
     なので、窓を開くたびに1回でよい（`opState.pop`が覚えている）。 */
  /* **浮き出しは他の欄を覆う**（`position:fixed`）。実機では外側を1回押せば
@@ -82,12 +77,12 @@ const restore=[];
   await page.waitForFunction(()=>{
    const m=document.getElementById('opItemModal');return !!m&&!m.hidden;
   },null,{timeout:10000});
-  await page.waitForTimeout(250);
+  await idle(250);  // 窓の中身（見本）を描き終えるまで
  };
  /* 窓は画面を覆うので、左のタブへ戻る前に必ず閉じる（実機でも同じ）。 */
  const closeModal=async()=>{
   await page.evaluate(()=>{const c=document.getElementById('opModalClose');if(c)c.click()});
-  await page.waitForTimeout(200);
+  await W.until(page,()=>{const m=document.getElementById('opItemModal');return !m||m.hidden},null,{ms:5000,what:'設定の窓が閉じる'});
  };
  try{
   await post('/api/access-mode',{mode:'edit'});
@@ -100,7 +95,7 @@ const restore=[];
   await page.waitForSelector('#masterMaintNav [data-master="opItem"]',{timeout:20000});
   await page.click('#masterMaintNav [data-master="opItem"]');
   await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
-  await page.waitForTimeout(700);
+  await idle();  // 盤をサーバーから読み直し終えるまで（前の盤が残っていても取り直しを待つ）
   /* 更新者IDが無いと保存は断られる（マスタ共通の約束）。**入ったことを
      確かめてから進む**——入っていないと、以降の「保存できる」を見る網が
      全部「更新者IDが無いだけ」で落ち、原因が読めなくなる。 */
@@ -254,7 +249,7 @@ const restore=[];
   await openTile(target.id);
   await tab('place');
   await page.click('[data-op-span="6"]');
-  await page.waitForTimeout(200);
+  await paint();  // 窓の札は touch()→renderOpModal() で同期に組み直す。描画1巡で足りる
   await W.opSave(page);
   const after=await get('/api/operation-item-master?equipment='+encodeURIComponent(EQ));
   const t2=(after.items||[]).find(x=>x.builtin==='verticalCount');
@@ -294,7 +289,7 @@ const restore=[];
   await closeModal();
   await page.click('#masterMaintNav [data-master="opItem"]');
   await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
-  await page.waitForTimeout(800);
+  await idle();
   await openTile(mkj.id);
   await tab('data');
   const hasBox=await page.evaluate(()=>!!document.getElementById('opdNewChoiceValue'));
@@ -330,7 +325,7 @@ const restore=[];
   await tab('look');
   await openPop('widget');
   await page.click('[data-op-widget="タブ"]');
-  await page.waitForTimeout(200);
+  await paint();
   await W.opSave(page);
   const form3=await get('/api/operation-form?equipment='+encodeURIComponent(EQ));
   const f3=(form3.items||[]).find(x=>String(x.id)===String(mkj.id));
@@ -347,7 +342,7 @@ const restore=[];
      **効かない形は並べない**（押せるのに何も起きない設定を作らない・§4）。 */
   await tab('data');
   await page.click('[data-op-type="文字"]');
-  await page.waitForTimeout(250);
+  await paint();
   await tab('look');
   await openPop('widget');
   const textW=await page.evaluate(()=>
@@ -357,7 +352,7 @@ const restore=[];
       JSON.stringify(textW));
   await tab('data');
   await page.click('[data-op-type="正の整数"]');
-  await page.waitForTimeout(250);
+  await paint();
   await tab('look');
   await openPop('widget');
   const numW=await page.evaluate(()=>
@@ -368,7 +363,7 @@ const restore=[];
   /* **見本は本物の部品**（§9.218 ①）。数値の器も`measure-opdata.js`が作る
      ので、設定画面と測定画面で形が食い違わない。 */
   await page.click('[data-op-widget="ステッパー"]');
-  await page.waitForTimeout(300);
+  await paint();
   const prev=await page.evaluate(()=>({
    ステッパー:document.querySelectorAll('#opPrevField .opf-step-btn').length,
    値の行:!!document.getElementById('opPrevValue'),
@@ -377,11 +372,11 @@ const restore=[];
       prev.ステッパー===2&&prev.値の行===true,JSON.stringify(prev));
   await tab('data');
   await page.click('[data-op-type="選択"]');
-  await page.waitForTimeout(200);
+  await paint();
   await tab('look');
   await openPop('widget');
   await page.click('[data-op-widget="タブ"]');
-  await page.waitForTimeout(200);
+  await paint();
 
   /* ---- 7) 掴んで動かした先が狙った境目になる（§9.218 ④） ----
      利用者の報告「ドラッグアンドドロップで移動した後元の位置に戻らなく
@@ -393,7 +388,7 @@ const restore=[];
   await closeModal();
   await page.click('#masterMaintNav [data-master="opItem"]');
   await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
-  await page.waitForTimeout(600);
+  await idle();
   const drop=await page.evaluate(()=>{
    const grid=document.querySelector('#masterMaintList .op-board-grid');
    const tiles=[...grid.querySelectorAll('.op-tile')];
@@ -531,14 +526,14 @@ const restore=[];
      選んだ札の地・丸ぽちの有無）を突き合わせ、4つとも違うことを見る。 */
   await page.click('#masterMaintNav [data-master="opItem"]');
   await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
-  await page.waitForTimeout(600);
+  await idle();
   await openTile(mkj.id);
   await tab('look');
   await openPop('widget');
   const shapes={};
   for(const w of ['ラジオ','セグメント','タブ','ボタン群']){
    await page.click(`[data-op-widget="${w}"]`);
-   await page.waitForTimeout(250);
+   await paint();
    shapes[w]=await page.evaluate(()=>{
     const box=document.querySelector('#opPrevField .opf-widget');
     if(!box)return null;
@@ -573,14 +568,14 @@ const restore=[];
      入れる（足さずに代入すると黙って空になる。§9.203の罠）。 */
   await tab('data');
   await page.click('#opdFreeText');
-  await page.waitForTimeout(300);
+  await paint();
   /* **形をプルダウンへ戻してから見る**——直前のループでボタン群になって
      いる。手打ちの見せ方は形ごとに違う（プルダウン＝器そのものが打てる、
      ボタン系＝末尾の「その他」）ので、どちらを見ているかを決めてから測る。 */
   await tab('look');
   await openPop('widget');
   await page.click('[data-op-widget="プルダウン"]');
-  await page.waitForTimeout(400);
+  await paint();
   /* **打つ場所は「選ぶ器そのもの」**（§9.226 ①、利用者の指示）。以前は
      選ぶ器の下に打ち込み欄をもう1つ足していた（`.opf-free-in`）ので、
      打つ場所と選ぶ場所が2つ並んでいた。いまはプルダウンなら器が
@@ -621,7 +616,7 @@ const restore=[];
   /* ボタン系は**末尾の「その他」がその場で入力欄に変わる**（§9.226 ①）。
      欄を下へ足さないので、器の高さも並びも他の項目と同じまま。 */
   await page.click('[data-op-widget="ボタン群"]');
-  await page.waitForTimeout(500);
+  await paint();
   const other=await page.evaluate(()=>{
    const w=document.querySelector('#opPrevField .opf-widget');
    const btn=w&&w.querySelector('.opf-other-btn');
@@ -652,7 +647,7 @@ const restore=[];
   await tab('look');
   await openPop('widget');
   await page.click('[data-op-widget="ラジオ"]');
-  await page.waitForTimeout(300);
+  await paint();
   await tab('data');
   const kept=await page.evaluate(()=>(document.getElementById('opdInitial')||{}).value);
   rec('打ちかけの初期値は、別のボタンを押しても消えない',kept==='金',String(kept));
@@ -662,7 +657,7 @@ const restore=[];
   await tab('look');
   await openPop('widget');
   await page.click('[data-op-widget="セグメント"]');
-  await page.waitForTimeout(250);
+  await paint();
   await W.opSave(page);
   const form9=await get('/api/operation-form?equipment='+encodeURIComponent(EQ));
   const f9=(form9.items||[]).find(x=>String(x.id)===String(mkj.id));
@@ -690,7 +685,7 @@ const restore=[];
       sug.件数>0&&sug.理由.every(t=>t&&t.length>2),JSON.stringify(sug.理由));
   if(sug.件数>0){
    await page.click(`#opItemModal [data-op-suggest="${sug.名前[0]}"]`);
-   await page.waitForTimeout(300);
+   await paint();
    const picked=await page.evaluate(()=>{
     const el=document.getElementById('opdChoice');return el?el.value:'';
    });
@@ -700,7 +695,7 @@ const restore=[];
     const el=document.getElementById('opdChoice');
     if(el){el.value=n;el.dispatchEvent(new Event('change',{bubbles:true}))}
    },TAG_+'-色');
-   await page.waitForTimeout(300);
+   await paint();
   }
 
   /* ⑤ 刻み。**押した1回ぶんがマスタの値になる**（既定は小数桁から作る）。 */
@@ -712,7 +707,7 @@ const restore=[];
   await closeModal();
   await page.click('#masterMaintNav [data-master="opItem"]');
   await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
-  await page.waitForTimeout(700);
+  await idle();
   await openTile(mknj.id);
   const step=await page.evaluate(()=>{
    const el=document.querySelector('#opPrevField input');
@@ -740,7 +735,7 @@ const restore=[];
   if(mkuj.id)made.push(mkuj.id);
   await page.click('#masterMaintNav [data-master="opItem"]');
   await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
-  await page.waitForTimeout(700);
+  await idle();
   await openTile(mkuj.id);
   /* 単位の置き場・寄せ・見せ方は③（どう見せるか）。 */
   await tab('look');
@@ -763,7 +758,7 @@ const restore=[];
   rec('見本にも単位が既定の場所で出る',
       at0.place==='外下左'&&at0.at==='左'&&at0.text==='mm',JSON.stringify(at0));
   await page.click('#opItemModal [data-op-unitplace="内部"]');
-  await page.waitForTimeout(400);
+  await paint();
   const inside=await page.evaluate(()=>{
    const l=document.querySelector('#opPrevField .opf');
    const em=l&&l.querySelector('.opf-unit-in');
@@ -785,7 +780,7 @@ const restore=[];
   rec('「内部」で単位が欄の中に重なる',
       !inside.none&&inside.place==='内部'&&inside.重なっている&&inside.右寄り,JSON.stringify(inside));
   await page.click('#opItemModal [data-op-unitplace="出さない"]');
-  await page.waitForTimeout(400);
+  await paint();
   const none=await page.evaluate(()=>{
    const l=document.querySelector('#opPrevField .opf');
    return {place:l&&l.dataset.opunit,
@@ -793,11 +788,11 @@ const restore=[];
   });
   rec('「出さない」で単位が消える',none.place==='なし'&&none.単位===false,JSON.stringify(none));
   await page.click('#opItemModal [data-op-unitplace="外上中央"]');
-  await page.waitForTimeout(300);
+  await paint();
   await page.click('#opItemModal [data-op-align="右"]');
-  await page.waitForTimeout(300);
+  await paint();
   await page.click('#opItemModal [data-op-vfmt="3桁区切り"]');
-  await page.waitForTimeout(400);
+  await paint();
   const look=await page.evaluate(()=>{
    const l=document.querySelector('#opPrevField .opf');
    const ctl=l&&l.querySelector('input');
@@ -845,7 +840,7 @@ const restore=[];
   const chSelJ=await chSel.json();if(chSelJ.id)madeChoices.push(chSelJ.id);
   await page.click('#masterMaintNav [data-master="opItem"]');
   await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
-  await page.waitForTimeout(700);
+  await idle();
   await openTile(mkcj.id);
   const sel=await page.evaluate(()=>{
    const l=document.querySelector('#opPrevField .opf');
@@ -902,7 +897,7 @@ const restore=[];
   /* 画面にも出る（探させない・§2）。 */
   await page.click('#masterMaintNav [data-master="opItem"]');
   await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
-  await page.waitForTimeout(700);
+  await idle();
   const stripTxt=await page.evaluate(()=>{
    const el=document.querySelector('.op-role-strip');return el?el.textContent||'':'';
   });
@@ -921,16 +916,16 @@ const restore=[];
      **押した結果が保存されること**を見る（§9.113の「送り漏らすと消える」）。 */
   await page.click('#masterMaintNav [data-master="opItem"]');
   await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
-  await page.waitForTimeout(700);
+  await idle();
   await openTile(mkrj.id);
   await tab('look');
   await page.click('#opItemModal [data-op-look="color"][data-op-val="緑"]');
-  await page.waitForTimeout(250);
+  await paint();
   /* 形は**角丸のバリエーション**（§9.227 ①、利用者の指示で`角`/`丸`は廃止）。 */
   await page.click('#opItemModal [data-op-look="shape"][data-op-val="大きめ"]');
-  await page.waitForTimeout(250);
+  await paint();
   await page.click('#opItemModal [data-op-look="size"][data-op-val="大"]');
-  await page.waitForTimeout(300);
+  await paint();
   /* 見本にその場で当たる（保存する前に確かめられる・§9.218 ①）。 */
   const lookNow=await page.evaluate(()=>{
    const l=document.querySelector('#opPrevField .opf');
@@ -992,7 +987,7 @@ const restore=[];
   if(mkSj.id)made.push(mkSj.id);
   await page.click('#masterMaintNav [data-master="opItem"]');
   await page.waitForSelector('#masterMaintList .op-board-grid',{timeout:20000});
-  await page.waitForTimeout(600);
+  await idle();
   await openTile(mkSj.id);
   await tab('look');
   await openPop('widget');
@@ -1023,7 +1018,7 @@ const restore=[];
   await page.evaluate(()=>{
    const b=document.querySelector('[data-op-widget="ボタン群"]');if(b)b.click();
   });
-  await page.waitForTimeout(500);
+  await paint();
   const lay=await page.evaluate(()=>({
    選べる:[...document.querySelectorAll('[data-op-layout]')].map(x=>x.dataset.opLayout),
    いま:(document.querySelector('[data-op-layout].is-on')||{}).dataset,
@@ -1033,7 +1028,7 @@ const restore=[];
   await page.evaluate(()=>{
    const b=document.querySelector('[data-op-layout="2列"]');if(b)b.click();
   });
-  await page.waitForTimeout(600);
+  await paint();
   const applied=await page.evaluate(()=>{
    const w=document.querySelector('#opPrevField .opf-widget');
    if(!w)return null;
@@ -1049,7 +1044,7 @@ const restore=[];
   await page.evaluate(()=>{
    const b=document.querySelector('[data-op-widget="段階"]');if(b)b.click();
   });
-  await page.waitForTimeout(600);
+  await paint();
   const stage=await page.evaluate(()=>{
    const w=document.querySelector('#opPrevField .opf-stage');
    if(!w)return null;
@@ -1069,7 +1064,7 @@ const restore=[];
   await page.evaluate(()=>{
    const b=document.querySelector('[data-op-widget="入切"]');if(b)b.click();
   });
-  await page.waitForTimeout(600);
+  await paint();
   const sw=await page.evaluate(()=>{
    const w=document.querySelector('#opPrevField .opf-switch');
    const b=w&&w.querySelector('.opf-switch-btn');
@@ -1096,7 +1091,7 @@ const restore=[];
     await page.waitForFunction(()=>!/保存しています/.test(
       (document.querySelector('#opLayoutState')||{}).textContent||''),null,{timeout:8000})
       .catch(()=>{});
-    await page.waitForTimeout(900);
+    await idle();  // 盤の幅の保存と描き直しが済むまで
    }
    side=await page.evaluate(bs=>{
     const r=bs.slice(0,2).map(n=>{
@@ -1113,7 +1108,7 @@ const restore=[];
      const b=document.querySelector(`.op-band[data-op-band="${nm}"] [data-op-gspan="0"]`);
      if(b)b.click();
     },n);
-    await page.waitForTimeout(900);
+    await idle();  // 盤の幅の保存と描き直しが済むまで
    }
   }
   rec('群に幅を与えると横に並ぶ（列でも区切れる）',
@@ -1131,9 +1126,5 @@ const restore=[];
   }
   for(const id of made){try{await post('/api/operation-item-master/delete',{id,user_id:TAG})}catch(e){}}
   for(const id of madeChoices){try{await post('/api/operation-choice-master/delete',{id,user_id:TAG})}catch(e){}}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1800,height:1000}});

@@ -14,8 +14,8 @@
       (どちらの標準所要分が効くのか決まらなくなるため)
     - 既存行の対象設備を差し替えられること(/update。以前は経路が無く、
       編集で対象設備を変えると別行が増えていた) */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const TAG='EQ'+Date.now().toString().slice(-6);
 const EQ_A='テスト設備A',EQ_B='テスト設備B';
@@ -26,15 +26,8 @@ const EQ_A='テスト設備A',EQ_B='テスト設備B';
 const H=require('./lib/harness.js');
 const SNAP_TABLES=['設備停止マスタ'];
 let snapM=null;
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
+run('test_stopeq: 設備停止マスタの対象設備(§9.81)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  snapM=await H.masterSnapshot(SNAP_TABLES);
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
- const settle=(ms=700)=>page.waitForTimeout(ms);
 
  // サーバー側の登録・取得はfetchで直接叩く(画面操作は入力欄の形と
  // 保存の往復だけを見る。UIの手順を全部なぞると、どこで落ちたのか
@@ -57,7 +50,7 @@ let b=null;
   /* §9.397 で「設備停止マスタ」は3ペインの専用画面になった。窓を開く入口は
      `#ssbAddStop`（汎用の`#masterMaintAdd`は出ない）。 */
   await page.waitForSelector('#ssbAddStop',{timeout:15000});
-  await settle(600);
+  await idle();
   await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'test-stopeq');
  };
  const made=[];
@@ -65,13 +58,13 @@ let b=null;
  try{
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
-  await settle(900);
+  await idle();
 
   /* ---- 1) 入力欄が複数選択+「すべての設備」になっている ---- */
   await openStopTab();
   await page.click('#ssbAddStop');
   await page.waitForSelector('#maintEditorModal:not([hidden])',{timeout:5000});
-  await settle(900);
+  await idle();
   const form=await page.evaluate(()=>{
    const all=document.querySelector('[data-equipment-all="equipment"]');
    const box=document.querySelector('[data-equipment-box="equipment"]');
@@ -92,7 +85,8 @@ let b=null;
   /* ---- 2) 未選択のままでは保存させない ---- */
   await page.fill('[data-field="name"]',TAG+'_未選択');
   await page.click('#maintEditorSave');
-  await settle(1200);
+  // 起きないことを見る判定: 登録されるなら出るはずの往復が静まるまで待つ（条件では待てない）。
+  await idle(800);
   const none=await listFor();
   rec('対象設備を選ばずに保存しようとしても登録されない',
       !none.some(x=>x.name===TAG+'_未選択'));
@@ -100,16 +94,17 @@ let b=null;
   /* ---- 3) 画面から複数設備をまとめて登録できる ---- */
   for(const eq of [EQ_A,EQ_B]){
    await page.click('[data-equipment-search="equipment"]');
-   await settle(300);
+   await page.waitForSelector(`[data-equipment-suggest="equipment"] [data-pick="${eq}"]`,{timeout:5000});
    await page.click(`[data-equipment-suggest="equipment"] [data-pick="${eq}"]`);
-   await settle(200);
+   await W.until(page,e=>[...document.querySelectorAll('[data-equipment-box="equipment"] .mm-tag')].some(t=>t.textContent.includes(e)),eq,{ms:5000,what:'選んだ設備がタグになる'});
   }
   const tags=await page.$$eval('[data-equipment-box="equipment"] .mm-tag',ts=>ts.map(t=>t.textContent.replace('×','').trim()));
   rec('選んだ設備がタグとして並ぶ',tags.length===2&&tags.includes(EQ_A)&&tags.includes(EQ_B),tags.join('/'));
   await page.fill('[data-field="name"]',TAG+'_多');
   await page.fill('#maintEditorForm .mm-num-input','30');
   await page.click('#maintEditorSave');
-  await settle(2200);
+  await W.until(page,()=>{const m=document.getElementById('maintEditorModal');return !m||m.hidden},null,{ms:10000,what:'保存して窓が閉じる'});
+  await idle();
   const many=(await listFor()).find(x=>x.name===TAG+'_多');
   if(many)made.push(many.id);
   rec('複数設備を1行で登録できる',!!many&&many.equipmentList.length===2,JSON.stringify(many&&many.equipmentList));
@@ -187,15 +182,10 @@ let b=null;
   rec('戻した行が一覧に出る',!!revived&&Number(revived.standardMinutes)===20,
       JSON.stringify(revived&&revived.standardMinutes));
 
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
   await cleanup();
-  process.exit(ng.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
+  rec('FATAL',false,String(e&&e.message||e));
   await cleanup();
-  process.exit(2);
  }
  /* 後片付けは**process.exitより前**に呼ぶこと。finallyに置くとexitで
     プロセスが即終了して走らない(実際に踏んだ)。設備停止マスタは共有DBでは
@@ -209,6 +199,5 @@ let b=null;
   }catch(e){console.log('!! 片付けの途中で止まりました: '+(e&&e.message||e))}
   try{if(snapM)await H.dropNewMasterRows(snapM)}
   catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
-  if(b)await b.close().catch(()=>{});
  }
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});
+}, {viewport:{width:1700,height:1000}});

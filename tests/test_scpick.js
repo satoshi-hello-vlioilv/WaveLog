@@ -23,20 +23,13 @@
    後片付けは finally で必ず行う（自分で作った予定だけを消す。フィクスチャは
    他のテストも読む）。落ちてもブラウザを閉じる。
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 /* 待ちは「時間」でなく「条件」で置く（§9.347、tests/lib/wait.js）。 */
-const W=require('./lib/wait');
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
+run('test_scpick: まとめて予定から外す（§9.170）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  const post=(p,body)=>page.evaluate(async a=>{
   const r=await fetch(a.p,{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify(Object.assign({user_id:'test-scpick'},a.b))});
@@ -358,7 +351,8 @@ let b=null;
   /* 1件も選んでいなければ何も起きない（押しても何も起きない鍵にしない・§4）。 */
   const beforeIdle=await planIds();
   await page.keyboard.press('Delete');
-  await page.waitForTimeout(600);
+  // 起きないことを見る判定: 条件では待てないので、消すなら出るはずの往復が静まるまで待つ。
+  await idle(800);
   rec('1件も選んでいないDeleteでは何も消えない',
       (await planIds()).length===beforeIdle.length,`${beforeIdle.length}件`);
 
@@ -387,9 +381,5 @@ let b=null;
    await post('/api/schedule/session/acquire',{equipment:EQ});
    for(const id of made)await post('/api/schedule/plan/delete',{id});
   }catch(e){}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1700,height:1000}});

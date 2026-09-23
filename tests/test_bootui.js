@@ -14,17 +14,14 @@
 
    最後の1つが一番重要。覆いが外れないと画面が出ないまま固まるので、
    崩れて見えるより悪い。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 /* base.js の BOOT_TIMEOUT_MS。ここを変えたら向こうも合わせる
    (段階数の一致は tests/test_boot.py が固定している)。 */
 const BOOT_TIMEOUT_MS=8000;
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+run('test_bootui: 起動オーバーレイ(#appBoot)の振る舞いを固定する。', async ({page,rec,B,W,idle,paint,errs,browser})=>{
 
  /* 起動中の1フレームごとの様子を採る。addInitScript は本体のJSより前に
     走るので、「最初の描画で何が見えていたか」まで拾える。 */
@@ -55,18 +52,19 @@ let b=null;
  };
 
  try{
-  const page=await b.newPage({viewport:{width:1600,height:1000}});
-  page.on('pageerror',e=>console.log('[pageerror]',e.message));
-  page.on('dialog',d=>d.accept());
   /* 使用設備が未登録だと一覧を取りに行かないので、実運用に近い状態にする。 */
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
-  await page.waitForTimeout(2500);
+  /* 1回目の起動が落ち着いてから開き直す（途中で航行すると取得が宙に浮く）。 */
+  await W.booted(page); await idle();
 
   await page.addInitScript(RECORDER);
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:20000});
-  await page.waitForTimeout(1200);
+  /* 起きないことを見る判定（覆いが外れた後に組み替わらない）の観測窓。
+     条件では待てないので、一覧の取得が静まってから 1.2秒（元の窓と同じ長さ）
+     静かなままであるまで待つ——その間のフレームを RECORDER が採る。 */
+  await idle(1200,8000);
   const f=await page.evaluate(()=>window.__boot);
 
   rec('起動中の様子を採取できた',f.length>10,`${f.length}フレーム`);
@@ -117,7 +115,7 @@ let b=null;
   /* ---- 段階が終わらなくても必ず解除される ----
      権限確認の応答を返さないまま止める。時間切れ(8秒)で覆いが外れ、
      操作できる画面になることを確かめる。 */
-  const page2=await b.newPage({viewport:{width:1600,height:1000}});
+  const page2=await browser.newPage({viewport:{width:1600,height:1000}});
   page2.on('pageerror',e=>console.log('[pageerror2]',e.message));
   await page2.route('**/api/access-mode',()=>{/* 応答しない(ぶら下げる) */});
   const t0=Date.now();
@@ -135,14 +133,7 @@ let b=null;
         return !!b&&getComputedStyle(b).visibility==='visible'}));
   await page2.close();
 
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
-  await b.close();
-  process.exit(ng.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
-  await b.close().catch(()=>{});
-  process.exit(2);
+  rec('FATAL',false,String(e&&e.message||e));
  }
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});
+}, {viewport:{width:1600,height:1000}});

@@ -13,22 +13,18 @@
 
    **後始末は`finally`**（§9.121）——作った塊と紙の設定を残すと、次の実行が
    それを引き継いで別のテストが落ちる。 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const fs=require('fs'),path=require('path');
 const B='http://127.0.0.1:5029';
 const EQ='スリッター1号';          /* 見本のロットの設備（サーバーのSAMPLE_VALUES） */
 const TAG='rbcells-'+Date.now();
 const NAME=TAG+'表';
-const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+String(d).slice(0,220):''))};
-let b=null,page=null;
 
 const CASES=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures','report_cells.json'),'utf8'));
 const KEYS=['label','path','kind','span','rows','showLabel','stack','align','format','lot'];
 
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- page=await b.newPage({viewport:{width:1700,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,160)));
+run('test_rbcells: 帳票ブロックを「セル」で組む（§9.274、利用者の指示）。', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openMasterMaint',{timeout:20000});
  await page.waitForSelector('#saveState',{state:'attached',timeout:20000});
@@ -115,7 +111,7 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
    const cat=[...document.querySelectorAll('[data-fb-cat]')].find(b=>/統計/.test(b.textContent||''));
    cat&&cat.click();
   });
-  await page.waitForTimeout(200);
+  await paint();
   const disabledFirst=await page.evaluate(()=>{
    const b=document.querySelector('.fb-table');return b?{dis:b.disabled,title:b.title}:null});
   rec('② 材料が無いうちは「表に組む」を押せない（理由を言う）',
@@ -125,7 +121,7 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
   for(const p of ['stat.thickness.min','stat.thickness.max','stat.width.min',
                   'stat.width.max','stat.length.min','stat.length.max']){
    await page.evaluate(x=>{const b=document.querySelector(`[data-fb-add="${x}"]`);b&&b.click()},p);
-   await page.waitForTimeout(80);
+   await paint();
   }
   const ready=await page.evaluate(()=>{
    const b=document.querySelector('.fb-table');return {dis:b.disabled,title:b.title}});
@@ -150,7 +146,7 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
       JSON.stringify(bar0));
 
   await page.evaluate(()=>document.querySelector('.fb-table').click());
-  await page.waitForTimeout(400);
+  await paint();
   const built=await page.evaluate(()=>({
    rows:document.querySelectorAll('.fb-row').length,
    heads:[...document.querySelectorAll('.fb-row-head .fb-label')].map(e=>e.value),
@@ -195,15 +191,15 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
   rec('②-b 組んだあとも軸の帯が残り、組み直せる',
       !(await axState()).hidden&&!(await axState()).組む.dis,
       JSON.stringify(await axState()));
-  await axAt('項目','列');await page.waitForTimeout(250);
+  await axAt('項目','列');await paint();
   const bothCol=await axState();
   rec('②-b 行に置く軸が無くなったら押せなくして理由を書く（§4）',
       bothCol.bad&&bothCol.組む.dis&&/行/.test(bothCol.組む.title)
       &&bothCol.置き場==='行= / 列=集計・項目',
       JSON.stringify(bothCol));
-  await axAt('集計','行');await page.waitForTimeout(250);
+  await axAt('集計','行');await paint();
   await page.evaluate(()=>document.querySelector('.fb-table').click());
-  await page.waitForTimeout(400);
+  await paint();
   const swapped=await page.evaluate(()=>({
    rows:document.querySelectorAll('.fb-row').length,
    heads:[...document.querySelectorAll('.fb-row-head .fb-label')].map(e=>e.value).join(','),
@@ -213,10 +209,10 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
       &&swapped.rows===12,
       JSON.stringify(swapped));
   /* 元へ戻して、以降の節は既定の形で確かめる。 */
-  await axAt('集計','列');await page.waitForTimeout(200);
-  await axAt('項目','行');await page.waitForTimeout(200);
+  await axAt('集計','列');await paint();
+  await axAt('項目','行');await paint();
   await page.evaluate(()=>document.querySelector('.fb-table').click());
-  await page.waitForTimeout(400);
+  await paint();
 
   /* ---- ②-c 「対象（子ロット）」の軸（§9.277、利用者の報告の本体） ----
      「子ロット分縦に積む形が今までなので縦に積むが標準で横に積むか
@@ -231,7 +227,7 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
      .find(e=>(e.textContent||'').indexOf(x)>=0);
    if(!b)return false;b.click();return true;},t);
   rec('②-c 繰り返しを「子ロットごと」にできる',await card('子ロットごと'));
-  await page.waitForTimeout(500);
+  await idle();
   const lotAx=await page.evaluate(()=>{
    const bar=document.querySelector('.fb-axes');
    const rowBox=bar&&bar.querySelector('[data-fb-box="行"]');
@@ -258,7 +254,7 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
   rec('②-c 総計（全体）の入切は「対象」にだけ出る（既定は出す）',
       lotAx.総計.join(',')==='対象:true',JSON.stringify(lotAx.総計));
   await page.evaluate(()=>document.querySelector('.fb-table').click());
-  await page.waitForTimeout(400);
+  await paint();
   const lotBuilt=await page.evaluate(()=>{
    let j=null;try{j=JSON.parse((document.querySelector('#maintEditorForm [data-field="content"]')||{}).value)}catch(e){}
    const cells=(j||[]).map(c=>!!c.lot);
@@ -304,19 +300,19 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
   /* ②-cの続きなので、まず「行＝対象・項目／列＝集計」から始まる。
      **2回落として入れ替える**——1回だけだと列が空になり、「組めない」の
      道へ入って以降の節が何も確かめられない（実際にそうなった）。 */
-  await drop('項目','列');await page.waitForTimeout(300);
-  await drop('集計','行');await page.waitForTimeout(300);
+  await drop('項目','列');await paint();
+  await drop('集計','行');await paint();
   const dragged=await axState();
   rec('②-d 軸を掴んで別の箱へ落とせる',
       dragged.置き場==='行=対象・集計 / 列=項目',JSON.stringify(dragged));
   /* **対象は落とせない**（落とし先が列でも内側でも受けない）。 */
-  await drop('対象','列');await page.waitForTimeout(300);
+  await drop('対象','列');await paint();
   const denied=await axState();
   rec('②-d 「対象」は掴んでも列へ落ちない（行のいちばん外側のまま）',
       denied.置き場==='行=対象・集計 / 列=項目',JSON.stringify(denied));
   /* 階層ラベル——外側（対象）が同じ行は2行目以降を空きにする。 */
   await page.evaluate(()=>document.querySelector('.fb-table').click());
-  await page.waitForTimeout(400);
+  await paint();
   const cellStat=()=>page.evaluate(()=>{
    let j=null;try{j=JSON.parse(document.querySelector('#maintEditorForm [data-field="content"]').value)}catch(e){}
    const c=j||[];
@@ -336,23 +332,23 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
   /* 「毎行くり返す」に切り替えると空きが減る（切り替えが効いていること）。 */
   await page.evaluate(()=>{const c=document.querySelector('[data-fb-replab]');
    c.checked=true;c.dispatchEvent(new Event('change',{bubbles:true}))});
-  await page.waitForTimeout(250);
+  await paint();
   await page.evaluate(()=>document.querySelector('.fb-table').click());
-  await page.waitForTimeout(400);
+  await paint();
   const flat=await cellStat();
   rec('②-d 「ラベルを毎行くり返す」にすると空きにせず毎行出す',
       flat.全体===2&&flat.対象===2&&flat.空き<nest.空き,
       JSON.stringify({全体:flat.全体,対象:flat.対象,空き:flat.空き}));
   await page.evaluate(()=>{const c=document.querySelector('[data-fb-replab]');
    c.checked=false;c.dispatchEvent(new Event('change',{bubbles:true}))});
-  await page.waitForTimeout(250);
+  await paint();
   /* 総計を切ると「全体」が消え、本体の段が減る。 */
   await page.evaluate(()=>{const c=document.querySelector('[data-fb-grand="対象"]');
    c.checked=false;c.dispatchEvent(new Event('change',{bubbles:true}))});
-  await page.waitForTimeout(300);
+  await paint();
   const grandOff=await axState();
   await page.evaluate(()=>document.querySelector('.fb-table').click());
-  await page.waitForTimeout(400);
+  await paint();
   const noGrand=await cellStat();
   rec('②-d 総計を切ると「全体」の行が消える（案内も言い直す）',
       noGrand.全体===0&&noGrand.対象>0&&/子ロットぶん/.test(grandOff.いま)
@@ -360,16 +356,16 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
       JSON.stringify(noGrand)+' / '+grandOff.いま);
   await page.evaluate(()=>{const c=document.querySelector('[data-fb-grand="対象"]');
    c.checked=true;c.dispatchEvent(new Event('change',{bubbles:true}))});
-  await page.waitForTimeout(250);
+  await paint();
   /* **置き場も元へ戻す**——`state.axes`は掴んだ順を覚えているので、
      戻さないと以降の節が別の形の表を見ることになる。 */
-  await axAt('集計','列');await page.waitForTimeout(200);
-  await axAt('項目','行');await page.waitForTimeout(200);
+  await axAt('集計','列');await paint();
+  await axAt('項目','行');await paint();
 
   /* 以降の節は「1回だけ」の塊で確かめる（紙の見え方を変えない）。 */
-  await card('1回だけ');await page.waitForTimeout(400);
+  await card('1回だけ');await idle();
   await page.evaluate(()=>document.querySelector('.fb-table').click());
-  await page.waitForTimeout(400);
+  await paint();
 
   // 書式を1つ当てる（板厚MINを小数3桁＋単位）
   await page.evaluate(()=>{
@@ -377,19 +373,19 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
    const r=rows.find(x=>x.classList.contains('fb-row-bare'));
    r&&r.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
   });
-  await page.waitForTimeout(250);
+  await paint();
   await page.evaluate(()=>{
    const b=[...document.querySelectorAll('.fb-insp [data-fb-fmt]')].find(x=>x.dataset.fbFmt==='number');
    b&&b.click();
   });
-  await page.waitForTimeout(250);
+  await paint();
   await page.evaluate(()=>{
    const el=document.querySelector('.fb-insp [data-fb-dec]');
    if(el){el.value='3';el.dispatchEvent(new Event('input',{bubbles:true}))}
    const su=document.querySelector('.fb-insp [data-fb-suf]');
    if(su){su.value='mm';su.dispatchEvent(new Event('input',{bubbles:true}))}
   });
-  await page.waitForTimeout(300);
+  await paint();
   const fmt=await page.evaluate(()=>{
    const v=(document.querySelector('#maintEditorForm [data-field="content"]')||{}).value;
    let j=null;try{j=JSON.parse(v)}catch(e){}
@@ -410,9 +406,10 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
    const all=document.querySelector('#maintEditorForm [data-equipment-all="equipment"]');
    if(all&&!all.checked){all.checked=true;all.dispatchEvent(new Event('change',{bubbles:true}))}
   },NAME);
-  await page.waitForTimeout(300);
+  await paint();
   await page.evaluate(()=>document.querySelector('#maintEditorSave').click());
-  await page.waitForTimeout(2200);
+  await W.until(page,()=>{const m=document.getElementById('maintEditorModal');return !m||m.hidden},null,{ms:10000,what:'保存して窓が閉じる'});
+  await idle();
   const saved=await page.evaluate(async n=>{
    const l=await api('/api/report-block-master?equipment=');
    const r=(l.items||[]).find(x=>x.name===n);
@@ -442,7 +439,7 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
    const t=[...document.querySelectorAll('#maintEditorModal .mm-tabbar button')]
     .find(b=>/何を載せる/.test(b.textContent||''));t&&t.click()});
   await page.waitForSelector('.fb-rows',{timeout:15000});
-  await page.waitForTimeout(600);
+  await idle();
   const again=await page.evaluate(()=>{
    const b=document.querySelector('.fb-table');
    const raw=String((document.querySelector('#maintEditorForm [data-field="content"]')||{}).value);
@@ -471,11 +468,11 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
    const cat=[...document.querySelectorAll('[data-fb-cat]')].find(b=>/基本|仕掛|準備/.test(b.textContent||''));
    cat&&cat.click();
   });
-  await page.waitForTimeout(200);
+  await paint();
   await page.evaluate(()=>{
    const b=document.querySelector('[data-fb-add]');b&&b.click();
   });
-  await page.waitForTimeout(200);
+  await paint();
   const stackUi=await page.evaluate(()=>{
    /* **いま足したマスを選ぶ**（末尾）——表に組んだマスは`showLabel:false`や
       見出し・空きなので、そこには並べ方の欄が出ないのが正しい。 */
@@ -499,7 +496,7 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
   rec('②-c まとめて切り替える操作もある（設定は1つ・操作が2つ）',
       !!stackUi.bulk&&!stackUi.bulk.dis&&/上下/.test(stackUi.bulk.t),
       JSON.stringify(stackUi.bulk));
-  await page.waitForTimeout(250);
+  await paint();
   const stacked=await page.evaluate(()=>{
    const b=document.querySelector('.fb-insp [data-fb-stack="1"]');b&&b.click();
    const raw=String((document.querySelector('#maintEditorForm [data-field="content"]')||{}).value);
@@ -530,7 +527,8 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
   rec('②-c 「上下」にするとマスに保存され、紙は1列（ラベルが値の上）になる',
       stacked.saved&&stacked.upN===1&&stacked.sideN===2,JSON.stringify(stacked));
   await page.evaluate(()=>{const c=document.getElementById('maintEditorCancel');if(c)c.click()});
-  await page.waitForTimeout(400);
+  await W.until(page,()=>{const m=document.getElementById('maintEditorModal');return !m||m.hidden},null,{ms:10000,what:'やめて窓が閉じる'});
+  await paint();
 
   // ---- ④ あとから足した塊が「出す」で紙に出る --------------------------
   const shownOk=await page.evaluate(async ([eq,n])=>{
@@ -612,7 +610,7 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
 
   // ---- ⑥ 説明の量 -------------------------------------------------------
   await page.evaluate(()=>{const m=document.querySelector('#maintEditorModal');if(m)m.hidden=true});
-  await page.waitForTimeout(200);
+  await paint();
   const hints=async()=>page.evaluate(()=>({
    lv:document.documentElement.getAttribute('data-hint'),
    def:(document.querySelector('#masterMaintForm .mm-def-hint')||{}).textContent||'',
@@ -625,10 +623,10 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
    await page.evaluate(x=>document.querySelector(`#mmHintMenu [data-hint-lv="${x}"]`).click(),v);
    await page.waitForFunction(x=>document.documentElement.getAttribute('data-hint')===x
      &&!document.getElementById('mmHintMenu'),v,{timeout:5000});
-   await page.waitForTimeout(250);
+   await paint();
   };
   await page.evaluate(()=>document.querySelector('#masterMaintNav [data-master="equipment"]')?.click());
-  await page.waitForTimeout(900);
+  await idle();
   const full=await hints();
   await setHint('short');
   const short=await hints();
@@ -663,7 +661,7 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
    len:document.getElementById('masterMaintList').textContent.replace(/\s+/g,'').length,
    pz:!!document.getElementById('pzList')}));
   await setHint('off');
-  await page.waitForTimeout(600);
+  await idle();
   const after=await page.evaluate(()=>({
    len:document.getElementById('masterMaintList').textContent.replace(/\s+/g,'').length,
    pz:!!document.getElementById('pzList')}));
@@ -698,14 +696,5 @@ const KEYS=['label','path','kind','span','rows','showLabel','stack','align','for
    },[NAME,EQ]);
    await page.evaluate(()=>{try{localStorage.removeItem('MasterHintLevelV1')}catch(e){}});
   }catch(e){}
-  try{if(b)await b.close()}catch(e){}
  }
- const ng=R.filter(x=>!x.ok);
- console.log('\n=== SUMMARY ===');console.log(`${R.length-ng.length}/${R.length} passed`);
- ng.forEach(x=>console.log(' -',x.n,x.d||''));
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- console.log('FATAL:',e.message);
- try{if(b)await b.close()}catch(_){}
- process.exit(1);
-});
+}, {viewport:{width:1700,height:1000}});

@@ -12,11 +12,11 @@
     6. モーダルと側パネルの**どちらでも同じもの**が出る（実装は1つ）
     7. 押しても**一覧は消えない**（§9.397で左右2ペインへ組み直した）
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const NEW='点検（自動テスト）';
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const reasons=()=>fetch(B+'/api/schedule/stop-reason-master?equipment='+encodeURIComponent(EQ)).then(r=>r.json());
 const planEntries=async()=>(await (await fetch(B+'/api/schedule/plan?equipment='+encodeURIComponent(EQ))).json()).entries||[];
@@ -49,11 +49,7 @@ async function cleanup(){
     await post('/api/master-table/'+encodeURIComponent('設備停止マスタ')+'/delete',{id:row.id});
  }catch(e){console.log('片付け（素の表からの物理削除）を飛ばした: '+e.message)}
 }
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];page.on('pageerror',e=>errs.push(e.message));
+run('test_scstop: 設備停止を入れる／その場で登録する(§9.181)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await cleanup();
   for(const [category,name,standardMinutes] of SEED)
@@ -67,7 +63,7 @@ async function cleanup(){
   await W.openSchedule(page,EQ);
   await page.click('#scStopModalBtn');
   await page.waitForSelector('#scStopModal:not([hidden])',{timeout:8000});
-  await page.waitForTimeout(800);
+  await idle();
 
   /* ---- 1) どこへ入るのか（§9.402） ----
      **設備名は窓の題**が言い、**入る位置はカード**が言う（同じ情報を
@@ -99,7 +95,7 @@ async function cleanup(){
   /* ---- 4) 絞り込み ---- */
   await page.click('#scStopSearch');
   await page.type('#scStopSearch','刃物',{delay:40});
-  await page.waitForTimeout(500);
+  await W.until(page,()=>/\/\s*\d+件/.test(document.querySelector('.sc-stop-more')?.textContent||''),null,{ms:5000,what:'絞り込みの「何件中何件」が出る'});
   const filt=await page.evaluate(()=>({names:[...document.querySelectorAll('.sc-stop-button b')].map(x=>x.textContent),
     more:document.querySelector('.sc-stop-more')?.textContent.trim()||'',
     focus:document.activeElement?.id||'',value:document.getElementById('scStopSearch').value}));
@@ -110,15 +106,15 @@ async function cleanup(){
   rec('絞り込みの入力欄からフォーカスが飛ばない',
       filt.focus==='scStopSearch'&&filt.value==='刃物',JSON.stringify(filt));
   await page.fill('#scStopSearch','ないない');
-  await page.waitForTimeout(400);
+  await W.until(page,()=>/0件/.test(document.querySelector('#scStopList')?.textContent||''),null,{ms:5000,what:'当たらない絞り込みで一覧が描き直される'});
   const none=await page.evaluate(()=>document.querySelector('#scStopList')?.textContent.replace(/\s+/g,' ').trim()||'');
   rec('当たらないときは0件だと書く',/0件/.test(none),none.slice(0,60));
   await page.fill('#scStopSearch','');
-  await page.waitForTimeout(400);
+  await W.until(page,()=>document.querySelectorAll('.sc-stop-button').length>1,null,{ms:5000,what:'絞り込みを外して一覧が戻る'});
 
   /* ---- 5) その場で登録 ---- */
   await page.click('#scStopNewToggle');
-  await page.waitForTimeout(400);
+  await W.until(page,()=>document.querySelectorAll('#scStopNewCat option').length>0,null,{ms:5000,what:'その場で登録の欄(分類の選択肢)が出る'});
   const cats=await page.evaluate(()=>[...document.querySelectorAll('#scStopNewCat option')].map(o=>o.value));
   rec('分類はマスタの選択肢から選べる',cats.includes('保全')&&cats.includes(''),JSON.stringify(cats));
   const note=await page.evaluate(()=>document.querySelector('#scStopNewNote')?.textContent||'');
@@ -298,18 +294,23 @@ async function cleanup(){
       .find(r=>String(r.dataset.id)===String(id));
     if(row)row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:400,clientY:300}));
    },added.id);
+   /* 描画を1巡させてから Esc を押す。`WL.popMenu.open()` は鍵盤の配線を**次の巡回**で張る
+      （開いたクリックでそのまま閉じないため）ので、開いた数ms後に押すと届かない
+      （人の手では起きない速さ。置き換え前は200msの固定待ちに隠れていた）。 */
+   await paint();
    const menuEmoji=(menu.項目||[]).join('');
    rec('右クリックの項目に絵文字が無い',!EMOJI.test(menuEmoji),
        (menuEmoji.match(EMOJI)||[]).join('')||'なし');
    await page.keyboard.press('Escape');
-   await page.waitForTimeout(200);
+   await W.until(page,()=>[...document.querySelectorAll('.sc-row-menu')].every(m=>m.hidden||!m.getClientRects().length),null,{ms:4000,what:'行の右クリックのメニューが閉じる'});
    /* ダブルクリックでも同じ窓が開く（入口は2つ・実装は1つ）。 */
    await page.evaluate(id=>{
     const row=[...document.querySelectorAll('.sc-row-line')]
       .find(r=>String(r.dataset.id)===String(id));
     row&&row.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
    },added.id);
-   await page.waitForTimeout(500);
+   await W.until(page,()=>!!document.getElementById('scStopEditName'),null,{ms:6000,what:'ダブルクリックで停止内容を直す窓が開く'});
+   await idle();
    const opened=await page.evaluate(()=>({
     出た:!!document.getElementById('scStopEditName'),
     名称:(document.getElementById('scStopEditName')||{}).value||'',
@@ -410,13 +411,15 @@ async function cleanup(){
 
   /* ---- 6) 側パネルでも同じもの ---- */
   await page.click('#scStopModalClose');
-  await page.waitForTimeout(600);
+  await W.until(page,()=>{const m=document.getElementById('scStopModal');return !m||m.hidden},null,{ms:5000,what:'設備停止の窓が閉じる'});
+  await idle();
   const side=await page.evaluate(()=>{
    const tab=document.querySelector('#scSideToggle');if(tab)tab.click();
    const t=document.querySelector('#scStopSectionToggle');if(t)t.click();
    return true;
-  });
-  await page.waitForTimeout(700);
+   });
+   await W.until(page,()=>!!document.querySelector('#scSide #scStopButtons'),null,{ms:6000,what:'側パネルに設備停止の節が出る'});
+   await idle();
   const inSide=await page.evaluate(()=>({box:!!document.querySelector('#scSide #scStopButtons'),
     search:!!document.querySelector('#scSide #scStopSearch'),
     add:!!document.querySelector('#scSide #scStopNewToggle'),
@@ -425,12 +428,8 @@ async function cleanup(){
       inSide.box&&inSide.search&&inSide.add&&inSide.where,JSON.stringify(inSide));
 
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
- }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
+ }catch(e){rec('FATAL',false,String(e&&e.message||e))}
  finally{
   await cleanup().catch(()=>{});
-  await b.close();
-  const ok=R.filter(x=>x.ok).length;
-  console.log(`\n=== SUMMARY ===\n${ok}/${R.length} passed`);
-  process.exit(ok===R.length?0:1);
  }
-})();
+}, {viewport:{width:1700,height:1000}});

@@ -31,6 +31,9 @@ run('test_colrule: 値の読み替え(§9.88 段4)', async ({page,rec,B,W,idle,p
  try{
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'load'});
+  /* 起動の取得が静まってから書き換え・読み込み直す（すぐ reload すると初期化の取得が
+     打ち切られ、アプリが「初期化エラー」を console へ出す・§9.451）。 */
+  await W.booted(page); await idle();
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'load'});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});

@@ -16,19 +16,14 @@
     - 画面の判定とサーバーの判定が食い違わないこと
       （tests/fixtures/sort_cases.json の同じ例で突き合わせる。
        サーバー側は tests/test_sortpipe.py） */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const CASES=require('path').join(__dirname,'fixtures','sort_cases.json');
 const {clearLayout}=require('./lib/harness.js');   // 後片付け（§9.360）
 const cases=JSON.parse(require('fs').readFileSync(CASES,'utf8'));
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
+run('test_sortcustom: 列ごとの並べ替え（§9.187）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  let target='';
  try{
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
@@ -85,7 +80,7 @@ let b=null;
   const b1=await page.$$eval('.lc-bucket',ns=>ns.map(n=>n.dataset.bucket));
   rec('塊は4つ（空欄・数値・日付・文字列）',b1.join(',')==='empty,num,date,text',b1.join(','));
   await page.click('.lc-bucket [data-bdown="0"]');
-  await page.waitForTimeout(200);
+  await W.until(page,prev=>[...document.querySelectorAll('.lc-bucket')].map(n=>n.dataset.bucket).join(',')!==prev,b1.join(','),{ms:5000,what:'塊の順が描き直される'});
   const b2=await page.$$eval('.lc-bucket',ns=>ns.map(n=>n.dataset.bucket));
   rec('▶で塊の順を動かせる',b2.join(',')==='num,empty,date,text',b2.join(','));
   const staged=await page.evaluate(([t,c])=>WL.columnLayout.sort(t,c),[target,col]);
@@ -97,7 +92,7 @@ let b=null;
    const el=[...document.querySelectorAll('input[name="lcSortOn"]')].find(x=>x.value==='display');
    el.checked=true;el.dispatchEvent(new Event('change',{bubbles:true}));
   });
-  await page.waitForTimeout(300);
+  await W.until(page,prev=>[...document.querySelectorAll('.lc-flow-step')].map(n=>n.textContent).join('→')!==prev,flow.join('→'),{ms:5000,what:'処理の順番の図が描き直される'});
   const flow2=await page.$$eval('.lc-flow-step',ns=>ns.map(n=>n.textContent));
   rec('変換後で並べると図の順番も入れ替わる',
       flow2.join('→')==='生の値→読み替え→書式→並べ替え→画面',flow2.join('→'));
@@ -114,7 +109,7 @@ let b=null;
 
   /* ---- 5) 保存して読み直しても同じ決まり ---- */
   await page.evaluate(()=>document.getElementById('lcSave').click());
-  await page.waitForTimeout(900);
+  await idle();
   const saved=await page.evaluate(async t=>{
    WL.columnLayout.forget(t);
    const l=await WL.columnLayout.load(t);
@@ -176,10 +171,5 @@ let b=null;
      試験用の`SANDBOX`も同じ理由で消す。 */
   try{if(target)await clearLayout(target)}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
   try{await clearLayout('list:__sorttest__:__t__')}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
-  if(b)await b.close().catch(()=>{});
  }
- console.log('\n=== SUMMARY ===');
- const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
- ng.forEach(x=>console.log(' -',x.n,x.d||''));
- process.exit(ng.length?1:0);
-})();
+}, {viewport:{width:1700,height:1000}});

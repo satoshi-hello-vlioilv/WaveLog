@@ -21,22 +21,17 @@
     9. 役（親／子）が入れ物の行に**文字で**出る（§3）
    10. 器からはみ出さない
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const TAG='CU'+process.pid;
 const P=TAG+'材質',C=TAG+'品種',D=TAG+'形状';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(body)}).then(r=>r.json().catch(()=>({})));
 const get=p=>fetch(B+p).then(r=>r.json());
-let b=null;const made=[];
+const made=[];
 
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('!! '+e.message.slice(0,200)));
- page.on('dialog',d=>d.accept());
+run('test_choicelinkui: 選択肢の親子（リンクマスタ）の盤（§9.306-B、利用者の指示）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
 
  const look=()=>page.evaluate(()=>({
   一覧の枚数:document.querySelectorAll('.cl-list').length,
@@ -190,8 +185,7 @@ let b=null;const made=[];
   rec('⑩ 器からはみ出さない',!!over&&over[0]<=1&&over[1]<=1,JSON.stringify(over));
 
  }catch(e){
-  console.log('FATAL: '+(e&&e.stack||e));
-  R.push({n:'FATAL',ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* **後始末は自分が作ったものだけ**（§9.121。マスタは実行をまたいで残る）。 */
   try{
@@ -201,9 +195,5 @@ let b=null;const made=[];
    }
   }catch(e){}
   for(const id of made){try{await post('/api/operation-choice-master/delete',{id,user_id:'tests'})}catch(e){}}
-  if(b)await b.close();
  }
- const ng=R.filter(x=>!x.ok).length;
- console.log(`\n${R.length-ng}/${R.length} PASS`);
- process.exit(ng?1:0);
-})();
+}, {viewport:{width:1700,height:1000}});

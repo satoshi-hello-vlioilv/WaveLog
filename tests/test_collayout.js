@@ -12,21 +12,19 @@
     5. 保存するのは**許可された全列の並び**。見えている分だけ保存すると、
        非表示にしていた列の位置が失われる
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-let b=null,target='';
+let target='';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1600,height:950}});
- const W=require('./lib/wait.js');const {idle}=W.track(page);
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
+run('test_collayout: 一覧の列の並び・幅・表示(§9.88 段1)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  page.on('console',m=>{if(m.type()==='error')errs.push('console: '+m.text().slice(0,90))});
  try{
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'load'});
+  /* 起動の取得が静まってから書き換え・読み込み直す（すぐ reload すると初期化の取得が
+     打ち切られ、アプリが「初期化エラー」を console へ出す・§9.451）。 */
+  await W.booted(page); await idle();
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'load'});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
@@ -556,17 +554,10 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
-  console.log('\n=== SUMMARY ===');
-  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
-  f.forEach(x=>console.log(' -',x.n,x.d||''));
-  await b.close();b=null;
   // 検証で作った並びは消す(次のテストや実機の設定を汚さない)。
   if(target)await post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],locks:[],user_id:'test'});
-  process.exit(f.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
-  if(b)await b.close().catch(()=>{});
+  rec('FATAL',false,String(e&&e.message||e));
   if(target)await post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],locks:[],user_id:'test'}).catch(()=>{});
-  process.exit(2);
  }
-})();
+}, {viewport:{width:1600,height:950}});

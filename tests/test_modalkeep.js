@@ -25,14 +25,10 @@
    （お知らせは「やめる」を伏せるので、入れ直しを忘れると**次の確認から
    選択肢が片方消える**）。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];page.on('pageerror',e=>errs.push(e.message));
+run('test_modalkeep: 背景クリックではモーダルを閉じない（§9.221 ①）', async ({page,rec,B,W,idle,paint,errs})=>{
  try{
   await fetch(B+'/api/access-mode',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({mode:'edit'})});
@@ -63,7 +59,8 @@ let b=null;
    return {x:Math.round(d.left/2),y:Math.round(d.top/2)};
   });
   await page.mouse.click(Math.max(6,box.x),Math.max(6,box.y));
-  await page.waitForTimeout(250);
+  /* 「閉じない」を見るので条件では待てない。背景の押下は同期で処理される（弾みの印は460msで外れる）ので、描画1巡で測る。 */
+  await paint();
   const afterOutside=await page.evaluate(()=>({
     open:document.querySelector('#appConfirmModal').hidden===false,
     resolved:window.__mk,
@@ -74,7 +71,7 @@ let b=null;
   rec('押したことは返す（器が弾み、×に案内が出る）',afterOutside.nudged&&afterOutside.hint,
       JSON.stringify(afterOutside));
   await page.click('#closeAppConfirm');
-  await page.waitForTimeout(200);
+  await W.until(page,()=>{const m=document.querySelector('#appConfirmModal');return !m||m.hidden},null,{ms:5000,what:'×で確認の窓が閉じる'});
   rec('×では閉じる',await page.evaluate(()=>document.querySelector('#appConfirmModal').hidden===true));
 
   /* ---- 4) マスタの編集モーダル: 打ちかけの文字が消えない ---- */
@@ -93,14 +90,14 @@ let b=null;
    return {x:Math.round(d.left/2),y:Math.round(d.top+d.height/2)};
   });
   await page.mouse.click(Math.max(6,dlg.x),dlg.y);
-  await page.waitForTimeout(250);
+  await paint();  // 「閉じない」を見るので条件では待てない（上と同じ）
   const kept=await page.evaluate(()=>({
     open:document.querySelector('#maintEditorModal').hidden===false,
     value:document.querySelector('#maintEditorForm [data-field="loginId"]')?.value||''}));
   rec('編集モーダルも背景クリックで閉じない',kept.open,JSON.stringify(kept));
   rec('打ちかけの文字が消えていない',kept.value==='打ちかけの文字',kept.value);
   await page.click('#maintEditorCancel');
-  await page.waitForTimeout(200);
+  await W.until(page,()=>{const m=document.querySelector('#maintEditorModal');return !m||m.hidden},null,{ms:5000,what:'キャンセルで編集の窓が閉じる'});
   rec('キャンセルでは閉じる',
       await page.evaluate(()=>document.querySelector('#maintEditorModal').hidden===true));
 
@@ -122,7 +119,7 @@ let b=null;
     cancelHidden:document.querySelector('#appConfirmCancel').hidden}));
   rec('お知らせはボタンが1つ（やめるを出さない）',
       al.cancelHidden===true&&al.ok==='閉じる',JSON.stringify(al));
-  await page.click('#appConfirmOk');await page.waitForTimeout(200);
+  await page.click('#appConfirmOk');await W.until(page,()=>{const m=document.querySelector('#appConfirmModal');return !m||m.hidden},null,{ms:5000,what:'お知らせの窓が閉じる'});
 
   /* **お知らせの次の確認で「やめる」が戻っている。** ここが今回いちばん
      壊れやすい（伏せたままにすると選択肢が片方消えたまま気づかれない）。 */
@@ -130,17 +127,17 @@ let b=null;
   await page.waitForSelector('#appConfirmModal:not([hidden])',{timeout:4000});
   rec('お知らせの後の確認でも「やめる」が戻っている',
       await page.evaluate(()=>document.querySelector('#appConfirmCancel').hidden===false));
-  await page.click('#appConfirmCancel');await page.waitForTimeout(200);
+  await page.click('#appConfirmCancel');await W.until(page,()=>{const m=document.querySelector('#appConfirmModal');return !m||m.hidden},null,{ms:5000,what:'「やめる」で確認の窓が閉じる'});
   rec('「やめる」は false を返す',(await page.evaluate(()=>window.__mkC))===false);
 
   page.evaluate(()=>{window.__mkP=promptModal({title:'名前',label:'新しい名前',value:'あ'})});
   await page.waitForSelector('#appPromptInput',{timeout:4000});
-  await page.waitForTimeout(300);
+  await W.until(page,()=>document.activeElement&&document.activeElement.id==='appPromptInput',null,{ms:3000,what:'1行入力の欄に焦点が乗る'});
   rec('1行入力は入力欄に焦点が乗る（すぐ打てる）',
       (await page.evaluate(()=>document.activeElement&&document.activeElement.id))==='appPromptInput');
   await page.fill('#appPromptInput','  かきくけこ  ');
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(250);
+  await W.until(page,()=>{const m=document.querySelector('#appConfirmModal');return !m||m.hidden},null,{ms:5000,what:'Enterで1行入力の窓が閉じる'});
   /* 素の`prompt()`はEnterで決まった。作法を落とさない。前後の空白は落とす。 */
   rec('Enterで決まり、前後の空白は落ちる',
       (await page.evaluate(()=>window.__mkP))==='かきくけこ',
@@ -148,7 +145,7 @@ let b=null;
 
   page.evaluate(()=>{window.__mkP2=promptModal({label:'名前'})});
   await page.waitForSelector('#appPromptInput',{timeout:4000});
-  await page.click('#appConfirmCancel');await page.waitForTimeout(250);
+  await page.click('#appConfirmCancel');await W.until(page,()=>{const m=document.querySelector('#appConfirmModal');return !m||m.hidden},null,{ms:5000,what:'「やめる」で1行入力の窓が閉じる'});
   /* **やめたときは`null`。** 「空で決定した」と分かれていないと、理由の
      ように空でも通す欄で「やめた」が「理由なしで実行」に化ける。 */
   rec('やめたときは null（空文字と見分けが付く）',
@@ -158,11 +155,5 @@ let b=null;
   rec('この間、素のダイアログは1度も出ていない',native.length===0,native.join(' / '));
 
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
- }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
- finally{
-  await b.close();
-  const ok=R.filter(x=>x.ok).length;
-  console.log(`\n=== SUMMARY ===\n${ok}/${R.length} passed`);
-  process.exit(ok===R.length?0:1);
- }
-})();
+ }catch(e){rec('FATAL',false,String(e&&e.message||e))}
+}, {viewport:{width:1700,height:1000}});

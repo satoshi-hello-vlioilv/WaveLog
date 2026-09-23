@@ -16,8 +16,8 @@
 
    HTML5のD&DはPlaywrightのマウス操作では飛ばないので、dragstart/drop を
    直接発火して確かめる（実機の経路と同じハンドラを通る）。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const SEEDED_STOP='SD'+process.pid+'停止';
@@ -28,13 +28,8 @@ const SEEDED_STOP='SD'+process.pid+'停止';
 const H=require('./lib/harness.js');
 const SNAP_TABLES=['設備停止マスタ'];
 let snapM=null;
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
+run('test_scdrop: 予定から外す受け皿（§9.116）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  snapM=await H.masterSnapshot(SNAP_TABLES);
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
  const setMode=m=>page.evaluate(async mm=>{await fetch('/api/access-mode',{method:'POST',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mm})})},m);
  const post=(p,body)=>page.evaluate(async a=>{
@@ -177,22 +172,17 @@ let b=null;
   await page.waitForSelector('#appConfirmModal:not([hidden])',{timeout:10000});
   rec('落とすと確認が出る（黙って消さない）',true);
   await page.click('#appConfirmOk');
-  let vanished=false;
-  for(let i=0;i<30&&!vanished;i++){
-   vanished=await page.evaluate(id=>![...document.querySelectorAll('.sc-row-line')]
-     .some(r=>r.dataset.id===String(id)),madeId);
-   if(!vanished)await page.waitForTimeout(500);
-  }
+  await W.until(page,id=>![...document.querySelectorAll('.sc-row-line')]
+    .some(r=>r.dataset.id===String(id)),madeId,{ms:15000,what:'落とした行が画面から消える'});
+  const vanished=await page.evaluate(id=>![...document.querySelectorAll('.sc-row-line')]
+    .some(r=>r.dataset.id===String(id)),madeId);
   rec('落とした行が画面から消える',vanished);
   /* 書込は待ち行列を通るので、サーバー側へ反映されるまで待つ。
      **page.waitForFunction へ async の関数を渡さないこと**——返り値の
      Promiseがそのまま「真」と見なされ、1回目で即座に抜ける（実際にこれで
      「消えていないのに消えた」と読み違えた）。取得はNode側で回す。 */
-  let served=false;
-  for(let i=0;i<40&&!served;i++){
-   served=!(await plan()).some(e=>String(e.id)===String(madeId));
-   if(!served)await page.waitForTimeout(500);
-  }
+  const served=!(await W.poll(()=>plan(),v=>!v.some(e=>String(e.id)===String(madeId)),20000))
+    .some(e=>String(e.id)===String(madeId));
   const after=(await plan()).map(e=>String(e.id));
   const gone=before.filter(x=>!after.includes(x));
   const added=after.filter(x=>!before.includes(x));
@@ -204,18 +194,14 @@ let b=null;
   /* ---- 5) 受け皿は並べ替えを確定させない ---- */
   let reordered=false;
   page.on('request',r=>{if(r.url().includes('/api/schedule/plan/reorder'))reordered=true});
-  await page.waitForTimeout(1200);
+  /* 「送らないこと」は条件で待てない。送るなら送るはずの往復が静まるまで待つ。 */
+  await idle(1200);
   rec('外した操作で並べ替えを保存しない',!reordered);
 
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
   await cleanup();
-  process.exit(ng.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
+  rec('FATAL',false,String(e&&e.message||e));
   await cleanup();
-  process.exit(2);
  }
  async function cleanup(){
   try{
@@ -228,6 +214,5 @@ let b=null;
   }catch(e){console.log('!! 片付けの途中で止まりました: '+(e&&e.message||e))}
   try{if(snapM)await H.dropNewMasterRows(snapM)}
   catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
-  if(b)await b.close().catch(()=>{});
  }
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});
+}, {viewport:{width:1700,height:1000}});

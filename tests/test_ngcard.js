@@ -20,27 +20,20 @@
 
    **公差の材料は自分で注ぎ込む**——検証用フィクスチャは公差を持たないので、
    入れずに「公差外0件」を見ても、壊れていても同じ結果になる。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const setMode=m=>fetch(API+'/api/access-mode',{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
 
-let b=null,page=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- page=await b.newPage({viewport:{width:1920,height:1080}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
- page.on('dialog',d=>d.accept());
+run('test_ngcard: 完了前の確認カードの強調と「NGが発生した」（§9.242 ⑤⑥）', async ({page,rec,W,idle,paint,errs})=>{
 
- const go=async s=>{await page.evaluate(v=>WL.measureSteps.go(v),s);await page.waitForTimeout(500)};
+ const go=async s=>{await page.evaluate(v=>WL.measureSteps.go(v),s);await idle()};
  const setType=async v=>{
   await page.evaluate(t=>{const el=document.getElementById('measureType');
     el.value=t;el.dispatchEvent(new Event('change',{bubbles:true}))},v);
-  await page.waitForTimeout(450);
+    await idle();
  };
  const pill=()=>page.evaluate(()=>{
   const el=document.querySelector('#toleranceSummary .tol-pill');
@@ -186,7 +179,7 @@ let b=null,page=null;
       JSON.stringify({札:popped.色,語彙:popped.語彙}));
 
   await page.click('[data-fc-color="amber"]');
-  await page.waitForTimeout(400);
+  await paint();
   const amber=await card();
   rec('色を変えると実際に変わる',!!amber&&amber.地!==(bad&&bad.地),
       JSON.stringify({赤:bad&&bad.地,橙:amber&&amber.地}));
@@ -194,7 +187,7 @@ let b=null,page=null;
   await page.evaluate(()=>document.getElementById('fcAlertConf').click());
   await page.waitForSelector('.fc-alert-pop',{timeout:5000});
   await page.click('[data-fc-mode="off"]');
-  await page.waitForTimeout(400);
+  await paint();
   const off=await card();
   rec('「強調しない」を選ぶと今までどおりに戻る',
       !!off&&off.強調===false&&off.地===cleanBg,JSON.stringify({いま:off&&off.地,元:cleanBg}));
@@ -205,13 +198,13 @@ let b=null,page=null;
   await page.evaluate(()=>document.getElementById('fcAlertConf').click());
   await page.waitForSelector('.fc-alert-pop',{timeout:5000});
   await page.click('[data-fc-mode="both"]');
-  await page.waitForTimeout(300);
+  await paint();
   /* 外クリックで閉じられる（開いた器を控えていないと、どの経路でも閉じない）。
      **押す先はカードの中の文**にする——画面の隅（`.shade`）を押すと
      `WL.records.closeMeasureModal()`が走り、未保存の確認モーダルが前に出て以降の
      操作を全部塞ぐ（実際にそうなった）。 */
   await page.click('#finishCheck .fc-note');
-  await page.waitForTimeout(300);
+  await paint();
   const closed=await page.evaluate(()=>!document.querySelector('.fc-alert-pop'));
   rec('外をクリックすると浮き窓が閉じる',closed===true,String(closed));
 
@@ -239,7 +232,8 @@ let b=null,page=null;
     (document.getElementById('appConfirmBody')||{}).textContent||'');
   rec('押す前に確認する（何回目かも言う）',/1回目/.test(ask)&&/15分/.test(ask),ask);
   await page.click('#appConfirmOk');
-  await page.waitForTimeout(1800);
+  await W.until(page,()=>{const m=document.getElementById('appConfirmModal');return !m||m.hidden},null,{ms:5000,what:'確認の窓が閉じる'});
+  await idle();
   const after=await page.evaluate(()=>({
    回数:Number(S.measure.settings.ngCount||0),
    状態:S.measure.status,
@@ -257,22 +251,17 @@ let b=null,page=null;
   await page.evaluate(()=>{
    S.measure.settings.ngLastAt=new Date(Date.now()-16*60*1000).toISOString();
    WL.measureSteps.refresh();
-  });
-  await page.waitForTimeout(400);
+   });
+   await paint();
   const n3=await ngBtn();
   rec('15分たつとまた押せる',n3.押せる===true,JSON.stringify(n3));
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
   await cleanup();
-  process.exit(ng.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
+  rec('FATAL',false,String(e&&e.message||e));
   await cleanup();
-  process.exit(2);
  }
  /* 後片付け（§9.121）。**落ちた側でも通す**。画面のidと保存側のIDは
     同じではない（設備名が前に付く）ので**末尾一致で消す**。 */
@@ -294,6 +283,5 @@ let b=null,page=null;
    const m=document.querySelector('#measureModal');if(m)m.hidden=true;
   })}catch(e){}
   try{await setMode('edit')}catch(e){}
-  if(b)await b.close().catch(()=>{});
  }
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});
+}, {viewport:{width:1920,height:1080}});

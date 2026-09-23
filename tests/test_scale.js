@@ -12,8 +12,8 @@
 
    既知の例外はテスト内に**理由付きで**列挙する。増やすときは理由も書くこと
    （理由の書けない例外を足し始めた時点で、この網は意味を失う）。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 
 /* コントロールの高さトークン。**直値で持たない**(§9.112)——
@@ -42,13 +42,8 @@ const CTL_EXCEPT={
    ——増えるたびに一覧を足すことになり、理由も薄くなる。
    リストボックス(size>1のselect)と複数行の入力(textarea)がこれ。 */
 
-let b=null,measureId='';
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
+let measureId='';
+run('test_scale: 文字・UIの階層（役割 → 寸法）を実測で固定する。', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   /* **待つのは「取得が静まって、割り付けが確定したこと」**(§9.102)。
      以前は画面ごとに1.8秒の固定待ちで、7画面で12.6秒を数えるだけに使って
@@ -199,14 +194,10 @@ let b=null,measureId='';
   rec('チップの文字サイズは1種類',uniq(roleAgg.chip).length<=1,
    `${uniq(roleAgg.chip).join(',')} (${roleAgg.chip.length}件)`);
 
-  console.log('\n=== SUMMARY ===');
-  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
-  f.forEach(x=>console.log(' -',x.n,x.d||''));
-  await cleanup();process.exit(f.length?1:0);
- }catch(e){
-  console.error('FATAL',e);
   await cleanup();
-  process.exit(2);
+ }catch(e){
+  rec('FATAL',false,String(e&&e.message||e));
+  await cleanup();
  }
  /* 測定画面を開いた副作用のレコードを消す。**消えるまで確かめる**——
     共有は画面を待たせずに送るので、1回消しただけでは後から復活する
@@ -225,6 +216,5 @@ let b=null,measureId='';
     }
    },measureId);
   }catch(e){}
-  if(b)await b.close().catch(()=>{});
  }
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});
+}, {viewport:{width:1700,height:1000}});

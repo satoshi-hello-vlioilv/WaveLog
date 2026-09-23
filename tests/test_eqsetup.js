@@ -30,19 +30,12 @@
    **「要素がある」だけを見ないこと**——直す前も欄そのものは在った。
    **実寸で位置を突き合わせる**（3）、**画面に出ている文字を数える**（2）。
    ================================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1400,height:900}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,160)));
- page.on('dialog',d=>d.accept());
+run('test_eqsetup: 使用設備の設定モーダル（§9.257 ②、利用者の指示）', async ({page,rec,B,W,paint,errs})=>{
  try{
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:25000});
@@ -111,14 +104,15 @@ let b=null;
 
   /* ---------- 3) 選んでも1pxも動かない（§9.227 ②） ---------- */
   const a=await shot();
+  /* 選び替えは同期で描き直す。「動かない」を見るので、描画が1巡したところで測る。 */
   await page.selectOption('#configuredEquipment','__new__');
-  await page.waitForTimeout(250);
+  await paint();
   const bx=await shot();
   await page.fill('#newEquipmentName','ZZ_'+Date.now());
-  await page.waitForTimeout(200);
+  await paint();
   const c=await shot();
   await page.selectOption('#configuredEquipment','');
-  await page.waitForTimeout(250);
+  await paint();
   const d=await shot();
   const same=[a,bx,c,d];
   rec('「＋新規登録」を選んでも窓の高さが動かない',
@@ -137,7 +131,7 @@ let b=null;
 
   /* ---------- 6) 何も選ばずに押したら理由を出す（§CLAUDE 4） ---------- */
   await page.click('#saveAppSettings');
-  await page.waitForTimeout(300);
+  await W.until(page,()=>/選んで/.test((document.getElementById('eqsetFoot')||{}).textContent||''),null,{ms:5000,what:'断りの理由が足元に出る'});
   const refused=await page.evaluate(()=>({
    足:document.getElementById('eqsetFoot').textContent,
    窓:!document.getElementById('appSettingsModal').hidden,
@@ -166,7 +160,7 @@ let b=null;
   const before=await page.evaluate(()=>localStorage.getItem('LotDspLastTabV1'));
   const want=String(before==='5'?'6':'5');
   await page.selectOption('#lotDspTabSetting',want);
-  await page.waitForTimeout(200);
+  await W.until(page,w=>localStorage.getItem('LotDspLastTabV1')===w,want,{ms:3000,what:'②のタブが端末へ保存される'});
   const after=await page.evaluate(()=>localStorage.getItem('LotDspLastTabV1'));
   rec('②のタブは選んだだけで保存される（保存ボタンを待たない）',
       after===want,JSON.stringify({前:before,選:want,後:after}));
@@ -184,7 +178,7 @@ let b=null;
      瞬間に`WL.records.fillEquipmentSelect()`が落ちる）。中身を捨てて開き直しても
      同じ形が戻ることで、作りが1つであることを固定する。 */
   await page.click('#cancelAppSettings');
-  await page.waitForTimeout(200);
+  await W.until(page,()=>{const m=document.getElementById('appSettingsModal');return !m||m.hidden},null,{ms:5000,what:'設定の窓が閉じる'});
   await page.evaluate(()=>{document.getElementById('appSettingsModal').innerHTML=''});
   await open();
   const again=await page.evaluate(()=>({
@@ -201,7 +195,7 @@ let b=null;
 
   /* 保存できることまで見る（窓を組み替えて壊していない）。 */
   await page.selectOption('#configuredEquipment',EQ);
-  await page.waitForTimeout(150);
+  await paint();
   await page.click('#saveAppSettings');
   await page.waitForFunction(()=>document.getElementById('appSettingsModal').hidden,
     null,{timeout:8000}).catch(()=>{});
@@ -212,13 +206,7 @@ let b=null;
       saved.控え===EQ&&saved.帯===EQ,JSON.stringify(saved));
 
   rec('画面のJSが例外を出していない',errs.length===0,errs.join(' / '));
-
-  console.log('\n合計 '+R.filter(r=>r.ok).length+'/'+R.length+' PASS'
-    +'  (FAIL: '+R.filter(r=>!r.ok).length+')');
-  process.exitCode=R.some(r=>!r.ok)?1:0;
  }catch(e){
-  console.log('FATAL: '+(e&&e.message));process.exitCode=1;
- }finally{
-  if(b)await b.close();
+  rec('FATAL',false,String(e&&e.message||e));
  }
-})();
+}, {viewport:{width:1400,height:900}});

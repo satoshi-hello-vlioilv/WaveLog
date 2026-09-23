@@ -150,13 +150,19 @@ const paint=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>req
    よく起きる形で、それが1本あるだけで以降の`idle()`が**毎回上限（6秒）まで**
    待っていた——条件待ちが黙って固定待ちに化ける（`test_cols`で13→31秒）。
    応答が届いてから UNREAD_MS 経っても終わらない要求は「読まれない」と見て
-   数えから外す。この環境の応答は数ms で読み終わるので、1秒は十分に長い。 */
+   数えから外す。この環境の応答は数ms で読み終わるので、1秒は十分に長い。
+   **フォントは数えない**（実測・§9.451）。読み込み直しで打ち切られた woff2 の
+   代わりに Chrome が ttf を取りに行き、その直後に文書が入れ替わると、ttf には
+   `response`も`requestfailed`も**二度と来ない**（`test_collayout`で4回に1回、
+   以降の`idle()`が毎回上限まで待ち17→137秒）。文書の切り替えで外す形も試したが、
+   ttf の要求が切り替えの合図より**後に**届く回があり外し損ねた（順番に頼れない）。
+   `idle()`が待つのは画面ぶんのデータと資材で、アイコンの字形は網が読む値を決めない。 */
 const UNREAD_MS=1000;
 function track(page,{ignore=/\/api\/heartbeat/}={}){
  /* 取得中のものを**要求ごとに**持つ（数だけだと、終わりの合図が来ない
     要求が1つ混ざったときに何が塞いでいるのか分からない）。 */
  const live=new Map();   // 要求 → {t:出た時刻, res:応答が届いた時刻（未着は0）}
- const counted=r=>!ignore.test(r.url());
+ const counted=r=>!ignore.test(r.url())&&r.resourceType()!=='font';
  page.on('request',r=>{if(counted(r))live.set(r,{t:Date.now(),res:0})});
  page.on('response',x=>{const e=live.get(x.request());if(e)e.res=Date.now()});
  page.on('requestfinished',r=>{live.delete(r)});
@@ -176,6 +182,11 @@ function track(page,{ignore=/\/api\/heartbeat/}={}){
   }
   if(TRACE&&live.size)console.log('[wait] idle が上限に当たった。取得中のまま: '
     +[...live].map(([r,e])=>`${r.method()} ${r.url().replace(/^https?:\/\/[^/]+/,'')} (${Date.now()-e.t}ms)`).join(' | '));
+  /* フォントは要求でなく**いまの文書の`document.fonts.ready`**で待つ（字の幅を測る網が
+     字形の差し替え前に測らない）。前の文書の要求には引きずられない。上限は3秒。
+     読み込み直しの最中は文脈が消えて投げるので、そのときは待たずに進む（理由を出す）。 */
+  await page.evaluate(()=>Promise.race([document.fonts.ready,new Promise(r=>setTimeout(r,3000))]).then(()=>true))
+   .catch(e=>{if(TRACE)console.log('[wait] fonts.ready を待てなかった: '+String(e&&e.message||e).slice(0,80))});
   await paint(page);
  };
  return {idle,pending:()=>live.size};

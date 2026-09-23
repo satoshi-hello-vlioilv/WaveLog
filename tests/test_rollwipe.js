@@ -43,6 +43,9 @@ run('test_rollwipe: ロールの全削除・完全入替の画面（§9.251、�
   await mk({equipment:EQ2,name:TAG+'B1',diaMax:300});
 
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
+  /* 起動の取得が静まってから書き換え・読み込み直す（すぐ reload すると初期化の取得が
+     打ち切られ、アプリが「初期化エラー」を console へ出す・§9.451）。 */
+  await W.booted(page); await idle();
   await page.evaluate(()=>{try{localStorage.removeItem('MasterListFoldV1')}catch(e){}});
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openMasterMaint',{timeout:20000});

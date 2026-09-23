@@ -38,19 +38,14 @@
    後片付けは finally で必ず行う（自分が足した予定と、書いた設定を消す）。
    落ちてもブラウザを閉じる。
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const ctx=await b.newContext({viewport:{width:1700,height:1000},permissions:['clipboard-read','clipboard-write']});
- const page=await ctx.newPage();
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
+run('test_lotcopy: ICASコピー（§9.368）', async ({page,rec,errs})=>{
+ /* 土台の文脈へクリップボードの権限を足す（以前は自前の文脈で渡していた）。 */
+ await page.context().grantPermissions(['clipboard-read','clipboard-write']);
  const post=(p,body)=>page.evaluate(async a=>{
   const r=await fetch(a.p,{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify(Object.assign({user_id:'test-lotcopy'},a.b))});
@@ -378,9 +373,5 @@ let b=null;
                             localStorage.removeItem('scLotCopyRuleV1')}).catch(()=>{});
    for(const id of made)await post('/api/schedule/plan/delete',{equipment:EQ,id});
   }catch(e){console.log('後片付けに失敗: '+e)}
-  if(b)await b.close();
  }
- const ng=R.filter(x=>!x.ok).length;
- console.log(`\n${R.length-ng} PASS / ${ng} FAIL`);
- process.exit(ng?1:0);
-})().catch(async e=>{console.log('FATAL: '+e);if(b)await b.close();process.exit(1)});
+}, {viewport:{width:1700,height:1000}});

@@ -22,7 +22,8 @@
 
    **画面の値と刷るときの値を突き合わせる**こと——片方だけ見る網は、
    どちらも同じだけ狂っていても通る。 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 /* 材料は自分で注ぎ込む（§9.351・§9.362 ⑥）。この網は「記録が1件ある」
    ことを前提にするが、**フィクスチャに記録は無い**——今まで見えていたのは
    前の実行の置き土産で、ランナーが実績を1本ごとに空へ戻すようになった
@@ -30,7 +31,6 @@ const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/no
    置いたものは`clearRecords()`が片付ける。 */
 const {seedRecord}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
 const TARGET='report:'+EQ;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -41,17 +41,10 @@ const cleanup=()=>post('/api/column-layout-master',{target:TARGET,clear:true,ord
 const cleanupRecs=()=>post('/api/measurement/backup/delete',
   {id:'rpsplit-eqA',user_id:'test'}).catch(()=>{});
 const settle=async page=>{await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))};
-let b=null;
 
-(async()=>{
+run('test_rpprint: 帳票は**プレビューどおりに刷る**（§9.242 ⑦⑧）', async ({page,rec,W,idle,paint,errs,browser})=>{
  await cleanup();
  await cleanupRecs();
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
- page.on('dialog',d=>d.accept());
  /* 紙の箱と中身の器を**拡大前のCSS px**で測る（§9.222 ②。
     `getBoundingClientRect()`は`--rp-scale`が掛かった後なので混ぜない）。 */
  const geom=()=>page.evaluate(()=>{
@@ -207,7 +200,8 @@ let b=null;
 
   /* カードの高さを決める（利用者の言う「帳票レイアウトで最低表示領域を確保」）。 */
   await page.click('#reportArrange');
-  await page.waitForTimeout(400);
+  await W.until(page,()=>document.body.classList.contains('rp-arranging'),null,{ms:8000,what:'組み換えに入る'});
+  await idle();
   await page.evaluate(()=>{
    /* この紙だけの見え方は**左上の「紙」ボタン**（§9.274。ダブルクリックは
       帳票ブロックマスタへ移るようになった）。 */
@@ -217,7 +211,7 @@ let b=null;
   await page.waitForFunction(()=>{
    const m=document.getElementById('rpBlockModal');return !!m&&!m.hidden;
   },null,{timeout:8000});
-  await page.waitForTimeout(200);
+  await paint();
   const rowsPicked=await page.evaluate(()=>{
    /* いちばん背の高い選択肢（全高の1つ手前）を選ぶ——中身1行との差が
       いちばん大きく、伸びていないことを見逃さない。 */
@@ -228,8 +222,8 @@ let b=null;
    return pick?Number(pick.dataset.eRows):0;
   });
   await page.evaluate(()=>{const c=document.getElementById('rpBlockClose');if(c)c.click()});
-  await settle(page);
-  await page.waitForTimeout(400);
+  /* 高さを選ぶと裏で保存する（RP_AUTOSAVE_MS=400）。その往復まで静まるのを待つ。 */
+  await idle(600);
   const after=await page.evaluate(()=>{
    const el=document.querySelector('[data-rp-block="品質情報（仕掛）"]');
    if(!el)return{ある:false};
@@ -259,11 +253,10 @@ let b=null;
   await page.waitForFunction(()=>{
    const m=document.getElementById('rpBlockModal');return !!m&&!m.hidden;
   },null,{timeout:8000});
-  await page.waitForTimeout(200);
+  await paint();
   await page.click('#rpBlockForm [data-e-rows="0"]');
   await page.evaluate(()=>{const c=document.getElementById('rpBlockClose');if(c)c.click()});
-  await settle(page);
-  await page.waitForTimeout(500);
+  await idle(600);
   const back=await page.evaluate(()=>{
    const el=document.querySelector('[data-rp-block="品質情報（仕掛）"]');
    if(!el)return null;
@@ -1060,8 +1053,7 @@ let b=null;
      ========================================================== */
   await page.evaluate(()=>WL.reportSample.open({returnTo:'blocks'}));
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
-  await settle(page);
-  await page.waitForTimeout(600);
+  await idle();
   const sheets=()=>page.evaluate(()=>{
    const MM=96/25.4;
    const pg=document.getElementById('reportContent');
@@ -1189,9 +1181,10 @@ let b=null;
       JSON.stringify({塊:S1.切れる塊,title:S1.切れる塊のtitle.slice(0,40)}));
 
   /* ---- 収まりの帯（利用者の症状の本体） ---- */
+  const arrBefore=await page.evaluate(()=>document.body.classList.contains('rp-arranging'));
   await page.click('#reportArrange');
-  await settle(page);
-  await page.waitForTimeout(800);
+  await W.until(page,v=>document.body.classList.contains('rp-arranging')!==v,arrBefore,{ms:8000,what:'組み換えの入り切りが変わる'});
+  await idle();
   const S2=await sheets();
   /* **組み換え中もページに割る**（§9.282、利用者の報告「印刷レイアウトを
      ページ区切りで、背景と同じ色の余白を設けたい。→画像の通り点線が
@@ -1269,19 +1262,13 @@ let b=null;
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
-  process.exitCode=ng.length?1:0;
  }catch(e){
-  console.error('FATAL',e);
-  process.exitCode=2;
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* **落ちても必ず後片付け**（§9.121）。 */
   await cleanup();
   await cleanupRecs();
   /* 置いた実績は自分で消す（§9.351・§9.362）。 */
   try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
-  if(b)await b.close().catch(()=>{});
  }
-})();
+}, {viewport:{width:1700,height:1000}});

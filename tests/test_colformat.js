@@ -14,25 +14,24 @@
     6. 書式を変えても表示名・幅は消えない(保存は全置換なので、
        触っていない設定も一緒に送らないと黙って消える)
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-let b=null,target='';
+let target='';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const clear=()=>target?post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],names:{},formats:{},user_id:'test'}):null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1600,height:950}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
+run('test_colformat: 列ごとの書式(§9.88 段3)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  page.on('console',m=>{if(m.type()==='error')errs.push('console: '+m.text().slice(0,90))});
  try{
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'load'});
+  /* 起動の取得が静まってから書き換え・読み込み直す（すぐ reload すると初期化の取得が
+     打ち切られ、アプリが「初期化エラー」を console へ出す・§9.451）。 */
+  await W.booted(page); await idle();
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'load'});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
-  await page.waitForTimeout(1200);
+  await idle();
   target=await page.evaluate(()=>WL.list.listLayoutTarget());
 
   /* ---- 1) 整形そのもの(値を入れて結果を見るだけ) ---- */
@@ -113,7 +112,7 @@ const clear=()=>target?post('/api/column-layout-master',{target,clear:true,order
              [a.numCol]:{kind:'number',decimals:2,suffix:'mm'}}});
    WL.list.renderGrid();
   },{textCol,numCol});
-  await page.waitForTimeout(250);
+  await paint();   // 保存は evaluate の中で待ち終えている。描き直しは同期
   rec('書式が一覧のセルに効く',await cellOf(textCol)===`<${rawText}>`,
    `${rawText} -> ${await cellOf(textCol)}`);
   rec('整形できない列は一覧でも生のまま',await cellOf(numCol)===rawNum,
@@ -147,7 +146,7 @@ const clear=()=>target?post('/api/column-layout-master',{target,clear:true,order
     {aligns:{[a.numCol]:{data:'left',head:''},[a.textCol]:{data:'center',head:'follow'}}});
    WL.list.renderGrid();
   },{textCol,numCol});
-  await page.waitForTimeout(250);
+  await paint();   // 保存は evaluate の中で待ち終えている。描き直しは同期
   const manNum=await align(numCol),manText=await align(textCol);
   rec('手で決めた揃えは書式より強い（数値の列を左へ）',manNum.td==='left',JSON.stringify(manNum));
   rec('見出しは「データに追従」を選べる',manText.th==='center'&&manText.td==='center',
@@ -163,14 +162,14 @@ const clear=()=>target?post('/api/column-layout-master',{target,clear:true,order
   }
   /* 元へ戻して、以降の検査に影響させない。 */
   await page.evaluate(async()=>{await WL.columnLayout.patch(WL.list.listLayoutTarget(),{aligns:{}});WL.list.renderGrid()});
-  await page.waitForTimeout(200);
+  await paint();
   rec('整形した値はツールチップで元の値が分かる',
    await cellIn(textCol,'title')===rawText);
 
   /* ---- 4) 開き直しても残る / 他の設定を巻き添えにしない ---- */
   await page.reload({waitUntil:'load'});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
-  await page.waitForTimeout(1200);
+  await idle();
   rec('開き直しても書式が残る',await cellOf(textCol)===`<${rawText}>`,await cellOf(textCol));
   const kept=await page.evaluate(c=>({
    name:WL.columnLayout.label(WL.list.listLayoutTarget(),c),
@@ -192,7 +191,7 @@ const clear=()=>target?post('/api/column-layout-master',{target,clear:true,order
 
   /* ---- 5) 設定パネルの右ペイン ---- */
   await page.evaluate(()=>WL.listColumns.open());
-  await page.waitForTimeout(400);
+  await W.until(page,()=>document.querySelectorAll('#lcList .lc-item').length>0,null,{ms:8000,what:'列の設定パネルが開く'});
   /* **パネルが画面の中に開くこと。** 位置と大きさは共通のフローティング
      ウィンドウ(WL.makeFloatingWindow)が与える。公開漏れで呼べていないと、
      幅も高さも与えられず**プレビューの列数だけ横に伸びて画面外に開く**
@@ -210,7 +209,7 @@ const clear=()=>target?post('/api/column-layout-master',{target,clear:true,order
    const el=[...document.querySelectorAll('#lcList .lc-item')].find(x=>x.dataset.key===c);
    el&&el.click();
   },textCol);
-  await page.waitForTimeout(200);
+  await paint();
   const pane=await page.evaluate(()=>({
    kinds:document.querySelectorAll('#lcDetail input[name="lcKind"]').length,
    picked:document.querySelector('#lcDetail input[name="lcKind"]:checked')?.value,
@@ -226,7 +225,7 @@ const clear=()=>target?post('/api/column-layout-master',{target,clear:true,order
    const el=[...document.querySelectorAll('#lcDetail input[name="lcKind"]')].find(x=>x.value==='number');
    el.checked=true;el.dispatchEvent(new Event('change',{bubbles:true}));
   });
-  await page.waitForTimeout(200);
+  await paint();
   const numPane=await page.evaluate(()=>({
    dec:!!document.getElementById('lcDecimals'),
    thou:!!document.getElementById('lcThousands'),
@@ -238,7 +237,7 @@ const clear=()=>target?post('/api/column-layout-master',{target,clear:true,order
    const el=[...document.querySelectorAll('#lcDetail input[name="lcKind"]')].find(x=>x.value==='datetime');
    el.checked=true;el.dispatchEvent(new Event('change',{bubbles:true}));
   });
-  await page.waitForTimeout(200);
+  await paint();
   const dtPane=await page.evaluate(()=>({
    preset:document.querySelectorAll('#lcPreset option').length,
    pattern:document.getElementById('lcPattern')?.value||'',
@@ -248,16 +247,9 @@ const clear=()=>target?post('/api/column-layout-master',{target,clear:true,order
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
-  console.log('\n=== SUMMARY ===');
-  const bad=R.filter(r=>!r.ok);console.log(`${R.length-bad.length}/${R.length} passed`);
-  bad.forEach(x=>console.log(' -',x.n,x.d||''));
-  await b.close();b=null;
   await clear();
-  process.exit(bad.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
-  if(b)await b.close().catch(()=>{});
+  rec('FATAL',false,String(e&&e.message||e));
   await clear()?.catch(()=>{});
-  process.exit(2);
  }
-})();
+}, {viewport:{width:1600,height:950}});

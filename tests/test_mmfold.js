@@ -18,11 +18,11 @@
    群が1つも無い一覧を見ても「畳めない」と「壊れている」を見分けられない
    （test_roll.js と同じ注意）。2つの設備へ分けて入れる。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const TAG='MF'+process.pid;
 const EQ='テスト設備A',EQ2='テスト設備B';
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const getj=async p=>(await fetch(B+p)).json();
 const made=[];
@@ -46,8 +46,7 @@ const SNAP=`(()=>{
  };
 })()`;
 
-(async()=>{
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+run('test_mmfold: マスタ一覧の「束ねた見出しの開閉」(§9.241 ①、利用者の指示)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await post('/api/access-mode',{mode:'edit'});
   const mk=async body=>{
@@ -59,10 +58,6 @@ const SNAP=`(()=>{
   for(const n of ['A1','A2','A3'])await mk({equipment:EQ,name:TAG+n,diaMax:200});
   for(const n of ['B1','B2'])await mk({equipment:EQ2,name:TAG+n,diaMax:300});
 
-  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
-  const page=await b.newPage({viewport:{width:1600,height:1000}});
-  const errs=[];
-  page.on('pageerror',e=>errs.push(String(e&&e.message||e)));
 
   /* 一覧を開く。**畳みはこの端末の覚え**なので、他の実行の置き土産を
      先に捨てる（残っていると「既定は開く」を確かめられない）。 */
@@ -83,6 +78,9 @@ const SNAP=`(()=>{
    },null,{timeout:20000});
   };
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
+  /* 起動の取得が静まってから書き換え・読み込み直す（すぐ reload すると初期化の取得が
+     打ち切られ、アプリが「初期化エラー」を console へ出す・§9.451）。 */
+  await W.booted(page); await idle();
   await page.evaluate(()=>{try{localStorage.removeItem('MasterListFoldV1')}catch(e){}});
   await page.reload({waitUntil:'domcontentloaded'});
   await openRollTab();
@@ -171,7 +169,7 @@ const SNAP=`(()=>{
 
   rec('画面の例外が出ていない',errs.length===0,errs.join(' / '));
  }catch(e){
-  console.log('FATAL '+(e&&e.message||e));R.push({ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* **後片付け**（§9.121）。ロールマスタは実行をまたいで残る。 */
   for(const id of made){try{await post('/api/roll-master/delete',{user_id:'test',id})}catch(_){}}
@@ -179,9 +177,5 @@ const SNAP=`(()=>{
    const left=((await getj('/api/roll-master')).items||[]).filter(x=>x.name&&x.name.startsWith(TAG));
    for(const x of left){try{await post('/api/roll-master/delete',{user_id:'test',id:x.id})}catch(_){}}
   }catch(_){}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1600,height:1000}});

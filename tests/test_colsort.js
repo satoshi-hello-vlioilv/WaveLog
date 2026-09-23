@@ -36,6 +36,9 @@ run('test_colsort: 並び順と「いつも使う並び」(§9.88 段5)', async 
  try{
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'load'});
+  /* 起動の取得が静まってから書き換え・読み込み直す（すぐ reload すると初期化の取得が
+     打ち切られ、アプリが「初期化エラー」を console へ出す・§9.451）。 */
+  await W.booted(page); await idle();
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'load'});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});

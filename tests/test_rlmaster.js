@@ -25,9 +25,9 @@
    後片付けは finally で必ず行う（列レイアウトマスタは実行をまたいで
    生き延びる・§9.121）。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
 const TARGET='report:'+EQ;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
@@ -35,18 +35,11 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 const get=p=>fetch(B+p).then(r=>r.json());
 const layout=()=>get('/api/column-layout-master?target='+encodeURIComponent(TARGET));
 const clearLayout=()=>post('/api/column-layout-master',{target:TARGET,clear:true,user_id:'tests'});
-let b=null;
 
-(async()=>{
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
+run('test_rlmaster: 帳票レイアウトマスタ（§9.254 ③、利用者の指示）', async ({page,rec,B,W,idle,paint,errs})=>{
  try{
   await post('/api/access-mode',{mode:'edit'});
   await clearLayout();
-  b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
-  const page=await b.newPage({viewport:{width:1760,height:1000}});
-  page.on('pageerror',e=>errs.push(String(e&&e.message||e).slice(0,140)));
-  page.on('dialog',d=>d.accept());
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openMasterMaint',{timeout:30000});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
@@ -159,7 +152,7 @@ let b=null;
    rec('子の編集窓がその塊の名前で開く（どれを開いたのか分かる）',
        title.indexOf(named.key)>=0,title);
    await page.click('#maintEditorCancel');
-   await page.waitForTimeout(300);
+   await W.until(page,()=>{const m=document.getElementById('maintEditorModal');return !m||m.hidden},null,{ms:5000,what:'子の編集窓が閉じる'});
   }
 
   /* ---- 6) 子→親のリンク ---- */
@@ -245,11 +238,8 @@ let b=null;
       JSON.stringify(view).slice(0,220));
 
   rec('画面のJSエラーが無い',errs.length===0,errs.join(' / '));
-  const fail=R.filter(r=>!r.ok).length;
-  console.log(`\n${R.length-fail} PASS / ${fail} FAIL`);
-  process.exitCode=fail?1:0;
  }catch(e){
-  console.log('FATAL: '+(e&&e.stack||e));process.exitCode=1;
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* **後片付け**（§9.360）: 画面を触ると、その帳票・一覧の列レイアウトが
      保存される。**触った網は自分で消す**——残すと、単独で回したときに
@@ -260,7 +250,7 @@ let b=null;
   /* **消す前に画面を閉じる。** 帳票の配置は「触ったら裏で保存」（§9.113）
      なので、開いたままだと遅れて届いた保存が消したあとの表へ書き戻し得る。
      後片付けの順は「閉じる → モードを戻す → 消す」。 */
-  if(b){await b.close();b=null}
+  try{await page.close()}catch(e){console.log('!! 画面を閉じられませんでした: '+(e&&e.message||e))}
   /* **モードは、消すより先に戻す。** この網は最後に閲覧モードへ切り替える
      ので、そのまま消しに行くと書き込みが`/api/access-mode`の関所で弾かれる
      ——`{"error":"現在のモードでは、この操作は実行できません。"}`が返るのに
@@ -272,4 +262,4 @@ let b=null;
     locks:[],sorts:{},user_id:'tests'})}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
   try{await clearLayout()}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
  }
-})();
+}, {viewport:{width:1760,height:1000}});

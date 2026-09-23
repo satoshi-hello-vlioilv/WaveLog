@@ -20,26 +20,19 @@
     5. 使用設備が未登録の端末では**絞らず、そう書く**（§4）
     6. 実績データの既定もこの端末の設備（覚えがあればそちらが勝つ）
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A',OTHER='テスト設備B';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(body)}).then(async r=>({code:r.status,json:await r.json().catch(()=>({}))}));
 const MADE=['eqscope-other','eqscope-mine','eqscope-unknown'];
-let b=null;
 /* 共有DBの行は**実行をまたいで生き延びる**（§9.121）ので必ず消す。 */
 const cleanup=async()=>{for(const id of MADE){
   await post('/api/measurement/backup/delete',{id,user_id:'tests'}).catch(()=>{});}};
 
-(async()=>{
+run('test_eqscope: 見せる範囲を「実施した設備」で絞る（§9.248 ⑥）', async ({page,rec,W,idle,errs})=>{
  await cleanup();
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,160)));
- page.on('dialog',d=>d.accept());
  try{
   await post('/api/access-mode',{mode:'edit'});
   /* **材料は自分で注ぎ込む**（§CLAUDE「確かめるときは自分で用意する」）
@@ -62,7 +55,7 @@ const cleanup=async()=>{for(const id of MADE){
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
   await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
   await page.waitForSelector('.record-list-row',{timeout:25000});
-  await page.waitForTimeout(600);
+  await idle();  // 一覧の読み込みが済むまで
 
   const shot=()=>page.evaluate(()=>({
     行:[...document.querySelectorAll('.record-list-row')]
@@ -91,7 +84,7 @@ const cleanup=async()=>{for(const id of MADE){
 
   /* 押すとすべての設備。**もう一度押すと戻る**（片道にしない）。 */
   await page.click('#recordScopeBtn');
-  await page.waitForTimeout(400);
+  await W.until(page,want=>{const b=document.getElementById('recordScopeBtn');return !!b&&b.classList.contains('is-on')===want},false,{ms:5000,what:'絞りが外れる'});await idle();
   const s2=await shot();
   rec('押すとすべての設備が並ぶ',
       has(s2,'EQS-MINE')&&has(s2,'EQS-OTHER')&&s2.絞り===false,
@@ -104,7 +97,7 @@ const cleanup=async()=>{for(const id of MADE){
       名乗り===s2.件数-s1.件数,
       JSON.stringify({名乗り,増えた:s2.件数-s1.件数,絞り時:s1.件数,全部:s2.件数}));
   await page.click('#recordScopeBtn');
-  await page.waitForTimeout(400);
+  await W.until(page,want=>{const b=document.getElementById('recordScopeBtn');return !!b&&b.classList.contains('is-on')===want},true,{ms:5000,what:'絞りが戻る'});await idle();
   const s3=await shot();
   rec('もう一度押すとこの設備だけに戻る',
       has(s3,'EQS-MINE')&&!has(s3,'EQS-OTHER'),
@@ -116,7 +109,7 @@ const cleanup=async()=>{for(const id of MADE){
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
   await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
   await page.waitForSelector('.record-list-row',{timeout:25000});
-  await page.waitForTimeout(600);
+  await idle();
   const s4=await page.evaluate(()=>({
     行:[...document.querySelectorAll('.record-list-row')].map(r=>r.textContent).join(' '),
     押せる:!(document.getElementById('recordScopeBtn')||{}).disabled,
@@ -149,15 +142,9 @@ const cleanup=async()=>{for(const id of MADE){
   }else rec('実績データの既定はこの端末の設備',false,'実績データを開く入口が見つかりません');
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
-  process.exitCode=ng.length?1:0;
  }catch(e){
-  console.error('FATAL',e);
-  process.exitCode=1;
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   await cleanup();
-  if(b)await b.close().catch(()=>{});
  }
-})();
+}, {viewport:{width:1700,height:1000}});

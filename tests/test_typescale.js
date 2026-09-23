@@ -21,24 +21,18 @@
     4. **行間は文字まで詰められる**。以前は --ctl-h-xs(26px固定)が下限を
        決めていて、最密でも31pxより詰まらなかった
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
+run('test_typescale: 文字サイズを基準にした寸法の統一(§9.90)', async ({page,rec,B,W,idle,paint})=>{
  try{
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:30000});
   await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#grid table',{timeout:30000});
-  await page.waitForTimeout(1500);
+  await idle();
 
   /* ---- 1) 1つの表の中で文字が揃う ---- */
   const mismatch=sel=>page.evaluate(s=>{
@@ -100,8 +94,8 @@ let b=null;
    await WL.columnLayout.save(t,{order:[],widths:{[col]:70},hidden:[],
      names:{[col]:'とても長い表示名の見出しです'},formats:{},rules:{}});
    WL.list.renderGrid();
-  });
-  await page.waitForTimeout(500);
+   });
+   await paint();   // 保存は evaluate の中で待ち終えている。描き直しは同期
   const narrow=await wrapped();
   rec('幅を狭めても見出しは折り返さない',narrow.length===0,narrow.slice(0,3).join(' / '));
   const ell=await page.evaluate(()=>{
@@ -116,8 +110,8 @@ let b=null;
    const t=typeof WL.list.listLayoutTarget==='function'?WL.list.listLayoutTarget():'';
    if(t)await WL.columnLayout.save(t,{order:[],widths:{},hidden:[],names:{},formats:{},rules:{}});
    WL.list.renderGrid();
-  });
-  await page.waitForTimeout(400);
+   });
+   await paint();
 
   /* ---- 3) 高さは文字から作られている ---- */
   /* トークンは calc(...) のまま返ってくるので、**実際に当てて測る**。
@@ -155,18 +149,18 @@ let b=null;
   const scaled=[];
   for(const size of ['sm','lg']){
    await page.evaluate(s=>document.documentElement.setAttribute('data-ui-size',s),size);
-   await page.waitForTimeout(200);
+   await paint();
    scaled.push(await readTokens());
   }
   rec('表示サイズを変えても文字1行は必ず入る',
    scaled.every(t=>t.md>=t.fs*t.lh),JSON.stringify(scaled));
   await page.evaluate(()=>document.documentElement.setAttribute('data-ui-size','md'));
-  await page.waitForTimeout(200);
+  await paint();
 
   /* ---- 4) 行間は文字まで詰められる ---- */
   const rowH=async g=>{
    await page.evaluate(x=>WL.rowGap.apply(x),g);
-   await page.waitForTimeout(200);
+   await paint();
    return page.evaluate(()=>{
     const rows=[...document.querySelectorAll('#grid tbody tr')].slice(0,10);
     const hs=[...new Set(rows.map(r=>Math.round(r.getBoundingClientRect().height)))];
@@ -223,7 +217,7 @@ let b=null;
   /* ---- 6) タイムラインも同じ決まりで揃う ---- */
   await page.click('#openSchedule');
   await page.waitForSelector('.sc-row-line',{timeout:25000});
-  await page.waitForTimeout(1800);
+  await W.settleFlags(page); await idle();
   const scBad=await mismatch('.sc-row-line');
   rec('作業スケジュール: 行の中の文字が値と同じ大きさ',scBad.length===0,scBad.slice(0,5).join(' / '));
   const scFs=await page.evaluate(()=>{
@@ -235,14 +229,7 @@ let b=null;
   });
   rec('内容欄と時刻欄が同じ大きさ',scFs.title===scFs.time&&scFs.title===scFs.row,JSON.stringify(scFs));
 
-  console.log('\n=== SUMMARY ===');
-  const bad=R.filter(r=>!r.ok);console.log(`${R.length-bad.length}/${R.length} passed`);
-  bad.forEach(x=>console.log(' -',x.n,x.d||''));
-  await b.close();b=null;
-  process.exit(bad.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
-  if(b)await b.close().catch(()=>{});
-  process.exit(2);
+  rec('FATAL',false,String(e&&e.message||e));
  }
-})();
+}, {viewport:{width:1700,height:1000}});

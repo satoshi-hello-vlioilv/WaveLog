@@ -22,6 +22,9 @@ run('test_density: 一覧の密度と、右端に隠れがちな操作列、', a
  try{
   await setMode('edit');
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
+  /* 起動の取得が静まってから書き換え・読み込み直す（すぐ reload すると初期化の取得が
+     打ち切られ、アプリが「初期化エラー」を console へ出す・§9.451）。 */
+  await W.booted(page); await idle();
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:20000});

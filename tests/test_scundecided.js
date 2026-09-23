@@ -14,17 +14,12 @@
     2. 未定が残っているときだけ案内が出て、件数とロット番号を文字で言うこと
     3. 反映を待っているだけのものは案内しないこと（待てば決まる）
     4. 案内から「再計算」を押せること（打つ手を同じ場所に置く） */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
+run('test_scundecided: 「時刻未定」の案内と、追加後の時刻の取り直し（§9.185）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  const setMode=m=>page.evaluate(async mm=>{await fetch('/api/access-mode',{method:'POST',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mm})})},m);
  let added=null;
@@ -128,10 +123,5 @@ let b=null;
      body:JSON.stringify({id,user_id:'tester'})});
   },added.id)}catch(_){}
   try{await setMode('edit')}catch(_){}
-  if(b)await b.close().catch(()=>{});
  }
- console.log('\n=== SUMMARY ===');
- const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
- ng.forEach(x=>console.log(' -',x.n,x.d||''));
- process.exit(ng.length?1:0);
-})();
+}, {viewport:{width:1700,height:1000}});

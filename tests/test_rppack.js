@@ -11,25 +11,17 @@
 
    後片付けは finally で必ず行う（§9.121）。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
 const TARGET='report:'+EQ;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const cleanup=()=>post('/api/column-layout-master',{target:TARGET,clear:true,order:[],widths:{},hidden:[],
   names:{},formats:{},rules:{},formulas:{},locks:[],sorts:{},user_id:'test'}).catch(()=>{});
-const settle=async page=>{await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))};
-let b=null;
 
-(async()=>{
+run('test_rppack: 紙ぜんたいの余白は「横」と「縦」の別の軸（§9.311 C・§9.313）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  await cleanup();
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
- page.on('dialog',d=>d.accept());
  try{
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
@@ -49,10 +41,10 @@ let b=null;
     widths:{'__配置版__':43,'行数:基本情報':40+3*6}});
   await page.evaluate(e=>WL.reportSample.open({equipment:e}),EQ);
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
-  await settle(page);await page.waitForTimeout(800);
+  await idle();
   await page.click('#reportArrange');
   await page.waitForSelector('#reportContent .rp-blocks.is-arranging',{timeout:15000});
-  await settle(page);await page.waitForTimeout(900);
+  await idle();
 
   /* **測るのは刷り上がりの寸法**（§9.289）。倍率(`--rp-scale`)は`transform`
      なので`getComputedStyle`のpaddingには掛からない——そのまま比べられる。
@@ -78,7 +70,8 @@ let b=null;
   });
   const press=async ax=>{
    await page.evaluate(a=>{const b=document.querySelector(`[data-rp-pack="${a}"]`);if(b)b.click()},ax);
-   await settle(page);await page.waitForTimeout(800);
+   /* 押すと描き直して裏で保存する（RP_AUTOSAVE_MS=400）。その往復まで静まるのを待つ。 */
+   await idle(600);
   };
   /* ---------- 3×3の全部を測る（どこで混ざるかを表で出す） ---------- */
   const M={};
@@ -154,13 +147,9 @@ let b=null;
       M.x0y1.欄.t<M.x0y0.欄.t-0.05,JSON.stringify({前:M.x0y0.欄.t,後:M.x0y1.欄.t}));
 
   rec('画面のJSで例外が出ていない',errs.length===0,errs.join(' / '));
-  const ng=R.filter(r=>!r.ok).length;
-  console.log(`\n${R.length - ng} PASS / ${ng} FAIL`);
-  process.exitCode=ng?1:0;
  }catch(e){
-  console.log('FATAL: '+(e&&e.stack||e));process.exitCode=1;
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   await cleanup();
-  if(b)await b.close().catch(()=>{});
  }
-})();
+}, {viewport:{width:1700,height:1000}});

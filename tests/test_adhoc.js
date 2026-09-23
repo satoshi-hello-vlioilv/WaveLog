@@ -18,15 +18,11 @@
    **確かめるときは値を実際に絞れる列で見ること**——どの行にも同じ値しか
    入っていない列だと、絞り込んでも件数が変わらず、効いていなくても通る。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];page.on('pageerror',e=>errs.push(e.message));
+run('test_adhoc: その場フィルタ(§9.238 ⑤、利用者の指示)', async ({page,rec,B,W,idle,paint,errs})=>{
  /* 行数が落ち着くまで待つ。**固定待ちにしないこと**(§9.102)——遅い画面では
     足りず、速い画面では無駄に待つ。 */
  /* **DOMの行数で数えないこと**（§9.286 ③）——表示件数の既定が1000件に
@@ -35,18 +31,15 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
     丸めで53/54と揺れる。絞り込みの効きは**サーバーが数えた件数**で見る。 */
  const rows=()=>page.evaluate(()=>(typeof S!=='undefined'&&Number.isFinite(S.count))
    ?S.count:document.querySelectorAll('#grid tbody tr').length);
+ /* 一覧の取り直しが済むまで（以前は件数が3回続けて同じになるまで150msごとに数えていた）。
+    打った値は ADHOC_DEBOUNCE_MS（280ms）遅れて効くので、静けさはそれより長く取る。 */
  const settle=async()=>{
-  let last=-1,same=0;
-  for(let i=0;i<60&&same<3;i++){
-   const n=await rows();
-   if(n===last)same++;else{same=0;last=n}
-   await page.waitForTimeout(150);
-  }
-  return last;
+  await idle(600,15000);
+  return rows();
  };
  const openList=async()=>{
   await page.waitForSelector('aside [data-db-key]',{timeout:25000});
-  await page.waitForTimeout(600);
+  await W.booted(page);await idle();
   await page.click('aside [data-db-key]');
   await page.waitForSelector('#grid tbody tr',{timeout:25000});
   await settle();
@@ -74,7 +67,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 
   /* ---- 2) 開くと支度の欄が出る ---- */
   await page.click('#filterAdhocToggle');
-  await page.waitForTimeout(400);
+  await W.until(page,want=>{const r=document.getElementById('filterAdhocRow');return !!r&&r.hidden===want},false,{ms:5000,what:'その場フィルタの欄が開く'});
   const opened=await page.evaluate(()=>{
    const row=document.getElementById('filterAdhocRow');
    const vis=el=>!!el&&!!el.offsetParent;
@@ -124,11 +117,11 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
       line1.器>0&&line1.余り<=4,JSON.stringify(line1));
   /* 狭い器（スケジュールの分割表示に近い幅）でも段が増えないこと。 */
   await page.setViewportSize({width:1100,height:1000});
-  await page.waitForTimeout(400);
+  await paint();
   const line2=await oneLine();
   rec('狭い窓でも1行のまま',line2.段数===1&&line2.余り<=4,JSON.stringify(line2));
   await page.setViewportSize({width:1700,height:1000});
-  await page.waitForTimeout(400);
+  await paint();
 
   /* ---- 3) 選んで打つと、その場で絞り込みが効く ---- */
   /* **実際に絞れる列を選ぶ**——同じ値しか無い列だと件数が変わらず、
@@ -178,7 +171,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('件数にもその場フィルタが数えられる',said.件数==='1件',JSON.stringify(said));
   /* 畳んだときも名乗る（見えない場所で効く絞り込みを作らない。§9.175） */
   await page.click('#filterAdhocToggle');
-  await page.waitForTimeout(300);
+  await W.until(page,want=>{const r=document.getElementById('filterAdhocRow');return !!r&&r.hidden===want},true,{ms:5000,what:'その場フィルタの欄が畳まれる'});
   const folded=await page.evaluate(()=>{
    const t=document.getElementById('filterAdhocToggle');
    return {畳んだ:!!document.getElementById('filterAdhocRow').hidden,
@@ -187,7 +180,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('畳んでも「いま効いている条件」を入口が名乗る',
       folded.畳んだ&&folded.印&&folded.文字.length>'その場フィルタ'.length,JSON.stringify(folded));
   await page.click('#filterAdhocToggle');
-  await page.waitForTimeout(300);
+  await W.until(page,want=>{const r=document.getElementById('filterAdhocRow');return !!r&&r.hidden===want},false,{ms:5000,what:'その場フィルタの欄がまた開く'});
 
   /* ---- 7) 解除すると戻る ---- */
   await page.click('#filterAdhocClear');
@@ -242,7 +235,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   await post('/api/access-mode',{mode:'schedule'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#scPanel,#schedulePanel,.sc-panel',{timeout:25000}).catch(()=>{});
-  await page.waitForTimeout(2500);
+  await W.booted(page);await idle(600,15000);  // スケジュールの画面と仕掛一覧を読み終えるまで
   const sc=await page.evaluate(()=>{
    const row=document.getElementById('filterAdhocRow'),t=document.getElementById('filterAdhocToggle');
    const bar=document.getElementById('genericFilterBar');
@@ -253,15 +246,10 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 
   rec('画面側の例外が出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
-  console.log('FATAL: '+e.message);
-  R.push({n:'FATAL',ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* **落ちてもブラウザを閉じる**(tests/README.md)。残ると設備の編集
      セッションを掴んだままになり、後続のスケジュール系が連鎖で落ちる。 */
   try{await post('/api/access-mode',{mode:'edit'})}catch(_){}
-  if(b)await b.close();
  }
- const ng=R.filter(x=>!x.ok).length;
- console.log(`\n=== SUMMARY ===\n${R.length-ng}/${R.length} passed`);
- process.exit(ng?1:0);
-})();
+}, {viewport:{width:1700,height:1000}});

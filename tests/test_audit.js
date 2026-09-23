@@ -9,17 +9,14 @@
    - 描き直したら古い判定を打ち切る
    - 一覧の再読込で分割判定のキャッシュも捨てる
    - 作業可否の索引が一括取得の上限に載らなかったロットを補う */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const { addOrphanPlan } = require('./orphan_lot');
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
-let b=null,orphan=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
+let orphan=null;
+run('test_audit: 監査で見つけた点の検証(§9.53)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
+ try{
  const calls=[];
  page.on('request',r=>{const u=r.url();if(u.includes('/api/table'))calls.push(u)});
  const since=()=>{const n=calls.length;return()=>calls.length-n};
@@ -34,7 +31,7 @@ let b=null,orphan=null;
  await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
  await page.reload({waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>document.querySelectorAll('#grid table tbody tr').length>0,{timeout:20000});
- await page.waitForTimeout(1500);
+ await idle();
 
  const runParent=async N=>page.evaluate(async N=>{
   // 実データに近い形(親1件に子4件) = 先頭5桁が数行ずつ重複する
@@ -84,7 +81,8 @@ let b=null,orphan=null;
  // 判定対象は「タイムラインに出ている予定」なので、先にスケジュール画面を開く
  await page.click('#openSchedule');
  await page.waitForSelector('.sc-row-line',{timeout:15000});
- await page.waitForTimeout(4000);
+ /* 最初の作業可否の裏取りが済んでから数える（途中で数え始めると、走っている取得を拾う）。 */
+ await W.settleFlags(page); await idle();
  const fill=await page.evaluate(async()=>{
   const realFetch=window.fetch;
   let pages=0,perLot=0;
@@ -117,18 +115,9 @@ let b=null,orphan=null;
  });
  rec('予定に「?」(判定できない)が残らない',!marks['is-unknown'],JSON.stringify(marks));
 
- await b.close();b=null;
- // 自分で足した予定は必ず消す(残すと後続テストの「不可」の件数や行位置が変わる)。
- await orphan.remove();
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- if(orphan)await orphan.remove().catch(()=>{});
- process.exit(2);
-});
+ }finally{
+  // 自分で足した予定は必ず消す(残すと後続テストの「不可」の件数や行位置が変わる)。
+  // 落ちたときも消す。
+  if(orphan){try{await orphan.remove()}catch(e){console.log('!! 足した予定を消せませんでした: '+(e&&e.message||e))}}
+ }
+}, {viewport:{width:1700,height:1000}});

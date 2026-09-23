@@ -25,15 +25,14 @@
        （既定4項目しか見えていない状態で保存すると`sameItems`が成立し、
          `items:[]`＝未設定として書き戻して**設定が消える**）
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
 const TARGET='timeline:'+EQ;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(body)}).then(r=>r.json().catch(()=>({})));
 const get=p=>fetch(B+p).then(r=>r.json());
-let b=null;
 
 /* 既定(4項目)と**必ず違う**並びにする。既定と同じ数・同じ並びだと、
    読んでいなくても偶然一致してしまい網が空振りする。 */
@@ -46,12 +45,7 @@ async function cleanup(){
    names:{},formats:{},rules:{},formulas:{},locks:[],sorts:{},user_id:'test'})}catch(e){}
 }
 
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1800,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
+run('test_scmodecols: 作業スケジュール表の列は、モードが違っても同じ（§9.246）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
 
  /* 画面を開く。**モードはサーバー側で先に切り替える**（画面が起動時に
     `/api/whoami`で読むので、あとから変えても`scState.fullControl`は動かない）。 */
@@ -212,16 +206,11 @@ async function cleanup(){
 
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
-  console.log('FATAL: '+(e&&e.stack||e));
-  R.push({n:'FATAL',ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* **落ちてもブラウザを閉じる**（tests/README.md）。残ると次のテストが
      編集セッションを掴んだままの画面に巻き込まれる。 */
   try{await cleanup()}catch(e){}
   try{await post('/api/access-mode',{mode:'edit'})}catch(e){}
-  if(b)await b.close();
  }
- const ng=R.filter(x=>!x.ok).length;
- console.log(`\n${R.length-ng}/${R.length} PASS`);
- process.exit(ng?1:0);
-})();
+}, {viewport:{width:1800,height:1000}});

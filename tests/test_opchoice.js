@@ -18,11 +18,11 @@
        スクロールするのはいちばん内側の一覧だけ
     9. **行を押すと汎用モーダルが開く**（§9.222 ⑥）——設備はタグ入力
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const G='回帰_選択肢'+Date.now().toString().slice(-5);
 const G2=G+'_改名';
-let b=null;
 let madeEquipment='';
 let manyGroup='';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
@@ -52,11 +52,7 @@ async function cleanup(){
  try{if(snapM)await H.dropNewMasterRows(snapM)}
  catch(e){console.log('  [cleanup] 増えた行を消せませんでした: '+(e&&e.message||e))}
 }
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];page.on('pageerror',e=>errs.push(e.message));
+run('test_opchoice: 選択肢の値マスタの階層化と6マスタの統合（§9.221 ②③）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   snapM=await H.masterSnapshot(['設備マスタ']);
   await cleanup();
@@ -120,7 +116,8 @@ async function cleanup(){
    const b=[...document.querySelectorAll('[data-oc-group]')].find(x=>x.dataset.ocGroup===g);
    if(b)b.click();
   },G);
-  await page.waitForTimeout(500);
+  await W.until(page,g=>document.querySelector('#ocGroupName')?.value===g,G,{ms:8000,what:'選んだまとまりが開く'});
+  await idle();
   /* **行は読むだけ**（§9.222 ⑥）。編集は汎用モーダル1枚に寄せたので、
      行の中には入力欄が無い——値は先頭のセルの文字で見る。 */
   const picked=await page.evaluate(()=>({
@@ -199,12 +196,13 @@ async function cleanup(){
    if(b)b.click();
   });
   await page.waitForSelector('.oc-edit',{timeout:8000});
-  await page.waitForTimeout(900);
+  await idle();
   await page.evaluate(g=>{
    const b=[...document.querySelectorAll('[data-oc-group]')].find(x=>x.dataset.ocGroup===g);
    if(b)b.click();
   },MANY);
-  await page.waitForTimeout(700);
+  await W.until(page,g=>document.querySelector('#ocGroupName')?.value===g,MANY,{ms:8000,what:'値の多いまとまりが開く'});
+  await idle();
   const fill=await page.evaluate(()=>{
    const q=s=>document.querySelector(s);
    const wrap=q('.mm-list-wrap'),edit=q('.oc-edit');
@@ -251,7 +249,7 @@ async function cleanup(){
      **行ごとに別のグリッドなので手前の列の左端までずれた**。
      **1700pxで見ても出ない**（余りが十分ある）ので、実際に狭くして見る。 */
   await page.setViewportSize({width:1366,height:900});
-  await page.waitForTimeout(400);
+  await paint();
   const narrow=await page.evaluate(()=>{
    const head=document.querySelector('.oc-row.is-head');
    const row=document.querySelector('.oc-row[data-oc-id]');
@@ -268,11 +266,12 @@ async function cleanup(){
   rec('狭い窓でも0pxまで潰れる列が無い',
       !narrow.前提なし&&narrow.潰れた列===0,JSON.stringify(narrow.幅));
   await page.setViewportSize({width:1700,height:1000});
-  await page.waitForTimeout(400);
+  await paint();
 
   /* §9.222 ⑥: 行を押すと汎用モーダルが開き、設備はタグ入力になる。 */
   await page.click('.oc-row[data-oc-id]');
-  await page.waitForTimeout(700);
+  await W.until(page,()=>{const m=document.getElementById('maintEditorModal');return !!m&&!m.hidden},null,{ms:8000,what:'汎用モーダルが開く'});
+  await idle();
   const editor=await page.evaluate(()=>{
    const m=document.getElementById('maintEditorModal');
    return {開いた:!!m&&!m.hidden,
@@ -288,7 +287,9 @@ async function cleanup(){
   /* **閉じてもまとまりが増えない**（`closeMaintEditor`の死んだ分岐を外した）。 */
   const before2=await page.evaluate(()=>document.querySelectorAll('[data-oc-group]').length);
   await page.evaluate(()=>document.getElementById('maintEditorClose')?.click());
-  await page.waitForTimeout(600);
+  await W.until(page,()=>{const m=document.getElementById('maintEditorModal');return !m||m.hidden},null,{ms:5000,what:'窓が閉じる'});
+  // 起きないことを見る判定（まとまりが増えない）: 増えるなら出るはずの往復が静まるまで待つ。
+  await idle(800);
   const after2=await page.evaluate(()=>document.querySelectorAll('[data-oc-group]').length);
   rec('窓を閉じてもまとまりが増えない',after2===before2,`${before2}→${after2}`);
 
@@ -298,7 +299,7 @@ async function cleanup(){
      .find(x=>x.dataset.master==='equipment');
    if(b)b.click();
   });
-  await page.waitForTimeout(900);
+  await idle(400,10000);
   const away=await page.evaluate(()=>{
    const w=document.querySelector('.mm-list-wrap');
    return {印:!!(w&&w.classList.contains('is-fill')),
@@ -308,12 +309,8 @@ async function cleanup(){
       away.印===false&&away.overflow==='auto',JSON.stringify(away));
 
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
- }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
+ }catch(e){rec('FATAL',false,String(e&&e.message||e))}
  finally{
   await cleanup().catch(()=>{});
-  await b.close();
-  const ok=R.filter(x=>x.ok).length;
-  console.log(`\n=== SUMMARY ===\n${ok}/${R.length} passed`);
-  process.exit(ok===R.length?0:1);
  }
-})();
+}, {viewport:{width:1700,height:1000}});

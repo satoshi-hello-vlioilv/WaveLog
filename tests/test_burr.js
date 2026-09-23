@@ -15,33 +15,27 @@
 
    **確かめるときは実際に転送を流すこと。** バッジが在ることだけを見る網は、
    値を1つも読まない実装でも通る。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const setMode=m=>fetch(API+'/api/access-mode',{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
 
-let b=null,page=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- page=await b.newPage({viewport:{width:1920,height:1080}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
- page.on('dialog',d=>d.accept());
-
+run('test_burr: バリは「2回測って差を採る」（§9.242 ③、利用者の指示）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  /* 実機の測定器はクリックを挟まず送り続ける。**こちらからフォーカスを
     触らない**（触ると「フォーカスが戻る」を自分で戻してから確かめる形になる）。 */
  const send=async raw=>{
   await page.keyboard.type(raw);
   await page.keyboard.press('Tab');
-  await page.waitForTimeout(400);
+  /* 受信の処理は Tab の次の描画で走り、終わると「直前受信」へ生データを書く
+     （measure-input.js の processDeviceInput）。送る生データは毎回違う。 */
+  await W.until(page,r=>((document.getElementById('deviceLastReceived')||{}).textContent||'').includes(r),raw,{ms:5000,what:'転送 '+raw+' を受け付ける'});
  };
  const setType=async v=>{
   await page.evaluate(t=>{const el=document.getElementById('measureType');
     el.value=t;el.dispatchEvent(new Event('change',{bubbles:true}))},v);
-  await page.waitForTimeout(500);
+  await paint();
  };
  /* バッジの見え方は**実寸で読む**（文字があるかだけでは、隠れた器の中でも通る）。 */
  const burr=()=>page.evaluate(()=>{
@@ -90,11 +84,11 @@ let b=null,page=null;
   await page.waitForFunction(()=>document.querySelector('#saveOverlay')?.hidden!==false,null,{timeout:30000}).catch(()=>{});
   await page.waitForFunction(()=>typeof S!=='undefined'&&!!S.measure,null,{timeout:25000});
   await page.evaluate(()=>WL.measureSteps.go('2'));
-  await page.waitForTimeout(500);
+  await paint();
   /* 条を4本にして、確定のあと条が進むのが見えるようにする。 */
   await page.evaluate(()=>{const h=document.querySelector('#horizontalCount');
     h.value='4';h.dispatchEvent(new Event('change',{bubbles:true}))});
-  await page.waitForTimeout(600);
+  await idle();
 
   /* ---- 0) バリ以外では出さない（§4：関係の無い項目で場所を取らない） ---- */
   await setType('板幅');
@@ -154,7 +148,7 @@ let b=null,page=null;
      見たいのは割り付けなので、**式が出たままの状態で窓だけ狭める**
      ——項目を往復させれば描き直しは起きる（式の控えは記録が同じなら残る）。 */
   await page.setViewportSize({width:1366,height:768});
-  await page.waitForTimeout(500);
+  await paint();
   await setType('板幅');
   await setType('バリ');
   const narrow=await headBox();
@@ -170,7 +164,7 @@ let b=null,page=null;
   });
   rec('計算式のピル自身が切り詰められない',cut!==null&&cut<=1,String(cut));
   await page.setViewportSize({width:1920,height:1080});
-  await page.waitForTimeout(400);
+  await paint();
 
   /* ---- 7) DELETEで①からやり直せる（案内文が言っているとおりに動く・§4） ----
      **転送を流すのは元の窓へ戻してから**（上のとおり、窓の作り直しの直後は
@@ -190,15 +184,10 @@ let b=null,page=null;
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
   await cleanup();
-  process.exit(ng.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
+  rec('FATAL',false,String(e&&e.message||e));
   await cleanup();
-  process.exit(2);
  }
  /* 後片付け（§9.121）。**落ちた側でも通す**。画面のidと保存側のIDは
     同じではない（設備名が前に付く）ので**末尾一致で消す**。 */
@@ -219,6 +208,5 @@ let b=null,page=null;
    const m=document.querySelector('#measureModal');if(m)m.hidden=true;
   })}catch(e){}
   try{await setMode('edit')}catch(e){}
-  if(b)await b.close().catch(()=>{});
  }
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});
+}, {viewport:{width:1920,height:1080}});

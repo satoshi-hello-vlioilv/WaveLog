@@ -12,16 +12,11 @@
     2. 左メニューに案内が出て、**何が待っているか**が文字で分かること
     3. 待ちが無いときは出さないこと（常設すると読み流される）
     4. 押すとデータ接続の設定が開くこと（気づく場所と打つ手を同じ場所に） */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
+run('test_dsrestart: 名称の変更が再起動待ちであることを画面に出す（§9.183）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  let saved=null,work=null;
  try{
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
@@ -101,10 +96,5 @@ let b=null;
      headers:{'Content-Type':'application/json'},
      body:JSON.stringify({...w,id:w.id,label,user_id:'tester'})});
   },[work,saved])}catch(_){}
-  if(b)await b.close().catch(()=>{});
  }
- console.log('\n=== SUMMARY ===');
- const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
- ng.forEach(x=>console.log(' -',x.n,x.d||''));
- process.exit(ng.length?1:0);
-})();
+}, {viewport:{width:1600,height:1000}});

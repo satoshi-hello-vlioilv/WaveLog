@@ -16,7 +16,8 @@
    後片付けは finally で必ず行う。**列レイアウトマスタは実行をまたいで
    生き延びる**（§9.121）ので、消し忘れると次の実行が引き継ぐ。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 /* 材料は自分で注ぎ込む（§9.351・§9.362 ⑥）。この網は「記録が1件ある」
    ことを前提にするが、**フィクスチャに記録は無い**——今まで見えていたのは
    前の実行の置き土産で、ランナーが実績を1本ごとに空へ戻すようになった
@@ -24,12 +25,11 @@ const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/no
    置いたものは`clearRecords()`が片付ける。 */
 const {seedRecord}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+const WT=require('./lib/wait.js');
 const EQ='テスト設備A';
 /* 帳票の見せ方は**設備ごと**に覚える（§9.174）。フィクスチャのロットは
    テスト設備Aなので、その1件だけを触って後片付けする。 */
 const TARGET='report:'+EQ;
-let b=null;
 /* エリアの塊（§9.234 ⑤）。**実行ごとに一意**にして、後片付けで必ず消す
    （帳票ブロックマスタは`db/master.sqlite3`に残り、実行をまたぐ・§9.121）。 */
 const AREA_NAME='エリア確認-'+Date.now().toString(36);
@@ -64,10 +64,11 @@ const inDlg=async(page,key,fn)=>{
  await page.waitForFunction(()=>{
   const m=document.getElementById('rpBlockModal');return !!m&&!m.hidden;
  },null,{timeout:8000});
- await page.waitForTimeout(200);
+ await WT.paint(page);
  const out=await fn();
  await page.evaluate(()=>{const c=document.getElementById('rpBlockClose');if(c)c.click()});
- await page.waitForTimeout(200);
+ await WT.until(page,()=>{const m=document.getElementById('rpBlockModal');return !m||m.hidden},null,
+   {ms:5000,what:'紙での見え方の窓が閉じる'});
  return out;
 };
 const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-block]')].map(e=>e.dataset.rpBlock));
@@ -90,18 +91,13 @@ const endArrange=async page=>{
   const bar=document.getElementById('rpArrangeBar');return !!bar&&!bar.hidden;
  });
  if(open)await page.click('#rpArrangeCancel');
- await page.waitForTimeout(300);
+ await WT.until(page,()=>{const bar=document.getElementById('rpArrangeBar');return !bar||bar.hidden},null,
+   {ms:5000,what:'組み換えの帯が閉じる'});
 };
 
-(async()=>{
+run('test_rpblocks: 帳票の塊（ブロック）と配置の組み換え（§9.169）', async ({page,rec,idle,paint,errs})=>{
  await cleanup();
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
  page.on('console',m=>{if(m.type()==='error')errs.push(m.text().slice(0,140))});
- page.on('dialog',d=>d.accept());
  try{
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
@@ -823,13 +819,13 @@ const endArrange=async page=>{
     if(WL.reportBlocks&&WL.reportBlocks.forget)WL.reportBlocks.forget();
     const c=document.getElementById('rpArrangeCancel');if(c&&!c.disabled)c.click();
    });
-   await page.waitForTimeout(300);
+   await idle();
    await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
    await page.waitForSelector('.record-list-row',{timeout:25000});
    await page.click('.record-list-row .report');
    await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
    await settle(page);
-   await page.waitForTimeout(600);
+   await idle();
    await page.click('#reportArrange');
    await page.waitForSelector('.rp-blocks.is-arranging',{timeout:8000});
    await settle(page);
@@ -841,7 +837,7 @@ const endArrange=async page=>{
     return document.querySelector(`[data-rp-block="${CSS.escape(n)}"]`)?'already':'missing';
    },AREA_NAME);
    await settle(page);
-   await page.waitForTimeout(400);
+   await idle();
    const area=await page.evaluate(n=>{
     const el=document.querySelector(`[data-rp-block="${CSS.escape(n)}"]`);
     if(!el)return{出た:false};
@@ -897,7 +893,7 @@ const endArrange=async page=>{
    await page.click('.record-list-row .report');
    await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
    await settle(page);
-   await page.waitForTimeout(800);
+   await idle();
    const kept=await page.evaluate(n=>{
     const a=document.querySelector(`[data-rp-block="${CSS.escape(n)}"]`);
     const b2=document.querySelector('[data-rp-block="基本情報"]');
@@ -935,7 +931,7 @@ const endArrange=async page=>{
     if(p){p.click();return 'placed'}
     return document.querySelector('[data-rp-block="丈別データ"]')?'already':'missing';
    });
-   await settle(page);await page.waitForTimeout(300);
+   await settle(page);await idle();
    rec('前提: 丈別データの塊が紙に出ている',placed!=='missing',placed);
    const picks=await inDlg(page,'丈別データ',()=>page.evaluate(()=>
      [...document.querySelectorAll('#rpBlockForm [data-e-span]')]
@@ -957,7 +953,7 @@ const endArrange=async page=>{
    });
    const wide=picks[picks.length-1],narrow=picks[0];
    await inDlg(page,'丈別データ',()=>page.click(`#rpBlockForm [data-e-span="${wide}"]`));
-   await settle(page);await page.waitForTimeout(250);
+   await settle(page);await idle();
    const W=await look();
    /* **入っている塊は詰めない。** 既定の見え方（余白2px/1px・行送り1.15）を
       1pxも変えないこと（§9.132。わざわざ設定していない現場の紙が黙って
@@ -966,7 +962,7 @@ const endArrange=async page=>{
        !!W&&W.dense===1&&W.px===2&&W.py===1&&Math.abs(W.lh-W.fs*1.15)<0.05,
        JSON.stringify(W));
    await inDlg(page,'丈別データ',()=>page.click(`#rpBlockForm [data-e-span="${narrow}"]`));
-   await settle(page);await page.waitForTimeout(250);
+   await settle(page);await idle();
    const N=await look();
    rec('狭くすると余白が詰まる（左右・上下・行送りとも）',
        !!N&&N.dense<1&&N.px<W.px&&N.py<W.py&&N.lh<W.lh,JSON.stringify(N));
@@ -988,7 +984,7 @@ const endArrange=async page=>{
     +'.rp-block-fit.rp-pack-share .rp-product-table{table-layout:fixed !important}'
     +'.rp-block-fit.rp-pack-nowrap,.rp-block-fit.rp-pack-nowrap *:not(.rp-info-box){white-space:normal !important}'});
    await page.evaluate(()=>WL.reportFit());
-   await settle(page);await page.waitForTimeout(150);
+   await settle(page);await paint();
    const OFF=await look();
    rec('詰めを止めると、そのぶん文字を縮めることになる（＝詰めが効いている）',
        !!OFF&&!!N&&OFF.fit<N.fit-0.001,
@@ -1018,15 +1014,15 @@ const endArrange=async page=>{
     });
    });
    await page.evaluate(()=>WL.reportFit());
-   await settle(page);await page.waitForTimeout(150);
+   await settle(page);await paint();
    const W2=await look(),wideSpan=wide;
    await inDlg(page,'丈別データ',()=>page.click(`#rpBlockForm [data-e-span="${wideSpan}"]`));
-   await settle(page);await page.waitForTimeout(250);
+   await settle(page);await idle();
    const WP=await look();
    rec('広いマスでは詰めの段に入らない（印も付かない）',
        !!WP&&WP.pack.length===0&&WP.dense===1&&WP.fit===1,JSON.stringify(WP&&{pack:WP.pack,dense:WP.dense,fit:WP.fit}));
    await inDlg(page,'丈別データ',()=>page.click(`#rpBlockForm [data-e-span="${narrow}"]`));
-   await settle(page);await page.waitForTimeout(250);
+   await settle(page);await idle();
    const NP=await look();
    /* **余白を使い切ってから列を回す**——`share`が付いているのに余白が
       詰まっていなければ、順序が入れ替わっている。 */
@@ -1042,7 +1038,7 @@ const endArrange=async page=>{
     +'.rp-block-fit.rp-pack-share .rp-product-table{table-layout:fixed !important}'
     +'.rp-block-fit.rp-pack-nowrap,.rp-block-fit.rp-pack-nowrap *:not(.rp-info-box){white-space:normal !important}'});
    await page.evaluate(()=>WL.reportFit());
-   await settle(page);await page.waitForTimeout(150);
+   await settle(page);await paint();
    const NOFF=await look();
    rec('段（1行を保つ・余力のある列を回す）を止めると、そのぶん文字を縮めることになる',
        !!NOFF&&!!NP&&NOFF.fit<NP.fit-0.001,
@@ -1086,14 +1082,14 @@ const endArrange=async page=>{
    await page.waitForSelector('.record-list-row',{timeout:25000});
    await page.click('.record-list-row .report');
    await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
-   await settle(page);await page.waitForTimeout(600);
+   await settle(page);await idle();
    /* **開いているとは限らない**——前の節が組み換えを開いたままなので、
       素直に押すと閉じてしまう（帯が出ないまま待って落ちる）。 */
    if(await page.evaluate(()=>!!document.getElementById('rpArrangeBar').hidden)){
     await page.click('#reportArrange');
    }
    await page.waitForSelector('#rpArrangeBar:not([hidden])',{timeout:8000});
-   await settle(page);await page.waitForTimeout(500);
+   await settle(page);await idle();
    const packLook=async()=>await page.evaluate(()=>{
     /* **倍率を割り戻して実寸で比べる**（§9.174）。紙は`--rp-scale`で縮めて
        出しているので、そのまま測ると差が半分以下に見えて判定が際どくなる。 */
@@ -1118,7 +1114,7 @@ const endArrange=async page=>{
    const pick=async n=>{
     for(let i=0;i<n;i++){
      await page.evaluate(()=>{const b=document.querySelector('[data-rp-pack="y"]');if(b)b.click()});
-     await settle(page);await page.waitForTimeout(700);
+     await settle(page);await idle();
     }
     return packLook();
    };
@@ -1163,7 +1159,9 @@ const endArrange=async page=>{
    /* **保存されること**——紙の設定なので、開き直しても効いていなければ
       「押した瞬間だけ」になる（§9.205と同じ壊れ方）。 */
    await pick(1);
-   await page.waitForTimeout(900);
+   /* 自動保存が届くまで、判定と同じ問い（マスタに両方の鍵が在るか）で聞き直す。 */
+   await WT.poll(async()=>((await (await fetch(B+'/api/column-layout-master?target='
+     +encodeURIComponent(TARGET))).json()).widths||{}),w=>Number(w['__余白横__'])>40&&Number(w['__余白縦__'])>40,8000);
    /* **本物の帯のボタンを通して見る**（§9.311 C）——上の合成の器は
       `--rp-dense-*`を直に置くので、`rpApplyPaperPack()`が2つの軸を
       混ぜていても素通りする（実際に素通りした）。 */
@@ -1192,7 +1190,9 @@ const endArrange=async page=>{
     await WL.columnLayout.load(t);
    },TARGET);
    await pick(1);
-   await page.waitForTimeout(900);
+   /* 自動保存が届くまで、判定と同じ問い（マスタに両方の鍵が在るか）で聞き直す。 */
+   await WT.poll(async()=>((await (await fetch(B+'/api/column-layout-master?target='
+     +encodeURIComponent(TARGET))).json()).widths||{}),w=>!(Number(w['__余白__'])>40)&&Number(w['__余白横__'])>40&&Number(w['__余白縦__'])>40,8000);
    const savedW2=(await (await fetch(B+'/api/column-layout-master?target='
      +encodeURIComponent(TARGET))).json()).widths||{};
    rec('§9.311 C 旧「__余白__」は捨てる（読む鍵を2つ残さない）',
@@ -1201,7 +1201,7 @@ const endArrange=async page=>{
        JSON.stringify({旧:savedW2['__余白__'],横:savedW2['__余白横__'],縦:savedW2['__余白縦__']}));
    await pick(2);       /* 一巡して「ふつう」へ戻す */
    await page.click('#reportArrange');
-   await page.waitForTimeout(400);
+   await idle();
   }catch(e){rec('FATAL(§9.308)',false,e.message)}
 
   /* ==========================================================
@@ -1228,7 +1228,7 @@ const endArrange=async page=>{
     await page.waitForSelector('.record-list-row',{timeout:25000});
     await page.click('.record-list-row .report');
     await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
-    await settle(page);await page.waitForTimeout(800);
+    await settle(page);await idle();
     return page.evaluate(()=>{
      const t=document.querySelector('.rp-product-table');
      return t?t.querySelectorAll('tbody tr').length:0;
@@ -1359,9 +1359,5 @@ const endArrange=async page=>{
   if(areaId){try{await post('/api/report-block-master/delete',{id:areaId,user_id:'test'})}catch(e){}}
   /* 置いた実績は自分で消す（§9.351・§9.362）。 */
   try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1700,height:1000}});

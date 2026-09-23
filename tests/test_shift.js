@@ -1,20 +1,15 @@
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
 /* 触る前の行を控える（§9.362 ⑤）。製品の「勤務体系を削除」は**論理削除**
    （`有効=0`）なので行が残るうえ、**名前で拾って消すとフィクスチャの行まで
    消える**——実測で`勤務体系設備マスタ`が4行減っていた（§9.284の
    「無差別に消すと、後片付けを持つ網の期待と食い違う」そのもの）。
    **この実行で増えた行だけ**を素の表から片付ける。 */
+'use strict';
+const {run}=require('./lib/harness.js');
 const H=require('./lib/harness.js');
 const SNAP_TABLES=['勤務体系マスタ','勤務区分マスタ','勤務体系設備マスタ'];
 let snapM=null;
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
+run('test_shift: 勤務体系の編集（テンプレート・保存・区分追加）', async ({page,rec,W,idle})=>{
  snapM=await H.masterSnapshot(SNAP_TABLES);
- const page=await b.newPage({viewport:{width:1500,height:950}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('dialog',d=>d.accept());
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
  await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openMasterMaint',{timeout:15000});
  await page.evaluate(()=>localStorage.setItem('MeasurementUserIdV1','tester'));
@@ -24,15 +19,16 @@ let b=null;
  await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tester');
  await page.evaluate(()=>{const b=[...document.querySelectorAll('#masterMaintNav [data-master]')].find(x=>x.textContent.includes('勤務形態'));if(b)b.click()});
  await page.waitForSelector('.shift-editor',{timeout:8000});
- await page.waitForTimeout(600);
+ await idle();  // 勤務体系の一覧を読み終えるまで
 
  const migrated=await page.$$eval('.shift-list-item b',ns=>ns.map(n=>n.textContent));
  rec('旧フラット勤務形態が勤務体系へ自動移行されている',migrated.length>0,migrated.join(' / '));
 
  // テンプレートから 交替勤務(1,2,3直) を作る
- await page.click('#shiftNew'); await page.waitForTimeout(300);
+ await page.click('#shiftNew');
+ await W.until(page,()=>[...document.querySelectorAll('[data-shift-tmpl]')].some(x=>x.textContent.includes('1,2,3直')),null,{ms:4000,what:'テンプレートの札が出る'});
  await page.evaluate(()=>{const b=[...document.querySelectorAll('[data-shift-tmpl]')].find(x=>x.textContent.includes('1,2,3直'));if(b)b.click()});
- await page.waitForTimeout(400);
+ await W.until(page,()=>(document.querySelector('#shiftName')||{}).value==='交替勤務(1,2,3直)'&&document.querySelectorAll('.shift-seg').length===3,null,{ms:4000,what:'テンプレートの3区分が入る'});
  const t=await page.evaluate(()=>({
    name:document.querySelector('#shiftName').value,
    segs:[...document.querySelectorAll('.shift-seg')].map(el=>({
@@ -99,13 +95,15 @@ let b=null;
      JSON.stringify(grid.eqTags.map(t=>t.h)));
 
  // 保存
- await page.click('#shiftSave'); await page.waitForTimeout(2200);
+ await page.click('#shiftSave'); await idle(400,10000);
  const saved=await page.evaluate(async()=>await fetch('/api/schedule/shift-pattern-master?scope=all').then(r=>r.json()));
  const p=(saved.items||[]).find(x=>x.name==='交替勤務(1,2,3直)');
  rec('保存され、階層のままサーバーに入る',!!p&&p.segments.length===3,p?JSON.stringify(p.segments):'not found');
 
  // 区分追加は前の区分の終了時刻を引き継ぐ
- await page.click('#shiftAddSeg'); await page.waitForTimeout(400);
+ const nSeg=await page.$$eval('.shift-seg',x=>x.length);
+ await page.click('#shiftAddSeg');
+ await W.until(page,n=>document.querySelectorAll('.shift-seg').length>n,nSeg,{ms:4000,what:'区分が1つ増える'});
  const added=await page.evaluate(()=>{const els=[...document.querySelectorAll('.shift-seg')];const l=els[els.length-1];
    return {n:l.querySelector('.shift-seg-name').value,s:l.querySelector('.shift-seg-start').value,prevEnd:els[els.length-2].querySelector('.shift-seg-end').value}});
  rec('区分追加時に直前の終了時刻を開始の初期値にする',added.s===added.prevEnd,JSON.stringify(added));
@@ -122,15 +120,4 @@ let b=null;
  try{if(snapM)await H.dropNewMasterRows(snapM)}
  catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
 
- console.log('\n=== SUMMARY ===');
- const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
- f.forEach(x=>console.log(' -',x.n,x.d||''));
- await b.close();process.exit(f.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1500,height:950}});

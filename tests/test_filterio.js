@@ -19,8 +19,8 @@
    後片付けは finally で必ず行う（このテストが作った登録だけを消す。
    名前に実行ごとの印を入れて、他のテストの登録を巻き込まない）。
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const TAG='io'+Date.now().toString(36);          // 実行ごとに一意
 /* 登録フィルタは**人のもの**になった(§9.172)ので、画面と同じ利用者IDで作る
@@ -36,14 +36,8 @@ const OTHER_DB='SIKALOTDEF',OTHER_TBL='品質';
 const H=require('./lib/harness.js');
 const SNAP_TABLES=['フィルタプリセットマスタ','フィルタ個人設定マスタ'];
 let snapM=null;
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
+run('test_filterio: 登録フィルタの持ち出し・取り込み（§9.171）', async ({page,rec,idle,errs})=>{
  snapM=await H.masterSnapshot(SNAP_TABLES);
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
  const post=(p,body)=>page.evaluate(async a=>{
   const r=await fetch(a.p,{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify(Object.assign({user_id:'test-filterio'},a.b))});
@@ -81,7 +75,7 @@ let b=null;
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
   await page.click('aside [data-db-key="SIKALOTNOW"]',{timeout:20000});
   await page.waitForSelector('#grid tbody tr',{timeout:30000});
-  await page.waitForTimeout(800);
+  await idle();
   /* 「デフォルト」「鍵」を1件に付けておく（印が名前で運ばれるかを見るため）。
      印は**その人のもの**になったので、画面と同じAPIで付ける(§9.172)。 */
   const targetId=(await listPresets('')).find(x=>x.name===`${TAG}-A`)?.id;
@@ -92,7 +86,7 @@ let b=null;
   await page.click('#filterMoreBtn');
   await page.click('#openFilterPresets');
   await page.waitForSelector('#filterPresetModal:not([hidden])',{timeout:10000});
-  await page.waitForTimeout(900);
+  await idle();  // 登録一覧の取り直し（reloadFilterPresets）が済むまで
 
   /* ---- 1) 書き出し: 既定は「いま開いている一覧」だけ ---- */
   await openIo('export');
@@ -163,7 +157,7 @@ let b=null;
   const bId=before.find(x=>x.name===`${TAG}-B`)?.id;
   await post('/api/filter-presets/delete',{id:bId});
   await page.evaluate(()=>document.getElementById('reloadFilterPresets').click());
-  await page.waitForTimeout(900);
+  await idle();
   await openIo('import');
   await page.setInputFiles('#filterIoFile',tmp);
   await page.waitForSelector('#filterIoPanel .fp-io-groups',{timeout:8000});
@@ -193,7 +187,7 @@ let b=null;
   });
   await page.click('#filterIoRun');
   await page.waitForSelector('#filterIoPanel',{state:'hidden',timeout:15000});
-  await page.waitForTimeout(1200);
+  await idle();  // 取り込みの書き込みが済むまで
   const after=await listPresets('');
   const a=after.find(x=>x.name===`${TAG}-A`);
   rec('「そのままにする」なら同名を上書きしない',
@@ -241,9 +235,5 @@ let b=null;
   try{require('fs').unlinkSync(bad)}catch(e){}
   try{if(snapM)await H.dropNewMasterRows(snapM)}
   catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1700,height:1000}});

@@ -18,23 +18,15 @@
    **保存値だけを見る網では捕まらない**（塗る処理が丸ごと壊れていても
    通る）ので、必ず`getComputedStyle`で**実際のセルと見出しの両方**を読む。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];page.on('pageerror',e=>errs.push(e.message));
+run('test_coltint: 列に一時的な色を付ける(§9.239 ⑤-3、利用者の指示)', async ({page,rec,B,W,idle,errs})=>{
+ /* 一覧の行が出そろうまで（以前は行数が3回続けて同じになるまで150msごとに数えていた）。 */
  const settle=async()=>{
-  let last=-1,same=0;
-  for(let i=0;i<60&&same<3;i++){
-   const n=await page.evaluate(()=>document.querySelectorAll('#grid tbody tr').length);
-   if(n===last)same++;else{same=0;last=n}
-   await page.waitForTimeout(150);
-  }
-  return last;
+  await idle(400,15000);
+  return page.evaluate(()=>document.querySelectorAll('#grid tbody tr').length);
  };
  try{
   await post('/api/access-mode',{mode:'edit'});
@@ -44,7 +36,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   await page.evaluate(()=>{try{sessionStorage.removeItem('WaveLogColumnTintV1')}catch(_){}} );
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('aside [data-db-key]',{timeout:25000});
-  await page.waitForTimeout(600);
+  await W.booted(page);await idle();
   await page.click('aside [data-db-key]');
   await page.waitForSelector('#grid tbody tr',{timeout:25000});
   await settle();
@@ -107,7 +99,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   await page.evaluate(()=>{
    document.querySelector('.col-head-menu .chm-tint[data-tint="blue"]').click();
   });
-  await page.waitForTimeout(400);
+  await W.until(page,k=>{const q=s=>document.querySelector(s);const th=q(`#grid thead th[data-col="${CSS.escape(k)}"]`);const other=q('#grid thead th[data-sort-col]:not([data-col="'+CSS.escape(k)+'"])');if(!th||!other)return false;const a=getComputedStyle(th).backgroundColor,b=getComputedStyle(other).backgroundColor;return a!==b},col,{ms:5000,what:'選んだ列の見出しが塗られる'});
   const after=await page.evaluate(k=>{
    const th=document.querySelector(`#grid thead th[data-col="${CSS.escape(k)}"]`);
    const td=document.querySelector(`#grid tbody td[data-col="${CSS.escape(k)}"]`);
@@ -144,7 +136,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   /* ---- 5) 読み直しても残る ---- */
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('aside [data-db-key]',{timeout:25000});
-  await page.waitForTimeout(600);
+  await W.booted(page);await idle();
   await page.click('aside [data-db-key]');
   await page.waitForSelector('#grid tbody tr',{timeout:25000});
   await settle();
@@ -168,7 +160,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('色が付いていれば「この列の色を外す」が出る',menu2.解除,String(menu2.解除));
   rec('「すべての色を外す」に件数が入る',/1列/.test(menu2.全解除文),menu2.全解除文);
   await page.evaluate(()=>document.querySelector('.col-head-menu .chm-tint-off').click());
-  await page.waitForTimeout(400);
+  await W.until(page,k=>{const q=s=>document.querySelector(s);const th=q(`#grid thead th[data-col="${CSS.escape(k)}"]`);const other=q('#grid thead th[data-sort-col]:not([data-col="'+CSS.escape(k)+'"])');if(!th||!other)return false;const a=getComputedStyle(th).backgroundColor,b=getComputedStyle(other).backgroundColor;const c=document.getElementById('listTintChip');return a===b&&(!c||c.hidden)},col,{ms:5000,what:'色が外れてチップも消える'});
   const off=await page.evaluate(k=>{
    const th=document.querySelector(`#grid thead th[data-col="${CSS.escape(k)}"]`);
    const other=document.querySelector('#grid thead th[data-sort-col]:not([data-col="'+CSS.escape(k)+'"])');
@@ -183,8 +175,9 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   const hasSplit=await page.evaluate(()=>!!document.querySelector('#grid thead th[data-col="__split__"]'));
   if(hasSplit){
    await openMenu('__split__');
+   const splitBg=await page.evaluate(()=>{const th=document.querySelector('#grid thead th[data-col="__split__"]');return th?getComputedStyle(th).backgroundColor:''});
    await page.evaluate(()=>document.querySelector('.col-head-menu .chm-tint[data-tint="amber"]').click());
-   await page.waitForTimeout(400);
+   await W.until(page,was=>{const th=document.querySelector('#grid thead th[data-col="__split__"]');return !!th&&getComputedStyle(th).backgroundColor!==was},splitBg,{ms:5000,what:'分割の列が塗られる'});
    const v=await page.evaluate(()=>{
     const th=document.querySelector('#grid thead th[data-col="__split__"]');
     const td=document.querySelector('#grid tbody td[data-col="__split__"]');
@@ -197,13 +190,9 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 
   rec('画面の例外が出ていない',errs.length===0,errs.join(' / '));
  }catch(e){
-  console.log('FATAL '+(e&&e.message||e));R.push({ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* **後片付け**（§9.121）。sessionStorage は端末に残る。 */
   try{await page.evaluate(()=>{try{sessionStorage.removeItem('WaveLogColumnTintV1')}catch(_){}} )}catch(_){}
-  await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1700,height:1000}});
