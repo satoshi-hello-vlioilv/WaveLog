@@ -21,7 +21,8 @@
    ここでは**順序の契約**を固定する。時間の実測は環境で揺れるので、
    「JSより先にCSSが適用されている」「HTMLにパーサー実行のJSが無い」
    といった、崩れたら必ず白が戻る条件を見る。 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 /* 本数は起動ローダーの一覧(FILES)から数える。**直値で持たない**
    ——JSを1本足すたびにこのテストだけが落ちて、意味のない数字合わせになる
@@ -29,13 +30,7 @@ const API='http://127.0.0.1:5029';
    §9.324 R3: 一覧は core.py の JS_FILES へ移り index.html は描くだけなので、
    **配られたHTML**（下で取る）から数える。 */
 let EXPECTED_JS=0;
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1400,height:900}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
+run('test_bootflash: 起動の引き渡しで白い画面を挟まないこと(§9.86)', async ({page,rec,B,W,idle,errs,browser})=>{
  page.on('console',m=>{if(m.type()==='error')errs.push('console: '+m.text())});
  try{
   /* ---- 1) 配信が2本に分かれている ---- */
@@ -67,7 +62,7 @@ let b=null;
   /* ---- 3) 画面としてちゃんと立ち上がる ---- */
   await page.goto(API+'/',{waitUntil:'load'});
   await page.waitForFunction(()=>!document.documentElement.classList.contains('app-booting'),{timeout:20000});
-  await page.waitForTimeout(1500);
+  await idle();
   const s=await page.evaluate(()=>{
    const css=performance.getEntriesByType('resource').filter(r=>/css\/app\.css/.test(r.name))[0];
    const js=performance.getEntriesByType('resource').filter(r=>/\/static\/js\//.test(r.name))
@@ -148,16 +143,7 @@ let b=null;
   rec('時間切れでも中身の無い枠を見せない(読み込み中の置き換えを入れる)',
    /一覧を読み込んでいます/.test(baseSrc),'');
 
-  console.log('\n=== SUMMARY ===');
-  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
-  f.forEach(x=>console.log(' -',x.n,x.d||''));
-  await b.close();b=null;
-  process.exit(f.length?1:0);
  }catch(e){
-  // 落ちてもブラウザは必ず閉じる(開いたままだと後続のスケジュール系が
-  // 「編集中です」で連鎖的に落ちる)。
-  console.error('FATAL',e);
-  if(b)await b.close().catch(()=>{});
-  process.exit(2);
+  rec('FATAL',false,String(e&&e.message||e));
  }
-})();
+}, {viewport:{width:1400,height:900}});

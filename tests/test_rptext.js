@@ -14,9 +14,9 @@
    **測るのは刷り上がりの寸法**（§9.289）——「札が在る」「クラスが付いた」
    だけを見る網は、絵が1pxも変わっていない実装でも通る。
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const {clearLayout}=require('./lib/harness.js');   // 後片付け（§9.360）
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const get=async u=>(await fetch(B+u)).json();
@@ -24,12 +24,7 @@ const post=async(u,body)=>{const r=await fetch(B+u,{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return r.json().catch(()=>({}))};
 /* 既定セルを持つ塊（§9.285 ②）。**顔ぶれはサーバーが答える**ので、
    ここに綴りを書き写さない（増えたら網も自動で見る）。 */
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox','--disable-dev-shm-usage']});
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',String(e&&e.message||e).slice(0,140)));
+run('test_rptext: 帳票の文字サイズ・半自動の塊のカスタム・ピッチ判定の幅（§9.320-D/E/F）', async ({page,rec,B,idle})=>{
  const undo=[];
  try{
   const master=await get('/api/report-block-master');
@@ -57,7 +52,7 @@ let b=null;
    await page.waitForFunction(()=>document.body.classList.contains('rp-mode'),null,{timeout:20000});
    await page.waitForFunction(()=>{const c=document.getElementById('reportContent');
      return c&&c.textContent.length>500},null,{timeout:20000});
-   await page.waitForTimeout(1800);
+   await idle(400,10000);  // 見本の帳票が材料を読み終えて描き終えるまで
   };
   await openSample();
 
@@ -126,7 +121,7 @@ let b=null;
   /* ---- ③ ピッチ判定は狭くても収まる（§9.320-F） ---- */
   const at=async span=>{
    await page.evaluate(async n=>{await WL.reportLayout.setSpan('テスト設備A','ピッチ判定',n)},span);
-   await page.waitForTimeout(1600);
+   await idle(600,8000);  // 幅の保存と、それを受けた帳票の描き直しが済むまで
    return page.evaluate(()=>{
     const blk=document.querySelector('#reportContent [data-rp-block="ピッチ判定"]');
     if(!blk)return null;
@@ -160,7 +155,6 @@ let b=null;
  }catch(e){
   rec('FATAL',false,String(e&&e.message||e));
  }
- await b.close();
  /* 後片付け（§9.121）。列レイアウトと帳票ブロックは実行をまたいで残る。 */
  for(const u of undo){
   try{await post('/api/report-block-master/update',
@@ -170,11 +164,4 @@ let b=null;
     保存される。**触った網は自分で消す**——残すと単独で回したとき自分の
     DBを汚し、通しでは報告がうるさくなって本物の置き土産が埋もれる。 */
  try{await clearLayout('report:テスト設備A')}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1600,height:1000}});

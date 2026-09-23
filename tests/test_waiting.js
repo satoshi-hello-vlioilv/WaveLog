@@ -10,16 +10,11 @@
    **待ちは時間でなく条件で置く**(§9.102)。「出て、閉じた」は覆いの
    hidden属性で分かる。**出ないことを確かめる場面だけ**は条件が置けない
    ので、画面が出来上がったこと(器の出現)を条件にしてから見る。 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const setMode=async m=>{const r=await fetch('http://127.0.0.1:5029/api/access-mode',
  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});return r.json()};
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
+run('test_waiting: 読み込みが遅いときのWAITING表示(§9.32)。', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  const slow=(pattern,ms)=>page.route(pattern,async r=>{await new Promise(x=>setTimeout(x,ms));await r.continue()});
  const watch=()=>page.evaluate(()=>{
   window.__seen={shown:false,title:'',progress:'',steps:false};
@@ -49,8 +44,7 @@ let b=null;
  /* ===== 編集モード: マスタ管理・カレンダー・分析 ===== */
  await setMode('edit');
  await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
- await page.waitForSelector('#openSchedule',{timeout:15000});
- await page.waitForTimeout(1500);
+ await W.booted(page,15000); await idle();
  rec('withWaitingがグローバルに公開されている',await page.evaluate(()=>typeof window.withWaiting==='function'));
 
  await slow('**/api/equipment-master*',900);
@@ -80,8 +74,7 @@ let b=null;
  /* ===== スケジュールモード: 俯瞰ボード・個別タイムライン ===== */
  await setMode('schedule');
  await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
- await page.waitForSelector('#openSchedule',{timeout:15000});
- await page.waitForTimeout(1200);
+ await W.booted(page,15000); await idle();
  await slow('**/api/schedule/overview*',900);
  /* **先読み(§9.182)が済んでいると出ないのが正しい。** ここで確かめたいのは
     「間に合わなかったときは出る」なので、押す直前に控えを捨てて
@@ -124,15 +117,4 @@ let b=null;
  rec('端末内データが遅くても読み込み後に閉じている',await closed());
  rec('カレンダーが実際に描画されている',await page.evaluate(()=>!!document.querySelector('.cal-grid')));
 
- console.log('\n=== SUMMARY ===');
- const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
- f.forEach(x=>console.log(' -',x.n,x.d||''));
- await b.close();process.exit(f.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1700,height:1000}});

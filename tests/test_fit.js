@@ -15,8 +15,8 @@
    現場で「大」にした瞬間に崩れるのでは意味がない。
    (段は§9.132で5→3へ減らした。倍率の幅が広いほど「ある段でだけ溢れる」
    箇所が増えるため、幅そのものを.92〜1.10へ狭めてある。) */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const SIZES=['sm','md','lg'];
 /* 溢れは字形の丸めでも出るので、これを超えたものだけ数える。
@@ -33,13 +33,7 @@ const EXCEPT=[
  ['df-page','同上（異常位置判定書）'],
 ];
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
+run('test_fit: 中身が器から溢れていないかを、表示サイズ3段階で実測する。', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   /* 待ちは「時間」ではなく「条件」で置く(§9.102)。以前は固定待ちの合計が
      58秒あり、この網が持っている3つの判定より待ち時間の方がずっと長かった。
@@ -53,22 +47,8 @@ let b=null;
          何ミリ秒かは画面によって違う(固定待ちは速い画面で無駄に待ち、
          遅い画面では足りない)。一覧は描き終えたあと requestIdleCallback で
          追加の問い合わせを出すので「0件になった瞬間」では早すぎる。
-         ハートビート(15秒ごと)は画面と無関係なので数から外す。 */
-  const paint=()=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
-  let inflight=0;
-  const counted=r=>!/\/api\/heartbeat/.test(r.url());
-  page.on('request',r=>{if(counted(r))inflight++});
-  page.on('requestfinished',r=>{if(counted(r))inflight--});
-  page.on('requestfailed',r=>{if(counted(r))inflight--});
-  const idle=async(quiet=400,cap=6000)=>{
-   const t0=Date.now();let calm=Date.now();
-   while(Date.now()-t0<cap){
-    if(inflight>0)calm=Date.now();
-    else if(Date.now()-calm>=quiet)break;
-    await page.waitForTimeout(50);
-   }
-   await paint();
-  };
+         ハートビート(15秒ごと)は画面と無関係なので数から外す。
+       どちらも土台（tests/lib/harness.js → wait.js）の同じ道具を使う。 */
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:20000});
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
@@ -218,16 +198,10 @@ let b=null;
    keys.length?keys.slice(0,8).join(' / '):`${SIZES.length}段階 × 9画面 で溢れ0`);
   rec('ページ全体に横スクロールが出ていない',pageX<=SLACK,`最大 +${pageX}px`);
 
-  console.log('\n=== SUMMARY ===');
-  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
-  f.forEach(x=>console.log(' -',x.n,x.d||''));
   /* 置いた実績は自分で消す（§9.351・§9.362）。残った実績は計画外実績として
      予定表に現れ、無関係な網を落とす。 */
   try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
-  await b.close();process.exit(f.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
-  await b.close().catch(()=>{});
-  process.exit(2);
+  rec('FATAL',false,String(e&&e.message||e));
  }
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});
+}, {viewport:{width:1600,height:1000}});

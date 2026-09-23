@@ -3,7 +3,8 @@
    注意: このテストはモードを切り替え、共有のバックアップDBへ行を作る。
    後続テストを巻き込まないよう、**必ずfinallyで後始末する**
    (以前、失敗時にscheduleモードのまま抜けてtest_p11を壊した)。 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const STAMP=Date.now();
@@ -22,12 +23,7 @@ const seed=async()=>{
    settings:{registeredEquipment:EQ},status:'編集中',
    workTime:{startAt:new Date(Date.now()-3*3600*1000).toISOString(),endAt:null}})});
 };
-const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
+run('test_histdel: §9.61 履歴(作業中・完了)の削除。', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  const rows=async()=>page.evaluate(l=>[...document.querySelectorAll('.sc-row-line')]
    .filter(r=>r.textContent.includes(l)).length,LOT);
  const rowBtn=async()=>page.evaluate(l=>{const r=[...document.querySelectorAll('.sc-row-line')]
@@ -42,9 +38,9 @@ let b=null;
    await page.waitForSelector('#openSchedule',{timeout:15000});
    await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
    await page.reload({waitUntil:'domcontentloaded'});
-   await page.waitForTimeout(1800);
+   await W.booted(page);await idle();
    await page.click('#openSchedule');
-   await page.waitForTimeout(1200);
+   await idle();
    if(mode==='schedule'){
     await page.waitForSelector('.sc-board-row',{timeout:15000});
     await page.evaluate(e=>{const r=[...document.querySelectorAll('.sc-board-row')]
@@ -68,7 +64,7 @@ let b=null;
     danger:document.querySelector('#appConfirmOk').className.includes('danger')}));
    rec(`[${mode}] 取り消せない旨の警告が出る`,
      /元に戻せません/.test(warn.body)&&warn.danger,JSON.stringify(warn).slice(0,120));
-   await page.click('#appConfirmCancel');await page.waitForTimeout(600);
+   await page.click('#appConfirmCancel');await page.waitForSelector("#appConfirmModal",{state:"hidden",timeout:6000});await idle(800);  // 起きないこと（消えない）を見る: 消すなら消すはずの往復が静まるまで
    rec(`[${mode}] キャンセルすると消えない`,(await rows())>0);
    await clickDel();
    await page.waitForSelector('#appConfirmModal:not([hidden])',{timeout:6000});
@@ -82,19 +78,14 @@ let b=null;
   // 閲覧モードでは出さない
   await setMode('view');
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
-  await page.waitForTimeout(2500);
+  await W.until(page,()=>!!document.getElementById('openSchedule')&&!document.documentElement.classList.contains('app-booting'),
+    null,{ms:20000,what:'閲覧モードで起動の覆いが外れる'});
+  await idle(800,10000);  // 起きないこと（ボタンを出さない）を見る: 描き終えて静まるまで
   rec('閲覧モードでは実績削除ボタンを出さない',
     !(await page.evaluate(()=>!!document.querySelector('.sc-row-delete-history'))));
  }finally{
   // 後始末: 検証用の行を確実に消し、モードをeditへ戻す。
   // ここを飛ばすと後続テストが別モードで走り、無関係な失敗を生む。
   try{await setMode('edit');await post('/api/measurement/backup/delete',{ids:[RID]})}catch(e){}
-  await b.close();
  }
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- try{await setMode('edit');await post('/api/measurement/backup/delete',{ids:[RID]})}catch(_){}
- process.exit(2)});
+}, {viewport:{width:1700,height:1000}});

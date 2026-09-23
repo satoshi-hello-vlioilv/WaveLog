@@ -11,44 +11,44 @@
     4. 俯瞰ボードは手が空いた時点で先に取っておく（押す前に用意できている）
     5. 2回目はキャッシュから出すので待機表示を出さない
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];page.on('pageerror',e=>errs.push(e.message));
+run('test_scwarm: 開く前に用意し、見えないものは作らない(§9.182)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  /* 要求の「開始」を記録する。**開始時刻だけを見る**——応答の速さは環境で
     変わるが、「1本ずつ待っているか」は開始の並びに出る。 */
  const started=[];
  page.on('request',r=>{const u=r.url();if(u.includes('/api/'))started.push({u:u.replace(B,''),t:Date.now()})});
  const since=n=>started.filter(x=>x.t>=n);
  try{
-  await post('/api/access-mode',{mode:'schedule'});
-  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
+ /* モードは土台が入れて、終わりに edit へ戻す（以前は schedule のまま残していた）。 */
+ await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:20000});
   await page.evaluate(e=>{localStorage.setItem('AccessMeasurementConfiguredEquipment',e);
    localStorage.setItem('scLayoutPrefsV1',JSON.stringify({swap:false,open:'schedule'}));
    localStorage.setItem('scSplitListCollapsedV1','1')},EQ);
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:20000});
-  /* ---- 4) 手が空いたら俯瞰ボードを先に取っておく ---- */
-  await page.waitForTimeout(3000);
+  /* ---- 4) 手が空いたら俯瞰ボードを先に取っておく ----
+     待つのは**先取りの要求が出ること**そのもの。時間で待つと、遅い端末では
+     出る前に見て落ち、速い端末では無駄に3秒寝る。出なければ上限で抜けて
+     下の判定が落ちる。 */
+  await W.poll(async()=>started.some(x=>x.u.startsWith('/api/schedule/overview')),v=>v,8000);
   const warmed=started.some(x=>x.u.startsWith('/api/schedule/overview'));
   rec('押す前に俯瞰ボードを取っておく',warmed,JSON.stringify(started.map(x=>x.u).filter(u=>u.includes('schedule')).slice(0,4)));
 
   await page.click('#openSchedule');
   await page.waitForSelector('.sc-board-row',{timeout:30000});
-  await page.waitForTimeout(600);
+  await idle();
 
   /* ---- 1) 表示設定と予定を同時に取り始める ---- */
   const t0=Date.now();
   await page.evaluate(e=>{const r=document.querySelector(`[data-equipment="${e}"]`);r&&r.click()},EQ);
   await page.waitForSelector('.sc-row-line',{timeout:30000});
-  await page.waitForTimeout(2500);
+  /* この画面ぶんの取得が出そろってから数える（取得中の数が0のまま静か）。 */
+  await idle();
   const batch=since(t0);
   const plan=batch.find(x=>x.u.startsWith('/api/schedule/plan'));
   const layout=batch.find(x=>x.u.startsWith('/api/column-layout-master'));
@@ -75,8 +75,8 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   await page.click('.sc-split-collapse-btn');
   await page.waitForFunction(()=>!!document.querySelector('.sc-split-wrap #grid table tbody tr'),
     null,{timeout:30000});
-  await page.waitForTimeout(1500);
-  const opened=since(t1);
+    await idle();
+    const opened=since(t1);
   console.log('  (開いた後の要求)',JSON.stringify(opened.map(x=>x.u.slice(0,46))));
   const joined=await page.evaluate(()=>({rows:document.querySelectorAll('.sc-split-wrap #grid table tbody tr').length,
     join:!!(window.S&&S.joinQuality),cols:[...document.querySelectorAll('.sc-split-wrap #grid thead th')].map(x=>x.dataset.col||'').filter(Boolean).length}));
@@ -84,7 +84,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 
   /* ---- 5) 2回目は待機表示を出さない ---- */
   await page.click('aside [data-db-key]');
-  await page.waitForTimeout(1500);
+  await page.waitForSelector('#grid th',{timeout:20000}); await idle();
   let sawOverlay=false;
   const watch=setInterval(async()=>{
    try{if(await page.evaluate(()=>document.querySelector('#saveOverlay')?.hidden===false))sawOverlay=true}catch(e){}
@@ -99,16 +99,11 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
    const b2=document.querySelector('#scSingleBody');
    return b2&&!b2.hidden&&document.querySelectorAll('.sc-row-line').length>0;
   },null,{timeout:30000});
-  await page.waitForTimeout(800);
+  /* 見えたあとも、取得が静まるまでは覆いを見張り続ける。 */
+  await idle();
   clearInterval(watch);
   rec('2回目は待機表示を出さない（キャッシュから出す）',!sawOverlay,String(sawOverlay));
 
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
- }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
- finally{
-  await b.close();
-  const ok=R.filter(x=>x.ok).length;
-  console.log(`\n=== SUMMARY ===\n${ok}/${R.length} passed`);
-  process.exit(ok===R.length?0:1);
- }
-})();
+ }catch(e){rec('FATAL',false,String(e&&e.message||e))}
+ }, {mode:'schedule', viewport:{width:1700,height:1000}});

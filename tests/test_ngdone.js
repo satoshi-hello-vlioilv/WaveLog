@@ -23,19 +23,14 @@
    **公差の材料は自分で注ぎ込む**（§9.291 ①）——検証用フィクスチャは公差を
    持たないので、入れずに見ると**直す前の実装でも「公差外0件」で通る**。
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const setMode=m=>fetch(API+'/api/access-mode',{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1920,height:1080}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
+run('test_ngdone: 公差外・基準外があっても測定を完了できる（§9.319）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  /* **素のconfirmを使っていないことも確かめたい**ので、native dialog が出たら
     数える（出れば「確認が2つある」か「アプリの窓を通っていない」の印）。 */
  let native=0;
@@ -50,7 +45,7 @@ let b=null;
  });
  const answer=async yes=>{
   await page.click(yes?'#appConfirmOk':'#appConfirmCancel');
-  await page.waitForTimeout(500);
+  await W.until(page,()=>document.getElementById('appConfirmModal').hidden,null,{ms:5000,what:'確認の窓が閉じる'});
  };
  const recordNow=id=>page.evaluate(async x=>{
   const all=await WL.records.reliableAll();
@@ -148,7 +143,7 @@ let b=null;
   await page.click('#complete');
   await page.waitForSelector('#appConfirmModal:not([hidden])',{timeout:8000});
   await answer(true);
-  await page.waitForTimeout(2500);
+  await idle();
   const done=await recordNow(lotId);
   rec('公差外があっても完了できる',!!done&&done.状態==='完了',JSON.stringify(done&&done.状態));
   rec('公差外のまま完了したことが記録に残る',
@@ -181,19 +176,19 @@ let b=null;
    S.measure.measurements.width[0][0]='100.00';
    WL.measureView.renderMeasurement();WL.measureView.updateValidationVisuals();
   },lotId);
-  await page.waitForTimeout(400);
+  await paint();
   const left=await page.evaluate(()=>WL.measureReview.outOfTolerance().total);
   rec('直したら公差外は0件になる',left===0,String(left));
   native=0;
   await page.click('#complete');
-  await page.waitForTimeout(600);
+  await idle();
   /* 未測定の項目は残るので確認は出る。**公差外の見出しは出ない**こと。 */
   const ask2=await modal();
   if(ask2){
    rec('公差外が無ければ、その見出しは出さない',!/公差・基準の外/.test(ask2.文),
        (ask2.文||'').replace(/\s+/g,' ').slice(0,80));
    await answer(true);
-   await page.waitForTimeout(2500);
+   await idle();
   }else{
    rec('公差外が無ければ、その見出しは出さない',true,'確認そのものが出なかった');
   }
@@ -212,9 +207,9 @@ let b=null;
    if(el){el.value='';el.dispatchEvent(new Event('change',{bubbles:true}))}
    WL.measureView.updateValidationVisuals();
   },lotId);
-  await page.waitForTimeout(400);
+  await paint();
   await page.click('#complete');
-  await page.waitForTimeout(900);
+  await idle();
   const blocked=await page.evaluate(()=>({
    窓:!document.getElementById('appConfirmModal')?.hidden,
    文:(document.querySelector('.validation-message')||{}).textContent||'',
@@ -235,12 +230,4 @@ let b=null;
   },lotId);
  }catch(e){}
 
- await b.close();
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1920,height:1080}});

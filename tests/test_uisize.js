@@ -33,15 +33,11 @@
    稼働状況（`#dbStatusView`）を実際に開き、**描かれた字が変わること**まで
    見る——ここは元の指摘（4-4 ⑰「150分と出ている」）そのものの画面。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 /* 待ちは`tests/lib/wait.js`の道具で置く（固定待ちを増やさない・§9.347）。 */
 const W=require('./lib/wait.js');
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
+run('test_uisize: 表示サイズ（--ui-scale の3段）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#uiSizeBadge',{timeout:15000});
  rec('表示サイズボタンがヘッダーにある',true);
@@ -66,7 +62,7 @@ let b=null;
  rec('3段階の選択肢が出る',opts.length===3&&opts.join(',')==='sm,md,lg',opts.join(','));
 
  await page.click('#uiSizeMenu [data-ui-size-option="lg"]');
- await page.waitForTimeout(300);
+ await W.until(page,v=>document.documentElement.dataset.uiSize===v,'lg',{ms:4000,what:'表示サイズ=lg'});
  const lg=await measure();
  rec('大にするとアプリ全体(本文・ナビ・バッジ)が同時に大きくなる',
    parseFloat(lg.body)>parseFloat(md.body)&&lg.nav>md.nav&&parseFloat(lg.badge)>parseFloat(md.badge),
@@ -75,7 +71,7 @@ let b=null;
  await page.click('#uiSizeBadge');
  await page.waitForSelector('#uiSizeMenu',{timeout:4000});
  await page.click('#uiSizeMenu [data-ui-size-option="sm"]');
- await page.waitForTimeout(300);
+ await W.until(page,v=>document.documentElement.dataset.uiSize===v,'sm',{ms:4000,what:'表示サイズ=sm'});
  const sm=await measure();
  rec('小にすると全体が小さくなる',
    parseFloat(sm.body)<parseFloat(md.body)&&sm.nav<md.nav,JSON.stringify(sm));
@@ -336,7 +332,7 @@ let b=null;
    menu.current==='min',String(menu.current));
 
  await page.click('#uiSizeMenu [data-duration-style="hm"]');
- await page.waitForTimeout(300);
+ await W.until(page,()=>WL.duration.style()==='hm',null,{ms:4000,what:'所要時間の書き方=hm'});
  const d1=await durOut();
  rec('「時間と分」を選ぶと書き方が変わる',
    d1.style==='hm'&&d1.text==='2時間30分'&&d1.short==='45分',JSON.stringify(d1));
@@ -353,7 +349,10 @@ let b=null;
     その答えを使っていなければ4-4 ⑰は直っていない。稼働状況は「見込」
     「経過」「遅れ」を出す、指摘そのものの画面。 */
  await page.click('#openDashboard');
- await page.waitForTimeout(3500);
+ /* 稼働状況が描かれて、画面ぶんの取得が静まるまで。 */
+ await W.until(page,()=>{const e=document.getElementById('dbStatusView');return !!e&&e.innerText.trim().length>0},null,
+   {ms:15000,what:'稼働状況が描かれる'});
+ await idle();
  const statusText=()=>page.$eval('#dbStatusView',e=>e.innerText.replace(/\s+/g,' '));
  const hmText=await statusText();
  rec('稼働状況が時間と分で描かれている',/\d+時間/.test(hmText)&&!/\d{3,}分/.test(hmText),
@@ -361,7 +360,8 @@ let b=null;
  /* 書き方を変えたら**いま出ている表も書き直る**。次の描画まで待たせると、
     選んだのに変わらない＝設定が壊れているのと見分けが付かない。 */
  await page.evaluate(()=>WL.duration.setStyle('min'));
- await page.waitForTimeout(1500);
+ /* 「その場で書き直る」を見るので、待つのは描画1巡だけ（遅れて書き直るなら落ちるべき）。 */
+ await paint();
  const minText=await statusText();
  rec('書き方を変えると、いま出ている稼働状況がその場で書き直る',
    minText!==hmText&&/\d{3,}分/.test(minText)&&!/\d+時間/.test(minText),
@@ -378,8 +378,10 @@ let b=null;
  await page.evaluate(()=>localStorage.setItem('MeasurementUiSizeV1','md'));
  await page.reload({waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openCalendar',{timeout:15000});
- await page.waitForTimeout(1200);
- await page.click('#openCalendar');await page.waitForTimeout(2500);
+ await W.booted(page); await idle();
+ await page.click('#openCalendar');
+ await W.until(page,()=>document.querySelectorAll('.cal-day').length>0,null,{ms:15000,what:'カレンダーが描かれる'});
+ await idle();
  const read=async()=>page.evaluate(()=>{
   const g=s=>{const e=document.querySelector(s);return e?parseFloat(getComputedStyle(e).fontSize):null};
   const h=s=>{const e=document.querySelector(s);return e?Math.round(e.getBoundingClientRect().height):null};
@@ -388,7 +390,7 @@ let b=null;
    navBtn:h('.cal-nav .rp-btn-secondary'),cell:h('.cal-day'),swatch:h('.cal-legend-swatch'),
    detailW:Math.round((document.querySelector('.cal-detail')||{getBoundingClientRect:()=>({width:0})}).getBoundingClientRect().width)};
  });
- const set=async v=>{await page.evaluate(x=>document.documentElement.setAttribute('data-ui-size',x),v);await page.waitForTimeout(350)};
+ const set=async v=>{await page.evaluate(x=>document.documentElement.setAttribute('data-ui-size',x),v);await paint()};
  await set('md');const cmd=await read();
  await set('sm');const csm=await read();
  await set('lg');const clg=await read();
@@ -585,15 +587,4 @@ let b=null;
    pl.plan);
  await page.unroute('**/api/app/shortcut*');
 
- console.log('\n=== SUMMARY ===');
- const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
- f.forEach(x=>console.log(' -',x.n,x.d||''));
- await b.close();process.exit(f.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1600,height:1000}});

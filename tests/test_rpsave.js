@@ -18,9 +18,9 @@
    後片付けは finally で必ず行う。**列レイアウトマスタは実行をまたいで
    生き延びる**（§9.121）。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
 const TARGET='report:'+EQ;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -31,24 +31,22 @@ const settle=async page=>{await page.evaluate(()=>new Promise(r=>requestAnimatio
 const A='基本情報',C1='コース情報';
 const UNIT=60;                                  /* RP_SPAN_UNIT（§9.169。幅） */
 const CUNIT=30;                                 /* RP_COUNT_UNIT（行数・段数） */
-let b=null;
 
-(async()=>{
+run('test_rpsave: 帳票の配置は「触ったら裏で保存」（§9.303 ③・§9.312）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  await cleanup();
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
- page.on('dialog',d=>d.accept());
  let lastGeo=null;
+ /* 保存の要求が「出た」ことを数える。**時間でなくこの数で待つ**——
+    「保存#1が飛ぶところまで」は、要求が出たかどうかそのものだから。 */
+ let posts=0;
+ page.on('request',r=>{if(r.method()==='POST'&&r.url().includes('/api/column-layout-master'))posts++});
+ const posted=async n0=>W.poll(async()=>posts,v=>v>n0,8000);
  const openReport=async()=>{
   /* **見本のロットで開く**（§9.253）——測定データが1件も無い端末でも同じ紙を
      組める。この網が見るのは「保存の往復」なので、ロットの中身には依らない。 */
   await page.evaluate(e=>WL.reportSample.open({equipment:e}),EQ);
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000}).catch(e=>{throw new Error('帳票が出ない: '+e.message.slice(0,60))});
-  await settle(page);await page.waitForTimeout(800);
- };
+  await idle(); await settle(page);
+  };
  try{
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
@@ -71,7 +69,7 @@ let b=null;
   await openReport();
   await page.click('#reportArrange');
   await page.waitForSelector('#reportContent .rp-blocks.is-arranging',{timeout:15000}).catch(e=>{throw new Error('組み換えに入れない: '+e.message.slice(0,60))});
-  await settle(page);await page.waitForTimeout(800);
+  await idle(); await settle(page);
 
   const spotOf=key=>page.evaluate(k=>{
    const el=document.querySelector(`#reportContent [data-rp-block="${CSS.escape(k)}"]`);
@@ -80,7 +78,7 @@ let b=null;
    const r=/^(\d+)\s*\/\s*span\s*(\d+)/.exec(el.style.gridRow||'');
    return c&&r?{col:+c[1],span:+c[2],row:+r[1],rows:+r[2]}:null;
   },key);
-  const gripDrag=async(key,kind,dc,dr,wait)=>{
+  const gripDrag=async(key,kind,dc,dr)=>{
    const geo=await page.evaluate(([k,g])=>{
     const pg=document.getElementById('reportContent'),grid=pg.querySelector('.rp-blocks');
     const el=pg.querySelector(`[data-rp-block="${CSS.escape(k)}"]`);
@@ -115,7 +113,7 @@ let b=null;
    await page.mouse.down();
    await page.mouse.move(geo.x+geo.cw*dc,geo.y+geo.rh*dr,{steps:6});
    await page.mouse.up();
-   await page.waitForTimeout(wait===undefined?600:wait);await settle(page);
+   await settle(page);
    return true;
   };
   const savedWidths=async()=>{
@@ -127,7 +125,8 @@ let b=null;
   const s0=await savedWidths();
   const a0=await spotOf(A);
   await gripDrag(A,'r',-2,0);
-  await page.waitForTimeout(1800);
+  /* 間引き（400ms）のあと保存が飛んで戻るまで。静かさは間引きより長く取る。 */
+  await idle(800);
   const a1=await spotOf(A);
   const w1=await savedWidths();
   rec('前提: ふつうに縁を引けば大きさがマスタへ入る',
@@ -146,13 +145,14 @@ let b=null;
   const s1=await savedWidths();
   const b0=await spotOf(C1);
   /* 1つ目を引く→400msで保存が飛ぶ→**その往復のあいだに**2つ目を引く。 */
-  await gripDrag(A,'r',-1,0,700);           /* 保存#1が飛ぶところまで待つ */
-  await gripDrag(C1,'r',-2,0,600);          /* 保存#1の往復中に触る */
+  {const n0=posts; await gripDrag(A,'r',-1,0); await posted(n0);}  /* 保存#1が飛ぶところまで待つ */
+  await gripDrag(C1,'r',-2,0);                                      /* 保存#1の往復中に触る */
   const b1=await spotOf(C1);
   rec('前提: 往復中に触ったぶんは画面には出ている',
       !!b0&&!!b1&&b1.span!==b0.span,JSON.stringify({前:b0,後:b1,掴み:lastGeo}));
-  /* 往復が終わって、追いかけの保存も落ち着くまで待つ。 */
-  await page.waitForTimeout(6000);
+  /* 往復が終わって、追いかけの保存も落ち着くまで待つ。遅らせた往復（2.2秒）が
+     2回続くので、**取得中が0のまま1秒静か**を条件にする（間引きの400msより長い）。 */
+  await idle(1000,15000);
   slow=false;
   const w2=await savedWidths();
   rec('保存の往復中に触ったぶんもマスタへ入る（§9.312）',
@@ -165,20 +165,16 @@ let b=null;
      「サイズ変更した際にその近くにある帳票ブロックのサイズも一緒に
      変更される」の見え方。**本物の操作で確かめること**（`stage()`を
      直に呼ぶ網は描き直しを起こさないので、巻き戻っていても通る）。 */
-  await gripDrag(A,'r',-1,0,900);
+  await gripDrag(A,'r',-1,0);
   const b2=await spotOf(C1);
   rec('別の塊を触っても、さっき触った塊の大きさが巻き戻らない',
       !!b1&&!!b2&&b2.span===b1.span&&b2.col===b1.col,
       JSON.stringify({直後:b1,別の塊を触った後:b2}));
 
   rec('画面のJSで例外が出ていない',errs.length===0,errs.join(' / '));
-  const ng=R.filter(r=>!r.ok).length;
-  console.log(`\n${R.length - ng} PASS / ${ng} FAIL`);
-  process.exitCode=ng?1:0;
  }catch(e){
-  console.log('FATAL: '+(e&&e.stack||e));process.exitCode=1;
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   await cleanup();
-  if(b)await b.close().catch(()=>{});
  }
-})();
+}, {viewport:{width:1700,height:1000}});

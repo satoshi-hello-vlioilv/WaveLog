@@ -21,7 +21,8 @@
    後片付けは finally で必ず行う。**マスタは実行をまたいで生き延びる**
    （§9.121）ので、戻し忘れると次の実行が引き継ぐ。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 /* 材料は自分で注ぎ込む（§9.351・§9.362 ⑥）。この網は「記録が1件ある」
    ことを前提にするが、**フィクスチャに記録は無い**——今まで見えていたのは
    前の実行の置き土産で、ランナーが実績を1本ごとに空へ戻すようになった
@@ -29,13 +30,11 @@ const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/no
    置いたものは`clearRecords()`が片付ける。 */
 const {seedRecord}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
 const TAG='rpm-'+process.pid;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const get=p=>fetch(B+p).then(r=>r.json());
 const settle=async page=>{await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))};
-let b=null;
 /* 触った行は控えて必ず戻す（この設定は実行をまたいで生き延びる・§9.121）。 */
 const touched=[];
 const restore=async()=>{
@@ -60,13 +59,7 @@ const openReport=async page=>{
 };
 const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-block]')].map(e=>e.dataset.rpBlock));
 
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
- page.on('dialog',d=>d.accept());
+run('test_rpmaster: 既定の帳票ブロックもマスタに載せる（§9.219 ②）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
@@ -312,7 +305,8 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
        JSON.stringify(flowed));
 
    await page.click('#reportArrange');
-   await page.waitForTimeout(500);
+   await W.until(page,()=>document.body.classList.contains('rp-arranging'),null,{ms:8000,what:'組み換えに入る'});
+   await idle();
    const flowUi=await page.evaluate(K=>{
     const pb=document.querySelector(`[data-rp-block="${K}"] .rp-block-paper`);
     if(!pb)return {入口なし:true};
@@ -333,7 +327,8 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
        String(flowUi.文).slice(0,60));
    await page.evaluate(()=>{const m=document.getElementById('rpBlockModal');if(m)m.hidden=true});
    await page.click('#reportArrange');
-   await page.waitForTimeout(300);
+   await W.until(page,()=>!document.body.classList.contains('rp-arranging'),null,{ms:8000,what:'組み換えを抜ける'});
+   await idle();
    await post('/api/report-block-master/update',
      {id:stat.id,equipment:stat.equipment,name:stat.name,order:stat.order,
       span:stat.span,rows:stat.rows,note:stat.note,enabled:true,cols:stat.cols,
@@ -413,9 +408,5 @@ const blocks=page=>page.evaluate(()=>[...document.querySelectorAll('[data-rp-blo
   await restore();
   /* 置いた実績は自分で消す（§9.351・§9.362）。 */
   try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1700,height:1000}});

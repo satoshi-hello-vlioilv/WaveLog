@@ -2,19 +2,14 @@
    ・仕掛一覧から投入した予定は往復ゼロで「可」になるか
    ・1件追加しても既存行のフラグが「?」へ戻らないか
    ・取り直しは「可でない行」だけに絞られているか */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const post=async(p,b)=>{const r=await fetch(B+p,{method:'POST',
  headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});return r.json()};
-const setMode=m=>post('/api/access-mode',{mode:m});
-const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
-let b=null;
-(async()=>{
- await setMode('schedule');
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
+run('test_wkfast: §9.67 作業可否フラグを予定側の保存値で即座に作る。', async ({page,rec,B,W,idle,errs,browser})=>{
+ try{
  /* 仕掛への問い合わせ回数を数える(作業可否の判定材料の取得)。
     **`include_hidden=1`で見分けないこと**(§9.200)——§9.165で表示マスタごと
     廃止したので、いまの画面はこの引数を付けない（付けるなと明記されている）。
@@ -186,13 +181,8 @@ let b=null;
   if(added.length)console.log('  後始末: 追加した予定 '+added.length+'件を削除');
   await post('/api/schedule/session/release',{equipment:EQ});
  }catch(e){console.log('  後始末に失敗',e.message)}
- await setMode('edit');
- await b.close();
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- try{await post('/api/schedule/session/release',{equipment:EQ})}catch(_){}
- try{await setMode('edit')}catch(_){}
- process.exit(2)});
+ }catch(e){
+  rec('FATAL',false,String(e&&e.message||e));
+  try{await post('/api/schedule/session/release',{equipment:EQ})}catch(_){}
+ }
+}, {mode:'schedule', viewport:{width:1700,height:1000}});

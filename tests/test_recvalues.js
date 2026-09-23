@@ -14,8 +14,8 @@
 
    **項目名の写しを画面へ戻さないこと**——`RECORD_GROUPS`という4群ぶんの
    ベタ書きが元の姿で、現場では群も並びも変えられなかった。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 /* 外した項目は**必ず戻す**（操業データ項目マスタは`db/master.sqlite3`に
@@ -24,14 +24,8 @@ const TARGET_ITEM='スプール';
 const setMode=m=>fetch(API+'/api/access-mode',{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
 
-let b=null,page=null,turnedOff=false;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- page=await b.newPage({viewport:{width:1920,height:1080}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
- page.on('dialog',d=>d.accept());
+let turnedOff=false;
+run('test_recvalues: ③「記録した値」はマスタが決める（§9.242 ④）', async ({page,rec,W,idle,paint,errs})=>{
 
  const card=()=>page.evaluate(()=>{
   const groups=[...document.querySelectorAll('#recordedList .rv-group')].map(g=>({
@@ -56,7 +50,9 @@ let b=null,page=null,turnedOff=false;
   await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tests');
   await page.click('#masterMaintNav [data-master="opItem"]');
   await page.waitForSelector('.op-board',{timeout:20000});
-  await page.waitForTimeout(700);
+  await idle();
+  await W.until(page,n=>[...document.querySelectorAll('.op-tile')].some(e=>e.textContent.indexOf(n)>=0),name,
+    {ms:10000,what:'盤に項目「'+name+'」が並ぶ'});
   const opened=await page.evaluate(n=>{
    const t=[...document.querySelectorAll('.op-tile')].find(e=>e.textContent.indexOf(n)>=0);
    if(!t)return false;t.click();return true;
@@ -65,7 +61,7 @@ let b=null,page=null,turnedOff=false;
   await page.waitForFunction(()=>{
    const m=document.getElementById('opItemModal');return !!m&&!m.hidden;
   },null,{timeout:10000});
-  await page.waitForTimeout(300);
+  await W.until(page,()=>!!document.getElementById('opdRecordShow'),null,{ms:5000,what:'「③に出す」の入切が描かれる'});
   const was=await page.evaluate(()=>{
    const t=document.getElementById('opdRecordShow');
    if(!t)return null;
@@ -73,12 +69,12 @@ let b=null,page=null,turnedOff=false;
    t.click();return on;
   });
   if(was===null)throw Error('「③に出す」の入切が無い');
-  await page.waitForTimeout(200);
+  await paint();
   await page.click('#opdSave');
   await page.waitForFunction(()=>{
    const m=document.getElementById('opItemModal');return !m||m.hidden;
   },null,{timeout:15000});
-  await page.waitForTimeout(600);
+  await idle();
   return was;
  };
  const openMeasure=async()=>{
@@ -99,7 +95,7 @@ let b=null,page=null,turnedOff=false;
   await page.waitForFunction(()=>!!(window.WL&&WL.opData&&WL.opData.defs&&WL.opData.defs().length),
     null,{timeout:20000});
   await page.evaluate(()=>WL.measureSteps.go('3'));
-  await page.waitForTimeout(700);
+  await idle();
  };
 
  try{
@@ -176,15 +172,10 @@ let b=null,page=null,turnedOff=false;
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
   await cleanup();
-  process.exit(ng.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
+  rec('FATAL',false,String(e&&e.message||e));
   await cleanup();
-  process.exit(2);
  }
  /* 後片付け（§9.121）。**落ちた側でも通す**——外したままにすると、次の実行が
     「③に出さない」状態を引き継ぐ（マスタは実行をまたいで生き延びる）。 */
@@ -208,6 +199,5 @@ let b=null,page=null,turnedOff=false;
    const m=document.querySelector('#measureModal');if(m)m.hidden=true;
   })}catch(e){}
   try{await setMode('edit')}catch(e){}
-  if(b)await b.close().catch(()=>{});
  }
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});
+}, {viewport:{width:1920,height:1080}});

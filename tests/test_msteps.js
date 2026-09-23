@@ -13,8 +13,8 @@
     - **危ない操作を主要動線から外す**（削除は③でだけ出す）
     - **受信欄のDOMを作り直さない**（§9.122。段を往復しても同じノードで、
       ②へ戻ればフォーカスも戻る。ここが崩れると実機で転送が止まる） */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 /* 入力内容の名前（§9.391で「母材」と「丈毎」の2つに分けた）。
@@ -24,15 +24,8 @@ const PIECE='寸法・外観';     /* §9.396で改名（丈毎→寸法・外�
 const setMode=m=>fetch(API+'/api/access-mode',{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
 
-let b=null,page=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- page=await b.newPage({viewport:{width:1920,height:1080}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
+run('test_msteps: 測定画面の3段構成（§9.123 第1段）', async ({page,rec,idle,errs})=>{
  page.on('console',m=>{if(m.type()==='error')errs.push('console: '+m.text().slice(0,90))});
- page.on('dialog',d=>d.accept());
 
  const seen=()=>page.evaluate(()=>{
   const rc=s=>{const el=document.querySelector(s);if(!el)return{見:false,w:0};
@@ -58,7 +51,7 @@ let b=null,page=null;
     手入力の案内:document.getElementById('materialManualNote')?.hidden?''
       :(document.getElementById('materialManualNote')?.textContent||'')};
  });
- const go=async s=>{await page.evaluate(v=>WL.measureSteps.go(v),s);await page.waitForTimeout(450)};
+ const go=async s=>{await page.evaluate(v=>WL.measureSteps.go(v),s);await paint()};
  /* 割り付けが確定するまで（§9.102「待ちは時間でなく条件で置く」）。道具は
     `tests/lib/wait.js`の1箇所——固定待ちを書き写さない（§9.347）。 */
  const W=require('./lib/wait.js');
@@ -82,7 +75,7 @@ let b=null,page=null;
   await page.waitForFunction(()=>!document.querySelector('#measureModal')?.hidden,null,{timeout:25000});
   await page.waitForFunction(()=>document.querySelector('#saveOverlay')?.hidden!==false,null,{timeout:30000}).catch(()=>{});
   await page.waitForFunction(()=>typeof S!=='undefined'&&!!S.measure,null,{timeout:25000});
-  await page.waitForTimeout(1200);
+  await idle();
 
   /* ---- 1) 開いたら①準備から始まる ---- */
   let v=await seen();
@@ -182,11 +175,11 @@ let b=null,page=null;
      **条は1列で40行まで。2段に折らない**（§9.136）——横は丈位置が使う。 */
   await page.evaluate(()=>{const s=document.querySelector('#measureType');
     s.value='板幅';s.dispatchEvent(new Event('change',{bubbles:true}))});
-  await page.waitForTimeout(500);
+  await idle();
   const rowsFor=async n=>{
    await page.evaluate(v=>{const h=document.querySelector('#horizontalCount');
      h.value=String(v);h.dispatchEvent(new Event('change',{bubbles:true}))},n);
-   await page.waitForTimeout(500);
+   await idle();
    return page.evaluate(()=>({
     行:document.querySelectorAll('#measurementGrid .measure-matrix tbody tr').length,
     /* 条の列は**1本だけ**。丈位置の列はこれとは別（横に並ぶ）。 */
@@ -209,7 +202,7 @@ let b=null,page=null;
   const geom=async n=>{
    await page.evaluate(v=>{const h=document.querySelector('#horizontalCount');
      h.value=String(v);h.dispatchEvent(new Event('change',{bubbles:true}))},n);
-   await page.waitForTimeout(500);
+   await idle();
    return page.evaluate(()=>{
     const r=e=>e?e.getBoundingClientRect():null;
     const cols=[...document.querySelectorAll('#measurementGrid .compact-other .measure-matrix')];
@@ -278,7 +271,7 @@ let b=null,page=null;
    WL.measureInput.renderMeasureGrid();
    return !!WL.measureInput.toleranceDetail('width',0,'板幅');
   });
-  await page.waitForTimeout(500);
+  await paint();
   rec('公差の材料を注ぎ込めた(測定表)',lcSetup===true,String(lcSetup));
   const lc=()=>page.evaluate(()=>{
    const sec=document.querySelector('#measurementGrid .measure-matrix');
@@ -316,14 +309,14 @@ let b=null,page=null;
    const b=[...document.querySelectorAll('#measurementGrid .measure-matrix thead th button')];
    b[1].click();
   });
-  await page.waitForTimeout(600);
+  await idle();
   const lc2=await lc();
   const movedTo=await page.evaluate(()=>document.querySelector('#lengthPos').value);
   rec('見出しを押すとその丈位置へ移る',movedTo==='1(尾)'&&lc2.いまの列===2,
       JSON.stringify({movedTo,いまの列:lc2.いまの列}));
   await page.evaluate(()=>{const lp=document.querySelector('#lengthPos');
     lp.selectedIndex=0;lp.dispatchEvent(new Event('change',{bubbles:true}))});
-  await page.waitForTimeout(400);
+  await idle();
   /* **条数が増えても表は1つのまま**（§9.136）。以前は20条を超えると帯が
      2列になり、その場所を取るために丈位置くらべを降ろしていた。1つの表に
      したので、条が増えても列（丈位置）の並びは変わらない。 */
@@ -335,7 +328,7 @@ let b=null,page=null;
   await rowsFor(8);
   /* 後始末: 次の検証（③の公差外の集計）へ値を持ち越さない。 */
   await page.evaluate(()=>{S.measure.measurements.width.forEach(r=>r.fill(''));WL.measureInput.renderMeasureGrid()});
-  await page.waitForTimeout(300);
+  await paint();
   await rowsFor(1);
 
   /* ---- 5) 進めない理由を書く ----
@@ -349,7 +342,7 @@ let b=null,page=null;
       !/母材|手入力/.test(m2.理由||''),m2.理由||'(空)');
   await page.evaluate(()=>{const s=document.querySelector('#measureType');
     s.value='板幅';s.dispatchEvent(new Event('change',{bubbles:true}))});
-  await page.waitForTimeout(600);
+  await idle();
   const m2b=await seen();
   rec('測定器を使う項目に変えたら理由は消える',
       (m2b.理由||'')===''&&(m2b.手入力の案内||'')==='',
@@ -363,14 +356,16 @@ let b=null,page=null;
   const noKeys=async()=>{
    await page.evaluate(()=>{const s=document.querySelector('#measureType');
      s.value='板幅';s.dispatchEvent(new Event('change',{bubbles:true}))});
-   await page.waitForTimeout(500);
+   await idle();
    const before=await page.evaluate(()=>({
      項目:document.querySelector('#measureType').value,
      丈:document.querySelector('#lengthPos').value}));
    for(const k of ['ArrowRight','ArrowLeft','PageDown','PageUp','F2']){
-    await page.keyboard.press(k);await page.waitForTimeout(200);
-   }
-   const after=await page.evaluate(()=>({
+    await page.keyboard.press(k);await paint();
+    }
+    /* 「動かないこと」は条件で待てない。動くなら動くはずの往復（保存など）が静まるまで待つ。 */
+    await idle(800);
+    const after=await page.evaluate(()=>({
      項目:document.querySelector('#measureType').value,
      丈:document.querySelector('#lengthPos').value}));
    return{before,after};
@@ -511,7 +506,7 @@ let b=null,page=null;
    const b=document.querySelector('.selectors .prep-fold[data-opgroup="いつもと同じ設定"]');
    if(b)b.click();
   });
-  await page.waitForTimeout(160);
+  await paint();
   /* **作業時間は①に置かない**（§9.143、利用者の指示）。「準備の入力」は
      測る前に1回決める設定の面で、時刻の記録はそこへ混ざると異物に見える。
      ③「確認して完了」へ移した（実作業時間は測り終えてから確定するもの）。 */
@@ -779,7 +774,7 @@ let b=null,page=null;
    const r=[...document.querySelectorAll('.fc-row')].find(x=>x.querySelector('.fc-name')?.textContent.trim()==='公差外・基準外');
    r.querySelector('.fc-fix').click();
   });
-  await page.waitForTimeout(700);
+  await idle();
   const jumped=await page.evaluate(()=>({
    段:document.querySelector('.mstep.is-current .mstep-name')?.textContent.trim()||'',
    項目:document.querySelector('#measureType').value,
@@ -810,7 +805,7 @@ let b=null,page=null;
    S.measure.workTime={startAt:'2026-08-14T09:00:00',endAt:'2026-08-14T10:00:00'};
    WL.measureSteps.refresh();
   });
-  await page.waitForTimeout(300);
+  await paint();
   const wt=(await check()).行.find(x=>x.名==='作業時間');
   rec('作業時間を記録すると済みになる',!!wt&&wt.状態==='fc-row--done'&&/記録済み/.test(wt.値),
       JSON.stringify(wt||{}));
@@ -997,7 +992,7 @@ let b=null,page=null;
   const setType=async t=>{
    await page.evaluate(v=>{const s=document.querySelector('#measureType');
      s.value=v;s.dispatchEvent(new Event('change',{bubbles:true}))},t);
-   await page.waitForTimeout(500);
+   await idle();
   };
   for(const st of ['1','2','3']){
    await go(st);
@@ -1431,7 +1426,7 @@ let b=null,page=null;
   const pick=async(k,v)=>{await page.evaluate(([kk,vv])=>{
     const el=document.querySelector(`#productRowsBody tr[data-row="0"] [data-product-field="${kk}"]`);
     el.value=vv;el.dispatchEvent(new Event('change',{bubbles:true}));},[k,v]);
-   await page.waitForTimeout(200)};
+   await idle()};
 
   /* 内訳の選択肢は**段が開いてから**確かめる。 */
   await pick('edgeShape','のこぎり状');
@@ -1562,7 +1557,7 @@ let b=null,page=null;
 
   /* 一括OKは全丈を「揃い綺麗」にする。 */
   await page.click('#productAllOk');
-  await page.waitForTimeout(400);
+  await idle();
   const bulk=await page.evaluate(()=>{
    const n=document.querySelectorAll('#productRowsBody tr:not(.prt-detail)').length;
    const j=[...document.querySelectorAll('#productRowsBody [data-product-judge]')].map(x=>x.textContent.trim());
@@ -2002,7 +1997,7 @@ let b=null,page=null;
   await go('2');
   await setType('ラテラルボー');
   await page.evaluate(()=>document.querySelector('[data-mode="manual"]').click());
-  await page.waitForTimeout(400);
+  await idle();
   const nav=await page.evaluate(async()=>{
    const wait=()=>new Promise(r=>setTimeout(r,250));
    const at=()=>{const a=document.activeElement;
@@ -2739,7 +2734,7 @@ let b=null,page=null;
   const headOf=async t=>{
    await page.evaluate(v=>{const el=document.getElementById('measureType');
      if(el){el.value=v;el.dispatchEvent(new Event('change',{bubbles:true}))}},t);
-   await page.waitForTimeout(500);
+   await idle();
    return page.evaluate(()=>{
     const h=document.querySelector('.editor-head');
     if(!h)return null;
@@ -2771,7 +2766,7 @@ let b=null,page=null;
      ========================================================== */
   await page.evaluate(()=>{const el=document.getElementById('measureType');
     if(el){el.value=WL.measureItem.MATERIAL;el.dispatchEvent(new Event('change',{bubbles:true}))}});
-  await page.waitForTimeout(600);
+  await idle();
   const ctxBar=await page.evaluate(()=>{
    const cut=id=>{const e=document.getElementById(id);
      if(!e)return null;return Math.max(0,e.scrollWidth-e.clientWidth)};
@@ -2798,7 +2793,7 @@ let b=null,page=null;
       JSON.stringify(ctxBar.切れ));
   await page.evaluate(()=>{const el=document.getElementById('measureType');
     if(el){el.value='板幅';el.dispatchEvent(new Event('change',{bubbles:true}))}});
-  await page.waitForTimeout(500);
+  await idle();
   rec('測定器を使う項目では案内を出さない（§9.233 ③）',
       await page.evaluate(()=>{const n=document.getElementById('materialManualNote');
         return !!n&&n.hidden===true}));
@@ -2807,15 +2802,10 @@ let b=null,page=null;
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
   await cleanup();
-  process.exit(ng.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
+  rec('FATAL',false,String(e&&e.message||e));
   await cleanup();
-  process.exit(2);
  }
  /* 作ったレコードは端末内・共有の両方から消す。**画面のidと保存側の記録IDは
     違う**ので末尾一致で消す（§9.122）。落ちた側でも通る。 */
@@ -2840,6 +2830,5 @@ let b=null,page=null;
    const m=document.querySelector('#measureModal');if(m)m.hidden=true;
   })}catch(e){}
   try{await setMode('edit')}catch(e){}
-  if(b)await b.close().catch(()=>{});
  }
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});
+}, {viewport:{width:1920,height:1080}});

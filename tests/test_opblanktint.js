@@ -23,22 +23,15 @@
    見る。クラスや属性が付くだけでは絵は変わらない（§9.229 ⑥の教訓）。
    後片付けは finally で必ず（§9.121。組み込みの行は消せないので元へ戻す）。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(body)}).then(async r=>({code:r.status,json:await r.json().catch(()=>({}))}));
 const get=p=>fetch(B+p).then(r=>r.json());
-let b=null;
 
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1800,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,160)));
- page.on('dialog',d=>d.accept());
+run('test_opblanktint: 未入力・未選択の配色と、増やした色（§9.286 ⑥）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
 
  const items=async()=>(await get('/api/operation-item-master')).items||[];
  const byName=async nm=>(await items()).find(x=>x.name===nm)||{};
@@ -214,7 +207,7 @@ let b=null;
   await page.waitForSelector('#masterMaintNav [data-master="opItem"]',{timeout:20000});
   await page.click('#masterMaintNav [data-master="opItem"]');
   await page.waitForSelector('.op-board',{timeout:20000});
-  await page.waitForTimeout(900);
+  await idle();
   const opened=await page.evaluate(nm=>{
    const t=[...document.querySelectorAll('.op-tile')].find(e=>e.textContent.indexOf(nm)>=0);
    if(!t)return false;t.click();return true;
@@ -225,7 +218,7 @@ let b=null;
     const m=document.getElementById('opItemModal');return !!m&&!m.hidden;
    },null,{timeout:10000});
    await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="look"]',{timeout:8000});
-   await page.waitForTimeout(400);
+   await idle();
    /* ---- 意匠の「色」も同じ画面（§9.287-G、利用者の指示「色の部分も
           もっとたくさんの色を選べるように」） ----
       **見本の丸は実物と同じ色を引く**（見本が嘘をつかない・§CLAUDE 6）ので、
@@ -254,7 +247,7 @@ let b=null;
    });
    rec('「未入力の色」の札が窓にある',clicked,String(clicked));
    await page.click('#opdSave');
-   await page.waitForTimeout(1800);
+   await idle(600,10000);
    const savedUi=await byName(TARGET);
    rec('窓から選んだ色がマスタに残る（画面の保存経路）',
        savedUi.blankTint==='purple',String(savedUi.blankTint));
@@ -371,7 +364,7 @@ let b=null;
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
   console.log('FATAL: '+(e&&e.stack||e));
-  R.push({n:'FATAL',ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* **選ばせ方も戻す**（§9.121。置き土産は次の実行を巻き添えにする）。 */
   try{if(saved!==null)await put(TARGET,{blankTint:saved,widget:savedWidget0||'プルダウン'})}catch(e){}
@@ -379,9 +372,6 @@ let b=null;
   /* 置いた実績は自分で消す（§9.351・§9.362）。残った実績は計画外実績として
      予定表に現れ、無関係な網を落とす。 */
   try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
- const ng=R.filter(x=>!x.ok).length;
- console.log(`\n${R.length-ng}/${R.length} PASS`);
- process.exit(ng?1:0);
-})();
+
+}, {viewport:{width:1800,height:1000}});

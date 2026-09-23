@@ -21,8 +21,8 @@
    2桁で格納しており、ノギスの`DT110+026.15`は2桁目が必ず0になっていた
    （「ノギスだけ2桁」という設定はあったが、入口の丸めに潰されて一度も
    効いていない）。いまは`26.15`がそのまま入り、`27.5`は`27.50`と桁がそろう。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 /* 入力内容の名前（§9.391で「母材」と「丈毎」の2つに分けた）。
@@ -32,15 +32,7 @@ const PIECE='寸法・外観';     /* §9.396で改名 */
 const setMode=m=>fetch(API+'/api/access-mode',{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
 
-let b=null,page=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- page=await b.newPage({viewport:{width:1920,height:1080}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
- page.on('dialog',d=>d.accept());
-
+run('test_mcore: 測定の中核（測定器からの転送 → セル送り → 保存）を固定する', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  /* 転送はキーボードだけで行い、**こちらからフォーカスを触らない**。
     実機の測定器は間にクリックを挟まず次のデータを送り続けるので、
     アプリが毎回フォーカスを受信欄へ戻していなければ2件目以降は入らない。
@@ -51,7 +43,7 @@ let b=null,page=null;
  const send=async raw=>{
   await page.keyboard.type(raw);
   await page.keyboard.press('Tab');
-  await page.waitForTimeout(400);
+  await idle();
  };
  const widthRow=()=>page.evaluate(()=>(S.measure.measurements.width?.[0]||[]).slice(0,6));
  const focused=()=>page.evaluate(()=>document.activeElement?.id||'');
@@ -82,7 +74,7 @@ let b=null,page=null;
      ここで段を移す。**段の移動で受信欄のDOMは作り直されない**——それを
      確かめるのは後半の「同じノードのままか」。 */
   await page.evaluate(()=>WL.measureSteps.go('2'));
-  await page.waitForTimeout(500);
+  await idle();
 
   /* ---- 受信の帯は「測定器を使う項目」でだけ出る ----
      既定の選択は「母材/丈毎」で、これは手入力の項目（画面にも
@@ -113,12 +105,12 @@ let b=null,page=null;
    const h=document.querySelector('#horizontalCount');
    h.value='4';h.dispatchEvent(new Event('change',{bubbles:true}));
   });
-  await page.waitForTimeout(700);
+  await idle();
   await page.evaluate(()=>{
    const s=document.querySelector('#measureType');
    s.value='板幅';s.dispatchEvent(new Event('change',{bubbles:true}));
   });
-  await page.waitForTimeout(700);
+  await idle();
 
   /* 測定器を使う項目に変えると帯が現れ、受信欄にフォーカスが載る。
      **ここが外れていると1件も測定できない。** */
@@ -187,7 +179,7 @@ let b=null,page=null;
      このため measure-input.js は Ctrl/Alt/⌘ を捨てている。
      **段の移動をCtrl+数字に割り当てられないのはこれが理由。** */
   await page.keyboard.press('Control+a');
-  await page.waitForTimeout(200);
+  await idle();  // 起きないこと（フォーカスが外れない）を見る: 起きるなら起きるはずの処理が静まるまで
   rec('Ctrl系を押しても受信欄からフォーカスが外れない',await focused()==='deviceInput',await focused());
 
   /* ---- 8) 「いま入る場所」が画面に出ている ---- */
@@ -216,7 +208,7 @@ let b=null,page=null;
   const setType=async v=>{
    await page.evaluate(t=>{const s=document.querySelector('#measureType');
      s.value=t;s.dispatchEvent(new Event('change',{bubbles:true}))},v);
-   await page.waitForTimeout(700);
+   await idle();
   };
   await setType('板厚');
   /* 測定表は「丈位置×条」の1つの表（§9.136）なので、**行**が3つになる
@@ -260,7 +252,7 @@ let b=null,page=null;
    const el=[...document.querySelectorAll('[data-mode]')].find(x=>x.dataset.mode==='manual');
    if(el)el.click();
   });
-  await page.waitForTimeout(600);
+  await idle();
   const manual=await page.evaluate(()=>({
    モード:S.measure.settings.inputMode,
    案内:document.querySelector('#inputModeHelp')?.textContent||'',
@@ -277,7 +269,7 @@ let b=null,page=null;
      こちらからは触らない（触ると同じ空振りになる）。 */
   await page.keyboard.type('28.45');
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(500);
+  await idle();
   const manualRow=await widthRow();
   rec('手動入力モードはEnterで確定する',manualRow.includes('28.45'),JSON.stringify(manualRow));
 
@@ -287,9 +279,13 @@ let b=null,page=null;
    const btn=document.querySelector('#stampWorkStart');
    if(btn&&!btn.disabled)btn.click();
   });
-  await page.waitForTimeout(400);
+  await idle();
   await page.evaluate(()=>document.querySelector('#saveDraft')?.click());
-  await page.waitForTimeout(2500);
+  await W.until(page,()=>!!document.querySelector('#measureModal')?.hidden,null,{ms:15000,what:'保存して測定画面が閉じる'});
+  await idle(600,15000);
+  /* 共有DBへの登録は画面を待たせずに送る（shareRecord）ので、届くまでサーバーへ聞き直す。 */
+  await W.poll(()=>fetch(B+'/api/measurement/backup/list').then(x=>x.json()).catch(()=>({items:[]})),
+    j=>(j.items||[]).some(i=>i.id===id||String(i.id).endsWith(id)),15000);
   const saved=await page.evaluate(async rid=>{
    const r=await fetch('/api/measurement/backup/list').then(x=>x.json()).catch(()=>({items:[]}));
    const local=typeof WL.records.reliableAll==='function'?await WL.records.reliableAll():[];
@@ -302,15 +298,10 @@ let b=null,page=null;
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
   await cleanup();
-  process.exit(ng.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
+  rec('FATAL',false,String(e&&e.message||e));
   await cleanup();
-  process.exit(2);
  }
  /* 後片付け: 作ったレコードを端末内・共有の両方から消す。**落ちた側でも通る**
     ようにcatchからも呼ぶ。
@@ -342,6 +333,5 @@ let b=null,page=null;
    const m=document.querySelector('#measureModal');if(m)m.hidden=true;
   })}catch(e){}
   try{await setMode('edit')}catch(e){}
-  if(b)await b.close().catch(()=>{});
  }
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});
+}, {viewport:{width:1920,height:1080}});

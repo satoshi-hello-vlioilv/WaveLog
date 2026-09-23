@@ -1,12 +1,8 @@
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const setMode=async m=>{await fetch('http://127.0.0.1:5029/api/access-mode',
  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
+run('test_screport: 作業スケジュールの行から帳票・再開を開く', async ({page,W,rec,idle})=>{
  page.on('dialog',d=>{console.log('[dialog]',d.message());d.accept()});
  await setMode('edit');
  // このテストが必要とする実績を毎回作り直す(前回の実行で測定画面を開くと
@@ -34,8 +30,7 @@ let b=null;
   await page.waitForSelector('#openSchedule',{timeout:15000});
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForSelector('#openSchedule',{timeout:15000});
-  await page.waitForTimeout(1200);
+  await W.booted(page,15000);await idle();
   await page.click('#openSchedule');
   // 行は予定と実績の突合が済んでから描かれる。固定待ちだとフィクスチャや
   // 直前のテストの状態で描画時間が変わり、静かに落ちる(実際に落ちた)。
@@ -128,18 +123,7 @@ let b=null;
  await fetch('http://127.0.0.1:5029/api/measurement/backup/delete',{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:['rec-doing','rec-done2'].concat(resumedId?[resumedId]:[])})}).catch(()=>{});
 
- console.log('\n=== SUMMARY ===');
- const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
- f.forEach(x=>console.log(' -',x.n,x.d||''));
  /* 置いた実績は自分で消す（§9.351・§9.362）。残った実績は計画外実績として
     予定表に現れ、無関係な網を落とす。 */
  try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
- await b.close();process.exit(f.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1700,height:1000}});

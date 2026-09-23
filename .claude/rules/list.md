@@ -1,4 +1,4 @@
-# 一覧と列（119件）
+# 一覧と列（121件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -113,6 +113,8 @@
 | スケジュール表の列の既定は1箇所でだけ判断する | `test_scbar.js`・`test_sctimecols.js` | [§9.207](../../docs/decisions/9.207.md) |
 | 横スクロールする一覧の地と罫線はセルが持つ | — | [§9.208](../../docs/decisions/9.208.md) |
 | 状態を出す欄が失敗したら**理由と次の手立てを字で**出す（印だけ・色だけにしない） | `test_navwords.js` | [§9.450](../../docs/decisions/9.450.md) |
+| 1行も当たらない結合は**行を落とさず失敗として返す**（内部・右外部も）。相手が空なら「空」と名指し | `test_qjoin.py` | [§9.452](../../docs/decisions/9.452.md) |
+| 一覧が0行なら**表の中で理由と次の手**を言う（絞った／伏せた／元データが空＝エラー）。答えは`listEmptyNote()` | `test_qjoinui.js` | [§9.452](../../docs/decisions/9.452.md) |
 | 畳んだ左メニューの行き先は浮き出しで示す | `test_nav.js` | [§9.265](../../docs/decisions/9.265.md) |
 | 左メニューの行き先は**必ず説明を持つ**（畳むと浮き出しが`title`を本文に使う） | `test_navwords.js` | [§9.447](../../docs/decisions/9.447.md) |
 | 元データの説明は**用途が先・出どころが後**。用途は`DB_NAV_WHAT`の1箇所（役割から引く） | `test_navwords.js` | [§9.447](../../docs/decisions/9.447.md) |

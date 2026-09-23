@@ -5,7 +5,8 @@
    (条割変更モーダルの「適用」が作るのと同じ形)。
    異幅3ロット・計6条・元幅に屑幅40mmを載せた構成で、屑幅を含む/含まない・
    4通りの基準位置がすべて同じ条を指すことを確かめる。 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const setMode=async m=>{await fetch(`${API}/api/access-mode`,
  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
@@ -15,13 +16,7 @@ const setMode=async m=>{await fetch(`${API}/api/access-mode`,
 const LOTS=[{lot:'AAA111',width:100,count:2},{lot:'BBB222',width:150,count:2},{lot:'CCC333',width:200,count:2}];
 const SLIT=LOTS.reduce((a,g)=>a+g.width*g.count,0);   // 900
 const SCRAP=40, ORIGINAL=SLIT+SCRAP;                  // 940
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
+run('test_defect: 異常位置判定・バリ揃え/コイル止めのマスタ化・分割数の表示。', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await setMode('edit');
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
@@ -29,7 +24,7 @@ let b=null;
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:20000});
-  await page.waitForTimeout(1500);
+  await W.booted(page); await idle();
 
   /* ---------- 1) バリ揃え・コイル止めのマスタ ---------- */
   const api=async(u,opt)=>page.evaluate(async([u,opt])=>{
@@ -49,7 +44,8 @@ let b=null;
    valuesOf('コイル止め').join(','));
 
   // マスタ管理画面では「選択肢の値」1枚にまとまっている
-  await page.click('#openMasterMaint');await page.waitForTimeout(1800);
+  await page.click('#openMasterMaint');
+  await page.waitForSelector('#masterMaintNav [data-master]',{timeout:10000});await idle();
   const menu=await page.$$eval('#masterMaintNav [data-master]',n=>n.map(x=>x.dataset.master));
   rec('マスタ管理に専用タブを残していない',
    !menu.includes('burr')&&!menu.includes('coilStop')&&!menu.includes('operator')
@@ -449,7 +445,7 @@ let b=null;
    document.getElementById('reportBack')?.click();
    document.getElementById('measureModal').hidden=false;
   });
-  await page.waitForTimeout(400);
+  await idle();
   await page.evaluate(()=>{document.getElementById('defectModal').hidden=false;WL.defect.refresh()});
 
   /* ---------- 4) 「Nロットに分割」は子ロットの数 ---------- */
@@ -543,7 +539,9 @@ let b=null;
 
   // 仕掛一覧のセルも「Nロット/M条」で言い分ける
   await page.evaluate(()=>{document.getElementById('measureModal').hidden=true});
-  await page.click('aside [data-db-key="SIKALOTNOW"]');await page.waitForTimeout(3000);
+  await page.click('aside [data-db-key="SIKALOTNOW"]');
+  await W.until(page,()=>document.querySelectorAll('.split-flag-cell').length>0,null,{ms:15000,what:'仕掛一覧の分割セルが描かれる'});
+  await idle();
   const cell=await page.evaluate(()=>{
    const c=document.querySelector('.split-flag-cell.split-yes');
    return c?{text:c.textContent.trim(),title:c.title}:null;
@@ -557,17 +555,7 @@ let b=null;
     await WL.records.reliableDelete(S.measure.id);
   }).catch(()=>{});
 
-  console.log('\n=== SUMMARY ===');
-  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
-  f.forEach(x=>console.log(' -',x.n,x.d||''));
-  await b.close();process.exit(f.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
-  await b.close().catch(()=>{});
-  process.exit(2);
+  rec('FATAL',false,String(e&&e.message||e));
  }
-})().catch(async e=>{
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1600,height:1000}});

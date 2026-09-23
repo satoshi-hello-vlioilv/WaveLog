@@ -1,13 +1,9 @@
 /* base.js の WL.ttlCache(フェーズ5)の検証。
    新しいキャッシュはこのヘルパを使う規約にするので、規約側が正しいことを
    固定しておく。**使われていないヘルパは腐る**ので、最低限ここで縛る。 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage();
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
+'use strict';
+const {run}=require('./lib/harness.js');
+run('test_ttlcache: base.js の WL.ttlCache(フェーズ5)の検証。', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>typeof window.WL?.ttlCache==='function',null,{timeout:15000});
 
@@ -66,12 +62,4 @@ let b=null;
  rec('キー指定の破棄はそのキーだけ消す',r.afterKeyInvalidate==='[null,2]',r.afterKeyInvalidate);
  rec('引数なしの破棄で全て消える',r.afterAllInvalidate===0,String(r.afterAllInvalidate));
 
- console.log('\n=== SUMMARY ===');
- const f=R.filter(x=>!x.ok);console.log(`${R.length-f.length}/${R.length} passed`);
- f.forEach(x=>console.log(' -',x.n,x.d||''));
- await b.close();process.exit(f.length?1:0);
-})().catch(async e=>{
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {});

@@ -36,8 +36,8 @@
    テスト設備Aで作る）。**finallyで必ず消すこと**——掴んだまま終わると、
    後続のスケジュール系テストが全部「編集中です」で落ちる（§CLAUDE）。
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const fs=require('fs'),path=require('path');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
@@ -71,12 +71,7 @@ function clearSession(){
  try{const s=readSessions();delete s[EQ];writeSessions(s)}catch(e){}
 }
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
+run('test_scwho: 編集権の在席表示・READONLY・強制奪取（§9.211 ②）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  const setMode=m=>page.evaluate(async mm=>{await fetch('/api/access-mode',{method:'POST',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mm})})},m);
  /* 編集セッションで操作を止めるか（§9.291 ③）。**既定は`off`＝止めない**ので、
@@ -125,8 +120,8 @@ let b=null;
   await page.evaluate(e=>{const r=[...document.querySelectorAll('.sc-board-row')]
     .find(x=>x.dataset.equipment===e);if(r)r.click()},EQ);
   await page.waitForSelector('.sc-row-line',{timeout:30000});
-  await page.waitForTimeout(1500);
- };
+  await W.settleFlags(page);await idle();
+  };
 
  try{
   if(!SESSIONS){
@@ -412,10 +407,7 @@ let b=null;
   await page.evaluate(()=>window.openScheduleView&&window.openScheduleView());
   /* 解放は応答を待たない（sendBeacon）ので、共有側から消えるまで待つ。 */
   let gone=false;
-  for(let i=0;i<20;i++){
-   if(!readSessions()[EQ]){gone=true;break}
-   await page.waitForTimeout(250);
-  }
+  gone=!(await W.poll(async()=>readSessions()[EQ],v=>!v,5000,250));
   rec('編集権を持ったまま閲覧モードへ移ったら、その場で返す（TTLを待たせない）',
       !!heldBefore&&gone,
       `移る前=${JSON.stringify(heldBefore&&{login:heldBefore.login,pc:heldBefore.pc})} / `
@@ -434,9 +426,6 @@ let b=null;
      戻さないと次のテストが閲覧モードで走り出す）。 */
   try{await page.evaluate(async()=>{await fetch('/api/access-mode',{method:'POST',
     headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'edit'})})})}catch(e){}
-  if(b)await b.close();
  }
- const ng=R.filter(x=>!x.ok).length;
- console.log(`\n${R.length-ng} PASS / ${ng} FAIL`);
- process.exit(ng?1:0);
-})();
+
+}, {viewport:{width:1700,height:1000}});

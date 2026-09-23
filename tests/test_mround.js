@@ -22,8 +22,8 @@
    **素通りに注意**: 計算関数だけを見る網は、画面のどこにも配線されていない
    実装でも通る。**実際に欄へ打って、離して、配列に入った値**まで見る。
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 /* 実行ごとに一意（§CLAUDE tests/README）——同じ名前の行が積み上がらない。 */
@@ -32,15 +32,10 @@ const post=(p,body)=>fetch(API+p,{method:'POST',headers:{'Content-Type':'applica
   body:JSON.stringify(body)}).then(r=>r.json().catch(()=>({})));
 const getj=p=>fetch(API+p).then(r=>r.json());
 const setMode=m=>post('/api/access-mode',{mode:m});
-let b=null,page=null;
 
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- page=await b.newPage({viewport:{width:1920,height:1080}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
- page.on('dialog',d=>d.accept());
+
+run('test_mround: 入力値の丸め（§9.305 ①／§9.307、利用者の指示）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
+
  try{
   await setMode('edit');
 
@@ -100,7 +95,7 @@ let b=null,page=null;
   rec('前提: 予定から測定を開ける',started===true,String(started));
   await page.waitForFunction(()=>!document.querySelector('#measureModal')?.hidden,null,{timeout:25000});
   await page.waitForFunction(()=>typeof S!=='undefined'&&!!S.measure,null,{timeout:25000});
-  await page.waitForTimeout(1200);
+  await idle();
   /* 決まりが届いていること（届く前に打つと丸まらない）。 */
   await page.waitForFunction(()=>Object.keys(WL.measureRound.rules()||{}).length>0,
     null,{timeout:15000}).catch(()=>{});
@@ -114,10 +109,10 @@ let b=null,page=null;
   const typeInto=async(type,text)=>{
    /* **②測定の段へ移ってから**（測定表は①では伏せてある・§9.123）。 */
    await page.evaluate(()=>WL.measureSteps.go('2'));
-   await page.waitForTimeout(300);
+   await paint();
    await page.evaluate(t=>{const s=document.querySelector('#measureType');
      s.value=t;s.dispatchEvent(new Event('change',{bubbles:true}))},type);
-   await page.waitForTimeout(500);
+     await paint();
    await page.evaluate(()=>{const b=document.querySelector('[data-mode="manual"]');if(b)b.click()});
    /* 手動入力の注意はアプリの窓で出るようになった（§9.342）。**開いたまま
       だと次のクリックが窓に遮られる**（素の`alert()`のときは
@@ -126,7 +121,7 @@ let b=null,page=null;
     await page.click('#appConfirmOk');
     await page.waitForSelector('#appConfirmModal',{state:'hidden',timeout:5000});
    }
-   await page.waitForTimeout(200);
+   await paint();
    const sel='[data-mkey][data-i="0"][data-j="0"]';
    await page.waitForSelector(sel,{timeout:10000});
    await page.evaluate(s=>{const el=document.querySelector(s);el.value='';el.oninput&&el.oninput()},sel);
@@ -136,7 +131,7 @@ let b=null,page=null;
       `0.2`を打つ途中の`0.`で値が飛ぶ。 */
    const mid=await page.evaluate(s=>document.querySelector(s).value,sel);
    await page.evaluate(s=>{const el=document.querySelector(s);el.blur()},sel);
-   await page.waitForTimeout(250);
+   await paint();
    return page.evaluate(s=>{
     const el=document.querySelector(s);
     return {欄:el.value,記録:S.measure.measurements[el.dataset.mkey][0][0]};
@@ -159,7 +154,7 @@ let b=null,page=null;
   /* 丈別データは**母材/丈毎**の面（§9.160）。項目を切り替えてから触る。 */
   await page.evaluate(()=>{const s=document.querySelector('#measureType');
     s.value=WL.measureItem.PIECE;s.dispatchEvent(new Event('change',{bubbles:true}))});
-  await page.waitForTimeout(600);
+    await W.until(page,()=>!!document.querySelector('#productRowsBody [data-product-field="edgeShape"]'),null,{ms:8000,what:'丈別データの揃いの欄が出る'});
   const align=await page.evaluate(async()=>{
    const sel=document.querySelector('#productRowsBody [data-product-field="edgeShape"]');
    if(!sel)return {ある:false};
@@ -235,8 +230,5 @@ let b=null,page=null;
   /* 置いた実績は自分で消す（§9.351・§9.362）。残った実績は計画外実績として
      予定表に現れ、無関係な網を落とす。 */
   try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
-})();
+}, {viewport:{width:1920,height:1080}});

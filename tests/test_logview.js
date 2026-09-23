@@ -16,9 +16,9 @@
    記録を消さないため）。見たいのは「ボタンが本当にAPIへ繋がっているか」で、
    消えた結果は tests/test_logs.py が一時フォルダで確かめている。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-let b=null;
 
 const REC=(ts,level,text,extra,src,boot)=>({ts,ms:'000',level,levelRaw:level.toUpperCase(),
  logger:src,text,source:src,file:src==='launcher'?'launcher.log':'app.log',
@@ -40,11 +40,7 @@ const FIXTURE={ok:true,total:6,matched:6,shown:6,clipped:false,
   REC('2026-08-12 10:00:02','warning','共有が遅い elapsed=9s',null,'app'),
  ]};
 
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1600,height:950}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
+run('test_logview: ログ・診断の画面（§9.99）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
 
  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openLogView',{timeout:20000});
@@ -72,10 +68,10 @@ const FIXTURE={ok:true,total:6,matched:6,shown:6,clipped:false,
  const LOGS_API=/\/api\/logs\?/;   // ?はPlaywrightのglobでは素の文字なので正規表現で書く
  await page.route(LOGS_API,route=>{asked.push(route.request().url());route.continue()});
  await page.selectOption('#lgLevel','problem');
- await page.waitForTimeout(900);
+ await idle();
  rec('レベルを変えるとサーバーへ取り直す',asked.some(u=>/level=problem/.test(u)),String(asked.length)+'回');
  await page.fill('#lgQuery','起動');
- await page.waitForTimeout(1200);
+ await W.poll(async()=>asked.slice(),a=>a.some(u=>/q=/.test(u)&&!/q=&/.test(u)),5000,50);await idle();  // 打ち終わりの1回が出るまで。そのあと余計に投げないかは静まるまで見る
  rec('検索は打ち終わってから1回だけ投げる（1文字ごとに投げない）',
      asked.filter(u=>/q=/.test(u)&&!/q=&/.test(u)).length<=2,
      asked.filter(u=>/q=/.test(u)&&!/q=&/.test(u)).length+'回');
@@ -86,7 +82,7 @@ const FIXTURE={ok:true,total:6,matched:6,shown:6,clipped:false,
    body:JSON.stringify(FIXTURE)}));
  await page.fill('#lgQuery','');
  await page.selectOption('#lgLevel','all');
- await page.waitForTimeout(900);
+ await idle();
  await page.evaluate(()=>WL.logView.load());
  await page.waitForFunction(()=>document.querySelectorAll('#lgTree .lg-group').length===2,null,{timeout:10000});
 
@@ -153,13 +149,13 @@ const FIXTURE={ok:true,total:6,matched:6,shown:6,clipped:false,
  const {answerConfirm}=require('./lib/wait.js');
  await page.click('#lgClear');
  await answerConfirm(page);
- await page.waitForTimeout(500);
+ await idle();
  const clearReq=sent.find(x=>/clear$/.test(x.url));
  rec('「すべて」消去がサーバーへ届く（押せるのに繋がっていない、が無い）',
      !!clearReq&&/app\.log|launcher\.log/.test(clearReq.body||''),JSON.stringify(clearReq||null));
  await page.click('#lgRotate');
  await answerConfirm(page);
- await page.waitForTimeout(500);
+ await idle();
  rec('「ここで区切る」もサーバーへ届く',sent.some(x=>/rotate$/.test(x.url)),
      sent.map(x=>x.url).join(' '));
  await page.unroute(/\/api\/logs\/(clear|rotate|delete-old|delete-lines)$/);
@@ -260,7 +256,7 @@ const FIXTURE={ok:true,total:6,matched:6,shown:6,clipped:false,
  await page.check('#lgAuto');
  const running=await page.evaluate(()=>WL.logView.state.auto);
  await page.click('#openMasterMaint');
- await page.waitForTimeout(400);
+ await W.until(page,()=>document.body.classList.contains("mm-mode"),null,{ms:8000,what:"マスタ管理へ移る"});
  const stopped=await page.evaluate(()=>({auto:WL.logView.state.auto,timer:WL.logView.state.timer,
    hidden:document.getElementById('logPanel').hidden,
    mode:document.body.classList.contains('lg-mode')}));
@@ -268,12 +264,4 @@ const FIXTURE={ok:true,total:6,matched:6,shown:6,clipped:false,
  rec('別の画面へ移ると自動更新が止まる',stopped.auto===false&&stopped.timer===0,JSON.stringify(stopped));
  rec('別の画面へ移るとログ画面は閉じる',stopped.hidden===true&&stopped.mode===false,JSON.stringify(stopped));
 
- await b.close();
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1600,height:950}});

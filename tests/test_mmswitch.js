@@ -11,16 +11,18 @@
    一瞬なのでこの道をほとんど通らず、遅らせない網は直す前でも通る。
    マスタを共有に置いた端末では1回の取得に数秒かかる（§9.263／§9.273）ので、
    現場ではむしろこちらがふつう。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- const wait=ms=>page.waitForTimeout(ms);
+run('test_mmswitch: マスタ管理のタブを切り替えても前のタブの応答が上書きしない（§9.331）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
+ /* 遅らせた取得が「出ている最中」になるまで（前は固定の300ms）。この網は
+    **応答が届く前に**タブを移ることで競り合いを作るので、先に取得が出ていることを
+    条件にする。出なければ5秒で先へ進む（その先の判定が見る）。 */
+ const live=new Set();
+ page.on('request',r=>live.add(r));
+ page.on('requestfinished',r=>live.delete(r));
+ page.on('requestfailed',r=>live.delete(r));
+ const inFlight=re=>W.poll(async()=>[...live].some(r=>re.test(r.url())),v=>v,5000,20);
  try{
   // 操業データ項目の盤が読む口だけを2秒遅らせる（他は素通し）。
   await page.route('**/api/operation-item-master*',async route=>{
@@ -29,12 +31,12 @@ let b=null;
   });
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
-  await wait(900);
+  await W.booted(page);await idle();
 
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintForm',{timeout:10000});
   // 遅い盤の取得が終わる前に、汎用の一覧を持つタブへ移る。
-  await wait(300);
+  await inFlight(/\/api\/operation-item-master/);
   /* **汎用の一覧を持つタブ**を選ぶこと（見るのは「追加が押せる一覧が出るか」）。
      設備停止マスタは§9.397で専用画面（3ペイン）になったので、ここでは使わない
      ——`.op-bar`を持つ専用画面なので「前のタブの盤が残っている」と誤判定する。 */
@@ -43,7 +45,7 @@ let b=null;
   rec('刃マスタのタブがある',moved);
 
   // 前のタブの応答（2秒後）が届いたあとまで待つ。
-  await wait(3500);
+  await idle(600,8000);   // 遅らせた応答（2秒）が届いて取得が静まるまで
 
   const st=await page.evaluate(()=>({
    見出し:(document.querySelector('#masterMaintTitle,.mm-title')||{}).textContent||'',
@@ -58,7 +60,7 @@ let b=null;
 
   // 遅い盤へ戻れること（負けたほうが描き直す作りで、戻る道を塞いでいないか）。
   await page.evaluate(()=>{const b=document.querySelector('[data-master="opItem"]');if(b)b.click()});
-  await wait(3500);
+  await idle(600,8000);
   const back=await page.evaluate(()=>!!document.querySelector('#masterMaintForm #opEqPick, #masterMaintForm .op-bar'));
   rec('遅い盤のタブへ戻れる',back);
 
@@ -72,9 +74,9 @@ let b=null;
    await route.continue();
   });
   await page.evaluate(()=>{const b=document.querySelector('[data-master="bladesetBlade"]');if(b)b.click()});
-  await wait(300);
+  await inFlight(/\/api\/bladeset-blade-master/);
   await page.evaluate(()=>{const b=document.querySelector('[data-master="equipment"]');if(b)b.click()});
-  await wait(3500);
+  await idle(600,8000);   // 遅らせた応答（2秒）が届いて取得が静まるまで
   const g=await page.evaluate(()=>({
    見出し:(document.querySelector('#masterMaintTitle,.mm-title')||{}).textContent||'',
    一覧:(document.getElementById('masterMaintList')||{}).textContent||''}));
@@ -82,11 +84,6 @@ let b=null;
   rec('前のタブの行が一覧に残っていない',
       g.一覧.indexOf('テスト設備A')>=0,(g.一覧||'').slice(0,120));
  }catch(e){
-  console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false});
- }finally{
-  if(b)await b.close().catch(()=>{});
+  rec('FATAL',false,String(e&&e.message||e));
  }
- const ng=R.filter(x=>!x.ok).length;
- console.log(`\n=== SUMMARY ===\n${R.length-ng}/${R.length} passed`);
- process.exit(ng?1:0);
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});
+}, {viewport:{width:1700,height:1000}});

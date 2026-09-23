@@ -1889,6 +1889,29 @@ WL.orderedListColumns=orderedListColumns;
 WL.isVirtualColumn=isVirtualColumn;
 WL.virtualColumnLabel=k=>(VIRTUAL_COLUMNS[k]||{}).label||k;
 // Add an explicit virtual action column instead of writing into the last data column.
+/* 0行のときは**なぜ空か・次に何をするか**を表の中で言う（利用者の報告「必須データが
+   ない場合もエラーが出ないのは問題」）。見出しだけの表は「読み込み中」「壊れている」
+   「本当に無い」の区別がつかない。見る順は、利用者が絞った → 画面で伏せた →
+   元データが空。**元データが空なのはエラー**として出す（届くはずのデータが無い）。
+   結合に失敗していれば、その理由も同じ枠に添える。 */
+function listEmptyNote(visible){
+ if(visible&&visible.length)return '';
+ const label=esc(WL.base.databaseLabel(S.db));
+ const jq=S.joinQuality;
+ const joinWhy=(jq&&(jq.failedReasons||[]).length)
+  ?`<span>結合できなかったもの: ${esc((jq.failedNames||[]).map((n,i)=>`${n}: ${jq.failedReasons[i]}`).join('／'))}</span>`:'';
+ const q=listQuery();
+ if(q.get('search')||q.get('filters'))
+  return `<div class="record-empty" role="status">検索・絞り込みに当たる行がありません。`
+   +`<div class="record-empty-why">検索欄の字やフィルタの条件を外すと、${label}の行が出ます。</div></div>`;
+ if(S.rows&&S.rows.length)
+  return `<div class="record-empty" role="status">読み込んだ${S.rows.length}行は、すべて作業予定に入っているので伏せています。</div>`;
+ const file=((S.catalog||[]).find(x=>x.key===S.db)||{}).file_name||'';
+ return `<div class="load-error" role="alert"><b>${label}の表「${esc(S.table||'')}」にデータが1行もありません</b>`
+  +`<span>元データ${file?`（${esc(file)}）`:''}が空か、読み込み先が違います。`
+  +`マスタ管理 &gt; データ接続 で置き場を確かめてください。別の表を開くときは、上の表名のバッジから選べます。</span>`
+  +joinWhy+`</div>`;
+}
 function renderGrid(){
  /* **描画にかかった時間はここで測る。** filters.js が load() を丸ごと
     置き換えるため、load()側に置くと絞り込みを使ったときだけ測れなくなる
@@ -2355,6 +2378,8 @@ function renderGridInner(){
  const gridEl=$('#grid');
  if(gridEl)gridEl.dataset.lt=layoutTarget||'';
  gridEl.replaceChildren(t);
+ const emptyNote=listEmptyNote(visibleRows);
+ if(emptyNote)gridEl.insertAdjacentHTML('beforeend',emptyNote);
  /* 全件はページの概念が無い(1枚に全部出す)。ページ送りは押せなくする
     ——押せるのに何も起きないボタンは「壊れている」と受け取られる。 */
  allRowsProgress(S.rows.length,S.count);
@@ -2643,7 +2668,11 @@ function renderListToolbar(){
   if(!info||!info.count){chip.hidden=true;chip.textContent=''}
   else{
    chip.hidden=false;
-   const ok=info.applied&&info.matched>0;
+   /* 失敗の数はサーバーが数える（`summarize()`の`failed`）。「相手に無いものだけ」の
+      結合は一致0件が正常なので、「一致した行がある」では判定しない。写しに残った
+      古い応答（`failed`を持たない）は今までの判定に倒す。 */
+   const failed=('failed' in info)?(+info.failed||0):(info.applied&&info.matched>0?0:info.count);
+   const ok=info.applied&&!failed;
    const names=(info.names||[]).filter(Boolean);
    chip.className='list-join-chip '+(ok?'is-ok':'is-warn');
    /* **行が増減したことは帯で言う**(§9.194)。結合の仕方によっては一覧から
@@ -2654,7 +2683,7 @@ function renderListToolbar(){
     :'';
    chip.textContent=ok
     ?`結合 ${names.length?names.join('・'):info.count+'件'} ／ ${info.matched}行 +${info.addedColumns}列${rowNote}`
-    :`結合できません（${info.count}件）`;
+    :joinFailText(info,failed);
    chip.title=ok
     ?`キーが一致した${info.matched}行に${info.addedColumns}列を足しました`
      +`${info.table?`（相手の表: ${info.table}）`:''}。同じ名前の列はこの一覧の値を残します。`
@@ -2668,6 +2697,16 @@ function renderListToolbar(){
   }
  }
  bar.hidden=!(canPickColumns||(info&&!chip.hidden));
+}
+/* 結合に失敗したときの札の字（利用者の報告「エラーがわかるようにしてほしい」）。
+   **どの結合が・なぜ**を字で言う——「結合できません（1件）」だけでは、どの結合の
+   何を直せばよいかをマウスを乗せないと読めない。理由は最初の1件の要点
+   （「（」「。」の手前）だけ。全文は`title`が持つ。 */
+function joinFailText(info,failed){
+ const names=(info.failedNames||[]).filter(Boolean);
+ const first=String((info.failedReasons||[])[0]||'').split(/[（。]/)[0].trim();
+ const who=names.length?names.join('・'):`${failed}件`;
+ return `結合できません: ${who}${first?`（${first}）`:''}`;
 }
 /* 複数選択→スケジュールへ一括投入(§9.5)。ヘッダーの全選択チェックボックスは
    このページの表示行(投入済みでスケジュールから除外表示している行を除く、

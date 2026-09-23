@@ -1,10 +1,6 @@
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const setMode=async m=>{await fetch('http://127.0.0.1:5029/api/access-mode',
- {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
+'use strict';
+const {run}=require('./lib/harness.js');
+run('test_scperf: 見え方の設定（まとめ・さかのぼり・表示列・行の色・配置）は「表示」', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  /* 見え方の設定（まとめ・さかのぼり・表示列・行の色・配置）は「表示」
     パネル(§9.199)の中にある。開く→選ぶ→**閉じる**まで1つの手順にする
     ——開いたままにすると、パネルが表の右上を覆って次のクリックが
@@ -12,8 +8,6 @@ let b=null;
  const openView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.openViewPop&&WL.scheduleView.openViewPop());
  const closeView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.closeViewPop&&WL.scheduleView.closeViewPop());
  const pickView=async(sel,val)=>{await openView();await page.selectOption(sel,val).catch(()=>{});await closeView()};
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
  page.on('dialog',d=>{console.log('[dialog]',d.message());d.accept()});
  // APIの呼ばれ方を数える
  let api={plan:0,overview:0,table:0};
@@ -23,7 +17,6 @@ let b=null;
   else if(u.includes('/api/table?'))api.table++;});
  const reset=()=>{api={plan:0,overview:0,table:0}};
 
- await setMode('schedule');
  await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openSchedule',{timeout:15000});
  /* ---- 待ち方(§フェーズF) ----
@@ -33,9 +26,7 @@ let b=null;
     「その状態になるまで待つ」+「取りこぼしの要求を拾う短い落ち着き」に
     分けると、同じことを確かめたまま速くなる。落ち着きを0にしないこと——
     描画の直後に飛ぶ要求を数え損ねる。 */
- const SETTLE=350;
- const until=async(fn,ms=15000)=>{await page.waitForFunction(fn,null,{timeout:ms}).catch(()=>{});
-   await page.waitForTimeout(SETTLE)};
+ const until=(fn,ms=15000)=>W.until(page,fn,null,{ms,what:'画面の組み上がり'});   // 条件＋短い落ち着き（W.SETTLE=350ms）
  const untilRows=()=>until(()=>document.querySelectorAll('.sc-row-line').length>0);
  const untilBoard=()=>until(()=>document.querySelectorAll('.sc-board-row').length>0);
 
@@ -104,7 +95,7 @@ let b=null;
     書込の取り直しが届くのを待ってから数え直す。 */
  const before=api.plan;
  await page.click(`.sc-row-line[data-id="${id}"] .sc-row-lock`);
- for(let i=0;i<160&&api.plan<=before;i++)await page.waitForTimeout(50);
+ await W.poll(async()=>api.plan,v=>v>before,8000,50);
  await untilRows();
  rec('固定を押すと、その場で取り直す',api.plan>before,`plan=${api.plan}`);
  reset();
@@ -140,15 +131,4 @@ let b=null;
  await until(()=>document.querySelectorAll('.sc-group-head').length===0);
 
  console.log(`\n(参考) 初回の俯瞰ボード ${firstBoardMs}ms / 離れて戻る ${backMs}ms`);
- console.log('\n=== SUMMARY ===');
- const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
- f.forEach(x=>console.log(' -',x.n,x.d||''));
- await b.close();process.exit(f.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {mode:'schedule', viewport:{width:1700,height:1000}});

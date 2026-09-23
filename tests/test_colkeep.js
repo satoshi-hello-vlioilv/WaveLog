@@ -28,24 +28,18 @@
        かけ合わせて効く）
     5. 札の件数はチェックを触るたびに合う（画面の数と行数が食い違わない）
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(body)}).then(async r=>({code:r.status,json:await r.json().catch(()=>({}))}));
-let b=null,TARGET='';
+let TARGET='';
 /* 列レイアウトマスタは**実行をまたいで生き延びる**（§9.121）ので必ず消す。 */
 const clear=()=>TARGET?post('/api/column-layout-master',{target:TARGET,clear:true,order:[],
   widths:{},hidden:[],names:{},formats:{},rules:{},formulas:{},locks:[],user_id:'tests'})
   .catch(()=>{}):Promise.resolve();
 
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,160)));
- page.on('dialog',d=>d.accept());
+run('test_colkeep: 一覧の表示列が消えない／表示中・非表示中で絞れる（§9.248 ③④）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
@@ -56,7 +50,7 @@ const clear=()=>TARGET?post('/api/column-layout-master',{target:TARGET,clear:tru
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#grid table',{timeout:30000});
   await page.waitForSelector('#grid th[data-col]',{timeout:30000});
-  await page.waitForTimeout(1200);
+  await idle();
   TARGET=await page.evaluate(()=>WL.list.listLayoutTarget());
   rec('前提: 仕掛一覧が開けて対象が決まる',!!TARGET,TARGET);
   await clear();
@@ -101,7 +95,7 @@ const clear=()=>TARGET?post('/api/column-layout-master',{target:TARGET,clear:tru
    if(!b)return false;b.click();return true;
   });
   rec('前提: 保存が走るメニュー（幅を内容に合わせる）を押せた',pressed,String(pressed));
-  await page.waitForTimeout(900);
+  await idle(600);   // 保存（persist）の往復が静まるまで。見るのは「消えないこと」
   const afterMenu=await page.evaluate(g=>{
    const t=WL.list.listLayoutTarget();
    const o=WL.columnLayout.saved(t).order||[];
@@ -126,7 +120,7 @@ const clear=()=>TARGET?post('/api/column-layout-master',{target:TARGET,clear:tru
     [...document.querySelectorAll('#listColumnPanel .lc-item')].some(x=>x.dataset.key===g),GHOST);
   rec('前提: パネルには「いま出せない列」は並ばない',!inPanel,String(inPanel));
   await page.evaluate(()=>{const b=document.querySelector('#lcSave');if(b)b.click()});
-  await page.waitForTimeout(900);
+  await idle(600);   // 保存の往復が静まるまで。見るのは「消えないこと」
   const afterPanel=await page.evaluate(g=>{
    const t=WL.list.listLayoutTarget();
    const o=WL.columnLayout.saved(t).order||[];
@@ -204,16 +198,11 @@ const clear=()=>TARGET?post('/api/column-layout-master',{target:TARGET,clear:tru
       both.状態==='true'&&both.出どころ==='true',JSON.stringify(both));
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
-  process.exitCode=ng.length?1:0;
+
  }catch(e){
-  console.error('FATAL',e);
-  process.exitCode=1;
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* **後始末**——列レイアウトマスタは実行をまたいで生き延びる（§9.121）。 */
   await clear();
-  if(b)await b.close().catch(()=>{});
  }
-})();
+}, {viewport:{width:1700,height:1000}});

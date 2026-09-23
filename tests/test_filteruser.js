@@ -23,8 +23,8 @@
    後片付けは finally で必ず行う。名前に実行ごとの印を入れて、他のテストの
    登録を巻き込まない。
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const TAG='fu'+Date.now().toString(36);
 const A='u-'+TAG+'-a', B='u-'+TAG+'-b';   // 2人ぶん
@@ -37,17 +37,18 @@ const DB='SIKALOTNOW',TBL='仕掛';
 const H=require('./lib/harness.js');
 const SNAP_TABLES=['フィルタプリセットマスタ','フィルタ個人設定マスタ'];
 let snapM=null;
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
+run('test_filteruser: フィルタを個人単位で記録する（§9.172）', async ({rec,W,browser})=>{
  snapM=await H.masterSnapshot(SNAP_TABLES);
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
  const errs=[];
+ const idleOf=new Map();   // 端末の頁 → その頁の idle()
  /* 「端末が違う」は**別のブラウザコンテキスト**（localStorageが別）で表す。 */
  const newTerminal=async user=>{
-  const ctx=await b.newContext({viewport:{width:1500,height:950}});
+  const ctx=await browser.newContext({viewport:{width:1500,height:950}});
   const page=await ctx.newPage();
   page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
+  /* 取得の数え上げは最初の航行より前に張る（端末ごとに1つ）。 */
+  const {idle}=W.track(page);
+  idleOf.set(page,idle);
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
   if(user!==undefined)await page.evaluate(u=>localStorage.setItem('AccessMeasurementUserId',u),user);
@@ -55,8 +56,8 @@ let b=null;
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
   await page.click('aside [data-db-key="SIKALOTNOW"]',{timeout:20000});
   await page.waitForSelector('#grid tbody tr',{timeout:30000});
-  await page.waitForTimeout(700);
-  return {ctx,page};
+  await idle();
+  return {ctx,page,idle};
  };
  const post=(page,p,body)=>page.evaluate(async a=>{
   const r=await fetch(a.p,{method:'POST',headers:{'Content-Type':'application/json'},
@@ -73,7 +74,7 @@ let b=null;
   await page.click('#filterMoreBtn');
   await page.click('#openFilterPresets');
   await page.waitForSelector('#filterPresetModal:not([hidden])',{timeout:10000});
-  await page.waitForTimeout(900);
+  await idleOf.get(page)();
  };
  let t1=null,t2=null;
 
@@ -179,7 +180,7 @@ let b=null;
   await t2.page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
   await t2.page.click('aside [data-db-key="SIKALOTNOW"]',{timeout:20000});
   await t2.page.waitForSelector('#grid tbody tr',{timeout:30000});
-  await t2.page.waitForTimeout(1800);
+  await t2.idle();
   const moved=(await seen(t2.page,`u-${TAG}-c`)).find(x=>x.id===c1id);
   rec('端末に残っていた古い印は、その人の印へ一度だけ移る',
       !!moved&&moved.isDefault===true&&moved.isLocked===true,
@@ -190,7 +191,7 @@ let b=null;
   await t2.page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
   await t2.page.click('aside [data-db-key="SIKALOTNOW"]',{timeout:20000});
   await t2.page.waitForSelector('#grid tbody tr',{timeout:30000});
-  await t2.page.waitForTimeout(1800);
+  await t2.idle();
   const again=(await seen(t2.page,`u-${TAG}-c`)).find(x=>x.id===c1id);
   rec('移したあとに外した印は、次に開いても戻ってこない',
       !!again&&again.isDefault===false&&again.isLocked===false,
@@ -213,9 +214,5 @@ let b=null;
   try{if(t2)await t2.ctx.close()}catch(e){}
   try{if(snapM)await H.dropNewMasterRows(snapM)}
   catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1500,height:950}});

@@ -14,10 +14,9 @@
 
    **`/api/access-mode`を差し替えて確かめる**——実機の権限を書き換えて
    しまうと、以降のテストが全部その端末の権限で走ることになる。 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
-let b=null;
 
 /* 管理のマスタの綴りは**サーバーが答える**ものをそのまま流す（画面はこれを
    読むだけ、が守れているかを見たいので、網の側でも表を作らない）。 */
@@ -32,10 +31,7 @@ const FAKE=(role,level)=>({ok:true,mode:'edit',canEdit:true,canSchedule:false,
  canEditAdminMaster:level==='編集可',
  adminMasters:ADMIN});
 
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
+run('test_roleui: 設備作業者とマスタ編集の段が**画面に効いている**か（§9.322）。', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  let fake=null;
  await page.route('**/api/access-mode',route=>{
   if(!fake||route.request().method()!=='GET')return route.continue();
@@ -48,7 +44,7 @@ const FAKE=(role,level)=>({ok:true,mode:'edit',canEdit:true,canSchedule:false,
  const applyLevel=async(role,level)=>{
   fake=FAKE(role,level);
   await page.evaluate(()=>window.refreshAccessMode());
-  await page.waitForTimeout(200);
+  await idle();
  };
  /* タブを名前で開く。**番号で開かないこと**（マスタが1つ増えただけで落ちる）。 */
  const openTab=async label=>{
@@ -57,7 +53,7 @@ const FAKE=(role,level)=>({ok:true,mode:'edit',canEdit:true,canSchedule:false,
      .find(x=>x.textContent.includes(t));
    if(el)el.click();
   },label);
-  await page.waitForTimeout(900);
+  await idle();
  };
  const snap=()=>page.evaluate(()=>{
   const chip=document.getElementById('masterMaintLevel');
@@ -84,7 +80,7 @@ const FAKE=(role,level)=>({ok:true,mode:'edit',canEdit:true,canSchedule:false,
  const entryFull=await shown();
  rec('⑤ 編集可ならマスタ管理の入口は出たまま',!entryFull.hidden&&entryFull.drawn,
    JSON.stringify(entryFull));
- await page.click('#openMasterMaint');await page.waitForTimeout(1200);
+ await page.click('#openMasterMaint');await idle();
  await openTab('設備');
  const full=await snap();
  rec('⑤ 編集可なら現場のマスタを編集できる',full.edits>0&&!full.chip,
@@ -142,13 +138,4 @@ const FAKE=(role,level)=>({ok:true,mode:'edit',canEdit:true,canSchedule:false,
  const back=await shown();
  rec('段が上がれば入口は戻る（片道にしない）',!back.hidden&&back.drawn,JSON.stringify(back));
 
- await b.close();b=null;
- const ng=R.filter(x=>!x.ok);
- console.log('\n=== SUMMARY ===');console.log(`${R.length-ng.length}/${R.length} passed`);
- ng.forEach(x=>console.log(' -',x.n,x.d||''));
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- console.log('FATAL:',e.message);
- if(b)await b.close().catch(()=>{});
- process.exit(1);
-});
+}, {viewport:{width:1600,height:1000}});

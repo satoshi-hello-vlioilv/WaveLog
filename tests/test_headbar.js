@@ -23,11 +23,11 @@
    **順番に意味がある。** ①は表示サイズと窓幅を触るので、必ず元へ戻してから
    ②③へ進む（戻し忘れると、後ろの2部が「大きい文字・狭い窓」で測られる）。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const setMode=async m=>{await fetch(B+'/api/access-mode',{method:'POST',
  headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
-let b=null;
 
 /* 画面 → [ナビのid, ヘッダーへ載る操作列のid] */
 const VIEWS=[
@@ -38,12 +38,8 @@ const VIEWS=[
  ['ログ・診断','openLogView','lgHead'],
 ];
 
-(async()=>{
+run('test_headbar: ヘッダーの作り（§9.48 寸法／§9.60 画面名／§9.100 操作列）', async ({page,rec,B,W,idle,paint})=>{
  await setMode('edit');
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
 
  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openSchedule',{timeout:20000});
@@ -53,7 +49,7 @@ const VIEWS=[
  await page.reload({waitUntil:'domcontentloaded'});
  await page.waitForSelector('#uiSizeBadge',{timeout:20000});
  await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:30000});
- await page.waitForTimeout(600);
+ await idle();
 
  /* =========================================================
     ① 形（§9.48 ヘッダー再設計）
@@ -121,10 +117,10 @@ const VIEWS=[
           equip:read(document.querySelector('.hd-chip-equip')),danger};
  });
  const okSet=await setChips(false);
- await page.waitForTimeout(300);                 // 遷移が終わるまで待つ
+ await W.until(page,()=>['#fieldReorderBadge','.hd-chip-equip'].every(s=>{const e=document.querySelector(s);return !e||e.getAnimations({subtree:true}).filter(a=>a instanceof CSSTransition).length===0}),null,{ms:3000,what:'状態チップの色の遷移が終わる'});
  const normal=okSet?await readChips():null;
  await setChips(true);
- await page.waitForTimeout(300);
+ await W.until(page,()=>['#fieldReorderBadge','.hd-chip-equip'].every(s=>{const e=document.querySelector(s);return !e||e.getAnimations({subtree:true}).filter(a=>a instanceof CSSTransition).length===0}),null,{ms:3000,what:'状態チップの色の遷移が終わる'});
  const warned=okSet?await readChips():null;
  rec('状態チップの色を読めている',!!normal&&!!warned,
      JSON.stringify({正常:normal&&normal.badge,設定要:warned&&warned.badge}));
@@ -145,27 +141,27 @@ const VIEWS=[
 
  /* 使用設備チップから設備設定が開ける(旧 .equipment-header-button の役割を継承) */
  await page.click('.hd-chip-equip');
- await page.waitForTimeout(400);
+ await W.until(page,()=>{const m=document.querySelector('#appSettingsModal');return !!m&&!m.hidden},null,{ms:5000,what:'設備設定の窓が開く'});
  const opened=await page.evaluate(()=>!document.querySelector('#appSettingsModal').hidden);
  rec('使用設備チップから設備設定が開く',opened);
- if(opened){await page.click('#cancelAppSettings');await page.waitForTimeout(300)}
+ if(opened){await page.click('#cancelAppSettings');await W.until(page,()=>{const m=document.querySelector('#appSettingsModal');return !m||m.hidden},null,{ms:5000,what:'設備設定の窓が閉じる'})}
 
  /* 表示サイズを変えるとヘッダーも一括で追随する(統一が崩れない) */
  const md=await metrics();
  await page.click('#uiSizeBadge');await page.waitForSelector('#uiSizeMenu',{timeout:4000});
- await page.click('#uiSizeMenu [data-ui-size-option="lg"]');await page.waitForTimeout(400);
+ await page.click('#uiSizeMenu [data-ui-size-option="lg"]');await W.until(page,s=>document.documentElement.dataset.uiSize===s&&document.querySelector('header').getAnimations({subtree:true}).filter(a=>a instanceof CSSTransition).length===0,'lg',{ms:4000,what:'表示サイズが大になる'});
  const lg=await metrics();
  const lgHs=[...new Set(lg.map(x=>x.h))];
  rec('大でもヘッダーの高さが揃ったまま拡大する',
    lgHs.length===1&&lgHs[0]>md[0].h,'md='+md[0].h+' lg='+lgHs.join('/'));
  await page.click('#uiSizeBadge');await page.waitForSelector('#uiSizeMenu',{timeout:4000});
- await page.click('#uiSizeMenu [data-ui-size-option="md"]');await page.waitForTimeout(400);
+ await page.click('#uiSizeMenu [data-ui-size-option="md"]');await W.until(page,s=>document.documentElement.dataset.uiSize===s&&document.querySelector('header').getAnimations({subtree:true}).filter(a=>a instanceof CSSTransition).length===0,'md',{ms:4000,what:'表示サイズが中になる'});
 
  /* 横幅が狭くても操作群が折り返して縦に伸びない
     (画面ごとの操作列#headerViewBarは「ヘッダーの2行目」として意図的に
      別の行に置く。ここで見るのは1行目の並び。) */
  await page.setViewportSize({width:1100,height:900});
- await page.waitForTimeout(400);
+ await paint();
  const narrow=await page.evaluate(()=>{
   const h=document.querySelector('header').getBoundingClientRect();
   const list=[...document.querySelectorAll('header .hd-chip,header .hd-btn,header .hd-search,header .hd-field')]
@@ -178,7 +174,7 @@ const VIEWS=[
    narrow.rows===1&&narrow.height<(narrow.barShown?130:80),JSON.stringify(narrow));
  /* **必ず戻す。** ②③は元の広さで測る。 */
  await page.setViewportSize({width:1700,height:1000});
- await page.waitForTimeout(400);
+ await paint();
 
  /* =========================================================
     ② 文脈（§9.60 画面名／§9.59 hidden／同期バナー）
@@ -186,27 +182,28 @@ const VIEWS=[
  const ctx=()=>page.evaluate(()=>({
    title:document.querySelector('#fileName').textContent.trim(),
    src:document.querySelector('#headerContextSource')?.hidden?'':document.querySelector('#headerContextSource').textContent.trim()}));
- const go=async(sel,wait=1800)=>{await page.click(sel);await page.waitForTimeout(wait)};
+ /* 画面を開いて、その画面の読み込みが済むまで（以前は画面ごとに1.8〜2.5秒の固定待ち）。 */
+ const go=async sel=>{await page.click(sel);await idle(400,10000)};
 
  /* ヘッダーの画面名は**データソースマスタの表示名**を使う(§9.87)。
     以前は'SIKALOTNOW'なら'仕掛一覧'と固定で書いており、左メニュー
     (マスタの表示名＝「仕掛（現在）」)とヘッダーで別の名前が出ていた。
     表示名を変えても追随するよう、期待値もマスタから取る。 */
  const navLabel=k=>page.evaluate(key=>WL.dataSource.label(key),k);
- await go('[data-db-key="SIKALOTNOW"]',2500);
+ await go('[data-db-key="SIKALOTNOW"]');
  let c=await ctx();
  rec('仕掛(現在): 画面名が主・ファイル名が副',
    c.title===await navLabel('SIKALOTNOW')&&/sikalotnow/i.test(c.src),JSON.stringify(c));
  for(const [sel,want] of [['#homeDrafts','測定データ一覧'],['#openDashboard','ダッシュボード'],
                           ['#openCalendar','測定実績カレンダー'],['#openSchedule','作業スケジュール'],
                           ['#openMasterMaint','マスタ管理']]){
-  await go(sel,2200);c=await ctx();
+  await go(sel);c=await ctx();
   rec(`${want}: 見出しが画面名になる`,c.title===want,JSON.stringify(c));
   rec(`${want}: 前に見たDBファイル名が残らない`,!/sikalot/i.test(c.title+' '+c.src),JSON.stringify(c));
  }
- await go('[data-db-key="SIKALOTDEF"]',2500);c=await ctx();
+ await go('[data-db-key="SIKALOTDEF"]');c=await ctx();
  rec('品質データ: 画面名が主',c.title===await navLabel('SIKALOTDEF'),JSON.stringify(c));
- await go('#homeDrafts',2200);c=await ctx();
+ await go('#homeDrafts');c=await ctx();
  rec('品質データ→測定データ一覧でも名残なし',c.title==='測定データ一覧'&&!/sikalot/i.test(c.src),JSON.stringify(c));
 
  const bar=await page.evaluate(()=>{
@@ -238,7 +235,8 @@ const VIEWS=[
  await page.setViewportSize({width:1600,height:950});
  for(const [label,nav,barId] of VIEWS){
   await page.click('#'+nav);
-  await page.waitForTimeout(1400);
+  await W.until(page,id=>{const el=document.getElementById(id);return !!el&&el.parentElement===document.getElementById('headerViewBar')},barId,{ms:10000,what:label+'の操作列がヘッダーへ載る'});
+  await idle();
   const s=await page.evaluate(id=>{
    const el=document.getElementById(id);
    if(!el)return {missing:true};
@@ -271,7 +269,8 @@ const VIEWS=[
  /* マスタ管理は移設(§9.100)の当事者なので、個別に確かめる。
     絞り込み・再読込がヘッダーにあり、パネルには見出しだけが残ること。 */
  await page.click('#openMasterMaint');
- await page.waitForTimeout(1400);
+ await W.until(page,id=>{const el=document.getElementById(id);return !!el&&el.parentElement===document.getElementById('headerViewBar')},'mmHead',{ms:10000,what:'マスタ管理の操作列がヘッダーへ載る'});
+ await idle();
  const mm=await page.evaluate(()=>{
   const inBar=id=>!!document.querySelector('#headerViewBar #'+id);
   const icon=document.querySelector('#mmHead .mm-search-icon');
@@ -296,7 +295,8 @@ const VIEWS=[
 
  // 画面を出たら元の場所へ戻る(次の画面のものと混ざらない)
  await page.click('#openSchedule');
- await page.waitForTimeout(1200);
+ await W.until(page,id=>{const el=document.getElementById(id);return !!el&&el.parentElement===document.getElementById('headerViewBar')},'scHead',{ms:10000,what:'作業スケジュールの操作列がヘッダーへ載る'});
+ await idle();
  const back=await page.evaluate(()=>({
   inHeader:[...document.getElementById('headerViewBar').children].map(e=>e.id),
   mmHome:document.getElementById('mmHead')?.parentElement?.className||'(無し)',
@@ -305,15 +305,4 @@ const VIEWS=[
      !back.inHeader.includes('mmHead')&&back.inHeader.includes('scHead'),JSON.stringify(back.inHeader));
  rec('外した操作列は元の親へ戻る(捨てない)',/mm-dialog/.test(back.mmHome),back.mmHome);
 
- await b.close();
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- /* 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
-    編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
-    連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。 */
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1600,height:1000}});

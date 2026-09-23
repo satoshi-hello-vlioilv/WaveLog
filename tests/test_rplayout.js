@@ -21,7 +21,8 @@
    後片付けは finally で必ず行う。**列レイアウトマスタは実行をまたいで
    生き延びる**（§9.121）。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 /* 材料は自分で注ぎ込む（§9.351・§9.362 ⑥）。この網は「記録が1件ある」
    ことを前提にするが、**フィクスチャに記録は無い**——今まで見えていたのは
    前の実行の置き土産で、ランナーが実績を1本ごとに空へ戻すようになった
@@ -30,7 +31,6 @@ const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/no
 const {seedRecord}=require('./lib/harness.js');
 const fs=require('fs');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
 const TARGET='report:'+EQ;
 const TAG='rplayout-'+process.pid;
@@ -46,16 +46,12 @@ const UNIT=60;                                  /* RP_SPAN_UNIT（§9.169。幅�
    `normalize_column_width`の上限900で頭打ちになり、読み戻すと15行へ
    切り詰められる（§9.221 ⑨の追補）。 */
 const CUNIT=30;
-let b=null,madeBlock=null;
+let madeBlock=null;
 
-(async()=>{
+run('test_rplayout: 帳票の塊を行のグリッドへ載せ、パレットから出し入れする（§9.217）', async ({page,rec:rec0,B,W,idle,paint,errs,browser})=>{
+ /* 判定は土台の rec へ流しつつ、末尾でファイルへ全部残すために控える。 */
+ const R=[];const rec=(n,ok,d)=>{R.push({n,ok:!!ok,d});rec0(n,ok,d)};
  await cleanup();
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
- page.on('dialog',d=>d.accept());
  const openReport=async()=>{
   await seedRecord();
   await page.evaluate(()=>WL.records.openRecordsSafe('編集中'));
@@ -63,7 +59,7 @@ let b=null,madeBlock=null;
   await page.click('.record-list-row .report');
   await page.waitForSelector('#reportContent .rp-blocks',{timeout:25000});
   await settle(page);
-  await page.waitForTimeout(600);
+  await idle();
  };
  try{
   await post('/api/access-mode',{mode:'edit'});
@@ -204,7 +200,7 @@ let b=null,madeBlock=null;
       helpTxt.body直下===true&&helpTxt.画面の中===true,JSON.stringify(helpTxt));
   /* **閉じられること**（§9.222 ①。控えないと外クリックでもEscでも閉じない）。 */
   await page.keyboard.press('Escape');
-  await page.waitForTimeout(200);
+  await paint();
   rec('浮き出しはEscで閉じる',
       await page.evaluate(()=>!document.getElementById('rpPaletteHelp')));
   /* 押すだけでも出せる（§4。掴めない環境で行き止まりにしない）。 */
@@ -212,7 +208,7 @@ let b=null,madeBlock=null;
   await page.click(`#rpPalette [data-rp-pal="${first.replace(/"/g,'\\"')}"]`).catch(async()=>{
    await page.evaluate(k=>document.querySelector(`#rpPalette [data-rp-pal="${CSS.escape(k)}"]`).click(),first);
   });
-  await page.waitForTimeout(600);
+  await idle();
   const afterClick=await page.evaluate(()=>[...document.querySelectorAll('[data-rp-block]')].map(e=>e.dataset.rpBlock));
   rec('パレットを押すと紙に出る',afterClick.includes(first),`${first} / ${afterClick.length}件`);
 
@@ -226,7 +222,7 @@ let b=null,madeBlock=null;
    pal.dispatchEvent(new DragEvent('drop',{bubbles:true}));
    return {marked};
   },C2);
-  await page.waitForTimeout(700);
+  await idle();
   /* **外した塊は配置面から消える**（§9.222 ③、利用者の指示）。以前は
      薄く残していたが、外した塊がマスを押さえるので置き場所が無くなり、
      ゴーストが重なって位置調整ができなかった。**消えるだけでは足りない**
@@ -406,7 +402,7 @@ let b=null,madeBlock=null;
    it.click();
    return{有る:true};
   },TAG+' 自作');
-  await page.waitForTimeout(700);
+  await idle();
   const made=await page.evaluate(t=>{
    const el=document.querySelector(`[data-rp-block="${CSS.escape(t)}"]`);
    return el?{題:(el.querySelector('h3')||{}).textContent||'',本文:el.textContent||''}:null;
@@ -436,7 +432,7 @@ let b=null,madeBlock=null;
   await page.waitForFunction(()=>{
    const m=document.getElementById('rpBlockModal');return !!m&&!m.hidden;
   },null,{timeout:8000});
-  await page.waitForTimeout(300);
+  await idle();
   const dim=await page.evaluate(()=>{
    const f=document.getElementById('rpBlockForm');
    const n=f&&[...f.querySelectorAll('.rp-form-note')].map(x=>x.textContent).join(' ');
@@ -468,9 +464,9 @@ let b=null,madeBlock=null;
   await page.evaluate(()=>{
    const b=document.querySelector('#rpBlockForm [data-e-flow=""]');if(b)b.click();
   });
-  await page.waitForTimeout(200);
+  await idle();
   await page.evaluate(()=>{const c=document.getElementById('rpBlockClose');if(c)c.click()});
-  await page.waitForTimeout(300);
+  await W.until(page,()=>{const m=document.getElementById('rpBlockModal');return !m||m.hidden},null,{ms:5000,what:'塊の編集窓が閉じる'});await idle();
   /* 縁を引くと大きさが変わる。**取っ手は四辺＋四隅の8つ**（§9.283、
      利用者の指示「左、左下、左上、上、右上の部分でもすべての頂点、辺で
      サイズ変更できるように」）。綴りは方角（t/b/l/r と四隅）。 */
@@ -512,7 +508,7 @@ let b=null,madeBlock=null;
    const t=document.querySelector('.rp-size-tip');return t?t.textContent.trim():null;
   });
   await page.mouse.up();
-  await page.waitForTimeout(700);
+  await idle();
   const after=await page.evaluate(t=>{
    const el=document.querySelector(`[data-rp-block="${CSS.escape(t)}"]`);
    return el?Math.round(el.getBoundingClientRect().width):0;
@@ -538,7 +534,7 @@ let b=null,madeBlock=null;
   const pageRows=await page.evaluate(()=>Number(getComputedStyle(
     document.querySelector('#reportContent .rp-blocks')).getPropertyValue('--rp-page-rows'))||48);
   await page.evaluate(([eq,k,n])=>WL.reportLayout.setRows(eq,k,n),[EQ,A,Math.round(pageRows*1.2)]);
-  await page.waitForTimeout(700);await settle(page);
+  await idle();await settle(page);
   const cut=await page.evaluate(()=>{
    const pg=document.getElementById('reportContent');
    const el=pg.querySelector('.rp-block.is-cut[data-rp-block]');
@@ -574,7 +570,7 @@ let b=null,madeBlock=null;
   rec('紙をまたぐ塊の取っ手が押せる',
       !cut.前提なし&&cut.押せない.length===0,JSON.stringify(cut));
   await page.evaluate(([eq,k,n])=>WL.reportLayout.setRows(eq,k,n),[EQ,A,12]);
-  await page.waitForTimeout(700);await settle(page);
+  await idle();await settle(page);
 
   /* ==========================================================
      §9.283 8方向の取っ手——引いた辺だけが動く
@@ -616,7 +612,7 @@ let b=null,madeBlock=null;
    await page.mouse.down();
    await page.mouse.move(geo.x+geo.cw*dc,geo.y+geo.rh*dr,{steps:6});
    await page.mouse.up();
-   await page.waitForTimeout(600);await settle(page);
+   await idle();await settle(page);
    return true;
   };
   const g0=await spotOf(A);
@@ -667,7 +663,7 @@ let b=null,madeBlock=null;
   /* **後片付け**（§9.121）——ここで変えた高さを戻さないと、以降の
      「重ねて置く」の網が別の形の紙を見ることになる。 */
   await page.evaluate(([eq,k,r])=>WL.reportLayout.setRows(eq,k,r),[EQ,A,12]);
-  await page.waitForTimeout(700);await settle(page);
+  await idle();await settle(page);
 
   /* ==========================================================
      §9.283 「行の頭」は切り捨てで数えない
@@ -699,7 +695,7 @@ let b=null,madeBlock=null;
    return hit!=null;
   },[key,want]);
   await dropAtRow(A,6);
-  await page.waitForTimeout(800);await settle(page);
+  await idle();await settle(page);
   const frac=await page.evaluate(t=>{
    const pg=document.getElementById('reportContent'),grid=pg.querySelector('.rp-blocks');
    const el=pg.querySelector(`[data-rp-block="${CSS.escape(t)}"]`);
@@ -733,7 +729,7 @@ let b=null,madeBlock=null;
      置く」の網が別の配置を見るうえ、ここで出た一言（重なり・入りきらない）が
      案内の帯に残ったままになり、あちらの「畳んだ状態から出る」が成り立たない。 */
   await dropAtRow(A,1);
-  await page.waitForTimeout(800);await settle(page);
+  await idle();await settle(page);
   const noteLeft=await page.evaluate(()=>{
    const n=document.getElementById('rpArrangeNote');
    return {畳んでいる:!!(n&&n.hidden),文:(n?n.textContent:'').slice(0,40)};
@@ -938,7 +934,7 @@ let b=null,madeBlock=null;
    });
    if(other!==null){
     await page.selectOption('#rpArrangeBar [data-rp-eq]',other);
-    await page.waitForTimeout(700);
+    await idle();
     const now=await page.evaluate(()=>({
      対象:(document.querySelector('#rpArrangeBar [data-rp-eq]')||{}).value,
     }));
@@ -946,10 +942,10 @@ let b=null,madeBlock=null;
     /* 組み換えを閉じたら**元の設備へ戻す**（戻さないと通常表示まで
        別設備の設定で描かれる）。 */
     await page.click('#reportArrange');
-    await page.waitForTimeout(500);
+    await W.until(page,()=>{const b=document.getElementById('rpArrangeBar');return !b||b.hidden},null,{ms:6000,what:'組み換えの帯が閉じる'});
     await page.click('#reportArrange');
     await page.waitForSelector('#rpArrangeBar:not([hidden])',{timeout:8000});
-    await page.waitForTimeout(500);
+    await idle();
     const back=await page.evaluate(()=>(document.querySelector('#rpArrangeBar [data-rp-eq]')||{}).value);
     rec('組み換えを開き直すとこのロットの設備へ戻る',back!==other||other==='',
         JSON.stringify({閉じる前:other,開き直し:back}));
@@ -995,7 +991,7 @@ let b=null,madeBlock=null;
   const seedBefore=await seedSnap();
   await page.click('#reportArrange');
   await page.waitForSelector('#rpArrangeBar:not([hidden])',{timeout:8000});
-  await settle(page);await page.waitForTimeout(800);
+  await settle(page);await idle();
   /* 中身のある塊を1つだけ、1マスぶん引く（＝「初めて触る」）。 */
   const seedTarget=await page.evaluate(()=>{
    const el=[...document.querySelectorAll('[data-rp-block]:not(.is-empty)')]
@@ -1013,7 +1009,7 @@ let b=null,madeBlock=null;
   if(seedGrip&&seedGrip.掴める){
    await page.mouse.move(seedGrip.x,seedGrip.y);await page.mouse.down();
    await page.mouse.move(seedGrip.x-40,seedGrip.y,{steps:5});
-   await page.mouse.up();await page.waitForTimeout(1200);await settle(page);
+   await page.mouse.up();await idle(600);await settle(page);
    /* **「中身なり」の塊の高さを書き込まない**（§9.222 ②と同じ禁止事項）。
       引いた塊だけは書いてよい（縁を引くのは高さを決める操作）。凍らせると
       `.is-sized`が付いて中の枠が器いっぱいへ伸びる（§9.242 ⑧）ので、
@@ -1070,7 +1066,7 @@ let b=null,madeBlock=null;
        seedOverlaps.数>1&&seedOverlaps.重なり.length===0,
        seedOverlaps.重なり.slice(0,3).join(' / ')||`${seedOverlaps.数}件・重なりなし`);
    await page.click('#rpArrangeCancel');
-   await page.waitForTimeout(1200);await settle(page);
+   await W.until(page,()=>{const b=document.getElementById('rpArrangeBar');return !b||b.hidden},null,{ms:6000,what:'組み換えの帯が閉じる'});await idle(600);await settle(page);
    const seedAfter=await seedSnap();
    const moved=Object.keys(seedBefore).filter(k=>k!==seedTarget&&seedAfter[k]
      &&(Math.abs(seedAfter[k].高-seedBefore[k].高)>2||Math.abs(seedAfter[k].Y-seedBefore[k].Y)>2))
@@ -1114,7 +1110,7 @@ let b=null,madeBlock=null;
   await openReport();
   await page.click('#reportArrange');
   await page.waitForSelector('#rpArrangeBar:not([hidden])',{timeout:8000});
-  await settle(page);await page.waitForTimeout(800);
+  await settle(page);await idle();
   /* **印が付くのは「後から置かれた側」**——`rpResolvePlacement()`は先に
      置いた塊を正として、入らなかったほうを`rpOverlaps`へ入れる。名指しで
      見ると、たまたま先に置かれた側を見て「重なっていない」で落ちる。 */
@@ -1149,7 +1145,7 @@ let b=null,madeBlock=null;
     const m=/(\d+)\s*\/\s*span\s+(\d+)/.exec(el.style.gridColumn||'');
     return m?Number(m[2]):0;
    },ovBefore.名);
-   await page.mouse.up();await page.waitForTimeout(900);await settle(page);
+   await page.mouse.up();await idle();await settle(page);
    rec('§9.310 ② 重なっていても、掴んだ瞬間に勝手に縮まない',
        ovMid>=ovBefore.span-1,JSON.stringify({掴む前:ovBefore.span,動かした直後:ovMid}));
    rec('§9.310 ② 重なることは吹き出しの文字で言う',/重なり/.test(ovTip),ovTip||'(空)');
@@ -1163,12 +1159,8 @@ let b=null,madeBlock=null;
   await cleanup();
   /* 置いた実績は自分で消す（§9.351・§9.362）。 */
   try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
  /* ランナーはFAILを4件までしか見せないので、**全部をファイルにも残す**
     （直すときに何件目で何が起きたのかを毎回追い直さないため）。 */
  try{fs.writeFileSync('/tmp/wl-rplayout.json',JSON.stringify(R,null,1))}catch(e){}
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1700,height:1000}});

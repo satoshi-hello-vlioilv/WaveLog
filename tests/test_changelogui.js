@@ -15,13 +15,9 @@
    **中身まで見ること**——「窓が開く」だけを見る網は、タグが字のまま
    出ていても通る（実際に186個そのまま出ていた）。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
+'use strict';
+const {run}=require('./lib/harness.js');
+run('test_changelogui: 更新履歴の窓（§9.286 ⑦、利用者の報告）', async ({page,rec,W})=>{
  await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('.build-badge.build-badge-clickable',{timeout:20000});
 
@@ -116,7 +112,7 @@ let b=null;
 
  /* ---- 5) 言葉で絞り込める ---- */
  await page.fill('#changelogSearch','フィルタ');
- await page.waitForTimeout(400);
+ await W.until(page,n=>{const k=document.querySelectorAll('#changelogList .changelog-entry').length;return k>0&&k<n},tags.entries,{ms:5000,what:'言葉で版が絞られる'});
  const q=await page.evaluate(()=>({
   entries:document.querySelectorAll('#changelogList .changelog-entry').length,
   rows:document.querySelectorAll('#changelogRail [data-cl-ver]').length,
@@ -140,7 +136,7 @@ let b=null;
  rec('絞り込んでもHTMLが壊れない',safe.raw.length===0&&safe.b>0,JSON.stringify(safe));
 
  await page.click('#changelogClear');
- await page.waitForTimeout(300);
+ await W.until(page,n=>document.querySelectorAll('#changelogList .changelog-entry').length===n,tags.entries,{ms:5000,what:'絞り込みを外して全部戻る'});
  const back=await page.evaluate(()=>document.querySelectorAll('#changelogList .changelog-entry').length);
  rec('外すと全部戻る',back===tags.entries,`${back}/${tags.entries}`);
 
@@ -250,12 +246,4 @@ let b=null;
 
  await page.evaluate(()=>{const m=document.querySelector('#changelogModal');if(m)m.hidden=true});
 
- console.log('\n=== SUMMARY ===');
- const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
- f.forEach(x=>console.log(' -',x.n,x.d||''));
- await b.close();process.exit(f.length?1:0);
-})().catch(async e=>{
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1600,height:1000}});

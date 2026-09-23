@@ -16,29 +16,28 @@
     8. 壊れた正規表現で一覧が落ちない
     9. 保存した読み替えが一覧のセルに効き、開き直しても残る
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const RULE='テスト読替'+Date.now().toString(36);   // 実行ごとに一意
-let b=null,target='';
+let target='';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 async function cleanup(){
  try{if(target)await post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],names:{},formats:{},rules:{},user_id:'test'})}catch(e){}
  try{await post('/api/display-rule-master/delete',{name:RULE,user_id:'test'})}catch(e){}
 }
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1600,height:950}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
+run('test_colrule: 値の読み替え(§9.88 段4)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  page.on('console',m=>{if(m.type()==='error')errs.push('console: '+m.text().slice(0,90))});
  try{
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'load'});
+  /* 起動の取得が静まってから書き換え・読み込み直す（すぐ reload すると初期化の取得が
+     打ち切られ、アプリが「初期化エラー」を console へ出す・§9.451）。 */
+  await W.booted(page); await idle();
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'load'});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
-  await page.waitForTimeout(1200);
+  await idle();
   target=await page.evaluate(()=>WL.list.listLayoutTarget());
 
   /* ---- 1) 判定そのもの(行を渡して結果を見るだけ) ---- */
@@ -184,7 +183,7 @@ async function cleanup(){
                                                  rules:{[a.col]:a.rule}});
    WL.list.renderGrid();
   },{col,rule:RULE});
-  await page.waitForTimeout(300);
+  await paint();
   /* 列は`data-col`で引く(§9.104)。本文は「列の窓」の中しか作らないので、
      先頭からの位置では当たらない(窓の外は colspan の空セルに畳まれる)。 */
   const cellOf=async c=>{
@@ -207,27 +206,27 @@ async function cleanup(){
   /* ---- 4) 開き直しても残る ---- */
   await page.reload({waitUntil:'load'});
   await page.waitForFunction(()=>document.querySelectorAll('#grid table thead th').length>3,{timeout:25000});
-  await page.waitForTimeout(1200);
+  await idle();
   rec('開き直しても読み替えが残る',(await cellOf(col)).text==='置き換え済');
 
   /* **要点**: ルールを消しても一覧は出る(参照が残っていても元の値で表示)。 */
   await post('/api/display-rule-master/delete',{name:RULE,user_id:'test'});
   await page.evaluate(async()=>{await WL.displayRules.load(true);WL.list.renderGrid()});
-  await page.waitForTimeout(250);
+  await paint();
   rec('ルールを消したら元の値に戻る(一覧は壊れない)',(await cellOf(col)).text===raw,
    (await cellOf(col)).text);
 
   /* ---- 5) 編集画面 ---- */
   await page.evaluate(()=>WL.listColumns.open());
-  await page.waitForTimeout(400);
+  await W.until(page,c=>[...document.querySelectorAll('#lcList .lc-item')].some(x=>x.dataset.key===c),col,{ms:8000,what:'列の設定パネルにその列が並ぶ'});
   await page.evaluate(c=>{
    const el=[...document.querySelectorAll('#lcList .lc-item')].find(x=>x.dataset.key===c);
    el&&el.click();
   },col);
-  await page.waitForTimeout(200);
+  await W.until(page,()=>!!document.getElementById('lcRule'),null,{ms:4000,what:'列の設定に読み替えの選択が出る'});
   rec('列の設定に読み替えの選択がある',await page.evaluate(()=>!!document.getElementById('lcRule')));
   await page.evaluate(a=>WL.listRules.open({name:a.rule,column:a.col}),{rule:RULE,col});
-  await page.waitForTimeout(400);
+  await page.waitForSelector('#listRulePanel:not([hidden])',{timeout:8000}); await idle();
   const ed=await page.evaluate(()=>{
    const p=document.getElementById('listRulePanel');
    const r=p.getBoundingClientRect();
@@ -255,7 +254,7 @@ async function cleanup(){
   ]});
   await page.evaluate(async a=>{await WL.displayRules.load(true);WL.listRules.open({name:a.rule,column:a.col})},
                       {rule:RULE,col});
-  await page.waitForTimeout(400);
+                      await page.waitForSelector('#listRulePanel:not([hidden])',{timeout:8000}); await idle();
   const many=await page.evaluate(()=>{
    const p=document.getElementById('listRulePanel'),box=document.getElementById('lrRows');
    const pr=p.getBoundingClientRect(),tr=document.getElementById('lrTry').getBoundingClientRect();
@@ -271,7 +270,7 @@ async function cleanup(){
   rec('「試してみる」はウィンドウの中に見えている',many.tryVisible);
   // 行を足すと試した結果も増える(下書きのまま評価している)
   await page.evaluate(()=>document.getElementById('lrAddRow').click());
-  await page.waitForTimeout(200);
+  await paint();
   rec('行を足せる',await page.evaluate(()=>document.querySelectorAll('#listRulePanel .lr-row').length)>=2);
   await page.evaluate(()=>WL.listRules.close());
 
@@ -383,16 +382,9 @@ async function cleanup(){
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
-  console.log('\n=== SUMMARY ===');
-  const bad=R.filter(r=>!r.ok);console.log(`${R.length-bad.length}/${R.length} passed`);
-  bad.forEach(x=>console.log(' -',x.n,x.d||''));
-  await b.close();b=null;
   await cleanup();
-  process.exit(bad.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
-  if(b)await b.close().catch(()=>{});
+  rec('FATAL',false,String(e&&e.message||e));
   await cleanup();
-  process.exit(2);
  }
-})();
+}, {viewport:{width:1600,height:950}});

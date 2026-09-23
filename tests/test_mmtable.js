@@ -19,19 +19,12 @@
     4. 移行済みの表は**丸ごと消せる**。消せるのは移行済みだけで、
        生きている表は口が断る。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const post=(p,x)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(x)});
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
- page.on('dialog',d=>d.accept());
+run('test_mmtable: マスタ管理の一覧（呼び名の収まり・群の畳み・並べ替え・列幅・移行済みの削除）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
@@ -51,7 +44,9 @@ let b=null;
   /* ---- 1) 呼び名が1行に収まる（§9.250 ①） ---- */
   for(const sz of ['sm','md','lg']){
    await page.evaluate(v=>document.documentElement.setAttribute('data-ui-size',v),sz);
-   await page.waitForTimeout(350);
+   /* 表示サイズの見張り（master-maint.js の fitMaintNav）は rAF で測り、次の rAF で
+      錠を解き、測り直しの頼みが溜まっていればもう1巡する——描画3巡で必ず終わる。 */
+   await paint();await paint();await paint();
    const bad=await page.evaluate(()=>{
     const out=[];
     document.querySelectorAll('#masterMaintNav .mm-nav-label,#masterMaintNav .mm-nav-group-name')
@@ -65,7 +60,7 @@ let b=null;
    rec(`表示サイズ${sz}: 行き先の高さが1種類（折り返していない）`,bad.hs.length===1,JSON.stringify(bad.hs));
   }
   await page.evaluate(()=>document.documentElement.setAttribute('data-ui-size','md'));
-  await page.waitForTimeout(300);
+  await paint();await paint();await paint();
 
   /* ---- 2) 並べ替え（§9.250 ⑥） ---- */
   await page.click('#masterMaintNav [data-master="equipment"]');
@@ -76,7 +71,7 @@ let b=null;
   rec('見出しが並べ替えの的になっている',
       await page.evaluate(()=>!!document.querySelector('.mm-th[data-col="name"]')));
   await page.click('.mm-th[data-col="name"]');
-  await page.waitForTimeout(300);
+  await paint();
   const asc=await names();
   const sortedAsc=[...orig].sort((a,b)=>a.localeCompare(b,'ja'));
   rec('1回押すと昇順',JSON.stringify(asc)===JSON.stringify(sortedAsc),JSON.stringify(asc.slice(0,3)));
@@ -84,28 +79,28 @@ let b=null;
       /設備名/.test(await page.evaluate(()=>document.querySelector('.mm-viewmark')?.textContent||'')),
       await page.evaluate(()=>document.querySelector('.mm-viewmark')?.textContent||''));
   await page.click('.mm-th[data-col="name"]');
-  await page.waitForTimeout(300);
+  await paint();
   const desc=await names();
   rec('2回押すと降順',JSON.stringify(desc)===JSON.stringify([...sortedAsc].reverse()),JSON.stringify(desc.slice(0,3)));
   await page.click('.mm-th[data-col="name"]');
-  await page.waitForTimeout(300);
+  await paint();
   rec('3回押すと元の並びへ戻る',JSON.stringify(await names())===JSON.stringify(orig));
   rec('戻ったら印も消える',!(await page.evaluate(()=>!!document.querySelector('.mm-viewmark'))));
 
   /* 空欄は向きによらず最後（区分は未設定の設備が多い列）。 */
   await page.click('.mm-th[data-col="kind"]');
-  await page.waitForTimeout(300);
+  await paint();
   const kindAsc=await page.evaluate(()=>[...document.querySelectorAll('#masterMaintList .mm-row:not(.head)')]
     .map(r=>r.children[1].textContent.trim()));
   await page.click('.mm-th[data-col="kind"]');
-  await page.waitForTimeout(300);
+  await paint();
   const kindDesc=await page.evaluate(()=>[...document.querySelectorAll('#masterMaintList .mm-row:not(.head)')]
     .map(r=>r.children[1].textContent.trim()));
   const lastEmpty=a=>{const i=a.findIndex(v=>v==='未設定'||v==='—'||v==='');return i<0||a.slice(i).every(v=>v==='未設定'||v==='—'||v==='')};
   rec('空欄は昇順でも最後',lastEmpty(kindAsc),JSON.stringify(kindAsc));
   rec('空欄は降順でも最後（向きで行き先が変わらない）',lastEmpty(kindDesc),JSON.stringify(kindDesc));
   await page.click('#mmViewReset');
-  await page.waitForTimeout(300);
+  await paint();
 
   /* ---- 3) 列幅（§9.250 ⑥）。**実際に掴んで狭める** ---- */
   const grip=await page.evaluate(()=>{
@@ -122,7 +117,7 @@ let b=null;
   if(grip){
    await page.mouse.move(grip.x,grip.y);await page.mouse.down();
    await page.mouse.move(grip.x-120,grip.y,{steps:8});await page.mouse.up();
-   await page.waitForTimeout(600);
+   await W.until(page,()=>/幅/.test(document.querySelector('.mm-viewmark')?.textContent||''),null,{ms:4000,what:'列幅を触った印が出る'});
    const after=await page.evaluate(()=>({
      w:Math.round(document.querySelector('.mm-th[data-col="name"]').getBoundingClientRect().width),
      mark:document.querySelector('.mm-viewmark')?.textContent||''}));
@@ -132,13 +127,14 @@ let b=null;
    /* 別のタブへ行って戻る。**設備停止の分類は§9.397で「設備停止マスタ」へ
       統合した**ので、ここは残っているタブ（設備停止の時間）を使う。 */
    await page.click('#masterMaintNav [data-master="stopMinutes"]');
-   await page.waitForTimeout(900);
+   await idle();
    await page.click('#masterMaintNav [data-master="equipment"]');
-   await page.waitForTimeout(1200);
+   await page.waitForSelector('.mm-th[data-col="name"]',{timeout:10000});
+   await idle();
    const back=await page.evaluate(()=>Math.round(document.querySelector('.mm-th[data-col="name"]').getBoundingClientRect().width));
    rec('タブを行き来しても列幅が残る',Math.abs(back-after.w)<=2,`${after.w} → ${back}`);
    await page.click('#mmViewReset');
-   await page.waitForTimeout(400);
+   await paint();
    const reset=await page.evaluate(()=>Math.round(document.querySelector('.mm-th[data-col="name"]').getBoundingClientRect().width));
    rec('戻すと既定の幅へ帰る',reset>after.w+40,`${after.w} → ${reset}`);
   }
@@ -168,9 +164,9 @@ let b=null;
   });
   if(Number(retired)>0){
    await page.click('[data-nav-fold="retired"]');
-   await page.waitForTimeout(400);
+   await paint();
    await page.click('.mm-nav-group[data-nav-group="retired"] [data-master]');
-   await page.waitForTimeout(1200);
+   await idle(400,10000);
    const view=await page.evaluate(()=>({
      drop:!!document.querySelector('#mmDropTable'),
      add:!!document.querySelector('#masterMaintAdd'),
@@ -235,10 +231,5 @@ let b=null;
 
  }catch(e){
   rec('FATAL',false,e.message);
- }finally{
-  if(b)await b.close().catch(()=>{});
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1600,height:1000}});

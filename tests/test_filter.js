@@ -17,8 +17,8 @@
    4. 同じ仕掛一覧でもモードで条件が混ざる
       スケジュールモードは品質データを結合して列構成が変わるので、
       置き場を分ける。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const setMode=async m=>{await fetch(`${API}/api/access-mode`,
  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
@@ -31,15 +31,10 @@ const TAG='T'+Date.now().toString().slice(-6);
 const H=require('./lib/harness.js');
 const SNAP_TABLES=['フィルタプリセットマスタ'];
 let snapM=null;
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- snapM=await H.masterSnapshot(SNAP_TABLES);
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
- const settle=(ms=700)=>page.waitForTimeout(ms);
+run('test_filter: 登録フィルタまわりの4つの指摘（§9.80）', async ({page,rec,W,idle})=>{
+snapM=await H.masterSnapshot(SNAP_TABLES);
+/* 見えている（`hidden`でなく、組み立て済み）ことを待つ。condUi() の「見える」と同じ物差し。 */
+const shown=(id,what)=>W.until(page,a=>{const e=document.getElementById(a);return !!e&&!e.hidden&&!!e.offsetParent},id,{ms:5000,what});
  /* confirmModal() は押されるまで解決しない Promise を返す。
     page.evaluate は返り値の Promise を待つので、**返さないこと**
     (返すとテストがそこで固まる。実際に踏んだ)。 */
@@ -47,8 +42,8 @@ let b=null;
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
   await page.click('aside [data-db-key="SIKALOTNOW"]',{timeout:15000});
-  await settle(2000);
- };
+  await idle(400,15000);  // 一覧の読み込みが済むまで
+  };
  /* 登録フィルタは**人のもの**になった(§9.172)ので、画面と同じ利用者IDで問い合わせる
     ——付けずに聞くと「みんなのもの」しか返らず、自分が登録したぶんが見えない。 */
  const presetNames=mode=>page.evaluate(async m=>{
@@ -89,7 +84,7 @@ let b=null;
   rec('検索欄の顔をした器は、同時にひとつだけ',
       c0.一覧の検索欄===true&&c0.欄===false,JSON.stringify(c0));
 
-  await page.click('#filterAddCond');await settle(500);
+  await page.click('#filterAddCond');await shown('filterTokenInput','条件の欄が開く');
   const c1=await condUi();
   rec('押すと欄が開き、そのまま打てる（焦点が乗る）',
       c1.欄===true&&c1.ボタン===false&&c1.焦点==='filterTokenSearch',JSON.stringify(c1));
@@ -100,9 +95,10 @@ let b=null;
        return w>0&&w<row*0.5;}),
       await page.evaluate(()=>Math.round(document.getElementById('filterTokenInput').getBoundingClientRect().width)+'px'));
 
-  await page.fill('#filterTokenSearch','ロット');await settle(600);
+  await page.fill('#filterTokenSearch','ロット');
+  await W.until(page,()=>{const s=document.getElementById('filterSuggest');return !!s&&!s.hidden&&s.childElementCount>0},null,{ms:5000,what:'候補が出る'});
   rec('打つと候補が出る（機能は消えていない）',(await condUi()).候補===true);
-  await page.keyboard.press('Escape');await settle(400);
+  await page.keyboard.press('Escape');await shown('filterAddCond','欄が畳まれ「＋ 条件を追加」へ戻る');
   const c2=await condUi();
   /* 畳むときは**打ちかけの字も捨てる**——条件はまだ足っていないので、
      残すと次に開いたとき「何か効いている」と読める。 */
@@ -111,8 +107,9 @@ let b=null;
 
   /* ---- 1) 適用と登録が別々に効く ---- */
   /* §9.286 ①: たまにしか使わない入口は`⋯`の浮きメニューへ畳んだ。**消していない**ので、開いてから押す。 */
-  await page.click('#filterMoreBtn');await settle(200);
-  await page.click('#filterToggle');await settle(600);
+  await page.click('#filterMoreBtn');  // 次の click が #filterToggle の出現を待つ
+  await page.click('#filterToggle');
+  await W.until(page,()=>{const e=document.querySelector('#addGenericFilter');return !!e&&e.getClientRects().length>0},null,{ms:5000,what:'条件のビルダーが開く'});
   rec('条件を作るビルダーに「適用」と「登録」がある',
       await page.evaluate(()=>!!document.querySelector('#addGenericFilter')&&!!document.querySelector('#registerGenericFilter')));
   /* §9.80で外した「マスタへ保存」は戻さない（何が登録されたのか・何が
@@ -128,7 +125,7 @@ let b=null;
    el.dispatchEvent(new Event('input',{bubbles:true}));
   },TAG);
   const before=(await presetNames('')).length;
-  await page.click('#addGenericFilter');await settle(1400);
+  await page.click('#addGenericFilter');await idle();  // 適用した条件で一覧を取り直すまで
   /* 効いている条件は**アイコンと件数の1バッジ**へ畳んだ（§9.287）。条件式と
      登録の印（★／☆）はポップオーバーが持つ——バッジに書くと必ず切れる。 */
   const openConds=async()=>{
@@ -151,7 +148,7 @@ let b=null;
         return !!u&&!u.classList.contains('is-saved')}));
   await closeConds();
 
-  await page.click('#registerGenericFilter');await settle(2500);
+  await page.click('#registerGenericFilter');await idle(400,10000);  // 登録の書き込みが済むまで
   const after=await presetNames('');
   rec('「登録」でマスタへ保存される',after.length===before+1&&after.some(n=>n.includes(TAG)),
       `${before}→${after.length}`);
@@ -167,11 +164,12 @@ let b=null;
   /* ---- 2) 削除の確認ダイアログが最前面に出る（本題） ---- */
   // 確認ダイアログを先に作っておく＝以前はこれで下敷きになった条件。
   await page.evaluate(()=>{confirmModal('先に1回出しておく')});
-  await settle(400);
+  await W.until(page,()=>{const c=document.getElementById('appConfirmModal');return !!c&&!c.hidden},null,{ms:5000,what:'確認の窓が開く'});
   await page.evaluate(()=>document.getElementById('appConfirmCancel').click());
-  await settle(300);
+  await W.until(page,()=>{const c=document.getElementById('appConfirmModal');return !c||c.hidden},null,{ms:5000,what:'確認の窓が閉じる'});
   await page.evaluate(()=>document.querySelector('#openFilterPresets').click());
-  await settle(2500);
+  await W.until(page,()=>{const f=document.getElementById('filterPresetModal');return !!f&&!f.hidden},null,{ms:10000,what:'登録フィルタ一覧が開く'});
+  await idle();  // 一覧の中身を読み終えるまで
   const stack=await page.evaluate(()=>{
    const order=[...document.body.children].map(x=>x.id).filter(Boolean);
    const c=document.getElementById('appConfirmModal'),f=document.getElementById('filterPresetModal');
@@ -187,7 +185,7 @@ let b=null;
    if(!row)return false;row.querySelector('.danger').click();return true;
   },TAG);
   rec('削除ボタンを押せる',clicked);
-  await settle(700);
+  await W.until(page,()=>{const c=document.getElementById('appConfirmModal');return !!c&&!c.hidden},null,{ms:5000,what:'削除の確認が開く'});
   const reach=await page.evaluate(()=>{
    const ok=document.getElementById('appConfirmOk');
    if(!ok||document.getElementById('appConfirmModal').hidden)return {none:true};
@@ -199,7 +197,7 @@ let b=null;
       !!reach.reachable,JSON.stringify(reach));
   if(reach.reachable){
    await page.evaluate(()=>document.getElementById('appConfirmOk').click());
-   await settle(2000);
+   await idle();  // 削除の書き込みが済むまで
    rec('削除が実行される',!(await presetNames('')).some(n=>n.includes(TAG)));
   }
   await page.evaluate(()=>{const m=document.getElementById('filterPresetModal');if(m)m.hidden=true});
@@ -232,18 +230,10 @@ let b=null;
   await setMode('edit');
   try{if(snapM)await H.dropNewMasterRows(snapM)}
   catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
-
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
-  await b.close();
-  process.exit(ng.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
+  rec('FATAL',false,String(e&&e.message||e));
   await setMode('edit').catch(()=>{});
   try{if(snapM)await H.dropNewMasterRows(snapM)}
   catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
-  await b.close().catch(()=>{});
-  process.exit(2);
  }
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});
+}, {viewport:{width:1600,height:1000}});

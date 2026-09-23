@@ -19,17 +19,12 @@
    **実際には終了させない。** 終了するとこのあとの全部のテストが動かなく
    なるので、確認までで止める（終了そのものはサーバー側の
    `tests/test_scowner.py`が`watchdog.teardown()`で見る）。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
+run('test_appquit: 安全な終了と、書込役が応答しないときの引き取り（§9.301）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  /* **終了の口は絶対に通さない。** 押し間違い（配線の書き間違い）でサーバーが
     落ちると、このあとの全部のテストが道連れになる。 */
  let quitCalls=0;
@@ -86,7 +81,7 @@ let b=null;
   rec('メニューを畳んでもアイコンで残る',folded.見えている&&folded.アイコン,JSON.stringify(folded));
   rec('畳んだときの呼び名を持つ（浮き出しで読める・§9.265）',/終了/.test(folded.呼び名),folded.呼び名);
   await page.evaluate(()=>document.getElementById('navCollapseToggle')?.click());
-  await page.waitForTimeout(200);
+  await paint();
 
   /* ---- 2) サーバーが「何が起きるか」を答える ---------------------- */
   const facts=await page.evaluate(async()=>await (await fetch('/api/app/quit-check')).json());
@@ -239,8 +234,10 @@ let b=null;
   await page.click('#scOwnerTakeBtn');
   await page.waitForSelector('#appConfirmModal:not([hidden])',{timeout:10000});
   await page.click('#appConfirmOk');
-  await page.waitForFunction(()=>window.__takeDone||true,null,{timeout:2000}).catch(()=>{});
-  await page.waitForTimeout(1200);
+  /* 引き取りの口が叩かれるまで待ち、そのあと取得が静まるまで待つ
+     （2回目が出るならこの間に出る——「1回だけ」を見る判定なので上限の待ちで止めない）。 */
+  await W.poll(async()=>takeCalls,n=>n>=1,8000,50);
+  await idle(800);
   rec('確認してから引き取る（口を1回だけ叩く）',takeCalls===1,`take=${takeCalls}回`);
   /* 押したのは 4.5) の1回だけ（そこも口はルートが受け止めている）。 */
   rec('終了の口を叩いたのは「終了する」を押した1回だけ',quitCalls===1,`quit=${quitCalls}回`);
@@ -250,10 +247,6 @@ let b=null;
   try{await page.unroute('**/api/app/quit')}catch(_){/* 既に外れていれば何もしない（後片付け） */}
   try{await page.evaluate(async()=>{await fetch('/api/access-mode',{method:'POST',
     headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'edit'})})})}catch(_){/* 落ちた後のページでは戻せない（次の本がモードを入れ直す） */}
-  if(b)await b.close().catch(()=>{});
  }
- console.log('\n=== SUMMARY ===');
- const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
- ng.forEach(x=>console.log(' -',x.n,x.d||''));
- process.exit(ng.length?1:0);
-})();
+
+}, {viewport:{width:1600,height:1000}});

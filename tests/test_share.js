@@ -16,34 +16,32 @@
     2. 別のPCのデータ一覧に、その続きが出る(印つき)
     3. 開くとその端末へ取り込まれ、**子ロットデータ**も一緒に来る
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
 const ID='share-test-'+Date.now();
 const LOT='SHARE'+String(Date.now()).slice(-5);
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 async function cleanup(){
  try{await post('/api/measurement/backup/delete',{ids:[ID]})}catch(e){}
 }
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+run('test_share: 途中経過を他のPCから続けられること(§9.91)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await cleanup();
   await post('/api/access-mode',{mode:'edit'});
 
   /* ---- PC1: 途中保存する ---- */
-  const pc1=await b.newContext({viewport:{width:1500,height:900}});
+  const pc1=await browser.newContext({viewport:{width:1500,height:900}});
   const p1=await pc1.newPage();
+  const t1=W.track(p1);
   p1.on('pageerror',e=>console.log('[pc1]',e.message));
   await p1.goto(B+'/',{waitUntil:'domcontentloaded'});
   await p1.waitForSelector('#openSchedule',{timeout:30000});
   await p1.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
   await p1.reload({waitUntil:'domcontentloaded'});
   await p1.waitForSelector('#grid table',{timeout:30000});
-  await p1.waitForTimeout(1200);
+  await W.booted(p1,30000); await t1.idle();
 
   /* 測定レコードを1件作り、子ロットデータを持たせて途中保存する。
      (測定画面をUIで開くと仕掛の状態に左右されるため、保存の経路そのものを
@@ -76,8 +74,9 @@ async function cleanup(){
    !!onServer&&!('payload' in onServer),onServer?Object.keys(onServer).join(','):'');
 
   /* ---- PC2: 別のプロファイル(=別のIndexedDB)から見る ---- */
-  const pc2=await b.newContext({viewport:{width:1500,height:900}});
+  const pc2=await browser.newContext({viewport:{width:1500,height:900}});
   const p2=await pc2.newPage();
+  const t2=W.track(p2);
   const errs2=[];
   p2.on('pageerror',e=>errs2.push(e.message));
   await p2.goto(B+'/',{waitUntil:'domcontentloaded'});
@@ -85,7 +84,7 @@ async function cleanup(){
   await p2.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
   await p2.reload({waitUntil:'domcontentloaded'});
   await p2.waitForSelector('#grid table',{timeout:30000});
-  await p2.waitForTimeout(1200);
+  await W.booted(p2,30000); await t2.idle();
 
   const localOnly=await p2.evaluate(async id=>{
    const all=await WL.records.reliableAll();
@@ -103,7 +102,8 @@ async function cleanup(){
 
   // 画面でも印が出ること
   await p2.evaluate(()=>WL.records.openRecords('編集中'));
-  await p2.waitForTimeout(1500);
+  await W.until(p2,()=>document.querySelectorAll('.record-list-row').length>0,null,{ms:10000,what:'記録の一覧に行が出る'});
+  await t2.idle();
   const badge=await p2.evaluate(id=>{
    const rows=[...document.querySelectorAll('.record-list-row')];
    const row=rows.find(r=>r.getAttribute('aria-label')?.includes(id)||r.textContent.includes(id));
@@ -178,16 +178,9 @@ async function cleanup(){
 
   rec('コンソールに例外が出ない',errs2.length===0,errs2.slice(0,3).join(' / '));
 
-  console.log('\n=== SUMMARY ===');
-  const bad=R.filter(r=>!r.ok);console.log(`${R.length-bad.length}/${R.length} passed`);
-  bad.forEach(x=>console.log(' -',x.n,x.d||''));
-  await b.close();b=null;
   await cleanup();
-  process.exit(bad.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
-  if(b)await b.close().catch(()=>{});
+  rec('FATAL',false,String(e&&e.message||e));
   await cleanup();
-  process.exit(2);
  }
-})();
+});

@@ -16,8 +16,8 @@
     - **値の入っていない設備では上限が掛からない**（引けない値を0にしない）
     - 測定画面の案内は`ruleText()`の1本なので、**出どころの呼び名まで出る**
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const TAG='lim-'+Date.now().toString(36);
 const post=(p,x)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
@@ -26,12 +26,7 @@ const get=p=>fetch(B+p).then(r=>r.json());
 const EQ='テスト設備A',EQ2='テスト設備B';
 const SRC='equipment.maxLineSpeed';
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1920,height:1080}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('dialog',d=>d.accept());
+run('test_oplimit: 設備マスタの最大ライン速度と、数の決まりのマスタ連携（§9.231）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  /* 後始末のための控え。**設備マスタの更新は全置換**なので、1つだけ送ると
     区分・最大条数・標準時間が消える——丸ごと控えて丸ごと戻す。 */
  let eqBackup=null,itemId=null;
@@ -234,17 +229,12 @@ let b=null;
    案内:(document.querySelector('#opdMaxFrom')?.closest('label')?.querySelector('.op-form-note')?.textContent||'').trim()}));
   rec('「自分で決める」へ戻すと手打ちの欄が戻る',
       back.打てる&&/この行に書いた数/.test(back.案内),JSON.stringify(back));
-
-  console.log('\n合計 '+R.filter(r=>r.ok).length+'/'+R.length+' PASS'
-    +'  (FAIL: '+R.filter(r=>!r.ok).length+')');
-  process.exitCode=R.some(r=>!r.ok)?1:0;
  }catch(e){
-  console.log('FATAL: '+(e&&e.message));process.exitCode=1;
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* 後始末（§9.121）。**落ちても消す**——残った項目は次の実行の盤に
      並び、`test_msteps`の「記録した値」の分母を変える。 */
   try{if(itemId)await post('/api/operation-item-master/delete',{user_id:'tests',id:itemId})}catch(e){}
   try{if(eqBackup)await post('/api/equipment-master/update',{user_id:'tests',...eqBackup})}catch(e){}
-  if(b)await b.close();
  }
-})();
+}, {viewport:{width:1920,height:1080}});

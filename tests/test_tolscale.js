@@ -5,21 +5,16 @@
    非対称公差(基準1000 / +3 / -1)を注入してから測る。
    非対称にするのが要点: 範囲の中点(1001)と基準値(1000)がずれるので、
    図示が基準値を正しく指しているかどうかが判定できる。 */
+'use strict';
+const {run}=require('./lib/harness.js');
 const fs=require('fs');
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
 const API='http://127.0.0.1:5029';
 const DUMP=process.env.WAVELOG_TOLDUMP||'';
 const setMode=async m=>{await fetch(`${API}/api/access-mode`,
  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
 const BASE=1000,PLUS=3,MINUS=1;          // 判定範囲 999〜1003 / 中点1001
 const VALUES=['999.5','1002.8','1000.2','1004.0','998.5',''];
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
+run('test_tolscale: 測定画面の公差数直線(基準値に対する図示)。', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await setMode('edit');
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
@@ -27,7 +22,7 @@ let b=null;
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:20000});
-  await page.waitForTimeout(1500);
+  await W.booted(page);await idle();
   /* ---- 公差の答えは登録表が出す（§9.348・REVIEW 3-16） ----
      以前は3つのファイルが`WL.measureInput.toleranceDetail`を読み込み順に被せており、順番も
      引数の運び方も読み込み順まかせだった。**提供者の顔ぶれと順番を画面から
@@ -76,7 +71,7 @@ let b=null;
      ので、②測定へ移らないと**高さ0のまま測ることになる**（隠れている要素を
      測って「上限が下限より上にない」と読み違える）。 */
   await page.evaluate(()=>WL.measureSteps.go('2'));
-  await page.waitForTimeout(400);
+  await idle();
 
   const inj=await page.evaluate(([base,plus,minus,vals])=>{
    const s=S.measure.source=S.measure.source||{};
@@ -95,7 +90,8 @@ let b=null;
   rec('非対称公差を注入できる(範囲999〜1003・基準1000)',
    !!inj.range&&Math.abs(inj.range[0]-(BASE-MINUS))<1e-6&&Math.abs(inj.range[1]-(BASE+PLUS))<1e-6,
    JSON.stringify(inj));
-  await page.waitForTimeout(700);
+   await W.until(page,()=>!!document.querySelector('.accurate-numberline'),null,{ms:6000,what:'公差数直線が描かれる'});
+   await idle();
 
   const g=await page.evaluate(()=>{
    const box=document.querySelector('.accurate-numberline');
@@ -344,7 +340,7 @@ let b=null;
    nlOpen.絵.length===2&&nlOpen.絵[0]!==nlOpen.絵[1],nlOpen.絵.join(' / '));
   rec('いま軸の外に何件あるかを文字で言う',/軸の外/.test(nlOpen.状態),nlOpen.状態);
   await page.click('#numberlinePanel [data-nl-mode="rel"]');
-  await page.waitForTimeout(350);
+  await W.until(page,()=>(document.querySelector('.accurate-numberline')||{dataset:{}}).dataset.mode==='rel',null,{ms:5000,what:'図が公差比の軸で描き直される'});
   const relMixed=await mixedRead();
   rec('切り替えると図が描き直される(公差比の軸になる)',
    relMixed.軸==='rel',String(relMixed.軸));
@@ -356,7 +352,7 @@ let b=null;
   rec('選んだ候補に印が付く',
    await page.evaluate(()=>document.querySelector('[data-nl-mode="rel"]').classList.contains('is-on')),'');
   await page.click('#numberlinePanel [data-nl-mode="abs"]');
-  await page.waitForTimeout(350);
+  await W.until(page,()=>(document.querySelector('.accurate-numberline')||{dataset:{}}).dataset.mode==='abs',null,{ms:5000,what:'図が実寸の軸へ戻る'});
 
   /* 軸の外は**件数を文字で言い、表示幅を広げれば入る**（黙って端で潰さない）。 */
   const far=async()=>page.evaluate(()=>{
@@ -374,12 +370,12 @@ let b=null;
   rec('軸をはみ出した点は件数を文字で出す',
    out1.軸外===1&&/軸の外\s*1件/.test(out1.文)&&out1.印===1,JSON.stringify(out1));
   await page.click('#numberlinePanel [data-nl-span="10"]');
-  await page.waitForTimeout(350);
+  await W.until(page,()=>!!document.querySelector('#numberlinePanel [data-nl-span="10"].is-on'),null,{ms:5000,what:'表示幅10が選ばれて図が描き直される'});
   const out2=await far();
   rec('表示幅を広げると軸の端が広がり、はみ出しが収まる',
    out2.端>out1.端&&out2.軸外===0&&out2.文==='',JSON.stringify({前:out1.端,後:out2.端,軸外:out2.軸外}));
   await page.click('#numberlinePanel [data-nl-span="2"]');
-  await page.waitForTimeout(300);
+  await W.until(page,()=>!!document.querySelector('#numberlinePanel [data-nl-span="2"].is-on'),null,{ms:5000,what:'表示幅2へ戻る'});
   /* 開けたら閉じられること。閉じてから先へ進む（窓が測定表に重なる）。 */
   await page.click('#nlPanelClose');
   rec('閉じられる',await page.evaluate(()=>document.getElementById('numberlinePanel').hidden===true
@@ -588,17 +584,7 @@ let b=null;
     await WL.records.reliableDelete(S.measure.id);
   }).catch(()=>{});
 
-  console.log('\n=== SUMMARY ===');
-  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
-  f.forEach(x=>console.log(' -',x.n,x.d||''));
-  await b.close();process.exit(f.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
-  await b.close().catch(()=>{});
-  process.exit(2);
+  rec('FATAL',false,String(e&&e.message||e));
  }
-})().catch(async e=>{
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1600,height:1000}});

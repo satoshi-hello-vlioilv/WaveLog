@@ -25,12 +25,12 @@
    偏っているので、そのまま見ても「直ごとに切れている」と「たまたま1枚」を
    見分けられない。2つの直・2つの日を作って入れる。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const TAG='OS'+process.pid;
 const EQ='テスト設備A';
 const TARGET='opsheet:'+EQ;
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const made=[];
 function localIso(y,m,d,hh,mm){return new Date(y,m-1,d,hh,mm,0).toISOString()}
@@ -53,8 +53,7 @@ const cleanupLayout=async()=>{
    widths:{},names:{},formats:{},rules:{},formulas:{},locks:[],sorts:{},user_id:'test'})}catch(_){}
 };
 
-(async()=>{
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+run('test_opsheet: 操業データ表（§9.241 ②、利用者の指示）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await post('/api/access-mode',{mode:'edit'});
   await cleanupLayout();
@@ -66,10 +65,6 @@ const cleanupLayout=async()=>{
   await mk({id:TAG+'-2',lotNo:TAG+'L2',y:Y,m:M,d:D,hh:10,opData:{[OP1]:'251',[OP2]:'81'}});
   await mk({id:TAG+'-3',lotNo:TAG+'L3',y:Y,m:M,d:D,hh:18,opData:{[OP1]:'260',[OP2]:'90'}});
 
-  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
-  const page=await b.newPage({viewport:{width:1600,height:1000}});
-  const errs=[];
-  page.on('pageerror',e=>errs.push(String(e&&e.message||e)));
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   /* **この端末の覚えを先に捨てる**——前の実行で用紙や行数を触っていると、
      「既定はA4横・直単位」を一度も確かめないまま通る。 */
@@ -266,13 +261,9 @@ const cleanupLayout=async()=>{
 
   rec('画面の例外が出ていない',errs.length===0,errs.join(' / '));
  }catch(e){
-  console.log('FATAL '+(e&&e.message||e));R.push({ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   try{await post('/api/measurement/backup/delete',{ids:made})}catch(_){}
   await cleanupLayout();
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1600,height:1000}});

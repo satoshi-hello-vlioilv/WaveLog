@@ -24,17 +24,10 @@
    ここで固定するのは「速さ」ではなく**この4つの作りが残っていること**。
    実時間はマシンで変わるので、往復回数・DOMの形・順序で見る。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const ctx=await b.newContext({viewport:{width:1600,height:950}});
- await ctx.addInitScript(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
- const page=await ctx.newPage();
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
+run('test_listperf: 一覧を開いたときに画面が固まらないこと(§9.94)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
 
  // 行ごとの追い判定(filters付きの/api/table)を数える
  const lookups=[];
@@ -110,7 +103,8 @@ let b=null;
   await page.fill('#search','L900');
   await page.waitForFunction(()=>document.querySelectorAll('#grid tbody tr').length<=5
     &&document.querySelectorAll('#grid tbody tr').length>0,{timeout:15000});
-  await page.waitForTimeout(4000);
+  /* 追い判定の往復が出そろって静まるまで（数えるのはそのあと）。 */
+  await idle(1000,15000);
   const kinds={
    any:lookups.filter(u=>u.includes('starts_any')).length,
    one:lookups.filter(u=>!u.includes('starts_any')).length,
@@ -124,7 +118,7 @@ let b=null;
 
   // ---- 5. 大きい表は少しずつ並べ、最後には全行そろう ----
   await page.fill('#search','');
-  await page.waitForTimeout(1200);
+  await idle();
   await page.selectOption('#pageSize','500');
   await page.waitForFunction(()=>document.querySelectorAll('#grid tbody tr').length>0,{timeout:20000});
   const firstPaint=await page.evaluate(()=>document.querySelectorAll('#grid tbody tr').length);
@@ -137,7 +131,7 @@ let b=null;
   rec('継ぎ足しは最後まで走り、全行そろう',settled.rows===settled.count,JSON.stringify(settled));
   // 継ぎ足しの途中でも操作を受け付ける（並べ替えができる）
   await page.click('#grid thead th[data-sort-col]');
-  await page.waitForTimeout(2500);
+  await idle(600,15000);
   const afterSort=await page.evaluate(()=>document.querySelectorAll('#grid tbody tr').length);
   rec('継ぎ足しのあとに並べ替えても行が壊れない',afterSort>0,`${afterSort}行`);
 
@@ -214,15 +208,7 @@ let b=null;
 
   rec('コンソールに例外が出ていない',errs.length===0,errs.slice(0,2).join(' / '));
  }catch(e){
-  console.error('FATAL',e);
- }finally{
-  await b.close();
+  rec('FATAL',false,String(e&&e.message||e));
  }
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1600,height:950},
+    init:()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A')});

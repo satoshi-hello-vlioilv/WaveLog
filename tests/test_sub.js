@@ -2,24 +2,19 @@
    - データ一覧/ダッシュボードの全件読みが1回になっている
    - ダッシュボードの同時呼び出しでも読みが二重にならない
    - 恒久的な失敗(403)はバックアップ削除の控えへ積み直さない */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const setMode=async m=>{await fetch(B+'/api/access-mode',{method:'POST',
  headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
- page.on('dialog',d=>d.accept());
+run('test_sub: サブ導線の棚卸し(§9.54)の検証', async ({page,rec,B,W,idle,paint,errs,browser})=>{
 
  await setMode('edit');
  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openSchedule',{timeout:15000});
  await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
  await page.reload({waitUntil:'domcontentloaded'});
- await page.waitForTimeout(2500);
+ await W.booted(page); await idle();
  await page.evaluate(async()=>{
   const now=Date.now();
   for(let i=0;i<40;i++)await WL.records.reliablePut({id:'s-'+i,status:i%3?'完了':'編集中',
@@ -42,17 +37,26 @@ let b=null;
 
  await arm();
  await page.evaluate(()=>{const m=document.querySelector('#recordModal');if(m)m.hidden=true});
- await page.click('#homeDrafts');await page.waitForTimeout(2200);
+ /* 一覧が開き、全件読みが**少なくとも1回**走ってから数える（0回の時点で
+    読むと「1回」を確かめられない）。そのあと取得が静まるまで待つ——
+    2回目があるならこの間に来る。 */
+ await page.click('#homeDrafts');
+ await W.until(page,()=>{const m=document.querySelector('#recordModal');
+   return !!m&&!m.hidden&&(window.__ra||0)>=1},null,{what:'データ一覧が開いて全件読みが走る'});
+ await idle();
  const listReads=await reads();
  rec('データ一覧を開くときの全件読みは1回',listReads===1,listReads+'回');
 
  await arm();
  const btn=await page.$('[data-status-filter="done"]');
- if(btn){await btn.click();await page.waitForTimeout(1500)}
+ if(btn){await btn.click();await W.paint(page);await idle()}
  rec('一覧内の絞り込みでは読み直さない',(await reads())===0,(await reads())+'回');
 
  await arm();
- await page.click('#openDashboard');await page.waitForTimeout(3000);
+ await page.click('#openDashboard');
+ await W.until(page,()=>document.body.classList.contains('db-mode')&&(window.__ra||0)>=1,null,
+   {what:'ダッシュボードが開いて全件読みが走る'});
+ await idle();
  const dashReads=await reads();
  // 以前はensureDataが結果だけをキャッシュしており、1回の描画から同時に
  // 2箇所が呼ぶと両方ともキャッシュ未命中になって2回読んでいた。
@@ -62,8 +66,9 @@ let b=null;
  // ---- 恒久的な失敗(403)は控えへ積まない ----
  await page.evaluate(()=>localStorage.removeItem('WaveLogPendingBackupDeleteV1'));
  await setMode('schedule');
+ /* `deleteBackupRows` は控えを書き終えてから戻る（`await` している）ので、
+    ここで待つ物は無い。 */
  await page.evaluate(async()=>{await WL.records.deleteBackupRows(['no-such-id-403'])});
- await page.waitForTimeout(600);
  const q403=await page.evaluate(()=>JSON.parse(localStorage.getItem('WaveLogPendingBackupDeleteV1')||'[]'));
  rec('権限が無い(403)ときは控えへ積み直さない',q403.length===0,JSON.stringify(q403));
 
@@ -71,21 +76,9 @@ let b=null;
  await setMode('edit');
  await page.route('**/api/measurement/backup/delete',r=>r.abort());
  await page.evaluate(async()=>{await WL.records.deleteBackupRows(['transient-1'])});
- await page.waitForTimeout(600);
  const qNet=await page.evaluate(()=>JSON.parse(localStorage.getItem('WaveLogPendingBackupDeleteV1')||'[]'));
  rec('通信できないときは従来どおり控える',qNet.includes('transient-1'),JSON.stringify(qNet));
  await page.unroute('**/api/measurement/backup/delete');
  await page.evaluate(()=>localStorage.removeItem('WaveLogPendingBackupDeleteV1'));
 
- await b.close();
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1700,height:1000}});

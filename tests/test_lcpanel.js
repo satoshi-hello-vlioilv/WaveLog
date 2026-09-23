@@ -17,24 +17,17 @@
    触った結果は**保存せずに後ろの一覧へ即反映**し、保存しないで閉じたら
    開いたときの形へ戻す。ここが崩れると「保存」の意味が無くなる。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const EQ='テスト設備A';
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 async function cleanup(){
  for(const t of ['list:SIKALOTNOW:仕掛','list:SIKALOTNOW:'+encodeURIComponent('仕掛')]){
   try{await post('/api/column-layout-master',{target:t,clear:true,order:[],widths:{},hidden:[],names:{},formats:{},rules:{},user_id:'test'})}catch(e){}
  }
 }
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
- page.on('dialog',d=>d.accept());
+run('test_lcpanel: 列の設定パネル(§9.90で作り直し)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:30000});
@@ -44,11 +37,11 @@ async function cleanup(){
                           localStorage.removeItem('listColumnPanelRectV5')});
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#grid table',{timeout:30000});
-  await page.waitForTimeout(1500);
+  await W.booted(page);await idle();
 
   await page.click('#listColumnBtn');
   await page.waitForSelector('#listColumnPanel .lc-item',{timeout:10000});
-  await page.waitForTimeout(500);
+  await idle();
 
   /* ---- 1) 大きさと位置 ---- */
   const geom=await page.evaluate(()=>{
@@ -77,7 +70,7 @@ async function cleanup(){
   await page.mouse.down();
   await page.mouse.move(wb.x-120,wb.y+wb.height/2,{steps:10});
   await page.mouse.up();
-  await page.waitForTimeout(300);
+  await paint();
   const after=await page.evaluate(()=>{const r=document.getElementById('listColumnPanel').getBoundingClientRect();
     return {w:Math.round(r.width),right:Math.round(r.right)}});
   rec('左端を引くと左へ広がる(右端は動かない)',
@@ -89,7 +82,7 @@ async function cleanup(){
   const target=keys.find(k=>!k.startsWith('__')&&k!=='#');
   const colsBefore=await page.$$eval('#grid thead th',ns=>ns.length);
   await page.click(`#listColumnPanel .lc-item[data-key="${target}"] .lc-vis`);
-  await page.waitForTimeout(500);
+  await idle();
   const off=await page.evaluate(k=>{
    const el=[...document.querySelectorAll('#listColumnPanel .lc-item')].find(x=>x.dataset.key===k);
    return {checked:el?.querySelector('input').checked,
@@ -101,7 +94,7 @@ async function cleanup(){
    `${colsBefore} → ${off.cols}`);
   // 戻す
   await page.click(`#listColumnPanel .lc-item[data-key="${target}"] .lc-vis`);
-  await page.waitForTimeout(400);
+  await idle();
   const back=await page.$$eval('#grid thead th',ns=>ns.length);
   rec('チェックし直すと戻る',back===colsBefore,`${off.cols} → ${back}`);
 
@@ -142,7 +135,7 @@ async function cleanup(){
            見た目:cs.transform!=='none'&&cs.boxShadow!=='none',
            text:(g.textContent||'').trim().slice(0,14)};
   });
-  await page.mouse.up();await page.waitForTimeout(400);
+  await page.mouse.up();await idle();
   rec('掴んでいる間、掴んだ行の写し(ゴースト)が出る',
    ghost.ある&&ghost.w>0&&ghost.h>0&&ghost.画面内,JSON.stringify(ghost));
   rec('ゴーストは掴んだ元の器より上に出る（裏に回らない）',
@@ -161,7 +154,7 @@ async function cleanup(){
   /* ---- 5) 押しただけなら「選ぶ」 ---- */
   const pick=await box(3);
   await page.mouse.move(pick.x,pick.y);await page.mouse.down();await page.mouse.up();
-  await page.waitForTimeout(300);
+  await idle();
   const picked=await page.evaluate(()=>{
    const el=document.querySelector('#listColumnPanel .lc-item.is-picked');
    return {key:el?.dataset.key||'',detail:document.querySelector('.lc-detail-head')?.textContent.trim().slice(0,20)||''};
@@ -187,12 +180,12 @@ async function cleanup(){
    if(r)r.click();
    return r?r.dataset.key:'';
   });
-  await page.waitForTimeout(300);
+  await idle();
   await page.evaluate(()=>{
    const el=document.querySelector('#lcName');
    if(el){el.value='ためし表示名';el.dispatchEvent(new Event('input',{bubbles:true}))}
   });
-  await page.waitForTimeout(500);
+  await idle();
   const named=await page.evaluate(k=>{
    const r=[...document.querySelectorAll('#listColumnPanel .lc-item')].find(x=>x.dataset.key===k);
    return {name:(r?.querySelector('.lc-name')?.textContent||'').trim(),
@@ -208,7 +201,7 @@ async function cleanup(){
    const el=[...document.querySelectorAll('input[name="lcKind"]')].find(x=>x.value==='text');
    if(el){el.checked=true;el.dispatchEvent(new Event('change',{bubbles:true}))}
   });
-  await page.waitForTimeout(400);
+  await idle();
   const marks=await page.evaluate(k=>{
    const r=[...document.querySelectorAll('#listColumnPanel .lc-item')].find(x=>x.dataset.key===k);
    return [...(r?.querySelectorAll('.lc-mark')||[])].map(m=>m.textContent).join('');
@@ -218,7 +211,7 @@ async function cleanup(){
   /* ---- 7) 保存せずに閉じたら元へ戻る ---- */
   const colsWhileOpen=await page.$$eval('#grid thead th',ns=>ns.map(n=>n.textContent.trim()).join('|'));
   await page.click('#lcClose');
-  await page.waitForTimeout(600);
+  await idle();
   const colsAfterClose=await page.$$eval('#grid thead th',ns=>ns.map(n=>n.textContent.trim()).join('|'));
   rec('保存せずに閉じると一覧は元の形へ戻る',colsAfterClose!==colsWhileOpen,
    `開いていた時=${colsWhileOpen.slice(0,40)} / 閉じた後=${colsAfterClose.slice(0,40)}`);
@@ -226,12 +219,12 @@ async function cleanup(){
   /* ---- 8) パネルの中で操作行が折り返さない ---- */
   await page.click('#listColumnBtn');
   await page.waitForSelector('#listColumnPanel .lc-item',{timeout:10000});
-  await page.waitForTimeout(500);
+  await idle();
   await page.evaluate(()=>{
    const r=[...document.querySelectorAll('#listColumnPanel .lc-item')].find(x=>!x.dataset.key.startsWith('__'));
    if(r)r.click();
   });
-  await page.waitForTimeout(400);
+  await idle();
   /* **箱の高さでは測れない。** 36pxの入力欄が入っている行は文字1行より
      高くて当たり前なので、「中の部品が同じ段に並んでいるか」で見る。 */
   const wrap=await page.evaluate(()=>{
@@ -296,7 +289,7 @@ async function cleanup(){
   /* 分類で絞ると、その分類の行だけになる。 */
   const calcN=cls.chips.find(c=>c.origin==='calc')?.n||0;
   await page.evaluate(()=>document.querySelector('.lc-origin-chip[data-origin="calc"]')?.click());
-  await page.waitForTimeout(250);
+  await idle();
   const filtered=await page.evaluate(()=>{
    const rows=[...document.querySelectorAll('#listColumnPanel .lc-item')];
    return {n:rows.length,ok:rows.every(r=>r.dataset.origin==='calc')};
@@ -312,7 +305,7 @@ async function cleanup(){
   });
   rec('「出す」の見出しに全選択チェックがある',!!allBox,JSON.stringify(allBox));
   await page.click('#lcAllVis');                    // いま絞り込み中の3列を隠す
-  await page.waitForTimeout(400);
+  await idle();
   const headsHidden=await page.$$eval('#grid thead th',ns=>ns.length);
   rec('全選択チェックを外すと絞り込んだぶんだけ隠れる',
     headsHidden===headsBefore-calcN,`${headsBefore} → ${headsHidden}（計算列${calcN}本）`);
@@ -321,18 +314,18 @@ async function cleanup(){
   });
   rec('全部隠したらチェックも外れる',midway.checked===false&&midway.ind===false,JSON.stringify(midway));
   await page.click('#lcAllVis');
-  await page.waitForTimeout(400);
+  await idle();
   const headsShown=await page.$$eval('#grid thead th',ns=>ns.length);
   rec('チェックし直すと戻る',headsShown===headsBefore,`${headsHidden} → ${headsShown}`);
   await page.evaluate(()=>document.querySelector('.lc-origin-chip[data-origin=""]')?.click());
-  await page.waitForTimeout(250);
+  await idle();
 
   /* 一部だけ出ている状態では中間表示にする(外れて見えると「全部隠れている」と読める)。 */
   await page.evaluate(()=>{
    const r=[...document.querySelectorAll('#listColumnPanel .lc-item')][0];
    r?.querySelector('.lc-vis input')?.click();
   });
-  await page.waitForTimeout(350);
+  await idle();
   const partial=await page.evaluate(()=>{
    const b=document.getElementById('lcAllVis');return {checked:b.checked,ind:b.indeterminate};
   });
@@ -341,9 +334,9 @@ async function cleanup(){
    const r=[...document.querySelectorAll('#listColumnPanel .lc-item')][0];
    r?.querySelector('.lc-vis input')?.click();
   });
-  await page.waitForTimeout(300);
+  await idle();
   await page.evaluate(()=>document.querySelector('.lc-origin-chip[data-origin=""]')?.click());
-  await page.waitForTimeout(250);
+  await idle();
 
   /* ---- 9b) 幅を内容に合わせる(§9.106) ---- */
   const fit=await page.evaluate(async()=>{
@@ -364,12 +357,12 @@ async function cleanup(){
   if(fit){
    rec('幅を手で決めると一覧の列も広がる',fit.wide>fit.before+100,JSON.stringify(fit));
    /* パネルを開き直して(下地の値を読ませて)からオートフィット。 */
-   await page.click('#lcClose');await page.waitForTimeout(300);
+   await page.click('#lcClose');await idle();
    await page.click('#listColumnBtn');
    await page.waitForSelector('#listColumnPanel .lc-item',{timeout:10000});
-   await page.waitForTimeout(400);
+   await idle();
    await page.click('#lcAutoFit');
-   await page.waitForTimeout(500);
+   await idle();
    const after=await page.evaluate(k=>Math.round(
      document.querySelector(`#grid thead th[data-sort-col="${CSS.escape(k)}"]`).getBoundingClientRect().width),fit.key);
    rec('「幅を内容に合わせる」で余分な幅が消える',after<fit.wide-100,
@@ -382,7 +375,7 @@ async function cleanup(){
      .find(x=>x.dataset.origin==='source');
    if(r)r.click();
   });
-  await page.waitForTimeout(350);
+  await idle();
   const pane=await page.evaluate(()=>{
    const d=document.getElementById('lcDetail');
    const y=s=>{const e=d.querySelector(s);return e?Math.round(e.getBoundingClientRect().top):-1};
@@ -413,7 +406,7 @@ async function cleanup(){
      .find(x=>x.dataset.origin==='calc');
    if(r)r.click();
   });
-  await page.waitForTimeout(350);
+  await idle();
   const virt=await page.evaluate(()=>{
    const d=document.getElementById('lcDetail');
    return {手順:d.querySelectorAll('.lc-step').length,
@@ -464,7 +457,7 @@ async function cleanup(){
   if(moved.skip){
    rec('「#」を動かすと一覧の並びも同じになる',false,'並べ替えの起点が見つからなかった');
   }else{
-   await page.waitForTimeout(600);
+   await idle();
    const ord1=await same();
    const idxPanel=ord1.panel.indexOf('#');
    /* 一覧側の「#」の位置は見出しの文字で探す(パネルの表示名と同じ)。 */
@@ -482,10 +475,10 @@ async function cleanup(){
       ② パネルを保存せずに閉じると**保存済みの幅まで巻き戻る**
      の両方が起きていた（利用者の言う「修正した内容が戻される」）。 */
   await page.click('#lcClose').catch(()=>{});
-  await page.waitForTimeout(200);
+  await idle();
   await page.click('#listColumnBtn');
   await page.waitForSelector('#listColumnPanel .lc-item',{timeout:10000});
-  await page.waitForTimeout(400);
+  await idle();
   const mix=await page.evaluate(async()=>{
    const t=WL.list.listLayoutTarget();
    /* パネルの中で1列のチェックを外す（＝未保存の下書き）。 */
@@ -510,7 +503,7 @@ async function cleanup(){
       JSON.stringify(srvMid.widths||{}));
   /* 保存せずに閉じる。**下書きだけが消え、外から保存した幅は残る。** */
   await page.click('#lcClose');
-  await page.waitForTimeout(400);
+  await idle();
   const afterClose=await page.evaluate(a=>({
    hidden:(WL.columnLayout.get(a.t).hidden||[]).includes(a.key),
    width:(WL.columnLayout.get(a.t).widths||{})[a.wkey],
@@ -538,16 +531,9 @@ async function cleanup(){
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
-  console.log('\n=== SUMMARY ===');
-  const bad=R.filter(r=>!r.ok);console.log(`${R.length-bad.length}/${R.length} passed`);
-  bad.forEach(x=>console.log(' -',x.n,x.d||''));
-  await b.close();b=null;
   await cleanup();
-  process.exit(bad.length?1:0);
  }catch(e){
-  console.error('FATAL',e);
-  if(b)await b.close().catch(()=>{});
+  rec('FATAL',false,String(e&&e.message||e));
   await cleanup();
-  process.exit(2);
  }
-})();
+}, {viewport:{width:1700,height:1000}});

@@ -8,8 +8,8 @@
    「詰めた」は主観になりやすいので、**行ピッチと到達性**という測れる形で
    固定する。詰めすぎて文字が切れては本末転倒なので、溢れ検査
    (tests/test_fit.js)と対で見ること。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 /* 行ピッチの上限(標準サイズ)。以前は39px。ここを超えたら「また太った」。
    下限も見る——0に近い値は、行が潰れて読めなくなっている合図。 */
@@ -18,22 +18,19 @@ const MAX_ROW_PITCH=37, MIN_ROW_PITCH=24;
 const setMode=async m=>{await fetch(`${API}/api/access-mode`,
  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
- const settle=(ms=700)=>page.waitForTimeout(ms);
+run('test_density: 一覧の密度と、右端に隠れがちな操作列、', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await setMode('edit');
   await page.goto(API+'/',{waitUntil:'domcontentloaded'});
+  /* 起動の取得が静まってから書き換え・読み込み直す（すぐ reload すると初期化の取得が
+     打ち切られ、アプリが「初期化エラー」を console へ出す・§9.451）。 */
+  await W.booted(page); await idle();
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:20000});
   await page.click('aside [data-db-key="SIKALOTNOW"]');
-  await settle(1800);
+  await W.until(page,()=>document.querySelectorAll('#grid tbody tr').length>0,null,{ms:20000,what:'仕掛一覧の行が出る'});
+  await idle();
 
   /* ---- 1) 仕掛一覧の行ピッチ ---- */
   const pitchOf=sel=>page.evaluate(s=>{
@@ -49,7 +46,7 @@ let b=null;
   /* ---- 2) 再読込は読み直し方を選べる ---- */
   /* §9.286 ④: 入口はヘッダーの`#reload`から**一覧ツールバーの鮮度チップ**へ
      移した——「いつのデータか」と「取り直す」を同じ場所に置く。 */
-  await page.click('#listFreshness');await settle(900);
+  await page.click('#listFreshness');await W.until(page,()=>!!document.getElementById('reloadMenu'),null,{ms:4000,what:'再読込の選択肢が出る'});
   const menu=await page.evaluate(()=>{
    const m=document.getElementById('reloadMenu');if(!m)return null;
    return [...m.querySelectorAll('button')].map(x=>({
@@ -66,14 +63,14 @@ let b=null;
   /* 実行できない端末では**隠さずに理由を出す**。あるはずの機能を探させない。 */
   rec('実行できないときは理由が読める',!rne||!rne.disabled||rne.hint.length>4,
       rne?`${rne.disabled?'無効':'有効'}: ${rne.hint}`:'-');
-  await page.mouse.click(5,600);await settle(400);
+  await page.mouse.click(5,600);await W.until(page,()=>!document.getElementById('reloadMenu'),null,{ms:4000,what:'他所を押して選択肢が閉じる'});
   rec('画面の他所を押すと閉じる',
       await page.evaluate(()=>!document.getElementById('reloadMenu')));
 
   /* 「一覧を再読込」が実際に効く(押しても何も起きない、にしない) */
-  await page.click('#listFreshness');await settle(600);
+  await page.click('#listFreshness');await W.until(page,()=>!!document.getElementById('reloadMenu'),null,{ms:4000,what:'再読込の選択肢が出る'});
   await page.evaluate(()=>document.querySelector('[data-reload-action="list"]').click());
-  await settle(1500);
+  await idle(600,15000);
   rec('「一覧を再読込」で一覧が出ている',
       await page.evaluate(()=>!!document.querySelector('#grid tbody tr')));
 
@@ -107,7 +104,9 @@ let b=null;
       bar?`${bar.w}/${bar.track}px`:'-');
 
   /* ---- 4) 作業スケジュール: 行の密度と操作列の到達性 ---- */
-  await page.click('#openSchedule');await settle(2500);
+  await page.click('#openSchedule');
+  await W.until(page,()=>document.querySelectorAll('.sc-row-line').length>0,null,{ms:25000,what:'作業スケジュールの行が出る'});
+  await W.settleFlags(page);await idle();
   const scPitch=await pitchOf('.sc-row-line');
   rec('作業スケジュールの行が詰まっている',scPitch>=MIN_ROW_PITCH&&scPitch<=MAX_ROW_PITCH,
       `${scPitch}px (上限${MAX_ROW_PITCH})`);
@@ -183,7 +182,7 @@ let b=null;
    return items;
   });
   await page.setViewportSize({width:1600,height:1000});
-  await settle(800);
+  await paint();
   const wide=await reachOf();
   rec('広い幅では操作ボタンをそのまま押せる',!!wide&&(wide.noButton||wide.reachable),
       wide?`はみ出し${wide.overflow}px / ${wide.sticky}`:'行が無い');
@@ -192,22 +191,14 @@ let b=null;
       wide?wide.sticky:'-');
   for(const w of [1200,980]){
    await page.setViewportSize({width:w,height:1000});
-   await settle(800);
+   await paint();
    const items=await menuItemsOf();
    rec(`幅${w}pxでも右クリックから操作へ手が届く`,
        items.length>0&&items.some(t=>/表示列/.test(t)),
        `${items.length}件: ${items.slice(0,4).join(' / ')}`);
   }
-  await page.setViewportSize({width:1600,height:1000});await settle(500);
-
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
-  await b.close();
-  process.exit(ng.length?1:0);
+  await page.setViewportSize({width:1600,height:1000});await paint();
  }catch(e){
-  console.error('FATAL',e);
-  await b.close().catch(()=>{});
-  process.exit(2);
+  rec('FATAL',false,String(e&&e.message||e));
  }
-})().catch(async e=>{console.error('FATAL',e);if(b)await b.close().catch(()=>{});process.exit(2)});
+}, {viewport:{width:1600,height:1000}});

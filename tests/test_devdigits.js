@@ -18,19 +18,13 @@
    `0`=マイクロメータ／`1`=ノギス／`2`=デプス。`+#L…`がコンベックス。
    `DT101`はマイクロメータなので、板幅へ流すと弾かれて何も入らない。
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const setMode=m=>fetch(API+'/api/access-mode',{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox','--disable-dev-shm-usage']});
- const page=await b.newPage({viewport:{width:1920,height:1080}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',String(e&&e.message||e).slice(0,140)));
- page.on('dialog',d=>d.accept());
+run('test_devdigits: 測定器で桁が変わる／公差の桁／全〇／レールと自動保存', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  let lotId='';
  try{
   await setMode('edit');
@@ -61,7 +55,7 @@ let b=null;
   await page.waitForFunction(()=>!document.querySelector('#measureModal')?.hidden,null,{timeout:25000});
   await page.waitForFunction(()=>typeof S!=='undefined'&&!!S.measure,null,{timeout:25000});
   await page.waitForFunction(()=>document.querySelector('#saveOverlay')?.hidden!==false,null,{timeout:30000}).catch(()=>{});
-  await page.waitForTimeout(1200);
+  await idle();
   lotId=await page.evaluate(()=>S.measure.id);
 
   /* ---- ⑤ 公差の桁（板厚は3桁） ---- */
@@ -72,7 +66,7 @@ let b=null;
    const ty=document.getElementById('measureType');ty.value='板厚';
    ty.dispatchEvent(new Event('change',{bubbles:true}));
   });
-  await page.waitForTimeout(900);
+  await idle();
   const tol=await page.evaluate(()=>(document.querySelector('#toleranceSummary .tol-pill')||{}).textContent||'');
   rec('板厚の公差は小数3桁で出る（桁が溢れない）',
       /1\.475〜1\.525/.test(tol)&&!/\d\.\d{5,}/.test(tol),JSON.stringify(tol));
@@ -81,7 +75,7 @@ let b=null;
   const send=async(raw,key)=>{
    await page.evaluate(v=>{const el=document.getElementById('deviceInput');
      el.value=v;WL.measureInput.processDeviceInput(v)},raw);
-   await page.waitForTimeout(500);
+   await paint();   // 受信の処理は同期（processDeviceInput を直に呼んでいる）
    return page.evaluate(k=>({
      値:S.measure.measurements[k][0][0],
      器:(S.measure.settings.deviceOf||{})[k]||'',
@@ -94,7 +88,8 @@ let b=null;
 
   await page.evaluate(()=>{const ty=document.getElementById('measureType');ty.value='板幅';
     ty.dispatchEvent(new Event('change',{bubbles:true}));S.measure.settings.wStep=0});
-  await page.waitForTimeout(700);
+  // 起きないことを見る判定（札を出さない）: 項目を替えた描き直しと往復が静まるまで待つ。
+  await idle();
   rec('まだ転送を受けていなければ器の札は出さない',
       (await page.evaluate(()=>document.querySelectorAll('.mhead-device').length))===0,'');
   const cal=await send('DT110+1234.56','width');
@@ -115,7 +110,7 @@ let b=null;
      段では`display:none`（§9.123）。段を移らずに`#measureType`だけ
      変えても、器が畳まれたままなので`#flatAllOk`は矩形0のまま押せない。 */
   await page.click('.mstep[data-mstep="2"]');
-  await page.waitForTimeout(300);
+  await paint();
   await page.evaluate(()=>{
    const m=S.measure;m.settings.horizontalCount=4;
    const h=document.getElementById('horizontalCount');if(h)h.value='4';
@@ -124,7 +119,7 @@ let b=null;
   });
   await page.waitForSelector('#flatAllOk',{timeout:10000});
   await page.click('#flatAllOk');
-  await page.waitForTimeout(500);
+  await paint();
   const flat=await page.evaluate(()=>{
    const j=lengthIndex(),n=Math.max(1,+document.getElementById('horizontalCount').value||1);
    return {行:S.measure.measurements.flatness[j].slice(0,n),
@@ -139,7 +134,7 @@ let b=null;
   await page.evaluate(()=>{
    const ty=document.getElementById('measureType');ty.value='板幅';
    ty.dispatchEvent(new Event('change',{bubbles:true}));S.measure.settings.wStep=0});
-  await page.waitForTimeout(600);
+  await paint();
   await page.evaluate(()=>{const el=document.getElementById('deviceInput');
     el.value='DT110+1200.00';WL.measureInput.processDeviceInput('DT110+1200.00')});
   const soon=await page.evaluate(()=>document.getElementById('localState').textContent||'');
@@ -172,9 +167,14 @@ let b=null;
   await page.evaluate(ms=>{
    /* **被せない**（§9.352）——閉じたファイルの関数は外から差し替えられない。
       持ち替えは登録表の `own` で行い、元の道は核（`reliablePutCore`）を呼ぶ。 */
+   /* 網の側の数え（製品には触らない）: 書き込みが始まった回数と、いま往復中の数。 */
+   window.__rpStarted=0;window.__rpBusy=0;
    WL.measureHooks.own('reliablePut',async m=>{
-    await new Promise(s=>setTimeout(s,ms));
-    return WL.records.reliablePutCore(m);
+    window.__rpStarted++;window.__rpBusy++;
+    try{
+     await new Promise(s=>setTimeout(s,ms));
+     return WL.records.reliablePutCore(m);
+    }finally{window.__rpBusy--}
    });
    S.measure.settings.wStep=0;
   },1200);
@@ -183,13 +183,16 @@ let b=null;
   /* 書き込みが始まった（＝`WL.measureView.collect()`は済んだ）ところで、もう1つ打つ。 */
   await page.waitForFunction(()=>/保存しています/
     .test(document.getElementById('localState').textContent||''),null,{timeout:20000});
-  await page.waitForTimeout(200);
+  /* 端末内への書き込み（1200msに遅らせた）が**実際に始まった**ことを待つ。 */
+  await W.until(page,()=>window.__rpStarted>0,null,{ms:10000,what:'遅らせた端末内の書き込みが始まる'});
   await page.evaluate(()=>{const el=document.getElementById('deviceInput');
     el.value='DT110+1202.00';WL.measureInput.processDeviceInput('DT110+1202.00')});
   /* 落ち着くまで待つ。**時間で決め打ちにしない**（§9.102）。 */
   await page.waitForFunction(()=>!WL.base.measureDirty&&/保存済み|再送します/
     .test(document.getElementById('localState').textContent||''),null,{timeout:30000}).catch(()=>{});
-  await page.waitForTimeout(600);
+  /* finally のもう1回の書き込み（遅らせてある）も終わるまで待つ。 */
+  await W.until(page,()=>window.__rpBusy===0,null,{ms:10000,what:'遅らせた端末内の書き込みが全部終わる'});
+  await idle();
   const late=await page.evaluate(async()=>{
    WL.measureHooks.own('reliablePut',null);   // 返上（§9.352）
    const saved=await WL.records.reliableGet(S.measure.id).catch(()=>null);
@@ -225,12 +228,4 @@ let b=null;
    if(why)console.log('!! 後片付け: '+why);
   }
  }catch(e){console.log('!! 後片付けに届かなかった: '+(e&&e.message||e))}
- await b.close();
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1920,height:1080}});

@@ -11,16 +11,12 @@
        `disabled`＋理由の文（§4。押せるのに何も起きないボタンを残さない）
     4. 閲覧モードでも押せない（理由は別の文）
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(body)});
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];page.on('pageerror',e=>errs.push(e.message));
+run('test_recdel: データ一覧の削除は「⋯」の中の2クリック（§9.221 ⑤）', async ({page,rec,B,W,idle,paint,errs})=>{
  try{
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
@@ -42,7 +38,8 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   });
   await page.click('[data-open-records]').catch(()=>{});
   await page.waitForSelector('#recordList',{timeout:20000});
-  await page.waitForTimeout(1500);
+  await W.until(page,()=>document.querySelectorAll('.record-list-row').length>0,null,{ms:10000,what:'記録の一覧に行が出る'});
+  await idle();
 
   const shape=await page.evaluate(()=>{
    const rows=[...document.querySelectorAll('.record-list-row')];
@@ -59,7 +56,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   const before=await page.evaluate(()=>document.querySelectorAll('.rec-row-menu').length);
   rec('押す前は削除のメニューが出ていない',before===0,String(before));
   await page.click('.record-list-row .rec-more');
-  await page.waitForTimeout(300);
+  await W.until(page,()=>document.querySelectorAll('.rec-row-menu').length>0,null,{ms:4000,what:'⋯のメニューが開く'});
   const menu=await page.evaluate(()=>{
    const m=document.querySelector('.rec-row-menu');
    if(!m)return null;
@@ -74,7 +71,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      絞り込みを切り替える（無いまま探すと「見つからないので飛ばす」で
      何も確かめないまま通る）。 */
   await page.click('.status-filter-btn[data-status-filter="done"]').catch(()=>{});
-  await page.waitForTimeout(900);
+  await idle();
   const done=await page.evaluate(()=>{
    const rows=[...document.querySelectorAll('.record-list-row')];
    const hit=rows.find(r=>/完了/.test(r.textContent));
@@ -102,25 +99,26 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
      **閉じる操作を実際に通すこと。** 3つの入口をそれぞれ見る。
      ========================================================== */
   await page.click('.status-filter-btn[data-status-filter="done"]').catch(()=>{});
-  await page.waitForTimeout(600);
+  await idle();
   await page.evaluate(()=>{document.querySelector('.rec-row-menu')?.remove()});
   const closeWays={};
   const openMenu=async()=>{
    await page.click('.record-list-row .rec-more');
-   await page.waitForTimeout(250);
+   /* 開いたあと、閉じる配線は次の巡回で張られる（WL.popMenu）。until の落ち着きがそれを待つ。 */
+   await W.until(page,()=>document.querySelectorAll('.rec-row-menu').length>0,null,{ms:4000,what:'⋯のメニューが開く'});
    return page.evaluate(()=>document.querySelectorAll('.rec-row-menu').length);
   };
   closeWays.開いた=await openMenu();
   await page.mouse.click(200,620);                    /* 何も無いところ */
-  await page.waitForTimeout(350);
+  await paint();   // 閉じるのは mousedown の中で同期
   closeWays.外クリックで閉じる=await page.evaluate(()=>document.querySelectorAll('.rec-row-menu').length);
   await openMenu();
   await page.keyboard.press('Escape');
-  await page.waitForTimeout(350);
+  await paint();
   closeWays.Escで閉じる=await page.evaluate(()=>document.querySelectorAll('.rec-row-menu').length);
   await openMenu();
   await page.click('.record-list-row .rec-more');     /* 同じボタンをもう一度 */
-  await page.waitForTimeout(350);
+  await paint();
   closeWays.自ボタンで閉じる=await page.evaluate(()=>document.querySelectorAll('.rec-row-menu').length);
   closeWays.印が戻る=await page.evaluate(()=>
     document.querySelector('.record-list-row .rec-more')?.getAttribute('aria-expanded'));
@@ -139,7 +137,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   const cut=[];
   for(const size of ['sm','md','lg']){
    await page.evaluate(z=>{document.documentElement.dataset.uiSize=z},size);
-   await page.waitForTimeout(350);
+   await paint();
    const bad=await page.evaluate(()=>[...document.querySelectorAll('.record-list-actions button')]
      .filter(b=>b.scrollWidth>b.clientWidth+1).map(b=>b.textContent.trim()+':'+b.clientWidth+'<'+b.scrollWidth));
    if(bad.length)cut.push(size+' '+bad.join('/'));
@@ -148,14 +146,10 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('操作ボタンが3段の表示サイズで切れない',cut.length===0,cut.join(' / '));
 
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
- }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
+ }catch(e){rec('FATAL',false,String(e&&e.message||e))}
  finally{
   await page.evaluate(async()=>{
    for(const id of ['回帰削除_編集中','回帰削除_完了'])await WL.records.reliableDelete(id);
   }).catch(()=>{});
-  await b.close();
-  const ok=R.filter(x=>x.ok).length;
-  console.log(`\n=== SUMMARY ===\n${ok}/${R.length} passed`);
-  process.exit(ok===R.length?0:1);
  }
-})();
+}, {viewport:{width:1700,height:1000}});

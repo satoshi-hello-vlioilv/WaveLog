@@ -1,5 +1,6 @@
 /* 作業可否フラグ(§9.51)と勤務体系の複数設備(§5.5)の検証 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const setMode=async m=>{await fetch('http://127.0.0.1:5029/api/access-mode',
  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
 /* 触る前の行を控える（§9.362 ⑤）。製品の「削除」は**論理削除**（`有効=0`）
@@ -8,13 +9,8 @@ const setMode=async m=>{await fetch('http://127.0.0.1:5029/api/access-mode',
 const H=require('./lib/harness.js');
 const SNAP_TABLES=['勤務体系マスタ','勤務区分マスタ','勤務体系設備マスタ'];
 let snapM=null;
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
+run('test_workable: 作業可否フラグ(§9.51)と勤務体系の複数設備(§5.5)の検証', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  snapM=await H.masterSnapshot(SNAP_TABLES);
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
  let alertMsg='';
  page.on('dialog',d=>{alertMsg=d.message();d.accept()});
 
@@ -23,11 +19,11 @@ let b=null;
  await page.waitForSelector('#openSchedule',{timeout:15000});
  await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
  await page.reload({waitUntil:'domcontentloaded'});
- await page.waitForSelector('#openSchedule',{timeout:15000});
- await page.waitForTimeout(1200);
+ await W.booted(page); await idle();
  await page.click('#openSchedule');
  await page.waitForSelector('.sc-row-line',{timeout:15000});
- await page.waitForTimeout(3500);
+ /* 作業可否の印が付き終わって、取得が静まるまで。 */
+ await W.settleFlags(page); await idle();
 
  // ---- (1) 列がある ----
  const head=await page.$$eval('.sc-row-head span',ns=>ns.map(n=>n.textContent.trim()));
@@ -121,7 +117,8 @@ let b=null;
   target.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
   return target.dataset.id;
  });
- await page.waitForTimeout(1500);
+ /* 「開かない」を見るので、開くなら起きるはずの取得が静まるまで待つ。 */
+ await idle(800);
  const modalOpen=await page.evaluate(()=>!document.querySelector('#measureModal').hidden);
  rec('作業不可の行はダブルクリックでも測定画面を開かない',!modalOpen,'modal='+modalOpen);
 
@@ -133,7 +130,8 @@ let b=null;
   const t=tabs.find(x=>(x.querySelector('.mm-nav-label')||x).textContent.trim()==='勤務形態');
   if(t)t.click();
  });
- await page.waitForTimeout(1800);
+ await W.until(page,()=>!!document.querySelector('#shiftEquipment'),null,{ms:15000,what:'勤務形態の設備欄'});
+ await idle();
  const picker=await page.evaluate(()=>{
   const box=document.querySelector('#shiftEquipment');
   const tags=[...document.querySelectorAll('#shiftEquipment [data-shift-eq]')];
@@ -223,15 +221,4 @@ let b=null;
 
   try{if(snapM)await H.dropNewMasterRows(snapM)}
   catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
- await b.close();
- const ng2=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng2.length)+'/'+R.length+' PASS ==');
- process.exit(ng2.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1700,height:1000}});

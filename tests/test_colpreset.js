@@ -14,13 +14,13 @@
     5. 式で作った列は「計算・操作」に分類される
     6. 式で作った列を消せる（元のデータには影響しない）
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const NAME='検証プリセット'+Date.now();
 const COL='検証計算列'+String(Date.now()).slice(-4);
-let b=null,target='';
+let target='';
 async function cleanup(){
  if(!target)return;
  try{await post('/api/column-layout-master',{target,clear:true,order:[],widths:{},hidden:[],names:{},
@@ -31,19 +31,12 @@ async function cleanup(){
    await post('/api/column-preset-master/delete',{id:p.id,target,user_id:'test'});
  }catch(e){}
 }
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
+run('test_colpreset: 列の設定を名前で覚える／式で列を作る（§9.111 ⑤⑦）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await post('/api/access-mode',{mode:'edit'});
-  const ctx=await b.newContext({viewport:{width:1520,height:940}});
-  const page=await ctx.newPage();
-  page.on('pageerror',e=>errs.push(e.message));
   /* 名前を聞く窓は素の`prompt()`ではなくなった（§9.342）ので、
      `page.on('dialog')`では答えられない。**開いた窓に打つ。** */
   const {answerPrompt}=require('./lib/wait.js');
-  page.on('dialog',async d=>{await d.dismiss()});   // 素のダイアログが出たら気づけるように
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:30000});
   await page.evaluate(()=>localStorage.setItem('AccessMeasurementConfiguredEquipment','テスト設備A'));
@@ -64,7 +57,7 @@ async function cleanup(){
   await page.evaluate(k=>{
    document.querySelector(`#lcList .lc-item[data-key="${k}"] input[type=checkbox]`).click();
   },victim);
-  await page.waitForTimeout(400);
+  await idle();
   await page.click('#lcPresetSave');
   await answerPrompt(page,NAME);
   await page.waitForFunction(n=>[...document.querySelectorAll('#lcPresetSel option')]
@@ -79,7 +72,7 @@ async function cleanup(){
 
   // 既定へ戻してから読み込み直す
   await page.click('#lcReset');
-  await page.waitForTimeout(500);
+  await idle();
   rec('「既定に戻す」でいったん全部出る',(await heads()).includes(victim));
   await page.selectOption('#lcPresetSel',{label:NAME});
   await page.waitForFunction(k=>![...document.querySelectorAll('#grid thead th')]
@@ -120,7 +113,7 @@ async function cleanup(){
 
   /* 保存 → 開き直しても残る（保存していなければ意味が無い機能） */
   await page.click('#lcSave');
-  await page.waitForTimeout(1000);
+  await idle(600,10000);
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForSelector('#grid table',{timeout:30000});
   await page.waitForFunction(k=>[...document.querySelectorAll('#grid thead th')]
@@ -143,24 +136,19 @@ async function cleanup(){
 
   /* ================= ⑤ 削除 ================= */
   await page.selectOption('#lcPresetSel',{label:NAME});
-  await page.waitForTimeout(400);
+  await idle();
   await page.click('#lcPresetDel');
   await page.waitForSelector('#appConfirmModal:not([hidden])',{timeout:5000});
   await page.click('#appConfirmOk');
-  await page.waitForTimeout(900);
+  await idle();
   const left=await (await fetch(B+'/api/column-preset-master?target='+encodeURIComponent(target))).json();
   rec('登録した設定を削除できる',
    !(left.items||[]).some(p=>p.name===NAME),`${(left.items||[]).length}件`);
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){
-  console.log('FATAL: '+(e&&e.stack||e));
-  R.push({n:'FATAL',ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   try{await cleanup()}catch(e){}
-  if(b)await b.close();
  }
- const ng=R.filter(x=>!x.ok).length;
- console.log(`\n== ${R.length-ng}/${R.length} PASS ==`);
- process.exit(ng?1:0);
-})();
+}, {viewport:{width:1520,height:940}});

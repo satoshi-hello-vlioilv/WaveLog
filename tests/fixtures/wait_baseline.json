@@ -29,12 +29,6 @@
   "ms": 5500,
   "silent": 0
  },
- "test_audittrail.js": {
-  "count": 6,
-  "harness": 1,
-  "ms": 9800,
-  "silent": 0
- },
  "test_blockbuild.js": {
   "count": 17,
   "harness": 1,
@@ -120,21 +114,15 @@
   "silent": 0
  },
  "test_cols.js": {
-  "count": 7,
-  "harness": 1,
-  "ms": 8100,
+  "count": 0,
+  "harness": 0,
+  "ms": 0,
   "silent": 1
  },
  "test_colscopeui.js": {
   "count": 0,
   "harness": 1,
   "ms": 0,
-  "silent": 0
- },
- "test_colsort.js": {
-  "count": 12,
-  "harness": 1,
-  "ms": 9900,
   "silent": 0
  },
  "test_coltint.js": {
@@ -227,12 +215,6 @@
   "ms": 0,
   "silent": 1
  },
- "test_filteractive.js": {
-  "count": 7,
-  "harness": 1,
-  "ms": 8700,
-  "silent": 0
- },
  "test_filtergroup.js": {
   "count": 0,
   "harness": 1,
@@ -268,12 +250,6 @@
   "harness": 1,
   "ms": 50,
   "silent": 7
- },
- "test_flows.js": {
-  "count": 3,
-  "harness": 1,
-  "ms": 8700,
-  "silent": 0
  },
  "test_gridchild.js": {
   "count": 4,
@@ -318,9 +294,9 @@
   "silent": 0
  },
  "test_listperf.js": {
-  "count": 3,
-  "harness": 1,
-  "ms": 7700,
+  "count": 0,
+  "harness": 0,
+  "ms": 0,
   "silent": 1
  },
  "test_logview.js": {
@@ -352,12 +328,6 @@
   "harness": 1,
   "ms": 7200,
   "silent": 1
- },
- "test_measstore.js": {
-  "count": 6,
-  "harness": 1,
-  "ms": 7900,
-  "silent": 0
  },
  "test_mmfold.js": {
   "count": 0,
@@ -401,12 +371,6 @@
   "ms": 4400,
   "silent": 0
  },
- "test_nav.js": {
-  "count": 7,
-  "harness": 1,
-  "ms": 10700,
-  "silent": 0
- },
  "test_ngcard.js": {
   "count": 8,
   "harness": 1,
@@ -414,9 +378,9 @@
   "silent": 1
  },
  "test_ngdone.js": {
-  "count": 7,
-  "harness": 1,
-  "ms": 7800,
+  "count": 0,
+  "harness": 0,
+  "ms": 0,
   "silent": 1
  },
  "test_opauto.js": {
@@ -635,12 +599,6 @@
   "ms": 3100,
   "silent": 1
  },
- "test_rpsave.js": {
-  "count": 4,
-  "harness": 1,
-  "ms": 9400,
-  "silent": 0
- },
  "test_rptext.js": {
   "count": 2,
   "harness": 1,
@@ -677,12 +635,6 @@
   "ms": 0,
   "silent": 2
  },
- "test_sccols.js": {
-  "count": 6,
-  "harness": 1,
-  "ms": 8700,
-  "silent": 0
- },
  "test_sccomment.js": {
   "count": 3,
   "harness": 1,
@@ -708,9 +660,9 @@
   "silent": 0
  },
  "test_scinsert.js": {
-  "count": 24,
+  "count": 18,
   "harness": 1,
-  "ms": 9690,
+  "ms": 7540,
   "silent": 1
  },
  "test_scmodecols.js": {
@@ -732,9 +684,9 @@
   "silent": 1
  },
  "test_scpick.js": {
-  "count": 2,
+  "count": 1,
   "harness": 1,
-  "ms": 4000,
+  "ms": 600,
   "silent": 0
  },
  "test_scprint.js": {
@@ -774,21 +726,15 @@
   "silent": 0
  },
  "test_scsync.js": {
-  "count": 3,
-  "harness": 1,
-  "ms": 7700,
+  "count": 0,
+  "harness": 0,
+  "ms": 0,
   "silent": 1
  },
  "test_scundecided.js": {
   "count": 0,
   "harness": 1,
   "ms": 0,
-  "silent": 0
- },
- "test_scwarm.js": {
-  "count": 6,
-  "harness": 1,
-  "ms": 9900,
   "silent": 0
  },
  "test_scwatchui.js": {
@@ -845,28 +791,10 @@
   "ms": 0,
   "silent": 0
  },
- "test_stopcat.js": {
-  "count": 8,
-  "harness": 1,
-  "ms": 8000,
-  "silent": 0
- },
  "test_stopeq.js": {
   "count": 0,
   "harness": 1,
   "ms": 0,
-  "silent": 0
- },
- "test_storageui.js": {
-  "count": 6,
-  "harness": 1,
-  "ms": 8500,
-  "silent": 0
- },
- "test_sub.js": {
-  "count": 6,
-  "harness": 1,
-  "ms": 10400,
   "silent": 0
  },
  "test_theme.js": {
@@ -891,12 +819,6 @@
   "count": 7,
   "harness": 1,
   "ms": 4800,
-  "silent": 0
- },
- "test_uisize.js": {
-  "count": 8,
-  "harness": 1,
-  "ms": 9950,
   "silent": 0
  },
  "test_waiting.js": {
@@ -924,9 +846,9 @@
   "silent": 1
  },
  "test_workable.js": {
-  "count": 4,
-  "harness": 1,
-  "ms": 8000,
+  "count": 0,
+  "harness": 0,
+  "ms": 0,
   "silent": 1
  }
 }

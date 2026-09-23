@@ -9,22 +9,18 @@
     3. 全解除したら覚えも消える(空の入れ物を残さない)
     4. 登録一覧に「覚えている」ことが文字で出て、消す手立てがある
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const STORE='MeasurementFilterActiveV1';
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1600,height:950}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];page.on('pageerror',e=>errs.push(e.message));
+run('test_filteractive: 適用中のフィルタを個人単位で覚える(§9.175)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  const openList=async()=>{
   await page.waitForSelector('aside [data-db-key]',{timeout:25000});
-  await page.waitForTimeout(700);
+  await W.booted(page);
   await page.click('aside [data-db-key]');
   await page.waitForSelector('#grid tbody tr',{timeout:25000});
-  await page.waitForTimeout(1500);
+  await idle();
  };
  /* 効いている条件は**アイコンと件数の1バッジ**へ畳んだ（§9.287）ので、
     中身は`S.genericFilters`とバッジの`title`から読む——条件式をバッジへ
@@ -44,15 +40,17 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 
   // ---- 条件を1つ作る
   /* §9.286 ①: たまにしか使わない入口は`⋯`の浮きメニューへ畳んだ。**消していない**ので、開いてから押す。 */
-  await page.click('#filterMoreBtn');await page.waitForTimeout(200);
-  await page.click('#filterToggle');await page.waitForTimeout(400);
+  await page.click('#filterMoreBtn');await page.waitForSelector('#filterToggle',{state:'visible',timeout:8000});
+  await page.click('#filterToggle');await page.waitForSelector('#filterColumn',{state:'visible',timeout:8000});
   const col=await page.evaluate(()=>{const s=document.querySelector('#filterColumn');
    const o=[...s.options].map(x=>x.value);return o.find(v=>/ロット番号/.test(v))||o[1]||o[0]});
   await page.selectOption('#filterColumn',col);
   await page.selectOption('#filterOp','contains');
   await page.fill('#filterValue','L001');
   await page.click('#addGenericFilter');
-  await page.waitForTimeout(2500);
+  /* 条件が載り、一覧が読み直されて静まるまで。 */
+  await W.until(page,()=>typeof S!=='undefined'&&(S.genericFilters||[]).length===1,null,{what:'条件が1件載る'});
+  await idle();
   const a=await snap();
   rec('条件が1件当たっている',a.tags.length===1&&a.rows>0,JSON.stringify({tags:a.tags,rows:a.rows}));
   let store=null;try{store=JSON.parse(a.store||'null')}catch(e){}
@@ -73,7 +71,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   // ---- 登録一覧に「覚えている」と書いてある / 消せる
   await page.click('#filterMoreBtn');
   await page.click('#openFilterPresets');
-  await page.waitForTimeout(1200);
+  await page.waitForSelector('.filter-preset-toolbar',{timeout:8000});
   const memo=await page.evaluate(()=>{
    const t=document.querySelector('.filter-preset-toolbar');
    return {txt:t?t.textContent.replace(/\s+/g,' ').trim():'',btn:!!document.querySelector('.fp-memo-clear')};
@@ -86,7 +84,8 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
    document.querySelectorAll('.sc-float-win').forEach(x=>{if(x.querySelector('.filter-preset-toolbar'))x.hidden=true})});
   await page.click('#filterMoreBtn');
   await page.click('#clearGenericFilters');
-  await page.waitForTimeout(2200);
+  await W.until(page,()=>typeof S!=='undefined'&&(S.genericFilters||[]).length===0,null,{what:'条件が外れる'});
+  await idle();
   const d=await snap();
   let store2=null;try{store2=JSON.parse(d.store||'{}')}catch(e){}
   const left=Object.values(store2||{}).reduce((n,bucket)=>n+Object.keys(bucket||{}).length,0);
@@ -94,11 +93,5 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   rec('0件の一覧は覚えから外す(空の入れ物を残さない)',left===0,JSON.stringify(store2));
 
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
- }catch(e){console.log('FATAL: '+e.message);R.push({n:'FATAL',ok:false,d:e.message})}
- finally{
-  await b.close();
-  const ok=R.filter(x=>x.ok).length;
-  console.log(`\n=== SUMMARY ===\n${ok}/${R.length} passed`);
-  process.exit(ok===R.length?0:1);
- }
-})();
+ }catch(e){rec('FATAL',false,String(e&&e.message||e))}
+ }, {viewport:{width:1600,height:950}});

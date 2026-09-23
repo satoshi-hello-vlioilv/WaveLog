@@ -1,9 +1,7 @@
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const {clearLayout}=require('./lib/harness.js');   // 後片付け（§9.360）
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
+run('test_cols: 見え方の設定（まとめ・さかのぼり・表示列・行の色・配置）は「表示」', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  /* 見え方の設定（まとめ・さかのぼり・表示列・行の色・配置）は「表示」
     パネル(§9.199)の中にある。開く→選ぶ→**閉じる**まで1つの手順にする
     ——開いたままにすると、パネルが表の右上を覆って次のクリックが
@@ -11,16 +9,14 @@ let b=null;
  const openView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.openViewPop&&WL.scheduleView.openViewPop());
  const closeView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.closeViewPop&&WL.scheduleView.closeViewPop());
  const pickView=async(sel,val)=>{await openView();await page.selectOption(sel,val).catch(()=>{});await closeView()};
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('dialog',d=>d.accept());
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
 
  await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openSchedule',{timeout:15000});
  // 前回の検証結果が残っていると候補の出方が変わるため、内容表示マスタを空へ戻す
  await page.evaluate(()=>fetch('/api/schedule-content-master',{method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({equipment:'テスト設備A',items:[],user_id:'test'})}));
- await page.waitForTimeout(600);
+   body:JSON.stringify({equipment:'テスト設備A',items:[],user_id:'test'})}).then(r=>r.text()));
+   /* **本体まで読む**——読まないと要求が終わらず、以降の「取得が静まる」待ちを
+      塞ぐ（§9.451）。読めば evaluate がそこまで待つので、ここで待つ物は無い。 */
  await page.click('#openSchedule');
  await page.waitForSelector('.sc-board-row',{timeout:10000});
  await page.evaluate(()=>{const r=[...document.querySelectorAll('.sc-board-row')].find(x=>x.dataset.equipment==='テスト設備A');if(r)r.click()});
@@ -29,7 +25,7 @@ let b=null;
  // 固定待ちだと予定件数が増えたときに間に合わず、無関係な失敗になる。
  await page.waitForFunction(()=>!!document.querySelector('.sc-split-wrap #listToolbar')
    &&!!document.querySelector('.sc-split-wrap #grid table'),null,{timeout:30000}).catch(()=>{});
- await page.waitForTimeout(600);
+   await idle();
 
  // --- (3) 列選択の分離 ---
  rec('スケジュールヘッダーの「列選択」は廃止',(await page.$$('#scColumnModalBtn')).length===0);
@@ -54,7 +50,8 @@ let b=null;
 
  // --- 予定を1件投入して「内容」欄を検証 ---
  await page.evaluate(()=>window.scheduleAddFromRow?.({'ロット番号':'L0001','鋳造番号':'C001','製造材質':'A5052','製造調質':'H34','用途名':'一般用材','BOX設計_設備名':'テスト設備A','検査結果':'合格','公差判定':'OK'}));
- await page.waitForTimeout(2000);
+ /* 書込（待ち行列）→ 予定の取り直し → 描き直し、が静まるまで。 */
+ await idle(800); await W.paint(page);
  // §9.39で区分はセクションではなく行内の「区分」列になった。投入した予定は
  // 「予定」区分の最後の行(末尾へ追加されるため)。
  // §9.88 段6で内容欄は項目ごとの独立した列(1セル1値)になったので、
@@ -74,7 +71,7 @@ let b=null;
  await openView();
  await page.click('#scContentModalBtn');
  await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:10000});
- await page.waitForTimeout(600);
+ await page.waitForSelector('#lcList .lc-item',{timeout:10000});
  const cand=await page.$$eval('#lcList .lc-item',ns=>ns.map(x=>x.dataset.key));
  rec('内容の項目候補に結合済みの品質列も出る',cand.includes('検査結果')&&cand.includes('公差判定'),cand.slice(0,12).join(','));
  /* **触るのは内容欄の項目だけ**(§9.176)。同じ並びに区分・日付・操作などの
@@ -98,9 +95,9 @@ let b=null;
  rec('選んだ項目だけがチェック済みになる',
   chosen.length===2&&chosen.includes('検査結果')&&chosen.includes('公差判定'),chosen.join(','));
  await page.click('#lcSave');
- await page.waitForTimeout(2200);
+ await idle(800);
  await page.evaluate(()=>WL.listColumns.close());
- await page.waitForTimeout(600);
+ await page.waitForSelector('#listColumnPanel',{state:'hidden',timeout:8000}); await W.paint(page);
  // この検証で追加した予定(最後の行)の内容欄を見る。古い予定は投入時点の
  // 仕掛データを保存しているため、その項目を持たなければ既定表示のままになる。
  const contents=await plannedContents();
@@ -115,7 +112,7 @@ let b=null;
 
  // --- (2) 分割バーが他画面へ残らない ---
  await page.click('aside [data-db-key="SIKALOTNOW"]');
- await page.waitForTimeout(1500);
+ await page.waitForSelector('#grid th',{timeout:20000}); await idle();
  const leaked=await page.evaluate(()=>({
    scMode:document.body.classList.contains('sc-mode'),
    split:document.body.classList.contains('sc-split'),
@@ -136,15 +133,4 @@ let b=null;
  try{await fetch('http://127.0.0.1:5029/api/schedule-content-master',{method:'POST',
    headers:{'Content-Type':'application/json'},
    body:JSON.stringify({equipment:'テスト設備A',items:[],user_id:'test'})})}catch(e){console.log('!! 後片付けに失敗（残った設定が次の実行へ渡る）: '+(e&&e.message||e))}
- console.log('\n=== SUMMARY ===');
- const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
- f.forEach(x=>console.log(' -',x.n,x.d||''));
- await b.close();process.exit(f.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1700,height:1000}});

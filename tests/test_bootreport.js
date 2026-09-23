@@ -18,16 +18,15 @@
    4は**材料を自分で注ぎ込む**（§9.291 ①）——健全な端末では写しは読めるので、
    そのまま見ても直す前の実装で通ってしまう。終わったら必ず戻す。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const fs=require('fs');
 const B='http://127.0.0.1:5029';
-let b=null, restore=null;
+let restore=null;
 
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1600,height:950}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
+run('test_bootreport: 起動の状況をアプリから取れる（§9.316）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
+ /* 注ぎ込んだ写しは落ちても必ず戻す（旧い骨組みの尻尾の .catch が持っていた後片付け） */
+ try{
 
  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openLogView',{timeout:20000});
@@ -136,13 +135,5 @@ let b=null, restore=null;
   rec('待機画面の写しを注ぎ込めた',false,'写しが見つかりません: '+(copy&&copy.path));
  }
 
- await b.close();
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- console.error('FATAL',e);
- if(restore)restore();
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+ }finally{if(restore){restore();restore=null}}
+}, {viewport:{width:1600,height:950}});

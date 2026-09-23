@@ -16,20 +16,14 @@
     - 「既定へ戻す」で**本当に空へ帰る**（押しても戻らない設定を作らない）
     - 落とす場所の印は**流れの中へ入れない**（§9.218 ④。印の前後で札が動かない）
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const post=(p,x)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(x)});
 const get=p=>fetch(B+p).then(r=>r.json());
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,160)));
+run('test_reclayout: 「記録した値」の配置をD&Dで組めるマスタ（§9.243）', async ({page,rec,B,W,idle,paint,errs})=>{
  /* 群の名前を聞く`prompt`はテスト側で決め打ちに答える。 */
  let answer='テスト見出し';
  page.on('dialog',d=>d.accept(answer));
@@ -279,9 +273,5 @@ let b=null;
    const rows=(r.items||[]).map(x=>({id:x.id,show:x.recordShow!==false,follow:true,group:''}));
    if(rows.length)await post('/api/operation-item-master/record-layout',{items:rows,user_id:'tests'});
   }catch(e){}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1600,height:1000}});

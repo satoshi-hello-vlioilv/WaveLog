@@ -29,18 +29,11 @@
    測定画面と同じ`buildWidget()`（§9.218 ①）なので、ここを通せば実物の
    見え方を測ったことになる。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
-let b=null;
 
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1280,height:900}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,160)));
- page.on('dialog',d=>d.accept());
+run('test_opwidget: トグルの作り直しと、足した2つの選ばせ方（§9.247 ①）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   /* **時間でなく条件で待つ**（§9.102）——部品を作る口が生えたら先へ進む。 */
@@ -621,7 +614,7 @@ let b=null;
   hits.length=0;
   await page.evaluate(n=>{const h=window.__mkLive('ボタン群',n);
     h.querySelector('[data-opv="い"]').click()},NAME);
-  await page.waitForTimeout(400);
+    await idle();
   rec('器の札を押すと数える（合成イベントでも数える）',
       hits.length===1&&hits[0].name===NAME&&hits[0].value==='い',
       JSON.stringify(hits));
@@ -634,7 +627,8 @@ let b=null;
    sel.dispatchEvent(new Event('input',{bubbles:true}));
    sel.dispatchEvent(new Event('change',{bubbles:true}));
   });
-  await page.waitForTimeout(400);
+  /* 「数えない」ことを見る: 数えるなら change の中で同期に送るので、その往復が静まるまで待つ。 */
+  await idle(800);
   rec('画面が値を入れ直しただけでは数えない',hits.length===0,JSON.stringify(hits));
 
   /* c) 素のプルダウンで人が選ぶ道（本物のイベント）。 */
@@ -642,22 +636,15 @@ let b=null;
   await page.evaluate(n=>{window.__mkLive('プルダウン',n)},NAME);
   const sels=await page.$$('#wbed select');
   await sels[sels.length-1].selectOption('あ');
-  await page.waitForTimeout(400);
+  await idle();
   rec('素のプルダウンで選んでも数える',
       hits.length===1&&hits[0].value==='あ',JSON.stringify(hits));
   await page.unroute('**/api/operation-choice-master/used');
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
-  console.log('\n=== SUMMARY ===');
-  const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
-  ng.forEach(x=>console.log(' -',x.n,x.d||''));
-  process.exitCode=ng.length?1:0;
+
  }catch(e){
-  console.error('FATAL',e);
-  process.exitCode=1;
- }finally{
-  /* **落ちても必ず閉じる**（残ったChromiumが後続を巻き添えにする）。 */
-  if(b)await b.close().catch(()=>{});
- }
-})();
+  rec('FATAL',false,String(e&&e.message||e));
+  }
+}, {viewport:{width:1280,height:900}});

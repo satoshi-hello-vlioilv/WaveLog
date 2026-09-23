@@ -10,13 +10,11 @@
 
    **ダイアログが出ないこと**も見る——以前はalertで止めており、ドラッグの
    たびにダイアログが出る作りでは使えない。 */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029',EQ='テスト設備A',LOT='L9000';
 const setMode=m=>fetch(B+'/api/access-mode',{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
-let b=null;
-const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
 const snap=page=>page.evaluate(()=>({
  条数:document.getElementById('horizontalCount').value,
  groups:(S.measure.settings.splitGroups||[]).map(g=>g.lot+'×'+g.count),
@@ -41,16 +39,13 @@ const snap=page=>page.evaluate(()=>({
    .map(e=>[e.title||e.textContent.trim(),getComputedStyle(e).backgroundColor])),
  図の高さ:Math.round(document.getElementById('splitVisualStrip').getBoundingClientRect().height),
 }));
-const settle=async page=>{
- await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
- await page.waitForTimeout(250);
-};
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1920,height:1080}});
- const dialogs=[],errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
- page.on('dialog',d=>{dialogs.push(d.message().slice(0,80));d.accept()});
+run('test_splitlive: 条割のリアルタイム反映（§9.149）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
+/* 操作のあとの落ち着き: 取得が静まって描画が1巡するまで（最低300ms——
+   続けて押す網は、2回の押下がダブルクリックに化けない間隔もこれで保つ）。 */
+const settle=async()=>{await idle(300)};
+/* 素のダイアログは土台が閉じて数える。ここは中身を控えて判定に使う。 */
+const dialogs=[];
+page.on('dialog',d=>{dialogs.push(d.message().slice(0,80))});
  try{
   await setMode('edit');
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
@@ -806,8 +801,8 @@ const settle=async page=>{
    if(c){c.hidden=false;c.innerHTML='<b>異常 1条</b><small>保存済み</small>';c.classList.add('is-hit')}
    if(t){t.hidden=false;t.textContent='異常の印: 出す'}
    return true;
-  });
-  await page.waitForTimeout(400);
+   });
+   await paint();
   const fit=await page.evaluate(()=>{
    const box=el=>el?{sh:el.scrollHeight,ch:el.clientHeight}:null;
    const rr=el=>el?(x=>({l:Math.round(x.left),r:Math.round(x.right),
@@ -840,9 +835,6 @@ const settle=async page=>{
   /* 置いた実績は自分で消す（§9.351・§9.362）。残った実績は計画外実績として
      予定表に現れ、無関係な網を落とす。 */
   try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
- const ng=R.filter(x=>!x.ok).length;
- console.log(`\n${R.length-ng} PASS / ${ng} FAIL`);
- process.exit(ng?1:0);
-})();
+
+}, {viewport:{width:1920,height:1080}});

@@ -24,21 +24,16 @@
    **数や有無だけを見ないこと**——「単位の要素がある」だけでは、器の上に
    出ていても通る。**実寸で位置を突き合わせる**。
    ================================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const W=require('./lib/wait');   // 待ちは条件で置き、成立しなければ記録に残す（§9.360）
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const post=(p,x)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(x)}).then(async r=>({st:r.status,body:await r.json().catch(()=>({}))}));
 const get=p=>fetch(B+p).then(r=>r.json());
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1680,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('dialog',d=>d.accept());
+run('test_opunit: 自動で入る値の見せ方・単位の置き場・出どころの添え書き（§9.233）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  /* 触った行は**丸ごと控えて丸ごと戻す**（§9.121）——`item_upsert`は全列を
     書くので、1項目だけ送り返すと他の設定が消える。 */
  const backup=[];
@@ -175,7 +170,7 @@ let b=null;
    if(!ok)throw Error('開始できる行が無い');
    await page.waitForFunction(()=>!document.querySelector('#measureModal')?.hidden,null,{timeout:25000});
    await page.waitForFunction(()=>typeof S!=='undefined'&&!!S.measure,null,{timeout:25000});
-   await page.waitForTimeout(700);
+   await idle();
   };
   await openMeasure();
 
@@ -226,7 +221,7 @@ let b=null;
 
   /* ---------- ④ 入力方法 × 単位の位置 ---------- */
   await page.evaluate(()=>WL.measureSteps.go(1));
-  await page.waitForTimeout(500);
+  await idle();
   const want={'外上左':'上左','外上中央':'上中央','外上右':'上右',
               '内部':'内部','外下左':'下左','外下中央':'下中央','外下右':'下右',
               '出さない':'なし'};
@@ -236,7 +231,7 @@ let b=null;
    const bad=[];
    for(const pl of Object.keys(want)){
     await setDef('coilStop',{unit:'mm',unitPlace:pl,widget:w,freeText:false});
-    await page.waitForTimeout(160);
+    await paint();await paint();  // 単位の置き場は rAF→ResizeObserver→rAF の2段で測り直すので描画2巡を2回
     const r=await where('[data-f="coilStop"]');
     if(!r||r.位置!==want[pl])bad.push(pl+'→'+(r?r.位置:'?'));
    }
@@ -271,14 +266,14 @@ let b=null;
   },sel);
   for(const w of ['メニュー','一覧','パネル','切替','入切']){
    await setDef('coilStop',{unit:'mm',unitPlace:'内部',widget:w,freeText:false});
-   await page.waitForTimeout(200);
+   await paint();await paint();
    const r=await faceProbe('[data-f="coilStop"]');
    rec('「'+w+'」で単位が値の面の中に収まる（③）',
        !!(r&&r.見える&&r.中&&r.値に重ならない),JSON.stringify(r));
   }
   /* 手打ちのプルダウン（コンボ）は**打ち込む欄のすぐ隣**（▾の手前）。 */
   await setDef('coilStop',{unit:'mm',unitPlace:'内部',widget:'プルダウン',freeText:true});
-  await page.waitForTimeout(240);
+  await paint();await paint();
   const cb=await page.evaluate(()=>{
    const host=document.querySelector('[data-f="coilStop"]');
    const box=host&&host.querySelector(':scope>.opf-combo');
@@ -333,7 +328,7 @@ let b=null;
   const gaps={};
   for(const w of ['スピナー','ステッパー','スライダー','キーパッド']){
    await setNum({unit:'MPa',unitPlace:'内部',widget:w,min:0,max:10,step:0.1});
-   await page.waitForTimeout(180);
+   await paint();await paint();
    const r=await numProbe(NUMNAME);
    gaps[w]=r&&r.空き;
    rec('「'+w+'」で単位が帯に被らない（§9.257 ①）',
@@ -349,7 +344,7 @@ let b=null;
   for(const z of ['小','大']){
    await setNum({unit:'MPa',unitPlace:'内部',widget:'スピナー',min:0,max:10,step:0.1,
                  look:{color:'既定',shape:'標準',size:z}});
-   await page.waitForTimeout(180);
+   await paint();await paint();
    const r=await numProbe(NUMNAME);
    rec('大きさ「'+z+'」でも被らない（§9.257 ①）',
        !!(r&&r.空き>0&&r.値の右端<=r.単位の左端),JSON.stringify(r));
@@ -359,9 +354,9 @@ let b=null;
 
   /* ---------- ③ 母材: 内部の単位 × 右寄せ ---------- */
   await page.evaluate(()=>WL.measureSteps.go(2));
-  await page.waitForTimeout(600);
+  await idle();
   await setDef('motherManual',{unit:'mm',unitPlace:'内部',align:'右'});
-  await page.waitForTimeout(250);
+  await paint();await paint();
   await page.evaluate(()=>{const i=document.getElementById('motherManual');if(i)i.value='1234.5'});
   const m=await where('[data-f="motherManual"]');
   rec('前提: 母材の欄に内部の単位が出ている（③）',
@@ -379,7 +374,7 @@ let b=null;
       !!(base&&base.欄&&base.欄.h>0),JSON.stringify(base&&base.欄));
   await setDef('motherOriginalWidth',{unit:'mm',unitPlace:'内部',align:'右',
     widget:'強調',look:{color:'赤',shape:'大きめ',size:'大'}});
-  await page.waitForTimeout(250);
+  await paint();await paint();
   const strong=await where('[data-f="motherOriginalWidth"]');
   rec('自動で入る値にも単位が出る（②）',
       !!(strong&&strong.位置==='内部'&&strong.単位&&strong.単位.w>0),
@@ -395,7 +390,7 @@ let b=null;
       JSON.stringify(strong&&{値の右端:strong.値の右端,単位の左端:strong.単位&&strong.単位.l}));
   await setDef('motherOriginalWidth',{unit:'mm',unitPlace:'外下右',align:'中央',
     widget:'文字だけ',look:{}});
-  await page.waitForTimeout(250);
+  await paint();await paint();
   const bare=await where('[data-f="motherOriginalWidth"]');
   rec('選ばせ方「文字だけ」で枠が消える（①）',
       !!(bare&&bare.opout==='文字だけ'&&/rgba\(0, 0, 0, 0\)|transparent/.test(bare.枠)),
@@ -405,7 +400,7 @@ let b=null;
 
   /* ---------- ⑤ 出どころの添え書き ---------- */
   await page.evaluate(()=>WL.measureSteps.go(1));
-  await page.waitForTimeout(500);
+  await idle();
   const preset=await page.evaluate(()=>{
    /* 仕掛から目標値が来た状態を作る（検証用フィクスチャにこの列は無い）。 */
    S.measure.source=S.measure.source||{};
@@ -432,7 +427,7 @@ let b=null;
   const seen={};
   for(const at of ['欄の下','名前の横','出さない']){
    await setDef('innerDiameter',{sourceNote:at,widget:'プルダウン'});
-   await page.waitForTimeout(220);
+   await paint();await paint();
    seen[at]=await note();
   }
   rec('「欄の下」は欄の下に1行で出る（⑤）',
@@ -458,7 +453,7 @@ let b=null;
    if(![...el.options].some(o=>o.value==='400'))el.add(new Option('400','400'));
    el.value='400';WL.innerDiameter.refresh();
   });
-  await page.waitForTimeout(200);
+  await paint();await paint();
   rec('選び直すと添え書きは消える（⑤）',(await note()).隠===true);
 
   /* ==========================================================
@@ -510,7 +505,7 @@ let b=null;
    return false;
   },at);
   await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="look"]',{timeout:8000});
-  await page.waitForTimeout(400);
+  await idle();
   const pv={};
   for(const at of ['内部','外下左','外上左']){
    const ok=await setUnit(at);
@@ -563,16 +558,12 @@ let b=null;
   rec('見本の欄には測定画面と同じ印（`opf-host`）が付く（⑥）',
       !!(pv['外下左']&&pv['外下左'].印===true),JSON.stringify(pv['外下左']));
 
-  console.log('\n合計 '+R.filter(r=>r.ok).length+'/'+R.length+' PASS'
-    +'  (FAIL: '+R.filter(r=>!r.ok).length+')');
-  process.exitCode=R.some(r=>!r.ok)?1:0;
  }catch(e){
-  console.log('FATAL: '+(e&&e.message));process.exitCode=1;
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   for(const x of backup){try{await saveItem(x)}catch(e){}}
   /* 置いた実績は自分で消す（§9.351・§9.362）。残った実績は計画外実績として
      予定表に現れ、無関係な網を落とす。 */
   try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
-})();
+}, {viewport:{width:1680,height:1000}});

@@ -16,15 +16,10 @@
 
    ここではカタログ応答を差し替えて確かめる(サーバー再起動が要らず、
    実行するたびに同じ結果になるため)。 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1500,height:950}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
+run('test_dsnav: 左メニュー「一覧を見る」はデータソースマスタが唯一の正(§9.87)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await page.goto(B+'/',{waitUntil:'load'});
   /* **本物のカタログが入り終わるまで待つ。** アプリのJSは起動オーバーレイが
@@ -129,16 +124,9 @@ let b=null;
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
-  console.log('\n=== SUMMARY ===');
-  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
-  f.forEach(x=>console.log(' -',x.n,x.d||''));
-  await b.close();b=null;
-  process.exit(f.length?1:0);
  }catch(e){
   // 落ちてもブラウザは必ず閉じる(開いたままだと後続のスケジュール系が
   // 「編集中です」で連鎖的に落ちる)。
-  console.error('FATAL',e);
-  if(b)await b.close().catch(()=>{});
-  process.exit(2);
+  rec('FATAL',false,String(e&&e.message||e));
  }
-})();
+}, {viewport:{width:1500,height:950}});

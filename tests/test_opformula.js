@@ -17,17 +17,16 @@
    **素通りに注意**: 「欄が出る」「保存できた」だけを見る網は、値を1つも
    計算しない実装でも通る。**計算された値そのもの**を見る。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const TAG='OF'+process.pid;
-let b=null;
 const getj=async p=>(await fetch(B+p)).json();
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const made=[];
 
-(async()=>{
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+run('test_opformula: 式で作る自動値（§9.256、利用者の指示）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   await post('/api/access-mode',{mode:'edit'});
 
@@ -82,10 +81,6 @@ const made=[];
       JSON.stringify((form.items||[]).filter(x=>x.autoValue==='式').map(x=>x.name)));
 
   /* ---- 3〜4) 実際に値が計算される ---- */
-  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome'),
-                           args:['--no-sandbox','--disable-dev-shm-usage']});
-  const page=await b.newPage({viewport:{width:1600,height:1000}});
-  const errs=[];page.on('pageerror',e=>errs.push(String(e&&e.message||e)));
   await page.addInitScript(eq=>{try{localStorage.setItem('AccessMeasurementConfiguredEquipment',eq)}catch(e){}},EQ);
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:25000});
@@ -124,16 +119,12 @@ const made=[];
 
   rec('画面の例外が出ていない',errs.length===0,errs.join(' / '));
  }catch(e){
-  console.log('FATAL '+(e&&e.message||e));R.push({ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   for(const id of made){try{await post('/api/operation-item-master/delete',{user_id:'test',id})}catch(_){}}
   try{
    const left=((await getj('/api/operation-item-master')).items||[]).filter(x=>x.name&&x.name.startsWith(TAG));
    for(const x of left){try{await post('/api/operation-item-master/delete',{user_id:'test',id:x.id})}catch(_){}}
   }catch(_){}
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1600,height:1000}});

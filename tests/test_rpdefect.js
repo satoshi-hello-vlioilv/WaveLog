@@ -20,10 +20,10 @@
    **見本のロットで見る**（§9.253）——幅方向の保存とピッチの両方を持つので、
    2つの塊が同時に紙へ出る唯一の材料。**宣言ではなく実測で見る**（§9.289）。
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
-let b=null;
 /* 候補の表は**ロールが1本も無いと出ない**ので、材料を自分で注ぎ込む（§9.291 ①）。
    見本のピッチは314.2mm＝径 100.01mm（ピッチ÷π）。 */
 const TAG='RTrpdef';
@@ -35,13 +35,7 @@ const post=async(u,body)=>{
 };
 const made=[];
 
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome'),
-                          args:['--no-sandbox','--disable-dev-shm-usage']});
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',String(e&&e.message||e).slice(0,140)));
-
+run('test_rpdefect: 紙の異常位置判定とピッチ判定（§9.319-C、利用者の指示）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   const seeded=await post('/api/roll-master',{user_id:'test',equipment:EQ,
     name:TAG+'A',contactFace:'上面',diaMax:100.01,diaMin:99.5,note:'検証用'});
@@ -61,7 +55,7 @@ const made=[];
   await page.waitForFunction(()=>{
    const c=document.getElementById('reportContent');return c&&c.textContent.length>500;
   },null,{timeout:20000});
-  await page.waitForTimeout(1500);
+  await idle();
 
   /* ---- 1. 塊が2つに分かれている ---- */
   const keys=await page.evaluate(()=>((WL.reportBlocks&&WL.reportBlocks.keys&&WL.reportBlocks.keys())||[]));
@@ -290,7 +284,8 @@ const made=[];
    await page.waitForFunction(()=>{
     const c=document.getElementById('reportContent');return c&&c.textContent.length>500;
    },null,{timeout:20000});
-   await page.waitForTimeout(1200);
+   /* 前の紙が残っていても字数の条件は真になる——開き直しの読み込みと描き直しが静まるまで待つ。 */
+   await idle(600);
    return page.evaluate(()=>[...document.querySelectorAll('#reportContent [data-rp-block]')]
      .map(e=>e.dataset.rpBlock));
   };
@@ -365,7 +360,6 @@ const made=[];
   rec('FATAL',false,String(e&&e.message||e));
  }
 
- await b.close();
  /* 後片付け（§9.121）。ロールマスタは実行をまたいで残る。 */
  for(const id of made){try{await post('/api/roll-master/delete',{user_id:'test',id})}catch(e){}}
  try{
@@ -374,11 +368,4 @@ const made=[];
    try{await post('/api/roll-master/delete',{user_id:'test',id:x.id})}catch(e){}
   }
  }catch(e){}
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1600,height:1000}});

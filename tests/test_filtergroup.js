@@ -40,8 +40,8 @@
    実装でも通る。件数（`#filterCount`）と一覧の件数（`S.count`）まで見る。
    後片付けは finally で必ず行う（§9.121。名前に実行ごとの印を入れる）。
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const TAG='fg'+Date.now().toString(36);
 const USER='u-'+TAG;
@@ -55,16 +55,9 @@ const GA=TAG+'組';
 const H=require('./lib/harness.js');
 const SNAP_TABLES=['フィルタプリセットマスタ'];
 let snapM=null;
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
+run('test_filtergroup: プリセット（登録した条件の組み合わせ）の切り替え（§9.287）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  snapM=await H.masterSnapshot(SNAP_TABLES);
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- page.on('pageerror',e=>{errs.push(e.message.slice(0,200));console.log('[pageerror]',e.message.slice(0,200),'\n',String(e.stack||'').slice(0,900))});
  page.on('console',m=>{if(m.type()==='error')console.log('[console]',m.text().slice(0,200))});
- const settle=ms=>page.waitForTimeout(ms);
  const post=(p,body)=>page.evaluate(async a=>{
   const r=await fetch(a.p,{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify(Object.assign({user_id:'test-filtergroup'},a.b))});
@@ -102,7 +95,7 @@ let b=null;
    b.click();return true;
   },label);
   if(!hit)throw new Error('プリセットが見つかりません: '+label);
-  await settle(1300);
+  await idle();
  };
  let made=[];
 
@@ -115,7 +108,7 @@ let b=null;
   await post('/api/access-mode',{mode:'edit'});
   await page.click('aside [data-db-key="SIKALOTNOW"]',{timeout:20000});
   await page.waitForSelector('#grid tbody tr',{timeout:30000});
-  await settle(900);
+  await idle();
 
   /* ---- 用意: 実際に絞れる列と値（§9.238 ⑤の教訓） ---- */
   const col=await page.evaluate(()=>{
@@ -148,7 +141,7 @@ let b=null;
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
   await page.click('aside [data-db-key="SIKALOTNOW"]',{timeout:20000});
   await page.waitForSelector('#filterPresetBtn',{timeout:20000});
-  await settle(900);
+  await idle();
 
   /* ==========================================================
      1) バーは1行。**札の行も旧「よく使う条件」の行も無い**
@@ -211,7 +204,7 @@ let b=null;
       menu.secs.length>=2,JSON.stringify(menu.secs));
   rec('登録一覧への入口が同じ場所にある',menu.manage,String(menu.manage));
   await page.keyboard.press('Escape');
-  await settle(200);
+  await paint();
 
   /* ==========================================================
      3) 選ぶと**切り替わる**（件数と一覧が実際に動く）
@@ -249,7 +242,7 @@ let b=null;
    S.page=1;
   },{col,v:vals[2]||vals[0]});
   await page.evaluate(()=>WL.list.load());
-  await settle(1200);
+  await idle();
   await pickPreset(GA);
   const mixed=await state();
   rec('手で足した条件は切り替えても残る',mixed.conds.length===3,JSON.stringify(mixed.conds));
@@ -298,7 +291,7 @@ let b=null;
   await page.click('#filterCondBtn');
   await page.waitForSelector('#filterCondMenu',{timeout:5000});
   await page.click('#fbCondClear');
-  await settle(1500);
+  await idle();
   const allOff=await state();
   rec('「全部外す」で条件が全部外れる',allOff.conds.length===0,JSON.stringify(allOff));
   rec('「全部外す」で画面のエラーが出ない',errs.length===0,errs.slice(0,2).join(' / '));
@@ -308,11 +301,11 @@ let b=null;
    S.genericFilters=[{column:a.col,op:'contains',value:a.v}];S.page=1;
   },{col,v:vals[0]});
   await page.evaluate(()=>WL.list.load());
-  await settle(1200);
+  await idle();
   await page.click('#filterCondBtn');
   await page.waitForSelector('#filterCondMenu',{timeout:5000});
   await page.evaluate(()=>document.querySelector('#filterCondMenu [data-cond-x]').click());
-  await settle(1200);
+  await idle();
   const cleared=await state();
   rec('ポップオーバーから1件ずつ外すと実際に効かなくなる',cleared.conds.length===0,
       JSON.stringify(cleared));
@@ -327,10 +320,10 @@ let b=null;
      6) 登録一覧で「組み合わせ」を作る／名前を変える／解く
      ========================================================== */
   await page.evaluate(()=>{document.querySelector('#filterMoreBtn').click()});
-  await settle(200);
+  await paint();
   await page.evaluate(()=>document.querySelector('#openFilterPresets').click());
   await page.waitForSelector('#filterPresetModal:not([hidden])',{timeout:8000});
-  await settle(700);
+  await idle();
   const list=await page.evaluate(()=>({
    secs:[...document.querySelectorAll('#filterPresetList .fp-sec')]
      .map(x=>(x.querySelector('.fp-sec-name')?.textContent||'').trim()),
@@ -374,7 +367,7 @@ let b=null;
     .forEach(x=>{const c=x.querySelector('.fp-pick-check');c.checked=true;
       c.dispatchEvent(new Event('change',{bubbles:true}))});
   },TAG);
-  await settle(400);
+  await paint();
   const picked=await page.evaluate(()=>(document.querySelector('.fp-bulk')?.textContent||'').trim());
   rec('選ぶと件数と次にすることが出る',/1件/.test(picked)&&/新しい組み合わせを作る/.test(picked),
       picked.slice(0,60));
@@ -388,7 +381,7 @@ let b=null;
      **テキストで探さないこと**——札の字は呼ぶ側が決めるので、文言を直した
      瞬間に網だけが古い約束のまま残る。 */
   await page.click('#appConfirmOk');
-  await settle(2000);
+  await idle(600,15000);
   made.push(NEW);
   const after=await listPresets();
   const newRow=after.find(p=>p.name===NEW);
@@ -418,8 +411,7 @@ let b=null;
 
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,2).join(' / '));
  }catch(e){
-  console.log('FATAL: '+(e&&e.stack||e));
-  R.push({n:'FATAL',ok:false});
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* 後片付け（§9.121）。**名前で引いて消す**——実行ごとの印が入っている。 */
   try{
@@ -430,9 +422,6 @@ let b=null;
   try{await post('/api/access-mode',{mode:'edit'})}catch(e){}
   try{if(snapM)await H.dropNewMasterRows(snapM)}
   catch(e){console.log('!! 増えた行を消せませんでした: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
- const ng=R.filter(x=>!x.ok).length;
- console.log(`\n${R.length-ng}/${R.length} PASS`);
- process.exit(ng?1:0);
-})();
+
+}, {viewport:{width:1600,height:1000}});

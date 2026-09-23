@@ -24,19 +24,13 @@
    **応答を差し替えて確かめる**——実機のWinError 5はここでは作れないし、
    画面が見ているのは「読めなかったこと」だけなので、理由は問わない。
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const CTX=/\/api\/measurement\/context\?/;
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1920,height:1080}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message.slice(0,140)));
- page.on('dialog',d=>d.accept());
+run('test_ctxfail: 参照データが読めなくても測定は始められる（§9.317）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
 
  const qi=()=>page.evaluate(()=>({
   札:document.getElementById('qualityInfoBadge')?.textContent||'',
@@ -69,7 +63,11 @@ let b=null;
   await page.waitForFunction(()=>!document.querySelector('#measureModal')?.hidden,null,{timeout:25000});
   await page.waitForFunction(()=>typeof S!=='undefined'&&!!S.measure,null,{timeout:25000});
   await page.waitForFunction(()=>document.querySelector('#saveOverlay')?.hidden!==false,null,{timeout:30000}).catch(()=>{});
-  await page.waitForTimeout(1200);
+  /* 初回保存（端末内の控え）まで待つ。控えは取得ではないので idle では見えない——
+     判定と同じ問い（その記録が端末内に在るか）で聞き直す。 */
+  await idle();
+  await W.poll(()=>page.evaluate(async()=>{const id=S.measure&&S.measure.id;if(!id)return false;
+    return (await WL.records.reliableAll()).some(x=>x.id===id)}).catch(()=>false),v=>v,10000);
 
   const open=await page.evaluate(()=>({
    出ている:!document.getElementById('measureModal').hidden,
@@ -108,7 +106,7 @@ let b=null;
    r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(j)});
   });
   await page.evaluate(()=>WL.records.loadMeasurementContext(true));
-  await page.waitForTimeout(400);
+  await idle();
   const c=await qi();
   rec('品質だけ読めなかったときも札と注記が出る',
       c.読めません&&/品質情報を読み込めません/.test(c.注記),JSON.stringify(c).slice(0,110));
@@ -116,7 +114,7 @@ let b=null;
   // ---- 5. 読み直して成功したら消える ----
   await page.unroute(CTX);
   await page.evaluate(()=>WL.records.loadMeasurementContext(true));
-  await page.waitForTimeout(600);
+  await idle();
   const d=await qi();
   rec('読み直して成功したら注記は消える',!d.読めません&&!d.注記,JSON.stringify(d).slice(0,110));
 
@@ -130,12 +128,4 @@ let b=null;
   rec('FATAL',false,String(e&&e.message||e));
  }
 
- await b.close();
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})().catch(async e=>{
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1920,height:1080}});

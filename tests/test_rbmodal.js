@@ -16,22 +16,15 @@
     - 説明が**縦に長い列にならない**（短くして続きは`?`のtitleへ）
     - 保存の形は今までどおり（札が書いた値がそのまま保存される）
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const TAG='rb-'+Date.now().toString(36);
 const post=(p,x)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(x)});
 const get=p=>fetch(B+p).then(r=>r.json());
 
-let b=null,page=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- page=await b.newPage({viewport:{width:1760,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message));
- page.on('dialog',d=>d.accept());
+run('test_rbmodal: 帳票ブロックの編集窓を組み直す（§9.249 ③）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  const made=[];
  try{
   await post('/api/access-mode',{mode:'edit'});
@@ -208,8 +201,8 @@ let b=null,page=null;
     const t=[...document.querySelectorAll('.mm-tab')].find(x=>x.textContent.indexOf(n)>=0);
     if(t)t.click();
    },name);
-   await page.waitForTimeout(200);
-  };
+   await paint();
+   };
   await tab('何を載せるか');
 
   /* ---- 3) 見て選ぶ札。**新規でも既定が選ばれている** ---- */
@@ -266,7 +259,7 @@ let b=null,page=null;
      if(!b||b.disabled)return false;b.click();return true;
     },[key,dir]);
     if(!ok)return false;
-    await page.waitForTimeout(120);
+    await paint();
    }
    return false;
   };
@@ -324,7 +317,7 @@ let b=null,page=null;
   /* ---- 5) 種別を変えると②の中身が入れ替わり、見本も変わる ---- */
   await tab('これは何の塊か');
   await page.click('[data-card="kindText"][data-card-v="エリア（枠と文字）"]');
-  await page.waitForTimeout(200);
+  await paint();
   await tab('何を載せるか');
   const area=await page.evaluate(()=>{
    const fb=document.querySelector('[data-fb]');
@@ -340,7 +333,7 @@ let b=null,page=null;
       area.cols.indexOf('—')===0,area.cols);
   await tab('これは何の塊か');
   await page.click('[data-card="kindText"][data-card-v="項目の並び"]');
-  await page.waitForTimeout(200);
+  await paint();
 
   /* ---- 6) 説明が縦に長い列にならない ---- */
   const hints=await page.evaluate(()=>[...document.querySelectorAll('#maintEditorForm .mm-field-hint')]
@@ -440,15 +433,15 @@ let b=null,page=null;
   await page.evaluate(()=>{
    const c=[...document.querySelectorAll('[data-fb-cat]')].find(b=>/仕掛/.test(b.textContent||''));
    c&&c.click();
-  });
-  await page.waitForTimeout(250);
+   });
+   await idle();
   await page.evaluate(()=>{
    const b=document.querySelector('[data-fb-add="basic.lotNo"]')
      ||document.querySelector('[data-fb-add]');
    b&&b.click();
-  });
-  await page.waitForTimeout(400);
-  await page.waitForFunction(()=>{
+   });
+   await idle();
+   await page.waitForFunction(()=>{
    const s=document.querySelector('#rbSection');
    return s&&s.querySelector('.rp-section');
   },null,{timeout:20000}).catch(()=>{});
@@ -469,16 +462,18 @@ let b=null,page=null;
       /見本のロット/.test(dummy.note)&&/保存されません/.test(dummy.note),dummy.note);
   /* **もう片側**——「見本の値」を切ると枠だけになる（片側だけを見る網は、
      いつも値を入れる実装でも通る）。 */
+  const note0=await W.textOf(page,'#rbPreviewNote');
   await page.evaluate(()=>document.querySelector('#rbToggleDummy').click());
-  await page.waitForTimeout(500);
+  await W.changed(page,'#rbPreviewNote',note0,5000);await idle();
   const bare=await page.evaluate(()=>({
    値:[...document.querySelectorAll('#rbSection .rp-field-value')].map(x=>x.textContent.trim()),
    note:(document.querySelector('#rbPreviewNote')||{}).textContent||''}));
   rec('「見本の値」を切ると枠だけになる（理由も言い直す）',
       bare.値.length>0&&bare.値.every(v=>v==='-')&&/値を入れずに/.test(bare.note),
       JSON.stringify(bare.値.slice(0,4))+' / '+bare.note);
+  const note1=await W.textOf(page,'#rbPreviewNote');
   await page.evaluate(()=>document.querySelector('#rbToggleDummy').click());
-  await page.waitForTimeout(400);
+  await W.changed(page,'#rbPreviewNote',note1,5000);await idle();
   const whole=await page.evaluate(async()=>{
    document.querySelector('#rbToggleOthers').click();
    await new Promise(r=>setTimeout(r,1200));
@@ -501,7 +496,7 @@ let b=null,page=null;
   rec('紙の外へはみ出さず、窓もスクロールしない',
       whole.inPaper===true&&whole.ov===0,JSON.stringify(whole));
   await page.evaluate(()=>document.querySelector('#rbToggleOthers').click());
-  await page.waitForTimeout(300);
+  await idle();
 
   /* ---- 7) 札が書いた値がそのまま保存される ---- */
   await tab('これは何の塊か');
@@ -519,7 +514,7 @@ let b=null,page=null;
     span:document.querySelector('[data-field="span"]').value,
     rows:document.querySelector('[data-field="rows"]').value}));
   await page.click('#maintEditorSave');
-  await page.waitForTimeout(1500);
+  await idle(600,10000);
   const rows=await get('/api/report-block-master');
   const saved=(rows.items||[]).find(x=>x.name===TAG+'塊');
   if(saved)made.push(saved.id);
@@ -535,7 +530,8 @@ let b=null,page=null;
       .find(r=>r.textContent.indexOf(id)>=0);
     if(row)row.click();
    },TAG+'塊');
-   await page.waitForTimeout(900);
+   await W.until(page,()=>{const m=document.getElementById('maintEditorModal');return !!m&&!m.hidden&&m.getClientRects().length>0},null,{ms:15000,what:'保存した塊の編集窓が開く'});
+   await idle();
    await tab('紙のどこへ出すか');
    const back=await page.evaluate(()=>{
     const on=k=>{const e=document.querySelector(`[data-card="${k}"].is-on`);return e?e.dataset.cardV:''};
@@ -598,7 +594,7 @@ let b=null,page=null;
    await page.waitForSelector('#maintEditorModal',{state:'visible',timeout:20000});
    await tab('何を載せるか');
    await page.waitForSelector('#maintEditorModal .fb-rows .fb-row',{timeout:20000});
-   await page.waitForTimeout(900);
+   await idle();
    const fb=await page.evaluate(()=>{
     const wrap=document.querySelector('#maintEditorModal .fb-rows');
     const rows=[...wrap.querySelectorAll('.fb-row')];
@@ -633,7 +629,7 @@ let b=null,page=null;
    rec('マスの高さを実測して入れている（--fb-cell-h）',
        /^\d+(\.\d+)?px$/.test(fb.cellH||''),String(fb.cellH));
    await page.evaluate(()=>{const b=document.getElementById('maintEditorClose');if(b)b.click()});
-   await page.waitForTimeout(300);
+   await W.until(page,()=>{const m=document.getElementById('maintEditorModal');return !m||m.hidden||!m.getClientRects().length},null,{ms:5000,what:'編集窓が閉じる'});
   }catch(e){rec('FATAL(§9.303 ②)',false,e.message)}
 
   rec('画面のエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
@@ -644,9 +640,5 @@ let b=null,page=null;
   for(const id of made){
    try{await post('/api/report-block-master/delete',{id,user_id:'tests'})}catch(e){}
   }
-  if(b)await b.close();
  }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+}, {viewport:{width:1760,height:1000}});

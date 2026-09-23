@@ -1,13 +1,10 @@
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const setMode=async m=>{await fetch('http://127.0.0.1:5029/api/access-mode',
  {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
 const plan=async()=>{const r=await fetch('http://127.0.0.1:5029/api/schedule/plan?equipment='
  +encodeURIComponent('テスト設備A')+'&history_hours=8');return r.json()};
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const W=require('./lib/wait.js');const {idle}=W.track(page);const paint=()=>W.paint(page);
+run('test_sccat: 見え方の設定（まとめ・さかのぼり・表示列・行の色・配置）は「表示」', async ({page,rec,W,idle,paint})=>{
  /* 見え方の設定（まとめ・さかのぼり・表示列・行の色・配置）は「表示」
     パネル(§9.199)の中にある。開く→選ぶ→**閉じる**まで1つの手順にする
     ——開いたままにすると、パネルが表の右上を覆って次のクリックが
@@ -15,8 +12,6 @@ let b=null;
  const openView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.openViewPop&&WL.scheduleView.openViewPop());
  const closeView=()=>page.evaluate(()=>window.WL&&WL.scheduleView&&WL.scheduleView.closeViewPop&&WL.scheduleView.closeViewPop());
  const pickView=async(sel,val)=>{await openView();await page.selectOption(sel,val).catch(()=>{});await closeView()};
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
  page.on('dialog',d=>{console.log('[dialog]',d.message());d.accept()});
  // このテストが前提とする実績を毎回作り直す(他のテストが測定画面を開くと
  // 端末内の下書きが同じロットの実績突合を書き換えるため、順序に依存しない
@@ -147,15 +142,4 @@ let b=null;
  await fetch('http://127.0.0.1:5029/api/measurement/backup/delete',{method:'POST',
   headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:['rec-run','rec-old','rec-done','rec-doing','rec-done2']})}).catch(()=>{});
 
- console.log('\n=== SUMMARY ===');
- const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
- f.forEach(x=>console.log(' -',x.n,x.d||''));
- await b.close();process.exit(f.length?1:0);
-})().catch(async e=>{
- // 落ちてもブラウザは必ず閉じる。閉じ忘れると開いたままの画面が設備の
- // 編集セッションを掴み続け、後続のスケジュール系テストが「編集中です」で
- // 連鎖的に落ちる(実際に1本のFATALから8本が落ちた)。
- console.error('FATAL',e);
- if(b)await b.close().catch(()=>{});
- process.exit(2);
-});
+}, {viewport:{width:1700,height:1000}});

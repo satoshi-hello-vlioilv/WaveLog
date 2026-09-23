@@ -25,16 +25,15 @@
     - 書式は`WL.cellFormat`だけを見ると通る（あれは最初から正しい）。
       **紙のセル**で秒が出ることを見る。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
-let b=null;
 const getj=async p=>(await fetch(B+p)).json();
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
   body:JSON.stringify(body)}).then(r=>r.json());
 
-(async()=>{
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+run('test_rbcatalog: 帳票ブロックの「引ける範囲」と「書式」（§9.285 ②③④）', async ({rec,B,W,idle,paint,errs,browser})=>{
  /* 触った行は必ず戻す（§9.121。`db/master.sqlite3`は実行をまたいで生き延びる）。 */
  const undo=[];
  try{
@@ -89,13 +88,11 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
       (j0.defaultCells['寸法（オーダー／製造）']||{}).cols===6,
       JSON.stringify((j0.defaultCells['寸法（オーダー／製造）']||{}).cols));
 
-  b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome'),
-                           args:['--no-sandbox','--disable-dev-shm-usage']});
   /* **時差のある地方時で見ること**（§9.285 ③）——検証環境はUTCなので、
      素のままだと「生のISOを書式へ渡す」欠陥と正しい実装が**同じ絵**になり、
      地方時の網が一度も効かない（§9.108・§9.275と同じ「この環境では通らない道」）。
      現場と同じJSTを明示して、時差ぶんずれたら落ちるようにする。 */
-  const page=await b.newPage({viewport:{width:1600,height:1000},timezoneId:'Asia/Tokyo'});
+  const page=await (await browser.newContext({viewport:{width:1600,height:1000},timezoneId:'Asia/Tokyo'})).newPage();
   page.on('pageerror',e=>console.log('[pageerror]',e.message));
   page.on('dialog',d=>d.accept());
   await page.addInitScript(eq=>{try{
@@ -331,15 +328,8 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   }else rec('押すと既定の並びと列数がそのまま入る',false,'ボタンが出ていない');
   await page.evaluate(()=>{const c=document.getElementById('maintEditorCancel');if(c)c.click()});
 
-  console.log('\n=== SUMMARY ===');
-  const f=R.filter(r=>!r.ok);console.log(`${R.length-f.length}/${R.length} passed`);
-  f.forEach(x=>console.log(' -',x.n,x.d||''));
-  process.exitCode=f.length?1:0;
  }catch(e){
-  console.log('FATAL',e&&e.message||e);
-  console.log('\n=== SUMMARY ===');
-  console.log(`${R.filter(r=>r.ok).length}/${R.length} passed`);
-  process.exitCode=1;
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* **後片付け**（§9.121）——直した行を戻し、作った塊は消す。 */
   for(const u of undo){
@@ -348,6 +338,5 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
     else await post('/api/report-block-master/update',u);
    }catch(e){console.log('cleanup failed',e&&e.message||e)}
   }
-  if(b)await b.close().catch(()=>{});
  }
-})();
+}, {});

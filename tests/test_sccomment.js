@@ -20,18 +20,13 @@
     7. 置いた枠は**ダブルクリックでその場で書ける**こと（Enterで確定）
     8. **書いている最中は勝手に読み直さない**こと（10秒ごとの見張りに
        入力欄を消されると、書いている途中の文字が消える） */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const TEXT='刃を交換すること_'+Date.now();
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
+run('test_sccomment: 申し送り（コメント）を予定へ挟む（§9.189）', async ({page,rec,idle})=>{
  const setMode=m=>page.evaluate(async mm=>{await fetch('/api/access-mode',{method:'POST',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mm})})},m);
  let made=null;const extra=[];
@@ -69,8 +64,8 @@ let b=null;
   await page.click('#appConfirmOk');
   await page.waitForFunction(()=>(WL.scheduleView.entries()||[]).some(e=>e.kind==='コメント'&&!e.__pending),
     null,{timeout:20000});
-  await page.waitForTimeout(1200);
-  const after=await page.evaluate(t=>{
+    await idle();  // 書込のあとの予定の取り直し（時刻）が済むまで
+    const after=await page.evaluate(t=>{
    const list=WL.scheduleView.entries()||[];
    const i=list.findIndex(x=>x.kind==='コメント'&&x.title===t);
    const e=i<0?null:list[i];
@@ -109,7 +104,7 @@ let b=null;
   await page.evaluate(()=>WL.schedulePrint.openPreview('テスト設備A'));
   await page.waitForSelector('#schedulePrintPreview:not([hidden])',{timeout:10000});
   await page.waitForFunction(()=>document.querySelectorAll('.sp-pv-sheet').length>0,null,{timeout:20000});
-  await page.waitForTimeout(500);
+  await idle();
   const paper=await page.evaluate(t=>{
    const tr=[...document.querySelectorAll('.sp-row-comment')].find(x=>x.innerText.includes(t));
    if(!tr)return null;
@@ -207,7 +202,8 @@ let b=null;
   await page.waitForSelector('#scCommentText',{timeout:8000});
   const n0=await page.evaluate(()=>(WL.scheduleView.entries()||[]).filter(e=>e.kind==='コメント').length);
   await page.click('#appConfirmOk');
-  await page.waitForTimeout(1200);
+  /* 「入らない」ことを見るので条件では待てない。入るなら起きるはずの書込と取り直しが静まるまで待つ。 */
+  await idle(800);
   const n1=await page.evaluate(()=>(WL.scheduleView.entries()||[]).filter(e=>e.kind==='コメント').length);
   rec('空のままでは入らない',n0===n1,`${n0} → ${n1}`);
  }catch(e){
@@ -219,10 +215,5 @@ let b=null;
      body:JSON.stringify({id:i,user_id:'tester'})});
   },id)}catch(_){}
   try{await setMode('edit')}catch(_){}
-  if(b)await b.close().catch(()=>{});
  }
- console.log('\n=== SUMMARY ===');
- const ng=R.filter(x=>!x.ok);console.log(`${R.length-ng.length}/${R.length} passed`);
- ng.forEach(x=>console.log(' -',x.n,x.d||''));
- process.exit(ng.length?1:0);
-})();
+}, {viewport:{width:1700,height:1000}});

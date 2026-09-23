@@ -270,14 +270,19 @@ try:
     conn.executemany('INSERT INTO [相手] VALUES (?,?)',
                      [(page_lots[0], 'A'), (page_lots[1], 'B'), (page_lots[2], 'C'),
                       (far_lot, 'D'), ('QJZZZ1', 'E'), ('QJZZZ2', 'F')])
+    # 当たらない相手と空の相手（利用者の報告「オーダー情報と結合できませんと出たとしても、
+    # 仕掛一覧のデータがあるのであれば表示すべき」）。
+    conn.execute('CREATE TABLE [外れ] ([ロット番号] TEXT, [等級] TEXT)')
+    conn.executemany('INSERT INTO [外れ] VALUES (?,?)', [('QJZZZ8', 'X'), ('QJZZZ9', 'Y')])
+    conn.execute('CREATE TABLE [空] ([ロット番号] TEXT, [等級] TEXT)')
     conn.commit()
     conn.close()
     db_access.DBS['QJKIND'] = {'path': KIND_DB, 'role': 'readonly', 'label': '結合の仕方の検証',
                                'preferred': '相手', 'purpose': '', 'listed': False}
 
-    def kind_case(kind):
+    def kind_case(kind, right_table='相手'):
         d = {'id': 0, 'name': NAME_PREFIX + 'K', 'left': WORK, 'leftTable': '仕掛',
-             'right': 'QJKIND', 'rightTable': '相手', 'kind': kind,
+             'right': 'QJKIND', 'rightTable': right_table, 'kind': kind,
              'keys': [{'left': 'ロット番号', 'right': 'ロット番号'}],
              'columns': [], 'prefix': 'K_', 'multi': 'first', 'active': True}
         cs, rows, infos = query_join.apply_joins(
@@ -321,6 +326,22 @@ try:
     rec('完全外部: どちらかにあれば残る',
         len(rows) == 7 and info.get('droppedRows') == 0 and info.get('addedRows') == 2,
         f"{len(rows)}行")
+    # **1行も当たらない結合は、行を落とさず失敗として返す**（内部・右外部も）。
+    for kind in ('inner', 'right'):
+        _cs, rows, info = kind_case(kind, '外れ')
+        sm = query_join.summarize([info])
+        rec(f'{kind}: 1行も当たらなければ一覧の行はそのまま出し、失敗として理由を返す',
+            len(rows) == 5 and sm.get('failed') == 1 and '一致する行' in (info.get('reason') or ''),
+            f"{len(rows)}行 failed={sm.get('failed')} {info.get('reason', '')[:40]}")
+    _cs, rows, info = kind_case('left', '空')
+    rec('相手の表が空なら「空」と名指しする（キーが一致しない、と取り違えない）',
+        len(rows) == 5 and '1行もありません' in (info.get('reason') or '')
+        and query_join.summarize([info]).get('failedReasons') == [info.get('reason')],
+        (info.get('reason') or '')[:60])
+    _cs, rows, info = kind_case('leftOnly', '外れ')
+    rec('「この一覧にしかない行」で一致0件なのは正常（失敗に数えない）',
+        len(rows) == 5 and query_join.summarize([info]).get('failed') == 0,
+        f"{len(rows)}行 reason={info.get('reason')!r}")
     _cs, _rows, info = kind_case('inner')
     summary = query_join.summarize([info])
     rec('行が増減したことをまとめが伝える',

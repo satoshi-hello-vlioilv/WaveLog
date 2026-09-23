@@ -17,29 +17,21 @@
    材料は`tests/make_split_fixture.py`が入れた L9000（親）/ L90001・L90002
    （子）だけ。**rowidが末尾なので`#search`で絞ってから見る**。
    ============================================================ */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
-let b=null;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];page.on('pageerror',e=>errs.push(e.message));
+run('test_gridchild: 分割ありの子ロットを親の直下へ畳む(§9.239 ⑤-2、利用者の指示)', async ({page,rec,B,W,idle,paint,errs,browser})=>{
+ /* 一覧が落ち着くまで（検索欄は300msの遅延のあと読み込む→その往復が静まるまで）。 */
  const settle=async()=>{
-  let last=-1,same=0;
-  for(let i=0;i<60&&same<3;i++){
-   const n=await page.evaluate(()=>document.querySelectorAll('#grid tbody tr').length);
-   if(n===last)same++;else{same=0;last=n}
-   await page.waitForTimeout(150);
-  }
-  return last;
+  await idle(600);
+  return page.evaluate(()=>document.querySelectorAll('#grid tbody tr').length);
  };
  try{
   await post('/api/access-mode',{mode:'edit'});
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('aside [data-db-key]',{timeout:25000});
-  await page.waitForTimeout(600);
+  await W.booted(page); await idle();
   await page.click('aside [data-db-key]');
   await page.waitForSelector('#grid tbody tr',{timeout:25000});
   await settle();
@@ -83,7 +75,8 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
   const beforeNo=await page.evaluate(()=>[...document.querySelectorAll('#grid .grid-no-cell')]
     .map(x=>x.textContent.trim()));
   await page.evaluate(()=>document.querySelector('#grid .grid-child-toggle').click());
-  await page.waitForTimeout(500);
+  await W.until(page,()=>document.querySelectorAll('#grid tbody tr.grid-child-row').length>0,null,{ms:8000,what:'子の行が開く'});
+  await idle();
   const opened=await page.evaluate(()=>{
    const trs=[...document.querySelectorAll('#grid tbody tr')]
      .filter(t=>!t.classList.contains('grid-virtual-spacer'));
@@ -120,7 +113,7 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 
   /* ---- 7) もう一度押すと畳む ---- */
   await page.evaluate(()=>document.querySelector('#grid .grid-child-toggle').click());
-  await page.waitForTimeout(400);
+  await W.until(page,()=>document.querySelectorAll('#grid tbody tr.grid-child-row').length===0,null,{ms:8000,what:'子の行が畳まれる'});
   const closed=await page.evaluate(()=>({
    子の行:document.querySelectorAll('#grid tbody tr.grid-child-row').length,
    つまみ:(document.querySelector('#grid .grid-child-toggle')||{}).getAttribute('aria-expanded'),
@@ -166,11 +159,6 @@ const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'applicati
 
   rec('画面の例外が出ていない',errs.length===0,errs.join(' / '));
  }catch(e){
-  console.log('FATAL '+(e&&e.message||e));R.push({ok:false});
- }finally{
-  await b.close();
- }
- const ok=R.filter(x=>x.ok).length;
- console.log(`\n== ${ok}/${R.length} PASS ==`);
- process.exit(ok===R.length?0:1);
-})();
+  rec('FATAL',false,String(e&&e.message||e));
+  }
+}, {viewport:{width:1700,height:1000}});

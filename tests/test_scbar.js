@@ -22,19 +22,12 @@
     6. 差し込みの帯は**境目のそばだけ**で出る（行の中央では出ない）
     7. 吹き出しは**取っ手の列を覆わない**／行は掴める（draggable）
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A',PARENT='L9000';
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const page=await b.newPage({viewport:{width:1700,height:1000}});
- const W=require('./lib/wait.js');const {idle}=W.track(page);const paint=()=>W.paint(page);
- page.on('pageerror',e=>console.log('[pageerror]',e.message));
- page.on('dialog',d=>d.accept());
+run('test_scbar: 操作列を1行に・親/子バッジ・差し込みの当たり判定（§9.199）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  const setMode=m=>page.evaluate(async mm=>{await fetch('/api/access-mode',{method:'POST',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mm})})},m);
  const openView=()=>page.evaluate(()=>WL.scheduleView.openViewPop());
@@ -605,7 +598,7 @@ let b=null;
     .forEach(id=>{const el=document.getElementById(id);if(el){el.hidden=true;el.innerHTML=''}});
   });
 
- }catch(e){console.log('FATAL',e.message)}finally{
+ }catch(e){rec('FATAL',false,String(e&&e.message||e))}finally{
   try{
    for(const id of made)await page.evaluate(async i=>{
     await fetch('/api/schedule/plan/delete',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -616,9 +609,6 @@ let b=null;
      localStorage.setItem('scLayoutPrefsV1',JSON.stringify(p))}catch(e){}});
    await setMode('edit');
   }catch(e){}
-  await b.close();
-  console.log('\n=== SUMMARY ===');
-  console.log(`${R.filter(r=>r.ok).length}/${R.length} PASS`);
-  R.filter(r=>!r.ok).forEach(r=>console.log('  FAIL '+r.n+(r.d?' -- '+r.d:'')));
+
  }
-})();
+}, {viewport:{width:1700,height:1000}});

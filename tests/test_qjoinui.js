@@ -11,12 +11,12 @@
 
    **後始末は必ず行う**——マスタDBは実行をまたいで生き延びるので（§9.121）、
    落ちても finally で消す。ブラウザも必ず閉じる。 */
-const { chromium } = require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const NAME='テスト結合UI';
 const EQ='テスト設備A';
-let b=null,joinId=null,contentTouched=false,builtinTouched=false;
-const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
+let joinId=null,contentTouched=false,builtinTouched=false;
 
 async function call(method,path,body){
  const r=await fetch(B+path,{method,headers:{'Content-Type':'application/json'},
@@ -26,10 +26,7 @@ async function call(method,path,body){
 }
 const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
 
-(async()=>{
- b=await chromium.launch({executablePath:(process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome')});
- const page=await b.newPage({viewport:{width:1600,height:1000}});
- const errs=[];page.on('pageerror',e=>errs.push(e.message));
+run('test_qjoinui: クエリ結合の画面（§9.193）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  try{
   const cat=(await call('GET','/api/catalog')).body;
   const WORK=cat.workKey;   // 品質のキーは使わなくなった（候補はサーバーに聞く・§9.364）
@@ -129,7 +126,7 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
      飛ぶので、そこは触らない。§9.117）。 */
   await page.click('[data-qj-search="left"]');
   await page.type('[data-qj-search="left"]','ロット');
-  await page.waitForTimeout(400);
+  await paint();   // 絞り込みは input の中で同期に描き直す
   const filtered=await page.evaluate(()=>({
    n:document.querySelectorAll('[data-qj-list="left"] .qj-field').length,
    names:[...document.querySelectorAll('[data-qj-list="left"] .qj-fld-name')].map(x=>x.textContent.trim()),
@@ -147,14 +144,14 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
    return !!el;
   },[side,col]);
   await clickField('left','ロット番号');
-  await page.waitForTimeout(300);
+  await paint();
   const midPick=await page.evaluate(()=>({
    picked:[...document.querySelectorAll('.qj-field.is-pick')].map(x=>x.dataset.col),
    status:document.querySelector('.qj-merge-status')?.textContent.replace(/\s+/g,' ').trim()||''}));
   rec('1つ目を押すと、次にすることが1つだけ書かれる',
       midPick.picked.length===1&&/次に相手の列を押す/.test(midPick.status),JSON.stringify(midPick));
   await clickField('right','ロット番号');
-  await page.waitForTimeout(600);
+  await idle();
   const paired=await page.evaluate(()=>({
    pairs:[...document.querySelectorAll('.qj-pair')].map(x=>x.textContent.replace(/\s+/g,' ').trim()),
    keyMarks:[...document.querySelectorAll('.qj-fld-key')].map(x=>x.textContent.trim()),
@@ -169,7 +166,7 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
      「見つからないので飛ばす」で**何も確かめないまま通る**（実際に通った）。 */
   await page.evaluate(()=>{const el=document.querySelector('[data-qj-search="left"]');
    el.value='';el.dispatchEvent(new Event('input',{bubbles:true}))});
-  await page.waitForTimeout(400);
+   await paint();
   const dragged=await page.evaluate(()=>{
    const l=[...document.querySelectorAll('[data-qj-list="left"] .qj-field')]
      .find(x=>x.dataset.col==='鋳造番号');
@@ -182,15 +179,15 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
    r.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:dt}));
    l.dispatchEvent(new DragEvent('dragend',{bubbles:true,dataTransfer:dt}));
    return {skip:false};
-  });
-  await page.waitForTimeout(600);
+   });
+   await idle();
   const afterDrag=await page.evaluate(()=>[...document.querySelectorAll('.qj-pair')]
     .map(x=>x.textContent.replace(/\s+/g,' ').trim()));
   rec('ドラッグして重ねても組になる',
       !dragged.skip&&afterDrag.length===2,JSON.stringify({dragged,afterDrag}));
   /* 組は×で外せる（外す手立てが組の隣にある）。 */
   await page.evaluate(()=>{const b=[...document.querySelectorAll('.qj-pair-del')].pop();if(b)b.click()});
-  await page.waitForTimeout(600);
+  await idle();
   const afterDel=await page.evaluate(()=>document.querySelectorAll('.qj-pair').length);
   rec('組は×で外せる',afterDel===1,String(afterDel));
   // 名前・接頭辞を入れて下見が出ることを見る
@@ -471,6 +468,48 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
   rec('完了突合の行は普通に編集・削除できる（複製しないと直せない行を残さない）',
       !!finRow&&finRow.edit&&finRow.del&&!finRow.builtin,JSON.stringify(finRow));
 
+  /* ---- 結合に失敗したとき・0行のとき（利用者の報告「VER2.348.0において、仕掛一覧が
+     出なくなってしまいました」「オーダー情報と結合できませんと出たとしても、仕掛一覧の
+     データがあるのであれば表示すべき」「必須データがない場合もエラーが出ないのは問題」）。
+     サーバーの応答を差し替えて見る。写し（tableCache）から描かないよう force で読み直す。 ---- */
+  await page.click(`aside [data-db-key="${WORK}"]`);
+  await W.until(page,()=>document.querySelectorAll('#grid tbody tr').length>0,null,{ms:20000,what:'仕掛一覧が出る'});
+  await idle();
+  const REASON='相手の表「オーダー」にデータが1行もありません（オーダー情報のデータが届いていないか、置き場が違います）。';
+  const jqFail={applied:false,count:1,failed:1,failedNames:['オーダー情報'],failedReasons:[REASON],
+    matched:0,addedColumns:0,addedColumnNames:[],names:[]};
+  const withResponse=async(edit)=>{
+   const h=async route=>{
+    if(!route.request().url().includes('join=1'))return route.continue();
+    const r=await route.fetch();const b=await r.json();edit(b);
+    await route.fulfill({response:r,json:b});
+   };
+   await page.route('**/api/table?**',h);
+   try{await page.evaluate(()=>WL.list.load(true));await idle()}
+   finally{await page.unroute('**/api/table?**',h)}
+   return page.evaluate(()=>({rows:document.querySelectorAll('#grid tbody tr').length,
+     chip:(document.querySelector('#listJoinChip')||{}).textContent||'',
+     err:(document.querySelector('#grid .load-error')||{}).textContent||'',
+     note:(document.querySelector('#grid .record-empty')||{}).textContent||''}));
+  };
+  const jf=await withResponse(b=>{b.joinQuality=jqFail});
+  rec('結合に失敗しても仕掛の行は出す',jf.rows>0,jf.rows+'行');
+  rec('札は「どの結合が・なぜ」を字で言う（マウスを乗せなくても読める）',
+      jf.chip==='結合できません: オーダー情報（相手の表「オーダー」にデータが1行もありません）',jf.chip);
+  const z=await withResponse(b=>{b.rows=[];b.count=0;b.joinQuality=jqFail});
+  rec('元データが0行なら、表の中にエラーとして理由と確かめる先を出す',
+      /データが1行もありません/.test(z.err)&&/データ接続/.test(z.err)&&!z.note,z.err.slice(0,90));
+  rec('結合に失敗した理由も同じ枠に添える',/結合できなかったもの: オーダー情報/.test(z.err),z.err.slice(0,160));
+  await page.evaluate(()=>WL.list.load(true));await idle();
+  await page.fill('#search','QJ存在しないロット');
+  await W.until(page,()=>!!document.querySelector('#grid .record-empty'),null,{ms:10000,what:'検索で0行の案内'});
+  const sf=await page.evaluate(()=>({note:(document.querySelector('#grid .record-empty')||{}).textContent||'',
+    err:!!document.querySelector('#grid .load-error')}));
+  rec('検索で0行なら「絞り込みに当たらない」と言う（エラーにしない）',
+      /検索・絞り込みに当たる行がありません/.test(sf.note)&&!sf.err,sf.note.slice(0,60));
+  await page.fill('#search','');
+  await W.until(page,()=>document.querySelectorAll('#grid tbody tr').length>0,null,{ms:15000,what:'一覧が戻る'});
+
   rec('画面側の例外が出ていない',errs.length===0,errs.slice(0,2).join(' / '));
  }catch(e){
   rec('FATAL',false,e.message);
@@ -490,9 +529,5 @@ const raf2=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requ
   try{const all=(await call('GET','/api/query-join-master')).body;
       for(const x of (all.items||[]))if(String(x.name||'').startsWith('テスト結合'))
         await call('POST','/api/query-join-master/delete',{id:x.id,user_id:'test-qjoin'});}catch(_){}
-  if(b)await b.close();
  }
- const ng=R.filter(x=>!x.ok);
- console.log('\n== '+(R.length-ng.length)+'/'+R.length+' PASS ==');
- process.exit(ng.length?1:0);
-})();
+}, {viewport:{width:1600,height:1000}});

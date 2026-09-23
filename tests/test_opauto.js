@@ -18,8 +18,8 @@
     - **もう置いてある値は一覧で押せない**（同じ数字が2箇所に出る・§8）。
     - **送らない更新で鍵が消えない**（§9.212 ②「送った項目だけ書く」）。
    ============================================================ */
-const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
-const EXE=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+'use strict';
+const {run}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const TAG='auto-'+Date.now().toString(36);
 const post=(p,x)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},
@@ -29,14 +29,7 @@ const EQ='テスト設備A';
 const NM_LOT='ZZ'+TAG+'ロット番号';
 const NM_CNT='ZZ'+TAG+'条数';
 
-let b=null;
-(async()=>{
- b=await chromium.launch({executablePath:EXE,args:['--no-sandbox']});
- const page=await b.newPage({viewport:{width:1920,height:1080}});
- const R=[];const rec=(n,ok,d)=>{R.push({n,ok,d});console.log((ok?'PASS':'FAIL')+': '+n+(d?' -- '+d:''))};
- const errs=[];
- page.on('pageerror',e=>errs.push(e.message.slice(0,140)));
- page.on('dialog',d=>d.accept());
+run('test_opauto: 自動で入る値・計算値を操業データ項目として置く（§9.234 ②）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  const made=[];
  try{
   await post('/api/access-mode',{mode:'edit'});
@@ -112,7 +105,7 @@ let b=null;
   await page.evaluate(v=>{try{localStorage.setItem('AccessMeasurementUserId',v)}catch(e){}},'tests');
   await page.click('#masterMaintNav [data-master="opItem"]');
   await page.waitForSelector('.op-board',{timeout:20000});
-  await page.waitForTimeout(900);
+  await idle();
   rec('盤に「自動で入る値を足す」の入口がある',
       await page.$eval('#opAddAuto',e=>!!e.offsetParent).catch(()=>false),'');
   await page.click('#opAddAuto');
@@ -133,7 +126,7 @@ let b=null;
   /* **閉じる操作で閉じること**（§9.222 ①）——開いたことだけを見る網は、
      閉じられないメニューを素通りさせる。 */
   await page.keyboard.press('Escape');
-  await page.waitForTimeout(200);
+  await paint();
   rec('Escで閉じる',(await page.$$('.op-menu-auto')).length===0,'');
 
   /* ==========================================================
@@ -146,7 +139,7 @@ let b=null;
   },NM_LOT);
   await page.waitForSelector('#opItemModal:not([hidden])',{timeout:8000});
   await page.waitForSelector('#opModalForm .op-form-sec[data-op-sec="data"]',{timeout:8000});
-  await page.waitForTimeout(300);
+  await idle();
   const dlg=await page.evaluate(()=>{
    const f=document.getElementById('opItemModal');
    const rows=[...f.querySelectorAll('.op-form-row')].map(r=>
@@ -181,7 +174,7 @@ let b=null;
   if(!started)throw Error('開始できる行が無い');
   await page.waitForFunction(()=>!document.querySelector('#measureModal')?.hidden,null,{timeout:25000});
   await page.waitForFunction(()=>typeof S!=='undefined'&&!!S.measure,null,{timeout:25000});
-  await page.waitForTimeout(1800);
+  await idle(600,15000);
   const shown=await page.evaluate(n=>{
    const el=document.querySelector(`.selectors [data-opfield="${CSS.escape(n)}"]`)
      ||document.querySelector(`[data-opfield="${CSS.escape(n)}"]`);
@@ -238,12 +231,8 @@ let b=null;
       JSON.stringify(filled));
 
   rec('画面のエラーが出ていない',errs.length===0,errs.join(' / '));
-  const ng=R.filter(x=>!x.ok).length;
-  console.log(`\n${R.length-ng}/${R.length} PASS`);
-  process.exitCode=ng?1:0;
  }catch(e){
-  console.log('FAIL: FATAL -- '+(e&&e.message));
-  process.exitCode=1;
+  rec('FATAL',false,String(e&&e.message||e));
  }finally{
   /* **後始末は必ず**（§検証。落ちた側にも書く——次の実行が設定を引き継ぐ）。 */
   for(const id of made){
@@ -252,6 +241,5 @@ let b=null;
   /* 置いた実績は自分で消す（§9.351・§9.362）。残った実績は計画外実績として
      予定表に現れ、無関係な網を落とす。 */
   try{await require('./lib/harness.js').clearRecords()}catch(e){console.log('!! 実績の後片付けに失敗: '+(e&&e.message||e))}
-  if(b)await b.close();
  }
-})();
+}, {viewport:{width:1920,height:1080}});
