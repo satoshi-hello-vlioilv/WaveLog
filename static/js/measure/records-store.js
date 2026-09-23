@@ -527,8 +527,22 @@ async function registerNg(){
 async function refreshDraftCount(){
  // 全件読みは1回だけにして、未同期件数の表示へも同じ配列を渡す。
  let all=null;
- try{all=await reliableAll();$('#homeDraftCount').textContent=all.filter(x=>x.status!=='完了').length}
- catch(e){$('#homeDraftCount').textContent='!'}
+ const b=$('#homeDraftCount');
+ try{
+  all=await reliableAll();
+  b.textContent=all.filter(x=>x.status!=='完了').length;
+  b.removeAttribute('title');b.classList.remove('is-bad');
+ }catch(e){
+  /* **黙って捨てない**（§9.328・§9.450）。以前は`!`の1文字だけで、
+     **何が起きたのか・次に何をすればよいのかがどこにも出ていなかった**
+     ——画面にも記録にも残らないので、あとから追えない。
+     状態は色だけで伝えない（§CLAUDE 3）ので、印と一緒に理由の字を置く。 */
+  b.textContent='!';b.classList.add('is-bad');
+  b.title='編集中の件数を数えられませんでした: '+((e&&e.message)||e)
+        +'\nこの端末の測定データ（ブラウザ内）を読めていません。'
+        +'\nページを開き直すか、「ログ・診断」で記録を見てください。';
+  console.warn('編集中データの件数を数えられませんでした',e);
+ }
  refreshSyncStatusUI(all);
 }
 async function findDraftForRow(row){
