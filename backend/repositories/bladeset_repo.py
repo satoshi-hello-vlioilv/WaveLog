@@ -49,7 +49,7 @@
 import json
 
 from ..db_access import tables
-from ..flags import flag_of
+from ..flags import flag_of, OFF_WORDS
 from .master_repo import normalize_equipment_name
 from .table_def import TableDef
 
@@ -163,6 +163,11 @@ RING_COLUMNS = (
     ('設備名', 'TEXT'), ('色名', 'TEXT'), ('色コード', 'TEXT'),
     ('外径', 'REAL'), ('内径', 'REAL'), ('幅', 'REAL'),
     ('保有本数', 'INTEGER'), ('下限本数', 'INTEGER'),
+    # 潤滑リング（§9.455、利用者の指示「ゴムリングマスタに潤滑リングフラグを立てて、
+    # ゴムリングのサイズや在庫数を決めるのと同じように潤滑リングの設定もできるように」）。
+    # 形も材質もゴムリングで、寸法と役目だけが違う——**同じ表の1行**として持ち、
+    # 幅・外径・内径・在庫は同じ欄で決める。真＝潤滑リング。
+    ('潤滑リング', 'INTEGER'),
     ('備考', 'TEXT'), ('表示順', 'INTEGER'), ('有効', 'INTEGER'),
 )
 RING_DEF = TableDef(RING_TABLE, 'ゴムリングID', RING_COLUMNS,
@@ -227,7 +232,9 @@ FINGER_DEF = TableDef(FINGER_TABLE, 'フィンガーID', FINGER_COLUMNS,
 STANDARD_TABLE = '刃組基準値マスタ'
 STANDARD_COLUMNS = (
     ('設備名', 'TEXT'),
-    ('アーバー有効長', 'REAL'), ('軸外径', 'REAL'),
+    ('アーバー有効長', 'REAL'), ('基準面', 'TEXT'), ('板の中心', 'REAL'),
+    ('フローティングシート押さえ代', 'REAL'),
+    ('軸外径', 'REAL'),
     ('スペーサー外径', 'REAL'), ('リング内径', 'REAL'),
     ('刃使用限界径', 'REAL'), ('研磨周期日', 'INTEGER'),
     ('フィンガー切替板厚', 'REAL'), ('刃間隙間上限', 'REAL'),
@@ -239,6 +246,7 @@ STANDARD_COLUMNS = (
     ('クリアランス既定', 'REAL'), ('クリアランス率', 'REAL'),
     ('ラップ既定', 'REAL'), ('刃厚既定', 'REAL'),
     ('中抜き可', 'INTEGER'), ('屑条幅既定', 'REAL'), ('寸法刻み', 'REAL'),
+    ('ゴムリング空き下限', 'REAL'), ('ゴムリング空き上限', 'REAL'),
     ('備考', 'TEXT'), ('表示順', 'INTEGER'), ('有効', 'INTEGER'),
 )
 STANDARD_DEF = TableDef(STANDARD_TABLE, '刃組基準ID', STANDARD_COLUMNS,
@@ -247,7 +255,22 @@ STANDARD_DEF = TableDef(STANDARD_TABLE, '刃組基準ID', STANDARD_COLUMNS,
 # 既定値。出どころは添付の刃組ガイダンス（設備図面 SL-1458-01S のライン）。
 # **画面へ書き写さないこと**——`/api/bladeset/context` がそのまま届ける（§9.163）。
 STANDARD_DEFAULTS = {
-    'arborLen': 1599.6, 'shaftDia': 200.0,
+    'arborLen': 1599.6,
+    # 基準面（基準原点・§9.461、利用者の指示「今はOSを基準面にDSにフローティングシート
+    # としていますが、逆にもできるように…デフォルトはDSを基準面にOSにフローティング
+    # シート」）。スペーサーは基準面の側へ押し付けて組み、反対の端をフローティング
+    # シートが押さえる。値は 'DS' か 'OS' の2つだけ（`datum_side()`が読み分ける）。
+    'datumSide': 'DS',
+    # 板の中心（**基準面からの距離**・§9.456／§9.461、利用者の指示「基準原点を変更したら、
+    # 中心位置の測り方も連動して変更」）。
+    # **空（None）なら有効長の中央**——数を書き写すと、有効長を直したときに置き去りになる。
+    'centerFromDatum': None,
+    # フローティングシートの押さえ代（§9.457、利用者の回答と図面）。DS端はスペーサーを
+    # 粗く積み、残りをこの量までフローティングシートが吸う。既定は図面の
+    # 「F.P.ストローク 0.95mm×18本（1個所使用時）」——加圧ピストンのストローク 21mm は
+    # ねじ側の量で、板を押さえる側（輪の横から出るピストン）が出るのは 0.95mm。
+    'floatSeatStroke': 0.95,
+    'shaftDia': 200.0,
     'spacerOD': 240.0, 'ringBore': 241.0,
     'minDia': 305.0, 'grindCycleDays': 60,
     'fingerMax': 0.6, 'gapMax': 5.0,
@@ -265,10 +288,19 @@ STANDARD_DEFAULTS = {
     # `context` が届けた値を使うので、差し替えの影響はこの1箇所に留まる。
     'clearance': 0.15, 'clearanceRate': 0.1, 'overlap': 0.2, 'bladeThickness': 10.0,
     'canNakanuki': True, 'scrapWidth': 30.0, 'sizeStep': 0.05,
+    # ゴムリングの組み方（§9.454、利用者の指示「ゴムリングは刃のあいだに
+    # 収めますが、刃の間の寸法よりも0.2～0.5㎜小さくなるようにセットします。
+    # この値は設備ごとに設定を持てるように」）。
+    'ringGapMin': 0.2, 'ringGapMax': 0.5,
+    # 潤滑リングの寸法と在庫は**ゴムリングマスタの行**が持つ（§9.455。§9.454 で
+    # ここに置いた幅・外径・内径は移した——置き場を2つにしない）。
 }
 # DBの列名 ↔ 画面の鍵。**対応はここだけ**（§9.324 R1 と同じ考え方）。
 _STANDARD_MAP = (
-    ('アーバー有効長', 'arborLen', 'num'), ('軸外径', 'shaftDia', 'num'),
+    ('アーバー有効長', 'arborLen', 'num'), ('基準面', 'datumSide', 'side'),
+    ('板の中心', 'centerFromDatum', 'num'),
+    ('フローティングシート押さえ代', 'floatSeatStroke', 'num'),
+    ('軸外径', 'shaftDia', 'num'),
     ('スペーサー外径', 'spacerOD', 'num'), ('リング内径', 'ringBore', 'num'),
     ('刃使用限界径', 'minDia', 'num'), ('研磨周期日', 'grindCycleDays', 'int'),
     ('フィンガー切替板厚', 'fingerMax', 'num'), ('刃間隙間上限', 'gapMax', 'num'),
@@ -283,6 +315,8 @@ _STANDARD_MAP = (
     ('ラップ既定', 'overlap', 'num'),
     ('刃厚既定', 'bladeThickness', 'num'), ('中抜き可', 'canNakanuki', 'flag'),
     ('屑条幅既定', 'scrapWidth', 'num'), ('寸法刻み', 'sizeStep', 'num'),
+    ('ゴムリング空き下限', 'ringGapMin', 'num'),
+    ('ゴムリング空き上限', 'ringGapMax', 'num'),
 )
 
 
@@ -634,13 +668,28 @@ def _spacer_row(d):
             'enabledText': _enabled_pair(d['有効'])[1]}
 
 
+# 「種類」の呼び名（§9.455）。**綴りはここ1箇所**——画面の選択肢も送り返しも同じ字。
+RING_KIND_RUBBER = 'ゴムリング'
+RING_KIND_LUBE = '潤滑リング'
+
+
+def ring_is_lube(v):
+    """画面・APIから来る「種類」を真偽へ。`None`は「送っていない」。
+    判定は`flags.flag_of()`の1箇所（§9.324 R4）へ、`ゴムリング`を「切」の側として渡す。"""
+    return flag_of(v, off=OFF_WORDS + (RING_KIND_RUBBER,))
+
+
 def _ring_row(d):
     od = _num(d['外径'])
     auto = ring_color_of(od)
+    lube = bool(d['潤滑リング'])
     return {'id': d['ゴムリングID'], 'equipment': _txt(d['設備名']),
             # 色名・色コードは**空なら外径から起こす**（§9.163。画面で推測させない）。
-            'color': _txt(d['色名']) or auto['color'],
-            'hex': _txt(d['色コード']) or auto['hex'],
+            # **潤滑リングは外径の色の周期を当てない**——周期はゴムリングの色で、
+            # 潤滑リングは「どのゴムリングとも違う色」（画面のトークン）で出す。
+            'color': _txt(d['色名']) or ('潤滑' if lube else auto['color']),
+            'hex': _txt(d['色コード']) or ('' if lube else auto['hex']),
+            'lube': lube, 'lubeText': RING_KIND_LUBE if lube else RING_KIND_RUBBER,
             'od': od, 'bore': _num(d['内径']), 'width': _num(d['幅']),
             'qty': _int(d['保有本数']), 'minQty': _int(d['下限本数']),
             'note': _txt(d['備考']), 'order': d['表示順'],
@@ -672,6 +721,8 @@ def _standard_row(d):
         v = d[col]
         if kind == 'int':
             out[key] = _int(v)
+        elif kind == 'side':
+            out[key] = datum_side(v, None)
         elif kind == 'flag':
             on = None if v is None else bool(v)
             out[key] = on
@@ -917,7 +968,7 @@ def ring_color_state(c, equipment, color):
 
 def ring_upsert(c, uid, equipment=None, color=None, hex_code=None, od=None,
                 bore=None, width=None, qty=None, min_qty=None, note=None,
-                order=None, enabled=None, ring_id=None):
+                order=None, enabled=None, ring_id=None, lube=None):
     """ゴムリングを1本（＝色×幅）書く。
 
     ■ 色と外径の関係（冒頭の説明）
@@ -935,6 +986,9 @@ def ring_upsert(c, uid, equipment=None, color=None, hex_code=None, od=None,
     eq = _equipment_for(rid, equipment)
     w = _num(width)
     name, tint = _txt(color), _txt(hex_code)
+    # 潤滑リングの行は色名が空なら「潤滑」（§9.455）。**渡していなければ触らない**。
+    if lube and not name and rid is None:
+        name = '潤滑'
     if rid is None:
         if w is None or w <= 0:
             raise ValueError('ゴムリングの幅（mm）を入力してください。')
@@ -957,7 +1011,7 @@ def ring_upsert(c, uid, equipment=None, color=None, hex_code=None, od=None,
             inner = known['bore']
         if not tint:
             tint = known['hex']
-    elif not tint and diameter is not None:
+    elif not tint and diameter is not None and not lube:
         # まだ登録の無い色。**色コードだけ**は周期から当てて画面に色を出す
         # （呼び名は利用者が書いたものを使う）。
         tint = ring_color_of(diameter)['hex']
@@ -965,6 +1019,7 @@ def ring_upsert(c, uid, equipment=None, color=None, hex_code=None, od=None,
                   '外径': diameter, '内径': inner, '幅': w,
                   '保有本数': _int(qty), '下限本数': _int(min_qty),
                   '備考': _txt(note) or None, '表示順': _int(order),
+                  '潤滑リング': None if lube is None else (-1 if lube else 0),
                   '有効': None if enabled is None else (-1 if enabled else 0)})
     new_id, created = _put(c, RING_DEF, rid, vals, uid, eq or _txt(equipment))
     aligned = _align_ring_color(c, new_id, uid)
@@ -1035,6 +1090,8 @@ def standard_upsert(c, uid, equipment=None, values=None, note=None,
         v = src[key]
         if kind == 'flag':
             vals[col] = None if v in (None, '') else (-1 if _flagged(v) else 0)
+        elif kind == 'side':
+            vals[col] = datum_side(v, None)
         elif kind == 'int':
             vals[col] = _int(v)
         else:
@@ -1042,6 +1099,16 @@ def standard_upsert(c, uid, equipment=None, values=None, note=None,
     if note is not None:
         vals['備考'] = _txt(note) or None
     return _put(c, STANDARD_DEF, sid, vals, uid, eq)
+
+
+DATUM_SIDES = ('DS', 'OS')
+
+
+def datum_side(v, fallback='DS'):
+    """基準面の呼び名を 'DS'／'OS' へ（§9.461）。読めなければ`fallback`
+    （保存では None＝既定に従う）。**判定はここ1箇所**。"""
+    t = _txt(v).upper()
+    return t if t in DATUM_SIDES else fallback
 
 
 def _flagged(v):
@@ -1168,6 +1235,10 @@ SEED_SPACERS = (
 )
 # ゴムリングの幅と本数（色ごとに同じ顔ぶれで持つ）。
 SEED_RING_WIDTHS = ((50, 50), (30, 40), (20, 40), (15, 30), (10, 30))
+# 潤滑リング（§9.455）。寸法は利用者の指示（幅10・外径270・内径240）。
+# **本数は図面に無い**ので、40条の刃組（広い側の区間ごとに2本＝80本）が
+# 1回組める数を置く。現物の本数はマスタで直す。
+SEED_LUBE = {'color': '潤滑', 'width': 10.0, 'od': 270.0, 'bore': 240.0, 'qty': 80}
 # 刃は 5mm と 10mm の2種類を3組（A・B・C）、各 70 枚。
 SEED_BLADE_GROUPS = ('A', 'B', 'C')
 SEED_BLADE_THICKNESS = (10, 5)
@@ -1240,8 +1311,15 @@ def seed_standard_parts(c, uid, equipment, replace=False):
                     '設備名': eq, '色名': color, '色コード': tint,
                     '外径': od, '内径': float(STANDARD_DEFAULTS['ringBore']),
                     '幅': float(width), '保有本数': int(qty), '下限本数': 0,
-                    '表示順': order, '有効': -1}, uid)
+                    '潤滑リング': 0, '表示順': order, '有効': -1}, uid)
                 made['ring'] += 1
+        order += 10
+        RING_DEF.insert(c, {
+            '設備名': eq, '色名': SEED_LUBE['color'], '色コード': None,
+            '外径': SEED_LUBE['od'], '内径': SEED_LUBE['bore'],
+            '幅': SEED_LUBE['width'], '保有本数': SEED_LUBE['qty'], '下限本数': 0,
+            '潤滑リング': -1, '表示順': order, '有効': -1}, uid)
+        made['ring'] += 1
     if not existing['finger']:
         order = 0
         for name, width, qty in SEED_FINGERS:

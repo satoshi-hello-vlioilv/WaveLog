@@ -183,6 +183,49 @@ run('test_lotcopy: ICASコピー（§9.368）', async ({page,rec,errs})=>{
   await page.waitForSelector(`.sc-row-line[data-id="${made[2]}"]`,{timeout:20000});
   await settle();
 
+  /* ---- 11. ロット番号からロット問い合わせ（LotDsp）を開ける（§9.460、利用者の指示
+     「作業スケジュール一覧の部分でロット番号を表示する場合、仕掛一覧と同じように
+     ロット問い合わせを開けるように」） ----
+     **物差し**: 自分が足した3件のロット番号のセルのうち、押すとLotDspを開けるボタンの数。
+     直す前は0/3（素の字だった）。押すと**その行の**ロット番号で開き、行は選ばれない
+     （行いっぱいは「選ぶ」の的・§9.363——ボタンが的を食っても、選択は動かさない）。 */
+  const dsp=await page.evaluate(ids=>{
+   const opened=[];const keep=window.open;
+   window.open=(u,...a)=>{opened.push(String(u));return null};
+   try{
+    const cells=ids.map(id=>document.querySelector(`.sc-row-line[data-id="${id}"] [data-col="lotNo"]`));
+    const btns=cells.map(c=>c&&c.querySelector('[data-lot-dsp]'));
+    const row=document.querySelector(`.sc-row-line[data-id="${ids[1]}"]`);
+    const h0=row?row.getBoundingClientRect().height:0;
+    if(btns[1])btns[1].click();
+    return {cells:cells.filter(Boolean).length,btns:btns.filter(Boolean).length,
+            lots:btns.map(b=>b?b.dataset.lotDsp:''),opened,
+            /* **字そのものは押す形にしない**（ダブルクリックは測定を開く的・§9.377）。 */
+            textInBtn:btns.filter(b=>b&&b.textContent.indexOf(b.dataset.lotDsp)>=0).length,
+            /* **的は字を持たない**——セルの字はロット番号だけ（読み替え・コピー・他の網が読む）。 */
+            btnText:btns.map(b=>b?b.textContent.trim():'x').join(''),
+            picked:!!(row&&row.classList.contains('is-picked')),
+            h0,h:row?row.getBoundingClientRect().height:0,
+            other:[...document.querySelectorAll('.sc-row-line .sc-row-title')].length};
+   }finally{window.open=keep}
+  },made);
+  rec('作業スケジュール一覧のロット番号の横にLotDspの的がある（3/3・§9.460）',
+      dsp.cells===3&&dsp.btns===3, `セル${dsp.cells}／的${dsp.btns}`);
+  rec('ロット番号の字そのものは押す形にしない（ダブルクリックは測定を開く・§9.460）',
+      dsp.textInBtn===0, `字を含む的 ${dsp.textInBtn}`);
+  rec('的は字を持たない（セルの字に混ざらない・§9.460）',
+      dsp.btns===3&&dsp.btnText==='', JSON.stringify(dsp.btnText));
+  /* LotDspの鍵はロット番号を**7文字**で切る決まり（`lotDspLinkKey`）。この網の材料は
+     8文字以上なので、行を取り違えていないことはボタンが名乗るロットで見る。 */
+  rec('押すと**その行の**ロット番号でLotDspを開く（§9.460）',
+      dsp.lots.join(',')===lots.join(',')&&dsp.opened.length===1
+      &&dsp.opened[0].indexOf(encodeURIComponent(lots[1].slice(0,7)))>=0,
+      `${dsp.lots.join(',')} → ${dsp.opened.join(' ').slice(0,120)}`);
+  rec('ロット番号を押しても行は選ばれない（選ぶのは行の残り・§9.460）',
+      dsp.picked===false, String(dsp.picked));
+  rec('ボタンにしても行の高さは変わらない（§9.460）', dsp.h>0&&Math.abs(dsp.h-dsp.h0)<0.5,
+      `${dsp.h0}→${dsp.h}px`);
+
   const rowSel=`.sc-row-line[data-id="${made[0]}"]`;
   await page.click(rowSel,{button:'right'});
   await page.waitForSelector('.sc-row-menu',{timeout:8000});

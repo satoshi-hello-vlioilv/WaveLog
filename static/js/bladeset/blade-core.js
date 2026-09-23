@@ -59,11 +59,15 @@
    .map(x => ({ size: num(x.size), qty: Math.max(0, num(x.qty) || 0),
                 minQty: num(x.minQty) || 0, use: x.use || '' }))
    .filter(x => x.size > 0);
-  const rings = (c.rings || [])
+  const ringAll = (c.rings || [])
    .map(x => ({ color: x.color || '', hex: x.hex || '', od: num(x.od),
                 bore: num(x.bore) || num(P.ringBore), width: num(x.width),
-                qty: Math.max(0, num(x.qty) || 0), minQty: num(x.minQty) || 0 }))
+                qty: Math.max(0, num(x.qty) || 0), minQty: num(x.minQty) || 0,
+                lube: !!x.lube }))
    .filter(x => x.od > 0 && x.width > 0);
+  /* **潤滑リングは同じ表の別の役目**（§9.455）。区間を埋めるゴムリングの候補に
+     混ぜると、幅10の潤滑リングが「ゴムリング10」として積まれてしまうので分ける。 */
+  const rings = ringAll.filter(x => !x.lube), lubes = ringAll.filter(x => x.lube);
   const fingers = (c.fingers || [])
    .map(x => ({ name: x.name || '', width: num(x.width),
                 qty: Math.max(0, num(x.qty) || 0), minQty: num(x.minQty) || 0,
@@ -83,7 +87,7 @@
      語彙を落としていたため、盤では当たるのにガイダンスでは一度も当たらない、
      という最も分かりにくい壊れ方をしていた（§9.306「サーバーが正しく答えても、
      画面が引かなければ何も変わらない」）。足した鍵はここにも書くこと。 */
-  return { P, spacers, rings, fingers, blades,
+  return { P, spacers, rings, lubes, fingers, blades,
            history: (c.history || []).slice(),
            designs: (c.designs || []).slice(),
            picks: (c.picks || []).slice(),
@@ -338,7 +342,10 @@
     ことから来る差で、**耳が吸う**。 */
  function buildLayout(st, M, segs) {
   const tk = st.tk, n = segs.length;
-  const arborLen = num(M.P.arborLen) || 1600, clr = st.clr;
+  /* クリアランスは**組める値**を使う（§9.454）。打った値（`st.clr`）は
+     そのまま残し、使った値と両方を`A`が持つ——画面は2つが違うときだけ言う。 */
+  const CL = clearanceUsed(M, tk, st.clr);
+  const arborLen = num(M.P.arborLen) || 1600, clr = CL.used;
   const grid = num(M.P.sizeStep) || 0.05;   /* 手持ちがそろっている刻み */
   const w = widths(st, segs);
   /* 各切断点で、上刃がどちら側へずれるか（下バリなら上刃は OS 側＝−）。 */
@@ -358,13 +365,26 @@
      耳には影響しない。 */
   /* 上下の刃の中心どうしの距離（§9.419）。面と面のあいだがクリアランス。 */
   const dKnife = +(tk + clr).toFixed(3);
-  const nominal = +((arborLen - st.W) / 2).toFixed(3);
+  /* 板の中心は**基準面（基準原点）からの距離**（§9.456／§9.461、利用者の指示「基準原点を
+     変更したら、中心位置の測り方も連動して変更」）。答えは`centerOf()`の1箇所で、
+     ここで使うのはOS端から測り直した`os`（座標はOS端が0のまま）。 */
+  const C = centerOf(st, M);
+  const nominal = +(C.os - st.W / 2).toFixed(3);
   /* 刃が作る境目と、そこから起こす上下の刃の中心（§9.434。式は上の説明どおり）。 */
   const edgeOf = (base, i) => base + cuts[i] + (i - 1) * clr;
   const upOf = (base, i) => edgeOf(base, i) - tk / 2 + dKnife * (sign[i] + 1) / 2;
   const loOf = (base, i) => edgeOf(base, i) - tk / 2 + dKnife * (1 - sign[i]) / 2;
-  const edge0 = upOf(nominal + w.osTrim, 0) - tk / 2;   /* OS端（上軸）の区間長 */
-  const slip = +(edge0 - Math.round(edge0 / grid) * grid).toFixed(4);
+  /* **刻みへ寄せるのは基準面の側の端**（§9.461）。基準面の側は押し付けて積み始める端
+     なので区間長が刻みの倍数でないと端数が残る。反対の端の残りはフローティングシートが
+     押さえる（§9.456）。OS基準: OS端（上軸）の区間長を寄せる／DS基準: DS端（上軸）を寄せる。 */
+  let slip;
+  if (C.datum === 'OS') {
+   const edge0 = upOf(nominal + w.osTrim, 0) - tk / 2;
+   slip = +(edge0 - Math.round(edge0 / grid) * grid).toFixed(4);
+  } else {
+   const edgeN = arborLen - (upOf(nominal + w.osTrim, n) + tk / 2);
+   slip = -(+(edgeN - Math.round(edgeN / grid) * grid).toFixed(4));
+  }
   const matStart = +(nominal - slip).toFixed(4);
   const origin = matStart + w.osTrim;
   const U = cuts.map((c, i) => +upOf(origin, i).toFixed(3));
@@ -378,7 +398,10 @@
      up: +(arborLen - (U[n] + tk / 2)).toFixed(3),
      lo: +(arborLen - (Lo[n] + tk / 2)).toFixed(3) }
   ];
-  return { U, Lo, zones, arborLen, grid,
+  return { U, Lo, zones, arborLen, grid, origin, center: C.value, centerFrom: C.from,
+           /* 基準面と、フローティングシートが押さえる端の区間（§9.461）。 */
+           datum: C.datum, floatZ: C.datum === 'OS' ? zones.length - 1 : 0,
+           clr, clrWant: CL.want, clrStep: CL.step, clrRounded: CL.rounded,
            dKnife,                          /* 同じ切断での上下刃の中心間（刃厚＋クリアランス） */
            dReal: clr,                      /* 面と面のあいだ＝クリアランス（画面に出す値） */
            dZone: +(dKnife * 2).toFixed(3), /* 中間区間での上下スペーサー長の差 */
@@ -458,6 +481,47 @@
            rem: Math.max(0, +(want - u * FILL_STEP).toFixed(3)) };
  }
 
+ /* **幅を持たせた積み**（§9.457、利用者の指示「DS端は有効長に近づいたらフローティング
+    シートで押さえる」「粗く積んで残りを任せる」・押さえ代は図面の F.P.ストローク 0.95mm）。
+    長さ `len` から `slack` 短いところまでのあいだで、次の順にいちばん良い積みを取る:
+      ① 細かいスペーサー（1mm の倍数でない寸法＝10.025〜10.9 等）の枚数が少ない
+      ② 総枚数が少ない  ③ 残りが小さい
+    ①を先に置くのは、細かいスペーサーが基準を追い込むための少ない在庫だから
+    （`10.025` は初期セットで2枚）——DS端の残りはフローティングシートが吸う。
+    窓の中に作れる長さが1つも無ければ `null`（呼ぶ側が切り下げの積みへ戻す）。 */
+ const isFine = sz => Math.abs(sz - Math.round(sz)) > 1e-9;
+ function stackOf(table, u) {
+  const by = new Map();
+  for (let v = u; v > 0;) {
+   const i = table.pick[v];
+   if (i < 0) break;
+   const su = table.units[i];
+   const sz = +(su * FILL_STEP).toFixed(3);
+   by.set(sz, (by.get(sz) || 0) + 1);
+   v -= su;
+  }
+  return [...by.entries()].sort((a, b) => b[0] - a[0]);
+ }
+ function fillWithin(table, len, slack) {
+  if (!table) return null;
+  const want = Math.max(0, +(+len).toFixed(3));
+  const hi = Math.min(Math.floor(want / FILL_STEP + 1e-9), table.U - 1);
+  const lo = Math.max(1, Math.ceil((want - slack) / FILL_STEP - 1e-9));
+  let best = null;
+  for (let v = hi; v >= lo; v--) {
+   if (!(table.cnt[v] > 0)) continue;
+   const out = stackOf(table, v);
+   const fine = out.reduce((a, [sz, c]) => a + (isFine(sz) ? c : 0), 0);
+   const key = [fine, table.cnt[v], hi - v];
+   if (!best || key[0] < best.key[0] || (key[0] === best.key[0]
+       && (key[1] < best.key[1] || (key[1] === best.key[1] && key[2] < best.key[2])))) {
+    best = { key, out, u: v };
+   }
+  }
+  if (!best) return null;
+  return { out: best.out, rem: Math.max(0, +(want - best.u * FILL_STEP).toFixed(3)) };
+ }
+
  /* 部材ごとの「いま使える数」。
     ラインは2台の台車を交互に使う。直前の刃組はラインで稼働中なので、そこに
     載っている部材は外せない＝使えない。いま組み替える台車（2回前の構成）に
@@ -467,7 +531,7 @@
   let onCar = null;
   for (let i = 1; i < h.length; i++) if (h[i].carriage === st.carriage) { onCar = h[i]; break; }
   const at = (rec, kind, key) => ((rec && rec.detail && rec.detail[kind] && rec.detail[kind][key]) || 0);
-  const spacer = new Map(), ring = new Map(), finger = new Map();
+  const spacer = new Map(), ring = new Map(), finger = new Map(), lube = new Map();
   IX.spacerStock.forEach((x, sz) => {
    const total = x.qty, b = at(busy, 'spacer', sz), c = at(onCar, 'spacer', sz);
    spacer.set(sz, { total, busy: b, onCar: Math.min(c, Math.max(0, total - b)),
@@ -484,9 +548,18 @@
    finger.set(w.sz, { total, busy: b, onCar: Math.min(c, Math.max(0, total - b)),
                       free: Math.max(0, total - b) });
   });
+  /* 潤滑リング（§9.455）。数え方はゴムリングと同じ——稼働中の台車に載っている
+     ぶんは使えない。鍵は幅（記録の`detail.lube`と同じ）。 */
+  (M.lubes || []).forEach(x => {
+   const k = String(x.width), cur = lube.get(k);
+   const total = (cur ? cur.total : 0) + x.qty;
+   const b = at(busy, 'lube', k), c = at(onCar, 'lube', k);
+   lube.set(k, { total, busy: b, onCar: Math.min(c, Math.max(0, total - b)),
+                 free: Math.max(0, total - b) });
+  });
   const sig = [st.carriage, busy.at || '-', onCar ? onCar.at : '-',
                M.spacers.length, M.rings.length, M.fingers.length].join('|');
-  return { spacer, ring, finger, busy: h[0] || null, onCar, sig };
+  return { spacer, ring, finger, lube, busy: h[0] || null, onCar, sig };
  }
 
  /* 残っている部材から組み合わせ表を作る。顔ぶれ（使い切った寸法）が
@@ -543,15 +616,29 @@
     保持層（ゴムリング／フィンガー）にはまず占有幅の枠を割り当てるが、手持ちの
     幅でしか組めない。組めなかった分は枠を空けたままにせず、スペーサー側へ回す
     ——スペーサーは細かい寸法を持つので、端数をそこで最小にできる。 */
- function zoneParts(len, isEnd, hold, tbl) {
+ function zoneParts(len, isEnd, hold, tbl, rule, slack) {
   const total = Math.max(0, +(+len).toFixed(3));
   /* 軸の寸法はスペーサーが作る。区間の全長をスペーサーで組み、刃の位置はこれで
-     決まる。保持層はその上に被せる別の層で、軸方向の寸法には効かない。 */
-  const spacer = fillWith(tbl.spacer, total);
+     決まる。保持層はその上に被せる別の層で、軸方向の寸法には効かない。
+     **フローティングシートの側の端だけは幅を持たせる**（`slack`＝押さえ代・§9.457／§9.461）。 */
+  const spacer = (slack > 0 && fillWithin(tbl.spacer, total, slack)) || fillWith(tbl.spacer, total);
   /* 保持層は製品幅の上にだけ載るので、最外刃より外（OS端・DS端）はスペーサーのみ。 */
   let ht = null;
   if (hold && !isEnd) ht = hold.kind === 'finger' ? tbl.finger : tbl.ring.get(hold.od);
-  const gom = ht ? fillWith(ht, total) : { out: [], rem: 0 };
+  /* **ゴムリングは刃のあいだより0.2〜0.5mm小さく組む**（§9.454、利用者の
+     指示）。狙うのは「下限ぶんだけ小さい長さ」で、そこを超えない最大の
+     組み合わせを取る——ぴったり（空き0）に組むと刃のあいだへ入らない。
+     **潤滑リング**（広い側の刃の内側の両端・幅10）はその内側に先に置き、
+     残りをゴムリングで埋める。フィンガーは従来どおり区間いっぱいを狙う。 */
+  const R = rule || RING_RULE_NONE;
+  const isRing = !!(ht && hold.kind === 'ring');
+  const lube = isRing && hold.lube && R.lubeW > 0
+   ? { n: 2, w: R.lubeW, od: R.lubeOd, bore: R.lubeBore } : null;
+  const room = +(total - (lube ? lube.n * lube.w : 0)).toFixed(3);
+  const want = isRing ? Math.max(0, +(room - R.gapMin).toFixed(3)) : total;
+  const got = ht ? fillWith(ht, want) : { out: [], rem: 0 };
+  /* 空きは**区間から見た**値（狙いの下限ぶん＋埋め切れなかったぶん）。 */
+  const gom = { out: got.out, rem: ht ? +(room - (want - got.rem)).toFixed(3) : 0 };
   /* **余りは層ごとに別の意味を持つ**（§9.441、利用者の指示「スペーサー間や
      スペーサーと刃の間には計算上の隙間は無い。……わずかに隙間ができてよいのは
      ゴムリングやフィンガーの部分の板押さえに該当する部分のみ」）。
@@ -561,8 +648,37 @@
                    埋め切れないぶんで、**わずかなら差し支えない**。
      混ぜて1つの数にすると、直さなければならない端数と、見ていればよい空きが
      見分けられなくなる。 */
-  return { len: total, hold: ht ? hold : null, gom, spacer,
+  return { len: total, hold: ht ? hold : null, gom, spacer, lube,
            rem: spacer.rem, holdRem: ht ? gom.rem : 0 };
+ }
+ /* ゴムリングの組み方の決まり（§9.454）。**値は設備ごとの`刃組基準値`**
+    （既定はサーバーの`STANDARD_DEFAULTS`）。読めない値は0——空きの帯を
+    持たない・潤滑リングを入れない、に倒れる（勝手な数で埋めない・§9.231）。 */
+ const RING_RULE_NONE = { gapMin: 0, gapMax: 0, lubeW: 0, lubeOd: 0, lubeBore: 0,
+                          lubeHex: '', lubeColor: '', lubeQty: 0 };
+ /* 空きの帯は`刃組基準値`、**潤滑リングの寸法と在庫はゴムリングマスタの行**
+    （種類＝潤滑リング・§9.455）。行が複数あるときは**表の並びの先頭**（サーバーの
+    並べ方＝外径の大きい順）を使う——幅違いを混ぜて両端の2本が別の幅になるのを防ぐ。
+    行が無ければ幅0（入れない）で、`solve()`の`fit.lubeMissing`がそう言う。 */
+ function ringRule(M) {
+  const P = (M && M.P) || {}, v = k => Math.max(0, num(P[k]) || 0);
+  const a = v('ringGapMin'), b = v('ringGapMax');
+  const L = ((M && M.lubes) || [])[0] || null;
+  return { gapMin: Math.min(a, b || a), gapMax: Math.max(a, b),
+           lubeW: L ? L.width : 0, lubeOd: L ? L.od : 0, lubeBore: L ? L.bore : 0,
+           lubeHex: L ? L.hex : '', lubeColor: L ? L.color : '', lubeQty: L ? L.qty : 0 };
+ }
+ /* 空きが帯（下限〜上限）を外れた面。**1本も載らない面は別に数える**
+    （`bareHold`）ので、ここでは言わない。 */
+ function ringGapFaces(zp, M) {
+  const R = ringRule(M), out = [];
+  if (!(R.gapMax > 0)) return out;
+  zp.zones.forEach((z, i) => [['上', z.up], ['下', z.lo]].forEach(([ax, p]) => {
+   if (!p.hold || p.hold.kind !== 'ring' || !p.gom.out.length) return;
+   const g = p.holdRem;
+   if (g < R.gapMin - 1e-6 || g > R.gapMax + 1e-6) out.push(`${i + 1}${ax}（空き ${g.toFixed(2)}mm）`);
+  }));
+  return out;
  }
 
  /* 区間ごとの中身を、OS側から順に決める。
@@ -582,12 +698,14 @@
      ちょうど埋める組み方を出す。そのうえで、精度と枚数を落とさずに在庫の範囲へ
      収められるならそちらを使う（対象台車の部材を流用でき、段取りが早くなる）。
      どうしても収まらないときは精度を優先し、足りない分は所要で示す。 */
-  const take = (len, isEnd, hold) => {
-   const best = zoneParts(len, isEnd, hold, fillTables(IX, plan, left, span, null, true));
+  const RULE = ringRule(M);
+  const SLACK = floatStroke(M);
+  const take = (len, isEnd, hold, slack) => {
+   const best = zoneParts(len, isEnd, hold, fillTables(IX, plan, left, span, null, true), RULE, slack);
    let parts = best;
    const blocked = new Set();
    for (let attempt = 0; attempt < 16; attempt++) {
-    const cand = zoneParts(len, isEnd, hold, fillTables(IX, plan, left, span, blocked));
+    const cand = zoneParts(len, isEnd, hold, fillTables(IX, plan, left, span, blocked), RULE, slack);
     const overS = cand.spacer.out.find(([sz, c]) => c > (left.sp.get(String(sz)) || 0));
     const holdKey = cand.hold
      ? (cand.hold.kind === 'finger' ? 'F' : 'R') : '';
@@ -598,7 +716,8 @@
     if (!overS && !overH) {
      /* 精度が落ちないなら在庫の範囲の組み方を採る。幅公差は絶対に外せないので、
         枚数が増えても精度のほうを優先する。 */
-     if (cand.rem <= best.rem + 1e-9) parts = cand;
+     /* フローティングシートの側の端（`slack`あり）は残りが押さえ代に収まれば同じ精度とみなす（§9.457）。 */
+     if (cand.rem <= Math.max(best.rem, slack || 0) + 1e-9) parts = cand;
      break;
     }
     if (overS) blocked.add('S' + overS[0]);
@@ -620,13 +739,20 @@
   const zones = A.zones.map((z, i) => {
    const isEnd = (i === 0 || i === last);
    const burr = z.type === 'end' ? z.burr : z.seg.burr;
+   /* **潤滑リングは広い側の刃の内側**（§9.454、利用者の指示「製品幅＋
+      クリアランス×2の広い側の刃の内側の両側」）。広い側＝その条で区間が
+      長いほうの軸（内々の対）。屑条・端部には入れない。 */
+   const wide = upper => z.type === 'strip' && (upper ? z.up > z.lo : z.lo > z.up);
    const mk = upper => {
     if (finger) return IX.fingerWidths.length ? { kind: 'finger' } : null;
     if (!IX.widthsByOd.size) return null;
     const t = ringType(burr, upper);
-    return { kind: 'ring', ringT: t, od: odOfType(st, M, t) };
+    return { kind: 'ring', ringT: t, od: odOfType(st, M, t), lube: wide(upper) };
    };
-   return { up: take(z.up, isEnd, mk(true)), lo: take(z.lo, isEnd, mk(false)) };
+   /* 押さえ代の幅を持たせるのは**フローティングシートの側の端だけ**（`A.floatZ`・§9.461）。
+      基準面の側は押し付ける側なので0が正。 */
+   const sl = i === A.floatZ ? SLACK : 0;
+   return { up: take(z.up, isEnd, mk(true), sl), lo: take(z.lo, isEnd, mk(false), sl) };
   });
   return { zones, plan, left };
  }
@@ -639,13 +765,14 @@
   const sp = countMap(parts.spacer), G = countMap(parts.gom);
   const od = parts.hold && parts.hold.kind === 'ring' ? parts.hold.od : 0;
   const kind = parts.hold ? parts.hold.kind : '';
-  return { len: parts.len, sp, G, od, kind,
+  const lube = parts.lube ? parts.lube.n : 0;
+  return { len: parts.len, sp, G, od, kind, lube,
            ringT: parts.hold ? parts.hold.ringT || '' : '', rem: parts.rem,
            holdRem: +(parts.holdRem || 0).toFixed(3),
            /* **板押さえが1本も載らない区間**（§9.441）。端部は設計どおり
               持たないので、ここで言うのは「載るはずなのに空」のときだけ。 */
            bare: !!(kind && !sizeKeys(G).length),
-           sig: `${parts.len.toFixed(2)}|${kind}|${od}|${sigOf(sp)}|${sigOf(G)}` };
+           sig: `${parts.len.toFixed(2)}|${kind}|${od}|${lube}|${sigOf(sp)}|${sigOf(G)}` };
  }
 
  /* ---- 構成記号（バッジ） ----
@@ -655,6 +782,14 @@
  const badgeLabel = i => (i < 26
   ? String.fromCharCode(65 + i)
   : String.fromCharCode(65 + Math.floor(i / 26) - 1) + String.fromCharCode(65 + i % 26));
+ /* **記号の色は文字ごとに1色**（§9.455、利用者の指示「A,B,C…のラベルを
+    アルファベットごとに色分けしてわかりやすく。普通に色分けしてほしい」）。
+    色の番号（`tone`）は**記号を振るときに一緒に振る**（`buildRows()`の1箇所）——
+    字面から推し量ると `OS` のような端部の札まで色が付く。表・模式図・断面図・
+    拡大図は同じ番号を`data-bc`で名乗り、色そのものはCSSのトークン
+    （`--bs-badge-0`〜）が持つ。色の数を超えたら同じ順でもう一度使う。
+    端部（OS／DS）は `tone` を持たない（中立の色）。 */
+ const BADGE_TONES = 8;
 
  /* 構成が同じ区間を1行にまとめる入れ物。本体の区間も端部も同じ手順でまとまる。 */
  function rowBucket() {
@@ -683,7 +818,7 @@
    });
   });
   const rows = bucket.rows();
-  rows.forEach((r, i) => { r.badge = badgeLabel(i); });
+  rows.forEach((r, i) => { r.badge = badgeLabel(i); r.tone = i % BADGE_TONES; });
   return rows;
  }
  /* 端部の行（本体と同じ作り方。上軸・下軸で同一なら1行に集約）。 */
@@ -719,12 +854,18 @@
     ゴムリングは色（外径）×幅で1本が決まるので、その形のまま数える。 */
  function aggregate(st, M, A, zp) {
   const out = { spacerU: {}, spacerL: {}, ring: {}, finger: {}, blade: {},
-                finger_mode: isFinger(st, M), rem: [] };
+                finger_mode: isFinger(st, M), rem: [],
+                /* 潤滑リング（§9.454）。在庫のマスタは持たないので、本数と寸法だけ。 */
+                lube: { u: 0, l: 0, w: 0, od: 0, bore: 0 } };
   const addInto = (o, d) => { d.out.forEach(([s, c]) => { o[s] = (o[s] || 0) + c; }); return o; };
   const mergeInto = (dst, src) => { Object.keys(src).forEach(k => { dst[k] = (dst[k] || 0) + src[k]; }); return dst; };
   zp.zones.forEach(z => {
    [['U', 'u', z.up], ['L', 'l', z.lo]].forEach(([ax, side, parts]) => {
     addInto(out['spacer' + ax], parts.spacer);
+    if (parts.lube) {
+     out.lube[side] += parts.lube.n;
+     Object.assign(out.lube, { w: parts.lube.w, od: parts.lube.od, bore: parts.lube.bore });
+    }
     if (!parts.hold) return;
     if (parts.hold.kind === 'finger') {
      parts.gom.out.forEach(([sz, c]) => {
@@ -749,24 +890,31 @@
   return out;
  }
 
- /* 刃組は DS 側から部材を入れ、OS 側へ詰めていく。
+ /* 刃組は基準面の反対側から部材を入れ、基準面の側へ詰めていく（§9.461。OS基準なら
+    DS側から入れてOS側へ詰める）。
     手持ち寸法で区間を埋めきれない分（端数）は、その区間の実寸がそのぶん短いと
     いうことで、それより DS 側の刃はすべて端数のぶんだけ OS 側へずれる。
     上軸と下軸では区間長が違うので端数の出方も違い、その差が「同じ切断位置での
-    上下の左右差」の誤差になる。最後（DS端）の区間の残りは開放端の余りなので、
+    上下の左右差」の誤差になる。フローティングシートの側の端の残りは開放端の余りなので、
     刃の位置はずらさない。 */
  function assemblyError(A, g) {
   const n = A.U.length;
   let cu = 0, cl = 0, worst = 0, worstAt = 0;
-  const per = [];
-  for (let k = 0; k < n; k++) {
-   cu = +(cu + g.rem[k].up).toFixed(3);
-   cl = +(cl + g.rem[k].lo).toFixed(3);
+  const per = new Array(n).fill(0);
+  /* **積むのは基準面の側から**（§9.461）。端数はそれより基準面から遠い刃をずらすので、
+     足し込む向きも基準面から。DS基準なら刃 k に効くのは区間 k+1〜最後。 */
+  const fromDS = A.datum === 'DS';
+  for (let j = 0; j < n; j++) {
+   const k = fromDS ? n - 1 - j : j;
+   const z = g.rem[fromDS ? k + 1 : k] || { up: 0, lo: 0 };
+   cu = +(cu + z.up).toFixed(3);
+   cl = +(cl + z.lo).toFixed(3);
    const e = +(cu - cl).toFixed(3);
-   per.push(e);
+   per[k] = e;
    if (Math.abs(e) > Math.abs(worst)) { worst = e; worstAt = k; }
   }
-  const tail = g.rem[g.rem.length - 1] || { up: 0, lo: 0 };
+  /* フローティングシートの側の端の残り（開放端の余り。刃の位置はずらさない）。 */
+  const tail = g.rem[fromDS ? 0 : g.rem.length - 1] || { up: 0, lo: 0 };
   return { per, worst, worstAt, cumU: cu, cumL: cl, tail };
  }
 
@@ -779,7 +927,11 @@
   if (A.w.osTrim > 0) items.push({ w: A.w.osTrim, type: 'trim', label: '耳' });
   segs.forEach(s => items.push(s));
   if (A.w.dsTrim > 0) items.push({ w: A.w.dsTrim, type: 'trim', label: '耳' });
-  let at = A.matStart;
+  /* **起点は刃と同じ`origin`から逆に辿る**（§9.454）。耳が負（元板巾が
+     条の合計に足りない）のときは耳を積まないので、`matStart`から始めると
+     板だけが負の耳のぶん横へずれた（実測 matOff 523.95）。組めない材料は
+     `solve()`が`stop`で断るが、ここも1つの起点から出しておく。 */
+  let at = A.origin - (A.w.osTrim > 0 ? A.w.osTrim : 0);
   return items.map(sg => { const from = at; at += sg.w; return { sg, from, to: at }; });
  }
  /* 板は丸刃で切られ、切られた条は板厚のぶんだけ上下へ分かれる。条は
@@ -841,6 +993,11 @@
   M.fingers.forEach(f => {
    if (f.minQty && f.qty < f.minQty) a.push({ kind: 'stock', text: `フィンガー${f.name}：在庫${f.qty}本` });
   });
+  (M.lubes || []).forEach(r => {
+   if (r.minQty && r.qty < r.minQty) {
+    a.push({ kind: 'stock', text: `潤滑リング${r.color}${r.od} 幅${r.width}：在庫${r.qty}本` });
+   }
+  });
   return a;
  }
 
@@ -863,17 +1020,71 @@
        ・スペーサー層の端数 … **0が正**。0でないのは計算の不具合。
        ・板押さえが空の区間 … 手持ちの幅では1本も載らない（在庫が尽きた等）。 */
   const bad = [], bare = [];
+  /* フローティングシートの側の端（§9.461。基準面の反対。既定はDS基準なのでOS端）。 */
+  const fz = A.floatZ;
   zp.zones.forEach((z, i) => {
    [['上', z.up], ['下', z.lo]].forEach(([ax, p]) => {
-    if ((p.rem || 0) > 1e-6) bad.push(`${i + 1}${ax}（${p.rem.toFixed(3)}mm）`);
+    /* **フローティングシートの側の端の残りは端数ではない**（§9.456、利用者の指示
+       「フローティングシートで押さえるので、エンドまでの隙間は発生しない」）。
+       数えるのは`floatSeat`（フローティングシートが押さえる量）の側。 */
+    if (i !== fz && (p.rem || 0) > 1e-6) bad.push(`${i + 1}${ax}（${p.rem.toFixed(3)}mm）`);
     if (p.hold && !p.gom.out.length) bare.push(`${i + 1}${ax}`);
    });
   });
-  const fit = { spacerGap: bad, bareHold: bare,
+  const fit = { spacerGap: bad, bareHold: bare, ringGap: ringGapFaces(zp, M),
+                /* ゴムリング方式なのに潤滑リングの行が無い（§9.455）——入れられない。 */
+                lubeMissing: !isFinger(st, M) && !!(M.rings || []).length && !(M.lubes || []).length,
+                /* フローティングシートが押さえる量（上軸・下軸）。0でも正。`side`＝シートの端。 */
+                floatSeat: { up: +(zp.zones[fz].up.rem || 0).toFixed(3),
+                             lo: +(zp.zones[fz].lo.rem || 0).toFixed(3),
+                             side: A.datum === 'OS' ? 'DS' : 'OS', datum: A.datum,
+                             stroke: floatStroke(M),
+                             /* 押さえ代を超える残り（§9.457）。フローティングシートでは
+                                吸えない＝本当の隙間なので、軸ごとに名指しする。 */
+                             over: floatStroke(M) > 0
+                              ? [['上', zp.zones[fz].up], ['下', zp.zones[fz].lo]]
+                                .filter(([, p]) => (p.rem || 0) > floatStroke(M) + 1e-6)
+                                .map(([ax, p]) => `${fz + 1}${ax}（${p.rem.toFixed(3)}mm）`)
+                              : [] },
                 holdName: holdName(st, M) };
   return { segs, A, zp, g, err, rows, ends, badges: badgeMap(rows.concat(ends)),
-           fit, contact: c, method: method(st), finger: isFinger(st, M),
+           fit, stop: stopReasons(st, A), contact: c, method: method(st), finger: isFinger(st, M),
            bigOd: odFromTh(M, st.bigTh), smOd: odFromTh(M, st.smallTh) };
+ }
+
+ /* **組めない材料**（§9.454、利用者の報告「断面図で板だけが横へずれる」）。
+    答えはここ1箇所で、画面は`res.stop`が空でなければ**図も表も描かず**に
+    これを出す（§CLAUDE 4 できないことはできないと書く／§9.433 組めなかったら
+    器を空にする）。以前は手順3の畳んだ窓の中だけが断っており、図と表は
+    負の耳のまま「組めた顔」で描かれていた。
+    `step`は直す場所（手順の窓の`id`）。字は「何が」「どれだけ」「どうすれば」。 */
+ function stopReasons(st, A) {
+  const out = [], w = A.w, W = +st.W || 0;
+  /* 板が有効長の外へはみ出す（中心をずらしたとき・§9.456）。元板巾そのものが
+     有効長を超えるときは下の`arbor`が言うので、ここは「収まる幅なのに位置が悪い」だけ。 */
+  if (W > 0 && W <= A.arborLen) {
+   const a = A.matStart, b = A.matStart + W;
+   const over = a < -1e-6 ? -a : (b > A.arborLen + 1e-6 ? b - A.arborLen : 0);
+   if (over > 0) {
+    out.push({ key: 'center', step: 'bsV3',
+               text: `板の中心が ${A.datum} から ${(+A.center).toFixed(2)} mm だと、板が有効長の`
+                   + `${a < 0 ? 'OS' : 'DS'}側へ ${over.toFixed(2)} mm はみ出します`,
+               fix: `板の中心を ${(W / 2).toFixed(2)}〜${(A.arborLen - W / 2).toFixed(2)} mm のあいだにしてください` });
+   }
+  }
+  if (!w.ok) {
+   out.push({ key: 'short', step: 'bsV3',
+              text: `条の合計 ${w.total.toFixed(2)} mm が元板巾 ${W} mm を超えています`
+                  + `（不足 ${(w.total - W).toFixed(2)} mm）`,
+              fix: '元板巾か、条幅・本数を直してください' });
+  }
+  if (W > A.arborLen) {
+   out.push({ key: 'arbor', step: 'bsV3',
+              text: `元板巾 ${W} mm がアーバー有効長 ${A.arborLen} mm を超えています`
+                  + `（${(W - A.arborLen).toFixed(2)} mm 超過）`,
+              fix: 'この板はこのラインに載りません。元板巾を確かめてください' });
+  }
+  return out;
  }
 
  /* 刃組を終えた記録（台車差分の材料）。**部材の顔ぶれごとに形が変わる**ので、
@@ -924,7 +1135,12 @@
               古い記録には入っていないので、読む側は「無ければ使わない」。 */
            W: +st.W || 0,
            thickness: +st.thick || 0, knife: +st.knife || 0, tk: +st.tk || 0,
-           overlap: +st.ov || 0, clearance: +st.clr || 0,
+           overlap: +st.ov || 0,
+           /* 記録するのは**組んだ値**（§9.454）。打った値が違えば並べて残す。 */
+           clearance: clearanceUsed(M, st.tk, st.clr).used, clearanceWant: +st.clr || 0,
+           /* 板の中心（基準面から・§9.456／§9.461）と、どちらを基準に測ったか。
+              端部の区間の長さが変わるので控える。 */
+           center: centerOf(st, M).value, datum: datumOf(M),
            method: method(st), hold: holdName(st, M),
            bigOd: odFromTh(M, st.bigTh), smOd: odFromTh(M, st.smallTh) };
  }
@@ -1038,7 +1254,9 @@
    /* 台車は**マスタが決める**（§9.424）。既定は空で、画面が台車マスタの
       先頭を選ぶ——ここに `'A'` と書くと、A台車の無いラインでも「A」が
       選ばれたまま記録できてしまう。 */
-   carriage: '', bladeGroup: '', flip: true
+   carriage: '', bladeGroup: '', flip: true,
+   /* 板の中心（OSから・§9.456）。`null`＝打っていない（基準値→有効長の中央）。 */
+   center: null
   };
  }
  /* クリアランスの答えは**ここ1箇所**（§9.378、利用者の指示「目安として板厚の
@@ -1054,6 +1272,61 @@
  function clearanceFor(M, t) {
   const v = (+t || 0) * clearanceRate(M);
   return v > 0 ? +v.toFixed(2) : 0;
+ }
+ /* 手持ちのスペーサーが作れる長さの刻み（§9.454）。**寸法の最大公約数**——
+    `10.025` が1種でもあれば 0.025、無ければ 0.05 になる。刻みは部材が決める
+    もので、コードの定数（`FILL_STEP`）は表を引く単位にすぎない。
+    0.005mm を1として整数で数える（浮動小数の割り算で公約数を取らない）。 */
+ function spacerStep(M) {
+  const gcd = (a, b) => { while (b) [a, b] = [b, a % b]; return a; };
+  const U = 0.005;
+  const g = ((M && M.spacers) || []).reduce((a, s) => gcd(a, Math.round(s.size / U)), 0);
+  return g > 0 ? +(g * U).toFixed(3) : FILL_STEP;
+ }
+ /* **実際に組めるクリアランス**（§9.454、利用者の指示「四捨五入でもっとも
+    近い確保可能なクリアランスに近づけます」）。答えはここ1箇所。
+
+    上下の軸はどちらもOS側の端から部材を積むので、下軸のOS端の区間は上軸の
+    それと**刃厚＋クリアランス**だけ違う。スペーサーは`step`刻みでしか長さを
+    作れないので、`刃厚＋クリアランス`が刻みの倍数でないと、どちらかの軸に
+    **必ず端数が残る**（0.04 → 下軸OS端 0.015・内々 104.98 → 0.005）。
+    だから`刃厚＋クリアランス`を刻みへ四捨五入し、そこから刃厚を引いた値を
+    使う。0 以下になるときは刻み1つぶん（刃どうしが面で当たる組み方は無い）。 */
+ /* **基準面（基準原点）**の答え（§9.461、利用者の指示「今はOSを基準面にDSにフローティング
+    シートとしていますが、逆にもできるように…デフォルトはDSを基準面にOSにフローティング
+    シート」）。設備の`刃組基準値`の「基準面」（`datumSide`）。読めなければ既定の DS。
+    スペーサーは基準面の側から押し付けて積み、反対の端をフローティングシートが押さえる。 */
+ const DATUM_DEFAULT = 'DS';
+ function datumOf(M) {
+  const v = String((M && M.P && M.P.datumSide) || '').trim().toUpperCase();
+  return v === 'OS' || v === 'DS' ? v : DATUM_DEFAULT;
+ }
+ /* **板の中心（基準面からの距離）**の答え（§9.456／§9.461）。①その作業で打った値 →
+    ②設備の`刃組基準値`の「板の中心」→ ③有効長の中央、の3段。どの段から来たかも
+    返す（画面は出どころを言う・§CLAUDE 6）。`value`は基準面から、`os`は同じ位置を
+    OS端から測り直した値（計算の座標はOS端が0）。 */
+ function centerOf(st, M) {
+  const P = (M && M.P) || {};
+  const arbor = num(P.arborLen) || 1600;
+  const datum = datumOf(M);
+  const at = (value, from) => ({ value, from, datum,
+                                 os: datum === 'OS' ? value : +(arbor - value).toFixed(3) });
+  if (num(st && st.center) > 0) return at(+st.center, 'job');
+  if (num(P.centerFromDatum) > 0) return at(+P.centerFromDatum, 'master');
+  return at(+(arbor / 2).toFixed(3), 'mid');
+ }
+ /* フローティングシートの押さえ代（§9.457）。設備ごとの`刃組基準値`（既定は図面の
+    F.P.ストローク 0.95mm・加圧装置1か所）。読めなければ0＝幅を持たせない。 */
+ function floatStroke(M) {
+  const v = num(M && M.P && M.P.floatSeatStroke);
+  return v > 0 ? v : 0;
+ }
+ function clearanceUsed(M, tk, want) {
+  const step = spacerStep(M), t = +tk || 0, w = +want || 0;
+  const n = Math.round(+((t + w) / step).toFixed(6));
+  let used = +(n * step - t).toFixed(4);
+  if (!(used > 0)) used = step;
+  return { want: w, used, step, rounded: Math.abs(used - w) > 1e-6 };
  }
  /* 使う刃を決める（§9.379、利用者の指示2）。
       ふつう … 状態が「一般」の刃
@@ -1106,6 +1379,11 @@
   const st = defaultState();
   if (+s.thickness > 0) st.thick = +s.thickness;
   if (+s.originalWidth > 0) st.W = +s.originalWidth;
+  /* 中心は記録した基準面から測った値。いまの基準面と違えば測り直す（§9.461）。 */
+  if (+s.center > 0) {
+   const arbor = num(M && M.P && M.P.arborLen) || 1600;
+   st.center = (s.datum && s.datum !== datumOf(M)) ? +(arbor - s.center).toFixed(3) : +s.center;
+  }
   st.lots = lots;
   st.order = [];
   syncOrder(st);
@@ -1135,7 +1413,11 @@
   const byW = new Map();
   ws.forEach(w => byW.set(w, (byW.get(w) || 0) + 1));
   const lots = [...byW.entries()].map(([w, n], i) => ({ name: '前回' + (i + 1), w, n }));
-  return { thickness: +c.thickness || 0, originalWidth: W, lots };
+  return { thickness: +c.thickness || 0, originalWidth: W, lots,
+           /* 中心（§9.456）。古い記録には無い——無ければ既定（基準値→中央）で組む。 */
+           center: +c.center > 0 ? +c.center : null,
+           /* どちらの基準面から測った中心か（§9.461）。古い記録はOS基準だった。 */
+           datum: c.datum === 'DS' || c.datum === 'OS' ? c.datum : (+c.center > 0 ? 'OS' : null) };
  }
 
  function snapshot(st, M, g) {
@@ -1145,7 +1427,10 @@
   }));
   const finger = {};
   Object.keys(g.finger).forEach(sz => { finger[sz] = g.finger[sz].u + g.finger[sz].l; });
-  return { spacer: Object.assign({}, g.spacer), ring, finger,
+  const lube = {};
+  const nl = g.lube ? g.lube.u + g.lube.l : 0;
+  if (nl) lube[g.lube.w] = nl;
+  return { spacer: Object.assign({}, g.spacer), ring, finger, lube,
            blade: Object.assign({}, g.blade), cond: condOf(st, M) };
  }
 
@@ -1178,11 +1463,11 @@
  }
 
  WL.bladeSet = {
-  defaultState, clearanceRate, clearanceFor, applyStandards, applyBladePick, standardState,
+  defaultState, clearanceRate, clearanceFor, clearanceUsed, centerOf, datumOf, floatStroke, fillWithin, spacerStep, ringRule, applyStandards, applyBladePick, standardState,
   normalize, buildIndex, ringMeta, thOf, odFromTh, odOfType, ringType, oppBurr,
   method, isFinger, holdName, contact, recommend, syncOrder, reorder,
   buildSegs, widths, buildLayout, buildFiller, fillWith, planZones,
-  compose, buildRows, endRows, badgeMap, aggregate, assemblyError,
+  compose, buildRows, endRows, badgeMap, BADGE_TONES, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum, cutFace,
   stripDesign, designByParent, condOf, sameCond, seedFromCond,
   pickCtx, pickGroup, condHits, selectable,

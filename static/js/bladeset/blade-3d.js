@@ -92,6 +92,20 @@
    sepGap:40,        /* テーブルの縁から着地土台まで */
    sepW:470          /* 着地土台の長さ */
  };
+ /* フローティングシート（§9.459、利用者の図面・写真）。有効長のDS端の外に載り、
+    DS側からOS側へスペーサーの並びを押さえる。**寸法は図面の値そのまま**:
+    本体 Φ269／Φ200・幅70（押さえ板5＋ピストンの逃げ2＋本体63）、
+    フローティングピストン 等分18-Φ15（シリンダ Φ20）P.C.D230（1本目は真上から10°）、
+    加圧装置2か所（中心から左右へ113.5・外周の下寄り、M22 の加圧スクリュウ）。
+    押さえ板と逃げの**並び順は図面から読み切れない**（寸法 (2)・5・63 の並び）ので、
+    板を押す面（OS側）＝押さえ板5、次にピストンの逃げ2、本体63 の順で組んだ。
+    2枚目の図面（14-Φ23 深さ23・P.C.D235）は**どの部品の穴か分からない**ので入れていない。 */
+ const FSEAT = {
+   od:269, bore:200, plate:5, relief:2, body:63,
+   pistonN:18, pistonD:15, pcd:230, pistonA0:10,
+   devX:113.5, devR:131.8, devW:24, devT:20, devH:14, devAxial:46, screwD:22
+ };
+ const FSEAT_W = FSEAT.plate + FSEAT.relief + FSEAT.body;
  const CAM = { az:-0.62, el:0.58, r:3400, tx:0, ty:0, tz:0 };
  const HOME = Object.assign({}, CAM);
 
@@ -445,12 +459,15 @@
     1枚を落とすと10mm級の穴が開く**ので、刻みぶんの行き過ぎは許す（§9.418）。
     それでも入らないものは落とす——落ちた長さは下の「端数」が受ける。 */
  const PACK_EPS = 0.03;
- function zone(out, from, to, y, parts) {
+ function zone(out, from, to, y, parts, floatAt) {
   const expand = BS().expand;
   const pk = D3.pack;
-  let at = from;
   const all = expand(parts.spacer);
   const want = all.reduce((a, sz) => a + sz, 0);
+  /* フローティングシートが区間の**始まりの側**（OS端・§9.461）にあるときは、基準面の側
+     （刃の側）へ寄せて積み、残りを始まりの側へ空ける。 */
+  const lead = floatAt === 'start' ? Math.max(0, +(to - from - want).toFixed(6)) : 0;
+  let at = from + lead;
   /* **1枚も超えてはいけない**ので、許容は浮動小数の誤差ぶんだけ（`PACK_EPS`
      より桁が小さい）。`PACK_EPS` は「図が落とさない」ための許容で、
      「割り付けが正しい」の物差しではない——同じ数を両方に使うと、
@@ -466,7 +483,12 @@
   /* **端数は端数として描く**（模式図の `fillZone` と同じ・§9.418）。空けたままに
      すると「軸に何も載っていない区間」に見えるが、実際は割り付けで埋め切れ
      なかったぶんで、別の色で置くのが模式図の作法。 */
-  if (to - at > 0.01) {
+  /* **フローティングシートの側の端の残りは端数ではない**（§9.457）——押さえる量なので、
+     端数の色で塞がず、端数の数にも入れない（`pack.float`へ別に控える）。 */
+  if (floatAt) {
+   const r = floatAt === 'start' ? lead : to - at;
+   if (r > 0.01 && pk) pk.float = Math.max(pk.float || 0, +r.toFixed(3));
+  } else if (to - at > 0.01) {
    out.liner.push({ x: (at + to) / 2, y, sz: to - at, filler: true });
    if (pk) { pk.filler++; pk.fillerMm = +(pk.fillerMm + (to - at)).toFixed(3); }
   }
@@ -475,9 +497,18 @@
      かぎらない。余りは左右へ均等に振り分け、列を区間の中央に置く（模式図と同じ）。 */
   const pieces = expand(parts.gom);
   const run = pieces.reduce((a, sz) => a + sz, 0);
-  at = from + Math.max(0, (to - from - run)) / 2;
+  /* **潤滑リング**（§9.454）は刃の内側の両端。ゴムリングはそのあいだ
+     （模式図の`holdLayer()`と同じ置き方）。 */
+  let a0 = from, b0 = to;
+  if (parts.lube) {
+   const w = parts.lube.w;
+   out.lube.push({ x: from + w / 2, y, sz: w, lube: parts.lube },
+                 { x: to - w / 2, y, sz: w, lube: parts.lube });
+   a0 = from + w; b0 = to - w;
+  }
+  at = a0 + Math.max(0, (b0 - a0 - run)) / 2;
   for (const sz of pieces) {
-   if (at + sz > to + PACK_EPS) break;
+   if (at + sz > b0 + PACK_EPS) break;
    out.ring.push({ x: at + sz / 2, y, sz, hold: parts.hold });
    at += sz;
   }
@@ -488,6 +519,81 @@
     ・引き出した先の回転テーブルの上で、台車の寸法の中心を軸に半回転する
     ・軸端部（DS 端スタンド）は 330 送り出すとテーブルの外の着地土台に降りるので、
       そこに残ったまま本体だけが回る */
+ /* フローティングシートの置かれる端（§9.461）。**基準面の反対**——既定はDS基準なのでOS端。
+    座標は有効長の中心が0なので、OS端は−・DS端は＋。 */
+ const floatSign = () => {
+  const f = ctx && ctx.res && ctx.res.fit && ctx.res.fit.floatSeat;
+  return f && f.side === 'DS' ? 1 : -1;
+ };
+ /* フローティングシート（§9.459）。**軸の上の部品**なので`g`へ置き（断面図にも出る）、
+    切り口の面も置く。押さえ板の面は**その軸の端の残り**（`fit.floatSeat`＝押さえている量）
+    だけ有効長の内側へ出る——ピストンがそのぶん伸びている。置く端は`floatSign()`。 */
+ function floatSeat(T, g, L, yU, yL) {
+  const F = FSEAT, ro = F.od / 2, ri = F.bore / 2;
+  const fit = (ctx && ctx.res && ctx.res.fit && ctx.res.fit.floatSeat) || {};
+  const sg = floatSign(), E = sg * L / 2;           /* 有効長の端（シートの側） */
+  const out = v => E + sg * v;                      /* 端から外へ v の位置 */
+  const body = matOf(T, 'fseat', { color: cutColor('--bs-fig-fseat', '#8d97a1'),
+                                   metalness: .66, roughness: .30 });
+  const pin = matOf(T, 'fseatPin', { color: cutColor('--bs-fig-fseat-pin', '#c9d0d6'),
+                                     metalness: .78, roughness: .20 });
+  const hole = matOf(T, 'fseatHole', { color: '#2b323a', metalness: .30, roughness: .70 });
+  const grp = new T.Group(); grp.userData.fseat = true; g.add(grp);
+  /* **軸はシートの中を通っている**（内径Φ200＝軸径）。有効長の外の軸は機械まわり
+     （`rig`）なので断面図では伏せており、シートの穴が空洞に見えた——ここだけ
+     シートの幅ぶん軸を足す。 */
+  const shaftM = matOf(T, 'steel', { color: cutColor('--bs-fig-shaft', '#b9c1c9'),
+                                     metalness: .74, roughness: .22 });
+  const through = [yU, yL].map(y => ({ x: out(FSEAT_W / 2), y, l: FSEAT_W, r: ri }));
+  const sm = batch(T, D3.cyl, shaftM, through);
+  if (sm) grp.add(sm);
+  cap(T, grp, through, ri, 0, shaftM);
+  const pistons = [], seen = [];
+  [[yU, +fit.up || 0], [yL, +fit.lo || 0]].forEach(([y, take]) => {
+   const face = out(-take);                         /* 押さえ板の、スペーサーに当たる面 */
+   const plate = { x: face + sg * F.plate / 2, y, l: F.plate };
+   const gap = { x: (face + sg * F.plate + out(F.plate + F.relief)) / 2, l: F.relief + take };
+   const bodyQ = { x: out(F.plate + F.relief + F.body / 2), y, l: F.body };
+   [plate, bodyQ].forEach(q => {
+    const m = new T.Mesh(tubeGeo(T, ro, ri), body);
+    m.position.set(q.x, y, 0); m.scale.set(q.l, 1, 1); grp.add(m);
+   });
+   cap(T, grp, [plate, bodyQ], ro, ri, body);
+   /* ピストン18本（逃げの中で押さえ板と本体をつなぐ）。 */
+   for (let i = 0; i < F.pistonN; i++) {
+    const a = (F.pistonA0 + i * 360 / F.pistonN) * Math.PI / 180;
+    pistons.push({ x: gap.x, y: y + Math.cos(a) * F.pcd / 2, z: Math.sin(a) * F.pcd / 2,
+                   l: gap.l, r: F.pistonD / 2 });
+   }
+   /* 切り口に当たるピストン（真上・真下の2本）は面も置く。 */
+   cap(T, grp, [{ x: gap.x, y: y + F.pcd / 2, l: gap.l }, { x: gap.x, y: y - F.pcd / 2, l: gap.l }],
+       F.pistonD / 2, 0, pin);
+   /* 加圧装置2か所: 外周の窓と、その奥の加圧スクリュウ（M22）。立体図で見える物。 */
+   [-1, 1].forEach(sgn => {
+    const ang = Math.atan2(-67, sgn * F.devX);     /* 正面図の位置（左右113.5・下へ67） */
+    const ax = out(F.devAxial);
+    const win = new T.Mesh(D3.box, hole);
+    win.position.set(ax, y + Math.sin(ang) * (F.devR - F.devH / 2 + 3), Math.cos(ang) * (F.devR - F.devH / 2 + 3));
+    win.rotation.set(-ang + Math.PI / 2, 0, 0);
+    win.scale.set(F.devW, F.devH, F.devT);
+    grp.add(win);
+    const sc = new T.Mesh(D3.cyl, pin);
+    sc.position.set(ax, y + Math.sin(ang) * (F.devR - F.devH), Math.cos(ang) * (F.devR - F.devH));
+    /* 筒の形は X 向きに作ってあるので、X を半径の向きへ回す。 */
+    sc.quaternion.setFromUnitVectors(new T.Vector3(1, 0, 0),
+                                     new T.Vector3(0, Math.sin(ang), Math.cos(ang)));
+    sc.scale.set(8, F.screwD / 2, F.screwD / 2);
+    grp.add(sc);
+   });
+   seen.push({ y, face, take });
+  });
+  const pm = batch(T, D3.cyl, pin, pistons);
+  if (pm) grp.add(pm);
+  D3.fseat = { n: seen.length, pistons: pistons.length, w: FSEAT_W, od: F.od,
+               side: sg > 0 ? 'DS' : 'OS',
+               faces: seen.map(q => +q.face.toFixed(3)), take: seen.map(q => q.take) };
+ }
+
  function frame(T, g, L, yU, yL) {
   const half = L / 2, sd = +ctx.M.P.shaftDia || 200, M = MACH;
   /* 軸は断面図では**模式図と同じ色**（§9.416）。立体図の軸は機械の中の1本として
@@ -561,7 +667,7 @@
   const ty = yU + M.tieY, topY = ty - M.tieHubR;
 
   /* ---- ギヤボックス。取付面は有効長の OS 端から 30。台座の上に収まる ---- */
-  const gFace = osEnd - M.gapOS, gx = gFace - M.gearW / 2;
+  const gFace = osEnd - M.gapOS - (floatSign() < 0 ? FSEAT_W + 22 + M.brgW : 0), gx = gFace - M.gearW / 2;
   const pd0 = bx0 + 20, pd1 = gFace + 40;
   bx([{ x: (pd0 + pd1) / 2, y: bedTop + 36, z: 0, l: pd1 - pd0, r: 72, d: M.gearD + 120 }], blueD);
   bx([{ x: gx, y: (bedTop + 72 + yU + 118) / 2, z: 0, l: M.gearW,
@@ -596,7 +702,10 @@
 
   /* ---- 軸端部（DS 端スタンド）。330 送り出すと着地土台に降りる ---- */
   const trv = D3.open ? M.travel : 0;
-  const bxDS = dsEnd + M.gapDS / 2 + trv;
+  /* シートの側の軸受はフローティングシート（幅70・§9.459）の外へ置く。以前は有効長の端から
+     10mm内側まで被っており、そこに載るフローティングシートを隠していた。 */
+  const seatDS = floatSign() > 0, seatOS = !seatDS;
+  const bxDS = (seatDS ? dsEnd + FSEAT_W + 22 + M.brgW / 2 + 4 : dsEnd + M.gapDS / 2) + trv;
   const sx = dsEnd + M.gapDS + M.standDS + trv;
   bx([{ x: sx, y: bedTop + 36, z: 0, l: M.standW + 110, r: 72, d: M.standD + 130 }], blueD, stay);
   bx([{ x: sx, y: (bedTop + 72 + yU + 96) / 2, z: 0, l: M.standW,
@@ -607,7 +716,9 @@
                          l: M.standW * 0.78, r: 28, d: 16 })), blueD, stay);
   bx([{ x: sx, y: ty, z: 0, l: M.standW * 1.5, r: M.tieHubR * 2.4, d: M.standD * 0.8 }], blueL, stay);
   bearing(bxDS, stay);
-  bearing(osEnd - M.gapOS / 2);
+  /* OS端にシートが載るとき（DS基準・§9.461）は、軸受もギヤボックスもシートの幅ぶん外。
+     **この寸法は図面に無い**（図面SL-1458-01SのOS側の間隔30はシートの無い形）ので概寸。 */
+  bearing(osEnd - M.gapOS / 2 - (seatOS ? FSEAT_W + 22 + M.brgW / 2 : 0));
 
   /* ---- 軸：有効長は Φ200 の研磨面。その外に首・駆動端の継手・キー溝 ---- */
   const r0 = sd / 2;
@@ -626,12 +737,15 @@
    const capD = CUT_CAP_D, capL = Math.max(24, L * 0.018), cr = capD / 2;
    const capM = matOf(T, 'endcap', { color: cssColor('--bs-fig-cap', '#4a5aa8'),
                                      metalness: .18, roughness: .52 });
-   const ends = [yU, yL].flatMap(y => [-1, 1].map(sgn => ({
-    x: sgn * (L / 2 + capL / 2), y, l: capL, r: cr })));
+   /* **シートの側はフローティングシートそのものを描く**（§9.459、利用者の指示「上下軸の
+      DSエンドを青のオブジェクトではなくフローティングシートを図面から3Dで再現」）。
+      青い印が残るのは基準面の側だけ（§9.461。既定はDS基準なのでDS端）。 */
+   const ends = [yU, yL].map(y => ({ x: -floatSign() * (L / 2 + capL / 2), y, l: capL, r: cr }));
    D3.endCaps = ends.length;
    cy(ends, capM, g);
    cap(T, g, ends.map(q => ({ x: q.x, y: q.y, l: q.l })), cr, 0, capM);
   }
+  floatSeat(T, g, L, yU, yL);
   cy([yU, yL].flatMap(y => [
    { x: dsEnd + M.gapDS / 2 + 34, y, l: M.gapDS + 68, r: r0 * 0.82 },
    { x: osEnd - M.gapOS / 2 - 10, y, l: M.gapOS + 40, r: r0 * 0.90 },
@@ -680,7 +794,7 @@
      10mm級の穴になるので、絵ではなく数で見張る。 */
   D3.pack = { over: 0, worst: 0, drop: 0, filler: 0, fillerMm: 0,
               x0: 0, x1: 0, arbor: L };
-  const out = { liner: [], ring: [], knife: [] };
+  const out = { liner: [], ring: [], lube: [], knife: [] };
   /* 区間の記号（§9.417）。**模式図と同じ対応表**（`res.badges`）を読む——
      図ごとに割り当て直すと、同じ区間が図と表で別の記号になり得る。
      端の2区間（最外刃より外）は模式図でも記号を出さない（右レールの
@@ -693,11 +807,13 @@
    for (let j = 0; j < segs.length; j++) spans.push([pos[j] + tk / 2, pos[j + 1] - tk / 2]);
    spans.push([pos[n - 1] + tk / 2, L]);
    spans.forEach(([a, b], k) => {
-    zone(out, a, b, y, zp.zones[k][side]);
+    zone(out, a, b, y, zp.zones[k][side],
+         k === A.floatZ ? (k === 0 ? 'start' : 'end') : '');
     const r = (k > 0 && k < spans.length - 1) ? bmap[side][k] : null;
     /* **どちらの軸かも持って帰る**（§9.442）——記号の札は押すと拡大図が開く
        ので、軸を渡さないと下軸を押しても上軸の図が出る（模式図と同じ作法）。 */
-    if (r) zmk.push({ badge: String(r.badge), x0: off(a), x1: off(b), y, up: !!upper });
+    if (r) zmk.push({ badge: String(r.badge), x0: off(a), x1: off(b), y, up: !!upper,
+                      tone: Number.isInteger(r.tone) ? r.tone : null });
    });
    pos.forEach(x => out.knife.push({ x, y }));
   });
@@ -751,6 +867,16 @@
         isRing ? ringBore : linerR,
         skin(T, sh.ring, 'hold' + key, { color, metalness: .02, roughness: .9 }));
    });
+   /* 潤滑リング（§9.454）。ゴムリングと同じ材質で、径と色だけが違う。
+      色は模式図と同じトークン（紫）——ゴムリングの10色にもスペーサーの灰にも無い。 */
+   if (out.lube.length) {
+    const L0 = out.lube[0].lube;
+    /* 色はマスタの行（画面の色）で変わり得るので、**色を材質の名前に含める**
+       （材質は名前で使い回すので、同じ名前だと前の色が残る）。 */
+    const lc = cssColor('--bs-fig-lube', '#7150c4');
+    put(out.lube.map(q => ({ x: q.x, y: q.y, len: q.sz - 1.0 })), L0.od / 2, L0.bore / 2,
+        skin(T, sh.ring, 'lube' + lc, { color: lc, metalness: .02, roughness: .9 }));
+   }
   }
   if (blade) put(out.knife.map(q => ({ x: q.x, y: q.y, len: tk })), ctx.st.knife / 2, bore, blade);
   /* **端から端が有効長を超えていないか**（§9.418 追補、利用者の指示「有効長より
@@ -762,6 +888,7 @@
    const e = [];
    out.liner.forEach(q => e.push(q.x - q.sz / 2, q.x + q.sz / 2));
    out.ring.forEach(q => e.push(q.x - q.sz / 2, q.x + q.sz / 2));
+   out.lube.forEach(q => e.push(q.x - q.sz / 2, q.x + q.sz / 2));
    out.knife.forEach(q => e.push(q.x - tk / 2, q.x + tk / 2));
    if (e.length) {
     D3.pack.x0 = +Math.min(...e).toFixed(3);
@@ -1062,6 +1189,8 @@
   let n = 0;
   const walk = o => {
    if (!o || o === D3.rig) return;
+   /* フローティングシートは有効長の外に載る部品（§9.459）。幅は図面の70で別に見る。 */
+   if (o.userData && o.userData.fseat) return;
    if (o.isMesh) {
     const c = o.count == null ? 1 : o.count;
     for (let i = 0; i < c; i++) {
@@ -1099,7 +1228,12 @@
      顔をして場面に残り、`render()`の食い違いの見張りも素通りしていた。
      組めない理由は2つ（割付がまだ無い・部品がまだ無い）で、どちらも
      **あとから解消する**ので、控えを落としておけば次の機会に組み直される。 */
-  if (!ctx || !ctx.res || !init()) { D3.builtRes = null; return; }
+  if (!ctx || !ctx.res || !init()) {
+   D3.builtRes = null;
+   /* **割付が無い＝組めない材料**（§9.454）。前の割付の絵を残さない。 */
+   if (ctx && !ctx.res) clearCanvas();
+   return;
+  }
   const T = D3.T, g = D3.g, res = ctx.res;
   /* 形と材質は使い回しているので消さない。まとめ描きの持ち物だけ解放する。 */
   const clear = o => { while (o.children.length) { const c = o.children.pop(); if (c.dispose) c.dispose(); } };
@@ -1133,7 +1267,7 @@
      同じ理由で上下を離して板を通している（`FIG.openGap`）ので、ここも刃先の
      あいだに隙間を作る。条は千鳥で板厚ぶん上下へ寄るので、**板が占める高さは
      見かけの厚みの3倍**（±1.5倍）——その両側へ余裕を取る。 */
-  D3.endCaps = 0;
+  D3.endCaps = 0; D3.fseat = null;
   const cd = D3.cut ? ctx.st.knife + D3.matTh * CUT_OPEN : cd0;
   D3.cutGap = D3.cut ? cd - ctx.st.knife : 0;   /* 刃先のあいだに残る隙間 */
   const m = machine(T, g, A, segs, zp, L, cd, ctx.st.tk);
@@ -1240,6 +1374,10 @@
 
  function render() {
   if (!D3.r || !D3.on) return;
+  /* 組めない材料（割付が無い）のあいだは何も描かない（§9.454）。場面には
+     前の割付の模型が残っているので、ここで止めないと回す・器の大きさが
+     変わる、の道から前の絵が出てくる。 */
+  if (ctx && !ctx.res) { clearCanvas(); return; }
   /* **描くのは、いま選ばれている図の模型だけ**（§9.428、利用者の報告
      「3D断面図が切り替え直後には出ません（通常の3Dモデルが出る）」）。
      ここは切り替え以外の道からも呼ばれる——掴んで回している最中の毎フレーム、
@@ -1271,10 +1409,23 @@
   /* ---- 断面図（§9.412）。平行投影で真横から見る ---- */
   if (D3.cut) {
    const b = D3.cutBox || { cx: 0, cy: 0, w: 2000, h: 1000 };
-   const oc = D3.ocam, ar = w / h, pad = 1.06;
-   let vw = b.w * pad, vh = b.h * pad;
-   if (vw / vh < ar) vw = vh * ar; else vh = vw / ar;   /* 収まる側に合わせる */
-   oc.left = -vw / 2; oc.right = vw / 2; oc.top = vh / 2; oc.bottom = -vh / 2;
+   const oc = D3.ocam, pad = 1.06;
+   /* **帯の下に図を置かない**（§9.454、利用者の指示「ラップやクリアランスの
+      ラベルと図の重なりも問題がないか」）。以前は器ぜんたいに合わせて縮尺を
+      決めていたので、左上の帯（読み方・有効長・設定の3行）と下の帯（表示・
+      視点）が**上下軸の部材に被っていた**（実測: 帯の下の図の画素 1,801〜
+      12,351）。帯が占める上下の高さを**測って**差し引き、残りの高さに
+      図を収める——字の置き場（`dims()`／`place()`）が帯を測るのと同じ
+      `hudBox()`を使う（固定の数に足して追いかけない・§9.250）。 */
+   const hb = hudBox(w, h);
+   const topIn = hb.tops.reduce((m, t) => Math.max(m, t.y), 0);
+   const avail = Math.max(h * 0.4, h - topIn - hb.bot);
+   const sc = Math.max(b.w * pad / w, b.h * pad / avail);   /* 1pxあたりの世界の長さ */
+   const vw = w * sc, vh = h * sc;
+   /* 図の中心を「空いている帯のあいだ」の中央へ寄せる（画面の下向きが正）。 */
+   const offPx = (topIn + (h - topIn - hb.bot) / 2) - h / 2;
+   oc.left = -vw / 2; oc.right = vw / 2;
+   oc.top = vh / 2 + offPx * sc; oc.bottom = -vh / 2 + offPx * sc;
    oc.near = 1; oc.far = 60000; oc.updateProjectionMatrix();
    const px = D3.pivot ? D3.pivot.position.x : 0;
    /* 台車の走行ぶんを足した、軸の中心の真正面。台車を回していても断面は動かさない。 */
@@ -1299,6 +1450,20 @@
    }
    D3.r.render(D3.sc, oc);
    tags(w, h, oc);
+   /* 帯の中身は`tags()`（→`sides()`）が書くので、**書いたあとの高さ**と
+      食い違っていたら1回だけ描き直す（最初の1枚は帯が空のまま測っている）。
+      同じ高さに落ち着けば2回目は描き直さないので、繰り返しにはならない。 */
+   const hb2 = hudBox(w, h);
+   const top2 = hb2.tops.reduce((m, t) => Math.max(m, t.y), 0);
+   /* 網が見る数（§9.454）: 図の箱の上端・下端（画面の座標）と帯の高さ。
+      正面から見ているときは `figTop ≥ top` かつ `figBot ≤ h − bot` が正。 */
+   D3.hudFit = { top: +topIn.toFixed(1), bot: +hb.bot.toFixed(1), h,
+                 figTop: +((oc.top - b.h / 2) / sc).toFixed(1),
+                 figBot: +((oc.top + b.h / 2) / sc).toFixed(1) };
+   /* 帯の字（入りきらない件数）は縮尺で変わり得るので、**続けて2回まで**。 */
+   const moved = Math.abs(top2 - topIn) > 1 || Math.abs(hb2.bot - hb.bot) > 1;
+   D3.hudRetry = moved ? (D3.hudRetry || 0) + 1 : 0;
+   if (moved && D3.hudRetry <= 2) requestAnimationFrame(render);
    return;
   }
   const c = CAM, ce = Math.cos(c.el);
@@ -1450,6 +1615,13 @@
     el.chip.dataset.axis = q.up ? 'up' : 'lo';
     el.chip.textContent = q.badge;
    }
+   /* 記号の色は文字ごと（§9.455）。札と区間の面が同じ番号を名乗る。 */
+   /* 変わったときだけ書く（毎フレーム書くと、そのたびに書式を計算し直す）。 */
+   const bc = q.tone == null ? '' : String(q.tone);
+   [el.box, el.chip].forEach(n => {
+    if ((n.dataset.bc || '') === bc) return;
+    if (bc) n.dataset.bc = bc; else delete n.dataset.bc;
+   });
    el.box.style.cssText =
      `left:${b.x.toFixed(1)}px;top:${b.y.toFixed(1)}px;`
    + `width:${b.w.toFixed(1)}px;height:${b.h.toFixed(1)}px`;
@@ -1829,13 +2001,21 @@
   const pk = D3.pack;
   if (!D3.cut || !pk || !pk.arbor) { el.hidden = true; return; }
   const mm = v => (+v).toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+  /* **足りないぶんはDS端のフローティングシートが押さえる**（§9.456、利用者の指示
+     「有効長に近づいたときにDSからOS側にフローティングシートで押さえるので、DSエンドまでの
+     隙間は発生しない」）。以前は `(-0.05)` と差で出しており、足りない＝隙間に読めた。
+     **超えたときだけ**差を出す（有効長を超える積みは組めない）。 */
+  /* 押さえ代（§9.457）を超えたら、そう言う（吸えない＝隙間）。 */
+  const stroke = BS().floatStroke(ctx && ctx.M);
   const gap = v => {
    const d = +(v - pk.arbor).toFixed(3);
-   return d === 0 ? '±0' : (d > 0 ? '+' : '') + mm(d);
+   if (d > 0) return `<s>(+${mm(d)} 超過)</s>`;
+   if (d === 0) return '';
+   return `<s>＋フローティングシート ${mm(-d)}${stroke > 0 && -d > stroke + 1e-6 ? `（押さえ代 ${mm(stroke)} 超過）` : ''}</s>`;
   };
   el.innerHTML = `<s>有効長</s><i>${mm(pk.arbor)}</i>`
-   + `<s>／上軸</s><i>${mm(pk.sumU)}</i><s>(${gap(pk.sumU)})</s>`
-   + `<s>／下軸</s><i>${mm(pk.sumL)}</i><s>(${gap(pk.sumL)})</s>`;
+   + `<s>／上軸</s><i>${mm(pk.sumU)}</i>${gap(pk.sumU)}`
+   + `<s>／下軸</s><i>${mm(pk.sumL)}</i>${gap(pk.sumL)}`;
   el.hidden = false;
  }
 
@@ -2128,6 +2308,9 @@
            /* 断面図の光が**カメラと同じ側に居るか**を網が見るための2つ（§9.413 追補）。
               離れると、回した先の面が黒くなって穴に見える。 */
            endCaps: D3.endCaps || 0,
+           /* フローティングシート（§9.459）。上下軸に1つずつ・ピストン18本ずつ・
+              押さえ板の面の位置（有効長の中心からの x）と押さえている量。 */
+           fseat: D3.fseat || null,
            /* 光の配分（§9.415）。**断面図の配分が立体図のまま残っていないか**を
               網が数で見る——残ると切り口が白へ飛ぶ。 */
            lit: D3.lights ? { hemi: D3.lights.hemi.intensity, key: D3.lights.key.intensity,
@@ -2147,6 +2330,7 @@
            capZ: D3.capZ == null ? null : +D3.capZ.toFixed(2),
            /* 材料と刃の食い違い（§9.433）。同じ割付から出ていれば必ず0。 */
            matOff: D3.cut ? (D3.matOff || 0) : 0,
+           hudFit: D3.cut ? (D3.hudFit || null) : null,
            ortho: !!(D3.cut && D3.ocam), clips: D3.r ? (D3.r.clippingPlanes || []).length : 0 };
  }
 

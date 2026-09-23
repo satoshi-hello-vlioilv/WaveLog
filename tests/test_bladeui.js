@@ -610,7 +610,8 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     const hi = await page.evaluate(() => {
      const g = document.querySelector('#bsStage .bs-bhit');
      const hit = g.querySelector('.bs-zhit'), bdg = g.querySelector('.bs-bdgr');
-     const off = { o: getComputedStyle(hit).fillOpacity, f: getComputedStyle(bdg).fill };
+     const off = { o: getComputedStyle(hit).fillOpacity, f: getComputedStyle(bdg).fill,
+                   sw: getComputedStyle(bdg).strokeWidth };
      g.classList.add('is-pick');
      return off;
     });
@@ -618,14 +619,19 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     const hiOn = await page.evaluate(() => {
      const g = document.querySelector('#bsStage .bs-bhit.is-pick');
      const hit = g.querySelector('.bs-zhit'), bdg = g.querySelector('.bs-bdgr');
-     const on = { o: getComputedStyle(hit).fillOpacity, f: getComputedStyle(bdg).fill };
+     const on = { o: getComputedStyle(hit).fillOpacity, f: getComputedStyle(bdg).fill,
+                  sw: getComputedStyle(bdg).strokeWidth };
      g.classList.remove('is-pick');
      return on;
     });
     rec('光ると図の面が塗られる（fill-opacity が動く。background では描かれない）',
         parseFloat(hiOn.o) > parseFloat(hi.o), `${hi.o}→${hiOn.o}`);
-    rec('光ると記号の塗りも変わる（色だけの違いに頼らない）',
-        hiOn.f !== hi.f, `${hi.f}→${hiOn.f}`);
+    /* **重ねても記号の色は変えない**（§9.455、利用者の指摘「マウスオーバーでまた
+       色の変化もあり、さらにわかりにくく」）。文字ごとの色が「どの組み方か」を
+       言っているので、重ねたことは縁の太さと大きさで言う。 */
+    rec('重ねても記号の塗りは変わらない（縁と大きさで言う・§9.455）',
+        hiOn.f === hi.f && parseFloat(hiOn.sw) > parseFloat(hi.sw),
+        `塗り ${hi.f}→${hiOn.f} ／ 縁 ${hi.sw}→${hiOn.sw}`);
 
     /* ---- 4.6) 区間の拡大と耳屑の幅（§9.413） ----
        利用者の指示①「2D表示は耳屑の計算幅の表示が欲しい」
@@ -671,6 +677,8 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
               vert: [...svg.querySelectorAll('text')]
                 .filter(t => /rotate\(-90/.test(t.getAttribute('transform') || '')).length,
               dashed: svg.querySelectorAll('[stroke-dasharray]').length,
+              /* 刃の形の破線（反対側の軸の刃）。軸心の一点鎖線は数えない。 */
+              knifeDash: svg.querySelectorAll('rect[stroke-dasharray]').length,
               dims: +svg.dataset.dims, inside: +svg.dataset.inside, lead: +svg.dataset.lead,
               leadw: +svg.dataset.leadw, off: +svg.dataset.off,
               /* **半断面の比**（§9.432）。縦は半径なので、帯の高さの比が
@@ -729,7 +737,11 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         `中${zoom.inside}＋外${zoom.lead}＝${zoom.dims}`);
     rec('幅のある部材は中に書く（狭いもののためにスロットを空ける）',
         zoom.inside > 0, `中${zoom.inside}件`);
-    rec('狭い部材は引き出して外に書く', zoom.lead > 0 && zoom.leads === zoom.lead,
+    /* **引き出した字には必ず線が付く**（字だけ浮かせない）。§9.454 でクリアランスを
+       組める値へ丸めたので、この区間には「隙間 0.005」のような**狭い物が無くなり**、
+       引き出す物が0件になった——「0件でないこと」は材料しだいなので見ない。
+       落としていないことは上の足し算が見ている。 */
+    rec('引き出した字には必ず引き出し線が付く', zoom.leads === zoom.lead,
         `外${zoom.lead}件／線${zoom.leads}本`);
     /* **ラベルは指し示す物へ直に貼る**（§9.430、利用者の指示「拡大されていて
        対象にそのまま貼れるほどスペースがあるので、ラベルを直接表示したいものに
@@ -778,13 +790,11 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('寸法はマスタの値そのまま（10.025 を 10.03 へ丸めない）', zoom.exact === true,
         zoom.nums3);
     rec('区間ぜんたいの寸法も出す', zoom.span === true, String(zoom.span));
-    /* **上下刃のずれは絵で言う**（§9.413 追補 → §9.442 で字を落とした）。
-       反対側の軸の刃を破線で添えるのは残す——クリアランスの向きは絵でしか
-       読めない。**「上下刃の中心間」の字は出さない**（利用者の指示「上下刃の
-       中心線は、拡大図に不要です。表示が重ならないように注意して」）——
-       貼る相手が無いので必ず引き出すことになり、席を1つ余計に食っていた。 */
-    rec('拡大図に上下刃のずれが絵で出る（反対側の軸の刃を破線で添える）',
-        zoom.dashed > 0, `破線${zoom.dashed}`);
+    /* **反対側の軸の刃（破線）は描かない**（§9.457、利用者の指示「拡大図の刃の横の
+       点線は消してください」。§9.442 の「破線の刃は残す」は撤回）。クリアランスの
+       値は足元の説明が言う。**「上下刃の中心間」の字も出さない**（§9.442）。 */
+    rec('拡大図に反対側の軸の刃（破線）を描かない（§9.457）',
+        zoom.knifeDash === 0, `刃の形の破線${zoom.knifeDash}`);
     rec('「上下刃の中心間」の字は拡大図に出さない（§9.442）',
         zoom.clrLabel === 0, `札${zoom.clrLabel}`);
 
@@ -824,19 +834,73 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         !!axPick.up && !!axPick.lo && axPick.up.got === 'up' && axPick.lo.got === 'lo'
         && axPick.up.zone !== axPick.lo.zone,
         JSON.stringify({ up: axPick.up, lo: axPick.lo, both: axPick.both }));
-    /* **記号の色を軸で分ける**（利用者の指示「アルファベットも少し色が
-       わかっていると違いが出てわかりやすい」）。押す前にどちらの図が出るかが
-       読める。字は同じまま——記号が指すのは「同じ組み方」だから。 */
+    /* **記号の色は文字ごとに1色**（§9.455、利用者の指示「アルファベットごとに
+       色分けしてわかりやすく」。§9.442 の「軸で色を分ける」は撤回）。
+       同じ文字は上軸・下軸・刃組表のどこでも同じ色、違う文字は違う色。 */
     const badgeCol = await page.evaluate(() => {
-     const at = ax => {
-      const g = document.querySelector(`#bsStage .bs-bhit[data-axis="${ax}"] .bs-bdgr`);
-      return g ? g.getAttribute('fill') : '';
-     };
-     return { up: at('up'), lo: at('lo') };
+     const by = {};
+     const put = (b, c) => { (by[b] = by[b] || new Set()).add(c); };
+     document.querySelectorAll('#bsStage .bs-bhit').forEach(g =>
+      put(g.dataset.badge, getComputedStyle(g.querySelector('.bs-bdgr')).fill));
+     document.querySelectorAll('#bsTables .bs-bdg').forEach(e =>
+      put(e.textContent.trim(), getComputedStyle(e).backgroundColor));
+     const ks = Object.keys(by);
+     const one = ks.filter(k => by[k].size === 1);
+     const firsts = one.map(k => [...by[k]][0]);
+     return { n: ks.length, one: one.length, uniq: new Set(firsts).size,
+              ex: ks.map(k => `${k}:${[...by[k]].join('|')}`).join(' ') };
     });
-    rec('記号は上軸と下軸で色が違う（§9.442）',
-        !!badgeCol.up && !!badgeCol.lo && badgeCol.up !== badgeCol.lo,
-        `上${badgeCol.up}／下${badgeCol.lo}`);
+    rec('記号は文字ごとに1色（上下・表で同じ／文字が違えば色も違う・§9.455）',
+        badgeCol.n >= 2 && badgeCol.one === badgeCol.n && badgeCol.uniq === badgeCol.n,
+        badgeCol.ex);
+    /* **字は層ごとに置き分ける**（§9.458、利用者の指示「フィンガーやゴムリングも
+       その材料の中に数値ラベル貼れる…軸に近いスペーサーで書ききれない場合は軸に、
+       ゴムリングやフィンガーで書ききれない場合は軸と反対の外側に」）。
+       以前はフィンガーの帯（高さ約12px）へ13pxの字が入らず、**フィンガーの字が
+       全部軸へ引き出されていた**（実測12件）。全部の区間・両方の軸を開いて数える:
+       ①保持層の字を軸へ引き出した数＝0 ②線の向き（軸の段は軸へ・外の段は外へ）
+       ③中へ貼った字は読める大きさ（9px以上） ④字は図の器からはみ出さない。 */
+    const zLayer = await page.evaluate(() => {
+     const hits = [...document.querySelectorAll('#bsStage .bs-bhit[data-axis]')];
+     const seen = new Set();
+     const out = { opened: 0, holdShaft: 0, badDir: 0, small: 0, spill: 0,
+                   holdIn: 0, outer: 0, shaft: 0 };
+     hits.forEach(h => {
+      const key = h.dataset.badge + h.dataset.axis;
+      if (seen.has(key)) return; seen.add(key);
+      h.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      const svg = document.getElementById('bsZoomFig');
+      if (!svg || document.getElementById('bsZoom').hidden) return;
+      out.opened++;
+      const up = svg.dataset.axis === 'up';
+      svg.querySelectorAll('path.bs-zl').forEach(el => {
+       const m = [...el.getAttribute('d').matchAll(/([ML])([-\d.]+) ([-\d.]+)/g)];
+       const y0 = +m[0][3], y1 = +m[m.length - 1][3];
+       const where = el.dataset.zl;
+       if (where === 'outer') out.outer++; else out.shaft++;
+       if (el.dataset.layer === 'hold' && where === 'shaft') out.holdShaft++;
+       /* 軸の段: 字は対象より軸心の側（上軸なら下）。外の段: 字は対象より外（上軸なら上）。 */
+       const towardAxis = up ? y0 > y1 : y0 < y1;
+       if ((where === 'outer') === towardAxis) out.badDir++;
+      });
+      const sr = svg.getBoundingClientRect();
+      svg.querySelectorAll('text').forEach(t => {
+       const fs = +t.getAttribute('font-size') || 0;
+       if (/^\d+(\.\d+)?$/.test(t.textContent) && fs && fs < 9) out.small++;
+       if ((t.getAttribute('fill') || '') === '#fff' && fs < 13) out.holdIn++;
+       const r = t.getBoundingClientRect();
+       if (r.width && (r.top < sr.top - 1 || r.bottom > sr.bottom + 1)) out.spill++;
+      });
+     });
+     return out;
+    });
+    rec('保持層（ゴムリング・フィンガー）の字を軸へ引き出さない（§9.458）',
+        zLayer.opened > 0 && zLayer.holdShaft === 0, JSON.stringify(zLayer));
+    rec('引き出し線の向き: スペーサーは軸へ・保持層は外へ（§9.458）',
+        zLayer.badDir === 0, `逆向き${zLayer.badDir}本（軸${zLayer.shaft}／外${zLayer.outer}）`);
+    rec('中へ貼った字は読める大きさ（9px以上）・図の器からはみ出さない（§9.458）',
+        zLayer.small === 0 && zLayer.spill === 0,
+        `9px未満${zLayer.small}／はみ出し${zLayer.spill}`);
     /* **次の節が見る形へ戻してから渡す**（§9.394 と同じ作法）。この節は
        区間を押して回るので、閉じっぱなし・別の区間で開きっぱなしのまま
        進むと、次の「もう一度押すと閉じる」が成り立たない（実際に2件落ちた）。
@@ -848,9 +912,9 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     });
     await W.until(page, () => document.getElementById('bsZoom').hidden === false,
                   null, { ms: 8000, what: '最初の区間で拡大図が開き直る' });
-    rec('破線が何かとクリアランスの在りかを足元で言う',
-        /面と面のあいだがクリアランス/.test(zoom.note),
-        zoom.note.slice(-60));
+    rec('クリアランスの値は足元の説明で言う（破線とは書かない・§9.457）',
+        /クリアランス\s*[\d.]+/.test(zoom.note) && !/破線/.test(zoom.note),
+        zoom.note.slice(-80));
     rec('図が言えないこと（どの区間に入るか）を添える', /区間/.test(zoom.note),
         zoom.note.slice(0, 40));
 
@@ -1070,6 +1134,243 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     });
     await W.until(page, () => window.WL.bladeSolid.view().knives === 23, null,
                   { ms: 15000, what: '22条へ戻す' });
+
+    /* ---- 5b'') 組めない材料・組めるクリアランス・ゴムリングの空き・潤滑リング（§9.454） ----
+       利用者の報告「断面図で板だけが横へずれる」と指示「四捨五入でもっとも近い
+       確保可能なクリアランス」「ゴムリングは刃の間の寸法より0.2〜0.5mm小さく」
+       「潤滑リング（幅10）を広い側の刃の内側の両側に」「ラップやクリアランスの
+       ラベルと図の重なり」。**絵では読めない**（0.005mm は1pxも出ない）ので、
+       割付の値と、器が名乗る数で見る。 */
+    const g454 = await page.evaluate(() => {
+     const B2 = WL.bladeSet, M2 = WL.bladeGuide.masters, s0 = WL.bladeGuide.state;
+     const IX2 = B2.buildIndex(M2);
+     const keep = { W: s0.W, lots: s0.lots, order: s0.order, clr: s0.clr, thick: s0.thick, align: s0.align };
+     const solve = o => { Object.assign(s0, o); s0.order = []; B2.syncOrder(s0);
+       return B2.solve(s0, M2, IX2); };
+     /* ② 利用者の形: 104.90×11・板厚0.4・クリアランス0.04 */
+     const r1 = solve({ W: 1180, thick: 0.4, clr: 0.04, align: 'none',
+                        lots: [{ name: 'L1', w: 104.9, n: 11 }] });
+     /* フローティングシートの側の端（`A.floatZ`・§9.461）は除く——残りはシートが押さえる（§9.456）。 */
+     const rem1 = r1.zp.zones.filter((z, i) => i !== r1.A.floatZ)
+      .flatMap(z => [z.up.rem, z.lo.rem]).filter(v => v > 1e-6).length;
+     /* その端は細かいスペーサーを使わず、残りは押さえ代以内（§9.457）。 */
+     const zl = r1.zp.zones[r1.A.floatZ];
+     const dsFine = [zl.up, zl.lo].flatMap(p => p.spacer.out)
+      .filter(([sz]) => Math.abs(sz - Math.round(sz)) > 1e-9).reduce((a, [, c]) => a + c, 0);
+     const dsRem = Math.max(zl.up.rem, zl.lo.rem), stroke = B2.floatStroke(M2);
+     /* ① 元板巾が条の合計に足りない（利用者の画面の形・W≈106） */
+     const r0 = solve({ W: 106 });
+     const run0 = B2.materialRun(r0.A, r0.segs), f0 = run0.find(q => q.sg.type !== 'trim');
+     const off0 = +(f0.from - B2.cutFace(r0.A, s0.tk, 0, true)).toFixed(3);
+     /* 2)3) ゴムリング方式（板厚1.3）の 50×22 */
+     const r2 = solve({ W: 1130, thick: 1.3, clr: 0.13, lots: [{ name: 'L1', w: 50, n: 22 }] });
+     const R = B2.ringRule(M2);
+     const faces = r2.zp.zones.slice(1, -1).flatMap((z, j) => [
+       { p: z.up, wide: z.up.len > z.lo.len }, { p: z.lo, wide: z.lo.len > z.up.len }]);
+     const ringFaces = faces.filter(f => f.p.hold && f.p.hold.kind === 'ring' && f.p.gom.out.length);
+     const lubeOk = faces.every(f => (f.p.lube ? f.p.lube.n : 0) === (f.wide ? 2 : 0));
+     const tooTight = ringFaces.filter(f => f.p.holdRem < R.gapMin - 1e-6).length;
+     const outBand = ringFaces.filter(f => f.p.holdRem > R.gapMax + 1e-6 || f.p.holdRem < R.gapMin - 1e-6).length;
+     Object.assign(s0, keep); B2.syncOrder(s0);
+     return { clrUsed: r1.A.clr, clrWant: r1.A.clrWant, step: r1.A.clrStep, rem1, dsFine, dsRem, stroke,
+              stop0: (r0.stop || []).map(x => x.key), off0, stop1: (r1.stop || []).length,
+              R, nRing: ringFaces.length, tooTight, outBand, listed: r2.fit.ringGap.length,
+              lubeOk, lubeTotal: r2.g.lube.u + r2.g.lube.l, strips: r2.segs.length };
+    });
+    rec('クリアランスは組める値へ四捨五入する（0.04 → 刻み0.025の 0.05）',
+        g454.clrWant === 0.04 && Math.abs(g454.clrUsed - 0.05) < 1e-9 && g454.step === 0.025,
+        `指定${g454.clrWant} → ${g454.clrUsed}（刻み${g454.step}）`);
+    rec('スペーサーの端数は0面（シートの側の端を除く。組んだものは基準面へ押し付けるので隙間は無い）',
+        g454.rem1 === 0, `${g454.rem1}面`);
+    rec('フローティングシートの押さえ代は基準値の既定 0.95mm（図面の F.P.ストローク）',
+        g454.stroke === 0.95, String(g454.stroke));
+    rec('シートの側の端は細かいスペーサーを使わず、残りは押さえ代以内（§9.457）',
+        g454.dsFine === 0 && g454.dsRem <= g454.stroke + 1e-9, `細かい${g454.dsFine}枚 / 残り${g454.dsRem}`);
+    rec('元板巾が条の合計に足りない材料は「組めない」と言う',
+        g454.stop0.includes('short') && g454.stop1 === 0, JSON.stringify(g454.stop0));
+    rec('組めない材料でも板と刃は同じ起点から出る（matOff=0）', g454.off0 === 0, `matOff=${g454.off0}`);
+    rec('ゴムリングは刃のあいだより下限ぶん以上小さく組む（ぴったり＝空き0にしない）',
+        g454.nRing > 0 && g454.tooTight === 0, `${g454.nRing}面中 下限割れ${g454.tooTight}`);
+    rec('空きが帯（下限〜上限）を外れた面は、数えて名指しする（数が一致）',
+        g454.outBand === g454.listed, `外れ${g454.outBand} / 名指し${g454.listed}`);
+    rec('潤滑リングは広い側の区間だけに両端1本ずつ（条の数×2本）',
+        g454.lubeOk && g454.lubeTotal === g454.strips * 2, `${g454.lubeTotal}本 / ${g454.strips}条`);
+    /* 画面: 組めない材料では図も表も描かず、直す場所を1つ指す。 */
+    const putW = v => page.evaluate(v => { const el = document.querySelector('#bsW');
+      el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+    const w0 = await page.evaluate(() => WL.bladeGuide.state.W);
+    /* 確定のボタンが居る段を**開いてから**断る——閉じた段のボタンは、伏せなくても見えない。 */
+    const rail0 = await page.evaluate(() => (document.querySelector('#bsRailTabs .is-on') || {}).dataset.r || 'ends');
+    await page.click('#bsRailTabs [data-r="diff"]');
+    await W.until(page, () => { const b = document.querySelector('#bsSaveCar');
+      for (let e = b; e; e = e.parentElement) if (e.hidden || getComputedStyle(e).display === 'none') return false;
+      return !!b; }, null, { ms: 8000, what: '確定のボタンが見える' });
+    await putW(200);
+    await W.until(page, () => document.querySelector('#bladeSetPanel').classList.contains('is-stop'),
+                  null, { ms: 8000, what: '組めない材料の断り' });
+    const stopUi = await page.evaluate(() => {
+     const a = document.querySelector('#bsTables .bs-stop');
+     /* **祖先まで辿る**——確定のボタンは段（`[data-p="diff"]`）ごと伏せるので、
+        ボタン自身の`display`だけ見ると「出ている」と読む（`offsetParent`は使わない・§9.346）。 */
+     const shown = s => { for (let e = document.querySelector(s); e; e = e.parentElement) {
+       if (e.hidden || getComputedStyle(e).display === 'none') return false; } return !!document.querySelector(s); };
+     return { text: a ? a.textContent.replace(/\s+/g, ' ') : '', btn: !!(a && a.querySelector('[data-stop-open]')),
+              fig: shown('#bsFigRow'), table: !!document.querySelector('#bsTables table'),
+              save: shown('#bsSaveCar'), note: shown('.bs-figpanel .bs-stopnote') };
+    });
+    rec('組めない材料では理由（不足の長さ）と直す場所を出す',
+        /組めません/.test(stopUi.text) && /不足/.test(stopUi.text) && stopUi.btn, stopUi.text.slice(0, 80));
+    rec('組めない材料では図・刃組表・確定を出さない（前の絵を残さない）',
+        !stopUi.fig && !stopUi.table && !stopUi.save && stopUi.note, JSON.stringify(stopUi));
+    await page.click('#bsTables [data-stop-open]');
+    rec('「直す」を押すと幅構成の窓が開く',
+        await page.evaluate(() => !!document.querySelector('.bs-step.is-open[data-step="bsV3"]')));
+    await page.keyboard.press('Escape');
+    await putW(w0);
+    await page.click(`#bsRailTabs [data-r="${rail0}"]`);
+    await W.until(page, () => !document.querySelector('#bladeSetPanel').classList.contains('is-stop')
+                  && (window.WL.bladeSolid.view() || {}).stale === false, null,
+                  { ms: 15000, what: '組める材料へ戻す' });
+    await W.paint(page);
+    /* 断面図の帯（読み方・有効長・クリアランス/ラップ/板押さえ）は図に被らない。 */
+    const fit454 = await page.evaluate(() => (window.WL.bladeSolid.view() || {}).hudFit);
+    rec('断面図の帯（クリアランス・ラップ）は図に被らない（上下とも）',
+        !!fit454 && fit454.figTop >= fit454.top - 0.5 && fit454.figBot <= fit454.h - fit454.bot + 0.5,
+        JSON.stringify(fit454));
+    const tbl454 = await page.evaluate(() => {
+     const cs = getComputedStyle(document.querySelector('.bs-shell'));
+     return { lubeCol: !!document.querySelector('#bsTables .bs-lubeh'),
+              lube: cs.getPropertyValue('--bs-fig-lube').trim(),
+              spacer: cs.getPropertyValue('--bs-fig-spacer').trim(),
+              ringHex: [...document.querySelectorAll('#bsTables .bs-ringdot')].map(e => getComputedStyle(e).backgroundColor),
+              lubeDot: (() => { const e = document.querySelector('#bsTables .bs-lubedot'); return e ? getComputedStyle(e).backgroundColor : ''; })(),
+              clrFact: (document.querySelector('#bsFClr') || {}).textContent || '' };
+    });
+    rec('潤滑リングは刃組表に列を持ち、色はスペーサーともゴムリングとも違う',
+        tbl454.lubeCol && !!tbl454.lube && tbl454.lube !== tbl454.spacer
+        && !!tbl454.lubeDot && !tbl454.ringHex.includes(tbl454.lubeDot), JSON.stringify(tbl454));
+    rec('クリアランスを丸めたら、使った値と指定の値を並べて言う',
+        /四捨五入/.test(tbl454.clrFact) && /0\.125/.test(tbl454.clrFact), tbl454.clrFact);
+
+    /* ---- 潤滑リングはゴムリングマスタの行（§9.455、利用者の指示「ゴムリングマスタに
+       潤滑リングフラグを立てて、サイズや在庫数を決めるのと同じように」） ----
+       寸法も在庫も**その行**から引く。在庫が足りなければ所要で「足りない」と言い、
+       行が無ければ「入れられない」と言う（黙って入れない・入れたふりをしない）。 */
+    const lubeRow = async () => ((await getj('/api/bladeset/context?equipment=' + encodeURIComponent(EQ)))
+      .rings || []).find(x => x.lube);
+    const reopen = async () => {
+     await page.evaluate(eq => WL.bladeGuide.open({ equipment: eq }), EQ);
+     await W.paint(page);
+    };
+    const bomLube = () => page.evaluate(() => {
+     const g = [...document.querySelectorAll('#bsBom .bs-ng2')].find(e => /潤滑リング/.test(e.textContent));
+     const chip = g ? g.querySelector('.bs-nc') : null;
+     return { has: !!g, chip: chip ? chip.textContent : '', short: !!(chip && chip.classList.contains('is-ng')),
+              note: g ? g.textContent.replace(/\s+/g, ' ') : '',
+              alert: [...document.querySelectorAll('#bsTables .bs-alert')].some(a => /潤滑リングを入れられません/.test(a.textContent)),
+              col: !!document.querySelector('#bsTables .bs-lubeh') };
+    });
+    const L0 = await lubeRow();
+    rec('潤滑リングは初期セットの1行（ゴムリングマスタ・種類＝潤滑リング）が持つ',
+        !!L0 && L0.width === 10 && L0.od === 270 && L0.bore === 240, JSON.stringify(L0));
+    const b0 = await bomLube();
+    rec('所要に潤滑リングが出て、在庫が足りていれば赤くしない', b0.has && !b0.short, JSON.stringify(b0));
+    await post('/api/bladeset-ring-master/update', { id: L0.id, qty: 1 });
+    await reopen();
+    const b1 = await bomLube();
+    rec('潤滑リングの在庫が足りなければ所要で「足りない」と言う（ゴムリングと同じ数え方）',
+        b1.has && b1.short, JSON.stringify(b1));
+    await post('/api/bladeset-ring-master/update', { id: L0.id, lubeText: 'ゴムリング' });
+    await reopen();
+    const b2 = await bomLube();
+    rec('潤滑リングの行が無ければ「入れられない」と言い、表に列を立てない',
+        b2.alert && !b2.col, JSON.stringify(b2));
+    await post('/api/bladeset-ring-master/update', { id: L0.id, lubeText: '潤滑リング', qty: L0.qty });
+    await reopen();
+    rec('種類を潤滑リングへ戻すと、また入る', (await bomLube()).col, '');
+
+    /* ---- 板の中心（OSから）とDS端のフローティングシート（§9.456、利用者の指示
+       「中心位置をOSからの距離として設定できるように」「DSからOS側にフローティング
+       シートで押さえるので、DSエンドまでの隙間は発生しない」） ---- */
+    const c456 = await page.evaluate(() => {
+     const B2 = WL.bladeSet, M2 = WL.bladeGuide.masters, s0 = WL.bladeGuide.state;
+     const IX2 = B2.buildIndex(M2);
+     const keep = { center: s0.center, datum: M2.P.datumSide };
+     /* **中心は基準面から測る**（§9.461）。板の中心を基準面からの距離へ直して比べる。 */
+     const at = c => { s0.center = c; const r = B2.solve(s0, M2, IX2);
+       const mid0 = r.A.matStart + s0.W / 2;
+       return { mid: +(r.A.datum === 'OS' ? mid0 : r.A.arborLen - mid0).toFixed(3), from: r.A.centerFrom,
+                datum: r.A.datum, floatZ: r.A.floatZ,
+                stop: (r.stop || []).map(x => x.key), step: r.A.clrStep,
+                gap: r.fit.spacerGap.length, last: r.zp.zones.length, fs: r.fit.floatSeat,
+                /* シートの側の端（区間の番号は1から）を「埋め切れていない」に数えた数。 */
+                fsFlag: r.fit.spacerGap.filter(t => t.startsWith((r.A.floatZ + 1) + '')).length,
+                /* シートの側でない端に残りが出た面（0が正）。 */
+                wrong: [r.zp.zones[r.A.floatZ === 0 ? r.zp.zones.length - 1 : 0]]
+                 .flatMap(z => [z.up.rem, z.lo.rem]).filter(v => v > 1e-6).length }; };
+     const out = { datum0: B2.datumOf(M2), def: at(null), c700: at(700), far: at(300) };
+     /* シートの側の端に残りが出るのは**有効長が刻みの倍数でない**とき（基準面の側を
+        刻みへ寄せる`slip`が効くので、中心をずらしても出ない）。有効長を一時的に外して見る。 */
+     const a0 = M2.P.arborLen;
+     M2.P.arborLen = 1599.63; out.c7003 = at(700.013);
+     /* **基準面を入れ替えても同じ答えの形**（§9.461）。OS基準ならシートはDS端。 */
+     M2.P.datumSide = 'OS'; out.os = at(700.013); out.os700 = (M2.P.arborLen = a0, at(700));
+     M2.P.datumSide = 'DS'; out.ds700 = at(700);
+     M2.P.datumSide = keep.datum; M2.P.arborLen = a0;
+     s0.center = keep.center;
+     return out;
+    });
+    rec('板の中心は指定した位置へ来る（刻み1つ未満のずれだけ）',
+        c456.c700.from === 'job' && Math.abs(c456.c700.mid - 700) <= c456.c700.step,
+        JSON.stringify(c456.c700));
+    rec('中心を打っていなければ既定（基準値 → 有効長の中央）',
+        c456.def.from === 'mid' || c456.def.from === 'master', JSON.stringify(c456.def));
+    rec('板が有効長からはみ出す中心は「組めない」と言う', c456.far.stop.includes('center'),
+        JSON.stringify(c456.far.stop));
+    rec('シートの側の端の残りは「埋め切れていない」と数えない（フローティングシートが押さえる）',
+        c456.c7003.fsFlag === 0 && c456.c7003.wrong === 0 && c456.c7003.fs
+        && (c456.c7003.fs.up > 0 || c456.c7003.fs.lo > 0), JSON.stringify(c456.c7003));
+    /* ---- 基準面（基準原点）の切り替え（§9.461、利用者の指示「逆にもできるように…
+       基準原点を変更したら、中心位置の測り方も連動…デフォルトはDSを基準面にOSに
+       フローティングシート」） ---- */
+    rec('既定の基準面はDS・フローティングシートはOS端（§9.461）',
+        c456.datum0 === 'DS' && c456.def.datum === 'DS' && c456.def.floatZ === 0
+        && c456.def.fs.side === 'OS', JSON.stringify({ d: c456.datum0, z: c456.def.floatZ, s: c456.def.fs.side }));
+    rec('OS基準に切り替えるとシートはDS端・残りもDS端だけに出る（§9.461）',
+        c456.os.datum === 'OS' && c456.os.fs.side === 'DS' && c456.os.floatZ === c456.os.last - 1
+        && c456.os.fsFlag === 0 && c456.os.wrong === 0 && (c456.os.fs.up > 0 || c456.os.fs.lo > 0),
+        JSON.stringify(c456.os));
+    rec('中心は基準面から測る（DS基準でもOS基準でも、指定した700mmへ来る・§9.461）',
+        Math.abs(c456.ds700.mid - 700) <= c456.ds700.step && Math.abs(c456.os700.mid - 700) <= c456.os700.step,
+        `DS基準 ${c456.ds700.mid} / OS基準 ${c456.os700.mid}`);
+    await page.evaluate(() => { const el = document.querySelector('#bsCenter');
+      el.value = '700.013'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    await W.until(page, () => /この作業で指定/.test((document.querySelector('#bsCenterSrc') || {}).textContent || '')
+                  && (window.WL.bladeSolid.view() || {}).stale === false, null, { ms: 15000, what: '中心を打つ' });
+    await W.paint(page);
+    const ui456 = await page.evaluate(() => ({
+     src: document.querySelector('#bsCenterSrc').textContent,
+     unit: (document.querySelector('#bsCenterUnit') || {}).textContent || '',
+     note: (document.querySelector('#bsEndsNote') || {}).textContent || '',
+     /* シートの側の端（既定はDS基準なのでOS端）の表。 */
+     ds: [...document.querySelectorAll('#bsOsSide .bs-rem .bs-a')].map(e => e.textContent).join('|'),
+     other: [...document.querySelectorAll('#bsDsSide .bs-rem .bs-a')].map(e => e.textContent).join('|'),
+     len: (document.querySelector('#bsStage3 .bs-len3') || {}).textContent || '',
+     alert: [...document.querySelectorAll('#bsTables .bs-alert')].some(a => /埋め切れていない/.test(a.textContent)) }));
+    rec('シートの側の端（既定OS端）の表は「フローティングシート」の行で押さえる量を言う（隙間と書かない）',
+        /フローティングシート/.test(ui456.ds) && !/隙間|残り/.test(ui456.ds) && !/フローティングシート/.test(ui456.other),
+        `${ui456.ds} ／ 反対 ${ui456.other}`);
+    rec('中心の欄は「どちらから測るか」を言い、端部の説明は基準面を言う（§9.461）',
+        /DSから/.test(ui456.unit) && /基準面はDS/.test(ui456.note) && /OS端はフローティングシート/.test(ui456.note),
+        `${ui456.unit} ／ ${ui456.note}`);
+    rec('シートの側の端の残りでは「埋め切れていない」の帯を出さない', !ui456.alert, String(ui456.alert));
+    rec('断面図の突き合わせは、足りないぶんをフローティングシートと言う（差で出さない）',
+        !/\(-/.test(ui456.len), ui456.len);
+    await page.evaluate(() => { const el = document.querySelector('#bsCenter');
+      el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    await W.until(page, () => !/この作業で指定/.test((document.querySelector('#bsCenterSrc') || {}).textContent || ''),
+                  null, { ms: 8000, what: '中心を既定へ戻す' });
+
     await page.click('[data-step-open="bsV3"]');
     const cut = await page.evaluate(() => {
      const st3 = document.querySelector('#bsStage3'), cv = st3.querySelector('canvas');
@@ -1151,8 +1452,26 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         + ` / light ${(lit.cutLit || []).map(n => Math.round(n)).join(',')}`);
     /* 有効幅の境目の青い印（§9.413 追補、利用者の指示「上下軸のend部分は青色で
        明示しているので3D断面も分かるようにして」）。模式図と**同じ色・同じ径**。 */
-    rec('断面図にも有効幅の境目の青い印がある（上下軸に1つずつ・両端）',
-        lit.endCaps === 4, `${lit.endCaps}個`);
+    /* **シートの側の端は青い印ではなくフローティングシート**（§9.459、利用者の指示「上下軸の
+       DSエンドを青のオブジェクトではなくフローティングシートを図面から3Dで再現」）。
+       青い印は基準面の端の上下軸に1つずつ（2個）、反対の端は図面の寸法の輪が上下軸に1つずつ。 */
+    rec('断面図の青い印は基準面の端だけ（上下軸に1つずつ・§9.459／§9.461）',
+        lit.endCaps === 2, `${lit.endCaps}個`);
+    const fs = lit.fseat || {};
+    const arbor = lit.pack ? lit.pack.arbor : 0;
+    rec('シートの側の端はフローティングシート（図面の寸法: Φ269・幅70・ピストン18本×上下・§9.459）',
+        fs.n === 2 && fs.od === 269 && fs.w === 70 && fs.pistons === 36, JSON.stringify(fs));
+    /* 押さえ板の面は**押さえている量だけ有効長の端より内側**（ピストンがそのぶん伸びる）。
+       押さえている量は刃組の内訳の「フローティングシート押さえ代」と同じ答え。 */
+    /* 置く端は**基準面の反対**（§9.461。既定はDS基準なのでOS端＝座標は−）。 */
+    rec('フローティングシートは基準面の反対の端（既定DS基準＝OS端・§9.461）', fs.side === 'OS',
+        String(fs.side));
+    rec('押さえ板の面は有効長の端から押さえている量だけ内側（上下とも・§9.459）',
+        arbor > 0 && (fs.faces || []).length === 2
+        && fs.faces.every((f, i) => Math.abs(Math.abs(f) - (arbor / 2 - fs.take[i])) < 0.002
+                                    && Math.sign(f) === (fs.side === 'DS' ? 1 : -1))
+        && fs.take.every(t => t >= 0 && t <= 0.95 + 1e-6),
+        `面 ${(fs.faces || []).join('/')}／押さえ ${(fs.take || []).join('/')}／有効長 ${arbor}`);
     /* 板と耳屑の札（§9.413 追補、利用者の指示「2Dの表示のようにラベルもほしい」）。
        **模式図と同じ数だけ**出る——並びは同じ `materialRun()` から作るので、
        数が食い違ったらどちらかが落としている。 */
@@ -1207,10 +1526,14 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         !!pk.pack && pk.pack.x0 >= -0.05 && pk.pack.x1 <= pk.pack.arbor + 0.05,
         pk.pack ? `${pk.pack.x0} 〜 ${pk.pack.x1} / 有効長 ${pk.pack.arbor}` : '読めない');
     /* 端まで使っていること（超えないだけでなく、余らせてもいない）。 */
-    rec('端から端が有効長ぶんある（端を余らせていない）',
-        !!pk.pack && pk.pack.x0 <= 0.6 && pk.pack.arbor - pk.pack.x1 <= 0.6,
-        pk.pack ? `左の空き ${pk.pack.x0} / 右の空き ${(pk.pack.arbor - pk.pack.x1).toFixed(3)}`
-                : '読めない');
+    /* **空いてよいのはフローティングシートの側の端だけ**（§9.461。既定のDS基準ならOS端）。
+       その端の空きはシートが押さえる量で、押さえ代（0.95）以内。基準面の側は空けない。 */
+    const fsSide = pk.fseat ? pk.fseat.side : 'OS';
+    const gapOS = pk.pack ? +pk.pack.x0 : 99, gapDS = pk.pack ? +(pk.pack.arbor - pk.pack.x1).toFixed(3) : 99;
+    rec('端から端が有効長ぶんある（空くのはシートの側の端だけ・押さえ代以内・§9.461）',
+        !!pk.pack && (fsSide === 'OS' ? gapOS <= 0.95 + 1e-6 && gapDS <= 0.6
+                                      : gapDS <= 0.95 + 1e-6 && gapOS <= 0.6),
+        `シート ${fsSide}／左(OS)の空き ${gapOS} / 右(DS)の空き ${gapDS}`);
     /* **上下の刃は刃の身のぶんすれ違う**（§9.419、利用者の指摘「上下の刃は刃厚分
        ズレてないと切れません」）。同じ切断の上刃と下刃は円周が食い違う（ラップ）
        ので、軸方向に刃厚ぶん離れていないと**円周でぶつかって切れない**。
@@ -1440,9 +1763,12 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('板の札は器の端ではなく板のそばに居る（千鳥の空きの中）',
         mlab.n > 0 && mlab.near === mlab.n, `${mlab.near}/${mlab.n} 枚が中ほど（器 ${mlab.h}px）`);
     /* 上下に振り分かれていること（同じ段に並べない）。 */
+    /* 分ける線は**札の並びの中ほど**（§9.454）。器の中央で分けていたが、図は
+       帯を避けて「帯のあいだ」の中央へ置くようになったので、器の中央とは限らない。 */
+    const midY = mlab.ys.length ? (Math.min(...mlab.ys) + Math.max(...mlab.ys)) / 2 : 0;
     rec('板の札は上下へ振り分かれている（千鳥に乗る）',
-        new Set(mlab.ys.map(y => (y < mlab.h / 2 ? 'u' : 'd'))).size === 2,
-        mlab.ys.map(y => (y < mlab.h / 2 ? 'u' : 'd')).join(''));
+        new Set(mlab.ys.map(y => (y < midY ? 'u' : 'd'))).size === 2,
+        mlab.ys.map(y => (y < midY ? 'u' : 'd')).join(''));
     /* ---- 4.7) 断面図の区間の記号・表とのリンク・拡大図（§9.417） ----
        利用者の指示「断面3Dのラベルの付け方は2Dを参考にもう少し修正してほしい。
        強調も入れたい」「断面3Dの強調は2Dと同じ、表とのリンクで、クリックによる
@@ -2206,7 +2532,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      const row = [...document.querySelectorAll('.sc-row-line')]
       .find(r => (r.textContent || '').includes(t));
      if (!row) return null;
-     const b2 = row.querySelector('.sc-nw-link');
+     const b2 = row.querySelector('.sc-nw-link[data-sc-link]');
      return b2 ? { text: b2.textContent, title: b2.title } : null;
     }, TAG + '刃組み');
     rec('行き先のチップが行に出る', !!chip && chip.text === '刃組ガイダンス', JSON.stringify(chip));
@@ -2214,7 +2540,8 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         chip && chip.title);
     const others = await page.evaluate(() => {
      const rows = [...document.querySelectorAll('.sc-row-line')];
-     return rows.filter(r => r.querySelector('.sc-nw-link')).length;
+     /* 行き先を名乗る的だけを数える（ロット番号の横のLotDspの的は別の役・§9.460）。 */
+     return rows.filter(r => r.querySelector('.sc-nw-link[data-sc-link]')).length;
     });
     rec('連携の無い行にはチップを出さない（押して何も起きない的を作らない）',
         others === 1, String(others));
@@ -2334,7 +2661,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await page.evaluate(t => {
      const row = [...document.querySelectorAll('.sc-row-line')]
       .find(r => (r.textContent || '').includes(t));
-     row.querySelector('.sc-nw-link').click();
+     row.querySelector('.sc-nw-link[data-sc-link]').click();
     }, TAG + '刃組み');
     await W.until(page, () => !!document.querySelector('#bladeSetPanel:not([hidden])'),
                   null, { ms: 15000, what: '刃組ガイダンスへ遷移' });
@@ -2531,11 +2858,16 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await page.waitForSelector('#bsDsSave', { timeout: 8000 });
     /* **人が触るのと同じ道**で変える（本数の欄を打つ）——控えを直に書き換えると
        描き直しの配線を通らず、画面と控えが食い違ったまま測ることになる。 */
-    await page.evaluate(() => {
+    /* **1本減らす**（§9.454）。増やすと 279.8×5＝1399 が元板巾 1170 を超えて
+       **組めない材料**になり、確定のボタンごと伏せられる（そちらは別の断り）。
+       ここで見たいのは「組めるが記録と違う」なので、組める側で作る。 */
+    const n0 = await page.evaluate(() => {
      const el = document.querySelector('#bsLotTbl input[data-lot="0"][data-k="n"]');
-     el.value = String((+el.value || 1) + 1);
+     const was = +el.value || 2;
+     el.value = String(Math.max(1, was - 1));
      el.dispatchEvent(new Event('input', { bubbles: true }));
      el.dispatchEvent(new Event('change', { bubbles: true }));
+     return was;
     });
     await W.until(page, () => /記録と違う/.test(
       (document.querySelector('#bsDsState') || {}).textContent || ''), null,
@@ -2553,12 +2885,12 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     /* 元の並びへ戻して、以降の判定を「記録済み」から始める。 */
     await page.click('[data-step-open="bsV3"]');
     await page.waitForSelector('#bsDsSave', { timeout: 8000 });
-    await page.evaluate(() => {
+    await page.evaluate(n => {
      const el = document.querySelector('#bsLotTbl input[data-lot="0"][data-k="n"]');
-     el.value = String(Math.max(1, (+el.value || 2) - 1));
+     el.value = String(n);
      el.dispatchEvent(new Event('input', { bubbles: true }));
      el.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    }, n0);
     await W.until(page, () => /記録済み/.test(
       (document.querySelector('#bsDsState') || {}).textContent || ''), null,
       { ms: 8000, what: '記録済みへ戻る' });

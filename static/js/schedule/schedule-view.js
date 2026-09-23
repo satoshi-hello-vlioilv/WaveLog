@@ -5408,6 +5408,15 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  /* 題名の横に置く行き先のチップ。**押すと何が起きるかを字で書く**（§CLAUDE 4）
     ——行そのもののクリックは「選ぶ」（§9.363）、ダブルクリックは「停止の内容を
     変える」（§9.220）で既に埋まっているので、**別の的**を立てる。 */
+ /* ロット問い合わせ（LotDsp）の的（§9.460）。**字を持たないアイコンだけの的**——
+    字を持つとセルの字（読み替え・コピー・網が読む）に混ざり、高さも字の大きさも
+    行の規格から外れた（実測: 高さ20px・字11px）。高さは行の操作ボタンと同じ
+    `--row-ctl-h`、何が起きるかは`title`と`aria-label`が言う。名乗る属性は
+    `WL.base.lotDspAttrs()`の1箇所、押したときの道は`base.js`の1本。 */
+ const lotDspChipHtml=(lot,cast)=>
+  `<button type="button" class="sc-lot-dsp" aria-label="ロット問い合わせ"${WL.base.lotDspAttrs(lot,cast)}>`
+  +'<svg class="sc-ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/>'
+  +'<path d="M15.3 15.3L21 21"/></svg></button>';
  function stopLinkChipHtml(e){
   const link=stopLinkOf(e);
   if(!link)return '';
@@ -6667,7 +6676,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    line.className='sc-child-line'+(c.detail&&c.detail.__childMissing?' is-missing':'');
    line.dataset.id=c.id;
    const summary=childSummary(c);
-   const lotCell=`<span class="sc-child-lot" data-col="${esc(lotKey)}" title="${esc(c.lotNo||'')}">${esc(c.lotNo||'')}</span>`;
+   /* 子ロットのロット番号にも同じ的を横に（§9.460）。 */
+   const lotCell=`<span class="sc-child-lot" data-col="${esc(lotKey)}" title="${esc(c.lotNo||'')}">`
+    +`${esc(c.lotNo||'')}${c.lotNo?lotDspChipHtml(c.lotNo,entryValueOf(c,'castingNo')):''}</span>`;
    const infoCell=n=>`<span class="sc-child-info" style="grid-column:span ${n}" title="${esc(summary)}">${esc(summary)}</span>`;
    let cells='';
    if(at<0){
@@ -7049,8 +7060,16 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      /* **元の値（式の結果）は`title`に残す**——読み替えで置き換わったことが
         読める（§9.94「切れたセルには生の値の`title`」と同じ約束）。 */
      return `<span class="sc-row-title sc-row-calc${dyn.color?' cell-'+dyn.color:''}" data-col="${esc(k)}" title="${esc(dyn.raw||dyn.text)}">${esc(dyn.text)}</span>`;
-    if(dyn.kind==='content')
-     return `<span class="sc-row-title${dyn.color?' cell-'+dyn.color:''}" data-col="${esc(k)}" data-content-col="${esc(k)}" title="${esc(dyn.raw||dyn.text)}">${esc(dyn.text)}</span>`;
+    if(dyn.kind==='content'){
+     /* **ロット番号の横にロット問い合わせ（LotDsp）の的**（§9.460、利用者の指示
+        「仕掛一覧と同じようにロット問い合わせを開けるように」）。**字そのものは押す形に
+        しない**——行いっぱいは「選ぶ」・ダブルクリックは「測定を開く」の的なので、字を
+        ボタンにするとダブルクリックがボタンに食われる（§9.377「行き先の的は題名の横に
+        別に立てる」）。開くのは行のロット番号そのもの。作業の行だけ。 */
+     const lot=(k==='lotNo'&&e.kind==='作業')?String(e.lotNo||dyn.raw||''):'';
+     const inner=esc(dyn.text)+(lot?lotDspChipHtml(lot,entryValueOf(e,'castingNo')):'');
+     return `<span class="sc-row-title${dyn.color?' cell-'+dyn.color:''}" data-col="${esc(k)}" data-content-col="${esc(k)}" title="${esc(dyn.raw||dyn.text)}">${inner}</span>`;
+    }
     return `<span data-col="${esc(k)}"></span>`;
    };
    row.innerHTML=`
@@ -7093,7 +7112,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    if(delHist)delHist.onclick=ev=>{ev.stopPropagation();deleteHistoryEntry(e)};
    /* 連携機能の行き先（§9.377）。**行の「選ぶ」を横取りしない**ので
       `stopPropagation()`する（行いっぱいが選ぶ的・§9.363）。 */
-   const linkBtn=row.querySelector('.sc-nw-link');
+   /* 見た目の同じ的（LotDspの`.sc-lot-dsp`・§9.460）を拾わないよう、**行き先を名乗る的だけ**。 */
+   const linkBtn=row.querySelector('.sc-nw-link[data-sc-link]');
    if(linkBtn)linkBtn.onclick=ev=>{ev.stopPropagation();ev.preventDefault();openRowLink(e)};
    /* 詳細の器は**この時点ではまだ無い**（行を差し込んだあとに作る）ので、
       メニューは押されたときに読み直す。 */

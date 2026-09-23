@@ -102,8 +102,15 @@ run('test_screport: 作業スケジュールの行から帳票・再開を開く
   const doingLot=await page.evaluate(id=>{
    const row=document.querySelector(`.sc-row-line[data-id="${id}"]`);
    const cell=row?.querySelector('.sc-row-title[data-content-col="lotNo"]');
-   return (cell?.textContent||'').trim();},doing3.id);
-  await page.dblclick(`.sc-row-line[data-id="${doing3.id}"] .sc-row-title`);
+   /* 字だけを読む（横のLotDspの的は数えない）。 */
+   const c2=cell?cell.cloneNode(true):null;
+   if(c2)c2.querySelectorAll('button').forEach(b=>b.remove());
+   return (c2?.textContent||'').trim();},doing3.id);
+  /* **字の上**をダブルクリックする（セルの左端寄り）。セルの真ん中には横に立てた
+     LotDspの的（§9.460）が来ることがあり、的の上のダブルクリックは行の操作にならない
+     （行の中のボタンは除ける決まり・§9.377）。 */
+  await page.dblclick(`.sc-row-line[data-id="${doing3.id}"] .sc-row-title[data-content-col="lotNo"]`,
+                      {position:{x:4,y:8}});
   await page.waitForFunction(()=>{
    const m=document.querySelector('#measureModal');
    return !!m&&!m.hidden&&!!(document.querySelector('#basicInfo')?.textContent||'').trim();
