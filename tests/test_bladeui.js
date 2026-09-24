@@ -1140,6 +1140,14 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         !!e3 && nearer(e3.seat, e3.stand, e3.gear), JSON.stringify(e3));
     rec('立体図でも「基準原点を右」なら基準面（DS）が画面の右',
         !!e3 && e3.ds > e3.os, JSON.stringify(e3));
+    /* §9.467（利用者の指摘「台車側にレールに沿う機構がないのに回転台の部分に入ったり、
+       寧ろレールに干渉しそうなオブジェクトも配置してあったり」）。**組み立てている寸法**
+       で見る（角度によって絵では見えない）: 甲板がレールの頭より上に出ない／台座の下の
+       箱が車輪へ食い込まない／レールの真上に当たりそうな箱が無い。 */
+    const rig3 = await page.evaluate(() => window.WL.bladeSolid.view().rig);
+    rec('台車は車輪でレールに載り、回転テーブルの甲板も同じ高さ（めり込み・当たり 0）',
+        !!rig3 && rig3.deckOverRail === 0 && rig3.wheelBuried === 0 && rig3.railClash === 0,
+        JSON.stringify(rig3));
     await page.click('#bsFigTabs [data-fig="cut"]');
     await W.until(page, () => {
      const v = window.WL.bladeSolid.view();
