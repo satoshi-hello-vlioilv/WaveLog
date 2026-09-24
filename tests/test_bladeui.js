@@ -247,6 +247,21 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         szRows.map(o => `${o.span}→${o.ring}`).join(' / '));
     rec('ゴムリングの径と色と大小を上の帯が言い切る',
         /大\s*\S*Φ\d+／小\s*\S*Φ\d+/.test(shown.chip), shown.chip);
+    /* §9.480（利用者の指示「1から4まで順番に」の4）: 取付位置は**ⓘ を開かずに読める**——何の番号かは列の見出し
+       （OS側から数えた区間）が言い、等間隔の番号は「1・3…21」へ畳む（22条で11個並べると表が220pxはみ出した）。
+       枚数は番号から数えられないとき（畳んだ／1区間に2枚以上）だけ添える（同じ数を2回言わない）。 */
+    const pos = await page.evaluate(() => ({
+     head: ([...document.querySelectorAll('#bsTables thead th')].find(th => /取付位置/.test(th.textContent)) || {}).textContent || '',
+     cells: [...document.querySelectorAll('#bsTables td.bs-it:not(.bs-z)')].map(td => {
+      const sl = (td.querySelector('.bs-slot') || {}).textContent || '', ct = td.querySelector('.bs-ct');
+      return { text: td.textContent.replace(/\s+/g, ' ').trim(), title: td.title, folded: /…/.test(sl),
+               listed: sl.split(/[・…]/).filter(Boolean).length, ct: ct ? +ct.textContent.replace(/[^0-9]/g, '') : null }; }) }));
+    rec('取付位置は見出しが「区間」と言い、等間隔の番号は畳み、枚数は数えられないときだけ添える',
+        /側から数えた区間/.test(pos.head) && pos.cells.length > 0 && pos.cells.some(o => o.folded)
+        && pos.cells.every(o => /^[下上]+ ?[\d・…]+( ?\d+枚)?$/.test(o.text)
+          && /(下|上)バリ／\S+側から [\d・]+ 番目の区間（計 \d+ 枚）/.test(o.title)
+          && (o.folded ? o.ct !== null : (o.ct === null || o.ct !== o.listed))),
+        pos.cells.map(o => o.text).join(' / '));
 
     /* ---- 余りは層ごとに別（§9.441、利用者の指示） ----
        スペーサー層の端数は**0が正**（組んだものはOS側へ押し付けて組む）。

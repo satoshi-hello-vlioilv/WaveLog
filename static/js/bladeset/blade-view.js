@@ -2215,8 +2215,29 @@
   const burr = [...new Set(uses.map(u => u.burr))]
    .map(b => `<span class="bs-bt is-${b}">${b === 'down' ? '下' : '上'}</span>`).join('');
   const n = uses.reduce((a, u) => a + u.n, 0);
-  return `<td class="${cls}">${burr}<span class="bs-slot">`
-   + `${[...new Set(slots)].sort((a, b) => a - b).join(' ')}</span><span class="bs-ct">${n}</span></td>`;
+  /* **ⓘ を開かずに読める形**（§9.480、利用者の指示「1から4まで順番に」の4＝振り返りの「取付位置の表記そのものを
+     読みやすく」）。前は「下 1 3 **2**」——番号は灰色の小さい字、太字は枚数で、枚数は並べた区間の数と全セルで
+     同じ（同じ数を2回言う）だった。いまは番号が主役で、**何の番号かは列の見出し**（OS側から数えた区間）が言う。
+     等間隔に続く番号は`zoneList()`が「1・3…21」へ畳み（22条で11個並ぶと表が220pxはみ出した）、
+     枚数は**並べた番号から数えられないとき**（畳んだ／1区間に2枚以上）だけ添える。 */
+  const zs = [...new Set(slots)].sort((a, b) => a - b);
+  const zl = zoneList(zs);
+  const burrWord = [...new Set(uses.map(u => u.burr))].map(b => (b === 'down' ? '下' : '上') + 'バリ').join('・');
+  return `<td class="${cls}" title="${esc(`${burrWord}／${SW('OS')}側から ${zs.join('・')} 番目の区間（計 ${n} 枚）`)}">${burr}`
+   + `<span class="bs-slot">${zl.text}</span>`
+   + (zl.folded || n !== zs.length ? `<span class="bs-ct">${n}枚</span>` : '') + '</td>';
+ }
+ /* 番号の並びを短く言う（§9.480）。等差で4つ以上続くところを「先頭・次…末尾」へ畳む（公差が見えるので
+    「1つおき」も「続き」も同じ形で読める）。3つまでは並べたほうが短い。 */
+ function zoneList(zs) {
+  const out = []; let folded = false;
+  for (let a = 0; a < zs.length;) {
+   let b = a + 1;
+   if (b < zs.length) { const d = zs[b] - zs[a]; while (b + 1 < zs.length && zs[b + 1] - zs[b] === d) b++; }
+   if (b - a + 1 >= 4) { out.push(`${zs[a]}・${zs[a + 1]}…${zs[b]}`); folded = true; a = b + 1; }
+   else { out.push(zs[a]); a++; }
+  }
+  return { text: out.join('・'), folded };
  }
  /* 組んでみて初めて分かる断り（§9.441）。マスタの在庫を見る `renderSets()` とは
     別に、**この割付でどこが埋まらなかったか**を刃組表のすぐ上へ出す
@@ -2295,9 +2316,10 @@
      見出しに残すのは**値の読み方に要る短い物**（「2〜5 が正」）だけ。中身は`thTips`の1箇所。 */
   const lubeCol = hasLube && !res.finger;
   const thTips = {
-   pos: `<b>上軸・下軸</b>それぞれ、この記号の刃が付く位置です。`
+   pos: `<b>上軸・下軸</b>それぞれ、この記号の刃が付く区間です。`
       + `<span class="bs-bt is-down">下</span><span class="bs-bt is-up">上</span>＝バリの向き／`
-      + `小さい数字＝${esc(SW('OS'))}側から何番目の区間か／太字＝区間数`,
+      + `数字＝${esc(SW('OS'))}側から何番目の区間か。「1・3…21」は 1・3・5…21 の1つおき。`
+      + `番号から数えられないとき（畳んだ・同じ区間に2枚以上）だけ枚数を添えます`,
    span: `この区間の刃どうしの寸法です（条幅を作っている側）。`
       + `<br><b>${SPAN_WORD.in}</b>＝製品幅＋クリアランス×2／<b>${SPAN_WORD.out}</b>＝製品幅`,
    hold: ringBand
@@ -2312,7 +2334,7 @@
     <tr>
      <th class="bs-grp" rowspan="2">区分<small>ロット・条幅</small></th>
      <th class="bs-bd" rowspan="2">記号</th>
-     <th class="bs-it bs-sep" colspan="2">取付位置${tip('pos', '取付位置')}</th>
+     <th class="bs-it bs-sep" colspan="2">取付位置${tip('pos', '取付位置')}<small>${esc(SW('OS'))}側から数えた区間</small></th>
      <!-- **刃が作る寸法は表にも置く**（§9.434、利用者の指示「クリアランス分の
           計算が入った寸法で上下正確に刃の幅を示すラベル」）。図の上の字は
           狭い区間では入らないので、**必ず読める場所**をここに持つ。 -->
