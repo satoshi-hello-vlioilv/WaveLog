@@ -1755,7 +1755,9 @@
     el.box.dataset.badge = q.badge;
     el.chip.dataset.badge = q.badge;
     el.chip.dataset.axis = q.up ? 'up' : 'lo';
-    el.chip.textContent = q.badge;
+    /* 端の区間の札は出さない（§9.463）ので字も持たせない——伏せた札に素の`OS`を
+       残すと、呼び方（§9.472）に付いてこない字が器に残る。 */
+    el.chip.textContent = q.end ? '' : q.badge;
    }
    /* 記号の色は文字ごと（§9.455）。札と区間の面が同じ番号を名乗る。 */
    /* 変わったときだけ書く（毎フレーム書くと、そのたびに書式を計算し直す）。 */
@@ -2106,7 +2108,8 @@
   if (!el) return;
   if (!('os' in at) || !('ds' in at)) { el.hidden = true; return; }
   const l = at.os <= at.ds ? 'os' : 'ds', r = l === 'os' ? 'ds' : 'os';
-  const nm = k => `<i class="is-${k}">${k.toUpperCase()}</i>`;
+  /* 字は OS・DS の呼び方（§9.472・`sideWord()`の1箇所）。色の鍵（`is-os`）は呼び方に依らない。 */
+  const nm = k => `<i class="is-${k}">${esc(BS().sideWord(ctx && ctx.M, k.toUpperCase()))}</i>`;
   /* **誇張したら倍率を書く**（§CLAUDE 6 出どころ・単位・根拠を画面に出す）。
      板厚は実寸だと1pxも出ないので断面図でだけ太らせている（§9.413 追補）。 */
   /* **散文は「使い方」が持つ**（§9.443、利用者の指示「表示が重ならないように」）。

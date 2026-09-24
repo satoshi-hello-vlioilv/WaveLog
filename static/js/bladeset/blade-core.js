@@ -1064,7 +1064,7 @@
                               : [] },
                 holdName: holdName(st, M) };
   return { segs, A, zp, g, err, rows, ends, badges: badgeMap(rows.concat(ends)),
-           fit, stop: stopReasons(st, A), contact: c, method: method(st), finger: isFinger(st, M),
+           fit, stop: stopReasons(st, A, M), contact: c, method: method(st), finger: isFinger(st, M),
            bigOd: odFromTh(M, st.bigTh), smOd: odFromTh(M, st.smallTh) };
  }
 
@@ -1074,8 +1074,8 @@
     器を空にする）。以前は手順3の畳んだ窓の中だけが断っており、図と表は
     負の耳のまま「組めた顔」で描かれていた。
     `step`は直す場所（手順の窓の`id`）。字は「何が」「どれだけ」「どうすれば」。 */
- function stopReasons(st, A) {
-  const out = [], w = A.w, W = +st.W || 0;
+ function stopReasons(st, A, M) {
+  const out = [], w = A.w, W = +st.W || 0, sw = sd => sideWord(M, sd);
   /* 板が有効長の外へはみ出す（中心をずらしたとき・§9.456）。元板巾そのものが
      有効長を超えるときは下の`arbor`が言うので、ここは「収まる幅なのに位置が悪い」だけ。 */
   if (W > 0 && W <= A.arborLen) {
@@ -1083,8 +1083,8 @@
    const over = a < -1e-6 ? -a : (b > A.arborLen + 1e-6 ? b - A.arborLen : 0);
    if (over > 0) {
     out.push({ key: 'center', step: 'bsV3',
-               text: `板の中心が ${A.datum} から ${(+A.center).toFixed(2)} mm だと、板が有効長の`
-                   + `${a < 0 ? 'OS' : 'DS'}側へ ${over.toFixed(2)} mm はみ出します`,
+               text: `板の中心が ${sw(A.datum)} から ${(+A.center).toFixed(2)} mm だと、板が有効長の`
+                   + `${sw(a < 0 ? 'OS' : 'DS')}側へ ${over.toFixed(2)} mm はみ出します`,
                fix: `板の中心を ${(W / 2).toFixed(2)}〜${(A.arborLen - W / 2).toFixed(2)} mm のあいだにしてください` });
    }
   }
@@ -1312,11 +1312,21 @@
     フローティングシートが押さえる。**駆動側（DS）に固定**（§9.470、利用者の指示「基準面を
     OSに切り替えるという機能は不要になり、ラベルをどうするかの機能があれば解決します。
     また、右と左を入れ替えて表示する機能もあるので事足ります」）——§9.461 で入れた
-    マスタの切り替え（`datumSide`）は外した。見せ方の左右は「基準原点を左／右」と
-    その呼び方（刃組基準値）が受け持つ。計算は基準面を引数のように読むまま残す
+    マスタの切り替え（`datumSide`）は外した。見せ方の左右は向きの札（§9.472・並びを描く
+    2択）と、OS・DS の呼び方（`sideWord()`・刃組基準値）が受け持つ。計算は基準面を引数のように読むまま残す
     （組む順・中心の測り方・シートの端の説明が同じ1つの答えを見る）。 */
  const DATUM = 'DS';
  function datumOf() { return DATUM; }
+ /* **OS・DS の呼び方**の答え（§9.472、利用者の指示「切り替えボタンのラベルだけでなく、
+    図の中のラベルや、右表のラベルもすべて連動させて」）。計算と記録は`'OS'`／`'DS'`の
+    まま持ち、**画面へ出す字だけ**をここで引く（刃組基準値の「OS の呼び方」「DS の呼び方」・
+    空欄なら OS／DS）。字を書く場所は全部これを呼ぶ——1箇所でも素の`'OS'`を書くと、
+    その字だけ呼び方に付いてこない。 */
+ function sideWord(M, sd) {
+  const P = (M && M.P) || {};
+  const v = String((sd === 'OS' ? P.sideNameOS : sd === 'DS' ? P.sideNameDS : '') || '').trim();
+  return v || sd;
+ }
  /* **板の中心（基準面からの距離）**の答え（§9.456／§9.461）。①その作業で打った値 →
     ②設備の`刃組基準値`の「板の中心」→ ③有効長の中央、の3段。どの段から来たかも
     返す（画面は出どころを言う・§CLAUDE 6）。`value`は基準面から、`os`は同じ位置を
@@ -1479,7 +1489,7 @@
  }
 
  WL.bladeSet = {
-  defaultState, clearanceRate, clearanceFor, clearanceUsed, centerOf, datumOf, floatStroke, fillWithin, spacerStep, ringRule, holdBand, applyStandards, applyBladePick, standardState,
+  defaultState, clearanceRate, clearanceFor, clearanceUsed, centerOf, datumOf, sideWord, floatStroke, fillWithin, spacerStep, ringRule, holdBand, applyStandards, applyBladePick, standardState,
   normalize, buildIndex, ringMeta, thOf, odFromTh, odOfType, ringType, oppBurr,
   method, isFinger, holdName, contact, recommend, syncOrder, reorder,
   buildSegs, widths, buildLayout, buildFiller, fillWith, planZones,

@@ -1,4 +1,4 @@
-# 刃組ガイダンス（195件）
+# 刃組ガイダンス（197件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| OS・DSの字は`sideWord()`の1箇所（刃組基準値の呼び方）。鍵（`data-badge`）は素のまま・静的な字は`data-sw` | `test_bladeui.js`・`test_bladeset.py` | [§9.472](../../docs/decisions/9.472.md) |
+| 向きの札は**押した後の図の左右を描く**2択（◆＝基準面・意味は`title`）。大きさは隣の図の札とそろえる | `test_bladeui.js` | [§9.472](../../docs/decisions/9.472.md) |
 | 基準面の切り替えは持たない（実機は駆動側＝DS）。左右の見せ方は「基準原点を左／右」とその呼び方が受け持つ | `test_bladeui.js`・`test_bladeset.py`・`test_stdmodal.js` | [§9.470](../../docs/decisions/9.470.md) |
 | 立体図の台車は**車輪でレールに載る**。甲板は床と面一・下の箱は車輪の内側（`view().rig`の3つが0） | `test_bladeui.js` | [§9.467](../../docs/decisions/9.467.md) |
 | 機体の色は`PAINT`の1箇所（実機の緑・カバーは黄）。フィンガーの押さえのアングルはフィンガー方式の立体図だけ | `test_bladeui.js` | [§9.467](../../docs/decisions/9.467.md) |
@@ -19,7 +21,7 @@
 | 「自動で決まる」の板押さえは1項目。名前は層の総称（板押さえ）、方式は値が言う（`holdName()`）。「保持」と重ねない | `test_bladeui.js` | [§9.465](../../docs/decisions/9.465.md) |
 | 向きの既定の側と札の呼び方は**マスタの値が画面へ届くこと**まで網で見る（既定値だけ見ない） | `test_bladeui.js` | [§9.465](../../docs/decisions/9.465.md) |
 | 断面図は**寄る・引くもできる**（マウスの下の点を保つ・拡大中は×1の縮尺と中心で）。§9.413の「持たない」を撤回 | `test_bladeui.js` | [§9.463](../../docs/decisions/9.463.md) |
-| 向きは「基準原点を左／右」の2つの札。`flip`は`flipOf()`の1箇所・既定の側と呼び方は刃組基準値 | `test_bladeui.js` | [§9.463](../../docs/decisions/9.463.md) |
+| 【§9.472で作り直した】向きは「基準原点を左／右」の2つの札。`flip`は`flipOf()`の1箇所 | `test_bladeui.js` | [§9.463](../../docs/decisions/9.463.md) |
 | OS・DSの端も`[data-badge]`で名乗る（端部の表・模式図の端の区間・断面図の札）。端は拡大図を開かない | `test_bladeui.js` | [§9.463](../../docs/decisions/9.463.md) |
 | 左上の帯は入るなら2列（`hudCols()`が測る）。設定のバッジは中身なりの高さ・字は真ん中 | `test_bladeui.js` | [§9.463](../../docs/decisions/9.463.md) |
 | 区分の仮の名前（`LOT1`）は1本目のコイルの番号（`headLot`）に置き換える | `test_bladeui.js` | [§9.463](../../docs/decisions/9.463.md) |

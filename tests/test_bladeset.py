@@ -148,6 +148,19 @@ std = bs.standard_for(c3, EQ)
 rec('基準面の切り替えの鍵は無い（§9.470・DSに固定）', 'datumSide' not in std['values'], str(sorted(std['values'])[:5]))
 bs.standard_upsert(c3, 'u', equipment=EQ, values={'datumSide': 'OS'})
 rec('基準面を送っても保存しない（§9.470）', 'datumSide' not in bs.standard_for(c3, EQ)['values'])
+# §9.472: OS・DS の呼び方は刃組基準値が持つ（既定は OS／DS）。§9.463 の札の呼び方（左／右）は外した。
+rec('OS・DS の呼び方の既定は OS／DS（札の呼び方の鍵は無い）',
+    std['values'].get('sideNameOS') == 'OS' and std['values'].get('sideNameDS') == 'DS'
+    and 'viewLabelLeft' not in std['values'] and 'viewLabelRight' not in std['values'],
+    str({k: std['values'].get(k) for k in ('sideNameOS', 'sideNameDS', 'viewLabelLeft')}))
+bs.standard_upsert(c3, 'u', equipment=EQ, values={'sideNameOS': '操作側', 'sideNameDS': '駆動側'})
+got = bs.standard_for(c3, EQ)['values']
+rec('OS・DS の呼び方を保存して読み返せる', (got.get('sideNameOS'), got.get('sideNameDS')) == ('操作側', '駆動側'),
+    str((got.get('sideNameOS'), got.get('sideNameDS'))))
+bs.standard_upsert(c3, 'u', equipment=EQ, values={'sideNameOS': '', 'sideNameDS': ''})
+got = bs.standard_for(c3, EQ)['values']
+rec('呼び方を空にすると既定（OS／DS）へ戻る', (got.get('sideNameOS'), got.get('sideNameDS')) == ('OS', 'DS'),
+    str((got.get('sideNameOS'), got.get('sideNameDS'))))
 rec('中心の鍵は「基準面から」の名前（OSから、の鍵は残さない）',
     'centerFromDatum' in bs.STANDARD_DEFAULTS and 'centerFromOS' not in bs.STANDARD_DEFAULTS)
 bs.standard_delete(c3, srow['id'])

@@ -890,4 +890,22 @@ body.bs-mode .bs-shell{display:flex}
 .bs-zoom-x:hover{background:var(--pale);border-color:var(--teal)}
 .bs-zoom svg{width:100%;height:auto;display:block}
 .bs-zoom-note{margin:0;font-size:var(--fs-micro);color:var(--muted);line-height:1.5}
+
+/* ---------- 図の向き（§9.472） ----------
+   **札が押した後の図の左右をそのまま描く**（OS ━ ◆DS／◆DS ━ OS）。よく押す物なので
+   隣の図の札（`.bs-chip`）と同じ寸法——§9.463 までは付随情報の寸法（`.bs-hide`・9.5px）
+   だった。選ばれた札の見た目は`90-state.css`の束ね規則が持つ（§9.353）。 */
+.bs-orient{display:inline-flex;align-items:center;gap:var(--space-1)}
+.bs-orient-cap{font-size:var(--fs-sm);font-weight:600;color:var(--muted)}
+.bs-orient-seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-sm);
+  overflow:hidden;background:var(--valid-bg)}
+.bs-orient-seg button{display:inline-flex;align-items:center;gap:var(--space-1);font:inherit;
+  font-size:var(--fs-sm);font-weight:700;color:var(--muted);white-space:nowrap;cursor:pointer;
+  background:transparent;border:0;border-inline-start:1px solid var(--line);padding:2px var(--space-2)}
+.bs-orient-seg button:first-child{border-inline-start:0}
+.bs-orient-seg button:hover{color:var(--teal-dark);background:var(--pale)}
+/* 軸を表す短い線。字と同じ色で、字より目立たせない。 */
+.bs-oa{display:inline-block;width:1.4em;height:.15em;background:currentColor;opacity:.55}
+/* 基準面の側の印。◆は`title`が「基準面」と言い切る（記号だけに頼らない・§CLAUDE 3）。 */
+.bs-oe.is-datum::before{content:"◆";font-size:.7em;margin-inline-end:.15em;vertical-align:.1em}
 }
