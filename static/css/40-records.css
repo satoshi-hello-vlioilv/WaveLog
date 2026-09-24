@@ -277,6 +277,11 @@
 /* 伏せた候補の件数（§9.302）。**助けの一言より弱く**——次にすることは
    その前半が言っており、こちらは「なぜ一覧に出ていないか」の注記。 */
 .eqset-note{color:var(--muted)}
+/* ③ ロット問い合わせのログイン（§9.485）。拡張の入れ方は**する順の番号つき**で書く。
+   フォルダの場所は長いので折り返してよい（切って見せない＝選ぶ場所を推測させない）。 */
+.eqset-lotdsp{display:flex;flex-direction:column;align-items:flex-start;gap:var(--space-2)}
+.eqset-steps{margin:0;padding-left:1.6em;color:var(--ink-2);font-size:var(--fs-sm);line-height:1.8}
+.eqset-path{word-break:break-all}
 /* 足の一言。**なぜここに居るか**と保存の結果を出す（§CLAUDE 6）。 */
 .eqset-foot{margin-right:auto;color:var(--ink-3);font-size:var(--fs-sm);line-height:1.5}
 .eqset-foot.is-warn{color:var(--warn-fg);font-weight:700}

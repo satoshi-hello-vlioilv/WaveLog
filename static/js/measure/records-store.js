@@ -1722,6 +1722,14 @@ function equipmentSettingsHtml(){
      <select id="lotDspTabSetting">${LOTDSP_TABS.map(n=>`<option value="${n}">Tab ${n}</option>`).join('')}</select></label>
     <p class="eqset-help">一覧や測定画面のロット№を押すと、LotDspをこのタブで開きます。<b>下の「保存」は要りません</b>（この端末だけの設定です）。</p>
    </section>
+   <!-- ③ ロット問い合わせのログイン（§9.485、利用者の指示「VPN環境時のID＆PASSを登録しておき…自動ログイン」
+        「登録修正もどこかから配線」）。**ID・パスワードは同梱の拡張が Edge のこの PC に持つ**——WaveLog は
+        受け取りも渡しもしない。ここが出すのは「拡張が入っているか」と、入れ方・拡張の設定を開く道だけ。 -->
+   <section class="eqset-sec eqset-sec-minor" aria-labelledby="eqsetH3">
+    <h3 id="eqsetH3"><span class="eqset-no">③</span>ロット問い合わせのログイン（VPNのとき）
+     <b class="eqset-now" id="lotdspExtNow">確かめています</b></h3>
+    <div id="lotdspExtBody" class="eqset-lotdsp"></div>
+   </section>
   </div>
   <footer class="settings-actions">
    <span class="eqset-foot" id="eqsetFoot"></span>
@@ -1729,6 +1737,40 @@ function equipmentSettingsHtml(){
    <button id="saveAppSettings" type="button">使用設備を保存</button>
   </footer>
  </div>`;
+}
+/* ③の中身（§9.485）。拡張は WaveLog の画面へ`<html data-lotdsp-ext="版">`を名乗る（`wavelog.js`）。
+   **入っていれば**設定を開くボタン（拡張へ`wl:lotdsp-options`で頼む——WaveLog から拡張の画面は
+   直には開けない）。**入っていなければ**入れ方を手順で書く（フォルダの場所はサーバーが答える）。 */
+async function paintLotdspExt(){
+ const now=$('#lotdspExtNow'),body=$('#lotdspExtBody');
+ if(!now||!body)return;
+ const ver=document.documentElement.dataset.lotdspExt||'';
+ if(ver){
+  now.className='eqset-now is-pick';now.textContent=`拡張: 入っています（${ver}）`;
+  body.innerHTML=`<p class="eqset-lead">ログイン画面が出たら、拡張に登録した ID・パスワードで自動でログインします。
+    未登録なら、ロット問い合わせの画面の上に登録の帯が出ます。<b>登録・直す・消す</b>は拡張の設定で行います
+    （ID・パスワードは Edge のこの PC にだけ保存し、WaveLog は受け取りません）。</p>
+   <button type="button" id="lotdspExtOpen" class="mm-btn-ghost">ログインの登録・修正を開く</button>`;
+  $('#lotdspExtOpen').onclick=()=>document.dispatchEvent(new CustomEvent('wl:lotdsp-options'));
+  return;
+ }
+ now.className='eqset-now is-instant';now.textContent='拡張: 入っていません';
+ let info={dir:'',found:false};
+ try{info=await api('/api/lotdsp/ext')}
+ catch(e){WL.quiet.note('拡張の場所を読めない（手順だけ出す）',e)}
+ body.innerHTML=`<p class="eqset-lead">VPN でロット問い合わせを開くとログイン画面が出る端末だけ、Edge に同梱の拡張を入れます。
+   入れると、ログイン画面で登録した ID・パスワードを入れて自動でログインします。</p>
+  <ol class="eqset-steps">
+   <li>Edge のアドレス欄に <code>edge://extensions</code> と入れて開く</li>
+   <li>左の「<b>開発者モード</b>」をオンにする</li>
+   <li>「<b>展開して読み込み</b>」を押し、このフォルダを選ぶ:
+    <code class="eqset-path">${esc(info.dir||'（WaveLog のフォルダ）\\program\\lotdsp-ext')}</code>
+    ${info.dir?'<button type="button" id="lotdspExtCopy" class="mm-btn-ghost sm">場所をコピー</button>':''}</li>
+   <li>この窓を開き直すと「入っています」に変わります</li>
+  </ol>
+  <p class="eqset-help">会社の設定で拡張が読み込めない端末では、手順2か3が押せません。そのときは管理者に確認してください。</p>`;
+ const cp=$('#lotdspExtCopy');
+ if(cp)cp.onclick=()=>{WL.base.copyText(info.dir);showToast('フォルダの場所をコピーしました','「展開して読み込み」の窓に貼り付けます',3000)};
 }
 function ensureEquipmentSettingsModal(){
  let modal=$('#appSettingsModal');
@@ -1740,7 +1782,7 @@ function ensureEquipmentSettingsModal(){
  /* **同じ形なら組み直さない**——開くたびに作り替えると、選んでいた値も
     フォーカスも消える。欠けている部品があるときだけ作る。 */
  if(!($('#configuredEquipment')&&$('#equipmentSettingStatus')&&$('#saveAppSettings')
-      &&$('#lotDspTabSetting')&&$('#newEquipmentEntry')&&$('#equipmentMasterHelp'))){
+      &&$('#lotDspTabSetting')&&$('#newEquipmentEntry')&&$('#equipmentMasterHelp')&&$('#lotdspExtBody'))){
   modal.innerHTML=equipmentSettingsHtml();
   /* **欄を作った側が配線する**（§9.257 ②）——`base.js`は読み込み時に
      1度だけ探す作りだと、あとから組み立てるこの欄に間に合わない。 */
@@ -1921,6 +1963,7 @@ async function openEquipmentSettingsFinal(reason='manual',suggested=''){
  });
  hideSaveOverlay();
  modal.hidden=false;
+ paintLotdspExt();
  const foot=$('#eqsetFoot'),help=$('#equipmentMasterHelp');
  const say=(msg,cls)=>{if(!foot)return;foot.className='eqset-foot'+(cls?' '+cls:'');foot.textContent=msg||''};
  try{await loadEquipmentMaster(true)}

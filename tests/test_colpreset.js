@@ -107,8 +107,9 @@ run('test_colpreset: 列の設定を名前で覚える／式で列を作る（§
   /* §9.483（利用者の指示「作業スケジュールの表示列の編集…同じように…共通化」）: 式の列も**左の見本と
      右の「値のある行」に値が出る**。列の生の値の答えはパネルの`rawOfDraft()`1箇所——以前は6箇所が口を直に
      呼び、式を自前で解いていたスケジュール表だけ出て、仕掛一覧は「値のある行がありません（0件）」だった。 */
-  await page.waitForFunction(k=>{const it=document.querySelector(`#lcList .lc-item[data-key="${k}"]`);
-    return !!it&&/\//.test(it.textContent)},COL,{timeout:8000}).catch(()=>{});
+  /* 待ちは黙らない（§9.360）——`wait.js`の`until`は切れたら何を待っていたかを言う。 */
+  await require('./lib/wait.js').until(page,k=>{const it=document.querySelector(`#lcList .lc-item[data-key="${k}"]`);
+    return !!it&&/\//.test(it.textContent)},COL,{ms:8000,what:'式の列の見本'});
   const fxSide=await page.evaluate(k=>({
    item:(document.querySelector(`#lcList .lc-item[data-key="${k}"]`)||{}).textContent||'',
    stat:(((document.querySelector('#lcDetail')||{}).textContent||'').replace(/\s+/g,' ').match(/値のある行\s*(\d+)/)||[])[1]}),COL);

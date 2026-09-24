@@ -2444,7 +2444,8 @@
   const lv = Math.max(0, Math.min(DIM_FS_TOKENS.length - 1, dimLevel() + d));
   if (lv === D3.dimLv) return undefined;
   D3.dimLv = lv;
-  try { localStorage.setItem(DIM_FS_KEY, String(lv)); } catch (e) { /* 覚えられなくても今の画面では効く */ }
+  try { localStorage.setItem(DIM_FS_KEY, String(lv)); }
+  catch (e) { WL.quiet.note('寸法の字の段を覚えられない（いまの画面では効く）', e); }
   render();
   return undefined;
  }

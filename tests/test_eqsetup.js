@@ -71,8 +71,9 @@ run('test_eqsetup: 使用設備の設定モーダル（§9.257 ②、利用者�
   const secs=await page.evaluate(()=>[...document.querySelectorAll('#appSettingsModal .eqset-sec>h3')]
     .map(h=>({no:(h.querySelector('.eqset-no')||{}).textContent||'',
               title:h.childNodes.length?h.textContent.trim():''})));
-  rec('決めることが番号付きの節に分かれている（①②）',
-      secs.length===2&&secs[0].no==='①'&&secs[1].no==='②',
+  /* ③ロット問い合わせのログイン（§9.485）を足した——決める順に①②③。 */
+  rec('決めることが番号付きの節に分かれている（①②③）',
+      secs.length===3&&secs[0].no==='①'&&secs[1].no==='②'&&secs[2].no==='③',
       JSON.stringify(secs));
   rec('①は使う設備・②はロット№の開き方',
       /設備/.test(secs[0].title||'')&&/タブ/.test(secs[1].title||''),
@@ -187,7 +188,7 @@ run('test_eqsetup: 使用設備の設定モーダル（§9.257 ②、利用者�
    新規:!!document.getElementById('newEquipmentEntry'),
    節:document.querySelectorAll('#appSettingsModal .eqset-sec').length}));
   rec('中身を捨てても同じ形で戻る（作りが1つ）',
-      again.欄==='SELECT'&&again.タブ&&again.新規&&again.節===2,
+      again.欄==='SELECT'&&again.タブ&&again.新規&&again.節===3,
       JSON.stringify(again));
   const tabAgain=await page.evaluate(()=>document.getElementById('lotDspTabSetting').value);
   rec('作り直したあともタブの配線が効いている',

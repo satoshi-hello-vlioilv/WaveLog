@@ -219,6 +219,7 @@ CLAUDE.md には見出しの1行だけを残してある。ここが本文。
   `requirements-dev.txt`。§9.404)。リポジトリ直下に残すPythonは
 **1本も無い**(§9.406で`_pycache_bootstrap.py`も移した)。
   `.bat`3本(`start_app.bat`/`stop.bat`/`update.bat`)も`program/`。
+  ロット問い合わせの自動ログインの拡張(`lotdsp-ext/`・§9.485)も`program/`（Edge が読む同梱の資材）。
   直下に残るのは毎日の入口`Start.vbs`と、**移すと黙って効かなくなる**
   `.gitignore`(gitはそのフォルダ以下にしか当てない)・`eslint.config.mjs`
   (`program/`へ移すと規則が1件も当たらないのに**エラーにならない**。
