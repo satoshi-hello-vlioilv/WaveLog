@@ -21,13 +21,25 @@ const TAG='FX'+process.pid;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const getj=async p=>(await fetch(B+p)).json();
 const layoutOf=async t=>(await getj('/api/column-layout-master?target='+encodeURIComponent(t)))||{};
-const keep={};           /* 対象 → 最初の formulas（後片付けで戻す） */
+const keep={};           /* 対象 → 最初の列レイアウト丸ごと（後片付けで戻す） */
+const LAYOUT_KEYS=['order','widths','hidden','names','formats','rules','formulas','locks','sorts','aligns'];
 const made=[];
 const CALC='検証計算列'+String(process.pid).slice(-3);
 
 async function setFormulas(t,f){
- if(!(t in keep))keep[t]=(await layoutOf(t)).formulas||{};
+ if(!(t in keep))keep[t]=await layoutOf(t);
  await post('/api/column-layout-master',{target:t,formulas:f,user_id:'test'});
+}
+/* **最初の形へ丸ごと戻す**（§9.360「汚した本は指紋で名指しする」）。`formulas`だけ戻すと、
+   もともと設定の無かった対象に行が残る（通しで「列レイアウトマスタ +3」と名指しされた）。
+   元が空の対象は白紙へ、そうでなければ控えた全部を書き戻す。 */
+async function restoreLayout(t,l){
+ const empty=!LAYOUT_KEYS.some(k=>{const v=l[k];return Array.isArray(v)?v.length:(v&&Object.keys(v).length)});
+ const body={target:t,user_id:'test'};
+ if(empty)Object.assign(body,{clear:true,order:[],widths:{},hidden:[],names:{},formats:{},rules:{},formulas:{},
+   locks:[],sorts:{},aligns:{}});
+ else LAYOUT_KEYS.forEach(k=>{body[k]=l[k]||(k==='order'||k==='hidden'||k==='locks'?[]:{})});
+ await post('/api/column-layout-master',body);
 }
 async function mkRecord(){
  const now=new Date(),iso=now.toISOString(),id=TAG+'-R1';
@@ -131,7 +143,7 @@ run('test_colsrcfx: 元データの列にも「この列の作り方」の式（
    o.cleared=await sc.cell(key);
    o.c=o.cleared===before;
    console.log('#  '+JSON.stringify(o));
-   await setFormulas(t,keep[t]);
+   await restoreLayout(t,keep[t]);
   }
   const line=(n,f)=>Object.entries(out).map(([k,o])=>`${k}:${f(o)}`).join(' ／ ');
   rec('A: 元データの列を選ぶと「この列の作り方」の欄が出る（4画面）',
@@ -148,14 +160,9 @@ run('test_colsrcfx: 元データの列にも「この列の作り方」の式（
  }catch(e){
   rec('FATAL',false,String(e&&e.stack||e));
  }finally{
-  for(const [t,f] of Object.entries(keep)){
-   try{await post('/api/column-layout-master',{target:t,formulas:f,user_id:'test'})}catch(_){/* 片付けの失敗は次の実行が開始時に戻す（ランナーの restore_master） */}
+  for(const [t,l] of Object.entries(keep)){
+   try{await restoreLayout(t,l)}catch(_){/* 片付けの失敗は次の実行が開始時に戻す（ランナーの restore_master） */}
   }
-  try{
-   const l=await layoutOf('actuals:list');
-   if((l.order||[]).includes(CALC))
-    await post('/api/column-layout-master',{target:'actuals:list',order:(l.order||[]).filter(k=>k!==CALC),user_id:'test'});
-  }catch(_){/* 片付けの失敗は次の実行が開始時に戻す（ランナーの restore_master） */}
   try{await post('/api/measurement/backup/delete',{ids:made})}catch(_){/* 片付けの失敗は次の実行が開始時に戻す（ランナーの restore_master） */}
   try{await post('/api/access-mode',{mode:'edit'})}catch(_){/* 片付けの失敗は次の実行が開始時に戻す（ランナーの restore_master） */}
  }

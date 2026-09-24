@@ -816,6 +816,10 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lc-chip-sep{flex:none;align-self:center;width:1px;height:var(--ctl-h-xs);
   margin:0 var(--space-1);background:var(--line-mid)}
  .lc-state-chip.lc-state-off.is-on{background:var(--look-slate);border-color:var(--look-slate)}
+ /* 列名で絞り込み中の一言（§9.490）。札の並びの右端へ寄せる。誤りではないので警告の色は使わない。 */
+ .lc-filter-note{display:inline-flex;align-items:center;gap:var(--gap-tight);margin-left:auto;
+  font-size:var(--fs-sm);color:var(--ink-2);white-space:nowrap}
+ .lc-filter-note b{color:var(--teal-dark)}
  /* リストの行頭に置く小さな点。分類名はチップとツールチップが持つ。 */
  .lc-dot{flex:none;width:var(--space-2);height:var(--space-2);margin-right:var(--space-2);
   border-radius:var(--radius-round);display:inline-block;vertical-align:middle}

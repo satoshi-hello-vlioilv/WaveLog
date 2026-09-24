@@ -338,6 +338,46 @@ run('test_lcpanel: 列の設定パネル(§9.90で作り直し)', async ({page,r
   await page.evaluate(()=>document.querySelector('.lc-origin-chip[data-origin=""]')?.click());
   await idle();
 
+  /* ---- 9a) 開き直したら絞り込みは全部外れている（§9.490、利用者の報告「フィルタをかけて…保存したら、
+     再度編集しようとしたときに…2つしか列の編集対象の表示がなくなりました」）----
+     前: 列名の欄だけが残り、開き直すと絞られたまま（札も「すべて 2」）。 */
+  {
+   const all=await page.evaluate(()=>document.querySelectorAll('#listColumnPanel .lc-item').length);
+   const word=await page.evaluate(()=>{
+    const k=[...document.querySelectorAll('#listColumnPanel .lc-item')].map(r=>r.dataset.key).find(Boolean)||'';
+    return k.slice(0,3);
+   });
+   await page.fill('#lcFilter',word);await idle();
+   const narrowed=await page.evaluate(()=>document.querySelectorAll('#listColumnPanel .lc-item').length);
+   /* 絞っている間は**絞っていると字で言う**（札の「すべて N」だけだと列が減ったと読める）。 */
+   const note=await page.evaluate(()=>(document.getElementById('lcFilterNote')||{}).textContent||'');
+   /* 見え方を撮る（指定があるときだけ・§9.432）。利用者の画面（2160×1440・125%）と同じ大きさで。 */
+   if(process.env.WAVELOG_SHOT){
+    await page.setViewportSize({width:1728,height:1152});await idle();
+    const box=await page.evaluate(()=>{const b=document.querySelector('#listColumnPanel .lc-side').getBoundingClientRect();
+     return {x:b.left,y:b.top,width:b.width,height:Math.min(220,b.height)}});
+    await page.screenshot({path:process.env.WAVELOG_SHOT,clip:box});
+   }
+   rec('列名で絞っている間は「絞り込み中（何列中何列）」と外す手が出る（§9.490）',
+     note.includes('絞り込み中')&&note.includes(`${all}列中${narrowed}列`)&&note.includes('外す'),note);
+   await page.evaluate(()=>document.getElementById('lcFilterClear')?.click());await idle();
+   const cleared=await page.evaluate(()=>({n:document.querySelectorAll('#listColumnPanel .lc-item').length,
+     q:(document.getElementById('lcFilter')||{}).value||'',note:!!document.getElementById('lcFilterNote')}));
+   rec('「× 外す」で列名の絞り込みが外れる',cleared.n===all&&cleared.q===''&&!cleared.note,JSON.stringify(cleared));
+   await page.fill('#lcFilter',word);await idle();
+   await page.evaluate(()=>document.querySelector('.lc-state-chip[data-state="on"]')?.click());await idle();
+   await page.click('#lcClose');await idle();
+   await W.listView(page);await page.click('#listColumnBtn');
+   await page.waitForSelector('#listColumnPanel .lc-item',{timeout:10000});await idle();
+   const back=await page.evaluate(()=>({n:document.querySelectorAll('#listColumnPanel .lc-item').length,
+     q:(document.getElementById('lcFilter')||{}).value||'',
+     chipAll:+((document.querySelector('.lc-origin-chip[data-origin=""] b')||{}).textContent||0),
+     state:!!document.querySelector('.lc-state-chip.is-on:not([data-state=""])')}));
+   rec('開き直したら列名の絞り込みも外れ、全部の列が並ぶ（§9.490）',
+     narrowed<all&&back.q===''&&back.n===all&&back.chipAll===all&&!back.state,
+     JSON.stringify({全:all,絞った:narrowed,開き直し:back}));
+  }
+
   /* ---- 9b) 幅を内容に合わせる(§9.106) ---- */
   const fit=await page.evaluate(async()=>{
    const key=[...document.querySelectorAll('#listColumnPanel .lc-item')]

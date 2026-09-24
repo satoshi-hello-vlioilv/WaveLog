@@ -475,6 +475,17 @@
     件数は**相手の軸を効かせたまま**数える（そうしないと、絞り込んだあとに
     出る数と実際に並ぶ行数が食い違う）。 */
  let stateFilter='';                   /* ''＝すべて／'on'＝表示中／'off'＝非表示中 */
+ /* **絞り込みは開くたびに全部外す**（§9.248 ④ → §9.490、利用者の報告「列の部分をフィルタをかけて、
+    計算式を登録して保存したら、再度編集しようとしたときに…2つしか列の編集対象の表示がなくなりました」）。
+    窓は使い回すので、覚えたままだと次に開いたとき候補が絞られたまま出て、札の件数（すべて 2）まで
+    それに合わせて減る——「列が消えた」と読まれる。以前は札の2つだけを外しており、**列名の欄が漏れていた**。
+    絞り込みの軸を足したら**ここへ足す**（外す場所を1つにする）。 */
+ function clearFilters(){
+  originFilter='';
+  stateFilter='';
+  const q=document.getElementById('lcFilter');
+  if(q)q.value='';
+ }
  function shownKeys(ignoreOrigin,ignoreState){
   const q=String(document.getElementById('lcFilter')?.value||'').trim().toLowerCase();
   return draft.order.filter(k=>{
@@ -580,6 +591,14 @@
    }
   };
  }
+ /* **列名で絞っていることを字で言う**（§9.490・§CLAUDE「推測させない」）。札の件数は絞った後の数なので、
+    絞っていると言わないと「すべて 2」が「列が2つしか無い」と読める。何列中何列か・外す手を1つ添える。 */
+ function filterNoteHtml(){
+  const q=String(document.getElementById('lcFilter')?.value||'').trim();
+  if(!q||!draft)return '';
+  return `<span class="lc-filter-note" id="lcFilterNote">「<b>${esc(q)}</b>」で絞り込み中（${draft.order.length}列中${shownKeys(true,true).length}列）`
+   +`<button type="button" class="lc-origin-chip lc-filter-clear" id="lcFilterClear" title="列名の絞り込みを外して、全部の列を並べます">× 外す</button></span>`;
+ }
  function renderOrigins(){
   const box=document.getElementById('lcOrigins');if(!box)return;
   /* 出どころの件数は**状態の絞り込みを効かせたまま**数える（逆も同じ）。 */
@@ -605,8 +624,15 @@
        o==='join'?`${ORIGIN[o].note}（${joinFrom()}）`:ORIGIN[o].note)).join('')
    +`<i class="lc-chip-sep" aria-hidden="true"></i>`
    +st('on','表示中',on,'一覧に出している列だけを並べます（出どころの絞り込みと重ねて効きます）')
-   +st('off','非表示中',off,'一覧に出していない列だけを並べます。戻したい列を探すときに使います');
-  box.querySelectorAll('.lc-origin-chip').forEach(b=>{
+   +st('off','非表示中',off,'一覧に出していない列だけを並べます。戻したい列を探すときに使います')
+   +filterNoteHtml();
+  const clr=box.querySelector('#lcFilterClear');
+  if(clr)clr.onclick=()=>{
+   const q=document.getElementById('lcFilter');
+   if(q){q.value='';q.focus()}
+   renderOrigins();renderList();
+  };
+  box.querySelectorAll('.lc-origin-chip:not(.lc-filter-clear)').forEach(b=>{
    b.onclick=()=>{
     if(b.dataset.state!==undefined){
      /* **同じ札をもう一度押したら外す**——「すべて」を探させない（§2）。 */
@@ -1747,10 +1773,7 @@
   scopeAsked.delete(target);
   renderScope();
   joined=joinedKeys();
-  originFilter='';
-  /* **状態の絞り込みも開くたびに外す**（§9.248 ④）——覚えたままだと、
-     次に開いたとき候補が半分しか無く「列が消えた」と読まれる。 */
-  stateFilter='';
+  clearFilters();
   loadDraft();
   renderOrigins();renderList();renderDetail();
   /* 保存済みの設定は**開くたびに取り直す**——他のPCで登録されたものが
