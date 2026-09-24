@@ -908,4 +908,16 @@ body.bs-mode .bs-shell{display:flex}
 .bs-oa{display:inline-block;width:1.4em;height:.15em;background:currentColor;opacity:.55}
 /* 基準面の側の印。◆は`title`が「基準面」と言い切る（記号だけに頼らない・§CLAUDE 3）。 */
 .bs-oe.is-datum::before{content:"◆";font-size:.7em;margin-inline-end:.15em;vertical-align:.1em}
+
+/* ---------- 刃組表の見出しの読み方（§9.472 の続き） ----------
+   長い補足は見出しに書かず ⓘ から開く。的は字と同じ高さの小さな丸——**押せることは
+   色（teal）とカーソルで言い、字より目立たせない**（見出しは値を読むための物）。 */
+.bs-thi{display:inline-flex;align-items:center;justify-content:center;border:0;background:transparent;
+  color:var(--teal);cursor:pointer;padding:0 0 0 .2em;font-size:.85em;vertical-align:.05em}
+.bs-thi:hover{color:var(--teal-dark)}
+.bs-thpop{max-width:24em;padding:var(--space-2) var(--space-3);font-size:var(--fs-sm);line-height:1.6;
+  white-space:normal}
+.bs-thpop p{margin:0}
+/* 潤滑リングはゴムリングの群の中の1列（§9.472 の続き）。印の紫で「種類が違う」ことを言う。 */
+.bs-g .bs-lubeh .bs-lubedot{margin-inline-end:.2em}
 }

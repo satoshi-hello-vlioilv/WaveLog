@@ -1333,6 +1333,29 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('潤滑リングは刃組表に列を持ち、色はスペーサーともゴムリングとも違う',
         tbl454.lubeCol && !!tbl454.lube && tbl454.lube !== tbl454.spacer
         && !!tbl454.lubeDot && !tbl454.ringHex.includes(tbl454.lubeDot), JSON.stringify(tbl454));
+    /* §9.472 の続き（利用者の指示「潤滑リングはゴムリングの属性として…表をコンパクトに」
+       「列情報のサブ情報がやたら長いところは…短く収めるか…ポップオーバーに」）。
+       前: 表 1179px／器 1112px（75px はみ出して横に送る）・12字を超える補足3つ（最長22字）・列群8。 */
+    const tbl472 = await page.evaluate(() => {
+     const box = document.querySelector('#bsTables'), t = box.querySelector('table.bs-g');
+     const smalls = [...t.querySelectorAll('thead small')].map(x => x.textContent.trim());
+     const lube = t.querySelector('thead tr:nth-child(2) .bs-lubeh');
+     return { over: box.scrollWidth - box.clientWidth, smallMax: Math.max(0, ...smalls.map(x => x.length)),
+              groups: t.querySelectorAll('thead tr:first-child th').length,
+              lubeInRing: !!lube && ![...t.querySelectorAll('thead tr:first-child th')].some(th => /潤滑/.test(th.textContent)),
+              tips: [...t.querySelectorAll('[data-th-tip]')].map(b => b.dataset.thTip).join('/') };
+    });
+    rec('刃組表は器からはみ出さない・見出しの補足は12字まで（前: 75px はみ出し・最長22字）',
+        tbl472.over <= 0 && tbl472.smallMax <= 12, JSON.stringify(tbl472));
+    rec('潤滑リングはゴムリングの群の中の1列（独立した列群を持たない）', tbl472.lubeInRing, JSON.stringify(tbl472));
+    await page.click('#bsTables [data-th-tip="span"]');
+    await W.until(page, () => !!document.querySelector('.bs-thpop'), null, { ms: 5000, what: '読み方のポップオーバー' });
+    const pop472 = await page.evaluate(() => { const p = document.querySelector('.bs-thpop');
+     return { role: p.getAttribute('role'), text: p.textContent }; });
+    rec('長い説明は見出しの ⓘ から読める（読ませる面＝dialog）',
+        pop472.role === 'dialog' && /製品幅＋クリアランス×2/.test(pop472.text), JSON.stringify(pop472));
+    await page.keyboard.press('Escape');
+    await W.until(page, () => !document.querySelector('.bs-thpop'), null, { ms: 5000, what: 'Escで読み方が閉じる' });
     rec('クリアランスを丸めたら、使った値と指定の値を並べて言う',
         /四捨五入/.test(tbl454.clrFact) && /0\.125/.test(tbl454.clrFact), tbl454.clrFact);
 

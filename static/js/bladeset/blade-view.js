@@ -27,6 +27,9 @@
  const st = BS().defaultState();
  let M = null, IX = null, LAST = null;
  let panel = null, railTab = 'ends', loadToken = 0;
+ /* 刃組表の見出しの読み方（§9.472 の続き）。表を描くたびに`renderTables()`が入れ直す
+    （中身が方式・帯・呼び方で変わるため）。開くのは見出しの ⓘ から。 */
+ let TH_TIPS = {}, thPop = null;
  let seededFrom = null;     /* どの予定から開いたか（画面に出どころを出す） */
  /* **来た道**（§9.407、利用者の指摘①「戻るボタンで作業スケジュール一覧に
     戻れず、全体のスケジュール一覧に戻ってしまう」）。作業スケジュールは段を
@@ -2283,25 +2286,47 @@
    : (ringBand
       ? (r.c.holdRem < R.gapMin - 1e-6 || r.c.holdRem > R.gapMax + 1e-6 ? ' is-warn' : ' is-zero') : ''));
   const num = v => (v ? `<b>${v}</b>` : '<span class="bs-z">·</span>');
+  /* **見出しの補足は短く、長い説明はポップオーバーへ**（§9.472 の続き・利用者の指示「列情報の
+     サブ情報がやたら長いところは工夫して短く収めるか、長すぎるものはポップオーバーに」）。
+     長い補足が列の最小幅を決めていた（表 1179px／器 1112px＝75px はみ出して横に送っていた）。
+     見出しに残すのは**値の読み方に要る短い物**（「2〜5 が正」）だけ。中身は`thTips`の1箇所。 */
+  const lubeCol = hasLube && !res.finger;
+  const thTips = {
+   pos: `<b>上軸・下軸</b>それぞれ、この記号の刃が付く位置です。`
+      + `<span class="bs-bt is-down">下</span><span class="bs-bt is-up">上</span>＝バリの向き／`
+      + `小さい数字＝${esc(SW('OS'))}側から何番目の区間か／太字＝区間数`,
+   span: `この区間の刃どうしの寸法です（条幅を作っている側）。`
+      + `<br><b>${SPAN_WORD.in}</b>＝製品幅＋クリアランス×2／<b>${SPAN_WORD.out}</b>＝製品幅`,
+   hold: ringBand
+      ? `刃のあいだ − ${esc(holdLabel)}${res.finger ? '' : '（潤滑リングを含む）'}の差です。`
+        + `<b>${R.gapMin}〜${R.gapMax}mm</b> に収めます（外れた面は橙）。軸の寸法はスペーサーが作るので、ここが空いても刃の位置は動きません。`
+      : `${esc(holdLabel)}で埋め切れなかった幅です。軸の寸法はスペーサーが作るので、ここが空いても刃の位置は動きません。`
+  };
+  const tip = (k, what) => `<button type="button" class="bs-thi" data-th-tip="${k}"`
+   + ` aria-label="${what}の読み方" title="${what}の読み方"><i class="fa-solid fa-circle-info" aria-hidden="true"></i></button>`;
+  TH_TIPS = thTips;
   const head = `<thead>
     <tr>
      <th class="bs-grp" rowspan="2">区分<small>ロット・条幅</small></th>
      <th class="bs-bd" rowspan="2">記号</th>
-     <th class="bs-it bs-sep" colspan="2">取付位置<small>バリ／${esc(SW('OS'))}側から何番目の区間か／区間数</small></th>
+     <th class="bs-it bs-sep" colspan="2">取付位置${tip('pos', '取付位置')}</th>
      <!-- **刃が作る寸法は表にも置く**（§9.434、利用者の指示「クリアランス分の
           計算が入った寸法で上下正確に刃の幅を示すラベル」）。図の上の字は
           狭い区間では入らないので、**必ず読める場所**をここに持つ。 -->
-     <th class="bs-sep" rowspan="2">刃の間隔<small>${SPAN_WORD.in}＝製品幅＋クリアランス×2／${SPAN_WORD.out}＝製品幅</small></th>
+     <th class="bs-sep" rowspan="2">刃の間隔${tip('span', '刃の間隔')}<small>${SPAN_WORD.in}／${SPAN_WORD.out}</small></th>
      ${Ss.length ? `<th colspan="${Ss.length}" class="bs-sep">スペーサー</th>` : ''}
-     ${Gs.length ? `<th colspan="${Gs.length + (res.finger ? 0 : 1)}" class="bs-sep">${holdLabel}</th>` : ''}
-     ${hasLube ? `<th rowspan="2" class="bs-sep bs-lubeh" title="刃を潤滑するリングです。${SPAN_WORD.in}側の刃の内側に両側1本ずつ入ります">潤滑リング<small>幅${R.lubeW}・Φ${R.lubeOd}/${R.lubeBore}</small></th>` : ''}
-     ${hasHold ? `<th rowspan="2" class="bs-sep">板押さえの空き<small>${ringBand ? `刃のあいだ−${esc(holdLabel)}／${R.gapMin}〜${R.gapMax} が正` : `${esc(holdLabel)}で埋め切れない幅`}</small></th>` : ''}
-     ${hasRem ? '<th rowspan="2" class="bs-sep bs-bad">スペーサーの端数<small>0 が正（出たら不具合）</small></th>' : ''}
+     <!-- **潤滑リングはゴムリングの種類の1つ**（§9.455 でマスタは同じ表の行にした。表も
+          ゴムリングの群の中の1列へ・利用者の指示「ゴムリングのうち潤滑という種類があるような
+          形で表現して表をコンパクトに」）。寸法（幅・外径/内径）は見出しの title が持つ。 -->
+     ${Gs.length || lubeCol ? `<th colspan="${Gs.length + (res.finger ? 0 : 1) + (lubeCol ? 1 : 0)}" class="bs-sep">${holdLabel}</th>` : ''}
+     ${hasHold ? `<th rowspan="2" class="bs-sep">板押さえの空き${tip('hold', '板押さえの空き')}<small>${ringBand ? `${R.gapMin}〜${R.gapMax} が正` : '埋め切れない幅'}</small></th>` : ''}
+     ${hasRem ? '<th rowspan="2" class="bs-sep bs-bad" title="0 でないのは計算の不具合です">スペーサーの端数<small>0 が正</small></th>' : ''}
     </tr>
     <tr><th class="bs-ax bs-sep">上軸</th><th class="bs-ax">下軸</th>
      ${Ss.map((x, i) => `<th class="bs-sz${i ? '' : ' bs-sep'}">${x}</th>`).join('')}
      ${Gs.length && !res.finger ? '<th class="bs-sz bs-sep">径・色・外径</th>' : ''}
-     ${Gs.map((x, i) => `<th class="bs-sz${i || !res.finger ? '' : ' bs-sep'}">${x}</th>`).join('')}</tr>
+     ${Gs.map((x, i) => `<th class="bs-sz${i || !res.finger ? '' : ' bs-sep'}">${x}</th>`).join('')}
+     ${lubeCol ? `<th class="bs-sz bs-lubeh" title="潤滑リング（ゴムリングの種類の1つ）。幅${R.lubeW}・外径Φ${R.lubeOd}／内径Φ${R.lubeBore}。${SPAN_WORD.in}側の区間の両端に1本ずつ入ります"><span class="bs-lubedot"></span>潤滑</th>` : ''}</tr>
    </thead>`;
   /* 区分（ロット・屑条）はいちばん左の列にまとめて1回だけ示す（縦に伸ばさない）。 */
   const key = r => (r.sg.type === 'strip' ? r.sg.lot : '屑条');
@@ -2337,13 +2362,8 @@
          + `<span class="bs-ringdot" style="background:${esc(hexOf(r.c.od) || 'transparent')}"></span>`
          + `${esc(colorOf(r.c.od))}Φ${r.c.od}</td>` : '')
     + Gs.map((x, i2) => `<td class="bs-num${i2 || !res.finger ? '' : ' bs-sep'}">${num(r.c.G[x])}</td>`).join('')
-    + (hasLube ? `<td class="bs-num bs-sep">${r.c.lube ? `<span class="bs-lubedot"></span><b>${r.c.lube}</b>` : '<span class="bs-z">·</span>'}</td>` : '')
-    + (hasHold ? `<td class="bs-num bs-sep${holdCls(r)}"`
-       + ` title="${ringBand
-          ? `刃のあいだと${esc(holdLabel)}${res.finger ? '' : '（潤滑リングを含む）'}の差です。${R.gapMin}〜${R.gapMax}mm に収めます`
-          : `${esc(holdLabel)}で埋め切れなかった幅です`}。`
-       + `軸の寸法はスペーサーが作るので、ここが空いても刃の位置は動きません">`
-       + holdCell(r) + '</td>' : '')
+    + (lubeCol ? `<td class="bs-num bs-lubec">${r.c.lube ? `<b>${r.c.lube}</b>` : '<span class="bs-z">·</span>'}</td>` : '')
+    + (hasHold ? `<td class="bs-num bs-sep${holdCls(r)}">` + holdCell(r) + '</td>' : '')
     + (hasRem ? `<td class="bs-num bs-sep ${gapCell(r.c.rem)}"`
        + ` title="スペーサーで区間を埋め切れなかった幅です。組んだものは${esc(SW(res.A.datum))}側（基準面）へ`
        + '押し付けて組むので、ここは 0 でなければなりません">'
@@ -3145,6 +3165,24 @@
   /* 組めないときの「直す場所を開く」（§9.454）。手順の窓を開く道は1本
      （`[data-step-open]`）なので、その札を押す。 */
   $('#bsTables').addEventListener('click', e => {
+   /* 見出しの ⓘ → 読み方のポップオーバー。**浮いた面は`WL.popMenu`の1つ**（§9.448）。
+      読ませる面なので`role=dialog`（メニューを名乗らない）。もう一度押すと閉じる。 */
+   const t = e.target.closest('[data-th-tip]');
+   if (t) {
+    e.stopPropagation();
+    const same = thPop && thPop.dataset.tip === t.dataset.thTip;
+    if (thPop) WL.popMenu.close();
+    if (same) return;
+    const el = document.createElement('div');
+    el.className = 'wl-menu bs-thpop';
+    el.setAttribute('role', 'dialog');
+    el.dataset.tip = t.dataset.thTip;
+    el.innerHTML = `<p>${TH_TIPS[t.dataset.thTip] || ''}</p>`;
+    document.body.append(el);
+    thPop = el;
+    WL.popMenu.open(el, { anchor: t, owner: t, onClose: () => { el.remove(); if (thPop === el) thPop = null; } });
+    return;
+   }
    const b = e.target.closest('[data-stop-open]');
    if (!b) return;
    e.stopPropagation();
