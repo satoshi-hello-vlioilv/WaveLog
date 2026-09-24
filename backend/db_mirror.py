@@ -555,7 +555,7 @@ def update_mode():
    manual … 自分では写し直さない。元が変わったことだけ確かめて「新しい版あり」と
             言い、写し直すのは「再読込」を押したとき（意図して止める）
  `db_mirror_enabled`（写して読むか）とは別の軸——こちらは「写しをいつ新しくするか」。"""
- from .db_access import path_config_value
+ from .db_access import path_config_value  # 遅延: db_access は起動時に db_mirror を読む（循環を避ける）
  v = str(path_config_value('db_mirror_update', 'auto') or 'auto').strip().lower()
  return v if v in UPDATE_MODES else 'auto'
 

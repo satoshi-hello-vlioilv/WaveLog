@@ -143,7 +143,15 @@
             左右（DS／OSの字と部材の並び）なので、手順バーの尻尾に置くと
             「何に効くボタンか」を探すことになる（§CLAUDE 14 視覚導線と
             作業導線を一致させる）。 -->
-       <button type="button" class="bs-chip" id="bsFlip" title="刃組は台車のDS側から部材を入れます。段取り向きではDSを左に置き、手を入れる側から見た並びにします">図面向き（OS左）</button>
+       <!-- **向きは「基準原点を左／右」の2つの札**（§9.463、利用者の指示「段取り向きとか
+            図面向きというのをやめて、基準原点を左、基準原点を右といった形で迷いの少ない
+            呼び方に」）。1つの札を押すたびに字が入れ替わる形だと、字が「いま」なのか
+            「押すと」なのかで迷う——**2つ並べ、いまの側を濃くする**（§9.229）。
+            呼び方と既定の側は刃組基準値マスタが持つ（viewLabelLeft/Right・viewDatumPos）。 -->
+       <div class="bs-hide bs-datumpos" id="bsFlip" role="group" aria-label="図の向き">
+        <button type="button" data-datum-pos="左" aria-pressed="false">基準原点を左</button>
+        <button type="button" data-datum-pos="右" aria-pressed="false">基準原点を右</button>
+       </div>
        <span class="bs-ph-note" id="bsFigNote"></span></div>
       <!-- **両脇の表は右レールへ移した**（§9.379、利用者の指示）。ここを1列に
            したぶん模式図が広がる（実測 760→1112px・+46%）。端部の表は
@@ -180,8 +188,8 @@
               描く（破線・引き出し線・字の縁取りが素直に書け、色もトークンから
               選べる）。押す的は持たない（掴んで回す道をふさがない）。 -->
          <svg class="bs-t3v" id="bsCutDim" aria-hidden="true"></svg>
-         <span class="bs-t3 bs-t3-os is-os" hidden title="OS 側。刃組ではこちらへ詰めていきます">OS</span>
-         <span class="bs-t3 bs-t3-ds is-ds" hidden title="DS 側。軸端部を外し、こちらから部材を入れます">DS</span>
+         <span class="bs-t3 bs-t3-os is-os" data-badge="OS" hidden title="OS 側。重ねると OS端の区間と右の端部の表が光ります">OS</span>
+         <span class="bs-t3 bs-t3-ds is-ds" data-badge="DS" hidden title="DS 側。軸端部を外し、こちらから部材を入れます。重ねると DS端の区間と右の端部の表が光ります">DS</span>
          <!-- **設定有効長と、組んだときの上下それぞれの合計長**（§9.418 追補、
               利用者の指示）。図の読み方の段とは別に置く——あちらは
               「どう見るか」、こちらは「合っているか」の突き合わせ。
@@ -276,8 +284,11 @@
       <!-- 端部（OS端／DS端）。表そのものは renderEnds() が id で書き込むので、
            置き場所を変えても描き手は変わらない。 -->
       <div data-p="ends">
-       <div class="bs-side" id="bsOsSide"></div>
-       <div class="bs-side" id="bsDsSide"></div>
+       <!-- 端部の表も**図と同じ印で名乗る**（§9.463、利用者の指示「OS,DSのエリアに
+            マウスオーバーでフォーカスしたときに右側の一覧表が強調されるように」）。
+            刃の区間と同じ[data-badge]の道に載るので、重ねる場所で効き方が変わらない。 -->
+       <div class="bs-side" id="bsOsSide" data-badge="OS"></div>
+       <div class="bs-side" id="bsDsSide" data-badge="DS"></div>
        <p class="bs-note" id="bsEndsNote"></p>
       </div>
       <div data-p="bom" hidden>
@@ -443,6 +454,8 @@
   IX = BS().buildIndex(M);
   applyStandards();
   syncCarriage();          /* 台車マスタの顔ぶれに合わせる（§9.424） */
+  /* 図の向きは**その設備の既定の側**から始める（§9.463・既定は基準原点を右）。 */
+  st.flip = flipOf(String((M.P || {}).viewDatumPos || '右'));
   return true;
  }
  /* 基準値から**画面の既定値**を入れ、使う刃を決める。**中身は
@@ -526,20 +539,30 @@
   return true;
  }
 
+ /* 画面が仮に付けた条の名前（`LOT1`・`LOT2`…）。ロット番号ではない。 */
+ const LOT_PLACEHOLDER = /^LOT\d*$/;
  /* 予定から持ってきた文脈を当てる。 */
  function applySeed(seed, force) {
   const s = seed || {};
   if (s.thickness > 0) { st.thick = +s.thickness; syncClearance(); }
   if (s.originalWidth > 0) st.W = +s.originalWidth;
+  /* **区分はロット番号で言う**（§9.463、利用者の指示「区分のロットの表示は
+     『LOT1』ではなくロット番号を表示して」）。予定の写しに条の幅が無いと
+     `lots`は空で届き、画面の初期値（`LOT1`）が名前のまま残っていた——
+     1本目のコイルの番号（`headLot`）は分かっているので、仮の名前をそれにする。
+     手で足した条（`LOT2`…）はそのまま（番号を知らない条に番号を付けない）。 */
+  const head = String(s.headLot || '');
   if (Array.isArray(s.lots) && s.lots.length) {
    /* `parent`＝どの親ロットの条か（§9.378）。条の設計は**親ロットで引く**
       ので、ここで落とすと記録先が決められない。分割の無いロットは自分自身。 */
-   st.lots = s.lots.map(L => ({ name: String(L.name || 'LOT'), w: +L.w || 0,
+   st.lots = s.lots.map(L => ({ name: String(L.name || head || 'LOT'), w: +L.w || 0,
                                 n: Math.max(1, L.n | 0),
-                                parent: String(L.parent || L.name || '') }))
+                                parent: String(L.parent || L.name || head || '') }))
     .filter(L => L.w > 0);
-   if (!st.lots.length) st.lots = [{ name: 'LOT1', w: 100, n: 1 }];
+   if (!st.lots.length) st.lots = [{ name: head || 'LOT1', w: 100, n: 1, parent: head }];
    st.order = [];
+  } else if (head) {
+   st.lots.forEach(L => { if (LOT_PLACEHOLDER.test(String(L.name || ''))) { L.name = head; L.parent = head; } });
   }
   /* **条の設計が済んでいれば、その並びで開く**（§9.387、利用者の指示
      「条設計済みの場合はそのまま開いて」）。予定の写しから組み直すと、
@@ -1292,6 +1315,18 @@
                       Math.min(V.fs(13), V.zoneMin > 0 ? (V.zoneMin - 3) / unit : V.fs(13)));
   const w = fs * unit, h = fs * 1.5;
   let o = '';
+  /* **端の区間（OS端・DS端）も重ねる的**（§9.463）。記号の札は持たない（端は刃組表の
+     行ではなく右の端部の表が受ける）ので、区間ぜんたいの面だけ。押しても拡大図は
+     開かない（`bs-bhit`ではなく`bs-ehit`）。 */
+  const last = A.zones.length - 1, H0 = V.hOf(V.maxD);
+  [['up', true, V.upC], ['lo', false, V.loC]].forEach(([side, upper, cy]) => {
+   [[0, 'OS'], [last, 'DS']].forEach(([k, sd]) => {
+    const [a, b] = zoneX(upper, k);
+    o += `<g class="bs-ehit" data-badge="${sd}" data-axis="${side}">`
+     + `<rect class="bs-zhit" x="${a.toFixed(1)}" y="${(cy - H0 / 2).toFixed(1)}"`
+     + ` width="${Math.max(1, b - a).toFixed(1)}" height="${H0.toFixed(1)}"/></g>`;
+   });
+  });
   [['up', true, V.upC], ['lo', false, V.loC]].forEach(([side, upper, cy]) => {
    for (let k = 1; k < A.zones.length - 1; k++) {
     const r = bmap[side][k];
@@ -2836,16 +2871,33 @@
   $('#bsKnife').value = st.knife;
   $('#bsTk').value = st.tk;
  }
- /* 図面向き／段取り向き。**模式図は見せ方を裏返し、立体図は台車そのものを回す**
-    ——どちらも「DS を手前（左）に置く」という同じ1つの状態から出す（§9.377）。 */
+ /* 図の左右。**模式図は見せ方を裏返し、立体図は台車そのものを回す**
+    ——どちらも「DS を左に置く」（`flip`）という同じ1つの状態から出す（§9.377）。
+    利用者が選ぶのは`flip`ではなく**基準原点を左か右か**（§9.463）。基準面が DS か
+    OS かで同じ「右」でも`flip`が入れ替わるので、**答えは`flipOf()`の1箇所**。 */
+ const VIEW_POS = ['左', '右'];
+ const datumNow = () => BS().datumOf(M || {});
+ const flipOf = pos => (datumNow() === 'DS') === (pos === '左');
+ const posOfFlip = flip => ((datumNow() === 'DS') === !!flip ? '左' : '右');
+ function viewLabel(pos) {
+  const P = (M && M.P) || {};
+  return String((pos === '左' ? P.viewLabelLeft : P.viewLabelRight) || `基準原点を${pos}`);
+ }
  function setFlip(on) {
   st.flip = !!on;
-  const b = $('#bsFlip');
-  b.classList.toggle('is-on', st.flip);
-  b.textContent = st.flip ? '段取り向き（DS左）' : '図面向き（OS左）';
+  const pos = posOfFlip(st.flip), dn = datumNow(), other = dn === 'DS' ? 'OS' : 'DS';
+  $('#bsFlip').querySelectorAll('[data-datum-pos]').forEach(b => {
+   const p = b.dataset.datumPos, me = p === pos;
+   b.textContent = viewLabel(p);
+   b.classList.toggle('is-on', me);
+   b.setAttribute('aria-pressed', me ? 'true' : 'false');
+   b.title = `基準原点（${dn}）を図の${p}、${other}を${p === '左' ? '右' : '左'}に置きます`
+     + (me ? '（いまこの向きです）' : '');
+  });
   $('#bsFigRow').classList.toggle('is-flip', st.flip);
   if (WL.bladeSolid) WL.bladeSolid.spinTo(st.flip ? Math.PI : 0);
  }
+ function setViewPos(pos) { setFlip(flipOf(VIEW_POS.includes(pos) ? pos : '右')); }
 
  const closePops = () => panel.querySelectorAll('.bs-step').forEach(p => p.classList.remove('is-open'));
 
@@ -3111,7 +3163,11 @@
    });
   });
   /* 図の向き */
-  $('#bsFlip').addEventListener('click', () => { setFlip(!st.flip); renderOrder(); scheduleRender(); });
+  $('#bsFlip').addEventListener('click', e => {
+   const b = e.target.closest('[data-datum-pos]');
+   if (!b || b.classList.contains('is-on')) return;
+   setViewPos(b.dataset.datumPos); renderOrder(); scheduleRender();
+  });
   /* 模式図／立体図（§9.377 追補）。**押した札はすぐ濃くする**——部品を取りに
      行くあいだ何も変わらないと、押せていないように見える。読めなかったときは
      立体図の器の中に理由が出る（模式図へは勝手に戻さない・選んだのは利用者）。 */

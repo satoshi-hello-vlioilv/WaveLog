@@ -869,6 +869,11 @@
        ので、軸を渡さないと下軸を押しても上軸の図が出る（模式図と同じ作法）。 */
     if (r) zmk.push({ badge: String(r.badge), x0: off(a), x1: off(b), y, up: !!upper,
                       tone: Number.isInteger(r.tone) ? r.tone : null });
+    /* 端の区間（OS端・DS端）は**光る面だけ**（§9.463）。記号の札は出さない——重ねる的は
+       図の OS・DS の札（`.bs-t3-os`／`-ds`）で、右の端部の表と一緒に光る。 */
+    else if (k === 0 || k === spans.length - 1) {
+     zmk.push({ badge: k === 0 ? 'OS' : 'DS', end: true, x0: off(a), x1: off(b), y, up: !!upper, tone: null });
+    }
    });
    pos.forEach(x => out.knife.push({ x, y }));
   });
@@ -1669,14 +1674,15 @@
   /* 字の大きさは**いちばん狭い区間**に合わせる（模式図と同じ考え・§9.413）。
      区間ごとに変えると、同じ記号が場所によって別の大きさで出る。
      読めない大きさまでは落とさない（下限9px）。 */
-  const len = Math.max(1, ...zs.map(q => q.badge.length));
-  const narrow = Math.min(...boxes.filter(b => b.on).map(b => b.w));
+  /* 端の区間（`end`）は札を出さないので、字の大きさの物差しに入れない（§9.463）。 */
+  const len = Math.max(1, ...zs.filter(q => !q.end).map(q => q.badge.length));
+  const narrow = Math.min(...boxes.filter((b, i) => b.on && !zs[i].end).map(b => b.w));
   const fs = Math.max(9, Math.min(13,
     Number.isFinite(narrow) ? (narrow - 4) / (0.72 * len + 0.7) : 13));
   zs.forEach((q, i) => {
    const b = boxes[i], el = pool[i];
    if (!el) return;
-   el.box.hidden = !b.on; el.chip.hidden = !b.on;
+   el.box.hidden = !b.on; el.chip.hidden = !b.on || !!q.end;
    if (!b.on) return;
    if (el.box.dataset.badge !== q.badge) {
     el.box.dataset.badge = q.badge;
@@ -1698,7 +1704,7 @@
      `left:${(b.x + b.w / 2).toFixed(1)}px;top:${(b.y + b.h / 2).toFixed(1)}px;`
    + `font-size:${fs.toFixed(1)}px`;
   });
-  badgeSig(zs.map(q => q.badge).join('/'));
+  badgeSig(zs.filter(q => !q.end).map(q => q.badge).join('/'));
  }
  /* ====== 寸法の層（§9.418）======================================
     利用者の指示「刃の上下位置が重ならないようにクリアランス設計も正確に反映
@@ -2055,7 +2061,7 @@
      0件のときは何も言わない——いつも出ていると、読む側が数え直す。 */
   const ds = D3.dimShown;
   const miss = ds && ds.off > 0
-   ? `<s>／寸法</s><i>${ds.off}</i><s>件は入りきらないので、記号を押して拡大図で</s>` : '';
+   ? `<s>／寸法</s><i>${ds.off}</i><s>件は入りきらない（記号を押すと拡大図）</s>` : '';
   el.innerHTML = `<s>画面左</s>${nm(l)}<s>／</s><s>右</s>${nm(r)}${mag}${sep}${miss}`;
   el.hidden = false;
   lengths();
@@ -2086,6 +2092,27 @@
    + `<s>／上軸</s><i>${mm(pk.sumU)}</i>${gap(pk.sumU)}`
    + `<s>／下軸</s><i>${mm(pk.sumL)}</i>${gap(pk.sumL)}`;
   el.hidden = false;
+  hudCols();
+ }
+ /* 左上の帯の並べ方（§9.463、利用者の指摘「配置が左に偏っていてスペース有効活用
+    できていない」）。**入るなら2列**——左に読み方と突き合わせ、その右（「使い方」の
+    手前）に設定のバッジを縦に積む。帯の高さは2行ぶんで済み、右の空きを使う。
+    入らない器では折り返す横並びへ倒す。**測って決める**（字の長さは材料と
+    入りきらない件数で変わる・固定の閾値にしない）。各行は折れない（nowrap）ので、
+    どちらの並べ方でも幅は変わらない。 */
+ function hudCols() {
+  const tl = $h('.bs-hud.is-tl'), tr = $h('.bs-hud.is-tr');
+  if (!tl || !host) return;
+  const rows = [...tl.querySelectorAll('.bs-o3,.bs-len3')].filter(e => !e.hidden);
+  const chips = [...tl.querySelectorAll('.bs-cutchip')];
+  const cs = tl.querySelector('.bs-cutset');
+  if (!cs || cs.hidden || !rows.length || !chips.length) { tl.classList.remove('is-cols'); return; }
+  const gap = 6;
+  const left = Math.max(...rows.map(e => e.scrollWidth + 2));
+  const right = Math.max(...chips.map(e => e.scrollWidth + 2));
+  const trW = tr && tr.offsetWidth ? tr.offsetWidth + gap : 0;
+  const fits = 10 + left + gap + right + gap + trW + 10 <= host.clientWidth;
+  if (tl.classList.contains('is-cols') !== fits) tl.classList.toggle('is-cols', fits);
  }
 
  /* 操作の手応え。少しのあいだ出して消える。 */
@@ -2364,7 +2391,8 @@
            cutSc: D3.cutView ? D3.cutView.sc : null, cutOff: D3.cutView ? D3.cutView.off : null,
            /* 区間の記号の数（§9.417）。模式図と同じ対応表から出しているので、
               模式図の記号の数と一致するはず——網が突き合わせる。 */
-           zones: (D3.cut ? (D3.zmarks || []) : []).length,
+           zones: (D3.cut ? (D3.zmarks || []) : []).filter(q => !q.end).length,
+           endZones: (D3.cut ? (D3.zmarks || []) : []).filter(q => q.end).length,
            /* 寸法の層（§9.418）。出した字の内訳と、刃のずれを広げた量。 */
            dims: D3.dimShown || null, knives: (D3.knives || []).length,
            cutLines: D3.cutLines | 0, spanLine: D3.spanLine || null,

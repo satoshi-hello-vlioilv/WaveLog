@@ -129,7 +129,7 @@ def api_db_mirror_source():
  """その一覧の元データの素性だけ（§9.463）。**共有を見に行かない**——背景の周回が
  控えた答えを返すだけなので軽い。画面はこれを間隔を置いて聞き、写しが
  新しくなっていれば一覧を読み直す／手動なら「新しい版あり」と出す。"""
- from .. import db_mirror
+ from .. import db_mirror  # 遅延: 同じ段の他のルートと同じく、起動の順に依らない
  k=str(request.args.get('db') or '').strip()
  if k not in DBS:return jsonify(error='データソースがありません。'),404
  try:path=cfg(k).get('path')

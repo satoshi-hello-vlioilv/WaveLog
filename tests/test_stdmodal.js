@@ -20,7 +20,8 @@ run('test_stdmodal: 刃組基準値の編集窓は大きさが動かず、欄が
   await page.click('#openMasterMaint');
   await page.waitForSelector('#masterMaintForm',{timeout:10000});
   await page.evaluate(()=>document.querySelector('[data-master="bladesetStandard"]').click());
-  await page.waitForFunction(()=>document.querySelectorAll('#masterMaintList [data-id], #masterMaintList tr').length>0,null,{timeout:10000}).catch(()=>{});
+  /* 一覧に行が出るまで（網が作った1行）。 */
+  await page.waitForFunction(()=>[...document.querySelectorAll('#masterMaintList button')].some(b=>/編集/.test(b.textContent)),null,{timeout:10000});
   await idle();
   const opened=await page.evaluate(()=>{
    const row=[...document.querySelectorAll('#masterMaintList [data-edit],#masterMaintList button')].find(b=>/編集/.test(b.textContent));
@@ -82,6 +83,8 @@ run('test_stdmodal: 刃組基準値の編集窓は大きさが動かず、欄が
   rec('選ぶ欄は「（既定）」を持ち、登録の無い値はそれが選ばれている（保存で固定しない）',
       plc.datum===''&&/（既定）DS/.test(plc.datumOpt||'')&&plc.naka==='',JSON.stringify(plc));
  }finally{
-  if(made&&made.id)await post(API+'/api/bladeset-standard-master/delete',{id:made.id}).catch(()=>{});
+  /* 後片付け。消せなかったら黙らない（§9.360）。 */
+  if(made&&made.id){const del=await post(API+'/api/bladeset-standard-master/delete',{id:made.id});
+   if(!del||!del.ok)console.log('  [cleanup] 刃組基準値の行を消せない:',JSON.stringify(del))}
  }
 });

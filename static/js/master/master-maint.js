@@ -1303,7 +1303,11 @@
      +`<input data-field="${f.k}" type="text" value="${esc(val)}" readonly tabindex="-1">`
      +`${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
    }
-   return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="text" value="${esc(val)}" autocomplete="off"></label>`;
+   /* 素の文字の欄も**既定値を薄字で**言い、説明も出す（§9.463。数の欄・選ぶ欄と同じ）。 */
+   const tdv=mmDefaultOf(f);
+   return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="text" value="${esc(val)}" autocomplete="off"`
+    +(tdv!=null&&tdv!==''?` placeholder="既定 ${esc(String(tdv))}"`:'')+`>`
+    +(f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:'')+`</label>`;
   })();
  }
 
