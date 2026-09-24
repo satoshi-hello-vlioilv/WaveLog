@@ -70,8 +70,9 @@ run('test_stdmodal: 刃組基準値の編集窓は大きさが動かず、欄が
   }
   const plc=await page.evaluate(()=>{
    const q=k=>document.querySelector(`.mm-editor-modal [data-field="${k}"]`);
-   return {shaft:q('shaftDia')&&q('shaftDia').placeholder, datum:q('datumSide')&&q('datumSide').value,
-     datumOpt:q('datumSide')&&q('datumSide').options[0].textContent,
+   /* 選ぶ欄の見本は「図の基準原点の位置」（§9.470 で「基準面」の欄は外した）。 */
+   return {shaft:q('shaftDia')&&q('shaftDia').placeholder, pos:q('viewDatumPos')&&q('viewDatumPos').value,
+     posOpt:q('viewDatumPos')&&q('viewDatumPos').options[0].textContent,
      naka:q('canNakanukiText')&&q('canNakanukiText').value};
   });
   rec('段を切り替えても窓の高さが動かない',Math.max(...hs)-Math.min(...hs)===0,hs.join('/'));
@@ -81,7 +82,9 @@ run('test_stdmodal: 刃組基準値の編集窓は大きさが動かず、欄が
   rec('題は設備の名前（先頭の列の数ではない）',/テスト設備A/.test(out.title)&&!/^[\d.,]+ を編集/.test(out.title),out.title);
   rec('空欄の数の欄は、効いている既定値を薄字で言う',/^既定 \d/.test(plc.shaft||''),String(plc.shaft));
   rec('選ぶ欄は「（既定）」を持ち、登録の無い値はそれが選ばれている（保存で固定しない）',
-      plc.datum===''&&/（既定）DS/.test(plc.datumOpt||'')&&plc.naka==='',JSON.stringify(plc));
+      plc.pos===''&&/（既定）右/.test(plc.posOpt||'')&&plc.naka==='',JSON.stringify(plc));
+  rec('「基準面」の欄は無い（§9.470・DSに固定）',
+      await page.evaluate(()=>!document.querySelector('.mm-editor-modal [data-field="datumSide"]')));
  }finally{
   /* 後片付け。消せなかったら黙らない（§9.360）。 */
   if(made&&made.id){const del=await post(API+'/api/bladeset-standard-master/delete',{id:made.id});
