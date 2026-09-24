@@ -443,6 +443,9 @@ body.bs-mode .bs-shell{display:flex}
 .bs-hud-grp{display:flex;align-items:center;gap:4px;background:var(--valid-bg);
   border:1px solid var(--line);border-radius:var(--radius-sm);padding:3px 7px;flex-wrap:wrap}
 .bs-hud-cap{font-size:var(--fs-tiny);font-weight:700;color:var(--muted);letter-spacing:.05em}
+/* 断面図の倍率（§9.463）。幅を決めておく（数の桁で「視点」の群が揺れない）。 */
+.bs-zoom3{min-width:3.2em;font-size:var(--fs-sm);font-weight:700;color:var(--teal-dark);font-variant-numeric:tabular-nums}
+.bs-zoom3[hidden]{display:none}
 .bs-hud-sep{width:1px;align-self:stretch;background:var(--line);margin:1px 2px}
 /* 使い方。いつも要る情報ではないので、ふだんは畳んでおく。 */
 .bs-hlp{font:inherit;font-size:var(--fs-micro);font-weight:700;color:var(--muted);cursor:pointer;

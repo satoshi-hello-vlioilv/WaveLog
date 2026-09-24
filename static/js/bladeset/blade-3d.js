@@ -55,6 +55,11 @@
       上下（`cutEl`）へ回す。切る面は世界に固定したままなので、回しても
       切り口は動かない——動くのは見る位置だけ。 */
    cutAz:0, cutEl:0, marks:[], zmarks:[], zr:0, dims:[], knives:[],
+   /* 断面図の倍率と平行移動（§9.463、利用者の指示「ガイダンスの断面図は拡大縮小も
+      できるように」）。`cutZoom`＝器に収まる縮尺の何倍か（1＝全体）。`cutPanX/Y`＝
+      画面の右・上へ動かした量（世界の長さ）。`cutView`は最後に描いた縮尺——
+      ホイールの下の点を動かさずに寄るため、描いたときの値を控える。 */
+   cutZoom:1, cutPanX:0, cutPanY:0, cutView:null,
    spin:false, busy:false, failed:false, decals:[],
    /* 立体図で見せる部材。刃だけを見たいときなど、邪魔なものを消せるようにする。 */
    show:{ mat:true, knife:true, ring:true, liner:true },
@@ -245,6 +250,29 @@
  };
  /* 断面図で回せる角度の上限（ラジアン）。真横（±π/2）の手前で止める。 */
  const CUT_LIM = 1.15;
+ /* 断面図の倍率の範囲（§9.463）。1＝器に全体が収まる縮尺。上限は細い部材
+    （10.025mm の差）を字で読める所まで。1より引かない（全体より小さく見る用が無い）。 */
+ const CUT_ZOOM_MAX = 24, CUT_ZOOM_STEP = 1.2;
+ /* 倍率を1へ戻したら平行移動も捨てる（全体を見ているのにずれて出さない）。 */
+ function setCutZoom(z, px, py) {
+  D3.cutZoom = Math.max(1, Math.min(CUT_ZOOM_MAX, z));
+  if (D3.cutZoom <= 1 + 1e-6) { D3.cutZoom = 1; D3.cutPanX = 0; D3.cutPanY = 0; }
+  else { D3.cutPanX = px; D3.cutPanY = py; }
+ }
+ /* いまの倍率を「視点」の群に書く（§9.463。状態を画面が言う・探させない）。
+    等倍のときは伏せる（何も変えていないのに数を出さない）。 */
+ function zoomReadout() {
+  const el = $h('.bs-zoom3');
+  if (!el) return;
+  const z = D3.cut ? (D3.cutZoom || 1) : 1;
+  const on = z > 1;
+  if (el.hidden === on) el.hidden = !on;
+  const t = on ? `×${z.toFixed(z < 10 ? 1 : 0)}` : '';
+  if (el.textContent !== t) el.textContent = t;
+ }
+ /* 画面に出ているか（§9.463）。拡大すると部材の多くが器の外へ出るので、
+    奥行きだけでなく**器の内か**も見る——外の札を器の縁へ寄せて出さない。 */
+ const inView = v => v.z > -1 && v.z < 1 && Math.abs(v.x) <= 1.02 && Math.abs(v.y) <= 1.02;
  /* 断面図で刃先のあいだに空ける隙間＝見かけの板厚の何倍か（§9.413 追補）。
     板は千鳥で上下へ寄るので**見かけの厚みの3倍**の高さを占める。その両側へ
     ほぼ1枚ぶんずつ余裕を取った値。模式図（`FIG.openGap` に対し板は 10%）ほど
@@ -276,10 +304,15 @@
       できるように」）。§9.412 では真横に固定していたが、切り口は世界に
       固定した面なので、**見る位置を回しても切り口は動かない**——
       平行投影のまま、斜めから積み重なりを見られる。
-      寄る・引くは持たない（平行投影の倍率が変わると、寸法を並べて
-      比べるという狙いが崩れる）。 */
+      **寄る・引くもできる**（§9.463、利用者の指示「断面図は拡大縮小もできるように」。
+      §9.413 の「寄る・引くは持たない」は撤回した——細い部材の字は全体の縮尺では
+      入らず、拡大図は1区間しか見られない）。平行投影のままなので、倍率を変えても
+      画面の中の寸法どうしは同じ縮尺で比べられる。
+      平行移動は立体図と同じ手（Shift＋ドラッグ／右・中ドラッグ）。 */
    if (D3.cut) {
-    drag = { x: e.clientX, y: e.clientY, cut: true, az: D3.cutAz, el: D3.cutEl };
+    drag = { x: e.clientX, y: e.clientY, cut: true, az: D3.cutAz, el: D3.cutEl,
+             pan: e.shiftKey || e.button === 1 || e.button === 2,
+             px: D3.cutPanX, py: D3.cutPanY };
     return;
    }
    D3.moved = true;
@@ -290,6 +323,15 @@
   cv.addEventListener('pointermove', e => {
    if (!drag) return;
    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+   if (drag.cut && drag.pan) {
+    /* 拡大していないときは動かさない（全体が収まっている図をずらす用が無い）。 */
+    const sc = (D3.cutView && D3.cutView.sc) || 0;
+    if (D3.cutZoom > 1 && sc > 0) {
+     D3.cutPanX = drag.px - dx * sc; D3.cutPanY = drag.py + dy * sc;
+     render();
+    }
+    return;
+   }
    if (drag.cut) {
     /* **90°まで回さない**（`CUT_LIM`）。真横を越えるとカメラが切り落とす側へ
        回り込み、切り口ではなく「何も無いほう」を見ることになる。 */
@@ -322,7 +364,20 @@
   cv.addEventListener('pointerup', stop);
   cv.addEventListener('pointercancel', stop);
   cv.addEventListener('wheel', e => {
-   if (D3.cut) return;                 /* 断面図は寄る・引くもしない（§9.412） */
+   if (D3.cut) {
+    /* 断面図は**マウスの下の点を動かさずに**寄る・引く（§9.463）。 */
+    e.preventDefault();
+    const cv0 = D3.cutView;
+    if (!cv0) return;
+    const r = cv.getBoundingClientRect();
+    const mx = e.clientX - r.left - cv0.w / 2, my = e.clientY - r.top - cv0.h / 2;
+    const u = mx * cv0.sc + D3.cutPanX, y = cv0.off * cv0.sc + D3.cutPanY - my * cv0.sc;
+    const z = D3.cutZoom * (e.deltaY > 0 ? 1 / CUT_ZOOM_STEP : CUT_ZOOM_STEP);
+    const sc2 = cv0.fit / Math.max(1, Math.min(CUT_ZOOM_MAX, z));
+    setCutZoom(z, u - mx * sc2, y - cv0.off * sc2 + my * sc2);
+    render();
+    return;
+   }
    e.preventDefault();
    D3.moved = true;
    CAM.r = Math.max(260, Math.min(9000, CAM.r * (e.deltaY > 0 ? 1.12 : 0.89)));
@@ -1420,12 +1475,17 @@
    const hb = hudBox(w, h);
    const topIn = hb.tops.reduce((m, t) => Math.max(m, t.y), 0);
    const avail = Math.max(h * 0.4, h - topIn - hb.bot);
-   const sc = Math.max(b.w * pad / w, b.h * pad / avail);   /* 1pxあたりの世界の長さ */
+   const fit = Math.max(b.w * pad / w, b.h * pad / avail);  /* 全体が収まる縮尺 */
+   const sc = fit / (D3.cutZoom || 1);                      /* 1pxあたりの世界の長さ */
    const vw = w * sc, vh = h * sc;
    /* 図の中心を「空いている帯のあいだ」の中央へ寄せる（画面の下向きが正）。 */
    const offPx = (topIn + (h - topIn - hb.bot) / 2) - h / 2;
-   oc.left = -vw / 2; oc.right = vw / 2;
-   oc.top = vh / 2 + offPx * sc; oc.bottom = -vh / 2 + offPx * sc;
+   /* 拡大しているぶんの平行移動（§9.463）。画面の右・上へ、世界の長さで。 */
+   const panX = D3.cutPanX || 0, panY = D3.cutPanY || 0;
+   oc.left = -vw / 2 + panX; oc.right = vw / 2 + panX;
+   oc.top = vh / 2 + offPx * sc + panY; oc.bottom = -vh / 2 + offPx * sc + panY;
+   D3.cutView = { sc, fit, off: offPx, w, h };
+   zoomReadout();
    oc.near = 1; oc.far = 60000; oc.updateProjectionMatrix();
    const px = D3.pivot ? D3.pivot.position.x : 0;
    /* 台車の走行ぶんを足した、軸の中心の真正面。台車を回していても断面は動かさない。 */
@@ -1541,7 +1601,7 @@
    if (!el) return;
    if (!p) { el.hidden = true; return; }
    v.set(p.x, p.y, p.z).applyMatrix4(D3.g.matrixWorld).project(cam);
-   const on = v.z > -1 && v.z < 1;
+   const on = inView(v);
    el.hidden = !on;
    if (!on) return;
    at[key] = v.x;
@@ -1556,7 +1616,7 @@
    const el = pool[i];
    if (!el) return;
    v.set(q.x, q.y, q.z).applyMatrix4(D3.g.matrixWorld).project(cam);
-   const on = v.z > -1 && v.z < 1;
+   const on = inView(v);
    el.hidden = !on;
    if (!on) return;
    const want = `<b>${esc(q.text)}</b><small>${esc(q.sub)}</small>`;
@@ -1595,6 +1655,8 @@
     const sx = (v.x * 0.5 + 0.5) * w, sy = (-v.y * 0.5 + 0.5) * h;
     x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
    });
+   /* 器の外の区間は出さない（拡大したとき・§9.463）。 */
+   on = on && x1 > 0 && x0 < w && y1 > 0 && y0 < h;
    return { on, x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
   });
   /* 字の大きさは**いちばん狭い区間**に合わせる（模式図と同じ考え・§9.413）。
@@ -2125,7 +2187,7 @@
    });
    if (b.classList.contains('bs-step3-reset')) {
     /* 断面図では**断面図の角度**を戻す（立体図の視点は別に持っている）。 */
-    D3.cutAz = 0; D3.cutEl = 0;
+    D3.cutAz = 0; D3.cutEl = 0; setCutZoom(1);
     D3.moved = false; Object.assign(CAM, HOME); render(); return undefined;
    }
    if (b.dataset.show) return toggleShow(b);
@@ -2290,6 +2352,9 @@
            /* 台車がいま回っているか。断面図では**回さない**のが決まり（§9.412）。 */
            rotY: D3.pivot ? D3.pivot.rotation.y : 0,
            cutAz: D3.cutAz, cutEl: D3.cutEl, marks: (D3.marks || []).length,
+           /* 断面図の倍率（§9.463）。`cutSc`＝1pxあたりの世界の長さ・`cutOff`＝図の中心のずれ(px)。 */
+           cutZoom: D3.cutZoom, cutPan: [D3.cutPanX, D3.cutPanY],
+           cutSc: D3.cutView ? D3.cutView.sc : null, cutOff: D3.cutView ? D3.cutView.off : null,
            /* 区間の記号の数（§9.417）。模式図と同じ対応表から出しているので、
               模式図の記号の数と一致するはず——網が突き合わせる。 */
            zones: (D3.cut ? (D3.zmarks || []) : []).length,

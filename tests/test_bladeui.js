@@ -1428,7 +1428,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         JSON.stringify([cut.isCut, cut.rigShown]));
     /* §9.412 では真横に固定していたが、利用者の指示で**板幅の中心を起点に
        回せる**ようにした（§9.413 追補）。掴める見た目は残し、戻す道が
-       断面図でも見えていること、寄る・引くは持たないことを固定する。 */
+       断面図でも見えていることを固定する（寄る・引くは§9.463で持つようにした）。 */
     rec('断面図でも掴んで回せる（掴める見た目のまま）', cut.cursor === 'grab', cut.cursor);
     rec('視点を戻す道は断面図でも見えている', cut.resetShown === true,
         String(cut.resetShown));
@@ -1459,6 +1459,49 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('「視点を戻す」で断面図の角度も戻る',
         spin.back.cutAz === 0 && spin.back.cutEl === 0,
         JSON.stringify([spin.back.cutAz, spin.back.cutEl]));
+    /* §9.463（利用者の指示「ガイダンスの断面図は拡大縮小もできるように」）。
+       §9.413 の「寄る・引くは持たない」を撤回した。**マウスの下の点は動かない**
+       （寄った先を探させない）・倍率は画面に出る・「視点を戻す」で×1へ。 */
+    const zm = await page.evaluate(async () => {
+     const cv = document.querySelector('#bsStage3 canvas');
+     const r = cv.getBoundingClientRect();
+     const V = () => window.WL.bladeSolid.view();
+     const mx = 180, my = -40;                         /* 器の中心からのずれ(px) */
+     const world = v => [mx * v.cutSc + v.cutPan[0], v.cutOff * v.cutSc + v.cutPan[1] - my * v.cutSc];
+     const wheel = dy => cv.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true,
+       deltaY: dy, clientX: r.left + r.width / 2 + mx, clientY: r.top + r.height / 2 + my }));
+     const v0 = V();
+     wheel(-100); wheel(-100); wheel(-100);
+     const v1 = V();
+     const read = document.querySelector('.bs-zoom3');
+     const shown = read && !read.hidden ? read.textContent : '';
+     /* 拡大したまま右ドラッグで動かす */
+     const at = (t, dx, dy) => cv.dispatchEvent(new PointerEvent(t, { bubbles: true, button: 2,
+       pointerId: 17, clientX: r.left + r.width / 2 + dx, clientY: r.top + r.height / 2 + dy }));
+     at('pointerdown', 0, 0); at('pointermove', 60, 0); at('pointerup', 60, 0);
+     const v2 = V();
+     for (let i = 0; i < 40; i++) wheel(100);          /* 引ききっても×1より小さくならない */
+     const v3 = V();
+     wheel(-100); wheel(-100);
+     document.querySelector('.bs-step3-reset').click();
+     const v4 = V();
+     return { z0: v0.cutZoom, z1: v1.cutZoom, w0: world(v0), w1: world(v1), shown,
+              pan1: v1.cutPan, pan2: v2.cutPan, azKeep: v2.cutAz === v1.cutAz,
+              z3: v3.cutZoom, pan3: v3.cutPan, z4: v4.cutZoom, pan4: v4.cutPan,
+              hidden4: !!(read && read.hidden) };
+    });
+    rec('断面図もホイールで拡大できる（§9.463）', zm.z0 === 1 && zm.z1 > 1.5,
+        `×${zm.z0} → ×${zm.z1}`);
+    rec('寄ってもマウスの下の点は動かない',
+        Math.abs(zm.w0[0] - zm.w1[0]) < 0.5 && Math.abs(zm.w0[1] - zm.w1[1]) < 0.5,
+        JSON.stringify([zm.w0, zm.w1]));
+    rec('いまの倍率が「視点」の群に出る', /^×\d/.test(zm.shown), zm.shown);
+    rec('拡大したら右ドラッグで動かせる（回さない）',
+        zm.pan2[0] < zm.pan1[0] && zm.azKeep, JSON.stringify([zm.pan1, zm.pan2]));
+    rec('引ききっても全体（×1）より小さくならず、ずれも残さない',
+        zm.z3 === 1 && zm.pan3[0] === 0 && zm.pan3[1] === 0, JSON.stringify([zm.z3, zm.pan3]));
+    rec('「視点を戻す」で×1へ戻り、倍率の字は伏せる',
+        zm.z4 === 1 && zm.pan4[0] === 0 && zm.hidden4, JSON.stringify([zm.z4, zm.pan4, zm.hidden4]));
     /* **光はカメラと一緒に動く**（§9.413 追補、利用者の指摘「中空の物はない
        はずなので断面図注意して」）。止めておくと、回した先の面（軸や青い印の
        端の丸）に光が1つも当たらず真っ黒になり、**穴に見える**。
