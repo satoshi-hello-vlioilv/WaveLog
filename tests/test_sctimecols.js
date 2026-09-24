@@ -258,6 +258,14 @@ run('test_sctimecols: スケジュール表の列も列レイアウトマスタ�
      e.detail しか見ておらず、画面に出ているのに「値のある行がありません」
      と書かれていた。 */
   rec('固定列の見本に実データが出る',!!panel.sample&&!panel.sample.includes('値のある行がありません'),String(panel.sample));
+  /* §9.484（利用者の指示「並び替えは使わせない・見せない理由を答えて」）: ④並べ替えの段は**消さずに理由を書く**
+     （できないことは、できないと書く）。以前は段ごと黙って消えており、仕掛一覧と比べて「足りない」に見えた。 */
+  const sortOff=await page.evaluate(()=>{const h=[...document.querySelectorAll('#lcDetail h4')].find(x=>/並べ替え/.test(x.textContent));
+   return h?h.parentElement.textContent.replace(/\s+/g,' ').trim():''});
+  const sortCtl=await page.evaluate(()=>!!document.getElementById('lcSortOn'));
+  rec('並べ替えの段は理由つきで出る（使わない表でも黙って消さない・操作の欄は置かない）',
+      /この表では使いません/.test(sortOff)&&/時刻の一本道/.test(sortOff)&&/行を掴んで動かします/.test(sortOff)
+      &&!sortCtl,sortOff.slice(0,80));
 
   /* ---- 8. 日付は「現場歴」と「太陽暦」の2列(§9.197、利用者の指示) ----
      既定で出すのは現場歴の1列だけ（列を1本増やすと全員の画面が狭くなる）。

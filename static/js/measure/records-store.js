@@ -1623,6 +1623,7 @@ function recordColumnPanelSource(){
   /* 並べ替えの決まり(§9.187)は出さない——データ一覧は見出しで並べ替えを
      持たないので、設定できるのに効かない欄になる。 */
   features:{formula:true,preset:true,width:true,format:true,rule:true,sort:false},
+  sortOff:'データ一覧は見出しを押して並べ替える作りを持たないため、ここで並べ替えの決まりを作っても効きません。',
   afterApply:()=>{if(!$('#recordModal')?.hidden)renderRecordListRows()},
   save:null,
  };

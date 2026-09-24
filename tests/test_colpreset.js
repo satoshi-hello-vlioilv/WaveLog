@@ -104,6 +104,17 @@ run('test_colpreset: 列の設定を名前で覚える／式で列を作る（§
    await page.evaluate(()=>document.querySelector('.lc-fx-state').textContent.trim()));
   rec('先頭3件の結果が出る',
    await page.evaluate(()=>document.querySelectorAll('.lc-fx-row').length===3));
+  /* §9.483（利用者の指示「作業スケジュールの表示列の編集…同じように…共通化」）: 式の列も**左の見本と
+     右の「値のある行」に値が出る**。列の生の値の答えはパネルの`rawOfDraft()`1箇所——以前は6箇所が口を直に
+     呼び、式を自前で解いていたスケジュール表だけ出て、仕掛一覧は「値のある行がありません（0件）」だった。 */
+  await page.waitForFunction(k=>{const it=document.querySelector(`#lcList .lc-item[data-key="${k}"]`);
+    return !!it&&/\//.test(it.textContent)},COL,{timeout:8000}).catch(()=>{});
+  const fxSide=await page.evaluate(k=>({
+   item:(document.querySelector(`#lcList .lc-item[data-key="${k}"]`)||{}).textContent||'',
+   stat:(((document.querySelector('#lcDetail')||{}).textContent||'').replace(/\s+/g,' ').match(/値のある行\s*(\d+)/)||[])[1]}),COL);
+  rec('式の列も左の見本と「値のある行」に式の結果が出る（パネルの1箇所が答える）',
+   /\//.test(fxSide.item)&&!/値のある行がありません/.test(fxSide.item)&&+fxSide.stat>0,
+   `見本「${fxSide.item.replace(/\s+/g,' ').trim().slice(0,40)}」／値のある行 ${fxSide.stat}`);
 
   await page.waitForFunction(k=>[...document.querySelectorAll('#grid thead th')]
     .some(t=>t.dataset.col===k),COL,{timeout:10000});
