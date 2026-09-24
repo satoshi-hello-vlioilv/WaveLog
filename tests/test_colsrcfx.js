@@ -14,32 +14,20 @@
    （送った鍵だけ書く・§9.212）——並びや隠し方は触らない。後片付けは最初の`formulas`へ戻す。
    ============================================================ */
 'use strict';
-const {run}=require('./lib/harness.js');
+const {run,snapLayout,restoreLayout}=require('./lib/harness.js');
 const B='http://127.0.0.1:5029';
 const EQ='テスト設備A';
 const TAG='FX'+process.pid;
 const post=(p,body)=>fetch(B+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 const getj=async p=>(await fetch(B+p)).json();
 const layoutOf=async t=>(await getj('/api/column-layout-master?target='+encodeURIComponent(t)))||{};
-const keep={};           /* 対象 → 最初の列レイアウト丸ごと（後片付けで戻す） */
-const LAYOUT_KEYS=['order','widths','hidden','names','formats','rules','formulas','locks','sorts','aligns'];
+const keep={};           /* 対象 → 最初の列レイアウト丸ごと（後片付けで土台の restoreLayout() が戻す） */
 const made=[];
 const CALC='検証計算列'+String(process.pid).slice(-3);
 
 async function setFormulas(t,f){
- if(!(t in keep))keep[t]=await layoutOf(t);
+ if(!(t in keep))keep[t]=await snapLayout(t);
  await post('/api/column-layout-master',{target:t,formulas:f,user_id:'test'});
-}
-/* **最初の形へ丸ごと戻す**（§9.360「汚した本は指紋で名指しする」）。`formulas`だけ戻すと、
-   もともと設定の無かった対象に行が残る（通しで「列レイアウトマスタ +3」と名指しされた）。
-   元が空の対象は白紙へ、そうでなければ控えた全部を書き戻す。 */
-async function restoreLayout(t,l){
- const empty=!LAYOUT_KEYS.some(k=>{const v=l[k];return Array.isArray(v)?v.length:(v&&Object.keys(v).length)});
- const body={target:t,user_id:'test'};
- if(empty)Object.assign(body,{clear:true,order:[],widths:{},hidden:[],names:{},formats:{},rules:{},formulas:{},
-   locks:[],sorts:{},aligns:{}});
- else LAYOUT_KEYS.forEach(k=>{body[k]=l[k]||(k==='order'||k==='hidden'||k==='locks'?[]:{})});
- await post('/api/column-layout-master',body);
 }
 async function mkRecord(){
  const now=new Date(),iso=now.toISOString(),id=TAG+'-R1';

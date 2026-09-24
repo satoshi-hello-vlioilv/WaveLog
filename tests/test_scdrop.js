@@ -26,7 +26,10 @@ const SEEDED_STOP='SD'+process.pid+'停止';
    なので、APIで消しても行は残る。**この実行で増えた行だけ**を素の表から
    片付ける（名前で拾うと、同じ名前を使う他の網の期待と食い違う・§9.284）。 */
 const H=require('./lib/harness.js');
-const SNAP_TABLES=['設備停止マスタ'];
+/* 停止内容を作ると、サーバーがその分類を`設備停止分類マスタ`へ**自動で足す**（`stop_category_upsert()`）。
+   停止内容だけ控えると分類が1行残る（通しで「設備停止分類マスタ +1」と名指しされた）。控えた順に消すので、
+   停止内容を先・分類を後に並べる。 */
+const SNAP_TABLES=['設備停止マスタ','設備停止分類マスタ'];
 let snapM=null;
 run('test_scdrop: 予定から外す受け皿（§9.116）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  snapM=await H.masterSnapshot(SNAP_TABLES);

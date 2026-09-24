@@ -142,16 +142,19 @@ H.run('test_bladepick: 刃選択マスタの盤（§9.380）',
 
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,2).join(' / '));
  }finally{
-  /* 後片付け。**消えたことまで確かめる**（§9.362）。決まりだけでなく、
-     初期セットで入れた部材も戻す（§9.284）。 */
+  /* 後片付け。**消えたことまで確かめる**（§9.362）。決まり（この網が作った物）は空へ戻し、
+     **部材は初期セットへ戻す**（test_bladeui と同じ作法・§9.441）。頭の`wipe()`はフィクスチャに
+     元から在る部材まで消すので、空のまま終えると通しで「ゴムリングマスタ -51 / スペーサーマスタ -26 /
+     フィンガーマスタ -14 / 刃マスタ -6」と名指しされた（以前は「部材も空へ戻る」を網が確かめており、
+     間違った片付けを固定していた）。`seed`は足し算にならない（§9.377）。 */
   try{
    await wipe();
+   await post('/api/bladeset/seed',{equipment:EQ});
    const c=await api('/api/bladeset/context?equipment='+encodeURIComponent(EQ));
-   const left=(c.picks||[]).length+(c.blades||[]).length+(c.spacers||[]).length
-             +(c.rings||[]).length+(c.fingers||[]).length;
-   rec('後始末で刃選択マスタと部材が空へ戻る',left===0,
-       `決まり${(c.picks||[]).length}/刃${(c.blades||[]).length}/`
-       +`ス${(c.spacers||[]).length}/輪${(c.rings||[]).length}/指${(c.fingers||[]).length}`);
+   const parts=[c.blades,c.spacers,c.rings,c.fingers].map(x=>(x||[]).length);
+   rec('後始末で刃選択の決まりは空へ、部材は初期セットへ戻る',
+       (c.picks||[]).length===0&&parts.every(n=>n>0),
+       `決まり${(c.picks||[]).length}/刃${parts[0]}/ス${parts[1]}/輪${parts[2]}/指${parts[3]}`);
   }catch(e){rec('後始末',false,String(e))}
  }
  },{mode:'edit',viewport:{width:1600,height:1000}});
