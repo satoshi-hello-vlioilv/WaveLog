@@ -268,6 +268,14 @@
            <button type="button" class="bs-btn is-sm is-on bs-step3-open">②軸端部を戻す</button>
            <button type="button" class="bs-btn is-sm bs-step3-spin">③台車を回す</button>
           </div>
+          <!-- 寸法の字の大きさ（§9.482、利用者の指示「小さく見たい時と大きくしたい時もある」）。字を描くのは
+               断面図だけなので、この群も断面図だけ（.bs-hud-grp--cut）。「− 数 ＋」の1組で、数は
+               いまの大きさ（px）。段と端で押せないことは paintDimFs() が塗る。 -->
+          <div class="bs-hud-grp bs-hud-grp--cut"><span class="bs-hud-cap">寸法の字</span>
+           <button type="button" class="bs-btn is-sm bs-dimfs-b" data-dimfs="-1" aria-label="寸法の字を小さく" title="寸法の字を1段小さく">−</button>
+           <output class="bs-dimfs" aria-live="polite"></output>
+           <button type="button" class="bs-btn is-sm bs-dimfs-b" data-dimfs="1" aria-label="寸法の字を大きく" title="寸法の字を1段大きく">＋</button>
+          </div>
           <!-- **「視点を戻す」は段取りの外**（§9.413 追補）。断面図では段取りの
                群ごと伏せるが、断面図でも視点は回せるので戻す道が要る。 -->
           <div class="bs-hud-grp"><span class="bs-hud-cap">視点</span>
