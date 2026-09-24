@@ -673,8 +673,8 @@ body.bs-mode .bs-shell{display:flex}
 .bs-zhit{fill:var(--bs-bc,var(--teal));fill-opacity:0;stroke:var(--bs-bc,var(--teal-dark));stroke-width:0;
   pointer-events:all;transition:fill-opacity .12s,stroke-width .12s}
 /* **押せるものには指を出す**（§9.385 の裏返し）。区間は押すと拡大図が開く
-   （§9.413）ので、重ねた時点でそれが分かるようにする。 */
-.bs-bhit{cursor:pointer}
+   （§9.413）ので、重ねた時点でそれが分かるようにする。端の区間も押せば拡大図（§9.487）。 */
+.bs-bhit,.bs-ehit{cursor:pointer}
 /* **SVGに効く言葉で書く**（§9.386）。以前は束ね規則の
    `background`/`border-color`/`color` を当てており、`rect` はこれらを
    描かないので**図側は1pxも変わっていなかった**（実測: `fill` は

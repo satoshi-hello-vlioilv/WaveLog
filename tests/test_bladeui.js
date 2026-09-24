@@ -994,6 +994,102 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('図の外を押すと閉じる', zclose.afterOutside === true, String(zclose.afterOutside));
     rec('Escでも閉じる', zclose.afterEsc === true, String(zclose.afterEsc));
 
+    /* ---- 4') 端の区間（OS端・DS端）も押すと拡大図（§9.487、利用者の指示「両端の部分に
+       ついては出せてなかったので同じように拡大図を搭載して」）----
+       前（実測）: 模式図の端の的4つ（上下軸×OS・DS）を押しても 0/4 しか開かなかった。
+       **絵ではなく「どの区間・どの軸から組んだか」で見る**（§9.442・器が名乗る）。 */
+    const endZoom = async (hitOf, clickAt) => {
+     const out = [];
+     for (const [sd, ax] of [['OS', 'up'], ['OS', 'lo'], ['DS', 'up'], ['DS', 'lo']]) {
+      await page.evaluate(() => { const b = document.getElementById('bsZoomClose'); if (b) b.click(); });
+      await W.until(page, () => document.getElementById('bsZoom').hidden, null, { ms: 4000, what: '拡大図を閉じる' });
+      const ok = await clickAt(sd, ax);
+      if (ok) {
+       await W.until(page, () => !document.getElementById('bsZoom').hidden, null,
+                     { ms: 3000, what: `${sd}端(${ax})の拡大図` }).catch(() => {});
+      }
+      out.push(await page.evaluate(([sd, ax]) => {
+       const box = document.getElementById('bsZoom'), svg = document.getElementById('bsZoomFig');
+       const texts = [...svg.querySelectorAll('text')].map(t => t.textContent);
+       return { sd, ax, open: !box.hidden, axis: svg.dataset.axis, zone: +svg.dataset.zone,
+                title: document.getElementById('bsZoomTitle').textContent,
+                note: document.getElementById('bsZoomNote').textContent,
+                dims: +svg.dataset.dims, inside: +svg.dataset.inside, lead: +svg.dataset.lead,
+                off: +svg.dataset.off, gapWord: texts.filter(t => t === '隙間').length,
+                seat: svg.querySelectorAll('rect[data-seat]').length,
+                edgeWord: texts.filter(t => t === '有効幅の端').length };
+      }, [sd, ax]));
+     }
+     return out;
+    };
+    const endsFig = await endZoom(null, (sd, ax) => page.evaluate(([sd, ax]) => {
+     const g = document.querySelector(`#bsStage .bs-ehit[data-badge="${sd}"][data-axis="${ax}"]`);
+     if (!g) return false;
+     g.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+     return true;
+    }, [sd, ax]));
+    const endOk = e => e.open && e.axis === e.ax && (e.sd === 'OS' ? e.zone === 0 : e.zone > 0)
+     && /端の組み合わせ/.test(e.title) && e.dims > 0 && e.inside + e.lead === e.dims && e.off === 0
+     && e.edgeWord === 1;
+    rec('模式図: 端の区間（上下軸×OS・DS）を押すと、その端・その軸の拡大図が開く（§9.487）',
+        endsFig.filter(endOk).length === 4,
+        endsFig.map(e => `${e.sd}${e.ax}:${e.open ? `z${e.zone}/${e.axis}/落${e.off}` : '開かない'}`).join(' '));
+    /* **シートの側の端の残りは「隙間」ではない**（§9.456）。基準面は既定で DS なので、
+       押さえるのは OS端（`A.floatZ`＝0）。 */
+    const seatEnd = endsFig.filter(e => e.sd === 'OS');
+    rec('シートの側の端の拡大図は、残りを「隙間」と言わずシートが押さえる端だと言う（§9.487）',
+        seatEnd.length === 2 && seatEnd.every(e => e.gapWord === 0 && /フローティングシート/.test(e.note)),
+        seatEnd.map(e => `隙間${e.gapWord}／枠${e.seat}／${e.note.slice(-40)}`).join(' ｜ '));
+    await page.evaluate(() => { const b = document.getElementById('bsZoomClose'); if (b) b.click(); });
+    /* ---- 4'') 押した位置が軸心より上なら上側・下なら下側の半断面（§9.488、利用者の指示「上軸の上側は
+       上側、上軸の下側は下側、下軸の上側は上側、下軸の下側は下側の組付け図が出るように」）----
+       前: 半分は**軸で決まっていた**（上軸＝上側・下軸＝下側）ので、4通りのうち2通りしか合わない。 */
+    const halfPick = async pointAt => {
+     const out = [];
+     for (const [ax, hf] of [['up', 'top'], ['up', 'bottom'], ['lo', 'top'], ['lo', 'bottom']]) {
+      await page.evaluate(() => { const b = document.getElementById('bsZoomClose'); if (b) b.click(); });
+      const ok = await pointAt(ax, hf);
+      if (ok) await W.until(page, () => !document.getElementById('bsZoom').hidden, null,
+                            { ms: 3000, what: `${ax}の${hf}の拡大図` }).catch(() => {});
+      out.push(await page.evaluate(([ax, hf]) => {
+       const svg = document.getElementById('bsZoomFig');
+       return { ax, hf, open: !document.getElementById('bsZoom').hidden, axis: svg.dataset.axis,
+                half: svg.dataset.half, sub: document.getElementById('bsZoomSub').textContent,
+                off: +svg.dataset.off };
+      }, [ax, hf]));
+     }
+     return out;
+    };
+    const halfOk = e => e.open && e.axis === e.ax && e.half === e.hf && e.off === 0
+     && e.sub.startsWith(`${e.ax === 'up' ? '上軸' : '下軸'}の${e.hf === 'top' ? '上側' : '下側'}`);
+    const halfWord = list => list.map(e => `${e.ax}/${e.hf}→${e.open ? `${e.axis}/${e.half}` : '開かない'}`).join(' ');
+    const halfFig = await halfPick((ax, hf) => page.evaluate(([ax, hf]) => {
+     const g = document.querySelector(`#bsStage .bs-bhit[data-axis="${ax}"]`);
+     if (!g) return false;
+     const r = g.querySelector('.bs-zhit').getBoundingClientRect();
+     const y = r.top + r.height * (hf === 'top' ? 0.25 : 0.75);
+     g.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: y }));
+     return true;
+    }, [ax, hf]));
+    rec('模式図: 押した位置が軸心より上なら上側・下なら下側の半断面（上下軸×上下の4通り・§9.488）',
+        halfFig.filter(halfOk).length === 4, halfWord(halfFig));
+    /* 同じ区間の**反対の半分**を押したら、閉じずに切り替わる（同じ所を押したときだけ閉じる）。 */
+    const flipHalf = await page.evaluate(() => {
+     const g = document.querySelector('#bsStage .bs-bhit[data-axis="up"]');
+     const r = g.querySelector('.bs-zhit').getBoundingClientRect();
+     const at = f => g.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true,
+       clientX: r.left + r.width / 2, clientY: r.top + r.height * f }));
+     const box = document.getElementById('bsZoom'), svg = document.getElementById('bsZoomFig');
+     document.getElementById('bsZoomClose').click();
+     at(0.25); const a = { open: !box.hidden, half: svg.dataset.half };
+     at(0.75); const b = { open: !box.hidden, half: svg.dataset.half };
+     at(0.75); const c = { open: !box.hidden };
+     return { a, b, c };
+    });
+    rec('同じ区間の反対の半分を押すと切り替わり、同じ所をもう一度押すと閉じる（§9.488）',
+        flipHalf.a.open && flipHalf.a.half === 'top' && flipHalf.b.open && flipHalf.b.half === 'bottom' && !flipHalf.c.open,
+        JSON.stringify(flipHalf));
+
     /* ---- 5) 立体図: 器の入れ替え・断り・段取りの順 ----
        **描画そのもの（WebGL の絵）はここでは見ない。** 立体図の部品（three.js）は
        押したときに CDN から取りに行く作りで、検証用のコンテナは外へつながらない。
@@ -2390,6 +2486,38 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
        「1つも落としていないこと」。 */
     rec('広い側の拡大図でも寸法を1つも落とさない',
         !!zw && zw.off === 0, zw ? `出せなかった ${zw.off}件` : '読めない');
+    /* 断面図でも端の区間の面を**本物のクリック**で押すと拡大図（§9.487。前は光るだけ）。 */
+    const endsCut = await endZoom(null, async (sd, ax) => {
+     const pt = await page.evaluate(([sd, ax]) => {
+      const b = [...document.querySelectorAll('#bsStage3 .bs-t3z')]
+       .find(e => !e.hidden && e.dataset.end && e.dataset.badge === sd && e.dataset.axis === ax);
+      if (!b) return null;
+      const r = b.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+     }, [sd, ax]);
+     if (!pt) return false;
+     await page.mouse.click(pt.x, pt.y);
+     return true;
+    });
+    /* 断面図でも同じ4通り（§9.488）。回せる図なので、軸心の高さは面が名乗る（`data-cy`）。 */
+    const halfCut = await halfPick(async (ax, hf) => {
+     const pt = await page.evaluate(([ax, hf]) => {
+      const b = [...document.querySelectorAll('#bsStage3 .bs-t3z')]
+       .find(e => !e.hidden && !e.dataset.end && e.dataset.axis === ax);
+      if (!b) return null;
+      const r = b.getBoundingClientRect(), cy = r.top + +b.dataset.cy;
+      return { x: r.left + r.width / 2, y: hf === 'top' ? (r.top + cy) / 2 : (cy + r.bottom) / 2 };
+     }, [ax, hf]);
+     if (!pt) return false;
+     await page.mouse.click(pt.x, pt.y);
+     return true;
+    });
+    rec('断面図: 押した位置が軸心より上なら上側・下なら下側の半断面（4通り・§9.488）',
+        halfCut.filter(halfOk).length === 4, halfWord(halfCut));
+    rec('断面図: 端の区間の面を押すと、その端・その軸の拡大図が開く（§9.487）',
+        endsCut.filter(e => e.open && e.axis === e.ax && (e.sd === 'OS' ? e.zone === 0 : e.zone > 0)
+                        && e.off === 0).length === 4,
+        endsCut.map(e => `${e.sd}${e.ax}:${e.open ? `z${e.zone}/${e.axis}` : '開かない'}`).join(' '));
     await page.keyboard.press('Escape');
     await W.until(page, () => document.querySelector('#bsZoom').hidden, null,
                   { ms: 4000, what: '拡大図を閉じる' });

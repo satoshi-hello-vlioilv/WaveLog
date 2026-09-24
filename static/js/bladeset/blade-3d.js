@@ -322,8 +322,8 @@
   let drag = null, down = null, hovered = '';
   const hover = b => {
    const k = b ? b.dataset.badge : '';
-   /* 押せる面（端でない区間）には指のカーソル。端は光るだけ（拡大図を開かない・§9.463）。 */
-   cv.style.cursor = b && !b.dataset.end ? 'pointer' : '';
+   /* 押せる面には指のカーソル。**端の区間も押せる**（拡大図を開く・§9.487）。 */
+   cv.style.cursor = b ? 'pointer' : '';
    if (k === hovered) return;
    hovered = k;
    if (onZone) onZone('hover', b);
@@ -334,7 +334,7 @@
    const d = down; down = null;
    if (!d || e.button !== 0 || Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_SLOP) return;
    const b = zoneAt(e.clientX, e.clientY);
-   if (b && !b.dataset.end && onZone) onZone('click', b, e);
+   if (b && onZone) onZone('click', b, e);
   });
   cv.addEventListener('pointerdown', e => {
    down = { x: e.clientX, y: e.clientY };
@@ -947,8 +947,7 @@
        ので、軸を渡さないと下軸を押しても上軸の図が出る（模式図と同じ作法）。 */
     if (r) zmk.push({ badge: String(r.badge), x0: off(a), x1: off(b), y, up: !!upper,
                       tone: Number.isInteger(r.tone) ? r.tone : null });
-    /* 端の区間（OS端・DS端）は**光る面だけ**（§9.463）。記号の札は出さない——重ねる的は
-       図の OS・DS の札（`.bs-t3-os`／`-ds`）で、右の端部の表と一緒に光る。 */
+    /* 端の区間（OS端・DS端）は記号の札を出さない（§9.463）。面は光り、押せば拡大図（§9.487）。 */
     else if (k === 0 || k === spans.length - 1) {
      zmk.push({ badge: k === 0 ? 'OS' : 'DS', end: true, x0: off(a), x1: off(b), y, up: !!upper, tone: null });
     }
@@ -1772,7 +1771,11 @@
    });
    /* 器の外の区間は出さない（拡大したとき・§9.463）。 */
    on = on && x1 > 0 && x0 < w && y1 > 0 && y0 < h;
-   return { on, x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
+   /* **軸心の画面上の高さ**（§9.488）。押した位置が軸心より上か下かで拡大図の半分を選ぶ。回すと
+      箱の真ん中は軸心からずれるので、区間の真ん中の軸心を写して器に名乗らせる（`data-cy`）。 */
+   v.set((q.x0 + q.x1) / 2, q.y, 0).applyMatrix4(D3.g.matrixWorld).project(cam);
+   const cy = (-v.y * 0.5 + 0.5) * h - y0;
+   return { on, x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0), cy };
   });
   /* 字の大きさは**いちばん狭い区間**に合わせる（模式図と同じ考え・§9.413）。
      区間ごとに変えると、同じ記号が場所によって別の大きさで出る。
@@ -1788,6 +1791,7 @@
    el.box.hidden = !b.on; el.chip.hidden = !b.on || !!q.end;
    if (!b.on) return;
    el.box.dataset.axis = q.up ? 'up' : 'lo';
+   el.box.dataset.cy = b.cy.toFixed(1);
    if (q.end) el.box.dataset.end = '1'; else delete el.box.dataset.end;
    if (el.box.dataset.badge !== q.badge) {
     el.box.dataset.badge = q.badge;
