@@ -113,6 +113,14 @@
 /* 読み取れなかったことは**色だけで伝えない**（§CLAUDE 3）。文字は
    「時刻不明」と出したうえで、控えめな色にする。 */
 .list-fresh-chip.is-unknown .lf-val{color:var(--muted)}
+/* 取り込み直している最中（§9.463）。**押したら直ちに動く**——回る印で「取りに
+   行っている」を言う（字の置き換えはしない。チップの幅を動かさない）。 */
+.list-fresh-chip.is-busy{cursor:progress;border-color:var(--teal)}
+.list-fresh-chip.is-busy .lf-act{display:inline-block;animation:lf-spin .9s linear infinite}
+@keyframes lf-spin{to{transform:rotate(360deg)}}
+/* 元に写していない新しい版がある（手動のとき・§9.463）。橙＝設定要（§9.338）、字でも言う。 */
+.list-fresh-chip.is-newer{border-color:var(--warn-border);background:var(--warn-bg)}
+.list-fresh-chip .lf-new{color:var(--warn-fg);font-weight:800}
 /* id付きセレクタで書くこと。分割/ポップアップ表示の再表示ルール
    (body.sc-mode.sc-split #listToolbar{display:flex!important})より詳細度を
    高くしないと、出す中身が無いときでも空のツールバーが表示されてしまう。 */

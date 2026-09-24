@@ -3374,4 +3374,25 @@ html[data-hint="off"] .mm-def-hint{display:none}
 /* **押せない理由はその場に書く**（§4）。ボタンの代わりに文字を置く。 */
 .pz-why{font-size:var(--fs-micro);color:var(--muted)}
 
+/* ---------- 1欄1行の編集窓（§9.463、`formLayout:'rows'`） ----------
+   利用者の指摘「入力項目の配置も整列していないのでバラバラ統一感もない」。
+   **ラベル｜入力｜説明の3列を全段で同じ幅**にする——どの段を開いても
+   入力の左端が1本の線にそろい、視線が縦に追える（§CLAUDE 9）。ラベルは
+   固定幅で右揃え（`auto`だと行ごとに値の左端がずれる・§9.402）。
+   説明は3列目に置き、入力の下へ回さない（行の高さを入力の並びでそろえる）。 */
+.mm-editor-dialog.is-rows{width:min(960px,94vw);--mm-row-lab:13em;--mm-row-ctl:15em}
+.mm-editor-dialog.is-rows .mm-tabpanel{display:flex;flex-direction:column;flex-wrap:nowrap;gap:0;align-items:stretch}
+.mm-editor-dialog.is-rows .mm-tabpanel>.mm-field{
+  display:grid;grid-template-columns:var(--mm-row-lab) var(--mm-row-ctl) minmax(0,1fr);
+  column-gap:var(--space-3);align-items:center;width:100%;max-width:none;flex:0 0 auto;
+  padding:var(--space-2) 0;border-bottom:1px solid var(--line-soft);
+}
+.mm-editor-dialog.is-rows .mm-tabpanel>.mm-field>span:first-child{justify-content:flex-end;text-align:right;white-space:normal;font-weight:700;color:var(--ink-2)}
+.mm-editor-dialog.is-rows .mm-tabpanel>.mm-field>select,
+.mm-editor-dialog.is-rows .mm-tabpanel>.mm-field>input{width:100%;min-width:0}
+.mm-editor-dialog.is-rows .mm-tabpanel>.mm-field>.mm-field-hint{grid-column:3;max-width:none;margin:0;color:var(--ink-3)}
+.mm-editor-dialog.is-rows .mm-tabpanel>.mm-field>.mm-num{justify-self:start;width:auto;max-width:100%}
+.mm-editor-dialog.is-rows .mm-tabpanel>.mm-field>.mm-num>.mm-num-input{flex:0 0 var(--w-sm);width:var(--w-sm);min-width:0}
+/* 空欄のとき効いている既定値（薄字）。打った値と取り違えないよう斜体にしない・淡くする。 */
+.mm-editor-dialog.is-rows .mm-num-input::placeholder{color:var(--muted);opacity:1}
 }

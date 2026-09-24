@@ -92,6 +92,14 @@ _lock = threading.RLock()
 _state: dict[str, dict] = {}      # キー -> 直近の結果(画面へ出す診断用)
 _thread = None
 _wake = threading.Event()
+# **写し直しは1本ずつ**（§9.463）。背景の周回と「再読込」（要求の中で待つ）が
+# 同時に走ると、同じ世代番号・同じ`.tmp`へ2本が書き、片方が相手の書きかけを
+# 消したり検査に落ちたりする（実測: 2本並べて20回中5〜13回が失敗か古いまま）。
+_refresh_lock = threading.Lock()
+# 起動して最初の周回が済んだか（§9.463）。済むまでは読む側が待つ——前回の起動の
+# 写しを出してしまうと、利用者は「起動したのに古い」を見る（実測: 起動後3.0秒）。
+_first = threading.Event()
+FIRST_WAIT_SEC = 30
 
 
 # ------------------------------------------------------------------
@@ -286,6 +294,8 @@ def refresh_one(key, remote, force=False):
  result = {'key': key, 'remote': str(remote), 'local': str(local),
            'updated': False, 'reason': '', 'at': time.time()}
  sig = _remote_signature(remote)
+ # 元に**写していない新しい版があるか**（§9.463）。写せたら下で False に戻す。
+ result['newer'] = bool(sig is not None and _signature_of(key) != sig)
  if sig is None and not local.exists():
   result['reason'] = '共有の元ファイルへ到達できず、写しもまだありません'
   _record(key, result)
@@ -293,6 +303,7 @@ def refresh_one(key, remote, force=False):
  if sig is not None and not force and _signature_of(key) == sig and local.exists():
   result['reason'] = '元ファイルは変わっていません'
   result['skipped'] = True
+  result['newer'] = False
   # 変わっていない周回でも、前に消し損ねた世代があれば片付ける。
   _sweep_old_generations(key, local)
   _record(key, result)
@@ -351,6 +362,7 @@ def refresh_one(key, remote, force=False):
  _save_entry(key, sig, target.name)
  result['local'] = str(target)
  result.update(updated=True, how=how,
+               newer=False,
                reason=f'写しを更新しました({"バックアップAPI" if how=="backup" else "コピー"})')
  app_logger().info('%s: 共有から手元へ写しました(%s, %d bytes, %s)',
                    key, how, sig.get('size', 0), target.name)
@@ -445,6 +457,10 @@ def source_info(key, path=None):
   st = _state.get(key)
  if st and isinstance(st.get('at'), (int, float)):
   out['checkedAt'] = float(st['at'])
+ # 写していない新しい版があるか（§9.463）。**確かめたのは背景の周回**——
+ # ここで共有を見に行かない（§9.89）。確かめていなければ None（分からない）。
+ out['newer'] = (bool(st.get('newer')) if st and 'newer' in st else None)
+ out['mode'] = update_mode()
  return out
 
 
@@ -529,6 +545,42 @@ def enabled():
  return v not in ('off', 'no', 'false', '0')
 
 
+UPDATE_MODES = ('auto', 'manual')
+
+
+def update_mode():
+ """写しを**自分で更新するか**（§9.463、利用者の指示「更新機能の手動自動を実装した
+ うえで、デフォルトは今まで通り自動に」）。
+   auto   … 元が変われば直ちに写し直す（周回ごと・起動時も）。既定
+   manual … 自分では写し直さない。元が変わったことだけ確かめて「新しい版あり」と
+            言い、写し直すのは「再読込」を押したとき（意図して止める）
+ `db_mirror_enabled`（写して読むか）とは別の軸——こちらは「写しをいつ新しくするか」。"""
+ from .db_access import path_config_value
+ v = str(path_config_value('db_mirror_update', 'auto') or 'auto').strip().lower()
+ return v if v in UPDATE_MODES else 'auto'
+
+
+def check_one(key, remote):
+ """写さずに、元に新しい版があるかだけ確かめる（手動のとき・§9.463）。"""
+ remote = Path(remote)
+ sig = _remote_signature(remote)
+ prev = status().get(key) or {}
+ result = dict(prev, key=key, remote=str(remote), at=time.time())
+ if sig is None:
+  result['reason'] = '共有の元ファイルへ到達できません（前の写しを使い続けます）'
+ else:
+  result['newer'] = _signature_of(key) != sig
+  result['reason'] = ('元に新しい版があります（手動のため写していません）' if result['newer']
+                      else '元ファイルは変わっていません')
+ _record(key, result)
+ return result
+
+
+def check_all():
+ with _refresh_lock:
+  return [check_one(key, remote) for key, remote in targets()]
+
+
 def interval_sec():
  from .db_access import path_config_value
  try:
@@ -547,6 +599,10 @@ def read_path(key, remote):
  元を直接読む)。"""
  if not enabled():
   return Path(remote)
+ # **起動して最初の周回が済むまでは待つ**（§9.463）。前回の起動の写しを出さない。
+ # 背景が動いていないとき（網・単発の呼び出し）は待たない。
+ if not _first.is_set() and _thread is not None and _thread.is_alive():
+  _first.wait(FIRST_WAIT_SEC)
  entry = _entry(key) or {}
  sig = entry.get('signature') or {}
  if sig.get('source') and str(sig['source']) != str(remote):
@@ -562,17 +618,36 @@ def read_path(key, remote):
 
 def refresh_all(force=False):
  out = []
- for key, remote in targets():
-  out.append(refresh_one(key, remote, force=force))
+ with _refresh_lock:
+  for key, remote in targets():
+   out.append(refresh_one(key, remote, force=force))
  return out
 
 
 # ------------------------------------------------------------------
 # 背景スレッド
 # ------------------------------------------------------------------
+def _cycle():
+ """1周ぶん。自動なら写し直し、手動なら新しい版があるかだけ確かめる（§9.463）。"""
+ if not enabled():
+  return
+ if update_mode() == 'manual':
+  check_all()
+ else:
+  refresh_all()
+
+
 def _loop():
- # 起動直後は少し待つ(起動処理と共有I/Oを重ねない)。
- _wake.wait(3)
+ # **最初の周回は待たずに回す**（§9.463、利用者の指示「少なくとも起動時は確実に
+ # 最新のファイルに更新し、古い手元のファイルを見ているような状態にならない
+ # ように」）。以前は起動処理と重ねないため3秒待っていたが、その間は前回の写しを
+ # 出していた。済むまでは`read_path()`が待つ。
+ try:
+  _cycle()
+ except Exception as e:
+  app_logger().warning('写しの更新に失敗しました: %s', e)
+ finally:
+  _first.set()
  # 置き場が手元へ移っていたら、前の置き場の残骸を1度だけ片付ける
  # (背景スレッドの中で行う。共有・クラウドへ触る可能性があるため)。
  try:
@@ -580,13 +655,12 @@ def _loop():
  except Exception as e:
   app_logger().debug('前の置き場の片付けに失敗しました: %s', e)
  while True:
-  try:
-   if enabled():
-    refresh_all()
-  except Exception as e:
-   app_logger().warning('写しの更新に失敗しました: %s', e)
   _wake.clear()
   _wake.wait(interval_sec())
+  try:
+   _cycle()
+  except Exception as e:
+   app_logger().warning('写しの更新に失敗しました: %s', e)
 
 
 def start():

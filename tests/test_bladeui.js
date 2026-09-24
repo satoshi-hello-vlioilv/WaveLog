@@ -1485,16 +1485,18 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      wheel(-100); wheel(-100);
      document.querySelector('.bs-step3-reset').click();
      const v4 = V();
-     return { z0: v0.cutZoom, z1: v1.cutZoom, w0: world(v0), w1: world(v1), shown,
+     return { z0: v0.cutZoom, z1: v1.cutZoom, w0: world(v0), w1: world(v1), shown, sc1: v1.cutSc,
               pan1: v1.cutPan, pan2: v2.cutPan, azKeep: v2.cutAz === v1.cutAz,
               z3: v3.cutZoom, pan3: v3.cutPan, z4: v4.cutZoom, pan4: v4.cutPan,
               hidden4: !!(read && read.hidden) };
     });
     rec('断面図もホイールで拡大できる（§9.463）', zm.z0 === 1 && zm.z1 > 1.5,
         `×${zm.z0} → ×${zm.z1}`);
-    rec('寄ってもマウスの下の点は動かない',
-        Math.abs(zm.w0[0] - zm.w1[0]) < 0.5 && Math.abs(zm.w0[1] - zm.w1[1]) < 0.5,
-        JSON.stringify([zm.w0, zm.w1]));
+    /* 許容は**寄った先の画面で1px**（世界の長さでなく画素で見る。帯の高さの
+       端数で 0.5mm＝0.3px ほど動くのは目に見えない）。 */
+    rec('寄ってもマウスの下の点は動かない（寄った先の画面で1px未満）',
+        Math.abs(zm.w0[0] - zm.w1[0]) < zm.sc1 && Math.abs(zm.w0[1] - zm.w1[1]) < zm.sc1,
+        JSON.stringify([zm.w0, zm.w1, zm.sc1]));
     rec('いまの倍率が「視点」の群に出る', /^×\d/.test(zm.shown), zm.shown);
     rec('拡大したら右ドラッグで動かせる（回さない）',
         zm.pan2[0] < zm.pan1[0] && zm.azKeep, JSON.stringify([zm.pan1, zm.pan2]));

@@ -59,7 +59,7 @@
       できるように」）。`cutZoom`＝器に収まる縮尺の何倍か（1＝全体）。`cutPanX/Y`＝
       画面の右・上へ動かした量（世界の長さ）。`cutView`は最後に描いた縮尺——
       ホイールの下の点を動かさずに寄るため、描いたときの値を控える。 */
-   cutZoom:1, cutPanX:0, cutPanY:0, cutView:null,
+   cutZoom:1, cutPanX:0, cutPanY:0, cutView:null, cutLock:null,
    spin:false, busy:false, failed:false, decals:[],
    /* 立体図で見せる部材。刃だけを見たいときなど、邪魔なものを消せるようにする。 */
    show:{ mat:true, knife:true, ring:true, liner:true },
@@ -1475,11 +1475,18 @@
    const hb = hudBox(w, h);
    const topIn = hb.tops.reduce((m, t) => Math.max(m, t.y), 0);
    const avail = Math.max(h * 0.4, h - topIn - hb.bot);
-   const fit = Math.max(b.w * pad / w, b.h * pad / avail);  /* 全体が収まる縮尺 */
+   let fit = Math.max(b.w * pad / w, b.h * pad / avail);    /* 全体が収まる縮尺 */
+   /* 図の中心を「空いている帯のあいだ」の中央へ寄せる（画面の下向きが正）。 */
+   let offPx = (topIn + (h - topIn - hb.bot) / 2) - h / 2;
+   /* **拡大しているあいだは×1のときの縮尺と中心を使う**（§9.463）。帯の字
+      （入りきらない件数など）は倍率で変わり、帯の高さが変わると全体の縮尺も
+      動く——そのまま使うと、寄るたびにマウスの下の点がずれる（実測 11〜22mm）。
+      器の大きさが変わったら取り直す。 */
+   const lk = D3.cutLock;
+   if ((D3.cutZoom || 1) > 1 && lk && lk.w === w && lk.h === h) { fit = lk.fit; offPx = lk.off; }
+   else D3.cutLock = { fit, off: offPx, w, h };
    const sc = fit / (D3.cutZoom || 1);                      /* 1pxあたりの世界の長さ */
    const vw = w * sc, vh = h * sc;
-   /* 図の中心を「空いている帯のあいだ」の中央へ寄せる（画面の下向きが正）。 */
-   const offPx = (topIn + (h - topIn - hb.bot) / 2) - h / 2;
    /* 拡大しているぶんの平行移動（§9.463）。画面の右・上へ、世界の長さで。 */
    const panX = D3.cutPanX || 0, panY = D3.cutPanY || 0;
    oc.left = -vw / 2 + panX; oc.right = vw / 2 + panX;

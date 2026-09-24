@@ -382,6 +382,18 @@
   const n=Number(s.replace(/,/g,''));
   return Number.isFinite(n)?numFmt.format(n):s;
  }
+ /* その欄の既定値（§9.463）。**答えはサーバー**（`maintState.meta[def.defaultsKey]`）
+    ——画面へ既定値を書き写さない（§9.163）。真偽の既定は選択肢の言葉へ直す
+    （`options`の先頭＝真）。`defaultOf`は保存の鍵と既定の鍵が違う欄のため。 */
+ function mmDefaultOf(f){
+  const def=currentDef();
+  const all=def&&def.defaultsKey&&maintState.meta?maintState.meta[def.defaultsKey]:null;
+  if(!all||!f)return null;
+  const v=all[f.defaultOf||f.k];
+  if(v==null)return null;
+  if(typeof v==='boolean')return (f.options||[])[v?0:1]??null;
+  return v;
+ }
  function numRaw(v){
   const s=String(v??'').replace(/,/g,'').trim();
   return s;
@@ -392,6 +404,11 @@
   const attrs=[`data-step="${esc(String(step))}"`];
   if(f.min!=null)attrs.push(`data-min="${esc(String(f.min))}"`);
   if(f.max!=null)attrs.push(`data-max="${esc(String(f.max))}"`);
+  /* **空欄のとき効いている値を薄字で出す**（§9.463、`defaultsKey`を持つマスタ）。
+     空欄＝既定に従う、なので、何が効いているのかを欄の中で言う（推測させない）。
+     ＋／−も既定値から動かす（0から動かすと、押しただけで既定から大きく外れる）。 */
+  const dv=mmDefaultOf(f);
+  if(dv!=null&&dv!==''){attrs.push(`placeholder="既定 ${esc(String(dv))}"`);attrs.push(`data-default="${esc(String(dv))}"`)}
   if(extraAttr)attrs.push(extraAttr);
   return `<span class="mm-num" data-num-wrap>
     <button type="button" class="mm-num-btn" data-num-step="-1" tabindex="-1" aria-label="${esc(f.label)}を減らす">−</button>
@@ -1020,7 +1037,14 @@
      <small class="mm-field-hint">クリックで追加・×で削除。未選択なら制限なし（全設備で表示対象）。</small></div>`;
    }
    if(f.type==='select'){
-    const opts=(f.options||[]).map(o=>`<option value="${esc(o)}"${o===val?' selected':''}>${esc(o||'（指定なし）')}</option>`).join('');
+    /* 既定を持つ欄は**「（既定）◯◯」を先頭に置く**（§9.463）。無いと、触らずに
+       保存しただけで既定の値が**その行の値として固定され**、あとで既定を変えても
+       届かなくなる。登録が無い（NULL）ときはこの札が選ばれている。 */
+    const dv=mmDefaultOf(f);
+    const hasDef=dv!=null&&dv!=='';
+    const cur=hasDef&&editing&&f.defaultOf&&editing[f.defaultOf]==null?'':val;
+    const opts=(hasDef?`<option value=""${cur===''?' selected':''}>（既定）${esc(String(dv))}</option>`:'')
+     +(f.options||[]).map(o=>`<option value="${esc(o)}"${o===cur?' selected':''}>${esc(o||'（指定なし）')}</option>`).join('');
     /* **説明を書いたら出す**（§9.222 ⑧）。ここだけ`f.hint`を捨てていたので、
        マスタ定義に書いた注意書きが選択欄でだけ黙って消えていた。 */
     return `<label class="mm-field">${fieldLabelHtml(f)}<select data-field="${f.k}">${opts}</select>`
@@ -1716,6 +1740,10 @@
      （`mm-form-page`と同じ作法・§9.222 ⑤）。 */
   const dlg=modal.querySelector('.mm-editor-dialog');
   if(dlg)dlg.classList.toggle('is-builder',def.fields.some(f=>f.type==='field-builder'));
+  /* **1欄1行の並び**（§9.463、`formLayout:'rows'`）。ラベル｜入力｜説明の3列で、
+     どの段でも入力の左端が1本にそろう。折り返す横並びだと、欄ごとに幅
+     （ラベル・説明の長さ）が違い、行ごとに入力の位置がばらばらになる。 */
+  if(dlg)dlg.classList.toggle('is-rows',def.formLayout==='rows');
   maintState.editing=item?Object.assign({},item):null;
   const editing=maintState.editing;
   $('#maintEditorEyebrow').textContent=def.label+'マスタ';
@@ -1724,7 +1752,10 @@
      「* を編集」としか出ず、どの塊を開いたのか分からない（親のマスタから
      直接この窓へ渡れるようにしたぶん、名前が出ないと迷子になる）。 */
   const titleKey=def.titleKey||def.cols[0].k;
-  $('#maintEditorTitle').textContent=editing?`${String(editing[titleKey]??'')||'(名称なし)'} を編集`:`${def.label}を新規登録`;
+  /* 題を組み立てる口を持つマスタはそれに従う（§9.463）。刃組基準値は1設備1行なので
+     **設備の名前**が行の名前——先頭の列（有効長）の数で「1599.6 を編集」と出していた。 */
+  $('#maintEditorTitle').textContent=typeof def.editTitle==='function'?def.editTitle(editing)
+   :editing?`${String(editing[titleKey]??'')||'(名称なし)'} を編集`:`${def.label}を新規登録`;
   $('#maintEditorHint').textContent=editing
    ?'キー項目（名称・区分など）も変更できます。保存すると同じIDのまま更新されます。'
    :'必須(*)を入力して登録します。';
@@ -1746,6 +1777,7 @@
   bindEquipmentPickers(form);bindInputHelpers(form);bindMaintTabs(form);bindMoreToggles(form);
   if(typeof def.bindAside==='function')def.bindAside(form);
   modal.hidden=false;
+  mmHoldTabHeight(form);
   /* **最初のフォーカスに「候補が出る欄」を選ばない**（§9.221 ④）。タグ入力は
      フォーカスした時点で候補の一覧を開くので、窓を開けた瞬間にその一覧が
      **他の欄の上へかぶさる**——欄を横に並べるようにしたぶん、下ではなく
@@ -1760,6 +1792,24 @@
              ||form.querySelector('[data-equipment-search]');
    if(first)first.focus();
   });
+ }
+ /* **段を切り替えても窓の大きさを変えない**（§9.463、利用者の指摘「モーダル
+    サイズがころころ変わり安定せず」）。窓は画面の中央に置くので、段ごとに
+    中身なりの高さだと、切り替えるたびに上下の端が跳ねる（実測: 高さ 428〜927px・
+    上端が249px動いた）。いちばん高い段の高さを測って器へ与える——窓より高い段は
+    器の中でスクロールする（`max-height`は窓が持つ）。盤の段（`is-fill`）は
+    もともと器いっぱいなので触らない。 */
+ function mmHoldTabHeight(form){
+  const body=form&&form.querySelector('.mm-tabbody');
+  if(!body||body.querySelector('.mm-tabpanel.is-fill'))return;
+  body.style.minHeight='';
+  const panels=[...body.querySelectorAll('.mm-tabpanel')];
+  const was=panels.map(p=>p.hidden);
+  let top=0;
+  panels.forEach(p=>{p.hidden=false});
+  panels.forEach(p=>{top=Math.max(top,p.scrollHeight)});
+  panels.forEach((p,i)=>{p.hidden=was[i]});
+  if(top>0)body.style.minHeight=top+'px';
  }
  function closeMaintEditor(){
   const modal=$('#maintEditorModal');if(!modal||modal.hidden)return;
@@ -1997,7 +2047,7 @@
    const bump=dir=>{
     const raw=numRaw(input.value);
     // 空欄から「＋」を1回押したら1目盛(step)になるのが素直。0を起点にする。
-    const base=raw===''?0:Number(raw);
+    const base=raw===''?(input.dataset.default!=null&&input.dataset.default!==''?Number(input.dataset.default):0):Number(raw);
     const n=clamp((Number.isFinite(base)?base:0)+dir*step);
     // 小数のstepで 0.30000000000000004 のような値にしない
     const fixed=Number(n.toFixed(6));

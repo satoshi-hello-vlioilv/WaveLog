@@ -124,14 +124,29 @@ def api_db_mirror():
                 replaceStats=atomic_io.stats(),
                 items=db_mirror.status())
 
+@bp.get('/api/db-mirror/source')
+def api_db_mirror_source():
+ """その一覧の元データの素性だけ（§9.463）。**共有を見に行かない**——背景の周回が
+ 控えた答えを返すだけなので軽い。画面はこれを間隔を置いて聞き、写しが
+ 新しくなっていれば一覧を読み直す／手動なら「新しい版あり」と出す。"""
+ from .. import db_mirror
+ k=str(request.args.get('db') or '').strip()
+ if k not in DBS:return jsonify(error='データソースがありません。'),404
+ try:path=cfg(k).get('path')
+ except Exception as _e:quiet('読み込み先が決まっていない（元の時刻は出さない）',_e);path=None
+ return jsonify(ok=True,source=db_mirror.source_info(k,path))
+
 @bp.post('/api/db-mirror/refresh')
 def api_db_mirror_refresh():
- """今すぐ写し直す(一覧の「再読込」から呼ぶ)。**待たせない**——
- 背景スレッドを起こすだけで、結果は次の取得から反映される。"""
+ """今すぐ写し直す(一覧の「再読込」から呼ぶ)。`wait`なら写し終えるまで待って
+ 結果を返す（画面はそれを字で言う・§9.463）。`force`は元の時刻と大きさが同じでも
+ 写し直す——共有の時刻は手元に控えられて遅れることがあり、「変わっていない」と
+ 誤って読むと押した人の期待（最新を見たい）に応えられない。"""
  from .. import db_mirror
  x=body({'wait': flag, 'force': flag}, silent=True, strict=True)
  if x.flag('wait'):
-  return jsonify(ok=True,results=db_mirror.refresh_all(force=x.flag('force')))
+  return jsonify(ok=True,mode=db_mirror.update_mode(),
+                 results=db_mirror.refresh_all(force=x.flag('force')))
  db_mirror.wake()
  return jsonify(ok=True,queued=True)
 

@@ -11,6 +11,10 @@ run('test_listcache: 一覧の写しと鮮度・再読込',async({page,rec,W,idl
  page.on('request',r=>{const u=r.url();if(u.includes('/api/table?'))calls.push('table');
    else if(u.includes('/api/tables?'))calls.push('tables')});
  const since=()=>{const n=calls.length;return ()=>calls.slice(n)};
+ /* 写し直しの頼み方（§9.463）。本文を控えて`force`／`wait`を見る。 */
+ const mirrorPosts=[];
+ page.on('request',r=>{if(r.url().includes('/api/db-mirror/refresh')){
+  try{mirrorPosts.push(JSON.parse(r.postData()||'{}'))}catch(e){mirrorPosts.push({})}}});
 
  await page.goto('http://127.0.0.1:5029/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('[data-db-key="SIKALOTNOW"]',{timeout:15000});
@@ -68,6 +72,14 @@ run('test_listcache: 一覧の写しと鮮度・再読込',async({page,rec,W,idl
  rec('取り直しても元データの時刻は出たまま',fresh2.hidden===false,JSON.stringify(fresh2));
  rec('取り立てのときは「画面の写しは◯前」を言わない',
    !/画面に出ているのは/.test(fresh2.title),fresh2.title.slice(0,80));
+ /* §9.463（利用者の報告「再読み込み押しても任意に取りに行った感じがなく最新版化
+    されません。行ったのであれば動き(反応)が欲しい」）。**必ず写し直し**（`force`）、
+    **結果を字で返す**（写した／最新だった／写せなかった）。 */
+ rec('「再読込」は共有から必ず写し直す（force・待って結果を受け取る）',
+   mirrorPosts.some(b=>b.force===true&&b.wait===true),JSON.stringify(mirrorPosts));
+ const toast=await page.evaluate(()=>[...document.querySelectorAll('#toastArea .toast')].map(t=>t.textContent).join(' | '));
+ rec('取り込み直した結果を字で返す（元データの時刻つき）',
+   /元データ|一覧を読み直しました/.test(toast),toast.slice(0,160));
 
  /* --- 3.5 読み込みの秒数は「遅いときだけ」出す（§9.340、REVIEW 4-1 ④） ---
     作業スケジュールは§9.198で既にそうしていたのに、一覧だけ**常に出して**
