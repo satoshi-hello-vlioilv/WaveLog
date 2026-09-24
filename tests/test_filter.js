@@ -71,23 +71,26 @@ const shown=(id,what)=>W.until(page,a=>{const e=document.getElementById(a);retur
       ——固定配置の要素は`offsetParent`が必ず`null`になるので、出ていても
       「見えない」と読めてしまう（この網自身が1度それで落ちた）。 */
    const sg=g('filterSuggest');
-   return {ボタン:見える(g('filterAddCond')),欄:見える(g('filterTokenInput')),
+   const mn=g('filterMoreMenu');
+   return {ボタン:!!(g('filterAddCond')&&mn&&mn.contains(g('filterAddCond'))),欄:見える(g('filterTokenInput')),
            候補:!!sg&&!sg.hidden&&sg.childElementCount>0,
            一覧の検索欄:見える(g('search')),
            焦点:document.activeElement&&document.activeElement.id,
            字:(g('filterTokenSearch')||{}).value||''};
   });
   const c0=await condUi();
-  rec('はじめは「＋ 条件を追加」のボタンだけが出ている',
+  /* §9.468: 「条件を追加」は⋯の中へ畳んだ（主動線はプリセットとその場フィルタ）。 */
+  rec('はじめは欄が閉じていて、「条件を追加」は⋯の中にある',
       c0.ボタン===true&&c0.欄===false,JSON.stringify(c0));
   /* ③の本体。**同じ顔の欄を2つ同時に出さない。** */
   rec('検索欄の顔をした器は、同時にひとつだけ',
       c0.一覧の検索欄===true&&c0.欄===false,JSON.stringify(c0));
 
+  await page.click('#filterMoreBtn');await shown('filterAddCond','⋯が開く');
   await page.click('#filterAddCond');await shown('filterTokenInput','条件の欄が開く');
   const c1=await condUi();
   rec('押すと欄が開き、そのまま打てる（焦点が乗る）',
-      c1.欄===true&&c1.ボタン===false&&c1.焦点==='filterTokenSearch',JSON.stringify(c1));
+      c1.欄===true&&c1.焦点==='filterTokenSearch',JSON.stringify(c1));
   rec('開いた欄は器いっぱいに伸びない（中身なりの幅）',
       await page.evaluate(()=>{
        const w=document.getElementById('filterTokenInput').getBoundingClientRect().width;
@@ -98,12 +101,39 @@ const shown=(id,what)=>W.until(page,a=>{const e=document.getElementById(a);retur
   await page.fill('#filterTokenSearch','ロット');
   await W.until(page,()=>{const s=document.getElementById('filterSuggest');return !!s&&!s.hidden&&s.childElementCount>0},null,{ms:5000,what:'候補が出る'});
   rec('打つと候補が出る（機能は消えていない）',(await condUi()).候補===true);
-  await page.keyboard.press('Escape');await shown('filterAddCond','欄が畳まれ「＋ 条件を追加」へ戻る');
+  await page.keyboard.press('Escape');
+  await W.until(page,()=>{const e=document.getElementById('filterTokenInput');return !!e&&e.hidden},null,{ms:5000,what:'欄が畳まれる'});
   const c2=await condUi();
   /* 畳むときは**打ちかけの字も捨てる**——条件はまだ足っていないので、
      残すと次に開いたとき「何か効いている」と読める。 */
   rec('Escで畳み、打ちかけの字も残さない',
-      c2.ボタン===true&&c2.欄===false&&c2.字==='',JSON.stringify(c2));
+      c2.欄===false&&c2.字==='',JSON.stringify(c2));
+
+  /* ---- 0b) 開いた窓の閉じ方（§9.468、利用者の指摘「一度表示したフィルタ機能も
+     閉じ方がわかりにくかった」） ----
+     以前は「条件を作る」を閉じる手立てが窓の中に無く（⋯を開き直して「閉じる」）、
+     Escも効かなかった。**窓の中に ✕・Escで閉じる・同時に開くのは1つ**を見る。 */
+  const opened=()=>page.evaluate(()=>({
+   その場:!document.getElementById('filterAdhocRow').hidden,
+   作る:!document.getElementById('filterBody').hidden}));
+  await page.click('#filterAdhocToggle');
+  await W.until(page,()=>!document.getElementById('filterAdhocRow').hidden,null,{ms:5000,what:'その場フィルタが開く'});
+  rec('その場フィルタの窓の中に閉じるボタンがある',
+      await page.evaluate(()=>{const b=document.getElementById('filterAdhocClose');return !!b&&b.getClientRects().length>0}));
+  await page.keyboard.press('Escape');
+  await W.until(page,()=>document.getElementById('filterAdhocRow').hidden,null,{ms:5000,what:'Escでその場フィルタが閉じる'});
+  rec('その場フィルタはEscで閉じる',(await opened()).その場===false);
+  await page.click('#filterAdhocToggle');
+  await W.until(page,()=>!document.getElementById('filterAdhocRow').hidden,null,{ms:5000,what:'その場フィルタを開き直す'});
+  await page.click('#filterMoreBtn');await shown('filterToggle','⋯が開く');
+  await page.click('#filterToggle');
+  await W.until(page,()=>!document.getElementById('filterBody').hidden,null,{ms:5000,what:'条件を作るが開く'});
+  const both=await opened();
+  rec('開くのは同時に1つだけ（条件を作るを開くとその場フィルタは閉じる）',
+      both.作る===true&&both.その場===false,JSON.stringify(both));
+  await page.click('#filterBodyClose');
+  await W.until(page,()=>document.getElementById('filterBody').hidden,null,{ms:5000,what:'✕で条件を作るが閉じる'});
+  rec('条件を作るは窓の中の ✕ で閉じる',(await opened()).作る===false);
 
   /* ---- 1) 適用と登録が別々に効く ---- */
   /* §9.286 ①: たまにしか使わない入口は`⋯`の浮きメニューへ畳んだ。**消していない**ので、開いてから押す。 */

@@ -112,7 +112,7 @@ run('test_colkeep: 一覧の表示列が消えない／表示中・非表示中�
   /* ==========================================================
      2) 列の設定パネルから保存しても落とさない
      ========================================================== */
-  await page.click('#listColumnBtn');
+  await W.listView(page);await page.click('#listColumnBtn');
   await page.waitForSelector('#listColumnPanel .lc-item',{timeout:10000});
   /* パネルには**出せない列は並ばない**（並べても押せない行になる）。
      そのうえで保存すると並びから消える、というのが直す前の姿。 */
@@ -132,7 +132,7 @@ run('test_colkeep: 一覧の表示列が消えない／表示中・非表示中�
   /* ==========================================================
      3) 「表示中の列」「非表示中の列」の札（§9.248 ④）
      ========================================================== */
-  await page.click('#listColumnBtn');
+  await W.listView(page);await page.click('#listColumnBtn');
   await page.waitForSelector('#listColumnPanel .lc-item',{timeout:10000});
   const chips=await page.evaluate(()=>{
    const box=document.getElementById('lcOrigins');
