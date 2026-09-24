@@ -435,6 +435,35 @@ run('test_sctimecols: スケジュール表の列も列レイアウトマスタ�
   rec('計算式がサーバーに残る',
       /ロット番号/.test((s5.formulas||{})['計算テスト']||''),JSON.stringify(s5.formulas));
 
+  /* ---- 13a. 表示名を付けても、元の見出しの言葉で書いた式が効く（§9.464、利用者の報告
+       「元の列の名前を変えると、使えなくなってしまう。表示列の名前を変更しても、元の名前の
+       列で条件を作ったり使えるように」） ----
+     以前は`timelineKeyByName()`が「キー → いまの見出し」だけを見ていたので、ロット番号の
+     列に表示名を付けた途端に`[ロット番号]`が引けず、式の結果が「★」だけになった。
+     **素通り注意**: 「★で始まる」だけでは空の結果でも通る——★の後ろに値が在るかを見る。 */
+  const names0=(s5.names&&typeof s5.names==='object')?s5.names:{};
+  await post('/api/column-layout-master',{target:TARGET,names:Object.assign({},names0,{lotNo:'LOT番号X'}),user_id:'test'});
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForSelector('#openSchedule',{timeout:20000});
+  await W.booted(page);
+  await page.click('#openSchedule');
+  await page.waitForSelector('.sc-row-line [data-col="計算テスト"]',{timeout:25000});
+  await W.settleFlags(page);await paint();
+  const renamed=await page.evaluate(()=>({
+   head:[...document.querySelectorAll('.sc-row-head [data-col="lotNo"]')].map(x=>x.textContent.trim()).join(''),
+   vals:[...document.querySelectorAll('.sc-row-line [data-col="計算テスト"]')]
+     .map(x=>x.textContent.trim()).filter(Boolean).slice(0,3)}));
+  rec('表示名を付けても、元の見出しの言葉（[ロット番号]）で書いた式が値を引く',
+      renamed.vals.length>0&&renamed.vals.every(t=>t.startsWith('★')&&t.length>1),
+      JSON.stringify(renamed));
+  await post('/api/column-layout-master',{target:TARGET,names:names0,user_id:'test'});
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForSelector('#openSchedule',{timeout:20000});
+  await W.booted(page);
+  await page.click('#openSchedule');
+  await page.waitForSelector('.sc-row-line',{timeout:25000});
+  await W.settleFlags(page);await paint();
+
   /* ---- 13b. 計算式の列にも読み替え（表示ルール）が効く（§9.234 ⑥、利用者の報告
        「スケジュールのルール作成で、他の列のみで構成されたルールを適用した場合、
         表示が何も出ません」） ----

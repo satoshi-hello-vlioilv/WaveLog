@@ -136,8 +136,9 @@
  function operandHtml(side,which,ri,ci){
   const kind=side?.kind||(which==='left'?'self':'value');
   const cols=srcColumns();
-  const kinds=which==='left'?[['self','この列'],['column','他の列']]
-                            :[['value','固定値'],['column','他の列']];
+  /* **式**（§9.464）: 抜き出し・変換してから比べる。中身は式の列と同じ`WL.formula`。 */
+  const kinds=which==='left'?[['self','この列'],['column','他の列'],['calc','式']]
+                            :[['value','固定値'],['column','他の列'],['calc','式']];
   return `<select class="lr-kind" data-row="${ri}" data-cond="${ci}" data-side="${which}">${
     kinds.map(([v,t])=>`<option value="${v}"${kind===v?' selected':''}>${t}</option>`).join('')
    }</select>${kind==='column'
@@ -147,7 +148,23 @@
     :kind==='value'
      ?`<input type="text" class="lr-val" data-row="${ri}" data-cond="${ci}" data-side="${which}"
         value="${esc(side?.value||'')}" placeholder="00" autocomplete="off">`
-     :''}`;
+     :kind==='calc'
+      ?`<input type="text" class="lr-val lr-expr" data-row="${ri}" data-cond="${ci}" data-side="${which}"
+         value="${esc(side?.expr||'')}" placeholder="extract([この列],'[0-9]+')" autocomplete="off"
+         spellcheck="false" title="${esc(calcHint(side?.expr))}"><small class="lr-expr-why">${esc(calcWhy(side?.expr))}</small>`
+      :''}`;
+ }
+ /* 式が読めるか（§9.464）。**書いている最中に理由を字で言う**——読めない式の条件は
+    当たらないので、黙っていると「当たらない理由」を探すことになる。 */
+ function calcWhy(expr){
+  if(!String(expr||'').trim())return '式を入れてください';
+  const c=WL.formula?WL.formula.check(expr):{ok:false,error:'式の部品を読めません'};
+  return c.ok?'':c.error;
+ }
+ function calcHint(expr){
+  const why=calcWhy(expr);
+  return (why?why+'\n':'')+'[この列]＝この列の値、[列名]＝他の列の値。'
+   +'mid・find・replace・extract・split・hankaku などで抜き出し・変換してから比べます';
  }
  const labelOf=c=>{
   /* **口が呼び名を持っていればそちらが先**（§9.234 ⑥）——スケジュール表の
@@ -155,6 +172,10 @@
      何の項目か分からない（§9.120と同じ話）。 */
   if(panelSrc&&typeof panelSrc.labelOf==='function'){
    const lb=panelSrc.labelOf(c);
+   /* 表示名を付けた列は**元の見出しの言葉も添える**（§9.464）——元の名前で書いた
+      条件・式も当たるので、どの列のことかを両方の名前で読めるようにする。 */
+   const base=typeof panelSrc.baseLabelOf==='function'?panelSrc.baseLabelOf(c):'';
+   if(lb&&base&&lb!==base)return `${lb}（元: ${base}）`;
    if(lb&&lb!==c)return `${lb}（${c}）`;
   }
   const t=(panelSrc&&typeof panelSrc.target==='function')?panelSrc.target()
@@ -198,7 +219,8 @@
     <div class="lr-row-then">
      <span class="lr-conj">→ 表示</span>
      <input type="text" class="lr-text" data-row="${ri}" value="${esc(row.text||'')}"
-      placeholder="元の値のまま" autocomplete="off">
+      placeholder="元の値のまま（=で始めると式）" autocomplete="off"
+      title="空欄なら元の値のまま。=で始めると式で作ります（例: =extract([この列],'[0-9]+') で数字の部分だけを出す）">
      <select class="lr-color" data-row="${ri}">${
       COLORS.map(([v,t])=>`<option value="${v}"${(row.color||'')===v?' selected':''}>${t}</option>`).join('')
      }</select>
@@ -254,15 +276,26 @@
   const condOf=e=>draft[n(e)].conditions[ci(e)];
   box.querySelectorAll('.lr-kind').forEach(el=>el.onchange=e=>{
    const c=condOf(e),side=e.currentTarget.dataset.side,kind=e.currentTarget.value;
-   c[side]=kind==='column'?{kind:'column',column:(S.columns||[])[0]||''}
-          :kind==='value'?{kind:'value',value:''}:{kind:'self'};
+   /* 「他の列」の既定は**この窓が並べている列**の先頭（§9.464）。仕掛一覧の列
+      （`S.columns`）を入れていたので、スケジュール表では選択肢に無い列が保存されていた。 */
+   c[side]=kind==='column'?{kind:'column',column:srcColumns()[0]||''}
+          :kind==='value'?{kind:'value',value:''}
+          :kind==='calc'?{kind:'calc',expr:''}:{kind:'self'};
    render();
   });
   box.querySelectorAll('.lr-col').forEach(el=>el.onchange=e=>{
    condOf(e)[e.currentTarget.dataset.side].column=e.currentTarget.value;render();
   });
   box.querySelectorAll('.lr-val').forEach(el=>el.oninput=e=>{
-   condOf(e)[e.currentTarget.dataset.side].value=e.currentTarget.value;
+   const sd=condOf(e)[e.currentTarget.dataset.side];
+   if(el.classList.contains('lr-expr')){
+    sd.expr=e.currentTarget.value;
+    const why=el.nextElementSibling;
+    if(why&&why.classList.contains('lr-expr-why'))why.textContent=calcWhy(sd.expr);
+    el.title=calcHint(sd.expr);
+    refreshCounts();return;
+   }
+   sd.value=e.currentTarget.value;
    /* **入力中は組み直さない。** 1文字ごとに作り直すと入力欄が作り替わって
       カーソルが飛ぶ。数え直しと「試してみる」だけを更新する。 */
    refreshCounts();

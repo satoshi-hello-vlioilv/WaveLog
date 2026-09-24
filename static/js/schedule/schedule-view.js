@@ -4394,8 +4394,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const t=timelineTarget();
   const named=t?WL.columnLayout.label(t,k):k;
   if(named&&named!==k)return named;
-  const d=SC_COL_MAP.get(k);
-  return d?d.label:contentItemLabel(k);
+  return scBaseLabel(k);
  }
  /* 選べる列すべて（隠しているものも含む）。設定パネル・右クリックメニューが
     使う。既定は「予定そのもの → 内容 → 実績・操作」の作業順(§14)。 */
@@ -4445,12 +4444,26 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  }
  /* 式の中の`[名前]`を解く。**見出しの言葉→表示名→キー**の順に当てる
     （画面に出ている言葉で書けることが値打ち）。 */
+ /* **表示名を付けても、元の見出しの言葉で引ける**（§9.464、利用者の報告「元の列の名前を
+    変えると、使えなくなってしまう。表示列の名前を変更しても、元の名前の列で条件を作ったり
+    使えるように」）。以前は「キー → いまの見出し」だけで、`scColLabel()`は表示名があると
+    元の言葉（区分・ロット番号…）を**置き換えて**返すので、名前を付けた途端に
+    `[ロット番号]`の式や`区分`の条件が黙って効かなくなっていた（§9.207で約束した
+    「表示名→見出し→キー」に反していた）。引く順: キー → いまの表示名 → 元の見出しの
+    言葉 → 元の列名の別名（`aliases`。生カラム名で書いても当たる）。 */
+ function scBaseLabel(k){
+  const d=SC_COL_MAP.get(k);
+  return d?d.label:contentItemLabel(k);
+ }
  function timelineKeyByName(name){
   const want=String(name||'').trim();
   if(!want)return '';
   const all=timelineAllColumnKeys();
   if(all.includes(want))return want;
-  return all.find(k=>scColLabel(k)===want)||'';
+  return all.find(k=>scColLabel(k)===want)
+   ||all.find(k=>scBaseLabel(k)===want)
+   ||all.find(k=>{const a=(WL.base.aliases||{})[k];return Array.isArray(a)&&a.includes(want)})
+   ||'';
  }
  /* 式に渡す1行。**要る列だけ**作る（全列だと行数×列数の取り出しになる）。 */
  function timelineFormulaRow(e,cols){
@@ -10163,6 +10176,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
       （タイムラインの見出しが日本語なのに、設定画面だけ生のキーという
       ちぐはぐな状態になる）。表示名を付けていればそちらが勝つ。 */
    labelOf:k=>scColLabel(k),
+   /* 表示名を付けても元の見出しの言葉が見えるように（§9.464。条件の列の選択肢が添える）。 */
+   baseLabelOf:k=>scBaseLabel(k),
    /* 固定列は**予定そのものが持つ値**で、仕掛データの列ではない。
       分類と一言の説明を添える(§9.105。出どころを言う)。 */
    originOf:k=>(scIsFixedCol(k)||timelineIsFormulaKey(k))?'calc'

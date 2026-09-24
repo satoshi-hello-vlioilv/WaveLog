@@ -62,6 +62,20 @@ def main():
   rec('残った条件は正しい',got['conditions'][0]['right']['value']=='A')
   rec('行そのものは捨てない',got['text']=='残る')
 
+  # ---- 2b) 式の条件と「=式」の表示値（§9.464、利用者の指示「文字列からの抽出や変換処理も」）----
+  expr="num(extract([この列],'[0-9]+'))"
+  long_text='='+'concat('+','.join(['[a]']*60)+')'
+  mr.set_display_rule(c,'式',[
+   {'conditions':[{'left':{'kind':'calc','expr':expr},'op':'gt','right':{'kind':'value','value':'100'}},
+                  {'left':{'kind':'calc','expr':'   '},'op':'notEmpty'}],     # 空の式 → この条件だけ落とす
+    'text':long_text,'color':''},
+  ],'t')
+  got=mr.display_rules(c)['式'][0]
+  rec('式の条件を保存できる（空の式の条件だけを落とす）',
+      len(got['conditions'])==1 and got['conditions'][0]['left']=={'kind':'calc','expr':expr},
+      got['conditions'])
+  rec('「=」で始まる表示値は式の長さまで残す（120字で切らない）',got['text']==long_text,len(got['text']))
+
   # 色が選択肢に無ければ「色なし」へ倒す(保存を失敗させない)
   mr.set_display_rule(c,'色',[{'conditions':[cond('eq','X')],'text':'x','color':'まぶしい'}],'t')
   rec('知らない色は色なしへ倒す',mr.display_rules(c)['色'][0]['color']=='')

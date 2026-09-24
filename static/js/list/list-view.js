@@ -2048,6 +2048,29 @@ function renderGridInner(){
   try{colCalc.set(c,WL.formula.compile(src))}
   catch(e){colCalc.set(c,{run:()=>''})}
  });
+ /* **式と読み替えは、いまの表示名でも元の列名でも列を引ける**（§9.464、利用者の報告
+    「表示列の名前を変更しても、元の名前の列で条件を作ったり使えるように」）。行は
+    生の列名で持っているので、式・条件が**書いた名前のうち行に無いもの**だけを
+    `WL.columnLayout.keyByName()`で列へ当て、その名前で値を足した写しを渡す。
+    当てるのは描くたびに1回（行ごとに探さない）。書いた名前がどれも行に在るなら写しを作らない。 */
+ const nameKeys=(()=>{
+  const want=new Set();
+  colCalc.forEach(fn=>(fn.columns||[]).forEach(n=>want.add(n)));
+  colRule.forEach(rn=>{if(rn&&WL.displayRules)WL.displayRules.columnsUsed(rn).forEach(n=>want.add(n))});
+  const raw=S.columns||[],out=[];
+  want.forEach(n=>{
+   if(raw.includes(n))return;
+   const k=WL.columnLayout.keyByName(layoutTarget,raw,n);
+   if(k)out.push([n,k]);
+  });
+  return out;
+ })();
+ const namedRow=r=>{
+  if(!nameKeys.length||!r)return r;
+  const o=Object.assign({},r);
+  nameKeys.forEach(([n,k])=>{if(!(n in o))o[n]=r[k]});
+  return o;
+ };
  const numCol=c=>colFmt.get(c)?.kind==='number';
  /* 列幅は**セルを描く前に決める**(§9.94)。colgroupへ入れるだけでなく、
     「その幅に入り切らない値へtitleを付ける」判断にも使うため。 */
@@ -2061,7 +2084,7 @@ function renderGridInner(){
       :estimateColumnWidth(WL.columnLayout.label(layoutTarget,k),
                            // 計算で作る列は**計算した値**で幅を見積もる
                            // (生のr[k]は無いので、そのままだと見出しの幅になる)。
-                           widthSample.map(r=>colCalc.has(k)?colCalc.get(k).run(r):r[k]),
+                           widthSample.map(r=>colCalc.has(k)?colCalc.get(k).run(namedRow(r)):r[k]),
                            metrics.fs,metrics.padX))]));
  /* 番号・ボタンの列の揃え。**既定は今までの見え方**（選択/予定/#/分割/測定は
     それぞれCSSが中央や右にしていた）を`columnAlign`の既定に合わせて明示する
@@ -2232,8 +2255,9 @@ function renderGridInner(){
    /* 計算で作る列(§9.111 ⑦)は、その行の値から作ってから同じ道を通す
       ——書式・読み替え・省略記号の扱いをデータ側の列と分けない。 */
    const calc=colCalc.get(c);
-   const rawVal=calc?calc.run(r):r[c];
-   const out=WL.cellFormat.cell({raw:rawVal,format:colFmt.get(c),rule:colRule.get(c),row:r,column:c});
+   const nr=namedRow(r);
+   const rawVal=calc?calc.run(nr):r[c];
+   const out=WL.cellFormat.cell({raw:rawVal,format:colFmt.get(c),rule:colRule.get(c),row:nr,column:c});
    const raw=String(rawVal==null?'':rawVal);
    const cls=[numCol(c)?'col-num':'',WL.columnAlign.cellClass(layoutTarget,c,colFmt.get(c)?.kind||''),
               out.color?'cell-'+out.color:''].filter(Boolean).join(' ');
