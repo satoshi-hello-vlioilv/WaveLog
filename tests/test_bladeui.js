@@ -229,9 +229,22 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     }));
     /* **表はいつでも読める**——図の字は狭い区間では入らないので、
        落ちない置き場を1つ持つ（§CLAUDE 4 できないことを黙らない）。 */
-    rec('刃が作る寸法（内／外）が刃組表で読める',
-        shown.tbl.length > 0 && shown.tbl.every(t => /^[内外]\d/.test(t))
-        && shown.head.some(h => /刃の間隔/.test(h)), shown.tbl.join(' '));
+    /* §9.466（利用者の指示「内とか外とか作業者視点ではわかりづらいので、広いとか狭いとか
+       の表現にして」）。見出しも同じ語で言う（内々・外々の字を残さない）。 */
+    rec('刃が作る寸法（広い／狭い）が刃組表で読める',
+        shown.tbl.length > 0 && shown.tbl.every(t => /^(広い|狭い) \d/.test(t))
+        && shown.head.some(h => /刃の間隔/.test(h) && /広い/.test(h) && !/内々|外々/.test(h)),
+        shown.tbl.join(' '));
+    /* 「併せてゴムリングの場合は、大径と小径どっちがどっちかわかるように」。
+       **同じ行の字だけで**読めること（title は数えない）——広い＝小径・狭い＝大径。 */
+    const szRows = await page.evaluate(() => [...document.querySelectorAll('#bsTables tbody tr')]
+      .filter(tr => tr.querySelector('.bs-kgap') && tr.querySelector('.bs-ringid'))
+      .map(tr => ({ span: tr.querySelector('.bs-kgap').textContent.trim(),
+                    ring: tr.querySelector('.bs-ringid').textContent.trim() })));
+    rec('ゴムリングの行は大径／小径を字で言い、広い＝小径・狭い＝大径',
+        szRows.length > 0 && szRows.every(o => /^(大径|小径)/.test(o.ring)
+          && (/^広い/.test(o.span) ? /^小径/.test(o.ring) : /^大径/.test(o.ring))),
+        szRows.map(o => `${o.span}→${o.ring}`).join(' / '));
     rec('ゴムリングの径と色と大小を上の帯が言い切る',
         /大\s*\S*Φ\d+／小\s*\S*Φ\d+/.test(shown.chip), shown.chip);
 
@@ -3349,6 +3362,9 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
       + encodeURIComponent(EQ))).items || [])[0] || null;
     const VIEW_KEYS = ['viewDatumPos', 'viewLabelLeft', 'viewLabelRight'];
     let stdMade = null;
+    /* マスタへ書くのは**編集モード**（この節までにスケジュールモードへ切り替えてある。
+       そのままだと「現在のモードでは、この操作は実行できません」で弾かれる）。 */
+    await setMode('edit');
     try {
      const want = { viewDatumPos: '左', viewLabelLeft: 'ライン側から見る', viewLabelRight: '図面で見る' };
      const sv = await (await post(std0 ? '/api/bladeset-standard-master/update'

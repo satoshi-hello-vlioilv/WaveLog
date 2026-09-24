@@ -581,6 +581,8 @@ body.bs-mode .bs-shell{display:flex}
 /* ゴムリングの色・外径（§9.441）。**色は見本を添えて言い切る**——色名だけだと
    現物のどれかを思い出す必要がある（§CLAUDE 思い出させない）。 */
 .bs-ringid{white-space:nowrap}
+/* 大径／小径（§9.466）。**色見本より先に読む字**なので太字で前へ置く。 */
+.bs-ringsz{margin-right:var(--space-2)}
 .bs-ringdot{display:inline-block;width:.7em;height:.7em;margin-right:var(--space-1);
  border:1px solid var(--line);border-radius:var(--radius-xs);vertical-align:-1px}
 

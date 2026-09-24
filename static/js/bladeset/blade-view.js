@@ -1376,7 +1376,9 @@
     条幅に当たるのは、**どちらか一方の軸の内々と、もう一方の軸の外々**で、
     その2つが条幅をクリアランスの半分ずつ挟む（下バリなら上軸が内々・
     下軸が外々、上バリはその逆）。**どちらがどちらかは図の上で読めること**が
-    ここの狙いなので、数だけでなく`内`／`外`の字も添える。
+    ここの狙いなので、数だけでなく`広い`／`狭い`の字も添える（§9.466、利用者の指示
+    「内とか外とか作業者視点ではわかりづらいので、広いとか狭いとかの表現にして」。
+    内々＝製品幅＋クリアランス×2＝広い対、外々＝製品幅そのもの＝狭い対）。
 
     置き場は**記号の札のすぐ下**（その区間の中）。指し示す物の上に置くので
     引き出し線が要らず、隣の区間とも混ざらない（§9.430）。狭くて入らない
@@ -1389,11 +1391,13 @@
  function bladeSpan(len, w) {
   const tk = st.tk;
   return (Math.abs(len - w) <= Math.abs(len + 2 * tk - w))
-   ? { word: '内', v: len } : { word: '外', v: len + 2 * tk };
+   ? { word: SPAN_WORD.in, v: len } : { word: SPAN_WORD.out, v: len + 2 * tk };
  }
- /* 字は「内／外」＋値。**丸めは条幅と同じ2桁**（§9.413 の部材とは別物——
+ /* 呼び名の綴りはここ1箇所（見出し・図・拡大図・潤滑リングの説明が同じ語を使う）。 */
+ const SPAN_WORD = { in: '広い', out: '狭い' };
+ /* 字は「広い／狭い」＋値。**丸めは条幅と同じ2桁**（§9.413 の部材とは別物——
     これは割り付けの計算値なので、在庫の寸法名にはならない）。 */
- const spanText = p => `${p.word}${(+p.v).toFixed(2)}`;
+ const spanText = p => `${p.word} ${(+p.v).toFixed(2)}`;
  function drawZoneSpans(V, A, segs) {
   const half = V.dir * V.kw / 2;
   const pick = bladeSpan;
@@ -2280,16 +2284,16 @@
      <!-- **刃が作る寸法は表にも置く**（§9.434、利用者の指示「クリアランス分の
           計算が入った寸法で上下正確に刃の幅を示すラベル」）。図の上の字は
           狭い区間では入らないので、**必ず読める場所**をここに持つ。 -->
-     <th class="bs-sep" rowspan="2">刃の間隔<small>内＝刃の内々／外＝刃の外々</small></th>
+     <th class="bs-sep" rowspan="2">刃の間隔<small>${SPAN_WORD.in}＝製品幅＋クリアランス×2／${SPAN_WORD.out}＝製品幅</small></th>
      ${Ss.length ? `<th colspan="${Ss.length}" class="bs-sep">スペーサー</th>` : ''}
      ${Gs.length ? `<th colspan="${Gs.length + (res.finger ? 0 : 1)}" class="bs-sep">${holdLabel}</th>` : ''}
-     ${hasLube ? `<th rowspan="2" class="bs-sep bs-lubeh" title="刃を潤滑するリングです。広い側（内々）の刃の内側に両側1本ずつ入ります">潤滑リング<small>幅${R.lubeW}・Φ${R.lubeOd}/${R.lubeBore}</small></th>` : ''}
+     ${hasLube ? `<th rowspan="2" class="bs-sep bs-lubeh" title="刃を潤滑するリングです。${SPAN_WORD.in}側の刃の内側に両側1本ずつ入ります">潤滑リング<small>幅${R.lubeW}・Φ${R.lubeOd}/${R.lubeBore}</small></th>` : ''}
      ${hasHold ? `<th rowspan="2" class="bs-sep">板押さえの空き<small>${ringBand ? `刃のあいだ−${esc(holdLabel)}／${R.gapMin}〜${R.gapMax} が正` : `${esc(holdLabel)}で埋め切れない幅`}</small></th>` : ''}
      ${hasRem ? '<th rowspan="2" class="bs-sep bs-bad">スペーサーの端数<small>0 が正（出たら不具合）</small></th>' : ''}
     </tr>
     <tr><th class="bs-ax bs-sep">上軸</th><th class="bs-ax">下軸</th>
      ${Ss.map((x, i) => `<th class="bs-sz${i ? '' : ' bs-sep'}">${x}</th>`).join('')}
-     ${Gs.length && !res.finger ? '<th class="bs-sz bs-sep">色・外径</th>' : ''}
+     ${Gs.length && !res.finger ? '<th class="bs-sz bs-sep">径・色・外径</th>' : ''}
      ${Gs.map((x, i) => `<th class="bs-sz${i || !res.finger ? '' : ' bs-sep'}">${x}</th>`).join('')}</tr>
    </thead>`;
   /* 区分（ロット・屑条）はいちばん左の列にまとめて1回だけ示す（縦に伸ばさない）。 */
@@ -2318,7 +2322,11 @@
        ここは必ず読める（§9.434 と同じ「落ちない置き場」）。 */
     + (Gs.length && !res.finger
        ? `<td class="bs-num bs-sep bs-ringid" title="このゴムリングの色と外径です。`
-         + `色は外径そのもので、${r.c.ringT === 'big' ? '大径＝製品幅を作る側' : '小径＝広げた側'}です">`
+         + `色は外径そのもので、${r.c.ringT === 'big' ? `大径＝${SPAN_WORD.out}側（製品幅を作る刃）` : `小径＝${SPAN_WORD.in}側（広げた刃）`}です">`
+         /* **大径か小径かを字で言う**（§9.466、利用者の指示「ゴムリングの場合は、大径と
+            小径どっちがどっちかわかるように」）。同じ行の「刃の間隔」が広い／狭いを言うので、
+            広い＝小径・狭い＝大径が1行で読める。 */
+         + `<b class="bs-ringsz">${r.c.ringT === 'big' ? '大径' : '小径'}</b>`
          + `<span class="bs-ringdot" style="background:${esc(hexOf(r.c.od) || 'transparent')}"></span>`
          + `${esc(colorOf(r.c.od))}Φ${r.c.od}</td>` : '')
     + Gs.map((x, i2) => `<td class="bs-num${i2 || !res.finger ? '' : ' bs-sep'}">${num(r.c.G[x])}</td>`).join('')
