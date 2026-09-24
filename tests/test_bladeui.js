@@ -276,6 +276,30 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      alerts: [...document.querySelectorAll('#bsTables .bs-alert')]
        .map(x => x.textContent.replace(/\s+/g, ' ').trim()),
     }));
+    /* §9.492（利用者の指示「区分に幅だけでなく条数も…×N」「ゴムリングの数の部分にも色の●…潤滑の方も」）。
+       前: 区分は条幅だけ（×N 0件）・本数の欄に●0個。**条数は同じ割付から出ている**ことを見る
+       （区分の×N の合計＝見出しの「製品条」の本数）。 */
+    const tbl492 = await page.evaluate(() => {
+     const t = document.querySelector('#bsTables table.bs-g');
+     const ns = [...t.querySelectorAll('td.bs-grp .bs-gn')].map(x => +x.textContent.replace(/[^\d]/g, ''));
+     const kpi = [...document.querySelectorAll('#bsKpis .bs-kpi')].find(k => /製品条/.test(k.textContent));
+     const ringCnt = [...t.querySelectorAll('tbody tr')].flatMap(tr => {
+      const tds = [...tr.children];
+      const i0 = tds.findIndex(td => td.classList.contains('bs-ringid'));
+      if (i0 < 0) return [];
+      /* 径の欄のあとの本数の欄（潤滑の列を除く）で、数が入っているもの */
+      return tds.slice(i0 + 1).filter(td => td.classList.contains('bs-num') && !td.classList.contains('bs-lubec')
+        && !td.classList.contains('bs-sep') && /\d/.test(td.textContent));
+     });
+     const lubeCnt = [...t.querySelectorAll('td.bs-lubec')].filter(td => /\d/.test(td.textContent));
+     return { ns, strips: kpi ? +kpi.querySelector('b').textContent.replace(/[^\d]/g, '') : -1,
+              ringCnt: ringCnt.length, ringDot: ringCnt.filter(td => td.querySelector('.bs-ringdot')).length,
+              lubeCnt: lubeCnt.length, lubeDot: lubeCnt.filter(td => td.querySelector('.bs-lubedot')).length };
+    });
+    rec('刃組表の区分に条数（×N）が出て、合計が製品条の本数と一致する（§9.492）',
+        tbl492.ns.length > 0 && tbl492.ns.reduce((a, b) => a + b, 0) === tbl492.strips, JSON.stringify(tbl492));
+    rec('ゴムリング・潤滑の本数の欄にも色の●が付く（§9.492）',
+        tbl492.ringCnt > 0 && tbl492.ringDot === tbl492.ringCnt && tbl492.lubeDot === tbl492.lubeCnt, JSON.stringify(tbl492));
     rec('刃組表は「板押さえの空き」の列を持つ（スペーサーの端数とは別・§9.441）',
         tbl1.heads.some(h => /板押さえの空き/.test(h)), tbl1.heads.join('|').slice(0, 120));
     /* **0が正**なので、ふだんは列そのものが立たない（立っていたら中身を見る）。 */
@@ -1888,6 +1912,33 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         !!pk.dims && pk.dims.inside > 0 && pk.dims.inside + pk.dims.lead > 0,
         pk.dims ? `中 ${pk.dims.inside} / 引き出し ${pk.dims.lead} / 出さない ${pk.dims.off}`
                 : '読めない');
+    /* §9.492（利用者の指示「干渉するラベルがないなら…できるだけ対象物側に寄せて表示」）。前: 段は x の順に
+       1つおきに振り分けていたので、近い段が空いていても半分が外の段へ出た。 */
+    rec('断面図: 近い段が空いているのに外の段へ出た寸法の字は0（混んだ形・§9.492）',
+        !!pk.dims && !!pk.dims.farFree && pk.dims.farFree.sp + pk.dims.farFree.ring === 0,
+        JSON.stringify(pk.dims && {far:pk.dims.farFree,tiers:pk.dims.tiers,why:pk.dims.farWhy}));
+    /* 段の振り分けそのもの（`tierOf()`・§9.492）。網の材料の器では外の段の席が帯でふさがり、画像の形（拡大して
+       外の段が空いている）が再現しないので、**並びを直接与えて旧来の`i % n`と同じ物差しで比べる**。
+       物差し: ①外の段へ出た字の数（余裕があれば0が正） ②同じ段で元の位置のまま隣と重なる対の数（悪くしない）。 */
+    const tier492 = await page.evaluate(() => {
+     const B = window.WL.bladeSet, GAP = 4;
+     const mk = (n, step, half) => Array.from({ length: n }, (_, i) => ({ cx: 60 + i * step, half }));
+     const outer = ts => ts.filter(t => t > 0).length;
+     const clash = (items, ts) => { let c = 0; const last = {};
+      items.forEach((q, i) => { const t = ts[i], p = last[t];
+       if (p && q.cx - q.half < p.cx + p.half + GAP) c++; last[t] = q; }); return c; };
+     const cases = { 余裕: [mk(22, 80, 12), 2], 画像: [mk(11, 40, 12), 2], 混んだ: [mk(22, 13, 10), 3], 溢れる: [mk(30, 6, 10), 3] };
+     const out = {};
+     Object.entries(cases).forEach(([k, [items, n]]) => {
+      const old = items.map((_, i) => i % n), now = B.tierOf(items, n, GAP);
+      out[k] = { 外_旧: outer(old), 外_新: outer(now), 重_旧: clash(items, old), 重_新: clash(items, now) };
+     });
+     return out;
+    });
+    rec('段の振り分け: 余裕があれば全部いちばん近い段・混めば段を使い、重なりは旧来より増やさない（§9.492）',
+        tier492.余裕.外_新 === 0 && tier492.画像.外_新 === 0
+        && Object.values(tier492).every(v => v.重_新 <= v.重_旧) && tier492.混んだ.外_新 > 0,
+        JSON.stringify(tier492));
     /* **出しきれないものは出さない**（引き出し先も埋まっているとき）。
        全部出していたら、それは重なっているということ。 */
     /* ---- 寸法の字の段（§9.482、利用者の指示「寸法のラベルが小さいので1サイズ上げて」「今のサイズを小さい
@@ -2484,6 +2535,12 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
        半径方向に20mm＝24pxしかないので、広い側では**幅が23pxあっても縦に
        入らない**——そこは軸の帯の段へ引き出すのが正しい姿。見るのは
        「1つも落としていないこと」。 */
+    {
+     const d492 = await page.evaluate(() => (window.WL.bladeSolid.view() || {}).dims || {});
+     const far = d492.farFree || null;
+     rec('断面図: 近い段が空いているのに外の段へ出た寸法の字は0（広い形・§9.492）',
+         !!far && far.sp + far.ring === 0, JSON.stringify({ far, tiers: d492.tiers, why: d492.farWhy }));
+    }
     rec('広い側の拡大図でも寸法を1つも落とさない',
         !!zw && zw.off === 0, zw ? `出せなかった ${zw.off}件` : '読めない');
     /* 断面図でも端の区間の面を**本物のクリック**で押すと拡大図（§9.487。前は光るだけ）。 */

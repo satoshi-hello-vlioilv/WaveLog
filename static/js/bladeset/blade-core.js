@@ -1488,6 +1488,23 @@
   return out;
  }
 
+ /* **引き出した字の段を決める**（§9.492、利用者の指示「干渉するラベルがないはずです。干渉する場合は段を付けて…
+    余裕があるケースはできるだけ対象物側に寄せて表示」）。`items`は x の順に並んだ `{cx, half}`（字の中心と半幅）、
+    `n`は段の数（0＝部材にいちばん近い段）、`gap`は字と字のあいだ。戻り値は字ごとの段。
+    **近い段から順に、左隣の字と`gap`を空けて並べられる最初の段**へ置く。どの段にも入らないときだけ、いちばん
+    空いている段へ置く（あとで`spread()`が押し広げる）。以前は x の順に**1つおき**に振り分けており（§9.429）、
+    余裕があっても半分が外の段へ出た。段の中は x の順のままなので、引き出し線は交差しない（§9.413）。 */
+ function tierOf(items, n, gap) {
+  const m = Math.max(1, n | 0), g = +gap || 0, right = new Array(m).fill(-Infinity);
+  return (items || []).map(q => {
+   const cx = +q.cx || 0, h = +q.half || 0;
+   let t = right.findIndex(r => r + g <= cx - h);
+   if (t < 0) t = right.indexOf(Math.min(...right));
+   right[t] = Math.max(cx + h, right[t] + g + 2 * h);
+   return t;
+  });
+ }
+
  WL.bladeSet = {
   defaultState, clearanceRate, clearanceFor, clearanceUsed, centerOf, datumOf, sideWord, floatStroke, fillWithin, spacerStep, ringRule, holdBand, applyStandards, applyBladePick, standardState,
   normalize, buildIndex, ringMeta, thOf, odFromTh, odOfType, ringType, oppBurr,
@@ -1497,7 +1514,7 @@
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum, cutFace,
   stripDesign, designByParent, condOf, sameCond, seedFromCond,
   pickCtx, pickGroup, condHits, selectable,
-  expand, materialRun, matShift, spread,
+  expand, materialRun, matShift, spread, tierOf,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP
  };
 })();
