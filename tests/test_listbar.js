@@ -56,6 +56,24 @@ H.run('test_listbar: 一覧の道具の帯は2段（§9.468）', async ({ page, 
   rec('設定（表示列・行間・並び・表示件数）は「☰ 表示」の中',
       await page.evaluate(() => ['listColumnBtn', 'listRowGap', 'listSort', 'pageSize']
        .every(id => document.getElementById('listViewPanel').contains(document.getElementById(id)))));
+  /* §9.476（利用者の指示「ポップオーバーメニュー内の文字のサイズの統一感…整列した感じや美観…表示列の
+     編集はよく使うので、アイコンを設定したりして特にわかりやすく」）。前（実測）: 字の大きさ3種（10/11/12px）・
+     表示列の入口はアイコン無しで小さい・並びが2段（49px）。 */
+  const look = await page.evaluate(() => {
+   const p = document.getElementById('listViewPanel');
+   const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+   const rows = [...p.querySelectorAll('.lvp-row')].filter(vis);
+   const body = rows.flatMap(r => [...r.querySelectorAll('*')].filter(e => vis(e) && [...e.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim())));
+   const ctl = rows.flatMap(r => [...r.querySelectorAll('button,select,.list-child-chip')].filter(vis));
+   const col = document.getElementById('listColumnBtn'), cr = col.getBoundingClientRect();
+   return { fs: [...new Set(body.map(e => getComputedStyle(e).fontSize))], h: [...new Set(ctl.map(e => Math.round(e.getBoundingClientRect().height)))],
+            first: p.firstElementChild === col, icon: !!col.querySelector('.fa-table-columns'),
+            biggest: ctl.every(e => { const r = e.getBoundingClientRect(); return r.width * r.height < cr.width * cr.height; }),
+            sortH: Math.round((document.getElementById('listSort').getBoundingClientRect() || {}).height || 0) };
+  });
+  rec('「☰ 表示」の中の字は1つの大きさ・欄は1つの高さ（前: 字3種）', look.fs.length === 1 && look.h.length === 1, JSON.stringify(look));
+  rec('表示列の編集はいちばん上・アイコン付き・パネルでいちばん大きい', look.first && look.icon && look.biggest, JSON.stringify(look));
+  rec('並びは1行（前: 2段 49px）', look.sortH === 0 || look.sortH <= 36, String(look.sortH));
   await page.keyboard.press('Escape');
   await W.until(page, () => document.getElementById('listViewPanel').hidden, null, { ms: 5000, what: 'Escで「表示」が閉じる' });
   rec('「☰ 表示」はEscで閉じる', true);

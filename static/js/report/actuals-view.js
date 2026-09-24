@@ -275,7 +275,8 @@
       <option value="work">現場歴</option><option value="cal">太陽暦</option></select></label>
     <label class="ac-search"><input type="search" id="acSearch" placeholder="ロット・検査番号で絞り込み" autocomplete="off"></label>
     <button type="button" id="acReload" class="ac-btn">再読込</button>
-    <button type="button" id="acColumns" class="ac-btn" title="この一覧に出す列・並び・幅・書式を決めます">表示列</button>
+    <!-- 表示列の入口は**どの画面でも同じ印**（§9.476・fa-table-columns。スケジュール表・仕掛一覧と同じ）。 -->
+    <button type="button" id="acColumns" class="ac-btn" title="この一覧に出す列・並び・幅・書式を決めます"><i class="fa-solid fa-table-columns" aria-hidden="true"></i> 表示列</button>
     <button type="button" id="acSheet" class="ac-btn ac-btn--primary" title="いま出ている実績を、日＋直ごとに1枚の操業データ表として刷ります">操業データ表</button>
     <button type="button" id="acReport" class="ac-btn" title="選んだ行の測定帳票をまとめて刷ります" disabled>選択した帳票 (<span id="acReportCount">0</span>)</button>
    </div>

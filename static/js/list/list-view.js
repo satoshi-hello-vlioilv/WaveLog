@@ -90,7 +90,10 @@ function applyRowGap(step){
     --row-pad-y は :root の値のまま(実際にこれで効かなかった)。 */
  grid.style.setProperty('--row-gap',v);
  grid.style.setProperty('--row-pad-y',v);
+ /* いまの行間を字でも言う（§9.476・つまみの位置だけでは「どれくらいか」を推測させる）。 */
+ const w=document.getElementById('listRowGapVal');if(w)w.textContent=ROW_GAP_WORDS[rowGapValue];
 }
+const ROW_GAP_WORDS={1:'いちばん詰める',2:'詰める',3:'ふつう',4:'広め',5:'いちばん広い'};
 async function saveRowGap(step){
  applyRowGap(step);
  const target=listLayoutTarget();if(!target)return;
@@ -2629,19 +2632,27 @@ function ensureListToolbar(){
   bar.innerHTML=`<button type="button" id="listViewBtn" class="list-toolbar-btn lt-view-btn"
     aria-haspopup="dialog" aria-expanded="false" aria-controls="listViewPanel"
     title="表示列・行間・並び・表示件数を決めます">☰ 表示<i aria-hidden="true">▾</i></button>
+   <!-- **よく使う「表示列の編集」をいちばん上・いちばん大きく**（§9.476、利用者の指示「表示列の編集は
+        よく使うので、アイコンを設定したりして特にわかりやすく」）。下の行は**同じ字の大きさ・同じ高さ・
+        同じ左端**（名前の列は固定幅）で並べる（「文字のサイズの統一感…整列した感じや美観」）。 -->
    <div class="wl-menu lt-view-panel" id="listViewPanel" role="dialog" aria-label="一覧の表示" hidden>
-    <div class="lvp-row"><span class="lvp-k">列</span>
-     <button type="button" id="listColumnBtn" class="list-toolbar-btn" role="button" title="この一覧に出す列・並び・幅・書式をまとめて設定します">☰ 表示列を決める…</button></div>
+    <button type="button" id="listColumnBtn" class="lvp-cols" title="この一覧に出す列・並び・幅・書式・読み替えをまとめて設定します">
+     <i class="fa-solid fa-table-columns" aria-hidden="true"></i>
+     <span class="lvp-cols-t"><b>表示列を編集</b><small>出す列・並び・幅・書式・読み替え</small></span>
+     <i class="fa-solid fa-chevron-right lvp-cols-go" aria-hidden="true"></i></button>
     <label class="lvp-row list-rowgap" title="行の間隔を変えます（この一覧ごとに覚えます）"><span class="lvp-k">行間</span>
-     <input type="range" id="listRowGap" min="1" max="5" step="1" value="3" aria-label="行の間隔"></label>
+     <span class="lvp-v"><input type="range" id="listRowGap" min="1" max="5" step="1" value="3" aria-label="行の間隔">
+     <output id="listRowGapVal" class="lvp-note" for="listRowGap">ふつう</output></span></label>
     <div class="lvp-row list-sort" id="listSort" role="group" aria-label="並び" hidden>
      <span class="lvp-k list-sort-label">並び</span>
+     <span class="lvp-v lvp-sort">
      <span class="list-sort-keys" id="listSortKeys"></span>
      <span class="list-sort-preset-wrap">
       <button type="button" id="listSortPresetBtn" class="list-toolbar-btn" role="button" aria-haspopup="true" aria-expanded="false"
        title="いつも使う並びを選ぶ・今の並びを保存する">★ いつも使う並び<i>▾</i></button>
-      <div class="list-sort-menu" id="listSortMenu" hidden></div>
      </span>
+     </span>
+     <div class="list-sort-menu" id="listSortMenu" hidden></div>
     </div>
     <label class="lvp-row list-pagesize" title="1ページに出す件数です（多くすると1回の読み込みが重くなります）">
      <span class="lvp-k">表示件数</span>
