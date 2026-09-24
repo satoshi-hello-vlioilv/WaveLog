@@ -1216,11 +1216,7 @@ window.WL.sortSpec=sortSpec;
    生の値のまま効かせる。書式と同じ方針)。 */
 const displayRules=(()=>{
  let cache=null,inflight=null,usageMap=null,optMap={};
- const num=v=>{
-  const t=String(v==null?'':v).trim().replace(/,/g,'');
-  if(!t||!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(t))return null;
-  const n=Number(t);return Number.isFinite(n)?n:null;
- };
+ /* 数の読み方は式の`cmp()`が持つ（§9.477・ここに写しを置かない）。 */
  /* 条件の片側を実際の値へ。self=この列 / column=他の列 / value=固定値 / calc=式。
     **他の列を見られる**ので「区分が3のときだけ○○と出す」が書ける。
     **式**（§9.464、利用者の指示「文字列からの抽出や変換処理もできるように」）は
@@ -1261,13 +1257,9 @@ const displayRules=(()=>{
   return side.value;
  }
  /* 両辺が数値として読めるときだけ数値で比べ、そうでなければ文字列で比べる
-    (実データは同じ項目でも '5' と '05' と '5.0' が混ざる)。 */
- function compare(a,b){
-  const x=num(a),y=num(b);
-  if(x!==null&&y!==null)return x<y?-1:x>y?1:0;
-  const s=String(a==null?'':a),t=String(b==null?'':b);
-  return s<t?-1:s>t?1:0;
- }
+    (実データは同じ項目でも '5' と '05' と '5.0' が混ざる)。**答えは式の`cmp()`の1本**（§9.477）——
+    ルールを式へ変換したとき同じ比べ方になるよう、ここでは書き写さない。 */
+ const compare=(a,b)=>WL.formula.cmp(a,b);
  function test(cond,row,selfCol){
   const L=operand(cond.left,row,selfCol);
   const ls=String(L==null?'':L);
@@ -1334,17 +1326,31 @@ const displayRules=(()=>{
     case 'formula':return L;
     case 'empty':return `trim(${L}) = ''`;
     case 'notEmpty':return `trim(${L}) <> ''`;
-    case 'eq':return `${L} = ${side(c.right)}`;
-    case 'ne':return `${L} <> ${side(c.right)}`;
-    case 'gt':return `${L} > ${side(c.right)}`;
-    case 'ge':return `${L} >= ${side(c.right)}`;
-    case 'lt':return `${L} < ${side(c.right)}`;
-    case 'le':return `${L} <= ${side(c.right)}`;
-    case 'contains':return `contains(${L}, ${side(c.right,true)})`;
-    case 'startsWith':return `startswith(${L}, ${side(c.right,true)})`;
-    case 'endsWith':return `endswith(${L}, ${side(c.right,true)})`;
-    case 'regex':return `match(${L}, ${side(c.right,true)})`;
-    case 'between':return `(${L} >= ${side(c.right)} and ${L} <= ${side(c.right2)})`;
+    /* 大小・等しいは**ルールと同じ比べ方**の`cmp()`で書く（§9.477。式の`=`は数を厳しく読むので、
+       '04' と 4 でルールと答えが割れた）。値は字のまま渡す（数に読めるかは`cmp`が決める）。 */
+    case 'eq':return `cmp(${L}, ${side(c.right,true)}) = 0`;
+    case 'ne':return `cmp(${L}, ${side(c.right,true)}) <> 0`;
+    case 'gt':return `cmp(${L}, ${side(c.right,true)}) > 0`;
+    case 'ge':return `cmp(${L}, ${side(c.right,true)}) >= 0`;
+    case 'lt':return `cmp(${L}, ${side(c.right,true)}) < 0`;
+    case 'le':return `cmp(${L}, ${side(c.right,true)}) <= 0`;
+    case 'between':return `(cmp(${L}, ${side(c.right,true)}) >= 0 and cmp(${L}, ${side(c.right2,true)}) <= 0)`;
+    /* 含む・始まる・終わるは、ルールでは**右辺が空なら当たらない**（式の関数は空で真）。正規表現は空でも当たる
+       （空の正規表現はどの字にも合う＝ルールも式も同じ）。 */
+    case 'contains':case 'startsWith':case 'endsWith':case 'regex':{
+     const fn={contains:'contains',startsWith:'startswith',endsWith:'endswith',regex:'match'}[c.op];
+     const r=c.right||{};
+     if(r.kind==='value'){
+      const v=String(r.value==null?'':r.value);
+      if(v===''&&c.op!=='regex')return '0';
+      /* 壊れた正規表現はルールでは「当たらない」。式に書くと式ぜんたいが読めなくなるので、偽にする。 */
+      if(c.op==='regex'){try{new RegExp(v)}catch(e){notes.add(`正規表現「${v}」は読めないので、この条件は「当たらない」にしました`);return '0'}}
+      return `${fn}(${L}, ${side(r,true)})`;
+     }
+     const R=side(r,true);
+     if(c.op==='regex')notes.add('正規表現を他の列・式から取る条件は、その値が正規表現として読めない行で式ぜんたいが空になります（ルールでは「当たらない」）');
+     return c.op==='regex'?`${fn}(${L}, ${R})`:`(len(${R}) > 0 and ${fn}(${L}, ${R}))`;
+    }
     default:notes.add(`知らない比べ方（${c.op}）は式にできません`);return '0';
    }
   };

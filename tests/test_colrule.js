@@ -473,6 +473,31 @@ run('test_colrule: 値の読み替え(§9.88 段4)', async ({page,rec,B,W,idle,p
   rec('列の見え方を渡さない画面では今までどおり（元のデータ）',r474.shownRaw==='b',r474.shownRaw);
   rec('ルールを式へ変換すると、どの行でも同じ答えになる',r474.conv.every(x=>x===1),JSON.stringify(r474.conv)+' '+r474.expr);
   rec('式にできない物（色）は注意として言う',r474.notes.some(t=>/色/.test(t)),r474.notes.join('／'));
+  /* §9.477: **境目の値**でもルールと変換した式が同じ答え（前: 286組のうち39組が割れた——'04' と 4・
+     '1,000' と 1000・右辺が空の「を含む」など。ルールは数を緩く読み、式の`=`は厳しく読むため）。
+     右辺が固定値のときと、**他の列**のとき（値が行ごとに変わる）の両方で突き合わせる。 */
+  const r477=await page.evaluate(()=>{
+   const OPS=['eq','ne','gt','ge','lt','le','between','contains','startsWith','endsWith','empty','notEmpty','regex'];
+   const P=[['04','4'],['4','4'],['4.0','4'],['1,000','1000'],[' 5','5'],['010','10'],['-3','2'],['10','9'],['10','9a'],
+            ['abc','ABC'],['abc','b'],['abc',''],['','0'],['',''],['a.c','a.c'],['abc','a.c'],['x','['],['+5','5'],['.5','0.5']];
+   const bad=[];let n=0;
+   for(const op of OPS)for(const [v,w] of P)for(const dyn of [false,true]){
+    const cond={left:{kind:'self'},op,right:dyn?{kind:'column',column:'R'}:{kind:'value',value:w}};
+    if(op==='between')cond.right2={kind:'value',value:'20'};
+    if(op==='empty'||op==='notEmpty')delete cond.right;
+    const rule=[{conditions:[cond],text:'Y',color:''},{conditions:[],text:'N',color:''}];
+    const row={V:v,R:w};
+    WL.displayRules.put('__b__',rule);
+    const h=WL.displayRules.match('__b__',row,'V');
+    WL.displayRules.put('__b__',null);
+    const a=h?h.text:'?';
+    let b;try{b=String(WL.formula.compile(WL.displayRules.toFormula(rule,{column:'V'}).expr).run(row))}catch(e){b='ERR'}
+    n++;if(a!==b&&!(dyn&&op==='regex'&&w==='['))bad.push(`${op}(${v},${w}${dyn?',列':''}) ${a}/${b}`);
+   }
+   return {n,bad};
+  });
+  rec('境目の値でも、ルールと変換した式が同じ答え（固定値・他の列の両方。前: 286組中39組が割れた）',
+      r477.bad.length===0,`${r477.n}組 ${r477.bad.slice(0,4).join(' ｜ ')}`);
 
   await page.evaluate(async a=>{await WL.displayRules.load(true);WL.listRules.open({name:a.rule,column:a.col})},{rule:RULE,col});
   await page.waitForSelector('#listRulePanel:not([hidden])',{timeout:8000});
@@ -515,7 +540,7 @@ run('test_colrule: 値の読み替え(§9.88 段4)', async ({page,rec,B,W,idle,p
    return {btn:!!b,got:window.__got,open:!document.getElementById('listRulePanel').hidden};
   },{rule:RULE,col});
   rec('「この列の作り方」へ入れると、式の列のいまの式を「この列」として包んだ式が渡る',
-      put.btn&&put.got==="if((concat([A],'0')) = '00', 'なし', (concat([A],'0')))",JSON.stringify(put));
+      put.btn&&put.got==="if(cmp((concat([A],'0')), '00') = 0, 'なし', (concat([A],'0')))",JSON.stringify(put));
   await page.evaluate(async()=>{WL.listRules.close();await WL.displayRules.load(true)});
 
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
