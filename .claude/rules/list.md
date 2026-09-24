@@ -1,4 +1,4 @@
-# 一覧と列（128件）
+# 一覧と列（129件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -12,6 +12,7 @@
 | --- | --- | --- |
 | 一覧の帯は**2段**（1段目＝すぐ使う操作・2段目＝常に見る状態）。決めたら触らない設定は「☰ 表示」のパネル | `test_listbar.js` | [§9.468](../../docs/decisions/9.468.md) |
 | 開いた絞り込みの窓は**その場で閉じる**（✕・Escはバーぜんたい・同時に1つ）。開いたら押せる最初の欄へ焦点 | `test_filter.js` | [§9.468](../../docs/decisions/9.468.md) |
+| **1回のEscで閉じるのは1枚**。閉じた層は`preventDefault`で名乗り、外側は`defaultPrevented`で止まる | `test_listbar.js`・`test_dbequip.js` | [§9.471](../../docs/decisions/9.471.md) |
 | 網が表示列・表示件数・並びを触るときは`W.listView(page)`で「☰ 表示」を開いてから（人と同じ道） | `test_listbar.js` | [§9.468](../../docs/decisions/9.468.md) |
 | 名前→列は`WL.columnLayout.keyByName()`の1箇所（元の名前→表示名→別名）。表示名を付けても元の名前で引ける | `test_colrule.js`・`test_sctimecols.js` | [§9.464](../../docs/decisions/9.464.md) |
 | 文字列の抽出・変換は`WL.formula`の関数（mid・extract・replace…）。正規表現は書いている最中に断る | `test_formula.js` | [§9.464](../../docs/decisions/9.464.md) |

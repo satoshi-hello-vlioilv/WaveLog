@@ -9,6 +9,7 @@
        （前: 5段・236px）
     2. 決めたら触らない設定（表示列・行間・並び・表示件数）は「☰ 表示」の
        浮きパネルの中。**名前の列の右（欄の左端）がそろう**・Escで閉じる
+       （**1回のEscで閉じるのは1枚だけ**・§9.471）
     3. 「☰ 表示」は1段目（絞り込みのバーの席）に居る
    ============================================================ */
 'use strict';
@@ -58,6 +59,18 @@ H.run('test_listbar: 一覧の道具の帯は2段（§9.468）', async ({ page, 
   await page.keyboard.press('Escape');
   await W.until(page, () => document.getElementById('listViewPanel').hidden, null, { ms: 5000, what: 'Escで「表示」が閉じる' });
   rec('「☰ 表示」はEscで閉じる', true);
+  /* **1回のEscで閉じるのは1枚だけ**（§9.471）。上に浮いた面を閉じた押下で、下の
+     条件の窓まで畳まない（畳むと一覧が伸びて、何が起きたか読めない）。 */
+  await page.evaluate(() => document.getElementById('filterToggle').click());
+  await W.until(page, () => !document.getElementById('filterBody').hidden, null, { ms: 5000, what: '条件の窓が開く' });
+  await W.listView(page);
+  await page.keyboard.press('Escape');
+  await W.until(page, () => document.getElementById('listViewPanel').hidden, null, { ms: 5000, what: 'Escで「表示」が閉じる（2回目）' });
+  rec('1回のEscで閉じるのは上の1枚だけ（下の条件の窓は開いたまま）',
+      await page.evaluate(() => !document.getElementById('filterBody').hidden));
+  await page.keyboard.press('Escape');
+  await W.until(page, () => document.getElementById('filterBody').hidden, null, { ms: 5000, what: 'もう1回のEscで条件の窓が閉じる' });
+  rec('もう1回のEscで条件の窓が閉じる', true);
  } finally {
   await setMode('edit');
  }
