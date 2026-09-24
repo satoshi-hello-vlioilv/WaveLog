@@ -1339,8 +1339,9 @@
   const w = fs * unit, h = fs * 1.5;
   let o = '';
   /* **端の区間（OS端・DS端）も重ねる的**（§9.463）。記号の札は持たない（端は刃組表の
-     行ではなく右の端部の表が受ける）ので、区間ぜんたいの面だけ。押しても拡大図は
-     開かない（`bs-bhit`ではなく`bs-ehit`）。 */
+     行ではなく右の端部の表が受ける）ので、区間ぜんたいの面だけ。**押すと拡大図**
+     （§9.487、利用者の指示「両端の部分についても同じように拡大図を」。§9.463の
+     「開かない」を撤回）。`bs-ehit`の名は「連動先が端部の表」の印として残す。 */
   const last = A.zones.length - 1, H0 = V.hOf(V.maxD);
   [['up', true, V.upC], ['lo', false, V.loC]].forEach(([side, upper, cy]) => {
    [[0, 'OS'], [last, 'DS']].forEach(([k, sd]) => {
@@ -1781,7 +1782,7 @@
     押した区間と同じ向きに見えるので、どちらの軸の話か迷わない。 */
  /* `axis`＝押した軸（`'up'`／`'lo'`）。**同じ記号は上下の両方に出る**ので、
     渡された軸の区間を選ぶ（§9.442）。その軸に無ければ元どおり先頭へ倒す。 */
- function zoomFigure(res, r, axis) {
+ function zoomFigure(res, r, axis, half) {
   const zs = r.zones || [];
   const want = axis === 'up' ? true : (axis === 'lo' ? false : null);
   const z0 = (want === null ? null : zs.find(z => !!z.upper === want)) || zs[0];
@@ -1811,35 +1812,46 @@
   const holdOut = ring ? (+ring.od || 0) / 2 : spacerR + 10;
   const maxR = Math.max(knifeR, spacerR, (ring || finger) ? holdOut : 0, 1);
   const k = ZOOM.rad / maxR;
-  const up = !!z0.upper;
-  const sg = up ? -1 : 1;                     /* 半径が増える向き（画面のy） */
-  /* 軸心の位置。下軸のときは**区間の寸法線が上に来る**ので、その字（寸法線の
+  /* **どちらの半分を描くかは「軸」とは別の軸**（§9.488、利用者の指示「上軸の上側は上側、上軸の下側は
+     下側、下軸の上側は上側、下軸の下側は下側の組付け図が出るように」）。押した位置が軸心より上なら
+     上半分（半径が上へ増える）、下なら下半分。押した位置が無い（描き直し等）ときは軸の向き（上軸＝上）。 */
+  const top = half ? half === 'top' : !!z0.upper;
+  const sg = top ? -1 : 1;                    /* 半径が増える向き（画面のy） */
+  /* 軸心の位置。下半分のときは**区間の寸法線が上に来る**ので、その字（寸法線の
      10px 上に置く）が器からはみ出さないだけの余白を足す（実測で切れた）。 */
-  const cl = up ? ZOOM.cap + ZOOM.rad : ZOOM.cap + ZOOM.dim + 10;
+  const cl = top ? ZOOM.cap + ZOOM.rad : ZOOM.cap + ZOOM.dim + 10;
   const Yr = rr => cl + sg * rr * k;
   const band = (r0, r1) => {
    const a = Yr(r0), b = Yr(r1);
    return { y: Math.min(a, b), h: Math.max(1, Math.abs(b - a)) };
   };
   /* 軸の並び。模式図と同じ順（OS側→DS側）で、`flip` のときだけ左右を返す。 */
+  /* **シートの側の端の残りは「隙間」ではない**（§9.487・§9.456）。スペーサーを基準面から
+     敷き詰め、反対の端はフローティングシートが押さえるので、残りは**押さえる量**——
+     端数の色で塞がず（塗らない・破線の枠だけ）、**軸の端の側**（刃から遠い側）へ置く。
+     基準面の側の残りは今までどおり「隙間」（0が正・§9.441）で、刃の側へ置く。 */
+  const seat = !!(r.end && z0.i === res.A.floatZ && P.rem > 0.001);
   const core = B.expand(P.spacer).map(mm => ({ mm, kind: 'spacer', name: 'スペーサー' }));
-  if (P.rem > 0.001) core.push({ mm: P.rem, kind: 'gap', name: '隙間' });
+  if (P.rem > 0.001 && !seat) core.push({ mm: P.rem, kind: 'gap', name: '隙間' });
   const run = st.flip ? core.slice().reverse() : core.slice();
   const knife = () => ({ mm: tk, kind: 'knife', name: '刃（厚み）' });
+  const press = () => ({ mm: P.rem, kind: 'seat', name: 'シートが押さえる' });
   const seq = [];
   if (knifeLeft) seq.push(knife());
+  if (seat && !knifeLeft) seq.push(press());
   run.forEach(q => seq.push(q));
+  if (seat && knifeLeft) seq.push(press());
   if (knifeRight) seq.push(knife());
-  const face = { spacer: PAL.spacer, gap: PAL.filler, knife: PAL.knife };
-  const edge = { spacer: PAL['spacer-edge'], gap: PAL['filler-edge'], knife: PAL['knife-edge'] };
-  const topR = { spacer: spacerR, gap: spacerR, knife: knifeR };
+  const face = { spacer: PAL.spacer, gap: PAL.filler, knife: PAL.knife, seat: 'none' };
+  const edge = { spacer: PAL['spacer-edge'], gap: PAL['filler-edge'], knife: PAL['knife-edge'], seat: PAL.label };
+  const topR = { spacer: spacerR, gap: spacerR, knife: knifeR, seat: spacerR };
   let x = ZOOM.sideL, body = '', zoneA = null, zoneB = null;
   seq.forEach(q => {
    const w = Math.max(1.2, q.mm * S), bd = band(shaftR, topR[q.kind]);
    q.a = x; q.b = x + w; q.cx = x + w / 2; q.bd = bd;
    body += `<rect x="${x.toFixed(1)}" y="${bd.y.toFixed(1)}" width="${w.toFixed(1)}"`
     + ` height="${bd.h.toFixed(1)}" fill="${face[q.kind]}" stroke="${edge[q.kind]}"`
-    + ` stroke-width="1.2"/>`;
+    + ` stroke-width="1.2"${q.kind === 'seat' ? ' stroke-dasharray="4 3" data-seat="1"' : ''}/>`;
    if (q.kind !== 'knife') { if (zoneA === null) zoneA = x; zoneB = x + w; }
    x += w;
   });
@@ -2060,7 +2072,7 @@
   /* 区間の寸法線は**軸心の反対側**（半断面の外）。図と重ならない。 */
   const spanY = cl - sg * ZOOM.dim;
   const spans = zoomSpan(zoneA, zoneB, spanY, `区間 ${P.len.toFixed(2)} mm`, PAL);
-  let vh = up ? spanY + 16 : cl + ZOOM.rad + 16;
+  let vh = top ? spanY + 16 : cl + ZOOM.rad + 16;
   /* 外の段が器からはみ出すぶん、器を広げる（上へはみ出すなら全体を下げる）。 */
   let grow = 0;
   if (Number.isFinite(minY) && minY < 2) { grow = 2 - minY; vh += grow; }
@@ -2072,7 +2084,7 @@
   const leadWmax = outs.filter(q => q.w > 0).reduce((m, q) => Math.max(m, q.w), 0);
   return {
    vh, dims: items.length, inside: inside.length + vert.length, lead, off, leadWmax,
-   axis: z0.upper ? 'up' : 'lo', zone: z0.i,
+   axis: z0.upper ? 'up' : 'lo', zone: z0.i, half: top ? 'top' : 'bottom',
    svg: grow ? `<g transform="translate(0 ${grow.toFixed(1)})">${body}${hold}${caps}${ln}${marks}${spans}</g>`
     : `${body}${hold}${caps}${ln}${marks}${spans}`,
    /* 図が言えないことだけを添える（§CLAUDE 8 同じ情報を2箇所に出さない）。 */
@@ -2106,7 +2118,14 @@
   if (P.lube) bits.push(`潤滑リング 幅${P.lube.w}×2（刃の内側の両端・Φ${P.lube.od}/Φ${P.lube.bore}）`);
   if (ring && P.gom.out.length) bits.push(`ゴムリングの空き ${P.holdRem.toFixed(2)}mm`);
   if (finger) bits.push(`フィンガー（板押さえ）は板の側へ入るので、ここでは軸の上下に置いています`);
-  if (P.rem > 0.001) bits.push(`スペーサーの端数 ${P.rem.toFixed(3)}mm（0 が正）`);
+  /* 端の区間（§9.487）。どちらの端か・残りは何かを言う——基準面の側の残りは隙間（0が正）、
+     反対の端の残りはフローティングシートが押さえる量（押さえ代まで）。 */
+  const seatEnd = !!(r && r.end && (r.zones || []).some(z => z.i === res.A.floatZ));
+  if (seatEnd) {
+   const stroke = BS().floatStroke(M);
+   bits.push(`${SW(r.endSide)}端はフローティングシートが押さえる端`
+     + (P.rem > 0.001 ? `（押さえる量 ${P.rem.toFixed(3)}mm・押さえ代 ${stroke}mm まで）` : ''));
+  } else if (P.rem > 0.001) bits.push(`スペーサーの端数 ${P.rem.toFixed(3)}mm（0 が正）`);
   return bits.join('　/　');
  }
  /* 拡大図の窓は**掴んで動かせる**（§9.437、利用者の指示「拡大図のポップオーバー
@@ -2150,6 +2169,7 @@
  function closeZoneZoom() {
   zoomBadge = '';
   zoomAxis = '';          // 次に開くときは押した軸から決め直す（§9.442）
+  zoomHalf = '';          // 半分も押した位置から決め直す（§9.488）
   const box = $('#bsZoom');
   if (box && !box.hidden) {
    box.hidden = true;
@@ -2159,26 +2179,62 @@
  }
  /* いま開いている拡大図の軸（§9.442）。描き直し（`syncZoneZoom`）でも
     **同じ軸のまま**開き直す——軸が飛ぶと、見ていたのと違う図が出る。 */
- let zoomAxis = '';
- function openZoneZoom(badge, hit, axis) {
+ let zoomAxis = '', zoomHalf = '';
+ /* 押した位置が**軸心より上か下か**（§9.488）。答えはここ1箇所——模式図の的も断面図の面も通す。
+    軸心の画面上の高さは**器が名乗る**（`data-cy`＝器の上端からの px。断面図は回せるので、箱の
+    真ん中が軸心とはかぎらない）。名乗らない器（模式図の的）は的の板（`.bs-zhit`・軸心で上下対称）の
+    真ん中。位置が読めなければ空（呼ぶ側が軸の向きへ倒す）。 */
+ function halfAt(hit, y) {
+  if (!hit || !Number.isFinite(y) || !hit.getBoundingClientRect) return '';
+  const el = (hit.querySelector && hit.querySelector('.bs-zhit')) || hit;
+  const r = el.getBoundingClientRect();
+  if (!(r.height > 0)) return '';
+  const cy = hit.dataset && hit.dataset.cy !== undefined && Number.isFinite(+hit.dataset.cy)
+   ? hit.getBoundingClientRect().top + +hit.dataset.cy : r.top + r.height / 2;
+  return y < cy ? 'top' : 'bottom';
+ }
+ /* 押した的を開くか閉じるか（§9.488）。**同じ区間・同じ軸・同じ半分**をもう一度押したら閉じる——
+    同じ区間の反対の半分を押したら、閉じずにその半分へ切り替える。 */
+ function toggleZoneZoom(badge, hit, e) {
+  const ax = hit && hit.dataset ? hit.dataset.axis || '' : '';
+  const hf = halfAt(hit, e ? e.clientY : NaN);
+  if (zoomBadge === String(badge) && zoomAxis === ax && zoomHalf === hf) { closeZoneZoom(); return; }
+  openZoneZoom(badge, hit, ax, hf);
+ }
+ /* 押した的から行を引く（§9.487）。**的の記号と軸の2つで引く**——端の行は上下軸で組み方が
+    違うと記号が`OS上`／`OS下`へ分かれるが、的（右の端部の表と連動する`[data-badge]`）は
+    `OS`のまま名乗る。記号だけで引くと、分かれた端では1つも当たらない。 */
+ function zoomRow(badge, ax) {
+  const all = (LAST.rows || []).concat(LAST.ends || []);
+  const b = String(badge);
+  const want = ax === 'up' ? true : (ax === 'lo' ? false : null);
+  const onAxis = q => want === null || (q.zones || []).some(z => !!z.upper === want);
+  return all.find(q => String(q.badge) === b && onAxis(q))
+   || all.find(q => q.end && q.endSide === b && onAxis(q))
+   || all.find(q => String(q.badge) === b) || null;
+ }
+ function openZoneZoom(badge, hit, axis, half) {
   const box = $('#bsZoom');
   if (!box || !LAST) return;
-  const r = (LAST.rows || []).concat(LAST.ends || [])
-   .find(q => String(q.badge) === String(badge));
-  if (!r) { closeZoneZoom(); return; }
   const ax = axis || (hit && hit.dataset ? hit.dataset.axis : '') || zoomAxis;
-  const fig = zoomFigure(LAST, r, ax);
+  const r = zoomRow(badge, ax);
+  if (!r) { closeZoneZoom(); return; }
+  const fig = zoomFigure(LAST, r, ax, half);
   if (!fig) { closeZoneZoom(); return; }
   zoomBadge = String(badge);
   zoomAxis = ax || '';
-  $('#bsZoomBadge').textContent = r.badge;
+  zoomHalf = half || '';
+  /* 端の字は**呼び方（`sideWord()`）で**出す（§9.472。鍵の`OS`／`DS`は素のまま）。 */
+  $('#bsZoomBadge').textContent = r.end ? String(r.badge).replace(r.endSide, SW(r.endSide)) : r.badge;
   setBc($('#bsZoomBadge'), r);
   $('#bsZoomTitle').textContent = r.end
-   ? `${r.name}の組み合わせ`
+   ? `${SW(r.endSide)}端の組み合わせ`
    : `ロット ${r.sg.lot}／条幅 ${(+r.sg.w).toFixed(2)} mm`;
+  /* **どの軸のどちら側を描いたか**を先頭で言う（§9.488・利用者の言葉「上軸の上側」のまま）。 */
+  const where = `${fig.axis === 'lo' ? '下軸' : '上軸'}の${fig.half === 'bottom' ? '下側' : '上側'}`;
   $('#bsZoomSub').textContent = r.end
-   ? '最外刃より外の区間です'
-   : `バリ ${r.sg.burr === 'down' ? '下' : '上'}／同じ組み方の区間 ${r.n} か所`;
+   ? `${where}／最外刃より外の区間です（刃は片側だけ・反対は有効幅の端）`
+   : `${where}／バリ ${r.sg.burr === 'down' ? '下' : '上'}／同じ組み方の区間 ${r.n} か所`;
   const svg = $('#bsZoomFig');
   svg.setAttribute('viewBox', `0 0 ${ZOOM.vw} ${fig.vh}`);
   /* 出すべき寸法の数と、その内訳（中に書いた／引き出した）。網が足し算を見る。 */
@@ -2189,6 +2245,7 @@
   /* **出しきれなかった数**（§9.432）。0でないときだけ足元の一言が言う。 */
   svg.dataset.off = String(fig.off || 0);
   svg.dataset.axis = String(fig.axis || '');
+  svg.dataset.half = String(fig.half || '');
   svg.dataset.zone = String(fig.zone);
   svg.innerHTML = fig.svg;
   $('#bsZoomNote').textContent = fig.note;
@@ -2212,7 +2269,7 @@
   box.style.setProperty('--bs-zoom-y', y.toFixed(1) + 'px');
  }
  /* 描き直したあとの追従。開いていなければ何もしない。 */
- const syncZoneZoom = () => { if (zoomBadge) openZoneZoom(zoomBadge, null, zoomAxis); };
+ const syncZoneZoom = () => { if (zoomBadge) openZoneZoom(zoomBadge, null, zoomAxis, zoomHalf); };
  /* ====================== 刃組表 ====================== */
  const K = () => BS().sizeKeys;
  function usesCell(row, k, sep) {
@@ -3228,7 +3285,7 @@
    if (!e.target.closest('.bs-step')) closePops();
    /* 拡大図は**自分の中**と**区間そのもの**を押したときだけ残す（§9.413）。
       押した区間の上で閉じると、開いた次の瞬間に消えることになる。 */
-   if (!e.target.closest('.bs-zoom') && !e.target.closest('.bs-bhit') && !zoneClicked) closeZoneZoom();
+   if (!e.target.closest('.bs-zoom') && !e.target.closest('.bs-bhit, .bs-ehit') && !zoneClicked) closeZoneZoom();
   });
   document.addEventListener('keydown', e => {
    if (e.key !== 'Escape' || !panel || panel.hidden) return;
@@ -3240,10 +3297,10 @@
      的は重ねたときと**同じ区間ぜんたい**（§9.386）——記号の札だけを的に
      すると、狙わないと押せない（実測 27×29px）。 */
   panel.addEventListener('click', e => {
-   const hit = e.target.closest('.bs-bhit');
+   /* 端の区間も同じ道（§9.487）。 */
+   const hit = e.target.closest('.bs-bhit, .bs-ehit');
    if (!hit || !panel.contains(hit)) return;
-   if (zoomBadge === String(hit.dataset.badge)) { closeZoneZoom(); return; }
-   openZoneZoom(hit.dataset.badge, hit, hit.dataset.axis);
+   toggleZoneZoom(hit.dataset.badge, hit, e);
   });
   /* 記号に**重ねている間だけ**図と表を連動させる（§9.378）。**図でも表でも
      同じ的**（`[data-badge]`）で受けるので、重ねる場所によって効き方が
@@ -3297,12 +3354,11 @@
       あいだ毎フレームではない）。 */
    onBadges: () => { paintBadgePick(); syncZoneZoom(); },
    /* 断面図・立体図の**区間の面**（§9.475）。乗ったら図と表を光らせ、押したら拡大図。
-      端（OS・DS）は光るだけ（右の端部の表が受ける・拡大図は開かない＝§9.463）。 */
-   onZone: (kind, box) => {
+      端（OS・DS）も押せば拡大図（§9.487。光るのは右の端部の表）。 */
+   onZone: (kind, box, e) => {
     if (kind === 'hover') { pickBadge(box ? box.dataset.badge : ''); return; }
     zoneClicked = true; setTimeout(() => { zoneClicked = false; }, 0);
-    const k = String(box.dataset.badge);
-    if (zoomBadge === k) closeZoneZoom(); else openZoneZoom(k, box, box.dataset.axis);
+    toggleZoneZoom(String(box.dataset.badge), box, e);
    } });
   }
   /* 右の段 */
