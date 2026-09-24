@@ -2258,7 +2258,11 @@ function renderGridInner(){
    if(c==='#'){cells+=`<td class="grid-no-cell ${vAl(c)}" data-col="#">${(S.page-1)*effectivePageSize()+i+1}</td>`;continue}
    if(c==='__split__'){cells+=splitCellHtml();continue}
    if(c==='__measure__'){cells+=`<td class="measurement-action-cell ${vAl(c)}" data-col="__measure__"><button type="button" class="measurement-action-button">開く</button></td>`;continue}
-   if(c===lotCol){const lotVal=r[c];cells+=`<td class="lot-cell ${WL.columnAlign.cellClass(layoutTarget,c,colFmt.get(c)?.kind||'')}" data-col="${esc(c)}"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(lotVal)||'—'}</button></td>`;continue}
+   /* ロット番号の字も作り方の式・書式・読み替えを通す（§9.489）。**開く先は生のロット番号**のまま
+      （下の配線が`pick(r,'lotNo')`で読む）——見せ方を変えても問い合わせる番号は変わらない。 */
+   if(c===lotCol){const lc=colCalc.get(c),lr=namedRow(r);
+    const lotVal=WL.cellFormat.cell({raw:lc?lc.run(lr):r[c],format:colFmt.get(c),rule:colRule.get(c),row:lr,column:c,view:ruleView}).text;
+    cells+=`<td class="lot-cell ${WL.columnAlign.cellClass(layoutTarget,c,colFmt.get(c)?.kind||'')}" data-col="${esc(c)}"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(lotVal)||'—'}</button></td>`;continue}
    /* 読み替え(段4)→書式(段3)の順で通してから出す。どちらも失敗したら
       生の値が出るので、指定を間違えても値が消えることはない。 */
    /* 計算で作る列(§9.111 ⑦)は、その行の値から作ってから同じ道を通す

@@ -1430,7 +1430,9 @@ function renderRecordListRows(){
    const fx=calc.get(k);
    const raw=fx?fx.run(view):(k==='#'?view['#']:(c?c.get(x):''));
    const out=recordCellText(k,raw,view);
-   const noSetting=!WL.columnLayout.format(RECORD_LIST_TARGET,k)&&!WL.columnLayout.rule(RECORD_LIST_TARGET,k);
+   /* 列の既定の短い字（`short`）は**何も設定していない列だけ**。作り方の式も設定のうち（§9.489）——
+      入れていないと、状態の列に式を入れても元の字のまま出る。 */
+   const noSetting=!fx&&!WL.columnLayout.format(RECORD_LIST_TARGET,k)&&!WL.columnLayout.rule(RECORD_LIST_TARGET,k);
    const text=(noSetting&&c&&c.short)?c.short(x):out.text;
    const shown=String(text??'').trim()||'-';
    const cls=['record-list-cell',c&&c.cls,WL.columnAlign.cellClass(RECORD_LIST_TARGET,k),
@@ -1610,6 +1612,8 @@ function recordColumnPanelSource(){
   initialHidden:(keys,l)=>recordInitialHidden(keys,l),
   rows:()=>sortedFilteredRecords().slice(0,40).map((x,i)=>recordRowView(x,i)),
   valueOf:(row,k)=>row?row[k]:undefined,
+  /* この一覧のデータの列か（§9.489）。式を持っても計算列ではない（元の値を式で作り直す列）。 */
+  isData:k=>RECORD_COL_BY_KEY.has(k)||!!RECORD_VIRTUAL[k],
   virtual:()=>RECORD_VIRTUAL,
   joined:()=>new Set(),
   joinFrom:()=>'',

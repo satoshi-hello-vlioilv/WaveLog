@@ -466,7 +466,9 @@
     const c=columnOf(k);
     if(k==='#')return `<span class="ac-idx"><label class="ac-pick" title="帳票をまとめて刷る行を選びます"><input type="checkbox" data-pick="${esc(x.id)}"${acState.selected.has(x.id)?' checked':''}><b>${i+1}</b></label></span>`;
     if(k==='操作')return `<span class="ac-act"><button type="button" class="ac-row-btn" data-report="${esc(x.id)}" title="この記録の測定帳票を開きます">帳票</button></span>`;
-    const raw=view[k];
+    /* 値は作り方の式を通す（§9.489。計算列も元データの列も`rawOf()`の1本）。以前は`view[k]`のままで、
+       **計算列のセルが空**だった（式を当てる道が無かった）。 */
+    const raw=WL.cellFormat.rawOf(AC_TARGET,view,k);
     const out=cellText(k,raw,view);
     /* **切れた値には生の値の`title`**（§9.94の約束）。色は読み替えが
        指定したときだけで、**クラスで当てる**（一覧と同じ`cell-<色>`。
@@ -601,6 +603,8 @@
    initialHidden:(keys,l)=>initialHidden(keys,l),
    rows:()=>filtered().slice(0,40).map((x,i)=>rowView(x,i)),
    valueOf:(row,k)=>(row?row[k]:undefined),
+   /* この一覧のデータの列か（§9.489）。式を持っても計算列ではない（元の値を式で作り直す列）。 */
+   isData:k=>!!columnOf(k),
    virtual:()=>AC_VIRTUAL,
    joined:()=>new Set(),
    joinFrom:()=>'',

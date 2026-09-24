@@ -312,7 +312,8 @@
    ?`<tr class="os-head-2">`+line2.map((k,i)=>`<th colspan="${L.span2[i]||1}">${esc(labelOf(k))}</th>`).join('')+`</tr>`
    :'';
   const cellHtml=(k,view,span)=>{
-   const raw=view[k],c=columnOf(k);
+   /* 値は作り方の式を通す（§9.489・`rawOf()`の1本。以前は計算列のセルが空だった）。 */
+   const raw=WL.cellFormat.rawOf(target(),view,k),c=columnOf(k);
    return `<td class="os-c${(c&&c.num)?' os-num':''}" colspan="${span||1}">`
     +esc(cellText(k,raw,view))+`</td>`;
   };
@@ -600,6 +601,8 @@
    initialHidden:(keys,l)=>initialHidden(keys,l),
    rows:()=>(pv.items||[]).slice(0,40).map((x,i)=>rowView(x,i)),
    valueOf:(row,k)=>(row?row[k]:undefined),
+   /* この紙のデータの列か（§9.489）。式を持っても計算列ではない（元の値を式で作り直す列）。 */
+   isData:k=>!!columnOf(k),
    virtual:()=>({'#':{label:'#（行番号）',note:'その日の先頭からの通し番号です。'}}),
    joined:()=>new Set(),joinFrom:()=>'',
    origins:()=>['source','calc'],
