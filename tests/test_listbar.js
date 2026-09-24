@@ -53,6 +53,31 @@ H.run('test_listbar: 一覧の道具の帯は2段（§9.468）', async ({ page, 
    .map(x => Math.round((x.children[1] || x).getBoundingClientRect().left)));
   rec('「☰ 表示」の中の欄は左端がそろう（名前の列は固定幅）',
       panel.length >= 4 && new Set(panel).size === 1, panel.join('/'));
+  /* §9.481（利用者の報告「表示列の編集…マウスオーバーで表示文字がコントラスト不足で読めなくなる」）。
+     `.wl-menu button:hover`の淡い地が塗りのボタンに勝ち、白字が 2.33 だった（離しても説明の行は 3.86）。
+     字と**重ねた地**（透明なら祖先まで辿る）の比を、乗せた／離したの両方で 4.5 以上。 */
+  const contrast = () => page.evaluate(() => {
+   const b = document.getElementById('listColumnBtn');
+   const rgb = s => { const m = (s.match(/[\d.]+/g) || []).map(Number); return m.length < 4 ? m.concat([1]) : m; };
+   const lum = c => { const f = v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
+     return .2126 * f(c[0]) + .7152 * f(c[1]) + .0722 * f(c[2]); };
+   const bgOf = e => { const st = []; for (let x = e; x; x = x.parentElement) {
+     const c = rgb(getComputedStyle(x).backgroundColor); if (c[3] > 0) { st.push(c); if (c[3] >= 1) break; } }
+     let acc = [255, 255, 255]; st.reverse().forEach(c => { acc = acc.map((v, k) => v * (1 - c[3]) + c[k] * c[3]); });
+     return acc; };
+   return Math.min(...[b, ...b.querySelectorAll('*')]
+    .filter(e => [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()))
+    .map(e => { let op = 1; for (let x = e; x && x !== b.parentElement; x = x.parentElement) op *= +getComputedStyle(x).opacity;
+      const fg = rgb(getComputedStyle(e).color), bg = bgOf(e);
+      const a = lum(fg.slice(0, 3).map((v, k) => v * op * fg[3] + bg[k] * (1 - op * fg[3]))), c = lum(bg);
+      return (Math.max(a, c) + .05) / (Math.min(a, c) + .05); }));
+  });
+  const cOff = await contrast();
+  await page.hover('#listColumnBtn'); await W.paint(page);
+  const cOn = await contrast();
+  await page.mouse.move(2, 2);
+  rec('「表示列を編集」の字は乗せても離しても読める（コントラスト 4.5 以上・前: 乗せて 2.33）',
+      cOff >= 4.5 && cOn >= 4.5, `離した ${cOff.toFixed(2)} ／ 乗せた ${cOn.toFixed(2)}`);
   rec('設定（表示列・行間・並び・表示件数）は「☰ 表示」の中',
       await page.evaluate(() => ['listColumnBtn', 'listRowGap', 'listSort', 'pageSize']
        .every(id => document.getElementById('listViewPanel').contains(document.getElementById(id)))));
