@@ -330,6 +330,59 @@ def match_actual(index,lot_no,casting_no,mfg_material):
  if not (lot and casting and material):return None
  return index.get((normalize_match_key(lot),normalize_match_key(casting),normalize_match_key(material)))
 
+_lot_index_cache={'index':None,'lots':None}
+
+def _lot_index(index):
+ """ロット番号だけ -> 実績の並び。**3項目の突合(§7.4)で当たらなかった理由**を
+ 言うためだけに使う（判定そのものは変えない）。実績索引と同じ寿命で控える。"""
+ with _actual_index_lock:
+  if _lot_index_cache['index'] is index and _lot_index_cache['lots'] is not None:
+   return _lot_index_cache['lots']
+ lots={}
+ for key,a in (index or {}).items():
+  lots.setdefault(key[0],[]).append(a)
+ with _actual_index_lock:
+  _lot_index_cache['index']=index;_lot_index_cache['lots']=lots
+ return lots
+
+_MATCH_LABEL={'castingNo':'鋳造番号','mfgMaterial':'製造材質'}
+
+def advance_note(entry,detail,lots):
+ """**完了にならない（繰り上がらない）理由**(§9.462、利用者の報告「ロットが
+ 完了している場合にスケジュールを繰り上げてほしいが、うまく機能していないか、
+ 元データが思うように突合せできていない可能性」)。
+
+ 繰り上がるのは状態が完了（または着手）になった行だけ。「予定」のまま残る行の
+ うち、**直せば完了になるもの**に理由を付ける。答えるのはこの1箇所で、画面は
+ `label`（行の印）と`text`（その本文）を出すだけ:
+  ・測定データは完了しているが、3項目（ロット番号・鋳造番号・製造材質）の
+    どれかが予定と合わない → 突き合わせの問題
+  ・仕掛から消えたかを判定できない（予定の側に突合キーが無い・読めない）
+ 完了突合が1件も無いことは全行に共通なので、行ではなく`warnings`で1回言う。"""
+ if entry['kind']!='作業' or entry.get('parentId') is not None:return None
+ if entry['state']!=sr.PLAN_REORDERABLE_STATE or entry.get('unplanned'):return None
+ lot=normalize_match_key(detail.get('lotNo') or entry.get('lotNo'))
+ done=[a for a in (lots.get(lot) or []) if record_finished(a)] if lot else []
+ if done:
+  a=max(done,key=lambda x:x.get('updatedAt') or '')
+  basic=a.get('basic') or {}
+  plan={'castingNo':detail.get('castingNo') or entry.get('castingNo'),'mfgMaterial':detail.get('mfgMaterial')}
+  bad=[]
+  for k,label in _MATCH_LABEL.items():
+   pv=str(plan.get(k) or '').strip();av=str(basic.get(k) or '').strip()
+   if normalize_match_key(pv)!=normalize_match_key(av) or not pv:
+    bad.append(f"{label}（予定: {pv or '空'}／測定: {av or '空'}）")
+  if bad:
+   return {'code':'recordMismatch','label':'測定済み・不一致',
+           'text':'このロットの測定データは完了していますが、'+'・'.join(bad)
+                  +'が予定と一致しないため完了にできません。'
+                  '予定は「ロット番号・鋳造番号・製造材質」の3つが測定データとそろって一致したときに完了になります。'}
+ reason=str(entry.get('missingReason') or '')
+ if entry.get('missingFromWork') is None and reason and '完了突合の設定がありません' not in reason:
+  return {'code':'finishUnknown','label':'完了判定できず',
+          'text':'仕掛から消えたかどうかを判定できません: '+reason}
+ return None
+
 # ========================================================================
 # 計画外実績の合成(§9.33)
 # ========================================================================
@@ -708,6 +761,7 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
 
  entries=[]
  matched_keys=set()
+ lots=_lot_index(actual_index)
  for r in raw_rows:
   detail={}
   if r[8]:
@@ -735,7 +789,15 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
   # どちらが正しいか言えなくなる。
   _apply_actual_source(entry,detail,r[22])
   if actual is not None:matched_keys.add(actual['key'])
+  entry['advanceNote']=advance_note(entry,detail,lots)
   entries.append(entry)
+ # 完了突合が無いことは全行に共通(§9.462)。**行ではなくここで1回**言う——
+ # 無いと「仕掛から消えたロット」を完了にできず、測定データだけが頼りになる。
+ if any(e['kind']=='作業' and e['state']==sr.PLAN_REORDERABLE_STATE and e.get('parentId') is None
+        and '完了突合の設定がありません' in str(e.get('missingReason') or '') for e in entries):
+  warnings.append('完了突合が登録されていないため、仕掛から消えたロットを完了にできません'
+                  '（測定データで完了したロットだけが繰り上がります）。'
+                  '「マスタ管理 > クエリ結合」で用途「完了突合」を1件登録すると、消えたロットも完了になります。')
 
  # 計画外実績(§9.33)を合成する。実施中の分は先頭へ入れて、この直後の
  # アンカー決定にそのまま乗せる(設備が実際に塞がっている時間を、予定を
@@ -768,6 +830,13 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
    started=_parse_dt(e['actual']['startAt'])
    if started is not None:
     ongoing_ids.add(id(e));ongoing_starts.append(started)
+  elif e['state']=='着手' and e.get('missingFromWork') is True and not e.get('actual'):
+   # **仕掛から消えて突合先に見つからない行も作業中として扱う**(§9.462)。
+   # 以前は開始時刻を持たないので普通の予定と同じく「いまから見積ぶん」の
+   # 場所に置かれ、**毎回そこに居座って後ろの予定を押し続けて**いた
+   # (時間が流れないので、いつまでも繰り上がらない)。開始時刻は分からない
+   # ので起点(アンカー)には使わず、予定の終わりを現在時刻にするだけ。
+   ongoing_ids.add(id(e))
  anchor_note=None
  if ongoing_starts:
   anchor=min(ongoing_starts)
@@ -866,7 +935,8 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
   if id(e) in ongoing_ids:
    # 実績の開始時刻から「現在時刻まで」。終わっていないので予定終了は
    # 常に現在時刻(継続中)。見積を超えている分はoverdueMinutesで示す。
-   started=_parse_dt(e['actual']['startAt']) or now
+   # 開始の分からない行(仕掛落ち・§9.462)は現在時刻から現在時刻まで。
+   started=_parse_dt(((e.get('actual') or {}).get('startAt')) or '') or now
    elapsed=max(0.0,_minutes_between(started,now))
    e['plannedStart']=started.isoformat()
    e['plannedEnd']=now.isoformat()

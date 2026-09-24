@@ -1,4 +1,4 @@
-# 刃組ガイダンス（181件）
+# 刃組ガイダンス（182件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 板押さえの空きの帯は種類ごと（`holdBand()`の1箇所）。フィンガーも下限ぶん小さく組む・既定0は判定しない | `test_bladeui.js` | [§9.462](../../docs/decisions/9.462.md) |
 | 基準面（OS／DS・既定**DS**）は`datumOf()`の1箇所。シートは**反対の端**（`A.floatZ`・`fit.floatSeat.side`） | `test_bladeui.js`・`test_bladeset.py` | [§9.461](../../docs/decisions/9.461.md) |
 | 刻みへ寄せるのは**基準面の側の端**（`slip`）。押さえ代・端数に数えない・左右差の向きは`floatZ`を見る | `test_bladeui.js` | [§9.461](../../docs/decisions/9.461.md) |
 | **入れる向き（DS側から）と押し付ける向き（基準面）は別の軸**。取り付ける順の字は基準面で変えない | `test_bladeui.js` | [§9.461](../../docs/decisions/9.461.md) |
