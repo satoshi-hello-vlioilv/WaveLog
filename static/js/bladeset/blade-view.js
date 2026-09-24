@@ -688,6 +688,9 @@
     ——設定をいじって寸法がどう動くかを見るための窓なので、触るたびに閉じると
     見比べられない。行が消えたときだけ閉じる。 */
  let zoomBadge = '';
+ /* いまの押下が断面図・立体図の区間の面で拡大図を開いた（§9.475）。同じ押下の`click`が外側の
+    「外を押したら閉じる」で開いた窓を閉じないように、その1回だけ立てる。 */
+ let zoneClicked = false;
  function paintBadgePick() {
   if (!panel) return;
   panel.querySelectorAll('[data-badge]').forEach(el => {
@@ -3195,7 +3198,7 @@
    if (!e.target.closest('.bs-step')) closePops();
    /* 拡大図は**自分の中**と**区間そのもの**を押したときだけ残す（§9.413）。
       押した区間の上で閉じると、開いた次の瞬間に消えることになる。 */
-   if (!e.target.closest('.bs-zoom') && !e.target.closest('.bs-bhit')) closeZoneZoom();
+   if (!e.target.closest('.bs-zoom') && !e.target.closest('.bs-bhit') && !zoneClicked) closeZoneZoom();
   });
   document.addEventListener('keydown', e => {
    if (e.key !== 'Escape' || !panel || panel.hidden) return;
@@ -3262,7 +3265,15 @@
       記号は図を描くたびに作り直されるので、塗らないと重ねている最中に
       光りが消える。呼ばれるのは**顔ぶれが変わったときだけ**（回している
       あいだ毎フレームではない）。 */
-   onBadges: () => { paintBadgePick(); syncZoneZoom(); } });
+   onBadges: () => { paintBadgePick(); syncZoneZoom(); },
+   /* 断面図・立体図の**区間の面**（§9.475）。乗ったら図と表を光らせ、押したら拡大図。
+      端（OS・DS）は光るだけ（右の端部の表が受ける・拡大図は開かない＝§9.463）。 */
+   onZone: (kind, box) => {
+    if (kind === 'hover') { pickBadge(box ? box.dataset.badge : ''); return; }
+    zoneClicked = true; setTimeout(() => { zoneClicked = false; }, 0);
+    const k = String(box.dataset.badge);
+    if (zoomBadge === k) closeZoneZoom(); else openZoneZoom(k, box, box.dataset.axis);
+   } });
   }
   /* 右の段 */
   /* 段の切り替え。**足元の「刃の状態を見る」も同じ道を通る**（入口を2つに

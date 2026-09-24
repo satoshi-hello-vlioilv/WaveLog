@@ -1946,7 +1946,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
               /* 区間の板は**光るだけ**（押せるのは記号の札だけ）。塗りを的に
                  すると、立体を掴んで回す道をふさぐ。 */
               zonePe: boxes.length ? getComputedStyle(boxes[0]).pointerEvents : '',
-              chipCur: chips.length ? getComputedStyle(chips[0]).cursor : '',
+              chipPe: chips.length ? getComputedStyle(chips[0]).pointerEvents : '',
               hit: chips.length ? chips[0].classList.contains('bs-bhit') : false };
     });
     rec('断面図にも区間の記号が出る', zb.n > 0 && zb.zones === zb.n,
@@ -1954,9 +1954,35 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('記号の顔ぶれは模式図と同じ（同じ対応表から出している）',
         zb.cut.length > 0 && zb.cut.join(',') === zb.fig2.join(','),
         `断面 ${zb.cut.join('')} / 模式 ${zb.fig2.join('')}`);
-    rec('区間の板は的にしない（掴んで回す道をふさがない）', zb.zonePe === 'none', zb.zonePe);
-    rec('記号の札は押せる（指のカーソル＋模式図と同じ印）',
-        zb.chipCur === 'pointer' && zb.hit === true, `${zb.chipCur} / bs-bhit ${zb.hit}`);
+    rec('区間の面の器は当たりを持たない（座標で当てる＝掴んで回す道をふさがない）', zb.zonePe === 'none', zb.zonePe);
+    /* §9.475（利用者の指示「アルファベットは的が小さすぎるので、エリア全体でそれぞれ強調表示」
+       「拡大図は…アルファベットをボタンからラベルに変更し…クリックの的を大きく」）。
+       前（実測）: 的は札 22×22＝488px²、区間の面（149×170）に乗っても押しても何も起きなかった。 */
+    rec('記号は札（押す物ではない）。的は区間の面', zb.chipPe === 'none' && zb.hit === false,
+        `pointer-events ${zb.chipPe} / bs-bhit ${zb.hit}`);
+    const face = await page.evaluate(() => {
+     const vis = [...document.querySelectorAll('#bsStage3 .bs-t3z')].filter(e => !e.hidden);
+     const mid = vis.find(b => !b.dataset.end), end = vis.find(b => b.dataset.end && b.dataset.badge === 'OS');
+     const R = e => { const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height * 0.18, a: Math.round(r.width * r.height) }; };
+     return { mid: mid && Object.assign(R(mid), { b: mid.dataset.badge }), end: end && R(end) };
+    });
+    await page.mouse.move(face.mid.x, face.mid.y, { steps: 3 });
+    await W.paint(page);
+    const litFace = await page.evaluate(b => !!document.querySelector(`.bs-g tr.is-pick[data-badge="${b}"]`), face.mid.b);
+    await page.mouse.move(face.end.x, face.end.y, { steps: 3 });
+    await W.paint(page);
+    const litEnd = await page.evaluate(() => !!document.querySelector('.bs-side.is-pick[data-badge="OS"]'));
+    rec('区間の面（札から離れた所）に乗ると刃組表の行が光る（的の面積 前 488px²）', litFace, `${face.mid.b} 面 ${face.mid.a}px²`);
+    rec('端の区間の面に乗ると右の端部の表が光る', litEnd);
+    /* 掴んで動かしたら回すだけ（押したことにしない）。 */
+    const az0 = await page.evaluate(() => window.WL.bladeSolid.view().cutAz);
+    await page.mouse.move(face.mid.x, face.mid.y); await page.mouse.down();
+    await page.mouse.move(face.mid.x + 60, face.mid.y + 8, { steps: 5 }); await page.mouse.up();
+    await W.paint(page);
+    const drag = await page.evaluate(() => ({ az: window.WL.bladeSolid.view().cutAz, zoom: !document.getElementById('bsZoom').hidden }));
+    rec('区間の上で掴んで動かすと回るだけ（拡大図は開かない）', drag.az !== az0 && !drag.zoom, JSON.stringify({ az0, ...drag }));
+    await page.evaluate(() => document.querySelector('#bsStage3 .bs-step3-reset')?.click());
+    await W.paint(page);
     /* **本物のマウス移動で辿る**（§9.398）。`pointerover` は `el.click()` では
        1度も通らない。 */
     const chipBox = await page.locator('#bsStage3 .bs-t3b:not([hidden])').first().boundingBox();
@@ -2273,10 +2299,17 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await page.keyboard.press('Escape');
     await W.until(page, () => document.querySelector('#bsZoom').hidden, null,
                   { ms: 4000, what: '拡大図を一度閉じる' });
-    const zw = await page.evaluate(() => {
-     const b = document.querySelector('#bsStage3 .bs-t3b:not([hidden])');
+    /* 区間の面を**本物のクリック**で押す（§9.475・札は押す物ではなくなった）。 */
+    const zpt = await page.evaluate(() => {
+     const b = [...document.querySelectorAll('#bsStage3 .bs-t3z')].find(e => !e.hidden && !e.dataset.end);
      if (!b) return null;
-     b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+     const r = b.getBoundingClientRect();
+     return { x: r.left + r.width / 2, y: r.top + r.height * 0.18 };
+    });
+    if (zpt) await page.mouse.click(zpt.x, zpt.y);
+    await W.until(page, () => !document.querySelector('#bsZoom').hidden, null, { ms: 6000, what: '区間の面を押して拡大図' });
+    const zw = await page.evaluate(() => {
+     if (document.querySelector('#bsZoom').hidden) return null;
      const svg = document.getElementById('bsZoomFig');
      const ts = [...svg.querySelectorAll('text')];
      return { leadw: +svg.dataset.leadw, off: +svg.dataset.off, dims: +svg.dataset.dims,
