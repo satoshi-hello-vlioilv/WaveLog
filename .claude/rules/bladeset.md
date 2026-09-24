@@ -1,4 +1,4 @@
-# 刃組ガイダンス（197件）
+# 刃組ガイダンス（199件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 刃組表の見出しの補足は**値の読み方に要る短い物だけ**（12字まで）。長い説明は ⓘ のポップオーバー（`thTips`） | `test_bladeui.js` | [§9.473](../../docs/decisions/9.473.md) |
+| 潤滑リングは刃組表でも**ゴムリングの群の1列**（独立した列群を持たない）。寸法は見出しの`title` | `test_bladeui.js` | [§9.473](../../docs/decisions/9.473.md) |
 | OS・DSの字は`sideWord()`の1箇所（刃組基準値の呼び方）。鍵（`data-badge`）は素のまま・静的な字は`data-sw` | `test_bladeui.js`・`test_bladeset.py` | [§9.472](../../docs/decisions/9.472.md) |
 | 向きの札は**押した後の図の左右を描く**2択（◆＝基準面・意味は`title`）。大きさは隣の図の札とそろえる | `test_bladeui.js` | [§9.472](../../docs/decisions/9.472.md) |
 | 基準面の切り替えは持たない（実機は駆動側＝DS）。左右の見せ方は「基準原点を左／右」とその呼び方が受け持つ | `test_bladeui.js`・`test_bladeset.py`・`test_stdmodal.js` | [§9.470](../../docs/decisions/9.470.md) |

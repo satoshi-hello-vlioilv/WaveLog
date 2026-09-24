@@ -650,7 +650,13 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      g.classList.add('is-pick');
      return off;
     });
-    await W.paint(page);
+    /* **1回描かせただけでは読まない**（§9.472 の続きで踏んだ）: 当てた直後の最初の1コマは
+       遷移の始まりの値（0）のままのことがある——実測 3回のうち1回が 0→0。
+       「動き出したか」を条件で待つ（`transition`は0.12秒なので2秒あれば必ず動く）。 */
+    await W.until(page, () => {
+     const g = document.querySelector('#bsStage .bs-bhit.is-pick');
+     return !!g && +getComputedStyle(g.querySelector('.bs-zhit')).fillOpacity > 0;
+    }, null, { ms: 2000, what: '光らせた区間の塗りが動き出す' });
     const hiOn = await page.evaluate(() => {
      const g = document.querySelector('#bsStage .bs-bhit.is-pick');
      const hit = g.querySelector('.bs-zhit'), bdg = g.querySelector('.bs-bdgr');

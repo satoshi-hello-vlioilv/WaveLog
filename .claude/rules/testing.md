@@ -37,7 +37,7 @@
 | `idle()`はフォントと本体を読まれない応答を数えない（終わりの合図が来ない）。フォントは`fonts.ready`で待つ | `test_collayout.js`・`test_cols.js` | [§9.451](../../docs/decisions/9.451.md) |
 | `page.waitForFunction`の述語にPromiseを返させない（返すと待たずに抜ける・実測82ms）。サーバーへ聞き直す待ちは`wait.js`の`poll()` | `test_waitlint.py` | [§9.376](../../docs/decisions/9.376.md) |
 | `offsetParent`で「見えているか」を測らない。`position:fixed`と未組み立ての両方で`null`になる | — | [§9.346](../../docs/decisions/9.346.md) |
-| `transition`を持つ値は当てた直後に読まない（遷移前の値が返る）。1回描かせてから「動き出したか」で見る | `test_bladeui.js` | [§9.386](../../docs/decisions/9.386.md) |
+| `transition`を持つ値は当てた直後に読まない。「動き出したか」を**条件で待つ**（1回描かせるだけでは始まりの値のことがある） | `test_bladeui.js` | [§9.386](../../docs/decisions/9.386.md)・[§9.473](../../docs/decisions/9.473.md) |
 | 断りを「〜でないこと」で判定しない。別の理由で止まっても素通りする——**出た窓の題**で見分ける | `test_bladeui.js` | [§9.387](../../docs/decisions/9.387.md) |
 | 触れて開く物は**本物のマウス移動**で辿る。`el.click()`は`mouseenter`の道を1度も通らない | `test_lotcopy.js` | [§9.398](../../docs/decisions/9.398.md) |
 | `new Date(null)`は1970年になる。**空は空のまま返す**（時刻が`00:00`と出る） | `test_stopflow.js` | [§9.402](../../docs/decisions/9.402.md) |
