@@ -232,7 +232,9 @@ FINGER_DEF = TableDef(FINGER_TABLE, 'フィンガーID', FINGER_COLUMNS,
 STANDARD_TABLE = '刃組基準値マスタ'
 STANDARD_COLUMNS = (
     ('設備名', 'TEXT'),
-    ('アーバー有効長', 'REAL'), ('基準面', 'TEXT'), ('板の中心', 'REAL'),
+    # 「基準面」の列は §9.470 で外した（基準面は駆動側の DS に固定）。すでに在る DB の列は
+    # 残るが読み書きしない（消すと古い版へ戻したときに列が無くなる）。
+    ('アーバー有効長', 'REAL'), ('板の中心', 'REAL'),
     ('フローティングシート押さえ代', 'REAL'),
     ('軸外径', 'REAL'),
     ('スペーサー外径', 'REAL'), ('リング内径', 'REAL'),
@@ -258,11 +260,9 @@ STANDARD_DEF = TableDef(STANDARD_TABLE, '刃組基準ID', STANDARD_COLUMNS,
 # **画面へ書き写さないこと**——`/api/bladeset/context` がそのまま届ける（§9.163）。
 STANDARD_DEFAULTS = {
     'arborLen': 1599.6,
-    # 基準面（基準原点・§9.461、利用者の指示「今はOSを基準面にDSにフローティングシート
-    # としていますが、逆にもできるように…デフォルトはDSを基準面にOSにフローティング
-    # シート」）。スペーサーは基準面の側へ押し付けて組み、反対の端をフローティング
-    # シートが押さえる。値は 'DS' か 'OS' の2つだけ（`datum_side()`が読み分ける）。
-    'datumSide': 'DS',
+    # 基準面は**駆動側（DS）に固定**（§9.470、利用者の指示「基準面をOSに切り替えるという
+    # 機能は不要」）。§9.461 で入れた切り替え（`datumSide`）は外した。答えは画面の
+    # `datumOf()`の1箇所。
     # 板の中心（**基準面からの距離**・§9.456／§9.461、利用者の指示「基準原点を変更したら、
     # 中心位置の測り方も連動して変更」）。
     # **空（None）なら有効長の中央**——数を書き写すと、有効長を直したときに置き去りになる。
@@ -309,7 +309,7 @@ STANDARD_DEFAULTS = {
 }
 # DBの列名 ↔ 画面の鍵。**対応はここだけ**（§9.324 R1 と同じ考え方）。
 _STANDARD_MAP = (
-    ('アーバー有効長', 'arborLen', 'num'), ('基準面', 'datumSide', 'side'),
+    ('アーバー有効長', 'arborLen', 'num'),
     ('板の中心', 'centerFromDatum', 'num'),
     ('フローティングシート押さえ代', 'floatSeatStroke', 'num'),
     ('軸外径', 'shaftDia', 'num'),
@@ -746,8 +746,6 @@ def _standard_row(d):
         v = d[col]
         if kind == 'int':
             out[key] = _int(v)
-        elif kind == 'side':
-            out[key] = datum_side(v, None)
         elif kind == 'pos':
             out[key] = view_pos(v, None)
         elif kind == 'text':
@@ -1119,8 +1117,6 @@ def standard_upsert(c, uid, equipment=None, values=None, note=None,
         v = src[key]
         if kind == 'flag':
             vals[col] = None if v in (None, '') else (-1 if _flagged(v) else 0)
-        elif kind == 'side':
-            vals[col] = datum_side(v, None)
         elif kind == 'pos':
             vals[col] = view_pos(v, None)
         elif kind == 'text':
@@ -1132,16 +1128,6 @@ def standard_upsert(c, uid, equipment=None, values=None, note=None,
     if note is not None:
         vals['備考'] = _txt(note) or None
     return _put(c, STANDARD_DEF, sid, vals, uid, eq)
-
-
-DATUM_SIDES = ('DS', 'OS')
-
-
-def datum_side(v, fallback='DS'):
-    """基準面の呼び名を 'DS'／'OS' へ（§9.461）。読めなければ`fallback`
-    （保存では None＝既定に従う）。**判定はここ1箇所**。"""
-    t = _txt(v).upper()
-    return t if t in DATUM_SIDES else fallback
 
 
 def _flagged(v):

@@ -1370,7 +1370,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     const c456 = await page.evaluate(() => {
      const B2 = WL.bladeSet, M2 = WL.bladeGuide.masters, s0 = WL.bladeGuide.state;
      const IX2 = B2.buildIndex(M2);
-     const keep = { center: s0.center, datum: M2.P.datumSide };
+     const keep = { center: s0.center };
      /* **中心は基準面から測る**（§9.461）。板の中心を基準面からの距離へ直して比べる。 */
      const at = c => { s0.center = c; const r = B2.solve(s0, M2, IX2);
        const mid0 = r.A.matStart + s0.W / 2;
@@ -1388,10 +1388,10 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         刻みへ寄せる`slip`が効くので、中心をずらしても出ない）。有効長を一時的に外して見る。 */
      const a0 = M2.P.arborLen;
      M2.P.arborLen = 1599.63; out.c7003 = at(700.013);
-     /* **基準面を入れ替えても同じ答えの形**（§9.461）。OS基準ならシートはDS端。 */
-     M2.P.datumSide = 'OS'; out.os = at(700.013); out.os700 = (M2.P.arborLen = a0, at(700));
-     M2.P.datumSide = 'DS'; out.ds700 = at(700);
-     M2.P.datumSide = keep.datum; M2.P.arborLen = a0;
+     M2.P.arborLen = a0; out.ds700 = at(700);
+     /* **基準面の切り替えは外した**（§9.470）。古いマスタに OS が残っていても効かない。 */
+     M2.P.datumSide = 'OS'; out.stale = { datum: B2.datumOf(M2), side: at(700).fs.side };
+     delete M2.P.datumSide;
      s0.center = keep.center;
      return out;
     });
@@ -1411,13 +1411,11 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('既定の基準面はDS・フローティングシートはOS端（§9.461）',
         c456.datum0 === 'DS' && c456.def.datum === 'DS' && c456.def.floatZ === 0
         && c456.def.fs.side === 'OS', JSON.stringify({ d: c456.datum0, z: c456.def.floatZ, s: c456.def.fs.side }));
-    rec('OS基準に切り替えるとシートはDS端・残りもDS端だけに出る（§9.461）',
-        c456.os.datum === 'OS' && c456.os.fs.side === 'DS' && c456.os.floatZ === c456.os.last - 1
-        && c456.os.fsFlag === 0 && c456.os.wrong === 0 && (c456.os.fs.up > 0 || c456.os.fs.lo > 0),
-        JSON.stringify(c456.os));
-    rec('中心は基準面から測る（DS基準でもOS基準でも、指定した700mmへ来る・§9.461）',
-        Math.abs(c456.ds700.mid - 700) <= c456.ds700.step && Math.abs(c456.os700.mid - 700) <= c456.os700.step,
-        `DS基準 ${c456.ds700.mid} / OS基準 ${c456.os700.mid}`);
+    /* §9.470（利用者の指示「基準面をOSに切り替えるという機能は不要」）。 */
+    rec('基準面は DS に固定（マスタに OS が残っていても効かない・シートは OS 端）',
+        c456.stale.datum === 'DS' && c456.stale.side === 'OS', JSON.stringify(c456.stale));
+    rec('中心は基準面（DS）から測る（指定した700mmへ来る）',
+        Math.abs(c456.ds700.mid - 700) <= c456.ds700.step, `DS基準 ${c456.ds700.mid}`);
     await page.evaluate(() => { const el = document.querySelector('#bsCenter');
       el.value = '700.013'; el.dispatchEvent(new Event('input', { bubbles: true })); });
     await W.until(page, () => /この作業で指定/.test((document.querySelector('#bsCenterSrc') || {}).textContent || '')

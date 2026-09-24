@@ -1,4 +1,4 @@
-# 刃組ガイダンス（194件）
+# 刃組ガイダンス（195件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 基準面の切り替えは持たない（実機は駆動側＝DS）。左右の見せ方は「基準原点を左／右」とその呼び方が受け持つ | `test_bladeui.js`・`test_bladeset.py`・`test_stdmodal.js` | [§9.470](../../docs/decisions/9.470.md) |
 | 立体図の台車は**車輪でレールに載る**。甲板は床と面一・下の箱は車輪の内側（`view().rig`の3つが0） | `test_bladeui.js` | [§9.467](../../docs/decisions/9.467.md) |
 | 機体の色は`PAINT`の1箇所（実機の緑・カバーは黄）。フィンガーの押さえのアングルはフィンガー方式の立体図だけ | `test_bladeui.js` | [§9.467](../../docs/decisions/9.467.md) |
 | 刃の間隔は**広い／狭い**（`SPAN_WORD`の1箇所。広い＝製品幅＋クリアランス×2）。ゴムリングの行は大径／小径を字で | `test_bladeui.js` | [§9.466](../../docs/decisions/9.466.md) |
@@ -23,7 +24,7 @@
 | 左上の帯は入るなら2列（`hudCols()`が測る）。設定のバッジは中身なりの高さ・字は真ん中 | `test_bladeui.js` | [§9.463](../../docs/decisions/9.463.md) |
 | 区分の仮の名前（`LOT1`）は1本目のコイルの番号（`headLot`）に置き換える | `test_bladeui.js` | [§9.463](../../docs/decisions/9.463.md) |
 | 板押さえの空きの帯は種類ごと（`holdBand()`の1箇所）。フィンガーも下限ぶん小さく組む・既定0は判定しない | `test_bladeui.js` | [§9.462](../../docs/decisions/9.462.md) |
-| 基準面（OS／DS・既定**DS**）は`datumOf()`の1箇所。シートは**反対の端**（`A.floatZ`・`fit.floatSeat.side`） | `test_bladeui.js`・`test_bladeset.py` | [§9.461](../../docs/decisions/9.461.md) |
+| 基準面は`datumOf()`の1箇所（**DSに固定**・§9.470）。シートは**反対の端**（`A.floatZ`） | `test_bladeui.js`・`test_bladeset.py` | [§9.461](../../docs/decisions/9.461.md)・[§9.470](../../docs/decisions/9.470.md) |
 | 刻みへ寄せるのは**基準面の側の端**（`slip`）。押さえ代・端数に数えない・左右差の向きは`floatZ`を見る | `test_bladeui.js` | [§9.461](../../docs/decisions/9.461.md) |
 | 【§9.466で撤回】入れる向き（DS側から）と押し付ける向き（基準面）は別の軸。取り付ける順の字は基準面で変えない | `test_bladeui.js` | [§9.461](../../docs/decisions/9.461.md) |
 | フローティングシートは**図面の寸法**の3D（`floatSeat()`・`FSEAT`）。青い印は基準面の端だけ | `test_bladeui.js` | [§9.459](../../docs/decisions/9.459.md) |
