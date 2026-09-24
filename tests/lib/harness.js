@@ -23,10 +23,17 @@
     ・`mode` を渡した網は、終わりに必ず `edit` へ戻す
     ・**落ちてもブラウザを閉じる**（閉じ忘れは後続の網を連鎖で落とす）
     ・終了コード: 0＝全部PASS ／ 1＝FAILあり ／ 2＝FATAL（例外）
+    ・**製品が「ふだんの操作の副作用」で育てる表**の、この網が増やした行を消す（`SIDE_EFFECT_TABLES`）
    ============================================================ */
 'use strict';
 const W=require('./wait.js');
 const B='http://127.0.0.1:5029';
+/* **製品が副作用で育てる表**（網が狙って書くのではなく、ふだんの操作でサーバーが増やす）。
+   選択履歴マスタは測定を保存するたびに選んだ値の回数を数える（§9.133）ので、測定を保存する網は
+   **全部**1行増やす（通しで5本が名指しされた）。網ごとに控えと片付けを書き写すと書き忘れが出るので、
+   実績（`clearRecords()`）と同じく**土台の1箇所**で「触る前に居なかった行」を消す。
+   副作用で育つ表を製品に足したら、ここへ足す。 */
+const SIDE_EFFECT_TABLES=['選択履歴マスタ'];
 
 async function run(title,body,opts={}){
  const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
@@ -36,9 +43,10 @@ async function run(title,body,opts={}){
  const setMode=async m=>{await fetch(B+'/api/access-mode',{method:'POST',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
  if(title)console.log('# '+title);
- let b=null,fatal=null;
+ let b=null,fatal=null,sideSnap=null;
  try{
   if(opts.mode)await setMode(opts.mode);
+  sideSnap=await masterSnapshot(SIDE_EFFECT_TABLES).catch(()=>null);
   b=await chromium.launch({executablePath:exe});
   /* 文脈を1つ作る。`init` は最初の航行より前に走らせる小さな仕込み
      （localStorage へ使用設備を入れる等。test_listcache が使う）。 */
@@ -58,6 +66,8 @@ async function run(title,body,opts={}){
   /* 置いた実績は土台が消す（§9.351・§9.360）。**1箇所に置く**——網ごとに
      書き写すと、書き忘れた本だけが無関係な網を落とす形で現れる。 */
   await clearRecords().catch(()=>{});
+  /* 副作用で育った行も土台が消す（上の`SIDE_EFFECT_TABLES`）。 */
+  if(sideSnap)await dropNewMasterRows(sideSnap).catch(()=>{});
  }
  rec('素のダイアログが1度も出ていない（§9.342）',native.length===0,native.join(' / '));
  const ng=R.filter(x=>!x.ok);
@@ -76,7 +86,7 @@ async function clearLayout(target,userId='test'){
  await fetch(B+'/api/column-layout-master',{method:'POST',
    headers:{'Content-Type':'application/json'},
    body:JSON.stringify({target,clear:true,order:[],hidden:[],widths:{},names:{},
-     formats:{},rules:{},formulas:{},locks:[],sorts:{},user_id:userId})}).catch(()=>{});
+     formats:{},rules:{},formulas:{},locks:[],sorts:{},aligns:{},user_id:userId})}).catch(()=>{});
 }
 /* 後片付け: この網が置いた実績（`Web測定バックアップ`）を空へ戻す（§9.351）。
    残った実績は**計画外実績として予定表に現れ**（§9.33）、行数・作業可否・
@@ -144,4 +154,21 @@ async function seedRecord(opt={}){
    headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).catch(()=>{});
  return id;
 }
-module.exports={run,B,clearLayout,clearRecords,seedRecord,masterRows,masterSnapshot,dropNewMasterRows};
+/* 列レイアウトを**控えて、控えた形へ丸ごと戻す**（§9.360 の追補）。`clearLayout()`は白紙へ戻すので、
+   **元から設定が在った対象では消しすぎる**（通しで test_actuals が「列レイアウトマスタ -1」と名指しされた）。
+   逆に一部の鍵（`formulas`だけ等）を戻すと、元が空の対象に行が残る（test_colsrcfx が +3）。
+   触る前に`snapLayout()`で控え、`restoreLayout()`で戻す——元が空なら白紙、そうでなければ控えた全部。 */
+const LAYOUT_KEYS=['order','widths','hidden','names','formats','rules','formulas','locks','sorts','aligns'];
+async function snapLayout(target){
+ return fetch(B+'/api/column-layout-master?target='+encodeURIComponent(target)).then(r=>r.json()).catch(()=>({}));
+}
+async function restoreLayout(target,l,userId='test'){
+ const v=l||{};
+ const empty=!LAYOUT_KEYS.some(k=>{const x=v[k];return Array.isArray(x)?x.length:(x&&Object.keys(x).length)});
+ if(empty){await clearLayout(target,userId);return}
+ const body={target,user_id:userId};
+ LAYOUT_KEYS.forEach(k=>{body[k]=v[k]||(k==='order'||k==='hidden'||k==='locks'?[]:{})});
+ await fetch(B+'/api/column-layout-master',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify(body)}).catch(()=>{});
+}
+module.exports={run,B,clearLayout,clearRecords,seedRecord,masterRows,masterSnapshot,dropNewMasterRows,snapLayout,restoreLayout};

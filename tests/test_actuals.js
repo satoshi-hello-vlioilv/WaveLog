@@ -21,7 +21,9 @@
    見分けられない。設備2つ・日付2つ・状態2つを作って入れる。
    ============================================================ */
 'use strict';
-const {run}=require('./lib/harness.js');
+const H=require('./lib/harness.js');
+const {run}=H;
+let layout0=null;        /* 触る前の列レイアウト（後片付けで丸ごと戻す） */
 const B='http://127.0.0.1:5029';
 const TAG='AC'+process.pid;
 const EQ='テスト設備A',EQ2='テスト設備B';
@@ -57,6 +59,7 @@ async function mk(o){
 
 run('test_actuals: 実績データリスト（§9.241 ③、利用者の指示）', async ({page,rec,B,idle,errs})=>{
  try{
+  layout0=await H.snapLayout('actuals:list');
   await post('/api/access-mode',{mode:'edit'});
   /* 設備Bはマスタに無くてもよい（実績は履歴なので、マスタから消した設備の
      ぶんも見られる必要がある）。 */
@@ -347,10 +350,9 @@ run('test_actuals: 実績データリスト（§9.241 ③、利用者の指示�
  }finally{
   /* **後片付け**（§9.121）。実績も列レイアウトマスタも実行をまたいで残る。 */
   try{await post('/api/measurement/backup/delete',{ids:made})}catch(_){}
-  for(const tg of ['actuals:list']){
-   try{await post('/api/column-layout-master',{target:tg,clear:true,order:[],hidden:[],
-     widths:{},names:{},formats:{},rules:{},formulas:{},locks:[],sorts:{},user_id:'test'})}catch(_){}
-  }
+  /* 列レイアウトは**触る前の形へ丸ごと戻す**（白紙へ戻すと、元から在った行まで消す——通しで
+     「列レイアウトマスタ[actuals:list] -1」と名指しされた）。 */
+  if(layout0)await H.restoreLayout('actuals:list',layout0);
   try{await post('/api/access-mode',{mode:'edit'})}catch(_){}
  }
 }, {viewport:{width:1600,height:1000}});

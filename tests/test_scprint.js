@@ -35,7 +35,10 @@
    （`有効=0`）なので、APIで消しても行は残る。**この実行で増えた行だけ**を
    素の表から片付ける。 */
 const {run,masterSnapshot,dropNewMasterRows}=require('./lib/harness.js');
-const SNAP_TABLES=['設備停止マスタ'];
+/* 停止内容を作ると、サーバーがその分類を`設備停止分類マスタ`へ**自動で足す**（`stop_category_upsert()`）。
+   停止内容だけ控えると分類が1行残る（通しで「設備停止分類マスタ +1」と名指しされた）。控えた順に消すので、
+   停止内容を先・分類を後に並べる。 */
+const SNAP_TABLES=['設備停止マスタ','設備停止分類マスタ'];
 let snapM=null;
 const API='http://127.0.0.1:5029';
 const EQ='テスト設備A';

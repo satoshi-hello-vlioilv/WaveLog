@@ -105,6 +105,8 @@ def main():
     if len(sys.argv) == 3:
         a, b = load(sys.argv[1]), load(sys.argv[2])
         msg = []
+        # 片方にしか無い表は0行として比べる——**0行の表が増えた・消えただけは差ではない**
+        # （サーバーが初めて使う表を作っただけ。テストには片付ける物が無い）。
         for k in sorted(set(a) | set(b)):
             x, y = a.get(k, 0), b.get(k, 0)
             if x != y:

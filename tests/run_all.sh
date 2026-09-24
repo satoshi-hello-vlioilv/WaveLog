@@ -419,8 +419,12 @@ FATAL: 途中で終了しました (exit $rc)。最後のPASSの直後を見て�
   # 直していた。`WAVELOG_NO_FP=1`で止められる。
   if [ -z "$WAVELOG_NO_FP" ]; then
     fingerprint > "$FP_AFTER" 2>/dev/null
+    # **名指しは「差の中身」があるときだけ**。ファイルを丸ごと比べると、サーバーが初めて使う表を
+    # 0行で作っただけでも名指しされ、**内訳が空の名指し**になっていた（片付けようが無い・
+    # `sqlite_sequence`を数えないのと同じ理由。差の数え方は`state_fp.py`の1箇所）。
     if ! cmp -s "$FP_BEFORE" "$FP_AFTER"; then
-      DIRTY="$DIRTY$2|$(python3 "$ROOT/tests/state_fp.py" "$FP_BEFORE" "$FP_AFTER")
+      fpdiff=$(python3 "$ROOT/tests/state_fp.py" "$FP_BEFORE" "$FP_AFTER")
+      [ -n "$fpdiff" ] && DIRTY="$DIRTY$2|$fpdiff
 "
     fi
   fi

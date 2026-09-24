@@ -175,6 +175,15 @@ run('test_rpsave: 帳票の配置は「触ったら裏で保存」（§9.303 ③
  }catch(e){
   rec('FATAL',false,String(e&&e.message||e));
  }finally{
-  await cleanup();
+  /* **先に画面を閉じてから片付ける**。この網が見ている「触ったら裏で保存」は`RP_AUTOSAVE_MS`だけ
+     遅れて保存を送るので、画面を開いたまま片付けると**遅れた保存が後から書き戻す**（通しで
+     「列レイアウトマスタ[report:テスト設備A] +73」と名指しされた）。片付けたら空になったかを見て、
+     まだ残っていればもう一度（その場で飛んでいた保存が後から着いたとき）。 */
+  await page.close().catch(()=>{});
+  for(let i=0;i<3;i++){
+   await cleanup();
+   const left=await getj('/api/column-layout-master?target='+encodeURIComponent(TARGET)).catch(()=>({}));
+   if(!(left.order||[]).length)break;
+  }
  }
 }, {viewport:{width:1700,height:1000}});
