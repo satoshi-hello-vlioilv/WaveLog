@@ -115,6 +115,8 @@ G['操業意匠'] = ['test_oppad', 'test_opui', 'test_opdata', 'test_msteps', 't
 G['列'] = ['test_collayout', 'test_colformat', 'test_colrule', 'test_colsort', 'test_lcpanel',
            'test_colscache', 'test_colsripple', 'test_colsave', 'test_displayrule', 'test_colmenu',
            'test_colpreset', 'test_formula', 'test_reccols', 'test_rpblocks', 'test_rplayout',
+           # §9.489: 元データの列にも「この列の作り方」の式（4画面）
+           'test_colsrcfx',
            'test_rpmaster',
            'test_colio', 'test_multidrag', 'test_sortcustom', 'test_sortpipe',
            # §9.253: 見本のロットで帳票を見る・試し印刷

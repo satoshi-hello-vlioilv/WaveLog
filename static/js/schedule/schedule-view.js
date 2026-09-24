@@ -4419,10 +4419,17 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     直後は式が空なので、ここで落とすと**足した列がその場で消える**。
     **式が空でも読み替えを付けていれば列は残る**（§9.234 ⑥）——「他の列だけを
     見るルール」で中身を作る列がそれ。式も読み替えも空なら保存で消える。 */
+ /* **計算列＝この表のデータに無い名前の列**（§9.489）。元データの列（内容欄の項目）・固定列も
+    作り方の式を持てるようになったので、「式を持つか」では計算列を見分けられない——持っていても
+    内容欄の項目は内容欄の項目（式が空なら元の値・分類は元データのまま）。 */
  function timelineFormulaKeys(){
   const t=timelineTarget();if(!t)return [];
-  return Object.keys(WL.columnLayout.get(t).formulas||{});
+  const data=scContentDataSet();
+  return Object.keys(WL.columnLayout.get(t).formulas||{}).filter(k=>!scIsFixedCol(k)&&!data.has(k));
  }
+ /* 内容欄の項目になれる列（§9.489）: いま出している項目と、選べる項目すべて。**答えはここ1箇所**——
+    計算列の見分け・パネルの口（`isData`）・内容表示マスタへの保存が同じ答えを見る。 */
+ function scContentDataSet(){return new Set([...chosenContentKeys(),...contentCandidateKeys()])}
  const timelineIsFormulaKey=k=>timelineFormulaKeys().includes(k);
  /* 式を**列ごとに1回だけ解く**（行ごとに解き直すと行数×列数ぶん効く）。
     行を描くのは`renderEntryRow`＝別の関数なので、**式が変わったときだけ
@@ -4617,7 +4624,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     同じ理由。書き写すと片方だけ直った状態が作れる）。**HTMLは組み立てない**
     ——呼び出し側がそれぞれの見せ方（タグ付きspan／プレーンテキスト）へ包む。 */
  function dynamicCellValue(e,k,ctx){
-  if(ctx.formulaFns.has(k)||timelineIsFormulaKey(k)){
+  if(ctx.formulaFns.has(k)||ctx.calcKeys.has(k)){
    const raw=ctx.formulaFns.has(k)?timelineFormulaText(e,ctx.formulaFns.get(k)):'';
    const out=WL.cellFormat.cell({raw,format:ctx.calcTarget?WL.columnLayout.format(ctx.calcTarget,k):null,
                                  rule:ctx.calcTarget?WL.columnLayout.rule(ctx.calcTarget,k):'',
@@ -4631,6 +4638,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     見る行は1行につき1回。§9.234 ⑥と同じ理由）。 */
  function rowDynamicCtx(e){
   return {contentMap:new Map(timelineContentCells(e).map(c=>[c.key,c])),
+          /* 計算列の顔ぶれは1行につき1回（セルごとに作らない・§9.489）。 */
+          calcKeys:new Set(timelineFormulaKeys()),
           formulaFns:timelineFormulaFns(),ruleRow:timelineRuleRow(e),calcTarget:timelineTarget(),
           view:timelineRuleView(e)};
  }
@@ -6967,6 +6976,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    const lotText=entryContentText(e);      // ツールチップ・帳票用の1行要約
    const contentCells=timelineContentCells(e);
    const formulaFns=timelineFormulaFns();      /* 計算で作る列(§9.207)。控えつき */
+   const calcKeys=new Set(timelineFormulaKeys());  /* 計算列の顔ぶれ（行ごとに1回・§9.489） */
    /* 読み替えが見る行と対象は**1行につき1回**作る（§9.234 ⑥）。 */
    const ruleRow=timelineRuleRow(e),calcTarget=timelineTarget(),view=timelineRuleView(e);
    /* **「誰が・どの端末で」は常に詳細へ入れる**(§9.180)。これにより
@@ -7082,7 +7092,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
        式が空の列（＝読み替えだけで中身を作る列）もここで受ける。 */
     /* 計算式・内容の項目は`dynamicCellValue()`の1箇所で決める
        （§9.235。印刷向けの`printRowCells()`も同じ関数を通す）。 */
-    const dyn=dynamicCellValue(e,k,{formulaFns,ruleRow,calcTarget,contentMap,view});
+    const dyn=dynamicCellValue(e,k,{formulaFns,calcKeys,ruleRow,calcTarget,contentMap,view});
     if(dyn.kind==='calc')
      /* **元の値（式の結果）は`title`に残す**——読み替えで置き換わったことが
         読める（§9.94「切れたセルには生の値の`title`」と同じ約束）。 */
@@ -10179,6 +10189,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    ruleRowOf:row=>timelineRuleRow(row),
    /* 式の列はパネルが下書きの式で作る（§9.483・`rawOfDraft()`の1箇所）。口が答えるのはデータの列だけ。 */
    valueOf:(row,k)=>scIsFixedCol(k)?scFixedCellText(row,k):entryValueOf(row,k),
+   /* この表のデータの列か（§9.489）: 固定列と内容欄の項目。式を持っても計算列ではない。 */
+   isData:k=>scIsFixedCol(k)||scContentDataSet().has(k),
    /* **項目名は日本語で出す。** 内容欄のキーは`lotNo`/`purposeName`という
       alias名なので、そのまま並べると選んだ本人以外には何の項目か分からない
       （タイムラインの見出しが日本語なのに、設定画面だけ生のキーという
@@ -10228,7 +10240,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
        キー(`__cat__`等)まで混ぜると、内容欄に「区分」が現れる。 */
     /* **計算で作った列を内容表示マスタへ混ぜない**（§9.207）。混ぜると
        「内容欄の項目」として扱われ、式を消した瞬間に空の列が残る。 */
-    const isCalc=k=>Object.prototype.hasOwnProperty.call(body.formulas||{},k);
+    /* **式を持つ＝計算列ではない**（§9.489）: 内容欄の項目にも作り方の式を入れられる。式を入れた
+       項目を内容表示マスタから落とすと、保存した途端にその列が消える。 */
+    const data=scContentDataSet();
+    const isCalc=k=>Object.prototype.hasOwnProperty.call(body.formulas||{},k)&&!data.has(k);
     const items=(body.order||[]).filter(k=>!hide.has(k)&&!scIsFixedCol(k)&&!isCalc(k));
     const toSave=sameItems(items,DEFAULT_CONTENT_ITEMS)?[]:[...items];
     await api('/api/schedule-content-master',{method:'POST',

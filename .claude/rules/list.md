@@ -1,4 +1,4 @@
-# 一覧と列（141件）
+# 一覧と列（143件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 元データの列も作り方の式を持てる。**計算列＝式を持ち画面のデータに無い名前**（口の`isData`） | `test_colsrcfx.js` | [§9.489](../../docs/decisions/9.489.md) |
+| 行のその列の値は`WL.cellFormat.rawOf()`の1本（式があれば式の結果）。専用の描き方の列も式を通す | `test_colsrcfx.js` | [§9.489](../../docs/decisions/9.489.md) |
 | 並べ替えを持たない表（`sort:false`）でも④の段は出し、**理由を1文**書く（口の`sortOff`）。黙って消さない | `test_sctimecols.js` | [§9.484](../../docs/decisions/9.484.md) |
 | 列の設定パネルで列の生の値に答えるのは`rawOfDraft()`の1箇所（式の列は下書きの式）。口の`valueOf`は式を知らない | `test_colpreset.js` | [§9.483](../../docs/decisions/9.483.md) |
 | 「☰ 表示」は**表示列の編集がいちばん上・主ボタン**（アイコン）。下の行は字も欄も1つの大きさ | `test_listbar.js` | [§9.476](../../docs/decisions/9.476.md) |

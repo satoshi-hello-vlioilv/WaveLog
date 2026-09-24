@@ -1641,14 +1641,15 @@ const cellFormat=(()=>{
     **この1本**で足りる: 書式・読み替え・作り方の式はその対象の列レイアウト、名前→列は`keyByName`。
     `keys`＝行の列名（名前で引くため）、`format`＝列レイアウトに書式が無いときの既定（画面が持つ列の既定）。 */
  const fxOf=new Map();
+ /* 式を解くのは1回（控えつき）。空の式は`null`＝式なし。壊れた式は空を返す器（列は残す）。 */
+ function fx(src){
+  if(!src)return null;
+  if(!fxOf.has(src)){let c;try{c=WL.formula.compile(src)}catch(e){c={run:()=>'',columns:[]}}
+   if(fxOf.size>200)fxOf.clear();fxOf.set(src,c)}
+  return fxOf.get(src);
+ }
  function viewOf(target,opt){
   const o=opt||{},keys=o.keys||null;
-  const fx=src=>{
-   if(!src)return null;
-   if(!fxOf.has(src)){let c;try{c=WL.formula.compile(src)}catch(e){c={run:()=>'',columns:[]}}
-    if(fxOf.size>200)fxOf.clear();fxOf.set(src,c)}
-   return fxOf.get(src);
-  };
   return {
    key:n=>(keys&&columnLayout.keyByName(target,typeof keys==='function'?keys():keys,n))||n,
    calc:k=>fx(columnLayout.formula(target,k)),
@@ -1656,7 +1657,15 @@ const cellFormat=(()=>{
    rule:k=>columnLayout.rule(target,k)
   };
  }
- return {value,parts,cell,
+ /* **行のその列の値**（§9.489、利用者の指示「元データのところでも『この列の作り方』の計算式を…」）。
+    作り方の式があれば式の結果、無ければ行の値——**計算列も元データの列も同じ1本**。式は元の行を読むので、
+    元データの列の式は`[自分の名前]`で元の値を読める（式の結果を読み直さない＝巡らない）。
+    行に全列が載る画面（測定実績・操業データの紙）はこれを通す。 */
+ function rawOf(target,row,k){
+  const c=fx(columnLayout.formula(target,k));
+  return c?c.run(row||{}):(row?row[k]:undefined);
+ }
+ return {value,parts,cell,rawOf,
          text:(target,col,raw)=>value(columnLayout.format(target,col),raw),
          /* 読み替えが見る行そのもの（編集画面の「試してみる」が同じ答えを使う・§9.474）。 */
          ruleRow:(rule,opt)=>ruleRow(rule,opt||{},null),

@@ -77,6 +77,9 @@
   healed:t=>typeof WL.healedColumnOrder==='function'?WL.healedColumnOrder(t):null,
   rows:()=>S.rows||[],
   valueOf:(row,k)=>row?row[k]:undefined,
+  /* この画面のデータの列か（§9.489）。作り方の式を持っていても、データの列は計算列ではない
+     （式が空なら元の値・分類は元データのまま・消せない）。答えない口は「式を持つ＝計算列」のまま。 */
+  isData:k=>(S.columns||[]).includes(k),
   /* 式へ渡す1行。**既定は行そのまま**（一覧の行は`{列名:値}`なので、
      `[列名]`がそのまま当たる）。スケジュール表のように行が生の
      `{列名:値}`でない画面だけ、口が組み立て直す（§9.207）。 */
@@ -178,8 +181,14 @@
  /* 式で作った列(§9.111 ⑦)も「計算・操作」。元データにも結合にも属さない。
     **キーの有無で見る**——作った直後は式が空文字なので、値の真偽で
     見ると「作ったのに編集欄が出ない」ことになる(実際にそうなった)。 */
+ /* **元データの列も作り方の式を持てる**（§9.489、利用者の指示「元データのところでも、『この列の作り方』…
+    計算式を入力することができる機能をすべて」）。なので「式を持つ」だけでは計算列と言えない——
+    **計算列＝式を持ち、かつ画面のデータに無い名前の列**。データの列かは口が答える（`isData`）。 */
+ const isDataCol=k=>typeof panelSrc.isData==='function'&&!!panelSrc.isData(k);
  const isFormulaCol=k=>!!draft&&!!draft.formulas
-   &&Object.prototype.hasOwnProperty.call(draft.formulas,k);
+   &&Object.prototype.hasOwnProperty.call(draft.formulas,k)&&!isDataCol(k);
+ /* 作り方の式を書ける列: 計算列と、**元データ・結合の列**。番号・ボタン・画面が作る列（計算・操作）は持たない。 */
+ const canFormula=k=>!isVirtual(k)&&(isFormulaCol(k)||['source','join'].includes(originOf(k)));
  /* **分類を口が答えてもよい**(§9.162)。仕掛一覧は「元データか結合か」で
     足りるが、測定データの一覧のように**この画面が作っている列**(状態・
     実作業時間)が混ざる対象では、値を持つ列でも「計算・操作」が正しい。
@@ -210,8 +219,10 @@
   /* 一覧のセルと**同じ見え方**で試す（§9.474）: この列の生の値（式の列は式の結果）・書式・列の見え方。 */
   cellOf:r=>({raw:rawOfDraft(r,col),format:fmtOf(col),view:draftView(r)}),
   /* 「式にする」の入れ先（§9.474）。式の列ならその列の作り方へ（いまの式は変換の中で括弧に包んで使う）、
-     データの列なら**式の列を新しく作って**入れる（元のデータの列は式を持てないため）。 */
+     データの列なら**式の列を新しく作って**入れる（元の列の値はそのまま残す・§9.489）。 */
   selfFormula:isFormulaCol(col)?(draft.formulas[col]||''):'',
+  /* データの列へは入れない（その列の値を**作り直す**式になり、ルールの結果とは意味が違う）。
+     ルールの結果は別の列として並べる。 */
   toFormula:expr=>{
    WL.listRules.close();
    if(isFormulaCol(col)){
@@ -238,7 +249,8 @@
     以前は統計・見本・例・並べ替えの6箇所が口を直に呼んでおり、式の列を自前で解いていたスケジュール表だけ値が
     出て、仕掛一覧などでは「値のある行がありません（0件）」だった。 */
  function rawOfDraft(r,k){
-  const c=isFormulaCol(k)?draftCalc(k):null;
+  /* 式があれば式の結果（計算列も**式を入れた元データの列**も同じ・§9.489）。式が空なら口の値＝元の値。 */
+  const c=draftCalc(k);
   if(c)return c.run(typeof panelSrc.formulaRowOf==='function'?panelSrc.formulaRowOf(r,c.columns):r);
   return panelSrc.valueOf(r,k);   /* 口へ聞くのはここ1箇所（§9.483） */
  }
@@ -620,7 +632,9 @@
       title="${esc(ORIGIN[o].label)}"></i>${esc(labelOf(k))}</span>
     <span class="lc-marks">${draft.names[k]?'<i class="lc-mark" title="表示名を変えています">名</i>':''}${
       draft.formats[k]?`<i class="lc-mark" title="${esc(fmtNote(draft.formats[k]))}">書</i>`:''}${
-      draft.rules[k]?`<i class="lc-mark" title="読み替え: ${esc(draft.rules[k])}">替</i>`:''}</span>
+      draft.rules[k]?`<i class="lc-mark" title="読み替え: ${esc(draft.rules[k])}">替</i>`:''}${
+      /* 元データの列を式で作り直しているか（§9.489）。計算列は分類（計算・操作）が言うので付けない。 */
+      !isFormulaCol(k)&&String(draft.formulas[k]||'').trim()?`<i class="lc-mark" title="作り方の式: ${esc(draft.formulas[k])}">式</i>`:''}</span>
     <span class="lc-eg">${changed?`<s>${esc(s.raw)}</s>`:''}<b class="${s.color?'cell-'+s.color:''}">${
       esc(s.text)||'<i class="lc-eg-none">（値のある行がありません）</i>'}</b></span>
    </div>`}).join('')||'<div class="sc-empty-note">該当する列がありません</div>';
@@ -933,10 +947,13 @@
     一覧では空欄になるだけなので、ここで言わないと原因に辿り着けない。 */
  function formulaStepHtml(){
   const src=draft.formulas[picked]||'';
-  const chk=src.trim()?WL.formula.check(src):{ok:false,error:'まだ式が入っていません'};
+  /* 元データの列（§9.489）は**式が空なら元の値のまま**——空は誤りではない。 */
+  const calcCol=isFormulaCol(picked);
+  const chk=src.trim()?WL.formula.check(src)
+   :(calcCol?{ok:false,error:'まだ式が入っていません'}:{ok:true,columns:[],empty:true});
   const rows=panelSrc.rows().slice(0,3);
   let sampleHtml='';
-  if(chk.ok&&rows.length){
+  if(chk.ok&&!chk.empty&&rows.length){
    const c=WL.formula.compile(src);
    /* 行の形は画面によって違う（§9.207）。口が答えるならそちらへ通す
       ——通さないと、スケジュール表の見本だけ全部「（空）」になる。 */
@@ -950,29 +967,34 @@
   return `
    <div class="lc-step lc-step-fx">
     <h4 class="lc-step-head"><i class="lc-step-no">式</i>この列の作り方
-     <small>いまある列から値を作ります</small></h4>
+     <small>${calcCol?'いまある列から値を作ります':'元の値を式で作り直します（空なら元の値のまま）'}</small></h4>
     <textarea id="lcFormula" class="lc-fx-input" rows="2" spellcheck="false"
-     placeholder="例: [製造板厚] * [幅]　／　if([数量] > 100, '大', '小')">${esc(src)}</textarea>
-    <div class="lc-fx-state ${chk.ok?'is-ok':'is-ng'}">${chk.ok
+     placeholder="${esc(calcCol?"例: [製造板厚] * [幅]　／　if([数量] > 100, '大', '小')"
+       :`例: [${picked}] * 1000　／　mid([${picked}], 1, 3)　／　if([${picked}] = '', '未', [${picked}])`)}">${esc(src)}</textarea>
+    <div class="lc-fx-state ${chk.ok?'is-ok':'is-ng'}">${chk.empty
+      ?'式は空です——元の値をそのまま出します'
+      :chk.ok
       ?`使える式です${chk.columns.length?`（使っている列: ${esc(chk.columns.join('、'))}）`:''}`
       :esc(chk.error)}</div>
     ${sampleHtml?`<div class="lc-fx-samples"><span>先頭3件の結果</span>${sampleHtml}</div>`:''}
     <details class="lc-fx-help"><summary>書き方</summary>
      <dl>${WL.formula.help.map(([a,b])=>`<div><dt><code>${esc(a)}</code></dt><dd>${esc(b)}</dd></div>`).join('')}</dl>
     </details>
-    <p class="lc-fx-note"><b>この列は表示だけです。</b>並べ替え・絞り込みは元のデータに対して行うため、
+    ${calcCol?`<p class="lc-fx-note"><b>この列は表示だけです。</b>並べ替え・絞り込みは元のデータに対して行うため、
      この列は対象になりません。<b>この列の「元の値」は式の結果です</b>——読み替え（③）が
      当たればその言葉で確定し、当たらなければ式の結果がそのまま出ます。
      <b>式が空でも読み替えを付けていればこの列は残ります</b>（読み替えだけで中身を作る列）。
      式も読み替えも空のまま保存すると、この列は消えます。</p>
-    <button type="button" id="lcFormulaDel" class="lc-btn-ghost lc-fx-del">この列を削除する</button>
+    <button type="button" id="lcFormulaDel" class="lc-btn-ghost lc-fx-del">この列を削除する</button>`
+    :`<p class="lc-fx-note"><b>式を入れると、この列に出るのは式の結果です</b>（元の値は式の中で
+     <code>[${esc(picked)}]</code> と書けば読めます）。書式（②）・読み替え（③）は式の結果に当たります。
+     <b>並べ替え・絞り込みは元の値</b>に対して行います。<b>式を空にすると元の値に戻ります</b>（列は消えません）。</p>`}
    </div>`;
  }
  function renderDetail(){
   const box=document.getElementById('lcDetail');if(!box)return;
   if(!picked){box.innerHTML='<div class="sc-empty-note">左の一覧から列を選んでください。</div>';return}
   const virt=isVirtual(picked);
-  const fx=isFormulaCol(picked);
   const f=fmtOf(picked);
   const sample=virt?'':sampleValue(picked);
   const sampleRow=virt?null:(String(sample)===''?panelSrc.rows()[0]
@@ -1021,7 +1043,7 @@
      </div></div>
    ${alignFieldsHtml()}
    </div>
-   ${fx&&panelSrc.features.formula?formulaStepHtml():''}
+   ${canFormula(picked)&&panelSrc.features.formula?formulaStepHtml():''}
    ${virt?`<div class="lc-note-calc"><b>この列は値を持ちません。</b>
       番号やボタンを出す列なので、書式や読み替えはありません。名前と幅、出す/出さないだけを決められます。</div>`:`
    <div class="lc-step">
@@ -1081,11 +1103,16 @@
   const fxIn=box.querySelector('#lcFormula');
   if(fxIn){
    /* 関数と列名の候補（§9.474・表示ルールの式と同じ`WL.formula.suggest`）。 */
-   WL.formula.suggest(fxIn,{columns:()=>draft.order.filter(k=>!isVirtual(k)&&k!==picked)});
+   /* 元データの列は**自分の名前も候補**（元の値を読む・§9.489）。計算列は自分を読むと巡るので外す。 */
+   const selfOk=!isFormulaCol(picked);
+   WL.formula.suggest(fxIn,{columns:()=>draft.order.filter(k=>!isVirtual(k)&&(selfOk||k!==picked))});
    let timer=null;
    const sgOpen=()=>!!document.querySelector('.fx-suggest:not([hidden])');
    fxIn.addEventListener('input',e=>{
-    draft.formulas[picked]=e.target.value;
+    /* 元データの列の式を空にしたら**式を持たない列へ戻す**（§9.489）。空の式を残すと、保存したとき
+       「式が空の計算列」と同じ形で書かれる（NULL＝式なし・''＝式が空の計算列・§9.234 ⑥）。 */
+    if(!isFormulaCol(picked)&&!String(e.target.value||'').trim())delete draft.formulas[picked];
+    else draft.formulas[picked]=e.target.value;
     clearTimeout(timer);
     timer=setTimeout(function redo(){
      /* 候補を選んでいる最中は作り直さない（作り直すと候補の器が古い入力欄を指したままになる）。 */
@@ -1097,7 +1124,8 @@
      if(WL.formula.check(draft.formulas[picked]||'').ok){renderList();applyLive()}
     },350);
    });
-   box.querySelector('#lcFormulaDel').onclick=async()=>{
+   const del=box.querySelector('#lcFormulaDel');
+   if(del)del.onclick=async()=>{
     if(await confirmModal(`列「${labelOf(picked)}」を削除しますか？\n式で作った列なので、元のデータには影響しません。`))
      deleteFormulaColumn(picked);
    };
