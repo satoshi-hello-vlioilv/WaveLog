@@ -2657,7 +2657,8 @@ div.sc-view-row{cursor:default}
 .sc-blade-calc{color:var(--muted)}
 .sc-blade-tbl tr.is-calc .sc-blade-title span{color:var(--ink-2)}
 /* 行き先のチップは題名の横（§9.377）。押す的は行の「選ぶ」と分ける。 */
-.sc-blade-title{display:flex;align-items:center;gap:var(--space-2)}
+/* **`td`は表のセルのまま**（§9.469）——横並びは中の`.sc-blade-tt`が持つ。 */
+.sc-blade-tt{display:inline-flex;align-items:center;gap:var(--space-2)}
 /* 見本は**実物と同じ見た目**で描く（色を書き写さない・§9.374）。 */
 .sc-blade-legend{margin-left:auto;display:flex;align-items:center;gap:var(--space-1);
   font-size:var(--fs-sm);color:var(--muted)}

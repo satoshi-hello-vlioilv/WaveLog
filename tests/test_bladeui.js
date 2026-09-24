@@ -2719,7 +2719,11 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
       heads: [...box.querySelectorAll('.sc-blade-tbl thead th')].map(t => t.textContent),
       first: rows.length ? (rows[0].textContent || '').replace(/\s+/g, ' ').trim() : '',
       na: box.querySelectorAll('.sc-blade-na').length,
-      todo: box.querySelectorAll('.sc-blade-todo').length
+      todo: box.querySelectorAll('.sc-blade-todo').length,
+      /* §9.469: セルの下端と行の下端のずれ（px）と、表のセルでなくなったセルの数。 */
+      step: Math.max(0, ...rows.map(tr => Math.max(...[...tr.children].map(td =>
+        Math.abs(tr.getBoundingClientRect().bottom - td.getBoundingClientRect().bottom))))),
+      notCell: rows.reduce((n, tr) => n + [...tr.children].filter(td => getComputedStyle(td).display !== 'table-cell').length, 0)
      };
     });
     rec('切り替えると刃組の表が出て、タイムラインは伏せる',
@@ -2731,6 +2735,10 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     /* **記録が無い段取りを空欄にしない**（空欄は0に見える・§9.231）。 */
     rec('まだ組んでいない段取りは「これから」「未記録」と書く',
         bl.todo >= 1 && bl.na >= 1, `これから${bl.todo} 未記録${bl.na}`);
+    /* §9.469（利用者の指摘「刃組スケジュールで部分的に段付きになっていて変な部分がある」）。
+       題名のセルを`flex`にすると表のセルでなくなり、罫線が中身の高さで引かれて段違いになる。 */
+    rec('刃組スケジュールの行は段違いにならない（どのセルも表のセル・下端が行と同じ）',
+        bl.notCell === 0 && bl.step < 1, JSON.stringify({ step: bl.step, notCell: bl.notCell }));
 
     /* ---- 6.6) 一覧から刃組ガイダンスへ行ける（§9.408、利用者の指示②） ----
        「刃組メインのスケジュールなのに刃組ガイダンスに行けないのは微妙です」
