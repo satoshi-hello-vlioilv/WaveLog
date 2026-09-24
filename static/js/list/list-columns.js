@@ -440,7 +440,7 @@
   const src=raw===''?panelSrc.rows()[0]
     :panelSrc.rows().find(r=>String(panelSrc.valueOf(r,k)??'')===String(raw));
   const out=WL.cellFormat.cell({raw,format:draft.formats[k]||null,rule:draft.rules[k]||'',
-                                row:ruleRow(src),column:k});
+                                row:ruleRow(src),column:k,view:draftView(src)});
   return {text:out.text,color:out.color,raw:String(raw)};
  }
 
@@ -846,7 +846,7 @@
     <p class="lc-preview-empty">この列に値のある行が、いま表示中の中にありません。</p>`;
   const f=fmtOf(picked),rule=rule0;
   const body=rows.map(({raw,row})=>{
-   const out=WL.cellFormat.cell({raw,format:f,rule,row:ruleRow(row),column:picked});
+   const out=WL.cellFormat.cell({raw,format:f,rule,row:ruleRow(row),column:picked,view:draftView(row)});
    const same=String(out.text)===raw;
    return `<tr class="${same?'is-same':''}"><td class="lc-pv-raw">${esc(raw)}</td>
      <td class="lc-pv-arrow" aria-hidden="true">→</td>
@@ -971,10 +971,10 @@
   const fx=isFormulaCol(picked);
   const f=fmtOf(picked);
   const sample=virt?'':sampleValue(picked);
+  const sampleRow=virt?null:(String(sample)===''?panelSrc.rows()[0]
+    :panelSrc.rows().find(r=>String(panelSrc.valueOf(r,picked)??'')===String(sample)));
   const shown=virt?'':WL.cellFormat.cell({raw:sample,format:f,rule:draft.rules[picked]||'',
-                                          row:ruleRow(String(sample)===''?panelSrc.rows()[0]
-                                            :panelSrc.rows().find(r=>String(panelSrc.valueOf(r,picked)??'')===String(sample))),
-                                          column:picked}).text;
+                                          row:ruleRow(sampleRow),column:picked,view:draftView(sampleRow)}).text;
   const o=originOf(picked);
   const st=columnStats(picked);
   /* **右ペインは上から順に読める形にする(§9.105)。** 以前はラベルと入力が

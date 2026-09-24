@@ -166,8 +166,9 @@
     生の値の順は`WL.cellFormat`が持つので、ここで組み立て直さない。 */
  function cellText(k,raw,row){
   try{
+   /* 表示の値で見る読み替え（§9.474）にも効くよう、列の見え方を渡す（§9.479）。 */
    const r=WL.cellFormat.cell({raw,format:WL.columnLayout.format(target(),k),
-     rule:WL.columnLayout.rule(target(),k),row,column:k});
+     rule:WL.columnLayout.rule(target(),k),row,column:k,view:WL.cellFormat.viewOf(target())});
    return (r&&r.text)!=null?String(r.text):(raw==null?'':String(raw));
   }catch(e){return raw==null?'':String(raw)}
  }

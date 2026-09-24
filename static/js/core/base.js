@@ -1635,10 +1635,32 @@ const cellFormat=(()=>{
   return {text:value(opt.format,raw),color:''};
  }
  const cell=opt=>inner(opt,null);
+ /* **列レイアウトの対象から「列の見え方」を作る**（§9.479、利用者の指示「1から4まで順番に」の3）。
+    表示の値（§9.474）が効くには画面が`view`を渡す必要があり、一覧・スケジュール表・列の設定の下書きの
+    3つしか渡していなかった。行に全列の値が載っている画面（測定データ一覧・実績データ・操業データの紙）は
+    **この1本**で足りる: 書式・読み替え・作り方の式はその対象の列レイアウト、名前→列は`keyByName`。
+    `keys`＝行の列名（名前で引くため）、`format`＝列レイアウトに書式が無いときの既定（画面が持つ列の既定）。 */
+ const fxOf=new Map();
+ function viewOf(target,opt){
+  const o=opt||{},keys=o.keys||null;
+  const fx=src=>{
+   if(!src)return null;
+   if(!fxOf.has(src)){let c;try{c=WL.formula.compile(src)}catch(e){c={run:()=>'',columns:[]}}
+    if(fxOf.size>200)fxOf.clear();fxOf.set(src,c)}
+   return fxOf.get(src);
+  };
+  return {
+   key:n=>(keys&&columnLayout.keyByName(target,typeof keys==='function'?keys():keys,n))||n,
+   calc:k=>fx(columnLayout.formula(target,k)),
+   format:k=>columnLayout.format(target,k)||(o.format?o.format(k):null),
+   rule:k=>columnLayout.rule(target,k)
+  };
+ }
  return {value,parts,cell,
          text:(target,col,raw)=>value(columnLayout.format(target,col),raw),
          /* 読み替えが見る行そのもの（編集画面の「試してみる」が同じ答えを使う・§9.474）。 */
-         ruleRow:(rule,opt)=>ruleRow(rule,opt||{},null)};
+         ruleRow:(rule,opt)=>ruleRow(rule,opt||{},null),
+         viewOf};
 })();
 window.WL.cellFormat=cellFormat;
 function databaseLabel(key){

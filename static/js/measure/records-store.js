@@ -1341,7 +1341,9 @@ function recordCellText(k,raw,view){
  const fmt=WL.columnLayout.format(RECORD_LIST_TARGET,k);
  const rule=WL.columnLayout.rule(RECORD_LIST_TARGET,k);
  const c=RECORD_COL_BY_KEY.get(k);
- return WL.cellFormat.cell({raw,format:fmt||(c&&c.fmt)||null,rule,row:view,column:k});
+ /* 表示の値で見る読み替え（§9.474）にも効くよう、列の見え方を渡す（§9.479）。書式が無い列は列の既定。 */
+ return WL.cellFormat.cell({raw,format:fmt||(c&&c.fmt)||null,rule,row:view,column:k,
+  view:WL.cellFormat.viewOf(RECORD_LIST_TARGET,{format:kk=>(RECORD_COL_BY_KEY.get(kk)||{}).fmt||null})});
 }
 
 function renderRecordListRows(){

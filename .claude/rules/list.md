@@ -1,4 +1,4 @@
-# 一覧と列（138件）
+# 一覧と列（139件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -15,6 +15,7 @@
 | 表示ルールの左辺が式なら`formula`（式が真なら）。比べ方と右辺は出さない | `test_colrule.js`・`test_displayrule.py` | [§9.474](../../docs/decisions/9.474.md) |
 | 条件が見る列の値は**ルールごと**（元のデータ／表示の値）。答えは`WL.cellFormat.ruleRow()`の1箇所 | `test_colrule.js` | [§9.474](../../docs/decisions/9.474.md) |
 | 列の見え方は画面が`view`で渡す（key/calc/raw/format/rule）。**式の列は元のデータでも式の結果** | `test_colrule.js` | [§9.474](../../docs/decisions/9.474.md) |
+| 行に全列が載る画面の見え方は`WL.cellFormat.viewOf(target)`の1本。`cell()`は必ず`view`を渡す | `test_colrule.js` | [§9.479](../../docs/decisions/9.479.md) |
 | ルール→式は`WL.displayRules.toFormula()`の1箇所（評価と同じ意味）。式にできない物は`notes`で言う | `test_colrule.js` | [§9.474](../../docs/decisions/9.474.md) |
 | 表示ルールの比べ方は式の`cmp()`の1本（数を緩く読む）。判定も変換した式もこれを通す | `test_colrule.js`・`test_formula.js` | [§9.477](../../docs/decisions/9.477.md) |
 | 式の候補は`WL.formula.suggest()`の1つ（焦点は入力欄のまま）。関数の顔ぶれは`sigs` | `test_formula.js`・`test_colrule.js` | [§9.474](../../docs/decisions/9.474.md) |

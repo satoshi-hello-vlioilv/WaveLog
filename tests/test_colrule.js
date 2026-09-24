@@ -496,6 +496,36 @@ run('test_colrule: 値の読み替え(§9.88 段4)', async ({page,rec,B,W,idle,p
    }
    return {n,bad};
   });
+  /* §9.479: 行に全列が載る画面（測定データ一覧・実績データ・操業データの紙）も、列レイアウトの対象から
+     `viewOf()`で列の見え方を作って渡す——表示の値が他の列の**書式**と**作り方の式**の後を見る。 */
+  const VT='test:viewof:'+Date.now().toString(36);
+  await post('/api/column-layout-master',{target:VT,order:['A','B','F'],widths:{},hidden:[],names:{},
+   formats:{B:{kind:'text',suffix:'号'}},rules:{},formulas:{F:"concat('Z',[A])"},user_id:'test'});
+  const vo=await page.evaluate(async t=>{
+   WL.columnLayout.forget(t);await WL.columnLayout.load(t);
+   WL.displayRules.put('__v__',[{conditions:[{left:{kind:'column',column:'B'},op:'endsWith',right:{kind:'value',value:'号'}},
+     {left:{kind:'column',column:'F'},op:'eq',right:{kind:'value',value:'Z1'}}],text:'表',color:''}],{self:'shown'});
+   const row={A:'1',B:'7'};
+   const on=WL.cellFormat.cell({raw:'x',format:null,rule:'__v__',row,column:'A',view:WL.cellFormat.viewOf(t)}).text;
+   const off=WL.cellFormat.cell({raw:'x',format:null,rule:'__v__',row,column:'A'}).text;
+   WL.displayRules.put('__v__',null);
+   return {on,off};
+  },VT);
+  await post('/api/column-layout-master',{target:VT,clear:true,order:[],widths:{},hidden:[],names:{},formats:{},rules:{},user_id:'test'});
+  rec('列レイアウトから作った見え方で、表示の値が他の列の書式・作り方の式の後を見る（viewOf）',
+      vo.on==='表'&&vo.off==='x',JSON.stringify(vo));
+  /* 行に全列が載る3つの画面と列の設定の見本は、どれも見え方を渡している（前: 10箇所中4箇所）。 */
+  const calls=await page.evaluate(async()=>{
+   const files=['/static/js/report/actuals-view.js','/static/js/report/opsheet-print.js','/static/js/measure/records-store.js',
+                '/static/js/list/list-columns.js','/static/js/list/list-view.js','/static/js/schedule/schedule-view.js'];
+   let n=0,withView=0;
+   for(const f of files){const src=await (await fetch(f)).text();
+    const re=/WL\.cellFormat\.cell\(\{[\s\S]*?\}\)/g;let m;
+    while((m=re.exec(src))){n++;if(/view/.test(m[0]))withView++}}
+   return {n,withView};
+  });
+  rec('一覧・スケジュール表・測定データ一覧・実績データ・紙・列の設定の見本は、どれも見え方を渡す',
+      calls.n>0&&calls.withView===calls.n,JSON.stringify(calls));
   /* §9.478: 表示の値の速さ（実測: 1000行×3列で 元のデータ 0.79µs／表示の値 1.07µs／読み替え付きの式の列を
      見る 2.58µs ／セル。一覧の描き直しは約160msで差は揺れの中）。**重くなる作り直しだけを捕まえる**
      ゆるい上限（30µs＝実測の10倍）——時間の網は余白を大きく取る（§9.426）。 */
