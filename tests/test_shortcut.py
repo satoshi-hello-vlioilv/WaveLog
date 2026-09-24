@@ -181,6 +181,71 @@ rec('前の名前を片付けるのは、それが自分の作った物のとき
 rec('片付けられなくても作成は失敗にしない（理由は1行残す）',
     src.count('quiet(') >= 1 and "out['renamedFrom']" in src)
 
+# ---- 8) 作るときに渡す引数が、補助スクリプトの読む位置と合う（§9.486、利用者の報告） ----
+# 「作成もうまくいかなかった」——§9.446で補助スクリプトの**1つ目を用途**
+# （MAKE／READ）にしたのに、作る側だけ用途を渡しておらず、引数が1つずつ前へ
+# ずれていた（`Start.vbs`をショートカットの名前として保存しようとして必ず落ちる）。
+# しかも`//B`で断りが捨てられ、画面は「終了コード 1」しか言えなかった。
+# この端末はWindowsではないので、**WSHが実際に受け取る並び**を組み立てて、
+# 補助スクリプトが`a(i)`で読む位置と突き合わせる（`cscript`そのものは測っていない）。
+def _wsh_args(argv):
+    """`cscript`へ渡した並び → スクリプトの`WScript.Arguments`。WSHは**空の引数を
+    数えないことがある**ので、厳しいほうで数える（空を落とす）。"""
+    i = next(k for k, a in enumerate(argv) if str(a).lower().endswith('.vbs'))
+    return [str(a) for a in argv[i + 1:] if str(a) != '']
+
+
+def _capture_create(icon_spec):
+    import subprocess as _sp
+    import tempfile
+    seen = []
+    tmp = Path(tempfile.mkdtemp())
+    keep = {k: getattr(desktop_shortcut, k) for k in
+            ('supported', '_helper_path', 'desktop_dir', '_icon_spec', 'remember', 'saved')}
+    real_run = _sp.run
+
+    def fake_run(argv, **kw):
+        seen.append(list(argv))
+        a = _wsh_args(argv)
+        # 補助スクリプトの MAKE と同じ読み方: a(1) を保存先として作る。
+        if len(a) > 5 and a[0].upper() == 'MAKE' and a[1].lower().endswith('.lnk'):
+            Path(a[1]).write_bytes(b'lnk')
+            return _sp.CompletedProcess(argv, 0, '', '')
+        return _sp.CompletedProcess(argv, 1, '', 'error')
+    try:
+        desktop_shortcut.supported = lambda: (True, '')
+        desktop_shortcut._helper_path = lambda: tmp / desktop_shortcut.HELPER_NAME
+        desktop_shortcut.desktop_dir = lambda: tmp
+        desktop_shortcut._icon_spec = lambda icon: (icon_spec, '既定', '')
+        desktop_shortcut.remember = lambda *a, **k: None
+        desktop_shortcut.saved = lambda key: ''
+        _sp.run = fake_run
+        out = desktop_shortcut.create('試し', '', None, False)
+    finally:
+        _sp.run = real_run
+        for k, v in keep.items():
+            setattr(desktop_shortcut, k, v)
+    return out, seen
+
+
+_uses = sorted({int(n) for n in re.findall(r'a\((\d+)\)', desktop_shortcut._HELPER)})
+for _label, _spec in (('既定の絵あり', r'C:\x\wavelog.ico'), ('絵なし（作れなかった）', '')):
+    _out, _seen = _capture_create(_spec)
+    _make = [c for c in _seen if 'READ' not in c]
+    _a = _wsh_args(_make[0]) if _make else []
+    rec(f'作るときの引数が補助スクリプトの読む位置と合う（{_label}・§9.486）',
+        bool(_a) and _a[0] == 'MAKE' and _a[1].endswith('.lnk')
+        and _a[2] == str(desktop_shortcut.target_path()) and len(_a) > max(_uses),
+        f'a(0..)={_a[:3]} 数{len(_a)}／読む位置{_uses}')
+    rec(f'その並びで作成が成功として返る（{_label}）', bool(_out.get('ok') and _out.get('created')),
+        str(_out.get('error') or '')[:80])
+# `//B`は断りを1字も出さない。外して、失敗の理由を画面まで届ける。
+rec('作るときに //B を付けない（失敗の理由を捨てない・§9.486）',
+    all('//B' not in c for c in _capture_create('x.ico')[1]))
+rec('cscript の出力は読めない字で落とさない（errors=replace）',
+    "'errors':'replace'" in inspect.getsource(desktop_shortcut._run_text)
+    and src.count('_run_text()') >= 1)
+
 ng = [n for n, ok in R if not ok]
 print(f'\n== {len(R) - len(ng)}/{len(R)} PASS ==')
 sys.exit(1 if ng else 0)

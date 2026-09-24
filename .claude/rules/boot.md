@@ -1,4 +1,4 @@
-# 起動・停止・監視（44件）
+# 起動・停止・監視（45件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -26,6 +26,7 @@
 | 待機画面へ写したトークンは本体と1文字も違わないこと。地の指定も2箇所で同じ | `test_boot.py` | [§9.411](../../docs/decisions/9.411.md) |
 | 波紋はヘッダーの帯の中だけ（`overflow:hidden`）。輪は**幅と高さ**で広げる（`scale`は線まで太る） | `test_theme.js` | [§9.411](../../docs/decisions/9.411.md) |
 | ショートカットの行き先は`Start.vbs`1本、アイコンは`app_icon.py`が描く。作れない端末は理由を返す | `test_shortcut.py` | [§9.410](../../docs/decisions/9.410.md) |
+| 補助スクリプト（`make_shortcut.vbs`）へは**用途（`MAKE`／`READ`）から**位置で渡す。空の引数は置かない（`NO_ICON`）・`//B`は付けない | `test_shortcut.py` | [§9.486](../../docs/decisions/9.486.md) |
 | 起動前の確認は`update.bat`（旧`setup.bat`）が受け持ち、刻印で飛ばす | `test_faststart.py` | [§9.225](../../docs/decisions/9.225.md) |
 | 入口の名前は「いつ押すか」を言う。旧名を入口として残さない（入口は1つ） | `test_faststart.py` | [§9.405](../../docs/decisions/9.405.md) |
 | 置き場・名前が変わった古いファイルは`MOVED_AWAY`で片付ける。**新しいほうが在るときだけ**（片方しか無いうちは触らない） | `test_faststart.py` | [§9.405](../../docs/decisions/9.405.md) |

@@ -1,4 +1,4 @@
-# 画面の土台（37件）
+# 画面の土台（38件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -16,6 +16,7 @@
 | 開けない行き先は押す形にしない。開けるかは名乗り手が答える（`WL.openLookSettings.available()`） | `test_uisize.js` | [§9.445](../../docs/decisions/9.445.md) |
 | 押すと何が起きるか（作る／作り直す／上書き／付け替え）は`shortcutPlan()`の1箇所。ボタンの字も注意の1行も同じ答えから出す | `test_uisize.js` | [§9.446](../../docs/decisions/9.446.md) |
 | 土台は画面の作りを知らない。器だけ渡し、出すのは`when()`が真のときだけ。同じ`key`は差し替わる | `test_uisize.js` | [§9.444](../../docs/decisions/9.444.md) |
+| 節へ渡す器は**文書に付けてから**`render(host)`を呼ぶ。メニューの上に重ねた窓（`.record-modal`）の中は「外」と数えない | `test_uisize.js` | [§9.486](../../docs/decisions/9.486.md) |
 | **この端末の見え方を「予定を動かせる権限」で塞がない**（別の軸。§9.207が列で踏んだのと同じ取り違え） | `test_scinsert.js` | [§9.444](../../docs/decisions/9.444.md) |
 | **節の見出しを本文より小さくしない**（`--fs-tiny`＝9.5pxは付随情報の寸法）。窓は320px以上 | `test_uisize.js` | [§9.444](../../docs/decisions/9.444.md) |
 | 見え方が変わったら`wl:look-change`で知らせる（いまの値を出す画面が塗り直す） | `test_uisize.js` | [§9.433](../../docs/decisions/9.433.md) |

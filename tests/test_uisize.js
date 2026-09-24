@@ -500,6 +500,38 @@ run('test_uisize: 表示サイズ（--ui-scale の3段）', async ({page,rec,B,W
                      :(sc.ldLink==='BUTTON'&&!/開けません/.test(sc.ldNote)),
     `${sc.ldLink} / ${sc.ldNote}`);
  }
+ /* ---------- 開き直しても答えが出る・重ねた窓でメニューを閉じない（§9.486、
+    利用者の報告「確認していますと出て使えません」）----------
+    土台が**器を文書に付ける前に**節を描いていたので、状態を覚えている2回目
+    以降は塗り損ね、「確認しています…」のまま作るボタンも出なかった（実測4/5回）。
+    上の網は毎回**再読込してから**開いていたので、この道を1度も通っていなかった。 */
+ let stuck=0;
+ for(let i=0;i<3;i++){
+  await page.evaluate(()=>{
+   const m=document.getElementById('uiSizeMenu');if(m)m.remove();
+   document.getElementById('uiSizeBadge').click();
+  });
+  await page.waitForSelector('#lnkPanel',{timeout:8000});
+  const ok=await page.waitForFunction(()=>{
+   const s=document.querySelector('#lnkPanel [data-sc-state]'),b=document.getElementById('lnkBody');
+   return !!(s&&s.textContent.indexOf('確認しています')<0&&b&&!b.hidden);
+  },{timeout:5000}).then(()=>true,()=>false);
+  if(!ok)stuck++;
+ }
+ rec('再読込せずに「表示」を開き直しても、状態の答えと作るボタンが出る（§9.486）',stuck===0,`止まった回 ${stuck}/3`);
+ /* 「参照…」の場所選びは**メニューの上に重ねて**開く。その窓を押しただけで
+    下のメニューを閉じると、選んだファイルの行き先が消える。 */
+ await page.evaluate(()=>{
+  document.getElementById('lnkMore').open=true;
+  const r=document.querySelector('[data-sc-icon][value="file"]');r.checked=true;r.dispatchEvent(new Event('change'));
+  document.querySelector('#lnkIconPath [data-path-browse]').click();
+ });
+ await page.waitForSelector('#pathPickerModal:not([hidden])',{timeout:8000});
+ await page.click('#pathPickerCancel');
+ await page.waitForSelector('#pathPickerModal[hidden]',{state:'attached',timeout:8000});
+ rec('重ねて開いた窓（場所選び）を押しても「表示」のメニューは閉じない（§9.486）',
+   await page.evaluate(()=>!!document.getElementById('lnkPanel')));
+ await page.evaluate(()=>{const m=document.getElementById('uiSizeMenu');if(m)m.remove()});
  await page.unroute('**/api/app/shortcut*');
  await setMode('edit');
 
