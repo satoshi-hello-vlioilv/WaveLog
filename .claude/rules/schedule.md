@@ -1,4 +1,4 @@
-# 作業スケジュール（59件）
+# 作業スケジュール（62件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| ICASコピーの最初の1行は`区切らずにつなぐ`（普通の行）。触っていない旧い例の2本は片付ける | `test_lotcopy.js` | [§9.462](../../docs/decisions/9.462.md) |
+| 仕掛落ちの「着手」は作業中扱い（予定の終わり＝現在時刻）。見積ぶん居座らせない | `test_actualmatch.py` | [§9.462](../../docs/decisions/9.462.md) |
+| 完了にならない理由は`advance_note()`の1箇所が答え、行の印（橙）で出す。全行共通の理由は知らせで1回 | `test_actualmatch.py` | [§9.462](../../docs/decisions/9.462.md) |
 | ロット番号の**横に**LotDspの的（字は押す形にしない）。的が`data-lot-dsp`を名乗り、道は`base.js`の1本 | `test_lotcopy.js`・`test_screport.js` | [§9.460](../../docs/decisions/9.460.md) |
 | 追加は**操作に身元（`操作ID`）を持たせ、同じ身元は2回適用しない**（再送は止めない） | `test_plandup.js` | [§9.438](../../docs/decisions/9.438.md) |
 | 行間の差し込みの札が書くのは**「どこへ入るか」だけ**。何ができるかは線の`title`と`#scSplitHint`が持つ | `test_scinsert.js` | [§9.439](../../docs/decisions/9.439.md) |

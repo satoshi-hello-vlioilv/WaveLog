@@ -1174,7 +1174,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      Object.assign(s0, keep); B2.syncOrder(s0);
      return { clrUsed: r1.A.clr, clrWant: r1.A.clrWant, step: r1.A.clrStep, rem1, dsFine, dsRem, stroke,
               stop0: (r0.stop || []).map(x => x.key), off0, stop1: (r1.stop || []).length,
-              R, nRing: ringFaces.length, tooTight, outBand, listed: r2.fit.ringGap.length,
+              R, nRing: ringFaces.length, tooTight, outBand, listed: (r2.fit.holdGap || r2.fit.ringGap || []).length,
               lubeOk, lubeTotal: r2.g.lube.u + r2.g.lube.l, strips: r2.segs.length };
     });
     rec('クリアランスは組める値へ四捨五入する（0.04 → 刻み0.025の 0.05）',
@@ -1195,6 +1195,35 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         g454.outBand === g454.listed, `外れ${g454.outBand} / 名指し${g454.listed}`);
     rec('潤滑リングは広い側の区間だけに両端1本ずつ（条の数×2本）',
         g454.lubeOk && g454.lubeTotal === g454.strips * 2, `${g454.lubeTotal}本 / ${g454.strips}条`);
+    /* §9.462（利用者の指示「刃組基準値マスタに、板押さえの適正な空きスペースの
+       管理範囲を設定できるように」）。**フィンガーにも空きの帯**——下限ぶん小さく
+       組み、帯を外れた面は名指しする。既定は0（判定しない・今までどおり）。 */
+    const g462 = await page.evaluate(() => {
+     const B2 = WL.bladeSet, M2 = WL.bladeGuide.masters, s0 = WL.bladeGuide.state;
+     const keepP = { ...M2.P };
+     const keep = { W: s0.W, lots: s0.lots, order: s0.order, clr: s0.clr, thick: s0.thick, align: s0.align };
+     const solve = o => { Object.assign(s0, o); s0.order = []; B2.syncOrder(s0);
+       return B2.solve(s0, M2, B2.buildIndex(M2)); };
+     const look = r => {
+      const f = r.zp.zones.flatMap(z => [z.up, z.lo]).filter(p => p.hold && p.hold.kind === 'finger' && p.gom.out.length);
+      return { n: f.length, tight: f.filter(p => p.holdRem < 0.3 - 1e-6).length,
+               out: f.filter(p => p.holdRem < 0.3 - 1e-6 || p.holdRem > 1.0 + 1e-6).length,
+               listed: (r.fit.holdGap || []).length, finger: !!r.finger };
+     };
+     const mat = { W: 1130, thick: 0.4, clr: 0.04, align: 'none', lots: [{ name: 'L1', w: 50, n: 22 }] };
+     const off = look(solve(mat));
+     Object.assign(M2.P, { fingerGapMin: 0.3, fingerGapMax: 1.0 });
+     const on = look(solve(mat));
+     Object.assign(M2.P, keepP); for (const k of Object.keys(M2.P)) if (!(k in keepP)) delete M2.P[k];
+     Object.assign(s0, keep); B2.syncOrder(s0);
+     return { off, on, defMin: keepP.fingerGapMin, defMax: keepP.fingerGapMax };
+    });
+    rec('フィンガーの空きの既定は0（判定しない・今までどおり区間いっぱい）',
+        g462.defMin === 0 && g462.defMax === 0 && g462.off.listed === 0, JSON.stringify(g462));
+    rec('フィンガーも空きの下限ぶん小さく組む（下限0.3で下限割れ0面）',
+        g462.on.finger && g462.on.n > 0 && g462.on.tight === 0, JSON.stringify(g462.on));
+    rec('フィンガーの空きが帯を外れた面は数えて名指しする（数が一致）',
+        g462.on.out === g462.on.listed, JSON.stringify(g462.on));
     /* 画面: 組めない材料では図も表も描かず、直す場所を1つ指す。 */
     const putW = v => page.evaluate(v => { const el = document.querySelector('#bsW');
       el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); }, v);

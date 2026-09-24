@@ -74,13 +74,38 @@ run('test_lotcopy: ICASコピー（§9.368）', async ({page,rec,errs})=>{
   const seed1=await page.evaluate(()=>{
    const list=WL.lotCopy.rules();
    return {names:list.map(r=>r.name),ids:list.map(r=>r.id),
+           text:WL.lotCopy.joinLots(['A1','A2','A3'],WL.lotCopy.currentRule()),
            stored:localStorage.getItem('scLotCopyRulesV1')};
   });
-  rec('例の2本は読んだその場で保存される（「登録済みに見えるのに実体が無い」を作らない）',
-      seed1.stored!==null&&JSON.parse(seed1.stored).length===seed1.names.length&&seed1.names.length===2,
+  rec('最初の1行は読んだその場で保存される（「登録済みに見えるのに実体が無い」を作らない）',
+      seed1.stored!==null&&JSON.parse(seed1.stored).length===seed1.names.length&&seed1.names.length===1,
       String(seed1.stored).slice(0,120));
-  rec('例の id は時刻から作らない（再読込でも同じ行を指せる）',
+  rec('最初の1行の id は時刻から作らない（再読込でも同じ行を指せる）',
       seed1.ids.every(id=>id&&!/^r\d{10,}$/.test(id)), JSON.stringify(seed1.ids));
+  /* §9.462（利用者の報告「ルールなしの区切らずにつなぐができずに、半角スペースが
+     入る、2つのルールが内部的に入っている」）。**何も設定していない人は区切らずに
+     つながる**——以前は例の2本（半角スペース）が先に効いていた。 */
+  rec('何も設定していなければ区切らずにつながる（§9.462）',
+      seed1.text==='A1A2A3'&&/区切らず/.test(seed1.names[0]||''), JSON.stringify(seed1));
+  /* 以前の版が書き込んだ例の2本。**触っていないものだけ片付け、直したものは残す。** */
+  const OLD=[{id:'r_icas_space',name:'ICAS（半角スペース）',seps:[{kind:'space',text:'',count:1,every:1}]},
+   {id:'r_icas_space_nl10',name:'半角スペース＋10件ごとに改行',
+    seps:[{kind:'space',text:'',count:1,every:1},{kind:'nl',text:'',count:1,every:10}]}];
+  const retire=async stored=>{
+   await page.evaluate(v=>{localStorage.setItem('scLotCopyRulesV1',JSON.stringify(v));
+                           localStorage.removeItem('scLotCopyRuleV1')},stored);
+   await page.reload({waitUntil:'domcontentloaded'});
+   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
+   return page.evaluate(()=>({names:WL.lotCopy.rules().map(r=>r.name),
+     text:WL.lotCopy.joinLots(['A1','A2','A3'],WL.lotCopy.currentRule()),
+     stored:JSON.parse(localStorage.getItem('scLotCopyRulesV1')||'null')}));
+  };
+  const r1=await retire(OLD);
+  rec('触っていない例の2本は片付き、区切らずにつながる（§9.462）',
+      r1.text==='A1A2A3'&&r1.names.length===1&&r1.stored.length===1, JSON.stringify(r1));
+  const r2=await retire([{...OLD[0],seps:[{kind:'comma',text:'',count:1,every:1}]},OLD[1]]);
+  rec('直した例は利用者の行として残る（触っていない1本だけ片付く）',
+      r2.text==='A1,A2,A3'&&r2.names.length===1, JSON.stringify(r2));
   /* **全部消したら消えたまま。** 以前は`[]`を「まだ作っていない」と読んで
      例を作り直していたので、「ルールがありません」と言った直後の再読込で
      復活していた（利用者の報告「内部的にルールがある状態」）。 */
@@ -108,7 +133,7 @@ run('test_lotcopy: ICASコピー（§9.368）', async ({page,rec,errs})=>{
   rec('子メニューは「ありません（押せない）」で手を止めない',
       empty.menu.some(x=>/ルールなし/.test(x.label)&&!x.off),
       JSON.stringify(empty.menu).slice(0,200));
-  /* 元の状態（例の2本）へ戻してから続ける。 */
+  /* 元の状態（最初の1行）へ戻してから続ける。 */
   await page.evaluate(()=>{localStorage.removeItem('scLotCopyRulesV1');
                            localStorage.removeItem('scLotCopyRuleV1')});
   await page.reload({waitUntil:'domcontentloaded'});
@@ -317,8 +342,9 @@ run('test_lotcopy: ICASコピー（§9.368）', async ({page,rec,errs})=>{
   await page.click('.sc-row-menu .chm-has-sub');
   await page.waitForFunction(()=>!document.querySelector('.sc-row-menu'),null,{timeout:8000});
   const clip2=await page.evaluate(()=>navigator.clipboard.readText());
+  /* 既定は「区切らずにつなぐ」（§9.462）。 */
   rec('選んでいれば選んだ全部が入る（画面の並びで）',
-      clip2===lots.join(' '), JSON.stringify(clip2));
+      clip2===lots.join(''), JSON.stringify(clip2));
 
   /* ---- 5〜6. 設定モーダル ------------------------------------------ */
   await page.click(rowSel,{button:'right'});

@@ -39,7 +39,7 @@
       都合なので、`scLayout`（この端末の見え方）と同じ置き場にする。
 
    ⑤ **「既定」という触れない行を作らない**（§9.367で踏んだ罠）。最初の1回だけ
-      2本の例を書き込み、あとは**どれも同じように直せる・消せる**。
+      「区切らずにつなぐ」の1本を書き込み（§9.462）、あとは**どれも同じように直せる・消せる**。
 
    外へ出すのは `WL.lotCopy` の5つだけ。
    ============================================================ */
@@ -79,25 +79,38 @@
  const MARKS={' ':'␣','\u3000':'▫','\t':'→','\n':'⏎'};
  const visibleChars=v=>String(v||'').replace(/[ \u3000\t\n]/g,c=>MARKS[c]);
 
- /* ---------- 最初の1回だけ書き込む例（§9.400、利用者の報告①） ----------
+ /* ---------- 最初の1回だけ書き込む1行（§9.400 → §9.462、利用者の指示） ----------
     **触れない既定ではない**——名前も中身も変えられ、消せる。
 
-    **`id`を時刻から作らないこと。** 以前は`'r'+Date.now()`だったが、
-    seedは**保存していなかった**ので読み込むたびに作り直され、`id`が
-    毎回変わっていた。そのため
-      ・「最後に使ったルール」(`PICK_KEY`)が次の起動では引けない
-      ・窓を2枚開いていると、片方の保存がもう片方の`id`を知らず、
-        直したはずの行が**別の行として増えたように見える**
-    という壊れ方をしていた（利用者の報告「設定変更しようとしたら、その内容は
-    追加扱いになりました」）。**決め打ちの`id`にして、作ったその場で保存する**
-    （`rules()`）ので、以後はただの1行として直せる・消せる。 */
+    **中身は「区切らずにつなぐ」の1本だけ**（§9.462）。以前は
+    `ICAS（半角スペース）`と`半角スペース＋10件ごとに改行`の2本を入れていたため、
+    **何も設定していない人のコピーが半角スペース入り**になっていた——§9.403で
+    「ルール無しの場合、区切り無しの連結」と決めたのに、例の2本が先に効いて
+    **「ルール無し」の状態に一度もならなかった**（利用者の報告「ルールなしの
+    区切らずにつなぐができずに、半角スペースが入る、2つのルールが内部的に
+    入っている」）。
+
+    **`id`を時刻から作らないこと**（§9.400）。決め打ちの`id`にして、作ったその場で
+    保存する（`rules()`）ので、以後はただの1行として直せる・消せる。 */
  function seed(){
-  return [
-   {id:'r_icas_space',name:'ICAS（半角スペース）',
-    seps:[{kind:'space',text:'',count:1,every:1}]},
-   {id:'r_icas_space_nl10',name:'半角スペース＋10件ごとに改行',
-    seps:[{kind:'space',text:'',count:1,every:1},{kind:'nl',text:'',count:1,every:10}]},
-  ];
+  return [{id:'r_plain',name:'区切らずにつなぐ',seps:[{kind:'none',text:'',count:1,every:1}]}];
+ }
+ /* §9.400〜§9.403で書き込んでいた例の2本。**触っていないものだけ**片付ける
+    （`retireOldSeeds()`）——名前か中身を1つでも直していれば、それは利用者の行。 */
+ const OLD_SEEDS=[
+  {id:'r_icas_space',name:'ICAS（半角スペース）',seps:[{kind:'space',text:'',count:1,every:1}]},
+  {id:'r_icas_space_nl10',name:'半角スペース＋10件ごとに改行',
+   seps:[{kind:'space',text:'',count:1,every:1},{kind:'nl',text:'',count:1,every:10}]},
+ ];
+ const sameRule=(a,b)=>JSON.stringify({id:a.id,name:a.name,seps:a.seps})
+                       ===JSON.stringify({id:b.id,name:b.name,seps:b.seps});
+ /* 触っていない例の2本を外す。**外して空になったら新しい1行を入れる**——
+    例しか持っていなかった人は「何も設定していない人」なので、その人の答えも
+    「区切らずにつなぐ」にそろえる。 */
+ function retireOldSeeds(list){
+  const kept=list.filter(r=>!OLD_SEEDS.some(o=>sameRule(r,o)));
+  if(kept.length===list.length)return {list,changed:false};
+  return {list:kept.length?kept:seed().map(normRule),changed:true};
  }
  /* ---------- ルールが1本も無いときの「素のつなぎ方」（§9.400、利用者の指示） ----------
     「ルールなしの場合コピーはロットナンバーだけの連結コピーになるなど、
@@ -153,7 +166,12 @@
    had=(s!==null);
    raw=JSON.parse(s||'null');
   }catch(e){WL.quiet.note('保存された値を読めない（例を書き直して続ける）',e);raw=null;had=false}
-  if(had&&Array.isArray(raw)){cache=raw.map(normRule);return cache}
+  if(had&&Array.isArray(raw)){
+   const r=retireOldSeeds(raw.map(normRule));
+   cache=r.list;
+   if(r.changed)save();         // 片付けた結果を本物にする（次の起動で繰り返さない）
+   return cache;
+  }
   cache=seed().map(normRule);
   save();                       // **例も本物の行にする**（直せる・消せる）
   return cache;

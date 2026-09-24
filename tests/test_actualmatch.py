@@ -39,7 +39,7 @@ sys.path.insert(0, str(ROOT))
 # noqa: E402 は「ROOT を sys.path へ入れてから import する」ため（ほかの網と同じ作法）。
 import apppath  # noqa: F401 `program/` を探索先へ（§9.404）
 import app as flask_app                                    # noqa: E402 パスを通してから読む
-from backend import db_access, actual_match, schedule_sync  # noqa: E402 パスを通してから読む
+from backend import db_access, actual_match, schedule_sync, schedule_calc as sc  # noqa: E402 パスを通してから読む
 from backend.repositories import schedule_repo as sr       # noqa: E402 パスを通してから読む
 
 R = []
@@ -215,6 +215,37 @@ def main():
         and not gone.get('actualSource'),
         json.dumps({'state': gone and gone.get('state'),
                     'reason': (gone or {}).get('missingReason')}, ensure_ascii=False)[:200])
+    # §9.462（利用者の報告「完了しているのに繰り上がらない」）。**開始時刻の
+    # 分からない「着手」も作業中として扱う**——予定の終わりは現在時刻で、
+    # 見積ぶんの場所に居座って後ろの予定を押さない。
+    rec('仕掛落ちの「着手」は作業中として扱い、予定の終わりが現在時刻（見積ぶん居座らない）',
+        bool(gone) and gone.get('ongoing') is True
+        and gone.get('plannedStart') == gone.get('plannedEnd'),
+        json.dumps({k: (gone or {}).get(k) for k in ('ongoing', 'plannedStart', 'plannedEnd')},
+                   ensure_ascii=False))
+
+    # ---- 5b) 完了にならない理由を行が名乗る（§9.462） ----
+    # 3項目の突合(§7.4)で当たらないのに、同じロットの測定データは完了している
+    # ——突き合わせの問題なので、**どの項目が違うか**を行に書く。
+    fin = {'id': 'x', 'startAt': '2026-09-01T08:00:00', 'endAt': '2026-09-01T09:00:00',
+           'status': '完了', 'updatedAt': '1', 'basic': {'castingNo': 'C1', 'mfgMaterial': 'M1'}}
+    lots = {'L1': [fin]}
+    base = {'kind': '作業', 'state': '予定', 'parentId': None, 'lotNo': 'L1', 'castingNo': '',
+            'missingFromWork': False, 'missingReason': '仕掛にあります。'}
+    n1 = sc.advance_note(dict(base), {'lotNo': 'L1', 'castingNo': 'C1'}, lots)
+    rec('測定済みなのに製造材質が予定に無ければ「測定済み・不一致」と名指しする',
+        bool(n1) and n1['code'] == 'recordMismatch' and '製造材質（予定: 空' in n1['text']
+        and '鋳造番号（' not in n1['text'], json.dumps(n1, ensure_ascii=False)[:200])
+    n2 = sc.advance_note(dict(base), {'lotNo': 'L1', 'castingNo': 'C1', 'mfgMaterial': 'M1'}, lots)
+    rec('3項目がそろって一致するなら理由を付けない（完了になる側）', n2 is None, str(n2))
+    n3 = sc.advance_note(dict(base, missingFromWork=None,
+                              missingReason='予定の側に突合キー（検査番号）の値が揃っていません。'),
+                         {'lotNo': 'L2'}, lots)
+    rec('仕掛から消えたかを判定できない行は「完了判定できず」と理由を出す',
+        bool(n3) and n3['code'] == 'finishUnknown' and '検査番号' in n3['text'], str(n3))
+    n4 = sc.advance_note(dict(base, missingFromWork=None,
+                              missingReason='完了突合の設定がありません'), {'lotNo': 'L2'}, lots)
+    rec('完了突合が無いことは行には付けない（全行に共通・warningsで1回言う）', n4 is None, str(n4))
 
     # ---- 6) HITした実績は予定へ保存され、実績が消えても残る ----
     rec('HITした実績は予定へ保存される',

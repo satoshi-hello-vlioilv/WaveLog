@@ -7742,6 +7742,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     仕掛から落ちたから完了なのかが読み取れない。出どころを1語で添え、
     詳しい理由は`title`（区分のセル）へ落とす（§9.234 ①）。 */
  function missingBadgeHtml(e){
+  /* **完了にならない（繰り上がらない）理由**（§9.462、利用者の報告「完了して
+     いる場合にスケジュールを繰り上げていってほしいが、うまく機能していない」）。
+     理由の型と本文はサーバーの`advance_note()`の1箇所が答える——画面は字を
+     持たない。直せば繰り上がるので橙（設定要・§9.338）。 */
+  const adv=e&&e.advanceNote;
+  if(adv&&adv.label)return `<i class="sc-row-from is-warn" data-advance="${esc(adv.code||'')}" title="${esc(adv.text||'')}">${esc(adv.label)}</i>`;
   if(!e||e.missingFromWork!==true)return '';
   const saved=e.actualSourceSaved?'・保存済み':'';
   /* **完了時刻の出どころを言う**(§9.365・§9.366)。時刻が無い行は
@@ -7752,7 +7758,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
                :'\n完了時刻が分からないため、さかのぼりでは常に表示されます。';
   return e.actualSource
    ? `<i class="sc-row-from" title="仕掛から消え、突合先で見つかりました${saved}${when}">実績</i>`
-   : `<i class="sc-row-from is-guess" title="仕掛から消えていますが、突合先では見つかっていません">仕掛落ち</i>`;
+   : `<i class="sc-row-from is-guess" title="仕掛から消えていますが、突合先では見つかっていません。\n作業中として扱い、予定の終わりを現在時刻にしています（後ろの予定はいまから並びます）">仕掛落ち</i>`;
  }
  function pickMarkHtml(e){
   if(!canPickEntries()||!pickableEntry(e.id))return '';

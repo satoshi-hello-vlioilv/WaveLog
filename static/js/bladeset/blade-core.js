@@ -625,17 +625,20 @@
   /* 保持層は製品幅の上にだけ載るので、最外刃より外（OS端・DS端）はスペーサーのみ。 */
   let ht = null;
   if (hold && !isEnd) ht = hold.kind === 'finger' ? tbl.finger : tbl.ring.get(hold.od);
-  /* **ゴムリングは刃のあいだより0.2〜0.5mm小さく組む**（§9.454、利用者の
-     指示）。狙うのは「下限ぶんだけ小さい長さ」で、そこを超えない最大の
-     組み合わせを取る——ぴったり（空き0）に組むと刃のあいだへ入らない。
+  /* **板押さえは刃のあいだより空きの下限ぶん小さく組む**（§9.454 ゴムリング／
+     §9.462 フィンガー、利用者の指示）。狙うのは「下限ぶんだけ小さい長さ」で、
+     そこを超えない最大の組み合わせを取る——ぴったり（空き0）に組むと刃の
+     あいだへ入らない。帯は種類ごとに`holdBand()`の1箇所が答え、下限0なら
+     区間いっぱいを狙う（フィンガーの既定）。
      **潤滑リング**（広い側の刃の内側の両端・幅10）はその内側に先に置き、
-     残りをゴムリングで埋める。フィンガーは従来どおり区間いっぱいを狙う。 */
+     残りをゴムリングで埋める。 */
   const R = rule || RING_RULE_NONE;
   const isRing = !!(ht && hold.kind === 'ring');
   const lube = isRing && hold.lube && R.lubeW > 0
    ? { n: 2, w: R.lubeW, od: R.lubeOd, bore: R.lubeBore } : null;
   const room = +(total - (lube ? lube.n * lube.w : 0)).toFixed(3);
-  const want = isRing ? Math.max(0, +(room - R.gapMin).toFixed(3)) : total;
+  const band = ht ? holdBandOf(R, hold.kind) : BAND_NONE;
+  const want = ht ? Math.max(0, +(room - band.gapMin).toFixed(3)) : total;
   const got = ht ? fillWith(ht, want) : { out: [], rem: 0 };
   /* 空きは**区間から見た**値（狙いの下限ぶん＋埋め切れなかったぶん）。 */
   const gom = { out: got.out, rem: ht ? +(room - (want - got.rem)).toFixed(3) : 0 };
@@ -651,32 +654,44 @@
   return { len: total, hold: ht ? hold : null, gom, spacer, lube,
            rem: spacer.rem, holdRem: ht ? gom.rem : 0 };
  }
+ /* 板押さえの空きの帯（下限〜上限）。**答えは種類ごとにこの1箇所**（§9.462）
+    ——ゴムリングは`ringGapMin/Max`、フィンガーは`fingerGapMin/Max`（どちらも
+    設備ごとの`刃組基準値`）。上限0は「帯を持たない＝判定しない」。 */
+ const BAND_NONE = { gapMin: 0, gapMax: 0 };
+ const bandKeys = kind => (kind === 'finger' ? ['fingerGapMin', 'fingerGapMax'] : ['ringGapMin', 'ringGapMax']);
+ function holdBand(M, kind) {
+  const P = (M && M.P) || {}, v = k => Math.max(0, num(P[k]) || 0);
+  const [ka, kb] = bandKeys(kind), a = v(ka), b = v(kb);
+  return { gapMin: Math.min(a, b || a), gapMax: Math.max(a, b) };
+ }
+ /* `ringRule()`の答えから種類の帯を取り出す（`zoneParts()`は`M`を持たない）。 */
+ const holdBandOf = (R, kind) => (kind === 'finger' ? (R.finger || BAND_NONE) : R);
  /* ゴムリングの組み方の決まり（§9.454）。**値は設備ごとの`刃組基準値`**
     （既定はサーバーの`STANDARD_DEFAULTS`）。読めない値は0——空きの帯を
     持たない・潤滑リングを入れない、に倒れる（勝手な数で埋めない・§9.231）。 */
- const RING_RULE_NONE = { gapMin: 0, gapMax: 0, lubeW: 0, lubeOd: 0, lubeBore: 0,
+ const RING_RULE_NONE = { gapMin: 0, gapMax: 0, finger: BAND_NONE, lubeW: 0, lubeOd: 0, lubeBore: 0,
                           lubeHex: '', lubeColor: '', lubeQty: 0 };
  /* 空きの帯は`刃組基準値`、**潤滑リングの寸法と在庫はゴムリングマスタの行**
     （種類＝潤滑リング・§9.455）。行が複数あるときは**表の並びの先頭**（サーバーの
     並べ方＝外径の大きい順）を使う——幅違いを混ぜて両端の2本が別の幅になるのを防ぐ。
-    行が無ければ幅0（入れない）で、`solve()`の`fit.lubeMissing`がそう言う。 */
+    行が無ければ幅0（入れない）で、`solve()`の`fit.lubeMissing`がそう言う。
+    `finger`はフィンガーの帯（§9.462）。 */
  function ringRule(M) {
-  const P = (M && M.P) || {}, v = k => Math.max(0, num(P[k]) || 0);
-  const a = v('ringGapMin'), b = v('ringGapMax');
   const L = ((M && M.lubes) || [])[0] || null;
-  return { gapMin: Math.min(a, b || a), gapMax: Math.max(a, b),
+  return { ...holdBand(M, 'ring'), finger: holdBand(M, 'finger'),
            lubeW: L ? L.width : 0, lubeOd: L ? L.od : 0, lubeBore: L ? L.bore : 0,
            lubeHex: L ? L.hex : '', lubeColor: L ? L.color : '', lubeQty: L ? L.qty : 0 };
  }
- /* 空きが帯（下限〜上限）を外れた面。**1本も載らない面は別に数える**
-    （`bareHold`）ので、ここでは言わない。 */
- function ringGapFaces(zp, M) {
+ /* 空きが帯（下限〜上限）を外れた面（ゴムリング・フィンガーとも・§9.462）。
+    **1本も載らない面は別に数える**（`bareHold`）ので、ここでは言わない。 */
+ function holdGapFaces(zp, M) {
   const R = ringRule(M), out = [];
-  if (!(R.gapMax > 0)) return out;
   zp.zones.forEach((z, i) => [['上', z.up], ['下', z.lo]].forEach(([ax, p]) => {
-   if (!p.hold || p.hold.kind !== 'ring' || !p.gom.out.length) return;
+   if (!p.hold || !p.gom.out.length) return;
+   const b = holdBandOf(R, p.hold.kind);
+   if (!(b.gapMax > 0)) return;
    const g = p.holdRem;
-   if (g < R.gapMin - 1e-6 || g > R.gapMax + 1e-6) out.push(`${i + 1}${ax}（空き ${g.toFixed(2)}mm）`);
+   if (g < b.gapMin - 1e-6 || g > b.gapMax + 1e-6) out.push(`${i + 1}${ax}（空き ${g.toFixed(2)}mm）`);
   }));
   return out;
  }
@@ -1031,7 +1046,7 @@
     if (p.hold && !p.gom.out.length) bare.push(`${i + 1}${ax}`);
    });
   });
-  const fit = { spacerGap: bad, bareHold: bare, ringGap: ringGapFaces(zp, M),
+  const fit = { spacerGap: bad, bareHold: bare, holdGap: holdGapFaces(zp, M),
                 /* ゴムリング方式なのに潤滑リングの行が無い（§9.455）——入れられない。 */
                 lubeMissing: !isFinger(st, M) && !!(M.rings || []).length && !(M.lubes || []).length,
                 /* フローティングシートが押さえる量（上軸・下軸）。0でも正。`side`＝シートの端。 */
@@ -1463,7 +1478,7 @@
  }
 
  WL.bladeSet = {
-  defaultState, clearanceRate, clearanceFor, clearanceUsed, centerOf, datumOf, floatStroke, fillWithin, spacerStep, ringRule, applyStandards, applyBladePick, standardState,
+  defaultState, clearanceRate, clearanceFor, clearanceUsed, centerOf, datumOf, floatStroke, fillWithin, spacerStep, ringRule, holdBand, applyStandards, applyBladePick, standardState,
   normalize, buildIndex, ringMeta, thOf, odFromTh, odOfType, ringType, oppBurr,
   method, isFinger, holdName, contact, recommend, syncOrder, reorder,
   buildSegs, widths, buildLayout, buildFiller, fillWith, planZones,

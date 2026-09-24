@@ -2188,12 +2188,14 @@
      + 'ゴムリングマスタに、種類が「潤滑リング」の行がありません。'
      + '「マスタ管理 &gt; 刃組 &gt; ゴムリング」で、種類を「潤滑リング」にした行（幅・外径・内径・本数）を足してください。</div>';
   }
-  const rg = f.ringGap || [];
+  /* 板押さえの空きが帯を外れた面（ゴムリング・フィンガーとも・§9.462）。 */
+  const rg = f.holdGap || [];
   if (rg.length) {
-   const R = BS().ringRule(M);
-   o += `<div class="bs-alert is-warn"><b>ゴムリングの空きが ${R.gapMin}〜${R.gapMax}mm に収まらない区間が ${rg.length}面あります</b><br>`
+   const kind = res.finger ? 'finger' : 'ring', b = BS().holdBand(M, kind);
+   const nm = res.finger ? 'フィンガー' : 'ゴムリング';
+   o += `<div class="bs-alert is-warn"><b>${nm}の空きが ${b.gapMin}〜${b.gapMax}mm に収まらない区間が ${rg.length}面あります</b><br>`
      + '手持ちの幅では、刃のあいだより少し小さく詰め切れませんでした。'
-     + '幅の違うゴムリングを足すか、「刃組基準値」の「ゴムリングの組み方」を確かめてください。<br>'
+     + `幅の違う${nm}を足すか、「刃組基準値」の「板押さえの空き」を確かめてください。<br>`
      + `${esc(cut(rg, 8))}</div>`;
   }
   if (bare.length) {
@@ -2218,15 +2220,16 @@
   /* 潤滑リング（§9.454）。広い側の区間にだけ両端1本ずつ入る。列は入る区間が
      1つでもあるときだけ立てる。空きの帯はゴムリング方式のときだけ判定する。 */
   const hasLube = rows.some(r => r.c.lube > 0);
-  const R = BS().ringRule(M);
-  const ringBand = !res.finger && R.gapMax > 0;
+  /* 空きの帯は**いまの方式の板押さえ**のもの（§9.462。フィンガーにも帯がある）。 */
+  const R = { ...BS().ringRule(M), ...BS().holdBand(M, res.finger ? 'finger' : 'ring') };
+  const ringBand = R.gapMax > 0;
   const holdCell = r => {
    if (!r.c.kind) return '<span class="bs-z">·</span>';
    if (r.c.bare) return `<b>${r.c.len.toFixed(2)}</b>（1本も載りません）`;
    return r.c.holdRem > 0.001 ? r.c.holdRem.toFixed(2) : '·';
   };
   const holdCls = r => (r.c.bare ? ' is-bad'
-   : (ringBand && r.c.kind === 'ring'
+   : (ringBand
       ? (r.c.holdRem < R.gapMin - 1e-6 || r.c.holdRem > R.gapMax + 1e-6 ? ' is-warn' : ' is-zero') : ''));
   const num = v => (v ? `<b>${v}</b>` : '<span class="bs-z">·</span>');
   const head = `<thead>
@@ -2241,7 +2244,7 @@
      ${Ss.length ? `<th colspan="${Ss.length}" class="bs-sep">スペーサー</th>` : ''}
      ${Gs.length ? `<th colspan="${Gs.length + (res.finger ? 0 : 1)}" class="bs-sep">${holdLabel}</th>` : ''}
      ${hasLube ? `<th rowspan="2" class="bs-sep bs-lubeh" title="刃を潤滑するリングです。広い側（内々）の刃の内側に両側1本ずつ入ります">潤滑リング<small>幅${R.lubeW}・Φ${R.lubeOd}/${R.lubeBore}</small></th>` : ''}
-     ${hasHold ? `<th rowspan="2" class="bs-sep">板押さえの空き<small>${ringBand ? `刃のあいだ−リング／${R.gapMin}〜${R.gapMax} が正` : `${esc(holdLabel)}で埋め切れない幅`}</small></th>` : ''}
+     ${hasHold ? `<th rowspan="2" class="bs-sep">板押さえの空き<small>${ringBand ? `刃のあいだ−${esc(holdLabel)}／${R.gapMin}〜${R.gapMax} が正` : `${esc(holdLabel)}で埋め切れない幅`}</small></th>` : ''}
      ${hasRem ? '<th rowspan="2" class="bs-sep bs-bad">スペーサーの端数<small>0 が正（出たら不具合）</small></th>' : ''}
     </tr>
     <tr><th class="bs-ax bs-sep">上軸</th><th class="bs-ax">下軸</th>
@@ -2281,8 +2284,8 @@
     + Gs.map((x, i2) => `<td class="bs-num${i2 || !res.finger ? '' : ' bs-sep'}">${num(r.c.G[x])}</td>`).join('')
     + (hasLube ? `<td class="bs-num bs-sep">${r.c.lube ? `<span class="bs-lubedot"></span><b>${r.c.lube}</b>` : '<span class="bs-z">·</span>'}</td>` : '')
     + (hasHold ? `<td class="bs-num bs-sep${holdCls(r)}"`
-       + ` title="${ringBand && r.c.kind === 'ring'
-          ? `刃のあいだとリング（潤滑リングを含む）の差です。${R.gapMin}〜${R.gapMax}mm に収めます`
+       + ` title="${ringBand
+          ? `刃のあいだと${esc(holdLabel)}${res.finger ? '' : '（潤滑リングを含む）'}の差です。${R.gapMin}〜${R.gapMax}mm に収めます`
           : `${esc(holdLabel)}で埋め切れなかった幅です`}。`
        + `軸の寸法はスペーサーが作るので、ここが空いても刃の位置は動きません">`
        + holdCell(r) + '</td>' : '')

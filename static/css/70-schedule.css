@@ -2465,6 +2465,9 @@ div.sc-view-row{cursor:default}
  border:1px solid var(--teal);border-radius:var(--radius-xs);
  font-size:var(--fs-micro);font-style:normal;font-weight:700;color:var(--teal-dark)}
 .sc-row-from.is-guess{border-color:var(--line-mid);color:var(--ink-3)}
+/* 完了にならない（繰り上がらない）理由（§9.462）。**橙＝設定要**（§9.338）——
+   直せば繰り上がる、という合図。理由の本文は`title`。 */
+.sc-row-from.is-warn{border-color:var(--warn-border);color:var(--warn-fg);background:var(--warn-bg)}
 
 
 /* ============================================================
