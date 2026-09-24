@@ -143,7 +143,12 @@ rec('式に出てくる列を拾える',
  ['幅','板厚','ロット番号'].every(k=>used.includes(k))&&used.length===3,JSON.stringify(used));
 
 /* ---- 9) 長すぎる式は入口で断る ---- */
-rec('長すぎる式は断る',!F.check('1+'.repeat(300)+'1').ok);
+/* 上限は`F.MAX_LEN`（§9.474 で 400→2000。表示ルールを式へ変換すると 400字を超えた）。 */
+rec('長すぎる式は断る',!F.check('1+'.repeat(F.MAX_LEN)+'1').ok&&F.check('1+'.repeat(500)+'1').ok,`上限 ${F.MAX_LEN}`);
+/* 候補（§9.474）に出す関数は**評価できる関数と同じ顔ぶれ**（片方だけ足さない）。 */
+{const sig=new Set(F.sigs.map(x=>x[0]).filter(n=>!['if','and','or','not'].includes(n)));
+ const miss=[...sig].filter(n=>!F.check(`${n}('a','b','c')`).ok&&!F.check(`${n}('a')`).ok&&!F.check(`${n}('a','b')`).ok);
+ rec('候補の関数はどれも式で使える',miss.length===0,miss.join(','));}
 
 const ng=R.filter(x=>!x.ok);
 console.log(`\n=== SUMMARY ===\n${R.length-ng.length}/${R.length} passed`);

@@ -258,14 +258,6 @@
             hint:'手持ちのスペーサーがそろっている刻みです。区間長をこの刻みに合わせるため、材料の位置をこの幅未満だけ寄せます（耳には影響しません）。'},
            {k:'bladeThickness',label:'刃厚（既定）',type:'number',step:0.5,min:0,unit:'mm',fieldGroup:'③ 刃組の既定値',
             hint:'刃組ガイダンスを開いたときの初期値です。画面でその都度変えられます。'},
-           /* 図の向き（§9.463、利用者の指示「基準原点を左、基準原点を右といった形で迷いの
-              少ない呼び方に…既定は基準原点を右側に表示して、呼び方もマスタから変更できる」）。 */
-           {k:'viewDatumPos',label:'図の基準原点の位置',type:'select',options:['右','左'],fieldGroup:'③ 刃組の既定値',
-            hint:'刃組ガイダンスを開いたとき、**基準面（基準原点）を図のどちらに置くか**です。図の見出しの札で、その場で入れ替えられます。'},
-           {k:'viewLabelLeft',label:'向きの札の呼び方（左）',fieldGroup:'③ 刃組の既定値',
-            hint:'基準原点を**左**に置く札の字です。現場で通じる呼び方に変えられます。'},
-           {k:'viewLabelRight',label:'向きの札の呼び方（右）',fieldGroup:'③ 刃組の既定値',
-            hint:'基準原点を**右**に置く札の字です。'},
            {k:'clearance',label:'クリアランス（既定）',type:'number',step:0.01,min:0,unit:'mm',fieldGroup:'③ 刃組の既定値',
             hint:'同じ切断で向かい合う上下の刃が、軸方向にずれる量です。中間の区間では上下のスペーサー長の差が**この2倍**、端部の区間では**1倍**になります。'},
            {k:'overlap',label:'ラップ（既定）',type:'number',step:0.05,min:0,unit:'mm',fieldGroup:'③ 刃組の既定値',
@@ -307,7 +299,17 @@
            {k:'minDia',label:'刃 使用限界径',type:'number',step:1,min:0,unit:'mm',fieldGroup:'⑥ 刃の管理',
             hint:'研磨でここまで小さくなった刃は使えません。刃組ガイダンスの「セット」で警告に出ます。'},
            {k:'grindCycleDays',label:'研磨周期',type:'number',step:5,min:0,unit:'日',fieldGroup:'⑥ 刃の管理'},
-           {k:'note',label:'備考',size:'lg',fieldGroup:'⑥ 刃の管理'}],
+           {k:'note',label:'備考',size:'lg',fieldGroup:'⑥ 刃の管理'},
+           /* **図の呼び方と向き**（§9.472、利用者の指示「刃組図の切り替えボタンのラベルだけでなく、
+              図の中のラベルや、右表のラベルもすべて連動させて…マスタはもう少しわかりやすい表現に」）。
+              §9.463 の「向きの札の呼び方（左／右）」は札の字しか変えなかった——**名前を持つのは
+              札ではなく端（OS・DS）**。画面の OS／DS は全部`sideWord()`の1箇所がこの値で答える。 */
+           {k:'sideNameOS',label:'OS の呼び方',fieldGroup:'⑦ 図の呼び方と向き',
+            hint:'画面に出る「**OS**」（軸端部を外す側・フローティングシートの側）を、**すべて**この呼び方で出します——向きの切り替え・図の札・右の端部の表・刃組表・説明の文。例: 操作側。**空欄なら OS** です。図の札に入るよう、4文字くらいまでの短い呼び方にしてください。'},
+           {k:'sideNameDS',label:'DS の呼び方',fieldGroup:'⑦ 図の呼び方と向き',
+            hint:'画面に出る「**DS**」（駆動側・ギヤボックスの側・基準面）を、**すべて**この呼び方で出します。例: 駆動側。**空欄なら DS** です。'},
+           {k:'viewDatumPos',label:'開いたときの DS の位置',type:'select',options:['右','左'],fieldGroup:'⑦ 図の呼び方と向き',
+            hint:'刃組ガイダンスを開いたとき、**DS（基準面）を図の右と左のどちらに置くか**です。図の見出しの「向き」の札で、その場で入れ替えられます（ここは開いたときの向きだけを決めます）。'}],
    cols:[{k:'arborLen',label:'アーバー有効長',grow:1},{k:'ringBore',label:'リング内径',grow:1},
          {k:'fingerMax',label:'フィンガー切替',grow:1},{k:'clearance',label:'クリアランス',grow:1},
          {k:'overlap',label:'ラップ',grow:1},{k:'minDia',label:'刃 限界径',grow:1}],

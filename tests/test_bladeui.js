@@ -438,8 +438,14 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      const on = document.querySelector('#bsFlip [data-datum-pos].is-on');
      return { inFig: !!document.querySelector('.bs-figpanel .bs-ph #bsFlip'),
               inBar: !!document.querySelector('.bs-bar #bsFlip'),
-              pos: on ? on.dataset.datumPos : '', label: on ? on.textContent.trim() : '',
-              labels: [...document.querySelectorAll('#bsFlip [data-datum-pos]')].map(x => x.textContent.trim()),
+              /* 札の中身は**押した後の図の左右**（§9.472）。`◆`の側（基準面）を`*`で書く。 */
+              pos: on ? on.dataset.datumPos : '',
+              label: on ? [...on.querySelectorAll('.bs-oe')].map(e => (e.classList.contains('is-datum') ? '*' : '') + e.textContent.trim()).join('→') : '',
+              labels: [...document.querySelectorAll('#bsFlip [data-datum-pos]')].map(x => [...x.querySelectorAll('.bs-oe')]
+                .map(e => (e.classList.contains('is-datum') ? '*' : '') + e.textContent.trim()).join('→')),
+              /* 隣の図の札と同じ字の大きさか（§9.472・よく押す物を付随情報の寸法にしない） */
+              fs: [...document.querySelectorAll('#bsFlip [data-datum-pos], #bsFigTabs [data-fig]')]
+                .map(x => getComputedStyle(x).fontSize),
               datum: window.WL.bladeSet.datumOf(window.WL.bladeGuide.masters || {}),
               edge: [...document.querySelectorAll('#bsStage text')]
                 .map(t => (t.textContent || '').trim()).filter(t => t === 'OS' || t === 'DS').join('/') };
@@ -447,10 +453,13 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     const flip0 = await flipState();
     rec('向きの切り替えは刃組図の見出しにある', flip0.inFig && !flip0.inBar,
         `図${flip0.inFig}/バー${flip0.inBar}`);
-    /* §9.463（利用者の指示「段取り向きとか図面向きというのをやめて、基準原点を左、
-       基準原点を右…既定は基準原点を右側に表示」）。**2つの札・いまの側が濃い**。 */
-    rec('向きの札は「基準原点を左／右」の2つ（段取り向き・図面向きの字は無い）',
-        flip0.labels.join('/') === '基準原点を左/基準原点を右', flip0.labels.join('/'));
+    /* §9.463（利用者の指示「段取り向きとか図面向きというのをやめて…既定は基準原点を
+       右側に表示」）→ §9.472（「切り替えボタンはよく使うので、もう少し使いやすさと
+       わかりやすさを」）。**2つの札・いまの側が濃い**のまま、札が**押した後の図の左右**を
+       描く（◆＝基準面）。字の大きさは隣の図の札とそろう。 */
+    rec('向きの札は並びを描く2つ（OS→◆DS／◆DS→OS）',
+        flip0.labels.join('/') === 'OS→*DS/*DS→OS', flip0.labels.join('/'));
+    rec('向きの札の字は隣の図の札と同じ大きさ', new Set(flip0.fs).size === 1, flip0.fs.join('/'));
     rec('開いたときは基準原点が右（基準面の字が図の右端）',
         flip0.pos === '右' && flip0.edge.split('/')[1] === flip0.datum, JSON.stringify(flip0));
     /* **手順の窓を先に閉じる。** 窓（`.bs-pop`）は図の見出しへ垂れ下がるので、
@@ -465,7 +474,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('押すと図の左右が入れ替わる（基準面の字が左端へ）',
         /^(OS\/DS|DS\/OS)$/.test(flip0.edge) && flip1.edge !== flip0.edge
         && flip1.edge.split('/')[0] === flip1.datum, `${flip0.edge} → ${flip1.edge}`);
-    rec('いまの向きの札だけが濃い（押した側）', flip1.pos === '左' && flip1.label === '基準原点を左',
+    rec('いまの向きの札だけが濃い（押した側）', flip1.pos === '左' && flip1.label === '*DS→OS',
         JSON.stringify(flip1));
     await page.click('#bsFlip [data-datum-pos="右"]');
     await W.until(page, () => (document.querySelector('#bsFlip .is-on') || {}).dataset?.datumPos === '右',
@@ -641,7 +650,13 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      g.classList.add('is-pick');
      return off;
     });
-    await W.paint(page);
+    /* **1回描かせただけでは読まない**（§9.472 の続きで踏んだ）: 当てた直後の最初の1コマは
+       遷移の始まりの値（0）のままのことがある——実測 3回のうち1回が 0→0。
+       「動き出したか」を条件で待つ（`transition`は0.12秒なので2秒あれば必ず動く）。 */
+    await W.until(page, () => {
+     const g = document.querySelector('#bsStage .bs-bhit.is-pick');
+     return !!g && +getComputedStyle(g.querySelector('.bs-zhit')).fillOpacity > 0;
+    }, null, { ms: 2000, what: '光らせた区間の塗りが動き出す' });
     const hiOn = await page.evaluate(() => {
      const g = document.querySelector('#bsStage .bs-bhit.is-pick');
      const hit = g.querySelector('.bs-zhit'), bdg = g.querySelector('.bs-bdgr');
@@ -1324,6 +1339,29 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('潤滑リングは刃組表に列を持ち、色はスペーサーともゴムリングとも違う',
         tbl454.lubeCol && !!tbl454.lube && tbl454.lube !== tbl454.spacer
         && !!tbl454.lubeDot && !tbl454.ringHex.includes(tbl454.lubeDot), JSON.stringify(tbl454));
+    /* §9.472 の続き（利用者の指示「潤滑リングはゴムリングの属性として…表をコンパクトに」
+       「列情報のサブ情報がやたら長いところは…短く収めるか…ポップオーバーに」）。
+       前: 表 1179px／器 1112px（75px はみ出して横に送る）・12字を超える補足3つ（最長22字）・列群8。 */
+    const tbl472 = await page.evaluate(() => {
+     const box = document.querySelector('#bsTables'), t = box.querySelector('table.bs-g');
+     const smalls = [...t.querySelectorAll('thead small')].map(x => x.textContent.trim());
+     const lube = t.querySelector('thead tr:nth-child(2) .bs-lubeh');
+     return { over: box.scrollWidth - box.clientWidth, smallMax: Math.max(0, ...smalls.map(x => x.length)),
+              groups: t.querySelectorAll('thead tr:first-child th').length,
+              lubeInRing: !!lube && ![...t.querySelectorAll('thead tr:first-child th')].some(th => /潤滑/.test(th.textContent)),
+              tips: [...t.querySelectorAll('[data-th-tip]')].map(b => b.dataset.thTip).join('/') };
+    });
+    rec('刃組表は器からはみ出さない・見出しの補足は12字まで（前: 75px はみ出し・最長22字）',
+        tbl472.over <= 0 && tbl472.smallMax <= 12, JSON.stringify(tbl472));
+    rec('潤滑リングはゴムリングの群の中の1列（独立した列群を持たない）', tbl472.lubeInRing, JSON.stringify(tbl472));
+    await page.click('#bsTables [data-th-tip="span"]');
+    await W.until(page, () => !!document.querySelector('.bs-thpop'), null, { ms: 5000, what: '読み方のポップオーバー' });
+    const pop472 = await page.evaluate(() => { const p = document.querySelector('.bs-thpop');
+     return { role: p.getAttribute('role'), text: p.textContent }; });
+    rec('長い説明は見出しの ⓘ から読める（読ませる面＝dialog）',
+        pop472.role === 'dialog' && /製品幅＋クリアランス×2/.test(pop472.text), JSON.stringify(pop472));
+    await page.keyboard.press('Escape');
+    await W.until(page, () => !document.querySelector('.bs-thpop'), null, { ms: 5000, what: 'Escで読み方が閉じる' });
     rec('クリアランスを丸めたら、使った値と指定の値を並べて言う',
         /四捨五入/.test(tbl454.clrFact) && /0\.125/.test(tbl454.clrFact), tbl454.clrFact);
 
@@ -1908,7 +1946,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
               /* 区間の板は**光るだけ**（押せるのは記号の札だけ）。塗りを的に
                  すると、立体を掴んで回す道をふさぐ。 */
               zonePe: boxes.length ? getComputedStyle(boxes[0]).pointerEvents : '',
-              chipCur: chips.length ? getComputedStyle(chips[0]).cursor : '',
+              chipPe: chips.length ? getComputedStyle(chips[0]).pointerEvents : '',
               hit: chips.length ? chips[0].classList.contains('bs-bhit') : false };
     });
     rec('断面図にも区間の記号が出る', zb.n > 0 && zb.zones === zb.n,
@@ -1916,9 +1954,35 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('記号の顔ぶれは模式図と同じ（同じ対応表から出している）',
         zb.cut.length > 0 && zb.cut.join(',') === zb.fig2.join(','),
         `断面 ${zb.cut.join('')} / 模式 ${zb.fig2.join('')}`);
-    rec('区間の板は的にしない（掴んで回す道をふさがない）', zb.zonePe === 'none', zb.zonePe);
-    rec('記号の札は押せる（指のカーソル＋模式図と同じ印）',
-        zb.chipCur === 'pointer' && zb.hit === true, `${zb.chipCur} / bs-bhit ${zb.hit}`);
+    rec('区間の面の器は当たりを持たない（座標で当てる＝掴んで回す道をふさがない）', zb.zonePe === 'none', zb.zonePe);
+    /* §9.475（利用者の指示「アルファベットは的が小さすぎるので、エリア全体でそれぞれ強調表示」
+       「拡大図は…アルファベットをボタンからラベルに変更し…クリックの的を大きく」）。
+       前（実測）: 的は札 22×22＝488px²、区間の面（149×170）に乗っても押しても何も起きなかった。 */
+    rec('記号は札（押す物ではない）。的は区間の面', zb.chipPe === 'none' && zb.hit === false,
+        `pointer-events ${zb.chipPe} / bs-bhit ${zb.hit}`);
+    const face = await page.evaluate(() => {
+     const vis = [...document.querySelectorAll('#bsStage3 .bs-t3z')].filter(e => !e.hidden);
+     const mid = vis.find(b => !b.dataset.end), end = vis.find(b => b.dataset.end && b.dataset.badge === 'OS');
+     const R = e => { const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height * 0.18, a: Math.round(r.width * r.height) }; };
+     return { mid: mid && Object.assign(R(mid), { b: mid.dataset.badge }), end: end && R(end) };
+    });
+    await page.mouse.move(face.mid.x, face.mid.y, { steps: 3 });
+    await W.paint(page);
+    const litFace = await page.evaluate(b => !!document.querySelector(`.bs-g tr.is-pick[data-badge="${b}"]`), face.mid.b);
+    await page.mouse.move(face.end.x, face.end.y, { steps: 3 });
+    await W.paint(page);
+    const litEnd = await page.evaluate(() => !!document.querySelector('.bs-side.is-pick[data-badge="OS"]'));
+    rec('区間の面（札から離れた所）に乗ると刃組表の行が光る（的の面積 前 488px²）', litFace, `${face.mid.b} 面 ${face.mid.a}px²`);
+    rec('端の区間の面に乗ると右の端部の表が光る', litEnd);
+    /* 掴んで動かしたら回すだけ（押したことにしない）。 */
+    const az0 = await page.evaluate(() => window.WL.bladeSolid.view().cutAz);
+    await page.mouse.move(face.mid.x, face.mid.y); await page.mouse.down();
+    await page.mouse.move(face.mid.x + 60, face.mid.y + 8, { steps: 5 }); await page.mouse.up();
+    await W.paint(page);
+    const drag = await page.evaluate(() => ({ az: window.WL.bladeSolid.view().cutAz, zoom: !document.getElementById('bsZoom').hidden }));
+    rec('区間の上で掴んで動かすと回るだけ（拡大図は開かない）', drag.az !== az0 && !drag.zoom, JSON.stringify({ az0, ...drag }));
+    await page.evaluate(() => document.querySelector('#bsStage3 .bs-step3-reset')?.click());
+    await W.paint(page);
     /* **本物のマウス移動で辿る**（§9.398）。`pointerover` は `el.click()` では
        1度も通らない。 */
     const chipBox = await page.locator('#bsStage3 .bs-t3b:not([hidden])').first().boundingBox();
@@ -2235,10 +2299,17 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await page.keyboard.press('Escape');
     await W.until(page, () => document.querySelector('#bsZoom').hidden, null,
                   { ms: 4000, what: '拡大図を一度閉じる' });
-    const zw = await page.evaluate(() => {
-     const b = document.querySelector('#bsStage3 .bs-t3b:not([hidden])');
+    /* 区間の面を**本物のクリック**で押す（§9.475・札は押す物ではなくなった）。 */
+    const zpt = await page.evaluate(() => {
+     const b = [...document.querySelectorAll('#bsStage3 .bs-t3z')].find(e => !e.hidden && !e.dataset.end);
      if (!b) return null;
-     b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+     const r = b.getBoundingClientRect();
+     return { x: r.left + r.width / 2, y: r.top + r.height * 0.18 };
+    });
+    if (zpt) await page.mouse.click(zpt.x, zpt.y);
+    await W.until(page, () => !document.querySelector('#bsZoom').hidden, null, { ms: 6000, what: '区間の面を押して拡大図' });
+    const zw = await page.evaluate(() => {
+     if (document.querySelector('#bsZoom').hidden) return null;
      const svg = document.getElementById('bsZoomFig');
      const ts = [...svg.querySelectorAll('text')];
      return { leadw: +svg.dataset.leadw, off: +svg.dataset.off, dims: +svg.dataset.dims,
@@ -3383,31 +3454,54 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         spun.capSide === true && spun.builtKeep === spun.keep && spun.after > spun.before,
         JSON.stringify(spun));
 
-    /* §9.463 の追補（§9.465）。向きの**既定の側と札の呼び方はマスタが決める**。
-       上の網は既定値（右・「基準原点を左／右」）しか見ておらず、マスタの値が
-       画面へ届くことは誰も見ていなかった。刃組基準値へ入れて開き直し、札の字と
-       濃い側が変わることを見る。**触る前の行を控えて戻す**（無ければ消す）。 */
+    /* §9.463 の追補（§9.465）→ §9.472。向きの**既定の側**と **OS・DS の呼び方**はマスタが決める。
+       上の網は既定値しか見ておらず、マスタの値が画面へ届くことは誰も見ていなかった。
+       §9.472（利用者の指示「切り替えボタンのラベルだけでなく、図の中のラベルや、右表の
+       ラベルもすべて連動させて」）——**呼び方を入れたら、画面に素の OS／DS が1つも残らない**
+       ことを数で見る（前: 模式図・断面図とも30箇所＝字25・説明5）。**触る前の行を控えて戻す**。 */
     const std0 = ((await getj('/api/bladeset-standard-master?equipment='
       + encodeURIComponent(EQ))).items || [])[0] || null;
-    const VIEW_KEYS = ['viewDatumPos', 'viewLabelLeft', 'viewLabelRight'];
+    const VIEW_KEYS = ['viewDatumPos', 'sideNameOS', 'sideNameDS'];
     let stdMade = null;
+    /* 画面に残った素の OS／DS（字と`title`・`aria-label`）。計算の鍵（`data-badge`等）は数えない。 */
+    const sideAudit = () => page.evaluate(() => {
+     const root = document.getElementById('bladeSetPanel'), re = /(^|[^A-Za-z])(OS|DS)(?![A-Za-z])/;
+     const hits = [];
+     const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+     for (let n; (n = tw.nextNode());) if (re.test(n.nodeValue)) hits.push(n.nodeValue.trim().slice(0, 40));
+     root.querySelectorAll('[title],[aria-label]').forEach(el => ['title', 'aria-label'].forEach(a => {
+      const t = el.getAttribute(a); if (t && re.test(t)) hits.push('@' + t.slice(0, 40)); }));
+     return hits;
+    });
     /* マスタへ書くのは**編集モード**（この節までにスケジュールモードへ切り替えてある。
        そのままだと「現在のモードでは、この操作は実行できません」で弾かれる）。 */
     await setMode('edit');
     try {
-     const want = { viewDatumPos: '左', viewLabelLeft: 'ライン側から見る', viewLabelRight: '図面で見る' };
+     const want = { viewDatumPos: '左', sideNameOS: '操作側', sideNameDS: '駆動側' };
      const sv = await (await post(std0 ? '/api/bladeset-standard-master/update'
        : '/api/bladeset-standard-master', Object.assign({ equipment: EQ },
        std0 ? { id: std0.id } : {}, want))).json();
      if (!std0 && sv && sv.ok) stdMade = sv.id;
-     rec('刃組基準値へ向きの既定と呼び方を保存できる', !!(sv && sv.ok), JSON.stringify(sv));
+     rec('刃組基準値へ向きの既定と OS・DS の呼び方を保存できる', !!(sv && sv.ok), JSON.stringify(sv));
      await page.evaluate(eq => WL.bladeGuide.open({ equipment: eq }), EQ);
-     await W.until(page, () => (document.querySelector('#bsFlip .is-on') || {}).textContent
-       === 'ライン側から見る', null, { ms: 15000, what: 'マスタの呼び方で札が出る' });
+     await W.until(page, () => /駆動側/.test((document.querySelector('#bsFlip .is-on') || {}).textContent || ''),
+       null, { ms: 15000, what: 'マスタの呼び方で向きの札が出る' });
      const vm = await flipState();
-     rec('マスタの呼び方が札に出て、既定の側（左）が濃い',
-         vm.labels.join('/') === 'ライン側から見る/図面で見る' && vm.pos === '左',
+     rec('向きの札もマスタの呼び方で並びを描き、既定の側（DSを左）が濃い',
+         vm.labels.join('/') === '操作側→*駆動側/*駆動側→操作側' && vm.pos === '左',
          JSON.stringify({ labels: vm.labels, pos: vm.pos }));
+     for (const k of ['2d', 'cut']) {
+      await toFig(k);
+      const left = await sideAudit();
+      rec(`${k === '2d' ? '模式図' : '断面図'}: 呼び方を入れると画面に素の OS／DS が残らない（前は30箇所）`,
+          left.length === 0, `${left.length}件 ${left.slice(0, 4).join(' ｜ ')}`);
+     }
+     const named = await page.evaluate(() => ({
+      pins: [...document.querySelectorAll('#bsOsSide .bs-pin, #bsDsSide .bs-pin')].map(e => e.textContent).join('/'),
+      edge: [...document.querySelectorAll('.bs-o3 i')].map(e => e.textContent).join('/') }));
+     rec('右の端部の表と図の帯も同じ呼び方（操作側／駆動側）',
+         named.pins === '操作側/駆動側' && /操作側/.test(named.edge) && /駆動側/.test(named.edge),
+         JSON.stringify(named));
     } finally {
      if (stdMade != null) {
       await post('/api/bladeset-standard-master/delete', { id: stdMade });

@@ -130,6 +130,7 @@
  let ctx = null;          /* {st, M, res, ringHex} */
  let onSpinDone = null;  /* 台車を回し終えたことを画面へ知らせる */
  let onBadges = null;    /* 区間の記号の顔ぶれが変わったことを画面へ知らせる */
+ let onZone = null;      /* 区間の面に乗った／押したことを画面へ知らせる（§9.475） */
 
  const $h = sel => (host ? host.querySelector(sel) : null);
 
@@ -300,9 +301,41 @@
  const ringRadius = c => Math.max(c.st.knife, +c.M.P.spacerOD || 240,
    ...(c.M.rings || []).map(r => +r.od || 0)) / 2;
  /* 見る向きの操作。回す・寄せる・平行移動の3つ。 */
+ /* **区間の面を的にする**（§9.475、利用者の指示「アルファベットは的が小さすぎるので、エリア全体で
+    それぞれ強調表示できるように」「拡大図はそのエリアで…アルファベットをボタンからラベルに変更し…
+    クリックの的を大きく」）。面の器（`.bs-t3z`）は`pointer-events:none`のまま——器に当たりを持たせると
+    掴んで回す手（この`cv`）へ届かない。**座標で当てる**: 乗ったら光らせ、ほとんど動かさずに離したら押した。 */
+ function zoneAt(x, y) {
+  const pool = D3.zoneEls || [];
+  for (const q of pool) {
+   const b = q.box;
+   if (!b || b.hidden || !b.dataset.badge) continue;
+   const r = b.getBoundingClientRect();
+   if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return b;
+  }
+  return null;
+ }
+ const CLICK_SLOP = 5;   /* これより動いたら「掴んで回した」（押したことにしない） */
  function bindPointer(cv) {
-  let drag = null;
+  let drag = null, down = null, hovered = '';
+  const hover = b => {
+   const k = b ? b.dataset.badge : '';
+   /* 押せる面（端でない区間）には指のカーソル。端は光るだけ（拡大図を開かない・§9.463）。 */
+   cv.style.cursor = b && !b.dataset.end ? 'pointer' : '';
+   if (k === hovered) return;
+   hovered = k;
+   if (onZone) onZone('hover', b);
+  };
+  cv.addEventListener('pointerleave', () => { if (!drag) hover(null); });
+  cv.addEventListener('pointermove', e => { if (!drag) hover(zoneAt(e.clientX, e.clientY)); });
+  cv.addEventListener('pointerup', e => {
+   const d = down; down = null;
+   if (!d || e.button !== 0 || Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_SLOP) return;
+   const b = zoneAt(e.clientX, e.clientY);
+   if (b && !b.dataset.end && onZone) onZone('click', b, e);
+  });
   cv.addEventListener('pointerdown', e => {
+   down = { x: e.clientX, y: e.clientY };
    /* **掴み損ねても回せる。** `setPointerCapture` は器の外まで追うためのもので、
       回すこと自体には要らない。掴めない入力（合成した `pointerId` など）で
       ここが例外を投げると、**この先の配線まで丸ごと止まる**（実際に止めた）。 */
@@ -1658,7 +1691,8 @@
    const box = document.createElement('div');
    box.className = 'bs-t3z';
    const chip = document.createElement('span');
-   chip.className = 'bs-t3b bs-bhit';
+   /* 記号は**札**（押す物ではない・§9.475）。押せるのは区間の面で、当たりは`zoneAt()`が座標で決める。 */
+   chip.className = 'bs-t3b';
    box.hidden = true; chip.hidden = true;
    host3.appendChild(box); host3.appendChild(chip);
    pool.push({ box, chip });
@@ -1751,11 +1785,15 @@
    if (!el) return;
    el.box.hidden = !b.on; el.chip.hidden = !b.on || !!q.end;
    if (!b.on) return;
+   el.box.dataset.axis = q.up ? 'up' : 'lo';
+   if (q.end) el.box.dataset.end = '1'; else delete el.box.dataset.end;
    if (el.box.dataset.badge !== q.badge) {
     el.box.dataset.badge = q.badge;
     el.chip.dataset.badge = q.badge;
     el.chip.dataset.axis = q.up ? 'up' : 'lo';
-    el.chip.textContent = q.badge;
+    /* 端の区間の札は出さない（§9.463）ので字も持たせない——伏せた札に素の`OS`を
+       残すと、呼び方（§9.472）に付いてこない字が器に残る。 */
+    el.chip.textContent = q.end ? '' : q.badge;
    }
    /* 記号の色は文字ごと（§9.455）。札と区間の面が同じ番号を名乗る。 */
    /* 変わったときだけ書く（毎フレーム書くと、そのたびに書式を計算し直す）。 */
@@ -2106,7 +2144,8 @@
   if (!el) return;
   if (!('os' in at) || !('ds' in at)) { el.hidden = true; return; }
   const l = at.os <= at.ds ? 'os' : 'ds', r = l === 'os' ? 'ds' : 'os';
-  const nm = k => `<i class="is-${k}">${k.toUpperCase()}</i>`;
+  /* 字は OS・DS の呼び方（§9.472・`sideWord()`の1箇所）。色の鍵（`is-os`）は呼び方に依らない。 */
+  const nm = k => `<i class="is-${k}">${esc(BS().sideWord(ctx && ctx.M, k.toUpperCase()))}</i>`;
   /* **誇張したら倍率を書く**（§CLAUDE 6 出どころ・単位・根拠を画面に出す）。
      板厚は実寸だと1pxも出ないので断面図でだけ太らせている（§9.413 追補）。 */
   /* **散文は「使い方」が持つ**（§9.443、利用者の指示「表示が重ならないように」）。
@@ -2278,6 +2317,7 @@
   host = el;
   onSpinDone = (opts && opts.onSpin) || null;
   onBadges = (opts && opts.onBadges) || null;
+  onZone = (opts && opts.onZone) || null;
   host.addEventListener('click', e => {
    const b = e.target.closest('button');
    if (!b) return;

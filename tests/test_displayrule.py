@@ -115,6 +115,22 @@ def main():
   rec('列側の参照は残る(一覧は出せる)',
       mr.column_layout_for(c,'list:X:T')['rules'].get('区分')=='有無')
 
+  # ---- 7) 式が真なら・列の値（§9.474） ----
+  n=mr.set_display_rule(c,'式ルール',[
+   {'conditions':[{'left':{'kind':'calc','expr':"len([この列]) > 3"},'op':'formula'}],'text':'長い','color':''},
+   {'conditions':[{'left':{'kind':'self'},'op':'formula'}],'text':'捨てる','color':''},
+  ],'t','shown')
+  got=mr.display_rules(c).get('式ルール') or []
+  rec('「式が真なら」は右辺なしで保存できる',
+      len(got)>=1 and got[0]['conditions']==[{'left':{'kind':'calc','expr':'len([この列]) > 3'},'op':'formula'}],got[:1])
+  rec('「式が真なら」は左辺が式でなければ落とす（その条件だけ）',
+      len(got)==2 and got[1]['conditions']==[],got[1:] )
+  opts=mr.display_rule_options(c)
+  rec('列の値（表示の値）をルールごとに保存して読み返せる',opts.get('式ルール',{}).get('self')=='shown',opts)
+  mr.set_display_rule(c,'式ルール',[{'conditions':[],'text':'x','color':''}],'t')
+  rec('列の値を渡さなければ元のデータ（今までどおり）',mr.display_rule_options(c).get('式ルール',{}).get('self')=='raw')
+  rec('式の上限は画面と同じ2000字',mr.RULE_EXPR_MAX==2000)
+
   # ---- 6) 名前まわり ----
   try:
    mr.set_display_rule(c,'   ',[{'conditions':[],'text':'x','color':''}],'t')

@@ -9,6 +9,7 @@
        （前: 5段・236px）
     2. 決めたら触らない設定（表示列・行間・並び・表示件数）は「☰ 表示」の
        浮きパネルの中。**名前の列の右（欄の左端）がそろう**・Escで閉じる
+       （**1回のEscで閉じるのは1枚だけ**・§9.471）
     3. 「☰ 表示」は1段目（絞り込みのバーの席）に居る
    ============================================================ */
 'use strict';
@@ -55,9 +56,40 @@ H.run('test_listbar: 一覧の道具の帯は2段（§9.468）', async ({ page, 
   rec('設定（表示列・行間・並び・表示件数）は「☰ 表示」の中',
       await page.evaluate(() => ['listColumnBtn', 'listRowGap', 'listSort', 'pageSize']
        .every(id => document.getElementById('listViewPanel').contains(document.getElementById(id)))));
+  /* §9.476（利用者の指示「ポップオーバーメニュー内の文字のサイズの統一感…整列した感じや美観…表示列の
+     編集はよく使うので、アイコンを設定したりして特にわかりやすく」）。前（実測）: 字の大きさ3種（10/11/12px）・
+     表示列の入口はアイコン無しで小さい・並びが2段（49px）。 */
+  const look = await page.evaluate(() => {
+   const p = document.getElementById('listViewPanel');
+   const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+   const rows = [...p.querySelectorAll('.lvp-row')].filter(vis);
+   /* 表示列の編集のボタンの字も数える（名前と説明の差は太さと濃さで付ける・大きさは1つ）。 */
+   const body = [p.querySelector('#listColumnBtn'), ...rows].flatMap(r => [...r.querySelectorAll('*')].filter(e => vis(e) && [...e.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim())));
+   const ctl = rows.flatMap(r => [...r.querySelectorAll('button,select,.list-child-chip')].filter(vis));
+   const col = document.getElementById('listColumnBtn'), cr = col.getBoundingClientRect();
+   return { fs: [...new Set(body.map(e => getComputedStyle(e).fontSize))], h: [...new Set(ctl.map(e => Math.round(e.getBoundingClientRect().height)))],
+            first: p.firstElementChild === col, icon: !!col.querySelector('.fa-table-columns'),
+            biggest: ctl.every(e => { const r = e.getBoundingClientRect(); return r.width * r.height < cr.width * cr.height; }),
+            sortH: Math.round((document.getElementById('listSort').getBoundingClientRect() || {}).height || 0) };
+  });
+  rec('「☰ 表示」の中の字は1つの大きさ・欄は1つの高さ（前: 字3種）', look.fs.length === 1 && look.h.length === 1, JSON.stringify(look));
+  rec('表示列の編集はいちばん上・アイコン付き・パネルでいちばん大きい', look.first && look.icon && look.biggest, JSON.stringify(look));
+  rec('並びは1行（前: 2段 49px）', look.sortH === 0 || look.sortH <= 36, String(look.sortH));
   await page.keyboard.press('Escape');
   await W.until(page, () => document.getElementById('listViewPanel').hidden, null, { ms: 5000, what: 'Escで「表示」が閉じる' });
   rec('「☰ 表示」はEscで閉じる', true);
+  /* **1回のEscで閉じるのは1枚だけ**（§9.471）。上に浮いた面を閉じた押下で、下の
+     条件の窓まで畳まない（畳むと一覧が伸びて、何が起きたか読めない）。 */
+  await page.evaluate(() => document.getElementById('filterToggle').click());
+  await W.until(page, () => !document.getElementById('filterBody').hidden, null, { ms: 5000, what: '条件の窓が開く' });
+  await W.listView(page);
+  await page.keyboard.press('Escape');
+  await W.until(page, () => document.getElementById('listViewPanel').hidden, null, { ms: 5000, what: 'Escで「表示」が閉じる（2回目）' });
+  rec('1回のEscで閉じるのは上の1枚だけ（下の条件の窓は開いたまま）',
+      await page.evaluate(() => !document.getElementById('filterBody').hidden));
+  await page.keyboard.press('Escape');
+  await W.until(page, () => document.getElementById('filterBody').hidden, null, { ms: 5000, what: 'もう1回のEscで条件の窓が閉じる' });
+  rec('もう1回のEscで条件の窓が閉じる', true);
  } finally {
   await setMode('edit');
  }

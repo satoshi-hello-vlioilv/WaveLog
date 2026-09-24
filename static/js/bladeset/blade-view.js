@@ -27,6 +27,9 @@
  const st = BS().defaultState();
  let M = null, IX = null, LAST = null;
  let panel = null, railTab = 'ends', loadToken = 0;
+ /* 刃組表の見出しの読み方（§9.472 の続き）。表を描くたびに`renderTables()`が入れ直す
+    （中身が方式・帯・呼び方で変わるため）。開くのは見出しの ⓘ から。 */
+ let TH_TIPS = {}, thPop = null;
  let seededFrom = null;     /* どの予定から開いたか（画面に出どころを出す） */
  /* **来た道**（§9.407、利用者の指摘①「戻るボタンで作業スケジュール一覧に
     戻れず、全体のスケジュール一覧に戻ってしまう」）。作業スケジュールは段を
@@ -146,14 +149,20 @@
             左右（DS／OSの字と部材の並び）なので、手順バーの尻尾に置くと
             「何に効くボタンか」を探すことになる（§CLAUDE 14 視覚導線と
             作業導線を一致させる）。 -->
-       <!-- **向きは「基準原点を左／右」の2つの札**（§9.463、利用者の指示「段取り向きとか
-            図面向きというのをやめて、基準原点を左、基準原点を右といった形で迷いの少ない
-            呼び方に」）。1つの札を押すたびに字が入れ替わる形だと、字が「いま」なのか
-            「押すと」なのかで迷う——**2つ並べ、いまの側を濃くする**（§9.229）。
-            呼び方と既定の側は刃組基準値マスタが持つ（viewLabelLeft/Right・viewDatumPos）。 -->
-       <div class="bs-hide bs-datumpos" id="bsFlip" role="group" aria-label="図の向き">
-        <button type="button" data-datum-pos="左" aria-pressed="false">基準原点を左</button>
-        <button type="button" data-datum-pos="右" aria-pressed="false">基準原点を右</button>
+       <!-- §9.463 で「基準原点を左／右」の2つの札にし、§9.472 で**並びを描く2つの札**へ
+            作り直した（2つ並べ、いまの側を濃くする＝§9.229 はそのまま）。 -->
+       <!-- **向きは「並びそのもの」を見せる2択**（§9.472、利用者の指示「切り替えボタンは
+            よく使うので、もう少し使いやすさとわかりやすさを考えて」）。札の字を読んで
+            頭の中で図を組み立てさせない——**札が押した後の図の左右をそのまま描く**
+            （OS ━ ◆DS／◆DS ━ OS・◆は基準面）。字は OS・DS の呼び方（sideWord()）で、
+            図の札・端部の表と同じ名前になる。大きさは隣の図の札（.bs-chip）とそろえる
+            （§9.463 の.bs-hideは付随情報の寸法 9.5px で、よく押す物には小さかった）。 -->
+       <div class="bs-orient" id="bsFlip" role="group" aria-label="図の向き（左右）">
+        <span class="bs-orient-cap" aria-hidden="true">向き</span>
+        <span class="bs-orient-seg">
+         <button type="button" data-datum-pos="右" aria-pressed="false"></button>
+         <button type="button" data-datum-pos="左" aria-pressed="false"></button>
+        </span>
        </div>
        <span class="bs-ph-note" id="bsFigNote"></span></div>
       <!-- **両脇の表は右レールへ移した**（§9.379、利用者の指示）。ここを1列に
@@ -191,8 +200,8 @@
               描く（破線・引き出し線・字の縁取りが素直に書け、色もトークンから
               選べる）。押す的は持たない（掴んで回す道をふさがない）。 -->
          <svg class="bs-t3v" id="bsCutDim" aria-hidden="true"></svg>
-         <span class="bs-t3 bs-t3-os is-os" data-badge="OS" hidden title="OS 側。重ねると OS端の区間と右の端部の表が光ります">OS</span>
-         <span class="bs-t3 bs-t3-ds is-ds" data-badge="DS" hidden title="DS 側。軸端部を外し、こちらから部材を入れます。重ねると DS端の区間と右の端部の表が光ります">DS</span>
+         <span class="bs-t3 bs-t3-os is-os" data-badge="OS" data-sw="OS" hidden>OS</span>
+         <span class="bs-t3 bs-t3-ds is-ds" data-badge="DS" data-sw="DS" hidden>DS</span>
          <!-- **設定有効長と、組んだときの上下それぞれの合計長**（§9.418 追補、
               利用者の指示）。図の読み方の段とは別に置く——あちらは
               「どう見るか」、こちらは「合っているか」の突き合わせ。
@@ -214,7 +223,7 @@
             <dd>①引き出す（レールで回転テーブルへ）→②軸端部を外す（330mm 送り出し、
               テーブルの外の土台に降ろす）→③台車を回す（テーブルごと 180°）</dd>
             <dt>向き</dt>
-            <dd>軸端部（スタンド・ハンドル付き）を外した OS 側から部材を入れ、基準面（駆動側の DS）の側から順に組みます。最後に OS 端をフローティングシートで押さえます。材料の入側は、ラインを正面に見て左です。</dd>
+            <dd>軸端部（スタンド・ハンドル付き）を外した <b data-sw="OS">OS</b> 側から部材を入れ、基準面（駆動側の <b data-sw="DS">DS</b>）の側から順に組みます。最後に <b data-sw="OS">OS</b> 端をフローティングシートで押さえます。材料の入側は、ラインを正面に見て左です。</dd>
             <dt>断面図の見え方</dt>
             <dd>板厚は実寸だと1pxも出ないので、断面図でだけ<b>太らせています</b>
               （倍率は左上に出ます）。<b>上下軸はそのぶん離して</b>あります。
@@ -393,7 +402,7 @@
   <p class="bs-lead">元板巾に対する条の割付を確認します。</p>
   <div class="bs-g2">
    <div class="bs-f"><label for="bsW">元板巾 W</label><input type="number" id="bsW" step="0.1"><small>mm</small></div>
-   <div class="bs-f"><label for="bsOsTrim">OS耳</label><input type="number" id="bsOsTrim" step="0.05" min="0" disabled><small>mm</small></div>
+   <div class="bs-f"><label for="bsOsTrim"><span data-sw="OS">OS</span>耳</label><input type="number" id="bsOsTrim" step="0.05" min="0" disabled><small>mm</small></div>
    <!-- 板の中心（§9.456、利用者の指示「中心位置をずらして設定したい場合がある」）。
         **空欄＝打っていない**（基準値 → 有効長の中央）。出どころは右の一言が言う。
         （この中は文字列リテラルの中なので、逆引用符は書けない） -->
@@ -679,6 +688,9 @@
     ——設定をいじって寸法がどう動くかを見るための窓なので、触るたびに閉じると
     見比べられない。行が消えたときだけ閉じる。 */
  let zoomBadge = '';
+ /* いまの押下が断面図・立体図の区間の面で拡大図を開いた（§9.475）。同じ押下の`click`が外側の
+    「外を押したら閉じる」で開いた窓を閉じないように、その1回だけ立てる。 */
+ let zoneClicked = false;
  function paintBadgePick() {
   if (!panel) return;
   panel.querySelectorAll('[data-badge]').forEach(el => {
@@ -854,16 +866,16 @@
   $('#bsKpis').innerHTML = [
    ['条・屑条 合計', w.total.toFixed(2), ''],
    ['製品条', segs.filter(s => s.type === 'strip').length + ' 本', ''],
-   ['OS耳', w.osTrim.toFixed(2), w.osTrim < 0 ? 'is-ng' : ''],
-   ['DS耳', w.dsTrim.toFixed(2), w.dsTrim < 0 ? 'is-ng' : ''],
+   [SW('OS') + '耳', w.osTrim.toFixed(2), w.osTrim < 0 ? 'is-ng' : ''],
+   [SW('DS') + '耳', w.dsTrim.toFixed(2), w.dsTrim < 0 ? 'is-ng' : ''],
    ['刃 対数', res.A.U.length + ' 対', '']
   ].map(([k, v, cls]) => `<div class="bs-kpi ${cls}"><span>${k}</span><b>${esc(v)}</b></div>`).join('');
   const slip = Math.abs(res.A.slip) < 1e-4 ? ''
-   : `<br>材料はアーバー中央から <b>${res.A.slip > 0 ? 'OS' : 'DS'}側へ ${Math.abs(res.A.slip).toFixed(3)} mm</b> 寄せます`
+   : `<br>材料はアーバー中央から <b>${SW(res.A.slip > 0 ? 'OS' : 'DS')}側へ ${Math.abs(res.A.slip).toFixed(3)} mm</b> 寄せます`
      + `（区間長を手持ちスペーサーの ${res.A.grid} 刻みに合わせるため。耳には影響しません）。`;
   $('#bsHint3').innerHTML = w.ok
-   ? `元板巾 ${st.W} ＝ OS耳 ${w.osTrim.toFixed(2)} ＋ 条合計 ${w.total.toFixed(2)} ＋ DS耳 ${w.dsTrim.toFixed(2)}`
-     + (w.even ? '<br>板をセンターに通すため耳を左右均等にしています。' : '<br>OS耳を手動指定しています。')
+   ? `元板巾 ${st.W} ＝ ${SW('OS')}耳 ${w.osTrim.toFixed(2)} ＋ 条合計 ${w.total.toFixed(2)} ＋ ${SW('DS')}耳 ${w.dsTrim.toFixed(2)}`
+     + (w.even ? '<br>板をセンターに通すため耳を左右均等にしています。' : `<br>${SW('OS')}耳を手動指定しています。`)
      + slip
    : `<span class="bs-ng">条合計 ${w.total.toFixed(2)} が元板巾 ${st.W} を超えています`
      + `（不足 ${(w.total - st.W).toFixed(2)} mm）。幅・本数を見直してください。</span>`;
@@ -873,7 +885,7 @@
   const C = BS().centerOf(st, M);
   /* **中心は基準面から測る**（§9.461、利用者の指示「基準原点を変更したら、中心位置の
      測り方も連動して」）。どちらから測るかは欄の単位の所が言う（推測させない）。 */
-  $('#bsCenterUnit').textContent = `mm（${C.datum}から）`;
+  $('#bsCenterUnit').textContent = `mm（${SW(C.datum)}から）`;
   $('#bsCenter').placeholder = C.value.toFixed(2);
   $('#bsCenterSrc').textContent = C.from === 'job' ? 'この作業で指定'
    : (C.from === 'master' ? `刃組基準値の ${C.value.toFixed(2)}` : `有効長の中央 ${C.value.toFixed(2)}`);
@@ -928,9 +940,10 @@
   $('#bsOrdN').textContent = `${order.length} 条`;
   const list = $('#bsOrdList');
   list.classList.toggle('is-flip', !!st.flip);
-  $('#bsOrdHint').textContent = st.flip
-   ? 'DS側（左）から部材を入れます。条はOS側（右）から順に切ります。つまんで動かすと並びが変わります。'
-   : 'OS側（左）から順に切ります。つまんで動かすと並びが変わります。';
+  /* 並びは**図と同じ左右**で言う（§9.472）。§9.466 の前の「DS側から部材を入れます」は
+     誤り（入れるのは軸端部を外す OS 側）で、条の並びとも関係が無いので言わない。 */
+  $('#bsOrdHint').textContent = `左から ${SW(st.flip ? 'DS' : 'OS')}側 → ${SW(st.flip ? 'OS' : 'DS')}側の順に並べています。`
+   + 'つまんで動かすと並びが変わります。';
   list.innerHTML = order.map((li, pos) => {
    const L = st.lots[li], ci = color.get((+L.w).toFixed(3)) || 0;
    return `<span class="bs-oc bs-w${ci}" draggable="true" data-pos="${pos}">`
@@ -1603,7 +1616,7 @@
  function clrWhy(c) {
   return c.rounded
    ? `指定 ${clrMmText(c.want)} を、スペーサーの刻み ${c.step} で組める値へ四捨五入しています`
-     + '（刃厚＋クリアランスが刻みの倍数でないと、下軸のOS端に端数が残るため）'
+     + `（刃厚＋クリアランスが刻みの倍数でないと、下軸の${SW('OS')}端に端数が残るため）`
    : '';
  }
  function chipBandItems(finger) {
@@ -1660,9 +1673,9 @@
     ——向きは位置（左右の端）と太さで読めるので、大きさは要らない。
     読み取る値（条番号・条幅・耳屑幅）と同じ段（13）へそろえる。 */
  const drawEdgeLabels = V =>
-  `<text x="10" y="${V.fs(19)}" font-size="${V.fs(13)}" font-weight="800" fill="${V.PAL.label}">${st.flip ? 'DS' : 'OS'}</text>`
+  `<text x="10" y="${V.fs(19)}" font-size="${V.fs(13)}" font-weight="800" fill="${V.PAL.label}">${esc(SW(st.flip ? 'DS' : 'OS'))}</text>`
   + `<text x="${FIG.vw - 10}" y="${V.fs(19)}" text-anchor="end" font-size="${V.fs(13)}"`
-  + ` font-weight="800" fill="${V.PAL.label}">${st.flip ? 'OS' : 'DS'}</text>`;
+  + ` font-weight="800" fill="${V.PAL.label}">${esc(SW(st.flip ? 'OS' : 'DS'))}</text>`;
 
  function drawFigure(res) {
   const svg = $('#bsStage');
@@ -2276,25 +2289,47 @@
    : (ringBand
       ? (r.c.holdRem < R.gapMin - 1e-6 || r.c.holdRem > R.gapMax + 1e-6 ? ' is-warn' : ' is-zero') : ''));
   const num = v => (v ? `<b>${v}</b>` : '<span class="bs-z">·</span>');
+  /* **見出しの補足は短く、長い説明はポップオーバーへ**（§9.472 の続き・利用者の指示「列情報の
+     サブ情報がやたら長いところは工夫して短く収めるか、長すぎるものはポップオーバーに」）。
+     長い補足が列の最小幅を決めていた（表 1179px／器 1112px＝75px はみ出して横に送っていた）。
+     見出しに残すのは**値の読み方に要る短い物**（「2〜5 が正」）だけ。中身は`thTips`の1箇所。 */
+  const lubeCol = hasLube && !res.finger;
+  const thTips = {
+   pos: `<b>上軸・下軸</b>それぞれ、この記号の刃が付く位置です。`
+      + `<span class="bs-bt is-down">下</span><span class="bs-bt is-up">上</span>＝バリの向き／`
+      + `小さい数字＝${esc(SW('OS'))}側から何番目の区間か／太字＝区間数`,
+   span: `この区間の刃どうしの寸法です（条幅を作っている側）。`
+      + `<br><b>${SPAN_WORD.in}</b>＝製品幅＋クリアランス×2／<b>${SPAN_WORD.out}</b>＝製品幅`,
+   hold: ringBand
+      ? `刃のあいだ − ${esc(holdLabel)}${res.finger ? '' : '（潤滑リングを含む）'}の差です。`
+        + `<b>${R.gapMin}〜${R.gapMax}mm</b> に収めます（外れた面は橙）。軸の寸法はスペーサーが作るので、ここが空いても刃の位置は動きません。`
+      : `${esc(holdLabel)}で埋め切れなかった幅です。軸の寸法はスペーサーが作るので、ここが空いても刃の位置は動きません。`
+  };
+  const tip = (k, what) => `<button type="button" class="bs-thi" data-th-tip="${k}"`
+   + ` aria-label="${what}の読み方" title="${what}の読み方"><i class="fa-solid fa-circle-info" aria-hidden="true"></i></button>`;
+  TH_TIPS = thTips;
   const head = `<thead>
     <tr>
      <th class="bs-grp" rowspan="2">区分<small>ロット・条幅</small></th>
      <th class="bs-bd" rowspan="2">記号</th>
-     <th class="bs-it bs-sep" colspan="2">取付位置<small>バリ／OS側から何番目の区間か／区間数</small></th>
+     <th class="bs-it bs-sep" colspan="2">取付位置${tip('pos', '取付位置')}</th>
      <!-- **刃が作る寸法は表にも置く**（§9.434、利用者の指示「クリアランス分の
           計算が入った寸法で上下正確に刃の幅を示すラベル」）。図の上の字は
           狭い区間では入らないので、**必ず読める場所**をここに持つ。 -->
-     <th class="bs-sep" rowspan="2">刃の間隔<small>${SPAN_WORD.in}＝製品幅＋クリアランス×2／${SPAN_WORD.out}＝製品幅</small></th>
+     <th class="bs-sep" rowspan="2">刃の間隔${tip('span', '刃の間隔')}<small>${SPAN_WORD.in}／${SPAN_WORD.out}</small></th>
      ${Ss.length ? `<th colspan="${Ss.length}" class="bs-sep">スペーサー</th>` : ''}
-     ${Gs.length ? `<th colspan="${Gs.length + (res.finger ? 0 : 1)}" class="bs-sep">${holdLabel}</th>` : ''}
-     ${hasLube ? `<th rowspan="2" class="bs-sep bs-lubeh" title="刃を潤滑するリングです。${SPAN_WORD.in}側の刃の内側に両側1本ずつ入ります">潤滑リング<small>幅${R.lubeW}・Φ${R.lubeOd}/${R.lubeBore}</small></th>` : ''}
-     ${hasHold ? `<th rowspan="2" class="bs-sep">板押さえの空き<small>${ringBand ? `刃のあいだ−${esc(holdLabel)}／${R.gapMin}〜${R.gapMax} が正` : `${esc(holdLabel)}で埋め切れない幅`}</small></th>` : ''}
-     ${hasRem ? '<th rowspan="2" class="bs-sep bs-bad">スペーサーの端数<small>0 が正（出たら不具合）</small></th>' : ''}
+     <!-- **潤滑リングはゴムリングの種類の1つ**（§9.455 でマスタは同じ表の行にした。表も
+          ゴムリングの群の中の1列へ・利用者の指示「ゴムリングのうち潤滑という種類があるような
+          形で表現して表をコンパクトに」）。寸法（幅・外径/内径）は見出しの title が持つ。 -->
+     ${Gs.length || lubeCol ? `<th colspan="${Gs.length + (res.finger ? 0 : 1) + (lubeCol ? 1 : 0)}" class="bs-sep">${holdLabel}</th>` : ''}
+     ${hasHold ? `<th rowspan="2" class="bs-sep">板押さえの空き${tip('hold', '板押さえの空き')}<small>${ringBand ? `${R.gapMin}〜${R.gapMax} が正` : '埋め切れない幅'}</small></th>` : ''}
+     ${hasRem ? '<th rowspan="2" class="bs-sep bs-bad" title="0 でないのは計算の不具合です">スペーサーの端数<small>0 が正</small></th>' : ''}
     </tr>
     <tr><th class="bs-ax bs-sep">上軸</th><th class="bs-ax">下軸</th>
      ${Ss.map((x, i) => `<th class="bs-sz${i ? '' : ' bs-sep'}">${x}</th>`).join('')}
      ${Gs.length && !res.finger ? '<th class="bs-sz bs-sep">径・色・外径</th>' : ''}
-     ${Gs.map((x, i) => `<th class="bs-sz${i || !res.finger ? '' : ' bs-sep'}">${x}</th>`).join('')}</tr>
+     ${Gs.map((x, i) => `<th class="bs-sz${i || !res.finger ? '' : ' bs-sep'}">${x}</th>`).join('')}
+     ${lubeCol ? `<th class="bs-sz bs-lubeh" title="潤滑リング（ゴムリングの種類の1つ）。幅${R.lubeW}・外径Φ${R.lubeOd}／内径Φ${R.lubeBore}。${SPAN_WORD.in}側の区間の両端に1本ずつ入ります"><span class="bs-lubedot"></span>潤滑</th>` : ''}</tr>
    </thead>`;
   /* 区分（ロット・屑条）はいちばん左の列にまとめて1回だけ示す（縦に伸ばさない）。 */
   const key = r => (r.sg.type === 'strip' ? r.sg.lot : '屑条');
@@ -2330,15 +2365,10 @@
          + `<span class="bs-ringdot" style="background:${esc(hexOf(r.c.od) || 'transparent')}"></span>`
          + `${esc(colorOf(r.c.od))}Φ${r.c.od}</td>` : '')
     + Gs.map((x, i2) => `<td class="bs-num${i2 || !res.finger ? '' : ' bs-sep'}">${num(r.c.G[x])}</td>`).join('')
-    + (hasLube ? `<td class="bs-num bs-sep">${r.c.lube ? `<span class="bs-lubedot"></span><b>${r.c.lube}</b>` : '<span class="bs-z">·</span>'}</td>` : '')
-    + (hasHold ? `<td class="bs-num bs-sep${holdCls(r)}"`
-       + ` title="${ringBand
-          ? `刃のあいだと${esc(holdLabel)}${res.finger ? '' : '（潤滑リングを含む）'}の差です。${R.gapMin}〜${R.gapMax}mm に収めます`
-          : `${esc(holdLabel)}で埋め切れなかった幅です`}。`
-       + `軸の寸法はスペーサーが作るので、ここが空いても刃の位置は動きません">`
-       + holdCell(r) + '</td>' : '')
+    + (lubeCol ? `<td class="bs-num bs-lubec">${r.c.lube ? `<b>${r.c.lube}</b>` : '<span class="bs-z">·</span>'}</td>` : '')
+    + (hasHold ? `<td class="bs-num bs-sep${holdCls(r)}">` + holdCell(r) + '</td>' : '')
     + (hasRem ? `<td class="bs-num bs-sep ${gapCell(r.c.rem)}"`
-       + ' title="スペーサーで区間を埋め切れなかった幅です。組んだものはOS側へ'
+       + ` title="スペーサーで区間を埋め切れなかった幅です。組んだものは${esc(SW(res.A.datum))}側（基準面）へ`
        + '押し付けて組むので、ここは 0 でなければなりません">'
        + `${r.c.rem > 0.001 ? r.c.rem.toFixed(3) : '·'}</td>` : '')
     + '</tr>';
@@ -2388,7 +2418,7 @@
     const gv = r => (r.c.rem > 0.001
      ? `<span class="${cls(r)}">${r.c.rem.toFixed(openEnd ? 3 : 2)}</span>`
      : '<span class="bs-z">·</span>');
-    h += `<tr class="bs-rem"${openEnd ? ` title="有効長に近づいたら、${far}側から${datum}側へフローティングシートで押さえます。その量です（隙間ではありません）。押さえ代は ${stroke}mm まで"` : ''}>`
+    h += `<tr class="bs-rem"${openEnd ? ` title="有効長に近づいたら、${esc(SW(far))}側から${esc(SW(datum))}側へフローティングシートで押さえます。その量です（隙間ではありません）。押さえ代は ${stroke}mm まで"` : ''}>`
      + `<td class="bs-a">${openEnd ? `フローティングシート<small>押さえ代 ${stroke}</small>` : '隙間'}</td>${two(gv(U), gv(L))}</tr>`;
    }
    /* **基準面から組み、最後にシートの端**（§9.466、利用者の指示「基準面から１つずつ刃を
@@ -2398,15 +2428,15 @@
     + `（${sd === datum ? '基準面' : 'フローティングシートで押さえる側'}）。`
     + '最外刃より外なのでスペーサーのみです。';
    el.innerHTML = `<div class="bs-fh" title="${esc(why)}">`
-    + `<span class="bs-pin">${sd}</span><span class="bs-lr">${at(sd)}</span>`
+    + `<span class="bs-pin">${esc(SW(sd))}</span><span class="bs-lr">${at(sd)}</span>`
     + `<span class="bs-trim ${trim < 0 ? 'bs-ng' : ''}">耳 ${trim.toFixed(2)}</span></div>`
     + '<table class="bs-e"><thead><tr><th class="bs-a">部材<small>mm</small></th>'
     + '<th>上軸</th><th>下軸</th></tr></thead><tbody>' + h + '</tbody></table>';
   });
   /* 端部の説明も基準面から言う（§9.461）。 */
   const dn = res.A.datum, fr = dn === 'OS' ? 'DS' : 'OS', note = $('#bsEndsNote');
-  if (note) note.innerHTML = `最外刃より外の区間です。基準面の<b>${dn}</b>から先に取り付け、<b>${fr}</b>が最後になります。`
-   + `${fr}端は<b>フローティングシート</b>で押さえるので、残りは隙間になりません。`;
+  if (note) note.innerHTML = `最外刃より外の区間です。基準面の<b>${esc(SW(dn))}</b>から先に取り付け、<b>${esc(SW(fr))}</b>が最後になります。`
+   + `${esc(SW(fr))}端は<b>フローティングシート</b>で押さえるので、残りは隙間になりません。`;
  }
 
  /* ====================== 所要 ====================== */
@@ -2456,7 +2486,8 @@
   vb.textContent = text;
  }
  function paintOffset(e, datum) {
-  const dn = datum === 'OS' ? 'OS' : 'DS', fr = dn === 'OS' ? 'DS' : 'OS';
+  const dk = datum === 'OS' ? 'OS' : 'DS', fk = dk === 'OS' ? 'DS' : 'OS';
+  const dn = esc(SW(dk)), fr = esc(SW(fk));
   const g = $('.bs-ga[data-g="offset"]');
   if (!g) return;
   const p = M.P, lim = Math.max((+p.offsetHardTol || 0) * 2, 0.02);
@@ -2891,20 +2922,39 @@
  const datumNow = () => BS().datumOf(M || {});
  const flipOf = pos => (datumNow() === 'DS') === (pos === '左');
  const posOfFlip = flip => ((datumNow() === 'DS') === !!flip ? '左' : '右');
- function viewLabel(pos) {
-  const P = (M && M.P) || {};
-  return String((pos === '左' ? P.viewLabelLeft : P.viewLabelRight) || `基準原点を${pos}`);
+ /* **OS・DS の呼び方**（§9.472）。画面へ出す字は全部これを通す（答えは`blade-core`の
+    `sideWord()`・刃組基準値の「OS の呼び方」「DS の呼び方」）。 */
+ const SW = sd => BS().sideWord(M || {}, sd);
+ /* 静的な字（`data-sw`を名乗る器）と図の札の説明を、いまの呼び方で塗る。 */
+ const SIDE_TIP = {
+  OS: () => `${SW('OS')} 側（軸端部を外す側・フローティングシートで押さえる端）。重ねると ${SW('OS')}端の区間と右の端部の表が光ります`,
+  DS: () => `${SW('DS')} 側（駆動側・基準面）。重ねると ${SW('DS')}端の区間と右の端部の表が光ります`
+ };
+ function paintSideWords() {
+  if (!panel) return;
+  panel.querySelectorAll('[data-sw]').forEach(el => { el.textContent = SW(el.dataset.sw); });
+  panel.querySelectorAll('.bs-t3[data-sw]').forEach(el => { el.title = SIDE_TIP[el.dataset.sw](); });
+ }
+ /* 向きの札の中身＝**押した後の図の左右**。基準面の側に◆（記号の意味は`title`が言う）。 */
+ function orientHtml(pos) {
+  const dn = datumNow(), fr = dn === 'DS' ? 'OS' : 'DS';
+  const [l, r] = pos === '左' ? [dn, fr] : [fr, dn];
+  const end = sd => `<span class="bs-oe${sd === dn ? ' is-datum' : ''}">${esc(SW(sd))}</span>`;
+  return `${end(l)}<i class="bs-oa" aria-hidden="true"></i>${end(r)}`;
  }
  function setFlip(on) {
   st.flip = !!on;
-  const pos = posOfFlip(st.flip), dn = datumNow(), other = dn === 'DS' ? 'OS' : 'DS';
+  paintSideWords();
+  const pos = posOfFlip(st.flip), dn = datumNow(), fr = dn === 'DS' ? 'OS' : 'DS';
   $('#bsFlip').querySelectorAll('[data-datum-pos]').forEach(b => {
    const p = b.dataset.datumPos, me = p === pos;
-   b.textContent = viewLabel(p);
+   const [l, r] = p === '左' ? [dn, fr] : [fr, dn];
+   b.innerHTML = orientHtml(p);
    b.classList.toggle('is-on', me);
    b.setAttribute('aria-pressed', me ? 'true' : 'false');
-   b.title = `基準原点（${dn}）を図の${p}、${other}を${p === '左' ? '右' : '左'}に置きます`
-     + (me ? '（いまこの向きです）' : '');
+   b.setAttribute('aria-label', `図の左に${SW(l)}、右に${SW(r)}`);
+   b.title = `図の左に ${SW(l)}、右に ${SW(r)} を置きます（◆は基準面の ${SW(dn)}）`
+     + (me ? '。いまこの向きです' : '');
   });
   $('#bsFigRow').classList.toggle('is-flip', st.flip);
   if (WL.bladeSolid) WL.bladeSolid.spinTo(st.flip ? Math.PI : 0);
@@ -3118,6 +3168,24 @@
   /* 組めないときの「直す場所を開く」（§9.454）。手順の窓を開く道は1本
      （`[data-step-open]`）なので、その札を押す。 */
   $('#bsTables').addEventListener('click', e => {
+   /* 見出しの ⓘ → 読み方のポップオーバー。**浮いた面は`WL.popMenu`の1つ**（§9.448）。
+      読ませる面なので`role=dialog`（メニューを名乗らない）。もう一度押すと閉じる。 */
+   const t = e.target.closest('[data-th-tip]');
+   if (t) {
+    e.stopPropagation();
+    const same = thPop && thPop.dataset.tip === t.dataset.thTip;
+    if (thPop) WL.popMenu.close();
+    if (same) return;
+    const el = document.createElement('div');
+    el.className = 'wl-menu bs-thpop';
+    el.setAttribute('role', 'dialog');
+    el.dataset.tip = t.dataset.thTip;
+    el.innerHTML = `<p>${TH_TIPS[t.dataset.thTip] || ''}</p>`;
+    document.body.append(el);
+    thPop = el;
+    WL.popMenu.open(el, { anchor: t, owner: t, onClose: () => { el.remove(); if (thPop === el) thPop = null; } });
+    return;
+   }
    const b = e.target.closest('[data-stop-open]');
    if (!b) return;
    e.stopPropagation();
@@ -3130,7 +3198,7 @@
    if (!e.target.closest('.bs-step')) closePops();
    /* 拡大図は**自分の中**と**区間そのもの**を押したときだけ残す（§9.413）。
       押した区間の上で閉じると、開いた次の瞬間に消えることになる。 */
-   if (!e.target.closest('.bs-zoom') && !e.target.closest('.bs-bhit')) closeZoneZoom();
+   if (!e.target.closest('.bs-zoom') && !e.target.closest('.bs-bhit') && !zoneClicked) closeZoneZoom();
   });
   document.addEventListener('keydown', e => {
    if (e.key !== 'Escape' || !panel || panel.hidden) return;
@@ -3197,7 +3265,15 @@
       記号は図を描くたびに作り直されるので、塗らないと重ねている最中に
       光りが消える。呼ばれるのは**顔ぶれが変わったときだけ**（回している
       あいだ毎フレームではない）。 */
-   onBadges: () => { paintBadgePick(); syncZoneZoom(); } });
+   onBadges: () => { paintBadgePick(); syncZoneZoom(); },
+   /* 断面図・立体図の**区間の面**（§9.475）。乗ったら図と表を光らせ、押したら拡大図。
+      端（OS・DS）は光るだけ（右の端部の表が受ける・拡大図は開かない＝§9.463）。 */
+   onZone: (kind, box) => {
+    if (kind === 'hover') { pickBadge(box ? box.dataset.badge : ''); return; }
+    zoneClicked = true; setTimeout(() => { zoneClicked = false; }, 0);
+    const k = String(box.dataset.badge);
+    if (zoomBadge === k) closeZoneZoom(); else openZoneZoom(k, box, box.dataset.axis);
+   } });
   }
   /* 右の段 */
   /* 段の切り替え。**足元の「刃の状態を見る」も同じ道を通る**（入口を2つに

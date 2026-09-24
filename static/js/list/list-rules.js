@@ -35,7 +35,7 @@
    ============================================================ */
 (function(){
  const PANEL_ID='listRulePanel';
- let ruleName='',draft=null,onDone=null,selfColumn='';
+ let ruleName='',draft=null,onDone=null,selfColumn='',selfMode='raw',cellOf=null,toFormulaCb=null,fxSelf='';
 
  /* 演算子。**日本語のラベルがそのまま説明**になるように書く
     (「≧」だけだと、文字列と数値のどちらで比べるのかが伝わらない)。 */
@@ -44,9 +44,10 @@
   ['contains','を含む'],['startsWith','で始まる'],['endsWith','で終わる'],
   ['empty','が空欄'],['notEmpty','が空欄でない'],
   ['gt','＞ より大きい'],['ge','≧ 以上'],['lt','＜ より小さい'],['le','≦ 以下'],
-  ['between','～ の範囲内'],['regex','正規表現に一致'],
+  ['between','～ の範囲内'],['regex','正規表現に一致'],['formula','（式が真なら）'],
  ];
- const NO_RIGHT=new Set(['empty','notEmpty']);
+ /* `formula`＝**式そのものが真なら**（§9.474）。左辺を「式」にしたときはこれに決まり、符号も右辺も出さない。 */
+ const NO_RIGHT=new Set(['empty','notEmpty','formula']);
  const COLORS=[['','色なし'],['ok','● 良い'],['ng','● 悪い'],['warn','● 注意'],['muted','● 目立たせない']];
  /* 「試してみる」で見る件数。**1〜2件では「たまたま」と区別が付かない**ので
     多めに取る(表の先頭から。全件を舐めると重い)。 */
@@ -67,14 +68,35 @@
    <div class="sc-float-header"><div><h2 id="lrTitle">表示ルール</h2>
      <small class="lr-usage" id="lrUsage"></small></div>
     <button type="button" id="lrClose" title="閉じる">×</button></div>
+   <!-- **2ペイン**（§9.474、利用者の指示「試した結果の表示は…表示位置が悪く見えづらいです。左の3割くらいに
+        配置し、2ペインレイアウトに」）。左＝試した結果（書いたそばから変わる・いつも見えている）、
+        右＝決めること（列の値 → 行 → 足す → 式にする）。 -->
    <div class="sc-float-body lr-body">
-    <p class="lr-lead">上から順に見て、<b>最初に当てはまったもの</b>を表示します。</p>
-    <div class="lr-rows" id="lrRows"></div>
-    <div class="lr-adds">
-     <button type="button" id="lrAddRow" class="lr-add">＋ 行を追加</button>
-     <button type="button" id="lrAddDefault" class="lr-add">＋ どれにも当てはまらないとき</button>
+    <aside class="lr-try" id="lrTry" aria-label="試した結果"></aside>
+    <div class="lr-main">
+     <div class="lr-head">
+      <p class="lr-lead">上から順に見て、<b>最初に当てはまったもの</b>を表示します。</p>
+      <!-- 条件が見る列の値（§9.474、利用者の指示「データをもとのまま使うか、設定範囲内で変換された
+           データを使うか選べるように」）。**ルールごと**・この列も他の列も同じ。 -->
+      <div class="lr-mode" role="radiogroup" aria-label="条件が見る列の値">
+       <span class="lr-mode-cap">列の値</span>
+       <span class="lr-seg">
+        <button type="button" data-mode="raw" role="radio">元のデータ</button>
+        <button type="button" data-mode="shown" role="radio">表示の値</button>
+       </span>
+       <small class="lr-mode-note" id="lrModeNote"></small>
+      </div>
+     </div>
+     <div class="lr-rows" id="lrRows"></div>
+     <div class="lr-adds">
+      <button type="button" id="lrAddRow" class="lr-add">＋ 行を追加</button>
+      <button type="button" id="lrAddDefault" class="lr-add">＋ どれにも当てはまらないとき</button>
+      <button type="button" id="lrToFormula" class="lr-add lr-tofx" aria-expanded="false"
+       title="このルールと同じ意味の式を作ります。「この列の作り方」の入力欄へそのまま入れられます">
+       <i class="fa-solid fa-code" aria-hidden="true"></i> 式にする</button>
+     </div>
+     <div class="lr-fx" id="lrFx" hidden></div>
     </div>
-    <div class="lr-try" id="lrTry"></div>
    </div>
    <div class="sc-float-foot">
     <button type="button" id="lrDelete" class="lr-delete">このルールを削除</button>
@@ -91,9 +113,17 @@
   el.querySelector('#lrDelete').onclick=remove;
   el.querySelector('#lrAddRow').onclick=()=>{addRow(blankRow())};
   el.querySelector('#lrAddDefault').onclick=()=>{addRow(defaultRow())};
+  el.querySelectorAll('.lr-mode [data-mode]').forEach(b=>b.onclick=()=>{selfMode=b.dataset.mode;paintMode();refreshCounts()});
+  el.querySelector('#lrToFormula').onclick=()=>{
+   const box=document.getElementById('lrFx'),btn=document.getElementById('lrToFormula');
+   box.hidden=!box.hidden;btn.setAttribute('aria-expanded',box.hidden?'false':'true');
+   btn.classList.toggle('is-on',!box.hidden);
+   if(!box.hidden)renderFx();
+  };
   if(typeof WL.makeFloatingWindow==='function')
-   WL.makeFloatingWindow(el,{storageKey:'listRulePanelRectV2',defaultWidth:900,defaultHeight:700,
-                             defaultTop:70,minWidth:600,minHeight:400});
+   /* 2ペインにしたので既定の大きさを広げ、控えの鍵も改める（前の 900px の控えを引きずらない）。 */
+   WL.makeFloatingWindow(el,{storageKey:'listRulePanelRectV3',defaultWidth:1180,defaultHeight:760,
+                             defaultTop:60,minWidth:820,minHeight:460});
   else console.error('表示ルールの編集: WL.makeFloatingWindow が見つかりません');
   return el;
  }
@@ -133,27 +163,29 @@
   const out=rows.slice(0,n);
   return (panelSrc&&panelSrc.ruleRowOf)?out.map(r=>panelSrc.ruleRowOf(r)):out;
  };
- function operandHtml(side,which,ri,ci){
+ /* 条件の片側を**2つの器**で返す: 種類（この列／他の列／式／固定値）と中身。器の幅は CSS の格子が
+    決める（§9.474、利用者の指示「入力欄は…整列した感じや統一感」）——どの行でも同じ列が同じ左端に並ぶ。 */
+ function operandParts(side,which,ri,ci){
   const kind=side?.kind||(which==='left'?'self':'value');
   const cols=srcColumns();
-  /* **式**（§9.464）: 抜き出し・変換してから比べる。中身は式の列と同じ`WL.formula`。 */
+  const at=`data-row="${ri}" data-cond="${ci}" data-side="${which}"`;
+  /* **式**（§9.464）: 抜き出し・変換してから比べる。左辺の式は**それだけで真偽を決める**（§9.474）。 */
   const kinds=which==='left'?[['self','この列'],['column','他の列'],['calc','式']]
                             :[['value','固定値'],['column','他の列'],['calc','式']];
-  return `<select class="lr-kind" data-row="${ri}" data-cond="${ci}" data-side="${which}">${
-    kinds.map(([v,t])=>`<option value="${v}"${kind===v?' selected':''}>${t}</option>`).join('')
-   }</select>${kind==='column'
-    ?`<select class="lr-col" data-row="${ri}" data-cond="${ci}" data-side="${which}">${
-       cols.map(c=>`<option value="${esc(c)}"${side?.column===c?' selected':''}>${esc(labelOf(c))}</option>`).join('')
-      }</select>`
-    :kind==='value'
-     ?`<input type="text" class="lr-val" data-row="${ri}" data-cond="${ci}" data-side="${which}"
-        value="${esc(side?.value||'')}" placeholder="00" autocomplete="off">`
-     :kind==='calc'
-      ?`<input type="text" class="lr-val lr-expr" data-row="${ri}" data-cond="${ci}" data-side="${which}"
-         value="${esc(side?.expr||'')}" placeholder="extract([この列],'[0-9]+')" autocomplete="off"
-         spellcheck="false" title="${esc(calcHint(side?.expr))}"><small class="lr-expr-why">${esc(calcWhy(side?.expr))}</small>`
-      :''}`;
+  const kindSel=`<select class="lr-kind" ${at}>${
+    kinds.map(([v,t])=>`<option value="${v}"${kind===v?' selected':''}>${t}</option>`).join('')}</select>`;
+  let detail='';
+  if(kind==='column')detail=`<select class="lr-col" ${at}>${
+       cols.map(c=>`<option value="${esc(c)}"${side?.column===c?' selected':''}>${esc(labelOf(c))}</option>`).join('')}</select>`;
+  else if(kind==='value')detail=`<input type="text" class="lr-val" ${at} value="${esc(side?.value||'')}" placeholder="値" autocomplete="off">`;
+  else if(kind==='calc')detail=`<div class="lr-exprbox"><textarea class="lr-val lr-expr" ${at} rows="1" spellcheck="false"
+       placeholder="${which==='left'?"例: extract([この列],'[0-9]+') > 100 and [区分] <> 'X'":"extract([この列],'[0-9]+')"}"
+       title="${esc(calcHint(side?.expr))}">${esc(side?.expr||'')}</textarea>
+       <small class="lr-expr-why${calcWhy(side?.expr)?' is-ng':''}">${esc(calcWhy(side?.expr)||exprOk(which))}</small></div>`;
+  else detail=`<span class="lr-self">${esc(labelOf(selfColumn))}</span>`;
+  return {kindSel,detail,kind};
  }
+ const exprOk=which=>which==='left'?'使える式です（真なら当てはまる）':'使える式です';
  /* 式が読めるか（§9.464）。**書いている最中に理由を字で言う**——読めない式の条件は
     当たらないので、黙っていると「当たらない理由」を探すことになる。 */
  function calcWhy(expr){
@@ -184,18 +216,29 @@
   return n===c?c:`${n}（${c}）`;
  };
 
+ /* 1つの条件＝格子の1行（接続詞｜左の種類｜左の中身｜比べ方｜右辺｜×）。**左辺が式なら比べ方と右辺は
+    出さず、式の欄がその場所まで伸びる**（§9.474、利用者の指示「式を選んだら、条件式の符号など選ばずに、
+    列の作り方にあるような自由度の高い内容で組めるように」）。 */
  function condHtml(cond,ri,ci){
   const first=ci===0;
-  return `<div class="lr-cond">
+  const L=operandParts(cond.left,'left',ri,ci);
+  const fx=cond.op==='formula'&&L.kind==='calc';
+  const right=NO_RIGHT.has(cond.op)?'':(()=>{
+   const R=operandParts(cond.right,'right',ri,ci);
+   const R2=cond.op==='between'?operandParts(cond.right2,'right2',ri,ci):null;
+   return `${R.kindSel}${R.detail}${R2?`<span class="lr-conj lr-conj-in">〜</span>${R2.kindSel}${R2.detail}`:''}`;
+  })();
+  return `<div class="lr-cond${fx?' is-fx':''}">
    <span class="lr-conj">${first?'もし':'かつ'}</span>
-   ${operandHtml(cond.left,'left',ri,ci)}
-   <select class="lr-op" data-row="${ri}" data-cond="${ci}">${
-    OPS.map(([v,t])=>`<option value="${v}"${cond.op===v?' selected':''}>${t}</option>`).join('')
-   }</select>
-   ${NO_RIGHT.has(cond.op)?'':operandHtml(cond.right,'right',ri,ci)}
-   ${cond.op==='between'?'<span class="lr-conj">〜</span>'+operandHtml(cond.right2,'right2',ri,ci):''}
+   <span class="lr-c lr-c-kind">${L.kindSel}</span>
+   <span class="lr-c lr-c-left">${L.detail}</span>
+   ${fx?'':`<span class="lr-c lr-c-op"><select class="lr-op" data-row="${ri}" data-cond="${ci}">${
+    OPS.filter(([v])=>v!=='formula'||L.kind==='calc')
+     .map(([v,t])=>`<option value="${v}"${cond.op===v?' selected':''}>${t}</option>`).join('')
+   }</select></span>
+   <span class="lr-c lr-c-right">${right}</span>`}
    <button type="button" class="lr-cond-del" data-row="${ri}" data-cond="${ci}"
-    title="この条件を消す">×</button>
+    title="この条件を消す" aria-label="この条件を消す">×</button>
   </div>`;
  }
 
@@ -219,13 +262,13 @@
     <div class="lr-row-then">
      <span class="lr-conj">→ 表示</span>
      <input type="text" class="lr-text" data-row="${ri}" value="${esc(row.text||'')}"
-      placeholder="元の値のまま（=で始めると式）" autocomplete="off"
+      placeholder="元の値のまま（=で始めると式）" autocomplete="off" spellcheck="false"
       title="空欄なら元の値のまま。=で始めると式で作ります（例: =extract([この列],'[0-9]+') で数字の部分だけを出す）">
-     <select class="lr-color" data-row="${ri}">${
+     <select class="lr-color" data-row="${ri}" aria-label="色">${
       COLORS.map(([v,t])=>`<option value="${v}"${(row.color||'')===v?' selected':''}>${t}</option>`).join('')
      }</select>
-     ${def?'':`<button type="button" class="lr-cond-add" data-row="${ri}">＋条件</button>`}
-     <button type="button" class="lr-row-del" data-row="${ri}" title="この行を消す">×</button>
+     ${def?'<span></span>':`<button type="button" class="lr-cond-add" data-row="${ri}">＋ 条件</button>`}
+     <button type="button" class="lr-row-del" data-row="${ri}" title="この行を消す" aria-label="この行を消す">×</button>
     </div>
     ${stat.note?`<div class="lr-row-stat${stat.dead?' is-dead':''}">${esc(stat.note)}</div>`:''}
    </div>
@@ -236,15 +279,21 @@
     実データの先頭TRY_ROWS件を、**この下書きのまま**評価して数える。
     「保存しないと試せない」では、直した結果を確かめずに保存することになる。 */
  let hits=[];                       // hits[ri] = その行が採用された件数
+ /* **一覧のセルと同じ道で**数える（§9.474）——列の値（元のデータ／表示の値）も、他の列の見え方も、
+    呼び出し側が渡す`cellOf(row)`（この列の生の値・書式・列の見え方）で決まる。渡されなければ行の値のまま。 */
  function recount(){
   const rows=srcRows(TRY_ROWS);
   hits=draft.map(()=>0);
-  WL.displayRules.put('__draft__',draft);
+  WL.displayRules.put('__draft__',draft,{self:selfMode});
   const picked=rows.map(r=>{
-   const hit=WL.displayRules.match('__draft__',r,selfColumn);
+   const c=cellOf?cellOf(r):{raw:r?r[selfColumn]:''};
+   const opt={raw:c.raw,format:c.format||null,view:c.view||null,row:r,column:selfColumn};
+   const vr=WL.cellFormat.ruleRow('__draft__',opt);
+   const hit=WL.displayRules.match('__draft__',vr,selfColumn);
    const i=hit?draft.indexOf(hit):-1;
    if(i>=0)hits[i]++;
-   return {row:r,hit,index:i};
+   const out=WL.cellFormat.cell(Object.assign({rule:'__draft__'},opt));
+   return {row:r,hit,index:i,seen:vr[selfColumn],out};
   });
   WL.displayRules.put('__draft__',null);
   return picked;
@@ -276,12 +325,19 @@
   const condOf=e=>draft[n(e)].conditions[ci(e)];
   box.querySelectorAll('.lr-kind').forEach(el=>el.onchange=e=>{
    const c=condOf(e),side=e.currentTarget.dataset.side,kind=e.currentTarget.value;
+   const at=`[data-row="${e.currentTarget.dataset.row}"][data-cond="${e.currentTarget.dataset.cond}"]`;
    /* 「他の列」の既定は**この窓が並べている列**の先頭（§9.464）。仕掛一覧の列
       （`S.columns`）を入れていたので、スケジュール表では選択肢に無い列が保存されていた。 */
    c[side]=kind==='column'?{kind:'column',column:srcColumns()[0]||''}
           :kind==='value'?{kind:'value',value:''}
           :kind==='calc'?{kind:'calc',expr:''}:{kind:'self'};
+   /* 左辺を式にしたら**式だけで真偽を決める**（§9.474）。式から戻したら普通の比べ方へ。 */
+   if(side==='left'&&kind==='calc'){c.op='formula';delete c.right;delete c.right2}
+   else if(side==='left'&&c.op==='formula'){c.op='eq';c.right={kind:'value',value:''}}
    render();
+   /* 描き直すと`e.currentTarget`は消えるので、どの欄かは描く前に控えた`at`で引く。 */
+   if(side==='left'&&kind==='calc')requestAnimationFrame(()=>
+    document.querySelector(`#lrRows .lr-expr${at}[data-side="left"]`)?.focus());
   });
   box.querySelectorAll('.lr-col').forEach(el=>el.onchange=e=>{
    condOf(e)[e.currentTarget.dataset.side].column=e.currentTarget.value;render();
@@ -290,9 +346,12 @@
    const sd=condOf(e)[e.currentTarget.dataset.side];
    if(el.classList.contains('lr-expr')){
     sd.expr=e.currentTarget.value;
-    const why=el.nextElementSibling;
-    if(why&&why.classList.contains('lr-expr-why'))why.textContent=calcWhy(sd.expr);
+    const why=el.nextElementSibling,bad=calcWhy(sd.expr);
+    if(why&&why.classList.contains('lr-expr-why')){
+     why.textContent=bad||exprOk(e.currentTarget.dataset.side);why.classList.toggle('is-ng',!!bad);
+    }
     el.title=calcHint(sd.expr);
+    grow(el);
     refreshCounts();return;
    }
    sd.value=e.currentTarget.value;
@@ -300,6 +359,9 @@
       カーソルが飛ぶ。数え直しと「試してみる」だけを更新する。 */
    refreshCounts();
   });
+  /* 式の欄: 中身なりに伸ばし、関数と列名の候補を付ける（§9.474）。候補の列名は**この表の列**。 */
+  box.querySelectorAll('.lr-expr').forEach(el=>{grow(el);WL.formula.suggest(el,{columns:()=>srcColumns()})});
+  box.querySelectorAll('.lr-text').forEach(el=>WL.formula.suggest(el,{columns:()=>srcColumns()}));
   box.querySelectorAll('.lr-op').forEach(el=>el.onchange=e=>{
    const c=condOf(e);c.op=e.currentTarget.value;
    // 右辺を持たない演算子へ変えたら右辺を落とす(保存されて残らないように)
@@ -331,6 +393,8 @@
   });
  }
 
+ /* 式の欄は1行から始めて、中身が折り返したぶんだけ伸ばす（入れ物は中身の長さから・§CLAUDE 11）。 */
+ function grow(el){el.style.height='auto';el.style.height=`${Math.min(el.scrollHeight+2,160)}px`}
  function move(ri,d){
   const to=ri+d;
   if(to<0||to>=draft.length)return;
@@ -356,22 +420,63 @@
    note.classList.toggle('is-dead',!!stat.dead);
   });
   renderTry(picked);
+  renderFx();
  }
 
  /* 「試してみる」。**保存前に実データでの結果が見える**ことがこの画面の要。
     **どの行が採用されたか**も出す——結果だけ見せても、思ったのと違うときに
     どこを直せばよいか分からない。 */
+ /* 左の枠（§9.474）。1件＝「列の値（いまの見方）→ 表示」と、**どの行に当たったか**。上に件数の要約。 */
  function renderTry(picked){
   const box=document.getElementById('lrTry');if(!box)return;
-  const out=(picked||[]).map(p=>{
-   const raw=String(p.row[selfColumn]??'');
-   const shown=p.hit?(p.hit.text!==''?p.hit.text:raw):raw;
-   return `<li><code>${esc(raw||'（空欄）')}</code> → <b class="${p.hit&&p.hit.color?'cell-'+p.hit.color:''}">${esc(shown)}</b>${
-    p.index>=0?`<span class="lr-which">${p.index+1}行目</span>`
-              :'<span class="lr-nohit">（当てはまらず）</span>'}</li>`;
+  const list=picked||[];
+  const hit=list.filter(p=>p.index>=0).length;
+  const out=list.map(p=>{
+   const seen=String(p.seen??'');
+   return `<li class="${p.index>=0?'is-hit':'is-miss'}"><code title="条件が見た値">${esc(seen||'（空欄）')}</code>`
+    +`<span class="lr-try-arrow" aria-hidden="true">→</span>`
+    +`<b class="${p.out&&p.out.color?'cell-'+p.out.color:''}">${esc(p.out?p.out.text:seen)||'（空欄）'}</b>`
+    +(p.index>=0?`<span class="lr-which">${p.index+1}行目</span>`:'<span class="lr-nohit">当てはまらず</span>')+'</li>';
   }).join('');
-  box.innerHTML=`<div class="lr-try-label">試してみる（${esc(labelOf(selfColumn))} の実データ先頭${(picked||[]).length}件）</div>
+  box.innerHTML=`<div class="lr-try-head"><b>試した結果</b>
+    <small>${esc(labelOf(selfColumn))} の先頭${list.length}件・${selfMode==='shown'?'表示の値':'元のデータ'}で比べています</small>
+    <span class="lr-try-sum"><i class="is-hit">当てはまった ${hit}件</i><i class="is-miss">当てはまらない ${list.length-hit}件</i></span></div>
    <ul class="lr-try-list">${out||'<li>データがありません</li>'}</ul>`;
+ }
+ /* 列の値の札（§9.474）。いまの見方を濃くし、何を比べるのかを1行で言う（推測させない）。 */
+ function paintMode(){
+  document.querySelectorAll('#listRulePanel .lr-mode [data-mode]').forEach(b=>{
+   const on=b.dataset.mode===selfMode;
+   b.classList.toggle('is-on',on);b.setAttribute('aria-checked',on?'true':'false');
+  });
+  const n=document.getElementById('lrModeNote');
+  if(n)n.textContent=selfMode==='shown'
+   ?'この列も他の列も、作り方の式→読み替え→値の整え方の後の値で比べます'
+   :'この列も他の列も、処理する前のデータで比べます（式の列は式の結果）';
+ }
+ /* 「式にする」（§9.474、利用者の指示「条件設定のUIを使って作ったルールを、『この列の作り方』の条件式の
+    入力欄に直接入れられるように式変換」）。変換そのものは`WL.displayRules.toFormula()`の1箇所。 */
+ function renderFx(){
+  const box=document.getElementById('lrFx');if(!box||box.hidden)return;
+  const r=WL.displayRules.toFormula(draft,{column:selfColumn,self:fxSelf?`(${fxSelf})`:'',mode:selfMode});
+  const chk=WL.formula.check(r.expr);
+  box.innerHTML=`<div class="lr-fx-head"><b>このルールと同じ意味の式</b>
+    <small>行＝if の入れ子（上から順）・条件＝and・どれにも当てはまらないとき＝最後の値</small></div>
+   <textarea class="lr-fx-out" readonly rows="3" spellcheck="false">${esc(r.expr)}</textarea>
+   <div class="lr-fx-state ${chk.ok?'is-ok':'is-ng'}">${chk.ok?`使える式です（${r.expr.length}字）`:esc(chk.error)}</div>
+   ${r.notes.length?`<ul class="lr-fx-notes">${r.notes.map(t=>`<li>${esc(t)}</li>`).join('')}</ul>`:''}
+   <div class="lr-fx-acts">
+    <button type="button" id="lrFxCopy">コピー</button>
+    ${toFormulaCb?`<button type="button" id="lrFxPut" class="sc-column-save"${chk.ok?'':' disabled'}>「この列の作り方」へ入れる</button>`
+      :'<small>列の設定から開くと「この列の作り方」へそのまま入れられます</small>'}
+   </div>`;
+  const ta=box.querySelector('.lr-fx-out');grow(ta);
+  box.querySelector('#lrFxCopy').onclick=async()=>{
+   try{await navigator.clipboard.writeText(r.expr);showToast&&showToast('式をコピーしました','',2200)}
+   catch(e){ta.select();showToast&&showToast('コピーできませんでした','選んだ状態にしたので Ctrl+C でコピーしてください',4000)}
+  };
+  const put=box.querySelector('#lrFxPut');
+  if(put)put.onclick=()=>{toFormulaCb(r.expr);showToast&&showToast('「この列の作り方」へ入れました','列の設定で「保存」すると一覧に効きます',3600)};
  }
 
  /* このルールを使っている列。**分からないとき(null)は黙る**
@@ -395,7 +500,7 @@
  async function save(){
   try{
    const r=await api('/api/display-rule-master',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(withUserId({name:ruleName,rows:draft}))});
+    body:JSON.stringify(withUserId({name:ruleName,rows:draft,self:selfMode}))});
    WL.displayRules.forget();await WL.displayRules.load(true);
    showToast&&showToast(`表示ルール「${ruleName}」を保存しました`,`${r.rows||0}行`,2600);
    close();
@@ -444,20 +549,46 @@
   panelSrc=o.source||null;
   selfColumn=String(o.column||'')||srcColumns()[0]||'';
   onDone=o.onDone||null;
+  /* 一覧のセルと同じ見え方で試すための口（§9.474）と、「式にする」を入れる先（列の設定が渡す）。 */
+  cellOf=typeof o.cellOf==='function'?o.cellOf:(o.source?null:listCellOf);
+  toFormulaCb=typeof o.toFormula==='function'?o.toFormula:null;
+  fxSelf=String(o.selfFormula||'');
   if(!ruleName){
    ruleName=String((await askName())||'').slice(0,60);
    if(!ruleName)return;
   }
   const saved=WL.displayRules.get(ruleName);
   draft=saved.length?JSON.parse(JSON.stringify(saved)):[blankRow()];
+  selfMode=WL.displayRules.selfMode(ruleName);
   ensurePanel();
+  paintMode();
+  const fx=document.getElementById('lrFx');if(fx)fx.hidden=true;
+  const fb=document.getElementById('lrToFormula');if(fb){fb.classList.remove('is-on');fb.setAttribute('aria-expanded','false')}
   document.getElementById('lrTitle').textContent=`表示ルール「${ruleName}」`;
   document.getElementById('lrDelete').hidden=!saved.length;
   renderUsage();
   render();
   document.getElementById(PANEL_ID).hidden=false;
  }
- function close(){const el=document.getElementById(PANEL_ID);if(el)el.hidden=true}
+ /* 口を渡されずに開いたとき（仕掛一覧から直に）の「この列の見え方」——**いま保存されている**列の設定
+    （作り方の式・値の整え方・読み替え）で作る。一覧のセル（`list-view.js`の`ruleView`）と同じ答え。 */
+ const fxCache=new Map();
+ const compiled=src=>{
+  if(!src)return null;
+  if(!fxCache.has(src)){let c;try{c=WL.formula.compile(src)}catch(e){c={run:()=>'',columns:[]}}fxCache.set(src,c)}
+  return fxCache.get(src);
+ };
+ function listCellOf(r){
+  const t=typeof WL.list.listLayoutTarget==='function'?WL.list.listLayoutTarget():'';
+  const calc=k=>compiled(t?WL.columnLayout.formula(t,k):'');
+  const c=calc(selfColumn);
+  return {raw:c?c.run(r):(r?r[selfColumn]:''),format:t?WL.columnLayout.format(t,selfColumn):null,
+          view:{key:n=>(t&&WL.columnLayout.keyByName(t,S.columns||[],n))||n,calc,
+                format:k=>(t?WL.columnLayout.format(t,k):null),rule:k=>(t?WL.columnLayout.rule(t,k):'')}};
+ }
+ function close(){
+  const el=document.getElementById(PANEL_ID);if(el)el.hidden=true;
+ }
 
  window.WL=window.WL||{};
  WL.listRules={open,close};

@@ -1204,9 +1204,12 @@
     $('#filterAdhocClose').onclick=()=>setAdhocOpen(false);
     /* **Escはバーぜんたいで受ける**——入口のボタンに焦点が残っていても閉じられるように
        （列を選ぶ前は値の欄が押せず、焦点が窓の中へ入らない）。値の入った欄のEscは先に
-       「解除」が受けて止まる。条件の検索欄と⋯のメニューは自分のEscを持つので任せる。 */
+       「解除」が受けて止まる。条件の検索欄と⋯のメニューは自分のEscを持つので任せる。
+       **1回のEscで閉じるのは1枚だけ**（§9.471）——上に浮いた面（`WL.popMenu`）が先に
+       受けて`preventDefault`した押下は、ここでもう1枚閉じない（条件のポップオーバーを
+       閉じたつもりが、下の窓まで畳まれて一覧が伸びていた）。 */
     bar.addEventListener('keydown',e=>{
-      if(e.key!=='Escape'||e.target.closest('#filterTokenInput,#filterMoreMenu,#filterSuggest'))return;
+      if(e.key!=='Escape'||e.defaultPrevented||e.target.closest('#filterTokenInput,#filterMoreMenu,#filterSuggest'))return;
       if(!$('#filterBody').hidden){e.preventDefault();setBodyOpen(false);$('#filterMoreBtn')?.focus()}
       else if(adhocOpen){e.preventDefault();setAdhocOpen(false)}
     });
@@ -1414,7 +1417,9 @@
   function onCondOutside(e){
     if(condMenuEl&&!condMenuEl.contains(e.target)&&!e.target.closest('#filterCondBtn'))closeCondMenu();
   }
-  function onCondEsc(e){if(WL.modal.escCloses(e))closeCondMenu()}
+  /* 閉じたEscは**受けたと名乗る**（`preventDefault`・§9.471）——バーのEscが同じ押下で
+     下の窓までもう1枚閉じないように（1回のEscで閉じるのは1枚）。 */
+  function onCondEsc(e){if(WL.modal.escCloses(e)){e.preventDefault();closeCondMenu()}}
   function openCondMenu(anchor,{keep=false}={}){
     if(condMenuEl&&!keep){closeCondMenu();return}
     if(!anchor)return;

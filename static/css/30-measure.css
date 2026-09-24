@@ -68,25 +68,49 @@
 .lt-state{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap;min-width:0}
 /* 「☰ 表示」の浮きパネル（§9.468）。器は`.wl-menu`、この面の値をここで宣言し直す
    （§9.449）。**名前の列は固定幅**（§CLAUDE 画面基準 9）——欄の左端を縦にそろえる。 */
-.lt-view-panel{--menu-w:calc(300px * var(--ui-scale));--menu-w-max:calc(420px * var(--ui-scale));
- --menu-pad:var(--space-2);--lvp-k-w:calc(64px * var(--ui-scale));
- display:flex;flex-direction:column;gap:var(--space-2)}
+.lt-view-panel{--menu-w:calc(320px * var(--ui-scale));--menu-w-max:calc(420px * var(--ui-scale));
+ --menu-pad:var(--space-3);--lvp-k-w:calc(64px * var(--ui-scale));
+ display:flex;flex-direction:column;gap:var(--space-2);font-size:var(--fs-sm)}
 .lt-view-panel[hidden]{display:none}
-/* 行は**パネルの中で**名乗る（`.list-pagesize`・`.list-rowgap`の`inline-flex`より強く）。
+/* **表示列の編集はいちばん上・いちばん大きく**（§9.476、利用者の指示「表示列の編集はよく使うので、
+   アイコンを設定したりして特にわかりやすく」）。アイコン＋名前＋何ができるか＋行き先の矢印。
+   塗りは主な操作の色（teal）——パネルの中で「次にすること」を1つだけ指す（§CLAUDE 画面基準 2）。 */
+.lt-view-panel .lvp-cols{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;
+ gap:var(--space-2);width:100%;height:auto;padding:var(--space-2) var(--space-3);
+ border:1px solid var(--teal);border-radius:var(--radius-sm);background:var(--teal);color:#fff;
+ text-align:start;cursor:pointer}
+.lt-view-panel .lvp-cols:hover{background:var(--teal-dark);border-color:var(--teal-dark)}
+.lt-view-panel .lvp-cols>i{font-size:1.25em}
+.lvp-cols-t{display:flex;flex-direction:column;min-width:0}
+/* 字の大きさは**パネルの他の行と同じ1つ**（`--fs-sm`・利用者の指示「UI内の文字列も含めて文字サイズの
+   統一感」）。名前と説明の差は大きさではなく**太さと濃さ**で付ける。 */
+.lvp-cols-t b{font-size:var(--fs-sm);font-weight:800;line-height:1.35}
+.lvp-cols-t small{font-size:var(--fs-sm);font-weight:500;opacity:.82;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lt-view-panel .lvp-cols .lvp-cols-go{font-size:.9em;opacity:.8}
+/* 下の行は**同じ字の大きさ（--fs-sm）・同じ高さ・同じ左端**。名前の列は固定幅（§CLAUDE 画面基準 9）。
+   行は**パネルの中で**名乗る（`.list-pagesize`・`.list-rowgap`の`inline-flex`より強く）。
    弱いと表示件数の欄だけ左端が28pxずれた（実測）。 */
-.lt-view-panel .lvp-row{display:grid;grid-template-columns:var(--lvp-k-w) minmax(0,1fr) auto;align-items:center;
- justify-items:start;gap:var(--gap-inline);min-height:var(--ctl-h-sm)}
+.lt-view-panel .lvp-row{display:grid;grid-template-columns:var(--lvp-k-w) minmax(0,1fr);align-items:center;
+ justify-items:start;gap:var(--gap-inline);min-height:var(--ctl-h-sm);font-size:var(--fs-sm);color:var(--ink-2)}
 .lt-view-panel .lvp-row[hidden]{display:none}
 .lt-view-panel .lvp-row>*{margin:0}
-.lvp-k{color:var(--ink-3);font-size:var(--fs-micro);font-weight:800;white-space:nowrap}
+.lt-view-panel .lvp-cols+.lvp-row{border-top:1px solid var(--line-soft);padding-top:var(--space-2)}
+/* 名前は`.lt-view-panel`で名乗る（帯の`.list-pagesize>span`＝付随情報の寸法より強く。弱いと表示件数だけ
+   10px になった・実測）。 */
+.lt-view-panel .lvp-k{color:var(--ink-3);font-size:var(--fs-sm);font-weight:700;white-space:nowrap}
+.lvp-v{display:flex;align-items:center;gap:var(--space-2);min-width:0;flex-wrap:wrap}
+.lvp-note{font-size:var(--fs-sm);color:var(--ink-2);white-space:nowrap}
 /* `.wl-menu button`は項目用の`display:block;width:100%`。この面は欄の並びなので戻す。 */
-.lt-view-panel button{display:inline-flex;align-items:center;width:auto;
- height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs)}
-.lt-view-panel .list-sort-keys{grid-column:2}
-/* いつも使う並びのメニューは**パネルの中で開く**（浮きパネルの中に絶対配置の
-   ポップアップを作らない・§9.201）。 */
-.lt-view-panel .list-sort-preset-wrap{grid-column:2 / -1;flex-direction:column;align-items:flex-start}
-.lt-view-panel .list-sort-menu{position:static;min-width:0;max-width:none;width:100%;box-shadow:none;margin-top:var(--space-1)}
+.lt-view-panel .lvp-row button{display:inline-flex;align-items:center;width:auto;
+ height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);font-size:var(--fs-sm)}
+.lt-view-panel .lvp-row select{height:var(--ctl-h-sm);font-size:var(--fs-sm);padding:0 var(--space-2)}
+.lt-view-panel .list-sort-none,.lt-view-panel .list-sort-chip,.lt-view-panel .list-child-chip{font-size:var(--fs-sm)}
+.lt-view-panel .list-child-chip{height:var(--ctl-h-sm)}
+.lt-view-panel .list-rowgap input[type="range"]{height:var(--ctl-h-sm)}
+/* 並びは**1行**（いまの並び＋いつも使う並び）。いつも使う並びのメニューは**パネルの中で開く**
+   （浮きパネルの中に絶対配置のポップアップを作らない・§9.201）——行の下いっぱいに。 */
+.lt-view-panel .list-sort-menu{grid-column:1 / -1;position:static;min-width:0;max-width:none;width:100%;
+ box-shadow:none;margin-top:var(--space-1)}
 .lt-view-btn i{font-style:normal;color:var(--muted);margin-left:var(--gap-hair)}
 .lt-view-btn[aria-expanded="true"]{border-color:var(--teal);background:var(--pale);color:var(--ink)}
 /* ============================================================

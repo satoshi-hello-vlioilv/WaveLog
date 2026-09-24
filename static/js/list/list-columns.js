@@ -202,10 +202,46 @@
   }
   /* **いま設定している表の口を渡す**（§9.234 ⑥）——渡さないと「他の列」の
      候補も「試してみる」も仕掛一覧のままで、書いた本人が確かめられない。 */
-  WL.listRules.open({name,column:picked,source:panelSrc,onDone:saved=>{
-   if(saved)draft.rules[picked]=saved;else delete draft.rules[picked];
+  const col=picked;
+  WL.listRules.open({name,column:col,source:panelSrc,onDone:saved=>{
+   if(saved)draft.rules[col]=saved;else delete draft.rules[col];
    renderDetail();renderList();renderPreview();
+  },
+  /* 一覧のセルと**同じ見え方**で試す（§9.474）: この列の生の値（式の列は式の結果）・書式・列の見え方。 */
+  cellOf:r=>({raw:rawOfDraft(r,col),format:fmtOf(col),view:draftView(r)}),
+  /* 「式にする」の入れ先（§9.474）。式の列ならその列の作り方へ（いまの式は変換の中で括弧に包んで使う）、
+     データの列なら**式の列を新しく作って**入れる（元のデータの列は式を持てないため）。 */
+  selfFormula:isFormulaCol(col)?(draft.formulas[col]||''):'',
+  toFormula:expr=>{
+   WL.listRules.close();
+   if(isFormulaCol(col)){
+    draft.formulas[col]=expr;
+    /* 同じ意味のルールが付いたままだと二重に当たるので、この列からは外す（言ってから）。 */
+    const had=draft.rules[col];delete draft.rules[col];
+    picked=col;renderDetail();renderList();applyLive();
+    if(had)showToast&&showToast(`読み替え「${had}」をこの列から外しました`,'同じ意味が作り方の式に入ったためです（ルールそのものは残っています）',5200);
+   }else addFormulaColumn(expr);
   }});
+ }
+ /* 設定中の下書きで、ある行のその列の生の値（式の列は下書きの式で作る・§9.474）。 */
+ const fxMemo=new Map();
+ function draftCalc(k){
+  const src=draft.formulas&&draft.formulas[k];
+  if(!src)return null;
+  if(fxMemo.has(src))return fxMemo.get(src);
+  let c=null;try{c=WL.formula.compile(src)}catch(e){c={run:()=>'',columns:[]}}
+  if(fxMemo.size>100)fxMemo.clear();
+  fxMemo.set(src,c);return c;
+ }
+ function rawOfDraft(r,k){
+  const c=isFormulaCol(k)?draftCalc(k):null;
+  if(c)return c.run(typeof panelSrc.formulaRowOf==='function'?panelSrc.formulaRowOf(r,c.columns):r);
+  return panelSrc.valueOf(r,k);
+ }
+ /* 下書きの列の見え方（読み替えが「表示の値」で見るとき・§9.474）。 */
+ function draftView(r){
+  return {key:n=>(draft.order.includes(n)?n:(WL.columnLayout.keyByName(panelSrc.target?panelSrc.target():'',draft.order,n)||n)),
+          raw:k=>rawOfDraft(r,k),format:k=>fmtOf(k),rule:k=>draft.rules[k]||''};
  }
  /* 一覧の「書」バッジの説明。何の書式が効いているかを一言で。 */
  function fmtNote(f){
@@ -863,7 +899,7 @@
     つまり**データ側に無い列を、既にある列から作って並べたい**。
     作った列は列レイアウトマスタの1行として持つので、並び・幅・書式・
     読み替えはデータ側の列とまったく同じ仕組みに乗る。 */
- async function addFormulaColumn(){
+ async function addFormulaColumn(initial){
   const name=await promptModal({title:'計算列を作る',label:'新しい列の名前',
    value:'計算列',hint:'一覧の見出しになります。',confirmLabel:'作る'});
   if(name===null)return;
@@ -876,7 +912,7 @@
      でき、作った直後に見つけられない。 */
   const at=draft.order.indexOf(picked);
   draft.order.splice(at>=0?at+1:draft.order.length,0,key);
-  draft.formulas[key]='';
+  draft.formulas[key]=typeof initial==='string'?initial:'';
   picked=key;
   renderOrigins();renderList();renderDetail();applyLive();
   requestAnimationFrame(()=>document.getElementById('lcFormula')?.focus());
@@ -1040,11 +1076,16 @@
      1文字ごとに数百msかかる。式が通ったときだけ当てる。 */
   const fxIn=box.querySelector('#lcFormula');
   if(fxIn){
+   /* 関数と列名の候補（§9.474・表示ルールの式と同じ`WL.formula.suggest`）。 */
+   WL.formula.suggest(fxIn,{columns:()=>draft.order.filter(k=>!isVirtual(k)&&k!==picked)});
    let timer=null;
+   const sgOpen=()=>!!document.querySelector('.fx-suggest:not([hidden])');
    fxIn.addEventListener('input',e=>{
     draft.formulas[picked]=e.target.value;
     clearTimeout(timer);
-    timer=setTimeout(()=>{
+    timer=setTimeout(function redo(){
+     /* 候補を選んでいる最中は作り直さない（作り直すと候補の器が古い入力欄を指したままになる）。 */
+     if(sgOpen()){timer=setTimeout(redo,350);return}
      const at=fxIn.selectionStart;
      renderDetail();
      const again=document.getElementById('lcFormula');

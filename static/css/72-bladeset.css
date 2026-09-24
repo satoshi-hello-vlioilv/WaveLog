@@ -407,11 +407,12 @@ body.bs-mode .bs-shell{display:flex}
 .bs-t3z.is-pick{background:color-mix(in srgb,var(--bs-bc,var(--teal)) 16%,transparent);
   border-color:var(--bs-bc,var(--teal-dark))}
 /* 記号の札は刃組表の記号（`.bs-bdg`）と**同じ形・同じ色**。図と表で同じ物を
-   同じ顔で出す。押すと拡大図が開くので、重ねた時点で指を出す（`.bs-bhit`）。 */
+   同じ顔で出す。**札は押す物ではない**（§9.475）——的は区間の面ぜんたいで、当たりは
+   `blade-3d.js`の`zoneAt()`が座標で決める（札に当たりを持たせると、札の上だけ回せなくなる）。 */
 .bs-t3b{position:absolute;transform:translate(-50%,-50%);display:grid;place-items:center;
   min-width:1.7em;height:1.7em;padding:0 3px;border-radius:var(--radius-xs);
   background:var(--bs-bc,var(--bs-fig-badge));color:#fff;font-weight:800;line-height:1;
-  border:1.2px solid var(--surface);transition:transform .12s}
+  border:1.2px solid var(--surface);transition:transform .12s;pointer-events:none}
 .bs-t3b[hidden]{display:none}
 /* 重ねたときは**色を変えない**（§9.455、利用者の指摘「マウスオーバーでまた色の
    変化もあり、さらにわかりにくく」）。大きさと、同じ色の外輪で言う。 */
@@ -890,4 +891,34 @@ body.bs-mode .bs-shell{display:flex}
 .bs-zoom-x:hover{background:var(--pale);border-color:var(--teal)}
 .bs-zoom svg{width:100%;height:auto;display:block}
 .bs-zoom-note{margin:0;font-size:var(--fs-micro);color:var(--muted);line-height:1.5}
+
+/* ---------- 図の向き（§9.472） ----------
+   **札が押した後の図の左右をそのまま描く**（OS ━ ◆DS／◆DS ━ OS）。よく押す物なので
+   隣の図の札（`.bs-chip`）と同じ寸法——§9.463 までは付随情報の寸法（`.bs-hide`・9.5px）
+   だった。選ばれた札の見た目は`90-state.css`の束ね規則が持つ（§9.353）。 */
+.bs-orient{display:inline-flex;align-items:center;gap:var(--space-1)}
+.bs-orient-cap{font-size:var(--fs-sm);font-weight:600;color:var(--muted)}
+.bs-orient-seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-sm);
+  overflow:hidden;background:var(--valid-bg)}
+.bs-orient-seg button{display:inline-flex;align-items:center;gap:var(--space-1);font:inherit;
+  font-size:var(--fs-sm);font-weight:700;color:var(--muted);white-space:nowrap;cursor:pointer;
+  background:transparent;border:0;border-inline-start:1px solid var(--line);padding:2px var(--space-2)}
+.bs-orient-seg button:first-child{border-inline-start:0}
+.bs-orient-seg button:hover{color:var(--teal-dark);background:var(--pale)}
+/* 軸を表す短い線。字と同じ色で、字より目立たせない。 */
+.bs-oa{display:inline-block;width:1.4em;height:.15em;background:currentColor;opacity:.55}
+/* 基準面の側の印。◆は`title`が「基準面」と言い切る（記号だけに頼らない・§CLAUDE 3）。 */
+.bs-oe.is-datum::before{content:"◆";font-size:.7em;margin-inline-end:.15em;vertical-align:.1em}
+
+/* ---------- 刃組表の見出しの読み方（§9.472 の続き） ----------
+   長い補足は見出しに書かず ⓘ から開く。的は字と同じ高さの小さな丸——**押せることは
+   色（teal）とカーソルで言い、字より目立たせない**（見出しは値を読むための物）。 */
+.bs-thi{display:inline-flex;align-items:center;justify-content:center;border:0;background:transparent;
+  color:var(--teal);cursor:pointer;padding:0 0 0 .2em;font-size:.85em;vertical-align:.05em}
+.bs-thi:hover{color:var(--teal-dark)}
+.bs-thpop{max-width:24em;padding:var(--space-2) var(--space-3);font-size:var(--fs-sm);line-height:1.6;
+  white-space:normal}
+.bs-thpop p{margin:0}
+/* 潤滑リングはゴムリングの群の中の1列（§9.472 の続き）。印の紫で「種類が違う」ことを言う。 */
+.bs-g .bs-lubeh .bs-lubedot{margin-inline-end:.2em}
 }

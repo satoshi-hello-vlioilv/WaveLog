@@ -4518,6 +4518,17 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   scRuleColMemo={sig,cols:[...want]};
   return scRuleColMemo.cols;
  }
+ /* 読み替えが「表示の値」で見るとき（§9.474）の**列の見え方**。値の出どころは`timelineRuleRow()`と
+    同じ3つ（固定列の字・式の列・内容の値）、書式と読み替えはこの表の列レイアウト。 */
+ function timelineRuleView(e){
+  const t=timelineTarget(),fx=timelineFormulaFns();
+  return {
+   key:n=>timelineKeyByName(n)||n,
+   raw:k=>(scIsFixedCol(k)?scFixedCellText(e,k):(fx.has(k)?timelineFormulaText(e,fx.get(k)):entryValueOf(e,k))),
+   format:k=>(t?WL.columnLayout.format(t,k):null),
+   rule:k=>(t?WL.columnLayout.rule(t,k):'')
+  };
+ }
  function timelineRuleRow(e){
   const base=entryRow(e);
   const cols=timelineRuleColumns();
@@ -4585,12 +4596,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   }
   /* 読み替えが見る行は`timelineRuleRow()`の1箇所が作る（§9.234 ⑥）。
      **1行につき1回**——列ごとに作ると行数×列数になる。 */
-  const row=timelineRuleRow(e);
+  const row=timelineRuleRow(e),view=timelineRuleView(e);
   return keys.map(k=>{
    const raw=entryValueOf(e,k);
    const out=WL.cellFormat.cell({raw,format:t?WL.columnLayout.format(t,k):null,
                                  rule:t?WL.columnLayout.rule(t,k):'',
-                                 row,column:k});
+                                 row,column:k,view});
    return {key:k,text:out.text,raw:String(raw==null?'':raw),color:out.color};
   });
  }
@@ -4610,7 +4621,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    const raw=ctx.formulaFns.has(k)?timelineFormulaText(e,ctx.formulaFns.get(k)):'';
    const out=WL.cellFormat.cell({raw,format:ctx.calcTarget?WL.columnLayout.format(ctx.calcTarget,k):null,
                                  rule:ctx.calcTarget?WL.columnLayout.rule(ctx.calcTarget,k):'',
-                                 row:ctx.ruleRow,column:k});
+                                 row:ctx.ruleRow,column:k,view:ctx.view});
    return {text:out.text,raw:String(raw==null?'':raw),color:out.color,kind:'calc'};
   }
   const c=ctx.contentMap.get(k);
@@ -4620,7 +4631,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     見る行は1行につき1回。§9.234 ⑥と同じ理由）。 */
  function rowDynamicCtx(e){
   return {contentMap:new Map(timelineContentCells(e).map(c=>[c.key,c])),
-          formulaFns:timelineFormulaFns(),ruleRow:timelineRuleRow(e),calcTarget:timelineTarget()};
+          formulaFns:timelineFormulaFns(),ruleRow:timelineRuleRow(e),calcTarget:timelineTarget(),
+          view:timelineRuleView(e)};
  }
  /* ---------- 印刷向けの1行ぶんのセル文字列（帳票印刷の刷新、利用者の指示） ----------
     紙は**画面と同じ列（並び・表示/非表示・書式・読み替え・計算式）**を使う
@@ -6956,7 +6968,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    const contentCells=timelineContentCells(e);
    const formulaFns=timelineFormulaFns();      /* 計算で作る列(§9.207)。控えつき */
    /* 読み替えが見る行と対象は**1行につき1回**作る（§9.234 ⑥）。 */
-   const ruleRow=timelineRuleRow(e),calcTarget=timelineTarget();
+   const ruleRow=timelineRuleRow(e),calcTarget=timelineTarget(),view=timelineRuleView(e);
    /* **「誰が・どの端末で」は常に詳細へ入れる**(§9.180)。これにより
       すべての行に詳細(▾)が付く——監査の情報は行を選ばず必要になる。 */
    const detailHtml=frameDetailHtml(e)+fixedStartHtml(e)+estimateBreakdownHtml(e)+auditHtml(e);
@@ -7070,7 +7082,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
        式が空の列（＝読み替えだけで中身を作る列）もここで受ける。 */
     /* 計算式・内容の項目は`dynamicCellValue()`の1箇所で決める
        （§9.235。印刷向けの`printRowCells()`も同じ関数を通す）。 */
-    const dyn=dynamicCellValue(e,k,{formulaFns,ruleRow,calcTarget,contentMap});
+    const dyn=dynamicCellValue(e,k,{formulaFns,ruleRow,calcTarget,contentMap,view});
     if(dyn.kind==='calc')
      /* **元の値（式の結果）は`title`に残す**——読み替えで置き換わったことが
         読める（§9.94「切れたセルには生の値の`title`」と同じ約束）。 */
