@@ -350,6 +350,11 @@ body.bs-mode .bs-shell{display:flex}
    意味を持たないので、器ごと伏せる（§CLAUDE 4）。
    ただし「視点を戻す」は断面図でも効くので、**別の群**に置いてある。 */
 .bs-stage3.is-cut .bs-hud-grp--rig{display:none}
+/* 寸法の字の段（§9.482）。字を描くのは断面図だけなので、群も断面図だけ。数は桁をそろえ、押しても
+   札の幅が動かないよう最長（15px）ぶんの幅を持つ。 */
+.bs-stage3:not(.is-cut) .bs-hud-grp--cut{display:none}
+.bs-dimfs{min-width:4.2em;text-align:center;font-variant-numeric:tabular-nums;font-weight:700;color:var(--ink)}
+.bs-dimfs-b{min-width:2em;justify-content:center}
 /* 立体の点を画面の座標へ写して置く札。重なったら上下へ逃がす（`place()`）。 */
 .bs-t3{position:absolute;transform:translate(-50%,-50%);pointer-events:none;white-space:nowrap;
   font-size:var(--fs-base-sm);font-weight:800;letter-spacing:.05em;
@@ -395,8 +400,9 @@ body.bs-mode .bs-shell{display:flex}
 /* 有効長の寸法線（§9.420）。どこからどこまでが有効長かを図の上で言う。 */
 .bs-t3v .bs-span{stroke:var(--rs-indigo);stroke-width:1.2;fill:none}
 .bs-t3v text.is-span{fill:var(--rs-indigo)}
-/* 字の大きさは`blade-3d.js`の`DIM_FS`が属性で渡す（幅の見当を同じ値から
-   出しているので、ここに書くと2箇所が食い違う）。 */
+/* 字の大きさは`blade-3d.js`の`DIM_FS_TOKENS`（段＝文字サイズのトークン）が`--bs-dim-fs`で渡し、ここは
+   使うだけ（幅の見当も同じ値を計算して読むので、段の値をここに書くと2箇所が食い違う・§9.482）。 */
+.bs-t3v{font-size:var(--bs-dim-fs,var(--fs-micro))}
 .bs-t3v text{font-weight:700;font-variant-numeric:tabular-nums;
   fill:var(--ink);paint-order:stroke;stroke:var(--surface);stroke-width:2.4px}
 .bs-t3v text.is-ring{fill:var(--rs-brown)}
@@ -560,8 +566,10 @@ body.bs-mode .bs-shell{display:flex}
   font-size:var(--fs-tiny);font-weight:700;margin-inline-end:2px}
 .bs-bt.is-down{background:var(--rs-blue-bg);color:var(--rs-blue)}
 .bs-bt.is-up{background:var(--look-red-pale);color:var(--look-red)}
-.bs-slot{font-size:var(--fs-tiny);color:var(--muted);margin-inline-end:3px}
-.bs-ct{font-weight:700}
+/* 取付位置（§9.480）。区間の番号が**主役**なので本文の色・桁そろえ。枚数は番号から数えられない
+   ときだけ出る付随の数（小さく）。何の番号かは列の見出しが言う。 */
+.bs-slot{font-variant-numeric:tabular-nums;margin-inline-start:2px}
+.bs-ct{font-size:var(--fs-tiny);color:var(--muted);margin-inline-start:4px}
 .bs-z{color:var(--muted)}
 .bs-sep{border-inline-start:2px solid var(--line)}
 /* 刃組表の「刃の間隔」（§9.434、利用者の指示）。条幅を作っている側の寸法を

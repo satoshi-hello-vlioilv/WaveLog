@@ -10177,14 +10177,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
       同じ行を見る**ことが要件（§9.176「見本も同じ関数を通す」）——別の行で
       評価すると、画面では当たるのに実表示は空、という食い違いが起きる。 */
    ruleRowOf:row=>timelineRuleRow(row),
-   valueOf:(row,k)=>{
-    /* 計算で作る列は**式を当てた結果**を見せる（§9.207）。生の値は無いので、
-       ここを素通しにすると設定画面だけ「値のある行がありません」と出る
-       （§9.176で内容欄が踏んだのと同じ罠）。 */
-    const fx=timelineFormulaFns();
-    if(fx.has(k))return timelineFormulaText(row,fx.get(k));
-    return scIsFixedCol(k)?scFixedCellText(row,k):entryValueOf(row,k);
-   },
+   /* 式の列はパネルが下書きの式で作る（§9.483・`rawOfDraft()`の1箇所）。口が答えるのはデータの列だけ。 */
+   valueOf:(row,k)=>scIsFixedCol(k)?scFixedCellText(row,k):entryValueOf(row,k),
    /* **項目名は日本語で出す。** 内容欄のキーは`lotNo`/`purposeName`という
       alias名なので、そのまま並べると選んだ本人以外には何の項目か分からない
       （タイムラインの見出しが日本語なのに、設定画面だけ生のキーという
@@ -10221,6 +10215,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    /* 計算式の列を足せる（§9.207、利用者の指示）。**並べ替えは持たない**
       （§9.176。行の並びは時刻の一本道）。 */
    features:{formula:true,preset:true,width:true,format:true,rule:true,sort:false},
+   /* 並べ替えを持たない理由（§9.484・パネルの④に出す）。 */
+   sortOff:'作業スケジュールは作業する順（時刻の一本道）に並びます。列の値で並べ替えると、どれから作業するかと'
+     +'開始・終了の時刻が読めなくなるため、ここでは並べ替えを持ちません。順番を変えるときは、表の行を掴んで動かします。',
    afterApply:()=>{if(scState.entries&&scState.entries.length)renderTimeline()},
    save:async(target,body)=>{
     /* ① 出す項目＝チェックの入っている列を、**並びの順**で内容表示マスタへ。

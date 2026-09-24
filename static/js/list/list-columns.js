@@ -233,10 +233,14 @@
   if(fxMemo.size>100)fxMemo.clear();
   fxMemo.set(src,c);return c;
  }
+ /* 列の生の値の答えは**ここ1箇所**（§9.483、利用者の指示「作業スケジュールの表示列の編集…計算式の実装など
+    他の表示列の機能…同じように…共通化」）。式の列は**下書きの式**で作る——口（`valueOf`）は式を知らなくてよい。
+    以前は統計・見本・例・並べ替えの6箇所が口を直に呼んでおり、式の列を自前で解いていたスケジュール表だけ値が
+    出て、仕掛一覧などでは「値のある行がありません（0件）」だった。 */
  function rawOfDraft(r,k){
   const c=isFormulaCol(k)?draftCalc(k):null;
   if(c)return c.run(typeof panelSrc.formulaRowOf==='function'?panelSrc.formulaRowOf(r,c.columns):r);
-  return panelSrc.valueOf(r,k);
+  return panelSrc.valueOf(r,k);   /* 口へ聞くのはここ1箇所（§9.483） */
  }
  /* 下書きの列の見え方（読み替えが「表示の値」で見るとき・§9.474）。 */
  function draftView(r){
@@ -438,9 +442,9 @@
      引き返すと**読み替えだけの列は設定画面で一度も結果が見えない**。 */
   if(raw===''&&!draft.rules[k])return {text:'',color:'',raw:''};
   const src=raw===''?panelSrc.rows()[0]
-    :panelSrc.rows().find(r=>String(panelSrc.valueOf(r,k)??'')===String(raw));
+    :panelSrc.rows().find(r=>String(rawOfDraft(r,k)??'')===String(raw));
   const out=WL.cellFormat.cell({raw,format:draft.formats[k]||null,rule:draft.rules[k]||'',
-                                row:ruleRow(src),column:k});
+                                row:ruleRow(src),column:k,view:draftView(src)});
   return {text:out.text,color:out.color,raw:String(raw)};
  }
 
@@ -800,7 +804,7 @@
   const rows=panelSrc.rows();
   const vals=[];
   for(const r of rows){
-   const v=panelSrc.valueOf(r,k);
+   const v=rawOfDraft(r,k);
    if(v!==null&&v!==undefined&&String(v).trim()!=='')vals.push(String(v));
   }
   const set=new Set(vals);
@@ -825,7 +829,7 @@
  function previewSamples(k,max){
   const out=[],seen=new Set();
   for(const r of panelSrc.rows()){
-   const v=panelSrc.valueOf(r,k);
+   const v=rawOfDraft(r,k);
    if(v===null||v===undefined||String(v).trim()==='')continue;
    const s=String(v);
    if(seen.has(s))continue;
@@ -846,7 +850,7 @@
     <p class="lc-preview-empty">この列に値のある行が、いま表示中の中にありません。</p>`;
   const f=fmtOf(picked),rule=rule0;
   const body=rows.map(({raw,row})=>{
-   const out=WL.cellFormat.cell({raw,format:f,rule,row:ruleRow(row),column:picked});
+   const out=WL.cellFormat.cell({raw,format:f,rule,row:ruleRow(row),column:picked,view:draftView(row)});
    const same=String(out.text)===raw;
    return `<tr class="${same?'is-same':''}"><td class="lc-pv-raw">${esc(raw)}</td>
      <td class="lc-pv-arrow" aria-hidden="true">→</td>
@@ -860,7 +864,7 @@
  /* この列の実データの先頭(空でないもの)。書式の「例」に使う。 */
  function sampleValue(k){
   for(const r of panelSrc.rows()){
-   const v=panelSrc.valueOf(r,k);
+   const v=rawOfDraft(r,k);
    if(v!==null&&v!==undefined&&String(v).trim()!=='')return v;
   }
   return '';
@@ -971,10 +975,10 @@
   const fx=isFormulaCol(picked);
   const f=fmtOf(picked);
   const sample=virt?'':sampleValue(picked);
+  const sampleRow=virt?null:(String(sample)===''?panelSrc.rows()[0]
+    :panelSrc.rows().find(r=>String(rawOfDraft(r,picked)??'')===String(sample)));
   const shown=virt?'':WL.cellFormat.cell({raw:sample,format:f,rule:draft.rules[picked]||'',
-                                          row:ruleRow(String(sample)===''?panelSrc.rows()[0]
-                                            :panelSrc.rows().find(r=>String(panelSrc.valueOf(r,picked)??'')===String(sample))),
-                                          column:picked}).text;
+                                          row:ruleRow(sampleRow),column:picked,view:draftView(sampleRow)}).text;
   const o=originOf(picked);
   const st=columnStats(picked);
   /* **右ペインは上から順に読める形にする(§9.105)。** 以前はラベルと入力が
@@ -1038,7 +1042,7 @@
      </span></label>
     <p class="lc-hint">読み替えが当たった行はその言葉で確定し、当たらなければ書式で整形します。どちらもできない値は元のまま表示します。</p>
    </div>
-   ${panelSrc.features.sort===false?'':sortStepHtml()}
+   ${panelSrc.features.sort===false?sortOffHtml():sortStepHtml()}
    <div class="lc-preview" id="lcSample">${previewHtml()}</div>`}`;
   box.querySelector('#lcName').addEventListener('input',e=>{
    const v=e.target.value.trim();
@@ -1226,9 +1230,19 @@
   raw:['生の値','並べ替え','読み替え','書式','画面'],
   display:['生の値','読み替え','書式','並べ替え','画面'],
  };
+ /* 並べ替えを持たない表でも**段は出し、持たない理由を書く**（§9.484、利用者の指示「並び替えは使わせない・
+    見せない理由を答えて」・CLAUDE.md 画面の基準4「できないことは、できないと書く」）。以前は段ごと黙って消して
+    おり、仕掛一覧と見比べると「足りない」に見えた。理由は表ごとに違うので**口が言う**（`sortOff`）。 */
+ function sortOffHtml(){
+  const why=panelSrc.sortOff||'この表は列の値で並べ替えません（並びは画面が決めています）。';
+  return `<div class="lc-step lc-step-off">
+    <h4 class="lc-step-head"><i class="lc-step-no">4</i>並べ替え<small>この表では使いません</small></h4>
+    <p class="lc-hint">${esc(why)}</p>
+   </div>`;
+ }
  function sortStepHtml(){
   const spec=WL.sortSpec.normalize(draft.sorts[picked])||{buckets:[],on:'raw',natural:false};
-  const values=panelSrc.rows().map(r=>panelSrc.valueOf(r,picked));
+  const values=panelSrc.rows().map(r=>rawOfDraft(r,picked));
   const useBuckets=spec.buckets.length>0;
   const chips=(useBuckets?spec.buckets:WL.sortSpec.defaultBuckets()).map((k,i,a)=>
    `<span class="lc-bucket" data-bucket="${k}">

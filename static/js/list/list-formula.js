@@ -164,6 +164,23 @@
     とみなす。`numOf`は緩く読む(計算では '010'×2=20 でよい)が、比較で
     それをやると **`[コード] = 10` が '010' に当たってしまう**——先頭ゼロの
     コードは実データに普通にあるので、照合が黙って壊れる。 */
+ /* **表示ルールの比べ方**（§9.477）: 両辺が数として読めれば数で、そうでなければ字で比べる（-1/0/1）。
+    数の読み方は**緩い**——前後の空白・3桁区切り・先頭のゼロ・「+」を許す（実データは同じ項目でも
+    '5'・'05'・'5.0'・'1,000' が混ざる）。上の比較演算子（`=`等）は先頭ゼロのコードを取り違えないために
+    **厳しく**読むので、2つは別の約束。**表示ルールの判定（base.js）もこの1本を呼ぶ**——ルールを式へ
+    変換したとき、同じ比べ方の式（`cmp(a,b) = 0`）で同じ答えになる。 */
+ const LOOSE_NUM=/^[-+]?(\d+\.?\d*|\.\d+)$/;
+ const looseNum=v=>{
+  const t=textOf(v).trim().replace(/,/g,'');
+  if(!t||!LOOSE_NUM.test(t))return null;
+  const n=Number(t);return Number.isFinite(n)?n:null;
+ };
+ function cmp(a,b){
+  const x=looseNum(a),y=looseNum(b);
+  if(x!==null&&y!==null)return x<y?-1:x>y?1:0;
+  const s=textOf(a),t=textOf(b);
+  return s<t?-1:s>t?1:0;
+ }
  const strictNum=v=>{
   if(typeof v==='number')return v;
   const s=textOf(v).trim();
@@ -223,6 +240,8 @@
   split:a=>{const sep=textOf(a[1]);const parts=sep?textOf(a[0]).split(sep):[textOf(a[0])];
             const v=parts[posOf(a[2])-1];return v===undefined?'':v},
   contains:a=>textOf(a[0]).includes(textOf(a[1]))?1:0,
+  /* cmp(a, b): 表示ルールと同じ比べ方（-1/0/1・§9.477）。 */
+  cmp:a=>cmp(a[0],a[1]),
   startswith:a=>textOf(a[0]).startsWith(textOf(a[1]))?1:0,
   endswith:a=>textOf(a[0]).endsWith(textOf(a[1]))?1:0,
   /* 全角の英数記号・空白を半角へ（NFKC）。半角カナは全角カナになる（NFKCの決まり）。 */
@@ -230,7 +249,7 @@
   /* padleft(x, 桁, 埋める字)。埋める字を省くと0。 */
   padleft:a=>textOf(a[0]).padStart(Math.max(0,Math.min(64,numOf(a[1])||0)),a.length>2?(textOf(a[2])||'0'):'0'),
  };
- const ARITY={num:1,text:1,abs:1,round:2,len:1,left:2,right:2,trim:1,upper:1,lower:1,
+ const ARITY={cmp:2,num:1,text:1,abs:1,round:2,len:1,left:2,right:2,trim:1,upper:1,lower:1,
               find:2,replace:3,match:2,regreplace:3,split:3,contains:2,startswith:2,endswith:2,
               hankaku:1};
  /* 引数の数に幅がある関数（下限〜上限）。 */
@@ -333,7 +352,7 @@
   ['replace','x, 字, 置く字','字を置き換える'],['regreplace','x, 正規表現, 置く字','正規表現で置き換える'],
   ['hankaku','x','全角の英数を半角へ'],['padleft','x, 桁, 字','左を字で埋める'],
   ['extract','x, 正規表現, 組','正規表現で抜き出す'],['match','x, 正規表現','正規表現に合うか'],
-  ['contains','x, 字','字を含むか'],['startswith','x, 字','字で始まるか'],['endswith','x, 字','字で終わるか'],
+  ['contains','x, 字','字を含むか'],['cmp','a, b','比べる（数に読めれば数で・-1／0／1）'],['startswith','x, 字','字で始まるか'],['endswith','x, 字','字で終わるか'],
  ];
  /* ---------- 書いている最中の候補（§9.474、利用者の指示「条件式の部分もさらに使いやすく、関数などは
     特にサジェスト機能なども組み込んで」） ----------
@@ -417,7 +436,7 @@
    else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();sgClose()}
   });
  }
- window.WL.formula={compile,check,parse,sigs:SIGS,truthy,MAX_LEN,suggest,
+ window.WL.formula={compile,check,parse,sigs:SIGS,truthy,cmp,MAX_LEN,suggest,
              /* 説明文をパネルとドキュメントで共用する(2箇所に書かない)。 */
              help:[
               ['[列名]','その行のその列の値'],

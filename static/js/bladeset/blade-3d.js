@@ -55,6 +55,8 @@
       上下（`cutEl`）へ回す。切る面は世界に固定したままなので、回しても
       切り口は動かない——動くのは見る位置だけ。 */
    cutAz:0, cutEl:0, marks:[], zmarks:[], zr:0, dims:[], knives:[],
+   /* 寸法の字の段（§9.482）。`null`＝まだ覚えを読んでいない（`dimLevel()`が読む）。 */
+   dimLv:null,
    /* 断面図の倍率と平行移動（§9.463、利用者の指示「ガイダンスの断面図は拡大縮小も
       できるように」）。`cutZoom`＝器に収まる縮尺の何倍か（1＝全体）。`cutPanX/Y`＝
       画面の右・上へ動かした量（世界の長さ）。`cutView`は最後に描いた縮尺——
@@ -1826,7 +1828,24 @@
    .reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? fs : fs * 0.58), 0);
  /* **現物に貼れるものはできるだけ貼る**（§9.418 追補、利用者の指示「引き出し線
     だらけにならないためにも」）。中へ書くのに要る余白は左右1pxまで詰める。 */
- const DIM_FS = 9, DIM_PAD = 1, DIM_SLOT = 4;
+ const DIM_PAD = 1, DIM_SLOT = 4;
+ /* 寸法の字の大きさ（§9.482、利用者の指示「寸法のラベルが小さいので1サイズ上げて」「今のサイズを小さいサイズの
+    下限として、4段階くらい上げられるように…今あるトークンに合わせて」）。段は**文字サイズのトークン**の名前で
+    持ち、px は描く器に当てて**計算された値を読む**（表示サイズ`--ui-scale`も効く・値を2箇所に書かない）。
+    下限は前の 9px にいちばん近い`--fs-tiny`（9.5px）。`--fs-badge`（10px）は tiny と 0.5px しか違わず、
+    押しても変わって見えないので段にしない。既定は1段上（`--fs-micro`）。 */
+ const DIM_FS_TOKENS = ['--fs-tiny', '--fs-micro', '--fs-sm', '--fs-base-sm', '--fs-title'];
+ const DIM_FS_DEFAULT = 1, DIM_FS_KEY = 'bsDimFsLv';
+ let dimFs = 9, dimFsFor = '';
+ /* いまの段。この端末に覚える（人ごとの見やすさ・共有しない）。覚えが読めなければ既定。 */
+ function dimLevel() {
+  if (D3.dimLv == null) {
+   let v = null;
+   try { v = localStorage.getItem(DIM_FS_KEY); } catch (e) { v = null; /* 読めない端末は既定で描く */ }
+   D3.dimLv = v != null && /^[0-9]$/.test(v) && +v < DIM_FS_TOKENS.length ? +v : DIM_FS_DEFAULT;
+  }
+  return D3.dimLv;
+ }
  function dims(w, h, cam, v) {
   const el = host && host.querySelector('.bs-t3v');
   if (!el) return;
@@ -1834,8 +1853,15 @@
   el.hidden = false;
   el.setAttribute('viewBox', `0 0 ${w} ${h}`);
   /* 字の大きさは**この1箇所**が決める（幅の見当もここから出しているので、
-     CSSに書くと2箇所が食い違う）。 */
-  el.setAttribute('font-size', String(DIM_FS));
+     CSSに書くと2箇所が食い違う）。段が変わったときだけ読み直す（毎フレーム`getComputedStyle`を呼ばない）。
+     表示サイズが変わったときは`wl:look-change`が控えを捨てる（`attach()`）。 */
+  const fsKey = String(dimLevel());
+  if (fsKey !== dimFsFor) {
+   el.style.setProperty('--bs-dim-fs', `var(${DIM_FS_TOKENS[D3.dimLv]})`);   /* 使い方は CSS（.bs-t3v） */
+   dimFs = parseFloat(getComputedStyle(el).fontSize) || 9;
+   dimFsFor = fsKey;
+   paintDimFs();
+  }
   const P = (x, y) => {
    v.set(x, y, 0).applyMatrix4(D3.g.matrixWorld).project(cam);
    return { x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h };
@@ -1885,11 +1911,11 @@
    const outDir = Math.sign(hit.y - mid.y) || (q.y > 0 ? -1 : 1);
    const rows = (q.leadYs && q.leadYs.length)
     ? q.leadYs.map(yy => P(q.x, yy).y)
-    : [0, 1].map(k => hit.y + outDir * (13 + k * (DIM_FS + 4)));
+    : [0, 1].map(k => hit.y + outDir * (13 + k * (dimFs + 4)));
    return { t, kind: q.kind, cx: (a.x + b.x) / 2, cy: mid.y,
             pw: Math.abs(b.x - a.x), up: q.y > 0,
             band: Math.abs(hi.y - lo.y), hit: hit.y, rows,
-            tw: dimTextW(t, DIM_FS) };
+            tw: dimTextW(t, dimFs) };
   }).filter(q => q.cx > -50 && q.cx < w + 50);
   /* **引き出した字も、部材の中の字も帯を避ける**（§9.443、利用者の指示「図の
      縦方向の表示エリアが30%小さくなっても表示ラベルなどが重ならないように」）。
@@ -1924,7 +1950,7 @@
    });
   }
   const boxOf = (x, y, tw) => ({ x0: x - tw / 2 - 2, x1: x + tw / 2 + 2,
-                                 y0: y - DIM_FS * 0.6 - 1, y1: y + DIM_FS * 0.6 + 1 });
+                                 y0: y - dimFs * 0.6 - 1, y1: y + dimFs * 0.6 + 1 });
   const why = { hud: 0, chip: 0, text: 0, wide: 0 };
   const hitOf = b => taken.find(o => b.x0 < o.x1 && b.x1 > o.x0 && b.y0 < o.y1 && b.y1 > o.y0);
   const free = b => !hitOf(b);
@@ -1938,7 +1964,7 @@
    const sa = P(-ha, 0), sb2 = P(ha, 0);
    const st0 = `有効長 ${dmm(pk0.arbor)}`;
    span0 = { cx: (sa.x + sb2.x) / 2, y: h - 54, t: st0,
-             tw: dimTextW(st0, DIM_FS), a: sa, b: sb2 };
+             tw: dimTextW(st0, dimFs), a: sa, b: sb2 };
    taken.push(boxOf(span0.cx, span0.y, span0.tw + 10));
   }
   const outs = [];
@@ -1950,11 +1976,11 @@
       その部材の位置に縛られていて動かせないので、帯と重なるなら
       **引き出しへ回す**——動かせるのはそちらだけ。 */
    const at = boxOf(q.cx, q.cy, q.tw);
-   const roomOK = q.cy - DIM_FS * 0.6 >= dimTop(q.cx, q.tw)
-               && q.cy + DIM_FS * 0.6 <= dimBot && free(at);
-   if (roomOK && q.pw >= q.tw + DIM_PAD * 2 && q.band >= DIM_FS + 1) {
+   const roomOK = q.cy - dimFs * 0.6 >= dimTop(q.cx, q.tw)
+               && q.cy + dimFs * 0.6 <= dimBot && free(at);
+   if (roomOK && q.pw >= q.tw + DIM_PAD * 2 && q.band >= dimFs + 1) {
     taken.push(at);
-    const y = q.cy + DIM_FS * 0.36;
+    const y = q.cy + dimFs * 0.36;
     o += `<text x="${q.cx.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle"`
        + `${q.kind === 'ring' ? ' class="is-ring"' : ''}>${esc(q.t)}</text>`;
     inside++;
@@ -1989,8 +2015,8 @@
      tiers.push({ row, half, xs, t });
      row.forEach((q, i) => {
       const y0 = q.rows[Math.min(t, q.rows.length - 1)];
-      down = Math.max(down, dimTop(xs[i], q.tw) + DIM_FS * 0.6 - y0);
-      up = Math.max(up, y0 - (dimBot - DIM_FS * 0.6));
+      down = Math.max(down, dimTop(xs[i], q.tw) + dimFs * 0.6 - y0);
+      up = Math.max(up, y0 - (dimBot - dimFs * 0.6));
      });
     }
     /* 上の帯からは下へ、下の帯からは上へ逃がす。**どちらも群ごと1つの量**
@@ -2022,7 +2048,7 @@
       }
       taken.push(slot);
       const d = Math.sign(q.hit - yy) || 1;
-      const y0 = yy + d * DIM_FS * 0.55;
+      const y0 = yy + d * dimFs * 0.55;
       /* **線は字のきわから対象の縁まで**（どちらの端も浮かせない）。
          いったん真下（真上）へ降ろしてから寄せると、どの部材から出た線かを
          目で追える。 */
@@ -2030,7 +2056,7 @@
           + `L${xs[i].toFixed(1)} ${(y0 + d * 4).toFixed(1)}`
           + `L${q.cx.toFixed(1)} ${(q.hit - d * 3).toFixed(1)}`
           + `L${q.cx.toFixed(1)} ${q.hit.toFixed(1)}"/>`;
-      tx += `<text x="${xs[i].toFixed(1)}" y="${(yy + DIM_FS * 0.36).toFixed(1)}"`
+      tx += `<text x="${xs[i].toFixed(1)}" y="${(yy + dimFs * 0.36).toFixed(1)}"`
           + ` text-anchor="middle"${kind === 'ring' ? ' class="is-ring"' : ''}>`
           + `${esc(q.t)}</text>`;
       lead++;
@@ -2058,11 +2084,11 @@
       + ` x2="${b.x.toFixed(1)}" y2="${(y + tick).toFixed(1)}"/>`
       + `<line class="bs-span" x1="${a.x.toFixed(1)}" y1="${y}" x2="${(cx - tw).toFixed(1)}" y2="${y}"/>`
       + `<line class="bs-span" x1="${(cx + tw).toFixed(1)}" y1="${y}" x2="${b.x.toFixed(1)}" y2="${y}"/>`
-      + `<text class="is-span" x="${cx.toFixed(1)}" y="${(y + DIM_FS * 0.36).toFixed(1)}"`
+      + `<text class="is-span" x="${cx.toFixed(1)}" y="${(y + dimFs * 0.36).toFixed(1)}"`
       + ` text-anchor="middle">${esc(t)}</text>`;
    D3.spanLine = { x0: +a.x.toFixed(1), x1: +b.x.toFixed(1) };
   }
-  D3.dimShown = { inside, lead, off, all: list.length, why };
+  D3.dimShown = { inside, lead, off, all: list.length, why, fs: dimFs, lv: D3.dimLv };
   el.innerHTML = o;
  }
  /* 記号の顔ぶれが変わったときだけ画面へ知らせる（**毎フレームではない**）。
@@ -2333,9 +2359,12 @@
    }
    if (b.dataset.show) return toggleShow(b);
    if (b.dataset.hide) return pickHide(b);
+   if (b.dataset.dimfs) return stepDimFs(+b.dataset.dimfs);
    if (b.classList.contains('bs-help3')) return toggleHelp(b);
    return undefined;
   });
+  /* 表示サイズ（`--ui-scale`）が変わると同じ段でも px が変わる——控えを捨てて描き直す（§9.482）。 */
+  document.addEventListener('wl:look-change', () => { dimFsFor = ''; if (D3.on && D3.cut) render(); });
   document.addEventListener('click', e => {
    const pop = $h('.bs-hpop');
    if (!pop || pop.hidden) return;
@@ -2408,6 +2437,28 @@
    const on = el.dataset.hide === D3.hide;
    el.classList.toggle('is-on', on);
    el.setAttribute('aria-pressed', String(on));
+  });
+ }
+ /* 寸法の字を1段変える（§9.482）。端の段では押せない（押しても何も起きない物を残さない）。 */
+ function stepDimFs(d) {
+  const lv = Math.max(0, Math.min(DIM_FS_TOKENS.length - 1, dimLevel() + d));
+  if (lv === D3.dimLv) return undefined;
+  D3.dimLv = lv;
+  try { localStorage.setItem(DIM_FS_KEY, String(lv)); }
+  catch (e) { WL.quiet.note('寸法の字の段を覚えられない（いまの画面では効く）', e); }
+  render();
+  return undefined;
+ }
+ /* 段の札を塗る——いまの大きさ（px）と、端の段で押せない側。 */
+ function paintDimFs() {
+  if (!host) return;
+  const lv = dimLevel(), out = host.querySelector('.bs-dimfs');
+  if (out) {
+   out.textContent = `${Math.round(dimFs * 2) / 2}px`;
+   out.title = `寸法の字 ${lv + 1}／${DIM_FS_TOKENS.length} 段（1 段がいちばん小さい）`;
+  }
+  host.querySelectorAll('[data-dimfs]').forEach(b => {
+   b.disabled = +b.dataset.dimfs < 0 ? lv <= 0 : lv >= DIM_FS_TOKENS.length - 1;
   });
  }
  function toggleHelp(b) {

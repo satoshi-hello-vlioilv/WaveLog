@@ -242,8 +242,9 @@
     ここで組み立て直さない。**整形に失敗したら生の値を出す**（空欄にしない）。 */
  function cellText(k,raw,row){
   try{
+   /* 表示の値で見る読み替え（§9.474）にも効くよう、列の見え方を渡す（§9.479・`viewOf`の1本）。 */
    const r=WL.cellFormat.cell({raw,format:WL.columnLayout.format(AC_TARGET,k),
-     rule:WL.columnLayout.rule(AC_TARGET,k),row,column:k});
+     rule:WL.columnLayout.rule(AC_TARGET,k),row,column:k,view:WL.cellFormat.viewOf(AC_TARGET)});
    return {text:(r&&r.text)!=null?String(r.text):(raw==null?'':String(raw)),
            color:(r&&r.color)||''};
   }catch(e){return {text:raw==null?'':String(raw),color:''}}

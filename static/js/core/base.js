@@ -1216,11 +1216,7 @@ window.WL.sortSpec=sortSpec;
    生の値のまま効かせる。書式と同じ方針)。 */
 const displayRules=(()=>{
  let cache=null,inflight=null,usageMap=null,optMap={};
- const num=v=>{
-  const t=String(v==null?'':v).trim().replace(/,/g,'');
-  if(!t||!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(t))return null;
-  const n=Number(t);return Number.isFinite(n)?n:null;
- };
+ /* 数の読み方は式の`cmp()`が持つ（§9.477・ここに写しを置かない）。 */
  /* 条件の片側を実際の値へ。self=この列 / column=他の列 / value=固定値 / calc=式。
     **他の列を見られる**ので「区分が3のときだけ○○と出す」が書ける。
     **式**（§9.464、利用者の指示「文字列からの抽出や変換処理もできるように」）は
@@ -1261,13 +1257,9 @@ const displayRules=(()=>{
   return side.value;
  }
  /* 両辺が数値として読めるときだけ数値で比べ、そうでなければ文字列で比べる
-    (実データは同じ項目でも '5' と '05' と '5.0' が混ざる)。 */
- function compare(a,b){
-  const x=num(a),y=num(b);
-  if(x!==null&&y!==null)return x<y?-1:x>y?1:0;
-  const s=String(a==null?'':a),t=String(b==null?'':b);
-  return s<t?-1:s>t?1:0;
- }
+    (実データは同じ項目でも '5' と '05' と '5.0' が混ざる)。**答えは式の`cmp()`の1本**（§9.477）——
+    ルールを式へ変換したとき同じ比べ方になるよう、ここでは書き写さない。 */
+ const compare=(a,b)=>WL.formula.cmp(a,b);
  function test(cond,row,selfCol){
   const L=operand(cond.left,row,selfCol);
   const ls=String(L==null?'':L);
@@ -1334,17 +1326,31 @@ const displayRules=(()=>{
     case 'formula':return L;
     case 'empty':return `trim(${L}) = ''`;
     case 'notEmpty':return `trim(${L}) <> ''`;
-    case 'eq':return `${L} = ${side(c.right)}`;
-    case 'ne':return `${L} <> ${side(c.right)}`;
-    case 'gt':return `${L} > ${side(c.right)}`;
-    case 'ge':return `${L} >= ${side(c.right)}`;
-    case 'lt':return `${L} < ${side(c.right)}`;
-    case 'le':return `${L} <= ${side(c.right)}`;
-    case 'contains':return `contains(${L}, ${side(c.right,true)})`;
-    case 'startsWith':return `startswith(${L}, ${side(c.right,true)})`;
-    case 'endsWith':return `endswith(${L}, ${side(c.right,true)})`;
-    case 'regex':return `match(${L}, ${side(c.right,true)})`;
-    case 'between':return `(${L} >= ${side(c.right)} and ${L} <= ${side(c.right2)})`;
+    /* 大小・等しいは**ルールと同じ比べ方**の`cmp()`で書く（§9.477。式の`=`は数を厳しく読むので、
+       '04' と 4 でルールと答えが割れた）。値は字のまま渡す（数に読めるかは`cmp`が決める）。 */
+    case 'eq':return `cmp(${L}, ${side(c.right,true)}) = 0`;
+    case 'ne':return `cmp(${L}, ${side(c.right,true)}) <> 0`;
+    case 'gt':return `cmp(${L}, ${side(c.right,true)}) > 0`;
+    case 'ge':return `cmp(${L}, ${side(c.right,true)}) >= 0`;
+    case 'lt':return `cmp(${L}, ${side(c.right,true)}) < 0`;
+    case 'le':return `cmp(${L}, ${side(c.right,true)}) <= 0`;
+    case 'between':return `(cmp(${L}, ${side(c.right,true)}) >= 0 and cmp(${L}, ${side(c.right2,true)}) <= 0)`;
+    /* 含む・始まる・終わるは、ルールでは**右辺が空なら当たらない**（式の関数は空で真）。正規表現は空でも当たる
+       （空の正規表現はどの字にも合う＝ルールも式も同じ）。 */
+    case 'contains':case 'startsWith':case 'endsWith':case 'regex':{
+     const fn={contains:'contains',startsWith:'startswith',endsWith:'endswith',regex:'match'}[c.op];
+     const r=c.right||{};
+     if(r.kind==='value'){
+      const v=String(r.value==null?'':r.value);
+      if(v===''&&c.op!=='regex')return '0';
+      /* 壊れた正規表現はルールでは「当たらない」。式に書くと式ぜんたいが読めなくなるので、偽にする。 */
+      if(c.op==='regex'){try{new RegExp(v)}catch(e){notes.add(`正規表現「${v}」は読めないので、この条件は「当たらない」にしました`);return '0'}}
+      return `${fn}(${L}, ${side(r,true)})`;
+     }
+     const R=side(r,true);
+     if(c.op==='regex')notes.add('正規表現を他の列・式から取る条件は、その値が正規表現として読めない行で式ぜんたいが空になります（ルールでは「当たらない」）');
+     return c.op==='regex'?`${fn}(${L}, ${R})`:`(len(${R}) > 0 and ${fn}(${L}, ${R}))`;
+    }
     default:notes.add(`知らない比べ方（${c.op}）は式にできません`);return '0';
    }
   };
@@ -1629,10 +1635,32 @@ const cellFormat=(()=>{
   return {text:value(opt.format,raw),color:''};
  }
  const cell=opt=>inner(opt,null);
+ /* **列レイアウトの対象から「列の見え方」を作る**（§9.479、利用者の指示「1から4まで順番に」の3）。
+    表示の値（§9.474）が効くには画面が`view`を渡す必要があり、一覧・スケジュール表・列の設定の下書きの
+    3つしか渡していなかった。行に全列の値が載っている画面（測定データ一覧・実績データ・操業データの紙）は
+    **この1本**で足りる: 書式・読み替え・作り方の式はその対象の列レイアウト、名前→列は`keyByName`。
+    `keys`＝行の列名（名前で引くため）、`format`＝列レイアウトに書式が無いときの既定（画面が持つ列の既定）。 */
+ const fxOf=new Map();
+ function viewOf(target,opt){
+  const o=opt||{},keys=o.keys||null;
+  const fx=src=>{
+   if(!src)return null;
+   if(!fxOf.has(src)){let c;try{c=WL.formula.compile(src)}catch(e){c={run:()=>'',columns:[]}}
+    if(fxOf.size>200)fxOf.clear();fxOf.set(src,c)}
+   return fxOf.get(src);
+  };
+  return {
+   key:n=>(keys&&columnLayout.keyByName(target,typeof keys==='function'?keys():keys,n))||n,
+   calc:k=>fx(columnLayout.formula(target,k)),
+   format:k=>columnLayout.format(target,k)||(o.format?o.format(k):null),
+   rule:k=>columnLayout.rule(target,k)
+  };
+ }
  return {value,parts,cell,
          text:(target,col,raw)=>value(columnLayout.format(target,col),raw),
          /* 読み替えが見る行そのもの（編集画面の「試してみる」が同じ答えを使う・§9.474）。 */
-         ruleRow:(rule,opt)=>ruleRow(rule,opt||{},null)};
+         ruleRow:(rule,opt)=>ruleRow(rule,opt||{},null),
+         viewOf};
 })();
 window.WL.cellFormat=cellFormat;
 function databaseLabel(key){
@@ -2858,7 +2886,7 @@ Object.assign(window.WL,{registerView,enterView,withInternalDbSwitch,isInternalD
    ここに載せていない名前（131のうち約80）は、このファイルの中だけのもの。
    ============================================================ */
 window.$=$;window.esc=esc;window.S=S;window.api=api;window.showToast=showToast;window.markDirty=markDirty;window.confirmModal=confirmModal;window.alertModal=alertModal;window.promptModal=promptModal;window.pick=pick;window.setState=setState;window.withUserId=withUserId;window.currentConfiguredEquipment=currentConfiguredEquipment;window.fmtDim=fmtDim;window.lengthIndex=lengthIndex;window.fixedToleranceValue=fixedToleranceValue;window.currentUserId=currentUserId;window.normalizedFieldName=normalizedFieldName;
-WL.base={normalizedLot,durationMs,statusLabel,statusClass,statusShortLabel,aliases,databaseLabel,designCourseValue,actualCourseValue,residualCourseValue,equipmentIsInDesignCourse,escClosesModal,fetchWhoami,fieldFromRows,fixedMeasurementValue,formatDuration,lotKey,measurementDigits,nextPaint,normalizeCourseText,noteMeasureDevice,openLotDsp,lotDspAttrs,optionFill,qualityText,setActiveNav,setHeaderContext,setUserId,sourceField,sourceValue,toHalfWidth,ttlCache,widthSequence,bindTabs,
+WL.base={normalizedLot,durationMs,copyText,statusLabel,statusClass,statusShortLabel,aliases,databaseLabel,designCourseValue,actualCourseValue,residualCourseValue,equipmentIsInDesignCourse,escClosesModal,fetchWhoami,fieldFromRows,fixedMeasurementValue,formatDuration,lotKey,measurementDigits,nextPaint,normalizeCourseText,noteMeasureDevice,openLotDsp,lotDspAttrs,optionFill,qualityText,setActiveNav,setHeaderContext,setUserId,sourceField,sourceValue,toHalfWidth,ttlCache,widthSequence,bindTabs,
  LENGTH_SLOTS,
  /* `let` の入れ物は **getter** で載せる（値で載せると古い物が固定される）。
     `measureDirty` は外からも倒す（`records-store` が保存し終えて false に

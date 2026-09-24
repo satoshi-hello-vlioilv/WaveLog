@@ -1,4 +1,4 @@
-# 一覧と列（137件）
+# 一覧と列（141件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,12 +10,16 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 並べ替えを持たない表（`sort:false`）でも④の段は出し、**理由を1文**書く（口の`sortOff`）。黙って消さない | `test_sctimecols.js` | [§9.484](../../docs/decisions/9.484.md) |
+| 列の設定パネルで列の生の値に答えるのは`rawOfDraft()`の1箇所（式の列は下書きの式）。口の`valueOf`は式を知らない | `test_colpreset.js` | [§9.483](../../docs/decisions/9.483.md) |
 | 「☰ 表示」は**表示列の編集がいちばん上・主ボタン**（アイコン）。下の行は字も欄も1つの大きさ | `test_listbar.js` | [§9.476](../../docs/decisions/9.476.md) |
 | 表示列の入口はどの画面でも`fa-table-columns`の印。パネルの規則は`.lt-view-panel`で名乗る | `test_listbar.js` | [§9.476](../../docs/decisions/9.476.md) |
 | 表示ルールの左辺が式なら`formula`（式が真なら）。比べ方と右辺は出さない | `test_colrule.js`・`test_displayrule.py` | [§9.474](../../docs/decisions/9.474.md) |
 | 条件が見る列の値は**ルールごと**（元のデータ／表示の値）。答えは`WL.cellFormat.ruleRow()`の1箇所 | `test_colrule.js` | [§9.474](../../docs/decisions/9.474.md) |
 | 列の見え方は画面が`view`で渡す（key/calc/raw/format/rule）。**式の列は元のデータでも式の結果** | `test_colrule.js` | [§9.474](../../docs/decisions/9.474.md) |
+| 行に全列が載る画面の見え方は`WL.cellFormat.viewOf(target)`の1本。`cell()`は必ず`view`を渡す | `test_colrule.js` | [§9.479](../../docs/decisions/9.479.md) |
 | ルール→式は`WL.displayRules.toFormula()`の1箇所（評価と同じ意味）。式にできない物は`notes`で言う | `test_colrule.js` | [§9.474](../../docs/decisions/9.474.md) |
+| 表示ルールの比べ方は式の`cmp()`の1本（数を緩く読む）。判定も変換した式もこれを通す | `test_colrule.js`・`test_formula.js` | [§9.477](../../docs/decisions/9.477.md) |
 | 式の候補は`WL.formula.suggest()`の1つ（焦点は入力欄のまま）。関数の顔ぶれは`sigs` | `test_formula.js`・`test_colrule.js` | [§9.474](../../docs/decisions/9.474.md) |
 | 表示ルールの窓は2ペイン（左3割＝試した結果）。条件は同じ格子で、高さは`--ctl-h-sm` | `test_colrule.js` | [§9.474](../../docs/decisions/9.474.md) |
 | 一覧の帯は**2段**（1段目＝すぐ使う操作・2段目＝常に見る状態）。決めたら触らない設定は「☰ 表示」のパネル | `test_listbar.js` | [§9.468](../../docs/decisions/9.468.md) |

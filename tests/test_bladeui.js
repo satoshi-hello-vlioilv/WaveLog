@@ -247,6 +247,21 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         szRows.map(o => `${o.span}→${o.ring}`).join(' / '));
     rec('ゴムリングの径と色と大小を上の帯が言い切る',
         /大\s*\S*Φ\d+／小\s*\S*Φ\d+/.test(shown.chip), shown.chip);
+    /* §9.480（利用者の指示「1から4まで順番に」の4）: 取付位置は**ⓘ を開かずに読める**——何の番号かは列の見出し
+       （OS側から数えた区間）が言い、等間隔の番号は「1・3…21」へ畳む（22条で11個並べると表が220pxはみ出した）。
+       枚数は番号から数えられないとき（畳んだ／1区間に2枚以上）だけ添える（同じ数を2回言わない）。 */
+    const pos = await page.evaluate(() => ({
+     head: ([...document.querySelectorAll('#bsTables thead th')].find(th => /取付位置/.test(th.textContent)) || {}).textContent || '',
+     cells: [...document.querySelectorAll('#bsTables td.bs-it:not(.bs-z)')].map(td => {
+      const sl = (td.querySelector('.bs-slot') || {}).textContent || '', ct = td.querySelector('.bs-ct');
+      return { text: td.textContent.replace(/\s+/g, ' ').trim(), title: td.title, folded: /…/.test(sl),
+               listed: sl.split(/[・…]/).filter(Boolean).length, ct: ct ? +ct.textContent.replace(/[^0-9]/g, '') : null }; }) }));
+    rec('取付位置は見出しが「区間」と言い、等間隔の番号は畳み、枚数は数えられないときだけ添える',
+        /側から数えた区間/.test(pos.head) && pos.cells.length > 0 && pos.cells.some(o => o.folded)
+        && pos.cells.every(o => /^[下上]+ ?[\d・…]+( ?\d+枚)?$/.test(o.text)
+          && /(下|上)バリ／\S+側から [\d・]+ 番目の区間（計 \d+ 枚）/.test(o.title)
+          && (o.folded ? o.ct !== null : (o.ct === null || o.ct !== o.listed))),
+        pos.cells.map(o => o.text).join(' / '));
 
     /* ---- 余りは層ごとに別（§9.441、利用者の指示） ----
        スペーサー層の端数は**0が正**（組んだものはOS側へ押し付けて組む）。
@@ -1030,7 +1045,8 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      caps: [...document.querySelectorAll('#bsStage3 .bs-hud-cap')].map(x => x.textContent),
      show: [...document.querySelectorAll('#bsStage3 [data-show]')]
        .map(b => b.textContent + ':' + b.getAttribute('aria-pressed')),
-     steps: [...document.querySelectorAll('#bsStage3 .bs-hud.is-bot .bs-btn')]
+     /* 寸法の字の「− ＋」（§9.482）は段取りでも視点でもない別の群なので数えない。 */
+     steps: [...document.querySelectorAll('#bsStage3 .bs-hud.is-bot .bs-btn:not([data-dimfs])')]
        .map(b => b.textContent),
      hide: [...document.querySelectorAll('#bsStage3 [data-hide]')]
        .map(b => b.textContent + ':' + b.getAttribute('aria-pressed')),
@@ -1778,6 +1794,29 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
                 : '読めない');
     /* **出しきれないものは出さない**（引き出し先も埋まっているとき）。
        全部出していたら、それは重なっているということ。 */
+    /* ---- 寸法の字の段（§9.482、利用者の指示「寸法のラベルが小さいので1サイズ上げて」「今のサイズを小さい
+       サイズの下限として、4段階くらい上げられるように…今あるトークンに合わせて」）----
+       既定は**1段上**（`--fs-micro`＝11px）。字が大きいほど置けない字は増える（実測 50mm×22条で 12%→39%）
+       ので、「置けないのは2割まで」（§9.443）は**いちばん小さい段**で見る——全部見たいときに下げれば出る、が約束。 */
+    const dimLv = () => page.evaluate(() => { const d = (window.WL.bladeSolid.view() || {}).dims || {};
+      return { lv: d.lv, fs: d.fs, sum: d.inside + d.lead + d.off === d.all, off: d.off, all: d.all,
+               ctl: (document.querySelector('#bsStage3 .bs-dimfs') || {}).textContent || '',
+               minus: !!document.querySelector('#bsStage3 [data-dimfs="-1"]:disabled'),
+               plus: !!document.querySelector('#bsStage3 [data-dimfs="1"]:disabled') }; });
+    const dimStep = async d => {
+     const before = (await dimLv()).lv;
+     await page.click(`#bsStage3 [data-dimfs="${d}"]`);
+     await W.until(page, lv => ((window.WL.bladeSolid.view() || {}).dims || {}).lv !== lv, before,
+                   { ms: 8000, what: '寸法の字の段が変わる' });
+     await W.paint(page);
+    };
+    const dim0 = await dimLv();
+    rec('断面図の寸法の字は既定で1段上（2／5段・11px）で、いまの大きさを札が言う',
+        dim0.lv === 1 && dim0.fs === 11 && dim0.ctl === '11px' && !dim0.minus && !dim0.plus, JSON.stringify(dim0));
+    await dimStep(-1);
+    const dimMin = await dimLv();
+    rec('いちばん小さい段は前の大きさ（9px）にいちばん近いトークン（9.5px）で、それより下へは押せない',
+        dimMin.lv === 0 && dimMin.fs === 9.5 && dimMin.minus && !dimMin.plus, JSON.stringify(dimMin));
     /* **スペーサーとゴムリングの字が混ざらない**（§9.418 追補、利用者の指摘
        「ゴムリングとスペーサーの表示がごちゃ混ぜでわかりにくい」）。
        スペーサーは軸の上・そのスペーサーの側へ寄せ、ゴムリングは輪の帯の中。 */
@@ -1847,6 +1886,28 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('出しきれない幅は出していない（重ねて出さない）',
         !!pk.dims && pk.dims.inside + pk.dims.lead + pk.dims.off === pk.dims.all,
         pk.dims ? `${pk.dims.inside}+${pk.dims.lead}+${pk.dims.off} = ${pk.dims.all}` : '読めない');
+    /* 段を上げていっても**大きくなる一方**で、どの段でも数え落とさず・字どうしを重ねない。いちばん上では押せない。 */
+    const ladder = [];
+    for (let k = 0; k < 4; k++) {
+     await dimStep(1);
+     const cur = await dimLv();
+     cur.over = await page.evaluate(() => {
+      const bs = [...document.querySelectorAll('#bsStage3 .bs-t3v text')].map(e => { try { return e.getBBox(); } catch (x) { return null; } })
+        .filter(Boolean);
+      let hit = 0;
+      for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) {
+       const p = bs[i], q = bs[j];
+       if (p.x < q.x + q.width - 0.5 && q.x < p.x + p.width - 0.5 && p.y < q.y + q.height - 0.5 && q.y < p.y + p.height - 0.5) hit++; }
+      return hit; });
+     ladder.push(cur);
+    }
+    rec('寸法の字は5段（9.5→11→12→13→15px）で、どの段でも数え落とさず重ねない・いちばん上では押せない',
+        ladder.map(x => x.fs).join('/') === '11/12/13/15'
+        && ladder.every(x => x.sum && x.over === 0) && ladder[3].plus && !ladder[3].minus,
+        ladder.map(x => `${x.fs}px 置けず${x.off}/${x.all} 重なり${x.over}`).join(' ／ '));
+    /* 既定の段へ戻す（以降の節は既定の見え方で見る）。 */
+    for (let k = 0; k < 3; k++) await dimStep(-1);
+    rec('段を戻せる（既定の11pxへ）', (await dimLv()).fs === 11);
 
     /* ---- 断面図でも設定が読める（§9.443、利用者の指示「断面図でも板押さえ
        （フィンガーまたはゴムリングの色や外径）の情報、ラップなど必要な情報を

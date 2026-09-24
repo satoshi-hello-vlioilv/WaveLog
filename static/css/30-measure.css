@@ -79,13 +79,17 @@
  gap:var(--space-2);width:100%;height:auto;padding:var(--space-2) var(--space-3);
  border:1px solid var(--teal);border-radius:var(--radius-sm);background:var(--teal);color:#fff;
  text-align:start;cursor:pointer}
-.lt-view-panel .lvp-cols:hover{background:var(--teal-dark);border-color:var(--teal-dark)}
+/* 乗せたときの地は**面のトークンを宣言し直して**持つ（§9.449）。`.wl-menu button:hover:not(:disabled)`
+   （詳細度 0,3,1）が`:hover`だけの規則（0,3,0）に勝ち、淡い地に白字＝コントラスト 2.33 で読めなかった（§9.481）。 */
+.lt-view-panel .lvp-cols{--menu-item-hover:var(--teal-dark)}
+.lt-view-panel .lvp-cols:hover{border-color:var(--teal-dark)}
 .lt-view-panel .lvp-cols>i{font-size:1.25em}
 .lvp-cols-t{display:flex;flex-direction:column;min-width:0}
 /* 字の大きさは**パネルの他の行と同じ1つ**（`--fs-sm`・利用者の指示「UI内の文字列も含めて文字サイズの
-   統一感」）。名前と説明の差は大きさではなく**太さと濃さ**で付ける。 */
+   統一感」）。名前と説明の差は大きさではなく**太さ**で付ける（薄める`opacity:.82`は teal の地で
+   3.86 まで落ちた・§9.481）。 */
 .lvp-cols-t b{font-size:var(--fs-sm);font-weight:800;line-height:1.35}
-.lvp-cols-t small{font-size:var(--fs-sm);font-weight:500;opacity:.82;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lvp-cols-t small{font-size:var(--fs-sm);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lt-view-panel .lvp-cols .lvp-cols-go{font-size:.9em;opacity:.8}
 /* 下の行は**同じ字の大きさ（--fs-sm）・同じ高さ・同じ左端**。名前の列は固定幅（§CLAUDE 画面基準 9）。
    行は**パネルの中で**名乗る（`.list-pagesize`・`.list-rowgap`の`inline-flex`より強く）。
