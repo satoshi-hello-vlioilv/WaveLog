@@ -131,6 +131,15 @@
     const need=ARITY[x.v];
     if(need!==undefined&&args.length!==need)
      throw Error(`${x.v} は引数が${need}個です（${args.length}個でした）`);
+    const rng=ARITY_RANGE[x.v];
+    if(rng&&(args.length<rng[0]||args.length>rng[1]))
+     throw Error(`${x.v} は引数が${rng[0]}〜${rng[1]}個です（${args.length}個でした）`);
+    /* 正規表現を字で書いたときは**書いている最中に**確かめる（壊れた書き方を
+       実データの行が全部空になってから知らせない）。 */
+    if(REGEX_FUNCS.has(x.v)&&args[1]&&args[1].k==='str'){
+     try{reOf(String(args[1].v),'')}
+     catch(e){throw Error(`${x.v} の正規表現として読めません: ${e.message}`)}
+    }
     return {k:'call',name:x.v,args};
    }
    throw Error('式として読めません');
@@ -161,6 +170,24 @@
   return Number.isFinite(n)&&String(n)===s?n:null;
  };
 
+ /* ---------- 文字列からの抽出・変換（§9.464、利用者の指示「データの抽出などは対応できて
+    いないので、文字列からの抽出や変換処理もできるように」） ----------
+    正規表現は利用者が書く。**壊れた書き方はその行を空にする**（列ごと落とさない・
+    `compile().run`が受ける）。長すぎる書き方は断り、作った正規表現は使い回す
+    （行ごとに作り直すと200行×列で効いてくる）。 */
+ const RE_MAX=200;
+ const reCache=new Map();
+ function reOf(src,flags){
+  const k=flags+'\u0000'+src;
+  if(reCache.has(k))return reCache.get(k);
+  if(src.length>RE_MAX)throw Error(`正規表現は${RE_MAX}文字までです`);
+  const re=new RegExp(src,flags);
+  if(reCache.size>200)reCache.clear();
+  reCache.set(k,re);
+  return re;
+ }
+ /* 位置は**1から数える**（Excelの MID／FIND と同じ・現場の数え方）。 */
+ const posOf=v=>{const n=numOf(v);return n===null?1:Math.max(1,Math.floor(n))};
  const FUNCS={
   num:a=>numOf(a[0]),
   text:a=>textOf(a[0]),
@@ -176,8 +203,37 @@
   lower:a=>textOf(a[0]).toLowerCase(),
   concat:a=>a.map(textOf).join(''),
   coalesce:a=>{for(const v of a){if(v!==null&&v!==undefined&&v!=='')return v}return ''},
+  /* mid(x, 何文字目から, 何文字)。文字数を省くと最後まで。 */
+  mid:a=>{const t=textOf(a[0]),st=posOf(a[1])-1;
+          const n=a.length>2?Math.max(0,numOf(a[2])||0):t.length;return t.slice(st,st+n)},
+  /* find(x, 探す字)。見つかった位置（1から）、無ければ0。 */
+  find:a=>{const i=textOf(a[0]).indexOf(textOf(a[1]));return i<0?0:i+1},
+  /* replace(x, 探す字, 置く字)。**全部**置き換える（1つ目だけにすると、2つ目が残って気づけない）。 */
+  replace:a=>textOf(a[0]).split(textOf(a[1])).join(textOf(a[2])),
+  /* extract(x, 正規表現[, 組])。合った部分（組を指定すればその組）。合わなければ空。 */
+  extract:a=>{const m=textOf(a[0]).match(reOf(textOf(a[1]),''));
+              if(!m)return '';const g=a.length>2?Math.max(0,numOf(a[2])||0):0;return m[g]===undefined?'':m[g]},
+  /* match(x, 正規表現)。合えば1・合わなければ0（条件にそのまま使える）。 */
+  match:a=>reOf(textOf(a[1]),'').test(textOf(a[0]))?1:0,
+  /* regreplace(x, 正規表現, 置く字)。$1 などで組を使える。 */
+  regreplace:a=>textOf(a[0]).replace(reOf(textOf(a[1]),'g'),textOf(a[2])),
+  /* split(x, 区切り, 何番目)。1から数える。無ければ空。 */
+  split:a=>{const sep=textOf(a[1]);const parts=sep?textOf(a[0]).split(sep):[textOf(a[0])];
+            const v=parts[posOf(a[2])-1];return v===undefined?'':v},
+  contains:a=>textOf(a[0]).includes(textOf(a[1]))?1:0,
+  startswith:a=>textOf(a[0]).startsWith(textOf(a[1]))?1:0,
+  endswith:a=>textOf(a[0]).endsWith(textOf(a[1]))?1:0,
+  /* 全角の英数記号・空白を半角へ（NFKC）。半角カナは全角カナになる（NFKCの決まり）。 */
+  hankaku:a=>textOf(a[0]).normalize('NFKC'),
+  /* padleft(x, 桁, 埋める字)。埋める字を省くと0。 */
+  padleft:a=>textOf(a[0]).padStart(Math.max(0,Math.min(64,numOf(a[1])||0)),a.length>2?(textOf(a[2])||'0'):'0'),
  };
- const ARITY={num:1,text:1,abs:1,round:2,len:1,left:2,right:2,trim:1,upper:1,lower:1};
+ const ARITY={num:1,text:1,abs:1,round:2,len:1,left:2,right:2,trim:1,upper:1,lower:1,
+              find:2,replace:3,match:2,regreplace:3,split:3,contains:2,startswith:2,endswith:2,
+              hankaku:1};
+ /* 引数の数に幅がある関数（下限〜上限）。 */
+ const ARITY_RANGE={mid:[2,3],extract:[2,3],padleft:[2,3]};
+ const REGEX_FUNCS=new Set(['extract','match','regreplace']);
 
  function evalNode(n,row){
   switch(n.k){
@@ -273,5 +329,8 @@
               ['round(x,n) abs(x) num(x)','数の整え'],
               ['concat(a,b) left(x,n) right(x,n) len(x)','文字の整え'],
               ['trim(x) upper(x) lower(x) coalesce(a,b)','その他'],
+              ['mid(x,何文字目,文字数) find(x,字) split(x,区切り,何番目)','切り出す（位置は1から）'],
+              ['replace(x,字,置く字) regreplace(x,正規表現,置く字) hankaku(x) padleft(x,桁,字)','変換する'],
+              ['extract(x,正規表現[,組]) match(x,正規表現) contains(x,字)','抜き出す・合うか'],
              ]};
 })();

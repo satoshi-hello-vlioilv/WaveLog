@@ -1067,6 +1067,10 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lr-cond-any .lr-conj{min-width:0;font-weight:700;color:var(--ink-2)}
  .lr-cond select,.lr-row-then select{max-width:calc(160px * var(--ui-scale))}
  .lr-cond input[type="text"]{width:calc(120px * var(--ui-scale))}
+ /* 式（§9.464）は長くなるので広く取り、読めない理由は下に字で出す（色だけにしない）。 */
+ .lr-cond input.lr-expr{width:calc(260px * var(--ui-scale))}
+ .lr-expr-why{display:block;flex-basis:100%;color:var(--warn-fg);font-size:var(--fs-micro)}
+ .lr-expr-why:empty{display:none}
  .lr-row-then input[type="text"]{flex:1;min-width:calc(120px * var(--ui-scale))}
  .lr-cond-del,.lr-row-del{color:var(--muted)}
  .lr-row-then{margin-top:var(--space-1);border-top:1px dashed var(--line-soft);

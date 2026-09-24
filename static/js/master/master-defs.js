@@ -233,6 +233,14 @@
    endpoint:'/api/bladeset-standard-master',hasDelete:true,groupBy:'equipment',
    titleText:'刃組基準値 — このラインの諸元と、判定の帯',
    groupsAsTabs:true,
+   /* 編集窓の作り（§9.463、利用者の指示「モーダルサイズがころころ変わり安定せず、
+      入力項目の配置も整列していない…モーダルのタイトル名も変です」）。
+      ・題は**設備の名前**（1設備1行なので、それが行の名前）
+      ・1欄1行（ラベル｜入力｜説明の3列）で、どの段でも入力の左端が1本
+      ・空欄のとき効く値（既定）を欄の中に薄字で出す——答えはサーバーの`standardDefaults` */
+   editTitle:e=>e?`${e.equipment||'（設備なし）'} の刃組基準値`:'刃組基準値を新しい設備に登録',
+   formLayout:'rows',defaultsKey:'standardDefaults',
+   hintShort:'**空欄の項目は既定値**（欄の中の薄い字）のまま効きます。変えたいところだけ入れてください。',
    fields:[{k:'equipment',label:'設備',type:'equipment-select',required:true,key:true,fieldGroup:'① どの設備か',
             hint:'**1設備に1行**です。同じ設備の2行目は作れません（どちらの値が効くのか決まらなくなるため）。'},
            {k:'arborLen',label:'アーバー有効長',type:'number',step:0.1,min:0,unit:'mm',fieldGroup:'② 機械の寸法',
@@ -252,11 +260,19 @@
             hint:'手持ちのスペーサーがそろっている刻みです。区間長をこの刻みに合わせるため、材料の位置をこの幅未満だけ寄せます（耳には影響しません）。'},
            {k:'bladeThickness',label:'刃厚（既定）',type:'number',step:0.5,min:0,unit:'mm',fieldGroup:'③ 刃組の既定値',
             hint:'刃組ガイダンスを開いたときの初期値です。画面でその都度変えられます。'},
+           /* 図の向き（§9.463、利用者の指示「基準原点を左、基準原点を右といった形で迷いの
+              少ない呼び方に…既定は基準原点を右側に表示して、呼び方もマスタから変更できる」）。 */
+           {k:'viewDatumPos',label:'図の基準原点の位置',type:'select',options:['右','左'],fieldGroup:'③ 刃組の既定値',
+            hint:'刃組ガイダンスを開いたとき、**基準面（基準原点）を図のどちらに置くか**です。図の見出しの札で、その場で入れ替えられます。'},
+           {k:'viewLabelLeft',label:'向きの札の呼び方（左）',fieldGroup:'③ 刃組の既定値',
+            hint:'基準原点を**左**に置く札の字です。現場で通じる呼び方に変えられます。'},
+           {k:'viewLabelRight',label:'向きの札の呼び方（右）',fieldGroup:'③ 刃組の既定値',
+            hint:'基準原点を**右**に置く札の字です。'},
            {k:'clearance',label:'クリアランス（既定）',type:'number',step:0.01,min:0,unit:'mm',fieldGroup:'③ 刃組の既定値',
             hint:'同じ切断で向かい合う上下の刃が、軸方向にずれる量です。中間の区間では上下のスペーサー長の差が**この2倍**、端部の区間では**1倍**になります。'},
            {k:'overlap',label:'ラップ（既定）',type:'number',step:0.05,min:0,unit:'mm',fieldGroup:'③ 刃組の既定値',
             hint:'上下の刃が行き違う量です。軸間距離＝刃径−ラップ になります。'},
-           {k:'canNakanukiText',label:'中抜きができる',type:'select',options:['できる','できない'],fieldGroup:'③ 刃組の既定値',
+           {k:'canNakanukiText',label:'中抜きができる',type:'select',options:['できる','できない'],defaultOf:'canNakanuki',fieldGroup:'③ 刃組の既定値',
             hint:'製品条のあいだに屑条を組み込めるラインかどうかです。**バリを揃えるときの組み方がこれで決まります**（できる＝中抜き／できない＝交互反転巻き）。'},
            {k:'scrapWidth',label:'屑条の幅（既定）',type:'number',step:1,min:0,unit:'mm',fieldGroup:'③ 刃組の既定値',
             hint:'中抜きで入れる屑条の幅です。**刃厚×2 を下回ると刃が干渉します。**'},

@@ -405,45 +405,42 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
        効く先はこの図の左右なので、離れた場所に置くと「何に効くボタンか」を
        探すことになる。置き場所だけでなく、**そこから効くこと**まで見る
        ——移したのに配線が切れていたら、押せるのに何も起きない的になる。 */
-    const flip0 = await page.evaluate(() => {
-     const b = document.querySelector('#bsFlip');
-     const edge = () => [...document.querySelectorAll('#bsStage text')]
-       .map(t => (t.textContent || '').trim()).filter(t => t === 'OS' || t === 'DS');
+    const flipState = () => page.evaluate(() => {
+     const on = document.querySelector('#bsFlip [data-datum-pos].is-on');
      return { inFig: !!document.querySelector('.bs-figpanel .bs-ph #bsFlip'),
               inBar: !!document.querySelector('.bs-bar #bsFlip'),
-              label: b ? (b.textContent || '').trim() : '', edge: edge().join('/') };
+              pos: on ? on.dataset.datumPos : '', label: on ? on.textContent.trim() : '',
+              labels: [...document.querySelectorAll('#bsFlip [data-datum-pos]')].map(x => x.textContent.trim()),
+              datum: window.WL.bladeSet.datumOf(window.WL.bladeGuide.masters || {}),
+              edge: [...document.querySelectorAll('#bsStage text')]
+                .map(t => (t.textContent || '').trim()).filter(t => t === 'OS' || t === 'DS').join('/') };
     });
+    const flip0 = await flipState();
     rec('向きの切り替えは刃組図の見出しにある', flip0.inFig && !flip0.inBar,
         `図${flip0.inFig}/バー${flip0.inBar}`);
+    /* §9.463（利用者の指示「段取り向きとか図面向きというのをやめて、基準原点を左、
+       基準原点を右…既定は基準原点を右側に表示」）。**2つの札・いまの側が濃い**。 */
+    rec('向きの札は「基準原点を左／右」の2つ（段取り向き・図面向きの字は無い）',
+        flip0.labels.join('/') === '基準原点を左/基準原点を右', flip0.labels.join('/'));
+    rec('開いたときは基準原点が右（基準面の字が図の右端）',
+        flip0.pos === '右' && flip0.edge.split('/')[1] === flip0.datum, JSON.stringify(flip0));
     /* **手順の窓を先に閉じる。** 窓（`.bs-pop`）は図の見出しへ垂れ下がるので、
-       開いたままだと見出しの札に手が届かない（人が押すときも同じ）。
-       向きの切り替えを図の見出しへ移した（§9.380）ぶん、この札も窓の下に入る。 */
+       開いたままだと見出しの札に手が届かない（人が押すときも同じ）。 */
     await page.keyboard.press('Escape');
     await W.until(page, () => !document.querySelector('.bs-step.is-open'),
                   null, { ms: 5000, what: '手順の窓が閉じる' });
-    /* **開いたときの向きを決め打ちしない**（刃組の道具なので既定は段取り向き
-       ＝DS左だが、既定が変わってもこの網は「入れ替わること」を見たい）。 */
-    await page.click('#bsFlip');
-    await W.until(page, (before) =>
-      document.querySelector('#bsFlip').textContent.trim() !== before,
-      flip0.label, { ms: 8000, what: '向きが切り替わる' });
-    const flip1 = await page.evaluate(() => ({
-     label: (document.querySelector('#bsFlip').textContent || '').trim(),
-     edge: [...document.querySelectorAll('#bsStage text')]
-       .map(t => (t.textContent || '').trim()).filter(t => t === 'OS' || t === 'DS').join('/'),
-     flipped: document.querySelector('#bsFigRow').classList.contains('is-flip')
-    }));
-    rec('押すと図の左右が入れ替わる（移しても効く）',
+    await page.click('#bsFlip [data-datum-pos="左"]');
+    await W.until(page, () => (document.querySelector('#bsFlip .is-on') || {}).dataset?.datumPos === '左',
+      null, { ms: 8000, what: '向きが切り替わる' });
+    const flip1 = await flipState();
+    rec('押すと図の左右が入れ替わる（基準面の字が左端へ）',
         /^(OS\/DS|DS\/OS)$/.test(flip0.edge) && flip1.edge !== flip0.edge
-        && /^(OS\/DS|DS\/OS)$/.test(flip1.edge),
-        `${flip0.edge} → ${flip1.edge}`);
-    rec('向きの札は「いま押すと何になるか」を言う（状態と札が食い違わない）',
-        flip1.label !== flip0.label && /向き/.test(flip1.label),
-        `${flip0.label} → ${flip1.label}`);
-    await page.click('#bsFlip');
-    await W.until(page, (before) =>
-      document.querySelector('#bsFlip').textContent.trim() !== before,
-      flip1.label, { ms: 8000, what: '元の向きへ戻す' });
+        && flip1.edge.split('/')[0] === flip1.datum, `${flip0.edge} → ${flip1.edge}`);
+    rec('いまの向きの札だけが濃い（押した側）', flip1.pos === '左' && flip1.label === '基準原点を左',
+        JSON.stringify(flip1));
+    await page.click('#bsFlip [data-datum-pos="右"]');
+    await W.until(page, () => (document.querySelector('#bsFlip .is-on') || {}).dataset?.datumPos === '右',
+      null, { ms: 8000, what: '元の向きへ戻す' });
 
     /* ---- 4.5) 模式図の読みやすさ（§9.378・利用者の指摘4点） ----
        どれも「見えるかどうか」の話なので、**実際に描かれた図形を測って**見る。
@@ -554,7 +551,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
        new PointerEvent(type, { bubbles: true, cancelable: true }));
      /* 数えるのは**この画面の中だけ**（`.is-pick` は他の画面にもある字面）。 */
      const lit = () => document.querySelectorAll('#bladeSetPanel .is-pick').length;
-     const badge = document.querySelector('#bsStage [data-badge]');
+     const badge = document.querySelector('#bsStage .bs-bhit[data-badge]');
      const row = document.querySelector('#bsTables [data-badge]');
      const before = lit();
      let onFig = 0, onTbl = 0, figLitRow = false, tblLitFig = false;
@@ -1428,7 +1425,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         JSON.stringify([cut.isCut, cut.rigShown]));
     /* §9.412 では真横に固定していたが、利用者の指示で**板幅の中心を起点に
        回せる**ようにした（§9.413 追補）。掴める見た目は残し、戻す道が
-       断面図でも見えていること、寄る・引くは持たないことを固定する。 */
+       断面図でも見えていることを固定する（寄る・引くは§9.463で持つようにした）。 */
     rec('断面図でも掴んで回せる（掴める見た目のまま）', cut.cursor === 'grab', cut.cursor);
     rec('視点を戻す道は断面図でも見えている', cut.resetShown === true,
         String(cut.resetShown));
@@ -1459,6 +1456,51 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('「視点を戻す」で断面図の角度も戻る',
         spin.back.cutAz === 0 && spin.back.cutEl === 0,
         JSON.stringify([spin.back.cutAz, spin.back.cutEl]));
+    /* §9.463（利用者の指示「ガイダンスの断面図は拡大縮小もできるように」）。
+       §9.413 の「寄る・引くは持たない」を撤回した。**マウスの下の点は動かない**
+       （寄った先を探させない）・倍率は画面に出る・「視点を戻す」で×1へ。 */
+    const zm = await page.evaluate(async () => {
+     const cv = document.querySelector('#bsStage3 canvas');
+     const r = cv.getBoundingClientRect();
+     const V = () => window.WL.bladeSolid.view();
+     const mx = 180, my = -40;                         /* 器の中心からのずれ(px) */
+     const world = v => [mx * v.cutSc + v.cutPan[0], v.cutOff * v.cutSc + v.cutPan[1] - my * v.cutSc];
+     const wheel = dy => cv.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true,
+       deltaY: dy, clientX: r.left + r.width / 2 + mx, clientY: r.top + r.height / 2 + my }));
+     const v0 = V();
+     wheel(-100); wheel(-100); wheel(-100);
+     const v1 = V();
+     const read = document.querySelector('.bs-zoom3');
+     const shown = read && !read.hidden ? read.textContent : '';
+     /* 拡大したまま右ドラッグで動かす */
+     const at = (t, dx, dy) => cv.dispatchEvent(new PointerEvent(t, { bubbles: true, button: 2,
+       pointerId: 17, clientX: r.left + r.width / 2 + dx, clientY: r.top + r.height / 2 + dy }));
+     at('pointerdown', 0, 0); at('pointermove', 60, 0); at('pointerup', 60, 0);
+     const v2 = V();
+     for (let i = 0; i < 40; i++) wheel(100);          /* 引ききっても×1より小さくならない */
+     const v3 = V();
+     wheel(-100); wheel(-100);
+     document.querySelector('.bs-step3-reset').click();
+     const v4 = V();
+     return { z0: v0.cutZoom, z1: v1.cutZoom, w0: world(v0), w1: world(v1), shown, sc1: v1.cutSc,
+              pan1: v1.cutPan, pan2: v2.cutPan, azKeep: v2.cutAz === v1.cutAz,
+              z3: v3.cutZoom, pan3: v3.cutPan, z4: v4.cutZoom, pan4: v4.cutPan,
+              hidden4: !!(read && read.hidden) };
+    });
+    rec('断面図もホイールで拡大できる（§9.463）', zm.z0 === 1 && zm.z1 > 1.5,
+        `×${zm.z0} → ×${zm.z1}`);
+    /* 許容は**寄った先の画面で1px**（世界の長さでなく画素で見る。帯の高さの
+       端数で 0.5mm＝0.3px ほど動くのは目に見えない）。 */
+    rec('寄ってもマウスの下の点は動かない（寄った先の画面で1px未満）',
+        Math.abs(zm.w0[0] - zm.w1[0]) < zm.sc1 && Math.abs(zm.w0[1] - zm.w1[1]) < zm.sc1,
+        JSON.stringify([zm.w0, zm.w1, zm.sc1]));
+    rec('いまの倍率が「視点」の群に出る', /^×\d/.test(zm.shown), zm.shown);
+    rec('拡大したら右ドラッグで動かせる（回さない）',
+        zm.pan2[0] < zm.pan1[0] && zm.azKeep, JSON.stringify([zm.pan1, zm.pan2]));
+    rec('引ききっても全体（×1）より小さくならず、ずれも残さない',
+        zm.z3 === 1 && zm.pan3[0] === 0 && zm.pan3[1] === 0, JSON.stringify([zm.z3, zm.pan3]));
+    rec('「視点を戻す」で×1へ戻り、倍率の字は伏せる',
+        zm.z4 === 1 && zm.pan4[0] === 0 && zm.hidden4, JSON.stringify([zm.z4, zm.pan4, zm.hidden4]));
     /* **光はカメラと一緒に動く**（§9.413 追補、利用者の指摘「中空の物はない
        はずなので断面図注意して」）。止めておくと、回した先の面（軸や青い印の
        端の丸）に光が1つも当たらず真っ黒になり、**穴に見える**。
@@ -1829,7 +1871,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         zb.chipCur === 'pointer' && zb.hit === true, `${zb.chipCur} / bs-bhit ${zb.hit}`);
     /* **本物のマウス移動で辿る**（§9.398）。`pointerover` は `el.click()` では
        1度も通らない。 */
-    const chipBox = await page.locator('#bsStage3 .bs-t3b').first().boundingBox();
+    const chipBox = await page.locator('#bsStage3 .bs-t3b:not([hidden])').first().boundingBox();
     await page.mouse.move(chipBox.x + chipBox.width / 2, chipBox.y + chipBox.height / 2);
     await W.paint(page);
     const litA = await page.evaluate(() => {
@@ -1861,6 +1903,26 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      zone: !!document.querySelector('#bsStage3 .bs-t3z.is-pick') }), litA.b);
     rec('表の行に重ねると断面図の区間と記号が光る（連動は双方向）',
         !!rowBox && litB.chip && litB.zone, `行 ${litA.b}`);
+    /* §9.463（利用者の指示「OS,DSのエリアにマウスオーバーでフォーカスしたときに右側の
+       一覧表が強調されるように。刃の部分は強調が効いてわかりやすくなりましたが
+       OS,DSの部分は無かった」）。**図の OS・DS の札に重ねると、端の区間と右の端部の表が
+       光る**（刃の区間と同じ `[data-badge]` の道）。模式図は端の区間そのものが的。 */
+    const endLit = [];
+    for (const sd of ['OS', 'DS']) {
+     const bx = await page.locator(`#bsStage3 .bs-t3-${sd.toLowerCase()}`).boundingBox();
+     if (!bx) { endLit.push({ sd, tag: false }); continue; }
+     await page.mouse.move(bx.x + bx.width / 2, bx.y + bx.height / 2);
+     await W.paint(page);
+     endLit.push(await page.evaluate(sd => ({ sd,
+      side: !!document.querySelector(`.bs-side.is-pick[data-badge="${sd}"]`),
+      other: !!document.querySelector(`.bs-side.is-pick:not([data-badge="${sd}"])`),
+      zone: !!document.querySelector(`#bsStage3 .bs-t3z.is-pick[data-badge="${sd}"]`) }), sd));
+    }
+    rec('断面図の OS・DS の札に重ねると、右の端部の表と端の区間が光る（§9.463）',
+        endLit.every(x => x.side && x.zone && !x.other), JSON.stringify(endLit));
+    rec('端の区間は記号の札を持たない（区間の数＝記号の札の数のまま）',
+        await page.evaluate(() => { const v = window.WL.bladeSolid.view();
+          return v.endZones > 0 && v.zones === [...document.querySelectorAll('#bsStage3 .bs-t3b')].filter(e => !e.hidden).length; }));
     /* **押したら模式図と同じ拡大窓**（§9.413 と同じ `openZoneZoom`）。 */
     /* **先に閉じてから押す。** 前の節で開いた窓が残っていると、押しても
        何も起きなくなったことに気づけない——欠陥注入（記号から `.bs-bhit` を
@@ -1942,17 +2004,26 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     const hdBox = await page.locator('#bsZoom .bs-zoom-hd').boundingBox();
     /* **本物のマウスで掴む**（§9.398）——`el.click()` は pointerdown の道を
        1度も通らないので、掴む配線が外れていても素通りする。 */
+    /* **器の中央へ向けて掴む**——窓は押した区間の反対側の半分に出て、器の縁で止まる
+       （§9.437）。どちらの半分に出るかは図の向き（§9.463 で既定を「基準原点を右」に
+       した）で変わるので、左へ決め打ちすると縁に当たって動かない。 */
+    const toMid = await page.evaluate(() => {
+     const z = document.querySelector('#bsZoom').getBoundingClientRect();
+     const host = (document.querySelector('#bsZoom').offsetParent || document.body).getBoundingClientRect();
+     return (z.left + z.width / 2) < (host.left + host.width / 2) ? 1 : -1;
+    });
+    const DX = 90 * toMid;
     await page.mouse.move(hdBox.x + 40, hdBox.y + hdBox.height / 2);
     await page.mouse.down();
-    await page.mouse.move(hdBox.x + 40 - 90, hdBox.y + hdBox.height / 2 - 50, { steps: 6 });
+    await page.mouse.move(hdBox.x + 40 + DX, hdBox.y + hdBox.height / 2 - 50, { steps: 6 });
     await page.mouse.up();
     const zAfter = await page.evaluate(() => {
      const r = document.querySelector('#bsZoom').getBoundingClientRect();
      return { x: Math.round(r.left), y: Math.round(r.top) };
     });
     rec('拡大図の窓は見出しの帯を掴んで動かせる',
-        zAfter.x - zBefore.x === -90 && zAfter.y - zBefore.y === -50,
-        `動いた量 ${zAfter.x - zBefore.x},${zAfter.y - zBefore.y}（掴んだ量 -90,-50）`);
+        zAfter.x - zBefore.x === DX && zAfter.y - zBefore.y === -50,
+        `動いた量 ${zAfter.x - zBefore.x},${zAfter.y - zBefore.y}（掴んだ量 ${DX},-50）`);
     await page.keyboard.press('Escape');
     await W.until(page, () => document.querySelector('#bsZoom').hidden, null,
                   { ms: 4000, what: '拡大図を閉じる' });
@@ -2115,7 +2186,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await W.until(page, () => document.querySelector('#bsZoom').hidden, null,
                   { ms: 4000, what: '拡大図を一度閉じる' });
     const zw = await page.evaluate(() => {
-     const b = document.querySelector('#bsStage3 .bs-t3b');
+     const b = document.querySelector('#bsStage3 .bs-t3b:not([hidden])');
      if (!b) return null;
      b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
      const svg = document.getElementById('bsZoomFig');
@@ -2164,7 +2235,9 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
        入れ替える（回すと切断面まで一緒に回り、カメラ側の入れ替えと打ち消し合う）。
        **いまどちら向きかを当てにしない**——ここへ来るまでに裏返っていることがある。 */
     const was = cut.flip;
-    await page.click('#bsFlip');
+    /* 向きは2つの札（§9.463）。**押されていない側**を押す。 */
+    const other = () => page.click('#bsFlip [data-datum-pos]:not(.is-on)');
+    await other();
     await W.until(page, w => (window.WL.bladeSolid.view() || {}).flip !== w,
                   was, { ms: 8000, what: '断面図の向きが裏返る' });
     const flipped = await page.evaluate(() => window.WL.bladeSolid.view());
@@ -2174,7 +2247,7 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     /* **台車は回っていない**こと（回すと切断面まで回る）。 */
     rec('断面図では台車を回さない（裏返してもカメラ側だけが入れ替わる）',
         await page.evaluate(() => Math.abs(WL.bladeSolid.view().rotY) < 1e-6));
-    await page.click('#bsFlip');
+    await other();
     await W.until(page, w => (window.WL.bladeSolid.view() || {}).flip === w,
                   was, { ms: 8000, what: '向きを戻す' });
     /* **断面図は白へ飛ばない**（§9.415、利用者の指摘「暗すぎるか明るすぎるか
@@ -3006,6 +3079,18 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('切断巾が読めない子は渡さず、件数で言う（0で埋めない）',
         (seedS.lots || []).length === 0 && seedS.skipped === 1,
         `条${(seedS.lots || []).length}／skipped=${seedS.skipped}`);
+    /* §9.463（利用者の指示「区分のロットの表示は『LOT1』ではなくロット番号を表示して」）。
+       条の幅が読めない予定から開いても、**1本目のコイルの番号**で区分を言う
+       （以前は画面の仮の名前 LOT1 のまま）。 */
+    const headName = await page.evaluate(async () => {
+     await WL.bladeGuide.open({ seed: { headLot: 'ZH4630', lots: [] } });
+     const cell = document.querySelector('.bs-g td.bs-grp');
+     return { names: WL.bladeGuide.state.lots.map(L => L.name), cell: cell ? cell.textContent : '' };
+    });
+    rec('条の幅が読めない予定から開いても、区分はロット番号（LOT1 と出さない）',
+        headName.names.includes('ZH4630') && !headName.names.some(n => /^LOT\d*$/.test(n))
+        && /ZH4630/.test(headName.cell), JSON.stringify(headName));
+    await page.evaluate(() => WL.bladeGuide.open({}));
 
     /* ---- 8.5) 分割なしの条数は**仕掛データ**から読む（§9.388） ----
        利用者の報告「分割対象ではないものも…幅何条取りといったデータは

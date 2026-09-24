@@ -359,6 +359,10 @@ body.bs-mode .bs-shell{display:flex}
 /* OS・DS の色は端部カードの記号と同じにして、図と表で同じ色を辿れるようにする。 */
 .bs-t3.is-os{color:var(--rs-slate);border-color:var(--rs-slate-border);background:var(--rs-slate-bg)}
 .bs-t3.is-ds{color:var(--rs-brown);border-color:var(--rs-brown-border);background:var(--rs-brown-bg)}
+/* OS・DS の札は**重ねる的**（§9.463）。端の区間と右の端部の表が一緒に光る。
+   押す操作は持たない（指は出さない・§9.385）——重ねている間だけの合図。 */
+.bs-t3.is-os,.bs-t3.is-ds{pointer-events:auto}
+.bs-t3.is-os.is-pick,.bs-t3.is-ds.is-pick{box-shadow:0 0 0 2px var(--teal)}
 /* 板の札（§9.413 追補）。模式図と**同じ言葉**（条の番号・耳）で、値を下へ添える。
    条と耳屑は図の中で色が違うので、札の色もそれに合わせる。
    **枠は持たない**（§9.417、利用者の指示「断面3Dのラベルの付け方は2Dを参考に
@@ -420,8 +424,12 @@ body.bs-mode .bs-shell{display:flex}
    真上で重なる（実測5364px2）。中身は模式図の帯と同じ1箇所が作る。 */
 .bs-cutset{display:flex;align-items:center;gap:var(--space-1);flex-wrap:nowrap}
 .bs-cutset[hidden]{display:none}
-.bs-cutchip{display:inline-flex;align-items:baseline;gap:var(--space-1);
-  padding:0 var(--space-2);height:var(--ctl-h-xs);border-radius:var(--radius-xs);
+/* **高さは中身なり・字は真ん中**（§9.463、利用者の指摘「バッジの余白が目立つ」）。
+   高さを部品の寸法（`--ctl-h-xs`）で決め、字を上揃え（baseline）にしていたので、
+   字の下にだけ空きが出ていた（実測 上1px・下10px）。左の行（`.bs-o3`）と同じ
+   字の高さ・同じ上下の詰めにそろえる。 */
+.bs-cutchip{display:inline-flex;align-items:center;gap:var(--space-1);
+  padding:1px var(--space-2);line-height:1.45;border-radius:var(--radius-xs);
   font-size:var(--fs-micro);white-space:nowrap;
   background:var(--bs-fig-chip-bg);color:var(--bs-fig-chip-fg);
   border:1px solid var(--bs-fig-chip-bd)}
@@ -433,7 +441,17 @@ body.bs-mode .bs-shell{display:flex}
 .bs-cutchip>b{font-weight:800;font-variant-numeric:tabular-nums}
 .bs-hud{position:absolute;display:flex;align-items:center;gap:var(--space-1);
   max-width:calc(100% - 20px)}
-.bs-hud.is-tl{left:10px;top:10px;flex-direction:column;align-items:flex-start}
+/* 左上の帯は**横に流して、足りなければ折り返す**（§9.463、利用者の指摘「配置が左に
+   偏っていてスペース有効活用できていない」）。縦に3行積むと、右に器の3割近い空き
+   （実測313px）を残したまま図の縦を削っていた。右端は「使い方」の札のぶん空ける
+   （`--bs-hud-tr`）。行の中身（読み方・突き合わせ・設定）は1つずつ折れずに並ぶ。 */
+.bs-hud.is-tl{left:10px;top:10px;flex-direction:row;flex-wrap:wrap;align-items:center;
+  max-width:calc(100% - 20px - var(--bs-hud-tr,6rem))}
+/* 入る器では2列（`hudCols()`が測って付ける）。設定のバッジは右の列に縦に積む。 */
+.bs-hud.is-tl.is-cols{display:grid;grid-template-columns:max-content max-content;
+  grid-auto-flow:column;grid-template-rows:auto auto;align-items:start;column-gap:6px;row-gap:4px}
+.bs-hud.is-tl.is-cols>.bs-cutset{grid-column:2;grid-row:1 / span 2;flex-direction:column;
+  align-items:flex-start;gap:3px}
 .bs-hud.is-tr{right:10px;top:10px}
 /* 下の道具は1本の帯にまとめる。左右に分けると、幅が足りないときに重なる。 */
 .bs-hud.is-bot{left:10px;right:10px;bottom:9px;max-width:none;
@@ -443,6 +461,9 @@ body.bs-mode .bs-shell{display:flex}
 .bs-hud-grp{display:flex;align-items:center;gap:4px;background:var(--valid-bg);
   border:1px solid var(--line);border-radius:var(--radius-sm);padding:3px 7px;flex-wrap:wrap}
 .bs-hud-cap{font-size:var(--fs-tiny);font-weight:700;color:var(--muted);letter-spacing:.05em}
+/* 断面図の倍率（§9.463）。幅を決めておく（数の桁で「視点」の群が揺れない）。 */
+.bs-zoom3{min-width:3.2em;font-size:var(--fs-sm);font-weight:700;color:var(--teal-dark);font-variant-numeric:tabular-nums}
+.bs-zoom3[hidden]{display:none}
 .bs-hud-sep{width:1px;align-self:stretch;background:var(--line);margin:1px 2px}
 /* 使い方。いつも要る情報ではないので、ふだんは畳んでおく。 */
 .bs-hlp{font:inherit;font-size:var(--fs-micro);font-weight:700;color:var(--muted);cursor:pointer;
@@ -648,6 +669,11 @@ body.bs-mode .bs-shell{display:flex}
    描かないので**図側は1pxも変わっていなかった**（実測: `fill` は
    `rgb(65,83,92)` のまま）。塗りは `fill`、縁は `stroke`。 */
 .bs-bhit.is-pick .bs-zhit{fill-opacity:.16;stroke-width:1.6}
+/* 端の区間（OS端・DS端・§9.463）。記号の札を持たないので、面だけで言う。 */
+.bs-ehit.is-pick .bs-zhit{fill-opacity:.16;stroke-width:1.6}
+/* 右の端部の表も同じ合図で光る（どの端に重ねたかを表の側でも言う）。 */
+.bs-side{border-radius:var(--radius-sm);transition:box-shadow .12s,background-color .12s}
+.bs-side.is-pick{background:color-mix(in srgb,var(--teal) 8%,transparent);box-shadow:0 0 0 2px var(--teal)}
 .bs-bdgr{fill:var(--bs-bc,var(--bs-fig-badge));transition:transform .12s;
   transform-box:fill-box;transform-origin:center}
 /* 重ねても**塗りは変えない**（§9.455）。大きさで言う（断面図の札と同じ）。 */

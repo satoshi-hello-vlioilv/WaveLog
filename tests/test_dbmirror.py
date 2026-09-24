@@ -227,6 +227,60 @@ try:
     moved = db_mirror.mirror_path(OLD)
     rec('写し直すと世代名へ移る', '.g' in moved.name, moved.name)
     rec('決まった名前の写しは片付けられる', not legacy_file.exists(), str(legacy_file))
+    # ---- §9.463 写しの新しさ（利用者の報告「再読み込み押しても最新版化されない」）----
+    import threading as _th, time as _time
+    NK = 'PROBE_NEW'
+    nremote = tmp / 'NEW.sqlite3'
+    make_db(nremote, [('N0', 'a')])
+    _orig_targets, _orig_pcv = db_mirror.targets, db_access.path_config_value
+    conf = {}
+    db_mirror.targets = lambda: [(NK, nremote)]
+    db_access.path_config_value = lambda k, d=None: conf.get(k, d)
+    try:
+        rec('写しの更新は既定で自動（auto）', db_mirror.update_mode() == 'auto', db_mirror.update_mode())
+        # 並んで2本走っても、どちらも壊さない（背景の周回と「再読込」が重なる形）
+        bad = 0
+        for i in range(8):
+            make_db(nremote, [(f'N{i}', 'a')])
+            res = []
+            ths = [_th.Thread(target=lambda: res.extend(db_mirror.refresh_all(force=True))) for _ in range(2)]
+            [t.start() for t in ths]
+            [t.join() for t in ths]
+            bad += sum(1 for r in res if not r.get('updated'))
+            if read_rows(db_mirror.read_path(NK, nremote)) != [(f'N{i}', 'a')]:
+                bad += 1
+        rec('写し直しが2本重なっても失敗・古いままにならない（1本ずつ）', bad == 0, f'{bad}件')
+        # 手動: 自分では写さず、新しい版があることだけ言う
+        conf['db_mirror_update'] = 'manual'
+        _time.sleep(1.05)
+        make_db(nremote, [('NX', 'z')])
+        db_mirror._cycle()
+        info = db_mirror.source_info(NK)
+        rec('手動のときは写さない（前の写しのまま）',
+            read_rows(db_mirror.read_path(NK, nremote)) != [('NX', 'z')], str(read_rows(db_mirror.read_path(NK, nremote))))
+        rec('手動のときは「新しい版あり」を言う', info.get('newer') is True and info.get('mode') == 'manual', str(info))
+        rw = db_mirror.refresh_all(force=True)
+        rec('再読込（force）なら手動でも写し、新しい版の印は消える',
+            rw and rw[0].get('updated') and db_mirror.source_info(NK).get('newer') is False, str(rw[:1]))
+        # 起動して最初の周回が済むまでは、読む側が待つ（前回の写しを出さない）
+        conf['db_mirror_update'] = 'auto'
+        _time.sleep(1.05)
+        make_db(nremote, [('BOOT', 'b')])
+        db_mirror._first.clear()
+        fake = _th.Thread(target=lambda: _time.sleep(0.3)); fake.start()
+        _orig_thread = db_mirror._thread
+        db_mirror._thread = fake
+        def first_pass():
+            _time.sleep(0.2)
+            db_mirror._cycle()
+            db_mirror._first.set()
+        _th.Thread(target=first_pass).start()
+        got = read_rows(db_mirror.read_path(NK, nremote))
+        db_mirror._thread = _orig_thread
+        rec('起動して最初の周回が済むまで待ってから読む（古い写しを出さない）', got == [('BOOT', 'b')], str(got))
+    finally:
+        db_mirror.targets, db_access.path_config_value = _orig_targets, _orig_pcv
+        db_mirror._first.clear()
 finally:
     db_mirror.cache_dir = _orig_cache
     import shutil

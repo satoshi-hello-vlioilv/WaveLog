@@ -893,6 +893,26 @@ const columnLayout=(()=>{
                                  :(get(target).widths[col]?'manual':'auto'),
          /* 画面に出す名前。未設定なら元の項目名のまま(§9.88)。 */
          label:(target,col)=>get(target).names[col]||col,
+         /* **名前から列を引く答えはここ1箇所**（§9.464、利用者の報告「表示列の名前を変更
+            しても、元の名前の列で条件を作ったり使えるように」）。式の`[名前]`・条件の
+            「他の列」が書いた名前を、並んでいる列（`keys`）のどれかへ当てる。順は
+            元の列名 → いまの表示名 → 別名（`aliases`：生カラム名とalias名の相互）。
+            表示名は**見出しだけ**を変えるもの（§9.88）なので、元の名前でも新しい名前でも
+            同じ列を指す。当たらなければ''。 */
+         keyByName:(target,keys,name)=>{
+          const want=String(name==null?'':name).trim();
+          if(!want)return '';
+          const ks=keys||[];
+          if(ks.includes(want))return want;
+          const names=get(target).names||{};
+          const byLabel=ks.find(k=>names[k]===want);
+          if(byLabel)return byLabel;
+          const al=aliases||{};
+          /* 別名: 名前がalias名なら生カラム名の並びから、生カラム名ならそのalias名から。 */
+          const cands=[...(al[want]||[]),
+           ...Object.keys(al).flatMap(a=>(al[a]||[]).includes(want)?[a,...al[a]]:[])];
+          return ks.find(k=>cands.includes(k))||'';
+         },
          /* この列の書式指定。未設定ならnull(=そのまま表示)。 */
          format:(target,col)=>get(target).formats[col]||null,
          /* この列に効く読み替えルールの名前。未設定なら''(=読み替えなし)。 */
@@ -1201,12 +1221,39 @@ const displayRules=(()=>{
   if(!t||!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(t))return null;
   const n=Number(t);return Number.isFinite(n)?n:null;
  };
- /* 条件の片側を実際の値へ。self=この列 / column=他の列 / value=固定値。
-    **他の列を見られる**ので「区分が3のときだけ○○と出す」が書ける。 */
+ /* 条件の片側を実際の値へ。self=この列 / column=他の列 / value=固定値 / calc=式。
+    **他の列を見られる**ので「区分が3のときだけ○○と出す」が書ける。
+    **式**（§9.464、利用者の指示「文字列からの抽出や変換処理もできるように」）は
+    式の列と同じ`WL.formula`で、**抜き出してから比べる**が書ける
+    （例: `extract([この列],'[0-9]+')` が 100 より大きい）。`[この列]`はこの列の値。 */
+ const calcCache=new Map();
+ function calcOf(src){
+  const k=String(src||'');
+  if(calcCache.has(k))return calcCache.get(k);
+  let c=null;
+  try{c=WL.formula?WL.formula.compile(k):null}
+  catch(e){WL.quiet.note('条件の式を読めない（その条件は当たらない）',e);c=null}
+  if(calcCache.size>200)calcCache.clear();
+  calcCache.set(k,c);
+  return c;
+ }
+ const SELF_KEY='この列';
+ function calcRow(row,selfCol){
+  const r=Object.assign({},row||{});
+  if(!(SELF_KEY in r))r[SELF_KEY]=row?row[selfCol]:'';
+  return r;
+ }
+ function runCalc(src,row,selfCol){
+  const c=calcOf(src);
+  if(!c)return null;
+  const v=c.run(calcRow(row,selfCol));
+  return v===null||v===undefined?'':v;
+ }
  function operand(side,row,selfCol){
   if(!side)return '';
   if(side.kind==='self')return row?row[selfCol]:'';
   if(side.kind==='column')return row?row[side.column]:'';
+  if(side.kind==='calc'){const v=runCalc(side.expr,row,selfCol);return v===null?'':v}
   return side.value;
  }
  /* 両辺が数値として読めるときだけ数値で比べ、そうでなければ文字列で比べる
@@ -1285,8 +1332,14 @@ const displayRules=(()=>{
    for(const c of (r.conditions||[])){
     for(const side of [c.left,c.right,c.right2]){
      if(side&&side.kind==='column'&&side.column)out.add(String(side.column));
+     /* 式が見ている列も要る列（§9.464）。`[この列]`は列ではない。 */
+     if(side&&side.kind==='calc'){const cc=calcOf(side.expr);
+      if(cc)cc.columns.forEach(k=>{if(k!==SELF_KEY)out.add(String(k))})}
     }
    }
+   /* 出す字を式で作る行（`=`で始まる）の列も要る。 */
+   if(typeof r.text==='string'&&r.text.startsWith('=')){const cc=calcOf(r.text.slice(1));
+    if(cc)cc.columns.forEach(k=>{if(k!==SELF_KEY)out.add(String(k))})}
   }
   const arr=[...out];
   usedMemo.set(name,arr);
@@ -1294,7 +1347,15 @@ const displayRules=(()=>{
  }
  /* ルールの版。**控えの署名に混ぜる**ためのもの（読み直すたびに増える）。 */
  let rev=0;
- return {load,match,test,columnsUsed,rev:()=>rev,
+ /* 当たった行が出す字。**`=`で始まれば式**（§9.464）——抜き出した値そのものを出せる
+    （例: `=extract([この列],'[0-9]+')`）。式が空・読めなければ元の値のまま。 */
+ function textOf(hit,row,selfCol){
+  const t=hit&&hit.text;
+  if(typeof t!=='string'||!t.startsWith('='))return t;
+  const v=runCalc(t.slice(1),row,selfCol);
+  return v===null?'':String(v);
+ }
+ return {load,match,test,columnsUsed,textOf,rev:()=>rev,
          all:()=>cache||{},
          names:()=>Object.keys(cache||{}).sort(),
          get:name=>(cache&&cache[name])||[],
@@ -1420,8 +1481,10 @@ const cellFormat=(()=>{
   if(rule){
    const hit=displayRules.match(rule,opt.row,opt.column);
    // 表示値が空の行は「元の値のまま出す」(当たったことは色で示せる)。
-   if(hit)return {text:hit.text!==''&&hit.text!=null?String(hit.text):value(opt.format,raw),
-                  color:hit.color||''};
+   if(hit){
+    const t=displayRules.textOf(hit,opt.row,opt.column);
+    return {text:t!==''&&t!=null?String(t):value(opt.format,raw),color:hit.color||''};
+   }
   }
   return {text:value(opt.format,raw),color:''};
  }

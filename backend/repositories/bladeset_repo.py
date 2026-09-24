@@ -248,6 +248,7 @@ STANDARD_COLUMNS = (
     ('中抜き可', 'INTEGER'), ('屑条幅既定', 'REAL'), ('寸法刻み', 'REAL'),
     ('ゴムリング空き下限', 'REAL'), ('ゴムリング空き上限', 'REAL'),
     ('フィンガー空き下限', 'REAL'), ('フィンガー空き上限', 'REAL'),
+    ('図の基準原点の位置', 'TEXT'), ('向きの呼び方左', 'TEXT'), ('向きの呼び方右', 'TEXT'),
     ('備考', 'TEXT'), ('表示順', 'INTEGER'), ('有効', 'INTEGER'),
 )
 STANDARD_DEF = TableDef(STANDARD_TABLE, '刃組基準ID', STANDARD_COLUMNS,
@@ -292,11 +293,17 @@ STANDARD_DEFAULTS = {
     # ゴムリングの組み方（§9.454、利用者の指示「ゴムリングは刃のあいだに
     # 収めますが、刃の間の寸法よりも0.2～0.5㎜小さくなるようにセットします。
     # この値は設備ごとに設定を持てるように」）。
-    'ringGapMin': 0.2, 'ringGapMax': 0.5,
+    # **既定は2〜5mm**（§9.463、利用者の指示「ゴムリングの空きの適正範囲は
+    # 2㎜～5㎜を規定値に変更してください（今設定している10倍）」）。
+    'ringGapMin': 2.0, 'ringGapMax': 5.0,
     # フィンガーの空き（§9.462、利用者の指示「板押さえの適正な空きスペースの
     # 管理範囲を設定できるように」）。**現場の値はまだ聞いていないので0＝判定しない**
     # （勝手な数で埋めない・§9.231）。0のあいだは今までどおり区間いっぱいを狙う。
     'fingerGapMin': 0.0, 'fingerGapMax': 0.0,
+    # 図の向き（§9.463、利用者の指示「段取り向きとか図面向きというのをやめて、
+    # 基準原点を左、基準原点を右といった形で迷いの少ない呼び方に…既定は基準原点を
+    # 右側に表示して、呼び方もマスタから変更できるように」）。
+    'viewDatumPos': '右', 'viewLabelLeft': '基準原点を左', 'viewLabelRight': '基準原点を右',
     # 潤滑リングの寸法と在庫は**ゴムリングマスタの行**が持つ（§9.455。§9.454 で
     # ここに置いた幅・外径・内径は移した——置き場を2つにしない）。
 }
@@ -324,7 +331,18 @@ _STANDARD_MAP = (
     ('ゴムリング空き上限', 'ringGapMax', 'num'),
     ('フィンガー空き下限', 'fingerGapMin', 'num'),
     ('フィンガー空き上限', 'fingerGapMax', 'num'),
+    ('図の基準原点の位置', 'viewDatumPos', 'pos'),
+    ('向きの呼び方左', 'viewLabelLeft', 'text'), ('向きの呼び方右', 'viewLabelRight', 'text'),
 )
+# 図の基準原点の位置（§9.463）。**綴りはここ1箇所**。
+VIEW_POSITIONS = ('右', '左')
+
+
+def view_pos(v, fallback='右'):
+    """図の基準原点の位置を '右'／'左' へ。読めなければ`fallback`（保存では None）。"""
+    t = _txt(v)
+    t = {'RIGHT': '右', 'LEFT': '左'}.get(t.upper(), t)
+    return t if t in VIEW_POSITIONS else fallback
 
 
 # ---------------------------------------------------------------------------
@@ -730,6 +748,10 @@ def _standard_row(d):
             out[key] = _int(v)
         elif kind == 'side':
             out[key] = datum_side(v, None)
+        elif kind == 'pos':
+            out[key] = view_pos(v, None)
+        elif kind == 'text':
+            out[key] = _txt(v) or None
         elif kind == 'flag':
             on = None if v is None else bool(v)
             out[key] = on
@@ -1099,6 +1121,10 @@ def standard_upsert(c, uid, equipment=None, values=None, note=None,
             vals[col] = None if v in (None, '') else (-1 if _flagged(v) else 0)
         elif kind == 'side':
             vals[col] = datum_side(v, None)
+        elif kind == 'pos':
+            vals[col] = view_pos(v, None)
+        elif kind == 'text':
+            vals[col] = (_txt(v) or None) if v is not None else None
         elif kind == 'int':
             vals[col] = _int(v)
         else:

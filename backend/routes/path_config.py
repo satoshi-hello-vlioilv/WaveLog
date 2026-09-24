@@ -57,6 +57,8 @@ _PATH_CONFIG_DEFAULTS={
  'rne_extract_enabled':'auto',
  # 共有DBを手元へ写してから読むか(§9.89)。既定は有効。
  'db_mirror_enabled':'auto','db_mirror_interval_sec':'60',
+ # 写しをいつ新しくするか(§9.463)。auto=元が変われば直ちに／manual=再読込を押したときだけ。
+ 'db_mirror_update':'auto',
  # RNE資材(RNEファイル・symnavim.conf)の置き場。空欄なら config/rne_extract。
  # 共有フォルダに1式だけ置いて全端末から参照する運用のため、端末ごとの
  # コピーを強制しない(§9.79)。認証情報だけ別の場所に置きたい運用があるので
@@ -86,6 +88,8 @@ _PATH_CONFIG_DEFAULTS={
 }
 _PATH_CONFIG_NUMERIC_FIELDS={
  'rne_extract_interval_sec':('RNE抽出間隔(秒)',60),
+ # 共有DBの写しを見に行く間隔(§9.463)。最小は db_mirror.MIN_INTERVAL_SEC と揃える。
+ 'db_mirror_interval_sec':('共有DBの写しを見に行く間隔(秒)',10),
  'records_backup_export_interval_sec':('測定データの複製を見に行く間隔(秒)',30),
  'schedule_lock_ttl_sec':('スケジュールロックの有効期限(秒)',1),
  'schedule_lock_verify_delay_ms':('ロック確認までの待機時間(ミリ秒)',0),
@@ -115,6 +119,7 @@ _PATH_CONFIG_CHOICE_FIELDS={
  'sikalot_source':('参照データの取得元',('network','local')),
  'rne_extract_enabled':('RNE抽出の定期実行',('auto','on','off')),
  'db_mirror_enabled':('共有DBの写し',('auto','on','off')),
+ 'db_mirror_update':('写しの更新',('auto','manual')),
  'schedule_watch_enabled':('共有スケジュールの見張り',('auto','on','off')),
  'schedule_owner_enabled':('共有スケジュールの書き込み役',('on','off')),
  'schedule_session_block':('編集セッションで操作を止める',('on','off')),
@@ -223,6 +228,7 @@ def path_config_master_get():
    'records_backup_export_interval_sec':str(path_config_value('records_backup_export_interval_sec',RECORDS_BACKUP_EXPORT_INTERVAL_SEC)),
    'db_mirror_enabled':str(path_config_value('db_mirror_enabled','auto') or 'auto'),
    'db_mirror_interval_sec':str(path_config_value('db_mirror_interval_sec','60')),
+   'db_mirror_update':str(path_config_value('db_mirror_update','auto') or 'auto'),
    'schedule_lock_ttl_sec':str(path_config_value('schedule_lock_ttl_sec',SCHEDULE_LOCK_TTL_SEC_DEFAULT)),
    'schedule_lock_verify_delay_ms':str(path_config_value('schedule_lock_verify_delay_ms',SCHEDULE_LOCK_VERIFY_DELAY_MS_DEFAULT)),
    # 作り直せるファイル(写し・スケジュールの作業コピー)の実際の置き場(§9.109)。

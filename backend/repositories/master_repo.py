@@ -2101,11 +2101,20 @@ RULE_OPS_NO_RIGHT=('empty','notEmpty')
 # 色。バッジの意味を4つに絞る(増やすと「どれを選ぶか」で迷いが生まれる)。
 RULE_COLORS=('','ok','ng','warn','muted')
 
+# 条件の片側の式・出す字の式の長さ（§9.464）。**画面の`WL.formula`の上限（400字）と同じ**。
+RULE_EXPR_MAX=400
+
 def _normalize_operand(raw,allow_value=True):
- """条件の片側。self(この列) / column(他の列) / value(固定値)。"""
+ """条件の片側。self(この列) / column(他の列) / value(固定値) / calc(式・§9.464)。
+
+ 式の中身はここでは解かない——評価は画面の`WL.formula`の1箇所（二重に持たない）。
+ 読めない式は画面で「当たらない」に倒れる（固定値の正規表現と同じ扱い）。"""
  if not isinstance(raw,dict):return None
  kind=str(raw.get('kind') or '').strip()
  if kind=='self':return {'kind':'self'}
+ if kind=='calc':
+  expr=str(raw.get('expr') or '').strip()[:RULE_EXPR_MAX]
+  return {'kind':'calc','expr':expr} if expr else None
  if kind=='column':
   col=str(raw.get('column') or '').strip()[:120]
   return {'kind':'column','column':col} if col else None
@@ -2187,7 +2196,9 @@ def set_display_rule(c,name,rows,uid):
  for row in (rows or []):
   if not isinstance(row,dict):continue
   conds=normalize_rule_conditions(row.get('conditions'))
-  text=str(row.get('text') if row.get('text') is not None else '')[:120]
+  # `=`で始まる字は式（§9.464）。式は長くなるので上限を式のほうへ合わせる。
+  _t=str(row.get('text') if row.get('text') is not None else '')
+  text=_t[:RULE_EXPR_MAX] if _t.startswith('=') else _t[:120]
   color=str(row.get('color') or '').strip()
   if color not in RULE_COLORS:color=''
   if not conds and not text and not color:continue

@@ -1932,6 +1932,7 @@
   schedule_session_block:{off:'off: 止めない（既定）',on:'on: 後から入った端末は読み取り専用'},
   schedule_source_sync:{auto:'auto: 見つけたら更新（既定）',confirm:'confirm: 中身を見せてから取り込む'},
   db_mirror_enabled:{auto:'auto: 写して読む',on:'on: 写して読む',off:'off: 共有を直接読む'},
+  db_mirror_update:{auto:'auto: 変われば直ちに（既定）',manual:'manual: 再読込を押したときだけ'},
   rne_extract_enabled:{auto:'auto: localのときだけ',on:'on: 定期実行',off:'off: 手動のみ'},
  };
  /* ---------- デスクトップの起動アイコン（§9.410、利用者の指示⑤） ----------
@@ -2379,7 +2380,15 @@
     ${pickField('sikalot_source','読み方を決めていないデータソースの既定',
       [['','（既定）network'],['network','network'],['local','local']],
       'network=共有フォルダを読む ／ local=この端末でRNEから抽出したものを読む。<b>読み方を決めたデータソースには効きません</b>。')}
-    ${pcStateHtml('sikalot_source')}`);
+    ${pcStateHtml('sikalot_source')}
+    ${pageFoldHtml('共有の元データの写し',pcNowText('db_mirror_update','auto: 変われば直ちに（既定）'),`
+     <p class="mm-field-hint">仕掛・品質などの共有の元データは、<b>手元へ写してから</b>読みます（読むあいだ共有を掴まないため）。
+      <b>起動したときは、写し直しが済むまで一覧を出しません</b>（前回の古い写しを見せないため）。</p>
+     ${pickField('db_mirror_update','写しの更新',
+       [['','（既定）auto: 元が変われば直ちに写し直す'],['auto','auto: 元が変われば直ちに写し直す'],
+        ['manual','manual: 自分では写し直さない（一覧の「再読込」を押したときだけ）']],
+       '<b>manual</b> は意図して更新を止めるときに使います。元に新しい版があれば、一覧の「元データ」に<b>新しい版あり</b>と出ます。')}
+     ${numField('db_mirror_interval_sec','元が変わったかを見る間隔','秒',10,10)}`)}`);
   /* **置き場は1枚**（§9.267、利用者の指示「マスタの置き場、スケジュールの
      置き場、測定データの置き場、バックアップの置き場などを含めた全ての設定を
      共通設定に視覚的に表現した上でそのままその表示とリンクして設定を簡単に

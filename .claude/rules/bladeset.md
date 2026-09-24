@@ -1,4 +1,4 @@
-# 刃組ガイダンス（182件）
+# 刃組ガイダンス（187件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,11 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 断面図は**寄る・引くもできる**（マウスの下の点を保つ・拡大中は×1の縮尺と中心で）。§9.413の「持たない」を撤回 | `test_bladeui.js` | [§9.463](../../docs/decisions/9.463.md) |
+| 向きは「基準原点を左／右」の2つの札。`flip`は`flipOf()`の1箇所・既定の側と呼び方は刃組基準値 | `test_bladeui.js` | [§9.463](../../docs/decisions/9.463.md) |
+| OS・DSの端も`[data-badge]`で名乗る（端部の表・模式図の端の区間・断面図の札）。端は拡大図を開かない | `test_bladeui.js` | [§9.463](../../docs/decisions/9.463.md) |
+| 左上の帯は入るなら2列（`hudCols()`が測る）。設定のバッジは中身なりの高さ・字は真ん中 | `test_bladeui.js` | [§9.463](../../docs/decisions/9.463.md) |
+| 区分の仮の名前（`LOT1`）は1本目のコイルの番号（`headLot`）に置き換える | `test_bladeui.js` | [§9.463](../../docs/decisions/9.463.md) |
 | 板押さえの空きの帯は種類ごと（`holdBand()`の1箇所）。フィンガーも下限ぶん小さく組む・既定0は判定しない | `test_bladeui.js` | [§9.462](../../docs/decisions/9.462.md) |
 | 基準面（OS／DS・既定**DS**）は`datumOf()`の1箇所。シートは**反対の端**（`A.floatZ`・`fit.floatSeat.side`） | `test_bladeui.js`・`test_bladeset.py` | [§9.461](../../docs/decisions/9.461.md) |
 | 刻みへ寄せるのは**基準面の側の端**（`slip`）。押さえ代・端数に数えない・左右差の向きは`floatZ`を見る | `test_bladeui.js` | [§9.461](../../docs/decisions/9.461.md) |
@@ -151,7 +156,7 @@
 | 断面図の板は**厚みを誇張する**（実寸では1pxも出ない）。倍率は字で言う | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
 | `matShift()`は模式図の座標で答える。立体へ写すときは**Yの符号を返す** | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
 | 板の札は軸の外へ出す（板と軸のあいだは実寸60mm弱しかない） | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
-| 断面図は板幅の中心を起点に回せる。±1.15radで止め、寄る・引くは持たない | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
+| 断面図は板幅の中心を起点に回せる。±1.15radで止め【寄る・引くは§9.463で持つようにした】 | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
 | 「視点を戻す」は段取りの群の外（断面図では段取りごと伏せる） | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
 | `setPointerCapture`は掴めないと投げる。回すこと自体には要らない | `test_bladeui.js` | [§9.413](../../docs/decisions/9.413.md) |
 | 刃組スケジュール一覧の行からも入れる（的は題名の横・道は`openRowLink()`の1本） | `test_bladeui.js` | [§9.408](../../docs/decisions/9.408.md) |

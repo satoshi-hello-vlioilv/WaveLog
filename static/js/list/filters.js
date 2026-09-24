@@ -1300,7 +1300,11 @@
   async function clearAllFilters(){await dropAllFilters();WL.list.load()}
   function updateFilterColumns(){
     ensureGenericFilterBar();const select=$('#filterColumn');if(!select)return;const current=select.value;
-    select.innerHTML=(S.columns||[]).map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+    /* **表示名を付けた列は両方の名前で出す**（§9.464）。値は元の列名のまま（絞り込みは
+       サーバーが生の列名で行う）——元の名前しか出さないと、見出しで見ている名前で探せない。 */
+    const t=typeof WL.list.listLayoutTarget==='function'?WL.list.listLayoutTarget():'';
+    const nm=c=>{const n=t?WL.columnLayout.label(t,c):c;return n&&n!==c?`${n}（${c}）`:c};
+    select.innerHTML=(S.columns||[]).map(c=>`<option value="${esc(c)}">${esc(nm(c))}</option>`).join('');
     if((S.columns||[]).includes(current))select.value=current;
     updateFilterSuggestions();
   }

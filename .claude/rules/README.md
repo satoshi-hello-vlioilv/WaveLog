@@ -16,13 +16,13 @@ CLAUDE.md の「画面を作るときの基準」（14項目）と、それをWa
 | --- | --- | --- |
 | どの画面でも（基準をWaveLogの寸法へ落としたもの） | [ui-principles.md](ui-principles.md) | 7節 |
 | `program/`・`Start.vbs`・`#appBoot`・更新・在席 | [boot.md](boot.md) | 44 |
-| 共有DB・写し・錠・`config/local.json`・SQLite | [data.md](data.md) | 60 |
+| 共有DB・写し・錠・`config/local.json`・SQLite | [data.md](data.md) | 62 |
 | `backend/routes/`・`body(spec)`・`api_guard`・権限 | [api.md](api.md) | 20 |
 | `TableDef`・マスタのサーバー側・既定値 | [master-server.md](master-server.md) | 27 |
-| マスタ管理の画面・盤・編集モーダル | [master-ui.md](master-ui.md) | 20 |
-| `list-view.js`・列レイアウト・フィルタ・仮想行 | [list.md](list.md) | 122 |
+| マスタ管理の画面・盤・編集モーダル | [master-ui.md](master-ui.md) | 21 |
+| `list-view.js`・列レイアウト・フィルタ・仮想行 | [list.md](list.md) | 125 |
 | 測定画面・操業データ項目・公差・条の設計 | [measure.md](measure.md) | 97 |
-| 刃組ガイダンス（`blade-*.js`）・部材・刃選択 | [bladeset.md](bladeset.md) | 182 |
+| 刃組ガイダンス（`blade-*.js`）・部材・刃選択 | [bladeset.md](bladeset.md) | 187 |
 | 作業スケジュール・設備停止の登録・写しの同期 | [schedule.md](schedule.md) | 62 |
 | `print-core.js`・帳票ブロック・用紙と余白 | [report.md](report.md) | 92 |
 | `WL` 名前空間・窓・メニュー・拡張の登録表 | [ui-core.md](ui-core.md) | 37 |
@@ -31,4 +31,4 @@ CLAUDE.md の「画面を作るときの基準」（14項目）と、それをWa
 | どの束にも入らないもの | [misc.md](misc.md) | 16 |
 
 「固定する網」の欄はテスト名。`tests/run_all.sh <名前>` で回す。
-規則は合わせて **885件**（`ui-principles.md` は節で数える）。
+規則は合わせて **896件**（`ui-principles.md` は節で数える）。

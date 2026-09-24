@@ -1,4 +1,4 @@
-# データの置き場と共有（60件）
+# データの置き場と共有（62件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 写し直しは1本ずつ（錠）。起動は最初の周回を待って読む。更新は`update_mode()`（auto／manual） | `test_dbmirror.py` | [§9.463](../../docs/decisions/9.463.md) |
+| 再読込は`force`で写し直し、押した直後に知らせ・結果を字で。画面は写しの更新に気づいて読み直す | `test_listcache.js` | [§9.463](../../docs/decisions/9.463.md) |
 | ショートカットの名前と絵は`パス設定マスタ`へ残す。鍵は**保存の受け側にも**足す | `test_shortcut.py` | [§9.433](../../docs/decisions/9.433.md) |
 | 起動ショートカットの設定を書くのは`desktop_shortcut.remember()`の1箇所（作れたときだけ・鍵は2つだけ） | `test_shortcut.py` | [§9.445](../../docs/decisions/9.445.md) |
 | 同じ名前のショートカットは上書きする。**自分が作った物**（行き先が`Start.vbs`）以外は`overwrite`が真のときだけ | `test_shortcut.py`・`test_uisize.js` | [§9.446](../../docs/decisions/9.446.md) |

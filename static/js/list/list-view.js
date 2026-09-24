@@ -1265,10 +1265,14 @@ function updateListFreshness(at){
  el.hidden=false;
  /* **本文は「元データ ◯/◯ ◯◯:◯◯」だけ**（§CLAUDE 画面基準 3・8）。
     写しかどうか・取込時刻・画面の写しの古さは説明へ回す。 */
+ /* 元に**写していない新しい版**がある（手動のとき・§9.463）。色だけで言わない。 */
+ const newer=!!(info&&info.newer);
  el.innerHTML=`<span class="lf-key">元データ</span>`
    +`<b class="lf-val">${esc(stamp||'時刻不明')}</b>`
+   +(newer?`<span class="lf-new">新しい版あり</span>`:'')
    +`<span class="lf-act" aria-hidden="true">⟳</span>`;
  el.classList.toggle('is-unknown',!stamp);
+ el.classList.toggle('is-newer',newer);
  const lines=[];
  lines.push(stamp?`いま出している行は、元データの ${stamp} 時点の内容です。`
                  :'元データの更新時刻を読み取れませんでした。');
@@ -1282,7 +1286,9 @@ function updateListFreshness(at){
  /* 画面の写し（`tableCache`）から描いたときは、そのことも言う——同じ
     「古さ」でも打つ手が違う（§CLAUDE 6）。 */
  if(at)lines.push(`画面に出ているのは ${agoText(Date.now()-at)}に読み込んだ内容です。`);
- lines.push('押すと取り直せます。');
+ if(newer)lines.push('元に新しい版があります（写しの更新が「手動」のため、まだ取り込んでいません）。');
+ else if(info&&info.mode==='manual')lines.push('写しの更新は「手動」です（共通設定 > どこから読むか）。');
+ lines.push('押すと共有から取り込み直せます。');
  el.title=lines.join('\n');
 }
 window.updateListFreshness=updateListFreshness;
@@ -2042,6 +2048,29 @@ function renderGridInner(){
   try{colCalc.set(c,WL.formula.compile(src))}
   catch(e){colCalc.set(c,{run:()=>''})}
  });
+ /* **式と読み替えは、いまの表示名でも元の列名でも列を引ける**（§9.464、利用者の報告
+    「表示列の名前を変更しても、元の名前の列で条件を作ったり使えるように」）。行は
+    生の列名で持っているので、式・条件が**書いた名前のうち行に無いもの**だけを
+    `WL.columnLayout.keyByName()`で列へ当て、その名前で値を足した写しを渡す。
+    当てるのは描くたびに1回（行ごとに探さない）。書いた名前がどれも行に在るなら写しを作らない。 */
+ const nameKeys=(()=>{
+  const want=new Set();
+  colCalc.forEach(fn=>(fn.columns||[]).forEach(n=>want.add(n)));
+  colRule.forEach(rn=>{if(rn&&WL.displayRules)WL.displayRules.columnsUsed(rn).forEach(n=>want.add(n))});
+  const raw=S.columns||[],out=[];
+  want.forEach(n=>{
+   if(raw.includes(n))return;
+   const k=WL.columnLayout.keyByName(layoutTarget,raw,n);
+   if(k)out.push([n,k]);
+  });
+  return out;
+ })();
+ const namedRow=r=>{
+  if(!nameKeys.length||!r)return r;
+  const o=Object.assign({},r);
+  nameKeys.forEach(([n,k])=>{if(!(n in o))o[n]=r[k]});
+  return o;
+ };
  const numCol=c=>colFmt.get(c)?.kind==='number';
  /* 列幅は**セルを描く前に決める**(§9.94)。colgroupへ入れるだけでなく、
     「その幅に入り切らない値へtitleを付ける」判断にも使うため。 */
@@ -2055,7 +2084,7 @@ function renderGridInner(){
       :estimateColumnWidth(WL.columnLayout.label(layoutTarget,k),
                            // 計算で作る列は**計算した値**で幅を見積もる
                            // (生のr[k]は無いので、そのままだと見出しの幅になる)。
-                           widthSample.map(r=>colCalc.has(k)?colCalc.get(k).run(r):r[k]),
+                           widthSample.map(r=>colCalc.has(k)?colCalc.get(k).run(namedRow(r)):r[k]),
                            metrics.fs,metrics.padX))]));
  /* 番号・ボタンの列の揃え。**既定は今までの見え方**（選択/予定/#/分割/測定は
     それぞれCSSが中央や右にしていた）を`columnAlign`の既定に合わせて明示する
@@ -2226,8 +2255,9 @@ function renderGridInner(){
    /* 計算で作る列(§9.111 ⑦)は、その行の値から作ってから同じ道を通す
       ——書式・読み替え・省略記号の扱いをデータ側の列と分けない。 */
    const calc=colCalc.get(c);
-   const rawVal=calc?calc.run(r):r[c];
-   const out=WL.cellFormat.cell({raw:rawVal,format:colFmt.get(c),rule:colRule.get(c),row:r,column:c});
+   const nr=namedRow(r);
+   const rawVal=calc?calc.run(nr):r[c];
+   const out=WL.cellFormat.cell({raw:rawVal,format:colFmt.get(c),rule:colRule.get(c),row:nr,column:c});
    const raw=String(rawVal==null?'':rawVal);
    const cls=[numCol(c)?'col-num':'',WL.columnAlign.cellClass(layoutTarget,c,colFmt.get(c)?.kind||''),
               out.color?'cell-'+out.color:''].filter(Boolean).join(' ');
@@ -3043,13 +3073,71 @@ function rneTargetDbs(){return WL.dataSource.views().map(x=>x.key)}
    画面が読んでいるのは手元の写しなので、写しを更新せずに読み直しても
    同じ内容が出るだけ。押した人の期待(最新が見たい)と食い違う。
    写しの更新は共有への往復を伴うので待つが、失敗しても読み直しは行う
-   (共有が不調でも、手元の写しで一覧は出る)。 */
-async function reloadList(){
- try{await api('/api/db-mirror/refresh',{quiet:true,method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({wait:true})})}
- catch(e){console.warn('共有からの写しを更新できませんでした',e)}
- invalidateTableCache();load(true);
+   (共有が不調でも、手元の写しで一覧は出る)。
+
+   **押したら直ちに反応し、結果を字で返す**（§9.463、利用者の報告「再読み込み
+   押しても任意に取りに行った感じがなく最新版化されません。行ったのであれば
+   動き(反応)が欲しい」）。以前は写し直しを待つあいだ画面に何も出さず、
+   結果（写した／変わっていない／写せなかった）も捨てていた——どれでも
+   同じに見えた。**必ず写し直す**（`force`）——共有の時刻と大きさは手元に
+   控えられて遅れることがあり、「変わっていない」と誤って読むと取りに行っても
+   古いまま。**2度押しは1回にまとめる**。 */
+let reloadBusy=false;
+function mirrorResultText(res,key){
+ const r=((res&&res.results)||[]).find(x=>x&&x.key===key);
+ if(!r)return {ok:true,title:'一覧を読み直しました',detail:'この一覧は写しを使わず、置き場のファイルをそのまま読んでいます'};
+ if(r.updated)return {ok:true,title:'元データを取り込み直しました',detail:'共有の元ファイルを手元へ写し直して読み直しました'};
+ if(r.skipped)return {ok:true,title:'元データは最新です',detail:'共有の元ファイルは前回の取り込みから変わっていません'};
+ return {ok:false,title:'元データを取り込めませんでした',detail:(r.reason||'理由が分かりません')+'（前の写しで表示しています）'};
 }
+async function reloadList(){
+ if(reloadBusy)return;
+ reloadBusy=true;
+ const chip=$('#listFreshness');
+ chip?.classList.add('is-busy');chip?.setAttribute('aria-busy','true');
+ let res=null,err=null;
+ try{
+  res=await WL.records.withWaiting({title:'元データを取り込み直しています',
+    detail:'共有の元ファイルを手元へ写しています',progress:'共有から写しています',delayMs:0},
+   ()=>api('/api/db-mirror/refresh',{quiet:true,method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({wait:true,force:true})}));
+ }catch(e){err=e;WL.quiet.note('共有からの写しを更新できない（手元の写しで読み直す）',e)}
+ try{invalidateTableCache();await load(true)}
+ finally{reloadBusy=false;chip?.classList.remove('is-busy');chip?.removeAttribute('aria-busy')}
+ const at=fmtStamp(listSourceInfo&&listSourceInfo.at);
+ const m=err?{ok:false,title:'元データを取り込めませんでした',detail:String(err.message||err)+'（前の写しで表示しています）'}
+            :mirrorResultText(res,S.db);
+ showToast(m.title,m.detail+(at?`／元データ ${at}`:''),m.ok?3600:7000);
+}
+/* **写しが新しくなったら一覧も新しくする**（§9.463、利用者の指示「意図的に更新
+   停止していない限りは、版が相違ある場合直ちに更新すべき」）。写し直しは背景の
+   周回（既定60秒）が行うが、**画面はそれを知らずに前の行を出し続けていた**
+   （画面の控えは3分）。軽い口（共有を見に行かない）で素性だけ聞き、
+   取り込んだ時刻が変わっていたら読み直す。手動のときは「新しい版あり」を出すだけ。
+   見えていない間・読み直している間は聞かない。 */
+const MIRROR_POLL_MS=20000;
+let mirrorPollTimer=null;
+async function pollMirrorSource(){
+ if(document.hidden||reloadBusy||!S.db)return;
+ const el=document.querySelector('#listFreshness');
+ if(!el||el.hidden||!el.offsetWidth)return;
+ let d=null;
+ try{d=await api('/api/db-mirror/source?db='+encodeURIComponent(S.db),{quiet:true})}
+ catch(e){WL.quiet.note('元データの素性を聞けない（次の周回で聞き直す）',e);return}
+ const now=d&&d.source,was=listSourceInfo;
+ if(!now||!was)return;
+ if(now.copiedAt&&was.copiedAt&&now.copiedAt!==was.copiedAt){
+  invalidateTableCache();await load(true);
+  showToast('元データが新しくなったので読み直しました',now.at?`元データ ${fmtStamp(now.at)}`:'',3000);
+  return;
+ }
+ if(!!now.newer!==!!was.newer){listSourceInfo=Object.assign({},was,{newer:now.newer,mode:now.mode});updateListFreshness(null)}
+}
+function startMirrorPoll(){
+ if(mirrorPollTimer)return;
+ mirrorPollTimer=setInterval(()=>{pollMirrorSource()},MIRROR_POLL_MS);
+}
+startMirrorPoll();
 
 function closeReloadMenu(){
  document.getElementById('reloadMenu')?.remove();

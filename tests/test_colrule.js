@@ -158,6 +158,52 @@ run('test_colrule: 値の読み替え(§9.88 段4)', async ({page,rec,B,W,idle,p
    (await cell({raw:'00',format:numFmt,rows:flag,row:{X:'00'}})).text);
   rec('当たらなければ書式で整形する',
    (await cell({raw:'12',format:numFmt,rows:flag,row:{X:'12'}})).text==='12.0');
+
+  /* ---- 2b) 抜き出し・変換してから比べる／抜き出した値を出す（§9.464、利用者の指示
+     「文字列からの抽出や変換処理もできるように」）。条件の片側に**式**、出す字は
+     **`=`で始めると式**。`[この列]`はこの列の値。 ---- */
+  const calc=expr=>({kind:'calc',expr});
+  const big=[{conditions:[{left:calc("num(extract([この列],'[0-9]+'))"),op:'gt',right:{kind:'value',value:'100'}}],
+              text:'大',color:'warn'}];
+  rec('式で抜き出してから比べられる（LOT123 → 123 > 100）',
+   (await evalRule(big,{X:'LOT123'},'X'))?.text==='大');
+  rec('式で抜き出した値が条件に合わなければ当たらない（LOT045 → 45）',
+   (await evalRule(big,{X:'LOT045'},'X'))===null);
+  rec('式は他の列も見られる',
+   (await evalRule([{conditions:[{left:calc("hankaku([Y])"),op:'eq',right:{kind:'value',value:'AB1'}}],text:'一致'}],
+                   {X:'x',Y:'ＡＢ１'},'X'))?.text==='一致');
+  rec('読めない式の条件は「当たらない」で済ませる（一覧を壊さない）',
+   (await evalRule([{conditions:[{left:calc("extract([この列],'(')"),op:'notEmpty'}],text:'X'}],{X:'a'},'X'))===null);
+  const ext=await cell({raw:'LOT-123-A',rows:[{conditions:[],text:"=extract([この列],'[0-9]+')"}],
+                        row:{X:'LOT-123-A'},col:'X'});
+  rec('出す字を「=式」にすると、抜き出した値を出せる',ext.text==='123',ext.text);
+  const used=await page.evaluate(()=>{
+   WL.displayRules.put('__u2__',[{conditions:[{left:{kind:'calc',expr:"mid([品番],2,3)"},op:'notEmpty'}],
+                                  text:'=concat([区分],"-")'}]);
+   const u=WL.displayRules.columnsUsed('__u2__');
+   WL.displayRules.put('__u2__',null);
+   return u;
+  });
+  rec('式が見ている列も「使っている列」に数える（スケジュール表が値を用意できる）',
+   used.includes('品番')&&used.includes('区分')&&!used.includes('この列'),JSON.stringify(used));
+
+  /* ---- 2c) 表示名を付けても元の名前で列を引ける（§9.464、利用者の報告「元の列の名前を
+     変えると、使えなくなってしまう」）。答えは`WL.columnLayout.keyByName()`の1箇所。 ---- */
+  /* **本物の一覧の設定には触らない**——網だけが使う対象名（`__kb__`）に表示名を置く
+     （保存済みの設定の器を直に書き換えると、後の節と後の網が汚れた設定を見る）。 */
+  const kb=await page.evaluate(()=>{
+   const t='__kb__',keys=['ﾛｯﾄ番号','製造板厚','区分'];
+   const L=WL.columnLayout;
+   L.get(t).names={'製造板厚':'厚み'};
+   return {raw:L.keyByName(t,keys,'製造板厚'),named:L.keyByName(t,keys,'厚み'),
+           alias:L.keyByName(t,keys,'ロット番号'),aliasKey:L.keyByName(t,keys,'lotNo'),
+           none:L.keyByName(t,keys,'無い列')};
+  });
+  rec('表示名を付けても、元の列名で引ける',kb.raw==='製造板厚',JSON.stringify(kb));
+  rec('いまの表示名でも同じ列を引ける',kb.named==='製造板厚',JSON.stringify(kb));
+  rec('別名（ロット番号／lotNo）でも生の列名（ﾛｯﾄ番号）を引ける',
+   kb.alias==='ﾛｯﾄ番号'&&kb.aliasKey==='ﾛｯﾄ番号',JSON.stringify(kb));
+  rec('無い名前は引かない（空）',kb.none==='',JSON.stringify(kb));
   rec('読み替えも書式も駄目なら生の値',
    (await cell({raw:'ABC',format:numFmt,rows:flag,row:{X:'ABC'}})).text==='ABC');
   rec('表示値が空の行は元の値のまま出す(色だけ付く)',

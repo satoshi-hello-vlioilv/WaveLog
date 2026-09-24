@@ -1,4 +1,4 @@
-# 一覧と列（122件）
+# 一覧と列（125件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 名前→列は`WL.columnLayout.keyByName()`の1箇所（元の名前→表示名→別名）。表示名を付けても元の名前で引ける | `test_colrule.js`・`test_sctimecols.js` | [§9.464](../../docs/decisions/9.464.md) |
+| 文字列の抽出・変換は`WL.formula`の関数（mid・extract・replace…）。正規表現は書いている最中に断る | `test_formula.js` | [§9.464](../../docs/decisions/9.464.md) |
+| 条件の片側に式（`kind:'calc'`）、表示値は`=`で始めると式。式が見る列も`columnsUsed()`に数える | `test_colrule.js`・`test_displayrule.py` | [§9.464](../../docs/decisions/9.464.md) |
 | 屑幅の式は`WL.split.scrapWidths()`の1箇所（片耳＝両耳合計÷2）。読めない値は`null`で0にしない | `test_scscrap.js` | [§9.389](../../docs/decisions/9.389.md) |
 | スケジュールの固定列は`SC_COL_BEFORE`／`SC_COL_AFTER`のどちらかに必ず載せる（載せ忘れると選べない列になる） | `test_scscrap.js` | [§9.389](../../docs/decisions/9.389.md) |
 | 一覧を描き直すときはスクロール位置を`renderGrid()`の入口で控える（戻すのは並べ終えてから） | `test_scpick.js` | [§9.357](../../docs/decisions/9.357.md) |
