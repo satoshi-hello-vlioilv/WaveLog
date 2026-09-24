@@ -1128,6 +1128,18 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('立体図へ戻すときも組むのは1回だけ',
         swSolid.builds - swCut.builds === 1,
         `組んだ回数 ${swCut.builds} → ${swSolid.builds}`);
+    /* §9.466（利用者の指示「立体図は、OSDSの表示が逆で、フローティングシートの位置も逆」
+       「ギアボックス側DS(基準面)、スタンドハンドル付きの外れる方がOS」「フローティング
+       シートはスタンド側外れる方」）。**同じカメラで写した横位置**で見る——絵ではなく、
+       機械の両端・札・シートが画面のどちらに在るか。 */
+    const e3 = await page.evaluate(() => window.WL.bladeSolid.view().ends3);
+    const nearer = (a, p, q) => Math.abs(a - p) < Math.abs(a - q);
+    rec('立体図の DS の札はギヤボックス（駆動側）、OS の札は外せる軸端部の側',
+        !!e3 && nearer(e3.ds, e3.gear, e3.stand) && nearer(e3.os, e3.stand, e3.gear), JSON.stringify(e3));
+    rec('立体図のフローティングシートは外せる軸端部（OS）の側',
+        !!e3 && nearer(e3.seat, e3.stand, e3.gear), JSON.stringify(e3));
+    rec('立体図でも「基準原点を右」なら基準面（DS）が画面の右',
+        !!e3 && e3.ds > e3.os, JSON.stringify(e3));
     await page.click('#bsFigTabs [data-fig="cut"]');
     await W.until(page, () => {
      const v = window.WL.bladeSolid.view();
