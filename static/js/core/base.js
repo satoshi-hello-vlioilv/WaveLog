@@ -1215,7 +1215,7 @@ window.WL.sortSpec=sortSpec;
    **判定は画面側だけ**で行う(サーバーは生の値を返し、並べ替え・絞り込みは
    生の値のまま効かせる。書式と同じ方針)。 */
 const displayRules=(()=>{
- let cache=null,inflight=null,usageMap=null;
+ let cache=null,inflight=null,usageMap=null,optMap={};
  const num=v=>{
   const t=String(v==null?'':v).trim().replace(/,/g,'');
   if(!t||!/^[-+]?(\d+\.?\d*|\.\d+)$/.test(t))return null;
@@ -1238,7 +1238,11 @@ const displayRules=(()=>{
   return c;
  }
  const SELF_KEY='この列';
+ /* 表示の値で見る行（§9.474・`cellFormat.ruleRow()`が作る）は**写さない**——写すと全部の列の
+    表示の値を作ってしまう（見ている列だけを引くための Proxy）。`[この列]`もその行が答える。 */
+ const VIEW_ROW=Symbol('viewRow');
  function calcRow(row,selfCol){
+  if(row&&row[VIEW_ROW])return row;
   const r=Object.assign({},row||{});
   if(!(SELF_KEY in r))r[SELF_KEY]=row?row[selfCol]:'';
   return r;
@@ -1269,6 +1273,11 @@ const displayRules=(()=>{
   const ls=String(L==null?'':L);
   if(cond.op==='empty')return ls.trim()==='';
   if(cond.op==='notEmpty')return ls.trim()!=='';
+  /* 式そのものが真なら（§9.474）。真偽の読み方は式の`if`／`and`と同じ`WL.formula.truthy`。 */
+  if(cond.op==='formula'){
+   if(!cond.left||cond.left.kind!=='calc'||!calcOf(cond.left.expr))return false;
+   return WL.formula.truthy(L);
+  }
   const R=operand(cond.right,row,selfCol);
   const rs=String(R==null?'':R);
   switch(cond.op){
@@ -1311,7 +1320,7 @@ const displayRules=(()=>{
   inflight=(async()=>{
    try{
     const r=await api('/api/display-rule-master');
-    cache=r.rules||{};usageMap=r.usage||{};
+    cache=r.rules||{};usageMap=r.usage||{};optMap=r.options||{};
     usedMemo=null;rev++;   /* 中身が変わったので「どの列を見ているか」の控えを捨てる */
    }catch(e){cache=cache||{}}   // 読めなくても読み替えなしで一覧は出す
    inflight=null;return cache;
@@ -1363,10 +1372,14 @@ const displayRules=(()=>{
             nullを返す**——空配列と同じに扱うと「どこにも使われていない」と
             言い切ってしまう(読めなかっただけかもしれない)。 */
          usage:name=>usageMap?((usageMap[name]||[]).slice()):null,
+         /* 条件が見る列の値（§9.474）: 'raw'＝元のデータ／'shown'＝表示の値。ルールごと。 */
+         selfMode:name=>((optMap[name]||{}).self==='shown'?'shown':'raw'),
+         VIEW_ROW,SELF_KEY,
          /* 編集画面が保存した直後に、一覧へすぐ反映させるための差し替え。 */
-         put:(name,rows)=>{cache=cache||{};if(rows&&rows.length)cache[name]=rows;else delete cache[name];
+         put:(name,rows,opt)=>{cache=cache||{};if(rows&&rows.length)cache[name]=rows;else delete cache[name];
+           if(opt)optMap[name]=opt;else if(!rows)delete optMap[name];
            usedMemo=null;rev++},
-         forget:()=>{cache=null;usedMemo=null;rev++}};
+         forget:()=>{cache=null;optMap={};usedMemo=null;rev++}};
 })();
 window.WL.displayRules=displayRules;
 
@@ -1475,21 +1488,65 @@ const cellFormat=(()=>{
     読み替えが先なのは、読み替えが生の値を見て判断するものだから
     ('00'を'0'へ整形してから読み替えると当たらない)。
     戻り値は {text, color}。colorは読み替えが指定したときだけ入る。 */
- function cell(opt){
+ /* **読み替えが見る行**（§9.474、利用者の指示「データをもとのまま使うか、設定範囲内で変換された
+    データを使うか選べるように」「他の列だったとしても…元データのみを対象にしている」）。
+      raw   … 元のデータ。ただし**この列**が式の列なら式の結果（元のデータを持たないため）
+      shown … 表示の値。この列は「作り方の式→値の整え方」の結果、他の列は**その列の表示**
+              （作り方の式→読み替え→値の整え方）。画面が`opt.view`で「列がどう見えるか」を渡す
+    **見ている列だけを引く**（Proxy・行ごとに全列を作らない・§9.224）。巡る参照（A の読み替えが B を、
+    B の読み替えが A を見る）は、巡った列の読み替えを外して止める。 */
+ const hasOwn=(o,k)=>!!o&&Object.prototype.hasOwnProperty.call(o,k)&&o[k]!==undefined;
+ function ruleRow(rule,opt,stack){
+  const row=opt.row||{},col=opt.column;
+  const shown=displayRules.selfMode(rule)==='shown';
+  const own=shown?value(opt.format,opt.raw):(hasOwn(row,col)?row[col]:opt.raw);
+  if(!shown){
+   if(hasOwn(row,col)&&row[col]===own)return row;
+   return Object.assign({},row,{[col]:own});
+  }
+  const view=opt.view||{};
+  const memo=new Map([[col,own],[displayRules.SELF_KEY,own]]);
+  const seen=stack||new Set();
+  seen.add(col);
+  /* `n`は式・条件に書いた名前（表示名のこともある）。どの列かは画面が答える（`view.key`・§9.464）。 */
+  const shownOf=n=>{
+   const k=view.key?view.key(n):n;
+   const calc=view.calc?view.calc(k):null;
+   const rawK=view.raw?view.raw(k):calc?calc.run(row):(hasOwn(row,k)?row[k]:row[n]);
+   const fmt=view.format?view.format(k):null;
+   const r=view.rule?view.rule(k):'';
+   if(!r||seen.has(k))return value(fmt,rawK);
+   return inner({raw:rawK,format:fmt,rule:r,row,column:k,view},seen).text;
+  };
+  return new Proxy(row,{
+   get(t,k){
+    if(k===displayRules.VIEW_ROW)return true;
+    if(typeof k!=='string')return t[k];
+    if(!memo.has(k))memo.set(k,shownOf(k));
+    return memo.get(k);
+   },
+   has(t,k){return typeof k==='string'||k in t}
+  });
+ }
+ function inner(opt,stack){
   const raw=opt&&opt.raw;
   const rule=opt&&opt.rule;
   if(rule){
-   const hit=displayRules.match(rule,opt.row,opt.column);
+   const row=ruleRow(rule,opt,stack?new Set(stack):null);
+   const hit=displayRules.match(rule,row,opt.column);
    // 表示値が空の行は「元の値のまま出す」(当たったことは色で示せる)。
    if(hit){
-    const t=displayRules.textOf(hit,opt.row,opt.column);
+    const t=displayRules.textOf(hit,row,opt.column);
     return {text:t!==''&&t!=null?String(t):value(opt.format,raw),color:hit.color||''};
    }
   }
   return {text:value(opt.format,raw),color:''};
  }
+ const cell=opt=>inner(opt,null);
  return {value,parts,cell,
-         text:(target,col,raw)=>value(columnLayout.format(target,col),raw)};
+         text:(target,col,raw)=>value(columnLayout.format(target,col),raw),
+         /* 読み替えが見る行そのもの（編集画面の「試してみる」が同じ答えを使う・§9.474）。 */
+         ruleRow:(rule,opt)=>ruleRow(rule,opt||{},null)};
 })();
 window.WL.cellFormat=cellFormat;
 function databaseLabel(key){

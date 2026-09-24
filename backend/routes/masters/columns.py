@@ -29,7 +29,7 @@ from ...repositories.master_repo import (
  delete_column_preset,
  normalize_column_preset,
  DISPLAY_RULE_TABLE,
- display_rules,
+ display_rules, display_rule_options,
  set_display_rule,
  delete_display_rule,
  display_rule_usage,
@@ -307,19 +307,21 @@ def column_preset_master_delete():
 def display_rule_master_get():
  path=DBS['MASTER']['path']
  if not path.exists():
-  return jsonify(ok=True,rules={},usage={},ops=list(RULE_OPS),colors=list(RULE_COLORS))
+  return jsonify(ok=True,rules={},options={},usage={},ops=list(RULE_OPS),colors=list(RULE_COLORS))
  with connect(path,True) as c:
   rules=display_rules(c)
+  # ルールごとの「条件が見る列の値」（§9.474）。行の並びとは別に返す（ルールの属性）。
+  options=display_rule_options(c)
   # **どの列で使われているかも一緒に返す。** 編集画面が「このルールを直すと
   # どこへ効くか」を出せるようにするため(読み替えは複数の列で使い回す)。
   usage=display_rule_usage_all(c)
- return jsonify(ok=True,rules=rules,usage=usage,ops=list(RULE_OPS),colors=list(RULE_COLORS),
+ return jsonify(ok=True,rules=rules,options=options,usage=usage,ops=list(RULE_OPS),colors=list(RULE_COLORS),
                 table=DISPLAY_RULE_TABLE)
 
 @bp.post('/api/display-rule-master')
 @api_guard('表示ルール保存失敗',bad=ValueError)
 def display_rule_master_save():
- x=body({'name': any_, 'rows': any_});uid=request_user_id(x)
+ x=body({'name': any_, 'rows': any_, 'self': any_});uid=request_user_id(x)
  name=x.text('name')
  if not name:return jsonify(error='ルール名を指定してください。'),400
  rows=x.get('rows')
@@ -327,9 +329,10 @@ def display_rule_master_save():
   return jsonify(error='ルールの行(rows)の指定が不正です。'),400
  path=DBS['MASTER']['path']
  with connect(path,False) as c:
-  n=set_display_rule(c,name,rows or [],uid)
+  n=set_display_rule(c,name,rows or [],uid,x.text('self'))
   rules=display_rules(c)
- return jsonify(ok=True,name=name,rows=n,rules=rules,updated_by=uid,
+  options=display_rule_options(c)
+ return jsonify(ok=True,name=name,rows=n,rules=rules,options=options,updated_by=uid,
                 message=f'表示ルール「{name}」を保存しました。')
 
 @bp.post('/api/display-rule-master/delete')

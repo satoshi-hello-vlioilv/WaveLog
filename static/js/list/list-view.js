@@ -2071,6 +2071,12 @@ function renderGridInner(){
   nameKeys.forEach(([n,k])=>{if(!(n in o))o[n]=r[k]});
   return o;
  };
+ /* 読み替えが「表示の値」で見るとき（§9.474）の**列の見え方**。この一覧が持つ式・書式・読み替えを
+    そのまま渡す（`WL.cellFormat`が見ている列だけを引く）。 */
+ const ruleView={
+  key:n=>(colFmt.has(n)?n:(WL.columnLayout.keyByName(layoutTarget,dataCols,n)||n)),
+  calc:k=>colCalc.get(k)||null, format:k=>colFmt.get(k)||null, rule:k=>colRule.get(k)||''
+ };
  const numCol=c=>colFmt.get(c)?.kind==='number';
  /* 列幅は**セルを描く前に決める**(§9.94)。colgroupへ入れるだけでなく、
     「その幅に入り切らない値へtitleを付ける」判断にも使うため。 */
@@ -2257,7 +2263,7 @@ function renderGridInner(){
    const calc=colCalc.get(c);
    const nr=namedRow(r);
    const rawVal=calc?calc.run(nr):r[c];
-   const out=WL.cellFormat.cell({raw:rawVal,format:colFmt.get(c),rule:colRule.get(c),row:nr,column:c});
+   const out=WL.cellFormat.cell({raw:rawVal,format:colFmt.get(c),rule:colRule.get(c),row:nr,column:c,view:ruleView});
    const raw=String(rawVal==null?'':rawVal);
    const cls=[numCol(c)?'col-num':'',WL.columnAlign.cellClass(layoutTarget,c,colFmt.get(c)?.kind||''),
               out.color?'cell-'+out.color:''].filter(Boolean).join(' ');

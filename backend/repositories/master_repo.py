@@ -2094,15 +2094,22 @@ def set_list_view_settings(c,target,row_gap,uid):
 DISPLAY_RULE_TABLE='表示ルールマスタ'
 
 # 演算子。増やすときは画面(list-rules.js)の選択肢と評価(base.js)も足すこと。
+# `formula`＝**式そのものが真なら**（§9.474、利用者の指示「式を選んだら、条件式の符号など選ばずに、
+# 列の作り方にあるような自由度の高い内容で組めるように」）。左辺は式（calc）だけ。
 RULE_OPS=('eq','ne','contains','startsWith','endsWith','empty','notEmpty',
-          'gt','ge','lt','le','between','regex')
+          'gt','ge','lt','le','between','regex','formula')
 # 右辺を持たない演算子。UIで値欄を出さない判断にも使う。
-RULE_OPS_NO_RIGHT=('empty','notEmpty')
+RULE_OPS_NO_RIGHT=('empty','notEmpty','formula')
+# 条件が見る列の値（§9.474、利用者の指示「データをもとのまま使うか、設定範囲内で変換されたデータを
+# 使うか選べるように」「他の列だったとしても…元データのみを対象にしている」）。**ルールごと**に持つ:
+#   raw   … 元のデータ（今までどおり）
+#   shown … 表示の値（その列の作り方の式→読み替え→値の整え方の後。この列も他の列も同じ）
+RULE_SELF_MODES=('raw','shown')
 # 色。バッジの意味を4つに絞る(増やすと「どれを選ぶか」で迷いが生まれる)。
 RULE_COLORS=('','ok','ng','warn','muted')
 
-# 条件の片側の式・出す字の式の長さ（§9.464）。**画面の`WL.formula`の上限（400字）と同じ**。
-RULE_EXPR_MAX=400
+# 条件の片側の式・出す字の式の長さ（§9.464）。**画面の`WL.formula`の上限と同じ**（§9.474 で 400→2000）。
+RULE_EXPR_MAX=2000
 
 def _normalize_operand(raw,allow_value=True):
  """条件の片側。self(この列) / column(他の列) / value(固定値) / calc(式・§9.464)。
@@ -2135,6 +2142,8 @@ def normalize_rule_conditions(raw):
   if op not in RULE_OPS:continue
   left=_normalize_operand(item.get('left'))
   if not left:continue
+  # 「式が真なら」は左辺が式のときだけ意味を持つ（他の片側では真偽を作れない）。
+  if op=='formula' and left.get('kind')!='calc':continue
   cond={'left':left,'op':op}
   if op not in RULE_OPS_NO_RIGHT:
    right=_normalize_operand(item.get('right'))
@@ -2157,7 +2166,25 @@ def ensure_display_rule_table(c):
   cur.execute('CREATE INDEX [IX_表示ルールマスタ] ON [表示ルールマスタ] ([ルール名],[表示順])')
   c.commit();created=True
  ensure_audit_columns(c,DISPLAY_RULE_TABLE)
+ # 条件が見る列の値（§9.474）。**ルールの全行に同じ値**を書く（ルールの属性だが、表は行単位）。
+ add_missing_columns(c,DISPLAY_RULE_TABLE,(('列の値','TEXT'),))
  return created
+
+def rule_self_mode(v):
+ """条件が見る列の値（§9.474）を 'raw'／'shown' へ。読めなければ 'raw'（今までの動き）。"""
+ t=str(v or '').strip()
+ return t if t in RULE_SELF_MODES else 'raw'
+
+def display_rule_options(c):
+ """{ルール名: {'self': 'raw'|'shown'}}。列がまだ無い古い表では空（全部 raw）。"""
+ if DISPLAY_RULE_TABLE not in tables(c):return {}
+ have={r[1] for r in c.cursor().execute(f'PRAGMA table_info([{DISPLAY_RULE_TABLE}])')}
+ if '列の値' not in have:return {}
+ out={}
+ for name,mode in c.cursor().execute('SELECT [ルール名],[列の値] FROM [表示ルールマスタ] ORDER BY [ルール名],[表示順],[ID]'):
+  name=str(name or '').strip()
+  if name and name not in out:out[name]={'self':rule_self_mode(mode)}
+ return out
 
 def display_rules(c):
  """{ルール名: [{'conditions':[...], 'text':..., 'color':...}, ...]}。
@@ -2181,7 +2208,7 @@ def display_rules(c):
   })
  return out
 
-def set_display_rule(c,name,rows,uid):
+def set_display_rule(c,name,rows,uid,self_mode='raw'):
  """1つのルールを全置換する(列レイアウトマスタと同じ方式)。
 
  行の順序がそのまま評価順になる。**空の行(表示値も条件も無い)は捨てる**
@@ -2203,9 +2230,9 @@ def set_display_rule(c,name,rows,uid):
   if color not in RULE_COLORS:color=''
   if not conds and not text and not color:continue
   seq+=1
-  cur.execute('INSERT INTO [表示ルールマスタ] ([ルール名],[表示順],[条件JSON],[表示値],[色],'
-              '[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,Now(),Now())',
-              [name,seq,json.dumps(conds,ensure_ascii=False),text,color or None,uid,uid])
+  cur.execute('INSERT INTO [表示ルールマスタ] ([ルール名],[表示順],[条件JSON],[表示値],[色],[列の値],'
+              '[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,Now(),Now())',
+              [name,seq,json.dumps(conds,ensure_ascii=False),text,color or None,rule_self_mode(self_mode),uid,uid])
  c.commit()
  return seq
 
