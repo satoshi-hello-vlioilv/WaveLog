@@ -20,7 +20,7 @@ CLAUDE.md の「画面を作るときの基準」（14項目）と、それをWa
 | `backend/routes/`・`body(spec)`・`api_guard`・権限 | [api.md](api.md) | 20 |
 | `TableDef`・マスタのサーバー側・既定値 | [master-server.md](master-server.md) | 27 |
 | マスタ管理の画面・盤・編集モーダル | [master-ui.md](master-ui.md) | 21 |
-| `list-view.js`・列レイアウト・フィルタ・仮想行 | [list.md](list.md) | 129 |
+| `list-view.js`・列レイアウト・フィルタ・仮想行 | [list.md](list.md) | 135 |
 | 測定画面・操業データ項目・公差・条の設計 | [measure.md](measure.md) | 97 |
 | 刃組ガイダンス（`blade-*.js`）・部材・刃選択 | [bladeset.md](bladeset.md) | 199 |
 | 作業スケジュール・設備停止の登録・写しの同期 | [schedule.md](schedule.md) | 62 |
@@ -31,4 +31,4 @@ CLAUDE.md の「画面を作るときの基準」（14項目）と、それをWa
 | どの束にも入らないもの | [misc.md](misc.md) | 16 |
 
 「固定する網」の欄はテスト名。`tests/run_all.sh <名前>` で回す。
-規則は合わせて **913件**（`ui-principles.md` は節で数える）。
+規則は合わせて **919件**（`ui-principles.md` は節で数える）。

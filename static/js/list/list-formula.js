@@ -335,7 +335,89 @@
   ['extract','x, 正規表現, 組','正規表現で抜き出す'],['match','x, 正規表現','正規表現に合うか'],
   ['contains','x, 字','字を含むか'],['startswith','x, 字','字で始まるか'],['endswith','x, 字','字で終わるか'],
  ];
- window.WL.formula={compile,check,parse,sigs:SIGS,truthy,MAX_LEN,
+ /* ---------- 書いている最中の候補（§9.474、利用者の指示「条件式の部分もさらに使いやすく、関数などは
+    特にサジェスト機能なども組み込んで」） ----------
+    式の入力欄（表示ルールの条件・この列の作り方）に付ける。**焦点は入力欄のまま**（コンボボックス）
+    ——`WL.popMenu`は項目へ焦点を移すメニューの器なので使わず、見た目だけ`.wl-menu`を名乗る。
+      ・英字を打つと関数の候補（名前の頭が合う物が先、途中に含む物が後）
+      ・[ を打つと列名の候補（`opt.columns()`が答える。表示名でも元の名前でもよい）
+      ・↑↓で選び、Enter／Tab で入れる。Esc で閉じる（押下は受けたと名乗る＝窓は閉じない）
+    関数は`name(`まで入れて、引数の形を候補の中に言う（例: extract(x, 正規表現, 組)）。 */
+ let sgEl=null,sgFor=null,sgItems=[],sgAt=0,sgSpan=null;
+ function sgClose(){if(sgEl)sgEl.hidden=true;sgFor=null;sgItems=[];sgSpan=null}
+ function sgWord(inp){
+  const v=inp.value,c=inp.selectionStart||0,head=v.slice(0,c);
+  const open=head.lastIndexOf('['),close=head.lastIndexOf(']');
+  if(open>close)return {kind:'col',q:head.slice(open+1),from:open+1,to:c};
+  const m=head.match(/[A-Za-z_][A-Za-z0-9_]*$/);
+  if(m&&!/['"]/.test(head.slice(-m[0].length-1,-m[0].length)))return {kind:'fn',q:m[0].toLowerCase(),from:c-m[0].length,to:c};
+  return null;
+ }
+ function sgShow(inp,opt){
+  const w=sgWord(inp);
+  if(!w){sgClose();return}
+  const q=w.q.toLowerCase();
+  let items;
+  if(w.kind==='fn'){
+   const all=SIGS.filter(([n])=>n.includes(q));
+   items=[...all.filter(([n])=>n.startsWith(q)),...all.filter(([n])=>!n.startsWith(q))]
+    .map(([n,a,note])=>({ins:['and','or','not'].includes(n)?n+' ':n+'(',label:n,args:a,note}));
+  }else{
+   const cols=((opt.columns&&opt.columns())||[]).map(String);
+   items=cols.filter(n=>n.toLowerCase().includes(q)).slice(0,40).map(n=>({ins:n+']',label:n,args:'',note:'列'}));
+  }
+  if(!items.length||(w.kind==='fn'&&items.length===1&&items[0].label===q)){sgClose();return}
+  if(!sgEl){
+   sgEl=document.createElement('div');
+   sgEl.className='wl-menu fx-suggest';sgEl.setAttribute('role','listbox');sgEl.hidden=true;
+   document.body.appendChild(sgEl);
+   sgEl.addEventListener('mousedown',e=>{
+    const li=e.target.closest('[data-i]');if(!li)return;
+    e.preventDefault();sgPick(+li.dataset.i);
+   });
+  }
+  sgFor=inp;sgItems=items.slice(0,12);sgSpan=w;sgAt=0;
+  sgEl.innerHTML=sgItems.map((it,i)=>`<div role="option" data-i="${i}" class="fx-sg-item${i===sgAt?' is-on':''}">`
+   +`<b>${escHtml(it.label)}</b>${it.args?`<code>(${escHtml(it.args)})</code>`:''}<small>${escHtml(it.note)}</small></div>`).join('');
+  const r=inp.getBoundingClientRect();
+  sgEl.hidden=false;
+  const h=sgEl.offsetHeight,below=r.bottom+4+h<=innerHeight;
+  sgEl.style.left=`${Math.max(6,Math.min(r.left,innerWidth-sgEl.offsetWidth-6))}px`;
+  sgEl.style.top=`${below?r.bottom+4:Math.max(6,r.top-h-4)}px`;
+ }
+ function sgMark(){if(sgEl)sgEl.querySelectorAll('.fx-sg-item').forEach((el,i)=>el.classList.toggle('is-on',i===sgAt))}
+ function sgPick(i){
+  const it=sgItems[i],inp=sgFor,w=sgSpan;
+  if(!it||!inp||!w)return;
+  const v=inp.value;
+  /* 列名の候補は、すでに閉じ括弧があれば二重にしない。 */
+  const rest=v.slice(w.to);
+  const ins=it.ins.endsWith(']')&&rest.startsWith(']')?it.ins.slice(0,-1):it.ins;
+  inp.value=v.slice(0,w.from)+ins+rest;
+  const at=w.from+ins.length+(ins!==it.ins?1:0);
+  inp.setSelectionRange(at,at);
+  sgClose();
+  inp.dispatchEvent(new Event('input',{bubbles:true}));
+  inp.focus();
+ }
+ const escHtml=t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ function suggest(inp,opt){
+  if(!inp||inp.dataset.fxSuggest)return;
+  inp.dataset.fxSuggest='1';
+  inp.setAttribute('autocomplete','off');
+  const o=opt||{};
+  inp.addEventListener('input',()=>sgShow(inp,o));
+  inp.addEventListener('click',()=>sgShow(inp,o));
+  inp.addEventListener('blur',()=>setTimeout(()=>{if(sgFor===inp&&document.activeElement!==inp)sgClose()},0));
+  inp.addEventListener('keydown',e=>{
+   if(sgFor!==inp||!sgEl||sgEl.hidden)return;
+   if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+    e.preventDefault();sgAt=(sgAt+(e.key==='ArrowDown'?1:-1)+sgItems.length)%sgItems.length;sgMark();
+   }else if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();sgPick(sgAt)}
+   else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();sgClose()}
+  });
+ }
+ window.WL.formula={compile,check,parse,sigs:SIGS,truthy,MAX_LEN,suggest,
              /* 説明文をパネルとドキュメントで共用する(2箇所に書かない)。 */
              help:[
               ['[列名]','その行のその列の値'],

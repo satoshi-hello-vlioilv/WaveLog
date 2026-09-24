@@ -426,6 +426,98 @@ run('test_colrule: 値の読み替え(§9.88 段4)', async ({page,rec,B,W,idle,p
   rec('新規作成の名前をprompt()で聞かない',usedPrompt.called===false,JSON.stringify(usedPrompt));
   rec('名前はアプリの確認モーダルで聞く',usedPrompt.shown===true,JSON.stringify(usedPrompt));
 
+  /* ---- §9.474: 式が真なら／列の値（元のデータ・表示の値）／式への変換／窓 ----
+     利用者の指示「式を選んだら、条件式の符号など選ばずに…自由度の高い内容で組めるように」
+     「データをもとのまま使うか、設定範囲内で変換されたデータを使うか選べるように」「他の列だったと
+     しても…元データのみを対象にしている」「ルールを…『この列の作り方』…に直接入れられるように式変換」
+     「試した結果…左の3割くらいに…2ペイン」「関数などは特にサジェスト」。
+     前（実測）: 式の列を他の列で見るルール 0/87・式の列自身のルール 0/87・式が真なら は欄5つ。 */
+  const r474=await page.evaluate(()=>{
+   const out={};
+   const fxRule=[{conditions:[{left:{kind:'calc',expr:"len([この列]) > 3 and [区分] <> 'X'"},op:'formula'}],text:'長い',color:''}];
+   WL.displayRules.put('__f__',fxRule);
+   out.fx=[WL.displayRules.match('__f__',{A:'abcd',区分:'Y'},'A'),WL.displayRules.match('__f__',{A:'ab',区分:'Y'},'A'),
+           WL.displayRules.match('__f__',{A:'abcd',区分:'X'},'A')].map(h=>h?h.text:'-').join('/');
+   WL.displayRules.put('__f__',null);
+   /* 式の列 F（[A] の頭に 'Z'）を、他の列 B のルールが見る。表示の値では F の書式（後ろに「号」）まで見える。 */
+   const view={calc:k=>k==='F'?WL.formula.compile("concat('Z',[A])"):null,
+               format:k=>k==='F'?{kind:'text',suffix:'号'}:null,rule:()=>''};
+   const other=[{conditions:[{left:{kind:'column',column:'F'},op:'startsWith',right:{kind:'value',value:'Z'}}],text:'元',color:''}];
+   const shown=[{conditions:[{left:{kind:'column',column:'F'},op:'endsWith',right:{kind:'value',value:'号'}}],text:'表',color:''}];
+   WL.displayRules.put('__o__',other,{self:'raw'});WL.displayRules.put('__s__',shown,{self:'shown'});
+   const row={A:'1',B:'b'};
+   out.raw=WL.cellFormat.cell({raw:'b',format:null,rule:'__o__',row,column:'B',view}).text;
+   out.shown=WL.cellFormat.cell({raw:'b',format:null,rule:'__s__',row,column:'B',view}).text;
+   out.shownRaw=WL.cellFormat.cell({raw:'b',format:null,rule:'__o__',row:{A:'1',B:'b'},column:'B'}).text;
+   WL.displayRules.put('__o__',null);WL.displayRules.put('__s__',null);
+   /* 式への変換は**同じ答え**を出す（行の値をいくつも当てて突き合わせる）。 */
+   const rule=[
+    {conditions:[{left:{kind:'self'},op:'le',right:{kind:'value',value:'300'}},
+                 {left:{kind:'column',column:'K'},op:'ne',right:{kind:'value',value:'KEN'}}],text:'機側',color:'ok'},
+    {conditions:[{left:{kind:'column',column:'K'},op:'startsWith',right:{kind:'value',value:'4'}}],text:'フロア',color:''},
+    {conditions:[{left:{kind:'calc',expr:"contains([この列],'5')"},op:'formula'}],text:"=concat([K],'-')",color:''},
+    {conditions:[],text:'他',color:''}];
+   const cv=WL.displayRules.toFormula(rule,{column:'W'});
+   const f=WL.formula.compile(cv.expr);
+   WL.displayRules.put('__c__',rule);
+   const rows=[{W:'250',K:'A'},{W:'250',K:'KEN'},{W:'400',K:'42'},{W:'450',K:'X'},{W:'800',K:'Y'},{W:'04',K:'04'}];
+   out.conv=rows.map(r=>{const h=WL.displayRules.match('__c__',r,'W');
+     const a=h?(WL.displayRules.textOf(h,r,'W')||r.W):r.W, b=String(f.run(r));return a===b?1:`${a}≠${b}`});
+   WL.displayRules.put('__c__',null);
+   out.notes=cv.notes;out.expr=cv.expr;
+   return out;
+  });
+  rec('式が真なら: 式だけで当たる／当たらないが決まる',r474.fx==='長い/-/-',r474.fx);
+  rec('元のデータでも、式の列は式の結果を見る（他の列から）',r474.raw==='元',r474.raw);
+  rec('表示の値では、他の列の書式の後の値を見る',r474.shown==='表',r474.shown);
+  rec('列の見え方を渡さない画面では今までどおり（元のデータ）',r474.shownRaw==='b',r474.shownRaw);
+  rec('ルールを式へ変換すると、どの行でも同じ答えになる',r474.conv.every(x=>x===1),JSON.stringify(r474.conv)+' '+r474.expr);
+  rec('式にできない物（色）は注意として言う',r474.notes.some(t=>/色/.test(t)),r474.notes.join('／'));
+
+  await page.evaluate(async a=>{await WL.displayRules.load(true);WL.listRules.open({name:a.rule,column:a.col})},{rule:RULE,col});
+  await page.waitForSelector('#listRulePanel:not([hidden])',{timeout:8000});
+  const ui=await page.evaluate(()=>{
+   const p=document.getElementById('listRulePanel').getBoundingClientRect();
+   const t=document.getElementById('lrTry').getBoundingClientRect();
+   const k=document.querySelector('#lrRows .lr-kind[data-side="left"]');
+   k.value='calc';k.dispatchEvent(new Event('change',{bubbles:true}));
+   const c=document.querySelector('#lrRows .lr-cond');
+   const vis=[...c.querySelectorAll('select,input,textarea')].filter(e=>e.getBoundingClientRect().width>0);
+   return {leftPct:Math.round((t.left-p.left)/p.width*100),wPct:Math.round(t.width/p.width*100),
+           tryTop:Math.round(t.top-p.top),n:vis.length,op:!!c.querySelector('.lr-op'),
+           mode:[...document.querySelectorAll('#listRulePanel .lr-mode [data-mode]')].map(b=>b.textContent.trim()).join('/')};
+  });
+  rec('試した結果は窓の左（3割ほど）にいつも見えている',ui.leftPct<=5&&ui.wPct>=24&&ui.wPct<=36&&ui.tryTop<120,JSON.stringify(ui));
+  rec('左辺を式にすると、比べ方と右辺を出さない（種類と式の2つだけ）',ui.n===2&&!ui.op,JSON.stringify(ui));
+  rec('列の値（元のデータ／表示の値）を選べる',ui.mode==='元のデータ/表示の値',ui.mode);
+  const ta=await page.$('#lrRows textarea.lr-expr');
+  await ta.click();await page.keyboard.type('ext');
+  await W.until(page,()=>!!document.querySelector('.fx-suggest:not([hidden]) [role=option]'),null,{ms:5000,what:'式の候補'});
+  const sg=await page.evaluate(()=>[...document.querySelectorAll('.fx-suggest [role=option] b')].map(b=>b.textContent));
+  rec('式の欄に打つと関数の候補が出る',sg[0]==='extract',sg.join(','));
+  await page.keyboard.press('Enter');
+  const after=await page.evaluate(()=>document.querySelector('#lrRows textarea.lr-expr').value);
+  rec('候補を選ぶと関数名と ( が入る',after==='extract(',after);
+  await page.keyboard.press('Escape');
+  await page.evaluate(()=>document.getElementById('lrToFormula').click());
+  const fx=await page.evaluate(()=>({out:(document.querySelector('.lr-fx-out')||{}).value||'',
+                                     st:(document.querySelector('.lr-fx-state')||{}).textContent||''}));
+  rec('「式にする」で同じ意味の式が出る',/^if\(/.test(fx.out),JSON.stringify(fx));
+  await page.evaluate(()=>WL.listRules.close());
+  /* 「この列の作り方」へ入れる（列の設定から開いたとき）。式の列ならいまの式を括弧で包んで「この列」に使う
+     ——作り方へ入れても自分自身を見ない。 */
+  const put=await page.evaluate(async a=>{
+   window.__got=null;
+   WL.displayRules.put(a.rule,[{conditions:[{left:{kind:'self'},op:'eq',right:{kind:'value',value:'00'}}],text:'なし',color:''}]);
+   WL.listRules.open({name:a.rule,column:'計算X',selfFormula:"concat([A],'0')",toFormula:e=>{window.__got=e}});
+   document.getElementById('lrToFormula').click();
+   const b=document.getElementById('lrFxPut');if(b)b.click();
+   return {btn:!!b,got:window.__got,open:!document.getElementById('listRulePanel').hidden};
+  },{rule:RULE,col});
+  rec('「この列の作り方」へ入れると、式の列のいまの式を「この列」として包んだ式が渡る',
+      put.btn&&put.got==="if((concat([A],'0')) = '00', 'なし', (concat([A],'0')))",JSON.stringify(put));
+  await page.evaluate(async()=>{WL.listRules.close();await WL.displayRules.load(true)});
+
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
   await cleanup();

@@ -1300,6 +1300,72 @@ const displayRules=(()=>{
    default:return false;
   }
  }
+ /* ---------- ルールを式へ（§9.474、利用者の指示「条件設定のUIを使って作ったルールを、『この列の作り方』の
+    条件式の入力欄に直接入れられるように式変換できる機能」） ----------
+    評価（上の`test()`）と**同じ意味の式**を作る。行＝`if`の入れ子（上から順・最初に当たったもの）、
+    行の中＝`and`、既定の行＝最後の「偽のとき」。**式にできないもの**（色・引用符を両方含む字）は
+    `notes`で言う（黙って落とさない）。`self`＝「この列」を式の中で何と書くか（既定は`[列名]`。
+    式の列へ入れるときは、その列のいまの式を括弧で包んで渡す＝自分自身を見ない）。 */
+ const NUM_LIT=/^-?(0|[1-9]\d*)(\.\d+)?$/;
+ function lit(v,notes,asText){
+  const t=String(v==null?'':v);
+  if(!asText&&NUM_LIT.test(t))return t;
+  if(!t.includes("'"))return `'${t}'`;
+  if(!t.includes('"'))return `"${t}"`;
+  notes.add(`「${t}」は ' と " を両方含むので式にできません（' を外しました）`);
+  return `'${t.replace(/'/g,'')}'`;
+ }
+ function toFormula(rows,opt){
+  const o=opt||{},notes=new Set();
+  const selfCol=String(o.column||'');
+  const self=o.self||`[${selfCol}]`;
+  const fixExpr=e=>`(${String(e||'').split('[この列]').join(self)})`;
+  /* `asText`＝文字の関数（contains 等）へ渡す値。数に見えても字のまま（'04' を 4 にしない）。 */
+  const side=(sd,asText)=>{
+   if(!sd)return "''";
+   if(sd.kind==='self')return self;
+   if(sd.kind==='column')return `[${sd.column}]`;
+   if(sd.kind==='calc')return fixExpr(sd.expr);
+   return lit(sd.value,notes,asText);
+  };
+  const cond=c=>{
+   const L=side(c.left);
+   switch(c.op){
+    case 'formula':return L;
+    case 'empty':return `trim(${L}) = ''`;
+    case 'notEmpty':return `trim(${L}) <> ''`;
+    case 'eq':return `${L} = ${side(c.right)}`;
+    case 'ne':return `${L} <> ${side(c.right)}`;
+    case 'gt':return `${L} > ${side(c.right)}`;
+    case 'ge':return `${L} >= ${side(c.right)}`;
+    case 'lt':return `${L} < ${side(c.right)}`;
+    case 'le':return `${L} <= ${side(c.right)}`;
+    case 'contains':return `contains(${L}, ${side(c.right,true)})`;
+    case 'startsWith':return `startswith(${L}, ${side(c.right,true)})`;
+    case 'endsWith':return `endswith(${L}, ${side(c.right,true)})`;
+    case 'regex':return `match(${L}, ${side(c.right,true)})`;
+    case 'between':return `(${L} >= ${side(c.right)} and ${L} <= ${side(c.right2)})`;
+    default:notes.add(`知らない比べ方（${c.op}）は式にできません`);return '0';
+   }
+  };
+  const out=r=>{
+   const t=r&&r.text;
+   if(typeof t==='string'&&t.startsWith('='))return fixExpr(t.slice(1));
+   if(t===''||t==null)return self;
+   return lit(t,notes);
+  };
+  let tail=self,body=[];
+  for(const r of (rows||[])){
+   if(r.color)notes.add('色（●良い・悪い…）は式にできません。色が要るなら、式の列にも同じルールを付けてください');
+   const cs=r.conditions||[];
+   if(!cs.length){tail=out(r);break}        /* 既定の行。これより下へは来ない */
+   body.push([cs.map(cond).join(' and '),out(r)]);
+  }
+  let expr=tail;
+  for(let i=body.length-1;i>=0;i--)expr=`if(${body[i][0]}, ${body[i][1]}, ${expr})`;
+  if(o.mode==='shown')notes.add('「表示の値」で見ているルールです。式は元のデータで比べます（作り方の式は元のデータから作るため）');
+  return {expr,notes:[...notes]};
+ }
  /* 当たった行を返す(色も使うので行ごと返す)。当たらなければnull。 */
  function match(name,row,selfCol){
   const rows=(cache&&cache[name])||null;
@@ -1364,7 +1430,7 @@ const displayRules=(()=>{
   const v=runCalc(t.slice(1),row,selfCol);
   return v===null?'':String(v);
  }
- return {load,match,test,columnsUsed,textOf,rev:()=>rev,
+ return {load,match,test,columnsUsed,textOf,toFormula,rev:()=>rev,
          all:()=>cache||{},
          names:()=>Object.keys(cache||{}).sort(),
          get:name=>(cache&&cache[name])||[],
@@ -1500,11 +1566,31 @@ const cellFormat=(()=>{
   const row=opt.row||{},col=opt.column;
   const shown=displayRules.selfMode(rule)==='shown';
   const own=shown?value(opt.format,opt.raw):(hasOwn(row,col)?row[col]:opt.raw);
-  if(!shown){
-   if(hasOwn(row,col)&&row[col]===own)return row;
-   return Object.assign({},row,{[col]:own});
-  }
   const view=opt.view||{};
+  if(!shown){
+   /* 元のデータ。**式の列は元のデータを持たない**ので、他の列でも式の結果を返す（この列と同じ扱い）。 */
+   if(!view.calc&&!view.raw){
+    if(hasOwn(row,col)&&row[col]===own)return row;
+    return Object.assign({},row,{[col]:own});
+   }
+   const memoR=new Map([[col,own],[displayRules.SELF_KEY,own]]);
+   return new Proxy(row,{
+    get(t,k){
+     if(k===displayRules.VIEW_ROW)return true;
+     if(typeof k!=='string')return t[k];
+     if(memoR.has(k))return memoR.get(k);
+     let v;
+     if(hasOwn(t,k))v=t[k];
+     else{
+      const key=view.key?view.key(k):k;
+      const calc=view.calc?view.calc(key):null;
+      v=view.raw?view.raw(key):calc?calc.run(t):t[key];
+     }
+     memoR.set(k,v);return v;
+    },
+    has(t,k){return typeof k==='string'||k in t}
+   });
+  }
   const memo=new Map([[col,own],[displayRules.SELF_KEY,own]]);
   const seen=stack||new Set();
   seen.add(col);

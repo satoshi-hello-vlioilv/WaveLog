@@ -532,11 +532,12 @@ body.sc-mode #headerContextSource{display:none}
      ここは `@layer state`。component 層のどの規則よりも後に効く。
      ============================================================ */
 
-  /* 濃い面（縁つき）（25族） */
+  /* 濃い面（縁つき）（26族） */
   #reportArrange.is-on,
   .ac-chip.is-on,
   .bs-hide button.is-on,
   .bs-orient-seg button.is-on,
+  .lr-seg button.is-on,
   .db-presets button.active,
   .db-seg button.active,
   .filter-search-row-actions #filterAdhocToggle.is-on,
@@ -589,8 +590,10 @@ body.sc-mode #headerContextSource{display:none}
   .op-menu button.is-on,
   .rly-grid-pick>button.is-on{background:var(--nav);color:#fff}
 
-  /* 淡い面（5族） */
+  /* 淡い面（7族） */
   .bs-chip.is-on,
+  .fx-sg-item.is-on,
+  .lr-tofx.is-on,
   .bs-stage3 .bs-btn.is-on,
   .bs-tg.is-on,
   .fc-alert-mode.is-on,
