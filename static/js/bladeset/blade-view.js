@@ -109,9 +109,12 @@
      <div class="bs-sgrp is-auto"><s class="bs-sgcap">自動で決まる</s>
       ${factHtml('刃の選び方', 'bsFPick')}
       ${factHtml('方式', 'bsFMethod')}
-      ${factHtml('保持', 'bsFHold')}
       ${factHtml('クリアランス', 'bsFClr')}
-      ${stepHtml(0, 'ゴムリング', 'bsV4', step4Html(), 'auto')}
+      <!-- **板押さえは1項目**（§9.465、利用者の指示「板押さえにしないと、ゴムリングの
+           フィンガーみたいな謎の言葉を生み出す」「表示の重複もある」）。名前は層の総称
+           （板押さえ）、値が方式（ゴムリング／フィンガー）を言う。「保持」の欄は同じ
+           ことを2度言っていたので畳んだ（§CLAUDE 8）。 -->
+      ${stepHtml(0, '板押さえ', 'bsV4', step4Html(), 'auto')}
      </div>
     </div>
    </div>
@@ -425,8 +428,8 @@
   <p class="bs-note" id="bsHint3"></p>`;
 
  const step4Html = () => `
-  <h3>ゴムリング</h3>
-  <p class="bs-lead">同じ条の両側は必ず同じリングになります。</p>
+  <h3>板押さえ（ゴムリング）</h3>
+  <p class="bs-lead">ゴムリングで押さえるとき、同じ条の両側は必ず同じリングになります。</p>
   <div class="bs-ring-row">
    <b>大径</b>
    <button type="button" class="bs-chip is-on" data-ring="big" data-mode="auto">自動</button>
@@ -769,7 +772,6 @@
    pk.classList.toggle('is-pick-on', !!(p0 && !p0.missing));
   }
   $('#bsFMethod').textContent = B.METHOD_NAME[res.method];
-  $('#bsFHold').textContent = B.holdName(st, M);
   /* 出すのは**組んだ値**。打った値と違えば並べ、理由は`title`で言う（§9.454）。 */
   const cu = clrUse(), fc = $('#bsFClr');
   const src = st.clrAuto ? `目安: 板厚の${Math.round(clearanceRate() * 100)}%` : '手入力';
@@ -796,8 +798,8 @@
    b.textContent = nm;
    b.dataset.showName = nm;
   });
-  $('#bsV4').textContent = res.finger ? 'フィンガー（不要）'
-   : `${colorOf(res.bigOd)}${res.bigOd} / ${colorOf(res.smOd)}${res.smOd}`;
+  $('#bsV4').textContent = res.finger ? B.holdName(st, M)
+   : `${B.holdName(st, M)} ${colorOf(res.bigOd)}${res.bigOd} / ${colorOf(res.smOd)}${res.smOd}`;
   /* 出すのは**中心間**（説明文がそう言っている）。クリアランスそのものは
      「クリアランス」の欄とチップの帯が持つ（§9.420）。 */
   $('#bsDVal').textContent = (res.A.dKnife || res.A.dReal).toFixed(2);

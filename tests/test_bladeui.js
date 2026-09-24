@@ -277,6 +277,22 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await W.until(page, () => /フィンガー/.test(
                     (document.querySelector('#bsV4') || {}).textContent || ''),
                   null, { ms: 8000, what: 'フィンガー方式へ切り替わる' });
+    /* §9.465（利用者の指示「板押さえにしないと、ゴムリングのフィンガーみたいな謎の
+       言葉を生み出す」「表示の重複もある」）。「自動で決まる」の群で、**名前が方式
+       （ゴムリング／フィンガー）を名乗らない**・**方式を言う項目は1つ**。 */
+    const autoHold = await page.evaluate(() => {
+     const g = document.querySelector('.bs-sgrp.is-auto');
+     const items = [...g.querySelectorAll('.bs-fact, .bs-step')].map(el => ({
+      name: ((el.querySelector('.bs-fact > s, .bs-step-tx > b') || {}).textContent || '').trim(),
+      val: ((el.querySelector('.bs-fact > b, .bs-step-tx > span') || {}).textContent || '').trim() }));
+     const K = /ゴムリング|フィンガー/;
+     return { named: items.filter(i => K.test(i.name)).length,
+              say: items.filter(i => K.test(i.name) || K.test(i.val)).length,
+              text: items.map(i => `${i.name}｜${i.val}`).join(' / ') };
+    });
+    rec('自動で決まる群の名前は方式を名乗らない（「ゴムリング｜フィンガー」を作らない）',
+        autoHold.named === 0, autoHold.text);
+    rec('板押さえの方式を言う項目は1つ（「保持」と重ねない）', autoHold.say === 1, autoHold.text);
     const f = await page.evaluate(() => ({
      verdicts: [...document.querySelectorAll('#bsGauges .bs-vb')].map(x => x.textContent),
      heads: [...document.querySelectorAll('#bsTables thead th')].map(x => x.textContent),
@@ -3324,6 +3340,37 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('段取り向きを裏返しても切り口は残す側に付いてくる（組み直す）',
         spun.capSide === true && spun.builtKeep === spun.keep && spun.after > spun.before,
         JSON.stringify(spun));
+
+    /* §9.463 の追補（§9.465）。向きの**既定の側と札の呼び方はマスタが決める**。
+       上の網は既定値（右・「基準原点を左／右」）しか見ておらず、マスタの値が
+       画面へ届くことは誰も見ていなかった。刃組基準値へ入れて開き直し、札の字と
+       濃い側が変わることを見る。**触る前の行を控えて戻す**（無ければ消す）。 */
+    const std0 = ((await getj('/api/bladeset-standard-master?equipment='
+      + encodeURIComponent(EQ))).items || [])[0] || null;
+    const VIEW_KEYS = ['viewDatumPos', 'viewLabelLeft', 'viewLabelRight'];
+    let stdMade = null;
+    try {
+     const want = { viewDatumPos: '左', viewLabelLeft: 'ライン側から見る', viewLabelRight: '図面で見る' };
+     const sv = await (await post(std0 ? '/api/bladeset-standard-master/update'
+       : '/api/bladeset-standard-master', Object.assign({ equipment: EQ },
+       std0 ? { id: std0.id } : {}, want))).json();
+     if (!std0 && sv && sv.ok) stdMade = sv.id;
+     rec('刃組基準値へ向きの既定と呼び方を保存できる', !!(sv && sv.ok), JSON.stringify(sv));
+     await page.evaluate(eq => WL.bladeGuide.open({ equipment: eq }), EQ);
+     await W.until(page, () => (document.querySelector('#bsFlip .is-on') || {}).textContent
+       === 'ライン側から見る', null, { ms: 15000, what: 'マスタの呼び方で札が出る' });
+     const vm = await flipState();
+     rec('マスタの呼び方が札に出て、既定の側（左）が濃い',
+         vm.labels.join('/') === 'ライン側から見る/図面で見る' && vm.pos === '左',
+         JSON.stringify({ labels: vm.labels, pos: vm.pos }));
+    } finally {
+     if (stdMade != null) {
+      await post('/api/bladeset-standard-master/delete', { id: stdMade });
+     } else if (std0) {
+      await post('/api/bladeset-standard-master/update', Object.assign({ id: std0.id, equipment: EQ },
+        Object.fromEntries(VIEW_KEYS.map(k => [k, std0[k] == null ? '' : std0[k]]))));
+     }
+    }
 
     rec('JSエラーが出ていない', errs.length === 0, errs.slice(0, 2).join(' / '));
 
