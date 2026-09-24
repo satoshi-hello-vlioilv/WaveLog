@@ -2633,7 +2633,7 @@ WL.openLookSettings=null;
      key    … 節の鍵（同じ鍵で登録し直すと差し替わる。描き直しで増えない）
      title  … 節の見出し
      when() … いまこの節を出すか（画面を開いているときだけ、等）
-     render(host) … 中身を`host`へ描く
+     render(host) … 中身を`host`へ描く（`host`は**文書に付いた器**・§9.486）
    **入口は増やさない**（§9.421）。増やすのは節だけ。 */
 const LOOK_SECTIONS=[];
 WL.lookSettings={
@@ -2664,9 +2664,13 @@ WL.lookSettings={
   document.getElementById('uiSizeMenu')?.remove();
   document.removeEventListener('click',onOutside,true);
  }
+ /* **節が開いた窓（`.record-modal`）の中は「外」と数えない**（§9.486）。
+    「参照…」の場所選び・上書きの確認は、このメニューの上に重ねて開く。
+    その窓を押しただけで下のメニューを閉じると、**窓が返した値の行き先が
+    消える**（選んだアイコンのファイルが盤へ戻らなかった）。 */
  function onOutside(e){
   const menu=document.getElementById('uiSizeMenu');
-  if(menu&&!menu.contains(e.target)&&!e.target.closest('#uiSizeBadge'))closeMenu();
+  if(menu&&!menu.contains(e.target)&&!e.target.closest('#uiSizeBadge,.record-modal'))closeMenu();
  }
  function openMenu(anchor){
   closeMenu();
@@ -2725,6 +2729,11 @@ WL.lookSettings={
   /* 画面が名乗った節（§9.444）。**土台は中身を知らない**——器だけ用意して
      `render()`に渡す。出すのは`when()`が真のものだけ（押しても何も起きない
      節を残さない・§CLAUDE 4）。 */
+  /* **器は文書に付けてから渡す**（§9.486）。節は自分の器を`document`から
+     探して塗る（面が2つある節は`[data-sc-state]`を全部塗る）ので、付ける前に
+     `render()`を呼ぶと**答えが手元にあるときほど塗り損ねる**——2回目以降に
+     開くと「確認しています…」のまま止まり、作るボタンも出なかった。 */
+  document.body.appendChild(menu);
   WL.lookSettings.sections().forEach(sec=>{
    head(sec.title||'');
    const box=document.createElement('div');
@@ -2734,7 +2743,6 @@ WL.lookSettings={
    try{sec.render(box,closeMenu)}
    catch(e){WL.quiet.note('この節を描けない（ほかの節は出す）',e);box.remove()}
   });
-  document.body.appendChild(menu);
   const rect=anchor.getBoundingClientRect();
   menu.style.top=`${rect.bottom+6}px`;
   menu.style.left=`${Math.max(8,rect.right-menu.offsetWidth)}px`;

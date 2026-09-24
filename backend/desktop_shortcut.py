@@ -48,6 +48,10 @@ ICON_SUFFIXES=('.ico','.exe','.dll')
 # `READ`は行き先（`TargetPath`）を1行で返す——**自分が作ったものかを
 # 確かめてから上書き・片付けをする**ため（§9.446）。無いファイルを読むと
 # `CreateShortcut`は空の器を返すので、行き先は空文字になる。
+# **絵が無いときは空ではなく`NO_ICON`（`-`）を渡す**（§9.486）——WSHは空の
+# 引数（`""`）を数えないことがあり、数えなければ後ろの引数が1つずつ前へずれる
+# （説明文が絵の場所に入り、`a(5)`が範囲外で落ちる）。位置で読む引数に空を置かない。
+NO_ICON='-'
 _HELPER=(
  'Option Explicit\r\n'
  'Dim a, sh, lnk\r\n'
@@ -60,7 +64,7 @@ _HELPER=(
  '  lnk.TargetPath = a(2)\r\n'
  '  lnk.WorkingDirectory = a(3)\r\n'
  '  lnk.Description = a(5)\r\n'
- '  If Len(a(4)) > 0 Then lnk.IconLocation = a(4)\r\n'
+ '  If a(4) <> "-" Then lnk.IconLocation = a(4)\r\n'
  '  lnk.Save\r\n'
  'End If\r\n'
 )
@@ -149,6 +153,13 @@ def _no_window():
  return {'creationflags':getattr(subprocess,'CREATE_NO_WINDOW',0)}
 
 
+def _run_text():
+ """`cscript`の出力の読み方（§9.486）。**読めない字で落とさない**——端末の
+    言語設定と違う字（行き先の道・VBScriptの断り）が1字でも混ざると、
+    `text=True`だけでは`UnicodeDecodeError`で作成そのものが500になる。"""
+ return {'text':True,'errors':'replace'}
+
+
 def _same_path(a,b):
  """同じ場所を指しているか。Windowsは大文字小文字を区別しないので
     `normcase`で揃える（`C:\\WaveLog`と`c:\\wavelog`は同じ）。"""
@@ -172,7 +183,7 @@ def link_target(path):
  if helper is None:return ''
  try:
   p=subprocess.run(['cscript','//nologo',str(helper),'READ',str(path)],
-                   capture_output=True,text=True,timeout=20,**_no_window())
+                   capture_output=True,timeout=20,**_run_text(),**_no_window())
  except (FileNotFoundError,subprocess.TimeoutExpired) as _e:
   quiet('ショートカットの行き先を読めない（別物として扱う）',_e)
   return ''
@@ -306,10 +317,14 @@ def create(name=None,icon=None,uid=None,overwrite=False):
   link.parent.mkdir(parents=True,exist_ok=True)
  except Exception as _e:
   quiet('デスクトップのフォルダを用意できない',_e)
- args=['cscript','//nologo','//B',str(helper),str(link),str(target_path()),
-       str(APP_ROOT),spec,'測定伝送システム（WaveLog）を起動します']
+ # **`//B`（バッチモード）は付けない**（§9.486）。付けるとVBScriptの断り
+ # （書き込めない・場所が無い）が**1字も出ず**、画面には「終了コード 1」しか
+ # 言えなかった。`cscript`は窓を出さずに断りを標準エラーへ書くので、外しても
+ # 黒い画面や確認の窓は出ない（`_no_window()`）。
+ args=['cscript','//nologo',str(helper),'MAKE',str(link),str(target_path()),
+       str(APP_ROOT),spec or NO_ICON,'測定伝送システム（WaveLog）を起動します']
  try:
-  p=subprocess.run(args,capture_output=True,text=True,timeout=30,**_no_window())
+  p=subprocess.run(args,capture_output=True,timeout=30,**_run_text(),**_no_window())
  except FileNotFoundError:
   return {'ok':False,'error':'cscript が見つかりません（Windows Script Host が無効になっている可能性があります）'}
  except subprocess.TimeoutExpired:
