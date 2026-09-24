@@ -63,7 +63,8 @@ H.run('test_listbar: 一覧の道具の帯は2段（§9.468）', async ({ page, 
    const p = document.getElementById('listViewPanel');
    const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
    const rows = [...p.querySelectorAll('.lvp-row')].filter(vis);
-   const body = rows.flatMap(r => [...r.querySelectorAll('*')].filter(e => vis(e) && [...e.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim())));
+   /* 表示列の編集のボタンの字も数える（名前と説明の差は太さと濃さで付ける・大きさは1つ）。 */
+   const body = [p.querySelector('#listColumnBtn'), ...rows].flatMap(r => [...r.querySelectorAll('*')].filter(e => vis(e) && [...e.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim())));
    const ctl = rows.flatMap(r => [...r.querySelectorAll('button,select,.list-child-chip')].filter(vis));
    const col = document.getElementById('listColumnBtn'), cr = col.getBoundingClientRect();
    return { fs: [...new Set(body.map(e => getComputedStyle(e).fontSize))], h: [...new Set(ctl.map(e => Math.round(e.getBoundingClientRect().height)))],
