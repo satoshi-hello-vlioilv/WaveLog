@@ -496,6 +496,23 @@ run('test_colrule: 値の読み替え(§9.88 段4)', async ({page,rec,B,W,idle,p
    }
    return {n,bad};
   });
+  /* §9.478: 表示の値の速さ（実測: 1000行×3列で 元のデータ 0.79µs／表示の値 1.07µs／読み替え付きの式の列を
+     見る 2.58µs ／セル。一覧の描き直しは約160msで差は揺れの中）。**重くなる作り直しだけを捕まえる**
+     ゆるい上限（30µs＝実測の10倍）——時間の網は余白を大きく取る（§9.426）。 */
+  const perf=await page.evaluate(()=>{
+   const FX=WL.formula.compile("concat('A',[a])");
+   WL.displayRules.put('__pf__',[{conditions:[{left:{kind:'column',column:'F'},op:'startsWith',right:{kind:'value',value:'A'}},
+     {left:{kind:'column',column:'b'},op:'ne',right:{kind:'value',value:'z'}}],text:'X',color:''}],{self:'shown'});
+   WL.displayRules.put('__pg__',[{conditions:[{left:{kind:'self'},op:'contains',right:{kind:'value',value:'1'}}],text:'Y',color:''}],{self:'shown'});
+   const view={calc:k=>(k==='F'?FX:null),format:k=>(k==='b'?{kind:'text',suffix:'号'}:null),rule:k=>(k==='F'?'__pg__':'')};
+   const rows=Array.from({length:1000},(_,i)=>({a:String(i),b:String(i%7),c:'c'+i}));
+   const s=performance.now();let n=0;
+   for(let rep=0;rep<3;rep++)for(const r of rows){WL.cellFormat.cell({raw:r.c,format:null,rule:'__pf__',row:r,column:'c',view});n++}
+   const us=(performance.now()-s)/n*1000;
+   WL.displayRules.put('__pf__',null);WL.displayRules.put('__pg__',null);
+   return +us.toFixed(2);
+  });
+  rec('表示の値で読み替え付きの式の列を見ても、セル1つあたり30µs未満（実測 2.6µs）',perf<30,`${perf}µs`);
   rec('境目の値でも、ルールと変換した式が同じ答え（固定値・他の列の両方。前: 286組中39組が割れた）',
       r477.bad.length===0,`${r477.n}組 ${r477.bad.slice(0,4).join(' ｜ ')}`);
 
