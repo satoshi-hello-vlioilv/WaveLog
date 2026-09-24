@@ -40,7 +40,7 @@ run('test_allrows: 表示件数の「全件」(§9.95)', async ({page,rec,B,W,id
   rec('表示件数の既定は1000件',defSize==='1000',defSize);
 
   const mark=tableCalls.length;
-  await page.selectOption('#pageSize','all');
+  await W.listView(page);await page.selectOption('#pageSize','all');
   await page.waitForFunction(()=>document.querySelector('#page')?.textContent==='全件',{timeout:20000});
 
   // ---- 2. ページ送りは押せない ----
@@ -115,7 +115,7 @@ run('test_allrows: 表示件数の「全件」(§9.95)', async ({page,rec,B,W,id
       !!buffer&&buffer.dom<=buffer.viewRows*3+4,JSON.stringify(buffer));
 
   // ---- 6. 途中で戻したら続きの読み込みは止まる ----
-  await page.selectOption('#pageSize','200');
+  await W.listView(page);await page.selectOption('#pageSize','200');
   /* §9.286 ②: ページの札は「1–200」のように**何件目から何件目か**を出す
      （ページ番号は`title`。同じことを2通りで言わない・§CLAUDE 8）。 */
   await page.waitForFunction(()=>/^1[–-]/.test(document.querySelector('#page')?.textContent||''),{timeout:20000});

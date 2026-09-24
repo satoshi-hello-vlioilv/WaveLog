@@ -70,7 +70,9 @@ G['一覧'] = ['test_nav', 'test_navwords', 'test_popmenu', 'test_listcache', 't
              'test_cols', 'test_headbar', 'test_dsnav', 'test_dsrestart', 'test_listmodal', 'test_filter',
              'test_audit', 'test_sub', 'test_uisize', 'test_ttlcache',
              # §9.239 ⑤: 子ロットの畳み込みと列の一時的な色
-             'test_gridchild', 'test_coltint']
+             'test_gridchild', 'test_coltint',
+             # §9.468: 一覧の道具の帯は2段（すぐ使う操作／常に見る状態）・「☰ 表示」
+             'test_listbar']
 # 操業データ(§9.215)は測定画面のカード。マスタ管理からも触るので「マスタ」群。
 G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint', 'test_crudroutes',
                    'test_opchoice', 'test_oplimit', 'test_opmother', 'test_opunit',
@@ -234,7 +236,7 @@ G['権限'] = ['test_modeguard', 'test_noaccess', 'test_scperm', 'test_recperm',
 # §9.286 ①: 登録フィルタの群・プリセット中心のバー
 G['フィルタ'] = ['test_filter', 'test_adhoc', 'test_filterio', 'test_filteruser',
                  'test_filteractive', 'test_filterkeep', 'test_filterlock',
-                 'test_filtergroup']
+                 'test_filtergroup', 'test_listbar']
 # §9.316: 起動の状況をアプリから取れる（`/api/boot-report`＋ログ・診断の帯）。
 # 置き場は`paths`が解決した実物を出すので、起動まわりを触ったら一緒に回す。
 G['ログ'] = ['test_logs', 'test_logview', 'test_error', 'test_bootreport']

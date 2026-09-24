@@ -91,14 +91,24 @@
    railZ:330,        /* レール中心の送り方向の位置（2本・中心間 660） */
    railDrop:216,     /* 台座上面からレール頭の上面まで */
    floorDrop:268,    /* 台座上面から床まで */
-   wheelRun:70,      /* 走行車輪の半径 */
+   /* 走行車輪の半径。**台座の下面より下に収まる大きさ**（§9.467）——70 だと上端が台座へ
+      4mm 食い込み、車輪が台座の中に隠れて「走る仕組みが無い」台車に見えた。 */
+   wheelRun:65,
+   /* 台座の下の箱（スカート）とリブの奥行き（§9.467）。**車輪の内側に収める**——台座と
+      同じ奥行き近くまで広げると、レールの頭の真上 20mm に箱がかぶさって当たりそうに見え、
+      車輪の幅にも食い込んでいた。車輪の内側（railZ−46）からさらに 20mm 以上離す。 */
+   skirtD:480, ribD:460,
    ttX:3400,         /* 回転テーブルの中心（引き出した先） */
    ttPad:40,         /* テーブルの径は台座の半分＋この余裕 */
    sepGap:40,        /* テーブルの縁から着地土台まで */
    sepW:470          /* 着地土台の長さ */
  };
- /* フローティングシート（§9.459、利用者の図面・写真）。有効長のDS端の外に載り、
-    DS側からOS側へスペーサーの並びを押さえる。**寸法は図面の値そのまま**:
+ /* 機体の塗装（§9.467、利用者の写真「台車の写真…色合いなども含めて」）。実機は緑の機体に
+    黄色のカバー。1箇所で持ち、骨組み（`frame`）と現場まわり（`site`）が同じ値を使う。 */
+ /* 照明で明るく飛ぶぶん、写真より一段暗く持つ（実測: #4f8264 は薄い若草色に見えた）。 */
+ const PAINT = { body: '#3b6a4f', dark: '#2d543e', light: '#4a7d60', cover: '#d8a520' };
+ /* フローティングシート（§9.459、利用者の図面・写真）。有効長のシートの側の端（既定はOS端＝外せる軸端部の側）の外に載り、
+    基準面の側へスペーサーの並びを押さえる（§9.466。置く端は外せる軸端部の側）。**寸法は図面の値そのまま**:
     本体 Φ269／Φ200・幅70（押さえ板5＋ピストンの逃げ2＋本体63）、
     フローティングピストン 等分18-Φ15（シリンダ Φ20）P.C.D230（1本目は真上から10°）、
     加圧装置2か所（中心から左右へ113.5・外周の下寄り、M22 の加圧スクリュウ）。
@@ -658,9 +668,12 @@
   const steel = matOf(T, 'steel',
     { color: cutColor('--bs-fig-shaft', '#b9c1c9'), metalness: .74, roughness: .22 });
   const steelD = matOf(T, 'steelD', { color: '#8f99a4', metalness: .70, roughness: .30 });
-  const blue = matOf(T, 'blue', { color: '#2f63b0', metalness: .24, roughness: .48 });
-  const blueD = matOf(T, 'blueD', { color: '#24518f', metalness: .24, roughness: .54 });
-  const blueL = matOf(T, 'blueL', { color: '#3f77c4', metalness: .24, roughness: .44 });
+  /* 機体の塗装は**実機の写真の緑**（§9.467、利用者の写真）。変数名の`blue*`は以前の
+     塗りの名残で、役（本体・濃い面・明るい面）を表す。色は`PAINT`の1箇所。 */
+  const blue = matOf(T, 'blue', { color: PAINT.body, metalness: .18, roughness: .58 });
+  const blueD = matOf(T, 'blueD', { color: PAINT.dark, metalness: .18, roughness: .62 });
+  const blueL = matOf(T, 'blueL', { color: PAINT.light, metalness: .18, roughness: .54 });
+  const cover = matOf(T, 'cover', { color: PAINT.cover, metalness: .12, roughness: .56 });
   const dark = matOf(T, 'dark', { color: '#39424e', metalness: .56, roughness: .38 });
   const rod = matOf(T, 'rod', { color: '#aeb6bd', metalness: .72, roughness: .26 });
   /* 外した軸端部は台車と一緒には回らないので、別の入れ物へ入れる。 */
@@ -686,7 +699,13 @@
    }
    put(o || rig, D3.cyl, dark, list);
   };
+  /* 機械の座標（`rig`）の −X はギヤボックスの端（駆動側）、+X は外せる軸端部の端。
+     名前の`osEnd`／`dsEnd`は図面 SL-1458 の書き方のまま（§9.466 で写し返したので、
+     立体図では −X の端が DS、+X の端が OS に当たる）。 */
   const osEnd = -half, dsEnd = half;
+  /* シートが機械のどちらの端に載るか。部品の座標の向き（`floatSign()`）に、
+     `g`の写し返しを掛けて機械の座標へ直す（§9.466）。 */
+  const seatM = floatSign() * (D3.mirror ? -1 : 1);
 
   /* ---- 台座。ライン中心はベース左端から 1240、ベース全長 2325 ---- */
   const lineX = osEnd + M.lineC;
@@ -695,12 +714,12 @@
   const bedTop = yL - M.baseDrop, bedY = bedTop - M.baseH / 2;
   const railTop = bedTop - M.railDrop;
   bx([{ x: bcx, y: bedY, z: 0, l: baseL, r: M.baseH, d: M.baseD }], blue);
-  bx([{ x: bcx, y: bedY - M.baseH / 2 - 58, z: 0, l: baseL - 70, r: 116, d: M.baseD - 150 }], blueD);
+  bx([{ x: bcx, y: bedY - M.baseH / 2 - 58, z: 0, l: baseL - 70, r: 116, d: M.skirtD }], blueD);
   bx([{ x: bcx, y: bedY + M.baseH / 2 + 6, z: 0, l: baseL - 40, r: 12, d: M.baseD - 40 }], blueL);
   const ribs = [];
   for (let i = 0; i < 4; i++) {
    ribs.push({ x: bx0 + 320 + i * (baseL - 640) / 3,
-               y: bedY - M.baseH / 2 - 58, z: 0, l: 26, r: 108, d: M.baseD - 160 });
+               y: bedY - M.baseH / 2 - 58, z: 0, l: 26, r: 108, d: M.ribD });
   }
   bx(ribs, blueD);
   /* ---- 走行車輪。レールは軸方向に走るので、車輪の軸は送りの向き（Z） ---- */
@@ -717,18 +736,26 @@
    });
   }
   bx(brk, dark); cyZ(whl, steelD); cyZ(hub, dark); cyZ(flg, steelD);
+  /* 足まわりの寸法を控える（§9.467）。**台車がレールに載って走れるか**を網が数で見る
+     ——車輪・レール・台座の下の箱・回転テーブルの甲板の高さと奥行き。絵では
+     「めり込んでいる」「当たりそう」が角度によって見えない。 */
+  D3.rigGeo = { railTop, railZ: M.railZ, railHead: 75, wheelY: wy, wheelR: M.wheelRun, wheelHalf: 46,
+                under: [{ k: 'base', y0: bedY - M.baseH / 2, y1: bedY + M.baseH / 2, z: M.baseD / 2 },
+                        { k: 'skirt', y0: bedY - M.baseH / 2 - 116, y1: bedY - M.baseH / 2, z: M.skirtD / 2 },
+                        { k: 'rib', y0: bedY - M.baseH / 2 - 112, y1: bedY - M.baseH / 2 - 4, z: M.ribD / 2 }] };
 
   /* ---- タイロッド（送り軸）の高さ。ギヤボックスと軸端部の頭はここで受ける ---- */
   const ty = yU + M.tieY, topY = ty - M.tieHubR;
 
   /* ---- ギヤボックス。取付面は有効長の OS 端から 30。台座の上に収まる ---- */
-  const gFace = osEnd - M.gapOS - (floatSign() < 0 ? FSEAT_W + 22 + M.brgW : 0), gx = gFace - M.gearW / 2;
+  const gFace = osEnd - M.gapOS - (seatM < 0 ? FSEAT_W + 22 + M.brgW : 0), gx = gFace - M.gearW / 2;
   const pd0 = bx0 + 20, pd1 = gFace + 40;
   bx([{ x: (pd0 + pd1) / 2, y: bedTop + 36, z: 0, l: pd1 - pd0, r: 72, d: M.gearD + 120 }], blueD);
   bx([{ x: gx, y: (bedTop + 72 + yU + 118) / 2, z: 0, l: M.gearW,
         r: (yU + 118) - (bedTop + 72), d: M.gearD }], blue);
+  /* ギヤボックスの上のカバーは黄色（実機の写真・§9.467）。 */
   bx([{ x: gx, y: (yU + 118 + topY) / 2, z: 0, l: M.gearW * 0.62,
-        r: topY - (yU + 118), d: M.gearD * 0.64 }], blueL);
+        r: topY - (yU + 118), d: M.gearD * 0.64 }], cover);
   bx([-1, 1].flatMap(s => [
    { x: gx, y: (bedTop + yU) / 2, z: s * (M.gearD / 2 + 9), l: M.gearW * 0.8, r: 30, d: 18 },
    { x: gx, y: yL, z: s * (M.gearD / 2 + 9), l: M.gearW * 0.8, r: 30, d: 18 }]), blueD);
@@ -759,7 +786,7 @@
   const trv = D3.open ? M.travel : 0;
   /* シートの側の軸受はフローティングシート（幅70・§9.459）の外へ置く。以前は有効長の端から
      10mm内側まで被っており、そこに載るフローティングシートを隠していた。 */
-  const seatDS = floatSign() > 0, seatOS = !seatDS;
+  const seatDS = seatM > 0, seatOS = !seatDS;
   const bxDS = (seatDS ? dsEnd + FSEAT_W + 22 + M.brgW / 2 + 4 : dsEnd + M.gapDS / 2) + trv;
   const sx = dsEnd + M.gapDS + M.standDS + trv;
   bx([{ x: sx, y: bedTop + 36, z: 0, l: M.standW + 110, r: 72, d: M.standD + 130 }], blueD, stay);
@@ -774,6 +801,22 @@
   /* OS端にシートが載るとき（DS基準・§9.461）は、軸受もギヤボックスもシートの幅ぶん外。
      **この寸法は図面に無い**（図面SL-1458-01SのOS側の間隔30はシートの無い形）ので概寸。 */
   bearing(osEnd - M.gapOS / 2 - (seatOS ? FSEAT_W + 22 + M.brgW / 2 : 0));
+
+  /* ---- フィンガーの押さえのアングル（§9.467、利用者の写真「入側からの見た目でフィンガー
+         使用中でフィンガーの押さえ用のアングルも写っている」） ----
+     フィンガー方式のときだけ、**入側（−Z）**の上下の刃先の近くへ、有効長いっぱいの
+     L形の押さえ（機体と同じ緑）を渡す。機械まわりなので`rig`へ置く（断面図では伏せる）。
+     寸法は写真からの概寸（図面に無い）。 */
+  D3.fingerAngles = 0;
+  if (ctx.res && ctx.res.finger) {
+   const kr = (+ctx.st.knife || 300) / 2, az = -(kr + 40), fl = 90, t = 12;
+   [1, -1].forEach(s2 => {
+    const y0 = s2 * 48;
+    bx([{ x: 0, y: y0, z: az - fl / 2, l: L, r: t, d: fl },
+        { x: 0, y: y0 + s2 * fl / 2, z: az - fl + t / 2, l: L, r: fl, d: t }], blue);
+    D3.fingerAngles++;
+   });
+  }
 
   /* ---- 軸：有効長は Φ200 の研磨面。その外に首・駆動端の継手・キー溝 ---- */
   const r0 = sd / 2;
@@ -1179,7 +1222,7 @@
   }
   const mesh = new T.Mesh(D3.plane, mat);
   mesh.position.set(x, y, z);
-  mesh.scale.set(430, 141, 1);
+  mesh.scale.set(D3.mirror ? -430 : 430, 141, 1);
   mesh.renderOrder = 2;
   g.add(mesh);
   D3.decals.push(mesh);
@@ -1195,9 +1238,9 @@
   const rail = matOf(T, 'rail', { color: '#7b858f', metalness: .68, roughness: .35 });
   const floor = matOf(T, 'floor', { color: '#cfd7de', metalness: .02, roughness: .95 });
   const dark = matOf(T, 'dark', { color: '#39424e', metalness: .56, roughness: .38 });
-  const blue = matOf(T, 'blue', { color: '#2f63b0', metalness: .24, roughness: .48 });
-  const blueD = matOf(T, 'blueD', { color: '#24518f', metalness: .24, roughness: .54 });
-  const blueL = matOf(T, 'blueL', { color: '#3f77c4', metalness: .24, roughness: .44 });
+  const blue = matOf(T, 'blue', { color: PAINT.body, metalness: .18, roughness: .58 });
+  const blueD = matOf(T, 'blueD', { color: PAINT.dark, metalness: .18, roughness: .62 });
+  const blueL = matOf(T, 'blueL', { color: PAINT.light, metalness: .18, roughness: .54 });
   const bx = (list, mat, o) => { const m = batch(T, D3.box, mat, list); if (m) (o || W).add(m); };
   bx([{ x: M.ttX / 2 - 600, y: floorY - 60, z: 0, l: 15000, r: 120, d: 8000 }], floor);
   const railRun = (o, x0, x1, z) => {
@@ -1214,15 +1257,22 @@
   /* 回転テーブル：ピット（床側・回らない）と甲板（台車と一緒に回る） */
   const pit = new T.Mesh(D3.annulus, steelD);
   pit.position.set(M.ttX, floorY + 4, 0); pit.scale.set(tR + 190, 1, tR + 190); W.add(pit);
-  const deck = new T.Mesh(D3.disc, blueD);
-  deck.position.set(0, floorY + 55, 0); deck.scale.set(tR, 130, tR); D3.deck.add(deck);
+  /* **甲板は床と同じ高さ**（§9.467、利用者の指摘「台車側にレールに沿う機構がないのに
+     回転台の部分に入ったり」）。以前は床から 120mm 突き出しており、甲板の上のレールが
+     円盤の中に埋まって、載ってきた車輪が甲板へ 68mm 沈んでいた。甲板を床に揃え、
+     レールは床のレールと同じ高さでその上に載せる——走ってきた車輪がそのまま乗り移る。 */
+  /* 甲板は現場の設備で機体ではないので、機体の緑ではなく鋼の色。 */
+  const deck = new T.Mesh(D3.disc, steelD);
+  deck.position.set(0, floorY - 63, 0); deck.scale.set(tR, 130, tR); D3.deck.add(deck);
   const rim = new T.Mesh(D3.ringGeo, steelD);
-  rim.position.set(0, floorY + 118, 0); rim.scale.set(tR - 6, tR - 6, tR - 6); D3.deck.add(rim);
+  rim.position.set(0, floorY + 3, 0); rim.scale.set(tR - 6, tR - 6, tR - 6); D3.deck.add(rim);
   [-1, 1].forEach(s => {
    const h2 = Math.sqrt(Math.max(0, tR * tR - Math.pow(s * M.railZ, 2))) - 30;
    railRun(D3.deck, -h2, h2, s * M.railZ);
   });
-  bx([{ x: 0, y: floorY + 55, z: 0, l: 60, r: 150, d: 150 }], dark, D3.deck);
+  /* 回転の中心の蓋。甲板の上へ突き出すと台車の下の箱に当たるので、甲板と面一の薄い蓋。 */
+  bx([{ x: 0, y: floorY + 4, z: 0, l: 180, r: 6, d: 180 }], dark, D3.deck);
+  if (D3.rigGeo) D3.rigGeo.deckTop = floorY - 63 + 65;   /* 甲板の上面（§9.467） */
   /* 着地土台。テーブルの外に据え付けてあり、送り出した軸端部がここに降りる */
   const cx = (sepX0 + sepX1) / 2, len = M.sepW, bedY = bedTop - M.baseH / 2;
   bx([{ x: cx, y: bedY, z: 0, l: len, r: M.baseH, d: M.baseD }], blue);
@@ -1328,6 +1378,16 @@
      あいだに隙間を作る。条は千鳥で板厚ぶん上下へ寄るので、**板が占める高さは
      見かけの厚みの3倍**（±1.5倍）——その両側へ余裕を取る。 */
   D3.endCaps = 0; D3.fseat = null;
+  /* **立体図では軸の上の物を左右に写し返す**（§9.466、利用者の指示「OSDSの表示が逆で、
+     フローティングシートの位置も逆」「ギアボックス側DS(基準面)、スタンドハンドル付きの
+     外れる方がOS」）。計算の座標は OS 端が 0（−X）で、機械（`rig`）はギヤボックスを −X に
+     描いている——そのままだとギヤボックスの側が OS になる。**機械は正しい**ので動かさず、
+     `g`（軸の上の物）だけを写し返し、`rig` は写し返しを打ち消す。札・印・区間の的は
+     `g.matrixWorld` で写すので一緒に付いてくる。断面図は機械を伏せる図で、左右は
+     「基準原点を左／右」がカメラの側で決めている（§9.412）ので写し返さない。 */
+  D3.mirror = !D3.cut;
+  g.scale.x = D3.mirror ? -1 : 1;
+  D3.rig.scale.x = g.scale.x;
   const cd = D3.cut ? ctx.st.knife + D3.matTh * CUT_OPEN : cd0;
   D3.cutGap = D3.cut ? cd - ctx.st.knife : 0;   /* 刃先のあいだに残る隙間 */
   const m = machine(T, g, A, segs, zp, L, cd, ctx.st.tk);
@@ -1366,7 +1426,11 @@
   const a0 = m.x0 + shift, a1 = (D3.out ? st2.sepX1 + 200 : m.xw + shift);
   const sz = Math.max(a1 - a0, Math.abs(m.yBot) + rad * 2, mt.IN + mt.OUT + 600);
   Object.assign(HOME, { tx: (a0 + a1) / 2, ty: m.yBot / 3, tz: (mt.OUT - mt.IN) / 2 + 160,
-                        r: sz / 2 / Math.sin(D3.cam.fov * Math.PI / 360) * 1.15, az: -0.62, el: 0.42 });
+                        r: sz / 2 / Math.sin(D3.cam.fov * Math.PI / 360) * 1.15,
+                        /* 写し返した立体図（§9.466）は**反対側から見る**——基準面（DS）は
+                           ギヤボックスの側（−X）に来るので、手前から見ると左に出て
+                           「基準原点を右」と食い違う。回さずに右へ見せるのはカメラの側。 */
+                        az: D3.mirror ? Math.PI + 0.62 : -0.62, el: 0.42 });
   if (!D3.moved) Object.assign(CAM, HOME);
   D3.built = true;
   /* **組んだ図を控えるのは render() より前**（§9.428）。`render()`は食い違いを
@@ -1551,6 +1615,9 @@
   if (D3.decals && D3.decals.length) {
    const q = new T.Quaternion();
    D3.g.getWorldQuaternion(q).invert().multiply(D3.cam.quaternion);
+   /* `g`を写し返しているとき（§9.466）は、札の回転も写し返しの側へ直し、札自身の
+      幅を負にして字を正しい向きへ戻す（鏡の中の鏡）。 */
+   if (D3.mirror) { q.y = -q.y; q.z = -q.z; }
    D3.decals.forEach(m => m.quaternion.copy(q));
   }
   D3.r.render(D3.sc, D3.cam);
@@ -2198,7 +2265,7 @@
    D3.spin = false;
    if (b) b.disabled = false;
    build();      /* 運転の向きに戻ったらタイロッドを付け直す */
-   note(Math.abs(D3.rot) > 1e-3 ? '台車を回しました。DS 側から部材を入れられます。'
+   note(Math.abs(D3.rot) > 1e-3 ? '台車を回しました。軸端部を外した側から部材を入れられます。'
                                 : '台車を戻しました。運転の向きです。');
   };
   requestAnimationFrame(step);
@@ -2377,8 +2444,41 @@
   return +m.toFixed(3);
  }
 
+ /* 台車の足まわりの点検（§9.467、利用者の指摘「台車側にレールに沿う機構がないのに
+    回転台の部分に入ったり、寧ろレールに干渉しそうなオブジェクトも配置してあったり」）。
+    どれも**0が正**（mm）:
+      deckOverRail … 回転テーブルの甲板の上面がレールの頭より上に出ている量（車輪が沈む）
+      wheelBuried  … 台座の下の箱が車輪の幅へ食い込んでいる量（走る仕組みが見えない）
+      railClash    … レールの頭の真上で、レールとのすき間が30mm未満の箱の数（当たりそう） */
+ function rigAudit() {
+  const q = D3.rigGeo;
+  if (!q || q.deckTop == null) return null;
+  const wIn = q.railZ - q.wheelHalf, wTop = q.wheelY + q.wheelR, wBot = q.wheelY - q.wheelR;
+  let buried = 0, clash = 0;
+  q.under.forEach(b => {
+   if (b.y0 < wTop && b.y1 > wBot) buried = Math.max(buried, b.z - wIn);
+   if (b.z > q.railZ - q.railHead && b.y0 - q.railTop < 30) clash++;
+  });
+  return { deckOverRail: Math.max(0, Math.round(q.deckTop - q.railTop)),
+           wheelBuried: Math.max(0, Math.round(buried)), railClash: clash };
+ }
+
+ /* 立体図の両端が**画面のどこに見えているか**（§9.466）。機械の端（ギヤボックス＝駆動側・
+    外せるスタンド）と、OS・DS の札と、フローティングシートを同じカメラで写した横位置
+    （−1〜1）。「DSの札はギヤボックスの側」「シートはスタンドの側」を網が数で見る。 */
+ function ends3() {
+  if (!D3.r || D3.cut || !ctx || !ctx.res || !D3.tag) return null;
+  const T = D3.T, L = ctx.res.A.arborLen, v = new T.Vector3();
+  D3.pivot.updateMatrixWorld(true);
+  const sx = (o, x, y) => +v.set(x, y || 0, 0).applyMatrix4(o.matrixWorld).project(D3.cam).x.toFixed(3);
+  return { gear: sx(D3.rig, -L / 2), stand: sx(D3.rig, L / 2),
+           os: sx(D3.g, D3.tag.os.x), ds: sx(D3.g, D3.tag.ds.x),
+           seat: sx(D3.g, floatSign() * L / 2), mirror: !!D3.mirror,
+           fingerAngles: D3.fingerAngles | 0 };
+ }
+
  function view() {
-  return { cut: !!D3.cut, flip: !!D3.flip, keep: D3.keep, gloss: gloss(),
+  return { cut: !!D3.cut, flip: !!D3.flip, keep: D3.keep, gloss: gloss(), ends3: ends3(), rig: rigAudit(),
            /* 組んだ回数と、組んである図（§9.428）。**網はここを見る**——
               「切り替えのたびに2回組んでいないか」「描いている絵が選んだ図か」は
               絵を見ても分からない。`fixups`は`render()`が食い違いを直した回数。 */

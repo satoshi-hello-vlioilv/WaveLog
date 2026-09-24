@@ -2609,47 +2609,72 @@ function ensureListToolbar(){
      常に出しておく必要があるのは「今どの並びか」だけで、保存・削除は
      必要になったときに開けばよい(段階的な開示)。固定幅のselectを
      やめたので、長い名前が途中で切れることも無くなる。 */
-  bar.innerHTML=`<span class="lt-group" role="group" aria-label="見せ方">
-    <button type="button" id="listColumnBtn" class="list-toolbar-btn" title="この一覧に出す列・並び・幅・書式をまとめて設定します">☰ 表示列</button>
-    <label class="list-rowgap" title="行の間隔を変えます（この一覧ごとに覚えます）"><span>行間</span>
+  /* ---------- 2段にする（§9.468、利用者の指示） ----------
+     「すぐに必要な機能とそうでもない機能、常に見えていないといけない表示と調べて
+      わかればよい表示に分けて、機能を維持しつつ使いやすいUIUX設計でメニュー構成を
+      見直してほしい」。スケジュールと並べた幅380pxで**5段・236px**に折れていた。
+       1段目（すぐ使う操作）… 絞り込みのバー（filters.js）＋「☰ 表示」
+       2段目（常に見る状態）… 元データの時刻・件数とページ・結合・色の印
+     **決めたら触らない設定**（表示列・行間・並び・表示件数・子ロット）は「☰ 表示」の
+     浮きパネルへ畳む。IDは変えない（配線と網がそのまま効く）。群を枠で囲むのは
+     やめた——枠の中に枠を作らない（§CLAUDE 画面基準 10）。
+     「☰ 表示」のボタンは絞り込みのバーの席（`#filterBarSlot`）へ移して1段目に置く
+     （`placeViewButton()`）。バーが無い一覧ではこの帯の先頭に残る。 */
+  bar.innerHTML=`<button type="button" id="listViewBtn" class="list-toolbar-btn lt-view-btn"
+    aria-haspopup="dialog" aria-expanded="false" aria-controls="listViewPanel"
+    title="表示列・行間・並び・表示件数を決めます">☰ 表示<i aria-hidden="true">▾</i></button>
+   <div class="wl-menu lt-view-panel" id="listViewPanel" role="dialog" aria-label="一覧の表示" hidden>
+    <div class="lvp-row"><span class="lvp-k">列</span>
+     <button type="button" id="listColumnBtn" class="list-toolbar-btn" role="button" title="この一覧に出す列・並び・幅・書式をまとめて設定します">☰ 表示列を決める…</button></div>
+    <label class="lvp-row list-rowgap" title="行の間隔を変えます（この一覧ごとに覚えます）"><span class="lvp-k">行間</span>
      <input type="range" id="listRowGap" min="1" max="5" step="1" value="3" aria-label="行の間隔"></label>
-   </span>
-   <span class="lt-group list-sort" id="listSort" role="group" aria-label="並び" hidden>
-    <span class="list-sort-label">並び</span>
-    <span class="list-sort-keys" id="listSortKeys"></span>
-    <span class="list-sort-preset-wrap">
-     <button type="button" id="listSortPresetBtn" class="list-toolbar-btn" aria-haspopup="true" aria-expanded="false"
-      title="いつも使う並びを選ぶ・今の並びを保存する">★ いつも使う並び<i>▾</i></button>
-     <div class="list-sort-menu" id="listSortMenu" hidden></div>
-    </span>
-   </span>
-   <span class="list-load-chip" id="listLoadChip" title="読み込みにかかった時間の内訳" hidden></span>
-   <span class="list-child-chip" id="listChildChip" hidden></span>
-   <button type="button" class="list-tint-chip" id="listTintChip" hidden></button>
-   <span class="list-join-chip" id="listJoinChip" hidden></span>
-   <!-- 「どこを見ているか」と「いつのデータか」（§9.286 ②③④）。
-        **バッククォートを書かないこと**（§9.211 ③。ここはテンプレート
-        リテラルの中なので、文字列がそこで閉じて画面が組み上がらなくなる）。
-        説明は下の ensureListToolbar のコメントにある。 -->
-   <span class="lt-group lt-data" role="group" aria-label="表示する範囲と元データ">
-    <button type="button" class="list-fresh-chip" id="listFreshness"
-     aria-haspopup="true" aria-expanded="false" hidden></button>
-    <label class="list-pagesize" title="1ページに出す件数です（多くすると1回の読み込みが重くなります）">
-     <span>表示</span>
+    <div class="lvp-row list-sort" id="listSort" role="group" aria-label="並び" hidden>
+     <span class="lvp-k list-sort-label">並び</span>
+     <span class="list-sort-keys" id="listSortKeys"></span>
+     <span class="list-sort-preset-wrap">
+      <button type="button" id="listSortPresetBtn" class="list-toolbar-btn" role="button" aria-haspopup="true" aria-expanded="false"
+       title="いつも使う並びを選ぶ・今の並びを保存する">★ いつも使う並び<i>▾</i></button>
+      <div class="list-sort-menu" id="listSortMenu" hidden></div>
+     </span>
+    </div>
+    <label class="lvp-row list-pagesize" title="1ページに出す件数です（多くすると1回の読み込みが重くなります）">
+     <span class="lvp-k">表示件数</span>
      <select id="pageSize" aria-label="表示件数">${PAGE_SIZES.map(n=>
        `<option value="${n}"${String(n)===DEFAULT_PAGE_SIZE?' selected':''}>${Number(n).toLocaleString()}</option>`).join('')}
       <option value="${ALL_ROWS}">全件</option></select></label>
+    <div class="lvp-row lvp-child"><span class="lvp-k">子ロット</span><span class="list-child-chip" id="listChildChip" hidden></span></div>
+   </div>
+   <!-- 2段目＝**常に見る状態**。左から「いつのデータか → 何件のどこを見ているか →
+        何が足されているか（結合・色）」。バッククォートを書かないこと（§9.211 ③）。 -->
+   <span class="lt-state" role="group" aria-label="元データと表示している範囲">
+    <button type="button" class="list-fresh-chip" id="listFreshness"
+     aria-haspopup="true" aria-expanded="false" hidden></button>
+    <span class="list-count" id="count"></span>
     <span class="list-pager" id="listPager">
      <button type="button" id="prev" class="list-page-btn" aria-label="前のページ" title="前のページ">‹</button>
      <b id="page">1</b>
      <button type="button" id="next" class="list-page-btn" aria-label="次のページ" title="次のページ">›</button>
     </span>
-    <span class="list-count" id="count"></span>
+    <span class="list-join-chip" id="listJoinChip" hidden></span>
+    <button type="button" class="list-tint-chip" id="listTintChip" hidden></button>
+    <span class="list-load-chip" id="listLoadChip" title="読み込みにかかった時間の内訳" hidden></span>
    </span>`;
   grid.parentNode.insertBefore(bar,grid);
   /* 列の設定はこの一覧の設定パネルへ集約する(§9.88 段2)。名前・並び・幅・
      表示を1箇所で決められるので、ボタンの行き先もここ1つでよい。 */
   bar.querySelector('#listColumnBtn').onclick=()=>WL.listColumns?.toggle();
+  /* 「☰ 表示」の浮きパネル。置き場所・外を押したら閉じる・Escは`WL.popMenu`の1箇所
+     （§9.448）。**パネルは作り直さない**——中の欄（行間・表示件数）はここで1度だけ
+     配線してある。表示列の窓を開くときはパネルを閉じる（窓とパネルを重ねない）。 */
+  const viewBtn=bar.querySelector('#listViewBtn'),viewPanel=bar.querySelector('#listViewPanel');
+  viewBtn.onclick=()=>{
+   if(!viewPanel.hidden){WL.popMenu.close();return}
+   viewPanel.hidden=false;viewBtn.setAttribute('aria-expanded','true');
+   WL.popMenu.open(viewPanel,{anchor:viewBtn,owner:viewBtn,
+    onClose:()=>{viewPanel.hidden=true;viewBtn.setAttribute('aria-expanded','false');
+     const m=document.getElementById('listSortMenu');if(m)m.hidden=true}});
+  };
+  bar.querySelector('#listColumnBtn').addEventListener('click',()=>WL.popMenu.close());
   /* 表示件数・ページめくり・元データの鮮度は**ここで配線する**（§9.286 ②）
      ——器をJSで作るようになったので、読み込み時に`$('#pageSize')`を探す形の
      配線は成り立たない（欄を作った側から配る・§9.257 ②と同じ理由）。 */
@@ -2712,8 +2737,17 @@ function renderTintChip(bar){
    +'\n押すとこの一覧の色をすべて外します。';
  el.onclick=()=>{WL.columnTint.clearAll(target);renderTintChip(bar)};
 }
+/* 「☰ 表示」を1段目（絞り込みのバーの席）へ置く（§9.468）。バーは別の本（filters.js）が
+   作るので、**あれば**そこへ移し、無ければこの帯の先頭に残す。描くたびに呼んでよい。 */
+function placeViewButton(bar){
+ const btn=bar.querySelector('#listViewBtn')||document.getElementById('listViewBtn');if(!btn)return;
+ const slot=document.getElementById('filterBarSlot');
+ const home=(slot&&slot.closest('#genericFilterBar')&&!slot.closest('[hidden]'))?slot:bar;
+ if(btn.parentNode!==home)home.insertBefore(btn,home.firstChild);
+}
 function renderListToolbar(){
  const bar=ensureListToolbar();if(!bar)return;
+ placeViewButton(bar);
  // 読み込んだ行間を毎回反映する(一覧を切り替えるとスコープごと変わる)。
  const gapEl=bar.querySelector('#listRowGap');
  if(gapEl){gapEl.value=String(rowGapValue);applyRowGap(rowGapValue)}
@@ -2757,6 +2791,10 @@ function renderListToolbar(){
    chip.textContent=ok
     ?`結合 ${names.length?names.join('・'):info.count+'件'} ／ ${info.matched}行 +${info.addedColumns}列${rowNote}`
     :joinFailText(info,failed);
+   /* 狭い器（スケジュールと並べたとき）で出す**短い名乗り**（§9.468）。どこから何行かは
+      「調べてわかればよい」ほうなので`title`に任せ、足した列の数と失敗だけを常に見せる。
+      字（`textContent`）は長いままにしておく——読み上げと網は全文を読む。 */
+   chip.dataset.short=ok?`結合 +${info.addedColumns}列${rowNote}`:'結合できません';
    chip.title=ok
     ?`キーが一致した${info.matched}行に${info.addedColumns}列を足しました`
      +`${info.table?`（相手の表: ${info.table}）`:''}。同じ名前の列はこの一覧の値を残します。`
@@ -2769,7 +2807,8 @@ function renderListToolbar(){
     :`結合できませんでした: ${info.reason||'原因不明'}\nマスタ管理 > クエリ結合 で設定を確かめてください。`;
   }
  }
- bar.hidden=!(canPickColumns||(info&&!chip.hidden));
+ /* 2段目は**常に見る状態**（元データ・件数）を持つので、一覧がある限り出す（§9.468）。 */
+ bar.hidden=!(canPickColumns||(info&&!chip.hidden)||!!S.table);
 }
 /* 結合に失敗したときの札の字（利用者の報告「エラーがわかるようにしてほしい」）。
    **どの結合が・なぜ**を字で言う——「結合できません（1件）」だけでは、どの結合の

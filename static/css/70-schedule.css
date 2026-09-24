@@ -308,6 +308,15 @@
 :is(.sc-split-wrap,.sc-float-body) .generic-filter-bar{font-size:var(--fs-micro)}
 :is(.sc-split-wrap,.sc-float-body) .filter-search-row{min-height:var(--ctl-h-sm);padding:var(--pad-row);gap:var(--gap-tight);flex-wrap:wrap}
 :is(.sc-split-wrap,.sc-float-body) .filter-search-row>b{font-size:var(--fs-micro)}
+/* 並べたときは1段目・2段目をそれぞれ1行に収める（§9.468、実測: 幅380pxで5段・236px）。
+   プリセットは**名前だけ**（何の札かは`title`と位置が言う）、結合は**短い名乗り**
+   （`data-short`・全文は`title`）。どちらも見える字を減らすだけで、読み上げは全文。 */
+:is(.sc-split-wrap,.sc-float-body) .fb-preset-btn:not(.is-none) .fb-preset-key{display:none}
+/* 当てていないときは「なし」ではなく**役の名前**だけ（「プリセット▾」＝押して選ぶ札）。 */
+:is(.sc-split-wrap,.sc-float-body) .fb-preset-btn.is-none #filterPresetName{display:none}
+:is(.sc-split-wrap,.sc-float-body) .list-join-chip[data-short]{font-size:0}
+:is(.sc-split-wrap,.sc-float-body) .list-join-chip[data-short]::after{content:attr(data-short);font-size:var(--fs-micro)}
+:is(.sc-split-wrap,.sc-float-body) .list-pager>b{min-width:0}
 :is(.sc-split-wrap,.sc-float-body) .filter-count{font-size:var(--fs-tiny);padding:var(--pad-chip)}
 :is(.sc-split-wrap,.sc-float-body) .filter-token-input{min-height:var(--ctl-h-xs);padding:var(--pad-chip)}
 :is(.sc-split-wrap,.sc-float-body) .filter-token-search{height:22px;flex-basis:80px;min-width:60px}
@@ -2648,7 +2657,8 @@ div.sc-view-row{cursor:default}
 .sc-blade-calc{color:var(--muted)}
 .sc-blade-tbl tr.is-calc .sc-blade-title span{color:var(--ink-2)}
 /* 行き先のチップは題名の横（§9.377）。押す的は行の「選ぶ」と分ける。 */
-.sc-blade-title{display:flex;align-items:center;gap:var(--space-2)}
+/* **`td`は表のセルのまま**（§9.469）——横並びは中の`.sc-blade-tt`が持つ。 */
+.sc-blade-tt{display:inline-flex;align-items:center;gap:var(--space-2)}
 /* 見本は**実物と同じ見た目**で描く（色を書き写さない・§9.374）。 */
 .sc-blade-legend{margin-left:auto;display:flex;align-items:center;gap:var(--space-1);
   font-size:var(--fs-sm);color:var(--muted)}

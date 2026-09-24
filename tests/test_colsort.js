@@ -121,7 +121,7 @@ run('test_colsort: 並び順と「いつも使う並び」(§9.88 段5)', async 
   await idle();
   /* §9.90で「選ぶ・保存する・消す」は1つのメニューへ畳んだ(固定幅のselectは
      長い名前が途中で切れていた)。**開いてから**中身を見る。 */
-  await page.click('#listSortPresetBtn');
+  await W.listView(page);await page.click('#listSortPresetBtn');
   await W.until(page,()=>{const m=document.getElementById('listSortMenu');return !!m&&!m.hidden&&m.getClientRects().length>0},null,{ms:4000,what:'並びのメニューが開く'});
   const opts=await page.evaluate(()=>[...document.querySelectorAll('#listSortMenu .lsm-use')].map(o=>o.textContent.trim()));
   rec('保存した並びが選択肢に出る',opts.some(t=>t.includes(NAME)),JSON.stringify(opts));
@@ -140,7 +140,7 @@ run('test_colsort: 並び順と「いつも使う並び」(§9.88 段5)', async 
   rec('選んでいる並びの名前がボタンに出る',
    await page.evaluate(n=>(document.getElementById('listSortPresetBtn')?.textContent||'').includes(n),NAME));
   // メニューの「並びを解除」で外れる
-  await page.click('#listSortPresetBtn');
+  await W.listView(page);await page.click('#listSortPresetBtn');
   await W.until(page,()=>{const m=document.getElementById('listSortMenu');return !!m&&!m.hidden&&m.getClientRects().length>0},null,{ms:4000,what:'並びのメニューが開く'});
   rec('メニューに削除の口がある',
    await page.evaluate(()=>!!document.querySelector('#listSortMenu .lsm-del')));

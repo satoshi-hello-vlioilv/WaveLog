@@ -109,9 +109,12 @@
      <div class="bs-sgrp is-auto"><s class="bs-sgcap">自動で決まる</s>
       ${factHtml('刃の選び方', 'bsFPick')}
       ${factHtml('方式', 'bsFMethod')}
-      ${factHtml('保持', 'bsFHold')}
       ${factHtml('クリアランス', 'bsFClr')}
-      ${stepHtml(0, 'ゴムリング', 'bsV4', step4Html(), 'auto')}
+      <!-- **板押さえは1項目**（§9.465、利用者の指示「板押さえにしないと、ゴムリングの
+           フィンガーみたいな謎の言葉を生み出す」「表示の重複もある」）。名前は層の総称
+           （板押さえ）、値が方式（ゴムリング／フィンガー）を言う。「保持」の欄は同じ
+           ことを2度言っていたので畳んだ（§CLAUDE 8）。 -->
+      ${stepHtml(0, '板押さえ', 'bsV4', step4Html(), 'auto')}
      </div>
     </div>
    </div>
@@ -211,7 +214,7 @@
             <dd>①引き出す（レールで回転テーブルへ）→②軸端部を外す（330mm 送り出し、
               テーブルの外の土台に降ろす）→③台車を回す（テーブルごと 180°）</dd>
             <dt>向き</dt>
-            <dd>DS 側から部材を入れ、OS 側へ詰めます。材料の入側は、ラインを正面に見て左です。</dd>
+            <dd>軸端部（スタンド・ハンドル付き）を外した OS 側から部材を入れ、基準面（駆動側の DS）の側から順に組みます。最後に OS 端をフローティングシートで押さえます。材料の入側は、ラインを正面に見て左です。</dd>
             <dt>断面図の見え方</dt>
             <dd>板厚は実寸だと1pxも出ないので、断面図でだけ<b>太らせています</b>
               （倍率は左上に出ます）。<b>上下軸はそのぶん離して</b>あります。
@@ -425,8 +428,8 @@
   <p class="bs-note" id="bsHint3"></p>`;
 
  const step4Html = () => `
-  <h3>ゴムリング</h3>
-  <p class="bs-lead">同じ条の両側は必ず同じリングになります。</p>
+  <h3>板押さえ（ゴムリング）</h3>
+  <p class="bs-lead">ゴムリングで押さえるとき、同じ条の両側は必ず同じリングになります。</p>
   <div class="bs-ring-row">
    <b>大径</b>
    <button type="button" class="bs-chip is-on" data-ring="big" data-mode="auto">自動</button>
@@ -769,7 +772,6 @@
    pk.classList.toggle('is-pick-on', !!(p0 && !p0.missing));
   }
   $('#bsFMethod').textContent = B.METHOD_NAME[res.method];
-  $('#bsFHold').textContent = B.holdName(st, M);
   /* 出すのは**組んだ値**。打った値と違えば並べ、理由は`title`で言う（§9.454）。 */
   const cu = clrUse(), fc = $('#bsFClr');
   const src = st.clrAuto ? `目安: 板厚の${Math.round(clearanceRate() * 100)}%` : '手入力';
@@ -796,8 +798,8 @@
    b.textContent = nm;
    b.dataset.showName = nm;
   });
-  $('#bsV4').textContent = res.finger ? 'フィンガー（不要）'
-   : `${colorOf(res.bigOd)}${res.bigOd} / ${colorOf(res.smOd)}${res.smOd}`;
+  $('#bsV4').textContent = res.finger ? B.holdName(st, M)
+   : `${B.holdName(st, M)} ${colorOf(res.bigOd)}${res.bigOd} / ${colorOf(res.smOd)}${res.smOd}`;
   /* 出すのは**中心間**（説明文がそう言っている）。クリアランスそのものは
      「クリアランス」の欄とチップの帯が持つ（§9.420）。 */
   $('#bsDVal').textContent = (res.A.dKnife || res.A.dReal).toFixed(2);
@@ -1374,7 +1376,9 @@
     条幅に当たるのは、**どちらか一方の軸の内々と、もう一方の軸の外々**で、
     その2つが条幅をクリアランスの半分ずつ挟む（下バリなら上軸が内々・
     下軸が外々、上バリはその逆）。**どちらがどちらかは図の上で読めること**が
-    ここの狙いなので、数だけでなく`内`／`外`の字も添える。
+    ここの狙いなので、数だけでなく`広い`／`狭い`の字も添える（§9.466、利用者の指示
+    「内とか外とか作業者視点ではわかりづらいので、広いとか狭いとかの表現にして」。
+    内々＝製品幅＋クリアランス×2＝広い対、外々＝製品幅そのもの＝狭い対）。
 
     置き場は**記号の札のすぐ下**（その区間の中）。指し示す物の上に置くので
     引き出し線が要らず、隣の区間とも混ざらない（§9.430）。狭くて入らない
@@ -1387,11 +1391,13 @@
  function bladeSpan(len, w) {
   const tk = st.tk;
   return (Math.abs(len - w) <= Math.abs(len + 2 * tk - w))
-   ? { word: '内', v: len } : { word: '外', v: len + 2 * tk };
+   ? { word: SPAN_WORD.in, v: len } : { word: SPAN_WORD.out, v: len + 2 * tk };
  }
- /* 字は「内／外」＋値。**丸めは条幅と同じ2桁**（§9.413 の部材とは別物——
+ /* 呼び名の綴りはここ1箇所（見出し・図・拡大図・潤滑リングの説明が同じ語を使う）。 */
+ const SPAN_WORD = { in: '広い', out: '狭い' };
+ /* 字は「広い／狭い」＋値。**丸めは条幅と同じ2桁**（§9.413 の部材とは別物——
     これは割り付けの計算値なので、在庫の寸法名にはならない）。 */
- const spanText = p => `${p.word}${(+p.v).toFixed(2)}`;
+ const spanText = p => `${p.word} ${(+p.v).toFixed(2)}`;
  function drawZoneSpans(V, A, segs) {
   const half = V.dir * V.kw / 2;
   const pick = bladeSpan;
@@ -2278,16 +2284,16 @@
      <!-- **刃が作る寸法は表にも置く**（§9.434、利用者の指示「クリアランス分の
           計算が入った寸法で上下正確に刃の幅を示すラベル」）。図の上の字は
           狭い区間では入らないので、**必ず読める場所**をここに持つ。 -->
-     <th class="bs-sep" rowspan="2">刃の間隔<small>内＝刃の内々／外＝刃の外々</small></th>
+     <th class="bs-sep" rowspan="2">刃の間隔<small>${SPAN_WORD.in}＝製品幅＋クリアランス×2／${SPAN_WORD.out}＝製品幅</small></th>
      ${Ss.length ? `<th colspan="${Ss.length}" class="bs-sep">スペーサー</th>` : ''}
      ${Gs.length ? `<th colspan="${Gs.length + (res.finger ? 0 : 1)}" class="bs-sep">${holdLabel}</th>` : ''}
-     ${hasLube ? `<th rowspan="2" class="bs-sep bs-lubeh" title="刃を潤滑するリングです。広い側（内々）の刃の内側に両側1本ずつ入ります">潤滑リング<small>幅${R.lubeW}・Φ${R.lubeOd}/${R.lubeBore}</small></th>` : ''}
+     ${hasLube ? `<th rowspan="2" class="bs-sep bs-lubeh" title="刃を潤滑するリングです。${SPAN_WORD.in}側の刃の内側に両側1本ずつ入ります">潤滑リング<small>幅${R.lubeW}・Φ${R.lubeOd}/${R.lubeBore}</small></th>` : ''}
      ${hasHold ? `<th rowspan="2" class="bs-sep">板押さえの空き<small>${ringBand ? `刃のあいだ−${esc(holdLabel)}／${R.gapMin}〜${R.gapMax} が正` : `${esc(holdLabel)}で埋め切れない幅`}</small></th>` : ''}
      ${hasRem ? '<th rowspan="2" class="bs-sep bs-bad">スペーサーの端数<small>0 が正（出たら不具合）</small></th>' : ''}
     </tr>
     <tr><th class="bs-ax bs-sep">上軸</th><th class="bs-ax">下軸</th>
      ${Ss.map((x, i) => `<th class="bs-sz${i ? '' : ' bs-sep'}">${x}</th>`).join('')}
-     ${Gs.length && !res.finger ? '<th class="bs-sz bs-sep">色・外径</th>' : ''}
+     ${Gs.length && !res.finger ? '<th class="bs-sz bs-sep">径・色・外径</th>' : ''}
      ${Gs.map((x, i) => `<th class="bs-sz${i || !res.finger ? '' : ' bs-sep'}">${x}</th>`).join('')}</tr>
    </thead>`;
   /* 区分（ロット・屑条）はいちばん左の列にまとめて1回だけ示す（縦に伸ばさない）。 */
@@ -2316,7 +2322,11 @@
        ここは必ず読める（§9.434 と同じ「落ちない置き場」）。 */
     + (Gs.length && !res.finger
        ? `<td class="bs-num bs-sep bs-ringid" title="このゴムリングの色と外径です。`
-         + `色は外径そのもので、${r.c.ringT === 'big' ? '大径＝製品幅を作る側' : '小径＝広げた側'}です">`
+         + `色は外径そのもので、${r.c.ringT === 'big' ? `大径＝${SPAN_WORD.out}側（製品幅を作る刃）` : `小径＝${SPAN_WORD.in}側（広げた刃）`}です">`
+         /* **大径か小径かを字で言う**（§9.466、利用者の指示「ゴムリングの場合は、大径と
+            小径どっちがどっちかわかるように」）。同じ行の「刃の間隔」が広い／狭いを言うので、
+            広い＝小径・狭い＝大径が1行で読める。 */
+         + `<b class="bs-ringsz">${r.c.ringT === 'big' ? '大径' : '小径'}</b>`
          + `<span class="bs-ringdot" style="background:${esc(hexOf(r.c.od) || 'transparent')}"></span>`
          + `${esc(colorOf(r.c.od))}Φ${r.c.od}</td>` : '')
     + Gs.map((x, i2) => `<td class="bs-num${i2 || !res.finger ? '' : ' bs-sep'}">${num(r.c.G[x])}</td>`).join('')
@@ -2381,8 +2391,10 @@
     h += `<tr class="bs-rem"${openEnd ? ` title="有効長に近づいたら、${far}側から${datum}側へフローティングシートで押さえます。その量です（隙間ではありません）。押さえ代は ${stroke}mm まで"` : ''}>`
      + `<td class="bs-a">${openEnd ? `フローティングシート<small>押さえ代 ${stroke}</small>` : '隙間'}</td>${two(gv(U), gv(L))}</tr>`;
    }
-   /* 取り付ける順（OS端が先）は入れる向き（DS側から）で決まる機械の事実。基準面とは別（§9.461）。 */
-   const why = `${sd === 'OS' ? 'いちばん先に取り付けます' : 'いちばん後に取り付けます'}`
+   /* **基準面から組み、最後にシートの端**（§9.466、利用者の指示「基準面から１つずつ刃を
+      組んだ最後にフローティングシートで押さえる」。§9.461 の「取り付ける順は基準面で
+      変えない（OS端が先）」は誤りだったので撤回した）。 */
+   const why = `${sd === datum ? 'いちばん先に取り付けます' : 'いちばん後に取り付けます'}`
     + `（${sd === datum ? '基準面' : 'フローティングシートで押さえる側'}）。`
     + '最外刃より外なのでスペーサーのみです。';
    el.innerHTML = `<div class="bs-fh" title="${esc(why)}">`
@@ -2393,8 +2405,8 @@
   });
   /* 端部の説明も基準面から言う（§9.461）。 */
   const dn = res.A.datum, fr = dn === 'OS' ? 'DS' : 'OS', note = $('#bsEndsNote');
-  if (note) note.innerHTML = '最外刃より外の区間です。<b>OS</b>から先に取り付け、<b>DS</b>が最後になります。'
-   + `基準面は<b>${dn}</b>、${fr}端は<b>フローティングシート</b>で押さえるので、残りは隙間になりません。`;
+  if (note) note.innerHTML = `最外刃より外の区間です。基準面の<b>${dn}</b>から先に取り付け、<b>${fr}</b>が最後になります。`
+   + `${fr}端は<b>フローティングシート</b>で押さえるので、残りは隙間になりません。`;
  }
 
  /* ====================== 所要 ====================== */
@@ -2460,8 +2472,8 @@
   vb.className = 'bs-vb ' + cls;
   vb.textContent = text;
   const shift = Math.min(e.cumU, e.cumL), diff = Math.abs(e.worst);
-  /* 入れる側（DS・台車の開く側）は機械の事実で、押し付ける側（基準面）とは別の軸（§9.461）。 */
-  const lines = [`DS側から部材を入れ、${dn}側（基準面）へ押し付けて組みます。区間を手持ち寸法で埋めきれない分（端数）だけ、それより ${fr} 側の刃は ${dn} 側へ寄ります。`];
+  /* 部材はシートの側（基準面の反対）から入れ、基準面へ押し付けて組む（§9.466）。 */
+  const lines = [`${fr}側から部材を入れ、${dn}側（基準面）へ押し付けて組みます。区間を手持ち寸法で埋めきれない分（端数）だけ、それより ${fr} 側の刃は ${dn} 側へ寄ります。`];
   if (diff > 1e-9) {
    lines.push(`上軸と下軸で端数の出方が違います。差がいちばん大きいのは <b>${e.worstAt + 1} 本目の刃</b>`
     + `（上軸の累積 ${e.cumU.toFixed(3)} ／ 下軸の累積 ${e.cumL.toFixed(3)} mm）。`);

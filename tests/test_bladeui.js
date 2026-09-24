@@ -229,9 +229,22 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     }));
     /* **表はいつでも読める**——図の字は狭い区間では入らないので、
        落ちない置き場を1つ持つ（§CLAUDE 4 できないことを黙らない）。 */
-    rec('刃が作る寸法（内／外）が刃組表で読める',
-        shown.tbl.length > 0 && shown.tbl.every(t => /^[内外]\d/.test(t))
-        && shown.head.some(h => /刃の間隔/.test(h)), shown.tbl.join(' '));
+    /* §9.466（利用者の指示「内とか外とか作業者視点ではわかりづらいので、広いとか狭いとか
+       の表現にして」）。見出しも同じ語で言う（内々・外々の字を残さない）。 */
+    rec('刃が作る寸法（広い／狭い）が刃組表で読める',
+        shown.tbl.length > 0 && shown.tbl.every(t => /^(広い|狭い) \d/.test(t))
+        && shown.head.some(h => /刃の間隔/.test(h) && /広い/.test(h) && !/内々|外々/.test(h)),
+        shown.tbl.join(' '));
+    /* 「併せてゴムリングの場合は、大径と小径どっちがどっちかわかるように」。
+       **同じ行の字だけで**読めること（title は数えない）——広い＝小径・狭い＝大径。 */
+    const szRows = await page.evaluate(() => [...document.querySelectorAll('#bsTables tbody tr')]
+      .filter(tr => tr.querySelector('.bs-kgap') && tr.querySelector('.bs-ringid'))
+      .map(tr => ({ span: tr.querySelector('.bs-kgap').textContent.trim(),
+                    ring: tr.querySelector('.bs-ringid').textContent.trim() })));
+    rec('ゴムリングの行は大径／小径を字で言い、広い＝小径・狭い＝大径',
+        szRows.length > 0 && szRows.every(o => /^(大径|小径)/.test(o.ring)
+          && (/^広い/.test(o.span) ? /^小径/.test(o.ring) : /^大径/.test(o.ring))),
+        szRows.map(o => `${o.span}→${o.ring}`).join(' / '));
     rec('ゴムリングの径と色と大小を上の帯が言い切る',
         /大\s*\S*Φ\d+／小\s*\S*Φ\d+/.test(shown.chip), shown.chip);
 
@@ -277,6 +290,22 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     await W.until(page, () => /フィンガー/.test(
                     (document.querySelector('#bsV4') || {}).textContent || ''),
                   null, { ms: 8000, what: 'フィンガー方式へ切り替わる' });
+    /* §9.465（利用者の指示「板押さえにしないと、ゴムリングのフィンガーみたいな謎の
+       言葉を生み出す」「表示の重複もある」）。「自動で決まる」の群で、**名前が方式
+       （ゴムリング／フィンガー）を名乗らない**・**方式を言う項目は1つ**。 */
+    const autoHold = await page.evaluate(() => {
+     const g = document.querySelector('.bs-sgrp.is-auto');
+     const items = [...g.querySelectorAll('.bs-fact, .bs-step')].map(el => ({
+      name: ((el.querySelector('.bs-fact > s, .bs-step-tx > b') || {}).textContent || '').trim(),
+      val: ((el.querySelector('.bs-fact > b, .bs-step-tx > span') || {}).textContent || '').trim() }));
+     const K = /ゴムリング|フィンガー/;
+     return { named: items.filter(i => K.test(i.name)).length,
+              say: items.filter(i => K.test(i.name) || K.test(i.val)).length,
+              text: items.map(i => `${i.name}｜${i.val}`).join(' / ') };
+    });
+    rec('自動で決まる群の名前は方式を名乗らない（「ゴムリング｜フィンガー」を作らない）',
+        autoHold.named === 0, autoHold.text);
+    rec('板押さえの方式を言う項目は1つ（「保持」と重ねない）', autoHold.say === 1, autoHold.text);
     const f = await page.evaluate(() => ({
      verdicts: [...document.querySelectorAll('#bsGauges .bs-vb')].map(x => x.textContent),
      heads: [...document.querySelectorAll('#bsTables thead th')].map(x => x.textContent),
@@ -1099,6 +1128,26 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('立体図へ戻すときも組むのは1回だけ',
         swSolid.builds - swCut.builds === 1,
         `組んだ回数 ${swCut.builds} → ${swSolid.builds}`);
+    /* §9.466（利用者の指示「立体図は、OSDSの表示が逆で、フローティングシートの位置も逆」
+       「ギアボックス側DS(基準面)、スタンドハンドル付きの外れる方がOS」「フローティング
+       シートはスタンド側外れる方」）。**同じカメラで写した横位置**で見る——絵ではなく、
+       機械の両端・札・シートが画面のどちらに在るか。 */
+    const e3 = await page.evaluate(() => window.WL.bladeSolid.view().ends3);
+    const nearer = (a, p, q) => Math.abs(a - p) < Math.abs(a - q);
+    rec('立体図の DS の札はギヤボックス（駆動側）、OS の札は外せる軸端部の側',
+        !!e3 && nearer(e3.ds, e3.gear, e3.stand) && nearer(e3.os, e3.stand, e3.gear), JSON.stringify(e3));
+    rec('立体図のフローティングシートは外せる軸端部（OS）の側',
+        !!e3 && nearer(e3.seat, e3.stand, e3.gear), JSON.stringify(e3));
+    rec('立体図でも「基準原点を右」なら基準面（DS）が画面の右',
+        !!e3 && e3.ds > e3.os, JSON.stringify(e3));
+    /* §9.467（利用者の指摘「台車側にレールに沿う機構がないのに回転台の部分に入ったり、
+       寧ろレールに干渉しそうなオブジェクトも配置してあったり」）。**組み立てている寸法**
+       で見る（角度によって絵では見えない）: 甲板がレールの頭より上に出ない／台座の下の
+       箱が車輪へ食い込まない／レールの真上に当たりそうな箱が無い。 */
+    const rig3 = await page.evaluate(() => window.WL.bladeSolid.view().rig);
+    rec('台車は車輪でレールに載り、回転テーブルの甲板も同じ高さ（めり込み・当たり 0）',
+        !!rig3 && rig3.deckOverRail === 0 && rig3.wheelBuried === 0 && rig3.railClash === 0,
+        JSON.stringify(rig3));
     await page.click('#bsFigTabs [data-fig="cut"]');
     await W.until(page, () => {
      const v = window.WL.bladeSolid.view();
@@ -1387,7 +1436,10 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         /フローティングシート/.test(ui456.ds) && !/隙間|残り/.test(ui456.ds) && !/フローティングシート/.test(ui456.other),
         `${ui456.ds} ／ 反対 ${ui456.other}`);
     rec('中心の欄は「どちらから測るか」を言い、端部の説明は基準面を言う（§9.461）',
-        /DSから/.test(ui456.unit) && /基準面はDS/.test(ui456.note) && /OS端はフローティングシート/.test(ui456.note),
+        /* §9.466: 組む順も基準面から（「基準面から１つずつ刃を組んだ最後にフローティング
+           シートで押さえる」）。以前は「OSから先に」で基準面と食い違っていた。 */
+        /DSから/.test(ui456.unit) && /基準面のDSから先に取り付け、OSが最後/.test(ui456.note)
+        && /OS端はフローティングシート/.test(ui456.note),
         `${ui456.unit} ／ ${ui456.note}`);
     rec('シートの側の端の残りでは「埋め切れていない」の帯を出さない', !ui456.alert, String(ui456.alert));
     rec('断面図の突き合わせは、足りないぶんをフローティングシートと言う（差で出さない）',
@@ -2667,7 +2719,11 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
       heads: [...box.querySelectorAll('.sc-blade-tbl thead th')].map(t => t.textContent),
       first: rows.length ? (rows[0].textContent || '').replace(/\s+/g, ' ').trim() : '',
       na: box.querySelectorAll('.sc-blade-na').length,
-      todo: box.querySelectorAll('.sc-blade-todo').length
+      todo: box.querySelectorAll('.sc-blade-todo').length,
+      /* §9.469: セルの下端と行の下端のずれ（px）と、表のセルでなくなったセルの数。 */
+      step: Math.max(0, ...rows.map(tr => Math.max(...[...tr.children].map(td =>
+        Math.abs(tr.getBoundingClientRect().bottom - td.getBoundingClientRect().bottom))))),
+      notCell: rows.reduce((n, tr) => n + [...tr.children].filter(td => getComputedStyle(td).display !== 'table-cell').length, 0)
      };
     });
     rec('切り替えると刃組の表が出て、タイムラインは伏せる',
@@ -2679,6 +2735,10 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     /* **記録が無い段取りを空欄にしない**（空欄は0に見える・§9.231）。 */
     rec('まだ組んでいない段取りは「これから」「未記録」と書く',
         bl.todo >= 1 && bl.na >= 1, `これから${bl.todo} 未記録${bl.na}`);
+    /* §9.469（利用者の指摘「刃組スケジュールで部分的に段付きになっていて変な部分がある」）。
+       題名のセルを`flex`にすると表のセルでなくなり、罫線が中身の高さで引かれて段違いになる。 */
+    rec('刃組スケジュールの行は段違いにならない（どのセルも表のセル・下端が行と同じ）',
+        bl.notCell === 0 && bl.step < 1, JSON.stringify({ step: bl.step, notCell: bl.notCell }));
 
     /* ---- 6.6) 一覧から刃組ガイダンスへ行ける（§9.408、利用者の指示②） ----
        「刃組メインのスケジュールなのに刃組ガイダンスに行けないのは微妙です」
@@ -3324,6 +3384,40 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
     rec('段取り向きを裏返しても切り口は残す側に付いてくる（組み直す）',
         spun.capSide === true && spun.builtKeep === spun.keep && spun.after > spun.before,
         JSON.stringify(spun));
+
+    /* §9.463 の追補（§9.465）。向きの**既定の側と札の呼び方はマスタが決める**。
+       上の網は既定値（右・「基準原点を左／右」）しか見ておらず、マスタの値が
+       画面へ届くことは誰も見ていなかった。刃組基準値へ入れて開き直し、札の字と
+       濃い側が変わることを見る。**触る前の行を控えて戻す**（無ければ消す）。 */
+    const std0 = ((await getj('/api/bladeset-standard-master?equipment='
+      + encodeURIComponent(EQ))).items || [])[0] || null;
+    const VIEW_KEYS = ['viewDatumPos', 'viewLabelLeft', 'viewLabelRight'];
+    let stdMade = null;
+    /* マスタへ書くのは**編集モード**（この節までにスケジュールモードへ切り替えてある。
+       そのままだと「現在のモードでは、この操作は実行できません」で弾かれる）。 */
+    await setMode('edit');
+    try {
+     const want = { viewDatumPos: '左', viewLabelLeft: 'ライン側から見る', viewLabelRight: '図面で見る' };
+     const sv = await (await post(std0 ? '/api/bladeset-standard-master/update'
+       : '/api/bladeset-standard-master', Object.assign({ equipment: EQ },
+       std0 ? { id: std0.id } : {}, want))).json();
+     if (!std0 && sv && sv.ok) stdMade = sv.id;
+     rec('刃組基準値へ向きの既定と呼び方を保存できる', !!(sv && sv.ok), JSON.stringify(sv));
+     await page.evaluate(eq => WL.bladeGuide.open({ equipment: eq }), EQ);
+     await W.until(page, () => (document.querySelector('#bsFlip .is-on') || {}).textContent
+       === 'ライン側から見る', null, { ms: 15000, what: 'マスタの呼び方で札が出る' });
+     const vm = await flipState();
+     rec('マスタの呼び方が札に出て、既定の側（左）が濃い',
+         vm.labels.join('/') === 'ライン側から見る/図面で見る' && vm.pos === '左',
+         JSON.stringify({ labels: vm.labels, pos: vm.pos }));
+    } finally {
+     if (stdMade != null) {
+      await post('/api/bladeset-standard-master/delete', { id: stdMade });
+     } else if (std0) {
+      await post('/api/bladeset-standard-master/update', Object.assign({ id: std0.id, equipment: EQ },
+        Object.fromEntries(VIEW_KEYS.map(k => [k, std0[k] == null ? '' : std0[k]]))));
+     }
+    }
 
     rec('JSエラーが出ていない', errs.length === 0, errs.slice(0, 2).join(' / '));
 

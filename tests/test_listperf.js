@@ -119,7 +119,7 @@ run('test_listperf: 一覧を開いたときに画面が固まらないこと(§
   // ---- 5. 大きい表は少しずつ並べ、最後には全行そろう ----
   await page.fill('#search','');
   await idle();
-  await page.selectOption('#pageSize','500');
+  await W.listView(page);await page.selectOption('#pageSize','500');
   await page.waitForFunction(()=>document.querySelectorAll('#grid tbody tr').length>0,{timeout:20000});
   const firstPaint=await page.evaluate(()=>document.querySelectorAll('#grid tbody tr').length);
   await page.waitForFunction(()=>document.querySelectorAll('#grid tbody tr').length>=500,{timeout:20000})
@@ -136,7 +136,7 @@ run('test_listperf: 一覧を開いたときに画面が固まらないこと(§
   rec('継ぎ足しのあとに並べ替えても行が壊れない',afterSort>0,`${afterSort}行`);
 
   // ---- 6. 横に見えている列だけ作る（列の窓、§9.104） ----
-  await page.selectOption('#pageSize','200');
+  await W.listView(page);await page.selectOption('#pageSize','200');
   await page.waitForFunction(()=>document.querySelectorAll('#grid tbody tr').length>10,{timeout:20000});
   const win=await page.evaluate(()=>{
    const g=document.getElementById('grid');

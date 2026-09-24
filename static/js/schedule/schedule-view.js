@@ -2400,7 +2400,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
         スケジュールなのに刃組ガイダンスに行けないのは微妙です」）。 */
      const chip=r.link?`<button type="button" class="sc-nw-link" data-open-blade="${esc(r.id)}"`
       +` title="${esc(r.link)}をこの段取りの文脈で開きます">${esc(r.link)}</button>`:'';
-     return `<td class="sc-blade-title"><span>${esc(r.title)}</span>${chip}</td>`;
+     /* 横並びは**セルの中の器**が持つ（§9.469）。`td`そのものを`flex`にすると表のセルで
+        なくなり、下の罫線が中身の高さで引かれて行の下端と段違いになった（実測 14.5px）。 */
+     return `<td class="sc-blade-title"><span class="sc-blade-tt"><span>${esc(r.title)}</span>${chip}</span></td>`;
     }
     if(k==='state'){
      /* **色だけで言わない**（§CLAUDE 3）——分類名を字で出す。見込みで埋めた行は

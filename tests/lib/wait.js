@@ -202,11 +202,21 @@ async function changed(page,sel,before,ms=15000){
 }
 const textOf=(page,sel)=>page.evaluate(s=>((document.querySelector(s)||{}).textContent||'').trim(),sel);
 
+/* 一覧の「☰ 表示」の浮きパネルを開く（§9.468）。表示列・行間・並び・表示件数は
+   この中に畳んである。開いていれば何もしない。**押すのは本物のボタン**（人と同じ道）。 */
+async function listView(page){
+ const isOpen=()=>page.evaluate(()=>{const p=document.getElementById('listViewPanel');return !!p&&!p.hidden});
+ if(await isOpen())return;
+ await page.click('#listViewBtn');
+ await until(page,()=>{const p=document.getElementById('listViewPanel');return !!p&&!p.hidden},
+   null,{ms:5000,what:'「表示」のパネルが開く'});
+}
+
 /* 計測の口は公開するものにだけ被せる（中で呼び合うぶんは二重に数えない）。 */
 const X={SETTLE,settle,paint,textOf,
  until:traced('until',until),booted:traced('booted',booted),settleFlags:traced('settleFlags',settleFlags),
  openSchedule:traced('openSchedule',openSchedule),poll:traced('poll',poll),opSave:traced('opSave',opSave),
  answerPrompt:traced('answerPrompt',answerPrompt),answerConfirm:traced('answerConfirm',answerConfirm),
- changed:traced('changed',changed),
+ changed:traced('changed',changed),listView:traced('listView',listView),
  track:(page,o)=>{const t=track(page,o);return {idle:traced('idle',t.idle),pending:t.pending}}};
 module.exports=X;
