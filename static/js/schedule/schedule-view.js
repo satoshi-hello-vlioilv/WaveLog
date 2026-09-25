@@ -10816,8 +10816,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(typeof WL.listColumns?.open!=='function'){
    console.error('内容欄の設定: WL.listColumns が見つかりません');return;
   }
-  /* 候補の土台（仕掛の列名・§9.501）を**揃えてから**開く。控えがあれば往復は無い。 */
+  /* 候補の土台（仕掛の列名・§9.501）を**揃えてから**開く。控えがあれば往復は無い。
+     待つあいだに段・設備を移ったら開かない——移った先の段の上に、前の段の表示列の設定が出ていた（§9.501の追補）。 */
+  const at=scState.boardMode+'\n'+scState.equipment;
   await scLoadWorkColumns();
+  if(scState.boardMode+'\n'+scState.equipment!==at)return;
   WL.listColumns.open(contentPanelSource());
  }
 

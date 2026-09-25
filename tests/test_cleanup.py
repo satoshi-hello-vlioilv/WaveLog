@@ -292,6 +292,21 @@ try:
     rec('更新の片付けでも掃除の決まり（残す日数）はパス設定マスタから読む（§9.497の追補3）',
         lo_got.get('keep_days') == 9, lo_line)
 
+    # ---- 11) 消せなかった物の「次に何が起きるか」は種別の決まりどおりに言う（§9.497の追補3） ----
+    # 前は「次の掃除で消えます」と一律に言っていたが、作業フォルダ・起動の部品・バイトコードは定期の掃除では消さない。
+    fn = getattr(file_cleanup, 'failed_note', None)
+    auto_only = {'results': [{'key': 'logs', 'failed': 2}], 'failed': 2}
+    manual = {'results': [{'key': 'logs', 'failed': 1}, {'key': 'pycache', 'failed': 1}], 'failed': 2}
+    notes = (fn(auto_only), fn(manual)) if fn else (None, None)
+    print('#MEASURE ' + json.dumps({'failed_note': notes}, ensure_ascii=False))
+    rec('消せなかった物が定期の掃除で消える種別だけなら「次の掃除で消えます」と言う（§9.497の追補3）',
+        fn is not None and '次の掃除' in notes[0], str(notes[0]))
+    rec('定期の掃除では消さない種別を含むなら「次の掃除で消えます」と言わず、次の update.bat を言う（§9.497の追補3）',
+        fn is not None and '次の掃除で消えます' not in notes[1] and 'update.bat' in notes[1], str(notes[1]))
+    down = vn({'appVersion': '99.0.0'}) if vn else ''
+    rec('版が下がったときは「更新」と言わず、前の版に戻っていると言う（§9.497の追補3）',
+        '更新' not in down and '戻' in down, down)
+
     # ---- 8) 種別の作りが揃っている（画面はこの並びをそのまま出す） ----
     need = {'key', 'label', 'icon', 'note', 'why', 'auto', 'scan'}
     rec('どの種別も「呼び名・説明・消し方・自動可否」を持っている',

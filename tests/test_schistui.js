@@ -155,10 +155,39 @@ run('test_schistui: 作業スケジュールの過去履歴（段「履歴」・
   console.log('#MEASURE '+JSON.stringify({headsA,headsB}));
   rec('7: 履歴の段のまま設備を替えると、替えた先の設備の内容の列で出す（鋳造番号・製造調質）',
       headsB.some(h=>/鋳造/.test(h))&&headsB.some(h=>/調質/.test(h))&&!headsB.some(h=>/製造材質/.test(h)),JSON.stringify(headsB));
+  /* 8. 設備を替えた直後、読み込み中は**前の設備の行を出さない**（§9.502の追補3）。答えを遅らせて、読み込み中の行を数える。 */
+  const HIST='**/api/schedule/history?*';
+  await page.route(HIST,async r=>{await new Promise(ok=>setTimeout(ok,1500));await r.continue().catch(()=>{/* 待つあいだに外した道 */})});
   await page.selectOption('#scEquipmentSelect',EQ);
+  await W.until(page,()=>{const s=WL.scheduleHistory&&WL.scheduleHistory.state();return !!s&&s.loading},null,{ms:8000,what:'読み込み中'});
+  const stale=await page.evaluate(()=>document.querySelectorAll('#scHistBody .sh-row').length);
+  console.log('#MEASURE '+JSON.stringify({rowsWhileLoading:stale}));
+  rec('8: 設備を替えた直後の読み込み中は、前の設備の行を出さない',stale===0,`読み込み中に出ていた行 ${stale}`);
   await W.until(page,e=>{const s=WL.scheduleHistory&&WL.scheduleHistory.state();return s&&!s.loading&&s.equipment===e},EQ,{ms:20000,what:'設備Aの履歴へ戻す'});
+  await page.unroute(HIST);
   const headsA2=await heads();
   rec('7: 元の設備へ戻すと元の内容の列に戻る',JSON.stringify(headsA2)===JSON.stringify(headsA),JSON.stringify({headsA,headsA2}));
+
+  /* 9. 単位「期間」を覚えた端末で開いても、今日は**現場歴の今日**（サーバーが答える）（§9.502の追補3）。
+     サーバーの「今日」を前の日にすり替え、期間がそれに従うかで見る（前はブラウザの暦の今日だった）。 */
+  const yest=await page.evaluate(()=>{const d=new Date();d.setDate(d.getDate()-1);
+   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`});
+  await page.evaluate(()=>localStorage.setItem('wl.scheduleHistory.v1',JSON.stringify({unit:'range',off:[],scope:'period'})));
+  await page.route(HIST,async r=>{
+   const res=await r.fetch();const j=await res.json();
+   if(!new URL(r.request().url()).searchParams.get('from'))j.today=yest;
+   await r.fulfill({response:res,json:j});
+  });
+  await page.reload({waitUntil:'domcontentloaded'});
+  await W.booted(page);
+  await W.openSchedule(page,EQ);
+  await page.click('#scModeHistory');
+  await W.until(page,()=>{const s=WL.scheduleHistory&&WL.scheduleHistory.state();return s&&!s.loading&&s.unit==='range'&&!!s.equipment},null,{ms:20000,what:'期間の単位で開いた履歴'});
+  const pr=await page.evaluate(()=>WL.scheduleHistory.state().period);
+  console.log('#MEASURE '+JSON.stringify({rangePeriod:pr,fieldToday:yest}));
+  rec('9: 単位「期間」で開いても、期間の既定は現場歴の今日（サーバーの答え）',pr[0]===yest&&pr[1]===yest,JSON.stringify({pr,yest}));
+  await page.unroute(HIST);
+  await page.evaluate(()=>localStorage.removeItem('wl.scheduleHistory.v1'));
 
   await page.click('#shToSingle');
   const back=await page.evaluate(()=>!document.getElementById('scSingleBody').hidden&&document.getElementById('scHistBody').hidden);

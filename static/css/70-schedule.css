@@ -2839,6 +2839,8 @@ div.sc-view-row{cursor:default}
 /* 起きなかったこと（取消・外した作業）は**一段薄く**（色だけにしない＝区分の字が言う）。 */
 .sh-row.sh-tone-off td:not(.sh-c-cat){color:var(--muted)}
 .sh-est{color:var(--muted)}
+/* 入れたときに分を持っていなかった設備停止の印（出どころは title）。小計の「*」と同じ作法。 */
+.sh-est-src{font-style:normal}
 .sh-off{color:var(--muted)}
 .sh-comment{white-space:normal}
 .sh-empty{display:flex;flex-direction:column;align-items:center;gap:var(--space-2);padding:var(--space-6) var(--space-4);

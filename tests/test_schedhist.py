@@ -252,6 +252,25 @@ rec('F: 作業の前に外した行・ほかの設備で作業した行は「外
 day_min = sum((x.get('minutes') or 0) for x in fo['entries'] if x['cat'] == 'done' and x['lotNo'] == 'K007')
 rec('F: K007 の作業時間の合計は60分（前は外した行のぶんも足して120分）', day_min == 60.0, str(day_min))
 
+# ---- G. 見積の分を持たない設備停止・全角で探す（§9.502の追補3） ----
+# 設備停止を分を渡さずに入れた行（古い行・分を渡さない入れ方）は[見積分]が空のまま残る。いまの予定の画面は
+# 停止理由の標準か既定の分で数えるが、履歴は空のまま出し、期間の合計からも抜けていた。
+put('stop_noest', '設備停止', title='G試験停止', est=None, active=0, created=D5, updated=D5 + timedelta(hours=1))
+g = sh.history(c, mc, EQ, D5.date(), D5.date(), keys=[], actual_index=ACT)
+ge = next((x for x in g['entries'] if x['id'] == IDS['stop_noest']), None)
+print('#MEASURE ' + json.dumps({'stop_noest_minutes': ge and ge['minutes'],
+                                'source': ge and ge.get('minutesSource')}, ensure_ascii=False))
+rec('G: 見積の分を持たない設備停止も、いまの予定と同じ見積で数え、出どころを言う（既定の分）',
+    bool(ge) and ge['minutes'] == sc.DEFAULT_ESTIMATE_MINUTES and '既定' in (ge.get('minutesSource') or ''),
+    json.dumps(ge and {k: ge.get(k) for k in ('minutes', 'minutesSource')}, ensure_ascii=False))
+e = find('stop')
+rec('G: 入れたときに分を持っていた設備停止はその分のまま（出どころは空＝入れたときの見積）',
+    bool(e) and e['minutes'] == 30 and not e.get('minutesSource'), str(e and (e['minutes'], e.get('minutesSource'))))
+qz = sh.history(c, mc, EQ, NOW.date(), NOW.date(), keys=['lotNo'], actual_index=ACT, query='Ｈ００１', anywhere=True)
+print('#MEASURE ' + json.dumps({'fullwidth_hits': [x['lotNo'] for x in qz['entries']]}, ensure_ascii=False))
+rec('G: 全角で打っても当たる（Ｈ００１ → H001）', [x['lotNo'] for x in qz['entries']] == ['H001'],
+    str([x['lotNo'] for x in qz['entries']]))
+
 c.close()
 mc.close()
 print('\n%d/%d PASS' % (sum(R), len(R)))
