@@ -267,6 +267,20 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
   const bad=await page.evaluate(s=>{const r=document.querySelector(s);const n=r&&r.querySelector('.sc-st-err');return n?n.textContent.trim():''},calc);
   rec('書けない式はその場で理由を言う（§9.498）',!!bad,bad);
   await put(calc+' [data-st-f="expr"]','[製造材質 合計]/[ロット数]');
+  // 9e) 無い名前を引く式も、その場で理由を言い、小計は「—」（§9.498の追補）。前は無い名前が空として通り、
+  //     `+`では片方だけの値（ここでは [ロット数] の 3）が合計のように出ていた。
+  await put(calc+' [data-st-f="expr"]','[重量 合計]+[ロット数]');
+  await W.until(page,t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
+   return !!el&&el.querySelectorAll('.sc-subtotal-sum[data-item]').length===6},TAG,{ms:8000,what:'式を書き換えた小計'});
+  const unk=await page.evaluate(([s,t])=>{const r=document.querySelector(s);const n=r&&r.querySelector('.sc-st-err');
+   const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
+   const v=el&&[...el.querySelectorAll('.sc-subtotal-sum[data-item]')].pop();
+   return {err:n?n.textContent.trim():'',val:v?(v.querySelector('.sc-st-v')||v).textContent.trim():null,bad:!!v&&v.classList.contains('is-bad'),title:v?v.title:''}},[calc,TAG]);
+  console.log('#MEASURE '+JSON.stringify({unknownName:unk}));
+  rec('無い名前を引く式はその場で理由を言う（名前を出す）（§9.498の追補）',/重量 合計/.test(unk.err),JSON.stringify(unk));
+  rec('無い名前を引く式の小計は「—」で、理由を title で言う（片方だけの値を合計のように出さない）（§9.498の追補）',
+      unk.val==='—'&&unk.bad&&/重量 合計/.test(unk.title),JSON.stringify(unk));
+  await put(calc+' [data-st-f="expr"]','[製造材質 合計]/[ロット数]');
   if(process.env.WAVELOG_SHOT){await page.screenshot({path:`${process.env.WAVELOG_SHOT}/scsubtotal-multi-panel.png`})}
   await page.click('#scViewMenuBtn');
   if(process.env.WAVELOG_SHOT){

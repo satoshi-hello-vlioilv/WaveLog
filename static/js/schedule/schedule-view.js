@@ -2595,6 +2595,13 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   applyBoardModeUi();
   const box=$('#scHistBody');
   if(!box||!WL.scheduleHistory)return;
+  /* 内容の列（どの項目を出すか・表示名）は**いまの設備のもの**を揃えてから出す。個別の段は
+     `refreshAll()`が読むが、履歴の段は通らない——段のまま設備を替えると、前の設備の列か
+     既定の4項目で出ていた（§9.502の追補）。 */
+  if(scState.equipment&&scContentPrefs.equipment!==scState.equipment){
+   await Promise.all([loadScheduleContentPrefs(),WL.columnLayout.load(timelineTarget())]);
+   if(scState.boardMode!=='history')return;   // 待つあいだに段を移った
+  }
   WL.scheduleHistory.show(box,{
    equipment:()=>scState.equipment||'',
    contentKeys:()=>chosenContentKeys(),
@@ -5979,13 +5986,21 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     v={name,n:(it.agg==='count'||s.vals.length)?SC_SUBTOTAL_AGG_FN[it.agg](s.vals):null,
        unit:s.unit||'',dec:s.dec,used:s.vals.length,skip:s.skip};
    }else{
-    let n=null,err='';
-    try{
-     const r=WL.formula.compile(it.expr).run(env);
-     n=(r===null||r===''||typeof r==='boolean')?null:Number(r);
-     if(!Number.isFinite(n))n=null;
-    }catch(e){err=String(e&&e.message||e)}
-    v={name,n,err,calc:true};
+    let n=null,miss='';
+    const err=subtotalFormulaError(it,Object.keys(env));
+    if(!err){
+     const f=WL.formula.compile(it.expr);
+     /* 引く値が1つでもこの区切りで読めなければ**計算しない**——`+`は片方が空だと連結になり、
+        片方だけの値が合計のように出ていた（§9.498の追補）。 */
+     const empty=f.columns.filter(k=>env[k]==null);
+     if(empty.length)miss=`${empty.map(k=>`[${k}]`).join('・')}がこの区切りで読めないので、計算していません`;
+     else{
+      const r=f.run(env);
+      n=(r===null||r===''||typeof r==='boolean')?null:Number(r);
+      if(!Number.isFinite(n))n=null;
+     }
+    }
+    v={name,n,err,miss,calc:true};
    }
    values[it.id]=v;
    if(!(name in env))env[name]=v.n;
@@ -6014,9 +6029,20 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(it.kind==='agg'&&it.agg==='count')return 0;
   return Math.min(it.agg==='avg'?v.dec+1:v.dec,6);
  }
+ /* 式を読めない理由（書き方・無い名前）。空なら読める。`known`はその式より**上に並んだ**項目の名前と
+    [ロット数]（式は上から順に数える）。設定の見本と表の小計が同じ1本を通る。 */
+ function subtotalFormulaError(it,known){
+  if(!String(it.expr||'').trim())return '式が空です';
+  const chk=WL.formula.check(it.expr);
+  if(!chk.ok)return chk.error;
+  const have=new Set(known);
+  const unknown=(chk.columns||[]).filter(k=>!have.has(k));
+  return unknown.length
+   ?`${unknown.map(k=>`[${k}]`).join('・')}という名前はありません（使えるのは上に並んだ項目の名前と [${SC_SUBTOTAL_LOTS}]）`:'';
+ }
  function subtotalValueTitle(it,v,count){
   if(v.calc)return `${v.name} = ${it.expr||'（式が空です）'}`
-   +(v.err?`\n式を読めません: ${v.err}`:'')
+   +(v.err?`\n式を読めません: ${v.err}`:'')+(v.miss?`\n${v.miss}`:'')
    +`\n式では [${SC_SUBTOTAL_LOTS}]（${count}）と、上に並んだ項目の名前が使えます`;
   return `${v.name}（${subtotalAggOf(it.agg).label}・作業ロット${v.used}件ぶん）`
    +(v.skip?`\n数として読めない・単位の違う値が${v.skip}件あり、${it.agg==='count'?'数えて':'足して'}いません`:'');
@@ -6036,7 +6062,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  function subtotalEl(unit,cfg){
   const choices=subtotalColumnChoices();
   const items=cfg.items.filter(it=>it.kind==='calc'||choices.includes(it.col));
-  const agg=subtotalOf(unit.rows,items);
+  /* 数えるのは**全部の項目**、出すのは表に出している列の集計と式だけ。列を隠した項目も式の材料には
+     なる——出すぶんだけで数えると、設定の見本（全部で数える）と表の小計で式の答えが食い違っていた。 */
+  const agg=subtotalOf(unit.rows,cfg.items);
   const el=document.createElement('div');
   el.className='sc-subtotal'+(cfg.style==='label'?' is-label':'');
   el.dataset.unit=unit.key;el.dataset.count=String(agg.count);
@@ -6133,9 +6161,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const decSel=it=>`<select data-st-f="dec" aria-label="桁" title="小数の桁（自動＝材料なり）">`
     +SC_SUBTOTAL_DEC.map(d=>`<option value="${d}"${d===it.fmt.dec?' selected':''}>${d===''?'自動':`${d}桁`}</option>`).join('')+'</select>';
   const suffix=it=>`<input type="text" data-st-f="suffix" value="${esc(it.fmt.suffix)}" placeholder="—" aria-label="単位" title="後ろに付ける字（例 kg）。決めると桁区切りも付きます">`;
-  const prev=it=>{
-   if(it.kind==='calc'&&it.expr){const chk=WL.formula.check(it.expr);
-    if(!chk.ok)return `<span class="sc-st-prev sc-st-err" title="${esc(chk.error)}">${esc(chk.error)}</span>`}
+  const prev=(it,i)=>{
+   if(it.kind==='calc'&&it.expr){const bad=subtotalFormulaError(it,names().slice(0,i+1));
+    if(bad)return `<span class="sc-st-prev sc-st-err" title="${esc(bad)}">${esc(bad)}</span>`}
    if(!sample)return `<span class="sc-st-prev is-none" title="区切りがまだありません">—</span>`;
    const v=sample.r.values[it.id];
    const star=(it.kind==='agg'&&it.agg!=='count'&&v.skip&&v.used)?'*':'';
@@ -6148,14 +6176,14 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    if(it.kind==='calc')
     return `<div class="sc-st-grid sc-st-item is-calc" data-i="${i}">${lab}`
      +`<input type="text" class="sc-st-expr" data-st-f="expr" value="${esc(it.expr)}" placeholder="[${esc(names()[1]||'重量 合計')}] / [${SC_SUBTOTAL_LOTS}]" aria-label="式">`
-     +decSel(it)+suffix(it)+prev(it)+del+'</div>';
+     +decSel(it)+suffix(it)+prev(it,i)+del+'</div>';
    return `<div class="sc-st-grid sc-st-item" data-i="${i}">${lab}`
     +`<select data-st-f="col" aria-label="集計する列">`
     +(choices.includes(it.col)?'':`<option value="${esc(it.col)}" selected>${esc(scColLabel(it.col))}（表に出していません）</option>`)
     +choices.map(k=>`<option value="${esc(k)}"${k===it.col?' selected':''}>${esc(scColLabel(k))}（${readable.get(k)}/${rows.length}）</option>`).join('')+'</select>'
     +`<select data-st-f="agg" aria-label="集計">`
     +SC_SUBTOTAL_AGGS.map(a=>`<option value="${a.key}"${a.key===it.agg?' selected':''}${a.note?` title="${esc(a.note)}"`:''}>${a.label}</option>`).join('')+'</select>'
-    +decSel(it)+suffix(it)+prev(it)+del+'</div>';
+    +decSel(it)+suffix(it)+prev(it,i)+del+'</div>';
   };
   const unitCtl=`<select id="scSubtotalUnit" aria-label="区切り">`
     +SC_SUBTOTAL_UNITS.map(u=>`<option value="${esc(u.key)}"${u.key===c.unit?' selected':''}>${esc(u.label)}</option>`).join('')+`</select>`

@@ -24,6 +24,7 @@ run('test_schistui: 作業スケジュールの過去履歴（段「履歴」・
   return {status:r.status,body:j};
  },{p,b:body||{}});
  let seededStopId=null;
+ let bTouched=null;   // 設備Bの内容の列を書き換えたら、元の並び（空なら空）へ戻す
  const shot=async n=>{if(process.env.WAVELOG_SHOT)await page.screenshot({path:`${process.env.WAVELOG_SHOT}/schist-${n}.png`})};
  try{
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
@@ -135,11 +136,36 @@ run('test_schistui: 作業スケジュールの過去履歴（段「履歴」・
   });
   rec('6: 1段目（送り・単位・探す）は1行に収まり、画面は横にはみ出さない',geo.rows===1&&geo.overflow<=0,JSON.stringify(geo));
 
+  /* 7. 段のまま設備を替えても、**替えた先の設備の内容の列**で出す（§9.502の追補）。
+     前は内容の列を読み直す道（refreshAll）を通らず、既定の4項目に戻っていた。 */
+  const EQB='テスト設備B';
+  const ownB=await page.evaluate(async e=>((await (await fetch('/api/schedule-content-master?equipment='+encodeURIComponent(e))).json()).items||[]),EQB);
+  const itemsB=['lotNo','castingNo','mfgTemper'];
+  await post('/api/schedule-content-master',{equipment:EQB,items:itemsB});
+  bTouched=ownB;
+  // 設備Bにも記録を1件（表が出ないと見出しを読めない）。予定の表はランナーの reseed が戻す。
+  await post('/api/schedule/session/acquire',{equipment:EQB});
+  const cmB=await post('/api/schedule/plan/add',{equipment:EQB,kind:'コメント',title:TAG+' B の申し送り'});
+  rec('前提: 設備Bに申し送りを1件入れられた',cmB.status===200,String(cmB.status));
+  const heads=()=>page.evaluate(()=>[...document.querySelectorAll('#scHistBody thead th')].map(t=>t.textContent.trim()));
+  const headsA=await heads();
+  await page.selectOption('#scEquipmentSelect',EQB);
+  await W.until(page,e=>{const s=WL.scheduleHistory&&WL.scheduleHistory.state();return s&&!s.loading&&s.equipment===e},EQB,{ms:20000,what:'設備Bの履歴'});
+  const headsB=await heads();
+  console.log('#MEASURE '+JSON.stringify({headsA,headsB}));
+  rec('7: 履歴の段のまま設備を替えると、替えた先の設備の内容の列で出す（鋳造番号・製造調質）',
+      headsB.some(h=>/鋳造/.test(h))&&headsB.some(h=>/調質/.test(h))&&!headsB.some(h=>/製造材質/.test(h)),JSON.stringify(headsB));
+  await page.selectOption('#scEquipmentSelect',EQ);
+  await W.until(page,e=>{const s=WL.scheduleHistory&&WL.scheduleHistory.state();return s&&!s.loading&&s.equipment===e},EQ,{ms:20000,what:'設備Aの履歴へ戻す'});
+  const headsA2=await heads();
+  rec('7: 元の設備へ戻すと元の内容の列に戻る',JSON.stringify(headsA2)===JSON.stringify(headsA),JSON.stringify({headsA,headsA2}));
+
   await page.click('#shToSingle');
   const back=await page.evaluate(()=>!document.getElementById('scSingleBody').hidden&&document.getElementById('scHistBody').hidden);
   rec('5: 「個別へ戻る」で個別の表へ戻る',back,'');
   rec('画面の例外が出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }finally{
   if(seededStopId)await post('/api/schedule/stop-reason-master/delete',{id:seededStopId});
+  if(bTouched)await post('/api/schedule-content-master',{equipment:'テスト設備B',items:bTouched});
  }
 },{mode:'schedule',viewport:{width:1700,height:1000}});

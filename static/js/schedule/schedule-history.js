@@ -379,6 +379,7 @@
   reload:()=>reload(),
   /* 網が読む口（画面の字を数えない）。 */
   state:()=>({unit:st.unit,period:period().map(ymd),q:st.q,scope:st.scope,off:[...st.off],
+              equipment:(st.data&&st.data.equipment)||'',
               loading:st.loading,error:st.error,count:((st.data&&st.data.entries)||[]).length,visible:visible().length}),
  };
 })();

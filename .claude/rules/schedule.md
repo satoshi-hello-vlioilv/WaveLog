@@ -1,4 +1,4 @@
-# 作業スケジュール（79件）
+# 作業スケジュール（81件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -14,6 +14,7 @@
 | 履歴の時刻は出どころつき。設備停止は「入れた→外した」と「見積」を字で書き分ける（止まった時間とは言わない） | `test_schedhist.py` | [§9.502](../../docs/decisions/9.502.md) |
 | 履歴の既定の日は現場歴の今日（サーバーが答える）。探す規則は`matches()`の1箇所（画面へ写さない） | `test_schedhist.py` | [§9.502](../../docs/decisions/9.502.md) |
 | 実績1件は予定の行1本にだけ当たる。有効な行が先に取り、外した行は「外す前に始まった・この設備の実績」のときだけ（`_removed_owns()`） | `test_schedhist.py` | [§9.502](../../docs/decisions/9.502.md) |
+| 段「履歴」も**いまの設備の**内容の列で出す（`switchToHistory()`が控えを揃えてから出す） | `test_schistui.js` | [§9.502](../../docs/decisions/9.502.md) |
 | 表示列の候補の土台は仕掛の元データの列名（`scLoadWorkColumns()`の1箇所）。`S.columns`（画面がいま持つ表）に頼らない | `test_sccolpanel.js` | [§9.501](../../docs/decisions/9.501.md) |
 | 候補は材料が変わったときだけ作る（`scMemo()`）。予定の`detail`／`joined`をその場で書き換えたら`touchContentCandidates()` | `test_sccolpanel.js` | [§9.501](../../docs/decisions/9.501.md) |
 | 仕掛一覧は見え方（伏せるロット・出す列）が変わるときだけ描き直す。描いた状態は`hiddenLotSet()`の口で控える | `test_sccolpanel.js` | [§9.501](../../docs/decisions/9.501.md) |
@@ -24,6 +25,7 @@
 | 小計の式が引く名前は`subtotalItemName()`の1箇所。古い保存（`cols`）は`subtotalItemsOf()`が読み替える | `test_scsubtotal.js` | [§9.498](../../docs/decisions/9.498.md) |
 | 小計の桁と単位は**別々に**決まる（決めたほうは書式・決めていないほうは材料なり）。自動の桁は`subtotalAutoDec()`の1箇所 | `test_scsubtotal.js` | [§9.498](../../docs/decisions/9.498.md) |
 | 小計「行」の揃えは**その列の1マスの中**（`subgrid`＋中身の器`.sc-st-in`）。入らなければ列の左端から伸ばす | `test_scsubtotal.js` | [§9.499](../../docs/decisions/9.499.md) |
+| 小計の式を読めない理由は`subtotalFormulaError()`の1箇所（無い名前も）。引く値が読めない区切りでは計算しない。数えるのは全部の項目 | `test_scsubtotal.js` | [§9.498](../../docs/decisions/9.498.md) |
 | 小計は**まとめとは別の軸**（区切りのお尻で数える）。区切りの語彙は`bucketOf()`の1本をまとめと共有する | `test_scsubtotal.js` | [§9.493](../../docs/decisions/9.493.md) |
 | 小計が数えるのは作業ロットだけ（`subtotalCounted()`の1箇所）。子ロットは親の1本 | `test_scsubtotal.js` | [§9.493](../../docs/decisions/9.493.md) |
 | 合計は数として読めた値だけ。読めない・単位の違う値は0で足さず`*`と件数で言う | `test_scsubtotal.js` | [§9.493](../../docs/decisions/9.493.md) |
