@@ -29,7 +29,8 @@ import time
 from pathlib import Path
 
 from . import app_icon
-from .paths import APP_ROOT, runtime_dir
+from . import paths
+from .paths import APP_ROOT
 from .quiet import quiet
 
 # ショートカットの既定の名前。**画面で名乗っている名前**にそろえる
@@ -134,8 +135,13 @@ def _icon_spec(icon):
 
 def _helper_path():
  """補助スクリプト。**中身が違うときだけ**書き直す（毎回書くと共有の掃除と
-    競合する）。"""
- path=runtime_dir()/HELPER_NAME
+    競合する）。
+
+ 置き場は**ほかのプログラムからも見える置き場**（`paths.browser_dir()`・§9.496）。
+ 読むのは`wscript.exe`（別のプログラム）なので、Microsoft Store 版の Python が
+ `AppData\\Local`への書込を私的な写しへ回す端末では、`runtime_dir()`に置くと
+ 「スクリプト ファイルが見つかりません」になる（端末によって作れる・作れないが分かれた）。"""
+ path=paths.browser_dir()/HELPER_NAME
  try:
   if path.exists() and path.read_text(encoding='ascii',errors='ignore')==_HELPER:
    return path

@@ -246,6 +246,27 @@ rec('cscript の出力は読めない字で落とさない（errors=replace）',
     "'errors':'replace'" in inspect.getsource(desktop_shortcut._run_text)
     and src.count('_run_text()') >= 1)
 
+# ---- 補助スクリプトは「ほかのプログラムからも見える置き場」へ（§9.496、利用者の報告） ----
+# 「ショートカットが作成できない端末が出ています。端末によってできる出来ないがある？」
+# ——Microsoft Store 版の Python は`AppData\Local`への書込を**このアプリからしか見えない写し**へ
+# 回す。補助スクリプトをそこへ置くと、読む`wscript.exe`（別のプログラム）には「見つかりません」。
+# 置き場の答えは待機画面と同じ`paths.browser_dir()`の1箇所（MSIXの端末でだけ外へ移す）。
+import tempfile as _tf  # noqa: E402
+from backend import paths as _paths  # noqa: E402
+_vis = Path(_tf.mkdtemp()) / 'visible'
+_keep_bd = _paths.browser_dir
+try:
+    _paths.browser_dir = lambda: _vis
+    _hp = desktop_shortcut._helper_path()
+    _ip = app_icon.icon_path()
+finally:
+    _paths.browser_dir = _keep_bd
+rec('補助スクリプトはほかのプログラムからも見える置き場に置く（§9.496）',
+    _hp is not None and Path(_hp).parent == _vis and Path(_hp).is_file(), str(_hp))
+# 絵（.ico）も同じ。読むのはエクスプローラー（別のプログラム）——見えないと白紙の絵になる。
+rec('ショートカットの絵もほかのプログラムからも見える置き場に置く（§9.496）',
+    Path(_ip).parent == _vis, str(_ip))
+
 ng = [n for n, ok in R if not ok]
 print(f'\n== {len(R) - len(ng)}/{len(R)} PASS ==')
 sys.exit(1 if ng else 0)
