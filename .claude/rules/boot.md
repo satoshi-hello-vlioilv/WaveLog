@@ -1,4 +1,4 @@
-# 起動・停止・監視（49件）
+# 起動・停止・監視（50件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -12,6 +12,7 @@
 | --- | --- | --- |
 | update.bat は**版を最初に言う**（`ready.version_note()`の1箇所・前回の刻印と比べる） | `test_cleanup.py` | [§9.497](../../docs/decisions/9.497.md) |
 | update.bat は確かめる前に作り直せる物を片付ける（`file_cleanup.run_for_update()`）。ショートカットの絵は残す | `test_cleanup.py` | [§9.497](../../docs/decisions/9.497.md) |
+| アプリの外（update.bat）から設定を読むのは`path_config`。**`db_access`を読み込まない**（読み込むと共有マスタの写しを作り直す） | `test_cleanup.py` | [§9.497](../../docs/decisions/9.497.md) |
 | ほかのプログラムが読むファイル（待機画面・補助スクリプト・絵）の置き場は`paths.browser_dir()`の1箇所 | `test_shortcut.py` | [§9.496](../../docs/decisions/9.496.md) |
 | `say`の約束は`say(m, bad=False, quiet=False)`。`say=lambda`で渡すときも`quiet`を受ける | `test_faststart.py` | [§9.495](../../docs/decisions/9.495.md) |
 | `update.bat`の画面は「結果」と「次にすること」だけ（記録は`to_console=False`で`launcher.log`へ） | `test_faststart.py` | [§9.431](../../docs/decisions/9.431.md) |

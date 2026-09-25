@@ -15,7 +15,7 @@ CLAUDE.md の「画面を作るときの基準」（14項目）と、それをWa
 | 触る場所 | 開く1枚 | 件数 |
 | --- | --- | --- |
 | どの画面でも（基準をWaveLogの寸法へ落としたもの） | [ui-principles.md](ui-principles.md) | 7節 |
-| `program/`・`Start.vbs`・`#appBoot`・更新・在席 | [boot.md](boot.md) | 49 |
+| `program/`・`Start.vbs`・`#appBoot`・更新・在席 | [boot.md](boot.md) | 50 |
 | 共有DB・写し・錠・`config/local.json`・SQLite | [data.md](data.md) | 64 |
 | `backend/routes/`・`body(spec)`・`api_guard`・権限 | [api.md](api.md) | 20 |
 | `TableDef`・マスタのサーバー側・既定値 | [master-server.md](master-server.md) | 27 |
@@ -31,4 +31,4 @@ CLAUDE.md の「画面を作るときの基準」（14項目）と、それをWa
 | どの束にも入らないもの | [misc.md](misc.md) | 17 |
 
 「固定する網」の欄はテスト名。`tests/run_all.sh <名前>` で回す。
-規則は合わせて **968件**（`ui-principles.md` は節で数える）。
+規則は合わせて **969件**（`ui-principles.md` は節で数える）。

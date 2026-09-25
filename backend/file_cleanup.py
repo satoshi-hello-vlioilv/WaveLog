@@ -26,7 +26,7 @@ import shutil
 import threading
 import time
 
-from . import atomic_io
+from . import atomic_io, path_config
 from .logging_setup import app_logger
 from .paths import browser_dir, db_dir, runtime_dir
 from .quiet import quiet
@@ -52,10 +52,11 @@ _wake = threading.Event()
 
 def _cfg(key, default):
  """パス設定マスタの1件。**読めなければ既定**(掃除の設定が読めないことを
- 理由に掃除そのものを止めない)。"""
+ 理由に掃除そのものを止めない)。読むのは`path_config`——**`db_access`を読み込まない**。
+ 読み込むと共有に置いたマスタの写しを錠なしで作り直し、update.bat が起動中のアプリの
+ 書込と競っていた(§9.497の追補3。追補1・2は画面に出る記録を塞いだだけだった)。"""
  try:
-  from .db_access import path_config_value
-  raw = path_config_value(key, default)
+  raw = path_config.value(key, default)
  except Exception as _e:
   quiet('設定を読めない（既定で続ける）',_e)
   raw = default
