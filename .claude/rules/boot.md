@@ -1,4 +1,4 @@
-# 起動・停止・監視（45件）
+# 起動・停止・監視（46件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| `say`の約束は`say(m, bad=False, quiet=False)`。`say=lambda`で渡すときも`quiet`を受ける | `test_faststart.py` | [§9.495](../../docs/decisions/9.495.md) |
 | `update.bat`の画面は「結果」と「次にすること」だけ（記録は`to_console=False`で`launcher.log`へ） | `test_faststart.py` | [§9.431](../../docs/decisions/9.431.md) |
 | `setup_check.run()`へ渡す`say`は`quiet=True`（記録だけ）を受ける。結果の言葉は`setup_app.py`の1箇所 | `test_faststart.py` | [§9.431](../../docs/decisions/9.431.md) |
 | 刻印のPythonは`python_mark()`でそろえる（`pythonw.exe`＝`python.exe`）。控えた値も読むときにそろえる | `test_faststart.py` | [§9.415](../../docs/decisions/9.415.md) |

@@ -169,6 +169,15 @@ try:
     rec('待機画面の写しは元と同じ中身',
         setup_check.waiting_page().read_bytes() == src,
         f'{len(src)}バイト')
+    # ---- 5b) `say`の約束は say(m, bad=False, quiet=False)（§9.495） ----
+    # 起動の裏の写し直しが渡す`say`が`quiet`を受けず、**写せたのに例外になって**
+    # 「起動画面を写せませんでした」と逆のことをログへ残していた（実機のログで見つかった）。
+    bad_say = []
+    for f in list((ROOT / 'program').glob('*.py')) + list((ROOT / 'backend').rglob('*.py')):
+        for m in re.finditer(r'say=lambda([^:]*):', f.read_text(encoding='utf-8', errors='replace')):
+            if 'quiet' not in m.group(1) and '**' not in m.group(1):
+                bad_say.append(f'{f.name}: lambda{m.group(1)}')
+    rec('say=lambda はどれも quiet を受ける（§9.495）', not bad_say, ' / '.join(bad_say) or 'なし')
     # 相対で読む前提（写しの隣に進捗ファイルを置くのが筋になる）
     html = src.decode('utf-8')
     rec('待機画面は進捗ファイルを相対で読む（写しの隣を見る）',

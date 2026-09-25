@@ -107,6 +107,38 @@ try:
     rec('元へ到達できなければ写しを維持する', not r5['updated'], r5['reason'])
     rec('到達できなくても写しは残る', local.exists() and read_rows(local) == good)
 
+    # ---- 5b) 届かなかった理由を残す（§9.495、利用者の報告「仕掛情報の最新版が取れない」） ----
+    # 以前は「到達できない」とだけ言い、**OSの答えも元の名前も**ログ・画面のどちらにも残らなかった
+    # （`debug`でしか書いていない）。実機のログから原因を絞れなかったのはこのため。
+    rec('届かなかった理由にOSの答えと元の名前が入る（§9.495）',
+        ('NOT_THERE' in r5['reason']) and any(w in r5['reason'] for w in ('Errno', 'WinError', 'No such', '見つかりません')),
+        r5['reason'])
+
+    # ---- 5c) 一瞬の不在で諦めない（§9.495） ----
+    # 元は別のアプリがこまめに書き直す。書き直しの最中は Windows でファイルが一瞬
+    # 「無い／拒否」になるので、1回の stat で「届かない」と決めると、押した「再読込」が外れる。
+    import threading as _th2, time as _t2, os as _os2
+    remote.unlink()   # 手順4で壊した元を作り直す
+    make_db(remote, [('L001', 'a'), ('L002', 'b'), ('L004', 'd')])
+    away = remote.with_suffix('.away')
+    _os2.replace(remote, away)
+    back = _th2.Timer(0.6, lambda: _os2.replace(away, remote)); back.start()
+    t0 = _t2.time()
+    r5c = db_mirror.refresh_one(KEY, remote, force=True)
+    back.join()
+    rec('元が一瞬消えても（0.6秒）写せる（§9.495）', r5c['updated'], f"{r5c['reason']}（{_t2.time()-t0:.1f}秒）")
+    local = db_mirror.mirror_path(KEY)
+    good = read_rows(local)
+
+    # ---- 5d) 届かなかった周回のあとは早めに取り直す（§9.495） ----
+    nw = getattr(db_mirror, 'next_wait_sec', None)
+    if nw is None:
+        rec('届かなかった周回のあとは早めに取り直す（§9.495）', False, 'next_wait_sec が無い（周回は常に interval_sec）')
+    else:
+        rec('届かなかった周回のあとは早めに取り直す（§9.495）',
+            nw([r5]) < db_mirror.interval_sec() and nw([r5c]) == db_mirror.interval_sec(),
+            f'届かない→{nw([r5])}秒／写せた→{nw([r5c])}秒（通常 {db_mirror.interval_sec()}秒）')
+
     # ---- 6) 書く対象は写さない ----
     # 写した先へ書くと共有へ反映されない事故になるため、対象は読み取り専用だけ。
     kinds = {k: (db_access.DBS[k] or {}).get('role') for k, _ in db_mirror.targets()}

@@ -100,6 +100,9 @@ _refresh_lock = threading.Lock()
 # 写しを出してしまうと、利用者は「起動したのに古い」を見る（実測: 起動後3.0秒）。
 _first = threading.Event()
 FIRST_WAIT_SEC = 30
+# 届かなかったので早めに取り直す時刻（§9.495）。「再読込」（要求の中）で届かなかったときも、
+# 背景の周回がこれを見て早める。
+_retry_at = 0.0
 
 
 # ------------------------------------------------------------------
@@ -225,19 +228,78 @@ def _save_entry(key, signature, filename):
   app_logger().warning('写しの台帳を書けませんでした: %s', e)
 
 
-def _remote_signature(remote):
- """元ファイルの「変わったか」を見分ける印。取れなければNone。
+# 元ファイルの**一瞬の不在は待って取り直す**（§9.495、利用者の報告「仕掛情報の最新版が取れない」）。
+# 元は別のアプリがこまめに書き直している（実機の元は 12:45 に書き換わり、12:45:25 に写せていた）。
+# 書き直しの最中は Windows でファイルが一瞬「無い／アクセスが拒否される」ので、1回の stat で
+# 「届かない」と決めると、押した「再読込」がちょうどそこへ当たって外れる。合計2.5秒まで待つ。
+STAT_RETRY_SEC = (0.3, 0.7, 1.5)
+# 届かなかった周回のあとは**通常の間隔を待たずに**取り直す（§9.495）。
+RETRY_AFTER_UNREACHABLE_SEC = 10
 
- **共有へ触るのはここだけ**で、しかも背景スレッドからしか呼ばない。"""
- try:
-  st = os.stat(remote)
-  # **元のパスも印に含める**。パス設定を変えた/検証用へ差し替えたときに、
-  # 前の元ファイルから作った写しをそのまま読み続けてしまうため
-  # (キーは同じでも中身は別物)。
-  return {'source': str(remote), 'size': st.st_size, 'mtime_ns': st.st_mtime_ns}
- except OSError as e:
-  app_logger().debug('元ファイルの状態を取得できませんでした(%s): %s', remote, e)
-  return None
+
+def _os_error_text(e):
+ """OSの答えを1行で（`WinError 2 指定されたファイルが見つかりません。`）。"""
+ if e is None:
+  return ''
+ win = getattr(e, 'winerror', None)
+ code = f'WinError {win}' if win else (f'Errno {e.errno}' if getattr(e, 'errno', None) else '')
+ msg = getattr(e, 'strerror', None) or str(e)
+ return f'{code} {msg}'.strip()
+
+
+def _remote_stat(remote):
+ """元ファイルの「変わったか」を見分ける印と、取れなかった理由。 -> (印 or None, 理由)
+
+ **共有へ触るのはここだけ**。取れなければ`STAT_RETRY_SEC`だけ待って取り直す。"""
+ err = None
+ for wait in (0,) + STAT_RETRY_SEC:
+  if wait:
+   time.sleep(wait)
+  try:
+   st = os.stat(remote)
+   # **元のパスも印に含める**。パス設定を変えた/検証用へ差し替えたときに、
+   # 前の元ファイルから作った写しをそのまま読み続けてしまうため
+   # (キーは同じでも中身は別物)。
+   return {'source': str(remote), 'size': st.st_size, 'mtime_ns': st.st_mtime_ns}, ''
+  except OSError as e:
+   err = e
+ return None, _os_error_text(err)
+
+
+def _unreachable(key, remote, result, head, err):
+ """届かなかったことを、**どの元へ・OSが何と答えたか**まで残す（§9.495）。
+ 以前は`debug`でしか書かず、実機のログから原因を絞れなかった。同じ理由が続くあいだは
+ ログを重ねない（60秒ごとに同じ行が積もると、本当に見たい行が埋もれる）。"""
+ result['reason'] = f'{head}（{Path(remote).name}: {err or "理由が分かりません"}）'
+ # **次に何が起きるかも言う**（押し直すかどうかを推測させない）。
+ if update_mode() == 'auto':
+  result['reason'] += f'。{RETRY_AFTER_UNREACHABLE_SEC}秒後に自動でもう一度取りに行きます'
+ result['unreachable'] = True
+ result['error'] = err
+ with _lock:
+  prev = (_state.get(key) or {}).get('reason')
+ if prev != result['reason']:
+  app_logger().warning('%s: %s — 元: %s', key, result['reason'], remote)
+ _note_retry()
+
+
+def _note_retry():
+ """次の周回を早める（自動のときだけ・§9.495）。"""
+ global _retry_at
+ if update_mode() == 'auto':
+  _retry_at = time.time() + RETRY_AFTER_UNREACHABLE_SEC
+
+
+def next_wait_sec(results=None):
+ """次の周回まで何秒待つか。**届かなかった元が1つでもあれば早める**（§9.495）。
+ `results`を渡さなければ、いまの結果（`_state`）から決める。"""
+ if results is None:
+  with _lock:
+   results = list(_state.values())
+ base = interval_sec()
+ if any((r or {}).get('unreachable') for r in results):
+  return min(base, RETRY_AFTER_UNREACHABLE_SEC)
+ return base
 
 
 # ------------------------------------------------------------------
@@ -293,11 +355,11 @@ def refresh_one(key, remote, force=False):
  local = mirror_path(key)
  result = {'key': key, 'remote': str(remote), 'local': str(local),
            'updated': False, 'reason': '', 'at': time.time()}
- sig = _remote_signature(remote)
+ sig, err = _remote_stat(remote)
  # 元に**写していない新しい版があるか**（§9.463）。写せたら下で False に戻す。
  result['newer'] = bool(sig is not None and _signature_of(key) != sig)
  if sig is None and not local.exists():
-  result['reason'] = '共有の元ファイルへ到達できず、写しもまだありません'
+  _unreachable(key, remote, result, '共有の元ファイルへ到達できず、写しもまだありません', err)
   _record(key, result)
   return result
  if sig is not None and not force and _signature_of(key) == sig and local.exists():
@@ -309,7 +371,7 @@ def refresh_one(key, remote, force=False):
   _record(key, result)
   return result
  if sig is None:
-  result['reason'] = '共有の元ファイルへ到達できないため、前の写しを使い続けます'
+  _unreachable(key, remote, result, '共有の元ファイルへ到達できないため、前の写しを使い続けます', err)
   _record(key, result)
   return result
 
@@ -563,11 +625,11 @@ def update_mode():
 def check_one(key, remote):
  """写さずに、元に新しい版があるかだけ確かめる（手動のとき・§9.463）。"""
  remote = Path(remote)
- sig = _remote_signature(remote)
+ sig, err = _remote_stat(remote)
  prev = status().get(key) or {}
- result = dict(prev, key=key, remote=str(remote), at=time.time())
+ result = dict(prev, key=key, remote=str(remote), at=time.time(), unreachable=False, error='')
  if sig is None:
-  result['reason'] = '共有の元ファイルへ到達できません（前の写しを使い続けます）'
+  _unreachable(key, remote, result, '共有の元ファイルへ到達できません（前の写しを使い続けます）', err)
  else:
   result['newer'] = _signature_of(key) != sig
   result['reason'] = ('元に新しい版があります（手動のため写していません）' if result['newer']
@@ -629,12 +691,27 @@ def refresh_all(force=False):
 # ------------------------------------------------------------------
 def _cycle():
  """1周ぶん。自動なら写し直し、手動なら新しい版があるかだけ確かめる（§9.463）。"""
+ global _retry_at
+ _retry_at = 0.0
  if not enabled():
-  return
+  return []
  if update_mode() == 'manual':
-  check_all()
- else:
-  refresh_all()
+  return check_all()
+ return refresh_all()
+
+
+def _sleep_until_next(results):
+ """次の周回まで待つ。起こされたら（`wake()`）すぐ戻る。届かなかった元があれば
+ 早める（`next_wait_sec()`）——「再読込」の中で届かなかったとき（`_retry_at`）も同じ。
+ 1秒刻みで見るのは手元の値だけ（共有へは触らない）。"""
+ deadline = time.time() + next_wait_sec(results)
+ while True:
+  due = min(deadline, _retry_at) if _retry_at else deadline
+  left = due - time.time()
+  if left <= 0:
+   return
+  if _wake.wait(min(left, 1.0)):
+   return
 
 
 def _loop():
@@ -642,8 +719,9 @@ def _loop():
  # 最新のファイルに更新し、古い手元のファイルを見ているような状態にならない
  # ように」）。以前は起動処理と重ねないため3秒待っていたが、その間は前回の写しを
  # 出していた。済むまでは`read_path()`が待つ。
+ last = []
  try:
-  _cycle()
+  last = _cycle()
  except Exception as e:
   app_logger().warning('写しの更新に失敗しました: %s', e)
  finally:
@@ -656,10 +734,11 @@ def _loop():
   app_logger().debug('前の置き場の片付けに失敗しました: %s', e)
  while True:
   _wake.clear()
-  _wake.wait(interval_sec())
+  _sleep_until_next(last)
   try:
-   _cycle()
+   last = _cycle()
   except Exception as e:
+   last = []
    app_logger().warning('写しの更新に失敗しました: %s', e)
 
 
