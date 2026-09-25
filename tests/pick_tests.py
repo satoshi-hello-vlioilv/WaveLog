@@ -458,6 +458,9 @@ RULES = [
     ('backend/repositories/table_def.py', g('マスタ', '操業データ', '異常位置', 'test_rpmaster',
                                               'test_rpblocks', 'test_rbmodal', 'test_rollio')),
     ('backend/routes/schedule.py', g('スケジュール', 'test_modeguard', 'test_crudroutes')),
+    # §9.502: 作業スケジュールの過去履歴（読むだけの口・組み立て）
+    ('backend/routes/schedule_history.py', g('test_schedhist', 'test_routesplit')),
+    ('backend/schedule_history.py', g('test_schedhist')),
     ('backend/routes/measurement.py', g('測定', 'test_modeguard', 'test_measstore',
                                         # §9.317: 参照データが読めなくても測定は始められる
                                         'test_recsplit', 'test_srcread', 'test_ctxfail')),
