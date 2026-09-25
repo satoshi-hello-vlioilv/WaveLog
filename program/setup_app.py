@@ -16,7 +16,7 @@ import sys
 
 from backend import file_cleanup
 from backend.launcher import ready, setup_check
-from backend.logging_setup import launcher_logger, log_environment
+from backend.logging_setup import console_off, launcher_logger, log_environment
 from backend.paths import (APP_ROOT, ensure_local_dirs, is_network_path,
                            local_root, logs_dir)
 
@@ -26,6 +26,9 @@ def main():
     「ユーザーが読んで知っておくべき情報をもっとわかりやすく表示する。一般的には
     不要な情報が多い」）。置き場の道・刻印・写しの行き先は**記録（ログ）へ**回す
     ——毎回同じで、読んでも打つ手が変わらない。"""
+    # **どの記録も画面へ出さない**（§9.497の追補）——途中で読み込まれる部品（db_access 等）が
+    # 読み込んだだけで出す警告まで含めて。記録そのものは app.log／launcher.log に残る。
+    console_off()
     ensure_local_dirs()
     # **記録は launcher.log へ、画面は結果だけ**（§9.431）。時刻つきの記録を
     # 混ぜない——`log_environment()` だけで6行出て、読むものが倍になる。
