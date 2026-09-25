@@ -148,7 +148,7 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scmodecols',
                      'test_scstop', 'test_scwarm', 'test_scundecided',
                      # §9.389: 設備停止を入れる手順（内容→内訳→時間）と耳屑幅の列
-                     'test_stopflow', 'test_scscrap', 'test_scsubtotal', 'test_sccolpanel',
+                     'test_stopflow', 'test_scscrap', 'test_scsubtotal', 'test_sccolpanel', 'test_schistui',
                      'test_scwatchui', 'test_scwatch', 'test_sccomment',
                      'test_scowner', 'test_scrowstyle', 'test_scload', 'test_scbar', 'test_scsave',
                      # §9.366: さかのぼりの起点と2段の選び方
@@ -288,6 +288,8 @@ RULES = [
     ('static/js/list/filters.js', g('モーダル', 'フィルタ',
                                'test_listcache', 'test_allrows', 'test_nav')),
     # §9.302: 設備の使える機能で予定の設備の候補を絞る
+    # §9.502: 段「履歴」の画面
+    ('static/js/schedule/schedule-history.js', g('test_schistui', 'test_scale', 'test_theme')),
     ('static/js/schedule/schedule-view.js', g('スケジュール', 'モーダル', 'test_listmodal',
                                      'test_eqfeature')),
     ('static/js/schedule/schedule-print.js', g('モーダル', 'test_scprint')),
@@ -459,8 +461,8 @@ RULES = [
                                               'test_rpblocks', 'test_rbmodal', 'test_rollio')),
     ('backend/routes/schedule.py', g('スケジュール', 'test_modeguard', 'test_crudroutes')),
     # §9.502: 作業スケジュールの過去履歴（読むだけの口・組み立て）
-    ('backend/routes/schedule_history.py', g('test_schedhist', 'test_routesplit')),
-    ('backend/schedule_history.py', g('test_schedhist')),
+    ('backend/routes/schedule_history.py', g('test_schedhist', 'test_schistui', 'test_routesplit')),
+    ('backend/schedule_history.py', g('test_schedhist', 'test_schistui')),
     ('backend/routes/measurement.py', g('測定', 'test_modeguard', 'test_measstore',
                                         # §9.317: 参照データが読めなくても測定は始められる
                                         'test_recsplit', 'test_srcread', 'test_ctxfail')),

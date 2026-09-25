@@ -2746,4 +2746,123 @@ div.sc-view-row{cursor:default}
   font-size:var(--fs-sm);color:var(--muted)}
 .sc-blade-legend b{color:var(--ink-2)}
 .sc-blade-swatch{width:var(--space-3);height:2px;background:var(--muted);display:inline-block}
+
+/* ============================================================
+   過去履歴（§9.502、利用者の指示・案A）——段「履歴」
+   ------------------------------------------------------------
+   左＝送り・探す・区分の札・表（現場歴の日付と直で束ねる）／右＝月の暦と期間の合計。
+   **色は区分の意味だけ**（完了＝緑／取消・外した＝薄く／設備停止＝橙／申し送り＝青／計画外＝紫）。
+   区分は**必ず字でも言う**（色だけで伝えない）。寸法と色はトークンから選ぶ。
+   ============================================================ */
+.sc-hist{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) calc(var(--w-xl) + var(--space-4));
+  gap:var(--space-3);padding:var(--space-3)}
+.sc-hist[hidden]{display:none}
+.sh-main{display:flex;flex-direction:column;min-height:0;min-width:0;gap:var(--space-2)}
+/* 1段目: 送り（前・期間・次・今日）→ 単位 → 探す。**左から右がする順**（§CLAUDE 14）。 */
+.sh-bar{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2) var(--space-3)}
+.sh-bar.is-loading .sh-period{color:var(--muted)}
+.sh-nav{display:flex;align-items:center;gap:var(--space-1)}
+/* 期間の字は**幅を固定**して送っても前後のボタンが動かないようにする（「いつも同じ場所」・§9.402）。 */
+.sh-period{display:inline-block;min-width:var(--w-lg);text-align:center;font-size:var(--fs);font-weight:700;
+  font-variant-numeric:tabular-nums;color:var(--ink);white-space:nowrap}
+.sh-btn{display:inline-flex;align-items:center;gap:var(--space-1);height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);
+  font-size:var(--fs-sm);font-weight:700;cursor:pointer;white-space:nowrap}
+.sh-btn:hover{border-color:var(--teal);color:var(--teal-dark)}
+.sh-btn:disabled{opacity:.45;cursor:default}
+.sh-btn.sh-ico{width:var(--ctl-h-sm);justify-content:center;padding:0}
+.sh-seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
+.sh-seg-btn{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:0;border-right:1px solid var(--line);
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);font-weight:700;cursor:pointer}
+.sh-seg-btn:last-child{border-right:0}
+.sh-range{display:inline-flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm);color:var(--muted)}
+.sh-range[hidden]{display:none}
+.sh-range input{height:var(--ctl-h-sm);font-size:var(--fs-sm)}
+.sh-grow{flex:1 1 auto}
+.sh-search{display:inline-flex;align-items:center;gap:var(--space-1);height:var(--ctl-h-sm);padding:0 var(--space-2);
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--muted)}
+.sh-search:focus-within{border-color:var(--teal)}
+.sh-search input{border:0;outline:0;background:transparent;width:var(--w-lg);font-size:var(--fs-sm);color:var(--ink)}
+/* 2段目: 区分の札。**件数つき**で、押すと見せる／隠す（隠した札は薄く・字に打ち消し線はしない＝読める）。 */
+.sh-cats{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-2)}
+.sh-cat{display:inline-flex;align-items:center;gap:var(--space-1);height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);
+  font-size:var(--fs-sm);cursor:pointer}
+.sh-cat b{font-variant-numeric:tabular-nums;color:var(--ink)}
+.sh-cat:not(.is-on){background:var(--surface-2);color:var(--muted);border-style:dashed}
+.sh-cat:not(.is-on) b{color:var(--muted)}
+.sh-dot{width:var(--space-2);height:var(--space-2);border-radius:var(--radius-round);background:var(--line-strong)}
+.sh-cat:not(.is-on) .sh-dot{opacity:.35}
+.sh-tone-done .sh-dot{background:var(--success)}
+.sh-tone-off .sh-dot{background:var(--muted)}
+.sh-tone-stop .sh-dot{background:var(--warn-solid)}
+.sh-tone-note .sh-dot{background:var(--rs-blue)}
+.sh-tone-extra .sh-dot{background:var(--rs-purple)}
+.sh-notes{display:flex;flex-direction:column;gap:var(--space-1)}
+.sh-notes[hidden]{display:none}
+.sh-note{margin:0;padding:var(--space-1) var(--space-2);border-left:3px solid var(--warn-border);
+  background:var(--warn-bg);color:var(--warn-fg);font-size:var(--fs-sm)}
+/* 表。**横スクロールは表の器だけ**。見出しは貼り付け。 */
+.sh-scroll{flex:1 1 auto;min-height:0;overflow:auto;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--radius-sm)}
+.sh-table{border-collapse:collapse;width:100%;font-size:var(--tbl-fs)}
+.sh-table th,.sh-table td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
+  text-align:left;white-space:nowrap;vertical-align:baseline}
+.sh-table thead th{position:sticky;top:0;z-index:2;background:var(--header-bar-bg);color:var(--header-bar-fg);font-weight:700}
+.sh-table tbody tr.sh-row:hover{background:var(--pale)}
+/* 束ねの見出し（現場歴の日付・直）。**1行**で、件数と時間の合計を右に。 */
+.sh-group th{position:sticky;top:calc(var(--tbl-fs) * 1.4 + var(--space-2));z-index:1;background:var(--surface-3);
+  color:var(--ink);font-weight:700;border-bottom:1px solid var(--line)}
+.sh-group th>span{margin-right:var(--space-3)}
+.sh-g-date{font-variant-numeric:tabular-nums}
+.sh-g-shift{padding:0 var(--space-1);border:1px solid var(--line-strong);border-radius:var(--radius-xs);background:var(--surface)}
+.sh-g-count,.sh-g-sum{font-weight:400;color:var(--ink-2);font-size:var(--fs-sm)}
+.sh-g-sum{float:right;margin-right:0}
+.sh-c-cat{width:1%}
+.sh-c-time,.sh-c-min{font-variant-numeric:tabular-nums}
+.sh-c-min{text-align:right}
+.sh-c-name small,.sh-c-rec small{margin-left:var(--space-1);color:var(--muted);font-size:var(--fs-sm)}
+.sh-c-name small.sh-remark{display:block;margin-left:0;white-space:normal}
+.sh-tag{display:inline-block;padding:0 var(--space-1);border-radius:var(--radius-xs);font-weight:700;
+  background:var(--surface-3);color:var(--ink-2)}
+.sh-row.sh-tone-done .sh-tag{background:var(--success-bg);color:var(--success)}
+.sh-row.sh-tone-off .sh-tag{background:var(--surface-3);color:var(--muted)}
+.sh-row.sh-tone-stop .sh-tag{background:var(--warn-bg);color:var(--warn-fg)}
+.sh-row.sh-tone-note .sh-tag{background:var(--rs-blue-bg);color:var(--rs-blue)}
+.sh-row.sh-tone-extra .sh-tag{background:var(--rs-purple-bg);color:var(--rs-purple)}
+/* 起きなかったこと（取消・外した作業）は**一段薄く**（色だけにしない＝区分の字が言う）。 */
+.sh-row.sh-tone-off td:not(.sh-c-cat){color:var(--muted)}
+.sh-est{color:var(--muted)}
+.sh-off{color:var(--muted)}
+.sh-comment{white-space:normal}
+.sh-empty{display:flex;flex-direction:column;align-items:center;gap:var(--space-2);padding:var(--space-6) var(--space-4);
+  color:var(--ink-2);text-align:center}
+.sh-empty p{margin:0;color:var(--muted);font-size:var(--fs-sm)}
+.sh-empty.is-error b{color:var(--danger)}
+/* 右: 月の暦と期間の合計。**頻度の低い物は小さく**（§CLAUDE 1）。 */
+.sh-side{display:flex;flex-direction:column;gap:var(--space-2);min-height:0;overflow:auto;padding:var(--space-3);
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm)}
+.sh-cal-head{display:flex;align-items:center;justify-content:space-between}
+.sh-cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;text-align:center}
+.sh-cal i{font-style:normal;font-size:var(--fs-sm);color:var(--muted)}
+.sh-day{display:flex;flex-direction:column;align-items:center;justify-content:center;height:var(--ctl-h-lg);
+  border:1px solid var(--line-soft);border-radius:var(--radius-xs);background:var(--surface);color:var(--ink-2);
+  font-size:var(--fs-sm);font-variant-numeric:tabular-nums;cursor:pointer;padding:0}
+.sh-day small{font-size:var(--fs-micro);line-height:1;color:inherit;opacity:.85}
+.sh-day.is-pad{border:0;background:transparent;cursor:default}
+.sh-day.lv1{background:var(--rs-cyan-bg);border-color:var(--rs-cyan-border)}
+.sh-day.lv2{background:var(--teal-soft);border-color:var(--teal-soft);color:var(--ink)}
+.sh-day.lv3{background:var(--teal);border-color:var(--teal);color:var(--surface)}
+.sh-day.is-in{outline:2px solid var(--teal-dark);outline-offset:-1px}
+.sh-day.is-today{font-weight:700;text-decoration:underline}
+.sh-day:hover{border-color:var(--teal)}
+.sh-legend{margin:0;font-size:var(--fs-sm);color:var(--muted)}
+.sh-kpi{margin:0;display:grid;grid-template-columns:1fr 1fr;gap:var(--space-2)}
+.sh-kpi>div{padding:var(--space-2);border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2)}
+.sh-kpi dt{font-size:var(--fs-sm);color:var(--muted)}
+.sh-kpi dd{margin:0;font-size:var(--fs-lg);font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+.sh-kpi small{display:block;font-size:var(--fs-sm);color:var(--muted);line-height:1.35}
+.sh-ro{margin:0;padding:var(--space-2);border:1px dashed var(--line-strong);border-radius:var(--radius-sm);
+  font-size:var(--fs-sm);color:var(--ink-2)}
+.sh-back{align-self:flex-start}
 }

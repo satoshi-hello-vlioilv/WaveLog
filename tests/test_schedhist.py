@@ -23,7 +23,7 @@ import json
 import pathlib
 import sys
 import tempfile
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -42,13 +42,22 @@ def rec(name, ok, detail=''):
 
 EQ = '履歴試験設備'
 NOW = datetime.now().replace(microsecond=0)
-D1 = NOW - timedelta(days=1)          # 昨日の昼前後
-D5 = NOW - timedelta(days=5)
+# 記録の時刻は**その日の10:00（1直）を起点に固定**する。「いま」から作ると、夜中に回したとき
+# だけ3直（日付補正 −1）に入って現場歴の日付が1日ずれ、時計しだいで落ちる網になる（実際に踏んだ）。
+BASE = NOW.replace(hour=10, minute=0, second=0)
+D1 = BASE - timedelta(days=1)         # 昨日の10:00。足しても 18:00 まで（1直・2直＝同じ現場歴の日）
+D5 = BASE - timedelta(days=5)
 tmp = pathlib.Path(tempfile.mkdtemp(prefix='wl_hist_'))
 c = connect(tmp / 'schedule.sqlite3', False)
 mc = connect(tmp / 'master.sqlite3', False)
 sr.ensure_plan_table(c)
 sr.ensure_plan_table(c)   # 作った直後は後から足した列（実績JSON等）がまだ無い。2回目で足す
+# 勤務は3交代（3直は日を跨ぐ・日付補正 −1＝跨いだ後は前の日の現場歴）。**現場歴の網のために自分で置く**。
+_pid, _ = sr.shift_pattern_upsert(mc, None, [], '3交代', 'tests')
+sr.shift_segment_sync(mc, _pid, [{'name': '1直', 'start': '07:00', 'end': '15:00'},
+                                 {'name': '2直', 'start': '15:00', 'end': '23:00'},
+                                 {'name': '3直', 'start': '23:00', 'end': '07:00', 'dayOffset': -1}], 'tests')
+mc.commit()
 
 
 def fmt(dt):
@@ -186,6 +195,15 @@ cats = sorted(e['cat'] for e in one['entries'])
 rec('D: 期間で絞れる（5日前の1日だけ＝申し送り1件・完了突合1件）', cats == ['comment', 'done'], str(cats))
 rec('D: 期間の外の日も暦の件数には数える', d1 in one['days'], str(sorted(one['days'])))
 rec('D: 日時の分からない記録は0件（黙って落としていない）', out['undated'] == 0, str(out['undated']))
+night = datetime.combine(NOW.date(), datetime.min.time()).replace(hour=2)   # 3直（23:00〜翌7:00）の途中
+dflt = sh.history(c, mc, EQ, keys=[], actual_index=ACT, now=night)
+want = (night.date() - timedelta(days=1)).isoformat()
+rec('D: 期間を渡さなければ「現場歴の今日」（夜中の2時＝3直の途中は前の日）',
+    dflt['from'] == dflt['to'] == dflt['today'] == want, '%s〜%s today=%s（期待 %s）' % (dflt['from'], dflt['to'], dflt['today'], want))
+wide = sh.history(c, mc, EQ, (NOW - timedelta(days=200)).date(), NOW.date(), keys=[], actual_index=ACT)
+rec('D: 期間は%d日までに切り詰め、切ったことを言う' % sh.MAX_DAYS,
+    wide['clipped'] and (date.fromisoformat(wide['to']) - date.fromisoformat(wide['from'])).days + 1 == sh.MAX_DAYS,
+    '%s〜%s clipped=%s' % (wide['from'], wide['to'], wide['clipped']))
 
 # ---- E. 全期間から探す（期間を見ない・AND・担当や内訳でも当たる） ----
 q1 = sh.history(c, mc, EQ, NOW.date(), NOW.date(), keys=['lotNo'], actual_index=ACT, query='h00', anywhere=True)

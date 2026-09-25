@@ -752,7 +752,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  const SC_MODES=[
   ['board','全体','スケジュール全体（俯瞰）'],
   ['single','個別','作業スケジュール一覧'],
-  ['blade','刃組','刃組スケジュール一覧']
+  ['blade','刃組','刃組スケジュール一覧'],
+  /* 過去履歴（§9.502）。**見るだけ**の段で、予定を直す操作は持たない。 */
+  ['history','履歴','作業スケジュールの履歴']
  ];
  const SC_MODE_KEYS=SC_MODES.map(m=>m[0]);
  /* 段の長い名。分からない鍵には答えない（**推測しない**）。 */
@@ -787,6 +789,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
            刃組スケジュール一覧としても出せるようにしてください」）。同じ予定を
            **段取りの側から**見る形で、器を入れ替えるだけ。 -->
       <button type="button" class="sc-mode-toggle-btn" id="scModeBlade" data-mode="blade" title="この設備の刃組（段取り）を一覧にします"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> 刃組</button>
+      <!-- 過去履歴（§9.502、利用者の指示・案A）。完了・取消・外した作業・設備停止・申し送り・
+           計画外の実績を、日・週・月で送って見る。**見るだけ**（直すのは「個別」）。 -->
+      <button type="button" class="sc-mode-toggle-btn" id="scModeHistory" data-mode="history" title="この設備の過去の記録（完了・取消・外した予定・設備停止・申し送り）を日・週・月で見ます。見るだけの画面です"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> 履歴</button>
      </div>
      <select class="sc-equipment-select" id="scEquipmentSelect" hidden></select>
      <span class="sc-equipment-fixed" id="scEquipmentFixed" hidden></span>
@@ -877,6 +882,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    </div>
    <div class="sc-board" id="scBoard" hidden></div>
    <div class="sc-blade" id="scBladeBody" hidden></div>
+   <div class="sc-hist" id="scHistBody" hidden></div>
    <div class="sc-body" id="scSingleBody">
     <div class="sc-timeline" id="scTimeline"></div>
     <!-- 広く使っているあいだの戻り道（§9.292 ⑦）。**常に見えている1つ**
@@ -1031,7 +1037,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* さかのぼりの札と欄は**語彙が届いてから**組む(§9.366)。予定の応答が
      運ぶので、ここでは器だけ作っておく（既に読み込み済みなら描く）。 */
   renderHistoryPicker();
-  $('#scEquipmentSelect').onchange=e=>{scState.equipment=e.target.value;switchToSingle()};
+  /* 履歴の段では**段のまま**設備だけ替える（期間と見せ方を思い出させない・§9.502）。 */
+  $('#scEquipmentSelect').onchange=e=>{
+   scState.equipment=e.target.value;
+   if(scState.boardMode==='history')switchToHistory();else switchToSingle();
+  };
   /* 印刷(§9.115)。紙の割り付けは schedule-print.js が持つ。
      **無ければ黙って消さない**——「あれば使う」で書くと、読み込み順を
      間違えた日に機能だけが静かに欠ける(§9.105と同じ罠)。 */
@@ -1081,6 +1091,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   $('#scModeBoard').onclick=()=>switchToBoard();
   $('#scModeSingle').onclick=()=>switchToSingle();
   { const b=$('#scModeBlade'); if(b)b.onclick=()=>switchToBlade(); }
+  { const b=$('#scModeHistory'); if(b)b.onclick=()=>switchToHistory(); }
   $('#scListModalBtn').onclick=()=>listModalOpen?closeListModal():openListModal();
   $('#scStopModalBtn').onclick=()=>stopModalOpen?closeStopModal():openStopModal();
   /* コメントは**掴んで落とす**こともできる(§9.191、利用者の指示
@@ -2199,6 +2210,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* 刃組の段は**その段の道をそのまま通る**（§9.407）——予定に加えて刃組の
      記録も要るので、ここで一覧だけ描くと「未記録」しか出ない段になる。 */
   else if(scState.boardMode==='blade')await switchToBlade();
+  else if(scState.boardMode==='history')await switchToHistory();
   else if(scState.equipment)await refreshAll();
   else renderTimelineMessage('設備を選択してください。');
   startLockPolling();
@@ -2477,6 +2489,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  function applyBoardModeUi(){
   const inBlade=scState.boardMode==='blade';
   const inBoard=scState.boardMode==='board';
+  const inHist=scState.boardMode==='history';
   /* 段の器は**刃組の段があるので常に出す**（§9.383）。「全体」は設備を選べる
      ときだけ意味を持つので、そのボタンだけ伏せる——器ごと消すと、自設備
      固定の端末から刃組一覧へ行けなくなる。 */
@@ -2484,30 +2497,36 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const boardBtn=$('#scModeBoard');
   if(boardBtn)boardBtn.hidden=!scState.pickerEnabled;
   $('#scModeBoard').classList.toggle('active',inBoard);
-  $('#scModeSingle').classList.toggle('active',!inBoard&&!inBlade);
   { const b=$('#scModeBlade'); if(b)b.classList.toggle('active',inBlade); }
+  { const b=$('#scModeHistory'); if(b)b.classList.toggle('active',inHist); }
+  $('#scModeSingle').classList.toggle('active',!inBoard&&!inBlade&&!inHist);
   $('#scBoard').hidden=!inBoard;
   { const b=$('#scBladeBody'); if(b)b.hidden=!inBlade; }
-  $('#scSingleBody').hidden=inBoard||inBlade;
+  { const b=$('#scHistBody'); if(b)b.hidden=!inHist; }
+  $('#scSingleBody').hidden=inBoard||inBlade||inHist;
   $('#scBoardWindow').hidden=!inBoard;
-  const histWrap=$('#scHistoryRange');if(histWrap)histWrap.hidden=inBoard;
+  /* さかのぼり・まとめ方・小計は**個別の予定表の見せ方**。俯瞰と履歴には効かないので出さない。 */
+  const histWrap=$('#scHistoryRange');if(histWrap)histWrap.hidden=inBoard||inHist;
   updateHistoryFromUi();
-  const grpWrap=$('#scGroupRange');if(grpWrap)grpWrap.hidden=inBoard;
-  const stWrap=$('#scViewAccSubtotal');if(stWrap)stWrap.hidden=inBoard;
-  if(inBoard)closeViewAcc('subtotal');
+  const grpWrap=$('#scGroupRange');if(grpWrap)grpWrap.hidden=inBoard||inHist;
+  const stWrap=$('#scViewAccSubtotal');if(stWrap)stWrap.hidden=inBoard||inHist;
+  if(inBoard||inHist)closeViewAcc('subtotal');
+  /* 印刷は予定表を刷る口（schedule-print.js）。履歴の段では刷るものが違うので出さない。 */
+  const prt=$('#scPrintBtn');if(prt)prt.hidden=inHist;
   updateViewMenuUi();
   if(scState.pickerEnabled)$('#scEquipmentSelect').hidden=inBoard;
   updateSideUi();
-  const stopBtn=$('#scStopModalBtn');if(stopBtn)stopBtn.hidden=!scState.fullControl||inBoard;
-  const cmtBtn=$('#scCommentBtn');if(cmtBtn)cmtBtn.hidden=!scState.fullControl||inBoard;
-  const frmBtn=$('#scFrameBtn');if(frmBtn)frmBtn.hidden=!scState.fullControl||inBoard;
+  /* 予定を**直す**道具は、見るだけの履歴の段には出さない（押せても何も起きない物を残さない）。 */
+  const stopBtn=$('#scStopModalBtn');if(stopBtn)stopBtn.hidden=!scState.fullControl||inBoard||inHist;
+  const cmtBtn=$('#scCommentBtn');if(cmtBtn)cmtBtn.hidden=!scState.fullControl||inBoard||inHist;
+  const frmBtn=$('#scFrameBtn');if(frmBtn)frmBtn.hidden=!scState.fullControl||inBoard||inHist;
   if(inBoard)closeRowStylePop();
   document.querySelectorAll('.sc-board-window-btn').forEach(btn=>btn.classList.toggle('active',+btn.dataset.hours===scState.boardWindowHours));
   updateSplitToggleUi();
   // 全体俯瞰ボードや対象設備が無い状態では分割表示(§9.10)の意味が無いため
   // 畳む(仕掛一覧を隣に出したまま設備を切り替えても違和感が無いよう、
   // 個別タイムライン表示中はshowSplitList側で改めて出す)。
-  if(inBoard){hideSplitList();closeListModal();closeStopModal();closeColumnModal();closeContentPanel();closeViewPop();hideInsertGhost()}
+  if(inBoard||inHist){hideSplitList();closeListModal();closeStopModal();closeColumnModal();closeContentPanel();closeViewPop();hideInsertGhost()}
   syncSession();
  }
  async function switchToBoard(){
@@ -2567,6 +2586,30 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   await Promise.all([loadBladeHistory(true),loadBladeContext(false)]);
   if(scState.boardMode==='blade')renderBladeList();
  }
+ /* 過去履歴の段（§9.502）。**画面は`schedule-history.js`が持つ**——ここは器と口を渡すだけ。
+    口が答えるのは設備・内容の列（個別の段で出している項目）・表示名・値の取り出し・戻り道。 */
+ async function switchToHistory(){
+  scState.boardMode='history';
+  renderPickBar(null);
+  applyFieldReorderPermission();
+  applyBoardModeUi();
+  const box=$('#scHistBody');
+  if(!box||!WL.scheduleHistory)return;
+  WL.scheduleHistory.show(box,{
+   equipment:()=>scState.equipment||'',
+   contentKeys:()=>chosenContentKeys(),
+   /* 明細は**出す列だけ**運ぶ。別名（生カラム名）も添える——予定の写しはどちらの名前で
+      持っているか投入した時期で違う（`contentValueOf`と同じ理由）。 */
+   requestKeys:()=>{
+    const out=new Set();
+    chosenContentKeys().forEach(k=>{out.add(k);((WL.base.aliases||{})[k]||[]).forEach(n=>out.add(n))});
+    return [...out];
+   },
+   label:k=>scColLabel(k),
+   valueOf:(detail,k)=>contentValueOf(detail,k),
+   toSingle:()=>switchToSingle(),
+  });
+ }
  async function switchToSingle(){
   scState.boardMode='single';
   applyFieldReorderPermission();
@@ -2595,6 +2638,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(force&&scState.boardMode==='blade'){
    await Promise.all([loadBladeHistory(true),loadBladeContext(true)]);
   }
+  if(scState.boardMode==='history'){WL.scheduleHistory&&WL.scheduleHistory.reload();return null}
   const r=await (scState.boardMode==='board'?loadOverviewBoard(force):refreshAll(force));
   if(force&&scState.boardMode!=='board'&&scState.equipment
      &&typeof refreshWorkableInBackground==='function')

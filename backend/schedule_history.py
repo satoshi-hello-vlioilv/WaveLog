@@ -180,18 +180,31 @@ def matches(e, query):
     return all(w in text for w in str(query or '').lower().split())
 
 
-def history(c_share, mc, equipment, day_from, day_to, keys=None, actual_index=None, query='', anywhere=True):
+def history(c_share, mc, equipment, day_from=None, day_to=None, keys=None, actual_index=None, query='',
+            anywhere=True, now=None):
     """`equipment`の、現場歴で`day_from`〜`day_to`（両端を含む・`date`）の履歴。
+
+    **期間を渡さなければ「現場歴の今日」**（暦の今日ではない——3直の0時〜7時は前の日に入る）。
+    期間は`MAX_DAYS`日までに切り詰め、切ったら`clipped`で言う（黙って切らない）。
 
     `query`があれば語で絞る（新しい順に`MAX_FOUND`件まで・`found`に総数）。`anywhere`が真なら
     **期間を見ずに全期間から**、偽なら期間の中だけ。**探す規則は`matches()`の1箇所**（画面は写さない）。
 
-    戻り値: {'entries': [...], 'days': {日付: {区分: 件数}}, 'undated': 件数, 'shifts': [直の並び], 'cats': CATS}
+    戻り値: {'entries': [...], 'days': {日付: {区分: 件数}}, 'undated': 件数, 'shifts': [直の並び], 'cats': CATS,
+             'from'／'to'／'today': 'YYYY-MM-DD', 'clipped': bool, 'query', 'found'}
     **`days`は期間に関係なく全日ぶん**（暦に件数を出すため。数えるだけなので軽い）。
     `undated`は日時の手がかりが1つも無い記録の数（黙って落とさず、画面が件数で言う）。
     """
     keys = [str(k) for k in (keys or []) if str(k)]
     field_of, shifts = _field(mc, equipment)
+    today = date.fromisoformat(field_of(now or datetime.now())[0])
+    day_to = day_to or day_from or today
+    day_from = day_from or day_to
+    if day_from > day_to:
+        day_from, day_to = day_to, day_from
+    clipped = (day_to - day_from).days + 1 > MAX_DAYS
+    if clipped:
+        day_from = day_to - timedelta(days=MAX_DAYS - 1)
     if actual_index is None:
         actual_index = sc.build_actual_index()
     rows = sr.plan_rows(c_share, equipment, include_inactive=True)
@@ -250,10 +263,11 @@ def history(c_share, mc, equipment, day_from, day_to, keys=None, actual_index=No
     if query:
         out = out[-MAX_FOUND:]
     return {'entries': out, 'days': days, 'undated': undated, 'shifts': shifts, 'cats': CATS,
+            'from': lo, 'to': hi, 'today': today.isoformat(), 'clipped': clipped and not (query and anywhere),
             'query': query, 'found': found}
 
 
-def parse_day(value, default):
+def parse_day(value, default=None):
     """'YYYY-MM-DD' を date へ。空・読めなければ既定（落ちない・黙らない）。"""
     if not value:
         return default

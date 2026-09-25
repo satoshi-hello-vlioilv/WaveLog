@@ -1,4 +1,4 @@
-# 作業スケジュール（73件）
+# 作業スケジュール（76件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 過去履歴は段「履歴」（見るだけ）。材料は予定の表そのもの・組み立ては`schedule_history.history()`の1箇所 | `test_schedhist.py`・`test_schistui.js` | [§9.502](../../docs/decisions/9.502.md) |
+| 履歴の時刻は出どころつき。設備停止は「入れた→外した」と「見積」を字で書き分ける（止まった時間とは言わない） | `test_schedhist.py` | [§9.502](../../docs/decisions/9.502.md) |
+| 履歴の既定の日は現場歴の今日（サーバーが答える）。探す規則は`matches()`の1箇所（画面へ写さない） | `test_schedhist.py` | [§9.502](../../docs/decisions/9.502.md) |
 | 表示列の候補の土台は仕掛の元データの列名（`scLoadWorkColumns()`の1箇所）。`S.columns`（画面がいま持つ表）に頼らない | `test_sccolpanel.js` | [§9.501](../../docs/decisions/9.501.md) |
 | 候補は材料が変わったときだけ作る（`scMemo()`）。予定の`detail`／`joined`をその場で書き換えたら`touchContentCandidates()` | `test_sccolpanel.js` | [§9.501](../../docs/decisions/9.501.md) |
 | 仕掛一覧は見え方（伏せるロット・出す列）が変わるときだけ描き直す。描いた状態は`hiddenLotSet()`の口で控える | `test_sccolpanel.js` | [§9.501](../../docs/decisions/9.501.md) |
