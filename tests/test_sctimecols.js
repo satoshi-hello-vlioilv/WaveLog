@@ -50,13 +50,17 @@ run('test_sctimecols: スケジュール表の列も列レイアウトマスタ�
                         purposeName:'一般用材',inspectionNo:'K0059'},
                  settings:{registeredEquipment:EQ,operator:'田中'},
                  workTime:{startAt:new Date(now-300*60000).toISOString(),endAt:new Date(now-240*60000).toISOString()}};
-  await post('/api/measurement/backup',{id:'stc-done',equipment:EQ,lotNo:'L0059',inspectionNo:'K0059',
+  const r=await post('/api/measurement/backup',{id:'stc-done',equipment:EQ,lotNo:'L0059',inspectionNo:'K0059',
     castingNo:'C059',status:'完了',codec:'json-full-v32',payload:JSON.stringify(payload)});
+  /* **置けたことを確かめる**（§9.494）。以前は応答を見ておらず、前の網がモードを
+     scheduleのまま残すと403で黙って弾かれ、ずっと後の「当たる行が無い」で落ちていた。 */
+  rec('前提: 完了の記録を置けた（§9.494）',r.ok,`HTTP ${r.status}`);
  };
  try{
   await cleanup();
-  await putDone();
+  /* モードを**先に**決める（書込はeditでしか通らない・§9.494）。 */
   await post('/api/access-mode',{mode:'edit'});
+  await putDone();
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openSchedule',{timeout:20000});
   await page.evaluate(e=>localStorage.setItem('AccessMeasurementConfiguredEquipment',e),EQ);
