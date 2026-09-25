@@ -335,6 +335,26 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
   rec('項目ごとに隠せる（平均だけ消え、ほかは残る）。戻すと元どおり',
       hasShow&&!!sh.after&&!sh.after.items.includes('i2')&&sh.after.items.length===sh.before.items.length-1
       &&JSON.stringify(sh.back)===JSON.stringify(sh.before),JSON.stringify(sh));
+  /* 9h) 「行」は区切りの上か下かを選べる（利用者の指示①）。上＝区切りの最初の行（A）の直前、下＝最後の行（C）の直後。 */
+  const posOf=()=>page.evaluate(t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
+   if(!el)return null;
+   const lines=[...document.querySelectorAll('#scTimeline .sc-row-line,#scTimeline .sc-subtotal')];
+   const i=lines.indexOf(el);const nx=lines[i+1],pv=lines[i-1];
+   return {next:nx?nx.textContent.includes(t+'A'):false,prev:pv?pv.textContent.includes(t+'C'):false}},TAG);
+  const hasPos=await page.evaluate(()=>!!document.querySelector('#scSubtotalMore [data-st-pos="top"]'));
+  const ps={has:hasPos,bottom:await posOf()};
+  if(hasPos){
+   await page.click('#scSubtotalMore [data-st-pos="top"]');
+   await W.until(page,t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
+    const nx=el&&el.nextElementSibling;return !!nx&&nx.textContent.includes(t+'A')},TAG,{ms:8000,what:'上に出した小計'});
+   ps.top=await posOf();
+   await page.click('#scSubtotalMore [data-st-pos="bottom"]');
+   await W.until(page,t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
+    const pv=el&&el.previousElementSibling;return !!pv&&pv.textContent.includes(t+'C')},TAG,{ms:8000,what:'下へ戻した小計'});
+  }
+  console.log('#MEASURE '+JSON.stringify({pos:ps}));
+  rec('「行」は区切りの上にも出せる（区切りの最初の行の直前）（利用者の指示①）',hasPos&&!!ps.top&&ps.top.next,JSON.stringify(ps));
+  rec('「行」の既定は区切りの下（区切りの最後の行の直後）',!!ps.bottom&&ps.bottom.prev,JSON.stringify(ps));
   if(process.env.WAVELOG_SHOT){await page.screenshot({path:`${process.env.WAVELOG_SHOT}/scsubtotal-multi-panel.png`})}
   await page.click('#scViewMenuBtn');
   if(process.env.WAVELOG_SHOT){

@@ -5880,7 +5880,13 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     `WL.formula`の1つ（`eval`しない）、書式は列と同じ`WL.cellFormat`の1つ（新しく作らない）。
     1行ごとに式を当てたいときは、表の「列の作り方」（§9.207）で列を作ってからその列を集計する。
     いままでの保存（`cols`＝合計する列）は読むときに「合計」の項目へ読み替える（設定し直しは要らない）。 */
- const SC_SUBTOTAL_DEFAULT={on:false,unit:'date',unitCol:'',style:'row',items:[],show:{tag:true,name:true,count:true}};
+ const SC_SUBTOTAL_DEFAULT={on:false,unit:'date',unitCol:'',style:'row',pos:'bottom',items:[],show:{tag:true,name:true,count:true}};
+ /* 「行」を置く位置（§9.503①、利用者の指示「行は上か下か選べるように」）。上＝区切りの最初の行の直前、
+    下＝最後の行の直後（既定・今までの形）。 */
+ const SC_SUBTOTAL_POS=[
+  {key:'top',label:'区切りの上',note:'区切りの最初の行の上に出します（これから数える行の頭）'},
+  {key:'bottom',label:'区切りの下',note:'区切りの最後の行の下に出します（ここまでの合計）'},
+ ];
  /* 見せる物（§9.503④、利用者の指示「小計の表示から日付やロット数などもすべて、表示ONOFFできるように」）。
     項目ごとの入切は項目の`show`（隠した項目も式の材料にはなる）。語彙はここ1箇所。 */
  const SC_SUBTOTAL_SHOW=[
@@ -5936,6 +5942,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const c=Object.assign({},SC_SUBTOTAL_DEFAULT,v);
   if(!SC_SUBTOTAL_UNITS.some(u=>u.key===c.unit))c.unit=SC_SUBTOTAL_DEFAULT.unit;
   if(!SC_SUBTOTAL_STYLES.some(u=>u.key===c.style))c.style=SC_SUBTOTAL_DEFAULT.style;
+  if(!SC_SUBTOTAL_POS.some(u=>u.key===c.pos))c.pos=SC_SUBTOTAL_DEFAULT.pos;
   c.items=subtotalItemsOf(v);
   const sh=(v.show&&typeof v.show==='object')?v.show:{};
   c.show=Object.fromEntries(SC_SUBTOTAL_SHOW.map(x=>[x.key,sh[x.key]!==false]));
@@ -6099,7 +6106,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      なる——出すぶんだけで数えると、設定の見本（全部で数える）と表の小計で式の答えが食い違っていた。 */
   const agg=subtotalOf(unit.rows,cfg.items);
   const el=document.createElement('div');
-  el.className='sc-subtotal'+(cfg.style==='label'?' is-label':'');
+  el.className='sc-subtotal'+(cfg.style==='label'?' is-label':'')+(cfg.style==='row'&&cfg.pos==='top'?' is-top':'');
   el.dataset.unit=unit.key;el.dataset.count=String(agg.count);
   /* 名前は列の幅で切れることがある。**全文は`title`**で読めるようにする。 */
   el.title=`小計 ${unit.label}・作業 ${agg.count}ロット`;
@@ -6247,6 +6254,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     +step('出し方','どちらも1行',`<span class="sc-subtotal-opts" role="group" aria-label="小計の出し方">`
        +SC_SUBTOTAL_STYLES.map(st=>seg('data-st-style',st.key,st.key===c.style,st.label,st.note)).join('')+'</span>'
        +`<small class="sc-st-hint">${esc((SC_SUBTOTAL_STYLES.find(x=>x.key===c.style)||{}).note||'')}</small>`)
+    +(c.style==='row'?step('位置','行を区切りのどちらに置くか',`<span class="sc-subtotal-opts" role="group" aria-label="小計の行の位置">`
+       +SC_SUBTOTAL_POS.map(x=>seg('data-st-pos',x.key,x.key===c.pos,x.label,x.note)).join('')+'</span>'
+       +`<small class="sc-st-hint">${esc((SC_SUBTOTAL_POS.find(x=>x.key===c.pos)||{}).note||'')}</small>`):'')
     +step('見せる物','押すたびに出す・出さない',`<span class="sc-subtotal-opts" role="group" aria-label="小計に見せる物">`
        +SC_SUBTOTAL_SHOW.map(x=>seg('data-st-show',x.key,c.show[x.key],x.label,x.note)).join('')+'</span>'
        +`<small class="sc-st-hint">項目ごとの出す・出さないは③の左端</small>`
@@ -6256,6 +6266,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const apply=patch=>{if(stRendering)return;saveSubtotalCfg(patch);renderTimeline();updateViewMenuUi()};
   pop.querySelectorAll('[data-st-on]').forEach(b=>b.onclick=()=>apply({on:b.dataset.stOn==='1'}));
   pop.querySelectorAll('[data-st-style]').forEach(b=>b.onclick=()=>apply({style:b.dataset.stStyle}));
+  pop.querySelectorAll('[data-st-pos]').forEach(b=>b.onclick=()=>apply({pos:b.dataset.stPos}));
   pop.querySelectorAll('[data-st-show]').forEach(b=>b.onclick=()=>apply({show:Object.assign({},c.show,{[b.dataset.stShow]:!c.show[b.dataset.stShow]})}));
   $('#scSubtotalUnit').onchange=e=>apply({unit:e.target.value});
   $('#scSubtotalUnitCol').onchange=e=>apply({unitCol:e.target.value});
@@ -6285,18 +6296,21 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    if(ex&&WL.formula.suggest)WL.formula.suggest(ex,{columns:()=>list0[i]&&list0[i].kind==='agg'?[SC_SUBTOTAL_VALUE,...names()]:names()});
   });
  }
- /* 並びを区切りに割る（行は`list`の順・続いている間は同じ区切り）。区切りの最後の行 → 区切り。 */
+ /* 並びを区切りに割る（行は`list`の順・続いている間は同じ区切り）。**小計を置く行 → 区切り**——
+    置く行は位置で決まる（上＝区切りの最初の行・下＝最後の行・§9.503①）。描く側はこの答えを見るだけ。 */
  function subtotalUnits(list,cfg){
-  const ends=new Map();
-  if(!cfg.on||(cfg.unit==='col'&&!cfg.unitCol))return ends;
+  const at=new Map();
+  if(!cfg.on||(cfg.unit==='col'&&!cfg.unitCol))return at;
+  const top=cfg.style==='row'&&cfg.pos==='top';
+  const put=u=>at.set(top?u.rows[0]:u.rows[u.rows.length-1],u);
   let cur=null;
   list.forEach(e=>{
    const b=bucketOf(e,cfg.unit,cfg.unitCol)||{key:'__all__',label:'全体'};
-   if(!cur||cur.key!==b.key){if(cur)ends.set(cur.rows[cur.rows.length-1],cur);cur={key:b.key,label:b.label,rows:[]}}
+   if(!cur||cur.key!==b.key){if(cur)put(cur);cur={key:b.key,label:b.label,rows:[]}}
    cur.rows.push(e);
   });
-  if(cur)ends.set(cur.rows[cur.rows.length-1],cur);
-  return ends;
+  if(cur)put(cur);
+  return at;
  }
 
 /* 内容の列数はマスタ次第で変わるので、**グリッドの定義も一緒に作り直す**。
@@ -7049,19 +7063,22 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   bindInsertGhost(timeline);
   updateInsertHintUi();
   const kids=childEntriesByParent();
-  /* 小計（§9.493）は**まとめの箱をまたいで**数える（別の軸）。区切りの最後の行の下へ置く。 */
+  /* 小計（§9.493）は**まとめの箱をまたいで**数える（別の軸）。区切りの最後の行の下へ置く
+     （「区切りの上」を選んだら最初の行の上・§9.503①）。 */
   const stCfg=subtotalCfg(),stEnds=subtotalUnits(list,stCfg);
+  const stTop=stCfg.style==='row'&&stCfg.pos==='top';
   buckets.forEach(bucket=>{
    const box=document.createElement('div');
    box.className='sc-group';box.dataset.group=bucket.key;
    if(bucket.label)box.insertAdjacentHTML('beforeend',groupHeadHtml(bucket.label,bucket.rows.length));
    let lastEnd=null;
    bucket.rows.forEach(e=>{
-    renderEntryRow(box,e,true,()=>lastEnd,v=>{lastEnd=v});
-    renderChildRows(box,e,kids.get(e.id)||[]);
     const st=stEnds.get(e);
     const stEl=st&&subtotalEl(st,stCfg);
-    if(stEl)box.append(stEl);
+    if(stEl&&stTop)box.append(stEl);
+    renderEntryRow(box,e,true,()=>lastEnd,v=>{lastEnd=v});
+    renderChildRows(box,e,kids.get(e.id)||[]);
+    if(stEl&&!stTop)box.append(stEl);
    });
    timeline.append(box);
   });

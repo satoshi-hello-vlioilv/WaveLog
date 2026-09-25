@@ -1321,6 +1321,8 @@
  font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;
 }
 .sc-subtotal>*{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+/* 区切りの上に置いた小計（§9.503①）は**下に**線を引く——数える行の側に区切りの線が来る（「ここからの合計」）。 */
+.sc-subtotal.is-top{border-top-color:var(--line-soft);border-bottom-color:var(--line-mid)}
 /* 名前の器と集計の器は**横1列**。縮むのは区切りの名前だけ（数は縮めない・名前の全文は行の`title`）。 */
 .sc-subtotal-head,.sc-st-in{display:flex;align-items:center;gap:var(--space-3);min-width:0}
 .sc-subtotal-head>*,.sc-st-in>*{flex:none}
