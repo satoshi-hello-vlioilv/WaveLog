@@ -1314,18 +1314,18 @@
    足した列の真下に来る。まとめの見出し（区切りの**頭**・左の帯）と取り違えないよう、
    こちらは区切りの**お尻**で、上に線を引いて「ここまでの合計」と読ませる。 */
 .sc-subtotal{
- /* 高さは**中身なり**（最低は行と同じ）。集計が1つなら行と同じ1段、同じ列に2つ以上・式があれば
-    1項目1段で積む（§9.498）——列の幅は変えられないので、横に並べると2つ目から切れて読めない。 */
- min-height:var(--row-h);padding:var(--row-pad-y) 8px;align-items:start;
+ /* **1行**（§9.499）。高さは行と同じ`--row-h`。幅は器を右隣の集計の無い列まで広げて稼ぐ（JS）
+    ——§9.498では縦に積んだが、行が4段ぶん（104px）になり一覧のリズムを崩した。 */
+ height:var(--row-h);padding:var(--row-pad-y) 8px;
  background:var(--surface-2);border-top:1px solid var(--line-mid);border-bottom:1px solid var(--line-soft);
  font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;
 }
 .sc-subtotal>*{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-/* 名前の器は**折り返して積む**（名前／ロット数／式）。狭い列をまたぐので、1行に詰めると名前が押し出されて消えた。 */
-.sc-subtotal-head{display:flex;flex-wrap:wrap;align-items:center;gap:0 var(--space-2);white-space:normal}
-.sc-subtotal-head>*{white-space:nowrap}
-.sc-subtotal-head>.sc-subtotal-sum{flex:0 0 100%;overflow:hidden;text-overflow:ellipsis}
-.sc-subtotal-cell>.sc-subtotal-sum{display:block;overflow:hidden;text-overflow:ellipsis}
+/* 名前の器と集計の器は**横1列**。縮むのは区切りの名前だけ（数は縮めない・名前の全文は行の`title`）。 */
+.sc-subtotal-head,.sc-subtotal-cell{display:flex;align-items:center;gap:var(--space-3);min-width:0}
+.sc-subtotal-head>*,.sc-subtotal-cell>*{flex:none}
+.sc-subtotal-head>.sc-subtotal-name{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.sc-subtotal-cell>.sc-subtotal-head{gap:var(--space-2)}
 .sc-subtotal-tag{flex:none;padding:var(--pad-chip);border:1px solid var(--teal);border-radius:var(--radius-pill);
  color:var(--teal-dark);font-size:var(--fs-badge);line-height:1.2}
 .sc-subtotal-name{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2)}

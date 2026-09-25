@@ -188,11 +188,20 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
   const rowv=await page.evaluate(t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
    const cell=el.querySelector('.sc-subtotal-cell[data-col="mfgMaterial"]');
    const head=document.querySelector('.sc-row-head [data-col="mfgMaterial"]');
-   return {parts:cell?cell.querySelectorAll('.sc-subtotal-sum').length:0,tags:cell?[...cell.querySelectorAll('small')].map(x=>x.textContent):[],
-     calcInHead:!!el.querySelector('.sc-subtotal-head .sc-subtotal-sum[data-item]'),
+   return {parts:cell?cell.querySelectorAll('.sc-subtotal-sum[data-col]').length:0,tags:cell?[...cell.querySelectorAll('.sc-subtotal-sum[data-col] small')].map(x=>x.textContent):[],
+     calcLast:!!cell&&!!cell.lastElementChild&&!cell.lastElementChild.hasAttribute('data-col'),
      dx:cell&&head?Math.round(Math.abs(cell.getBoundingClientRect().left-head.getBoundingClientRect().left)):null}},TAG);
-  rec('「行」では同じ列の集計が列の真下の器に名つきで並び、式は名前の後ろ（§9.498）',
-      rowv.parts===5&&rowv.tags.join(',')==='合計,平均,最大,最小,件数'&&rowv.calcInHead&&rowv.dx!==null&&rowv.dx<=2,JSON.stringify(rowv));
+  rec('「行」では同じ列の集計が列の真下の器から名つきで並び、式は最後の器の後ろ（§9.498・§9.499）',
+      rowv.parts===5&&rowv.tags.join(',')==='合計,平均,最大,最小,件数'&&rowv.calcLast&&rowv.dx!==null&&rowv.dx<=2,JSON.stringify(rowv));
+  /* **1行に収める**（§9.499、利用者の指示「行に出すパターンもコンパクトに、すべて1行で納めた形に」）。
+     物差し: 小計の行の高さ＝ふつうの行の高さ／字が切れている部品の数＝0（名前・ロット数・集計・式）。 */
+  const fit=await page.evaluate(t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
+   const line=document.querySelector('#scTimeline .sc-row-line');
+   const cut=[...el.querySelectorAll('.sc-subtotal-name,.sc-subtotal-count,.sc-subtotal-sum')].filter(x=>x.scrollWidth>x.clientWidth+1||
+     (x.getBoundingClientRect().right>x.closest('.sc-subtotal-head,.sc-subtotal-cell').getBoundingClientRect().right+1)).map(x=>x.textContent.trim().slice(0,14));
+   return {h:Math.round(el.getBoundingClientRect().height),row:Math.round(line.getBoundingClientRect().height),cut}},TAG);
+  rec('「行」の小計は1行（高さ＝ふつうの行）（§9.499）',Math.abs(fit.h-fit.row)<=1,`小計${fit.h}px／行${fit.row}px`);
+  rec('「行」の小計で字が切れている部品は0（§9.499）',fit.cut.length===0,`${fit.cut.length}件 ${JSON.stringify(fit.cut)}`);
   // 9d) 書けない式は画面にそう言い、小計は「—」
   await put(calc+' [data-st-f="expr"]','[製造材質 合計]/(');
   const bad=await page.evaluate(s=>{const r=document.querySelector(s);const n=r&&r.querySelector('.sc-st-err');return n?n.textContent.trim():''},calc);

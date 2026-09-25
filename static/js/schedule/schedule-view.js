@@ -5963,10 +5963,14 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  function subtotalColumnChoices(){
   return timelineColumnKeys().filter(k=>!SC_SUBTOTAL_NEVER.has(k));
  }
- /* 1つの区切りの小計。**行**は表と同じグリッドに載り、集計は列の真下の器（`.sc-subtotal-cell`）へ
-    入る（同じ列に2つ以上あれば集計の名を添えて並べる）。名前（「小計 8/18 1直・作業 5ロット」）は
-    最初に集計する列より左の列をまたいで置き、式の項目はその後ろへ続ける。最初の列から集計する
-    ときは、名前は右端の余り（`1fr`の1本）へ回す。**ラベル**は1行の帯に項目の名前つきで並べる。 */
+ /* 1つの区切りの小計。**どちらの出し方も1行**（§9.499、利用者の指示「行に出すパターンもコンパクトに、
+    すべて1行で納めた形に」）。
+      行   … 表と同じグリッドに載る。集計の器（`.sc-subtotal-cell`）は**その列の真下から始まり、右隣の
+             集計の無い列まで広がる**（次の集計の列の手前まで・最後の器は右端まで）——列の幅だけに
+             詰めると2つ目から切れ、縦に積むと行が4段ぶん（実測104px）になった。同じ列の集計は器の中に
+             集計の名つきで横へ並べ、式は最後の器の後ろへ続ける。名前の器（小計・区切り・ロット数）は
+             最初の集計の列より左。最初の列から集計するときは、名前は最初の器の頭へ入れる。
+      ラベル … 1行の帯に項目の名前つきで並べる。 */
  function subtotalEl(unit,cfg){
   const choices=subtotalColumnChoices();
   const items=cfg.items.filter(it=>it.kind==='calc'||choices.includes(it.col));
@@ -5974,10 +5978,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const el=document.createElement('div');
   el.className='sc-subtotal'+(cfg.style==='label'?' is-label':'');
   el.dataset.unit=unit.key;el.dataset.count=String(agg.count);
-  /* 名前は列の幅で切れることがある（行のとき）。**全文は`title`**で読めるようにする。 */
+  /* 名前は列の幅で切れることがある。**全文は`title`**で読めるようにする。 */
   el.title=`小計 ${unit.label}・作業 ${agg.count}ロット`;
   const name=`<b class="sc-subtotal-tag">小計</b><span class="sc-subtotal-name">${esc(unit.label)}</span>`
-   +`<span class="sc-subtotal-count" title="この区切りの作業ロットの数（取消・設備停止・申し送りは数えない。子ロットは親の1本）">作業 ${agg.count}ロット</span>`;
+   +`<span class="sc-subtotal-count" title="この区切りの作業ロットの数（取消・設備停止・申し送りは数えない。子ロットは親の1本）">${agg.count}ロット</span>`;
   const part=(it,tag)=>{
    const v=agg.values[it.id];
    const star=(it.kind==='agg'&&it.agg!=='count'&&v.skip&&v.used)?'<i class="sc-subtotal-skip">*</i>':'';
@@ -5985,22 +5989,32 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     +(it.kind==='agg'?` data-col="${esc(it.col)}"`:'')+` title="${esc(subtotalValueTitle(it,v,agg.count))}">`
     +(tag?`<small>${esc(tag)}</small>`:'')+`<span class="sc-st-v">${esc(subtotalValueText(it,v))}${star}</span></span>`;
   };
+  const calcs=items.filter(it=>it.kind==='calc');
+  const calcHtml=calcs.map(it=>part(it,agg.values[it.id].name)).join('');
   if(cfg.style==='label'){
    el.innerHTML=name+items.map(it=>part(it,agg.values[it.id].name)).join('');
    return el;
   }
   const shown=timelineColumnKeys();
-  const idx=k=>shown.indexOf(k)+2;      // 1列目は取っ手
   const byCol=new Map();
   items.filter(it=>it.kind==='agg').forEach(it=>{if(!byCol.has(it.col))byCol.set(it.col,[]);byCol.get(it.col).push(it)});
-  const calcs=items.filter(it=>it.kind==='calc');
-  const first=byCol.size?Math.min(...[...byCol.keys()].map(idx)):shown.length+2;
-  const nameCol=first>2?`1 / ${first}`:`${shown.length+2} / -1`;
+  const cols=[...byCol.keys()].sort((x,y)=>shown.indexOf(x)-shown.indexOf(y));
+  const gc=k=>shown.indexOf(k)+2;      // 1列目は取っ手
   /* 同じ列に1つだけなら値だけ。2つ以上なら名前を変えていない項目は集計の名（合計・平均…）を添える。 */
   const tagOf=(it,many)=>many?(it.label.trim()||subtotalAggOf(it.agg).label):'';
-  el.innerHTML=`<span class="sc-subtotal-head" style="grid-column:${nameCol}">${name}${calcs.map(it=>part(it,agg.values[it.id].name)).join('')}</span>`
-   +[...byCol].map(([k,its])=>`<span class="sc-subtotal-cell" data-col="${esc(k)}" style="grid-column:${idx(k)}">`
-     +its.map(it=>part(it,tagOf(it,its.length>1))).join('')+'</span>').join('');
+  if(!cols.length){
+   el.innerHTML=`<span class="sc-subtotal-head" style="grid-column:1 / -1">${name}${calcHtml}</span>`;
+   return el;
+  }
+  const headFirst=gc(cols[0])>2;
+  el.innerHTML=(headFirst?`<span class="sc-subtotal-head" style="grid-column:1 / ${gc(cols[0])}">${name}</span>`:'')
+   +cols.map((k,i)=>{
+    const its=byCol.get(k),last=i===cols.length-1;
+    const end=last?'-1':String(gc(cols[i+1]));
+    return `<span class="sc-subtotal-cell" data-col="${esc(k)}" style="grid-column:${gc(k)} / ${end}">`
+     +(!headFirst&&i===0?`<span class="sc-subtotal-head">${name}</span>`:'')
+     +its.map(it=>part(it,tagOf(it,its.length>1))).join('')+(last?calcHtml:'')+'</span>';
+   }).join('');
   WL.columnAlign.applyCells(el,timelineTarget(),{selector:':scope>.sc-subtotal-cell[data-col]'});
   return el;
  }

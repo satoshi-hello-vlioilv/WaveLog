@@ -1,4 +1,4 @@
-# 作業スケジュール（67件）
+# 作業スケジュール（68件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 小計は**1行**。「行」の集計の器は列の真下から右隣の集計の無い列まで広げる（縦に積まない）。式は最後の器の後ろ | `test_scsubtotal.js` | [§9.499](../../docs/decisions/9.499.md) |
 | 小計は**集計の項目の並び**。集計は`SC_SUBTOTAL_AGGS`、式は`WL.formula`、書式は`WL.cellFormat`（仕組みを足さない） | `test_scsubtotal.js` | [§9.498](../../docs/decisions/9.498.md) |
 | 小計の式が引く名前は`subtotalItemName()`の1箇所。古い保存（`cols`）は`subtotalItemsOf()`が読み替える | `test_scsubtotal.js` | [§9.498](../../docs/decisions/9.498.md) |
 | 小計は**まとめとは別の軸**（区切りのお尻で数える）。区切りの語彙は`bucketOf()`の1本をまとめと共有する | `test_scsubtotal.js` | [§9.493](../../docs/decisions/9.493.md) |
