@@ -28,7 +28,7 @@ import time
 
 from . import atomic_io
 from .logging_setup import app_logger
-from .paths import browser_dir, runtime_dir
+from .paths import browser_dir, db_dir, runtime_dir
 from .quiet import quiet
 
 # ------------------------------------------------------------------
@@ -126,8 +126,10 @@ def _work_dir():
 
 
 def _db_dir():
- from .db_access import DB_DIR
- return _safe(lambda: Path(DB_DIR))
+ # 置き場の答えは`paths.db_dir()`の1箇所（`db_access.DB_DIR`もこれ）。**`db_access`を読み込まない**
+ # ——読み込むとデータソースの設定を読み、役割が無い環境では時刻つきの警告を出すので、
+ # update.bat の画面へ記録が混ざる（§9.497の追補。CIのまっさらな環境で踏んだ）。
+ return _safe(lambda: Path(db_dir()))
 
 
 def _rne_backup_dir():
