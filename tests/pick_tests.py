@@ -148,7 +148,7 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scmodecols',
                      'test_scstop', 'test_scwarm', 'test_scundecided',
                      # §9.389: 設備停止を入れる手順（内容→内訳→時間）と耳屑幅の列
-                     'test_stopflow', 'test_scscrap',
+                     'test_stopflow', 'test_scscrap', 'test_scsubtotal',
                      'test_scwatchui', 'test_scwatch', 'test_sccomment',
                      'test_scowner', 'test_scrowstyle', 'test_scload', 'test_scbar', 'test_scsave',
                      # §9.366: さかのぼりの起点と2段の選び方

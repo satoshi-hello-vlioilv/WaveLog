@@ -377,7 +377,7 @@
    固定開始・見積の内訳は情報量が多く常時出すと行が伸びるため、1つの
    詳細トグル(.sc-row-detail-toggle)へ統合して折りたたむ(既定は閉)。
    --------------------------------------------------------------- */
-.sc-row-head,.sc-row-line,.sc-child-line{
+.sc-row-head,.sc-row-line,.sc-child-line,.sc-subtotal{
  /* **この表のセルの文字サイズを1つ決める**(§9.90)。以前は日付12px・
     時刻13px・内容14px・作業可否10pxのように列ごとに違い、同じ行の中で
     大きさがちぐはぐだった(実測で内容だけ2段大きかった)。
@@ -1310,6 +1310,26 @@
  background:var(--surface);white-space:nowrap;
 }
 .sc-group-note{font-size:var(--fs-sm);color:#8a9aa0}
+/* 小計の行(§9.493)。**行と同じグリッド・同じ高さ**（`--sc-cols`・`--row-h`）——合計は
+   足した列の真下に来る。まとめの見出し（区切りの**頭**・左の帯）と取り違えないよう、
+   こちらは区切りの**お尻**で、上に線を引いて「ここまでの合計」と読ませる。 */
+.sc-subtotal{
+ height:var(--row-h);padding:var(--row-pad-y) 8px;
+ background:var(--surface-2);border-top:1px solid var(--line-mid);border-bottom:1px solid var(--line-soft);
+ font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;
+}
+.sc-subtotal>*{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.sc-subtotal-head{display:flex;align-items:center;gap:var(--space-2)}
+.sc-subtotal-tag{flex:none;padding:var(--pad-chip);border:1px solid var(--teal);border-radius:var(--radius-pill);
+ color:var(--teal-dark);font-size:var(--fs-badge);line-height:1.2}
+.sc-subtotal-name{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2)}
+.sc-subtotal-count{flex:none}
+.sc-subtotal-sum{padding-left:var(--gap-tight)}
+.sc-subtotal-skip{font-style:normal;color:var(--warn-fg)}
+/* ラベル：1行の帯に並べる。列にはそろえないので、どの列の合計かを**字で**添える。 */
+.sc-subtotal.is-label{display:flex;align-items:center;gap:var(--space-3)}
+.sc-subtotal.is-label>.sc-subtotal-sum{flex:none;padding-left:0}
+.sc-subtotal.is-label>.sc-subtotal-sum>small{margin-right:var(--space-1);color:var(--muted);font-weight:400}
 .sc-group[data-group="running"] .sc-group-head{border-left-color:var(--success);background:var(--success-bg)}
 .sc-group[data-group="running"] .sc-group-label{color:var(--success)}
 .sc-group[data-group="planned"] .sc-group-head{border-left-color:var(--teal);background:var(--pale)}
@@ -2260,13 +2280,27 @@
 div.sc-view-row{cursor:default}
 .sc-history{gap:var(--space-1)}
 .sc-history-groups{display:flex;flex-wrap:wrap;gap:2px}
-.sc-history-group{
+.sc-history-group,.sc-subtotal-opt{
  flex:1 1 auto;height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
  font-size:var(--fs-micro);color:var(--ink-2);cursor:pointer;white-space:nowrap;
 }
-.sc-history-group:hover{border-color:var(--teal);color:var(--teal-dark)}
+.sc-history-group:hover,.sc-subtotal-opt:hover:not(:disabled){border-color:var(--teal);color:var(--teal-dark)}
 .sc-view-row select[hidden]{display:none}
+/* 小計の段(§9.493)。札と欄は右の列、出し方と列の札は**行いっぱい**の2段目
+   （列の札は数が設備で変わるので、右の列の幅には収まらない）。 */
+.sc-subtotal-opts{display:flex;flex-wrap:wrap;gap:2px}
+.sc-subtotal-opt{display:inline-flex;align-items:center;gap:var(--space-1)}
+.sc-subtotal-opt>small{color:var(--muted);font-variant-numeric:tabular-nums}
+.sc-subtotal-opt:disabled{cursor:not-allowed;opacity:.5}
+/* 2択（出す／出さない・行／ラベル）は中身なりの幅。行いっぱいに伸ばすと入力欄に見える。 */
+.sc-subtotal-more>.sc-subtotal-opts>.sc-subtotal-opt{flex:0 0 auto;min-width:var(--w-xs);justify-content:center}
+.sc-subtotal-more{grid-column:1 / -1;display:grid;grid-template-columns:var(--w-xs) 1fr;
+ align-items:center;gap:var(--space-1) var(--space-2)}
+.sc-subtotal-more[hidden]{display:none}
+.sc-subtotal-more-name{font-size:var(--fs-micro);font-weight:700;color:var(--ink-2);text-align:right}
+.sc-subtotal-note{grid-column:2;color:var(--muted);font-size:var(--fs-micro);line-height:1.4}
+.sc-subtotal-none{color:var(--muted);font-size:var(--fs-micro)}
 
 /* ============================================================
    操作列を1行に収める(§9.199、利用者の指示「上部メニューバーは1行で」)

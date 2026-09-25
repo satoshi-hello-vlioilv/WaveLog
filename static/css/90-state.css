@@ -600,6 +600,7 @@ body.sc-mode #headerContextSource{display:none}
   .mm-card-opt.is-on,
   .record-scope-btn.is-on,
   .sc-history-group.is-on,
+  .sc-subtotal-opt.is-on,
   .sc-pick-all.is-on{background:var(--pale);border-color:var(--teal);color:var(--teal-dark)}
 
   /* 淡い面（字は各自）（3族） */
