@@ -36,7 +36,9 @@
 """
 import pathlib
 import re
+import shutil
 import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 JS = ROOT / 'static' / 'js'
@@ -109,14 +111,16 @@ def strip_js(src, keep_strings=False):
     return ''.join(out)
 
 
-def scan(pattern, keep_strings=False):
-    """コメント（と既定では文字列も）を落としたうえで当たったファイル名。
+def scan(pattern, keep_strings=False, root=None):
+    """コメント（と既定では文字列も）を落としたうえで当たったファイル名。`root`を渡せばそこだけを見る
+    （網そのものの確かめ用。**本物の`static/js`へ試しのファイルを書かない**——並列で回る`test_eslint`が同じ置き場を
+    読んでおり、書いて消すあいだに読まれると eslint ごと落ちた・CIで踏んだ）。
 
     **`@page{size:` はテンプレート文字列の中にある**ので、そこだけは文字列を
     残して数える（落とすと共通核ですら1件も当たらず、写しが増えても通る）。"""
     rx = re.compile(pattern)
     hit = []
-    for f in sorted(JS.rglob('*.js')):   # 領域フォルダ（§9.334）
+    for f in sorted((root or JS).rglob('*.js')):   # 領域フォルダ（§9.334）
         if rx.search(strip_js(f.read_text(encoding='utf-8'), keep_strings)):
             hit.append(f.name)
     return hit
@@ -147,7 +151,9 @@ def main():
         'WL.paper=' in src and 'WL.printCore=' in src)
 
     # ---- 網そのものが素通りしないこと ----
-    probe = JS / 'core' / '_print_probe.js'
+    # 試しのファイルは**一時の置き場**へ（本物の`static/js`へ書くと、並列の`test_eslint`が読みかけで落ちる）。
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix='wl_printcore_'))
+    probe = tmp / '_print_probe.js'
     try:
         probe.write_text(
             'const K=[{key:"a4",w:210,h:297}];\n'
@@ -155,22 +161,23 @@ def main():
             'function r(k){return `@page{size:${k}mm}`}\n'
             'function s(a){const fixed=[];if(fixed[i])return a;return a}\n'
             'function p(){window.print()}\n', encoding='utf-8')
-        found = {name: (probe.name in scan(pat, keep)) for name, pat, keep in checks}
-        found['window.print()'] = probe.name in scan(r'window\.print\(\)')
+        found = {name: (probe.name in scan(pat, keep, tmp)) for name, pat, keep in checks}
+        found['window.print()'] = probe.name in scan(r'window\.print\(\)', root=tmp)
         rec('網が写しを実際に数えている', all(found.values()), found)
     finally:
         probe.unlink(missing_ok=True)
 
     # コメントの中の綴りでは落ちないこと（§9.328）
-    probe2 = JS / 'core' / '_print_probe2.js'
+    probe2 = tmp / '_print_probe2.js'
     try:
         probe2.write_text('/* @page{size: と 25.4/96 と w:210 の話 */\n'
                           '// window.print() のこと\n'
                           'const a=1;\n', encoding='utf-8')
-        noisy = [n for n, pat, keep in checks if probe2.name in scan(pat, keep)]
+        noisy = [n for n, pat, keep in checks if probe2.name in scan(pat, keep, tmp)]
         rec('説明文に書いてあるだけでは数えない', not noisy, noisy)
     finally:
         probe2.unlink(missing_ok=True)
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == '__main__':
