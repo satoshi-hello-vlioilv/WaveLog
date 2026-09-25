@@ -221,6 +221,37 @@ rec('E: 担当（測定した人）でも当たる（試験の実績はどれも
     sorted(e['lotNo'] for e in q3['entries']) == ['H001', 'H005', 'H099'],
     str(sorted(e['lotNo'] for e in q3['entries'])))
 
+# ---- F. 実績1件は予定の行1本にだけ当たる（外して入れ直した・ほかの設備へ移した） ----
+# 物差し: 同じ実績を2本以上の行が「完了」として持つ数（前＝外した行にも当てていたので2件）と、
+# 外したあとに始めた作業が外した行へ「完了」で付く数。**直す前にも同じ物差しで測った**（前 1・2）。
+put('redo_off', '作業', lot='K007', casting='C7', material='A5052', active=0,
+    created=D1 - timedelta(days=2), updated=D1 + timedelta(hours=1))     # 作業の前に外した
+put('redo', '作業', lot='K007', casting='C7', material='A5052', created=D1 + timedelta(hours=1))  # 入れ直した
+put('moved_off', '作業', lot='K008', casting='C8', material='A5052', active=0,
+    created=D1 - timedelta(days=2), updated=D1 + timedelta(hours=1))     # 外して、ほかの設備で作業した
+for lot, casting, eq in (('K007', 'C7', EQ), ('K008', 'C8', 'ほかの設備')):
+    actual(lot, lot, casting, D1 + timedelta(hours=2), D1 + timedelta(hours=3), eq=eq)
+    ACT[(sc.normalize_match_key(lot), sc.normalize_match_key(casting), sc.normalize_match_key('A5052'))]['createdBy'] = 'suzuki'
+fo = sh.history(c, mc, EQ, (NOW - timedelta(days=30)).date(), NOW.date(), keys=[], actual_index=ACT)
+fid = {str(e['id']): e for e in fo['entries']}
+held = {}
+for e in fo['entries']:
+    if e['cat'] == 'done' and e.get('recordId'):
+        held[e['recordId']] = held.get(e['recordId'], 0) + 1
+dup = sum(1 for n in held.values() if n > 1)
+late = [k for k in ('redo_off', 'moved_off') if (fid.get(str(IDS[k])) or {}).get('cat') == 'done']
+print('#MEASURE ' + json.dumps({'actual_held_by_2_rows': dup, 'removed_before_work_as_done': len(late)},
+                               ensure_ascii=False))
+rec('F: 実績1件を「完了」で持つ行は1本だけ（同じ作業時間を2回数えない）', dup == 0, json.dumps(held))
+e = fid.get(str(IDS['redo']))
+rec('F: 入れ直した行が実績を持つ（完了・60分）', bool(e) and e['cat'] == 'done' and e['minutes'] == 60.0,
+    str(e and (e['cat'], e['minutes'])))
+rec('F: 作業の前に外した行・ほかの設備で作業した行は「外した作業」のまま',
+    [(fid.get(str(IDS[k])) or {}).get('cat') for k in ('redo_off', 'moved_off')] == ['removed', 'removed'],
+    str(late))
+day_min = sum((x.get('minutes') or 0) for x in fo['entries'] if x['cat'] == 'done' and x['lotNo'] == 'K007')
+rec('F: K007 の作業時間の合計は60分（前は外した行のぶんも足して120分）', day_min == 60.0, str(day_min))
+
 c.close()
 mc.close()
 print('\n%d/%d PASS' % (sum(R), len(R)))

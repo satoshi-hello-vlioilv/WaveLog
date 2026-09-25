@@ -101,6 +101,19 @@ def _base(r, detail, keys):
             'detail': _project(detail, keys), 'children': []}
 
 
+def _removed_owns(e, actual, target):
+    """外した行がこの実績を持つか。**外す前に始まっていて、この設備の実績**のときだけ。
+    突合の鍵はロット・鋳造番号・材質だけなので、外したあと入れ直した行・ほかの設備で作業した行にも
+    同じ実績が当たる。そのまま当てると同じ作業が「完了」で2件並び、時間を2回数えていた（§9.502の追補）。
+    どちらの時刻も読めなければ当てない（推測で「完了」にしない）。"""
+    eq = normalize_equipment_name(actual.get('equipment') or '')
+    if eq and eq != target:
+        return False
+    began = _dt(actual.get('startAt')) or _dt(actual.get('endAt'))
+    removed = _dt(e['removedAt'])
+    return bool(began and removed and began <= removed)
+
+
 def _touched(e):
     """時刻の手がかりが無いときの置き場: **最後に行を変えた日時**（出どころを言う）。"""
     e['at'] = e['updatedAt']
@@ -213,7 +226,8 @@ def history(c_share, mc, equipment, day_from=None, day_to=None, keys=None, actua
         if r[18] is not None:
             # 子ロット（§9.83）は親の明細行。**親の1件に束ねる**（単独の記録にしない）。
             children.setdefault(r[18], []).append(str(r[4] or ''))
-    entries, matched = [], set()
+    target = normalize_equipment_name(equipment)
+    parsed = []
     for r in rows:
         if r[18] is not None:
             continue
@@ -222,12 +236,23 @@ def history(c_share, mc, equipment, day_from=None, day_to=None, keys=None, actua
         except ValueError as e:
             quiet('明細を読めない（空として扱う）', e)
             detail = {}
-        e = _base(r, detail, keys)
-        if e['kind'] == '作業':
+        actual = None
+        if str(r[3] or '') == '作業':
             actual = sc.match_actual(actual_index, detail.get('lotNo') or r[4], detail.get('castingNo') or r[6],
                                      detail.get('mfgMaterial'))
-            if actual is not None:
-                matched.add(actual['key'])
+        parsed.append((r, detail, actual))
+    # **実績1件は予定の行1本にだけ当たる**。いまの予定に居る行（有効）が先に取る——いまの予定の画面と
+    # 同じ当て方。外した行は、その実績を取れる理由があるときだけ（`_removed_owns()`）。
+    matched = {a['key'] for r, _d, a in parsed if a is not None and (r[14] is None or r[14])}
+    entries = []
+    for r, detail, actual in parsed:
+        e = _base(r, detail, keys)
+        if e['kind'] == '作業':
+            if actual is not None and e['removed']:
+                if actual['key'] in matched or not _removed_owns(e, actual, target):
+                    actual = None
+                else:
+                    matched.add(actual['key'])
             e = _work(e, r, detail, actual)
         else:
             e = _other(e, r, detail)
@@ -235,7 +260,6 @@ def history(c_share, mc, equipment, day_from=None, day_to=None, keys=None, actua
             e['children'] = children.get(r[0], [])
             entries.append(e)
     # 計画外の実績（§9.33）。予定の行（外したものも）に当たった実績は除く。
-    target = normalize_equipment_name(equipment)
     for key, a in actual_index.items():
         if key in matched or not a.get('startAt'):
             continue
