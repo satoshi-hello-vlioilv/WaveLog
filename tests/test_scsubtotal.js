@@ -281,6 +281,32 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
   rec('無い名前を引く式の小計は「—」で、理由を title で言う（片方だけの値を合計のように出さない）（§9.498の追補）',
       unk.val==='—'&&unk.bad&&/重量 合計/.test(unk.title),JSON.stringify(unk));
   await put(calc+' [data-st-f="expr"]','[製造材質 合計]/[ロット数]');
+  /* 9f) 集計した値に計算を続けて当てる（利用者の指示「合計するだけでなく÷1000×0.8といったような計算も
+     セットで行えるように」）。書いたとおり（÷×・頭が演算子＝集計した値へ続ける）でも、[値] を使っても同じ答え。
+     式の項目はその結果を [名前] で引く。 */
+  const hasPost=await page.evaluate(s=>!!document.querySelector(s),first+' [data-st-f="expr"]');
+  const firstVal=()=>page.evaluate(t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
+   const v=el&&el.querySelectorAll('.sc-subtotal-sum[data-item]');return v?[...v].map(x=>(x.querySelector('.sc-st-v')||x).textContent.trim()):[]},TAG);
+  let pf={has:hasPost};
+  if(hasPost){
+   await put(first+' [data-st-f="suffix"]','t');
+   await put(first+' [data-st-f="expr"]','÷1000×0.8');
+   await W.until(page,t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
+    const v=el&&el.querySelector('.sc-subtotal-sum[data-item] .sc-st-v');return !!v&&/t/.test(v.textContent)&&!/2,000/.test(v.textContent)},TAG,{ms:8000,what:'計算を当てた合計'});
+   pf.typed=await firstVal();
+   await put(first+' [data-st-f="expr"]','[値]/1000*0.8');
+   pf.named=await firstVal();
+   await put(first+' [data-st-f="expr"]','÷');
+   pf.bad=await page.evaluate(s=>{const n=document.querySelector(s+' .sc-st-err');return n?n.textContent.trim():''},first);
+   await put(first+' [data-st-f="expr"]','');
+   await put(first+' [data-st-f="suffix"]','kg');
+  }
+  console.log('#MEASURE '+JSON.stringify({postFormula:pf}));
+  rec('集計した値に計算を続けられる（÷1000×0.8 → 2,000.5 が 1.6t。書いたとおりで効く）',
+      hasPost&&pf.typed[0]==='1.6t*',JSON.stringify(pf));
+  rec('[値] を使っても同じ答え。式の項目はその結果を [名前] で引く（1.6004÷3＝0.53）',
+      hasPost&&pf.named[0]==='1.6t*'&&pf.named[5]==='0.53kg',JSON.stringify(pf.named));
+  rec('書けない計算はその場で理由を言う',hasPost&&!!pf.bad,JSON.stringify(pf.bad));
   if(process.env.WAVELOG_SHOT){await page.screenshot({path:`${process.env.WAVELOG_SHOT}/scsubtotal-multi-panel.png`})}
   await page.click('#scViewMenuBtn');
   if(process.env.WAVELOG_SHOT){

@@ -1,4 +1,4 @@
-# 作業スケジュール（81件）
+# 作業スケジュール（82件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -26,6 +26,7 @@
 | 小計の桁と単位は**別々に**決まる（決めたほうは書式・決めていないほうは材料なり）。自動の桁は`subtotalAutoDec()`の1箇所 | `test_scsubtotal.js` | [§9.498](../../docs/decisions/9.498.md) |
 | 小計「行」の揃えは**その列の1マスの中**（`subgrid`＋中身の器`.sc-st-in`）。入らなければ列の左端から伸ばす | `test_scsubtotal.js` | [§9.499](../../docs/decisions/9.499.md) |
 | 小計の式を読めない理由は`subtotalFormulaError()`の1箇所（無い名前も）。引く値が読めない区切りでは計算しない。数えるのは全部の項目 | `test_scsubtotal.js` | [§9.498](../../docs/decisions/9.498.md) |
+| 集計の項目の「計算」は集計した値へ続けて当てる（`÷1000×0.8`＝`[値]/1000*0.8`）。式の形は`subtotalExprOf()`の1箇所 | `test_scsubtotal.js` | [§9.503](../../docs/decisions/9.503.md) |
 | 小計は**まとめとは別の軸**（区切りのお尻で数える）。区切りの語彙は`bucketOf()`の1本をまとめと共有する | `test_scsubtotal.js` | [§9.493](../../docs/decisions/9.493.md) |
 | 小計が数えるのは作業ロットだけ（`subtotalCounted()`の1箇所）。子ロットは親の1本 | `test_scsubtotal.js` | [§9.493](../../docs/decisions/9.493.md) |
 | 合計は数として読めた値だけ。読めない・単位の違う値は0で足さず`*`と件数で言う | `test_scsubtotal.js` | [§9.493](../../docs/decisions/9.493.md) |
