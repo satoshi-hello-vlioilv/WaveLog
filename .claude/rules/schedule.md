@@ -1,4 +1,4 @@
-# 作業スケジュール（68件）
+# 作業スケジュール（70件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 小計の設定は「表示」の畳む段。中は決める順の番号付きの節、集計の項目は見出しと欄が同じ格子の表＋見本 | `test_scsubtotal.js` | [§9.500](../../docs/decisions/9.500.md) |
+| 「表示」の畳む段の開け閉めは`SC_VIEW_ACCS`／`setViewAcc()`の1箇所（開けたら他を畳む） | `test_scsubtotal.js`・`test_scdragscroll.js` | [§9.500](../../docs/decisions/9.500.md) |
 | 小計は**1行**。「行」の集計の器は列の真下から右隣の集計の無い列まで広げる（縦に積まない）。式は最後の器の後ろ | `test_scsubtotal.js` | [§9.499](../../docs/decisions/9.499.md) |
 | 小計は**集計の項目の並び**。集計は`SC_SUBTOTAL_AGGS`、式は`WL.formula`、書式は`WL.cellFormat`（仕組みを足さない） | `test_scsubtotal.js` | [§9.498](../../docs/decisions/9.498.md) |
 | 小計の式が引く名前は`subtotalItemName()`の1箇所。古い保存（`cols`）は`subtotalItemsOf()`が読み替える | `test_scsubtotal.js` | [§9.498](../../docs/decisions/9.498.md) |

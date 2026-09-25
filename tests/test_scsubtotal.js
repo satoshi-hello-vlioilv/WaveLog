@@ -66,13 +66,18 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
     group:WL.scheduleView&&WL.scheduleView.groupModeLabel?WL.scheduleView.groupModeLabel():''};
   },TAG);
 
+  /* 小計の設定は「表示」→「Σ 小計」の畳む段の中（§9.500）。人と同じ道で開く。 */
+  const openSt=async()=>{
+   if(await page.evaluate(()=>document.getElementById('scViewPop').hidden))await page.click('#scViewMenuBtn');
+   if(await page.evaluate(()=>document.getElementById('scSubtotalPop').hidden))await page.click('#scSubtotalBtn');
+   await page.waitForSelector('#scSubtotalCtl [data-st-on]',{state:'visible',timeout:8000});
+  };
   // ---- 1. 既定は切 ---------------------------------------------------
   const s0=await snap();
   rec('既定は切（小計の器は0個）',s0.n===0,`小計${s0.n}個・行${s0.rows}本`);
 
   // ---- 2. 「表示」から入れる（人と同じ道） ----------------------------
-  await page.click('#scViewMenuBtn');
-  await page.waitForSelector('#scSubtotalCtl [data-st-on="1"]',{state:'visible',timeout:8000});
+  await openSt();
   await page.click('#scSubtotalCtl [data-st-on="1"]');
   await page.selectOption('#scSubtotalUnit','col');
   await page.selectOption('#scSubtotalUnitCol','mfgTemper');
@@ -152,7 +157,7 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
   const m0=await valsFull();
   rec('いままでの保存（合計する列）はそのまま効く（§9.498）',!!m0&&m0.length===1&&m0[0].v==='2,000.5*',JSON.stringify(m0));
   // 9b) 同じ列で平均・最大・最小・件数を足す（押すたびに「まだ使っていない集計」）
-  await page.click('#scViewMenuBtn');
+  await openSt();
   await page.waitForSelector('#scSubtotalAddAgg',{state:'visible',timeout:8000});
   for(let i=0;i<4;i++){
    await page.click('#scSubtotalAddAgg');
@@ -202,6 +207,32 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
    return {h:Math.round(el.getBoundingClientRect().height),row:Math.round(line.getBoundingClientRect().height),cut}},TAG);
   rec('「行」の小計は1行（高さ＝ふつうの行）（§9.499）',Math.abs(fit.h-fit.row)<=1,`小計${fit.h}px／行${fit.row}px`);
   rec('「行」の小計で字が切れている部品は0（§9.499）',fit.cut.length===0,`${fit.cut.length}件 ${JSON.stringify(fit.cut)}`);
+  // 10) 設定の画面の物差し（§9.500、利用者の指示「小計の表示設定については使いづらいので、UIを再構築し…」）
+  const ui=await page.evaluate(()=>{
+   const pop=document.getElementById('scViewPop');
+   const sec=document.getElementById('scViewAccSubtotal')||document.getElementById('scSubtotalRange');
+   const names=[...sec.querySelectorAll('.sc-st-step-name,.sc-view-row-name,.sc-subtotal-more-name')].map(x=>x.firstChild&&x.firstChild.textContent.trim()).filter(Boolean);
+   const head=sec.querySelector('.sc-st-thead');
+   const heads=head?[...head.children].map(x=>x.textContent.trim()):[];
+   const row=sec.querySelector('.sc-st-item[data-i="0"]');
+   const fields=row?[...row.querySelectorAll('[data-st-f]')].length:0;
+   const cols=head&&row?[...head.children].slice(0,5).map((h,i)=>{const c=row.children[i];return c?Math.round(Math.abs(h.getBoundingClientRect().left-c.getBoundingClientRect().left)):99}):[];
+   const prev=sec.querySelector('.sc-st-item[data-i="0"] .sc-st-prev');
+   return {order:names,heads,fields,cols,preview:prev?prev.textContent.trim():null,
+     height:Math.round(sec.getBoundingClientRect().height),popH:Math.round(pop.scrollHeight)};
+  });
+  console.log('#UI '+JSON.stringify(ui));
+  rec('設定: 節は決める順（出す→区切り→集計の項目→出し方）（§9.500）',JSON.stringify(ui.order)===JSON.stringify(['出す','区切り','集計の項目','出し方']),JSON.stringify(ui.order));
+  rec('設定: 集計の項目の欄はどれも見出しを持つ（§9.500）',ui.heads.length>=ui.fields&&ui.fields>0,`見出し${ui.heads.length}・欄${ui.fields} ${JSON.stringify(ui.heads)}`);
+  rec('設定: 見出しと欄の左端がそろう（§9.500）',ui.cols.length===5&&ui.cols.every(d=>d<=1),JSON.stringify(ui.cols));
+  rec('設定: 見本の値が設定の中で見える（§9.500）',ui.preview==='2,001kg*',JSON.stringify(ui.preview));
+  /* 畳んだときの高さ（「表示」の中で小計が占める場所）。見出しにいまの状態を書く（思い出させない）。 */
+  await page.click('#scSubtotalBtn');
+  const shut=await page.evaluate(()=>({h:Math.round(document.getElementById('scViewAccSubtotal').getBoundingClientRect().height),
+    state:(document.getElementById('scSubtotalState')||{}).textContent||''}));
+  console.log('#UI-SHUT '+JSON.stringify(shut));
+  rec('設定: 畳めば「表示」の中は1行・見出しにいまの状態（§9.500）',shut.h<=60&&/項目/.test(shut.state),JSON.stringify(shut));
+  await page.click('#scSubtotalBtn');
   // 9d) 書けない式は画面にそう言い、小計は「—」
   await put(calc+' [data-st-f="expr"]','[製造材質 合計]/(');
   const bad=await page.evaluate(s=>{const r=document.querySelector(s);const n=r&&r.querySelector('.sc-st-err');return n?n.textContent.trim():''},calc);
@@ -215,8 +246,7 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
   }
 
   // ---- 7. 切に戻す ----------------------------------------------------
-  await page.click('#scViewMenuBtn');
-  await page.waitForSelector('#scSubtotalCtl [data-st-on="0"]',{state:'visible',timeout:8000});
+  await openSt();
   await page.click('#scSubtotalCtl [data-st-on="0"]');
   await W.until(page,()=>!document.querySelector('.sc-subtotal'),null,{ms:8000,what:'小計が消える'});
   const s5=await snap();

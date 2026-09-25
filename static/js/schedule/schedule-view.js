@@ -930,12 +930,13 @@ const SC_LOCK_WAIT_MAX_MS=4000;
       <span class="sc-view-row-name">まとめ<small>日付は現場歴（勤務の日付補正を当てた現場の1日）と太陽暦から選べます</small></span>
       <select id="scGroupSelect">${SC_GROUP_MODES.map(m=>`<option value="${m.key}">${m.label}</option>`).join('')}</select>
      </label>
-     <!-- 小計(§9.493)。**まとめとは別の軸**（まとめ＝箱に分ける／小計＝区切りごとに数える）。
-          切のあいだは札だけ——出し方と列は、出すと決めてから選ぶ（次にすることを1つだけ指す）。 -->
-     <div class="sc-view-row sc-subtotal-row" id="scSubtotalRange" hidden>
-      <span class="sc-view-row-name">小計<small>区切りごとに作業ロットの数と、選んだ列の集計（合計・平均・最大・最小・件数）や式を出します。まとめとは別に選べます（この端末・設備ごと）</small></span>
-      <span class="sc-view-row-ctl" id="scSubtotalCtl"></span>
-      <div class="sc-subtotal-more" id="scSubtotalMore" hidden></div>
+     <!-- 小計(§9.493→§9.500)。**畳む段**（行の色とアイコンと同じ部品）。見出しにいまの状態を書き
+          （思い出させない）、開くと「決める順の番号付きの節」。まとめとは別の軸。 -->
+     <div class="sc-view-acc" id="scViewAccSubtotal" hidden>
+      <button type="button" class="sc-view-sec" id="scSubtotalBtn" aria-expanded="false">
+       <i>Σ</i><span>小計<small id="scSubtotalState">出していません</small></span><em class="sc-view-chev">▾</em>
+      </button>
+      <div class="sc-st-pop" id="scSubtotalPop" hidden></div>
      </div>
      <!-- さかのぼり(§9.366)。**2段（種類→量）で選ばせる**——候補は13あるが、
           一度に見えるのは群5つ＋その中の量だけ（一度に見る数を5つ以下に
@@ -1053,18 +1054,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      +'#listColumnPanel:not([hidden]),#schedulePrintPreview:not([hidden])'))return;
    setWide(false);
   });
-  $('#scRowStyleBtn').onclick=e=>{e.stopPropagation();toggleRowStylePop()};
+  $('#scRowStyleBtn').onclick=e=>{e.stopPropagation();toggleViewAcc('rowStyle')};
+  $('#scSubtotalBtn').onclick=e=>{e.stopPropagation();toggleViewAcc('subtotal')};
   /* 色と濃さの意味（§9.374）。**開くときに組む**——中身は動かないが、
      器を作った時点では見本のクラスがまだCSSに当たっていないことがある。 */
-  $('#scLegendBtn').onclick=e=>{
-   e.stopPropagation();
-   const pop=$('#scLegendPop'),btn=$('#scLegendBtn');
-   if(!pop||!btn)return;
-   const open=pop.hidden;
-   if(open)renderLegend();
-   pop.hidden=!open;
-   btn.setAttribute('aria-expanded',open?'true':'false');
-  };
+  $('#scLegendBtn').onclick=e=>{e.stopPropagation();toggleViewAcc('legend')};
   /* 外を押したら畳む。**パネルの中を押しても閉じない**——ラジオを続けて
      触れるようにするため。中の段(行の色・この端末の見え方)は「表示」
      パネルの子なので、閉じ判定は**外側の1つだけ**でよい(§9.199)。
@@ -1659,26 +1653,32 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    renderRowStylePop();renderTimeline();
   }catch(e){showToast&&showToast('既定へ戻せませんでした',e.message,5000)}
  }
- function toggleRowStylePop(){
-  const pop=$('#scRowStylePop'),btn=$('#scRowStyleBtn');
-  if(!pop)return;
-  const open=pop.hidden;
-  pop.hidden=!open;
-  if(btn)btn.classList.toggle('active',open);
-  if(open){
+ /* 「表示」の中の畳む段（§9.500）。**開くのは常に1つ**——開けたら他を畳む。開け閉めの道はここの1つ
+    （以前は段ごとに別の配線で、2つ開けたままにできた＝注記の「開くのは常に1つ」と食い違っていた）。
+    `open`は開けた時点で組む（色と濃さの意味は、器を作った時点では見本のクラスがまだCSSに当たって
+    いないことがある・§9.374）。 */
+ const SC_VIEW_ACCS={
+  legend:{btn:'#scLegendBtn',pop:'#scLegendPop',open:()=>renderLegend()},
+  rowStyle:{btn:'#scRowStyleBtn',pop:'#scRowStylePop',
    /* 分類の一覧が未読なら読む（押した時点で出す。押しても空、にしない）。 */
-   Promise.all([loadRowStyles(true),loadStopCategories()]).then(()=>renderRowStylePop());
-   renderRowStylePop();
-  }
+   open:()=>{Promise.all([loadRowStyles(true),loadStopCategories()]).then(()=>renderRowStylePop());renderRowStylePop()},
+   /* 盤は`body`直下に居るので、段を畳んでも自動では消えない（§9.201）。 */
+   close:()=>closeIconPicker()},
+  subtotal:{btn:'#scSubtotalBtn',pop:'#scSubtotalPop',open:()=>renderSubtotalPicker()},
+ };
+ function setViewAcc(key,open){
+  Object.entries(SC_VIEW_ACCS).forEach(([k,a])=>{
+   const pop=$(a.pop),btn=$(a.btn);if(!pop)return;
+   const on=k===key&&open,was=!pop.hidden;
+   if(on&&a.open)a.open();
+   pop.hidden=!on;
+   if(btn){btn.classList.toggle('active',on);btn.setAttribute('aria-expanded',on?'true':'false')}
+   if(was&&!on&&a.close)a.close();
+  });
  }
- function closeRowStylePop(){
-  /* 盤は`body`直下に居るので、パネルを畳んでも自動では消えない
-     （§9.201。行の中に置かないのが肝なので、閉じる側で面倒を見る）。 */
-  closeIconPicker();
-  const pop=$('#scRowStylePop');if(pop&&!pop.hidden)pop.hidden=true;
-  const btn=$('#scRowStyleBtn');
-  if(btn){btn.classList.remove('active');btn.setAttribute('aria-expanded','false')}
- }
+ function toggleViewAcc(key){const pop=$(SC_VIEW_ACCS[key].pop);setViewAcc(key,!!pop&&pop.hidden)}
+ function closeViewAcc(key){const pop=$(SC_VIEW_ACCS[key].pop);if(pop&&!pop.hidden)setViewAcc(key,false)}
+ function closeRowStylePop(){closeViewAcc('rowStyle')}
  /* **ヘッダーの「表示」へ節を名乗る**（§9.444、利用者の指示「入口を1つに
     寄せる」）。出すのは**作業スケジュールの画面を開いているとき**だけ——
     押しても何も起きない節を残さない（§CLAUDE 4）。
@@ -1708,14 +1708,14 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(btn){btn.classList.remove('active');btn.setAttribute('aria-expanded','false')}
   /* 中の段も畳む——次に開いたとき、前に開いていた段がそのまま出ると
      「どこを見ていたか」より「なぜこれが開いているのか」が先に来る。 */
-  closeRowStylePop();
+  setViewAcc(null,false);
  }
  /* 入口のボタンに**いまの設定を書く**。畳んだ先の値が読めないと、
     開くまで思い出せない（§「思い出させない」）。長い名前は要約して出し、
     正確な名前はパネルの中と`title`に残す。 */
  function updateViewMenuUi(){
   const btn=$('#scViewMenuBtn');if(!btn)return;
-  const secs=[$('#scGroupRange'),$('#scSubtotalRange'),$('#scHistoryRange'),
+  const secs=[$('#scGroupRange'),$('#scViewAccSubtotal'),$('#scHistoryRange'),
               $('#scViewAccRowStyle')];
   const any=secs.some(el=>el&&!el.hidden);
   btn.hidden=!any;
@@ -1726,11 +1726,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    const m=SC_GROUP_MODES.find(x=>x.key===(scState.groupMode||'none'));
    if(m)bits.push(m.short||m.label);
   }
-  const stWrap=$('#scSubtotalRange');
+  const stWrap=$('#scViewAccSubtotal');
   if(stWrap&&!stWrap.hidden){
    const c=subtotalCfg();
    if(c.on){const u=SC_SUBTOTAL_UNITS.find(x=>x.key===c.unit);bits.push('小計:'+(c.unit==='col'&&c.unitCol?scColLabel(c.unitCol):(u.short||u.label)))}
-   renderSubtotalPicker();
+   renderSubtotalState();
+   const pop=$('#scSubtotalPop');if(pop&&!pop.hidden)renderSubtotalPicker();
   }
   const histWrap=$('#scHistoryRange');
   if(histWrap&&!histWrap.hidden){
@@ -2489,7 +2490,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const histWrap=$('#scHistoryRange');if(histWrap)histWrap.hidden=inBoard;
   updateHistoryFromUi();
   const grpWrap=$('#scGroupRange');if(grpWrap)grpWrap.hidden=inBoard;
-  const stWrap=$('#scSubtotalRange');if(stWrap)stWrap.hidden=inBoard;
+  const stWrap=$('#scViewAccSubtotal');if(stWrap)stWrap.hidden=inBoard;
+  if(inBoard)closeViewAcc('subtotal');
   updateViewMenuUi();
   if(scState.pickerEnabled)$('#scEquipmentSelect').hidden=inBoard;
   updateSideUi();
@@ -6018,67 +6020,108 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   WL.columnAlign.applyCells(el,timelineTarget(),{selector:':scope>.sc-subtotal-cell[data-col]'});
   return el;
  }
- /* 「表示」の小計の段。**選んだその場で表へ効かせる**（保存ボタンを持たない・§9.113と同じ）。
-    列の選択肢には**いまの予定で数として読める件数**を添える——集計してみるまで分からない、を
-    なくす（推測させない）。 */
+ /* 畳んだ段の見出しに書く**いまの状態**（§9.500・思い出させない）。 */
+ function subtotalStateText(c){
+  if(!c.on)return '出していません';
+  const u=SC_SUBTOTAL_UNITS.find(x=>x.key===c.unit)||{};
+  const unit=c.unit==='col'?(c.unitCol?`${scColLabel(c.unitCol)}の値ごと`:'区切る列が未選択'):(u.label||'');
+  const st=(SC_SUBTOTAL_STYLES.find(x=>x.key===c.style)||{}).label||'';
+  return `${unit}・${c.items.length?`${c.items.length}項目`:'ロット数だけ'}・${st}`;
+ }
+ function renderSubtotalState(){const el=$('#scSubtotalState');if(el)el.textContent=subtotalStateText(subtotalCfg())}
+ /* 小計の段の中身（§9.500、利用者の指示「小計の表示設定については使いづらいので、UIを再構築し、
+    認知心理学、情報アーキテクチャ、整列して整っている感じと統一感も意識して」）。
+    **決める順の番号付きの節**（①出す→②区切り→③集計の項目→④出し方）。節の名前の列は固定幅で、
+    どの節も同じ部品（`.sc-st-step`）。出していないときは①だけ（次にすることを1つだけ指す）。
+    集計の項目は**見出しつきの表**（名前｜列｜集計｜桁｜単位｜見本｜×）で、見出しと欄は同じ格子
+    （`.sc-st-grid`）に載る。**見本**は実際の区切りでの値——式・書式が合っているかをその場で読める。
+    式の誤りは見本の欄に字で出し、行の高さを変えない（選んでも動かない）。
+    **選んだその場で表へ効かせる**（保存ボタンを持たない・§9.113と同じ）。 */
+ let stRendering=false;
  function renderSubtotalPicker(){
-  const ctl=$('#scSubtotalCtl'),more=$('#scSubtotalMore');
-  if(!ctl||!more)return;
+  const pop=$('#scSubtotalPop');
+  /* **描き直しの最中は描かない・受けない**——描き直しで消える欄のフォーカス外れが、もう1回の変更として
+     入り直す（`innerHTML`の差し替えの途中で入れ子の差し替えになり、例外になった）。 */
+  if(!pop||stRendering)return;
+  stRendering=true;
+  try{renderSubtotalPickerNow(pop)}finally{stRendering=false}
+ }
+ function renderSubtotalPickerNow(pop){
   const c=subtotalCfg();
-  const opt=(attr,val,on,label,title)=>`<button type="button" class="sc-subtotal-opt${on?' is-on':''}" ${attr}="${esc(val)}"`
+  renderSubtotalState();
+  const seg=(attr,val,on,label,title)=>`<button type="button" class="sc-subtotal-opt${on?' is-on':''}" ${attr}="${esc(val)}"`
     +` aria-pressed="${on?'true':'false'}"${title?` title="${esc(title)}"`:''}>${esc(label)}</button>`;
-  ctl.innerHTML=`<span class="sc-subtotal-opts" role="group" aria-label="小計を出すか">`
-    +opt('data-st-on','0',!c.on,'出さない')+opt('data-st-on','1',c.on,'出す')+`</span>`
-    +`<select id="scSubtotalUnit" aria-label="小計の区切り"${c.on?'':' hidden'}>`
-    +SC_SUBTOTAL_UNITS.map(u=>`<option value="${esc(u.key)}"${u.key===c.unit?' selected':''}>${esc(u.label)}</option>`).join('')+`</select>`
-    +`<select id="scSubtotalUnitCol" aria-label="値が変わるごとに区切る列"${c.on&&c.unit==='col'?'':' hidden'}>`
-    +`<option value="">（列を選ぶ）</option>`
-    +timelineColumnKeys().filter(k=>k!=='__actions__').map(k=>`<option value="${esc(k)}"${k===c.unitCol?' selected':''}>${esc(scColLabel(k))}</option>`).join('')
-    +`</select>`;
-  more.hidden=!c.on;
-  const apply=patch=>{saveSubtotalCfg(patch);updateViewMenuUi();renderTimeline()};
-  ctl.querySelectorAll('[data-st-on]').forEach(b=>b.onclick=()=>apply({on:b.dataset.stOn==='1'}));
-  $('#scSubtotalUnit').onchange=e=>apply({unit:e.target.value});
-  $('#scSubtotalUnitCol').onchange=e=>apply({unitCol:e.target.value});
-  if(!c.on){more.innerHTML='';return}
+  const step=(name,note,ctl,wide)=>`<div class="sc-st-step${wide?' is-wide':''}"><span class="sc-st-step-name">${esc(name)}<small>${esc(note)}</small></span>`
+    +`<div class="sc-st-step-ctl">${ctl}</div></div>`;
   const choices=subtotalColumnChoices();
   const rows=visibleEntries().filter(subtotalCounted);
   const readable=new Map(choices.map(k=>[k,rows.filter(e=>subtotalAmountOf(e,k)).length]));
   const items=c.items;
-  const decSel=it=>`<select data-st-f="dec" aria-label="桁" title="小数の桁（自動＝材料なり）">`
-    +SC_SUBTOTAL_DEC.map(d=>`<option value="${d}"${d===it.fmt.dec?' selected':''}>${d===''?'桁 自動':`${d}桁`}</option>`).join('')+'</select>';
-  const tail=it=>decSel(it)
-    +`<input type="text" data-st-f="suffix" value="${esc(it.fmt.suffix)}" placeholder="単位" aria-label="単位（後ろに付ける字）" title="単位（後ろに付ける字・例 kg）。決めると桁区切りも付きます">`
-    +`<button type="button" class="sc-st-del" data-st-del title="この項目を外す" aria-label="この項目を外す">×</button>`;
+  /* 見本の区切り: **数として読めた値がいちばん多い区切り**（同じなら先の区切り）。「件数」は読めない
+     区切りでも0を返すので、値の有無では選ばない（読める値の無い区切りが選ばれて見本が「—」になった）。 */
+  const units=[...subtotalUnits(visibleEntries(),c).values()];
+  let sample=null,best=-1;
+  units.forEach(u=>{
+   const r=subtotalOf(u.rows,items);
+   const score=items.reduce((a,it)=>a+(it.kind==='agg'?(r.values[it.id].used||0):0),0);
+   if(score>best){best=score;sample={u,r}}
+  });
   const names=()=>[SC_SUBTOTAL_LOTS,...items.map(subtotalItemName)];
+  const decSel=it=>`<select data-st-f="dec" aria-label="桁" title="小数の桁（自動＝材料なり）">`
+    +SC_SUBTOTAL_DEC.map(d=>`<option value="${d}"${d===it.fmt.dec?' selected':''}>${d===''?'自動':`${d}桁`}</option>`).join('')+'</select>';
+  const suffix=it=>`<input type="text" data-st-f="suffix" value="${esc(it.fmt.suffix)}" placeholder="—" aria-label="単位" title="後ろに付ける字（例 kg）。決めると桁区切りも付きます">`;
+  const prev=it=>{
+   if(it.kind==='calc'&&it.expr){const chk=WL.formula.check(it.expr);
+    if(!chk.ok)return `<span class="sc-st-prev sc-st-err" title="${esc(chk.error)}">${esc(chk.error)}</span>`}
+   if(!sample)return `<span class="sc-st-prev is-none" title="区切りがまだありません">—</span>`;
+   const v=sample.r.values[it.id];
+   const star=(it.kind==='agg'&&it.agg!=='count'&&v.skip&&v.used)?'*':'';
+   return `<span class="sc-st-prev" title="${esc(subtotalValueTitle(it,v,sample.r.count))}">${esc(subtotalValueText(it,v))}${star}</span>`;
+  };
+  const del=`<button type="button" class="sc-st-del" data-st-del title="この項目を外す" aria-label="この項目を外す">×</button>`;
   const rowHtml=(it,i)=>{
-   if(it.kind==='calc'){
-    const chk=WL.formula.check(it.expr);
-    return `<div class="sc-st-item is-calc" data-i="${i}">`
-     +`<input type="text" data-st-f="label" value="${esc(it.label)}" placeholder="式" aria-label="名前">`
-     +`<input type="text" class="sc-st-expr" data-st-f="expr" value="${esc(it.expr)}" placeholder="[${esc(names()[1]||'重量 合計')}]/[${SC_SUBTOTAL_LOTS}]" aria-label="式">`
-     +tail(it)
-     +(it.expr&&!chk.ok?`<small class="sc-st-err">${esc(chk.error)}</small>`:'')+'</div>';
-   }
-   return `<div class="sc-st-item" data-i="${i}">`
-    +`<input type="text" data-st-f="label" value="${esc(it.label)}" placeholder="${esc(subtotalItemName(Object.assign({},it,{label:''})))}" aria-label="名前（空なら 列＋集計）">`
+   const lab=`<input type="text" data-st-f="label" value="${esc(it.label)}" placeholder="${esc(it.kind==='calc'?'式':subtotalItemName(Object.assign({},it,{label:''})))}"`
+    +` aria-label="名前" title="名前（空なら「${esc(it.kind==='calc'?'式':subtotalItemName(Object.assign({},it,{label:''})))}」）。式では [名前] で使えます">`;
+   if(it.kind==='calc')
+    return `<div class="sc-st-grid sc-st-item is-calc" data-i="${i}">${lab}`
+     +`<input type="text" class="sc-st-expr" data-st-f="expr" value="${esc(it.expr)}" placeholder="[${esc(names()[1]||'重量 合計')}] / [${SC_SUBTOTAL_LOTS}]" aria-label="式">`
+     +decSel(it)+suffix(it)+prev(it)+del+'</div>';
+   return `<div class="sc-st-grid sc-st-item" data-i="${i}">${lab}`
     +`<select data-st-f="col" aria-label="集計する列">`
     +(choices.includes(it.col)?'':`<option value="${esc(it.col)}" selected>${esc(scColLabel(it.col))}（表に出していません）</option>`)
-    +choices.map(k=>`<option value="${esc(k)}"${k===it.col?' selected':''}>${esc(scColLabel(k))}（数 ${readable.get(k)}/${rows.length}）</option>`).join('')+'</select>'
-    +`<select data-st-f="agg" aria-label="集計のしかた">`
+    +choices.map(k=>`<option value="${esc(k)}"${k===it.col?' selected':''}>${esc(scColLabel(k))}（${readable.get(k)}/${rows.length}）</option>`).join('')+'</select>'
+    +`<select data-st-f="agg" aria-label="集計">`
     +SC_SUBTOTAL_AGGS.map(a=>`<option value="${a.key}"${a.key===it.agg?' selected':''}${a.note?` title="${esc(a.note)}"`:''}>${a.label}</option>`).join('')+'</select>'
-    +tail(it)+'</div>';
+    +decSel(it)+suffix(it)+prev(it)+del+'</div>';
   };
-  more.innerHTML=`<span class="sc-subtotal-more-name">出し方</span><span class="sc-subtotal-opts" role="group" aria-label="小計の出し方">`
-    +SC_SUBTOTAL_STYLES.map(st=>opt('data-st-style',st.key,st.key===c.style,st.label,st.note)).join('')+`</span>`
-    +`<span class="sc-subtotal-more-name">集計の項目</span><div class="sc-st-items">`
-    +items.map(rowHtml).join('')
+  const unitCtl=`<select id="scSubtotalUnit" aria-label="区切り">`
+    +SC_SUBTOTAL_UNITS.map(u=>`<option value="${esc(u.key)}"${u.key===c.unit?' selected':''}>${esc(u.label)}</option>`).join('')+`</select>`
+    +`<select id="scSubtotalUnitCol" aria-label="値が変わるごとに区切る列"${c.unit==='col'?'':' hidden'}>`
+    +`<option value="">（列を選ぶ）</option>`
+    +timelineColumnKeys().filter(k=>k!=='__actions__').map(k=>`<option value="${esc(k)}"${k===c.unitCol?' selected':''}>${esc(scColLabel(k))}</option>`).join('')
+    +`</select>`+(c.unit==='col'&&!c.unitCol?'<small class="sc-st-warn">区切る列を選ぶと出ます</small>':'');
+  const table=`<div class="sc-st-grid sc-st-thead" aria-hidden="true"><span>名前</span><span>列（数に読める件数）</span><span>集計</span><span>桁</span><span>単位</span>`
+    +`<span title="${esc(sample?`見本の区切り: ${sample.u.label}（${sample.r.count}ロット）`:'区切りがまだありません')}">見本${sample?`（${esc(sample.u.label)}）`:''}</span><span></span></div>`
+    +(items.length?items.map(rowHtml).join(''):'<div class="sc-st-empty">まだありません。ロット数だけを出します。</div>')
     +`<div class="sc-st-add"><button type="button" class="sc-subtotal-opt" id="scSubtotalAddAgg"${choices.length?'':' disabled title="表に出している列がありません"'}>＋ 列を集計</button>`
-    +`<button type="button" class="sc-subtotal-opt" id="scSubtotalAddCalc" title="上に並んだ項目の結果を [名前] で使う式（例: [重量 合計]/[${SC_SUBTOTAL_LOTS}]）">＋ 式</button></div></div>`
-    +`<small class="sc-subtotal-note">作業ロットの数はいつも出します（取消・設備停止・申し送り・枠は数えず、子ロットは親の1本）。`
-    +`式では [${SC_SUBTOTAL_LOTS}] と上に並んだ項目の名前が使えます。1行ごとの計算は「列の作り方」で列を作ってから集計してください。${
-      c.unit==='col'&&!c.unitCol?'<b>区切る列を選ぶと出ます。</b>':''}</small>`;
-  more.querySelectorAll('[data-st-style]').forEach(b=>b.onclick=()=>apply({style:b.dataset.stStyle}));
+    +`<button type="button" class="sc-subtotal-opt" id="scSubtotalAddCalc" title="上に並んだ項目の結果を [名前] で使う式（例: [重量 合計]/[${SC_SUBTOTAL_LOTS}]）">＋ 式</button>`
+    +`<small class="sc-st-hint">式では [${SC_SUBTOTAL_LOTS}] と上の名前が使えます。1行ごとの計算は「列の作り方」で列を作ってから集計します。</small></div>`;
+  pop.innerHTML=`<div class="sc-st-steps">`
+    +`<div id="scSubtotalCtl">${step('出す','区切りごとの小計の行',`<span class="sc-subtotal-opts" role="group" aria-label="小計を出すか">${seg('data-st-on','0',!c.on,'出さない')}${seg('data-st-on','1',c.on,'出す')}</span>`
+       +(c.on?'':'<small class="sc-st-hint">出すと、区切り・集計の項目・出し方を決められます</small>'))}</div>`
+    +`<div id="scSubtotalMore"${c.on?'':' hidden'}>`
+    +step('区切り','どこで区切って数えるか（まとめとは別）',unitCtl)
+    +step('集計の項目','作業ロットの数はいつも出します（取消・設備停止・申し送りは数えない）',table,true)
+    +step('出し方','どちらも1行',`<span class="sc-subtotal-opts" role="group" aria-label="小計の出し方">`
+       +SC_SUBTOTAL_STYLES.map(st=>seg('data-st-style',st.key,st.key===c.style,st.label,st.note)).join('')+'</span>'
+       +`<small class="sc-st-hint">${esc((SC_SUBTOTAL_STYLES.find(x=>x.key===c.style)||{}).note||'')}</small>`)
+    +`</div></div>`;
+  /* 描き直しは`updateViewMenuUi()`の1回（段が開いていれば中身も描き直す）。 */
+  const apply=patch=>{if(stRendering)return;saveSubtotalCfg(patch);renderTimeline();updateViewMenuUi()};
+  pop.querySelectorAll('[data-st-on]').forEach(b=>b.onclick=()=>apply({on:b.dataset.stOn==='1'}));
+  pop.querySelectorAll('[data-st-style]').forEach(b=>b.onclick=()=>apply({style:b.dataset.stStyle}));
+  $('#scSubtotalUnit').onchange=e=>apply({unit:e.target.value});
+  $('#scSubtotalUnitCol').onchange=e=>apply({unitCol:e.target.value});
   const setItems=fn=>{const next=subtotalCfg().items;fn(next);apply({items:next})};
   const nextId=()=>'i'+(Math.max(0,...items.map(it=>+(/^i(\d+)$/.exec(it.id)||[])[1]||0))+1);
   $('#scSubtotalAddAgg').onclick=()=>setItems(list=>{
@@ -6090,15 +6133,15 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    list.push({id:nextId(),kind:'agg',col,agg:a,label:'',expr:'',fmt:{dec:'',suffix:''}});
   });
   $('#scSubtotalAddCalc').onclick=()=>setItems(list=>list.push({id:nextId(),kind:'calc',col:'',agg:'sum',label:'',expr:'',fmt:{dec:'',suffix:''}}));
-  more.querySelectorAll('.sc-st-item').forEach(row=>{
+  pop.querySelectorAll('.sc-st-item').forEach(row=>{
    const i=+row.dataset.i;
    row.querySelectorAll('[data-st-f]').forEach(inp=>inp.onchange=()=>setItems(list=>{
     const it=list[i];if(!it)return;
     const f=inp.dataset.stF;
     if(f==='dec'||f==='suffix')it.fmt[f]=inp.value;else it[f]=inp.value;
    }));
-   const del=row.querySelector('[data-st-del]');
-   if(del)del.onclick=()=>setItems(list=>list.splice(i,1));
+   const d=row.querySelector('[data-st-del]');
+   if(d)d.onclick=()=>setItems(list=>list.splice(i,1));
    /* 式の欄は列の作り方と同じ候補（[ で名前・英字で関数）。 */
    const ex=row.querySelector('[data-st-f="expr"]');
    if(ex&&WL.formula.suggest)WL.formula.suggest(ex,{columns:names});
