@@ -204,6 +204,55 @@ try:
     file_cleanup._cfg = lambda key, default: 'off' if key == 'cleanup_auto_enabled' else default
     rec('定期掃除は切にできる', file_cleanup.auto_enabled() is False)
 
+    # ---- 9) 更新のとき（update.bat）は作り直せる物を丸ごと片付ける（§9.497、利用者の指示） ----
+    # 「古いデータ(一時ファイルたち)をアップデートで一旦消して、作り直した方が良い」
+    # 「update.batでアップデートの版の表示追加と、古いデータの処理など」
+    rt, vis = tmp / 'runtime', tmp / 'visible'
+    for d0 in (rt, vis):
+        for n in ('make_shortcut.vbs', 'loading.next.html', 'boot_status.js', 'x.html.tmp'):
+            touch(d0 / n, 64, age_days=2)
+        # **残す物**: 起動前確認の刻印・起動中の印・いまブラウザへ渡す待機画面・
+        # 絵（デスクトップのショートカットが指している。作り直すのは作るときだけなので、消すと白紙になる）
+        for n in ('ready.json', 'instance.json', 'loading.html', 'wavelog.ico'):
+            touch(d0 / n, 64, age_days=2)
+    touch(tmp / 'pycache' / 'cpython-312' / 'backend' / 'x.pyc', 64)
+    patch()   # **置き場を差し替えてから**（差し替えずに回すと本物の置き場を片付ける）
+    # バイトコードの見立てはアプリの置き場の`__pycache__`も拾う。リポジトリの分を消して
+    # 並列で回る他の網と競らないよう、アプリの置き場も一時的な置き場へ向ける。
+    from backend import paths as _paths
+    _real_root = _paths.APP_ROOT
+    _paths.APP_ROOT = tmp / 'app'
+    has_rt = hasattr(file_cleanup, '_runtime_dirs')
+    if has_rt:
+        _real['rt'] = file_cleanup._runtime_dirs
+        file_cleanup._runtime_dirs = lambda: [rt, vis]
+    try:
+        cat = next((c for c in file_cleanup.survey()['categories'] if c['key'] == 'runtime'), None)
+        names = sorted({e['name'] for e in (cat or {}).get('examples', [])})
+        rec('更新で作り直せる起動の部品を数える（補助スクリプト・次の待機画面・進捗・書きかけ）（§9.497）',
+            cat is not None and cat['removable'] == 8 and cat['auto'] is False,
+            f"{cat and cat['removable']}件 {names}")
+        upd = getattr(file_cleanup, 'run_for_update', None)
+        out = upd() if upd else None
+        left_rt = sorted(p.name for d0 in (rt, vis) for p in d0.iterdir())
+        rec('更新の片付けは作り直せる部品を消し、刻印・起動中の印・いまの待機画面・絵を残す（§9.497）',
+            out is not None and left_rt == sorted(['instance.json', 'loading.html', 'ready.json', 'wavelog.ico'] * 2), str(left_rt))
+        rec('更新の片付けはバイトコードも消す（直後に update.bat が作り直す）（§9.497）',
+            out is not None and not (tmp / 'pycache' / 'cpython-312').exists())
+        rec('更新の片付けでも本物のデータは残る（§9.497）',
+            all((dbdir / n).exists() for n in ('master.sqlite3', 'records.sqlite3', 'schedule.sqlite3')))
+    finally:
+        if has_rt:
+            file_cleanup._runtime_dirs = _real['rt']
+        _paths.APP_ROOT = _real_root
+        unpatch()
+    from backend.launcher import ready as _ready
+    vn = getattr(_ready, 'version_note', None)
+    rec('版の1行は前回の版と今回の版を言い分ける（§9.497）',
+        vn is not None and '2.381.0' in vn({'appVersion': '2.381.0'}) and '更新' in vn({'appVersion': '2.381.0'})
+        and '同じ' in vn({'appVersion': _ready.current()['appVersion']}) and vn(None),
+        vn and [vn({'appVersion': '2.381.0'}), vn({'appVersion': _ready.current()['appVersion']}), vn(None)])
+
     # ---- 8) 種別の作りが揃っている（画面はこの並びをそのまま出す） ----
     need = {'key', 'label', 'icon', 'note', 'why', 'auto', 'scan'}
     rec('どの種別も「呼び名・説明・消し方・自動可否」を持っている',
