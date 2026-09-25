@@ -49,13 +49,14 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
   const snap=()=>page.evaluate(t=>{
    const all=[...document.querySelectorAll('#scTimeline .sc-subtotal')];
    const mine=all.find(el=>el.dataset.unit===t);
-   const sum=mine&&mine.querySelector('.sc-subtotal-sum[data-col="mfgMaterial"]');
+   const sum=mine&&mine.querySelector('.sc-subtotal-sum[data-col="mfgMaterial"] .sc-st-v');
+   const cell=mine&&(mine.querySelector('.sc-subtotal-cell[data-col="mfgMaterial"]')||mine.querySelector('.sc-subtotal-sum[data-col="mfgMaterial"]'));
    const head=document.querySelector('.sc-row-head [data-col="mfgMaterial"]');
    return {n:all.length,rows:document.querySelectorAll('#scTimeline .sc-row-line').length,
     count:mine?+mine.dataset.count:null,label:!!mine&&mine.classList.contains('is-label'),
     text:mine?mine.textContent.replace(/\s+/g,' ').trim():'',
-    sum:sum?sum.textContent.trim():null,sumTitle:sum?sum.getAttribute('title')||'':'',
-    dx:(sum&&head&&!mine.classList.contains('is-label'))?Math.round(Math.abs(sum.getBoundingClientRect().left-head.getBoundingClientRect().left)):null,
+    sum:sum?sum.textContent.trim():null,sumTitle:sum?(sum.closest('.sc-subtotal-sum').getAttribute('title')||''):'',
+    dx:(cell&&head&&!mine.classList.contains('is-label'))?Math.round(Math.abs(cell.getBoundingClientRect().left-head.getBoundingClientRect().left)):null,
     after:!!mine&&(()=>{  // 小計の直前の行が区切りの最後の行（C）か
      const before=[...document.querySelectorAll('#scTimeline .sc-row-line')]
        .filter(r=>r.compareDocumentPosition(mine)&Node.DOCUMENT_POSITION_FOLLOWING);
@@ -75,13 +76,18 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
   await page.click('#scSubtotalCtl [data-st-on="1"]');
   await page.selectOption('#scSubtotalUnit','col');
   await page.selectOption('#scSubtotalUnitCol','mfgTemper');
-  await page.waitForSelector('#scSubtotalMore [data-st-col="mfgMaterial"]',{state:'visible',timeout:8000});
-  const chip=await page.evaluate(()=>{const b=document.querySelector('#scSubtotalMore [data-st-col="mfgMaterial"]');
-   return {dis:b.disabled,txt:b.textContent.trim(),title:b.title,
-     never:[...document.querySelectorAll('#scSubtotalMore [data-st-col]')].map(x=>x.dataset.stCol).filter(k=>/^__(cat|date|actions)__$/.test(k))}});
-  rec('列の札に「数として読める件数」を添える（推測させない）',!chip.dis&&/\d+\/\d+/.test(chip.txt),JSON.stringify(chip));
-  rec('足せない列（区分・日付・操作）は札に出さない',chip.never.length===0,chip.never.join('/')||'なし');
-  await page.click('#scSubtotalMore [data-st-col="mfgMaterial"]');
+  /* 集計の項目を足す（§9.498で「合計する列」の札から「集計の項目」の一覧へ）。列の選択肢は
+     数として読める件数を添え、足せない列（区分・日付・操作）は出さない。 */
+  await page.waitForSelector('#scSubtotalAddAgg',{state:'visible',timeout:8000});
+  await page.click('#scSubtotalAddAgg');
+  await page.waitForSelector('#scSubtotalMore .sc-st-item[data-i="0"] [data-st-f="col"]',{state:'visible',timeout:8000});
+  await page.selectOption('#scSubtotalMore .sc-st-item[data-i="0"] [data-st-f="col"]','mfgMaterial');
+  const chip=await page.evaluate(()=>{const s=document.querySelector('#scSubtotalMore .sc-st-item[data-i="0"] [data-st-f="col"]');
+   const o=[...s.options].find(x=>x.value==='mfgMaterial');
+   return {txt:o?o.textContent.trim():'',
+     never:[...s.options].map(x=>x.value).filter(k=>/^__(cat|date|actions)__$/.test(k))}});
+  rec('列の選択肢に「数として読める件数」を添える（推測させない）',/\d+\/\d+/.test(chip.txt),JSON.stringify(chip));
+  rec('足せない列（区分・日付・操作）は選択肢に出さない',chip.never.length===0,chip.never.join('/')||'なし');
   await W.until(page,t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
    return !!el&&!!el.querySelector('.sc-subtotal-sum[data-col="mfgMaterial"]')},TAG,{ms:8000,what:'小計の合計のセル'});
   const s1=await snap();
@@ -130,6 +136,74 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
   await W.until(page,t=>[...document.querySelectorAll('.sc-subtotal')].some(x=>x.dataset.unit===t),TAG,{ms:15000,what:'読み直した後の小計'});
   const s4=await snap();
   rec('再読み込みしても設定が残る（この端末・設備ごと）',s4.count===3&&s4.label,JSON.stringify({count:s4.count,label:s4.label}));
+
+  // ---- 9. 集計を複数の種類で・式・書式（§9.498、利用者の指示） ----------
+  // 「小計機能を項目複数でも対応できるように。また数値の計算の場合、計算式を組んだり、
+  //  書式を設定して数値の桁数や単位の設定ができるようにしてください」（項目複数＝集計の種類・利用者に確認）
+  const valsFull=()=>page.evaluate(t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
+   return el?[...el.querySelectorAll('.sc-subtotal-sum[data-item]')].map(x=>({v:(x.querySelector('.sc-st-v')||x).textContent.trim(),t:x.title})):null},TAG);
+  // 9a) いままでの保存（合計する列）は読むときに「合計」の項目へ読み替える
+  await page.evaluate(eq=>localStorage.setItem('ScheduleSubtotalV1',JSON.stringify({[eq]:
+    {on:true,unit:'col',unitCol:'mfgTemper',style:'label',cols:['mfgMaterial']}})),EQ);
+  await page.reload({waitUntil:'domcontentloaded'});
+  await W.booted(page);
+  await W.openSchedule(page,EQ);
+  await W.until(page,t=>[...document.querySelectorAll('.sc-subtotal')].some(x=>x.dataset.unit===t),TAG,{ms:15000,what:'読み替えた小計'});
+  const m0=await valsFull();
+  rec('いままでの保存（合計する列）はそのまま効く（§9.498）',!!m0&&m0.length===1&&m0[0].v==='2,000.5*',JSON.stringify(m0));
+  // 9b) 同じ列で平均・最大・最小・件数を足す（押すたびに「まだ使っていない集計」）
+  await page.click('#scViewMenuBtn');
+  await page.waitForSelector('#scSubtotalAddAgg',{state:'visible',timeout:8000});
+  for(let i=0;i<4;i++){
+   await page.click('#scSubtotalAddAgg');
+   await page.waitForSelector(`#scSubtotalMore .sc-st-item[data-i="${i+1}"]`,{state:'visible',timeout:8000});
+  }
+  const aggs=await page.evaluate(()=>[...document.querySelectorAll('#scSubtotalMore .sc-st-item')].map(r=>{
+   const c=r.querySelector('[data-st-f="col"]'),a=r.querySelector('[data-st-f="agg"]');return (c?c.value:'')+':'+(a?a.value:'')}));
+  rec('「列を集計」を押すと同じ列のまだ使っていない集計が足される（§9.498）',
+      JSON.stringify(aggs)===JSON.stringify(['mfgMaterial:sum','mfgMaterial:avg','mfgMaterial:max','mfgMaterial:min','mfgMaterial:count']),JSON.stringify(aggs));
+  // 9c) 式の項目（ほかの項目を[名前]で）と書式（桁・単位）
+  await page.click('#scSubtotalAddCalc');
+  const calc='#scSubtotalMore .sc-st-item[data-i="5"]';
+  await page.waitForSelector(calc+' [data-st-f="expr"]',{state:'visible',timeout:8000});
+  const put=async(sel,v)=>{const l=page.locator(sel);await l.fill(v);await l.dispatchEvent('change');
+   await page.waitForFunction(([s,v])=>{const e=document.querySelector(s);return !!e&&e.value===v},[sel,v],{timeout:8000})};
+  await put(calc+' [data-st-f="label"]','1ロットあたり');
+  await put(calc+' [data-st-f="expr"]','[製造材質 合計]/[ロット数]');
+  await page.selectOption(calc+' [data-st-f="dec"]','2');
+  await put(calc+' [data-st-f="suffix"]','kg');
+  const first='#scSubtotalMore .sc-st-item[data-i="0"]';
+  await page.selectOption(first+' [data-st-f="dec"]','0');
+  await put(first+' [data-st-f="suffix"]','kg');
+  await W.until(page,t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
+   return !!el&&el.querySelectorAll('.sc-subtotal-sum[data-item]').length===6&&/kg/.test(el.textContent)},TAG,{ms:8000,what:'6項目の小計'});
+  const m1=await valsFull();
+  const want=['2,001kg*','1,000.25*','1,200.0*','800.5*','2','666.83kg'];
+  rec('合計・平均・最大・最小・件数・式が並ぶ（書式: 桁0＋kg／式は桁2＋kg）（§9.498）',
+      !!m1&&JSON.stringify(m1.map(x=>x.v))===JSON.stringify(want),JSON.stringify(m1&&m1.map(x=>x.v))+' 期待 '+JSON.stringify(want));
+  rec('式の項目は式と材料を title で言う（§9.498）',!!m1&&m1[5]&&/\[製造材質 合計\]\/\[ロット数\]/.test(m1[5].t),m1&&m1[5]&&m1[5].t);
+  // 9c') 「行」では同じ列の集計は列の真下の1つの器に集計の名つきで並び、式は名前の後ろ
+  await page.click('#scSubtotalMore [data-st-style="row"]');
+  await W.until(page,t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);return !!el&&!el.classList.contains('is-label')},TAG,{ms:8000,what:'行の小計'});
+  const rowv=await page.evaluate(t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
+   const cell=el.querySelector('.sc-subtotal-cell[data-col="mfgMaterial"]');
+   const head=document.querySelector('.sc-row-head [data-col="mfgMaterial"]');
+   return {parts:cell?cell.querySelectorAll('.sc-subtotal-sum').length:0,tags:cell?[...cell.querySelectorAll('small')].map(x=>x.textContent):[],
+     calcInHead:!!el.querySelector('.sc-subtotal-head .sc-subtotal-sum[data-item]'),
+     dx:cell&&head?Math.round(Math.abs(cell.getBoundingClientRect().left-head.getBoundingClientRect().left)):null}},TAG);
+  rec('「行」では同じ列の集計が列の真下の器に名つきで並び、式は名前の後ろ（§9.498）',
+      rowv.parts===5&&rowv.tags.join(',')==='合計,平均,最大,最小,件数'&&rowv.calcInHead&&rowv.dx!==null&&rowv.dx<=2,JSON.stringify(rowv));
+  // 9d) 書けない式は画面にそう言い、小計は「—」
+  await put(calc+' [data-st-f="expr"]','[製造材質 合計]/(');
+  const bad=await page.evaluate(s=>{const r=document.querySelector(s);const n=r&&r.querySelector('.sc-st-err');return n?n.textContent.trim():''},calc);
+  rec('書けない式はその場で理由を言う（§9.498）',!!bad,bad);
+  await put(calc+' [data-st-f="expr"]','[製造材質 合計]/[ロット数]');
+  if(process.env.WAVELOG_SHOT){await page.screenshot({path:`${process.env.WAVELOG_SHOT}/scsubtotal-multi-panel.png`})}
+  await page.click('#scViewMenuBtn');
+  if(process.env.WAVELOG_SHOT){
+   await page.evaluate(t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);if(el)el.scrollIntoView({block:'center'})},TAG);
+   await page.screenshot({path:`${process.env.WAVELOG_SHOT}/scsubtotal-multi-label.png`});
+  }
 
   // ---- 7. 切に戻す ----------------------------------------------------
   await page.click('#scViewMenuBtn');

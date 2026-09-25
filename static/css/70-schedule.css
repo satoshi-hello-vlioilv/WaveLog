@@ -1314,17 +1314,26 @@
    足した列の真下に来る。まとめの見出し（区切りの**頭**・左の帯）と取り違えないよう、
    こちらは区切りの**お尻**で、上に線を引いて「ここまでの合計」と読ませる。 */
 .sc-subtotal{
- height:var(--row-h);padding:var(--row-pad-y) 8px;
+ /* 高さは**中身なり**（最低は行と同じ）。集計が1つなら行と同じ1段、同じ列に2つ以上・式があれば
+    1項目1段で積む（§9.498）——列の幅は変えられないので、横に並べると2つ目から切れて読めない。 */
+ min-height:var(--row-h);padding:var(--row-pad-y) 8px;align-items:start;
  background:var(--surface-2);border-top:1px solid var(--line-mid);border-bottom:1px solid var(--line-soft);
  font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;
 }
 .sc-subtotal>*{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.sc-subtotal-head{display:flex;align-items:center;gap:var(--space-2)}
+/* 名前の器は**折り返して積む**（名前／ロット数／式）。狭い列をまたぐので、1行に詰めると名前が押し出されて消えた。 */
+.sc-subtotal-head{display:flex;flex-wrap:wrap;align-items:center;gap:0 var(--space-2);white-space:normal}
+.sc-subtotal-head>*{white-space:nowrap}
+.sc-subtotal-head>.sc-subtotal-sum{flex:0 0 100%;overflow:hidden;text-overflow:ellipsis}
+.sc-subtotal-cell>.sc-subtotal-sum{display:block;overflow:hidden;text-overflow:ellipsis}
 .sc-subtotal-tag{flex:none;padding:var(--pad-chip);border:1px solid var(--teal);border-radius:var(--radius-pill);
  color:var(--teal-dark);font-size:var(--fs-badge);line-height:1.2}
 .sc-subtotal-name{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2)}
 .sc-subtotal-count{flex:none}
-.sc-subtotal-sum{padding-left:var(--gap-tight)}
+.sc-subtotal-cell{padding-left:var(--gap-tight)}
+/* 同じ列に2つ以上の集計があれば、集計の名を添えて並べる（字は小さく・値は本文のまま）。 */
+.sc-subtotal-cell>.sc-subtotal-sum>small,.sc-subtotal-head>.sc-subtotal-sum>small{margin-right:var(--space-1);color:var(--muted);font-weight:400}
+.sc-subtotal-sum.is-bad>.sc-st-v{color:var(--danger)}
 .sc-subtotal-skip{font-style:normal;color:var(--warn-fg)}
 /* ラベル：1行の帯に並べる。列にはそろえないので、どの列の合計かを**字で**添える。 */
 .sc-subtotal.is-label{display:flex;align-items:center;gap:var(--space-3)}
@@ -2301,6 +2310,22 @@ div.sc-view-row{cursor:default}
 .sc-subtotal-more-name{font-size:var(--fs-micro);font-weight:700;color:var(--ink-2);text-align:right}
 .sc-subtotal-note{grid-column:2;color:var(--muted);font-size:var(--fs-micro);line-height:1.4}
 .sc-subtotal-none{color:var(--muted);font-size:var(--fs-micro)}
+/* 集計の項目（§9.498）。1行1項目: 名前・列・集計・桁・単位・×。**ラベル列（名前）は固定幅**
+   （§CLAUDE 9）、式の行は「列＋集計」の2マスを式の欄がまたぐ。 */
+.sc-st-items{display:flex;flex-direction:column;gap:var(--space-1);min-width:0}
+.sc-st-item{display:grid;align-items:center;gap:var(--space-1);
+ grid-template-columns:var(--w-md) var(--w-md) var(--w-sm) var(--w-sm) var(--w-xs) auto}
+.sc-st-item.is-calc>.sc-st-expr{grid-column:span 2}
+.sc-st-item>input,.sc-st-item>select{
+ width:100%;min-width:0;height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
+ border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
+ font-size:var(--fs-micro);color:var(--ink-2)}
+.sc-st-item>.sc-st-err{grid-column:2 / -1;color:var(--danger);font-size:var(--fs-micro)}
+.sc-st-del{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);border-radius:var(--radius-sm);
+ background:var(--surface);color:var(--muted);cursor:pointer}
+.sc-st-del:hover{border-color:var(--danger);color:var(--danger)}
+.sc-st-add{display:flex;gap:var(--space-1)}
+.sc-st-add>.sc-subtotal-opt{flex:0 0 auto}
 
 /* ============================================================
    操作列を1行に収める(§9.199、利用者の指示「上部メニューバーは1行で」)
