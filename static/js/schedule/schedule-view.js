@@ -125,7 +125,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
               /* 完了突合が持ち帰った値の列名(§9.365)。**サーバーが答える**
                  ——設定に書いてある名前と、実際に当たっている行が持つ名前の
                  両方が入っている。 */
-              actualColumns:[]};
+              actualColumns:[],
+              /* 仕掛の元データの列名(§9.501)。表示列の候補の土台で、**サーバーが答える**
+                 （`scLoadWorkColumns()`）。画面がいま持っている表の列（`S.columns`）には頼らない。 */
+              workColumns:[]};
  /* ---------- 読込結果のキャッシュ(§9.42) ----------
     共有スケジュールDBと実績バックアップはネットワーク共有上にあり、開くたびに
     読み直すと待たされる。**一度読んだら保持し、画面を開き直しただけでは
@@ -3396,6 +3399,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    if(e.kind!=='作業'||entryLotKey(e)!==lot)return;
    if(!e.detail||typeof e.detail!=='object')e.detail={};
    e.detail.residualCourse=course;
+   touchContentCandidates();
   });
  }
  /* 辿っても見つからなかったロットを個別に引いて確定させる。
@@ -3812,6 +3816,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    /* 先に画面へ当てる（§9.11 楽観的更新）。失敗したら書込キューが
       まとめて知らせ、次の読み直しで写しの値へ戻る。 */
    e.detail=Object.assign({},e.detail||{},patch);
+   touchContentCandidates();
    queuePlanOp({op:'update',id:e.id,detail:patch});
   });
   if(!n)return 0;
@@ -4035,7 +4040,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   scheduleWorkableWatch();   // 可でない行が残っていれば裏で追いかける(§9.51)
   /* 結合の値は**描き終えてから・手が空いてから**当てる(§9.94と同じ作法)。
      予定が出るまでの時間に相手のDBの往復を挟まない。 */
-  (window.requestIdleCallback||(f=>setTimeout(f,300)))(()=>{scJoinRefresh()});
+  (window.requestIdleCallback||(f=>setTimeout(f,300)))(()=>{scJoinRefresh();scLoadWorkColumns()});
  }
  /* ---------- 予定は「取得」と「描画」を分ける(§9.182) ----------
     取得だけ先に始めておいて、表示設定が揃ったところで描く。1つの関数で
@@ -4445,7 +4450,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  }
  /* 内容欄の項目になれる列（§9.489）: いま出している項目と、選べる項目すべて。**答えはここ1箇所**——
     計算列の見分け・パネルの口（`isData`）・内容表示マスタへの保存が同じ答えを見る。 */
- function scContentDataSet(){return new Set([...chosenContentKeys(),...contentCandidateKeys()])}
+ function scContentDataSet(){return scContentDataSetMemo()}
+ const scContentDataSetMemo=scMemo(()=>[contentCandidateKeys(),...chosenContentKeys()],
+   ()=>new Set([...chosenContentKeys(),...contentCandidateKeys()]));
  const timelineIsFormulaKey=k=>timelineFormulaKeys().includes(k);
  /* 式を**列ごとに1回だけ解く**（行ごとに解き直すと行数×列数ぶん効く）。
     行を描くのは`renderEntryRow`＝別の関数なので、**式が変わったときだけ
@@ -7756,13 +7763,24 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     **止めないこと**——止めると§9.15の「投入済みのロットが仕掛一覧から
     消える」が効かなくなる。列幅を掴んでいる最中に待たせるのは今までどおり
     （§9.211 ①）。 */
- let lotFilterQueued=false;
+ /* **仕掛一覧の見え方が変わるときだけ**描き直す（§9.501）。仕掛一覧が予定から受け取るのは
+    「伏せるロット」（`hiddenLotSet()`）と「出す列」（`scColumnAllowlist()`）の2つだけなので、
+    両方が前回と同じなら描き直しても同じ絵になる。以前は予定表を描くたびに描き直しており、
+    表示列の設定で列を1つ入切するだけで仕掛一覧まで組み直していた（実データ1回約300ms）。 */
+ let lotFilterQueued=false,lotFilterSig='';
+ function scheduledLotFilterSig(){
+  const hidden=hiddenLotSet();
+  return JSON.stringify([S.db,hidden?[...hidden].sort():null,window.scColumnAllowlist()]);
+ }
  function refreshScheduledLotFilter(){
   if(!(typeof WL.list.renderGrid==='function'&&typeof S!=='undefined'&&WL.dataSource.isWork(S.db)))return;
   if(lotFilterQueued)return;
   lotFilterQueued=true;
   requestAnimationFrame(()=>{
    lotFilterQueued=false;
+   const sig=scheduledLotFilterSig();
+   if(sig===lotFilterSig)return;
+   lotFilterSig=sig;
    WL.columnResize.defer('grid:scheduledLot',()=>WL.list.renderGrid());
   });
  }
@@ -10128,6 +10146,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  function updateFrameEntry(entry,frame){
   const before={detail:entry.detail,frame:entry.frame,title:entry.title};
   entry.detail={...(entry.detail||{}),...frame};
+  touchContentCandidates();
   entry.frame={...(entry.frame||{}),date:frame.frameDate,shift:frame.frameShift,
                note:frame.frameNote,gapMinutes:null,reached:false};
   renderTimeline();
@@ -10440,6 +10459,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    scState.joinColumns=r.columns||[];
    const byId=new Map((scState.entries||[]).map(e=>[String(e.id),e]));
    (r.values||[]).forEach((v,i)=>{const e=byId.get(ids[i]);if(e)e.joined=v});
+   touchContentCandidates();
    /* 結合は予定を描いたあと**数百ms〜数秒遅れて**着弾する。列幅を掴んで
       いる最中に来ると表ごと入れ替わるので待たせる（§9.211 ①）。 */
    if(scState.joinColumns.length)WL.columnResize.defer('timeline:join',()=>renderTimeline());
@@ -10451,20 +10471,53 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  /* 候補の正規化。「用途名」と「purposeName」のように同じ意味の項目が2つ並ぶと
     どちらを選ぶべきか分からず、しかも片方は古い予定で引けない。alias表に
     載っている項目はalias名へ寄せて1つにまとめる(表示は日本語名)。 */
+ /* 別名 → 代表の名前は**1回だけ表にして引く**（§9.501）。候補は予定の数×列の数だけ通るので、
+    1件ごとに別名の表を舐めると、300列で1回の組み立てが数百msになる。 */
+ let scAliasCanon=null;
  function canonicalContentKey(k){
-  if(typeof WL.base.aliases==='undefined')return k;
-  if(WL.base.aliases[k])return k;
-  for(const ak of Object.keys(WL.base.aliases))if(WL.base.aliases[ak].includes(k))return ak;
-  return k;
+  const al=WL.base.aliases;
+  if(typeof al==='undefined')return k;
+  if(!scAliasCanon){
+   scAliasCanon=new Map();
+   Object.keys(al).forEach(ak=>al[ak].forEach(n=>{if(!al[n]&&!scAliasCanon.has(n))scAliasCanon.set(n,ak)}));
+  }
+  return al[k]?k:(scAliasCanon.get(k)||k);
  }
 
  // 選択候補: 今表示している仕掛一覧の全列 + 既に予定へ入っている行が持つ
  // detailのキー(過去に別の列構成で投入した予定も編集できるようにするため)。
- function contentCandidateKeys(){
+ /* ---------- 候補の控え（§9.501） ----------
+    候補は**予定の数×列の数**を舐めて作る。以前は列1本の分類（`originOf`→「式の列か」）を
+    答えるたびに作り直しており、300列では**列の数の2乗**になった（実測: 設定を開く11秒・
+    表示の入切8.5秒）。材料が変わったときだけ作り直す。
+    材料の見分け: 予定の並び（配列そのものと件数）・仕掛の列名・結合・完了突合の列、
+    それに**予定の中身を書き換える場所が進める版**（`touchContentCandidates()`）。
+    予定の`detail`／`joined`をその場で書き換える処理を足したら、そこでも版を進めること。 */
+ let scCandRev=0;
+ function touchContentCandidates(){scCandRev++}
+ /* 材料（`sigOf()`が返す並び）が前回と同じなら、前に作ったものを返す。材料は**同一性**で比べる
+    （配列は中身でなく物そのもの）ので、並びを差し替える処理はそのまま「変わった」と読まれる。 */
+ function scMemo(sigOf,build){
+  let sig=[],val;
+  return ()=>{const now=sigOf();if(!sameItems(now,sig)){sig=now;val=build()}return val};
+ }
+ const scEntriesSig=()=>[scState.entries,scState.entries.length,scCandRev];
+ const contentCandidateKeys=scMemo(()=>{
+  const onWork=typeof S!=='undefined'&&S.db===workDbKey();
+  return [...scEntriesSig(),scState.workColumns,scState.joinColumns,scState.actualColumns,onWork&&S.columns];
+ },buildContentCandidateKeys);
+ /* 表示列の設定の見本にする予定（中身のある作業の行を40件まで）。列ごとに引かれるので控える。 */
+ const scSampleEntries=scMemo(scEntriesSig,()=>(scState.entries||[])
+   .filter(e=>e.kind==='作業'&&e.detail&&Object.keys(e.detail).length).slice(0,40));
+ function buildContentCandidateKeys(){
   // 今表示している仕掛一覧の全列 + 既に予定へ入っている行が持つdetailのキー
   // (過去に別の列構成で投入した予定も編集できるように)+ 既定の項目
   // (予定がまだ1件も無い設備でも既定を選べるように)。
-  const raw=[...(typeof S!=='undefined'&&Array.isArray(S.columns)?S.columns:[])];
+  /* 土台は**仕掛の元データの列**（§9.501）。以前は`S.columns`＝「いま画面が持っている表の列」で、
+     仕掛一覧を畳んだ「スケジュールだけ」や編集モードでは仕掛一覧を読まないため、**直前に開いた
+     別の元データの列**が候補になっていた（実測: 実績を開いたあとは仕掛の34列中28列が消えた・
+     利用者の報告「残仕掛設備ｺｰｽが表示列から消えて使えない」）。どの順で画面を開いても同じ答えにする。 */
+  const raw=[...scWorkColumnsNow()];
   scState.entries.forEach(e=>{if(e.detail)raw.push(...Object.keys(e.detail))});
   /* 結合で足される列(§9.193)。**予定がまだ1件も無い設備でも選べる**ように
      サーバーが返した名前をそのまま足す（行から拾うだけだと、当たっている
@@ -10478,6 +10531,27 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const seen=new Set(),out=[];
   raw.forEach(k=>{const c=canonicalContentKey(k);if(!seen.has(c)){seen.add(c);out.push(c)}});
   return out;
+ }
+ /* ---------- 仕掛の元データの列名（§9.501） ----------
+    **名前だけ**を引く口（`/api/table-columns`。行は運ばない）。表の構成が変わるのは運用の
+    切り替え時だけなので控える。読めなかったときだけ、画面が仕掛一覧を持っていればその列で補う
+    （黙って空にしない）。 */
+ const scWorkColsCache=WL.ttlCache(5*60*1000,4);
+ async function scLoadWorkColumns(){
+  const db=workDbKey();
+  if(!db){scState.workColumns=[];return scState.workColumns}
+  try{
+   scState.workColumns=await scWorkColsCache.fetch(db,async()=>{
+    const r=await api('/api/table-columns?db='+encodeURIComponent(db),{quiet:true});
+    return Array.isArray(r.columns)?r.columns:[];
+   });
+  }catch(e){WL.quiet.note('仕掛の列名を取れない（画面が持っている仕掛一覧の列で補う）',e)}
+  return scState.workColumns;
+ }
+ function scWorkColumnsNow(){
+  if(scState.workColumns.length)return scState.workColumns;
+  const onWork=typeof S!=='undefined'&&S.db&&S.db===workDbKey()&&Array.isArray(S.columns);
+  return onWork?S.columns:[];
  }
  /* 結合・完了突合で来た列の名前(§9.193・§9.365)。**1箇所で答える**——
     候補・分類・帯が別々に組み立てると、片方にしか出ない列ができる。 */
@@ -10575,8 +10649,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    /* 見本の行は**予定そのもの**。以前は`e.detail`(仕掛データのスナップ
       ショット)だけを渡していたので、区分・日付・操作のような予定側の列は
       すべて「値のある行がありません」と出ていた(画面には出ているのに)。 */
-   rows:()=>(scState.entries||[])
-     .filter(e=>e.kind==='作業'&&e.detail&&Object.keys(e.detail).length).slice(0,40),
+   rows:()=>scSampleEntries(),
    /* **値の取り出しはcontentValueOf経由**(§9.69)。投入した時期によって
       alias名だけの予定と生カラム名を持つ予定が混ざるので、直接引くと
       古い予定で1件も出ない。 */
@@ -10655,10 +10728,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    },
   };
  }
- function openContentPanel(){
+ async function openContentPanel(){
   if(typeof WL.listColumns?.open!=='function'){
    console.error('内容欄の設定: WL.listColumns が見つかりません');return;
   }
+  /* 候補の土台（仕掛の列名・§9.501）を**揃えてから**開く。控えがあれば往復は無い。 */
+  await scLoadWorkColumns();
   WL.listColumns.open(contentPanelSource());
  }
 
@@ -10969,7 +11044,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* 段の長い名（`作業スケジュール一覧`等）。**呼ぶ側に綴りを書かせない**
      ——刃組ガイダンスの戻るボタンがこの字を出す。 */
   modeName:key=>scModeName(key),
-  hiddenLotSet:()=>hiddenLotSet(),
+  /* 仕掛一覧は描くたびにここへ聞きに来るので、**描いた状態をここで控える**（§9.501）——控えが
+     無いと、次に予定表を描いたとき同じ絵をもう1回描き直す（`refreshScheduledLotFilter()`）。 */
+  hiddenLotSet:()=>{lotFilterSig=scheduledLotFilterSig();return hiddenLotSet()},
   /* 刃組ガイダンスへ渡す「条になる行」の選び方（§9.378）。**分割ありの親は
      条にならない**という測定と同じ規則を、網が合成した並びで直に確かめられる
      ようにここから出す（画面を組み立てずに条の選び方だけを見る）。 */
@@ -11097,7 +11174,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* 内容欄で使える項目と、行から取り出した値(§9.365)。**読むだけ**——
      結合・完了突合で来た値が候補に出ているか、行から引けるかを、DOMを
      掘らずに確かめられるようにしておく（出ていないときの切り分けに要る）。 */
-  contentCandidates:()=>contentCandidateKeys(),
+  contentCandidates:()=>contentCandidateKeys().slice(),
   entryValue:(id,key)=>{
    const e=(scState.entries||[]).find(x=>String(x.id)===String(id));
    return e?entryValueOf(e,key):undefined;

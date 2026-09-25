@@ -7,7 +7,9 @@
 
    物差し:
     A. 欠け … 仕掛一覧の列のうち、作業スケジュールの表示列の候補に**名前でも元の名前でも見つからない列の数**（0が正）
-    B. 重さ … パネルを開く／列を1つ選ぶ／表示の入切／絞り込みに1文字 の時間（ms） */
+    B. 重さ … 候補が約300列（利用者の環境: 仕掛256列・候補299列）のとき、パネルを開く／列を1つ選ぶ／
+              表示の入切（2回）／絞り込みに1文字 の時間（ms）。直す前は 開く11.7秒・選ぶ5.9秒・入切8.9秒
+              （列1本の分類のたびに候補を作り直す＝列の数の2乗）。 */
 'use strict';
 const {run}=require('./lib/harness.js');
 const EQ='テスト設備A';
@@ -41,34 +43,12 @@ run('test_sccolpanel: 作業スケジュールの表示列——欠けない・�
  /* 場面1: 起動してすぐ作業スケジュールを開く。 */
  await W.openSchedule(page,EQ);
  await idle();
- const tOpen=await openPanel();
+ await openPanel();
  const m1=await missingOf();
+ const counts=[m1.items];
  console.log('#PROBE1 '+JSON.stringify({wip:wipCols.length,...m1,missing:m1.missing.slice(0,10),n:m1.missing.length}));
  rec('A1: 仕掛の列はどれも作業スケジュールの表示列の候補に見つかる（開いてすぐ・§9.501）',wipCols.length>0&&m1.missing.length===0,
      `欠け${m1.missing.length}件 ${JSON.stringify(m1.missing.slice(0,8))}（仕掛${wipCols.length}列・候補${m1.items}列）`);
- // B: 重さ（候補のいちばん多い場面1で測る）
- const pickT=await page.evaluate(async()=>{
-  const it=[...document.querySelectorAll('#lcList .lc-item')][5];
-  const t0=performance.now();(it.querySelector('.lc-name')||it).click();
-  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-  return Math.round(performance.now()-t0);
- });
- const visT=await page.evaluate(async()=>{
-  const it=[...document.querySelectorAll('#lcList .lc-item')][6];const cb=it&&it.querySelector('.lc-vis input');
-  const t0=performance.now();if(cb)cb.click();
-  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-  const t=Math.round(performance.now()-t0);if(cb)cb.click();return t;
- });
- const typeT=await page.evaluate(async()=>{
-  const inp=document.getElementById('lcFilter')||document.querySelector('#listColumnPanel input[type="search"],#listColumnPanel input[placeholder*="絞り込み"]');
-  if(!inp)return -1;
-  const t0=performance.now();inp.value='残';inp.dispatchEvent(new Event('input',{bubbles:true}));
-  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-  const t=Math.round(performance.now()-t0);inp.value='';inp.dispatchEvent(new Event('input',{bubbles:true}));return t;
- });
- console.log('#TIME '+JSON.stringify({open:tOpen,pick:pickT,vis:visT,type:typeT}));
- rec('B: 表示列の設定の操作は速い（開く1秒以内・選ぶ／入切／1文字 各150ms以内）（§9.501）',
-     tOpen<=1000&&pickT<=150&&visT<=150&&typeT>=0&&typeT<=150,JSON.stringify({open:tOpen,pick:pickT,vis:visT,type:typeT}));
  await closePanel();
  /* 場面2: **別の一覧（品質データ）を開いてから**作業スケジュールへ戻る。 */
  const other=await page.evaluate(()=>{
@@ -82,7 +62,7 @@ run('test_sccolpanel: 作業スケジュールの表示列——欠けない・�
   await W.openSchedule(page,EQ);
   await idle();
   await openPanel();
-  const m2=await missingOf();
+  const m2=await missingOf();counts.push(m2.items);
   console.log('#PROBE2 '+JSON.stringify({other,...m2,missing:m2.missing.slice(0,10),n:m2.missing.length}));
   rec('A2: 別の一覧を開いたあとでも、仕掛の列は候補から消えない（§9.501）',m2.missing.length===0,
       `欠け${m2.missing.length}件 ${JSON.stringify(m2.missing.slice(0,8))}（直前の一覧 ${other}・S.columns ${m2.sCols}列 db=${m2.db}）`);
@@ -103,12 +83,51 @@ run('test_sccolpanel: 作業スケジュールの表示列——欠けない・�
   await W.openSchedule(page,EQ);
   await idle();
   await openPanel();
-  const m3=await missingOf();
+  const m3=await missingOf();counts.push(m3.items);
   console.log('#PROBE3 '+JSON.stringify({other:pick3,...m3,missing:m3.missing.slice(0,12),n:m3.missing.length}));
   rec('A3: 仕掛一覧を畳み、直前に別の元データを開いていても仕掛の列は候補から消えない（§9.501）',m3.missing.length===0,
       `欠け${m3.missing.length}件 ${JSON.stringify(m3.missing.slice(0,8))}（直前 ${pick3}・S.columns ${m3.sCols}列 db=${m3.db}）`);
   await page.evaluate(()=>localStorage.removeItem('scSplitListCollapsedV1'));
  }
+ /* 開いた順番で候補の顔ぶれが変わらない（§9.501）。変わるなら、どこかの場面で画面の状態に頼っている。 */
+ rec('A4: 候補の数はどの場面でも同じ（開いた順番に左右されない・§9.501）',counts.length===3&&counts.every(n=>n===counts[0]),
+     JSON.stringify(counts));
  await page.evaluate(()=>WL.listColumns&&WL.listColumns.close&&WL.listColumns.close());
+ /* B: 重さ——**サーバーの答えの段階で**列を約300本に増やす（画面の控えを書き換えると、控えが
+    正しく古いまま使われて測れない）。仕掛の列名と、予定が持つ仕掛データの写しの両方へ足す。 */
+ {
+  const names=Array.from({length:250},(_,j)=>'試験列'+String(j).padStart(3,'0'));
+  await page.route(/\/api\/table-columns/,async route=>{
+   const r=await route.fetch();const j=await r.json();
+   j.columns=[...(j.columns||[]),...names];await route.fulfill({response:r,json:j});
+  });
+  await page.route(/\/api\/schedule\/plan/,async route=>{
+   const r=await route.fetch();const j=await r.json();
+   (j.entries||[]).forEach((e,i)=>{if(e&&e.detail)names.forEach((n,k)=>{e.detail[n]=String((i*7+k)%97)})});
+   await route.fulfill({response:r,json:j});
+  });
+  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
+  await W.booted(page);
+  await W.openSchedule(page,EQ);
+  await idle();
+  const tOpen=await openPanel();
+  const act=js=>page.evaluate(async js=>{
+   const t0=performance.now();(new Function(js))();
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+   return Math.round(performance.now()-t0);
+  },js);
+  const items=await page.evaluate(()=>document.querySelectorAll('#lcList .lc-item').length);
+  const t={open:tOpen,items,
+   pick:await act("const it=[...document.querySelectorAll('#lcList .lc-item')][5];(it.querySelector('.lc-name')||it).click()"),
+   vis:await act("document.querySelectorAll('#lcList .lc-item')[6].querySelector('.lc-vis input').click()"),
+   vis2:await act("document.querySelectorAll('#lcList .lc-item')[6].querySelector('.lc-vis input').click()"),
+   type:await act("const inp=document.getElementById('lcFilter');inp.value='残';inp.dispatchEvent(new Event('input',{bubbles:true}))")};
+  console.log('#TIME '+JSON.stringify(t));
+  /* 境目は直す前（秒の桁）と桁で離す: 開く1.5秒・操作300ms（直した後の実測は 356／109／116／35ms）。 */
+  rec('B: 約300列でも表示列の設定は重くない（開く1.5秒以内・選ぶ／入切／1文字 各300ms以内）（§9.501）',
+      items>=250&&t.open<=1500&&Math.max(t.pick,t.vis,t.vis2,t.type)<=300,JSON.stringify(t));
+  await page.unroute(/\/api\/table-columns/);await page.unroute(/\/api\/schedule\/plan/);
+  await closePanel();
+ }
  rec('画面の例外が出ていない',errs.length===0,errs.slice(0,3).join(' / '));
 },{mode:'schedule',viewport:{width:1700,height:1000}});
