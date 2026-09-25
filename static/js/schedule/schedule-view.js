@@ -603,19 +603,20 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
   /* **文字に出すのは「いつのデータか」1つ**（§9.300 ①）。共有の取り込みと
      書込役はメニューが持つ。**まだ読み込んでいないうちだけ**共有の状態を
      代わりに出す（何も言わないチップにしない）。 */
+  /* **「名前 値」の形**（§9.505）——一覧の「元データ 9/17 10:14」と同じ読み方にする。以前の
+     ↺（`fa-clock-rotate-left`）は段「履歴」と同じ絵で、「たった今／N分前」は面の中と説明が持つ。 */
   const parts=[];
-  const when=fmtFetchedAt(scFetchedAt);
-  if(when)parts.push(when);
-  else{const s0=syncChipText(st);if(s0)parts.push(s0)}
+  const hm=scFetchedAt?new Date(scFetchedAt).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'';
+  if(!hm){const s0=syncChipText(st);if(s0)parts.push(s0)}
   if(slow)parts.push(`読み込み ${(t.total/1000).toFixed(1)}秒`);
   if(err)parts.push('同期エラー');
-  el.hidden=!parts.length;
+  el.hidden=!hm&&!parts.length;
   if(el.hidden){closeSyncMenu();return}
-  el.innerHTML=`<i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>`
-   +`<span class="sc-sync-txt">${esc(parts.join(' ・ '))}</span>`
+  el.innerHTML=(hm?`<span class="sc-sync-key">読込</span><b class="sc-sync-val">${esc(hm)}</b>`:'')
+   +(parts.length?`<span class="sc-sync-txt">${esc(parts.join(' ・ '))}</span>`:'')
    +`<span class="hd-caret" aria-hidden="true">▾</span>`;
   el.classList.toggle('is-slow',slow);
-  el.title=['この時点で読み込んだ内容です。',
+  el.title=[hm?`この画面の読込: ${fmtFetchedAt(scFetchedAt)}`:'','この時点で読み込んだ内容です。',
             ...(t?timingLines(t):[]),
             st&&st.configured?`共有は${st.intervalSec}秒ごとに確かめ、変わっていたら取り込みます。`:'',
             st&&st.configured?`最後の取込: ${st.snapshotAgeSec==null?'まだありません':agoOf(st.snapshotAgeSec)}`:'',
@@ -862,8 +863,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
       <button type="button" class="sc-split-toggle sc-ico-btn" id="scContentModalBtn" hidden
         title="この表に出す列・並び・幅・書式を設定します（設備ごとに保存）"><i class="fa-solid fa-table-columns" aria-hidden="true"></i><span>表示列</span></button>
       <button type="button" class="sc-split-toggle sc-view-menu-btn" id="scViewMenuBtn" hidden
-        aria-expanded="false" title="この表の見せ方（まとめ・さかのぼり・行の色とアイコン）をまとめて設定します。予定そのものは変わりません。この端末に覚える設定はヘッダーの「表示」にあります">
-       <i class="fa-solid fa-sliders" aria-hidden="true"></i><span class="sc-vm-txt">表の見せ方</span><b class="sc-vm-state" id="scViewState"></b><span class="hd-caret">▾</span>
+        aria-expanded="false" title="">
+       <i class="fa-solid fa-sliders" aria-hidden="true"></i><span class="sc-vm-txt">表の見せ方</span><span class="hd-caret">▾</span>
       </button>
       <!-- 広く使う（§9.292 ⑦、利用者の指示「スケジュール作成時に、とにかく
            仕掛のデータを多く表示したいです。その時上部のメニューのほぼ
@@ -872,11 +873,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
            （§4）——広いあいだは画面の右上に「元に戻す」の札を出す。 -->
       <button type="button" class="sc-split-toggle sc-ico-btn" id="scWideBtn" hidden
         aria-pressed="false"
-        title="上の帯（画面名・状態・操作列）を畳んで、一覧をいちばん広く使います。&#10;・戻すときは右上の札を押すか Esc&#10;・この端末に覚えます"><i class="fa-solid fa-up-right-and-down-left-from-center" aria-hidden="true"></i><span>広く</span></button>
+        title="上の帯（画面名・状態・操作列）を畳んで、一覧をいちばん広く使います。&#10;・戻すときは右上の札を押すか Esc&#10;・この端末に覚えます"><i class="fa-solid fa-up-right-and-down-left-from-center" aria-hidden="true"></i><span>広く使う</span></button>
      </div>
      <div class="sc-tools" data-tools="act" id="scToolsAct">
       <button type="button" class="sc-split-toggle sc-ico-btn" id="scPrintBtn" title="いま表示している予定を、現場へ配る形（用紙サイズ・向きは選べます）で印刷します"><i class="fa-solid fa-print" aria-hidden="true"></i><span>印刷</span></button>
-      <button type="button" class="sc-refresh sc-ico-btn" id="scRefresh" title="予定の時刻を計算し直します"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span>再計算</span></button>
+      <button type="button" class="sc-refresh sc-ico-btn" id="scRefresh" title="予定の時刻を計算し直します"><i class="fa-solid fa-calculator" aria-hidden="true"></i><span>再計算</span></button>
      </div>
     </div>
    </div>
@@ -921,7 +922,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
          アプリ全体の設定へ混ぜない(§9.179)。 -->
     <div class="sc-view-pop" id="scViewPop" hidden>
      <div class="sc-view-pop-head">
-      <b>表示</b><small>この画面の見え方だけを変えます。予定そのものは変わりません</small>
+      <b>表の見せ方</b><small>この画面の見え方だけを変えます。予定そのものは変わりません</small>
      </div>
      <!-- 色と濃さの意味（§9.374、利用者の指摘「背景色の濃い薄いの分類について
           少しわかりやすくしてください。初見の人がどういうゾーンなのか扱いが
@@ -1293,7 +1294,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const btn=$('#scWideBtn');
   if(btn){
    btn.setAttribute('aria-pressed',String(on));
-   const t=btn.querySelector('span');if(t)t.textContent=on?'元に戻す':'広く';
+   const t=btn.querySelector('span');if(t)t.textContent=on?'元に戻す':'広く使う';
   }
   const pill=$('#scWideExit');
   if(pill)pill.hidden=!on;
@@ -1727,6 +1728,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  /* 入口のボタンに**いまの設定を書く**。畳んだ先の値が読めないと、
     開くまで思い出せない（§「思い出させない」）。長い名前は要約して出し、
     正確な名前はパネルの中と`title`に残す。 */
+ const SC_VIEW_BTN_TITLE='この表の見せ方（まとめ・小計・さかのぼり・行の色とアイコン）をまとめて設定します。予定そのものは変わりません。この端末に覚える設定はヘッダーの「表示」にあります';
  function updateViewMenuUi(){
   const btn=$('#scViewMenuBtn');if(!btn)return;
   const secs=[$('#scGroupRange'),$('#scViewAccSubtotal'),$('#scHistoryRange'),
@@ -1752,8 +1754,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    const lb=historyLabel();
    if(lb)bits.push(lb);
   }
-  const state=$('#scViewState');
-  if(state){state.textContent=bits.join('・');state.hidden=!bits.length}
+  /* いまの設定の要約は**帯に書かず、ボタンの説明の先頭へ**（§9.505、利用者の選択「案A」）——
+     帯に書くと約190px を取り、「追加」の4つが字を失っていた（よく押すほうが推測させる側に回る）。
+     開けばパネルの中に全部あり、乗せれば説明の1行目で読める。 */
+  btn.dataset.state=bits.join('・');
+  btn.title=(bits.length?`いまの設定: ${bits.join('・')}\n`:'')+SC_VIEW_BTN_TITLE;
   updateToolGroups();
  }
 

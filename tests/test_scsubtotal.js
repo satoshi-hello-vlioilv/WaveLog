@@ -126,7 +126,8 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
   rec('右揃えの列: 小計の値の右端はふつうの行の値の右端とそろう（差2px以内。前は器の右端＝表の右端へ寄っていた）',
       s1.rx!==null&&Math.abs(s1.rx)<=2,`差${s1.rx}px`);
   rec('並べ替えの行の数は小計で変わらない',s1.rows===s0.rows,`${s0.rows}→${s1.rows}`);
-  const bar=await page.evaluate(()=>(document.getElementById('scViewState')||{}).textContent||'');
+  /* §9.505: 要約は帯でなく入口の説明の1行目（とデータ）に出す。 */
+  const bar=await page.evaluate(()=>(document.getElementById('scViewMenuBtn')||{dataset:{}}).dataset.state||'');
   rec('畳んだ入口に「小計」の設定が出る（思い出させない）',/小計/.test(bar),bar);
 
   // ---- 5. ラベル（§9.503②、利用者の指示「ラベルは、まとめ単位で出すようにして、行とは違い、まとめ単位で
