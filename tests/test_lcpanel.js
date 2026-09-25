@@ -39,7 +39,7 @@ run('test_lcpanel: 列の設定パネル(§9.90で作り直し)', async ({page,r
   await page.waitForSelector('#grid table',{timeout:30000});
   await W.booted(page);await idle();
 
-  await W.listView(page);await page.click('#listColumnBtn');
+  await page.click('#listColumnBtn');
   await page.waitForSelector('#listColumnPanel .lc-item',{timeout:10000});
   await idle();
 
@@ -217,7 +217,7 @@ run('test_lcpanel: 列の設定パネル(§9.90で作り直し)', async ({page,r
    `開いていた時=${colsWhileOpen.slice(0,40)} / 閉じた後=${colsAfterClose.slice(0,40)}`);
 
   /* ---- 8) パネルの中で操作行が折り返さない ---- */
-  await W.listView(page);await page.click('#listColumnBtn');
+  await page.click('#listColumnBtn');
   await page.waitForSelector('#listColumnPanel .lc-item',{timeout:10000});
   await idle();
   await page.evaluate(()=>{
@@ -367,7 +367,7 @@ run('test_lcpanel: 列の設定パネル(§9.90で作り直し)', async ({page,r
    await page.fill('#lcFilter',word);await idle();
    await page.evaluate(()=>document.querySelector('.lc-state-chip[data-state="on"]')?.click());await idle();
    await page.click('#lcClose');await idle();
-   await W.listView(page);await page.click('#listColumnBtn');
+   await page.click('#listColumnBtn');
    await page.waitForSelector('#listColumnPanel .lc-item',{timeout:10000});await idle();
    const back=await page.evaluate(()=>({n:document.querySelectorAll('#listColumnPanel .lc-item').length,
      q:(document.getElementById('lcFilter')||{}).value||'',
@@ -398,7 +398,7 @@ run('test_lcpanel: 列の設定パネル(§9.90で作り直し)', async ({page,r
    rec('幅を手で決めると一覧の列も広がる',fit.wide>fit.before+100,JSON.stringify(fit));
    /* パネルを開き直して(下地の値を読ませて)からオートフィット。 */
    await page.click('#lcClose');await idle();
-   await W.listView(page);await page.click('#listColumnBtn');
+   await page.click('#listColumnBtn');
    await page.waitForSelector('#listColumnPanel .lc-item',{timeout:10000});
    await idle();
    await page.click('#lcAutoFit');
@@ -519,7 +519,7 @@ run('test_lcpanel: 列の設定パネル(§9.90で作り直し)', async ({page,r
      の両方が起きていた（利用者の言う「修正した内容が戻される」）。 */
   await page.click('#lcClose').catch(()=>{});
   await idle();
-  await W.listView(page);await page.click('#listColumnBtn');
+  await page.click('#listColumnBtn');
   await page.waitForSelector('#listColumnPanel .lc-item',{timeout:10000});
   await idle();
   const mix=await page.evaluate(async()=>{

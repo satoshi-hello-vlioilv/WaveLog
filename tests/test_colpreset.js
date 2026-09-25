@@ -49,7 +49,7 @@ run('test_colpreset: 列の設定を名前で覚える／式で列を作る（§
   await page.waitForFunction(()=>document.querySelectorAll('#grid thead th').length>5,{timeout:20000});
 
   const heads=()=>page.evaluate(()=>[...document.querySelectorAll('#grid thead th')].map(t=>t.dataset.col));
-  await W.listView(page);await page.click('#listColumnBtn');
+  await page.click('#listColumnBtn');
   await page.waitForSelector('#lcList .lc-item',{timeout:15000});
 
   /* ================= ⑤ 名前を付けて覚える ================= */
@@ -135,7 +135,7 @@ run('test_colpreset: 列の設定を名前で覚える／式で列を作る（§
   rec('開き直しても計算した値が出る',/\/\d/.test(String(cell2)),String(cell2));
 
   /* 消せる（元のデータには影響しない＝データ列の数は変わらない） */
-  await W.listView(page);await page.click('#listColumnBtn');
+  await page.click('#listColumnBtn');
   await page.waitForSelector('#lcList .lc-item',{timeout:15000});
   await page.evaluate(k=>{document.querySelector(`#lcList .lc-item[data-key="${k}"]`).click()},COL);
   await page.waitForSelector('#lcFormulaDel',{timeout:8000});

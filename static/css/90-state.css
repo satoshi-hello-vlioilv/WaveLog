@@ -352,17 +352,6 @@ body.nav-collapsed .registered-equipment-badge a,
 body.nav-collapsed .registered-equipment-badge::after{display:none}
 /* 畳んでいる間は幅調整バーを無効化(掴んでも動かないので触らせない) */
 body.nav-collapsed #navResizeHandle{pointer-events:none;opacity:.35}
-/* 一覧専用の操作(検索・表示件数・再読込)は、一覧を見ていない画面では出さない。
-   「意味のないメニュー」を並べたままにしないためと、画面ごとの操作列へ
-   横幅を渡すため。表示サイズ(A)は全画面共通なので残す。 */
-body.sc-mode .global-actions .hd-search,body.sc-mode .global-actions .hd-field,body.sc-mode .global-actions #reload,
-body.db-mode .global-actions .hd-search,body.db-mode .global-actions .hd-field,body.db-mode .global-actions #reload,
-body.rp-mode .global-actions .hd-search,body.rp-mode .global-actions .hd-field,body.rp-mode .global-actions #reload,
-body.mm-mode .global-actions .hd-search,body.mm-mode .global-actions .hd-field,body.mm-mode .global-actions #reload,
-body.cal-mode .global-actions .hd-search,body.cal-mode .global-actions .hd-field,body.cal-mode .global-actions #reload,
-body.lg-mode .global-actions .hd-search,body.lg-mode .global-actions .hd-field,body.lg-mode .global-actions #reload,
-body.rec-mode .global-actions .hd-search,body.rec-mode .global-actions .hd-field,body.rec-mode .global-actions #reload,
-body.bs-mode .global-actions .hd-search,body.bs-mode .global-actions .hd-field,body.bs-mode .global-actions #reload{display:none}
 /* ---- ヘッダー相乗り時の整理（重複する情報・使わない操作を出さない） ---- *//* 使用設備は画面ごとの操作列(スケジュールの設備選択)が持つので、ヘッダーの
    チップと二重にしない。モード・現場段取りは画面に関係なく効く状態なので残す。 */
 body.sc-mode .hd-status .hd-chip-equip{display:none}
@@ -540,7 +529,7 @@ body.sc-mode #headerContextSource{display:none}
   .lr-seg button.is-on,
   .db-presets button.active,
   .db-seg button.active,
-  .filter-search-row-actions #filterAdhocToggle.is-on,
+  .filter-adhoc-toggle.is-on,
   .hd-viewbar .db-seg button.active, .hd-viewbar .db-viewtabs button.active, .hd-viewbar .sc-mode-toggle-btn.active,
   .hd-viewbar button.active, .hd-viewbar [role="tab"].active,
   .lc-state-chip.is-on,

@@ -146,9 +146,11 @@
    利用者から「文字サイズがバラバラ」「小さすぎる」と指摘された箇所の
    1つだった。 */
 .split-visual-hint,.split-hint-text{font-size:var(--fs-sm);font-weight:700}
-.qa-v7 .qa-chip,.list-join-chip,.suggest-chip,.field-reorder-badge{
+/* `.list-join-chip`・`.suggest-chip`の字は一覧の帯・候補の面が持つ（§9.505「1面1サイズ」）。 */
+.qa-v7 .qa-chip,.field-reorder-badge{
   font-size:var(--fs-micro);font-weight:800;
 }
+.list-join-chip,.suggest-chip{font-weight:800}
 /* --- 器の内側余白（§9.72） ---
    ダイアログ・カード・チップの「中身の詰まり方」は3つだけ。
    実測では器の内側余白に112種類の組み合わせが使われており、同じ役割の

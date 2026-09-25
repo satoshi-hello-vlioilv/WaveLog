@@ -142,7 +142,7 @@ run('test_dbequip: 使用設備は WL.equipment の1箇所（§9.285）',async({
   /* **ポップオーバーでも読めること**（§9.287。`title`は触る画面では読めない
      ので、それだけを見る網では「見える場所にある」ことを確かめていない）。 */
   await page.evaluate(()=>document.querySelector('#filterCondBtn')?.click());
-  await page.waitForSelector('#filterCondMenu',{timeout:5000}).catch(()=>{});
+  await page.waitForSelector('#filterCondMenu:not([hidden])',{timeout:5000}).catch(()=>{});
   const popped=await shot();
   rec('ポップオーバーでいまの値まで読める',popped.pop.includes(OTHER),popped.pop.slice(0,80));
   await page.keyboard.press('Escape');

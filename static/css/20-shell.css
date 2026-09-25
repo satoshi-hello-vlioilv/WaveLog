@@ -336,7 +336,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
    隣の「使用設備 未設定」（本当に手を打つ状態）と同じ色だった。
    橙は`90-state.css`の`.is-warn`＝「設定要」だけが使う。 */
 /* 操作: 高さ・角丸・枠を揃えた四角い部品で統一する */
-.hd-actions .hd-btn,.hd-actions .hd-search,.hd-actions .hd-field{
+.hd-actions .hd-btn{
  height:var(--ctl-h);border:1px solid var(--line);border-radius:var(--radius-sm);background:#fff;
 }
 .hd-actions .hd-btn{font-weight:700;color:var(--ink-2);cursor:pointer;
@@ -346,23 +346,14 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 /* 「表示」バッジの印（§9.341）。以前は`A`の字だったが、いまは文字の
    大きさと時間の書き方の2つが入るので、片方だけを指す字はやめた。 */
 .hd-size-a{font-size:var(--fs-sm);color:var(--ink-2);line-height:1}
-.hd-search{display:inline-flex;align-items:center;gap:var(--gap-inline);padding:0 var(--ctl-pad-x-sm)}
-.hd-search:focus-within{border-color:var(--teal);box-shadow:0 0 0 3px #087c8922}
-.hd-search-icon{font-size:var(--fs-sm);opacity:.6}
-.hd-actions #search{border:0;outline:0;background:transparent;height:auto;padding:0;
- width:min(200px,18vw);font-size:var(--fs)}
-.hd-field{display:inline-flex;align-items:center;gap:var(--gap-inline);padding:0 var(--ctl-pad-x-sm)}
-.hd-field>span{font-size:var(--fs-tiny);font-weight:700;color:#8a9aa0;white-space:nowrap}
-.hd-actions #pageSize{border:0;outline:0;background:transparent;height:auto;padding:0;
- font-size:var(--fs);font-weight:700;color:var(--ink-2)}
+/* 「一覧を検索」は一覧の帯へ移した（§9.505・`.lt-search`）。ヘッダーの`.hd-field`・`#pageSize`・
+   `#reload`は§9.286 で帯へ移したあとも器の規則だけ残っていたので、一緒に消した。 */
 /* quality-analysis.jsが後から差し込む「画面を印刷」も同じ見た目へ揃える */
 .hd-actions #printCurrentView{height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1px solid var(--line);
  border-radius:var(--radius-sm);background:#fff;font-size:var(--fs);font-weight:700;color:var(--ink-2);cursor:pointer}
 .hd-actions #printCurrentView:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
 @media(max-width:1180px){
  .hd-context #fileName{max-width:22vw}
- .hd-actions #search{width:min(140px,14vw)}
- .hd-field>span{display:none}
 }
 .equipment-header-button{display:flex;align-items:center;gap:var(--gap-inline);min-width:150px;border:1px solid var(--teal);background:#eafafa;color:#164e55}
 .equipment-header-button span{font-size:var(--fs-micro)}
@@ -420,22 +411,22 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
    見分けが付くよう、面を持たせて字を小さくする（ボタンではない）。 */
 .reload-menu-note{display:flex;flex-direction:column;gap:var(--gap-hair);
  margin-bottom:var(--space-1);padding:var(--pad-card);border-radius:var(--radius-sm);
- background:var(--surface-2);font-size:var(--fs-micro);color:var(--ink-3)}
-.reload-menu-note b{font-size:var(--fs-sm);color:var(--ink-2)}
+ background:var(--surface-2);font-size:var(--fs-sm);color:var(--ink-3)}
+.reload-menu-note b{color:var(--ink-2)}
 
 /* 一覧の見出しを右クリックしたときの小さなメニュー(§9.110)。
    列を1つ隠すためだけに設定パネルを開かせない。**戻す操作も同じ場所**に
    置く——隠した本人が次に探すのはここなので、別の場所を覚えさせない。 */
 .col-head-menu .chm-head{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
-  margin-bottom:var(--space-1);font-size:var(--fs-micro);font-weight:800;color:var(--ink-3);
+  margin-bottom:var(--space-1);font-size:var(--fs-sm);font-weight:800;color:var(--ink-3);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .col-head-menu button{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .col-head-menu .chm-sep{margin:var(--space-1) 0;border-top:1px solid var(--line-soft)}
-.col-head-menu .chm-label{padding:var(--space-1) var(--space-2);font-size:var(--fs-micro);
+.col-head-menu .chm-label{padding:var(--space-1) var(--space-2);font-size:var(--fs-sm);
   font-weight:800;color:var(--muted)}
 .col-head-menu .chm-show{color:var(--ink-2)}
 .col-head-menu .chm-show::before{content:'＋';margin-right:var(--space-1);color:var(--teal);font-weight:800}
-.col-head-menu .chm-more{padding:var(--space-1) var(--space-2);font-size:var(--fs-micro);color:var(--muted)}
+.col-head-menu .chm-more{padding:var(--space-1) var(--space-2);font-size:var(--fs-sm);color:var(--muted)}
 /* ---------- 列の一時的な色(§9.239 ⑤-3、利用者の指示) ----------
    選ばせるのは7色だけ（§9.198。16進は選ばせない）。**色見本の隣に必ず
    色名を出す**——色だけで意味を伝えない（§3）ので、見本(`<i>`)は
@@ -446,7 +437,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
   gap:var(--gap-hair);padding:var(--space-1) var(--space-2) var(--space-2)}
 .col-head-menu .chm-tints .chm-tint{display:flex;align-items:center;gap:var(--gap-tight);
   width:100%;padding:var(--space-1);border:1px solid var(--line-soft);border-radius:var(--radius-xs);
-  background:var(--surface);font-size:var(--fs-micro);color:var(--ink-2);cursor:pointer}
+  background:var(--surface);font-size:var(--fs-sm);color:var(--ink-2);cursor:pointer}
 .col-head-menu .chm-tints .chm-tint>i{flex:0 0 auto;width:var(--ctl-box);height:var(--ctl-box);
   border:1px solid var(--chm-tint-line);border-radius:var(--radius-xs);background:var(--chm-tint)}
 .col-head-menu .chm-tints .chm-tint>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -679,11 +670,11 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .list-sort-label{white-space:nowrap}
  .list-sort-keys{display:inline-flex;align-items:center;gap:var(--gap-hair);
   flex-wrap:wrap;min-width:0}
- .list-sort-none{color:var(--muted);font-size:var(--fs-micro);white-space:nowrap}
+ .list-sort-none{color:var(--muted);font-size:var(--fs-sm);white-space:nowrap}
  .list-sort-chip{display:inline-flex;align-items:center;gap:var(--gap-hair);
   height:var(--ctl-h-xs);padding:0 var(--space-1);border:1px solid var(--teal);
   border-radius:var(--radius-xs);background:var(--pale);color:var(--ink);
-  font-size:var(--fs-micro);cursor:pointer;white-space:nowrap}
+  font-size:var(--fs-sm);cursor:pointer;white-space:nowrap}
  /* 何番目のキーかを示す番号。2つ以上のときだけ出る。 */
  .list-sort-chip b{display:inline-flex;align-items:center;justify-content:center;
   min-width:calc(14px * var(--ui-scale));height:calc(14px * var(--ui-scale));
@@ -706,7 +697,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
   box-shadow:0 10px 30px #0002;padding:var(--pad-card);
   display:flex;flex-direction:column;gap:var(--gap-inline)}
  .list-sort-menu[hidden]{display:none}
- .lsm-now{font-size:var(--fs-micro);color:var(--muted);display:flex;flex-direction:column;
+ .lsm-now{font-size:var(--fs-sm);color:var(--muted);display:flex;flex-direction:column;
   gap:var(--gap-hair)}
  .lsm-now b{font-size:var(--fs-sm);color:var(--ink);font-weight:700;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -721,7 +712,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lsm-del{border:0;background:transparent;color:var(--muted);cursor:pointer;
   height:var(--ctl-h-sm);padding:0 var(--space-2)}
  .lsm-del:hover{color:var(--danger)}
- .lsm-empty{font-size:var(--fs-micro);color:var(--muted);padding:var(--space-1)}
+ .lsm-empty{font-size:var(--fs-sm);color:var(--muted);padding:var(--space-1)}
  .lsm-actions{display:flex;gap:var(--gap-inline)}
  .lsm-actions button{flex:1;height:var(--ctl-h-sm);font-size:var(--fs-sm);
   border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);

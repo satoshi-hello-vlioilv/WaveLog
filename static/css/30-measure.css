@@ -39,7 +39,7 @@
    **1列のラジオ**——表は同時に1つしか開けない。 */
 .hd-table-menu{min-width:var(--w-xl);max-width:min(92vw,520px);max-height:60vh;overflow:auto}
 .hd-table-head{margin:0 0 var(--space-2);color:var(--ink);font-weight:800}
-.hd-table-head small{display:block;color:var(--ink-soft);font-size:var(--fs-tiny);font-weight:400}
+.hd-table-head small{display:block}
 .hd-table-pick{
   display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 var(--gap-inline);
   width:100%;height:auto;padding:var(--space-1) var(--space-2);border:0;
@@ -72,25 +72,7 @@
  --menu-pad:var(--space-3);--lvp-k-w:calc(64px * var(--ui-scale));
  display:flex;flex-direction:column;gap:var(--space-2);font-size:var(--fs-sm)}
 .lt-view-panel[hidden]{display:none}
-/* **表示列の編集はいちばん上・いちばん大きく**（§9.476、利用者の指示「表示列の編集はよく使うので、
-   アイコンを設定したりして特にわかりやすく」）。アイコン＋名前＋何ができるか＋行き先の矢印。
-   塗りは主な操作の色（teal）——パネルの中で「次にすること」を1つだけ指す（§CLAUDE 画面基準 2）。 */
-.lt-view-panel .lvp-cols{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;
- gap:var(--space-2);width:100%;height:auto;padding:var(--space-2) var(--space-3);
- border:1px solid var(--teal);border-radius:var(--radius-sm);background:var(--teal);color:#fff;
- text-align:start;cursor:pointer}
-/* 乗せたときの地は**面のトークンを宣言し直して**持つ（§9.449）。`.wl-menu button:hover:not(:disabled)`
-   （詳細度 0,3,1）が`:hover`だけの規則（0,3,0）に勝ち、淡い地に白字＝コントラスト 2.33 で読めなかった（§9.481）。 */
-.lt-view-panel .lvp-cols{--menu-item-hover:var(--teal-dark)}
-.lt-view-panel .lvp-cols:hover{border-color:var(--teal-dark)}
-.lt-view-panel .lvp-cols>i{font-size:1.25em}
-.lvp-cols-t{display:flex;flex-direction:column;min-width:0}
-/* 字の大きさは**パネルの他の行と同じ1つ**（`--fs-sm`・利用者の指示「UI内の文字列も含めて文字サイズの
-   統一感」）。名前と説明の差は大きさではなく**太さ**で付ける（薄める`opacity:.82`は teal の地で
-   3.86 まで落ちた・§9.481）。 */
-.lvp-cols-t b{font-size:var(--fs-sm);font-weight:800;line-height:1.35}
-.lvp-cols-t small{font-size:var(--fs-sm);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.lt-view-panel .lvp-cols .lvp-cols-go{font-size:.9em;opacity:.8}
+/* 「表示列を編集」（§9.476・§9.481）はパネルから帯の「表示列」へ出した（§9.505）ので、その規則は消した。 */
 /* 下の行は**同じ字の大きさ（--fs-sm）・同じ高さ・同じ左端**。名前の列は固定幅（§CLAUDE 画面基準 9）。
    行は**パネルの中で**名乗る（`.list-pagesize`・`.list-rowgap`の`inline-flex`より強く）。
    弱いと表示件数の欄だけ左端が28pxずれた（実測）。 */
@@ -98,7 +80,6 @@
  justify-items:start;gap:var(--gap-inline);min-height:var(--ctl-h-sm);font-size:var(--fs-sm);color:var(--ink-2)}
 .lt-view-panel .lvp-row[hidden]{display:none}
 .lt-view-panel .lvp-row>*{margin:0}
-.lt-view-panel .lvp-cols+.lvp-row{border-top:1px solid var(--line-soft);padding-top:var(--space-2)}
 /* 名前は`.lt-view-panel`で名乗る（帯の`.list-pagesize>span`＝付随情報の寸法より強く。弱いと表示件数だけ
    10px になった・実測）。 */
 .lt-view-panel .lvp-k{color:var(--ink-3);font-size:var(--fs-sm);font-weight:700;white-space:nowrap}
@@ -115,7 +96,6 @@
    （浮きパネルの中に絶対配置のポップアップを作らない・§9.201）——行の下いっぱいに。 */
 .lt-view-panel .list-sort-menu{grid-column:1 / -1;position:static;min-width:0;max-width:none;width:100%;
  box-shadow:none;margin-top:var(--space-1)}
-.lt-view-btn i{font-style:normal;color:var(--muted);margin-left:var(--gap-hair)}
 .lt-view-btn[aria-expanded="true"]{border-color:var(--teal);background:var(--pale);color:var(--ink)}
 /* ============================================================
    「どこを見ているか」と「いつのデータか」（§9.286 ②③④）
@@ -137,25 +117,25 @@
   border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
   padding:1px}
 .list-pager>b{min-width:var(--w-sm);padding:0 var(--space-1);text-align:center;
-  font-size:var(--fs-badge);font-weight:800;color:var(--ink);white-space:nowrap;
+  font-size:var(--lt-fs);font-weight:800;color:var(--ink);white-space:nowrap;
   font-variant-numeric:tabular-nums}
-.list-page-btn{min-width:var(--ctl-h-xs);height:var(--ctl-h-xs);padding:0;
+/* 内側の2つは器（枠1px＋余白1px）の内へ収める——**ページめくり全体で`--lt-h`**。 */
+.list-page-btn{min-width:calc(var(--lt-h) - 4px);height:calc(var(--lt-h) - 4px);padding:0;
   border:0;border-radius:var(--radius-xs);background:transparent;cursor:pointer;
   font-size:var(--fs-sm);font-weight:800;color:var(--nav);line-height:1}
 .list-page-btn:hover:not(:disabled){background:var(--surface-3)}
 /* **押せないことは形で言う**（§CLAUDE 4）——最後のページで「次へ」が
    押せるのに何も起きない、を作らない。理由は`title`が持つ。 */
 .list-page-btn:disabled{color:var(--muted);cursor:not-allowed;opacity:.5}
-.list-count{color:var(--ink-3);font-size:var(--fs-badge);white-space:nowrap;
+.list-count{color:var(--ink-3);font-size:var(--lt-fs);white-space:nowrap;
   font-variant-numeric:tabular-nums}
 /* 元データの鮮度＝押すと再読込のメニューが開くボタン（§9.286 ④）。
    **状態と打つ手を同じ場所に**置く（§CLAUDE 画面基準 2）。 */
+/* 押せる物なので**押す物の顔**（枠・地は帯のボタンと同じ・§9.505）。 */
 .list-fresh-chip{display:inline-flex;align-items:center;gap:var(--gap-tight);
-  height:var(--ctl-h-xs);padding:var(--pad-chip);cursor:pointer;
-  border:1px solid var(--line-soft);border-radius:var(--radius-md);
-  background:var(--surface-2);white-space:nowrap;font-size:var(--fs-micro)}
+  padding:0 var(--ctl-pad-x-sm);cursor:pointer;
+  border:1px solid var(--line-strong);background:var(--surface)}
 .list-fresh-chip:hover{border-color:var(--teal);background:var(--surface)}
-.list-fresh-chip .lf-key{color:var(--muted);font-weight:700}
 .list-fresh-chip .lf-val{color:var(--ink);font-weight:800;font-variant-numeric:tabular-nums}
 .list-fresh-chip .lf-act{color:var(--teal);font-weight:800}
 /* 読み取れなかったことは**色だけで伝えない**（§CLAUDE 3）。文字は
@@ -174,31 +154,30 @@
    高くしないと、出す中身が無いときでも空のツールバーが表示されてしまう。 */
 .list-toolbar-btn{border:1px solid var(--line);background:#fff;cursor:pointer;font-weight:700;color:var(--muted)}
 .list-toolbar-btn:hover{border-color:var(--teal);background:var(--surface-2)}
-.list-join-chip{display:inline-flex;align-items:center;height:var(--ctl-h-xs);border-radius:var(--radius-md);white-space:nowrap;cursor:help}
+.list-join-chip{display:inline-flex;align-items:center;cursor:help;
+ height:var(--lt-h);font-size:var(--lt-fs);border-radius:var(--radius-sm);white-space:nowrap}
 /* 読み込みにかかった時間(§9.90)。**出るのは遅かったときだけ**（§9.340、
    REVIEW 4-1 ④）——速いときは`hidden`で消える（作業スケジュールと同じ約束・
    §9.198）。出ている＝遅い、なので素の見た目も警告色でよい。 */
-.list-load-chip{display:inline-flex;align-items:center;height:var(--ctl-h-xs);
- padding:var(--pad-chip);border-radius:var(--radius-md);white-space:nowrap;cursor:help;
- font-size:var(--fs-micro);font-weight:800;color:var(--muted);background:var(--surface-2);
+.list-load-chip{display:inline-flex;align-items:center;
+ padding:0 var(--ctl-pad-x-sm);cursor:help;font-weight:800;color:var(--muted);background:var(--surface-2);
  border:1px solid var(--line-soft)}
 .list-load-chip.is-slow{color:var(--warn-fg);background:var(--warn-bg);border-color:var(--warn-border)}
 /* 列に一時的な色を付けていることを常時出す(§9.239 ⑤-3・§9.175)。
    **押すと外せる**——覚えていることを画面に書き、忘れさせる手立ても
    同じ場所に置く。色そのものは列に出ているので、ここは件数を文字で言う。 */
-.list-tint-chip{display:inline-flex;align-items:center;height:var(--ctl-h-xs);
- padding:var(--pad-chip);border:1px solid var(--teal);border-radius:var(--radius-md);
- background:var(--pale);color:var(--computed-fg);
- font-size:var(--fs-micro);font-weight:800;white-space:nowrap;cursor:pointer}
+.list-tint-chip{display:inline-flex;align-items:center;
+ padding:0 var(--ctl-pad-x-sm);border:1px solid var(--teal);
+ background:var(--pale);color:var(--computed-fg);font-weight:800;cursor:pointer}
 .list-tint-chip:hover{background:var(--teal);color:var(--surface);border-color:var(--teal)}
 /* 親の下へ畳んだ子ロットの件数(§9.239 ⑤-2)。**行が減ったことを黙らない**。 */
 .list-child-chip{display:inline-flex;align-items:center;height:var(--ctl-h-xs);
- padding:var(--pad-chip);border:1px solid var(--line-soft);border-radius:var(--radius-md);
+ padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line-soft);border-radius:var(--radius-sm);
  background:var(--surface-2);color:var(--ink-3);
- font-size:var(--fs-micro);font-weight:800;white-space:nowrap;cursor:help}
+ font-size:var(--fs-sm);font-weight:800;white-space:nowrap;cursor:help}
 .list-child-chip.is-off{color:var(--muted)}
 :is(.sc-split-wrap,.sc-float-body) .list-toolbar{margin:4px 6px 0;gap:var(--gap-tight)}
-:is(.sc-split-wrap,.sc-float-body) .list-toolbar-btn{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs)}
+:is(.sc-split-wrap,.sc-float-body) .list-toolbar-btn{padding:0 var(--ctl-pad-x-xs)}
 /* **行の高さと行内ボタンの高さは #grid で解決させる。** カスタム
    プロパティは**定義した場所で値が解決される**ため、:root の
    --row-h/--row-ctl-h は :root の --row-pad-y(既定)を見てしまい、

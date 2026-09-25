@@ -83,7 +83,7 @@ run('test_filterio: 登録フィルタの持ち出し・取り込み（§9.171�
   await page.evaluate(()=>document.getElementById('reloadFilterPresets')?.click());
 
   /* §9.286 ①: たまにしか使わない入口は`⋯`の浮きメニューへ畳んだ。**消していない**ので、開いてから押す。 */
-  await page.click('#filterMoreBtn');
+  await page.click('#filterCondBtn');
   await page.click('#openFilterPresets');
   await page.waitForSelector('#filterPresetModal:not([hidden])',{timeout:10000});
   await idle();  // 登録一覧の取り直し（reloadFilterPresets）が済むまで

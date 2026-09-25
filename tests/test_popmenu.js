@@ -73,7 +73,7 @@ run('test_popmenu: 浮きメニュー（§9.448・§9.449）', async ({page,rec,
   for(const f of Object.keys(a))if(a[f]!==b[f])diffs.push(`${name}.${f} ${a[f]}→${b[f]}`);
  }
  rec('13面の見た目が控えと1つも違わない（§9.449。揃えるのは値ではなく置き場）',
-     diffs.length===0, diffs.slice(0,5).join(' / '));
+     diffs.length===0, `${diffs.length}件: `+diffs.join(' / '));  // 全部出す（§9.449「動かした値は全部数えて出す」）
 
  /* ---- B-1. 浮いて出る面は全部`.wl-menu`を名乗る ----
     器を作っているのはJSの中なので、**書いてある所そのもの**を見る

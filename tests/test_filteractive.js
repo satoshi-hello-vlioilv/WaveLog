@@ -40,7 +40,7 @@ run('test_filteractive: 適用中のフィルタを個人単位で覚える(§9.
 
   // ---- 条件を1つ作る
   /* §9.286 ①: たまにしか使わない入口は`⋯`の浮きメニューへ畳んだ。**消していない**ので、開いてから押す。 */
-  await page.click('#filterMoreBtn');await page.waitForSelector('#filterToggle',{state:'visible',timeout:8000});
+  await page.click('#filterCondBtn');await page.waitForSelector('#filterToggle',{state:'visible',timeout:8000});
   await page.click('#filterToggle');await page.waitForSelector('#filterColumn',{state:'visible',timeout:8000});
   const col=await page.evaluate(()=>{const s=document.querySelector('#filterColumn');
    const o=[...s.options].map(x=>x.value);return o.find(v=>/ロット番号/.test(v))||o[1]||o[0]});
@@ -69,7 +69,7 @@ run('test_filteractive: 適用中のフィルタを個人単位で覚える(§9.
   rec('開き直しても件数が同じ',c.rows===a.rows,`${a.rows} -> ${c.rows}`);
 
   // ---- 登録一覧に「覚えている」と書いてある / 消せる
-  await page.click('#filterMoreBtn');
+  await page.click('#filterCondBtn');
   await page.click('#openFilterPresets');
   await page.waitForSelector('.filter-preset-toolbar',{timeout:8000});
   const memo=await page.evaluate(()=>{
@@ -82,7 +82,7 @@ run('test_filteractive: 適用中のフィルタを個人単位で覚える(§9.
   // ---- 全解除すると覚えも消える
   await page.evaluate(()=>{const m=document.querySelector('#filterPresetModal');if(m)m.hidden=true;
    document.querySelectorAll('.sc-float-win').forEach(x=>{if(x.querySelector('.filter-preset-toolbar'))x.hidden=true})});
-  await page.click('#filterMoreBtn');
+  await page.click('#filterCondBtn');
   await page.click('#clearGenericFilters');
   await W.until(page,()=>typeof S!=='undefined'&&(S.genericFilters||[]).length===0,null,{what:'条件が外れる'});
   await idle();

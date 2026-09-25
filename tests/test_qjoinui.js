@@ -303,7 +303,7 @@ run('test_qjoinui: クエリ結合の画面（§9.193）', async ({page,rec,B,W,
    return {added:(info&&info.addedColumnNames)||[],inGrid:cols.filter(c=>c.startsWith('UI_'))};
   });
   rec('足した列が一覧の列に入る',joined.inGrid.length>0,JSON.stringify(joined.inGrid.slice(0,4)));
-  await W.listView(page);await page.click('#listColumnBtn');
+  await page.click('#listColumnBtn');
   await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:20000});
   await raf2(page);
   const origin=await page.evaluate(()=>{

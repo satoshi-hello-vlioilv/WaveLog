@@ -73,7 +73,7 @@ run('test_filterlock: 「いつも適用（固定）」は1つの印（§9.190�
    const m=document.querySelector('#filterPresetModal');if(!m||m.hidden)return false;
    const list=document.querySelector('#filterPresetList');if(!list)return false;
    if(document.querySelectorAll('#filterPresetList .filter-preset-item').length>0)return true;
-   return !need&&/登録フィルタはありません/.test(list.textContent||'');
+   return !need&&/登録した条件はありません/.test(list.textContent||'');
   },needItems,{timeout:20000});
  };
  const closeList=()=>page.evaluate(()=>{const m=document.querySelector('#filterPresetModal');if(m)m.hidden=true});

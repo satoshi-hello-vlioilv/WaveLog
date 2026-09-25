@@ -57,7 +57,7 @@ run('test_colsrcfx: 元データの列にも「この列の作り方」の式（
     open:async()=>{await page.waitForSelector('#grid table',{timeout:30000});
                    await page.waitForFunction(()=>document.querySelectorAll('#grid tbody tr td[data-col]').length>5,null,{timeout:20000})},
     target:()=>page.evaluate(()=>WL.list.listLayoutTarget()),
-    panel:async()=>{await W.listView(page);await page.click('#listColumnBtn')},
+    panel:async()=>{await page.click('#listColumnBtn')},
     redraw:()=>page.evaluate(()=>WL.list.load()),
     cell:k=>page.evaluate(k=>{const td=document.querySelector(`#grid tbody tr td[data-col="${CSS.escape(k)}"]`);return td?td.textContent.trim():null},k)},
    {name:'作業スケジュール表',

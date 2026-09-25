@@ -59,7 +59,7 @@ run('test_colio: 列の設定の持ち出し・取り込み(§9.178)', async ({p
    return k;
   });
   await paint();
-  await W.listView(page);await page.click('#listColumnBtn');
+  await page.click('#listColumnBtn');
   await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:8000});
   await idle(300,5000);
   const before=await page.evaluate(()=>document.querySelectorAll('.sc-float-win,#listColumnPanel').length);

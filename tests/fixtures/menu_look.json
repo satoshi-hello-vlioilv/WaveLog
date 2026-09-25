@@ -122,8 +122,8 @@
    "border": "1px solid rgb(183, 199, 204)",
    "pos": "fixed",
    "z": "1600",
-   "itemH": 34,
-   "itemFs": "13px",
+   "itemH": 32,
+   "itemFs": "12px",
    "itemPad": "8px 12px",
    "itemDisp": "flex",
    "itemColor": "rgb(23, 56, 66)"
@@ -140,8 +140,8 @@
    "border": "1px solid rgb(183, 199, 204)",
    "pos": "fixed",
    "z": "1600",
-   "itemH": 34,
-   "itemFs": "13px",
+   "itemH": 32,
+   "itemFs": "12px",
    "itemPad": "8px 12px",
    "itemDisp": "flex",
    "itemColor": "rgb(23, 56, 66)"
@@ -158,8 +158,8 @@
    "border": "1px solid rgb(183, 199, 204)",
    "pos": "fixed",
    "z": "1600",
-   "itemH": 34,
-   "itemFs": "13px",
+   "itemH": 32,
+   "itemFs": "12px",
    "itemPad": "8px 12px",
    "itemDisp": "flex",
    "itemColor": "rgb(23, 56, 66)"
@@ -176,8 +176,8 @@
    "border": "1px solid rgb(183, 199, 204)",
    "pos": "fixed",
    "z": "1600",
-   "itemH": 34,
-   "itemFs": "13px",
+   "itemH": 32,
+   "itemFs": "12px",
    "itemPad": "8px 12px",
    "itemDisp": "flex",
    "itemColor": "rgb(23, 56, 66)"
