@@ -930,6 +930,13 @@ const SC_LOCK_WAIT_MAX_MS=4000;
       <span class="sc-view-row-name">まとめ<small>日付は現場歴（勤務の日付補正を当てた現場の1日）と太陽暦から選べます</small></span>
       <select id="scGroupSelect">${SC_GROUP_MODES.map(m=>`<option value="${m.key}">${m.label}</option>`).join('')}</select>
      </label>
+     <!-- 小計(§9.493)。**まとめとは別の軸**（まとめ＝箱に分ける／小計＝区切りごとに数える）。
+          切のあいだは札だけ——出し方と列は、出すと決めてから選ぶ（次にすることを1つだけ指す）。 -->
+     <div class="sc-view-row sc-subtotal-row" id="scSubtotalRange" hidden>
+      <span class="sc-view-row-name">小計<small>区切りごとに作業ロットの数と、選んだ列の合計を出します。まとめとは別に選べます（この端末・設備ごと）</small></span>
+      <span class="sc-view-row-ctl" id="scSubtotalCtl"></span>
+      <div class="sc-subtotal-more" id="scSubtotalMore" hidden></div>
+     </div>
      <!-- さかのぼり(§9.366)。**2段（種類→量）で選ばせる**——候補は13あるが、
           一度に見えるのは群5つ＋その中の量だけ（一度に見る数を5つ以下に
           保つ）。いま何を基準にしているのか（時間なのか現場歴なのか）が
@@ -1708,7 +1715,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     正確な名前はパネルの中と`title`に残す。 */
  function updateViewMenuUi(){
   const btn=$('#scViewMenuBtn');if(!btn)return;
-  const secs=[$('#scGroupRange'),$('#scHistoryRange'),
+  const secs=[$('#scGroupRange'),$('#scSubtotalRange'),$('#scHistoryRange'),
               $('#scViewAccRowStyle')];
   const any=secs.some(el=>el&&!el.hidden);
   btn.hidden=!any;
@@ -1718,6 +1725,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(grpWrap&&!grpWrap.hidden){
    const m=SC_GROUP_MODES.find(x=>x.key===(scState.groupMode||'none'));
    if(m)bits.push(m.short||m.label);
+  }
+  const stWrap=$('#scSubtotalRange');
+  if(stWrap&&!stWrap.hidden){
+   const c=subtotalCfg();
+   if(c.on){const u=SC_SUBTOTAL_UNITS.find(x=>x.key===c.unit);bits.push('小計:'+(c.unit==='col'&&c.unitCol?scColLabel(c.unitCol):(u.short||u.label)))}
+   renderSubtotalPicker();
   }
   const histWrap=$('#scHistoryRange');
   if(histWrap&&!histWrap.hidden){
@@ -2476,6 +2489,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const histWrap=$('#scHistoryRange');if(histWrap)histWrap.hidden=inBoard;
   updateHistoryFromUi();
   const grpWrap=$('#scGroupRange');if(grpWrap)grpWrap.hidden=inBoard;
+  const stWrap=$('#scSubtotalRange');if(stWrap)stWrap.hidden=inBoard;
   updateViewMenuUi();
   if(scState.pickerEnabled)$('#scEquipmentSelect').hidden=inBoard;
   updateSideUi();
@@ -5732,29 +5746,37 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const use=t===null?((e&&e.__nearT)||null):t;
   return use===null?'日付未定':fmtDateTitle(new Date(use).toISOString());
  }
- function groupBucketOf(e){
-  if(scState.groupMode==='date'||scState.groupMode==='caldate'){
-   const v=scState.groupMode==='caldate'?calDateBucketLabel(e):dateBucketLabel(e);
+ /* 行がどの「まとまり」に入るか。**まとめ（見出しの箱）と小計（§9.493）が同じ1本を通る**
+    ——語彙（`SC_GROUP_MODES`）も日付の数え方も同じなので、別々に書くと片方だけ直した日に
+    「見出しは8/18なのに小計は8/19」が起きる。`col`は小計だけが使う「列の値が変わるごと」。 */
+ function bucketOf(e,mode,col){
+  if(mode==='date'||mode==='caldate'){
+   const v=mode==='caldate'?calDateBucketLabel(e):dateBucketLabel(e);
    return {key:v,label:v};
   }
-  if(scState.groupMode==='shift'){
+  if(mode==='shift'){
    const v=e.shift||'';
    return {key:v||'-',label:v||'勤務未設定'};
   }
-  if(scState.groupMode==='dateshift'||scState.groupMode==='caldateshift'){
+  if(mode==='dateshift'||mode==='caldateshift'){
    // 日付が変わっても勤務名が同じ(1直→1直)場合に同じまとまりへ吸われないよう、
    // キーは日付と勤務の組で作る。3直のような日跨ぎ勤務でも、行の代表時刻の
    // 日付でまとまるため見出しと行の日付が食い違わない。
-   const d=scState.groupMode==='caldateshift'?calDateBucketLabel(e):dateBucketLabel(e);
+   const d=mode==='caldateshift'?calDateBucketLabel(e):dateBucketLabel(e);
    const v=e.shift||'勤務未設定';
    return {key:d+'\u0001'+v,label:`${d} ${v}`};
   }
-  if(scState.groupMode==='category'){
+  if(mode==='category'){
    const c=categoryOf(e);
    return {key:c.key,label:c.label};
   }
+  if(mode==='col'&&col){
+   const v=String(timelineRuleView(e).raw(col)??'').trim();
+   return {key:v,label:`${scColLabel(col)} ${v||'（空）'}`};
+  }
   return null;
  }
+ function groupBucketOf(e){return bucketOf(e,scState.groupMode)}
  function groupHeadHtml(label,count){
   /* **どちらの日付でまとめた見出しなのかを書く**(§9.198)。同じ「8/18」でも
      現場歴と太陽暦では入る行が違うので、見出しだけを見て判断できるように
@@ -5763,6 +5785,200 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   return `<div class="sc-group-head"><span class="sc-group-label">${esc(label)}</span>`
    +(b?`<span class="sc-group-basis" title="この日付は${esc(b)}で数えています（まとめ方で切り替えられます）">${esc(b)}</span>`:'')
    +`<span class="sc-group-count">${count}件</span></div>`;
+ }
+
+ /* ---------- 小計（§9.493、利用者の指示） ----------
+    「日単位または直単位でまとめ機能はありますが、それと同じように、でも独立して集計を
+     まとめて小計として指定した単位ごとに行またはラベルとして出すようにしたいです。
+     作業ロット数、指定した項目列の合計値（例えば重量）など、ある程度汎用性を高く
+     想定して作成してください。ONOFFの機能も実装お願いします。」
+
+    決めごと:
+     ・**まとめとは別の軸**。まとめ＝行を箱に分けて見出しを付ける、小計＝区切りごとに
+       数える。単位の語彙と数え方は`bucketOf()`の1本を共有する（語彙を2つ持たない）。
+     ・**数える行は作業ロットだけ**（`subtotalCounted()`の1箇所）。取消・設備停止・
+       申し送り・枠は数えず、合計にも入れない。子ロットは親の1本で数える
+       （親の行が値を持つ——子を足すと同じ重量を2度数える）。
+     ・**合計は数として読めた値だけ**。読めない値・単位の違う値は足さずに**件数を言う**
+       （黙って0として足すと、小計が小さく出ても気づけない）。
+     ・値の出どころは表のセルと同じ（`timelineRuleView().raw()`＝固定列の字・式の列・
+       内容の値）。時間の列（見積・実績）だけは字でなく**分**を足す（`SC_SUBTOTAL_AMOUNT`）。
+     ・設定は**この端末・設備ごと**（列の顔ぶれが設備ごとに違うため）。既定は切。 */
+ const SC_SUBTOTAL_KEY='ScheduleSubtotalV1';
+ const SC_SUBTOTAL_UNITS=[
+  ...SC_GROUP_MODES.filter(m=>m.key!=='none'),
+  {key:'col',label:'列の値が変わるごと',short:'列の値'},
+ ];
+ const SC_SUBTOTAL_STYLES=[
+  {key:'row',label:'行',note:'合計を足した列の真下へ、表の1行として出します'},
+  {key:'label',label:'ラベル',note:'区切りの下へ、1行の帯にまとめて出します'},
+ ];
+ const SC_SUBTOTAL_DEFAULT={on:false,unit:'date',unitCol:'',style:'row',cols:[]};
+ /* 字ではなく量を足す列。**表に出す字（「1時間30分」）を読み返さない**——書き方は
+    「表示」で変わる（§9.341）ので、字から数を起こすと書き方ごとに読み方が要る。 */
+ const SC_SUBTOTAL_AMOUNT={
+  '__est__':{num:e=>(e.estimate&&e.estimate.minutes!=null)?+e.estimate.minutes:null,text:v=>WL.duration.compact(v)},
+  '__actual__':{num:e=>(e.state==='完了'&&e.actual&&e.actual.minutes!=null)?+e.actual.minutes:null,text:v=>WL.duration.compact(v)},
+ };
+ /* 足せない列（印・ボタン・日時・人）。候補に出しても押せるだけで何も起きないので出さない（§4）。 */
+ const SC_SUBTOTAL_NEVER=new Set(['__cat__','__workable__','__date__','__caldate__','__time__','__shift__','__rel__',
+  '__flags__','__by__','__pc__','__upby__','__uppc__','__actions__']);
+ function subtotalStore(){
+  try{const v=JSON.parse(localStorage.getItem(SC_SUBTOTAL_KEY)||'{}');return v&&typeof v==='object'?v:{}}
+  catch(err){WL.quiet.note('保存値が壊れていても既定（切）で続ける',err);return {}}
+ }
+ function subtotalCfg(){
+  const v=subtotalStore()[scState.equipment||'']||{};
+  const c=Object.assign({},SC_SUBTOTAL_DEFAULT,v);
+  if(!SC_SUBTOTAL_UNITS.some(u=>u.key===c.unit))c.unit=SC_SUBTOTAL_DEFAULT.unit;
+  if(!SC_SUBTOTAL_STYLES.some(u=>u.key===c.style))c.style=SC_SUBTOTAL_DEFAULT.style;
+  c.cols=Array.isArray(c.cols)?c.cols.map(String):[];
+  c.on=!!c.on;
+  return c;
+ }
+ function saveSubtotalCfg(patch){
+  const all=subtotalStore(),eq=scState.equipment||'';
+  all[eq]=Object.assign(subtotalCfg(),patch);
+  try{localStorage.setItem(SC_SUBTOTAL_KEY,JSON.stringify(all))}
+  catch(err){WL.quiet.note('保存できなくても今の表示には効く',err)}
+  return all[eq];
+ }
+ function subtotalCounted(e){return !!e&&e.kind==='作業'&&e.state!=='取消'}
+ /* 値を数へ。桁区切りの`,`は外し、数の後ろの字（kg・本…）を単位として控える。
+    `dec`は小数の桁数（合計を同じ桁で書くため）。読めなければ`null`。 */
+ function subtotalNum(v){
+  const m=String(v??'').replace(/,/g,'').match(/^\s*([-+]?\d*\.?\d+)\s*([^\d\s]*)\s*$/);
+  if(!m)return null;
+  const n=parseFloat(m[1]);
+  if(!Number.isFinite(n))return null;
+  const dot=m[1].indexOf('.');
+  return {n,unit:m[2]||'',dec:dot<0?0:m[1].length-dot-1};
+ }
+ function subtotalAmountOf(e,k){
+  const a=SC_SUBTOTAL_AMOUNT[k];
+  if(a){const n=a.num(e);return n==null||!Number.isFinite(n)?null:{n,unit:'',dec:0}}
+  return subtotalNum(timelineRuleView(e).raw(k));
+ }
+ /* 1つの区切りを数える。答えは`{count, sums:{列:{n,unit,dec,used,skip}}}`。 */
+ function subtotalOf(rows,cols){
+  const counted=rows.filter(subtotalCounted);
+  const sums={};
+  cols.forEach(k=>{
+   const s={n:0,unit:null,dec:0,used:0,skip:0};
+   counted.forEach(e=>{
+    const a=subtotalAmountOf(e,k);
+    if(!a||(s.unit!==null&&a.unit!==s.unit)){s.skip++;return}
+    s.unit=a.unit;s.n+=a.n;s.dec=Math.max(s.dec,a.dec);s.used++;
+   });
+   sums[k]=s;
+  });
+  return {count:counted.length,sums};
+ }
+ function subtotalSumText(k,s){
+  if(!s.used)return '—';
+  const a=SC_SUBTOTAL_AMOUNT[k];
+  if(a)return a.text(s.n);
+  const d=Math.min(s.dec,6);
+  return s.n.toLocaleString('ja-JP',{minimumFractionDigits:d,maximumFractionDigits:d})+(s.unit||'');
+ }
+ function subtotalSumTitle(k,s){
+  return `${scColLabel(k)}の合計（作業ロット${s.used}件ぶん）`
+   +(s.skip?`\n数として読めない・単位の違う値が${s.skip}件あり、足していません`:'');
+ }
+ /* いま表に出ている列のうち、小計へ足せるもの（並びは表と同じ）。 */
+ function subtotalColumnChoices(){
+  return timelineColumnKeys().filter(k=>!SC_SUBTOTAL_NEVER.has(k));
+ }
+ /* 1つの区切りの小計。**行**は表と同じグリッドに載り、合計は足した列の真下へ来る。
+    名前（「小計 8/18 1直・作業 5ロット」）は最初に足す列より左の列をまたいで置く。
+    最初の列から足すときは、名前は右端の余り（`1fr`の1本）へ回す。 */
+ function subtotalEl(unit,cfg){
+  const agg=subtotalOf(unit.rows,cfg.cols.filter(k=>subtotalColumnChoices().includes(k)));
+  const el=document.createElement('div');
+  el.className='sc-subtotal'+(cfg.style==='label'?' is-label':'');
+  el.dataset.unit=unit.key;el.dataset.count=String(agg.count);
+  /* 名前は列の幅で切れることがある（行のとき）。**全文は`title`**で読めるようにする。 */
+  el.title=`小計 ${unit.label}・作業 ${agg.count}ロット`;
+  const name=`<b class="sc-subtotal-tag">小計</b><span class="sc-subtotal-name">${esc(unit.label)}</span>`
+   +`<span class="sc-subtotal-count" title="この区切りの作業ロットの数（取消・設備停止・申し送りは数えない。子ロットは親の1本）">作業 ${agg.count}ロット</span>`;
+  const keys=Object.keys(agg.sums);
+  if(cfg.style==='label'){
+   el.innerHTML=name+keys.map(k=>{const s=agg.sums[k];
+    return `<span class="sc-subtotal-sum" data-col="${esc(k)}" title="${esc(subtotalSumTitle(k,s))}">`
+     +`<small>${esc(scColLabel(k))}</small>${esc(subtotalSumText(k,s))}${s.skip&&s.used?'<i class="sc-subtotal-skip">*</i>':''}</span>`;
+   }).join('');
+   return el;
+  }
+  const shown=timelineColumnKeys();
+  const idx=k=>shown.indexOf(k)+2;      // 1列目は取っ手
+  const first=keys.length?Math.min(...keys.map(idx)):shown.length+2;
+  const nameCol=first>2?`1 / ${first}`:`${shown.length+2} / -1`;
+  el.innerHTML=`<span class="sc-subtotal-head" style="grid-column:${nameCol}">${name}</span>`
+   +keys.map(k=>{const s=agg.sums[k];
+    return `<span class="sc-subtotal-sum" data-col="${esc(k)}" style="grid-column:${idx(k)}" title="${esc(subtotalSumTitle(k,s))}">`
+     +`${esc(subtotalSumText(k,s))}${s.skip&&s.used?'<i class="sc-subtotal-skip">*</i>':''}</span>`;
+   }).join('');
+  WL.columnAlign.applyCells(el,timelineTarget(),{selector:':scope>.sc-subtotal-sum[data-col]'});
+  return el;
+ }
+ /* 「表示」の小計の段。**選んだその場で表へ効かせる**（保存ボタンを持たない・§9.113と同じ）。
+    列の札には**いまの予定で数として読める件数**を添える——足してみるまで分からない、を
+    なくす（推測させない）。読める値が1件も無い列は押せなくして理由を書く（§4）。 */
+ function renderSubtotalPicker(){
+  const ctl=$('#scSubtotalCtl'),more=$('#scSubtotalMore');
+  if(!ctl||!more)return;
+  const c=subtotalCfg();
+  const opt=(attr,val,on,label,title)=>`<button type="button" class="sc-subtotal-opt${on?' is-on':''}" ${attr}="${esc(val)}"`
+    +` aria-pressed="${on?'true':'false'}"${title?` title="${esc(title)}"`:''}>${esc(label)}</button>`;
+  const choices=subtotalColumnChoices();
+  ctl.innerHTML=`<span class="sc-subtotal-opts" role="group" aria-label="小計を出すか">`
+    +opt('data-st-on','0',!c.on,'出さない')+opt('data-st-on','1',c.on,'出す')+`</span>`
+    +`<select id="scSubtotalUnit" aria-label="小計の区切り"${c.on?'':' hidden'}>`
+    +SC_SUBTOTAL_UNITS.map(u=>`<option value="${esc(u.key)}"${u.key===c.unit?' selected':''}>${esc(u.label)}</option>`).join('')+`</select>`
+    +`<select id="scSubtotalUnitCol" aria-label="値が変わるごとに区切る列"${c.on&&c.unit==='col'?'':' hidden'}>`
+    +`<option value="">（列を選ぶ）</option>`
+    +timelineColumnKeys().filter(k=>k!=='__actions__').map(k=>`<option value="${esc(k)}"${k===c.unitCol?' selected':''}>${esc(scColLabel(k))}</option>`).join('')
+    +`</select>`;
+  more.hidden=!c.on;
+  if(c.on){
+   const rows=visibleEntries().filter(subtotalCounted);
+   const readable=k=>rows.filter(e=>subtotalAmountOf(e,k)).length;
+   more.innerHTML=`<span class="sc-subtotal-more-name">出し方</span><span class="sc-subtotal-opts" role="group" aria-label="小計の出し方">`
+     +SC_SUBTOTAL_STYLES.map(st=>opt('data-st-style',st.key,st.key===c.style,st.label,st.note)).join('')+`</span>`
+     +`<span class="sc-subtotal-more-name">合計する列</span><span class="sc-subtotal-opts is-cols" role="group" aria-label="合計する列">`
+     +(choices.length?choices.map(k=>{
+       const n=readable(k),on=c.cols.includes(k);
+       const dis=!n&&!on;
+       return `<button type="button" class="sc-subtotal-opt${on?' is-on':''}" data-st-col="${esc(k)}" aria-pressed="${on?'true':'false'}"`
+        +`${dis?' disabled':''} title="${esc(dis?'いまの予定には数として読める値がありません':`作業ロット${rows.length}件のうち${n}件が数として読めます`)}">`
+        +`${esc(scColLabel(k))}<small>${n}/${rows.length}</small></button>`;
+      }).join(''):'<small class="sc-subtotal-none">表に出している列がありません</small>')
+     +`</span>`
+     +`<small class="sc-subtotal-note">作業ロットの数はいつも出します（取消・設備停止・申し送り・枠は数えず、子ロットは親の1本）。${
+        c.unit==='col'&&!c.unitCol?'<b>区切る列を選ぶと出ます。</b>':''}</small>`;
+  }else more.innerHTML='';
+  const apply=patch=>{saveSubtotalCfg(patch);updateViewMenuUi();renderTimeline()};
+  ctl.querySelectorAll('[data-st-on]').forEach(b=>b.onclick=()=>apply({on:b.dataset.stOn==='1'}));
+  $('#scSubtotalUnit').onchange=e=>apply({unit:e.target.value});
+  $('#scSubtotalUnitCol').onchange=e=>apply({unitCol:e.target.value});
+  more.querySelectorAll('[data-st-style]').forEach(b=>b.onclick=()=>apply({style:b.dataset.stStyle}));
+  more.querySelectorAll('[data-st-col]').forEach(b=>b.onclick=()=>{
+   const k=b.dataset.stCol,cur=subtotalCfg().cols;
+   apply({cols:cur.includes(k)?cur.filter(x=>x!==k):[...cur,k]});
+  });
+ }
+ /* 並びを区切りに割る（行は`list`の順・続いている間は同じ区切り）。区切りの最後の行 → 区切り。 */
+ function subtotalUnits(list,cfg){
+  const ends=new Map();
+  if(!cfg.on||(cfg.unit==='col'&&!cfg.unitCol))return ends;
+  let cur=null;
+  list.forEach(e=>{
+   const b=bucketOf(e,cfg.unit,cfg.unitCol)||{key:'__all__',label:'全体'};
+   if(!cur||cur.key!==b.key){if(cur)ends.set(cur.rows[cur.rows.length-1],cur);cur={key:b.key,label:b.label,rows:[]}}
+   cur.rows.push(e);
+  });
+  if(cur)ends.set(cur.rows[cur.rows.length-1],cur);
+  return ends;
  }
 
 /* 内容の列数はマスタ次第で変わるので、**グリッドの定義も一緒に作り直す**。
@@ -6515,6 +6731,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   bindInsertGhost(timeline);
   updateInsertHintUi();
   const kids=childEntriesByParent();
+  /* 小計（§9.493）は**まとめの箱をまたいで**数える（別の軸）。区切りの最後の行の下へ置く。 */
+  const stCfg=subtotalCfg(),stEnds=subtotalUnits(list,stCfg);
   buckets.forEach(bucket=>{
    const box=document.createElement('div');
    box.className='sc-group';box.dataset.group=bucket.key;
@@ -6523,6 +6741,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    bucket.rows.forEach(e=>{
     renderEntryRow(box,e,true,()=>lastEnd,v=>{lastEnd=v});
     renderChildRows(box,e,kids.get(e.id)||[]);
+    const st=stEnds.get(e);
+    if(st)box.append(subtotalEl(st,stCfg));
    });
    timeline.append(box);
   });

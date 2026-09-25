@@ -1896,7 +1896,8 @@
      いまはこう置く:
        ・部材の中に入るものは中へ（今までどおり）
        ・残りは**軸の中の3段**（ゴムリングは輪の外に2段）へ引き出す
-       ・段は`x`の順に振り分ける——**隣り合う部材の字は必ず別の段**になる
+       ・段は**部材に近い段から空いているところへ**（`tierOf()`・§9.492）。隣と重なるときだけ外の段へ回る
+         ——以前は x の順に1つおきに振り分けており、余裕があっても半分が外へ出ていた
        ・段の中は`spread()`（`blade-core.js`）で最小の間隔まで押し広げる。
          **順序を変えないので引き出し線どうしが交差しない**（§9.413）
        ・線を先に、字を後に描く（線が字の上を通らない）
@@ -1996,15 +1997,18 @@
      （§9.418。スペーサーとゴムリングを同じ段へ混ぜると、どちらの寸法か
      読めない）。線と字は別に溜めて、**線を先に**描く。 */
   /* **段ごとにまとめて押す**——1つずつ動かすと段の高さがばらけて、どの字が
-     同じ段なのか読めなくなる（§9.429 の「段は`x`順に振り分ける」が死ぬ）。 */
+     同じ段なのか読めなくなる。 */
   let lead = 0, off = 0, ln = '', tx = '';
+  const placed = [];      /* 引き出して置いた字（外の段へ出た理由を後で数える・§9.492） */
   [true, false].forEach(wantUp => {
    ['sp', 'ring'].forEach(kind => {
     const g1 = outs.filter(q => q.up === wantUp && q.kind === kind)
                    .sort((a, b) => a.cx - b.cx);
     if (!g1.length) return;
     const n = Math.max(1, (g1[0].rows || []).length);
-    g1.forEach((q, i) => { q.tier = i % n; });
+    /* 段は**近い段から空いているところへ**（`tierOf()`・§9.492）。1つおきに振り分けると、余裕があっても半分が外へ出る。 */
+    const ts = BS().tierOf(g1.map(q => ({ cx: q.cx, half: q.tw / 2 + DIM_PAD })), n, DIM_SLOT);
+    g1.forEach((q, i) => { q.tier = ts[i]; });
     /* 席（横の位置）を先に配ってから、**群ぜんたいを1つの量で押す**（§9.443）。
        段ごとに別々の量で押すと、**押した段と押さなかった段が同じ高さに来て**
        字どうしが重なる（実測: 器の高さ459pxで64件）。段の間隔は`rows`が
@@ -2051,6 +2055,8 @@
        if (!ok) { off++; const hb = hitOf(slot); why[(hb && hb.k) || 'text']++; return; }
       }
       taken.push(slot);
+      placed.push({ x: xs[i], y: yy, near: q.rows[0] + shift, tw: q.tw, kind,
+                    tier: q.rows.findIndex(r => Math.abs(r + shift - yy) < 0.5) });
       const d = Math.sign(q.hit - yy) || 1;
       const y0 = yy + d * dimFs * 0.55;
       /* **線は字のきわから対象の縁まで**（どちらの端も浮かせない）。
@@ -2092,7 +2098,15 @@
       + ` text-anchor="middle">${esc(t)}</text>`;
    D3.spanLine = { x0: +a.x.toFixed(1), x1: +b.x.toFixed(1) };
   }
-  D3.dimShown = { inside, lead, off, all: list.length, why, fs: dimFs, lv: D3.dimLv };
+  /* **部材に近い段が空いていたのに外の段へ出た字**の数（§9.492、利用者の指示「干渉しないなら対象物側に寄せて」）。
+     置き終えた図で、外の段の字を同じ横位置のまま近い段へ下ろしても何とも重ならないなら「寄せられた」と数える。 */
+  const farFree = { sp: 0, ring: 0 }, tiers = { sp: [], ring: [] };
+  placed.forEach(p => {
+   const kd = p.kind === 'ring' ? 'ring' : 'sp';
+   tiers[kd][p.tier] = (tiers[kd][p.tier] || 0) + 1;
+   if (Math.abs(p.y - p.near) >= 0.5 && free(boxOf(p.x, p.near, p.tw))) farFree[kd]++;
+  });
+  D3.dimShown = { inside, lead, off, all: list.length, why, fs: dimFs, lv: D3.dimLv, farFree, tiers };
   el.innerHTML = o;
  }
  /* 記号の顔ぶれが変わったときだけ画面へ知らせる（**毎フレームではない**）。

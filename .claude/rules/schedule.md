@@ -1,4 +1,4 @@
-# 作業スケジュール（62件）
+# 作業スケジュール（65件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 小計は**まとめとは別の軸**（区切りのお尻で数える）。区切りの語彙は`bucketOf()`の1本をまとめと共有する | `test_scsubtotal.js` | [§9.493](../../docs/decisions/9.493.md) |
+| 小計が数えるのは作業ロットだけ（`subtotalCounted()`の1箇所）。子ロットは親の1本 | `test_scsubtotal.js` | [§9.493](../../docs/decisions/9.493.md) |
+| 合計は数として読めた値だけ。読めない・単位の違う値は0で足さず`*`と件数で言う | `test_scsubtotal.js` | [§9.493](../../docs/decisions/9.493.md) |
 | ICASコピーの最初の1行は`区切らずにつなぐ`（普通の行）。触っていない旧い例の2本は片付ける | `test_lotcopy.js` | [§9.462](../../docs/decisions/9.462.md) |
 | 仕掛落ちの「着手」は作業中扱い（予定の終わり＝現在時刻）。見積ぶん居座らせない | `test_actualmatch.py` | [§9.462](../../docs/decisions/9.462.md) |
 | 完了にならない理由は`advance_note()`の1箇所が答え、行の印（橙）で出す。全行共通の理由は知らせで1回 | `test_actualmatch.py` | [§9.462](../../docs/decisions/9.462.md) |

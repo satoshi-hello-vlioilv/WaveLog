@@ -556,6 +556,8 @@ body.bs-mode .bs-shell{display:flex}
 .bs-gw{display:inline-block;font-size:var(--tbl-fs);font-weight:700;color:var(--ink-2);
   font-variant-numeric:tabular-nums;margin-inline-end:4px}
 .bs-gw.is-flip{color:var(--teal-dark);font-weight:700}
+/* 条幅の条数（§9.492）。**本文より小さくしない**（§9.385）——添え字だと分かるのは太さと色で言う。 */
+.bs-gn{font-size:inherit;font-weight:600;color:var(--muted);margin-inline-start:var(--space-1)}
 /* 模式図の条ごとの寸法（§9.380）。大きさは図の側が器から決めるので、
    ここでは指定しない——CSSで上書きすると、狭い条でつぶれる。 */
 .bs-mw{opacity:.85}

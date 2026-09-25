@@ -2426,10 +2426,20 @@
    if (runs.length && runs[runs.length - 1].k === k) runs[runs.length - 1].rs.push(r);
    else runs.push({ k, rs: [r] });
   });
+  /* 区分の条幅に**条数を添える**（§9.492、利用者の指示「区分に幅だけでなく条数も合わせて表示…×N みたいに」）。
+     数えるのは**刃組が組んだ条の並び**（`res.segs`）——図・刃組表と同じ割付から出す。1つの区分に幅が
+     2種類以上あれば幅ごとに1行（以前は先頭の行の幅だけを出していた）。 */
+  const widthsOf = rs => {
+   const t = rs[0].sg.type, lot = rs[0].sg.lot, m = new Map();
+   (res.segs || []).filter(s => s.type === t && (t !== 'strip' || s.lot === lot))
+    .forEach(s => { const w = (+s.w).toFixed(2); m.set(w, (m.get(w) || 0) + 1); });
+   return m.size ? [...m] : [[rs[0].sg.w.toFixed(2), 0]];
+  };
   const body = runs.map(({ k, rs }) => rs.map((r, i) => {
    const head0 = i ? '' : `<td class="bs-grp" rowspan="${rs.length}">`
     + `<b>${r.sg.type === 'strip' ? `<span class="bs-lno">${(r.sg.lotIx | 0) + 1}</span>` : ''}${esc(k)}</b>`
-    + `<span class="bs-gw">${r.sg.w.toFixed(2)}</span>`
+    + widthsOf(rs).map(([w, n]) => `<span class="bs-gw" title="条幅 ${w} mm${n ? `・${n} 条` : ''}">${w}`
+       + (n ? `<small class="bs-gn">×${n}</small>` : '') + '</span>').join('')
     + (r.sg.flip ? '<span class="bs-gw is-flip">反転巻き</span>' : '') + '</td>';
    return `<tr data-badge="${esc(r.badge)}"${bcAttr(r)}>${head0}`
     + `<td class="bs-bd"><span class="bs-bdg">${r.badge}</span></td>`
@@ -2451,8 +2461,12 @@
          + `<b class="bs-ringsz">${r.c.ringT === 'big' ? '大径' : '小径'}</b>`
          + `<span class="bs-ringdot" style="background:${esc(hexOf(r.c.od) || 'transparent')}"></span>`
          + `${esc(colorOf(r.c.od))}Φ${r.c.od}</td>` : '')
-    + Gs.map((x, i2) => `<td class="bs-num${i2 || !res.finger ? '' : ' bs-sep'}">${num(r.c.G[x])}</td>`).join('')
-    + (lubeCol ? `<td class="bs-num bs-lubec">${r.c.lube ? `<b>${r.c.lube}</b>` : '<span class="bs-z">·</span>'}</td>` : '')
+    /* 本数にも**色の●**（§9.492、利用者の指示「ゴムリングの数の部分にも色の●記号を…潤滑の方も」）。
+       幅×本数を読むとき、どの色の輪かを同じ行の「径・色・外径」まで目で戻らずに済む。●は径の欄と同じ印
+       （`.bs-ringdot`・潤滑は`.bs-lubedot`）——同じ物を別の形で描かない。 */
+    + Gs.map((x, i2) => `<td class="bs-num${i2 || !res.finger ? '' : ' bs-sep'}">${r.c.G[x] && !res.finger
+       ? `<span class="bs-ringdot" style="background:${esc(hexOf(r.c.od) || 'transparent')}"></span>` : ''}${num(r.c.G[x])}</td>`).join('')
+    + (lubeCol ? `<td class="bs-num bs-lubec">${r.c.lube ? `<span class="bs-lubedot"></span><b>${r.c.lube}</b>` : '<span class="bs-z">·</span>'}</td>` : '')
     + (hasHold ? `<td class="bs-num bs-sep${holdCls(r)}">` + holdCell(r) + '</td>' : '')
     + (hasRem ? `<td class="bs-num bs-sep ${gapCell(r.c.rem)}"`
        + ` title="スペーサーで区間を埋め切れなかった幅です。組んだものは${esc(SW(res.A.datum))}側（基準面）へ`
