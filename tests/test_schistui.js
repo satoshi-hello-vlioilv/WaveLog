@@ -20,7 +20,7 @@ run('test_schistui: 作業スケジュールの過去履歴（段「履歴」・
  const post=(p,body)=>page.evaluate(async a=>{
   const r=await fetch(a.p,{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify(Object.assign({user_id:'test-schist'},a.b))});
-  let j={};try{j=await r.json()}catch(e){}
+  const j=await r.json().catch(()=>({}));   // 本文の無い応答は空として扱う（状態コードで判定する）
   return {status:r.status,body:j};
  },{p,b:body||{}});
  let seededStopId=null;
