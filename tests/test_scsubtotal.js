@@ -38,7 +38,10 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
       es.filter(e=>String(e.lotNo||'').startsWith(TAG)).length+'件');
   await post('/api/column-layout-master',{target:TARGET,clear:true,
     order:['__cat__','lotNo','mfgMaterial','mfgTemper','__est__','__actions__'],hidden:[],widths:{},names:{},
-    formats:{},rules:{},formulas:{},locks:[],sorts:{}});
+    formats:{},rules:{},formulas:{},locks:[],sorts:{},
+    /* 集計する列は**右揃え**にしておく（数値の列の既定。§9.499の器を右隣まで広げた形で、揃えが器ぜんたいに
+       効いて値が表の右端へ寄っていた——左揃えの列だけでは見つからない）。 */
+    aligns:{mfgMaterial:{data:'right',head:''}}});
 
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await W.booted(page);
@@ -57,6 +60,15 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
     text:mine?mine.textContent.replace(/\s+/g,' ').trim():'',
     sum:sum?sum.textContent.trim():null,sumTitle:sum?(sum.closest('.sc-subtotal-sum').getAttribute('title')||''):'',
     dx:(cell&&head&&!mine.classList.contains('is-label'))?Math.round(Math.abs(cell.getBoundingClientRect().left-head.getBoundingClientRect().left)):null,
+    /* 右揃えの列: 小計の値の右端と、ふつうの行の同じ列の値の右端の差（字の右端を Range で測る）。 */
+    rx:(()=>{
+     if(!sum||mine.classList.contains('is-label'))return null;
+     const row=[...document.querySelectorAll('#scTimeline .sc-row-line')].find(r=>r.textContent.includes(t+'A'));
+     const c=row&&row.querySelector('[data-col="mfgMaterial"]');
+     if(!c)return null;
+     const rg=document.createRange();rg.selectNodeContents(c);
+     return Math.round(sum.getBoundingClientRect().right-rg.getBoundingClientRect().right);
+    })(),
     after:!!mine&&(()=>{  // 小計の直前の行が区切りの最後の行（C）か
      const before=[...document.querySelectorAll('#scTimeline .sc-row-line')]
        .filter(r=>r.compareDocumentPosition(mine)&Node.DOCUMENT_POSITION_FOLLOWING);
@@ -110,6 +122,9 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
   rec('合計は桁区切りも読む（1,200＋800.5＝2,000.5）',s1.sum==='2,000.5*'||s1.sum==='2,000.5',JSON.stringify(s1.sum));
   rec('読めない値は足さずに件数を言う（abc の1件）',/読めない.*1件/.test(s1.sumTitle)&&/\*$/.test(s1.sum||''),s1.sumTitle.replace(/\n/g,' / '));
   rec('「行」は合計が足した列の真下（左端の差2px以内）',s1.dx!==null&&s1.dx<=2,`差${s1.dx}px`);
+  console.log('#MEASURE '+JSON.stringify({rightAlignedGapPx:s1.rx}));
+  rec('右揃えの列: 小計の値の右端はふつうの行の値の右端とそろう（差2px以内。前は器の右端＝表の右端へ寄っていた）',
+      s1.rx!==null&&Math.abs(s1.rx)<=2,`差${s1.rx}px`);
   rec('並べ替えの行の数は小計で変わらない',s1.rows===s0.rows,`${s0.rows}→${s1.rows}`);
   const bar=await page.evaluate(()=>(document.getElementById('scViewState')||{}).textContent||'');
   rec('畳んだ入口に「小計」の設定が出る（思い出させない）',/小計/.test(bar),bar);
@@ -194,10 +209,13 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
    const cell=el.querySelector('.sc-subtotal-cell[data-col="mfgMaterial"]');
    const head=document.querySelector('.sc-row-head [data-col="mfgMaterial"]');
    return {parts:cell?cell.querySelectorAll('.sc-subtotal-sum[data-col]').length:0,tags:cell?[...cell.querySelectorAll('.sc-subtotal-sum[data-col] small')].map(x=>x.textContent):[],
-     calcLast:!!cell&&!!cell.lastElementChild&&!cell.lastElementChild.hasAttribute('data-col'),
+     calcLast:!!cell&&(()=>{const box=cell.querySelector('.sc-st-in')||cell;return !!box.lastElementChild&&!box.lastElementChild.hasAttribute('data-col')})(),
+     /* 列の幅に入らないときは**列の左端から**並べる（右揃えのまま押し出すと左の列へはみ出して切れる）。 */
+     leftCut:cell?Math.round(cell.getBoundingClientRect().left-cell.querySelector('.sc-subtotal-sum').getBoundingClientRect().left):null,
      dx:cell&&head?Math.round(Math.abs(cell.getBoundingClientRect().left-head.getBoundingClientRect().left)):null}},TAG);
   rec('「行」では同じ列の集計が列の真下の器から名つきで並び、式は最後の器の後ろ（§9.498・§9.499）',
       rowv.parts===5&&rowv.tags.join(',')==='合計,平均,最大,最小,件数'&&rowv.calcLast&&rowv.dx!==null&&rowv.dx<=2,JSON.stringify(rowv));
+  rec('右揃えの列でも、列の幅に入らない集計は器の左端から並ぶ（左へはみ出さない）',rowv.leftCut!==null&&rowv.leftCut<=0,`はみ出し${rowv.leftCut}px`);
   /* **1行に収める**（§9.499、利用者の指示「行に出すパターンもコンパクトに、すべて1行で納めた形に」）。
      物差し: 小計の行の高さ＝ふつうの行の高さ／字が切れている部品の数＝0（名前・ロット数・集計・式）。 */
   const fit=await page.evaluate(t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
@@ -233,6 +251,17 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
   console.log('#UI-SHUT '+JSON.stringify(shut));
   rec('設定: 畳めば「表示」の中は1行・見出しにいまの状態（§9.500）',shut.h<=60&&/項目/.test(shut.state),JSON.stringify(shut));
   await page.click('#scSubtotalBtn');
+  // 9c'') 単位だけ決めて桁は「自動」——桁は材料なり（合計＝材料の桁・式＝2桁まで）。前は浮動小数の誤差がそのまま出ていた
+  await openSt();
+  await page.selectOption(calc+' [data-st-f="dec"]','');
+  await page.selectOption(first+' [data-st-f="dec"]','');
+  await W.until(page,t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
+   const v=el&&el.querySelector('.sc-subtotal-sum[data-item] .sc-st-v');return !!v&&!/^2,001kg/.test(v.textContent.trim())},TAG,{ms:8000,what:'桁を自動へ戻した小計'});
+  const m2=await valsFull();
+  const want2=['2,000.5kg*','666.83kg'];
+  console.log('#MEASURE '+JSON.stringify({unitOnly:m2&&[m2[0].v,m2[5].v]}));
+  rec('単位だけ決めて桁は自動なら、桁は材料なり（合計＝材料の桁・式＝2桁まで）（§9.498 ③）',
+      !!m2&&JSON.stringify([m2[0].v,m2[5].v])===JSON.stringify(want2),JSON.stringify(m2&&[m2[0].v,m2[5].v])+' 期待 '+JSON.stringify(want2));
   // 9d) 書けない式は画面にそう言い、小計は「—」
   await put(calc+' [data-st-f="expr"]','[製造材質 合計]/(');
   const bad=await page.evaluate(s=>{const r=document.querySelector(s);const n=r&&r.querySelector('.sc-st-err');return n?n.textContent.trim():''},calc);

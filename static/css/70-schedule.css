@@ -1322,17 +1322,23 @@
 }
 .sc-subtotal>*{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 /* 名前の器と集計の器は**横1列**。縮むのは区切りの名前だけ（数は縮めない・名前の全文は行の`title`）。 */
-.sc-subtotal-head,.sc-subtotal-cell{display:flex;align-items:center;gap:var(--space-3);min-width:0}
-.sc-subtotal-head>*,.sc-subtotal-cell>*{flex:none}
+.sc-subtotal-head,.sc-st-in{display:flex;align-items:center;gap:var(--space-3);min-width:0}
+.sc-subtotal-head>*,.sc-st-in>*{flex:none}
+/* 集計の器は右隣の列まで広がるが、**揃えはその列の1マスの中**（`subgrid`で表と同じ列の線を持ち、
+   中身の器`.sc-st-in`は1マス目に載る）。中身の器は「1マスの幅以上・中身なり」——入るときは列の揃え
+   （右揃えなら列の右端）、入らないときは列の左端から右へ伸びる（左の列へはみ出さない）。
+   前は揃えを広げた器ぜんたいへ効かせ、右揃えの列では値が表の右端へ寄っていた。 */
+.sc-subtotal-cell{display:grid;grid-template-columns:subgrid;align-items:center;min-width:0}
+.sc-st-in{grid-column:1;justify-self:start;width:max-content;min-width:100%}
 .sc-subtotal-head>.sc-subtotal-name{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
-.sc-subtotal-cell>.sc-subtotal-head{gap:var(--space-2)}
+.sc-st-in>.sc-subtotal-head{gap:var(--space-2)}
 .sc-subtotal-tag{flex:none;padding:var(--pad-chip);border:1px solid var(--teal);border-radius:var(--radius-pill);
  color:var(--teal-dark);font-size:var(--fs-badge);line-height:1.2}
 .sc-subtotal-name{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2)}
 .sc-subtotal-count{flex:none}
 .sc-subtotal-cell{padding-left:var(--gap-tight)}
 /* 同じ列に2つ以上の集計があれば、集計の名を添えて並べる（字は小さく・値は本文のまま）。 */
-.sc-subtotal-cell>.sc-subtotal-sum>small,.sc-subtotal-head>.sc-subtotal-sum>small{margin-right:var(--space-1);color:var(--muted);font-weight:400}
+.sc-st-in>.sc-subtotal-sum>small,.sc-subtotal-head>.sc-subtotal-sum>small{margin-right:var(--space-1);color:var(--muted);font-weight:400}
 .sc-subtotal-sum.is-bad>.sc-st-v{color:var(--danger)}
 .sc-subtotal-skip{font-style:normal;color:var(--warn-fg)}
 /* ラベル：1行の帯に並べる。列にはそろえないので、どの列の合計かを**字で**添える。 */

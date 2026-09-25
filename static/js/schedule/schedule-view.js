@@ -5996,14 +5996,23 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     材料なり（合計・最大・最小＝材料の桁と単位／平均＝1桁多く／件数＝整数／式＝2桁まで／時間の列＝時間）。 */
  function subtotalValueText(it,v){
   if(v.n==null)return '—';
-  if(it.fmt.dec!==''||it.fmt.suffix)
-   return WL.cellFormat.value({kind:'number',decimals:it.fmt.dec===''?'':+it.fmt.dec,thousands:true,suffix:it.fmt.suffix},v.n);
-  if(it.kind==='agg'&&it.agg==='count')return String(v.n);
-  if(it.kind==='agg'&&SC_SUBTOTAL_AMOUNT[it.col])return SC_SUBTOTAL_AMOUNT[it.col].text(v.n);
-  const loc=(n,min,max)=>n.toLocaleString('ja-JP',{minimumFractionDigits:min,maximumFractionDigits:max});
-  if(v.calc)return loc(v.n,0,2);
-  const d=Math.min(it.agg==='avg'?v.dec+1:v.dec,6);
-  return loc(v.n,d,d)+(v.unit||'');
+  const f=it.fmt;
+  if(f.dec===''&&!f.suffix){
+   if(it.kind==='agg'&&it.agg==='count')return String(v.n);
+   if(it.kind==='agg'&&SC_SUBTOTAL_AMOUNT[it.col])return SC_SUBTOTAL_AMOUNT[it.col].text(v.n);
+  }
+  /* **桁と単位は別々に決まる**——決めたほうだけ書式が答え、決めていないほうは材料なり（§9.498 ③）。
+     前は単位だけ決めると桁が「無指定」のまま`String(n)`へ回り、`666.8333333333334kg`と出ていた。 */
+  const dec=f.dec!==''?+f.dec:subtotalAutoDec(it,v);
+  const unit=f.suffix||(it.kind==='agg'&&it.agg!=='count'&&!SC_SUBTOTAL_AMOUNT[it.col]?(v.unit||''):'');
+  return WL.cellFormat.value({kind:'number',decimals:dec,thousands:true,suffix:unit},v.n);
+ }
+ /* 決めていないときの桁（材料なり）。合計・最大・最小＝材料の桁／平均＝1桁多く／件数＝整数／
+    式＝2桁まで（要らない0は付けない）。**答えはここ1箇所**。 */
+ function subtotalAutoDec(it,v){
+  if(v.calc){for(let d=0;d<2;d++)if(Number(v.n.toFixed(d))===Number(v.n.toFixed(2)))return d;return 2}
+  if(it.kind==='agg'&&it.agg==='count')return 0;
+  return Math.min(it.agg==='avg'?v.dec+1:v.dec,6);
  }
  function subtotalValueTitle(it,v,count){
   if(v.calc)return `${v.name} = ${it.expr||'（式が空です）'}`
@@ -6053,6 +6062,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   items.filter(it=>it.kind==='agg').forEach(it=>{if(!byCol.has(it.col))byCol.set(it.col,[]);byCol.get(it.col).push(it)});
   const cols=[...byCol.keys()].sort((x,y)=>shown.indexOf(x)-shown.indexOf(y));
   const gc=k=>shown.indexOf(k)+2;      // 1列目は取っ手
+  const target=timelineTarget();
   /* 同じ列に1つだけなら値だけ。2つ以上なら名前を変えていない項目は集計の名（合計・平均…）を添える。 */
   const tagOf=(it,many)=>many?(it.label.trim()||subtotalAggOf(it.agg).label):'';
   if(!cols.length){
@@ -6064,11 +6074,13 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    +cols.map((k,i)=>{
     const its=byCol.get(k),last=i===cols.length-1;
     const end=last?'-1':String(gc(cols[i+1]));
+    /* 揃えは**その列の幅の中で**（中身の器`.sc-st-in`が列の1マスに載る）。器を右隣まで広げたぶんへ揃えを
+       効かせると、右揃えの列では値が表の右端へ寄っていた。列の幅に入らないときは左端から（`safe`）。 */
     return `<span class="sc-subtotal-cell" data-col="${esc(k)}" style="grid-column:${gc(k)} / ${end}">`
+     +`<span class="sc-st-in ${WL.columnAlign.cellClass(target,k)}">`
      +(!headFirst&&i===0?`<span class="sc-subtotal-head">${name}</span>`:'')
-     +its.map(it=>part(it,tagOf(it,its.length>1))).join('')+(last?calcHtml:'')+'</span>';
+     +its.map(it=>part(it,tagOf(it,its.length>1))).join('')+(last?calcHtml:'')+'</span></span>';
    }).join('');
-  WL.columnAlign.applyCells(el,timelineTarget(),{selector:':scope>.sc-subtotal-cell[data-col]'});
   return el;
  }
  /* 畳んだ段の見出しに書く**いまの状態**（§9.500・思い出させない）。 */
