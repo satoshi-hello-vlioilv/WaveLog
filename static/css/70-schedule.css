@@ -1343,10 +1343,15 @@
 .sc-st-in>.sc-subtotal-sum>small,.sc-subtotal-head>.sc-subtotal-sum>small{margin-right:var(--space-1);color:var(--muted);font-weight:400}
 .sc-subtotal-sum.is-bad>.sc-st-v{color:var(--danger)}
 .sc-subtotal-skip{font-style:normal;color:var(--warn-fg)}
-/* ラベル：1行の帯に並べる。列にはそろえないので、どの列の合計かを**字で**添える。 */
-.sc-subtotal.is-label{display:flex;align-items:center;gap:var(--space-3)}
-.sc-subtotal.is-label>.sc-subtotal-sum{flex:none;padding-left:0}
-.sc-subtotal.is-label>.sc-subtotal-sum>small{margin-right:var(--space-1);color:var(--muted);font-weight:400}
+/* 列にそろえない並び（§9.503⑤）：1本の並びを行の中で寄せる。列にはそろえないので、どの値かを**字で**添える。
+   寄せ方は`safe`——入りきらないときは左から（右・中央のまま押し出すと頭が左へ切れる）。 */
+.sc-subtotal.is-label,.sc-subtotal.is-line{display:flex;align-items:center}
+.sc-subtotal-line{display:flex;align-items:center;gap:var(--space-3);min-width:0;flex:1 1 auto}
+.sc-subtotal-line>*{flex:none}
+.sc-subtotal-line.is-left{justify-content:flex-start}
+.sc-subtotal-line.is-center{justify-content:safe center}
+.sc-subtotal-line.is-right{justify-content:safe flex-end}
+.sc-subtotal-line>.sc-subtotal-sum>small{margin-right:var(--space-1);color:var(--muted);font-weight:400}
 .sc-group[data-group="running"] .sc-group-head{border-left-color:var(--success);background:var(--success-bg)}
 .sc-group[data-group="running"] .sc-group-label{color:var(--success)}
 .sc-group[data-group="planned"] .sc-group-head{border-left-color:var(--teal);background:var(--pale)}
@@ -2335,6 +2340,9 @@ div.sc-view-row{cursor:default}
 .sc-st-step-ctl>select[hidden]{display:none}
 .sc-st-step-ctl .sc-subtotal-opt{flex:0 0 auto;min-width:var(--w-xs);justify-content:center}
 .sc-st-hint{color:var(--muted);font-size:var(--fs-micro);line-height:1.4}
+/* 1つの節に札の群が2つあるときの名札（§9.503⑤）。2つ目の群の前は少し空ける。 */
+.sc-st-sub{color:var(--ink-3);font-size:var(--fs-micro);font-weight:700}
+.sc-subtotal-opts+.sc-st-sub{margin-left:var(--space-3)}
 .sc-st-warn{color:var(--warn-fg);font-size:var(--fs-micro);font-weight:700}
 /* 集計の項目の表（§9.500）。**見出しと欄は同じ格子**（`.sc-st-grid`）——列の左端がそろう。
    式の行は「列＋集計」の2マスを式の欄がまたぐ。見本は読み取り専用（枠を付けない・§CLAUDE 10）。 */

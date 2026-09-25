@@ -355,6 +355,33 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
   console.log('#MEASURE '+JSON.stringify({pos:ps}));
   rec('「行」は区切りの上にも出せる（区切りの最初の行の直前）（利用者の指示①）',hasPos&&!!ps.top&&ps.top.next,JSON.stringify(ps));
   rec('「行」の既定は区切りの下（区切りの最後の行の直後）',!!ps.bottom&&ps.bottom.prev,JSON.stringify(ps));
+  /* 9i) 行の中の揃え（利用者の指示⑤「行内の左寄せや中央寄せ、右寄せなども選べるように」）。
+     中身（札・名前・ロット数・項目）の左右の余りで見る: 左＝左の余り≒0／右＝右の余り≒0／中央＝左右の余りの差≒0。
+     列にそろえない形では、どの値か読めるよう項目の名前を添える。 */
+  const gaps=()=>page.evaluate(t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
+   if(!el)return null;
+   const kids=[...el.querySelectorAll('.sc-subtotal-tag,.sc-subtotal-name,.sc-subtotal-count,.sc-subtotal-sum')];
+   const r=el.getBoundingClientRect(),cs=getComputedStyle(el);
+   const L=r.left+parseFloat(cs.paddingLeft)+parseFloat(cs.borderLeftWidth),R=r.right-parseFloat(cs.paddingRight)-parseFloat(cs.borderRightWidth);
+   const l=Math.min(...kids.map(k=>k.getBoundingClientRect().left)),rr=Math.max(...kids.map(k=>k.getBoundingClientRect().right));
+   return {left:Math.round(l-L),right:Math.round(R-rr),named:[...el.querySelectorAll('.sc-subtotal-sum[data-item] small')].length,
+     h:Math.round(r.height)}},TAG);
+  const hasAl=await page.evaluate(()=>!!document.querySelector('#scSubtotalMore [data-st-align="right"]'));
+  const al={has:hasAl,col:await gaps()};
+  if(hasAl){
+   for(const k of ['left','center','right']){
+    await page.click(`#scSubtotalMore [data-st-align="${k}"]`);
+    await W.until(page,([t,k])=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);return !!el&&el.dataset.align===k},[TAG,k],{ms:8000,what:'揃えを変えた小計'});
+    al[k]=await gaps();
+   }
+   await page.click('#scSubtotalMore [data-st-align="col"]');
+   await W.until(page,t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);return !!el&&el.dataset.align==='col'},TAG,{ms:8000,what:'列にそろえた小計'});
+  }
+  console.log('#MEASURE '+JSON.stringify({align:al}));
+  rec('行の中を左・中央・右に揃えられる（左の余り≦2px／中央の左右差≦2px／右の余り≦2px）（利用者の指示⑤）',
+      hasAl&&al.left&&al.center&&al.right&&al.left.left<=2&&Math.abs(al.center.left-al.center.right)<=2&&al.right.right<=2,JSON.stringify(al));
+  rec('列にそろえない形では項目の名前を添える（どの値か読める）・行は1行のまま',
+      hasAl&&al.right&&al.right.named>=5&&al.right.h===al.col.h,JSON.stringify(al));
   if(process.env.WAVELOG_SHOT){await page.screenshot({path:`${process.env.WAVELOG_SHOT}/scsubtotal-multi-panel.png`})}
   await page.click('#scViewMenuBtn');
   if(process.env.WAVELOG_SHOT){

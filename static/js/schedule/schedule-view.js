@@ -5880,7 +5880,18 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     `WL.formula`の1つ（`eval`しない）、書式は列と同じ`WL.cellFormat`の1つ（新しく作らない）。
     1行ごとに式を当てたいときは、表の「列の作り方」（§9.207）で列を作ってからその列を集計する。
     いままでの保存（`cols`＝合計する列）は読むときに「合計」の項目へ読み替える（設定し直しは要らない）。 */
- const SC_SUBTOTAL_DEFAULT={on:false,unit:'date',unitCol:'',style:'row',pos:'bottom',items:[],show:{tag:true,name:true,count:true}};
+ const SC_SUBTOTAL_DEFAULT={on:false,unit:'date',unitCol:'',style:'row',pos:'bottom',align:'col',items:[],show:{tag:true,name:true,count:true}};
+ /* 行の中の揃え（§9.503⑤、利用者の指示「行内の左寄せや中央寄せ、右寄せなども選べるように」）。
+    「列にそろえる」は「行」だけ（集計した列の真下・今までの形）。左・中央・右は1本の並びを行の中で寄せる。 */
+ const SC_SUBTOTAL_ALIGNS=[
+  {key:'col',label:'列にそろえる',note:'集計した列の真下に出します',rowOnly:true},
+  {key:'left',label:'左',note:'左から1本に並べます'},
+  {key:'center',label:'中央',note:'1本に並べて真ん中へ寄せます'},
+  {key:'right',label:'右',note:'1本に並べて右へ寄せます'},
+ ];
+ /* 出し方で選べる揃え・揃えの答え（「ラベル」で「列にそろえる」なら左）。答えはここ1箇所。 */
+ const subtotalAlignsOf=style=>SC_SUBTOTAL_ALIGNS.filter(a=>style==='row'||!a.rowOnly);
+ const subtotalAlignOf=c=>subtotalAlignsOf(c.style).some(a=>a.key===c.align)?c.align:subtotalAlignsOf(c.style)[0].key;
  /* 「行」を置く位置（§9.503①、利用者の指示「行は上か下か選べるように」）。上＝区切りの最初の行の直前、
     下＝最後の行の直後（既定・今までの形）。 */
  const SC_SUBTOTAL_POS=[
@@ -5943,6 +5954,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(!SC_SUBTOTAL_UNITS.some(u=>u.key===c.unit))c.unit=SC_SUBTOTAL_DEFAULT.unit;
   if(!SC_SUBTOTAL_STYLES.some(u=>u.key===c.style))c.style=SC_SUBTOTAL_DEFAULT.style;
   if(!SC_SUBTOTAL_POS.some(u=>u.key===c.pos))c.pos=SC_SUBTOTAL_DEFAULT.pos;
+  if(!SC_SUBTOTAL_ALIGNS.some(u=>u.key===c.align))c.align=SC_SUBTOTAL_DEFAULT.align;
   c.items=subtotalItemsOf(v);
   const sh=(v.show&&typeof v.show==='object')?v.show:{};
   c.show=Object.fromEntries(SC_SUBTOTAL_SHOW.map(x=>[x.key,sh[x.key]!==false]));
@@ -6124,8 +6136,19 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   };
   const calcs=items.filter(it=>it.kind==='calc');
   const calcHtml=calcs.map(it=>part(it,agg.values[it.id].name)).join('');
+  const align=subtotalAlignOf(cfg);
+  el.dataset.align=align;
+  /* 列にそろえない形は**1本の並び**を行の中で寄せる。列の真下ではないので、どの値かを項目の名前で添える。 */
+  const lineHtml=()=>`<span class="sc-subtotal-line is-${align}">${name}${items.map(it=>part(it,agg.values[it.id].name)).join('')}</span>`;
   if(cfg.style==='label'){
-   el.innerHTML=name+items.map(it=>part(it,agg.values[it.id].name)).join('');
+   el.innerHTML=lineHtml();
+   return el;
+  }
+  if(align!=='col'){
+   /* 1本の並びは**行の箱の中で**寄せる（`is-line`＝flex）。表の格子にまたがせると、格子は行の箱より広い
+      （余りの列ぶん・実測34px）ので、右寄せが行の右端から34px はみ出した。 */
+   el.classList.add('is-line');
+   el.innerHTML=lineHtml();
    return el;
   }
   const shown=timelineColumnKeys();
@@ -6254,9 +6277,14 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     +step('出し方','どちらも1行',`<span class="sc-subtotal-opts" role="group" aria-label="小計の出し方">`
        +SC_SUBTOTAL_STYLES.map(st=>seg('data-st-style',st.key,st.key===c.style,st.label,st.note)).join('')+'</span>'
        +`<small class="sc-st-hint">${esc((SC_SUBTOTAL_STYLES.find(x=>x.key===c.style)||{}).note||'')}</small>`)
-    +(c.style==='row'?step('位置','行を区切りのどちらに置くか',`<span class="sc-subtotal-opts" role="group" aria-label="小計の行の位置">`
-       +SC_SUBTOTAL_POS.map(x=>seg('data-st-pos',x.key,x.key===c.pos,x.label,x.note)).join('')+'</span>'
-       +`<small class="sc-st-hint">${esc((SC_SUBTOTAL_POS.find(x=>x.key===c.pos)||{}).note||'')}</small>`):'')
+    +step('位置と揃え',c.style==='row'?'行を区切りのどちらに置くか・行の中の寄せ方':'帯の中の寄せ方',
+       /* 2つの群は**名札で分ける**（札が続けて並ぶと1つの群に読める）。 */
+       (c.style==='row'?`<small class="sc-st-sub">位置</small><span class="sc-subtotal-opts" role="group" aria-label="小計の行の位置">`
+       +SC_SUBTOTAL_POS.map(x=>seg('data-st-pos',x.key,x.key===c.pos,x.label,x.note)).join('')+'</span>':'')
+       +`<small class="sc-st-sub">揃え</small><span class="sc-subtotal-opts" role="group" aria-label="小計の揃え">`
+       +subtotalAlignsOf(c.style).map(x=>seg('data-st-align',x.key,x.key===subtotalAlignOf(c),x.label,x.note)).join('')+'</span>'
+       +`<small class="sc-st-hint">${esc([c.style==='row'?(SC_SUBTOTAL_POS.find(x=>x.key===c.pos)||{}).note:'',
+         (SC_SUBTOTAL_ALIGNS.find(x=>x.key===subtotalAlignOf(c))||{}).note].filter(Boolean).join('。'))}</small>`)
     +step('見せる物','押すたびに出す・出さない',`<span class="sc-subtotal-opts" role="group" aria-label="小計に見せる物">`
        +SC_SUBTOTAL_SHOW.map(x=>seg('data-st-show',x.key,c.show[x.key],x.label,x.note)).join('')+'</span>'
        +`<small class="sc-st-hint">項目ごとの出す・出さないは③の左端</small>`
@@ -6267,6 +6295,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   pop.querySelectorAll('[data-st-on]').forEach(b=>b.onclick=()=>apply({on:b.dataset.stOn==='1'}));
   pop.querySelectorAll('[data-st-style]').forEach(b=>b.onclick=()=>apply({style:b.dataset.stStyle}));
   pop.querySelectorAll('[data-st-pos]').forEach(b=>b.onclick=()=>apply({pos:b.dataset.stPos}));
+  pop.querySelectorAll('[data-st-align]').forEach(b=>b.onclick=()=>apply({align:b.dataset.stAlign}));
   pop.querySelectorAll('[data-st-show]').forEach(b=>b.onclick=()=>apply({show:Object.assign({},c.show,{[b.dataset.stShow]:!c.show[b.dataset.stShow]})}));
   $('#scSubtotalUnit').onchange=e=>apply({unit:e.target.value});
   $('#scSubtotalUnitCol').onchange=e=>apply({unitCol:e.target.value});
