@@ -21,7 +21,7 @@ SMB越しではロックが当てにならない。書き手がファイルご�
  5. 自分が書くDB（マスタ・共有スケジュール）は**写さない**
 ============================================================
 """
-import pathlib, sqlite3, sys, tempfile
+import json, pathlib, sqlite3, sys, tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -120,6 +120,10 @@ try:
     import threading as _th2, time as _t2, os as _os2
     remote.unlink()   # 手順4で壊した元を作り直す
     make_db(remote, [('L001', 'a'), ('L002', 'b'), ('L004', 'd')])
+    # 待って取り直すのは**前は届いていた元**だけ（§9.495の追補）。実機でも一瞬消えるのは、こまめに書き直されて
+    # いる＝ふだん届いている元。まず届く形で1回写してから、消す。
+    db_mirror.refresh_one(KEY, remote, force=True)
+    make_db(remote, [('L001', 'a'), ('L002', 'b'), ('L004', 'd'), ('L005', 'e')])
     away = remote.with_suffix('.away')
     _os2.replace(remote, away)
     back = _th2.Timer(0.6, lambda: _os2.replace(away, remote)); back.start()
@@ -138,6 +142,37 @@ try:
         rec('届かなかった周回のあとは早めに取り直す（§9.495）',
             nw([r5]) < db_mirror.interval_sec() and nw([r5c]) == db_mirror.interval_sec(),
             f'届かない→{nw([r5])}秒／写せた→{nw([r5c])}秒（通常 {db_mirror.interval_sec()}秒）')
+
+    # ---- 5e) ずっと無い元で毎回2.5秒待たない・手動では早めない（§9.495の追補） ----
+    # 待つのは写しの錠（_refresh_lock）を持ったまま。起動の最初の周回が済むまで一覧は開かない（read_path が待つ）ので、
+    # 無い元が1つあるだけで起動のたびに 2.5秒×件数 遅れていた。背景の周回も10秒ごとに4回ずつ見に行き続けていた。
+    gone = tmp / 'GONE.sqlite3'
+    KEY2 = KEY + '_GONE'
+    t0 = _t2.time()
+    g1 = db_mirror.refresh_one(KEY2, gone)
+    first_sec = _t2.time() - t0
+    t0 = _t2.time()
+    g2 = db_mirror.refresh_one(KEY2, gone)
+    second_sec = _t2.time() - t0
+    real_mode = db_mirror.update_mode
+    try:
+        db_mirror.update_mode = lambda: 'manual'
+        manual_wait = db_mirror.next_wait_sec([g1])
+    finally:
+        db_mirror.update_mode = real_mode
+    print('#MEASURE ' + json.dumps({'first_sec': round(first_sec, 2), 'second_sec': round(second_sec, 2),
+                                    'wait_after_1st': db_mirror.next_wait_sec([g1]),
+                                    'wait_after_2nd': db_mirror.next_wait_sec([g2]),
+                                    'manual_wait': manual_wait, 'interval': db_mirror.interval_sec()}))
+    rec('一度も写せていない元が無いとき、待って取り直さない（起動の最初の周回を遅らせない）（§9.495の追補）',
+        first_sec < 0.3, f'{first_sec:.2f}秒')
+    rec('続けて届かない元は待って取り直さない（2回目は1回見るだけ）（§9.495の追補）', second_sec < 0.3, f'{second_sec:.2f}秒')
+    rec('早めに取り直すのは届かなくなった最初の1回だけ（2回目からは通常の間隔）（§9.495の追補）',
+        db_mirror.next_wait_sec([g1]) < db_mirror.interval_sec() and db_mirror.next_wait_sec([g2]) == db_mirror.interval_sec(),
+        f'1回目のあと {db_mirror.next_wait_sec([g1])}秒／2回目のあと {db_mirror.next_wait_sec([g2])}秒')
+    rec('手動のときは早めに取り直さない（意図して止めている）（§9.495の追補）',
+        manual_wait == db_mirror.interval_sec(), f'{manual_wait}秒（通常 {db_mirror.interval_sec()}秒）')
+    rec('続けて届かないあいだも理由は残す（次に何が起きるかも）', 'GONE' in g2['reason'], g2['reason'])
 
     # ---- 6) 書く対象は写さない ----
     # 写した先へ書くと共有へ反映されない事故になるため、対象は読み取り専用だけ。
