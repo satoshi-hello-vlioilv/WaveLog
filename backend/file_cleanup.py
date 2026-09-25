@@ -26,7 +26,7 @@ import shutil
 import threading
 import time
 
-from . import atomic_io
+from . import atomic_io, path_config
 from .logging_setup import app_logger
 from .paths import browser_dir, db_dir, runtime_dir
 from .quiet import quiet
@@ -52,10 +52,11 @@ _wake = threading.Event()
 
 def _cfg(key, default):
  """パス設定マスタの1件。**読めなければ既定**(掃除の設定が読めないことを
- 理由に掃除そのものを止めない)。"""
+ 理由に掃除そのものを止めない)。読むのは`path_config`——**`db_access`を読み込まない**。
+ 読み込むと共有に置いたマスタの写しを錠なしで作り直し、update.bat が起動中のアプリの
+ 書込と競っていた(§9.497の追補3。追補1・2は画面に出る記録を塞いだだけだった)。"""
  try:
-  from .db_access import path_config_value
-  raw = path_config_value(key, default)
+  raw = path_config.value(key, default)
  except Exception as _e:
   quiet('設定を読めない（既定で続ける）',_e)
   raw = default
@@ -492,12 +493,25 @@ def run(keys=None, dry_run=False, auto_only=False, log=True):
    _state['lastRunAt'] = time.time()
    _state['lastRemoved'] = removed
    _state['lastFreed'] = freed
-   _state['lastError'] = ('%d件は使用中のため消せませんでした（次の掃除で消えます）' % failed) if failed else ''
+   _state['lastError'] = failed_note({'results': results, 'failed': failed})
   if log and (removed or failed):
    app_logger().info('不要ファイルの掃除: %d件 %.1fMB を削除（消せなかったもの %d件）',
                      removed, freed / 1048576.0, failed)
  return {'results': results, 'removed': removed, 'bytes': freed, 'failed': failed,
          'dryRun': bool(dry_run)}
+
+
+def failed_note(got):
+ """消せなかった物の1文（無ければ空）。**次に何が起きるかは種別の決まりどおりに言う**——定期の掃除で
+ 消すのは`auto`の種別だけなので、作業フォルダ・起動の部品・バイトコードを含むのに「次の掃除で消えます」とは
+ 言わない（§9.497の追補3）。update.bat の画面と掃除の画面が同じ1文を使う。"""
+ failed = int((got or {}).get('failed') or 0)
+ if not failed:
+  return ''
+ auto = {c['key'] for c in CATEGORIES if c['auto']}
+ manual = any(r.get('failed') and r.get('key') not in auto for r in (got or {}).get('results') or [])
+ when = ('次の update.bat か、不要ファイルの掃除の「選んだものを掃除する」で消えます' if manual else '次の掃除で消えます')
+ return '%d件は使用中のため消せませんでした（%s）' % (failed, when)
 
 
 def run_for_update():

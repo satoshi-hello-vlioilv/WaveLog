@@ -215,7 +215,22 @@ def version_note(prev=None):
         return 'VER%s（この端末で初めての確認です）' % cur
     if str(old) == str(cur):
         return 'VER%s（前回の確認と同じ版です）' % cur
-    return 'VER%s（前回の確認は %s → 今回 更新しました）' % (cur, old)
+    # 版が**下がった**ときは「更新」と言わない（前の版へ戻したのか、別の置き場の古い版を開いたのかを
+    # 利用者が見分けられるように・§9.497の追補3）。「更新されています」はファイルの事実で、確認の結果ではない。
+    if _version_key(cur) < _version_key(old):
+        return 'VER%s（前回の確認は %s → 今回は前の版に戻っています）' % (cur, old)
+    return 'VER%s（前回の確認は %s → 今回 更新されています）' % (cur, old)
+
+
+def _version_key(v):
+    """'2.390.0' → (2, 390, 0)。数でない段は0として比べる（読めない版で落とさない）。"""
+    out = []
+    for part in str(v or '').split('.'):
+        try:
+            out.append(int(part))
+        except ValueError:
+            out.append(0)
+    return tuple(out)
 
 
 def mismatch():

@@ -247,12 +247,22 @@ def _os_error_text(e):
  return f'{code} {msg}'.strip()
 
 
-def _remote_stat(remote):
+def _known_good(key, remote):
+ """待って取り直す値打ちがあるか——**この元がこのプロセスで前に届いていた**とき（§9.495の追補）。
+ 待つのは写しの錠を持ったままなので、一度も届いていない元・続けて届かない元で毎回2.5秒待つと、
+ 起動の最初の周回（済むまで一覧が開かない）が 2.5秒×件数 遅れる。一瞬の不在（書き直しの最中）は
+ 「前は届いていた元」に起きることなので、それだけを待つ。一度も届いていない元は早めの周回が拾う。"""
+ with _lock:
+  prev = _state.get(key)
+ return bool(prev) and prev.get('remote') == str(remote) and not prev.get('unreachable')
+
+
+def _remote_stat(remote, retry=True):
  """元ファイルの「変わったか」を見分ける印と、取れなかった理由。 -> (印 or None, 理由)
 
- **共有へ触るのはここだけ**。取れなければ`STAT_RETRY_SEC`だけ待って取り直す。"""
+ **共有へ触るのはここだけ**。取れなければ`STAT_RETRY_SEC`だけ待って取り直す（`retry`が真のとき）。"""
  err = None
- for wait in (0,) + STAT_RETRY_SEC:
+ for wait in ((0,) + STAT_RETRY_SEC if retry else (0,)):
   if wait:
    time.sleep(wait)
   try:
@@ -269,18 +279,23 @@ def _remote_stat(remote):
 def _unreachable(key, remote, result, head, err):
  """届かなかったことを、**どの元へ・OSが何と答えたか**まで残す（§9.495）。
  以前は`debug`でしか書かず、実機のログから原因を絞れなかった。同じ理由が続くあいだは
- ログを重ねない（60秒ごとに同じ行が積もると、本当に見たい行が埋もれる）。"""
+ ログを重ねない（60秒ごとに同じ行が積もると、本当に見たい行が埋もれる）。
+ **続けて届かない回数**（`fails`）も持つ——早めに取り直すのは届かなくなった最初の1回だけ（§9.495の追補）。"""
+ with _lock:
+  prev = _state.get(key) or {}
+ same = bool(prev.get('unreachable')) and prev.get('remote') == str(remote)
+ result['fails'] = (int(prev.get('fails') or 1) + 1) if same else 1
  result['reason'] = f'{head}（{Path(remote).name}: {err or "理由が分かりません"}）'
  # **次に何が起きるかも言う**（押し直すかどうかを推測させない）。
  if update_mode() == 'auto':
-  result['reason'] += f'。{RETRY_AFTER_UNREACHABLE_SEC}秒後に自動でもう一度取りに行きます'
+  result['reason'] += (f'。{RETRY_AFTER_UNREACHABLE_SEC}秒後に自動でもう一度取りに行きます' if result['fails'] == 1
+                       else f'。{interval_sec()}秒ごとに確かめています')
  result['unreachable'] = True
  result['error'] = err
- with _lock:
-  prev = (_state.get(key) or {}).get('reason')
- if prev != result['reason']:
+ if not (same and prev.get('error') == err):
   app_logger().warning('%s: %s — 元: %s', key, result['reason'], remote)
- _note_retry()
+ if result['fails'] == 1:
+  _note_retry()
 
 
 def _note_retry():
@@ -291,13 +306,16 @@ def _note_retry():
 
 
 def next_wait_sec(results=None):
- """次の周回まで何秒待つか。**届かなかった元が1つでもあれば早める**（§9.495）。
+ """次の周回まで何秒待つか。**届かなくなったばかりの元が1つでもあれば早める**（§9.495）。
+ 早めるのは自動のときだけ・届かなくなった最初の1回だけ（§9.495の追補）——手動は意図して止めており、
+ 続けて届かない元（消えた・設定だけ残った）を10秒ごとに見に行き続けても写しの錠を取り合うだけ。
  `results`を渡さなければ、いまの結果（`_state`）から決める。"""
  if results is None:
   with _lock:
    results = list(_state.values())
  base = interval_sec()
- if any((r or {}).get('unreachable') for r in results):
+ if update_mode() == 'auto' and any((r or {}).get('unreachable') and int((r or {}).get('fails') or 1) == 1
+                                    for r in results):
   return min(base, RETRY_AFTER_UNREACHABLE_SEC)
  return base
 
@@ -355,7 +373,7 @@ def refresh_one(key, remote, force=False):
  local = mirror_path(key)
  result = {'key': key, 'remote': str(remote), 'local': str(local),
            'updated': False, 'reason': '', 'at': time.time()}
- sig, err = _remote_stat(remote)
+ sig, err = _remote_stat(remote, retry=_known_good(key, remote))
  # 元に**写していない新しい版があるか**（§9.463）。写せたら下で False に戻す。
  result['newer'] = bool(sig is not None and _signature_of(key) != sig)
  if sig is None and not local.exists():
@@ -625,7 +643,7 @@ def update_mode():
 def check_one(key, remote):
  """写さずに、元に新しい版があるかだけ確かめる（手動のとき・§9.463）。"""
  remote = Path(remote)
- sig, err = _remote_stat(remote)
+ sig, err = _remote_stat(remote, retry=_known_good(key, remote))
  prev = status().get(key) or {}
  result = dict(prev, key=key, remote=str(remote), at=time.time(), unreachable=False, error='')
  if sig is None:

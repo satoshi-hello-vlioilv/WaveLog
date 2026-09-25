@@ -86,11 +86,15 @@
   if(!host||!ctx)return;
   const eq=ctx.equipment();
   if(!eq){st.data=null;st.error='';renderAll();return}
+  /* 設備が替わったら前の設備の中身は捨てる（読み込み中に前の設備の行・暦・合計を見せない・§9.502の追補3）。 */
+  if(st.data&&st.data.equipment!==eq){st.data=null;st.cal=null;renderAll()}
   const [f,t]=period();
   const seq=++st.seq;
   st.loading=true;renderBar();
   const q=new URLSearchParams({equipment:eq,keys:JSON.stringify(ctx.requestKeys())});
-  const askToday=!st.anchor&&st.unit!=='range';
+  /* 「今日」は**現場歴の今日**をサーバーに聞く。単位「期間」でも、期間をまだ決めていなければ聞く
+     （聞かないとブラウザの暦の今日になり、3直の0〜7時に前の日の記録が出ない・§9.502の追補3）。 */
+  const askToday=!st.anchor&&!(st.unit==='range'&&st.from&&st.to);
   if(!askToday){q.set('from',ymd(f));q.set('to',ymd(t))}
   if(st.q.trim()){q.set('q',st.q.trim());q.set('scope',st.scope)}
   try{
@@ -214,7 +218,8 @@
   return hm(e.at);
  }
  function minutesText(e){
-  if(e.cat==='stop')return e.minutes!==null&&e.minutes!==undefined?`<span class="sh-est" title="見積の分（実際に止まった時間ではありません）">見積 ${esc(dur(e.minutes))}</span>`:'';
+  /* 入れたときに分を持っていなかった行は、いまの予定と同じ見積で数える。**出どころを添える**（推測させない）。 */
+  if(e.cat==='stop')return e.minutes!==null&&e.minutes!==undefined?`<span class="sh-est" title="見積の分（実際に止まった時間ではありません）${e.minutesSource?`\n入れたときに分を持っていなかった行です。出どころ: ${esc(e.minutesSource)}`:''}">見積 ${esc(dur(e.minutes))}${e.minutesSource?'<i class="sh-est-src">*</i>':''}</span>`:'';
   return esc(dur(e.minutes));
  }
  function nameText(e){
@@ -379,6 +384,7 @@
   reload:()=>reload(),
   /* 網が読む口（画面の字を数えない）。 */
   state:()=>({unit:st.unit,period:period().map(ymd),q:st.q,scope:st.scope,off:[...st.off],
+              equipment:(st.data&&st.data.equipment)||'',
               loading:st.loading,error:st.error,count:((st.data&&st.data.entries)||[]).length,visible:visible().length}),
  };
 })();

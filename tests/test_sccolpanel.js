@@ -129,5 +129,31 @@ run('test_sccolpanel: 作業スケジュールの表示列——欠けない・�
   await page.unroute(/\/api\/table-columns/);await page.unroute(/\/api\/schedule\/plan/);
   await closePanel();
  }
+ /* C: 列名を取りに行っているあいだに段を移ったら、設定パネルを**開かない**（§9.501の追補）。
+    控えが無い最初の1回だけ往復があるので、読み込み直して答えを遅らせる。前は移った先の段の上に開いていた。 */
+ {
+  let served=false,done;
+  const servedP=new Promise(ok=>{done=ok});
+  await page.route(/\/api\/table-columns/,async route=>{
+   await new Promise(ok=>setTimeout(ok,1500));
+   await route.continue().catch(()=>{/* 待つあいだに外した道 */});served=true;done();
+  });
+  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
+  await W.booted(page);
+  await W.openSchedule(page,EQ);
+  /* **静まるのを待たない**——画面を開いたときに列名の取得が始まっており、静まるまで待つと控えができて
+     往復が無くなる（競りが起きない）。取得の途中で「表示列」→ 段「履歴」の順に押す。押すのは要素の
+     click()（開いたパネルが段の札に重なっても、押した事実は同じ）。 */
+  const pending=!served;
+  await page.evaluate(()=>{WL.scheduleView.openViewPop&&WL.scheduleView.openViewPop();
+   document.getElementById('scContentModalBtn').click();document.getElementById('scModeHistory').click()});
+  await servedP;   // 遅らせた答えが届くまで（条件で待つ）
+  await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  const open=await page.evaluate(()=>{const p=document.getElementById('listColumnPanel');return !!p&&!p.hidden});
+  console.log('#MEASURE '+JSON.stringify({panelOpenAfterLeaving:open}));
+  rec('C: 列名を待つあいだに段を移ったら、表示列の設定を開かない（§9.501の追補）',pending&&served&&!open,JSON.stringify({pending,served,open}));
+  await page.unroute(/\/api\/table-columns/);
+  await closePanel();
+ }
  rec('画面の例外が出ていない',errs.length===0,errs.slice(0,3).join(' / '));
 },{mode:'schedule',viewport:{width:1700,height:1000}});

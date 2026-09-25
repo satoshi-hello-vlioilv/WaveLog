@@ -313,6 +313,39 @@ def db_dir():
  """DBの置き場所。config/local.jsonの"db_dir"で上書き可能。"""
  return configured_path('db_dir') or APP_ROOT/'db'
 
+# 設定値 -> 実際のDBファイル。**フォルダを書いてもよい**(§9.271)。
+# 利用者は「この共有フォルダに master.sqlite3 と schedule.sqlite3 を置きたい」と
+# 考えるので、置き場の綴りはどれも同じ約束にする(スケジュールは§9.262で
+# 既にそうなっており、**マスタと測定データだけが違った**)。
+# 判定は**綴りだけ**——共有越しでは`is_dir()`が失敗することがあり、
+# 存在確認そのものが唯一の失敗原因になるのを避ける(§9.262と同じ理由)。
+# **ここ(paths)に置く**のは、`db_access`が読み込んだだけでデータソース・共有マスタを読みに行くため
+# ——update.bat のように「置き場だけ知りたい」側が使えなかった(§9.497の追補3)。
+DB_FILE_SUFFIXES=('.sqlite3','.db','.sqlite')
+def resolve_db_file(raw,filename):
+ text=str(raw or '').strip().rstrip('\\/')
+ if not text:return None
+ p=Path(text)
+ return p if p.suffix.lower() in DB_FILE_SUFFIXES else p/filename
+
+# db/ 導入以前に使われていた置き場所とファイル名(新しい順)。db/に無い場合の
+# 移行先探索にのみ使う(過去バージョンからの引き継ぎ用で、新規環境では未使用)。
+_LEGACY_LOCATIONS=(APP_ROOT/"data",APP_ROOT)
+def resolve_local_db(name,legacy_names):
+ path=db_dir()/name
+ if path.exists():return path
+ for base in _LEGACY_LOCATIONS:
+  for old_name in legacy_names:
+   old_path=base/old_name
+   if old_path.exists():return old_path
+ return db_dir()/name
+
+def master_db_file():
+ """マスタDB(master.sqlite3)の設定どおりの置き場。**答えはここ1箇所**(`db_access`もこれを使う)。
+ 共有に置いたときに実際に開く写しは`master_share.local_path_of()`が答える。"""
+ return (resolve_db_file(configured_path('master_db_path'),'master.sqlite3')
+         or resolve_local_db('master.sqlite3',['マスタ.sqlite3','マスタデータ.sqlite3','Master.sqlite3']))
+
 def _install_id():
  """同じPCに複数のインストールがあっても混ざらないための短い印。"""
  return hashlib.sha1(str(db_dir()).encode('utf-8',errors='replace')).hexdigest()[:8]

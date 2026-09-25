@@ -120,6 +120,21 @@ def _looks_shared(path):
         return False
 
 
+def _mirror_of(src):
+    """共有に置いたマスタなら手元の写しのパス、手元なら None。**見立てるだけ**（取り込まない）。"""
+    mode = _mode_setting()
+    if not ((mode == 'on') or (mode == 'auto' and _looks_shared(src))):
+        return None
+    return paths.work_dir() / 'master.local.sqlite3'
+
+
+def local_path_of(master_path):
+    """`configure()`が返すのと同じ「実際に開くファイル」を、**取り込みも状態の書き換えもせずに**答える。
+    アプリの外（update.bat の片付け）から設定を読むための道——`configure()`を呼ぶと共有から写しを
+    作り直してしまい、起動中のアプリの書込と競る（§9.497の追補3）。"""
+    return _mirror_of(Path(master_path)) or Path(master_path)
+
+
 def configure(master_path):
     """起動時に1回だけ呼ぶ。実際に開くべきパスを返す。
 
@@ -127,17 +142,13 @@ def configure(master_path):
     渡されたパスをそのまま返す（＝今までどおり）。
     """
     src = Path(master_path)
-    mode = _mode_setting()
-    shared = (mode == 'on') or (mode == 'auto' and _looks_shared(src))
+    mirror = _mirror_of(src)
     with _lock:
-        _state['shared'] = shared
+        _state['shared'] = mirror is not None
         _state['src'] = src
-        _state['mirror'] = None
-    if not shared:
-        return src
-    mirror = paths.work_dir() / 'master.local.sqlite3'
-    with _lock:
         _state['mirror'] = mirror
+    if mirror is None:
+        return src
     try:
         _pull(force=True)
     except Exception as e:

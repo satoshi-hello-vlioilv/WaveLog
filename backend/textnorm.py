@@ -14,3 +14,8 @@ import unicodedata
 
 def normalize_equipment_name(value):
  return unicodedata.normalize('NFKC',str(value or '')).strip().upper()
+
+
+def search_fold(value):
+ """探すときの字の畳み方（全角・半角、大文字・小文字を同じに見る）。**探す側と探される側の両方**に当てる。"""
+ return unicodedata.normalize('NFKC',str(value or '')).casefold()

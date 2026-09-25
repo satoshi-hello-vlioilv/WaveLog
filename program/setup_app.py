@@ -72,9 +72,9 @@ def main():
     try:
         got = file_cleanup.run_for_update()
         if got['removed']:
+            note = file_cleanup.failed_note(got)
             say('古いデータを片付けました（作り直せるもの %d件・%.1fMB）%s' % (
-                got['removed'], got['bytes'] / 1048576.0,
-                '。使用中の %d件は次の掃除で消えます' % got['failed'] if got['failed'] else ''))
+                got['removed'], got['bytes'] / 1048576.0, ('。' + note) if note else ''))
         else:
             say('片付ける古いデータはありませんでした', quiet=True)
         for r in got['results']:

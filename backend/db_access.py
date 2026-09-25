@@ -21,7 +21,7 @@ import time
 
 from . import paths
 from .textnorm import normalize_equipment_name
-from .paths import APP_ROOT, configured_path, load_local_config, local_config_error
+from .paths import configured_path, load_local_config, local_config_error
 from .logging_setup import app_logger
 from .quiet import quiet
 # SQLiteの入出力そのもの（接続・列・後から足す列）は backend/sqlite_io.py が持つ
@@ -80,17 +80,9 @@ def cfg(k):
  return out
 
 
-# db/ 導入以前に使われていた置き場所とファイル名(新しい順)。db/に無い場合の
-# 移行先探索にのみ使う(過去バージョンからの引き継ぎ用で、新規環境では未使用)。
-_LEGACY_LOCATIONS=(APP_ROOT/"data",APP_ROOT)
-def resolve_local_db(name,legacy_names):
- path=DB_DIR/name
- if path.exists():return path
- for base in _LEGACY_LOCATIONS:
-  for old_name in legacy_names:
-   old_path=base/old_name
-   if old_path.exists():return old_path
- return DB_DIR/name
+# 旧い置き場からの引き継ぎ(`resolve_local_db`)と、設定値→DBファイル(`resolve_db_file`)は
+# `paths`が答える(§9.497の追補3。読み込んでも何も起きない置き場へ移した)。
+from .paths import DB_FILE_SUFFIXES, resolve_db_file, resolve_local_db  # noqa: F401 既存の呼び出し互換のための再公開
 
 # ブートストラップ設定(config/local.json)を**読めなかったことを黙らせない**
 # (§9.271、利用者の報告「master_db_pathを書いたのに正しく読み込んでいない」)。
@@ -99,29 +91,18 @@ _LOCAL_CFG_ERROR=local_config_error()
 if _LOCAL_CFG_ERROR:
  app_logger().warning('%s この端末の置き場は既定のままで動いています。',_LOCAL_CFG_ERROR)
 
-# 設定値 -> 実際のDBファイル。**フォルダを書いてもよい**(§9.271)。
-# 利用者は「この共有フォルダに master.sqlite3 と schedule.sqlite3 を置きたい」と
-# 考えるので、置き場の綴りはどれも同じ約束にする(スケジュールは§9.262で
-# 既にそうなっており、**マスタと測定データだけが違った**)。
-# 判定は**綴りだけ**——共有越しでは`is_dir()`が失敗することがあり、
-# 存在確認そのものが唯一の失敗原因になるのを避ける(§9.262と同じ理由)。
-DB_FILE_SUFFIXES=('.sqlite3','.db','.sqlite')
-def resolve_db_file(raw,filename):
- text=str(raw or '').strip().rstrip('\\/')
- if not text:return None
- p=Path(text)
- return p if p.suffix.lower() in DB_FILE_SUFFIXES else p/filename
 
 # マスタDB(db/master.sqlite3)自体の置き場所はブートストラップ専用設定
 # (db_dir/master_db_path、上記参照)でのみ決まる。ここで先に確定させておく
 # ことで、以降のパス設定マスタ読み込み(_master_path_config等)がこの値を
 # 使える。
-_MASTER_PATH_CONFIGURED=resolve_db_file(configured_path('master_db_path'),'master.sqlite3') or resolve_local_db('master.sqlite3',['マスタ.sqlite3','マスタデータ.sqlite3','Master.sqlite3'])
+_MASTER_PATH_CONFIGURED=paths.master_db_file()
 # マスタを共有に置いたときは**手元の写しを読む**(§9.263)。共有でなければ
 # 設定どおりのパスがそのまま返るので、手元に置いている端末は何も変わらない。
 # **ここで1回だけ差し替える**——以降のコードは今までどおり`_MASTER_PATH`
 # （＝`DBS['MASTER']['path']`）を開けばよく、72箇所を書き換えずに済む。
 from . import master_share as _master_share
+from . import path_config as _path_config
 _MASTER_PATH=_master_share.configure(_MASTER_PATH_CONFIGURED)
 MEAS_DB=resolve_db_file(configured_path('records_db_path'),'records.sqlite3') or resolve_local_db('records.sqlite3',['測定データ.sqlite3','Measurement.sqlite3']); MEAS_ENGINE='sqlite'
 # 共有スケジュールDBのローカル作業コピー。**共有から取り直せる**ので
@@ -143,7 +124,7 @@ SCHEDULE_CACHE_PATH=WORK_DIR/'schedule_cache.sqlite3'
 #  - path_config_rows/set_path_configは他マスタのCRUDと同じ形にして
 #    routes/masters.pyから直接呼べるようにしてある。
 # ========================================================================
-PATH_CONFIG_TABLE='パス設定マスタ'
+from .path_config import PATH_CONFIG_TABLE  # noqa: E402 表の名前もpath_configの1箇所
 # プロセス起動時に1回だけ解決し、以後は再起動まで固定する項目(DBの接続先
 # そのものを決めるため、実行中に切り替えると接続先が食い違う恐れがある)。
 # **データソースごとの読み込み先(<キー小文字>_path)はここに並べない**(§9.163)。
@@ -220,12 +201,8 @@ def ensure_path_config_table(c):
  ensure_audit_columns(c,PATH_CONFIG_TABLE)
  return created
 
-def path_config_rows(c):
- """{設定キー: 設定値}を返す。テーブル未作成なら空(読み取り専用接続からも
- 安全に呼べる。ensure_path_config_tableのようなCREATE/ALTERは行わない)。"""
- if PATH_CONFIG_TABLE not in tables(c):return {}
- cur=c.cursor();cur.execute('SELECT [設定キー],[設定値] FROM [パス設定マスタ]')
- return {str(k):str(v) for k,v in cur.fetchall() if k and v not in (None,'')}
+# 表の読み方の答えは`path_config`の1箇所（読み込んでも何も起きない置き場・§9.497の追補3）。
+from .path_config import rows as path_config_rows  # noqa: E402 既存の呼び出し互換のための再公開
 
 def set_path_config(c,key,value,uid):
  """1項目を更新する。valueが空文字/Noneなら行を削除して既定値へ戻す
@@ -245,14 +222,8 @@ def set_path_config(c,key,value,uid):
 
 def _master_path_config():
  """db/master.sqlite3のパス設定マスタを読み込む。ファイル/テーブルが
- まだ無ければ空(新規環境・未設定時は上書き無し=既定動作のまま)。"""
- try:
-  if not _MASTER_PATH.exists():return {}
-  with connect(_MASTER_PATH,True) as c:
-   return path_config_rows(c)
- except Exception as _e:
-  quiet('マスタの設定を読めない（既定で続ける）',_e)
-  return {}
+ まだ無ければ空(新規環境・未設定時は上書き無し=既定動作のまま)。読み方は`path_config.read()`。"""
+ return _path_config.read(_MASTER_PATH)
 
 def path_config_value(key,default=None):
  """マスタDBから都度読み直して1項目を返す(PATH_CONFIG_LIVE_KEYS向け。

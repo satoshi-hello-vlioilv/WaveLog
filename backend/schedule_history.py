@@ -22,6 +22,7 @@ from . import schedule_calc as sc
 from .repositories import schedule_repo as sr
 from .repositories.master_repo import normalize_equipment_name
 from .quiet import quiet
+from .textnorm import search_fold
 
 # 1回に返す期間の上限（日）。**青天井にしない**——予定の表は年単位で溜まる。
 MAX_DAYS = 93
@@ -96,9 +97,22 @@ def _base(r, detail, keys):
             'createdBy': str(r[19] or ''), 'createdPc': str(r[20] or ''), 'createdAt': _iso(created_at),
             'updatedBy': str(r[17] or ''), 'updatedPc': str(r[21] or ''), 'updatedAt': _iso(updated_at),
             'removed': not active, 'removedAt': None if active else _iso(updated_at),
-            'estimateMinutes': r[10], 'start': None, 'end': None, 'minutes': None,
+            'estimateMinutes': r[10], 'start': None, 'end': None, 'minutes': None, 'minutesSource': '',
             'at': None, 'atSource': '', 'who': '', 'recordId': None, 'subText': '',
             'detail': _project(detail, keys), 'children': []}
+
+
+def _removed_owns(e, actual, target):
+    """外した行がこの実績を持つか。**外す前に始まっていて、この設備の実績**のときだけ。
+    突合の鍵はロット・鋳造番号・材質だけなので、外したあと入れ直した行・ほかの設備で作業した行にも
+    同じ実績が当たる。そのまま当てると同じ作業が「完了」で2件並び、時間を2回数えていた（§9.502の追補）。
+    どちらの時刻も読めなければ当てない（推測で「完了」にしない）。"""
+    eq = normalize_equipment_name(actual.get('equipment') or '')
+    if eq and eq != target:
+        return False
+    began = _dt(actual.get('startAt')) or _dt(actual.get('endAt'))
+    removed = _dt(e['removedAt'])
+    return bool(began and removed and began <= removed)
 
 
 def _touched(e):
@@ -135,7 +149,7 @@ def _work(e, r, detail, actual):
     return e
 
 
-def _other(e, r, detail):
+def _other(e, r, detail, mc=None, equipment=''):
     """作業以外の行。いまの予定に居る設備停止・日付と直の枠は None。"""
     kind = e['kind']
     if kind == 'コメント':
@@ -146,6 +160,13 @@ def _other(e, r, detail):
         if not e['removed'] and str(r[11] or '') not in sc.PLAN_TERMINAL_STATES:
             return None
         e.update(cat='stop', subText=_stop_sub(detail), minutes=r[10])
+        if r[10] is None and mc is not None:
+            # 分を持たずに入れた行（古い行・分を渡さない入れ方）。**いまの予定の画面と同じ見積**で数え、
+            # 出どころを言う（空のままだと期間の合計から黙って抜ける・§9.502の追補3）。
+            est = sc.resolve_estimate(mc, equipment, {'kind': '設備停止', 'title': e['title']})
+            e['minutes'] = est['minutes']
+            e['minutesSource'] = ('停止理由の標準（いまのマスタ）' if est['source'] == 'stop-reason-master'
+                                  else '既定の分（停止理由に標準が無い）')
         _touched(e)
         return e
     # 日付・直の枠（§9.238）は**並びの目印**で、起きたことの記録ではないので出さない。
@@ -161,7 +182,7 @@ def _unplanned(a, keys):
             'createdBy': str(a.get('createdBy') or ''), 'createdPc': str(a.get('createdPc') or ''),
             'createdAt': str(a.get('createdAt') or ''), 'updatedBy': str(a.get('updatedBy') or ''),
             'updatedPc': str(a.get('updatedPc') or ''), 'updatedAt': str(a.get('updatedAt') or ''),
-            'estimateMinutes': None, 'start': _iso(st), 'end': _iso(en), 'minutes': _minutes(st, en),
+            'estimateMinutes': None, 'start': _iso(st), 'end': _iso(en), 'minutes': _minutes(st, en), 'minutesSource': '',
             'at': _iso(st or en), 'atSource': '測定データの実績', 'who': str(a.get('createdBy') or ''),
             'recordId': a.get('id'), 'subText': '', 'detail': _project(basic, keys), 'children': []}
 
@@ -171,13 +192,13 @@ def _text_of(e):
     parts = [e['lotNo'], e['castingNo'], e['title'], e['subText'], e['remark'], e['who'],
              e['createdBy'], e['createdPc'], e['updatedBy'], e['updatedPc'], ' '.join(e['children'])]
     parts += [str(v) for v in e['detail'].values()]
-    return '\n'.join(p for p in parts if p).lower()
+    return search_fold('\n'.join(p for p in parts if p))
 
 
 def matches(e, query):
     """空白で区切った語が**すべて**当たるか（AND）。画面の絞り込みと同じ規則。"""
     text = _text_of(e)
-    return all(w in text for w in str(query or '').lower().split())
+    return all(w in text for w in search_fold(query).split())
 
 
 def history(c_share, mc, equipment, day_from=None, day_to=None, keys=None, actual_index=None, query='',
@@ -213,7 +234,8 @@ def history(c_share, mc, equipment, day_from=None, day_to=None, keys=None, actua
         if r[18] is not None:
             # 子ロット（§9.83）は親の明細行。**親の1件に束ねる**（単独の記録にしない）。
             children.setdefault(r[18], []).append(str(r[4] or ''))
-    entries, matched = [], set()
+    target = normalize_equipment_name(equipment)
+    parsed = []
     for r in rows:
         if r[18] is not None:
             continue
@@ -222,20 +244,30 @@ def history(c_share, mc, equipment, day_from=None, day_to=None, keys=None, actua
         except ValueError as e:
             quiet('明細を読めない（空として扱う）', e)
             detail = {}
-        e = _base(r, detail, keys)
-        if e['kind'] == '作業':
+        actual = None
+        if str(r[3] or '') == '作業':
             actual = sc.match_actual(actual_index, detail.get('lotNo') or r[4], detail.get('castingNo') or r[6],
                                      detail.get('mfgMaterial'))
-            if actual is not None:
-                matched.add(actual['key'])
+        parsed.append((r, detail, actual))
+    # **実績1件は予定の行1本にだけ当たる**。いまの予定に居る行（有効）が先に取る——いまの予定の画面と
+    # 同じ当て方。外した行は、その実績を取れる理由があるときだけ（`_removed_owns()`）。
+    matched = {a['key'] for r, _d, a in parsed if a is not None and (r[14] is None or r[14])}
+    entries = []
+    for r, detail, actual in parsed:
+        e = _base(r, detail, keys)
+        if e['kind'] == '作業':
+            if actual is not None and e['removed']:
+                if actual['key'] in matched or not _removed_owns(e, actual, target):
+                    actual = None
+                else:
+                    matched.add(actual['key'])
             e = _work(e, r, detail, actual)
         else:
-            e = _other(e, r, detail)
+            e = _other(e, r, detail, mc, equipment)
         if e is not None:
             e['children'] = children.get(r[0], [])
             entries.append(e)
     # 計画外の実績（§9.33）。予定の行（外したものも）に当たった実績は除く。
-    target = normalize_equipment_name(equipment)
     for key, a in actual_index.items():
         if key in matched or not a.get('startAt'):
             continue

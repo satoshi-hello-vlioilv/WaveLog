@@ -253,6 +253,60 @@ try:
         and '同じ' in vn({'appVersion': _ready.current()['appVersion']}) and vn(None),
         vn and [vn({'appVersion': '2.381.0'}), vn({'appVersion': _ready.current()['appVersion']}), vn(None)])
 
+    # ---- 10) 更新の片付けは db_access を読み込まない（§9.497の追補3） ----
+    # 読み込むと共有マスタの写しを錠なしで作り直し（master_share.configure → _pull(force)）、
+    # アプリが起動中なら書込を上書きし得る。**別のプロセスで**確かめる（この網の中では既に読み込んでいる）。
+    # 設定（残す日数）は今までどおりパス設定マスタから読めることも同じプロセスで見る。
+    cfgdb = tmp / 'cfg_master.sqlite3'
+    import sqlite3 as _sq
+    _c = _sq.connect(str(cfgdb))
+    _c.execute('CREATE TABLE [パス設定マスタ] ([設定キー] TEXT PRIMARY KEY, [設定値] TEXT)')
+    _c.execute("INSERT INTO [パス設定マスタ] VALUES ('cleanup_keep_days','9')")
+    _c.commit()
+    _c.close()
+    def probe(shared):
+        """update.bat と同じく**新しいプロセス**で片付けを回す。`shared`なら共有に置いたマスタの形
+        （置き場の見立てだけ差し替える。取り込みは数えるだけで本当には行かない）。"""
+        code = (
+            'import sys,json,pathlib\n'
+            'sys.path.insert(0,%r)\n'
+            'from backend import paths, master_share\n'
+            'pulls=[]\n'
+            'master_share._pull=lambda *a,**k:pulls.append(1)\n'
+            'master_share._looks_shared=lambda p:%r\n'
+            'if hasattr(paths,"master_db_file"):paths.master_db_file=lambda:pathlib.Path(%r)\n'
+            'from backend import file_cleanup\n'
+            'file_cleanup.run(dry_run=True,log=False)\n'
+            'days=file_cleanup.keep_days()\n'
+            'print("#PROBE "+json.dumps({"db_access":"backend.db_access" in sys.modules,"pulls":len(pulls),"keep_days":days}))\n'
+        ) % (str(ROOT), bool(shared), str(cfgdb))
+        import subprocess
+        pr = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, timeout=120)
+        line = next((x for x in pr.stdout.splitlines() if x.startswith('#PROBE ')), '')
+        return (json.loads(line[7:]) if line else {}), (line or pr.stderr[-400:])
+    sh_got, sh_line = probe(True)
+    lo_got, lo_line = probe(False)
+    print('#MEASURE ' + json.dumps({'shared': sh_got, 'local': lo_got}))
+    rec('更新の片付けは db_access を読み込まず、共有のマスタを取り込みに行かない（§9.497の追補3）',
+        sh_got.get('db_access') is False and sh_got.get('pulls') == 0 and lo_got.get('db_access') is False, sh_line)
+    rec('更新の片付けでも掃除の決まり（残す日数）はパス設定マスタから読む（§9.497の追補3）',
+        lo_got.get('keep_days') == 9, lo_line)
+
+    # ---- 11) 消せなかった物の「次に何が起きるか」は種別の決まりどおりに言う（§9.497の追補3） ----
+    # 前は「次の掃除で消えます」と一律に言っていたが、作業フォルダ・起動の部品・バイトコードは定期の掃除では消さない。
+    fn = getattr(file_cleanup, 'failed_note', None)
+    auto_only = {'results': [{'key': 'logs', 'failed': 2}], 'failed': 2}
+    manual = {'results': [{'key': 'logs', 'failed': 1}, {'key': 'pycache', 'failed': 1}], 'failed': 2}
+    notes = (fn(auto_only), fn(manual)) if fn else (None, None)
+    print('#MEASURE ' + json.dumps({'failed_note': notes}, ensure_ascii=False))
+    rec('消せなかった物が定期の掃除で消える種別だけなら「次の掃除で消えます」と言う（§9.497の追補3）',
+        fn is not None and '次の掃除' in notes[0], str(notes[0]))
+    rec('定期の掃除では消さない種別を含むなら「次の掃除で消えます」と言わず、次の update.bat を言う（§9.497の追補3）',
+        fn is not None and '次の掃除で消えます' not in notes[1] and 'update.bat' in notes[1], str(notes[1]))
+    down = vn({'appVersion': '99.0.0'}) if vn else ''
+    rec('版が下がったときは「更新」と言わず、前の版に戻っていると言う（§9.497の追補3）',
+        '更新' not in down and '戻' in down, down)
+
     # ---- 8) 種別の作りが揃っている（画面はこの並びをそのまま出す） ----
     need = {'key', 'label', 'icon', 'note', 'why', 'auto', 'scan'}
     rec('どの種別も「呼び名・説明・消し方・自動可否」を持っている',
