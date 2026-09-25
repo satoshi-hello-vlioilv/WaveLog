@@ -5870,8 +5870,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   {key:'col',label:'列の値が変わるごと',short:'列の値'},
  ];
  const SC_SUBTOTAL_STYLES=[
-  {key:'row',label:'行',note:'集計した列の真下へ、表の1行として出します'},
-  {key:'label',label:'ラベル',note:'区切りの下へ、1行の帯にまとめて出します'},
+  {key:'row',label:'行',note:'区切りごとに、表の1行として出します'},
+  /* ラベルは**まとめの見出しの行に書く**（§9.503②、利用者の指示「ラベルは、まとめ単位で出すようにして、行とは
+     違い、まとめ単位で日付や直を表示している行に一緒に記載してください」）。区切りはまとめそのもの。 */
+  {key:'label',label:'ラベル',note:'「まとめ」の見出しの行（日付・直など）に並べて書きます'},
  ];
  /* **集計の項目**（§9.498、利用者の指示「小計機能を項目複数でも対応できるように。また数値の計算の
     場合、計算式を組んだり、書式を設定して数値の桁数や単位の設定ができるように」——項目複数＝集計の
@@ -6117,14 +6119,16 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* 数えるのは**全部の項目**、出すのは表に出している列の集計と式だけ。列を隠した項目も式の材料には
      なる——出すぶんだけで数えると、設定の見本（全部で数える）と表の小計で式の答えが食い違っていた。 */
   const agg=subtotalOf(unit.rows,cfg.items);
-  const el=document.createElement('div');
+  /* ラベルはまとめの見出しの行の中（`span`）。行は表の1行（`div`）。 */
+  const el=document.createElement(cfg.style==='label'?'span':'div');
   el.className='sc-subtotal'+(cfg.style==='label'?' is-label':'')+(cfg.style==='row'&&cfg.pos==='top'?' is-top':'');
   el.dataset.unit=unit.key;el.dataset.count=String(agg.count);
   /* 名前は列の幅で切れることがある。**全文は`title`**で読めるようにする。 */
   el.title=`小計 ${unit.label}・作業 ${agg.count}ロット`;
   /* 見せる物は設定どおり（§9.503④）。何も見せない形では行を作らない（空の帯を置かない）。 */
   const sw=cfg.show;
-  const name=(sw.tag?`<b class="sc-subtotal-tag">小計</b>`:'')+(sw.name?`<span class="sc-subtotal-name">${esc(unit.label)}</span>`:'')
+  /* ラベルは見出しが日付・直を言っているので、区切りの名前は繰り返さない（同じ情報を2箇所に出さない）。 */
+  const name=(sw.tag?`<b class="sc-subtotal-tag">小計</b>`:'')+(sw.name&&cfg.style!=='label'?`<span class="sc-subtotal-name">${esc(unit.label)}</span>`:'')
    +(sw.count?`<span class="sc-subtotal-count" title="この区切りの作業ロットの数（取消・設備停止・申し送りは数えない。子ロットは親の1本）">${agg.count}ロット</span>`:'');
   if(!name&&!items.length)return null;
   const part=(it,tag)=>{
@@ -6181,7 +6185,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  function subtotalStateText(c){
   if(!c.on)return '出していません';
   const u=SC_SUBTOTAL_UNITS.find(x=>x.key===c.unit)||{};
-  const unit=c.unit==='col'?(c.unitCol?`${scColLabel(c.unitCol)}の値ごと`:'区切る列が未選択'):(u.label||'');
+  const g=SC_GROUP_MODES.find(m=>m.key===(scState.groupMode||'none'))||{};
+  const unit=c.style==='label'?((scState.groupMode||'none')==='none'?'まとめが無いので出ていません':`まとめ（${g.short||g.label}）ごと`)
+   :c.unit==='col'?(c.unitCol?`${scColLabel(c.unitCol)}の値ごと`:'区切る列が未選択'):(u.label||'');
   const st=(SC_SUBTOTAL_STYLES.find(x=>x.key===c.style)||{}).label||'';
   return `${unit}・${c.items.length?`${c.items.length}項目`:'ロット数だけ'}・${st}`;
  }
@@ -6216,7 +6222,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const items=c.items;
   /* 見本の区切り: **数として読めた値がいちばん多い区切り**（同じなら先の区切り）。「件数」は読めない
      区切りでも0を返すので、値の有無では選ばない（読める値の無い区切りが選ばれて見本が「—」になった）。 */
-  const units=[...subtotalUnits(visibleEntries(),c).values()];
+  const units=subtotalUnitList(visibleEntries(),c);
   let sample=null,best=-1;
   units.forEach(u=>{
    const r=subtotalOf(u.rows,items);
@@ -6262,6 +6268,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     +`<option value="">（列を選ぶ）</option>`
     +timelineColumnKeys().filter(k=>k!=='__actions__').map(k=>`<option value="${esc(k)}"${k===c.unitCol?' selected':''}>${esc(scColLabel(k))}</option>`).join('')
     +`</select>`+(c.unit==='col'&&!c.unitCol?'<small class="sc-st-warn">区切る列を選ぶと出ます</small>':'');
+  /* ラベルの区切りは**まとめそのもの**（§9.503②）。まとめないなら見出しが無いので出ない——そう言い、次の1手を1つ出す。 */
+  const gm=SC_GROUP_MODES.find(m=>m.key===(scState.groupMode||'none'))||{};
+  const labelUnitCtl=(scState.groupMode||'none')==='none'
+   ?`<small class="sc-st-warn">いまは「まとめない」なので、見出しの行が無く出ません</small>`
+    +`<button type="button" class="sc-subtotal-opt" data-st-group="date" title="「まとめ」を日付ごと（現場歴）にします（上の「まとめ」でも選べます）">日付ごとにまとめる</button>`
+   :`<span class="sc-st-fixed">まとめと同じ（いま: ${esc(gm.label||'')}）</span><small class="sc-st-hint">変えるときは上の「まとめ」</small>`;
   const table=`<div class="sc-st-grid sc-st-thead" aria-hidden="true"><span title="小計に出す（外しても式の材料にはなります）">出す</span><span>名前</span><span>列（数に読める件数）</span><span>集計</span><span>計算</span><span>桁</span><span>単位</span>`
     +`<span title="${esc(sample?`見本の区切り: ${sample.u.label}（${sample.r.count}ロット）`:'区切りがまだありません')}">見本${sample?`（${esc(sample.u.label)}）`:''}</span><span></span></div>`
     +(items.length?items.map(rowHtml).join(''):'<div class="sc-st-empty">まだありません。ロット数だけを出します。</div>')
@@ -6270,14 +6282,14 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     +`<small class="sc-st-hint">計算の欄は集計した値に続けて当てます（例 ÷1000×0.8）。式では [${SC_SUBTOTAL_LOTS}] と上の名前が使えます。1行ごとの計算は「列の作り方」で列を作ってから集計します。</small></div>`;
   pop.innerHTML=`<div class="sc-st-steps">`
     +`<div id="scSubtotalCtl">${step('出す','区切りごとの小計の行',`<span class="sc-subtotal-opts" role="group" aria-label="小計を出すか">${seg('data-st-on','0',!c.on,'出さない')}${seg('data-st-on','1',c.on,'出す')}</span>`
-       +(c.on?'':'<small class="sc-st-hint">出すと、区切り・集計の項目・出し方を決められます</small>'))}</div>`
+       +(c.on?'':'<small class="sc-st-hint">出すと、出し方・区切り・集計の項目を決められます</small>'))}</div>`
     +`<div id="scSubtotalMore"${c.on?'':' hidden'}>`
-    +step('区切り','どこで区切って数えるか（まとめとは別）',unitCtl)
-    +step('集計の項目','作業ロットの数はいつも出します（取消・設備停止・申し送りは数えない）',table,true)
+    /* 出し方が先（§9.503②）——ラベルはまとめの見出しに書くので、出し方しだいで「区切り」の意味が変わる。 */
     +step('出し方','どちらも1行',`<span class="sc-subtotal-opts" role="group" aria-label="小計の出し方">`
        +SC_SUBTOTAL_STYLES.map(st=>seg('data-st-style',st.key,st.key===c.style,st.label,st.note)).join('')+'</span>'
        +`<small class="sc-st-hint">${esc((SC_SUBTOTAL_STYLES.find(x=>x.key===c.style)||{}).note||'')}</small>`)
-    +step('位置と揃え',c.style==='row'?'行を区切りのどちらに置くか・行の中の寄せ方':'帯の中の寄せ方',
+    +step('区切り',c.style==='row'?'どこで区切って数えるか（まとめとは別）':'まとめの見出しごとに数えます',c.style==='row'?unitCtl:labelUnitCtl)
+    +step('位置と揃え',c.style==='row'?'行を区切りのどちらに置くか・行の中の寄せ方':'見出しの行の中の寄せ方',
        /* 2つの群は**名札で分ける**（札が続けて並ぶと1つの群に読める）。 */
        (c.style==='row'?`<small class="sc-st-sub">位置</small><span class="sc-subtotal-opts" role="group" aria-label="小計の行の位置">`
        +SC_SUBTOTAL_POS.map(x=>seg('data-st-pos',x.key,x.key===c.pos,x.label,x.note)).join('')+'</span>':'')
@@ -6285,9 +6297,13 @@ const SC_LOCK_WAIT_MAX_MS=4000;
        +subtotalAlignsOf(c.style).map(x=>seg('data-st-align',x.key,x.key===subtotalAlignOf(c),x.label,x.note)).join('')+'</span>'
        +`<small class="sc-st-hint">${esc([c.style==='row'?(SC_SUBTOTAL_POS.find(x=>x.key===c.pos)||{}).note:'',
          (SC_SUBTOTAL_ALIGNS.find(x=>x.key===subtotalAlignOf(c))||{}).note].filter(Boolean).join('。'))}</small>`)
+    +step('集計の項目','作業ロットの数はいつも数えます（取消・設備停止・申し送りは数えない）',table,true)
     +step('見せる物','押すたびに出す・出さない',`<span class="sc-subtotal-opts" role="group" aria-label="小計に見せる物">`
-       +SC_SUBTOTAL_SHOW.map(x=>seg('data-st-show',x.key,c.show[x.key],x.label,x.note)).join('')+'</span>'
-       +`<small class="sc-st-hint">項目ごとの出す・出さないは③の左端</small>`
+       /* ラベルでは区切りの名前は出さない（見出しが言っている）——押せる形にしない・理由を書く（§CLAUDE 4）。 */
+       +SC_SUBTOTAL_SHOW.map(x=>(c.style==='label'&&x.key==='name')
+         ?`<button type="button" class="sc-subtotal-opt" disabled title="ラベルは見出しの行が日付・直を言っているので繰り返しません">${esc(x.label)}</button>`
+         :seg('data-st-show',x.key,c.show[x.key],x.label,x.note)).join('')+'</span>'
+       +`<small class="sc-st-hint">項目ごとの出す・出さないは「集計の項目」の左端${c.style==='label'?'。ラベルでは区切りの名前は見出しが言います':''}</small>`
        +(!SC_SUBTOTAL_SHOW.some(x=>c.show[x.key])&&!items.some(it=>it.show)?'<small class="sc-st-warn">見せる物が1つも無いので、小計の行は出ません</small>':''))
     +`</div></div>`;
   /* 描き直しは`updateViewMenuUi()`の1回（段が開いていれば中身も描き直す）。 */
@@ -6297,8 +6313,14 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   pop.querySelectorAll('[data-st-pos]').forEach(b=>b.onclick=()=>apply({pos:b.dataset.stPos}));
   pop.querySelectorAll('[data-st-align]').forEach(b=>b.onclick=()=>apply({align:b.dataset.stAlign}));
   pop.querySelectorAll('[data-st-show]').forEach(b=>b.onclick=()=>apply({show:Object.assign({},c.show,{[b.dataset.stShow]:!c.show[b.dataset.stShow]})}));
-  $('#scSubtotalUnit').onchange=e=>apply({unit:e.target.value});
-  $('#scSubtotalUnitCol').onchange=e=>apply({unitCol:e.target.value});
+  const unitSel=$('#scSubtotalUnit'),unitColSel=$('#scSubtotalUnitCol');
+  if(unitSel)unitSel.onchange=e=>apply({unit:e.target.value});
+  if(unitColSel)unitColSel.onchange=e=>apply({unitCol:e.target.value});
+  /* まとめを入れる1手は「まとめ」の欄と同じ道を通す（保存・描き直し・畳んだ入口の字）。 */
+  pop.querySelectorAll('[data-st-group]').forEach(b=>b.onclick=()=>{
+   const g=$('#scGroupSelect');if(!g)return;
+   g.value=b.dataset.stGroup;g.dispatchEvent(new Event('change'));
+  });
   const setItems=fn=>{const next=subtotalCfg().items;fn(next);apply({items:next})};
   const nextId=()=>'i'+(Math.max(0,...items.map(it=>+(/^i(\d+)$/.exec(it.id)||[])[1]||0))+1);
   $('#scSubtotalAddAgg').onclick=()=>setItems(list=>{
@@ -6329,17 +6351,26 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     置く行は位置で決まる（上＝区切りの最初の行・下＝最後の行・§9.503①）。描く側はこの答えを見るだけ。 */
  function subtotalUnits(list,cfg){
   const at=new Map();
-  if(!cfg.on||(cfg.unit==='col'&&!cfg.unitCol))return at;
-  const top=cfg.style==='row'&&cfg.pos==='top';
-  const put=u=>at.set(top?u.rows[0]:u.rows[u.rows.length-1],u);
-  let cur=null;
+  if(cfg.style!=='row')return at;          // ラベルはまとめの見出しが持つ（renderTimeline）
+  const top=cfg.pos==='top';
+  subtotalUnitList(list,cfg).forEach(u=>at.set(top?u.rows[0]:u.rows[u.rows.length-1],u));
+  return at;
+ }
+ /* 区切りの並び（`{key,label,rows}`）。**「行」は小計の区切り、「ラベル」はまとめ**（§9.503②）——ラベルは
+    まとめの見出しに書くので、区切りはまとめと同じ`bucketOf(…, まとめ方)`。まとめないならラベルの区切りは無い。
+    表の描画・設定の見本が同じ1本を通る。 */
+ function subtotalUnitList(list,cfg){
+  if(!cfg.on)return [];
+  const label=cfg.style==='label';
+  if(label&&(scState.groupMode||'none')==='none')return [];
+  if(!label&&cfg.unit==='col'&&!cfg.unitCol)return [];
+  const out=[];let cur=null;
   list.forEach(e=>{
-   const b=bucketOf(e,cfg.unit,cfg.unitCol)||{key:'__all__',label:'全体'};
-   if(!cur||cur.key!==b.key){if(cur)put(cur);cur={key:b.key,label:b.label,rows:[]}}
+   const b=(label?bucketOf(e,scState.groupMode):bucketOf(e,cfg.unit,cfg.unitCol))||{key:'__all__',label:'全体'};
+   if(!cur||cur.key!==b.key){cur={key:b.key,label:b.label,rows:[]};out.push(cur)}
    cur.rows.push(e);
   });
-  if(cur)put(cur);
-  return at;
+  return out;
  }
 
 /* 内容の列数はマスタ次第で変わるので、**グリッドの定義も一緒に作り直す**。
@@ -7100,6 +7131,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    const box=document.createElement('div');
    box.className='sc-group';box.dataset.group=bucket.key;
    if(bucket.label)box.insertAdjacentHTML('beforeend',groupHeadHtml(bucket.label,bucket.rows.length));
+   /* ラベルの小計は**まとめの見出しの行に**（§9.503②）。区切りはこの箱そのもの。 */
+   if(bucket.label&&stCfg.on&&stCfg.style==='label'){
+    const lab=subtotalEl({key:bucket.key,label:bucket.label,rows:bucket.rows},stCfg);
+    if(lab)box.querySelector('.sc-group-head').append(lab);
+   }
    let lastEnd=null;
    bucket.rows.forEach(e=>{
     const st=stEnds.get(e);

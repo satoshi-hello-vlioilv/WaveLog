@@ -9,8 +9,8 @@
     2. 入れると区切りごとに1つ … 作業ロット数・選んだ列の合計（桁区切り`,`も読む）
     3. 数として読めない値は足さずに**件数を言う**（0として足さない）
     4. 「行」は合計が**足した列の真下**（見出しのセルと左端が2px以内）
-    5. 「ラベル」は1行の帯で、どの列の合計かを字で添える
-    6. まとめとは**別の軸**（まとめを変えても小計は残り、小計を触ってもまとめは変わらない）
+    5. 「ラベル」は**まとめの見出しの行**に書く（§9.503②）。まとめないときは出さず、そう言う
+    6. 「行」はまとめとは**別の軸**（まとめを変えても小計は残り、小計を触ってもまとめは変わらない）
     7. 切に戻すと0個・並べ替えの行（`.sc-row-line`）の数は小計で変わらない
     8. 再読み込みしても設定が残る（この端末・設備ごと）
 
@@ -129,23 +129,48 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
   const bar=await page.evaluate(()=>(document.getElementById('scViewState')||{}).textContent||'');
   rec('畳んだ入口に「小計」の設定が出る（思い出させない）',/小計/.test(bar),bar);
 
-  // ---- 5. ラベル ------------------------------------------------------
+  // ---- 5. ラベル（§9.503②、利用者の指示「ラベルは、まとめ単位で出すようにして、行とは違い、まとめ単位で
+  //      日付や直を表示している行に一緒に記載してください」） -------------------------------------------
+  // まとめの見出しの行に書く。まとめないときは見出しが無いので出さず、そう言って次の1手を出す。
   await page.click('#scSubtotalMore [data-st-style="label"]');
-  await W.until(page,t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);return !!el&&el.classList.contains('is-label')},TAG,{ms:8000,what:'ラベルの小計'});
-  const s2=await snap();
+  await W.until(page,()=>!document.querySelector('#scTimeline .sc-subtotal:not(.is-label)'),null,{ms:8000,what:'ラベルへ切り替えた'});
+  const lw=await page.evaluate(()=>{const n=document.querySelector('#scSubtotalMore .sc-st-warn');const b=document.querySelector('#scSubtotalMore [data-st-group]');
+   return {warn:n?n.textContent.trim():'',btn:b?b.textContent.trim():'',shown:document.querySelectorAll('#scTimeline .sc-subtotal').length}});
+  rec('ラベル: まとめないときは出さず、そう言って次の1手を出す（§9.503②）',lw.shown===0&&/まとめ/.test(lw.warn)&&!!lw.btn,JSON.stringify(lw));
+  await page.selectOption('#scGroupSelect','category');
+  await W.until(page,()=>!!document.querySelector('#scTimeline .sc-group-head .sc-subtotal'),null,{ms:8000,what:'見出しのラベル'});
+  const s2=await page.evaluate(()=>{
+   const boxes=[...document.querySelectorAll('#scTimeline .sc-group')].filter(b=>b.querySelector('.sc-group-head'));
+   const planned=document.querySelector('#scTimeline .sc-group[data-group="planned"]');
+   const st=planned&&planned.querySelector('.sc-group-head .sc-subtotal');
+   const head=planned&&planned.querySelector('.sc-group-head');
+   return {boxes:boxes.length,inHead:boxes.filter(b=>b.querySelector('.sc-group-head .sc-subtotal')).length,
+    outside:[...document.querySelectorAll('#scTimeline .sc-subtotal')].filter(x=>!x.closest('.sc-group-head')).length,
+    count:st?+st.dataset.count:null,rows:planned?planned.querySelectorAll('.sc-row-line').length:null,
+    text:st?st.textContent.replace(/\s+/g,' ').trim():'',name:!!(st&&st.querySelector('.sc-subtotal-name')),
+    headH:head?Math.round(head.getBoundingClientRect().height):null,
+    rowH:Math.round(document.querySelector('#scTimeline .sc-row-line').getBoundingClientRect().height)}});
+  console.log('#MEASURE '+JSON.stringify({labelInHead:s2}));
   if(process.env.WAVELOG_SHOT){
    await page.click('#scViewMenuBtn');
+   await page.evaluate(()=>{const h=document.querySelector('#scTimeline .sc-group-head');if(h)h.scrollIntoView({block:'center'})});
    await shot('label');
    await page.click('#scViewMenuBtn');
   }
-  rec('「ラベル」は1行の帯で、列名と合計と件数を字で出す',s2.label&&/3ロット/.test(s2.text)&&/2,000\.5/.test(s2.text)&&s2.text.includes('mfgMaterial')===false,s2.text);
+  rec('ラベル: まとめの見出しの行ごとに1つ・見出しの外には出さない（§9.503②）',s2.boxes>0&&s2.inHead===s2.boxes&&s2.outside===0,JSON.stringify(s2));
+  rec('ラベル: ロット数はそのまとめの作業ロットの数（「予定」の箱の行の数と同じ）',s2.count!==null&&s2.count===s2.rows,JSON.stringify(s2));
+  rec('ラベル: 項目の名前つきで値を出し、見出しが言う日付・区分は繰り返さない。見出しは1行のまま',
+      /ロット/.test(s2.text)&&/製造材質/.test(s2.text)&&!s2.name&&s2.headH===s2.rowH,JSON.stringify(s2));
 
-  // ---- 6. まとめとは別の軸 --------------------------------------------
-  const g0=s2.group;
+  // ---- 6. 「行」はまとめとは別の軸 --------------------------------------------
+  await page.selectOption('#scGroupSelect','none');
+  await page.click('#scSubtotalMore [data-st-style="row"]');
+  await W.until(page,t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);return !!el&&!el.classList.contains('is-label')},TAG,{ms:8000,what:'行の小計'});
+  const g0=(await snap()).group;
   await page.selectOption('#scGroupSelect','category');
   await idle();
   const s3=await snap();
-  rec('まとめを変えても小計は残る（別の軸）',s3.count===3,`まとめ=${s3.group}・この区切り${s3.count}ロット`);
+  rec('「行」はまとめを変えても区切りのまま数える（別の軸）',s3.count===3,`まとめ=${s3.group}・この区切り${s3.count}ロット`);
   rec('小計を触ってもまとめは変わっていなかった（まとめない のまま）',g0==='まとめない',`${g0}→${s3.group}`);
   await page.selectOption('#scGroupSelect','none');
 
@@ -155,7 +180,7 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
   await W.openSchedule(page,EQ);
   await W.until(page,t=>[...document.querySelectorAll('.sc-subtotal')].some(x=>x.dataset.unit===t),TAG,{ms:15000,what:'読み直した後の小計'});
   const s4=await snap();
-  rec('再読み込みしても設定が残る（この端末・設備ごと）',s4.count===3&&s4.label,JSON.stringify({count:s4.count,label:s4.label}));
+  rec('再読み込みしても設定が残る（この端末・設備ごと）',s4.count===3&&!s4.label,JSON.stringify({count:s4.count,label:s4.label}));
 
   // ---- 9. 集計を複数の種類で・式・書式（§9.498、利用者の指示） ----------
   // 「小計機能を項目複数でも対応できるように。また数値の計算の場合、計算式を組んだり、
@@ -164,7 +189,7 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
    return el?[...el.querySelectorAll('.sc-subtotal-sum[data-item]')].map(x=>({v:(x.querySelector('.sc-st-v')||x).textContent.trim(),t:x.title})):null},TAG);
   // 9a) いままでの保存（合計する列）は読むときに「合計」の項目へ読み替える
   await page.evaluate(eq=>localStorage.setItem('ScheduleSubtotalV1',JSON.stringify({[eq]:
-    {on:true,unit:'col',unitCol:'mfgTemper',style:'label',cols:['mfgMaterial']}})),EQ);
+    {on:true,unit:'col',unitCol:'mfgTemper',style:'row',cols:['mfgMaterial']}})),EQ);
   await page.reload({waitUntil:'domcontentloaded'});
   await W.booted(page);
   await W.openSchedule(page,EQ);
@@ -242,8 +267,8 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
   console.log('#UI '+JSON.stringify(ui));
   /* 並びは**前後関係**で見る（顔ぶれを丸ごと固定しない・testing.md）。出す→区切り→集計の項目→見せる物（最後）。 */
   const at=n=>ui.order.indexOf(n);
-  rec('設定: 節は決める順（出すが先頭・区切り→集計の項目・見せる物が最後）（§9.500・§9.503）',
-      at('出す')===0&&at('区切り')>0&&at('区切り')<at('集計の項目')&&at('見せる物')===ui.order.length-1,JSON.stringify(ui.order));
+  rec('設定: 節は決める順（出すが先頭・出し方→区切り→集計の項目・見せる物が最後）（§9.500・§9.503）',
+      at('出す')===0&&at('出し方')>0&&at('出し方')<at('区切り')&&at('区切り')<at('集計の項目')&&at('見せる物')===ui.order.length-1,JSON.stringify(ui.order));
   rec('設定: 集計の項目の欄はどれも見出しを持つ（§9.500）',ui.heads.length>=ui.fields&&ui.fields>0,`見出し${ui.heads.length}・欄${ui.fields} ${JSON.stringify(ui.heads)}`);
   rec('設定: 見出しと欄の左端がそろう（§9.500）',ui.cols.length===5&&ui.cols.every(d=>d<=1),JSON.stringify(ui.cols));
   rec('設定: 見本の値が設定の中で見える（§9.500）',ui.preview==='2,001kg*',JSON.stringify(ui.preview));

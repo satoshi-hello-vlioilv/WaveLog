@@ -1343,6 +1343,10 @@
 .sc-st-in>.sc-subtotal-sum>small,.sc-subtotal-head>.sc-subtotal-sum>small{margin-right:var(--space-1);color:var(--muted);font-weight:400}
 .sc-subtotal-sum.is-bad>.sc-st-v{color:var(--danger)}
 .sc-subtotal-skip{font-style:normal;color:var(--warn-fg)}
+/* ラベルの小計は**まとめの見出しの行の中**（§9.503②）。行の器の見た目（面・線・高さ）は持たず、見出しの
+   名前と件数の後ろへ続ける。寄せ方は同じ`.sc-subtotal-line`（左＝件数の直後・中央・右＝見出しの右端）。 */
+.sc-group-head>.sc-subtotal.is-label{height:auto;padding:0;border:0;background:none;flex:1 1 auto;min-width:0;margin-left:var(--space-3);
+ font-size:var(--fs-sm)}
 /* 列にそろえない並び（§9.503⑤）：1本の並びを行の中で寄せる。列にはそろえないので、どの値かを**字で**添える。
    寄せ方は`safe`——入りきらないときは左から（右・中央のまま押し出すと頭が左へ切れる）。 */
 .sc-subtotal.is-label,.sc-subtotal.is-line{display:flex;align-items:center}
@@ -2340,6 +2344,8 @@ div.sc-view-row{cursor:default}
 .sc-st-step-ctl>select[hidden]{display:none}
 .sc-st-step-ctl .sc-subtotal-opt{flex:0 0 auto;min-width:var(--w-xs);justify-content:center}
 .sc-st-hint{color:var(--muted);font-size:var(--fs-micro);line-height:1.4}
+/* 選べない値（ラベルの区切り＝まとめ）。読み取り専用なので枠を付けない（§CLAUDE 10）。 */
+.sc-st-fixed{font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
 /* 1つの節に札の群が2つあるときの名札（§9.503⑤）。2つ目の群の前は少し空ける。 */
 .sc-st-sub{color:var(--ink-3);font-size:var(--fs-micro);font-weight:700}
 .sc-subtotal-opts+.sc-st-sub{margin-left:var(--space-3)}

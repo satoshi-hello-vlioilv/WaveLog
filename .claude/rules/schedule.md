@@ -30,7 +30,7 @@
 | 小計に見せる物（札・区切りの名前・ロット数・項目）はどれも入切できる。隠した項目も式の材料。何も見せないなら行を作らない | `test_scsubtotal.js` | [§9.503](../../docs/decisions/9.503.md) |
 | 小計の「行」を置く行は`subtotalUnits()`が答える（上＝区切りの最初の行・下＝最後の行）。描く側は前か後ろへ置くだけ | `test_scsubtotal.js` | [§9.503](../../docs/decisions/9.503.md) |
 | 小計の左・中央・右は1本の並びを**行の箱の中で**寄せる（格子にまたがせると余りの列ぶんはみ出す）。項目の名前を添える | `test_scsubtotal.js` | [§9.503](../../docs/decisions/9.503.md) |
-| 小計は**まとめとは別の軸**（区切りのお尻で数える）。区切りの語彙は`bucketOf()`の1本をまとめと共有する | `test_scsubtotal.js` | [§9.493](../../docs/decisions/9.493.md) |
+| 「行」の小計はまとめとは別の軸、「ラベル」は**まとめの見出しの行**に書く。並びは`subtotalUnitList()`の1本 | `test_scsubtotal.js` | [§9.493](../../docs/decisions/9.493.md)・[§9.503](../../docs/decisions/9.503.md) |
 | 小計が数えるのは作業ロットだけ（`subtotalCounted()`の1箇所）。子ロットは親の1本 | `test_scsubtotal.js` | [§9.493](../../docs/decisions/9.493.md) |
 | 合計は数として読めた値だけ。読めない・単位の違う値は0で足さず`*`と件数で言う | `test_scsubtotal.js` | [§9.493](../../docs/decisions/9.493.md) |
 | ICASコピーの最初の1行は`区切らずにつなぐ`（普通の行）。触っていない旧い例の2本は片付ける | `test_lotcopy.js` | [§9.462](../../docs/decisions/9.462.md) |
