@@ -240,7 +240,10 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
      height:Math.round(sec.getBoundingClientRect().height),popH:Math.round(pop.scrollHeight)};
   });
   console.log('#UI '+JSON.stringify(ui));
-  rec('設定: 節は決める順（出す→区切り→集計の項目→出し方）（§9.500）',JSON.stringify(ui.order)===JSON.stringify(['出す','区切り','集計の項目','出し方']),JSON.stringify(ui.order));
+  /* 並びは**前後関係**で見る（顔ぶれを丸ごと固定しない・testing.md）。出す→区切り→集計の項目→見せる物（最後）。 */
+  const at=n=>ui.order.indexOf(n);
+  rec('設定: 節は決める順（出すが先頭・区切り→集計の項目・見せる物が最後）（§9.500・§9.503）',
+      at('出す')===0&&at('区切り')>0&&at('区切り')<at('集計の項目')&&at('見せる物')===ui.order.length-1,JSON.stringify(ui.order));
   rec('設定: 集計の項目の欄はどれも見出しを持つ（§9.500）',ui.heads.length>=ui.fields&&ui.fields>0,`見出し${ui.heads.length}・欄${ui.fields} ${JSON.stringify(ui.heads)}`);
   rec('設定: 見出しと欄の左端がそろう（§9.500）',ui.cols.length===5&&ui.cols.every(d=>d<=1),JSON.stringify(ui.cols));
   rec('設定: 見本の値が設定の中で見える（§9.500）',ui.preview==='2,001kg*',JSON.stringify(ui.preview));
@@ -307,6 +310,31 @@ H.run('test_scsubtotal: 作業スケジュールの小計（§9.493）',async({p
   rec('[値] を使っても同じ答え。式の項目はその結果を [名前] で引く（1.6004÷3＝0.53）',
       hasPost&&pf.named[0]==='1.6t*'&&pf.named[5]==='0.53kg',JSON.stringify(pf.named));
   rec('書けない計算はその場で理由を言う',hasPost&&!!pf.bad,JSON.stringify(pf.bad));
+  /* 9g) 見せる物はどれも入切できる（利用者の指示「小計の表示から日付やロット数などもすべて、表示ONOFFできるように」）。
+     「小計」の札・区切りの名前・ロット数と、項目ごとの「出す」。隠した項目も式の材料にはなる。 */
+  const parts=()=>page.evaluate(t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
+   return el?{tag:!!el.querySelector('.sc-subtotal-tag'),name:!!el.querySelector('.sc-subtotal-name'),count:!!el.querySelector('.sc-subtotal-count'),
+    items:[...el.querySelectorAll('.sc-subtotal-sum[data-item]')].map(x=>x.dataset.item)}:null},TAG);
+  const hasShow=await page.evaluate(()=>!!document.querySelector('#scSubtotalMore [data-st-show="tag"]'));
+  const sh={has:hasShow,before:await parts()};
+  if(hasShow){
+   for(const k of ['tag','name','count'])await page.click(`#scSubtotalMore [data-st-show="${k}"]`);
+   await page.click('#scSubtotalMore .sc-st-item[data-i="1"] [data-st-f="show"]');
+   await W.until(page,t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
+    return !!el&&!el.querySelector('.sc-subtotal-tag')&&!el.querySelector('[data-item="i2"]')},TAG,{ms:8000,what:'隠した小計'});
+   sh.after=await parts();
+   for(const k of ['tag','name','count'])await page.click(`#scSubtotalMore [data-st-show="${k}"]`);
+   await page.click('#scSubtotalMore .sc-st-item[data-i="1"] [data-st-f="show"]');
+   await W.until(page,t=>{const el=[...document.querySelectorAll('.sc-subtotal')].find(x=>x.dataset.unit===t);
+    return !!el&&!!el.querySelector('.sc-subtotal-tag')&&!!el.querySelector('[data-item="i2"]')},TAG,{ms:8000,what:'戻した小計'});
+   sh.back=await parts();
+  }
+  console.log('#MEASURE '+JSON.stringify({show:sh}));
+  rec('「小計」の札・区切りの名前・ロット数を隠せる（利用者の指示④）',
+      hasShow&&!!sh.after&&!sh.after.tag&&!sh.after.name&&!sh.after.count,JSON.stringify(sh));
+  rec('項目ごとに隠せる（平均だけ消え、ほかは残る）。戻すと元どおり',
+      hasShow&&!!sh.after&&!sh.after.items.includes('i2')&&sh.after.items.length===sh.before.items.length-1
+      &&JSON.stringify(sh.back)===JSON.stringify(sh.before),JSON.stringify(sh));
   if(process.env.WAVELOG_SHOT){await page.screenshot({path:`${process.env.WAVELOG_SHOT}/scsubtotal-multi-panel.png`})}
   await page.click('#scViewMenuBtn');
   if(process.env.WAVELOG_SHOT){

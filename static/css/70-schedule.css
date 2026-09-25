@@ -2337,11 +2337,13 @@ div.sc-view-row{cursor:default}
 /* 集計の項目の表（§9.500）。**見出しと欄は同じ格子**（`.sc-st-grid`）——列の左端がそろう。
    式の行は「列＋集計」の2マスを式の欄がまたぐ。見本は読み取り専用（枠を付けない・§CLAUDE 10）。 */
 .sc-st-grid{display:grid;align-items:center;gap:var(--space-1);
- grid-template-columns:minmax(0,1.2fr) minmax(0,1.4fr) minmax(0,.75fr) minmax(0,1.1fr) minmax(0,.7fr) minmax(0,.6fr) minmax(0,1.1fr) var(--ctl-h-xs)}
+ grid-template-columns:var(--ctl-h-xs) minmax(0,1.2fr) minmax(0,1.4fr) minmax(0,.75fr) minmax(0,1.1fr) minmax(0,.7fr) minmax(0,.6fr) minmax(0,1.1fr) var(--ctl-h-xs)}
 .sc-st-thead>span{font-size:var(--fs-micro);font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 式の項目の式は「列・集計・計算」の3マスをまたぐ（式は長い・§9.503）。 */
 .sc-st-item.is-calc>.sc-st-expr{grid-column:span 3}
-.sc-st-item>input,.sc-st-item>select{
+/* 「出す」の印は欄の枠を持たない（押せる印そのもの・§9.503④）。 */
+.sc-st-item>input[type="checkbox"]{width:auto;height:auto;margin:0;justify-self:start;accent-color:var(--teal)}
+.sc-st-item>input:not([type="checkbox"]),.sc-st-item>select{
  width:100%;min-width:0;height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
  font-size:var(--fs-micro);color:var(--ink-2)}
