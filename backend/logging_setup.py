@@ -25,6 +25,25 @@ _MAX_BYTES=1_000_000
 _BACKUP_COUNT=3
 _FORMAT='%(asctime)s %(levelname)-7s [%(name)s] %(message)s'
 
+# 画面へ記録を出してよいか（`console_off()`が下ろす）。**答えはここ1箇所**。
+_CONSOLE=True
+
+def console_off():
+ """この処理のあいだ、**どの記録も画面へ出さない**（ファイルへは残す）。
+
+ `update.bat`（`program/setup_app.py`）の画面は「結果」と「次にすること」だけ（§9.431）。
+ `launcher_logger(to_console=False)` だけでは足りなかった——片付けなどが途中で
+ `db_access` を読み込むと、読み込んだだけで `app_logger()` が警告を出し、時刻つきの行が
+ 画面へ混ざる（§9.497の追補。CIのまっさらな環境で踏んだ）。どの道から読み込まれても
+ 漏れないよう、**記録を画面へ出すかをロガーの側で1回決める**。付いている画面向けの
+ 出口も外し、これから作るロガーにも付けない。"""
+ global _CONSOLE
+ _CONSOLE=False
+ for lg in [logging.getLogger(n) for n in list(logging.root.manager.loggerDict)]:
+  for h in list(getattr(lg,'handlers',[])):
+   if isinstance(h,logging.StreamHandler) and not isinstance(h,logging.FileHandler):
+    lg.removeHandler(h)
+
 def get_logger(name,filename,to_console=True):
  """名前付きロガーを返す。二重に呼んでもハンドラは重複追加しない。
 
@@ -57,7 +76,7 @@ def get_logger(name,filename,to_console=True):
   # ログを書けないこと自体でアプリを止めない(共有側が読み取り専用等)。
   quiet('ログファイルを開けない（画面へは出したまま続ける）',_e)
  # pythonw(コンソール非表示)では標準出力が無いためStreamHandlerを付けない。
- if to_console and sys.stdout is not None:
+ if to_console and _CONSOLE and sys.stdout is not None:
   console=logging.StreamHandler(sys.stdout)
   console.setFormatter(logging.Formatter(_FORMAT))
   setattr(console,mark,True)

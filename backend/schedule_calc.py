@@ -462,6 +462,21 @@ def record_finished(actual):
  if actual.get('endAt'):return True
  return str(actual.get('status') or '').strip() in RECORD_FINISHED_STATUSES
 
+def saved_actual_source(stored_actual_json):
+ """予定に保存した完了突合（`[実績JSON]`・§9.364/§9.365）を読む。**読むのはここ1箇所**。
+
+ 戻り値: {'values': 突合した行, 'finishedAt': 完了日時 or None, 'joinName': 定義名} か None。
+ 保存の形は2つある(§9.365): 素の行そのもの（§9.364で保存したぶん）と、完了時刻・定義名を
+ 添えた入れ物。**古い形も読めること**——読めないと保存済みの完了が「予定」に戻って見える。"""
+ if not stored_actual_json:return None
+ try:saved=json.loads(stored_actual_json)
+ except Exception as _e:
+  quiet('保存した実績を読めない（突合し直す）',_e);return None
+ if not (isinstance(saved,dict) and saved):return None
+ values=saved.get('values') if isinstance(saved.get('values'),dict) else saved
+ return {'values':values,'finishedAt':str(saved.get('finishedAt') or '') or None,
+         'joinName':str(saved.get('joinName') or '')}
+
 def _apply_actual_source(entry,detail,stored_actual_json):
  """仕掛から消えたロットを「完了」または「着手」として扱う(§9.364)。
 
@@ -488,24 +503,17 @@ def _apply_actual_source(entry,detail,stored_actual_json):
  entry['finishedBy']=''
  if entry['kind']!='作業' or entry.get('parentId') is not None:return
  if entry['state'] in PLAN_TERMINAL_STATES or entry.get('actual') is not None:return
- if stored_actual_json:
+ saved=saved_actual_source(stored_actual_json)
+ if saved:
   # **一度突き合わせたものは、相手から消えても保持する**（利用者の指示）。
-  try:saved=json.loads(stored_actual_json)
-  except Exception as _e:
-   quiet('保存した実績を読めない（突合し直す）',_e);saved=None
-  if isinstance(saved,dict) and saved:
-   # 保存の形は2つある(§9.365): 素の行そのもの（§9.364で保存したぶん）と、
-   # 完了時刻・定義名を添えた入れ物。**古い形も読めること**——読めないと
-   # 保存済みの完了が「予定」に戻って見える。
-   values=saved.get('values') if isinstance(saved.get('values'),dict) else saved
-   entry['state']='完了'
-   entry['missingFromWork']=True
-   entry['actualSource']=values
-   entry['actualSourceSaved']=True
-   entry['finishedAt']=str(saved.get('finishedAt') or '') or None
-   entry['finishedBy']=str(saved.get('joinName') or '')
-   entry['missingReason']='仕掛から消えており、突合で確認済みです（この予定に保存してあります）。'
-   return
+  entry['state']='完了'
+  entry['missingFromWork']=True
+  entry['actualSource']=saved['values']
+  entry['actualSourceSaved']=True
+  entry['finishedAt']=saved['finishedAt']
+  entry['finishedBy']=saved['joinName']
+  entry['missingReason']='仕掛から消えており、突合で確認済みです（この予定に保存してあります）。'
+  return
  hit=actual_match.lookup(detail,entry)
  entry['missingReason']=hit.get('reason') or ''
  if hit.get('missing') is not True:

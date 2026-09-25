@@ -109,6 +109,9 @@ JS_FILES=[
  # schedule-view.js が右クリックメニューから `WL.lotCopy` を呼ぶ。
  'schedule/lot-copy.js',
  'schedule/schedule-print.js',
+ # §9.502: 作業スケジュールの過去履歴（段「履歴」）。schedule-view.js が段を切り替えたときに
+ # `WL.scheduleHistory.show()` を呼ぶ（読み込んだ時点では何もしない）。
+ 'schedule/schedule-history.js',
  # 刃組ガイダンス（§9.377）。計算（`blade-core.js`）→ 画面（`blade-view.js`）の順。
  # 画面は`WL.bladeSet`を呼ぶので、この順でしか動かない。
  'bladeset/blade-core.js',

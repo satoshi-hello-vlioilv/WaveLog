@@ -206,6 +206,18 @@ def diff():
     return out
 
 
+def version_note(prev=None):
+    """update.bat に出す版の1行（§9.497）。`prev`は前回の刻印（無ければ初めて）。
+    **前回の確認と比べる**——前回の確認は update.bat か、刻印が食い違ったときの起動が書く。"""
+    cur = current().get('appVersion') or '?'
+    old = (prev or {}).get('appVersion') if isinstance(prev, dict) else None
+    if not old:
+        return 'VER%s（この端末で初めての確認です）' % cur
+    if str(old) == str(cur):
+        return 'VER%s（前回の確認と同じ版です）' % cur
+    return 'VER%s（前回の確認は %s → 今回 更新しました）' % (cur, old)
+
+
 def mismatch():
     """食い違いの理由（1文ずつ）。**合っていれば空**——理由の分からない
     再確認は、遅いだけで利用者が打つ手を持てない(§CLAUDE 4・6)。"""

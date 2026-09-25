@@ -28,6 +28,7 @@ import time
 
 from . import atomic_io
 from .logging_setup import app_logger
+from .paths import browser_dir, db_dir, runtime_dir
 from .quiet import quiet
 
 # ------------------------------------------------------------------
@@ -125,8 +126,10 @@ def _work_dir():
 
 
 def _db_dir():
- from .db_access import DB_DIR
- return _safe(lambda: Path(DB_DIR))
+ # 置き場の答えは`paths.db_dir()`の1箇所（`db_access.DB_DIR`もこれ）。**`db_access`を読み込まない**
+ # ——読み込むとデータソースの設定を読み、役割が無い環境では時刻つきの警告を出すので、
+ # update.bat の画面へ記録が混ざる（§9.497の追補。CIのまっさらな環境で踏んだ）。
+ return _safe(lambda: Path(db_dir()))
 
 
 def _rne_backup_dir():
@@ -137,6 +140,17 @@ def _rne_backup_dir():
 def _pycache_dir():
  root = _local_root()
  return (root / 'pycache') if root else None
+
+
+def _runtime_dirs():
+ """起動の部品の置き場（§9.497）。`runtime_dir()`と、ほかのプログラムからも見える置き場
+ （`browser_dir()`・§9.496）。**同じなら1つ**（ふつうの端末は同じ）。"""
+ out = []
+ for fn in (runtime_dir, browser_dir):
+  d = _safe(fn)
+  if d and str(d) not in [str(x) for x in out]:
+   out.append(d)
+ return out
 
 
 # ------------------------------------------------------------------
@@ -333,6 +347,30 @@ def _scan_work():
  return out
 
 
+# 作り直せる起動の部品（§9.497）。**名前で選ぶ**（置き場には残す物も同居しているため）。
+# 入れない物: 起動前確認の刻印（ready.json）・起動中の印（instance.json）・いまブラウザへ渡す
+# 待機画面（loading.html）・ショートカットの絵（wavelog.ico——デスクトップのショートカットが
+# 指しており、作り直すのは作るときだけ。消すと絵が白紙になる）。
+RUNTIME_REGENERABLE = ('make_shortcut.vbs', 'loading.next.html', 'boot_status.js')
+
+
+def _scan_runtime():
+ """作り直せる起動の部品。書きかけ（`.tmp`）は**若いうちは触らない**。"""
+ out = []
+ for d in _runtime_dirs():
+  if not _safe(d.is_dir, False):
+   continue
+  for p in _safe(lambda dd=d: [x for x in dd.iterdir() if x.is_file()], []) or []:
+   if p.name in RUNTIME_REGENERABLE:
+    out.append(_item(p))
+   elif p.name.endswith('.tmp'):
+    it = _item(p)
+    if time.time() - (it['mtime'] or 0) < TMP_MIN_AGE_SEC:
+     it['keep'] = 'まだ書いている途中かもしれません'
+    out.append(it)
+ return out
+
+
 # ------------------------------------------------------------------
 # 種別の一覧。**画面はこの並びをそのまま出す**(判定を画面に持たない)
 # ------------------------------------------------------------------
@@ -361,6 +399,10 @@ CATEGORIES = [
   'note': '置き場所を変える前のインストールが残した作業用の写しです。',
   'why': 'いま使っているフォルダ以外を消します。',
   'auto': False, 'scan': _scan_work},
+ {'key': 'runtime', 'label': '起動の部品（作り直せるもの）', 'icon': '起',
+  'note': 'ショートカットを作る補助スクリプト・次の起動用の待機画面・起動の進捗です。使うときに作り直されます。',
+  'why': '**自動では消しません。** 押したときと、update.bat で更新したときだけ消します（起動前確認の刻印・起動中の印・いまの待機画面・ショートカットの絵は残します）。',
+  'auto': False, 'scan': _scan_runtime},
  {'key': 'pycache', 'label': 'Pythonのバイトコード', 'icon': '速',
   'note': '起動を速くするための中間ファイルです（手元の置き場と、ソースの隣の `__pycache__`）。消しても動きますが、次の起動が一度だけ遅くなります。',
   'why': '**自動では消しません。** 押したときだけ消します。',
@@ -419,7 +461,7 @@ def _remove(item):
  return bool(atomic_io.unlink(p, budget_sec=0.3, label='cleanup'))
 
 
-def run(keys=None, dry_run=False, auto_only=False):
+def run(keys=None, dry_run=False, auto_only=False, log=True):
  """掃除する。`keys`が空なら全部の種別。戻り値は種別ごとの結果。
 
  `auto_only=True`は定期実行から呼ぶときで、**自動で消してよい種別だけ**に
@@ -451,11 +493,20 @@ def run(keys=None, dry_run=False, auto_only=False):
    _state['lastRemoved'] = removed
    _state['lastFreed'] = freed
    _state['lastError'] = ('%d件は使用中のため消せませんでした（次の掃除で消えます）' % failed) if failed else ''
-  if removed or failed:
+  if log and (removed or failed):
    app_logger().info('不要ファイルの掃除: %d件 %.1fMB を削除（消せなかったもの %d件）',
                      removed, freed / 1048576.0, failed)
  return {'results': results, 'removed': removed, 'bytes': freed, 'failed': failed,
          'dryRun': bool(dry_run)}
+
+
+def run_for_update():
+ """update.bat で更新したときの片付け（§9.497、利用者の指示「古いデータ(一時ファイルたち)を
+ アップデートで一旦消して、作り直した方が良い」）。**全種別**——自動では消さないもの
+ （バイトコード・使われていない作業フォルダ・起動の部品）も含める。どれも update.bat が
+ 直後に作り直すか、使うときに作り直される。残す物の決まり（`keep`）は種別ごとのまま。
+ **ここではログへ書かない**——update.bat の画面は結果だけ（§9.431）で、記録は呼ぶ側の`say`が持つ。"""
+ return run(log=False)
 
 
 # ------------------------------------------------------------------

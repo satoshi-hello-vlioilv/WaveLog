@@ -37,6 +37,7 @@ from backend.routes.masters import bp as masters_bp
 from backend.routes.path_config import bp as path_config_bp
 from backend.routes.rne import bp as rne_bp
 from backend.routes.schedule import bp as schedule_bp
+from backend.routes.schedule_history import bp as schedule_history_bp
 from backend.routes.logs import bp as logs_bp
 from backend.routes.cleanup import bp as cleanup_bp
 from backend.routes.master_tables import bp as master_tables_bp
@@ -50,6 +51,7 @@ app.register_blueprint(masters_bp)
 app.register_blueprint(path_config_bp)
 app.register_blueprint(rne_bp)
 app.register_blueprint(schedule_bp)
+app.register_blueprint(schedule_history_bp)
 app.register_blueprint(logs_bp)
 app.register_blueprint(cleanup_bp)
 app.register_blueprint(master_tables_bp)

@@ -20,7 +20,8 @@
     ・**素のダイアログが1度も出ないこと**（§9.342。ここは横断の約束なので
       土台が1つ判定を足す。出たら閉じずに記録する——閉じると次の待ちが通って
       何事も無かったように見える）
-    ・`mode` を渡した網は、終わりに必ず `edit` へ戻す
+    ・**アクセスモードは始めの値へ戻す**（§9.494）。`mode` を渡した網も、網の中で自分で切り替えた網も同じ。
+      持ち越すと、次の網の書込が403で黙って弾かれる（`test_scpick`→`test_sctimecols`で踏んだ）
     ・**落ちてもブラウザを閉じる**（閉じ忘れは後続の網を連鎖で落とす）
     ・終了コード: 0＝全部PASS ／ 1＝FAILあり ／ 2＝FATAL（例外）
     ・**製品が「ふだんの操作の副作用」で育てる表**の、この網が増やした行を消す（`SIDE_EFFECT_TABLES`）
@@ -35,6 +36,10 @@ const B='http://127.0.0.1:5029';
    副作用で育つ表を製品に足したら、ここへ足す。 */
 const SIDE_EFFECT_TABLES=['選択履歴マスタ'];
 
+/* いまのアクセスモード（読めなければ空）。 */
+async function getMode(){
+ return fetch(B+'/api/access-mode').then(r=>r.json()).then(j=>String(j.mode||'')).catch(()=>'');
+}
 async function run(title,body,opts={}){
  const {chromium}=require(process.env.WAVELOG_PLAYWRIGHT||'/opt/node22/lib/node_modules/playwright');
  const exe=process.env.WAVELOG_CHROMIUM||'/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
@@ -43,8 +48,9 @@ async function run(title,body,opts={}){
  const setMode=async m=>{await fetch(B+'/api/access-mode',{method:'POST',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})};
  if(title)console.log('# '+title);
- let b=null,fatal=null,sideSnap=null;
+ let b=null,fatal=null,sideSnap=null,mode0='';
  try{
+  mode0=await getMode();
   if(opts.mode)await setMode(opts.mode);
   sideSnap=await masterSnapshot(SIDE_EFFECT_TABLES).catch(()=>null);
   b=await chromium.launch({executablePath:exe});
@@ -61,13 +67,22 @@ async function run(title,body,opts={}){
   fatal=e;console.log('FATAL: '+(e&&e.stack||e));
   R.push({n:'FATAL',ok:false,d:String(e&&e.message||e)});
  }finally{
-  if(opts.mode&&opts.mode!=='edit')await setMode('edit').catch(()=>{});
+  /* 後片付けは**editで**行う（scheduleのままだと実績の削除が403で黙って弾かれる・testing.md）。
+     終わったら**始めのモードへ戻す**（§9.494）。網の中で切り替えたまま終えると、次の網が
+     別のモードで走り出し、前提を作る書込が403で弾かれる——落ちるのは離れた網の離れた判定。 */
+  const modeEnd=await getMode();
+  if(modeEnd&&modeEnd!=='edit')await setMode('edit').catch(()=>{});
   if(b)await b.close().catch(()=>{});
   /* 置いた実績は土台が消す（§9.351・§9.360）。**1箇所に置く**——網ごとに
      書き写すと、書き忘れた本だけが無関係な網を落とす形で現れる。 */
   await clearRecords().catch(()=>{});
   /* 副作用で育った行も土台が消す（上の`SIDE_EFFECT_TABLES`）。 */
   if(sideSnap)await dropNewMasterRows(sideSnap).catch(()=>{});
+  if(mode0&&mode0!=='edit')await setMode(mode0).catch(()=>{});
+  /* **網の中で自分で切り替えたまま終えた**ものだけ名指しする（`mode`を渡した網は土台が切り替えて
+     土台が戻すので正しい）。黙って直すと、網の書き方の癖が見えないまま残る。 */
+  const want=opts.mode||mode0;
+  if(want&&modeEnd&&modeEnd!==want)console.log(`MODE-LEAK: 始め ${want} → 終わり ${modeEnd}（土台が ${mode0} へ戻した）`);
  }
  rec('素のダイアログが1度も出ていない（§9.342）',native.length===0,native.join(' / '));
  const ng=R.filter(x=>!x.ok);

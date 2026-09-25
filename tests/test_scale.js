@@ -123,6 +123,13 @@ run('test_scale: 文字・UIの階層（役割 → 寸法）を実測で固定�
   });
   await page.click('[data-qa-tab="raw"]');await settle(600);
   await visit('作業スケジュール',()=>page.click('#openSchedule'));
+  /* 段「履歴」（§9.502）。設備を1つ選んでから段を切り替える（俯瞰の段には履歴の器が無い）。 */
+  await visit('作業スケジュール_履歴',async()=>{
+   await page.evaluate(e=>{const r=document.querySelector(`[data-equipment="${e}"]`);if(r)r.click()},'テスト設備A');
+   await page.waitForSelector('#scModeHistory:not([hidden])',{timeout:15000});
+   await page.click('#scModeHistory');
+   await page.waitForFunction(()=>{const s=WL.scheduleHistory&&WL.scheduleHistory.state();return !!s&&!s.loading&&!!document.querySelector('#shSide .sh-cal')},null,{timeout:15000});
+  });
   await visit('ダッシュボード',()=>page.click('#openDashboard'));
   await visit('測定実績カレンダー',()=>page.click('#openCalendar'));
   await visit('マスタ管理',()=>page.click('#openMasterMaint'));

@@ -125,7 +125,10 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
               /* 完了突合が持ち帰った値の列名(§9.365)。**サーバーが答える**
                  ——設定に書いてある名前と、実際に当たっている行が持つ名前の
                  両方が入っている。 */
-              actualColumns:[]};
+              actualColumns:[],
+              /* 仕掛の元データの列名(§9.501)。表示列の候補の土台で、**サーバーが答える**
+                 （`scLoadWorkColumns()`）。画面がいま持っている表の列（`S.columns`）には頼らない。 */
+              workColumns:[]};
  /* ---------- 読込結果のキャッシュ(§9.42) ----------
     共有スケジュールDBと実績バックアップはネットワーク共有上にあり、開くたびに
     読み直すと待たされる。**一度読んだら保持し、画面を開き直しただけでは
@@ -749,7 +752,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  const SC_MODES=[
   ['board','全体','スケジュール全体（俯瞰）'],
   ['single','個別','作業スケジュール一覧'],
-  ['blade','刃組','刃組スケジュール一覧']
+  ['blade','刃組','刃組スケジュール一覧'],
+  /* 過去履歴（§9.502）。**見るだけ**の段で、予定を直す操作は持たない。 */
+  ['history','履歴','作業スケジュールの履歴']
  ];
  const SC_MODE_KEYS=SC_MODES.map(m=>m[0]);
  /* 段の長い名。分からない鍵には答えない（**推測しない**）。 */
@@ -784,6 +789,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
            刃組スケジュール一覧としても出せるようにしてください」）。同じ予定を
            **段取りの側から**見る形で、器を入れ替えるだけ。 -->
       <button type="button" class="sc-mode-toggle-btn" id="scModeBlade" data-mode="blade" title="この設備の刃組（段取り）を一覧にします"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> 刃組</button>
+      <!-- 過去履歴（§9.502、利用者の指示・案A）。完了・取消・外した作業・設備停止・申し送り・
+           計画外の実績を、日・週・月で送って見る。**見るだけ**（直すのは「個別」）。 -->
+      <button type="button" class="sc-mode-toggle-btn" id="scModeHistory" data-mode="history" title="この設備の過去の記録（完了・取消・外した予定・設備停止・申し送り）を日・週・月で見ます。見るだけの画面です"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> 履歴</button>
      </div>
      <select class="sc-equipment-select" id="scEquipmentSelect" hidden></select>
      <span class="sc-equipment-fixed" id="scEquipmentFixed" hidden></span>
@@ -874,6 +882,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    </div>
    <div class="sc-board" id="scBoard" hidden></div>
    <div class="sc-blade" id="scBladeBody" hidden></div>
+   <div class="sc-hist" id="scHistBody" hidden></div>
    <div class="sc-body" id="scSingleBody">
     <div class="sc-timeline" id="scTimeline"></div>
     <!-- 広く使っているあいだの戻り道（§9.292 ⑦）。**常に見えている1つ**
@@ -930,12 +939,13 @@ const SC_LOCK_WAIT_MAX_MS=4000;
       <span class="sc-view-row-name">まとめ<small>日付は現場歴（勤務の日付補正を当てた現場の1日）と太陽暦から選べます</small></span>
       <select id="scGroupSelect">${SC_GROUP_MODES.map(m=>`<option value="${m.key}">${m.label}</option>`).join('')}</select>
      </label>
-     <!-- 小計(§9.493)。**まとめとは別の軸**（まとめ＝箱に分ける／小計＝区切りごとに数える）。
-          切のあいだは札だけ——出し方と列は、出すと決めてから選ぶ（次にすることを1つだけ指す）。 -->
-     <div class="sc-view-row sc-subtotal-row" id="scSubtotalRange" hidden>
-      <span class="sc-view-row-name">小計<small>区切りごとに作業ロットの数と、選んだ列の合計を出します。まとめとは別に選べます（この端末・設備ごと）</small></span>
-      <span class="sc-view-row-ctl" id="scSubtotalCtl"></span>
-      <div class="sc-subtotal-more" id="scSubtotalMore" hidden></div>
+     <!-- 小計(§9.493→§9.500)。**畳む段**（行の色とアイコンと同じ部品）。見出しにいまの状態を書き
+          （思い出させない）、開くと「決める順の番号付きの節」。まとめとは別の軸。 -->
+     <div class="sc-view-acc" id="scViewAccSubtotal" hidden>
+      <button type="button" class="sc-view-sec" id="scSubtotalBtn" aria-expanded="false">
+       <i>Σ</i><span>小計<small id="scSubtotalState">出していません</small></span><em class="sc-view-chev">▾</em>
+      </button>
+      <div class="sc-st-pop" id="scSubtotalPop" hidden></div>
      </div>
      <!-- さかのぼり(§9.366)。**2段（種類→量）で選ばせる**——候補は13あるが、
           一度に見えるのは群5つ＋その中の量だけ（一度に見る数を5つ以下に
@@ -1027,7 +1037,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* さかのぼりの札と欄は**語彙が届いてから**組む(§9.366)。予定の応答が
      運ぶので、ここでは器だけ作っておく（既に読み込み済みなら描く）。 */
   renderHistoryPicker();
-  $('#scEquipmentSelect').onchange=e=>{scState.equipment=e.target.value;switchToSingle()};
+  /* 履歴の段では**段のまま**設備だけ替える（期間と見せ方を思い出させない・§9.502）。 */
+  $('#scEquipmentSelect').onchange=e=>{
+   scState.equipment=e.target.value;
+   if(scState.boardMode==='history')switchToHistory();else switchToSingle();
+  };
   /* 印刷(§9.115)。紙の割り付けは schedule-print.js が持つ。
      **無ければ黙って消さない**——「あれば使う」で書くと、読み込み順を
      間違えた日に機能だけが静かに欠ける(§9.105と同じ罠)。 */
@@ -1053,18 +1067,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      +'#listColumnPanel:not([hidden]),#schedulePrintPreview:not([hidden])'))return;
    setWide(false);
   });
-  $('#scRowStyleBtn').onclick=e=>{e.stopPropagation();toggleRowStylePop()};
+  $('#scRowStyleBtn').onclick=e=>{e.stopPropagation();toggleViewAcc('rowStyle')};
+  $('#scSubtotalBtn').onclick=e=>{e.stopPropagation();toggleViewAcc('subtotal')};
   /* 色と濃さの意味（§9.374）。**開くときに組む**——中身は動かないが、
      器を作った時点では見本のクラスがまだCSSに当たっていないことがある。 */
-  $('#scLegendBtn').onclick=e=>{
-   e.stopPropagation();
-   const pop=$('#scLegendPop'),btn=$('#scLegendBtn');
-   if(!pop||!btn)return;
-   const open=pop.hidden;
-   if(open)renderLegend();
-   pop.hidden=!open;
-   btn.setAttribute('aria-expanded',open?'true':'false');
-  };
+  $('#scLegendBtn').onclick=e=>{e.stopPropagation();toggleViewAcc('legend')};
   /* 外を押したら畳む。**パネルの中を押しても閉じない**——ラジオを続けて
      触れるようにするため。中の段(行の色・この端末の見え方)は「表示」
      パネルの子なので、閉じ判定は**外側の1つだけ**でよい(§9.199)。
@@ -1084,6 +1091,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   $('#scModeBoard').onclick=()=>switchToBoard();
   $('#scModeSingle').onclick=()=>switchToSingle();
   { const b=$('#scModeBlade'); if(b)b.onclick=()=>switchToBlade(); }
+  { const b=$('#scModeHistory'); if(b)b.onclick=()=>switchToHistory(); }
   $('#scListModalBtn').onclick=()=>listModalOpen?closeListModal():openListModal();
   $('#scStopModalBtn').onclick=()=>stopModalOpen?closeStopModal():openStopModal();
   /* コメントは**掴んで落とす**こともできる(§9.191、利用者の指示
@@ -1659,26 +1667,32 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    renderRowStylePop();renderTimeline();
   }catch(e){showToast&&showToast('既定へ戻せませんでした',e.message,5000)}
  }
- function toggleRowStylePop(){
-  const pop=$('#scRowStylePop'),btn=$('#scRowStyleBtn');
-  if(!pop)return;
-  const open=pop.hidden;
-  pop.hidden=!open;
-  if(btn)btn.classList.toggle('active',open);
-  if(open){
+ /* 「表示」の中の畳む段（§9.500）。**開くのは常に1つ**——開けたら他を畳む。開け閉めの道はここの1つ
+    （以前は段ごとに別の配線で、2つ開けたままにできた＝注記の「開くのは常に1つ」と食い違っていた）。
+    `open`は開けた時点で組む（色と濃さの意味は、器を作った時点では見本のクラスがまだCSSに当たって
+    いないことがある・§9.374）。 */
+ const SC_VIEW_ACCS={
+  legend:{btn:'#scLegendBtn',pop:'#scLegendPop',open:()=>renderLegend()},
+  rowStyle:{btn:'#scRowStyleBtn',pop:'#scRowStylePop',
    /* 分類の一覧が未読なら読む（押した時点で出す。押しても空、にしない）。 */
-   Promise.all([loadRowStyles(true),loadStopCategories()]).then(()=>renderRowStylePop());
-   renderRowStylePop();
-  }
+   open:()=>{Promise.all([loadRowStyles(true),loadStopCategories()]).then(()=>renderRowStylePop());renderRowStylePop()},
+   /* 盤は`body`直下に居るので、段を畳んでも自動では消えない（§9.201）。 */
+   close:()=>closeIconPicker()},
+  subtotal:{btn:'#scSubtotalBtn',pop:'#scSubtotalPop',open:()=>renderSubtotalPicker()},
+ };
+ function setViewAcc(key,open){
+  Object.entries(SC_VIEW_ACCS).forEach(([k,a])=>{
+   const pop=$(a.pop),btn=$(a.btn);if(!pop)return;
+   const on=k===key&&open,was=!pop.hidden;
+   if(on&&a.open)a.open();
+   pop.hidden=!on;
+   if(btn){btn.classList.toggle('active',on);btn.setAttribute('aria-expanded',on?'true':'false')}
+   if(was&&!on&&a.close)a.close();
+  });
  }
- function closeRowStylePop(){
-  /* 盤は`body`直下に居るので、パネルを畳んでも自動では消えない
-     （§9.201。行の中に置かないのが肝なので、閉じる側で面倒を見る）。 */
-  closeIconPicker();
-  const pop=$('#scRowStylePop');if(pop&&!pop.hidden)pop.hidden=true;
-  const btn=$('#scRowStyleBtn');
-  if(btn){btn.classList.remove('active');btn.setAttribute('aria-expanded','false')}
- }
+ function toggleViewAcc(key){const pop=$(SC_VIEW_ACCS[key].pop);setViewAcc(key,!!pop&&pop.hidden)}
+ function closeViewAcc(key){const pop=$(SC_VIEW_ACCS[key].pop);if(pop&&!pop.hidden)setViewAcc(key,false)}
+ function closeRowStylePop(){closeViewAcc('rowStyle')}
  /* **ヘッダーの「表示」へ節を名乗る**（§9.444、利用者の指示「入口を1つに
     寄せる」）。出すのは**作業スケジュールの画面を開いているとき**だけ——
     押しても何も起きない節を残さない（§CLAUDE 4）。
@@ -1708,14 +1722,14 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(btn){btn.classList.remove('active');btn.setAttribute('aria-expanded','false')}
   /* 中の段も畳む——次に開いたとき、前に開いていた段がそのまま出ると
      「どこを見ていたか」より「なぜこれが開いているのか」が先に来る。 */
-  closeRowStylePop();
+  setViewAcc(null,false);
  }
  /* 入口のボタンに**いまの設定を書く**。畳んだ先の値が読めないと、
     開くまで思い出せない（§「思い出させない」）。長い名前は要約して出し、
     正確な名前はパネルの中と`title`に残す。 */
  function updateViewMenuUi(){
   const btn=$('#scViewMenuBtn');if(!btn)return;
-  const secs=[$('#scGroupRange'),$('#scSubtotalRange'),$('#scHistoryRange'),
+  const secs=[$('#scGroupRange'),$('#scViewAccSubtotal'),$('#scHistoryRange'),
               $('#scViewAccRowStyle')];
   const any=secs.some(el=>el&&!el.hidden);
   btn.hidden=!any;
@@ -1726,11 +1740,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    const m=SC_GROUP_MODES.find(x=>x.key===(scState.groupMode||'none'));
    if(m)bits.push(m.short||m.label);
   }
-  const stWrap=$('#scSubtotalRange');
+  const stWrap=$('#scViewAccSubtotal');
   if(stWrap&&!stWrap.hidden){
    const c=subtotalCfg();
    if(c.on){const u=SC_SUBTOTAL_UNITS.find(x=>x.key===c.unit);bits.push('小計:'+(c.unit==='col'&&c.unitCol?scColLabel(c.unitCol):(u.short||u.label)))}
-   renderSubtotalPicker();
+   renderSubtotalState();
+   const pop=$('#scSubtotalPop');if(pop&&!pop.hidden)renderSubtotalPicker();
   }
   const histWrap=$('#scHistoryRange');
   if(histWrap&&!histWrap.hidden){
@@ -2195,6 +2210,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* 刃組の段は**その段の道をそのまま通る**（§9.407）——予定に加えて刃組の
      記録も要るので、ここで一覧だけ描くと「未記録」しか出ない段になる。 */
   else if(scState.boardMode==='blade')await switchToBlade();
+  else if(scState.boardMode==='history')await switchToHistory();
   else if(scState.equipment)await refreshAll();
   else renderTimelineMessage('設備を選択してください。');
   startLockPolling();
@@ -2473,6 +2489,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  function applyBoardModeUi(){
   const inBlade=scState.boardMode==='blade';
   const inBoard=scState.boardMode==='board';
+  const inHist=scState.boardMode==='history';
   /* 段の器は**刃組の段があるので常に出す**（§9.383）。「全体」は設備を選べる
      ときだけ意味を持つので、そのボタンだけ伏せる——器ごと消すと、自設備
      固定の端末から刃組一覧へ行けなくなる。 */
@@ -2480,29 +2497,36 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const boardBtn=$('#scModeBoard');
   if(boardBtn)boardBtn.hidden=!scState.pickerEnabled;
   $('#scModeBoard').classList.toggle('active',inBoard);
-  $('#scModeSingle').classList.toggle('active',!inBoard&&!inBlade);
   { const b=$('#scModeBlade'); if(b)b.classList.toggle('active',inBlade); }
+  { const b=$('#scModeHistory'); if(b)b.classList.toggle('active',inHist); }
+  $('#scModeSingle').classList.toggle('active',!inBoard&&!inBlade&&!inHist);
   $('#scBoard').hidden=!inBoard;
   { const b=$('#scBladeBody'); if(b)b.hidden=!inBlade; }
-  $('#scSingleBody').hidden=inBoard||inBlade;
+  { const b=$('#scHistBody'); if(b)b.hidden=!inHist; }
+  $('#scSingleBody').hidden=inBoard||inBlade||inHist;
   $('#scBoardWindow').hidden=!inBoard;
-  const histWrap=$('#scHistoryRange');if(histWrap)histWrap.hidden=inBoard;
+  /* さかのぼり・まとめ方・小計は**個別の予定表の見せ方**。俯瞰と履歴には効かないので出さない。 */
+  const histWrap=$('#scHistoryRange');if(histWrap)histWrap.hidden=inBoard||inHist;
   updateHistoryFromUi();
-  const grpWrap=$('#scGroupRange');if(grpWrap)grpWrap.hidden=inBoard;
-  const stWrap=$('#scSubtotalRange');if(stWrap)stWrap.hidden=inBoard;
+  const grpWrap=$('#scGroupRange');if(grpWrap)grpWrap.hidden=inBoard||inHist;
+  const stWrap=$('#scViewAccSubtotal');if(stWrap)stWrap.hidden=inBoard||inHist;
+  if(inBoard||inHist)closeViewAcc('subtotal');
+  /* 印刷は予定表を刷る口（schedule-print.js）。履歴の段では刷るものが違うので出さない。 */
+  const prt=$('#scPrintBtn');if(prt)prt.hidden=inHist;
   updateViewMenuUi();
   if(scState.pickerEnabled)$('#scEquipmentSelect').hidden=inBoard;
   updateSideUi();
-  const stopBtn=$('#scStopModalBtn');if(stopBtn)stopBtn.hidden=!scState.fullControl||inBoard;
-  const cmtBtn=$('#scCommentBtn');if(cmtBtn)cmtBtn.hidden=!scState.fullControl||inBoard;
-  const frmBtn=$('#scFrameBtn');if(frmBtn)frmBtn.hidden=!scState.fullControl||inBoard;
+  /* 予定を**直す**道具は、見るだけの履歴の段には出さない（押せても何も起きない物を残さない）。 */
+  const stopBtn=$('#scStopModalBtn');if(stopBtn)stopBtn.hidden=!scState.fullControl||inBoard||inHist;
+  const cmtBtn=$('#scCommentBtn');if(cmtBtn)cmtBtn.hidden=!scState.fullControl||inBoard||inHist;
+  const frmBtn=$('#scFrameBtn');if(frmBtn)frmBtn.hidden=!scState.fullControl||inBoard||inHist;
   if(inBoard)closeRowStylePop();
   document.querySelectorAll('.sc-board-window-btn').forEach(btn=>btn.classList.toggle('active',+btn.dataset.hours===scState.boardWindowHours));
   updateSplitToggleUi();
   // 全体俯瞰ボードや対象設備が無い状態では分割表示(§9.10)の意味が無いため
   // 畳む(仕掛一覧を隣に出したまま設備を切り替えても違和感が無いよう、
   // 個別タイムライン表示中はshowSplitList側で改めて出す)。
-  if(inBoard){hideSplitList();closeListModal();closeStopModal();closeColumnModal();closeContentPanel();closeViewPop();hideInsertGhost()}
+  if(inBoard||inHist){hideSplitList();closeListModal();closeStopModal();closeColumnModal();closeContentPanel();closeViewPop();hideInsertGhost()}
   syncSession();
  }
  async function switchToBoard(){
@@ -2562,6 +2586,30 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   await Promise.all([loadBladeHistory(true),loadBladeContext(false)]);
   if(scState.boardMode==='blade')renderBladeList();
  }
+ /* 過去履歴の段（§9.502）。**画面は`schedule-history.js`が持つ**——ここは器と口を渡すだけ。
+    口が答えるのは設備・内容の列（個別の段で出している項目）・表示名・値の取り出し・戻り道。 */
+ async function switchToHistory(){
+  scState.boardMode='history';
+  renderPickBar(null);
+  applyFieldReorderPermission();
+  applyBoardModeUi();
+  const box=$('#scHistBody');
+  if(!box||!WL.scheduleHistory)return;
+  WL.scheduleHistory.show(box,{
+   equipment:()=>scState.equipment||'',
+   contentKeys:()=>chosenContentKeys(),
+   /* 明細は**出す列だけ**運ぶ。別名（生カラム名）も添える——予定の写しはどちらの名前で
+      持っているか投入した時期で違う（`contentValueOf`と同じ理由）。 */
+   requestKeys:()=>{
+    const out=new Set();
+    chosenContentKeys().forEach(k=>{out.add(k);((WL.base.aliases||{})[k]||[]).forEach(n=>out.add(n))});
+    return [...out];
+   },
+   label:k=>scColLabel(k),
+   valueOf:(detail,k)=>contentValueOf(detail,k),
+   toSingle:()=>switchToSingle(),
+  });
+ }
  async function switchToSingle(){
   scState.boardMode='single';
   applyFieldReorderPermission();
@@ -2590,6 +2638,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(force&&scState.boardMode==='blade'){
    await Promise.all([loadBladeHistory(true),loadBladeContext(true)]);
   }
+  if(scState.boardMode==='history'){WL.scheduleHistory&&WL.scheduleHistory.reload();return null}
   const r=await (scState.boardMode==='board'?loadOverviewBoard(force):refreshAll(force));
   if(force&&scState.boardMode!=='board'&&scState.equipment
      &&typeof refreshWorkableInBackground==='function')
@@ -3394,6 +3443,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    if(e.kind!=='作業'||entryLotKey(e)!==lot)return;
    if(!e.detail||typeof e.detail!=='object')e.detail={};
    e.detail.residualCourse=course;
+   touchContentCandidates();
   });
  }
  /* 辿っても見つからなかったロットを個別に引いて確定させる。
@@ -3810,6 +3860,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    /* 先に画面へ当てる（§9.11 楽観的更新）。失敗したら書込キューが
       まとめて知らせ、次の読み直しで写しの値へ戻る。 */
    e.detail=Object.assign({},e.detail||{},patch);
+   touchContentCandidates();
    queuePlanOp({op:'update',id:e.id,detail:patch});
   });
   if(!n)return 0;
@@ -4033,7 +4084,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   scheduleWorkableWatch();   // 可でない行が残っていれば裏で追いかける(§9.51)
   /* 結合の値は**描き終えてから・手が空いてから**当てる(§9.94と同じ作法)。
      予定が出るまでの時間に相手のDBの往復を挟まない。 */
-  (window.requestIdleCallback||(f=>setTimeout(f,300)))(()=>{scJoinRefresh()});
+  (window.requestIdleCallback||(f=>setTimeout(f,300)))(()=>{scJoinRefresh();scLoadWorkColumns()});
  }
  /* ---------- 予定は「取得」と「描画」を分ける(§9.182) ----------
     取得だけ先に始めておいて、表示設定が揃ったところで描く。1つの関数で
@@ -4443,7 +4494,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  }
  /* 内容欄の項目になれる列（§9.489）: いま出している項目と、選べる項目すべて。**答えはここ1箇所**——
     計算列の見分け・パネルの口（`isData`）・内容表示マスタへの保存が同じ答えを見る。 */
- function scContentDataSet(){return new Set([...chosenContentKeys(),...contentCandidateKeys()])}
+ function scContentDataSet(){return scContentDataSetMemo()}
+ const scContentDataSetMemo=scMemo(()=>[contentCandidateKeys(),...chosenContentKeys()],
+   ()=>new Set([...chosenContentKeys(),...contentCandidateKeys()]));
  const timelineIsFormulaKey=k=>timelineFormulaKeys().includes(k);
  /* 式を**列ごとに1回だけ解く**（行ごとに解き直すと行数×列数ぶん効く）。
     行を描くのは`renderEntryRow`＝別の関数なので、**式が変わったときだけ
@@ -5810,29 +5863,66 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   {key:'col',label:'列の値が変わるごと',short:'列の値'},
  ];
  const SC_SUBTOTAL_STYLES=[
-  {key:'row',label:'行',note:'合計を足した列の真下へ、表の1行として出します'},
+  {key:'row',label:'行',note:'集計した列の真下へ、表の1行として出します'},
   {key:'label',label:'ラベル',note:'区切りの下へ、1行の帯にまとめて出します'},
  ];
- const SC_SUBTOTAL_DEFAULT={on:false,unit:'date',unitCol:'',style:'row',cols:[]};
+ /* **集計の項目**（§9.498、利用者の指示「小計機能を項目複数でも対応できるように。また数値の計算の
+    場合、計算式を組んだり、書式を設定して数値の桁数や単位の設定ができるように」——項目複数＝集計の
+    種類・利用者に確認）。1項目＝`{列, 集計（合計・平均・最大・最小・件数）, 名前, 書式}`、または
+    `{式, 名前, 書式}`。**式はほかの項目の結果を`[名前]`で使う**（`[ロット数]`も）——式の仕組みは
+    `WL.formula`の1つ（`eval`しない）、書式は列と同じ`WL.cellFormat`の1つ（新しく作らない）。
+    1行ごとに式を当てたいときは、表の「列の作り方」（§9.207）で列を作ってからその列を集計する。
+    いままでの保存（`cols`＝合計する列）は読むときに「合計」の項目へ読み替える（設定し直しは要らない）。 */
+ const SC_SUBTOTAL_DEFAULT={on:false,unit:'date',unitCol:'',style:'row',items:[]};
+ const SC_SUBTOTAL_AGGS=[
+  {key:'sum',label:'合計'},{key:'avg',label:'平均'},{key:'max',label:'最大'},{key:'min',label:'最小'},
+  {key:'count',label:'件数',note:'数として読めた作業ロットの数'},
+ ];
+ const SC_SUBTOTAL_AGG_FN={
+  sum:v=>v.reduce((a,b)=>a+b,0),avg:v=>v.reduce((a,b)=>a+b,0)/v.length,
+  max:v=>Math.max(...v),min:v=>Math.min(...v),count:v=>v.length,
+ };
+ /* 桁の選び方。空＝自動（合計・最大・最小は材料の桁、平均は1つ多く、式は2桁まで）。 */
+ const SC_SUBTOTAL_DEC=['','0','1','2','3','4'];
+ const SC_SUBTOTAL_LOTS='ロット数';   // 式で使える、この区切りの作業ロットの数
  /* 字ではなく量を足す列。**表に出す字（「1時間30分」）を読み返さない**——書き方は
     「表示」で変わる（§9.341）ので、字から数を起こすと書き方ごとに読み方が要る。 */
  const SC_SUBTOTAL_AMOUNT={
   '__est__':{num:e=>(e.estimate&&e.estimate.minutes!=null)?+e.estimate.minutes:null,text:v=>WL.duration.compact(v)},
   '__actual__':{num:e=>(e.state==='完了'&&e.actual&&e.actual.minutes!=null)?+e.actual.minutes:null,text:v=>WL.duration.compact(v)},
  };
- /* 足せない列（印・ボタン・日時・人）。候補に出しても押せるだけで何も起きないので出さない（§4）。 */
+ /* 足せない列（印・ボタン・日時・人）。候補に出しても選べるだけで何も起きないので出さない（§4）。 */
  const SC_SUBTOTAL_NEVER=new Set(['__cat__','__workable__','__date__','__caldate__','__time__','__shift__','__rel__',
   '__flags__','__by__','__pc__','__upby__','__uppc__','__actions__']);
+ const subtotalAggOf=k=>SC_SUBTOTAL_AGGS.find(a=>a.key===k)||SC_SUBTOTAL_AGGS[0];
  function subtotalStore(){
   try{const v=JSON.parse(localStorage.getItem(SC_SUBTOTAL_KEY)||'{}');return v&&typeof v==='object'?v:{}}
   catch(err){WL.quiet.note('保存値が壊れていても既定（切）で続ける',err);return {}}
+ }
+ /* 保存値 → 集計の項目（**読み替えはここの1箇所**）。IDは並びの番号から振る（時刻から作らない）。 */
+ function subtotalItemsOf(v){
+  const raw=Array.isArray(v.items)?v.items
+   :(Array.isArray(v.cols)?v.cols.map(k=>({kind:'agg',col:String(k),agg:'sum'})):[]);
+  const seen=new Set();
+  return raw.filter(x=>x&&typeof x==='object').map((x,i)=>{
+   let id=String(x.id||'');
+   if(!id||seen.has(id))id='i'+(i+1);
+   while(seen.has(id))id+='_';
+   seen.add(id);
+   const f=x.fmt||{};
+   const dec=String(f.dec==null?'':f.dec);
+   return {id,kind:x.kind==='calc'?'calc':'agg',col:String(x.col||''),agg:subtotalAggOf(x.agg).key,
+    label:String(x.label||''),expr:String(x.expr||''),
+    fmt:{dec:SC_SUBTOTAL_DEC.includes(dec)?dec:'',suffix:String(f.suffix||'')}};
+  });
  }
  function subtotalCfg(){
   const v=subtotalStore()[scState.equipment||'']||{};
   const c=Object.assign({},SC_SUBTOTAL_DEFAULT,v);
   if(!SC_SUBTOTAL_UNITS.some(u=>u.key===c.unit))c.unit=SC_SUBTOTAL_DEFAULT.unit;
   if(!SC_SUBTOTAL_STYLES.some(u=>u.key===c.style))c.style=SC_SUBTOTAL_DEFAULT.style;
-  c.cols=Array.isArray(c.cols)?c.cols.map(String):[];
+  c.items=subtotalItemsOf(v);
+  delete c.cols;
   c.on=!!c.on;
   return c;
  }
@@ -5859,112 +5949,253 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(a){const n=a.num(e);return n==null||!Number.isFinite(n)?null:{n,unit:'',dec:0}}
   return subtotalNum(timelineRuleView(e).raw(k));
  }
- /* 1つの区切りを数える。答えは`{count, sums:{列:{n,unit,dec,used,skip}}}`。 */
- function subtotalOf(rows,cols){
-  const counted=rows.filter(subtotalCounted);
-  const sums={};
-  cols.forEach(k=>{
-   const s={n:0,unit:null,dec:0,used:0,skip:0};
-   counted.forEach(e=>{
-    const a=subtotalAmountOf(e,k);
-    if(!a||(s.unit!==null&&a.unit!==s.unit)){s.skip++;return}
-    s.unit=a.unit;s.n+=a.n;s.dec=Math.max(s.dec,a.dec);s.used++;
-   });
-   sums[k]=s;
+ /* 項目の名前。**式が`[名前]`で引く名前もこれ**（画面の字と式の名前を2つ持たない）。 */
+ function subtotalItemName(it){
+  if(it.label.trim())return it.label.trim();
+  if(it.kind==='calc')return '式';
+  return `${scColLabel(it.col)} ${subtotalAggOf(it.agg).label}`;
+ }
+ /* 1つの列の材料（数として読めた値・単位・桁・読めなかった件数）。 */
+ function subtotalStats(counted,k){
+  const s={vals:[],unit:null,dec:0,skip:0};
+  counted.forEach(e=>{
+   const a=subtotalAmountOf(e,k);
+   if(!a||(s.unit!==null&&a.unit!==s.unit)){s.skip++;return}
+   s.unit=a.unit;s.dec=Math.max(s.dec,a.dec);s.vals.push(a.n);
   });
-  return {count:counted.length,sums};
+  return s;
  }
- function subtotalSumText(k,s){
-  if(!s.used)return '—';
-  const a=SC_SUBTOTAL_AMOUNT[k];
-  if(a)return a.text(s.n);
-  const d=Math.min(s.dec,6);
-  return s.n.toLocaleString('ja-JP',{minimumFractionDigits:d,maximumFractionDigits:d})+(s.unit||'');
+ /* 1つの区切りを数える。答えは`{count, values:{項目ID:{n,name,…}}}`。**式は前に並んだ項目の
+    結果を使う**（上から順に数える）。列の材料は列ごとに1回だけ集める。 */
+ function subtotalOf(rows,items){
+  const counted=rows.filter(subtotalCounted);
+  const stats=new Map(),env={[SC_SUBTOTAL_LOTS]:counted.length},values={};
+  items.forEach(it=>{
+   const name=subtotalItemName(it);
+   let v;
+   if(it.kind==='agg'){
+    if(!stats.has(it.col))stats.set(it.col,subtotalStats(counted,it.col));
+    const s=stats.get(it.col);
+    v={name,n:(it.agg==='count'||s.vals.length)?SC_SUBTOTAL_AGG_FN[it.agg](s.vals):null,
+       unit:s.unit||'',dec:s.dec,used:s.vals.length,skip:s.skip};
+   }else{
+    let n=null,err='';
+    try{
+     const r=WL.formula.compile(it.expr).run(env);
+     n=(r===null||r===''||typeof r==='boolean')?null:Number(r);
+     if(!Number.isFinite(n))n=null;
+    }catch(e){err=String(e&&e.message||e)}
+    v={name,n,err,calc:true};
+   }
+   values[it.id]=v;
+   if(!(name in env))env[name]=v.n;
+  });
+  return {count:counted.length,values};
  }
- function subtotalSumTitle(k,s){
-  return `${scColLabel(k)}の合計（作業ロット${s.used}件ぶん）`
-   +(s.skip?`\n数として読めない・単位の違う値が${s.skip}件あり、足していません`:'');
+ /* 値の字。**書式を決めてあれば列と同じ`WL.cellFormat`**（桁・桁区切り・単位）、決めていなければ
+    材料なり（合計・最大・最小＝材料の桁と単位／平均＝1桁多く／件数＝整数／式＝2桁まで／時間の列＝時間）。 */
+ function subtotalValueText(it,v){
+  if(v.n==null)return '—';
+  if(it.fmt.dec!==''||it.fmt.suffix)
+   return WL.cellFormat.value({kind:'number',decimals:it.fmt.dec===''?'':+it.fmt.dec,thousands:true,suffix:it.fmt.suffix},v.n);
+  if(it.kind==='agg'&&it.agg==='count')return String(v.n);
+  if(it.kind==='agg'&&SC_SUBTOTAL_AMOUNT[it.col])return SC_SUBTOTAL_AMOUNT[it.col].text(v.n);
+  const loc=(n,min,max)=>n.toLocaleString('ja-JP',{minimumFractionDigits:min,maximumFractionDigits:max});
+  if(v.calc)return loc(v.n,0,2);
+  const d=Math.min(it.agg==='avg'?v.dec+1:v.dec,6);
+  return loc(v.n,d,d)+(v.unit||'');
+ }
+ function subtotalValueTitle(it,v,count){
+  if(v.calc)return `${v.name} = ${it.expr||'（式が空です）'}`
+   +(v.err?`\n式を読めません: ${v.err}`:'')
+   +`\n式では [${SC_SUBTOTAL_LOTS}]（${count}）と、上に並んだ項目の名前が使えます`;
+  return `${v.name}（${subtotalAggOf(it.agg).label}・作業ロット${v.used}件ぶん）`
+   +(v.skip?`\n数として読めない・単位の違う値が${v.skip}件あり、${it.agg==='count'?'数えて':'足して'}いません`:'');
  }
  /* いま表に出ている列のうち、小計へ足せるもの（並びは表と同じ）。 */
  function subtotalColumnChoices(){
   return timelineColumnKeys().filter(k=>!SC_SUBTOTAL_NEVER.has(k));
  }
- /* 1つの区切りの小計。**行**は表と同じグリッドに載り、合計は足した列の真下へ来る。
-    名前（「小計 8/18 1直・作業 5ロット」）は最初に足す列より左の列をまたいで置く。
-    最初の列から足すときは、名前は右端の余り（`1fr`の1本）へ回す。 */
+ /* 1つの区切りの小計。**どちらの出し方も1行**（§9.499、利用者の指示「行に出すパターンもコンパクトに、
+    すべて1行で納めた形に」）。
+      行   … 表と同じグリッドに載る。集計の器（`.sc-subtotal-cell`）は**その列の真下から始まり、右隣の
+             集計の無い列まで広がる**（次の集計の列の手前まで・最後の器は右端まで）——列の幅だけに
+             詰めると2つ目から切れ、縦に積むと行が4段ぶん（実測104px）になった。同じ列の集計は器の中に
+             集計の名つきで横へ並べ、式は最後の器の後ろへ続ける。名前の器（小計・区切り・ロット数）は
+             最初の集計の列より左。最初の列から集計するときは、名前は最初の器の頭へ入れる。
+      ラベル … 1行の帯に項目の名前つきで並べる。 */
  function subtotalEl(unit,cfg){
-  const agg=subtotalOf(unit.rows,cfg.cols.filter(k=>subtotalColumnChoices().includes(k)));
+  const choices=subtotalColumnChoices();
+  const items=cfg.items.filter(it=>it.kind==='calc'||choices.includes(it.col));
+  const agg=subtotalOf(unit.rows,items);
   const el=document.createElement('div');
   el.className='sc-subtotal'+(cfg.style==='label'?' is-label':'');
   el.dataset.unit=unit.key;el.dataset.count=String(agg.count);
-  /* 名前は列の幅で切れることがある（行のとき）。**全文は`title`**で読めるようにする。 */
+  /* 名前は列の幅で切れることがある。**全文は`title`**で読めるようにする。 */
   el.title=`小計 ${unit.label}・作業 ${agg.count}ロット`;
   const name=`<b class="sc-subtotal-tag">小計</b><span class="sc-subtotal-name">${esc(unit.label)}</span>`
-   +`<span class="sc-subtotal-count" title="この区切りの作業ロットの数（取消・設備停止・申し送りは数えない。子ロットは親の1本）">作業 ${agg.count}ロット</span>`;
-  const keys=Object.keys(agg.sums);
+   +`<span class="sc-subtotal-count" title="この区切りの作業ロットの数（取消・設備停止・申し送りは数えない。子ロットは親の1本）">${agg.count}ロット</span>`;
+  const part=(it,tag)=>{
+   const v=agg.values[it.id];
+   const star=(it.kind==='agg'&&it.agg!=='count'&&v.skip&&v.used)?'<i class="sc-subtotal-skip">*</i>':'';
+   return `<span class="sc-subtotal-sum${v.err?' is-bad':''}" data-item="${esc(it.id)}"`
+    +(it.kind==='agg'?` data-col="${esc(it.col)}"`:'')+` title="${esc(subtotalValueTitle(it,v,agg.count))}">`
+    +(tag?`<small>${esc(tag)}</small>`:'')+`<span class="sc-st-v">${esc(subtotalValueText(it,v))}${star}</span></span>`;
+  };
+  const calcs=items.filter(it=>it.kind==='calc');
+  const calcHtml=calcs.map(it=>part(it,agg.values[it.id].name)).join('');
   if(cfg.style==='label'){
-   el.innerHTML=name+keys.map(k=>{const s=agg.sums[k];
-    return `<span class="sc-subtotal-sum" data-col="${esc(k)}" title="${esc(subtotalSumTitle(k,s))}">`
-     +`<small>${esc(scColLabel(k))}</small>${esc(subtotalSumText(k,s))}${s.skip&&s.used?'<i class="sc-subtotal-skip">*</i>':''}</span>`;
-   }).join('');
+   el.innerHTML=name+items.map(it=>part(it,agg.values[it.id].name)).join('');
    return el;
   }
   const shown=timelineColumnKeys();
-  const idx=k=>shown.indexOf(k)+2;      // 1列目は取っ手
-  const first=keys.length?Math.min(...keys.map(idx)):shown.length+2;
-  const nameCol=first>2?`1 / ${first}`:`${shown.length+2} / -1`;
-  el.innerHTML=`<span class="sc-subtotal-head" style="grid-column:${nameCol}">${name}</span>`
-   +keys.map(k=>{const s=agg.sums[k];
-    return `<span class="sc-subtotal-sum" data-col="${esc(k)}" style="grid-column:${idx(k)}" title="${esc(subtotalSumTitle(k,s))}">`
-     +`${esc(subtotalSumText(k,s))}${s.skip&&s.used?'<i class="sc-subtotal-skip">*</i>':''}</span>`;
+  const byCol=new Map();
+  items.filter(it=>it.kind==='agg').forEach(it=>{if(!byCol.has(it.col))byCol.set(it.col,[]);byCol.get(it.col).push(it)});
+  const cols=[...byCol.keys()].sort((x,y)=>shown.indexOf(x)-shown.indexOf(y));
+  const gc=k=>shown.indexOf(k)+2;      // 1列目は取っ手
+  /* 同じ列に1つだけなら値だけ。2つ以上なら名前を変えていない項目は集計の名（合計・平均…）を添える。 */
+  const tagOf=(it,many)=>many?(it.label.trim()||subtotalAggOf(it.agg).label):'';
+  if(!cols.length){
+   el.innerHTML=`<span class="sc-subtotal-head" style="grid-column:1 / -1">${name}${calcHtml}</span>`;
+   return el;
+  }
+  const headFirst=gc(cols[0])>2;
+  el.innerHTML=(headFirst?`<span class="sc-subtotal-head" style="grid-column:1 / ${gc(cols[0])}">${name}</span>`:'')
+   +cols.map((k,i)=>{
+    const its=byCol.get(k),last=i===cols.length-1;
+    const end=last?'-1':String(gc(cols[i+1]));
+    return `<span class="sc-subtotal-cell" data-col="${esc(k)}" style="grid-column:${gc(k)} / ${end}">`
+     +(!headFirst&&i===0?`<span class="sc-subtotal-head">${name}</span>`:'')
+     +its.map(it=>part(it,tagOf(it,its.length>1))).join('')+(last?calcHtml:'')+'</span>';
    }).join('');
-  WL.columnAlign.applyCells(el,timelineTarget(),{selector:':scope>.sc-subtotal-sum[data-col]'});
+  WL.columnAlign.applyCells(el,timelineTarget(),{selector:':scope>.sc-subtotal-cell[data-col]'});
   return el;
  }
- /* 「表示」の小計の段。**選んだその場で表へ効かせる**（保存ボタンを持たない・§9.113と同じ）。
-    列の札には**いまの予定で数として読める件数**を添える——足してみるまで分からない、を
-    なくす（推測させない）。読める値が1件も無い列は押せなくして理由を書く（§4）。 */
+ /* 畳んだ段の見出しに書く**いまの状態**（§9.500・思い出させない）。 */
+ function subtotalStateText(c){
+  if(!c.on)return '出していません';
+  const u=SC_SUBTOTAL_UNITS.find(x=>x.key===c.unit)||{};
+  const unit=c.unit==='col'?(c.unitCol?`${scColLabel(c.unitCol)}の値ごと`:'区切る列が未選択'):(u.label||'');
+  const st=(SC_SUBTOTAL_STYLES.find(x=>x.key===c.style)||{}).label||'';
+  return `${unit}・${c.items.length?`${c.items.length}項目`:'ロット数だけ'}・${st}`;
+ }
+ function renderSubtotalState(){const el=$('#scSubtotalState');if(el)el.textContent=subtotalStateText(subtotalCfg())}
+ /* 小計の段の中身（§9.500、利用者の指示「小計の表示設定については使いづらいので、UIを再構築し、
+    認知心理学、情報アーキテクチャ、整列して整っている感じと統一感も意識して」）。
+    **決める順の番号付きの節**（①出す→②区切り→③集計の項目→④出し方）。節の名前の列は固定幅で、
+    どの節も同じ部品（`.sc-st-step`）。出していないときは①だけ（次にすることを1つだけ指す）。
+    集計の項目は**見出しつきの表**（名前｜列｜集計｜桁｜単位｜見本｜×）で、見出しと欄は同じ格子
+    （`.sc-st-grid`）に載る。**見本**は実際の区切りでの値——式・書式が合っているかをその場で読める。
+    式の誤りは見本の欄に字で出し、行の高さを変えない（選んでも動かない）。
+    **選んだその場で表へ効かせる**（保存ボタンを持たない・§9.113と同じ）。 */
+ let stRendering=false;
  function renderSubtotalPicker(){
-  const ctl=$('#scSubtotalCtl'),more=$('#scSubtotalMore');
-  if(!ctl||!more)return;
+  const pop=$('#scSubtotalPop');
+  /* **描き直しの最中は描かない・受けない**——描き直しで消える欄のフォーカス外れが、もう1回の変更として
+     入り直す（`innerHTML`の差し替えの途中で入れ子の差し替えになり、例外になった）。 */
+  if(!pop||stRendering)return;
+  stRendering=true;
+  try{renderSubtotalPickerNow(pop)}finally{stRendering=false}
+ }
+ function renderSubtotalPickerNow(pop){
   const c=subtotalCfg();
-  const opt=(attr,val,on,label,title)=>`<button type="button" class="sc-subtotal-opt${on?' is-on':''}" ${attr}="${esc(val)}"`
+  renderSubtotalState();
+  const seg=(attr,val,on,label,title)=>`<button type="button" class="sc-subtotal-opt${on?' is-on':''}" ${attr}="${esc(val)}"`
     +` aria-pressed="${on?'true':'false'}"${title?` title="${esc(title)}"`:''}>${esc(label)}</button>`;
+  const step=(name,note,ctl,wide)=>`<div class="sc-st-step${wide?' is-wide':''}"><span class="sc-st-step-name">${esc(name)}<small>${esc(note)}</small></span>`
+    +`<div class="sc-st-step-ctl">${ctl}</div></div>`;
   const choices=subtotalColumnChoices();
-  ctl.innerHTML=`<span class="sc-subtotal-opts" role="group" aria-label="小計を出すか">`
-    +opt('data-st-on','0',!c.on,'出さない')+opt('data-st-on','1',c.on,'出す')+`</span>`
-    +`<select id="scSubtotalUnit" aria-label="小計の区切り"${c.on?'':' hidden'}>`
+  const rows=visibleEntries().filter(subtotalCounted);
+  const readable=new Map(choices.map(k=>[k,rows.filter(e=>subtotalAmountOf(e,k)).length]));
+  const items=c.items;
+  /* 見本の区切り: **数として読めた値がいちばん多い区切り**（同じなら先の区切り）。「件数」は読めない
+     区切りでも0を返すので、値の有無では選ばない（読める値の無い区切りが選ばれて見本が「—」になった）。 */
+  const units=[...subtotalUnits(visibleEntries(),c).values()];
+  let sample=null,best=-1;
+  units.forEach(u=>{
+   const r=subtotalOf(u.rows,items);
+   const score=items.reduce((a,it)=>a+(it.kind==='agg'?(r.values[it.id].used||0):0),0);
+   if(score>best){best=score;sample={u,r}}
+  });
+  const names=()=>[SC_SUBTOTAL_LOTS,...items.map(subtotalItemName)];
+  const decSel=it=>`<select data-st-f="dec" aria-label="桁" title="小数の桁（自動＝材料なり）">`
+    +SC_SUBTOTAL_DEC.map(d=>`<option value="${d}"${d===it.fmt.dec?' selected':''}>${d===''?'自動':`${d}桁`}</option>`).join('')+'</select>';
+  const suffix=it=>`<input type="text" data-st-f="suffix" value="${esc(it.fmt.suffix)}" placeholder="—" aria-label="単位" title="後ろに付ける字（例 kg）。決めると桁区切りも付きます">`;
+  const prev=it=>{
+   if(it.kind==='calc'&&it.expr){const chk=WL.formula.check(it.expr);
+    if(!chk.ok)return `<span class="sc-st-prev sc-st-err" title="${esc(chk.error)}">${esc(chk.error)}</span>`}
+   if(!sample)return `<span class="sc-st-prev is-none" title="区切りがまだありません">—</span>`;
+   const v=sample.r.values[it.id];
+   const star=(it.kind==='agg'&&it.agg!=='count'&&v.skip&&v.used)?'*':'';
+   return `<span class="sc-st-prev" title="${esc(subtotalValueTitle(it,v,sample.r.count))}">${esc(subtotalValueText(it,v))}${star}</span>`;
+  };
+  const del=`<button type="button" class="sc-st-del" data-st-del title="この項目を外す" aria-label="この項目を外す">×</button>`;
+  const rowHtml=(it,i)=>{
+   const lab=`<input type="text" data-st-f="label" value="${esc(it.label)}" placeholder="${esc(it.kind==='calc'?'式':subtotalItemName(Object.assign({},it,{label:''})))}"`
+    +` aria-label="名前" title="名前（空なら「${esc(it.kind==='calc'?'式':subtotalItemName(Object.assign({},it,{label:''})))}」）。式では [名前] で使えます">`;
+   if(it.kind==='calc')
+    return `<div class="sc-st-grid sc-st-item is-calc" data-i="${i}">${lab}`
+     +`<input type="text" class="sc-st-expr" data-st-f="expr" value="${esc(it.expr)}" placeholder="[${esc(names()[1]||'重量 合計')}] / [${SC_SUBTOTAL_LOTS}]" aria-label="式">`
+     +decSel(it)+suffix(it)+prev(it)+del+'</div>';
+   return `<div class="sc-st-grid sc-st-item" data-i="${i}">${lab}`
+    +`<select data-st-f="col" aria-label="集計する列">`
+    +(choices.includes(it.col)?'':`<option value="${esc(it.col)}" selected>${esc(scColLabel(it.col))}（表に出していません）</option>`)
+    +choices.map(k=>`<option value="${esc(k)}"${k===it.col?' selected':''}>${esc(scColLabel(k))}（${readable.get(k)}/${rows.length}）</option>`).join('')+'</select>'
+    +`<select data-st-f="agg" aria-label="集計">`
+    +SC_SUBTOTAL_AGGS.map(a=>`<option value="${a.key}"${a.key===it.agg?' selected':''}${a.note?` title="${esc(a.note)}"`:''}>${a.label}</option>`).join('')+'</select>'
+    +decSel(it)+suffix(it)+prev(it)+del+'</div>';
+  };
+  const unitCtl=`<select id="scSubtotalUnit" aria-label="区切り">`
     +SC_SUBTOTAL_UNITS.map(u=>`<option value="${esc(u.key)}"${u.key===c.unit?' selected':''}>${esc(u.label)}</option>`).join('')+`</select>`
-    +`<select id="scSubtotalUnitCol" aria-label="値が変わるごとに区切る列"${c.on&&c.unit==='col'?'':' hidden'}>`
+    +`<select id="scSubtotalUnitCol" aria-label="値が変わるごとに区切る列"${c.unit==='col'?'':' hidden'}>`
     +`<option value="">（列を選ぶ）</option>`
     +timelineColumnKeys().filter(k=>k!=='__actions__').map(k=>`<option value="${esc(k)}"${k===c.unitCol?' selected':''}>${esc(scColLabel(k))}</option>`).join('')
-    +`</select>`;
-  more.hidden=!c.on;
-  if(c.on){
-   const rows=visibleEntries().filter(subtotalCounted);
-   const readable=k=>rows.filter(e=>subtotalAmountOf(e,k)).length;
-   more.innerHTML=`<span class="sc-subtotal-more-name">出し方</span><span class="sc-subtotal-opts" role="group" aria-label="小計の出し方">`
-     +SC_SUBTOTAL_STYLES.map(st=>opt('data-st-style',st.key,st.key===c.style,st.label,st.note)).join('')+`</span>`
-     +`<span class="sc-subtotal-more-name">合計する列</span><span class="sc-subtotal-opts is-cols" role="group" aria-label="合計する列">`
-     +(choices.length?choices.map(k=>{
-       const n=readable(k),on=c.cols.includes(k);
-       const dis=!n&&!on;
-       return `<button type="button" class="sc-subtotal-opt${on?' is-on':''}" data-st-col="${esc(k)}" aria-pressed="${on?'true':'false'}"`
-        +`${dis?' disabled':''} title="${esc(dis?'いまの予定には数として読める値がありません':`作業ロット${rows.length}件のうち${n}件が数として読めます`)}">`
-        +`${esc(scColLabel(k))}<small>${n}/${rows.length}</small></button>`;
-      }).join(''):'<small class="sc-subtotal-none">表に出している列がありません</small>')
-     +`</span>`
-     +`<small class="sc-subtotal-note">作業ロットの数はいつも出します（取消・設備停止・申し送り・枠は数えず、子ロットは親の1本）。${
-        c.unit==='col'&&!c.unitCol?'<b>区切る列を選ぶと出ます。</b>':''}</small>`;
-  }else more.innerHTML='';
-  const apply=patch=>{saveSubtotalCfg(patch);updateViewMenuUi();renderTimeline()};
-  ctl.querySelectorAll('[data-st-on]').forEach(b=>b.onclick=()=>apply({on:b.dataset.stOn==='1'}));
+    +`</select>`+(c.unit==='col'&&!c.unitCol?'<small class="sc-st-warn">区切る列を選ぶと出ます</small>':'');
+  const table=`<div class="sc-st-grid sc-st-thead" aria-hidden="true"><span>名前</span><span>列（数に読める件数）</span><span>集計</span><span>桁</span><span>単位</span>`
+    +`<span title="${esc(sample?`見本の区切り: ${sample.u.label}（${sample.r.count}ロット）`:'区切りがまだありません')}">見本${sample?`（${esc(sample.u.label)}）`:''}</span><span></span></div>`
+    +(items.length?items.map(rowHtml).join(''):'<div class="sc-st-empty">まだありません。ロット数だけを出します。</div>')
+    +`<div class="sc-st-add"><button type="button" class="sc-subtotal-opt" id="scSubtotalAddAgg"${choices.length?'':' disabled title="表に出している列がありません"'}>＋ 列を集計</button>`
+    +`<button type="button" class="sc-subtotal-opt" id="scSubtotalAddCalc" title="上に並んだ項目の結果を [名前] で使う式（例: [重量 合計]/[${SC_SUBTOTAL_LOTS}]）">＋ 式</button>`
+    +`<small class="sc-st-hint">式では [${SC_SUBTOTAL_LOTS}] と上の名前が使えます。1行ごとの計算は「列の作り方」で列を作ってから集計します。</small></div>`;
+  pop.innerHTML=`<div class="sc-st-steps">`
+    +`<div id="scSubtotalCtl">${step('出す','区切りごとの小計の行',`<span class="sc-subtotal-opts" role="group" aria-label="小計を出すか">${seg('data-st-on','0',!c.on,'出さない')}${seg('data-st-on','1',c.on,'出す')}</span>`
+       +(c.on?'':'<small class="sc-st-hint">出すと、区切り・集計の項目・出し方を決められます</small>'))}</div>`
+    +`<div id="scSubtotalMore"${c.on?'':' hidden'}>`
+    +step('区切り','どこで区切って数えるか（まとめとは別）',unitCtl)
+    +step('集計の項目','作業ロットの数はいつも出します（取消・設備停止・申し送りは数えない）',table,true)
+    +step('出し方','どちらも1行',`<span class="sc-subtotal-opts" role="group" aria-label="小計の出し方">`
+       +SC_SUBTOTAL_STYLES.map(st=>seg('data-st-style',st.key,st.key===c.style,st.label,st.note)).join('')+'</span>'
+       +`<small class="sc-st-hint">${esc((SC_SUBTOTAL_STYLES.find(x=>x.key===c.style)||{}).note||'')}</small>`)
+    +`</div></div>`;
+  /* 描き直しは`updateViewMenuUi()`の1回（段が開いていれば中身も描き直す）。 */
+  const apply=patch=>{if(stRendering)return;saveSubtotalCfg(patch);renderTimeline();updateViewMenuUi()};
+  pop.querySelectorAll('[data-st-on]').forEach(b=>b.onclick=()=>apply({on:b.dataset.stOn==='1'}));
+  pop.querySelectorAll('[data-st-style]').forEach(b=>b.onclick=()=>apply({style:b.dataset.stStyle}));
   $('#scSubtotalUnit').onchange=e=>apply({unit:e.target.value});
   $('#scSubtotalUnitCol').onchange=e=>apply({unitCol:e.target.value});
-  more.querySelectorAll('[data-st-style]').forEach(b=>b.onclick=()=>apply({style:b.dataset.stStyle}));
-  more.querySelectorAll('[data-st-col]').forEach(b=>b.onclick=()=>{
-   const k=b.dataset.stCol,cur=subtotalCfg().cols;
-   apply({cols:cur.includes(k)?cur.filter(x=>x!==k):[...cur,k]});
+  const setItems=fn=>{const next=subtotalCfg().items;fn(next);apply({items:next})};
+  const nextId=()=>'i'+(Math.max(0,...items.map(it=>+(/^i(\d+)$/.exec(it.id)||[])[1]||0))+1);
+  $('#scSubtotalAddAgg').onclick=()=>setItems(list=>{
+   /* 既定は**直前の集計と同じ列の、まだ使っていない集計**（同じ列の平均・最大…を1回で足せる）。 */
+   const last=[...list].reverse().find(x=>x.kind==='agg');
+   const col=last?last.col:(choices.find(k=>readable.get(k))||choices[0]);
+   const used=new Set(list.filter(x=>x.kind==='agg'&&x.col===col).map(x=>x.agg));
+   const a=(SC_SUBTOTAL_AGGS.find(x=>!used.has(x.key))||SC_SUBTOTAL_AGGS[0]).key;
+   list.push({id:nextId(),kind:'agg',col,agg:a,label:'',expr:'',fmt:{dec:'',suffix:''}});
+  });
+  $('#scSubtotalAddCalc').onclick=()=>setItems(list=>list.push({id:nextId(),kind:'calc',col:'',agg:'sum',label:'',expr:'',fmt:{dec:'',suffix:''}}));
+  pop.querySelectorAll('.sc-st-item').forEach(row=>{
+   const i=+row.dataset.i;
+   row.querySelectorAll('[data-st-f]').forEach(inp=>inp.onchange=()=>setItems(list=>{
+    const it=list[i];if(!it)return;
+    const f=inp.dataset.stF;
+    if(f==='dec'||f==='suffix')it.fmt[f]=inp.value;else it[f]=inp.value;
+   }));
+   const d=row.querySelector('[data-st-del]');
+   if(d)d.onclick=()=>setItems(list=>list.splice(i,1));
+   /* 式の欄は列の作り方と同じ候補（[ で名前・英字で関数）。 */
+   const ex=row.querySelector('[data-st-f="expr"]');
+   if(ex&&WL.formula.suggest)WL.formula.suggest(ex,{columns:names});
   });
  }
  /* 並びを区切りに割る（行は`list`の順・続いている間は同じ区切り）。区切りの最後の行 → 区切り。 */
@@ -7576,13 +7807,24 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     **止めないこと**——止めると§9.15の「投入済みのロットが仕掛一覧から
     消える」が効かなくなる。列幅を掴んでいる最中に待たせるのは今までどおり
     （§9.211 ①）。 */
- let lotFilterQueued=false;
+ /* **仕掛一覧の見え方が変わるときだけ**描き直す（§9.501）。仕掛一覧が予定から受け取るのは
+    「伏せるロット」（`hiddenLotSet()`）と「出す列」（`scColumnAllowlist()`）の2つだけなので、
+    両方が前回と同じなら描き直しても同じ絵になる。以前は予定表を描くたびに描き直しており、
+    表示列の設定で列を1つ入切するだけで仕掛一覧まで組み直していた（実データ1回約300ms）。 */
+ let lotFilterQueued=false,lotFilterSig='';
+ function scheduledLotFilterSig(){
+  const hidden=hiddenLotSet();
+  return JSON.stringify([S.db,hidden?[...hidden].sort():null,window.scColumnAllowlist()]);
+ }
  function refreshScheduledLotFilter(){
   if(!(typeof WL.list.renderGrid==='function'&&typeof S!=='undefined'&&WL.dataSource.isWork(S.db)))return;
   if(lotFilterQueued)return;
   lotFilterQueued=true;
   requestAnimationFrame(()=>{
    lotFilterQueued=false;
+   const sig=scheduledLotFilterSig();
+   if(sig===lotFilterSig)return;
+   lotFilterSig=sig;
    WL.columnResize.defer('grid:scheduledLot',()=>WL.list.renderGrid());
   });
  }
@@ -9948,6 +10190,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  function updateFrameEntry(entry,frame){
   const before={detail:entry.detail,frame:entry.frame,title:entry.title};
   entry.detail={...(entry.detail||{}),...frame};
+  touchContentCandidates();
   entry.frame={...(entry.frame||{}),date:frame.frameDate,shift:frame.frameShift,
                note:frame.frameNote,gapMinutes:null,reached:false};
   renderTimeline();
@@ -10260,6 +10503,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    scState.joinColumns=r.columns||[];
    const byId=new Map((scState.entries||[]).map(e=>[String(e.id),e]));
    (r.values||[]).forEach((v,i)=>{const e=byId.get(ids[i]);if(e)e.joined=v});
+   touchContentCandidates();
    /* 結合は予定を描いたあと**数百ms〜数秒遅れて**着弾する。列幅を掴んで
       いる最中に来ると表ごと入れ替わるので待たせる（§9.211 ①）。 */
    if(scState.joinColumns.length)WL.columnResize.defer('timeline:join',()=>renderTimeline());
@@ -10271,20 +10515,53 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  /* 候補の正規化。「用途名」と「purposeName」のように同じ意味の項目が2つ並ぶと
     どちらを選ぶべきか分からず、しかも片方は古い予定で引けない。alias表に
     載っている項目はalias名へ寄せて1つにまとめる(表示は日本語名)。 */
+ /* 別名 → 代表の名前は**1回だけ表にして引く**（§9.501）。候補は予定の数×列の数だけ通るので、
+    1件ごとに別名の表を舐めると、300列で1回の組み立てが数百msになる。 */
+ let scAliasCanon=null;
  function canonicalContentKey(k){
-  if(typeof WL.base.aliases==='undefined')return k;
-  if(WL.base.aliases[k])return k;
-  for(const ak of Object.keys(WL.base.aliases))if(WL.base.aliases[ak].includes(k))return ak;
-  return k;
+  const al=WL.base.aliases;
+  if(typeof al==='undefined')return k;
+  if(!scAliasCanon){
+   scAliasCanon=new Map();
+   Object.keys(al).forEach(ak=>al[ak].forEach(n=>{if(!al[n]&&!scAliasCanon.has(n))scAliasCanon.set(n,ak)}));
+  }
+  return al[k]?k:(scAliasCanon.get(k)||k);
  }
 
  // 選択候補: 今表示している仕掛一覧の全列 + 既に予定へ入っている行が持つ
  // detailのキー(過去に別の列構成で投入した予定も編集できるようにするため)。
- function contentCandidateKeys(){
+ /* ---------- 候補の控え（§9.501） ----------
+    候補は**予定の数×列の数**を舐めて作る。以前は列1本の分類（`originOf`→「式の列か」）を
+    答えるたびに作り直しており、300列では**列の数の2乗**になった（実測: 設定を開く11秒・
+    表示の入切8.5秒）。材料が変わったときだけ作り直す。
+    材料の見分け: 予定の並び（配列そのものと件数）・仕掛の列名・結合・完了突合の列、
+    それに**予定の中身を書き換える場所が進める版**（`touchContentCandidates()`）。
+    予定の`detail`／`joined`をその場で書き換える処理を足したら、そこでも版を進めること。 */
+ let scCandRev=0;
+ function touchContentCandidates(){scCandRev++}
+ /* 材料（`sigOf()`が返す並び）が前回と同じなら、前に作ったものを返す。材料は**同一性**で比べる
+    （配列は中身でなく物そのもの）ので、並びを差し替える処理はそのまま「変わった」と読まれる。 */
+ function scMemo(sigOf,build){
+  let sig=[],val;
+  return ()=>{const now=sigOf();if(!sameItems(now,sig)){sig=now;val=build()}return val};
+ }
+ const scEntriesSig=()=>[scState.entries,scState.entries.length,scCandRev];
+ const contentCandidateKeys=scMemo(()=>{
+  const onWork=typeof S!=='undefined'&&S.db===workDbKey();
+  return [...scEntriesSig(),scState.workColumns,scState.joinColumns,scState.actualColumns,onWork&&S.columns];
+ },buildContentCandidateKeys);
+ /* 表示列の設定の見本にする予定（中身のある作業の行を40件まで）。列ごとに引かれるので控える。 */
+ const scSampleEntries=scMemo(scEntriesSig,()=>(scState.entries||[])
+   .filter(e=>e.kind==='作業'&&e.detail&&Object.keys(e.detail).length).slice(0,40));
+ function buildContentCandidateKeys(){
   // 今表示している仕掛一覧の全列 + 既に予定へ入っている行が持つdetailのキー
   // (過去に別の列構成で投入した予定も編集できるように)+ 既定の項目
   // (予定がまだ1件も無い設備でも既定を選べるように)。
-  const raw=[...(typeof S!=='undefined'&&Array.isArray(S.columns)?S.columns:[])];
+  /* 土台は**仕掛の元データの列**（§9.501）。以前は`S.columns`＝「いま画面が持っている表の列」で、
+     仕掛一覧を畳んだ「スケジュールだけ」や編集モードでは仕掛一覧を読まないため、**直前に開いた
+     別の元データの列**が候補になっていた（実測: 実績を開いたあとは仕掛の34列中28列が消えた・
+     利用者の報告「残仕掛設備ｺｰｽが表示列から消えて使えない」）。どの順で画面を開いても同じ答えにする。 */
+  const raw=[...scWorkColumnsNow()];
   scState.entries.forEach(e=>{if(e.detail)raw.push(...Object.keys(e.detail))});
   /* 結合で足される列(§9.193)。**予定がまだ1件も無い設備でも選べる**ように
      サーバーが返した名前をそのまま足す（行から拾うだけだと、当たっている
@@ -10298,6 +10575,27 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const seen=new Set(),out=[];
   raw.forEach(k=>{const c=canonicalContentKey(k);if(!seen.has(c)){seen.add(c);out.push(c)}});
   return out;
+ }
+ /* ---------- 仕掛の元データの列名（§9.501） ----------
+    **名前だけ**を引く口（`/api/table-columns`。行は運ばない）。表の構成が変わるのは運用の
+    切り替え時だけなので控える。読めなかったときだけ、画面が仕掛一覧を持っていればその列で補う
+    （黙って空にしない）。 */
+ const scWorkColsCache=WL.ttlCache(5*60*1000,4);
+ async function scLoadWorkColumns(){
+  const db=workDbKey();
+  if(!db){scState.workColumns=[];return scState.workColumns}
+  try{
+   scState.workColumns=await scWorkColsCache.fetch(db,async()=>{
+    const r=await api('/api/table-columns?db='+encodeURIComponent(db),{quiet:true});
+    return Array.isArray(r.columns)?r.columns:[];
+   });
+  }catch(e){WL.quiet.note('仕掛の列名を取れない（画面が持っている仕掛一覧の列で補う）',e)}
+  return scState.workColumns;
+ }
+ function scWorkColumnsNow(){
+  if(scState.workColumns.length)return scState.workColumns;
+  const onWork=typeof S!=='undefined'&&S.db&&S.db===workDbKey()&&Array.isArray(S.columns);
+  return onWork?S.columns:[];
  }
  /* 結合・完了突合で来た列の名前(§9.193・§9.365)。**1箇所で答える**——
     候補・分類・帯が別々に組み立てると、片方にしか出ない列ができる。 */
@@ -10395,8 +10693,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    /* 見本の行は**予定そのもの**。以前は`e.detail`(仕掛データのスナップ
       ショット)だけを渡していたので、区分・日付・操作のような予定側の列は
       すべて「値のある行がありません」と出ていた(画面には出ているのに)。 */
-   rows:()=>(scState.entries||[])
-     .filter(e=>e.kind==='作業'&&e.detail&&Object.keys(e.detail).length).slice(0,40),
+   rows:()=>scSampleEntries(),
    /* **値の取り出しはcontentValueOf経由**(§9.69)。投入した時期によって
       alias名だけの予定と生カラム名を持つ予定が混ざるので、直接引くと
       古い予定で1件も出ない。 */
@@ -10475,10 +10772,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    },
   };
  }
- function openContentPanel(){
+ async function openContentPanel(){
   if(typeof WL.listColumns?.open!=='function'){
    console.error('内容欄の設定: WL.listColumns が見つかりません');return;
   }
+  /* 候補の土台（仕掛の列名・§9.501）を**揃えてから**開く。控えがあれば往復は無い。 */
+  await scLoadWorkColumns();
   WL.listColumns.open(contentPanelSource());
  }
 
@@ -10789,7 +11088,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* 段の長い名（`作業スケジュール一覧`等）。**呼ぶ側に綴りを書かせない**
      ——刃組ガイダンスの戻るボタンがこの字を出す。 */
   modeName:key=>scModeName(key),
-  hiddenLotSet:()=>hiddenLotSet(),
+  /* 仕掛一覧は描くたびにここへ聞きに来るので、**描いた状態をここで控える**（§9.501）——控えが
+     無いと、次に予定表を描いたとき同じ絵をもう1回描き直す（`refreshScheduledLotFilter()`）。 */
+  hiddenLotSet:()=>{lotFilterSig=scheduledLotFilterSig();return hiddenLotSet()},
   /* 刃組ガイダンスへ渡す「条になる行」の選び方（§9.378）。**分割ありの親は
      条にならない**という測定と同じ規則を、網が合成した並びで直に確かめられる
      ようにここから出す（画面を組み立てずに条の選び方だけを見る）。 */
@@ -10917,7 +11218,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* 内容欄で使える項目と、行から取り出した値(§9.365)。**読むだけ**——
      結合・完了突合で来た値が候補に出ているか、行から引けるかを、DOMを
      掘らずに確かめられるようにしておく（出ていないときの切り分けに要る）。 */
-  contentCandidates:()=>contentCandidateKeys(),
+  contentCandidates:()=>contentCandidateKeys().slice(),
   entryValue:(id,key)=>{
    const e=(scState.entries||[]).find(x=>String(x.id)===String(id));
    return e?entryValueOf(e,key):undefined;

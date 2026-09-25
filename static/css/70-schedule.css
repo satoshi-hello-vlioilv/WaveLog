@@ -1314,17 +1314,26 @@
    足した列の真下に来る。まとめの見出し（区切りの**頭**・左の帯）と取り違えないよう、
    こちらは区切りの**お尻**で、上に線を引いて「ここまでの合計」と読ませる。 */
 .sc-subtotal{
+ /* **1行**（§9.499）。高さは行と同じ`--row-h`。幅は器を右隣の集計の無い列まで広げて稼ぐ（JS）
+    ——§9.498では縦に積んだが、行が4段ぶん（104px）になり一覧のリズムを崩した。 */
  height:var(--row-h);padding:var(--row-pad-y) 8px;
  background:var(--surface-2);border-top:1px solid var(--line-mid);border-bottom:1px solid var(--line-soft);
  font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;
 }
 .sc-subtotal>*{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.sc-subtotal-head{display:flex;align-items:center;gap:var(--space-2)}
+/* 名前の器と集計の器は**横1列**。縮むのは区切りの名前だけ（数は縮めない・名前の全文は行の`title`）。 */
+.sc-subtotal-head,.sc-subtotal-cell{display:flex;align-items:center;gap:var(--space-3);min-width:0}
+.sc-subtotal-head>*,.sc-subtotal-cell>*{flex:none}
+.sc-subtotal-head>.sc-subtotal-name{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.sc-subtotal-cell>.sc-subtotal-head{gap:var(--space-2)}
 .sc-subtotal-tag{flex:none;padding:var(--pad-chip);border:1px solid var(--teal);border-radius:var(--radius-pill);
  color:var(--teal-dark);font-size:var(--fs-badge);line-height:1.2}
 .sc-subtotal-name{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2)}
 .sc-subtotal-count{flex:none}
-.sc-subtotal-sum{padding-left:var(--gap-tight)}
+.sc-subtotal-cell{padding-left:var(--gap-tight)}
+/* 同じ列に2つ以上の集計があれば、集計の名を添えて並べる（字は小さく・値は本文のまま）。 */
+.sc-subtotal-cell>.sc-subtotal-sum>small,.sc-subtotal-head>.sc-subtotal-sum>small{margin-right:var(--space-1);color:var(--muted);font-weight:400}
+.sc-subtotal-sum.is-bad>.sc-st-v{color:var(--danger)}
 .sc-subtotal-skip{font-style:normal;color:var(--warn-fg)}
 /* ラベル：1行の帯に並べる。列にはそろえないので、どの列の合計かを**字で**添える。 */
 .sc-subtotal.is-label{display:flex;align-items:center;gap:var(--space-3)}
@@ -2287,20 +2296,59 @@ div.sc-view-row{cursor:default}
 }
 .sc-history-group:hover,.sc-subtotal-opt:hover:not(:disabled){border-color:var(--teal);color:var(--teal-dark)}
 .sc-view-row select[hidden]{display:none}
-/* 小計の段(§9.493)。札と欄は右の列、出し方と列の札は**行いっぱい**の2段目
-   （列の札は数が設備で変わるので、右の列の幅には収まらない）。 */
+/* 小計の段(§9.493→§9.500)。**畳む段**（行の色とアイコンと同じ部品）の中に、決める順の番号付きの節。
+   節の名前の列は固定幅（§CLAUDE 9）で、どの節も同じ部品。広い節（集計の項目）だけ名前を上に置き、
+   表を段の幅いっぱいに取る。 */
 .sc-subtotal-opts{display:flex;flex-wrap:wrap;gap:2px}
 .sc-subtotal-opt{display:inline-flex;align-items:center;gap:var(--space-1)}
 .sc-subtotal-opt>small{color:var(--muted);font-variant-numeric:tabular-nums}
 .sc-subtotal-opt:disabled{cursor:not-allowed;opacity:.5}
-/* 2択（出す／出さない・行／ラベル）は中身なりの幅。行いっぱいに伸ばすと入力欄に見える。 */
-.sc-subtotal-more>.sc-subtotal-opts>.sc-subtotal-opt{flex:0 0 auto;min-width:var(--w-xs);justify-content:center}
-.sc-subtotal-more{grid-column:1 / -1;display:grid;grid-template-columns:var(--w-xs) 1fr;
- align-items:center;gap:var(--space-1) var(--space-2)}
-.sc-subtotal-more[hidden]{display:none}
-.sc-subtotal-more-name{font-size:var(--fs-micro);font-weight:700;color:var(--ink-2);text-align:right}
-.sc-subtotal-note{grid-column:2;color:var(--muted);font-size:var(--fs-micro);line-height:1.4}
-.sc-subtotal-none{color:var(--muted);font-size:var(--fs-micro)}
+.sc-st-pop{padding:0 0 var(--space-3) calc(var(--fs-base-sm) + var(--space-2))}
+.sc-st-pop[hidden]{display:none}
+.sc-st-steps{counter-reset:sc-st-step;display:flex;flex-direction:column}
+#scSubtotalMore[hidden]{display:none}
+.sc-st-step{display:grid;grid-template-columns:var(--w-lg) minmax(0,1fr);align-items:center;gap:var(--space-2);
+ padding:var(--space-2) 0;border-top:1px solid var(--line-soft)}
+.sc-st-step:first-child{border-top:0}
+.sc-st-step.is-wide{grid-template-columns:minmax(0,1fr)}
+.sc-st-step-name{counter-increment:sc-st-step;display:flex;flex-direction:column;min-width:0;
+ font-size:var(--fs-sm);font-weight:700;color:var(--ink)}
+.sc-st-step-name>small{font-weight:400;color:var(--muted);font-size:var(--fs-micro);line-height:1.4}
+/* 番号は名前の左の丸（決める順を目で追える）。 */
+.sc-st-step{position:relative}
+.sc-st-step>.sc-st-step-name{padding-left:calc(var(--fs-sm) * 1.6 + var(--space-1))}
+.sc-st-step>.sc-st-step-name::after{content:counter(sc-st-step);position:absolute;left:0;top:var(--space-2);
+ width:calc(var(--fs-sm) * 1.6);height:calc(var(--fs-sm) * 1.6);border-radius:var(--radius-pill);
+ display:grid;place-items:center;background:var(--pale);color:var(--teal-dark);font-size:var(--fs-micro);font-weight:800}
+.sc-st-step-ctl{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-2);min-width:0}
+.sc-st-step.is-wide>.sc-st-step-ctl{display:flex;flex-direction:column;align-items:stretch;gap:var(--space-1)}
+.sc-st-step-ctl>select{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);
+ border-radius:var(--radius-sm);background:var(--surface);font-size:var(--fs-sm);color:var(--ink-2);min-width:var(--w-md)}
+.sc-st-step-ctl>select[hidden]{display:none}
+.sc-st-step-ctl .sc-subtotal-opt{flex:0 0 auto;min-width:var(--w-xs);justify-content:center}
+.sc-st-hint{color:var(--muted);font-size:var(--fs-micro);line-height:1.4}
+.sc-st-warn{color:var(--warn-fg);font-size:var(--fs-micro);font-weight:700}
+/* 集計の項目の表（§9.500）。**見出しと欄は同じ格子**（`.sc-st-grid`）——列の左端がそろう。
+   式の行は「列＋集計」の2マスを式の欄がまたぐ。見本は読み取り専用（枠を付けない・§CLAUDE 10）。 */
+.sc-st-grid{display:grid;align-items:center;gap:var(--space-1);
+ grid-template-columns:minmax(0,1.2fr) minmax(0,1.4fr) minmax(0,.75fr) minmax(0,.7fr) minmax(0,.6fr) minmax(0,1.1fr) var(--ctl-h-xs)}
+.sc-st-thead>span{font-size:var(--fs-micro);font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-st-item.is-calc>.sc-st-expr{grid-column:span 2}
+.sc-st-item>input,.sc-st-item>select{
+ width:100%;min-width:0;height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);
+ border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
+ font-size:var(--fs-micro);color:var(--ink-2)}
+.sc-st-item>input::placeholder{color:var(--muted);font-style:italic}
+.sc-st-prev{font-size:var(--fs-sm);font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-st-prev.is-none{color:var(--muted);font-weight:400}
+.sc-st-prev.sc-st-err{color:var(--danger);font-size:var(--fs-micro)}
+.sc-st-del{height:var(--ctl-h-xs);padding:0;border:1px solid var(--line);border-radius:var(--radius-sm);
+ background:var(--surface);color:var(--muted);cursor:pointer}
+.sc-st-del:hover{border-color:var(--danger);color:var(--danger)}
+.sc-st-empty{color:var(--muted);font-size:var(--fs-micro);padding:var(--space-1) 0}
+.sc-st-add{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-2);margin-top:var(--space-1)}
+.sc-st-add>.sc-subtotal-opt{flex:0 0 auto}
 
 /* ============================================================
    操作列を1行に収める(§9.199、利用者の指示「上部メニューバーは1行で」)
@@ -2698,4 +2746,123 @@ div.sc-view-row{cursor:default}
   font-size:var(--fs-sm);color:var(--muted)}
 .sc-blade-legend b{color:var(--ink-2)}
 .sc-blade-swatch{width:var(--space-3);height:2px;background:var(--muted);display:inline-block}
+
+/* ============================================================
+   過去履歴（§9.502、利用者の指示・案A）——段「履歴」
+   ------------------------------------------------------------
+   左＝送り・探す・区分の札・表（現場歴の日付と直で束ねる）／右＝月の暦と期間の合計。
+   **色は区分の意味だけ**（完了＝緑／取消・外した＝薄く／設備停止＝橙／申し送り＝青／計画外＝紫）。
+   区分は**必ず字でも言う**（色だけで伝えない）。寸法と色はトークンから選ぶ。
+   ============================================================ */
+.sc-hist{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) calc(var(--w-xl) + var(--space-4));
+  gap:var(--space-3);padding:var(--space-3)}
+.sc-hist[hidden]{display:none}
+.sh-main{display:flex;flex-direction:column;min-height:0;min-width:0;gap:var(--space-2)}
+/* 1段目: 送り（前・期間・次・今日）→ 単位 → 探す。**左から右がする順**（§CLAUDE 14）。 */
+.sh-bar{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2) var(--space-3)}
+.sh-bar.is-loading .sh-period{color:var(--muted)}
+.sh-nav{display:flex;align-items:center;gap:var(--space-1)}
+/* 期間の字は**幅を固定**して送っても前後のボタンが動かないようにする（「いつも同じ場所」・§9.402）。 */
+.sh-period{display:inline-block;min-width:var(--w-lg);text-align:center;font-size:var(--fs);font-weight:700;
+  font-variant-numeric:tabular-nums;color:var(--ink);white-space:nowrap}
+.sh-btn{display:inline-flex;align-items:center;gap:var(--space-1);height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);
+  font-size:var(--fs-sm);font-weight:700;cursor:pointer;white-space:nowrap}
+.sh-btn:hover{border-color:var(--teal);color:var(--teal-dark)}
+.sh-btn:disabled{opacity:.45;cursor:default}
+.sh-btn.sh-ico{width:var(--ctl-h-sm);justify-content:center;padding:0}
+.sh-seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
+.sh-seg-btn{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:0;border-right:1px solid var(--line);
+  background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);font-weight:700;cursor:pointer}
+.sh-seg-btn:last-child{border-right:0}
+.sh-range{display:inline-flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm);color:var(--muted)}
+.sh-range[hidden]{display:none}
+.sh-range input{height:var(--ctl-h-sm);font-size:var(--fs-sm)}
+.sh-grow{flex:1 1 auto}
+.sh-search{display:inline-flex;align-items:center;gap:var(--space-1);height:var(--ctl-h-sm);padding:0 var(--space-2);
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--muted)}
+.sh-search:focus-within{border-color:var(--teal)}
+.sh-search input{border:0;outline:0;background:transparent;width:var(--w-lg);font-size:var(--fs-sm);color:var(--ink)}
+/* 2段目: 区分の札。**件数つき**で、押すと見せる／隠す（隠した札は薄く・字に打ち消し線はしない＝読める）。 */
+.sh-cats{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1) var(--space-2)}
+.sh-cat{display:inline-flex;align-items:center;gap:var(--space-1);height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);
+  font-size:var(--fs-sm);cursor:pointer}
+.sh-cat b{font-variant-numeric:tabular-nums;color:var(--ink)}
+.sh-cat:not(.is-on){background:var(--surface-2);color:var(--muted);border-style:dashed}
+.sh-cat:not(.is-on) b{color:var(--muted)}
+.sh-dot{width:var(--space-2);height:var(--space-2);border-radius:var(--radius-round);background:var(--line-strong)}
+.sh-cat:not(.is-on) .sh-dot{opacity:.35}
+.sh-tone-done .sh-dot{background:var(--success)}
+.sh-tone-off .sh-dot{background:var(--muted)}
+.sh-tone-stop .sh-dot{background:var(--warn-solid)}
+.sh-tone-note .sh-dot{background:var(--rs-blue)}
+.sh-tone-extra .sh-dot{background:var(--rs-purple)}
+.sh-notes{display:flex;flex-direction:column;gap:var(--space-1)}
+.sh-notes[hidden]{display:none}
+.sh-note{margin:0;padding:var(--space-1) var(--space-2);border-left:3px solid var(--warn-border);
+  background:var(--warn-bg);color:var(--warn-fg);font-size:var(--fs-sm)}
+/* 表。**横スクロールは表の器だけ**。見出しは貼り付け。 */
+.sh-scroll{flex:1 1 auto;min-height:0;overflow:auto;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--radius-sm)}
+.sh-table{border-collapse:collapse;width:100%;font-size:var(--tbl-fs)}
+.sh-table th,.sh-table td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
+  text-align:left;white-space:nowrap;vertical-align:baseline}
+.sh-table thead th{position:sticky;top:0;z-index:2;background:var(--header-bar-bg);color:var(--header-bar-fg);font-weight:700}
+.sh-table tbody tr.sh-row:hover{background:var(--pale)}
+/* 束ねの見出し（現場歴の日付・直）。**1行**で、件数と時間の合計を右に。 */
+.sh-group th{position:sticky;top:calc(var(--tbl-fs) * 1.4 + var(--space-2));z-index:1;background:var(--surface-3);
+  color:var(--ink);font-weight:700;border-bottom:1px solid var(--line)}
+.sh-group th>span{margin-right:var(--space-3)}
+.sh-g-date{font-variant-numeric:tabular-nums}
+.sh-g-shift{padding:0 var(--space-1);border:1px solid var(--line-strong);border-radius:var(--radius-xs);background:var(--surface)}
+.sh-g-count,.sh-g-sum{font-weight:400;color:var(--ink-2);font-size:var(--fs-sm)}
+.sh-g-sum{float:right;margin-right:0}
+.sh-c-cat{width:1%}
+.sh-c-time,.sh-c-min{font-variant-numeric:tabular-nums}
+.sh-c-min{text-align:right}
+.sh-c-name small,.sh-c-rec small{margin-left:var(--space-1);color:var(--muted);font-size:var(--fs-sm)}
+.sh-c-name small.sh-remark{display:block;margin-left:0;white-space:normal}
+.sh-tag{display:inline-block;padding:0 var(--space-1);border-radius:var(--radius-xs);font-weight:700;
+  background:var(--surface-3);color:var(--ink-2)}
+.sh-row.sh-tone-done .sh-tag{background:var(--success-bg);color:var(--success)}
+.sh-row.sh-tone-off .sh-tag{background:var(--surface-3);color:var(--muted)}
+.sh-row.sh-tone-stop .sh-tag{background:var(--warn-bg);color:var(--warn-fg)}
+.sh-row.sh-tone-note .sh-tag{background:var(--rs-blue-bg);color:var(--rs-blue)}
+.sh-row.sh-tone-extra .sh-tag{background:var(--rs-purple-bg);color:var(--rs-purple)}
+/* 起きなかったこと（取消・外した作業）は**一段薄く**（色だけにしない＝区分の字が言う）。 */
+.sh-row.sh-tone-off td:not(.sh-c-cat){color:var(--muted)}
+.sh-est{color:var(--muted)}
+.sh-off{color:var(--muted)}
+.sh-comment{white-space:normal}
+.sh-empty{display:flex;flex-direction:column;align-items:center;gap:var(--space-2);padding:var(--space-6) var(--space-4);
+  color:var(--ink-2);text-align:center}
+.sh-empty p{margin:0;color:var(--muted);font-size:var(--fs-sm)}
+.sh-empty.is-error b{color:var(--danger)}
+/* 右: 月の暦と期間の合計。**頻度の低い物は小さく**（§CLAUDE 1）。 */
+.sh-side{display:flex;flex-direction:column;gap:var(--space-2);min-height:0;overflow:auto;padding:var(--space-3);
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm)}
+.sh-cal-head{display:flex;align-items:center;justify-content:space-between}
+.sh-cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;text-align:center}
+.sh-cal i{font-style:normal;font-size:var(--fs-sm);color:var(--muted)}
+.sh-day{display:flex;flex-direction:column;align-items:center;justify-content:center;height:var(--ctl-h-lg);
+  border:1px solid var(--line-soft);border-radius:var(--radius-xs);background:var(--surface);color:var(--ink-2);
+  font-size:var(--fs-sm);font-variant-numeric:tabular-nums;cursor:pointer;padding:0}
+.sh-day small{font-size:var(--fs-micro);line-height:1;color:inherit;opacity:.85}
+.sh-day.is-pad{border:0;background:transparent;cursor:default}
+.sh-day.lv1{background:var(--rs-cyan-bg);border-color:var(--rs-cyan-border)}
+.sh-day.lv2{background:var(--teal-soft);border-color:var(--teal-soft);color:var(--ink)}
+.sh-day.lv3{background:var(--teal);border-color:var(--teal);color:var(--surface)}
+.sh-day.is-in{outline:2px solid var(--teal-dark);outline-offset:-1px}
+.sh-day.is-today{font-weight:700;text-decoration:underline}
+.sh-day:hover{border-color:var(--teal)}
+.sh-legend{margin:0;font-size:var(--fs-sm);color:var(--muted)}
+.sh-kpi{margin:0;display:grid;grid-template-columns:1fr 1fr;gap:var(--space-2)}
+.sh-kpi>div{padding:var(--space-2);border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2)}
+.sh-kpi dt{font-size:var(--fs-sm);color:var(--muted)}
+.sh-kpi dd{margin:0;font-size:var(--fs-lg);font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+.sh-kpi small{display:block;font-size:var(--fs-sm);color:var(--muted);line-height:1.35}
+.sh-ro{margin:0;padding:var(--space-2);border:1px dashed var(--line-strong);border-radius:var(--radius-sm);
+  font-size:var(--fs-sm);color:var(--ink-2)}
+.sh-back{align-self:flex-start}
 }

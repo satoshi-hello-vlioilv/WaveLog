@@ -11,8 +11,9 @@
 依存は増やさない（`program/requirements.txt`は`flask`だけ・§9.268）。
 使うのは`zlib`と`struct`＝標準ライブラリだけで、PNGもICOも自分で組み立てる。
 
-出来上がりは端末ごとの`runtime_dir()`へ置く（アプリ本体は共有に置かれる
-運用があるので、そこへ書くと全台が1つを取り合う・§9.225と同じ理由）。
+出来上がりは端末ごとの`paths.browser_dir()`へ置く（アプリ本体は共有に置かれる
+運用があるので、そこへ書くと全台が1つを取り合う・§9.225と同じ理由）。読むのは
+エクスプローラー（別のプログラム）なので、**ほかのプログラムからも見える置き場**（§9.496）。
 
 **絵の形は`MARK`が持つ**。色を変えるときはここだけを直す。
 ===========================================================================
@@ -20,7 +21,7 @@
 import struct
 import zlib
 
-from .paths import runtime_dir
+from . import paths
 from .quiet import quiet
 
 ICON_FILENAME='wavelog.ico'
@@ -200,8 +201,8 @@ def build():
 
 
 def icon_path():
- """既定のアイコンの置き場（端末ごと）。"""
- return runtime_dir()/ICON_FILENAME
+ """既定のアイコンの置き場（端末ごと・ほかのプログラムからも見える置き場・§9.496）。"""
+ return paths.browser_dir()/ICON_FILENAME
 
 
 def ensure(force=False):

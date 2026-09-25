@@ -81,8 +81,9 @@ try:
     for label, path in (('刻印', ready.stamp_file()),
                         ('進捗ファイル', boot_status.status_path()),
                         ('待機画面の写し', setup_check.waiting_page())):
-        inside_local = str(path).startswith(str(local_root()))
-        inside_app = str(path).startswith(str(APP_ROOT))
+        # **パスとして中にあるか**で見る（文字列の先頭一致だと `…/app` と `…/apphome` を取り違える）。
+        inside_local = Path(path).is_relative_to(local_root())
+        inside_app = Path(path).is_relative_to(APP_ROOT)
         rec(f'{label}は端末ごとの置き場（アプリ本体の側ではない）',
             inside_local and not inside_app, str(path))
 
@@ -169,6 +170,15 @@ try:
     rec('待機画面の写しは元と同じ中身',
         setup_check.waiting_page().read_bytes() == src,
         f'{len(src)}バイト')
+    # ---- 5b) `say`の約束は say(m, bad=False, quiet=False)（§9.495） ----
+    # 起動の裏の写し直しが渡す`say`が`quiet`を受けず、**写せたのに例外になって**
+    # 「起動画面を写せませんでした」と逆のことをログへ残していた（実機のログで見つかった）。
+    bad_say = []
+    for f in list((ROOT / 'program').glob('*.py')) + list((ROOT / 'backend').rglob('*.py')):
+        for m in re.finditer(r'say=lambda([^:]*):', f.read_text(encoding='utf-8', errors='replace')):
+            if 'quiet' not in m.group(1) and '**' not in m.group(1):
+                bad_say.append(f'{f.name}: lambda{m.group(1)}')
+    rec('say=lambda はどれも quiet を受ける（§9.495）', not bad_say, ' / '.join(bad_say) or 'なし')
     # 相対で読む前提（写しの隣に進捗ファイルを置くのが筋になる）
     html = src.decode('utf-8')
     rec('待機画面は進捗ファイルを相対で読む（写しの隣を見る）',
@@ -431,7 +441,7 @@ try:
     setup_txt = (setup_out.stdout or '')
     stamps = [x for x in setup_txt.splitlines() if re.match(r'^\d{4}-\d\d-\d\d \d\d:', x)]
     rec('update.bat の画面に時刻つきの記録を混ぜない（記録は launcher.log へ）',
-        not stamps, f'{len(stamps)}行 混ざっている')
+        not stamps, f'{len(stamps)}行 混ざっている' + (f'（{stamps[0][:120]}）' if stamps else ''))
     rec('画面は「結果」と「次にすること」を言う',
         '準備ができました' in setup_txt and '次にすること' in setup_txt,
         setup_txt.replace('\n', ' / ')[:70])

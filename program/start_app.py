@@ -297,7 +297,7 @@ def _refresh_waiting_page_later(log):
    # 「渡した直後に更新しました」と読める行が並び、**直したはずの§9.314の
    # 競合がまだ起きている**ように見えた（原因を探す側を丸1往復遠回りさせた）。
    said=[]
-   setup_check.copy_waiting_page(say=lambda m,bad=False:said.append(m))
+   setup_check.copy_waiting_page(say=lambda m,bad=False,quiet=False:said.append(m))
    for m in said:
     log.info('待機画面: %s',m)
   except Exception as e:
