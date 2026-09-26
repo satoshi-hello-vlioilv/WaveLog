@@ -156,19 +156,21 @@ run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,
    aVer:([...document.querySelectorAll('#pzList .pz-row')].find(r=>r.textContent.includes('PC-A'))?.querySelector('.pz-c-ver')||{}).textContent||'',
    head:[...document.querySelectorAll('#pzTerms th')].map(x=>x.textContent),
    rows:[...document.querySelectorAll('#pzTerms tbody tr')].map(r=>r.textContent.replace(/\s+/g,' ')),
-   forget:[...document.querySelectorAll('[data-pz-forget]')].map(b=>b.dataset.pzForget)};
+   forget:[...document.querySelectorAll('[data-pz-forget]')].map(b=>b.dataset.pzForget),
+   /* 時間の書き方は端末の「表示」に従う（§9.341）ので、期待も同じ口から作る */
+   want62:WL.duration.text(62),want90:WL.duration.text(90)};
  });
  rec('⑦ 運用中の最新版を出す',/VER2\.400\.0/.test(fl.latest),fl.latest);
  rec('⑦ 最新でない端末の数と、うち接続中を字で言う（配る相手）',
    /^2/.test(fl.old)&&/うち接続中 1台/.test(fl.oldCell),fl.oldCell.slice(0,60));
  rec('⑦ 接続中の端末に版・接続した時刻・接続時間が出る',
-   /最新/.test(fl.ver)&&/VER2\.400\.0/.test(fl.ver)&&fl.since==='09-26 09:00'&&fl.dur==='1時間2分',
+   /最新/.test(fl.ver)&&/VER2\.400\.0/.test(fl.ver)&&fl.since==='09-26 09:00'&&fl.dur===fl.want62,
    JSON.stringify([fl.ver,fl.since,fl.dur]));
  rec('⑦ 版を書かない古い版の端末は「要更新」と「VER…より前」で言う',
    /要更新/.test(fl.aVer)&&/より前/.test(fl.aVer),fl.aVer);
  rec('⑦ 記録の表は最新でない端末が上・累計接続回数と時間が出る',
    fl.head.includes('累計接続回数')&&fl.head.includes('累計接続時間')&&/要更新/.test(fl.rows[0]||'')
-   &&fl.rows.some(r=>/4回/.test(r)&&/1時間30分/.test(r)),JSON.stringify(fl.rows).slice(0,140));
+   &&fl.rows.some(r=>/4回/.test(r)&&r.includes(fl.want90)),JSON.stringify(fl.rows).slice(0,140));
  rec('⑦ 記録を消せるのは接続していない端末だけ（権限のある人に）',
    JSON.stringify(fl.forget)==='["PC-OLD@u1"]',JSON.stringify(fl.forget));
  await page.click('#pzOnlyOld');

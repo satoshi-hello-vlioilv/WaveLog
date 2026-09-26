@@ -540,10 +540,25 @@ def _plan_children(raw):
               'detail':c.get('detail') if isinstance(c.get('detail'),dict) else {}})
  return out
 
+def _row_estimate(row):
+ """その予定の見積の分（予定の画面と同じ答え・`resolve_estimate`）。読めなければNone。"""
+ try:
+  detail=json.loads(row[8]) if row[8] else {}
+ except ValueError as _e:
+  quiet('明細を読めない（空として見積る）',_e);detail={}
+ try:
+  with connect(DBS['MASTER']['path'],True) as mc:
+   est=schedule_calc.resolve_estimate(mc,row[1],{'kind':row[3],'title':row[7],'estimateMinutes':row[10],
+                                                 'detail':detail})
+  return est['minutes']
+ except Exception as _e:
+  quiet('見積を引けない（終了も入れてもらう）',_e)
+  return None
+
 @bp.post('/api/schedule/plan/update')
 def plan_update():
  x=body({'id': any_,'frame': any_,'estimateMinutes': any_,'fixedStart': any_,'remark': any_,'state': any_,'title': any_,
-         'detail': any_,'stopSubId': any_})
+         'detail': any_,'stopSubId': any_,'actualStart': any_,'actualEnd': any_,'equipment': any_})
  plan_id=x.get('id')
  if plan_id is None:return jsonify(error='更新対象の予定IDがありません。'),400
  # titleは申し送り(コメント)の本文(§9.191)。他の種別では repo が弾く。
@@ -558,10 +573,19 @@ def plan_update():
  # 送っていない(鍵そのものが無い)のと区別する——`or`で倒すと、外す操作が
  # 「触っていない」になって効かない。
  stop_sub='stopSubId' in x
+ # 実際の時刻（§9.514）。開始が来たら登録（終了が空＝開始＋見積）。**検めるのは
+ # `schedule_calc.manual_payload()`の1箇所**——ここは見積を引いて渡すだけ。
+ times='actualStart' in x
  def fn(c):
   row=sr.plan_row(c,plan_id)
   if row:_check_session(row[1])
   n=0
+  if times:
+   if not row:raise ValueError('指定の予定が見つかりません。')
+   est=_row_estimate(row)
+   payload=schedule_calc.manual_payload(x.get('actualStart'),x.get('actualEnd'),est,
+                                        request_user_id(x),request_pc_name(x))
+   n+=sr.plan_set_manual_times(c,plan_id,request_user_id(x),payload,pc=request_pc_name(x))
   if frame is not None:n+=sr.plan_set_frame(c,plan_id,request_user_id(x),frame,pc=request_pc_name(x))
   if stop_sub:n+=sr.plan_set_stop_sub(c,plan_id,request_user_id(x),x.get('stopSubId'),pc=request_pc_name(x))
   if detail:n+=sr.plan_merge_detail(c,plan_id,request_user_id(x),detail,pc=request_pc_name(x))

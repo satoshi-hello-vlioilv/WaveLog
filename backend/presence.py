@@ -31,7 +31,7 @@
 「**しばらく繋いでいない端末が、どの版のまま止まっているか**」が要るので、
 端末ごとに**消えない記録**を1つ持つ。書くのは在席と同じく**その端末だけ**。
 
-  <共有>\presence\history\<端末キー>.json
+  <共有>\\presence\\history\\<端末キー>.json
      … 版・最初と最後に使った時刻・累計の接続回数と接続時間・使った版の履歴
 
 **運用中の最新版は記録の中の最大の版**（`fleet_summary()`の1箇所）——
@@ -58,6 +58,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import atomic_io, paths
+from .changelog_data import APP_VERSION
 from .logging_setup import app_logger
 from .quiet import quiet
 
@@ -185,12 +186,7 @@ def _age_sec(entry):
 # ---- 版 --------------------------------------------------------------------
 def app_version():
     """この端末で動いているアプリの版。"""
-    try:
-        from .changelog_data import APP_VERSION
-        return str(APP_VERSION)
-    except Exception as _e:
-        quiet('版を読めない（空で続ける）',_e)
-        return ''
+    return str(APP_VERSION or '')
 
 
 def version_key(v):

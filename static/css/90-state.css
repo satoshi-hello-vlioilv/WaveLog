@@ -521,7 +521,7 @@ body.sc-mode #headerContextSource{display:none}
      ここは `@layer state`。component 層のどの規則よりも後に効く。
      ============================================================ */
 
-  /* 濃い面（縁つき）（28族） */
+  /* 濃い面（縁つき）（29族） */
   #reportArrange.is-on,
   .ac-chip.is-on,
   .bs-hide button.is-on,
@@ -544,6 +544,7 @@ body.sc-mode #headerContextSource{display:none}
   .product-length-tabs button.active,
   .pz-seg button.is-on,
   .rp-bar-btn.is-on,
+  .sct-seg button.is-on,
   .rp-form-ctl button.is-on,
   .sc-sl-cell.is-on,
   .sc-stop-button.is-on,

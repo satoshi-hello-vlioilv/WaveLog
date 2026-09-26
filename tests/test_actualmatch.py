@@ -19,10 +19,14 @@
     前工程実績_作業終了_日付。空欄は既定に戻る）
  3. **仕掛に在る**ロットは今までどおり「予定」のまま
  4. **仕掛から消えて実績にHIT** → 完了。HITした実績の行が付く
- 5. **仕掛から消えて実績に無い** → 着手（消えた＝少なくとも手は付いている）
+ 5. **仕掛から消えて実績に無い** → 完了（§9.514で改めた・利用者の指示「仕掛からなくなった
+    ものは基本的に作業完了している」。§9.364の「着手」は撤回）。時刻は「未登録」と名乗る
  6. HITした実績は**予定へ保存**され、実績データが消えても残る
  7. 判定できないときは**状態を1つも動かさない**（分からないことを
     分かったことにしない）
+ 8. **時刻の登録**（§9.514）: 仕掛落ちのロットと、後ろの作業が始まった設備停止は
+    完了側へ移り「時刻未登録」。開始だけ（見積で終わる）／開始と終了を登録でき、
+    登録すると完了が確定して段「履歴」にも時刻つきで出る。履歴から直せる
 
 **材料は自分で用意する**（§9.351）——検証用の実績DB
 （`db/test_fixture/sikalotact_test.sqlite3`）は仕掛に**居ない**ロットを
@@ -207,20 +211,19 @@ def main():
         str((hit or {}).get('finishedAt') or '').startswith('2026-09-01'),
         str((hit or {}).get('finishedAt')))
 
-    # ---- 5) 消えて実績に無い → 着手 ----
+    # ---- 5) 消えて実績に無い → 完了（§9.514で改めた。§9.364・§9.462の「着手」は撤回） ----
     add_plan(TAG + 'GONE', 'C0000', '2026-09-09')
     gone = find(TAG + 'GONE')
-    rec('仕掛から消えて実績にも無ければ「着手」',
-        bool(gone) and gone['state'] == '着手' and gone.get('missingFromWork') is True
+    rec('仕掛から消えて実績にも無ければ「完了」（仕掛から無くなった＝作業は終わっている）',
+        bool(gone) and gone['state'] == '完了' and gone.get('missingFromWork') is True
         and not gone.get('actualSource'),
         json.dumps({'state': gone and gone.get('state'),
                     'reason': (gone or {}).get('missingReason')}, ensure_ascii=False)[:200])
-    # §9.462（利用者の報告「完了しているのに繰り上がらない」）。**開始時刻の
-    # 分からない「着手」も作業中として扱う**——予定の終わりは現在時刻で、
-    # 見積ぶんの場所に居座って後ろの予定を押さない。
-    rec('仕掛落ちの「着手」は作業中として扱い、予定の終わりが現在時刻（見積ぶん居座らない）',
-        bool(gone) and gone.get('ongoing') is True
-        and gone.get('plannedStart') == gone.get('plannedEnd'),
+    rec('時刻が分からないことを名乗る（時刻未登録・理由つき）',
+        bool(gone) and gone.get('timesNeeded') is True and '仕掛' in str(gone.get('doneReason') or ''),
+        json.dumps({k: (gone or {}).get(k) for k in ('timesNeeded', 'doneReason')}, ensure_ascii=False))
+    rec('完了側の行は後ろの予定を押さない（作業中として居座らない）',
+        bool(gone) and not gone.get('ongoing') and gone.get('plannedStart') is None,
         json.dumps({k: (gone or {}).get(k) for k in ('ongoing', 'plannedStart', 'plannedEnd')},
                    ensure_ascii=False))
 
@@ -301,6 +304,9 @@ def main():
             if x.get('id') == jid and x.get('active')]
     rec('止めた完了突合を有効へ戻せている', bool(back), str(bool(back)))
 
+    # ---- 8) 時刻の登録（§9.514） ----------------------------------------
+    times_section()
+
     # ---- 7) 判定できないときは状態を動かさない ----
     r = client.post('/api/schedule/plan/add', json={
         'equipment': EQ, 'kind': '作業', 'lotNo': '', 'castingNo': '',
@@ -318,6 +324,91 @@ def main():
         json.dumps({'state': blank and blank.get('state'),
                     'missing': blank and blank.get('missingFromWork'),
                     'reason': (blank or {}).get('missingReason')}, ensure_ascii=False)[:200])
+
+
+def add_stop(name):
+    # 設備停止は停止理由（マスタの行）から入れる。**フィクスチャの行を1つ借りる**（網が作らない）。
+    items = (client.get('/api/schedule/stop-reason-master?equipment=' + EQ).get_json() or {}).get('items') or []
+    rid = (items[0] or {}).get('id') if items else None
+    r = client.post('/api/schedule/plan/add', json={
+        'equipment': EQ, 'kind': '設備停止', 'title': TAG + name, 'stopReasonId': rid,
+        'estimateMinutes': 30, 'user_id': 'tests'})
+    j = r.get_json() or {}
+    if j.get('id'):
+        made.append(j['id'])
+        mine[name] = j['id']
+    else:
+        print('  [add stop] %s: %s %s' % (name, r.status_code, j))
+    return j
+
+
+def update(pid, **kw):
+    r = client.post('/api/schedule/plan/update', json=dict(kw, id=pid, equipment=EQ, user_id='tests'))
+    return r.status_code, (r.get_json() or {})
+
+
+def times_section():
+    """§9.514。並び: …（前の節の行）→ 停止S1 → 仕掛落ちGONE2 → 停止S2。
+    GONE2 は完了側へ移るので、その前の S1 は「後ろの作業が始まった」＝済んだ停止。
+    S2 の後ろには何も無いので予定のまま（対照）。"""
+    add_stop('S1')
+    add_plan(TAG + 'GONE2', 'C0001', '2026-09-09')
+    add_stop('S2')
+    by = {str(e.get('id')): e for e in entries()}
+    s1, g2, s2 = (by.get(str(mine.get(k))) for k in ('S1', TAG + 'GONE2', 'S2'))
+    rec('後ろの作業が始まった設備停止は完了側へ移り、時刻未登録と名乗る',
+        bool(s1) and s1['state'] == '完了' and s1.get('timesNeeded') is True
+        and '後ろ' in str(s1.get('doneReason') or ''),
+        json.dumps({k: (s1 or {}).get(k) for k in ('state', 'timesNeeded', 'doneReason')}, ensure_ascii=False))
+    rec('後ろに何も始まっていない設備停止は予定のまま（対照）',
+        bool(s2) and s2['state'] == '予定' and not s2.get('timesNeeded'),
+        json.dumps({k: (s2 or {}).get(k) for k in ('state', 'timesNeeded')}, ensure_ascii=False))
+    hint = (g2 or {}).get('timesHint') or {}
+    rec('入力の手がかり（開始の候補とその出どころ・見積の分）をサーバーが添える',
+        bool(hint.get('minutes')) and 'startFrom' in hint, json.dumps(hint, ensure_ascii=False))
+    # 開始だけ登録 → 終わりは開始＋見積（登録済みの時間を当てる）
+    st, j = update(mine.get(TAG + 'GONE2'), actualStart='2026-09-26T08:00')
+    by = {str(e.get('id')): e for e in entries()}
+    g2 = by.get(str(mine.get(TAG + 'GONE2'))) or {}
+    a = g2.get('actual') or {}
+    rec('開始だけ登録すると、終わりは開始＋見積（出どころ「見積」）',
+        st == 200 and a.get('startAt', '').startswith('2026-09-26T08:00') and bool(a.get('endAt'))
+        and a.get('source') == '手入力' and a.get('endFrom') == '見積' and not g2.get('timesNeeded'),
+        json.dumps({'status': st, 'actual': a, 'err': j.get('error')}, ensure_ascii=False)[:220])
+    # 開始と終了を登録
+    st, j = update(mine.get('S1'), actualStart='2026-09-26T07:30', actualEnd='2026-09-26T07:55')
+    by = {str(e.get('id')): e for e in entries()}
+    s1 = by.get(str(mine.get('S1'))) or {}
+    a = s1.get('actual') or {}
+    rec('開始と終了を登録できる（分単位・完了が確定する）',
+        st == 200 and a.get('endAt', '').startswith('2026-09-26T07:55') and a.get('minutes') == 25
+        and a.get('endFrom') == '手入力' and s1['state'] == '完了' and not s1.get('timesNeeded'),
+        json.dumps({'status': st, 'actual': a, 'err': j.get('error')}, ensure_ascii=False)[:220])
+    st, j = update(mine.get('S1'), actualStart='2026-09-26T08:00', actualEnd='2026-09-26T07:00')
+    rec('終わりが始まりより前なら断る（理由を言う）', st == 400 and '前' in str(j.get('error') or ''),
+        json.dumps(j, ensure_ascii=False)[:120])
+    # 段「履歴」にも時刻つきで出る
+    h = (client.get('/api/schedule/history?equipment=' + EQ + '&from=2026-09-25&to=2026-09-26')
+         .get_json() or {})
+    hb = {str(e.get('id')): e for e in (h.get('entries') or [])}
+    hg, hs = hb.get(str(mine.get(TAG + 'GONE2'))), hb.get(str(mine.get('S1')))
+    rec('登録した作業は段「履歴」に完了として時刻つきで出る（出どころ＝手入力）',
+        bool(hg) and hg.get('cat') == 'done' and str(hg.get('start') or '').startswith('2026-09-26T08:00')
+        and '手入力' in str(hg.get('atSource') or ''),
+        json.dumps(hg or {}, ensure_ascii=False)[:200])
+    rec('登録した設備停止も段「履歴」に止めた時刻で出る',
+        bool(hs) and hs.get('cat') == 'stop' and str(hs.get('start') or '').startswith('2026-09-26T07:30')
+        and hs.get('minutes') == 25, json.dumps(hs or {}, ensure_ascii=False)[:200])
+    rec('履歴の行は時刻を直せるかを名乗る（手で入れた時刻だけ）',
+        bool(hs) and hs.get('timesEditable') is True, json.dumps((hs or {}).get('timesEditable')))
+    # 履歴から直す（同じ口）
+    st, j = update(mine.get('S1'), actualStart='2026-09-26T07:35', actualEnd='2026-09-26T08:05')
+    h = (client.get('/api/schedule/history?equipment=' + EQ + '&from=2026-09-25&to=2026-09-26')
+         .get_json() or {})
+    hs = {str(e.get('id')): e for e in (h.get('entries') or [])}.get(str(mine.get('S1'))) or {}
+    rec('履歴から時刻を直せる（直した時刻がそのまま出る）',
+        st == 200 and str(hs.get('start') or '').startswith('2026-09-26T07:35') and hs.get('minutes') == 30,
+        json.dumps(hs, ensure_ascii=False)[:160])
 
 
 try:

@@ -4,6 +4,9 @@
     検索しやすいように実装してわかりやすく使いやすい形でUIUX設計をお願いします。」
 
    **段「履歴」**（全体・個別・刃組の隣）。見るだけの画面で、予定を直す操作は持たない。
+   **例外は手で入れた実際の時刻だけ**（§9.514、利用者の選択「時刻の修正だけ可」）——直せるかは
+   サーバーが行ごとに名乗り（`timesEditable`）、書けるかはスケジュール画面が答える（`ctx.canEditTimes`）。
+   窓は予定の画面と同じ`WL.scheduleTimes`の1つ。
      左 … 期間の送り（日・週・月・期間）／探す（この期間・全期間）／区分の札（件数つき）／
           現場歴の日付と直ごとに束ねた表
      右 … 月の暦（日ごとの記録の数）と、期間の時間の合計（出どころつき）
@@ -272,6 +275,7 @@
   const head=`<tr><th class="sh-c-cat">区分</th><th class="sh-c-time">時刻</th><th class="sh-c-min">所要</th><th class="sh-c-name">ロット番号・名称</th>${
   cols.map(k=>`<th>${esc(ctx.label(k))}</th>`).join('')}<th class="sh-c-rec">記録</th></tr>`;
   const span=5+cols.length;
+  const canFix=!!(ctx.canEditTimes&&ctx.canEditTimes());
   const body=groups(list).map(g=>{
    const d=parse(g.date);
    const n={};g.rows.forEach(e=>{n[e.cat]=(n[e.cat]||0)+1});
@@ -287,10 +291,20 @@
     <td class="sh-c-min">${minutesText(e)}</td>
     <td class="sh-c-name">${nameText(e)}${e.remark?`<small class="sh-remark" title="備考">${esc(e.remark)}</small>`:''}</td>
     ${cols.map(k=>`<td>${esc(String(ctx.valueOf(e.detail||{},k)??''))}</td>`).join('')}
-    <td class="sh-c-rec">${recordText(e)}</td></tr>`;
+    <td class="sh-c-rec">${recordText(e)}${e.timesEditable&&canFix?`<button type="button" class="sh-btn sh-fix" data-fix="${esc(String(e.id))}" title="手で入れた開始・終了を直します">時刻を直す</button>`:''}</td></tr>`;
    }).join('');
   }).join('');
   box.innerHTML=`<table class="sh-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+  box.querySelectorAll('[data-fix]').forEach(b=>b.onclick=()=>fixTimes(b.dataset.fix));
+ }
+ /* 手で入れた時刻を直す（§9.514）。履歴の1件を、窓が読む形（予定の行と同じ鍵）へ写して開く。 */
+ function fixTimes(id){
+  const e=((st.data&&st.data.entries)||[]).find(x=>String(x.id)===String(id));
+  if(!e||!WL.scheduleTimes)return;
+  const row={id:e.id,kind:e.kind,lotNo:e.lotNo,title:e.title,
+   estimateMinutes:e.endFrom==='見積'?e.minutes:e.estimateMinutes,
+   actual:{startAt:e.start,endAt:e.end,source:'手入力',endFrom:e.endFrom}};
+  WL.scheduleTimes.open(row,{equipment:ctx.equipment(),onSaved:()=>reload()});
  }
  /* 0件のとき: **なぜ0件か**と**次の1手**を言う（§9.452の作法）。 */
  function emptyHtml(){
@@ -358,7 +372,7 @@
    <div><dt>作業の時間</dt><dd>${work?esc(dur(work)):'—'}</dd><small>測定データの開始〜終了の合計（${workN}件）</small></div>
    <div><dt>設備停止</dt><dd>${stop?esc(dur(stop)):'—'}</dd><small>見積の分の合計（実際に止まった時間は記録していません）</small></div>
   </dl>
-  <p class="sh-ro"><b>履歴は見るだけです。</b>並べ替え・外す・開始は「個別」でします。</p>
+  <p class="sh-ro"><b>履歴は見るだけです</b>（手で入れた時刻だけは「時刻を直す」で直せます）。並べ替え・外す・開始は「個別」でします。</p>
   <button type="button" class="sh-btn sh-back" id="shToSingle"><i class="fa-solid fa-list" aria-hidden="true"></i> 個別へ戻る</button>`;
   box.querySelectorAll('[data-cal]').forEach(b=>b.onclick=()=>{st.cal=new Date(m.getFullYear(),m.getMonth()+Number(b.dataset.cal),1);renderSide()});
   box.querySelectorAll('.sh-day[data-day]').forEach(b=>b.onclick=()=>{

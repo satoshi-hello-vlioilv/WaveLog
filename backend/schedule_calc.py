@@ -501,6 +501,9 @@ def _apply_actual_source(entry,detail,stored_actual_json):
  # 違うものを同じ欄に入れると、どちらの根拠で完了したのか言えなくなる。
  entry['finishedAt']=None
  entry['finishedBy']=''
+ # 人が確かめる前に「終わった」とみなした行か（§9.514）。時刻の登録を促す材料。
+ entry['autoDone']=False
+ entry['doneReason']=''
  if entry['kind']!='作業' or entry.get('parentId') is not None:return
  if entry['state'] in PLAN_TERMINAL_STATES or entry.get('actual') is not None:return
  saved=saved_actual_source(stored_actual_json)
@@ -513,6 +516,8 @@ def _apply_actual_source(entry,detail,stored_actual_json):
   entry['finishedAt']=saved['finishedAt']
   entry['finishedBy']=saved['joinName']
   entry['missingReason']='仕掛から消えており、突合で確認済みです（この予定に保存してあります）。'
+  entry['autoDone']=True
+  entry['doneReason']='仕掛から消えており、完了突合で確認できました。'
   return
  hit=actual_match.lookup(detail,entry)
  entry['missingReason']=hit.get('reason') or ''
@@ -521,8 +526,10 @@ def _apply_actual_source(entry,detail,stored_actual_json):
   entry['missingFromWork']=hit.get('missing')
   return
  entry['missingFromWork']=True
+ entry['autoDone']=True
  if hit.get('actual'):
   entry['state']='完了'
+  entry['doneReason']='仕掛から消えており、完了突合で確認できました。'
   entry['actualSource']=hit['actual']
   # **完了日時が読めなくても完了にする**（利用者の指示）。時刻が無い行は
   # さかのぼりで隠さない側へ倒す——隠すと「完了にしたはずの行がどこにも
@@ -530,9 +537,13 @@ def _apply_actual_source(entry,detail,stored_actual_json):
   entry['finishedAt']=str(hit.get('finishedAt') or '') or None
   entry['finishedBy']=str(hit.get('joinName') or '')
  else:
-  # **消えた＝少なくとも着手はしている**（利用者の指示）。突合先が未設定でも
-  # 「予定のまま」にはしない——現場は既に手を付けている。
-  entry['state']='着手'
+  # **仕掛から消えた＝作業は終わっている**（§9.514、利用者の指示「作業スケジュールの
+  # データの中で仕掛からなくなったものは基本的に作業完了しているので、このアプリで
+  # 完了させていなくても、基本的に完了側にデータを移行するように」）。
+  # §9.364・§9.462の「着手（作業中として扱う）」は撤回——開始時刻の無い作業中の行が
+  # 「〜継続中」のまま居座り、いつまでも完了にならなかった。時刻は人に入れてもらう。
+  entry['state']='完了'
+  entry['doneReason']='仕掛から消えています（突合先には見つかりません）。仕掛から無くなったロットは作業が終わったものとして完了にしています。'
 
 def derive_state(stored_state,actual):
  """§7.4。計画者が明示的に確定した完了/取消は実績突合より優先する。"""
@@ -541,6 +552,111 @@ def derive_state(stored_state,actual):
  if record_finished(actual):return '完了'
  if actual.get('startAt'):return '着手'
  return stored_state or sr.PLAN_REORDERABLE_STATE
+
+# ========================================================================
+# 手で入れた実際の時刻（§9.514、利用者の指示「仕掛にないロットや時間的に完了したであろう
+# 設備停止は、色を変え、ユーザーに登録を促し開始時間だけ(この場合は登録済みの時間を適用する)
+# もしくは開始時間と終了時間を入力…分単位で」）
+#
+# ・読むのは`manual_times()`、画面から来た値を検めて形にするのは`manual_payload()`の1箇所
+# ・**測定データの実績が正**——測定で時刻が分かる行には手入力を当てない（`actual`が先）
+# ・「開始だけ」は**登録した時点の見積**で終わりを決めて残す（あとで見積が変わっても
+#   人が登録した事実は動かさない）。どちらで決めたかは`endFrom`が言う
+# ========================================================================
+MANUAL_END_FROM_INPUT='手入力'
+MANUAL_END_FROM_ESTIMATE='見積'
+
+def manual_times(raw):
+ """`[手入力実績JSON]`を読む。無い・読めない・開始が無いならNone。"""
+ if not raw:return None
+ try:m=json.loads(raw)
+ except Exception as _e:
+  quiet('手で入れた時刻を読めない（未登録として出す）',_e);return None
+ if not isinstance(m,dict) or not m.get('startAt') or not m.get('endAt'):return None
+ return m
+
+def _minute(v,what):
+ try:dt=_parse_dt(str(v or '').strip())
+ except ValueError:dt=None
+ if dt is None:raise ValueError(f'{what}の時刻を読めません（例: 2026-09-26T08:30）。')
+ return dt.replace(second=0,microsecond=0)
+
+def manual_payload(start,end,estimate_minutes,uid='',pc='',now=None):
+ """画面から来た開始・終了を検めて保存する形にする（§9.514）。**分単位**に丸める。
+
+ 終了が空なら「開始だけ」＝開始＋見積（登録済みの時間）で終わる。終わりが始まりより前・
+ 未来の時刻は断る（理由と直し方を言う）。"""
+ st=_minute(start,'開始')
+ if end in (None,''):
+  if estimate_minutes is None:raise ValueError('見積の分が分からないため、終了の時刻も入れてください。')
+  en=st+timedelta(minutes=float(estimate_minutes));end_from=MANUAL_END_FROM_ESTIMATE
+ else:
+  en=_minute(end,'終了');end_from=MANUAL_END_FROM_INPUT
+ if en<st:
+  raise ValueError(f'終わりが始まりより前です（開始 {st:%m-%d %H:%M}・終了 {en:%m-%d %H:%M}）。終了を開始より後にしてください。')
+ limit=(now or datetime.now())+timedelta(minutes=1)
+ if st>limit:raise ValueError(f'開始が未来の時刻です（{st:%m-%d %H:%M}）。終わった作業の時刻を入れてください。')
+ return {'startAt':st.isoformat(timespec='minutes'),'endAt':en.isoformat(timespec='minutes'),
+         'endFrom':end_from,'minutes':round((en-st).total_seconds()/60.0),
+         'by':str(uid or ''),'pc':str(pc or ''),'at':datetime.now().isoformat(timespec='seconds')}
+
+def _settle_passed_stops(entries,now,minutes_of):
+ """時間的に終わったはずの設備停止を完了にする（§9.514・利用者の選択「後ろの作業が始まったら」）。
+
+ ・**後ろの作業が始まった（着手・完了）**なら、その前の設備停止は終わっている
+ ・開始を固定した停止は、固定した開始＋見積が過ぎたら終わっている
+ 並びの後ろから見ていく（「後ろに始まった作業があるか」を1回で数える）。"""
+ started_after=False
+ for e in reversed(entries):
+  if e.get('parentId') is not None:continue
+  if e['kind']=='作業':
+   if not e.get('unplanned') and e['state'] in ('着手','完了'):started_after=True
+   continue
+  if e['kind']!='設備停止' or e['state'] in PLAN_TERMINAL_STATES:continue
+  if started_after:
+   e['state']='完了';e['autoDone']=True
+   e['doneReason']='後ろの作業が始まっているので、この設備停止は終わっています。'
+   continue
+  fixed=None
+  if e.get('fixedStart'):
+   try:fixed=_parse_dt(e['fixedStart'])
+   except Exception as _e:quiet('固定開始日時を読めない（固定なしとして扱う）',_e)
+  if fixed is not None:
+   mins=minutes_of(e)
+   if fixed+timedelta(minutes=mins)<=now:
+    e['state']='完了';e['autoDone']=True
+    e['doneReason']=f'固定した開始（{fixed:%m-%d %H:%M}）から見積{round(mins)}分が過ぎています。'
+
+def _times_prompts(entries,minutes_of):
+ """時刻の登録を促す行と、入力の手がかり（§9.514）。**手がかりの答えはここ1箇所**。
+
+ ・`timesNeeded` … 人が確かめる前に終わったとみなした行で、時刻が1つも無い
+ ・`timesHint`   … 開始の候補と出どころ（前の行の終わり／完了突合の完了日時−見積／固定した開始）
+                    ・見積の分・終了の候補（完了突合の完了日時）。候補が無ければ空（画面は「今−見積」）"""
+ prev_end=None
+ for e in entries:
+  if e.get('parentId') is not None:continue
+  a=e.get('actual') or {}
+  man=e.get('manual') or {}
+  e['timesNeeded']=bool(e.get('autoDone')) and not man and not a
+  if e['timesNeeded']:
+   mins=minutes_of(e)
+   hint={'minutes':round(mins,1),'start':None,'startFrom':'','end':None}
+   fin=_parse_dt(e['finishedAt']) if e.get('finishedAt') else None
+   if fin is not None:
+    hint['end']=fin.isoformat(timespec='minutes')
+    hint['start']=(fin-timedelta(minutes=mins)).isoformat(timespec='minutes')
+    hint['startFrom']='完了突合の完了日時から見積を引いた時刻'
+   elif prev_end is not None:
+    hint['start']=prev_end.isoformat(timespec='minutes');hint['startFrom']='前の行の終わり'
+   elif e.get('fixedStart'):
+    fx=_parse_dt(e['fixedStart'])
+    if fx is not None:hint['start']=fx.isoformat(timespec='minutes');hint['startFrom']='固定した開始'
+   e['timesHint']=hint
+  end=a.get('endAt') or man.get('endAt') or e.get('finishedAt')
+  if end:
+   dt=_parse_dt(end)
+   if dt is not None:prev_end=dt
 
 # ========================================================================
 # 見積分の解決(§6.1、一律見積(係数1.0)段階)
@@ -796,6 +912,8 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
   # ここで触らない——同じ状態を2つの根拠で決めると、食い違ったときに
   # どちらが正しいか言えなくなる。
   _apply_actual_source(entry,detail,r[22])
+  # 手で入れた実際の時刻（§9.514）。**測定データの実績があればそちらが正**。
+  entry['manual']=manual_times(r[23] if len(r)>23 else None) if actual is None else None
   if actual is not None:matched_keys.add(actual['key'])
   entry['advanceNote']=advance_note(entry,detail,lots)
   entries.append(entry)
@@ -807,6 +925,16 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
                   '（測定データで完了したロットだけが繰り上がります）。'
                   '「マスタ管理 > クエリ結合」で用途「完了突合」を1件登録すると、消えたロットも完了になります。')
 
+ # 見積を引くための控え(§9.198)。設備が同じあいだ変わらないもの
+ # (設備の標準時間・換算係数の上書き・設備停止の標準所要分)を、
+ # 予定1本ごとに引き直さないための入れ物。
+ est_memo={}
+ minutes_of=lambda e:resolve_estimate(mc,equipment,e,memo=est_memo)['minutes']
+ # 時間的に終わった設備停止（§9.514）と、時刻の登録を促す行。**並びの順で見る**ので
+ # 計画外の実績を混ぜる前に済ませる。
+ _settle_passed_stops(entries,now,minutes_of)
+ _times_prompts(entries,minutes_of)
+
  # 計画外実績(§9.33)を合成する。実施中の分は先頭へ入れて、この直後の
  # アンカー決定にそのまま乗せる(設備が実際に塞がっている時間を、予定を
  # 立てていたかどうかに関わらず反映するため)。完了分は展開ループが
@@ -815,10 +943,6 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
   unplanned_running,unplanned_done=unplanned_entries(actual_index,equipment,matched_keys,now,history_hours)
   entries=unplanned_running+entries+unplanned_done
 
- # 見積を引くための控え(§9.198)。設備が同じあいだ変わらないもの
- # (設備の標準時間・換算係数の上書き・設備停止の標準所要分)を、
- # 予定1本ごとに引き直さないための入れ物。
- est_memo={}
  # アンカー決定(§7.2): 展開対象(完了/取消を除く)の先頭を見る
  active=[e for e in entries if e['state'] not in PLAN_TERMINAL_STATES]
  # **足りなくなったら伸びる**（§9.291 ②）。60日ぶんで組んで、予定が
@@ -838,13 +962,6 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
    started=_parse_dt(e['actual']['startAt'])
    if started is not None:
     ongoing_ids.add(id(e));ongoing_starts.append(started)
-  elif e['state']=='着手' and e.get('missingFromWork') is True and not e.get('actual'):
-   # **仕掛から消えて突合先に見つからない行も作業中として扱う**(§9.462)。
-   # 以前は開始時刻を持たないので普通の予定と同じく「いまから見積ぶん」の
-   # 場所に置かれ、**毎回そこに居座って後ろの予定を押し続けて**いた
-   # (時間が流れないので、いつまでも繰り上がらない)。開始時刻は分からない
-   # ので起点(アンカー)には使わず、予定の終わりを現在時刻にするだけ。
-   ongoing_ids.add(id(e))
  anchor_note=None
  if ongoing_starts:
   anchor=min(ongoing_starts)
@@ -1020,7 +1137,8 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
    # 突合で完了した行は実績を持たないので、突合で分かった完了時刻を使う
    # (§9.365)。**代表時刻の決め方は画面の rowTimeOf() と必ず同じ**——
    # 違うと「まとめた見出しと行の日付が食い違う」が必ず起きる。
-   ref=a.get('startAt') or a.get('endAt') or e.get('finishedAt') or None
+   ref=(a.get('startAt') or a.get('endAt') or (e.get('manual') or {}).get('startAt')
+        or e.get('finishedAt') or None)
   dt=_parse_dt(ref) if ref else None
   if dt is None:
    e['shiftDayOffset']=0;e['workDate']=None;continue
@@ -1059,8 +1177,23 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
    except Exception as _e:
     quiet('実績の時刻を読めない（実績なしとして出す）',_e)
     e['actual']=None
+  elif e['state']=='完了' and actual is None and e.get('manual'):
+   # 手で入れた時刻（§9.514）。**出どころを添える**——測定データの実績と見分けられるように。
+   m=e['manual']
+   try:
+    started=_parse_dt(m['startAt']);ended=_parse_dt(m['endAt'])
+    mins=round(max(0.0,_minutes_between(started,ended)),1)
+    est=(e.get('estimate') or {}).get('minutes')
+    e['actual']={'startAt':m['startAt'],'endAt':m['endAt'],'minutes':mins,
+                 'varianceMinutes':(round(mins-est,1) if est is not None else None),
+                 'source':MANUAL_END_FROM_INPUT,'endFrom':m.get('endFrom') or MANUAL_END_FROM_INPUT,
+                 'by':m.get('by') or ''}
+   except Exception as _e:
+    quiet('手で入れた時刻を読めない（未登録として出す）',_e)
+    e['actual']=None
   else:
    e['actual']=None
+  e.pop('manual',None)
   e['actualRecordId']=(actual or {}).get('id') or e.get('actualRecordId')
 
  lf_model=load_factor.get_model(equipment)

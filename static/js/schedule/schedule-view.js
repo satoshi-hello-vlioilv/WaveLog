@@ -1018,6 +1018,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
          「未定」という言葉は行の中にも出るが、何件あるのか・次に何をすれば
          よいのかは棚でまとめて言う。 -->
     <div class="sc-undecided" id="scUndecided" hidden></div>
+    <!-- 実際の時刻が未登録の行の案内(§9.514)。仕掛から消えたロット・後ろの作業が始まった
+         設備停止は完了にしてあり、時刻だけが残っている。**残っているときだけ出す**。 -->
+    <div class="sc-undecided sc-times-note" id="scTimesNeeded" hidden></div>
     <!-- まとめて外す(§9.170)。仕掛一覧の選択件数バー(plan-select-bar)と
          同じ形・同じ言葉にしてある。**0件のときは出さない**——常時
          「0件選択中」と出ているのは読まれない飾りにしかならない。 -->
@@ -2620,6 +2623,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    label:k=>scColLabel(k),
    valueOf:(detail,k)=>contentValueOf(detail,k),
    toSingle:()=>switchToSingle(),
+   /* 手で入れた時刻を直せるか（§9.514）。予定を書き換えられる条件と同じ1つ。 */
+   canEditTimes:()=>planEditable(),
   });
  }
  async function switchToSingle(){
@@ -5741,6 +5746,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      今までどおり末尾（相手が無いので、隣の行から借りると配列の並びが
      時刻順とは限らない場面——計画外実績が後ろに付く等——で見当違いの
      位置へ飛ぶ。実際に test_wkfast がそれを捕まえた）。 */
+  /* **時刻未登録の済んだ行は「完了側の最後」へ**（§9.514）。時刻を持たないので末尾へ落ちると、
+     予定の後ろに「完了」が並んで読めない。**これから並ぶ行の最初の時刻の直前**を借りる
+     （これから並ぶ行が無ければ今）。互いの順は予定の並び（配列の順）のまま。 */
+  const edge=rows.reduce((m,r)=>(r.t!==null&&r.e.state!=='完了'&&r.e.state!=='取消')?Math.min(m,r.t):m,Infinity);
+  rows.forEach(r=>{if(r.t===null&&r.e.timesNeeded)r.t=(Number.isFinite(edge)?edge:Date.now())-1});
   const byId=new Map(rows.map(r=>[String(r.e.id),r]));
   rows.forEach(r=>{
    if(r.t!==null||!r.e.__pending||!r.e.__beforeId)return;
@@ -5749,7 +5759,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   });
   /* まとめ(日付・勤務)も同じ束へ入るように、借りた時刻を行にも残す。
      残さないと、反映中の行だけ「日付未定」の箱が1つできる。 */
-  rows.forEach(r=>{if(r.e.__pending&&r.t!==null)r.e.__nearT=r.t;else if('__nearT' in r.e)delete r.e.__nearT});
+  /* 時刻未登録の済んだ行（§9.514）も同じく借りた時刻で束ねる（「日付未定」の箱を作らない）。 */
+  rows.forEach(r=>{if((r.e.__pending||r.e.timesNeeded)&&r.t!==null)r.e.__nearT=r.t;else if('__nearT' in r.e)delete r.e.__nearT});
   return rows
    .sort((a,b)=>{
     if(a.t===null&&b.t===null)return a.i-b.i;
@@ -7099,7 +7110,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
        scState.historyHidden?`——いま<b>${scState.historyHidden}件</b>を隠しています`:''}。もっと前まで見るには「表示」→「さかのぼり」を長くしてください。</div>`
     :'<div class="sc-empty-note">この設備の予定はまだありません。</div>';
    renderPickBar(timeline);
-   renderUndecided();
+   renderUndecided();renderTimesNeeded();
    refreshScheduledLotFilter();
    return;
   }
@@ -7155,7 +7166,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   appendTailSpace(timeline);
   renderPickBar(timeline);
   restoreInsertGhost();
-  renderUndecided();
+  renderUndecided();renderTimesNeeded();
   openPendingCommentEdit();
   refreshScheduledLotFilter();
  }
@@ -7460,9 +7471,19 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   if(e.ongoing){
    timeText=`${fmtHM(showStart)}〜継続中`;
    timeTitle=`実績開始 ${fmtDateTime(showStart)} / 未完了のため予定終了は現在時刻`;
+  }else if(e.timesNeeded){
+   /* 実際の時刻が未登録（§9.514）。**時刻の列そのものが言う**——区分の列に札を足すと
+      「完了」と並んで幅に入らず切れた（1728pxで実測）。何を・どこで入れるかは`title`。 */
+   timeText='時刻未登録';
+   timeTitle=(e.doneReason||'')+'\n実際の時刻が未登録です。'
+    +(planEditable()?'「時刻を入れる」（またはダブルクリック）で入れられます。':'スケジュールモードの端末で入れられます。');
   }else{
    timeText=showStart?fmtTimeRange(showStart,showEnd):(e.state==='完了'||e.state==='取消'?'-':'未定');
    timeTitle=showStart?`${useActual?'実績 ':''}${fmtDateTime(showStart)} 〜 ${fmtDateTime(showEnd)}`:'';
+   /* 手で入れた時刻（§9.514）は**出どころを言う**——測定データの実績と見分けられるように。 */
+   if(e.actual&&e.actual.source==='手入力')
+    timeTitle=`手入力 ${timeTitle.replace(/^実績 /,'')}（${e.actual.endFrom==='見積'?'終わりは見積':'開始・終了とも手入力'}${
+     e.actual.by?`・${e.actual.by}`:''}）\n右クリック「実際の時刻を直す」で直せます。`;
   }
   const shiftText=e.shift||'-';
   const relText=e.ongoing
@@ -7578,6 +7599,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
           estText,estSrc,estProvisional,estNote,actualText,flags,workable,wk,wkTitle}=info;
    const row=document.createElement('div');
    row.className='sc-row-line '+stateRowClass(e.state)
+    /* 時刻の登録を待っている行（§9.514）。**完了の薄さを打ち消して橙で目立たせる**
+       ——済んだ行の中で、次にすることが残っているのはこの行だけ。 */
+    +(e.timesNeeded?' sc-row-needtimes':'')
     +(e.__pending?' sc-row-pending':'')+(locked?' sc-row-locked':'')+(e.ongoing?' sc-row-ongoing':'')
     /* 行の地の色(§9.198)。区分のセルだけでなく行全体に淡く敷く——設備停止の
        ように「作業ではない行」を、行を追う目のまま見分けられるようにする。 */
@@ -7629,6 +7653,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    // (別PCで測定した/端末側だけ消えた場合)。実データを消す操作なので
    // 予定の削除とは別のボタンにし、警告を必ず挟む。
    const canDeleteHistory=scState.canDeleteHistory&&!!recordId&&(e.state==='着手'||e.state==='完了');
+   /* 実際の時刻を入れる（§9.514）。**入れられる端末にだけボタンを出す**（§CLAUDE 4）——
+      入れられない端末は札の説明が「どこで入れられるか」を言う。直す道は右クリック。 */
+   const canTimes=!!e.timesNeeded&&planEditable();
+   const canFixTimes=!!(e.actual&&e.actual.source==='手入力');
+   const manualTimes=canFixTimes;
 
    /* セルは**見出しと同じ並び**から組み立てる(§9.176)。以前はHTMLへ
       直書きした固定の順番だったため、見出しだけを動かしても中身は動かず
@@ -7642,7 +7671,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     '__workable__':`<span class="sc-row-workable ${wk.cls}" data-col="__workable__" title="${esc(wkTitle)}">${esc(wk.text)}</span>`,
     '__date__':`<span class="sc-row-date${dateShifted?' is-shifted':''}" data-col="__date__" title="${esc(dateTitle)}">${esc(dateText)}</span>`,
     '__caldate__':`<span class="sc-row-date" data-col="__caldate__" title="${esc(info.calDateTitle)}">${esc(info.calDateText)}</span>`,
-    '__time__':`<span class="sc-row-time" data-col="__time__" title="${esc(timeTitle)}">${esc(timeText)}</span>`,
+    '__time__':`<span class="sc-row-time${e.timesNeeded?' is-need':''}" data-col="__time__"${e.timesNeeded?' data-times="need"':''} title="${esc(timeTitle)}">${
+     manualTimes?`<i class="fa-solid fa-pen sc-time-manual" data-times="manual" role="img" aria-label="手入力"></i>`:''}${esc(timeText)}</span>`,
     '__shift__':`<span class="sc-row-shift" data-col="__shift__" title="勤務形態マスタで設定した名称です">${esc(shiftText)}</span>`,
     '__rel__':`<span class="sc-row-rel" data-col="__rel__">${esc(relText)}</span>`,
     '__est__':`<span class="sc-row-est${estProvisional?' sc-est-default':''}${estSrc==='equipment-standard'?' sc-est-standard':''}" data-col="__est__" title="${esc(estNote)}">${estProvisional?'~':''}${esc(estText)}</span>`,
@@ -7650,6 +7680,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     '__flags__':`<span class="sc-row-flags" data-col="__flags__">${flags}</span>`,
     '__scrap__':`<span class="sc-row-scrap${info.scrapText?'':' is-blank'}" data-col="__scrap__" title="${esc(info.scrapTitle)}">${esc(info.scrapText||'—')}</span>`,
     '__actions__':`<span class="sc-row-actions" data-col="__actions__">
+     ${canTimes?`<button type="button" class="sc-row-btn sc-row-times" title="実際の開始・終了の時刻を入れます（開始だけなら見積で終わります）">時刻を入れる</button>`:''}
      ${canStart?startBtnHtml():''}
      ${canLock?`<button type="button" class="sc-row-btn sc-row-lock${locked?' active':''}" title="${locked?'固定を解除して通常の並びへ戻します':'今の予定日時でこの行を固定します(以降ずれません)'}">${locked?'解除':'固定'}</button>`:''}
      ${canResume?`<button type="button" class="sc-row-btn sc-row-resume" title="測定画面を開いて続きから再開します(行のダブルクリックでも開けます)">再開</button>`:''}
@@ -7773,6 +7804,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    if(report)report.onclick=ev=>{ev.stopPropagation();openEntryReport(e)};
    const delHist=row.querySelector('.sc-row-delete-history');
    if(delHist)delHist.onclick=ev=>{ev.stopPropagation();deleteHistoryEntry(e)};
+   const timesBtn=row.querySelector('.sc-row-times');
+   if(timesBtn)timesBtn.onclick=ev=>{ev.stopPropagation();openTimes(e)};
    /* 連携機能の行き先（§9.377）。**行の「選ぶ」を横取りしない**ので
       `stopPropagation()`する（行いっぱいが選ぶ的・§9.363）。 */
    /* 見た目の同じ的（LotDspの`.sc-lot-dsp`・§9.460）を拾わないよう、**行き先を名乗る的だけ**。 */
@@ -7802,6 +7835,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
        **危ない操作はいちばん下の群へ離す**（§CLAUDE 5）。 */
     openRowMenu(ev,scRowMenuTitle(e),scRowMenuNote(e),[
      {group:'進める'},
+     /* 実際の時刻（§9.514）。**入れられないときも並べて理由を書く**（§4）。 */
+     e.timesNeeded&&{label:'実際の時刻を入れる…',note:planEditable()?(e.doneReason||'開始だけでも入れられます')
+       :'この画面では予定を変えられません（スケジュールモードで入れられます）',
+       disabled:!planEditable(),showNote:true,run:()=>openTimes(e)},
      canStart&&{label:'作業を開始する',note:'この予定の測定画面を開きます',
                 run:()=>startWorkFromEntry(e)},
      canResume&&{label:'測定を再開する',note:'続きから開きます',
@@ -7814,6 +7851,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
        showNote:true,run:()=>openRowLink(e)}})(),
 
      {group:'この行を直す'},
+     canFixTimes&&{label:'実際の時刻を直す…',note:planEditable()?'手で入れた開始・終了を直します'
+       :'この画面では予定を変えられません（スケジュールモードで直せます）',
+       disabled:!planEditable(),run:()=>openTimes(e)},
      /* §9.220 2①。**できないときも並べて理由を書く**（§4）——メニューから
         消すと「直せる場所が無い」のか「この行は直せない」のかが読めない。 */
      e.kind==='設備停止'&&e.state==='予定'&&{label:'停止の内容を変える',
@@ -7887,7 +7927,13 @@ const SC_LOCK_WAIT_MAX_MS=4000;
                         note:'取り消せません',run:()=>deleteHistoryEntry(e)},
     ]);
    });
-   if(canResume){
+   if(canTimes){
+    row.title='ダブルクリックで実際の時刻を入れます';
+    row.ondblclick=ev=>{
+     if(ev.target.closest('button'))return;
+     ev.preventDefault();openTimes(e);
+    };
+   }else if(canResume){
     row.classList.add('sc-row-resumable');
     row.title='ダブルクリックで測定を再開します';
     row.ondblclick=ev=>{
@@ -8416,6 +8462,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     仕掛から落ちたから完了なのかが読み取れない。出どころを1語で添え、
     詳しい理由は`title`（区分のセル）へ落とす（§9.234 ①）。 */
  function missingBadgeHtml(e){
+  /* 時刻が未登録の行（§9.514）は**時刻の列**が「時刻未登録」と言う（区分の列には足さない）。 */
+  if(e&&e.timesNeeded)return '';
+  /* 手で入れた時刻（§9.514）の出どころは**時刻の列**の印が言う（区分の列は「完了」と並ぶと
+     札が切れる・1728pxで実測）。 */
   /* **完了にならない（繰り上がらない）理由**（§9.462、利用者の報告「完了して
      いる場合にスケジュールを繰り上げていってほしいが、うまく機能していない」）。
      理由の型と本文はサーバーの`advance_note()`の1箇所が答える——画面は字を
@@ -8432,7 +8482,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
                :'\n完了時刻が分からないため、さかのぼりでは常に表示されます。';
   return e.actualSource
    ? `<i class="sc-row-from" title="仕掛から消え、突合先で見つかりました${saved}${when}">実績</i>`
-   : `<i class="sc-row-from is-guess" title="仕掛から消えていますが、突合先では見つかっていません。\n作業中として扱い、予定の終わりを現在時刻にしています（後ろの予定はいまから並びます）">仕掛落ち</i>`;
+   : `<i class="sc-row-from is-guess" title="仕掛から消えています（突合先では見つかっていません）。">仕掛落ち</i>`;
  }
  function pickMarkHtml(e){
   if(!canPickEntries()||!pickableEntry(e.id))return '';
@@ -10231,7 +10281,49 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     **答えは1箇所**にする——道具列のボタンと行のメニューで別々に判定すると、
     片方だけが押せる状態を作る。 */
  function frameInsertable(){
+  return planEditable();
+ }
+ /* この画面で予定を書き換えられるか（スケジュールモード・編集権）。**答えは1箇所**——
+    枠の差し込み・実際の時刻の登録（§9.514）が同じ条件を見る。 */
+ function planEditable(){
   return !!scState.fullControl&&!sessionBlocked();
+ }
+ /* ---------- 実際の時刻を入れる（§9.514） ----------
+    窓は`WL.scheduleTimes`の1つ（段「履歴」も同じ窓）。保存できたら予定を取り直す。 */
+ function openTimes(e){
+  if(!WL.scheduleTimes)return Promise.resolve(false);
+  return WL.scheduleTimes.open(e,{equipment:scState.equipment,
+   onSaved:()=>{invalidatePlanCache(scState.equipment);return loadPlan(true)}});
+ }
+ /* 未登録の行を**順に**入れる（知らせの棚の「順に入れる」）。やめたらそこで止まる。 */
+ async function openTimesInOrder(){
+  const seen=new Set();
+  for(;;){
+   const next=(scState.entries||[]).find(x=>x.timesNeeded&&!seen.has(String(x.id)));
+   if(!next)return;
+   seen.add(String(next.id));
+   if(!await openTimes(next))return;
+  }
+ }
+ function timesNeededEntries(){return (scState.entries||[]).filter(e=>e.timesNeeded)}
+ /* 知らせの棚（§9.514）。**残っているときだけ出す**。何件・どれ・次の1手（順に入れる）。 */
+ function renderTimesNeeded(){
+  const box=$('#scTimesNeeded');if(!box)return;
+  const all=timesNeededEntries();
+  if(!all.length){box.hidden=true;box.innerHTML='';return}
+  const name=e=>e.kind==='設備停止'?(e.title||'設備停止'):(e.lotNo||contentValueOf(e.detail,'lotNo')||('予定'+e.id));
+  const names=all.map(name);
+  const shown=names.slice(0,5).join('・')+(names.length>5?` ほか${names.length-5}件`:'');
+  box.hidden=false;
+  box.innerHTML=`<div class="sc-undecided-main">
+    <b>${all.length}件の実際の時刻が未登録です</b>
+    <span class="sc-undecided-who" title="${esc(names.join('・'))}">${esc(shown)}</span>
+    ${planEditable()?'<button type="button" class="sc-undecided-fix" id="scTimesInOrder">順に入れる</button>':''}
+   </div>
+   <small>仕掛から消えたロットと、後ろの作業が始まった設備停止は完了にしています。時刻を入れると記録（段「履歴」）に残ります。${
+    planEditable()?'開始だけ入れれば、終わりは見積で決まります。':'スケジュールモードの端末で入れられます。'}</small>`;
+  const b=$('#scTimesInOrder');
+  if(b)b.onclick=()=>openTimesInOrder();
  }
  /* 枠を直せるか。設備停止・コメントと同じ条件（§9.211 ②の読み取り専用も見る）。 */
  function frameEditable(e){

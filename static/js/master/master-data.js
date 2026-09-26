@@ -3766,12 +3766,10 @@
     古い版の端末・利用者ごとの合計を画面で数え直さない。画面は並べて、写せる形に
     するだけ（表をコピー＝表計算・メールへ貼れる／CSVで保存）。 */
  const pzView={by:'terminals',onlyOld:false};
+ /* 所要時間の書き方は**`WL.duration`の1箇所**（§9.341・「表示」の「時間の書き方」に従う）。秒で届くので分へ直すだけ。 */
  function pzDur(sec){
   if(sec==null||sec==='')return '—';
-  const n=Math.max(0,Math.round(Number(sec)||0));
-  if(n<60)return `${n}秒`;
-  const h=Math.floor(n/3600),m=Math.floor((n%3600)/60);
-  return h?`${h}時間${m}分`:`${m}分`;
+  return WL.duration.text(Math.floor(Math.max(0,Number(sec)||0)/60));
  }
  /* 時刻は「月-日 時:分」（年と秒は`title`）。同じ幅で縦にそろう。 */
  function pzAt(iso){const t=String(iso||'');return t?t.replace('T',' ').slice(5,16):'—'}

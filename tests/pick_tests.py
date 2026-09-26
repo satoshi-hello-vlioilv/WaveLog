@@ -293,6 +293,8 @@ RULES = [
     ('static/js/schedule/schedule-view.js', g('スケジュール', 'モーダル', 'test_listmodal',
                                      'test_eqfeature')),
     ('static/js/schedule/schedule-print.js', g('モーダル', 'test_scprint')),
+    # §9.514: 実際の時刻を手で入れる小窓（予定の画面と段「履歴」が呼ぶ）
+    ('static/js/schedule/schedule-times.js', g('test_sctimes', 'test_schistui')),
     # 実績データリストは列の設定パネル・帳票・アクセスモードへつながる。
     ('static/js/report/actuals-view.js', g('実績', 'モーダル', '列', 'test_recperm', 'test_nav')),
     ('static/js/report/opsheet-print.js', g('実績', 'モーダル', '列')),

@@ -8,7 +8,7 @@
 from flask import request, jsonify
 from ..common import api_guard
 from ...db_access import DBS, connect
-from ...access_mode import request_user_id
+from ...access_mode import request_user_id, current_permission_flags
 from ..body import body, any_
 from ...quiet import quiet
 from ._base import bp
@@ -48,7 +48,6 @@ from ...repositories.master_repo import (
 # プリセット・表示ルール・絞り込みは名前を付けて残す別の物で、ここでは絞らない。
 # ------------------------------------------------------------------------
 def _column_edit_level():
- from ...access_mode import current_permission_flags
  return current_permission_flags().get('columnEdit','')
 
 def _column_edit_denied(owner,target=''):

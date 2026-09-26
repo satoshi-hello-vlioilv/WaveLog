@@ -64,6 +64,12 @@ PLAN_ACTUAL_JSON_COLUMN='実績JSON'
 # **行そのものが持つ**(別表にしない)。予定と同じ寿命で、共有DBを写しても
 # 一緒に付いていき、消える予定と一緒に消える。
 PLAN_OP_ID_COLUMN='操作ID'
+# 手で入れた実際の時刻（§9.514、利用者の指示「仕掛にないロットや時間的に完了したであろう
+# 設備停止は…開始時間だけ(登録済みの時間を適用する)もしくは開始時間と終了時間を入力」）。
+# **測定データの実績とは別の欄**——出どころの違う時刻を同じ欄に入れると、どちらが正か言えない。
+# JSON 1つ: {'startAt','endAt','endFrom':'手入力'|'見積','minutes','by','pc','at'}。
+# 読むのは`schedule_calc.manual_times()`の1箇所。
+PLAN_MANUAL_TIMES_COLUMN='手入力実績JSON'
 # 共有DBは既に現場で動いているため、作り直さず「無ければ足す」で移行する
 # (master_repo.ensure_audit_columns 等と同じ方式)。列が増えても
 # plan_rows/plan_row は列名を明示して読むので、古い版のアプリが書いた
@@ -72,7 +78,7 @@ _PLAN_COLUMNS=('予定ID','設備名','表示順','種別','ロット番号','�
                '予定名称','明細JSON','固定開始日時','見積分','状態','実績測定ID','備考',
                '有効','登録日時','更新日時','更新者ID',PLAN_PARENT_COLUMN,
                '登録者ID',PLAN_CREATED_PC_COLUMN,PLAN_UPDATED_PC_COLUMN,
-               PLAN_ACTUAL_JSON_COLUMN)
+               PLAN_ACTUAL_JSON_COLUMN,PLAN_MANUAL_TIMES_COLUMN)
 
 def _plan_select(c_share):
  """読む側のSELECT。**読む側は書かない**（§9.325）。
@@ -106,7 +112,8 @@ def ensure_plan_table(c_share):
                      ((PLAN_PARENT_COLUMN,'INTEGER'),
                       (PLAN_CREATED_PC_COLUMN,'TEXT'),(PLAN_UPDATED_PC_COLUMN,'TEXT'),
                       (PLAN_ACTUAL_JSON_COLUMN,'TEXT'),
-                      (PLAN_OP_ID_COLUMN,'TEXT')))
+                      (PLAN_OP_ID_COLUMN,'TEXT'),
+                      (PLAN_MANUAL_TIMES_COLUMN,'TEXT')))
  return created
 
 def plan_by_op_id(c_share,op_id):
@@ -522,6 +529,26 @@ def plan_update(c_share,plan_id,uid,pc='',**fields):
  if not sets:return 0
  params+=[uid,pc,plan_id]
  cur.execute(f'UPDATE [作業予定] SET {",".join(sets)},[更新者ID]=?,[更新端末名]=?,[更新日時]=Now() WHERE [予定ID]=?',params)
+ return cur.rowcount
+
+# 実際の時刻を手で入れてよい種別（§9.514）。作業（仕掛から消えたロット）と設備停止だけ。
+PLAN_MANUAL_TIMES_KINDS=('作業','設備停止')
+
+def plan_set_manual_times(c_share,plan_id,uid,payload,pc=''):
+ """手で入れた実際の時刻を書き、**完了を確定する**（§9.514）。
+
+ 登録＝「この行は終わった」と人が言ったこと。**状態も完了にする**——あとで仕掛に同じ
+ ロットが戻っても、人が確かめた完了を黙って予定へ戻さない。判定（時刻が読めるか・
+ 終わりが始まりより前でないか）は呼ぶ側（`schedule_calc.manual_payload()`）が済ませてある。"""
+ ensure_plan_table(c_share)
+ cur=c_share.cursor()
+ cur.execute('SELECT [予定ID],[種別] FROM [作業予定] WHERE [予定ID]=?',[plan_id])
+ row=cur.fetchone()
+ if not row:raise ValueError('指定の予定が見つかりません。')
+ if str(row[1] or '') not in PLAN_MANUAL_TIMES_KINDS:
+  raise ValueError('実際の時刻を入れられるのは作業と設備停止だけです。')
+ cur.execute(f'UPDATE [作業予定] SET [{PLAN_MANUAL_TIMES_COLUMN}]=?,[状態]=?,[更新者ID]=?,[更新端末名]=?,[更新日時]=Now() WHERE [予定ID]=?',
+             [_json.dumps(payload,ensure_ascii=False),"完了",uid,pc,plan_id])
  return cur.rowcount
 
 def plan_delete(c_share,plan_id,uid,pc=''):
