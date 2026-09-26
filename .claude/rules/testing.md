@@ -16,7 +16,7 @@
 | 網は**本物の置き場**（`static/`・`backend/`）へ試しのファイルを書かない。一時の置き場へ書き、調べる関数に置き場を渡す | `test_printcore.py` | [§9.504](../../docs/decisions/9.504.md) |
 | アクセスモードは土台が始めの値へ戻す。前提を作る書込は**モードを決めてから**・応答を確かめる | — | [§9.494](../../docs/decisions/9.494.md) |
 | 製品が副作用で育てる表は土台が消す（`harness.js`の`SIDE_EFFECT_TABLES`）。網ごとに書き写さない | — | [§9.491](../../docs/decisions/9.491.md) |
-| 列レイアウトは`snapLayout()`で控え`restoreLayout()`で丸ごと戻す。遅れて保存する画面は閉じてから片付ける | — | [§9.491](../../docs/decisions/9.491.md) |
+| 列レイアウトは`snapLayout()`で控え`restoreLayout()`で丸ごと戻す。遅れて保存する画面は保存の戻りを待って閉じてから片付ける | — | [§9.491](../../docs/decisions/9.491.md) |
 | 名指しは差の中身があるときだけ（0行の表が増えた・消えただけは数えない）。元から在った物は元へ戻す | — | [§9.491](../../docs/decisions/9.491.md) |
 | **網を1本足したら`--pure`も回す**（横断の見張りは「触ったファイル」から辿れない・20秒） | `test_waitlint.py` | [§9.448](../../docs/decisions/9.448.md) |
 | 調べるための細工は**指定があるときだけ動く**（`if (process.env.WAVELOG_SHOT)`）。`/*PROBE*/`の印は残さない | `test_waitlint.py` | [§9.432](../../docs/decisions/9.432.md) |
