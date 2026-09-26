@@ -2200,6 +2200,46 @@ const WATCHDOG_TAB_ID=(typeof window!=='undefined'&&window.__wlTabId)
    明示する。サーバーが終了していても画面は普通に見えてしまい、操作して
    初めてエラーになる状態を避けるため(仕様書2.9)。
    1回の失敗では出さない(サーバー再起動中の一時断や瞬断で出さないため)。 */
+/* ---------- 古い版の端末への知らせ（§9.515、利用者の指示「控えめな感じで
+   邪魔にならないように入れてください」） ----------
+   運用中の最新版はサーバーが裏で数え（`presence.version_notice()`の1箇所）、
+   **ハートビートの応答に相乗りして全区分の端末へ**届く（接続状況の口は区分で
+   断るので、設備作業者の端末には届かない）。
+   出すのは**版のバッジの隣の小さな字1つ**——帯・窓・トーストは出さない、
+   場所も動かさない（バッジの行の空きに入る）。押すとバッジと同じ行き先
+   （更新履歴の窓）が「最新版・この端末の版・すること」を言う。
+   **まだ数えていない（`null`）は「最新」と読まない**——前の答えのまま置く。
+   `#restartNeeded`が出ている間は伏せる（打つ手＝開き直すは同じで、あちらが
+   先に言っている・画面基準8）。
+   **置くのは左メニューのバッジだけ**（`HOST`）。測定画面のレール（160px）では
+   バッジの行に入らず、測っている最中にレールの中身を1行ぶん押し下げる。 */
+WL.versionNotice=(()=>{
+ const HOST='.layout>aside .brand .build-badge';
+ let state=null;
+ const behind=()=>!!(state&&state.outdated)&&document.getElementById('restartNeeded')?.hidden!==false;
+ function paint(){
+  const on=behind();
+  document.querySelectorAll(HOST).forEach(badge=>{
+   let mark=badge.nextElementSibling;
+   if(!mark||!mark.classList.contains('ver-behind')){
+    if(!on)return;
+    mark=document.createElement('button');
+    mark.type='button';mark.className='ver-behind';mark.textContent='新しい版あり';
+    mark.onclick=()=>badge.click();
+    badge.after(mark);
+   }
+   mark.hidden=!on;
+   mark.title=on?`運用中の最新版は VER${state.latestVersion} です（この端末は VER${state.myVersion}）。押すと更新のしかたを出します。`:'';
+  });
+ }
+ function apply(v){
+  if(!v||!v.latestVersion)return;
+  const next={latestVersion:String(v.latestVersion),myVersion:String(v.myVersion||''),outdated:!!v.outdated};
+  if(state&&state.latestVersion===next.latestVersion&&state.myVersion===next.myVersion&&state.outdated===next.outdated)return;
+  state=next;paint();
+ }
+ return {apply,paint,state:()=>state,behind};
+})();
 const HEARTBEAT_INTERVAL_MS=15000, HEARTBEAT_FAIL_LIMIT=2;
 let heartbeatFailures=0;
 function setConnectionLost(lost){
@@ -2216,6 +2256,8 @@ async function sendHeartbeat(){
    +`&view=${encodeURIComponent(WL.currentView||'')}`,{method:'POST',cache:'no-store',keepalive:true});
   if(!res.ok)throw Error('HTTP '+res.status);
   heartbeatFailures=0;setConnectionLost(false);
+  const body=await res.json().catch(WL.quiet('応答を読めなくても生きている（版の知らせは前のまま）'));
+  WL.versionNotice.apply(body&&body.version);
  }catch(e){
   /* **自分で終了したときは「接続が切れました」を出さない**（§9.301 ②）
      ——事故のように見せない（§3）。終了した画面は`#appQuitDone`が言う。 */

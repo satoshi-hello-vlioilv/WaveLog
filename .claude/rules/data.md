@@ -1,4 +1,4 @@
-# データの置き場と共有（69件）
+# データの置き場と共有（70件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -38,6 +38,7 @@
 | 作業予定を「読む側」は写しに書かない | `test_scsnapread.py` | [§9.325](../../docs/decisions/9.325.md) |
 | 接続の記録は端末ごとに1ファイル（`presence/history/`）。書くのはその端末だけ・TTLより長く途切れたら新しい接続 | `test_presence.py` | [§9.513](../../docs/decisions/9.513.md) |
 | 運用中の最新版・最新でない端末・利用者ごとの合計は`fleet_summary()`の1箇所。版は数で比べ、版が空は要更新 | `test_presence.py`・`test_presenceui.js` | [§9.513](../../docs/decisions/9.513.md) |
+| 運用中の最新版は`presence.latest_version()`の1箇所。古い版の知らせは裏で5分ごとに数え、ハートビートは控えを返すだけ | `test_presence.py` | [§9.515](../../docs/decisions/9.515.md) |
 | 在席は端末ごとに1ファイル。切断は「書き込みだけ」を止める | `test_presence.py`・`test_presenceui.js` | [§9.272](../../docs/decisions/9.272.md) |
 | 置き場の答えは`backend/storage_layout.py`の1箇所 | `test_storage.py`・`test_storageui.js` | [§9.267](../../docs/decisions/9.267.md) |
 | 測定データは設備ごとに1ファイル。置き場の答えは`db_access`の1箇所 | `test_recsplit.py` | [§9.258](../../docs/decisions/9.258.md) |

@@ -18,6 +18,9 @@
  6. 切断されたら**書き込みだけ**が止まる（**読みは止まらない**）
  7. メンテナンス者は**開発者を切断できない**／一般ユーザーは切断できない
  8. 断る理由を言い分ける（権限が無い／相手が上位／もう居ない）
+ 9. 接続の記録と版（§9.513）
+10. 古い版の端末への知らせ（§9.515）: 数える前は返さない・間隔ごとに数える・
+    読めなければ前の答え・物差しは接続状況と同じ・ハートビートに載る
 ============================================================
 """
 import json, pathlib, shutil, sys, tempfile
@@ -271,6 +274,47 @@ try:
     rec('一覧に最新版・版の状態・利用者ごとの合計が載る（画面は並べるだけ）',
         bool(d.get('fleet', {}).get('latestVersion')) and 'users' in d.get('fleet', {})
         and all('outdated' in x for x in d.get('items') or []), str(d.get('fleet', {}).get('counts')))
+
+    # ---- 10. 古い版の端末への知らせ（§9.515） -----------------------------
+    # 運用中の最新版は裏で数えて控え、ハートビートの応答が**控えを返すだけ**。
+    presence._newest.update(at=0.0, latest='')
+    rec('数える前は知らせを返さない（「まだ分からない」を「最新」と言わない）',
+        presence.version_notice() is None)
+    hdir = box / presence.HISTORY_DIR
+    hdir.mkdir(parents=True, exist_ok=True)
+    newer = hdir / 'PC-N@new.json'
+    newer.write_text(json.dumps({'key': 'PC-N@new', 'login': 'new', 'pc': 'PC-N', 'version': '99.0.0',
+                                 'sessions': 1}), encoding='utf-8')
+    presence.refresh_newest(force=True)
+    n = presence.version_notice() or {}
+    rec('運用中に新しい版があれば「この端末は古い」と答える',
+        n.get('latestVersion') == '99.0.0' and n.get('myVersion') == ver and n.get('outdated') is True, str(n))
+    rec('最新版の物差しは接続状況の一覧と同じ（latest_version の1箇所）',
+        presence.fleet_summary(presence.entries(), presence.history_entries(), ver)['latestVersion']
+        == n.get('latestVersion'))
+    newer.unlink()
+    presence.refresh_newest()
+    rec('数え直すのは間隔ごと（ハートビートのたびに共有を読まない）',
+        (presence.version_notice() or {}).get('latestVersion') == '99.0.0')
+    _ent, _his = presence.entries, presence.history_entries
+    try:
+        presence.entries = lambda: None
+        presence.history_entries = lambda: None
+        presence.refresh_newest(force=True)
+        rec('読めなかったときは前の答えのまま（共有が遅れただけで知らせを消さない）',
+            (presence.version_notice() or {}).get('outdated') is True)
+    finally:
+        presence.entries, presence.history_entries = _ent, _his
+    presence.refresh_newest(force=True)
+    rec('新しい版が見えなくなれば知らせは消える（自分が最新）',
+        (presence.version_notice() or {}).get('outdated') is False, str(presence.version_notice()))
+    r = c.post('/api/heartbeat?tab=t-515')
+    hb = r.get_json() or {}
+    c.post('/api/heartbeat/close?tab=t-515')
+    rec('ハートビートの応答に版の知らせが載る（全区分の端末へ届く道）',
+        r.status_code == 200 and hb.get('ok') is True
+        and (hb.get('version') or {}).get('latestVersion') == ver, str(hb))
+    presence._newest.update(at=0.0, latest='')
 
     # ---- 段の宣言 --------------------------------------------------------
     # **3モードとも許すのは意図**（区分は編集可否と別の軸）。宣言を落とすと
