@@ -22,6 +22,21 @@
   ├─ <端末キー>.json          … その端末だけが書く（在席）
   └─ <端末キー>.revoke.json   … 切断の指示（管理する側が書き、対象が読む）
 
+接続の記録（§9.513、利用者の指示「接続ユーザー、接続PC、接続時刻、接続時間、
+接続したアプリのVER情報、ユーザー別累計接続回数などわかるように」「ユーザーが
+古いバージョンで使用していないか、誰に新しいバージョンファイルを配布すれば
+よいか判断する」）
+------------------------------------------------------------
+在席（上）は**いま**しか持たない（TTLの4倍で消える）。版の配布を決めるには
+「**しばらく繋いでいない端末が、どの版のまま止まっているか**」が要るので、
+端末ごとに**消えない記録**を1つ持つ。書くのは在席と同じく**その端末だけ**。
+
+  <共有>\presence\history\<端末キー>.json
+     … 版・最初と最後に使った時刻・累計の接続回数と接続時間・使った版の履歴
+
+**運用中の最新版は記録の中の最大の版**（`fleet_summary()`の1箇所）——
+配布した版がどこまで届いているかを、この一覧だけで言えるようにする。
+
 切断の意味
 ------------------------------------------------------------
 別のPCのプロセスを外から殺すことはできないし、やるべきでもない
@@ -36,6 +51,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import threading
 import time
 from datetime import datetime
@@ -57,11 +73,25 @@ WRITE_INTERVAL_SEC = 20
 REVOKE_COOLDOWN_SEC = 300
 # 期限切れの在席ファイルを片付ける間隔。
 SWEEP_INTERVAL_SEC = 300
+# 接続の記録（§9.513）。在席の隣のフォルダに端末ごと1ファイル。
+HISTORY_DIR = 'history'
+# 記録を書き直す間隔。在席（20秒）より長くてよい——接続の始まり・終わりは
+# その場で書くので、ここで遅れるのは累計の接続時間だけ（最大この秒数）。
+HISTORY_WRITE_SEC = 60
+# 1つの記録に残す「使った版」の数（新しい順）。
+HISTORY_VERSIONS = 10
+# この版から版と記録を書く。これより前の版の端末は**版が空**で届く（画面は
+# 「VER2.400.0より前」と言い、最新ではないと数える）。
+HISTORY_SINCE = '2.400.0'
 
 _BAD_CHARS = set('<>:"/\\|?*')
 
 _lock = threading.Lock()
 _state = {'wrote_at': 0.0, 'swept_at': 0.0, 'revoked': None, 'revoked_at': 0.0}
+# このプロセスのいまの接続（§9.513）。**TTLより長く途切れたら新しい接続**
+# として数える（タブを閉じて開き直した・PCが眠っていた）。
+_session = {'key': '', 'since': '', 'last': 0.0}
+_hist = {'key': '', 'data': None, 'wrote': 0.0}
 
 
 # ---- 置き場 --------------------------------------------------------------
@@ -152,6 +182,152 @@ def _age_sec(entry):
         return None
 
 
+# ---- 版 --------------------------------------------------------------------
+def app_version():
+    """この端末で動いているアプリの版。"""
+    try:
+        from .changelog_data import APP_VERSION
+        return str(APP_VERSION)
+    except Exception as _e:
+        quiet('版を読めない（空で続ける）',_e)
+        return ''
+
+
+def version_key(v):
+    """版の並べ方（`2.10.0` > `2.9.3`。文字の順で比べない）。空は最も古い。"""
+    return tuple(int(x) for x in re.findall(r'\d+', str(v or '')))
+
+
+# ---- 接続の記録（§9.513） ---------------------------------------------------
+def _history_path(key):
+    return presence_dir()[0] / HISTORY_DIR / f'{key}{SUFFIX}'
+
+
+def _record(key, login_id, pc_name, version, now, new_session, final=False):
+    """自分の記録を1つ進める。**書くのはこの端末だけ**（在席と同じ理由）。
+
+    `new_session`＝接続の始まり（回数を1つ足してその場で書く）。それ以外は
+    前回からの経過を累計の接続時間へ足す（**TTLで頭打ち**——途切れていた
+    あいだを接続時間に数えない）。"""
+    iso = datetime.fromtimestamp(now).isoformat(timespec='seconds')
+    with _lock:
+        if _hist['key'] != key or _hist['data'] is None:
+            _hist['key'] = key
+            _hist['data'] = _read_json(_history_path(key)) or {}
+            _hist['wrote'] = 0.0
+        h = _hist['data']
+        h.setdefault('firstAt', iso)
+        h['key'] = key
+        h['login'] = str(login_id or '')
+        h['pc'] = str(pc_name or '')
+        if new_session:
+            h['sessions'] = int(h.get('sessions') or 0) + 1
+            h['sessionAt'] = iso
+        else:
+            gap = max(0.0, now - float(_session.get('prev') or now))
+            h['totalSec'] = int(h.get('totalSec') or 0) + int(min(gap, TTL_SEC))
+        h.setdefault('sessions', 1)
+        h.setdefault('totalSec', 0)
+        h['lastAt'] = iso
+        if version:
+            h['version'] = version
+            vers = dict(h.get('versions') or {})
+            vers[version] = iso
+            keep = sorted(vers.items(), key=lambda kv: kv[1], reverse=True)[:HISTORY_VERSIONS]
+            h['versions'] = dict(keep)
+        due = new_session or final or (now - _hist['wrote']) >= HISTORY_WRITE_SEC
+        if due:
+            _hist['wrote'] = now
+        snapshot = dict(h)
+    if due:
+        _write_json(_history_path(key), snapshot)
+
+
+def history_entries():
+    """これまでに繋いだ端末の記録（読めなければNone）。"""
+    d = presence_dir()[0] / HISTORY_DIR
+    try:
+        if not d.exists():
+            return []
+        names = sorted(d.glob('*' + SUFFIX))
+    except Exception as _e:
+        quiet('接続の記録を辿れない（読めなかったので「記録が無い」とは言わない）',_e)
+        return None
+    out = []
+    for p in names:
+        h = _read_json(p)
+        if not h:
+            continue
+        out.append({'key': str(h.get('key') or p.stem), 'login': str(h.get('login') or ''),
+                    'pc': str(h.get('pc') or ''), 'version': str(h.get('version') or ''),
+                    'firstAt': str(h.get('firstAt') or ''), 'lastAt': str(h.get('lastAt') or ''),
+                    'sessionAt': str(h.get('sessionAt') or ''),
+                    'sessions': int(h.get('sessions') or 0), 'totalSec': int(h.get('totalSec') or 0),
+                    'versions': dict(h.get('versions') or {})})
+    return out
+
+
+def forget_history(key):
+    """使わなくなった端末の記録を消す（§9.513）。権限の判定はルートがする。"""
+    return atomic_io.unlink(_history_path(str(key)), budget_sec=0.5, label='presence.history.forget')
+
+
+def fleet_summary(online, history, my_version):
+    """接続中と記録を合わせて「版の配布」の答えを作る。**ここ1箇所**（§9.163）。
+
+    ・運用中の最新版＝**見えているすべての版の最大**（この端末の版も含む）
+    ・版が空＝**記録を書かない古い版**（§9.513より前）なので、最新ではないと数える
+    ・利用者ごと＝ログインIDでまとめる（1人が複数のPCを使うことがある）
+    """
+    online = list(online or [])
+    history = list(history or [])
+    seen = [my_version] + [h.get('version') for h in history] + [o.get('version') for o in online]
+    latest = max((v for v in seen if v), key=version_key, default='')
+    lk = version_key(latest)
+    by = {h['key']: dict(h, online=False) for h in history}
+    for o in online:
+        t = by.setdefault(o['key'], {'key': o['key'], 'login': o.get('login', ''), 'pc': o.get('pc', ''),
+                                     'version': '', 'firstAt': '', 'lastAt': o.get('at', ''),
+                                     'sessionAt': o.get('since', ''), 'sessions': 0, 'totalSec': 0,
+                                     'versions': {}})
+        t['online'] = True
+        # いま動いている版は在席のほうが新しい（記録は最大60秒遅れる）
+        if o.get('version'):
+            t['version'] = o['version']
+    terms = []
+    for t in by.values():
+        t['outdated'] = bool(latest) and version_key(t.get('version')) < lk
+        terms.append(t)
+    # **古い版が先**・その中は最後に使った順（配る相手から読めるように）
+    terms.sort(key=lambda t: t.get('lastAt') or '', reverse=True)
+    terms.sort(key=lambda t: not t['outdated'])
+    users = {}
+    for t in terms:
+        u = users.setdefault(t.get('login') or '', {'login': t.get('login') or '', 'terminals': 0, 'pcs': [],
+                                                    'sessions': 0, 'totalSec': 0, 'lastAt': '',
+                                                    'versions': [], 'online': False, 'outdated': False})
+        u['terminals'] += 1
+        u['pcs'].append(t.get('pc') or '')
+        u['sessions'] += int(t.get('sessions') or 0)
+        u['totalSec'] += int(t.get('totalSec') or 0)
+        u['lastAt'] = max(u['lastAt'], t.get('lastAt') or '')
+        v = t.get('version') or ''
+        if v not in u['versions']:
+            u['versions'].append(v)
+        u['online'] = u['online'] or bool(t.get('online'))
+        u['outdated'] = u['outdated'] or bool(t.get('outdated'))
+    ul = sorted(users.values(), key=lambda u: u['lastAt'], reverse=True)
+    ul.sort(key=lambda u: not u['outdated'])
+    for u in ul:
+        u['versions'].sort(key=version_key, reverse=True)
+    return {'latestVersion': latest, 'myVersion': my_version, 'recordingSince': HISTORY_SINCE,
+            'terminals': terms, 'users': ul,
+            'counts': {'terminals': len(terms), 'users': len(ul),
+                       'online': sum(1 for t in terms if t.get('online')),
+                       'outdated': sum(1 for t in terms if t['outdated']),
+                       'outdatedOnline': sum(1 for t in terms if t['outdated'] and t.get('online'))}}
+
+
 def touch(login_id, pc_name, mode='', role='', view='', force=False):
     """自分の在席を書く。ハートビートから呼ぶ。
 
@@ -165,10 +341,26 @@ def touch(login_id, pc_name, mode='', role='', view='', force=False):
             return False
         _state['wrote_at'] = now
     key = terminal_key(login_id, pc_name)
+    with _lock:
+        # **TTLより長く途切れたら新しい接続**（§9.513）。
+        new_session = _session['key'] != key or (now - _session['last']) > TTL_SEC
+        if new_session:
+            _session['key'] = key
+            _session['since'] = datetime.fromtimestamp(now).isoformat(timespec='seconds')
+        _session['prev'] = _session['last'] if not new_session else now
+        _session['last'] = now
+        since = _session['since']
+    version = app_version()
     payload = {'key': key, 'login': str(login_id or ''), 'pc': str(pc_name or ''),
                'mode': str(mode or ''), 'role': str(role or ''), 'view': str(view or ''),
+               'version': version, 'since': since,
                'at': datetime.now().isoformat()}
     ok = _write_json(_entry_path(key), payload)
+    try:
+        _record(key, login_id, pc_name, version, now, new_session)
+    except Exception as e:
+        # 記録が書けなくても在席は出す（記録は運用のための副産物）
+        app_logger().warning('接続の記録を書けませんでした: %s', e)
     _sweep()
     return ok
 
@@ -202,9 +394,25 @@ def touch_async(login_id, pc_name, mode='', role='', view=''):
 
 
 def leave(login_id, pc_name):
-    """自分の在席を消す（タブを閉じたとき）。消せなくてもTTLで消える。"""
-    atomic_io.unlink(_entry_path(terminal_key(login_id, pc_name)),
-                     budget_sec=0.5, label='presence.leave')
+    """自分の在席を消す（タブを閉じたとき）。消せなくてもTTLで消える。
+
+    接続の記録には**終わりまでの接続時間**を書き足し、次に繋いだときは
+    新しい接続として数える（§9.513）。"""
+    key = terminal_key(login_id, pc_name)
+    atomic_io.unlink(_entry_path(key), budget_sec=0.5, label='presence.leave')
+    now = time.time()
+    with _lock:
+        mine = _session['key'] == key and _session['last'] > 0
+        if mine:
+            _session['prev'] = _session['last']
+            _session['last'] = now
+    if mine:
+        try:
+            _record(key, login_id, pc_name, app_version(), now, False, final=True)
+        except Exception as e:
+            app_logger().warning('接続の記録を書けませんでした: %s', e)
+        with _lock:
+            _session['key'] = ''
 
 
 def _sweep():
@@ -228,6 +436,16 @@ def _sweep():
         # **読めなかったものは消さない**（書いている最中かもしれない）。
         if age is not None and age > limit * 4:
             atomic_io.unlink(p, budget_sec=0.5, label='presence.sweep')
+
+
+def _since_sec(since):
+    if not since:
+        return None
+    try:
+        return max(0, int((datetime.now() - datetime.fromisoformat(str(since))).total_seconds()))
+    except Exception as _e:
+        quiet('接続した時刻を読めない（接続時間は出さない）',_e)
+        return None
 
 
 def entries():
@@ -260,6 +478,10 @@ def entries():
                     'role': str(entry.get('role') or ''),
                     'view': str(entry.get('view') or ''),
                     'at': str(entry.get('at') or ''),
+                    # 版と接続した時刻（§9.513）。**古い版は書かない**ので空のまま運ぶ
+                    'version': str(entry.get('version') or ''),
+                    'since': str(entry.get('since') or ''),
+                    'durationSec': _since_sec(entry.get('since')),
                     'idleSec': int(age),
                     'revoked': rev})
     out.sort(key=lambda x: x['at'], reverse=True)

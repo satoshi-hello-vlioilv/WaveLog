@@ -24,6 +24,8 @@
  7. 区分の変更は上位からだけ／**自分の行は触れない**／管理者が居ないうちは通す
  8. **消すことも区分の変更**——自分の行を消して制限を外す抜け道を塞ぐ
  9. ルートが実際にこの判定を通っている（**判定関数だけを見る網は素通りする**）
+10. **表示列の編集**（§9.512・変更不可／自分の分だけ／編集可）。既定は編集可、
+    段はマスタ編集と別の軸、帳票の紙（`report:`）には掛けない、ルートが実際に断る
 ============================================================
 """
 import pathlib, sqlite3, sys
@@ -301,7 +303,59 @@ try:
     rec('② 効いている段と、どの行が効いているかを返す',
         f['masterEdit'] == PART and f['role'] == U and f['matchedId'] == cid, str(f))
 
+    # ==== 10. 表示列の編集（§9.512） ===================================
+    CN, CS, CF = mr.COLUMN_EDIT_NONE, mr.COLUMN_EDIT_SELF, mr.COLUMN_EDIT_FULL
+    rec('⑩ 表示列の編集は3段で、既定（空欄・知らない綴り）は編集可',
+        mr.COLUMN_EDIT_LEVELS == (CN, CS, CF) and mr.normalize_column_edit('') == CF
+        and mr.normalize_column_edit('?') == CF, str(mr.COLUMN_EDIT_LEVELS))
+    rec('⑩ 段が許すこと: 変更不可＝何も／自分の分だけ＝自分の分／編集可＝みんなの分も',
+        [(mr.column_edit_can(l, 'own'), mr.column_edit_can(l, 'common')) for l in (CN, CS, CF)]
+        == [(False, False), (True, False), (True, True)])
+    rec('⑩ 帳票の紙（report:）には段を掛けない（同じマスタに住むが表示列ではない）',
+        mr.column_edit_check(CN, '', 'report:A')[0] is True
+        and mr.column_edit_check(CN, '', 'list:A:B')[0] is False)
+    rec('⑩ 登録の無い端末の既定は編集可（今までの見え方を変えない）',
+        mr._DEFAULT_PERMISSION_FLAGS['columnEdit'] == CF and am._FALLBACK_FLAGS['columnEdit'] == CF)
+    T = 'list:RT:CE'
+
+    def cflags(level):
+        return dict(flags(U, FULL), columnEdit=level)
+    am._permission_flags = lambda: cflags(CN)
+    r = client.post('/api/column-layout-master', json={'target': T, 'widths': {'A': 80}, 'user_id': 'test'})
+    rec('⑩ 変更不可の端末は表示列を保存できない（ルートが断り、理由を言う）',
+        r.status_code == 403 and '変更不可' in str((r.get_json() or {}).get('error')),
+        f'{r.status_code} {str(r.get_json())[:70]}')
+    g = client.get('/api/column-layout-master?target=' + T + '&user=test').get_json() or {}
+    rec('⑩ 読むときに「何を保存してよいか」を返す（画面は受け取るだけ）',
+        g.get('columnEdit') == CN and g.get('canEditOwnColumns') is False, str({k: g.get(k) for k in ('columnEdit', 'canEditOwnColumns', 'canEditCommonColumns')}))
+    am._permission_flags = lambda: cflags(CS)
+    r = client.post('/api/column-layout-master', json={'target': T, 'widths': {'A': 80}, 'user_id': 'test'})
+    rec('⑩ 自分の分だけの端末は、みんなと同じ表示列を保存できない',
+        r.status_code == 403 and '自分の分だけ' in str((r.get_json() or {}).get('error')), f'{r.status_code}')
+    r1 = client.post('/api/column-layout-master/scope', json={'target': T, 'scope': 'personal', 'user_id': 'test'})
+    r2 = client.post('/api/column-layout-master', json={'target': T, 'widths': {'A': 90}, 'user_id': 'test'})
+    rec('⑩ 自分の分だけの端末でも、自分だけへ切り替えれば保存できる',
+        r1.status_code == 200 and r2.status_code == 200 and (r2.get_json() or {}).get('scope') == 'personal',
+        f'{r1.status_code}/{r2.status_code}')
+    am._permission_flags = lambda: cflags(CN)
+    r = client.post('/api/column-layout-master', json={'target': 'report:RT_CE', 'widths': {'A': 1}, 'user_id': 'test'})
+    rec('⑩ 変更不可でも帳票の紙（report:）は保存できる',r.status_code == 200, f'{r.status_code}')
+    r = client.post('/api/schedule-column-master', json={'equipment': PREFIX + 'EQ', 'columns': [], 'user_id': 'test'})
+    rec('⑩ 作業スケジュールの設備の列（みんなで1つ）も段が掛かる',
+        r.status_code == 403, f'{r.status_code}')
+    am._permission_flags = lambda: flags(U, VIEW)
+    r = client.post('/api/column-layout-master', json={'target': T, 'widths': {'A': 70}, 'user_id': 'test'})
+    rec('⑩ マスタ編集が閲覧のみでも、表示列の編集が編集可なら保存できる（別の軸）',
+        r.status_code == 200, f'{r.status_code}')
+
 finally:
+    try:
+        conn = sqlite3.connect(db_access.DBS['MASTER']['path'])
+        conn.execute("DELETE FROM [列レイアウトマスタ] WHERE [対象] IN ('list:RT:CE','report:RT_CE')")
+        conn.execute("DELETE FROM [列レイアウト個人設定マスタ] WHERE [対象]='list:RT:CE'")
+        conn.commit(); conn.close()
+    except Exception as e:
+        print('後片付けに失敗: ' + str(e))
     purge()
     try:
         conn = sqlite3.connect(db_access.DBS['MASTER']['path'])

@@ -11,7 +11,10 @@
     ⑤ いまの自分の区分とできることを**必ず文字で**出す（§3）
     ⑥ 切断されている端末は「切断中」と出て、**取り消し**が同じ場所にある
 
-   ③④⑥は`/api/presence`を差し替えて確かめる。**実データに他の端末が居る
+    ⑦ **版と接続の記録**（§9.513）: 運用中の最新版・最新でない端末の数・接続した時刻と
+       接続時間・端末ごと／利用者ごとの記録・最新でない版だけ・表をコピー（見えている表のまま）
+
+   ③④⑥⑦は`/api/presence`を差し替えて確かめる。**実データに他の端末が居る
    保証は無い**ので、「無ければ素通り」の書き方だと直す前でも通る。 */
 'use strict';
 const {run}=require('./lib/harness.js');
@@ -24,8 +27,10 @@ const setMode=async m=>{await fetch(B+'/api/access-mode',{method:'POST',
 const FAKE=(role,canDisc)=>({ok:true,
  items:[
   {key:'PC-ME@me',login:'me',pc:'PC-ME',role:role,mode:'edit',view:'master',at:'',idleSec:2,
+   version:'2.400.0',since:'2026-09-26T09:00:00',durationSec:3720,outdated:false,
    revoked:null,isMe:true,canDisconnect:false},
   {key:'PC-A@u1',login:'u1',pc:'PC-A',role:'一般ユーザー',mode:'edit',view:'schedule',at:'',idleSec:8,
+   version:'',since:'',durationSec:null,outdated:true,
    revoked:null,isMe:false,canDisconnect:canDisc},
   {key:'PC-B@u2',login:'u2',pc:'PC-B',role:'開発者',mode:'view',view:'records',at:'',idleSec:40,
    revoked:null,isMe:false,canDisconnect:false},
@@ -34,8 +39,19 @@ const FAKE=(role,canDisc)=>({ok:true,
  ],
  readable:true,shared:true,source:'master',dir:'\\\\srv\\share\\presence',
  me:{login:'me',pc:'PC-ME',key:'PC-ME@me',role:role,mode:'edit'},
- can:{role:role,canView:true,canDisconnect:canDisc,canDisconnectDeveloper:role==='開発者'},
- roles:['開発者','メンテナンス者','一般ユーザー'],ttlSec:75,cooldownSec:300,revoked:null});
+ can:{role:role,canView:true,canDisconnect:canDisc,canDisconnectDeveloper:role==='開発者',canForget:canDisc},
+ roles:['開発者','メンテナンス者','一般ユーザー'],ttlSec:75,cooldownSec:300,revoked:null,
+ /* 版と接続の記録（§9.513）。答えはサーバー（fleet_summary）なので、網も答えをそのまま渡す。 */
+ fleet:{latestVersion:'2.400.0',myVersion:'2.400.0',recordingSince:'2.400.0',
+  counts:{terminals:3,users:2,online:2,outdated:2,outdatedOnline:1},
+  terminals:[
+   {key:'PC-A@u1',login:'u1',pc:'PC-A',version:'',online:true,outdated:true,sessions:0,totalSec:0,lastAt:'2026-09-26T10:00:00',firstAt:'',versions:{}},
+   {key:'PC-OLD@u1',login:'u1',pc:'PC-OLD',version:'2.398.0',online:false,outdated:true,sessions:4,totalSec:5400,lastAt:'2026-09-20T09:00:00',firstAt:'2026-09-01T08:00:00',versions:{'2.398.0':'2026-09-20T09:00:00'}},
+   {key:'PC-ME@me',login:'me',pc:'PC-ME',version:'2.400.0',online:true,outdated:false,sessions:9,totalSec:36000,lastAt:'2026-09-26T10:00:00',firstAt:'2026-08-01T08:00:00',versions:{}}],
+  users:[
+   {login:'u1',terminals:2,pcs:['PC-A','PC-OLD'],sessions:4,totalSec:5400,lastAt:'2026-09-26T10:00:00',versions:['2.398.0',''],online:true,outdated:true},
+   {login:'me',terminals:1,pcs:['PC-ME'],sessions:9,totalSec:36000,lastAt:'2026-09-26T10:00:00',versions:['2.400.0'],online:true,outdated:false}]},
+ historyReadable:true});
 
 run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  await setMode('edit');
@@ -123,8 +139,57 @@ run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,
  // ---- 共有でないときは「この端末しか出ません」と書く --------------------
  fake=Object.assign(FAKE('開発者',true),{shared:false,source:'local'});
  await openPresence();await idle();
- const scope=await page.evaluate(()=>document.querySelector('.pz-scope')?.textContent||'');
+ const scope=await page.evaluate(()=>document.querySelector('.pz-me')?.textContent||'');
  rec('共有でなければ、そう書く（1件を「他に誰も居ない」と読ませない）',
    /この端末しか出ません/.test(scope),scope.slice(0,60));
+
+ // ---- ⑦ 版と接続の記録（§9.513） --------------------------------------
+ fake=FAKE('メンテナンス者',true);
+ await openPresence();await idle();
+ const fl=await page.evaluate(()=>{
+  const me=[...document.querySelectorAll('#pzList .pz-row')].find(r=>r.textContent.includes('PC-ME'));
+  const cell=c=>(me&&me.querySelector(c)||{}).textContent||'';
+  return {latest:document.getElementById('pzLatest')?.textContent||'',
+   old:document.getElementById('pzOldCount')?.textContent||'',
+   oldCell:document.querySelector('.pz-sum-cell.is-old')?.textContent.replace(/\s+/g,' ')||'',
+   ver:cell('.pz-c-ver'),since:cell('.pz-c-since'),dur:cell('.pz-c-dur'),
+   aVer:([...document.querySelectorAll('#pzList .pz-row')].find(r=>r.textContent.includes('PC-A'))?.querySelector('.pz-c-ver')||{}).textContent||'',
+   head:[...document.querySelectorAll('#pzTerms th')].map(x=>x.textContent),
+   rows:[...document.querySelectorAll('#pzTerms tbody tr')].map(r=>r.textContent.replace(/\s+/g,' ')),
+   forget:[...document.querySelectorAll('[data-pz-forget]')].map(b=>b.dataset.pzForget)};
+ });
+ rec('⑦ 運用中の最新版を出す',/VER2\.400\.0/.test(fl.latest),fl.latest);
+ rec('⑦ 最新でない端末の数と、うち接続中を字で言う（配る相手）',
+   /^2/.test(fl.old)&&/うち接続中 1台/.test(fl.oldCell),fl.oldCell.slice(0,60));
+ rec('⑦ 接続中の端末に版・接続した時刻・接続時間が出る',
+   /最新/.test(fl.ver)&&/VER2\.400\.0/.test(fl.ver)&&fl.since==='09-26 09:00'&&fl.dur==='1時間2分',
+   JSON.stringify([fl.ver,fl.since,fl.dur]));
+ rec('⑦ 版を書かない古い版の端末は「要更新」と「VER…より前」で言う',
+   /要更新/.test(fl.aVer)&&/より前/.test(fl.aVer),fl.aVer);
+ rec('⑦ 記録の表は最新でない端末が上・累計接続回数と時間が出る',
+   fl.head.includes('累計接続回数')&&fl.head.includes('累計接続時間')&&/要更新/.test(fl.rows[0]||'')
+   &&fl.rows.some(r=>/4回/.test(r)&&/1時間30分/.test(r)),JSON.stringify(fl.rows).slice(0,140));
+ rec('⑦ 記録を消せるのは接続していない端末だけ（権限のある人に）',
+   JSON.stringify(fl.forget)==='["PC-OLD@u1"]',JSON.stringify(fl.forget));
+ await page.click('#pzOnlyOld');
+ const onlyOld=await page.evaluate(()=>document.querySelectorAll('#pzTerms tbody tr').length);
+ rec('⑦ 「最新でない版だけ」で絞れる',onlyOld===2,String(onlyOld));
+ await page.click('[data-pz-by="users"]');
+ const users=await page.evaluate(()=>({head:[...document.querySelectorAll('#pzTerms th')].map(x=>x.textContent),
+   rows:[...document.querySelectorAll('#pzTerms tbody tr')].map(r=>r.textContent.replace(/\s+/g,' '))}));
+ rec('⑦ 利用者ごとの合計に切り替えられる（使った端末・累計接続回数）',
+   users.head.includes('使った端末')&&users.rows.length===1&&/u1/.test(users.rows[0])&&/2台/.test(users.rows[0]),
+   JSON.stringify(users.rows));
+ const copied=await page.evaluate(async()=>{
+  const box={got:''};
+  Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:t=>{box.got=t;return Promise.resolve()}}});
+  document.getElementById('pzCopy').click();
+  for(let i=0;i<20&&!box.got;i++)await new Promise(r=>setTimeout(r,50));
+  return box.got;
+ });
+ rec('⑦ 表をコピーすると、見えている表のまま（見出し＋絞った行・タブ区切り）',
+   copied.split('\n').length===2&&/^版の状態\tログインID\t使った端末/.test(copied),copied.slice(0,80));
+ await page.click('[data-pz-by="terminals"]');
+ await page.click('#pzOnlyOld');
 
 }, {viewport:{width:1600,height:1000}});

@@ -1,4 +1,4 @@
-# マスタ（サーバー側）（27件）
+# マスタ（サーバー側）（29件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 表示列の編集はアクセス権限マスタの1列（3段・既定は編集可）。判定は`column_edit_check()`の1箇所・帳票の紙には掛けない | `test_roleperm.py`・`test_roleui.js` | [§9.512](../../docs/decisions/9.512.md) |
+| 表示列の編集は**マスタ編集と別の軸**。画面は列レイアウトの応答（対象ごとの`canEditOwnColumns`／`canEditCommonColumns`）を読むだけ | `test_roleui.js` | [§9.512](../../docs/decisions/9.512.md) |
 | 設備停止は3階層（分類→停止内容→内訳）。**内訳は名称を割らない**（集計は名称で束ねる） | `test_stopsub.py` | [§9.389](../../docs/decisions/9.389.md) |
 | 停止内容の複製は**内訳の木ごと**写す。写しの名前を数えるのは`stop_reason_copy_name()`の1箇所 | `test_scstop.js` | [§9.400](../../docs/decisions/9.400.md) |
 | 最初から選ばれる内訳は`stop_default_sub()`の1箇所（①1件ならそれ ②`[既定]`の印 ③無し） | `test_stopsub.py` | [§9.397](../../docs/decisions/9.397.md) |

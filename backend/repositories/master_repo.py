@@ -1074,10 +1074,86 @@ def master_edit_capabilities(role,stored):
          'canEditAdminMaster':master_edit_can(lv,'write','admin'),
          'adminMasters':list(ADMIN_MASTER_KEYS)}
 
+# ------------------------------------------------------------------------
+# 表示列の編集（§9.512、利用者の指示「表示列の編集権限もマスタのアクセス権限の
+# ところに管理できる内容として組み込んでください」）
+#
+# 一覧・作業スケジュールの**列の見せ方**（並び・幅・出す/出さない・名前・書式・
+# 式・揃え）を誰が変えられるか。段は3つで、下から順に:
+#   変更不可     … 列の見せ方を保存しない（見るだけ。幅を引いても保存されない）
+#   自分の分だけ … 自分だけの見せ方（§9.259）は変えられる。みんなの分は変えない
+#                  ——みんなと同じを見ているときに触ると、自分だけへ切り替えてから保存する
+#   編集可       … みんなと同じの見せ方も変えられる（今までと同じ）
+#
+# **既定は「編集可」**（§9.132）——この列を持たない既存の行・登録の無い端末の
+# 動きを1つも変えない。マスタ編集（上）とは**別の軸**: あちらはマスタ管理の
+# 画面、こちらは一覧の画面の「見せ方」で、マスタ編集の段は見せ方に掛からない
+# （`MASTER_EDIT_EXEMPT_ENDPOINTS`）。見せ方を絞る口はこの1列だけ。
+# ------------------------------------------------------------------------
+COLUMN_EDIT_NONE='変更不可'
+COLUMN_EDIT_SELF='自分の分だけ'
+COLUMN_EDIT_FULL='編集可'
+COLUMN_EDIT_LEVELS=(COLUMN_EDIT_NONE,COLUMN_EDIT_SELF,COLUMN_EDIT_FULL)
+COLUMN_EDIT_DEFAULT=COLUMN_EDIT_FULL
+_COLUMN_EDIT_COLUMNS=(('表示列編集','TEXT'),)
+
+def normalize_column_edit(value):
+ """保存値 -> 3段のどれか。知らない綴り・空欄は既定（編集可）。"""
+ v=str(value or '').strip()
+ return v if v in COLUMN_EDIT_LEVELS else COLUMN_EDIT_DEFAULT
+
+def column_edit_can(level,action):
+ """この段で何ができるか。**ここ1箇所が答える**（§9.163）。
+
+   'own'    … 自分だけの見せ方を保存する・みんなと同じ⇄自分だけを切り替える
+   'common' … みんなと同じの見せ方を保存する
+ """
+ lv=normalize_column_edit(level)
+ if action=='own':return lv in (COLUMN_EDIT_SELF,COLUMN_EDIT_FULL)
+ if action=='common':return lv==COLUMN_EDIT_FULL
+ return False
+
+def column_edit_capabilities(level):
+ """画面へ渡す「できること」。判定を画面へ書き写さないための窓口。"""
+ lv=normalize_column_edit(level)
+ return {'columnEdit':lv,
+         'canEditOwnColumns':column_edit_can(lv,'own'),
+         'canEditCommonColumns':column_edit_can(lv,'common')}
+
+# 段が掛からない対象。`report:<設備>`は**帳票の紙の配置**（§9.174）で、同じ
+# 列レイアウトマスタに住んでいるが「表示列」ではない（帳票ブロック・帳票
+# レイアウトマスタと組で決めるもの）。住まいが同じだけで絞ると、帳票を
+# 直す人が表示列の段で止まる。
+COLUMN_EDIT_EXEMPT_PREFIXES=('report:',)
+
+def column_edit_applies(target):
+ """その対象に「表示列の編集」の段が掛かるか。"""
+ return not str(target or '').startswith(COLUMN_EDIT_EXEMPT_PREFIXES)
+
+def column_edit_for_target(level,target):
+ """その対象で何ができるか（画面の列の設定パネルが読む）。"""
+ if not column_edit_applies(target):
+  return {'columnEdit':COLUMN_EDIT_FULL,'canEditOwnColumns':True,'canEditCommonColumns':True}
+ return column_edit_capabilities(level)
+
+def column_edit_check(level,owner,target=''):
+ """列の見せ方を保存してよいか。`owner`は保存先（''＝みんなと同じ）。
+    `(ok, reason)`を返す。理由は**次にすること**まで言う。"""
+ if target and not column_edit_applies(target):return True,''
+ lv=normalize_column_edit(level)
+ if not column_edit_can(lv,'own'):
+  return False,('この端末の「表示列の編集」は「変更不可」です。列の並び・幅・表示は保存されません。'
+                '変更が要る場合は、アクセス権限マスタで「表示列の編集」を上げてもらってください。')
+ if not owner and not column_edit_can(lv,'common'):
+  return False,('この端末の「表示列の編集」は「自分の分だけ」です。みんなと同じ表示列は変えられません。'
+                '列の設定で「自分だけ」に切り替えてから変えてください。')
+ return True,''
+
 # 何ができるか。**ここ1箇所が答える**（§9.163）——画面にもルートにも
 # 書き写さない。写すと「画面には切断ボタンが出るのにサーバーが断る」が作れる。
 #   'presence:view'       … 接続状況を見る
 #   'presence:disconnect' … 他の端末を切断する（対象の区分も見る）
+#   'presence:forget'     … 使わなくなった端末の接続の記録を消す（§9.513）
 #   'role:grant'          … 他の端末の権限区分を変える（対象の区分も見る）
 #   'choice:inline-add'   … 測定画面から選択肢マスタへ間接的に登録する
 def role_can(role,action,target_role=''):
@@ -1092,6 +1168,10 @@ def role_can(role,action,target_role=''):
    # **開発者は切れない**（利用者の指示「開発者を除いて実行可能」）。
    return normalize_role(target_role)!=ROLE_DEVELOPER
   return False
+ if action=='presence:forget':
+  # 記録を消すと「古い版の端末」の数が変わる＝配布の判断が変わる。
+  # 切断できる区分（開発者・メンテナンス者）だけに許す（§9.513）。
+  return r in (ROLE_DEVELOPER,ROLE_MAINTAINER)
  if action=='role:grant':
   # **より上位の人しか区分を触れない**（§9.322、利用者の指示「権限区分に
   # 関しての変更はより上位権限を持つ人からの変更しか受け付けない」）。
@@ -1114,7 +1194,8 @@ def role_capabilities(role,):
  return {'role':r,
          'canView':role_can(r,'presence:view'),
          'canDisconnect':role_can(r,'presence:disconnect'),
-         'canDisconnectDeveloper':role_can(r,'presence:disconnect',ROLE_DEVELOPER)}
+         'canDisconnectDeveloper':role_can(r,'presence:disconnect',ROLE_DEVELOPER),
+         'canForget':role_can(r,'presence:forget')}
 # ------------------------------------------------------------------------
 # マスタ編集の段を「どの書き込みに掛けるか」（§9.322）
 #
@@ -1188,7 +1269,7 @@ def ensure_access_permission_table(c):
   c.commit();created=True
  ensure_audit_columns(c,ACCESS_PERMISSION_TABLE)
  add_missing_columns(c,ACCESS_PERMISSION_TABLE,
-                     _SCHEDULE_PERMISSION_COLUMNS+_ROLE_COLUMNS)
+                     _SCHEDULE_PERMISSION_COLUMNS+_ROLE_COLUMNS+_COLUMN_EDIT_COLUMNS)
  return created
 
 def normalize_identity_part(value):
@@ -1206,7 +1287,7 @@ def access_permission_master_rows(c):
  cur=c.cursor()
  # 全行取得後にPython側で有効判定する。スケジュール関連3列は既存の呼び出し元
  # (masters.pyのCRUD一覧等)のインデックス([0]〜[7])を壊さないよう末尾へ追加する。
- cur.execute('SELECT [権限ID],[ログインID],[PC名],[編集可否],[表示順],[有効],[更新日時],[更新者ID],[スケジュール可否],[現場段取り可否],[現場段取り対象設備],[権限区分],[マスタ編集] FROM [アクセス権限マスタ] ORDER BY [表示順],[ログインID],[PC名]')
+ cur.execute('SELECT [権限ID],[ログインID],[PC名],[編集可否],[表示順],[有効],[更新日時],[更新者ID],[スケジュール可否],[現場段取り可否],[現場段取り対象設備],[権限区分],[マスタ編集],[表示列編集] FROM [アクセス権限マスタ] ORDER BY [表示順],[ログインID],[PC名]')
  rows=[]
  for r in cur.fetchall():
   active=True if r[5] is None else bool(r[5])
@@ -1222,6 +1303,8 @@ _DEFAULT_PERMISSION_FLAGS={'canEdit':True,'canSchedule':False,'canFieldReorder':
  # マスタ管理を黙って取り上げない。区分の既定（一般ユーザー）の上限が
  # 編集可なので、キャップを掛けても値は変わらない。
  'masterEdit':MASTER_EDIT_DEFAULT,'masterEditStored':MASTER_EDIT_DEFAULT,
+ # 表示列の編集の既定も**編集可**（§9.512/§9.132）。
+ 'columnEdit':COLUMN_EDIT_DEFAULT,
  # どの行が効いているか（§9.322）。**自分の区分を決めている行**は
  # 自分では触れない、を判定するのに要る。登録が無ければNone。
  'matchedId':None}
@@ -1271,6 +1354,7 @@ def permission_flags(c,login_id,pc_name):
           # **保存値ではなく効いている段を配る**（§9.322）——区分を下げたのに
           # 前の段が効き続ける、を作らない。保存値も別に持って画面に出す。
           'masterEdit':master_edit_effective(role,stored),'masterEditStored':stored,
+          'columnEdit':normalize_column_edit(r[13] if len(r)>13 else ''),
           'matchedId':r[0]}
  exact=login_only=pc_only=global_rule=None
  for r in access_permission_master_rows(c):

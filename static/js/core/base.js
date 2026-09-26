@@ -789,8 +789,51 @@ const columnLayout=(()=>{
    v=norm(r);
    scopes.set(target,r&&r.scope==='personal'?'personal':'common');
    canPersonalize=!!(r&&r.canPersonalize);
+   keepRights(target,r);
   }catch(e){WL.quiet.note('読めなくても既定の並びで一覧は出す(fail-open)',e)}
   saved.set(target,v);loadedFor.set(target,uid);bump(target);return get(target);
+ }
+ /* ---------- 表示列の編集（§9.512、利用者の指示） ----------
+    この対象で**何を保存してよいか**はサーバーが答える（`column_edit_for_target`・
+    アクセス権限マスタの「表示列の編集」）。画面は受け取って、保存の行き先を決めるだけ:
+      変更不可     … サーバーへ送らない（この画面のあいだだけ効く）。1回だけ字で言う
+      自分の分だけ … みんなと同じを見ているなら、**自分だけへ切り替えてから**保存する
+                     （断って終わりにしない——変えたい人を行き止まりにしない）
+    読む前（答えが無い）は`/api/access-mode`の答え、それも無ければ今までどおり（§9.132）。 */
+ const rights=new Map();                // target -> {own,common,level}
+ function keepRights(target,r){
+  if(r&&typeof r.canEditOwnColumns==='boolean')
+   rights.set(target,{own:r.canEditOwnColumns,common:!!r.canEditCommonColumns,level:r.columnEdit||''});
+ }
+ function rightsOf(target){
+  const hit=target&&rights.get(target);if(hit)return hit;
+  const am=window.accessMode||{};
+  return {own:am.canEditOwnColumns!==false,common:am.canEditCommonColumns!==false,level:am.columnEdit||'編集可'};
+ }
+ const told=new Set();
+ function tellLocal(target,why){
+  if(told.has(target))return;
+  told.add(target);
+  window.showToast&&showToast('表示列の変更は保存されません',why,7000);
+ }
+ async function route(target){
+  if(!scopes.has(target))await load(target);
+  const r=rightsOf(target);
+  if(!r.own){
+   tellLocal(target,`この端末の「表示列の編集」は「${r.level||'変更不可'}」です。この画面のあいだだけ効き、次に開くと元に戻ります。`
+                    +'変える必要があれば、アクセス権限マスタで「表示列の編集」を上げてもらってください。');
+   return 'local';
+  }
+  if(!r.common&&scopeOf(target)!=='personal'){
+   if(!canPersonalize){
+    tellLocal(target,'この端末の「表示列の編集」は「自分の分だけ」ですが、利用者IDが分からないため自分だけの設定を持てません。');
+    return 'local';
+   }
+   await setScope(target,true);
+   window.showToast&&showToast('自分だけの表示列に切り替えました',
+    'この端末の「表示列の編集」は「自分の分だけ」なので、みんなと同じ表示列は変えずに、あなたの分として保存します（他の人の見え方は変わりません）。',7000);
+  }
+  return 'send';
  }
  /* いまどちらで見ているか。**読む前は分からないので'common'とは言い切らない** */
  function scopeOf(target){return scopes.get(target)||''}
@@ -805,6 +848,7 @@ const columnLayout=(()=>{
   saved.set(target,norm(r));loadedFor.set(target,ensureUserId());
   scopes.set(target,r&&r.scope==='personal'?'personal':'common');
   canPersonalize=!!(r&&r.canPersonalize);
+  keepRights(target,r);
   draft.delete(target);live.delete(target);bump(target);
   return r;
  }
@@ -830,7 +874,9 @@ const columnLayout=(()=>{
   if(!target)return;
   /* 全部を送る＝全部が保存済みになる（設定パネルの「保存」）。 */
   const v=norm(layout);
+  const way=await route(target);     // 行き先を先に決める（切り替えは保存済みを入れ替える）
   saved.set(target,v);draft.delete(target);live.delete(target);bump(target);
+  if(way==='local')return;
   await saveState.run(target,()=>api('/api/column-layout-master',
    {method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(withUserId({target,...v}))}));
@@ -844,17 +890,19 @@ const columnLayout=(()=>{
   const keys=Object.keys(body).filter(k=>KEYS.includes(k));
   if(!keys.length)return;
   const pick={};keys.forEach(k=>{pick[k]=body[k]});
+  const way=await route(target);
   saved.set(target,{...savedOf(target),...pick});
   if(draft.has(target))draft.set(target,{...draft.get(target),...pick});
   bump(target);
+  if(way==='local')return;
   await saveState.run(target,()=>api('/api/column-layout-master',
    {method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(withUserId({target,...pick}))}));
  }
  function forget(target){
   if(target){saved.delete(target);draft.delete(target);live.delete(target);
-             loadedFor.delete(target);scopes.delete(target)}
-  else{saved.clear();draft.clear();live.clear();loadedFor.clear();scopes.clear()}
+             loadedFor.delete(target);scopes.delete(target);rights.delete(target)}
+  else{saved.clear();draft.clear();live.clear();loadedFor.clear();scopes.clear();rights.clear()}
   bump(target);
  }
  /* **保存せずに今の画面へ当てる**(§9.90)。列の設定パネルは、触った結果が
@@ -894,6 +942,8 @@ const columnLayout=(()=>{
          saved:savedOf,shows,locked,
          /* 列の見せ方の持ち主(§9.259)。'common'=みんなと同じ／'personal'=自分だけ。 */
          scope:scopeOf,setScope,personalizable,
+         /* この対象で何を保存してよいか（§9.512）。{own,common,level} */
+         rights:rightsOf,
          width:(target,col)=>get(target).widths[col]||null,
          /* 幅の状態を1語で。'auto'=内容に合わせる / 'manual'=手で決めた /
             'locked'=固定(手で決めた幅から動かさない)。 */

@@ -3757,6 +3757,70 @@
   renderPresence();
  }
 
+ /* ---------- 接続の記録と版（§9.513、利用者の指示） ----------
+    「接続ユーザー、接続PC、接続時刻、接続時間、接続したアプリのVER情報、ユーザー別
+      累計接続回数などわかるように…誰に新しいバージョンファイルを配布すればよいか
+      判断する…データの2次利用も考えたうえで」
+
+    **答えはサーバー**（`fleet`＝`presence.fleet_summary()`）。運用中の最新版・
+    古い版の端末・利用者ごとの合計を画面で数え直さない。画面は並べて、写せる形に
+    するだけ（表をコピー＝表計算・メールへ貼れる／CSVで保存）。 */
+ const pzView={by:'terminals',onlyOld:false};
+ function pzDur(sec){
+  if(sec==null||sec==='')return '—';
+  const n=Math.max(0,Math.round(Number(sec)||0));
+  if(n<60)return `${n}秒`;
+  const h=Math.floor(n/3600),m=Math.floor((n%3600)/60);
+  return h?`${h}時間${m}分`:`${m}分`;
+ }
+ /* 時刻は「月-日 時:分」（年と秒は`title`）。同じ幅で縦にそろう。 */
+ function pzAt(iso){const t=String(iso||'');return t?t.replace('T',' ').slice(5,16):'—'}
+ function pzVer(v,since){return v?`VER${v}`:`VER${since}より前`}
+ /* 版の状態は**語で**言う（色だけにしない・§CLAUDE 3）。 */
+ function pzVerHtml(x,f){
+  const word=x.outdated?'<b class="pz-vst is-old">要更新</b>':'<b class="pz-vst is-ok">最新</b>';
+  return `${word}<span class="pz-ver" title="${esc(Object.keys(x.versions||{}).map(v=>'VER'+v).join(' → ')||'')}">${esc(pzVer(x.version,f.recordingSince))}</span>`;
+ }
+ /* 表の中身（見えている並び・絞り込みそのまま）。コピーとCSVはこれを使う
+    ——**見えている表と写した表を違えない**。 */
+ function pzRows(f){
+  const old=pzView.onlyOld;
+  if(pzView.by==='users'){
+   const head=['版の状態','ログインID','使った端末','使っている版','最後に使った','累計接続回数','累計接続時間'];
+   const rows=(f.users||[]).filter(u=>!old||u.outdated).map(u=>({x:u,cells:[
+    u.outdated?'要更新':'最新',u.login||'（不明）',`${u.terminals}台（${u.pcs.join('・')}）`,
+    u.versions.map(v=>pzVer(v,f.recordingSince)).join('・'),pzAt(u.lastAt),`${u.sessions}回`,pzDur(u.totalSec)]}));
+   return {head,rows};
+  }
+  const head=['版の状態','ログインID','PC名','版','最後に使った','累計接続回数','累計接続時間','初めて使った'];
+  const rows=(f.terminals||[]).filter(t=>!old||t.outdated).map(t=>({x:t,cells:[
+   t.outdated?'要更新':'最新',t.login||'（不明）',t.pc||'（不明）',pzVer(t.version,f.recordingSince),
+   t.online?'接続中':pzAt(t.lastAt),t.sessions?`${t.sessions}回`:'—',t.sessions?pzDur(t.totalSec):'—',pzAt(t.firstAt)]}));
+  return {head,rows};
+ }
+ function pzExport(kind){
+  const f=(presenceState.data||{}).fleet;if(!f)return;
+  const {head,rows}=pzRows(f);
+  if(!rows.length){showToast('写すものがありません','「最新でない版だけ」で絞っていて、該当が0件です。');return}
+  const lines=[head,...rows.map(r=>r.cells)];
+  const stamp=new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const name=`接続の記録-${pzView.by==='users'?'利用者ごと':'端末ごと'}-${stamp}`;
+  if(kind==='csv'){
+   const q=v=>`"${String(v).replace(/"/g,'""')}"`;
+   /* BOMつき（表計算ソフトで開いたとき字化けしない） */
+   const blob=new Blob(['﻿'+lines.map(r=>r.map(q).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'});
+   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name+'.csv';
+   document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+   return;
+  }
+  const text=lines.map(r=>r.join('\t')).join('\n');
+  const done=()=>showToast('表をコピーしました',`${rows.length}行。表計算ソフトやメールへそのまま貼れます。`);
+  if(navigator.clipboard?.writeText)navigator.clipboard.writeText(text).then(done).catch(e=>{
+   WL.quiet.note('クリップボードへ写せない（CSVで保存を案内する）',e);
+   showToast('コピーできませんでした','「CSVで保存」を使ってください。',5200)});
+  else showToast('コピーできませんでした','「CSVで保存」を使ってください。',5200);
+ }
+
  function renderPresence(){
   const list=$('#masterMaintList');if(!list)return;
   const d=presenceState.data;
@@ -3765,6 +3829,8 @@
    return;
   }
   const can=d.can||{},me=d.me||{},items=d.items||[];
+  const f=d.fleet||{terminals:[],users:[],counts:{},latestVersion:'',myVersion:'',recordingSince:''};
+  const c=f.counts||{};
   /* いまの自分の区分と、できることを**必ず文字で**出す（§3）。 */
   const roleNote=can.canDisconnect
    ?(can.canDisconnectDeveloper?'すべての端末を切断できます'
@@ -3781,6 +3847,20 @@
     <b>書き込みだけが止まっています</b>——開いている画面と入力中の内容はそのままです。
     あと約${Math.max(1,Math.ceil((mine.remainingSec||0)/60))}分で自動的に戻ります。</div>`:'';
 
+  /* ---- 要約（§CLAUDE 2「次にすることを1つ指す」）: 最新版と、配る相手の数 ---- */
+  const same=f.myVersion&&f.myVersion===f.latestVersion;
+  const summary=`<div class="pz-sum" id="pzSummary">
+    <div class="pz-sum-cell"><span>運用中の最新版</span><b id="pzLatest">${esc(f.latestVersion?'VER'+f.latestVersion:'—')}</b>
+     <small>${same?'この端末もこの版です':`この端末は VER${esc(f.myVersion||'?')}`}</small></div>
+    <div class="pz-sum-cell"><span>接続中</span><b>${items.length}<i>台</i></b><small>10秒ごとに読み直します</small></div>
+    <div class="pz-sum-cell${c.outdated?' is-old':''}"><span>最新でない端末</span><b id="pzOldCount">${c.outdated||0}<i>台</i></b>
+     <small>${c.outdated?`うち接続中 ${c.outdatedOnline||0}台 — 新しい版を配る相手です`:'すべての端末が最新版です'}</small></div>
+    <div class="pz-sum-cell"><span>これまでに接続</span><b>${c.terminals||0}<i>台</i>・${c.users||0}<i>人</i></b>
+     <small>${d.historyReadable===false?'記録を読めませんでした':`VER${esc(f.recordingSince||'')}から記録しています`}</small></div>
+   </div>
+   <p class="pz-me">この端末は <b>${esc(me.role||'')}</b> です — ${esc(roleNote)}（${esc(me.login||'ログインID不明')}／${esc(me.pc||'PC名不明')}）。
+    ${scope}<small title="${esc(d.dir||'')}">${esc(d.dir||'')}</small></p>`;
+
   const rows=items.map(x=>{
    const state=x.isMe?'<span class="pz-badge is-me">この端末</span>'
     :x.revoked?'<span class="pz-badge is-cut">切断中</span>'
@@ -3793,10 +3873,13 @@
    else if(x.canDisconnect)
     action=`<button type="button" class="mm-btn-ghost sm danger" data-pz-cut="${esc(x.key)}">切断する</button>`;
    else action=`<span class="pz-why">${can.canDisconnect?`「${esc(x.role)}」は切断できません`:'切断の権限がありません'}</span>`;
-   return `<div class="pz-row${x.isMe?' is-me':''}">
+   return `<div class="pz-row${x.isMe?' is-me':''}${x.outdated?' is-old':''}">
      <span class="pz-c-state">${state}</span>
      <span class="pz-c-login">${esc(x.login||'（不明）')}</span>
      <span class="pz-c-pc">${esc(x.pc||'（不明）')}</span>
+     <span class="pz-c-ver">${pzVerHtml(x,f)}</span>
+     <span class="pz-c-since" title="${esc(x.since||'')}">${esc(pzAt(x.since))}</span>
+     <span class="pz-c-dur">${esc(pzDur(x.durationSec))}</span>
      <span class="pz-c-role">${esc(x.role||'')}</span>
      <span class="pz-c-mode">${esc(pzModeLabel(x.mode))}</span>
      <span class="pz-c-view">${esc(pzViewLabel(x.view))}</span>
@@ -3809,26 +3892,70 @@
    ?`<div class="mm-empty">${d.readable?'接続している端末がありません（この端末の在席は次のハートビートで出ます）。'
       :'在席の置き場を読めませんでした。共有フォルダへの接続を確認してください。'}</div>`:'';
 
-  list.innerHTML=`${banner}
-   <div class="pz-head">
-    <div class="pz-me">この端末は <b>${esc(me.role||'')}</b> です — ${esc(roleNote)}
-     <small>${esc(me.login||'（ログインID不明）')} ／ ${esc(me.pc||'（PC名不明）')}</small></div>
-    <div class="pz-scope">${scope}<small>${esc(d.dir||'')}</small></div>
-    <div class="pz-count">接続中 <b>${items.length}</b> 台<small>10秒ごとに読み直します</small></div>
-   </div>
+  /* ---- これまでに接続した端末（版の配布の判断に） ---- */
+  const {head,rows:hrows}=pzRows(f);
+  const byUsers=pzView.by==='users';
+  const histBody=hrows.map(({x,cells})=>{
+   const forget=!byUsers&&can.canForget&&!x.online
+    ?`<button type="button" class="mm-btn-ghost sm" data-pz-forget="${esc(x.key)}" title="使わなくなった端末の記録を消します（最新でない端末の数から外れます）">記録を消す</button>`:'';
+   const tds=cells.map((v,i)=>i===0?`<td>${x.outdated?'<b class="pz-vst is-old">要更新</b>':'<b class="pz-vst is-ok">最新</b>'}</td>`
+    :`<td${(!byUsers&&i===4&&x.online)?' class="is-online"':''}${(i>=4)?' class="pz-num"':''} title="${esc(String(v))}">${esc(String(v))}</td>`).join('');
+   return `<tr class="${x.outdated?'is-old':''}">${tds}${byUsers?'':`<td class="pz-act">${forget}</td>`}</tr>`;
+  }).join('');
+  const hist=`<section class="pz-sec" id="pzHistory">
+    <header class="pz-sec-head"><h4>これまでに接続した${byUsers?'利用者':'端末'}</h4>
+     <small>新しい版を配る相手を決めるための一覧です。最新でない版が上に来ます。</small></header>
+    <div class="pz-tools">
+     <div class="pz-seg" role="radiogroup" aria-label="まとめ方">
+      <button type="button" role="radio" data-pz-by="terminals" class="${byUsers?'':'is-on'}" aria-checked="${!byUsers}">端末ごと</button>
+      <button type="button" role="radio" data-pz-by="users" class="${byUsers?'is-on':''}" aria-checked="${byUsers}">利用者ごと</button></div>
+     <label class="pz-check"><input type="checkbox" id="pzOnlyOld"${pzView.onlyOld?' checked':''}>最新でない版だけ</label>
+     <span class="pz-count-note">${hrows.length}${byUsers?'人':'台'}</span>
+     <span class="pz-tools-end">
+      <button type="button" class="mm-btn-ghost sm" id="pzCopy" title="いま見えている表を、表計算ソフトやメールへ貼れる形でコピーします">表をコピー</button>
+      <button type="button" class="mm-btn-ghost sm" id="pzCsv" title="いま見えている表をCSVファイルで保存します">CSVで保存</button>
+     </span>
+    </div>
+    ${hrows.length?`<div class="pz-htable-wrap"><table class="pz-htable" id="pzTerms"><thead><tr>${head.map(h=>`<th>${esc(h)}</th>`).join('')}${byUsers?'':'<th></th>'}</tr></thead>
+     <tbody>${histBody}</tbody></table></div>`
+     :`<div class="mm-empty">${pzView.onlyOld?'最新でない版の端末はありません。':'まだ記録がありません（この版から記録を始めます）。'}</div>`}
+   </section>`;
+
+  list.innerHTML=`${banner}${summary}
+   <section class="pz-sec">
+    <header class="pz-sec-head"><h4>いま接続している端末</h4><small>接続時間は、この接続を始めてからの長さです。</small></header>
    <div class="pz-table" id="pzList">
     <div class="pz-row pz-headrow">
      <span class="pz-c-state">状態</span><span class="pz-c-login">ログインID</span>
-     <span class="pz-c-pc">PC名</span><span class="pz-c-role">権限区分</span>
+     <span class="pz-c-pc">PC名</span><span class="pz-c-ver">版</span>
+     <span class="pz-c-since">接続した時刻</span><span class="pz-c-dur">接続時間</span>
+     <span class="pz-c-role">権限区分</span>
      <span class="pz-c-mode">モード</span><span class="pz-c-view">開いている画面</span>
      <span class="pz-c-seen">最後の応答</span><span class="pz-c-act">操作</span>
     </div>
     ${rows}
-   </div>${empty}
+   </div>${empty}</section>
+   ${hist}
    ${presenceState.err?`<div class="mm-empty error">読み直しに失敗しました: ${esc(presenceState.err)}</div>`:''}`;
 
   list.querySelectorAll('[data-pz-cut]').forEach(b=>b.addEventListener('click',()=>pzCut(b.dataset.pzCut)));
   list.querySelectorAll('[data-pz-allow]').forEach(b=>b.addEventListener('click',()=>pzAllow(b.dataset.pzAllow)));
+  list.querySelectorAll('[data-pz-forget]').forEach(b=>b.addEventListener('click',()=>pzForget(b.dataset.pzForget)));
+  list.querySelectorAll('[data-pz-by]').forEach(b=>b.addEventListener('click',()=>{pzView.by=b.dataset.pzBy;renderPresence()}));
+  const only=list.querySelector('#pzOnlyOld');
+  if(only)only.addEventListener('change',()=>{pzView.onlyOld=only.checked;renderPresence()});
+  list.querySelector('#pzCopy')?.addEventListener('click',()=>pzExport('tsv'));
+  list.querySelector('#pzCsv')?.addEventListener('click',()=>pzExport('csv'));
+ }
+
+ async function pzForget(key){
+  const t=((presenceState.data||{}).fleet?.terminals||[]).find(x=>x.key===key);if(!t)return;
+  if(!await confirmModal({message:`${t.login||'（不明）'}／${t.pc||'（不明）'} の接続の記録を消します。`
+     +'使わなくなった端末を「最新でない端末」の数から外すためのものです。元に戻せません。',danger:true}))return;
+  try{await api('/api/presence/forget',{method:'POST',body:JSON.stringify({key})});
+      showToast('記録を消しました',`${t.login||''}／${t.pc||''}`)}
+  catch(e){showToast('記録を消せませんでした',e.message||String(e),6000)}
+  pzFetch();
  }
 
  async function pzCut(key){

@@ -556,16 +556,29 @@
   scope=WL.columnLayout.scope(target);
   const mine=scope==='personal';
   const can=WL.columnLayout.personalizable();
+  /* 表示列の編集（§9.512）。何を保存してよいかはサーバーの答え（`rights`）。 */
+  const right=WL.columnLayout.rights(target);
   now.textContent=mine?'自分だけの設定':'みんなと同じ設定';
   now.className='lc-scope-now'+(mine?' is-mine':'');
   btn.textContent=mine?'みんなと同じに戻す':'自分だけの設定にする';
   /* **できないことは、できないと書く**(§4)。利用者IDが分からない端末では
      自分だけの設定を持てない——押せるボタンを残すと壊れて見える。 */
-  btn.disabled=!can&&!mine;
-  if(!can&&!mine){
+  btn.disabled=!right.own||(!can&&!mine);
+  const sv=document.getElementById('lcSave');
+  if(sv){
+   sv.disabled=!right.own;
+   sv.title=right.own?'':`この端末の「表示列の編集」は「${right.level}」のため保存できません`;
+  }
+  if(!right.own){
+   note.textContent=`この端末の「表示列の編集」は「${right.level}」です。列を変えても保存されません（この画面のあいだだけ効きます）。`
+    +'変える必要があれば、アクセス権限マスタで「表示列の編集」を上げてもらってください。';
+  }else if(!can&&!mine){
    note.textContent='この端末では利用者IDが分からないため、自分だけの設定は持てません。';
   }else if(mine){
    note.textContent='この一覧の列は、あなたにだけこう見えています。他の人の見え方は変わりません。';
+  }else if(!right.common){
+   note.textContent='この一覧の列は、いま全員で同じものを使っています。この端末は「自分の分だけ」なので、'
+    +'変えると自分だけの設定に切り替えて保存します（他の人の見え方は変わりません）。';
   }else{
    note.textContent='この一覧の列は、いま全員で同じものを使っています。変えると全員に効きます。';
   }

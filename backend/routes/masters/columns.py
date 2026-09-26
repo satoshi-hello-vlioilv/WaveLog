@@ -23,6 +23,8 @@ from ...repositories.master_repo import (
  column_layout_owner,
  column_layout_scope_set,
  column_layout_personal_targets,
+ column_edit_check,
+ column_edit_for_target,
  ensure_column_preset_table,
  column_presets,
  save_column_preset,
@@ -37,6 +39,21 @@ from ...repositories.master_repo import (
  RULE_OPS,
  RULE_COLORS,
 )
+
+
+# ------------------------------------------------------------------------
+# 表示列の編集（§9.512）。**判定は`column_edit_check()`の1箇所**——ここは
+# 「この端末の段」と「保存先（''＝みんなと同じ）」を渡して、断るなら403を返すだけ。
+# 掛けるのは表示列そのもの（列レイアウト・作業スケジュールの列と内容）。
+# プリセット・表示ルール・絞り込みは名前を付けて残す別の物で、ここでは絞らない。
+# ------------------------------------------------------------------------
+def _column_edit_level():
+ from ...access_mode import current_permission_flags
+ return current_permission_flags().get('columnEdit','')
+
+def _column_edit_denied(owner,target=''):
+ ok,reason=column_edit_check(_column_edit_level(),owner,target)
+ return None if ok else (jsonify(error=reason,code='column-edit'),403)
 
 
 @bp.get('/api/schedule-column-master')
@@ -58,6 +75,9 @@ def schedule_column_master_save():
  columns=x.get('columns')
  if not equipment:return jsonify(error='設備名を指定してください。'),400
  if not isinstance(columns,list):return jsonify(error='列の指定が不正です。'),400
+ # 設備ごとの列はみんなで1つ（自分だけを持たない）＝みんなの分の保存（§9.512）
+ denied=_column_edit_denied('')
+ if denied:return denied
  path=DBS['MASTER']['path']
  with connect(path,False) as c:
   n=set_schedule_columns(c,equipment,columns,uid)
@@ -85,6 +105,8 @@ def schedule_content_master_save():
  items=x.get('items')
  if not equipment:return jsonify(error='設備名を指定してください。'),400
  if not isinstance(items,list):return jsonify(error='項目の指定が不正です。'),400
+ denied=_column_edit_denied('')
+ if denied:return denied
  path=DBS['MASTER']['path']
  with connect(path,False) as c:
   n=set_schedule_content_items(c,equipment,items,uid)
@@ -114,7 +136,8 @@ def column_layout_master_get():
  uid=str(request.args.get('user') or '').strip()
  path=DBS['MASTER']['path']
  if not path.exists():
-  return jsonify(ok=True,target=target,order=[],widths={},scope='common',canPersonalize=bool(uid))
+  return jsonify(ok=True,target=target,order=[],widths={},scope='common',canPersonalize=bool(uid),
+                 **column_edit_for_target(_column_edit_level(),target))
  with connect(path,True) as c:
   # **誰の行を読むかは column_layout_owner の1箇所が答える**(§9.259)。
   # 画面は今までどおり対象(target)だけを送り、所有者のことを知らない。
@@ -123,7 +146,10 @@ def column_layout_master_get():
  # **どちらを見ているかを必ず返す**(§3)。黙って個人の並びを出すと、
  # 「自分にだけ違って見える」理由が画面のどこにも無くなる。
  return jsonify(ok=True,target=target,scope=('personal' if owner else 'common'),
-                canPersonalize=bool(uid),**layout)
+                canPersonalize=bool(uid),
+                # この対象で何ができるか（§9.512）。**判定はサーバー**——画面は受け取って
+                # パネルの押せる/押せないと保存の行き先を決めるだけ。
+                **column_edit_for_target(_column_edit_level(),target),**layout)
 
 @bp.post('/api/column-layout-master')
 @api_guard('列レイアウト保存失敗')
@@ -164,6 +190,8 @@ def column_layout_master_save():
   # 読むときと**同じ1箇所**で所有者を決める(§9.259)。別々に決めると
   # 「画面には個人の並びが出ているのに保存は共通へ行く」が作れる。
   owner=column_layout_owner(c,target,uid)
+  denied=_column_edit_denied(owner,target)
+  if denied:return denied
   n=set_column_layout(c,target,order or [],widths or {},uid,owner=owner,hidden=hidden or [],
                       names=names if isinstance(names,dict) else {},
                       formats=formats if isinstance(formats,dict) else {},
@@ -201,6 +229,9 @@ def column_layout_master_scope():
  scope=x.text('scope').lower()
  if scope not in ('common','personal'):
   return jsonify(error="scopeは'common'か'personal'を指定してください。"),400
+ # 切り替えは「自分の分」の操作（みんなの分は書かない）。変更不可の端末だけ断る（§9.512）
+ denied=_column_edit_denied(uid,target)
+ if denied:return denied
  path=DBS['MASTER']['path']
  with connect(path,False) as c:
   personal=column_layout_scope_set(c,target,uid,scope=='personal',updated_by=uid)
@@ -208,6 +239,7 @@ def column_layout_master_scope():
   mine=column_layout_personal_targets(c,uid)
  return jsonify(ok=True,target=target,scope=('personal' if personal else 'common'),
                 personalTargets=mine,canPersonalize=True,
+                **column_edit_for_target(_column_edit_level(),target),
                 message=('この一覧の列は、これから自分だけの設定になります。'
                           '（いまの見え方を写してあるので、続きから直せます）'
                          if personal else
