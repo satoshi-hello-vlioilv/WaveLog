@@ -337,6 +337,22 @@ run('test_headbar: ヘッダーの作り（§9.48 寸法／§9.60 画面名／§
  rec('マスタ管理: 虫めがねが文字に重ならない',mm.textStart>mm.iconRight,
      `アイコン右端 ${mm.iconRight} < 文字開始 ${mm.textStart}`);
 
+ /* 相乗りは**入るときだけ**（§9.509）。窓を狭めたら2行目へ移り、戻したら1行目へ戻る——載せたまま
+    画面名を札の下へ潰さない（§9.508 のあと1366pxで「マス」しか見えなかった）。 */
+ const mmFit=()=>page.evaluate(()=>{
+  const vb=document.getElementById('headerViewBar'),ctx=document.querySelector('main>header>.hd-context');
+  return {w:innerWidth,inline:vb.classList.contains('is-inline'),ctxOver:ctx.scrollWidth>ctx.clientWidth+1};
+ });
+ const wide=await mmFit();
+ /* 900px＝どの状態でも1行目に入りきらない幅（この網の状態では1280pxでも入る——札2枚・使用設備「LS4」）。 */
+ await page.setViewportSize({width:900,height:1000});await paint();
+ const narrowMm=await mmFit();
+ await page.setViewportSize({width:wide.w,height:1000});await paint();
+ const wideAgain=await mmFit();
+ rec('マスタ管理: 広い窓では操作列が1行目へ相乗りする（§9.266）',wide.inline&&!wide.ctxOver,JSON.stringify(wide));
+ rec('マスタ管理: 入らない窓では2行目へ移り、画面名を潰さない（§9.509）',!narrowMm.inline&&!narrowMm.ctxOver,JSON.stringify(narrowMm));
+ rec('マスタ管理: 窓を戻すと1行目へ戻る（§9.509）',wideAgain.inline&&!wideAgain.ctxOver,JSON.stringify(wideAgain));
+
  // 画面を出たら元の場所へ戻る(次の画面のものと混ざらない)
  await page.click('#openSchedule');
  await W.until(page,id=>{const el=document.getElementById(id);return !!el&&el.parentElement===document.getElementById('headerViewBar')},'scHead',{ms:10000,what:'作業スケジュールの操作列がヘッダーへ載る'});

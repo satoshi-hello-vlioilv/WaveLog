@@ -1,4 +1,4 @@
-# 画面の土台（38件）
+# 画面の土台（39件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 操作列の相乗り（`compactToolbar`）は**入るときだけ**。載せるかは`fitViewToolbar()`が測って決め、見張りは`ResizeObserver`の1つ | `test_headbar.js` | [§9.509](../../docs/decisions/9.509.md) |
 | 「この端末の見え方」の3つは同じ形で読める（`WL.uiSize`／`WL.duration`／`WL.loader`） | `test_uisize.js` | [§9.433](../../docs/decisions/9.433.md) |
 | **「表示」という名のボタンは1つだけ**（ヘッダー）。画面は`WL.lookSettings.register()`で節を名乗る | `test_uisize.js`・`test_scbar.js` | [§9.444](../../docs/decisions/9.444.md) |
 | デスクトップの起動アイコンの盤は「表示」の節（`when`を持たない＝どのモードでも）。共通設定に残すのは状態と行き先だけ | `test_uisize.js`・`test_setpage.js` | [§9.445](../../docs/decisions/9.445.md) |
