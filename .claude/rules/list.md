@@ -1,4 +1,4 @@
-# 一覧と列（144件）
+# 一覧と列（152件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -15,7 +15,15 @@
 | 行のその列の値は`WL.cellFormat.rawOf()`の1本（式があれば式の結果）。専用の描き方の列も式を通す | `test_colsrcfx.js` | [§9.489](../../docs/decisions/9.489.md) |
 | 並べ替えを持たない表（`sort:false`）でも④の段は出し、**理由を1文**書く（口の`sortOff`）。黙って消さない | `test_sctimecols.js` | [§9.484](../../docs/decisions/9.484.md) |
 | 列の設定パネルで列の生の値に答えるのは`rawOfDraft()`の1箇所（式の列は下書きの式）。口の`valueOf`は式を知らない | `test_colpreset.js` | [§9.483](../../docs/decisions/9.483.md) |
-| 「☰ 表示」は**表示列の編集がいちばん上・主ボタン**（アイコン）。下の行は字も欄も1つの大きさ | `test_listbar.js` | [§9.476](../../docs/decisions/9.476.md) |
+| 帯は**1面1サイズ**——字・押す物の高さ・角丸は置き場（`--lt-h`／`--lt-fs`）の1つ。差は太さと濃さ。狭い器は置き場の値だけ宣言し直す | `test_listbar.js` | [§9.505](../../docs/decisions/9.505.md) |
+| 帯の並びは左に**絞り込む**（一覧を検索→プリセット→条件→列で絞り込む）、右端に**見せ方**（表示列→表の見せ方）。群は近さで分ける | `test_listbar.js` | [§9.505](../../docs/decisions/9.505.md) |
+| 条件の数は「条件 N」（「件」は行の数にだけ使う）。条件の操作（足す・作る・開く・全部外す）は「条件」の面の1つ（⋯は持たない） | `test_filtergroup.js`・`test_filter.js` | [§9.505](../../docs/decisions/9.505.md) |
+| 一覧から開く面は**字1種**（見出し800／項目700／説明400で薄く）。余白は動かさない（高さは中身なり・§9.449）。字は器でなく中身へ当てる | `test_listbar.js`・`test_popmenu.js` | [§9.505](../../docs/decisions/9.505.md) |
+| 「一覧を検索」は帯の先頭（ヘッダーに置かない——一覧の無い画面に出て、打っても何も起きなかった） | `test_filter.js` | [§9.505](../../docs/decisions/9.505.md) |
+| 一覧の検索欄は**4つとも`.lt-search`の1つ**（仕掛・品質・データ一覧・測定実績）。欄の中の ✕ で消す（「検索解除」のボタンを並べない） | `test_reccols.js`・`test_actuals.js`・`test_listbar.js` | [§9.507](../../docs/decisions/9.507.md) |
+| 件数は「全 N件」、絞ったら「n件 / 全 N件」（データ一覧は`recordCountText()`の1箇所）。「件」は行の数だけ | `test_reccols.js` | [§9.507](../../docs/decisions/9.507.md) |
+| 1つだけ選ぶ切り替え（段・24／48時間・期間の札・ダッシュボード）は**帯の切り替えの部品**の1つ（85-headerbar.css）。寸法を役割の表と2箇所で持たない | `test_csslint.py`・`test_scale.js` | [§9.507](../../docs/decisions/9.507.md) |
+| 【§9.505で改めた】表示列は**帯に直に**（`#listColumnBtn`・印つき）。パネルの名前は「表の見せ方」で、行は字も欄も1つの大きさ | `test_listbar.js` | [§9.476](../../docs/decisions/9.476.md) |
 | 表示列の入口はどの画面でも`fa-table-columns`の印。パネルの規則は`.lt-view-panel`で名乗る | `test_listbar.js` | [§9.476](../../docs/decisions/9.476.md) |
 | 表示ルールの左辺が式なら`formula`（式が真なら）。比べ方と右辺は出さない | `test_colrule.js`・`test_displayrule.py` | [§9.474](../../docs/decisions/9.474.md) |
 | 条件が見る列の値は**ルールごと**（元のデータ／表示の値）。答えは`WL.cellFormat.ruleRow()`の1箇所 | `test_colrule.js` | [§9.474](../../docs/decisions/9.474.md) |

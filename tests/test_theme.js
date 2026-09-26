@@ -301,15 +301,18 @@ run('test_theme: 色と文字サイズはトークンから',async({page,rec,W,i
     // 本文側に画面名と同じ文字を持つ見出しが残っていないか
     const dupes=[...document.querySelectorAll('main .sc-title,main #recordTitle,#schedulePanel h2,#dashboardPanel h2,#masterMaintPanel .mm-head-title')]
       .map(e=>e.textContent.trim()).filter(t=>t&&title.includes(t));
-    const g=document.querySelector('.global-actions');
     // 画面ごとの操作列に並ぶコントロールの寸法。‹ ›のようなアイコンのみの
     // ボタンは「文字」ではなく記号なので、文字サイズの揃いからは外す。
     const vis=e=>e.offsetParent!==null;
-    const ctls=[...document.querySelectorAll('#headerViewBar button,#headerViewBar select,#headerViewBar input')].filter(vis);
+    /* 検索欄（`.lt-search`・§9.505／§9.507）の中の入力は枠なしで、高さは器（label）が持つ——器を数える。 */
+    const ctls=[...document.querySelectorAll('#headerViewBar button,#headerViewBar select,#headerViewBar input:not(.lt-search>input),#headerViewBar .lt-search')].filter(vis);
     out[name]={title,mounted:bar?bar.children.length:-1,dupes,
       /* §9.286 ④: 再読込は一覧ツールバーの鮮度チップへ移した（読む場所と
-         打つ手を同じ場所に置く）。ヘッダーに残るのは検索欄だけ。 */
-      listActions:g?[...g.querySelectorAll('.hd-search,.hd-field')].filter(vis).length:-1,
+         打つ手を同じ場所に置く）。§9.505: 検索欄も一覧の帯の先頭へ移した——ヘッダーに居ると
+         一覧の無い画面（実績など）にも出て、打っても何も起きなかった。 */
+      /* 作業スケジュールの仕掛一覧（分割・ポップアップ）には帯ごと運ばれて出る——それは一覧の中なので数えない。 */
+      listActions:[...document.querySelectorAll('#search')].filter(e=>vis(e)&&!e.closest('.sc-split-wrap,.sc-float-body')).length,
+      inHeader:[...document.querySelectorAll('header #search')].length,
       sizeBtn:!!document.getElementById('uiSizeBadge')?.offsetParent,
       ctlH:[...new Set(ctls.map(e=>Math.round(e.getBoundingClientRect().height)))].sort((a,b)=>a-b),
       ctlFs:[...new Set(ctls.filter(e=>!e.classList.contains('rp-btn-icon'))
@@ -333,10 +336,10 @@ run('test_theme: 色と文字サイズはトークンから',async({page,rec,W,i
   rec('一覧画面へ戻ると操作列は元へ戻る(持ち越さない)',views.list.mounted===0,JSON.stringify(views.list));
   rec('データ一覧の見出しは絞り込みの状態を表す',
    /データ一覧/.test(views.records.title),views.records.title);
-  rec('一覧専用の操作は一覧画面でだけ出す',
+  rec('一覧専用の操作（一覧を検索）は一覧画面でだけ出す・ヘッダーには置かない',
    ['schedule','dashboard','calendar','master','records'].every(k=>views[k].listActions===0)
-   &&views.list.listActions>0,
-   JSON.stringify(Object.fromEntries(Object.entries(views).map(([k,v])=>[k,v.listActions]))));
+   &&views.list.listActions>0&&Object.values(views).every(v=>v.inHeader===0),
+   JSON.stringify(Object.fromEntries(Object.entries(views).map(([k,v])=>[k,[v.listActions,v.inHeader]]))));
   rec('表示サイズの切替はどの画面でも出す(全体に効く操作のため)',
    Object.values(views).every(v=>v.sizeBtn),
    JSON.stringify(Object.fromEntries(Object.entries(views).map(([k,v])=>[k,v.sizeBtn]))));

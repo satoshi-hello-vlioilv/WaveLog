@@ -157,7 +157,7 @@ run('test_filtergroup: プリセット（登録した条件の組み合わせ）
     quickToggle:!!document.querySelector('#filterQuickToggle'),
     tags:document.querySelectorAll('.filter-tag').length,
     rows:[...bar.children].filter(x=>!x.hidden&&x.offsetHeight>0).length,
-    more:!!document.querySelector('#filterMoreBtn'),
+    more:!!document.querySelector('#filterCondMenu #filterToggle'),
     adhoc:!!document.querySelector('#filterAdhocToggle'),
    };
   });
@@ -166,7 +166,7 @@ run('test_filtergroup: プリセット（登録した条件の組み合わせ）
   rec('旧「よく使う条件」の行と入口は無い',!shape.quick&&!shape.quickToggle,JSON.stringify(shape));
   rec('条件ごとのトークンは出さない（バッジ1つに畳んだ）',shape.tags===0,`tags=${shape.tags}`);
   rec('バーは1行（その場フィルタは畳んだまま）',shape.rows===1,`rows=${shape.rows}`);
-  rec('たまにしか使わない入口は消していない（⋯／その場フィルタ）',
+  rec('たまにしか使わない入口は消していない（「条件」の面／列で絞り込む）',
       shape.more&&shape.adhoc,JSON.stringify(shape));
 
   /* ==========================================================
@@ -216,7 +216,7 @@ run('test_filtergroup: プリセット（登録した条件の組み合わせ）
       `${before.preset} → ${onCombo.preset}`);
   rec('選んだ組み合わせの条件が2件とも入る',onCombo.conds.length===2,
       JSON.stringify(onCombo.conds));
-  rec('件数のバッジが動く',onCombo.count==='2件',`${before.count} → ${onCombo.count}`);
+  rec('件数のバッジが動く',onCombo.count==='2',`${before.count} → ${onCombo.count}`);
   rec('一覧が実際に絞られる',onCombo.rows!==before.rows,
       `${before.rows}件 → ${onCombo.rows}件`);
 
@@ -259,20 +259,21 @@ run('test_filtergroup: プリセット（登録した条件の組み合わせ）
    return {text:(b.textContent||'').trim(),icon:!!b.querySelector('svg'),
            title:b.title||'',disabled:b.disabled};
   });
-  rec('バッジはアイコンと件数だけ（条件式を書かない）',
-      badge.icon&&/^\s*\d+件\s*▾?\s*$/.test(badge.text.replace(/\s+/g,'')),
+  /* §9.505: 「N件」は行の数と同じ単位に読めるので「条件 N」（数は札）にした。 */
+  rec('バッジはアイコンと「条件」と数だけ（条件式を書かない）',
+      badge.icon&&/^条件\d+▾?$/.test(badge.text.replace(/\s+/g,'')),
       JSON.stringify(badge.text));
   rec('中身はtitleからも読める（見えない場所に隠さない）',
       badge.title.includes(col),badge.title.slice(0,80));
   await page.click('#filterCondBtn');
-  await page.waitForSelector('#filterCondMenu',{timeout:5000});
+  await page.waitForSelector('#filterCondMenu:not([hidden])',{timeout:5000});
   const pop=await page.evaluate(()=>{
    const m=document.querySelector('#filterCondMenu');
    const rows=[...m.querySelectorAll('.fb-cond-row')];
    return {n:rows.length,
      texts:rows.map(x=>(x.querySelector('.fb-cond-text')?.textContent||'').trim()),
      x:rows.every(x=>!!x.querySelector('.fb-cond-x')),
-     clear:!!m.querySelector('#fbCondClear'),
+     clear:!!m.querySelector('#clearGenericFilters'),
      /* **切らずに全部読めること**（器からはみ出していない）。 */
      cut:rows.map(x=>{const t=x.querySelector('.fb-cond-text');
        return t?Math.round(t.scrollWidth-t.clientWidth):0}),
@@ -289,12 +290,12 @@ run('test_filtergroup: プリセット（登録した条件の組み合わせ）
      要素を呼び出してTypeError**になっていた（この網を書いて初めて出た）。 */
   await pickPreset(GA);
   await page.click('#filterCondBtn');
-  await page.waitForSelector('#filterCondMenu',{timeout:5000});
-  await page.click('#fbCondClear');
+  await page.waitForSelector('#filterCondMenu:not([hidden])',{timeout:5000});
+  await page.click('#clearGenericFilters');
   await idle();
   const allOff=await state();
-  rec('「全部外す」で条件が全部外れる',allOff.conds.length===0,JSON.stringify(allOff));
-  rec('「全部外す」で画面のエラーが出ない',errs.length===0,errs.slice(0,2).join(' / '));
+  rec('「条件を全部外す」で条件が全部外れる',allOff.conds.length===0,JSON.stringify(allOff));
+  rec('「条件を全部外す」で画面のエラーが出ない',errs.length===0,errs.slice(0,2).join(' / '));
 
   /* 1件ずつ外す道も見る。 */
   await page.evaluate(a=>{
@@ -303,7 +304,7 @@ run('test_filtergroup: プリセット（登録した条件の組み合わせ）
   await page.evaluate(()=>WL.list.load());
   await idle();
   await page.click('#filterCondBtn');
-  await page.waitForSelector('#filterCondMenu',{timeout:5000});
+  await page.waitForSelector('#filterCondMenu:not([hidden])',{timeout:5000});
   await page.evaluate(()=>document.querySelector('#filterCondMenu [data-cond-x]').click());
   await idle();
   const cleared=await state();
@@ -313,13 +314,14 @@ run('test_filtergroup: プリセット（登録した条件の組み合わせ）
    const b=document.querySelector('#filterCondBtn');
    return {text:(b.textContent||'').trim(),disabled:b.disabled,title:b.title};
   });
-  rec('0件でもバッジは消えない（幅が動かない）／押せない理由を書く',
-      /0件/.test(empty.text)&&empty.disabled&&empty.title.length>4,JSON.stringify(empty));
+  /* §9.505: 0でも**押せる**——条件を足す・作る入口もこの面にある（旧⋯）。 */
+  rec('0でもバッジは消えない（幅が動かない）／押せて、何が開くかを書く',
+      /条件\s*0/.test(empty.text)&&!empty.disabled&&empty.title.length>4,JSON.stringify(empty));
 
   /* ==========================================================
      6) 登録一覧で「組み合わせ」を作る／名前を変える／解く
      ========================================================== */
-  await page.evaluate(()=>{document.querySelector('#filterMoreBtn').click()});
+  await page.evaluate(()=>{document.querySelector('#filterCondBtn').click()});
   await paint();
   await page.evaluate(()=>document.querySelector('#openFilterPresets').click());
   await page.waitForSelector('#filterPresetModal:not([hidden])',{timeout:8000});

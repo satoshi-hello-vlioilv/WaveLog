@@ -53,7 +53,7 @@ run('test_scwatchui: 共有の見張りの見え方（§9.188）', async ({page,
      共有の取り込み・書込役・改訂番号は**押すと開くメニュー**が持つ。
      `title`には今までどおり間隔と最後の取込を書く（§9.200。約束が変わったら
      網は消さずに書き直す）。 */
-  rec('いつのデータかを文字で出す',/時点/.test(chip.text),chip.text);
+  rec('いつのデータかを文字で出す',/読込\s*\d{1,2}:\d{2}/.test(chip.text),chip.text);  // §9.506: 「読込 16:19」
   rec('共有の取り込みの間隔と最後の取込を説明に書く',
       /確かめ/.test(chip.title)&&/最後の取込/.test(chip.title),
       chip.title.replace(/\n/g,' | ').slice(0,140));

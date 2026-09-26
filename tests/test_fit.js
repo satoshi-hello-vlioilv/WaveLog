@@ -128,7 +128,7 @@ run('test_fit: 中身が器から溢れていないかを、表示サイズ3段�
      溢れを見張る値打ちがある。 */
   await visit('効いている条件のポップオーバー',async()=>{
    await page.evaluate(()=>{const b=document.querySelector('#filterCondBtn');if(b&&!b.disabled)b.click()});
-   await page.waitForSelector('#filterCondMenu',{timeout:3000}).catch(()=>{});
+   await page.waitForSelector('#filterCondMenu:not([hidden])',{timeout:3000}).catch(()=>{});
   });
   await visit('プリセットのポップオーバー',async()=>{
    await page.evaluate(()=>document.querySelector('#filterPresetBtn')?.click());

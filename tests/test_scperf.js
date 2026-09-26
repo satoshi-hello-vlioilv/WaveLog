@@ -48,7 +48,7 @@ run('test_scperf: 見え方の設定（まとめ・さかのぼり・表示列�
  /* 読込時点は`#scSyncChip`が言う（§9.300 ①。§9.42の`#scFreshness`と
     §9.188の同期チップは同じ問いの2つの答えだったので1つに畳んだ）。 */
  rec('読込時点がヘッダーに出る',
-  await page.evaluate(()=>{const e=document.querySelector('#scSyncChip');return !!e&&!e.hidden&&/時点/.test(e.textContent)}),
+  await page.evaluate(()=>{const e=document.querySelector('#scSyncChip');return !!e&&!e.hidden&&/読込\s*\d{1,2}:\d{2}/.test(e.textContent)}),  // §9.506: 「読込 16:14」
   await page.evaluate(()=>document.querySelector('#scSyncChip')?.textContent));
 
  // --- 画面を離れて戻る(ここが遅かった) ---

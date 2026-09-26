@@ -955,7 +955,7 @@ async function openRecords(status){
  // 未同期件数の表示にも今読んだ配列を渡す(渡さないと全件読みがもう1回走る)
  updateRecordListTitle();syncStatusFilterButtons();$('#recordModal').hidden=false;refreshSyncStatusUI(allRecords);
  WL.base.setHeaderContext('測定データ一覧','この端末と共有DBの測定データ');
- const search=$('#recordSearch'),sort=$('#recordSort'),clear=$('#clearRecordSearch');if(search){search.value='';search.oninput=()=>{recordListState.query=search.value;renderRecordListRows()}}if(sort){sort.value='updated-desc';sort.onchange=()=>{recordListState.sort=sort.value;renderRecordListRows()}}if(clear)clear.onclick=()=>{recordListState.query='';if(search)search.value='';renderRecordListRows()};
+ const search=$('#recordSearch'),sort=$('#recordSort');if(search){search.value='';search.oninput=()=>{recordListState.query=search.value;renderRecordListRows()}}if(sort){sort.value='updated-desc';sort.onchange=()=>{recordListState.sort=sort.value;renderRecordListRows()}}
  bindRecordColumnsBtn();
  renderRecordListRows();requestAnimationFrame(()=>search?.focus())
 }
@@ -1387,11 +1387,11 @@ function renderRecordListRows(){
   /* 0件の理由は「絞り込みに当たらない」「そもそも読めていない」で別物
      （§9.107）。開いた側が渡した文言をそのまま出す。 */
   list.insertAdjacentHTML('beforeend',q
-   ?`<div class="record-empty"><b>「${esc(q)}」に一致するデータはありません。</b><button id="recordEmptyClearSearch" type="button">検索条件を解除</button></div>`
+   ?`<div class="record-empty"><b>「${esc(q)}」に一致するデータはありません。</b><button id="recordEmptyClearSearch" type="button">絞り込みを外す</button></div>`
    :(recordListState.emptyHtml||'<div class="record-empty">表示できるデータがありません。</div>'));
   const clearBtn=$('#recordEmptyClearSearch');
   if(clearBtn)clearBtn.onclick=()=>{recordListState.query='';const search=$('#recordSearch');if(search)search.value='';renderRecordListRows()};
-  const empty=$('#recordSearchResult');if(empty)empty.textContent=`0 / ${recordListState.items.length}件を表示`;
+  const empty=$('#recordSearchResult');if(empty)empty.textContent=recordCountText(0,recordListState.items.length);
   return;
  }
  /* 計算式で作った列（§9.111 ⑦）。**式が通ったものだけ**当てる。 */
@@ -1462,9 +1462,12 @@ function renderRecordListRows(){
   list.append(row);
  });
  const result=$('#recordSearchResult');
- if(result)result.textContent=`${items.length} / ${recordListState.items.length}件を表示`;
+ if(result)result.textContent=recordCountText(items.length,recordListState.items.length);
  renderRecordScopeBtn();
 }
+/* 件数の書き方は仕掛一覧と同じ（§9.507）——絞っていなければ「全 N件」、絞っていれば「n件 / 全 N件」。
+   「0 / 0件を表示」は分数の読み方を強いていた。 */
+function recordCountText(shown,total){return shown===total?`全 ${total.toLocaleString()}件`:`${shown.toLocaleString()}件 / 全 ${total.toLocaleString()}件`}
 /* 設備の絞り込みの入口（§9.248 ⑥）。**入口は1つ**——ツールバーの中に置き、
    いま何で絞っているか・隠している件数を**ボタン自身が名乗る**（§3・§9.199
    「畳んだ先の設定はボタンに書く」）。黙って絞ると「データが消えた」と読まれる。 */
@@ -1474,7 +1477,8 @@ function renderRecordScopeBtn(){
  if(!btn){
   btn=document.createElement('button');
   btn.type='button';btn.id='recordScopeBtn';btn.className='record-scope-btn';
-  const anchor=$('#recordColumnsBtn');
+  /* 置き場は**絞り込むの群の中**（検索欄の後・件数の前・§9.507）——設備で絞るのも絞り込みの1つ。 */
+  const anchor=$('#recordSearchResult');
   if(anchor)bar.insertBefore(btn,anchor);else bar.appendChild(btn);
   btn.onclick=()=>{setRecordScope(recordScope()==='all'?'mine':'all');renderRecordListRows()};
  }

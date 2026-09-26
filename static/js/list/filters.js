@@ -472,7 +472,7 @@
     const ok=await confirmModal(toShared
       ?{eyebrow:'SHARE FILTER',title:`「${preset.name}」をみんなで使えるようにします`,
         confirmLabel:'みんなで使う',
-        bodyHtml:`<p class="confirm-modal-message">この登録フィルタが<b>ほかの人の登録フィルタ一覧にも出る</b>ようになります。</p>
+        bodyHtml:`<p class="confirm-modal-message">この登録フィルタが<b>ほかの人の「登録した条件とプリセット」にも出る</b>ようになります。</p>
          <ul class="confirm-modal-points">
           <li>条件そのものが共有されます。「デフォルト」「鍵」の印は<b>人ごと</b>なので、ほかの人へは付きません。</li>
           <li>みんなのものになったフィルタは、<b>ほかの人も消せます</b>。</li>
@@ -971,7 +971,7 @@
        「なし▾」が何の札か読めない（§9.468）。 */
     btn.classList.toggle('is-none',!st.total);
     btn.title=st.empty
-      ? 'プリセット（登録した条件の組み合わせ）はまだありません。\n条件を登録して、登録一覧で組み合わせに名前を付けると、ここで切り替えられます。'
+      ? 'プリセット（登録した条件の組み合わせ）はまだありません。\n条件を登録して、「登録した条件とプリセット」で組み合わせに名前を付けると、ここで切り替えられます。'
       : st.total
         ? `プリセット「${st.name}」（条件${st.total}件${st.off?`／うち${st.off}件は外しています`:''}）\n押すと別のプリセットへ切り替えます。`
         : 'プリセットを当てていません。押すと切り替えられます。';
@@ -1027,7 +1027,7 @@
       body+='<p class="fb-preset-empty">登録した条件がまだありません。'
         +'条件を作って「登録」すると、ここに並びます。</p>';
     body+='<div class="fb-preset-foot">'
-      +'<button type="button" id="fbPresetManage">登録一覧で組み合わせを作る／直す</button>'
+      +'<button type="button" id="fbPresetManage">登録した条件とプリセットを開く</button>'
       +'<small>「いつも適用（固定）」の条件は、切り替えても入ったままです。</small></div>';
     menu.innerHTML=body;
     document.body.append(menu);
@@ -1052,43 +1052,6 @@
       hint:'同じ名前を付けた条件がひとまとまりのプリセットになり、'
         +'絞り込みバーの「プリセット」から切り替えられます。'});
   }
-  /* たまにしか使わない入口（条件を作る・登録一覧・よく使う条件・全解除）は
-     `⋯`の中へ畳む。**要素はDOMに置いたまま**にして`hidden`だけを入切する
-     ——浮きメニューを開くたびに作り直すと、`ensureGenericFilterBar()`で
-     1度だけ張った配線が効かなくなる（§9.222 ①と同じ理由）。 */
-  function closeMoreMenu(){
-    const m=$('#filterMoreMenu');if(!m)return;
-    m.hidden=true;
-    $('#filterMoreBtn')?.setAttribute('aria-expanded','false');
-    document.removeEventListener('click',onMoreOutside,true);
-    document.removeEventListener('keydown',onMoreEsc,true);
-  }
-  function onMoreOutside(e){
-    const m=$('#filterMoreMenu');
-    if(m&&!m.hidden&&!m.contains(e.target)&&!e.target.closest('#filterMoreBtn'))closeMoreMenu();
-  }
-  function onMoreEsc(e){if(WL.modal.escCloses(e))closeMoreMenu()}
-  function toggleMoreMenu(){
-    const m=$('#filterMoreMenu');if(!m)return;
-    if(!m.hidden){closeMoreMenu();return}
-    m.hidden=false;
-    /* 座標はボタンから入れる（§9.201。器`.generic-filter-bar`は角丸のため
-       `overflow:hidden`を持つので、`absolute`だと**メニューが丸ごと切り
-       落とされる**——実機のキャプチャで判明。押した印は付くのに何も出ない）。
-       **開いてから測る**——`hidden`のあいだは幅が0で、右端にそろえられない。 */
-    const btn=$('#filterMoreBtn');
-    if(btn){
-      const r=btn.getBoundingClientRect();
-      m.style.top=`${Math.round(r.bottom+4)}px`;
-      m.style.left=`${Math.round(Math.max(8,Math.min(r.right-m.offsetWidth,innerWidth-m.offsetWidth-8)))}px`;
-    }
-    $('#filterMoreBtn')?.setAttribute('aria-expanded','true');
-    requestAnimationFrame(()=>{
-      document.addEventListener('click',onMoreOutside,true);
-      document.addEventListener('keydown',onMoreEsc,true);
-    });
-  }
-
   /* ---- 汎用フィルタ バー本体 ---- */
   function ensureGenericFilterBar(){
     let bar=$('#genericFilterBar');if(bar)return bar;
@@ -1103,9 +1066,10 @@
 
        **主動線は「群を選ぶ → 札を押す」の2手**（§CLAUDE 画面基準 1・2）。
        以前は入口が5つ横に並び、開くと4段（実測208px）になっていた。
-       たまにしか使わないもの（条件を作る・登録一覧・よく使う条件・全解除）は
-       ⋯の浮きメニューへ畳む——**消さずに畳む**（§9.234 ①）。
-       左から「どの群か → その群の札 → その場 → いま効いている条件」で、
+       たまにしか使わないもの（条件を足す・作る・登録した条件とプリセット・全部外す）は
+       「条件」の面へ畳む——**消さずに畳む**（§9.234 ①）。§9.286〜§9.468 の「⋯」は
+       §9.505 で「条件」の面へまとめた（⋯は中身を言わない）。
+       左から「文字で探す → 組み合わせ → 条件 → 1列だけ」で、
        読む順と決める順を合わせる（§CLAUDE 画面基準 14）。
 
        **このコメントをテンプレートリテラルの中へ入れないこと**（§9.211 ③）
@@ -1113,37 +1077,54 @@
        画面が組み上がらない。 */
     bar.innerHTML=`
       <div class="filter-search-row">
+        <!-- ---------- 並びは「絞り込む（広い→狭い）」→ 右端に「見せ方」（§9.505、利用者の指示） ----------
+             「一覧類の上部メニューの文字がサイズ感がバラバラ…探させない考えさせない先を読むUIUX」。
+             文字で探す（行の全文）→ 組み合わせ → 条件 → 1列だけその場で、の順。
+             **一覧を検索はヘッダーから移した**——絞り込みの仲間なのに帯から離れていたうえ、
+             一覧の無い画面（実績など）にも出て、打っても何も起きなかった（§CLAUDE 画面基準 4）。
+             帯と一緒に分割表示・ポップアップへ運ばれるので、作業スケジュールの仕掛一覧でも探せる。 -->
+        <label class="lt-search" title="この一覧の行を、どの列の字でも探します（打つとすぐ絞り込みます）">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input id="search" type="search" autocomplete="off" placeholder="一覧を検索" aria-label="一覧を検索">
+        </label>
         <button id="filterPresetBtn" class="fb-preset-btn" type="button"
                 aria-haspopup="true" aria-expanded="false">
-          <span class="fb-preset-key">プリセット</span><b id="filterPresetName">なし</b><em id="filterPresetNote" hidden></em><i aria-hidden="true">▾</i>
+          <span class="fb-preset-key">プリセット</span><b id="filterPresetName">なし</b><em id="filterPresetNote" hidden></em><i class="hd-caret" aria-hidden="true">▾</i>
         </button>
-        <button id="filterCondBtn" class="fb-cond-btn" type="button" aria-haspopup="true" aria-expanded="false">
+        <!-- **数えているのは条件の数**（§9.505）——「0件」だと2段目の「全 2,003件」（行の数）と
+             同じ単位に読める。名前「条件」＋数の札にした。0でも押せる（足す・作るの入口もこの面）。 -->
+        <button id="filterCondBtn" class="fb-cond-btn" type="button" aria-haspopup="true" aria-expanded="false"
+                aria-controls="filterCondMenu">
           <svg class="fb-cond-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M1.6 2.6h12.8L9.4 8.2v4.3l-2.8 1.6V8.2z"/></svg>
-          <b id="filterCount">0件</b><i aria-hidden="true">▾</i>
+          <span class="fb-cond-key">条件</span><b id="filterCount" class="fb-cond-n">0</b><i class="hd-caret" aria-hidden="true">▾</i>
         </button>
+        <!-- 名前は**することを動詞で**言う（§9.505。旧「その場フィルタ」は中身を言わない）。 -->
+        <button id="filterAdhocToggle" class="filter-adhoc-toggle" type="button" aria-expanded="false" aria-controls="filterAdhocRow">列で絞り込む</button>
         <div class="filter-token-input" id="filterTokenInput" hidden>
-          <input class="filter-token-search" id="filterTokenSearch" autocomplete="off" placeholder="列名・値で検索">
+          <span class="filter-token-key" aria-hidden="true">＋条件</span>
+          <input class="filter-token-search" id="filterTokenSearch" autocomplete="off" placeholder="列名・値を打つと候補が出ます" aria-label="条件を検索して足す">
         </div>
         <div class="filter-suggest" id="filterSuggest" hidden></div>
         <span class="filter-inline-loading" id="filterInlineLoading" hidden>${WL.loader.html(13)}<span id="filterInlineLoadingText">読込中</span></span>
         <div class="filter-search-row-actions">
-          <button id="filterAdhocToggle" class="filter-adhoc-toggle" type="button" aria-expanded="false" aria-controls="filterAdhocRow">その場フィルタ</button>
-          <!-- 「☰ 表示」の席（§9.468）。ボタンは一覧の帯（list-view.js）が作ってここへ移す。 -->
+          <!-- 「表示列」「表の見せ方」の席（§9.468・§9.505）。ボタンは一覧の帯（list-view.js）が作ってここへ移す。 -->
           <span class="fb-slot" id="filterBarSlot"></span>
-          <button id="filterMoreBtn" class="fb-more-btn" type="button" aria-haspopup="true" aria-expanded="false"
-                  aria-controls="filterMoreMenu" title="条件を追加・条件を作る・登録一覧・全解除">⋯</button>
         </div>
-        <!-- 畳んだ先（§9.199「畳んだ先の設定はボタンに書く」）。**要素はここに
-             置いたまま**にして、開閉は hidden の入切だけにする——浮きメニューを
-             開くたびに作り直すと、ここで1度だけ張った配線が効かなくなる。 -->
-        <div class="fb-more-menu" id="filterMoreMenu" hidden role="menu" aria-label="フィルタの設定">
-          <!-- 「＋ 条件を追加」は**ここへ畳んだ**（§9.468）。運用の主動線はプリセットの切り替えと
-               その場フィルタ（§9.286 ①）で、条件を1つずつ足すのはたまにだから。 -->
-          <button id="filterAddCond" type="button" role="menuitem"
-                  aria-expanded="false" aria-controls="filterTokenInput">条件を追加<small>列名・値で検索して、この一覧へ条件を足します</small></button>
-          <button id="filterToggle" type="button" role="menuitem">条件を作る<small>列・比較・値を選んで、今の一覧へ足す／登録する</small></button>
-          <button id="openFilterPresets" type="button" role="menuitem">登録一覧<small>条件の追加・削除と、組み合わせ（プリセット）作り</small></button>
-          <button id="clearGenericFilters" type="button" role="menuitem">全解除<small>いま効いている条件を全部外します</small></button>
+        <!-- ---------- 「条件」の面＝効いている条件（状態）＋足す・作る・外す（操作）（§9.505） ----------
+             以前は状態をこの面、操作を「⋯」の面に分けていた。「⋯」は中身を言わず、しかも中身の4つは
+             **全部が条件の操作**で、「全解除」（⋯）と「全部外す」（この面）が**同じ働きに2つの名前**
+             だった。1つの面にまとめ、名前も1つにした。
+             **要素はここに置いたまま**にして、開閉は hidden の入切だけ——開くたびに作り直すと、
+             ここで1度だけ張った配線（足す・作る・開く・外す）が効かなくなる（§9.222 ①）。 -->
+        <div class="wl-menu access-mode-menu fb-cond-menu" id="filterCondMenu" hidden role="menu" aria-label="条件">
+          <div class="fb-cond-list" id="filterCondList"></div>
+          <div class="fb-cond-acts" role="group" aria-label="条件の操作">
+            <button id="filterAddCond" type="button" role="menuitem"
+                    aria-expanded="false" aria-controls="filterTokenInput">条件を検索して足す<small>列名・値を打つと候補が出ます</small></button>
+            <button id="filterToggle" type="button" role="menuitem"><span class="fb-act-name">条件を作る・登録する</span><small>列・比べ方・値を選んで、いまだけ当てるか登録します</small></button>
+            <button id="openFilterPresets" type="button" role="menuitem">登録した条件とプリセット<small>条件の追加・削除と、組み合わせ（プリセット）作り</small></button>
+            <button id="clearGenericFilters" class="fb-cond-clear" type="button" role="menuitem">条件を全部外す<small>「固定」の条件は外れません（「登録した条件とプリセット」で外せます）</small></button>
+          </div>
         </div>
       </div>
       <!-- その場フィルタ(§9.238 ⑤、利用者の指示)。**登録しない絞り込み**。
@@ -1163,7 +1144,7 @@
            状態(#filterAdhocState)だけは行の中へ移して**必ず文字で出す**
            (§3)——効いているかどうかは色ではなく言葉で分かる必要がある。 -->
       <div class="filter-adhoc-row" id="filterAdhocRow" hidden
-           title="登録はしません。打っているあいだだけ効き、一覧を切り替えると入力は消えます（カラムと条件は覚えています）。">
+           title="登録はしません。打っているあいだだけ効き、一覧を切り替えると入力は消えます（列と比べ方は覚えています）。">
         <select id="filterAdhocColumn" class="filter-adhoc-col"
                 title="この一覧の列から選びます。選んだ列は次に開いたときも覚えています"></select>
         <select id="filterAdhocOp" class="filter-adhoc-op" title="選んだ列をどう比べるか"></select>
@@ -1184,9 +1165,9 @@
           <button id="filterBodyClose" class="fb-close" type="button" aria-label="条件を作るを閉じる"
                   title="閉じます（Esc）">✕ 閉じる</button></div>
         <div class="filter-builder">
-          <label>カラム<select id="filterColumn"></select></label>
-          <label>比較<select id="filterOp"></select></label>
-          <label>検査値<input id="filterValue" list="filterSuggestList" placeholder="値を入力/候補から選択"><datalist id="filterSuggestList"></datalist></label>
+          <label>列<select id="filterColumn"></select></label>
+          <label>比べ方<select id="filterOp"></select></label>
+          <label>値<input id="filterValue" list="filterSuggestList" placeholder="値を入力/候補から選択"><datalist id="filterSuggestList"></datalist></label>
           <div class="filter-vars" id="filterVarChips" role="group" aria-label="変数を挿入"></div>
           <div class="filter-builder-actions">
            <button id="addGenericFilter" type="button" title="この条件を今の一覧へ追加します（保存はしません）">適用</button>
@@ -1200,7 +1181,7 @@
        一覧が2つぶん痩せ、どちらを閉じればよいかも分からなくなる。閉じる道は3つ:
        見出しの ✕・Esc・入口をもう一度押す。 */
     $('#filterToggle').onclick=()=>setBodyOpen($('#filterBody').hidden);
-    $('#filterBodyClose').onclick=()=>{setBodyOpen(false);$('#filterMoreBtn')?.focus()};
+    $('#filterBodyClose').onclick=()=>{setBodyOpen(false);$('#filterCondBtn')?.focus()};
     $('#filterAdhocClose').onclick=()=>setAdhocOpen(false);
     /* **Escはバーぜんたいで受ける**——入口のボタンに焦点が残っていても閉じられるように
        （列を選ぶ前は値の欄が押せず、焦点が窓の中へ入らない）。値の入った欄のEscは先に
@@ -1209,8 +1190,8 @@
        受けて`preventDefault`した押下は、ここでもう1枚閉じない（条件のポップオーバーを
        閉じたつもりが、下の窓まで畳まれて一覧が伸びていた）。 */
     bar.addEventListener('keydown',e=>{
-      if(e.key!=='Escape'||e.defaultPrevented||e.target.closest('#filterTokenInput,#filterMoreMenu,#filterSuggest'))return;
-      if(!$('#filterBody').hidden){e.preventDefault();setBodyOpen(false);$('#filterMoreBtn')?.focus()}
+      if(e.key!=='Escape'||e.defaultPrevented||e.target.closest('#filterTokenInput,#filterCondMenu,#filterSuggest'))return;
+      if(!$('#filterBody').hidden){e.preventDefault();setBodyOpen(false);$('#filterCondBtn')?.focus()}
       else if(adhocOpen){e.preventDefault();setAdhocOpen(false)}
     });
     // よく使う条件は既定で折りたたむ(段階的開示)。以前は該当条件があれば
@@ -1293,12 +1274,12 @@
     });
     /* 群を選ぶ／たまにしか使わない入口を畳む（§9.286 ①）。 */
     $('#filterPresetBtn').onclick=e=>openPresetMenu(e.currentTarget);
-    $('#filterCondBtn').onclick=e=>openCondMenu(e.currentTarget);
-    $('#filterMoreBtn').onclick=toggleMoreMenu;
-    /* 浮きメニューの中の項目は**押したら畳む**——開いたままだと、次に何を
-       するかを選ぶ前に一覧が変わって場所を見失う。 */
-    $('#filterMoreMenu').addEventListener('click',e=>{
-      if(e.target.closest('button'))closeMoreMenu();
+    $('#filterCondBtn').onclick=()=>toggleCondMenu();
+    /* 面の**操作**（足す・作る・開く・外す）は押したら畳む——開いたままだと、次に何を
+       するかを選ぶ前に一覧が変わって場所を見失う。**条件の行**の ×・☆ では畳まない
+       （続けて外したり登録したりできるように）。 */
+    $('#filterCondMenu').addEventListener('click',e=>{
+      if(e.target.closest('.fb-cond-acts button'))closeCondMenu();
     });
     $('#openFilterPresets').onclick=openFilterPresetModal;
     $('#clearGenericFilters').onclick=clearAllFilters;
@@ -1395,47 +1376,29 @@
     const btn=$('#filterCondBtn'),count=$('#filterCount');if(!btn)return;
     const rows=condRows();
     const n=rows.length;
-    if(count)count.textContent=`${n}件`;
+    if(count)count.textContent=String(n);
     btn.classList.toggle('is-on',n>0);
-    btn.disabled=!n;
+    /* 狭い器では「条件」の字を畳む（§9.505）ので、読み上げの名前はここで持つ。 */
+    btn.setAttribute('aria-label',`条件 ${n}つ`);
+    /* **0でも押せる**（§9.505）——条件を足す・作る入口もこの面にある。 */
     btn.title=n
-      ? '効いている条件 '+n+'件\n'
-        +rows.map(r=>r.kind==='adhoc'?`その場フィルタ: ${r.label}`:condFullText(r.f)).join('\n')
-        +'\n押すと中身を確かめたり、外したりできます。'
-      : '効いている条件はありません。「＋ 条件を追加」か「その場フィルタ」で絞り込めます。';
-    if(condMenuEl)openCondMenu($('#filterCondBtn'),{keep:true});
+      ? '効いている条件 '+n+'つ\n'
+        +rows.map(r=>r.kind==='adhoc'?`列で絞り込み: ${r.label}`:condFullText(r.f)).join('\n')
+        +'\n押すと中身を確かめたり、外したり、条件を足したりできます。'
+      : '効いている条件はありません。押すと、条件を足す・作る入口が開きます。';
+    renderCondMenu();
   }
-  /* 中身を確かめる浮きメニュー。**器の外（body直下）へ`position:fixed`で
-     出す**（§9.201）。**開いた器は必ず控える**（§9.222 ①）。 */
-  let condMenuEl=null;
-  function closeCondMenu(){
-    condMenuEl?.remove();condMenuEl=null;
-    $('#filterCondBtn')?.setAttribute('aria-expanded','false');
-    document.removeEventListener('click',onCondOutside,true);
-    document.removeEventListener('keydown',onCondEsc,true);
-  }
-  function onCondOutside(e){
-    if(condMenuEl&&!condMenuEl.contains(e.target)&&!e.target.closest('#filterCondBtn'))closeCondMenu();
-  }
-  /* 閉じたEscは**受けたと名乗る**（`preventDefault`・§9.471）——バーのEscが同じ押下で
-     下の窓までもう1枚閉じないように（1回のEscで閉じるのは1枚）。 */
-  function onCondEsc(e){if(WL.modal.escCloses(e)){e.preventDefault();closeCondMenu()}}
-  function openCondMenu(anchor,{keep=false}={}){
-    if(condMenuEl&&!keep){closeCondMenu();return}
-    if(!anchor)return;
+  /* 条件の面の中身（効いている条件の行と、全部外すの可否）。**開いているときだけ描く**——
+     閉じているあいだの変化は、開くときにもう一度描けば足りる。 */
+  function renderCondMenu(){
+    const menu=$('#filterCondMenu'),list=$('#filterCondList');if(!menu||!list||menu.hidden)return;
     const rows=condRows();
-    /* **中身が無くなったら閉じる**——最後の1件を外したあと、空の器が
-       開いたまま残るのは「壊れた」ようにしか見えない。 */
-    if(!rows.length){closeCondMenu();return}
-    const first=!condMenuEl;
-    const menu=condMenuEl||document.createElement('div');
-    menu.className='wl-menu access-mode-menu fb-cond-menu';menu.id='filterCondMenu';
     const line=r=>{
       if(r.kind==='adhoc')
         return '<div class="fb-cond-row is-adhoc">'
-          +'<span class="fb-cond-badge">その場</span>'
+          +'<span class="fb-cond-badge" title="登録していない、いまだけの絞り込み（「列で絞り込む」）">一時</span>'
           +`<span class="fb-cond-text">${esc(r.label)}</span>`
-          +'<button type="button" class="fb-cond-x" data-adhoc-clear title="その場フィルタの入力を消して解除します">×</button></div>';
+          +'<button type="button" class="fb-cond-x" data-adhoc-clear title="列で絞り込みの入力を消して外します">×</button></div>';
       const known=!!registeredPreset(r.f);
       return `<div class="fb-cond-row${r.locked?' is-locked':''}">`
         +(r.locked?'<span class="fb-cond-badge is-lock" title="いつも適用（固定）。一覧を開くたびに入ります">\u{1F512} 固定</span>':'')
@@ -1444,38 +1407,57 @@
         +(condVarNote(r.f)?`<u class="fb-cond-var">${esc(condVarNote(r.f))}</u>`:'')
         +'</span>'
         +(r.locked?'':`<button type="button" class="fb-cond-save${known?' is-saved':''}" data-cond-save="${r.i}" `
-          +`title="${known?'登録済み（登録一覧にあります）':'この条件を登録します。登録すると組み合わせ（プリセット）に入れられます'}">${known?'★':'☆'}</button>`)
+          +`title="${known?'登録済み（「登録した条件とプリセット」にあります）':'この条件を登録します。登録すると組み合わせ（プリセット）に入れられます'}">${known?'★':'☆'}</button>`)
         +`<button type="button" class="fb-cond-x" data-cond-x="${r.i}" title="この条件を外します">×</button></div>`;
     };
-    menu.innerHTML='<p class="fb-cond-head">効いている条件'
-      +`<small>${rows.length}件。この一覧に当てている絞り込みです</small></p>`
-      +rows.map(line).join('')
-      +'<div class="fb-cond-foot"><button type="button" id="fbCondClear">全部外す</button>'
-      +'<small>「固定」の条件は外れません（登録一覧で外せます）。</small></div>';
-    if(first){document.body.append(menu);condMenuEl=menu}
-    const r=anchor.getBoundingClientRect();
-    menu.style.top=`${r.bottom+6}px`;
-    menu.style.left=`${Math.max(8,Math.min(r.left,innerWidth-menu.offsetWidth-8))}px`;
-    menu.querySelectorAll('[data-cond-x]').forEach(b=>b.onclick=async()=>{
+    list.innerHTML='<p class="fb-cond-head">効いている条件'
+      +(rows.length?`<small>${rows.length}つ。この一覧に当てている絞り込みです</small>`
+        :'<small>まだありません。下のどれかで足せます</small>')+'</p>'
+      +rows.map(line).join('');
+    list.querySelectorAll('[data-cond-x]').forEach(b=>b.onclick=async()=>{
       const i=+b.dataset.condX,f=S.genericFilters[i];
       if(!f)return;
       if(isLockedFilter(f)&&!(await confirmRemoveLockedFilter(f)))return;
       S.genericFilters.splice(i,1);S.page=1;renderGenericFilterBar();WL.list.load();
     });
-    menu.querySelectorAll('[data-cond-save]').forEach(b=>b.onclick=async()=>{
+    list.querySelectorAll('[data-cond-save]').forEach(b=>b.onclick=async()=>{
       const f=S.genericFilters[+b.dataset.condSave];
       if(!f||registeredPreset(f))return;
       await saveOneToMaster(f);renderGenericFilterBar();
     });
-    menu.querySelector('[data-adhoc-clear]')?.addEventListener('click',()=>clearAdhoc());
-    menu.querySelector('#fbCondClear').onclick=()=>{closeCondMenu();clearAllFilters()};
-    if(first){
-      anchor.setAttribute('aria-expanded','true');
-      requestAnimationFrame(()=>{
-        document.addEventListener('click',onCondOutside,true);
-        document.addEventListener('keydown',onCondEsc,true);
-      });
-    }
+    list.querySelector('[data-adhoc-clear]')?.addEventListener('click',()=>clearAdhoc());
+    /* **押しても何も起きない物を残さない**（§CLAUDE 画面基準 4）。外すのは登録・適用した条件
+       （列で絞り込みは自分の × で外す）。 */
+    const clear=$('#clearGenericFilters');if(clear)clear.disabled=!S.genericFilters.length;
+  }
+  /* 面は**バーの中に常設**（`position:fixed`・§9.201）。開閉は hidden の入切だけ。 */
+  function closeCondMenu(){
+    const m=$('#filterCondMenu');if(!m||m.hidden)return;
+    m.hidden=true;
+    $('#filterCondBtn')?.setAttribute('aria-expanded','false');
+    document.removeEventListener('click',onCondOutside,true);
+    document.removeEventListener('keydown',onCondEsc,true);
+  }
+  function onCondOutside(e){
+    const m=$('#filterCondMenu');
+    if(m&&!m.hidden&&!m.contains(e.target)&&!e.target.closest('#filterCondBtn'))closeCondMenu();
+  }
+  /* 閉じたEscは**受けたと名乗る**（`preventDefault`・§9.471）——バーのEscが同じ押下で
+     下の窓までもう1枚閉じないように（1回のEscで閉じるのは1枚）。 */
+  function onCondEsc(e){if(WL.modal.escCloses(e)){e.preventDefault();closeCondMenu()}}
+  function toggleCondMenu(){
+    const m=$('#filterCondMenu'),btn=$('#filterCondBtn');if(!m||!btn)return;
+    if(!m.hidden){closeCondMenu();return}
+    m.hidden=false;renderCondMenu();
+    /* **開いてから測る**——`hidden`のあいだは幅が0で、画面の端に寄せられない。 */
+    const r=btn.getBoundingClientRect();
+    m.style.top=`${Math.round(r.bottom+6)}px`;
+    m.style.left=`${Math.round(Math.max(8,Math.min(r.left,innerWidth-m.offsetWidth-8)))}px`;
+    btn.setAttribute('aria-expanded','true');
+    requestAnimationFrame(()=>{
+      document.addEventListener('click',onCondOutside,true);
+      document.addEventListener('keydown',onCondEsc,true);
+    });
   }
   /* ================= その場フィルタ(§9.238 ⑤) =================
      支度(カラム・条件)＋その場の値。**登録しない・覚えない**——効くのは
@@ -1578,7 +1560,7 @@
   function setBodyOpen(v){
     const body=$('#filterBody');if(!body)return;
     body.hidden=!v;
-    const t=$('#filterToggle');if(t)t.textContent=v?'条件を作るを閉じる':'条件を作る';
+    const t=$('#filterToggle .fb-act-name');if(t)t.textContent=v?'「条件を作る」の欄を閉じる':'条件を作る・登録する';
     if(v&&adhocOpen){adhocOpen=false;writeAdhocOpen();renderAdhocRow()}
     if(v)requestAnimationFrame(()=>$('#filterColumn')?.focus());
   }
@@ -1609,7 +1591,7 @@
     if(box){
       const noVal=noValueOp(adhoc.op);
       box.disabled=noVal||!adhoc.column;
-      box.placeholder=!adhoc.column?'先にカラムを選んでください'
+      box.placeholder=!adhoc.column?'先に列を選んでください'
         :noVal?'この条件では値は要りません'
         :'打つとその場で絞り込みます（Enterですぐ）';
       /* 打っている最中は値へ触らない（カーソルが飛ぶ）。 */
@@ -1625,7 +1607,7 @@
     if(clear)clear.disabled=!on&&!String(adhoc.value||'').trim();
     const state=$('#filterAdhocState');
     if(state){
-      if(!adhoc.column){state.className='filter-adhoc-state';state.textContent='カラムと条件を選ぶと使えます';}
+      if(!adhoc.column){state.className='filter-adhoc-state';state.textContent='列と比べ方を選ぶと使えます';}
       else if(!adhocColumnOk()){
         state.className='filter-adhoc-state is-warn';
         state.textContent=`この一覧に「${adhoc.column}」の列がありません`;
@@ -1642,12 +1624,12 @@
     if(toggle){
       /* **畳んでいても効いていることを名乗る**(§9.175)。見えない場所で
          絞り込みが効いているのは「勝手に絞られている」としか読めない。 */
-      toggle.textContent=on?`その場フィルタ: ${adhocLabel()}`:'その場フィルタ';
+      toggle.textContent=on?`列で絞り込み中: ${adhocLabel()}`:'列で絞り込む';
       toggle.classList.toggle('active',adhocOpen||on);
       toggle.classList.toggle('is-on',on);
       toggle.setAttribute('aria-expanded',adhocOpen?'true':'false');
       toggle.title=on?`いま「${adhocLabel()}」で絞り込んでいます。押すと開いて直せます`
-        :'カラムと条件を決めておき、入力欄に打つとその場で絞り込みます（登録はしません）';
+        :'列と比べ方を決めておき、値を打つとその場で絞り込みます（登録はしません）';
     }
   }
 
@@ -2154,7 +2136,7 @@
     modal=document.createElement('div');modal.className='record-modal';modal.id='filterPresetModal';modal.hidden=true;
     modal.innerHTML=`
       <div class="filter-preset-dialog">
-        <header><div><small>SAVED FILTERS (MASTER)</small><h2>登録フィルタ一覧</h2></div><button id="closeFilterPresets" type="button">×</button></header>
+        <header><div><small>SAVED FILTERS (MASTER)</small><h2>登録した条件とプリセット</h2></div><button id="closeFilterPresets" type="button">×</button></header>
         <div class="filter-preset-body">
           <div class="filter-preset-toolbar"><span id="filterPresetSummary"></span>
            <span class="filter-preset-tools">
@@ -2410,10 +2392,10 @@
     }
     if(!forThis.length){
       const e=document.createElement('div');e.className='record-empty';
-      /* **窓の題（「登録フィルタ一覧」）と同じ言葉で言うこと**——ここだけ
+      /* **窓の題（「登録した条件とプリセット」）と同じ言葉で言うこと**——ここだけ
          「登録条件」と呼ぶと、探しものの名前が画面の中で2通りになる。 */
-      e.textContent='この場面の登録フィルタはありません。'
-        +'絞り込みバーの「⋯ → 条件を作る」で条件を作って「登録」すると、ここに並びます。';
+      e.textContent='この場面の登録した条件はありません。'
+        +'帯の「条件」→「条件を作る・登録する」で条件を作って「登録」すると、ここに並びます。';
       put(e);return;
     }
     /* ---- 選択の帯。**0件でも出す**（§9.227 ②。出入りすると下の一覧が跳ねる） ---- */
@@ -2586,8 +2568,8 @@
      フィルタ（`S.genericFilters`）と、その場フィルタ。いつも適用は印を付ける
      （外しても開き直すと戻るので、案内が別に断る）。 */
   WL.listHooks.onNarrow(()=>{
-    const items=S.genericFilters.map(f=>({source:'フィルタ',text:condLabel(f),locked:isLockedFilter(f)}))
-      .concat(adhocFilters().map(f=>({source:'その場フィルタ',text:condLabel(f)})));
+    const items=S.genericFilters.map(f=>({source:'条件',text:condLabel(f),locked:isLockedFilter(f)}))
+      .concat(adhocFilters().map(f=>({source:'列で絞り込み',text:condLabel(f)})));
     return items.length?{items,clear:()=>dropAllFilters({adhoc:true})}:null;
   });
   /* ---------- 使用設備が変わったら、変数の条件は別の条件（§9.285 ①） ----------

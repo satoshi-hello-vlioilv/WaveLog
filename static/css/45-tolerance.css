@@ -110,7 +110,6 @@
 /* 1段目: 検索窓（トークン入力）＝汎用検索窓から次々に条件を追加する主導線 */
 .filter-search-row{position:relative;display:flex;align-items:center;gap:var(--space-2);min-height:var(--ctl-h-lg);padding:var(--pad-row);background:#edf7f8}
 .filter-search-row>b{flex:0 0 auto;color:var(--ink);white-space:nowrap}
-.filter-count{flex:0 0 auto;padding:var(--pad-chip);border-radius:var(--radius-md);background:#fff;border:1px solid #9fc3c8;color:#075e67;font-weight:800;font-size:var(--fs-micro);white-space:nowrap}
 /* ---------- その場フィルタ(§9.238 ⑤、利用者の指示) ----------
    登録フィルタとは別の、**登録しない絞り込み**。カラムと条件を決めておき、
    入力欄へ打つとその場で効く。既定は折りたたみ（段階的開示）。
@@ -131,8 +130,9 @@
   padding:var(--pad-row);background:#f2f8f9;border-top:1px solid #dbe7ea}
 .filter-adhoc-row[hidden]{display:none}
 /* 選択欄は中身なりの規格幅で固定。**器いっぱいに伸ばさない**(§11)。 */
+/* 開いた行も帯の一部——**字と高さは帯の置き場**（§9.505。以前は欄だけ14px）。 */
 .filter-adhoc-row>select,.filter-adhoc-row>input,.filter-adhoc-row>button{
-  height:var(--ctl-h-sm);font-size:var(--fs)}
+  height:var(--lt-h);font-size:var(--lt-fs)}
 .filter-adhoc-col{flex:0 0 auto;max-width:var(--w-md);min-width:0}
 .filter-adhoc-op{flex:0 0 auto;max-width:var(--w-sm);min-width:0}
 /* 打ち込む欄だけが余りを受ける。 */
@@ -143,13 +143,13 @@
 /* 効いていることは**必ず文字で**(§3)。色だけにしない。
    **縮んでよいのはここだけ**(§9.229 ⑤)——入らなければ省略記号にし、
    全文は`title`から読める。 */
-.filter-adhoc-state{flex:1 1 0;min-width:0;font-size:var(--fs-micro);color:var(--ink-soft);
+.filter-adhoc-state{flex:1 1 0;min-width:0;font-size:var(--lt-fs);color:var(--ink-3);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .filter-adhoc-state.is-on{color:var(--teal-dark);font-weight:800}
 .filter-adhoc-state.is-warn{color:var(--danger);font-weight:800}
 /* 入口。畳んでいても効いていれば名乗る(§9.175)ので、そのときは面を付ける。 */
-.filter-search-row-actions #filterAdhocToggle{max-width:var(--w-xl);overflow:hidden;text-overflow:ellipsis}
-.filter-search-row-actions #filterAdhocToggle.active{background:var(--pale);border-color:var(--teal);color:#0a6570;font-weight:700}
+.filter-adhoc-toggle{max-width:var(--w-xl);overflow:hidden;text-overflow:ellipsis}
+.filter-adhoc-toggle.active{background:var(--pale);border-color:var(--teal);color:#0a6570;font-weight:700}
 /* 狭い窓では選択欄も縮ませて1行を守る（切り落とさない）。 */
 @media(max-width:1400px){
   .filter-adhoc-col{flex:0 1 auto;max-width:var(--w-sm)}
@@ -160,17 +160,14 @@
    バーいっぱい（実測1071px）へ伸び、ヘッダーの「一覧を検索」と同じ顔の
    入力欄が2つ並んでいた。押したときだけ出し、幅は候補の名前に足りる
    ぶんだけにする。余りは空白のまま（列を増やして詰めない・画面基準13）。 */
-/* 高さは**隣の`.fb-cond-btn`と同じトークン**（`--ctl-h-sm`）。
-   自前の余白で35pxにすると、同じ行のボタンが1pxずつずれて並ばない
-   （`tests/test_scale.js`が19/26/30/36/40の段で固定している）。 */
-.fb-addcond-btn{flex:0 0 auto;height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
-  white-space:nowrap;font-weight:700}
 .filter-token-input[hidden]{display:none}
-.filter-token-input{position:relative;flex:0 1 var(--w-xl);min-width:0;display:flex;align-items:center;gap:var(--gap-tight);flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;min-height:32px;padding:3px 8px;border:1px solid var(--teal);border-radius:var(--radius-sm);background:#fff}
+.filter-token-input{position:relative;flex:0 1 var(--w-xl);min-width:0;display:flex;align-items:center;gap:var(--gap-tight);flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;height:var(--lt-h);padding:0 var(--ctl-pad-x-sm);border:1px solid var(--teal);border-radius:var(--radius-sm);background:#fff}
 .filter-token-input.focus-within{box-shadow:0 0 0 3px #087c8928}
-.filter-token-search{flex:1 0 160px;min-width:120px;height:var(--ctl-h-xs);border:0;border-radius:0;padding:0 2px;background:transparent;box-shadow:none}
+.filter-token-search{flex:1 0 160px;min-width:120px;height:var(--ctl-h-xs);font-size:var(--lt-fs);border:0;border-radius:0;padding:0 2px;background:transparent;box-shadow:none}
 .filter-token-search:focus-visible{outline:0;box-shadow:none}
-.filter-search-row-actions{flex:0 0 auto;display:flex;gap:var(--gap-inline);align-items:center}
+/* 右端の群＝**見せ方**（表示列・表の見せ方）。左の群＝絞り込む（§9.505）——2つの群は
+   近さで分ける（枠で囲まない・§CLAUDE 画面基準 10）。 */
+.filter-search-row-actions{flex:0 0 auto;display:flex;gap:var(--gap-inline);align-items:center;margin-left:auto}
 .filter-search-row-actions button{white-space:nowrap}
 .filter-search-row-actions #saveFilterPreset{background:var(--teal);color:#fff;border-color:var(--teal);font-weight:700}
 /* ---------- プリセット中心の1行（§9.287、利用者の指示） ----------
@@ -185,27 +182,25 @@
    「どのプリセットか → いま何件効いているか → その場で足す → ⋯」。
    縮む役は**条件を足す欄だけ**（§9.229 ⑤）。ボタン類は中身なりのまま。 */
 .fb-preset-btn{flex:0 0 auto;display:inline-flex;align-items:center;gap:var(--gap-tight);
-  height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
-  border:1px solid var(--line-strong);border-radius:var(--radius-sm);
-  background:var(--surface);color:var(--ink);font-weight:800;white-space:nowrap}
+  padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line-strong);
+  background:var(--surface);color:var(--ink);font-weight:700;white-space:nowrap}
 .fb-preset-btn:hover{border-color:var(--teal)}
 .fb-preset-btn[aria-expanded="true"]{border-color:var(--teal);background:var(--pale)}
 /* 当たっているときは面で示す。**選んだだけで条件が欠けているときは別の顔**
    （§3。「選んでいる」と「効いている」は違うことなので、同じ絵にしない）。 */
 .fb-preset-btn.is-on{border-color:var(--teal);background:var(--pale);color:var(--nav)}
 .fb-preset-btn.is-partial{border-color:var(--warn-border);background:var(--warn-bg);color:var(--ink)}
-.fb-preset-key{color:var(--ink-soft);font-size:var(--fs-micro);font-weight:700}
-.fb-preset-btn b{max-width:var(--w-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fb-preset-btn em{font-style:normal;color:var(--warn-border);font-size:var(--fs-micro);font-weight:700}
+.fb-preset-btn b{max-width:var(--w-lg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:800}
+.fb-preset-btn em{font-style:normal;color:var(--warn-border);font-weight:700}
 .fb-preset-btn em[hidden]{display:none}
-.fb-preset-btn i{font-style:normal;color:var(--ink-soft);font-size:var(--fs-micro)}
 /* 切り替えの浮きメニュー（body直下・position:fixed。§9.201）。
    **1列のラジオ**——「足す」ではなく「切り替える」ので、押せるのは1つ。 */
 .fb-preset-menu{min-width:var(--w-2xl);max-width:min(92vw,760px);max-height:70vh;overflow:auto}
 .fb-preset-head{margin:0 0 var(--space-2);color:var(--ink);font-weight:800}
-.fb-preset-head small{display:block;color:var(--ink-soft);font-size:var(--fs-tiny);font-weight:400}
-.fb-preset-sec{margin:var(--space-2) 0 var(--space-1);color:var(--ink-soft);
-  font-size:var(--fs-tiny);font-weight:800;letter-spacing:.04em}
+.fb-preset-head small{display:block}
+.fb-preset-sec{margin:var(--space-2) 0 var(--space-1);color:var(--ink-3);
+  font-weight:800;letter-spacing:.04em}
 .fb-preset-menu .fb-preset-pick{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 var(--gap-inline);
   width:100%;height:auto;padding:var(--space-1) var(--space-2);border:0;
   border-radius:var(--radius-sm);background:transparent;color:var(--ink);
@@ -218,13 +213,13 @@
 .fb-preset-menu .fb-preset-pick.is-current .fb-preset-mark{border-color:var(--teal);
   box-shadow:inset 0 0 0 2px var(--surface),inset 0 0 0 12px var(--teal)}
 .fb-preset-menu .fb-preset-label{grid-column:2;min-width:0;overflow-wrap:anywhere}
-.fb-preset-menu .fb-preset-sub{grid-column:2;min-width:0;color:var(--ink-soft);font-size:var(--fs-tiny);font-weight:400;
+.fb-preset-menu .fb-preset-sub{grid-column:2;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fb-preset-empty{margin:var(--space-2);color:var(--ink-soft);font-size:var(--fs-sm)}
+.fb-preset-empty{margin:var(--space-2);color:var(--ink-3)}
 .fb-preset-foot{margin-top:var(--space-2);padding-top:var(--space-2);border-top:1px solid var(--line-soft)}
 .fb-preset-menu .fb-preset-foot button{width:100%;height:var(--ctl-h-sm);border:1px solid var(--teal);
   border-radius:var(--radius-sm);background:var(--surface);color:var(--teal-dark);font-weight:700}
-.fb-preset-foot small{display:block;margin-top:var(--space-1);color:var(--ink-soft);font-size:var(--fs-tiny)}
+.fb-preset-foot small{display:block;margin-top:var(--space-1);font-size:var(--fs-sm);color:var(--ink-3)}
 /* **詳細度を数えること**（§9.206）——器の`.access-mode-menu button`は
    (0,1,1)で`display:flex;flex-direction:column;align-items:flex-start;
    width:100%`を当てる。素のクラス(0,1,0)で書くと**同点ではなく負ける**ので、
@@ -234,31 +229,43 @@
    条件式は器に入りきらないので**バッジには書かない**。アイコンと件数だけを
    出し、中身はポップオーバーが持つ。**0件でも消さない**（§9.227 ②）。 */
 .fb-cond-btn{flex:0 0 auto;display:inline-flex;align-items:center;gap:var(--gap-tight);
-  height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);
-  border:1px solid var(--line-strong);border-radius:var(--radius-sm);
-  background:var(--surface);color:var(--ink-soft);font-weight:800;white-space:nowrap}
-.fb-cond-btn:hover:not(:disabled){border-color:var(--teal)}
-.fb-cond-btn:disabled{opacity:.55;cursor:default}
+  padding:0 var(--ctl-pad-x-sm);
+  border:1px solid var(--line-strong);
+  background:var(--surface);color:var(--ink);font-weight:700;white-space:nowrap}
+.fb-cond-btn:hover{border-color:var(--teal)}
 .fb-cond-btn.is-on{border-color:var(--teal);background:var(--pale);color:var(--nav)}
 .fb-cond-btn[aria-expanded="true"]{border-color:var(--teal);background:var(--pale)}
 .fb-cond-icon{width:14px;height:14px;fill:currentColor;flex:0 0 auto}
-.fb-cond-btn i{font-style:normal;color:var(--ink-soft);font-size:var(--fs-micro)}
+/* 数は札（ピル）で**名前と分けて**言う（§9.505）。0のときは薄く、効いているときは面の色。 */
+.fb-cond-n{display:inline-grid;place-items:center;min-width:1.6em;height:1.5em;padding:0 .4em;
+  border-radius:var(--radius-pill);background:var(--surface-3);color:var(--ink-3);
+  font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.fb-cond-btn.is-on .fb-cond-n{background:var(--teal);color:var(--surface)}
+/* 一覧から開く面は**字1種**（§9.505）。見出し＝800・項目＝700・説明＝400で薄く——差は大きさでなく
+   太さと濃さ（§9.476 の作法）。面の値は面のブロックで宣言し直す（§9.449）。**項目の高さは動かさない**
+   （§9.449 で却下された「高さを36pxへ」はしない）。 */
+/* 字は**器ではなく中身へ**当てる——器の幅は`em`（`--w-*`）で決まっており、器の字を変えると幅まで動く
+   （表の切り替えの最小幅が 308→264px に縮んだ・§9.449「勝手に動かさない」）。 */
+:is(.fb-preset-menu,.fb-cond-menu,.hd-table-menu,.reload-menu){--menu-fs:var(--fs-sm)}
+:is(.fb-preset-menu,.fb-cond-menu,.hd-table-menu,.reload-menu) :is(p,.fb-cond-list,.fb-cond-row,.fb-preset-foot,.fb-preset-empty,.reload-menu-note){font-size:var(--menu-fs)}
+:is(.fb-preset-menu,.fb-cond-menu,.hd-table-menu,.reload-menu) :is(button,p) small,
+.fb-preset-menu .fb-preset-sub{font-size:var(--fs-sm);font-weight:400;color:var(--ink-3)}
 .fb-cond-menu{min-width:var(--w-2xl);max-width:min(92vw,720px);max-height:70vh;overflow:auto}
 .fb-cond-head{margin:0 0 var(--space-2);color:var(--ink);font-weight:800}
-.fb-cond-head small{display:block;color:var(--ink-soft);font-size:var(--fs-tiny);font-weight:400}
+.fb-cond-head small{display:block}
 .fb-cond-row{display:flex;align-items:center;gap:var(--gap-inline);
   padding:var(--space-1) var(--space-2);border-radius:var(--radius-sm)}
 .fb-cond-row:hover{background:var(--surface-2)}
 .fb-cond-row.is-locked{background:var(--warn-bg)}
 .fb-cond-badge{flex:0 0 auto;padding:var(--pad-chip);border-radius:var(--radius-md);
   border:1px solid var(--line-mid);background:var(--surface);
-  color:var(--ink-soft);font-size:var(--fs-tiny);font-weight:800;white-space:nowrap}
+  color:var(--ink-3);font-weight:800;white-space:nowrap}
 .fb-cond-badge.is-lock{border-color:var(--warn-border);color:var(--ink-2)}
 /* **条件式はここで全部読める**（切らない。折り返す）。 */
-.fb-cond-text{flex:1 1 auto;min-width:0;color:var(--ink);font-size:var(--fs-sm);overflow-wrap:anywhere}
+.fb-cond-text{flex:1 1 auto;min-width:0;color:var(--ink);overflow-wrap:anywhere}
 .fb-cond-text b{color:var(--teal-dark);font-weight:800}
 .fb-cond-text em{font-style:normal;color:var(--ink-2)}
-.fb-cond-var{text-decoration:none;color:var(--muted);font-size:var(--fs-micro);margin-left:var(--space-1)}
+.fb-cond-var{text-decoration:none;color:var(--muted);margin-left:var(--space-1)}
 .fb-cond-menu .fb-cond-save,.fb-cond-menu .fb-cond-x{flex:0 0 auto;display:grid;place-items:center;
   width:var(--ctl-h-xs);height:var(--ctl-h-xs);padding:0;
   border:1px solid var(--line);border-radius:var(--radius-xs);
@@ -267,29 +274,13 @@
 .fb-cond-menu .fb-cond-save.is-saved{color:var(--warn-border);cursor:default}
 .fb-cond-menu .fb-cond-x{color:var(--danger)}
 .fb-cond-menu .fb-cond-x:hover{background:var(--danger-bg);border-color:var(--danger-border)}
-.fb-cond-foot{margin-top:var(--space-2);padding-top:var(--space-2);border-top:1px solid var(--line-soft)}
-.fb-cond-menu .fb-cond-foot button{width:100%;height:var(--ctl-h-sm);border:1px solid var(--line);
-  border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);font-weight:700}
-.fb-cond-menu .fb-cond-foot button:hover{border-color:var(--danger-border);color:var(--danger)}
-.fb-cond-foot small{display:block;margin-top:var(--space-1);color:var(--ink-soft);font-size:var(--fs-tiny)}
-/* たまにしか使わない入口を畳む先（§9.234 ①。**消さずに畳む**）。 */
-.fb-more-btn{flex:0 0 auto;min-width:var(--ctl-h-sm);font-weight:800}
-.fb-more-btn[aria-expanded="true"]{background:var(--pale);border-color:var(--teal)}
-/* **`position:fixed`で出すこと**（§9.201）——器（`.generic-filter-bar`）は
-   角丸のため`overflow:hidden`を持つので、`absolute`だと**メニューが丸ごと
-   切り落とされる**（実機のキャプチャで判明。押した印は付くのに何も出ない）。
-   座標は開くときにボタンの位置から入れる。 */
-.fb-more-menu{position:fixed;z-index:var(--z-popover);
-  display:flex;flex-direction:column;gap:var(--gap-hair);min-width:var(--w-xl);
-  padding:var(--space-2);border:1px solid var(--line-strong);border-radius:var(--radius-md);
-  background:var(--surface);box-shadow:0 8px 24px #17384226}
-.fb-more-menu[hidden]{display:none}
-.fb-more-menu>button{display:flex;flex-direction:column;align-items:flex-start;gap:0;
-  width:100%;height:auto;padding:var(--space-2);border:0;border-radius:var(--radius-sm);
-  background:transparent;color:var(--ink);font-weight:700;text-align:left}
-.fb-more-menu>button:hover{background:var(--surface-2)}
-.fb-more-menu>button[hidden]{display:none}
-.fb-more-menu>button small{color:var(--ink-soft);font-size:var(--fs-tiny);font-weight:400}
+/* 面の下半分＝**条件の操作**（§9.505。旧「⋯」の中身）。状態（上の行）と区切り線1本で分ける。
+   項目は「名前＋その下に一言」（`.access-mode-menu button`の縦積み）。 */
+.fb-cond-acts{display:flex;flex-direction:column;gap:var(--gap-hair);
+  margin-top:var(--space-2);padding-top:var(--space-2);border-top:1px solid var(--line-soft)}
+.fb-cond-menu .fb-cond-clear{margin-top:var(--space-1);border-top:1px solid var(--line-soft);border-radius:0 0 var(--radius-sm) var(--radius-sm)}
+.fb-cond-menu .fb-cond-clear:hover:not(:disabled){color:var(--danger);background:var(--danger-bg)}
+.fb-cond-menu .fb-cond-clear:disabled small{color:var(--muted)}
 .filter-empty{color:#6d7e84;font-size:var(--fs-micro);white-space:nowrap}
 /* サジェスト・ドロップダウン（認知負荷を下げる: 再認＞想起 / チャンク化 / 段階的開示） */
 /* 器(.generic-filter-bar)は角丸のため overflow:hidden を持つので、中に
@@ -311,6 +302,8 @@
 .suggest-chip.preset:hover,.suggest-chip.preset.active{background:#c9902f;border-color:#c9902f;color:#fff}
 .suggest-chip.op-select{background:var(--bg);border-color:var(--line-mid)}
 .filter-suggest-empty{padding:8px 8px 10px;color:#6d7e84;font-size:var(--fs-micro)}
+/* 候補の面も一覧から開く面——**字1種**（§9.505）。 */
+.filter-suggest :is(.filter-suggest-head,.suggest-chip,.suggest-chip b,.suggest-chip small,.filter-suggest-empty){font-size:var(--fs-sm)}
 /* 2段目: 詳細ビルダー（段階的開示。既定は折りたたみ） */
 .filter-body{padding:7px 8px;display:grid;gap:var(--gap-inline);border-top:1px solid #dbe7ea}
 .filter-body[hidden]{display:none}
@@ -318,27 +311,69 @@
    閉じ方がわかりにくかった」）。以前は閉じる手立てが窓の中に無く、⋯を開き直して
    「閉じる」を押すしかなかった。✕は窓の右上（読む順の終わり）・Escでも閉じる。 */
 .filter-body-head{display:flex;align-items:center;justify-content:space-between;gap:var(--gap-inline)}
-.filter-body-head>b{color:var(--ink);font-size:var(--fs-sm)}
+.filter-body-head>b{color:var(--ink);font-size:var(--lt-fs)}
 .fb-close{flex:0 0 auto;height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);white-space:nowrap;
  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);
  color:var(--ink-3);font-weight:700;cursor:pointer}
 .fb-close:hover{border-color:var(--teal);color:var(--ink)}
 .filter-adhoc-row>.fb-close{margin-left:auto}
 .fb-slot{display:contents}
+/* ============================================================
+   帯は「1面1サイズ」（§9.505、利用者の指示）
+   ------------------------------------------------------------
+   「一覧類の上部メニューの文字がサイズ感がバラバラ…メニューの文字のサイズとボタン類の
+    UIのサイズとデザインや形状の統一感を出してスッキリした印象に」。
+   実測（1728×1030）: 帯の字 4種（10・11・12・14px）・押す物の高さ 2種（30／26px）・
+   角丸 3種（4・8・10px）。1つのボタンの中でも「プリセット」11px＋「なし」14px。
+   **字の大きさは重要度として先に読まれる**（前注意）——同じ役目が違う大きさで並ぶと、
+   重要度が違うのかと読み直すことになる。
+
+   帯の中は**字1つ・高さ1つ・角丸1つ**。差は大きさではなく**太さと濃さ**で付ける
+   （名前＝500・薄め／値＝800／ボタン＝700。§9.476 で利用者が選んだ「表示」パネルの作法）。
+   値は**置き場1つ**（`--lt-h`／`--lt-fs`）で、狭い器（作業スケジュールの分割・
+   ポップアップ）は置き場の値だけを宣言し直す（§9.449「揃えるのは値の置き場」）。
+   ============================================================ */
+#genericFilterBar,#listToolbar{--lt-h:var(--ctl-h-sm);--lt-fs:var(--fs-sm);--lt-px:var(--ctl-pad-x-sm)}
+/* 器（IDつき）で包んで当てる——役割の表（10-roles.css の`.filter-search-row-actions button`）より
+   強くしないと、狭い器でも30pxのまま残る。当てるのは高さ・字・角丸だけ（色は状態の規則が持つ）。 */
+/* 上下の余白は0（高さは`--lt-h`が持つ・§9.81。素のボタンの7pxが残ると字が2〜3pxはみ出す）。
+   結合の札（`.list-join-chip`）の字は狭い器の短い名乗り（`data-short`）が0へ落とすので、ここでは当てない
+   （30-measure.css の本体の規則が持つ）。 */
+:is(#genericFilterBar,#listToolbar) :is(.lt-search,.fb-preset-btn,.fb-cond-btn,.filter-adhoc-toggle,.lt-cols-btn,.lt-view-btn,
+    .list-fresh-chip,.list-tint-chip,.list-load-chip,.filter-adhoc-row>button,.filter-builder button){
+  height:var(--lt-h);font-size:var(--lt-fs);border-radius:var(--radius-sm);white-space:nowrap;
+  padding-block:0;padding-inline:var(--lt-px)}
+/* 名前（「プリセット」「条件」「元データ」）は**薄く細く**、値は濃く太く。 */
+:is(.fb-preset-key,.fb-cond-key,.lf-key){color:var(--ink-3);font-weight:500}
+/* 一覧を検索（§9.505。ヘッダーから移した）。押す物と同じ高さ・枠の1種。**一覧の検索欄はこの1つの部品**
+   （仕掛・品質・データ一覧・測定実績・§9.507）——帯の外でも置き場の既定（30px・12px）で立つ。 */
+.lt-search{flex:0 1 var(--w-lg);min-width:var(--w-sm);display:inline-flex;align-items:center;gap:var(--gap-tight);
+  height:var(--lt-h,var(--ctl-h-sm));font-size:var(--lt-fs,var(--fs-sm));border-radius:var(--radius-sm);
+  padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line-strong);background:var(--surface);cursor:text}
+.lt-search:focus-within{border-color:var(--teal);box-shadow:0 0 0 3px #087c8922}
+.lt-search>i{color:var(--muted);font-size:.9em}
+/* 中の欄は枠を持たない（器が枠）。ヘッダーに相乗りしたときの`.hd-viewbar input`（枠つき）より強く書く。 */
+label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;outline:0;background:transparent;
+  font-size:inherit;box-shadow:none}
+/* 条件を検索して足す欄は「一覧を検索」と**同じ顔にしない**（§9.345）——頭に「＋条件」と名乗る。 */
+.filter-token-key{flex:0 0 auto;color:var(--teal-dark);font-weight:800;font-size:var(--lt-fs)}
+/* 表示列（§9.505。帯へ直に出した）。印は画面をまたいで同じ（§9.476）。 */
+.lt-cols-btn{display:inline-flex;align-items:center;gap:var(--gap-tight)}
+.lt-cols-btn>i{color:var(--teal);font-style:normal}
 .filter-builder{display:grid;grid-template-columns:minmax(140px,1.3fr) 130px minmax(160px,1.6fr) auto;gap:var(--gap-inline);align-items:end}
 /* **行の高さを固定pxにしない。** ラベルは --fs-sm、入力欄は --ctl-h-sm で
    どちらも表示サイズ(--ui-scale)に追随するのに、行だけ 16px/32px 固定だった
    ため「大」「特大」で中身が枠から溢れていた(VER1.87.0の母材パネルと同型)。
    ラベル行は中身なり、入力行はコントロールの高さそのものにする。 */
-.filter-builder label{display:grid;grid-template-rows:auto var(--ctl-h-sm);gap:var(--gap-hair);color:#526970;font-size:var(--fs-sm);white-space:nowrap;min-width:0}
-.filter-builder select,.filter-builder input{height:var(--ctl-h-sm);width:100%;min-width:0;font-size:var(--fs)}
+.filter-builder label{display:grid;grid-template-rows:auto var(--ctl-h-sm);gap:var(--gap-hair);color:var(--ink-3);font-size:var(--lt-fs);font-weight:500;white-space:nowrap;min-width:0}
+.filter-builder select,.filter-builder input{height:var(--lt-h);width:100%;min-width:0;font-size:var(--lt-fs)}
 .filter-builder button{white-space:nowrap}
 /* 「適用」と「登録」を並べる。用途が違うので**別のボタン**にし、主導線
    (今すぐ効かせる=適用)を塗り、保存は枠線だけにして重みの差を付ける。 */
 .filter-builder-actions{display:flex;gap:var(--gap-inline);align-items:end}
 #registerGenericFilter{background:#fff;color:var(--teal-dark);border-color:var(--teal);font-weight:700}
 #registerGenericFilter:hover{background:var(--pale)}
-.filter-builder-note{margin:0;padding:0 2px;font-size:var(--fs-micro);color:var(--ink-soft)}
+.filter-builder-note{margin:0;padding:0 2px;font-size:var(--lt-fs);color:var(--ink-3)}
 #addGenericFilter{background:var(--teal);color:#fff;border-color:var(--teal);font-weight:800}
 @media(max-width:1400px){.filter-builder{grid-template-columns:1fr 125px 1fr auto}}
 /* インライン・ローディング（バー右端に小さく表示。ブロックしない軽処理向け） */

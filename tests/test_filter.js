@@ -71,7 +71,7 @@ const shown=(id,what)=>W.until(page,a=>{const e=document.getElementById(a);retur
       ——固定配置の要素は`offsetParent`が必ず`null`になるので、出ていても
       「見えない」と読めてしまう（この網自身が1度それで落ちた）。 */
    const sg=g('filterSuggest');
-   const mn=g('filterMoreMenu');
+   const mn=g('filterCondMenu');
    return {ボタン:!!(g('filterAddCond')&&mn&&mn.contains(g('filterAddCond'))),欄:見える(g('filterTokenInput')),
            候補:!!sg&&!sg.hidden&&sg.childElementCount>0,
            一覧の検索欄:見える(g('search')),
@@ -79,14 +79,14 @@ const shown=(id,what)=>W.until(page,a=>{const e=document.getElementById(a);retur
            字:(g('filterTokenSearch')||{}).value||''};
   });
   const c0=await condUi();
-  /* §9.468: 「条件を追加」は⋯の中へ畳んだ（主動線はプリセットとその場フィルタ）。 */
-  rec('はじめは欄が閉じていて、「条件を追加」は⋯の中にある',
+  /* §9.468: 「条件を追加」は⋯の中へ畳んだ。§9.505: ⋯は「条件」の面へまとめ、名前は「条件を検索して足す」。 */
+  rec('はじめは欄が閉じていて、「条件を検索して足す」は「条件」の面の中にある',
       c0.ボタン===true&&c0.欄===false,JSON.stringify(c0));
   /* ③の本体。**同じ顔の欄を2つ同時に出さない。** */
   rec('検索欄の顔をした器は、同時にひとつだけ',
       c0.一覧の検索欄===true&&c0.欄===false,JSON.stringify(c0));
 
-  await page.click('#filterMoreBtn');await shown('filterAddCond','⋯が開く');
+  await page.click('#filterCondBtn');await shown('filterAddCond','「条件」の面が開く');
   await page.click('#filterAddCond');await shown('filterTokenInput','条件の欄が開く');
   const c1=await condUi();
   rec('押すと欄が開き、そのまま打てる（焦点が乗る）',
@@ -125,7 +125,7 @@ const shown=(id,what)=>W.until(page,a=>{const e=document.getElementById(a);retur
   rec('その場フィルタはEscで閉じる',(await opened()).その場===false);
   await page.click('#filterAdhocToggle');
   await W.until(page,()=>!document.getElementById('filterAdhocRow').hidden,null,{ms:5000,what:'その場フィルタを開き直す'});
-  await page.click('#filterMoreBtn');await shown('filterToggle','⋯が開く');
+  await page.click('#filterCondBtn');await shown('filterToggle','「条件」の面が開く');
   await page.click('#filterToggle');
   await W.until(page,()=>!document.getElementById('filterBody').hidden,null,{ms:5000,what:'条件を作るが開く'});
   const both=await opened();
@@ -137,7 +137,7 @@ const shown=(id,what)=>W.until(page,a=>{const e=document.getElementById(a);retur
 
   /* ---- 1) 適用と登録が別々に効く ---- */
   /* §9.286 ①: たまにしか使わない入口は`⋯`の浮きメニューへ畳んだ。**消していない**ので、開いてから押す。 */
-  await page.click('#filterMoreBtn');  // 次の click が #filterToggle の出現を待つ
+  await page.click('#filterCondBtn');  // 次の click が #filterToggle の出現を待つ
   await page.click('#filterToggle');
   await W.until(page,()=>{const e=document.querySelector('#addGenericFilter');return !!e&&e.getClientRects().length>0},null,{ms:5000,what:'条件のビルダーが開く'});
   rec('条件を作るビルダーに「適用」と「登録」がある',
@@ -160,12 +160,12 @@ const shown=(id,what)=>W.until(page,a=>{const e=document.getElementById(a);retur
      登録の印（★／☆）はポップオーバーが持つ——バッジに書くと必ず切れる。 */
   const openConds=async()=>{
    await page.evaluate(()=>{
-    if(!document.querySelector('#filterCondMenu'))document.querySelector('#filterCondBtn')?.click();
+    if(!document.querySelector('#filterCondMenu:not([hidden])'))document.querySelector('#filterCondBtn')?.click();
    });
-   await page.waitForSelector('#filterCondMenu',{timeout:5000}).catch(()=>{});
+   await page.waitForSelector('#filterCondMenu:not([hidden])',{timeout:5000}).catch(()=>{});
   };
   const closeConds=()=>page.evaluate(()=>{
-   if(document.querySelector('#filterCondMenu'))document.querySelector('#filterCondBtn')?.click();
+   if(document.querySelector('#filterCondMenu:not([hidden])'))document.querySelector('#filterCondBtn')?.click();
   });
   await openConds();
   rec('「適用」で条件が一覧へ効く（登録はしない）',
@@ -279,18 +279,18 @@ const shown=(id,what)=>W.until(page,a=>{const e=document.getElementById(a);retur
    rec(`0件の案内（${label}）: 案内の中のボタン1つで外れて行が戻る`,!!back,pressed?'':'ボタンが無い');
    await idle();
   };
-  await scene('検索欄',async()=>{await page.fill('#search',NONE)},['検索欄',NONE]);
+  await scene('検索欄',async()=>{await page.fill('#search',NONE)},['一覧を検索',NONE]);
   rec('0件の案内（検索欄）: 外すと検索欄も空になる',(await page.inputValue('#search'))==='',await page.inputValue('#search'));
-  await scene('フィルタ',()=>setFilters([{column:'ロット番号',op:'eq',value:NONE}]),['フィルタ','ロット番号',NONE]);
+  await scene('フィルタ',()=>setFilters([{column:'ロット番号',op:'eq',value:NONE}]),['条件','ロット番号',NONE]);
   await scene('いつも適用',()=>setFilters([{column:'ロット番号',op:'eq',value:NONE,locked:true}]),
     ['いつも適用','ロット番号',NONE,'開くたび'],{confirm:true});
   await scene('その場フィルタ',async()=>{
    await page.click('#filterAdhocToggle');
    await page.selectOption('#filterAdhocColumn','ロット番号');await page.selectOption('#filterAdhocOp','eq');
    await page.fill('#filterAdhocValue',NONE);await page.press('#filterAdhocValue','Enter');
-  },['その場フィルタ','ロット番号',NONE]);
+  },['列で絞り込み','ロット番号',NONE]);
   await scene('検索欄＋フィルタ',async()=>{await page.fill('#search',NONE);await setFilters([{column:'ロット番号',op:'eq',value:NONE}])},
-    ['検索欄','フィルタ','ロット番号']);
+    ['一覧を検索','条件','ロット番号']);
   const left=await page.evaluate(()=>({search:document.getElementById('search').value,filters:S.genericFilters.length}));
   rec('0件の案内: 1回押すと検索欄とフィルタの両方が外れる',left.search===''&&left.filters===0,JSON.stringify(left));
 

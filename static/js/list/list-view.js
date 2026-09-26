@@ -1536,7 +1536,7 @@ function listQuery(){
     全件の1ページ目」という目印で、サーバーは見ない(キャッシュのキーと、
     続きを読むかどうかの判定に使う)。 */
  const q=new URLSearchParams({db:S.db,table:S.table,page:S.page,
-                              page_size:String(effectivePageSize()),search:$('#search').value});
+                              page_size:String(effectivePageSize()),search:$('#search')?.value||''});
  if(isAllRows())q.set('all','1');
  /* 並び順は複数キー(§9.88 段5)。1キーでも同じ形で送る。
     **列ごとの並べ替えの決まり(§9.187)も一緒に送る**——サーバーが列レイアウト
@@ -1917,7 +1917,7 @@ let narrowClears=[];
 function narrowingParts(){
  const items=[];narrowClears=[];
  const box=$('#search'),sv=String(box&&box.value||'').trim();
- if(sv){items.push({source:'検索欄',text:`「${sv}」`});narrowClears.push(()=>{box.value=''})}
+ if(sv){items.push({source:'一覧を検索',text:`「${sv}」`});narrowClears.push(()=>{box.value=''})}
  listHooks.narrow.forEach(fn=>{
   try{const r=fn();if(r&&(r.items||[]).length){items.push(...r.items);if(r.clear)narrowClears.push(r.clear)}}
   catch(e){console.error('一覧のnarrowフックで例外',e)}
@@ -2633,17 +2633,20 @@ function ensureListToolbar(){
      やめた——枠の中に枠を作らない（§CLAUDE 画面基準 10）。
      「☰ 表示」のボタンは絞り込みのバーの席（`#filterBarSlot`）へ移して1段目に置く
      （`placeViewButton()`）。バーが無い一覧ではこの帯の先頭に残る。 */
-  bar.innerHTML=`<button type="button" id="listViewBtn" class="list-toolbar-btn lt-view-btn"
+  /* ---------- 「表示列」は帯へ直に、残りは「表の見せ方」（§9.505、利用者の指示） ----------
+     §9.476 で「表示列の編集はよく使う」を受けてパネルのいちばん上へ置いたが、まだ
+     「開く→押す」の2手だった。**よく使うものは畳まない**（§9.207）——帯の右端に直に置き、
+     データ一覧・実績・作業スケジュールと**同じ印・同じ名前**にそろえる。
+     パネルの名前は「☰ 表示」をやめて**表の見せ方**——ヘッダーの「表示」（この端末の見え方）と
+     同じ名前が2つあった（§9.444 で1つにしたのが §9.468 で戻っていた）。作業スケジュールの
+     同じ役のボタンも「表の見せ方」。 */
+  bar.innerHTML=`<button type="button" id="listColumnBtn" class="list-toolbar-btn lt-cols-btn"
+    title="この一覧に出す列・並び・幅・書式・読み替えをまとめて設定します" aria-label="表示列"><i class="fa-solid fa-table-columns" aria-hidden="true"></i><span class="lt-cols-t">表示列</span></button>
+   <button type="button" id="listViewBtn" class="list-toolbar-btn lt-view-btn"
     aria-haspopup="dialog" aria-expanded="false" aria-controls="listViewPanel"
-    title="表示列・行間・並び・表示件数を決めます">☰ 表示<i aria-hidden="true">▾</i></button>
-   <!-- **よく使う「表示列の編集」をいちばん上・いちばん大きく**（§9.476、利用者の指示「表示列の編集は
-        よく使うので、アイコンを設定したりして特にわかりやすく」）。下の行は**同じ字の大きさ・同じ高さ・
-        同じ左端**（名前の列は固定幅）で並べる（「文字のサイズの統一感…整列した感じや美観」）。 -->
-   <div class="wl-menu lt-view-panel" id="listViewPanel" role="dialog" aria-label="一覧の表示" hidden>
-    <button type="button" id="listColumnBtn" class="lvp-cols" title="この一覧に出す列・並び・幅・書式・読み替えをまとめて設定します">
-     <i class="fa-solid fa-table-columns" aria-hidden="true"></i>
-     <span class="lvp-cols-t"><b>表示列を編集</b><small>出す列・並び・幅・書式・読み替え</small></span>
-     <i class="fa-solid fa-chevron-right lvp-cols-go" aria-hidden="true"></i></button>
+    title="行間・並び・表示件数・子ロットの畳みを決めます" aria-label="表の見せ方"><span class="lt-view-pre">表の</span>見せ方<i class="hd-caret" aria-hidden="true">▾</i></button>
+   <!-- 下の行は**同じ字の大きさ・同じ高さ・同じ左端**（名前の列は固定幅）で並べる（§9.476）。 -->
+   <div class="wl-menu lt-view-panel" id="listViewPanel" role="dialog" aria-label="表の見せ方" hidden>
     <label class="lvp-row list-rowgap" title="行の間隔を変えます（この一覧ごとに覚えます）"><span class="lvp-k">行間</span>
      <span class="lvp-v"><input type="range" id="listRowGap" min="1" max="5" step="1" value="3" aria-label="行の間隔">
      <output id="listRowGapVal" class="lvp-note" for="listRowGap">ふつう</output></span></label>
@@ -2758,13 +2761,18 @@ function renderTintChip(bar){
    +'\n押すとこの一覧の色をすべて外します。';
  el.onclick=()=>{WL.columnTint.clearAll(target);renderTintChip(bar)};
 }
-/* 「☰ 表示」を1段目（絞り込みのバーの席）へ置く（§9.468）。バーは別の本（filters.js）が
-   作るので、**あれば**そこへ移し、無ければこの帯の先頭に残す。描くたびに呼んでよい。 */
+/* 「表示列」「表の見せ方」を1段目（絞り込みのバーの席）へ置く（§9.468・§9.505）。バーは別の本
+   （filters.js）が作るので、**あれば**そこへ移し、無ければこの帯の先頭に残す。並びは
+   「表示列 → 表の見せ方」（よく使うほうが先）。描くたびに呼んでよい。 */
 function placeViewButton(bar){
- const btn=bar.querySelector('#listViewBtn')||document.getElementById('listViewBtn');if(!btn)return;
+ const btns=['listColumnBtn','listViewBtn'].map(id=>bar.querySelector('#'+id)||document.getElementById(id)).filter(Boolean);
+ if(!btns.length)return;
  const slot=document.getElementById('filterBarSlot');
  const home=(slot&&slot.closest('#genericFilterBar')&&!slot.closest('[hidden]'))?slot:bar;
- if(btn.parentNode!==home)home.insertBefore(btn,home.firstChild);
+ /* **並びが合っているときは触らない**——動かすと押した直後の焦点が外れる。 */
+ const now=[...home.children].slice(0,btns.length);
+ if(btns.every((b,i)=>now[i]===b))return;
+ btns.slice().reverse().forEach(b=>home.insertBefore(b,home.firstChild));
 }
 function renderListToolbar(){
  const bar=ensureListToolbar();if(!bar)return;
@@ -3058,7 +3066,11 @@ function checkParentLookupRows(targets){
 }
 /* 検索・ページャ。ボタンは常に最新のload実装を呼ぶ(旧実装は初期のload関数を
    参照し続ける潜在不具合があった)。 */
-$('#search').oninput=()=>{clearTimeout(S.t);S.t=setTimeout(()=>{S.page=1;load()},300)};
+/* 欄は絞り込みの帯（filters.js）が作る（§9.505）——この行が走る時点ではまだ無いので、
+   文書で受ける。 */
+document.addEventListener('input',e=>{
+ if(e.target&&e.target.id==='search'){clearTimeout(S.t);S.t=setTimeout(()=>{S.page=1;load()},300)}
+});
 /* ---------- RNE抽出の実行と進捗表示（§9.78） ----------
    抽出は数十秒かかる背景処理。画面は覆わず(操作を止めない)、ヘッダーの下に
    細い進捗帯を出す。**終わったジョブ数で数える**ので、バーは実際の進み方を

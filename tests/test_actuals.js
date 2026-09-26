@@ -132,6 +132,27 @@ run('test_actuals: 実績データリスト（§9.241 ③、利用者の指示�
 
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await openList();
+  /* ---- §9.507 帯は一覧と同じ部品・同じ言葉（利用者の指示「メニューの文字のサイズとボタン類の…統一感」
+     「文字列1つ1つにも拘って」）。前: 名前と値が同じ太さ・「基準」・「選択した帳票」・丸い検索欄。 ---- */
+  const band=await page.evaluate(()=>({
+   fs:(sel=>{
+   const vis=e=>{const r=e.getBoundingClientRect();return r.width>1&&r.height>1&&!e.closest('[hidden]')};
+   const bar=document.querySelector(sel);
+   const txt=[...bar.querySelectorAll('*')].filter(e=>vis(e)&&!e.matches('i,option')
+     &&[...e.childNodes].some(n=>n.nodeType===3&&n.nodeValue.trim()));
+   return [...new Set(txt.map(e=>getComputedStyle(e).fontSize))];
+  })('#acHead'),
+   search:!!document.querySelector('#acHead label.lt-search #acSearch'),
+   basis:(document.getElementById('acBasis')?.closest('label')?.childNodes[0]?.nodeValue||'').trim(),
+   report:(document.getElementById('acReport')?.textContent||'').replace(/\s+/g,' ').trim(),
+   printIcon:!!document.querySelector('#acReport .fa-print'),
+   nameW:getComputedStyle(document.querySelector('#acHead .ac-field')).fontWeight,
+   valW:getComputedStyle(document.getElementById('acEquipment')).fontWeight}));
+  rec('帯の字は1つの大きさ',band.fs.length===1,JSON.stringify(band.fs));
+  rec('検索欄は一覧と同じ部品（.lt-search）',band.search,JSON.stringify(band));
+  rec('名前（設備・期間・日付）は値より細い（太さで書き分ける）',+band.nameW<+band.valW,`${band.nameW} / ${band.valW}`);
+  rec('「基準」ではなく何の基準かを言う（日付）',band.basis==='日付',band.basis);
+  rec('帳票のボタンは押すと何が起きるかを言う（印＋「選んだ行の帳票」）',band.printIcon&&/^選んだ行の帳票 \(\d+\)$/.test(band.report),band.report);
   await setRange();
   await page.waitForFunction(t=>[...document.querySelectorAll('#acList .ac-row:not(.head)')]
     .filter(r=>r.textContent.includes(t)).length===4,TAG,{timeout:20000});

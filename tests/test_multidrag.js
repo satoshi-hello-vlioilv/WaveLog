@@ -23,7 +23,7 @@ run('test_multidrag: 選んでからまとめて動かす(§9.177)', async ({pag
   await page.click('aside [data-db-key]');
   await page.waitForSelector('#grid tbody tr',{timeout:25000});
   await idle();
-  await W.listView(page);await page.click('#listColumnBtn');
+  await page.click('#listColumnBtn');
   await page.waitForSelector('#listColumnPanel:not([hidden])',{timeout:8000});
   await idle();
   const keys=await page.evaluate(()=>[...document.querySelectorAll('#lcList .lc-item')].map(x=>x.dataset.key).slice(0,6));

@@ -116,7 +116,7 @@ run('test_scbar: 操作列を1行に・親/子バッジ・差し込みの当た�
    const box=document.getElementById('scToolsState');
    const vis=el=>el&&!el.hidden&&el.getBoundingClientRect().width>0;
    const says=[...box.querySelectorAll('*')].filter(el=>vis(el)
-     &&!el.querySelector('*')&&/時点|取込/.test(el.textContent||''));
+     &&!el.querySelector('*')&&/時点|取込|読込/.test(el.textContent||''));  // §9.505: チップは「読込 23:14」
    return {n:says.length,txt:says.map(e=>e.textContent.trim()),
            freshness:!!document.getElementById('scFreshness'),
            chip:(document.getElementById('scSyncChip')||{}).hidden===false};
@@ -182,12 +182,39 @@ run('test_scbar: 操作列を1行に・親/子バッジ・差し込みの当た�
   /* ---- 2) 「表示」の入口にいまの設定が出る ---- */
   const vm=await page.evaluate(()=>{
    const btn=document.getElementById('scViewMenuBtn');
-   const st=document.getElementById('scViewState');
+   /* §9.505（利用者の選択「案A」）: いまの設定の要約は帯に書かず、説明の1行目（とデータ）へ。 */
    return {hidden:btn.hidden,txt:btn.textContent.replace(/\s+/g,''),
-           state:st.textContent,title:btn.title};
+           state:btn.dataset.state||'',title:btn.title};
   });
   rec('「表示」の入口が出ている',!vm.hidden,JSON.stringify(vm.txt));
-  rec('畳んでいてもいまの設定が読める',/まとめ/.test(vm.state)&&/過去\d+時間/.test(vm.state),vm.state);
+  rec('畳んでいてもいまの設定が読める（説明の1行目）',/まとめ/.test(vm.state)&&/過去\d+時間/.test(vm.state)
+      &&vm.title.startsWith('いまの設定: '+vm.state),vm.title.split('\n')[0]);
+  rec('帯には要約を書かない（「追加」の字の置き場を空ける・§9.505）',!/まとめ/.test(vm.txt),vm.txt);
+  /* ---- §9.505 帯は「1面1サイズ」・「追加」の4つは字つき ----
+     利用者の指示「メニューの文字のサイズとボタン類のUIのサイズとデザインや形状の統一感を」と、
+     選択「案A」（表の見せ方の要約を帯から外し、空いた幅で「追加」に字を添える）。
+     前（1728×1030・個別）: 字 2種（12・10px）・押す物の高さ 3種（30・32・26px）・「追加」はアイコンだけ。
+     数えないもの: 開く印「▾」と絵（字ではない）、切り替えの**中の札**（外側の枠が高さを持つ）。
+     この網の窓は1700px＝器118.7em——字を全部出して要る幅（91.8〜111.1em）より広い。 */
+  const band=await page.evaluate(()=>{
+   const vis=e=>{const r=e.getBoundingClientRect();return r.width>1&&r.height>1&&!e.closest('[hidden]')};
+   const head=document.getElementById('scHead');
+   const all=[...head.querySelectorAll('*')].filter(vis);
+   const TOP='button,select,.sc-mode-toggle,.sc-board-window';
+   const ctl=all.filter(e=>e.matches(TOP)&&!e.parentElement.closest(TOP));
+   const txt=all.filter(e=>!e.matches('.hd-caret,i,option')&&[...e.childNodes].some(n=>n.nodeType===3&&n.nodeValue.trim()));
+   const set=a=>[...new Set(a)].sort();
+   const add=['scListModalBtn','scStopModalBtn','scCommentBtn','scFrameBtn'].map(id=>document.getElementById(id))
+     .filter(e=>e&&vis(e)).map(e=>{const sp=e.querySelector('span');return sp&&vis(sp)?sp.textContent.trim():''});
+   return {fs:set(txt.map(e=>parseFloat(getComputedStyle(e).fontSize))),
+           h:set(ctl.map(e=>Math.round(e.getBoundingClientRect().height))),
+           r:set(ctl.map(e=>getComputedStyle(e).borderTopLeftRadius)),n:ctl.length,add};
+  });
+  rec('作業スケジュールの帯の字は1つの大きさ（前: 12・10px）',band.fs.length===1,JSON.stringify(band));
+  rec('作業スケジュールの帯の押す物は1つの高さ・1つの角丸（前: 高さ30・32・26px）',
+      band.h.length===1&&band.r.length===1&&band.n>=6,JSON.stringify(band));
+  rec('「追加」の4つは字つき（前: アイコンだけ・字は説明の中だけ）',
+      band.add.length>=2&&band.add.every(t=>t.length>0),JSON.stringify(band.add));
   rec('何の設定かを説明に書く',/予定そのものは変わりません/.test(vm.title||''),vm.title);
 
   /* ---- 3) 見え方の設定は1枚のパネルに集まる ---- */
@@ -566,8 +593,8 @@ run('test_scbar: 操作列を1行に・親/子バッジ・差し込みの当た�
   await page.evaluate(()=>{
    const put=(id,html)=>{const el=document.getElementById(id);if(!el)return;el.hidden=false;el.innerHTML=html};
    /* 帯の中で伸び縮みするもの（読込時点・段取りの注記・書込中の印）。 */
-   put('scSyncChip','<i class="fa-solid fa-clock-rotate-left"></i>'
-     +'<span class="sc-sync-txt">08:57 時点(たった今) ・ 読み込み 1.8秒 ・ 同期エラー</span>'
+   put('scSyncChip','<span class="sc-sync-key">読込</span><b class="sc-sync-val">08:57</b>'
+     +'<span class="sc-sync-txt">読み込み 1.8秒 ・ 同期エラー</span>'
      +'<span class="hd-caret">▾</span>');
    const n=document.getElementById('scFieldReorderNote');
    if(n){n.hidden=false;n.textContent='現場段取りの対象設備は「テスト設備B」です'}

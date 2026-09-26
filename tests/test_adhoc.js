@@ -168,7 +168,7 @@ run('test_adhoc: その場フィルタ(§9.238 ⑤、利用者の指示)', async
    状態:document.getElementById('filterAdhocState').textContent||'',
    件数:document.getElementById('filterCount').textContent||''}));
   rec('効いていることを状態の行が文字で言う',/効いています/.test(said.状態),JSON.stringify(said));
-  rec('件数にもその場フィルタが数えられる',said.件数==='1件',JSON.stringify(said));
+  rec('件数にもその場フィルタが数えられる',said.件数==='1',JSON.stringify(said));
   /* 畳んだときも名乗る（見えない場所で効く絞り込みを作らない。§9.175） */
   await page.click('#filterAdhocToggle');
   await W.until(page,want=>{const r=document.getElementById('filterAdhocRow');return !!r&&r.hidden===want},true,{ms:5000,what:'その場フィルタの欄が畳まれる'});
@@ -178,7 +178,7 @@ run('test_adhoc: その場フィルタ(§9.238 ⑤、利用者の指示)', async
            文字:t.textContent||'',印:t.classList.contains('is-on')};
   });
   rec('畳んでも「いま効いている条件」を入口が名乗る',
-      folded.畳んだ&&folded.印&&folded.文字.length>'その場フィルタ'.length,JSON.stringify(folded));
+      folded.畳んだ&&folded.印&&folded.文字.length>'列で絞り込む'.length,JSON.stringify(folded));
   await page.click('#filterAdhocToggle');
   await W.until(page,want=>{const r=document.getElementById('filterAdhocRow');return !!r&&r.hidden===want},false,{ms:5000,what:'その場フィルタの欄がまた開く'});
 
@@ -206,7 +206,7 @@ run('test_adhoc: その場フィルタ(§9.238 ⑤、利用者の指示)', async
   rec('移しても絞り込みの結果は変わらない',kept.行===after,JSON.stringify({after,now:kept.行}));
   /* 後片付け（次のテストへ条件を持ち越さない） */
   /* §9.286 ①: たまにしか使わない入口は`⋯`の浮きメニューへ畳んだ。**消していない**ので、開いてから押す。 */
-  await page.click('#filterMoreBtn');
+  await page.click('#filterCondBtn');
   await page.click('#clearGenericFilters');
   await settle();
 

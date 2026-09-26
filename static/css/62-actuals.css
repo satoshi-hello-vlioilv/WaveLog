@@ -17,13 +17,15 @@ body.ac-mode .ac-panel:not([hidden]){display:flex}
 body.ac-mode .pager{display:none}
 
 .ac-head{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap;min-width:0}
+/* 名前（設備・期間・日付）は**細く薄く**、値は太く濃く（§9.507。一覧の帯と同じ書き分け・前は名前も値も700）。 */
 .ac-field{display:flex;align-items:center;gap:var(--space-1);
- font-size:var(--fs-sm);font-weight:700;color:var(--ink-2);white-space:nowrap}
-.ac-field select,.ac-field input{height:var(--ctl-h-sm);font-size:var(--fs-sm)}
+ font-size:var(--fs-sm);font-weight:500;color:var(--ink-3);white-space:nowrap}
+.ac-field select,.ac-field input{height:var(--ctl-h-sm);font-size:var(--fs-sm);font-weight:700;color:var(--ink)}
 .ac-field select{max-width:var(--w-lg)}
-.ac-search input{height:var(--ctl-h-sm);width:var(--w-lg);font-size:var(--fs-sm);
- border:1px solid var(--line);border-radius:var(--radius-pill);padding:0 var(--ctl-pad-x-sm)}
 .ac-presets{display:flex;align-items:center;gap:var(--space-1)}
+/* 検索欄は**縮んでよい唯一の物**（§9.229 ⑤）——基準の幅は小さく置き、余りがあれば伸びる。帯を1行に保つ
+   （§9.507。期間の札を切り替えの部品へ寄せ、帳票のボタンに印を足したぶん、1728pxで23px溢れて2段に折れた）。 */
+.ac-head .lt-search{flex:1 1 var(--w-md);max-width:var(--w-lg)}
 .ac-chip{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);
  border-radius:var(--radius-pill);background:var(--surface);color:var(--ink-2);
  font-size:var(--fs-micro);font-weight:700;cursor:pointer;white-space:nowrap}

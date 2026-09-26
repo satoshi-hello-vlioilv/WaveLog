@@ -78,6 +78,20 @@ run('test_headbar: ヘッダーの作り（§9.48 寸法／§9.60 画面名／§
    .map(e=>({k:e.querySelector('.hd-chip-key')?.textContent,v:e.querySelector('.hd-chip-val')?.textContent})));
  rec('バッジが「項目名＋値」の形で内容を明示している',
    chips.length>0&&chips.every(c=>c.k&&c.v),JSON.stringify(chips));
+ /* 右側（状態の札＋操作）の字は1種・札の名前は読める濃さ（§9.508）。前は名前9.5・値13・ボタン14pxの3種で、
+    名前は白地に2.6:1だった。濃さは**描かれた色**を札の地と重ねて測る。 */
+ const right=await page.evaluate(()=>{
+  const lum=c=>{const m=c.match(/[\d.]+/g).map(Number);const f=v=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)};
+   return .2126*f(m[0])+.7152*f(m[1])+.0722*f(m[2])};
+  const vis=e=>e.getClientRects().length>0;
+  const texts=[...document.querySelectorAll('header .hd-status .hd-chip-key,header .hd-status .hd-chip-val,header .hd-actions .hd-btn,header .hd-actions #printCurrentView')].filter(vis);
+  const cr=[...document.querySelectorAll('header .hd-chip-key')].filter(vis).map(e=>{
+   const a=lum(getComputedStyle(e).color),b=lum(getComputedStyle(e.closest('.hd-chip')).backgroundColor);
+   return +((Math.max(a,b)+.05)/(Math.min(a,b)+.05)).toFixed(2)});
+  return {fs:[...new Set(texts.map(e=>getComputedStyle(e).fontSize))],n:texts.length,cr};
+ });
+ rec('ヘッダー右側（状態の札・操作）の字は1種（§9.508）',right.n>0&&right.fs.length===1,JSON.stringify(right));
+ rec('札の名前は地に対して4.5:1以上で読める（§9.508）',right.cr.length>0&&right.cr.every(v=>v>=4.5),JSON.stringify(right.cr));
 
  /* 状態チップの色が語っていること（§9.338）。**宣言ではなく描かれた色で見る**
     ——クラスが付くだけでは絵は変わらない（§9.229 ⑥）。見るのは3つ:
@@ -172,6 +186,36 @@ run('test_headbar: ヘッダーの作り（§9.48 寸法／§9.60 画面名／§
  });
  rec('幅1100pxでもヘッダーの1行目が1行に収まる',
    narrow.rows===1&&narrow.height<(narrow.barShown?130:80),JSON.stringify(narrow));
+ /* 狭い窓では札の名前を畳み、値だけにする。名前は説明（title）が持つ（§9.508）。 */
+ const keys=await page.evaluate(()=>[...document.querySelectorAll('header .hd-status .hd-chip')].filter(e=>e.getClientRects().length)
+   .map(e=>({key:getComputedStyle(e.querySelector('.hd-chip-key')).display,title:!!e.title})));
+ rec('幅1100pxでは札の名前を畳み、名前は説明が持つ（§9.508）',keys.length>0&&keys.every(k=>k.key==='none'&&k.title),JSON.stringify(keys));
+ /* 題の器に中身が**入りきらない**幅で見る——画面名は縮ませず、譲るのは出どころの1行だけ。題が札の下へ
+    重なっていないこと（§9.508 で踏んだ・最大76px）。1100pxではこの網の状態だと余りが大きく（札2枚・設備名
+    が短い）、欠陥を入れても通ったので、器を狭めて確かめる。字が大きいほど厳しいので「大」でも見る。 */
+ const fitOf=()=>page.evaluate(()=>{
+  const ctx=document.querySelector('header .hd-context'),st=document.querySelector('header .hd-status');
+  const name=document.getElementById('fileName');
+  const kids=[...ctx.children].filter(c=>c.getClientRects().length);
+  const edge=Math.max(...kids.map(c=>c.getBoundingClientRect().right));
+  const src=document.getElementById('headerContextSource');
+  return {name:name.textContent,nameCut:name.scrollWidth>name.clientWidth+1,
+   srcCut:!!src&&src.getClientRects().length>0&&src.scrollWidth>src.clientWidth+1,
+   overlap:Math.round(edge-st.getBoundingClientRect().left),
+   parts:kids.map(c=>(c.id||c.className)+':'+Math.round(c.getBoundingClientRect().width))};
+ });
+ const setSize=async sz=>{
+  await page.click('#uiSizeBadge');await page.waitForSelector('#uiSizeMenu',{timeout:4000});
+  await page.click(`#uiSizeMenu [data-ui-size-option="${sz}"]`);await W.until(page,s=>document.documentElement.dataset.uiSize===s&&document.querySelector('header').getAnimations({subtree:true}).filter(a=>a instanceof CSSTransition).length===0,sz,{ms:4000,what:'表示サイズが'+sz+'になる'});
+ };
+ await page.setViewportSize({width:880,height:900});
+ await paint();
+ const fitMd=await fitOf();
+ await setSize('lg');const fitLg=await fitOf();await setSize('md');
+ const fits={中:fitMd,大:fitLg};
+ rec('前提: 880pxでは出どころの1行が譲っている（器に入りきらない状態で見ている）',fitMd.srcCut&&fitLg.srcCut,JSON.stringify(fits));
+ rec('題が入りきらなくても画面名は切れない（中・大・§9.508）',!fitMd.nameCut&&!fitLg.nameCut,JSON.stringify(fits));
+ rec('題が状態の札に重ならない（中・大・§9.508）',fitMd.overlap<=0&&fitLg.overlap<=0,JSON.stringify(fits));
  /* **必ず戻す。** ②③は元の広さで測る。 */
  await page.setViewportSize({width:1700,height:1000});
  await paint();

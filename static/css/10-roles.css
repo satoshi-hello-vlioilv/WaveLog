@@ -71,14 +71,15 @@
    高さは --row-ctl-h(行に合わせて縮む)。行間を最密にしたときに
    ボタンだけが行より背高になって行を押し広げるのを防ぐ。 */
 .measurement-action-button,.plan-action-button,.plan-select-add,.plan-select-clear,
-.grid-lot-link,.lot-dsp-link,.sc-row-btn,.sc-board-window-btn,.sc-board-sort-btn,.sc-mode-toggle-btn,
+.grid-lot-link,.lot-dsp-link,.sc-row-btn,.sc-board-sort-btn,
 .record-list-actions button,
 .sc-session-banner button,.shift-seg button,.qa-v7 .qa-seg.qa-seg-sm button{
   height:var(--row-ctl-h);padding:0 var(--ctl-pad-x-xs);
   font-size:var(--tbl-fs);border-radius:var(--radius-sm);
 }
-/* 表の外にあるタグ・チップは従来どおり(行の密度に引きずられない)。 */
-.sc-board-window-btn,.sc-board-sort-btn,.sc-mode-toggle-btn,
+/* 表の外にあるタグ・チップは従来どおり(行の密度に引きずられない)。
+   段の切り替え・24／48時間の札は**帯の切り替えの部品**が寸法を持つ（85-headerbar.css・§9.506／§9.507）。 */
+.sc-board-sort-btn,
 .sc-session-banner button,.shift-seg button,.qa-v7 .qa-seg.qa-seg-sm button{
   height:var(--ctl-h-xs);font-size:var(--fs-sm);
 }
@@ -146,9 +147,11 @@
    利用者から「文字サイズがバラバラ」「小さすぎる」と指摘された箇所の
    1つだった。 */
 .split-visual-hint,.split-hint-text{font-size:var(--fs-sm);font-weight:700}
-.qa-v7 .qa-chip,.list-join-chip,.suggest-chip,.field-reorder-badge{
+/* `.list-join-chip`・`.suggest-chip`の字は一覧の帯・候補の面が持つ（§9.505「1面1サイズ」）。 */
+.qa-v7 .qa-chip,.field-reorder-badge{
   font-size:var(--fs-micro);font-weight:800;
 }
+.list-join-chip,.suggest-chip{font-weight:800}
 /* --- 器の内側余白（§9.72） ---
    ダイアログ・カード・チップの「中身の詰まり方」は3つだけ。
    実測では器の内側余白に112種類の組み合わせが使われており、同じ役割の

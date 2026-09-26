@@ -64,6 +64,33 @@ run('test_reccols: データ一覧の表示列（§9.162）', async ({page,rec,B
   /* ---- 2) 「表示列」ボタンで**同じパネル**が開く ---- */
   const btn=await page.$('#recordColumnsBtn');
   rec('「表示列」ボタンがある',!!btn);
+  /* ---- §9.507 帯は仕掛一覧と同じ部品・同じ言葉・同じ並び ----
+     前: 「絞り込み」の名前＋欄の字「…で検索」／「検索解除」（欄の ✕ と同じ働き）／「並び順」／
+     「0 / 0件を表示」／表示列に印が無い／名前と件数だけ11px。 */
+  const band=await page.evaluate(()=>{
+   const bar=document.getElementById('recordSearchBar');
+   const order=['recordSearch','recordSearchResult','recordSort','recordColumnsBtn']
+     .map(id=>[...bar.querySelectorAll('*')].indexOf(document.getElementById(id)));
+   return {fs:(sel=>{
+   const vis=e=>{const r=e.getBoundingClientRect();return r.width>1&&r.height>1&&!e.closest('[hidden]')};
+   const bar=document.querySelector(sel);
+   const txt=[...bar.querySelectorAll('*')].filter(e=>vis(e)&&!e.matches('i,option')
+     &&[...e.childNodes].some(n=>n.nodeType===3&&n.nodeValue.trim()));
+   return [...new Set(txt.map(e=>getComputedStyle(e).fontSize))];
+  })('#recordSearchBar'),
+    search:!!bar.querySelector('label.lt-search #recordSearch'),
+    clear:!!document.getElementById('clearRecordSearch'),
+    count:(document.getElementById('recordSearchResult')?.textContent||'').trim(),
+    sortName:(bar.querySelector('.rec-sort>span')?.textContent||'').trim(),
+    icon:!!bar.querySelector('#recordColumnsBtn .fa-table-columns'),
+    ordered:order.every((v,i)=>v>=0&&(i===0||v>order[i-1]))};
+  });
+  rec('帯の字は1つの大きさ（前: 12・11px）',band.fs.length===1,JSON.stringify(band.fs));
+  rec('検索欄は一覧と同じ部品（.lt-search）・「検索解除」のボタンは無い（欄の ✕ と同じ働き）',
+      band.search&&!band.clear,JSON.stringify(band));
+  rec('件数は仕掛一覧と同じ書き方（全 N件／n件 / 全 N件）',/^(全 [\d,]+件|[\d,]+件 \/ 全 [\d,]+件)$/.test(band.count),band.count);
+  rec('並びは「絞り込む（検索→件数）→ 見せ方（並び→表示列）」・語は「並び」・表示列に印',
+      band.ordered&&band.sortName==='並び'&&band.icon,JSON.stringify(band));
   await page.click('#recordColumnsBtn');
   await page.waitForSelector('#listColumnPanel:not([hidden]) .lc-item',{timeout:15000});
   await settle(page);

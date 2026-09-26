@@ -71,7 +71,7 @@ run('test_filteruser: フィルタを個人単位で記録する（§9.172）', 
  },user);
  const openPresets=async page=>{
   /* §9.286 ①: たまにしか使わない入口は`⋯`の浮きメニューへ畳んだ。**消していない**ので、開いてから押す。 */
-  await page.click('#filterMoreBtn');
+  await page.click('#filterCondBtn');
   await page.click('#openFilterPresets');
   await page.waitForSelector('#filterPresetModal:not([hidden])',{timeout:10000});
   await idleOf.get(page)();
