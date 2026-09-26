@@ -21,6 +21,8 @@
  9. 接続の記録と版（§9.513）
 10. 古い版の端末への知らせ（§9.515）: 数える前は返さない・間隔ごとに数える・
     読めなければ前の答え・物差しは接続状況と同じ・ハートビートに載る
+11. 最新版の判定から開発者を除く（§9.516）: 開発者の端末の版は数えず、要更新にも数えない・
+    自分が開発者なら自分の版も・区分が分からなければ数える・知らせも同じ・開発者は急かさない
 ============================================================
 """
 import json, pathlib, shutil, sys, tempfile
@@ -46,7 +48,7 @@ box = tmp / 'presence'
 # `from ..access_mode import current_permission_flags` で**名前を束縛して
 # いる**ので、`access_mode`側だけ差し替えても効かない（最初にそう書いて、
 # 網が「一般ユーザーのまま」で通ってしまった）。
-_orig = (presence.presence_dir, pr._registered_role, pr.current_permission_flags,
+_orig = (presence.presence_dir, presence.registered_roles, pr.current_permission_flags,
          pr.current_login_id, pr.current_pc_name)
 _role = {'me': mr.ROLE_USER, 'targets': {}}
 
@@ -60,7 +62,9 @@ def write_entry(key, login, pc, at=None, view='', mode='edit'):
 
 try:
     presence.presence_dir = lambda: (box, 'master')
-    pr._registered_role = lambda login, pc: _role['targets'].get(f'{pc}@{login}', mr.ROLE_USER)
+    # 区分を引く口は`presence.registered_roles()`の1箇所（一覧・切断・最新版の判定が同じ答え・§9.516）
+    presence.registered_roles = lambda items: {t['key']: _role['targets'].get(f"{t.get('pc')}@{t.get('login')}", mr.ROLE_USER)
+                                               for t in items if t.get('key')}
     pr.current_permission_flags = lambda: {'canEdit': True, 'canSchedule': False,
                                            'canFieldReorder': False, 'fieldReorderEquipment': '',
                                            'role': _role['me']}
@@ -278,6 +282,7 @@ try:
     # ---- 10. 古い版の端末への知らせ（§9.515） -----------------------------
     # 運用中の最新版は裏で数えて控え、ハートビートの応答が**控えを返すだけ**。
     presence._newest.update(at=0.0, latest='')
+    ME = {'key': 'PC-ME@me', 'login': 'me', 'pc': 'PC-ME', 'version': ver}   # 在席を書く裏のスレッドが渡す「この端末」
     rec('数える前は知らせを返さない（「まだ分からない」を「最新」と言わない）',
         presence.version_notice() is None)
     hdir = box / presence.HISTORY_DIR
@@ -285,7 +290,7 @@ try:
     newer = hdir / 'PC-N@new.json'
     newer.write_text(json.dumps({'key': 'PC-N@new', 'login': 'new', 'pc': 'PC-N', 'version': '99.0.0',
                                  'sessions': 1}), encoding='utf-8')
-    presence.refresh_newest(force=True)
+    presence.refresh_newest(ME, force=True)
     n = presence.version_notice() or {}
     rec('運用中に新しい版があれば「この端末は古い」と答える',
         n.get('latestVersion') == '99.0.0' and n.get('myVersion') == ver and n.get('outdated') is True, str(n))
@@ -293,19 +298,19 @@ try:
         presence.fleet_summary(presence.entries(), presence.history_entries(), ver)['latestVersion']
         == n.get('latestVersion'))
     newer.unlink()
-    presence.refresh_newest()
+    presence.refresh_newest(ME)
     rec('数え直すのは間隔ごと（ハートビートのたびに共有を読まない）',
         (presence.version_notice() or {}).get('latestVersion') == '99.0.0')
     _ent, _his = presence.entries, presence.history_entries
     try:
         presence.entries = lambda: None
         presence.history_entries = lambda: None
-        presence.refresh_newest(force=True)
+        presence.refresh_newest(ME, force=True)
         rec('読めなかったときは前の答えのまま（共有が遅れただけで知らせを消さない）',
             (presence.version_notice() or {}).get('outdated') is True)
     finally:
         presence.entries, presence.history_entries = _ent, _his
-    presence.refresh_newest(force=True)
+    presence.refresh_newest(ME, force=True)
     rec('新しい版が見えなくなれば知らせは消える（自分が最新）',
         (presence.version_notice() or {}).get('outdated') is False, str(presence.version_notice()))
     r = c.post('/api/heartbeat?tab=t-515')
@@ -316,6 +321,55 @@ try:
         and (hb.get('version') or {}).get('latestVersion') == ver, str(hb))
     presence._newest.update(at=0.0, latest='')
 
+    # ---- 11. 最新版の判定から開発者を除く（§9.516） -------------------------
+    # 開発者の端末は**まだ配っていない版**を動かす。数えると全端末へ「新しい版あり」が出る。
+    dev_hist = [{'key': 'D', 'login': 'dev', 'pc': 'PC-D', 'version': '99.0.0', 'lastAt': '2026-09-22T10:00:00',
+                 'firstAt': '', 'sessions': 1, 'totalSec': 60, 'versions': {}}] + hist
+    roles = {'D': mr.ROLE_DEVELOPER, 'A': mr.ROLE_USER, 'B': mr.ROLE_USER, 'C': mr.ROLE_USER}
+    f = presence.fleet_summary(online, dev_hist, '2.10.0', roles=roles, my_key='ME')
+    d_t = next((t for t in f['terminals'] if t['key'] == 'D'), {})
+    rec('開発者の端末の版は運用中の最新版に数えない',
+        f['latestVersion'] == '2.10.0', f['latestVersion'])
+    rec('開発者の端末は「要更新」にも数えない（counted=False・区分を添える）',
+        d_t.get('counted') is False and d_t.get('outdated') is False and d_t.get('role') == mr.ROLE_DEVELOPER
+        and f['counts']['outdated'] == 2, str({k: d_t.get(k) for k in ('counted', 'outdated', 'role')}) + str(f['counts']))
+    rec('除いた区分を画面へ渡す（出どころを言うため）', f.get('excludedRoles') == [mr.ROLE_DEVELOPER], str(f.get('excludedRoles')))
+    du = next((u for u in f['users'] if u['login'] == 'dev'), {})
+    rec('開発者の端末だけの利用者も数えない（counted=False）', du.get('counted') is False and du.get('outdated') is False, str(du))
+    f = presence.fleet_summary([], hist, '99.0.0', roles={'ME': mr.ROLE_DEVELOPER}, my_key='ME')
+    rec('この端末が開発者なら、この端末の版も数えない', f['latestVersion'] == '2.10.0', f['latestVersion'])
+    f = presence.fleet_summary([], dev_hist, '2.10.0', roles=None)
+    rec('区分が分からない（マスタを読めない）端末は数える（配った版まで消さない）',
+        f['latestVersion'] == '99.0.0', f['latestVersion'])
+    # 古い版の知らせも同じ判定（裏で数える分）
+    _role['targets']['PC-N@new'] = mr.ROLE_DEVELOPER
+    newer.write_text(json.dumps({'key': 'PC-N@new', 'login': 'new', 'pc': 'PC-N', 'version': '99.0.0',
+                                 'sessions': 1}), encoding='utf-8')
+    presence.refresh_newest({'key': 'ME', 'login': 'me', 'pc': 'PC-ME', 'version': ver}, force=True)
+    n = presence.version_notice(mr.ROLE_USER) or {}
+    rec('知らせの最新版にも開発者の端末の版を数えない', n.get('latestVersion') == ver and n.get('outdated') is False, str(n))
+    _role['targets']['PC-N@new'] = mr.ROLE_USER
+    presence.refresh_newest(ME, force=True)
+    rec('開発者の端末には「古い」と言わない（配る側を急かさない）',
+        (presence.version_notice(mr.ROLE_USER) or {}).get('outdated') is True
+        and (presence.version_notice(mr.ROLE_DEVELOPER) or {}).get('outdated') is False,
+        str([presence.version_notice(mr.ROLE_USER), presence.version_notice(mr.ROLE_DEVELOPER)]))
+    newer.unlink()
+    presence._newest.update(at=0.0, latest='')
+    # 区分の読み方は permission_flags と同じ1箇所（_permission_row）
+    import sqlite3
+    mc = sqlite3.connect(':memory:')
+    mr.ensure_access_permission_table(mc)
+    for lg, pc, role in (('dev', 'PC-D', mr.ROLE_DEVELOPER), ('boss', '', mr.ROLE_MAINTAINER), ('', 'PC-X', mr.ROLE_OPERATOR)):
+        mc.execute('INSERT INTO [アクセス権限マスタ] ([ログインID],[PC名],[編集可否],[有効],[権限区分]) VALUES (?,?,1,1,?)', (lg, pc, role))
+    mc.commit()
+    pairs = [('dev', 'PC-D'), ('boss', 'PC-Q'), ('any', 'PC-X'), ('dev', 'PC-OTHER'), ('nobody', 'PC-Z')]
+    got = mr.registered_roles(mc, pairs)
+    want = {p: mr.permission_flags(mc, *p)['role'] for p in pairs}
+    mc.close()
+    rec('まとめて引く区分は1件ずつの答えと同じ（一致の読み方は1箇所）',
+        got == want and got[('dev', 'PC-D')] == mr.ROLE_DEVELOPER and got[('nobody', 'PC-Z')] == mr.ROLE_DEFAULT, str(got))
+
     # ---- 段の宣言 --------------------------------------------------------
     # **3モードとも許すのは意図**（区分は編集可否と別の軸）。宣言を落とすと
     # 閲覧モードの開発者が切断できなくなる。
@@ -323,7 +377,7 @@ try:
         am._WRITE_ALLOWED_MODES.get('presence') == {'edit', 'view', 'schedule'},
         str(am._WRITE_ALLOWED_MODES.get('presence')))
 finally:
-    (presence.presence_dir, pr._registered_role, am.current_permission_flags,
+    (presence.presence_dir, presence.registered_roles, am.current_permission_flags,
      am.current_login_id, am.current_pc_name) = _orig
     am.forget_revocation()
     shutil.rmtree(tmp, ignore_errors=True)

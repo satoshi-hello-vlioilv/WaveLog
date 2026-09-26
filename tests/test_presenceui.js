@@ -19,7 +19,10 @@
        面を持たない／押すと更新履歴の窓が「最新版・この端末の版・すること」を言う／
        まだ分からない（null）で消さない／再起動待ちの間と最新のときは出さない／測定画面のレールには置かない
 
-   ③④⑥⑦は`/api/presence`を差し替えて確かめる。**実データに他の端末が居る
+    ⑨ **最新版の判定から開発者を除く**（§9.516）: 出どころ（「開発者の端末を除く」）・開発者の端末は
+       「対象外」（理由は title）・「最新でない版だけ」に入らない
+
+   ③④⑥⑦⑨は`/api/presence`を差し替えて確かめる。**実データに他の端末が居る
    保証は無い**ので、「無ければ素通り」の書き方だと直す前でも通る。 */
 'use strict';
 const {run}=require('./lib/harness.js');
@@ -199,15 +202,50 @@ run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,
  await page.click('[data-pz-by="terminals"]');
  await page.click('#pzOnlyOld');
 
+ // ---- ⑨ 最新版の判定から開発者を除く（§9.516） ---------------------------
+ // 答えはサーバー（counted・excludedRoles）。画面は「対象外」と出どころを字で言うだけ。
+ fake=JSON.parse(JSON.stringify(FAKE('メンテナンス者',true)));
+ fake.fleet.excludedRoles=['開発者'];
+ fake.items.push({key:'PC-DEV@dev',login:'dev',pc:'PC-DEV',role:'開発者',mode:'edit',view:'master',at:'',idleSec:3,
+  version:'9.9.9',since:'2026-09-26T09:30:00',durationSec:600,outdated:false,counted:false,
+  revoked:null,isMe:false,canDisconnect:false});
+ fake.fleet.terminals.push({key:'PC-DEV@dev',login:'dev',pc:'PC-DEV',version:'9.9.9',online:false,outdated:false,counted:false,
+  role:'開発者',sessions:2,totalSec:600,lastAt:'2026-09-25T09:00:00',firstAt:'2026-09-20T08:00:00',versions:{}});
+ await openPresence();await idle();
+ const dv=await page.evaluate(()=>{
+  const row=[...document.querySelectorAll('#pzList .pz-row')].find(r=>r.textContent.includes('PC-DEV'));
+  const tr=[...document.querySelectorAll('#pzTerms tbody tr')].find(r=>r.textContent.includes('PC-DEV'));
+  const st=tr&&tr.querySelector('.pz-vst');
+  return {note:document.getElementById('pzLatestNote')?.textContent||'',
+   rowVer:(row&&row.querySelector('.pz-c-ver')||{}).textContent||'',
+   trState:st?st.textContent:'',trWhy:st?st.title:'',trOld:!!(tr&&tr.classList.contains('is-old'))};
+ });
+ rec('⑨ 運用中の最新版がどの区分を除いて数えたかを字で言う（出どころ）',/開発者の端末を除く/.test(dv.note),dv.note);
+ rec('⑨ 開発者の端末は「要更新」でも「最新」でもなく「対象外」と言う（接続中の表も記録の表も）',
+   /対象外/.test(dv.rowVer)&&!/要更新|最新/.test(dv.rowVer)&&dv.trState==='対象外'&&!dv.trOld,JSON.stringify(dv));
+ rec('⑨ なぜ対象外かは title が言う',/開発者/.test(dv.trWhy)&&/数えません/.test(dv.trWhy),dv.trWhy);
+ await page.click('#pzOnlyOld');
+ const devInOld=await page.evaluate(()=>[...document.querySelectorAll('#pzTerms tbody tr')].some(r=>r.textContent.includes('PC-DEV')));
+ rec('⑨ 「最新でない版だけ」に開発者の端末は入らない（配る相手ではない）',!devInOld);
+ await page.click('#pzOnlyOld');
+ fake.fleet.latestVersion='';
+ await openPresence();await idle();
+ const emptyNote=await page.evaluate(()=>document.getElementById('pzLatestNote')?.textContent||'');
+ rec('⑨ 開発者を除くと数える端末が無いときは、そう言う（「—」だけにしない）',
+   /開発者の端末を除くと、まだ接続の記録がありません/.test(emptyNote),emptyNote);
+
  // ---- ⑧ 古い版の端末への知らせ（§9.515） ------------------------------
  // 本物の応答: ハートビートに版の知らせが載る（区分を問わない道）
  const hbReal=await page.evaluate(async()=>{
   const r=await fetch('/api/heartbeat?tab=t-ui515',{method:'POST'});const j=await r.json();
   await fetch('/api/heartbeat/close?tab=t-ui515',{method:'POST'});return j;
  });
- const mine=(hbReal.version||{}).myVersion||'';
- rec('⑧ ハートビートの応答に版の知らせが載る（最新版・この端末の版・古いか）',
-   hbReal.ok===true&&!!mine&&typeof (hbReal.version||{}).outdated==='boolean',JSON.stringify(hbReal));
+ const mine=(await page.evaluate(()=>fetch('/api/build').then(r=>r.json()))).version||'';
+ /* 検証用フィクスチャのこの端末は「開発者」で、記録もこの端末だけ——開発者を除くと数える端末が無く、
+    知らせは「まだ無い（null）」が正しい答え（§9.516）。中身の判定は test_presence.py 10・11 が見る。 */
+ rec('⑧ ハートビートの応答に版の知らせの席がある（まだ無ければ null・あれば最新版と古いか）',
+   hbReal.ok===true&&!!mine&&'version' in hbReal
+   &&(hbReal.version===null||(hbReal.version.myVersion===mine&&typeof hbReal.version.outdated==='boolean')),JSON.stringify(hbReal));
  // 以降はハートビートの答えを差し替える（15秒ごとの本物が、差し込んだ状態を上書きしないように）
  const hb={version:{latestVersion:'99.0.0',myVersion:mine,outdated:true}};
  await page.route('**/api/heartbeat?**',route=>route.fulfill({status:200,contentType:'application/json',

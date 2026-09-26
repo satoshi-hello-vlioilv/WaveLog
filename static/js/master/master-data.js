@@ -3774,10 +3774,22 @@
  /* 時刻は「月-日 時:分」（年と秒は`title`）。同じ幅で縦にそろう。 */
  function pzAt(iso){const t=String(iso||'');return t?t.replace('T',' ').slice(5,16):'—'}
  function pzVer(v,since){return v?`VER${v}`:`VER${since}より前`}
- /* 版の状態は**語で**言う（色だけにしない・§CLAUDE 3）。 */
+ /* 版の状態は**語で**言う（色だけにしない・§CLAUDE 3）。語は3つで、答えは`pzState()`の1箇所
+    （表・記録・コピーが同じ語を使う）。**数えない区分**（開発者・§9.516）は要更新でも最新でもない
+    ——判定の外なので「対象外」と言い、なぜかは`title`が言う。 */
+ function pzState(x,f){
+  if(x.counted===false){
+   const roles=(f.excludedRoles||[]).join('・')||'開発者';
+   return {word:'対象外',cls:'is-out',why:`${roles}の端末は、運用中の最新版の判定に数えません（まだ配っていない版を動かすため）`};
+  }
+  return x.outdated?{word:'要更新',cls:'is-old',why:''}:{word:'最新',cls:'is-ok',why:''};
+ }
+ function pzStateHtml(x,f){
+  const st=pzState(x,f);
+  return `<b class="pz-vst ${st.cls}"${st.why?` title="${esc(st.why)}"`:''}>${st.word}</b>`;
+ }
  function pzVerHtml(x,f){
-  const word=x.outdated?'<b class="pz-vst is-old">要更新</b>':'<b class="pz-vst is-ok">最新</b>';
-  return `${word}<span class="pz-ver" title="${esc(Object.keys(x.versions||{}).map(v=>'VER'+v).join(' → ')||'')}">${esc(pzVer(x.version,f.recordingSince))}</span>`;
+  return `${pzStateHtml(x,f)}<span class="pz-ver" title="${esc(Object.keys(x.versions||{}).map(v=>'VER'+v).join(' → ')||'')}">${esc(pzVer(x.version,f.recordingSince))}</span>`;
  }
  /* 表の中身（見えている並び・絞り込みそのまま）。コピーとCSVはこれを使う
     ——**見えている表と写した表を違えない**。 */
@@ -3786,13 +3798,13 @@
   if(pzView.by==='users'){
    const head=['版の状態','ログインID','使った端末','使っている版','最後に使った','累計接続回数','累計接続時間'];
    const rows=(f.users||[]).filter(u=>!old||u.outdated).map(u=>({x:u,cells:[
-    u.outdated?'要更新':'最新',u.login||'（不明）',`${u.terminals}台（${u.pcs.join('・')}）`,
+    pzState(u,f).word,u.login||'（不明）',`${u.terminals}台（${u.pcs.join('・')}）`,
     u.versions.map(v=>pzVer(v,f.recordingSince)).join('・'),pzAt(u.lastAt),`${u.sessions}回`,pzDur(u.totalSec)]}));
    return {head,rows};
   }
   const head=['版の状態','ログインID','PC名','版','最後に使った','累計接続回数','累計接続時間','初めて使った'];
   const rows=(f.terminals||[]).filter(t=>!old||t.outdated).map(t=>({x:t,cells:[
-   t.outdated?'要更新':'最新',t.login||'（不明）',t.pc||'（不明）',pzVer(t.version,f.recordingSince),
+   pzState(t,f).word,t.login||'（不明）',t.pc||'（不明）',pzVer(t.version,f.recordingSince),
    t.online?'接続中':pzAt(t.lastAt),t.sessions?`${t.sessions}回`:'—',t.sessions?pzDur(t.totalSec):'—',pzAt(t.firstAt)]}));
   return {head,rows};
  }
@@ -3847,9 +3859,12 @@
 
   /* ---- 要約（§CLAUDE 2「次にすることを1つ指す」）: 最新版と、配る相手の数 ---- */
   const same=f.myVersion&&f.myVersion===f.latestVersion;
+  /* 最新版の出どころ（§9.516・画面基準6）——どの区分を除いて数えたかはサーバーが言う。 */
+  const excluded=(f.excludedRoles||[]).join('・');
   const summary=`<div class="pz-sum" id="pzSummary">
     <div class="pz-sum-cell"><span>運用中の最新版</span><b id="pzLatest">${esc(f.latestVersion?'VER'+f.latestVersion:'—')}</b>
-     <small>${same?'この端末もこの版です':`この端末は VER${esc(f.myVersion||'?')}`}</small></div>
+     <small id="pzLatestNote">${!f.latestVersion&&excluded?`${esc(excluded)}の端末を除くと、まだ接続の記録がありません`
+      :`${excluded?`${esc(excluded)}の端末を除く・`:''}${same?'この端末もこの版です':`この端末は VER${esc(f.myVersion||'?')}`}`}</small></div>
     <div class="pz-sum-cell"><span>接続中</span><b>${items.length}<i>台</i></b><small>10秒ごとに読み直します</small></div>
     <div class="pz-sum-cell${c.outdated?' is-old':''}"><span>最新でない端末</span><b id="pzOldCount">${c.outdated||0}<i>台</i></b>
      <small>${c.outdated?`うち接続中 ${c.outdatedOnline||0}台 — 新しい版を配る相手です`:'すべての端末が最新版です'}</small></div>
@@ -3896,7 +3911,7 @@
   const histBody=hrows.map(({x,cells})=>{
    const forget=!byUsers&&can.canForget&&!x.online
     ?`<button type="button" class="mm-btn-ghost sm" data-pz-forget="${esc(x.key)}" title="使わなくなった端末の記録を消します（最新でない端末の数から外れます）">記録を消す</button>`:'';
-   const tds=cells.map((v,i)=>i===0?`<td>${x.outdated?'<b class="pz-vst is-old">要更新</b>':'<b class="pz-vst is-ok">最新</b>'}</td>`
+   const tds=cells.map((v,i)=>i===0?`<td>${pzStateHtml(x,f)}</td>`
     :`<td${(!byUsers&&i===4&&x.online)?' class="is-online"':''}${(i>=4)?' class="pz-num"':''} title="${esc(String(v))}">${esc(String(v))}</td>`).join('');
    return `<tr class="${x.outdated?'is-old':''}">${tds}${byUsers?'':`<td class="pz-act">${forget}</td>`}</tr>`;
   }).join('');

@@ -190,10 +190,10 @@ def install(app):
   try:
    from . import presence
    from .access_mode import current_login_id,current_pc_name,current_permission_flags,get_mode
-   presence.touch_async(current_login_id(),current_pc_name(),get_mode(),
-                        current_permission_flags().get('role',''),
+   role=current_permission_flags().get('role','')
+   presence.touch_async(current_login_id(),current_pc_name(),get_mode(),role,
                         str(request.args.get('view') or '')[:40])
-   notice=presence.version_notice()
+   notice=presence.version_notice(role)   # 開発者の端末は急かさない(§9.516)
   except Exception as _e:
    quiet('在席を書けない（ハートビートは受け付ける）',_e)
   return jsonify(ok=True,version=notice)

@@ -59,6 +59,9 @@ from pathlib import Path
 
 from . import atomic_io, paths
 from .changelog_data import APP_VERSION
+from .db_access import DBS, connect
+from .repositories.master_repo import ROLE_DEFAULT, ROLE_DEVELOPER
+from .repositories.master_repo import registered_roles as _registered_roles
 from .logging_setup import app_logger
 from .quiet import quiet
 
@@ -87,6 +90,9 @@ HISTORY_SINCE = '2.400.0'
 # 運用中の最新版を数え直す間隔（§9.515）。数えるのは在席を書く裏のスレッドで、
 # ハートビートの応答は**数えてある値を返すだけ**（共有を読みに行かない）。
 NEWEST_INTERVAL_SEC = 300
+# 運用中の最新版の判定に数えない区分（§9.516、利用者の指示「運用中の最新版の判定は
+# アクセス権限の『開発者』を除いた形にしたい」）。答えは`counts_for_latest()`。
+LATEST_EXCLUDED_ROLES = (ROLE_DEVELOPER,)
 
 _BAD_CHARS = set('<>:"/\\|?*')
 
@@ -273,18 +279,53 @@ def forget_history(key):
     return atomic_io.unlink(_history_path(str(key)), budget_sec=0.5, label='presence.history.forget')
 
 
-def latest_version(online, history, my_version):
-    """運用中の最新版＝**見えているすべての版の最大**（この端末の版も含む）。
+def counts_for_latest(role):
+    """その区分の端末を「運用中の最新版」の判定に数えるか（§9.516）。**ここ1箇所**。
 
+    開発者の端末は**まだ配っていない版**を動かすので数えない（数えると、試しに
+    動かしただけで全端末へ「新しい版あり」が出る）。区分が分からない（`None`・
+    マスタを読めなかった）ときは数える——数えないほうへ倒すと、配った版まで消える。"""
+    return role not in LATEST_EXCLUDED_ROLES
+
+
+def latest_version(terminals, roles=None):
+    """運用中の最新版＝**数える区分の端末の版の最大**（§9.515・§9.516）。
+
+    `terminals`は`key`と`version`を持つ並び、`roles`は key→登録上の区分。
     答えはここ1箇所——接続状況の一覧（`fleet_summary()`）と、古い版の端末への
-    知らせ（`version_notice()`・§9.515）が同じ物差しで比べる（§9.208）。"""
-    seen = [my_version] + [h.get('version') for h in (history or [])] + [o.get('version') for o in (online or [])]
-    return max((v for v in seen if v), key=version_key, default='')
+    知らせ（`version_notice()`）が同じ物差しで比べる（§9.208）。"""
+    roles = roles or {}
+    return max((str(t.get('version')) for t in terminals or []
+                if t.get('version') and counts_for_latest(roles.get(t.get('key')))),
+               key=version_key, default='')
 
 
-def refresh_newest(force=False):
+def registered_roles(items):
+    """端末ごとの**登録上の**区分（§9.516）。key→区分、マスタを読めなければNone。
+
+    在席に書かれた区分は端末の自己申告なので使わない（マスタが正・§9.272）。
+    表は1回だけ読む（`master_repo.registered_roles()`）。"""
+    items = [t for t in (items or []) if t.get('key')]
+
+    def pair(t):
+        return (str(t.get('login') or ''), str(t.get('pc') or ''))
+    try:
+        c = connect(DBS['MASTER']['path'], True)
+        try:
+            got = _registered_roles(c, {pair(t) for t in items})
+        finally:
+            c.close()   # `with connect()`は閉じない（§9.270）
+    except Exception as _e:
+        quiet('区分を引けない（開発者を見分けられないので、全部の端末を数える）', _e)
+        return None
+    return {str(t['key']): got.get(pair(t), ROLE_DEFAULT) for t in items}
+
+
+def refresh_newest(me=None, force=False):
     """運用中の最新版を数え直して控える（§9.515）。在席を書く裏のスレッドから呼ぶ。
 
+    `me`＝この端末（`key`・`login`・`pc`・`version`）。在席が書けなかったときも
+    自分の版を数えに入れる（区分で外れるのは他の端末と同じ）。
     **読めなかったときは前の答えのまま**——「読めない」を「最新版は自分」と
     言い換えると、共有が一瞬遅れただけで知らせが消えたり出たりする。"""
     now = time.time()
@@ -295,35 +336,39 @@ def refresh_newest(force=False):
     online, history = entries(), history_entries()
     if online is None and history is None:
         return _newest['latest']
-    latest = latest_version(online or [], history or [], app_version())
+    seen = (online or []) + (history or []) + ([me] if me else [])
+    latest = latest_version(seen, registered_roles(seen))
     with _lock:
         _newest['latest'] = latest
     return latest
 
 
-def version_notice():
+def version_notice(role=''):
     """この端末へ返す「版の知らせ」（§9.515）。まだ数えていなければNone。
 
-    判定はここ1箇所（画面は`outdated`を読むだけ）。"""
+    判定はここ1箇所（画面は`outdated`を読むだけ）。**数えない区分の端末
+    （開発者）には「古い」と言わない**（§9.516）——配る側の端末を急かさない。"""
     with _lock:
         latest = _newest['latest'] if _newest['at'] else ''
     if not latest:
         return None
     mine = app_version()
     return {'latestVersion': latest, 'myVersion': mine,
-            'outdated': version_key(mine) < version_key(latest)}
+            'outdated': counts_for_latest(role) and version_key(mine) < version_key(latest)}
 
 
-def fleet_summary(online, history, my_version):
+def fleet_summary(online, history, my_version, roles=None, my_key=''):
     """接続中と記録を合わせて「版の配布」の答えを作る。**ここ1箇所**（§9.163）。
 
-    ・運用中の最新版＝`latest_version()`（見えているすべての版の最大）
+    ・運用中の最新版＝`latest_version()`（**数える区分**の端末の版の最大・§9.516）
+    ・数えない区分の端末（開発者）は`counted=False`で、**要更新にも最新にも数えない**
     ・版が空＝**記録を書かない古い版**（§9.513より前）なので、最新ではないと数える
     ・利用者ごと＝ログインIDでまとめる（1人が複数のPCを使うことがある）
     """
     online = list(online or [])
     history = list(history or [])
-    latest = latest_version(online, history, my_version)
+    roles = roles or {}
+    latest = latest_version(online + history + [{'key': my_key, 'version': my_version}], roles)
     lk = version_key(latest)
     by = {h['key']: dict(h, online=False) for h in history}
     for o in online:
@@ -337,7 +382,9 @@ def fleet_summary(online, history, my_version):
             t['version'] = o['version']
     terms = []
     for t in by.values():
-        t['outdated'] = bool(latest) and version_key(t.get('version')) < lk
+        t['role'] = roles.get(t['key']) or ''
+        t['counted'] = counts_for_latest(roles.get(t['key']))
+        t['outdated'] = t['counted'] and bool(latest) and version_key(t.get('version')) < lk
         terms.append(t)
     # **古い版が先**・その中は最後に使った順（配る相手から読めるように）
     terms.sort(key=lambda t: t.get('lastAt') or '', reverse=True)
@@ -346,7 +393,8 @@ def fleet_summary(online, history, my_version):
     for t in terms:
         u = users.setdefault(t.get('login') or '', {'login': t.get('login') or '', 'terminals': 0, 'pcs': [],
                                                     'sessions': 0, 'totalSec': 0, 'lastAt': '',
-                                                    'versions': [], 'online': False, 'outdated': False})
+                                                    'versions': [], 'online': False, 'outdated': False,
+                                                    'counted': False})
         u['terminals'] += 1
         u['pcs'].append(t.get('pc') or '')
         u['sessions'] += int(t.get('sessions') or 0)
@@ -357,11 +405,14 @@ def fleet_summary(online, history, my_version):
             u['versions'].append(v)
         u['online'] = u['online'] or bool(t.get('online'))
         u['outdated'] = u['outdated'] or bool(t.get('outdated'))
+        u['counted'] = u['counted'] or bool(t.get('counted'))
     ul = sorted(users.values(), key=lambda u: u['lastAt'], reverse=True)
     ul.sort(key=lambda u: not u['outdated'])
     for u in ul:
         u['versions'].sort(key=version_key, reverse=True)
     return {'latestVersion': latest, 'myVersion': my_version, 'recordingSince': HISTORY_SINCE,
+            # 判定に数えない区分（画面は「開発者の端末を除く」と出どころを言う）
+            'excludedRoles': list(LATEST_EXCLUDED_ROLES),
             'terminals': terms, 'users': ul,
             'counts': {'terminals': len(terms), 'users': len(ul),
                        'online': sum(1 for t in terms if t.get('online')),
@@ -404,7 +455,7 @@ def touch(login_id, pc_name, mode='', role='', view='', force=False):
         app_logger().warning('接続の記録を書けませんでした: %s', e)
     _sweep()
     try:
-        refresh_newest()
+        refresh_newest({'key': key, 'login': str(login_id or ''), 'pc': str(pc_name or ''), 'version': version})
     except Exception as e:
         # 数えられなくても在席は出す（知らせは前の答えのまま・§9.515）
         app_logger().warning('運用中の最新版を数えられませんでした: %s', e)

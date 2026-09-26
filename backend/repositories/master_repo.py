@@ -1345,7 +1345,6 @@ def permission_flags(c,login_id,pc_name):
  # docs/SCHEDULE_MODE_DESIGN.md §3.2)。
  if ACCESS_PERMISSION_TABLE not in tables(c):
   return dict(_DEFAULT_PERMISSION_FLAGS)
- target_login=normalize_identity_part(login_id);target_pc=normalize_identity_part(pc_name)
  def flags_of(r):
   role=normalize_role(r[11] if len(r)>11 else '')
   stored=normalize_master_edit(r[12] if len(r)>12 else '')
@@ -1356,8 +1355,15 @@ def permission_flags(c,login_id,pc_name):
           'masterEdit':master_edit_effective(role,stored),'masterEditStored':stored,
           'columnEdit':normalize_column_edit(r[13] if len(r)>13 else ''),
           'matchedId':r[0]}
+ matched=_permission_row(access_permission_master_rows(c),login_id,pc_name)
+ return flags_of(matched) if matched else dict(_DEFAULT_PERMISSION_FLAGS)
+
+def _permission_row(rows,login_id,pc_name):
+ """その人・その端末に効く1行（無ければNone）。一致の読み方は**ここ1箇所**
+ （`permission_flags()`と`registered_roles()`が同じ答えを使う）。"""
+ target_login=normalize_identity_part(login_id);target_pc=normalize_identity_part(pc_name)
  exact=login_only=pc_only=global_rule=None
- for r in access_permission_master_rows(c):
+ for r in rows:
   rl,rp=normalize_identity_part(r[1]),normalize_identity_part(r[2])
   if rl and rp:
    if rl==target_login and rp==target_pc:exact=r
@@ -1367,8 +1373,20 @@ def permission_flags(c,login_id,pc_name):
    if rp==target_pc:pc_only=r
   else:
    global_rule=r
- matched=exact or login_only or pc_only or global_rule
- return flags_of(matched) if matched else dict(_DEFAULT_PERMISSION_FLAGS)
+ return exact or login_only or pc_only or global_rule
+
+def registered_roles(c,pairs):
+ """(ログインID, PC名) の組ごとの**登録上の**区分（§9.516）。表は1回だけ読む
+ ——接続状況は端末の数だけ引くので、1件ずつ開くと共有越しの往復がその数だけ要る。"""
+ pairs=list(pairs)
+ if ACCESS_PERMISSION_TABLE not in tables(c):
+  return {p:ROLE_DEFAULT for p in pairs}
+ rows=access_permission_master_rows(c)
+ out={}
+ for p in pairs:
+  r=_permission_row(rows,p[0],p[1])
+  out[p]=normalize_role(r[11] if r is not None and len(r)>11 else '')
+ return out
 
 # ------------------------------------------------------------------------
 # 権限区分・マスタ編集を「書き換えてよいか」（§9.322、利用者の指示
