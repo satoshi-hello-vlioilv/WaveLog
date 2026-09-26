@@ -1875,8 +1875,31 @@ function mountViewToolbar(def){
     合っていない（面積は頻度×重要度・§CLAUDE 1）。
     **入りきらない画面は今までどおり2行目**——`compactToolbar`と名乗った
     画面だけが相乗りする（勝手に詰め込むと、操作の多い画面が切れる）。 */
- slot.classList.toggle('is-inline',!!(def&&def.compactToolbar));
+ slot.dataset.compact=def&&def.compactToolbar?'1':'';
+ fitViewToolbar();
 }
+/* ---------- 相乗りは**入るときだけ**（§9.509） ----------
+   1行目の幅は画面名・状態の札・全体操作の合計で決まり、札の幅は**モード・使用設備・表示サイズ・窓の幅**で
+   動く。§9.508 で札が「名前 値」の1行になって約200px広がると、1366pxのマスタ管理で**画面名が札の下へ
+   潰れた**（6通り中5・実測）。`compactToolbar`は「載せたい」という名乗りで、載せるかどうかは**測って**
+   決める——まず1行目へ載せてみて、画面名の器が中身より狭ければ（題が溢れていれば）既定の2行目へ戻す。
+   載せる／戻すは同じフレームの中で済むので、ちらつかない。 */
+function fitViewToolbar(){
+ const slot=document.getElementById('headerViewBar');
+ if(!slot)return;
+ slot.classList.toggle('is-inline',slot.dataset.compact==='1');
+ if(!slot.classList.contains('is-inline'))return;
+ const ctx=document.querySelector('main>header>.hd-context');
+ const over=e=>!!e&&e.scrollWidth>e.clientWidth+1;
+ if(over(ctx)||over(slot))slot.classList.remove('is-inline');
+}
+/* 測り直すのは**1行目の幅を動かすもの**が変わったとき——ヘッダーの幅（窓の幅・左メニューの幅）と
+   状態の札の幅（モード・使用設備・表示サイズ）。見張りは`ResizeObserver`の1つで両方を見る
+   （`resize`と`wl:look-change`を別に聞くと、札の見張りと同じ役を二重に持つ）。相乗りを切り替えると
+   ヘッダーの**高さ**が変わってもう1回呼ばれるが、幅が同じなら答えも同じなので、そこで止まる。 */
+(()=>{const hd=document.querySelector('main>header'),st=hd&&hd.querySelector('.hd-status');
+ if(!st||typeof ResizeObserver!=='function')return;
+ const ro=new ResizeObserver(fitViewToolbar);ro.observe(hd);ro.observe(st)})();
 /* 画面のパネルは enterView の**後**に組み立てられることが多い(ensurePanel等)。
    その場合、enterView の時点では操作列のDOMがまだ無く移せない。パネルを
    組み立て終えた画面はこれを呼んで載せ直す(何度呼んでも安全)。 */
