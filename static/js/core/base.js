@@ -816,6 +816,15 @@ const columnLayout=(()=>{
   told.add(target);
   window.showToast&&showToast('表示列の変更は保存されません',why,7000);
  }
+ /* 行き先が**待たずに決まる**ときの答え（`'send'`／`'local'`）。切り替えや読み込みが要るときは null。
+    **いつもの保存を1手も遅らせない**——`await`を1つ挟むだけで、保存中の札が出る前・保存済みへ
+    当てる前に描き直しが走り、掴んで離した列幅が一瞬もとへ戻る（test_sctimecols・test_lcpanel で実測）。 */
+ function routeNow(target){
+  if(!scopes.has(target))return null;
+  const r=rightsOf(target);
+  if(r.own&&(r.common||scopeOf(target)==='personal'))return 'send';
+  return null;
+ }
  async function route(target){
   if(!scopes.has(target))await load(target);
   const r=rightsOf(target);
@@ -874,7 +883,7 @@ const columnLayout=(()=>{
   if(!target)return;
   /* 全部を送る＝全部が保存済みになる（設定パネルの「保存」）。 */
   const v=norm(layout);
-  const way=await route(target);     // 行き先を先に決める（切り替えは保存済みを入れ替える）
+  const way=routeNow(target)||await route(target);   // 行き先を先に決める（切り替えは保存済みを入れ替える）
   saved.set(target,v);draft.delete(target);live.delete(target);bump(target);
   if(way==='local')return;
   await saveState.run(target,()=>api('/api/column-layout-master',
@@ -890,7 +899,7 @@ const columnLayout=(()=>{
   const keys=Object.keys(body).filter(k=>KEYS.includes(k));
   if(!keys.length)return;
   const pick={};keys.forEach(k=>{pick[k]=body[k]});
-  const way=await route(target);
+  const way=routeNow(target)||await route(target);
   saved.set(target,{...savedOf(target),...pick});
   if(draft.has(target))draft.set(target,{...draft.get(target),...pick});
   bump(target);
