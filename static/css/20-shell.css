@@ -271,11 +271,13 @@ main>header small{color:#687a81;margin-top:2px}
      hd-context 今どこを見ているか(読むだけ)
      hd-status  この端末の状態(モード・使用設備。押すと変えられる)
      hd-actions 今の一覧への操作(検索・件数・再読込・表示サイズ)
-   高さはすべて --ctl-h、角丸は8pxに統一する。状態は「小さなキー + 太い値」
-   の2段組チップ、操作は四角いボタン/入力、と形で種類が分かるようにする。 */
+   高さはすべて --ctl-h、角丸は8pxに統一する。状態は「細い名前 + 太い値」
+   の1行のチップ（§9.508で2段組から改めた）、操作は四角いボタン/入力、と形で種類が分かるようにする。 */
 main>header{gap:var(--space-4)}
 .hd-context{display:flex;align-items:baseline;gap:var(--space-2);min-width:0}
-.hd-context #fileName{font-size:var(--fs-title);font-weight:800;color:var(--ink);
+/* 画面名は**縮ませない**——幅が足りないときに譲るのは出どころの1行（案内）のほう（§9.229 ⑤・§9.508）。
+   前は2つが同じ割合で縮み、1100pxや表示サイズ「大」で「測定実…」と画面名まで切れていた。 */
+.hd-context #fileName{font-size:var(--fs-title);font-weight:800;color:var(--ink);flex-shrink:0;
  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:38vw}
 /* 副見出し(データの出どころ)。主見出しの画面名より一段弱く出す。 */
 .hd-context-source{font-size:var(--fs-sm);color:var(--ink-soft);white-space:nowrap;
@@ -314,16 +316,18 @@ main>header{gap:var(--space-4)}
 .save-chip .save-chip-retry:hover{background:var(--danger);color:#fff}
 .hd-status,.hd-actions{display:flex;align-items:center;gap:var(--space-2)}
 .hd-status{margin-left:auto}
-/* 状態チップ: キー(小)+値(太)の2段組。押せるものだけ枠が反応する。 */
+/* 状態チップ: 「名前 値」の1行（§9.508）。字は隣の操作ボタンと同じ1つ（`--fs`）で、名前は細く薄く・
+   値は太く濃く——一覧の帯の「元データ 9/17」「読込 23:14」と同じ書き分け。前は名前を9.5pxで値の上に
+   積んでおり、白地とのコントラストが2.6〜2.9:1で読めなかった。押せるものだけ枠が反応する。 */
 .hd-chip{
- display:inline-flex;flex-direction:column;align-items:flex-start;justify-content:center;
+ display:inline-flex;align-items:center;gap:var(--gap-inline);
  height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1px solid var(--line);border-radius:var(--radius-sm);
  background:#fff;color:var(--ink-2);white-space:nowrap;line-height:1.15;
- font-family:inherit;text-align:left;
+ font-family:inherit;font-size:var(--fs);text-align:left;
 }
 .hd-chip[hidden]{display:none}
-.hd-chip-key{font-size:var(--fs-tiny);font-weight:700;color:#8a9aa0;letter-spacing:.02em}
-.hd-chip-val{font-size:var(--fs-base-sm);font-weight:800;color:var(--ink);
+.hd-chip-key{font-weight:500;color:var(--ink-3)}
+.hd-chip-val{font-weight:800;color:var(--ink);
  max-width:150px;overflow:hidden;text-overflow:ellipsis}
 button.hd-chip{cursor:pointer;transition:border-color .12s,background .12s}
 button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
@@ -354,6 +358,9 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .hd-actions #printCurrentView:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
 @media(max-width:1180px){
  .hd-context #fileName{max-width:22vw}
+ /* 狭い窓では札の名前を畳み、値だけにする（名前は`title`が持つ・§9.508）。1行の「名前 値」は2段組より
+    横に広いので、畳まないと1100pxで題が札の下へはみ出して重なった（実測 最大76px）。 */
+ .hd-chip-key{display:none}
 }
 .equipment-header-button{display:flex;align-items:center;gap:var(--gap-inline);min-width:150px;border:1px solid var(--teal);background:#eafafa;color:#164e55}
 .equipment-header-button span{font-size:var(--fs-micro)}

@@ -1,4 +1,4 @@
-# 見た目（CSS・寸法・色）（60件）
+# 見た目（CSS・寸法・色）（62件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| ヘッダーの状態の札は「名前 値」の1行。字は隣の操作と同じ`--fs`、名前は細く薄く（`--ink-3`） | `test_headbar.js` | [§9.508](../../docs/decisions/9.508.md) |
+| 画面名は縮ませない（譲るのは出どころの1行）。1180px以下は札の名前を畳む（名前は`title`が持つ） | `test_headbar.js` | [§9.508](../../docs/decisions/9.508.md) |
 | 浮く面（`.wl-menu`）の中の塗りのボタンは**乗せた地も`--menu-item-hover`で宣言し直す**（`:hover`だけだと土台に負ける） | `test_listbar.js` | [§9.481](../../docs/decisions/9.481.md) |
 | 表のセル（`td`）に`display:flex`を当てない。横並びは中の器が持つ（セルでなくなり罫線が段違いになる） | `test_bladeui.js` | [§9.469](../../docs/decisions/9.469.md) |
 | レイヤ名は宣言した8つの中から選ぶ（綴り違いは**全部の後ろ**の別レイヤになり、`state`の「選ばれた札」が丸ごと死ぬ） | `test_csslint.py`・`test_bladeui.js` | [§9.427](../../docs/decisions/9.427.md) |
