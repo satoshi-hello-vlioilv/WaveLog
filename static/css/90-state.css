@@ -521,7 +521,7 @@ body.sc-mode #headerContextSource{display:none}
      ここは `@layer state`。component 層のどの規則よりも後に効く。
      ============================================================ */
 
-  /* 濃い面（縁つき）（26族） */
+  /* 濃い面（縁つき）（27族） */
   #reportArrange.is-on,
   .ac-chip.is-on,
   .bs-hide button.is-on,
@@ -533,6 +533,7 @@ body.sc-mode #headerContextSource{display:none}
   .hd-viewbar .db-seg button.active, .hd-viewbar .db-viewtabs button.active, .hd-viewbar .sc-mode-toggle-btn.active,
   .hd-viewbar button.active, .hd-viewbar [role="tab"].active,
   .lc-state-chip.is-on,
+  .lg-seg button.is-on,
   .mm-cd-tab.active,
   .mm-more.is-on,
   .nl-win .nl-span.is-on,
@@ -593,10 +594,11 @@ body.sc-mode #headerContextSource{display:none}
   .sc-subtotal-opt.is-on,
   .sc-pick-all.is-on{background:var(--pale);border-color:var(--teal);color:var(--teal-dark)}
 
-  /* 淡い面（字は各自）（3族） */
+  /* 淡い面（字は各自）（4族） */
   .bs-g tr.is-pick>td,
   .bs-opts label.is-on,
   .bs-sc.is-on,
+  .lg-problem.is-on,
   .sc-frame-shift.is-on,
   .sp-pat.is-on,
   .sp-pv-tab.is-on{background:var(--pale);border-color:var(--teal)}

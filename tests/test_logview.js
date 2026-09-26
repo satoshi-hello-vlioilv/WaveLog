@@ -3,12 +3,17 @@
    ============================================================
    ここで固定すること
    ------------------------------------------------------------
+    0. **段は3つ**（報告する／ログを見る／点検と整理・§9.510）。開くと必ず
+       「報告する」——報告は**1手で全部の材料**（メモ・画面の失敗・起動の状況・
+       エラーのまとめ）が入り、写るのは**見えているプレビューそのもの**。
+       主要な一手は1つ・既定の段に消す操作は出さない。
     1. 左メニューから開ける（画面が生えている）
     2. **起動セッションでまとまる**（最新の起動が上・最初から開いている）
     3. **1行ではなく1件**で並ぶ。トレースバックは畳まれ、「＋N行」で開く
     4. 選ぶ・選択解除が効き、件数が出る
     5. 絞り込みを変えるとサーバーへ取り直しに行く（画面側で二重に判定しない）
     6. 画面を出ると自動更新が止まる（別の画面で裏読みを続けない）
+    7. 問題のまとめを押すとその件で絞る。消す操作はeditモード以外で押せず理由を字で言う
 
    2〜4は**中身が決まっていないと確かめられない**ので、そこだけ
    `/api/logs` の応答を差し替える。1・5・6は本物のサーバーで確かめる。
@@ -45,21 +50,79 @@ run('test_logview: ログ・診断の画面（§9.99）', async ({page,rec,B,W,i
  await page.goto(B+'/',{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#openLogView',{timeout:20000});
 
- // ---- 1. 本物のサーバーで開ける ----
+ /* 報告に入るべき材料を1つ置く（画面の失敗）。後片付けは最後の finally。 */
+ await page.evaluate(()=>{const e=new Error('網の失敗');e.status=500;WL.feedback.note('網: 保存',e,{設備:'網'})});
+
+ // ---- 0. 開くと「報告する」の段 ----
  await page.click('#openLogView');
  await page.waitForSelector('#logPanel:not([hidden])',{timeout:15000});
+ await page.waitForFunction(()=>/WaveLog 起動の状況/.test(document.getElementById('lgPreview')?.value||''),
+                            null,{timeout:15000});
+ const first=await page.evaluate(()=>{
+  const vis=e=>!!e&&e.getClientRects().length>0;
+  const teal=(()=>{const d=document.createElement('i');d.style.color='var(--teal)';document.body.append(d);
+   const c=getComputedStyle(d).color;d.remove();return c})();
+  const btns=[...document.querySelectorAll('#logPanel button,#lgHead button')].filter(vis);
+  return {
+   mode:document.body.classList.contains('lg-mode'),
+   head:document.getElementById('fileName')?.textContent||'',
+   toolbarInHeader:!!document.querySelector('#headerViewBar #lgHead'),
+   steps:[...document.querySelectorAll('#lgHead .lg-step')].map(b=>b.textContent.trim()),
+   active:(document.querySelector('#lgHead .lg-step.active')||{}).dataset?.step||'',
+   pages:[...document.querySelectorAll('#logPanel .lg-page')].map(p=>p.dataset.page+':'+(p.hidden?'隠':'見')),
+   primary:btns.filter(b=>getComputedStyle(b).backgroundColor===teal&&!b.matches('[role=tab]')).map(b=>b.textContent.trim()),
+   danger:btns.filter(b=>/danger/.test(b.className)).length,
+   facts:[...document.querySelectorAll('#lgFacts dt')].map(x=>x.textContent.trim()),
+  };
+ });
+ rec('左メニューからログ・診断を開ける',first.mode&&/ログ/.test(first.head),first.head);
+ rec('この画面の操作列がヘッダーへ載る',first.toolbarInHeader);
+ rec('段は3つ（報告する／ログを見る／点検と整理）',
+     JSON.stringify(first.steps)==='["報告する","ログを見る","点検と整理"]',JSON.stringify(first.steps));
+ rec('開くと「報告する」の段（見えるのはその段だけ）',
+     first.active==='report'&&first.pages.join()==='report:見,logs:隠,check:隠',first.pages.join());
+ rec('主要な一手は1つだけ（報告をコピー）',
+     first.primary.length===1&&/報告をコピー/.test(first.primary[0]),JSON.stringify(first.primary));
+ rec('既定の段に消す操作を出さない',first.danger===0,first.danger+'個');
+ rec('報告に入るものを名前で並べる（端末・失敗・ログの問題・起動・置き場）',
+     ['この端末','画面の失敗','ログの問題','直近の起動','置き場'].every(x=>first.facts.includes(x)),first.facts.join('/'));
+
+ /* **1手で全部**。書いたメモ・画面の失敗（機械で読む1行つき）・起動の状況・
+    エラーのまとめ・直近の起動のログが1つの文章に入り、**写るのは見えている
+    プレビューそのもの**。 */
+ await page.fill('#lgMemo','網のメモ: 保存で固まった');
+ const copied=await page.evaluate(async()=>{
+  const box={got:''};
+  Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:t=>{box.got=t;return Promise.resolve()}}});
+  document.getElementById('lgReportCopy').click();
+  /* 写したことを字で言い終えるまで待つ（写した直後はまだ字が無い） */
+  const done=()=>document.getElementById('lgReportDone').textContent;
+  for(let i=0;i<60&&!(box.got&&done());i++)await new Promise(r=>setTimeout(r,50));
+  return {got:box.got,shown:document.getElementById('lgPreview').value,done:done()};
+ });
+ const has=t=>copied.got.includes(t);
+ rec('報告に書いたメモが入る',has('網のメモ: 保存で固まった'));
+ rec('報告に画面の失敗が入る（機械で読む1行まで）',has('網: 保存')&&/\nWLFB1 \{/.test(copied.got));
+ rec('報告に起動の状況・置き場・直近の起動のログが入る',
+     has('WaveLog 起動の状況')&&has('置き場（いま見に行っている先）')&&has('直近の起動のログ'));
+ rec('報告にエラー・警告のまとめが入る（起動をまたいで）',has('エラー・警告のまとめ'));
+ rec('写るのは見えているプレビューそのもの',!!copied.got&&copied.got===copied.shown,
+     copied.got.length+'字 / '+copied.shown.length+'字');
+ rec('コピーしたことを字で言う（次にすることまで）',/コピーしました.*貼って/.test(copied.done),copied.done);
+
+ // ---- 1. ログを見る ----
+ await page.click('#lgHead .lg-step[data-step="logs"]');
  await page.waitForFunction(()=>!/読み込んでいます/.test(document.getElementById('lgSummary')?.textContent||''),
                             null,{timeout:15000});
+ await page.waitForFunction(()=>document.querySelectorAll('#lgProblems .lg-problem, #lgProblems .lg-empty').length>0,
+                            null,{timeout:15000});
  const live=await page.evaluate(()=>({
-  mode:document.body.classList.contains('lg-mode'),
-  head:document.getElementById('fileName')?.textContent||'',
-  toolbarInHeader:!!document.querySelector('#headerViewBar #lgHead'),
   summary:document.getElementById('lgSummary')?.textContent||'',
   groups:document.querySelectorAll('#lgTree .lg-group').length,
   lines:document.querySelectorAll('#lgTree .lg-line').length,
+  report:document.querySelector('#logPanel .lg-page[data-page="report"]').hidden,
  }));
- rec('左メニューからログ・診断を開ける',live.mode&&/ログ/.test(live.head),live.head);
- rec('この画面の操作列がヘッダーへ載る',live.toolbarInHeader);
+ rec('段を切り替えると前の段は隠れる',live.report===true);
  rec('本物のログが読める（1件以上）',live.lines>0,live.summary.slice(0,60));
  rec('起動セッションでまとまっている',live.groups>0,'グループ '+live.groups);
 
@@ -67,9 +130,23 @@ run('test_logview: ログ・診断の画面（§9.99）', async ({page,rec,B,W,i
  let asked=[];
  const LOGS_API=/\/api\/logs\?/;   // ?はPlaywrightのglobでは素の文字なので正規表現で書く
  await page.route(LOGS_API,route=>{asked.push(route.request().url());route.continue()});
- await page.selectOption('#lgLevel','problem');
+ await page.click('#lgLevel button[data-v="problem"]');
  await idle();
- rec('レベルを変えるとサーバーへ取り直す',asked.some(u=>/level=problem/.test(u)),String(asked.length)+'回');
+ rec('重要度を変えるとサーバーへ取り直す',asked.some(u=>/level=problem/.test(u)),String(asked.length)+'回');
+ const lvOn=await page.evaluate(()=>[...document.querySelectorAll('#lgLevel button.is-on')].map(b=>b.dataset.v));
+ rec('重要度は1つだけ選ばれている（選んだ札が濃い）',JSON.stringify(lvOn)==='["problem"]',JSON.stringify(lvOn));
+ /* 問題のまとめを押すとその件で絞る（語はサーバーが決める・数字の手前まで）。 */
+ const hasProblem=await page.$('#lgProblems .lg-problem');
+ if(hasProblem){
+  asked=[];
+  await page.click('#lgProblems .lg-problem');
+  await W.poll(async()=>asked.slice(),a=>a.some(u=>/q=[^&]/.test(u)),5000,50);
+  const q=await page.evaluate(()=>({q:document.getElementById('lgQuery').value,
+    on:document.querySelectorAll('#lgProblems .lg-problem.is-on').length,
+    want:WL.logView.state.problems.items[0].query}));
+  rec('問題のまとめを押すと、その件の語で一覧を絞る',!!q.q&&q.q===q.want&&q.on===1,JSON.stringify(q));
+ }else rec('問題のまとめを押すと、その件の語で一覧を絞る',false,'まとめが1件も無い（この端末のログにエラー・警告が無い）');
+ await page.fill('#lgQuery','');await idle();
  await page.fill('#lgQuery','起動');
  await W.poll(async()=>asked.slice(),a=>a.some(u=>/q=/.test(u)&&!/q=&/.test(u)),5000,50);await idle();  // 打ち終わりの1回が出るまで。そのあと余計に投げないかは静まるまで見る
  rec('検索は打ち終わってから1回だけ投げる（1文字ごとに投げない）',
@@ -81,7 +158,7 @@ run('test_logview: ログ・診断の画面（§9.99）', async ({page,rec,B,W,i
  await page.route(LOGS_API,route=>route.fulfill({status:200,contentType:'application/json',
    body:JSON.stringify(FIXTURE)}));
  await page.fill('#lgQuery','');
- await page.selectOption('#lgLevel','all');
+ await page.click('#lgLevel button[data-v="all"]');
  await idle();
  await page.evaluate(()=>WL.logView.load());
  await page.waitForFunction(()=>document.querySelectorAll('#lgTree .lg-group').length===2,null,{timeout:10000});
@@ -119,10 +196,12 @@ run('test_logview: ログ・診断の画面（§9.99）', async ({page,rec,B,W,i
  await page.click('#lgPickAll');
  const picked=await page.evaluate(()=>({
   checked:[...document.querySelectorAll('#lgTree .lg-pick')].filter(x=>x.checked).length,
-  summary:document.getElementById('lgSummary').textContent,
+  summary:document.getElementById('lgPickState').textContent,
+  del:document.getElementById('lgDelPicked').textContent,
  }));
  rec('表示中をすべて選べる',picked.checked===6,'選択 '+picked.checked);
- rec('選んだ件数が出る',/選択6件/.test(picked.summary),picked.summary.slice(-24));
+ rec('選んだ件数が出る',/選んだ 6件/.test(picked.summary),picked.summary);
+ rec('整理の段の「消す」も選んだ件数を言う（段をまたいで思い出させない）',/選んだ 6件を消す/.test(picked.del),picked.del);
  await page.click('#lgPickNone');
  const cleared=await page.evaluate(()=>[...document.querySelectorAll('#lgTree .lg-pick')].filter(x=>x.checked).length);
  rec('選択を解除できる',cleared===0,'選択 '+cleared);
@@ -147,6 +226,13 @@ run('test_logview: ログ・診断の画面（§9.99）', async ({page,rec,B,W,i
  /* 確認は素の`confirm()`ではなくなった（§9.342）ので、`window.confirm`を
     差し替えても素通りしない。**開いた窓のOKを押す。** */
  const {answerConfirm}=require('./lib/wait.js');
+ /* 点検の段を開くまで接続の診断を走らせない（共有へ触らない）。 */
+ const diagBefore=await page.evaluate(()=>({
+  body:document.getElementById('lgDiagBody').innerHTML.trim().length,
+ }));
+ rec('点検の段を開くまで接続の診断は走らない（開くまで共有へ触らない）',diagBefore.body===0,JSON.stringify(diagBefore));
+ await page.click('#lgHead .lg-step[data-step="check"]');
+ await page.waitForFunction(()=>document.querySelectorAll('#lgFiles tbody tr').length>0,null,{timeout:10000});
  await page.click('#lgClear');
  await answerConfirm(page);
  await idle();
@@ -160,17 +246,21 @@ run('test_logview: ログ・診断の画面（§9.99）', async ({page,rec,B,W,i
      sent.map(x=>x.url).join(' '));
  await page.unroute(/\/api\/logs\/(clear|rotate|delete-old|delete-lines)$/);
 
- /* ---- 接続の診断(§9.101) ----
-    「ログ・診断」の診断の側。**開くまでは共有へ触らない**(応答の遅い共有を
-    画面を開いただけで叩くと、ログを読みに来た人を待たせる)。 */
- const diagBefore=await page.evaluate(()=>({
-  open:document.getElementById('lgDiag').open,
-  body:document.getElementById('lgDiagBody').innerHTML.trim().length,
- }));
- rec('診断は畳んだ状態で始まる（開くまで共有へ触らない）',
-     diagBefore.open===false&&diagBefore.body===0,JSON.stringify(diagBefore));
+ /* ---- 消す操作はeditモードだけ（押せないときは理由を字で・§CLAUDE 画面基準 4） ---- */
+ const viewMode=await page.evaluate(()=>{
+  const keep=window.accessMode.mode;window.accessMode.mode='view';
+  WL.logView.showStep('check');
+  const r={disabled:['lgRotate','lgDelOld','lgClear','lgDelPicked'].map(id=>document.getElementById(id).disabled),
+           note:document.getElementById('lgMaintNote').hidden?'':document.getElementById('lgMaintNote').textContent};
+  window.accessMode.mode=keep;WL.logView.showStep('check');
+  r.back=document.getElementById('lgClear').disabled;
+  return r;
+ });
+ rec('editモード以外では区切る・消すを押せず、理由を字で言う',
+     viewMode.disabled.every(Boolean)&&/編集モード.*閲覧モード/.test(viewMode.note)&&viewMode.back===false,
+     JSON.stringify(viewMode));
 
- await page.click('#lgDiag > summary');
+ /* ---- 接続の診断(§9.101) ---- */
  await page.waitForFunction(()=>document.querySelectorAll('#lgDiagBody .lg-diag-step').length>0,
                             null,{timeout:20000});
  const diag=await page.evaluate(()=>({
@@ -179,7 +269,7 @@ run('test_logview: ログ・診断の画面（§9.99）', async ({page,rec,B,W,i
   verdict:document.getElementById('lgDiagVerdict').textContent,
   head:document.querySelectorAll('#lgDiagBody .lg-diag-kv').length,
  }));
- rec('開くと段階ごとの結果が出る',diag.steps>=5,diag.steps+'段階');
+ rec('点検の段を開くと段階ごとの結果が出る',diag.steps>=5,diag.steps+'段階');
  rec('対象の選択肢はサーバーが返した接続先から作る（決め打ちにしない）',
      diag.targets.length>=3&&diag.targets.includes('MASTER'),JSON.stringify(diag.targets));
  rec('読み込み先・UNCかどうかを添える',diag.head>=3,diag.head+'項目');
@@ -253,6 +343,7 @@ run('test_logview: ログ・診断の画面（§9.99）', async ({page,rec,B,W,i
  await page.unroute(/\/api\/db-diagnose/);
 
  // ---- 6. 画面を出ると自動更新が止まる ----
+ await page.click('#lgHead .lg-step[data-step="logs"]');
  await page.check('#lgAuto');
  const running=await page.evaluate(()=>WL.logView.state.auto);
  await page.click('#openMasterMaint');
@@ -263,5 +354,6 @@ run('test_logview: ログ・診断の画面（§9.99）', async ({page,rec,B,W,i
  rec('自動更新を入れられる',running===true);
  rec('別の画面へ移ると自動更新が止まる',stopped.auto===false&&stopped.timer===0,JSON.stringify(stopped));
  rec('別の画面へ移るとログ画面は閉じる',stopped.hidden===true&&stopped.mode===false,JSON.stringify(stopped));
+ await page.evaluate(()=>{try{localStorage.removeItem('wlFeedbackLogV1')}catch(e){console.log('報告ログを消せない: '+e.message)}});
 
 }, {viewport:{width:1600,height:950}});

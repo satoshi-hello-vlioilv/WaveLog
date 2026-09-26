@@ -89,12 +89,12 @@ run('test_bootreport: 起動の状況をアプリから取れる（§9.316）', 
   // **待って落ちる形にしない**——自動で取りに行かない実装だと FATAL になって
   // 何が壊れたのか読めない。待ってから、出たかどうかを1件として言う。
   let auto=true;
-  try{await page.waitForFunction(()=>document.querySelectorAll('#lgBootBody .lg-boot-table tbody tr').length>0,
+  try{await page.waitForFunction(()=>document.querySelectorAll('#lgBootBody .lg-table tbody tr').length>0,
                                  null,{timeout:8000})}
-  catch(e){auto=false;await page.click('#lgBootRun');
-           await page.waitForSelector('#lgBootBody .lg-boot-table tbody tr',{timeout:8000})}
+  catch(e){auto=false;await page.evaluate(()=>WL.logView.showStep('check'));await page.click('#lgBootRun');
+           await page.waitForSelector('#lgBootBody .lg-table tbody tr',{timeout:8000})}
   const ui=await page.evaluate(()=>{
-   const rows=[...document.querySelectorAll('#lgBootBody .lg-boot-table tbody tr')];
+   const rows=[...document.querySelectorAll('#lgBootBody .lg-table tbody tr')];
    // **置き場の名前の欄で選ぶこと**——行まるごとを見ると、備考に同じ語を
    // 持つ別の行（runtime）に当たって何も確かめないまま通る。
    const label=r=>((r.children[1]||{}).textContent||'').trim();
@@ -102,12 +102,21 @@ run('test_bootreport: 起動の状況をアプリから取れる（§9.316）', 
    return {rows:rows.length,bad:!!(hit&&hit.classList.contains('is-bad')),
            text:hit?hit.textContent.replace(/\s+/g,' ').slice(0,80):'',
            badCount:rows.filter(r=>r.classList.contains('is-bad')).length,
-           env:(document.querySelector('#lgBootBody .lg-boot-env')||{}).textContent||''};
+           env:(document.querySelector('#lgBootBody .lg-facts')||{}).textContent||'',
+           /* 無いのがふつうの置き場（次の起動用の待機画面）は「要確認」にしない（§9.510） */
+           staged:(()=>{const r=rows.find(r=>label(r)==='待機画面（次の起動用）');
+             return r?{bad:r.classList.contains('is-bad'),text:(r.children[0]||{}).textContent.trim()}:null})(),
+           facts:(document.getElementById('lgFacts')||{}).textContent||''};
   });
   rec('開いた時点で取りに行く（押さなくても材料が揃う）',auto&&ui.rows>1,
       auto?(ui.rows+'行'):'「取得」を押すまで空だった');
   rec('読めない置き場は行が目立つ',ui.bad,ui.text);
   rec('文字でも読める（色だけで伝えない）',/読めない|無い/.test(ui.text),ui.text);
+  rec('無いのがふつうの置き場は「無し（ふつう）」で、要確認に数えない（偽の警告を出さない）',
+      !ui.staged||(ui.staged.bad===false&&/ふつう|あり/.test(ui.staged.text)),JSON.stringify(ui.staged));
+  rec('報告の段も読めない置き場を名指しする（点検の段へ1手で行ける）',
+      /置き場\s*\d+か所 要確認.*待機画面の写し/.test(ui.facts.replace(/\s+/g,' ')),
+      ui.facts.replace(/\s+/g,' ').slice(-80));
   rec('版は画面にも出る',new RegExp('VER'+String(build.version).replace(/\./g,'\\.')).test(ui.env),ui.env.slice(0,60));
 
   // ---- 8. コピーはサーバーが作った文章をそのまま ----

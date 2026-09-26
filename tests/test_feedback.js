@@ -42,7 +42,7 @@ run('test_feedback: 失敗を開発へ報告できる形で残す（§9.373）',
    /* ---- 6. 土台の口が在る ---- */
    const api=await page.evaluate(()=>Object.keys(window.WL&&WL.feedback||{}).sort());
    rec('WL.feedback の口が在る',
-       ['note','provide','copyReport','openReport','reportText','log'].every(k=>api.includes(k)),
+       ['note','provide','copyReport','reportText','log','step'].every(k=>api.includes(k)),
        api.join(','));
 
    await page.click('#openSchedule');
@@ -116,24 +116,18 @@ run('test_feedback: 失敗を開発へ報告できる形で残す（§9.373）',
    rec('報告は端末に残る（開き直しても読める）',kept>=1,String(kept));
 
    /* ---- 5. あとからでも同じ1通を出せる ----
-      **実際に開いて確かめる**——器はパネルを組み立てたときに作られるので、
-      開かずに`getElementById`しても`null`で、素通りしてしまう（一度そう書いた）。 */
+      入口は「ログ・診断」の「報告する」の段（§9.510）。**実際に開いて確かめる**
+      ——器はパネルを組み立てたときに作られるので、開かずに見ると素通りする。 */
    await page.evaluate(()=>WL.logView&&WL.logView.open&&WL.logView.open());
-   const gotEntry=await page.waitForSelector('#lgFeedback',{timeout:15000})
+   const gotEntry=await page.waitForSelector('#lgReportCopy',{timeout:15000})
      .then(()=>true,()=>false);
-   rec('ログ・診断に「開発へ報告」の入口がある（知らせは消えるので）',gotEntry);
-   const title=await page.evaluate(()=>{
-    const b=document.getElementById('lgFeedback');return b?b.textContent.trim():''});
-   rec('入口の題は「開発へ報告」',title==='開発へ報告',title);
-   /* 押したら窓が出て、中に同じ1通が入っている（コピーの手前まで見る）。 */
-   await page.click('#lgFeedback');
-   const opened=await page.waitForSelector('.fb-text',{timeout:10000}).then(()=>true,()=>false);
-   rec('押すと報告の窓が出る',opened);
-   const inWin=await page.evaluate(()=>{
-    const t=document.querySelector('.fb-text');return t?t.value.slice(0,2000):''});
-   rec('窓の中身は同じ1通（機械で読む1行まで入っている）',
+   rec('ログ・診断に「報告をコピー」の入口がある（知らせは消えるので）',gotEntry);
+   const step=await page.evaluate(()=>(document.querySelector('#lgHead .lg-step.active')||{}).textContent||'');
+   rec('ログ・診断は「報告する」の段で開く',/報告する/.test(step),step.trim());
+   await page.waitForFunction(()=>/WLFB1 \{/.test(document.getElementById('lgPreview')?.value||''),null,{timeout:10000}).catch(()=>{});
+   const inWin=await page.evaluate(()=>document.getElementById('lgPreview')?.value||'');
+   rec('送る内容に同じ1通が入っている（機械で読む1行まで）',
        inWin.includes('WaveLog 不具合報告')&&inWin.includes('WLFB1 {'),inWin.slice(0,80));
-   const ok=await page.$('#appConfirmOk');if(ok)await ok.click();
   }finally{
    for(const id of made)if(id)await post('/api/schedule/plan/delete',{equipment:EQ,id});
    const left=await page.evaluate(async e=>{

@@ -173,6 +173,26 @@ run('test_eqsetup: 使用設備の設定モーダル（§9.257 ②、利用者�
       /すぐ反映/.test(instant),instant.trim());
   await page.selectOption('#lotDspTabSetting',String(before||'1'));
 
+  /* ---------- 4b) タブは番号と中身の名前の両方で言う（§9.511、利用者の指示） ----------
+     番号だけだと、どの画面が開くかを**思い出させる**ことになる。値（URLへ渡す番号）は
+     変えずに、字に LotDsp の画面の名前を添える。**器に収まる**（切れない）ことまで見る。 */
+  const tabs=await page.evaluate(()=>{
+   const s=document.getElementById('lotDspTabSetting');
+   const o=[...s.options];
+   const cv=document.createElement('canvas').getContext('2d');const cs=getComputedStyle(s);
+   cv.font=`${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+   const need=Math.max(...o.map(x=>cv.measureText(x.textContent).width))
+    +parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight)+20;  // 20＝開く印のぶん
+   return {values:o.map(x=>x.value).join(','),texts:o.map(x=>x.textContent),
+           width:s.getBoundingClientRect().width,need};
+  });
+  rec('タブの値は番号のまま（URLへ渡す値を変えない）',tabs.values==='0,1,2,3,4,5,6,7',tabs.values);
+  rec('タブの字は「Tab N：中身の名前」（Tab 0：ICAS情報 … Tab 7：引当情報）',
+      tabs.texts[0]==='Tab 0：ICAS情報'&&tabs.texts[1]==='Tab 1：進度情報'&&tabs.texts[7]==='Tab 7：引当情報'
+      &&tabs.texts.every(t=>/^Tab \d：\S+情報$/.test(t)),tabs.texts.join(' / '));
+  rec('いちばん長い名前も欄に収まる（字が切れない）',tabs.need<=tabs.width,
+      `要る${Math.round(tabs.need)}px / 欄${Math.round(tabs.width)}px`);
+
   /* ---------- 7) 窓の作りは1箇所（同じ形で戻る） ----------
      直す前は`index.html`と`WL.records.ensureEquipmentSettingsModal()`が**別々の作り**を
      持っており、後者は`<input>`＋LotDspのタブ無しだった（そちらが動いた

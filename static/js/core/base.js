@@ -213,6 +213,14 @@ document.addEventListener('click',e=>{
 window.WL=window.WL||{};
 WL.lotDspTab={
  KEY:'LotDspLastTabV1',
+ /* タブの顔ぶれ（§9.511、利用者の指示「Tab0：ICAS情報みたいな感じで補助として」）。
+    番号だけだと**どの画面が開くか思い出させる**ことになる——LotDsp の画面に
+    並んでいる名前をそのまま添える。番号（`n`）はURLへ渡す値なので変えない。
+    顔ぶれはこの1箇所（選択肢も字もここから作る）。 */
+ TABS:[[0,'ICAS情報'],[1,'進度情報'],[2,'製造情報'],[3,'試験情報'],
+       [4,'品質情報'],[5,'クラッド情報'],[6,'焼鈍情報'],[7,'引当情報']],
+ label(n){const t=WL.lotDspTab.TABS.find(x=>String(x[0])===String(n));return `Tab ${n}`+(t?`：${t[1]}`:'')},
+ optionsHtml(){return WL.lotDspTab.TABS.map(([n])=>`<option value="${n}">${WL.lotDspTab.label(n)}</option>`).join('')},
  get(){return localStorage.getItem(WL.lotDspTab.KEY)||'1'},
  /* **選んだらすぐ効く**（保存ボタンを待たない）。窓の中でそう名乗っている。 */
  bind(sel){

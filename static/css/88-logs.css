@@ -1,188 +1,226 @@
 /* ============================================================
-   88-logs.css — ログ・診断（ログビュワー）
+   88-logs.css — ログ・診断（§9.99・§9.510）
    ------------------------------------------------------------
    読み込み順＝カスケードの順序。並びの唯一の定義は
    backend/routes/core.py の CSS_FILES で、tests/test_csslint.py が固定する。
    レイヤの宣言とトークンは 00-base.css が持つ。
 
-   ログは「読む」ためのものなので、ここだけは**等幅**を使う。数字の桁が
-   縦に揃わないと、時刻と件数を目で追えないため。文字の大きさは他と同じ
-   トークン(--fs-sm)から取り、字体だけを変える。
+   形は3つだけ（§9.510・統一感は「型の数を減らす」ことで作る）
+   ------------------------------------------------------------
+     カード  … 見出し（題・補足・右端の操作）＋中身。**枠はここだけ**
+               （枠の中に枠を作らない・§CLAUDE 画面基準 10）
+     帯      … カードの中の操作の1行。押す物は1つの高さ（--ctl-h-sm）
+     事実の欄 … 名前（固定幅・細く薄く）＋状態の語＋値（§CLAUDE 画面基準 9）
+   字は2つ: 題と「することの名前」は --fs、ほかはすべて --fs-sm。
+   主要な一手（報告をコピー）だけ --ctl-h の塗りのボタン——画面に1つ。
+
+   ログの本文だけは**等幅**を使う。数字の桁が縦に揃わないと、時刻と件数を
+   目で追えないため。
    ============================================================ */
 @layer component {
 /* ---- 画面の骨格 ----------------------------------------------------
-   他のメイン画面統合ビュー(.cal-panel/.mm-panel)と同じ作り。**表示/非表示は
-   hidden属性で行う**ので、ここでは display:none を書かない
-   (`[hidden]{display:none}` が @layer utility にあり、必ず勝つ)。
-   一覧・タブ・ページャを伏せる指定は、他の画面と同じ場所
-   (90-state.css の @layer mode)へまとめてある。 */
-.lg-panel{flex:1;min-height:0;margin:var(--space-2) var(--space-4);display:flex;flex-direction:column;
- gap:var(--gap-inline);padding:var(--pad-card);background:var(--surface-2);
- border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
-/* 操作列はヘッダーへ相乗りする(WL.registerViewのtoolbar)。移設先でも
-   ボタンの並びが崩れないよう、器そのものに横並びを持たせる。 */
-.lg-head-tools{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap}
-.lg-head-tools label{display:flex;align-items:center;gap:var(--gap-tight);color:var(--ink-3);
- font-size:var(--fs-sm);font-weight:700;white-space:nowrap}
-.lg-head-tools select{height:var(--ctl-h-sm);max-width:22em;border:1px solid var(--line-mid);
- border-radius:var(--radius-sm);background:var(--surface);padding:0 var(--ctl-pad-x-sm);color:var(--ink)}
-.lg-head-tools button{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line-mid);
- border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);font-weight:700;cursor:pointer}
+   **表示/非表示はhidden属性**（`[hidden]{display:none}`は@layer utility）。
+   一覧・タブ・ページャを伏せる指定は 90-state.css の @layer mode。 */
+.lg-panel{flex:1;min-height:0;margin:var(--space-2) var(--space-4) var(--space-3);display:flex;flex-direction:column}
+.lg-page{flex:1 1 auto;min-height:0;display:grid;gap:var(--gap-section);grid-template-rows:minmax(0,1fr)}
+.lg-page[hidden]{display:none}
+/* 外側は粗いグリッド（横4・§CLAUDE 画面基準 13）。
+   報告＝2＋2（書く・押す｜送る内容）／ログ＝1＋3（まとめ｜一覧）／点検＝2＋2。 */
+.lg-page-report,.lg-page-check{grid-template-columns:repeat(2,minmax(0,1fr))}
+.lg-page-logs{grid-template-columns:minmax(0,1fr) minmax(0,3fr)}
+.lg-stack{display:grid;gap:var(--gap-section);grid-template-rows:minmax(0,1fr) auto;min-height:0}
+.lg-head-tools{display:flex;align-items:center;gap:var(--gap-inline)}
+.lg-step>i{margin-right:var(--space-1)}
 
-/* ---- 絞り込みの帯 -------------------------------------------------- */
-.lg-filterbar,.lg-commandbar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);
- padding:var(--pad-row);border:1px solid var(--line-soft);border-radius:var(--radius-md);background:var(--surface-2)}
-.lg-filterbar label,.lg-commandbar label{display:flex;align-items:center;gap:var(--gap-tight);
- color:var(--ink-3);font-size:var(--fs-sm);font-weight:700;white-space:nowrap}
-.lg-filterbar select,.lg-commandbar select{height:var(--ctl-h-sm);border:1px solid var(--line-mid);
- border-radius:var(--radius-sm);background:var(--surface);padding:0 var(--ctl-pad-x-sm);color:var(--ink)}
-.lg-search{flex:1 1 220px;min-width:0}
-.lg-search input{flex:1 1 auto;min-width:0;height:var(--ctl-h-sm);border:1px solid var(--line-mid);
- border-radius:var(--radius-sm);background:var(--surface);padding:0 var(--ctl-pad-x-sm);color:var(--ink)}
-.lg-act{display:inline-flex;align-items:center;gap:var(--gap-tight)}
-/* 操作の見出し(コピー/削除)。ボタンの並びだけだと、どれが消す操作なのか
-   押す前に分からない。 */
-.lg-act>i{font-style:normal;color:var(--ink-soft);font-size:var(--fs-sm);font-weight:800}
-.lg-act.is-danger>i{color:var(--danger)}
-.lg-commandbar button{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line-mid);
- border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);font-weight:700;cursor:pointer}
-.lg-commandbar button:hover{background:var(--surface-2)}
-.lg-commandbar button.lg-danger{border-color:var(--danger-border);color:var(--danger);background:var(--danger-bg)}
-.lg-summary{color:var(--ink-3);font-size:var(--fs-sm);font-weight:700;margin-left:auto;white-space:nowrap}
-.lg-size{color:var(--ink-soft);font-size:var(--fs-sm);white-space:nowrap}
+/* ---- カード --------------------------------------------------------- */
+.lg-card{display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden;
+ background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--radius-card)}
+.lg-card-head{flex:none;display:flex;align-items:baseline;gap:var(--gap-inline);min-width:0;
+ padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--line-soft)}
+.lg-card-head h3{margin:0;color:var(--ink);font-size:var(--fs);font-weight:800;white-space:nowrap}
+.lg-card-note{min-width:0;color:var(--ink-soft);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lg-card-acts{margin-left:auto;display:inline-flex;gap:var(--gap-tight);flex:none}
+.lg-card-body{flex:1 1 auto;min-height:0;overflow:auto;padding:var(--space-2) var(--space-3)}
+.lg-card-body:empty{display:none}
+.lg-note{margin:var(--space-2) 0 0;color:var(--ink-soft);font-size:var(--fs-sm)}
+.lg-empty{padding:var(--pad-dialog);color:var(--ink-soft);font-size:var(--fs-sm);text-align:center}
 
-/* ---- 本体（起動セッションごとのまとまり） ---------------------------- */
-.lg-tree{flex:1 1 auto;min-height:0;overflow:auto;border:1px solid var(--line-mid);
- border-radius:var(--radius-md);background:var(--surface)}
+/* ---- 押す物（1つの型） ----------------------------------------------- */
+.lg-panel :is(.lg-bar,.lg-card-acts,.lg-flow-acts,.lg-danger-zone) button,
+.lg-head-tools button{display:inline-flex;align-items:center;gap:var(--space-1);
+ height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line-mid);
+ border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);
+ font-size:var(--fs-sm);font-weight:700;white-space:nowrap;cursor:pointer}
+.lg-panel :is(.lg-bar,.lg-card-acts,.lg-flow-acts,.lg-danger-zone) button:hover:not(:disabled){border-color:var(--teal);background:var(--pale);color:var(--teal-dark)}
+.lg-panel button:disabled{opacity:.45;cursor:default}
+.lg-panel select{height:var(--ctl-h-sm);max-width:var(--w-xl);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line-mid);
+ border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);font-size:var(--fs-sm)}
+/* 主要な一手は画面に1つ（§CLAUDE 画面基準 2）。大きさも一段上げる（押す場所を探させない）。 */
+.lg-panel .lg-flow-acts button.lg-primary{height:var(--ctl-h);padding:0 var(--ctl-pad-x);
+ background:var(--teal);border-color:var(--teal);color:var(--surface);font-size:var(--fs)}
+.lg-panel .lg-flow-acts button.lg-primary:hover{background:var(--teal-dark);border-color:var(--teal-dark);color:var(--surface)}
+/* 字だけの行き先（別の段へ移る・保存）。押せるが「操作の面」ではない。 */
+.lg-link{height:auto;padding:0;border:0;background:transparent;color:var(--teal-dark);
+ font-size:var(--fs-sm);font-weight:700;text-decoration:none;cursor:pointer;white-space:nowrap}
+.lg-link:hover{text-decoration:underline}
+
+/* ---- 帯（カードの中の操作の1行） ------------------------------------ */
+.lg-bar{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);
+ padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--line-soft)}
+.lg-bar .lt-search{flex:1 1 var(--w-lg);max-width:var(--w-xl)}
+.lg-bar-end{margin-left:auto;display:inline-flex;align-items:center;gap:var(--gap-inline)}
+.lg-field{display:inline-flex;align-items:center;gap:var(--space-1);white-space:nowrap}
+.lg-field>span{color:var(--ink-3);font-size:var(--fs-sm);font-weight:500}
+.lg-check{display:inline-flex;align-items:center;gap:var(--space-1);color:var(--ink-2);font-size:var(--fs-sm);white-space:nowrap}
+.lg-count{color:var(--ink-3);font-size:var(--fs-sm);font-variant-numeric:tabular-nums;white-space:nowrap}
+/* 数（件数）と操作の群の区切り。枠を足さず、細い縦線1本で近さを分ける。 */
+.lg-sep{align-self:stretch;width:1px;margin:var(--space-1) var(--space-1);background:var(--line-soft)}
+.lg-bar select{max-width:var(--w-lg)}
+.lg-problems #lgProblemsCount{display:block;margin-bottom:var(--space-1);color:var(--ink-2);font-weight:700;white-space:normal}
+/* 1つだけ選ぶ切り替え（重要度）。帯の切り替えと同じ顔（地の色でまとめ、中の札26px）。 */
+.lg-seg{display:inline-flex;gap:var(--gap-hair);padding:2px;border-radius:var(--radius-sm);background:var(--bg)}
+.lg-panel .lg-bar .lg-seg button{height:calc(var(--ctl-h-sm) - 4px);padding:0 var(--ctl-pad-x-xs);
+ border-color:transparent;background:transparent;color:var(--ink-3)}
+
+/* ---- 事実の欄（名前は固定幅で右寄せ・状態は語で） -------------------- */
+.lg-facts{margin:0;display:grid;grid-template-columns:var(--w-info-label) minmax(0,1fr);
+ column-gap:var(--space-3);row-gap:var(--space-2);font-size:var(--fs-sm)}
+.lg-fact{display:contents}
+.lg-fact>dt{color:var(--ink-3);font-weight:500;text-align:right;white-space:nowrap}
+.lg-fact>dd{margin:0;min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--space-1) var(--space-2);
+ color:var(--ink);overflow-wrap:anywhere}
+/* 状態の語。**色だけで伝えない**（§CLAUDE 画面基準 3）——必ず字を持つ。 */
+.lg-st{font-size:var(--fs-sm);font-weight:800;white-space:nowrap}
+.lg-st.is-ok{color:var(--success)}
+.lg-st.is-warn{color:var(--warn-fg)}
+.lg-st.is-ng{color:var(--danger)}
+.lg-st.is-off{color:var(--ink-soft);font-weight:500}
+
+/* ---- ① 報告する ----------------------------------------------------- */
+.lg-send .lg-card-head+*{margin-top:var(--space-3)}
+.lg-send{padding-bottom:var(--space-3);overflow:auto}
+.lg-send>:not(.lg-card-head){margin-left:var(--space-3);margin-right:var(--space-3)}
+.lg-lead{margin:0;color:var(--ink-2);font-size:var(--fs-sm)}
+.lg-flow{list-style:none;margin:var(--space-4) 0 0;padding:0;display:grid;gap:var(--space-4)}
+.lg-flow>li{display:grid;grid-template-columns:var(--ctl-h-sm) minmax(0,1fr);gap:var(--space-3);align-items:start}
+.lg-flow-no{display:grid;place-items:center;width:var(--ctl-h-sm);height:var(--ctl-h-sm);border-radius:var(--radius-round);
+ background:var(--pale);color:var(--teal-dark);font-size:var(--fs);font-weight:800}
+.lg-flow-body{display:grid;gap:var(--space-2);min-width:0}
+.lg-flow-title{display:flex;align-items:baseline;gap:var(--space-2);min-height:var(--ctl-h-sm);align-items:center;
+ color:var(--ink);font-size:var(--fs);font-weight:800}
+.lg-flow-title small{color:var(--ink-soft);font-size:var(--fs-sm);font-weight:500}
+#lgMemo{width:100%;min-height:calc(var(--fs) * var(--lh) * 4 + var(--space-2) * 2);resize:vertical;
+ padding:var(--space-2) var(--ctl-pad-x-sm);border:1px solid var(--line-mid);border-radius:var(--radius-sm);
+ color:var(--ink);font:inherit;font-size:var(--fs);line-height:var(--lh);box-sizing:border-box}
+#lgMemo:focus{outline:0;border-color:var(--teal);box-shadow:0 0 0 3px var(--pale)}
+.lg-flow-acts{display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline)}
+.lg-done{margin:0;min-height:calc(var(--fs-sm) * var(--lh));font-size:var(--fs-sm);font-weight:700}
+.lg-done.is-ok{color:var(--success)}
+.lg-done.is-ng{color:var(--danger)}
+.lg-sub{margin:var(--space-5) 0 var(--space-2);padding-top:var(--space-3);border-top:1px solid var(--line-soft);
+ color:var(--ink-3);font-size:var(--fs-sm);font-weight:800}
+/* 送る内容。**コピーされる文章そのもの**を見せる（見たものと送るものを違えない）。 */
+#lgPreview{flex:1 1 auto;min-height:0;width:100%;margin:0;padding:var(--space-2) var(--space-3);border:0;resize:none;
+ background:var(--surface-2);color:var(--ink-2);box-sizing:border-box;
+ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:var(--fs-sm);line-height:var(--lh)}
+#lgPreview:focus{outline:0}
+
+/* ---- ② ログを見る：問題のまとめ -------------------------------------- */
+.lg-problems .lg-note{margin:0;padding:var(--space-2) var(--space-3) var(--space-1)}
+.lg-problem-list{flex:1 1 auto;min-height:0;overflow:auto;padding-bottom:var(--space-2)}
+.lg-problem{display:grid;gap:var(--space-1);width:100%;padding:var(--space-2) var(--space-3);text-align:left;
+ border:0;border-left:3px solid transparent;border-bottom:1px solid var(--line-soft);background:transparent;
+ color:var(--ink);cursor:pointer;font:inherit}
+.lg-problem:hover{background:var(--surface-2)}
+.lg-problem-head{display:flex;align-items:baseline;gap:var(--space-2);font-size:var(--fs-sm)}
+.lg-problem-n{color:var(--ink);font-weight:800;font-variant-numeric:tabular-nums}
+.lg-problem-at{margin-left:auto;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.lg-problem-text{font-size:var(--fs-sm);color:var(--ink-2);overflow:hidden;display:-webkit-box;
+ -webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+.lg-problems .lg-note:last-child{padding:var(--space-2) var(--space-3)}
+
+/* ---- ② ログを見る：一覧（起動セッションごとのまとまり） ---------------- */
+.lg-tree{flex:1 1 auto;min-height:0;overflow:auto}
 .lg-group{border-bottom:1px solid var(--line-soft)}
-.lg-group>summary{display:flex;align-items:center;gap:var(--gap-inline);padding:var(--pad-row);
- background:var(--surface-2);cursor:pointer;list-style:none;position:sticky;top:0;z-index:1}
+.lg-group>summary{display:flex;align-items:center;gap:var(--gap-inline);padding:var(--space-1) var(--space-3);
+ min-height:var(--ctl-h-sm);background:var(--surface-2);cursor:pointer;list-style:none;position:sticky;top:0;z-index:1;
+ font-size:var(--fs-sm)}
 .lg-group>summary::-webkit-details-marker{display:none}
 .lg-group>summary::before{content:'';flex:0 0 auto;width:.5em;height:.5em;border-right:2px solid var(--ink-soft);
  border-bottom:2px solid var(--ink-soft);transform:rotate(-45deg);transition:transform .15s ease}
 .lg-group[open]>summary::before{transform:rotate(45deg)}
-.lg-group>summary b{color:var(--ink);font-size:var(--fs-base-sm)}
-.lg-group-time{color:var(--ink-3);font-size:var(--fs-sm);font-variant-numeric:tabular-nums}
-.lg-group-meta{color:var(--ink-soft);font-size:var(--fs-sm)}
+.lg-group>summary b{color:var(--ink);font-size:var(--fs-sm);font-weight:800}
+.lg-group-time{color:var(--ink-3);font-variant-numeric:tabular-nums}
+.lg-group-meta{display:inline-flex;gap:var(--space-2);color:var(--ink-soft)}
+.lg-group-meta em{font-style:normal;font-weight:800}
+.lg-group-meta em.is-ng{color:var(--danger)}
+.lg-group-meta em.is-warn{color:var(--warn-fg)}
 .lg-group-acts{margin-left:auto;display:inline-flex;gap:var(--gap-tight)}
 .lg-group-acts button{height:var(--ctl-h-xs);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line-mid);
- border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);cursor:pointer;font-size:var(--fs-sm)}
-.lg-group.is-picked>summary{background:var(--surface-3)}
+ border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);cursor:pointer;font-size:var(--fs-sm);font-weight:700}
+.lg-group-acts button:hover{border-color:var(--teal);color:var(--teal-dark)}
+.lg-group.is-picked>summary{background:var(--pale)}
 
-/* ---- 1件 ------------------------------------------------------------ */
-.lg-line{display:flex;align-items:baseline;gap:var(--gap-inline);padding:var(--pad-chip) var(--space-2);
- border-top:1px solid var(--line-soft);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
- font-size:var(--fs-sm);line-height:var(--lh);color:var(--ink)}
+/* ---- 1件 ------------------------------------------------------------
+   列は固定幅（時刻・重要度・出どころ）——本文の左端が行ごとにずれない。 */
+.lg-line{display:grid;grid-template-columns:auto 6.2em 4em 2.4em minmax(0,1fr) auto;align-items:baseline;
+ column-gap:var(--gap-inline);padding:var(--space-1) var(--space-3);border-top:1px solid var(--line-soft);
+ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:var(--fs-sm);line-height:var(--lh);color:var(--ink)}
 .lg-line:hover{background:var(--surface-2)}
-.lg-line input[type=checkbox]{flex:0 0 auto;align-self:center}
-.lg-time{flex:0 0 auto;color:var(--ink-soft);font-variant-numeric:tabular-nums}
-.lg-src{flex:0 0 auto;color:var(--ink-soft)}
-.lg-text{flex:1 1 auto;min-width:0;overflow-wrap:anywhere;white-space:pre-wrap}
-.lg-badge{flex:0 0 auto;display:inline-block;min-width:3.6em;text-align:center;padding:var(--pad-chip);
- border-radius:var(--radius-xs);font-size:var(--fs-badge);font-weight:800;font-family:inherit;
- background:var(--surface-3);color:var(--ink-3)}
+.lg-line input[type=checkbox]{align-self:center;margin:0}
+.lg-time{color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.lg-src{color:var(--ink-soft)}
+.lg-text{min-width:0;overflow-wrap:anywhere;white-space:pre-wrap}
+.lg-badge{justify-self:start;padding:0 var(--space-1);border-radius:var(--radius-xs);
+ font-family:inherit;font-weight:800;color:var(--ink-soft)}
 .lg-line.is-error .lg-badge{background:var(--danger-bg);color:var(--danger)}
 .lg-line.is-warning .lg-badge{background:var(--warn-bg);color:var(--warn-fg)}
 .lg-line.is-error{background:var(--danger-bg)}
 /* 続きの行(トレースバック)。既定は畳んでおく——1件が数十行に伸びると、
    その前後の流れが読めなくなるため。 */
-.lg-more{flex:0 0 auto;height:var(--row-ctl-h);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line-mid);
+.lg-more{height:var(--row-ctl-h);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line-mid);
  border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-3);cursor:pointer;
- font-size:var(--fs-badge);font-family:inherit}
-.lg-extra{margin:0;padding:var(--pad-row) var(--space-4);border-top:1px solid var(--line-soft);
- background:var(--surface-2);color:var(--ink-2);white-space:pre-wrap;overflow-x:auto;
+ font-size:var(--fs-sm);font-family:inherit}
+.lg-extra{margin:0;padding:var(--space-2) var(--space-3) var(--space-2) calc(var(--space-3) + 12.6em);
+ border-top:1px solid var(--line-soft);background:var(--surface-2);color:var(--ink-2);white-space:pre-wrap;overflow-x:auto;
  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:var(--fs-sm);line-height:var(--lh)}
-.lg-empty{padding:var(--pad-dialog);color:var(--ink-soft);text-align:center}
 
-/* ---- 起動の状況(§9.316、利用者の指示) --------------------------------
-   「ログの保存場所が難しい…ログをアプリ上からコピーできるようにして、
-     起動時の状況もアプリ上から取得できるようにしてください」
-   **既定は開いておく**——接続の診断(下)と違って共有へは触らず、しかも
-   この画面へ来る理由がまさにこれなので、探させない(§CLAUDE 2)。
-   意匠は診断と同じ器に乗せ、**2つ目の見た目を作らない**。 */
-.lg-boot{border:1px solid var(--line-soft);border-radius:var(--radius-md);
- background:var(--surface-2);margin-bottom:var(--space-2)}
-.lg-boot>summary{display:flex;align-items:baseline;gap:var(--gap-inline);padding:var(--pad-row);
- cursor:pointer;list-style:none}
-.lg-boot>summary::-webkit-details-marker{display:none}
-.lg-boot>summary::before{content:'';flex:0 0 auto;width:.5em;height:.5em;align-self:center;
- border-right:2px solid var(--ink-soft);border-bottom:2px solid var(--ink-soft);
- transform:rotate(-45deg);transition:transform .15s ease}
-.lg-boot[open]>summary::before{transform:rotate(45deg)}
-.lg-boot>summary b{color:var(--ink);font-size:var(--fs-base-sm)}
-.lg-boot>summary span{color:var(--ink-soft);font-size:var(--fs-sm)}
-/* **主要な一手は1つだけ**(§CLAUDE 2)。押すのは「まとめてコピー」。 */
-.lg-diag-bar button.lg-primary{background:var(--teal);border-color:var(--teal);color:#ffffff}
-.lg-diag-bar button.lg-primary:hover{filter:brightness(1.06)}
-.lg-boot-hint{color:var(--ink-soft);font-size:var(--fs-sm)}
-.lg-boot-body{padding:0 var(--space-2) var(--space-2)}
-.lg-boot-env{display:flex;flex-wrap:wrap;gap:var(--gap-section);align-items:baseline;
- padding:var(--pad-row);background:var(--surface);border:1px solid var(--line-soft);
- border-radius:var(--radius-sm);margin-bottom:var(--space-2)}
-.lg-boot-env b{color:var(--ink);font-size:var(--fs-base-sm)}
-.lg-boot-env span{color:var(--ink-2);font-size:var(--fs-sm)}
-.lg-boot-table{width:100%;border-collapse:collapse;background:var(--surface);
- border:1px solid var(--line-soft);border-radius:var(--radius-sm)}
-.lg-boot-table th,.lg-boot-table td{padding:var(--pad-cell);border-bottom:1px solid var(--line-soft);
- font-size:var(--fs-sm);text-align:left;vertical-align:top}
-.lg-boot-table th{color:var(--ink-3);font-weight:800;background:var(--surface-2)}
-.lg-boot-table td.lg-boot-path{overflow-wrap:anywhere;color:var(--ink-2)}
-.lg-boot-table tr.is-bad td{background:var(--surface-3)}
-/* **色だけで伝えない**(§CLAUDE 3)——状態は必ず文字で出す。 */
-.lg-boot-mark{display:inline-block;padding:0 var(--space-1);border-radius:var(--radius-xs);
- font-size:var(--fs-sm);font-weight:800;white-space:nowrap}
-.lg-boot-ok{color:var(--teal)}
-.lg-boot-ng{color:var(--danger)}
-.lg-boot-warn{color:var(--ink-3)}
-.lg-boot-note{margin-top:var(--space-2);color:var(--ink-soft);font-size:var(--fs-sm)}
-
-/* ---- 接続の診断(§9.101) --------------------------------------------
-   既定は畳んでおく。**開くまで共有へ触らない**——画面を開いただけで
-   応答の遅い共有フォルダを叩くと、ログを読みに来ただけの人を待たせる。 */
-.lg-diag{border:1px solid var(--line-soft);border-radius:var(--radius-md);background:var(--surface-2)}
-.lg-diag>summary{display:flex;align-items:baseline;gap:var(--gap-inline);padding:var(--pad-row);
- cursor:pointer;list-style:none}
-.lg-diag>summary::-webkit-details-marker{display:none}
-.lg-diag>summary::before{content:'';flex:0 0 auto;width:.5em;height:.5em;align-self:center;
- border-right:2px solid var(--ink-soft);border-bottom:2px solid var(--ink-soft);
- transform:rotate(-45deg);transition:transform .15s ease}
-.lg-diag[open]>summary::before{transform:rotate(45deg)}
-.lg-diag>summary b{color:var(--ink);font-size:var(--fs-base-sm)}
-.lg-diag>summary span{color:var(--ink-soft);font-size:var(--fs-sm)}
-.lg-diag-bar{display:flex;align-items:center;gap:var(--gap-inline);flex-wrap:wrap;
- padding:var(--pad-row);border-top:1px solid var(--line-soft)}
-.lg-diag-bar label{display:flex;align-items:center;gap:var(--gap-tight);
- color:var(--ink-3);font-size:var(--fs-sm);font-weight:700}
-.lg-diag-bar select{height:var(--ctl-h-sm);border:1px solid var(--line-mid);border-radius:var(--radius-sm);
- background:var(--surface);padding:0 var(--ctl-pad-x-sm);color:var(--ink)}
-.lg-diag-bar button{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line-mid);
- border-radius:var(--radius-sm);background:var(--surface);color:var(--ink-2);font-weight:700;cursor:pointer}
-.lg-diag-bar button:hover{background:var(--surface-2)}
-.lg-diag-verdict{margin-left:auto;font-size:var(--fs-sm);font-weight:800}
-.lg-diag-verdict.is-ok{color:var(--teal)}
-.lg-diag-verdict.is-ng{color:var(--danger)}
-.lg-diag-body{padding:0 var(--space-2) var(--space-2)}
-.lg-diag-head{display:flex;flex-wrap:wrap;gap:var(--gap-section);padding:var(--pad-row);
- background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--radius-sm);
- margin-bottom:var(--space-2)}
-.lg-diag-kv{display:flex;align-items:baseline;gap:var(--gap-tight);min-width:0}
-.lg-diag-kv span{color:var(--ink-soft);font-size:var(--fs-sm)}
-.lg-diag-kv b{color:var(--ink);font-size:var(--fs-sm);overflow-wrap:anywhere}
+/* ---- ③ 点検と整理 --------------------------------------------------- */
+.lg-table{width:100%;margin-top:var(--space-3);border-collapse:collapse;font-size:var(--fs-sm)}
+.lg-card-body>.lg-table:first-child{margin-top:0}
+.lg-table th,.lg-table td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
+ text-align:left;vertical-align:top}
+.lg-table th{color:var(--ink-3);font-weight:500;white-space:nowrap}
+.lg-table td.lg-num{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+.lg-table td.lg-path{overflow-wrap:anywhere;color:var(--ink-2)}
+.lg-table td small{display:block;color:var(--ink-soft);font-size:var(--fs-sm)}
+.lg-table tr.is-bad td{background:var(--danger-bg)}
+.lg-diag-verdict{margin-left:auto}
+.lg-diag-steps{margin-top:var(--space-3)}
 /* 1段階=1行。**最初に転んだところが原因**で、その先は道連れなので、
    失敗(×)・それ以降(薄い)・成功(✓)を見分けられるようにする。 */
-.lg-diag-step{display:flex;align-items:baseline;gap:var(--gap-inline);padding:var(--pad-chip) var(--space-2);
- border-top:1px solid var(--line-soft);font-size:var(--fs-sm)}
-.lg-diag-mark{flex:0 0 auto;width:1.2em;text-align:center;font-weight:800}
-.lg-diag-name{flex:0 0 auto;color:var(--ink)}
-.lg-diag-detail{flex:1 1 auto;min-width:0;color:var(--ink-3);overflow-wrap:anywhere;
+.lg-diag-step{display:grid;grid-template-columns:1.4em auto minmax(0,1fr);align-items:baseline;gap:var(--gap-inline);
+ padding:var(--space-1) var(--space-2);border-top:1px solid var(--line-soft);font-size:var(--fs-sm)}
+.lg-diag-mark{text-align:center;font-weight:800}
+.lg-diag-name{color:var(--ink)}
+.lg-diag-detail{min-width:0;color:var(--ink-3);overflow-wrap:anywhere;
  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-.lg-diag-step.is-ok .lg-diag-mark{color:var(--teal)}
+.lg-diag-step.is-ok .lg-diag-mark{color:var(--success)}
 .lg-diag-step.is-ng{background:var(--danger-bg)}
 .lg-diag-step.is-ng .lg-diag-mark,.lg-diag-step.is-ng .lg-diag-name{color:var(--danger)}
-.lg-diag-step.is-after{color:var(--ink-soft)}
 /* 走ったが答えが「無い」段階。例外は出ていないので×ではないが、
    ✓でもない——ここで止まっている、という3つ目の状態。 */
 .lg-diag-step.is-no{background:var(--warn-bg)}
 .lg-diag-step.is-no .lg-diag-mark,.lg-diag-step.is-no .lg-diag-name{color:var(--warn-fg)}
-.lg-diag-step.is-after .lg-diag-name,.lg-diag-step.is-after .lg-diag-detail{color:var(--ink-soft)}
+.lg-diag-step.is-after,.lg-diag-step.is-after .lg-diag-name,.lg-diag-step.is-after .lg-diag-detail{color:var(--ink-soft)}
+.lg-maint .lg-bar{border-top:1px solid var(--line-soft)}
+/* 消す操作は**区切った場所に・見出しつきで**（§CLAUDE 画面基準 5）。
+   主要な動線（報告・読む）とは段ごと分けてある。 */
+.lg-danger-zone{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:var(--gap-inline);
+ padding:var(--space-2) var(--space-3);background:var(--danger-bg)}
+.lg-danger-title{color:var(--danger);font-size:var(--fs-sm);font-weight:800;white-space:nowrap}
+.lg-join{display:inline-flex;align-items:center;gap:var(--space-1)}
+.lg-panel .lg-danger-zone button.lg-danger{border-color:var(--danger-border);color:var(--danger)}
+.lg-panel .lg-danger-zone button.lg-danger:hover:not(:disabled){border-color:var(--danger);background:var(--surface);color:var(--danger)}
+.lg-maint #lgMaintNote{margin:0;padding:var(--space-2) var(--space-3)}
 }

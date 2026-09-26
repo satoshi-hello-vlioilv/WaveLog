@@ -1,4 +1,4 @@
-# そのほか（17件）
+# そのほか（18件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| LotDspのタブは「Tab N：中身の名前」。顔ぶれは`WL.lotDspTab.TABS`の1箇所（値は番号のまま） | `test_eqsetup.js` | [§9.511](../../docs/decisions/9.511.md) |
 | ロット問い合わせの自動ログインは同梱の拡張（`program/lotdsp-ext`）が持つ。WaveLog は ID・パスワードを受け取らない | `test_lotdspext.js` | [§9.485](../../docs/decisions/9.485.md) |
 | 計算を直したら、**その計算を説明している字**も直す（字は網にかからない） | — | [§9.420](../../docs/decisions/9.420.md) |
 | フラットネスの全〇は「印を持つボタンだけ」を拾う | — | [§9.320](../../docs/decisions/9.320.md) |
