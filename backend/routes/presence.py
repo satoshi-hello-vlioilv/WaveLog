@@ -12,10 +12,7 @@ from flask import Blueprint, jsonify
 
 from .. import presence
 from ..access_mode import current_login_id, current_pc_name, current_permission_flags, get_mode
-from ..db_access import DBS, connect
-from ..repositories.master_repo import (ROLE_DEFAULT, ROLES, permission_flags,
-                                        role_can, role_capabilities)
-from ..quiet import quiet
+from ..repositories.master_repo import ROLE_DEFAULT, ROLES, role_can, role_capabilities
 from .body import body
 
 bp = Blueprint('presence', __name__)
@@ -26,13 +23,11 @@ def _registered_role(login_id, pc_name):
 
     在席ファイルに書かれている区分は端末の自己申告なので、切断してよいかの
     判定には使わない（古い版の端末は区分を書かない）。**マスタが正**。
+    引き方は`presence.registered_roles()`の1箇所（一覧と同じ答え・§9.516）。
     """
-    try:
-        with connect(DBS['MASTER']['path'], True) as c:
-            return permission_flags(c, login_id, pc_name).get('role') or ROLE_DEFAULT
-    except Exception as _e:
-        quiet('区分を引けない（既定の区分で扱う）',_e)
-        return ROLE_DEFAULT
+    key = presence.terminal_key(login_id, pc_name)
+    got = presence.registered_roles([{'key': key, 'login': login_id, 'pc': pc_name}])
+    return (got or {}).get(key) or ROLE_DEFAULT
 
 
 def _me():
@@ -52,22 +47,27 @@ def presence_list():
         return jsonify(error=f'この端末の権限区分（{me["role"]}）では接続状況を見られません。',
                        me=me, can=role_capabilities(me['role'])), 403
     rows = presence.entries()
+    hist = presence.history_entries()
     d, source = presence.presence_dir()
+    # **区分はマスタから引き直す**（自己申告を信じない）。在席と記録と自分の分を
+    # まとめて1回で引く（§9.516——最新版の判定から開発者を除くのにも使う）。
+    mine = {'key': me['key'], 'login': me['login'], 'pc': me['pc']}
+    roles = presence.registered_roles((rows or []) + (hist or []) + [mine]) or {}
     out = []
     if rows is not None:
         for x in rows:
-            # **区分はマスタから引き直す**（自己申告を信じない）。
-            role = _registered_role(x['login'], x['pc'])
+            role = roles.get(x['key']) or ROLE_DEFAULT
             out.append(dict(x, role=role, isMe=(x['key'] == me['key']),
                             canDisconnect=(x['key'] != me['key']
                                            and role_can(me['role'], 'presence:disconnect', role))))
     # 版の配布の答え（§9.513）。**運用中の最新版・古い版の端末・利用者ごとの合計**は
     # `presence.fleet_summary()`の1箇所が作る——画面は並べるだけ。
-    hist = presence.history_entries()
-    fleet = presence.fleet_summary(out, hist, presence.app_version())
-    lk = presence.version_key(fleet['latestVersion'])
+    fleet = presence.fleet_summary(out, hist, presence.app_version(), roles=roles, my_key=me['key'])
+    by_key = {t['key']: t for t in fleet['terminals']}
     for x in out:
-        x['outdated'] = bool(fleet['latestVersion']) and presence.version_key(x.get('version')) < lk
+        t = by_key.get(x['key']) or {}
+        x['outdated'] = bool(t.get('outdated'))
+        x['counted'] = t.get('counted', True)
     return jsonify(ok=True,
                    items=out,
                    fleet=fleet,
