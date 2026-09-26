@@ -1,4 +1,4 @@
-# データの置き場と共有（64件）
+# データの置き場と共有（70件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -21,6 +21,9 @@
 | 共通設定の欄は`data-pc-field`を名乗れば保存に載る。**値は組み立てるときに入れる** | `test_shortcut.py` | [§9.433](../../docs/decisions/9.433.md) |
 | 端末に持つ設定の例（seed）は**読んだその場で保存する**。IDを時刻から作らない | `test_lotcopy.js` | [§9.400](../../docs/decisions/9.400.md) |
 | 保存された`[]`は「まだ作っていない」ではなく**「利用者が空にした」**。見分けるのは鍵の有無 | `test_lotcopy.js` | [§9.400](../../docs/decisions/9.400.md) |
+| ログ・診断は3段（報告する＝既定・いつもここで開く／ログを見る／点検と整理）。**消す操作は点検と整理の段だけ** | `test_logview.js` | [§9.510](../../docs/decisions/9.510.md) |
+| 報告は1手で全部（メモ・画面の失敗・起動の状況・エラーのまとめ）。写すのは**見えているプレビューそのもの** | `test_logview.js`・`test_feedback.js` | [§9.510](../../docs/decisions/9.510.md) |
+| エラー・警告のまとめは`problem_digest()`の1箇所（数字だけ違う文は1つ・エラーが先）。置き場の「直すべきか」は`_place()`の`bad` | `test_logs.py`・`test_bootreport.js` | [§9.510](../../docs/decisions/9.510.md) |
 | ログビュワー（`backend/routes/logs.py`／`static/js/core/log-view.js`）は「1行」でなく「1件」で扱う | `test_logs.py`・`test_logview.js` | [§9.99](../../docs/decisions/9.99.md) |
 | 新しいキャッシュは`WL.ttlCache()`を使う | — | [§9.67](../../docs/decisions/9.67.md) |
 | 共有のデータは「読むのは写し・書くのは実物」で揃える | `test_recmirror.py` | [§9.268](../../docs/decisions/9.268.md) |
@@ -33,6 +36,9 @@
 | 画面から来る「入/切」は`flags.flag_of()`の1箇所で真偽へ直す | `test_flags.py` | [§9.324](../../docs/decisions/9.324-1.md) |
 | SQLiteの入出力は`backend/sqlite_io.py`、置き場の答えは`db_access`、書込は`bootstrap()` | `test_dblayer.py` | [§9.329](../../docs/decisions/9.329.md) |
 | 作業予定を「読む側」は写しに書かない | `test_scsnapread.py` | [§9.325](../../docs/decisions/9.325.md) |
+| 接続の記録は端末ごとに1ファイル（`presence/history/`）。書くのはその端末だけ・TTLより長く途切れたら新しい接続 | `test_presence.py` | [§9.513](../../docs/decisions/9.513.md) |
+| 運用中の最新版・最新でない端末・利用者ごとの合計は`fleet_summary()`の1箇所。版は数で比べ、版が空は要更新 | `test_presence.py`・`test_presenceui.js` | [§9.513](../../docs/decisions/9.513.md) |
+| 運用中の最新版は`presence.latest_version()`の1箇所。古い版の知らせは裏で5分ごとに数え、ハートビートは控えを返すだけ | `test_presence.py` | [§9.515](../../docs/decisions/9.515.md) |
 | 在席は端末ごとに1ファイル。切断は「書き込みだけ」を止める | `test_presence.py`・`test_presenceui.js` | [§9.272](../../docs/decisions/9.272.md) |
 | 置き場の答えは`backend/storage_layout.py`の1箇所 | `test_storage.py`・`test_storageui.js` | [§9.267](../../docs/decisions/9.267.md) |
 | 測定データは設備ごとに1ファイル。置き場の答えは`db_access`の1箇所 | `test_recsplit.py` | [§9.258](../../docs/decisions/9.258.md) |

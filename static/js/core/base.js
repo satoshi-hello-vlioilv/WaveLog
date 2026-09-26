@@ -213,6 +213,14 @@ document.addEventListener('click',e=>{
 window.WL=window.WL||{};
 WL.lotDspTab={
  KEY:'LotDspLastTabV1',
+ /* タブの顔ぶれ（§9.511、利用者の指示「Tab0：ICAS情報みたいな感じで補助として」）。
+    番号だけだと**どの画面が開くか思い出させる**ことになる——LotDsp の画面に
+    並んでいる名前をそのまま添える。番号（`n`）はURLへ渡す値なので変えない。
+    顔ぶれはこの1箇所（選択肢も字もここから作る）。 */
+ TABS:[[0,'ICAS情報'],[1,'進度情報'],[2,'製造情報'],[3,'試験情報'],
+       [4,'品質情報'],[5,'クラッド情報'],[6,'焼鈍情報'],[7,'引当情報']],
+ label(n){const t=WL.lotDspTab.TABS.find(x=>String(x[0])===String(n));return `Tab ${n}`+(t?`：${t[1]}`:'')},
+ optionsHtml(){return WL.lotDspTab.TABS.map(([n])=>`<option value="${n}">${WL.lotDspTab.label(n)}</option>`).join('')},
  get(){return localStorage.getItem(WL.lotDspTab.KEY)||'1'},
  /* **選んだらすぐ効く**（保存ボタンを待たない）。窓の中でそう名乗っている。 */
  bind(sel){
@@ -781,8 +789,60 @@ const columnLayout=(()=>{
    v=norm(r);
    scopes.set(target,r&&r.scope==='personal'?'personal':'common');
    canPersonalize=!!(r&&r.canPersonalize);
+   keepRights(target,r);
   }catch(e){WL.quiet.note('読めなくても既定の並びで一覧は出す(fail-open)',e)}
   saved.set(target,v);loadedFor.set(target,uid);bump(target);return get(target);
+ }
+ /* ---------- 表示列の編集（§9.512、利用者の指示） ----------
+    この対象で**何を保存してよいか**はサーバーが答える（`column_edit_for_target`・
+    アクセス権限マスタの「表示列の編集」）。画面は受け取って、保存の行き先を決めるだけ:
+      変更不可     … サーバーへ送らない（この画面のあいだだけ効く）。1回だけ字で言う
+      自分の分だけ … みんなと同じを見ているなら、**自分だけへ切り替えてから**保存する
+                     （断って終わりにしない——変えたい人を行き止まりにしない）
+    読む前（答えが無い）は`/api/access-mode`の答え、それも無ければ今までどおり（§9.132）。 */
+ const rights=new Map();                // target -> {own,common,level}
+ function keepRights(target,r){
+  if(r&&typeof r.canEditOwnColumns==='boolean')
+   rights.set(target,{own:r.canEditOwnColumns,common:!!r.canEditCommonColumns,level:r.columnEdit||''});
+ }
+ function rightsOf(target){
+  const hit=target&&rights.get(target);if(hit)return hit;
+  const am=window.accessMode||{};
+  return {own:am.canEditOwnColumns!==false,common:am.canEditCommonColumns!==false,level:am.columnEdit||'編集可'};
+ }
+ const told=new Set();
+ function tellLocal(target,why){
+  if(told.has(target))return;
+  told.add(target);
+  window.showToast&&showToast('表示列の変更は保存されません',why,7000);
+ }
+ /* 行き先が**待たずに決まる**ときの答え（`'send'`／`'local'`）。切り替えや読み込みが要るときは null。
+    **いつもの保存を1手も遅らせない**——`await`を1つ挟むだけで、保存中の札が出る前・保存済みへ
+    当てる前に描き直しが走り、掴んで離した列幅が一瞬もとへ戻る（test_sctimecols・test_lcpanel で実測）。 */
+ function routeNow(target){
+  if(!scopes.has(target))return null;
+  const r=rightsOf(target);
+  if(r.own&&(r.common||scopeOf(target)==='personal'))return 'send';
+  return null;
+ }
+ async function route(target){
+  if(!scopes.has(target))await load(target);
+  const r=rightsOf(target);
+  if(!r.own){
+   tellLocal(target,`この端末の「表示列の編集」は「${r.level||'変更不可'}」です。この画面のあいだだけ効き、次に開くと元に戻ります。`
+                    +'変える必要があれば、アクセス権限マスタで「表示列の編集」を上げてもらってください。');
+   return 'local';
+  }
+  if(!r.common&&scopeOf(target)!=='personal'){
+   if(!canPersonalize){
+    tellLocal(target,'この端末の「表示列の編集」は「自分の分だけ」ですが、利用者IDが分からないため自分だけの設定を持てません。');
+    return 'local';
+   }
+   await setScope(target,true);
+   window.showToast&&showToast('自分だけの表示列に切り替えました',
+    'この端末の「表示列の編集」は「自分の分だけ」なので、みんなと同じ表示列は変えずに、あなたの分として保存します（他の人の見え方は変わりません）。',7000);
+  }
+  return 'send';
  }
  /* いまどちらで見ているか。**読む前は分からないので'common'とは言い切らない** */
  function scopeOf(target){return scopes.get(target)||''}
@@ -797,6 +857,7 @@ const columnLayout=(()=>{
   saved.set(target,norm(r));loadedFor.set(target,ensureUserId());
   scopes.set(target,r&&r.scope==='personal'?'personal':'common');
   canPersonalize=!!(r&&r.canPersonalize);
+  keepRights(target,r);
   draft.delete(target);live.delete(target);bump(target);
   return r;
  }
@@ -822,7 +883,9 @@ const columnLayout=(()=>{
   if(!target)return;
   /* 全部を送る＝全部が保存済みになる（設定パネルの「保存」）。 */
   const v=norm(layout);
+  const way=routeNow(target)||await route(target);   // 行き先を先に決める（切り替えは保存済みを入れ替える）
   saved.set(target,v);draft.delete(target);live.delete(target);bump(target);
+  if(way==='local')return;
   await saveState.run(target,()=>api('/api/column-layout-master',
    {method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(withUserId({target,...v}))}));
@@ -836,17 +899,19 @@ const columnLayout=(()=>{
   const keys=Object.keys(body).filter(k=>KEYS.includes(k));
   if(!keys.length)return;
   const pick={};keys.forEach(k=>{pick[k]=body[k]});
+  const way=routeNow(target)||await route(target);
   saved.set(target,{...savedOf(target),...pick});
   if(draft.has(target))draft.set(target,{...draft.get(target),...pick});
   bump(target);
+  if(way==='local')return;
   await saveState.run(target,()=>api('/api/column-layout-master',
    {method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(withUserId({target,...pick}))}));
  }
  function forget(target){
   if(target){saved.delete(target);draft.delete(target);live.delete(target);
-             loadedFor.delete(target);scopes.delete(target)}
-  else{saved.clear();draft.clear();live.clear();loadedFor.clear();scopes.clear()}
+             loadedFor.delete(target);scopes.delete(target);rights.delete(target)}
+  else{saved.clear();draft.clear();live.clear();loadedFor.clear();scopes.clear();rights.clear()}
   bump(target);
  }
  /* **保存せずに今の画面へ当てる**(§9.90)。列の設定パネルは、触った結果が
@@ -886,6 +951,8 @@ const columnLayout=(()=>{
          saved:savedOf,shows,locked,
          /* 列の見せ方の持ち主(§9.259)。'common'=みんなと同じ／'personal'=自分だけ。 */
          scope:scopeOf,setScope,personalizable,
+         /* この対象で何を保存してよいか（§9.512）。{own,common,level} */
+         rights:rightsOf,
          width:(target,col)=>get(target).widths[col]||null,
          /* 幅の状態を1語で。'auto'=内容に合わせる / 'manual'=手で決めた /
             'locked'=固定(手で決めた幅から動かさない)。 */
@@ -2133,6 +2200,46 @@ const WATCHDOG_TAB_ID=(typeof window!=='undefined'&&window.__wlTabId)
    明示する。サーバーが終了していても画面は普通に見えてしまい、操作して
    初めてエラーになる状態を避けるため(仕様書2.9)。
    1回の失敗では出さない(サーバー再起動中の一時断や瞬断で出さないため)。 */
+/* ---------- 古い版の端末への知らせ（§9.515、利用者の指示「控えめな感じで
+   邪魔にならないように入れてください」） ----------
+   運用中の最新版はサーバーが裏で数え（`presence.version_notice()`の1箇所）、
+   **ハートビートの応答に相乗りして全区分の端末へ**届く（接続状況の口は区分で
+   断るので、設備作業者の端末には届かない）。
+   出すのは**版のバッジの隣の小さな字1つ**——帯・窓・トーストは出さない、
+   場所も動かさない（バッジの行の空きに入る）。押すとバッジと同じ行き先
+   （更新履歴の窓）が「最新版・この端末の版・すること」を言う。
+   **まだ数えていない（`null`）は「最新」と読まない**——前の答えのまま置く。
+   `#restartNeeded`が出ている間は伏せる（打つ手＝開き直すは同じで、あちらが
+   先に言っている・画面基準8）。
+   **置くのは左メニューのバッジだけ**（`HOST`）。測定画面のレール（160px）では
+   バッジの行に入らず、測っている最中にレールの中身を1行ぶん押し下げる。 */
+WL.versionNotice=(()=>{
+ const HOST='.layout>aside .brand .build-badge';
+ let state=null;
+ const behind=()=>!!(state&&state.outdated)&&document.getElementById('restartNeeded')?.hidden!==false;
+ function paint(){
+  const on=behind();
+  document.querySelectorAll(HOST).forEach(badge=>{
+   let mark=badge.nextElementSibling;
+   if(!mark||!mark.classList.contains('ver-behind')){
+    if(!on)return;
+    mark=document.createElement('button');
+    mark.type='button';mark.className='ver-behind';mark.textContent='新しい版あり';
+    mark.onclick=()=>badge.click();
+    badge.after(mark);
+   }
+   mark.hidden=!on;
+   mark.title=on?`運用中の最新版は VER${state.latestVersion} です（この端末は VER${state.myVersion}）。押すと更新のしかたを出します。`:'';
+  });
+ }
+ function apply(v){
+  if(!v||!v.latestVersion)return;
+  const next={latestVersion:String(v.latestVersion),myVersion:String(v.myVersion||''),outdated:!!v.outdated};
+  if(state&&state.latestVersion===next.latestVersion&&state.myVersion===next.myVersion&&state.outdated===next.outdated)return;
+  state=next;paint();
+ }
+ return {apply,paint,state:()=>state,behind};
+})();
 const HEARTBEAT_INTERVAL_MS=15000, HEARTBEAT_FAIL_LIMIT=2;
 let heartbeatFailures=0;
 function setConnectionLost(lost){
@@ -2149,6 +2256,8 @@ async function sendHeartbeat(){
    +`&view=${encodeURIComponent(WL.currentView||'')}`,{method:'POST',cache:'no-store',keepalive:true});
   if(!res.ok)throw Error('HTTP '+res.status);
   heartbeatFailures=0;setConnectionLost(false);
+  const body=await res.json().catch(WL.quiet('応答を読めなくても生きている（版の知らせは前のまま）'));
+  WL.versionNotice.apply(body&&body.version);
  }catch(e){
   /* **自分で終了したときは「接続が切れました」を出さない**（§9.301 ②）
      ——事故のように見せない（§3）。終了した画面は`#appQuitDone`が言う。 */

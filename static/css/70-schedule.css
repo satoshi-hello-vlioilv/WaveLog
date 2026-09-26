@@ -505,6 +505,13 @@
 .sc-row-line.sc-row-active{background:var(--success-bg)}
 .sc-row-line.sc-row-active:hover{background:#dcf1e5}
 .sc-row-line.sc-row-done{opacity:.6}
+/* 実際の時刻が未登録の済んだ行（§9.514）。**完了の薄さを打ち消し**、左の帯と淡い地で
+   「次にすることが残っている」を言う（色だけにしない——区分の列に「時刻未登録」の札）。 */
+.sc-row-line.sc-row-needtimes{opacity:1;background:var(--warn-bg);border-left:3px solid var(--warn-border);padding-left:5px}
+.sc-row-line.sc-row-needtimes:hover{background:var(--warn-bg)}
+.sc-row-line.sc-row-needtimes .sc-row-time.is-need{color:var(--warn-fg);font-weight:800}
+/* 手で入れた時刻の印（§9.514）。字より小さく薄く——時刻そのものを読む邪魔をしない。 */
+.sc-time-manual{margin-right:var(--space-1);font-size:.8em;color:var(--ink-soft)}
 .sc-row-line.sc-row-cancel{opacity:.6}
 .sc-row-line.sc-row-cancel .sc-row-title{text-decoration:line-through}
 /* 楽観的追加(§9.11新設): サーバーへの反映(書込キュー)が完了するまでの
@@ -1379,6 +1386,34 @@
  font-weight:800;white-space:nowrap;
 }
 .sc-row-start:hover{background:var(--teal-dark);border-color:var(--teal-dark);color:#fff}
+/* 実際の時刻を入れる（§9.514）。**済んだ行で残っている唯一の一手**なので、開始と同じく
+   目を引く形。色は設定要の橙（開始の青緑と取り違えない・§9.338）。 */
+.sc-row-times{min-width:auto;padding:0 var(--ctl-pad-x-xs);background:var(--warn-bg);border-color:var(--warn-border);
+ color:var(--warn-fg);font-weight:800;white-space:nowrap}
+.sc-row-times:hover{background:var(--warn-border);border-color:var(--warn-border);color:var(--surface)}
+/* ---------- 実際の時刻の小窓（§9.514・schedule-times.js） ----------
+   名前の列は固定幅（§CLAUDE 9）。欄は分まで（`step=60`）、補助のボタンは欄のすぐ右。 */
+.sct{display:grid;gap:var(--space-3);min-width:min(34em,80vw)}
+.sct-lead{margin:0;display:grid;gap:2px;font-size:var(--fs)}
+.sct-lead span{color:var(--ink-3);font-size:var(--fs-sm)}
+.sct-row{display:grid;grid-template-columns:4.5em auto 1fr;align-items:center;gap:var(--space-1) var(--space-2)}
+.sct-row[hidden]{display:none}
+.sct-key{color:var(--ink-3);font-size:var(--fs-sm);font-weight:700;text-align:right}
+.sct-row input[type=datetime-local]{height:var(--ctl-h);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line-mid);
+ border-radius:var(--radius-sm);font-size:var(--fs);font-variant-numeric:tabular-nums;color:var(--ink)}
+.sct-nudge,.sct-seg{display:inline-flex;flex-wrap:wrap;gap:var(--space-1)}
+.sct-nudge button{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line-mid);border-radius:var(--radius-sm);
+ background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);font-weight:700;cursor:pointer}
+.sct-nudge button:hover{border-color:var(--teal);color:var(--teal-dark)}
+.sct-seg{grid-column:2/-1;padding:2px;border-radius:var(--radius-sm);background:var(--bg);gap:var(--gap-hair)}
+.sct-seg button{height:calc(var(--ctl-h-sm) - 4px);padding:0 var(--ctl-pad-x-sm);border:1px solid transparent;border-radius:var(--radius-sm);
+ background:transparent;color:var(--ink-3);font-size:var(--fs-sm);font-weight:700;cursor:pointer}
+.sct-from{grid-column:2/-1;color:var(--ink-soft);font-size:var(--fs-sm)}
+.sct-from:empty{display:none}
+.sct-sum{margin:0;padding:var(--space-2) var(--space-3);border-radius:var(--radius-sm);background:var(--surface-2);
+ font-size:var(--fs);font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+.sct-sum.is-ng{background:var(--danger-bg);color:var(--danger)}
+.sct-err{margin:0;color:var(--danger);font-size:var(--fs-sm);font-weight:700}
 /* 表示範囲(§9.34) */
 .sc-history-range{display:inline-flex;align-items:center;gap:var(--gap-tight);font-size:var(--fs-sm);color:var(--muted);white-space:nowrap}
 .sc-history-range[hidden]{display:none}
@@ -2777,6 +2812,8 @@ div.sc-view-row{cursor:default}
   font-size:var(--fs-sm);font-weight:700;cursor:pointer;white-space:nowrap}
 .sh-btn:hover{border-color:var(--teal);color:var(--teal-dark)}
 .sh-btn:disabled{opacity:.45;cursor:default}
+/* 手で入れた時刻を直す（§9.514）。記録の字のすぐ後ろに小さく。 */
+.sh-fix{margin-left:var(--space-2);height:var(--ctl-h-xs)}
 .sh-btn.sh-ico{width:var(--ctl-h-sm);justify-content:center;padding:0}
 .sh-seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
 .sh-seg-btn{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);border:0;border-right:1px solid var(--line);

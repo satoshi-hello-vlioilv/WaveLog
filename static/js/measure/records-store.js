@@ -1700,7 +1700,6 @@ function updateRegisteredEquipmentBadge(){const badge=$('#registeredEquipmentBad
    `<select>`ではなく`<input>`・`#newEquipmentEntry`も無い形だったので、
    そちらが動いた瞬間に`fillEquipmentSelect()`が落ちた（一度も動いて
    いなかったので誰も気づけない）。 */
-const LOTDSP_TABS=[0,1,2,3,4,5,6,7];
 function equipmentSettingsHtml(){
  return `<div class="settings-dialog eqset" role="dialog" aria-modal="true" aria-labelledby="eqsetTitle">
   <header>
@@ -1727,7 +1726,7 @@ function equipmentSettingsHtml(){
     <h3 id="eqsetH2"><span class="eqset-no">②</span>ロット№を押したときに開くタブ
      <b class="eqset-now is-instant">選ぶとすぐ反映</b></h3>
     <label class="eqset-field"><span>LotDspのタブ</span>
-     <select id="lotDspTabSetting">${LOTDSP_TABS.map(n=>`<option value="${n}">Tab ${n}</option>`).join('')}</select></label>
+     <select id="lotDspTabSetting">${WL.lotDspTab.optionsHtml()}</select></label>
     <p class="eqset-help">一覧や測定画面のロット№を押すと、LotDspをこのタブで開きます。<b>下の「保存」は要りません</b>（この端末だけの設定です）。</p>
    </section>
    <!-- ③ ロット問い合わせのログイン（§9.485、利用者の指示「VPN環境時のID＆PASSを登録しておき…自動ログイン」

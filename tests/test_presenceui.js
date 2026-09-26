@@ -11,7 +11,15 @@
     ⑤ いまの自分の区分とできることを**必ず文字で**出す（§3）
     ⑥ 切断されている端末は「切断中」と出て、**取り消し**が同じ場所にある
 
-   ③④⑥は`/api/presence`を差し替えて確かめる。**実データに他の端末が居る
+    ⑦ **版と接続の記録**（§9.513）: 運用中の最新版・最新でない端末の数・接続した時刻と
+       接続時間・端末ごと／利用者ごとの記録・最新でない版だけ・表をコピー（見えている表のまま）
+
+    ⑧ **古い版の端末への知らせ**（§9.515、利用者の指示「控えめな感じで邪魔にならないように」）:
+       ハートビートの応答に版の知らせが載る／左メニューの版のバッジの隣に字1つ・場所を動かさない・
+       面を持たない／押すと更新履歴の窓が「最新版・この端末の版・すること」を言う／
+       まだ分からない（null）で消さない／再起動待ちの間と最新のときは出さない／測定画面のレールには置かない
+
+   ③④⑥⑦は`/api/presence`を差し替えて確かめる。**実データに他の端末が居る
    保証は無い**ので、「無ければ素通り」の書き方だと直す前でも通る。 */
 'use strict';
 const {run}=require('./lib/harness.js');
@@ -24,8 +32,10 @@ const setMode=async m=>{await fetch(B+'/api/access-mode',{method:'POST',
 const FAKE=(role,canDisc)=>({ok:true,
  items:[
   {key:'PC-ME@me',login:'me',pc:'PC-ME',role:role,mode:'edit',view:'master',at:'',idleSec:2,
+   version:'2.400.0',since:'2026-09-26T09:00:00',durationSec:3720,outdated:false,
    revoked:null,isMe:true,canDisconnect:false},
   {key:'PC-A@u1',login:'u1',pc:'PC-A',role:'一般ユーザー',mode:'edit',view:'schedule',at:'',idleSec:8,
+   version:'',since:'',durationSec:null,outdated:true,
    revoked:null,isMe:false,canDisconnect:canDisc},
   {key:'PC-B@u2',login:'u2',pc:'PC-B',role:'開発者',mode:'view',view:'records',at:'',idleSec:40,
    revoked:null,isMe:false,canDisconnect:false},
@@ -34,8 +44,19 @@ const FAKE=(role,canDisc)=>({ok:true,
  ],
  readable:true,shared:true,source:'master',dir:'\\\\srv\\share\\presence',
  me:{login:'me',pc:'PC-ME',key:'PC-ME@me',role:role,mode:'edit'},
- can:{role:role,canView:true,canDisconnect:canDisc,canDisconnectDeveloper:role==='開発者'},
- roles:['開発者','メンテナンス者','一般ユーザー'],ttlSec:75,cooldownSec:300,revoked:null});
+ can:{role:role,canView:true,canDisconnect:canDisc,canDisconnectDeveloper:role==='開発者',canForget:canDisc},
+ roles:['開発者','メンテナンス者','一般ユーザー'],ttlSec:75,cooldownSec:300,revoked:null,
+ /* 版と接続の記録（§9.513）。答えはサーバー（fleet_summary）なので、網も答えをそのまま渡す。 */
+ fleet:{latestVersion:'2.400.0',myVersion:'2.400.0',recordingSince:'2.400.0',
+  counts:{terminals:3,users:2,online:2,outdated:2,outdatedOnline:1},
+  terminals:[
+   {key:'PC-A@u1',login:'u1',pc:'PC-A',version:'',online:true,outdated:true,sessions:0,totalSec:0,lastAt:'2026-09-26T10:00:00',firstAt:'',versions:{}},
+   {key:'PC-OLD@u1',login:'u1',pc:'PC-OLD',version:'2.398.0',online:false,outdated:true,sessions:4,totalSec:5400,lastAt:'2026-09-20T09:00:00',firstAt:'2026-09-01T08:00:00',versions:{'2.398.0':'2026-09-20T09:00:00'}},
+   {key:'PC-ME@me',login:'me',pc:'PC-ME',version:'2.400.0',online:true,outdated:false,sessions:9,totalSec:36000,lastAt:'2026-09-26T10:00:00',firstAt:'2026-08-01T08:00:00',versions:{}}],
+  users:[
+   {login:'u1',terminals:2,pcs:['PC-A','PC-OLD'],sessions:4,totalSec:5400,lastAt:'2026-09-26T10:00:00',versions:['2.398.0',''],online:true,outdated:true},
+   {login:'me',terminals:1,pcs:['PC-ME'],sessions:9,totalSec:36000,lastAt:'2026-09-26T10:00:00',versions:['2.400.0'],online:true,outdated:false}]},
+ historyReadable:true});
 
 run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,idle,paint,errs,browser})=>{
  await setMode('edit');
@@ -123,8 +144,123 @@ run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,
  // ---- 共有でないときは「この端末しか出ません」と書く --------------------
  fake=Object.assign(FAKE('開発者',true),{shared:false,source:'local'});
  await openPresence();await idle();
- const scope=await page.evaluate(()=>document.querySelector('.pz-scope')?.textContent||'');
+ const scope=await page.evaluate(()=>document.querySelector('.pz-me')?.textContent||'');
  rec('共有でなければ、そう書く（1件を「他に誰も居ない」と読ませない）',
    /この端末しか出ません/.test(scope),scope.slice(0,60));
+
+ // ---- ⑦ 版と接続の記録（§9.513） --------------------------------------
+ fake=FAKE('メンテナンス者',true);
+ await openPresence();await idle();
+ const fl=await page.evaluate(()=>{
+  const me=[...document.querySelectorAll('#pzList .pz-row')].find(r=>r.textContent.includes('PC-ME'));
+  const cell=c=>(me&&me.querySelector(c)||{}).textContent||'';
+  return {latest:document.getElementById('pzLatest')?.textContent||'',
+   old:document.getElementById('pzOldCount')?.textContent||'',
+   oldCell:document.querySelector('.pz-sum-cell.is-old')?.textContent.replace(/\s+/g,' ')||'',
+   ver:cell('.pz-c-ver'),since:cell('.pz-c-since'),dur:cell('.pz-c-dur'),
+   aVer:([...document.querySelectorAll('#pzList .pz-row')].find(r=>r.textContent.includes('PC-A'))?.querySelector('.pz-c-ver')||{}).textContent||'',
+   head:[...document.querySelectorAll('#pzTerms th')].map(x=>x.textContent),
+   rows:[...document.querySelectorAll('#pzTerms tbody tr')].map(r=>r.textContent.replace(/\s+/g,' ')),
+   forget:[...document.querySelectorAll('[data-pz-forget]')].map(b=>b.dataset.pzForget),
+   /* 時間の書き方は端末の「表示」に従う（§9.341）ので、期待も同じ口から作る */
+   want62:WL.duration.text(62),want90:WL.duration.text(90)};
+ });
+ rec('⑦ 運用中の最新版を出す',/VER2\.400\.0/.test(fl.latest),fl.latest);
+ rec('⑦ 最新でない端末の数と、うち接続中を字で言う（配る相手）',
+   /^2/.test(fl.old)&&/うち接続中 1台/.test(fl.oldCell),fl.oldCell.slice(0,60));
+ rec('⑦ 接続中の端末に版・接続した時刻・接続時間が出る',
+   /最新/.test(fl.ver)&&/VER2\.400\.0/.test(fl.ver)&&fl.since==='09-26 09:00'&&fl.dur===fl.want62,
+   JSON.stringify([fl.ver,fl.since,fl.dur]));
+ rec('⑦ 版を書かない古い版の端末は「要更新」と「VER…より前」で言う',
+   /要更新/.test(fl.aVer)&&/より前/.test(fl.aVer),fl.aVer);
+ rec('⑦ 記録の表は最新でない端末が上・累計接続回数と時間が出る',
+   fl.head.includes('累計接続回数')&&fl.head.includes('累計接続時間')&&/要更新/.test(fl.rows[0]||'')
+   &&fl.rows.some(r=>/4回/.test(r)&&r.includes(fl.want90)),JSON.stringify(fl.rows).slice(0,140));
+ rec('⑦ 記録を消せるのは接続していない端末だけ（権限のある人に）',
+   JSON.stringify(fl.forget)==='["PC-OLD@u1"]',JSON.stringify(fl.forget));
+ await page.click('#pzOnlyOld');
+ const onlyOld=await page.evaluate(()=>document.querySelectorAll('#pzTerms tbody tr').length);
+ rec('⑦ 「最新でない版だけ」で絞れる',onlyOld===2,String(onlyOld));
+ await page.click('[data-pz-by="users"]');
+ const users=await page.evaluate(()=>({head:[...document.querySelectorAll('#pzTerms th')].map(x=>x.textContent),
+   rows:[...document.querySelectorAll('#pzTerms tbody tr')].map(r=>r.textContent.replace(/\s+/g,' '))}));
+ rec('⑦ 利用者ごとの合計に切り替えられる（使った端末・累計接続回数）',
+   users.head.includes('使った端末')&&users.rows.length===1&&/u1/.test(users.rows[0])&&/2台/.test(users.rows[0]),
+   JSON.stringify(users.rows));
+ const copied=await page.evaluate(async()=>{
+  const box={got:''};
+  Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:t=>{box.got=t;return Promise.resolve()}}});
+  document.getElementById('pzCopy').click();
+  for(let i=0;i<20&&!box.got;i++)await new Promise(r=>setTimeout(r,50));
+  return box.got;
+ });
+ rec('⑦ 表をコピーすると、見えている表のまま（見出し＋絞った行・タブ区切り）',
+   copied.split('\n').length===2&&/^版の状態\tログインID\t使った端末/.test(copied),copied.slice(0,80));
+ await page.click('[data-pz-by="terminals"]');
+ await page.click('#pzOnlyOld');
+
+ // ---- ⑧ 古い版の端末への知らせ（§9.515） ------------------------------
+ // 本物の応答: ハートビートに版の知らせが載る（区分を問わない道）
+ const hbReal=await page.evaluate(async()=>{
+  const r=await fetch('/api/heartbeat?tab=t-ui515',{method:'POST'});const j=await r.json();
+  await fetch('/api/heartbeat/close?tab=t-ui515',{method:'POST'});return j;
+ });
+ const mine=(hbReal.version||{}).myVersion||'';
+ rec('⑧ ハートビートの応答に版の知らせが載る（最新版・この端末の版・古いか）',
+   hbReal.ok===true&&!!mine&&typeof (hbReal.version||{}).outdated==='boolean',JSON.stringify(hbReal));
+ // 以降はハートビートの答えを差し替える（15秒ごとの本物が、差し込んだ状態を上書きしないように）
+ const hb={version:{latestVersion:'99.0.0',myVersion:mine,outdated:true}};
+ await page.route('**/api/heartbeat?**',route=>route.fulfill({status:200,contentType:'application/json',
+   body:JSON.stringify({ok:true,version:hb.version})}));
+ const geo=()=>page.evaluate(()=>{
+  const r=e=>{if(!e)return null;const b=e.getBoundingClientRect();return {x:b.x,y:b.y,w:b.width,h:b.height}};
+  const badge=document.querySelector('.layout>aside .brand .build-badge');
+  const mark=document.querySelector('.layout>aside .brand .ver-behind');
+  const vis=mark&&!mark.hidden&&mark.getBoundingClientRect().width>0;
+  const cs=vis?getComputedStyle(mark):null;
+  return {brand:r(document.querySelector('.layout>aside .brand')),nav:r(document.querySelector('#nav')),
+   badge:r(badge),mark:vis?r(mark):null,text:vis?mark.textContent.trim():'',title:mark?mark.title:'',
+   bg:cs?cs.backgroundColor:'',border:cs?cs.borderTopWidth:'',fs:cs?parseFloat(cs.fontSize):0,
+   badgeFs:parseFloat(getComputedStyle(badge).fontSize),
+   railMarks:document.querySelectorAll('.action-rail .ver-behind').length};
+ });
+ const g0=await geo();
+ await page.evaluate(v=>WL.versionNotice.apply(v),hb.version);
+ const g1=await geo();
+ rec('⑧ 古い版の端末では版のバッジの隣に「新しい版あり」の字が出る',
+   !!g1.mark&&g1.text==='新しい版あり'&&Math.abs(g1.mark.y+g1.mark.h/2-(g1.badge.y+g1.badge.h/2))<=2,JSON.stringify(g1.mark));
+ rec('⑧ 出ても場所を動かさない（左メニューの題・メニューの位置が0px）',
+   g0.brand.h===g1.brand.h&&g0.nav.y===g1.nav.y,JSON.stringify([g0.brand.h,g1.brand.h,g0.nav.y,g1.nav.y]));
+ rec('⑧ 控えめ: 面も縁も持たず、字はバッジより大きくしない',
+   /rgba\(0, 0, 0, 0\)|transparent/.test(g1.bg)&&parseFloat(g1.border)===0&&g1.fs<=g1.badgeFs,
+   JSON.stringify([g1.bg,g1.border,g1.fs,g1.badgeFs]));
+ rec('⑧ 字に載らない事実（最新版・この端末の版）は title が言う',
+   g1.title.includes('VER99.0.0')&&g1.title.includes('VER'+mine),g1.title);
+ rec('⑧ 測定画面のレールには置かない（測っている最中に中身を押し下げない）',g1.railMarks===0,String(g1.railMarks));
+ await page.evaluate(()=>WL.versionNotice.apply(null));
+ rec('⑧ まだ分からない（null）で知らせを消さない',!!(await geo()).mark);
+ await page.click('.layout>aside .brand .ver-behind');
+ await page.waitForSelector('#changelogModal:not([hidden])');
+ const sub=await page.evaluate(()=>{const e=document.getElementById('changelogSub');return {t:e.textContent,on:e.classList.contains('is-behind')}});
+ rec('⑧ 押すと更新履歴の窓が「最新版・この端末の版・すること（update.bat）」を言う',
+   sub.on&&sub.t.includes('VER99.0.0')&&sub.t.includes('VER'+mine)&&/update\.bat/.test(sub.t)&&/配布の担当者/.test(sub.t),sub.t);
+ await page.click('#closeChangelog');
+ const hideWhenRestart=await page.evaluate(()=>{
+  const box=document.getElementById('restartNeeded');const was=box.hidden;
+  box.hidden=false;WL.versionNotice.paint();
+  const m=document.querySelector('.layout>aside .brand .ver-behind');const hidden=!m||m.hidden;
+  box.hidden=was;WL.versionNotice.paint();return hidden;
+ });
+ rec('⑧ 再起動待ちの帯が出ている間は伏せる（同じ一手を2箇所で言わない）',hideWhenRestart);
+ hb.version={latestVersion:mine,myVersion:mine,outdated:false};
+ await page.evaluate(v=>WL.versionNotice.apply(v),hb.version);
+ const g2=await geo();
+ await page.evaluate(()=>document.querySelector('.layout>aside .build-badge').click());
+ await page.waitForSelector('#changelogModal:not([hidden])');
+ const sub2=await page.evaluate(()=>{const e=document.getElementById('changelogSub');return {t:e.textContent,on:e.classList.contains('is-behind')}});
+ await page.click('#closeChangelog');
+ rec('⑧ 最新の端末では出さない（窓の1行もふだんの言い方へ戻る）',
+   !g2.mark&&!sub2.on&&!/update\.bat/.test(sub2.t),JSON.stringify([g2.text,sub2.t]));
+ await page.unroute('**/api/heartbeat?**');
 
 }, {viewport:{width:1600,height:1000}});

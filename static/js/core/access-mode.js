@@ -39,7 +39,9 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
     届くまでの既定は**今までどおり全部開いている状態**（§9.132）。 */
  let accessMode={mode:'edit',canEdit:true,canSchedule:false,canFieldReorder:false,fieldReorderEquipment:'',loginId:'',pcName:'',pcNameSource:'',
                  role:'',masterEdit:'編集可',masterEditStored:'編集可',masterEditCap:'編集可',
-                 canOpenMaster:true,canEditFieldMaster:true,canEditAdminMaster:true,adminMasters:[]};
+                 canOpenMaster:true,canEditFieldMaster:true,canEditAdminMaster:true,adminMasters:[],
+                 /* 表示列の編集（§9.512）。届くまでの既定は今までどおり（§9.132）。 */
+                 columnEdit:'編集可',canEditOwnColumns:true,canEditCommonColumns:true};
  window.accessMode=accessMode;
  /* ---------- この端末の名札(§9.180) ----------
     「どのPC・どのIDが編集したのか」を残すために、画面側でも端末名が要る
@@ -100,11 +102,15 @@ openReportView()がwindow.loadViewModeRecordsを呼ぶ(コア/拡張ファイル
    accessMode.canEditFieldMaster=r.canEditFieldMaster!==false;
    accessMode.canEditAdminMaster=r.canEditAdminMaster!==false;
    accessMode.adminMasters=Array.isArray(r.adminMasters)?r.adminMasters:[];
+   accessMode.columnEdit=r.columnEdit||'編集可';
+   accessMode.canEditOwnColumns=r.canEditOwnColumns!==false;
+   accessMode.canEditCommonColumns=r.canEditCommonColumns!==false;
   }catch(e){
    // 判定できない場合は既存動作(編集可能)を維持する(安全側・互換ポリシー)。
    accessMode.mode='edit';accessMode.canEdit=true;accessMode.canSchedule=false;accessMode.canFieldReorder=false;accessMode.fieldReorderEquipment='';
    accessMode.role='';accessMode.masterEdit='編集可';accessMode.masterEditStored='編集可';accessMode.masterEditCap='編集可';
    accessMode.canOpenMaster=true;accessMode.canEditFieldMaster=true;accessMode.canEditAdminMaster=true;accessMode.adminMasters=[];
+   accessMode.columnEdit='編集可';accessMode.canEditOwnColumns=true;accessMode.canEditCommonColumns=true;
   }
   applyAccessModeUI();
   return accessMode;

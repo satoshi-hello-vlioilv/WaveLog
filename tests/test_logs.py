@@ -136,6 +136,52 @@ def main():
     rec('絞っていないときの件数を返す（何件中の何件かが分かる）',
         d.get('total') == 4 and d.get('matched') == 4, f"total={d.get('total')} matched={d.get('matched')}")
 
+    # ---- 3b. 問題のまとめ（§9.510） ----
+    # 同じ内容（数字だけ違う）は1つ・エラーが先・見本はトレースバックごと。
+    extra = (f"{stamp(0,'10:00:04')},400 WARNING [app] 共有が遅い elapsed=12s\n"
+             f"{stamp(0,'10:00:05')},500 WARNING [app] 共有が遅い elapsed=3s\n")
+    (TMP / 'app.log').write_text(APP_LOG + extra, encoding='utf-8')
+    st, d = get('/api/logs/problems')
+    items = d.get('items') or []
+    rec('問題のまとめを返す（件数と種類の数）',
+        st == 200 and d.get('counts') == {'error': 1, 'warning': 3}
+        and d.get('kinds') == {'error': 1, 'warning': 1},
+        f"{d.get('counts')} / {d.get('kinds')}")
+    rec('数字だけ違う文は同じ内容として1つにまとめる（×3）',
+        len(items) == 2 and items[1]['count'] == 3, [(g['level'], g['count']) for g in items])
+    rec('エラーが先に来る（警告の山に埋もれない）',
+        bool(items) and items[0]['level'] == 'error', [g['level'] for g in items])
+    rec('見本はトレースバックごと持つ（原因の行はそこにしか無い）',
+        bool(items) and any('ValueError' in x for x in items[0]['lines']),
+        items[0]['lines'][-1] if items else '')
+    rec('絞り込みの語は数字の手前まで（起きるたびに違う数字で外れない）',
+        len(items) == 2 and items[1]['query'] == '共有が遅い elapsed=', items[1]['query'] if len(items) == 2 else '')
+    st, d2 = get('/api/logs?files=app.log&q=' + urllib.parse.quote(items[1]['query'] if len(items) == 2 else 'x'))
+    rec('その語で一覧を絞るとまとめた件数と同じだけ出る',
+        len(d2.get('records') or []) == 3, len(d2.get('records') or []))
+    text = logs_mod.boot_report_text({'version': '9.9.9'}, [], [], True,
+                                     logs_mod.problem_digest(logs_mod._current_records()))
+    rec('報告の文章にもまとめが入る（件数×とトレースバック）',
+        'エラー・警告のまとめ' in text and '×3' in text and 'ValueError: 壊れた値' in text,
+        text.split('\n')[1:4] if text else '')
+
+    # ---- 3c. 無いのがふつうの置き場は「要確認」にしない（§9.510） ----
+    gone = TMP / 'no-such.html'
+    p1 = logs_mod._place('次の起動用', gone, optional=True)
+    p2 = logs_mod._place('写し', gone)
+    rec('無いのがふつうの置き場は bad にしない（偽の警告を出さない）',
+        p1['exists'] is False and p1['bad'] is False and p1['readable'] is None, p1)
+    rec('無くてはならない置き場が無ければ bad',
+        p2['exists'] is False and p2['bad'] is True, p2)
+    empty = TMP / 'empty.html'
+    empty.write_text('', encoding='utf-8')
+    p3 = logs_mod._place('空の写し', empty)
+    rec('在っても読めなければ bad（在る、で済ませない）',
+        p3['exists'] is True and p3['readable'] is False and p3['bad'] is True, p3)
+    t2 = logs_mod.boot_report_text({}, [p1, p2], [], True)
+    rec('文章でも「無し（ふつう）」と「**無い**」を書き分ける',
+        '[無し（ふつう）]' in t2 and '[**無い**]' in t2, t2.split('\n')[10:14])
+
     # ---- 4. 削除は件の単位（見出しだけ消えない） ----
     seed()
     st, d = get('/api/logs?files=app.log')

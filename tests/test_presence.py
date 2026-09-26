@@ -18,6 +18,9 @@
  6. 切断されたら**書き込みだけ**が止まる（**読みは止まらない**）
  7. メンテナンス者は**開発者を切断できない**／一般ユーザーは切断できない
  8. 断る理由を言い分ける（権限が無い／相手が上位／もう居ない）
+ 9. 接続の記録と版（§9.513）
+10. 古い版の端末への知らせ（§9.515）: 数える前は返さない・間隔ごとに数える・
+    読めなければ前の答え・物差しは接続状況と同じ・ハートビートに載る
 ============================================================
 """
 import json, pathlib, shutil, sys, tempfile
@@ -203,6 +206,115 @@ try:
          'at': (datetime.now() - timedelta(seconds=presence.REVOKE_COOLDOWN_SEC + 10)).isoformat()},
         ensure_ascii=False), encoding='utf-8')
     rec('冷却が切れた切断は効かない（間違えても直せる）', presence.revocation(key) is None)
+
+    # ---- 9. 接続の記録と版（§9.513） ---------------------------------------
+    # 在席は「いま」しか持たない。版の配布を決めるには**消えない記録**が要る。
+    import time as _t
+    presence._session.update(key='', since='', last=0.0)
+    presence._hist.update(key='', data=None, wrote=0.0)
+    presence._state['wrote_at'] = 0.0
+    presence.touch('h1', 'PC-H', force=True)
+    hk = presence.terminal_key('h1', 'PC-H')
+    hp = box / presence.HISTORY_DIR / f'{hk}.json'
+    h = json.loads(hp.read_text(encoding='utf-8')) if hp.exists() else {}
+    ver = presence.app_version()
+    rec('接続すると記録ができる（端末ごとに1ファイル・在席の隣の history）',
+        hp.exists() and h.get('sessions') == 1 and h.get('version') == ver, str(h)[:120])
+    ent = json.loads((box / f'{hk}.json').read_text(encoding='utf-8'))
+    rec('在席にも版と接続した時刻が載る', ent.get('version') == ver and bool(ent.get('since')), str(ent)[:120])
+    # 30秒後の在席 → 接続時間が30秒ぶん進む（同じ接続）
+    presence._session['last'] = _t.time() - 30
+    presence._hist['wrote'] = 0.0
+    presence.touch('h1', 'PC-H', force=True)
+    h = json.loads(hp.read_text(encoding='utf-8'))
+    rec('続けて繋いでいれば、同じ接続のまま接続時間が進む',
+        h.get('sessions') == 1 and 29 <= h.get('totalSec', 0) <= 31, str(h.get('totalSec')))
+    # TTLより長く途切れた → 新しい接続（途切れていたあいだは時間に数えない）
+    presence._session['last'] = _t.time() - presence.TTL_SEC - 60
+    presence.touch('h1', 'PC-H', force=True)
+    h = json.loads(hp.read_text(encoding='utf-8'))
+    rec('TTLより長く途切れたら新しい接続として数える（途切れた時間は数えない）',
+        h.get('sessions') == 2 and h.get('totalSec', 0) <= 31, str({k: h.get(k) for k in ('sessions', 'totalSec')}))
+    presence.leave('h1', 'PC-H')
+    rec('閉じても記録は残る（在席だけが消える）',
+        hp.exists() and not (box / f'{hk}.json').exists())
+    rec('期限切れの掃除は記録へ触らない（下の階層を辿らない）',
+        '*' + presence.SUFFIX == '*.json' and hp.parent != box)
+    # 最新版と「最新でない端末」の答えは fleet_summary の1箇所
+    hist = [{'key': 'A', 'login': 'u1', 'pc': 'PC-A', 'version': '2.9.3', 'lastAt': '2026-09-20T10:00:00',
+             'firstAt': '', 'sessions': 3, 'totalSec': 600, 'versions': {}},
+            {'key': 'B', 'login': 'u1', 'pc': 'PC-B', 'version': '2.10.0', 'lastAt': '2026-09-21T10:00:00',
+             'firstAt': '', 'sessions': 2, 'totalSec': 120, 'versions': {}}]
+    online = [{'key': 'C', 'login': 'u2', 'pc': 'PC-C', 'version': '', 'at': '2026-09-22T10:00:00', 'since': ''}]
+    f = presence.fleet_summary(online, hist, '2.10.0')
+    old = [t['key'] for t in f['terminals'] if t['outdated']]
+    rec('最新版は数として比べる（2.10.0 > 2.9.3・文字の順にしない）', f['latestVersion'] == '2.10.0', f['latestVersion'])
+    rec('最新でない端末を数える（版の無い古い版の端末も含む）',
+        sorted(old) == ['A', 'C'] and f['counts']['outdated'] == 2 and f['counts']['outdatedOnline'] == 1,
+        str(old) + ' ' + str(f['counts']))
+    rec('最新でない端末が先に並ぶ（配る相手から読める）',
+        [t['outdated'] for t in f['terminals']] == [True, True, False], str([t['key'] for t in f['terminals']]))
+    u1 = next((u for u in f['users'] if u['login'] == 'u1'), {})
+    rec('利用者ごとに合計する（端末数・回数・時間・使っている版）',
+        u1.get('terminals') == 2 and u1.get('sessions') == 5 and u1.get('totalSec') == 720
+        and u1.get('versions') == ['2.10.0', '2.9.3'] and u1.get('outdated') is True, str(u1))
+    # 画面の口: 版と記録が載る・記録を消せるのは開発者/メンテナンス者で、接続中は消さない
+    _role['me'] = mr.ROLE_USER
+    r = c.post('/api/presence/forget', json={'key': hk})
+    rec('記録を消せるのは開発者・メンテナンス者だけ（403）', r.status_code == 403, str(r.status_code))
+    _role['me'] = mr.ROLE_MAINTAINER
+    write_entry('PC-A@u1', 'u1', 'PC-A')
+    (box / presence.HISTORY_DIR / 'PC-A@u1.json').write_text('{"key":"PC-A@u1","login":"u1","pc":"PC-A","sessions":1}',
+                                                             encoding='utf-8')
+    r = c.post('/api/presence/forget', json={'key': 'PC-A@u1'})
+    rec('接続中の端末の記録は消さない（409）', r.status_code == 409, str(r.status_code))
+    r = c.post('/api/presence/forget', json={'key': hk})
+    rec('使わなくなった端末の記録は消せる', r.status_code == 200 and not hp.exists(), str(r.status_code))
+    d = c.get('/api/presence').get_json() or {}
+    rec('一覧に最新版・版の状態・利用者ごとの合計が載る（画面は並べるだけ）',
+        bool(d.get('fleet', {}).get('latestVersion')) and 'users' in d.get('fleet', {})
+        and all('outdated' in x for x in d.get('items') or []), str(d.get('fleet', {}).get('counts')))
+
+    # ---- 10. 古い版の端末への知らせ（§9.515） -----------------------------
+    # 運用中の最新版は裏で数えて控え、ハートビートの応答が**控えを返すだけ**。
+    presence._newest.update(at=0.0, latest='')
+    rec('数える前は知らせを返さない（「まだ分からない」を「最新」と言わない）',
+        presence.version_notice() is None)
+    hdir = box / presence.HISTORY_DIR
+    hdir.mkdir(parents=True, exist_ok=True)
+    newer = hdir / 'PC-N@new.json'
+    newer.write_text(json.dumps({'key': 'PC-N@new', 'login': 'new', 'pc': 'PC-N', 'version': '99.0.0',
+                                 'sessions': 1}), encoding='utf-8')
+    presence.refresh_newest(force=True)
+    n = presence.version_notice() or {}
+    rec('運用中に新しい版があれば「この端末は古い」と答える',
+        n.get('latestVersion') == '99.0.0' and n.get('myVersion') == ver and n.get('outdated') is True, str(n))
+    rec('最新版の物差しは接続状況の一覧と同じ（latest_version の1箇所）',
+        presence.fleet_summary(presence.entries(), presence.history_entries(), ver)['latestVersion']
+        == n.get('latestVersion'))
+    newer.unlink()
+    presence.refresh_newest()
+    rec('数え直すのは間隔ごと（ハートビートのたびに共有を読まない）',
+        (presence.version_notice() or {}).get('latestVersion') == '99.0.0')
+    _ent, _his = presence.entries, presence.history_entries
+    try:
+        presence.entries = lambda: None
+        presence.history_entries = lambda: None
+        presence.refresh_newest(force=True)
+        rec('読めなかったときは前の答えのまま（共有が遅れただけで知らせを消さない）',
+            (presence.version_notice() or {}).get('outdated') is True)
+    finally:
+        presence.entries, presence.history_entries = _ent, _his
+    presence.refresh_newest(force=True)
+    rec('新しい版が見えなくなれば知らせは消える（自分が最新）',
+        (presence.version_notice() or {}).get('outdated') is False, str(presence.version_notice()))
+    r = c.post('/api/heartbeat?tab=t-515')
+    hb = r.get_json() or {}
+    c.post('/api/heartbeat/close?tab=t-515')
+    rec('ハートビートの応答に版の知らせが載る（全区分の端末へ届く道）',
+        r.status_code == 200 and hb.get('ok') is True
+        and (hb.get('version') or {}).get('latestVersion') == ver, str(hb))
+    presence._newest.update(at=0.0, latest='')
 
     # ---- 段の宣言 --------------------------------------------------------
     # **3モードとも許すのは意図**（区分は編集可否と別の軸）。宣言を落とすと

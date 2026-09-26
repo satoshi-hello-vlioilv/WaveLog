@@ -109,6 +109,9 @@ JS_FILES=[
  # schedule-view.js が右クリックメニューから `WL.lotCopy` を呼ぶ。
  'schedule/lot-copy.js',
  'schedule/schedule-print.js',
+ # §9.514: 実際の時刻を手で入れる小窓。予定の画面（時刻を入れる）と段「履歴」（時刻を直す）の
+ # 両方が`WL.scheduleTimes.open()`を呼ぶ。**履歴より先**に読む。
+ 'schedule/schedule-times.js',
  # §9.502: 作業スケジュールの過去履歴（段「履歴」）。schedule-view.js が段を切り替えたときに
  # `WL.scheduleHistory.show()` を呼ぶ（読み込んだ時点では何もしない）。
  'schedule/schedule-history.js',

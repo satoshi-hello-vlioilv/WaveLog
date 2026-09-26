@@ -40,7 +40,9 @@ from .db_access import DBS, connect
 from .repositories.master_repo import (permission_flags, master_write_check,
                                        MASTER_EDIT_DEFAULT, ROLE_DEFAULT,
                                        MASTER_WRITE_BLUEPRINTS,
-                                       master_edit_capabilities)
+                                       master_edit_capabilities,
+                                       COLUMN_EDIT_DEFAULT,
+                                       column_edit_capabilities)
 from .quiet import quiet
 
 _lock=threading.Lock()
@@ -431,6 +433,7 @@ def current_pc_name():
 _FALLBACK_FLAGS={'canEdit':True,'canSchedule':False,'canFieldReorder':False,
                  'fieldReorderEquipment':'','role':ROLE_DEFAULT,
                  'masterEdit':MASTER_EDIT_DEFAULT,'masterEditStored':MASTER_EDIT_DEFAULT,
+                 'columnEdit':COLUMN_EDIT_DEFAULT,
                  'matchedId':None}
 
 def _permission_flags():
@@ -526,7 +529,9 @@ def install(app):
                  role=flags.get('role',''),revoked=revocation_now(),
                  # マスタ編集(§9.322)。**判定は画面へ写さない**——できることを
                  # 名前で受け取り、入口を出すかどうかだけを見る。
-                 **master_edit_capabilities(flags.get('role',''),flags.get('masterEditStored','')))
+                 **master_edit_capabilities(flags.get('role',''),flags.get('masterEditStored','')),
+                 # 表示列の編集(§9.512)。列の設定パネルが押せるかをこれで決める。
+                 **column_edit_capabilities(flags.get('columnEdit','')))
 
  @app.post('/api/access-mode')
  def access_mode_set():

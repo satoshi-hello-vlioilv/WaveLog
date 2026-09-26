@@ -32,6 +32,7 @@ async function init(){
     +'<small>stop.bat で止めてから Start.vbs で開き直してください。</small>';
    restartBox.title='プログラムのファイルが、いま動いているアプリの起動より後に更新されています。';
   }
+  WL.versionNotice.paint();   // 再起動待ちの間は版の知らせを伏せる（§9.515）
  }
  document.querySelectorAll('.build-badge').forEach(badge=>{
   badge.textContent=build.version?`VER${build.version}`:'バージョン不明';
@@ -1087,9 +1088,24 @@ function clOnScroll(){
   if(found)clMarkActive(found.dataset.clEntry);
  });
 }
+/* 窓の題の下の1行。**古い版の端末では「最新版・この端末の版・すること」**を
+   言う（§9.515）——版のバッジの隣の知らせを押して来た人の、次の一手。
+   開くたびに書き直す（知らせは開いたあとにも届く）。 */
+function clPaintSub(){
+ const sub=$('#changelogSub');if(!sub)return;
+ const n=WL.versionNotice.behind()?WL.versionNotice.state():null;
+ sub.classList.toggle('is-behind',!!n);
+ sub.textContent=n
+  ?`運用中の最新版は VER${n.latestVersion} です（この端末は VER${n.myVersion}）。`
+   +'新しい版のファイルが届いていれば、アプリを終了して update.bat を実行してから開き直してください。'
+   +'届いていなければ、配布の担当者へ伝えてください。'
+  :clNow?`いま動いているのは VER${clNow} です。左の一覧から版へ跳べます。`
+  :changelogLoaded?'左の一覧から版へ跳べます。':'読み込んでいます…';
+}
 async function openChangelog(){
  const modal=$('#changelogModal'),list=$('#changelogList');if(!modal||!list)return;
  modal.hidden=false;
+ clPaintSub();
  requestAnimationFrame(()=>$('#changelogSearch')?.focus());
  if(changelogLoaded)return;
  try{
@@ -1097,9 +1113,7 @@ async function openChangelog(){
   clEntries=(data.entries||[]).filter(e=>e&&e.version);
   clNow=String(data.version||'');
   clDevCount=Number(data.devCount||0);
-  const sub=$('#changelogSub');
-  if(sub)sub.textContent=clNow?`いま動いているのは VER${clNow} です。左の一覧から版へ跳べます。`
-                              :'左の一覧から版へ跳べます。';
+  clPaintSub();
   if(!clEntries.length){
    list.innerHTML='<p class="changelog-loading">更新履歴はまだありません。</p>';
    changelogLoaded=true;return;

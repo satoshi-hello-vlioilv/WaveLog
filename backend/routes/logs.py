@@ -221,17 +221,28 @@ def _matches(rec,q,level,since):
 # **読むだけ**（GETなのでどのモードからも取れる）。**失敗しても部分的に返す**
 # ——1つ読めないだけで「何も分からない」にしない（§4）。
 # ========================================================================
-def _place(label, path, note=''):
+def _place(label, path, note='', optional=False):
  """置き場1つぶんの事実。**存在確認で送出しない**（§9.108）——共有・クラウド
     越しの`exists()`はWinError 59等を送出しうるので、`path_exists_safe()`の
-    True/False/**None（確かめられなかった）**をそのまま持つ。"""
+    True/False/**None（確かめられなかった）**をそのまま持つ。
+
+ `optional`は**無いのがふつう**の置き場（次の起動用の待機画面・local.json）。
+ 健全な端末でも「無い」になるので、赤で出すと**毎回2件の偽の警告**を読ませる
+ （§9.510・実測）。`bad`＝直すべきか、の答えはここの1箇所——画面も文章も
+ これを読むだけにする。"""
  from ..db_access import path_exists_safe
  out={'label':label,'path':str(path) if path is not None else '',
-      'exists':None,'size':None,'mtime':'','readable':None,'note':note,'error':''}
+      'exists':None,'size':None,'mtime':'','readable':None,'note':note,'error':'',
+      'optional':bool(optional),'bad':False}
  if path is None:
-  out['error']='解決できませんでした';return out
+  out['error']='解決できませんでした';out['bad']=True;return out
  try:out['exists']=path_exists_safe(path)
  except Exception as e:out['error']=f'{type(e).__name__}: {e}'
+ if out['exists'] is False:
+  # 無いものは「読めるか」を問わない（無い・読めない、と二重に言わない）
+  out['bad']=not optional
+  if optional:out['error']=''
+  return out
  try:
   st=Path(path).stat()
   out['size']=st.st_size
@@ -249,6 +260,7 @@ def _place(label, path, note=''):
  except Exception as _e:
   quiet('読めるかを確かめられない（読めないものとして出す）',_e)
   out['readable']=False
+ out['bad']=out['readable'] is False
  return out
 
 
@@ -262,11 +274,12 @@ def boot_places():
  from ..launcher import ready, setup_check
  from ..db_access import DBS
  out=[]
- def add(label,fn,note=''):
-  try:out.append(_place(label,fn(),note))
+ def add(label,fn,note='',optional=False):
+  try:out.append(_place(label,fn(),note,optional))
   except Exception as e:out.append({'label':label,'path':'','exists':None,'size':None,
                                     'mtime':'','readable':None,'note':note,
-                                    'error':f'{type(e).__name__}: {e}'})
+                                    'error':f'{type(e).__name__}: {e}',
+                                    'optional':bool(optional),'bad':True})
  add('アプリ本体',lambda:P.APP_ROOT,'program/start_app.py などの置き場')
  add('本体の待機画面',lambda:P.PROGRAM_DIR/'loading.html','意匠の出どころ（写しの元）')
  add('ローカル領域',lambda:P.local_root(),'%LOCALAPPDATA%\\'+APP_ID+' 相当。書ける場所を順に探した結果')
@@ -274,11 +287,13 @@ def boot_places():
  add('runtime',lambda:P.runtime_dir(),'待機画面の写し・進捗・刻印の置き場')
  add('待機画面の写し',lambda:setup_check.waiting_page(),
      '起動時にブラウザへ渡すファイル。'+(P.browser_dir_reason() or ''))
- add('待機画面（次の起動用）',lambda:setup_check.staged_waiting_page(),'§9.314。裏で作り直す先')
+ add('待機画面（次の起動用）',lambda:setup_check.staged_waiting_page(),
+     '§9.314。裏で作り直す先（作り直すときだけ在る）',optional=True)
  add('起動の進捗',lambda:__import__('backend.boot_status',fromlist=['x']).status_path())
  add('起動前確認の刻印',lambda:ready.stamp_file())
  add('作業用フォルダ',lambda:P.work_dir(),P.work_dir_reason() or '')
- add('config/local.json',lambda:P.local_config_path(),P.local_config_error() or '')
+ add('config/local.json',lambda:P.local_config_path(),
+     P.local_config_error() or '端末ごとの設定（無ければ既定で動く）',optional=True)
  for key in ('MASTER','MEAS'):
   entry=DBS.get(key) or {}
   if entry.get('path'):
@@ -321,24 +336,88 @@ def boot_environment():
  return env
 
 
-def last_boot_records(limit=400):
- """直近の起動1回ぶん（§9.316）。`launcher.log`の`--- 起動 ---`から後ろを
-    `app.log`と合わせて1本の時間軸へ並べる（この画面の既定と同じ扱い）。
-
- **区切りが見つからなければ末尾から**返す——「区切りが無いから何も出せない」
- のでは、いちばん知りたい初回起動で使えない。"""
+def _current_records():
+ """現行の2本（起動入口＋本体）を1本の時間軸へ。起動の状況と問題のまとめが
+    同じ材料を読む（§9.510）。"""
  recs=[]
  for key,(label,filename,_logger) in STREAMS.items():
   path=logs_dir()/filename
   lines,_size,_cut=_tail_lines(path,READ_BYTES)
   if lines:recs.extend(parse_records(lines,key,filename))
  recs.sort(key=_sort_key)
+ return recs
+
+
+# ========================================================================
+# エラー・警告を「同じ内容」でまとめる（§9.510、利用者の指示）
+# ------------------------------------------------------------------------
+# 「何かあったときは、ここのログからコピーして開発に戻せば状況が解析できる
+#   ように」
+#
+# 実測で警告2,905件のうち2,873件が**同じ1文**だった。件数のまま並べると、
+# 9件しかないエラーが警告の山に埋もれる——**種類で数える**。数字（件数・
+# 秒数・ポート）だけが違う文は同じ内容とみなす。並びは**エラーが先・その中は
+# 新しい順**。報告の文章も画面の「問題のまとめ」もこの1箇所を読む。
+# ========================================================================
+PROBLEM_TOP=15
+_DIGITS=re.compile(r'\d+')
+
+
+def _problem_query(text):
+ """一覧の検索欄へ入れる語。**数字の手前まで**（数字は起きるたびに違う）。
+    検索はサーバーの`_matches()`が小文字の部分一致で行う。"""
+ head=re.split(r'\d',text or '',maxsplit=1)[0].strip()
+ return (head if len(head)>=4 else (text or '').strip())[:40]
+
+
+def problem_digest(records,top=PROBLEM_TOP):
+ groups={}
+ counts={'error':0,'warning':0}
+ for r in records:
+  lv=r.get('level')
+  if lv not in counts:continue
+  counts[lv]+=1
+  key=(lv,_DIGITS.sub('#',r.get('text') or '')[:160])
+  g=groups.get(key)
+  if g is None:
+   g=groups[key]={'level':lv,'text':r.get('text') or '','logger':r.get('logger') or '',
+                  'source':r.get('source') or '','count':0,
+                  'first':r.get('ts') or '','last':r.get('ts') or '','lines':r.get('lines') or []}
+  g['count']+=1
+  ts=r.get('ts') or ''
+  if ts and (not g['first'] or ts<g['first']):g['first']=ts
+  if ts>=g['last']:
+   # 見本は**いちばん新しい1件**（トレースバックごと）
+   g['last']=ts;g['text']=r.get('text') or '';g['lines']=r.get('lines') or []
+ items=sorted(groups.values(),key=lambda g:g['last'],reverse=True)
+ items.sort(key=lambda g:g['level']!='error')
+ for g in items:g['query']=_problem_query(g['text'])
+ kinds={lv:sum(1 for g in items if g['level']==lv) for lv in counts}
+ return {'counts':counts,'kinds':kinds,'items':items[:top],'more':max(0,len(items)-top)}
+
+
+@bp.get('/api/logs/problems')
+def log_problems():
+ """ログを見る段の「問題のまとめ」（§9.510）。読むだけ。"""
+ return jsonify(ok=True,**problem_digest(_current_records()))
+
+
+def last_boot_records(limit=400,recs=None):
+ """直近の起動1回ぶん（§9.316）。`launcher.log`の`--- 起動 ---`から後ろを
+    `app.log`と合わせて1本の時間軸へ並べる（この画面の既定と同じ扱い）。
+
+ **区切りが見つからなければ末尾から**返す——「区切りが無いから何も出せない」
+ のでは、いちばん知りたい初回起動で使えない。"""
+ if recs is None:recs=_current_records()
  marks=[i for i,r in enumerate(recs) if r.get('boot')]
  picked=recs[marks[-1]:] if marks else recs[-limit:]
  return picked[:limit],bool(marks)
 
 
-def boot_report_text(env,places,records,found_mark):
+LEVEL_WORD={'error':'エラー','warning':'警告'}
+
+
+def boot_report_text(env,places,records,found_mark,problems=None):
  """そのまま貼れる1つの文章（§9.316）。**画面の見た目ではなく中身を運ぶ**
     ——受け取る側（相談する相手）はテキストしか見ないので、ここで完結させる。"""
  L=[]
@@ -362,6 +441,7 @@ def boot_report_text(env,places,records,found_mark):
  L.append('---- 置き場（いま見に行っている先） ----')
  for p in places:
   mark={True:'あり',False:'**無い**',None:'確かめられず'}.get(p.get('exists'),'?')
+  if p.get('exists') is False and p.get('optional'):mark='無し（ふつう）'
   size='' if p.get('size') is None else f" {p['size']}バイト"
   read='' if p.get('readable') is None else ('' if p.get('readable') else ' **読めない**')
   L.append(f"  [{mark}]{size}{read} {p['label']}: {p['path']}")
@@ -376,6 +456,19 @@ def boot_report_text(env,places,records,found_mark):
           'ブラウザのアドレス欄のパスと、上の「待機画面の写し」のパスが'
           '同じかを見てください（違っていれば、開いているのは別のファイルです）。')
  L.append('')
+ if problems is not None:
+  c=problems.get('counts') or {};k=problems.get('kinds') or {}
+  L.append('---- エラー・警告のまとめ（起動をまたいで・同じ内容は1つに） ----')
+  L.append(f"  エラー {c.get('error',0):,}件（{k.get('error',0)}種類） / "
+           f"警告 {c.get('warning',0):,}件（{k.get('warning',0)}種類）")
+  for g in problems.get('items') or []:
+   span=g['last'] if g['first']==g['last'] else f"{g['first']} 〜 {g['last']}"
+   L.append(f"  [{LEVEL_WORD.get(g['level'],g['level'])}] ×{g['count']:,}  {span}  [{g.get('logger','')}] {g['text']}")
+   # エラーはトレースバックごと（原因の行はそこにしか無い）
+   if g['level']=='error':
+    for x in (g.get('lines') or [])[1:40]:L.append('        '+x)
+  if problems.get('more'):L.append(f"  （ほかに {problems['more']}種類。画面の「ログを見る」で読めます）")
+  L.append('')
  L.append('---- 直近の起動のログ ----'
           + ('' if found_mark else '（起動の区切りが見つからないので末尾を出しています）'))
  for r in records:
@@ -400,17 +493,20 @@ def boot_report():
  except Exception as e:
   places=[{'label':'置き場を並べられませんでした','path':'','exists':None,'size':None,
            'mtime':'','readable':None,'note':'','error':f'{type(e).__name__}: {e}'}]
+ problems=None
  try:
-  records,found=last_boot_records()
+  recs=_current_records()
+  records,found=last_boot_records(recs=recs)
+  problems=problem_digest(recs)
  except Exception as e:
   records,found=[],False
   env['logError']=f'{type(e).__name__}: {e}'
  try:
-  text=boot_report_text(env,places,records,found)
+  text=boot_report_text(env,places,records,found,problems)
  except Exception as e:
   text=f'まとめを作れませんでした: {type(e).__name__}: {e}'
  return jsonify(ok=True,env=env,places=places,records=records,
-                bootMarkFound=found,text=text)
+                bootMarkFound=found,problems=problems,text=text)
 
 
 @bp.get('/api/logs/files')

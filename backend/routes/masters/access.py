@@ -25,6 +25,8 @@ from ...repositories.master_repo import (
  master_edit_options,
  master_edit_check,
  role_change_check,
+ COLUMN_EDIT_LEVELS,
+ normalize_column_edit,
  has_admin_role_row,
 )
 
@@ -87,13 +89,16 @@ def access_permission_master_list():
             # 区分の上限で頭打ちになっている行は、画面が理由を書けるようにする。
             'masterEdit':normalize_master_edit(r[12] if len(r)>12 else ''),
             'masterEditEffective':master_edit_effective(normalize_role(r[11] if len(r)>11 else ''),
-                                                        r[12] if len(r)>12 else '')} for r in rows]
+                                                        r[12] if len(r)>12 else ''),
+            # 表示列の編集（§9.512）。知らない綴りは既定へ寄せて返す（選択の復元）。
+            'columnEdit':normalize_column_edit(r[13] if len(r)>13 else '')} for r in rows]
    # **区分ごとに選べる段はサーバーが答える**（§9.163）——画面へ上限の表を
    # 写すと、上限を1つ直したときに片方だけ古い約束のまま残る。
    caps={role:master_edit_options(role) for role in PERMISSION_ROLES}
    bootstrap=not has_admin_role_row(c)
   return jsonify(ok=True,items=items,table=ACCESS_PERMISSION_TABLE,created=not before,empty=len(items)==0,master_path=str(path),
                  roles=list(PERMISSION_ROLES),masterEditLevels=list(MASTER_EDIT_LEVELS),
+                 columnEditLevels=list(COLUMN_EDIT_LEVELS),
                  masterEditByRole=caps,
                  # まだ管理者（一般ユーザーより上位）が1人も居ない状態か。
                  # 画面は「最初の1人はいま作れます」と書ける（§4）。
@@ -103,11 +108,12 @@ def access_permission_master_list():
 @bp.post('/api/access-permission-master')
 def access_permission_master_register():
  try:
-  x=body({'canEdit': any_, 'canFieldReorder': any_, 'canSchedule': any_, 
+  x=body({'canEdit': any_, 'canFieldReorder': any_, 'canSchedule': any_, 'columnEdit': any_,
           'fieldReorderEquipment': any_, 'loginId': any_, 'masterEdit': any_, 
           'pcName': any_, 'role': any_});login_id=x.text('loginId');pc_name=x.text('pcName');can_edit=_bool_from_can_edit(x.get('canEdit'));uid=request_user_id(x)
   can_schedule=_bool_from_yes_no(x.get('canSchedule'));can_field_reorder=_bool_from_yes_no(x.get('canFieldReorder'));field_reorder_equipment=x.text('fieldReorderEquipment')
   role=normalize_role(x.get('role'));master_edit=normalize_master_edit(x.get('masterEdit'))
+  column_edit=normalize_column_edit(x.get('columnEdit'))
   # ログインID・PC名は汎用的に使えるよう、どちらか一方だけの登録を許す
   # (もう一方は空欄=「問わない」という意味になる。master_repo.permission_flags
   # 側の一致度判定で解決する)。両方空欄は「誰の・どの端末か」を一切
@@ -125,10 +131,10 @@ def access_permission_master_register():
                                row_login=login_id,row_pc=pc_name)
    if err:return jsonify(error=err),403
    if existing:
-    cur.execute('UPDATE [アクセス権限マスタ] SET [編集可否]=?,[スケジュール可否]=?,[現場段取り可否]=?,[現場段取り対象設備]=?,[権限区分]=?,[マスタ編集]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [権限ID]=?',[1 if can_edit else 0,1 if can_schedule else 0,1 if can_field_reorder else 0,field_reorder_equipment,role,master_edit,uid,existing[0]]);registered=False
+    cur.execute('UPDATE [アクセス権限マスタ] SET [編集可否]=?,[スケジュール可否]=?,[現場段取り可否]=?,[現場段取り対象設備]=?,[権限区分]=?,[マスタ編集]=?,[表示列編集]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [権限ID]=?',[1 if can_edit else 0,1 if can_schedule else 0,1 if can_field_reorder else 0,field_reorder_equipment,role,master_edit,column_edit,uid,existing[0]]);registered=False
    else:
     cur.execute('SELECT Max([表示順]) FROM [アクセス権限マスタ]');maximum=cur.fetchone()[0];order=int(maximum or 0)+10
-    cur.execute('INSERT INTO [アクセス権限マスタ] ([ログインID],[PC名],[編集可否],[スケジュール可否],[現場段取り可否],[現場段取り対象設備],[権限区分],[マスタ編集],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,?,-1,?,?,Now(),Now())',[login_id,pc_name,1 if can_edit else 0,1 if can_schedule else 0,1 if can_field_reorder else 0,field_reorder_equipment,role,master_edit,order,uid,uid]);registered=True
+    cur.execute('INSERT INTO [アクセス権限マスタ] ([ログインID],[PC名],[編集可否],[スケジュール可否],[現場段取り可否],[現場段取り対象設備],[権限区分],[マスタ編集],[表示列編集],[表示順],[有効],[登録者ID],[更新者ID],[登録日時],[更新日時]) VALUES (?,?,?,?,?,?,?,?,?,?,-1,?,?,Now(),Now())',[login_id,pc_name,1 if can_edit else 0,1 if can_schedule else 0,1 if can_field_reorder else 0,field_reorder_equipment,role,master_edit,column_edit,order,uid,uid]);registered=True
    c.commit()
   return jsonify(ok=True,loginId=login_id,pcName=pc_name,registered=registered,updated_by=uid,message=('アクセス権限マスタへ新規登録しました。' if registered else '登録済みの組み合わせを更新しました。'))
  except Exception as e:return jsonify(error=f'アクセス権限マスタ登録失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
@@ -136,11 +142,12 @@ def access_permission_master_register():
 @bp.post('/api/access-permission-master/update')
 def access_permission_master_update():
  try:
-  x=body({'canEdit': any_, 'canFieldReorder': any_, 'canSchedule': any_, 
+  x=body({'canEdit': any_, 'canFieldReorder': any_, 'canSchedule': any_, 'columnEdit': any_,
           'fieldReorderEquipment': any_, 'id': any_, 'loginId': any_, 
           'masterEdit': any_, 'pcName': any_, 'role': any_});aid=x.get('id');login_id=x.text('loginId');pc_name=x.text('pcName');can_edit=_bool_from_can_edit(x.get('canEdit'));uid=request_user_id(x)
   can_schedule=_bool_from_yes_no(x.get('canSchedule'));can_field_reorder=_bool_from_yes_no(x.get('canFieldReorder'));field_reorder_equipment=x.text('fieldReorderEquipment')
   role=normalize_role(x.get('role'));master_edit=normalize_master_edit(x.get('masterEdit'))
+  column_edit=normalize_column_edit(x.get('columnEdit'))
   if aid is None:return jsonify(error='更新対象IDがありません。'),400
   if not login_id and not pc_name:return jsonify(error='ログインIDまたはPC名の少なくとも一方を入力してください。'),400
   path=DBS['MASTER']['path']
@@ -152,7 +159,7 @@ def access_permission_master_update():
    err=_permission_grant_error(c,x,existing_role=_row_role(c,aid),role=role,master_edit=master_edit,
                                row_id=aid,row_login=login_id,row_pc=pc_name)
    if err:return jsonify(error=err),403
-   cur.execute('UPDATE [アクセス権限マスタ] SET [ログインID]=?,[PC名]=?,[編集可否]=?,[スケジュール可否]=?,[現場段取り可否]=?,[現場段取り対象設備]=?,[権限区分]=?,[マスタ編集]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [権限ID]=?',[login_id,pc_name,1 if can_edit else 0,1 if can_schedule else 0,1 if can_field_reorder else 0,field_reorder_equipment,role,master_edit,uid,aid]);c.commit()
+   cur.execute('UPDATE [アクセス権限マスタ] SET [ログインID]=?,[PC名]=?,[編集可否]=?,[スケジュール可否]=?,[現場段取り可否]=?,[現場段取り対象設備]=?,[権限区分]=?,[マスタ編集]=?,[表示列編集]=?,[有効]=-1,[更新者ID]=?,[更新日時]=Now() WHERE [権限ID]=?',[login_id,pc_name,1 if can_edit else 0,1 if can_schedule else 0,1 if can_field_reorder else 0,field_reorder_equipment,role,master_edit,column_edit,uid,aid]);c.commit()
   return jsonify(ok=True,id=aid,loginId=login_id,pcName=pc_name,updated_by=uid,message='アクセス権限を更新しました。')
  except Exception as e:return jsonify(error=f'アクセス権限マスタ更新失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 

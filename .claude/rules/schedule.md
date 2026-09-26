@@ -1,4 +1,4 @@
-# 作業スケジュール（89件）
+# 作業スケジュール（92件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 仕掛から消えたロット・後ろの作業が始まった設備停止は**完了**。時刻が無ければ`timesNeeded`（`_times_prompts()`の1箇所） | `test_actualmatch.py`・`test_sctimes.js` | [§9.514](../../docs/decisions/9.514.md) |
+| 実際の時刻は`[手入力実績JSON]`の1列（測定データと別）。検めるのは`manual_payload()`、登録で状態も完了 | `test_actualmatch.py` | [§9.514](../../docs/decisions/9.514.md) |
+| 時刻の窓は`WL.scheduleTimes`の1つ（予定の画面と履歴が共有）。候補入り・見積で終わるが既定＝押すだけで登録 | `test_sctimes.js` | [§9.514](../../docs/decisions/9.514.md) |
 | 帯は一覧と同じ**1面1サイズ**（字12px・押す物30px・角丸1つ）。段と24／48時間の切り替えは同じ1つの部品（縁取り無し・中の札26px＋余白で外側30px） | `test_scbar.js` | [§9.506](../../docs/decisions/9.506.md) |
 | 表の見せ方の**いまの設定の要約は帯に書かない**（説明の1行目と`data-state`）。空いた幅で「追加」の4つに字を添える | `test_scbar.js`・`test_scsubtotal.js` | [§9.506](../../docs/decisions/9.506.md) |
 | 帯の字を落とすしきい値は**字を全部出して要る幅を測って**決める（111.5em＝追加の字／96.7em＝全部の字） | `test_scbar.js` | [§9.506](../../docs/decisions/9.506.md) |
@@ -38,7 +41,7 @@
 | 小計が数えるのは作業ロットだけ（`subtotalCounted()`の1箇所）。子ロットは親の1本 | `test_scsubtotal.js` | [§9.493](../../docs/decisions/9.493.md) |
 | 合計は数として読めた値だけ。読めない・単位の違う値は0で足さず`*`と件数で言う | `test_scsubtotal.js` | [§9.493](../../docs/decisions/9.493.md) |
 | ICASコピーの最初の1行は`区切らずにつなぐ`（普通の行）。触っていない旧い例の2本は片付ける | `test_lotcopy.js` | [§9.462](../../docs/decisions/9.462.md) |
-| 仕掛落ちの「着手」は作業中扱い（予定の終わり＝現在時刻）。見積ぶん居座らせない | `test_actualmatch.py` | [§9.462](../../docs/decisions/9.462.md) |
+| 【§9.514で撤回】仕掛落ちの「着手」は作業中扱い（いまは完了にし、時刻は人が入れる） | `test_actualmatch.py` | [§9.462](../../docs/decisions/9.462.md) |
 | 完了にならない理由は`advance_note()`の1箇所が答え、行の印（橙）で出す。全行共通の理由は知らせで1回 | `test_actualmatch.py` | [§9.462](../../docs/decisions/9.462.md) |
 | ロット番号の**横に**LotDspの的（字は押す形にしない）。的が`data-lot-dsp`を名乗り、道は`base.js`の1本 | `test_lotcopy.js`・`test_screport.js` | [§9.460](../../docs/decisions/9.460.md) |
 | 追加は**操作に身元（`操作ID`）を持たせ、同じ身元は2回適用しない**（再送は止めない） | `test_plandup.js` | [§9.438](../../docs/decisions/9.438.md) |

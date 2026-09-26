@@ -8,9 +8,12 @@
 `[有効]=0`で残る（`plan_delete`）ので、外した作業・終わって外した設備停止・申し送りも全部ここにある。
 
 **時刻は出どころつきで返す**（推測で埋めない）:
- - 作業 … 測定データの実績（開始〜終了）→ 保存した完了突合の完了日時 → 最後に行を変えた日時
- - 設備停止 … 予定の表は**実際に止まった時刻を持たない**（並びから毎回「いまから」を計算するだけ）。
-   分かるのは「入れた日時」「外した日時」「見積の分」なので、その3つをそのまま返す
+ - 作業 … 測定データの実績（開始〜終了）→ **手で入れた時刻**（§9.514）→ 保存した完了突合の完了日時
+          → 最後に行を変えた日時
+ - 設備停止 … **手で入れた時刻**があればそれ（§9.514）。無ければ予定の表は実際に止まった時刻を
+   持たない（並びから毎回「いまから」を計算するだけ）ので、「入れた日時」「外した日時」「見積の分」を返す
+**手で入れた時刻だけは、ここから直せる**（`timesEditable`・§9.514、利用者の選択「時刻の修正だけ可」）。
+直す口は予定の画面と同じ`/api/schedule/plan/update`（このモジュールは読むだけのまま）。
  - 申し送り … 書いた日時
  - 計画外の実績 … 測定データの開始〜終了（予定の行が無い実績）
 日付は**現場歴**（勤務の日付補正を当てた1日・§9.195）で束ねる。答えるのは`history()`の1箇所。
@@ -99,7 +102,22 @@ def _base(r, detail, keys):
             'removed': not active, 'removedAt': None if active else _iso(updated_at),
             'estimateMinutes': r[10], 'start': None, 'end': None, 'minutes': None, 'minutesSource': '',
             'at': None, 'atSource': '', 'who': '', 'recordId': None, 'subText': '',
+            'timesEditable': False, 'endFrom': '',
             'detail': _project(detail, keys), 'children': []}
+
+
+def _manual(e, r):
+    """手で入れた時刻（§9.514）を行へ当てる。当てたら True。"""
+    m = sc.manual_times(r[23] if len(r) > 23 else None)
+    if not m:
+        return False
+    st, en = _dt(m['startAt']), _dt(m['endAt'])
+    end_from = m.get('endFrom') or sc.MANUAL_END_FROM_INPUT
+    e.update(start=_iso(st), end=_iso(en), minutes=_minutes(st, en), at=_iso(st),
+             atSource=('手入力（開始・終了）' if end_from == sc.MANUAL_END_FROM_INPUT
+                       else '手入力（開始・終わりは見積）'),
+             who=str(m.get('by') or ''), timesEditable=True, endFrom=end_from)
+    return True
 
 
 def _removed_owns(e, actual, target):
@@ -129,6 +147,8 @@ def _work(e, r, detail, actual):
         e.update(start=_iso(st), end=_iso(en), minutes=_minutes(st, en), at=_iso(st or en),
                  atSource='測定データの実績', who=str(actual.get('createdBy') or ''), recordId=actual.get('id'))
         state = sc.derive_state(stored or None, actual)
+    elif _manual(e, r):
+        state = stored or '完了'
     else:
         saved = sc.saved_actual_source(r[22]) if stored not in sc.PLAN_TERMINAL_STATES else None
         state = '完了' if saved else stored
@@ -160,6 +180,8 @@ def _other(e, r, detail, mc=None, equipment=''):
         if not e['removed'] and str(r[11] or '') not in sc.PLAN_TERMINAL_STATES:
             return None
         e.update(cat='stop', subText=_stop_sub(detail), minutes=r[10])
+        if _manual(e, r):
+            return e
         if r[10] is None and mc is not None:
             # 分を持たずに入れた行（古い行・分を渡さない入れ方）。**いまの予定の画面と同じ見積**で数え、
             # 出どころを言う（空のままだと期間の合計から黙って抜ける・§9.502の追補3）。

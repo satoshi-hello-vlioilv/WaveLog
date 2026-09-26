@@ -59,6 +59,9 @@
   height:min(880px,92vh);
   max-height:92vh;display:flex;flex-direction:column}
 .cl-sub{margin:2px 0 0;color:#8fd4d4;font-size:var(--fs-sm);font-weight:400}
+/* 古い版の端末（§9.515）。バッジの隣の知らせと**同じ印**を頭に付ける（同じ意味は同じ形）。 */
+.cl-sub.is-behind::before{content:"";display:inline-block;width:6px;height:6px;margin-right:var(--space-1);
+ border-radius:var(--radius-round);background:var(--warn);vertical-align:middle}
 .cl-tools{flex:0 0 auto;display:flex;align-items:center;gap:var(--gap-inline);
   padding:var(--space-2) var(--space-5);border-bottom:1px solid var(--line-soft);
   background:var(--surface-2)}
@@ -125,6 +128,15 @@
  font-size:var(--fs-micro);line-height:1.45;
 }
 .restart-needed[hidden]{display:none}
+/* 古い版の端末への知らせ（§9.515、利用者の指示「控えめな感じで邪魔にならないように」）。
+   **面も縁も持たない字1つ**を版のバッジの隣へ。印（●）は注意の橙、字は濃い地の
+   控えめな字（`--nav-ink-2`・4.76:1）。状態は色だけで言わない——字が「新しい版あり」と言う。 */
+.ver-behind{display:inline-flex;align-items:center;gap:var(--space-1);padding:0;border:0;background:none;
+ color:var(--nav-ink-2);font:inherit;font-size:var(--fs-micro);font-weight:600;cursor:pointer;white-space:nowrap}
+.ver-behind::before{content:"";width:6px;height:6px;border-radius:var(--radius-round);background:var(--warn);flex:none}
+.ver-behind:hover{text-decoration:underline}
+.ver-behind:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.ver-behind[hidden]{display:none}
 .restart-needed b{font-size:var(--fs-sm)}
 .restart-needed small{color:var(--warn-fg);opacity:.9}
 /* ---------- 安全な終了（§9.301 ②、利用者の指示「安全なアプリの終了ボタンも

@@ -61,8 +61,17 @@ def presence_list():
             out.append(dict(x, role=role, isMe=(x['key'] == me['key']),
                             canDisconnect=(x['key'] != me['key']
                                            and role_can(me['role'], 'presence:disconnect', role))))
+    # 版の配布の答え（§9.513）。**運用中の最新版・古い版の端末・利用者ごとの合計**は
+    # `presence.fleet_summary()`の1箇所が作る——画面は並べるだけ。
+    hist = presence.history_entries()
+    fleet = presence.fleet_summary(out, hist, presence.app_version())
+    lk = presence.version_key(fleet['latestVersion'])
+    for x in out:
+        x['outdated'] = bool(fleet['latestVersion']) and presence.version_key(x.get('version')) < lk
     return jsonify(ok=True,
                    items=out,
+                   fleet=fleet,
+                   historyReadable=hist is not None,
                    # **読めなかったことを「誰も居ない」と言わない**（§9.107）。
                    readable=rows is not None,
                    shared=presence.shared(), source=source, dir=str(d),
@@ -120,4 +129,22 @@ def presence_allow():
     if not role_can(me['role'], 'presence:disconnect', target_role):
         return jsonify(error='この端末には接続の管理の権限がありません。'), 403
     presence.clear_revocation(key)
+    return jsonify(ok=True, key=key)
+
+
+@bp.post('/api/presence/forget')
+def presence_forget():
+    """使わなくなった端末の接続の記録を消す（§9.513）。
+
+    **接続中の端末は消さない**——次の在席で記録がすぐ作り直され、回数と
+    時間だけが0に戻る（消したつもりが、数字を壊しただけになる）。"""
+    me = _me()
+    if not role_can(me['role'], 'presence:forget'):
+        return jsonify(error=f'記録を消せるのは開発者・メンテナンス者だけです（この端末は{me["role"]}）。'), 403
+    key = str(body({'key': str}, silent=True).text('key') or '').strip()
+    if not key:
+        return jsonify(error='どの端末の記録かを指定してください。'), 400
+    if any(x['key'] == key for x in (presence.entries() or [])):
+        return jsonify(error='いま接続している端末の記録は消せません（切断されてから消してください）。'), 409
+    presence.forget_history(key)
     return jsonify(ok=True, key=key)

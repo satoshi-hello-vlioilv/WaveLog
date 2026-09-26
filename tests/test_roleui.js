@@ -11,6 +11,9 @@
        決めていたらこの網は落ちる
     ④ 書けないときは**理由を文字で出す**（§3・§4）
     ⑤ 「編集可」なら今までどおり（触っていない端末を巻き添えにしない・§9.132）
+    ⑥ **表示列の編集**（§9.512）: 変更不可なら保存を送らず字で言う／自分の分だけなら
+       自分だけへ切り替えてから保存する（断って行き止まりにしない）／編集可なら今までどおり。
+       何を保存してよいかは**サーバーの答え**（列レイアウトの応答）で決める
 
    **`/api/access-mode`を差し替えて確かめる**——実機の権限を書き換えて
    しまうと、以降のテストが全部その端末の権限で走ることになる。 */
@@ -137,5 +140,39 @@ run('test_roleui: 設備作業者とマスタ編集の段が**画面に効いて
  await applyLevel('一般ユーザー','編集可');
  const back=await shown();
  rec('段が上がれば入口は戻る（片道にしない）',!back.hidden&&back.drawn,JSON.stringify(back));
+
+ // ---- ⑥ 表示列の編集（§9.512） ----------------------------------------
+ /* **本物の列レイアウトへは書かない**（応答を差し替え、届いた宛先だけを数える）。 */
+ const T='list:RT:UI';
+ let colLevel='変更不可';const sent=[];
+ const caps=l=>({columnEdit:l,canEditOwnColumns:l!=='変更不可',canEditCommonColumns:l==='編集可'});
+ await page.route(/\/api\/column-layout-master/,route=>{
+  const req=route.request(),u=req.url();
+  if(!u.includes(encodeURIComponent(T))&&!(req.postData()||'').includes(T))return route.continue();
+  const base={ok:true,target:T,canPersonalize:true,order:[],widths:{},...caps(colLevel)};
+  if(req.method()==='GET')return route.fulfill({json:{...base,scope:'common'}});
+  const scope=/\/scope/.test(u);
+  sent.push(scope?'切替':'保存');
+  return route.fulfill({json:{...base,scope:'personal'}});
+ });
+ const tryPatch=async lv=>{
+  colLevel=lv;sent.length=0;
+  await page.evaluate(t=>{WL.columnLayout.forget(t);document.getElementById('toastArea').innerHTML=''},T);
+  await page.evaluate(t=>WL.columnLayout.patch(t,{widths:{A:80}}),T);
+  await idle();
+  return page.evaluate(t=>({sent:null,scope:WL.columnLayout.scope(t),
+   toast:(document.getElementById('toastArea')||{}).textContent||''}),T).then(r=>({...r,sent:sent.slice()}));
+ };
+ const none=await tryPatch('変更不可');
+ rec('⑥ 表示列の編集が「変更不可」なら保存を送らない',none.sent.length===0,JSON.stringify(none.sent));
+ rec('⑥ 保存されないことと直す場所を字で言う',
+   /保存されません/.test(none.toast)&&/アクセス権限マスタ/.test(none.toast),none.toast.slice(0,60));
+ const self=await tryPatch('自分の分だけ');
+ rec('⑥ 「自分の分だけ」なら自分だけへ切り替えてから保存する（みんなの分は書かない）',
+   JSON.stringify(self.sent)==='["切替","保存"]'&&self.scope==='personal',JSON.stringify(self));
+ rec('⑥ 切り替えたことを字で言う',/自分だけの表示列に切り替えました/.test(self.toast),self.toast.slice(0,40));
+ const fullCol=await tryPatch('編集可');
+ rec('⑥ 「編集可」なら今までどおりそのまま保存する',JSON.stringify(fullCol.sent)==='["保存"]',JSON.stringify(fullCol.sent));
+ await page.unroute(/\/api\/column-layout-master/);
 
 }, {viewport:{width:1600,height:1000}});

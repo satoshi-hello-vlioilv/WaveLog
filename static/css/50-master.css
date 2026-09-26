@@ -3345,32 +3345,67 @@ html[data-hint="off"] .mm-def-hint{display:none}
    **色だけで伝えない**（§3）——状態はバッジの文字が言い、色は補助。
    寸法・色はトークンから取る（リテラルを新しく足さない・CLAUDE.md）。
    ================================================================== */
-.pz-head{display:flex;flex-wrap:wrap;align-items:stretch;gap:var(--space-2);
-  margin-bottom:var(--space-2)}
-.pz-head>div{flex:1 1 var(--w-lg);min-width:0;padding:var(--space-2) var(--space-3);
-  border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface-2)}
-.pz-head small{display:block;margin-top:var(--space-1);font-size:var(--fs-micro);
-  color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pz-count{flex:0 0 auto;text-align:center}
-.pz-count b{font-size:var(--fs-lg)}
+/* 要約（§9.513）。**1枚のカードに4つ**——枠の中に枠を作らず、区切りは細い縦線。
+   名前は細く薄く・値は大きく（何を見ればよいかを値の大きさで言う）。 */
+.pz-sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:var(--space-2);
+  border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface)}
+.pz-sum-cell{display:grid;gap:var(--space-1);align-content:start;min-width:0;padding:var(--space-2) var(--space-3)}
+.pz-sum-cell+.pz-sum-cell{border-left:1px solid var(--line-soft)}
+.pz-sum-cell>span{color:var(--ink-3);font-size:var(--fs-sm);font-weight:500}
+.pz-sum-cell>b{color:var(--ink);font-size:var(--fs-lg);font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pz-sum-cell>b>i{margin-left:2px;font-style:normal;font-size:var(--fs-sm);font-weight:500;color:var(--ink-3)}
+.pz-sum-cell>small{color:var(--ink-soft);font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 配る相手がいるときだけ、そのマスを橙で言う（語も添えてある・§CLAUDE 3） */
+.pz-sum-cell.is-old{background:var(--warn-bg)}
+.pz-sum-cell.is-old>b,.pz-sum-cell.is-old>small{color:var(--warn-fg)}
+.pz-me{margin:0 0 var(--space-3);color:var(--ink-2);font-size:var(--fs-sm)}
+.pz-me small{display:block;margin-top:2px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pz-sec{margin-bottom:var(--space-4)}
+.pz-sec-head{display:flex;align-items:baseline;gap:var(--space-2);margin-bottom:var(--space-2)}
+.pz-sec-head h4{margin:0;color:var(--ink);font-size:var(--fs);font-weight:800}
+.pz-sec-head small{color:var(--ink-soft);font-size:var(--fs-sm)}
 
 /* 1行=1端末。**見出しとセルは同じグリッド定義を共有する**（列がずれない）。 */
 .pz-table{border:1px solid var(--line-soft);border-radius:var(--radius-sm);overflow:hidden}
 .pz-row{display:grid;align-items:center;gap:var(--space-2);
-  grid-template-columns:var(--w-sm) var(--w-md) var(--w-md) var(--w-md)
-                        var(--w-sm) minmax(0,1fr) var(--w-sm) var(--w-lg);
+  grid-template-columns:var(--w-sm) minmax(var(--w-sm),1fr) minmax(var(--w-sm),1fr) var(--w-md)
+                        var(--w-sm) var(--w-sm) var(--w-sm) var(--w-sm) minmax(var(--w-sm),1fr)
+                        var(--w-sm) var(--w-lg);
   padding:0 var(--space-2);min-height:var(--ctl-h);font-size:var(--fs-sm);
   border-bottom:1px solid var(--line-soft)}
 .pz-row:last-child{border-bottom:0}
 .pz-row>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pz-headrow{background:var(--surface-3);color:var(--ink-3);font-weight:700;
-  font-size:var(--fs-micro)}
+.pz-headrow{background:var(--surface-3);color:var(--ink-3);font-weight:700}
 .pz-row.is-me{background:var(--surface-2)}
+.pz-row :is(.pz-c-since,.pz-c-dur,.pz-c-seen){font-variant-numeric:tabular-nums}
 .pz-badge{display:inline-block;padding:0 var(--space-2);border-radius:var(--radius-pill);
   font-size:var(--fs-micro);font-weight:700;border:1px solid var(--line-mid);color:var(--ink-2)}
 .pz-badge.is-on{border-color:var(--teal);color:var(--teal)}
 .pz-badge.is-me{border-color:var(--line-strong);color:var(--ink)}
 .pz-badge.is-cut{border-color:var(--danger,var(--line-strong));color:var(--danger,var(--ink))}
+/* 版の状態の語（最新／要更新）。版そのものは等幅の数字で後ろに。 */
+.pz-vst{margin-right:var(--space-2);font-size:var(--fs-sm);font-weight:800}
+.pz-vst.is-ok{color:var(--success)}
+.pz-vst.is-old{color:var(--warn-fg)}
+.pz-ver{color:var(--ink-2);font-variant-numeric:tabular-nums}
+/* 接続の記録の表。道具の帯は一覧と同じ並び（左＝見せ方の選択・右端＝写す）。 */
+.pz-tools{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
+.pz-tools-end{margin-left:auto;display:inline-flex;gap:var(--space-2)}
+.pz-seg{display:inline-flex;gap:var(--gap-hair);padding:2px;border-radius:var(--radius-sm);background:var(--bg)}
+.pz-seg button{height:calc(var(--ctl-h-sm) - 4px);padding:0 var(--ctl-pad-x-xs);border:1px solid transparent;
+  border-radius:var(--radius-sm);background:transparent;color:var(--ink-3);font-size:var(--fs-sm);font-weight:700;cursor:pointer}
+.pz-check{display:inline-flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm);color:var(--ink-2)}
+.pz-count-note{color:var(--ink-3);font-size:var(--fs-sm);font-variant-numeric:tabular-nums}
+.pz-htable-wrap{border:1px solid var(--line-soft);border-radius:var(--radius-sm);overflow:auto}
+.pz-htable{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.pz-htable th,.pz-htable td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
+  text-align:left;white-space:nowrap;max-width:var(--w-xl);overflow:hidden;text-overflow:ellipsis}
+.pz-htable th{position:sticky;top:0;background:var(--surface-3);color:var(--ink-3);font-weight:700}
+.pz-htable tr:last-child td{border-bottom:0}
+.pz-htable td.pz-num{font-variant-numeric:tabular-nums}
+.pz-htable td.is-online{color:var(--teal-dark);font-weight:700}
+.pz-htable td.pz-act{width:1%;text-align:right}
+.pz-htable tr.is-old td{background:var(--required-bg)}
 /* **押せない理由はその場に書く**（§4）。ボタンの代わりに文字を置く。 */
 .pz-why{font-size:var(--fs-micro);color:var(--muted)}
 

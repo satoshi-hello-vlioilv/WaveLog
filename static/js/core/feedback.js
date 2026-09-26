@@ -25,7 +25,7 @@
 
    ④ **コピーは1手。** 失敗のトーストに「報告用にコピー」を出す。
       トーストは消えるので、**あとからでも同じ1通を出せる**入口を残す
-      （`WL.feedback.openReport()`）。
+      （「ログ・診断」の「報告する」の段・§9.510）。
 
    ⑤ **端末に残す。** その場で報告できないこともあるので、直近は
       `localStorage`へ置く（1件ずつではなく、まとめて最大50件）。
@@ -195,28 +195,14 @@
   const ok=await copyText(text);
   window.showToast&&showToast(ok?'報告用にコピーしました':'コピーできませんでした',
    ok?'メールやチャットへそのまま貼れます（開発が読む形が入っています）'
-     :'ブラウザがコピーを許可していません。「報告を見る」から手で選んで写せます',
+     :'ブラウザがコピーを許可していません。「ログ・診断」の「報告する」から手で選んで写せます',
    ok?3600:6000);
   return ok;
  }
 
- /* あとからでも同じ1通を出せる入口（④）。**窓は1枚**（§9.342）。 */
- function openReport(){
-  const l=load();
-  const rec=l.length?l[l.length-1]:null;
-  const text=reportText(rec)||'まだ失敗は記録されていません。';
-  const body=`<div class="fb-report">
-    <p class="fb-report-note">直近の失敗${l.length>1?`（ほかに${l.length-1}件、端末に残っています）`:''}です。
-     <b>下の「報告用にコピー」</b>を押して、メールやチャットへ貼ってください。</p>
-    <textarea class="fb-text" readonly rows="18">${WL.base&&WL.base.esc?WL.base.esc(text):text}</textarea>
-   </div>`;
-  const asked=window.confirmModal&&confirmModal({
-   eyebrow:'FEEDBACK',title:'開発へ報告する',bodyHtml:body,
-   confirmLabel:'報告用にコピー',cancelLabel:'閉じる'});
-  if(asked&&asked.then)asked.then(ok=>{if(ok)copyReport(rec)});
-  return asked;
- }
-
+ /* あとからでも同じ1通を出せる入口（④）は「ログ・診断」の「報告する」の段
+    （§9.510）。そちらは画面の失敗に**起動の状況とログのまとめ**も添えて1通に
+    するので、ここに2つ目の窓は持たない（同じ役目の物を2つ作らない）。 */
  /* **どの画面でも要る文脈は、この土台が名乗る**（版・端末・ブラウザ）。
     画面ごとに書き写すと、書き忘れた画面の報告だけが材料不足になる。
     版は起動の覆いが持っている（`#appBoot`の刻印）ので、そこから拾う
@@ -235,7 +221,7 @@
   今:new Date().toString(),
  }));
 
- WL.feedback={note,provide,step,copyLast,copyReport,openReport,
+ WL.feedback={note,provide,step,copyLast,copyReport,
               reportText,log:()=>load().slice(),
               clear:()=>{log=[];save()}};
 })();
