@@ -100,22 +100,26 @@ main>header:has(>.hd-viewbar.is-inline) #headerContextSource{display:none}
 .hd-viewbar button{height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-sm);font-size:var(--fs-sm);border-radius:var(--radius-sm);border:1px solid var(--line);background:#fff;
   color:var(--ink-2);font-weight:700;cursor:pointer}
 .hd-viewbar button:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
-.hd-viewbar .db-viewtabs,.hd-viewbar .sc-mode-toggle,.hd-viewbar .sc-board-window{display:flex;gap:var(--gap-hair);padding:2px;border-radius:var(--radius-sm);background:var(--bg)}
+.hd-viewbar .db-viewtabs,.hd-viewbar .sc-mode-toggle,.hd-viewbar .sc-board-window,.hd-viewbar .ac-presets{display:flex;gap:var(--gap-hair);padding:2px;border-radius:var(--radius-sm);background:var(--bg)}
 .hd-viewbar .db-viewtabs button{height:calc(var(--ctl-h-sm) - 4px);border-color:transparent;background:transparent}
 /* 作業スケジュールの切り替え（段・24／48時間）は**ダッシュボードの切り替えと同じ1つの部品**（§9.506）——
    縁取りは持たず**地の色**でまとまりを言い、中の札（`--ctl-h-sm` − 4px＝26px＝`--ctl-h-xs`）＋余白2px×2で
    外側が帯の押す物と同じ30px。前は縁取り1pxのぶん外側32px、24／48時間だけ別の顔で28px。
    中の札を 30−6＝24px にして縁取りを残す案は、24px が寸法の刻み（19/26/30/36/40）に無いので採らない。 */
 .hd-viewbar :is(.sc-mode-toggle,.sc-board-window){border:0}
-.hd-viewbar :is(.sc-mode-toggle-btn,.sc-board-window-btn){height:calc(var(--ctl-h-sm) - 4px);border-color:transparent;background:transparent}
+/* 測定実績の期間の札（今日／7日／31日／3か月／全期間）も**1つだけ選ぶ切り替え**なので同じ部品（§9.507）。 */
+.hd-viewbar :is(.sc-mode-toggle-btn,.sc-board-window-btn,.ac-chip){height:calc(var(--ctl-h-sm) - 4px);border-color:transparent;background:transparent}
 .hd-viewbar .sc-equipment-fixed{padding:3px 10px;border-radius:var(--radius-pill);background:var(--pale);border:1px solid var(--card-border);color:var(--nav);font-size:var(--fs-sm);font-weight:700;white-space:nowrap}
 .hd-viewbar .sc-lock-badge{padding:var(--pad-chip);border-radius:var(--radius-pill);font-size:var(--fs-micro)}
 /* 編集権の在席表示（§9.211 ②）。ヘッダーへ相乗りしたときも、
    **文字は読める大きさのまま**にする（状態を色だけで伝えないため）。 */
 .hd-viewbar .sc-history-range{display:inline-flex;align-items:center;gap:var(--space-1);white-space:nowrap}
-.hd-viewbar .sc-freshness,.hd-viewbar .sc-field-reorder-note,.hd-viewbar .record-search-result{
+.hd-viewbar .sc-freshness,.hd-viewbar .sc-field-reorder-note{
   font-size:var(--fs-micro);color:var(--muted);white-space:nowrap;
 }
+/* 件数は帯の字と同じ大きさ（§9.507。前は11px）。仕掛一覧の「全 N件」と同じ顔。 */
+.hd-viewbar .record-search-result{font-size:var(--fs-sm);font-weight:400;color:var(--ink-3);white-space:nowrap;
+  font-variant-numeric:tabular-nums}
 .hd-viewbar .sc-refresh,.hd-viewbar .rp-btn-secondary{border-color:var(--teal);color:#0c5d67}
 /* 実績カレンダー: 月送り・今月と、指標/対象ステータスの2択(.db-seg)。 */
 .hd-viewbar .cal-nav,.hd-viewbar .cal-toolbar-right{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;min-width:0}
@@ -130,7 +134,8 @@ main>header:has(>.hd-viewbar.is-inline) #headerContextSource{display:none}
 .hd-viewbar .db-seg button:hover:not(.active),
 .hd-viewbar .db-viewtabs button:hover:not(.active),
 .hd-viewbar .sc-mode-toggle-btn:hover:not(.active),
-.hd-viewbar .sc-board-window-btn:hover:not(.active){background:#fff;border-color:var(--teal);color:#0c5d67}
+.hd-viewbar .sc-board-window-btn:hover:not(.active),
+.hd-viewbar .ac-chip:hover:not(.is-on){background:#fff;border-color:var(--teal);color:#0c5d67}
 /* マスタ管理: 更新者IDだけを残す(説明はヘッダーの副題、閉じるは左メニュー)。 */
 .hd-viewbar .mm-head-user{display:inline-flex;align-items:center;gap:var(--space-2);margin:0;
   color:var(--muted);font-size:var(--fs-sm);font-weight:700;white-space:nowrap}

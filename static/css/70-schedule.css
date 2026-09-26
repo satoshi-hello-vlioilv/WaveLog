@@ -986,9 +986,9 @@
    アイコン+文言のバッジで別途示す(色だけに意味を持たせない)。
    --------------------------------------------------------------- */
 .sc-mode-toggle{display:flex;border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden;background:#fff}
-.sc-mode-toggle-btn{border:0;background:#fff;color:var(--muted);font-weight:700;cursor:pointer}
+.sc-mode-toggle-btn{border:0;color:var(--muted);font-weight:700;cursor:pointer}
 .sc-board-window{display:flex;border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden;background:#fff}
-.sc-board-window-btn{border:0;background:#fff;color:var(--muted);font-weight:700;cursor:pointer}
+.sc-board-window-btn{border:0;color:var(--muted);font-weight:700;cursor:pointer}
 .sc-board-window-btn.active{background:var(--pale);color:#075e67}
 .sc-board{flex:1;min-height:0;overflow-y:auto;padding:var(--space-4)}
 .sc-board-toolbar{display:flex;justify-content:flex-end;margin-bottom:8px}

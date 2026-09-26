@@ -304,7 +304,8 @@ run('test_theme: 色と文字サイズはトークンから',async({page,rec,W,i
     // 画面ごとの操作列に並ぶコントロールの寸法。‹ ›のようなアイコンのみの
     // ボタンは「文字」ではなく記号なので、文字サイズの揃いからは外す。
     const vis=e=>e.offsetParent!==null;
-    const ctls=[...document.querySelectorAll('#headerViewBar button,#headerViewBar select,#headerViewBar input')].filter(vis);
+    /* 検索欄（`.lt-search`・§9.505／§9.507）の中の入力は枠なしで、高さは器（label）が持つ——器を数える。 */
+    const ctls=[...document.querySelectorAll('#headerViewBar button,#headerViewBar select,#headerViewBar input:not(.lt-search>input),#headerViewBar .lt-search')].filter(vis);
     out[name]={title,mounted:bar?bar.children.length:-1,dupes,
       /* §9.286 ④: 再読込は一覧ツールバーの鮮度チップへ移した（読む場所と
          打つ手を同じ場所に置く）。§9.505: 検索欄も一覧の帯の先頭へ移した——ヘッダーに居ると

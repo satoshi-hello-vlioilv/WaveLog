@@ -272,14 +272,17 @@
     <label class="ac-field">期間<input type="date" id="acFrom" title="この日から（現場日で数えます）"></label>
     <label class="ac-field">〜<input type="date" id="acTo" title="この日まで（現場日で数えます）"></label>
     <span class="ac-presets" id="acPresets"></span>
-    <label class="ac-field">基準<select id="acBasis" title="日付をどちらで数えるか。現場歴は勤務区分マスタの日付補正が効きます">
+    <!-- 名前は**何の**基準かを言う（§9.507。「基準」だけでは何を切り替えるのか読めない）。 -->
+    <label class="ac-field">日付<select id="acBasis" title="日付をどちらで数えるか。現場歴は勤務区分マスタの日付補正が効きます">
       <option value="work">現場歴</option><option value="cal">太陽暦</option></select></label>
-    <label class="ac-search"><input type="search" id="acSearch" placeholder="ロット・検査番号で絞り込み" autocomplete="off"></label>
+    <!-- 検索欄は仕掛一覧・データ一覧と同じ部品（§9.507）。 -->
+    <label class="lt-search" title="ロット番号・検査番号の字で絞り込みます（打つとすぐ効きます）"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input type="search" id="acSearch" placeholder="ロット・検査番号で絞り込む" autocomplete="off" aria-label="ロット・検査番号で絞り込む"></label>
     <button type="button" id="acReload" class="ac-btn">再読込</button>
     <!-- 表示列の入口は**どの画面でも同じ印**（§9.476・fa-table-columns。スケジュール表・仕掛一覧と同じ）。 -->
     <button type="button" id="acColumns" class="ac-btn" title="この一覧に出す列・並び・幅・書式を決めます"><i class="fa-solid fa-table-columns" aria-hidden="true"></i> 表示列</button>
     <button type="button" id="acSheet" class="ac-btn ac-btn--primary" title="いま出ている実績を、日＋直ごとに1枚の操業データ表として刷ります">操業データ表</button>
-    <button type="button" id="acReport" class="ac-btn" title="選んだ行の測定帳票をまとめて刷ります" disabled>選択した帳票 (<span id="acReportCount">0</span>)</button>
+    <!-- 押すと何が起きるか（刷る）を印で、何を刷るか（選んだ行の帳票）を字で言う（§9.507。旧「選択した帳票」）。 -->
+    <button type="button" id="acReport" class="ac-btn" title="選んだ行の測定帳票をまとめて刷ります" disabled><i class="fa-solid fa-print" aria-hidden="true"></i> 選んだ行の帳票 (<span id="acReportCount">0</span>)</button>
    </div>
    <div class="ac-body">
     <div class="ac-note" id="acNote" hidden></div>

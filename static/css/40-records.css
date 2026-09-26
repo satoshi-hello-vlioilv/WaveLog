@@ -13,7 +13,11 @@
    絞り込み(.record-searchbar)はヘッダーの#headerViewBarへ移る。 */
 .record-searchbar{display:grid;grid-template-columns:auto minmax(300px,1fr) 250px 110px auto auto;gap:var(--gap-section);align-items:end;padding:12px 16px;border-bottom:1px solid var(--line-soft);background:#fff}
 .record-searchbar label{display:grid;gap:var(--space-1)}
-.record-searchbar label>span{font-size:var(--fs-micro);font-weight:800;color:#526970}
+.record-searchbar label>span{font-size:var(--fs-sm);font-weight:500;color:var(--ink-3)}
+/* 検索欄は一覧と同じ部品（§9.507）。上の`label{display:grid}`（名前を上に積む形）を当てない。 */
+.record-searchbar label.lt-search{display:inline-flex;flex:0 1 var(--w-2xl)}  /* 案内の字（22字）が切れない規格幅（§CLAUDE 画面基準 11） */
+/* 右端の群＝**見せ方**（並び・表示列）。仕掛一覧の帯と同じ並び（§9.505・§9.507）。 */
+.record-searchbar .rec-sort{margin-left:auto}
 .record-searchbar input,.record-searchbar select,.record-searchbar button{height:var(--ctl-h)}
 /* 編集中/完了はそれぞれ独立にON/OFFできるトグル(排他選択ではない)なので、
    セグメントコントロールではなくピル状のチェックボタンで表現する。 */
@@ -545,7 +549,8 @@
 /* 「表示列」は絞り込みと同じ帯に置く（一覧の見せ方を変える操作は、
    一覧を絞る操作の隣にあるのが自然）。**危ない操作ではない**ので
    目立たせすぎない——見出しが折り返さない幅だけ与える（§9.129）。 */
-.record-columns-btn{white-space:nowrap}
+.record-columns-btn{white-space:nowrap;display:inline-flex;align-items:center;gap:var(--gap-tight)}
+.record-columns-btn>i{color:var(--teal)}
 /* ---- 見出しの取っ手（§9.164。仕掛一覧の`#grid th`と同じ形） ----
    絶対配置の基準は見出しセル自身。`.record-list-head`は`sticky`だが、
    基準にしたいのは**セル**なので`position:relative`をセルへ与える。
@@ -572,7 +577,7 @@
   background:var(--surface);color:var(--ink-2);font-size:var(--fs-sm);cursor:pointer;
   white-space:nowrap}
 .record-scope-btn>b{font-weight:700;max-width:12em;overflow:hidden;text-overflow:ellipsis}
-.record-scope-btn>i{font-style:normal;font-size:var(--fs-micro);color:var(--muted)}
+.record-scope-btn>i{font-style:normal;font-weight:500;color:var(--ink-3)}
 .record-scope-btn:hover:not(:disabled){border-color:var(--teal)}
 .record-scope-btn:disabled{opacity:.55;cursor:default}
 

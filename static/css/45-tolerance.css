@@ -345,12 +345,15 @@
   padding-block:0;padding-inline:var(--lt-px)}
 /* 名前（「プリセット」「条件」「元データ」）は**薄く細く**、値は濃く太く。 */
 :is(.fb-preset-key,.fb-cond-key,.lf-key){color:var(--ink-3);font-weight:500}
-/* 一覧を検索（§9.505。ヘッダーから移した）。押す物と同じ高さ・枠の1種。 */
+/* 一覧を検索（§9.505。ヘッダーから移した）。押す物と同じ高さ・枠の1種。**一覧の検索欄はこの1つの部品**
+   （仕掛・品質・データ一覧・測定実績・§9.507）——帯の外でも置き場の既定（30px・12px）で立つ。 */
 .lt-search{flex:0 1 var(--w-lg);min-width:var(--w-sm);display:inline-flex;align-items:center;gap:var(--gap-tight);
+  height:var(--lt-h,var(--ctl-h-sm));font-size:var(--lt-fs,var(--fs-sm));border-radius:var(--radius-sm);
   padding:0 var(--ctl-pad-x-sm);border:1px solid var(--line-strong);background:var(--surface);cursor:text}
 .lt-search:focus-within{border-color:var(--teal);box-shadow:0 0 0 3px #087c8922}
 .lt-search>i{color:var(--muted);font-size:.9em}
-.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;outline:0;background:transparent;
+/* 中の欄は枠を持たない（器が枠）。ヘッダーに相乗りしたときの`.hd-viewbar input`（枠つき）より強く書く。 */
+label.lt-search>input{flex:1 1 auto;min-width:0;height:100%;padding:0;border:0;outline:0;background:transparent;
   font-size:inherit;box-shadow:none}
 /* 条件を検索して足す欄は「一覧を検索」と**同じ顔にしない**（§9.345）——頭に「＋条件」と名乗る。 */
 .filter-token-key{flex:0 0 auto;color:var(--teal-dark);font-weight:800;font-size:var(--lt-fs)}

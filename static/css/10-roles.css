@@ -71,14 +71,15 @@
    高さは --row-ctl-h(行に合わせて縮む)。行間を最密にしたときに
    ボタンだけが行より背高になって行を押し広げるのを防ぐ。 */
 .measurement-action-button,.plan-action-button,.plan-select-add,.plan-select-clear,
-.grid-lot-link,.lot-dsp-link,.sc-row-btn,.sc-board-window-btn,.sc-board-sort-btn,.sc-mode-toggle-btn,
+.grid-lot-link,.lot-dsp-link,.sc-row-btn,.sc-board-sort-btn,
 .record-list-actions button,
 .sc-session-banner button,.shift-seg button,.qa-v7 .qa-seg.qa-seg-sm button{
   height:var(--row-ctl-h);padding:0 var(--ctl-pad-x-xs);
   font-size:var(--tbl-fs);border-radius:var(--radius-sm);
 }
-/* 表の外にあるタグ・チップは従来どおり(行の密度に引きずられない)。 */
-.sc-board-window-btn,.sc-board-sort-btn,.sc-mode-toggle-btn,
+/* 表の外にあるタグ・チップは従来どおり(行の密度に引きずられない)。
+   段の切り替え・24／48時間の札は**帯の切り替えの部品**が寸法を持つ（85-headerbar.css・§9.506／§9.507）。 */
+.sc-board-sort-btn,
 .sc-session-banner button,.shift-seg button,.qa-v7 .qa-seg.qa-seg-sm button{
   height:var(--ctl-h-xs);font-size:var(--fs-sm);
 }
