@@ -1,4 +1,4 @@
-# そのほか（18件）
+# そのほか（19件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -12,6 +12,7 @@
 | --- | --- | --- |
 | LotDspのタブは「Tab N：中身の名前」。顔ぶれは`WL.lotDspTab.TABS`の1箇所（値は番号のまま） | `test_eqsetup.js` | [§9.511](../../docs/decisions/9.511.md) |
 | ロット問い合わせの自動ログインは同梱の拡張（`program/lotdsp-ext`）が持つ。WaveLog は ID・パスワードを受け取らない | `test_lotdspext.js` | [§9.485](../../docs/decisions/9.485.md) |
+| 転写計算アプリへの取込（`tpa*.js`）は頼みのあるタブでだけ動く。ログインを押すのは`lotdsp.js`だけ | `test_tpaext.js` | [§9.519](../../docs/decisions/9.519.md) |
 | 計算を直したら、**その計算を説明している字**も直す（字は網にかからない） | — | [§9.420](../../docs/decisions/9.420.md) |
 | フラットネスの全〇は「印を持つボタンだけ」を拾う | — | [§9.320](../../docs/decisions/9.320.md) |
 | 畳んでよいのは「言い回し」だけ。単位・できること・取り違えを防ぐ事実は別 | — | [§9.255](../../docs/decisions/9.255.md) |
