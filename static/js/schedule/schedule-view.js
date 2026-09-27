@@ -2052,11 +2052,13 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     e.preventDefault();
     panel.classList.remove('sc-drop-active');
     const reason=window.__scDragStopReason;window.__scDragStopReason=null;
-    /* 落とした位置へ入れる(§9.179改訂)。位置が決まらなければ末尾。 */
-    if(WL.scheduleInsert)scState.insertBefore=WL.scheduleInsert.takeDropTarget();
+    /* 落とした位置へ入れる(§9.179改訂)。位置が決まらなければ末尾。
+       落とした位置は**手順へ渡す**（§9.517）——`scState.insertBefore`へ置くと、
+       固定していない値が次の追加まで残り、帯の字と入る位置が食い違う。 */
+    const at=WL.scheduleInsert?WL.scheduleInsert.takeDropTarget():'';
     /* 落とした位置を控えたまま**手順を開く**（§9.389／§9.238 ②の枠と同じ）
        ——選んでいる間に位置を忘れると、狙って落とした意味が無い。 */
-    if(dropApplicable())openStopPicker(reason.id,reason.name);
+    if(dropApplicable())openStopPicker(reason.id,reason.name,at);
     else clearInsertPin();
     return;
    }
@@ -9296,13 +9298,25 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    showToast&&showToast('複製できませんでした',e.message||'サーバーが受け付けませんでした',6000);
   }
  }
- /* どこへ入るのかの答えは1箇所（§9.400）。**帯の追加ボタンの字**と
-    案内の1行が同じここを読むので、2箇所に別々の言い方が生まれない
-    （§CLAUDE 8）。以前は上に専用の帯を1段持っていたが、押す物のすぐ上に
-    同じことが書いてあるほうが読まれる。 */
+ /* ---------- 設備停止が入る位置の答えは1箇所（§9.517、利用者から届いた不具合報告
+    「停止項目を選択して追加すると選択した位置に入らずページの先頭位置に項目が入ります」） ----------
+    以前は答えが3つあった: 帯の追加ボタンの字は`scState.insertBefore`、入れる位置と
+    入る時刻の見積は手順に控えた`stopPick.before`。控えは**窓を閉じても捨てず**、
+    停止内容を選び直すときも「控えがあれば奪わない」ので、**最初に入れた位置が
+    以後ずっと使い回された**（字は「L0030 の前へ追加」なのに、前に入れた L0005 の前へ入る）。
+    いまは3つともここを読む:
+      ・行間を押して**位置を固定している間** … その位置（続けて何件入れても同じ位置・窓を閉じると外れる）
+      ・ボタンを表へ**落とした**              … 落とした位置（`stopPick.at`・1回使ったら忘れる）
+      ・どちらも無い                          … いちばん後ろ */
+ function stopBefore(){
+  if(insertPinned)return scState.insertBefore||'';
+  return (scState.stopPick&&scState.stopPick.at)||'';
+ }
+ /* どこへ入るのかの字（§9.400）。**帯の追加ボタンの字**と案内の1行が同じここを
+    読むので、2箇所に別々の言い方が生まれない（§CLAUDE 8）。 */
  function stopWhereText(){
-  const before=scState.insertBefore
-   ?(pickedLotOf(pickableEntry(scState.insertBefore))||'選んだ行'):'';
+  const b=stopBefore();
+  const before=b?(pickedLotOf(pickableEntry(b))||'選んだ行'):'';
   return before?`${before} の前`:'いちばん後ろ';
  }
  function renderStopButtons(){
@@ -9542,7 +9556,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   const subId2=subId?stopDefaultSubOf(reasonId,subId):'';
   return {subId,subId2};
  }
- function openStopPicker(reasonId,label){
+ function openStopPicker(reasonId,label,at){
   if(!scState.equipment)return;
   if(sessionBlocked()){
    showToast&&showToast('追加できません',sessionHolderMessage(),4000);
@@ -9553,10 +9567,11 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   scState.stopPick={id:reasonId,label:String(label||''),
     subId:pre.subId,subId2:pre.subId2,
     minutes:stopPickDefaultMinutes(reasonId,pre.subId,pre.subId2),touched:false,
-    /* 位置は**ここで控える**（開いている間に別の行を選んでも動かない）。
-       **既に控えてあるなら奪わない**——左の一覧で選び直すたびに
-       `takeInsertBefore()`を呼ぶと、落とした位置が2件目で消える。 */
-    before:(scState.stopPick&&scState.stopPick.before)||takeInsertBefore(),subs};
+    /* 控えるのは**落とした位置だけ**（`at`・§9.517）。行間で固定した位置は
+       `stopBefore()`がその場で読む（控えると、固定を外しても古い位置が残る）。
+       停止内容を選び直す（`at`を渡さない）ときは、落とした位置を引き継ぐ——
+       選び直すたびに捨てると、落とした位置が2件目で消える。 */
+    at:at!==undefined?String(at||''):((scState.stopPick&&scState.stopPick.at)||''),subs};
   renderStopList();renderStopPane();
  }
  /* ================= 右上のカードと、下の3列（§9.402、利用者が選んだ形） =========
@@ -9602,11 +9617,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   return isNaN(d.getTime())?''
    :`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
  };
- /* 入る位置（何番目の行の前か）。控えた`before`が無ければ末尾。 */
+ /* 入る位置（何番目の行の前か）。答えは`stopBefore()`（無ければ末尾）。 */
  function stopInsertIndex(){
   const list=scState.entries||[];
-  const p=scState.stopPick;
-  const before=(p&&p.before)||'';
+  const before=stopBefore();
   if(before){
    const i=list.findIndex(x=>String(x.id)===String(before));
    if(i>=0)return i;
@@ -9921,7 +9935,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    return;
   }
   const target=scState.equipment;
-  const before=p.before;
+  const before=stopBefore();
   /* 画面へ先に置く（楽観追加）。**[予定名称]は停止内容の名前のまま**で、
      内訳は明細へ入れる（§9.389。名称で束ねたまま内訳で割れる）。 */
   const entry=makeOptimisticEntry('設備停止',{title:p.label,
@@ -9950,6 +9964,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   /* 「続けて入れる」なら**選んだままにする**——同じ停止をもう1件、
      別の停止を続けて、のどちらも選び直しから始まらない（§CLAUDE 2）。
      切なら選択を解いて一覧へ戻す（今までどおり）。 */
+  /* 落とした位置は**1回使ったら忘れる**（`takeInsertBefore()`と同じ約束・§9.517）
+     ——続けて入れる次の1件が、思い出しもしない位置へ入らないように。 */
+  p.at='';
   if(!scState.stopKeepOpen)scState.stopPick=null;
   renderStopList();renderStopPane();
   keepStopTyping();
@@ -10523,6 +10540,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
      ——次に開いたときに前回の分が並んでいると、「取り消す」が何を消すのか
      読めなくなる。**予定そのものは消さない**（消すのは控えだけ）。 */
   scState.stopAdded=[];
+  if(scState.stopPick)scState.stopPick.at='';   // 落とした位置も窓と一緒に捨てる(§9.517)
   clearInsertPin();      // 差し込む位置の固定も外す(§9.179)
   const box=document.getElementById('scStopButtons');
   if(box&&stopAnchor)stopAnchor.parentNode.insertBefore(box,stopAnchor);
