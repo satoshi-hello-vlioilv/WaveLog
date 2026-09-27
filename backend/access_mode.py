@@ -106,6 +106,10 @@ _WRITE_ALLOWED_MODES['core']={'edit'}
 
 _ENDPOINT_EXTRA_MODES={
  'schedule.plan_reorder':{'edit'},
+ # 実際の時刻の登録(§9.518、利用者の選択「その場で入れられる」)。**編集モードで通すのは
+ # 実際の時刻だけ**で、入れてよい端末か（スケジュール可否／その設備の現場段取り）も
+ # ハンドラ側(`routes/schedule.py`の`_times_allowed()`)で二重に絞る。
+ 'schedule.plan_update':{'edit'},
  # 編集セッション(§9.211 ②、利用者の指示「スケジュール編集者が1名になる
  # まで、後から入った人は編集権を持たずREADONLY」)。現場段取り(edit)の
  # 端末も**同じ設備を並べ替える**のに、セッションの取得口がscheduleモード

@@ -480,6 +480,7 @@ def plan_list():
  timings.update(result.get('timings') or {})
  timings['total']=round((time.perf_counter()-t_all)*1000,1)
  timings['rowCount']=len(result['entries'])
+ times_ok=_times_allowed(equipment)
  return jsonify(ok=True,configured=True,equipment=equipment,entries=result['entries'],anchor=result.get('anchor'),
                 anchorRounded=result.get('anchorRounded'),
                 loadFactor=result.get('loadFactor'),
@@ -499,6 +500,9 @@ def plan_list():
                 # ——`schedule.py`は41ルートで上限（§9.333）だし、語彙と設定は
                 # 予定の応答と一緒に運べば食い違いようがない（§9.366と同じ作法）。
                 sourceSyncMode=source_sync_mode(),
+                # 実際の時刻を入れてよいか（§9.518）。**画面は読むだけ**（答えは`_times_allowed()`）。
+                canEnterTimes=times_ok,
+                timesDenied='' if times_ok else PLAN_TIMES_DENIED,
                 warnings=warnings,timings=timings)
 
 @bp.post('/api/schedule/plan/add')
@@ -555,6 +559,27 @@ def _row_estimate(row):
   quiet('見積を引けない（終了も入れてもらう）',_e)
   return None
 
+# ---------- 実際の時刻を入れてよいか（§9.518、利用者の指示） ----------
+# 「時刻を入れるボタンが『操作』になく、どうにもできないので戸惑います」→ 選択「その場で入れられる」。
+# 実際の時刻は**起きたことの記録**で、ライン（編集モード）の端末が知っている。予定の並びを
+# 変える操作ではないので、編集モードでも入れられるようにする。入れてよいのは:
+#   ・スケジュールモードの端末
+#   ・編集モードで「スケジュール可否」が可、または「現場段取り」でその設備を持つ端末
+#     （＝スケジュールモードへ切り替えられる／その設備を並べ替えられる端末。権限は広がらない）
+# **答えはここ1箇所**——予定の応答の`canEnterTimes`（画面のボタン）と`plan_update`の門が同じ答えを使う。
+PLAN_TIMES_DENIED=('この端末では実際の時刻を入れられません。アクセス権限マスタで「スケジュール可否」を可にするか、'
+                   '「現場段取り」でこの設備を持たせると入れられます（スケジュールモードの端末なら入れられます）。')
+# 編集モードから直せる鍵（これ以外が来たら断る——予定そのものを書き換える道にしない）。
+PLAN_TIMES_KEYS=('id','actualStart','actualEnd','equipment')
+
+def _times_allowed(equipment):
+ mode=get_mode()
+ if mode=='schedule':return True
+ if mode!='edit':return False
+ flags=current_permission_flags()
+ return bool(flags.get('canSchedule')) or (bool(flags.get('canFieldReorder'))
+        and field_reorder_equipment_allows(flags.get('fieldReorderEquipment'),equipment))
+
 @bp.post('/api/schedule/plan/update')
 def plan_update():
  x=body({'id': any_,'frame': any_,'estimateMinutes': any_,'fixedStart': any_,'remark': any_,'state': any_,'title': any_,
@@ -576,8 +601,15 @@ def plan_update():
  # 実際の時刻（§9.514）。開始が来たら登録（終了が空＝開始＋見積）。**検めるのは
  # `schedule_calc.manual_payload()`の1箇所**——ここは見積を引いて渡すだけ。
  times='actualStart' in x
+ # 編集モード（§9.518）で通すのは**実際の時刻だけ**。並べ替えと同じく、モードの門
+ # （`_ENDPOINT_EXTRA_MODES`）で開けたぶんをここで絞る（§3.1.1）。
+ edit_mode=get_mode()=='edit'
+ if edit_mode and (not times or any(k in x for k in ('frame','estimateMinutes','fixedStart','remark','state','title',
+                                                     'detail','stopSubId'))):
+  return jsonify(error='編集モードの端末で直せるのは、実際の時刻だけです。'),403
  def fn(c):
   row=sr.plan_row(c,plan_id)
+  if row and edit_mode and not _times_allowed(row[1]):raise PermissionError(PLAN_TIMES_DENIED)
   if row:_check_session(row[1])
   n=0
   if times:

@@ -1,4 +1,4 @@
-# 作業スケジュール（93件）
+# 作業スケジュール（95件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 実際の時刻を入れてよいかは`_times_allowed()`の1箇所（編集モードは時刻の鍵だけ）。画面は`canEnterTimes`を読む。「時刻入力」は操作の列に必ず出す | `test_sctimesedit.js` | [§9.518](../../docs/decisions/9.518.md) |
+| 区分の列を外しているときは操作の列が「✓完了」「作業中」を字で言う（字は`categoryOf()`）。区分の列があれば出さない | `test_sctimesedit.js` | [§9.518](../../docs/decisions/9.518.md) |
 | 仕掛から消えたロット・後ろの作業が始まった設備停止は**完了**。時刻が無ければ`timesNeeded`（`_times_prompts()`の1箇所） | `test_actualmatch.py`・`test_sctimes.js` | [§9.514](../../docs/decisions/9.514.md) |
 | 実際の時刻は`[手入力実績JSON]`の1列（測定データと別）。検めるのは`manual_payload()`、登録で状態も完了 | `test_actualmatch.py` | [§9.514](../../docs/decisions/9.514.md) |
 | 時刻の窓は`WL.scheduleTimes`の1つ（予定の画面と履歴が共有）。候補入り・見積で終わるが既定＝押すだけで登録 | `test_sctimes.js` | [§9.514](../../docs/decisions/9.514.md) |

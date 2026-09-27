@@ -118,6 +118,8 @@ core↔timeline、board↔timeline)。`scState`だけで193箇所から参照さ
                  「読めなかった」を「誰も居ない」と同じに扱わないこと。 */
               sessions:null,me:null,sessionsConfigured:true,
               canStartWork:false,historyKey:loadHistoryKey(),historyFrom:null,
+              /* 実際の時刻を入れてよいか（§9.518）。**答えはサーバー**が予定の応答で運ぶ。 */
+              canEnterTimes:false,timesDenied:'',
               historyHours:8,historyHidden:0,historyShown:0,groupMode:'none',
               /* クエリ結合(§9.193)で足された列の名前。予定がまだ無い設備でも
                  内容欄の候補に出せるよう、行ではなくここに持つ。 */
@@ -2625,8 +2627,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    label:k=>scColLabel(k),
    valueOf:(detail,k)=>contentValueOf(detail,k),
    toSingle:()=>switchToSingle(),
-   /* 手で入れた時刻を直せるか（§9.514）。予定を書き換えられる条件と同じ1つ。 */
-   canEditTimes:()=>planEditable(),
+   /* 手で入れた時刻を直せるか（§9.514）。入れる条件と同じ1つ（§9.518）。 */
+   canEditTimes:()=>timesEditable(),
   });
  }
  async function switchToSingle(){
@@ -3530,6 +3532,22 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     「ボタンが無ければ作る」だけなので、一度描かれた行は**そのまま固定**され、
     読み直すまで直らない。 */
  const SC_START_BTN={text:'開始',title:'この予定の測定画面を開いて作業を開始します'};
+ /* ---------- 行の状態を操作の列で字にする（§9.518、利用者の指摘「『完了』のバッジのような
+    フラグもロット単位では立っていないので色で見分けるだけしかない」） ----------
+    状態は色だけで伝えない（§CLAUDE 3）。区分の列は表示列で外せるが、**操作の列はいつも
+    行の端に在る**ので、区分の列を外しているときはここが言う。**区分の列を出しているときは
+    出さない**——区分のセルが同じ「完了」を言っていて、2箇所に並ぶと数え直させる（§CLAUDE 8）。
+    **札であって押す物ではない**（枠の無い字・§CLAUDE 10）。**字は区分の答え**（`categoryOf()`）を
+    そのまま使い、出す区分だけを`SC_STATE_CHIP`が決める（呼び名を2箇所に持たない）。 */
+ const SC_STATE_CHIP={done:'is-done',doing:'is-doing'};
+ function rowStateChipHtml(e,catShown){
+  if(!e||catShown)return '';
+  const cat=categoryOf(e),cls=SC_STATE_CHIP[cat.key];
+  if(!cls)return '';
+  /* 自動で完了にした行は**なぜ完了か**を添える（仕掛から消えた・後ろの作業が始まった） */
+  const why=cat.key==='done'&&e.doneReason?`${cat.label}（${e.doneReason}）`:cat.label;
+  return `<span class="sc-row-state ${cls}" title="${esc(why)}">${esc(cat.label)}</span>`;
+ }
  function canStartEntry(e,workable){
   return !!(scState.canStartWork&&e&&e.kind==='作業'&&e.state==='予定'
             &&!e.__pending&&!e.unplanned
@@ -3768,6 +3786,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  function setSourceSyncMode(r){
   const v=r&&String(r.sourceSyncMode||'').trim();
   if(v==='auto'||v==='confirm')scSourceSyncMode=v;
+  /* 実際の時刻を入れてよいか（§9.518）も**同じ応答**が運ぶ——予定を受けた3箇所がここを通る。 */
+  if(r&&'canEnterTimes' in r){scState.canEnterTimes=!!r.canEnterTimes;scState.timesDenied=String(r.timesDenied||'')}
  }
  /* 見る項目。**内容欄に出している項目そのもの**——「表示中の列すべて」を
     1箇所で答える（別々に組み立てると、見えている列と直る列が食い違う）。 */
@@ -7478,7 +7498,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
       「完了」と並んで幅に入らず切れた（1728pxで実測）。何を・どこで入れるかは`title`。 */
    timeText='時刻未登録';
    timeTitle=(e.doneReason||'')+'\n実際の時刻が未登録です。'
-    +(planEditable()?'「時刻を入れる」（またはダブルクリック）で入れられます。':'スケジュールモードの端末で入れられます。');
+    +(timesEditable()?'操作の列の「時刻入力」（またはダブルクリック）で入れられます。':timesBlockReason());
   }else{
    timeText=showStart?fmtTimeRange(showStart,showEnd):(e.state==='完了'||e.state==='取消'?'-':'未定');
    timeTitle=showStart?`${useActual?'実績 ':''}${fmtDateTime(showStart)} 〜 ${fmtDateTime(showEnd)}`:'';
@@ -7655,9 +7675,12 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    // (別PCで測定した/端末側だけ消えた場合)。実データを消す操作なので
    // 予定の削除とは別のボタンにし、警告を必ず挟む。
    const canDeleteHistory=scState.canDeleteHistory&&!!recordId&&(e.state==='着手'||e.state==='完了');
-   /* 実際の時刻を入れる（§9.514）。**入れられる端末にだけボタンを出す**（§CLAUDE 4）——
-      入れられない端末は札の説明が「どこで入れられるか」を言う。直す道は右クリック。 */
-   const canTimes=!!e.timesNeeded&&planEditable();
+   /* 実際の時刻を入れる（§9.514）。**どのモードでも操作の列に出す**（§9.518）——
+      出さないと「どうにもできない」。入れられない端末では押せない形にして理由を`title`で言う
+      （§CLAUDE 4）。直す道は右クリック。 */
+   const canTimes=!!e.timesNeeded;
+   const timesOk=canTimes&&timesEditable();
+   const catShown=timelineColumnKeys().includes('__cat__');   // 状態の字の置き場（§9.518）
    const canFixTimes=!!(e.actual&&e.actual.source==='手入力');
    const manualTimes=canFixTimes;
 
@@ -7682,7 +7705,9 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     '__flags__':`<span class="sc-row-flags" data-col="__flags__">${flags}</span>`,
     '__scrap__':`<span class="sc-row-scrap${info.scrapText?'':' is-blank'}" data-col="__scrap__" title="${esc(info.scrapTitle)}">${esc(info.scrapText||'—')}</span>`,
     '__actions__':`<span class="sc-row-actions" data-col="__actions__">
-     ${canTimes?`<button type="button" class="sc-row-btn sc-row-times" title="実際の開始・終了の時刻を入れます（開始だけなら見積で終わります）">時刻を入れる</button>`:''}
+     ${rowStateChipHtml(e,catShown)}
+     ${canTimes?`<button type="button" class="sc-row-btn sc-row-times"${timesOk?'':' disabled'} title="${esc(timesOk
+       ?'実際の開始・終了の時刻を入れます（開始だけなら見積で終わります）':timesBlockReason())}">時刻入力</button>`:''}
      ${canStart?startBtnHtml():''}
      ${canLock?`<button type="button" class="sc-row-btn sc-row-lock${locked?' active':''}" title="${locked?'固定を解除して通常の並びへ戻します':'今の予定日時でこの行を固定します(以降ずれません)'}">${locked?'解除':'固定'}</button>`:''}
      ${canResume?`<button type="button" class="sc-row-btn sc-row-resume" title="測定画面を開いて続きから再開します(行のダブルクリックでも開けます)">再開</button>`:''}
@@ -7838,9 +7863,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
     openRowMenu(ev,scRowMenuTitle(e),scRowMenuNote(e),[
      {group:'進める'},
      /* 実際の時刻（§9.514）。**入れられないときも並べて理由を書く**（§4）。 */
-     e.timesNeeded&&{label:'実際の時刻を入れる…',note:planEditable()?(e.doneReason||'開始だけでも入れられます')
-       :'この画面では予定を変えられません（スケジュールモードで入れられます）',
-       disabled:!planEditable(),showNote:true,run:()=>openTimes(e)},
+     e.timesNeeded&&{label:'実際の時刻を入れる…',note:timesEditable()?(e.doneReason||'開始だけでも入れられます')
+       :timesBlockReason(),disabled:!timesEditable(),showNote:true,run:()=>openTimes(e)},
      canStart&&{label:'作業を開始する',note:'この予定の測定画面を開きます',
                 run:()=>startWorkFromEntry(e)},
      canResume&&{label:'測定を再開する',note:'続きから開きます',
@@ -7853,9 +7877,8 @@ const SC_LOCK_WAIT_MAX_MS=4000;
        showNote:true,run:()=>openRowLink(e)}})(),
 
      {group:'この行を直す'},
-     canFixTimes&&{label:'実際の時刻を直す…',note:planEditable()?'手で入れた開始・終了を直します'
-       :'この画面では予定を変えられません（スケジュールモードで直せます）',
-       disabled:!planEditable(),run:()=>openTimes(e)},
+     canFixTimes&&{label:'実際の時刻を直す…',note:timesEditable()?'手で入れた開始・終了を直します'
+       :timesBlockReason(),disabled:!timesEditable(),run:()=>openTimes(e)},
      /* §9.220 2①。**できないときも並べて理由を書く**（§4）——メニューから
         消すと「直せる場所が無い」のか「この行は直せない」のかが読めない。 */
      e.kind==='設備停止'&&e.state==='予定'&&{label:'停止の内容を変える',
@@ -7929,7 +7952,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
                         note:'取り消せません',run:()=>deleteHistoryEntry(e)},
     ]);
    });
-   if(canTimes){
+   if(timesOk){
     row.title='ダブルクリックで実際の時刻を入れます';
     row.ondblclick=ev=>{
      if(ev.target.closest('button'))return;
@@ -10301,9 +10324,21 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   return planEditable();
  }
  /* この画面で予定を書き換えられるか（スケジュールモード・編集権）。**答えは1箇所**——
-    枠の差し込み・実際の時刻の登録（§9.514）が同じ条件を見る。 */
+    枠の差し込みが見る。 */
  function planEditable(){
   return !!scState.fullControl&&!sessionBlocked();
+ }
+ /* 実際の時刻を入れられるか（§9.518、利用者の指示「時刻を入れるボタンが『操作』になく、
+    どうにもできない」→ 選択「その場で入れられる」）。**予定の並びを変える権利とは別の軸**
+    ——起きたことの記録なので、編集モードでも権限のある端末なら入れられる。
+    **答えはサーバー**（`canEnterTimes`・`routes/schedule.py`の`_times_allowed()`）で、
+    画面はモードを見て決めない。入れられない理由もサーバーの字（`timesDenied`）。 */
+ function timesEditable(){
+  return !!scState.canEnterTimes&&!sessionBlocked();
+ }
+ function timesBlockReason(){
+  if(sessionBlocked())return sessionHolderMessage();
+  return scState.timesDenied||'この端末では実際の時刻を入れられません。';
  }
  /* ---------- 実際の時刻を入れる（§9.514） ----------
     窓は`WL.scheduleTimes`の1つ（段「履歴」も同じ窓）。保存できたら予定を取り直す。 */
@@ -10335,10 +10370,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   box.innerHTML=`<div class="sc-undecided-main">
     <b>${all.length}件の実際の時刻が未登録です</b>
     <span class="sc-undecided-who" title="${esc(names.join('・'))}">${esc(shown)}</span>
-    ${planEditable()?'<button type="button" class="sc-undecided-fix" id="scTimesInOrder">順に入れる</button>':''}
+    ${timesEditable()?'<button type="button" class="sc-undecided-fix" id="scTimesInOrder">順に入れる</button>':''}
    </div>
    <small>仕掛から消えたロットと、後ろの作業が始まった設備停止は完了にしています。時刻を入れると記録（段「履歴」）に残ります。${
-    planEditable()?'開始だけ入れれば、終わりは見積で決まります。':'スケジュールモードの端末で入れられます。'}</small>`;
+    timesEditable()?'各行の操作の列の「時刻入力」からも入れられます。開始だけ入れれば、終わりは見積で決まります。':timesBlockReason()}</small>`;
   const b=$('#scTimesInOrder');
   if(b)b.onclick=()=>openTimesInOrder();
  }
