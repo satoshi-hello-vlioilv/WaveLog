@@ -148,7 +148,7 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
                      'test_scmodecols',
                      'test_scstop', 'test_scwarm', 'test_scundecided',
                      # §9.389: 設備停止を入れる手順（内容→内訳→時間）と耳屑幅の列
-                     'test_stopflow', 'test_stoppos', 'test_scscrap', 'test_scsubtotal', 'test_sccolpanel', 'test_schistui',
+                     'test_stopflow', 'test_stoppos', 'test_sctimesedit', 'test_scscrap', 'test_scsubtotal', 'test_sccolpanel', 'test_schistui',
                      'test_scwatchui', 'test_scwatch', 'test_sccomment',
                      'test_scowner', 'test_scrowstyle', 'test_scload', 'test_scbar', 'test_scsave',
                      # §9.366: さかのぼりの起点と2段の選び方
@@ -294,7 +294,7 @@ RULES = [
                                      'test_eqfeature')),
     ('static/js/schedule/schedule-print.js', g('モーダル', 'test_scprint')),
     # §9.514: 実際の時刻を手で入れる小窓（予定の画面と段「履歴」が呼ぶ）
-    ('static/js/schedule/schedule-times.js', g('test_sctimes', 'test_schistui')),
+    ('static/js/schedule/schedule-times.js', g('test_sctimes', 'test_sctimesedit', 'test_schistui')),
     # 実績データリストは列の設定パネル・帳票・アクセスモードへつながる。
     ('static/js/report/actuals-view.js', g('実績', 'モーダル', '列', 'test_recperm', 'test_nav')),
     ('static/js/report/opsheet-print.js', g('実績', 'モーダル', '列')),

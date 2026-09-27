@@ -1391,6 +1391,16 @@
 .sc-row-times{min-width:auto;padding:0 var(--ctl-pad-x-xs);background:var(--warn-bg);border-color:var(--warn-border);
  color:var(--warn-fg);font-weight:800;white-space:nowrap}
 .sc-row-times:hover{background:var(--warn-border);border-color:var(--warn-border);color:var(--surface)}
+/* 入れられない端末（§9.518）。**消さずに押せない形で残す**——理由は`title`が言う（§CLAUDE 4）。 */
+.sc-row-times:disabled{background:none;border-style:dashed;color:var(--muted);cursor:not-allowed;font-weight:700}
+.sc-row-times:disabled:hover{background:none;border-color:var(--warn-border);color:var(--muted)}
+/* 行の状態の札（§9.518）。**枠を持たない字**（読み取り専用の値を押せる物に見せない・§CLAUDE 10）。
+   完了は正常＝中立の色（§9.338）、作業中だけ青緑（いま動いている行）。高さは行のボタンにそろえる。 */
+.sc-row-state{display:inline-flex;align-items:center;gap:2px;height:var(--row-ctl-h);padding:0 var(--space-1);
+ font-size:var(--fs-sm);font-weight:800;white-space:nowrap;flex-shrink:0}
+.sc-row-state.is-done{color:var(--ink-3)}
+.sc-row-state.is-done::before{content:"✓";font-weight:800}
+.sc-row-state.is-doing{color:var(--teal-dark)}
 /* ---------- 実際の時刻の小窓（§9.514・schedule-times.js） ----------
    名前の列は固定幅（§CLAUDE 9）。欄は分まで（`step=60`）、補助のボタンは欄のすぐ右。 */
 .sct{display:grid;gap:var(--space-3);min-width:min(34em,80vw)}
