@@ -566,8 +566,10 @@ RULES = [
     ('program/process_manager.py', g('起動')),
     ('program/requirements.txt', g('起動', 'test_noaccess')),
     # §9.485: ロット問い合わせの自動ログイン（同梱の拡張）。見本ページも同じ網が使う。
-    ('program/lotdsp-ext/', ['test_lotdspext']),
+    # §9.519: 転写計算アプリへの進度情報の取込（同じ拡張の別のファイル）。
+    ('program/lotdsp-ext/', ['test_lotdspext', 'test_tpaext']),
     ('tests/fixtures/lotdsp_login.html', ['test_lotdspext']),
+    ('tests/fixtures/lotdsp_progress.html', ['test_tpaext']),
     ('program/', g('起動')),
 
     # --- ドキュメント --------------------------------------------------

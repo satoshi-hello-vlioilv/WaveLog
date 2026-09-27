@@ -1,0 +1,80 @@
+<!doctype html>
+<!-- ロット問い合わせ（LotDsp）の検索と「進度情報」タブの見本（§9.519・test_tpaext.js）。
+     形は利用者が保存した実物（2026-09-27・L7150C0）と同じ: ロット番号の欄 #common_searchLtno（ng-model）・
+     button[ng-click="action.search()"]・「検索結果: n件」・タブ（a.MniTabLnk／選択中は .MniTabTblSelTd）・
+     見出し｜値の小さな表・実績の表（見出しの行と値の行に空の区切りセルが同じ位置で並ぶ）。
+     **本物の AngularJS の代わり**に、入力の合図（input）で値を読む小さな model を置く。
+     ?boxes=N … 実績の BOX 数（既定10・最大25）   ?login=1 … ログイン画面から始まる（VPN） -->
+<html lang="jp"><head><meta charset="utf-8"><title>Webロット問合せ（見本）</title></head>
+<body>
+<span id="header">
+ <span class="message" id="messageArea"></span>
+ <span>ﾛｯﾄ番号</span>
+ <input type="text" id="common_searchLtno" ng-model="common.searchLtno">
+ <span>検査番号</span>
+ <input type="text" id="common_searchKnno" ng-model="common.searchKnno">
+ <button type="submit" class="btn btn-default btnCustom lotdspBtnCustom" ng-click="action.search()">検索</button>
+ <span class="header-label" id="hits">検索結果: 0件</span>
+</span>
+<div id="login" style="display:none">
+ <input type="text" id="input_userId"><input type="password" id="input_password">
+ <button type="submit" class="lotdspBtnCustom" ng-click="action.login()">ログイン </button>
+</div>
+<div id="tabs" style="display:none">
+ <table class="MniTabTbl"><tbody><tr id="tabRow"></tr></tbody></table>
+ <div id="content"></div>
+</div>
+<script>
+ const q = new URLSearchParams(location.search);
+ const BOXES = Math.min(25, Number(q.get('boxes') || 10));
+ const KNOWN = 'L7150C0';
+ const EQ = ['HOT', 'L-1', 'L-1', 'L-1', 'L-2', 'L-2', 'CAL', 'TLV', 'LS4', 'KEN'];
+ const model = { lot: '', kn: '' };
+ window.__fake = { model, searches: 0, tabClicks: 0, loginClicks: 0 };
+ const $ = id => document.getElementById(id);
+ $('common_searchLtno').addEventListener('input', e => { model.lot = e.target.value; });
+ $('common_searchKnno').addEventListener('input', e => { model.kn = e.target.value; });
+ if (q.get('login') === '1') { $('header').style.display = 'none'; $('login').style.display = ''; }
+ document.querySelector('[ng-click="action.login()"]').addEventListener('click', () => {
+   __fake.loginClicks++;
+   setTimeout(() => { $('login').style.display = 'none'; $('header').style.display = ''; }, 300);
+ });
+ const TABS = ['ICAS情報', '進度情報', '製造情報'];
+ function renderTabs(cur) {
+   $('tabRow').innerHTML = TABS.map(t => t === cur
+     ? `<td class="MniTabTblSelTd"><div class="MniTabSelTxt"><span class="disabled TabPad">${t}</span></div></td>`
+     : `<td><a class="MniTabLnk TabPad" href="" data-tab="${t}">${t}</a></td>`).join('');
+   $('tabRow').querySelectorAll('a').forEach(a => a.addEventListener('click', e => {
+     e.preventDefault(); __fake.tabClicks++; show(a.dataset.tab);
+   }));
+ }
+ const mini = (k, v) => `<table class="item-width1"><tbody><tr><td><span>${k}</span></td></tr><tr><td><span class="ng-binding">${v}</span></td></tr></tbody></table>`;
+ const cells = arr => arr.map((c, i) => (i ? '<td></td>' : '') + `<td><span class="ng-binding">${c}</span></td>`).join('');
+ function show(tab) {
+   renderTabs(tab);
+   const head = mini('ﾛｯﾄ番号', KNOWN) + mini('鋳造番号', 'J66G16A');
+   if (tab !== '進度情報') { $('content').innerHTML = head + `<p>${tab}</p>`; return; }
+   const H = ['№', '設備', '日付', '板厚', '板幅', '板丈', '重量', 'ﾊﾟ', '枚本', 'B', '長さ', '前ｵﾌ', '後ｵﾌ', '肉厚'];
+   $('content').innerHTML = head + `<table id="actual"><tbody><tr>${cells(H)}</tr></tbody></table>`;
+   /* 行は2回に分けて描く（本物も ng-repeat が描き終わるまで行数が動く）。 */
+   const row = i => `<tr ng-repeat="meisaiInfo in staffProgressJBoxInfos track by $index">${cells([i + 1, EQ[i % EQ.length], '26/09/17 17:16:31', '0.505', '1200.00', '0.0', '6220.0', '', '1.0', '0', '', '', '', '0'])}</tr>`;
+   const body = $('actual').tBodies[0];
+   const half = Math.ceil(BOXES / 2);
+   setTimeout(() => { for (let i = 0; i < half; i++) body.insertAdjacentHTML('beforeend', row(i)); }, 200);
+   setTimeout(() => { for (let i = half; i < BOXES; i++) body.insertAdjacentHTML('beforeend', row(i)); }, 450);
+ }
+ document.querySelector('[ng-click="action.search()"]').addEventListener('click', e => {
+   e.preventDefault();
+   __fake.searches++;
+   setTimeout(() => {
+     if (model.lot.toUpperCase() === KNOWN) {
+       $('hits').textContent = '検索結果: 1件'; $('messageArea').textContent = '';
+       $('tabs').style.display = ''; show('ICAS情報');
+     } else {
+       $('hits').textContent = '検索結果: 0件'; $('messageArea').textContent = '該当データがありません';
+       $('tabs').style.display = 'none';
+     }
+   }, 400);
+ });
+</script>
+</body></html>
