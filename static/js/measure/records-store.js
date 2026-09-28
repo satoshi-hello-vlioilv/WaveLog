@@ -1730,8 +1730,9 @@ function equipmentSettingsHtml(){
     <p class="eqset-help">一覧や測定画面のロット№を押すと、LotDspをこのタブで開きます。<b>下の「保存」は要りません</b>（この端末だけの設定です）。</p>
    </section>
    <!-- ③ ロット問い合わせのログイン（§9.485、利用者の指示「VPN環境時のID＆PASSを登録しておき…自動ログイン」
-        「登録修正もどこかから配線」）。**ID・パスワードは同梱の拡張が Edge のこの PC に持つ**——WaveLog は
-        受け取りも渡しもしない。ここが出すのは「拡張が入っているか」と、入れ方・拡張の設定を開く道だけ。 -->
+        「登録修正もどこかから配線」）。**ID・パスワードは LotData-Link（別のアプリの Edge 拡張・§9.521）が
+        Edge のこの PC に持つ**——WaveLog は受け取りも渡しもしない。ここが出すのは「入っているか」と、
+        入れ方・登録画面を開く道だけ。 -->
    <section class="eqset-sec eqset-sec-minor" aria-labelledby="eqsetH3">
     <h3 id="eqsetH3"><span class="eqset-no">③</span>ロット問い合わせのログイン（VPNのとき）
      <b class="eqset-now" id="lotdspExtNow">確かめています</b></h3>
@@ -1745,39 +1746,51 @@ function equipmentSettingsHtml(){
   </footer>
  </div>`;
 }
-/* ③の中身（§9.485）。拡張は WaveLog の画面へ`<html data-lotdsp-ext="版">`を名乗る（`wavelog.js`）。
-   **入っていれば**設定を開くボタン（拡張へ`wl:lotdsp-options`で頼む——WaveLog から拡張の画面は
-   直には開けない）。**入っていなければ**入れ方を手順で書く（フォルダの場所はサーバーが答える）。 */
-async function paintLotdspExt(){
+/* ③の中身（§9.485・§9.521）。LotData-Link は WaveLog の画面へ`<html data-lotdsp-ext="版">`を名乗る。
+   形は3つ:
+    - LotData-Link（版 2 以上）: 登録画面を開くボタン（`wl:lotdsp-options`で頼む——WaveLog から拡張の画面は
+      直には開けない）
+    - 以前 WaveLog に同梱していた拡張（版 1.x）: **入れ替えの手順**。2つ入れると同じログイン画面で2つが動き、
+      ログインを二重に押すおそれがあるので「消してから入れる」を先に書く
+    - 入っていない: 入れ方の手順 */
+const LOTDATA_LINK_URL='https://github.com/satoshi-hello-vlioilv/LotData-Link';
+function lotdspInstallSteps(){
+ return `<ol class="eqset-steps">
+   <li>LotData-Link を PC に置く（<code>${esc(LOTDATA_LINK_URL)}</code>。入れ方はその README）</li>
+   <li>Edge のアドレス欄に <code>edge://extensions</code> と入れて開き、左の「<b>開発者モード</b>」をオンにする</li>
+   <li>「<b>展開して読み込み</b>」を押し、LotData-Link の <code>extension</code> フォルダを選ぶ</li>
+   <li>この窓を開き直すと「入っています」に変わります</li>
+  </ol>
+  <p class="eqset-help">会社の設定で拡張が読み込めない端末では、手順2か3が押せません。そのときは管理者に確認してください。</p>`;
+}
+function paintLotdspExt(){
  const now=$('#lotdspExtNow'),body=$('#lotdspExtBody');
  if(!now||!body)return;
  const ver=document.documentElement.dataset.lotdspExt||'';
- if(ver){
-  now.className='eqset-now is-pick';now.textContent=`拡張: 入っています（${ver}）`;
-  body.innerHTML=`<p class="eqset-lead">ログイン画面が出たら、拡張に登録した ID・パスワードで自動でログインします。
-    未登録なら、ロット問い合わせの画面の上に登録の帯が出ます。<b>登録・直す・消す</b>は拡張の設定で行います
+ const major=parseInt(ver,10)||0;
+ if(major>=2){
+  now.className='eqset-now is-pick';now.textContent=`LotData-Link: 入っています（${ver}）`;
+  body.innerHTML=`<p class="eqset-lead">ログイン画面が出たら、LotData-Link に登録した ID・パスワードで自動でログインします。
+    未登録なら、ロット問い合わせの画面の上に登録の帯が出ます。<b>登録・直す・消す</b>は LotData-Link の設定で行います
     （ID・パスワードは Edge のこの PC にだけ保存し、WaveLog は受け取りません）。</p>
    <button type="button" id="lotdspExtOpen" class="mm-btn-ghost">ログインの登録・修正を開く</button>`;
   $('#lotdspExtOpen').onclick=()=>document.dispatchEvent(new CustomEvent('wl:lotdsp-options'));
   return;
  }
- now.className='eqset-now is-instant';now.textContent='拡張: 入っていません';
- let info={dir:'',found:false};
- try{info=await api('/api/lotdsp/ext')}
- catch(e){WL.quiet.note('拡張の場所を読めない（手順だけ出す）',e)}
- body.innerHTML=`<p class="eqset-lead">VPN でロット問い合わせを開くとログイン画面が出る端末だけ、Edge に同梱の拡張を入れます。
-   入れると、ログイン画面で登録した ID・パスワードを入れて自動でログインします。</p>
-  <ol class="eqset-steps">
-   <li>Edge のアドレス欄に <code>edge://extensions</code> と入れて開く</li>
-   <li>左の「<b>開発者モード</b>」をオンにする</li>
-   <li>「<b>展開して読み込み</b>」を押し、このフォルダを選ぶ:
-    <code class="eqset-path">${esc(info.dir||'（WaveLog のフォルダ）\\program\\lotdsp-ext')}</code>
-    ${info.dir?'<button type="button" id="lotdspExtCopy" class="mm-btn-ghost sm">場所をコピー</button>':''}</li>
-   <li>この窓を開き直すと「入っています」に変わります</li>
-  </ol>
-  <p class="eqset-help">会社の設定で拡張が読み込めない端末では、手順2か3が押せません。そのときは管理者に確認してください。</p>`;
- const cp=$('#lotdspExtCopy');
- if(cp)cp.onclick=()=>{WL.base.copyText(info.dir);showToast('フォルダの場所をコピーしました','「展開して読み込み」の窓に貼り付けます',3000)};
+ if(ver){
+  now.className='eqset-now is-none';now.textContent=`入れ替えが要ります（古い拡張 ${ver}）`;
+  body.innerHTML=`<p class="eqset-lead">以前 WaveLog に同梱していた拡張が入っています。拡張は単独のアプリ
+    <b>LotData-Link</b> へ移りました。<b>古い拡張を先に消してから</b>入れてください（2つ入っていると、
+    ログインを二重に押すおそれがあります）。ID・パスワードは入れ替えたあと1度だけ登録し直します。</p>
+   <ol class="eqset-steps">
+    <li><code>edge://extensions</code> で「WaveLog ロット問い合わせ 自動ログイン」の「削除」を押す</li>
+   </ol>${lotdspInstallSteps()}`;
+  return;
+ }
+ now.className='eqset-now is-instant';now.textContent='LotData-Link: 入っていません';
+ body.innerHTML=`<p class="eqset-lead">VPN でロット問い合わせを開くとログイン画面が出る端末だけ、Edge に
+   <b>LotData-Link</b>（ロット問い合わせとアプリをつなぐ拡張）を入れます。入れると、ログイン画面で登録した
+   ID・パスワードを入れて自動でログインします。</p>${lotdspInstallSteps()}`;
 }
 function ensureEquipmentSettingsModal(){
  let modal=$('#appSettingsModal');
