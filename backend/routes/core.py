@@ -313,19 +313,6 @@ def whoami():
 # `false`で理由を持って返るので、画面は**ボタンを出さずに理由を書く**
 # （押せるのに何も起きない的を残さない・§CLAUDE 4）。
 # ========================================================================
-@bp.get('/api/lotdsp/ext')
-@api_guard('ロット問い合わせの拡張の場所を読めません')
-def lotdsp_ext_info():
- """同梱の拡張（ロット問い合わせの自動ログイン・§9.485）の**置き場と版**だけを答える。
-    ID・パスワードは拡張が Edge のこの PC に持ち、**WaveLog は受け取りも渡しもしない**。
-    画面（使用設備の設定③）が「展開して読み込み」で選ぶフォルダを書くのに使う。"""
- d=BASE/'program'/'lotdsp-ext'
- ver=''
- try:ver=json.loads((d/'manifest.json').read_text(encoding='utf-8')).get('version','')
- except (OSError,ValueError) as e:
-  quiet('拡張の版を読めない（場所だけ答える）',e)
- return jsonify(dir=str(d),found=d.is_dir(),version=ver)
-
 @bp.get('/api/app/shortcut')
 @api_guard('ショートカットの状態を読めません')
 def app_shortcut_status():
