@@ -9,6 +9,9 @@
        （同じ欄を2つの物が押しに行かない）。
     3. **検索は人と同じ道。** ロット番号の欄へ`input`・`change`の合図で入れて「検索」を押す。linkkey は鋳造番号が
        要るので使わない（利用者「鋳造番号が空の場合、ロット番号のところにロット番号を入れて検索を押す」）。
+       ロット番号の欄は画面で2つある: 最初の画面（#/lotdsp）の`#input_searchLtno`と、検索のあとの画面の上の
+       `#common_searchLtno`。**見えている方**を使い、「検索」はその欄に一番近い（同じ囲みの中の）ものを押す。
+       最初の画面の「検索」は`ng-if`の中で欄より遅れて現れるので、見えるまで待つ（§9.520）。
     4. **どの列が何かは決めない。** 列の意味づけは転写計算アプリ（lotdsp_progress.py）の1箇所。ここは
        「頼まれたロット番号で、進度情報の実績の表が描き終わった」ことだけを確かめて HTML を渡す。
        BOX（設備の行）は最大25の可変なので、行数が落ち着くまで待つ。
@@ -21,8 +24,7 @@
   const STABLE_TICKS = 3;         // 実績の行数が同じまま3回続いたら描き終わり
   const SEL = {
     login: '#input_userId',
-    lot: '#common_searchLtno',
-    inspection: '#common_searchKnno',
+    lot: ['#input_searchLtno', '#common_searchLtno'],   // 最初の画面・検索のあとの画面（見えている方）
     search: 'button[ng-click="action.search()"]',
     message: '#messageArea',
   };
@@ -48,6 +50,17 @@
     for (const el of document.querySelectorAll('.header-label')) {
       const m = norm(el.textContent).match(/検索結果:(\d+)件/);
       if (m) return Number(m[1]);
+    }
+    return null;
+  }
+  /* 見えているロット番号の欄。検査番号の欄は同じ組（Ltno → Knno）。 */
+  const lotInput = () => SEL.lot.map(s => $(s)).find(shown) || null;
+  const pairedInspection = input => document.getElementById(input.id.replace(/Ltno$/, 'Knno'));
+  /* 欄から外へ囲みをたどり、最初に見つかった見えている「検索」＝その欄の「検索」。 */
+  function searchButtonFor(input) {
+    for (let el = input.parentElement; el; el = el.parentElement) {
+      const b = [...el.querySelectorAll(SEL.search)].find(shown);
+      if (b) return b;
     }
     return null;
   }
@@ -113,21 +126,20 @@
     const loginShown = () => shown($(SEL.login));
     try {
       /* 1) ログイン（VPN）。押すのは lotdsp.js。欄が消えるまで待つだけ。 */
-      await until(() => loginShown() || shown($(SEL.lot)), left(), 'ロット問い合わせの画面が出ませんでした');
+      await until(() => loginShown() || lotInput(), left(), 'ロット問い合わせの画面が出ませんでした');
       if (loginShown()) {
         progress('login');
         showBar(`${lotNo}: ロット問い合わせのログインを待っています（ログインが済むと続けて取り込みます）`);
-        await until(() => !loginShown() && shown($(SEL.lot)), left(), 'ロット問い合わせのログインが済みませんでした');
+        await until(() => !loginShown() && lotInput(), left(), 'ロット問い合わせのログインが済みませんでした');
       }
       /* 2) ロット番号で検索（検査番号の欄は空にする——両方入っていると相手がどちらで探すか分からない）。 */
       progress('searching');
       showBar(`${lotNo}: ロット番号で検索しています`);
-      const input = $(SEL.lot);
+      const input = lotInput();
+      const btn = await until(() => searchButtonFor(input), Math.min(left(), 15000), '「検索」ボタンが見つかりません');
       put(input, lotNo);
-      const kn = $(SEL.inspection);
+      const kn = pairedInspection(input);
       if (kn && kn.value) put(kn, '');
-      const btn = $(SEL.search);
-      if (!btn) throw new Error('「検索」ボタンが見つかりません');
       btn.click();
       const clickedAt = Date.now();
       await until(() => {

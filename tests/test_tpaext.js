@@ -81,7 +81,8 @@ run('test_tpaext: 転写計算アプリへの進度情報の取込（§9.519）'
   /* ---- 2) 頼まれたら: ロット番号で検索 → 進度情報タブ → 描き終わった画面を渡す（BOX 25） ---- */
   await open('boxes=25', job);
   await W.until(page, () => window.__sent.some(m => m.type === 'tpa-result'), null, { ms: 20000, what: '取込の結果' });
-  f = await page.evaluate(() => ({ searches: __fake.searches, tabClicks: __fake.tabClicks, lot: __fake.model.lot }));
+  f = await page.evaluate(() => ({ searches: __fake.searches, start: __fake.startSearches, header: __fake.headerSearches,
+                                   tabClicks: __fake.tabClicks, lot: __fake.model.lot }));
   const r25 = await page.evaluate(() => {
     const m = window.__sent.find(x => x.type === 'tpa-result') || { error: '(結果なし)' };
     const doc = new DOMParser().parseFromString(m.htmlText || '', 'text/html');
@@ -89,8 +90,8 @@ run('test_tpaext: 転写計算アプリへの進度情報の取込（§9.519）'
              rows: doc.querySelectorAll('tr[ng-repeat*="staffProgressJBoxInfos"]').length,
              bar: !!doc.querySelector('[data-tpa-lotdsp]') };
   });
-  rec('ロット番号を人と同じ合図で入れて「検索」を1回押す（linkkey は使わない）',
-      f.searches === 1 && f.lot === LOT, JSON.stringify(f));
+  rec('最初の画面（実物の #/lotdsp）で、ロット番号の欄 #input_searchLtno へ人と同じ合図で入れ、後から現れる「検索」を1回押す（linkkey は使わない）',
+      f.searches === 1 && f.start === 1 && f.header === 0 && f.lot === LOT, JSON.stringify(f));
   rec('検索のあと「進度情報」タブを押し、25 BOX すべて描き終わってから渡す（行数を決め打ちしない）',
       f.tabClicks === 1 && !r25.error && r25.rows === 25 && r25.lotNo === LOT && r25.nonce === 'n1', JSON.stringify(r25));
   rec('渡す画面に拡張の帯を混ぜない', r25.bar === false);
@@ -98,6 +99,14 @@ run('test_tpaext: 転写計算アプリへの進度情報の取込（§9.519）'
   rec('途中経過は 検索 → 読む の順で知らせる',
       JSON.stringify(s.filter(m => m.type === 'tpa-progress').map(m => m.stage)) === '["searching","reading"]',
       JSON.stringify(s.map(m => m.stage || m.type)));
+
+  /* ---- 2b) 検索のあとの画面（上の検索欄）から始まっても同じように読む ---- */
+  await open('header=1&boxes=10', { lotNo: LOT, nonce: 'n1b' });
+  await W.until(page, () => window.__sent.some(m => m.type === 'tpa-result'), null, { ms: 20000, what: '上の検索欄からの取込' });
+  const r2b = (await result()) || { error: '(結果なし)' };
+  f = await page.evaluate(() => ({ start: __fake.startSearches, header: __fake.headerSearches, lot: __fake.model.lot }));
+  rec('検索のあとの画面から始まったら、見えている上の検索欄（#common_searchLtno）で検索して渡す',
+      !r2b.error && f.start === 0 && f.header === 1 && f.lot === LOT, JSON.stringify({ err: r2b.error, f }));
 
   /* ---- 3) VPN のログイン画面: 押さずに待ち、ログインが済んだら続ける ---- */
   await open('login=1&boxes=3', { lotNo: LOT, nonce: 'n2' });
@@ -108,9 +117,10 @@ run('test_tpaext: 転写計算アプリへの進度情報の取込（§9.519）'
   await W.until(page, () => window.__sent.some(m => m.type === 'tpa-result'), null, { ms: 20000, what: 'ログイン後の取込' });
   const r3 = (await result()) || { error: '(結果なし)' };
   s = await sent();
-  rec('ログインが済んだら検索から続け、3 BOX を渡す',
-      !r3.error && JSON.stringify(s.filter(m => m.type === 'tpa-progress').map(m => m.stage)) === '["login","searching","reading"]',
-      JSON.stringify({ err: r3.error, stages: s.map(m => m.stage || m.type) }));
+  f = await page.evaluate(() => ({ start: __fake.startSearches, header: __fake.headerSearches }));
+  rec('ログインが済んだら最初の画面の検索から続け、3 BOX を渡す',
+      !r3.error && f.start === 1 && f.header === 0 && JSON.stringify(s.filter(m => m.type === 'tpa-progress').map(m => m.stage)) === '["login","searching","reading"]',
+      JSON.stringify({ err: r3.error, f, stages: s.map(m => m.stage || m.type) }));
 
   /* ---- 4) 該当なし: 理由を付けて返す・帯でも言う ---- */
   await open('', { lotNo: 'L0000A0', nonce: 'n3' });
