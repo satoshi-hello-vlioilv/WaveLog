@@ -1048,7 +1048,12 @@ class _Placer:
 
  どの置き方も予定へ書く鍵は同じ8つ（plannedStart／plannedEnd／startsInMinutes／estimate／
  reorderable／spansNonWorking／overdueMinutes／shift）。**時間を持たない行**（子ロット・完了／取消）は
- `_no_time()`の1箇所が書く。"""
+ `_no_time()`、**置ける稼働帯が尽きた行**は`_unplaced()`の1箇所が書く。
+
+ **`cursor`が空（None）＝置ける稼働帯が上限まで尽きた**（固定開始の打ち間違い・全曜日が休みの
+ 稼働カレンダー）。以前はその後ろの枠・作業が`datetime > None`で例外になり、**その設備の展開
+ 全体が止まって**作業スケジュールが開けなかった（§9.519）。空のあとは種別を問わず`_unplaced()`へ回す
+ ——時刻を比べる前に止めるのは`place()`の入口の1箇所。"""
 
  def __init__(self,mc,equipment,now,timeline,specific_shift,global_shift,est_memo,warnings,anchor,ongoing_ids):
   self.mc=mc;self.equipment=equipment;self.now=now;self.timeline=timeline
@@ -1080,7 +1085,10 @@ class _Placer:
    self._no_time(e)
    return
   est=resolve_estimate(self.mc,self.equipment,e,memo=self.est_memo)
-  if e['kind']=='枠':self._frame(e,est)
+  if self.cursor is None and e['kind']!='コメント' and id(e) not in self.ongoing_ids:
+   # 置ける稼働帯が尽きた（申し送りは位置だけ持つので空のまま扱える・着手中は現在時刻から置き直す）
+   self._unplaced(e,est)
+  elif e['kind']=='枠':self._frame(e,est)
   elif e['kind']=='コメント':self._comment(e,est)
   elif id(e) in self.ongoing_ids:self._ongoing(e,est)
   else:self._timed(e,est)
@@ -1126,6 +1134,23 @@ class _Placer:
               'warning':note}
   if note:self.warnings.append(f"予定ID {e['id']}: {note}")
   self.cursor=at
+
+ def _unplaced(self,e,est):
+  """置ける稼働帯が見つからない行。時刻は空、見積はそのまま（枠は時間を使わないので0分）、理由を1行。"""
+  frame=e['kind']=='枠'
+  e['plannedStart']=None;e['plannedEnd']=None;e['startsInMinutes']=None
+  e['estimate']=dict(est,minutes=0.0 if frame else est['minutes'])
+  e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
+  e['spansNonWorking']=False;e['overdueMinutes']=0;e['shift']=None
+  if frame:
+   # 枠の内訳（画面の`frameDetailHtml()`）は開始が空なら「—」、空きが数でなければ「—」と書く。
+   target,note=frame_target(e.get('detail'),self.specific_shift,self.global_shift)
+   detail=e.get('detail') or {}
+   e['frame']={'date':str(detail.get('frameDate') or ''),'shift':str(detail.get('frameShift') or ''),
+               'note':str(detail.get('frameNote') or ''),
+               'target':target.isoformat() if target is not None else None,
+               'gapMinutes':None,'reached':False,'warning':note}
+  self._no_room(e)
 
  def _comment(self,e,est):
   # 申し送り(§9.189)。**カーソルを進めない**——時間を持たせると、
@@ -1185,11 +1210,7 @@ class _Placer:
   if cursor is None:
    self.truncated=True
   if self.truncated:
-   e['plannedStart']=None;e['plannedEnd']=None;e['startsInMinutes']=None
-   e['estimate']=dict(est,minutes=minutes)
-   e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
-   e['spansNonWorking']=False;e['overdueMinutes']=0;e['shift']=None
-   self._no_room(e)
+   self._unplaced(e,est)
    return
   planned_start=cursor
   end_cursor,spans,trunc=consume_minutes(cursor,minutes,self.timeline)

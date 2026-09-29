@@ -244,6 +244,72 @@ _got, _w = schedule_calc.snap_to_working(_far, _tl3)
 rec('先の時刻を指しても稼働帯を見つける（探す側も伸びる）',
     _got is not None and _tl3.grown >= 1, f'{_got} 伸ばした={_tl3.grown}')
 
+# ---- 8) 稼働帯が尽きたあとの行でも展開は止まらない（§9.519） ------------
+# 置ける稼働帯が上限（5年）まで見つからないと、次に置ける時刻（cursor）が
+# 空になる。以前は**その後ろに枠・作業が1本でもあると例外**（`datetime > None`）で
+# 展開全体が止まり、その設備の作業スケジュールが開けなかった（切り出しの最中に
+# 読んで見つけた・元のコードで再現）。起きる形は2つ——固定開始の打ち間違い
+# （2062年など）と、全曜日を休みにした稼働カレンダー。
+# **止まらないこと＋置けない行は置けないと言うこと**を見る。
+import json as _json
+import tempfile as _tempfile
+
+from backend.repositories import schedule_repo as _sr   # noqa: E402
+from backend.sqlite_io import connect as _connect       # noqa: E402
+
+_EQ = '稼働帯切れ試験設備'
+
+
+def _expand_case(calendar, rows):
+    tmp = pathlib.Path(_tempfile.mkdtemp(prefix='wl_scload_'))
+    c = _connect(tmp / 's.sqlite3', False)
+    mc = _connect(tmp / 'm.sqlite3', False)
+    _sr.ensure_plan_table(c)
+    _sr.ensure_plan_table(c)
+    _sr.calendar_sync(mc, _EQ, calendar, 'tests')
+    mc.commit()
+    for i, (kind, lot, est, fixed, detail) in enumerate(rows):
+        d = dict(detail or {})
+        if lot:
+            d['lotNo'] = lot
+        c.execute('INSERT INTO [作業予定] ([設備名],[表示順],[種別],[ロット番号],[明細JSON],[見積分],[状態],[有効],'
+                  '[固定開始日時]) VALUES (?,?,?,?,?,?,?,?,?)',
+                  [_EQ, i + 1, kind, lot, _json.dumps(d, ensure_ascii=False), est, '予定', 1, fixed])
+    c.commit()
+    real = schedule_calc.actual_match.lookup
+    schedule_calc.actual_match.lookup = lambda detail, entry: {'missing': False, 'reason': ''}
+    try:
+        return schedule_calc._expand_plan_with(c, mc, _EQ, _dt.datetime(2026, 9, 29, 9, 0),
+                                               _sr.plan_rows(c, _EQ), actual_index={})
+    except Exception as e:  # 止まったことを網の結果として数える（件数を偽らない）
+        return {'error': repr(e)}
+    finally:
+        schedule_calc.actual_match.lookup = real
+        c.close()
+        mc.close()
+
+
+_WEEK = [{'kind': '曜日', 'weekday': w, 'start': '07:00', 'end': '23:00'} for w in range(5)]
+_REST = [{'kind': '曜日', 'weekday': w, 'start': '07:00', 'end': '23:00', 'active': False} for w in range(7)]
+_FRAME = ('枠', '', None, None, {'frameDate': '2026-10-01'})
+_CASES = [
+    ('固定開始が上限より先 → 枠', _WEEK,
+     [('作業', 'A1', 30, None, None), ('作業', 'A2', 30, '2040-01-06 08:00:00', None), _FRAME]),
+    ('固定開始が上限より先 → 作業', _WEEK,
+     [('作業', 'A1', 30, None, None), ('作業', 'A2', 30, '2040-01-06 08:00:00', None),
+      ('作業', 'A3', 30, None, None)]),
+    ('全曜日が休み → 枠', _REST, [('作業', 'A1', 30, None, None), _FRAME, ('作業', 'A3', 30, None, None)]),
+]
+for _name, _cal, _rows in _CASES:
+    _out = _expand_case(_cal, _rows)
+    _tail = (_out.get('entries') or [])[1:]
+    _unplaced = [e for e in _tail if e.get('plannedStart') is None]
+    rec(f'稼働帯が尽きたあとも展開は止まらない（{_name}）', 'error' not in _out, _out.get('error', ''))
+    rec(f'尽きたあとの行は置かず、理由を言う（{_name}）',
+        'error' not in _out and len(_unplaced) == len(_tail)
+        and sum('置ける稼働帯がありません' in w for w in _out.get('warnings', [])) >= len(_tail),
+        f"置けない {len(_unplaced)}/{len(_tail)}行・" + ' / '.join(_out.get('warnings', [])[:3]))
+
 print('\n=== SUMMARY ===')
 ng = [x for x in R if not x[1]]
 print('%d/%d passed' % (len(R) - len(ng), len(R)))
