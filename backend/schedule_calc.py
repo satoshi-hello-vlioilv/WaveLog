@@ -866,6 +866,17 @@ def expand_plan(c,equipment,now=None,history_hours=DEFAULT_HISTORY_HOURS,include
  return out
 
 def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_HOURS,include_unplanned=True,actual_index=None,timings=None,history=None):
+ """予定の行を時刻へ展開する本体（§7.2）。**段ごとの関数を順に呼ぶだけ**（§9.519・REVIEW 3-22）。
+
+ 以前は344行の1本が次の7段を順に行っていた。段の順番は結果を決める順番そのものなので
+ 入れ替えないこと（例: 設備停止を終わらせる判定は、計画外の実績を混ぜる**前**の並びで見る）。
+  ① 行→予定の形（`_plan_entries`）と、全行に共通の注意（`_finish_join_missing_note`）
+  ② 時間的に終わった設備停止・時刻の登録を促す行（`_settle_passed_stops`／`_times_prompts`）
+  ③ 計画外の実績を混ぜる（`unplanned_entries`）
+  ④ 起点を決める（`_plan_anchor`）
+  ⑤ 1本ずつ時刻へ置く（`_Placer`）
+  ⑥ 現場歴の日付（`_assign_work_dates`）と、子ロットへ親の時刻を写す（`_copy_parent_times`）
+  ⑦ 実績を画面へ渡す形にする（`_finalize_actuals`）"""
  if timings is None:timings={}
  specific_cal=sr.calendar_rows(mc,equipment)
  global_cal=sr.calendar_rows(mc,'')
@@ -883,47 +894,9 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
   timings['actual']=round((_perf()-t)*1000,1)
  warnings=[]
 
- entries=[]
- matched_keys=set()
- lots=_lot_index(actual_index)
- for r in raw_rows:
-  detail={}
-  if r[8]:
-   try:detail=json.loads(r[8])
-   except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);detail={}
-  entry={'id':r[0],'order':r[2],'kind':r[3],'lotNo':r[4],'inspectionNo':r[5],'castingNo':r[6],
-         'title':r[7],'detail':detail,'fixedStart':r[9],'estimateMinutes':r[10],
-         'storedState':r[11],'actualRecordId':r[12],'remark':r[13],
-         # 分割ありの親ロットにぶら下がる子ロット(§9.83)。時間を持たない
-         # 明細行なので、下の時刻展開ループでは飛ばす。
-         'parentId':r[18],
-         # 「誰が・どの端末で予定へ入れたか」(§9.180)。登録側は入れた人と
-         # 端末で、更新側は最後に動かした人と端末。**混ぜないこと**——
-         # 並べ替えただけの人が「入れた人」に見えると責任の所在が変わる。
-         'createdBy':str(r[19] or ''),'createdPc':str(r[20] or ''),
-         'updatedBy':str(r[17] or ''),'updatedPc':str(r[21] or ''),
-         'createdAt':_iso(r[15]),'updatedAt':_iso(r[16])}
-  actual=match_actual(actual_index,detail.get('lotNo') or r[4],detail.get('castingNo') or r[6],detail.get('mfgMaterial')) if entry['kind']=='作業' else None
-  entry['state']=derive_state(entry['storedState'],actual)
-  entry['actual']=actual
-  entry['unplanned']=False
-  # ---- 仕掛から消えたロットの扱い(§9.364) ----
-  # **測定データとの突合(§7.4)が先。** あちらで着手／完了になっている行は
-  # ここで触らない——同じ状態を2つの根拠で決めると、食い違ったときに
-  # どちらが正しいか言えなくなる。
-  _apply_actual_source(entry,detail,r[22])
-  # 手で入れた実際の時刻（§9.514）。**測定データの実績があればそちらが正**。
-  entry['manual']=manual_times(r[23] if len(r)>23 else None) if actual is None else None
-  if actual is not None:matched_keys.add(actual['key'])
-  entry['advanceNote']=advance_note(entry,detail,lots)
-  entries.append(entry)
- # 完了突合が無いことは全行に共通(§9.462)。**行ではなくここで1回**言う——
- # 無いと「仕掛から消えたロット」を完了にできず、測定データだけが頼りになる。
- if any(e['kind']=='作業' and e['state']==sr.PLAN_REORDERABLE_STATE and e.get('parentId') is None
-        and '完了突合の設定がありません' in str(e.get('missingReason') or '') for e in entries):
-  warnings.append('完了突合が登録されていないため、仕掛から消えたロットを完了にできません'
-                  '（測定データで完了したロットだけが繰り上がります）。'
-                  '「マスタ管理 > クエリ結合」で用途「完了突合」を1件登録すると、消えたロットも完了になります。')
+ entries,matched_keys=_plan_entries(raw_rows,actual_index)
+ note=_finish_join_missing_note(entries)
+ if note:warnings.append(note)
 
  # 見積を引くための控え(§9.198)。設備が同じあいだ変わらないもの
  # (設備の標準時間・換算係数の上書き・設備停止の標準所要分)を、
@@ -948,13 +921,97 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
  # **足りなくなったら伸びる**（§9.291 ②）。60日ぶんで組んで、予定が
  # そこを超えたら`snap_to_working()`／`consume_minutes()`が伸ばす。
  timeline=SlotTimeline(specific_cal,global_cal,now.date())
- # 着手中(§9.37): まだ終わっていない作業。予定終了は「現在時刻」とし、
- # 後続の予定はそこから並べる。以前は「残り見積(見積-経過、下限5分)」を
- # 足した時刻を予定終了にしていたが、見積を超過した瞬間から
- #   - 予定終了が下限5分で頭打ちになり実態と合わない
- #   - 後続の予定開始が「もう過ぎているのに未来」の値になる
- # という食い違いが出ていた。現在時刻で切れば、時間が経つほど後続も
- # 自然に後ろへずれ、常に整合が取れる(§9.38の「現在時刻に追随して流れる」)。
+ anchor,anchor_note,ongoing_ids=_plan_anchor(active,now,timeline,warnings)
+
+ placer=_Placer(mc,equipment,now,timeline,specific_shift,global_shift,est_memo,warnings,anchor,ongoing_ids)
+ for e in entries:placer.place(e)
+
+ _assign_work_dates(entries,specific_shift,global_shift)
+ _copy_parent_times(entries)
+ _finalize_actuals(entries,now)
+
+ lf_model=load_factor.get_model(equipment)
+ load_factor_info=None
+ if lf_model is not None:
+  load_factor_info={'basis':lf_model.get('basis'),'n':lf_model.get('n'),
+                     'sigmaLog':round(lf_model.get('sigmaLog') or 0.0,3),
+                     'calculatedAt':lf_model.get('calculatedAt')}
+ if history_note:warnings.append(history_note)
+ return {'entries':entries,'warnings':warnings,'anchor':anchor.isoformat() if anchor else None,
+         'anchorRounded':anchor_note,'loadFactor':load_factor_info,
+         # さかのぼり(§9.366)。`historyFrom`が None なら「制限しない」。
+         'historyKey':(history_mode(history)['key'] if history is not None else None),
+         'historyFrom':history_from_at.isoformat() if history_from_at else None,
+         'historyHours':history_hours}
+
+
+def _plan_entries(raw_rows,actual_index):
+ """① 予定表の行を予定の形にし、測定データの実績・仕掛から消えたロットの扱いを当てる。
+ 戻り値: (予定の並び, 実績と突き合わせた鍵の集合)。後者は計画外の実績を見分けるのに使う。"""
+ entries=[]
+ matched_keys=set()
+ lots=_lot_index(actual_index)
+ for r in raw_rows:
+  entry,detail=_entry_of_row(r)
+  actual=match_actual(actual_index,detail.get('lotNo') or r[4],detail.get('castingNo') or r[6],detail.get('mfgMaterial')) if entry['kind']=='作業' else None
+  entry['state']=derive_state(entry['storedState'],actual)
+  entry['actual']=actual
+  entry['unplanned']=False
+  # ---- 仕掛から消えたロットの扱い(§9.364) ----
+  # **測定データとの突合(§7.4)が先。** あちらで着手／完了になっている行は
+  # ここで触らない——同じ状態を2つの根拠で決めると、食い違ったときに
+  # どちらが正しいか言えなくなる。
+  _apply_actual_source(entry,detail,r[22])
+  # 手で入れた実際の時刻（§9.514）。**測定データの実績があればそちらが正**。
+  entry['manual']=manual_times(r[23] if len(r)>23 else None) if actual is None else None
+  if actual is not None:matched_keys.add(actual['key'])
+  entry['advanceNote']=advance_note(entry,detail,lots)
+  entries.append(entry)
+ return entries,matched_keys
+
+
+def _entry_of_row(r):
+ """予定表の1行（`sr.plan_rows()`の並び）→ (予定, 明細)。明細が読めなければ空で続ける。"""
+ detail={}
+ if r[8]:
+  try:detail=json.loads(r[8])
+  except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);detail={}
+ entry={'id':r[0],'order':r[2],'kind':r[3],'lotNo':r[4],'inspectionNo':r[5],'castingNo':r[6],
+        'title':r[7],'detail':detail,'fixedStart':r[9],'estimateMinutes':r[10],
+        'storedState':r[11],'actualRecordId':r[12],'remark':r[13],
+        # 分割ありの親ロットにぶら下がる子ロット(§9.83)。時間を持たない
+        # 明細行なので、下の時刻展開ループでは飛ばす。
+        'parentId':r[18],
+        # 「誰が・どの端末で予定へ入れたか」(§9.180)。登録側は入れた人と
+        # 端末で、更新側は最後に動かした人と端末。**混ぜないこと**——
+        # 並べ替えただけの人が「入れた人」に見えると責任の所在が変わる。
+        'createdBy':str(r[19] or ''),'createdPc':str(r[20] or ''),
+        'updatedBy':str(r[17] or ''),'updatedPc':str(r[21] or ''),
+        'createdAt':_iso(r[15]),'updatedAt':_iso(r[16])}
+ return entry,detail
+
+
+def _finish_join_missing_note(entries):
+ """完了突合が無いことは全行に共通(§9.462)。**行ではなくここで1回**言う——
+ 無いと「仕掛から消えたロット」を完了にできず、測定データだけが頼りになる。"""
+ if any(e['kind']=='作業' and e['state']==sr.PLAN_REORDERABLE_STATE and e.get('parentId') is None
+        and '完了突合の設定がありません' in str(e.get('missingReason') or '') for e in entries):
+  return ('完了突合が登録されていないため、仕掛から消えたロットを完了にできません'
+          '（測定データで完了したロットだけが繰り上がります）。'
+          '「マスタ管理 > クエリ結合」で用途「完了突合」を1件登録すると、消えたロットも完了になります。')
+ return None
+
+
+def _plan_anchor(active,now,timeline,warnings):
+ """④ 起点（最初の予定を置く時刻）を決める。戻り値: (起点, 丸めた記録 or None, 着手中の行のid集合)。
+
+ 着手中(§9.37): まだ終わっていない作業。予定終了は「現在時刻」とし、
+ 後続の予定はそこから並べる。以前は「残り見積(見積-経過、下限5分)」を
+ 足した時刻を予定終了にしていたが、見積を超過した瞬間から
+   - 予定終了が下限5分で頭打ちになり実態と合わない
+   - 後続の予定開始が「もう過ぎているのに未来」の値になる
+ という食い違いが出ていた。現在時刻で切れば、時間が経つほど後続も
+ 自然に後ろへずれ、常に整合が取れる(§9.38の「現在時刻に追随して流れる」)。"""
  ongoing_ids=set()
  ongoing_starts=[]
  for e in active:
@@ -964,118 +1021,148 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
     ongoing_ids.add(id(e));ongoing_starts.append(started)
  anchor_note=None
  if ongoing_starts:
-  anchor=min(ongoing_starts)
- else:
-  anchor,_waited=snap_to_working(now,timeline)
-  if anchor is None:
-   anchor=now
-   warnings.append('稼働カレンダー上、直近の稼働開始時刻を特定できませんでした。')
-  else:
-   # **起点は5分刻みへ切り上げる**(§9.198、利用者の指示)。現在時刻をそのまま
-   # 起点にすると「10:23開始・11:47終了」のような読みにくい時刻が延々と続く。
-   # **切り上げ**なのは、切り下げると既に過ぎた時刻から始まる予定になるため。
-   # 着手中の作業があるときは丸めない——そちらは実績の開始時刻＝記録された
-   # 事実で、見栄えのために動かしてよい値ではない。
-   snapped=_round_up(anchor,ANCHOR_ROUND_MIN)
-   if snapped!=anchor:
-    # 丸めた先が稼働帯から出てしまうなら丸めない(勤務終わり際に起点だけが
-    # 翌日へ飛ぶのを避ける)。
-    back,_w=snap_to_working(snapped,timeline)
-    if back==snapped:
-     anchor_note={'from':anchor.isoformat(),'to':snapped.isoformat(),'unitMinutes':ANCHOR_ROUND_MIN}
-     anchor=snapped
+  return min(ongoing_starts),anchor_note,ongoing_ids
+ anchor,_waited=snap_to_working(now,timeline)
+ if anchor is None:
+  warnings.append('稼働カレンダー上、直近の稼働開始時刻を特定できませんでした。')
+  return now,anchor_note,ongoing_ids
+ # **起点は5分刻みへ切り上げる**(§9.198、利用者の指示)。現在時刻をそのまま
+ # 起点にすると「10:23開始・11:47終了」のような読みにくい時刻が延々と続く。
+ # **切り上げ**なのは、切り下げると既に過ぎた時刻から始まる予定になるため。
+ # 着手中の作業があるときは丸めない——そちらは実績の開始時刻＝記録された
+ # 事実で、見栄えのために動かしてよい値ではない。
+ snapped=_round_up(anchor,ANCHOR_ROUND_MIN)
+ if snapped!=anchor:
+  # 丸めた先が稼働帯から出てしまうなら丸めない(勤務終わり際に起点だけが
+  # 翌日へ飛ぶのを避ける)。
+  back,_w=snap_to_working(snapped,timeline)
+  if back==snapped:
+   anchor_note={'from':anchor.isoformat(),'to':snapped.isoformat(),'unitMinutes':ANCHOR_ROUND_MIN}
+   anchor=snapped
+ return anchor,anchor_note,ongoing_ids
 
- cursor=anchor
- truncated=False
- # 子ロット(§9.83)は親の予定時刻をそのまま借りる。展開が終わってから
- # 親の値を写すため、ここでIDから引けるようにしておく。
- parent_of={e['id']:e.get('parentId') for e in entries if e.get('parentId') is not None}
- for idx,e in enumerate(entries):
+
+class _Placer:
+ """⑤ 予定を1本ずつ時刻へ置く（§7.2）。**次に置ける時刻（`cursor`）と打ち切りの印（`truncated`）を
+ 持ち回る**のがこの段の仕事で、種別ごとの置き方は`place()`が振り分ける。
+
+ どの置き方も予定へ書く鍵は同じ8つ（plannedStart／plannedEnd／startsInMinutes／estimate／
+ reorderable／spansNonWorking／overdueMinutes／shift）。**時間を持たない行**（子ロット・完了／取消）は
+ `_no_time()`の1箇所が書く。"""
+
+ def __init__(self,mc,equipment,now,timeline,specific_shift,global_shift,est_memo,warnings,anchor,ongoing_ids):
+  self.mc=mc;self.equipment=equipment;self.now=now;self.timeline=timeline
+  self.specific_shift=specific_shift;self.global_shift=global_shift
+  self.est_memo=est_memo;self.warnings=warnings;self.ongoing_ids=ongoing_ids
+  self.cursor=anchor
+  self.truncated=False
+
+ def _shift(self,at):
+  return resolve_shift_label(self.specific_shift,self.global_shift,at)
+
+ def _no_room(self,e):
+  self.warnings.append(f"予定ID {e['id']} は稼働カレンダー上、{self.timeline.days}日先までに置ける稼働帯がありません。")
+
+ @staticmethod
+ def _no_time(e):
+  e['plannedStart']=None;e['plannedEnd']=None;e['startsInMinutes']=None
+  e['estimate']=None;e['reorderable']=False;e['spansNonWorking']=False
+  e['overdueMinutes']=0;e['shift']=None
+
+ def place(self,e):
   if e.get('parentId') is not None:
    # **カーソルを進めない**。親ロット1本をスリットする1回の作業なので、
    # タイムラインの長さを決めるのは親の見積だけ(子に時間を持たせると、
    # 分割ありのロットだけ予定終了が子の数だけ後ろへ伸びる)。
-   e['plannedStart']=None;e['plannedEnd']=None;e['startsInMinutes']=None
-   e['estimate']=None;e['reorderable']=False;e['spansNonWorking']=False
-   e['overdueMinutes']=0;e['shift']=None
-   continue
+   self._no_time(e)
+   return
   if e['state'] in PLAN_TERMINAL_STATES:
-   e['plannedStart']=None;e['plannedEnd']=None;e['startsInMinutes']=None
-   e['estimate']=None;e['reorderable']=False;e['spansNonWorking']=False;e['overdueMinutes']=0;e['shift']=None
-   continue
-  est=resolve_estimate(mc,equipment,e,memo=est_memo)
+   self._no_time(e)
+   return
+  est=resolve_estimate(self.mc,self.equipment,e,memo=self.est_memo)
+  if e['kind']=='枠':self._frame(e,est)
+  elif e['kind']=='コメント':self._comment(e,est)
+  elif id(e) in self.ongoing_ids:self._ongoing(e,est)
+  else:self._timed(e,est)
+
+ def _frame(self,e,est):
+  # 空の日付・直の枠(§9.238 ②)。**カーソルを「進める」だけ**——
+  # 自分は時間を使わない(見積0分)。
+  #  ・起点が枠の時刻より前なら、そこまで飛ばす（空きができる）
+  #  ・起点が既に過ぎていたら**何もしない**——手前の予定が押してきて
+  #    埋まった、ということ。利用者の言う「押し出してくる際は連動して
+  #    ロットが自然にその設定枠に入る」がこれ。
+  # **後ろへ戻さないこと**。戻すと、既に始まっている予定より前の時刻へ
+  # 後続を置くことになる。
+  cursor=self.cursor
+  target,note=frame_target(e.get('detail'),self.specific_shift,self.global_shift)
+  at=cursor
+  if target is not None and target>cursor:
+   snapped,_w=snap_to_working(target,self.timeline)
+   if snapped is None:
+    # 稼働カレンダーの見える範囲(MAX_HORIZON_DAYS)より先。**打ち切らず
+    # そのまま置く**——後続は次の周回で truncated として理由が出る。
+    at=target
+    self.warnings.append(f"予定ID {e['id']} の枠は稼働カレンダー上、{self.timeline.days}日先までに置ける稼働帯がありません。")
+   else:
+    at=snapped
+  gap=max(0.0,_minutes_between(cursor,at))
+  e['plannedStart']=at.isoformat()
+  e['plannedEnd']=e['plannedStart']
+  e['startsInMinutes']=round(_minutes_between(self.now,at),1)
+  e['estimate']=dict(est,minutes=0.0)
+  e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
+  e['spansNonWorking']=False;e['overdueMinutes']=0
+  e['shift']=self._shift(at)
+  # 画面が「いま何が起きているか」を書けるだけの材料を渡す(§6)。
+  #  reached=True … 起点が既にこの枠を過ぎている＝もう埋まった
+  #  gapMinutes  … この枠が作っている空き時間
+  detail=e.get('detail') or {}
+  e['frame']={'date':str(detail.get('frameDate') or ''),
+              'shift':str(detail.get('frameShift') or ''),
+              'note':str(detail.get('frameNote') or ''),
+              'target':target.isoformat() if target is not None else None,
+              'gapMinutes':round(gap,1),'reached':gap<=0,
+              'warning':note}
+  if note:self.warnings.append(f"予定ID {e['id']}: {note}")
+  self.cursor=at
+
+ def _comment(self,e,est):
+  # 申し送り(§9.189)。**カーソルを進めない**——時間を持たせると、
+  # メモを1行挟むたびに後ろの予定が動くことになる。位置だけ持つ。
+  at=self.cursor
+  e['plannedStart']=at.isoformat() if at is not None else None
+  e['plannedEnd']=e['plannedStart']
+  e['startsInMinutes']=round(_minutes_between(self.now,at),1) if at is not None else None
+  e['estimate']=dict(est,minutes=0.0)
+  e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
+  e['spansNonWorking']=False;e['overdueMinutes']=0
+  e['shift']=self._shift(at) if at is not None else None
+
+ def _ongoing(self,e,est):
+  # 実績の開始時刻から「現在時刻まで」。終わっていないので予定終了は
+  # 常に現在時刻(継続中)。見積を超えている分はoverdueMinutesで示す。
+  # 開始の分からない行(仕掛落ち・§9.462)は現在時刻から現在時刻まで。
+  now=self.now
+  started=_parse_dt(((e.get('actual') or {}).get('startAt')) or '') or now
+  elapsed=max(0.0,_minutes_between(started,now))
+  e['plannedStart']=started.isoformat()
+  e['plannedEnd']=now.isoformat()
+  e['ongoing']=True
+  e['startsInMinutes']=round(_minutes_between(now,started),1)
+  e['estimate']=dict(est,minutes=round(est['minutes'],1))
+  e['reorderable']=False
+  e['spansNonWorking']=False
+  e['overdueMinutes']=round(max(0.0,elapsed-est['minutes']),1)
+  e['shift']=self._shift(started)
+  # 後続はすべて現在時刻から並べ直す(着手中が複数あっても基準は1つ)
+  next_cursor,_w=snap_to_working(now,self.timeline)
+  self.cursor=next_cursor if next_cursor is not None else now
+
+ def _timed(self,e,est):
+  """時間を使う行（作業・設備停止）。固定開始（ロック）があればそこへ据え置く。"""
   minutes=est['minutes']
-  if e['kind']=='枠':
-   # 空の日付・直の枠(§9.238 ②)。**カーソルを「進める」だけ**——
-   # 自分は時間を使わない(見積0分)。
-   #  ・起点が枠の時刻より前なら、そこまで飛ばす（空きができる）
-   #  ・起点が既に過ぎていたら**何もしない**——手前の予定が押してきて
-   #    埋まった、ということ。利用者の言う「押し出してくる際は連動して
-   #    ロットが自然にその設定枠に入る」がこれ。
-   # **後ろへ戻さないこと**。戻すと、既に始まっている予定より前の時刻へ
-   # 後続を置くことになる。
-   target,note=frame_target(e.get('detail'),specific_shift,global_shift)
-   at=cursor
-   if target is not None and target>cursor:
-    snapped,_w=snap_to_working(target,timeline)
-    if snapped is None:
-     # 稼働カレンダーの見える範囲(MAX_HORIZON_DAYS)より先。**打ち切らず
-     # そのまま置く**——後続は次の周回で truncated として理由が出る。
-     at=target
-     warnings.append(f"予定ID {e['id']} の枠は稼働カレンダー上、{timeline.days}日先までに置ける稼働帯がありません。")
-    else:
-     at=snapped
-   gap=max(0.0,_minutes_between(cursor,at))
-   e['plannedStart']=at.isoformat()
-   e['plannedEnd']=e['plannedStart']
-   e['startsInMinutes']=round(_minutes_between(now,at),1)
-   e['estimate']=dict(est,minutes=0.0)
-   e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
-   e['spansNonWorking']=False;e['overdueMinutes']=0
-   e['shift']=resolve_shift_label(specific_shift,global_shift,at)
-   # 画面が「いま何が起きているか」を書けるだけの材料を渡す(§6)。
-   #  reached=True … 起点が既にこの枠を過ぎている＝もう埋まった
-   #  gapMinutes  … この枠が作っている空き時間
-   e['frame']={'date':str((e.get('detail') or {}).get('frameDate') or ''),
-               'shift':str((e.get('detail') or {}).get('frameShift') or ''),
-               'note':str((e.get('detail') or {}).get('frameNote') or ''),
-               'target':target.isoformat() if target is not None else None,
-               'gapMinutes':round(gap,1),'reached':gap<=0,
-               'warning':note}
-   if note:warnings.append(f"予定ID {e['id']}: {note}")
-   cursor=at
-   continue
-  if e['kind']=='コメント':
-   # 申し送り(§9.189)。**カーソルを進めない**——時間を持たせると、
-   # メモを1行挟むたびに後ろの予定が動くことになる。位置だけ持つ。
-   at=cursor
-   e['plannedStart']=at.isoformat() if at is not None else None
-   e['plannedEnd']=e['plannedStart']
-   e['startsInMinutes']=round(_minutes_between(now,at),1) if at is not None else None
-   e['estimate']=dict(est,minutes=0.0)
-   e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
-   e['spansNonWorking']=False;e['overdueMinutes']=0
-   e['shift']=resolve_shift_label(specific_shift,global_shift,at) if at is not None else None
-   continue
-  if id(e) in ongoing_ids:
-   # 実績の開始時刻から「現在時刻まで」。終わっていないので予定終了は
-   # 常に現在時刻(継続中)。見積を超えている分はoverdueMinutesで示す。
-   # 開始の分からない行(仕掛落ち・§9.462)は現在時刻から現在時刻まで。
-   started=_parse_dt(((e.get('actual') or {}).get('startAt')) or '') or now
-   elapsed=max(0.0,_minutes_between(started,now))
-   e['plannedStart']=started.isoformat()
-   e['plannedEnd']=now.isoformat()
-   e['ongoing']=True
-   e['startsInMinutes']=round(_minutes_between(now,started),1)
-   e['estimate']=dict(est,minutes=round(est['minutes'],1))
-   e['reorderable']=False
-   e['spansNonWorking']=False
-   e['overdueMinutes']=round(max(0.0,elapsed-est['minutes']),1)
-   e['shift']=resolve_shift_label(specific_shift,global_shift,started)
-   # 後続はすべて現在時刻から並べ直す(着手中が複数あっても基準は1つ)
-   next_cursor,_w=snap_to_working(now,timeline)
-   cursor=next_cursor if next_cursor is not None else now
-   continue
+  cursor=self.cursor
   fixed_start=None
   if e.get('fixedStart'):
    try:fixed_start=_parse_dt(e['fixedStart'])
@@ -1093,43 +1180,47 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
     # 後続の予定はカーソルを巻き戻さない(過去へ置いてしまうため)。
     resume_from=cursor
    cursor=fixed_start
-  cursor,_waited=snap_to_working(cursor,timeline)
+  cursor,_waited=snap_to_working(cursor,self.timeline)
+  self.cursor=cursor
   if cursor is None:
-   truncated=True
-  if truncated:
+   self.truncated=True
+  if self.truncated:
    e['plannedStart']=None;e['plannedEnd']=None;e['startsInMinutes']=None
    e['estimate']=dict(est,minutes=minutes)
    e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
    e['spansNonWorking']=False;e['overdueMinutes']=0;e['shift']=None
-   warnings.append(f"予定ID {e['id']} は稼働カレンダー上、{timeline.days}日先までに置ける稼働帯がありません。")
-   continue
+   self._no_room(e)
+   return
   planned_start=cursor
-  end_cursor,spans,trunc=consume_minutes(cursor,minutes,timeline)
+  end_cursor,spans,trunc=consume_minutes(cursor,minutes,self.timeline)
   if end_cursor is None:
-   truncated=True
-   e['plannedStart']=planned_start.isoformat();e['plannedEnd']=None;e['startsInMinutes']=round(_minutes_between(now,planned_start),1)
+   self.truncated=True
+   e['plannedStart']=planned_start.isoformat();e['plannedEnd']=None;e['startsInMinutes']=round(_minutes_between(self.now,planned_start),1)
    e['estimate']=dict(est,minutes=minutes)
    e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE)
    e['spansNonWorking']=spans;e['overdueMinutes']=round(overdue,1)
-   e['shift']=resolve_shift_label(specific_shift,global_shift,planned_start)
-   warnings.append(f"予定ID {e['id']} は稼働カレンダー上、{timeline.days}日先までに置ける稼働帯がありません。")
-   continue
+   e['shift']=self._shift(planned_start)
+   self._no_room(e)
+   return
   # この予定自身の終了はend_cursor。後続を進めるカーソルだけ、ロックで
   # 巻き戻した分(resume_from)まで戻す(この行のplannedEndには混ぜない)。
   e['plannedStart']=planned_start.isoformat();e['plannedEnd']=end_cursor.isoformat()
   cursor=end_cursor
   if resume_from is not None and resume_from>cursor:cursor=resume_from
-  e['startsInMinutes']=round(_minutes_between(now,planned_start),1)
+  self.cursor=cursor
+  e['startsInMinutes']=round(_minutes_between(self.now,planned_start),1)
   e['estimate']=dict(est,minutes=round(minutes,1))
   e['reorderable']=(e['state']==sr.PLAN_REORDERABLE_STATE) and not e.get('unplanned')
   e['spansNonWorking']=bool(spans)
   e['overdueMinutes']=round(overdue,1)
-  e['shift']=resolve_shift_label(specific_shift,global_shift,planned_start)
+  e['shift']=self._shift(planned_start)
 
- # 現場歴の日付(§9.195)。**1箇所でまとめて決める**——予定・着手中・完了で
- # 代表となる時刻が違うので、各所で計算すると「まとめた見出しと行の日付が
- # 食い違う」形の食い違いが必ず起きる。行の代表時刻の決め方は画面の
- # rowTimeOf() と同じ（完了・取消は実績、それ以外は予定開始）。
+
+def _assign_work_dates(entries,specific_shift,global_shift):
+ """⑥ 現場歴の日付(§9.195)。**1箇所でまとめて決める**——予定・着手中・完了で
+ 代表となる時刻が違うので、各所で計算すると「まとめた見出しと行の日付が
+ 食い違う」形の食い違いが必ず起きる。行の代表時刻の決め方は画面の
+ rowTimeOf() と同じ（完了・取消は実績、それ以外は予定開始）。"""
  for e in entries:
   ref=e.get('plannedStart')
   if e['state'] in PLAN_TERMINAL_STATES:
@@ -1146,69 +1237,66 @@ def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_
   e['shiftDayOffset']=off
   e['workDate']=(dt+timedelta(days=off)).date().isoformat()
 
- # 子ロットへ親の予定時刻を写す(§9.83)。画面は子を親の下に畳んで出すので、
- # 時刻そのものは親と同じで構わない。持たせておくと、日付・勤務でまとめる
- # 表示(§9.39)でも親と同じ束へ入る。
- if parent_of:
-  by_id={e['id']:e for e in entries}
-  for e in entries:
-   p=by_id.get(e.get('parentId'))
-   if p is None:continue
-   e['plannedStart']=p.get('plannedStart');e['plannedEnd']=p.get('plannedEnd')
-   e['startsInMinutes']=p.get('startsInMinutes');e['shift']=p.get('shift')
-   e['workDate']=p.get('workDate');e['shiftDayOffset']=p.get('shiftDayOffset') or 0
 
+def _copy_parent_times(entries):
+ """⑥ 子ロットへ親の予定時刻を写す(§9.83)。画面は子を親の下に畳んで出すので、
+ 時刻そのものは親と同じで構わない。持たせておくと、日付・勤務でまとめる
+ 表示(§9.39)でも親と同じ束へ入る。"""
+ if not any(e.get('parentId') is not None for e in entries):return
+ by_id={e['id']:e for e in entries}
+ for e in entries:
+  p=by_id.get(e.get('parentId'))
+  if p is None:continue
+  e['plannedStart']=p.get('plannedStart');e['plannedEnd']=p.get('plannedEnd')
+  e['startsInMinutes']=p.get('startsInMinutes');e['shift']=p.get('shift')
+  e['workDate']=p.get('workDate');e['shiftDayOffset']=p.get('shiftDayOffset') or 0
+
+
+def _finalize_actuals(entries,now):
+ """⑦ 実績を画面へ渡す形にする（内部で使った控え`storedState`・`manual`は外す）。"""
  for e in entries:
   actual=e.pop('actual')
   e.pop('storedState')
-  if e['state']=='着手' and actual and actual.get('startAt'):
-   try:
-    started=_parse_dt(actual['startAt'])
-    e['actual']={'startAt':actual['startAt'],'endAt':None,'elapsedMinutes':round(max(0.0,_minutes_between(started,now)),1)}
-   except Exception:
-    e['actual']={'startAt':actual.get('startAt'),'endAt':None,'elapsedMinutes':None}
-  elif e['state']=='完了' and actual and actual.get('startAt') and actual.get('endAt'):
-   try:
-    started=_parse_dt(actual['startAt']);ended=_parse_dt(actual['endAt'])
-    actual_minutes=max(0.0,_minutes_between(started,ended))
-    est=(e.get('estimate') or {}).get('minutes')
-    variance=round(actual_minutes-est,1) if est is not None else None
-    e['actual']={'startAt':actual['startAt'],'endAt':actual['endAt'],'minutes':round(actual_minutes,1),'varianceMinutes':variance}
-   except Exception as _e:
-    quiet('実績の時刻を読めない（実績なしとして出す）',_e)
-    e['actual']=None
-  elif e['state']=='完了' and actual is None and e.get('manual'):
-   # 手で入れた時刻（§9.514）。**出どころを添える**——測定データの実績と見分けられるように。
-   m=e['manual']
-   try:
-    started=_parse_dt(m['startAt']);ended=_parse_dt(m['endAt'])
-    mins=round(max(0.0,_minutes_between(started,ended)),1)
-    est=(e.get('estimate') or {}).get('minutes')
-    e['actual']={'startAt':m['startAt'],'endAt':m['endAt'],'minutes':mins,
-                 'varianceMinutes':(round(mins-est,1) if est is not None else None),
-                 'source':MANUAL_END_FROM_INPUT,'endFrom':m.get('endFrom') or MANUAL_END_FROM_INPUT,
-                 'by':m.get('by') or ''}
-   except Exception as _e:
-    quiet('手で入れた時刻を読めない（未登録として出す）',_e)
-    e['actual']=None
-  else:
-   e['actual']=None
+  e['actual']=_actual_view(e,actual,now)
   e.pop('manual',None)
   e['actualRecordId']=(actual or {}).get('id') or e.get('actualRecordId')
 
- lf_model=load_factor.get_model(equipment)
- load_factor_info=None
- if lf_model is not None:
-  load_factor_info={'basis':lf_model.get('basis'),'n':lf_model.get('n'),
-                     'sigmaLog':round(lf_model.get('sigmaLog') or 0.0,3),
-                     'calculatedAt':lf_model.get('calculatedAt')}
- if history_note:warnings.append(history_note)
- return {'entries':entries,'warnings':warnings,'anchor':anchor.isoformat() if anchor else None,
-         'anchorRounded':anchor_note,'loadFactor':load_factor_info,
-         # さかのぼり(§9.366)。`historyFrom`が None なら「制限しない」。
-         'historyKey':(history_mode(history)['key'] if history is not None else None),
-         'historyFrom':history_from_at.isoformat() if history_from_at else None,
-         'historyHours':history_hours}
+
+def _actual_view(e,actual,now):
+ """1行ぶんの実績（着手中は経過分・完了は所要と見積との差・手入力は出どころつき）。無ければNone。"""
+ if e['state']=='着手' and actual and actual.get('startAt'):
+  try:
+   started=_parse_dt(actual['startAt'])
+   return {'startAt':actual['startAt'],'endAt':None,'elapsedMinutes':round(max(0.0,_minutes_between(started,now)),1)}
+  except Exception:
+   return {'startAt':actual.get('startAt'),'endAt':None,'elapsedMinutes':None}
+ if e['state']=='完了' and actual and actual.get('startAt') and actual.get('endAt'):
+  try:
+   started=_parse_dt(actual['startAt']);ended=_parse_dt(actual['endAt'])
+   actual_minutes=max(0.0,_minutes_between(started,ended))
+   est=(e.get('estimate') or {}).get('minutes')
+   variance=round(actual_minutes-est,1) if est is not None else None
+   return {'startAt':actual['startAt'],'endAt':actual['endAt'],'minutes':round(actual_minutes,1),'varianceMinutes':variance}
+  except Exception as _e:
+   quiet('実績の時刻を読めない（実績なしとして出す）',_e)
+   return None
+ if e['state']=='完了' and actual is None and e.get('manual'):
+  # 手で入れた時刻（§9.514）。**出どころを添える**——測定データの実績と見分けられるように。
+  m=e['manual']
+  try:
+   started=_parse_dt(m['startAt']);ended=_parse_dt(m['endAt'])
+   mins=round(max(0.0,_minutes_between(started,ended)),1)
+   est=(e.get('estimate') or {}).get('minutes')
+   return {'startAt':m['startAt'],'endAt':m['endAt'],'minutes':mins,
+           'varianceMinutes':(round(mins-est,1) if est is not None else None),
+           'source':MANUAL_END_FROM_INPUT,'endFrom':m.get('endFrom') or MANUAL_END_FROM_INPUT,
+           'by':m.get('by') or ''}
+  except Exception as _e:
+   quiet('手で入れた時刻を読めない（未登録として出す）',_e)
+   return None
+ return None
+
+
 
 # ========================================================================
 # 設備削除時の参照件数(§5.0.1)
