@@ -964,6 +964,160 @@ REPLACE_BLOCKED = ('取り込めない行があるうちは入れ替えられま
                    '（いま取り込むだけなら「足す・上書きする」で進められます）。')
 
 
+def _io_positions(rows):
+    """見出しの行から、列の鍵→列番号（無ければ -1）。"""
+    head = [str(x or '').strip() for x in rows[0]]
+    # **見出しは名前で探す**（列の順番を変えても取り込める。§9.171）。
+    pos = {}
+    for label, key, _kind, _w in IO_COLUMNS:
+        pos[key] = head.index(label) if label in head else -1
+    return pos
+
+
+def _io_cell(r, pos, key):
+    i = pos[key]
+    return str(r[i]).strip() if 0 <= i < len(r) and r[i] is not None else ''
+
+
+def _io_read_row(c, r, i, pos):
+    """ファイルの1行を読んで検める。`(値, None)` か、飛ばすときは `(None, 理由)`（§CLAUDE 4）。"""
+    eq_raw, name = _io_cell(r, pos, 'equipment'), _io_cell(r, pos, 'name')
+    if not name:
+        return None, {'row': i, 'why': 'ロール名が空です'}
+    try:
+        eq = _canonical_eq(c, eq_raw)
+    except ValueError as e:
+        return None, {'row': i, 'why': str(e), 'name': name}
+    vals = {'equipment': eq, 'name': name}
+    bad = None
+    for label, key, kind, _w in IO_COLUMNS:
+        if key in ('equipment', 'name'):
+            continue
+        raw = _io_cell(r, pos, key)
+        if key == 'enabledText':
+            # 読み方は`flags.flag_of`の1箇所（§9.324 R4）。**空欄は「入」**
+            # ——書き出しは無効な行も出すので、往復で空欄になるのは
+            # 列そのものが無かったときだけ（§9.240）。
+            vals['enabled'] = flag_of(raw, off=tuple(w for w in OFF_WORDS if w != ''))
+            continue
+        if pos[key] < 0 or raw == '':
+            vals[key] = None          # 列が無い／空欄＝触らない（§9.212 ②）
+            continue
+        if kind in ('num', 'int'):
+            n = _num_or_none(raw)
+            if n == 'NG':
+                bad = '%s が数として読めません（%s）' % (label, raw)
+                break
+            vals[key] = int(n) if (kind == 'int' and n is not None) else n
+        else:
+            vals[key] = raw
+    if bad:
+        return None, {'row': i, 'why': bad, 'name': name}
+    dmax, dmin = vals.get('diaMax'), vals.get('diaMin')
+    if dmax is not None and dmin is not None and dmin > dmax:
+        return None, {'row': i, 'name': name,
+                      'why': 'ロール径MINがMAXより大きくなっています'}
+    return vals, None
+
+
+def _io_plan(c, rows, pos, index):
+    """ファイルの行を読み、既存の行と突き合わせる。`(plans, add, update, skipped)`。"""
+    # 同じファイルの中で同じキーが2度出てきたら、**2度目は黙って上書きしない**
+    # （§CLAUDE 4）。上書きすると1行ぶんが消えるのに「取り込みました」としか
+    # 出ないので、**行番号を添えて飛ばす**。
+    seen_rows = {}
+
+    add = update = 0
+    skipped = []
+    plans = []
+    for i, r in enumerate(rows[1:], start=2):
+        if not any(str(v or '').strip() for v in r):
+            continue                      # 空行は黙って飛ばす（Excelの末尾に必ず出る）
+        vals, skip = _io_read_row(c, r, i, pos)
+        if skip:
+            skipped.append(skip)
+            continue
+        eq, name = vals['equipment'], vals['name']
+        key = roll_key(eq, name, vals.get('contactFace'),
+                       vals.get('diaMax'), vals.get('diaMin'), vals.get('note'))
+        if key in seen_rows:
+            skipped.append({'row': i, 'name': name,
+                            'why': '同じ（%s）の行が%d行目にもあります。'
+                                   'どちらの値で保存するか決められないので飛ばしました'
+                                   '（接触面・ロール径・備考のどれかを分けるか、'
+                                   '片方を消してください）。'
+                                   % ('・'.join(KEY_LABELS), seen_rows[key])})
+            continue
+        seen_rows[key] = i
+        # **`take()`は拾った行を使い済みにする**——未記入の行は1本しか無いので、
+        # 2行目も「上書き」と数えると下見の件数が実際と食い違う。
+        rid, why = index.take(eq, name, vals.get('contactFace'),
+                              vals.get('diaMax'), vals.get('diaMin'), vals.get('note'))
+        if why == 'ambiguous':
+            # 鍵の列が欠けているシートを、その列で割った後のマスタへ取り込んだ
+            # 場合（接触面の無いシート／径の無いシート）。**どれを直すか
+            # 決められないので断る**（黙って1本を上書きしない）。
+            skipped.append({'row': i, 'name': name,
+                            'why': 'この設備の「%s」は %s のどれかが違う行が'
+                                   '複数登録されています。その列をシートに足して、'
+                                   'どれを直すかを決めてください。'
+                                   % (name, '・'.join(KEY_LABELS[2:]))})
+            continue
+        if rid is not None:
+            update += 1
+        else:
+            add += 1
+        plans.append(vals)
+    return plans, add, update, skipped
+
+
+def _io_replace_scope(index, plans, replace, skipped, result):
+    """完全入替で消える範囲（§9.251）を `result` へ書き、消す行を返す。"""
+    remove, kept_blank = [], 0
+    # **索引に残っている行＝ファイルのどの行にも当たらなかった行**。
+    # 引き当てと同じ索引が答えるので、下見と保存が食い違わない。
+    rest = index.rest()
+    if replace == 'file':
+        eqs = {_norm_eq(v['equipment']) for v in plans}
+        remove = [x for x in rest if _norm_eq(x[1]) in eqs]
+    else:
+        for x in rest:
+            if _norm_eq(x[1]):
+                remove.append(x)
+            else:
+                kept_blank += 1       # 設備の入っていない行は残す（上の説明）
+    result['remove'] = [{'equipment': x[1] or '', 'name': x[2] or '',
+                         'contactFace': x[3] or '',
+                         'diaMax': _norm_dia(x[4]), 'diaMin': _norm_dia(x[5]),
+                         'note': _norm_note(x[6])} for x in remove[:NAME_SAMPLE]]
+    result['removeCount'] = len(remove)
+    result['removeMore'] = max(0, len(remove) - len(result['remove']))
+    result['keptNoEquipment'] = kept_blank
+    if skipped:
+        # **読めない行があるうちは入れ替えない**（§CLAUDE 4）。進めると、
+        # その行にあたるロールが「ファイルに無い」として消える——利用者は
+        # 打ち間違えただけなのに、直そうとした行が先に消えている。
+        result['blocked'] = REPLACE_BLOCKED
+    return remove
+
+
+def _io_save(c, uid, plans, remove, skipped, result):
+    """読めた行を書き、入れ替えで消える行を消して、`result` を仕上げる。"""
+    saved = 0
+    for v in plans:
+        try:
+            roll_upsert(c, uid, **{_UPSERT_KW.get(k, k): val for k, val in v.items()})
+            saved += 1
+        except ValueError as e:
+            skipped.append({'row': '-', 'name': v.get('name'), 'why': str(e)})
+    # **消すのは書いたあと**——途中で落ちたときに「余分な行が残る」ほうが
+    # 「要る行が消えている」より直しやすい（消えた行はファイルからしか戻せない）。
+    result['removed'] = _delete_ids(c, [x[0] for x in remove]) if remove else 0
+    result['saved'] = saved
+    result['skipped'] = skipped
+    return result
+
+
 def import_rows(c, uid, data, dry_run=True, replace=''):
     """Excelから取り込む（§9.240）。**下見（dry_run）ができる**。
 
@@ -1007,11 +1161,7 @@ def import_rows(c, uid, data, dry_run=True, replace=''):
     if not rows:
         raise XlsxError('シートが空です。1行目に見出し（%s …）を置いてください。'
                         % '／'.join(IO_HEADER[:3]))
-    head = [str(x or '').strip() for x in rows[0]]
-    # **見出しは名前で探す**（列の順番を変えても取り込める。§9.171）。
-    pos = {}
-    for label, key, _kind, _w in IO_COLUMNS:
-        pos[key] = head.index(label) if label in head else -1
+    pos = _io_positions(rows)
     missing = [lab for lab, key, _k, _w in IO_COLUMNS
                if key in ('equipment', 'name') and pos[key] < 0]
     if missing:
@@ -1026,121 +1176,12 @@ def import_rows(c, uid, data, dry_run=True, replace=''):
     index = RollIndex([(x['id'], x['equipment'], x['name'], x['contactFace'],
                         x['diaMax'], x['diaMin'], x['note'])
                        for x in roll_rows(c, True)])
-    # 同じファイルの中で同じキーが2度出てきたら、**2度目は黙って上書きしない**
-    # （§CLAUDE 4）。上書きすると1行ぶんが消えるのに「取り込みました」としか
-    # 出ないので、**行番号を添えて飛ばす**。
-    seen_rows = {}
-
-    def cell(r, key):
-        i = pos[key]
-        return str(r[i]).strip() if 0 <= i < len(r) and r[i] is not None else ''
-
-    add = update = 0
-    skipped = []
-    plans = []
-    for i, r in enumerate(rows[1:], start=2):
-        if not any(str(v or '').strip() for v in r):
-            continue                      # 空行は黙って飛ばす（Excelの末尾に必ず出る）
-        eq_raw, name = cell(r, 'equipment'), cell(r, 'name')
-        if not name:
-            skipped.append({'row': i, 'why': 'ロール名が空です'})
-            continue
-        try:
-            eq = _canonical_eq(c, eq_raw)
-        except ValueError as e:
-            skipped.append({'row': i, 'why': str(e), 'name': name})
-            continue
-        vals = {'equipment': eq, 'name': name}
-        bad = None
-        for label, key, kind, _w in IO_COLUMNS:
-            if key in ('equipment', 'name'):
-                continue
-            raw = cell(r, key)
-            if key == 'enabledText':
-                # 読み方は`flags.flag_of`の1箇所（§9.324 R4）。**空欄は「入」**
-                # ——書き出しは無効な行も出すので、往復で空欄になるのは
-                # 列そのものが無かったときだけ（§9.240）。
-                vals['enabled'] = flag_of(raw, off=tuple(w for w in OFF_WORDS if w != ''))
-                continue
-            if pos[key] < 0 or raw == '':
-                vals[key] = None          # 列が無い／空欄＝触らない（§9.212 ②）
-                continue
-            if kind in ('num', 'int'):
-                n = _num_or_none(raw)
-                if n == 'NG':
-                    bad = '%s が数として読めません（%s）' % (label, raw)
-                    break
-                vals[key] = int(n) if (kind == 'int' and n is not None) else n
-            else:
-                vals[key] = raw
-        if bad:
-            skipped.append({'row': i, 'why': bad, 'name': name})
-            continue
-        dmax, dmin = vals.get('diaMax'), vals.get('diaMin')
-        if dmax is not None and dmin is not None and dmin > dmax:
-            skipped.append({'row': i, 'name': name,
-                            'why': 'ロール径MINがMAXより大きくなっています'})
-            continue
-        key = roll_key(eq, name, vals.get('contactFace'),
-                       vals.get('diaMax'), vals.get('diaMin'), vals.get('note'))
-        if key in seen_rows:
-            skipped.append({'row': i, 'name': name,
-                            'why': '同じ（%s）の行が%d行目にもあります。'
-                                   'どちらの値で保存するか決められないので飛ばしました'
-                                   '（接触面・ロール径・備考のどれかを分けるか、'
-                                   '片方を消してください）。'
-                                   % ('・'.join(KEY_LABELS), seen_rows[key])})
-            continue
-        seen_rows[key] = i
-        # **`take()`は拾った行を使い済みにする**——未記入の行は1本しか無いので、
-        # 2行目も「上書き」と数えると下見の件数が実際と食い違う。
-        rid, why = index.take(eq, name, vals.get('contactFace'),
-                              vals.get('diaMax'), vals.get('diaMin'), vals.get('note'))
-        if why == 'ambiguous':
-            # 鍵の列が欠けているシートを、その列で割った後のマスタへ取り込んだ
-            # 場合（接触面の無いシート／径の無いシート）。**どれを直すか
-            # 決められないので断る**（黙って1本を上書きしない）。
-            skipped.append({'row': i, 'name': name,
-                            'why': 'この設備の「%s」は %s のどれかが違う行が'
-                                   '複数登録されています。その列をシートに足して、'
-                                   'どれを直すかを決めてください。'
-                                   % (name, '・'.join(KEY_LABELS[2:]))})
-            continue
-        if rid is not None:
-            update += 1
-        else:
-            add += 1
-        plans.append(vals)
+    plans, add, update, skipped = _io_plan(c, rows, pos, index)
     result = {'total': len(rows) - 1, 'add': add, 'update': update,
               'skipped': skipped, 'sheet': book['sheet'], 'dryRun': bool(dry_run),
               'replace': replace}
     # ---- 完全入替で消える範囲（§9.251） ----
-    remove, kept_blank = [], 0
-    if replace:
-        # **索引に残っている行＝ファイルのどの行にも当たらなかった行**。
-        # 引き当てと同じ索引が答えるので、下見と保存が食い違わない。
-        rest = index.rest()
-        if replace == 'file':
-            eqs = {_norm_eq(v['equipment']) for v in plans}
-            remove = [x for x in rest if _norm_eq(x[1]) in eqs]
-        else:
-            for x in rest:
-                if _norm_eq(x[1]):
-                    remove.append(x)
-                else:
-                    kept_blank += 1       # 設備の入っていない行は残す（上の説明）
-        result['remove'] = [{'equipment': x[1] or '', 'name': x[2] or '',
-                             'contactFace': x[3] or '',
-                             'diaMax': _norm_dia(x[4]), 'diaMin': _norm_dia(x[5]),
-                             'note': _norm_note(x[6])} for x in remove[:NAME_SAMPLE]]
-        result['removeCount'] = len(remove)
-        result['removeMore'] = max(0, len(remove) - len(result['remove']))
-        result['keptNoEquipment'] = kept_blank
-        if skipped:
-            # **読めない行があるうちは入れ替えない**（§CLAUDE 4）。進めると、
-            # その行にあたるロールが「ファイルに無い」として消える——利用者は
-            # 打ち間違えただけなのに、直そうとした行が先に消えている。
-            result['blocked'] = REPLACE_BLOCKED
+    remove = _io_replace_scope(index, plans, replace, skipped, result) if replace else []
     if dry_run:
         # **下見では3件だけ見せる**（§9.193。1件では「たまたま」と区別が付かない）
         result['sample'] = plans[:3]
@@ -1149,16 +1190,4 @@ def import_rows(c, uid, data, dry_run=True, replace=''):
         # 下見で断った理由は保存でも同じ。**画面が押せてしまった場合の最後の砦**
         # （押せなくするのは画面の仕事だが、口が通してしまうと守るものが無い）。
         raise XlsxError(result['blocked'])
-    saved = 0
-    for v in plans:
-        try:
-            roll_upsert(c, uid, **{_UPSERT_KW.get(k, k): val for k, val in v.items()})
-            saved += 1
-        except ValueError as e:
-            skipped.append({'row': '-', 'name': v.get('name'), 'why': str(e)})
-    # **消すのは書いたあと**——途中で落ちたときに「余分な行が残る」ほうが
-    # 「要る行が消えている」より直しやすい（消えた行はファイルからしか戻せない）。
-    result['removed'] = _delete_ids(c, [x[0] for x in remove]) if remove else 0
-    result['saved'] = saved
-    result['skipped'] = skipped
-    return result
+    return _io_save(c, uid, plans, remove, skipped, result)
