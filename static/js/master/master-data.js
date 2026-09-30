@@ -4429,6 +4429,14 @@
  }
  function bindStopSub(){
   const list=$('#masterMaintList');if(!list)return;
+  ssbWireSearch(list);
+  ssbWireCats(list);
+  ssbWireStops(list);
+  ssbWireSubRows(list);
+  ssbWireSubActions(list);
+ }
+ /* 設備停止マスタの3ペインの配線（§9.522 で`bindStopSub()`から切り出した）: 停止内容の絞り込み。 */
+ function ssbWireSearch(list){
   const search=$('#ssbSearch');
   if(search){
    search.oninput=()=>{ssbState.q=search.value;
@@ -4441,6 +4449,9 @@
      s2.setSelectionRange(s2.value.length,s2.value.length)}
    };
   }
+ }
+ /* 左＝分類（選ぶ・消す・足す）。 */
+ function ssbWireCats(list){
   /* 分類を選ぶと、**中と右を描き直す**（左はそのまま）。選んでいる分類の
      停止内容が1件も無ければ右は案内に戻る——見えていない行の設定を
      出したままにしない。 */
@@ -4495,6 +4506,9 @@
   }
   const nc=$('#ssbNewCat');
   if(nc)nc.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addCat&&addCat.click()}};
+ }
+ /* 中＝停止内容（選ぶ・直す・足す・消す）。 */
+ function ssbWireStops(list){
   /* 中を押したとき**右だけ差し替える**（§9.226 ①）——一覧を作り直すと
      `scrollTop`が0へ戻り、上から数え直すことになる。 */
   list.querySelectorAll('[data-ssb-pick]').forEach(btn=>{
@@ -4549,6 +4563,9 @@
     }catch(e){ssbSay(`消せませんでした: ${e.message||String(e)}`,true)}
    };
   });
+ }
+ /* 右＝内訳の行（名前・分をその場で直す／既定の印）。 */
+ function ssbWireSubRows(list){
   list.querySelectorAll('.ssb-row[data-ssb-id] .ssb-f').forEach(inp=>{
    const row=inp.closest('.ssb-row');
    const id=Number(row.dataset.ssbId);
@@ -4587,6 +4604,9 @@
                         :`「${cur.name}」を既定にしました（予定へ入れるとき最初から選ばれます）`);
    };
   });
+ }
+ /* 右＝内訳を足す（「＋ 下へ」とその解除）・消す。 */
+ function ssbWireSubActions(list){
   const add=$('#ssbAdd');
   if(add){
    add.onclick=async()=>{
