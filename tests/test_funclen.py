@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""test_funclen.py: 長い関数を「増やさない」（REVIEW 3-22・§9.519）
+"""test_funclen.py: 長い関数を「増やさない」（REVIEW 3-22・§9.522）
 
 1つの関数が数百行あると、途中の1行を直すにも全体の局所変数を頭に置く
 ことになる（`renderGridInner` は 554行で、30近い局所変数を8つの役目が

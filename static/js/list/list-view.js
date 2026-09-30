@@ -1991,7 +1991,7 @@ function renderGrid(){
  try{return renderGridInner()}
  finally{noteRenderTime(performance.now()-_t0);renderLoadChip();runListHooks('grid')}
 }
-/* ---------- 一覧の描画は段に分ける（§9.519・REVIEW 3-22） ----------
+/* ---------- 一覧の描画は段に分ける（§9.522・REVIEW 3-22） ----------
    以前は`renderGridInner()`の1本（554行）が、30近い局所変数を共有しながら
    ①何をどの列で描くか ②列の見え方 ③列幅 ④見出し ⑤行 ⑥器へ載せる ⑦続きを並べる
    を順に行っていた。段ごとの関数へ分け、段のあいだで渡す物は**この描画の文脈`g`の1つ**に

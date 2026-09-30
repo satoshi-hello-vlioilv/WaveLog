@@ -50,7 +50,7 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
           'test_tabledef',
           # §9.326: 標準の静的解析（pyflakes／eslint）。どの .py/.js を触っても数秒で回る
           'test_pyflakes', 'test_eslint', 'test_routesplit', 'test_quietlint',
-          # §9.519 REVIEW 3-22: 長い関数の本数・超過行数が増えていないか（数秒）
+          # §9.522 REVIEW 3-22: 長い関数の本数・超過行数が増えていないか（数秒）
           'test_funclen',
           # §9.329 REVIEW 3-2: db_access の層と、読み込みの副作用（1秒未満）
           'test_dblayer',
@@ -404,8 +404,8 @@ RULES = [
                                      'test_eqscope',
                                      # §9.257 ②: 使用設備の設定モーダル（作りはここ1箇所）
                                      'test_eqsetup',
-                                     # §9.485: ③ロット問い合わせのログイン（拡張の有無・入れ方）
-                                     'test_lotdspext')),
+                                     # §9.485・§9.521: ③ロット問い合わせのログイン（LotData-Link の有無・入れ方）
+                                     'test_lotdsplink')),
     # 測定画面は test_scale(寸法の網)の巡回にも入っている(§9.127)ので見た目も回す。
     # §9.334で `measurement-*` は `measure-*` へそろえ、`measure/` へ移した。
     # 上で名指ししていない残り（view / input / tolerance / worklog）をここが受ける。
@@ -567,9 +567,6 @@ RULES = [
     ('program/loading.html', g('起動')),
     ('program/process_manager.py', g('起動')),
     ('program/requirements.txt', g('起動', 'test_noaccess')),
-    # §9.485: ロット問い合わせの自動ログイン（同梱の拡張）。見本ページも同じ網が使う。
-    ('program/lotdsp-ext/', ['test_lotdspext']),
-    ('tests/fixtures/lotdsp_login.html', ['test_lotdspext']),
     ('program/', g('起動')),
 
     # --- ドキュメント --------------------------------------------------

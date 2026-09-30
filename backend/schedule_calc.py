@@ -866,7 +866,7 @@ def expand_plan(c,equipment,now=None,history_hours=DEFAULT_HISTORY_HOURS,include
  return out
 
 def _expand_plan_with(c,mc,equipment,now,raw_rows,history_hours=DEFAULT_HISTORY_HOURS,include_unplanned=True,actual_index=None,timings=None,history=None):
- """予定の行を時刻へ展開する本体（§7.2）。**段ごとの関数を順に呼ぶだけ**（§9.519・REVIEW 3-22）。
+ """予定の行を時刻へ展開する本体（§7.2）。**段ごとの関数を順に呼ぶだけ**（§9.522・REVIEW 3-22）。
 
  以前は344行の1本が次の7段を順に行っていた。段の順番は結果を決める順番そのものなので
  入れ替えないこと（例: 設備停止を終わらせる判定は、計画外の実績を混ぜる**前**の並びで見る）。
@@ -1052,7 +1052,7 @@ class _Placer:
 
  **`cursor`が空（None）＝置ける稼働帯が上限まで尽きた**（固定開始の打ち間違い・全曜日が休みの
  稼働カレンダー）。以前はその後ろの枠・作業が`datetime > None`で例外になり、**その設備の展開
- 全体が止まって**作業スケジュールが開けなかった（§9.519）。空のあとは種別を問わず`_unplaced()`へ回す
+ 全体が止まって**作業スケジュールが開けなかった（§9.522）。空のあとは種別を問わず`_unplaced()`へ回す
  ——時刻を比べる前に止めるのは`place()`の入口の1箇所。"""
 
  def __init__(self,mc,equipment,now,timeline,specific_shift,global_shift,est_memo,warnings,anchor,ongoing_ids):
