@@ -391,6 +391,132 @@ def api_query_join_resolve():
   app_logger().warning('/api/query-join/resolve db=%s で失敗しました: %s',k,e)
   return jsonify(error=str(e)),500
 
+def _safe_filters(text,columns):
+ if not text:return []
+ try:items=json.loads(text)
+ except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);return []
+ if not isinstance(items,list):return []
+ allowed_ops={'contains','not_contains','eq','neq','starts','starts_any','ends','gt','gte','lt','lte','empty','not_empty'}
+ out=[]
+ for item in items[:20]:
+  if not isinstance(item,dict):continue
+  col=str(item.get('column') or '').strip();op=str(item.get('op') or 'contains').strip();value=str(item.get('value') or '').strip()
+  if col in columns and op in allowed_ops:out.append({'column':col,'op':op,'value':value})
+ return out
+
+
+def _build_filter_where(filters):
+ parts=[];params=[]
+ for f in filters:
+  col=qi(f['column']);op=f['op'];value=f['value']
+  if op=='contains':parts.append(f'CStr({col}) LIKE ?');params.append(f'%{value}%')
+  elif op=='not_contains':parts.append(f'(CStr({col}) NOT LIKE ? OR {col} IS NULL)');params.append(f'%{value}%')
+  elif op=='eq':parts.append(f'CStr({col})=?');params.append(value)
+  elif op=='neq':parts.append(f'(CStr({col})<>? OR {col} IS NULL)');params.append(value)
+  elif op=='starts':parts.append(f'CStr({col}) LIKE ?');params.append(f'{value}%')
+  elif op=='starts_any':
+   # 「この先頭のどれかで始まる」(§9.94)。仕掛一覧の行ごとの追い判定は
+   # 先頭5桁の一族を引くが、1ページに数十の先頭が並ぶため1件ずつ引くと
+   # 往復が数十本になる。まとめて1回で引けるようにする。
+   vals=[x for x in (value.split(',') if value else []) if x][:60]
+   if not vals:parts.append('0=1')
+   else:
+    parts.append('('+' OR '.join(f'CStr({col}) LIKE ?' for _ in vals)+')')
+    params += [f'{v}%' for v in vals]
+  elif op=='ends':parts.append(f'CStr({col}) LIKE ?');params.append(f'%{value}')
+  elif op=='empty':parts.append(f'({col} IS NULL OR CStr({col})=\'\')')
+  elif op=='not_empty':parts.append(f'({col} IS NOT NULL AND CStr({col})<>\'\')')
+  elif op in ('gt','gte','lt','lte'):
+   sign={"gt":'>',"gte":'>=',"lt":'<',"lte":'<='}[op]
+   parts.append(f'Val(CStr({col})) {sign} ?')
+   # SQLiteは値の型(ストレージクラス)優先で比較するため、REALを返す
+   # Val()の結果と文字列パラメータを比べると常にREAL<TEXT扱いで不成立に
+   # なる。パラメータ側もこちらで数値化してから渡す。
+   params.append(_numeric_value(value))
+ return parts,params
+
+
+def _table_order(cs):
+ """並び順（§9.88）。`(ORDER BY の句, 列ごとの並べ替えの決まり)`。"""
+ # 並び順は複数キーを受け付ける(§9.88)。sorts=[{"column":..,"dir":"asc"}..]
+ # のJSON。従来の sort / sort_dir (1列)も引き続き使える(見出しクリック)。
+ # **実在する列だけを通す**(cs との照合)。qi()で括ってはいるが、そもそも
+ # 列名を組み立てに使う箇所なので、素性の分かるものだけに絞る。
+ order_parts=[];order_keys=[]
+ raw_sorts=request.args.get('sorts','').strip()
+ if raw_sorts:
+  try:items=json.loads(raw_sorts)
+  except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);items=[]
+  for it in (items if isinstance(items,list) else []):
+   if isinstance(it,str):it={'column':it}
+   if not isinstance(it,dict):continue
+   col=str(it.get('column') or '').strip()
+   if col not in cs or any(col==x[0] for x in order_parts):continue
+   order_parts.append((col,'DESC' if str(it.get('dir') or '').lower()=='desc' else 'ASC'))
+   # 列ごとの並べ替えの決まり(§9.187)。**指定が無ければNone**＝今までどおり
+   # SQLのORDER BY。画面が送るのは「いま当たっている設定」なので、
+   # 保存前の試し(stage)もそのまま効く。
+   order_keys.append({'column':col,
+                      'dir':'desc' if str(it.get('dir') or '').lower()=='desc' else 'asc',
+                      'spec':sort_order.normalize_spec(it.get('sort')),
+                      'fmt':it.get('fmt') if isinstance(it.get('fmt'),dict) else None,
+                      'rule':str(it.get('rule') or '').strip()})
+ if not order_parts:
+  sort_col=request.args.get('sort','').strip()
+  sort_dir='DESC' if request.args.get('sort_dir','').strip().lower()=='desc' else 'ASC'
+  if sort_col in cs:
+   order_parts.append((sort_col,sort_dir))
+   order_keys.append({'column':sort_col,'dir':sort_dir.lower(),'spec':None,'fmt':None,'rule':''})
+ order=(' ORDER BY '+','.join(f'{qi(c2)} {d}' for c2,d in order_parts)) if order_parts else ''
+ return order,order_keys
+
+
+def _table_fetch_page(c,cur,t,cs,where,params,order,order_keys,size,start):
+ """そのページぶんを取り出す。`(行, 並べ替えを当てられなかったときの断り)`。"""
+ sort_note=''
+ custom=[k for k in order_keys if k.get('spec')]
+ if custom:
+  # **並べ替えの決まりがある列だけこの経路**(§9.187)。SQLでは書けないので
+  # Pythonで並べてからページを切り出す。失敗しても一覧は出す(fail-open)
+  # ——並びの設定で表そのものが開けなくなるのが一番困る。
+  try:
+   rows=_fetch_custom_sorted(c,t,cs,where,params,order_keys,size,start)
+  except Exception as e:
+   app_logger().warning('列ごとの並べ替えを当てられませんでした(table=%s): %s',t,e)
+   sort_note=f'この列の並べ替えの設定を当てられなかったので、ふだんの並びで出しています（{e}）'
+   cur.execute(f'SELECT * FROM {qi(t)}'+where+order+f' LIMIT {size} OFFSET {start}',params)
+   rows=cur.fetchall()
+ else:
+  cur.execute(f'SELECT * FROM {qi(t)}'+where+order+f' LIMIT {size} OFFSET {start}',params)
+  rows=cur.fetchall()
+ return rows,sort_note
+
+
+def _table_joins(k,t,visible_cs,row_dicts,lap):
+ """頼まれた結合を当てる（§9.193）。`(列, 行, 結合の一覧, 品質の結合の要約)`。"""
+ join_info=None;join_list=[]
+ # 結合(§9.193)。**明示的に頼まれたときだけ**当てる——一覧を出す本筋の
+ # 問い合わせ(`join=1`)と、既定の品質データ結合(`join_quality=1`)の2つ。
+ # 内部の軽い問い合わせ(§9.94の`columns=`)には付かないので、行の追い判定の
+ # たびに相手のDBを引くことにはならない。
+ want_join=request.args.get('join')=='1'
+ want_quality=bool(WORK_DB_KEY) and k==WORK_DB_KEY and request.args.get('join_quality')=='1'
+ if want_join or want_quality:
+  t_join=time.perf_counter()
+  defs=query_join.definitions_for(k,t,include_builtin=want_quality) if want_join else []
+  if want_quality and not want_join:
+   # 既定の品質データ結合は解除できる(§9.194)。解除されていたら**何も
+   # 起きないだけ**——品質の列が足されないので、その列を見ていた設定は
+   # 「無い列」として静かに落ちる（エラーにしない。利用者の指示）。
+   b=query_join.builtin_quality_def() if query_join.builtin_quality_enabled() else None
+   defs=[b] if b else []
+  visible_cs,row_dicts,join_list=query_join.apply_joins(k,t,visible_cs,row_dicts,defs)
+  visible_cs=_unique_columns(visible_cs)
+  join_info=query_join.summarize(join_list) if join_list else None
+  lap('join',t_join)
+ return visible_cs,row_dicts,join_list,join_info
+
+
 @bp.get('/api/table')
 def api_table():
  # 一覧が出るまでの内訳を測って返す(§9.90)。「遅い」という報告に対して、
@@ -403,47 +529,6 @@ def api_table():
  try:
   k=request.args['db'];t=request.args['table'];page=max(1,int(request.args.get('page',1)));size=min(PAGE_SIZE_MAX,max(1,int(request.args.get('page_size',PAGE_SIZE_DEFAULT))));q=request.args.get('search','').strip();cf=cfg(k)
   filter_payload=request.args.get('filters','').strip()
-  def safe_filters(text,columns):
-   if not text:return []
-   try:items=json.loads(text)
-   except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);return []
-   if not isinstance(items,list):return []
-   allowed_ops={'contains','not_contains','eq','neq','starts','starts_any','ends','gt','gte','lt','lte','empty','not_empty'}
-   out=[]
-   for item in items[:20]:
-    if not isinstance(item,dict):continue
-    col=str(item.get('column') or '').strip();op=str(item.get('op') or 'contains').strip();value=str(item.get('value') or '').strip()
-    if col in columns and op in allowed_ops:out.append({'column':col,'op':op,'value':value})
-   return out
-  def build_filter_where(filters):
-   parts=[];params=[]
-   for f in filters:
-    col=qi(f['column']);op=f['op'];value=f['value']
-    if op=='contains':parts.append(f'CStr({col}) LIKE ?');params.append(f'%{value}%')
-    elif op=='not_contains':parts.append(f'(CStr({col}) NOT LIKE ? OR {col} IS NULL)');params.append(f'%{value}%')
-    elif op=='eq':parts.append(f'CStr({col})=?');params.append(value)
-    elif op=='neq':parts.append(f'(CStr({col})<>? OR {col} IS NULL)');params.append(value)
-    elif op=='starts':parts.append(f'CStr({col}) LIKE ?');params.append(f'{value}%')
-    elif op=='starts_any':
-     # 「この先頭のどれかで始まる」(§9.94)。仕掛一覧の行ごとの追い判定は
-     # 先頭5桁の一族を引くが、1ページに数十の先頭が並ぶため1件ずつ引くと
-     # 往復が数十本になる。まとめて1回で引けるようにする。
-     vals=[x for x in (value.split(',') if value else []) if x][:60]
-     if not vals:parts.append('0=1')
-     else:
-      parts.append('('+' OR '.join(f'CStr({col}) LIKE ?' for _ in vals)+')')
-      params += [f'{v}%' for v in vals]
-    elif op=='ends':parts.append(f'CStr({col}) LIKE ?');params.append(f'%{value}')
-    elif op=='empty':parts.append(f'({col} IS NULL OR CStr({col})=\'\')')
-    elif op=='not_empty':parts.append(f'({col} IS NOT NULL AND CStr({col})<>\'\')')
-    elif op in ('gt','gte','lt','lte'):
-     sign={"gt":'>',"gte":'>=',"lt":'<',"lte":'<='}[op]
-     parts.append(f'Val(CStr({col})) {sign} ?')
-     # SQLiteは値の型(ストレージクラス)優先で比較するため、REALを返す
-     # Val()の結果と文字列パラメータを比べると常にREAL<TEXT扱いで不成立に
-     # なる。パラメータ側もこちらで数値化してから渡す。
-     params.append(_numeric_value(value))
-   return parts,params
   t_open=time.perf_counter()
   with connect(cf['path'],cf['role']=='readonly') as c:
    lap('open',t_open)
@@ -452,38 +537,9 @@ def api_table():
    where_parts=[];params=[]
    if q:
     where_parts.append('('+' OR '.join(f'CStr({qi(x)}) LIKE ?' for x in cs)+')');params += [f'%{q}%']*len(cs)
-   filters=safe_filters(filter_payload,cs);fp,filter_params=build_filter_where(filters);where_parts += fp;params += filter_params
+   filters=_safe_filters(filter_payload,cs);fp,filter_params=_build_filter_where(filters);where_parts += fp;params += filter_params
    where=(' WHERE '+' AND '.join(where_parts)) if where_parts else ''
-   # 並び順は複数キーを受け付ける(§9.88)。sorts=[{"column":..,"dir":"asc"}..]
-   # のJSON。従来の sort / sort_dir (1列)も引き続き使える(見出しクリック)。
-   # **実在する列だけを通す**(cs との照合)。qi()で括ってはいるが、そもそも
-   # 列名を組み立てに使う箇所なので、素性の分かるものだけに絞る。
-   order_parts=[];order_keys=[]
-   raw_sorts=request.args.get('sorts','').strip()
-   if raw_sorts:
-    try:items=json.loads(raw_sorts)
-    except Exception as _e:quiet('保存された値を読めない（既定で続ける）',_e);items=[]
-    for it in (items if isinstance(items,list) else []):
-     if isinstance(it,str):it={'column':it}
-     if not isinstance(it,dict):continue
-     col=str(it.get('column') or '').strip()
-     if col not in cs or any(col==x[0] for x in order_parts):continue
-     order_parts.append((col,'DESC' if str(it.get('dir') or '').lower()=='desc' else 'ASC'))
-     # 列ごとの並べ替えの決まり(§9.187)。**指定が無ければNone**＝今までどおり
-     # SQLのORDER BY。画面が送るのは「いま当たっている設定」なので、
-     # 保存前の試し(stage)もそのまま効く。
-     order_keys.append({'column':col,
-                        'dir':'desc' if str(it.get('dir') or '').lower()=='desc' else 'asc',
-                        'spec':sort_order.normalize_spec(it.get('sort')),
-                        'fmt':it.get('fmt') if isinstance(it.get('fmt'),dict) else None,
-                        'rule':str(it.get('rule') or '').strip()})
-   if not order_parts:
-    sort_col=request.args.get('sort','').strip()
-    sort_dir='DESC' if request.args.get('sort_dir','').strip().lower()=='desc' else 'ASC'
-    if sort_col in cs:
-     order_parts.append((sort_col,sort_dir))
-     order_keys.append({'column':sort_col,'dir':sort_dir.lower(),'spec':None,'fmt':None,'rule':''})
-   order=(' ORDER BY '+','.join(f'{qi(c2)} {d}' for c2,d in order_parts)) if order_parts else ''
+   order,order_keys=_table_order(cs)
    t_count=time.perf_counter()
    cur=c.cursor();cur.execute(f'SELECT COUNT(*) FROM {qi(t)}'+where,params);count=int(cur.fetchone()[0])
    lap('count',t_count)
@@ -493,22 +549,7 @@ def api_table():
    # 使う、という形になっていた)。SQLiteはOFFSETを解するので素直に渡す。
    t_fetch=time.perf_counter()
    start=(page-1)*size
-   sort_note=''
-   custom=[k for k in order_keys if k.get('spec')]
-   if custom:
-    # **並べ替えの決まりがある列だけこの経路**(§9.187)。SQLでは書けないので
-    # Pythonで並べてからページを切り出す。失敗しても一覧は出す(fail-open)
-    # ——並びの設定で表そのものが開けなくなるのが一番困る。
-    try:
-     rows=_fetch_custom_sorted(c,t,cs,where,params,order_keys,size,start)
-    except Exception as e:
-     app_logger().warning('列ごとの並べ替えを当てられませんでした(table=%s): %s',t,e)
-     sort_note=f'この列の並べ替えの設定を当てられなかったので、ふだんの並びで出しています（{e}）'
-     cur.execute(f'SELECT * FROM {qi(t)}'+where+order+f' LIMIT {size} OFFSET {start}',params)
-     rows=cur.fetchall()
-   else:
-    cur.execute(f'SELECT * FROM {qi(t)}'+where+order+f' LIMIT {size} OFFSET {start}',params)
-    rows=cur.fetchall()
+   rows,sort_note=_table_fetch_page(c,cur,t,cs,where,params,order,order_keys,size,start)
    lap('fetch',t_fetch)
   # **どの列を出すかはサーバーが決めない**(§9.165)。以前はここで「表示マスタ」
   # (DB単位・行の存在=非表示)を引いて列を落としていたが、同じことを列レイアウト
@@ -534,26 +575,7 @@ def api_table():
   if hidden or keep is not None:
    drop=lambda col:(col in hidden) or (keep is not None and col not in keep)
    row_dicts=[{col:v for col,v in d.items() if not drop(col)} for d in row_dicts]
-  join_info=None;join_list=[]
-  # 結合(§9.193)。**明示的に頼まれたときだけ**当てる——一覧を出す本筋の
-  # 問い合わせ(`join=1`)と、既定の品質データ結合(`join_quality=1`)の2つ。
-  # 内部の軽い問い合わせ(§9.94の`columns=`)には付かないので、行の追い判定の
-  # たびに相手のDBを引くことにはならない。
-  want_join=request.args.get('join')=='1'
-  want_quality=bool(WORK_DB_KEY) and k==WORK_DB_KEY and request.args.get('join_quality')=='1'
-  if want_join or want_quality:
-   t_join=time.perf_counter()
-   defs=query_join.definitions_for(k,t,include_builtin=want_quality) if want_join else []
-   if want_quality and not want_join:
-    # 既定の品質データ結合は解除できる(§9.194)。解除されていたら**何も
-    # 起きないだけ**——品質の列が足されないので、その列を見ていた設定は
-    # 「無い列」として静かに落ちる（エラーにしない。利用者の指示）。
-    b=query_join.builtin_quality_def() if query_join.builtin_quality_enabled() else None
-    defs=[b] if b else []
-   visible_cs,row_dicts,join_list=query_join.apply_joins(k,t,visible_cs,row_dicts,defs)
-   visible_cs=_unique_columns(visible_cs)
-   join_info=query_join.summarize(join_list) if join_list else None
-   lap('join',t_join)
+  visible_cs,row_dicts,join_list,join_info=_table_joins(k,t,visible_cs,row_dicts,lap)
   timing['server']=round((time.perf_counter()-t0)*1000)
   # どこのファイルを読んだのかも一緒に返す。共有を直接読んでいるのか、
   # 手元の写し(§9.89)を読んでいるのかで、遅さの意味がまったく違う。
