@@ -26,7 +26,7 @@
 | `esc()`は「属性にも使う」ので引用符まで逃がす | `test_rbcells.js` | [§9.276](../../docs/decisions/9.276.md) |
 | 落とす場所の印で盤を動かさない | `test_opui.js` | [§9.218](../../docs/decisions/9.218.md) |
 | 浮きパネルの中に絶対配置のポップアップを作らない | — | [§9.201](../../docs/decisions/9.201.md) |
-| 設定ページは段（タブ）＋畳み（アコーディオン） | `test_measstore.js`・`test_pcshare.js`・`test_setpage.js` | [§9.261](../../docs/decisions/9.261.md) |
+| 設定ページは段（タブ）＋畳み（アコーディオン） | `test_measstore.js`・`test_setpage.js` | [§9.261](../../docs/decisions/9.261.md) |
 | 操作が少ない画面の操作列は1行目へ相乗りさせる | — | [§9.266](../../docs/decisions/9.266.md) |
 | 盤の落とし先は「カーソルの真下の物」で決める | `test_oppad.js` | [§9.230](../../docs/decisions/9.230.md) |
 | マスタ管理の汎用CRUDは4本セット | `test_crudroutes.py` | [決まり](../../docs/decisions/rules-misc.md) |

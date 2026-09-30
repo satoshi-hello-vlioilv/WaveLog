@@ -27,8 +27,8 @@ CLAUDE.md の「画面を作るときの基準」（14項目）と、それをWa
 | `print-core.js`・帳票ブロック・用紙と余白 | [report.md](report.md) | 92 |
 | `WL` 名前空間・窓・メニュー・拡張の登録表 | [ui-core.md](ui-core.md) | 42 |
 | 色・文字サイズ・寸法の刻み・状態の見せ方 | [style.md](style.md) | 62 |
-| テストを書く・回す・後片付け | [testing.md](testing.md) | 54 |
+| テストを書く・回す・後片付け | [testing.md](testing.md) | 55 |
 | どの束にも入らないもの | [misc.md](misc.md) | 18 |
 
 「固定する網」の欄はテスト名。`tests/run_all.sh <名前>` で回す。
-規則は合わせて **1014件**（`ui-principles.md` は節で数える）。
+規則は合わせて **1015件**（`ui-principles.md` は節で数える）。
