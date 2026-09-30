@@ -1,4 +1,4 @@
-# マスタ管理の画面（22件）
+# マスタ管理の画面（23件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -11,6 +11,7 @@
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
 | マスタの1欄は`MM_FIELD_BUILDERS`（型→組み立て関数）の表。型を足すときは表へ1行。鍵は`Object.hasOwn`で引く | `test_maint.js` | [§9.522](../../docs/decisions/9.522.md) |
+| 器`#masterMaintForm`へは名前のある関数1つで受け手を付け、その回の値は器から読む（印の下で描画を閉じ込めない） | `test_setpage.js` | [§9.522](../../docs/decisions/9.522.md) |
 | 編集窓は`formLayout:'rows'`で1欄1行・段の高さは最大段で固定・題は`editTitle`・既定は`defaultsKey`の薄字と（既定）の札 | `test_stdmodal.js` | [§9.463](../../docs/decisions/9.463.md) |
 | 段の札の一言は**見えている欄だけ**から作る（伏せた欄を数えない。判定は`[hidden]`） | `test_setpage.js` | [§9.433](../../docs/decisions/9.433.md) |
 | 設備停止の内訳は「左＝停止内容（分類ごと）／右＝内訳」の2ペイン。時間は札＋スライダーの見本 | `test_stopsubui.js` | [§9.389](../../docs/decisions/9.389.md) |

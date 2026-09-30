@@ -2523,26 +2523,10 @@
      段になったので、スクロールではなく表示の切り替えで連れて行く。 */
   /* **委譲で受ける**（§9.265と同じ理由）——置き場の行は後から描かれるので、
      このとき1つずつ配線すると、行の中の「直す場所を開く」だけ効かない。 */
-  form.addEventListener('click',ev=>{
-   const btn=ev.target.closest('[data-pc-jump]');if(!btn||!form.contains(btn))return;
-   ev.preventDefault();
-   const sec=form.querySelector(`#pcSec-${btn.dataset.pcJump}`);
-   if(!sec)return;
-   const panel=sec.closest('.mm-tabpanel');
-   if(panel&&typeof form.__mmShowTab==='function'){
-    const i=[...form.querySelectorAll('.mm-tabpanel')].indexOf(panel);
-    if(i>=0)form.__mmShowTab(i);
-   }
-   sec.scrollIntoView({block:'start',behavior:'smooth'});
-   sec.classList.add('is-jumped');
-   setTimeout(()=>sec.classList.remove('is-jumped'),1200);
-  });
-  /* 「直す場所」からその画面へ飛ぶ。**行が持つ印で開く**ので、置き場が
-     増えてもここは触らなくてよい（飛び先はサーバーの答えの一部）。 */
-  form.addEventListener('click',ev=>{
-   const b=ev.target.closest('[data-pc-goto]');if(!b)return;
-   document.querySelector(`#masterMaintNav [data-master="${b.dataset.pcGoto}"]`)?.click();
-  });
+  /* **器は描き直しても同じ要素**なので、名前のある関数で付ける（同じ関数は2度付かない・§9.522 の追補。
+     以前は描くたびに積み上がり、3回開くと1回押しただけで3回走った）。 */
+  form.addEventListener('click',onPcJumpClick);
+  form.addEventListener('click',onPcGotoClick);
   bindInputHelpers(form);
   /* 「表示」の設定へ連れて行く。**押すのはヘッダーのバッジそのもの**——
      同じポップオーバーを2つ書かない（§9.267 の「置き場で決める」と同じ作法）。
@@ -2571,6 +2555,27 @@
   /* デスクトップの起動アイコン（§9.445）。**ここは行き先だけ**なので、
      することは「いまの状態を取りに行って塗る」の1つ（盤は「表示」の節）。 */
   paintShortcut();loadShortcut();
+ }
+ function onPcJumpClick(ev){
+  const form=ev.currentTarget;
+  const btn=ev.target.closest('[data-pc-jump]');if(!btn||!form.contains(btn))return;
+  ev.preventDefault();
+  const sec=form.querySelector(`#pcSec-${btn.dataset.pcJump}`);
+  if(!sec)return;
+  const panel=sec.closest('.mm-tabpanel');
+  if(panel&&typeof form.__mmShowTab==='function'){
+   const i=[...form.querySelectorAll('.mm-tabpanel')].indexOf(panel);
+   if(i>=0)form.__mmShowTab(i);
+  }
+  sec.scrollIntoView({block:'start',behavior:'smooth'});
+  sec.classList.add('is-jumped');
+  setTimeout(()=>sec.classList.remove('is-jumped'),1200);
+ }
+ /* 「直す場所」からその画面へ飛ぶ。**行が持つ印で開く**ので、置き場が
+    増えてもここは触らなくてよい（飛び先はサーバーの答えの一部）。 */
+ function onPcGotoClick(ev){
+  const b=ev.target.closest('[data-pc-goto]');if(!b)return;
+  document.querySelector(`#masterMaintNav [data-master="${b.dataset.pcGoto}"]`)?.click();
  }
  /* 他の画面から連れて来られたときに、その段（と盤）を開く。 */
  function openPcPending(form){

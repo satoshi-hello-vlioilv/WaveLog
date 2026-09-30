@@ -850,6 +850,10 @@
    +`<summary><b>${esc(title)}</b>${now?`<span class="pc-acc-now">${esc(now)}</span>`:''}</summary>`
    +`<div class="pc-acc-body">${body}</div></details>`;
  }
+ function repaintMaintTabs(ev){
+  const f=ev.currentTarget;
+  if(f&&typeof f.__mmPaintTabs==='function')f.__mmPaintTabs();
+ }
  function bindMaintTabs(form){
   const bar=form.querySelector('.mm-tabbar');
   if(!bar)return;
@@ -868,13 +872,14 @@
    const el=bar.querySelector(`[data-mmtab-sum="${i}"]`);
    if(el)el.textContent=mmTabSummaryText(p);
   });
-  if(form.dataset.mmTabsWired!=='1'){
-   form.dataset.mmTabsWired='1';
-   /* **値が変わったら見出しの一言を描き直す**（忘れると、直したのに
-      畳んだ段だけ古い値を名乗る）。 */
-   form.addEventListener('change',()=>paint());
-   form.addEventListener('input',()=>paint());
-  }
+  /* **値が変わったら見出しの一言を描き直す**（忘れると、直したのに
+     畳んだ段だけ古い値を名乗る）。**器（`#masterMaintForm`）は描き直しても同じ要素**なので、
+     受け手は名前のある関数1つで付け（同じ関数は2度付かない）、その回の`paint`を器から読む
+     （§9.522 の追補。以前は「1度だけ付ける」印の下で**最初の描画の段を閉じ込めて**おり、
+     2回目以降の描画では一言が打った字を追わなかった）。 */
+  form.__mmPaintTabs=paint;
+  form.addEventListener('change',repaintMaintTabs);
+  form.addEventListener('input',repaintMaintTabs);
   tabs.forEach((t,i)=>{
    t.onclick=()=>show(i);
    t.onkeydown=e=>{

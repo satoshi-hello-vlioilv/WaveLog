@@ -191,6 +191,26 @@ run('test_setpage: §9.68 パス設定を設定ページ形式へ / データ引
  const other=await page.evaluate(()=>({page:document.querySelector('#masterMaintForm').classList.contains('mm-form-page'),
    listWrap:getComputedStyle(document.querySelector('.mm-list-wrap')).display}));
  rec('他マスタへ移ると設定ページ指定が残らない',!other.page&&other.listWrap!=='none',JSON.stringify(other));
+ /* **器（#masterMaintForm）は描き直しても同じ要素**（§9.522 の追補）。受け手を描くたびに付けると
+    積み上がり、3回開くと図のボタン1回で3回走っていた。段の一言も最初の描画の段を閉じ込めたままで、
+    2回目以降は打った字を追わなかった。**2回目・3回目の描画**で見る（1回目だけでは見分けられない）。 */
+ for(const k of [2,3]){
+  if(k===3)await tab('アクセス権限');
+  await tab('共通設定');
+  const w=await page.evaluate(k=>{
+   const o=Element.prototype.scrollIntoView;let n=0;
+   Element.prototype.scrollIntoView=function(...a){if(/^pcSec-/.test(this.id||''))n++;return o.apply(this,a)};
+   try{document.querySelector('.pc-map [data-pc-jump="read"]').click()}finally{Element.prototype.scrollIntoView=o}
+   document.querySelector('#masterMaintForm .mm-tab[data-mmtab="0"]').click();
+   const el=document.querySelector('#masterMaintForm [data-pc-field="pc_name"]');
+   const was=el.value;el.value='ZZ'+k;el.dispatchEvent(new Event('input',{bubbles:true}));
+   const sum=(document.querySelector('#masterMaintForm [data-mmtab-sum="0"]')||{}).textContent||'';
+   el.value=was;el.dispatchEvent(new Event('input',{bubbles:true}));   /* 打った字は保存しない・元へ戻す */
+   return {走った:n,一言:sum};
+  },k);
+  rec(`${k}回目に描いた共通設定でも、図のボタン1回で受け手は1回だけ走る（積み上がらない）`,w.走った===1,JSON.stringify(w));
+  rec(`${k}回目に描いた共通設定でも、段の見出しの一言が打った字を追う`,w.一言.indexOf('ZZ'+k)>=0,JSON.stringify(w));
+ }
 
  // ---------- データ引継ぎ ----------
  await tab('データ引継ぎ');
