@@ -2853,6 +2853,25 @@
   const boxes=[...new Set(PLACE_ORDER.map(boxFor).filter(Boolean))];
   if(!boxes.length)return;
   wireChoiceUsage();                       /* §9.248 ⑤ 1度だけ配線する */
+  layoutReset(boxes);
+  /* **マスタが名指ししている組み込みの欄だけを差配する。** 作業時間・
+     丈位置・入力内容はマスタに載せていない（②で使う道具・③で記録する
+     もの）ので、今までどおりCSSの見せ分けに任せる。 */
+  const off=new Set(builtinOff||[]);
+  off.forEach(key=>{
+   /* **器をまたいで探す**（§9.232）——`.selectors`だけを見ると、外した
+      母材の欄が測定画面に出たままになる。 */
+   const el=hostOf({builtin:key});
+   if(el)el.classList.add('op-off');
+  });
+  const st={seq:0,missing:[]};
+  PLACE_ORDER.forEach(place=>layoutPlace(place,st));
+  layoutNote(st.missing);
+  layoutSettle();
+  layoutRepaint();
+ }
+ /* 前回の割り付けを外す（§9.522 で`layout()`から切り出した段。以下同じ）。 */
+ function layoutReset(boxes){
   /* 前回の割り付けを外してから始める（§9.210 ④と同じ約束——付いたまま
      測る・置くと、1回変えた形が二度と戻らない）。 */
   boxes.forEach(bx=>{
@@ -2868,146 +2887,150 @@
    });
    bx.style.setProperty('--op-cols',String(gridCols));
   });
-  /* **マスタが名指ししている組み込みの欄だけを差配する。** 作業時間・
-     丈位置・入力内容はマスタに載せていない（②で使う道具・③で記録する
-     もの）ので、今までどおりCSSの見せ分けに任せる。 */
-  const off=new Set(builtinOff||[]);
-  off.forEach(key=>{
-   /* **器をまたいで探す**（§9.232）——`.selectors`だけを見ると、外した
-      母材の欄が測定画面に出たままになる。 */
-   const el=hostOf({builtin:key});
-   if(el)el.classList.add('op-off');
-  });
-  let seq=0,missing=[];
-  PLACE_ORDER.forEach(place=>{
-   const box=boxFor(place);
-   if(!box)return;
-   const gs=groupsFor(place);
-   /* 群を「列でも区切る」（§9.226 ③）。**幅を決めた群があるときだけ**
-      マスを明示する（`banded`）——無いときは今までどおり`order`で流す。 */
-   const pack=packLayout(gs.map(g=>({name:g.name,span:g.span,dummy:g.dummy,
-     items:g.items.map(d=>({key:d.name,span:Number(d.span)||4}))})),gridCols);
-   const headAt=new Map(pack.heads.map(h=>[h.name,h]));
-   const cellAt=new Map(pack.items.map(x=>[x.key,x]));
-   gs.forEach(g=>{
-    const fold=isFolded(g);
-    const spot=pack.banded?headAt.get(g.name):null;
-    /* ---------- 空き（ダミー）（§9.228 ②、利用者の指示） ----------
-       「ダミーのカードだけ追加したいがダミー群ごとしか追加できないのも
-        修正してほしい」——空きは**カード1枚**。群の見出しを消すのは
-       **その群が全部空きのとき**だけで、ふつうの群の中に空きを1枚だけ
-       混ぜることもできる。空きは**見出しも枠も地も文字も持たない**。 */
-    if(!g.pad){
-    const head=document.createElement(g.fold?'button':'b');
-    head.className='prep-head'+(g.fold?' prep-fold':'');
-    head.dataset.opgen='1';head.dataset.opgroup=g.name;head.dataset.opplace=place;
-    head.style.order=String(seq++);
-    if(spot){head.style.gridColumn=spot.col+'/span '+spot.span;head.style.gridRow=String(spot.row)}
-    else head.style.gridColumn='1/-1';
-    /* **先頭の見出しには上の線を引かない。** 並びは`order`で決まるので
-       `:first-of-type`では当たらない（DOMの順ではない）。ここで印を付ける。 */
-    if(!box.querySelector(`[data-opgen][data-opplace="${place}"][data-opfirst]`))
-     head.dataset.opfirst='1';
-    if(g.fold){
-     head.type='button';
-     head.setAttribute('aria-expanded',fold?'false':'true');
-     head.title=fold?`「${g.name}」を開きます`:`「${g.name}」を畳みます`;
-     head.innerHTML=`<span class="prep-fold-name">${esc(g.name)}</span>`
-      +`<span class="prep-sum">${esc(fold?summaryOf(g):'')}</span>`
-      +`<span class="prep-chev" aria-hidden="true"></span>`;
-     head.addEventListener('click',()=>{
-      foldPref.set(g.name,!isFolded(g));
-      rememberFold();layout();
-     });
-    }else{
-     head.textContent=g.name;
-    }
-    box.appendChild(head);
-    }
-    g.items.forEach(d=>{
-     /* 空きのカード（§9.228 ②）。**入力欄は1つも作らない**——作ると
-        空白ではなくなる。マスだけを押さえる。 */
-     if(d.dummy){
-      const pad=document.createElement('div');
-      pad.className='prep-pad';
-      pad.dataset.opgen='1';pad.dataset.opgroup=g.name;pad.dataset.opplace=place;
-      pad.dataset.oppad='1';
-      pad.setAttribute('aria-hidden','true');
-      pad.style.order=String(seq++);
-      const at0=pack.banded?cellAt.get(d.name):null;
-      if(at0){pad.style.gridColumn=at0.col+'/span '+at0.span;pad.style.gridRow=String(at0.row)}
-      else pad.style.gridColumn='span '+Math.max(1,Math.min(gridCols,Number(d.span)||4));
-      box.appendChild(pad);
-      return;
-     }
-     let el=hostOf(d);
-     if(!el&&!d.builtin){el=fieldEl(d,seq);box.appendChild(el)}
-     if(!el){missing.push(d.name);return}
-     el.dataset.opplace=place;el.dataset.opgroup=g.name;
-     el.classList.add('opf-host');
-     /* **組み込みの欄も名前はマスタが決める**（§9.228 ①、利用者の指摘
-        「マスタで関連の項目を名前変更しても…どこかでハードコーディングが
-        残っていて名前変更が効かない」）。組み込みの欄は`index.html`が
-        持っている`<label data-f="coilStop">コイル止め<select…>`をそのまま
-        置いているだけで、**見出しの文字はHTMLに焼き付いたまま**だった
-        ——自由項目は`fieldEl()`が`d.name`から作るので効いていた、という
-        分かりにくい食い違い。コイル止めだけでなく**組み込みの欄すべて**。
-        **書き換えるのは先頭のテキスト節点だけ**——`<label>`の中には
-        `<select>`や`<small class="prep-from">`が入っているので、
-        `textContent`ごと差し替えると入力欄が消える。 */
-     if(d.builtin)renameBuiltinLabel(el,d.name);
-     /* **器いっぱいに使う**（§9.218 ②、利用者の指摘「項目間の余白が広く、
-        かなり表示欄がもったいない」「2列分にしたときに1列と比べると余白が
-        出てスカスカな印象。余白は無いようにUI幅で稼いでほしい」）。
-        以前は§9.130で測った「中身なりの幅」をそのまま使っており、
-        6マス中2マス（413px）の器に154pxの選択欄が入って**259pxが空いて
-        いた**（実測）。**幅を決めるのはマスタが選んだマス数**という形に
-        揃えるので、狭くしたい欄はマス数を減らす——1つの事実で決まる。
-        `fitControlWidths()`はこの印の付いた欄を測らない（測ると
-        `max-width`が入って器より狭いまま残る）。 */
-     el.dataset.opfill='1';
-     /* **前に測った`max-width`を落とす。** `fitControlWidths()`は
-        `data-opfill`が付く前にも走る（測定を開いた直後の1回）ので、
-        インラインの`max-width`が残ったままだとCSSに勝ち、器の中で
-        154pxのまま余白が残る（実測。実際にそうなった）。 */
-     el.querySelectorAll('select,input,textarea').forEach(c=>{c.style.maxWidth=''});
-     el.style.order=String(seq++);
-     const at=pack.banded?cellAt.get(d.name):null;
-     if(at){el.style.gridColumn=at.col+'/span '+at.span;el.style.gridRow=String(at.row)}
-     else{el.style.gridColumn='span '+Math.max(1,Math.min(gridCols,Number(d.span)||4));
-          el.style.gridRow=''}
-     el.classList.toggle('op-folded',fold);
-     el.classList.toggle('op-required',!!d.required);
-     /* 見せ方（§9.221 ⑦）は**組み込みの欄にも当たる**——器の属性を書くだけで、
-        値を持つ`<select>`/`<input>`そのものには触らない。 */
-     applyPresentation(el,d);
-     /* 選ばせ方（§9.218 ②）。**組み込みの欄にも当たる**——値を持つのは
-        今までどおり`<select>`なので、当てても壊れるものが無い。 */
-     const kind=widgetOf(d);
-     /* **`<select>`だけの話ではない**（§9.219 ③）。数値・自由記述の欄は
-        `<input>`なので、値を持つ要素が在れば器を被せる。 */
-     /* **プルダウンでも手打ちが要る**（§9.220 ③）——形はそのままで
-        「打つ場所」だけを足すので、器を被せる判断は2つの事実の和になる。 */
-     const needsBox=kind!==WIDGET_SELECT||(d.freeText&&el.querySelector(':scope>select'));
-     if(needsBox&&valueEl(el))buildWidget(d,el,kind);
-     else stripWidget(el);
-     /* ---------- 自動で入る値の見せ方（§9.233 ①、利用者の指示） ----------
-        「自動で入る値についても、選んで設定できるようにしてください」
-        値を入れるのは画面（前工程の実績・計算の結果）なので**器は被せない**
-        ——被せると押せる部品になり、押しても何も起きない（§4）。
-        選べるのは「どう見えるか」だけなので、印を器へ置いてCSSが読む。 */
-     if(outputEl(el)&&kind!==WIDGET_SELECT)el.dataset.opout=kind;
-     else delete el.dataset.opout;
-     /* **単位は器を被せたあとに置く**（§9.233 ④）——先に置くと、器が
-        後から末尾へ足されて「外下」の単位が器の上に出る。 */
-     placeUnit(el,d);
-     /* **意匠は器を被せない欄にも当たる**（§9.223 ③）。素のプルダウンでも
-        「主色・丸・大」を選べないと、選ばせ方を変えないと見た目を変えられない
-        ことになる（2つの軸にした意味が無い）。 */
-     applyLook(el,d);
-    });
+ }
+ /* 置き場1つぶん: 群ごとに見出し・空き・欄を置く。`st`は置き場をまたいで数える（並び順と飛ばした項目）。 */
+ function layoutPlace(place,st){
+  const box=boxFor(place);
+  if(!box)return;
+  const gs=groupsFor(place);
+  /* 群を「列でも区切る」（§9.226 ③）。**幅を決めた群があるときだけ**
+     マスを明示する（`banded`）——無いときは今までどおり`order`で流す。 */
+  const pack=packLayout(gs.map(g=>({name:g.name,span:g.span,dummy:g.dummy,
+    items:g.items.map(d=>({key:d.name,span:Number(d.span)||4}))})),gridCols);
+  const headAt=new Map(pack.heads.map(h=>[h.name,h]));
+  const cellAt=new Map(pack.items.map(x=>[x.key,x]));
+  const P={place,box,pack,cellAt};
+  gs.forEach(g=>{
+   const fold=isFolded(g);
+   const spot=pack.banded?headAt.get(g.name):null;
+   /* ---------- 空き（ダミー）（§9.228 ②、利用者の指示） ----------
+      「ダミーのカードだけ追加したいがダミー群ごとしか追加できないのも
+       修正してほしい」——空きは**カード1枚**。群の見出しを消すのは
+      **その群が全部空きのとき**だけで、ふつうの群の中に空きを1枚だけ
+      混ぜることもできる。空きは**見出しも枠も地も文字も持たない**。 */
+   if(!g.pad)layoutHead(g,fold,spot,P,st);
+   g.items.forEach(d=>{
+    /* 空きのカード（§9.228 ②）。**入力欄は1つも作らない**——作ると
+       空白ではなくなる。マスだけを押さえる。 */
+    if(d.dummy){layoutPad(d,g,P,st);return}
+    layoutField(d,g,fold,P,st);
    });
   });
+ }
+ /* 群の見出し（畳める群はボタン）。 */
+ function layoutHead(g,fold,spot,P,st){
+  const {place,box}=P;
+  const head=document.createElement(g.fold?'button':'b');
+  head.className='prep-head'+(g.fold?' prep-fold':'');
+  head.dataset.opgen='1';head.dataset.opgroup=g.name;head.dataset.opplace=place;
+  head.style.order=String(st.seq++);
+  if(spot){head.style.gridColumn=spot.col+'/span '+spot.span;head.style.gridRow=String(spot.row)}
+  else head.style.gridColumn='1/-1';
+  /* **先頭の見出しには上の線を引かない。** 並びは`order`で決まるので
+     `:first-of-type`では当たらない（DOMの順ではない）。ここで印を付ける。 */
+  if(!box.querySelector(`[data-opgen][data-opplace="${place}"][data-opfirst]`))
+   head.dataset.opfirst='1';
+  if(g.fold){
+   head.type='button';
+   head.setAttribute('aria-expanded',fold?'false':'true');
+   head.title=fold?`「${g.name}」を開きます`:`「${g.name}」を畳みます`;
+   head.innerHTML=`<span class="prep-fold-name">${esc(g.name)}</span>`
+    +`<span class="prep-sum">${esc(fold?summaryOf(g):'')}</span>`
+    +`<span class="prep-chev" aria-hidden="true"></span>`;
+   head.addEventListener('click',()=>{
+    foldPref.set(g.name,!isFolded(g));
+    rememberFold();layout();
+   });
+  }else{
+   head.textContent=g.name;
+  }
+  box.appendChild(head);
+ }
+ /* 空きのカード。 */
+ function layoutPad(d,g,P,st){
+  const {place,box,pack,cellAt}=P;
+  const pad=document.createElement('div');
+  pad.className='prep-pad';
+  pad.dataset.opgen='1';pad.dataset.opgroup=g.name;pad.dataset.opplace=place;
+  pad.dataset.oppad='1';
+  pad.setAttribute('aria-hidden','true');
+  pad.style.order=String(st.seq++);
+  const at0=pack.banded?cellAt.get(d.name):null;
+  if(at0){pad.style.gridColumn=at0.col+'/span '+at0.span;pad.style.gridRow=String(at0.row)}
+  else pad.style.gridColumn='span '+Math.max(1,Math.min(gridCols,Number(d.span)||4));
+  box.appendChild(pad);
+ }
+ /* 欄1つ: マスタの名前・幅・選ばせ方・単位・意匠を当てる。 */
+ function layoutField(d,g,fold,P,st){
+  const {place,box,pack,cellAt}=P;
+  let el=hostOf(d);
+  if(!el&&!d.builtin){el=fieldEl(d,st.seq);box.appendChild(el)}
+  if(!el){st.missing.push(d.name);return}
+  el.dataset.opplace=place;el.dataset.opgroup=g.name;
+  el.classList.add('opf-host');
+  /* **組み込みの欄も名前はマスタが決める**（§9.228 ①、利用者の指摘
+     「マスタで関連の項目を名前変更しても…どこかでハードコーディングが
+     残っていて名前変更が効かない」）。組み込みの欄は`index.html`が
+     持っている`<label data-f="coilStop">コイル止め<select…>`をそのまま
+     置いているだけで、**見出しの文字はHTMLに焼き付いたまま**だった
+     ——自由項目は`fieldEl()`が`d.name`から作るので効いていた、という
+     分かりにくい食い違い。コイル止めだけでなく**組み込みの欄すべて**。
+     **書き換えるのは先頭のテキスト節点だけ**——`<label>`の中には
+     `<select>`や`<small class="prep-from">`が入っているので、
+     `textContent`ごと差し替えると入力欄が消える。 */
+  if(d.builtin)renameBuiltinLabel(el,d.name);
+  /* **器いっぱいに使う**（§9.218 ②、利用者の指摘「項目間の余白が広く、
+     かなり表示欄がもったいない」「2列分にしたときに1列と比べると余白が
+     出てスカスカな印象。余白は無いようにUI幅で稼いでほしい」）。
+     以前は§9.130で測った「中身なりの幅」をそのまま使っており、
+     6マス中2マス（413px）の器に154pxの選択欄が入って**259pxが空いて
+     いた**（実測）。**幅を決めるのはマスタが選んだマス数**という形に
+     揃えるので、狭くしたい欄はマス数を減らす——1つの事実で決まる。
+     `fitControlWidths()`はこの印の付いた欄を測らない（測ると
+     `max-width`が入って器より狭いまま残る）。 */
+  el.dataset.opfill='1';
+  /* **前に測った`max-width`を落とす。** `fitControlWidths()`は
+     `data-opfill`が付く前にも走る（測定を開いた直後の1回）ので、
+     インラインの`max-width`が残ったままだとCSSに勝ち、器の中で
+     154pxのまま余白が残る（実測。実際にそうなった）。 */
+  el.querySelectorAll('select,input,textarea').forEach(c=>{c.style.maxWidth=''});
+  el.style.order=String(st.seq++);
+  const at=pack.banded?cellAt.get(d.name):null;
+  if(at){el.style.gridColumn=at.col+'/span '+at.span;el.style.gridRow=String(at.row)}
+  else{el.style.gridColumn='span '+Math.max(1,Math.min(gridCols,Number(d.span)||4));
+       el.style.gridRow=''}
+  el.classList.toggle('op-folded',fold);
+  el.classList.toggle('op-required',!!d.required);
+  /* 見せ方（§9.221 ⑦）は**組み込みの欄にも当たる**——器の属性を書くだけで、
+     値を持つ`<select>`/`<input>`そのものには触らない。 */
+  applyPresentation(el,d);
+  /* 選ばせ方（§9.218 ②）。**組み込みの欄にも当たる**——値を持つのは
+     今までどおり`<select>`なので、当てても壊れるものが無い。 */
+  const kind=widgetOf(d);
+  /* **`<select>`だけの話ではない**（§9.219 ③）。数値・自由記述の欄は
+     `<input>`なので、値を持つ要素が在れば器を被せる。 */
+  /* **プルダウンでも手打ちが要る**（§9.220 ③）——形はそのままで
+     「打つ場所」だけを足すので、器を被せる判断は2つの事実の和になる。 */
+  const needsBox=kind!==WIDGET_SELECT||(d.freeText&&el.querySelector(':scope>select'));
+  if(needsBox&&valueEl(el))buildWidget(d,el,kind);
+  else stripWidget(el);
+  /* ---------- 自動で入る値の見せ方（§9.233 ①、利用者の指示） ----------
+     「自動で入る値についても、選んで設定できるようにしてください」
+     値を入れるのは画面（前工程の実績・計算の結果）なので**器は被せない**
+     ——被せると押せる部品になり、押しても何も起きない（§4）。
+     選べるのは「どう見えるか」だけなので、印を器へ置いてCSSが読む。 */
+  if(outputEl(el)&&kind!==WIDGET_SELECT)el.dataset.opout=kind;
+  else delete el.dataset.opout;
+  /* **単位は器を被せたあとに置く**（§9.233 ④）——先に置くと、器が
+     後から末尾へ足されて「外下」の単位が器の上に出る。 */
+  placeUnit(el,d);
+  /* **意匠は器を被せない欄にも当たる**（§9.223 ③）。素のプルダウンでも
+     「主色・丸・大」を選べないと、選ばせ方を変えないと見た目を変えられない
+     ことになる（2つの軸にした意味が無い）。 */
+  applyLook(el,d);
+ }
+ /* 知らせの1行（項目が無い・画面に無い項目を飛ばした）。 */
+ function layoutNote(missing){
   /* **無いものは無いと書く**（§4）。組み込みキーの綴りが変わった・画面から
      消えた欄をマスタが名指ししていると、黙って1つ欠けるだけになる。 */
   /* ---------- 仕掛由来の添え書き（§9.233 ⑤） ----------
@@ -3027,6 +3050,9 @@
    note.innerHTML=msgs.join('<br>');
    note.hidden=!msgs.length;
   }
+ }
+ /* 割り付けたあとに配線・値の当て直し・幅の測り直しをする。 */
+ function layoutSettle(){
   bind();
   bindMeasureType();
   apply();
@@ -3050,6 +3076,9 @@
      あの器の中の見え方を写すので、母材の器（`.material-grid`）で測ると
      縮尺が違う。 */
   rememberCellPx(boxFor(PLACE_PREP));
+ }
+ /* マスタが届いてから塗り直すもの（進捗の分母・③記録した値）。 */
+ function layoutRepaint(){
   /* ---------- 進捗の分母はマスタが届いてから塗り直す（§9.234 ⑧） ----------
      母材の進捗（`0/9`）の分母は`motherKeys()`＋丈の数で、**マスタが読めて
      いないあいだは8欄の受け皿へ落ちる**（`measure-progress.js`の
