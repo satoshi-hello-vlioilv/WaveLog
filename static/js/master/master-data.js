@@ -184,6 +184,27 @@
  function msSize(n){return (n===null||n===undefined)?'—':(n/1048576).toFixed(1)+'MB'}
  function renderMeasStorage(){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  const F=msFacts();
+  form.innerHTML=`
+   <div class="mm-form-head"><span class="mm-mode-chip editing">この端末の設定</span></div>
+   <p class="ms-lead">測定データは<b>3か所</b>に置かれます。上から下へ流れます。
+    <b>打っている最中はまだどこにも入っていません</b>——「保存して一覧へ」か「測定を完了」を押した時点で①と②へ入ります。</p>
+   <div class="ms-next"><span class="ms-next-label">次にすること</span><span>${F.next}</span></div>
+   ${pageTabsHtml([
+    {name:'いまの状態',body:msTabNow(F)},
+    {name:'置き場と引っ越し',body:msTabPlace(F)},
+    {name:'閲覧用の複製',body:msTabExport(F)},
+   ])}`;
+  list.innerHTML='';
+  /* 段の切り替えを配線する（§9.261）。編集窓と同じ`bindMaintTabs`なので、
+     キーボード操作（←→）も見出しの一言もそのまま効く。 */
+  bindMaintTabs(form);
+  wireMsActions(form);
+  wireMsSplit();
+  wireMsSaveCfg();
+ }
+ /* 測定データの保存の画面に出す事実（§9.522 で`renderMeasStorage()`から切り出した）。①の件数は画面が数える。 */
+ function msFacts(){
   const srv=measStorageState.server||{},exp=srv.export||{},loc=srv.local||{};
   const items=measStorageState.local;
   const draft=items?items.filter(x=>x.status!=='完了').length:null;
@@ -199,32 +220,31 @@
      ?'②までは保存できています。他のPCから<b>閲覧だけ</b>させたい場合は、下の「閲覧用の複製先」を設定してください（設定しなくても測定・共有はできます）。'
      :(exp.pending?'②に新しい変更があります。次の複製で③へ写ります（すぐ写したいときは「いま複製する」）。'
                   :'すべて送信・複製できています。いまは何もする必要がありません。'));
-  /* **1行1段**にする（§9.261）。以前は3段を横に並べていたが、盤は
-     ビューポートより狭く（1366pxの窓で875px）、矢印2本が240pxを取るので
-     1段あたり204pxしか残らず、**値が「未設定（…」「08/28 15:2…」と
-     切れていた**（実測。CLAUDE 画面基準 11「器は中身の長さから決める」）。
-     縦に積めば値は切れず、流れも上から下で読める。 */
-  const stage=(no,title,sub,rows,note,cls)=>`<div class="ms-stage ${cls||''}">
+  return { exp, loc, draft, done, unsent, v, mins, next };
+ }
+ /* **1行1段**にする（§9.261）。以前は3段を横に並べていたが、盤は
+    ビューポートより狭く（1366pxの窓で875px）、矢印2本が240pxを取るので
+    1段あたり204pxしか残らず、**値が「未設定（…」「08/28 15:2…」と
+    切れていた**（実測。CLAUDE 画面基準 11「器は中身の長さから決める」）。
+    縦に積めば値は切れず、流れも上から下で読める。 */
+ const msStage=(no,title,sub,rows,note,cls)=>`<div class="ms-stage ${cls||''}">
     <div class="ms-stage-head"><span class="ms-no">${no}</span><b>${esc(title)}</b><small>${esc(sub)}</small></div>
     <dl class="ms-kv">${rows.map(([k,val,warn])=>
       `<dt>${esc(k)}</dt><dd${warn?' class="is-warn"':''}>${val}</dd>`).join('')}</dl>
     <p class="ms-note">${note}</p></div>`;
-  const arrow=(a,b)=>`<div class="ms-arrow" aria-hidden="true"><i>↓</i><b>${esc(a)}</b><small>${esc(b)}</small></div>`;
-  form.innerHTML=`
-   <div class="mm-form-head"><span class="mm-mode-chip editing">この端末の設定</span></div>
-   <p class="ms-lead">測定データは<b>3か所</b>に置かれます。上から下へ流れます。
-    <b>打っている最中はまだどこにも入っていません</b>——「保存して一覧へ」か「測定を完了」を押した時点で①と②へ入ります。</p>
-   <div class="ms-next"><span class="ms-next-label">次にすること</span><span>${next}</span></div>
-   ${pageTabsHtml([
-    {name:'いまの状態',body:`   <div class="ms-flow">
-    ${stage('①','この端末のブラウザ','IndexedDB＋控え',[
+ const msArrow=(a,b)=>`<div class="ms-arrow" aria-hidden="true"><i>↓</i><b>${esc(a)}</b><small>${esc(b)}</small></div>`;
+ /* 段「いまの状態」: ①→②→③の流れと、すぐ押す操作。 */
+ function msTabNow(F){
+  const { exp, loc, draft, done, unsent, mins } = F;
+  return `   <div class="ms-flow">
+    ${msStage('①','この端末のブラウザ','IndexedDB＋控え',[
       ['編集中',msNum(draft)+(draft===null?'':'件')],
       ['完了',msNum(done)+(done===null?'':'件')],
       ['②へ未送信',msNum(unsent)+(unsent===null?'':'件'),!!unsent],
      ],'入力した値の実体です。<b>この端末でしか見えません</b>。ブラウザのデータを消すと失われます。',
       unsent?'is-warn':'')}
-    ${arrow('保存のたび','自動')}
-    ${stage('②',loc.perEquipment?'測定データのDB':'この端末のDB',
+    ${msArrow('保存のたび','自動')}
+    ${msStage('②',loc.perEquipment?'測定データのDB':'この端末のDB',
       loc.perEquipment?'共有・設備ごとに1ファイル':'db/records.sqlite3',[
       ['記録',msNum(loc.count)+(loc.count===null?'':'件')],
       ['最終書込',msWhen(loc.lastWriteAt)],
@@ -237,8 +257,8 @@
         読んでいるあいだ測定端末の書き込みを待たせます（自分が書いたぶんだけは実物を読むので、
         自分の記録はすぐ見えます）。<br><code title="${esc(loc.shareDir||'')}">${esc(loc.shareDir||'—')}\\&lt;設備&gt;\\records.sqlite3</code>`
       :`<b>他のPCから続きを開けるのはここ</b>です（データ一覧はここも読みます）。<br><code title="${esc(loc.path||'')}">${esc(loc.path||'—')}</code>`)}
-    ${arrow(exp.retired?'使いません':`変わったら${mins}分ごと`,exp.retired?'—':(exp.configured?'自動':'未設定'))}
-    ${stage('③','閲覧用の複製','Box等・読むだけ',[
+    ${msArrow(exp.retired?'使いません':`変わったら${mins}分ごと`,exp.retired?'—':(exp.configured?'自動':'未設定'))}
+    ${msStage('③','閲覧用の複製','Box等・読むだけ',[
       ['状態',exp.retired?'<b>使いません</b>':(exp.configured?(exp.exists===false?'まだ作られていません':'複製しています'):'<b>未設定（複製しません）</b>'),exp.retired||!exp.configured],
       ['最終複製',(!exp.retired&&exp.configured)?msWhen(exp.lastOkAt):'—'],
       ['未反映の変更',(!exp.retired&&exp.configured)?(exp.pending?'あり':'なし'):'—'],
@@ -256,8 +276,12 @@
     <button type="button" id="msExportNow" class="mm-btn-ghost sm"${exp.configured?'':' disabled'}
       title="${exp.configured?'間隔を待たずに、いま②を③へ写します':'複製先が未設定です'}">いま複製する</button>
     <button type="button" id="msReload" class="mm-btn-ghost sm">状態を読み直す</button>
-   </div></div>`},
-    {name:'置き場と引っ越し',body:`   <div class="ms-settings">
+   </div></div>`;
+ }
+ /* 段「置き場と引っ越し」。 */
+ function msTabPlace(F){
+  const { loc, v } = F;
+  return `   <div class="ms-settings">
     <h4>② 測定データの置き場</h4>
     <!-- **置き場を決めるのは共通設定の1箇所**（§9.267、§9.207「入口を2つに
          しない」）。以前はここにも欄があり、共通設定の「置き場」にも同じ
@@ -289,8 +313,12 @@
      ${loc.perEquipment?'':'<p class="ms-split-why">共有の置き場が<b>まだ効いていません</b>。上で置き場を決めて保存し、アプリを再起動すると押せるようになります。</p>'}
      <div class="ms-split-result" id="msSplitResult" hidden></div>
     </div>
-   </div>`},
-    {name:'閲覧用の複製',body:`   <div class="ms-settings">
+   </div>`;
+ }
+ /* 段「閲覧用の複製」。 */
+ function msTabExport(F){
+  const { exp, v } = F;
+  return `   <div class="ms-settings">
     <h4>③ 閲覧用の複製の設定</h4>
     <!-- **置き場を決めるのは共通設定の1箇所**（§9.267、利用者の指示
          「バックアップの置き場などを含めた全ての設定を共通設定に」）。
@@ -311,12 +339,10 @@
    </div>
    <p class="mm-field-hint">測定画面の「DBへ同期」は、<b>いま開いている測定を①②へ即座に書く</b>ボタンです
     （保存して閉じずに、そこまでの入力を確実に残したいときに使います）。他のPCへ渡したい・PCを入れ替えるときは
-    「データ引継ぎ」タブを使ってください。</p>`},
-   ])}`;
-  list.innerHTML='';
-  /* 段の切り替えを配線する（§9.261）。編集窓と同じ`bindMaintTabs`なので、
-     キーボード操作（←→）も見出しの一言もそのまま効く。 */
-  bindMaintTabs(form);
+    「データ引継ぎ」タブを使ってください。</p>`;
+ }
+ /* すぐ押す操作（読み直す・未送信を送る・いま複製する）と、置き場を直す場所への行き先。 */
+ function wireMsActions(form){
   $('#msReload').onclick=()=>{measStorageState.loaded=false;loadMeasStorageMaint(true)};
   $('#msSyncNow').onclick=async()=>{
    if(typeof WL.records.syncPendingRecords!=='function'){showToast&&showToast('この画面からは送れません','',4000);return}
@@ -341,6 +367,8 @@
     document.querySelector(`#masterMaintNav [data-master="${btn.dataset.msGoto}"]`)?.click();
    };
   });
+ }
+ function wireMsSplit(){
   /* 引っ越しは**下見 → 振り分ける**の2段(§9.193)。下見を見るまで
      「振り分ける」は押せない（押した瞬間に何が起きるか分からない操作にしない）。 */
   let splitSeen=false;
@@ -380,6 +408,9 @@
               +'よろしいですか？'}))return;
    await msSplitRun(true);
   };
+ }
+ /* 閲覧用の複製の間隔を保存する（置き場は共通設定の1箇所・ここは間隔だけ）。 */
+ function wireMsSaveCfg(){
   $('#msSaveCfg').onclick=async()=>{
    /* **送るのはこの2つだけ**。パス設定の保存は「送られてきた項目だけ」を
       書くので、他の設定を巻き添えにしない(§9.192)。 */
