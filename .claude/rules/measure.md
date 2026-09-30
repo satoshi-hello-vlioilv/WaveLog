@@ -1,4 +1,4 @@
-# 測定画面（97件）
+# 測定画面（98件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -60,6 +60,7 @@
 | 屑幅の割り付けは`WL.split.scrapInfo()`の1箇所が答える | `test_splitlive.js` | [§9.160](../../docs/decisions/9.160.md) |
 | 操業データは「何を記録するか」をマスタが決める | `test_msteps.js`・`test_opdata.py` | [§9.215](../../docs/decisions/9.215.md) |
 | 選ばせ方（プルダウン/ラジオ/タブ/一覧）は`<select>`を残したまま被せる | — | [§9.218](../../docs/decisions/9.218.md) |
+| 選ばせ方ごとの組み立ては`CHOICE_BUILDERS`（型→組み立て関数）の表。足すときは表へ1行。鍵は`Object.hasOwn`で引く | `test_opwidget.js` | [§9.522](../../docs/decisions/9.522.md) |
 | 操業データ項目の設定はモーダルで開く | — | [§9.218](../../docs/decisions/9.218.md) |
 | 設定窓の未保存の変更は、遅れて届いた再読み込みで捨てない（`opState.dirty`の1件だけ残す） | `test_opunit.js` | [§9.361](../../docs/decisions/9.361.md) |
 | ③測定データ分析は「板厚・板幅のMIN/MAX」が主役 | `test_msteps.js` | [§9.214](../../docs/decisions/9.214.md) |
