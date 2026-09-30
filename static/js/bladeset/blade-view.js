@@ -1782,7 +1782,45 @@
     押した区間と同じ向きに見えるので、どちらの軸の話か迷わない。 */
  /* `axis`＝押した軸（`'up'`／`'lo'`）。**同じ記号は上下の両方に出る**ので、
     渡された軸の区間を選ぶ（§9.442）。その軸に無ければ元どおり先頭へ倒す。 */
+ /* ---------- 拡大図は段に分ける（§9.522・REVIEW 3-22） ----------
+    以前は`zoomFigure()`の1本（309行）が、形（半径・縮尺・向き）の値を約30個共有しながら
+    ①形 ②部材の並び ③本体 ④保持層 ⑤層の名前 ⑥寸法の字 ⑦字の段の割り付け を順に描いていた。
+    形は`zoomGeometry()`が1回だけ決めて`G`で渡し、段は`zoom*()`へ分けた。返す値は本体が組む。 */
+ const VFS = 13, NFS = 10;   /* 拡大図の字の大きさ（値・名前）。中へ貼る判定と引き出しの段が同じ値を見る */
  function zoomFigure(res, r, axis, half) {
+  const G = zoomGeometry(res, r, axis, half);
+  if (!G) return null;
+  const { z0, P, PAL, ring, finger, top, sg, cl } = G;
+  const seq = zoomSequence(res, r, G);
+  const { body, x, zoneA, zoneB, sb } = zoomCoreSvg(G, seq);
+  const { hold, holdList } = zoomHoldSvg(G, zoneA, zoneB);
+  const caps = zoomCapsSvg(G, x);
+  const { items, inside, vert, outs, marks: marks0 } = zoomLabels(G, seq, holdList);
+  const { ln, marks, lead, off, minY, maxY } = zoomLeadRows(G, sb, outs, marks0);
+  /* 区間の寸法線は**軸心の反対側**（半断面の外）。図と重ならない。 */
+  const spanY = cl - sg * ZOOM.dim;
+  const spans = zoomSpan(zoneA, zoneB, spanY, `区間 ${P.len.toFixed(2)} mm`, PAL);
+  let vh = top ? spanY + 16 : cl + ZOOM.rad + 16;
+  /* 外の段が器からはみ出すぶん、器を広げる（上へはみ出すなら全体を下げる）。 */
+  let grow = 0;
+  if (Number.isFinite(minY) && minY < 2) { grow = 2 - minY; vh += grow; }
+  if (Number.isFinite(maxY) && maxY + grow > vh - 2) vh = maxY + grow + 4;
+  /* **引き出した「部材」のいちばん広い幅**（§9.430）。ラベルは対象へ直に貼る
+     ので、引き出しに落ちてよいのは「貼る相手が無いもの」（上下刃の中心間）と
+     「字が入らないほど細い部材」だけ。ここが字の高さを超えたら、**貼れるはずの
+     物を引き出している**。 */
+  const leadWmax = outs.filter(q => q.w > 0).reduce((m, q) => Math.max(m, q.w), 0);
+  return {
+   vh, dims: items.length, inside: inside.length + vert.length, lead, off, leadWmax,
+   axis: z0.upper ? 'up' : 'lo', zone: z0.i, half: top ? 'top' : 'bottom',
+   svg: grow ? `<g transform="translate(0 ${grow.toFixed(1)})">${body}${hold}${caps}${ln}${marks}${spans}</g>`
+    : `${body}${hold}${caps}${ln}${marks}${spans}`,
+   /* 図が言えないことだけを添える（§CLAUDE 8 同じ情報を2箇所に出さない）。 */
+   note: zoomNote(res, r, P, ring, finger)
+  };
+ }
+ /* ① 形（どの区間・どちらの半分・縮尺・半径）。組めない区間なら null。 */
+ function zoomGeometry(res, r, axis, half) {
   const zs = r.zones || [];
   const want = axis === 'up' ? true : (axis === 'lo' ? false : null);
   const z0 = (want === null ? null : zs.find(z => !!z.upper === want)) || zs[0];
@@ -1825,6 +1863,11 @@
    const a = Yr(r0), b = Yr(r1);
    return { y: Math.min(a, b), h: Math.max(1, Math.abs(b - a)) };
   };
+  return { z0, P, PAL, B, tk, twoKnife, knifeRight, knifeLeft, S, ring, finger, shaftR, spacerR, knifeR, holdIn, holdOut, maxR, k, top, sg, cl, Yr, band };
+ }
+ /* ② 部材の並び（刃・スペーサー・隙間／シートが押さえる量）。模式図と同じ順。 */
+ function zoomSequence(res, r, G) {
+  const { z0, P, B, tk, knifeRight, knifeLeft } = G;
   /* 軸の並び。模式図と同じ順（OS側→DS側）で、`flip` のときだけ左右を返す。 */
   /* **シートの側の端の残りは「隙間」ではない**（§9.487・§9.456）。スペーサーを基準面から
      敷き詰め、反対の端はフローティングシートが押さえるので、残りは**押さえる量**——
@@ -1842,6 +1885,11 @@
   run.forEach(q => seq.push(q));
   if (seat && knifeLeft) seq.push(press());
   if (knifeRight) seq.push(knife());
+  return seq;
+ }
+ /* ③ 本体（軸・部材・軸心・有効幅の端）。部材には置いた位置（a・b・cx・bd）を書き込む。 */
+ function zoomCoreSvg(G, seq) {
+  const { PAL, twoKnife, knifeLeft, S, shaftR, spacerR, knifeR, sg, cl, Yr, band } = G;
   const face = { spacer: PAL.spacer, gap: PAL.filler, knife: PAL.knife, seat: 'none' };
   const edge = { spacer: PAL['spacer-edge'], gap: PAL['filler-edge'], knife: PAL['knife-edge'], seat: PAL.label };
   const topR = { spacer: spacerR, gap: spacerR, knife: knifeR, seat: spacerR };
@@ -1876,6 +1924,10 @@
     + ` text-anchor="${knifeLeft ? 'end' : 'start'}" font-size="11" font-weight="700"`
     + ` fill="${PAL.label}">有効幅の端</text>`;
   }
+  return { body, x, zoneA, zoneB, sb };
+ }
+ function zoomHoldSvg(G, zoneA, zoneB) {
+  const { P, PAL, B, S, ring, finger, holdIn, holdOut, band } = G;
   /* **反対側の軸の刃（破線）は描かない**（§9.458、利用者の指示「拡大図の刃の横の点線は
      消してください」。§9.442 の「破線の刃は残す」は撤回）。クリアランスの値は足元の
      説明が言う。 */
@@ -1913,6 +1965,10 @@
     holdList.push(q);
    });
   }
+  return { hold, holdList };
+ }
+ function zoomCapsSvg(G, x) {
+  const { PAL, ring, finger, shaftR, spacerR, knifeR, holdIn, holdOut, cl, Yr } = G;
   /* ---- 層の名前は**左の余白に1回ずつ**（§9.432・§CLAUDE 8）----
      部材1枚ずつに「スペーサー」と書くと、同じ字が10個並ぶ。層の名前は
      縦位置が言えるので、左の縁へ1回だけ置く。 */
@@ -1929,12 +1985,15 @@
   /* **刃は右の余白へ**。刃の張り出し（軸の外〜刃先）は保持層と半径が重なるので、
      同じ側に置くと字がぶつかる（実際にぶつかった）。 */
   caps += cap(x + 8, (Yr(spacerR) + Yr(knifeR)) / 2, '刃', 'start');
+  return caps;
+ }
+ function zoomLabels(G, seq, holdList) {
+  const { PAL } = G;
   /* ---- 寸法の字 ----
      **入るものはその部材の中へ**（§9.430。横→縦の順）。入らないものは
      **軸の帯の中へ**引き出す（§9.429 の断面図と同じ作法・段は`x`順に振り分け、
      段の中は`spread()`で押し広げる）——軸は半径100mmぶんの高さがあり、
      この図でいちばん広く空いている場所である。 */
-  const VFS = 13, NFS = 10;
   const items = [];
   seq.forEach(q => {
    /* `plain`＝層の名前（左の余白）で言えている部材。**引き出すときは値だけ**
@@ -2004,6 +2063,10 @@
    marks += zoomVText(vx, mid, q.val, VFS, q.ink, halo, 800);
    if (q.vName) marks += zoomVText(q.cx - VFS / 2 - 1, mid, q.name, NFS, q.ink, halo, 600);
   });
+  return { items, inside, vert, outs, marks };
+ }
+ function zoomLeadRows(G, sb, outs, marks) {
+  const { PAL, B, maxR, sg, cl, Yr } = G;
   /* **引き出す先は層で分ける**（§9.458、利用者の指示「軸に近いスペーサーで書ききれない
      場合は軸に、ゴムリングやフィンガーで書ききれない場合は軸と反対の外側に」）。
      スペーサー（と刃）は軸の帯の中の段へ、保持層は部材のいちばん外より**さらに外**の段へ。
@@ -2069,27 +2132,7 @@
   };
   placeRows(coreOuts, shaftRows, 'shaft');
   placeRows(holdOuts, 2, 'outer');
-  /* 区間の寸法線は**軸心の反対側**（半断面の外）。図と重ならない。 */
-  const spanY = cl - sg * ZOOM.dim;
-  const spans = zoomSpan(zoneA, zoneB, spanY, `区間 ${P.len.toFixed(2)} mm`, PAL);
-  let vh = top ? spanY + 16 : cl + ZOOM.rad + 16;
-  /* 外の段が器からはみ出すぶん、器を広げる（上へはみ出すなら全体を下げる）。 */
-  let grow = 0;
-  if (Number.isFinite(minY) && minY < 2) { grow = 2 - minY; vh += grow; }
-  if (Number.isFinite(maxY) && maxY + grow > vh - 2) vh = maxY + grow + 4;
-  /* **引き出した「部材」のいちばん広い幅**（§9.430）。ラベルは対象へ直に貼る
-     ので、引き出しに落ちてよいのは「貼る相手が無いもの」（上下刃の中心間）と
-     「字が入らないほど細い部材」だけ。ここが字の高さを超えたら、**貼れるはずの
-     物を引き出している**。 */
-  const leadWmax = outs.filter(q => q.w > 0).reduce((m, q) => Math.max(m, q.w), 0);
-  return {
-   vh, dims: items.length, inside: inside.length + vert.length, lead, off, leadWmax,
-   axis: z0.upper ? 'up' : 'lo', zone: z0.i, half: top ? 'top' : 'bottom',
-   svg: grow ? `<g transform="translate(0 ${grow.toFixed(1)})">${body}${hold}${caps}${ln}${marks}${spans}</g>`
-    : `${body}${hold}${caps}${ln}${marks}${spans}`,
-   /* 図が言えないことだけを添える（§CLAUDE 8 同じ情報を2箇所に出さない）。 */
-   note: zoomNote(res, r, P, ring, finger)
-  };
+  return { ln, marks, lead, off, minY, maxY };
  }
  /* 図の外で言うこと。**図に出ている寸法は繰り返さない**——繰り返すと、
     読む側は「違うものかもしれない」と数え直すことになる（§CLAUDE 8）。 */
