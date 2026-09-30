@@ -792,8 +792,10 @@ body.bs-mode .bs-shell{display:flex}
 .bs-empty small{display:block;margin-top:var(--space-1);font-size:var(--fs-sm)}
 .bs-empty-acts{display:inline-flex;gap:var(--space-1);margin-inline-start:var(--space-2)}
 
-/* ---------- 狭い画面 ---------- */
-@media (max-width:1200px){
+/* ---------- 狭い画面 ----------
+   **画面にだけ**効かせる（§9.525）。刷るときは紙の幅（A4横で約1062px）が「窓の幅」に
+   なるので、ここが効くと右の「刃組の内訳」が図の下へ回り、見た目どおりに刷れない。 */
+@media screen and (max-width:1200px){
   .bs-body{grid-template-columns:minmax(0,1fr)}
   .bs-rail{max-height:22rem}
   .bs-side{max-height:9rem;overflow:auto}

@@ -174,7 +174,7 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
 G['実績'] = ['test_actuals', 'test_opsheet', 'test_eqscope']
 # 刃組（§9.377）。**部材マスタ・ガイダンス・設備停止の連携**は1つの仕事なので、
 # どれを触っても3本まとめて回す（計算はサーバー不要の1本、画面は1本）。
-G['刃組'] = ['test_bladeset', 'test_bladeui', 'test_bladepick', 'test_holdpick', 'test_stopeq', 'test_stdmodal']
+G['刃組'] = ['test_bladeset', 'test_bladeui', 'test_bladepick', 'test_holdpick', 'test_screenprint', 'test_stopeq', 'test_stdmodal']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                # §9.389: 設備停止の内訳（サブカテゴリ）と時間の選択肢
                'test_stopsub', 'test_stopsubui',
@@ -361,7 +361,7 @@ RULES = [
                                         # §9.253: 見本のロットで帳票を見る
                                         'test_rbsample',
                                         'test_collayout', 'test_actuals')),
-    ('static/js/list/quality-analysis.js', g('test_uiux', 'test_headbar', 'test_fit', 'test_theme', 'test_flows')),
+    ('static/js/list/quality-analysis.js', g('test_uiux', 'test_headbar', 'test_fit', 'test_theme', 'test_flows', 'test_screenprint')),
     ('static/js/measure/defect-locator.js', g('モーダル', '異常位置')),
     # ロールマスタ（§9.239 ⑥）。マスタの4本セットと判定の両方に効く。
     ('backend/repositories/roll_repo.py', g('マスタ', '異常位置')),

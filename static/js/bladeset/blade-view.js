@@ -3482,6 +3482,18 @@
   }
  }
 
+ /* 刃組ガイダンスを見た目のまま刷る（§9.525）。題は紙の名前（PDFに保存したときのファイル名）になる。 */
+ function printGuide(opt) {
+  const d = new Date(), p2 = n => String(n).padStart(2, '0');
+  const stamp = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}`;
+  return WL.printCore.printScreen({
+   root: document.querySelector('.layout > main'), paper: 'a4-landscape', styleId: 'bsPrintPage',
+   title: `刃組ガイダンス_${st.equipment || '設備未選択'}_${stamp}`,
+   beforeSnap: () => { if (WL.bladeSolid && typeof WL.bladeSolid.render === 'function') WL.bladeSolid.render(); },
+   dryRun: !!(opt && opt.dryRun)
+  });
+ }
+
  /* ====================== 画面の登録 ====================== */
  WL.onReady(() => {
   WL.registerView({
@@ -3492,6 +3504,10 @@
       そのため `nav` も持たない（選択状態を点ける相手が居ない）。 */
    key: 'bladeset', bodyClass: 'bs-mode',
    header: ['刃組ガイダンス', ''],
+   /* 「画面を印刷」＝**左メニューを除いた見た目そのままをA4横1枚へ**（§9.525、利用者の指示）。
+      断面図・立体図は WebGL なので、刷る直前に描き直して絵にする（`beforeSnap`）。 */
+   print: printGuide,
+   printHint: '左のメニューを除いた、いま見えている刃組ガイダンスをそのままA4横1枚に縮めて印刷します',
    /* **自分の`bodyClass`は自分で外す**（`enterView`は付けるだけ・他の画面と
       同じ作法）。外し忘れると`.bs-shell`が次の画面の上に居座る。 */
    exit: () => {
