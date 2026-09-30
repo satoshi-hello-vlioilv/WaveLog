@@ -2329,9 +2329,8 @@
   </div>`;
  }
 
- function renderPathConfigForm(){
-  const form=$('#masterMaintForm');if(!form)return;
-  const v=pathConfigState.values||{};
+ /* 共通設定の欄の組み立て（§9.522）。どれも字を返すだけ（画面を読まない）。`v`は保存してある値。 */
+ function pcFieldKit(v){
   /* パス欄は「参照…」ダイアログとドラッグ&ドロップに対応させる(§9.49)。
      手打ちのUNCパスは打ち間違いに気づきにくいのが実際の問題だった。 */
   const pathField=(key,label,mode,hint)=>`<div class="mm-field mm-field-wide mm-field-path"><span>${esc(label)}</span>
@@ -2350,13 +2349,17 @@
   const group=(id,title,when,whenCls,body)=>`<section class="mm-set-group" id="pcSec-${id}" data-pc-section="${id}">
     <div class="mm-set-group-head"><h4>${esc(title)}</h4><span class="mm-apply-badge ${whenCls}">${esc(when)}</span></div>
     <div class="mm-set-group-body">${body}</div></section>`;
+  return {pathField,numField,pickField,group};
+ }
+ /* 章「この端末」。 */
+ function pcSecTerminal(K,v){
+  const {group}=K;
   /* PC名は**サーバーが解決した結果**を出す（§9.208 ⑧）。画面が持つ
      `WL.terminal`は`/api/access-mode`の答えで、保存した直後は古い。 */
   const term=(window.WL&&WL.terminal)||null;
   const act=pathConfigState.active||{};
   const pcNow=act.pc_name||(term&&term.pcName())||'';
   const pcFrom=act.pc_name_source||(term&&term.pcNameSource())||'';
-  form.className='mm-form mm-form-page';
   const SEC_TERMINAL=group('terminal','この端末','保存後すぐ反映','is-live',`
     <div class="pc-who" id="pcWho">
      <div><small>PC名</small><b>${esc(pcNow||'（取得できていません）')}</b>
@@ -2373,6 +2376,11 @@
     ${pcLookHtml()}
     ${pcShortcutHtml()}
     <div id="pcNotes"></div>`);
+  return SEC_TERMINAL;
+ }
+ /* 章「どこから読むか」。 */
+ function pcSecRead(K){
+  const {numField,pickField,group}=K;
   const SEC_READ=group('read','どこから読むか','サーバー再起動後に反映','is-restart',`
     <div class="pc-source-list" id="pcSourceList"></div>
     <p class="mm-field-hint">読み込み先を変えるには「データ接続」のカードから <b>編集</b> を押してください
@@ -2389,6 +2397,11 @@
         ['manual','manual: 自分では写し直さない（一覧の「再読込」を押したときだけ）']],
        '<b>manual</b> は意図して更新を止めるときに使います。元に新しい版があれば、一覧の「元データ」に<b>新しい版あり</b>と出ます。')}
      ${numField('db_mirror_interval_sec','元が変わったかを見る間隔','秒',10,10)}`)}`);
+  return SEC_READ;
+ }
+ /* 章「置き場」。 */
+ function pcSecSchedule(K,v){
+  const {numField,pickField,group}=K;
   /* **置き場は1枚**（§9.267、利用者の指示「マスタの置き場、スケジュールの
      置き場、測定データの置き場、バックアップの置き場などを含めた全ての設定を
      共通設定に視覚的に表現した上でそのままその表示とリンクして設定を簡単に
@@ -2446,6 +2459,11 @@
        [['','（既定）auto: 見つけたら更新する'],['auto','auto: 見つけたら更新する'],
         ['confirm','confirm: 変わった中身（旧→新）を見せてから取り込む']],
        'autoでも黙っては変えません——<b>何件を最新にしたか</b>を知らせ、中身も開けます。')}`)}`);
+  return SEC_SCHEDULE;
+ }
+ /* 章「RNE抽出」。 */
+ function pcSecRne(K){
+  const {pathField,numField,pickField,group}=K;
   const SEC_RNE=group('rne','RNE抽出','保存後すぐ反映','is-live',`
     <p class="mm-field-hint">RNE（Navigator問い合わせ定義）から <code>.sqlite3</code> を作り、それを一覧として読む仕組みです。
      取得元が <b>local</b> のデータソースだけが、ここで作ったファイルを読みます。</p>
@@ -2457,7 +2475,12 @@
     ${pathField('rne_assets_dir','RNE資材の置き場（フォルダ）','dir','RNEファイルと symnavim.conf をまとめて置くフォルダです。RNEファイルはこの下の rne/ 配下に置きます。共有フォルダを指定すれば、端末ごとにコピーせず1式を共用できます。空欄ならアプリ内の config/rne_extract です。')}
     ${pathField('rne_conf_path','接続情報 symnavim.conf の場所','file','認証情報だけを別の場所に置きたい場合に指定します。空欄なら上の資材置き場の直下（symnavim.conf）です。')}
     ${rneStatusPanelHtml()}`);
-  form.innerHTML=`<div class="mm-set-scroll pc-page">
+  return SEC_RNE;
+ }
+ /* ページの骨組み（図 → 章のレール → 章の段 → 保存）。章の中身は`S`が持つ。 */
+ function pcPageHtml(S){
+  const {SEC_TERMINAL,SEC_READ,SEC_SCHEDULE,SEC_RNE}=S;
+  return `<div class="mm-set-scroll pc-page">
    <!-- ① 図：この端末が何とつながっているか -->
    <div class="pc-map" id="pcMap" aria-label="この端末のつながり">
     <button type="button" class="pc-node" data-pc-jump="read">
@@ -2489,6 +2512,9 @@
 
   </div>
   <div class="mm-form-tail mm-set-sticky"><button type="submit" class="mm-btn-primary">共通設定を保存</button><span class="mm-form-hint">更新者IDは画面右上の入力欄を使用します。</span></div>`;
+ }
+ /* 共通設定の配線（保存・段・図から章へ・直す場所・「表示」の行き先・起動アイコン）。 */
+ function wirePathConfigForm(form){
   form.onsubmit=ev=>{ev.preventDefault();savePathConfigMaint()};
   /* 段の切り替えを配線する（§9.261）。編集窓と同じ`bindMaintTabs`なので、
      キーボード操作（←→）も見出しの一言もそのまま効く。 */
@@ -2545,6 +2571,9 @@
   /* デスクトップの起動アイコン（§9.445）。**ここは行き先だけ**なので、
      することは「いまの状態を取りに行って塗る」の1つ（盤は「表示」の節）。 */
   paintShortcut();loadShortcut();
+ }
+ /* 他の画面から連れて来られたときに、その段（と盤）を開く。 */
+ function openPcPending(form){
   /* 他の画面から「置き場で決める」で来たときは、その段を開いて印を付ける。
      **一度きり**——次に共通設定を開いたときまで覚えていると、身に覚えの
      無い段が開く。 */
@@ -2573,6 +2602,16 @@
     }
    }
   }
+ }
+ function renderPathConfigForm(){
+  const form=$('#masterMaintForm');if(!form)return;
+  const v=pathConfigState.values||{};
+  const K=pcFieldKit(v);
+  form.className='mm-form mm-form-page';
+  form.innerHTML=pcPageHtml({SEC_TERMINAL:pcSecTerminal(K,v),SEC_READ:pcSecRead(K),
+   SEC_SCHEDULE:pcSecSchedule(K,v),SEC_RNE:pcSecRne(K)});
+  wirePathConfigForm(form);
+  openPcPending(form);
   refreshRneStatus();
   refreshOwnerStatus();
  }
