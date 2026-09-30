@@ -436,6 +436,19 @@ body.sc-mode #headerContextSource{display:none}
   body.df-print>*:not(.df-print-area){display:none}
   body.df-print .df-print-area{display:block}
 }
+/* 画面をそのまま1枚へ（§9.525、利用者の指示「左のメニューを除いた見た目そのまま…A4横」）。
+   **器（`main`）は画面で測った幅・高さのまま組み**（紙の幅で組み直すと並びが変わる——
+   右の「刃組の内訳」が図の下へ回っていた）、`--print-zoom`で縦横の比を保って1枚へ縮める。
+   値は`print-core.js`の`printScreen()`が刷る直前に器へ書き、刷り終わったら消す。
+   色は紙にだけ exact（§9.290）——地の色で区間を分けているので、落とすと読めない。 */
+@media print{
+  body.screen-print{print-color-adjust:exact;-webkit-print-color-adjust:exact;background:#fff}
+  body.screen-print .layout>aside,body.screen-print #navResizeHandle{display:none}
+  body.screen-print .layout{display:block;height:auto}
+  body.screen-print .layout>main{zoom:var(--print-zoom,1);width:var(--print-w);height:var(--print-h);
+    overflow:hidden;break-inside:avoid;margin-inline:auto}   /* 余った向きの余白は左右に分ける */
+  body.screen-print .print-hide{display:none}
+}
 /* 作業予定表(§9.115/§9.235)。**画面のタイムラインは刷らない**
    ——15列以上あり、A4へ押し込むと読めない大きさになる。schedule-print.jsが
    組み立てた専用の紙(#schedulePrintArea)だけを出す。
@@ -521,11 +534,12 @@ body.sc-mode #headerContextSource{display:none}
      ここは `@layer state`。component 層のどの規則よりも後に効く。
      ============================================================ */
 
-  /* 濃い面（縁つき）（29族） */
+  /* 濃い面（縁つき）（30族） */
   #reportArrange.is-on,
   .ac-chip.is-on,
   .bs-hide button.is-on,
   .bs-orient-seg button.is-on,
+  .bss-seg button.is-on,
   .lr-seg button.is-on,
   .db-presets button.active,
   .db-seg button.active,

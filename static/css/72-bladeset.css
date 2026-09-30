@@ -67,6 +67,10 @@
   /* フィンガー（布入ベークライト）。図面の褐色に近い既存の茶を使う
      ——色リテラルを増やさない（§9.350）。 */
   --bs-fig-finger:var(--rs-brown);
+  /* アルミニウムのフィンガー（§9.527、利用者の選択「青みの銀（藍の淡色）」）。フィンガーの時は
+     ゴムリング・潤滑リングが出ないので、見分ける相手はスペーサーの灰（--rs-slate-border）・刃の紺・
+     板・耳屑の黄。スペーサーと明るさは近いので**色相（青紫寄り）で離す**。縁は図の墨（ink）。 */
+  --bs-fig-finger-al:var(--rs-indigo-border);
   /* 潤滑リング（§9.454、利用者の指示「スペーサーともゴムリングとも区別できる
      色」）。ゴムリングは色の周期で**赤〜ピンクの10色**（青・黄・緑・茶・灰・橙・
      黒・水を含む）を使い、スペーサーは灰なので、**どれにも無い紫**を当てる。 */
@@ -792,8 +796,10 @@ body.bs-mode .bs-shell{display:flex}
 .bs-empty small{display:block;margin-top:var(--space-1);font-size:var(--fs-sm)}
 .bs-empty-acts{display:inline-flex;gap:var(--space-1);margin-inline-start:var(--space-2)}
 
-/* ---------- 狭い画面 ---------- */
-@media (max-width:1200px){
+/* ---------- 狭い画面 ----------
+   **画面にだけ**効かせる（§9.525）。刷るときは紙の幅（A4横で約1062px）が「窓の幅」に
+   なるので、ここが効くと右の「刃組の内訳」が図の下へ回り、見た目どおりに刷れない。 */
+@media screen and (max-width:1200px){
   .bs-body{grid-template-columns:minmax(0,1fr)}
   .bs-rail{max-height:22rem}
   .bs-side{max-height:9rem;overflow:auto}
@@ -931,4 +937,61 @@ body.bs-mode .bs-shell{display:flex}
 .bs-thpop p{margin:0}
 /* 潤滑リングはゴムリングの群の中の1列（§9.472 の続き）。印の紫で「種類が違う」ことを言う。 */
 .bs-g .bs-lubeh .bs-lubedot{margin-inline-end:.2em}
+
+/* ---------- 保持方式マスタの盤（§9.524）——列＝データ・行＝決まり・右端＝保持方式の判定表 ----------
+   見出しのすぐ下が「試す」行（列の真下に値を入れる＝どの列の値かを探させない）。
+   当たった行は左の太い線と地で言い、セルの○×は字でも添える（色だけにしない）。 */
+.hp-state{margin-left:var(--space-2);font-size:var(--fs-sm);color:var(--muted)}
+.hp-state.is-dirty{color:var(--warn-fg);font-weight:700}
+.hp-state.is-seed b{color:var(--ink-2)}
+.hp-wrap{overflow:auto;max-width:100%}
+.hp-table{border-collapse:collapse;width:100%;font-size:var(--tbl-fs)}
+.hp-table th,.hp-table td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
+ text-align:left;vertical-align:middle;white-space:nowrap}
+.hp-table thead th{font-weight:700;color:var(--ink-2)}
+.hp-table .hp-no{width:3.5em;text-align:center;color:var(--muted);font-weight:400}
+.hp-col small{margin-left:var(--space-1);font-size:var(--fs-micro);color:var(--muted);font-weight:400}
+.hp-x,.hp-mv{color:var(--muted);height:var(--ctl-h-sm);padding:0 var(--space-1);margin-left:var(--space-1)}
+.hp-table input,.hp-table select{height:var(--ctl-h-sm);font-size:var(--fs-sm);box-sizing:border-box}
+.hp-cell{position:relative;min-width:8em}
+.hp-cell input,.hp-try input{width:100%;min-width:7em}
+.hp-c.is-bad{border-color:var(--danger);box-shadow:0 0 0 1px var(--danger)}
+.hp-cell.is-hit input{border-color:var(--teal)}
+.hp-cell.is-miss input{border-color:var(--warn-fg)}
+.hp-mk{position:absolute;right:calc(var(--space-2) + 4px);top:50%;transform:translateY(-50%);
+ font-style:normal;font-size:var(--fs-sm);font-weight:700;pointer-events:none}
+.hp-cell.is-hit .hp-mk{color:var(--teal-dark)}
+.hp-cell.is-miss .hp-mk{color:var(--warn-fg)}
+.hp-try th,.hp-try td{background:var(--surface-2)}
+.hp-ans{font-size:var(--fs-sm)}
+.hp-ans .is-idle{color:var(--muted)}
+.hp-out{width:1%}
+.hp-note input{width:100%;min-width:8em}
+.hp-ops{width:1%}
+.hp-row.is-won th,.hp-row.is-won td{background:var(--teal-soft)}
+.hp-table .hp-row.is-won th.hp-no{box-shadow:inset 3px 0 0 var(--teal);color:var(--teal-dark);font-weight:700}
+.hp-row.is-default th,.hp-row.is-default td{background:var(--surface-2)}
+.hp-row.is-default.is-won th,.hp-row.is-default.is-won td{background:var(--teal-soft)}
+.hp-any{color:var(--ink-2);font-weight:700}
+
+/* ---------- 刃セットの盤（§9.526）——組ごとの「カテゴリ」「使用状態」の2択 ----------
+   札は1つの枠を割った形（§9.247）。選ばれた札の濃さは 90-state.css の束ね規則が持つ。
+   研磨中の行は地を薄い橙にし、右端の字で「選ばれない」と言う（色だけにしない）。 */
+.bss-table{border-collapse:collapse;width:100%;font-size:var(--tbl-fs)}
+.bss-table th,.bss-table td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
+ text-align:left;vertical-align:middle;white-space:nowrap}
+.bss-table thead th{font-weight:700;color:var(--ink-2)}
+.bss-group{width:5em;font-weight:700}
+.bss-seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
+.bss-seg button{border:0;border-inline-start:1px solid var(--line);border-radius:0;background:var(--surface);
+ height:var(--ctl-h-sm);padding:0 var(--space-3);font:inherit;font-size:var(--fs-sm);color:var(--ink-2);cursor:pointer}
+.bss-seg button:first-child{border-inline-start:0}
+.bss-seg button:hover:not(:disabled){background:var(--pale);color:var(--teal-dark)}
+.bss-seg button:disabled{cursor:default}
+.bss-blades small{margin-left:var(--space-2);color:var(--muted)}
+.bss-say{white-space:normal;color:var(--ink-2);font-size:var(--fs-sm)}
+.bss-say small{display:block;color:var(--muted);font-size:var(--fs-micro)}
+.bss-row.is-grind th,.bss-row.is-grind td{background:var(--warn-bg)}
+.bss-row.is-grind .bss-say b{color:var(--warn-fg)}
+.bss-note{margin-left:var(--space-2);font-size:var(--fs-sm);color:var(--muted)}
 }

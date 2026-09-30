@@ -1916,6 +1916,14 @@ function registerView(def){VIEW_REGISTRY.set(def.key,def);return def}
    opts.header で見出しを差し替えられる(同じ画面で見出しが変わる場合)。 */
 /* いま開いている画面。ハートビートが在席と一緒に伝える（§9.272）。 */
 WL.currentView='';
+const PRINT_HINT_DEFAULT='いま表示している画面をそのまま印刷します。帳票を印刷する場合は測定画面の「帳票」から開いてください';
+/* ヘッダーの「画面を印刷」が呼ぶ1本（§9.525）。画面が`print`を名乗っていればそれ、無ければブラウザの印刷。 */
+WL.printCurrentView=opt=>{
+ const def=VIEW_REGISTRY.get(WL.currentView);
+ if(def&&typeof def.print==='function')return def.print(opt);
+ window.print();
+};
+WL.printHintDefault=PRINT_HINT_DEFAULT;
 function enterView(key,opts){
  WL.currentView=String(key||'');
  VIEW_REGISTRY.forEach((v,k)=>{
@@ -1953,6 +1961,10 @@ function enterView(key,opts){
     専用の印刷を持った画面（作業スケジュール）だけが静かに二重になった
     （§9.233 ③と同じ形）。名乗る形なら、画面を足す人が自分の登録で完結する。 */
  document.body.classList.toggle('view-own-print',!!def.ownPrint);
+ /* 「画面を印刷」の中身も画面が名乗れる（`print`・§9.525）。名乗らない画面は今までどおり
+    ブラウザの印刷。何が刷られるか（用紙・向き）は`printHint`がボタンの説明で言う。 */
+ const pb=document.getElementById('printCurrentView');
+ if(pb)pb.title=def.printHint||PRINT_HINT_DEFAULT;
  if(def.nav)document.getElementById(def.nav)?.classList.add('active');
  const h=opts?.header||def.header;
  if(h)setHeaderContext(h[0],h[1]);

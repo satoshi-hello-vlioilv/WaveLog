@@ -5272,7 +5272,10 @@ const SC_LOCK_WAIT_MAX_MS=4000;
    const cnt=Math.max(1,Math.round(n(contentValueOf(hd,'boxHorizontalCount'))||1));
    if(w)push(headLot,w,cnt);
   }
-  return {thickness,originalWidth,lots,skipped,headLot,headSplit:hasKid||hasSplitDetail(hd)};
+  /* 1本目の仕掛の行の写し（§9.524）。保持方式・刃選択の条件が`source.<列名>`で読む。
+     画面の内部の印（`__`で始まる鍵）は渡さない。 */
+  const source=Object.fromEntries(Object.entries(hd).filter(([k])=>!String(k).startsWith('__')));
+  return {thickness,originalWidth,lots,skipped,headLot,headSplit:hasKid||hasSplitDetail(hd),source};
  }
  /* 1本目のコイルの「幅の事実」を**完全な生データ**から読む（§9.388、利用者の
     報告「分割対象ではないものも…幅何条取りといったデータは持っていますが、

@@ -3240,8 +3240,8 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         ctxKeys.shape && +ctxKeys.fingerTh > 0, JSON.stringify(ctxKeys));
     rec('条の設計も同じ文脈で届く（測定と同じ行を見る）', ctxKeys.designs);
 
-    rec('刃の選び方を画面に出す（既定は「一般」と書く）',
-        !!pf && pf.t === '一般' && /一般/.test(pf.title), JSON.stringify(pf));
+    rec('刃の選び方を画面に出す（既定は「通常刃」と書く・§9.526）',
+        !!pf && pf.t === '通常刃' && /通常刃/.test(pf.title), JSON.stringify(pf));
 
     /* ---- 7.8) 条の設計は、記録すると測定が読む（§9.381、利用者の指示） ----
        「刃組ガイダンスから設定した条の設計は、測定するときにも活かせるように

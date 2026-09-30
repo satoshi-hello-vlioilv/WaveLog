@@ -188,20 +188,70 @@
      ——渡さないときは`@page`に触らず、CSS側の既定のままにする。**触って
      しまうと、CSSの既定と`<style>`の2つが同じ紙を取り合う**（§9.243 ①）。 */
   if(o.paper)applyPageStyle(o.styleId,o.paper,o.paperSizes,o.margin);
+  runPrint(o,()=>{area.innerHTML=''});
+ }
+ /* 刷る段取り（印・題・後片付け・2回待って開く）は**ここ1箇所**。紙を組み立てる印刷
+    （`printOnPage`）も画面をそのまま刷る印刷（`printScreen`）も同じ段取りを通る。
+    `dryRun`は刷る直前の姿だけ作って開かない（網が紙の姿を測る）。戻り値は後片付け。 */
+ function runPrint(o,undo){
   document.body.classList.add(o.printClass);
   const prev=document.title;
   document.title=o.title;
   const cleanup=()=>{
    document.body.classList.remove(o.printClass);
-   document.title=prev;area.innerHTML='';
+   document.title=prev;
+   if(undo)undo();
    window.removeEventListener('afterprint',cleanup);
   };
   window.addEventListener('afterprint',cleanup);
-  requestAnimationFrame(()=>requestAnimationFrame(()=>window.print()));
+  if(!o.dryRun)requestAnimationFrame(()=>requestAnimationFrame(()=>window.print()));
+  return cleanup;
+ }
+
+ /* ---------- 画面をそのまま1枚へ（§9.525、利用者の指示） ----------
+    「刃組ガイダンスの表示画面を左のメニューを除いた見た目そのままを印刷できる機能を
+      実装してください。A4横のレイアウトが良いです。」
+
+    紙を組み立て直さず、**いま見えている器（`root`）をそのまま**刷る。器は画面の幅のまま
+    組んだ形を保ち（刷るときの紙の幅で組み直すと並びが変わる）、**縦横の比を保って1枚へ
+    縮める**（`zoom`＝刷れる範囲÷器の大きさ・大きくはしない）。左メニューなど器の外は
+    CSS（`body.screen-print`）が伏せる。
+    **WebGLの図は刷ると白くなる**（描いた絵を持ち続けない作り）ので、刷る直前に
+    `o.beforeSnap()`で描き直させ、その場で絵にして差し替える。後片付けで元へ戻す。 */
+ function printScreen(o){
+  const root=o.root;
+  if(!root)return null;
+  const list=sizes({orientFirst:'landscape'});
+  const key=o.paper||'a4-landscape';
+  const use=usableMm(key,list);
+  const r=root.getBoundingClientRect();
+  const w=Math.max(1,Math.ceil(r.width)),h=Math.max(1,Math.ceil(r.height));
+  const fit=Math.min(1,(use.w/MM_PER_PX)/w,(use.h/MM_PER_PX)/h);
+  root.style.setProperty('--print-w',w+'px');
+  root.style.setProperty('--print-h',h+'px');
+  root.style.setProperty('--print-zoom',String(Math.floor(fit*1000)/1000));
+  const styleEl=applyPageStyle(o.styleId||'screenPrintPage',key,list,MARGIN_MM+'mm');
+  if(typeof o.beforeSnap==='function'){
+   try{o.beforeSnap()}catch(e){WL.quiet&&WL.quiet.note('描き直せない（いまの絵のまま刷る）',e)}
+  }
+  const snaps=[...root.querySelectorAll('canvas')].filter(c=>c.width&&c.height&&c.getClientRects().length).map(c=>{
+   const img=document.createElement('img');
+   img.className='print-snap';
+   try{img.src=c.toDataURL('image/png')}catch(e){WL.quiet&&WL.quiet.note('図を絵にできない（刷ると白くなることがある）',e);return null}
+   const cr=c.getBoundingClientRect();
+   img.style.width=cr.width+'px';img.style.height=cr.height+'px';
+   c.classList.add('print-hide');c.after(img);
+   return {c,img};
+  }).filter(Boolean);
+  return runPrint(Object.assign({printClass:'screen-print'},o),()=>{
+   snaps.forEach(x=>{x.img.remove();x.c.classList.remove('print-hide')});
+   ['--print-w','--print-h','--print-zoom'].forEach(k=>root.style.removeProperty(k));
+   styleEl.remove();   // 他の画面の印刷へ、この紙の向きを残さない
+  });
  }
 
  WL.paper={KINDS,ORIENTS,MARGIN_MM,MM_PER_PX,
            orients,sizes,sizeOf,usableMm,keyWith,pageRule,applyPageStyle,
            shareMm,trimRound};
- WL.printCore={printOnPage};
+ WL.printCore={printOnPage,printScreen};
 })();

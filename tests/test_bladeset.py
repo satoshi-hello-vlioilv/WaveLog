@@ -10,6 +10,9 @@
      ——そして**画面に綴りを書き写していない**（語彙はサーバーの1箇所）
   6. 刃は**既定で「一般」**が選ばれ、`刃選択マスタ`の条件に当たったときだけ
      「専用」になる（条件の無い行は当たらない＝既定が静かに崩れない）
+  7. 刃セット（設備＋組）の**カテゴリ・使用状態**（§9.526）——登録が無い組は刃の`状態`から
+     起こした初期値・送った項目だけ書く・語彙外は断る。フィンガーは**名称を持たず材質**
+     （既定ベークライト・設備＋幅＋材質で1本）。刃選択の条件は4項目＋前の項目も読む
 
 サーバーは要らない（1段目・§9.337）。
 """
@@ -53,7 +56,7 @@ EQ = 'テスト設備A'
 # ---------------------------------------------------------------------------
 c = fresh()
 made = bs.ensure_tables(c)
-rec('まっさらなDBで9枚できる', len(made) == 9, str(made))
+rec('まっさらなDBで11枚できる（§9.526で刃セットマスタを足した）', len(made) == 11, str(made))
 have = set(tables(c))
 rec('表の名前が定義どおり',
     {d.table for d in (bs.BLADE_DEF, bs.SPACER_DEF, bs.RING_DEF, bs.FINGER_DEF,
@@ -401,6 +404,112 @@ rec('先に並ぶ行が勝つ',
 bs.pick_delete(c, pid)
 bs.pick_delete(c, p2)
 rec('消すと決まりが残らない', bs.pick_rows(c, True, EQ) == [])
+
+# ---- 保持方式マスタ（§9.524） ----
+# 登録が無い設備は**今までの決め方の種**（板厚 < 切替板厚 → フィンガー／既定 → ゴムリング）。
+fm = bs.standard_for(c, EQ)['values']['fingerMax']
+got = bs.hold_rows(c, EQ)
+rec('保持方式: 登録が無ければ、切替板厚から作った種（未登録）',
+    not got['stored'] and got['rows'] == bs.hold_seed(fm), str(got))
+# 保存は丸ごと。**条件の無い行は最後の1つだけが既定**・既定が無ければゴムリングで足す・知らない方式はゴムリング。
+n = bs.hold_replace(c, 'u', EQ, [
+    {'conditions': [], 'hold': 'フィンガー'},
+    {'conditions': [{'field': 'strips', 'op': 'ge', 'value': '20'}], 'hold': 'フィンガー'},
+    {'conditions': [{'field': 'source.製造材質', 'op': 'eq', 'value': 'SUS'}], 'hold': '知らない'}])
+got = bs.hold_rows(c, EQ)
+rec('保持方式: 保存すると登録になり、既定の行は最後に1つ',
+    n == 3 and got['stored'] and [(len(r['conditions']), r['hold']) for r in got['rows']]
+    == [(1, 'フィンガー'), (1, 'ゴムリング'), (0, 'フィンガー')], str(got['rows']))
+bs.hold_replace(c, 'u', EQ, [{'conditions': [{'field': 'thickness', 'op': 'lt', 'value': '1'}], 'hold': 'フィンガー'}])
+rec('保持方式: 既定の行が無ければゴムリングで足す',
+    [r['hold'] for r in bs.hold_rows(c, EQ)['rows']] == ['フィンガー', 'ゴムリング'])
+rec('保持方式: 仕掛の列は source.<列名> で書ける（字の形だけ見る）',
+    bs.normalize_pick_conditions([{'field': 'source.製造材質', 'op': 'eq', 'value': 'SUS'},
+                                  {'field': 'source.', 'op': 'eq', 'value': 'x'},
+                                  {'field': 'source.a]b', 'op': 'eq', 'value': 'x'}])
+    == [{'field': 'source.製造材質', 'op': 'eq', 'value': 'SUS'}])
+rec('保持方式: 未登録に戻すと行が消え、種へ戻る',
+    bs.hold_reset(c, EQ) == 2 and not bs.hold_rows(c, EQ)['stored'])
+bs.hold_replace(c, 'u', EQ, [
+    {'conditions': [{'field': 'thickness', 'op': 'lt', 'value': '1'}], 'hold': 'フィンガー', 'material': 'アルミニウム'},
+    {'conditions': [{'field': 'strips', 'op': 'ge', 'value': '9'}], 'hold': 'フィンガー', 'material': '鉄'},
+    {'conditions': [], 'hold': 'ゴムリング', 'material': 'アルミニウム'}])
+rec('保持方式: 行ごとにフィンガー材質を持つ（§9.527）。知らない字は空欄＝既定・ゴムリングの行は持たない',
+    [r['material'] for r in bs.hold_rows(c, EQ)['rows']] == ['アルミニウム', '', ''],
+    str([(r['hold'], r['material']) for r in bs.hold_rows(c, EQ)['rows']]))
+rec('保持方式: 種の行も材質は空欄（既定）', all(r['material'] == '' for r in bs.hold_seed(0.6)))
+bs.hold_reset(c, EQ)
+rec('保持方式: 設備が無ければ保存を断る', _reject(lambda: bs.hold_replace(c, 'u', '', [])))
+
+# ---------------------------------------------------------------------------
+# 7. 刃セット・フィンガー材質・刃選択の4項目（§9.526、利用者の指示）
+# ---------------------------------------------------------------------------
+c7 = fresh()
+bs.blade_upsert(c7, 'u', equipment=EQ, name='S1', group='S', thickness=10, current_dia=300, status='専用')
+bs.blade_upsert(c7, 'u', equipment=EQ, name='S2', group='S', thickness=15, current_dia=300, status='一般')
+bs.blade_upsert(c7, 'u', equipment=EQ, name='G1', group='G', thickness=10, current_dia=300, status='メンテナンス中')
+bs.blade_upsert(c7, 'u', equipment=EQ, name='N1', group='N', thickness=10, current_dia=300)
+sets = {x['group']: x for x in bs.blade_sets(c7, EQ)}
+rec('刃セット: 刃の組から作る（3組・枚数と刃厚を添える）',
+    sorted(sets) == ['G', 'N', 'S'] and sets['S']['blades'] == 2 and sorted(sets['S']['thicknesses']) == [10.0, 15.0],
+    str(sets))
+rec('刃セット: 登録が無い組は刃の「状態」から起こす（専用→専用刃／全部メンテナンス中→研磨中／他→通常刃・使用中）',
+    (sets['S']['category'], sets['S']['use'], sets['G']['use'], sets['N']['category'], sets['N']['use'])
+    == ('専用刃', '使用中', '研磨中', '通常刃', '使用中') and not any(x['stored'] for x in sets.values()),
+    str({k: (v['category'], v['use']) for k, v in sets.items()}))
+got = bs.blade_set_update(c7, 'u', EQ, 'N', use='研磨中')
+rec('刃セット: 使用状態だけ送ると、カテゴリはそのまま（送った項目だけ書く）',
+    got == {'category': '通常刃', 'use': '研磨中', 'stored': True}, str(got))
+got = bs.blade_set_update(c7, 'u', EQ, 'N', category='専用刃')
+rec('刃セット: 続けてカテゴリを変えても使用状態は残る', got == {'category': '専用刃', 'use': '研磨中', 'stored': True}, str(got))
+rec('刃セット: 同じ組は1行（2度書いても増えない）',
+    sum(1 for r in bs.BLADESET_DEF.fetch(c7) if r['組'] == 'N') == 1)
+rec('刃セット: 刃の行もセットのカテゴリ・使用状態を名乗る',
+    {(x['name'], x['category'], x['use']) for x in bs.blade_rows(c7, False, EQ) if x['group'] == 'N'}
+    == {('N1', '専用刃', '研磨中')})
+rec('刃セット: 語彙の外のカテゴリは断る', _reject(lambda: bs.blade_set_update(c7, 'u', EQ, 'N', category='一般')))
+rec('刃セット: 語彙の外の使用状態は断る', _reject(lambda: bs.blade_set_update(c7, 'u', EQ, 'N', use='メンテナンス中')))
+rec('刃セット: 設備が無ければ断る', _reject(lambda: bs.blade_set_update(c7, 'u', '', 'N', use='使用中')))
+rec('刃セット: 初期値へ戻すと登録が消え、刃の「状態」から起こした値に戻る',
+    bs.blade_set_reset(c7, EQ, 'N') == 1 and bs.blade_set_of(c7, EQ, 'N') == {'category': '通常刃', 'use': '使用中', 'stored': False}
+    and bs.blade_set_reset(c7, EQ, 'N') == 0)
+bs.blade_set_update(c7, 'u', EQ, 'N', use='研磨中')
+ctx7 = bs.context(c7, EQ)
+rec('刃セット: ガイダンスの材料に一覧と語彙が載る',
+    len(ctx7['bladeSets']) == 3 and ctx7['bladeCatSpecial'] == '専用刃' and ctx7['bladeUseGrind'] == '研磨中')
+
+# フィンガー: 名称を持たず材質（既定ベークライト）。1本＝設備＋幅＋材質。
+f1, _m = bs.finger_upsert(c7, 'u', equipment=EQ, width=20, qty=10)
+row = [x for x in bs.finger_rows(c7, True, EQ) if x['id'] == f1][0]
+rec('フィンガー: 材質を送らなければ既定のベークライト・呼び名は材質＋幅',
+    row['material'] == 'ベークライト' and row['name'] == 'ベークライト 20', str(row))
+f2, _m = bs.finger_upsert(c7, 'u', equipment=EQ, width=20, qty=4, material='アルミニウム')
+rec('フィンガー: 同じ幅でも材質が違えば別の1本', f2 and f2 != f1)
+rec('フィンガー: 同じ幅・材質の2行目は断る（本数はその行で直す）',
+    _reject(lambda: bs.finger_upsert(c7, 'u', equipment=EQ, width=20, material='ベークライト')))
+rec('フィンガー: 語彙の外の材質は断る', _reject(lambda: bs.finger_upsert(c7, 'u', equipment=EQ, width=30, material='鉄')))
+rec('フィンガー: 幅が無ければ断る', _reject(lambda: bs.finger_upsert(c7, 'u', equipment=EQ, qty=1)))
+bs.finger_upsert(c7, 'u', finger_id=f2, qty=6)
+row = [x for x in bs.finger_rows(c7, True, EQ) if x['id'] == f2][0]
+rec('フィンガー: 本数だけ直しても材質は変わらない', row['material'] == 'アルミニウム' and row['qty'] == 6, str(row))
+rec('フィンガー: 材質の語彙はベークライト・アルミニウム（既定が先頭）',
+    bs.FINGER_MATERIALS == ('ベークライト', 'アルミニウム') and ctx7['fingerMaterials'] == list(bs.FINGER_MATERIALS))
+
+# 刃選択の条件: 選べるのは4項目。前の項目で書いた決まりも読んで効かせる。
+rec('刃選択: 選べる項目は板押さえ方式・板厚・材質・調質',
+    [f['label'] for f in ctx7['pickFields']] == ['板押さえ方式', '板厚', '材質', '調質'], str(ctx7['pickFields']))
+rec('刃選択: 板押さえ方式は候補から選ぶ（保持方式の顔ぶれ）',
+    ctx7['pickFields'][0].get('kind') == 'choice' and ctx7['pickFields'][0].get('options') == list(bs.HOLD_METHODS))
+rec('刃選択: 前の項目（条数など）の条件も保存で落とさない',
+    bs.normalize_pick_conditions([{'field': 'strips', 'op': 'eq', 'value': '6'},
+                                  {'field': 'hold', 'op': 'eq', 'value': 'フィンガー'},
+                                  {'field': 'temper', 'op': 'eq', 'value': 'H'}])
+    == [{'field': 'strips', 'op': 'eq', 'value': '6'}, {'field': 'hold', 'op': 'eq', 'value': 'フィンガー'},
+        {'field': 'temper', 'op': 'eq', 'value': 'H'}])
+rec('刃選択: 板押さえ方式・調質で当たる（字として比べる）',
+    (bs.pick_group([{'conditions': [{'field': 'hold', 'op': 'eq', 'value': 'フィンガー'},
+                                    {'field': 'temper', 'op': 'eq', 'value': 'H'}], 'group': 'S', 'enabled': True}],
+                   {'hold': 'フィンガー', 'temper': 'H'}) or {}).get('group') == 'S')
 
 # ---- 自己確認: 網が素通りしていない ----
 rec('自己確認: 断る網は、断らない呼び出しでは真にならない',

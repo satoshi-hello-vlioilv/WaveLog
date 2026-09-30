@@ -65,7 +65,7 @@
  const FIG_VARS = ['shaft', 'shaft-edge', 'cap', 'spacer', 'spacer-edge',
                    'filler', 'filler-edge', 'knife', 'knife-edge', 'badge',
                    'strip', 'strip-edge', 'scrap', 'scrap-edge', 'trim',
-                   'trim-edge', 'finger', 'lube', 'lube-edge', 'label', 'ink', 'sheen',
+                   'trim-edge', 'finger', 'finger-al', 'lube', 'lube-edge', 'label', 'ink', 'sheen',
                    'lead0', 'lead1', 'lead2',
                    'chip-bg', 'chip-fg', 'chip-bd',
                    'chip-clr-bg', 'chip-clr-fg', 'chip-clr-bd',
@@ -269,9 +269,16 @@
    showEmpty(`刃組マスタを読み込めませんでした：${esc(e && e.message ? e.message : e)}`);
    return;
   }
+  /* 1本目のコイルと、その仕掛の行（§9.524）。**開くたびに入れ直す**——前に開いた
+     予定の材質で条件表が当たらないように。行は完全な生データを取り直す（予定の写しは
+     一覧に出していない列を持たない・§9.388）。取れなければ予定の写しのまま。 */
+  st.headLot = seededHeadLot;
+  st.src = (o.seed && o.seed.source) || null;
+  const headRow = await loadHeadRow();
+  if (headRow) st.src = headRow;
   if (o.seed) {
    /* 記録が勝ったときは取り直さない（§9.387 記録のほうが新しい決定）。 */
-   if (!applySeed(o.seed, changed)) await fillFromSource();
+   if (!applySeed(o.seed, changed)) fillFromSource(headRow);
    /* **材料が決まってから刃を選ぶ**（§9.408）。刃選択マスタの条件は板厚・
       条数・幅なので、既定のまま選ぶと当たる行が変わる——刃組スケジュール
       一覧の見込み（`standardState()`）と同じ順にそろえる。 */
@@ -358,16 +365,17 @@
     当てないのは2つ:
       ・**条の設計が記録済み**のとき（記録のほうが新しい決定・§9.387）
       ・**1本目が分割あり**のとき（幅を持っているのは子ロット） */
- async function fillFromSource() {
-  if (!seededHeadLot || seededHeadSplit) return false;
+ async function loadHeadRow() {
   const get = WL.split && WL.split.lotRow;
-  if (typeof get !== 'function') return false;
-  let row = null;
-  try { row = await get(seededHeadLot); }
+  if (!seededHeadLot || typeof get !== 'function') return null;
+  try { return (await get(seededHeadLot)) || null; }
   catch (e) {
    WL.quiet.note('仕掛データを読み直せない（予定の写しの値で進む）', e);
-   return false;
+   return null;
   }
+ }
+ function fillFromSource(row) {
+  if (!row || seededHeadSplit) return false;
   const f = WL.scheduleView.bladeLotsFromSource(row, seededHeadLot);
   if (!f) return false;
   if (f.thickness > 0 && f.thickness !== st.thick) { st.thick = f.thickness; syncClearance(); }
@@ -401,7 +409,11 @@
   if (!M) return '';
   const lack = [];
   if (!M.spacers.length) lack.push('スペーサー');
-  if (BS().isFinger(st, M)) { if (!M.fingers.length) lack.push('フィンガー'); }
+  /* フィンガーは**使う材質の行**があるか（§9.527）。ほかの材質だけ在っても組めない。 */
+  if (BS().isFinger(st, M)) {
+   const mat = BS().fingerMaterial(st, M);
+   if (!M.fingers.some(f => (f.material || BS().fingerMatDefault(M)) === mat)) lack.push(BS().holdLabel(st, M));
+  }
   else if (!M.rings.length) lack.push('ゴムリング');
   if (!M.blades.length) lack.push('刃');
   return lack.join('・');
@@ -527,20 +539,20 @@
   /* **方式は「自動で決まる」の群だけに出す**——以前はバリ方向の値にも
      並べており、同じことを2箇所で言っていた（§CLAUDE 8）。 */
   $('#bsV1').textContent = B.ALIGN_NAME[st.align];
-  /* **なぜその刃なのか**を出す（§9.379）。既定は「一般」で、`刃選択マスタ` の
-     決まりに当たったときだけ「専用」になる——出どころを書かないと、利用者には
+  /* **なぜその刃なのか**を出す（§9.379）。既定は「通常刃」で、`刃選択マスタ` の
+     決まりに当たったときだけ「専用刃」になる（§9.526）——出どころを書かないと、利用者には
      「勝手に別の刃になった」としか見えない（§CLAUDE 6）。 */
   const pk = $('#bsFPick');
   if (pk) {
    const p0 = st.pick;
-   pk.textContent = !p0 ? '一般'
-    : (p0.missing ? `一般（${p0.group} の刃が未登録）`
-                  : `専用 ${p0.group}`);
-   pk.title = !p0 ? 'ふつうの刃（状態が「一般」）から選んでいます。'
+   pk.textContent = !p0 ? '通常刃'
+    : (p0.missing ? `通常刃（${p0.group} の専用刃が使えない）`
+                  : `専用刃 ${p0.group}`);
+   pk.title = !p0 ? 'カテゴリが「通常刃」で使用中の刃セットから選んでいます。'
     : (p0.missing
-       ? `決まり「${p0.rule}」に当たりましたが、${p0.group} の「専用」の刃が`
-         + '登録されていないため、一般の刃で描いています。'
-       : `決まり「${p0.rule}」に当たったので、${p0.group} の「専用」の刃を使います。`);
+       ? `決まり「${p0.rule}」に当たりましたが、組 ${p0.group} に使える専用刃が無い`
+         + '（カテゴリが専用刃でない・研磨中・刃が未登録のどれか）ため、通常刃で描いています。'
+       : `決まり「${p0.rule}」に当たったので、組 ${p0.group} の専用刃を使います。`);
    pk.classList.toggle('is-warn', !!(p0 && p0.missing));
    pk.classList.toggle('is-pick-on', !!(p0 && !p0.missing));
   }
@@ -571,15 +583,15 @@
    b.textContent = nm;
    b.dataset.showName = nm;
   });
-  $('#bsV4').textContent = res.finger ? B.holdName(st, M)
+  $('#bsV4').textContent = res.finger ? B.holdLabel(st, M)
    : `${B.holdName(st, M)} ${colorOf(res.bigOd)}${res.bigOd} / ${colorOf(res.smOd)}${res.smOd}`;
   /* 出すのは**中心間**（説明文がそう言っている）。クリアランスそのものは
      「クリアランス」の欄とチップの帯が持つ（§9.420）。 */
   $('#bsDVal').textContent = (res.A.dKnife || res.A.dReal).toFixed(2);
-  $('#bsHold2').innerHTML = `板を保持する方式は<b>${B.holdName(st, M)}</b>です。`
-   + (res.finger
-    ? `板厚 ${st.thick.toFixed(1)} は ${M.P.fingerMax} 未満のため、板押さえ（フィンガー）で保持します。軸はスペーサーのみで構成します。`
-    : `板厚 ${st.thick.toFixed(1)} は ${M.P.fingerMax} 以上のため、ゴムリング主体で構成します。`);
+  $('#bsHold2').innerHTML = `板を保持する方式は<b>${esc(B.holdLabel(st, M))}</b>です。`
+   + esc(B.holdReason(st, M)) + (res.finger
+    ? '、板押さえ（フィンガー）で保持します。軸はスペーサーのみで構成します。'
+    : '、ゴムリング主体で構成します。');
   const from = $('#bsFrom');
   if (from) {
    from.hidden = !seededFrom;
@@ -668,7 +680,7 @@
   $('#bsSmSel').disabled = finger || st.smallMode === 'auto';
   panel.querySelectorAll('.bs-chip[data-ring]').forEach(b => { b.disabled = finger; });
   $('#bsHint4').innerHTML = finger
-   ? `<span class="bs-ng">フィンガー方式のためゴムリングは使いません。</span>板厚を ${M.P.fingerMax} 以上にすると、この設定が効きます。`
+   ? `<span class="bs-ng">フィンガー方式のためゴムリングは使いません。</span>方式はマスタ管理の「保持方式」の条件表で決まります（${esc(BS().holdReason(st, M))}）。`
    : (IX.ringsByTh.length
     ? 'バリ方向が反転すると、上軸と下軸で大径・小径が入れ替わります。'
     : '<span class="bs-ng">この設備のゴムリングが1本も登録されていません。</span>マスタ管理 &gt; 刃組 &gt; ゴムリング で登録してください。');
@@ -939,6 +951,8 @@
     差し込まれた押さえかが、置き場所だけで分かるようにする。 */
  function fingerLayer(V, xa, xb, cy, z, k) {
   const shape = (M.fingerShape || {});
+  /* 色は材質で（§9.527）。答えは`fingerTone()`の1箇所、値は器のトークン。 */
+  const fill = V.PAL[BS().fingerTone(z.hold.mat)] || V.PAL.finger;
   const one = (M.fingers || [])[0] || {};
   const th = +(one.thickness || shape.thickness) || 20;
   const upper = cy < V.midY;
@@ -976,7 +990,7 @@
    /* 角は落とさない（§9.380、利用者の指示「四角で丸みは必要ない」）——
       丸めると板との当たり際に隙間があるように見える。 */
    o += `<rect class="bs-fng" x="${x}" y="${y0.toFixed(1)}" width="${ww}"`
-    + ` height="${h.toFixed(1)}" fill="${V.PAL.finger}"`
+    + ` height="${h.toFixed(1)}" fill="${fill}" data-mat="${esc(z.hold.mat || '')}"`
     + ` stroke="${V.PAL.ink}" stroke-width=".8"/>`;
    at += d * w;
   }
@@ -1385,7 +1399,7 @@
   /* 潤滑リング（§9.454）は**同じ札の中身**として言う——札は3つのまま
      （§9.380）。色は紫で、表と所要の色見本と同じトークン。 */
   const lw = BS().ringRule(M).lubeW;
-  const hold = finger ? 'フィンガー'
+  const hold = finger ? BS().holdLabel(st, M)
    : `ゴムリング ${ringWord('big')}／${ringWord('small')}`
      + (lw > 0 ? `＋潤滑 Φ${BS().ringRule(M).lubeOd}` : '');
   const c = clrUse();
@@ -1690,7 +1704,7 @@
   const holdList = [];
   if (ring || finger) {
    const hb = band(holdIn, holdOut);
-   const hex = ring ? hexOf(ring.od) : PAL.finger;
+   const hex = ring ? hexOf(ring.od) : (PAL[BS().fingerTone(P.hold.mat)] || PAL.finger);
    const list = (st.flip ? B.expand(P.gom).reverse() : B.expand(P.gom))
     .map(mm => ({ mm, cx: 0 }));
    /* **潤滑リング**（§9.454）は刃の内側の両端。ゴムリングはそのあいだ。 */
@@ -2748,7 +2762,8 @@
    }).join('');
    return `<div class="bs-sc${on ? ' is-on' : ''}"><div class="bs-sch">`
     + `<b>${esc(g.group ? '組 ' + g.group : '（組の指定なし）')}</b>`
-    + `<span class="bs-sb">${esc(g.items[0].status || '—')}</span></div>`
+    /* セットのカテゴリ・使用状態（§9.526・切り替えはマスタ管理の「刃セット」）。 */
+    + `<span class="bs-sb">${esc(setWord(g.items[0]))}</span></div>`
     + `<div class="bs-kl">${rows}</div></div>`;
   }).join('')
    : '<p class="bs-note">この設備の刃が登録されていません（マスタ管理 &gt; 刃組 &gt; 刃）。</p>';
@@ -2790,11 +2805,13 @@
  const markAlign = () => panel.querySelectorAll('#bsAlign label')
   .forEach(l => l.classList.toggle('is-on', l.dataset.v === st.align));
 
+ /* 刃が属するセットの札（「通常刃・使用中」）。セットを名乗らない材料は`状態`のまま。 */
+ const setWord = k => (k.category ? `${k.category}・${k.use || '—'}` : (k.status || '—'));
  function fillBladePick() {
   const sel = $('#bsBladePick'), cur = sel.value;
   sel.innerHTML = '<option value="">（手で入力）</option>'
    + M.blades.map((k, i) => `<option value="${i}">${esc(k.name)}　Φ${esc(k.currentDia)}`
-     + `　刃厚${esc(k.thickness)}　${esc(k.status)}</option>`).join('');
+     + `　刃厚${esc(k.thickness)}　${esc(setWord(k))}</option>`).join('');
   sel.value = cur;
   if (sel.selectedIndex < 0) sel.selectedIndex = 0;
  }
@@ -3341,7 +3358,7 @@
   detail.stopId = seededStopId || '';
   const c = detail.cond || {};
   const at = new Date().toISOString().slice(0, 16).replace('T', ' ');
-  const note = `${B.METHOD_NAME[LAST.method]}／Φ${st.knife.toFixed(1)}／${B.holdName(st, M)}／`
+  const note = `${B.METHOD_NAME[LAST.method]}／Φ${st.knife.toFixed(1)}／${B.holdLabel(st, M)}／`
    + st.lots.map(l => `${l.name} ${l.w}×${l.n}`).join(' , ');
   /* **何が残るかを見せてから**記録する。取り消せる操作ではあるが、次の段取りの
      差分がこの1件から出るので、条件を目で確かめられるようにする。 */
@@ -3474,6 +3491,18 @@
   }
  }
 
+ /* 刃組ガイダンスを見た目のまま刷る（§9.525）。題は紙の名前（PDFに保存したときのファイル名）になる。 */
+ function printGuide(opt) {
+  const d = new Date(), p2 = n => String(n).padStart(2, '0');
+  const stamp = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}`;
+  return WL.printCore.printScreen({
+   root: document.querySelector('.layout > main'), paper: 'a4-landscape', styleId: 'bsPrintPage',
+   title: `刃組ガイダンス_${st.equipment || '設備未選択'}_${stamp}`,
+   beforeSnap: () => { if (WL.bladeSolid && typeof WL.bladeSolid.render === 'function') WL.bladeSolid.render(); },
+   dryRun: !!(opt && opt.dryRun)
+  });
+ }
+
  /* ====================== 画面の登録 ====================== */
  WL.onReady(() => {
   WL.registerView({
@@ -3484,6 +3513,10 @@
       そのため `nav` も持たない（選択状態を点ける相手が居ない）。 */
    key: 'bladeset', bodyClass: 'bs-mode',
    header: ['刃組ガイダンス', ''],
+   /* 「画面を印刷」＝**左メニューを除いた見た目そのままをA4横1枚へ**（§9.525、利用者の指示）。
+      断面図・立体図は WebGL なので、刷る直前に描き直して絵にする（`beforeSnap`）。 */
+   print: printGuide,
+   printHint: '左のメニューを除いた、いま見えている刃組ガイダンスをそのままA4横1枚に縮めて印刷します',
    /* **自分の`bodyClass`は自分で外す**（`enterView`は付けるだけ・他の画面と
       同じ作法）。外し忘れると`.bs-shell`が次の画面の上に居座る。 */
    exit: () => {

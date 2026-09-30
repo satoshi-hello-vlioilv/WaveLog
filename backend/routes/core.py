@@ -122,6 +122,8 @@ JS_FILES=[
  # このファイル自体は小さい。画面（blade-view.js）より先に読み、`WL.bladeSolid`を
  # 名乗らせる——画面は `attach()` を呼ぶだけになる。
  'bladeset/blade-pick.js',   # 刃組: 刃選択マスタの盤（マスタ管理の専用画面）
+ 'bladeset/hold-pick.js',    # 刃組: 保持方式マスタの盤（フィンガー／ゴムリングの判定表）
+ 'bladeset/blade-sets.js',   # 刃組: 刃セットの盤（組ごとのカテゴリ・使用状態）
  'bladeset/blade-3d.js',
  'bladeset/blade-view.js',
  'report/actuals-view.js',

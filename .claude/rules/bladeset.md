@@ -1,4 +1,4 @@
-# 刃組ガイダンス（208件）
+# 刃組ガイダンス（216件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,14 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| フィンガーの材質は**1回の刃組で1つ**。答えは`holdPick()`の`material`（表の行が持つ・空欄は既定） | `test_bladesets.js`・`test_bladeset.py` | [§9.527](../../docs/decisions/9.527.md) |
+| フィンガーの在庫は材質ごとに数える（`fingerWidthsOf()`）。図の色の鍵は`fingerTone()`の1箇所 | `test_bladesets.js` | [§9.527](../../docs/decisions/9.527.md) |
+| 刃のカテゴリ（通常刃／専用刃）と使用状態（使用中／研磨中）は**刃セット（設備＋組）**の1行。刃の行は名乗るだけ | `test_bladeset.py`・`test_bladesets.js` | [§9.526](../../docs/decisions/9.526.md) |
+| 使えるかは`selectable()`の1箇所（研磨中は選ばない）。専用刃は決まりに当たったときだけ・使えなければ`missing` | `test_bladesets.js` | [§9.526](../../docs/decisions/9.526.md) |
+| 刃選択で選べるのは板押さえ方式・板厚・材質・調質。前の項目で書いた決まりは`pickFieldsLegacy`で読み続ける | `test_bladeset.py`・`test_bladesets.js` | [§9.526](../../docs/decisions/9.526.md) |
+| フィンガーは名称を持たない。1本＝設備＋幅＋材質（既定ベークライト）。呼び名は`finger_label()` | `test_bladeset.py`・`test_bladesets.js` | [§9.526](../../docs/decisions/9.526.md) |
+| 保持方式は`保持方式マスタ`の判定表（上から最初の行・最後が既定）。答えは`holdPick()`、未登録は切替板厚の種 | `test_holdpick.js`・`test_bladeset.py` | [§9.524](../../docs/decisions/9.524.md) |
+| 条件表の判定は`firstRule()`の1本（刃選択・保持方式・試す行）。仕掛の列は`source.<列名>`、読む行は`st.src` | `test_holdpick.js` | [§9.524](../../docs/decisions/9.524.md) |
 | 引き出しの字の段は`tierOf()`の1箇所: **近い段から空いているところへ**。重なるときだけ外の段 | `test_bladeui.js` | [§9.492](../../docs/decisions/9.492.md) |
 | 刃組表の区分は条幅ごとに**条数（×N）**を添える。数えるのは`res.segs`（図と同じ割付） | `test_bladeui.js` | [§9.492](../../docs/decisions/9.492.md) |
 | ゴムリング・潤滑の本数の欄にも色の●（径の欄と同じ`.bs-ringdot`／`.bs-lubedot`） | `test_bladeui.js` | [§9.492](../../docs/decisions/9.492.md) |
@@ -185,9 +193,9 @@
 | 記録が無い段取りは標準の計算値を出し、**記録と見込みを字で書き分ける**（読めなければ計算しない） | `test_bladeui.js` | [§9.408](../../docs/decisions/9.408.md) |
 | 断面図は台車を回さない（裏返すのはカメラ側だけ）。切り口は面を置いて塞ぐ | `test_bladeui.js` | [§9.412](../../docs/decisions/9.412.md) |
 | 入口は段取りの行だけ。左メニューには置かない（文脈の無いまま開かせない） | `test_bladeui.js` | [§9.379](../../docs/decisions/9.379.md) |
-| 刃の状態は3つ。既定は「一般」、「専用」は`刃選択マスタ`に当たったときだけ | `test_bladeset.py`・`test_bladeui.js` | [§9.379](../../docs/decisions/9.379.md) |
+| 【§9.526で改めた】刃の状態は3つ。既定は「一般」、「専用」は`刃選択マスタ`に当たったときだけ | `test_bladeset.py`・`test_bladeui.js` | [§9.379](../../docs/decisions/9.379.md) |
 | 刃選択の条件は行ごとAND・最初に当たった1行。**条件が空の行は当たらない** | `test_bladeset.py`・`test_bladeui.js` | [§9.379](../../docs/decisions/9.379.md) |
-| 選べる刃かの判定は`selectable()`の1箇所（外れるのは「メンテナンス中」だけ） | `test_bladeui.js` | [§9.379](../../docs/decisions/9.379.md) |
+| 【§9.526で改めた】選べる刃かの判定は`selectable()`の1箇所（外れるのは「メンテナンス中」だけ） | `test_bladeui.js` | [§9.379](../../docs/decisions/9.379.md) |
 | フィンガーは板押さえ。上下軸と板のあいだ・板の両側へ描く（軸に被せない） | `test_bladeui.js` | [§9.379](../../docs/decisions/9.379.md) |
 | 軸方向から見たフィンガーは幅×厚みの四角。研削は奥行きの面なので見えない | — | [§9.379](../../docs/decisions/9.379.md) |
 | 端部（OS/DS）の表は右レール。図の段へ戻すと模式図が7割まで痩せる | `test_bladeui.js` | [§9.379](../../docs/decisions/9.379.md) |

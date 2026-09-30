@@ -5,7 +5,9 @@
      扱えるようにしてください。」
 
    ここが答えるのは1つ——**「この作業のとき、どの刃が選ばれるか」**。
-   ふつうは状態が「一般」の刃で、そこから外れる作業だけをここに書く（§9.379）。
+   ふつうはカテゴリが「通常刃」の刃セットで、そこから外れる作業だけをここに書く（§9.379）。
+   条件に選べるのは**板押さえ方式・板厚・材質・調質**の4つ（§9.526、利用者の指示）。
+   前に選べた項目（条数・条幅など）で書いた決まりは読んで効かせる（`legacy`・新しくは選べない）。
 
    直感的にするために置いたものは3つ:
      ① 決まりは**文として読める**（「板厚 ≧ 1.6 かつ 条数 ＝ 6 → 専用 X」）
@@ -21,10 +23,16 @@
 (function(){
  const {requireMaintUser,setMaintLoading}=WL.mm;
  const BS=()=>WL.bladeSet;
- let ps={equipment:'',rules:[],fields:[],ops:[],groups:[],editing:null,probe:{},loaded:false};
+ let ps={equipment:'',rules:[],fields:[],legacy:[],ops:[],groups:[],editing:null,probe:{},loaded:false};
 
  const opLabel=o=>((ps.ops.find(x=>x.op===o)||{}).label||o);
- const fieldOf=f=>(ps.fields.find(x=>x.field===f)||null);
+ /* 語彙＝いま選べる項目＋前に選べた項目（書いてある決まりの名前と型を引くため）。 */
+ const allFields=()=>ps.fields.concat(ps.legacy);
+ const fieldOf=f=>(allFields().find(x=>x.field===f)||null);
+ const kindsOf=()=>Object.fromEntries(allFields().map(f=>[f.field,f.kind]));
+ /* 候補から選ぶ項目（板押さえ方式）で意味があるのは「＝」「≠」だけ（大小・範囲・含むは当たらない）。 */
+ const CHOICE_OPS=['eq','ne'];
+ const opsFor=f=>((fieldOf(f)||{}).kind==='choice'?ps.ops.filter(x=>CHOICE_OPS.includes(x.op)):ps.ops);
  const fieldLabel=f=>((fieldOf(f)||{}).label||f);
  const isTwo=o=>!!((ps.ops.find(x=>x.op===o)||{}).two);
 
@@ -35,7 +43,7 @@
   ps.fields.forEach(f=>{
    const v=ps.probe[f.field];
    if(v===undefined||v===null||String(v).trim()==='')return;
-   c[f.field]=f.kind==='num'?Number(v):String(v);
+   c[f.field]=f.kind==='num'?Number(v):String(v);   // choice（板押さえ方式）は字
   });
   return c;
  }
@@ -44,7 +52,7 @@
  /* 当たった決まり。**判定は blade-core の1箇所**（盤は答えを受け取るだけ）。 */
  function probeHit(){
   if(!probeFilled())return null;
-  return BS().pickGroup(ps.rules,probeCtx(),ps.fields);
+  return BS().pickGroup(ps.rules,probeCtx(),allFields());
  }
 
  /* ---------- 描く ---------- */
@@ -53,12 +61,9 @@
   const val=two?`${esc(c.value||'')} 〜 ${esc(c.value2||'')}`:esc(c.value||'');
   /* 試し欄に値があるときだけ○×を出す（無いときに灰色の印を並べると、
      「まだ判定していない」のか「落ちた」のかが読めない）。 */
-  let mark='';
-  if(ctx){
-   const ok=BS().condHits(c,ctx,Object.fromEntries(ps.fields.map(f=>[f.field,f.kind])));
-   mark=`<i class="bp-hit ${ok?'is-ok':'is-ng'}" aria-hidden="true">${ok?'○':'×'}</i>`;
-  }
-  return `<span class="bp-cond${ctx?(BS().condHits(c,ctx,Object.fromEntries(ps.fields.map(f=>[f.field,f.kind])))?' is-ok':' is-ng'):''}"`
+  const ok=ctx?BS().condHits(c,ctx,kindsOf()):null;
+  const mark=ctx?`<i class="bp-hit ${ok?'is-ok':'is-ng'}" aria-hidden="true">${ok?'○':'×'}</i>`:'';
+  return `<span class="bp-cond${ctx?(ok?' is-ok':' is-ng'):''}"`
    +` data-r="${ri}" data-c="${ci}">${mark}`
    +`<b>${esc(fieldLabel(c.field))}</b><s>${esc(opLabel(c.op))}</s><u>${val}</u></span>`;
  }
@@ -84,21 +89,29 @@
    </header>
    <div class="bp-cb">${body}</div>
    <footer class="bp-cf"><span class="bp-arrow">→</span>
-    ${r.group?`専用の刃 <b class="bp-grp">${esc(r.group)}</b> を使う`:'<span class="bp-none">使う刃の組が未設定です</span>'}</footer>
+    ${r.group?`専用刃 <b class="bp-grp">${esc(r.group)}</b> を使う`:'<span class="bp-none">使う刃の組が未設定です</span>'}</footer>
   </article>`;
  }
 
  /* 直す窓（カードの中でひらく）。行は「項目→比べ方→値」の順で、
     **決める順に左から右**（§CLAUDE 14）。 */
  function editorHtml(r){
-  const fopt=f=>ps.fields.map(x=>`<option value="${esc(x.field)}"${x.field===f?' selected':''}>${esc(x.label)}</option>`).join('');
-  const oopt=o=>ps.ops.map(x=>`<option value="${esc(x.op)}"${x.op===o?' selected':''}>${esc(x.label)}</option>`).join('');
+  /* 前に選べた項目で書いた条件は、その項目も候補に残す（選び直さない限り消えない）。 */
+  const fopt=f=>ps.fields.concat(ps.legacy.filter(x=>x.field===f)).map(x=>`<option value="${esc(x.field)}"${x.field===f?' selected':''}>${esc(x.label)}${ps.fields.includes(x)?'':'（前の項目）'}</option>`).join('');
+  /* 値の欄は項目の型から（`choice`＝候補から選ぶ・板押さえ方式）。 */
+  const vin=(c,ci)=>{
+   const f=fieldOf(c.field);
+   if(f&&f.kind==='choice')return `<select class="bp-v" data-c="${ci}">`
+    +['<option value="">（選んでください）</option>'].concat((f.options||[]).map(o=>`<option value="${esc(o)}"${o===c.value?' selected':''}>${esc(o)}</option>`)).join('')+'</select>';
+   return `<input class="bp-v" data-c="${ci}" type="text" value="${esc(c.value||'')}" placeholder="値">`;
+  };
+  const oopt=(o,f)=>opsFor(f).map(x=>`<option value="${esc(x.op)}"${x.op===o?' selected':''}>${esc(x.label)}</option>`).join('');
   const gopt=g=>['<option value="">（選んでください）</option>']
-   .concat(ps.groups.map(x=>`<option value="${esc(x.group)}"${x.group===g?' selected':''}>${esc(x.group)}${x.special?'':'（専用の刃なし）'}</option>`)).join('');
+   .concat(ps.groups.map(x=>`<option value="${esc(x.group)}"${x.group===g?' selected':''}>${esc(x.group)}${x.special?'':'（カテゴリが専用刃でない）'}${x.grind?'（研磨中）':''}</option>`)).join('');
   const rows=(r.conditions||[]).map((c,ci)=>`<div class="bp-row" data-c="${ci}">
     <select class="bp-f" data-c="${ci}">${fopt(c.field)}</select>
-    <select class="bp-o" data-c="${ci}">${oopt(c.op)}</select>
-    <input class="bp-v" data-c="${ci}" type="text" value="${esc(c.value||'')}" placeholder="値">
+    <select class="bp-o" data-c="${ci}">${oopt(c.op,c.field)}</select>
+    ${vin(c,ci)}
     <input class="bp-v2" data-c="${ci}" type="text" value="${esc(c.value2||'')}" placeholder="上限"${isTwo(c.op)?'':' hidden'}>
     <button type="button" class="mm-btn-ghost sm" data-act="delcond" data-c="${ci}" title="この条件を消す">×</button>
    </div>`).join('');
@@ -129,7 +142,7 @@
   if(!ps.equipment){box.innerHTML='<div class="mm-empty">設備を選んでください。</div>';return}
   if(!ps.rules.length&&ps.editing===null){
    box.innerHTML='<div class="mm-empty">まだ決まりがありません。'
-    +'この設備では<b>すべての作業で「一般」の刃</b>が選ばれます。<br>'
+    +'この設備では<b>すべての作業で「通常刃」</b>が選ばれます。<br>'
     +'そこから外れる作業だけを「＋ 決まりを足す」で書いてください。</div>';
    return;
   }
@@ -166,20 +179,24 @@
   const eqs=(WL.records&&WL.records.equipmentMasterState&&WL.records.equipmentMasterState.items)||[];
   const opt=eqs.map(e=>`<option value="${esc(e.name)}"${e.name===ps.equipment?' selected':''}>${esc(e.name)}</option>`).join('');
   const hit=probeHit();
+  const pv=f=>(ps.probe[f.field]===undefined?'':ps.probe[f.field]);
   const probes=ps.fields.map(f=>`<label class="bp-pf"><s>${esc(f.label)}</s>`
-   +`<input data-p="${esc(f.field)}" type="${f.kind==='num'?'number':'text'}" step="any"`
-   +` value="${esc(ps.probe[f.field]===undefined?'':ps.probe[f.field])}"></label>`).join('');
+   +(f.kind==='choice'
+    ?`<select data-p="${esc(f.field)}">${['<option value="">（問わない）</option>'].concat((f.options||[]).map(o=>`<option value="${esc(o)}"${o===pv(f)?' selected':''}>${esc(o)}</option>`)).join('')}</select>`
+    :`<input data-p="${esc(f.field)}" type="${f.kind==='num'?'number':'text'}" step="any" value="${esc(pv(f))}">`)
+   +'</label>').join('');
   const answer=!probeFilled()
    ? '<span class="bp-ans is-idle">値を入れると、その作業でどの決まりが当たるかが出ます</span>'
-   : (hit?`<span class="bp-ans is-hit">「${esc(hit.rule||'(名前なし)')}」に当たる → <b>専用の刃 ${esc(hit.group)}</b></span>`
-         :'<span class="bp-ans is-none">どの決まりにも当たらない → <b>一般の刃</b></span>');
+   : (hit?`<span class="bp-ans is-hit">「${esc(hit.rule||'(名前なし)')}」に当たる → <b>専用刃 ${esc(hit.group)}</b></span>`
+         :'<span class="bp-ans is-none">どの決まりにも当たらない → <b>通常刃</b></span>');
   form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip new">刃選択</span></div>
    <div class="mm-cd-toolbar">
     <div class="mm-cd-dbtabs"><select id="bpEq">${opt||'<option value="">設備マスタが未登録です</option>'}</select></div>
     <div class="mm-cd-actions"><button type="button" class="mm-btn-primary sm" id="bpAdd">＋ 決まりを足す</button></div>
    </div>
-   <p class="mm-form-hint">ふつうは状態が<b>「一般」</b>の刃が選ばれます。そこから外れる作業だけをここに書いてください。
-    <b>上から順に見て、最初に当たった1つ</b>が効きます。</p>
+   <p class="mm-form-hint">ふつうはカテゴリが<b>「通常刃」</b>の刃セットが選ばれます。そこから外れる作業だけをここに書いてください。
+    <b>上から順に見て、最初に当たった1つ</b>が効きます。条件に使えるのは<b>板押さえ方式・板厚・材質・調質</b>です
+    （板押さえ方式は「保持方式」の表の答え、材質・調質は1本目のコイルの仕掛の値）。<b>研磨中</b>のセットは選ばれません（「刃セット」で切り替え）。</p>
    <div class="bp-try"><div class="bp-tryh">試す<s>この値の作業なら、どれが当たるか</s></div>
     <div class="bp-tryf">${probes}</div>
     <div class="bp-trya">${answer}<button type="button" class="mm-btn-ghost sm" id="bpClear">空にする</button></div></div>`;
@@ -194,6 +211,7 @@
   const clr=document.getElementById('bpClear');
   if(clr)clr.onclick=()=>{ps.probe={};renderForm();renderList()};
   form.querySelectorAll('[data-p]').forEach(el=>{
+   if(el.tagName==='SELECT'){el.onchange=()=>{ps.probe[el.dataset.p]=el.value;renderForm();renderList()};return}
    el.oninput=()=>{ps.probe[el.dataset.p]=el.value;renderForm();renderList();
     const again=document.querySelector(`#masterMaintForm [data-p="${CSS.escape(el.dataset.p)}"]`);
     if(again){again.focus();try{again.setSelectionRange(again.value.length,again.value.length)}catch(_e){WL.quiet.note('カーソル位置を戻せない（値は入っている）',_e)}}};
@@ -217,6 +235,8 @@
     readEditor();
     /* 「範囲」を選んだときだけ上限の欄を出す。**窓ごと作り直さず**、
        その欄の hidden だけを動かす（打ちかけの値を消さない）。 */
+    /* 項目を変えたら値の欄の形（字／候補）が変わりうる——その行を作り直す（値は写し済み）。 */
+    if(el.classList.contains('bp-f')){renderList(true);return}
     if(el.classList.contains('bp-o')){
      const row=el.closest('.bp-row'),v2=row&&row.querySelector('.bp-v2');
      if(v2)v2.hidden=!isTwo(el.value);
@@ -239,7 +259,8 @@
   const rows=document.getElementById('bpRows');
   if(rows){
    r.conditions=[...rows.querySelectorAll('.bp-row')].map(row=>{
-    const f=row.querySelector('.bp-f').value,o=row.querySelector('.bp-o').value;
+    const f=row.querySelector('.bp-f').value;
+    const o0=row.querySelector('.bp-o').value,o=opsFor(f).some(x=>x.op===o0)?o0:'eq';
     const c={field:f,op:o,value:row.querySelector('.bp-v').value};
     if(isTwo(o))c.value2=row.querySelector('.bp-v2').value;
     return c;
@@ -293,7 +314,7 @@
   if(!r||!r.id)return;
   if(!await confirmModal({title:'この決まりを消す',eyebrow:'刃選択',
     bodyHtml:`<p class="confirm-modal-message">「${esc(r.name||'(名前なし)')}」を消します。`
-      +'この決まりで選ばれていた作業は、以後<b>一般の刃</b>になります。</p>',
+      +'この決まりで選ばれていた作業は、以後<b>通常刃</b>になります。</p>',
     confirmLabel:'消す',cancelLabel:'やめる'}))return;
   try{
    await post('/api/bladeset/blade-pick/delete',{id:r.id});
@@ -331,19 +352,15 @@
   box.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
   try{
    const c=await api('/api/bladeset/context?equipment='+encodeURIComponent(ps.equipment));
-   ps.fields=c.pickFields||[];ps.ops=c.pickOps||[];
+   ps.fields=c.pickFields||[];ps.legacy=c.pickFieldsLegacy||[];ps.ops=c.pickOps||[];
    ps.rules=(c.picks||[]).map(r=>Object.assign({},r,{conditions:(r.conditions||[]).map(x=>Object.assign({},x))}));
-   /* 刃の組の候補。**「専用の刃がある組」を先に**出し、無い組も選べるようにして
-      「先に決まりを書いて、あとで刃を登録する」順でも詰まらないようにする。 */
-   const sp=c.bladeSpecial||'専用';
-   const seen=new Map();
-   (c.blades||[]).forEach(b=>{
-    const g=b.group||'';if(!g)return;
-    const cur=seen.get(g)||{group:g,special:false};
-    if(b.status===sp)cur.special=true;
-    seen.set(g,cur);
-   });
-   ps.groups=[...seen.values()].sort((a,b)=>(b.special-a.special)||a.group.localeCompare(b.group));
+   /* 刃の組の候補。**カテゴリが専用刃のセットを先に**出し、ほかの組も選べるようにして
+      「先に決まりを書いて、あとでセットを専用刃にする」順でも詰まらないようにする。
+      答えはサーバーの刃セット（§9.526）——刃の行の`状態`は見ない。 */
+   const sp=c.bladeCatSpecial||'専用刃',gr=c.bladeUseGrind||'研磨中';
+   ps.groups=(c.bladeSets||[]).filter(x=>x.group)
+    .map(x=>({group:x.group,special:x.category===sp,grind:x.use===gr}))
+    .sort((a,b)=>(b.special-a.special)||a.group.localeCompare(b.group));
    ps.loaded=true;
    renderForm();renderList();
   }catch(e){

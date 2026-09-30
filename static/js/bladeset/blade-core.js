@@ -70,7 +70,7 @@
      混ぜると、幅10の潤滑リングが「ゴムリング10」として積まれてしまうので分ける。 */
   const rings = ringAll.filter(x => !x.lube), lubes = ringAll.filter(x => x.lube);
   const fingers = (c.fingers || [])
-   .map(x => ({ name: x.name || '', width: num(x.width),
+   .map(x => ({ name: x.name || '', width: num(x.width), material: x.material || '',
                 qty: Math.max(0, num(x.qty) || 0), minQty: num(x.minQty) || 0,
                 maxThickness: num(x.maxThickness),
                 /* 形（§9.379）。**図がここから寸法を取る**ので落とさない。 */
@@ -82,7 +82,9 @@
                 thickness: num(x.thickness), currentDia: num(x.currentDia),
                 qty: Math.max(0, num(x.qty) || 0), minQty: num(x.minQty) || 0,
                 lastGrind: x.lastGrind || '', grindCount: num(x.grindCount) || 0,
-                status: x.status || '' }));
+                status: x.status || '',
+                /* セット（組）のカテゴリ・使用状態（§9.526）。答えはサーバーの刃セットの1箇所。 */
+                category: x.category || '', use: x.use || '' }));
   /* **サーバーが渡したものを落とさない**（§9.381）。ここは「読みやすい形へ
      直す」場所であって、**選り分ける場所ではない**——`picks`（刃選択の決まり）と
      語彙を落としていたため、盤では当たるのにガイダンスでは一度も当たらない、
@@ -98,6 +100,14 @@
            carriageSeed: (c.carriageSeed || []).slice(),
            carriageNone: c.carriageNone || '台車なし',
            pickFields: (c.pickFields || []).slice(),
+           /* 前に選べた項目（§9.526）。書いてある決まりは読んで効かせる（新しくは選べない）。 */
+           pickFieldsLegacy: (c.pickFieldsLegacy || []).slice(),
+           bladeSets: (c.bladeSets || []).slice(),
+           bladeCatNormal: c.bladeCatNormal || '通常刃', bladeCatSpecial: c.bladeCatSpecial || '専用刃',
+           bladeUseOn: c.bladeUseOn || '使用中', bladeUseGrind: c.bladeUseGrind || '研磨中',
+           /* 保持方式の条件表（§9.524）。登録が無ければサーバーが今までの決め方の「種」を返す。 */
+           holds: (c.holds || []).slice(), holdsStored: !!c.holdsStored,
+           holdMethods: (c.holdMethods || []).slice(), holdFields: (c.holdFields || []).slice(),
            pickOps: (c.pickOps || []).slice(),
            equipment: c.equipment || '',
            standardStored: !!c.standardStored,
@@ -105,6 +115,7 @@
            bladeGeneral: c.bladeGeneral || '一般',
            bladeSpecial: c.bladeSpecial || '専用',
            bladeMaint: c.bladeMaint || 'メンテナンス中',
+           fingerMaterials: (c.fingerMaterials || []).slice(),
            fingerShape: Object.assign({}, c.fingerShape || {}),
            ringColors: c.ringColors || [] };
  }
@@ -133,14 +144,18 @@
    const cur = spacerStock.get(s.size);
    if (cur) cur.qty += s.qty; else spacerStock.set(s.size, Object.assign({}, s));
   });
-  /* フィンガーは幅ごとにまとめる（ゴムリングの幅と同じ扱い）。 */
-  const fingerWidths = [];
+  /* フィンガーは**材質ごとに**幅でまとめる（§9.527）。1回の刃組で使う材質は1つ
+     （`保持方式マスタ`の答え）なので、ほかの材質の本数を足さない。 */
+  const fingerByMat = new Map();
   M.fingers.forEach(f => {
-   const cur = fingerWidths.find(w => w.sz === f.width);
-   if (cur) cur.qty += f.qty; else fingerWidths.push({ sz: f.width, qty: f.qty });
+   const mat = f.material || fingerMatDefault(M);
+   const list = fingerByMat.get(mat) || [];
+   const cur = list.find(w => w.sz === f.width);
+   if (cur) cur.qty += f.qty; else list.push({ sz: f.width, qty: f.qty });
+   fingerByMat.set(mat, list);
   });
-  fingerWidths.sort((a, b) => b.sz - a.sz);
-  return { byOd, widthsByOd, ringsByTh, spacerSizes, spacerStock, fingerWidths,
+  fingerByMat.forEach(list => list.sort((a, b) => b.sz - a.sz));
+  return { byOd, widthsByOd, ringsByTh, spacerSizes, spacerStock, fingerByMat,
            span: Math.max(100, num(M.P.arborLen) || 1600),
            fillCache: new Map() };
  }
@@ -172,8 +187,9 @@
   if (st.align === 'none') return 'chidori';
   return st.canNk ? 'nakanuki' : 'flip';
  }
- /* 板が薄いとゴムリングでは保持できない。そのときは板押さえ（フィンガー）方式。 */
- const isFinger = (st, M) => st.thick < (num(M.P.fingerMax) || 0);
+ /* 板を保持する方式（フィンガー／ゴムリング）。答えは`holdPick()`の1箇所（§9.524）——
+    `保持方式マスタ`の条件表を上から見て、最初に当たった行の方式。 */
+ const isFinger = (st, M) => holdPick(st, M).hold === 'フィンガー';
  const holdName = (st, M) => (isFinger(st, M) ? 'フィンガー' : 'ゴムリング');
  const oppBurr = b => (b === 'down' ? 'up' : 'down');
  const oppRing = t => (t === 'big' ? 'small' : 'big');
@@ -532,6 +548,10 @@
   let onCar = null;
   for (let i = 1; i < h.length; i++) if (h[i].carriage === st.carriage) { onCar = h[i]; break; }
   const at = (rec, kind, key) => ((rec && rec.detail && rec.detail[kind] && rec.detail[kind][key]) || 0);
+  const mat = fingerMaterial(st, M);
+  /* 記録のフィンガーは**同じ材質のときだけ**数える（材質の無い古い記録は既定の材質）。 */
+  const finAt = (rec, sz) => (rec && ((rec.detail || {}).fingerMaterial || fingerMatDefault(M)) === mat
+   ? at(rec, 'finger', sz) : 0);
   const spacer = new Map(), ring = new Map(), finger = new Map(), lube = new Map();
   IX.spacerStock.forEach((x, sz) => {
    const total = x.qty, b = at(busy, 'spacer', sz), c = at(onCar, 'spacer', sz);
@@ -544,8 +564,8 @@
    ring.set(k, { total, busy: b, onCar: Math.min(c, Math.max(0, total - b)),
                  free: Math.max(0, total - b) });
   }));
-  IX.fingerWidths.forEach(w => {
-   const total = w.qty, b = at(busy, 'finger', w.sz), c = at(onCar, 'finger', w.sz);
+  fingerWidthsOf(IX, mat).forEach(w => {
+   const total = w.qty, b = finAt(busy, w.sz), c = finAt(onCar, w.sz);
    finger.set(w.sz, { total, busy: b, onCar: Math.min(c, Math.max(0, total - b)),
                       free: Math.max(0, total - b) });
   });
@@ -559,7 +579,7 @@
                  free: Math.max(0, total - b) });
   });
   const sig = [st.carriage, busy.at || '-', onCar ? onCar.at : '-',
-               M.spacers.length, M.rings.length, M.fingers.length].join('|');
+               M.spacers.length, M.rings.length, M.fingers.length, mat].join('|');
   return { spacer, ring, finger, lube, busy: h[0] || null, onCar, sig };
  }
 
@@ -751,7 +771,7 @@
    }
    return parts;
   };
-  const finger = isFinger(st, M);
+  const finger = isFinger(st, M), fmat = finger ? fingerMaterial(st, M) : '';
   const zones = A.zones.map((z, i) => {
    const isEnd = (i === 0 || i === last);
    const burr = z.type === 'end' ? z.burr : z.seg.burr;
@@ -760,7 +780,7 @@
       長いほうの軸（内々の対）。屑条・端部には入れない。 */
    const wide = upper => z.type === 'strip' && (upper ? z.up > z.lo : z.lo > z.up);
    const mk = upper => {
-    if (finger) return IX.fingerWidths.length ? { kind: 'finger' } : null;
+    if (finger) return fingerWidthsOf(IX, fmat).length ? { kind: 'finger', mat: fmat } : null;
     if (!IX.widthsByOd.size) return null;
     const t = ringType(burr, upper);
     return { kind: 'ring', ringT: t, od: odOfType(st, M, t), lube: wide(upper) };
@@ -1065,6 +1085,7 @@
                 holdName: holdName(st, M) };
   return { segs, A, zp, g, err, rows, ends, badges: badgeMap(rows.concat(ends)),
            fit, stop: stopReasons(st, A, M), contact: c, method: method(st), finger: isFinger(st, M),
+           fingerMat: isFinger(st, M) ? fingerMaterial(st, M) : '',
            bigOd: odFromTh(M, st.bigTh), smOd: odFromTh(M, st.smallTh) };
  }
 
@@ -1169,11 +1190,19 @@
   return (a.widths || []).join(',') === (b.widths || []).join(',');
  }
 
- /* その刃を選ぶ対象に入れてよいか。**「メンテナンス中」だけが外れる**
-    （一般も専用も、選ばれる場面が違うだけで「生きている刃」・§9.379）。
-    綴りはサーバーが持つので、無いときだけ既定の字を使う。 */
+ /* その刃を選ぶ対象に入れてよいか。**セットが「研磨中」なら外れる**（§9.526）
+    （通常刃も専用刃も、選ばれる場面が違うだけで「使える刃」・§9.379）。
+    セットを名乗らない材料（古いサーバー・網の手組み）は今までの`状態`で見る。 */
  function selectable(k, M) {
-  return !!k && k.status !== ((M && M.bladeMaint) || 'メンテナンス中');
+  if (!k) return false;
+  if (k.use) return k.use !== ((M && M.bladeUseGrind) || '研磨中');
+  return k.status !== ((M && M.bladeMaint) || 'メンテナンス中');
+ }
+ /* 刃のカテゴリ（通常刃／専用刃）。セットを名乗らない材料は`状態`から読み替える（§9.526）。 */
+ function bladeCategory(k, M) {
+  if (k.category) return k.category;
+  return k.status === ((M && M.bladeSpecial) || '専用')
+   ? ((M && M.bladeCatSpecial) || '専用刃') : ((M && M.bladeCatNormal) || '通常刃');
  }
 
  /* ---------- 「専用」の刃を選ぶ条件（§9.379、利用者の指示2） ----------
@@ -1189,19 +1218,38 @@
   le: (l, a) => l <= a + 1e-9,
   lt: (l, a) => l < a - 1e-9
  };
+ /* 条件が読む値。計算値に加えて、**1本目のコイルの仕掛の行**（`st.src`）の列を
+    `source.<列名>`で読める（§9.524）。材質・ロット番号もその行から引く——以前は
+    `st.material`／`st.lotNo`を誰も入れておらず、刃選択の「材質」「ロット番号」の
+    条件は**1度も当たらなかった**。 */
  function pickCtx(st, M) {
   const ws = (st.order || []).map(ix => +(((st.lots || [])[ix] || {}).w))
    .filter(w => w > 0);
-  return {
+  const src = st.src || null;
+  const pk = k => (src && typeof pick === 'function' ? pick(src, k) : '');
+  const ctx = {
    thickness: +st.thick || null,
    coilWidth: +st.W || null,
    strips: ws.length || null,
    minWidth: ws.length ? Math.min(...ws) : null,
    maxWidth: ws.length ? Math.max(...ws) : null,
-   material: st.material || '',
-   lotNo: st.lotNo || ''
+   material: pk('mfgMaterial') || pk('orderMaterial'),
+   /* 調質（§9.526・刃選択の4項目の1つ）。材質と同じく製造→オーダーの順。 */
+   temper: pk('mfgTemper') || pk('orderTemper'),
+   lotNo: st.headLot || pk('lotNo')
   };
+  if (src) Object.keys(src).forEach(k => { ctx['source.' + k] = src[k]; });
+  return ctx;
  }
+ /* 刃選択が読む値＝`pickCtx`＋**板押さえ方式**（`holdPick()`の答え・§9.526）。
+    `holdPick`自身が`pickCtx`を読むので、方式はここで後から足す（`pickCtx`へ入れると回り続ける）。 */
+ function bladePickCtx(st, M) {
+  return Object.assign(pickCtx(st, M), { hold: holdPick(st, M).hold });
+ }
+ /* 仕掛の列（`source.*`）は型が決まっていない。**比べ方で読み方を決める**:
+    大小・範囲は数として、＝／≠は両方が数に読めれば数として（'1.0' と '1' を同じに）、
+    含むは字として。 */
+ const asNum = v => (String(v ?? '').trim() === '' ? NaN : Number(v));
  function condHits(cond, ctx, kinds) {
   const f = cond && cond.field;
   if (!f || !(f in ctx)) return false;
@@ -1210,7 +1258,12 @@
      全部の作業に当たってしまう。 */
   if (left === null || left === undefined || left === '') return false;
   const op = cond.op;
-  if ((kinds[f] || 'text') === 'num') {
+  const kind = kinds[f] || (String(f).startsWith('source.')
+   ? (op === 'contains' ? 'text'
+      : (/^(ge|gt|le|lt|between)$/.test(op) || (isFinite(asNum(left)) && isFinite(asNum(cond.value)))) ? 'num' : 'text')
+   : 'text');
+  /* `choice`（候補から選ぶ・板押さえ方式）は字として比べる。 */
+  if (kind === 'num') {
    const l = +left, a = +cond.value;
    if (!isFinite(l) || !isFinite(a)) return false;
    if (op === 'between') {
@@ -1220,7 +1273,7 @@
    }
    return PICK_NUM[op] ? PICK_NUM[op](l, a) : false;
   }
-  const ls = String(left), rs = String(cond.value == null ? '' : cond.value);
+  const ls = String(left).trim(), rs = String(cond.value == null ? '' : cond.value).trim();
   if (op === 'eq') return ls === rs;
   if (op === 'ne') return ls !== rs;
   if (op === 'contains') return !!rs && ls.indexOf(rs) >= 0;
@@ -1229,18 +1282,75 @@
  /* 当たった決まり、または `null`（＝「一般」を使う）。**条件が1つも無い行は
     当たらない**——「いつでも当たる行」を書けると、「一般が既定」という
     約束が静かに崩れる。 */
+ /* 刃選択の語彙＝いま選べる4項目＋前に選べた項目（書いてある決まりの型を引くため・§9.526）。 */
+ const pickFieldsAll = M => ((M && M.pickFields) || []).concat((M && M.pickFieldsLegacy) || []);
  function pickGroup(rules, ctx, fields) {
+  const r = firstRule((rules || []).filter(x => x.group), ctx, fields, false);
+  return r ? { group: r.row.group, rule: r.row.name || '', id: r.row.id } : null;
+ }
+ /* 条件表を上から見て**最初に当たった行**（`{row, index}`）。表の約束は1つ——
+    同じ行の条件はすべて満たしたときだけ当たる。**条件の無い行**は`withDefault`の
+    ときだけ「どれにも当たらなかったときの行」として当たる（刃選択は当てない・
+    保持方式は最後の既定行で決める）。刃選択・保持方式・盤の試し欄が同じ1本を通る。 */
+ function firstRule(rules, ctx, fields, withDefault) {
   const kinds = {};
   (fields || []).forEach(f => { kinds[f.field] = f.kind; });
-  const list = (rules || []).filter(r => r.enabled !== false);
-  for (const r of list) {
-   const cs = r.conditions || [];
-   if (!cs.length || !r.group) continue;
-   if (cs.every(c => condHits(c, ctx, kinds))) {
-    return { group: r.group, rule: r.name || '', id: r.id };
-   }
+  const list = rules || [];
+  for (let i = 0; i < list.length; i++) {
+   if (list[i].enabled === false) continue;   // 番号は表の並びのまま数える（止めた行も1行）
+   const cs = list[i].conditions || [];
+   if (!cs.length ? withDefault : cs.every(c => condHits(c, ctx, kinds))) return { row: list[i], index: i };
   }
   return null;
+ }
+ /* 保持方式の答え（§9.524）。`{hold, index, stored, row}`——どの行で決まったかも返す
+    （画面が「n行目に当たったため」と根拠を書く・§CLAUDE 6）。表を持たない材料
+    （古いサーバー・網の手組み）は今までの決め方（板厚 < 切替板厚）で答える。 */
+ function holdPick(st, M) {
+  const rules = (M && M.holds) || [];
+  /* フィンガーの材質（§9.527）は当たった行が持つ。空欄・表が無ければ既定の材質。 */
+  const matOf = (hold, row) => (hold === 'フィンガー' ? ((row && row.material) || fingerMatDefault(M)) : '');
+  if (!rules.length) {
+   const fm = num(M && M.P && M.P.fingerMax) || 0;
+   const hold = st.thick < fm ? 'フィンガー' : 'ゴムリング';
+   return { hold, material: matOf(hold, null), index: -1, stored: false, row: null };
+  }
+  const hit = firstRule(rules, pickCtx(st, M), M.holdFields, true);
+  const hold = hit ? hit.row.hold : 'ゴムリング';
+  return { hold, material: matOf(hold, hit && hit.row), index: hit ? hit.index : -1,
+           stored: !!M.holdsStored, row: hit ? hit.row : null };
+ }
+ /* 既定のフィンガー材質＝サーバーの語彙の先頭（ベークライト）。 */
+ const fingerMatDefault = M => ((M && M.fingerMaterials) || [])[0] || 'ベークライト';
+ /* いまの作業で使うフィンガーの材質（フィンガーでなければ''）。答えは`holdPick()`。 */
+ const fingerMaterial = (st, M) => holdPick(st, M).material;
+ const fingerWidthsOf = (IX, mat) => IX.fingerByMat.get(mat) || [];
+ /* 画面に出す保持方式の名前（「フィンガー（アルミニウム）」）。`holdName()`は方式だけ（記録・判定の鍵）。 */
+ const holdLabel = (st, M) => { const m = fingerMaterial(st, M); return m ? `${holdName(st, M)}（${m}）` : holdName(st, M); };
+ /* 図のフィンガーの色（§9.527、利用者の選択「アルミは青みの銀」）。材質→`--bs-fig-*`の鍵。
+    知らない材質は既定の茶。色の値そのものは CSS のトークンが持つ。 */
+ const FINGER_TONE = { 'ベークライト': 'finger', 'アルミニウム': 'finger-al' };
+ const fingerTone = mat => FINGER_TONE[mat] || 'finger';
+ /* その方式に決まった根拠を1文で（§9.524・§CLAUDE 6 出どころを書く）。どの行で決まったか・
+    その行の条件・表が登録か種か。画面は字を組み立てない。 */
+ function holdReason(st, M) {
+  const h = holdPick(st, M);
+  if (h.index < 0 && !((M && M.holds) || []).length) {
+   const fm = num(M && M.P && M.P.fingerMax) || 0;
+   return `板厚 ${(+st.thick).toFixed(1)} が切替板厚 ${fm} ${st.thick < fm ? '未満' : '以上'}のため`;
+  }
+  const cs = (h.row && h.row.conditions) || [];
+  const why = cs.length
+   ? `「保持方式」の${h.index + 1}行目（${cs.map(c => condText(c, M.holdFields, M.pickOps)).join(' かつ ')}）に当たったため`
+   : '「保持方式」のどの決まりにも当たらないため（最後の既定の行）';
+  return why + (h.stored ? '' : '。表は未登録なので、刃組基準値のフィンガー切替板厚から作った表で決めました');
+ }
+ /* 条件1つを字にする（「板厚 ＜ 0.6」「製造材質 ＝ SUS」）。刃組の説明と条件表の盤が同じ字を使う。 */
+ function condText(c, fields, ops) {
+  const f = (fields || []).find(x => x.field === c.field);
+  const name = f ? f.label : String(c.field || '').replace(/^source\./, '');
+  const op = ((ops || []).find(x => x.op === c.op) || {}).label || c.op;
+  return c.op === 'between' ? `${name} ${c.value}〜${c.value2}` : `${name} ${op} ${c.value}`;
  }
 
  /* ====================== 標準の条件（§9.408、利用者の指示②） ======================
@@ -1256,6 +1366,8 @@
  function defaultState() {
   return {
    equipment: '',
+   /* 1本目のコイルの番号と仕掛の行（§9.524）。予定から開いたときだけ入る。 */
+   headLot: '', src: null,
    align: 'none', canNk: true, nkWidth: 30,
    knife: 318.2, thick: 1.3, tk: 10, clr: 0.15, ov: 0.2,
    /* クリアランスは**板厚の10%が基本**（§9.378）。板厚を変えたら引き直す。
@@ -1355,24 +1467,25 @@
   return { want: w, used, step, rounded: Math.abs(used - w) > 1e-6 };
  }
  /* 使う刃を決める（§9.379、利用者の指示2）。
-      ふつう … 状態が「一般」の刃
-      例外 …… `刃選択マスタ` の条件に当たったら、その組の「専用」の刃
-    「メンテナンス中」は**どちらでも選ばない**。
+      ふつう … カテゴリが「通常刃」のセットの刃
+      例外 …… `刃選択マスタ` の条件に当たったら、その組の「専用刃」
+    使用状態が「研磨中」のセットは**どちらでも選ばない**（§9.526・セット＝設備＋組）。
     決めたら `st.pick` に「なぜその組か」を残す——画面が理由を出せないと、
     利用者には「勝手に別の刃になった」としか見えない（§CLAUDE 6 出どころを出す）。 */
  function applyBladePick(st, M) {
-  const gen = M.bladeGeneral || '一般', sp = M.bladeSpecial || '専用';
-  const hit = pickGroup(M.picks, pickCtx(st, M), M.pickFields);
+  const normal = M.bladeCatNormal || '通常刃', special = M.bladeCatSpecial || '専用刃';
+  const hit = pickGroup(M.picks, bladePickCtx(st, M), pickFieldsAll(M));
   st.pick = hit ? { group: hit.group, rule: hit.rule } : null;
-  const ok = b => b.currentDia && (hit
-   ? (b.status === sp && b.group === hit.group)
-   : b.status === gen);
+  const usable = b => b.currentDia && selectable(b, M);
+  const ok = b => usable(b) && (hit
+   ? (bladeCategory(b, M) === special && b.group === hit.group)
+   : bladeCategory(b, M) === normal);
   let use = (M.blades || []).filter(ok);
-  /* 条件に当たったのに、その組の刃が1枚も無い——**黙って一般へ落とさない**。
-     理由を持ったまま一般で描き、画面が「当たったが刃が無い」と言えるようにする。 */
+  /* 条件に当たったのに、その組の使える刃が1枚も無い（研磨中を含む）——**黙って通常刃へ
+     落とさない**。理由を持ったまま通常刃で描き、画面が「当たったが刃が無い」と言えるようにする。 */
   if (hit && !use.length) {
    st.pick = { group: hit.group, rule: hit.rule, missing: true };
-   use = (M.blades || []).filter(b => b.currentDia && b.status === gen);
+   use = (M.blades || []).filter(b => usable(b) && bladeCategory(b, M) === normal);
   }
   use = use.sort((a, b) => (b.thickness || 0) - (a.thickness || 0));
   if (use.length) { st.knife = use[0].currentDia; if (use[0].thickness) st.tk = use[0].thickness; }
@@ -1412,6 +1525,9 @@
   }
   st.lots = lots;
   st.order = [];
+  /* 1本目のコイルと、その仕掛の行（§9.524）。条件表が材質などの列を読む。 */
+  st.headLot = String(s.headLot || '');
+  st.src = (s.source && typeof s.source === 'object') ? s.source : null;
   syncOrder(st);
   applyStandards(st, M);
   /* 板厚から引くクリアランス（`clrAuto`）は基準値の固定値より後。順を
@@ -1457,6 +1573,8 @@
   const nl = g.lube ? g.lube.u + g.lube.l : 0;
   if (nl) lube[g.lube.w] = nl;
   return { spacer: Object.assign({}, g.spacer), ring, finger, lube,
+           /* 使ったフィンガーの材質（§9.527）。次の刃組で「稼働中の台車に載っている本数」を材質で数える。 */
+           fingerMaterial: isFinger(st, M) ? fingerMaterial(st, M) : '',
            blade: Object.assign({}, g.blade), cond: condOf(st, M) };
  }
 
@@ -1508,12 +1626,12 @@
  WL.bladeSet = {
   defaultState, clearanceRate, clearanceFor, clearanceUsed, centerOf, datumOf, sideWord, floatStroke, fillWithin, spacerStep, ringRule, holdBand, applyStandards, applyBladePick, standardState,
   normalize, buildIndex, ringMeta, thOf, odFromTh, odOfType, ringType, oppBurr,
-  method, isFinger, holdName, contact, recommend, syncOrder, reorder,
+  method, isFinger, holdName, holdLabel, fingerMaterial, fingerMatDefault, fingerTone, contact, recommend, syncOrder, reorder,
   buildSegs, widths, buildLayout, buildFiller, fillWith, planZones,
   compose, buildRows, endRows, badgeMap, BADGE_TONES, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum, cutFace,
   stripDesign, designByParent, condOf, sameCond, seedFromCond,
-  pickCtx, pickGroup, condHits, selectable,
+  pickCtx, bladePickCtx, pickFieldsAll, bladeCategory, pickGroup, condHits, selectable, firstRule, holdPick, holdReason, condText,
   expand, materialRun, matShift, spread, tierOf,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP
  };

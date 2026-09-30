@@ -1,4 +1,4 @@
-# 帳票と紙（92件）
+# 帳票と紙（93件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 画面をそのまま刷るのは`printScreen()`（器を画面の大きさに止め、比を保って1枚へ・WebGLは絵へ）。段取りは`runPrint()`の1箇所 | `test_screenprint.js` | [§9.525](../../docs/decisions/9.525.md) |
 | 紙は画面で開いている子ロットを出す。載せるかどうかを決めるのは`buildPages`の1箇所 | `test_scprint.js` | [§9.357](../../docs/decisions/9.357.md) |
 | 丈別データの外観・巻ズレは**中身のある列だけ**出す。列幅は出す列だけで100%に配り直す | `test_rpblocks.js` | [§9.393](../../docs/decisions/9.393.md) |
 | 設備で外した入力内容は紙からも落とす。**値があれば出す**。判定は`rpItemOff()`の1箇所 | `test_rpblocks.js` | [§9.395](../../docs/decisions/9.395.md) |

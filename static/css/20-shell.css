@@ -368,7 +368,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
 .hd-actions #printCurrentView{height:var(--ctl-h);padding:0 var(--ctl-pad-x);border:1px solid var(--line);
  border-radius:var(--radius-sm);background:#fff;font-size:var(--fs);font-weight:700;color:var(--ink-2);cursor:pointer}
 .hd-actions #printCurrentView:hover{border-color:var(--teal);background:var(--pale);color:#0c5d67}
-@media(max-width:1180px){
+@media screen and (max-width:1180px){   /* 画面だけ（刷るときの紙の幅で畳まない・§9.525） */
  .hd-context #fileName{max-width:22vw}
  /* 狭い窓では札の名前を畳み、値だけにする（名前は`title`が持つ・§9.508）。1行の「名前 値」は2段組より
     横に広いので、畳まないと1100pxで題が札の下へはみ出して重なった（実測 最大76px）。 */
