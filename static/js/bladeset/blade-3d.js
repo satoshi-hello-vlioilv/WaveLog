@@ -1850,26 +1850,8 @@
   }
   return D3.dimLv;
  }
- function dims(w, h, cam, v) {
-  const el = host && host.querySelector('.bs-t3v');
-  if (!el) return;
-  if (!D3.cut) { el.hidden = true; el.innerHTML = ''; D3.dimShown = null; return; }
-  el.hidden = false;
-  el.setAttribute('viewBox', `0 0 ${w} ${h}`);
-  /* 字の大きさは**この1箇所**が決める（幅の見当もここから出しているので、
-     CSSに書くと2箇所が食い違う）。段が変わったときだけ読み直す（毎フレーム`getComputedStyle`を呼ばない）。
-     表示サイズが変わったときは`wl:look-change`が控えを捨てる（`attach()`）。 */
-  const fsKey = String(dimLevel());
-  if (fsKey !== dimFsFor) {
-   el.style.setProperty('--bs-dim-fs', `var(${DIM_FS_TOKENS[D3.dimLv]})`);   /* 使い方は CSS（.bs-t3v） */
-   dimFs = parseFloat(getComputedStyle(el).fontSize) || 9;
-   dimFsFor = fsKey;
-   paintDimFs();
-  }
-  const P = (x, y) => {
-   v.set(x, y, 0).applyMatrix4(D3.g.matrixWorld).project(cam);
-   return { x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h };
-  };
+ /* 断面図の寸法の段（§9.522）: ① 切断の位置。描いた本数は`D3.cutLines`。 */
+ function dimCutLines(P) {
   let o = '';
   /* ---- ① 切断の位置（縦の破線）----
      **材料のところには刃が描けない**（刃は軸のまわりの丸で、切り口では
@@ -1889,6 +1871,10 @@
       + ` x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke-dasharray="5 4"/>`;
    D3.cutLines++;
   });
+  return o;
+ }
+ /* ② 部材の幅の字の候補（投影した席・字の幅）。器の外へ大きく外れたものは除く。 */
+ function dimList(P, w) {
   /* ---- ② 部材の幅（**全部出す**・§9.429、利用者の指示）----
      以前は「中へ入るものは中へ／残りは**1段だけ**引き出し／その段でぶつかった
      ものは出さない」で、**実測217件中95件（44%）を黙って落としていた**
@@ -1922,6 +1908,10 @@
             band: Math.abs(hi.y - lo.y), hit: hit.y, rows,
             tw: dimTextW(t, dimFs) };
   }).filter(q => q.cx > -50 && q.cx < w + 50);
+  return list;
+ }
+ /* 置ける場所の答え（帯・記号の札・有効長の字の席）。以降の段はこの`R`だけを見る。 */
+ function dimRoom(w, h, P) {
   /* **引き出した字も、部材の中の字も帯を避ける**（§9.443、利用者の指示「図の
      縦方向の表示エリアが30%小さくなっても表示ラベルなどが重ならないように」）。
      §9.437 で帯よけ（`hudBox`）を入れたのは**HTMLの札（OS・DS）だけ**で、
@@ -1972,6 +1962,12 @@
              tw: dimTextW(st0, dimFs), a: sa, b: sb2 };
    taken.push(boxOf(span0.cx, span0.y, span0.tw + 10));
   }
+  return { w, hudD, dimTop, dimBot, taken, boxOf, why, hitOf, free, span0 };
+ }
+ /* 部材の中へ書けるものは中へ。書けないものは`outs`（引き出しの候補）へ回す。 */
+ function dimInside(list, R) {
+  const { dimTop, dimBot, taken, boxOf, free } = R;
+  let o = '';
   const outs = [];
   let inside = 0;
   list.forEach(q => {
@@ -1993,88 +1989,99 @@
    }
    outs.push(q);
   });
+  return { o, outs, inside };
+ }
   /* 引き出し。**上軸ぶん・下軸ぶん**を、**部材の種類ごとに**分けて置く
      （§9.418。スペーサーとゴムリングを同じ段へ混ぜると、どちらの寸法か
      読めない）。線と字は別に溜めて、**線を先に**描く。 */
   /* **段ごとにまとめて押す**——1つずつ動かすと段の高さがばらけて、どの字が
      同じ段なのか読めなくなる。 */
-  let lead = 0, off = 0, ln = '', tx = '';
-  const placed = [];      /* 引き出して置いた字（外の段へ出た理由を後で数える・§9.492） */
+ function dimLeads(outs, R) {
+  const acc = { lead: 0, off: 0, ln: '', tx: '',
+                placed: [] };   /* 引き出して置いた字（外の段へ出た理由を後で数える・§9.492） */
   [true, false].forEach(wantUp => {
    ['sp', 'ring'].forEach(kind => {
     const g1 = outs.filter(q => q.up === wantUp && q.kind === kind)
                    .sort((a, b) => a.cx - b.cx);
-    if (!g1.length) return;
-    const n = Math.max(1, (g1[0].rows || []).length);
-    /* 段は**近い段から空いているところへ**（`tierOf()`・§9.492）。1つおきに振り分けると、余裕があっても半分が外へ出る。 */
-    const ts = BS().tierOf(g1.map(q => ({ cx: q.cx, half: q.tw / 2 + DIM_PAD })), n, DIM_SLOT);
-    g1.forEach((q, i) => { q.tier = ts[i]; });
-    /* 席（横の位置）を先に配ってから、**群ぜんたいを1つの量で押す**（§9.443）。
-       段ごとに別々の量で押すと、**押した段と押さなかった段が同じ高さに来て**
-       字どうしが重なる（実測: 器の高さ459pxで64件）。段の間隔は`rows`が
-       持っているので、群ごと動かせば間隔はそのまま保たれる。 */
-    const tiers = [];
-    let shift = 0, down = 0, up = 0;
-    for (let t = 0; t < n; t++) {
-     const row = g1.filter(q => q.tier === t);
-     if (!row.length) { tiers.push(null); continue; }
-     const half = row.map(q => q.tw / 2 + DIM_PAD);
-     const xs = BS().spread(row.map(q => q.cx), half, 2, w - 2, DIM_SLOT);
-     tiers.push({ row, half, xs, t });
-     row.forEach((q, i) => {
-      const y0 = q.rows[Math.min(t, q.rows.length - 1)];
-      down = Math.max(down, dimTop(xs[i], q.tw) + dimFs * 0.6 - y0);
-      up = Math.max(up, y0 - (dimBot - dimFs * 0.6));
-     });
-    }
-    /* 上の帯からは下へ、下の帯からは上へ逃がす。**どちらも群ごと1つの量**
-       （§9.443）——1つずつ丸めると、下の帯に当たった字が**全部同じ高さへ
-       重なって**潰し合う（実測: 153件中39件が置けなくなった）。 */
-    shift = down - up;
-    tiers.forEach(g => {
-     if (!g) return;
-     const { row, half, xs, t } = g;
-     row.forEach((q, i) => {
-      const y = q.rows[Math.min(t, q.rows.length - 1)] + shift;
-      /* **入りきらなかったものは置かない**（重ねない）。`spread()`は入らない
-         ときに範囲の外を返すので、そこで分かる。**ふさがっている席も同じ**
-         ——帯・記号の札・すでに置いた字と重なるなら置かずに数える（§9.443）。 */
-      if (xs[i] - half[i] < 0 || xs[i] + half[i] > w) { off++; why.wide++; return; }
-      /* **落とすのは最後の手段**（§9.443）。席がふさがっていたら、まず
-         **同じ字の別の段**を試す——横の位置（`xs[i]`）はそのままなので、
-         引き出し線の向きも交差の無さも変わらない（§9.413）。
-         どの段も空いていなければ置かずに数える（§9.429 の`off`）。 */
-      let yy = y, slot = boxOf(xs[i], yy, q.tw);
-      if (!free(slot)) {
-       let ok = false;
-       for (let k = 0; k < q.rows.length && !ok; k++) {
-        const cand = q.rows[k] + shift;
-        const bx = boxOf(xs[i], cand, q.tw);
-        if (free(bx)) { yy = cand; slot = bx; ok = true; }
-       }
-       if (!ok) { off++; const hb = hitOf(slot); why[(hb && hb.k) || 'text']++; return; }
-      }
-      taken.push(slot);
-      placed.push({ x: xs[i], y: yy, near: q.rows[0] + shift, tw: q.tw, kind,
-                    tier: q.rows.findIndex(r => Math.abs(r + shift - yy) < 0.5) });
-      const d = Math.sign(q.hit - yy) || 1;
-      const y0 = yy + d * dimFs * 0.55;
-      /* **線は字のきわから対象の縁まで**（どちらの端も浮かせない）。
-         いったん真下（真上）へ降ろしてから寄せると、どの部材から出た線かを
-         目で追える。 */
-      ln += `<path class="bs-lead" d="M${xs[i].toFixed(1)} ${y0.toFixed(1)}`
-          + `L${xs[i].toFixed(1)} ${(y0 + d * 4).toFixed(1)}`
-          + `L${q.cx.toFixed(1)} ${(q.hit - d * 3).toFixed(1)}`
-          + `L${q.cx.toFixed(1)} ${q.hit.toFixed(1)}"/>`;
-      tx += `<text x="${xs[i].toFixed(1)}" y="${(yy + dimFs * 0.36).toFixed(1)}"`
-          + ` text-anchor="middle"${kind === 'ring' ? ' class="is-ring"' : ''}>`
-          + `${esc(q.t)}</text>`;
-      lead++;
-     });
-    });
+    if (g1.length) dimLeadGroup(g1, kind, R, acc);
    });
   });
-  o += ln + tx;
+  return acc;
+ }
+ /* 引き出しの1群（同じ軸・同じ種類）。段を配り、群ごと1つの量で帯から逃がして置く。 */
+ function dimLeadGroup(g1, kind, R, acc) {
+  const { w, dimTop, dimBot, taken, boxOf, why, hitOf, free } = R;
+  const n = Math.max(1, (g1[0].rows || []).length);
+  /* 段は**近い段から空いているところへ**（`tierOf()`・§9.492）。1つおきに振り分けると、余裕があっても半分が外へ出る。 */
+  const ts = BS().tierOf(g1.map(q => ({ cx: q.cx, half: q.tw / 2 + DIM_PAD })), n, DIM_SLOT);
+  g1.forEach((q, i) => { q.tier = ts[i]; });
+  /* 席（横の位置）を先に配ってから、**群ぜんたいを1つの量で押す**（§9.443）。
+     段ごとに別々の量で押すと、**押した段と押さなかった段が同じ高さに来て**
+     字どうしが重なる（実測: 器の高さ459pxで64件）。段の間隔は`rows`が
+     持っているので、群ごと動かせば間隔はそのまま保たれる。 */
+  const tiers = [];
+  let shift = 0, down = 0, up = 0;
+  for (let t = 0; t < n; t++) {
+   const row = g1.filter(q => q.tier === t);
+   if (!row.length) { tiers.push(null); continue; }
+   const half = row.map(q => q.tw / 2 + DIM_PAD);
+   const xs = BS().spread(row.map(q => q.cx), half, 2, w - 2, DIM_SLOT);
+   tiers.push({ row, half, xs, t });
+   row.forEach((q, i) => {
+    const y0 = q.rows[Math.min(t, q.rows.length - 1)];
+    down = Math.max(down, dimTop(xs[i], q.tw) + dimFs * 0.6 - y0);
+    up = Math.max(up, y0 - (dimBot - dimFs * 0.6));
+   });
+  }
+  /* 上の帯からは下へ、下の帯からは上へ逃がす。**どちらも群ごと1つの量**
+     （§9.443）——1つずつ丸めると、下の帯に当たった字が**全部同じ高さへ
+     重なって**潰し合う（実測: 153件中39件が置けなくなった）。 */
+  shift = down - up;
+  tiers.forEach(g => {
+   if (!g) return;
+   const { row, half, xs, t } = g;
+   row.forEach((q, i) => {
+    const y = q.rows[Math.min(t, q.rows.length - 1)] + shift;
+    /* **入りきらなかったものは置かない**（重ねない）。`spread()`は入らない
+       ときに範囲の外を返すので、そこで分かる。**ふさがっている席も同じ**
+       ——帯・記号の札・すでに置いた字と重なるなら置かずに数える（§9.443）。 */
+    if (xs[i] - half[i] < 0 || xs[i] + half[i] > w) { acc.off++; why.wide++; return; }
+    /* **落とすのは最後の手段**（§9.443）。席がふさがっていたら、まず
+       **同じ字の別の段**を試す——横の位置（`xs[i]`）はそのままなので、
+       引き出し線の向きも交差の無さも変わらない（§9.413）。
+       どの段も空いていなければ置かずに数える（§9.429 の`off`）。 */
+    let yy = y, slot = boxOf(xs[i], yy, q.tw);
+    if (!free(slot)) {
+     let ok = false;
+     for (let k = 0; k < q.rows.length && !ok; k++) {
+      const cand = q.rows[k] + shift;
+      const bx = boxOf(xs[i], cand, q.tw);
+      if (free(bx)) { yy = cand; slot = bx; ok = true; }
+     }
+     if (!ok) { acc.off++; const hb = hitOf(slot); why[(hb && hb.k) || 'text']++; return; }
+    }
+    taken.push(slot);
+    acc.placed.push({ x: xs[i], y: yy, near: q.rows[0] + shift, tw: q.tw, kind,
+                  tier: q.rows.findIndex(r => Math.abs(r + shift - yy) < 0.5) });
+    const d = Math.sign(q.hit - yy) || 1;
+    const y0 = yy + d * dimFs * 0.55;
+    /* **線は字のきわから対象の縁まで**（どちらの端も浮かせない）。
+       いったん真下（真上）へ降ろしてから寄せると、どの部材から出た線かを
+       目で追える。 */
+    acc.ln += `<path class="bs-lead" d="M${xs[i].toFixed(1)} ${y0.toFixed(1)}`
+        + `L${xs[i].toFixed(1)} ${(y0 + d * 4).toFixed(1)}`
+        + `L${q.cx.toFixed(1)} ${(q.hit - d * 3).toFixed(1)}`
+        + `L${q.cx.toFixed(1)} ${q.hit.toFixed(1)}"/>`;
+    acc.tx += `<text x="${xs[i].toFixed(1)}" y="${(yy + dimFs * 0.36).toFixed(1)}"`
+        + ` text-anchor="middle"${kind === 'ring' ? ' class="is-ring"' : ''}>`
+        + `${esc(q.t)}</text>`;
+    acc.lead++;
+   });
+  });
+ }
+ /* ③ 有効長の寸法線。席は`dimRoom()`が先に取ってある。描いた両端は`D3.spanLine`。 */
+ function dimSpan(span0) {
+  let o = '';
   /* ---- ③ 有効長がどの区間か（§9.420、利用者の指示「有効長がどの区間か、
      視覚的にも表示を追加して」）。**寸法線**で言う——字だけだと「どこからどこ
      まで」が図の上で辿れない。端は立て線、あいだは1本、真ん中に値を置く。 */
@@ -2098,15 +2105,48 @@
       + ` text-anchor="middle">${esc(t)}</text>`;
    D3.spanLine = { x0: +a.x.toFixed(1), x1: +b.x.toFixed(1) };
   }
+  return o;
+ }
   /* **部材に近い段が空いていたのに外の段へ出た字**の数（§9.492、利用者の指示「干渉しないなら対象物側に寄せて」）。
      置き終えた図で、外の段の字を同じ横位置のまま近い段へ下ろしても何とも重ならないなら「寄せられた」と数える。 */
+ function dimTally(placed, R) {
+  const { boxOf, free } = R;
   const farFree = { sp: 0, ring: 0 }, tiers = { sp: [], ring: [] };
   placed.forEach(p => {
    const kd = p.kind === 'ring' ? 'ring' : 'sp';
    tiers[kd][p.tier] = (tiers[kd][p.tier] || 0) + 1;
    if (Math.abs(p.y - p.near) >= 0.5 && free(boxOf(p.x, p.near, p.tw))) farFree[kd]++;
   });
-  D3.dimShown = { inside, lead, off, all: list.length, why, fs: dimFs, lv: D3.dimLv, farFree, tiers };
+  return { farFree, tiers };
+ }
+ function dims(w, h, cam, v) {
+  const el = host && host.querySelector('.bs-t3v');
+  if (!el) return;
+  if (!D3.cut) { el.hidden = true; el.innerHTML = ''; D3.dimShown = null; return; }
+  el.hidden = false;
+  el.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  /* 字の大きさは**この1箇所**が決める（幅の見当もここから出しているので、
+     CSSに書くと2箇所が食い違う）。段が変わったときだけ読み直す（毎フレーム`getComputedStyle`を呼ばない）。
+     表示サイズが変わったときは`wl:look-change`が控えを捨てる（`attach()`）。 */
+  const fsKey = String(dimLevel());
+  if (fsKey !== dimFsFor) {
+   el.style.setProperty('--bs-dim-fs', `var(${DIM_FS_TOKENS[D3.dimLv]})`);   /* 使い方は CSS（.bs-t3v） */
+   dimFs = parseFloat(getComputedStyle(el).fontSize) || 9;
+   dimFsFor = fsKey;
+   paintDimFs();
+  }
+  const P = (x, y) => {
+   v.set(x, y, 0).applyMatrix4(D3.g.matrixWorld).project(cam);
+   return { x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h };
+  };
+  const list = dimList(P, w);
+  const R = dimRoom(w, h, P);
+  const ins = dimInside(list, R);
+  const ld = dimLeads(ins.outs, R);
+  const o = dimCutLines(P) + ins.o + ld.ln + ld.tx + dimSpan(R.span0);
+  const { farFree, tiers } = dimTally(ld.placed, R);
+  D3.dimShown = { inside: ins.inside, lead: ld.lead, off: ld.off, all: list.length, why: R.why,
+                  fs: dimFs, lv: D3.dimLv, farFree, tiers };
   el.innerHTML = o;
  }
  /* 記号の顔ぶれが変わったときだけ画面へ知らせる（**毎フレームではない**）。
