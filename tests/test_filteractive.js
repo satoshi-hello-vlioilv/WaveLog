@@ -72,6 +72,11 @@ run('test_filteractive: 適用中のフィルタを個人単位で覚える(§9.
   await page.click('#filterCondBtn');
   await page.click('#openFilterPresets');
   await page.waitForSelector('.filter-preset-toolbar',{timeout:8000});
+  /* **要約が書かれるまで待つ**（§9.522 の追補）。`.filter-preset-toolbar`は窓の骨組みとして最初から在り、
+     要約（`#filterPresetSummary`）はマスタのプリセットを読み終えてから書かれる。骨組みが出た時点で読むと
+     空を読んで落ちていた（変更前のコードで5回中4回）。注記`.fp-memo`は要約を書くたびに必ず付く。 */
+  await W.until(page,()=>!!document.querySelector('#filterPresetSummary .fp-memo'),null,
+                {ms:10000,what:'登録一覧の要約が書かれる'});
   const memo=await page.evaluate(()=>{
    const t=document.querySelector('.filter-preset-toolbar');
    return {txt:t?t.textContent.replace(/\s+/g,' ').trim():'',btn:!!document.querySelector('.fp-memo-clear')};
