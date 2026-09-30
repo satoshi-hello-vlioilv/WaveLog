@@ -26,6 +26,7 @@
  9. ルートが実際にこの判定を通っている（**判定関数だけを見る網は素通りする**）
 10. **表示列の編集**（§9.512・変更不可／自分の分だけ／編集可）。既定は編集可、
     段はマスタ編集と別の軸、帳票の紙（`report:`）には掛けない、ルートが実際に断る
+11. **列が欠けた古いマスタでも、読み取り専用で権限を読める**（黙って既定へ倒れない）
 ============================================================
 """
 import pathlib, sqlite3, sys
@@ -302,6 +303,48 @@ try:
         f = mr.permission_flags(c, PREFIX + 'C', 'PC-C')
     rec('② 効いている段と、どの行が効いているかを返す',
         f['masterEdit'] == PART and f['role'] == U and f['matchedId'] == cid, str(f))
+
+    # **読み取り専用の接続で、後の版で足した列が無いマスタ**（利用者の報告「開発者
+    # 権限なのに、スケジュールモードへの切り替えができなくなりました」）。権限は
+    # 読み取り専用で引くのに、以前は読むたびに列を足しにいき、1列でも無いと
+    # 「読み取り専用」で投げて**黙って既定（スケジュール不可・一般ユーザー）**へ
+    # 倒れていた。上の節は書込の接続・列のそろったマスタしか見ておらず素通りした。
+    READ = ('スケジュール可否', '現場段取り可否', '現場段取り対象設備', '権限区分', 'マスタ編集', '表示列編集')
+    tdir = pathlib.Path(tempfile.mkdtemp(prefix='wl-permcols-'))
+    bad = []
+    for miss in (None,) + READ:
+        odb = tdir / f'm{READ.index(miss) if miss else "_"}.sqlite3'
+        have = [n for n in READ if n != miss]
+        oc = sqlite3.connect(odb)
+        oc.execute('CREATE TABLE [アクセス権限マスタ] ([権限ID] INTEGER PRIMARY KEY AUTOINCREMENT,'
+                   '[ログインID] TEXT,[PC名] TEXT,[編集可否] INTEGER,[表示順] INTEGER,[有効] INTEGER,'
+                   '[登録者ID] TEXT,[更新者ID] TEXT,[登録日時] DATETIME,[更新日時] DATETIME'
+                   + ''.join(f',[{n}] TEXT' for n in have) + ')')
+        val = {'スケジュール可否': 1, '現場段取り可否': 0, '現場段取り対象設備': '',
+               '権限区分': D, 'マスタ編集': FULL, '表示列編集': mr.COLUMN_EDIT_FULL}
+        oc.execute('INSERT INTO [アクセス権限マスタ] ([ログインID],[PC名],[編集可否],[表示順],[有効]'
+                   + ''.join(f',[{n}]' for n in have) + ') VALUES (?,?,1,10,-1' + ',?' * len(have) + ')',
+                   ['old', 'PC-OLD'] + [val[n] for n in have])
+        oc.commit(); oc.close()
+        want = {'canSchedule': 'スケジュール可否' in have, 'role': D if '権限区分' in have else mr.ROLE_DEFAULT}
+        try:
+            with db_access.connect(odb, True) as c:
+                got = mr.permission_flags(c, 'old', 'PC-OLD')
+            got = {k: got[k] for k in want}
+        except Exception as e:
+            got = f'{type(e).__name__}: {e}'
+        if got != want:
+            bad.append(f'{miss or "欠けなし"}→{got}')
+    rec('⑪ 列が1つ欠けたマスタでも、読み取り専用で権限を読める（無い列だけが既定）',
+        not bad, ' / '.join(bad)[:200])
+    with db_access.connect(tdir / 'm5.sqlite3', False) as c:
+        mr.access_permission_master_rows(c)
+        added = '表示列編集' in db_access.cols(c, mr.ACCESS_PERMISSION_TABLE)
+    rec('⑪ 書ける接続では今までどおり欠けた列を足す', added)
+    am._permission_flags = _orig[2]
+    j = client.get('/api/access-mode').get_json() or {}
+    rec('⑪ 権限を読めていれば permissionError は空（倒れた理由だけを運ぶ）',
+        j.get('permissionError') == '', str(j.get('permissionError'))[:80])
 
     # ==== 10. 表示列の編集（§9.512） ===================================
     CN, CS, CF = mr.COLUMN_EDIT_NONE, mr.COLUMN_EDIT_SELF, mr.COLUMN_EDIT_FULL

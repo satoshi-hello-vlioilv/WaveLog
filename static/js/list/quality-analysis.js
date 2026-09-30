@@ -43,7 +43,7 @@
  const PERIOD_LABELS={'7d':'直近7日','30d':'直近30日','90d':'直近90日','thisMonth':'今月','lastMonth':'先月','ytd':'今年'};
  const BUCKET_LABELS={day:'日別',month:'月別',year:'年別'};
  const METRIC_LABEL={count:'件数',sum:'合計'};
- let last=null,ro=null,prevQa=false;
+ let last=null,ro=null;
  const $id=id=>document.getElementById(id);
  const val=id=>{const el=$id(id);return el?el.value:''};
  const checked=id=>{const el=$id(id);return !!(el&&el.checked)};
@@ -463,8 +463,15 @@
  function sync(){
   ensurePrintButton();const panel=ensurePanel();
   const isQ=typeof S!=='undefined'&&!!window.WL&&WL.dataSource.isQuality(S.db);
+  /* 「品質を出していたか」は**画面の印（`qa-mode`）そのもの**から読む。
+     以前は別の控え（`prevQa`）に持っていたが、一覧を離れるときに印を外すのは
+     一覧の`exit`（list-view.js）で、控えは知らないまま真で残った——
+     品質データ→作業スケジュール→品質データで「元データ」へ戻さず、
+     `qa-view-raw`の無い（表も帯も伏せた）一覧が出ていた（利用者の報告）。
+     答えを1つにしておけば、どの道で離れても入り直しは同じ扱いになる。 */
+  const wasQ=document.body.classList.contains('qa-mode');
   panel.hidden=!isQ;document.body.classList.toggle('qa-mode',!!isQ);
-  if(!isQ){prevQa=false;return}
+  if(!isQ)return;
   /* パネルを汎用フィルタバーの前に置き、元データビューで両者を上から順に表示 */
   const fb=$id('genericFilterBar');if(fb&&panel.parentNode&&fb.parentNode===panel.parentNode)panel.parentNode.insertBefore(panel,fb);
   const cols=S.columns||[];
@@ -473,8 +480,7 @@
   fillSelect('qaDateCol',cols,'日付なし',preferred(cols,['登録日時','発生日','発生日時','保留設定日']));
   fillSelect('qaSeriesCol',cols,'なし',preferred(cols,['異常内容','発生設備','最終処置']));
   updateColor();applyDisclosure();observeStage();
-  if(!prevQa)setView('raw');
-  prevQa=true;
+  if(!wasQ)setView('raw');
  }
 
  /* 表を描いたあと・接続先や表を選んだあとに足す（被せない・§9.352）。 */

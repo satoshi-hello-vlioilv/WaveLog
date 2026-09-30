@@ -11,6 +11,7 @@ backend/routes/masters.py が持つ。
 テーブルが無ければ初回アクセス時に自動作成する。
 """
 import json
+import sqlite3
 
 from ..db_access import (add_missing_columns, connect, ensure_audit_columns,
                          path_config_rows, set_path_config, tables, cols, qi)
@@ -1282,12 +1283,31 @@ def ensure_access_permission_master(path):
   created=ensure_access_permission_table(c)
  return created
 
+# 読む列。**並びが呼び出し側の添字そのもの**（`r[8]`＝スケジュール可否…）。
+# スケジュール関連3列は既存の呼び出し元（masters.pyのCRUD一覧等）の
+# インデックス([0]〜[7])を壊さないよう末尾へ追加してある。
+_PERMISSION_READ_COLUMNS=('権限ID','ログインID','PC名','編集可否','表示順','有効','更新日時','更新者ID',
+                          'スケジュール可否','現場段取り可否','現場段取り対象設備',
+                          '権限区分','マスタ編集','表示列編集')
+
 def access_permission_master_rows(c):
- ensure_access_permission_table(c)
+ # **読むのに書込を要らないこと**（利用者の報告「開発者権限なのに、スケジュール
+ # モードへの切り替えができなくなりました」）。権限は読み取り専用の接続で
+ # 引く（`access_mode._permission_flags()`）が、以前はここで列を足しにいき
+ # ——後の版で足した列（表示列編集・§9.512 など）が1つでも無いマスタでは
+ # `ALTER`が「読み取り専用」で投げ、呼び出し側は**黙って既定**（スケジュール
+ # 不可・一般ユーザー）へ倒れていた。共有に置いたマスタは写しを読むので、
+ # 誰かがこの表へ保存するまで直らない。足せるなら足し、足せなければ
+ # **無い列は空として読む**（空の読み方は既定と同じ——列が無い＝まだ誰も
+ # 決めていない）。
+ try:ensure_access_permission_table(c)
+ except sqlite3.Error as e:quiet('読むだけの接続では権限の列を足せない（無い列は空として読む）',e)
+ if ACCESS_PERMISSION_TABLE not in tables(c):return []
+ have=set(cols(c,ACCESS_PERMISSION_TABLE))
+ pick=','.join(qi(n) if n in have else f'NULL AS {qi(n)}' for n in _PERMISSION_READ_COLUMNS)
  cur=c.cursor()
- # 全行取得後にPython側で有効判定する。スケジュール関連3列は既存の呼び出し元
- # (masters.pyのCRUD一覧等)のインデックス([0]〜[7])を壊さないよう末尾へ追加する。
- cur.execute('SELECT [権限ID],[ログインID],[PC名],[編集可否],[表示順],[有効],[更新日時],[更新者ID],[スケジュール可否],[現場段取り可否],[現場段取り対象設備],[権限区分],[マスタ編集],[表示列編集] FROM [アクセス権限マスタ] ORDER BY [表示順],[ログインID],[PC名]')
+ # 全行取得後にPython側で有効判定する。
+ cur.execute(f'SELECT {pick} FROM [アクセス権限マスタ] ORDER BY [表示順],[ログインID],[PC名]')
  rows=[]
  for r in cur.fetchall():
   active=True if r[5] is None else bool(r[5])
