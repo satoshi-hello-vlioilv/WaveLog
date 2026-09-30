@@ -532,10 +532,8 @@ def install(app):
                  canFieldReorder=flags['canFieldReorder'],fieldReorderEquipment=flags['fieldReorderEquipment'],
                  loginId=current_login_id(),pcName=current_pc_name(),
                  pcNameSource=pc_name_info()['source'],
-                 # 権限区分と切断の状態(§9.272)。画面はこれを見て帯を出す。
-                 role=flags.get('role',''),revoked=revocation_now(),
-                 # 権限を読めずに既定へ倒れたときの理由（読めていれば空）。
-                 permissionError=flags.get('error',''),
+                 # 権限区分と切断の状態(§9.272)。画面はこれを見て帯を出す。permissionError＝権限を読めず既定へ倒れた理由（読めていれば空）。
+                 role=flags.get('role',''),revoked=revocation_now(),permissionError=flags.get('error',''),
                  # マスタ編集(§9.322)。**判定は画面へ写さない**——できることを
                  # 名前で受け取り、入口を出すかどうかだけを見る。
                  **master_edit_capabilities(flags.get('role',''),flags.get('masterEditStored','')),
