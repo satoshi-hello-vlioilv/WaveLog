@@ -7601,444 +7601,516 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   try{return f(entryCellInfo(entry))}catch(_){return ''}
  }
 
+ /* ---------- 予定の1行は段に分ける（§9.522・REVIEW 3-22） ----------
+    以前は`renderEntryRow()`の1本（440行）が、①空きの区切り ②この行でできること ③行の器 ④セル
+    ⑤ボタン・右クリック・ダブルクリック ⑥詳細 を順に行っていた。段ごとの関数へ分け、段のあいだで
+    渡す物は`info`（`entryCellInfo()`・見せる文字）と`caps`（`entryRowCaps()`・できること）の2つ。
+    **段の順番は副作用の順番そのもの**——行は器へ入れてから詳細を作る（詳細の器は行の後ろ）。 */
  function renderEntryRow(timeline,e,showGaps,getLastEnd,setLastEnd){
-  {
-   const lastEnd=getLastEnd();
-   if(showGaps&&e.plannedStart&&lastEnd){
-    const gapMin=(new Date(e.plannedStart)-new Date(lastEnd))/60000;
-    if(gapMin>1){
-     const isFixedGap=e.fixedStart&&Math.abs(new Date(e.fixedStart)-new Date(e.plannedStart))<60000;
-     const div=document.createElement('div');
-     div.className='sc-gap-divider';
-     div.textContent=`── ${WL.duration.text(gapMin)}の空き・${fmtDateTime(lastEnd)}〜${fmtDateTime(e.plannedStart)}${isFixedGap?'・固定開始時刻待ち':''} ──`;
-     timeline.append(div);
-    }
+  appendGapDivider(timeline,e,showGaps,getLastEnd,setLastEnd);
+  const info=entryCellInfo(e);
+  const {locked,workable}=info;
+  const row=document.createElement('div');
+  row.className=entryRowClass(e,locked);
+  row.dataset.id=e.id;
+  row.__scEntry=e;   // 作業可否だけ後から差し替えるときの参照(§9.51)
+  // ロック(§9.38)された行はその日時に釘付けなので、並べ替えても時刻が
+  // 変わらない。動かせるのに何も起きない状態は紛らわしいためドラッグ対象
+  // から外す(解除すれば通常のロットと同じように流れる)。
+  const caps=entryRowCaps(e,info);
+  row.draggable=caps.canDrag;
+  if(caps.canDrag)row.tabIndex=0;
+  const nw=entryNonWork(e);
+  const cellHtml=entryCellRenderer(e,info,caps,nw);
+  row.innerHTML=`
+   <span class="sc-row-handle" title="${caps.canDrag?'ドラッグまたはAlt+↑/↓で並べ替え':(locked?'日時を固定中(ロック)':'')}">${pickMarkHtml(e)}${caps.canDrag?'⠿':(locked?'🔒':'')}</span>`
+   +timelineColumnKeys().map(cellHtml).join('');
+  /* 揃え(§9.239 ④)。**セルを組み立てる文字列へ混ぜない**——`cellOf`は
+     15通りの分岐があり、1つ書き漏らすとその列だけ揃わない。
+     組み上がってから`data-col`で引いて1度だけ当てる（判定は
+     `WL.columnAlign`の1箇所）。 */
+  WL.columnAlign.applyCells(row,timelineTarget());
+  /* 題名の揃え（§9.295）は**列の揃えより後に当てる**——`applyCells`は
+     `@layer utility`の`.al-*`を貼るので（§9.239 ④）、素のCSSで
+     `text-align`を書いても必ず負ける（実測: 紙は中央なのに画面だけ左）。
+     **同じ語彙（`.al-*`）で上書きする**——詳細度を数える勝負にしない。 */
+  if(nw.span){
+   const cell=row.querySelector('.sc-row-nonwork');
+   if(cell){
+    const a=cell.getAttribute('data-nw-align')||'';
+    cell.classList.remove('al-l','al-c','al-r');
+    cell.classList.add(a==='中央'?'al-c':(a==='右'?'al-r':'al-l'));
    }
-   if(e.plannedEnd)setLastEnd(e.plannedEnd);
-
-   const info=entryCellInfo(e);
-   const {cat,locked,dateText,dateTitle,dateShifted,timeText,timeTitle,shiftText,relText,
-          estText,estSrc,estProvisional,estNote,actualText,flags,workable,wk,wkTitle}=info;
-   const row=document.createElement('div');
-   row.className='sc-row-line '+stateRowClass(e.state)
-    /* 時刻の登録を待っている行（§9.514）。**完了の薄さを打ち消して橙で目立たせる**
-       ——済んだ行の中で、次にすることが残っているのはこの行だけ。 */
-    +(e.timesNeeded?' sc-row-needtimes':'')
-    +(e.__pending?' sc-row-pending':'')+(locked?' sc-row-locked':'')+(e.ongoing?' sc-row-ongoing':'')
-    /* 行の地の色(§9.198)。区分のセルだけでなく行全体に淡く敷く——設備停止の
-       ように「作業ではない行」を、行を追う目のまま見分けられるようにする。 */
-    +rowStyleClass(e)
-    /* 題名を札／帯にしたときは**行の地を塗らない**（§9.295）——同じ色が
-       行の地と札の両方に出ると、どちらが印なのか読めなくなる（§3・§8）。
-       印は行に付けて、地を消すのはCSSが受ける。 */
-    /* 枠は**箱**（§9.300 ②）。3ロットぶんの高さは`.sc-row-frame-box`が持つ。
-       `sc-row-nw-face`も一緒に付ける——色を持つのは箱のほうなので、行の地まで
-       塗ると同じ色が2箇所に出る（§9.295「札／帯にしたら行の地は塗らない」）。 */
-    +(e.kind==='枠'?' sc-row-frame-box sc-row-nw-face':'')
-    +(e.kind!=='作業'&&e.kind!=='枠'&&rowStyleOf(e).titleLook?' sc-row-nw-face':'');
-   row.dataset.id=e.id;
-   row.__scEntry=e;   // 作業可否だけ後から差し替えるときの参照(§9.51)
-   // ロック(§9.38)された行はその日時に釘付けなので、並べ替えても時刻が
-   // 変わらない。動かせるのに何も起きない状態は紛らわしいためドラッグ対象
-   // から外す(解除すれば通常のロットと同じように流れる)。
-   const canDrag=scState.editable&&e.reorderable&&!e.__pending&&!locked&&!sessionBlocked();
-   row.draggable=canDrag;
-   if(canDrag)row.tabIndex=0;
-
-   const lotText=entryContentText(e);      // ツールチップ・帳票用の1行要約
-   const contentCells=timelineContentCells(e);
-   const formulaFns=timelineFormulaFns();      /* 計算で作る列(§9.207)。控えつき */
-   const calcKeys=new Set(timelineFormulaKeys());  /* 計算列の顔ぶれ（行ごとに1回・§9.489） */
-   /* 読み替えが見る行と対象は**1行につき1回**作る（§9.234 ⑥）。 */
-   const ruleRow=timelineRuleRow(e),calcTarget=timelineTarget(),view=timelineRuleView(e);
-   /* **「誰が・どの端末で」は常に詳細へ入れる**(§9.180)。これにより
-      すべての行に詳細(▾)が付く——監査の情報は行を選ばず必要になる。 */
-   const detailHtml=frameDetailHtml(e)+fixedStartHtml(e)+estimateBreakdownHtml(e)+auditHtml(e);
-   const canDelete=scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned;
-   // §9.35: 編集モード(=実際に測定する端末)なら、予定から直接測定画面を開ける。
-   // 開始時刻を打刻すると実績突合(§7.4)でこの行が「実施中」へ移る。
-   // §9.51: 作業可否フラグが立っている(残仕掛設備ｺｰｽがこの設備で始まる)
-   // 予定だけ開始できる。まだこの設備に来ていないロットを開始させない。
-   const canStart=canStartEntry(e,workable);
-   // §9.38: 日時で固定する(ロック)。予定を動かせるモードでのみ操作できる。
-   /* 枠(§9.238 ②)は固定開始日時を使わないので、鍵の入口も出さない（§4）。 */
-   const canLock=scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned&&e.kind!=='枠';
-   // §9.43: 実績のある行(作業中・完了)は帳票を開ける。実績突合で紐づいた
-   // 測定データの記録ID(actualRecordId)をそのまま帳票へ渡す。
-   const recordId=e.actualRecordId||'';
-   const canReport=!!recordId&&(e.state==='着手'||e.state==='完了')&&typeof window.openReportForRecord==='function';
-   // 作業中の行はダブルクリックで測定を再開できる(openMeasurementが端末内の
-   // 編集中データを見つけて続きから開く)。編集モードの端末だけ。
-   const canResume=scState.canStartWork&&e.kind==='作業'&&e.state==='着手';
-   // §9.61: 履歴(作業中・完了)の削除。実績はバックアップ(records.sqlite3)の
-   // 行から合成されるため、端末内のデータ一覧に無くてもここに残り続ける
-   // (別PCで測定した/端末側だけ消えた場合)。実データを消す操作なので
-   // 予定の削除とは別のボタンにし、警告を必ず挟む。
-   const canDeleteHistory=scState.canDeleteHistory&&!!recordId&&(e.state==='着手'||e.state==='完了');
-   /* 実際の時刻を入れる（§9.514）。**どのモードでも操作の列に出す**（§9.518）——
-      出さないと「どうにもできない」。入れられない端末では押せない形にして理由を`title`で言う
-      （§CLAUDE 4）。直す道は右クリック。 */
-   const canTimes=!!e.timesNeeded;
-   const timesOk=canTimes&&timesEditable();
-   const catShown=timelineColumnKeys().includes('__cat__');   // 状態の字の置き場（§9.518）
-   const canFixTimes=!!(e.actual&&e.actual.source==='手入力');
-   const manualTimes=canFixTimes;
-
-   /* セルは**見出しと同じ並び**から組み立てる(§9.176)。以前はHTMLへ
-      直書きした固定の順番だったため、見出しだけを動かしても中身は動かず
-      「列が固定されている」状態だった。**キーで引く**——位置で数えると
-      隠した列があるだけでずれる(§9.104と同じ約束)。 */
-   const contentMap=new Map(contentCells.map(c=>[c.key,c]));
-   const cellOf={
-    /* 区分のセル。**色とアイコンは行表示マスタが決める**(§9.198)が、
-       区分名の文字は必ず出す（色だけで伝えない）。 */
-    '__cat__':`<span class="sc-row-cat sc-cat-${cat.key}${rowStyleClass(e)}" data-col="__cat__" title="${esc(e.kind)}・${esc(e.state)}${e.missingReason?'\n'+e.missingReason:''}">${rowStyleOf(e).html}${esc(cat.label)}${missingBadgeHtml(e)}</span>`,
-    '__workable__':`<span class="sc-row-workable ${wk.cls}" data-col="__workable__" title="${esc(wkTitle)}">${esc(wk.text)}</span>`,
-    '__date__':`<span class="sc-row-date${dateShifted?' is-shifted':''}" data-col="__date__" title="${esc(dateTitle)}">${esc(dateText)}</span>`,
-    '__caldate__':`<span class="sc-row-date" data-col="__caldate__" title="${esc(info.calDateTitle)}">${esc(info.calDateText)}</span>`,
-    '__time__':`<span class="sc-row-time${e.timesNeeded?' is-need':''}" data-col="__time__"${e.timesNeeded?' data-times="need"':''} title="${esc(timeTitle)}">${
-     manualTimes?`<i class="fa-solid fa-pen sc-time-manual" data-times="manual" role="img" aria-label="手入力"></i>`:''}${esc(timeText)}</span>`,
-    '__shift__':`<span class="sc-row-shift" data-col="__shift__" title="勤務形態マスタで設定した名称です">${esc(shiftText)}</span>`,
-    '__rel__':`<span class="sc-row-rel" data-col="__rel__">${esc(relText)}</span>`,
-    '__est__':`<span class="sc-row-est${estProvisional?' sc-est-default':''}${estSrc==='equipment-standard'?' sc-est-standard':''}" data-col="__est__" title="${esc(estNote)}">${estProvisional?'~':''}${esc(estText)}</span>`,
-    '__actual__':`<span class="sc-row-actual" data-col="__actual__">${esc(actualText)}</span>`,
-    '__flags__':`<span class="sc-row-flags" data-col="__flags__">${flags}</span>`,
-    '__scrap__':`<span class="sc-row-scrap${info.scrapText?'':' is-blank'}" data-col="__scrap__" title="${esc(info.scrapTitle)}">${esc(info.scrapText||'—')}</span>`,
-    '__actions__':`<span class="sc-row-actions" data-col="__actions__">
-     ${rowStateChipHtml(e,catShown)}
-     ${canTimes?`<button type="button" class="sc-row-btn sc-row-times"${timesOk?'':' disabled'} title="${esc(timesOk
-       ?'実際の開始・終了の時刻を入れます（開始だけなら見積で終わります）':timesBlockReason())}">時刻入力</button>`:''}
-     ${canStart?startBtnHtml():''}
-     ${canLock?`<button type="button" class="sc-row-btn sc-row-lock${locked?' active':''}" title="${locked?'固定を解除して通常の並びへ戻します':'今の予定日時でこの行を固定します(以降ずれません)'}">${locked?'解除':'固定'}</button>`:''}
-     ${canResume?`<button type="button" class="sc-row-btn sc-row-resume" title="測定画面を開いて続きから再開します(行のダブルクリックでも開けます)">再開</button>`:''}
-     ${canReport?`<button type="button" class="sc-row-btn sc-row-report" title="このロットの帳票を表示します">帳票</button>`:''}
-     ${detailHtml?`<button type="button" class="sc-row-btn sc-row-detail-toggle" title="詳細を表示">▾</button>`:''}
-     ${canDelete?`<button type="button" class="sc-row-btn sc-row-delete" title="この予定を削除します">外す</button>`:''}
-     ${canDeleteHistory?`<button type="button" class="sc-row-btn sc-row-btn-danger sc-row-delete-history" title="このロットの測定データ（実績）を削除します。取り消せません">削除</button>`:''}
-    </span>`,
-   };
-   /* 作業以外の行（設備停止・コメント・枠）は**題名だけ**（§9.294 ①）。
-      内容の列を束ねてそこへ置き、束の外の内容・計算の列と作業可否は空に
-      する。**`cellOf`より先に見る**——`cellOf`が持つ固定列（作業可否）も
-      落とす必要があるため。 */
-   const nwStyle=e.kind!=='作業'?rowStyleOf(e):null;
-   const nwSpan=e.kind!=='作業'?nonWorkSpanOf(timelineColumnKeys(),nwStyle&&nwStyle.titlePlace):null;
-   const nwTitle=nwSpan?nonWorkTitleText(e,'（ダブルクリックで書けます）'):'';
-   const cellHtml=k=>{
-    if(nwSpan){
-     if(k===nwSpan.key){
-      /* **`grid-column:span N`で束ねる**——器は`--sc-cols`のグリッドなので、
-         続く列のセルを出さなければ後ろの固定列はそのまま次のトラックへ
-         流れる（列がずれない）。
-         見せ方・揃えは**属性で渡す**（§9.295）——CSSが受けるので、選択肢を
-         1つ足しても画面のJSは触らない。色は行に付く`sc-rs-*`の
-         `--rs-fg`/`--rs-bg`/`--rs-line`をそのまま読む（色表を2つ持たない）。 */
-      const look=String((nwStyle&&nwStyle.titleLook)||'');
-      const align=String((nwStyle&&nwStyle.titleAlign)||'');
-      /* （所要時間）は**題名の一部ではない**（§9.295 ④）——`title`属性と
-         監査に残る名前は名前のまま。添えるのは見せるときだけ。 */
-      const nwTime=nonWorkTimeText(e);
-      const nwSub=nonWorkSubText(e);
-      const body=esc(nwTitle)
-       +(nwSub?`<span class="sc-nw-sub">${esc(nwSub)}</span>`:'')
-       +(nwTime?`<span class="sc-nw-time">${esc(nwTime)}</span>`:'')
-       +stopLinkChipHtml(e);
-      /* 日付・直の枠は**箱**（§9.300 ②）。区分・行き先・状態を3段に組む
-         ——1行に`／`で繋いだ文字列は「空のスケジュールらしきもの」にしか
-         見えなかった。**文字の材料は`frameParts()`の1箇所**なので、
-         紙・`title`・監査に出る1行と食い違わない。 */
-      const inner=e.kind==='枠'?frameBoxHtml(e,look)
-                 :(look?`<b class="sc-nw-face">${body}</b>`:body);
-      return `<span class="sc-row-title sc-row-nonwork${e.kind==='枠'?' sc-frame-box':''}" data-col="${esc(k)}"`
-       +(look?` data-nw-look="${esc(look)}"`:'')+(align?` data-nw-align="${esc(align)}"`:'')
-       +(nwSpan.span>1?` style="grid-column:span ${nwSpan.span}"`:'')
-       +` title="${esc(nwTitle)}${nwSub?esc('（'+nwSub+'）'):''}${esc(nwTime)}">${inner}</span>`;
-     }
-     if(nwSpan.inRun(k))return '';
-     if(!scIsFixedCol(k)||NON_WORK_BLANK_FIXED.has(k))
-      return `<span data-col="${esc(k)}"></span>`;
-    }
-    if(cellOf[k]!==undefined)return cellOf[k];
-    /* 文字だけの固定列(登録者・登録端末など。§9.180)は**同じ表から引く**
-       ——ここに書き写すと、設定パネルの見本と行の中身が食い違う。 */
-    if(SC_FIXED_TEXT[k]){
-     const v=SC_FIXED_TEXT[k](info);
-     return `<span class="sc-row-audit" data-col="${esc(k)}" title="${esc(v)}">${esc(v)}</span>`;
-    }
-    /* 計算で作る列（§9.207）。**設備停止・コメントの行でも同じ式を当てる**
-       ——行ごとに材料が無ければ式の中で空になるだけで、列がずれない。
-       **一覧と同じ`WL.cellFormat.cell()`を通す**（§9.234 ⑥）——以前は式の
-       結果を素で埋めていたので、計算列にだけ読み替えも書式も色も乗らず、
-       「他の列のみのルール」を当てても何も出なかった。一覧側
-       （`list-view.js`の`rawVal=calc?calc.run(r):r[c]`）と同じ形＝
-       **式の結果が「生の値」で、その上に読み替え→書式**（矛盾しない答えは
-       この1本だけ。列ごとに「ルール優先／式優先」を選ばせない）。
-       式が空の列（＝読み替えだけで中身を作る列）もここで受ける。 */
-    /* 計算式・内容の項目は`dynamicCellValue()`の1箇所で決める
-       （§9.235。印刷向けの`printRowCells()`も同じ関数を通す）。 */
-    const dyn=dynamicCellValue(e,k,{formulaFns,calcKeys,ruleRow,calcTarget,contentMap,view});
-    if(dyn.kind==='calc')
-     /* **元の値（式の結果）は`title`に残す**——読み替えで置き換わったことが
-        読める（§9.94「切れたセルには生の値の`title`」と同じ約束）。 */
-     return `<span class="sc-row-title sc-row-calc${dyn.color?' cell-'+dyn.color:''}" data-col="${esc(k)}" title="${esc(dyn.raw||dyn.text)}">${esc(dyn.text)}</span>`;
-    if(dyn.kind==='content'){
-     /* **ロット番号の横にロット問い合わせ（LotDsp）の的**（§9.460、利用者の指示
-        「仕掛一覧と同じようにロット問い合わせを開けるように」）。**字そのものは押す形に
-        しない**——行いっぱいは「選ぶ」・ダブルクリックは「測定を開く」の的なので、字を
-        ボタンにするとダブルクリックがボタンに食われる（§9.377「行き先の的は題名の横に
-        別に立てる」）。開くのは行のロット番号そのもの。作業の行だけ。 */
-     const lot=(k==='lotNo'&&e.kind==='作業')?String(e.lotNo||dyn.raw||''):'';
-     const inner=esc(dyn.text)+(lot?lotDspChipHtml(lot,entryValueOf(e,'castingNo')):'');
-     return `<span class="sc-row-title${dyn.color?' cell-'+dyn.color:''}" data-col="${esc(k)}" data-content-col="${esc(k)}" title="${esc(dyn.raw||dyn.text)}">${inner}</span>`;
-    }
-    return `<span data-col="${esc(k)}"></span>`;
-   };
-   row.innerHTML=`
-    <span class="sc-row-handle" title="${canDrag?'ドラッグまたはAlt+↑/↓で並べ替え':(locked?'日時を固定中(ロック)':'')}">${pickMarkHtml(e)}${canDrag?'⠿':(locked?'🔒':'')}</span>`
-    +timelineColumnKeys().map(cellHtml).join('');
-   /* 揃え(§9.239 ④)。**セルを組み立てる文字列へ混ぜない**——`cellOf`は
-      15通りの分岐があり、1つ書き漏らすとその列だけ揃わない。
-      組み上がってから`data-col`で引いて1度だけ当てる（判定は
-      `WL.columnAlign`の1箇所）。 */
-   WL.columnAlign.applyCells(row,timelineTarget());
-   /* 題名の揃え（§9.295）は**列の揃えより後に当てる**——`applyCells`は
-      `@layer utility`の`.al-*`を貼るので（§9.239 ④）、素のCSSで
-      `text-align`を書いても必ず負ける（実測: 紙は中央なのに画面だけ左）。
-      **同じ語彙（`.al-*`）で上書きする**——詳細度を数える勝負にしない。 */
+  }
+  row.classList.toggle('sc-row-not-workable',workable.state==='ng');
+  if(caps.canDrag)wireDrag(row);
+  /* 選ばれている行は面でも分かるようにするが、**色だけで伝えない**
+     ——件数とロット番号は選択バーが文字で出す(§9.170)。 */
+  row.classList.toggle('is-picked',scState.picked.has(String(e.id)));
+  wireRowPick(row,e);
+  bindEntryRowButtons(row,e);
+  /* 詳細の器は**この時点ではまだ無い**（行を差し込んだあとに作る）ので、
+     メニューは押されたときに読み直す。 */
+  const detailRef={el:null};
+  bindEntryRowMenu(row,e,info,caps,detailRef);
+  bindEntryRowDblClick(row,e,caps);
+  timeline.append(row);
+  appendEntryDetail(timeline,row,e,caps.detailHtml,detailRef);
+ }
+ /* ① 前の行の終わりとこの行の始まりのあいだの空き（`showGaps`のときだけ）。終わりの時刻を控える。 */
+ function appendGapDivider(timeline,e,showGaps,getLastEnd,setLastEnd){
+  const lastEnd=getLastEnd();
+  if(showGaps&&e.plannedStart&&lastEnd){
+   const gapMin=(new Date(e.plannedStart)-new Date(lastEnd))/60000;
+   if(gapMin>1){
+    const isFixedGap=e.fixedStart&&Math.abs(new Date(e.fixedStart)-new Date(e.plannedStart))<60000;
+    const div=document.createElement('div');
+    div.className='sc-gap-divider';
+    div.textContent=`── ${WL.duration.text(gapMin)}の空き・${fmtDateTime(lastEnd)}〜${fmtDateTime(e.plannedStart)}${isFixedGap?'・固定開始時刻待ち':''} ──`;
+    timeline.append(div);
+   }
+  }
+  if(e.plannedEnd)setLastEnd(e.plannedEnd);
+ }
+ /* 行の器のクラス（状態・時刻未登録・反映中・固定・作業中・行表示マスタの地・枠の箱）。 */
+ function entryRowClass(e,locked){
+  return 'sc-row-line '+stateRowClass(e.state)
+   /* 時刻の登録を待っている行（§9.514）。**完了の薄さを打ち消して橙で目立たせる**
+      ——済んだ行の中で、次にすることが残っているのはこの行だけ。 */
+   +(e.timesNeeded?' sc-row-needtimes':'')
+   +(e.__pending?' sc-row-pending':'')+(locked?' sc-row-locked':'')+(e.ongoing?' sc-row-ongoing':'')
+   /* 行の地の色(§9.198)。区分のセルだけでなく行全体に淡く敷く——設備停止の
+      ように「作業ではない行」を、行を追う目のまま見分けられるようにする。 */
+   +rowStyleClass(e)
+   /* 題名を札／帯にしたときは**行の地を塗らない**（§9.295）——同じ色が
+      行の地と札の両方に出ると、どちらが印なのか読めなくなる（§3・§8）。
+      印は行に付けて、地を消すのはCSSが受ける。 */
+   /* 枠は**箱**（§9.300 ②）。3ロットぶんの高さは`.sc-row-frame-box`が持つ。
+      `sc-row-nw-face`も一緒に付ける——色を持つのは箱のほうなので、行の地まで
+      塗ると同じ色が2箇所に出る（§9.295「札／帯にしたら行の地は塗らない」）。 */
+   +(e.kind==='枠'?' sc-row-frame-box sc-row-nw-face':'')
+   +(e.kind!=='作業'&&e.kind!=='枠'&&rowStyleOf(e).titleLook?' sc-row-nw-face':'');
+ }
+ /* ② この行でできること（並べ替え・外す・開始・固定・帳票・再開・実績の削除・時刻）。
+    ボタン・右クリック・ダブルクリックが**同じ答え**を読む（入口ごとに判定を書かない）。 */
+ function entryRowCaps(e,info){
+  const {locked,workable}=info;
+  const canDrag=scState.editable&&e.reorderable&&!e.__pending&&!locked&&!sessionBlocked();
+  /* **「誰が・どの端末で」は常に詳細へ入れる**(§9.180)。これにより
+     すべての行に詳細(▾)が付く——監査の情報は行を選ばず必要になる。 */
+  const detailHtml=frameDetailHtml(e)+fixedStartHtml(e)+estimateBreakdownHtml(e)+auditHtml(e);
+  const canDelete=scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned;
+  // §9.35: 編集モード(=実際に測定する端末)なら、予定から直接測定画面を開ける。
+  // 開始時刻を打刻すると実績突合(§7.4)でこの行が「実施中」へ移る。
+  // §9.51: 作業可否フラグが立っている(残仕掛設備ｺｰｽがこの設備で始まる)
+  // 予定だけ開始できる。まだこの設備に来ていないロットを開始させない。
+  const canStart=canStartEntry(e,workable);
+  // §9.38: 日時で固定する(ロック)。予定を動かせるモードでのみ操作できる。
+  /* 枠(§9.238 ②)は固定開始日時を使わないので、鍵の入口も出さない（§4）。 */
+  const canLock=scState.fullControl&&e.state==='予定'&&!e.__pending&&!e.unplanned&&e.kind!=='枠';
+  // §9.43: 実績のある行(作業中・完了)は帳票を開ける。実績突合で紐づいた
+  // 測定データの記録ID(actualRecordId)をそのまま帳票へ渡す。
+  const recordId=e.actualRecordId||'';
+  const canReport=!!recordId&&(e.state==='着手'||e.state==='完了')&&typeof window.openReportForRecord==='function';
+  // 作業中の行はダブルクリックで測定を再開できる(openMeasurementが端末内の
+  // 編集中データを見つけて続きから開く)。編集モードの端末だけ。
+  const canResume=scState.canStartWork&&e.kind==='作業'&&e.state==='着手';
+  // §9.61: 履歴(作業中・完了)の削除。実績はバックアップ(records.sqlite3)の
+  // 行から合成されるため、端末内のデータ一覧に無くてもここに残り続ける
+  // (別PCで測定した/端末側だけ消えた場合)。実データを消す操作なので
+  // 予定の削除とは別のボタンにし、警告を必ず挟む。
+  const canDeleteHistory=scState.canDeleteHistory&&!!recordId&&(e.state==='着手'||e.state==='完了');
+  /* 実際の時刻を入れる（§9.514）。**どのモードでも操作の列に出す**（§9.518）——
+     出さないと「どうにもできない」。入れられない端末では押せない形にして理由を`title`で言う
+     （§CLAUDE 4）。直す道は右クリック。 */
+  const canTimes=!!e.timesNeeded;
+  const timesOk=canTimes&&timesEditable();
+  const catShown=timelineColumnKeys().includes('__cat__');   // 状態の字の置き場（§9.518）
+  const canFixTimes=!!(e.actual&&e.actual.source==='手入力');
+  const manualTimes=canFixTimes;
+  return {canDrag,detailHtml,canDelete,canStart,canLock,recordId,canReport,canResume,canDeleteHistory,canTimes,timesOk,catShown,canFixTimes,manualTimes};
+ }
+ function entryNonWork(e){
+  /* 作業以外の行（設備停止・コメント・枠）は**題名だけ**（§9.294 ①）。
+     内容の列を束ねてそこへ置き、束の外の内容・計算の列と作業可否は空に
+     する。**`cellOf`より先に見る**——`cellOf`が持つ固定列（作業可否）も
+     落とす必要があるため。 */
+  const nwStyle=e.kind!=='作業'?rowStyleOf(e):null;
+  const nwSpan=e.kind!=='作業'?nonWorkSpanOf(timelineColumnKeys(),nwStyle&&nwStyle.titlePlace):null;
+  const nwTitle=nwSpan?nonWorkTitleText(e,'（ダブルクリックで書けます）'):'';
+  return {style:nwStyle,span:nwSpan,title:nwTitle};
+ }
+ /* ④ 固定の列（区分・作業可否・日付・時刻・勤務・見積・実績・印・屑幅・操作）のセル。 */
+ function entryFixedCells(e,info,caps){
+  const {cat,locked,dateText,dateTitle,dateShifted,timeText,timeTitle,shiftText,relText,estText,estSrc,estProvisional,estNote,actualText,flags,wk,wkTitle}=info;
+  const {detailHtml,canDelete,canStart,canLock,canReport,canResume,canDeleteHistory,canTimes,timesOk,catShown,manualTimes}=caps;
+  return {
+   /* 区分のセル。**色とアイコンは行表示マスタが決める**(§9.198)が、
+      区分名の文字は必ず出す（色だけで伝えない）。 */
+   '__cat__':`<span class="sc-row-cat sc-cat-${cat.key}${rowStyleClass(e)}" data-col="__cat__" title="${esc(e.kind)}・${esc(e.state)}${e.missingReason?'\n'+e.missingReason:''}">${rowStyleOf(e).html}${esc(cat.label)}${missingBadgeHtml(e)}</span>`,
+   '__workable__':`<span class="sc-row-workable ${wk.cls}" data-col="__workable__" title="${esc(wkTitle)}">${esc(wk.text)}</span>`,
+   '__date__':`<span class="sc-row-date${dateShifted?' is-shifted':''}" data-col="__date__" title="${esc(dateTitle)}">${esc(dateText)}</span>`,
+   '__caldate__':`<span class="sc-row-date" data-col="__caldate__" title="${esc(info.calDateTitle)}">${esc(info.calDateText)}</span>`,
+   '__time__':`<span class="sc-row-time${e.timesNeeded?' is-need':''}" data-col="__time__"${e.timesNeeded?' data-times="need"':''} title="${esc(timeTitle)}">${
+    manualTimes?`<i class="fa-solid fa-pen sc-time-manual" data-times="manual" role="img" aria-label="手入力"></i>`:''}${esc(timeText)}</span>`,
+   '__shift__':`<span class="sc-row-shift" data-col="__shift__" title="勤務形態マスタで設定した名称です">${esc(shiftText)}</span>`,
+   '__rel__':`<span class="sc-row-rel" data-col="__rel__">${esc(relText)}</span>`,
+   '__est__':`<span class="sc-row-est${estProvisional?' sc-est-default':''}${estSrc==='equipment-standard'?' sc-est-standard':''}" data-col="__est__" title="${esc(estNote)}">${estProvisional?'~':''}${esc(estText)}</span>`,
+   '__actual__':`<span class="sc-row-actual" data-col="__actual__">${esc(actualText)}</span>`,
+   '__flags__':`<span class="sc-row-flags" data-col="__flags__">${flags}</span>`,
+   '__scrap__':`<span class="sc-row-scrap${info.scrapText?'':' is-blank'}" data-col="__scrap__" title="${esc(info.scrapTitle)}">${esc(info.scrapText||'—')}</span>`,
+   '__actions__':`<span class="sc-row-actions" data-col="__actions__">
+    ${rowStateChipHtml(e,catShown)}
+    ${canTimes?`<button type="button" class="sc-row-btn sc-row-times"${timesOk?'':' disabled'} title="${esc(timesOk
+      ?'実際の開始・終了の時刻を入れます（開始だけなら見積で終わります）':timesBlockReason())}">時刻入力</button>`:''}
+    ${canStart?startBtnHtml():''}
+    ${canLock?`<button type="button" class="sc-row-btn sc-row-lock${locked?' active':''}" title="${locked?'固定を解除して通常の並びへ戻します':'今の予定日時でこの行を固定します(以降ずれません)'}">${locked?'解除':'固定'}</button>`:''}
+    ${canResume?`<button type="button" class="sc-row-btn sc-row-resume" title="測定画面を開いて続きから再開します(行のダブルクリックでも開けます)">再開</button>`:''}
+    ${canReport?`<button type="button" class="sc-row-btn sc-row-report" title="このロットの帳票を表示します">帳票</button>`:''}
+    ${detailHtml?`<button type="button" class="sc-row-btn sc-row-detail-toggle" title="詳細を表示">▾</button>`:''}
+    ${canDelete?`<button type="button" class="sc-row-btn sc-row-delete" title="この予定を削除します">外す</button>`:''}
+    ${canDeleteHistory?`<button type="button" class="sc-row-btn sc-row-btn-danger sc-row-delete-history" title="このロットの測定データ（実績）を削除します。取り消せません">削除</button>`:''}
+   </span>`,
+  };
+ }
+ /* 作業以外の行の題名。内容の列を束ねた1マス（`grid-column:span N`）。 */
+ function nonWorkTitleCell(e,k,nw){
+  const {style:nwStyle,span:nwSpan,title:nwTitle}=nw;
+   /* **`grid-column:span N`で束ねる**——器は`--sc-cols`のグリッドなので、
+      続く列のセルを出さなければ後ろの固定列はそのまま次のトラックへ
+      流れる（列がずれない）。
+      見せ方・揃えは**属性で渡す**（§9.295）——CSSが受けるので、選択肢を
+      1つ足しても画面のJSは触らない。色は行に付く`sc-rs-*`の
+      `--rs-fg`/`--rs-bg`/`--rs-line`をそのまま読む（色表を2つ持たない）。 */
+   const look=String((nwStyle&&nwStyle.titleLook)||'');
+   const align=String((nwStyle&&nwStyle.titleAlign)||'');
+   /* （所要時間）は**題名の一部ではない**（§9.295 ④）——`title`属性と
+      監査に残る名前は名前のまま。添えるのは見せるときだけ。 */
+   const nwTime=nonWorkTimeText(e);
+   const nwSub=nonWorkSubText(e);
+   const body=esc(nwTitle)
+    +(nwSub?`<span class="sc-nw-sub">${esc(nwSub)}</span>`:'')
+    +(nwTime?`<span class="sc-nw-time">${esc(nwTime)}</span>`:'')
+    +stopLinkChipHtml(e);
+   /* 日付・直の枠は**箱**（§9.300 ②）。区分・行き先・状態を3段に組む
+      ——1行に`／`で繋いだ文字列は「空のスケジュールらしきもの」にしか
+      見えなかった。**文字の材料は`frameParts()`の1箇所**なので、
+      紙・`title`・監査に出る1行と食い違わない。 */
+   const inner=e.kind==='枠'?frameBoxHtml(e,look)
+              :(look?`<b class="sc-nw-face">${body}</b>`:body);
+   return `<span class="sc-row-title sc-row-nonwork${e.kind==='枠'?' sc-frame-box':''}" data-col="${esc(k)}"`
+    +(look?` data-nw-look="${esc(look)}"`:'')+(align?` data-nw-align="${esc(align)}"`:'')
+    +(nwSpan.span>1?` style="grid-column:span ${nwSpan.span}"`:'')
+    +` title="${esc(nwTitle)}${nwSub?esc('（'+nwSub+'）'):''}${esc(nwTime)}">${inner}</span>`;
+ }
+ /* セルを1つ組み立てる関数を返す（行ごとに1回だけ材料を引き、列ごとに呼ぶ）。 */
+ function entryCellRenderer(e,info,caps,nw){
+  const {span:nwSpan}=nw;
+  const contentCells=timelineContentCells(e);
+  const formulaFns=timelineFormulaFns();      /* 計算で作る列(§9.207)。控えつき */
+  const calcKeys=new Set(timelineFormulaKeys());  /* 計算列の顔ぶれ（行ごとに1回・§9.489） */
+  /* 読み替えが見る行と対象は**1行につき1回**作る（§9.234 ⑥）。 */
+  const ruleRow=timelineRuleRow(e),calcTarget=timelineTarget(),view=timelineRuleView(e);
+  /* セルは**見出しと同じ並び**から組み立てる(§9.176)。以前はHTMLへ
+     直書きした固定の順番だったため、見出しだけを動かしても中身は動かず
+     「列が固定されている」状態だった。**キーで引く**——位置で数えると
+     隠した列があるだけでずれる(§9.104と同じ約束)。 */
+  const contentMap=new Map(contentCells.map(c=>[c.key,c]));
+  const cellOf=entryFixedCells(e,info,caps);
+  return k=>{
    if(nwSpan){
-    const cell=row.querySelector('.sc-row-nonwork');
-    if(cell){
-     const a=cell.getAttribute('data-nw-align')||'';
-     cell.classList.remove('al-l','al-c','al-r');
-     cell.classList.add(a==='中央'?'al-c':(a==='右'?'al-r':'al-l'));
-    }
+    if(k===nwSpan.key)return nonWorkTitleCell(e,k,nw);
+    if(nwSpan.inRun(k))return '';
+    if(!scIsFixedCol(k)||NON_WORK_BLANK_FIXED.has(k))
+     return `<span data-col="${esc(k)}"></span>`;
    }
-   row.classList.toggle('sc-row-not-workable',workable.state==='ng');
-   if(canDrag)wireDrag(row);
-   /* 選ばれている行は面でも分かるようにするが、**色だけで伝えない**
-      ——件数とロット番号は選択バーが文字で出す(§9.170)。 */
-   row.classList.toggle('is-picked',scState.picked.has(String(e.id)));
-   wireRowPick(row,e);
-   const del=row.querySelector('.sc-row-delete');
-   if(del)del.onclick=ev=>{ev.stopPropagation();deleteEntry(e.id)};
-   const start=row.querySelector('.sc-row-start');
-   if(start)start.onclick=ev=>{ev.stopPropagation();startWorkFromEntry(e)};
-   const lock=row.querySelector('.sc-row-lock');
-   if(lock)lock.onclick=ev=>{ev.stopPropagation();toggleEntryLock(e)};
-   const resume=row.querySelector('.sc-row-resume');
-   if(resume)resume.onclick=ev=>{ev.stopPropagation();startWorkFromEntry(e)};
-   const report=row.querySelector('.sc-row-report');
-   if(report)report.onclick=ev=>{ev.stopPropagation();openEntryReport(e)};
-   const delHist=row.querySelector('.sc-row-delete-history');
-   if(delHist)delHist.onclick=ev=>{ev.stopPropagation();deleteHistoryEntry(e)};
-   const timesBtn=row.querySelector('.sc-row-times');
-   if(timesBtn)timesBtn.onclick=ev=>{ev.stopPropagation();openTimes(e)};
-   /* 連携機能の行き先（§9.377）。**行の「選ぶ」を横取りしない**ので
-      `stopPropagation()`する（行いっぱいが選ぶ的・§9.363）。 */
-   /* 見た目の同じ的（LotDspの`.sc-lot-dsp`・§9.460）を拾わないよう、**行き先を名乗る的だけ**。 */
-   const linkBtn=row.querySelector('.sc-nw-link[data-sc-link]');
-   if(linkBtn)linkBtn.onclick=ev=>{ev.stopPropagation();ev.preventDefault();openRowLink(e)};
-   /* 詳細の器は**この時点ではまだ無い**（行を差し込んだあとに作る）ので、
-      メニューは押されたときに読み直す。 */
-   let detailEl=null;
-   /* 右クリック（§9.207）。**操作の列を隠していても同じことができる**。 */
-   row.addEventListener('contextmenu',ev=>{
-    if(ev.target.closest('.sc-row-head'))return;
-    ev.preventDefault();ev.stopPropagation();
-    const picked=scState.picked.has(String(e.id));
-    const canPick=!!removableEntry(e)||!!canDrag;
-    /* ---------- 並びは「作業導線」そのもの（§9.399、利用者の指示） ----------
-       「右クリックメニューを改良し、最新の内容に合わせてより分かりやすく、
-        見やすく表示内容・機能を再構成してください」
-
-       §9.207で足し始めてから項目が13へ増え、**平らな1本の並び**になって
-       いた（実測: 区切り2本だけ）。何がどこにあるのかを毎回読み直すことに
-       なるので、**「この行で何をするか」の順に群へ束ねる**（§CLAUDE 14）:
-
-         進める → 直す → 増やす・写す → 選ぶ・並べる → 画面 → 外す
-
-       群は1つ5件以下（一度に見渡せる粒度）。**中身の無い群は出さない**
-       （`pruneMenuGroups`）ので、行によっては群ごと消える。
-       **危ない操作はいちばん下の群へ離す**（§CLAUDE 5）。 */
-    openRowMenu(ev,scRowMenuTitle(e),scRowMenuNote(e),[
-     {group:'進める'},
-     /* 実際の時刻（§9.514）。**入れられないときも並べて理由を書く**（§4）。 */
-     e.timesNeeded&&{label:'実際の時刻を入れる…',note:timesEditable()?(e.doneReason||'開始だけでも入れられます')
-       :timesBlockReason(),disabled:!timesEditable(),showNote:true,run:()=>openTimes(e)},
-     canStart&&{label:'作業を開始する',note:'この予定の測定画面を開きます',
-                run:()=>startWorkFromEntry(e)},
-     canResume&&{label:'測定を再開する',note:'続きから開きます',
-                 run:()=>startWorkFromEntry(e)},
-     canReport&&{label:'帳票を開く',run:()=>openEntryReport(e)},
-     /* 連携機能（§9.377）。**行き先があるときだけ出す**——無い行に
-        「開く」を並べても、押して何も起きない項目になる（§CLAUDE 4）。 */
-     (()=>{const l=stopLinkOf(e);return l&&{label:`${l.label}を開く`,
-       note:'この行より後ろに並ぶ作業の元コイル幅・切断幅・板厚を持っていきます',
-       showNote:true,run:()=>openRowLink(e)}})(),
-
-     {group:'この行を直す'},
-     canFixTimes&&{label:'実際の時刻を直す…',note:timesEditable()?'手で入れた開始・終了を直します'
-       :timesBlockReason(),disabled:!timesEditable(),run:()=>openTimes(e)},
-     /* §9.220 2①。**できないときも並べて理由を書く**（§4）——メニューから
-        消すと「直せる場所が無い」のか「この行は直せない」のかが読めない。 */
-     e.kind==='設備停止'&&e.state==='予定'&&{label:'停止の内容を変える',
-       note:stopEditable(e)?'名称・所要分・備考を直します':stopEditBlockReason(e),
-       disabled:!stopEditable(e),run:()=>editStopEntry(e.id)},
-     commentEditable(e)&&{label:'申し送りを書き直す',run:()=>startCommentEdit(e.id)},
-     /* 日付・直の枠(§9.238 ②)。**できないときも並べて理由を書く**（§4）。 */
-     e.kind==='枠'&&e.state==='予定'&&{label:'枠の日付・直を変える',
-       note:frameEditable(e)?'ここから先を、どの日・どの直から並べるか'
-         :(e.__pending?'サーバーへ反映中です':sessionHolderMessage()),
-       disabled:!frameEditable(e),run:()=>openFramePicker(e.id)},
-     canLock&&{label:locked?'日時の固定を解除する':'いまの日時で固定する',
-               note:locked?'通常の並びへ戻します':'以降ずれなくなります',
-               run:()=>toggleEntryLock(e)},
-     detailHtml&&{label:'詳細（固定開始・見積の内訳）',
-                  run:()=>{if(detailEl){detailEl.hidden=!detailEl.hidden;
-                    const t=row.querySelector('.sc-row-detail-toggle');
-                    if(t){t.textContent=detailEl.hidden?'▾':'▴';
-                          t.classList.toggle('active',!detailEl.hidden)}}}},
-
-     {group:'増やす・写す'},
-     /* 複製（§9.399 → §9.401で申し送りだけに絞った）。**できるものにだけ
-        出す**——作業（同じロットを2回流す実体が無い）・枠（同じ日・直の枠が
-        2つあっても何も変わらない）・設備停止（同じ停止が2件並ぶだけ。
-        入れ直すのと手数が変わらないので「設備停止を追加」の一覧へ道を
-        1本化した）には出さない。
-        止まっているときは**理由を書いて残す**（§4）。 */
-     duplicableKind(e)&&{label:`${duplicableKind(e)}をもう1件足す`,
-       /* **できるときは1行に収める**（§CLAUDE 1）——「もう1件足す」で
-          何が起きるかは読めば分かる。詳しくは`title`が持つ。
-          できないときだけ理由を本文へ出す（§4。`rowMenuItemsHtml`が
-          `disabled`のとき自動で出す）。 */
-       note:duplicableEntry(e)?'同じ文（備考も）のまま、この行のすぐ下へ入れます'
-         :duplicateBlockReason(e),
-       disabled:!duplicableEntry(e),run:()=>duplicateEntry(e.id)},
-     /* ICASコピー（§9.368）。**押せばすぐコピー**、横に開く子で
-        つなぎ方を選ぶ・設定を開く。理由（何件を・どのルールで）は
-        本文にも出す（`showNote`）——次に何が起きるかを推測させない（§2）。 */
-     ...lotCopyMenuItems(e),
-
-     {group:'選ぶ・並べる'},
-     canPick&&{label:picked?'選択を外す':'この行を選ぶ',
-               note:'選んだ行はまとめて動かす・まとめて外せます',
-               run:()=>setPicked(e.id,!picked)},
-     /* ---------- 作業日・直を直す道を、行から辿れるようにする（§9.376） ----------
-        利用者の指摘⑥「作業日の変更はどのようにしたら出来ますか」
-        「自動で作業日と作業直が入りますが日付修正する機能も必要です」。
-        **機能は前からあった**（`枠`＝日付・直の行）が、入口が上の道具列の
-        アイコン1つだけで、**「この行を別の日へ」という言葉からは辿れなかった**
-        ——探させない（§2）ので、日付の列を右クリックしたときに出るべき所へ置く。
-        枠そのものの行には出さない（すぐ上の項目と同じことになる）。
-        **これから並ぶ行だけ**に出す——済んだ行・作業中の行の上へ枠を挟んでも
-        起点は動かない（§9.238 ②「進めるのは前へだけ」）ので、押せても
-        何も起きない項目になる（§4）。 */
-     e.kind!=='枠'&&e.state==='予定'&&{label:'ここから下を、別の日・直から並べる…',
-       note:frameInsertable()?'この行のすぐ上に、日付・直の枠を入れます'
-         :(sessionBlocked()?sessionHolderMessage():'この画面では予定を変えられません（閲覧のみ）'),
-       disabled:!frameInsertable(),showNote:true,
-       run:()=>openFramePicker(null,{before:e.id})},
-
-     {group:'画面'},
-     {label:'表示列の設定を開く…',run:()=>openContentPanel()},
-
-     (canDelete||canDeleteHistory)&&{group:'外す'},
-     /* **鍵盤でもできることは、その場に書く**（§9.399）。選んでいる行を
-        Deleteで外せる——メニューを開いた人がその道を知らないままにしない。 */
-     canDelete&&{label:'予定から外す',danger:true,keys:'Delete',
-                 note:'行を選んでおくと、Deleteキーでまとめて外せます',
-                 run:()=>deleteEntry(e.id)},
-     canDeleteHistory&&{label:'実績（測定データ）を削除',danger:true,
-                        note:'取り消せません',run:()=>deleteHistoryEntry(e)},
-    ]);
-   });
-   if(timesOk){
-    row.title='ダブルクリックで実際の時刻を入れます';
-    row.ondblclick=ev=>{
-     if(ev.target.closest('button'))return;
-     ev.preventDefault();openTimes(e);
-    };
-   }else if(canResume){
-    row.classList.add('sc-row-resumable');
-    row.title='ダブルクリックで測定を再開します';
-    row.ondblclick=ev=>{
-     if(ev.target.closest('button'))return;  // 行内ボタンの二度押しを再開と誤認しない
-     ev.preventDefault();startWorkFromEntry(e);
-    };
-   }else if(canReport){
-    // 完了行はダブルクリックで帳票(データ一覧の行と同じ操作感、
-    // records-store.jsのrow.ondblclickに合わせる)。
-    row.title='ダブルクリックで帳票を表示します';
-    row.ondblclick=ev=>{
-     if(ev.target.closest('button'))return;
-     ev.preventDefault();openEntryReport(e);
-    };
-   }else if(stopEditable(e)){
-    /* 設備停止は**ダブルクリックで直せる**（§9.220 2①、利用者の指示
-       「右クリックやダブルクリックで編集・変更できるようにしたい」）。
-       着手・完了の行はここへ来ない（`canResume`／`canReport`が先に取る）
-       ので、割り当てはぶつからない。 */
-    row.classList.add('sc-row-stop-edit');
-    row.title='ダブルクリックで名称・所要分を直せます';
-    row.ondblclick=ev=>{
-     if(ev.target.closest('button'))return;
-     ev.preventDefault();editStopEntry(e.id);
-    };
-   }else if(commentEditable(e)){
-    /* 申し送りは**その場で書く**(§9.191、利用者の指示「配置された
-       コメント欄をダブルクリックなどで編集モードに移行し入力する」)。
-       作業・完了の行とはkind・stateで排他なので、ダブルクリックの
-       割り当てはぶつからない。 */
-    row.classList.add('sc-row-comment-edit');
-    row.title='ダブルクリックで書き直せます';
-    row.ondblclick=ev=>{
-     if(ev.target.closest('button'))return;
-     ev.preventDefault();startCommentEdit(e.id);
-    };
-   }else if(frameEditable(e)){
-    /* 日付・直の枠(§9.238 ②)も**ダブルクリックで直す**——設備停止・
-       申し送りと同じ作法（入口を種別ごとに変えない）。kindで排他なので
-       割り当てはぶつからない。 */
-    row.classList.add('sc-row-frame-edit');
-    row.title='ダブルクリックで日付・直を変えられます';
-    row.ondblclick=ev=>{
-     if(ev.target.closest('button'))return;
-     ev.preventDefault();openFramePicker(e.id);
-    };
-   }else if(e.kind==='コメント'||e.kind==='枠'){
-    /* **できないことは、できないと書く**(CLAUDE.md §4)。 */
-    row.title=e.__pending?'サーバーへ反映中です。反映されたら直せます'
-      :(sessionBlocked()?sessionHolderMessage():'この行は直せません');
+   if(cellOf[k]!==undefined)return cellOf[k];
+   /* 文字だけの固定列(登録者・登録端末など。§9.180)は**同じ表から引く**
+      ——ここに書き写すと、設定パネルの見本と行の中身が食い違う。 */
+   if(SC_FIXED_TEXT[k]){
+    const v=SC_FIXED_TEXT[k](info);
+    return `<span class="sc-row-audit" data-col="${esc(k)}" title="${esc(v)}">${esc(v)}</span>`;
    }
-   timeline.append(row);
-
-   /* 詳細(固定開始・見積の内訳)を開く相手は**操作の列の中のボタン**。
-      §9.176で操作の列も隠せるようになったので、**隠していたら詳細ごと
-      置かない**——ボタンが無いのに詳細だけDOMへ積むと、開く手立てが無い
-      死んだ要素が行の数だけ増える(以前はここで`toggle.onclick`が
-      nullへの代入になって、行を1つ描くたびに例外が出ていた)。 */
-   /* 詳細（固定開始・見積の内訳）は**操作の列を隠していても開ける**
-      （§9.207）。以前はボタンが無ければ器ごと作らなかったので、列を隠すと
-      詳細へ辿り着く道が消えていた。いまは行の右クリックから開けるので、
-      **中身があるかぎり器は作る**。 */
-   if(detailHtml){
-    detailEl=document.createElement('div');
-    detailEl.className='sc-row-detail';
-    detailEl.hidden=true;
-    detailEl.innerHTML=detailHtml;
-    timeline.append(detailEl);
-    const toggle=row.querySelector('.sc-row-detail-toggle');
-    if(toggle)toggle.onclick=ev=>{
-     ev.stopPropagation();
-     detailEl.hidden=!detailEl.hidden;
-     toggle.textContent=detailEl.hidden?'▾':'▴';
-     toggle.classList.toggle('active',!detailEl.hidden);
-    };
-    const fsInput=detailEl.querySelector('.sc-fixed-start-input');
-    if(fsInput)fsInput.onchange=()=>updateFixedStart(e.id,fsInput.value);
-    const fsClear=detailEl.querySelector('.sc-fixed-start-clear');
-    if(fsClear)fsClear.onclick=ev=>{ev.stopPropagation();updateFixedStart(e.id,'')};
+   /* 計算で作る列（§9.207）。**設備停止・コメントの行でも同じ式を当てる**
+      ——行ごとに材料が無ければ式の中で空になるだけで、列がずれない。
+      **一覧と同じ`WL.cellFormat.cell()`を通す**（§9.234 ⑥）——以前は式の
+      結果を素で埋めていたので、計算列にだけ読み替えも書式も色も乗らず、
+      「他の列のみのルール」を当てても何も出なかった。一覧側
+      （`list-view.js`の`rawVal=calc?calc.run(r):r[c]`）と同じ形＝
+      **式の結果が「生の値」で、その上に読み替え→書式**（矛盾しない答えは
+      この1本だけ。列ごとに「ルール優先／式優先」を選ばせない）。
+      式が空の列（＝読み替えだけで中身を作る列）もここで受ける。 */
+   /* 計算式・内容の項目は`dynamicCellValue()`の1箇所で決める
+      （§9.235。印刷向けの`printRowCells()`も同じ関数を通す）。 */
+   const dyn=dynamicCellValue(e,k,{formulaFns,calcKeys,ruleRow,calcTarget,contentMap,view});
+   if(dyn.kind==='calc')
+    /* **元の値（式の結果）は`title`に残す**——読み替えで置き換わったことが
+       読める（§9.94「切れたセルには生の値の`title`」と同じ約束）。 */
+    return `<span class="sc-row-title sc-row-calc${dyn.color?' cell-'+dyn.color:''}" data-col="${esc(k)}" title="${esc(dyn.raw||dyn.text)}">${esc(dyn.text)}</span>`;
+   if(dyn.kind==='content'){
+    /* **ロット番号の横にロット問い合わせ（LotDsp）の的**（§9.460、利用者の指示
+       「仕掛一覧と同じようにロット問い合わせを開けるように」）。**字そのものは押す形に
+       しない**——行いっぱいは「選ぶ」・ダブルクリックは「測定を開く」の的なので、字を
+       ボタンにするとダブルクリックがボタンに食われる（§9.377「行き先の的は題名の横に
+       別に立てる」）。開くのは行のロット番号そのもの。作業の行だけ。 */
+    const lot=(k==='lotNo'&&e.kind==='作業')?String(e.lotNo||dyn.raw||''):'';
+    const inner=esc(dyn.text)+(lot?lotDspChipHtml(lot,entryValueOf(e,'castingNo')):'');
+    return `<span class="sc-row-title${dyn.color?' cell-'+dyn.color:''}" data-col="${esc(k)}" data-content-col="${esc(k)}" title="${esc(dyn.raw||dyn.text)}">${inner}</span>`;
    }
+   return `<span data-col="${esc(k)}"></span>`;
+  };
+ }
+ /* ⑤ 操作の列のボタンの配線。**行の「選ぶ」を横取りしない**ので止める。 */
+ function bindEntryRowButtons(row,e){
+  const del=row.querySelector('.sc-row-delete');
+  if(del)del.onclick=ev=>{ev.stopPropagation();deleteEntry(e.id)};
+  const start=row.querySelector('.sc-row-start');
+  if(start)start.onclick=ev=>{ev.stopPropagation();startWorkFromEntry(e)};
+  const lock=row.querySelector('.sc-row-lock');
+  if(lock)lock.onclick=ev=>{ev.stopPropagation();toggleEntryLock(e)};
+  const resume=row.querySelector('.sc-row-resume');
+  if(resume)resume.onclick=ev=>{ev.stopPropagation();startWorkFromEntry(e)};
+  const report=row.querySelector('.sc-row-report');
+  if(report)report.onclick=ev=>{ev.stopPropagation();openEntryReport(e)};
+  const delHist=row.querySelector('.sc-row-delete-history');
+  if(delHist)delHist.onclick=ev=>{ev.stopPropagation();deleteHistoryEntry(e)};
+  const timesBtn=row.querySelector('.sc-row-times');
+  if(timesBtn)timesBtn.onclick=ev=>{ev.stopPropagation();openTimes(e)};
+  /* 連携機能の行き先（§9.377）。**行の「選ぶ」を横取りしない**ので
+     `stopPropagation()`する（行いっぱいが選ぶ的・§9.363）。 */
+  /* 見た目の同じ的（LotDspの`.sc-lot-dsp`・§9.460）を拾わないよう、**行き先を名乗る的だけ**。 */
+  const linkBtn=row.querySelector('.sc-nw-link[data-sc-link]');
+  if(linkBtn)linkBtn.onclick=ev=>{ev.stopPropagation();ev.preventDefault();openRowLink(e)};
+ }
+ /* 右クリック（§9.207）。群ごとの中身は`entryMenu*()`（群の順は作業導線の順・§9.399）。 */
+ function bindEntryRowMenu(row,e,info,caps,detailRef){
+  const {canDrag,canDelete,canDeleteHistory}=caps;
+  /* 右クリック（§9.207）。**操作の列を隠していても同じことができる**。 */
+  row.addEventListener('contextmenu',ev=>{
+   if(ev.target.closest('.sc-row-head'))return;
+   ev.preventDefault();ev.stopPropagation();
+   const picked=scState.picked.has(String(e.id));
+   const canPick=!!removableEntry(e)||!!canDrag;
+   /* ---------- 並びは「作業導線」そのもの（§9.399、利用者の指示） ----------
+      「右クリックメニューを改良し、最新の内容に合わせてより分かりやすく、
+       見やすく表示内容・機能を再構成してください」
+
+      §9.207で足し始めてから項目が13へ増え、**平らな1本の並び**になって
+      いた（実測: 区切り2本だけ）。何がどこにあるのかを毎回読み直すことに
+      なるので、**「この行で何をするか」の順に群へ束ねる**（§CLAUDE 14）:
+
+        進める → 直す → 増やす・写す → 選ぶ・並べる → 画面 → 外す
+
+      群は1つ5件以下（一度に見渡せる粒度）。**中身の無い群は出さない**
+      （`pruneMenuGroups`）ので、行によっては群ごと消える。
+      **危ない操作はいちばん下の群へ離す**（§CLAUDE 5）。 */
+   openRowMenu(ev,scRowMenuTitle(e),scRowMenuNote(e),[
+    ...entryMenuAdvance(e,caps),
+    ...entryMenuFix(e,row,info,caps,detailRef),
+    ...entryMenuCopy(e),
+    ...entryMenuArrange(e,picked,canPick),
+    {group:'画面'},
+    {label:'表示列の設定を開く…',run:()=>openContentPanel()},
+
+    (canDelete||canDeleteHistory)&&{group:'外す'},
+    /* **鍵盤でもできることは、その場に書く**（§9.399）。選んでいる行を
+       Deleteで外せる——メニューを開いた人がその道を知らないままにしない。 */
+    canDelete&&{label:'予定から外す',danger:true,keys:'Delete',
+                note:'行を選んでおくと、Deleteキーでまとめて外せます',
+                run:()=>deleteEntry(e.id)},
+    canDeleteHistory&&{label:'実績（測定データ）を削除',danger:true,
+                       note:'取り消せません',run:()=>deleteHistoryEntry(e)},
+   ]);
+  });
+ }
+ function entryMenuAdvance(e,caps){
+  const {canStart,canReport,canResume}=caps;
+  return [
+   {group:'進める'},
+   /* 実際の時刻（§9.514）。**入れられないときも並べて理由を書く**（§4）。 */
+   e.timesNeeded&&{label:'実際の時刻を入れる…',note:timesEditable()?(e.doneReason||'開始だけでも入れられます')
+     :timesBlockReason(),disabled:!timesEditable(),showNote:true,run:()=>openTimes(e)},
+   canStart&&{label:'作業を開始する',note:'この予定の測定画面を開きます',
+              run:()=>startWorkFromEntry(e)},
+   canResume&&{label:'測定を再開する',note:'続きから開きます',
+               run:()=>startWorkFromEntry(e)},
+   canReport&&{label:'帳票を開く',run:()=>openEntryReport(e)},
+   /* 連携機能（§9.377）。**行き先があるときだけ出す**——無い行に
+      「開く」を並べても、押して何も起きない項目になる（§CLAUDE 4）。 */
+   (()=>{const l=stopLinkOf(e);return l&&{label:`${l.label}を開く`,
+     note:'この行より後ろに並ぶ作業の元コイル幅・切断幅・板厚を持っていきます',
+     showNote:true,run:()=>openRowLink(e)}})(),
+
+  ];
+ }
+ function entryMenuFix(e,row,info,caps,detailRef){
+  const {locked}=info;
+  const {detailHtml,canLock,canFixTimes}=caps;
+  return [
+   {group:'この行を直す'},
+   canFixTimes&&{label:'実際の時刻を直す…',note:timesEditable()?'手で入れた開始・終了を直します'
+     :timesBlockReason(),disabled:!timesEditable(),run:()=>openTimes(e)},
+   /* §9.220 2①。**できないときも並べて理由を書く**（§4）——メニューから
+      消すと「直せる場所が無い」のか「この行は直せない」のかが読めない。 */
+   e.kind==='設備停止'&&e.state==='予定'&&{label:'停止の内容を変える',
+     note:stopEditable(e)?'名称・所要分・備考を直します':stopEditBlockReason(e),
+     disabled:!stopEditable(e),run:()=>editStopEntry(e.id)},
+   commentEditable(e)&&{label:'申し送りを書き直す',run:()=>startCommentEdit(e.id)},
+   /* 日付・直の枠(§9.238 ②)。**できないときも並べて理由を書く**（§4）。 */
+   e.kind==='枠'&&e.state==='予定'&&{label:'枠の日付・直を変える',
+     note:frameEditable(e)?'ここから先を、どの日・どの直から並べるか'
+       :(e.__pending?'サーバーへ反映中です':sessionHolderMessage()),
+     disabled:!frameEditable(e),run:()=>openFramePicker(e.id)},
+   canLock&&{label:locked?'日時の固定を解除する':'いまの日時で固定する',
+             note:locked?'通常の並びへ戻します':'以降ずれなくなります',
+             run:()=>toggleEntryLock(e)},
+   detailHtml&&{label:'詳細（固定開始・見積の内訳）',
+                run:()=>{if(detailRef.el){detailRef.el.hidden=!detailRef.el.hidden;
+                  const t=row.querySelector('.sc-row-detail-toggle');
+                  if(t){t.textContent=detailRef.el.hidden?'▾':'▴';
+                        t.classList.toggle('active',!detailRef.el.hidden)}}}},
+
+  ];
+ }
+ function entryMenuCopy(e){
+  return [
+   {group:'増やす・写す'},
+   /* 複製（§9.399 → §9.401で申し送りだけに絞った）。**できるものにだけ
+      出す**——作業（同じロットを2回流す実体が無い）・枠（同じ日・直の枠が
+      2つあっても何も変わらない）・設備停止（同じ停止が2件並ぶだけ。
+      入れ直すのと手数が変わらないので「設備停止を追加」の一覧へ道を
+      1本化した）には出さない。
+      止まっているときは**理由を書いて残す**（§4）。 */
+   duplicableKind(e)&&{label:`${duplicableKind(e)}をもう1件足す`,
+     /* **できるときは1行に収める**（§CLAUDE 1）——「もう1件足す」で
+        何が起きるかは読めば分かる。詳しくは`title`が持つ。
+        できないときだけ理由を本文へ出す（§4。`rowMenuItemsHtml`が
+        `disabled`のとき自動で出す）。 */
+     note:duplicableEntry(e)?'同じ文（備考も）のまま、この行のすぐ下へ入れます'
+       :duplicateBlockReason(e),
+     disabled:!duplicableEntry(e),run:()=>duplicateEntry(e.id)},
+   /* ICASコピー（§9.368）。**押せばすぐコピー**、横に開く子で
+      つなぎ方を選ぶ・設定を開く。理由（何件を・どのルールで）は
+      本文にも出す（`showNote`）——次に何が起きるかを推測させない（§2）。 */
+   ...lotCopyMenuItems(e),
+
+  ];
+ }
+ function entryMenuArrange(e,picked,canPick){
+  return [
+   {group:'選ぶ・並べる'},
+   canPick&&{label:picked?'選択を外す':'この行を選ぶ',
+             note:'選んだ行はまとめて動かす・まとめて外せます',
+             run:()=>setPicked(e.id,!picked)},
+   /* ---------- 作業日・直を直す道を、行から辿れるようにする（§9.376） ----------
+      利用者の指摘⑥「作業日の変更はどのようにしたら出来ますか」
+      「自動で作業日と作業直が入りますが日付修正する機能も必要です」。
+      **機能は前からあった**（`枠`＝日付・直の行）が、入口が上の道具列の
+      アイコン1つだけで、**「この行を別の日へ」という言葉からは辿れなかった**
+      ——探させない（§2）ので、日付の列を右クリックしたときに出るべき所へ置く。
+      枠そのものの行には出さない（すぐ上の項目と同じことになる）。
+      **これから並ぶ行だけ**に出す——済んだ行・作業中の行の上へ枠を挟んでも
+      起点は動かない（§9.238 ②「進めるのは前へだけ」）ので、押せても
+      何も起きない項目になる（§4）。 */
+   e.kind!=='枠'&&e.state==='予定'&&{label:'ここから下を、別の日・直から並べる…',
+     note:frameInsertable()?'この行のすぐ上に、日付・直の枠を入れます'
+       :(sessionBlocked()?sessionHolderMessage():'この画面では予定を変えられません（閲覧のみ）'),
+     disabled:!frameInsertable(),showNote:true,
+     run:()=>openFramePicker(null,{before:e.id})},
+
+  ];
+ }
+ /* ダブルクリックの行き先は1つ（時刻→再開→帳票→停止を直す→申し送り→枠の順・種別と状態で排他）。 */
+ function bindEntryRowDblClick(row,e,caps){
+  const {canReport,canResume,timesOk}=caps;
+  if(timesOk){
+   row.title='ダブルクリックで実際の時刻を入れます';
+   row.ondblclick=ev=>{
+    if(ev.target.closest('button'))return;
+    ev.preventDefault();openTimes(e);
+   };
+  }else if(canResume){
+   row.classList.add('sc-row-resumable');
+   row.title='ダブルクリックで測定を再開します';
+   row.ondblclick=ev=>{
+    if(ev.target.closest('button'))return;  // 行内ボタンの二度押しを再開と誤認しない
+    ev.preventDefault();startWorkFromEntry(e);
+   };
+  }else if(canReport){
+   // 完了行はダブルクリックで帳票(データ一覧の行と同じ操作感、
+   // records-store.jsのrow.ondblclickに合わせる)。
+   row.title='ダブルクリックで帳票を表示します';
+   row.ondblclick=ev=>{
+    if(ev.target.closest('button'))return;
+    ev.preventDefault();openEntryReport(e);
+   };
+  }else if(stopEditable(e)){
+   /* 設備停止は**ダブルクリックで直せる**（§9.220 2①、利用者の指示
+      「右クリックやダブルクリックで編集・変更できるようにしたい」）。
+      着手・完了の行はここへ来ない（`canResume`／`canReport`が先に取る）
+      ので、割り当てはぶつからない。 */
+   row.classList.add('sc-row-stop-edit');
+   row.title='ダブルクリックで名称・所要分を直せます';
+   row.ondblclick=ev=>{
+    if(ev.target.closest('button'))return;
+    ev.preventDefault();editStopEntry(e.id);
+   };
+  }else if(commentEditable(e)){
+   /* 申し送りは**その場で書く**(§9.191、利用者の指示「配置された
+      コメント欄をダブルクリックなどで編集モードに移行し入力する」)。
+      作業・完了の行とはkind・stateで排他なので、ダブルクリックの
+      割り当てはぶつからない。 */
+   row.classList.add('sc-row-comment-edit');
+   row.title='ダブルクリックで書き直せます';
+   row.ondblclick=ev=>{
+    if(ev.target.closest('button'))return;
+    ev.preventDefault();startCommentEdit(e.id);
+   };
+  }else if(frameEditable(e)){
+   /* 日付・直の枠(§9.238 ②)も**ダブルクリックで直す**——設備停止・
+      申し送りと同じ作法（入口を種別ごとに変えない）。kindで排他なので
+      割り当てはぶつからない。 */
+   row.classList.add('sc-row-frame-edit');
+   row.title='ダブルクリックで日付・直を変えられます';
+   row.ondblclick=ev=>{
+    if(ev.target.closest('button'))return;
+    ev.preventDefault();openFramePicker(e.id);
+   };
+  }else if(e.kind==='コメント'||e.kind==='枠'){
+   /* **できないことは、できないと書く**(CLAUDE.md §4)。 */
+   row.title=e.__pending?'サーバーへ反映中です。反映されたら直せます'
+     :(sessionBlocked()?sessionHolderMessage():'この行は直せません');
+  }
+ }
+ /* ⑥ 詳細（固定開始・見積の内訳・誰が）。行の直後に置く。 */
+ function appendEntryDetail(timeline,row,e,detailHtml,detailRef){
+
+  /* 詳細(固定開始・見積の内訳)を開く相手は**操作の列の中のボタン**。
+     §9.176で操作の列も隠せるようになったので、**隠していたら詳細ごと
+     置かない**——ボタンが無いのに詳細だけDOMへ積むと、開く手立てが無い
+     死んだ要素が行の数だけ増える(以前はここで`toggle.onclick`が
+     nullへの代入になって、行を1つ描くたびに例外が出ていた)。 */
+  /* 詳細（固定開始・見積の内訳）は**操作の列を隠していても開ける**
+     （§9.207）。以前はボタンが無ければ器ごと作らなかったので、列を隠すと
+     詳細へ辿り着く道が消えていた。いまは行の右クリックから開けるので、
+     **中身があるかぎり器は作る**。 */
+  if(detailHtml){
+   const detailEl=detailRef.el=document.createElement('div');
+   detailEl.className='sc-row-detail';
+   detailEl.hidden=true;
+   detailEl.innerHTML=detailHtml;
+   timeline.append(detailEl);
+   const toggle=row.querySelector('.sc-row-detail-toggle');
+   if(toggle)toggle.onclick=ev=>{
+    ev.stopPropagation();
+    detailEl.hidden=!detailEl.hidden;
+    toggle.textContent=detailEl.hidden?'▾':'▴';
+    toggle.classList.toggle('active',!detailEl.hidden);
+   };
+   const fsInput=detailEl.querySelector('.sc-fixed-start-input');
+   if(fsInput)fsInput.onchange=()=>updateFixedStart(e.id,fsInput.value);
+   const fsClear=detailEl.querySelector('.sc-fixed-start-clear');
+   if(fsClear)fsClear.onclick=ev=>{ev.stopPropagation();updateFixedStart(e.id,'')};
   }
  }
  // scState.entriesが変わるたびに、既にスケジュール投入済みのロットが仕掛

@@ -15,7 +15,7 @@
   "no-unused-vars": 2
  },
  "static/js/master/master-report.js": {
-  "no-unused-vars": 2
+  "no-unused-vars": 1
  },
  "static/js/measure/defect-locator.js": {
   "no-unused-vars": 1
@@ -42,13 +42,13 @@
   "no-unused-vars": 3
  },
  "static/js/schedule/schedule-view.js": {
-  "no-unused-vars": 3
+  "no-unused-vars": 2
  },
  "tests/audit_scale.js": {
   "no-empty": 1
  },
  "tests/test_actuals.js": {
-  "no-empty": 7
+  "no-empty": 6
  },
  "tests/test_adhoc.js": {
   "no-empty": 1
