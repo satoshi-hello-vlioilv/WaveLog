@@ -1,4 +1,4 @@
-# 刃組ガイダンス（208件）
+# 刃組ガイダンス（210件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 保持方式は`保持方式マスタ`の判定表（上から最初の行・最後が既定）。答えは`holdPick()`、未登録は切替板厚の種 | `test_holdpick.js`・`test_bladeset.py` | [§9.524](../../docs/decisions/9.524.md) |
+| 条件表の判定は`firstRule()`の1本（刃選択・保持方式・試す行）。仕掛の列は`source.<列名>`、読む行は`st.src` | `test_holdpick.js` | [§9.524](../../docs/decisions/9.524.md) |
 | 引き出しの字の段は`tierOf()`の1箇所: **近い段から空いているところへ**。重なるときだけ外の段 | `test_bladeui.js` | [§9.492](../../docs/decisions/9.492.md) |
 | 刃組表の区分は条幅ごとに**条数（×N）**を添える。数えるのは`res.segs`（図と同じ割付） | `test_bladeui.js` | [§9.492](../../docs/decisions/9.492.md) |
 | ゴムリング・潤滑の本数の欄にも色の●（径の欄と同じ`.bs-ringdot`／`.bs-lubedot`） | `test_bladeui.js` | [§9.492](../../docs/decisions/9.492.md) |

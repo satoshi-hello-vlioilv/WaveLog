@@ -98,6 +98,9 @@
            carriageSeed: (c.carriageSeed || []).slice(),
            carriageNone: c.carriageNone || '台車なし',
            pickFields: (c.pickFields || []).slice(),
+           /* 保持方式の条件表（§9.524）。登録が無ければサーバーが今までの決め方の「種」を返す。 */
+           holds: (c.holds || []).slice(), holdsStored: !!c.holdsStored,
+           holdMethods: (c.holdMethods || []).slice(), holdFields: (c.holdFields || []).slice(),
            pickOps: (c.pickOps || []).slice(),
            equipment: c.equipment || '',
            standardStored: !!c.standardStored,
@@ -172,8 +175,9 @@
   if (st.align === 'none') return 'chidori';
   return st.canNk ? 'nakanuki' : 'flip';
  }
- /* 板が薄いとゴムリングでは保持できない。そのときは板押さえ（フィンガー）方式。 */
- const isFinger = (st, M) => st.thick < (num(M.P.fingerMax) || 0);
+ /* 板を保持する方式（フィンガー／ゴムリング）。答えは`holdPick()`の1箇所（§9.524）——
+    `保持方式マスタ`の条件表を上から見て、最初に当たった行の方式。 */
+ const isFinger = (st, M) => holdPick(st, M).hold === 'フィンガー';
  const holdName = (st, M) => (isFinger(st, M) ? 'フィンガー' : 'ゴムリング');
  const oppBurr = b => (b === 'down' ? 'up' : 'down');
  const oppRing = t => (t === 'big' ? 'small' : 'big');
@@ -1189,19 +1193,31 @@
   le: (l, a) => l <= a + 1e-9,
   lt: (l, a) => l < a - 1e-9
  };
+ /* 条件が読む値。計算値に加えて、**1本目のコイルの仕掛の行**（`st.src`）の列を
+    `source.<列名>`で読める（§9.524）。材質・ロット番号もその行から引く——以前は
+    `st.material`／`st.lotNo`を誰も入れておらず、刃選択の「材質」「ロット番号」の
+    条件は**1度も当たらなかった**。 */
  function pickCtx(st, M) {
   const ws = (st.order || []).map(ix => +(((st.lots || [])[ix] || {}).w))
    .filter(w => w > 0);
-  return {
+  const src = st.src || null;
+  const pk = k => (src && typeof pick === 'function' ? pick(src, k) : '');
+  const ctx = {
    thickness: +st.thick || null,
    coilWidth: +st.W || null,
    strips: ws.length || null,
    minWidth: ws.length ? Math.min(...ws) : null,
    maxWidth: ws.length ? Math.max(...ws) : null,
-   material: st.material || '',
-   lotNo: st.lotNo || ''
+   material: pk('mfgMaterial') || pk('orderMaterial'),
+   lotNo: st.headLot || pk('lotNo')
   };
+  if (src) Object.keys(src).forEach(k => { ctx['source.' + k] = src[k]; });
+  return ctx;
  }
+ /* 仕掛の列（`source.*`）は型が決まっていない。**比べ方で読み方を決める**:
+    大小・範囲は数として、＝／≠は両方が数に読めれば数として（'1.0' と '1' を同じに）、
+    含むは字として。 */
+ const asNum = v => (String(v ?? '').trim() === '' ? NaN : Number(v));
  function condHits(cond, ctx, kinds) {
   const f = cond && cond.field;
   if (!f || !(f in ctx)) return false;
@@ -1210,7 +1226,11 @@
      全部の作業に当たってしまう。 */
   if (left === null || left === undefined || left === '') return false;
   const op = cond.op;
-  if ((kinds[f] || 'text') === 'num') {
+  const kind = kinds[f] || (String(f).startsWith('source.')
+   ? (op === 'contains' ? 'text'
+      : (/^(ge|gt|le|lt|between)$/.test(op) || (isFinite(asNum(left)) && isFinite(asNum(cond.value)))) ? 'num' : 'text')
+   : 'text');
+  if (kind === 'num') {
    const l = +left, a = +cond.value;
    if (!isFinite(l) || !isFinite(a)) return false;
    if (op === 'between') {
@@ -1220,7 +1240,7 @@
    }
    return PICK_NUM[op] ? PICK_NUM[op](l, a) : false;
   }
-  const ls = String(left), rs = String(cond.value == null ? '' : cond.value);
+  const ls = String(left).trim(), rs = String(cond.value == null ? '' : cond.value).trim();
   if (op === 'eq') return ls === rs;
   if (op === 'ne') return ls !== rs;
   if (op === 'contains') return !!rs && ls.indexOf(rs) >= 0;
@@ -1230,17 +1250,57 @@
     当たらない**——「いつでも当たる行」を書けると、「一般が既定」という
     約束が静かに崩れる。 */
  function pickGroup(rules, ctx, fields) {
+  const r = firstRule((rules || []).filter(x => x.group), ctx, fields, false);
+  return r ? { group: r.row.group, rule: r.row.name || '', id: r.row.id } : null;
+ }
+ /* 条件表を上から見て**最初に当たった行**（`{row, index}`）。表の約束は1つ——
+    同じ行の条件はすべて満たしたときだけ当たる。**条件の無い行**は`withDefault`の
+    ときだけ「どれにも当たらなかったときの行」として当たる（刃選択は当てない・
+    保持方式は最後の既定行で決める）。刃選択・保持方式・盤の試し欄が同じ1本を通る。 */
+ function firstRule(rules, ctx, fields, withDefault) {
   const kinds = {};
   (fields || []).forEach(f => { kinds[f.field] = f.kind; });
-  const list = (rules || []).filter(r => r.enabled !== false);
-  for (const r of list) {
-   const cs = r.conditions || [];
-   if (!cs.length || !r.group) continue;
-   if (cs.every(c => condHits(c, ctx, kinds))) {
-    return { group: r.group, rule: r.name || '', id: r.id };
-   }
+  const list = rules || [];
+  for (let i = 0; i < list.length; i++) {
+   if (list[i].enabled === false) continue;   // 番号は表の並びのまま数える（止めた行も1行）
+   const cs = list[i].conditions || [];
+   if (!cs.length ? withDefault : cs.every(c => condHits(c, ctx, kinds))) return { row: list[i], index: i };
   }
   return null;
+ }
+ /* 保持方式の答え（§9.524）。`{hold, index, stored, row}`——どの行で決まったかも返す
+    （画面が「n行目に当たったため」と根拠を書く・§CLAUDE 6）。表を持たない材料
+    （古いサーバー・網の手組み）は今までの決め方（板厚 < 切替板厚）で答える。 */
+ function holdPick(st, M) {
+  const rules = (M && M.holds) || [];
+  if (!rules.length) {
+   const fm = num(M && M.P && M.P.fingerMax) || 0;
+   return { hold: st.thick < fm ? 'フィンガー' : 'ゴムリング', index: -1, stored: false, row: null };
+  }
+  const hit = firstRule(rules, pickCtx(st, M), M.holdFields, true);
+  return { hold: hit ? hit.row.hold : 'ゴムリング', index: hit ? hit.index : -1,
+           stored: !!M.holdsStored, row: hit ? hit.row : null };
+ }
+ /* その方式に決まった根拠を1文で（§9.524・§CLAUDE 6 出どころを書く）。どの行で決まったか・
+    その行の条件・表が登録か種か。画面は字を組み立てない。 */
+ function holdReason(st, M) {
+  const h = holdPick(st, M);
+  if (h.index < 0 && !((M && M.holds) || []).length) {
+   const fm = num(M && M.P && M.P.fingerMax) || 0;
+   return `板厚 ${(+st.thick).toFixed(1)} が切替板厚 ${fm} ${st.thick < fm ? '未満' : '以上'}のため`;
+  }
+  const cs = (h.row && h.row.conditions) || [];
+  const why = cs.length
+   ? `「保持方式」の${h.index + 1}行目（${cs.map(c => condText(c, M.holdFields, M.pickOps)).join(' かつ ')}）に当たったため`
+   : '「保持方式」のどの決まりにも当たらないため（最後の既定の行）';
+  return why + (h.stored ? '' : '。表は未登録なので、刃組基準値のフィンガー切替板厚から作った表で決めました');
+ }
+ /* 条件1つを字にする（「板厚 ＜ 0.6」「製造材質 ＝ SUS」）。刃組の説明と条件表の盤が同じ字を使う。 */
+ function condText(c, fields, ops) {
+  const f = (fields || []).find(x => x.field === c.field);
+  const name = f ? f.label : String(c.field || '').replace(/^source\./, '');
+  const op = ((ops || []).find(x => x.op === c.op) || {}).label || c.op;
+  return c.op === 'between' ? `${name} ${c.value}〜${c.value2}` : `${name} ${op} ${c.value}`;
  }
 
  /* ====================== 標準の条件（§9.408、利用者の指示②） ======================
@@ -1256,6 +1316,8 @@
  function defaultState() {
   return {
    equipment: '',
+   /* 1本目のコイルの番号と仕掛の行（§9.524）。予定から開いたときだけ入る。 */
+   headLot: '', src: null,
    align: 'none', canNk: true, nkWidth: 30,
    knife: 318.2, thick: 1.3, tk: 10, clr: 0.15, ov: 0.2,
    /* クリアランスは**板厚の10%が基本**（§9.378）。板厚を変えたら引き直す。
@@ -1412,6 +1474,9 @@
   }
   st.lots = lots;
   st.order = [];
+  /* 1本目のコイルと、その仕掛の行（§9.524）。条件表が材質などの列を読む。 */
+  st.headLot = String(s.headLot || '');
+  st.src = (s.source && typeof s.source === 'object') ? s.source : null;
   syncOrder(st);
   applyStandards(st, M);
   /* 板厚から引くクリアランス（`clrAuto`）は基準値の固定値より後。順を
@@ -1513,7 +1578,7 @@
   compose, buildRows, endRows, badgeMap, BADGE_TONES, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum, cutFace,
   stripDesign, designByParent, condOf, sameCond, seedFromCond,
-  pickCtx, pickGroup, condHits, selectable,
+  pickCtx, pickGroup, condHits, selectable, firstRule, holdPick, holdReason, condText,
   expand, materialRun, matShift, spread, tierOf,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP
  };

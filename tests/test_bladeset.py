@@ -53,7 +53,7 @@ EQ = 'テスト設備A'
 # ---------------------------------------------------------------------------
 c = fresh()
 made = bs.ensure_tables(c)
-rec('まっさらなDBで9枚できる', len(made) == 9, str(made))
+rec('まっさらなDBで10枚できる（§9.524で保持方式マスタを足した）', len(made) == 10, str(made))
 have = set(tables(c))
 rec('表の名前が定義どおり',
     {d.table for d in (bs.BLADE_DEF, bs.SPACER_DEF, bs.RING_DEF, bs.FINGER_DEF,
@@ -401,6 +401,33 @@ rec('先に並ぶ行が勝つ',
 bs.pick_delete(c, pid)
 bs.pick_delete(c, p2)
 rec('消すと決まりが残らない', bs.pick_rows(c, True, EQ) == [])
+
+# ---- 保持方式マスタ（§9.524） ----
+# 登録が無い設備は**今までの決め方の種**（板厚 < 切替板厚 → フィンガー／既定 → ゴムリング）。
+fm = bs.standard_for(c, EQ)['values']['fingerMax']
+got = bs.hold_rows(c, EQ)
+rec('保持方式: 登録が無ければ、切替板厚から作った種（未登録）',
+    not got['stored'] and got['rows'] == bs.hold_seed(fm), str(got))
+# 保存は丸ごと。**条件の無い行は最後の1つだけが既定**・既定が無ければゴムリングで足す・知らない方式はゴムリング。
+n = bs.hold_replace(c, 'u', EQ, [
+    {'conditions': [], 'hold': 'フィンガー'},
+    {'conditions': [{'field': 'strips', 'op': 'ge', 'value': '20'}], 'hold': 'フィンガー'},
+    {'conditions': [{'field': 'source.製造材質', 'op': 'eq', 'value': 'SUS'}], 'hold': '知らない'}])
+got = bs.hold_rows(c, EQ)
+rec('保持方式: 保存すると登録になり、既定の行は最後に1つ',
+    n == 3 and got['stored'] and [(len(r['conditions']), r['hold']) for r in got['rows']]
+    == [(1, 'フィンガー'), (1, 'ゴムリング'), (0, 'フィンガー')], str(got['rows']))
+bs.hold_replace(c, 'u', EQ, [{'conditions': [{'field': 'thickness', 'op': 'lt', 'value': '1'}], 'hold': 'フィンガー'}])
+rec('保持方式: 既定の行が無ければゴムリングで足す',
+    [r['hold'] for r in bs.hold_rows(c, EQ)['rows']] == ['フィンガー', 'ゴムリング'])
+rec('保持方式: 仕掛の列は source.<列名> で書ける（字の形だけ見る）',
+    bs.normalize_pick_conditions([{'field': 'source.製造材質', 'op': 'eq', 'value': 'SUS'},
+                                  {'field': 'source.', 'op': 'eq', 'value': 'x'},
+                                  {'field': 'source.a]b', 'op': 'eq', 'value': 'x'}])
+    == [{'field': 'source.製造材質', 'op': 'eq', 'value': 'SUS'}])
+rec('保持方式: 未登録に戻すと行が消え、種へ戻る',
+    bs.hold_reset(c, EQ) == 2 and not bs.hold_rows(c, EQ)['stored'])
+rec('保持方式: 設備が無ければ保存を断る', _reject(lambda: bs.hold_replace(c, 'u', '', [])))
 
 # ---- 自己確認: 網が素通りしていない ----
 rec('自己確認: 断る網は、断らない呼び出しでは真にならない',

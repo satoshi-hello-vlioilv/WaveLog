@@ -413,7 +413,19 @@ BLADEPICK_OPS = (
 BLADEPICK_OPS_2 = ('between',)      # 右辺を2つ取るもの
 
 
-def normalize_pick_conditions(raw):
+# 仕掛の列を条件に使うときの綴り（§9.524）。`source.<列名>`——帳票ブロックの道
+# （§9.285）と同じ。列名は仕掛のデータに依るので、**字の形だけ**を見る。
+SOURCE_FIELD_PREFIX = 'source.'
+_SOURCE_FIELD_MAX = 80
+
+
+def is_source_field(field):
+    f = _txt(field)
+    return (f.startswith(SOURCE_FIELD_PREFIX) and len(f) > len(SOURCE_FIELD_PREFIX)
+            and len(f) <= _SOURCE_FIELD_MAX and not any(ch in f for ch in '[]\r\n\t'))
+
+
+def normalize_pick_conditions(raw, extra_fields=True):
     """保存できる条件の配列へ整える。**壊れた条件は1件だけ落とす**
     （表示ルールマスタと同じ理由——1つの入力ミスで行ごと消えると、
     利用者からは「保存したのに戻っている」としか見えない）。"""
@@ -427,7 +439,7 @@ def normalize_pick_conditions(raw):
             continue
         field = _txt(item.get('field'))
         op = _txt(item.get('op'))
-        if field not in fields or op not in ops:
+        if op not in ops or not (field in fields or (extra_fields and is_source_field(field))):
             continue
         cond = {'field': field, 'op': op,
                 'value': _txt(item.get('value'))[:120]}
@@ -650,12 +662,135 @@ HISTORY_KEEP = 20        # 1設備あたり残す件数（古いものから捨�
 # ---------------------------------------------------------------------------
 # 表を作る・足す
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# 10 保持方式マスタ（フィンガー／ゴムリングを選ぶ条件表・§9.524）
+# ---------------------------------------------------------------------------
+# 利用者の言葉:「フィンガーとゴムリングを選ぶ条件を今は板厚だけで…条件が複雑に
+# なるので、取得済みデータを列に持つ条件テーブルを組めるようにマスタを追加して
+# ください。」（選択: 列＝計算値＋仕掛の列／表の形＝列がデータの判定表／
+# 当たらないときは表の最後の既定行で決める）
+#
+# 1行＝1つの決まり。**上から順に見て最初に当たった1行**の保持方式を使う
+# （刃選択マスタと同じ作法・同じ条件の語彙）。**条件の無い行＝既定行**で、
+# 表の最後に必ず1つ置く（`hold_replace()`が整える）——保持方式が決まらない
+# 作業を作らない。
+# **登録が無い設備は、今までの決め方をそのまま表にした「種」を返す**
+# （板厚 < 刃組基準値のフィンガー切替板厚 → フィンガー／既定 → ゴムリング）。
+# 表を1度も触っていない設備の動きは変わらない。
+HOLDPICK_TABLE = '保持方式マスタ'
+HOLDPICK_COLUMNS = (
+    ('設備名', 'TEXT'), ('条件JSON', 'TEXT'), ('保持方式', 'TEXT'),
+    ('備考', 'TEXT'), ('表示順', 'INTEGER'), ('有効', 'INTEGER'),
+)
+HOLDPICK_DEF = TableDef(HOLDPICK_TABLE, '保持方式ID', HOLDPICK_COLUMNS,
+                        order_by='[設備名],[表示順],[保持方式ID]')
+HOLD_FINGER = 'フィンガー'
+HOLD_RING = 'ゴムリング'
+HOLD_METHODS = (HOLD_FINGER, HOLD_RING)
+# 条件表の列に使える計算値（仕掛の列は `source.<列名>` で別に足せる）。
+# 刃選択の語彙のうち、**ガイダンスが計算して持つもの**だけ。材質・ロット番号は
+# 仕掛の列そのもの（`source.製造材質` 等）で書く——同じ値の呼び方を2つ作らない。
+HOLD_FIELDS = tuple(f for f in BLADEPICK_FIELDS if f[2] == 'num')
+
+
+def _hold_row(d):
+    try:
+        conds = json.loads(d['条件JSON'] or '[]')
+    except (ValueError, TypeError):
+        conds = []
+    hold = _txt(d['保持方式'])
+    return {'id': d['保持方式ID'], 'equipment': _txt(d['設備名']),
+            'conditions': normalize_pick_conditions(conds),
+            'hold': hold if hold in HOLD_METHODS else HOLD_RING,
+            'note': _txt(d['備考']), 'order': _int(d['表示順']),
+            'enabled': _alive(d['有効'])}
+
+
+def hold_seed(finger_max):
+    """登録の無い設備の表。**今までの決め方（切替板厚）をそのまま表にしたもの**。"""
+    fm = _num(finger_max)
+    rows = []
+    if fm is not None and fm > 0:
+        rows.append({'conditions': [{'field': 'thickness', 'op': 'lt', 'value': ('%g' % fm)}],
+                     'hold': HOLD_FINGER, 'note': ''})
+    rows.append({'conditions': [], 'hold': HOLD_RING, 'note': ''})
+    return rows
+
+
+def hold_rows(c, equipment):
+    """その設備の条件表（上から評価順・最後が既定行）と、それが登録か種か。
+
+    戻りは `{'rows':[...], 'stored':bool}`——画面は「いま効いている表」と
+    「それが登録によるものか」の両方を出す（出どころを画面に出す・§CLAUDE 6）。"""
+    eq = _txt(equipment)
+    rows = _rows(c, HOLDPICK_DEF, _hold_row, False, eq)
+    if rows:
+        return {'rows': _hold_tidy(rows), 'stored': True}
+    return {'rows': hold_seed(standard_for(c, eq)['values'].get('fingerMax')),
+            'stored': False}
+
+
+def _hold_tidy(rows):
+    """決まりの行（条件あり）を上から、**既定行（条件なし）を最後に1つ**。
+    既定行が無ければゴムリングで足す——保持方式が決まらない作業を作らない。
+    途中にある条件なしの行は、最後の1つだけを既定として残す。"""
+    body, default = [], None
+    for r in rows or []:
+        if not isinstance(r, dict):
+            continue
+        conds = normalize_pick_conditions(r.get('conditions'), extra_fields=True)
+        hold = _txt(r.get('hold'))
+        hold = hold if hold in HOLD_METHODS else HOLD_RING
+        row = {'conditions': conds, 'hold': hold, 'note': _txt(r.get('note'))[:200]}
+        for k in ('id', 'order', 'enabled', 'equipment'):
+            if k in r:
+                row[k] = r[k]
+        if conds:
+            body.append(row)
+        else:
+            default = row
+    return body + [default or {'conditions': [], 'hold': HOLD_RING, 'note': ''}]
+
+
+def hold_reset(c, equipment):
+    """その設備の登録を消して**未登録へ戻す**（表は切替板厚から作る種になる）。
+    「既定へ戻す」は本当に空へ帰す（§9.243）——種を行として保存しない。"""
+    eq = _txt(equipment)
+    if not eq:
+        raise ValueError('設備を選んでください。')
+    _ensure(c, HOLDPICK_DEF)
+    cur = c.cursor()
+    cur.execute('DELETE FROM [%s] WHERE [設備名]=?' % HOLDPICK_TABLE, [eq])
+    n = cur.rowcount
+    c.commit()
+    return n
+
+
+def hold_replace(c, uid, equipment, rows):
+    """その設備の条件表を**丸ごと置き換える**（表は1枚として編集するので）。
+    戻りは保存した行数（既定行を含む）。"""
+    eq = _txt(equipment)
+    if not eq:
+        raise ValueError('設備を選んでください。')
+    _ensure(c, HOLDPICK_DEF)
+    tidy = _hold_tidy(rows)
+    cur = c.cursor()
+    cur.execute('DELETE FROM [%s] WHERE [設備名]=?' % HOLDPICK_TABLE, [eq])
+    for i, r in enumerate(tidy):
+        HOLDPICK_DEF.insert(c, {'設備名': eq,
+                                '条件JSON': json.dumps(r['conditions'], ensure_ascii=False),
+                                '保持方式': r['hold'], '備考': r['note'] or None,
+                                '表示順': (i + 1) * 10, '有効': -1}, uid)
+    c.commit()
+    return len(tidy)
+
+
 _ALL_DEFS = (BLADE_DEF, SPACER_DEF, RING_DEF, FINGER_DEF, STANDARD_DEF,
-             HISTORY_DEF, DESIGN_DEF, BLADEPICK_DEF, CARRIAGE_DEF)
+             HISTORY_DEF, DESIGN_DEF, BLADEPICK_DEF, CARRIAGE_DEF, HOLDPICK_DEF)
 
 
 def ensure_tables(c):
-    """9枚をまとめて用意する。**足すのは `add_missing()` の1箇所**（§9.315）。"""
+    """10枚をまとめて用意する。**足すのは `add_missing()` の1箇所**（§9.315）。"""
     have = tables(c)
     created = []
     for d in _ALL_DEFS:
@@ -1377,6 +1512,7 @@ def context(c, equipment):
     前に、そもそも往復を減らす）。"""
     eq = _txt(equipment)
     std = standard_for(c, eq)
+    holds = hold_rows(c, eq)
     return {
         'equipment': eq,
         'standard': std['values'], 'standardStored': std['stored'],
@@ -1387,6 +1523,10 @@ def context(c, equipment):
         'fingers': finger_rows(c, False, eq),
         'history': history_rows(c, False, eq),
         'picks': pick_rows(c, False, eq),
+        # 保持方式の条件表（§9.524）。登録が無ければ今までの決め方の「種」。
+        'holds': holds['rows'], 'holdsStored': holds['stored'],
+        'holdMethods': list(HOLD_METHODS),
+        'holdFields': [{'field': f, 'label': l, 'kind': k} for f, l, k in HOLD_FIELDS],
         # 台車（§9.424）。**行が無い設備は「台車の登録がない」と言う**
         # ——画面が勝手に A/B を作ると、無い台車の差分を出せてしまう。
         'carriages': carriage_rows(c, False, eq),

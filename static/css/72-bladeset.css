@@ -931,4 +931,40 @@ body.bs-mode .bs-shell{display:flex}
 .bs-thpop p{margin:0}
 /* 潤滑リングはゴムリングの群の中の1列（§9.472 の続き）。印の紫で「種類が違う」ことを言う。 */
 .bs-g .bs-lubeh .bs-lubedot{margin-inline-end:.2em}
+
+/* ---------- 保持方式マスタの盤（§9.524）——列＝データ・行＝決まり・右端＝保持方式の判定表 ----------
+   見出しのすぐ下が「試す」行（列の真下に値を入れる＝どの列の値かを探させない）。
+   当たった行は左の太い線と地で言い、セルの○×は字でも添える（色だけにしない）。 */
+.hp-state{margin-left:var(--space-2);font-size:var(--fs-sm);color:var(--muted)}
+.hp-state.is-dirty{color:var(--warn-fg);font-weight:700}
+.hp-state.is-seed b{color:var(--ink-2)}
+.hp-wrap{overflow:auto;max-width:100%}
+.hp-table{border-collapse:collapse;width:100%;font-size:var(--tbl-fs)}
+.hp-table th,.hp-table td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
+ text-align:left;vertical-align:middle;white-space:nowrap}
+.hp-table thead th{font-weight:700;color:var(--ink-2)}
+.hp-table .hp-no{width:3.5em;text-align:center;color:var(--muted);font-weight:400}
+.hp-col small{margin-left:var(--space-1);font-size:var(--fs-micro);color:var(--muted);font-weight:400}
+.hp-x,.hp-mv{color:var(--muted);height:var(--ctl-h-sm);padding:0 var(--space-1);margin-left:var(--space-1)}
+.hp-table input,.hp-table select{height:var(--ctl-h-sm);font-size:var(--fs-sm);box-sizing:border-box}
+.hp-cell{position:relative;min-width:8em}
+.hp-cell input,.hp-try input{width:100%;min-width:7em}
+.hp-c.is-bad{border-color:var(--danger);box-shadow:0 0 0 1px var(--danger)}
+.hp-cell.is-hit input{border-color:var(--teal)}
+.hp-cell.is-miss input{border-color:var(--warn-fg)}
+.hp-mk{position:absolute;right:calc(var(--space-2) + 4px);top:50%;transform:translateY(-50%);
+ font-style:normal;font-size:var(--fs-sm);font-weight:700;pointer-events:none}
+.hp-cell.is-hit .hp-mk{color:var(--teal-dark)}
+.hp-cell.is-miss .hp-mk{color:var(--warn-fg)}
+.hp-try th,.hp-try td{background:var(--surface-2)}
+.hp-ans{font-size:var(--fs-sm)}
+.hp-ans .is-idle{color:var(--muted)}
+.hp-out{width:1%}
+.hp-note input{width:100%;min-width:8em}
+.hp-ops{width:1%}
+.hp-row.is-won th,.hp-row.is-won td{background:var(--teal-soft)}
+.hp-table .hp-row.is-won th.hp-no{box-shadow:inset 3px 0 0 var(--teal);color:var(--teal-dark);font-weight:700}
+.hp-row.is-default th,.hp-row.is-default td{background:var(--surface-2)}
+.hp-row.is-default.is-won th,.hp-row.is-default.is-won td{background:var(--teal-soft)}
+.hp-any{color:var(--ink-2);font-weight:700}
 }

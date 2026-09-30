@@ -269,9 +269,16 @@
    showEmpty(`刃組マスタを読み込めませんでした：${esc(e && e.message ? e.message : e)}`);
    return;
   }
+  /* 1本目のコイルと、その仕掛の行（§9.524）。**開くたびに入れ直す**——前に開いた
+     予定の材質で条件表が当たらないように。行は完全な生データを取り直す（予定の写しは
+     一覧に出していない列を持たない・§9.388）。取れなければ予定の写しのまま。 */
+  st.headLot = seededHeadLot;
+  st.src = (o.seed && o.seed.source) || null;
+  const headRow = await loadHeadRow();
+  if (headRow) st.src = headRow;
   if (o.seed) {
    /* 記録が勝ったときは取り直さない（§9.387 記録のほうが新しい決定）。 */
-   if (!applySeed(o.seed, changed)) await fillFromSource();
+   if (!applySeed(o.seed, changed)) fillFromSource(headRow);
    /* **材料が決まってから刃を選ぶ**（§9.408）。刃選択マスタの条件は板厚・
       条数・幅なので、既定のまま選ぶと当たる行が変わる——刃組スケジュール
       一覧の見込み（`standardState()`）と同じ順にそろえる。 */
@@ -358,16 +365,17 @@
     当てないのは2つ:
       ・**条の設計が記録済み**のとき（記録のほうが新しい決定・§9.387）
       ・**1本目が分割あり**のとき（幅を持っているのは子ロット） */
- async function fillFromSource() {
-  if (!seededHeadLot || seededHeadSplit) return false;
+ async function loadHeadRow() {
   const get = WL.split && WL.split.lotRow;
-  if (typeof get !== 'function') return false;
-  let row = null;
-  try { row = await get(seededHeadLot); }
+  if (!seededHeadLot || typeof get !== 'function') return null;
+  try { return (await get(seededHeadLot)) || null; }
   catch (e) {
    WL.quiet.note('仕掛データを読み直せない（予定の写しの値で進む）', e);
-   return false;
+   return null;
   }
+ }
+ function fillFromSource(row) {
+  if (!row || seededHeadSplit) return false;
   const f = WL.scheduleView.bladeLotsFromSource(row, seededHeadLot);
   if (!f) return false;
   if (f.thickness > 0 && f.thickness !== st.thick) { st.thick = f.thickness; syncClearance(); }
@@ -577,9 +585,9 @@
      「クリアランス」の欄とチップの帯が持つ（§9.420）。 */
   $('#bsDVal').textContent = (res.A.dKnife || res.A.dReal).toFixed(2);
   $('#bsHold2').innerHTML = `板を保持する方式は<b>${B.holdName(st, M)}</b>です。`
-   + (res.finger
-    ? `板厚 ${st.thick.toFixed(1)} は ${M.P.fingerMax} 未満のため、板押さえ（フィンガー）で保持します。軸はスペーサーのみで構成します。`
-    : `板厚 ${st.thick.toFixed(1)} は ${M.P.fingerMax} 以上のため、ゴムリング主体で構成します。`);
+   + esc(B.holdReason(st, M)) + (res.finger
+    ? '、板押さえ（フィンガー）で保持します。軸はスペーサーのみで構成します。'
+    : '、ゴムリング主体で構成します。');
   const from = $('#bsFrom');
   if (from) {
    from.hidden = !seededFrom;
@@ -668,7 +676,7 @@
   $('#bsSmSel').disabled = finger || st.smallMode === 'auto';
   panel.querySelectorAll('.bs-chip[data-ring]').forEach(b => { b.disabled = finger; });
   $('#bsHint4').innerHTML = finger
-   ? `<span class="bs-ng">フィンガー方式のためゴムリングは使いません。</span>板厚を ${M.P.fingerMax} 以上にすると、この設定が効きます。`
+   ? `<span class="bs-ng">フィンガー方式のためゴムリングは使いません。</span>方式はマスタ管理の「保持方式」の条件表で決まります（${esc(BS().holdReason(st, M))}）。`
    : (IX.ringsByTh.length
     ? 'バリ方向が反転すると、上軸と下軸で大径・小径が入れ替わります。'
     : '<span class="bs-ng">この設備のゴムリングが1本も登録されていません。</span>マスタ管理 &gt; 刃組 &gt; ゴムリング で登録してください。');

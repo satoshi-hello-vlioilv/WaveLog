@@ -5,6 +5,7 @@
   `/api/bladeset-standard-master`       … 刃組基準値（1設備1行）の4本セット
   `/api/bladeset/history`               … 刃組を終えた記録（台車差分の材料）
   `/api/bladeset/blade-pick`            … 「専用」の刃を選ぶ条件（3本セット）
+  `/api/bladeset/hold-pick`             … フィンガー／ゴムリングを選ぶ条件表（読む・丸ごと保存）
 
 **部材（刃・スペーサー・ゴムリング・フィンガー）は `bladeset_parts.py`**。
 分ける境目は「このラインはどういう機械か／いつ何を組んだか」と
@@ -221,6 +222,38 @@ def bladeset_pick_delete():
   return jsonify(error='削除対象IDがありません。'), 400
  _op_read(lambda c: bs.pick_delete(c, int(x['id'])))
  return jsonify(ok=True, message='刃選択の決まりを消しました。')
+
+
+# =========================================================================
+# 保持方式（フィンガー／ゴムリングを選ぶ条件表・§9.524）
+# =========================================================================
+# 表は1枚として編集するので**丸ごと置き換える**（1行ずつの登録・削除の口は持たない）。
+# 登録の無い設備は今までの決め方の「種」を返す（`stored:false`）。
+@bp.get('/api/bladeset/hold-pick')
+@api_guard('保持方式マスタの読込に失敗しました')
+def bladeset_hold_list():
+ eq = _eq()
+ got = _op_read(lambda c: bs.hold_rows(c, eq)) if eq else {'rows': [], 'stored': False}
+ return jsonify(ok=True, equipment=eq, rows=got['rows'], stored=got['stored'],
+                methods=list(bs.HOLD_METHODS),
+                fields=[{'field': f, 'label': l, 'kind': k} for f, l, k in bs.HOLD_FIELDS],
+                ops=[{'op': o, 'label': l, 'two': o in bs.BLADEPICK_OPS_2}
+                     for o, l in bs.BLADEPICK_OPS])
+
+
+@bp.post('/api/bladeset/hold-pick')
+@api_guard('保持方式マスタの保存に失敗しました', bad=ValueError)
+def bladeset_hold_save():
+ x = body({'equipment': any_, 'rows': any_, 'reset': any_})
+ if x.get('reset') is True:
+  n = _op_read(lambda c: bs.hold_reset(c, x.get('equipment')))
+  return jsonify(ok=True, rows=0, removed=n,
+                 message='保持方式の表を未登録へ戻しました（刃組基準値のフィンガー切替板厚で決めます）。')
+ rows = x.get('rows')
+ if not isinstance(rows, list):
+  return jsonify(error='表の行（rows）がありません。'), 400
+ n = _op_read(lambda c: bs.hold_replace(c, request_user_id(x), x.get('equipment'), rows))
+ return jsonify(ok=True, rows=n, message=f'保持方式の条件表を保存しました（{n}行）。')
 
 
 # =========================================================================
