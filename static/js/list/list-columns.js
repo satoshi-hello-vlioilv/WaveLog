@@ -1047,7 +1047,20 @@
      が形から分からなかった。「この列は何者か」→「①名前と幅」→「②値の
      整え方」→「③読み替え」→「結果」の順に置き、番号を振る。 */
   box.innerHTML=`
-   <div class="lc-card">
+${detailCardHtml(virt,o,st)}
+${detailStep1Html(virt)}
+   ${canFormula(picked)&&panelSrc.features.formula?formulaStepHtml():''}
+${detailValueHtml(virt,f)}`;
+  wireDetailBasics(box);
+  wireDetailFormula(box);
+  /* 揃えは**番号・ボタンの列にも効く**ので、`virt`で降りる前に配線する。 */
+  wireAlign(box);
+  if(virt)return;
+  wireDetailFormat(box);
+ }
+ /* 右ペインの段（§9.522 で`renderDetail()`から切り出した）: この列は何者か（素性のカード）。元の文字列をそのまま返す。 */
+ function detailCardHtml(virt,o,st){
+  return `   <div class="lc-card">
     <div class="lc-card-top">
      <span class="lc-chip lc-origin-${o}" title="${esc(o==='join'?ORIGIN[o].note+'（'+joinFrom()+'）':ORIGIN[o].note)}">${esc(ORIGIN[o].label)}</span>
      <h3 class="lc-card-name" title="${esc(picked)}">${esc(labelOf(picked))}</h3>
@@ -1060,8 +1073,11 @@
              <div><dt>値の種類</dt><dd>${st.distinct}<i class="lc-fact-sub">${esc(st.kindGuess)}</i></dd></div>`}
      ${srcNote(picked)?`<div class="lc-fact-note"><dt>この列について</dt><dd title="${esc(srcNote(picked))}">${esc(srcNote(picked))}</dd></div>`:''}
     </dl>
-   </div>
-   <div class="lc-step">
+   </div>`;
+ }
+ /* ① 見せ方（表示名・幅・揃え）。 */
+ function detailStep1Html(virt){
+  return `   <div class="lc-step">
     <h4 class="lc-step-head"><i class="lc-step-no">1</i>見せ方<small>一覧の見出しと列の幅</small></h4>
     <label class="lc-field"><span>表示名</span>
      <input type="text" id="lcName" value="${esc(draft.names[picked]||'')}"
@@ -1081,9 +1097,11 @@
       <small class="lc-hint">${esc(WIDTH_MODE_NOTE[widthModeOf(picked)]||'')}</small>
      </div></div>
    ${alignFieldsHtml()}
-   </div>
-   ${canFormula(picked)&&panelSrc.features.formula?formulaStepHtml():''}
-   ${virt?`<div class="lc-note-calc"><b>この列は値を持ちません。</b>
+   </div>`;
+ }
+ /* ② 値の整え方・③ 読み替え・並べ替え・見本（番号・ボタンの列は「値を持たない」の1行）。 */
+ function detailValueHtml(virt,f){
+  return `   ${virt?`<div class="lc-note-calc"><b>この列は値を持ちません。</b>
       番号やボタンを出す列なので、書式や読み替えはありません。名前と幅、出す/出さないだけを決められます。</div>`:`
    <div class="lc-step">
     <h4 class="lc-step-head"><i class="lc-step-no">2</i>値の整え方<small>桁・単位・日付の形</small></h4>
@@ -1105,6 +1123,9 @@
    </div>
    ${panelSrc.features.sort===false?sortOffHtml():sortStepHtml()}
    <div class="lc-preview" id="lcSample">${previewHtml()}</div>`}`;
+ }
+ /* 右ペインの配線: 表示名・幅・幅の3つの状態。 */
+ function wireDetailBasics(box){
   box.querySelector('#lcName').addEventListener('input',e=>{
    const v=e.target.value.trim();
    if(v)draft.names[picked]=v;else delete draft.names[picked];
@@ -1137,6 +1158,9 @@
    }
    renderDetail();renderList();applyLive();
   }));
+ }
+ /* 右ペインの配線: 式の段。 */
+ function wireDetailFormula(box){
   /* 式の段の配線。**入力のたびに一覧まで作り直さない**——214列の一覧では
      1文字ごとに数百msかかる。式が通ったときだけ当てる。 */
   const fxIn=box.querySelector('#lcFormula');
@@ -1169,9 +1193,9 @@
      deleteFormulaColumn(picked);
    };
   }
-  /* 揃えは**番号・ボタンの列にも効く**ので、`virt`で降りる前に配線する。 */
-  wireAlign(box);
-  if(virt)return;
+ }
+ /* 右ペインの配線: 書式（種類・桁・区切り・前後の字・日付の形）と読み替え・並べ替え。 */
+ function wireDetailFormat(box){
   box.querySelectorAll('input[name="lcKind"]').forEach(el=>{
    el.onchange=()=>{
     /* 種別を変えたら、その種別で意味のない指定は落とす(数値の桁数が
