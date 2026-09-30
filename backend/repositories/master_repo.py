@@ -2258,8 +2258,12 @@ def normalize_rule_conditions(raw):
  利用者からは「保存したのに戻っている」としか見えない。"""
  if not isinstance(raw,list):return []
  out=[]
+ # 「または」（`join:'or'`＝そこから新しい群）。**落とした条件が群の頭だったら、次に残る条件が
+ # 頭を継ぐ**——落としたせいで2つの群が「かつ」でつながると、当たる行が黙って変わる。
+ or_next=False
  for item in raw:
   if not isinstance(item,dict):continue
+  or_next=or_next or item.get('join')=='or'
   op=str(item.get('op') or '').strip()
   if op not in RULE_OPS:continue
   left=_normalize_operand(item.get('left'))
@@ -2275,6 +2279,9 @@ def normalize_rule_conditions(raw):
     right2=_normalize_operand(item.get('right2'))
     if not right2:continue
     cond['right2']=right2
+  # 先頭の条件は群を始めるまでもない（「もし」）ので印を持たない。
+  if or_next and out:cond['join']='or'
+  or_next=False
   out.append(cond)
  return out
 

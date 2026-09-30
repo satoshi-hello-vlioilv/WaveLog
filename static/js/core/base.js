@@ -1458,7 +1458,8 @@ const displayRules=(()=>{
    if(r.color)notes.add('色（●良い・悪い…）は式にできません。色が要るなら、式の列にも同じルールを付けてください');
    const cs=r.conditions||[];
    if(!cs.length){tail=out(r);break}        /* 既定の行。これより下へは来ない */
-   body.push([cs.map(cond).join(' and '),out(r)]);
+   const gs=groupsOf(cs).map(g=>g.map(cond).join(' and '));
+   body.push([gs.length>1?gs.map(x=>`(${x})`).join(' or '):gs[0],out(r)]);
   }
   let expr=tail;
   for(let i=body.length-1;i>=0;i--)expr=`if(${body[i][0]}, ${body[i][1]}, ${expr})`;
@@ -1473,11 +1474,19 @@ const displayRules=(()=>{
    const conds=r.conditions||[];
    // **条件が空の行＝どれにも当てはまらなかったとき**の既定。
    if(!conds.length)return r;
-   let all=true;
-   for(const c of conds){if(!test(c,row,selfCol)){all=false;break}}
-   if(all)return r;
+   if(groupsOf(conds).some(g=>g.every(c=>test(c,row,selfCol))))return r;
   }
   return null;
+ }
+ /* 行の中の条件を「または」で区切った群へ（利用者の指示「OR条件も追加で組み込めるように」）。
+    条件は`join:'or'`で**そこから新しい群**を始める（無ければ「かつ」）。行が当たるのは
+    **どれか1つの群の条件がすべて**当たるとき——「かつ」を先にまとめる（式の and/or と同じ強さ）。
+    区切り方の答えは**ここ1箇所**（判定・式への変換・編集窓の見た目が同じ群を見る）。
+    サーバーの並べ替えは`sort_order.rule_groups()`が同じ区切り方をする。 */
+ function groupsOf(conds){
+  const out=[];
+  (conds||[]).forEach((c,i)=>{if(!i||(c&&c.join==='or'))out.push([]);out[out.length-1].push(c)});
+  return out;
  }
  async function load(force){
   if(cache&&!force)return cache;
@@ -1529,7 +1538,7 @@ const displayRules=(()=>{
   const v=runCalc(t.slice(1),row,selfCol);
   return v===null?'':String(v);
  }
- return {load,match,test,columnsUsed,textOf,toFormula,rev:()=>rev,
+ return {load,match,test,groupsOf,columnsUsed,textOf,toFormula,rev:()=>rev,
          all:()=>cache||{},
          names:()=>Object.keys(cache||{}).sort(),
          get:name=>(cache&&cache[name])||[],

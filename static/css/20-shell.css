@@ -1091,7 +1091,7 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  /* **条件は同じ格子に載せる**（§9.474）: 接続詞｜左の種類｜左の中身｜比べ方｜右辺｜×。どの行・どの条件でも
     同じ列が同じ左端に並ぶ（前: 欄ごとに中身なりの幅で、左端がばらばら）。左辺が式の条件は比べ方と右辺の
     場所まで式の欄が伸びる。高さは全部`--ctl-h-sm`。 */
- .lr-row{--lr-conj-w:calc(56px * var(--ui-scale))}
+ .lr-row{--lr-conj-w:calc(72px * var(--ui-scale))}  /* 「または」の選び（字37px＋余白＋矢印）が入る幅 */
  .lr-cond{display:grid;align-items:start;gap:var(--space-1);font-size:var(--fs-sm);
   grid-template-columns:var(--lr-conj-w) calc(84px * var(--ui-scale)) minmax(0,1.3fr) calc(128px * var(--ui-scale)) minmax(0,1.6fr) calc(28px * var(--ui-scale))}
  .lr-cond.is-fx .lr-c-left{grid-column:3 / 6}
@@ -1121,6 +1121,11 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
   grid-template-columns:var(--lr-conj-w) minmax(0,1fr) calc(128px * var(--ui-scale)) auto calc(28px * var(--ui-scale));
   margin-top:var(--space-1);border-top:1px dashed var(--line-soft);padding-top:var(--space-2)}
  .lr-row-then input[type="text"]{width:100%}
+ /* 「または」（行の中の別の組）。**組の頭に区切りの線**——どこまでが1つの組かを並びが言う。 */
+ .lr-cond.is-or{border-top:1px solid var(--line-soft);padding-top:var(--space-1);margin-top:var(--space-1)}
+ .lr-conj>select.lr-join{width:100%;min-width:0}
+ .lr-cond.is-or .lr-join{font-weight:700;color:var(--ink-2)}
+ .lr-cond-adds{display:flex;gap:var(--space-1)}
  .lr-delete{color:var(--danger)}
  /* 左の枠＝試した結果（§9.474）。**自分だけで送る**ので、右で行を書いている間も見えたまま。 */
  .lr-try{display:flex;flex-direction:column;min-height:0;border:1px solid var(--line-soft);

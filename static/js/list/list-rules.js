@@ -10,9 +10,11 @@
    Excelの条件付き書式と同じで、これ以上の説明が要らないことが大事。
 
    1行が1つの読み替えで、「もし〜ならば〜と表示」の日本語の順に並べる。
-   条件を足すと「かつ」でぶら下がる(AND)。ORは行を分ける
-   ——**行=OR、行の中=AND**と決めてある。「ORもANDも1画面で」は
-   組み合わせが爆発して、作った本人にも読めなくなる。
+   条件を足すと「かつ」でぶら下がる(AND)。**「または」(OR)で行の中に別の組も作れる**
+   （利用者の指示「OR条件も追加で組み込めるように」）。以前は「行=OR、行の中=AND」と決め、
+   ORは行を分けていた——同じ表示を出すのに同じ行を2つ書かせることになる。読めなくなる心配
+   （組み合わせの爆発）は**括弧を持たない**ことで抑える: 組は「かつ」を先にまとめた1段だけで、
+   組の頭に区切りの線を引く（どこまでが1つの組かを並びが言う）。
 
    左辺には**他の列**を選べる(「区分が3のときだけ○○と出す」が書ける)。
 
@@ -228,8 +230,16 @@
    const R2=cond.op==='between'?operandParts(cond.right2,'right2',ri,ci):null;
    return `${R.kindSel}${R.detail}${R2?`<span class="lr-conj lr-conj-in">〜</span>${R2.kindSel}${R2.detail}`:''}`;
   })();
-  return `<div class="lr-cond${fx?' is-fx':''}">
-   <span class="lr-conj">${first?'もし':'かつ'}</span>
+  /* 2つ目からの接続詞は**選べる**（かつ／または・利用者の指示「OR条件も追加で組み込めるように」）。
+     「または」から新しい群が始まり、群の頭に区切りの線を引く——「かつ」を先にまとめることを
+     並びそのものが言う（どこまでが1つの群かを読ませない）。 */
+  const isOr=!first&&cond.join==='or';
+  const conj=first?'<span class="lr-conj">もし</span>'
+   :`<span class="lr-conj"><select class="lr-join" data-row="${ri}" data-cond="${ci}" aria-label="前の条件とのつなぎ方"
+      title="かつ＝前の条件と両方当たるとき／または＝ここから別の組（どれかの組が全部当たれば、この行を表示）">
+      <option value="and"${isOr?'':' selected'}>かつ</option><option value="or"${isOr?' selected':''}>または</option></select></span>`;
+  return `<div class="lr-cond${fx?' is-fx':''}${isOr?' is-or':''}">
+   ${conj}
    <span class="lr-c lr-c-kind">${L.kindSel}</span>
    <span class="lr-c lr-c-left">${L.detail}</span>
    ${fx?'':`<span class="lr-c lr-c-op"><select class="lr-op" data-row="${ri}" data-cond="${ci}">${
@@ -267,7 +277,9 @@
      <select class="lr-color" data-row="${ri}" aria-label="色">${
       COLORS.map(([v,t])=>`<option value="${v}"${(row.color||'')===v?' selected':''}>${t}</option>`).join('')
      }</select>
-     ${def?'<span></span>':`<button type="button" class="lr-cond-add" data-row="${ri}">＋ 条件</button>`}
+     ${def?'<span></span>':`<span class="lr-cond-adds"><button type="button" class="lr-cond-add" data-row="${ri}" data-join="and"
+       title="この行に条件を足します（前の条件と両方当たるとき）">＋ かつ</button><button type="button" class="lr-cond-add" data-row="${ri}" data-join="or"
+       title="この行に別の組の条件を足します（どれかの組が全部当たれば、この行を表示）">＋ または</button></span>`}
      <button type="button" class="lr-row-del" data-row="${ri}" title="この行を消す" aria-label="この行を消す">×</button>
     </div>
     ${stat.note?`<div class="lr-row-stat${stat.dead?' is-dead':''}">${esc(stat.note)}</div>`:''}
@@ -371,15 +383,7 @@
    if(c.op!=='between')delete c.right2;
    render();
   });
-  /* **最後の1つも消せる。** 消すと条件が空＝「どれにも当てはまらないとき」に
-     なる。以前はここを disabled にしていたため、既定の行を画面から作る
-     手立てが1つも無かった。 */
-  box.querySelectorAll('.lr-cond-del').forEach(el=>el.onclick=e=>{
-   const row=draft[n(e)];row.conditions.splice(ci(e),1);render();
-  });
-  box.querySelectorAll('.lr-cond-add').forEach(el=>el.onclick=e=>{
-   draft[n(e)].conditions.push(blankCond());render();
-  });
+  bindCondEdits(box,n,ci,condOf);
   box.querySelectorAll('.lr-row-del').forEach(el=>el.onclick=e=>{
    draft.splice(n(e),1);render();
   });
@@ -390,6 +394,28 @@
   });
   box.querySelectorAll('.lr-color').forEach(el=>el.onchange=e=>{
    draft[n(e)].color=e.currentTarget.value;refreshCounts();
+  });
+ }
+
+ /* 条件の増減とつなぎ方（かつ／または）。行の中の組の形を変えるのはここだけ。 */
+ function bindCondEdits(box,n,ci,condOf){
+  /* **最後の1つも消せる。** 消すと条件が空＝「どれにも当てはまらないとき」に
+     なる。以前はここを disabled にしていたため、既定の行を画面から作る
+     手立てが1つも無かった。 */
+  /* 群の頭（「または」の条件）を消したら、**同じ群の次の条件が頭を継ぐ**——継がないと、残った
+     条件が前の群へ「かつ」でつながり、当たる行が黙って変わる。先頭が消えたら次が「もし」になる。 */
+  box.querySelectorAll('.lr-cond-del').forEach(el=>el.onclick=e=>{
+   const cs=draft[n(e)].conditions,i=ci(e),gone=cs.splice(i,1)[0],next=cs[i];
+   if(next&&i===0)delete next.join;
+   else if(next&&gone&&gone.join==='or')next.join='or';
+   render();
+  });
+  box.querySelectorAll('.lr-cond-add').forEach(el=>el.onclick=e=>{
+   const c=blankCond();if(e.currentTarget.dataset.join==='or')c.join='or';
+   draft[n(e)].conditions.push(c);render();
+  });
+  box.querySelectorAll('.lr-join').forEach(el=>el.onchange=e=>{
+   const c=condOf(e);if(e.currentTarget.value==='or')c.join='or';else delete c.join;render();
   });
  }
 
@@ -461,7 +487,7 @@
   const r=WL.displayRules.toFormula(draft,{column:selfColumn,self:fxSelf?`(${fxSelf})`:'',mode:selfMode});
   const chk=WL.formula.check(r.expr);
   box.innerHTML=`<div class="lr-fx-head"><b>このルールと同じ意味の式</b>
-    <small>行＝if の入れ子（上から順）・条件＝and・どれにも当てはまらないとき＝最後の値</small></div>
+    <small>行＝if の入れ子（上から順）・かつ＝and・または＝or（かつを先にまとめる）・どれにも当てはまらないとき＝最後の値</small></div>
    <textarea class="lr-fx-out" readonly rows="3" spellcheck="false">${esc(r.expr)}</textarea>
    <div class="lr-fx-state ${chk.ok?'is-ok':'is-ng'}">${chk.ok?`使える式です（${r.expr.length}字）`:esc(chk.error)}</div>
    ${r.notes.length?`<ul class="lr-fx-notes">${r.notes.map(t=>`<li>${esc(t)}</li>`).join('')}</ul>`:''}
