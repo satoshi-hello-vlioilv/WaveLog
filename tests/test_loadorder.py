@@ -14,6 +14,11 @@
      `.js` を置かない・領域は6つだけ・`measure/` の中は `measure-*` か
      その領域固有の名前。**平らに戻るのは1回の判断ではなく小さな判断の
      積み上がり**なので、注意書きではなく網で止める。
+  6. **画面の骨組み**（§9.522、REVIEW 3-7）——`WL.template('名前')` で呼ぶ骨組みは
+     index.html の `<template id="tpl-名前">` と過不足なく対応する（呼んでいるのに無い／
+     置いてあるのに誰も呼ばない、を作らない）。index.html は **Jinja が読める**こと
+     （骨組みの説明に Jinja の構文の字を書くと、起動画面ごと出なくなる。実際にやった）。
+     差し込み口（`data-tpl-slot`）は JS が名前で渡している。
 """
 import re
 import sys
@@ -150,6 +155,27 @@ for f in sorted(list((ROOT / 'tests').glob('*.js')) + list((ROOT / 'tests').glob
             stale.append(f'{f.name}:{i + 1} {tok}')
 rec('テストが開く static/js の道に領域が付いている', not stale,
     ', '.join(sorted(set(stale))[:6]) + (f'（計{len(set(stale))}）' if stale else ''))
+
+# ---- 6. 画面の骨組み（§9.522、REVIEW 3-7） ----
+TPL_CALL = re.compile(r"""WL\.template\(\s*['"]([\w-]+)['"]\s*[,)]""")   # 差し込み口つきは名前のあとに `,`
+called = {m.group(1) for p in JS_DIR.rglob('*.js') for m in TPL_CALL.finditer(p.read_text(encoding='utf-8'))}
+placed = re.findall(r'<template id="tpl-([\w-]+)"', html)
+rec('骨組みの id に重複が無い', len(placed) == len(set(placed)), str(placed))
+rec('WL.template で呼ぶ骨組みは全部 index.html に在る', called <= set(placed), str(sorted(called - set(placed))))
+rec('index.html の骨組みは全部どこかが呼んでいる', set(placed) <= called, str(sorted(set(placed) - called)))
+rec('骨組みを1つ以上 HTML に置いている（網が空振りしていない）', len(placed) >= 1, str(placed))
+# 差し込み口（data-tpl-slot）の名前は、その骨組みを呼ぶ JS が渡している（綴り違い・渡し忘れを作らない）
+slot_names = re.findall(r'data-tpl-slot="([\w-]+)"', html)
+js_all = '\n'.join(p.read_text(encoding='utf-8') for p in JS_DIR.rglob('*.js'))
+missing = [n for n in slot_names if f"'{n}':" not in js_all]
+rec('骨組みの差し込み口は全部 JS が名前で渡している', not missing, str(missing))
+rec('差し込み口の名前に重複が無い', len(slot_names) == len(set(slot_names)), str(slot_names))
+try:
+    import jinja2
+    jinja2.Environment().parse(html)
+    rec('index.html を Jinja が読める（骨組みの説明に構文の字を書いていない）', True)
+except Exception as e:  # 読めない＝起動画面ごと出ない
+    rec('index.html を Jinja が読める（骨組みの説明に構文の字を書いていない）', False, repr(e)[:200])
 
 ng = [n for n, ok in R if not ok]
 print(f'\n== {len(R) - len(ng)}/{len(R)} PASS ==')

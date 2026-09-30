@@ -214,4 +214,610 @@ try{window.__wlTabId=(self.crypto&&crypto.randomUUID)?crypto.randomUUID()
  setTimeout(function(){document.documentElement.classList.remove('boot-cold');useCss();inject()},BOOT_WAIT_MS);
 })();
 </script>
+<!-- 画面の骨組み（§9.522・REVIEW 3-7）。JS は WL.template(名前) で複製する（名前は id の tpl- の後ろ）。ここは Jinja が描くので、波かっこに続けて波かっこ・パーセント・シャープを書かないこと（Jinja の構文として読まれる）。 -->
+<template id="tpl-blade-panel">
+   <div class="bs-empty" id="bsEmpty" hidden></div>
+   <div class="bs-bar" id="bsBar">
+    <!-- 出どころ＝**戻り道**（§9.378、利用者の指示「段取りから刃組画面に行った
+         場合、段取りに戻りたいはずですが戻れない」）。どこから来たかと、そこへ
+         戻る手立ては**同じ1つの的**にする（同じ情報を2箇所に出さない・§CLAUDE 8）。
+         読む順の先頭＝戻る、に置く（§CLAUDE 14 視覚導線と作業導線を一致させる）。
+         左メニューから開いたときは戻り先が無いので**ボタンごと出さない**
+         （押せるのに何も起きない的を作らない・§CLAUDE 4）。 -->
+    <button type="button" class="bs-back" id="bsFrom" hidden></button>
+    <span class="bs-skip" id="bsSkip" hidden></span>
+    <!-- 決める → 確かめる → 自動で決まる の順に置く（§CLAUDE 14 視覚導線と
+         作業導線を一致させる）。**群の名前を出す**ので、どれを触ればよいかを
+         色や枠だけに頼らず字でも読める（§CLAUDE 3）。 -->
+    <div class="bs-steps" id="bsSteps">
+     <div class="bs-sgrp is-decide"><s class="bs-sgcap">決める</s>
+      <i data-tpl-slot="step-v1"></i>
+      <i data-tpl-slot="step-v3"></i>
+     </div>
+     <div class="bs-sgrp is-check"><s class="bs-sgcap">確かめる</s>
+      <i data-tpl-slot="step-v2"></i>
+     </div>
+     <div class="bs-sgrp is-auto"><s class="bs-sgcap">自動で決まる</s>
+      <i data-tpl-slot="fact-pick"></i>
+      <i data-tpl-slot="fact-method"></i>
+      <i data-tpl-slot="fact-clr"></i>
+      <!-- **板押さえは1項目**（§9.465、利用者の指示「板押さえにしないと、ゴムリングの
+           フィンガーみたいな謎の言葉を生み出す」「表示の重複もある」）。名前は層の総称
+           （板押さえ）、値が方式（ゴムリング／フィンガー）を言う。「保持」の欄は同じ
+           ことを2度言っていたので畳んだ（§CLAUDE 8）。 -->
+      <i data-tpl-slot="step-v4"></i>
+     </div>
+    </div>
+   </div>
+   <div class="bs-body">
+    <div class="bs-col">
+     <!-- 刃組表を上に置く（§9.378、利用者の指示「刃組表を上部に移動して、
+          準備する刃やスペーサやゴムリングなどを最も見やすく」）。
+          **先に読むものを先に置く**——組む前に見るのは「何をどこへ何枚」で、
+          図はそれを確かめるためのもの（§CLAUDE 14 視覚導線と作業導線を一致）。 -->
+     <section class="bs-panel bs-tblpanel">
+      <div class="bs-ph"><h2>刃組表</h2><span class="bs-ph-note">横＝寸法／縦＝上下軸×ロット</span></div>
+      <div class="bs-tw" id="bsTables"></div>
+     </section>
+     <section class="bs-panel bs-figpanel">
+      <div class="bs-ph"><h2>刃組図</h2>
+       <!-- 模式図／立体図（§9.377 追補）。**同じ割付から**作るので、どちらを
+            見ても食い違わない。立体図の部品（three.js）は**押したときだけ**
+            取りに行く（起動を遅くしない・回線が無くても模式図は使える）。 -->
+       <!-- 断面図（§9.412、利用者の指示）。**立体図と同じ模型**を、機械まわりを
+            伏せて・平行投影の真横から・軸の中心で切って見る。模式図の読み取り
+            やすさ（真横・同じ並び）と、立体の質感を両方持たせるための1枚。 -->
+       <div class="bs-seg" id="bsFigTabs">
+        <button type="button" class="bs-chip" data-fig="2d">模式図</button>
+        <button type="button" class="bs-chip is-on" data-fig="cut" title="立体の模型を軸の中心で切り、真横から平行投影で見ます。寸法は模式図と同じ読み方ができます">断面図</button>
+        <button type="button" class="bs-chip" data-fig="3d">立体図</button>
+       </div>
+       <!-- **向きの切り替えは図の見出しへ置く**（§9.380、利用者の指示
+            「OSDS入替ボタンは模式図に移動させて」）。効く先はこの図の
+            左右（DS／OSの字と部材の並び）なので、手順バーの尻尾に置くと
+            「何に効くボタンか」を探すことになる（§CLAUDE 14 視覚導線と
+            作業導線を一致させる）。 -->
+       <!-- §9.463 で「基準原点を左／右」の2つの札にし、§9.472 で**並びを描く2つの札**へ
+            作り直した（2つ並べ、いまの側を濃くする＝§9.229 はそのまま）。 -->
+       <!-- **向きは「並びそのもの」を見せる2択**（§9.472、利用者の指示「切り替えボタンは
+            よく使うので、もう少し使いやすさとわかりやすさを考えて」）。札の字を読んで
+            頭の中で図を組み立てさせない——**札が押した後の図の左右をそのまま描く**
+            （OS ━ ◆DS／◆DS ━ OS・◆は基準面）。字は OS・DS の呼び方（sideWord()）で、
+            図の札・端部の表と同じ名前になる。大きさは隣の図の札（.bs-chip）とそろえる
+            （§9.463 の.bs-hideは付随情報の寸法 9.5px で、よく押す物には小さかった）。 -->
+       <div class="bs-orient" id="bsFlip" role="group" aria-label="図の向き（左右）">
+        <span class="bs-orient-cap" aria-hidden="true">向き</span>
+        <span class="bs-orient-seg">
+         <button type="button" data-datum-pos="右" aria-pressed="false"></button>
+         <button type="button" data-datum-pos="左" aria-pressed="false"></button>
+        </span>
+       </div>
+       <span class="bs-ph-note" id="bsFigNote"></span></div>
+      <!-- **両脇の表は右レールへ移した**（§9.379、利用者の指示）。ここを1列に
+           したぶん模式図が広がる（実測 760→1112px・+46%）。端部の表は
+           「組む前に一度見る」もので、模式図のように常時見比べるものでは
+           ない——常時載せる面積は「頻度 × 重要度」で配る（§CLAUDE 1）。 -->
+      <p class="bs-stopnote">組めない材料なので、刃組図は描いていません（理由は刃組表の場所に出ています）。</p>
+      <div class="bs-figrow" id="bsFigRow">
+       <div class="bs-figmain">
+        <div class="bs-stage" hidden><svg id="bsStage" viewBox="0 0 1000 300"
+         preserveAspectRatio="xMidYMid meet" role="img" aria-label="刃組図"></svg></div>
+        <!-- **区間の拡大**（§9.413、利用者の指示「アルファベットをクリックしたら、
+             ポップオーバーでその部分だけの組み合わせを拡大した図を…すべての
+             サイズのものにラベルを貼って詳しく並びと対象の寸法を伝える」）。
+             模式図は軸ぜんたいを1枚に収めるので、狭い区間は十数pxしかなく
+             **部材の幅は字が入らないので出していない**。ここは1区間だけを
+             器いっぱいに使うので、全部の寸法に字を添えられる。 -->
+        <div class="bs-zoom" id="bsZoom" hidden role="dialog" aria-label="区間の拡大">
+         <!-- 見出しの帯は**掴んで動かす取っ手**（§9.437、利用者の指示）。
+              押せるのに何も起きない的を作らないため、カーソルの形と説明の字の
+              両方で言う。（この中は文字列リテラルの中なので、逆引用符は書けない） -->
+         <div class="bs-zoom-hd" title="この帯をドラッグすると、拡大図の位置を変えられます">
+          <span class="bs-zoom-bd" id="bsZoomBadge">A</span>
+          <span class="bs-zoom-tx"><b id="bsZoomTitle">—</b><small id="bsZoomSub">—</small></span>
+          <button type="button" class="bs-zoom-x" id="bsZoomClose" title="閉じる（Esc）" aria-label="閉じる">✕</button>
+         </div>
+         <svg id="bsZoomFig" viewBox="0 0 760 300" preserveAspectRatio="xMidYMid meet"
+          role="img" aria-label="区間の拡大図"></svg>
+         <p class="bs-zoom-note" id="bsZoomNote"></p>
+        </div>
+        <div class="bs-stage3 is-cut" id="bsStage3">
+         <canvas class="bs-c3"></canvas>
+         <!-- **寸法の層**（§9.418）。刃の上下のずれを示す縦の破線と、部材の幅の
+              字を置く。図形の上に重ねる線と字なので、WebGL の中ではなく SVG で
+              描く（破線・引き出し線・字の縁取りが素直に書け、色もトークンから
+              選べる）。押す的は持たない（掴んで回す道をふさがない）。 -->
+         <svg class="bs-t3v" id="bsCutDim" aria-hidden="true"></svg>
+         <span class="bs-t3 bs-t3-os is-os" data-badge="OS" data-sw="OS" hidden>OS</span>
+         <span class="bs-t3 bs-t3-ds is-ds" data-badge="DS" data-sw="DS" hidden>DS</span>
+         <!-- **設定有効長と、組んだときの上下それぞれの合計長**（§9.418 追補、
+              利用者の指示）。図の読み方の段とは別に置く——あちらは
+              「どう見るか」、こちらは「合っているか」の突き合わせ。
+              （この中は文字列リテラルの中なので、逆引用符は書けない） -->
+         <!-- **断面図にも設定を出す**（§9.443、利用者の指示）。**帯は増やさない**
+              ——この左上の帯が既に「この図の読み方（bs-o3）」と「突き合わせ
+              （bs-len3）」を積んでいる、いまの設定の置き場。3行目として載せる
+              （帯を新しく作ると、左上の帯と真上で重なった・実測5364px2）。
+              中身は模式図の帯と同じ1箇所（chipBandItems）が作る。
+              （この中は文字列リテラルの中なので、逆引用符は書けない） -->
+         <div class="bs-hud is-tl"><div class="bs-o3" hidden></div>
+          <div class="bs-len3" hidden></div>
+          <div class="bs-cutset" hidden></div></div>
+         <div class="bs-hud is-tr">
+          <button type="button" class="bs-hlp bs-help3" aria-expanded="false">使い方</button>
+          <div class="bs-hpop" hidden>
+           <dl>
+            <dt>段取りの順</dt>
+            <dd>①引き出す（レールで回転テーブルへ）→②軸端部を外す（330mm 送り出し、
+              テーブルの外の土台に降ろす）→③台車を回す（テーブルごと 180°）</dd>
+            <dt>向き</dt>
+            <dd>軸端部（スタンド・ハンドル付き）を外した <b data-sw="OS">OS</b> 側から部材を入れ、基準面（駆動側の <b data-sw="DS">DS</b>）の側から順に組みます。最後に <b data-sw="OS">OS</b> 端をフローティングシートで押さえます。材料の入側は、ラインを正面に見て左です。</dd>
+            <dt>断面図の見え方</dt>
+            <dd>板厚は実寸だと1pxも出ないので、断面図でだけ<b>太らせています</b>
+              （倍率は左上に出ます）。<b>上下軸はそのぶん離して</b>あります。
+              <b>破線は切断の位置</b>——材料のところは刃を描けない（刃は軸のまわりの
+              丸で、切り口では材料の高さまで届かない）ためです。</dd>
+            <dt>視点</dt>
+            <dd>ドラッグ＝回す／ホイール＝寄る／Shift＋ドラッグ（または右ドラッグ）＝平行移動／
+              「視点を戻す」で元へ。<b>断面図では板幅の中心を起点に回ります</b>。
+              断面図でも<b>ホイールで拡大・縮小</b>できます（マウスの下の点を中心に。
+              拡大したらShift＋ドラッグ／右ドラッグで動かせます）。いまの倍率は
+              「視点を戻す」の横に出ます。細い部材の寸法は、拡大すると中に書けます。</dd>
+            <dt>表示</dt>
+            <dd>下で板・刃・ゴムリング・スペーサーを消せます。点が付いているものが出ています。
+              <b>消したものを</b>「薄く」（薄く残す）／「線だけ」（輪郭のワイヤーフレーム）／
+              「出さない」（まったく描かない）から選べます。刃だけを見たいけれど
+              <b>スペーサーがどこに居たかも知りたい</b>ときは「薄く」が読みやすく、
+              位置だけを確かめたいときは「線だけ」、何も邪魔されたくないときは
+              「出さない」です。</dd>
+           </dl>
+          </div>
+         </div>
+         <div class="bs-hud is-bot">
+          <div class="bs-hud-grp"><span class="bs-hud-cap">表示</span>
+           <button type="button" class="bs-tg is-on" data-show="mat" data-show-name="板" aria-pressed="true">板</button>
+           <button type="button" class="bs-tg is-on" data-show="knife" data-show-name="刃" aria-pressed="true">刃</button>
+           <button type="button" class="bs-tg is-on" data-show="ring" data-show-name="ゴムリング" aria-pressed="true">ゴムリング</button>
+           <button type="button" class="bs-tg is-on" data-show="liner" data-show-name="スペーサー" aria-pressed="true">スペーサー</button>
+           <!-- **隠し方は「表示」と同じ群の中**（§9.422）。消したものをどう出すかは
+                上の入切に**かかる設定**なので、別の群に離すと何に効くのか読めない。
+                1つだけ選ぶのでセグメント（押した札が濃い）で、入切のトグルとは
+                作りを分ける（§9.247）。既定は「出さない」＝今までの動き。 -->
+           <span class="bs-hud-sep"></span>
+           <span class="bs-hud-cap">消したものは</span>
+           <div class="bs-hide" role="group" aria-label="消した部材の見せ方">
+            <button type="button" data-hide="ghost" aria-pressed="false">薄く</button>
+            <button type="button" data-hide="wire" aria-pressed="false">線だけ</button>
+            <button type="button" class="is-on" data-hide="gone" aria-pressed="true">出さない</button>
+           </div>
+          </div>
+          <div class="bs-hud-grp bs-hud-grp--rig"><span class="bs-hud-cap">段取り</span>
+           <button type="button" class="bs-btn is-sm is-on bs-step3-pull">①ラインへ戻す</button>
+           <button type="button" class="bs-btn is-sm is-on bs-step3-open">②軸端部を戻す</button>
+           <button type="button" class="bs-btn is-sm bs-step3-spin">③台車を回す</button>
+          </div>
+          <!-- 寸法の字の大きさ（§9.482、利用者の指示「小さく見たい時と大きくしたい時もある」）。字を描くのは
+               断面図だけなので、この群も断面図だけ（.bs-hud-grp--cut）。「− 数 ＋」の1組で、数は
+               いまの大きさ（px）。段と端で押せないことは paintDimFs() が塗る。 -->
+          <div class="bs-hud-grp bs-hud-grp--cut"><span class="bs-hud-cap">寸法の字</span>
+           <button type="button" class="bs-btn is-sm bs-dimfs-b" data-dimfs="-1" aria-label="寸法の字を小さく" title="寸法の字を1段小さく">−</button>
+           <output class="bs-dimfs" aria-live="polite"></output>
+           <button type="button" class="bs-btn is-sm bs-dimfs-b" data-dimfs="1" aria-label="寸法の字を大きく" title="寸法の字を1段大きく">＋</button>
+          </div>
+          <!-- **「視点を戻す」は段取りの外**（§9.413 追補）。断面図では段取りの
+               群ごと伏せるが、断面図でも視点は回せるので戻す道が要る。 -->
+          <div class="bs-hud-grp"><span class="bs-hud-cap">視点</span>
+           <button type="button" class="bs-btn is-sm bs-step3-reset">視点を戻す</button>
+           <!-- 断面図の倍率（§9.463）。等倍のときは伏せる。 -->
+           <span class="bs-zoom3" hidden title="断面図の倍率（全体が収まる大きさ＝×1）。ホイールで変わり、「視点を戻す」で×1へ"></span>
+          </div>
+         </div>
+         <div class="bs-m3" hidden></div>
+         <div class="bs-ng3" hidden></div>
+        </div>
+       </div>
+      </div>
+     </section>
+    </div>
+    <aside class="bs-rail" id="bsRail">
+     <div class="bs-ph"><h2>刃組の内訳</h2>
+      <div class="bs-seg" id="bsRailTabs">
+       <button type="button" class="bs-chip is-on" data-r="ends">端部</button>
+       <button type="button" class="bs-chip" data-r="bom">所要</button>
+       <button type="button" class="bs-chip" data-r="diff">台車差分</button>
+       <button type="button" class="bs-chip" data-r="set">刃の状態</button>
+      </div></div>
+     <div class="bs-pb">
+      <p class="bs-stopnote">組めない材料なので、端部・所要・台車差分は出していません。</p>
+      <!-- 端部（OS端／DS端）。表そのものは renderEnds() が id で書き込むので、
+           置き場所を変えても描き手は変わらない。 -->
+      <div data-p="ends">
+       <!-- 端部の表も**図と同じ印で名乗る**（§9.463、利用者の指示「OS,DSのエリアに
+            マウスオーバーでフォーカスしたときに右側の一覧表が強調されるように」）。
+            刃の区間と同じ[data-badge]の道に載るので、重ねる場所で効き方が変わらない。 -->
+       <div class="bs-side" id="bsOsSide" data-badge="OS"></div>
+       <div class="bs-side" id="bsDsSide" data-badge="DS"></div>
+       <p class="bs-note" id="bsEndsNote"></p>
+      </div>
+      <div data-p="bom" hidden>
+       <div class="bs-gauges" id="bsGauges"></div>
+       <div class="bs-need" id="bsBom"></div>
+      </div>
+      <div data-p="diff" hidden>
+       <!-- 完了に必要なのは「どの台車へ」と「どの刃セットで」の2つ（§9.378）。
+            **員数・条件・条の設計は計算とマスタから入る**ので、人が決めるのは
+            ここだけ——決める場所を1つにまとめ、完了のボタンのすぐ上に置く。 -->
+       <!-- **台車の札は台車マスタが作る**（§9.424、利用者の指示「台車マスタは
+            A台車、B台車を登録しておいて」「刃組ガイダンス使う設備＝台車マスタ
+            必要」）。ここに A／B を直に書いていたので、3台あるラインを
+            登録できず、呼び名も変えられなかった。器だけ置いて中身は
+            renderCarPick() が作る。
+            **この中は文字列リテラルの中なので、逆引用符は書けない**（§9.420）。 -->
+       <div class="bs-carbar"><span class="bs-lbl">台車</span>
+        <span id="bsCarPick" class="bs-carpick"></span>
+        <span class="bs-lbl">刃セット</span>
+        <select id="bsSetPick" class="bs-sel is-sm"></select></div>
+       <div id="bsDiffHead"></div><div id="bsDiffSum"></div>
+       <table class="bs-l" id="bsDiff"></table>
+       <button type="button" class="bs-btn is-primary bs-wide" id="bsSaveCar">刃組完了：台車 A として記録</button>
+       <div class="bs-gh">刃組の履歴</div>
+       <div id="bsHist"></div>
+       <p class="bs-note">2台の台車を交互に使う前提です。直前の刃組はラインで稼働中のため、いま組み替える台車には<b>2回前</b>の構成が載っています。<b>＋</b>が持ち出す点数、<b>−</b>が外して戻す点数です。</p>
+      </div>
+      <div data-p="set" hidden><div id="bsSetAlerts"></div><div id="bsSetList"></div></div>
+     </div>
+     <!-- 足元の一言（§CLAUDE 2「次にすることを常に1つだけ指す」）。**どの段を
+          開いていても見える**——在庫の下限割れ・研磨の遅れ・使用限界は、
+          段の裏に畳むと気づかれない。中身そのものは「刃の状態」が持ち、
+          ここは件数と行き先だけを言う（同じ情報を2箇所に出さない・§CLAUDE 8）。 -->
+     <div class="bs-rail-foot" id="bsFoot"></div>
+    </aside>
+   </div></template>
+<template id="tpl-schedule-panel">
+   <div class="sc-head" id="scHead">
+    <div class="sc-head-left">
+     <!-- 段（表示の切り替え）。**鍵と外向きの名前は SC_MODES が持つ**（§9.407）
+          ので、段を足すときはあちらにも1行足すこと（戻り先の名前が空になる）。 -->
+     <div class="sc-mode-toggle" id="scModeToggle" hidden>
+      <button type="button" class="sc-mode-toggle-btn" id="scModeBoard" data-mode="board" title="全設備の空き具合を俯瞰します"><i class="fa-solid fa-table-cells" aria-hidden="true"></i> 全体</button>
+      <button type="button" class="sc-mode-toggle-btn" id="scModeSingle" data-mode="single" title="この設備の作業予定と実績を1本の表にします"><i class="fa-solid fa-list" aria-hidden="true"></i> 個別</button>
+      <!-- 刃組スケジュール一覧（§9.383、利用者の指示「作業スケジュールを切り替えて
+           刃組スケジュール一覧としても出せるようにしてください」）。同じ予定を
+           **段取りの側から**見る形で、器を入れ替えるだけ。 -->
+      <button type="button" class="sc-mode-toggle-btn" id="scModeBlade" data-mode="blade" title="この設備の刃組（段取り）を一覧にします"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> 刃組</button>
+      <!-- 過去履歴（§9.502、利用者の指示・案A）。完了・取消・外した作業・設備停止・申し送り・
+           計画外の実績を、日・週・月で送って見る。**見るだけ**（直すのは「個別」）。 -->
+      <button type="button" class="sc-mode-toggle-btn" id="scModeHistory" data-mode="history" title="この設備の過去の記録（完了・取消・外した予定・設備停止・申し送り）を日・週・月で見ます。見るだけの画面です"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> 履歴</button>
+     </div>
+     <select class="sc-equipment-select" id="scEquipmentSelect" hidden></select>
+     <span class="sc-equipment-fixed" id="scEquipmentFixed" hidden></span>
+     <span class="sc-lock-badge" id="scLockBadge" hidden></span>
+     <!-- 編集権の在席表示(#scWho)は**ここには置かない**(§9.211 ③)。
+          置き場はヘッダーのタイトル帯(.hd-context / templates/index.html)
+          ——利用者の指示は「作業スケジュールのタイトル帯の空白エリアを
+          利用してください」で、操作列(#scHead)は別の指示「上部メニューバーは
+          1行で収まるように」(§9.199)が掛かっている場所。実測で操作列の
+          余りは**92pxしか無く**、150pxのチップを置いたため
+          **書込中の印(#scLockBadge)が出た瞬間だけ2行へ折り返し**、
+          表全体が38px跳ねていた（掴もうとした行が逃げる）。
+          ※以前この骨組みは JS のテンプレートリテラルの中にあり、説明にバッククォートを
+            書いただけで画面が組み上がらなくなった（実際にやった）。§9.522 で HTML へ移した。 -->
+    </div>
+    <!-- ---------- 操作の並び(§9.199、利用者の指示「上部メニューバーは
+         1行で収まるように」) ----------
+         §9.198で11個のボタンを4つの塊に束ねたが、**塊にしても総量は
+         減らないので3行に折り返していた**（実測: 見出し行のほかに
+         834px+334px / 275px+127px の2行）。折り返した操作列は「同じ
+         位置に同じものがある」という前提を壊し、本文の高さも毎回変わる。
+         そこで**面積を頻度×重要度で配り直す**(§1):
+          - 見え方の設定7つ（まとめ・さかのぼり・表示列・行の見せ方・
+            配置）は**1回決めたら当分変えない**ので、入口を1つにして
+            浮きパネル(#scViewPop)へ畳む。**いまの設定はボタンに書く**
+            ので、開かなくても読める(§「思い出させない」)。
+          - 押す頻度の高い「足す」「刷る」「再計算」はバーに残す。
+            狭い画面では文字だけを畳んでアイコンにする(@container)。
+          - 状態(いつ読んだ・共有をいつ取り込んだ)は短く言い直す。
+         並びは作業の順そのもの: いま何時点か → 足す → 見え方 → 出す。 -->
+    <div class="sc-head-right">
+     <div class="sc-board-window" id="scBoardWindow" hidden>
+      <button type="button" class="sc-board-window-btn" data-hours="24">24時間</button>
+      <button type="button" class="sc-board-window-btn" data-hours="48">48時間</button>
+     </div>
+     <div class="sc-tools" data-tools="state" id="scToolsState">
+      <!-- 「いま見ているのはいつのデータか」に答えるチップ(§9.300 ①)。
+           §9.188の共有の見張りと§9.42の読込時点は**同じ問いの2つの答え**
+           だったので1つに畳んだ。文字は読込時点だけで、共有の取り込み・
+           書込役・改訂番号・打つ手（読み直す／いま取り込む）は押すと開く
+           浮きメニューが持つ。 -->
+      <button type="button" class="sc-sync-chip" id="scSyncChip" hidden aria-expanded="false"></button>
+      <!-- 現場段取りの注記は**直せることがあるときだけ**(§9.300 ①)。
+           一致しているときの「並べ替えのみ可能」はヘッダーのバッジ
+           (#fieldReorderBadge)がまったく同じことを言っており、読む側は
+           同じ文を2度読むことになっていた(§CLAUDE 8)。対象設備が違う／
+           未設定のときだけ、その設備名と直す場所を書く(§4)。 -->
+      <span class="sc-field-reorder-note" id="scFieldReorderNote" hidden></span>
+     </div>
+     <div class="sc-tools" data-tools="add" id="scToolsAdd">
+      <span class="sc-tools-label" title="予定へ足す（共有スケジュールに書き込みます）">追加</span>
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scListModalBtn" hidden title="仕掛一覧をポップアップで表示してドラッグで追加します"><i class="fa-solid fa-table-list" aria-hidden="true"></i><span>仕掛一覧</span></button>
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scStopModalBtn" hidden title="設備停止をポップアップから追加します"><i class="fa-solid fa-ban" aria-hidden="true"></i><span>設備停止</span></button>
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scCommentBtn" draggable="true" hidden title="申し送り（コメント）を予定の列へ挟みます。時間は取りません。&#10;・掴んで予定の間へ落とすと、空の枠だけが入ります（あとでダブルクリックして書けます）&#10;・押すとその場で書いて入れられます"><i class="fa-solid fa-comment-dots" aria-hidden="true"></i><span>コメント</span></button>
+      <!-- 空の日付・直の枠(§9.238 ②、利用者の指示「予定を少し飛ばして設定
+           する場合に、何も予定がない領域にセットできる、空の日付や直の枠を
+           登録できるようにしたい」)。コメントと同じく掴んでも押しても入る。 -->
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scFrameBtn" draggable="true" hidden title="空の日付・直の枠を挟みます。ここから先の予定を、その日・その直の頭から並べ直します。&#10;・日にちや直を飛ばして、先の予定を先に決められます&#10;・手前に予定を足していくと、空いた時間へ自然に入っていきます&#10;・掴んで予定の間へ落とすと、その位置に入ります&#10;・行を右クリックして「ここから下を、別の日・直から並べる…」でも入れられます"><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i><span>枠</span></button>
+     </div>
+     <!-- 見え方の入口は1つ(§9.199)。**いまの設定を文字で連れて出す**
+          ——畳んだ先の値が読めないと、開くまで思い出せない。 -->
+     <div class="sc-tools" data-tools="view" id="scToolsView">
+      <!-- **よく使うものは畳まない**（§9.207、利用者の指示「よく使う表示列の
+           カスタム機能だけはメニュー部分に出してほしい」）。§9.199で見え方を
+           1枚のパネルへ集めたが、表示列だけは触る回数が桁違いに多く、
+           「開く→探す→押す」の3手が毎回かかっていた。 -->
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scContentModalBtn" hidden
+        title="この表に出す列・並び・幅・書式を設定します（設備ごとに保存）"><i class="fa-solid fa-table-columns" aria-hidden="true"></i><span>表示列</span></button>
+      <button type="button" class="sc-split-toggle sc-view-menu-btn" id="scViewMenuBtn" hidden
+        aria-expanded="false" title="">
+       <i class="fa-solid fa-sliders" aria-hidden="true"></i><span class="sc-vm-txt">表の見せ方</span><span class="hd-caret">▾</span>
+      </button>
+      <!-- 広く使う（§9.292 ⑦、利用者の指示「スケジュール作成時に、とにかく
+           仕掛のデータを多く表示したいです。その時上部のメニューのほぼ
+           すべてを畳んで最大限広いスペースで仕掛の一覧表を表示できるような
+           機能を実装してください」）。**戻る道は必ず1つ見えている**
+           （§4）——広いあいだは画面の右上に「元に戻す」の札を出す。 -->
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scWideBtn" hidden
+        aria-pressed="false"
+        title="上の帯（画面名・状態・操作列）を畳んで、一覧をいちばん広く使います。&#10;・戻すときは右上の札を押すか Esc&#10;・この端末に覚えます"><i class="fa-solid fa-up-right-and-down-left-from-center" aria-hidden="true"></i><span>広く使う</span></button>
+     </div>
+     <div class="sc-tools" data-tools="act" id="scToolsAct">
+      <button type="button" class="sc-split-toggle sc-ico-btn" id="scPrintBtn" title="いま表示している予定を、現場へ配る形（用紙サイズ・向きは選べます）で印刷します"><i class="fa-solid fa-print" aria-hidden="true"></i><span>印刷</span></button>
+      <button type="button" class="sc-refresh sc-ico-btn" id="scRefresh" title="予定の時刻を計算し直します"><i class="fa-solid fa-calculator" aria-hidden="true"></i><span>再計算</span></button>
+     </div>
+    </div>
+   </div>
+   <div class="sc-board" id="scBoard" hidden></div>
+   <div class="sc-blade" id="scBladeBody" hidden></div>
+   <div class="sc-hist" id="scHistBody" hidden></div>
+   <div class="sc-body" id="scSingleBody">
+    <div class="sc-timeline" id="scTimeline"></div>
+    <!-- 広く使っているあいだの戻り道（§9.292 ⑦）。**常に見えている1つ**
+         （§4。畳んだ先から戻れない状態を作らない）。
+         **この器（sc-body）の中へ置く**——位置の基準になる position:relative
+         を持っているのはここで、sc-panel へ relative を足すと sc-view-pop
+         など既に浮いているものの基準まで動く。
+         **このテンプレートリテラルの中にバッククォートを書かないこと**
+         （§9.211 ③。そこで文字列が閉じて画面が組み上がらない）。 -->
+    <button type="button" class="sc-wide-exit" id="scWideExit" hidden
+      title="上の帯（画面名・状態・操作列）を戻します。Escでも戻せます">
+     <i class="fa-solid fa-down-left-and-up-right-to-center" aria-hidden="true"></i><span>元の表示に戻す（Esc）</span></button>
+    <!-- 予定から外す受け皿(§9.116)。**掴んでいる間だけ出す**——常設すると
+         「消す場所」が画面に居座り、押し間違いの的になる。掴んで初めて
+         現れるので、外す意思があるときにしか目に入らない。
+         **幅いっぱいにしない**(§9.238 ①、利用者の指示)——下端を横断すると
+         「行を末尾へ運ぶ」動線をそのまま覆い、並べ替えのつもりが外す確認に
+         なる。右下の小さな札にして、説明はtitle属性へ落とす(§9.234 ①)。
+         **この覆いの中にバッククォートを書かないこと**——テンプレート
+         リテラルの中なので、そこで文字列が閉じて画面が組み上がらなくなる。 -->
+    <div class="sc-drop-remove" id="scDropRemove" hidden aria-hidden="true"
+         title="ここへ落とすと予定から外します。確認してから外すので、間違えても止められます。&#10;外した予定は仕掛一覧へ戻るので、また入れ直せます。">
+     <span class="sc-drop-remove-icon" aria-hidden="true">🗑</span>
+     <span class="sc-drop-remove-text">予定から外す</span>
+    </div>
+    <!-- ---------- 「表示」パネル(§9.199) ----------
+         見え方の設定を**1箇所へ集める**。以前は「まとめ」「さかのぼり」が
+         バーの素の選択欄、「表示列」がモーダル、「行の見せ方」「配置」が
+         別々の浮きパネルで、同じ「この画面の見え方」の話が4通りの形で
+         散っていた（探す前に、どの形で出るのかを思い出す必要があった）。
+         上2つ（まとめ・さかのぼり）は畳まずに置く——押す頻度が高く、
+         行き先が1手で見えるほうが速い。下3つは**アコーディオン**で、
+         開くのは常に1つ（開いた中身が長いので、2つ開くと迷子になる）。
+         **誰に効くかを各段に書く**（全員／設備ごと／この端末だけ）。
+         **この画面の中に置く**——スケジュールの見え方の話なので、
+         アプリ全体の設定へ混ぜない(§9.179)。 -->
+    <div class="sc-view-pop" id="scViewPop" hidden>
+     <div class="sc-view-pop-head">
+      <b>表の見せ方</b><small>この画面の見え方だけを変えます。予定そのものは変わりません</small>
+     </div>
+     <!-- 色と濃さの意味（§9.374、利用者の指摘「背景色の濃い薄いの分類について
+          少しわかりやすくしてください。初見の人がどういうゾーンなのか扱いが
+          わかりにくいようです。表示の説明みたいな項目があるとよいかも」）。
+          **状態を色だけで語らない**（§CLAUDE 画面基準3）ための受け皿。
+          見本は**実物と同じクラス**で描く——色をここへ書き写すと、
+          実物を直したときにここだけ嘘になる（§9.163）。 -->
+     <div class="sc-view-acc" id="scViewAccLegend">
+      <button type="button" class="sc-view-sec" id="scLegendBtn" aria-expanded="false">
+       <i>🔍</i><span>色と濃さの意味<small>行の地の色・薄さが何を表しているか</small></span><em class="sc-view-chev">▾</em>
+      </button>
+      <div class="sc-legend-pop" id="scLegendPop" hidden></div>
+     </div>
+     <label class="sc-view-row" id="scGroupRange" hidden>
+      <span class="sc-view-row-name">まとめ<small>日付は現場歴（勤務の日付補正を当てた現場の1日）と太陽暦から選べます</small></span>
+      <select id="scGroupSelect"></select>
+     </label>
+     <!-- 小計(§9.493→§9.500)。**畳む段**（行の色とアイコンと同じ部品）。見出しにいまの状態を書き
+          （思い出させない）、開くと「決める順の番号付きの節」。まとめとは別の軸。 -->
+     <div class="sc-view-acc" id="scViewAccSubtotal" hidden>
+      <button type="button" class="sc-view-sec" id="scSubtotalBtn" aria-expanded="false">
+       <i>Σ</i><span>小計<small id="scSubtotalState">出していません</small></span><em class="sc-view-chev">▾</em>
+      </button>
+      <div class="sc-st-pop" id="scSubtotalPop" hidden></div>
+     </div>
+     <!-- さかのぼり(§9.366)。**2段（種類→量）で選ばせる**——候補は13あるが、
+          一度に見えるのは群5つ＋その中の量だけ（一度に見る数を5つ以下に
+          保つ）。いま何を基準にしているのか（時間なのか現場歴なのか）が
+          1目で分かる。**量の無い群では欄ごと消す**（押せるのに効かない
+          ものを残さない・§4）。 -->
+     <div class="sc-view-row" id="scHistoryRange" hidden>
+      <span class="sc-view-row-name">さかのぼり<small>済んだ行（完了・取消）をどこまで残すか。これからの予定は全部出ます</small></span>
+      <span class="sc-view-row-ctl sc-history">
+       <span class="sc-history-groups" id="scHistoryGroups" role="group" aria-label="さかのぼりの種類"></span>
+       <select id="scHistorySelect" aria-label="さかのぼる量" hidden></select>
+       <span class="sc-history-from" id="scHistoryFrom" hidden></span>
+      </span>
+     </div>
+     <div class="sc-view-acc" id="scViewAccRowStyle" hidden>
+      <button type="button" class="sc-view-sec" id="scRowStyleBtn" aria-expanded="false">
+       <i>🎨</i><span>行の色とアイコン<small>区分・設備停止の分類ごと（全員に効きます）</small></span><em class="sc-view-chev">▾</em>
+      </button>
+      <div class="sc-layout-pop sc-rowstyle-pop" id="scRowStylePop" hidden></div>
+     </div>
+     <!-- 「この端末の見え方」の節は**ヘッダーの「表示」へ移した**（§9.444、
+          利用者の指示「表示というボタンが2つあるのでわかりにくい」→
+          「入口を1つに寄せる」）。この端末に覚える設定の置き場は1つ
+          （§9.421）で、画面は WL.lookSettings へ名乗るだけ。
+          （この中は文字列リテラルの中なので、逆引用符は書けない） -->
+    </div>
+    <button type="button" class="sc-side-tab" id="scSideToggle" hidden title="設備停止・案内パネルの表示/非表示">◀</button>
+    <div class="sc-side" id="scSide" hidden>
+     <div class="sc-side-section" id="scSplitHint">
+      <p class="sc-drop-hint">左の仕掛一覧からロットをドラッグ、またはチェックボックスで複数選択してこのパネルへドロップすると、この設備の予定へ追加されます。</p>
+     </div>
+     <div class="sc-side-section">
+      <button type="button" class="sc-side-section-toggle" id="scStopSectionToggle">
+       <span class="sc-side-title">設備停止を追加</span><span class="sc-collapse-chevron">▾</span>
+      </button>
+      <div class="sc-stop-groups" id="scStopButtons" hidden><div class="sc-empty-note">設備停止マスタが未登録です</div></div>
+     </div>
+    </div>
+   </div>
+   <!-- ---------- 知らせの棚（§9.397、利用者の指摘） ----------
+        「メッセージが長くなったり追加表示のメッセージが出てくるときに
+         行数が増えることで表示位置がガタガタズレる…何かクリックしたときに
+         メッセージのために1行一時的に増えるとかもそうです」
+
+        6本の案内（編集権・共有の変更・元データの変更・警告・未定・選択件数）は
+        **一覧の上**に並んでいた。出るたびに一覧の上端が下がり、実測で
+        **行が最大235px下へ逃げて**いた。狙っていたロットが指の下から消えるので、
+        押し間違いに直結する。
+
+        **一覧の上端は動かさない。** 棚を一覧の**下**へ移すと、案内が出ても
+        減るのは器の下端だけで、**行のy座標は1pxも動かない**（スクロール器は
+        上を基準に中身を置くため）。§9.292 ②で下端には既に余白（#scTailSpace）
+        を確保してあるので、ふだんは何も覆わない。
+        中身・id・hiddenの約束は**1文字も変えていない**——変えたのは置き場だけ。
+
+        ※この骨組みは HTML に置いてある（§9.522）。Jinja が描くので、波かっこを2つ続けて書かないこと。 -->
+   <div class="sc-notices" id="scNotices">
+    <div class="sc-session-banner" id="scSessionBanner" hidden></div>
+    <!-- 他のPCが共有を書き換えたときの案内(§9.188)。**触っている最中は
+         勝手に読み直さない**——並べ替えの途中で行が入れ替わると、掴んで
+         いたものが分からなくなる。 -->
+    <div class="sc-sync-banner" id="scSyncBanner" hidden></div>
+    <!-- 元データ（仕掛）が変わったときの案内(§9.375)。**「確認して更新」の
+         ときだけ**出す。自動のときは取り込んでから知らせるので帯は要らない。 -->
+    <div class="sc-sync-banner sc-src-banner" id="scSrcBanner" hidden></div>
+    <div class="sc-warnings" id="scWarnings" hidden></div>
+    <!-- 時刻が決まっていない予定の案内(§9.185)。**残っているときだけ出す**。
+         「未定」という言葉は行の中にも出るが、何件あるのか・次に何をすれば
+         よいのかは棚でまとめて言う。 -->
+    <div class="sc-undecided" id="scUndecided" hidden></div>
+    <!-- 実際の時刻が未登録の行の案内(§9.514)。仕掛から消えたロット・後ろの作業が始まった
+         設備停止は完了にしてあり、時刻だけが残っている。**残っているときだけ出す**。 -->
+    <div class="sc-undecided sc-times-note" id="scTimesNeeded" hidden></div>
+    <!-- まとめて外す(§9.170)。仕掛一覧の選択件数バー(plan-select-bar)と
+         同じ形・同じ言葉にしてある。**0件のときは出さない**——常時
+         「0件選択中」と出ているのは読まれない飾りにしかならない。 -->
+    <div class="sc-pick-bar" id="scPickBar" hidden></div>
+   </div></template>
+<template id="tpl-filter-bar">
+      <div class="filter-search-row">
+        <!-- ---------- 並びは「絞り込む（広い→狭い）」→ 右端に「見せ方」（§9.505、利用者の指示） ----------
+             「一覧類の上部メニューの文字がサイズ感がバラバラ…探させない考えさせない先を読むUIUX」。
+             文字で探す（行の全文）→ 組み合わせ → 条件 → 1列だけその場で、の順。
+             **一覧を検索はヘッダーから移した**——絞り込みの仲間なのに帯から離れていたうえ、
+             一覧の無い画面（実績など）にも出て、打っても何も起きなかった（§CLAUDE 画面基準 4）。
+             帯と一緒に分割表示・ポップアップへ運ばれるので、作業スケジュールの仕掛一覧でも探せる。 -->
+        <label class="lt-search" title="この一覧の行を、どの列の字でも探します（打つとすぐ絞り込みます）">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input id="search" type="search" autocomplete="off" placeholder="一覧を検索" aria-label="一覧を検索">
+        </label>
+        <button id="filterPresetBtn" class="fb-preset-btn" type="button"
+                aria-haspopup="true" aria-expanded="false">
+          <span class="fb-preset-key">プリセット</span><b id="filterPresetName">なし</b><em id="filterPresetNote" hidden></em><i class="hd-caret" aria-hidden="true">▾</i>
+        </button>
+        <!-- **数えているのは条件の数**（§9.505）——「0件」だと2段目の「全 2,003件」（行の数）と
+             同じ単位に読める。名前「条件」＋数の札にした。0でも押せる（足す・作るの入口もこの面）。 -->
+        <button id="filterCondBtn" class="fb-cond-btn" type="button" aria-haspopup="true" aria-expanded="false"
+                aria-controls="filterCondMenu">
+          <svg class="fb-cond-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M1.6 2.6h12.8L9.4 8.2v4.3l-2.8 1.6V8.2z"/></svg>
+          <span class="fb-cond-key">条件</span><b id="filterCount" class="fb-cond-n">0</b><i class="hd-caret" aria-hidden="true">▾</i>
+        </button>
+        <!-- 名前は**することを動詞で**言う（§9.505。旧「その場フィルタ」は中身を言わない）。 -->
+        <button id="filterAdhocToggle" class="filter-adhoc-toggle" type="button" aria-expanded="false" aria-controls="filterAdhocRow">列で絞り込む</button>
+        <div class="filter-token-input" id="filterTokenInput" hidden>
+          <span class="filter-token-key" aria-hidden="true">＋条件</span>
+          <input class="filter-token-search" id="filterTokenSearch" autocomplete="off" placeholder="列名・値を打つと候補が出ます" aria-label="条件を検索して足す">
+        </div>
+        <div class="filter-suggest" id="filterSuggest" hidden></div>
+        <span class="filter-inline-loading" id="filterInlineLoading" hidden><i data-tpl-slot="filter-loading"></i><span id="filterInlineLoadingText">読込中</span></span>
+        <div class="filter-search-row-actions">
+          <!-- 「表示列」「表の見せ方」の席（§9.468・§9.505）。ボタンは一覧の帯（list-view.js）が作ってここへ移す。 -->
+          <span class="fb-slot" id="filterBarSlot"></span>
+        </div>
+        <!-- ---------- 「条件」の面＝効いている条件（状態）＋足す・作る・外す（操作）（§9.505） ----------
+             以前は状態をこの面、操作を「⋯」の面に分けていた。「⋯」は中身を言わず、しかも中身の4つは
+             **全部が条件の操作**で、「全解除」（⋯）と「全部外す」（この面）が**同じ働きに2つの名前**
+             だった。1つの面にまとめ、名前も1つにした。
+             **要素はここに置いたまま**にして、開閉は hidden の入切だけ——開くたびに作り直すと、
+             ここで1度だけ張った配線（足す・作る・開く・外す）が効かなくなる（§9.222 ①）。 -->
+        <div class="wl-menu access-mode-menu fb-cond-menu" id="filterCondMenu" hidden role="menu" aria-label="条件">
+          <div class="fb-cond-list" id="filterCondList"></div>
+          <div class="fb-cond-acts" role="group" aria-label="条件の操作">
+            <button id="filterAddCond" type="button" role="menuitem"
+                    aria-expanded="false" aria-controls="filterTokenInput">条件を検索して足す<small>列名・値を打つと候補が出ます</small></button>
+            <button id="filterToggle" type="button" role="menuitem"><span class="fb-act-name">条件を作る・登録する</span><small>列・比べ方・値を選んで、いまだけ当てるか登録します</small></button>
+            <button id="openFilterPresets" type="button" role="menuitem">登録した条件とプリセット<small>条件の追加・削除と、組み合わせ（プリセット）作り</small></button>
+            <button id="clearGenericFilters" class="fb-cond-clear" type="button" role="menuitem">条件を全部外す<small>「固定」の条件は外れません（「登録した条件とプリセット」で外せます）</small></button>
+          </div>
+        </div>
+      </div>
+      <!-- その場フィルタ(§9.238 ⑤、利用者の指示)。**登録しない絞り込み**。
+           カラムと条件は覚え(利用者ごと×一覧ごと)、値だけがその場のもの。
+           器は**1度だけ**作る——読み込みのたびに組み直すと、打っている
+           最中にカーソルが飛ぶ(§9.117)。
+
+           ---------- 1行に収める(§9.239 ①、利用者の指示) ----------
+           以前は「見出しの段＋操作の段＋状態の行＋注記の行」で実測4段に
+           なっており、開くだけで一覧が4行ぶん短くなっていた。畳んだものを
+           開いたときに本文がそれだけ痩せるのでは、開くこと自体をためらう。
+           削ったのは**同じことを2度言っている文だけ**(§CLAUDE 8):
+             ・器の名前「その場フィルタ」…すぐ上の入口ボタンが名乗っている
+             ・欄ごとの見出し「カラム/条件/入力」…並びが「列→条件→値」の
+               1文になっているので、先頭の選択欄が「列を選ぶ」と名乗れば足りる
+             ・注記の1行…**titleへ落とす**(§9.234 ①)。消さずに残す。
+           状態(#filterAdhocState)だけは行の中へ移して**必ず文字で出す**
+           (§3)——効いているかどうかは色ではなく言葉で分かる必要がある。 -->
+      <div class="filter-adhoc-row" id="filterAdhocRow" hidden
+           title="登録はしません。打っているあいだだけ効き、一覧を切り替えると入力は消えます（列と比べ方は覚えています）。">
+        <select id="filterAdhocColumn" class="filter-adhoc-col"
+                title="この一覧の列から選びます。選んだ列は次に開いたときも覚えています"></select>
+        <select id="filterAdhocOp" class="filter-adhoc-op" title="選んだ列をどう比べるか"></select>
+        <input id="filterAdhocValue" class="filter-adhoc-value" list="filterAdhocList"
+               autocomplete="off" type="search"
+               title="打つとその場で絞り込みます。Enterですぐ、Escで解除">
+        <datalist id="filterAdhocList"></datalist>
+        <button id="filterAdhocKeep" type="button">条件に残す</button>
+        <button id="filterAdhocClear" type="button" title="入力を消して、この絞り込みを解除します">解除</button>
+        <span class="filter-adhoc-state" id="filterAdhocState"></span>
+        <!-- **閉じる道はその場に**（§9.468、利用者の指摘「一度表示したフィルタ機能も閉じ方が
+             わかりにくかった」）。閉じても効いている絞り込みは残る（入口の札が名乗る）。 -->
+        <button id="filterAdhocClose" class="fb-close" type="button" aria-label="その場フィルタを閉じる"
+                title="閉じます（Esc）。効いている絞り込みはそのまま残ります">✕</button>
+      </div>
+      <div class="filter-body" id="filterBody" hidden>
+        <div class="filter-body-head"><b>条件を作る</b>
+          <button id="filterBodyClose" class="fb-close" type="button" aria-label="条件を作るを閉じる"
+                  title="閉じます（Esc）">✕ 閉じる</button></div>
+        <div class="filter-builder">
+          <label>列<select id="filterColumn"></select></label>
+          <label>比べ方<select id="filterOp"></select></label>
+          <label>値<input id="filterValue" list="filterSuggestList" placeholder="値を入力/候補から選択"><datalist id="filterSuggestList"></datalist></label>
+          <div class="filter-vars" id="filterVarChips" role="group" aria-label="変数を挿入"></div>
+          <div class="filter-builder-actions">
+           <button id="addGenericFilter" type="button" title="この条件を今の一覧へ追加します（保存はしません）">適用</button>
+           <button id="registerGenericFilter" type="button" title="この条件を登録フィルタとして保存します（一覧へは適用しません）">登録</button>
+          </div>
+        </div>
+        <p class="filter-builder-note" id="filterBuilderNote">「適用」は今だけ効かせる／「登録」は次回も使えるように保存する。両方押せます。</p>
+      </div></template>
 </body></html>

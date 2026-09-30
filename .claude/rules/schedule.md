@@ -1,4 +1,4 @@
-# 作業スケジュール（95件）
+# 作業スケジュール（96件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 予定を時刻へ置くのは`_Placer`の1箇所。`cursor`が空（稼働帯が尽きた）なら以降は`_unplaced()`——**例外で止めない** | `test_scload.py` | [§9.522](../../docs/decisions/9.522.md) |
 | 実際の時刻を入れてよいかは`_times_allowed()`の1箇所（編集モードは時刻の鍵だけ）。画面は`canEnterTimes`を読む。「時刻入力」は操作の列に必ず出す | `test_sctimesedit.js` | [§9.518](../../docs/decisions/9.518.md) |
 | 区分の列を外しているときは操作の列が「✓完了」「作業中」を字で言う（字は`categoryOf()`）。区分の列があれば出さない | `test_sctimesedit.js` | [§9.518](../../docs/decisions/9.518.md) |
 | 仕掛から消えたロット・後ろの作業が始まった設備停止は**完了**。時刻が無ければ`timesNeeded`（`_times_prompts()`の1箇所） | `test_actualmatch.py`・`test_sctimes.js` | [§9.514](../../docs/decisions/9.514.md) |

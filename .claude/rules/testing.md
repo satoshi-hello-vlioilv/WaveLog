@@ -1,4 +1,4 @@
-# 検証（テスト）（53件）
+# 検証（テスト）（56件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -13,6 +13,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 長い関数（80行超）を増やさない。ファイルごとの本数・超過行数は**下げる方向だけ**（`--update`）。名前・行番号では固定しない | `test_funclen.py` | [§9.522](../../docs/decisions/9.522.md) |
 | 網は**本物の置き場**（`static/`・`backend/`）へ試しのファイルを書かない。一時の置き場へ書き、調べる関数に置き場を渡す | `test_printcore.py` | [§9.504](../../docs/decisions/9.504.md) |
 | アクセスモードは土台が始めの値へ戻す。前提を作る書込は**モードを決めてから**・応答を確かめる | — | [§9.494](../../docs/decisions/9.494.md) |
 | 製品が副作用で育てる表は土台が消す（`harness.js`の`SIDE_EFFECT_TABLES`）。網ごとに書き写さない | — | [§9.491](../../docs/decisions/9.491.md) |
@@ -38,6 +39,8 @@
 | 注ぎ込んだ見本の記録は**その場で消す**。後片付けを最後にまとめると、あいだの節が別の材料を見る | `test_rpblocks.js` | [§9.393](../../docs/decisions/9.393.md) |
 | 節の頭で**前の節が開けた窓を閉じる**。「押せない」は`elementFromPoint`で何に覆われたかを出す | `test_tolscale.js` | [§9.394](../../docs/decisions/9.394.md) |
 | 文書が指す名前・撮る道具の選択子は実在させる。関数の中の`import`は増やさない（理由は`# 遅延:`） | `test_docindex.py`・`test_importlint.py` | [§9.349](../../docs/decisions/9.349.md) |
+| 規則の表の「固定する網」には**実在するテストだけ**を書く（無い名は見張られていると読ませる） | `test_docindex.py` | [§9.522](../../docs/decisions/9.522.md) |
+| 押した結果を待つ条件は**押した物そのもの**で書く（「どれか1つ」「骨組みが出た」は押す前から成り立つ） | `test_stopsubui.js`・`test_filteractive.js` | [§9.522](../../docs/decisions/9.522.md) |
 | 理由の無い固定待ちは**0**、ブラウザの起動は土台の1箇所（本は`run()`）。待ちは`wait.js`の道具で | `test_waitlint.py` | [§9.347](../../docs/decisions/9.347.md)・[§9.451](../../docs/decisions/9.451.md) |
 | `idle()`はフォントと本体を読まれない応答を数えない（終わりの合図が来ない）。フォントは`fonts.ready`で待つ | `test_collayout.js`・`test_cols.js` | [§9.451](../../docs/decisions/9.451.md) |
 | `page.waitForFunction`の述語にPromiseを返させない（返すと待たずに抜ける・実測82ms）。サーバーへ聞き直す待ちは`wait.js`の`poll()` | `test_waitlint.py` | [§9.376](../../docs/decisions/9.376.md) |

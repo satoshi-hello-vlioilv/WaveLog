@@ -509,6 +509,32 @@ function keepModalOpen(modal){
 }
 function escClosesModal(e){return e.key==='Escape'&&!e.isComposing&&e.keyCode!==229}
 WL.modal={keepOpen:keepModalOpen,nudge:nudgeModal,escCloses:escClosesModal};
+/* ---------- 画面の骨組みは HTML に置く（§9.522・REVIEW 3-7） ----------
+   動かない部分は`templates/index.html`の`<template id="tpl-名前">`に置き、画面のJSは
+   `WL.template(名前)`で複製して使う（`<template>`は不活性なので、置いても描画の手間は増えない）。
+   **無ければ名前を言って止まる**——黙って空の画面を出さない。呼ぶ側と置き場の対応は
+   `tests/test_loadorder.py`が見張る（呼んでいるのに無い／置いてあるのに誰も呼ばない）。 */
+/* **差し込み口**（`<i data-tpl-slot="名前"></i>`）は、状態から組む部分を JS が名前で渡して埋める
+   （`WL.template(名前,{口:HTML})`）。渡し忘れ・綴り違い（使われない口）は名前を言って止まる。
+   `<select>`の中には口を置けない（HTML の決まりで器が捨てられる）ので、選択肢は複製のあとで埋める。 */
+function cloneTemplate(name,slots){
+ const t=document.getElementById('tpl-'+name);
+ if(!t||!t.content)throw new Error(`画面の骨組み（<template id="tpl-${name}">）が index.html にありません`);
+ const frag=t.content.cloneNode(true);
+ const given=Object.assign({},slots||{});
+ frag.querySelectorAll('[data-tpl-slot]').forEach(el=>{
+  const key=el.dataset.tplSlot;
+  if(!Object.hasOwn(given,key))throw new Error(`画面の骨組み「${name}」の差し込み口「${key}」へ渡すものがありません`);
+  const part=document.createElement('template');
+  part.innerHTML=String(given[key]??'');
+  el.replaceWith(part.content);
+  delete given[key];
+ });
+ const extra=Object.keys(given);
+ if(extra.length)throw new Error(`画面の骨組み「${name}」に差し込み口「${extra.join('」「')}」がありません`);
+ return frag;
+}
+WL.template=cloneTemplate;
 /* 共通の確認モーダル。ブラウザ標準のconfirm()はアプリの見た目に合わせられず
    タブ全体をブロックするため、破棄確認・削除確認等はこちらへ統一する
    (以前はlot-split.js/filters.js/records-store.jsが個別にconfirm()を

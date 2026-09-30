@@ -87,264 +87,17 @@
   panel.className = 'bs-shell';
   panel.id = 'bladeSetPanel';
   panel.hidden = true;
-  panel.innerHTML = `
-   <div class="bs-empty" id="bsEmpty" hidden></div>
-   <div class="bs-bar" id="bsBar">
-    <!-- 出どころ＝**戻り道**（§9.378、利用者の指示「段取りから刃組画面に行った
-         場合、段取りに戻りたいはずですが戻れない」）。どこから来たかと、そこへ
-         戻る手立ては**同じ1つの的**にする（同じ情報を2箇所に出さない・§CLAUDE 8）。
-         読む順の先頭＝戻る、に置く（§CLAUDE 14 視覚導線と作業導線を一致させる）。
-         左メニューから開いたときは戻り先が無いので**ボタンごと出さない**
-         （押せるのに何も起きない的を作らない・§CLAUDE 4）。 -->
-    <button type="button" class="bs-back" id="bsFrom" hidden></button>
-    <span class="bs-skip" id="bsSkip" hidden></span>
-    <!-- 決める → 確かめる → 自動で決まる の順に置く（§CLAUDE 14 視覚導線と
-         作業導線を一致させる）。**群の名前を出す**ので、どれを触ればよいかを
-         色や枠だけに頼らず字でも読める（§CLAUDE 3）。 -->
-    <div class="bs-steps" id="bsSteps">
-     <div class="bs-sgrp is-decide"><s class="bs-sgcap">決める</s>
-      ${stepHtml(1, 'バリ方向', 'bsV1', step1Html(), 'decide')}
-      ${stepHtml(2, '幅構成', 'bsV3', step3Html(), 'decide')}
-     </div>
-     <div class="bs-sgrp is-check"><s class="bs-sgcap">確かめる</s>
-      ${stepHtml(0, '刃・板厚', 'bsV2', step2Html(), 'check')}
-     </div>
-     <div class="bs-sgrp is-auto"><s class="bs-sgcap">自動で決まる</s>
-      ${factHtml('刃の選び方', 'bsFPick')}
-      ${factHtml('方式', 'bsFMethod')}
-      ${factHtml('クリアランス', 'bsFClr')}
-      <!-- **板押さえは1項目**（§9.465、利用者の指示「板押さえにしないと、ゴムリングの
-           フィンガーみたいな謎の言葉を生み出す」「表示の重複もある」）。名前は層の総称
-           （板押さえ）、値が方式（ゴムリング／フィンガー）を言う。「保持」の欄は同じ
-           ことを2度言っていたので畳んだ（§CLAUDE 8）。 -->
-      ${stepHtml(0, '板押さえ', 'bsV4', step4Html(), 'auto')}
-     </div>
-    </div>
-   </div>
-   <div class="bs-body">
-    <div class="bs-col">
-     <!-- 刃組表を上に置く（§9.378、利用者の指示「刃組表を上部に移動して、
-          準備する刃やスペーサやゴムリングなどを最も見やすく」）。
-          **先に読むものを先に置く**——組む前に見るのは「何をどこへ何枚」で、
-          図はそれを確かめるためのもの（§CLAUDE 14 視覚導線と作業導線を一致）。 -->
-     <section class="bs-panel bs-tblpanel">
-      <div class="bs-ph"><h2>刃組表</h2><span class="bs-ph-note">横＝寸法／縦＝上下軸×ロット</span></div>
-      <div class="bs-tw" id="bsTables"></div>
-     </section>
-     <section class="bs-panel bs-figpanel">
-      <div class="bs-ph"><h2>刃組図</h2>
-       <!-- 模式図／立体図（§9.377 追補）。**同じ割付から**作るので、どちらを
-            見ても食い違わない。立体図の部品（three.js）は**押したときだけ**
-            取りに行く（起動を遅くしない・回線が無くても模式図は使える）。 -->
-       <!-- 断面図（§9.412、利用者の指示）。**立体図と同じ模型**を、機械まわりを
-            伏せて・平行投影の真横から・軸の中心で切って見る。模式図の読み取り
-            やすさ（真横・同じ並び）と、立体の質感を両方持たせるための1枚。 -->
-       <div class="bs-seg" id="bsFigTabs">
-        <button type="button" class="bs-chip" data-fig="2d">模式図</button>
-        <button type="button" class="bs-chip is-on" data-fig="cut" title="立体の模型を軸の中心で切り、真横から平行投影で見ます。寸法は模式図と同じ読み方ができます">断面図</button>
-        <button type="button" class="bs-chip" data-fig="3d">立体図</button>
-       </div>
-       <!-- **向きの切り替えは図の見出しへ置く**（§9.380、利用者の指示
-            「OSDS入替ボタンは模式図に移動させて」）。効く先はこの図の
-            左右（DS／OSの字と部材の並び）なので、手順バーの尻尾に置くと
-            「何に効くボタンか」を探すことになる（§CLAUDE 14 視覚導線と
-            作業導線を一致させる）。 -->
-       <!-- §9.463 で「基準原点を左／右」の2つの札にし、§9.472 で**並びを描く2つの札**へ
-            作り直した（2つ並べ、いまの側を濃くする＝§9.229 はそのまま）。 -->
-       <!-- **向きは「並びそのもの」を見せる2択**（§9.472、利用者の指示「切り替えボタンは
-            よく使うので、もう少し使いやすさとわかりやすさを考えて」）。札の字を読んで
-            頭の中で図を組み立てさせない——**札が押した後の図の左右をそのまま描く**
-            （OS ━ ◆DS／◆DS ━ OS・◆は基準面）。字は OS・DS の呼び方（sideWord()）で、
-            図の札・端部の表と同じ名前になる。大きさは隣の図の札（.bs-chip）とそろえる
-            （§9.463 の.bs-hideは付随情報の寸法 9.5px で、よく押す物には小さかった）。 -->
-       <div class="bs-orient" id="bsFlip" role="group" aria-label="図の向き（左右）">
-        <span class="bs-orient-cap" aria-hidden="true">向き</span>
-        <span class="bs-orient-seg">
-         <button type="button" data-datum-pos="右" aria-pressed="false"></button>
-         <button type="button" data-datum-pos="左" aria-pressed="false"></button>
-        </span>
-       </div>
-       <span class="bs-ph-note" id="bsFigNote"></span></div>
-      <!-- **両脇の表は右レールへ移した**（§9.379、利用者の指示）。ここを1列に
-           したぶん模式図が広がる（実測 760→1112px・+46%）。端部の表は
-           「組む前に一度見る」もので、模式図のように常時見比べるものでは
-           ない——常時載せる面積は「頻度 × 重要度」で配る（§CLAUDE 1）。 -->
-      <p class="bs-stopnote">組めない材料なので、刃組図は描いていません（理由は刃組表の場所に出ています）。</p>
-      <div class="bs-figrow" id="bsFigRow">
-       <div class="bs-figmain">
-        <div class="bs-stage" hidden><svg id="bsStage" viewBox="0 0 1000 300"
-         preserveAspectRatio="xMidYMid meet" role="img" aria-label="刃組図"></svg></div>
-        <!-- **区間の拡大**（§9.413、利用者の指示「アルファベットをクリックしたら、
-             ポップオーバーでその部分だけの組み合わせを拡大した図を…すべての
-             サイズのものにラベルを貼って詳しく並びと対象の寸法を伝える」）。
-             模式図は軸ぜんたいを1枚に収めるので、狭い区間は十数pxしかなく
-             **部材の幅は字が入らないので出していない**。ここは1区間だけを
-             器いっぱいに使うので、全部の寸法に字を添えられる。 -->
-        <div class="bs-zoom" id="bsZoom" hidden role="dialog" aria-label="区間の拡大">
-         <!-- 見出しの帯は**掴んで動かす取っ手**（§9.437、利用者の指示）。
-              押せるのに何も起きない的を作らないため、カーソルの形と説明の字の
-              両方で言う。（この中は文字列リテラルの中なので、逆引用符は書けない） -->
-         <div class="bs-zoom-hd" title="この帯をドラッグすると、拡大図の位置を変えられます">
-          <span class="bs-zoom-bd" id="bsZoomBadge">A</span>
-          <span class="bs-zoom-tx"><b id="bsZoomTitle">—</b><small id="bsZoomSub">—</small></span>
-          <button type="button" class="bs-zoom-x" id="bsZoomClose" title="閉じる（Esc）" aria-label="閉じる">✕</button>
-         </div>
-         <svg id="bsZoomFig" viewBox="0 0 760 300" preserveAspectRatio="xMidYMid meet"
-          role="img" aria-label="区間の拡大図"></svg>
-         <p class="bs-zoom-note" id="bsZoomNote"></p>
-        </div>
-        <div class="bs-stage3 is-cut" id="bsStage3">
-         <canvas class="bs-c3"></canvas>
-         <!-- **寸法の層**（§9.418）。刃の上下のずれを示す縦の破線と、部材の幅の
-              字を置く。図形の上に重ねる線と字なので、WebGL の中ではなく SVG で
-              描く（破線・引き出し線・字の縁取りが素直に書け、色もトークンから
-              選べる）。押す的は持たない（掴んで回す道をふさがない）。 -->
-         <svg class="bs-t3v" id="bsCutDim" aria-hidden="true"></svg>
-         <span class="bs-t3 bs-t3-os is-os" data-badge="OS" data-sw="OS" hidden>OS</span>
-         <span class="bs-t3 bs-t3-ds is-ds" data-badge="DS" data-sw="DS" hidden>DS</span>
-         <!-- **設定有効長と、組んだときの上下それぞれの合計長**（§9.418 追補、
-              利用者の指示）。図の読み方の段とは別に置く——あちらは
-              「どう見るか」、こちらは「合っているか」の突き合わせ。
-              （この中は文字列リテラルの中なので、逆引用符は書けない） -->
-         <!-- **断面図にも設定を出す**（§9.443、利用者の指示）。**帯は増やさない**
-              ——この左上の帯が既に「この図の読み方（bs-o3）」と「突き合わせ
-              （bs-len3）」を積んでいる、いまの設定の置き場。3行目として載せる
-              （帯を新しく作ると、左上の帯と真上で重なった・実測5364px2）。
-              中身は模式図の帯と同じ1箇所（chipBandItems）が作る。
-              （この中は文字列リテラルの中なので、逆引用符は書けない） -->
-         <div class="bs-hud is-tl"><div class="bs-o3" hidden></div>
-          <div class="bs-len3" hidden></div>
-          <div class="bs-cutset" hidden></div></div>
-         <div class="bs-hud is-tr">
-          <button type="button" class="bs-hlp bs-help3" aria-expanded="false">使い方</button>
-          <div class="bs-hpop" hidden>
-           <dl>
-            <dt>段取りの順</dt>
-            <dd>①引き出す（レールで回転テーブルへ）→②軸端部を外す（330mm 送り出し、
-              テーブルの外の土台に降ろす）→③台車を回す（テーブルごと 180°）</dd>
-            <dt>向き</dt>
-            <dd>軸端部（スタンド・ハンドル付き）を外した <b data-sw="OS">OS</b> 側から部材を入れ、基準面（駆動側の <b data-sw="DS">DS</b>）の側から順に組みます。最後に <b data-sw="OS">OS</b> 端をフローティングシートで押さえます。材料の入側は、ラインを正面に見て左です。</dd>
-            <dt>断面図の見え方</dt>
-            <dd>板厚は実寸だと1pxも出ないので、断面図でだけ<b>太らせています</b>
-              （倍率は左上に出ます）。<b>上下軸はそのぶん離して</b>あります。
-              <b>破線は切断の位置</b>——材料のところは刃を描けない（刃は軸のまわりの
-              丸で、切り口では材料の高さまで届かない）ためです。</dd>
-            <dt>視点</dt>
-            <dd>ドラッグ＝回す／ホイール＝寄る／Shift＋ドラッグ（または右ドラッグ）＝平行移動／
-              「視点を戻す」で元へ。<b>断面図では板幅の中心を起点に回ります</b>。
-              断面図でも<b>ホイールで拡大・縮小</b>できます（マウスの下の点を中心に。
-              拡大したらShift＋ドラッグ／右ドラッグで動かせます）。いまの倍率は
-              「視点を戻す」の横に出ます。細い部材の寸法は、拡大すると中に書けます。</dd>
-            <dt>表示</dt>
-            <dd>下で板・刃・ゴムリング・スペーサーを消せます。点が付いているものが出ています。
-              <b>消したものを</b>「薄く」（薄く残す）／「線だけ」（輪郭のワイヤーフレーム）／
-              「出さない」（まったく描かない）から選べます。刃だけを見たいけれど
-              <b>スペーサーがどこに居たかも知りたい</b>ときは「薄く」が読みやすく、
-              位置だけを確かめたいときは「線だけ」、何も邪魔されたくないときは
-              「出さない」です。</dd>
-           </dl>
-          </div>
-         </div>
-         <div class="bs-hud is-bot">
-          <div class="bs-hud-grp"><span class="bs-hud-cap">表示</span>
-           <button type="button" class="bs-tg is-on" data-show="mat" data-show-name="板" aria-pressed="true">板</button>
-           <button type="button" class="bs-tg is-on" data-show="knife" data-show-name="刃" aria-pressed="true">刃</button>
-           <button type="button" class="bs-tg is-on" data-show="ring" data-show-name="ゴムリング" aria-pressed="true">ゴムリング</button>
-           <button type="button" class="bs-tg is-on" data-show="liner" data-show-name="スペーサー" aria-pressed="true">スペーサー</button>
-           <!-- **隠し方は「表示」と同じ群の中**（§9.422）。消したものをどう出すかは
-                上の入切に**かかる設定**なので、別の群に離すと何に効くのか読めない。
-                1つだけ選ぶのでセグメント（押した札が濃い）で、入切のトグルとは
-                作りを分ける（§9.247）。既定は「出さない」＝今までの動き。 -->
-           <span class="bs-hud-sep"></span>
-           <span class="bs-hud-cap">消したものは</span>
-           <div class="bs-hide" role="group" aria-label="消した部材の見せ方">
-            <button type="button" data-hide="ghost" aria-pressed="false">薄く</button>
-            <button type="button" data-hide="wire" aria-pressed="false">線だけ</button>
-            <button type="button" class="is-on" data-hide="gone" aria-pressed="true">出さない</button>
-           </div>
-          </div>
-          <div class="bs-hud-grp bs-hud-grp--rig"><span class="bs-hud-cap">段取り</span>
-           <button type="button" class="bs-btn is-sm is-on bs-step3-pull">①ラインへ戻す</button>
-           <button type="button" class="bs-btn is-sm is-on bs-step3-open">②軸端部を戻す</button>
-           <button type="button" class="bs-btn is-sm bs-step3-spin">③台車を回す</button>
-          </div>
-          <!-- 寸法の字の大きさ（§9.482、利用者の指示「小さく見たい時と大きくしたい時もある」）。字を描くのは
-               断面図だけなので、この群も断面図だけ（.bs-hud-grp--cut）。「− 数 ＋」の1組で、数は
-               いまの大きさ（px）。段と端で押せないことは paintDimFs() が塗る。 -->
-          <div class="bs-hud-grp bs-hud-grp--cut"><span class="bs-hud-cap">寸法の字</span>
-           <button type="button" class="bs-btn is-sm bs-dimfs-b" data-dimfs="-1" aria-label="寸法の字を小さく" title="寸法の字を1段小さく">−</button>
-           <output class="bs-dimfs" aria-live="polite"></output>
-           <button type="button" class="bs-btn is-sm bs-dimfs-b" data-dimfs="1" aria-label="寸法の字を大きく" title="寸法の字を1段大きく">＋</button>
-          </div>
-          <!-- **「視点を戻す」は段取りの外**（§9.413 追補）。断面図では段取りの
-               群ごと伏せるが、断面図でも視点は回せるので戻す道が要る。 -->
-          <div class="bs-hud-grp"><span class="bs-hud-cap">視点</span>
-           <button type="button" class="bs-btn is-sm bs-step3-reset">視点を戻す</button>
-           <!-- 断面図の倍率（§9.463）。等倍のときは伏せる。 -->
-           <span class="bs-zoom3" hidden title="断面図の倍率（全体が収まる大きさ＝×1）。ホイールで変わり、「視点を戻す」で×1へ"></span>
-          </div>
-         </div>
-         <div class="bs-m3" hidden></div>
-         <div class="bs-ng3" hidden></div>
-        </div>
-       </div>
-      </div>
-     </section>
-    </div>
-    <aside class="bs-rail" id="bsRail">
-     <div class="bs-ph"><h2>刃組の内訳</h2>
-      <div class="bs-seg" id="bsRailTabs">
-       <button type="button" class="bs-chip is-on" data-r="ends">端部</button>
-       <button type="button" class="bs-chip" data-r="bom">所要</button>
-       <button type="button" class="bs-chip" data-r="diff">台車差分</button>
-       <button type="button" class="bs-chip" data-r="set">刃の状態</button>
-      </div></div>
-     <div class="bs-pb">
-      <p class="bs-stopnote">組めない材料なので、端部・所要・台車差分は出していません。</p>
-      <!-- 端部（OS端／DS端）。表そのものは renderEnds() が id で書き込むので、
-           置き場所を変えても描き手は変わらない。 -->
-      <div data-p="ends">
-       <!-- 端部の表も**図と同じ印で名乗る**（§9.463、利用者の指示「OS,DSのエリアに
-            マウスオーバーでフォーカスしたときに右側の一覧表が強調されるように」）。
-            刃の区間と同じ[data-badge]の道に載るので、重ねる場所で効き方が変わらない。 -->
-       <div class="bs-side" id="bsOsSide" data-badge="OS"></div>
-       <div class="bs-side" id="bsDsSide" data-badge="DS"></div>
-       <p class="bs-note" id="bsEndsNote"></p>
-      </div>
-      <div data-p="bom" hidden>
-       <div class="bs-gauges" id="bsGauges"></div>
-       <div class="bs-need" id="bsBom"></div>
-      </div>
-      <div data-p="diff" hidden>
-       <!-- 完了に必要なのは「どの台車へ」と「どの刃セットで」の2つ（§9.378）。
-            **員数・条件・条の設計は計算とマスタから入る**ので、人が決めるのは
-            ここだけ——決める場所を1つにまとめ、完了のボタンのすぐ上に置く。 -->
-       <!-- **台車の札は台車マスタが作る**（§9.424、利用者の指示「台車マスタは
-            A台車、B台車を登録しておいて」「刃組ガイダンス使う設備＝台車マスタ
-            必要」）。ここに A／B を直に書いていたので、3台あるラインを
-            登録できず、呼び名も変えられなかった。器だけ置いて中身は
-            renderCarPick() が作る。
-            **この中は文字列リテラルの中なので、逆引用符は書けない**（§9.420）。 -->
-       <div class="bs-carbar"><span class="bs-lbl">台車</span>
-        <span id="bsCarPick" class="bs-carpick"></span>
-        <span class="bs-lbl">刃セット</span>
-        <select id="bsSetPick" class="bs-sel is-sm"></select></div>
-       <div id="bsDiffHead"></div><div id="bsDiffSum"></div>
-       <table class="bs-l" id="bsDiff"></table>
-       <button type="button" class="bs-btn is-primary bs-wide" id="bsSaveCar">刃組完了：台車 A として記録</button>
-       <div class="bs-gh">刃組の履歴</div>
-       <div id="bsHist"></div>
-       <p class="bs-note">2台の台車を交互に使う前提です。直前の刃組はラインで稼働中のため、いま組み替える台車には<b>2回前</b>の構成が載っています。<b>＋</b>が持ち出す点数、<b>−</b>が外して戻す点数です。</p>
-      </div>
-      <div data-p="set" hidden><div id="bsSetAlerts"></div><div id="bsSetList"></div></div>
-     </div>
-     <!-- 足元の一言（§CLAUDE 2「次にすることを常に1つだけ指す」）。**どの段を
-          開いていても見える**——在庫の下限割れ・研磨の遅れ・使用限界は、
-          段の裏に畳むと気づかれない。中身そのものは「刃の状態」が持ち、
-          ここは件数と行き先だけを言う（同じ情報を2箇所に出さない・§CLAUDE 8）。 -->
-     <div class="bs-rail-foot" id="bsFoot"></div>
-    </aside>
-   </div>`;
+  /* 骨組みは`templates/index.html`の`<template id="tpl-blade-panel">`（§9.522・REVIEW 3-7）。
+     手順の札・事実の札は状態から組むので、骨組みの差し込み口（`data-tpl-slot`）へ名前で渡す。 */
+  panel.append(WL.template('blade-panel', {
+   'step-v1': stepHtml(1, 'バリ方向', 'bsV1', step1Html(), 'decide'),
+   'step-v3': stepHtml(2, '幅構成', 'bsV3', step3Html(), 'decide'),
+   'step-v2': stepHtml(0, '刃・板厚', 'bsV2', step2Html(), 'check'),
+   'fact-pick': factHtml('刃の選び方', 'bsFPick'),
+   'fact-method': factHtml('方式', 'bsFMethod'),
+   'fact-clr': factHtml('クリアランス', 'bsFClr'),
+   'step-v4': stepHtml(0, '板押さえ', 'bsV4', step4Html(), 'auto'),
+  }));
   const host = document.querySelector('main') || document.body;
   host.appendChild(panel);
   wire();
@@ -1782,7 +1535,45 @@
     押した区間と同じ向きに見えるので、どちらの軸の話か迷わない。 */
  /* `axis`＝押した軸（`'up'`／`'lo'`）。**同じ記号は上下の両方に出る**ので、
     渡された軸の区間を選ぶ（§9.442）。その軸に無ければ元どおり先頭へ倒す。 */
+ /* ---------- 拡大図は段に分ける（§9.522・REVIEW 3-22） ----------
+    以前は`zoomFigure()`の1本（309行）が、形（半径・縮尺・向き）の値を約30個共有しながら
+    ①形 ②部材の並び ③本体 ④保持層 ⑤層の名前 ⑥寸法の字 ⑦字の段の割り付け を順に描いていた。
+    形は`zoomGeometry()`が1回だけ決めて`G`で渡し、段は`zoom*()`へ分けた。返す値は本体が組む。 */
+ const VFS = 13, NFS = 10;   /* 拡大図の字の大きさ（値・名前）。中へ貼る判定と引き出しの段が同じ値を見る */
  function zoomFigure(res, r, axis, half) {
+  const G = zoomGeometry(res, r, axis, half);
+  if (!G) return null;
+  const { z0, P, PAL, ring, finger, top, sg, cl } = G;
+  const seq = zoomSequence(res, r, G);
+  const { body, x, zoneA, zoneB, sb } = zoomCoreSvg(G, seq);
+  const { hold, holdList } = zoomHoldSvg(G, zoneA, zoneB);
+  const caps = zoomCapsSvg(G, x);
+  const { items, inside, vert, outs, marks: marks0 } = zoomLabels(G, seq, holdList);
+  const { ln, marks, lead, off, minY, maxY } = zoomLeadRows(G, sb, outs, marks0);
+  /* 区間の寸法線は**軸心の反対側**（半断面の外）。図と重ならない。 */
+  const spanY = cl - sg * ZOOM.dim;
+  const spans = zoomSpan(zoneA, zoneB, spanY, `区間 ${P.len.toFixed(2)} mm`, PAL);
+  let vh = top ? spanY + 16 : cl + ZOOM.rad + 16;
+  /* 外の段が器からはみ出すぶん、器を広げる（上へはみ出すなら全体を下げる）。 */
+  let grow = 0;
+  if (Number.isFinite(minY) && minY < 2) { grow = 2 - minY; vh += grow; }
+  if (Number.isFinite(maxY) && maxY + grow > vh - 2) vh = maxY + grow + 4;
+  /* **引き出した「部材」のいちばん広い幅**（§9.430）。ラベルは対象へ直に貼る
+     ので、引き出しに落ちてよいのは「貼る相手が無いもの」（上下刃の中心間）と
+     「字が入らないほど細い部材」だけ。ここが字の高さを超えたら、**貼れるはずの
+     物を引き出している**。 */
+  const leadWmax = outs.filter(q => q.w > 0).reduce((m, q) => Math.max(m, q.w), 0);
+  return {
+   vh, dims: items.length, inside: inside.length + vert.length, lead, off, leadWmax,
+   axis: z0.upper ? 'up' : 'lo', zone: z0.i, half: top ? 'top' : 'bottom',
+   svg: grow ? `<g transform="translate(0 ${grow.toFixed(1)})">${body}${hold}${caps}${ln}${marks}${spans}</g>`
+    : `${body}${hold}${caps}${ln}${marks}${spans}`,
+   /* 図が言えないことだけを添える（§CLAUDE 8 同じ情報を2箇所に出さない）。 */
+   note: zoomNote(res, r, P, ring, finger)
+  };
+ }
+ /* ① 形（どの区間・どちらの半分・縮尺・半径）。組めない区間なら null。 */
+ function zoomGeometry(res, r, axis, half) {
   const zs = r.zones || [];
   const want = axis === 'up' ? true : (axis === 'lo' ? false : null);
   const z0 = (want === null ? null : zs.find(z => !!z.upper === want)) || zs[0];
@@ -1825,6 +1616,11 @@
    const a = Yr(r0), b = Yr(r1);
    return { y: Math.min(a, b), h: Math.max(1, Math.abs(b - a)) };
   };
+  return { z0, P, PAL, B, tk, twoKnife, knifeRight, knifeLeft, S, ring, finger, shaftR, spacerR, knifeR, holdIn, holdOut, maxR, k, top, sg, cl, Yr, band };
+ }
+ /* ② 部材の並び（刃・スペーサー・隙間／シートが押さえる量）。模式図と同じ順。 */
+ function zoomSequence(res, r, G) {
+  const { z0, P, B, tk, knifeRight, knifeLeft } = G;
   /* 軸の並び。模式図と同じ順（OS側→DS側）で、`flip` のときだけ左右を返す。 */
   /* **シートの側の端の残りは「隙間」ではない**（§9.487・§9.456）。スペーサーを基準面から
      敷き詰め、反対の端はフローティングシートが押さえるので、残りは**押さえる量**——
@@ -1842,6 +1638,11 @@
   run.forEach(q => seq.push(q));
   if (seat && knifeLeft) seq.push(press());
   if (knifeRight) seq.push(knife());
+  return seq;
+ }
+ /* ③ 本体（軸・部材・軸心・有効幅の端）。部材には置いた位置（a・b・cx・bd）を書き込む。 */
+ function zoomCoreSvg(G, seq) {
+  const { PAL, twoKnife, knifeLeft, S, shaftR, spacerR, knifeR, sg, cl, Yr, band } = G;
   const face = { spacer: PAL.spacer, gap: PAL.filler, knife: PAL.knife, seat: 'none' };
   const edge = { spacer: PAL['spacer-edge'], gap: PAL['filler-edge'], knife: PAL['knife-edge'], seat: PAL.label };
   const topR = { spacer: spacerR, gap: spacerR, knife: knifeR, seat: spacerR };
@@ -1876,6 +1677,10 @@
     + ` text-anchor="${knifeLeft ? 'end' : 'start'}" font-size="11" font-weight="700"`
     + ` fill="${PAL.label}">有効幅の端</text>`;
   }
+  return { body, x, zoneA, zoneB, sb };
+ }
+ function zoomHoldSvg(G, zoneA, zoneB) {
+  const { P, PAL, B, S, ring, finger, holdIn, holdOut, band } = G;
   /* **反対側の軸の刃（破線）は描かない**（§9.458、利用者の指示「拡大図の刃の横の点線は
      消してください」。§9.442 の「破線の刃は残す」は撤回）。クリアランスの値は足元の
      説明が言う。 */
@@ -1913,6 +1718,10 @@
     holdList.push(q);
    });
   }
+  return { hold, holdList };
+ }
+ function zoomCapsSvg(G, x) {
+  const { PAL, ring, finger, shaftR, spacerR, knifeR, holdIn, holdOut, cl, Yr } = G;
   /* ---- 層の名前は**左の余白に1回ずつ**（§9.432・§CLAUDE 8）----
      部材1枚ずつに「スペーサー」と書くと、同じ字が10個並ぶ。層の名前は
      縦位置が言えるので、左の縁へ1回だけ置く。 */
@@ -1929,12 +1738,15 @@
   /* **刃は右の余白へ**。刃の張り出し（軸の外〜刃先）は保持層と半径が重なるので、
      同じ側に置くと字がぶつかる（実際にぶつかった）。 */
   caps += cap(x + 8, (Yr(spacerR) + Yr(knifeR)) / 2, '刃', 'start');
+  return caps;
+ }
+ function zoomLabels(G, seq, holdList) {
+  const { PAL } = G;
   /* ---- 寸法の字 ----
      **入るものはその部材の中へ**（§9.430。横→縦の順）。入らないものは
      **軸の帯の中へ**引き出す（§9.429 の断面図と同じ作法・段は`x`順に振り分け、
      段の中は`spread()`で押し広げる）——軸は半径100mmぶんの高さがあり、
      この図でいちばん広く空いている場所である。 */
-  const VFS = 13, NFS = 10;
   const items = [];
   seq.forEach(q => {
    /* `plain`＝層の名前（左の余白）で言えている部材。**引き出すときは値だけ**
@@ -2004,6 +1816,10 @@
    marks += zoomVText(vx, mid, q.val, VFS, q.ink, halo, 800);
    if (q.vName) marks += zoomVText(q.cx - VFS / 2 - 1, mid, q.name, NFS, q.ink, halo, 600);
   });
+  return { items, inside, vert, outs, marks };
+ }
+ function zoomLeadRows(G, sb, outs, marks) {
+  const { PAL, B, maxR, sg, cl, Yr } = G;
   /* **引き出す先は層で分ける**（§9.458、利用者の指示「軸に近いスペーサーで書ききれない
      場合は軸に、ゴムリングやフィンガーで書ききれない場合は軸と反対の外側に」）。
      スペーサー（と刃）は軸の帯の中の段へ、保持層は部材のいちばん外より**さらに外**の段へ。
@@ -2069,27 +1885,7 @@
   };
   placeRows(coreOuts, shaftRows, 'shaft');
   placeRows(holdOuts, 2, 'outer');
-  /* 区間の寸法線は**軸心の反対側**（半断面の外）。図と重ならない。 */
-  const spanY = cl - sg * ZOOM.dim;
-  const spans = zoomSpan(zoneA, zoneB, spanY, `区間 ${P.len.toFixed(2)} mm`, PAL);
-  let vh = top ? spanY + 16 : cl + ZOOM.rad + 16;
-  /* 外の段が器からはみ出すぶん、器を広げる（上へはみ出すなら全体を下げる）。 */
-  let grow = 0;
-  if (Number.isFinite(minY) && minY < 2) { grow = 2 - minY; vh += grow; }
-  if (Number.isFinite(maxY) && maxY + grow > vh - 2) vh = maxY + grow + 4;
-  /* **引き出した「部材」のいちばん広い幅**（§9.430）。ラベルは対象へ直に貼る
-     ので、引き出しに落ちてよいのは「貼る相手が無いもの」（上下刃の中心間）と
-     「字が入らないほど細い部材」だけ。ここが字の高さを超えたら、**貼れるはずの
-     物を引き出している**。 */
-  const leadWmax = outs.filter(q => q.w > 0).reduce((m, q) => Math.max(m, q.w), 0);
-  return {
-   vh, dims: items.length, inside: inside.length + vert.length, lead, off, leadWmax,
-   axis: z0.upper ? 'up' : 'lo', zone: z0.i, half: top ? 'top' : 'bottom',
-   svg: grow ? `<g transform="translate(0 ${grow.toFixed(1)})">${body}${hold}${caps}${ln}${marks}${spans}</g>`
-    : `${body}${hold}${caps}${ln}${marks}${spans}`,
-   /* 図が言えないことだけを添える（§CLAUDE 8 同じ情報を2箇所に出さない）。 */
-   note: zoomNote(res, r, P, ring, finger)
-  };
+  return { ln, marks, lead, off, minY, maxY };
  }
  /* 図の外で言うこと。**図に出ている寸法は繰り返さない**——繰り返すと、
     読む側は「違うものかもしれない」と数え直すことになる（§CLAUDE 8）。 */
@@ -3113,7 +2909,22 @@
    .catch(e => WL.quiet.note('図を組めない（模式図はそのまま使える）', e));
  }
 
+ /* ---------- 刃組画面の配線は群ごとに（§9.522・REVIEW 3-22） ----------
+    以前は`wire()`の1本（303行）が約50件の配線を平らに並べていた。**連続した範囲のまま**群の関数へ
+    分け、同じ順に呼ぶ——同じ相手・同じ種類のイベント（`panel`の`click`は2か所）は登録の順で動くので、
+    順番を入れ替えないこと。 */
  function wire() {
+  wireLotInputs();
+  wireStripDesign();
+  wireLotOrder();
+  wireStepsAndTables();
+  wireFigureZoom();
+  wireFigureNav();
+  wireRail();
+  window.addEventListener('resize', () => { if (panel && !panel.hidden && LAST) drawFigure(LAST); });
+ }
+ /* 条件の欄（刃・板厚・クリアランス・元板巾…）と条の表。 */
+ function wireLotInputs() {
   /* 数値欄は id をそのまま状態の鍵にする。 */
   [['bsKnife', 'knife'], ['bsThick', 'thick'], ['bsTk', 'tk'], ['bsClr', 'clr'],
    ['bsOv', 'ov'], ['bsW', 'W'], ['bsOsTrim', 'osTrim'], ['bsNkWidth', 'nkWidth']]
@@ -3170,6 +2981,9 @@
    st.order = st.order.filter(i => i !== gone).map(i => (i > gone ? i - 1 : i));
    renderLots(); renderOrder(); scheduleRender();
   });
+ }
+ /* 条の設計（その場で記録・既定へ戻す・条を足す）。 */
+ function wireStripDesign() {
   /* 条の設計を**その場で記録**（§9.381）。刃組完了のときにも記録するが、
      測定が先に始まることがあるので、**完了を待たずに残せる**ようにする。 */
   $('#bsDsSave').addEventListener('click', async () => {
@@ -3209,6 +3023,9 @@
    st.lots.push({ name: 'LOT' + (st.lots.length + 1), w: 200, n: 1 });
    renderLots(); renderOrder(); scheduleRender();
   });
+ }
+ /* 条の並び（つまんで入れ替える・並べ方のボタン）。 */
+ function wireLotOrder() {
   /* 条の並びをつまんで動かす */
   let dragFrom = null;
   const list = $('#bsOrdList');
@@ -3250,6 +3067,9 @@
    BS().reorder(st, b.dataset.ord);
    renderOrder(); scheduleRender();
   }));
+ }
+ /* 保持層の自動／手動・手順の窓・表から直す場所を開く。 */
+ function wireStepsAndTables() {
   /* リングの自動／手動 */
   panel.querySelectorAll('.bs-chip[data-ring]').forEach(b => b.addEventListener('click', () => {
    const ring = b.dataset.ring, auto = b.dataset.mode === 'auto';
@@ -3294,6 +3114,9 @@
    closePops();
    if (host) host.classList.add('is-open');
   });
+ }
+ /* 拡大図の開け閉め（区間を押す・外を押す・Esc）と記号の連動。 */
+ function wireFigureZoom() {
   document.addEventListener('click', e => {
    if (!panel || panel.hidden) return;
    if (!e.target.closest('.bs-step')) closePops();
@@ -3327,6 +3150,9 @@
   panel.addEventListener('pointerleave', () => pickBadge(''));
   $('#bsZoomClose').addEventListener('click', closeZoneZoom);
   /* 段取りへ戻る（§9.378）。**左メニューと同じ口**を呼ぶ——入口を2つにしない。 */
+ }
+ /* 戻り道・向きの札・図の種類・立体図。 */
+ function wireFigureNav() {
   $('#bsFrom').addEventListener('click', () => {
    const api = WL.scheduleView;
    if (!api || typeof api.open !== 'function') {
@@ -3375,6 +3201,9 @@
     toggleZoneZoom(String(box.dataset.badge), box, e);
    } });
   }
+ }
+ /* 右の段・台車・刃の組・記録・足りないマスタの受け皿。 */
+ function wireRail() {
   /* 右の段 */
   /* 段の切り替え。**足元の「刃の状態を見る」も同じ道を通る**（入口を2つに
      しない・§9.207）ので、器ではなく`[data-r]`を持つ物で受ける。 */
@@ -3414,7 +3243,6 @@
     else showToast('マスタ管理を開けません', 'この端末ではマスタ管理の画面が読み込まれていません', 4200);
    }
   });
-  window.addEventListener('resize', () => { if (panel && !panel.hidden && LAST) drawFigure(LAST); });
  }
 
  /* ---------- 書く ---------- */

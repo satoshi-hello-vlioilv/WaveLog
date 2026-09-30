@@ -1991,8 +1991,37 @@ function renderGrid(){
  try{return renderGridInner()}
  finally{noteRenderTime(performance.now()-_t0);renderLoadChip();runListHooks('grid')}
 }
+/* ---------- 一覧の描画は段に分ける（§9.522・REVIEW 3-22） ----------
+   以前は`renderGridInner()`の1本（554行）が、30近い局所変数を共有しながら
+   ①何をどの列で描くか ②列の見え方 ③列幅 ④見出し ⑤行 ⑥器へ載せる ⑦続きを並べる
+   を順に行っていた。段ごとの関数へ分け、段のあいだで渡す物は**この描画の文脈`g`の1つ**に
+   まとめる（`gridScope()`が作り、②③④が書き足す）。
+   **段の順番は描画の副作用の順番そのもの**なので入れ替えないこと——列の窓（`g.colWin`）は
+   見出しを作ったあと・行を作る前、追い判定の世代（`gridGeneration`）は器へ載せたあとに読む。 */
 function renderGridInner(){
  bumpGridGeneration();   // 前の描画に紐づく非同期判定を打ち切る(下のcheck*参照)
+ const g=gridScope();
+ gridColumnView(g);
+ gridColumnWidths(g);
+ const t=buildGridTable(g);
+ const b=document.createElement('tbody');
+ // 分割データはあるが子ロットが仕掛から見つからない行(=作業済みで仕掛から
+ // 外れている可能性が高い)を、非同期の存在確認後にグリッド上で気づけるように
+ // 更新する対象を集める(`split`・下のfeedRemainingRows参照)。
+ // 親側の分割データは無い(=一見「分割なし」)行でも、「ｺﾝﾏ5本ｶｰﾄﾞ区分」が
+ // 3の行は分割済みの子ロット自身であるため、親ロットを逆引き検索して
+ // 気づけるようにする対象を集める(`parent`・checkParentLookupRows参照)。
+ const targets={split:[],parent:[]};
+ const buildRow=makeGridRowBuilder(g,b,targets);
+ const feed=gridFeedPlan(g);
+ for(let i=0;i<feed.first;i++)buildRow(g.visibleRows[i],i);
+ t.append(b);
+ mountGrid(g,t);
+ feedRemainingRows(g,feed,b,buildRow,targets);
+}
+
+/* ① 何を・どの列で描くか。行（伏せる・畳む）と列（許す・並び）を決める。 */
+function gridScope(){
  /* ロット問い合わせ(LotDsp)は仕掛一覧・品質データのどちらでも使えるように
     する。「測定」列(測定画面を開く)は**役割が「作業」のデータソース**専用。
     「予定」列(スケジュールへ追加、§9.5)も同じで、スケジュールモードの
@@ -2000,8 +2029,9 @@ function renderGridInner(){
     ではなくデータソースマスタの役割で行う(§9.87)。 */
  const isWork=WL.dataSource.isWork(S.db),hasLotDsp=WL.dataSource.hasLot(S.db);
  const canPlan=isWork&&window.accessMode?.mode==='schedule';
- const lotCol=hasLotDsp?findColumnFor('lotNo'):null,castCol=hasLotDsp?findColumnFor('castingNo'):null;
- const filteredCols=new Set((S.genericFilters||[]).map(f=>f.column));
+ const g={isWork,hasLotDsp,canPlan,
+  lotCol:hasLotDsp?findColumnFor('lotNo'):null,castCol:hasLotDsp?findColumnFor('castingNo'):null,
+  filteredCols:new Set((S.genericFilters||[]).map(f=>f.column))};
  /* 一覧に出すべきでないロットは伏せる（§9.15＋§9.368）。答えるのは
     スケジュール画面の1箇所（`WL.scheduleView.hiddenLotSet()`）で、
       ・**予定に居るロット**（投入済みなので一覧に残すと二重に見える）
@@ -2029,17 +2059,17 @@ function renderGridInner(){
      ・**開いた/畳んだは覚える**（描き直しても戻らない。§9.175）。
      ・**畳んだ件数は必ず文字で出す**（§3。黙って行が減ると
        「絞り込んでいないのに件数が合わない」としか読めない）。 */
- const childIndex=buildChildIndex(allVisibleRows,isWork);
- lastChildFold={folded:childIndex.size,tooMany:childIndex.tooMany};
- const visibleRows=childIndex.size?allVisibleRows.filter(r=>!childIndex.has(r)):allVisibleRows;
+ g.childIndex=buildChildIndex(allVisibleRows,isWork);
+ lastChildFold={folded:g.childIndex.size,tooMany:g.childIndex.tooMany};
+ g.visibleRows=g.childIndex.size?allVisibleRows.filter(r=>!g.childIndex.has(r)):allVisibleRows;
  // スケジュール列表示マスタ(§9.18新設): scheduleモードで設備ごとに選んだ
  // 列だけへ絞る(未設定の設備・schedule以外のモードではnullが返り、
  // 通常どおり全列を表示する)。
  const columnAllowlist=canPlan?window.scColumnAllowlist?.():null;
- const allowed=columnAllowlist?S.columns.filter(c=>columnAllowlist.includes(c)):S.columns;
+ g.allowed=columnAllowlist?S.columns.filter(c=>columnAllowlist.includes(c)):S.columns;
  // 利用者が決めた並び・非表示を重ねる(§9.88)。記録に無い列は末尾へ回るので、
  // データ側の項目が増えても設定は壊れない。
- const layoutTarget=listLayoutTarget();
+ g.layoutTarget=listLayoutTarget();
  /* ---------- 並びは1本(§9.106) ----------
     番号・ボタンの列(`#`/`分割`/`測定`/`予定`/選択)も**データ列と同じ1本の
     並び**に載せる。以前はデータ列だけを`apply()`で並べ替え、番号・ボタンは
@@ -2047,9 +2077,14 @@ function renderGridInner(){
     **列の設定パネルで動かした並びと実際の並びが食い違い**、チェックを
     外しても消えなかった(実機で報告された)。設定画面と一覧が同じ並びを
     見るために、出どころは`listColumnKeys()`ただ1つにする。 */
- const ordered=orderedListColumns(layoutTarget,allowed);
- const dataCols=ordered.filter(k=>!isVirtualColumn(k));
- const visibleColumns=dataCols;         // 以降の互換(件数・書式の対象はデータ列)
+ g.ordered=orderedListColumns(g.layoutTarget,g.allowed);
+ g.dataCols=g.ordered.filter(k=>!isVirtualColumn(k));   // 件数・書式の対象はデータ列
+ return g;
+}
+
+/* ② 列の見え方（書式・読み替え・式）。**列ごとに1回だけ**引いて、セルの描画で使い回す。 */
+function gridColumnView(g){
+ const {layoutTarget,dataCols}=g;
  /* 書式(§9.88 段3)は列ごとに1度だけ引いて、セルの描画で使い回す。
     数値の書式を当てた列は**列ごと**右づめにする(桁を縦に揃えて読むため)。
     値ごとに決めると、数値として読めない値が1つ混ざった列で揃い方が乱れる。 */
@@ -2082,7 +2117,8 @@ function renderGridInner(){
   });
   return out;
  })();
- const namedRow=r=>{
+ g.colFmt=colFmt;g.colRule=colRule;g.colCalc=colCalc;
+ g.namedRow=r=>{
   if(!nameKeys.length||!r)return r;
   const o=Object.assign({},r);
   nameKeys.forEach(([n,k])=>{if(!(n in o))o[n]=r[k]});
@@ -2090,18 +2126,22 @@ function renderGridInner(){
  };
  /* 読み替えが「表示の値」で見るとき（§9.474）の**列の見え方**。この一覧が持つ式・書式・読み替えを
     そのまま渡す（`WL.cellFormat`が見ている列だけを引く）。 */
- const ruleView={
+ g.ruleView={
   key:n=>(colFmt.has(n)?n:(WL.columnLayout.keyByName(layoutTarget,dataCols,n)||n)),
   calc:k=>colCalc.get(k)||null, format:k=>colFmt.get(k)||null, rule:k=>colRule.get(k)||''
  };
- const numCol=c=>colFmt.get(c)?.kind==='number';
- /* 列幅は**セルを描く前に決める**(§9.94)。colgroupへ入れるだけでなく、
-    「その幅に入り切らない値へtitleを付ける」判断にも使うため。 */
+ g.numCol=c=>colFmt.get(c)?.kind==='number';
+}
+
+/* ③ 列幅。**セルを描く前に決める**(§9.94)。colgroupへ入れるだけでなく、
+   「その幅に入り切らない値へtitleを付ける」判断にも使うため。 */
+function gridColumnWidths(g){
+ const {layoutTarget,ordered,dataCols,visibleRows,colCalc,namedRow}=g;
  const metrics=gridMetrics();
  const widthSample=visibleRows.slice(0,COL_W_SAMPLE);
  /* 行番号に要る桁数は「このページの最後の番号」で決まる。 */
  const noDigits=String(Math.max(1,(S.page-1)*effectivePageSize()+Math.max(1,visibleRows.length))).length;
- const colW=new Map(ordered.map(k=>[k,
+ g.colW=new Map(ordered.map(k=>[k,
    WL.columnLayout.width(layoutTarget,k)
    ||(isVirtualColumn(k)?virtualColumnWidth(k,metrics,noDigits)
       :estimateColumnWidth(WL.columnLayout.label(layoutTarget,k),
@@ -2109,65 +2149,28 @@ function renderGridInner(){
                            // (生のr[k]は無いので、そのままだと見出しの幅になる)。
                            widthSample.map(r=>colCalc.has(k)?colCalc.get(k).run(namedRow(r)):r[k]),
                            metrics.fs,metrics.padX))]));
- /* 番号・ボタンの列の揃え。**既定は今までの見え方**（選択/予定/#/分割/測定は
-    それぞれCSSが中央や右にしていた）を`columnAlign`の既定に合わせて明示する
-    ——`al-*`はutilityレイヤなので、当てた時点でCSS側の指定に勝つ。 */
- const VIRT_ALIGN={'__select__':'center','__plan__':'center','#':'right',
-                   '__split__':'center','__measure__':'center'};
- const vAl=k=>{
-  const a=WL.columnLayout.align(layoutTarget,k);
-  if(a.data)return WL.columnAlign.classOf(a.data);
-  return WL.columnAlign.classOf(VIRT_ALIGN[k]||'left');
- };
  // その列に何文字ぶん入るか(em)。これを超える値は省略記号になる。
- const colEm=new Map(dataCols.map(c=>[c,(colW.get(c)-metrics.padX*2-2)/metrics.fs]));
-  const t=document.createElement('table');
+ g.colEm=new Map(dataCols.map(c=>[c,(g.colW.get(c)-metrics.padX*2-2)/metrics.fs]));
+}
+
+/* 番号・ボタンの列の揃え。**既定は今までの見え方**（選択/予定/#/分割/測定は
+   それぞれCSSが中央や右にしていた）を`columnAlign`の既定に合わせて明示する
+   ——`al-*`はutilityレイヤなので、当てた時点でCSS側の指定に勝つ。 */
+const VIRT_ALIGN={'__select__':'center','__plan__':'center','#':'right',
+                  '__split__':'center','__measure__':'center'};
+function virtualAlignClass(target,k){
+ const al=WL.columnLayout.align(target,k);
+ if(al.data)return WL.columnAlign.classOf(al.data);
+ return WL.columnAlign.classOf(VIRT_ALIGN[k]||'left');
+}
+
+/* ④ 見出し（thead・colgroup・列の窓・見出しの道具と並べ替えの配線）。 */
+function buildGridTable(g){
+ const {layoutTarget,ordered,colW}=g;
+ const t=document.createElement('table');
  /* 見出し。**1本の並び(ordered)をそのまま辿る**ので、番号・ボタンの列が
     データ列の間に入っていてもそのとおりに出る(§9.106)。 */
- /* **どの見出しにも`data-col`を付ける**。セルと同じで、位置で数えずキーで
-    引けるようにするため(§9.104)。見出しの右クリック(§9.110)は番号・
-    ボタンの列にも効かせたいので、そこだけ属性が無いと分岐が増える。 */
- /* 番号・ボタンの列も**掴んで動かせる・幅を引ける**（§9.239 ⑤-1）。
-    取っ手(`.col-resize`)と`draggable`をデータ列と同じように付ける
-    ——並びにも設定パネルにも載っている列が、見出しからだけ触れないのは
-    「設定画面では動かせるのに一覧は変わらない」の裏返し（§9.106）。
-    **並べ替え(`data-sort-col`)は付けない**（値を持たない列なので、
-    押しても何で並べればよいか決められない）。 */
- const VIRT_TIP={'__select__':'選択','__plan__':'予定の投入','#':'行番号',
-                 '__split__':'親子管理_子カード／コンマ5本分割_切断巾に実データがある場合「分割あり」と表示します',
-                 '__measure__':'測定を開く'};
- /* 全選択のチェックからは掴ませない（§9.239 ⑤-1）——チェックを押した
-    つもりで列の並べ替えが始まると、押した通りに動かない。 */
- const virtHead=(k,cls,inner)=>
-  `<th class="${cls} ${WL.columnAlign.headClass(layoutTarget,k,'')}" data-col="${esc(k)}" draggable="true"`
-  +` title="${esc(VIRT_TIP[k]||'')}｜ドラッグで列の入れ替え／右端の取っ手で列幅">`
-  +inner
-  +'<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで既定へ）" aria-hidden="true"></i></th>';
- const headOf=k=>{
-  if(k==='__select__')return virtHead(k,'plan-select-head','<input type="checkbox" id="planSelectAll" draggable="false" title="このページの全行を選択/解除">');
-  if(k==='__plan__')return virtHead(k,'plan-action-head','予定');
-  if(k==='#')return virtHead(k,'grid-no-head','#');
-  if(k==='__split__')return virtHead(k,'split-flag-head','分割');
-  if(k==='__measure__')return virtHead(k,'measurement-action-head','測定');
-  const c=k,filtered=filteredCols.has(c);
-  /* 並び順の合図。**2つ以上のキーがあるときは順番も出す**——「何で並んで
-     いるか」は分かっても「どちらが先か」が分からないと結果を読めない。 */
-  const dir=WL.listSort.dirOf(c),rank=WL.listSort.rankOf(c),multi=WL.listSort.keys().length>1;
-  const sorted=!!dir;
-  /* 順番は**矢印の後ろ**に丸数字で置く。列名の直後に数字を置くと
-     「製造材質2」のように列名の一部に見える(実際にそう見えた)。 */
-  const arrow=sorted?((dir==='desc'?' ▼':' ▲')
-    +(multi?`<i class="col-sort-rank" title="${rank}番目のキー">${'①②③④'[rank-1]||rank}</i>`:'')):'';
-  /* 見出しは3役: クリックで並び替え / 掴んで左右へ動かすと列の並べ替え /
-     右端の取っ手を引くと列幅。**取っ手はクリックを飲み込む**(引くつもりが
-     並び替わると操作を取り消せない)。 */
-  /* 揃えは`WL.columnAlign`の1箇所が答える(§9.239 ④)。`.col-num`は
-     「数値の書式を当てた列」の印として残す(等幅数字の意味)が、
-     **右づめにするかどうかはもう`.col-num`が決めない**——自動のときだけ
-     書式を見て右へ倒すのは`columnAlign`の役目。 */
-  return `<th class="sortable-col ${numCol(c)?'col-num':''} ${WL.columnAlign.headClass(layoutTarget,c,colFmt.get(c)?.kind||'')} ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" data-col="${esc(c)}" draggable="true" tabindex="0" role="button" aria-label="${esc(WL.columnLayout.label(layoutTarget,c))}列で並び替え" title="${esc(c)}｜クリックで並び替え／ドラッグで列の入れ替え${filtered?'（絞り込み中の列です）':''}">${esc(WL.columnLayout.label(layoutTarget,c))}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで既定へ）" aria-hidden="true"></i></th>`;
- };
- t.innerHTML='<thead><tr>'+ordered.map(headOf).join('')+'</tr></thead>';
+ t.innerHTML='<thead><tr>'+ordered.map(k=>gridHeadCell(g,k)).join('')+'</tr></thead>';
  /* 幅はcolgroupで与える。thへ直接書くと、セル側の内容で押し広げられる。
     `table-layout:fixed`にしたので**全列に必ず幅を入れる**(§9.94)。
     入れ忘れた列は等分に割られ、見出しも値も潰れる。 */
@@ -2190,10 +2193,10 @@ function renderGridInner(){
  /* 本文の行は**窓の中の列だけ**組み立てる(§9.104)。見出しは全列のまま。
     窓は**1本の並び全体**に掛ける(番号・ボタンも並びの一部なので、
     左端に固定されているとは限らない)。 */
- const colWin=makeColumnWindow({grid:$('#grid'),columns:ordered,
+ g.colWin=makeColumnWindow({grid:$('#grid'),columns:ordered,
    widthOf:k=>colW.get(k),leadWidth:0});
- colWin.reset();
- bindColumnHeaderTools(t,layoutTarget,visibleColumns,allowed);
+ g.colWin.reset();
+ bindColumnHeaderTools(t,layoutTarget,g.dataCols,g.allowed);
  /* クリック=この列だけで並べ替え / Shift+クリック=キーを追加(§9.88 段5)。
     既定を置き換えにしてあるのは、日々の操作のほとんどが「この列で並べたい」
     だから。2つ目以降が要る場面は少ないので、そちらへ修飾キーを割り当てる。 */
@@ -2205,97 +2208,60 @@ function renderGridInner(){
   th.onclick=e=>sortByHeader(th,e.shiftKey);
   th.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();sortByHeader(th,e.shiftKey)}};
  });
- const b=document.createElement('tbody');
- // 分割データはあるが子ロットが仕掛から見つからない行(=作業済みで仕掛から
- // 外れている可能性が高い)を、非同期の存在確認後にグリッド上で気づけるように
- // 更新する対象を集める(下のrunLimitedブロック参照)。
- const splitCheckTargets=[];
- // 親側の分割データは無い(=一見「分割なし」)行でも、「ｺﾝﾏ5本ｶｰﾄﾞ区分」が
- // 3の行は分割済みの子ロット自身であるため、親ロットを逆引き検索して
- // 気づけるようにする対象を集める(下のcheckParentLookupRows参照)。
- const parentCheckTargets=[];
-  const buildRow=(r,i)=>{
+ return t;
+}
+
+/* **どの見出しにも`data-col`を付ける**。セルと同じで、位置で数えずキーで
+   引けるようにするため(§9.104)。見出しの右クリック(§9.110)は番号・
+   ボタンの列にも効かせたいので、そこだけ属性が無いと分岐が増える。 */
+/* 番号・ボタンの列も**掴んで動かせる・幅を引ける**（§9.239 ⑤-1）。
+   取っ手(`.col-resize`)と`draggable`をデータ列と同じように付ける
+   ——並びにも設定パネルにも載っている列が、見出しからだけ触れないのは
+   「設定画面では動かせるのに一覧は変わらない」の裏返し（§9.106）。
+   **並べ替え(`data-sort-col`)は付けない**（値を持たない列なので、
+   押しても何で並べればよいか決められない）。 */
+const VIRT_TIP={'__select__':'選択','__plan__':'予定の投入','#':'行番号',
+                '__split__':'親子管理_子カード／コンマ5本分割_切断巾に実データがある場合「分割あり」と表示します',
+                '__measure__':'測定を開く'};
+/* 全選択のチェックからは掴ませない（§9.239 ⑤-1）——チェックを押した
+   つもりで列の並べ替えが始まると、押した通りに動かない。 */
+const VIRT_HEAD={'__select__':['plan-select-head','<input type="checkbox" id="planSelectAll" draggable="false" title="このページの全行を選択/解除">'],
+                 '__plan__':['plan-action-head','予定'],'#':['grid-no-head','#'],
+                 '__split__':['split-flag-head','分割'],'__measure__':['measurement-action-head','測定']};
+function gridHeadCell(g,k){
+ const {layoutTarget,colFmt}=g;
+ if(VIRT_HEAD[k]){
+  const [cls,inner]=VIRT_HEAD[k];
+  return `<th class="${cls} ${WL.columnAlign.headClass(layoutTarget,k,'')}" data-col="${esc(k)}" draggable="true"`
+   +` title="${esc(VIRT_TIP[k]||'')}｜ドラッグで列の入れ替え／右端の取っ手で列幅">`
+   +inner
+   +'<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで既定へ）" aria-hidden="true"></i></th>';
+ }
+ const c=k,filtered=g.filteredCols.has(c);
+ /* 並び順の合図。**2つ以上のキーがあるときは順番も出す**——「何で並んで
+    いるか」は分かっても「どちらが先か」が分からないと結果を読めない。 */
+ const dir=WL.listSort.dirOf(c),rank=WL.listSort.rankOf(c),multi=WL.listSort.keys().length>1;
+ const sorted=!!dir;
+ /* 順番は**矢印の後ろ**に丸数字で置く。列名の直後に数字を置くと
+    「製造材質2」のように列名の一部に見える(実際にそう見えた)。 */
+ const arrow=sorted?((dir==='desc'?' ▼':' ▲')
+   +(multi?`<i class="col-sort-rank" title="${rank}番目のキー">${'①②③④'[rank-1]||rank}</i>`:'')):'';
+ /* 見出しは3役: クリックで並び替え / 掴んで左右へ動かすと列の並べ替え /
+    右端の取っ手を引くと列幅。**取っ手はクリックを飲み込む**(引くつもりが
+    並び替わると操作を取り消せない)。 */
+ /* 揃えは`WL.columnAlign`の1箇所が答える(§9.239 ④)。`.col-num`は
+    「数値の書式を当てた列」の印として残す(等幅数字の意味)が、
+    **右づめにするかどうかはもう`.col-num`が決めない**——自動のときだけ
+    書式を見て右へ倒すのは`columnAlign`の役目。 */
+ return `<th class="sortable-col ${g.numCol(c)?'col-num':''} ${WL.columnAlign.headClass(layoutTarget,c,colFmt.get(c)?.kind||'')} ${filtered?'col-filtered':''} ${sorted?'col-sorted':''}" data-sort-col="${esc(c)}" data-col="${esc(c)}" draggable="true" tabindex="0" role="button" aria-label="${esc(WL.columnLayout.label(layoutTarget,c))}列で並び替え" title="${esc(c)}｜クリックで並び替え／ドラッグで列の入れ替え${filtered?'（絞り込み中の列です）':''}">${esc(WL.columnLayout.label(layoutTarget,c))}${arrow}${filtered?'<i class="col-filter-badge" aria-hidden="true" title="この列にフィルタが適用されています">▼</i>':''}<i class="col-resize" title="ドラッグで列幅を調整（ダブルクリックで既定へ）" aria-hidden="true"></i></th>`;
+}
+
+/* ⑤ 行。1行ぶんのセル→行の配線→子ロットの畳み、の順に組み立てる関数を返す。 */
+function makeGridRowBuilder(g,b,targets){
+ return (r,i)=>{
   const tr=document.createElement('tr');
   const rowLot=String(pick(r,'lotNo')||'').trim();
-  /* 分割の印。**セルを作らないときも判定は要らない**ので、窓の中に
-     入っているときだけ組み立てる(追い判定の対象もそのときだけ集める)。 */
-  const splitCellHtml=()=>{
-   const info=typeof window.analyzeRowSplit==='function'?window.analyzeRowSplit(r):{hasSplit:false};
-   if(info.hasSplit){
-    const patternShort=info.widthPattern==='same'?'同幅':info.widthPattern==='different'?'異幅':'';
-    const patternFull=info.widthPattern==='same'?'同一幅分割':info.widthPattern==='different'?'異幅分割':'幅パターン不明';
-    /* ロット数と条数は別物なので両方出す(以前は条数をロット数として
-       「分割あり(6)」のように表示していた)。セルは狭いので「ロット/条」
-       の並びで短く、詳しくはツールチップで言い分ける。 */
-    const strips=Number.isFinite(info.stripCount)?info.stripCount:info.lotCount;
-    splitCheckTargets.push({tr,row:r});
-    /* この一覧の中に子ロットの行が居るなら**畳むつまみ**を出す（§9.239 ⑤-2）。
-       **件数を数字で出す**（`子N`）——開かなくても何本あるかが分かる
-       （§9.199「親か子Nか、名前と数字を食い違わせない」）。 */
-    const kids=childIndex.childrenOf(r);
-    const fold=kids.length
-      ?`<button type="button" class="grid-child-toggle" aria-expanded="${openChildParents.has(rowLot)?'true':'false'}"`
-       +` title="この一覧に居る子ロット ${kids.length}件を${openChildParents.has(rowLot)?'畳みます':'親の直下に出します'}：`
-       +`${esc(kids.map(k=>String(pick(k,'lotNo')||'')).join('、'))}">`
-       +`<i aria-hidden="true">${openChildParents.has(rowLot)?'▾':'▸'}</i>子${kids.length}</button>`
-      :'';
-    return `<td class="split-flag-cell split-yes ${vAl('__split__')}" data-col="__split__" title="推定 ${info.lotCount}ロット / ${strips}条・${patternFull}（実際の子ロット数・条数・幅は測定画面で確定します）">${fold}分割あり(${info.lotCount}ロット/${strips}条)${patternShort?'・'+patternShort:''}</td>`;
-   }
-   if(typeof window.isChildCardClassifiedRow==='function'&&window.isChildCardClassifiedRow(r))parentCheckTargets.push({tr,row:r});
-   /* **切れたセルには生の値の`title`を必ず付ける**（§9.94）。この列は
-      幅を40pxまで狭められるようになった（§9.239 ⑤-1）ので、
-      `#grid td{overflow:hidden}`で「分割なし」が読めなくなりうる。 */
-   return `<td class="split-flag-cell split-no ${vAl('__split__')}" data-col="__split__" title="分割なし（親子管理_子カード／コンマ5本分割_切断巾に実データがありません）">分割なし</td>`;
-  };
-  /* 1本の並びを辿ってセルを作る(§9.106)。窓の外は`colspan`でまとめた
-     空セルにする(§9.104)——**幅は1pxもずれない**(`table-layout:fixed`では
-     colspanで束ねた幅がcolgroupの合計になる)。 */
-  /* **番号・ボタンの列は窓の外でも必ず作る**(§9.106)。畳んでしまうと、
-     横へスクロールしただけで「測定」「＋予定」のボタンが**DOMごと消える**
-     ——列を隠した覚えがないのに押せなくなる(実際に回帰テストが落ちた)。
-     数は多くて5列なので、常に作っても重さに響かない。
-     畳むのはデータ列だけで、続いた畳みぶんは1つのcolspanにまとめる。 */
-  const {from,to}=colWin.get();
-  const gap=n=>n>0?`<td class="grid-col-spacer" colspan="${n}"></td>`:'';
-  let cells='',skipped=0;
-  for(let ci=0;ci<ordered.length;ci++){
-   const c=ordered[ci];
-   if(!isVirtualColumn(c)&&(ci<from||ci>=to)){skipped++;continue}
-   if(skipped){cells+=gap(skipped);skipped=0}
-   /* **番号・ボタンのセルにも`data-col`を付ける**（§9.104「セルは位置で
-      数えないこと。`data-col`で引く」）。以前はデータ列にしか付いておらず、
-      キーで引く仕組み（列の一時的な色・揃え）がこの5列だけ効かなかった。 */
-   /* 番号・ボタンの列も揃えを持てる（§9.239 ④）。既定は今までの見え方
-      （中央／中央／右）で、変えたければ列の設定から。 */
-   if(c==='__select__'){cells+=`<td class="plan-select-cell ${vAl(c)}" data-col="__select__"><input type="checkbox" class="plan-select-checkbox"></td>`;continue}
-   if(c==='__plan__'){cells+=`<td class="plan-action-cell ${vAl(c)}" data-col="__plan__"><button type="button" class="plan-action-button" title="この行の設備の作業スケジュールへ追加します">+ 予定</button></td>`;continue}
-   if(c==='#'){cells+=`<td class="grid-no-cell ${vAl(c)}" data-col="#">${(S.page-1)*effectivePageSize()+i+1}</td>`;continue}
-   if(c==='__split__'){cells+=splitCellHtml();continue}
-   if(c==='__measure__'){cells+=`<td class="measurement-action-cell ${vAl(c)}" data-col="__measure__"><button type="button" class="measurement-action-button">開く</button></td>`;continue}
-   /* ロット番号の字も作り方の式・書式・読み替えを通す（§9.489）。**開く先は生のロット番号**のまま
-      （下の配線が`pick(r,'lotNo')`で読む）——見せ方を変えても問い合わせる番号は変わらない。 */
-   if(c===lotCol){const lc=colCalc.get(c),lr=namedRow(r);
-    const lotVal=WL.cellFormat.cell({raw:lc?lc.run(lr):r[c],format:colFmt.get(c),rule:colRule.get(c),row:lr,column:c,view:ruleView}).text;
-    cells+=`<td class="lot-cell ${WL.columnAlign.cellClass(layoutTarget,c,colFmt.get(c)?.kind||'')}" data-col="${esc(c)}"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(lotVal)||'—'}</button></td>`;continue}
-   /* 読み替え(段4)→書式(段3)の順で通してから出す。どちらも失敗したら
-      生の値が出るので、指定を間違えても値が消えることはない。 */
-   /* 計算で作る列(§9.111 ⑦)は、その行の値から作ってから同じ道を通す
-      ——書式・読み替え・省略記号の扱いをデータ側の列と分けない。 */
-   const calc=colCalc.get(c);
-   const nr=namedRow(r);
-   const rawVal=calc?calc.run(nr):r[c];
-   const out=WL.cellFormat.cell({raw:rawVal,format:colFmt.get(c),rule:colRule.get(c),row:nr,column:c,view:ruleView});
-   const raw=String(rawVal==null?'':rawVal);
-   const cls=[numCol(c)?'col-num':'',WL.columnAlign.cellClass(layoutTarget,c,colFmt.get(c)?.kind||''),
-              out.color?'cell-'+out.color:''].filter(Boolean).join(' ');
-   /* 幅を決め打ちする以上、入り切らない値は省略記号になる(§9.94)。
-      **切れたものは必ずtitleで読めるようにする**——読めない文字が
-      黙って消えるのは、狭い列より悪い。 */
-   const clipped=textWidthEm(out.text)>colEm.get(c);
-   const tip=(out.text!==raw||clipped)?` title="${esc(raw)}"`:'';
-   cells+=`<td data-col="${esc(c)}"${cls?` class="${cls}"`:''}${tip}>${esc(out.text)}</td>`;
-  }
-  tr.innerHTML=cells+gap(skipped);
+  tr.innerHTML=gridRowCells(g,r,i,tr,rowLot,targets);
   /* しま模様は**クラスで塗る**（§9.239 ⑤-2）。`tbody tr:nth-child(even)`は
      DOMのパリティなので、子の行を差し込むと**それ以降の親のしまが反転する**
      （§9.115で紙が踏んだのと同じ罠）。親の並び順で決めれば、子を出しても
@@ -2303,178 +2269,289 @@ function renderGridInner(){
   if(i%2===1)tr.classList.add('is-alt');
   tr.__row=r;   // 行→元データの逆引き(ドラッグ中の印付けに使う。§9.170)
   if(r===S.selectedRow)tr.classList.add('is-selected');
-  if(canPlan&&S.selectedRows.has(r))tr.classList.add('is-plan-selected');
-  tr.addEventListener('click',()=>{
-   if(S.selectedRow===r)return;
-   S.selectedRow=r;
-   b.querySelectorAll('tr.is-selected').forEach(x=>x.classList.remove('is-selected'));
-   tr.classList.add('is-selected');
-  });
-  if(isWork){
-   tr.classList.add('measurement-row');
-   /* **差し込む位置を決めて開いているときは、その位置へ入れる**(§9.179)。
-      作業スケジュールで隙間をダブルクリックしてこの一覧を開いた場合だけで、
-      それ以外は今までどおり測定画面が開く——文脈で意味が変わる操作は、
-      その文脈が画面に出ているとき(隙間が見えているとき)だけにする。 */
-   const open=e=>{
-    if(window.WL&&WL.scheduleInsert&&WL.scheduleInsert.pending()){
-     e.preventDefault();e.stopPropagation();
-     WL.scheduleInsert.insertRow(r);
-     return;
-    }
-    e.preventDefault();e.stopPropagation();
-    WL.records.openMeasurement(r).catch(err=>alertModal('測定画面を開けません: '+err.message));
-   };
-   /* 行のダブルクリックは**ボタンを消しても残す**——測定を開く導線が
-      1つも無くなると、列を隠しただけで機能ごと失われる。 */
-   tr.addEventListener('dblclick',open);
-   const mb=tr.querySelector('.measurement-action-button');
-   if(mb)mb.onclick=open;
-  }
-  if(canPlan){
-   const planBtn=tr.querySelector('.plan-action-button');
-   if(planBtn)planBtn.onclick=e=>{e.preventDefault();e.stopPropagation();window.scheduleAddFromRow?.(r)};
-   const checkbox=tr.querySelector('.plan-select-checkbox');
-   if(checkbox){
-    checkbox.checked=S.selectedRows.has(r);
-    checkbox.addEventListener('click',e=>e.stopPropagation());
-    checkbox.addEventListener('change',()=>{
-     if(checkbox.checked)S.selectedRows.add(r);else S.selectedRows.delete(r);
-     tr.classList.toggle('is-plan-selected',checkbox.checked);
-     syncPlanSelectAll(visibleRows);renderPlanSelectBar(true);
-    });
-   }
-   // 分割表示(§9.10)でのドラッグ投入。チェックボックスで複数選択済みの
-   // 行をドラッグした場合はその選択全体を、そうでなければこの1行だけを
-   // 運ぶ(window.__scDragRowsはschedule-view.js側のドロップ処理と共有する
-   // 単純なハンドオフ。scheduleAddFromRow等と同じ既存の連携方式)。
-   tr.draggable=true;
-   tr.addEventListener('dragstart',e=>{
-    const dragRows=(S.selectedRows.has(r)&&S.selectedRows.size>1)?Array.from(S.selectedRows):[r];
-    window.__scDragRows=dragRows;
-    e.dataTransfer.effectAllowed='copy';
-    try{e.dataTransfer.setData('text/plain',dragRows.map(x=>pick(x,'lotNo')||'').join('、'))}catch(err){WL.quiet.note('一部ブラウザでのsetData制限は無視する',err)}
-    /* **運んでいる行を全部そう見せる**(§9.170)。ブラウザが作るドラッグの
-       写しは掴んだ1行だけなので、印が1行にしか付いていないと「1件しか
-       運んでいない」と読める(まとめて投入したつもりが1件だった、という
-       取り違えが起きる)。選択件数は選択バーが文字で出している。 */
-    markRowsDragging(dragRows,true);
-   });
-   tr.addEventListener('dragend',()=>{
-    const rows=window.__scDragRows;
-    tr.classList.remove('is-row-dragging');
-    if(rows)markRowsDragging(rows,false);
-    window.__scDragRows=null;
-   });
-  }
-  if(hasLotDsp){
-   const lotBtn=tr.querySelector('.grid-lot-link');
-   if(lotBtn)lotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();WL.base.openLotDsp(pick(r,'lotNo'),castCol?r[castCol]:pick(r,'castingNo'),WL.lotDspTab.get())};
-  }
-  /* ---------- 子ロットの行(§9.239 ⑤-2) ----------
-     **畳んでいる間は作らない**。押した時点で親の直下へ差し込み、
-     もう一度押すと取り除く（表そのものは描き直さない——横スクロールも
-     選択も失わないため）。 */
-  const kidRows=childIndex.childrenOf(r);
-  if(kidRows.length){
-   /* 子の行は**親と同じ列の並び**に乗せる（§9.197）。
-      ロット番号の列より手前を1つのcolspanでまとめ、ロット番号の列に
-      子ロット番号、その右から端までを内訳の1マスにする（§9.235 ③と
-      同じ「内訳は1マスにまとめる」）。**colspanの合計は必ず列数と一致
-      させること**——`table-layout:fixed`では合計が食い違うと表の幅が
-      ずれる（§9.104）。 */
-   const lotAt=lotCol?ordered.indexOf(lotCol):-1;
-   const childTr=child=>{
-    const c=document.createElement('tr');
-    c.className='grid-child-row';
-    c.dataset.childOf=rowLot;
-    /* **子行自身の行データ**を入れる（親を入れると、掴んだとき親子が
-       一緒に運ばれ、選択も二重に数えられる）。 */
-    c.__row=child;
-    const lot=String(pick(child,'lotNo')||'')||'—';
-    const info=typeof window.analyzeRowSplit==='function'?window.analyzeRowSplit(child):null;
-    const w=child[findColumnFor('mfgWidth')]??'';
-    const bits=[w!==''&&w!=null?`幅 ${esc(String(w))}`:'',
-                info&&Number.isFinite(info.stripCount)&&info.stripCount>1?`${info.stripCount}条`:'']
-      .filter(Boolean).join(' / ');
-    const detail=`<span class="grid-child-info">子ロット${bits?'・'+bits:''}`
-      +`<i>（親 ${esc(rowLot)} の分割後）</i></span>`;
-    if(lotAt<0){
-     c.innerHTML=`<td class="grid-child-cell" colspan="${ordered.length}">`
-       +`<span class="grid-child-mark" aria-hidden="true">└</span>`
-       +`<b>${esc(lot)}</b>${detail}</td>`;
-     return c;
-    }
-    const head=lotAt>0?`<td class="grid-child-cell" colspan="${lotAt}"><span class="grid-child-mark" aria-hidden="true">└</span></td>`:'';
-    const tail=ordered.length-lotAt-1;
-    c.innerHTML=head
-      +`<td class="grid-child-cell grid-child-lot" title="${esc(lot)}">${lotAt>0?'':'<span class="grid-child-mark" aria-hidden="true">└</span>'}<b>${esc(lot)}</b></td>`
-      +(tail>0?`<td class="grid-child-cell" colspan="${tail}">${detail}</td>`:'');
-    return c;
-   };
-   const paintKids=on=>{
-    tr.parentNode&&[...tr.parentNode.querySelectorAll(`tr.grid-child-row[data-child-of="${CSS.escape(rowLot)}"]`)]
-      .forEach(x=>x.remove());
-    if(!on)return;
-    let at=tr;
-    kidRows.forEach(child=>{const c=childTr(child);at.insertAdjacentElement('afterend',c);at=c});
-   };
-   const btn=tr.querySelector('.grid-child-toggle');
-   if(btn)btn.onclick=e=>{
-    e.preventDefault();e.stopPropagation();
-    const on=!openChildParents.has(rowLot);
-    if(on)openChildParents.add(rowLot);else openChildParents.delete(rowLot);
-    btn.setAttribute('aria-expanded',on?'true':'false');
-    btn.querySelector('i').textContent=on?'▾':'▸';
-    btn.title=`この一覧に居る子ロット ${kidRows.length}件を${on?'畳みます':'親の直下に出します'}：`
-      +kidRows.map(k=>String(pick(k,'lotNo')||'')).join('、');
-    paintKids(on);
-   };
-   /* 描き直しのあとも開いたままにする（§9.175）。 */
-   if(openChildParents.has(rowLot))requestAnimationFrame(()=>{if(tr.isConnected)paintKids(true)});
-  }
+  if(g.canPlan&&S.selectedRows.has(r))tr.classList.add('is-plan-selected');
+  bindGridRowActions(g,tr,r,b);
+  bindGridChildFold(g,tr,r,rowLot);
   b.append(tr);
  };
- /* ---------- 大きい表は少しずつ並べる(§9.94) ----------
-    セル数(行×列)に比例してブラウザのレイアウトが重くなる。実測すると
-    200行×214列=42,800セルで**約3秒、その間まったく操作できない**
-    (罫線もCSSも外した素の表でも1秒近くかかるので、書き方の問題ではなく
-    セルの数そのもの)。一度に全部を渡すと、その3秒が1つの塊になる。
-    最初の一塊だけ描いて渡し、**残りはフレームごとに継ぎ足す**。合計の
-    時間は変わらないが、その間ずっとスクロールも切替もできる。
-    小さい表(下のしきい値以下)は今までどおり一度に描く——分割すると
-    「1行ずつ現れる」だけで、速くも見やすくもならない。
+}
 
-    継ぎ足しは**1回ごとに表全体のレイアウトが起きる**ので、細かく割るほど
-    合計は増える(実測: 20行ずつで合計4.7秒、5行ずつだと7.3秒)。そこで
-    **最初だけ小さく、あとは倍々に**する——最初の一画面はすぐ出て、
-    そのあとは大きく取って回数を減らす。 */
- const FIRST_CELLS=700,MAX_CELLS=9000;
- /* このセル数までは一度に描く。**下回る表では分けない**——分けても
-    速くならず、「行が後から生えてくる」動きだけが増える。 */
- const CHUNK_MIN_CELLS=8000;
- const colCount=ordered.length;
+/* 1本の並びを辿ってセルを作る(§9.106)。窓の外は`colspan`でまとめた
+   空セルにする(§9.104)——**幅は1pxもずれない**(`table-layout:fixed`では
+   colspanで束ねた幅がcolgroupの合計になる)。 */
+/* **番号・ボタンの列は窓の外でも必ず作る**(§9.106)。畳んでしまうと、
+   横へスクロールしただけで「測定」「＋予定」のボタンが**DOMごと消える**
+   ——列を隠した覚えがないのに押せなくなる(実際に回帰テストが落ちた)。
+   数は多くて5列なので、常に作っても重さに響かない。
+   畳むのはデータ列だけで、続いた畳みぶんは1つのcolspanにまとめる。 */
+function gridRowCells(g,r,i,tr,rowLot,targets){
+ const {ordered,layoutTarget}=g;
+ const vAl=k=>virtualAlignClass(layoutTarget,k);
+ const {from,to}=g.colWin.get();
+ const gap=n=>n>0?`<td class="grid-col-spacer" colspan="${n}"></td>`:'';
+ let cells='',skipped=0;
+ for(let ci=0;ci<ordered.length;ci++){
+  const c=ordered[ci];
+  if(!isVirtualColumn(c)&&(ci<from||ci>=to)){skipped++;continue}
+  if(skipped){cells+=gap(skipped);skipped=0}
+  /* **番号・ボタンのセルにも`data-col`を付ける**（§9.104「セルは位置で
+     数えないこと。`data-col`で引く」）。以前はデータ列にしか付いておらず、
+     キーで引く仕組み（列の一時的な色・揃え）がこの5列だけ効かなかった。 */
+  /* 番号・ボタンの列も揃えを持てる（§9.239 ④）。既定は今までの見え方
+     （中央／中央／右）で、変えたければ列の設定から。 */
+  if(c==='__select__'){cells+=`<td class="plan-select-cell ${vAl(c)}" data-col="__select__"><input type="checkbox" class="plan-select-checkbox"></td>`;continue}
+  if(c==='__plan__'){cells+=`<td class="plan-action-cell ${vAl(c)}" data-col="__plan__"><button type="button" class="plan-action-button" title="この行の設備の作業スケジュールへ追加します">+ 予定</button></td>`;continue}
+  if(c==='#'){cells+=`<td class="grid-no-cell ${vAl(c)}" data-col="#">${(S.page-1)*effectivePageSize()+i+1}</td>`;continue}
+  if(c==='__split__'){cells+=gridSplitCell(g,r,tr,rowLot,targets);continue}
+  if(c==='__measure__'){cells+=`<td class="measurement-action-cell ${vAl(c)}" data-col="__measure__"><button type="button" class="measurement-action-button">開く</button></td>`;continue}
+  cells+=gridDataCell(g,c,r);
+ }
+ return cells+gap(skipped);
+}
+
+/* 分割の印。**セルを作らないときも判定は要らない**ので、窓の中に
+   入っているときだけ組み立てる(追い判定の対象もそのときだけ集める)。 */
+function gridSplitCell(g,r,tr,rowLot,targets){
+ const al=virtualAlignClass(g.layoutTarget,'__split__');
+ const info=typeof window.analyzeRowSplit==='function'?window.analyzeRowSplit(r):{hasSplit:false};
+ if(info.hasSplit){
+  const patternShort=info.widthPattern==='same'?'同幅':info.widthPattern==='different'?'異幅':'';
+  const patternFull=info.widthPattern==='same'?'同一幅分割':info.widthPattern==='different'?'異幅分割':'幅パターン不明';
+  /* ロット数と条数は別物なので両方出す(以前は条数をロット数として
+     「分割あり(6)」のように表示していた)。セルは狭いので「ロット/条」
+     の並びで短く、詳しくはツールチップで言い分ける。 */
+  const strips=Number.isFinite(info.stripCount)?info.stripCount:info.lotCount;
+  targets.split.push({tr,row:r});
+  /* この一覧の中に子ロットの行が居るなら**畳むつまみ**を出す（§9.239 ⑤-2）。
+     **件数を数字で出す**（`子N`）——開かなくても何本あるかが分かる
+     （§9.199「親か子Nか、名前と数字を食い違わせない」）。 */
+  const kids=g.childIndex.childrenOf(r);
+  const fold=kids.length
+    ?`<button type="button" class="grid-child-toggle" aria-expanded="${openChildParents.has(rowLot)?'true':'false'}"`
+     +` title="この一覧に居る子ロット ${kids.length}件を${openChildParents.has(rowLot)?'畳みます':'親の直下に出します'}：`
+     +`${esc(kids.map(k=>String(pick(k,'lotNo')||'')).join('、'))}">`
+     +`<i aria-hidden="true">${openChildParents.has(rowLot)?'▾':'▸'}</i>子${kids.length}</button>`
+    :'';
+  return `<td class="split-flag-cell split-yes ${al}" data-col="__split__" title="推定 ${info.lotCount}ロット / ${strips}条・${patternFull}（実際の子ロット数・条数・幅は測定画面で確定します）">${fold}分割あり(${info.lotCount}ロット/${strips}条)${patternShort?'・'+patternShort:''}</td>`;
+ }
+ if(typeof window.isChildCardClassifiedRow==='function'&&window.isChildCardClassifiedRow(r))targets.parent.push({tr,row:r});
+ /* **切れたセルには生の値の`title`を必ず付ける**（§9.94）。この列は
+    幅を40pxまで狭められるようになった（§9.239 ⑤-1）ので、
+    `#grid td{overflow:hidden}`で「分割なし」が読めなくなりうる。 */
+ return `<td class="split-flag-cell split-no ${al}" data-col="__split__" title="分割なし（親子管理_子カード／コンマ5本分割_切断巾に実データがありません）">分割なし</td>`;
+}
+
+/* データ列の1マス。 */
+function gridDataCell(g,c,r){
+ const {layoutTarget,colFmt,colRule,colCalc,namedRow,ruleView}=g;
+ /* ロット番号の字も作り方の式・書式・読み替えを通す（§9.489）。**開く先は生のロット番号**のまま
+    （下の配線が`pick(r,'lotNo')`で読む）——見せ方を変えても問い合わせる番号は変わらない。 */
+ if(c===g.lotCol){const lc=colCalc.get(c),lr=namedRow(r);
+  const lotVal=WL.cellFormat.cell({raw:lc?lc.run(lr):r[c],format:colFmt.get(c),rule:colRule.get(c),row:lr,column:c,view:ruleView}).text;
+  return `<td class="lot-cell ${WL.columnAlign.cellClass(layoutTarget,c,colFmt.get(c)?.kind||'')}" data-col="${esc(c)}"><button type="button" class="lot-dsp-link grid-lot-link" title="クリックでLotDspをこのロット番号で開きます">${esc(lotVal)||'—'}</button></td>`}
+ /* 読み替え(段4)→書式(段3)の順で通してから出す。どちらも失敗したら
+    生の値が出るので、指定を間違えても値が消えることはない。 */
+ /* 計算で作る列(§9.111 ⑦)は、その行の値から作ってから同じ道を通す
+    ——書式・読み替え・省略記号の扱いをデータ側の列と分けない。 */
+ const calc=colCalc.get(c);
+ const nr=namedRow(r);
+ const rawVal=calc?calc.run(nr):r[c];
+ const out=WL.cellFormat.cell({raw:rawVal,format:colFmt.get(c),rule:colRule.get(c),row:nr,column:c,view:ruleView});
+ const raw=String(rawVal==null?'':rawVal);
+ const cls=[g.numCol(c)?'col-num':'',WL.columnAlign.cellClass(layoutTarget,c,colFmt.get(c)?.kind||''),
+            out.color?'cell-'+out.color:''].filter(Boolean).join(' ');
+ /* 幅を決め打ちする以上、入り切らない値は省略記号になる(§9.94)。
+    **切れたものは必ずtitleで読めるようにする**——読めない文字が
+    黙って消えるのは、狭い列より悪い。 */
+ const clipped=textWidthEm(out.text)>g.colEm.get(c);
+ const tip=(out.text!==raw||clipped)?` title="${esc(raw)}"`:'';
+ return `<td data-col="${esc(c)}"${cls?` class="${cls}"`:''}${tip}>${esc(out.text)}</td>`;
+}
+
+/* 行の配線（選ぶ・測定を開く・予定へ入れる・掴んで運ぶ・LotDsp）。 */
+function bindGridRowActions(g,tr,r,b){
+ tr.addEventListener('click',()=>{
+  if(S.selectedRow===r)return;
+  S.selectedRow=r;
+  b.querySelectorAll('tr.is-selected').forEach(x=>x.classList.remove('is-selected'));
+  tr.classList.add('is-selected');
+ });
+ if(g.isWork){
+  tr.classList.add('measurement-row');
+  /* **差し込む位置を決めて開いているときは、その位置へ入れる**(§9.179)。
+     作業スケジュールで隙間をダブルクリックしてこの一覧を開いた場合だけで、
+     それ以外は今までどおり測定画面が開く——文脈で意味が変わる操作は、
+     その文脈が画面に出ているとき(隙間が見えているとき)だけにする。 */
+  const open=e=>{
+   if(window.WL&&WL.scheduleInsert&&WL.scheduleInsert.pending()){
+    e.preventDefault();e.stopPropagation();
+    WL.scheduleInsert.insertRow(r);
+    return;
+   }
+   e.preventDefault();e.stopPropagation();
+   WL.records.openMeasurement(r).catch(err=>alertModal('測定画面を開けません: '+err.message));
+  };
+  /* 行のダブルクリックは**ボタンを消しても残す**——測定を開く導線が
+     1つも無くなると、列を隠しただけで機能ごと失われる。 */
+  tr.addEventListener('dblclick',open);
+  const mb=tr.querySelector('.measurement-action-button');
+  if(mb)mb.onclick=open;
+ }
+ if(g.canPlan)bindGridRowPlan(g,tr,r);
+ if(g.hasLotDsp){
+  const lotBtn=tr.querySelector('.grid-lot-link');
+  if(lotBtn)lotBtn.onclick=e=>{e.preventDefault();e.stopPropagation();WL.base.openLotDsp(pick(r,'lotNo'),g.castCol?r[g.castCol]:pick(r,'castingNo'),WL.lotDspTab.get())};
+ }
+}
+
+/* 予定へ入れる道（＋予定・選ぶチェック・掴んで運ぶ）。スケジュールモードの作業の一覧だけ。 */
+function bindGridRowPlan(g,tr,r){
+ const planBtn=tr.querySelector('.plan-action-button');
+ if(planBtn)planBtn.onclick=e=>{e.preventDefault();e.stopPropagation();window.scheduleAddFromRow?.(r)};
+ const checkbox=tr.querySelector('.plan-select-checkbox');
+ if(checkbox){
+  checkbox.checked=S.selectedRows.has(r);
+  checkbox.addEventListener('click',e=>e.stopPropagation());
+  checkbox.addEventListener('change',()=>{
+   if(checkbox.checked)S.selectedRows.add(r);else S.selectedRows.delete(r);
+   tr.classList.toggle('is-plan-selected',checkbox.checked);
+   syncPlanSelectAll(g.visibleRows);renderPlanSelectBar(true);
+  });
+ }
+ // 分割表示(§9.10)でのドラッグ投入。チェックボックスで複数選択済みの
+ // 行をドラッグした場合はその選択全体を、そうでなければこの1行だけを
+ // 運ぶ(window.__scDragRowsはschedule-view.js側のドロップ処理と共有する
+ // 単純なハンドオフ。scheduleAddFromRow等と同じ既存の連携方式)。
+ tr.draggable=true;
+ tr.addEventListener('dragstart',e=>{
+  const dragRows=(S.selectedRows.has(r)&&S.selectedRows.size>1)?Array.from(S.selectedRows):[r];
+  window.__scDragRows=dragRows;
+  e.dataTransfer.effectAllowed='copy';
+  try{e.dataTransfer.setData('text/plain',dragRows.map(x=>pick(x,'lotNo')||'').join('、'))}catch(err){WL.quiet.note('一部ブラウザでのsetData制限は無視する',err)}
+  /* **運んでいる行を全部そう見せる**(§9.170)。ブラウザが作るドラッグの
+     写しは掴んだ1行だけなので、印が1行にしか付いていないと「1件しか
+     運んでいない」と読める(まとめて投入したつもりが1件だった、という
+     取り違えが起きる)。選択件数は選択バーが文字で出している。 */
+  markRowsDragging(dragRows,true);
+ });
+ tr.addEventListener('dragend',()=>{
+  const rows=window.__scDragRows;
+  tr.classList.remove('is-row-dragging');
+  if(rows)markRowsDragging(rows,false);
+  window.__scDragRows=null;
+ });
+}
+
+/* ---------- 子ロットの行(§9.239 ⑤-2) ----------
+   **畳んでいる間は作らない**。押した時点で親の直下へ差し込み、
+   もう一度押すと取り除く（表そのものは描き直さない——横スクロールも
+   選択も失わないため）。 */
+function bindGridChildFold(g,tr,r,rowLot){
+ const kidRows=g.childIndex.childrenOf(r);
+ if(!kidRows.length)return;
+ const paintKids=on=>{
+  tr.parentNode&&[...tr.parentNode.querySelectorAll(`tr.grid-child-row[data-child-of="${CSS.escape(rowLot)}"]`)]
+    .forEach(x=>x.remove());
+  if(!on)return;
+  let at=tr;
+  kidRows.forEach(child=>{const c=gridChildRow(g,child,rowLot);at.insertAdjacentElement('afterend',c);at=c});
+ };
+ const btn=tr.querySelector('.grid-child-toggle');
+ if(btn)btn.onclick=e=>{
+  e.preventDefault();e.stopPropagation();
+  const on=!openChildParents.has(rowLot);
+  if(on)openChildParents.add(rowLot);else openChildParents.delete(rowLot);
+  btn.setAttribute('aria-expanded',on?'true':'false');
+  btn.querySelector('i').textContent=on?'▾':'▸';
+  btn.title=`この一覧に居る子ロット ${kidRows.length}件を${on?'畳みます':'親の直下に出します'}：`
+    +kidRows.map(k=>String(pick(k,'lotNo')||'')).join('、');
+  paintKids(on);
+ };
+ /* 描き直しのあとも開いたままにする（§9.175）。 */
+ if(openChildParents.has(rowLot))requestAnimationFrame(()=>{if(tr.isConnected)paintKids(true)});
+}
+
+/* 子の行は**親と同じ列の並び**に乗せる（§9.197）。
+   ロット番号の列より手前を1つのcolspanでまとめ、ロット番号の列に
+   子ロット番号、その右から端までを内訳の1マスにする（§9.235 ③と
+   同じ「内訳は1マスにまとめる」）。**colspanの合計は必ず列数と一致
+   させること**——`table-layout:fixed`では合計が食い違うと表の幅が
+   ずれる（§9.104）。 */
+function gridChildRow(g,child,rowLot){
+ const {ordered}=g;
+ const lotAt=g.lotCol?ordered.indexOf(g.lotCol):-1;
+ const c=document.createElement('tr');
+ c.className='grid-child-row';
+ c.dataset.childOf=rowLot;
+ /* **子行自身の行データ**を入れる（親を入れると、掴んだとき親子が
+    一緒に運ばれ、選択も二重に数えられる）。 */
+ c.__row=child;
+ const lot=String(pick(child,'lotNo')||'')||'—';
+ const info=typeof window.analyzeRowSplit==='function'?window.analyzeRowSplit(child):null;
+ const w=child[findColumnFor('mfgWidth')]??'';
+ const bits=[w!==''&&w!=null?`幅 ${esc(String(w))}`:'',
+             info&&Number.isFinite(info.stripCount)&&info.stripCount>1?`${info.stripCount}条`:'']
+   .filter(Boolean).join(' / ');
+ const detail=`<span class="grid-child-info">子ロット${bits?'・'+bits:''}`
+   +`<i>（親 ${esc(rowLot)} の分割後）</i></span>`;
+ if(lotAt<0){
+  c.innerHTML=`<td class="grid-child-cell" colspan="${ordered.length}">`
+    +`<span class="grid-child-mark" aria-hidden="true">└</span>`
+    +`<b>${esc(lot)}</b>${detail}</td>`;
+  return c;
+ }
+ const head=lotAt>0?`<td class="grid-child-cell" colspan="${lotAt}"><span class="grid-child-mark" aria-hidden="true">└</span></td>`:'';
+ const tail=ordered.length-lotAt-1;
+ c.innerHTML=head
+   +`<td class="grid-child-cell grid-child-lot" title="${esc(lot)}">${lotAt>0?'':'<span class="grid-child-mark" aria-hidden="true">└</span>'}<b>${esc(lot)}</b></td>`
+   +(tail>0?`<td class="grid-child-cell" colspan="${tail}">${detail}</td>`:'');
+ return c;
+}
+
+/* ---------- 大きい表は少しずつ並べる(§9.94) ----------
+   セル数(行×列)に比例してブラウザのレイアウトが重くなる。実測すると
+   200行×214列=42,800セルで**約3秒、その間まったく操作できない**
+   (罫線もCSSも外した素の表でも1秒近くかかるので、書き方の問題ではなく
+   セルの数そのもの)。一度に全部を渡すと、その3秒が1つの塊になる。
+   最初の一塊だけ描いて渡し、**残りはフレームごとに継ぎ足す**。合計の
+   時間は変わらないが、その間ずっとスクロールも切替もできる。
+   小さい表(下のしきい値以下)は今までどおり一度に描く——分割すると
+   「1行ずつ現れる」だけで、速くも見やすくもならない。
+
+   継ぎ足しは**1回ごとに表全体のレイアウトが起きる**ので、細かく割るほど
+   合計は増える(実測: 20行ずつで合計4.7秒、5行ずつだと7.3秒)。そこで
+   **最初だけ小さく、あとは倍々に**する——最初の一画面はすぐ出て、
+   そのあとは大きく取って回数を減らす。 */
+const FIRST_CELLS=700,MAX_CELLS=9000;
+/* このセル数までは一度に描く。**下回る表では分けない**——分けても
+   速くならず、「行が後から生えてくる」動きだけが増える。 */
+const CHUNK_MIN_CELLS=8000;
+/* ---------- 行が多いときは見えている分だけ置く(§9.95) ----------
+   「全件」を入れると行数が桁で増える。3,000行×214列=642,000セルは、
+   少しずつ並べても**並べ終えるまでに数十秒**かかる(セル数に比例するのは
+   §9.94のとおり)。人が一度に読めるのは画面に入る数十行だけなので、
+   **DOMへ置くのも画面の前後だけ**にする。データ(S.rows)は全部持っている
+   ので、件数・並べ替え・絞り込み・検索は今までどおり全件に効く。
+   しきい値を超えたときだけ効かせる——200件・500件の表は今までと1行も
+   変わらない(既存の見え方・テストをそのまま残すため)。 */
+const VIRTUAL_MIN_ROWS=600, VIRTUAL_OVERSCAN=14;
+/* 並べ方（一度に／少しずつ／見えている分だけ）と、最初に並べる行数。 */
+function gridFeedPlan(g){
+ const rows=g.visibleRows.length,colCount=g.ordered.length;
  const rowsFor=cells=>Math.max(5,Math.floor(cells/Math.max(1,colCount)));
- /* ---------- 行が多いときは見えている分だけ置く(§9.95) ----------
-    「全件」を入れると行数が桁で増える。3,000行×214列=642,000セルは、
-    少しずつ並べても**並べ終えるまでに数十秒**かかる(セル数に比例するのは
-    §9.94のとおり)。人が一度に読めるのは画面に入る数十行だけなので、
-    **DOMへ置くのも画面の前後だけ**にする。データ(S.rows)は全部持っている
-    ので、件数・並べ替え・絞り込み・検索は今までどおり全件に効く。
-    しきい値を超えたときだけ効かせる——200件・500件の表は今までと1行も
-    変わらない(既存の見え方・テストをそのまま残すため)。 */
- const VIRTUAL_MIN_ROWS=600, VIRTUAL_OVERSCAN=14;
- const virtual=visibleRows.length>VIRTUAL_MIN_ROWS;
- const chunked=!virtual&&visibleRows.length*colCount>CHUNK_MIN_CELLS
-               &&visibleRows.length>rowsFor(FIRST_CELLS);
- const first=(virtual||chunked)?rowsFor(FIRST_CELLS):visibleRows.length;
- for(let i=0;i<first;i++)buildRow(visibleRows[i],i);
- t.append(b);
+ const virtual=rows>VIRTUAL_MIN_ROWS;
+ const chunked=!virtual&&rows*colCount>CHUNK_MIN_CELLS&&rows>rowsFor(FIRST_CELLS);
+ return {virtual,chunked,colCount,rowsFor,first:(virtual||chunked)?rowsFor(FIRST_CELLS):rows};
+}
+
+/* ⑥ 器へ載せる（空の理由・ページ送り・全選択・選択バー・道具列）。 */
+function mountGrid(g,t){
+ const {visibleRows,canPlan}=g;
  /* **いまどの対象の一覧か**を器に刻む（§9.239 ⑤-3）。列の一時的な色は
     列名（`data-col`）で塗るので、器を絞らないと**別のDB・別の表の同じ
     名前の列**まで塗られる。 */
  const gridEl=$('#grid');
- if(gridEl)gridEl.dataset.lt=layoutTarget||'';
+ if(gridEl)gridEl.dataset.lt=g.layoutTarget||'';
  gridEl.replaceChildren(t);
  const emptyNote=listEmptyNote(visibleRows);
  if(emptyNote)gridEl.insertAdjacentHTML('beforeend',emptyNote);
@@ -2496,26 +2573,31 @@ function renderGridInner(){
  }
  renderPlanSelectBar(canPlan);
  renderListToolbar();
+}
+
+/* ⑦ 続きを並べる（見えている分だけ／少しずつ／一度に）と、並べ終えてからの追い判定。 */
+function feedRemainingRows(g,feed,b,buildRow,targets){
+ const {visibleRows,colWin}=g;
  const gen=gridGeneration;
  /* 追い判定は**全部並べ終えてから**(§9.94)。継ぎ足しの途中で始めると、
     まだ作られていない行の印を付け損なう。 */
  const afterRows=()=>{
   if(gen!==gridGeneration)return;
   applyPendingScroll();
-  if(!splitCheckTargets.length&&!parentCheckTargets.length)return;
+  if(!targets.split.length&&!targets.parent.length)return;
   whenIdle(()=>{
    if(gen!==gridGeneration)return;
-   prefetchSplitLookups([...splitCheckTargets,...parentCheckTargets]).then(()=>{
+   prefetchSplitLookups([...targets.split,...targets.parent]).then(()=>{
     if(gen!==gridGeneration)return;
-    checkSplitRowsForMissingChildren(splitCheckTargets);
-    checkParentLookupRows(parentCheckTargets);
+    checkSplitRowsForMissingChildren(targets.split);
+    checkParentLookupRows(targets.parent);
    });
   });
  };
- const clearTargets=()=>{splitCheckTargets.length=0;parentCheckTargets.length=0};
- if(virtual){
+ const clearTargets=()=>{targets.split.length=0;targets.parent.length=0};
+ if(feed.virtual){
   const rows=setupVirtualRows({gen,grid:$('#grid'),tbody:b,rows:visibleRows,
-   colCount,overscan:VIRTUAL_OVERSCAN,buildRow,reset:clearTargets,afterRows});
+   colCount:feed.colCount,overscan:VIRTUAL_OVERSCAN,buildRow,reset:clearTargets,afterRows});
   // 横に動いたら、いま出ている行だけを組み直す(行の窓に組み直しを頼む)。
   setupColumnWindow({gen,grid:$('#grid'),colWin,redraw:rows.redraw});
   return}
@@ -2527,12 +2609,12 @@ function renderGridInner(){
   for(let i=0;i<visibleRows.length;i++)buildRow(visibleRows[i],i);
   afterRows();
  };
- if(!chunked){afterRows();setupColumnWindow({gen,grid:$('#grid'),colWin,redraw:redrawAll});return}
+ if(!feed.chunked){afterRows();setupColumnWindow({gen,grid:$('#grid'),colWin,redraw:redrawAll});return}
  const t0=performance.now();
- let at=first,cells=FIRST_CELLS*2;
+ let at=feed.first,cells=FIRST_CELLS*2;
  const more=()=>{
   if(gen!==gridGeneration)return;              // 描き直された: 続きは要らない
-  const end=Math.min(visibleRows.length,at+rowsFor(cells));
+  const end=Math.min(visibleRows.length,at+feed.rowsFor(cells));
   cells=Math.min(MAX_CELLS,cells*2);
   for(;at<end;at++)buildRow(visibleRows[at],at);
   if(at<visibleRows.length){requestAnimationFrame(more);return}

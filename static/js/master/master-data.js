@@ -184,6 +184,27 @@
  function msSize(n){return (n===null||n===undefined)?'—':(n/1048576).toFixed(1)+'MB'}
  function renderMeasStorage(){
   const form=$('#masterMaintForm'),list=$('#masterMaintList');if(!form||!list)return;
+  const F=msFacts();
+  form.innerHTML=`
+   <div class="mm-form-head"><span class="mm-mode-chip editing">この端末の設定</span></div>
+   <p class="ms-lead">測定データは<b>3か所</b>に置かれます。上から下へ流れます。
+    <b>打っている最中はまだどこにも入っていません</b>——「保存して一覧へ」か「測定を完了」を押した時点で①と②へ入ります。</p>
+   <div class="ms-next"><span class="ms-next-label">次にすること</span><span>${F.next}</span></div>
+   ${pageTabsHtml([
+    {name:'いまの状態',body:msTabNow(F)},
+    {name:'置き場と引っ越し',body:msTabPlace(F)},
+    {name:'閲覧用の複製',body:msTabExport(F)},
+   ])}`;
+  list.innerHTML='';
+  /* 段の切り替えを配線する（§9.261）。編集窓と同じ`bindMaintTabs`なので、
+     キーボード操作（←→）も見出しの一言もそのまま効く。 */
+  bindMaintTabs(form);
+  wireMsActions(form);
+  wireMsSplit();
+  wireMsSaveCfg();
+ }
+ /* 測定データの保存の画面に出す事実（§9.522 で`renderMeasStorage()`から切り出した）。①の件数は画面が数える。 */
+ function msFacts(){
   const srv=measStorageState.server||{},exp=srv.export||{},loc=srv.local||{};
   const items=measStorageState.local;
   const draft=items?items.filter(x=>x.status!=='完了').length:null;
@@ -199,32 +220,31 @@
      ?'②までは保存できています。他のPCから<b>閲覧だけ</b>させたい場合は、下の「閲覧用の複製先」を設定してください（設定しなくても測定・共有はできます）。'
      :(exp.pending?'②に新しい変更があります。次の複製で③へ写ります（すぐ写したいときは「いま複製する」）。'
                   :'すべて送信・複製できています。いまは何もする必要がありません。'));
-  /* **1行1段**にする（§9.261）。以前は3段を横に並べていたが、盤は
-     ビューポートより狭く（1366pxの窓で875px）、矢印2本が240pxを取るので
-     1段あたり204pxしか残らず、**値が「未設定（…」「08/28 15:2…」と
-     切れていた**（実測。CLAUDE 画面基準 11「器は中身の長さから決める」）。
-     縦に積めば値は切れず、流れも上から下で読める。 */
-  const stage=(no,title,sub,rows,note,cls)=>`<div class="ms-stage ${cls||''}">
+  return { exp, loc, draft, done, unsent, v, mins, next };
+ }
+ /* **1行1段**にする（§9.261）。以前は3段を横に並べていたが、盤は
+    ビューポートより狭く（1366pxの窓で875px）、矢印2本が240pxを取るので
+    1段あたり204pxしか残らず、**値が「未設定（…」「08/28 15:2…」と
+    切れていた**（実測。CLAUDE 画面基準 11「器は中身の長さから決める」）。
+    縦に積めば値は切れず、流れも上から下で読める。 */
+ const msStage=(no,title,sub,rows,note,cls)=>`<div class="ms-stage ${cls||''}">
     <div class="ms-stage-head"><span class="ms-no">${no}</span><b>${esc(title)}</b><small>${esc(sub)}</small></div>
     <dl class="ms-kv">${rows.map(([k,val,warn])=>
       `<dt>${esc(k)}</dt><dd${warn?' class="is-warn"':''}>${val}</dd>`).join('')}</dl>
     <p class="ms-note">${note}</p></div>`;
-  const arrow=(a,b)=>`<div class="ms-arrow" aria-hidden="true"><i>↓</i><b>${esc(a)}</b><small>${esc(b)}</small></div>`;
-  form.innerHTML=`
-   <div class="mm-form-head"><span class="mm-mode-chip editing">この端末の設定</span></div>
-   <p class="ms-lead">測定データは<b>3か所</b>に置かれます。上から下へ流れます。
-    <b>打っている最中はまだどこにも入っていません</b>——「保存して一覧へ」か「測定を完了」を押した時点で①と②へ入ります。</p>
-   <div class="ms-next"><span class="ms-next-label">次にすること</span><span>${next}</span></div>
-   ${pageTabsHtml([
-    {name:'いまの状態',body:`   <div class="ms-flow">
-    ${stage('①','この端末のブラウザ','IndexedDB＋控え',[
+ const msArrow=(a,b)=>`<div class="ms-arrow" aria-hidden="true"><i>↓</i><b>${esc(a)}</b><small>${esc(b)}</small></div>`;
+ /* 段「いまの状態」: ①→②→③の流れと、すぐ押す操作。 */
+ function msTabNow(F){
+  const { exp, loc, draft, done, unsent, mins } = F;
+  return `   <div class="ms-flow">
+    ${msStage('①','この端末のブラウザ','IndexedDB＋控え',[
       ['編集中',msNum(draft)+(draft===null?'':'件')],
       ['完了',msNum(done)+(done===null?'':'件')],
       ['②へ未送信',msNum(unsent)+(unsent===null?'':'件'),!!unsent],
      ],'入力した値の実体です。<b>この端末でしか見えません</b>。ブラウザのデータを消すと失われます。',
       unsent?'is-warn':'')}
-    ${arrow('保存のたび','自動')}
-    ${stage('②',loc.perEquipment?'測定データのDB':'この端末のDB',
+    ${msArrow('保存のたび','自動')}
+    ${msStage('②',loc.perEquipment?'測定データのDB':'この端末のDB',
       loc.perEquipment?'共有・設備ごとに1ファイル':'db/records.sqlite3',[
       ['記録',msNum(loc.count)+(loc.count===null?'':'件')],
       ['最終書込',msWhen(loc.lastWriteAt)],
@@ -237,8 +257,8 @@
         読んでいるあいだ測定端末の書き込みを待たせます（自分が書いたぶんだけは実物を読むので、
         自分の記録はすぐ見えます）。<br><code title="${esc(loc.shareDir||'')}">${esc(loc.shareDir||'—')}\\&lt;設備&gt;\\records.sqlite3</code>`
       :`<b>他のPCから続きを開けるのはここ</b>です（データ一覧はここも読みます）。<br><code title="${esc(loc.path||'')}">${esc(loc.path||'—')}</code>`)}
-    ${arrow(exp.retired?'使いません':`変わったら${mins}分ごと`,exp.retired?'—':(exp.configured?'自動':'未設定'))}
-    ${stage('③','閲覧用の複製','Box等・読むだけ',[
+    ${msArrow(exp.retired?'使いません':`変わったら${mins}分ごと`,exp.retired?'—':(exp.configured?'自動':'未設定'))}
+    ${msStage('③','閲覧用の複製','Box等・読むだけ',[
       ['状態',exp.retired?'<b>使いません</b>':(exp.configured?(exp.exists===false?'まだ作られていません':'複製しています'):'<b>未設定（複製しません）</b>'),exp.retired||!exp.configured],
       ['最終複製',(!exp.retired&&exp.configured)?msWhen(exp.lastOkAt):'—'],
       ['未反映の変更',(!exp.retired&&exp.configured)?(exp.pending?'あり':'なし'):'—'],
@@ -256,8 +276,12 @@
     <button type="button" id="msExportNow" class="mm-btn-ghost sm"${exp.configured?'':' disabled'}
       title="${exp.configured?'間隔を待たずに、いま②を③へ写します':'複製先が未設定です'}">いま複製する</button>
     <button type="button" id="msReload" class="mm-btn-ghost sm">状態を読み直す</button>
-   </div></div>`},
-    {name:'置き場と引っ越し',body:`   <div class="ms-settings">
+   </div></div>`;
+ }
+ /* 段「置き場と引っ越し」。 */
+ function msTabPlace(F){
+  const { loc, v } = F;
+  return `   <div class="ms-settings">
     <h4>② 測定データの置き場</h4>
     <!-- **置き場を決めるのは共通設定の1箇所**（§9.267、§9.207「入口を2つに
          しない」）。以前はここにも欄があり、共通設定の「置き場」にも同じ
@@ -289,8 +313,12 @@
      ${loc.perEquipment?'':'<p class="ms-split-why">共有の置き場が<b>まだ効いていません</b>。上で置き場を決めて保存し、アプリを再起動すると押せるようになります。</p>'}
      <div class="ms-split-result" id="msSplitResult" hidden></div>
     </div>
-   </div>`},
-    {name:'閲覧用の複製',body:`   <div class="ms-settings">
+   </div>`;
+ }
+ /* 段「閲覧用の複製」。 */
+ function msTabExport(F){
+  const { exp, v } = F;
+  return `   <div class="ms-settings">
     <h4>③ 閲覧用の複製の設定</h4>
     <!-- **置き場を決めるのは共通設定の1箇所**（§9.267、利用者の指示
          「バックアップの置き場などを含めた全ての設定を共通設定に」）。
@@ -311,12 +339,10 @@
    </div>
    <p class="mm-field-hint">測定画面の「DBへ同期」は、<b>いま開いている測定を①②へ即座に書く</b>ボタンです
     （保存して閉じずに、そこまでの入力を確実に残したいときに使います）。他のPCへ渡したい・PCを入れ替えるときは
-    「データ引継ぎ」タブを使ってください。</p>`},
-   ])}`;
-  list.innerHTML='';
-  /* 段の切り替えを配線する（§9.261）。編集窓と同じ`bindMaintTabs`なので、
-     キーボード操作（←→）も見出しの一言もそのまま効く。 */
-  bindMaintTabs(form);
+    「データ引継ぎ」タブを使ってください。</p>`;
+ }
+ /* すぐ押す操作（読み直す・未送信を送る・いま複製する）と、置き場を直す場所への行き先。 */
+ function wireMsActions(form){
   $('#msReload').onclick=()=>{measStorageState.loaded=false;loadMeasStorageMaint(true)};
   $('#msSyncNow').onclick=async()=>{
    if(typeof WL.records.syncPendingRecords!=='function'){showToast&&showToast('この画面からは送れません','',4000);return}
@@ -341,6 +367,8 @@
     document.querySelector(`#masterMaintNav [data-master="${btn.dataset.msGoto}"]`)?.click();
    };
   });
+ }
+ function wireMsSplit(){
   /* 引っ越しは**下見 → 振り分ける**の2段(§9.193)。下見を見るまで
      「振り分ける」は押せない（押した瞬間に何が起きるか分からない操作にしない）。 */
   let splitSeen=false;
@@ -380,6 +408,9 @@
               +'よろしいですか？'}))return;
    await msSplitRun(true);
   };
+ }
+ /* 閲覧用の複製の間隔を保存する（置き場は共通設定の1箇所・ここは間隔だけ）。 */
+ function wireMsSaveCfg(){
   $('#msSaveCfg').onclick=async()=>{
    /* **送るのはこの2つだけ**。パス設定の保存は「送られてきた項目だけ」を
       書くので、他の設定を巻き添えにしない(§9.192)。 */
@@ -2329,9 +2360,8 @@
   </div>`;
  }
 
- function renderPathConfigForm(){
-  const form=$('#masterMaintForm');if(!form)return;
-  const v=pathConfigState.values||{};
+ /* 共通設定の欄の組み立て（§9.522）。どれも字を返すだけ（画面を読まない）。`v`は保存してある値。 */
+ function pcFieldKit(v){
   /* パス欄は「参照…」ダイアログとドラッグ&ドロップに対応させる(§9.49)。
      手打ちのUNCパスは打ち間違いに気づきにくいのが実際の問題だった。 */
   const pathField=(key,label,mode,hint)=>`<div class="mm-field mm-field-wide mm-field-path"><span>${esc(label)}</span>
@@ -2350,13 +2380,17 @@
   const group=(id,title,when,whenCls,body)=>`<section class="mm-set-group" id="pcSec-${id}" data-pc-section="${id}">
     <div class="mm-set-group-head"><h4>${esc(title)}</h4><span class="mm-apply-badge ${whenCls}">${esc(when)}</span></div>
     <div class="mm-set-group-body">${body}</div></section>`;
+  return {pathField,numField,pickField,group};
+ }
+ /* 章「この端末」。 */
+ function pcSecTerminal(K,v){
+  const {group}=K;
   /* PC名は**サーバーが解決した結果**を出す（§9.208 ⑧）。画面が持つ
      `WL.terminal`は`/api/access-mode`の答えで、保存した直後は古い。 */
   const term=(window.WL&&WL.terminal)||null;
   const act=pathConfigState.active||{};
   const pcNow=act.pc_name||(term&&term.pcName())||'';
   const pcFrom=act.pc_name_source||(term&&term.pcNameSource())||'';
-  form.className='mm-form mm-form-page';
   const SEC_TERMINAL=group('terminal','この端末','保存後すぐ反映','is-live',`
     <div class="pc-who" id="pcWho">
      <div><small>PC名</small><b>${esc(pcNow||'（取得できていません）')}</b>
@@ -2373,6 +2407,11 @@
     ${pcLookHtml()}
     ${pcShortcutHtml()}
     <div id="pcNotes"></div>`);
+  return SEC_TERMINAL;
+ }
+ /* 章「どこから読むか」。 */
+ function pcSecRead(K){
+  const {numField,pickField,group}=K;
   const SEC_READ=group('read','どこから読むか','サーバー再起動後に反映','is-restart',`
     <div class="pc-source-list" id="pcSourceList"></div>
     <p class="mm-field-hint">読み込み先を変えるには「データ接続」のカードから <b>編集</b> を押してください
@@ -2389,6 +2428,11 @@
         ['manual','manual: 自分では写し直さない（一覧の「再読込」を押したときだけ）']],
        '<b>manual</b> は意図して更新を止めるときに使います。元に新しい版があれば、一覧の「元データ」に<b>新しい版あり</b>と出ます。')}
      ${numField('db_mirror_interval_sec','元が変わったかを見る間隔','秒',10,10)}`)}`);
+  return SEC_READ;
+ }
+ /* 章「置き場」。 */
+ function pcSecSchedule(K,v){
+  const {numField,pickField,group}=K;
   /* **置き場は1枚**（§9.267、利用者の指示「マスタの置き場、スケジュールの
      置き場、測定データの置き場、バックアップの置き場などを含めた全ての設定を
      共通設定に視覚的に表現した上でそのままその表示とリンクして設定を簡単に
@@ -2446,6 +2490,11 @@
        [['','（既定）auto: 見つけたら更新する'],['auto','auto: 見つけたら更新する'],
         ['confirm','confirm: 変わった中身（旧→新）を見せてから取り込む']],
        'autoでも黙っては変えません——<b>何件を最新にしたか</b>を知らせ、中身も開けます。')}`)}`);
+  return SEC_SCHEDULE;
+ }
+ /* 章「RNE抽出」。 */
+ function pcSecRne(K){
+  const {pathField,numField,pickField,group}=K;
   const SEC_RNE=group('rne','RNE抽出','保存後すぐ反映','is-live',`
     <p class="mm-field-hint">RNE（Navigator問い合わせ定義）から <code>.sqlite3</code> を作り、それを一覧として読む仕組みです。
      取得元が <b>local</b> のデータソースだけが、ここで作ったファイルを読みます。</p>
@@ -2457,7 +2506,12 @@
     ${pathField('rne_assets_dir','RNE資材の置き場（フォルダ）','dir','RNEファイルと symnavim.conf をまとめて置くフォルダです。RNEファイルはこの下の rne/ 配下に置きます。共有フォルダを指定すれば、端末ごとにコピーせず1式を共用できます。空欄ならアプリ内の config/rne_extract です。')}
     ${pathField('rne_conf_path','接続情報 symnavim.conf の場所','file','認証情報だけを別の場所に置きたい場合に指定します。空欄なら上の資材置き場の直下（symnavim.conf）です。')}
     ${rneStatusPanelHtml()}`);
-  form.innerHTML=`<div class="mm-set-scroll pc-page">
+  return SEC_RNE;
+ }
+ /* ページの骨組み（図 → 章のレール → 章の段 → 保存）。章の中身は`S`が持つ。 */
+ function pcPageHtml(S){
+  const {SEC_TERMINAL,SEC_READ,SEC_SCHEDULE,SEC_RNE}=S;
+  return `<div class="mm-set-scroll pc-page">
    <!-- ① 図：この端末が何とつながっているか -->
    <div class="pc-map" id="pcMap" aria-label="この端末のつながり">
     <button type="button" class="pc-node" data-pc-jump="read">
@@ -2489,6 +2543,9 @@
 
   </div>
   <div class="mm-form-tail mm-set-sticky"><button type="submit" class="mm-btn-primary">共通設定を保存</button><span class="mm-form-hint">更新者IDは画面右上の入力欄を使用します。</span></div>`;
+ }
+ /* 共通設定の配線（保存・段・図から章へ・直す場所・「表示」の行き先・起動アイコン）。 */
+ function wirePathConfigForm(form){
   form.onsubmit=ev=>{ev.preventDefault();savePathConfigMaint()};
   /* 段の切り替えを配線する（§9.261）。編集窓と同じ`bindMaintTabs`なので、
      キーボード操作（←→）も見出しの一言もそのまま効く。 */
@@ -2497,26 +2554,10 @@
      段になったので、スクロールではなく表示の切り替えで連れて行く。 */
   /* **委譲で受ける**（§9.265と同じ理由）——置き場の行は後から描かれるので、
      このとき1つずつ配線すると、行の中の「直す場所を開く」だけ効かない。 */
-  form.addEventListener('click',ev=>{
-   const btn=ev.target.closest('[data-pc-jump]');if(!btn||!form.contains(btn))return;
-   ev.preventDefault();
-   const sec=form.querySelector(`#pcSec-${btn.dataset.pcJump}`);
-   if(!sec)return;
-   const panel=sec.closest('.mm-tabpanel');
-   if(panel&&typeof form.__mmShowTab==='function'){
-    const i=[...form.querySelectorAll('.mm-tabpanel')].indexOf(panel);
-    if(i>=0)form.__mmShowTab(i);
-   }
-   sec.scrollIntoView({block:'start',behavior:'smooth'});
-   sec.classList.add('is-jumped');
-   setTimeout(()=>sec.classList.remove('is-jumped'),1200);
-  });
-  /* 「直す場所」からその画面へ飛ぶ。**行が持つ印で開く**ので、置き場が
-     増えてもここは触らなくてよい（飛び先はサーバーの答えの一部）。 */
-  form.addEventListener('click',ev=>{
-   const b=ev.target.closest('[data-pc-goto]');if(!b)return;
-   document.querySelector(`#masterMaintNav [data-master="${b.dataset.pcGoto}"]`)?.click();
-  });
+  /* **器は描き直しても同じ要素**なので、名前のある関数で付ける（同じ関数は2度付かない・§9.522 の追補。
+     以前は描くたびに積み上がり、3回開くと1回押しただけで3回走った）。 */
+  form.addEventListener('click',onPcJumpClick);
+  form.addEventListener('click',onPcGotoClick);
   bindInputHelpers(form);
   /* 「表示」の設定へ連れて行く。**押すのはヘッダーのバッジそのもの**——
      同じポップオーバーを2つ書かない（§9.267 の「置き場で決める」と同じ作法）。
@@ -2545,6 +2586,30 @@
   /* デスクトップの起動アイコン（§9.445）。**ここは行き先だけ**なので、
      することは「いまの状態を取りに行って塗る」の1つ（盤は「表示」の節）。 */
   paintShortcut();loadShortcut();
+ }
+ function onPcJumpClick(ev){
+  const form=ev.currentTarget;
+  const btn=ev.target.closest('[data-pc-jump]');if(!btn||!form.contains(btn))return;
+  ev.preventDefault();
+  const sec=form.querySelector(`#pcSec-${btn.dataset.pcJump}`);
+  if(!sec)return;
+  const panel=sec.closest('.mm-tabpanel');
+  if(panel&&typeof form.__mmShowTab==='function'){
+   const i=[...form.querySelectorAll('.mm-tabpanel')].indexOf(panel);
+   if(i>=0)form.__mmShowTab(i);
+  }
+  sec.scrollIntoView({block:'start',behavior:'smooth'});
+  sec.classList.add('is-jumped');
+  setTimeout(()=>sec.classList.remove('is-jumped'),1200);
+ }
+ /* 「直す場所」からその画面へ飛ぶ。**行が持つ印で開く**ので、置き場が
+    増えてもここは触らなくてよい（飛び先はサーバーの答えの一部）。 */
+ function onPcGotoClick(ev){
+  const b=ev.target.closest('[data-pc-goto]');if(!b)return;
+  document.querySelector(`#masterMaintNav [data-master="${b.dataset.pcGoto}"]`)?.click();
+ }
+ /* 他の画面から連れて来られたときに、その段（と盤）を開く。 */
+ function openPcPending(form){
   /* 他の画面から「置き場で決める」で来たときは、その段を開いて印を付ける。
      **一度きり**——次に共通設定を開いたときまで覚えていると、身に覚えの
      無い段が開く。 */
@@ -2573,6 +2638,16 @@
     }
    }
   }
+ }
+ function renderPathConfigForm(){
+  const form=$('#masterMaintForm');if(!form)return;
+  const v=pathConfigState.values||{};
+  const K=pcFieldKit(v);
+  form.className='mm-form mm-form-page';
+  form.innerHTML=pcPageHtml({SEC_TERMINAL:pcSecTerminal(K,v),SEC_READ:pcSecRead(K),
+   SEC_SCHEDULE:pcSecSchedule(K,v),SEC_RNE:pcSecRne(K)});
+  wirePathConfigForm(form);
+  openPcPending(form);
   refreshRneStatus();
   refreshOwnerStatus();
  }
@@ -4354,6 +4429,14 @@
  }
  function bindStopSub(){
   const list=$('#masterMaintList');if(!list)return;
+  ssbWireSearch(list);
+  ssbWireCats(list);
+  ssbWireStops(list);
+  ssbWireSubRows(list);
+  ssbWireSubActions(list);
+ }
+ /* 設備停止マスタの3ペインの配線（§9.522 で`bindStopSub()`から切り出した）: 停止内容の絞り込み。 */
+ function ssbWireSearch(list){
   const search=$('#ssbSearch');
   if(search){
    search.oninput=()=>{ssbState.q=search.value;
@@ -4366,6 +4449,9 @@
      s2.setSelectionRange(s2.value.length,s2.value.length)}
    };
   }
+ }
+ /* 左＝分類（選ぶ・消す・足す）。 */
+ function ssbWireCats(list){
   /* 分類を選ぶと、**中と右を描き直す**（左はそのまま）。選んでいる分類の
      停止内容が1件も無ければ右は案内に戻る——見えていない行の設定を
      出したままにしない。 */
@@ -4420,6 +4506,9 @@
   }
   const nc=$('#ssbNewCat');
   if(nc)nc.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addCat&&addCat.click()}};
+ }
+ /* 中＝停止内容（選ぶ・直す・足す・消す）。 */
+ function ssbWireStops(list){
   /* 中を押したとき**右だけ差し替える**（§9.226 ①）——一覧を作り直すと
      `scrollTop`が0へ戻り、上から数え直すことになる。 */
   list.querySelectorAll('[data-ssb-pick]').forEach(btn=>{
@@ -4474,6 +4563,9 @@
     }catch(e){ssbSay(`消せませんでした: ${e.message||String(e)}`,true)}
    };
   });
+ }
+ /* 右＝内訳の行（名前・分をその場で直す／既定の印）。 */
+ function ssbWireSubRows(list){
   list.querySelectorAll('.ssb-row[data-ssb-id] .ssb-f').forEach(inp=>{
    const row=inp.closest('.ssb-row');
    const id=Number(row.dataset.ssbId);
@@ -4512,6 +4604,9 @@
                         :`「${cur.name}」を既定にしました（予定へ入れるとき最初から選ばれます）`);
    };
   });
+ }
+ /* 右＝内訳を足す（「＋ 下へ」とその解除）・消す。 */
+ function ssbWireSubActions(list){
   const add=$('#ssbAdd');
   if(add){
    add.onclick=async()=>{

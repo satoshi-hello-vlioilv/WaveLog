@@ -3076,7 +3076,22 @@
     +`<button type="button" data-rp-restore title="落とした列を全部戻します">落とした列を戻す</button>`
    :'';
   $id('rpBlockForm').innerHTML=`
-   <div class="rp-form-row"><span class="rp-form-label">幅</span>
+${rpEdSizeRows(span,grid,rows,def)}
+${rpEdTurnRows(k,cols,canTurn)}
+${rpEdFlowRow(k,bl,matrixBlock)}
+${rpEdFrameRow(k)}
+${rpEdSplitRows(split,dropCols)}
+${rpEdStatRows(k)}
+${rpEdProductRow(k)}
+${rpEdVisRow(k)}`;
+  const form=$id('rpBlockForm');
+  const w=()=>({...rpLayoutNow().widths});
+  rpEdWireFormat(form,k,w);
+  rpEdWireCols(form,k,w);
+ }
+ /* 塊の設定窓の1段（§9.522 で`renderBlockEditor()`から切り出した）: 幅と高さ。元の文字列をそのまま返す。 */
+ function rpEdSizeRows(span,grid,rows,def){
+  return `   <div class="rp-form-row"><span class="rp-form-label">幅</span>
     <span class="rp-form-ctl">${rpSpanChoices().map(c=>
       `<button type="button" data-e-span="${c.v}" class="${c.v===span?'is-on':''}">${esc(c.label)}</button>`).join('')}
      <i class="rp-form-note">${span}/${grid}マス</i></span></div>
@@ -3084,8 +3099,11 @@
     <span class="rp-form-ctl">
      <button type="button" data-e-rows="0" class="${rows?'':'is-on'}">中身なり（自動）</button>
      ${rpRowChoices().map(c=>`<button type="button" data-e-rows="${c.v}" class="${rows===c.v?'is-on':''}" title="${c.v}行（紙の${esc(c.label)}）">${esc(c.label)}</button>`).join('')}
-     <i class="rp-form-note">1行＝紙の縦の1/${rpPageRows()}（いまは${rows||'中身なり'}${rows?'行':''}）。器より背の高い中身は<b>入るところまで縮めて</b>収めます（縮めきれないときは帯で言います）。${def?`この塊の既定は${def}行です。`:'「中身なり」は描いてから測って決めます。'}</i></span></div>
-   ${canTurn?`<div class="rp-form-row"><span class="rp-form-label">行と列</span>
+     <i class="rp-form-note">1行＝紙の縦の1/${rpPageRows()}（いまは${rows||'中身なり'}${rows?'行':''}）。器より背の高い中身は<b>入るところまで縮めて</b>収めます（縮めきれないときは帯で言います）。${def?`この塊の既定は${def}行です。`:'「中身なり」は描いてから測って決めます。'}</i></span></div>`;
+ }
+ /* 塊の設定窓の1段: 行と列・列幅（列を持つ塊だけ）。 */
+ function rpEdTurnRows(k,cols,canTurn){
+  return `   ${canTurn?`<div class="rp-form-row"><span class="rp-form-label">行と列</span>
     <span class="rp-form-ctl">
      <button type="button" data-e-turn="" class="${rpTransposed(k)?'':'is-on'}">縦＝条番号（今までの紙）</button>
      <button type="button" data-e-turn="転置" class="${rpTransposed(k)?'is-on':''}">縦＝項目（入れ替える）</button>
@@ -3095,8 +3113,11 @@
      ${cols.map(c=>`<label class="rp-col-w"><span>${esc(c.n)}</span>
        <input type="number" data-e-col="${esc(c.n)}" value="${rpColWidth(k,c.n)||''}" placeholder="自動" min="${RP_H_MIN}" max="${RP_H_MAX}" step="4"></label>`).join('')}
      <button type="button" data-e-colreset>全部オートフィットへ</button>
-     <i class="rp-form-note">空欄＝オートフィット（中身なり）。入れた列だけ固定します。</i></span></div>`:''}
-   ${bl.area?'':`<div class="rp-form-row"><span class="rp-form-label">中の並べ方</span>
+     <i class="rp-form-note">空欄＝オートフィット（中身なり）。入れた列だけ固定します。</i></span></div>`:''}`;
+ }
+ /* 塊の設定窓の1段: 中の並べ方（エリアでない塊だけ）。 */
+ function rpEdFlowRow(k,bl,matrixBlock){
+  return `   ${bl.area?'':`<div class="rp-form-row"><span class="rp-form-label">中の並べ方</span>
     <span class="rp-form-ctl">
      ${RP_FLOWS.map(f=>`<button type="button" data-e-flow="${esc(f.v)}" class="${f.v===rpFlow(k)?'is-on':''}"`
        +(matrixBlock&&f.v?' disabled':'')
@@ -3107,21 +3128,30 @@
         +'——段組へ変えると軸のマスがばらけて別の表になるので、当てていません。'
        :(RP_FLOWS.find(f=>f.v===rpFlow(k))||RP_FLOWS[0]).note
         +(rpFlow(k)==='高さなり'&&!rpRows(k)?'<b>いまは高さが「中身なり」なので1列のままです。</b>上の「高さ」で行数を決めてください。':'')}</i>
-    </span></div>`}
-   <div class="rp-form-row"><span class="rp-form-label">枠</span>
+    </span></div>`}`;
+ }
+ /* 塊の設定窓の1段: 枠。 */
+ function rpEdFrameRow(k){
+  return `   <div class="rp-form-row"><span class="rp-form-label">枠</span>
     <span class="rp-form-ctl">
      ${RP_FRAMES.map(f=>`<button type="button" data-e-frame="${esc(f.v)}" class="${f.v===rpToken(k,'枠:')?'is-on':''}"`
        +` title="${esc(String(f.note).replace(/<[^>]+>/g,''))}">${esc(f.label)}</button>`).join('')}
      <i class="rp-form-note">${(RP_FRAMES.find(f=>f.v===rpToken(k,'枠:'))||RP_FRAMES[0]).note}
       いまは<b>${rpFramed(k)?'枠あり':'枠なし'}</b>です。枠はカードそのものに描くので、幅や高さを変えると枠も一緒に変わります。</i>
-    </span></div>
-   ${split?`<div class="rp-form-row"><span class="rp-form-label">まとめ</span>
+    </span></div>`;
+ }
+ /* 塊の設定窓の1段: まとめ・落とす列（測定データの塊だけ）。 */
+ function rpEdSplitRows(split,dropCols){
+  return `   ${split?`<div class="rp-form-row"><span class="rp-form-label">まとめ</span>
     <span class="rp-form-ctl">${split}
      <i class="rp-form-note">項目ごとに分けると、それぞれ場所と幅を決められます。まとめると条番号の軸を共有して1枚になります。</i></span></div>`:''}
    ${dropCols?`<div class="rp-form-row"><span class="rp-form-label">落とす列</span>
     <span class="rp-form-ctl">${dropCols}
-     <i class="rp-form-note">紙に入りきらないときは、要らない列を落として幅を空けられます。</i></span></div>`:''}
-   ${k===RP_STAT_BLOCK?`<div class="rp-form-row"><span class="rp-form-label">出す項目</span>
+     <i class="rp-form-note">紙に入りきらないときは、要らない列を落として幅を空けられます。</i></span></div>`:''}`;
+ }
+ /* 塊の設定窓の1段: 統計の項目と集計（統計の塊だけ）。 */
+ function rpEdStatRows(k){
+  return `   ${k===RP_STAT_BLOCK?`<div class="rp-form-row"><span class="rp-form-label">出す項目</span>
     <span class="rp-form-ctl">
      ${Object.keys(RP_STAT_LABEL).map(it=>`<button type="button" data-e-stitem="${esc(it)}"`
        +` class="${rpStatItems(k).indexOf(it)>=0?'is-on':''}"`
@@ -3137,17 +3167,24 @@
        +` class="${rpStatAggs(k).indexOf(v)>=0?'is-on':''}">${esc(lb)}</button>`).join('')}
      <i class="rp-form-note">列は<b>項目 × 集計</b>で増えます（いま
       ${rpStatItems(k).length}×${rpStatAggs(k).length}＝<b>${rpStatItems(k).length*rpStatAggs(k).length}列</b>）。
-      <b>N数は必ず添えることを勧めます</b>——同じMINでも1点と80点では当たる見込みが違います。</i></span></div>`:''}
-   ${k===RP_PRODUCT_KEY?`<div class="rp-form-row"><span class="rp-form-label">揃いの欄</span>
+      <b>N数は必ず添えることを勧めます</b>——同じMINでも1点と80点では当たる見込みが違います。</i></span></div>`:''}`;
+ }
+ /* 塊の設定窓の1段: 揃いの欄（丈別データの塊だけ）。 */
+ function rpEdProductRow(k){
+  return `   ${k===RP_PRODUCT_KEY?`<div class="rp-form-row"><span class="rp-form-label">揃いの欄</span>
     <span class="rp-form-ctl">
      ${RP_PRODUCT_MODES.map(m=>`<button type="button" data-e-pmode="${esc(m.v)}" class="${m.v===rpProductMode()?'is-on':''}">${esc(m.label)}${m.v===''?'（既定）':''}</button>`).join('')}
-     <i class="rp-form-note">${esc((RP_PRODUCT_MODES.find(m=>m.v===rpProductMode())||RP_PRODUCT_MODES[0]).note)}</i></span></div>`:''}
-   <div class="rp-form-row"><span class="rp-form-label">紙に出す</span>
+     <i class="rp-form-note">${esc((RP_PRODUCT_MODES.find(m=>m.v===rpProductMode())||RP_PRODUCT_MODES[0]).note)}</i></span></div>`:''}`;
+ }
+ /* 塊の設定窓の1段: 紙に出す／出さない。 */
+ function rpEdVisRow(k){
+  return `   <div class="rp-form-row"><span class="rp-form-label">紙に出す</span>
     <span class="rp-form-ctl">
      <button type="button" data-e-vis>${rpHiddenSet().has(k)?'出す':'出さない'}</button>
      <i class="rp-form-note">${rpHiddenSet().has(k)?'いまは紙に出していません。':'いまは紙に出しています。'}</i></span></div>`;
-  const form=$id('rpBlockForm');
-  const w=()=>({...rpLayoutNow().widths});
+ }
+ /* 塊の設定窓の配線: 書式の印（統計・幅・高さ・揃い・行と列・並べ方・枠）。 */
+ function rpEdWireFormat(form,k,w){
   /* 測定値の統計（§9.244）。**印は`|`で並べる**ので1つずつ差し替える
      （まるごと書くと他の見せ方が消える。§9.226 ⑤と同じ約束）。 */
   const stToggle=(prefix,cur,v,order)=>{
@@ -3197,6 +3234,9 @@
   form.querySelectorAll('[data-e-frame]').forEach(b=>b.onclick=()=>{
    rpStage({formats:rpTokenPatch(k,'枠:',b.dataset.eFrame)});renderBlockEditor();
   });
+ }
+ /* 塊の設定窓の配線: まとめ・落とす列・列幅・紙に出す。 */
+ function rpEdWireCols(form,k,w){
   /* 浮き帯から移してきた操作（§9.226 ③）。**当て方は元のまま**——判定が
      2つに分かれないよう、同じ`rpStage`の書き方を使う。 */
   form.querySelectorAll('[data-rp-split]').forEach(b=>b.onclick=()=>{

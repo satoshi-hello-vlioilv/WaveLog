@@ -104,6 +104,12 @@ def missing_names(text):
     return sorted(out)
 
 
+def dead_nets(rows):
+    """規則の表の行（守ること, 固定する網, くわしく）から、tests/ に無い網の名を返す。"""
+    have = {p.name for p in (ROOT / 'tests').iterdir()}
+    return sorted({t for r in rows for t in re.findall(r'`(test_\w+\.(?:js|py))`', r[1]) if t not in have})
+
+
 def _source_text():
     parts = []
     for d in SRC_DIRS:
@@ -222,6 +228,12 @@ def main():
             dup.append(r[0][:30])
         seen[k] = 1
     rec('同じ規則を2行に持っていない', not dup, ', '.join(dup[:4]))
+    # **「固定する網」は実在するテスト**（§9.522 の追補）。無い網の名は「見張られている」と
+    # 読ませて、実は誰も見ていない——`test_pcshare.js` が2枚の表に居たが、一度も作られていなかった。
+    deadn = dead_nets(rows)
+    rec('表の「固定する網」が実在するテストを指している', not deadn, ', '.join(deadn[:6]))
+    rec('網そのものが素通りしない（無い網の名を注ぐと見つける）',
+        dead_nets([('x', '`test_zz_none.js`・`test_docindex.py`', 'y')]) == ['test_zz_none.js'])
 
     # ---- 3-20（§9.349）: 構成の説明と撮る道具が腐っていない ----
     # 「規則」と「経緯」は分けたが、**構成の説明（ARCHITECTURE.md）と撮る道具

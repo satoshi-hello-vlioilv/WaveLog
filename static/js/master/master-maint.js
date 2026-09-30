@@ -850,6 +850,10 @@
    +`<summary><b>${esc(title)}</b>${now?`<span class="pc-acc-now">${esc(now)}</span>`:''}</summary>`
    +`<div class="pc-acc-body">${body}</div></details>`;
  }
+ function repaintMaintTabs(ev){
+  const f=ev.currentTarget;
+  if(f&&typeof f.__mmPaintTabs==='function')f.__mmPaintTabs();
+ }
  function bindMaintTabs(form){
   const bar=form.querySelector('.mm-tabbar');
   if(!bar)return;
@@ -868,13 +872,14 @@
    const el=bar.querySelector(`[data-mmtab-sum="${i}"]`);
    if(el)el.textContent=mmTabSummaryText(p);
   });
-  if(form.dataset.mmTabsWired!=='1'){
-   form.dataset.mmTabsWired='1';
-   /* **値が変わったら見出しの一言を描き直す**（忘れると、直したのに
-      畳んだ段だけ古い値を名乗る）。 */
-   form.addEventListener('change',()=>paint());
-   form.addEventListener('input',()=>paint());
-  }
+  /* **値が変わったら見出しの一言を描き直す**（忘れると、直したのに
+     畳んだ段だけ古い値を名乗る）。**器（`#masterMaintForm`）は描き直しても同じ要素**なので、
+     受け手は名前のある関数1つで付け（同じ関数は2度付かない）、その回の`paint`を器から読む
+     （§9.522 の追補。以前は「1度だけ付ける」印の下で**最初の描画の段を閉じ込めて**おり、
+     2回目以降の描画では一言が打った字を追わなかった）。 */
+  form.__mmPaintTabs=paint;
+  form.addEventListener('change',repaintMaintTabs);
+  form.addEventListener('input',repaintMaintTabs);
   tabs.forEach((t,i)=>{
    t.onclick=()=>show(i);
    t.onkeydown=e=>{
@@ -979,10 +984,20 @@
   });
   apply();
  }
+ /* ---------- マスタの1欄は型ごとの組み立て関数（§9.522・REVIEW 3-22） ----------
+    以前は`buildOneFieldControl()`の1本（331行）が型ごとの`if`を18個並べていた。型→組み立て関数の
+    登録表（`MM_FIELD_BUILDERS`）にした。**型を足すときは表へ1行**（`if`を足さない）。
+    表に無い型は、`readonly`なら読むだけの欄、それ以外は素の文字の欄（`mmTextFieldHtml()`）。
+    **表は自分が持つ鍵だけで引く**（`Object.hasOwn`）——`constructor`のような継承の鍵を型と取り違えない。
+    分岐の中の複数行の文字列は字下げも HTML の中身なので、字下げは元のまま。 */
  function buildOneFieldControl(f,editing){
-  return (function(){
-   const val=editing?String(editing[f.k]??''):'';
-   if(f.type==='equipment-select'){
+  const val=editing?String(editing[f.k]??''):'';
+  const build=Object.hasOwn(MM_FIELD_BUILDERS,String(f.type))?MM_FIELD_BUILDERS[f.type]
+    :(f.readonly?MM_FIELD_BUILDERS.readonly:mmTextFieldHtml);
+  return build(f,val,editing);
+ }
+ const MM_FIELD_BUILDERS={
+   'equipment-select':(f,val,editing)=>{
     const opts=WL.records.equipmentMasterState.items||[];
     /* **いま入っている設備が候補に無くても捨てないこと**（§9.204と同じ罠）。
        設備マスタからその設備が消えても、行そのものは残っている——候補に
@@ -996,12 +1011,12 @@
     const optHtml=(missing?`<option value="${esc(val)}" selected>${esc(val)}（設備マスタにありません）</option>`:'')
       +opts.map(eq=>`<option value="${esc(eq.name)}"${eq.name===val?' selected':''}>${esc(eq.name)}</option>`).join('');
     return `<label class="mm-field"><span>${esc(f.label)}${f.required?'<i>*</i>':''}${f.key?'<em class="mm-keytag">キー</em>':''}</span><select data-field="${f.k}">${missing?'':'<option value="">選択...</option>'}${optHtml}</select>${missing?`<small class="mm-field-hint">この設備は設備マスタにありません（消されたか、名前が変わっています）。**そのままにすれば今の設備名を保ちます**。登録済みの設備へ付け替えることもできます。</small>`:(f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:'')}</label>`;
-   }
+   },
    /* 対象設備を複数選べる欄。作業可能設備(equipment-multi)と同じタグUIだが、
       保存先が配列ではなくカンマ区切りの1列で、さらに「すべての設備」という
       ワイルドカード('*')を持つ。開発・保守用に全設備の権限を1行で渡せる
       ようにするため(設備を増やすたびに権限行を足さなくてよい)。 */
-   if(f.type==='equipment-multi-text'){
+   'equipment-multi-text':(f,val,editing)=>{
     const raw=String(editing?(editing[f.k]??''):'').trim();
     const isAll=raw===EQUIPMENT_ALL;
     const selected=new Set(isAll?[]:raw.replace(/、/g,',').split(',').map(s=>s.trim()).filter(Boolean));
@@ -1020,8 +1035,8 @@
       <div class="mm-tag-suggest" data-equipment-suggest="${f.k}" hidden></div>
      </div>
      <small class="mm-field-hint">${hintHtml(tagHint)}</small></div>`;
-   }
-   if(f.type==='equipment-multi'){
+   },
+   'equipment-multi':(f,val,editing)=>{
     const selected=new Set((editing&&Array.isArray(editing[f.k])?editing[f.k]:[]).map(String));
     const opts=WL.records.equipmentMasterState.items||[];
     if(!opts.length){
@@ -1035,8 +1050,8 @@
       <div class="mm-tag-suggest" data-equipment-suggest="${f.k}" hidden></div>
      </div>
      <small class="mm-field-hint">クリックで追加・×で削除。未選択なら制限なし（全設備で表示対象）。</small></div>`;
-   }
-   if(f.type==='select'){
+   },
+   'select':(f,val,editing)=>{
     /* 既定を持つ欄は**「（既定）◯◯」を先頭に置く**（§9.463）。無いと、触らずに
        保存しただけで既定の値が**その行の値として固定され**、あとで既定を変えても
        届かなくなる。登録が無い（NULL）ときはこの札が選ばれている。 */
@@ -1049,10 +1064,10 @@
        マスタ定義に書いた注意書きが選択欄でだけ黙って消えていた。 */
     return `<label class="mm-field">${fieldLabelHtml(f)}<select data-field="${f.k}">${opts}</select>`
       +(f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:'')+`</label>`;
-   }
+   },
    /* 別マスタ連動の選択欄(§5.3.1)。選ぶだけで済むのが基本で、無い値は
       「＋ 新しく追加」から入力する。保存時に相手のマスタへも登録される。 */
-   if(f.type==='master-combo'){
+   'master-combo':(f,val,editing)=>{
     return `<div class="mm-field mm-combo" data-combo="${f.k}" data-combo-endpoint="${esc(f.source&&f.source.endpoint||'')}" data-combo-valuekey="${esc(f.source&&f.source.valueKey||'name')}">
       ${fieldLabelHtml(f)}
       <div class="mm-combo-inner">
@@ -1061,12 +1076,12 @@
        <input class="mm-combo-new" data-combo-new="${f.k}" type="text" placeholder="新しい${esc(f.label)}を入力" autocomplete="off" hidden>
       </div>
       <small class="mm-field-hint">${hintHtml(f.hint||'一覧から選ぶだけで入力できます。無いものは「＋ 新しく追加」を選ぶとこの場で登録できます。')}</small></div>`;
-   }
+   },
    /* 候補を出すだけの自由記述（§9.239 ⑥）。**選択肢で塞がない**——
       現場の呼び名は事前に数え切れないので、一覧に無い値も打てるようにする。
       候補の出どころは**サーバーの戻り**（`maintState.meta[source.key]`）で、
       画面には綴りを書き写さない（§9.163）。 */
-   if(f.type==='master-suggest'){
+   'master-suggest':(f,val,editing)=>{
     const key=(f.source&&f.source.key)||'';
     const opts=(maintState.meta&&Array.isArray(maintState.meta[key]))?maintState.meta[key]:[];
     const lid=`mmSuggest_${f.k}`;
@@ -1074,10 +1089,10 @@
       <input data-field="${f.k}" type="text" list="${lid}" autocomplete="off" value="${esc(val)}">
       <datalist id="${lid}">${opts.map(o=>`<option value="${esc(o)}"></option>`).join('')}</datalist>
       ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
-   }
-   if(f.type==='number'){
+   },
+   'number':(f,val,editing)=>{
     return `<label class="mm-field mm-field-num">${fieldLabelHtml(f)}${numFieldHtml(f,val)}${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
-   }
+   },
    /* ---------- 選んで組み立てる（§9.226 ④、利用者の指示） ----------
       「帳票ブロックを新規登録が難しすぎて作成できない。入力データ(汎用入力
        データも含む)の中から選んで組み合わせたり配置する方式で、直感的に
@@ -1095,7 +1110,7 @@
       **選ぶ前に読めない**のが原因で、プルダウンは名前しか出せない。
       札に**絵・名前・一言**を並べれば、開かなくても違いが分かる（§CLAUDE 2）。
       値を持つのは今までどおり隠し欄なので、`submitMaint`は型を知らなくてよい。 */
-   if(f.type==='choice-card'){
+   'choice-card':(f,val,editing)=>{
     /* **選択欄と同じ既定にする**（§9.249 ③）——`<select>`は先頭の選択肢が
        最初から選ばれている。札にした途端に「どれも選ばれていない」状態が
        生まれると、②の欄が`data-when`で消えて**決めることが1つ消える**
@@ -1122,7 +1137,7 @@
       <input type="hidden" data-field="${f.k}" value="${esc(cur)}">
       ${list.length?'':'<small class="mm-field-hint">選べる候補をこの端末では読めませんでした。</small>'}
       ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
-   }
+   },
    /* ---------- 選んだ側を保存する札（§9.306） ----------
       利用者の指示「親マスタの選択肢から選んで登録することができるように」。
       `check-set`（§9.302）と**箱も配線も同じ**で、違うのは
@@ -1133,7 +1148,7 @@
       **サーバーの戻りから**取る（§9.163。画面に値を書き写さない）。
       **候補が無いときは欄を出さず理由を書く**（§4）——親を張っていない
       まとまりで空の札を並べても、押しても何も起きない。 */
-   if(f.type==='tag-set'){
+   'tag-set':(f,val,editing)=>{
     const src=f.source||{};
     const table=(maintState.meta&&maintState.meta[src.key])||null;
     const list=Array.isArray(table)?table
@@ -1157,7 +1172,7 @@
       <input type="hidden" data-field="${f.k}" value="${esc(raw)}">
       <small class="mm-field-hint" data-checkset-note="${f.k}"></small>
       ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
-   }
+   },
    /* ---------- いくつでも入切できる札（§9.302） ----------
       利用者の指示「有効無効の範囲については機能別に分けて変更できるように」。
       `choice-card`は1つしか選べないので、**入切を並べる型**を1つ足す。
@@ -1170,7 +1185,7 @@
       **あとで機能を足したときに既存の設備で黙って無効になる**。裏返す場所は
       この型の描画と入切の2箇所だけで、規則（空欄の意味・知らない綴りの扱い）は
       サーバーが持つ。 */
-   if(f.type==='check-set'){
+   'check-set':(f,val,editing)=>{
     const key=(f.source&&f.source.key)||'';
     const opts=(maintState.meta&&Array.isArray(maintState.meta[key]))?maintState.meta[key]:[];
     const off=new Set(String(Array.isArray(val)?val.join(','):(val||'')).split(',').filter(Boolean));
@@ -1195,7 +1210,7 @@
       <input type="hidden" data-field="${f.k}" value="${esc([...off].join(','))}">
       <small class="mm-field-hint" data-checkset-note="${f.k}"></small>
       ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
-   }
+   },
    /* 紙の12マスをそのまま出して、**押した幅がそのまま見える**ようにする。
       「6＝1/2」を頭の中で割り算させない（§CLAUDE 6）。 */
    /* ---------- 数で決まるものは「− 数 ＋」の1つに畳む（§9.311 D/E） ----------
@@ -1211,7 +1226,7 @@
       同じ作法。値は隠し欄が持つので`submitMaint`は型を知らなくてよい・§9.250 ④）。
       **選べる値は器が持つ**（`data-allow`）——紙の見本の縁を掴む処理が
       ここから読むので、一覧を2箇所に書かない（§9.250 ④・§9.163）。 */
-   if(f.type==='span-grid'||f.type==='rows-pick'){
+   'span-grid':(f,val,editing)=>{
     const isSpan=f.type==='span-grid';
     const max=f.max||12;
     /* 幅は数の並び、高さは`''`（中身なり）を先頭に持つ並び。 */
@@ -1236,8 +1251,8 @@
       <em class="mm-step-sub" data-step-sub="${f.k}">${sub}</em>
       <input type="hidden" data-field="${f.k}" value="${esc(val)}">
       ${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</div>`;
-   }
-   if(f.type==='field-builder'){
+   },
+   'field-builder':(f,val,editing)=>{
     return `<div class="mm-field mm-field-area fb" data-fb="${f.k}">${fieldLabelHtml(f)}
       <div class="fb-body">
        <div class="fb-pick">
@@ -1271,44 +1286,46 @@
       </div>
       <input type="hidden" data-field="${f.k}" value="${esc(val)}">
       <small class="mm-field-hint">${hintHtml(f.hint||'')}</small></div>`;
-   }
+   },
    /* 複数行の入力欄（§9.217）。1行1件を書かせる設定（帳票ブロックの内容）で
       使う——1行の欄に押し込むと、何件書いたのかが読めない。 */
-   if(f.type==='textarea'){
+   'textarea':(f,val,editing)=>{
     return `<label class="mm-field mm-field-area">${fieldLabelHtml(f)}`
      +`<textarea data-field="${f.k}" rows="${f.rows||6}" spellcheck="false"`
      +` placeholder="${esc(f.placeholder||'')}">${esc(val)}</textarea>`
      +`${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
-   }
-   if(f.type==='date'){
+   },
+   'date':(f,val,editing)=>{
     return `<label class="mm-field">${fieldLabelHtml(f)}<span class="mm-date"><input data-field="${f.k}" type="date" value="${esc(val)}"><button type="button" class="mm-date-today" data-date-today="${f.k}">今日</button></span>${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
-   }
-   if(f.type==='time'){
+   },
+   'time':(f,val,editing)=>{
     return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="time" step="60" value="${esc(val)}">${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
-   }
-   if(f.type==='path'){
+   },
+   'path':(f,val,editing)=>{
     return `<div class="mm-field mm-field-path">${fieldLabelHtml(f)}
       <span class="mm-path" data-path-drop="${f.k}">
        <input data-field="${f.k}" type="text" value="${esc(val)}" autocomplete="off" spellcheck="false" placeholder="${esc(f.placeholder||'')}">
        <button type="button" class="mm-path-browse" data-path-browse="${f.k}" data-path-mode="${esc(f.pathMode||'file')}">参照…</button>
       </span>
       <small class="mm-field-hint">${hintHtml(f.hint||'「参照…」で選ぶか、エクスプローラーからここへドラッグ&ドロップできます。')}</small></div>`;
-   }
+   },
    /* 見せるが触らせない欄（§9.219 ②）。付け替えられない値（帳票ブロックの
       組み込みキー）は、隠すと「なぜ中身を変えられないのか」が読めなくなる
       ——出しておいて、変えられないことを`readonly`で示す（`disabled`に
       しないのは、そのまま保存へ戻すため）。 */
-   if(f.type==='readonly'||f.readonly){
+   'readonly':(f,val,editing)=>{
     return `<label class="mm-field mm-field-ro">${fieldLabelHtml(f)}`
      +`<input data-field="${f.k}" type="text" value="${esc(val)}" readonly tabindex="-1">`
      +`${f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:''}</label>`;
-   }
-   /* 素の文字の欄も**既定値を薄字で**言い、説明も出す（§9.463。数の欄・選ぶ欄と同じ）。 */
-   const tdv=mmDefaultOf(f);
-   return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="text" value="${esc(val)}" autocomplete="off"`
-    +(tdv!=null&&tdv!==''?` placeholder="既定 ${esc(String(tdv))}"`:'')+`>`
-    +(f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:'')+`</label>`;
-  })();
+   },
+ };
+ MM_FIELD_BUILDERS['rows-pick']=MM_FIELD_BUILDERS['span-grid'];   // 同じ組み立て（決め方が違うだけ）
+ function mmTextFieldHtml(f,val){
+  /* 素の文字の欄も**既定値を薄字で**言い、説明も出す（§9.463。数の欄・選ぶ欄と同じ）。 */
+  const tdv=mmDefaultOf(f);
+  return `<label class="mm-field">${fieldLabelHtml(f)}<input data-field="${f.k}" type="text" value="${esc(val)}" autocomplete="off"`
+   +(tdv!=null&&tdv!==''?` placeholder="既定 ${esc(String(tdv))}"`:'')+`>`
+   +(f.hint?`<small class="mm-field-hint">${hintHtml(f.hint)}</small>`:'')+`</label>`;
  }
 
  /* ---------- Excelの持ち出し・取り込み（§9.240、利用者の指示） ----------
