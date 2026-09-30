@@ -509,6 +509,17 @@ function keepModalOpen(modal){
 }
 function escClosesModal(e){return e.key==='Escape'&&!e.isComposing&&e.keyCode!==229}
 WL.modal={keepOpen:keepModalOpen,nudge:nudgeModal,escCloses:escClosesModal};
+/* ---------- 画面の骨組みは HTML に置く（§9.522・REVIEW 3-7） ----------
+   動かない部分は`templates/index.html`の`<template id="tpl-名前">`に置き、画面のJSは
+   `WL.template(名前)`で複製して使う（`<template>`は不活性なので、置いても描画の手間は増えない）。
+   **無ければ名前を言って止まる**——黙って空の画面を出さない。呼ぶ側と置き場の対応は
+   `tests/test_loadorder.py`が見張る（呼んでいるのに無い／置いてあるのに誰も呼ばない）。 */
+function cloneTemplate(name){
+ const t=document.getElementById('tpl-'+name);
+ if(!t||!t.content)throw new Error(`画面の骨組み（<template id="tpl-${name}">）が index.html にありません`);
+ return t.content.cloneNode(true);
+}
+WL.template=cloneTemplate;
 /* 共通の確認モーダル。ブラウザ標準のconfirm()はアプリの見た目に合わせられず
    タブ全体をブロックするため、破棄確認・削除確認等はこちらへ統一する
    (以前はlot-split.js/filters.js/records-store.jsが個別にconfirm()を
