@@ -996,6 +996,11 @@
     :(f.readonly?MM_FIELD_BUILDERS.readonly:mmTextFieldHtml);
   return build(f,val,editing);
  }
+ /* 選択欄の候補。`optionsKey`があれば一覧の応答（`maintState.meta`）から、無ければ定義の`options`。 */
+ const selectOptionsOf=f=>{
+  const m=f.optionsKey&&maintState.meta&&maintState.meta[f.optionsKey];
+  return Array.isArray(m)&&m.length?m:(f.options||[]);
+ };
  const MM_FIELD_BUILDERS={
    'equipment-select':(f,val,editing)=>{
     const opts=WL.records.equipmentMasterState.items||[];
@@ -1052,6 +1057,7 @@
      <small class="mm-field-hint">クリックで追加・×で削除。未選択なら制限なし（全設備で表示対象）。</small></div>`;
    },
    'select':(f,val,editing)=>{
+    /* 候補の顔ぶれは**サーバーが答える**ことがある（`optionsKey`＝一覧の応答の鍵・§9.526）。 */
     /* 既定を持つ欄は**「（既定）◯◯」を先頭に置く**（§9.463）。無いと、触らずに
        保存しただけで既定の値が**その行の値として固定され**、あとで既定を変えても
        届かなくなる。登録が無い（NULL）ときはこの札が選ばれている。 */
@@ -1059,7 +1065,7 @@
     const hasDef=dv!=null&&dv!=='';
     const cur=hasDef&&editing&&f.defaultOf&&editing[f.defaultOf]==null?'':val;
     const opts=(hasDef?`<option value=""${cur===''?' selected':''}>（既定）${esc(String(dv))}</option>`:'')
-     +(f.options||[]).map(o=>`<option value="${esc(o)}"${o===cur?' selected':''}>${esc(o||'（指定なし）')}</option>`).join('');
+     +selectOptionsOf(f).map(o=>`<option value="${esc(o)}"${o===cur?' selected':''}>${esc(o||'（指定なし）')}</option>`).join('');
     /* **説明を書いたら出す**（§9.222 ⑧）。ここだけ`f.hint`を捨てていたので、
        マスタ定義に書いた注意書きが選択欄でだけ黙って消えていた。 */
     return `<label class="mm-field">${fieldLabelHtml(f)}<select data-field="${f.k}">${opts}</select>`

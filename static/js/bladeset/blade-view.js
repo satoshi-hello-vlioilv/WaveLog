@@ -535,20 +535,20 @@
   /* **方式は「自動で決まる」の群だけに出す**——以前はバリ方向の値にも
      並べており、同じことを2箇所で言っていた（§CLAUDE 8）。 */
   $('#bsV1').textContent = B.ALIGN_NAME[st.align];
-  /* **なぜその刃なのか**を出す（§9.379）。既定は「一般」で、`刃選択マスタ` の
-     決まりに当たったときだけ「専用」になる——出どころを書かないと、利用者には
+  /* **なぜその刃なのか**を出す（§9.379）。既定は「通常刃」で、`刃選択マスタ` の
+     決まりに当たったときだけ「専用刃」になる（§9.526）——出どころを書かないと、利用者には
      「勝手に別の刃になった」としか見えない（§CLAUDE 6）。 */
   const pk = $('#bsFPick');
   if (pk) {
    const p0 = st.pick;
-   pk.textContent = !p0 ? '一般'
-    : (p0.missing ? `一般（${p0.group} の刃が未登録）`
-                  : `専用 ${p0.group}`);
-   pk.title = !p0 ? 'ふつうの刃（状態が「一般」）から選んでいます。'
+   pk.textContent = !p0 ? '通常刃'
+    : (p0.missing ? `通常刃（${p0.group} の専用刃が使えない）`
+                  : `専用刃 ${p0.group}`);
+   pk.title = !p0 ? 'カテゴリが「通常刃」で使用中の刃セットから選んでいます。'
     : (p0.missing
-       ? `決まり「${p0.rule}」に当たりましたが、${p0.group} の「専用」の刃が`
-         + '登録されていないため、一般の刃で描いています。'
-       : `決まり「${p0.rule}」に当たったので、${p0.group} の「専用」の刃を使います。`);
+       ? `決まり「${p0.rule}」に当たりましたが、組 ${p0.group} に使える専用刃が無い`
+         + '（カテゴリが専用刃でない・研磨中・刃が未登録のどれか）ため、通常刃で描いています。'
+       : `決まり「${p0.rule}」に当たったので、組 ${p0.group} の専用刃を使います。`);
    pk.classList.toggle('is-warn', !!(p0 && p0.missing));
    pk.classList.toggle('is-pick-on', !!(p0 && !p0.missing));
   }
@@ -2756,7 +2756,8 @@
    }).join('');
    return `<div class="bs-sc${on ? ' is-on' : ''}"><div class="bs-sch">`
     + `<b>${esc(g.group ? '組 ' + g.group : '（組の指定なし）')}</b>`
-    + `<span class="bs-sb">${esc(g.items[0].status || '—')}</span></div>`
+    /* セットのカテゴリ・使用状態（§9.526・切り替えはマスタ管理の「刃セット」）。 */
+    + `<span class="bs-sb">${esc(setWord(g.items[0]))}</span></div>`
     + `<div class="bs-kl">${rows}</div></div>`;
   }).join('')
    : '<p class="bs-note">この設備の刃が登録されていません（マスタ管理 &gt; 刃組 &gt; 刃）。</p>';
@@ -2798,11 +2799,13 @@
  const markAlign = () => panel.querySelectorAll('#bsAlign label')
   .forEach(l => l.classList.toggle('is-on', l.dataset.v === st.align));
 
+ /* 刃が属するセットの札（「通常刃・使用中」）。セットを名乗らない材料は`状態`のまま。 */
+ const setWord = k => (k.category ? `${k.category}・${k.use || '—'}` : (k.status || '—'));
  function fillBladePick() {
   const sel = $('#bsBladePick'), cur = sel.value;
   sel.innerHTML = '<option value="">（手で入力）</option>'
    + M.blades.map((k, i) => `<option value="${i}">${esc(k.name)}　Φ${esc(k.currentDia)}`
-     + `　刃厚${esc(k.thickness)}　${esc(k.status)}</option>`).join('');
+     + `　刃厚${esc(k.thickness)}　${esc(setWord(k))}</option>`).join('');
   sel.value = cur;
   if (sel.selectedIndex < 0) sel.selectedIndex = 0;
  }

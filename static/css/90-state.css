@@ -534,11 +534,12 @@ body.sc-mode #headerContextSource{display:none}
      ここは `@layer state`。component 層のどの規則よりも後に効く。
      ============================================================ */
 
-  /* 濃い面（縁つき）（29族） */
+  /* 濃い面（縁つき）（30族） */
   #reportArrange.is-on,
   .ac-chip.is-on,
   .bs-hide button.is-on,
   .bs-orient-seg button.is-on,
+  .bss-seg button.is-on,
   .lr-seg button.is-on,
   .db-presets button.active,
   .db-seg button.active,

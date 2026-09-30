@@ -222,6 +222,7 @@ def bladeset_finger_list():
 
  def fn(c):
   return {'items': bs.finger_rows(c, True, eq or None),
+          'fingerMaterials': list(bs.FINGER_MATERIALS),
           'equipments': bs.equipments(c)}
  return jsonify(ok=True, equipment=eq, **_op_read(fn))
 
@@ -232,7 +233,7 @@ def _finger_save(x):
 
  def fn(c):
   return bs.finger_upsert(c, uid, equipment=x.get('equipment'),
-                          name=x.get('name'), width=x.get('width'),
+                          material=x.get('material'), width=x.get('width'),
                           qty=x.get('qty'), min_qty=x.get('minQty'),
                           max_thickness=x.get('maxThickness'),
                           note=x.get('note'), order=x.get('order'),
@@ -240,7 +241,7 @@ def _finger_save(x):
  return jsonify(ok=True, id=_op_read(fn), message='フィンガーを保存しました。')
 
 
-_FINGER_SPEC = {'id': any_, 'equipment': any_, 'name': any_, 'width': any_,
+_FINGER_SPEC = {'id': any_, 'equipment': any_, 'material': any_, 'width': any_,
                 'qty': any_, 'minQty': any_, 'maxThickness': any_,
                 'note': any_, 'order': any_, 'enabled': any_,
                 'enabledText': any_}

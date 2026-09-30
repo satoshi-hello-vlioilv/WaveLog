@@ -6,6 +6,7 @@
   `/api/bladeset/history`               … 刃組を終えた記録（台車差分の材料）
   `/api/bladeset/blade-pick`            … 「専用」の刃を選ぶ条件（3本セット）
   `/api/bladeset/hold-pick`             … フィンガー／ゴムリングを選ぶ条件表（読む・丸ごと保存）
+  `/api/bladeset/blade-sets`            … 刃セットのカテゴリ・使用状態（読む・1項目ずつ切り替え）
 
 **部材（刃・スペーサー・ゴムリング・フィンガー）は `bladeset_parts.py`**。
 分ける境目は「このラインはどういう機械か／いつ何を組んだか」と
@@ -222,6 +223,31 @@ def bladeset_pick_delete():
   return jsonify(error='削除対象IDがありません。'), 400
  _op_read(lambda c: bs.pick_delete(c, int(x['id'])))
  return jsonify(ok=True, message='刃選択の決まりを消しました。')
+
+
+# =========================================================================
+# 刃セット（カテゴリ・使用状態・§9.526）
+# =========================================================================
+# セット＝設備＋組。**切り替えはその場で1項目ずつ書く**（盤の札を押すたび）。
+@bp.get('/api/bladeset/blade-sets')
+@api_guard('刃セットの読込に失敗しました')
+def bladeset_sets_list():
+ eq = _eq()
+ return jsonify(ok=True, equipment=eq,
+                items=_op_read(lambda c: bs.blade_sets(c, eq)) if eq else [],
+                categories=list(bs.BLADE_CATEGORIES), uses=list(bs.BLADE_USES))
+
+
+@bp.post('/api/bladeset/blade-sets')
+@api_guard('刃セットの保存に失敗しました', bad=ValueError)
+def bladeset_sets_save():
+ x = body({'equipment': any_, 'group': any_, 'category': any_, 'use': any_, 'reset': any_})
+ if x.get('reset'):   # 登録を消して初期値へ（刃の「状態」から起こした値）
+  n = _op_read(lambda c: bs.blade_set_reset(c, x.get('equipment'), x.get('group')))
+  return jsonify(ok=True, removed=n, message='刃セットを初期値へ戻しました。')
+ got = _op_read(lambda c: bs.blade_set_update(c, request_user_id(x), x.get('equipment'), x.get('group'),
+                                              category=x.get('category'), use=x.get('use')))
+ return jsonify(ok=True, set=got, message=f'刃セット「{x.text("group") or "（組なし）"}」を{got["category"]}・{got["use"]}にしました。')
 
 
 # =========================================================================

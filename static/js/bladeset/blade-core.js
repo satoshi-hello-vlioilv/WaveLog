@@ -82,7 +82,9 @@
                 thickness: num(x.thickness), currentDia: num(x.currentDia),
                 qty: Math.max(0, num(x.qty) || 0), minQty: num(x.minQty) || 0,
                 lastGrind: x.lastGrind || '', grindCount: num(x.grindCount) || 0,
-                status: x.status || '' }));
+                status: x.status || '',
+                /* セット（組）のカテゴリ・使用状態（§9.526）。答えはサーバーの刃セットの1箇所。 */
+                category: x.category || '', use: x.use || '' }));
   /* **サーバーが渡したものを落とさない**（§9.381）。ここは「読みやすい形へ
      直す」場所であって、**選り分ける場所ではない**——`picks`（刃選択の決まり）と
      語彙を落としていたため、盤では当たるのにガイダンスでは一度も当たらない、
@@ -98,6 +100,11 @@
            carriageSeed: (c.carriageSeed || []).slice(),
            carriageNone: c.carriageNone || '台車なし',
            pickFields: (c.pickFields || []).slice(),
+           /* 前に選べた項目（§9.526）。書いてある決まりは読んで効かせる（新しくは選べない）。 */
+           pickFieldsLegacy: (c.pickFieldsLegacy || []).slice(),
+           bladeSets: (c.bladeSets || []).slice(),
+           bladeCatNormal: c.bladeCatNormal || '通常刃', bladeCatSpecial: c.bladeCatSpecial || '専用刃',
+           bladeUseOn: c.bladeUseOn || '使用中', bladeUseGrind: c.bladeUseGrind || '研磨中',
            /* 保持方式の条件表（§9.524）。登録が無ければサーバーが今までの決め方の「種」を返す。 */
            holds: (c.holds || []).slice(), holdsStored: !!c.holdsStored,
            holdMethods: (c.holdMethods || []).slice(), holdFields: (c.holdFields || []).slice(),
@@ -108,6 +115,7 @@
            bladeGeneral: c.bladeGeneral || '一般',
            bladeSpecial: c.bladeSpecial || '専用',
            bladeMaint: c.bladeMaint || 'メンテナンス中',
+           fingerMaterials: (c.fingerMaterials || []).slice(),
            fingerShape: Object.assign({}, c.fingerShape || {}),
            ringColors: c.ringColors || [] };
  }
@@ -1173,11 +1181,19 @@
   return (a.widths || []).join(',') === (b.widths || []).join(',');
  }
 
- /* その刃を選ぶ対象に入れてよいか。**「メンテナンス中」だけが外れる**
-    （一般も専用も、選ばれる場面が違うだけで「生きている刃」・§9.379）。
-    綴りはサーバーが持つので、無いときだけ既定の字を使う。 */
+ /* その刃を選ぶ対象に入れてよいか。**セットが「研磨中」なら外れる**（§9.526）
+    （通常刃も専用刃も、選ばれる場面が違うだけで「使える刃」・§9.379）。
+    セットを名乗らない材料（古いサーバー・網の手組み）は今までの`状態`で見る。 */
  function selectable(k, M) {
-  return !!k && k.status !== ((M && M.bladeMaint) || 'メンテナンス中');
+  if (!k) return false;
+  if (k.use) return k.use !== ((M && M.bladeUseGrind) || '研磨中');
+  return k.status !== ((M && M.bladeMaint) || 'メンテナンス中');
+ }
+ /* 刃のカテゴリ（通常刃／専用刃）。セットを名乗らない材料は`状態`から読み替える（§9.526）。 */
+ function bladeCategory(k, M) {
+  if (k.category) return k.category;
+  return k.status === ((M && M.bladeSpecial) || '専用')
+   ? ((M && M.bladeCatSpecial) || '専用刃') : ((M && M.bladeCatNormal) || '通常刃');
  }
 
  /* ---------- 「専用」の刃を選ぶ条件（§9.379、利用者の指示2） ----------
@@ -1209,10 +1225,17 @@
    minWidth: ws.length ? Math.min(...ws) : null,
    maxWidth: ws.length ? Math.max(...ws) : null,
    material: pk('mfgMaterial') || pk('orderMaterial'),
+   /* 調質（§9.526・刃選択の4項目の1つ）。材質と同じく製造→オーダーの順。 */
+   temper: pk('mfgTemper') || pk('orderTemper'),
    lotNo: st.headLot || pk('lotNo')
   };
   if (src) Object.keys(src).forEach(k => { ctx['source.' + k] = src[k]; });
   return ctx;
+ }
+ /* 刃選択が読む値＝`pickCtx`＋**板押さえ方式**（`holdPick()`の答え・§9.526）。
+    `holdPick`自身が`pickCtx`を読むので、方式はここで後から足す（`pickCtx`へ入れると回り続ける）。 */
+ function bladePickCtx(st, M) {
+  return Object.assign(pickCtx(st, M), { hold: holdPick(st, M).hold });
  }
  /* 仕掛の列（`source.*`）は型が決まっていない。**比べ方で読み方を決める**:
     大小・範囲は数として、＝／≠は両方が数に読めれば数として（'1.0' と '1' を同じに）、
@@ -1230,6 +1253,7 @@
    ? (op === 'contains' ? 'text'
       : (/^(ge|gt|le|lt|between)$/.test(op) || (isFinite(asNum(left)) && isFinite(asNum(cond.value)))) ? 'num' : 'text')
    : 'text');
+  /* `choice`（候補から選ぶ・板押さえ方式）は字として比べる。 */
   if (kind === 'num') {
    const l = +left, a = +cond.value;
    if (!isFinite(l) || !isFinite(a)) return false;
@@ -1249,6 +1273,8 @@
  /* 当たった決まり、または `null`（＝「一般」を使う）。**条件が1つも無い行は
     当たらない**——「いつでも当たる行」を書けると、「一般が既定」という
     約束が静かに崩れる。 */
+ /* 刃選択の語彙＝いま選べる4項目＋前に選べた項目（書いてある決まりの型を引くため・§9.526）。 */
+ const pickFieldsAll = M => ((M && M.pickFields) || []).concat((M && M.pickFieldsLegacy) || []);
  function pickGroup(rules, ctx, fields) {
   const r = firstRule((rules || []).filter(x => x.group), ctx, fields, false);
   return r ? { group: r.row.group, rule: r.row.name || '', id: r.row.id } : null;
@@ -1417,24 +1443,25 @@
   return { want: w, used, step, rounded: Math.abs(used - w) > 1e-6 };
  }
  /* 使う刃を決める（§9.379、利用者の指示2）。
-      ふつう … 状態が「一般」の刃
-      例外 …… `刃選択マスタ` の条件に当たったら、その組の「専用」の刃
-    「メンテナンス中」は**どちらでも選ばない**。
+      ふつう … カテゴリが「通常刃」のセットの刃
+      例外 …… `刃選択マスタ` の条件に当たったら、その組の「専用刃」
+    使用状態が「研磨中」のセットは**どちらでも選ばない**（§9.526・セット＝設備＋組）。
     決めたら `st.pick` に「なぜその組か」を残す——画面が理由を出せないと、
     利用者には「勝手に別の刃になった」としか見えない（§CLAUDE 6 出どころを出す）。 */
  function applyBladePick(st, M) {
-  const gen = M.bladeGeneral || '一般', sp = M.bladeSpecial || '専用';
-  const hit = pickGroup(M.picks, pickCtx(st, M), M.pickFields);
+  const normal = M.bladeCatNormal || '通常刃', special = M.bladeCatSpecial || '専用刃';
+  const hit = pickGroup(M.picks, bladePickCtx(st, M), pickFieldsAll(M));
   st.pick = hit ? { group: hit.group, rule: hit.rule } : null;
-  const ok = b => b.currentDia && (hit
-   ? (b.status === sp && b.group === hit.group)
-   : b.status === gen);
+  const usable = b => b.currentDia && selectable(b, M);
+  const ok = b => usable(b) && (hit
+   ? (bladeCategory(b, M) === special && b.group === hit.group)
+   : bladeCategory(b, M) === normal);
   let use = (M.blades || []).filter(ok);
-  /* 条件に当たったのに、その組の刃が1枚も無い——**黙って一般へ落とさない**。
-     理由を持ったまま一般で描き、画面が「当たったが刃が無い」と言えるようにする。 */
+  /* 条件に当たったのに、その組の使える刃が1枚も無い（研磨中を含む）——**黙って通常刃へ
+     落とさない**。理由を持ったまま通常刃で描き、画面が「当たったが刃が無い」と言えるようにする。 */
   if (hit && !use.length) {
    st.pick = { group: hit.group, rule: hit.rule, missing: true };
-   use = (M.blades || []).filter(b => b.currentDia && b.status === gen);
+   use = (M.blades || []).filter(b => usable(b) && bladeCategory(b, M) === normal);
   }
   use = use.sort((a, b) => (b.thickness || 0) - (a.thickness || 0));
   if (use.length) { st.knife = use[0].currentDia; if (use[0].thickness) st.tk = use[0].thickness; }
@@ -1578,7 +1605,7 @@
   compose, buildRows, endRows, badgeMap, BADGE_TONES, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum, cutFace,
   stripDesign, designByParent, condOf, sameCond, seedFromCond,
-  pickCtx, pickGroup, condHits, selectable, firstRule, holdPick, holdReason, condText,
+  pickCtx, bladePickCtx, pickFieldsAll, bladeCategory, pickGroup, condHits, selectable, firstRule, holdPick, holdReason, condText,
   expand, materialRun, matShift, spread, tierOf,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP
  };

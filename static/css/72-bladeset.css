@@ -969,4 +969,25 @@ body.bs-mode .bs-shell{display:flex}
 .hp-row.is-default th,.hp-row.is-default td{background:var(--surface-2)}
 .hp-row.is-default.is-won th,.hp-row.is-default.is-won td{background:var(--teal-soft)}
 .hp-any{color:var(--ink-2);font-weight:700}
+
+/* ---------- 刃セットの盤（§9.526）——組ごとの「カテゴリ」「使用状態」の2択 ----------
+   札は1つの枠を割った形（§9.247）。選ばれた札の濃さは 90-state.css の束ね規則が持つ。
+   研磨中の行は地を薄い橙にし、右端の字で「選ばれない」と言う（色だけにしない）。 */
+.bss-table{border-collapse:collapse;width:100%;font-size:var(--tbl-fs)}
+.bss-table th,.bss-table td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
+ text-align:left;vertical-align:middle;white-space:nowrap}
+.bss-table thead th{font-weight:700;color:var(--ink-2)}
+.bss-group{width:5em;font-weight:700}
+.bss-seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
+.bss-seg button{border:0;border-inline-start:1px solid var(--line);border-radius:0;background:var(--surface);
+ height:var(--ctl-h-sm);padding:0 var(--space-3);font:inherit;font-size:var(--fs-sm);color:var(--ink-2);cursor:pointer}
+.bss-seg button:first-child{border-inline-start:0}
+.bss-seg button:hover:not(:disabled){background:var(--pale);color:var(--teal-dark)}
+.bss-seg button:disabled{cursor:default}
+.bss-blades small{margin-left:var(--space-2);color:var(--muted)}
+.bss-say{white-space:normal;color:var(--ink-2);font-size:var(--fs-sm)}
+.bss-say small{display:block;color:var(--muted);font-size:var(--fs-micro)}
+.bss-row.is-grind th,.bss-row.is-grind td{background:var(--warn-bg)}
+.bss-row.is-grind .bss-say b{color:var(--warn-fg)}
+.bss-note{margin-left:var(--space-2);font-size:var(--fs-sm);color:var(--muted)}
 }

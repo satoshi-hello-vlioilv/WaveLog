@@ -322,7 +322,7 @@
            {k:'name',label:'名称',required:true,key:true,fieldGroup:'① どの設備の刃か',
             hint:'現場での呼び名です（例: 10mm A）。'},
            {k:'group',label:'組',fieldGroup:'① どの設備の刃か',
-            hint:'1つのセットは**刃厚ちがいの刃をまとめて**持ちます。同じ記号を書いた刃が1組です（例: A）。研磨の記録は刃ごとに持ちます。'},
+            hint:'1つのセットは**刃厚ちがいの刃をまとめて**持ちます。同じ記号を書いた刃が1組です（例: A）。研磨の記録は刃ごとに持ちます。**カテゴリ（通常刃／専用刃）と使用状態（使用中／研磨中）はセットごと**に「刃セット」で切り替えます。'},
            {k:'thickness',label:'刃厚',type:'number',step:0.5,min:0,unit:'mm',required:true,key:true,fieldGroup:'② 寸法',
             hint:'**同じ径でも刃厚が違えば別物**です（所要も別に数えます）。'},
            {k:'currentDia',label:'現状径',type:'number',step:0.1,min:0,unit:'mm',fieldGroup:'② 寸法',
@@ -332,8 +332,8 @@
             hint:'これを下回ると刃組ガイダンスの「要確認」に出ます。'},
            {k:'lastGrind',label:'研磨日',type:'date',fieldGroup:'④ 研磨'},
            {k:'grindCount',label:'研磨回数',type:'number',step:1,min:0,unit:'回',fieldGroup:'④ 研磨'},
-           {k:'status',label:'状態',type:'master-suggest',source:{key:'bladeStatus'},fieldGroup:'④ 研磨',
-            hint:'**一般**＝ふつうはこれが選ばれます。**メンテナンス中**＝選ばれません。**専用**＝「刃選択」の決まりに当たったときだけ選ばれます。'},
+           /* 【§9.526で外した】「状態」——カテゴリ（通常刃／専用刃）と使用状態（使用中／研磨中）は
+              **セット（組）ごと**に「刃セット」で切り替える（利用者の指示・選択「セットごと」）。 */
            {k:'note',label:'備考',size:'lg',fieldGroup:'⑤ 管理'},
            {k:'order',label:'表示順',type:'number',min:0,step:10,fieldGroup:'⑤ 管理',
             hint:'小さいほど先に出ます。空欄で保存すると今の並びのままです。'},
@@ -342,8 +342,17 @@
    cols:[{k:'name',label:'名称',grow:2},{k:'group',label:'組',grow:1},
          {k:'thickness',label:'刃厚',grow:1},{k:'currentDia',label:'現状径',grow:1},
          {k:'qty',label:'保有枚数',grow:1},{k:'lastGrind',label:'研磨日',grow:1},
-         {k:'status',label:'状態',grow:1}],
+         {k:'category',label:'カテゴリ',grow:1},{k:'use',label:'使用状態',grow:1}],
    hint:'刃（ナイフ）の諸元です。刃組ガイダンスの「刃セットから呼出」で、ここに登録した径と刃厚をそのまま読み込めます。**1本を見分けるのは「設備＋名称＋刃厚」**——同じ径でも刃厚が違えば別物として数えます。研磨で径が変わったら**現状径・研磨日・回数**を更新してください（使用限界径を下回ると刃組ガイダンスの「要確認」に出ます。限界径は「刃組基準値」で決めます）。'},
+  /* ---------- 刃セット（§9.526、利用者の指示） ----------
+     「刃のセットの使用状態を切り替えられるようにしてください。使用中、研磨中」
+     「カテゴリを追加して通常刃、専用刃の選択も追加してください」（選択: セット（組）ごと）。
+     **専用の盤**（`special:'blade-sets'`／`bladeset/blade-sets.js`）。セットは刃の「組」から作り、
+     札を押すとその場で切り替わる（保存ボタンを持たない）。 */
+  {group:'bladeset',key:'bladesetSets',label:'刃セット',icon:'組',
+   special:'blade-sets',endpoint:'/api/bladeset/blade-sets',groupBy:'equipment',
+   titleText:'刃セット — 組ごとのカテゴリと使用状態',
+   hint:'刃の「組」ごとに、**カテゴリ**（通常刃＝ふつうはこれ／専用刃＝「刃選択」の決まりに当たったときだけ）と**使用状態**（使用中＝選べる／研磨中＝刃組ガイダンスで選ばれない）を切り替えます。札を押すとすぐ保存されます。'},
   {group:'bladeset',key:'bladesetSpacer',label:'スペーサー',icon:'ス',
    endpoint:'/api/bladeset-spacer-master',hasDelete:true,groupBy:'equipment',
    titleText:'スペーサー（ライナー） — 軸方向の寸法を作る部材',
@@ -397,9 +406,10 @@
    endpoint:'/api/bladeset-finger-master',hasDelete:true,groupBy:'equipment',
    titleText:'フィンガー（板押さえ） — 薄板でゴムリングの代わりに使う部材',
    fields:[{k:'equipment',label:'設備',type:'equipment-select',required:true,key:true,fieldGroup:'① どの設備の部材か'},
-           {k:'name',label:'名称',required:true,key:true,fieldGroup:'① どの設備の部材か',
-            hint:'現場での呼び名です。'},
-           {k:'width',label:'幅',type:'number',step:1,min:0,unit:'mm',fieldGroup:'② 寸法と在庫'},
+           /* 名称の欄は持たない（§9.526、利用者の指示）。**1本＝設備＋幅＋材質**、呼び名は材質＋幅から作る。 */
+           {k:'material',label:'フィンガー材質',type:'select',optionsKey:'fingerMaterials',options:['ベークライト','アルミニウム'],
+            key:true,fieldGroup:'① どの設備の部材か',hint:'既定は**ベークライト**です。同じ設備で**幅と材質が同じ行は1つだけ**です。'},
+           {k:'width',label:'幅',type:'number',step:1,min:0,unit:'mm',required:true,key:true,fieldGroup:'② 寸法と在庫'},
            {k:'qty',label:'保有本数',type:'number',step:1,min:0,unit:'本',fieldGroup:'② 寸法と在庫'},
            {k:'minQty',label:'下限本数',type:'number',step:1,min:0,unit:'本',fieldGroup:'② 寸法と在庫',
             hint:'これを下回ると刃組ガイダンスの「要確認」に出ます。'},
@@ -410,7 +420,7 @@
            {k:'order',label:'表示順',type:'number',min:0,step:10,fieldGroup:'③ 使う条件'},
            {k:'enabledText',label:'有効',type:'select',options:['有効','無効'],fieldGroup:'③ 使う条件',
             hint:'「無効」にすると候補から外れます。**行は消えません。**'}],
-   cols:[{k:'name',label:'名称',grow:2},{k:'width',label:'幅',grow:1},
+   cols:[{k:'material',label:'材質',grow:2},{k:'width',label:'幅',grow:1},
          {k:'qty',label:'保有本数',grow:1},{k:'minQty',label:'下限本数',grow:1}],
    hint:'板押さえ（フィンガー）の在庫です。**フィンガーで保持するかどうかは「保持方式」の表**が決めます（板厚・条数・仕掛の列などの条件）。フィンガーのときは軸をスペーサーだけで構成し（ゴムリングは使いません）、必要な本数をここの在庫と突き合わせます。'},
   /* ---------- 刃選択（§9.379／§9.380、利用者の指示） ----------

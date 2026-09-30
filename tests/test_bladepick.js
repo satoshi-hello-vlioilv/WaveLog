@@ -65,10 +65,10 @@ H.run('test_bladepick: 刃選択マスタの盤（§9.380）',
   await W.until(page,()=>!!document.querySelector('.bp-try'),null,
                 {ms:10000,what:'試し欄が出る'});
 
-  /* ---- 決まりが無いときは「一般が選ばれる」と言う（空の器を黙って出さない） ---- */
+  /* ---- 決まりが無いときは「通常刃が選ばれる」と言う（空の器を黙って出さない・§9.526で呼び名を改めた） ---- */
   const empty=await page.evaluate(()=>(document.querySelector('#masterMaintList').textContent||''));
-  rec('決まりが無いときは「一般の刃が選ばれる」と書く',
-      /一般/.test(empty)&&/決まりがありません/.test(empty),empty.replace(/\s+/g,' ').slice(0,70));
+  rec('決まりが無いときは「通常刃が選ばれる」と書く',
+      /通常刃/.test(empty)&&/決まりがありません/.test(empty),empty.replace(/\s+/g,' ').slice(0,70));
 
   /* ---- ⑤ 断るべきものは断る ---- */
   const modalText=async()=>{
@@ -116,7 +116,7 @@ H.run('test_bladepick: 刃選択マスタの盤（§9.380）',
   /* ---- ① 文として読める ---- */
   const card=await page.evaluate(()=>((document.querySelector('.bp-card')||{}).textContent||'').replace(/\s+/g,' ').trim());
   rec('決まりが文として読める（項目・比べ方・値・使う組）',
-      /厚板は専用/.test(card)&&/板厚/.test(card)&&/1\.6/.test(card)&&/専用の刃/.test(card),
+      /厚板は専用/.test(card)&&/板厚/.test(card)&&/1\.6/.test(card)&&/専用刃/.test(card),
       card.slice(0,80));
 
   /* ---- ②③ 試し欄で当たりが出る／条件ごとに○× ---- */
@@ -128,14 +128,14 @@ H.run('test_bladepick: 刃選択マスタの盤（§9.380）',
   await W.until(page,()=>/当たる/.test(document.querySelector('.bp-ans').textContent||''),null,
                 {ms:8000,what:'当たりが出る'});
   rec('当たると「どの決まりで・どの組か」を出す',
-      /厚板は専用/.test(await ans())&&/専用の刃/.test(await ans()),await ans());
+      /厚板は専用/.test(await ans())&&/専用刃/.test(await ans()),await ans());
   rec('当たった条件に○が付く',(await marks())==='○',await marks());
   rec('当たった決まりのカードが目印を持つ',
       await page.evaluate(()=>!!document.querySelector('.bp-card.is-won')));
   await page.fill('[data-p="thickness"]','1.0');
-  await W.until(page,()=>/一般/.test(document.querySelector('.bp-ans').textContent||''),null,
-                {ms:8000,what:'一般へ戻る'});
-  rec('当たらなければ「一般の刃」と言う',/一般の刃/.test(await ans()),await ans());
+  await W.until(page,()=>/通常刃/.test(document.querySelector('.bp-ans').textContent||''),null,
+                {ms:8000,what:'通常刃へ戻る'});
+  rec('当たらなければ「通常刃」と言う',/通常刃/.test(await ans()),await ans());
   rec('落ちた条件に×が付く（どこで落ちたかが見える）',(await marks())==='×',await marks());
   rec('当たっていないときは目印を出さない',
       await page.evaluate(()=>!document.querySelector('.bp-card.is-won')));
