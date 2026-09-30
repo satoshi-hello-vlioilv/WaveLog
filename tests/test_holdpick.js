@@ -78,10 +78,11 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   const shape = () => page.evaluate(() => ({
    state: document.querySelector('#masterMaintForm .hp-state')?.textContent || '',
    rows: [...document.querySelectorAll('.hp-table tbody tr')].map(tr => [...tr.querySelectorAll('input.hp-c')].map(i => i.value).join(',')
-     + '→' + tr.querySelector('.hp-hold')?.value + (tr.classList.contains('is-won') ? '★' : '')).join(' / '),
+     /* 答えの列は「方式（材質）」の1つの選択（§9.527）。値（方式|材質）でなく選ばれている札の字で見る。 */
+     + '→' + (tr.querySelector('.hp-hold')?.selectedOptions[0]?.textContent || '') + (tr.classList.contains('is-won') ? '★' : '')).join(' / '),
    ans: document.querySelector('.hp-ans')?.textContent.trim() || '' }));
   const s0 = await shape();
-  rec('④ 未登録の設備は、切替板厚から作った表と「未登録」を出す', /未登録/.test(s0.state) && s0.rows === '＜ 0.6→フィンガー / →ゴムリング', JSON.stringify(s0));
+  rec('④ 未登録の設備は、切替板厚から作った表と「未登録」を出す', /未登録/.test(s0.state) && s0.rows === '＜ 0.6→フィンガー（ベークライト） / →ゴムリング', JSON.stringify(s0));
   await page.selectOption('#hpAddCol', 'strips');
   await W.until(page, () => /条数/.test(document.querySelector('.hp-table thead')?.textContent || ''), null, { ms: 4000, what: '条数の列' });
   await page.click('#hpAddRow');
@@ -97,7 +98,7 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   rec('④ 読めない字は理由を出して、描き直しても残す', /^abc｜.+/.test(bad), bad);
   const s1 = await shape();
   rec('④ 試す行に値を入れると当たる行が光り、答えと行番号を言う',
-      /≧ 20→フィンガー★/.test(s1.rows) && /フィンガー（2行目に当たる）/.test(s1.ans), JSON.stringify(s1));
+      /≧ 20→フィンガー（ベークライト）★/.test(s1.rows) && /フィンガー（ベークライト）（2行目に当たる）/.test(s1.ans), JSON.stringify(s1));
   await page.click('#hpSave');
   await page.waitForSelector('#appConfirmModal:not([hidden])', { timeout: 5000 });
   const refused = await page.evaluate(() => document.getElementById('appConfirmModal').textContent);
@@ -131,7 +132,7 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   await page.click('#appConfirmOk');
   await W.until(page, () => /未登録/.test(document.querySelector('#masterMaintForm .hp-state')?.textContent || ''), null, { ms: 10000, what: '未登録へ戻る' });
   const s2 = await shape();
-  rec('④ 「未登録に戻す」で行が消え、切替板厚の種へ戻る', s2.rows.replace(/★/g, '') === '＜ 0.6→フィンガー / →ゴムリング', JSON.stringify(s2));
+  rec('④ 「未登録に戻す」で行が消え、切替板厚の種へ戻る', s2.rows.replace(/★/g, '') === '＜ 0.6→フィンガー（ベークライト） / →ゴムリング', JSON.stringify(s2));
   /* 消えた列（条数）の試しの値が裏で効かない——板厚だけの表で、試す行は空なので答えは出さない。 */
   rec('④ 表に無い列の試しの値は効かない（消えた条数の22で当てない）', !/★/.test(s2.rows) && /値を入れると/.test(s2.ans), JSON.stringify(s2));
   rec('コンソールに例外が出ない', errs.length === 0, errs.slice(0, 3).join(' / '));

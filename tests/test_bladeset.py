@@ -430,6 +430,15 @@ rec('保持方式: 仕掛の列は source.<列名> で書ける（字の形だ�
     == [{'field': 'source.製造材質', 'op': 'eq', 'value': 'SUS'}])
 rec('保持方式: 未登録に戻すと行が消え、種へ戻る',
     bs.hold_reset(c, EQ) == 2 and not bs.hold_rows(c, EQ)['stored'])
+bs.hold_replace(c, 'u', EQ, [
+    {'conditions': [{'field': 'thickness', 'op': 'lt', 'value': '1'}], 'hold': 'フィンガー', 'material': 'アルミニウム'},
+    {'conditions': [{'field': 'strips', 'op': 'ge', 'value': '9'}], 'hold': 'フィンガー', 'material': '鉄'},
+    {'conditions': [], 'hold': 'ゴムリング', 'material': 'アルミニウム'}])
+rec('保持方式: 行ごとにフィンガー材質を持つ（§9.527）。知らない字は空欄＝既定・ゴムリングの行は持たない',
+    [r['material'] for r in bs.hold_rows(c, EQ)['rows']] == ['アルミニウム', '', ''],
+    str([(r['hold'], r['material']) for r in bs.hold_rows(c, EQ)['rows']]))
+rec('保持方式: 種の行も材質は空欄（既定）', all(r['material'] == '' for r in bs.hold_seed(0.6)))
+bs.hold_reset(c, EQ)
 rec('保持方式: 設備が無ければ保存を断る', _reject(lambda: bs.hold_replace(c, 'u', '', [])))
 
 # ---------------------------------------------------------------------------

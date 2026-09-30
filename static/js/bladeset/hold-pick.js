@@ -20,7 +20,7 @@
 (function(){
  const {requireMaintUser,setMaintLoading}=WL.mm;
  const BS=()=>WL.bladeSet;
- const hs={equipment:'',rows:[],cols:[],fields:[],ops:[],methods:[],sourceCols:[],
+ const hs={equipment:'',rows:[],cols:[],fields:[],ops:[],methods:[],materials:[],sourceCols:[],
            stored:false,probe:{},dirty:false,loaded:false};
  const SRC='source.';
  const isSrc=f=>String(f).startsWith(SRC);
@@ -60,6 +60,13 @@
   if(c.op==='contains')return `*${c.value}*`;
   return (OP_TEXT[c.op]??'')+c.value;
  }
+ /* 答えの列の選択肢＝保持方式×フィンガー材質（§9.527、利用者の選択「保持方式の表で決める」）。
+    フィンガーだけ材質ごとに分け、値は「方式|材質」。空の材質は既定（候補の先頭）として見せる。 */
+ const isFingerHold=m=>m===(hs.methods[0]||'フィンガー');
+ const matOf=r=>(isFingerHold(r.hold)?(r.material||hs.materials[0]||''):'');
+ const outChoices=()=>hs.methods.flatMap(m=>isFingerHold(m)&&hs.materials.length
+  ?hs.materials.map(x=>({v:`${m}|${x}`,label:`${m}（${x}）`})):[{v:`${m}|`,label:m}]);
+ const outLabel=r=>(matOf(r)?`${r.hold}（${matOf(r)}）`:r.hold);
  const condOf=(row,f)=>(row.conditions||[]).find(c=>c.field===f)||null;
  /* 既定の行＝条件の無い行。**足したばかりで条件をまだ書いていない行**（`fresh`）は違う。 */
  const isDefault=r=>!(r.conditions||[]).length&&!r.fresh;
@@ -133,7 +140,7 @@
   const probe=`<tr class="hp-try"><th class="hp-no">試す</th>${hs.cols.map(f=>`<td><input class="hp-p" data-p="${esc(f)}"`
    +` type="${kindOf(f)==='num'?'number':'text'}" step="any" value="${esc(hs.probe[f]??'')}" placeholder="値"></td>`).join('')}
    <td class="hp-ans" colspan="3">${!probeFilled()?'<span class="is-idle">値を入れると、当たる行が光ります</span>'
-    :hit?`<b>${esc(hit.row.hold)}</b>（${isDefault(hit.row)?'最後の既定の行':`${hit.index+1}行目`}に当たる）`:'<span class="is-idle">当たる行がありません</span>'}</td></tr>`;
+    :hit?`<b>${esc(outLabel(hit.row))}</b>（${isDefault(hit.row)?'最後の既定の行':`${hit.index+1}行目`}に当たる）`:'<span class="is-idle">当たる行がありません</span>'}</td></tr>`;
   const body=hs.rows.map((r,i)=>rowHtml(r,i,hit)).join('');
   box.innerHTML=`<div class="hp-wrap"><table class="hp-table"><thead>${head}${probe}</thead><tbody>${body}</tbody></table></div>`;
   wireList(box);
@@ -149,8 +156,9 @@
      return `<td class="hp-cell ${mk}"><input class="hp-c" data-r="${i}" data-f="${esc(f)}" value="${esc(cellText(c))}"`
       +` placeholder="問わない" autocomplete="off"${mk?` title="${mk==='is-hit'?'○ 当たる':'× 当たらない'}"`:''}>`
       +(mk?`<i class="hp-mk" aria-hidden="true">${mk==='is-hit'?'○':'×'}</i>`:'')+'</td>'}).join('');
-  const sel=`<select class="hp-hold" data-r="${i}" aria-label="保持方式">${hs.methods.map(m=>
-   `<option value="${esc(m)}"${r.hold===m?' selected':''}>${esc(m)}</option>`).join('')}</select>`;
+  const cur=`${r.hold}|${matOf(r)}`;
+  const sel=`<select class="hp-hold" data-r="${i}" aria-label="保持方式">${outChoices().map(o=>
+   `<option value="${esc(o.v)}"${o.v===cur?' selected':''}>${esc(o.label)}</option>`).join('')}</select>`;
   const ops=def?'':`<button type="button" class="hp-mv" data-act="up" data-r="${i}" title="1つ上へ"${i===0?' disabled':''}>▲</button>`
    +`<button type="button" class="hp-mv" data-act="down" data-r="${i}" title="1つ下へ"${i>=last?' disabled':''}>▼</button>`
    +`<button type="button" class="hp-x" data-act="delrow" data-r="${i}" title="この決まりを消す" aria-label="この決まりを消す">×</button>`;
@@ -183,7 +191,8 @@
   box.querySelectorAll('.hp-c').forEach(el=>{
    el.onchange=()=>setCell(+el.dataset.r,el.dataset.f,el.value,el);
   });
-  box.querySelectorAll('.hp-hold').forEach(el=>{el.onchange=()=>{hs.rows[+el.dataset.r].hold=el.value;touch();renderList()}});
+  box.querySelectorAll('.hp-hold').forEach(el=>{el.onchange=()=>{
+   const [hold,material]=el.value.split('|');Object.assign(hs.rows[+el.dataset.r],{hold,material:material||''});touch();renderList()}});
   box.querySelectorAll('.hp-n').forEach(el=>{el.oninput=()=>{hs.rows[+el.dataset.r].note=el.value;touch()}});
   box.querySelectorAll('.hp-p').forEach(el=>{
    el.oninput=()=>{hs.probe[el.dataset.p]=el.value;renderList();
@@ -231,7 +240,7 @@
     bodyHtml:`<p class="confirm-modal-message">条件が1つも無い決まりが ${empty}行あります。条件の無い行は既定の行と同じ意味になるので、保存では落とします。</p>`,
     confirmLabel:'落として保存する',cancelLabel:'やめる'}))return;
   const rows=hs.rows.filter(r=>(r.conditions||[]).length||r===hs.rows[hs.rows.length-1])
-   .map(r=>({conditions:r.conditions||[],hold:r.hold,note:r.note||''}));
+   .map(r=>({conditions:r.conditions||[],hold:r.hold,material:matOf(r),note:r.note||''}));
   try{
    await api('/api/bladeset/hold-pick',{method:'POST',headers:{'Content-Type':'application/json'},
      body:JSON.stringify({equipment:hs.equipment,rows,user_id:uid})});
@@ -276,8 +285,9 @@
   try{
    const [c,src]=await Promise.all([api('/api/bladeset/hold-pick?equipment='+encodeURIComponent(hs.equipment)),loadSourceCols()]);
    hs.fields=c.fields||[];hs.ops=c.ops||[];hs.methods=c.methods||['フィンガー','ゴムリング'];hs.stored=!!c.stored;
+   hs.materials=c.fingerMaterials||[];
    hs.sourceCols=src;
-   hs.rows=(c.rows||[]).map(r=>({conditions:(r.conditions||[]).map(x=>Object.assign({},x)),hold:r.hold,note:r.note||''}));
+   hs.rows=(c.rows||[]).map(r=>({conditions:(r.conditions||[]).map(x=>Object.assign({},x)),hold:r.hold,material:r.material||'',note:r.note||''}));
    /* 列＝表に書いてある項目（上の行・左の条件から順に）。何も無ければ板厚を1列目に。 */
    const cols=[];hs.rows.forEach(r=>(r.conditions||[]).forEach(x=>{if(!cols.includes(x.field))cols.push(x.field)}));
    hs.cols=cols.length?cols:['thickness'];

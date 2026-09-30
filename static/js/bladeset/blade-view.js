@@ -65,7 +65,7 @@
  const FIG_VARS = ['shaft', 'shaft-edge', 'cap', 'spacer', 'spacer-edge',
                    'filler', 'filler-edge', 'knife', 'knife-edge', 'badge',
                    'strip', 'strip-edge', 'scrap', 'scrap-edge', 'trim',
-                   'trim-edge', 'finger', 'lube', 'lube-edge', 'label', 'ink', 'sheen',
+                   'trim-edge', 'finger', 'finger-al', 'lube', 'lube-edge', 'label', 'ink', 'sheen',
                    'lead0', 'lead1', 'lead2',
                    'chip-bg', 'chip-fg', 'chip-bd',
                    'chip-clr-bg', 'chip-clr-fg', 'chip-clr-bd',
@@ -409,7 +409,11 @@
   if (!M) return '';
   const lack = [];
   if (!M.spacers.length) lack.push('スペーサー');
-  if (BS().isFinger(st, M)) { if (!M.fingers.length) lack.push('フィンガー'); }
+  /* フィンガーは**使う材質の行**があるか（§9.527）。ほかの材質だけ在っても組めない。 */
+  if (BS().isFinger(st, M)) {
+   const mat = BS().fingerMaterial(st, M);
+   if (!M.fingers.some(f => (f.material || BS().fingerMatDefault(M)) === mat)) lack.push(BS().holdLabel(st, M));
+  }
   else if (!M.rings.length) lack.push('ゴムリング');
   if (!M.blades.length) lack.push('刃');
   return lack.join('・');
@@ -579,12 +583,12 @@
    b.textContent = nm;
    b.dataset.showName = nm;
   });
-  $('#bsV4').textContent = res.finger ? B.holdName(st, M)
+  $('#bsV4').textContent = res.finger ? B.holdLabel(st, M)
    : `${B.holdName(st, M)} ${colorOf(res.bigOd)}${res.bigOd} / ${colorOf(res.smOd)}${res.smOd}`;
   /* 出すのは**中心間**（説明文がそう言っている）。クリアランスそのものは
      「クリアランス」の欄とチップの帯が持つ（§9.420）。 */
   $('#bsDVal').textContent = (res.A.dKnife || res.A.dReal).toFixed(2);
-  $('#bsHold2').innerHTML = `板を保持する方式は<b>${B.holdName(st, M)}</b>です。`
+  $('#bsHold2').innerHTML = `板を保持する方式は<b>${esc(B.holdLabel(st, M))}</b>です。`
    + esc(B.holdReason(st, M)) + (res.finger
     ? '、板押さえ（フィンガー）で保持します。軸はスペーサーのみで構成します。'
     : '、ゴムリング主体で構成します。');
@@ -947,6 +951,8 @@
     差し込まれた押さえかが、置き場所だけで分かるようにする。 */
  function fingerLayer(V, xa, xb, cy, z, k) {
   const shape = (M.fingerShape || {});
+  /* 色は材質で（§9.527）。答えは`fingerTone()`の1箇所、値は器のトークン。 */
+  const fill = V.PAL[BS().fingerTone(z.hold.mat)] || V.PAL.finger;
   const one = (M.fingers || [])[0] || {};
   const th = +(one.thickness || shape.thickness) || 20;
   const upper = cy < V.midY;
@@ -984,7 +990,7 @@
    /* 角は落とさない（§9.380、利用者の指示「四角で丸みは必要ない」）——
       丸めると板との当たり際に隙間があるように見える。 */
    o += `<rect class="bs-fng" x="${x}" y="${y0.toFixed(1)}" width="${ww}"`
-    + ` height="${h.toFixed(1)}" fill="${V.PAL.finger}"`
+    + ` height="${h.toFixed(1)}" fill="${fill}" data-mat="${esc(z.hold.mat || '')}"`
     + ` stroke="${V.PAL.ink}" stroke-width=".8"/>`;
    at += d * w;
   }
@@ -1393,7 +1399,7 @@
   /* 潤滑リング（§9.454）は**同じ札の中身**として言う——札は3つのまま
      （§9.380）。色は紫で、表と所要の色見本と同じトークン。 */
   const lw = BS().ringRule(M).lubeW;
-  const hold = finger ? 'フィンガー'
+  const hold = finger ? BS().holdLabel(st, M)
    : `ゴムリング ${ringWord('big')}／${ringWord('small')}`
      + (lw > 0 ? `＋潤滑 Φ${BS().ringRule(M).lubeOd}` : '');
   const c = clrUse();
@@ -1698,7 +1704,7 @@
   const holdList = [];
   if (ring || finger) {
    const hb = band(holdIn, holdOut);
-   const hex = ring ? hexOf(ring.od) : PAL.finger;
+   const hex = ring ? hexOf(ring.od) : (PAL[BS().fingerTone(P.hold.mat)] || PAL.finger);
    const list = (st.flip ? B.expand(P.gom).reverse() : B.expand(P.gom))
     .map(mm => ({ mm, cx: 0 }));
    /* **潤滑リング**（§9.454）は刃の内側の両端。ゴムリングはそのあいだ。 */
@@ -3352,7 +3358,7 @@
   detail.stopId = seededStopId || '';
   const c = detail.cond || {};
   const at = new Date().toISOString().slice(0, 16).replace('T', ' ');
-  const note = `${B.METHOD_NAME[LAST.method]}／Φ${st.knife.toFixed(1)}／${B.holdName(st, M)}／`
+  const note = `${B.METHOD_NAME[LAST.method]}／Φ${st.knife.toFixed(1)}／${B.holdLabel(st, M)}／`
    + st.lots.map(l => `${l.name} ${l.w}×${l.n}`).join(' , ');
   /* **何が残るかを見せてから**記録する。取り消せる操作ではあるが、次の段取りの
      差分がこの1件から出るので、条件を目で確かめられるようにする。 */

@@ -261,7 +261,7 @@ def bladeset_hold_list():
  eq = _eq()
  got = _op_read(lambda c: bs.hold_rows(c, eq)) if eq else {'rows': [], 'stored': False}
  return jsonify(ok=True, equipment=eq, rows=got['rows'], stored=got['stored'],
-                methods=list(bs.HOLD_METHODS),
+                methods=list(bs.HOLD_METHODS), fingerMaterials=list(bs.FINGER_MATERIALS),
                 fields=[{'field': f, 'label': l, 'kind': k} for f, l, k in bs.HOLD_FIELDS],
                 ops=[{'op': o, 'label': l, 'two': o in bs.BLADEPICK_OPS_2}
                      for o, l in bs.BLADEPICK_OPS])

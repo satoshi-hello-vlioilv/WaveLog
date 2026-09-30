@@ -724,6 +724,9 @@ HOLDPICK_TABLE = '保持方式マスタ'
 HOLDPICK_COLUMNS = (
     ('設備名', 'TEXT'), ('条件JSON', 'TEXT'), ('保持方式', 'TEXT'),
     ('備考', 'TEXT'), ('表示順', 'INTEGER'), ('有効', 'INTEGER'),
+    # フィンガー材質（§9.527、利用者の選択「保持方式の表で決める」）。フィンガーの行だけが持ち、
+    # 空欄は既定（`FINGER_MATERIAL_DEFAULT`）。ゴムリングの行では読まない・書かない。
+    ('フィンガー材質', 'TEXT'),
 )
 HOLDPICK_DEF = TableDef(HOLDPICK_TABLE, '保持方式ID', HOLDPICK_COLUMNS,
                         order_by='[設備名],[表示順],[保持方式ID]')
@@ -741,9 +744,10 @@ def _hold_row(d):
     except (ValueError, TypeError):
         conds = []
     hold = _txt(d['保持方式'])
+    hold = hold if hold in HOLD_METHODS else HOLD_RING
     return {'id': d['保持方式ID'], 'equipment': _txt(d['設備名']),
             'conditions': normalize_pick_conditions(conds),
-            'hold': hold if hold in HOLD_METHODS else HOLD_RING,
+            'hold': hold, 'material': _hold_material(hold, d['フィンガー材質']),
             'note': _txt(d['備考']), 'order': _int(d['表示順']),
             'enabled': _alive(d['有効'])}
 
@@ -754,8 +758,8 @@ def hold_seed(finger_max):
     rows = []
     if fm is not None and fm > 0:
         rows.append({'conditions': [{'field': 'thickness', 'op': 'lt', 'value': ('%g' % fm)}],
-                     'hold': HOLD_FINGER, 'note': ''})
-    rows.append({'conditions': [], 'hold': HOLD_RING, 'note': ''})
+                     'hold': HOLD_FINGER, 'note': '', 'material': ''})
+    rows.append({'conditions': [], 'hold': HOLD_RING, 'note': '', 'material': ''})
     return rows
 
 
@@ -772,6 +776,12 @@ def hold_rows(c, equipment):
             'stored': False}
 
 
+def _hold_material(hold, material):
+    """その行のフィンガー材質。**フィンガーの行だけ**が持ち、空欄・知らない字は''（＝既定）。"""
+    m = _txt(material)
+    return m if hold == HOLD_FINGER and m in FINGER_MATERIALS else ''
+
+
 def _hold_tidy(rows):
     """決まりの行（条件あり）を上から、**既定行（条件なし）を最後に1つ**。
     既定行が無ければゴムリングで足す——保持方式が決まらない作業を作らない。
@@ -783,7 +793,8 @@ def _hold_tidy(rows):
         conds = normalize_pick_conditions(r.get('conditions'), extra_fields=True)
         hold = _txt(r.get('hold'))
         hold = hold if hold in HOLD_METHODS else HOLD_RING
-        row = {'conditions': conds, 'hold': hold, 'note': _txt(r.get('note'))[:200]}
+        row = {'conditions': conds, 'hold': hold, 'note': _txt(r.get('note'))[:200],
+               'material': _hold_material(hold, r.get('material'))}
         for k in ('id', 'order', 'enabled', 'equipment'):
             if k in r:
                 row[k] = r[k]
@@ -791,7 +802,7 @@ def _hold_tidy(rows):
             body.append(row)
         else:
             default = row
-    return body + [default or {'conditions': [], 'hold': HOLD_RING, 'note': ''}]
+    return body + [default or {'conditions': [], 'hold': HOLD_RING, 'note': '', 'material': ''}]
 
 
 def hold_reset(c, equipment):
@@ -822,6 +833,7 @@ def hold_replace(c, uid, equipment, rows):
         HOLDPICK_DEF.insert(c, {'設備名': eq,
                                 '条件JSON': json.dumps(r['conditions'], ensure_ascii=False),
                                 '保持方式': r['hold'], '備考': r['note'] or None,
+                                'フィンガー材質': r['material'] or None,
                                 '表示順': (i + 1) * 10, '有効': -1}, uid)
     c.commit()
     return len(tidy)

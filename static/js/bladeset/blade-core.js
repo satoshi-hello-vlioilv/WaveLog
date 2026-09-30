@@ -70,7 +70,7 @@
      混ぜると、幅10の潤滑リングが「ゴムリング10」として積まれてしまうので分ける。 */
   const rings = ringAll.filter(x => !x.lube), lubes = ringAll.filter(x => x.lube);
   const fingers = (c.fingers || [])
-   .map(x => ({ name: x.name || '', width: num(x.width),
+   .map(x => ({ name: x.name || '', width: num(x.width), material: x.material || '',
                 qty: Math.max(0, num(x.qty) || 0), minQty: num(x.minQty) || 0,
                 maxThickness: num(x.maxThickness),
                 /* 形（§9.379）。**図がここから寸法を取る**ので落とさない。 */
@@ -144,14 +144,18 @@
    const cur = spacerStock.get(s.size);
    if (cur) cur.qty += s.qty; else spacerStock.set(s.size, Object.assign({}, s));
   });
-  /* フィンガーは幅ごとにまとめる（ゴムリングの幅と同じ扱い）。 */
-  const fingerWidths = [];
+  /* フィンガーは**材質ごとに**幅でまとめる（§9.527）。1回の刃組で使う材質は1つ
+     （`保持方式マスタ`の答え）なので、ほかの材質の本数を足さない。 */
+  const fingerByMat = new Map();
   M.fingers.forEach(f => {
-   const cur = fingerWidths.find(w => w.sz === f.width);
-   if (cur) cur.qty += f.qty; else fingerWidths.push({ sz: f.width, qty: f.qty });
+   const mat = f.material || fingerMatDefault(M);
+   const list = fingerByMat.get(mat) || [];
+   const cur = list.find(w => w.sz === f.width);
+   if (cur) cur.qty += f.qty; else list.push({ sz: f.width, qty: f.qty });
+   fingerByMat.set(mat, list);
   });
-  fingerWidths.sort((a, b) => b.sz - a.sz);
-  return { byOd, widthsByOd, ringsByTh, spacerSizes, spacerStock, fingerWidths,
+  fingerByMat.forEach(list => list.sort((a, b) => b.sz - a.sz));
+  return { byOd, widthsByOd, ringsByTh, spacerSizes, spacerStock, fingerByMat,
            span: Math.max(100, num(M.P.arborLen) || 1600),
            fillCache: new Map() };
  }
@@ -544,6 +548,10 @@
   let onCar = null;
   for (let i = 1; i < h.length; i++) if (h[i].carriage === st.carriage) { onCar = h[i]; break; }
   const at = (rec, kind, key) => ((rec && rec.detail && rec.detail[kind] && rec.detail[kind][key]) || 0);
+  const mat = fingerMaterial(st, M);
+  /* 記録のフィンガーは**同じ材質のときだけ**数える（材質の無い古い記録は既定の材質）。 */
+  const finAt = (rec, sz) => (rec && ((rec.detail || {}).fingerMaterial || fingerMatDefault(M)) === mat
+   ? at(rec, 'finger', sz) : 0);
   const spacer = new Map(), ring = new Map(), finger = new Map(), lube = new Map();
   IX.spacerStock.forEach((x, sz) => {
    const total = x.qty, b = at(busy, 'spacer', sz), c = at(onCar, 'spacer', sz);
@@ -556,8 +564,8 @@
    ring.set(k, { total, busy: b, onCar: Math.min(c, Math.max(0, total - b)),
                  free: Math.max(0, total - b) });
   }));
-  IX.fingerWidths.forEach(w => {
-   const total = w.qty, b = at(busy, 'finger', w.sz), c = at(onCar, 'finger', w.sz);
+  fingerWidthsOf(IX, mat).forEach(w => {
+   const total = w.qty, b = finAt(busy, w.sz), c = finAt(onCar, w.sz);
    finger.set(w.sz, { total, busy: b, onCar: Math.min(c, Math.max(0, total - b)),
                       free: Math.max(0, total - b) });
   });
@@ -571,7 +579,7 @@
                  free: Math.max(0, total - b) });
   });
   const sig = [st.carriage, busy.at || '-', onCar ? onCar.at : '-',
-               M.spacers.length, M.rings.length, M.fingers.length].join('|');
+               M.spacers.length, M.rings.length, M.fingers.length, mat].join('|');
   return { spacer, ring, finger, lube, busy: h[0] || null, onCar, sig };
  }
 
@@ -763,7 +771,7 @@
    }
    return parts;
   };
-  const finger = isFinger(st, M);
+  const finger = isFinger(st, M), fmat = finger ? fingerMaterial(st, M) : '';
   const zones = A.zones.map((z, i) => {
    const isEnd = (i === 0 || i === last);
    const burr = z.type === 'end' ? z.burr : z.seg.burr;
@@ -772,7 +780,7 @@
       長いほうの軸（内々の対）。屑条・端部には入れない。 */
    const wide = upper => z.type === 'strip' && (upper ? z.up > z.lo : z.lo > z.up);
    const mk = upper => {
-    if (finger) return IX.fingerWidths.length ? { kind: 'finger' } : null;
+    if (finger) return fingerWidthsOf(IX, fmat).length ? { kind: 'finger', mat: fmat } : null;
     if (!IX.widthsByOd.size) return null;
     const t = ringType(burr, upper);
     return { kind: 'ring', ringT: t, od: odOfType(st, M, t), lube: wide(upper) };
@@ -1077,6 +1085,7 @@
                 holdName: holdName(st, M) };
   return { segs, A, zp, g, err, rows, ends, badges: badgeMap(rows.concat(ends)),
            fit, stop: stopReasons(st, A, M), contact: c, method: method(st), finger: isFinger(st, M),
+           fingerMat: isFinger(st, M) ? fingerMaterial(st, M) : '',
            bigOd: odFromTh(M, st.bigTh), smOd: odFromTh(M, st.smallTh) };
  }
 
@@ -1299,14 +1308,29 @@
     （古いサーバー・網の手組み）は今までの決め方（板厚 < 切替板厚）で答える。 */
  function holdPick(st, M) {
   const rules = (M && M.holds) || [];
+  /* フィンガーの材質（§9.527）は当たった行が持つ。空欄・表が無ければ既定の材質。 */
+  const matOf = (hold, row) => (hold === 'フィンガー' ? ((row && row.material) || fingerMatDefault(M)) : '');
   if (!rules.length) {
    const fm = num(M && M.P && M.P.fingerMax) || 0;
-   return { hold: st.thick < fm ? 'フィンガー' : 'ゴムリング', index: -1, stored: false, row: null };
+   const hold = st.thick < fm ? 'フィンガー' : 'ゴムリング';
+   return { hold, material: matOf(hold, null), index: -1, stored: false, row: null };
   }
   const hit = firstRule(rules, pickCtx(st, M), M.holdFields, true);
-  return { hold: hit ? hit.row.hold : 'ゴムリング', index: hit ? hit.index : -1,
+  const hold = hit ? hit.row.hold : 'ゴムリング';
+  return { hold, material: matOf(hold, hit && hit.row), index: hit ? hit.index : -1,
            stored: !!M.holdsStored, row: hit ? hit.row : null };
  }
+ /* 既定のフィンガー材質＝サーバーの語彙の先頭（ベークライト）。 */
+ const fingerMatDefault = M => ((M && M.fingerMaterials) || [])[0] || 'ベークライト';
+ /* いまの作業で使うフィンガーの材質（フィンガーでなければ''）。答えは`holdPick()`。 */
+ const fingerMaterial = (st, M) => holdPick(st, M).material;
+ const fingerWidthsOf = (IX, mat) => IX.fingerByMat.get(mat) || [];
+ /* 画面に出す保持方式の名前（「フィンガー（アルミニウム）」）。`holdName()`は方式だけ（記録・判定の鍵）。 */
+ const holdLabel = (st, M) => { const m = fingerMaterial(st, M); return m ? `${holdName(st, M)}（${m}）` : holdName(st, M); };
+ /* 図のフィンガーの色（§9.527、利用者の選択「アルミは青みの銀」）。材質→`--bs-fig-*`の鍵。
+    知らない材質は既定の茶。色の値そのものは CSS のトークンが持つ。 */
+ const FINGER_TONE = { 'ベークライト': 'finger', 'アルミニウム': 'finger-al' };
+ const fingerTone = mat => FINGER_TONE[mat] || 'finger';
  /* その方式に決まった根拠を1文で（§9.524・§CLAUDE 6 出どころを書く）。どの行で決まったか・
     その行の条件・表が登録か種か。画面は字を組み立てない。 */
  function holdReason(st, M) {
@@ -1549,6 +1573,8 @@
   const nl = g.lube ? g.lube.u + g.lube.l : 0;
   if (nl) lube[g.lube.w] = nl;
   return { spacer: Object.assign({}, g.spacer), ring, finger, lube,
+           /* 使ったフィンガーの材質（§9.527）。次の刃組で「稼働中の台車に載っている本数」を材質で数える。 */
+           fingerMaterial: isFinger(st, M) ? fingerMaterial(st, M) : '',
            blade: Object.assign({}, g.blade), cond: condOf(st, M) };
  }
 
@@ -1600,7 +1626,7 @@
  WL.bladeSet = {
   defaultState, clearanceRate, clearanceFor, clearanceUsed, centerOf, datumOf, sideWord, floatStroke, fillWithin, spacerStep, ringRule, holdBand, applyStandards, applyBladePick, standardState,
   normalize, buildIndex, ringMeta, thOf, odFromTh, odOfType, ringType, oppBurr,
-  method, isFinger, holdName, contact, recommend, syncOrder, reorder,
+  method, isFinger, holdName, holdLabel, fingerMaterial, fingerMatDefault, fingerTone, contact, recommend, syncOrder, reorder,
   buildSegs, widths, buildLayout, buildFiller, fillWith, planZones,
   compose, buildRows, endRows, badgeMap, BADGE_TONES, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum, cutFace,

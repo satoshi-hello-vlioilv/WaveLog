@@ -1,4 +1,4 @@
-# 刃組ガイダンス（214件）
+# 刃組ガイダンス（216件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| フィンガーの材質は**1回の刃組で1つ**。答えは`holdPick()`の`material`（表の行が持つ・空欄は既定） | `test_bladesets.js`・`test_bladeset.py` | [§9.527](../../docs/decisions/9.527.md) |
+| フィンガーの在庫は材質ごとに数える（`fingerWidthsOf()`）。図の色の鍵は`fingerTone()`の1箇所 | `test_bladesets.js` | [§9.527](../../docs/decisions/9.527.md) |
 | 刃のカテゴリ（通常刃／専用刃）と使用状態（使用中／研磨中）は**刃セット（設備＋組）**の1行。刃の行は名乗るだけ | `test_bladeset.py`・`test_bladesets.js` | [§9.526](../../docs/decisions/9.526.md) |
 | 使えるかは`selectable()`の1箇所（研磨中は選ばない）。専用刃は決まりに当たったときだけ・使えなければ`missing` | `test_bladesets.js` | [§9.526](../../docs/decisions/9.526.md) |
 | 刃選択で選べるのは板押さえ方式・板厚・材質・調質。前の項目で書いた決まりは`pickFieldsLegacy`で読み続ける | `test_bladeset.py`・`test_bladesets.js` | [§9.526](../../docs/decisions/9.526.md) |

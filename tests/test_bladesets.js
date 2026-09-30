@@ -25,7 +25,8 @@ const post = (p, body) => api(p, { method: 'POST', headers: { 'Content-Type': 'a
 
 H.run('test_bladesets: 刃セット・刃選択の4項目・フィンガー材質（§9.526）', async ({ page, rec, errs }) => {
  let groups = [];
- const madePicks = [];
+ const madePicks = [], madeFingers = [];
+ let holdSaved = false;
  await post('/api/bladeset/seed', { equipment: EQ });
  try {
   groups = ((await api('/api/bladeset/blade-sets?equipment=' + encodeURIComponent(EQ))).items || []).map(x => x.group);
@@ -149,8 +150,95 @@ H.run('test_bladesets: 刃セット・刃選択の4項目・フィンガー材�
   rec('④ フィンガーの窓に名称の欄は無い', fg.name === false, JSON.stringify(fg));
   rec('④ 材質はベークライト・アルミニウムから選び、既定はベークライト',
       fg.opts.join('/') === 'ベークライト/アルミニウム' && fg.cur === 'ベークライト', JSON.stringify(fg));
+
+  /* ---- ⑤ フィンガーの材質で図の色を変える（§9.527、利用者の指示・選択「保持方式の表で決める」「アルミは青みの銀」） ----
+     前（実測）: 在庫は幅だけで数え材質を合算（ベークライト+アルミの本数）・図の色は材質によらず茶の1色。 */
+  const ctx0 = await api('/api/bladeset/context?equipment=' + encodeURIComponent(EQ));
+  for (const f of (ctx0.fingers || []).filter(x => x.material === 'ベークライト')) {
+   const r = await post('/api/bladeset-finger-master', { equipment: EQ, width: f.width, material: 'アルミニウム', qty: 3, user_id: 'test' });
+   if (r && r.id) madeFingers.push(r.id);
+  }
+  rec('⑤ 準備: 同じ幅のアルミニウムのフィンガーを足せる（設備＋幅＋材質で別の1本）', madeFingers.length > 0, String(madeFingers.length));
+  const calc = await page.evaluate(async EQ => {
+   const Bs = WL.bladeSet;
+   const M0 = Bs.normalize(await api('/api/bladeset/context?equipment=' + encodeURIComponent(EQ)));
+   const table = mat => Object.assign({}, M0, { holdsStored: true, holds: [
+    { conditions: [{ field: 'thickness', op: 'lt', value: '1' }], hold: 'フィンガー', material: mat },
+    { conditions: [], hold: 'ゴムリング', material: '' }] });
+   const run = M => {
+    const st = Object.assign(Bs.defaultState(), { thick: 0.5, W: 1130, lots: [{ name: 'L', w: 50, n: 22, parent: 'L' }], order: [] });
+    Bs.syncOrder(st);
+    const res = Bs.solve(st, M, Bs.buildIndex(M));
+    let total = 0; res.zp.plan.finger.forEach(x => { total += x.total; });
+    const mats = new Set();
+    res.zp.zones.forEach(z => [z.up, z.lo].forEach(p => { if (p && p.hold && p.hold.kind === 'finger') mats.add(p.hold.mat); }));
+    return { mat: Bs.fingerMaterial(st, M), label: Bs.holdLabel(st, M), total, mats: [...mats] };
+   };
+   const stock = mat => M0.fingers.filter(f => f.material === mat).reduce((a, f) => a + f.qty, 0);
+   return { al: run(table('アルミニウム')), blank: run(table('')), stockAl: stock('アルミニウム'), stockBk: stock('ベークライト'),
+            tone: [Bs.fingerTone('ベークライト'), Bs.fingerTone('アルミニウム'), Bs.fingerTone('知らない')] };
+  }, EQ);
+  rec('⑤ 当たった行の材質で決まる（アルミニウム）・画面の名前は「フィンガー（アルミニウム）」',
+      calc.al.mat === 'アルミニウム' && calc.al.label === 'フィンガー（アルミニウム）', JSON.stringify(calc.al));
+  rec('⑤ 行の材質が空欄なら既定のベークライト', calc.blank.mat === 'ベークライト', JSON.stringify(calc.blank));
+  rec('⑤ 在庫はその材質だけで数える（ほかの材質の本数を足さない）',
+      calc.al.total === calc.stockAl && calc.blank.total === calc.stockBk && calc.stockAl !== calc.stockBk,
+      JSON.stringify({ al: calc.al.total, bk: calc.blank.total, stockAl: calc.stockAl, stockBk: calc.stockBk }));
+  rec('⑤ 区間の押さえは使う材質を名乗る（図まで材質が届く）',
+      calc.al.mats.join() === 'アルミニウム' && calc.blank.mats.join() === 'ベークライト', JSON.stringify([calc.al.mats, calc.blank.mats]));
+  rec('⑤ 色の鍵は材質から（知らない材質は既定の茶）', calc.tone.join('/') === 'finger/finger-al/finger', calc.tone.join('/'));
+
+  /* 表に登録して、刃組ガイダンスの3つの図で色を見る。 */
+  await post('/api/bladeset/hold-pick', { equipment: EQ, user_id: 'test', rows: [
+   { conditions: [{ field: 'thickness', op: 'lt', value: '1' }], hold: 'フィンガー', material: 'アルミニウム' },
+   { conditions: [], hold: 'ゴムリング' }] });
+  holdSaved = true;
+  const hp = await api('/api/bladeset/hold-pick?equipment=' + encodeURIComponent(EQ));
+  rec('⑤ 保持方式の表は行ごとにフィンガー材質を持つ（ゴムリングの行は空）',
+      hp.rows[0].material === 'アルミニウム' && hp.rows[1].material === '' && (hp.fingerMaterials || []).length === 2, JSON.stringify(hp.rows));
+  await page.evaluate(() => document.querySelector('[data-master="bladesetHold"]')?.click());
+  await page.selectOption('#hpEq', { label: EQ }).catch(() => {});
+  await W.until(page, () => !!document.querySelector('.hp-table .hp-hold'), null, { ms: 10000, what: '保持方式の表' });
+  const hpOpts = await page.evaluate(() => { const s = document.querySelector('.hp-table .hp-hold');
+   return { opts: [...s.options].map(o => o.textContent), cur: s.options[s.selectedIndex].textContent }; });
+  rec('⑤ 表の「→ 保持方式」でフィンガーの材質まで選べ、登録した材質が選ばれている',
+      hpOpts.opts.join('/') === 'フィンガー（ベークライト）/フィンガー（アルミニウム）/ゴムリング' && hpOpts.cur === 'フィンガー（アルミニウム）',
+      JSON.stringify(hpOpts));
+
+  await page.evaluate(eq => WL.bladeGuide.open({ equipment: eq, seed: { thickness: 0.5, originalWidth: 1130,
+    lots: [{ name: 'FM1', w: 50, n: 22, parent: 'FM1' }], headLot: '' } }), EQ);
+  await W.until(page, () => /アルミニウム/.test(document.querySelector('#bsHold2')?.textContent || ''), null, { ms: 20000, what: 'ガイダンスがアルミのフィンガー' });
+  rec('⑤ ガイダンスの説明は材質まで言う', /フィンガー（アルミニウム）/.test(await page.evaluate(() => document.querySelector('#bsHold2').textContent)));
+  const toFig = async k => {
+   await page.evaluate(() => document.querySelectorAll('.bs-step.is-open').forEach(p => p.classList.remove('is-open')));
+   await page.click(`#bsFigTabs [data-fig="${k}"]`);
+   await W.until(page, k => document.querySelector(`#bsFigTabs [data-fig="${k}"]`)?.classList.contains('is-on'), k, { ms: 15000, what: '図を' + k });
+   await W.paint(page);
+  };
+  const tokens = await page.evaluate(() => { const cs = getComputedStyle(document.querySelector('.bs-shell'));
+   const hex = v => { const c = document.createElement('canvas').getContext('2d'); c.fillStyle = v; return c.fillStyle; };
+   return { al: hex(cs.getPropertyValue('--bs-fig-finger-al').trim()), bk: hex(cs.getPropertyValue('--bs-fig-finger').trim()),
+            sp: hex(cs.getPropertyValue('--bs-fig-spacer').trim()) }; });
+  rec('⑤ アルミの色は藍の淡色で、ベークライトの茶ともスペーサーの灰とも違う',
+      tokens.al === '#b0bae4' && tokens.al !== tokens.bk && tokens.al !== tokens.sp, JSON.stringify(tokens));
+  await toFig('2d');
+  await W.until(page, () => document.querySelectorAll('.bs-fng').length > 0, null, { ms: 10000, what: '模式図のフィンガー' });
+  const fills = await page.evaluate(() => {
+   const hex = v => { const c = document.createElement('canvas').getContext('2d'); c.fillStyle = v; return c.fillStyle; };
+   return [...new Set([...document.querySelectorAll('.bs-fng')].map(r => hex(r.getAttribute('fill')) + '|' + r.dataset.mat))]; });
+  rec('⑤ 模式図: フィンガーはアルミの色で描かれる', fills.length === 1 && fills[0] === tokens.al + '|アルミニウム', fills.join(' / '));
+  for (const k of ['cut', '3d']) {
+   await toFig(k);
+   const ok = await W.until(page, () => !!(WL.bladeSolid && Object.keys(WL.bladeSolid.view().fingers || {}).length), null, { ms: 20000, what: k + 'のフィンガー' });
+   const skins = await page.evaluate(() => WL.bladeSolid.view().fingers);
+   rec(`⑤ ${k === 'cut' ? '断面図' : '立体図'}: フィンガーはアルミの色の材質だけで組まれる`,
+       ok && Object.keys(skins).join() === 'holdffinger-al' && skins['holdffinger-al'] === tokens.al, JSON.stringify(skins));
+  }
+
   rec('コンソールに例外が出ない', errs.length === 0, errs.slice(0, 3).join(' / '));
  } finally {
+  if (holdSaved) await post('/api/bladeset/hold-pick', { equipment: EQ, reset: true, user_id: 'test' }).catch(() => {});
+  for (const id of madeFingers) await post('/api/bladeset-finger-master/delete', { id }).catch(() => {});
   for (const id of madePicks) await post('/api/bladeset/blade-pick/delete', { id }).catch(() => {});
   for (const g of groups) await post('/api/bladeset/blade-sets', { equipment: EQ, group: g, reset: true }).catch(() => {});
   const left = ((await api('/api/bladeset/blade-sets?equipment=' + encodeURIComponent(EQ))).items || []).filter(x => x.stored).length;

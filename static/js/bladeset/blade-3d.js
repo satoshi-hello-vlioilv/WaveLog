@@ -1044,11 +1044,12 @@
       `#6f7d8c` という灰青のリテラルで、**スペーサーと見分けが付かず**、
       模式図の茶（`--bs-fig-finger`）とも食い違っていた（色リテラルを
       増やさない・§9.350／色は1箇所が答える・§CLAUDE 8）。 */
-   groupBy(out.ring, q => (q.hold.kind === 'ring' ? 'r' + q.hold.od : 'f')).forEach((list, key) => {
+   /* フィンガーは**材質ごと**に色を分ける（§9.527）。鍵は`fingerTone()`の答え（`finger`／`finger-al`）。 */
+   groupBy(out.ring, q => (q.hold.kind === 'ring' ? 'r' + q.hold.od : 'f' + BS().fingerTone(q.hold.mat))).forEach((list, key) => {
     const isRing = key.charAt(0) === 'r';
     const od = isRing ? +key.slice(1) : linerR * 2 + 20;
     const color = isRing ? (ctx.ringHex(od) || '#8d97a6')
-                         : cssColor('--bs-fig-finger', '#7a5232');
+                         : cssColor('--bs-fig-' + key.slice(1), cssColor('--bs-fig-finger', '#7a5232'));
     put(list.map(q => ({ x: q.x, y: q.y, len: q.sz - 1.0 })), od / 2,
         isRing ? ringBore : linerR,
         skin(T, sh.ring, 'hold' + key, { color, metalness: .02, roughness: .9 }));
@@ -1420,6 +1421,19 @@
   };
   walk(D3.g);
   return { skinned, mesh };
+ }
+
+ /* 組んであるフィンガーの材質の名前と色（§9.527）。網が「材質で色が分かれたか」を数で見る。 */
+ function fingerSkins() {
+  const out = {};
+  const walk = o => {
+   if (!o) return;
+   const n = (o.isMesh && o.material && o.material.name) || '';
+   if (/^holdf/.test(n)) out[n.replace(/·cut$/, '')] = '#' + o.material.color.getHexString();
+   (o.children || []).forEach(walk);
+  };
+  walk(D3.g);
+  return out;
  }
 
  /* 立体図を組み直す。模式図と同じ A・segs・zp から作る。 */
@@ -2706,7 +2720,7 @@
            pack: D3.pack || null, stray: D3.stray | 0,
            /* 消した部材の見せ方と、その結果（§9.422）。`skinned`＝薄く／線だけで
               残っている物の数、`mesh`＝組み立てている物の数。 */
-           hide: D3.hide, skins: skinCount(),
+           hide: D3.hide, skins: skinCount(), fingers: fingerSkins(),
            dimSep: D3.dimSep || 0,
            /* 断面図で刃先のあいだに空けた隙間と、板が占める高さ（§9.413 追補）。
               **板がめり込まないこと**を網が数字で見るための2つ。 */
