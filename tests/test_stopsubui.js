@@ -219,8 +219,15 @@ H.run('test_stopsubui: 設備停止マスタの画面（§9.397）',
   const b=row&&row.querySelector('[data-ssb-def]');
   if(b)b.click();
  });
- await page.waitForFunction(()=>[...document.querySelectorAll('[data-ssb-def]')]
-   .some(b=>b.textContent.trim()==='既定'),null,{timeout:10000});
+ /* **押した行の札**が「既定」になるまで待つ（§9.522 の追補）。以前は「どれかの札が既定」で待っており、
+    兄弟が1件だけの2段目（交換）の押せない札が**押す前から**「既定」と出ているので待ちが素通りし、
+    保存の往復が終わる前にサーバーを読んで落ちることがあった（早い者勝ち）。 */
+ await page.waitForFunction(()=>{
+  const row=[...document.querySelectorAll('.ssb-row[data-ssb-id]')]
+    .find(r=>(r.querySelector('input[data-ssb-k="name"]')||{}).value==='刃出し');
+  const btn=row&&row.querySelector('[data-ssb-def]');
+  return !!btn&&btn.textContent.trim()==='既定';
+ },null,{timeout:10000});
  const defSrv=await page.evaluate(async i=>{
   const j=await (await fetch('/api/schedule/stop-sub-master')).json();
   const mine=(j.items||[]).filter(x=>Number(x.stopReasonId)===Number(i));
