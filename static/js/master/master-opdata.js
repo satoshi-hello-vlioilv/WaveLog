@@ -2122,6 +2122,34 @@
   const users=(opState.usage||{})[x.choice]||[];
   const groups=[...new Set(opState.items.map(i=>i.group||'その他'))];
   $('#opModalTitle').textContent=x.name;
+  opRenderModalPreview(x,widget,usable);
+  /* ---- 右: 決めること ---- */
+  const kit=opFormKit();
+  const v={isChoice,usable,widget,users,groups};
+  /* 塊は①→②→③の順に組む（`help()`が積んだ説明を、その塊の`sec()`が読む）。 */
+  const panes={place:opPaneWhere(x,kit,v),data:opPaneWhat(x,kit,v),look:opPaneLook(x,kit,v)};
+  /* **3つの塊を横に並べる**（§9.299）。段（タブ）は廃止したので、
+     開いた瞬間から全部見えている（手数は3クリック→0）。 */
+  const secs=opSecsFor(x);
+  $('#opModalForm').innerHTML=`<div class="op-cols${secs.length===1?' is-one':''}">`
+   +secs.map(t=>panes[t.k]||'').join('')+`</div>`;
+  const role=opRoleOf(x);
+  const roleLabel=(opState.roles.find(r=>r.key===role)||{}).label||'';
+  $('#opModalRole').innerHTML=roleLabel
+    ?`<b class="op-role-chip" title="この項目が担っている役割です（構成の必須はここで満たされます）">役割 ${esc(roleLabel)}</b>`
+    :'';
+  /* **保存は右上の端**（§9.223 ②、利用者の指示）。危ない操作（削除）は
+     同じ場所へ置かない——「完了」の隣に「削除」を置かない（§CLAUDE 5）。
+     削除は②のタブの中の帯へ移してある。 */
+  $('#opModalActions').innerHTML=`<button type="button" id="opdSave" class="mm-btn-primary">保存</button>`;
+  bindOpModal(x);
+ }
+ /* ---------- 設定窓の段（§9.522・REVIEW 3-22） ----------
+    以前は`renderOpModal()`の1本（394行）が見本と3つの塊を組んでいた。見本は`opRenderModalPreview()`、
+    決めることの道具（`seg`・`help`・`sec`）は`opFormKit()`、塊は`opPane*()`（②は行ごとの`opWhat*()`）。
+    **塊の文字列は1文字も変えていない**（行ごとに分けても、つなげれば元と同じ）。 */
+ /* 左: 実物の見本（いま触っている1つだけ）と、素性の浮き出し。 */
+ function opRenderModalPreview(x,widget,usable){
   /* ---- 左: 実物 ---- */
   /* ---------- 出すのは「いま触っている1つ」だけ（§9.276 ⑥、利用者の指示） ----------
      「対象外で同一グループの時は単位の表示位置やUI配置がでたらめ。UIのサイズが
@@ -2134,23 +2162,7 @@
      絵が、確かめられない絵になっていた**（§9.226 ①で一度踏んだのと同じ形）。
      いまは1つに絞り、そのぶんを再現度へ回す。何マスぶんの幅かは器の格子と
      `<small>`の文字が言う。 */
-  const rule=[];
-  if(x.required)rule.push('必須');
-  if(opFamilyOf(x)==='number'){
-   /* **入る形は`measure-opdata.js`の1本が言う**（§9.219 ③）——見本用に
-      もう1つ書くと、設定画面で見えた形と実際の形が食い違う。 */
-   const t=(window.WL&&WL.opData&&WL.opData.ruleText)?WL.opData.ruleText(opRuleDef(x)):'';
-   if(t)rule.push(t);
-  }else if(opFamilyOf(x)==='choice'){
-   const n=(opState.choices||[]).filter(c=>c.name===x.choice).length;
-   rule.push(x.builtin?'画面が持っている選択肢':(x.choice?`${esc(x.choice)}（${n}件）`:'選択肢のまとまりが未設定'));
-  }else rule.push('自由記述');
-  if(x.unit)rule.push(`単位 ${x.unit}`);
-  const openWhen=(x.showWhen||[]).length
-    ?`畳んでおき、入力内容が「${esc((x.showWhen||[]).join('」「'))}」のときに開きます`
-    :((x.place||'準備')==='入力内容'
-      ?'②の入力内容カードに、いつも開いた状態で出ます'
-      :'①準備のカードに、いつも開いた状態で出ます');
+  const facts=opPrevFacts(x);
   /* ---------- 見本は実物と同じ大きさで出す（§9.226 ①、利用者の指摘
      「再現する部分の表示エリアの横幅が足りず、見切れています」） ----------
      以前は器の幅を12で割っていたので、1マスが実物の6割ほどになっていた
@@ -2177,25 +2189,6 @@
   const gap=6,pad=14;                       /* --gap-inline / --pad-row ぶん */
   const fits=Math.max(1,Math.floor((paneW-pad+gap)/(cell+gap)));
   const cols=Math.min(opState.gridCols,Math.max(span,fits));
-  /* ---------- 見本は「実物」だけ。素性はポップオーバーへ（§9.288 ④） ----------
-     利用者の指示「左側のエリアは死にエリアになっています。左側で有益なのは
-     実際の見た目のプレビューくらいでそれ以外はほぼ役に立っていません。」
-
-     以前はここに「入力の決まり／出るとき／記録の鍵」の3行と、組み込みの欄の
-     長い散文が**常に**並んでいた。どれも**1回読めば足りる**説明なのに、
-     画面のいちばん広い場所を毎回占めていた（面積は頻度×重要度・§CLAUDE 1）。
-     **消さずに畳む**（§9.234 ①）——`?`を押すと出る。 */
-  const facts='<ul class="op-prev-facts">'
-   +`<li><b>入力の決まり</b>${esc(rule.join('／'))}</li>`
-   +`<li><b>出るとき</b>${openWhen}</li>`
-   +`<li><b>記録の鍵</b>${x.builtin?'画面がもともと持っている置き場（測定データの中）'
-       :`測定データの <code>settings.opData.${esc(x.name)}</code>`}</li>`
-   +'</ul>'
-   +`<p class="op-prev-note">${x.builtin
-      ?'この欄は画面がもともと持っています（内径のプリセット・条数の上限など、それぞれの仕掛けがあるため）。'
-       +'それ以外は<b>自由項目と同じように</b>決められます——名前・選択肢のまとまり・初期値・手打ち・単位・並び・群・幅・必須・出す/出さない・置き場・選ばせ方・意匠。'
-       +'<b>変えられないのは型だけ</b>で、行そのものも消せません（②の「この項目」に外し方があります）。'
-      :'記録は<b>項目名を鍵</b>にして測定データへ入ります。名前を変えると、それまでの記録は前の名前のまま残ります。'}</p>`;
   /* ---------- 見本は「1/3の帯」（§9.299、利用者の指示） ----------
      「サンプルは今の3分の1くらいで十分」。出しているのは**1つの欄**なので、
      縦に積むと空白にしかならない——**横1本の帯**にして、余った縦は本体
@@ -2216,7 +2209,49 @@
    +`<span class="op-prev-value" id="opPrevValue"></span>`;
   opBindPrevInfo(facts);
   opRenderPreviewField(x,widget,usable);
-  /* ---- 右: 決めること ---- */
+ }
+ /* 素性（入力の決まり・出るとき・記録の鍵）。`?`の浮き出しに入る。 */
+ function opPrevFacts(x){
+  const rule=[];
+  if(x.required)rule.push('必須');
+  if(opFamilyOf(x)==='number'){
+   /* **入る形は`measure-opdata.js`の1本が言う**（§9.219 ③）——見本用に
+      もう1つ書くと、設定画面で見えた形と実際の形が食い違う。 */
+   const t=(window.WL&&WL.opData&&WL.opData.ruleText)?WL.opData.ruleText(opRuleDef(x)):'';
+   if(t)rule.push(t);
+  }else if(opFamilyOf(x)==='choice'){
+   const n=(opState.choices||[]).filter(c=>c.name===x.choice).length;
+   rule.push(x.builtin?'画面が持っている選択肢':(x.choice?`${esc(x.choice)}（${n}件）`:'選択肢のまとまりが未設定'));
+  }else rule.push('自由記述');
+  if(x.unit)rule.push(`単位 ${x.unit}`);
+  const openWhen=(x.showWhen||[]).length
+    ?`畳んでおき、入力内容が「${esc((x.showWhen||[]).join('」「'))}」のときに開きます`
+    :((x.place||'準備')==='入力内容'
+      ?'②の入力内容カードに、いつも開いた状態で出ます'
+      :'①準備のカードに、いつも開いた状態で出ます');
+  /* ---------- 見本は「実物」だけ。素性はポップオーバーへ（§9.288 ④） ----------
+     利用者の指示「左側のエリアは死にエリアになっています。左側で有益なのは
+     実際の見た目のプレビューくらいでそれ以外はほぼ役に立っていません。」
+
+     以前はここに「入力の決まり／出るとき／記録の鍵」の3行と、組み込みの欄の
+     長い散文が**常に**並んでいた。どれも**1回読めば足りる**説明なのに、
+     画面のいちばん広い場所を毎回占めていた（面積は頻度×重要度・§CLAUDE 1）。
+     **消さずに畳む**（§9.234 ①）——`?`を押すと出る。 */
+  const facts='<ul class="op-prev-facts">'
+   +`<li><b>入力の決まり</b>${esc(rule.join('／'))}</li>`
+   +`<li><b>出るとき</b>${openWhen}</li>`
+   +`<li><b>記録の鍵</b>${x.builtin?'画面がもともと持っている置き場（測定データの中）'
+       :`測定データの <code>settings.opData.${esc(x.name)}</code>`}</li>`
+   +'</ul>'
+   +`<p class="op-prev-note">${x.builtin
+      ?'この欄は画面がもともと持っています（内径のプリセット・条数の上限など、それぞれの仕掛けがあるため）。'
+       +'それ以外は<b>自由項目と同じように</b>決められます——名前・選択肢のまとまり・初期値・手打ち・単位・並び・群・幅・必須・出す/出さない・置き場・選ばせ方・意匠。'
+       +'<b>変えられないのは型だけ</b>で、行そのものも消せません（②の「この項目」に外し方があります）。'
+      :'記録は<b>項目名を鍵</b>にして測定データへ入ります。名前を変えると、それまでの記録は前の名前のまま残ります。'}</p>`;
+  return facts;
+ }
+ /* 決めることの道具。`help()`で積んだ説明を、同じ鍵の`sec()`が見出しの`?`へ畳む。 */
+ function opFormKit(){
   const seg=(name,list,cur,attr,noteOf)=>`<span class="op-seg" role="group" aria-label="${esc(name)}">`
    +list.map(v=>`<button type="button" ${attr}="${esc(v)}" class="${String(cur)===String(v)?'is-on':''}"`
      +(noteOf&&noteOf(v)?` title="${esc(noteOf(v))}"`:'')+`>${esc(v)}</button>`).join('')+`</span>`;
@@ -2243,8 +2278,13 @@
     +`</h4>${body}</section>`;
   };
 
+  return {seg,help,sec};
+ }
+ function opPaneWhere(x,kit,v){
+  const {seg,help,sec}=kit;
+  const {groups}=v;
   /* ---------- ① どこに出すか ---------- */
-  const paneWhere=sec('place','どこに出すか','測定画面のどのカードへ、どのくらいの幅で出すか',`
+  return sec('place','どこに出すか','測定画面のどのカードへ、どのくらいの幅で出すか',`
    <div class="op-form-row"><span class="op-form-label">置き場</span>
     <span class="op-form-ctl">${seg('置き場',opState.places,x.place||'準備','data-op-place',
       p=>OP_PLACE_NOTE[p]||'')}</span></div>
@@ -2298,158 +2338,12 @@
      <textarea id="opdNote" class="op-note-in" rows="4"
       placeholder="この項目を作った理由・注意点・現場での呼び方など（画面には出ません）">${esc(x.note||'')}</textarea>
     </span></div>`);
-  /* ---------- ② 何を記録するか ---------- */
-  const paneWhat=sec('data','何を記録するか','値の型・入る範囲・選ばせる候補・最初から入れておく値',`
-   <div class="op-form-row"><span class="op-form-label">項目名</span>
-    <span class="op-form-ctl"><input type="text" id="opdName" value="${esc(x.name)}"></span></div>
-   ${x.autoValue?`
-   <div class="op-form-row"><span class="op-form-label">自動で入る値</span>
-    <span class="op-form-ctl">
-     <b class="op-locked-chip">${esc(x.autoValueLabel||x.autoValue)}</b>
-     ${x.autoValueGroup?`<b class="op-chip">${esc(x.autoValueGroup)}</b>`:''}
-     ${x.autoValueKnown===false
-       ?`<b class="op-warn-chip">この版では引けない鍵です（${esc(x.autoValue)}）——欄は空欄のままになります</b>`:''}
-     <i class="op-form-note">${esc(x.autoValueNote||'')}
-      値を入れるのは<b>測定画面</b>なので、型・数の決まり・選ばせ方・初期値・手打ちは持ちません。
-      <b>名前・置き場・幅・単位・見せ方はふつうの項目と同じように決められます。</b>
-      出どころを変えたいときは、この項目を消して足し直してください。</i>
-    </span></div>
-   ${opIsFormula(x)?opFormulaRowHtml(x):''}`:''}
-   <div class="op-form-row"><span class="op-form-label">役割</span>
-    <span class="op-form-ctl">${opRolePickHtml(x)}</span></div>
-   <div class="op-form-row"><span class="op-form-label">型</span>
-    <span class="op-form-ctl">${x.autoValue
-      ?`<b class="op-locked-chip">値の形は出どころが決めます</b>
-        <i class="op-form-note">自動で入る値なので、型で入力を縛る意味がありません（打つ欄がありません）。
-        単位・寄せ・意匠（色・形・大きさ）は<b>③どう見せるか</b>で決められます。
-        <b>3桁区切り・ゼロ埋めは効きません</b>——値を入れるのは画面なので、
-        欄を離れたときに整える瞬間がありません。</i>`
-      :x.builtin
-      ?`<b class="op-locked-chip">${esc(x.type||'画面の部品で決まります')}</b>
-        ${help('data','組み込みの欄の型は変えられない',
-          '<p>この欄は<b>画面がもともと持っている部品</b>なので、型は変えられません。'
-          +'別の型で記録したいときは、<b>新しい項目を作って同じ役割を持たせて</b>ください'
-          +'——役割が移ると、この欄は測定画面から自動で下がります。</p>')}`
-      :`${seg('型',opState.types,x.type,'data-op-type',t=>OP_TYPE_NOTE[t]||'')}
-        <i class="op-form-note">${esc(OP_TYPE_NOTE[x.type]||'')}</i>`}</span></div>
-   ${(isChoice||x.builtin||opIsOutput(x))?'':`
-   <div class="op-form-row"><span class="op-form-label">数の決まり</span>
-    <span class="op-form-ctl op-form-nums">
-     <label>小数桁<input type="number" id="opdDecimals" min="0" max="4" value="${x.decimals==null?'':esc(x.decimals)}"></label>
-     <label>最小<input type="number" id="opdMin" step="any" value="${x.min==null?'':esc(x.min)}"${x.minFrom?' disabled':''}></label>
-     <label>最大<input type="number" id="opdMax" step="any" value="${x.max==null?'':esc(x.max)}"${x.maxFrom?' disabled':''}></label>
-     <label title="ステッパーの−／＋1回ぶん、スライダーの目盛の幅。**入力値の丸めの単位にもなります**">刻み<input type="number" id="opdStep" min="0" step="any" value="${x.step==null?'':esc(x.step)}"></label>
-     ${/* §9.307（利用者の指摘「『操業データ項目』の編集内容の中に数値データが
-          選ばれたときにステップを決めるところで編集可能」）。**単位は左の
-          「刻み」**なので、ここは向きだけ。**語彙はサーバーの戻り**
-          （`opState.roundModes`）から作る——画面へ綴りを書き写さない（§9.163）。
-          **刻みが空なら丸めようが無い**ので押せなくして理由を書く（§4）。 */''}
-     <label title="${esc(x.step==null?'左の「刻み」を入れると選べます':'打ち終わって欄を離れたときに、左の「刻み」の段へそろえます')}">丸め<select id="opdRound"${x.step==null?' disabled':''}>
-      <option value="">しない</option>
-      ${(opState.roundModes||[]).map(m=>`<option value="${esc(m)}"${x.roundMode===m?' selected':''}>${esc(m)}</option>`).join('')}
-     </select></label>
-    </span>
-    <i class="op-form-note">${x.step==null
-      ?'「刻み」を入れると、打ち終わった値をその段へそろえられます。'
-      :(x.roundMode?`打ち終わって欄を離れると <b>${esc(x.step)}</b> 刻みで<b>${esc(x.roundMode)}</b>ます（打っている最中は変わりません）。`
-        :`いまは丸めません（打った値がそのまま残ります）。`)}</i></div>
-   <div class="op-form-row"><span class="op-form-label">上下限の出どころ</span>
-    <span class="op-form-ctl op-form-froms">
-     ${opLimitFromHtml(x,'min')}
-     ${opLimitFromHtml(x,'max')}
-    </span></div>
-   ${help('data','刻みを空にするとどうなるか',
-     '<p>小数桁から作ります（整数=1／小数2桁=0.01）。<b>0は「決めていない」</b>として扱います'
-     +'——0にすると押しても動かない道具になるためです。</p>')}
-   ${help('data','マスタから引くと何が変わるか',
-     '<p>「自分で決める」なら、この行に書いた数がそのまま上下限になります。'
-     +'<b>マスタを選ぶと、測定画面を開いた設備のマスタから毎回引き直します</b>'
-     +'——設備ごとに違う上限（最大ライン速度・最大条数）を、項目を設備の数だけ'
-     +'作らずに1行で持てます。マスタを直せば入力欄の上限もその場で変わります。</p>'
-     +'<p>選んだマスタに<b>値が入っていない設備では、その側の上限は掛かりません</b>'
-     +'——引けなかった値を0として扱うと、何を打っても弾かれる欄になるためです。</p>')}`}
-   ${isChoice?`
-   <div class="op-form-row"><span class="op-form-label">選択肢</span>
-    <span class="op-form-ctl">
-     <span class="op-choice-pick">
-      <select id="opdChoice">${['<option value="">（選んでいません）</option>']
-        .concat(opState.choiceNames.map(n=>`<option value="${esc(n)}"${n===x.choice?' selected':''}>${esc(n)}</option>`))
-        .concat(x.choice&&!opState.choiceNames.includes(x.choice)
-          ?[`<option value="${esc(x.choice)}" selected>${esc(x.choice)}（値が未登録）</option>`]:[])
-        .join('')}</select>
-      <input type="text" id="opdNewChoiceName" placeholder="新しいまとまりを作る（例: リング色）">
-     </span>
-     ${opChoiceSuggestHtml(x)}
-     ${opPopHtml('choice',`値 ${opChoiceValues(x.choice).length}件`,'選択肢の値',
-       opChoiceValuesHtml(x)
-       +`<span class="op-choice-add">
-          <input type="text" id="opdNewChoiceValue" placeholder="値を足す（例: 茶）">
-          <input type="text" id="opdNewChoiceNote" placeholder="説明（省略できます）">
-          <button type="button" id="opdAddChoiceValue" class="ghost">値を足す</button>
-         </span>`
-       +`<i class="op-form-note">${users.length?`このまとまりを使っている項目: ${esc(users.join('、'))}`
-          :'このまとまりを使っている項目はまだありません'}</i>`,
-       {headNote:esc(x.choice||'（まとまりを選んでいません）'),
-        title:'押すと値の一覧が開きます（足す・消す・説明を書く）'})}
-    </span></div>`:''}
-   ${opIsOutput(x)?`
-   <div class="op-form-row"><span class="op-form-label">初期値</span>
-    <span class="op-form-ctl"><i class="op-form-note">この欄は<b>画面が値を入れます</b>ので、初期値はありません。</i></span></div>`:`
-   <div class="op-form-row"><span class="op-form-label">初期値</span>
-    <span class="op-form-ctl">
-     <input type="text" id="opdInitial" list="opInitialList" value="${esc(x.initial||'')}"
-       placeholder="空欄＝初期値なし">
-     <datalist id="opInitialList">${(isChoice?opChoiceValues(x.choice):[])
-       .map(v=>`<option value="${esc(v)}">`).join('')}</datalist>
-     ${isChoice&&x.initial&&!opChoiceValues(x.choice).includes(x.initial)
-       ?`<b class="op-warn-chip">候補に「${esc(x.initial)}」がありません${x.freeText?'（手打ちの値として入ります）':'——このままだと選択肢に無い値として入ります'}</b>`:''}
-     ${!isChoice&&x.initial&&opInitialRangeNote(x)
-       ?`<b class="op-warn-chip">${esc(opInitialRangeNote(x))}</b>`:''}
-    </span></div>`}
-   ${help('data','初期値はいつ入るか',
-     '<p><b>まだ何も記録されていない欄にだけ</b>入ります。入力の方法によらず効きます'
-     +'（プルダウンでもラジオでもステッパーでも同じ）。空にした欄を開き直しても初期値へは戻りません'
-     +'——消したのは作業者の判断なので、上書きしません。</p>'
-     +'<p><b>画面がもともと持っている欄（内径・スプール・測定器など）にも入ります。</b>'
-     +'ただし入るのは<b>まだ何も選ばれていないとき</b>——空欄か「-」のときだけで、'
-     +'「指定なし」のように<b>既定の選択肢が入っている欄には入りません</b>。'
-     +'仕掛データから値が来る欄（内径）では<b>仕掛の値が勝ちます</b>。</p>')}
-   ${isChoice?(()=>{
-     /* 手打ち（§9.220 ③）。**打ち込む席の無い形では押せなくして理由を書く**
-        （§9.247 ①・§4）——`入切`はスイッチ1つ、`切替`は押すたびに次へ進む
-        ボタン1つなので、打つ場所が出せない。以前は押せてしまい、盤には
-        「手打ち可」の印が出るのに測定画面では打つ場所がどこにも無かった。
-        **保存値は消さない**（形を戻せば復活する・§9.233 ④と同じ作法）ので、
-        すでに入にしてある項目にはそのことを書く。 */
-     const blocked=(opState.freeTextBlocked||[]).includes(widget);
-     const on=blocked?!!x.freeTextSaved:!!x.freeText;
-     return `
-   <div class="op-form-row"><span class="op-form-label">手打ち</span>
-    <span class="op-form-ctl">
-     <button type="button" id="opdFreeText" class="op-toggle${on?' is-on':''}" aria-pressed="${on?'true':'false'}"${blocked?' disabled':''}>候補にない値も打てる</button>
-     <i class="op-form-note">${blocked
-       ?`<b>「${esc(widget)}」では使えません</b>——${widget==='入切'?'スイッチが1つ':'ボタンが1つ'}だけなので、打ち込む場所が出せません。`
-        +`打てるようにするなら、選ばせ方を<b>プルダウン・一覧・メニュー・ボタン群</b>などにしてください。`
-        +(on?'（この設定は<b>残してあります</b>。選ばせ方を戻すとまた効きます）':'')
-       :'候補の下に打ち込む欄が出ます。打った値は<b>そのまま記録に入り</b>、選択肢マスタには足しません。'}</i>
-    </span></div>`;
-    })():''}
-   <div class="op-form-row is-danger"><span class="op-form-label">この項目</span>
-    <span class="op-form-ctl">
-     ${x.builtin
-       ?`<button type="button" id="opdStepOut" class="ghost">①「測定画面に出す」へ</button>
-         <i class="op-form-note">いまは<b>${x.enabled===false?'外れています':'測定画面に出ています'}</b>。</i>
-         ${help('data','組み込みの欄は消せない（外せる）',
-          '<p>この欄は<b>画面がもともと持っている部品</b>なので、行ごと消すことはできません'
-          +'（消しても起動のたびに作り直されます）。代わりに<b>外して隠せます</b>'
-          +'——いつでも戻せます。出す/出さないを持っているのは①の1つだけなので、'
-          +'このボタンは<b>そこへ連れて行きます</b>。'
-          +'役割を別の項目へ移した場合も、この欄は自動で下がります。</p>')}`
-       :`<button type="button" id="opdDelete" class="danger ghost">この項目を削除</button>
-         <i class="op-form-note">取り消せません。<b>記録済みの値は残りますが、画面から入れられなくなります。</b></i>`}
-    </span></div>`);
+ }
+ function opPaneLook(x,kit,v){
+  const {help,sec}=kit;
+  const {usable,widget}=v;
   /* ---------- ③ どう見せるか ---------- */
-  const paneLook=sec('look','どう見せるか','選ばせ方・意匠・単位の置き場（記録の中身は変わりません）',`
+  return sec('look','どう見せるか','選ばせ方・意匠・単位の置き場（記録の中身は変わりません）',`
    ${help('look','選ばせ方を変えると何が変わるか',
      (opIsOutput(x)
        ?'<p>この欄は<b>画面が値を入れます</b>（前工程の実績・計算の結果）。打ち込む部品は要らないので、選べるのは<b>見せ方</b>だけです——単位・寄せ・意匠は他の欄と同じように効きます。</p>'
@@ -2489,22 +2383,204 @@
    ${opLookPickHtml(x)}
    ${opLookRowHtml(x,widget)}
    ${opSourceNoteRowHtml(x)}`);
-  const panes={place:paneWhere,data:paneWhat,look:paneLook};
-  /* **3つの塊を横に並べる**（§9.299）。段（タブ）は廃止したので、
-     開いた瞬間から全部見えている（手数は3クリック→0）。 */
-  const secs=opSecsFor(x);
-  $('#opModalForm').innerHTML=`<div class="op-cols${secs.length===1?' is-one':''}">`
-   +secs.map(t=>panes[t.k]||'').join('')+`</div>`;
-  const role=opRoleOf(x);
-  const roleLabel=(opState.roles.find(r=>r.key===role)||{}).label||'';
-  $('#opModalRole').innerHTML=roleLabel
-    ?`<b class="op-role-chip" title="この項目が担っている役割です（構成の必須はここで満たされます）">役割 ${esc(roleLabel)}</b>`
-    :'';
-  /* **保存は右上の端**（§9.223 ②、利用者の指示）。危ない操作（削除）は
-     同じ場所へ置かない——「完了」の隣に「削除」を置かない（§CLAUDE 5）。
-     削除は②のタブの中の帯へ移してある。 */
-  $('#opModalActions').innerHTML=`<button type="button" id="opdSave" class="mm-btn-primary">保存</button>`;
-  bindOpModal(x);
+ }
+ /* ② 何を記録するか。行は上から`opWhat*()`の順（つなげると1つの文字列）。 */
+ function opPaneWhat(x,kit,v){
+  const {sec}=kit;
+  /* ---------- ② 何を記録するか ---------- */
+  return sec('data','何を記録するか','値の型・入る範囲・選ばせる候補・最初から入れておく値',''
+    +opWhatName(x,kit,v)
+    +opWhatType(x,kit,v)
+    +opWhatNumber(x,kit,v)
+    +opWhatChoice(x,kit,v)
+    +opWhatInitial(x,kit,v)
+    +opWhatFreeText(x,kit,v)
+    +opWhatSelf(x,kit,v)
+  );
+ }
+ /* ②の行: 項目名・自動で入る値。 */
+ function opWhatName(x,kit,v){
+  return `
+   <div class="op-form-row"><span class="op-form-label">項目名</span>
+    <span class="op-form-ctl"><input type="text" id="opdName" value="${esc(x.name)}"></span></div>
+   ${x.autoValue?`
+   <div class="op-form-row"><span class="op-form-label">自動で入る値</span>
+    <span class="op-form-ctl">
+     <b class="op-locked-chip">${esc(x.autoValueLabel||x.autoValue)}</b>
+     ${x.autoValueGroup?`<b class="op-chip">${esc(x.autoValueGroup)}</b>`:''}
+     ${x.autoValueKnown===false
+       ?`<b class="op-warn-chip">この版では引けない鍵です（${esc(x.autoValue)}）——欄は空欄のままになります</b>`:''}
+     <i class="op-form-note">${esc(x.autoValueNote||'')}
+      値を入れるのは<b>測定画面</b>なので、型・数の決まり・選ばせ方・初期値・手打ちは持ちません。
+      <b>名前・置き場・幅・単位・見せ方はふつうの項目と同じように決められます。</b>
+      出どころを変えたいときは、この項目を消して足し直してください。</i>
+    </span></div>
+   ${opIsFormula(x)?opFormulaRowHtml(x):''}`:''}`;
+ }
+ /* ②の行: 役割・型。 */
+ function opWhatType(x,kit,v){
+  const {seg,help}=kit;
+  return `
+   <div class="op-form-row"><span class="op-form-label">役割</span>
+    <span class="op-form-ctl">${opRolePickHtml(x)}</span></div>
+   <div class="op-form-row"><span class="op-form-label">型</span>
+    <span class="op-form-ctl">${x.autoValue
+      ?`<b class="op-locked-chip">値の形は出どころが決めます</b>
+        <i class="op-form-note">自動で入る値なので、型で入力を縛る意味がありません（打つ欄がありません）。
+        単位・寄せ・意匠（色・形・大きさ）は<b>③どう見せるか</b>で決められます。
+        <b>3桁区切り・ゼロ埋めは効きません</b>——値を入れるのは画面なので、
+        欄を離れたときに整える瞬間がありません。</i>`
+      :x.builtin
+      ?`<b class="op-locked-chip">${esc(x.type||'画面の部品で決まります')}</b>
+        ${help('data','組み込みの欄の型は変えられない',
+          '<p>この欄は<b>画面がもともと持っている部品</b>なので、型は変えられません。'
+          +'別の型で記録したいときは、<b>新しい項目を作って同じ役割を持たせて</b>ください'
+          +'——役割が移ると、この欄は測定画面から自動で下がります。</p>')}`
+      :`${seg('型',opState.types,x.type,'data-op-type',t=>OP_TYPE_NOTE[t]||'')}
+        <i class="op-form-note">${esc(OP_TYPE_NOTE[x.type]||'')}</i>`}</span></div>`;
+ }
+ /* ②の行: 数の決まり・上下限の出どころ。 */
+ function opWhatNumber(x,kit,v){
+  const {help}=kit;
+  const {isChoice}=v;
+  return `
+   ${(isChoice||x.builtin||opIsOutput(x))?'':`
+   <div class="op-form-row"><span class="op-form-label">数の決まり</span>
+    <span class="op-form-ctl op-form-nums">
+     <label>小数桁<input type="number" id="opdDecimals" min="0" max="4" value="${x.decimals==null?'':esc(x.decimals)}"></label>
+     <label>最小<input type="number" id="opdMin" step="any" value="${x.min==null?'':esc(x.min)}"${x.minFrom?' disabled':''}></label>
+     <label>最大<input type="number" id="opdMax" step="any" value="${x.max==null?'':esc(x.max)}"${x.maxFrom?' disabled':''}></label>
+     <label title="ステッパーの−／＋1回ぶん、スライダーの目盛の幅。**入力値の丸めの単位にもなります**">刻み<input type="number" id="opdStep" min="0" step="any" value="${x.step==null?'':esc(x.step)}"></label>
+     ${/* §9.307（利用者の指摘「『操業データ項目』の編集内容の中に数値データが
+          選ばれたときにステップを決めるところで編集可能」）。**単位は左の
+          「刻み」**なので、ここは向きだけ。**語彙はサーバーの戻り**
+          （`opState.roundModes`）から作る——画面へ綴りを書き写さない（§9.163）。
+          **刻みが空なら丸めようが無い**ので押せなくして理由を書く（§4）。 */''}
+     <label title="${esc(x.step==null?'左の「刻み」を入れると選べます':'打ち終わって欄を離れたときに、左の「刻み」の段へそろえます')}">丸め<select id="opdRound"${x.step==null?' disabled':''}>
+      <option value="">しない</option>
+      ${(opState.roundModes||[]).map(m=>`<option value="${esc(m)}"${x.roundMode===m?' selected':''}>${esc(m)}</option>`).join('')}
+     </select></label>
+    </span>
+    <i class="op-form-note">${x.step==null
+      ?'「刻み」を入れると、打ち終わった値をその段へそろえられます。'
+      :(x.roundMode?`打ち終わって欄を離れると <b>${esc(x.step)}</b> 刻みで<b>${esc(x.roundMode)}</b>ます（打っている最中は変わりません）。`
+        :`いまは丸めません（打った値がそのまま残ります）。`)}</i></div>
+   <div class="op-form-row"><span class="op-form-label">上下限の出どころ</span>
+    <span class="op-form-ctl op-form-froms">
+     ${opLimitFromHtml(x,'min')}
+     ${opLimitFromHtml(x,'max')}
+    </span></div>
+   ${help('data','刻みを空にするとどうなるか',
+     '<p>小数桁から作ります（整数=1／小数2桁=0.01）。<b>0は「決めていない」</b>として扱います'
+     +'——0にすると押しても動かない道具になるためです。</p>')}
+   ${help('data','マスタから引くと何が変わるか',
+     '<p>「自分で決める」なら、この行に書いた数がそのまま上下限になります。'
+     +'<b>マスタを選ぶと、測定画面を開いた設備のマスタから毎回引き直します</b>'
+     +'——設備ごとに違う上限（最大ライン速度・最大条数）を、項目を設備の数だけ'
+     +'作らずに1行で持てます。マスタを直せば入力欄の上限もその場で変わります。</p>'
+     +'<p>選んだマスタに<b>値が入っていない設備では、その側の上限は掛かりません</b>'
+     +'——引けなかった値を0として扱うと、何を打っても弾かれる欄になるためです。</p>')}`}`;
+ }
+ /* ②の行: 選択肢。 */
+ function opWhatChoice(x,kit,v){
+  const {isChoice,users}=v;
+  return `
+   ${isChoice?`
+   <div class="op-form-row"><span class="op-form-label">選択肢</span>
+    <span class="op-form-ctl">
+     <span class="op-choice-pick">
+      <select id="opdChoice">${['<option value="">（選んでいません）</option>']
+        .concat(opState.choiceNames.map(n=>`<option value="${esc(n)}"${n===x.choice?' selected':''}>${esc(n)}</option>`))
+        .concat(x.choice&&!opState.choiceNames.includes(x.choice)
+          ?[`<option value="${esc(x.choice)}" selected>${esc(x.choice)}（値が未登録）</option>`]:[])
+        .join('')}</select>
+      <input type="text" id="opdNewChoiceName" placeholder="新しいまとまりを作る（例: リング色）">
+     </span>
+     ${opChoiceSuggestHtml(x)}
+     ${opPopHtml('choice',`値 ${opChoiceValues(x.choice).length}件`,'選択肢の値',
+       opChoiceValuesHtml(x)
+       +`<span class="op-choice-add">
+          <input type="text" id="opdNewChoiceValue" placeholder="値を足す（例: 茶）">
+          <input type="text" id="opdNewChoiceNote" placeholder="説明（省略できます）">
+          <button type="button" id="opdAddChoiceValue" class="ghost">値を足す</button>
+         </span>`
+       +`<i class="op-form-note">${users.length?`このまとまりを使っている項目: ${esc(users.join('、'))}`
+          :'このまとまりを使っている項目はまだありません'}</i>`,
+       {headNote:esc(x.choice||'（まとまりを選んでいません）'),
+        title:'押すと値の一覧が開きます（足す・消す・説明を書く）'})}
+    </span></div>`:''}`;
+ }
+ /* ②の行: 初期値。 */
+ function opWhatInitial(x,kit,v){
+  const {help}=kit;
+  const {isChoice}=v;
+  return `
+   ${opIsOutput(x)?`
+   <div class="op-form-row"><span class="op-form-label">初期値</span>
+    <span class="op-form-ctl"><i class="op-form-note">この欄は<b>画面が値を入れます</b>ので、初期値はありません。</i></span></div>`:`
+   <div class="op-form-row"><span class="op-form-label">初期値</span>
+    <span class="op-form-ctl">
+     <input type="text" id="opdInitial" list="opInitialList" value="${esc(x.initial||'')}"
+       placeholder="空欄＝初期値なし">
+     <datalist id="opInitialList">${(isChoice?opChoiceValues(x.choice):[])
+       .map(v=>`<option value="${esc(v)}">`).join('')}</datalist>
+     ${isChoice&&x.initial&&!opChoiceValues(x.choice).includes(x.initial)
+       ?`<b class="op-warn-chip">候補に「${esc(x.initial)}」がありません${x.freeText?'（手打ちの値として入ります）':'——このままだと選択肢に無い値として入ります'}</b>`:''}
+     ${!isChoice&&x.initial&&opInitialRangeNote(x)
+       ?`<b class="op-warn-chip">${esc(opInitialRangeNote(x))}</b>`:''}
+    </span></div>`}
+   ${help('data','初期値はいつ入るか',
+     '<p><b>まだ何も記録されていない欄にだけ</b>入ります。入力の方法によらず効きます'
+     +'（プルダウンでもラジオでもステッパーでも同じ）。空にした欄を開き直しても初期値へは戻りません'
+     +'——消したのは作業者の判断なので、上書きしません。</p>'
+     +'<p><b>画面がもともと持っている欄（内径・スプール・測定器など）にも入ります。</b>'
+     +'ただし入るのは<b>まだ何も選ばれていないとき</b>——空欄か「-」のときだけで、'
+     +'「指定なし」のように<b>既定の選択肢が入っている欄には入りません</b>。'
+     +'仕掛データから値が来る欄（内径）では<b>仕掛の値が勝ちます</b>。</p>')}`;
+ }
+ /* ②の行: 手打ち。 */
+ function opWhatFreeText(x,kit,v){
+  const {isChoice,widget}=v;
+  return `
+   ${isChoice?(()=>{
+     /* 手打ち（§9.220 ③）。**打ち込む席の無い形では押せなくして理由を書く**
+        （§9.247 ①・§4）——`入切`はスイッチ1つ、`切替`は押すたびに次へ進む
+        ボタン1つなので、打つ場所が出せない。以前は押せてしまい、盤には
+        「手打ち可」の印が出るのに測定画面では打つ場所がどこにも無かった。
+        **保存値は消さない**（形を戻せば復活する・§9.233 ④と同じ作法）ので、
+        すでに入にしてある項目にはそのことを書く。 */
+     const blocked=(opState.freeTextBlocked||[]).includes(widget);
+     const on=blocked?!!x.freeTextSaved:!!x.freeText;
+     return `
+   <div class="op-form-row"><span class="op-form-label">手打ち</span>
+    <span class="op-form-ctl">
+     <button type="button" id="opdFreeText" class="op-toggle${on?' is-on':''}" aria-pressed="${on?'true':'false'}"${blocked?' disabled':''}>候補にない値も打てる</button>
+     <i class="op-form-note">${blocked
+       ?`<b>「${esc(widget)}」では使えません</b>——${widget==='入切'?'スイッチが1つ':'ボタンが1つ'}だけなので、打ち込む場所が出せません。`
+        +`打てるようにするなら、選ばせ方を<b>プルダウン・一覧・メニュー・ボタン群</b>などにしてください。`
+        +(on?'（この設定は<b>残してあります</b>。選ばせ方を戻すとまた効きます）':'')
+       :'候補の下に打ち込む欄が出ます。打った値は<b>そのまま記録に入り</b>、選択肢マスタには足しません。'}</i>
+    </span></div>`;
+    })():''}`;
+ }
+ /* ②の行: この項目（外す・消す）。 */
+ function opWhatSelf(x,kit,v){
+  const {help}=kit;
+  return `
+   <div class="op-form-row is-danger"><span class="op-form-label">この項目</span>
+    <span class="op-form-ctl">
+     ${x.builtin
+       ?`<button type="button" id="opdStepOut" class="ghost">①「測定画面に出す」へ</button>
+         <i class="op-form-note">いまは<b>${x.enabled===false?'外れています':'測定画面に出ています'}</b>。</i>
+         ${help('data','組み込みの欄は消せない（外せる）',
+          '<p>この欄は<b>画面がもともと持っている部品</b>なので、行ごと消すことはできません'
+          +'（消しても起動のたびに作り直されます）。代わりに<b>外して隠せます</b>'
+          +'——いつでも戻せます。出す/出さないを持っているのは①の1つだけなので、'
+          +'このボタンは<b>そこへ連れて行きます</b>。'
+          +'役割を別の項目へ移した場合も、この欄は自動で下がります。</p>')}`
+       :`<button type="button" id="opdDelete" class="danger ghost">この項目を削除</button>
+         <i class="op-form-note">取り消せません。<b>記録済みの値は残りますが、画面から入れられなくなります。</b></i>`}
+    </span></div>`;
  }
  /* 実物の欄を組み立てる。**測定画面の部品をそのまま使う**（`measure-opdata.js`）
     ——別に作ると、設定画面で見えた形と実際の形が食い違う（§9.176の
