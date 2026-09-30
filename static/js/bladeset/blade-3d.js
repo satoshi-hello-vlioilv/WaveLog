@@ -965,6 +965,19 @@
   D3.pack = { over: 0, worst: 0, drop: 0, filler: 0, fillerMm: 0,
               x0: 0, x1: 0, arbor: L };
   const out = { liner: [], ring: [], lube: [], knife: [] };
+  machineZones(out, A, segs, zp, L, tk, off, yU, yL);
+  const fr = frame(T, g, L, yU, yL);
+  const sd = +ctx.M.P.shaftDia || 200, bore = sd / 2;
+  const linerR = (+ctx.M.P.spacerOD || 240) / 2;
+  const ringBore = (+ctx.M.P.ringBore || 241) / 2;
+  machineParts(T, g, out, tk, off, bore, linerR, ringBore);
+  machinePackFacts(out, tk);
+  machineDims(out, off, bore, linerR, ringBore);
+  machineKnives(A, off, yU, yL, tk);
+  return Object.assign({ out }, fr);
+ }
+ /* 軸まわりの段（§9.522 で`machine()`から切り出した）: 区間ごとの部材の並び（`zone()`）と記号の札。 */
+ function machineZones(out, A, segs, zp, L, tk, off, yU, yL) {
   /* 区間の記号（§9.417）。**模式図と同じ対応表**（`res.badges`）を読む——
      図ごとに割り当て直すと、同じ区間が図と表で別の記号になり得る。
      端の2区間（最外刃より外）は模式図でも記号を出さない（右レールの
@@ -992,8 +1005,9 @@
    pos.forEach(x => out.knife.push({ x, y }));
   });
   D3.zmarks = zmk;
-  const fr = frame(T, g, L, yU, yL);
-  const sd = +ctx.M.P.shaftDia || 200, bore = sd / 2;
+ }
+ /* 部材（スペーサー・端数・保持層・潤滑リング・刃）を描く。材質は隠し方まで込み（`skin()`）。 */
+ function machineParts(T, g, out, tk, off, bore, linerR, ringBore) {
   const sh = D3.show;
   /* 材質は**隠し方まで込みで**受け取る（§9.422）。切ってあれば薄い写し・
      `gone`なら`null`が返るので、以下は「材質が無ければ描かない」だけで書ける。 */
@@ -1010,8 +1024,6 @@
    if (m) g.add(m);
    cap(T, g, items, ro, ri, mat);      /* 断面図のときだけ切り口を置く（§9.412） */
   };
-  const linerR = (+ctx.M.P.spacerOD || 240) / 2;
-  const ringBore = (+ctx.M.P.ringBore || 241) / 2;
   if (liner) {
    const real = out.liner.filter(q => !q.filler);
    const ls = real.map(q => ({ x: q.x, y: q.y, len: q.sz - 0.8 }));
@@ -1053,32 +1065,37 @@
    }
   }
   if (blade) put(out.knife.map(q => ({ x: q.x, y: q.y, len: tk })), ctx.st.knife / 2, bore, blade);
+ }
+ /* 詰めの事実: 端から端と、上下それぞれの組んだ合計長。 */
+ function machinePackFacts(out, tk) {
   /* **端から端が有効長を超えていないか**（§9.418 追補、利用者の指示「有効長より
      エンドtoエンドが長くなっていないか確認してほしい。この有効長を基準に描画する
      必要があります」）。区間の和＋刃の厚みは作りのうえで有効長ちょうどになるが、
      **図が実際に置いた物**で見る——置き方（端数・丸め）を間違えれば、計算が
      合っていても絵は溢れる。 */
-  {
-   const e = [];
-   out.liner.forEach(q => e.push(q.x - q.sz / 2, q.x + q.sz / 2));
-   out.ring.forEach(q => e.push(q.x - q.sz / 2, q.x + q.sz / 2));
-   out.lube.forEach(q => e.push(q.x - q.sz / 2, q.x + q.sz / 2));
-   out.knife.forEach(q => e.push(q.x - tk / 2, q.x + tk / 2));
-   if (e.length) {
-    D3.pack.x0 = +Math.min(...e).toFixed(3);
-    D3.pack.x1 = +Math.max(...e).toFixed(3);
-   }
-   /* **上下それぞれの「組んだときの合計長」**（§9.418 追補、利用者の指示
-      「設定有効長と、スペーサーを組んだときの上下のそれぞれの合計長を表示して
-      ほしい」）。軸の寸法を作るのは**スペーサーと刃**だけ（保持層は軸方向の
-      寸法に効かない・§9.377）ので、その2つだけを足す。上下で違う値になるのは
-      クリアランスのぶん（同じ切断で上下の刃が軸方向にずれる）。 */
-   const sum = up => +(out.liner.filter(q => (q.y > 0) === up && !q.filler)
-                        .reduce((a, q) => a + q.sz, 0)
-                     + out.knife.filter(q => (q.y > 0) === up).length * tk).toFixed(3);
-   D3.pack.sumU = sum(true);
-   D3.pack.sumL = sum(false);
+  const e = [];
+  out.liner.forEach(q => e.push(q.x - q.sz / 2, q.x + q.sz / 2));
+  out.ring.forEach(q => e.push(q.x - q.sz / 2, q.x + q.sz / 2));
+  out.lube.forEach(q => e.push(q.x - q.sz / 2, q.x + q.sz / 2));
+  out.knife.forEach(q => e.push(q.x - tk / 2, q.x + tk / 2));
+  if (e.length) {
+   D3.pack.x0 = +Math.min(...e).toFixed(3);
+   D3.pack.x1 = +Math.max(...e).toFixed(3);
   }
+  /* **上下それぞれの「組んだときの合計長」**（§9.418 追補、利用者の指示
+     「設定有効長と、スペーサーを組んだときの上下のそれぞれの合計長を表示して
+     ほしい」）。軸の寸法を作るのは**スペーサーと刃**だけ（保持層は軸方向の
+     寸法に効かない・§9.377）ので、その2つだけを足す。上下で違う値になるのは
+     クリアランスのぶん（同じ切断で上下の刃が軸方向にずれる）。 */
+  const sum = up => +(out.liner.filter(q => (q.y > 0) === up && !q.filler)
+                       .reduce((a, q) => a + q.sz, 0)
+                    + out.knife.filter(q => (q.y > 0) === up).length * tk).toFixed(3);
+  D3.pack.sumU = sum(true);
+  D3.pack.sumL = sum(false);
+ }
+ /* 寸法の層が使う控え（`D3.dims`）。描いた物そのものから作る。 */
+ function machineDims(out, off, bore, linerR, ringBore) {
+  const sh = D3.show;
   /* 寸法の層が使う控え（§9.418）。**描いた物そのもの**から作るので、
      図に出ていない部材の字が出ることはない。 */
   D3.dims = [];
@@ -1138,6 +1155,10 @@
                      §9.418）。席は`tags()`が画面の座標で2段作る。 */
                   leadYs: null, leadTo: q.y + sg * ro });
   });
+ }
+ /* 上下の刃の対（`D3.knives`）と、いちばん近い対の中心間。 */
+ function machineKnives(A, off, yU, yL, tk) {
+  const sh = D3.show;
   /* 上下の刃の対（§9.418・§9.419）。同じ切断の上刃と下刃は**刃厚＋クリアランス**
      だけ軸方向に中心がずれていて、そのずれが鋏の噛み合わせそのもの。 */
   D3.knives = [];
@@ -1149,7 +1170,6 @@
   D3.pack.knifeGap = D3.knives.length
    ? +Math.min(...D3.knives.map(k => Math.abs(k.xu - k.xl))).toFixed(3) : null;
   D3.pack.tk = tk;
-  return Object.assign({ out }, fr);
  }
 
  /* 材料。ラインは正面（OS 側）から見て左が入側、右が出側。軸の向きは OS→DS を
