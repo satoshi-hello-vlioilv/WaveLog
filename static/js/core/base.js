@@ -1453,12 +1453,17 @@ const displayRules=(()=>{
    if(t===''||t==null)return self;
    return lit(t,notes);
   };
+  /* 「かつ」で組をつなぎ、「または」で組と組をつなぐ。かっこの組はそのまま括弧になる。空の組は当たらない。 */
+  const condsExpr=cs=>{
+   const gs=groupsOf(cs).map(g=>g.map(c=>isGroup(c)?`(${condsExpr(c.conditions)})`:cond(c)).join(' and '));
+   return !gs.length?'0':gs.length>1?gs.map(x=>`(${x})`).join(' or '):gs[0];
+  };
   let tail=self,body=[];
   for(const r of (rows||[])){
    if(r.color)notes.add('色（●良い・悪い…）は式にできません。色が要るなら、式の列にも同じルールを付けてください');
    const cs=r.conditions||[];
    if(!cs.length){tail=out(r);break}        /* 既定の行。これより下へは来ない */
-   body.push([cs.map(cond).join(' and '),out(r)]);
+   body.push([condsExpr(cs),out(r)]);
   }
   let expr=tail;
   for(let i=body.length-1;i>=0;i--)expr=`if(${body[i][0]}, ${body[i][1]}, ${expr})`;
@@ -1473,11 +1478,30 @@ const displayRules=(()=>{
    const conds=r.conditions||[];
    // **条件が空の行＝どれにも当てはまらなかったとき**の既定。
    if(!conds.length)return r;
-   let all=true;
-   for(const c of conds){if(!test(c,row,selfCol)){all=false;break}}
-   if(all)return r;
+   if(condsTrue(conds,row,selfCol))return r;
   }
   return null;
+ }
+ /* かっこ（利用者の指示「かっこも入れられるようにしたい」）。条件の代わりに**組**
+    `{kind:'group',conditions:[…]}`を置ける。組の中も同じ決まり（かつ／または）で、組の中に組も置ける。
+    判定・式への変換・見る列は、どれもこの3つを通して組の中まで降りる。 */
+ const isGroup=c=>!!c&&c.kind==='group';
+ function condsTrue(conds,row,selfCol){
+  return groupsOf(conds).some(g=>g.every(c=>isGroup(c)?condsTrue(c.conditions,row,selfCol):test(c,row,selfCol)));
+ }
+ /* 組の中まで降りて、条件（葉）だけを並べる。 */
+ function leavesOf(conds){
+  return (conds||[]).flatMap(c=>isGroup(c)?leavesOf(c.conditions):[c]);
+ }
+ /* 行の中の条件を「または」で区切った群へ（利用者の指示「OR条件も追加で組み込めるように」）。
+    条件は`join:'or'`で**そこから新しい群**を始める（無ければ「かつ」）。行が当たるのは
+    **どれか1つの群の条件がすべて**当たるとき——「かつ」を先にまとめる（式の and/or と同じ強さ）。
+    区切り方の答えは**ここ1箇所**（判定・式への変換・編集窓の見た目が同じ群を見る）。
+    サーバーの並べ替えは`sort_order.rule_groups()`が同じ区切り方をする。 */
+ function groupsOf(conds){
+  const out=[];
+  (conds||[]).forEach((c,i)=>{if(!i||(c&&c.join==='or'))out.push([]);out[out.length-1].push(c)});
+  return out;
  }
  async function load(force){
   if(cache&&!force)return cache;
@@ -1503,7 +1527,7 @@ const displayRules=(()=>{
   if(usedMemo.has(name))return usedMemo.get(name).slice();
   const out=new Set();
   for(const r of (cache[name]||[])){
-   for(const c of (r.conditions||[])){
+   for(const c of leavesOf(r.conditions)){
     for(const side of [c.left,c.right,c.right2]){
      if(side&&side.kind==='column'&&side.column)out.add(String(side.column));
      /* 式が見ている列も要る列（§9.464）。`[この列]`は列ではない。 */
@@ -1529,7 +1553,7 @@ const displayRules=(()=>{
   const v=runCalc(t.slice(1),row,selfCol);
   return v===null?'':String(v);
  }
- return {load,match,test,columnsUsed,textOf,toFormula,rev:()=>rev,
+ return {load,match,test,groupsOf,isGroup,leavesOf,columnsUsed,textOf,toFormula,rev:()=>rev,
          all:()=>cache||{},
          names:()=>Object.keys(cache||{}).sort(),
          get:name=>(cache&&cache[name])||[],

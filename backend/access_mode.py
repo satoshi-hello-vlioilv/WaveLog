@@ -449,8 +449,11 @@ def _permission_flags():
  try:
   with connect(path,True) as c:
    return permission_flags(c,current_login_id(),current_pc_name())
- except Exception:
-  return dict(_FALLBACK_FLAGS)
+ except Exception as e:
+  # **倒れた理由を持って返す**——黙って既定へ倒れると、画面には「スケジュール
+  # モードが無い」だけが出て、なぜかを誰も言えない（利用者の報告で踏んだ）。
+  quiet('権限を読めない（既定の権限で続ける）',e)
+  return dict(_FALLBACK_FLAGS,error=f'{type(e).__name__}: {e}')
 
 def current_permission_flags():
  # 他モジュール(schedule.pyの現場段取りAPI等)がこの端末の権限を参照する
@@ -529,8 +532,8 @@ def install(app):
                  canFieldReorder=flags['canFieldReorder'],fieldReorderEquipment=flags['fieldReorderEquipment'],
                  loginId=current_login_id(),pcName=current_pc_name(),
                  pcNameSource=pc_name_info()['source'],
-                 # 権限区分と切断の状態(§9.272)。画面はこれを見て帯を出す。
-                 role=flags.get('role',''),revoked=revocation_now(),
+                 # 権限区分と切断の状態(§9.272)。画面はこれを見て帯を出す。permissionError＝権限を読めず既定へ倒れた理由（読めていれば空）。
+                 role=flags.get('role',''),revoked=revocation_now(),permissionError=flags.get('error',''),
                  # マスタ編集(§9.322)。**判定は画面へ写さない**——できることを
                  # 名前で受け取り、入口を出すかどうかだけを見る。
                  **master_edit_capabilities(flags.get('role',''),flags.get('masterEditStored','')),

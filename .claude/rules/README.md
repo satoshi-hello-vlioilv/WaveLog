@@ -16,11 +16,11 @@ CLAUDE.md の「画面を作るときの基準」（14項目）と、それをWa
 | --- | --- | --- |
 | どの画面でも（基準をWaveLogの寸法へ落としたもの） | [ui-principles.md](ui-principles.md) | 7節 |
 | `program/`・`Start.vbs`・`#appBoot`・更新・在席 | [boot.md](boot.md) | 50 |
-| 共有DB・写し・錠・`config/local.json`・SQLite | [data.md](data.md) | 71 |
+| 共有DB・写し・錠・`config/local.json`・SQLite | [data.md](data.md) | 72 |
 | `backend/routes/`・`body(spec)`・`api_guard`・権限 | [api.md](api.md) | 20 |
 | `TableDef`・マスタのサーバー側・既定値 | [master-server.md](master-server.md) | 29 |
 | マスタ管理の画面・盤・編集モーダル | [master-ui.md](master-ui.md) | 23 |
-| `list-view.js`・列レイアウト・フィルタ・仮想行 | [list.md](list.md) | 152 |
+| `list-view.js`・列レイアウト・フィルタ・仮想行 | [list.md](list.md) | 154 |
 | 測定画面・操業データ項目・公差・条の設計 | [measure.md](measure.md) | 98 |
 | 刃組ガイダンス（`blade-*.js`）・部材・刃選択 | [bladeset.md](bladeset.md) | 208 |
 | 作業スケジュール・設備停止の登録・写しの同期 | [schedule.md](schedule.md) | 96 |
@@ -31,4 +31,4 @@ CLAUDE.md の「画面を作るときの基準」（14項目）と、それをWa
 | どの束にも入らないもの | [misc.md](misc.md) | 18 |
 
 「固定する網」の欄はテスト名。`tests/run_all.sh <名前>` で回す。
-規則は合わせて **1017件**（`ui-principles.md` は節で数える）。
+規則は合わせて **1020件**（`ui-principles.md` は節で数える）。

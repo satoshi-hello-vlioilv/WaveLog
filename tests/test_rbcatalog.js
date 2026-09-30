@@ -104,7 +104,11 @@ run('test_rbcatalog: 帳票ブロックの「引ける範囲」と「書式」�
 
   /* 見本の紙を開いて、ある塊の中身（文字）を取る。 */
   const paperOf=async name=>{
+   /* **前の紙に印を付けてから**開く（§9.522「押した結果を待つ条件は押した物そのもので書く」）。
+      紙は`innerHTML`で丸ごと描き直すので、印の無い塊が出れば新しい紙。以前は「500字以上」で
+      待っており、**前の紙の残りで素通り**して、差し替える前の紙を読むことがあった（単独で4回に1回）。 */
    await page.evaluate(()=>{
+    document.querySelectorAll('#reportContent .rp-block').forEach(b=>{b.dataset.stale='1'});
     if(document.body.classList.contains('rp-mode')){
      const back=document.getElementById('reportBack');if(back)back.click();
     }
@@ -115,7 +119,7 @@ run('test_rbcatalog: 帳票ブロックの「引ける範囲」と「書式」�
    await page.waitForFunction(()=>document.body.classList.contains('rp-mode'),null,{timeout:20000});
    await page.waitForFunction(()=>{
     const c=document.getElementById('reportContent');
-    return c&&c.textContent.length>500;
+    return c&&c.textContent.length>500&&!!c.querySelector('.rp-block')&&!c.querySelector('.rp-block[data-stale]');
    },null,{timeout:20000});
    return page.evaluate(n=>{
     const blocks=[...document.querySelectorAll('#reportContent .rp-block')];

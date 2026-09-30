@@ -302,12 +302,44 @@ def rule_test(cond,row,self_col):
  return False
 
 
+def rule_groups(conds):
+ """行の中の条件を「または」で区切った群へ。`join:'or'`の条件から新しい群。
+ 画面（`WL.displayRules.groupsOf`）と同じ区切り方——**「かつ」を先にまとめる**。"""
+ out=[]
+ for i,cd in enumerate(conds or []):
+  if not i or (isinstance(cd,dict) and cd.get('join')=='or'):out.append([])
+  out[-1].append(cd)
+ return out
+
+
+def is_rule_group(cd):
+ """かっこの組（`{'kind':'group','conditions':[…]}`）か。"""
+ return isinstance(cd,dict) and cd.get('kind')=='group'
+
+
+def rule_conds_true(conds,row,self_col):
+ """どれか1つの群の条件がすべて当たるか。**かっこの組はその中を同じ決まりで見る**
+ （画面の`condsTrue()`と同じ）。空の組は当たらない。"""
+ return any(all(rule_conds_true(cd.get('conditions') or [],row,self_col) if is_rule_group(cd)
+                else rule_test(cd,row,self_col) for cd in g)
+            for g in rule_groups(conds))
+
+
+def rule_leaves(conds):
+ """かっこの組の中まで降りて、条件（葉）だけを並べる（見る列を集めるのに使う）。"""
+ out=[]
+ for cd in conds or []:
+  out.extend(rule_leaves(cd.get('conditions')) if is_rule_group(cd) else [cd])
+ return out
+
+
 def rule_match(rows,row,self_col):
- """当たった行。**条件が空の行＝どれにも当てはまらなかったときの既定**。"""
+ """当たった行。**条件が空の行＝どれにも当てはまらなかったときの既定**。
+ 行が当たるのは、どれか1つの群（`rule_groups()`）の条件がすべて当たるとき。"""
  for r in rows or []:
   conds=r.get('conditions') or []
   if not conds:return r
-  if all(rule_test(cd,row,self_col) for cd in conds):return r
+  if rule_conds_true(conds,row,self_col):return r
  return None
 
 

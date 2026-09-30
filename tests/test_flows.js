@@ -101,6 +101,20 @@ run('test_flows: 測定・スケジュール・メンテナンスの各導線を
    {header:'作業スケジュール'});
   const rows=await page.$$eval('.sc-row-line',n=>n.length);
   rec('作業スケジュール: 予定行が描かれている',rows>0,`行数=${rows}`);
+  /* **来た道を戻る**（利用者の報告「作業スケジュール一覧から、品質一覧を開くと
+     一覧が表示されない」）。品質データ→スケジュール→品質データで、表は在るのに
+     `qa-view-raw`が付かず伏せたままだった——「品質を出していたか」を画面の印と
+     別の控え（`prevQa`）が持ち、一覧を離れても控えだけ残っていた。
+     行の数では見ない（伏せた表にも行は在る）。**見えているか**で見る。 */
+  await check('作業スケジュール→品質データ',()=>page.click('aside [data-db-key="SIKALOTDEF"]'),
+    {header:await dsLabel('SIKALOTDEF')});
+  const back=await page.evaluate(()=>{const g=document.querySelector('#grid');
+   return {表:!!g&&g.getBoundingClientRect().height>0,
+    行:document.querySelectorAll('#grid tbody tr').length,
+    帯:(document.querySelector('#genericFilterBar')?.getBoundingClientRect().height||0)>0,
+    印:document.body.className}});
+  rec('作業スケジュール→品質データ: 一覧が見えている（表と絞り込みの帯）',
+      back.表&&back.行>0&&back.帯,JSON.stringify(back));
 
   // --- 分析導線 ---
   await check('ダッシュボード',()=>page.click('#openDashboard'),{header:'ダッシュボード'});
