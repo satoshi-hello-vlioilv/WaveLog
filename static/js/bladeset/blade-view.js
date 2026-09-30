@@ -3156,7 +3156,22 @@
    .catch(e => WL.quiet.note('図を組めない（模式図はそのまま使える）', e));
  }
 
+ /* ---------- 刃組画面の配線は群ごとに（§9.522・REVIEW 3-22） ----------
+    以前は`wire()`の1本（303行）が約50件の配線を平らに並べていた。**連続した範囲のまま**群の関数へ
+    分け、同じ順に呼ぶ——同じ相手・同じ種類のイベント（`panel`の`click`は2か所）は登録の順で動くので、
+    順番を入れ替えないこと。 */
  function wire() {
+  wireLotInputs();
+  wireStripDesign();
+  wireLotOrder();
+  wireStepsAndTables();
+  wireFigureZoom();
+  wireFigureNav();
+  wireRail();
+  window.addEventListener('resize', () => { if (panel && !panel.hidden && LAST) drawFigure(LAST); });
+ }
+ /* 条件の欄（刃・板厚・クリアランス・元板巾…）と条の表。 */
+ function wireLotInputs() {
   /* 数値欄は id をそのまま状態の鍵にする。 */
   [['bsKnife', 'knife'], ['bsThick', 'thick'], ['bsTk', 'tk'], ['bsClr', 'clr'],
    ['bsOv', 'ov'], ['bsW', 'W'], ['bsOsTrim', 'osTrim'], ['bsNkWidth', 'nkWidth']]
@@ -3213,6 +3228,9 @@
    st.order = st.order.filter(i => i !== gone).map(i => (i > gone ? i - 1 : i));
    renderLots(); renderOrder(); scheduleRender();
   });
+ }
+ /* 条の設計（その場で記録・既定へ戻す・条を足す）。 */
+ function wireStripDesign() {
   /* 条の設計を**その場で記録**（§9.381）。刃組完了のときにも記録するが、
      測定が先に始まることがあるので、**完了を待たずに残せる**ようにする。 */
   $('#bsDsSave').addEventListener('click', async () => {
@@ -3252,6 +3270,9 @@
    st.lots.push({ name: 'LOT' + (st.lots.length + 1), w: 200, n: 1 });
    renderLots(); renderOrder(); scheduleRender();
   });
+ }
+ /* 条の並び（つまんで入れ替える・並べ方のボタン）。 */
+ function wireLotOrder() {
   /* 条の並びをつまんで動かす */
   let dragFrom = null;
   const list = $('#bsOrdList');
@@ -3293,6 +3314,9 @@
    BS().reorder(st, b.dataset.ord);
    renderOrder(); scheduleRender();
   }));
+ }
+ /* 保持層の自動／手動・手順の窓・表から直す場所を開く。 */
+ function wireStepsAndTables() {
   /* リングの自動／手動 */
   panel.querySelectorAll('.bs-chip[data-ring]').forEach(b => b.addEventListener('click', () => {
    const ring = b.dataset.ring, auto = b.dataset.mode === 'auto';
@@ -3337,6 +3361,9 @@
    closePops();
    if (host) host.classList.add('is-open');
   });
+ }
+ /* 拡大図の開け閉め（区間を押す・外を押す・Esc）と記号の連動。 */
+ function wireFigureZoom() {
   document.addEventListener('click', e => {
    if (!panel || panel.hidden) return;
    if (!e.target.closest('.bs-step')) closePops();
@@ -3370,6 +3397,9 @@
   panel.addEventListener('pointerleave', () => pickBadge(''));
   $('#bsZoomClose').addEventListener('click', closeZoneZoom);
   /* 段取りへ戻る（§9.378）。**左メニューと同じ口**を呼ぶ——入口を2つにしない。 */
+ }
+ /* 戻り道・向きの札・図の種類・立体図。 */
+ function wireFigureNav() {
   $('#bsFrom').addEventListener('click', () => {
    const api = WL.scheduleView;
    if (!api || typeof api.open !== 'function') {
@@ -3418,6 +3448,9 @@
     toggleZoneZoom(String(box.dataset.badge), box, e);
    } });
   }
+ }
+ /* 右の段・台車・刃の組・記録・足りないマスタの受け皿。 */
+ function wireRail() {
   /* 右の段 */
   /* 段の切り替え。**足元の「刃の状態を見る」も同じ道を通る**（入口を2つに
      しない・§9.207）ので、器ではなく`[data-r]`を持つ物で受ける。 */
@@ -3457,7 +3490,6 @@
     else showToast('マスタ管理を開けません', 'この端末ではマスタ管理の画面が読み込まれていません', 4200);
    }
   });
-  window.addEventListener('resize', () => { if (panel && !panel.hidden && LAST) drawFigure(LAST); });
  }
 
  /* ---------- 書く ---------- */
