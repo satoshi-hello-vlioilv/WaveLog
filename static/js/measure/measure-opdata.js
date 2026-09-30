@@ -1865,44 +1865,21 @@
   const stack=!!box&&!box.classList.contains('opf-num');
   if(stack)host.dataset.opStack='1';else delete host.dataset.opStack;
  }
- function buildWidget(def,host,kind){
-  /* **意匠は組み立ての前に当てる**（§9.223 ③）。色・形・大きさを変えても
-     部品の署名（種類＋選択肢）は同じなので、下の`box.dataset.sig===sig`で
-     早々に帰る道が通る——そこから当てていると、**意匠のボタンだけが
-     押しても何も起きない**（設定窓の見本で実際にそうなっていた）。
-     当て直しはクラスの付け替えだけなので、毎回通しても安い。 */
-  applyLook(host,def);
-  /* **印は必ず付け直す**（早い戻り道も通るので、組み立てのあとではなく
-     ここで見る）。 */
-  const stamp=r=>{markStack(host);return r};
-  if(kind==='メモ'||kind==='1行'||kind==='定型文')return stamp(buildMemoWidget(def,host,kind));
-  if(NUM_WIDGETS.indexOf(kind)>=0)return stamp(buildNumberWidget(def,host,kind));
-  const sel=host.querySelector(':scope>select');
-  if(!sel)return false;
-  const free=!!def.freeText;
-  const opts=optionsOf(sel);
-  const shape=CHOICE_SHAPES[kind];
-  const sig=kind+(free?'+free':'')+'/'+String(def.layout||'')
-    +(def.noBlank?'/nb':'')
-    +'|'+opts.map(o=>o.v+'\u0001'+o.t).join('\u0002');
-  const box=widgetHost(host);
-  if(box.dataset.sig===sig){syncWidget(host);markStack(host);return true}
-  box.dataset.sig=sig;
-  host.classList.add('opf-alt');
-  /* **選ぶ器そのものを打てるようにする**（§9.226 ①）。以前は
-     「プルダウンのときだけ`<select>`を残して、下に打ち込み欄を足す」形
-     だったが、打つ場所と選ぶ場所が2つ並んで読めなかった。手打ちのときは
-     `<select>`を器の裏へ回し、**見えるのは1つの箱（`.opf-combo`）だけ**に
-     する（値の持ち主は今までどおり`<select>`）。 */
-  const combo=(kind===WIDGET_SELECT&&free);
-  const hideNative=kind!==WIDGET_SELECT||combo;
-  sel.classList.toggle('opf-native-off',hideNative);
-  if(hideNative)sel.setAttribute('tabindex','-1');else sel.removeAttribute('tabindex');
-  if(kind===WIDGET_SELECT&&!free){
+ /* ---------- 選ばせ方ごとの組み立て（§9.522・REVIEW 3-22） ----------
+    以前は`buildWidget()`の1本（262行）が選ばせ方ごとの`if…else`を10個並べていた。選ばせ方→組み立て
+    関数の表（`CHOICE_BUILDERS`）にした。**プルダウンだけは手打ちの有無で2つ**（`choicePlain`／`choiceCombo`）、
+    表に無い形は札を並べる形（`choiceShapes`）——元の`if`の順と同じ。表は自分が持つ鍵だけで引く。
+    渡すのは部品の文脈`w`の1つ（項目・器・`<select>`・選択肢・札の形・手打ちか）。 */
+ /* 素のプルダウン（器は要らない）。 */
+ function choicePlain(w){
+   const {box}=w;
    /* 素のプルダウン。器は要らない（意匠だけ当てる）。 */
    box.className='opf-widget opf-plain';
    box.innerHTML='';
-  }else if(combo){
+ }
+ /* プルダウン＋手打ち（1つの箱で選ぶ・打つ）。 */
+ function choiceCombo(w){
+   const {def,host,sel,box}=w;
    box.className='opf-widget opf-combo';
    box.innerHTML='<input type="text" class="opf-combo-in" autocomplete="off" role="combobox"'
     +' aria-expanded="false" aria-label="'+esc(def.name)+'（候補から選ぶか、そのまま打てます）"'
@@ -1918,153 +1895,10 @@
     if(hit)setValue(sel,hit.value);else setFree(sel,v);
    });
    box.querySelector('.opf-combo-open').onclick=e=>{e.preventDefault();openPicker(def,host,sel)};
-  }else if(kind==='一覧'){
-   /* **`メニュー`と同じ顔にしないこと**（§9.247 ①）——両方とも「▾の付いた
-      1行の欄」だと、名前が2つあって見た目が同じ（セグメントとトグルで
-      指摘されたのと同じ形）になる。`一覧`が開くのは**画面のまん中の窓**
-      なので、合図も「窓が開く」印（`⌸`）にし、器から仕切って置く。
-      `メニュー`の▾は**その場に垂れる**という意味で、開くと反転する。 */
-   box.className='opf-widget opf-pick';
-   box.innerHTML='<button type="button" class="opf-pick-btn">'
-    +'<span class="opf-pick-now">選ぶ</span>'
-    +'<span class="opf-pick-caret" aria-hidden="true" title="押すと一覧の窓が開きます">☰</span></button>';
-   box.querySelector('.opf-pick-btn').onclick=e=>{e.preventDefault();openPicker(def,host,sel)};
-  }else if(kind==='パネル'){
-   /* パネル（§9.248 ①、利用者の指示「フローティングモーダル…違うタイプの
-      ものを増やしたい」）。**`一覧`とは見え方も探し方も違う**——あちらは
-      1行ずつの表＋絞り込みで「名前で探す」形、こちらは**大きな札を並べた
-      窓**で「見て選ぶ」形（指で押す端末・説明を読んで決めたいとき）。
-      合図も分ける（`一覧`＝仕切った`☰`／こちら＝`▦`）。 */
-   box.className='opf-widget opf-panel';
-   box.innerHTML='<button type="button" class="opf-panel-btn">'
-    +'<span class="opf-pick-now">選ぶ</span>'
-    +'<span class="opf-panel-mark" aria-hidden="true" title="押すと大きな札の窓が開きます">▦</span></button>';
-   box.querySelector('.opf-panel-btn').onclick=e=>{e.preventDefault();openPanel(def,host,sel)};
-  }else if(kind==='索引'){
-   /* 索引（§9.288 ③、利用者の指示「複数選択になったときに探しやすいUIも
-      欲しくて、パネルの派生や上位版みたいなものも何か作ってほしい」）。
-      **`パネル`の上位版**——札を並べた窓に**頭文字の索引**と絞り込みを
-      添える。`一覧`は「名前を知っていて打てる」とき向きで、**知らない名前は
-      辿れない**（オペレータ171人で「さ行のどこか」までしか覚えていない、が
-      現場では普通に起きる）。合図も分ける（`一覧`＝仕切った`☰`／`パネル`＝
-      `▦`／こちら＝**索引そのもの**の`あ`）。 */
-   box.className='opf-widget opf-index';
-   box.innerHTML='<button type="button" class="opf-index-btn">'
-    +'<span class="opf-pick-now">選ぶ</span>'
-    +'<span class="opf-index-mark" aria-hidden="true" title="押すと頭文字で辿る窓が開きます">あ</span></button>';
-   box.querySelector('.opf-index-btn').onclick=e=>{e.preventDefault();openIndex(def,host,sel)};
-  }else if(kind==='ダイヤル'){
-   /* ダイヤル（§9.288 ③、利用者の指示「今ないような新しさを感じる種類の
-      ものも欲しい」）。**前後を見ながら回して選ぶ**——`切替`は次が1つも
-      見えないので、行き過ぎたかどうかが押すまで分からない。順番に意味の
-      ある十数個を、狭いマスで選ぶとき向き。
-      **候補の並びは器が控える**（`data-op-dial`。`切替`と同じ理由——
-      `（選ばない）`を出さない設定があるので`<select>`の全部とは違う）。 */
-   const dl=pickableOpts(opts,def);
-   box.className='opf-widget opf-dial';
-   box.dataset.opDial=JSON.stringify(dl.map(o=>[o.v,isBlankOpt(o)?WL.optionBlankLabel:o.t]));
-   box.innerHTML='<div class="opf-dial-face" role="listbox" tabindex="0"'
-    +' aria-label="'+esc(def.name)+'（上下の矢印・↑↓キー・ホイールで選びます）"'
-    +' title="↑↓キーとホイールでも回せます">'
-    +'<button type="button" class="opf-dial-arrow" data-opdial="-1" tabindex="-1" aria-label="1つ前へ">▲</button>'
-    +'<span class="opf-dial-win">'
-    +'<i class="opf-dial-prev" aria-hidden="true"></i>'
-    +'<b class="opf-pick-now opf-dial-now">選ぶ</b>'
-    +'<i class="opf-dial-next" aria-hidden="true"></i></span>'
-    +'<i class="opf-dial-pos" aria-hidden="true"></i>'
-    +'<button type="button" class="opf-dial-arrow" data-opdial="1" tabindex="-1" aria-label="1つ次へ">▼</button>'
-    +'</div>';
-   const face=box.querySelector('.opf-dial-face');
-   /* **一巡させない**（`切替`との違い）——前後が見えている形で端から端へ
-      飛ぶと、いま何番目かが読めなくなる。端では止める。 */
-   const step=d=>{
-    let arr=[];try{arr=JSON.parse(box.dataset.opDial||'[]')}catch(_){WL.quiet.note('控えを読み直せない（空として続ける）',_)}
-    if(!arr.length)return;
-    const at=arr.findIndex(o=>o[0]===String(sel.value==null?'':sel.value));
-    const nx=at<0?(d>0?0:arr.length-1):Math.max(0,Math.min(arr.length-1,at+d));
-    if(nx===at)return;
-    pickValue(sel,arr[nx][0]);syncWidget(host);
-   };
-   box.querySelectorAll('[data-opdial]').forEach(b=>{
-    b.onclick=e=>{e.preventDefault();step(Number(b.dataset.opdial));face.focus()};
-   });
-   face.onkeydown=e=>{
-    if(['ArrowUp','ArrowLeft'].indexOf(e.key)>=0){e.preventDefault();step(-1)}
-    else if(['ArrowDown','ArrowRight'].indexOf(e.key)>=0){e.preventDefault();step(1)}
-   };
-   /* **ホイールは「その欄を選んでいるとき」だけ**——素通しで受けると、
-      一覧をスクロールしただけで値が変わる（いちばん驚く壊れ方）。 */
-   face.addEventListener('wheel',e=>{
-    if(document.activeElement!==face)return;
-    e.preventDefault();step(e.deltaY>0?1:-1);
-   },{passive:false});
-  }else if(kind==='メニュー'){
-   /* メニュー（§9.247 ①、利用者の指示「フローティングメニューみたいなもの」）。
-      **`一覧`とは開く場所が違う**——あちらは画面のまん中に開く大きな窓＋
-      絞り込みで「数が多いとき」向き、こちらは**押した欄のすぐ横**に浮く
-      軽いメニューで「数個を、目を動かさずに」選ぶとき向き。
-      いまの値の見せ方は`一覧`と同じ`.opf-pick-now`を使う——`syncWidget()`が
-      1箇所で面倒を見るので、形ごとに書き足さない。 */
-   box.className='opf-widget opf-menu';
-   box.innerHTML='<button type="button" class="opf-menu-btn" aria-haspopup="menu" aria-expanded="false">'
-    +'<span class="opf-pick-now">選ぶ</span>'
-    +'<span class="opf-menu-caret" aria-hidden="true">▾</span></button>';
-   box.querySelector('.opf-menu-btn').onclick=e=>{
-    e.preventDefault();openMenu(def,host,sel,e.currentTarget);
-   };
-  }else if(kind==='切替'){
-   /* 切替（§9.247 ①、利用者の指示「クリックで選択肢が変化するタイプのUI」）。
-      **押すたびに次の選択肢へ進み、最後まで行ったら先頭へ戻る。**
-      札を並べる場所が無い狭いマスで2〜4個を切り替えるとき向き。
-      **いま何番目か・次が何かを必ず文字で出す**（§2「推測させない」）——
-      押した先が見えないと、目当ての値まで何回押すのか数えることになる。
-      **候補の並びは器が控える**（`data-op-cycle`）——`syncWidget()`が
-      「次」を言うのに要るが、`<select>`の全部の`<option>`とは違う
-      （`（選ばない）`を出さない設定があるので・§9.246 ①）。 */
-   const list=pickableOpts(opts,def);
-   box.className='opf-widget opf-cycle';
-   box.dataset.opCycle=JSON.stringify(list.map(o=>[o.v,(o.v===''||o.t==='-')?'—':o.t]));
-   box.innerHTML='<button type="button" class="opf-cycle-btn"'
-    +' aria-label="'+esc(def.name)+'（押すたびに次の選択肢へ変わります）">'
-    +'<i class="opf-cycle-mark" aria-hidden="true">↻</i>'
-    +'<span class="opf-cycle-now">—</span>'
-    +'<span class="opf-cycle-meta"><i class="opf-cycle-pos"></i>'
-    +'<i class="opf-cycle-next"></i></span></button>';
-   const step=d=>{
-    let arr=[];try{arr=JSON.parse(box.dataset.opCycle||'[]')}catch(_){WL.quiet.note('控えを読み直せない（空として続ける）',_)}
-    if(!arr.length)return;
-    const at=arr.findIndex(o=>o[0]===String(sel.value==null?'':sel.value));
-    /* まだ選んでいないとき（`at<0`）は**先頭から**。−で戻るときは末尾から。 */
-    const nx=at<0?(d>0?0:arr.length-1):((at+d+arr.length)%arr.length);
-    pickValue(sel,arr[nx][0]);syncWidget(host);
-   };
-   const btn=box.querySelector('.opf-cycle-btn');
-   btn.onclick=e=>{e.preventDefault();step(1)};
-   /* **戻れること**——行き過ぎたときに一周させるのは操作として重い。 */
-   btn.onkeydown=e=>{
-    if(e.key==='ArrowLeft'||e.key==='ArrowUp'){e.preventDefault();step(-1)}
-    else if(e.key==='ArrowRight'||e.key==='ArrowDown'){e.preventDefault();step(1)}
-   };
-  }else if(kind==='入切'){
-   /* 入切（§9.226 ①）。**入＝先頭の空でない値／切＝空**。3つ以上あっても
-      使うのは先頭だけなので、そのことを文字で書く（§4）。 */
-   const on=opts.find(o=>!isBlankOpt(o))||{v:'',t:''};
-   const more=opts.filter(o=>!isBlankOpt(o)).length;
-   box.className='opf-widget opf-switch';
-   box.innerHTML='<button type="button" class="opf-switch-btn" role="switch" aria-checked="false"'
-    +' data-op-on="'+esc(on.v)+'" data-op-on-label="'+esc(on.t||'入')+'" data-op-off-label="切">'
-    +'<i class="opf-switch-track" aria-hidden="true"><i class="opf-switch-knob"></i></i>'
-    +'<span class="opf-switch-text">切</span></button>'
-    +(more>1?'<small class="opf-widget-note">選択肢が'+more+'件あります。入切では先頭の「'
-      +esc(on.t||on.v)+'」だけを使います</small>':'');
-   const sw=box.querySelector('.opf-switch-btn');
-   sw.onclick=e=>{
-    e.preventDefault();
-    const nowOn=!!sel.value&&sel.value!=='-';
-    pickValue(sel,nowOn?'':sw.dataset.opOn);
-    syncWidget(host);
-   };
-  }else{
+ }
+ /* 札を並べる形（ラジオ・セグメント・タブ・ボタン群・カード・トグル）と、名前の分からない形。 */
+ function choiceShapes(w){
+   const {def,host,kind,sel,box,opts,shape,free}=w;
    const stage=kind==='段階';
    box.className='opf-widget '+(stage?'opf-stage':(shape?shape.box:'opf-seg'));
    box.setAttribute('role','radiogroup');
@@ -2116,7 +1950,205 @@
     const nx=btns[(i+d+btns.length)%btns.length];
     pickValue(sel,nx.dataset.opv);syncWidget(host);nx.focus();
    };
-  }
+ }
+ const CHOICE_BUILDERS={
+  '一覧':w=>{
+   const {def,host,sel,box}=w;
+   /* **`メニュー`と同じ顔にしないこと**（§9.247 ①）——両方とも「▾の付いた
+      1行の欄」だと、名前が2つあって見た目が同じ（セグメントとトグルで
+      指摘されたのと同じ形）になる。`一覧`が開くのは**画面のまん中の窓**
+      なので、合図も「窓が開く」印（`⌸`）にし、器から仕切って置く。
+      `メニュー`の▾は**その場に垂れる**という意味で、開くと反転する。 */
+   box.className='opf-widget opf-pick';
+   box.innerHTML='<button type="button" class="opf-pick-btn">'
+    +'<span class="opf-pick-now">選ぶ</span>'
+    +'<span class="opf-pick-caret" aria-hidden="true" title="押すと一覧の窓が開きます">☰</span></button>';
+   box.querySelector('.opf-pick-btn').onclick=e=>{e.preventDefault();openPicker(def,host,sel)};
+  },
+  'パネル':w=>{
+   const {def,host,sel,box}=w;
+   /* パネル（§9.248 ①、利用者の指示「フローティングモーダル…違うタイプの
+      ものを増やしたい」）。**`一覧`とは見え方も探し方も違う**——あちらは
+      1行ずつの表＋絞り込みで「名前で探す」形、こちらは**大きな札を並べた
+      窓**で「見て選ぶ」形（指で押す端末・説明を読んで決めたいとき）。
+      合図も分ける（`一覧`＝仕切った`☰`／こちら＝`▦`）。 */
+   box.className='opf-widget opf-panel';
+   box.innerHTML='<button type="button" class="opf-panel-btn">'
+    +'<span class="opf-pick-now">選ぶ</span>'
+    +'<span class="opf-panel-mark" aria-hidden="true" title="押すと大きな札の窓が開きます">▦</span></button>';
+   box.querySelector('.opf-panel-btn').onclick=e=>{e.preventDefault();openPanel(def,host,sel)};
+  },
+  '索引':w=>{
+   const {def,host,sel,box}=w;
+   /* 索引（§9.288 ③、利用者の指示「複数選択になったときに探しやすいUIも
+      欲しくて、パネルの派生や上位版みたいなものも何か作ってほしい」）。
+      **`パネル`の上位版**——札を並べた窓に**頭文字の索引**と絞り込みを
+      添える。`一覧`は「名前を知っていて打てる」とき向きで、**知らない名前は
+      辿れない**（オペレータ171人で「さ行のどこか」までしか覚えていない、が
+      現場では普通に起きる）。合図も分ける（`一覧`＝仕切った`☰`／`パネル`＝
+      `▦`／こちら＝**索引そのもの**の`あ`）。 */
+   box.className='opf-widget opf-index';
+   box.innerHTML='<button type="button" class="opf-index-btn">'
+    +'<span class="opf-pick-now">選ぶ</span>'
+    +'<span class="opf-index-mark" aria-hidden="true" title="押すと頭文字で辿る窓が開きます">あ</span></button>';
+   box.querySelector('.opf-index-btn').onclick=e=>{e.preventDefault();openIndex(def,host,sel)};
+  },
+  'ダイヤル':w=>{
+   const {def,host,sel,box,opts}=w;
+   /* ダイヤル（§9.288 ③、利用者の指示「今ないような新しさを感じる種類の
+      ものも欲しい」）。**前後を見ながら回して選ぶ**——`切替`は次が1つも
+      見えないので、行き過ぎたかどうかが押すまで分からない。順番に意味の
+      ある十数個を、狭いマスで選ぶとき向き。
+      **候補の並びは器が控える**（`data-op-dial`。`切替`と同じ理由——
+      `（選ばない）`を出さない設定があるので`<select>`の全部とは違う）。 */
+   const dl=pickableOpts(opts,def);
+   box.className='opf-widget opf-dial';
+   box.dataset.opDial=JSON.stringify(dl.map(o=>[o.v,isBlankOpt(o)?WL.optionBlankLabel:o.t]));
+   box.innerHTML='<div class="opf-dial-face" role="listbox" tabindex="0"'
+    +' aria-label="'+esc(def.name)+'（上下の矢印・↑↓キー・ホイールで選びます）"'
+    +' title="↑↓キーとホイールでも回せます">'
+    +'<button type="button" class="opf-dial-arrow" data-opdial="-1" tabindex="-1" aria-label="1つ前へ">▲</button>'
+    +'<span class="opf-dial-win">'
+    +'<i class="opf-dial-prev" aria-hidden="true"></i>'
+    +'<b class="opf-pick-now opf-dial-now">選ぶ</b>'
+    +'<i class="opf-dial-next" aria-hidden="true"></i></span>'
+    +'<i class="opf-dial-pos" aria-hidden="true"></i>'
+    +'<button type="button" class="opf-dial-arrow" data-opdial="1" tabindex="-1" aria-label="1つ次へ">▼</button>'
+    +'</div>';
+   const face=box.querySelector('.opf-dial-face');
+   /* **一巡させない**（`切替`との違い）——前後が見えている形で端から端へ
+      飛ぶと、いま何番目かが読めなくなる。端では止める。 */
+   const step=d=>{
+    let arr=[];try{arr=JSON.parse(box.dataset.opDial||'[]')}catch(_){WL.quiet.note('控えを読み直せない（空として続ける）',_)}
+    if(!arr.length)return;
+    const at=arr.findIndex(o=>o[0]===String(sel.value==null?'':sel.value));
+    const nx=at<0?(d>0?0:arr.length-1):Math.max(0,Math.min(arr.length-1,at+d));
+    if(nx===at)return;
+    pickValue(sel,arr[nx][0]);syncWidget(host);
+   };
+   box.querySelectorAll('[data-opdial]').forEach(b=>{
+    b.onclick=e=>{e.preventDefault();step(Number(b.dataset.opdial));face.focus()};
+   });
+   face.onkeydown=e=>{
+    if(['ArrowUp','ArrowLeft'].indexOf(e.key)>=0){e.preventDefault();step(-1)}
+    else if(['ArrowDown','ArrowRight'].indexOf(e.key)>=0){e.preventDefault();step(1)}
+   };
+   /* **ホイールは「その欄を選んでいるとき」だけ**——素通しで受けると、
+      一覧をスクロールしただけで値が変わる（いちばん驚く壊れ方）。 */
+   face.addEventListener('wheel',e=>{
+    if(document.activeElement!==face)return;
+    e.preventDefault();step(e.deltaY>0?1:-1);
+   },{passive:false});
+  },
+  'メニュー':w=>{
+   const {def,host,sel,box}=w;
+   /* メニュー（§9.247 ①、利用者の指示「フローティングメニューみたいなもの」）。
+      **`一覧`とは開く場所が違う**——あちらは画面のまん中に開く大きな窓＋
+      絞り込みで「数が多いとき」向き、こちらは**押した欄のすぐ横**に浮く
+      軽いメニューで「数個を、目を動かさずに」選ぶとき向き。
+      いまの値の見せ方は`一覧`と同じ`.opf-pick-now`を使う——`syncWidget()`が
+      1箇所で面倒を見るので、形ごとに書き足さない。 */
+   box.className='opf-widget opf-menu';
+   box.innerHTML='<button type="button" class="opf-menu-btn" aria-haspopup="menu" aria-expanded="false">'
+    +'<span class="opf-pick-now">選ぶ</span>'
+    +'<span class="opf-menu-caret" aria-hidden="true">▾</span></button>';
+   box.querySelector('.opf-menu-btn').onclick=e=>{
+    e.preventDefault();openMenu(def,host,sel,e.currentTarget);
+   };
+  },
+  '切替':w=>{
+   const {def,host,sel,box,opts}=w;
+   /* 切替（§9.247 ①、利用者の指示「クリックで選択肢が変化するタイプのUI」）。
+      **押すたびに次の選択肢へ進み、最後まで行ったら先頭へ戻る。**
+      札を並べる場所が無い狭いマスで2〜4個を切り替えるとき向き。
+      **いま何番目か・次が何かを必ず文字で出す**（§2「推測させない」）——
+      押した先が見えないと、目当ての値まで何回押すのか数えることになる。
+      **候補の並びは器が控える**（`data-op-cycle`）——`syncWidget()`が
+      「次」を言うのに要るが、`<select>`の全部の`<option>`とは違う
+      （`（選ばない）`を出さない設定があるので・§9.246 ①）。 */
+   const list=pickableOpts(opts,def);
+   box.className='opf-widget opf-cycle';
+   box.dataset.opCycle=JSON.stringify(list.map(o=>[o.v,(o.v===''||o.t==='-')?'—':o.t]));
+   box.innerHTML='<button type="button" class="opf-cycle-btn"'
+    +' aria-label="'+esc(def.name)+'（押すたびに次の選択肢へ変わります）">'
+    +'<i class="opf-cycle-mark" aria-hidden="true">↻</i>'
+    +'<span class="opf-cycle-now">—</span>'
+    +'<span class="opf-cycle-meta"><i class="opf-cycle-pos"></i>'
+    +'<i class="opf-cycle-next"></i></span></button>';
+   const step=d=>{
+    let arr=[];try{arr=JSON.parse(box.dataset.opCycle||'[]')}catch(_){WL.quiet.note('控えを読み直せない（空として続ける）',_)}
+    if(!arr.length)return;
+    const at=arr.findIndex(o=>o[0]===String(sel.value==null?'':sel.value));
+    /* まだ選んでいないとき（`at<0`）は**先頭から**。−で戻るときは末尾から。 */
+    const nx=at<0?(d>0?0:arr.length-1):((at+d+arr.length)%arr.length);
+    pickValue(sel,arr[nx][0]);syncWidget(host);
+   };
+   const btn=box.querySelector('.opf-cycle-btn');
+   btn.onclick=e=>{e.preventDefault();step(1)};
+   /* **戻れること**——行き過ぎたときに一周させるのは操作として重い。 */
+   btn.onkeydown=e=>{
+    if(e.key==='ArrowLeft'||e.key==='ArrowUp'){e.preventDefault();step(-1)}
+    else if(e.key==='ArrowRight'||e.key==='ArrowDown'){e.preventDefault();step(1)}
+   };
+  },
+  '入切':w=>{
+   const {host,sel,box,opts}=w;
+   /* 入切（§9.226 ①）。**入＝先頭の空でない値／切＝空**。3つ以上あっても
+      使うのは先頭だけなので、そのことを文字で書く（§4）。 */
+   const on=opts.find(o=>!isBlankOpt(o))||{v:'',t:''};
+   const more=opts.filter(o=>!isBlankOpt(o)).length;
+   box.className='opf-widget opf-switch';
+   box.innerHTML='<button type="button" class="opf-switch-btn" role="switch" aria-checked="false"'
+    +' data-op-on="'+esc(on.v)+'" data-op-on-label="'+esc(on.t||'入')+'" data-op-off-label="切">'
+    +'<i class="opf-switch-track" aria-hidden="true"><i class="opf-switch-knob"></i></i>'
+    +'<span class="opf-switch-text">切</span></button>'
+    +(more>1?'<small class="opf-widget-note">選択肢が'+more+'件あります。入切では先頭の「'
+      +esc(on.t||on.v)+'」だけを使います</small>':'');
+   const sw=box.querySelector('.opf-switch-btn');
+   sw.onclick=e=>{
+    e.preventDefault();
+    const nowOn=!!sel.value&&sel.value!=='-';
+    pickValue(sel,nowOn?'':sw.dataset.opOn);
+    syncWidget(host);
+   };
+  },
+ };
+ function buildWidget(def,host,kind){
+  /* **意匠は組み立ての前に当てる**（§9.223 ③）。色・形・大きさを変えても
+     部品の署名（種類＋選択肢）は同じなので、下の`box.dataset.sig===sig`で
+     早々に帰る道が通る——そこから当てていると、**意匠のボタンだけが
+     押しても何も起きない**（設定窓の見本で実際にそうなっていた）。
+     当て直しはクラスの付け替えだけなので、毎回通しても安い。 */
+  applyLook(host,def);
+  /* **印は必ず付け直す**（早い戻り道も通るので、組み立てのあとではなく
+     ここで見る）。 */
+  const stamp=r=>{markStack(host);return r};
+  if(kind==='メモ'||kind==='1行'||kind==='定型文')return stamp(buildMemoWidget(def,host,kind));
+  if(NUM_WIDGETS.indexOf(kind)>=0)return stamp(buildNumberWidget(def,host,kind));
+  const sel=host.querySelector(':scope>select');
+  if(!sel)return false;
+  const free=!!def.freeText;
+  const opts=optionsOf(sel);
+  const shape=CHOICE_SHAPES[kind];
+  const sig=kind+(free?'+free':'')+'/'+String(def.layout||'')
+    +(def.noBlank?'/nb':'')
+    +'|'+opts.map(o=>o.v+'\u0001'+o.t).join('\u0002');
+  const box=widgetHost(host);
+  if(box.dataset.sig===sig){syncWidget(host);markStack(host);return true}
+  box.dataset.sig=sig;
+  host.classList.add('opf-alt');
+  /* **選ぶ器そのものを打てるようにする**（§9.226 ①）。以前は
+     「プルダウンのときだけ`<select>`を残して、下に打ち込み欄を足す」形
+     だったが、打つ場所と選ぶ場所が2つ並んで読めなかった。手打ちのときは
+     `<select>`を器の裏へ回し、**見えるのは1つの箱（`.opf-combo`）だけ**に
+     する（値の持ち主は今までどおり`<select>`）。 */
+  const combo=(kind===WIDGET_SELECT&&free);
+  const hideNative=kind!==WIDGET_SELECT||combo;
+  sel.classList.toggle('opf-native-off',hideNative);
+  if(hideNative)sel.setAttribute('tabindex','-1');else sel.removeAttribute('tabindex');
+  const w={def,host,kind,sel,box,opts,shape,free};
+  if(kind===WIDGET_SELECT)(free?choiceCombo:choicePlain)(w);
+  else (Object.hasOwn(CHOICE_BUILDERS,kind)?CHOICE_BUILDERS[kind]:choiceShapes)(w);
   applyLook(host,def);                       /* §9.223 ③ 色・形・大きさ */
   markStack(host);                           /* §9.250 ⑨ 段を積むなら行を中身なりに */
   /* selectの側が変わっても印を合わせる（プリセット・記録の復元）。 */
