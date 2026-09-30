@@ -742,6 +742,20 @@
      `g`の写し返しを掛けて機械の座標へ直す（§9.466）。 */
   const seatM = floatSign() * (D3.mirror ? -1 : 1);
 
+  const K = { T, g, L, yU, yL, sd, M, steel, steelD, blue, blueD, blueL, cover, dark, rod, stay, put, rig, bx, cy, cyZ, tube, bolts, osEnd, dsEnd, seatM };
+  const B = frameBase(K);
+  const G = frameGear(K, B);
+  const sx = frameStand(K, B, G);
+  frameFingerAngles(K);
+  frameShaft(K, B);
+  const wx = frameFeed(K, B, G, sx);
+  const { bx0, bx1, bcx, baseL, bedTop, railTop } = B;
+  return { x0: bx0, x1: bx1, bcx, baseL, bedTop, railTop,
+           xw: Math.max(bx1, wx + M.wheelR), yBot: bedTop - M.floorDrop };
+ }
+ /* 機械まわりの段（§9.522 で`frame()`から切り出した）: 台座・走行車輪・足まわりの寸法の控え。 */
+ function frameBase(K) {
+  const { L, yL, M, steelD, blue, blueD, blueL, dark, bx, cyZ, osEnd } = K;
   /* ---- 台座。ライン中心はベース左端から 1240、ベース全長 2325 ---- */
   const lineX = osEnd + M.lineC;
   const baseL = M.baseL + (L - M.arbor0);
@@ -778,7 +792,12 @@
                 under: [{ k: 'base', y0: bedY - M.baseH / 2, y1: bedY + M.baseH / 2, z: M.baseD / 2 },
                         { k: 'skirt', y0: bedY - M.baseH / 2 - 116, y1: bedY - M.baseH / 2, z: M.skirtD / 2 },
                         { k: 'rib', y0: bedY - M.baseH / 2 - 112, y1: bedY - M.baseH / 2 - 4, z: M.ribD / 2 }] };
-
+  return { bx0, bx1, bcx, baseL, bedTop, railTop };
+ }
+ /* タイロッドの高さとギヤボックス。 */
+ function frameGear(K, B) {
+  const { yU, yL, sd, M, steelD, blue, blueD, cover, bx, cy, tube, bolts, osEnd, seatM } = K;
+  const { bx0, bedTop } = B;
   /* ---- タイロッド（送り軸）の高さ。ギヤボックスと軸端部の頭はここで受ける ---- */
   const ty = yU + M.tieY, topY = ty - M.tieHubR;
 
@@ -800,7 +819,13 @@
    tube(gFace - 18, y, 36, 168, sd / 2 + 4, blueD);
    bolts(gFace - 18, 140, 8, 12, 40);
   });
-
+  return { ty, topY, gx };
+ }
+ /* 軸受ハウジングと軸端部（DS 端スタンド）。軸端部の位置を返す。 */
+ function frameStand(K, B, G) {
+  const { yU, yL, sd, M, steelD, blue, blueD, blueL, dark, stay, put, rig, bx, tube, bolts, osEnd, dsEnd, seatM } = K;
+  const { bedTop } = B;
+  const { ty, topY } = G;
   /* ---- 軸受ハウジング。OS 側はギヤボックスが持つので台車と一緒に回り、
          DS 側は軸端部の柱が持つので、外すと軸から離れる ---- */
   /* **既定の行き先は`rig`**（この関数の頭に書いてあるとおり）。ここだけ`g`に
@@ -836,7 +861,11 @@
   /* OS端にシートが載るとき（DS基準・§9.461）は、軸受もギヤボックスもシートの幅ぶん外。
      **この寸法は図面に無い**（図面SL-1458-01SのOS側の間隔30はシートの無い形）ので概寸。 */
   bearing(osEnd - M.gapOS / 2 - (seatOS ? FSEAT_W + 22 + M.brgW / 2 : 0));
-
+  return sx;
+ }
+ /* フィンガーの押さえのアングル（フィンガー方式のときだけ）。 */
+ function frameFingerAngles(K) {
+  const { L, blue, bx } = K;
   /* ---- フィンガーの押さえのアングル（§9.467、利用者の写真「入側からの見た目でフィンガー
          使用中でフィンガーの押さえ用のアングルも写っている」） ----
      フィンガー方式のときだけ、**入側（−Z）**の上下の刃先の近くへ、有効長いっぱいの
@@ -852,7 +881,11 @@
     D3.fingerAngles++;
    });
   }
-
+ }
+ /* 軸（有効長の研磨面・断面図の青い印・シート・首と継手）。 */
+ function frameShaft(K, B) {
+  const { T, g, L, yU, yL, sd, M, steel, steelD, dark, bx, cy, osEnd, dsEnd } = K;
+  const { bx0 } = B;
   /* ---- 軸：有効長は Φ200 の研磨面。その外に首・駆動端の継手・キー溝 ---- */
   const r0 = sd / 2;
   /* 有効長の研磨面だけは**断面図にも出す**（模式図が描いている5つの1つ）。
@@ -887,7 +920,12 @@
   cy([yU, yL].map(y => ({ x: bx0 + 260, y, l: 260, r: r0 * 0.62 })), steelD);
   cy([yU, yL].map(y => ({ x: bx0 + 132, y, l: 120, r: r0 * 0.80 })), dark);
   bx([yU, yL].map(y => ({ x: 0, y: y + r0 - 3, z: 0, l: L * 0.94, r: 8, d: 20 })), dark);
-
+ }
+ /* 送り軸と調整ハンドル。ハンドルの位置を返す。 */
+ function frameFeed(K, B, G, sx) {
+  const { T, M, dark, rod, stay, put, cy } = K;
+  const { bx0, bx1 } = B;
+  const { ty, gx } = G;
   /* ---- 送り軸。台車の持ち物で外さない。軸端部が離れると、その先が空くだけ ---- */
   const rx0 = bx0 + 60, rx1 = bx1 - 40;
   cy([{ x: (rx0 + rx1) / 2, y: ty, l: rx1 - rx0, r: M.tieR }], rod);
@@ -915,8 +953,7 @@
    m.quaternion.setFromUnitVectors(new T.Vector3(1, 0, 0), new T.Vector3(0, Math.sin(a), Math.cos(a)));
    stay.add(m);
   }
-  return { x0: bx0, x1: bx1, bcx, baseL, bedTop, railTop,
-           xw: Math.max(bx1, wx + M.wheelR), yBot: bedTop - M.floorDrop };
+  return wx;
  }
 
  /* 軸まわり（軸・軸受・スペーサー・保持層・刃）を実寸で置く。 */
