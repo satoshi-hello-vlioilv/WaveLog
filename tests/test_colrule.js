@@ -630,6 +630,48 @@ run('test_colrule: 値の読み替え(§9.88 段4)', async ({page,rec,B,W,idle,p
   rec('組の頭を消すと、次の条件が「または」を継ぐ',orUi2==='もし,または',orUi2);
   await page.evaluate(()=>WL.listRules.close());
 
+  /* ---- かっこ（利用者の指示「かっこも入れられるようにしたい。使いやすいUIで」） ----
+     前（実測）: 判定 7/12・式への変換 7/12・かっこの中の列を見ない・保存で形が崩れる・窓に作る所が無い。 */
+  const pr=await page.evaluate(()=>{
+   const sf=(op,v,j)=>Object.assign({left:{kind:'self'},op,right:{kind:'value',value:v}},j?{join:j}:{});
+   const kc=(op,v,j)=>Object.assign({left:{kind:'column',column:'K'},op,right:{kind:'value',value:v}},j?{join:j}:{});
+   const P2=[{conditions:[{kind:'group',conditions:[sf('eq','1'),sf('eq','2','or')]},{kind:'group',conditions:[kc('eq','x'),kc('eq','y','or')]}],text:'hit',color:''}];
+   const rows=[{W:'1',K:'x'},{W:'2',K:'y'},{W:'3',K:'x'},{W:'1',K:'z'}];
+   WL.displayRules.put('__pr__',P2);
+   const m=rows.map(r=>(WL.displayRules.match('__pr__',r,'W')||{}).text||'-').join('/');
+   const cols=WL.displayRules.columnsUsed('__pr__').join(',');
+   WL.displayRules.put('__pr__',null);
+   const f=WL.formula.compile(WL.displayRules.toFormula(P2,{column:'W'}).expr);
+   return {m,cols,f:rows.map(r=>{const v=String(f.run(r));return v===r.W?'-':v}).join('/')};
+  });
+  rec('かっこ: (W=1 または W=2) かつ (K=x または K=y)',pr.m==='hit/hit/-/-',pr.m);
+  rec('かっこを含むルールも、式へ変換して同じ答え',pr.f===pr.m,`${pr.f} ≠? ${pr.m}`);
+  rec('かっこの中が見る列も数える',pr.cols==='K',pr.cols);
+  await page.evaluate(async a=>{
+   WL.displayRules.put(a.rule,[{conditions:[{left:{kind:'self'},op:'notEmpty'}],text:'あ',color:''}]);
+   WL.listRules.open({name:a.rule,column:a.col});
+  },{rule:RULE,col});
+  await page.waitForSelector('#listRulePanel:not([hidden])',{timeout:8000});
+  const shape=()=>page.evaluate(()=>{const walk=el=>[...el.children].map(c=>c.classList.contains('lr-group')
+     ?`${c.classList.contains('is-or')?'または':'かつ'}(${walk(c.querySelector('.lr-group-body')).join(' ')})`
+     :c.classList.contains('lr-cond')?(c.classList.contains('is-or')?'または':'条件'):'?');
+    return walk(document.querySelector('#lrRows .lr-row[data-row="0"] .lr-row-conds')).join(' ')});
+  const step=async(sel,want)=>{await page.click(sel);await W.until(page,w=>document.querySelectorAll('#lrRows .lr-row[data-row="0"] .lr-cond,#lrRows .lr-row[data-row="0"] .lr-group').length===w,want,{ms:4000,what:sel})};
+  await step('#lrRows .lr-row[data-row="0"] .lr-row-then .lr-cond-add[data-kind="group"]',3);
+  await step('#lrRows .lr-group[data-depth="1"] > .lr-group-foot .lr-cond-add[data-join="or"]',4);
+  await step('#lrRows .lr-group[data-depth="1"] > .lr-group-foot .lr-cond-add[data-kind="group"]',6);
+  const pUi=await shape();
+  rec('窓でかっこを足し、中に「または」とかっこ（2段）を置ける',pUi==='条件 かつ(条件 または かつ(条件))',pUi);
+  const lead=await page.evaluate(()=>document.querySelector('#lrRows .lr-group-body > .lr-cond .lr-conj')?.textContent.trim());
+  rec('かっこの中の1つ目は「（」と読む（「もし」と書かない）',lead==='（',lead);
+  rec('2段より深いかっこは足せない（ボタンを出さない）',
+      await page.evaluate(()=>document.querySelectorAll('#lrRows .lr-group[data-depth="2"] .lr-cond-add[data-kind="group"]').length===0));
+  await step('#lrRows .lr-group[data-depth="2"] .lr-cond .lr-cond-del',4);
+  rec('かっこの中の最後の1つを消すと、かっこごと消える',(await shape())==='条件 かつ(条件 または)',await shape());
+  await step('#lrRows .lr-group[data-depth="1"] .lr-group-unwrap',3);
+  rec('かっこを外すと、中の条件がその場に並ぶ',(await shape())==='条件 条件 または',await shape());
+  await page.evaluate(()=>WL.listRules.close());
+
   rec('コンソールに例外が出ない',errs.length===0,errs.slice(0,3).join(' / '));
 
   await cleanup();

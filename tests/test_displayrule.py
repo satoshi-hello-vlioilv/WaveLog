@@ -13,6 +13,7 @@
  5. ルールを消しても列側の参照は残せる(無いルール名＝読み替えなし)
  6. 消す前に「どこで使っていたか」が分かる
  7. 行の中の「または」（`join:'or'`）が保存を往復し、並べ替えの判定も組で見る
+ 8. かっこの組（`kind:'group'`・2段まで）が保存を往復し、判定・見る列が中まで降りる
 """
 import sys,tempfile
 from pathlib import Path
@@ -152,6 +153,24 @@ def main():
   rec('壊れて落ちた組の頭は、次の条件が継ぐ',[x.get('join','and') for x in kept]==['and','or'],kept)
   rec('先頭の条件に付いた「または」は捨てる（もし）',
       'join' not in mr.normalize_rule_conditions([orc('eq','1','or')])[0])
+
+  # ---- 8) かっこ（利用者の指示「かっこも入れられるようにしたい」） ----
+  # 条件の代わりに組 {'kind':'group','conditions':[…]} を置ける。中も同じ決まり、組の中に組も（2段まで）。
+  from backend.sort_order import rule_leaves
+  grp=lambda cs,j=None:dict({'kind':'group','conditions':cs},**({'join':j} if j else {}))
+  vc=lambda op,val,j=None:dict({'left':{'kind':'column','column':'V'},'op':op,'right':{'kind':'value','value':val}},**({'join':j} if j else {}))
+  P3=[orc('eq','1'),grp([kc('eq','x'),grp([vc('eq','a'),vc('eq','b','or')])],'or')]
+  mr.set_display_rule(c,'かっこ',[{'conditions':P3,'text':'当','color':''}],'t')
+  got=mr.display_rules(c)['かっこ']
+  rec('かっこの組が保存を往復する（2段の入れ子まで）',got[0]['conditions']==P3,got[0]['conditions'])
+  hit=lambda row:(rule_match(got,row,'W') or {}).get('text','-')
+  seen=[hit({'W':'1'}),hit({'W':'9','K':'x','V':'a'}),hit({'W':'9','K':'x','V':'c'}),hit({'W':'9','K':'q','V':'a'})]
+  rec('並べ替え（サーバー）の判定: W=1 または (K=x かつ (V=a または V=b))',seen==['当','当','-','-'],seen)
+  rec('見る列はかっこの中まで数える',sorted({x['left'].get('column','') for x in rule_leaves(P3)})==['','K','V'])
+  flat=mr.normalize_rule_conditions([grp([grp([grp([vc('eq','a'),vc('eq','b','or')])])])])
+  rec('3段より深いかっこは中の条件を平らに並べる（捨てない）',
+      len(rule_leaves(flat))==2 and flat[0]['kind']=='group' and flat[0]['conditions'][0]['kind']=='group',flat)
+  rec('空のかっこは保存しない',mr.normalize_rule_conditions([orc('eq','1'),grp([])])==[orc('eq','1')])
 
   # ---- 6) 名前まわり ----
   try:

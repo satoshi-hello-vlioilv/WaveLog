@@ -2251,7 +2251,11 @@ def _normalize_operand(raw,allow_value=True):
   return {'kind':'value','value':str(raw.get('value') if raw.get('value') is not None else '')[:120]}
  return None
 
-def normalize_rule_conditions(raw):
+# かっこの組の深さの上限（行の中の組＝1段・組の中の組＝2段）。画面の`GROUP_DEPTH`と同じ。
+# **読める深さで止める**——それより深い組は、中の条件を1つ上の組へ平らに並べる（捨てない）。
+RULE_GROUP_DEPTH=2
+
+def normalize_rule_conditions(raw,depth=0):
  """保存できる条件の配列へ整える。壊れた条件は落とす(全体は捨てない)。
 
  **落とすのは1件だけにする**——1つの入力ミスでルール全体が消えると、
@@ -2264,6 +2268,19 @@ def normalize_rule_conditions(raw):
  for item in raw:
   if not isinstance(item,dict):continue
   or_next=or_next or item.get('join')=='or'
+  # かっこの組（利用者の指示「かっこも入れられるようにしたい」）。中も同じ決まりで整え、空の組は落とす。
+  if item.get('kind')=='group':
+   inner=normalize_rule_conditions(item.get('conditions'),depth+1)
+   if not inner:continue
+   if depth>=RULE_GROUP_DEPTH:
+    # 深すぎる組は平らに並べる。組の頭の「または」は中の1つ目が継ぐ。
+    if or_next and out:inner[0]=dict(inner[0],join='or')
+    elif 'join' in inner[0]:inner[0]={k:v for k,v in inner[0].items() if k!='join'}
+    out.extend(inner);or_next=False;continue
+   grp={'kind':'group','conditions':inner}
+   if or_next and out:grp['join']='or'
+   or_next=False
+   out.append(grp);continue
   op=str(item.get('op') or '').strip()
   if op not in RULE_OPS:continue
   left=_normalize_operand(item.get('left'))

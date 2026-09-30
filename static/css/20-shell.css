@@ -1125,7 +1125,20 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .lr-cond.is-or{border-top:1px solid var(--line-soft);padding-top:var(--space-1);margin-top:var(--space-1)}
  .lr-conj>select.lr-join{width:100%;min-width:0}
  .lr-cond.is-or .lr-join{font-weight:700;color:var(--ink-2)}
- .lr-cond-adds{display:flex;gap:var(--space-1)}
+ .lr-cond-adds{display:flex;gap:var(--space-1);flex-wrap:wrap}
+ /* かっこの組。**左の太い線が括弧**——中の条件がどこまでかを線の長さが言う。地を1段だけ変えて、
+    入れ子になっても「どの括弧の中か」を面で分ける（枠の中に枠を重ねない・線は左だけ）。 */
+ .lr-group{display:flex;flex-direction:column;gap:var(--space-1);border-left:3px solid var(--teal);
+  background:var(--surface-2);padding:var(--space-1) var(--space-1) var(--space-1) var(--space-2);border-radius:0 var(--radius-sm) var(--radius-sm) 0}
+ .lr-group .lr-group{background:var(--surface-3);border-left-color:var(--teal-dark)}
+ .lr-group.is-or{margin-top:var(--space-1)}
+ .lr-group-head,.lr-group-foot{display:grid;align-items:center;gap:var(--space-1);font-size:var(--fs-sm);
+  grid-template-columns:var(--lr-conj-w) minmax(0,1fr) auto calc(28px * var(--ui-scale))}
+ .lr-group-foot{grid-template-columns:auto minmax(0,1fr)}
+ .lr-paren{font-weight:700;color:var(--teal-dark);font-size:var(--fs)}
+ .lr-group-cap{color:var(--muted);font-size:var(--fs-micro)}
+ .lr-group-body{display:flex;flex-direction:column;gap:var(--space-1)}
+ .lr-group-unwrap{color:var(--muted);height:var(--ctl-h-sm);font-size:var(--fs-micro)}
  .lr-delete{color:var(--danger)}
  /* 左の枠＝試した結果（§9.474）。**自分だけで送る**ので、右で行を書いている間も見えたまま。 */
  .lr-try{display:flex;flex-direction:column;min-height:0;border:1px solid var(--line-soft);

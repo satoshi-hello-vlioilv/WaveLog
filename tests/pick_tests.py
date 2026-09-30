@@ -361,7 +361,7 @@ RULES = [
                                         # §9.253: 見本のロットで帳票を見る
                                         'test_rbsample',
                                         'test_collayout', 'test_actuals')),
-    ('static/js/list/quality-analysis.js', g('test_uiux', 'test_headbar', 'test_fit', 'test_theme')),
+    ('static/js/list/quality-analysis.js', g('test_uiux', 'test_headbar', 'test_fit', 'test_theme', 'test_flows')),
     ('static/js/measure/defect-locator.js', g('モーダル', '異常位置')),
     # ロールマスタ（§9.239 ⑥）。マスタの4本セットと判定の両方に効く。
     ('backend/repositories/roll_repo.py', g('マスタ', '異常位置')),

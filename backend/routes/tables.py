@@ -186,7 +186,7 @@ def _fetch_custom_sorted(c,t,cs,where,params,keys,size,start):
    k['ruleRows']=_display_rule_rows(k.get('rule'),rule_cache)
    # 条件が他の列を見ていることがある(「区分が3のときだけ」)。その列も引く。
    for r in (k.get('ruleRows') or []):
-    for cd in (r.get('conditions') or []):
+    for cd in sort_order.rule_leaves(r.get('conditions')):
      for side in (cd.get('left'),cd.get('right'),cd.get('right2')):
       if isinstance(side,dict) and side.get('kind')=='column':
        nm=str(side.get('column') or '').strip()

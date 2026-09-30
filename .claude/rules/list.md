@@ -1,4 +1,4 @@
-# 一覧と列（152件）
+# 一覧と列（154件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 表示ルールの行の中は「かつ／または」と**かっこ（2段まで）**。組の答えは`groupsOf()`／`rule_groups()`の1組 | `test_colrule.js`・`test_displayrule.py` | [§9.523](../../docs/decisions/9.523.md) |
+| 「品質データを出していたか」は**画面の印（`qa-mode`）そのもの**から読む。別の控えを持たない（一覧の`exit`は印しか外さない） | `test_flows.js` | [§9.523](../../docs/decisions/9.523.md) |
 | 列の設定を開いたら絞り込みは全部外す（`clearFilters()`の1箇所）。列名で絞る間は「絞り込み中」と字で言う | `test_lcpanel.js` | [§9.490](../../docs/decisions/9.490.md) |
 | 元データの列も作り方の式を持てる。**計算列＝式を持ち画面のデータに無い名前**（口の`isData`） | `test_colsrcfx.js` | [§9.489](../../docs/decisions/9.489.md) |
 | 行のその列の値は`WL.cellFormat.rawOf()`の1本（式があれば式の結果）。専用の描き方の列も式を通す | `test_colsrcfx.js` | [§9.489](../../docs/decisions/9.489.md) |
