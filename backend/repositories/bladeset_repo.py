@@ -47,6 +47,7 @@
 **明示的に押したときだけ**登録する（マスタ管理の「初期セットを登録」）。
 """
 import json
+import re
 
 from ..db_access import tables
 from ..flags import flag_of, OFF_WORDS
@@ -1284,7 +1285,7 @@ def ring_color_state(c, equipment, color):
         return None
     for x in ring_rows(c, True, equipment):
         if x['color'] == name and x['od'] is not None:
-            return {'od': x['od'], 'bore': x['bore'], 'hex': x['hex']}
+            return {'od': x['od'], 'bore': x['bore'], 'hex': x['hex'], 'lube': x['lube']}
     return None
 
 
@@ -1325,18 +1326,30 @@ def ring_upsert(c, uid, equipment=None, color=None, hex_code=None, od=None,
                            if rid is not None and RING_DEF.get(c, rid) else '')
     known = ring_color_state(c, lookup_eq, lookup_name) if lookup_name else None
     diameter, inner = _num(od), _num(bore)
+    if known and lube is None and rid is None:
+        lube = known['lube']        # 同じ色の幅を足すときは種類も引き継ぐ（潤滑リングの幅違い）
+    is_lube = bool(lube) if lube is not None else bool(
+        rid is not None and RING_DEF.get(c, rid) and RING_DEF.get(c, rid)['潤滑リング'])
     if known:
         # 渡していない項目は、その色の今の値を引き継ぐ（打ち直させない）。
         if diameter is None:
             diameter = known['od']
         if inner is None:
             inner = known['bore']
-        if not tint:
+        # 潤滑リングは周期の色を使わない——ゴムリングだった行の色（外径から当てた色）は引き継がない。
+        if not tint and (known['lube'] or not is_lube):
             tint = known['hex']
     elif not tint and diameter is not None and not lube:
         # まだ登録の無い色。**色コードだけ**は周期から当てて画面に色を出す
         # （呼び名は利用者が書いたものを使う）。
         tint = ring_color_of(diameter)['hex']
+    # **ほかの色と被らせない**（§9.528）。同じ色名・色コード・外径は断る——判定は
+    # `ring_color_conflicts()`の1箇所（盤の色の保存も同じ関数を通る）。
+    cf = ring_color_conflicts(c, lookup_eq, name or lookup_name, tint, diameter, is_lube,
+                              current=lookup_name if known else None)
+    if cf['hard']:
+        raise ValueError(ring_conflict_text(cf['hard']))
+    _ring_width_guard(c, lookup_eq, name or lookup_name, w, rid)
     vals = _only({'設備名': eq, '色名': name or None, '色コード': tint or None,
                   '外径': diameter, '内径': inner, '幅': w,
                   '保有本数': _int(qty), '下限本数': _int(min_qty),
@@ -1374,6 +1387,160 @@ def _align_ring_color(c, ring_id, uid):
                         {'外径': od, '内径': bore, '色コード': tint}, uid)
         n += 1
     return n
+
+
+# ---- 色ごとの盤（§9.528、利用者の指示「色ごとに外径内径は共通にして、幅毎に本数を管理」
+#      「今まで登録した色と被らないようにしたい」） ----
+# 行は今までどおり**色×幅で1行**（刃組の計算・記録はこの形で読む）。色の属性（色名・色コード・
+# 外径・内径）は同じ色の行すべてが同じ値を持ち、**書くのは`ring_color_save()`と
+# `_align_ring_color()`だけ**。被りの判定は`ring_color_conflicts()`の1箇所。
+# 見分けにくいほど近い色（CIE76の色差）。標準10色どうしの最小は 29.3（黄と橙）なので、
+# 標準の色どうしでは注意を出さない。
+RING_NEAR_DE = 20.0
+
+
+def _hex_norm(v):
+    t = _txt(v).lower()
+    return t if re.fullmatch(r'#[0-9a-f]{6}', t) else ''
+
+
+def _lab(hexv):
+    r, g, b = [int(hexv[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    lin = [x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in (r, g, b)]
+    xyz = (
+        (0.4124 * lin[0] + 0.3576 * lin[1] + 0.1805 * lin[2]) / 0.95047,
+        0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2],
+        (0.0193 * lin[0] + 0.1192 * lin[1] + 0.9505 * lin[2]) / 1.08883)
+    f = [v ** (1 / 3) if v > 0.008856 else 7.787 * v + 16 / 116 for v in xyz]
+    return 116 * f[1] - 16, 500 * (f[0] - f[1]), 200 * (f[1] - f[2])
+
+
+def ring_color_delta(h1, h2):
+    """2つの色の色差（CIE76）。どちらかが色コードとして読めなければ None。"""
+    a, b = _hex_norm(h1), _hex_norm(h2)
+    if not a or not b:
+        return None
+    return sum((x - y) ** 2 for x, y in zip(_lab(a), _lab(b))) ** 0.5
+
+
+def ring_colors(c, equipment):
+    """その設備のゴムリングを**色ごとに**まとめる（盤の1枚＝1色）。ゴムリングは外径の大きい順、
+    潤滑リングは後ろ。幅は大きい順・合計本数つき。"""
+    groups = {}
+    for r in ring_rows(c, True, equipment):
+        g = groups.get(r['color'])
+        if g is None:
+            g = groups[r['color']] = {'color': r['color'], 'hex': r['hex'], 'od': r['od'],
+                                      'bore': r['bore'], 'lube': r['lube'], 'widths': []}
+        g['widths'].append({k: r[k] for k in ('id', 'width', 'qty', 'minQty', 'enabled', 'note')})
+    out = sorted(groups.values(), key=lambda g: (g['lube'], -(g['od'] or 0), g['color']))
+    for g in out:
+        g['widths'].sort(key=lambda w: -(w['width'] or 0))
+        g['total'] = sum(w['qty'] or 0 for w in g['widths'])
+    return out
+
+
+def ring_color_conflicts(c, equipment, color, hex_code=None, od=None, lube=False, current=None):
+    """ほかの色との被り。**断る**（`hard`）＝同じ色名・同じ色コード・ゴムリングどうしで同じ外径
+    （刃組の計算は色を外径で引くので、同じ外径の2色は取り違える）。**注意**（`near`）＝色差が
+    `RING_NEAR_DE`未満。`current`は今直している色の名前（自分とは比べない）。"""
+    name, hx, d = _txt(color), _hex_norm(hex_code), _num(od)
+    hard, near = [], []
+    for g in ring_colors(c, equipment):
+        if current and g['color'] == current:
+            continue
+        gh = _hex_norm(g['hex'])
+        if name and g['color'] == name:
+            hard.append({'color': g['color'], 'hex': g['hex'], 'why': 'name'})
+        if hx and gh == hx:
+            hard.append({'color': g['color'], 'hex': g['hex'], 'why': 'hex'})
+        if not lube and not g['lube'] and d is not None and g['od'] is not None and abs(g['od'] - d) < 1e-6:
+            hard.append({'color': g['color'], 'hex': g['hex'], 'why': 'od', 'od': g['od']})
+        de = ring_color_delta(hx, gh) if hx and gh != hx else None
+        if de is not None and de < RING_NEAR_DE:
+            near.append({'color': g['color'], 'hex': g['hex'], 'de': round(de, 1)})
+    near.sort(key=lambda x: x['de'])
+    return {'hard': hard, 'near': near}
+
+
+_CONFLICT_WORD = {'name': 'と同じ色名です', 'hex': 'と同じ色です', 'od': 'と同じ外径です'}
+
+
+def ring_conflict_text(hard):
+    """断る理由を1文に（「「赤」と同じ外径です（322mm）」）。画面とAPIが同じ字を使う。"""
+    return '／'.join('「%s」%s%s' % (x['color'], _CONFLICT_WORD[x['why']],
+                                    '（%gmm）' % x['od'] if x['why'] == 'od' else '')
+                    for x in hard) + '。ほかの色と被らない値にしてください。'
+
+
+def _ring_width_guard(c, equipment, color, width, ring_id=None):
+    """同じ色の同じ幅は1行だけ（本数はその行で直す）。"""
+    if width is None or not _txt(color):
+        return
+    for r in ring_rows(c, True, equipment):
+        if r['id'] != ring_id and r['color'] == _txt(color) and r['width'] == width:
+            raise ValueError('「%s」の幅 %gmm はもう登録されています。本数はその行で直してください。'
+                             % (_txt(color), width))
+
+
+def ring_color_save(c, uid, equipment, color, hex_code=None, od=None, bore=None,
+                    lube=False, current=None, widths=None):
+    """色1つを書く。`current`があれば**その色の行すべて**の色名・色コード・外径・内径を直す
+    （名前を変えるときも）。無ければ新しい色を`widths`（幅と本数）で作る。"""
+    eq = _check_equipment(equipment)
+    name, hx, d, b = _txt(color), _hex_norm(hex_code), _num(od), _num(bore)
+    if not name:
+        raise ValueError('色名を入力してください（現場はこの名前で呼びます）。')
+    if _txt(hex_code) and not hx:
+        raise ValueError('色は #rrggbb の形で指定してください。')
+    if d is None or d <= 0:
+        raise ValueError('外径（mm）を入力してください。')
+    if b is not None and b >= d:
+        raise ValueError('内径は外径より小さくしてください。')
+    cf = ring_color_conflicts(c, eq, name, hx, d, lube, current=_txt(current) or None)
+    if cf['hard']:
+        raise ValueError(ring_conflict_text(cf['hard']))
+    if current:
+        rows = [r for r in ring_rows(c, True, eq) if r['color'] == _txt(current)]
+        if not rows:
+            raise ValueError('直す色が見つかりません（ほかの端末で消されたかもしれません）。')
+        for r in rows:
+            RING_DEF.update(c, r['id'], {'色名': name, '色コード': hx or None, '外径': d, '内径': b}, uid)
+        c.commit()
+        return {'color': name, 'rows': len(rows), 'created': 0}
+    ws = [w for w in (widths or []) if isinstance(w, dict) and _num(w.get('width'))]
+    if not ws:
+        raise ValueError('幅を1つ以上入れてください（1本は色×幅で決まります）。')
+    if len({_num(w['width']) for w in ws}) != len(ws):
+        raise ValueError('同じ幅が2つあります。幅ごとに1行にしてください。')
+    for w in ws:
+        ring_upsert(c, uid, equipment=eq, color=name, hex_code=hx, od=d, bore=b,
+                    width=w.get('width'), qty=w.get('qty'), min_qty=w.get('minQty'), lube=bool(lube))
+    return {'color': name, 'rows': 0, 'created': len(ws)}
+
+
+def ring_color_delete(c, equipment, color):
+    """その色の行をすべて消す。消した行数を返す。"""
+    eq = _check_equipment(equipment)
+    rows = [r for r in ring_rows(c, True, eq) if r['color'] == _txt(color)]
+    for r in rows:
+        ring_delete(c, r['id'])
+    return len(rows)
+
+
+def ring_color_suggest(c, equipment):
+    """次に足す色の候補。**標準の周期のうち、名前・色・外径のどれも使っていない最初の色**。
+    全部使っていれば、いちばん小さい外径の1mm下（色は利用者が選ぶ）。"""
+    used = ring_colors(c, equipment)
+    names = {g['color'] for g in used}
+    hexes = {_hex_norm(g['hex']) for g in used}
+    ods = {g['od'] for g in used if not g['lube']}
+    for i, (n, h) in enumerate(RING_COLOR_CYCLE):
+        od = float(RING_COLOR_TOP_OD - i)
+        if n not in names and h not in hexes and od not in ods:
+            return {'color': n, 'hex': h, 'od': od, 'bore': float(STANDARD_DEFAULTS['ringBore'])}
+    low = min(ods) if ods else float(RING_COLOR_TOP_OD) + 1
+    return {'color': '', 'hex': '', 'od': low - 1, 'bore': float(STANDARD_DEFAULTS['ringBore'])}
 
 
 def finger_upsert(c, uid, equipment=None, width=None, qty=None,

@@ -202,6 +202,52 @@ def bladeset_ring_update():
  return _ring_save(x)
 
 
+# ---- 色ごとの盤（§9.528）。行は色×幅のまま、色の属性はここで色ごとに書く ----
+@bp.get('/api/bladeset/ring-colors')
+@api_guard('ゴムリングの色の読込に失敗しました')
+def bladeset_ring_colors():
+ eq = _eq()
+
+ def fn(c):
+  return {'colors': bs.ring_colors(c, eq) if eq else [],
+          'suggest': bs.ring_color_suggest(c, eq) if eq else None,
+          # 標準の色の周期（外径1mmごと）。盤が「まだ使っていない標準色」を出す材料。
+          'cycle': [{'color': n, 'hex': h, 'od': float(bs.RING_COLOR_TOP_OD - i)}
+                    for i, (n, h) in enumerate(bs.RING_COLOR_CYCLE)],
+          'nearDe': bs.RING_NEAR_DE}
+ return jsonify(ok=True, equipment=eq, **_op_read(fn))
+
+
+_RING_COLOR_SPEC = {'equipment': any_, 'color': any_, 'hex': any_, 'od': any_, 'bore': any_,
+                    'lube': any_, 'current': any_, 'widths': any_, 'delete': any_}
+
+
+@bp.post('/api/bladeset/ring-colors')
+@api_guard('ゴムリングの色の保存に失敗しました', bad=ValueError)
+def bladeset_ring_color_save():
+ x = body(_RING_COLOR_SPEC)
+ if x.get('delete'):
+  n = _op_read(lambda c: bs.ring_color_delete(c, x.get('equipment'), x.get('current')))
+  return jsonify(ok=True, removed=n, message=f'「{x.text("current")}」のゴムリング {n}行を消しました。')
+ got = _op_read(lambda c: bs.ring_color_save(
+     c, request_user_id(x), x.get('equipment'), x.get('color'), hex_code=x.get('hex'),
+     od=x.get('od'), bore=x.get('bore'), lube=bool(x.get('lube')), current=x.get('current'),
+     widths=x.get('widths') if isinstance(x.get('widths'), list) else None))
+ msg = (f'「{got["color"]}」の {got["rows"]}行（幅ぜんぶ）を直しました。' if got['rows']
+        else f'「{got["color"]}」を幅 {got["created"]}つで足しました。')
+ return jsonify(ok=True, message=msg, **got)
+
+
+@bp.post('/api/bladeset/ring-colors/check')
+@api_guard('ゴムリングの色の確認に失敗しました')
+def bladeset_ring_color_check():
+ x = body(_RING_COLOR_SPEC)
+ cf = _op_read(lambda c: bs.ring_color_conflicts(
+     c, x.get('equipment'), x.get('color'), x.get('hex'), x.get('od'), bool(x.get('lube')),
+     current=x.get('current') or None))
+ return jsonify(ok=True, text=bs.ring_conflict_text(cf['hard']) if cf['hard'] else '', **cf)
+
+
 @bp.post('/api/bladeset-ring-master/delete')
 @api_guard('ゴムリングマスタの削除に失敗しました')
 def bladeset_ring_delete():
