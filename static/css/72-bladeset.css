@@ -994,4 +994,59 @@ body.bs-mode .bs-shell{display:flex}
 .bss-row.is-grind th,.bss-row.is-grind td{background:var(--warn-bg)}
 .bss-row.is-grind .bss-say b{color:var(--warn-fg)}
 .bss-note{margin-left:var(--space-2);font-size:var(--fs-sm);color:var(--muted)}
+
+/* ---------- ゴムリングの盤（§9.528）——上の帯＝登録済みの色・下＝選んだ色のカード ----------
+   見本（`.rb-sw`）の地は**マスタの色コード**（データの値なので style で渡す・トークンではない）。
+   被りは帯の見本の縁で言い（断る＝赤・近い＝橙）、理由はカードの中の字が持つ（色だけにしない）。 */
+.rb-count{margin-left:var(--space-2);font-size:var(--fs-sm);color:var(--ink-2)}
+.rb-strip{display:flex;flex-wrap:wrap;gap:var(--space-1);margin-top:var(--space-2)}
+.rb-none{font-size:var(--fs-sm);color:var(--muted)}
+.rb-chip{display:inline-flex;align-items:center;gap:var(--space-1);height:var(--ctl-h-sm);padding:0 var(--space-2);
+ border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--card-bg);font:inherit;font-size:var(--fs-sm);
+ color:var(--ink);cursor:pointer}
+.rb-chip:hover{border-color:var(--teal);background:var(--pale)}
+.rb-chip small{color:var(--muted);font-size:var(--fs-micro)}
+.rb-chip.is-on small{color:inherit}
+.rb-chip.is-near{box-shadow:0 0 0 2px var(--warn-fg)}
+.rb-chip.is-hard{box-shadow:0 0 0 2px var(--danger)}
+.rb-chip.is-sm{height:auto;padding:1px var(--space-1)}
+/* 見本の地はマスタの色（`--sw`・データの値を JS が渡す）。無ければ潤滑リングの紫。 */
+.rb-sw{display:inline-block;width:1.1em;height:1.1em;border-radius:var(--radius-round);border:1px solid var(--line-strong);
+ background:var(--sw,var(--look-violet));flex:0 0 auto}
+.rb-sw.is-lube{border-radius:var(--radius-xs)}
+.rb-card{border:1px solid var(--card-border);border-radius:var(--radius-md);background:var(--card-bg);
+ padding:var(--space-3);max-width:60em}
+.rb-head{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
+.rb-head .rb-sw{width:1.6em;height:1.6em}
+.rb-head h3{margin:0;font-size:var(--fs-lg)}
+.rb-sub{font-size:var(--fs-sm);color:var(--muted)}
+.rb-attrs{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2) var(--space-3)}
+.rb-f{display:inline-flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm)}
+.rb-f s{text-decoration:none;color:var(--ink-2);font-weight:700}
+.rb-f u{text-decoration:none;color:var(--muted)}
+.rb-f input[type=text]{width:8em}
+.rb-f input[type=number]{width:6em}
+.rb-f input,.rb-f select{height:var(--ctl-h-sm);font-size:var(--fs-sm);box-sizing:border-box}
+.rb-pick input[type=color]{width:3em;padding:0 2px;cursor:pointer}
+.rb-pick code{font-size:var(--fs-micro);color:var(--muted)}
+.rb-ro b{min-width:3.5em;text-align:right}
+.rb-free{flex:1 0 100%;display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1);font-size:var(--fs-sm)}
+.rb-free s{text-decoration:none;color:var(--muted)}
+.rb-check p{margin:var(--space-2) 0 0;font-size:var(--fs-sm);line-height:1.6}
+.rb-check .rb-sw{width:.9em;height:.9em;vertical-align:-1px;margin:0 2px}
+.rb-hard{color:var(--danger);font-weight:700}
+.rb-near{color:var(--warn-fg)}
+.rb-ok{color:var(--muted)}
+.rb-table{border-collapse:collapse;margin-top:var(--space-3);font-size:var(--tbl-fs)}
+.rb-table th,.rb-table td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);text-align:left;white-space:nowrap}
+.rb-table thead th{color:var(--ink-2);font-weight:700}
+.rb-table tbody th{text-align:right;min-width:5em}
+.rb-table th u{text-decoration:none;color:var(--muted);margin-left:2px;font-weight:400}
+.rb-table input{width:6em;height:var(--ctl-h-sm);font-size:var(--fs-sm);box-sizing:border-box}
+.rb-sum th,.rb-sum td{border-bottom:0}
+.rb-low{color:var(--warn-fg);font-size:var(--fs-sm)}
+.rb-x{color:var(--muted);height:var(--ctl-h-sm);padding:0 var(--space-1)}
+.rb-foot{display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-3)}
+.rb-gap{flex:1}
+.rb-danger{color:var(--danger)}
 }

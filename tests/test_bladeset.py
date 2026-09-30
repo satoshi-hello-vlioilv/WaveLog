@@ -511,6 +511,55 @@ rec('刃選択: 板押さえ方式・調質で当たる（字として比べる�
                                     {'field': 'temper', 'op': 'eq', 'value': 'H'}], 'group': 'S', 'enabled': True}],
                    {'hold': 'フィンガー', 'temper': 'H'}) or {}).get('group') == 'S')
 
+# ---------------------------------------------------------------------------
+# 8. ゴムリングの色（§9.528、利用者の指示「色ごとに外径内径は共通に」「登録した色と被らないように」）
+# ---------------------------------------------------------------------------
+c8 = fresh()
+bs.seed_standard_parts(c8, 'u', EQ)
+cols8 = bs.ring_colors(c8, EQ)
+rec('色ごと: 初期セットは10色＋潤滑リング1（潤滑は後ろ・外径の大きい順）',
+    [g['color'] for g in cols8] == [n for n, _h in bs.RING_COLOR_CYCLE] + ['潤滑'] and cols8[-1]['lube'],
+    str([g['color'] for g in cols8]))
+rec('色ごと: 1色に幅5種・合計本数を添える', len(cols8[0]['widths']) == 5 and cols8[0]['total'] == 190, str(cols8[0]))
+cf = bs.ring_color_conflicts(c8, EQ, '赤', '#d93a34', 322)
+rec('被り: 同じ色名・同じ色・同じ外径はどれも断る', sorted(x['why'] for x in cf['hard']) == ['hex', 'name', 'od'], str(cf))
+cf = bs.ring_color_conflicts(c8, EQ, '紅', '#d83b35', 330)
+rec('被り: 見分けにくいほど近い色は注意（断らない）', not cf['hard'] and cf['near'] and cf['near'][0]['color'] == '赤', str(cf))
+rec('被り: 標準の10色どうしは注意にならない（最小の色差は閾値より大きい）',
+    all(not bs.ring_color_conflicts(c8, EQ, 'x' + n, h, 400, current=n)['near'] for n, h in bs.RING_COLOR_CYCLE))
+rec('被り: 潤滑リングはゴムリングと外径が同じでも断らない（外径で引かない）',
+    not [x for x in bs.ring_color_conflicts(c8, EQ, '潤滑2', '', 322, lube=True)['hard'] if x['why'] == 'od'])
+rec('被り: 自分自身（直している色）とは比べない', not bs.ring_color_conflicts(c8, EQ, '赤', '#d93a34', 322, current='赤')['hard'])
+rec('被り: 1行ずつの保存（今までの窓）も同じ判定で断る',
+    _reject(lambda: bs.ring_upsert(c8, 'u', equipment=EQ, color='新色', hex_code='#010203', od=321, bore=241, width=50)))
+got = bs.ring_color_save(c8, 'u', EQ, '朱', hex_code='#e0452b', od=330, bore=241, current='赤')
+rows = [r for r in bs.ring_rows(c8, True, EQ) if r['color'] == '朱']
+rec('色の保存: 名前・色・外径を直すと、その色の行ぜんぶが変わる',
+    got['rows'] == 5 and len(rows) == 5 and all(r['od'] == 330 and r['hex'] == '#e0452b' for r in rows)
+    and not [r for r in bs.ring_rows(c8, True, EQ) if r['color'] == '赤'], str(got))
+got = bs.ring_color_save(c8, 'u', EQ, '紫', hex_code='#7b3fb0', od=312, bore=241,
+                         widths=[{'width': 50, 'qty': 4}, {'width': 20, 'qty': 6, 'minQty': 2}])
+g = [x for x in bs.ring_colors(c8, EQ) if x['color'] == '紫'][0]
+rec('色の保存: 新しい色は幅と本数で作る（外径・内径は幅ぜんぶで共通）',
+    got['created'] == 2 and [w['width'] for w in g['widths']] == [50, 20] and g['total'] == 10 and g['od'] == 312, str(g))
+rec('色の保存: 幅が無ければ断る', _reject(lambda: bs.ring_color_save(c8, 'u', EQ, '緋', hex_code='#aa0011', od=305, bore=241)))
+rec('色の保存: 同じ幅が2つなら断る',
+    _reject(lambda: bs.ring_color_save(c8, 'u', EQ, '緋', hex_code='#aa0011', od=305, bore=241, widths=[{'width': 10}, {'width': 10}])))
+rec('色の保存: 内径が外径以上なら断る', _reject(lambda: bs.ring_color_save(c8, 'u', EQ, '緋', hex_code='#aa0011', od=240, bore=241, widths=[{'width': 10}])))
+rec('色の保存: 色コードが読めなければ断る', _reject(lambda: bs.ring_color_save(c8, 'u', EQ, '緋', hex_code='あか', od=305, bore=241, widths=[{'width': 10}])))
+rec('幅: 同じ色の同じ幅の2行目は断る', _reject(lambda: bs.ring_upsert(c8, 'u', equipment=EQ, color='紫', width=50, qty=1)))
+lid, _c, _a = bs.ring_upsert(c8, 'u', equipment=EQ, color='潤滑', width=12, qty=3)
+rec('幅: 潤滑リングの色に幅を足すと種類も引き継ぐ', [r['lube'] for r in bs.ring_rows(c8, True, EQ) if r['id'] == lid] == [True])
+L8 = [r for r in bs.ring_rows(c8, True, EQ) if r['lube']][0]
+bs.ring_upsert(c8, 'u', ring_id=L8['id'], lube=False)
+bs.ring_upsert(c8, 'u', ring_id=L8['id'], lube=True)
+rec('種類: 潤滑リング→ゴムリング→潤滑リングと戻せる（外径から当てた周期の色を引き継いで黄と被らない）',
+    [r['lube'] for r in bs.ring_rows(c8, True, EQ) if r['id'] == L8['id']] == [True])
+rec('色を消す: その色の行をぜんぶ消す', bs.ring_color_delete(c8, EQ, '紫') == 2 and not [x for x in bs.ring_colors(c8, EQ) if x['color'] == '紫'])
+sug = bs.ring_color_suggest(c8, EQ)
+rec('候補: 名前・色・外径のどれも使っていない最初の標準色（赤は名前が空いたので赤）',
+    sug['color'] == '赤' and sug['od'] == 322, str(sug))
+
 # ---- 自己確認: 網が素通りしていない ----
 rec('自己確認: 断る網は、断らない呼び出しでは真にならない',
     not _reject(lambda: bs.blade_upsert(c, 'u', equipment=EQ, name='自己確認')))

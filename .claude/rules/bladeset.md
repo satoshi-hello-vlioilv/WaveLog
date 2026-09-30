@@ -1,4 +1,4 @@
-# 刃組ガイダンス（216件）
+# 刃組ガイダンス（218件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| ゴムリングの色の属性（色名・色コード・外径・内径）は色で1つ。書くのは`ring_color_save()`と`_align_ring_color()`だけ | `test_bladeset.py`・`test_ringboard.js` | [§9.528](../../docs/decisions/9.528.md) |
+| 色の被りは`ring_color_conflicts()`の1箇所: 同じ色名・色コード・（ゴムリングどうしの）外径は断る、色差20未満は注意 | `test_bladeset.py`・`test_ringboard.js` | [§9.528](../../docs/decisions/9.528.md) |
 | フィンガーの材質は**1回の刃組で1つ**。答えは`holdPick()`の`material`（表の行が持つ・空欄は既定） | `test_bladesets.js`・`test_bladeset.py` | [§9.527](../../docs/decisions/9.527.md) |
 | フィンガーの在庫は材質ごとに数える（`fingerWidthsOf()`）。図の色の鍵は`fingerTone()`の1箇所 | `test_bladesets.js` | [§9.527](../../docs/decisions/9.527.md) |
 | 刃のカテゴリ（通常刃／専用刃）と使用状態（使用中／研磨中）は**刃セット（設備＋組）**の1行。刃の行は名乗るだけ | `test_bladeset.py`・`test_bladesets.js` | [§9.526](../../docs/decisions/9.526.md) |
@@ -156,7 +158,7 @@
 | 【§9.425で4段にした】台車差分の基準は「記録 → 標準構成 → 無し」の3段 | `test_bladeui.js` | [§9.415](../../docs/decisions/9.415.md) |
 | 刃組の計算は`blade-core.js`（画面を知らない）、画面は`blade-view.js`の2本 | `test_bladeui.js` | [§9.377](../../docs/decisions/9.377.md) |
 | 部材は設備ごと。「すべての設備」は受け付けない | `test_bladeset.py` | [§9.377](../../docs/decisions/9.377.md) |
-| ゴムリングは色（＝外径）×幅で1本。同じ色をそろえるのは`ring_upsert()`の1箇所 | `test_bladeset.py` | [§9.377](../../docs/decisions/9.377.md) |
+| 【§9.528で改めた】ゴムリングは色（＝外径）×幅で1本。同じ色をそろえるのは`ring_upsert()`の1箇所 | `test_bladeset.py` | [§9.377](../../docs/decisions/9.377.md) |
 | 色名を外径から起こさない。周期は「名前の無い径」の言い換え | `test_bladeset.py` | [§9.377](../../docs/decisions/9.377.md) |
 | 刃組基準値は「既定はコード・上書きだけがDB」。登録が無くても画面は開く | `test_bladeset.py` | [§9.377](../../docs/decisions/9.377.md) |
 | 初期セットは足し算にならない（2度押しても増えない） | `test_bladeset.py` | [§9.377](../../docs/decisions/9.377.md) |
