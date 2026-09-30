@@ -1072,110 +1072,18 @@
        左から「文字で探す → 組み合わせ → 条件 → 1列だけ」で、
        読む順と決める順を合わせる（§CLAUDE 画面基準 14）。
 
-       **このコメントをテンプレートリテラルの中へ入れないこと**（§9.211 ③）
-       ——バッククォートでその場で文字列が閉じ、以降がJSとして解釈されて
-       画面が組み上がらない。 */
-    bar.innerHTML=`
-      <div class="filter-search-row">
-        <!-- ---------- 並びは「絞り込む（広い→狭い）」→ 右端に「見せ方」（§9.505、利用者の指示） ----------
-             「一覧類の上部メニューの文字がサイズ感がバラバラ…探させない考えさせない先を読むUIUX」。
-             文字で探す（行の全文）→ 組み合わせ → 条件 → 1列だけその場で、の順。
-             **一覧を検索はヘッダーから移した**——絞り込みの仲間なのに帯から離れていたうえ、
-             一覧の無い画面（実績など）にも出て、打っても何も起きなかった（§CLAUDE 画面基準 4）。
-             帯と一緒に分割表示・ポップアップへ運ばれるので、作業スケジュールの仕掛一覧でも探せる。 -->
-        <label class="lt-search" title="この一覧の行を、どの列の字でも探します（打つとすぐ絞り込みます）">
-          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-          <input id="search" type="search" autocomplete="off" placeholder="一覧を検索" aria-label="一覧を検索">
-        </label>
-        <button id="filterPresetBtn" class="fb-preset-btn" type="button"
-                aria-haspopup="true" aria-expanded="false">
-          <span class="fb-preset-key">プリセット</span><b id="filterPresetName">なし</b><em id="filterPresetNote" hidden></em><i class="hd-caret" aria-hidden="true">▾</i>
-        </button>
-        <!-- **数えているのは条件の数**（§9.505）——「0件」だと2段目の「全 2,003件」（行の数）と
-             同じ単位に読める。名前「条件」＋数の札にした。0でも押せる（足す・作るの入口もこの面）。 -->
-        <button id="filterCondBtn" class="fb-cond-btn" type="button" aria-haspopup="true" aria-expanded="false"
-                aria-controls="filterCondMenu">
-          <svg class="fb-cond-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M1.6 2.6h12.8L9.4 8.2v4.3l-2.8 1.6V8.2z"/></svg>
-          <span class="fb-cond-key">条件</span><b id="filterCount" class="fb-cond-n">0</b><i class="hd-caret" aria-hidden="true">▾</i>
-        </button>
-        <!-- 名前は**することを動詞で**言う（§9.505。旧「その場フィルタ」は中身を言わない）。 -->
-        <button id="filterAdhocToggle" class="filter-adhoc-toggle" type="button" aria-expanded="false" aria-controls="filterAdhocRow">列で絞り込む</button>
-        <div class="filter-token-input" id="filterTokenInput" hidden>
-          <span class="filter-token-key" aria-hidden="true">＋条件</span>
-          <input class="filter-token-search" id="filterTokenSearch" autocomplete="off" placeholder="列名・値を打つと候補が出ます" aria-label="条件を検索して足す">
-        </div>
-        <div class="filter-suggest" id="filterSuggest" hidden></div>
-        <span class="filter-inline-loading" id="filterInlineLoading" hidden>${WL.loader.html(13)}<span id="filterInlineLoadingText">読込中</span></span>
-        <div class="filter-search-row-actions">
-          <!-- 「表示列」「表の見せ方」の席（§9.468・§9.505）。ボタンは一覧の帯（list-view.js）が作ってここへ移す。 -->
-          <span class="fb-slot" id="filterBarSlot"></span>
-        </div>
-        <!-- ---------- 「条件」の面＝効いている条件（状態）＋足す・作る・外す（操作）（§9.505） ----------
-             以前は状態をこの面、操作を「⋯」の面に分けていた。「⋯」は中身を言わず、しかも中身の4つは
-             **全部が条件の操作**で、「全解除」（⋯）と「全部外す」（この面）が**同じ働きに2つの名前**
-             だった。1つの面にまとめ、名前も1つにした。
-             **要素はここに置いたまま**にして、開閉は hidden の入切だけ——開くたびに作り直すと、
-             ここで1度だけ張った配線（足す・作る・開く・外す）が効かなくなる（§9.222 ①）。 -->
-        <div class="wl-menu access-mode-menu fb-cond-menu" id="filterCondMenu" hidden role="menu" aria-label="条件">
-          <div class="fb-cond-list" id="filterCondList"></div>
-          <div class="fb-cond-acts" role="group" aria-label="条件の操作">
-            <button id="filterAddCond" type="button" role="menuitem"
-                    aria-expanded="false" aria-controls="filterTokenInput">条件を検索して足す<small>列名・値を打つと候補が出ます</small></button>
-            <button id="filterToggle" type="button" role="menuitem"><span class="fb-act-name">条件を作る・登録する</span><small>列・比べ方・値を選んで、いまだけ当てるか登録します</small></button>
-            <button id="openFilterPresets" type="button" role="menuitem">登録した条件とプリセット<small>条件の追加・削除と、組み合わせ（プリセット）作り</small></button>
-            <button id="clearGenericFilters" class="fb-cond-clear" type="button" role="menuitem">条件を全部外す<small>「固定」の条件は外れません（「登録した条件とプリセット」で外せます）</small></button>
-          </div>
-        </div>
-      </div>
-      <!-- その場フィルタ(§9.238 ⑤、利用者の指示)。**登録しない絞り込み**。
-           カラムと条件は覚え(利用者ごと×一覧ごと)、値だけがその場のもの。
-           器は**1度だけ**作る——読み込みのたびに組み直すと、打っている
-           最中にカーソルが飛ぶ(§9.117)。
-
-           ---------- 1行に収める(§9.239 ①、利用者の指示) ----------
-           以前は「見出しの段＋操作の段＋状態の行＋注記の行」で実測4段に
-           なっており、開くだけで一覧が4行ぶん短くなっていた。畳んだものを
-           開いたときに本文がそれだけ痩せるのでは、開くこと自体をためらう。
-           削ったのは**同じことを2度言っている文だけ**(§CLAUDE 8):
-             ・器の名前「その場フィルタ」…すぐ上の入口ボタンが名乗っている
-             ・欄ごとの見出し「カラム/条件/入力」…並びが「列→条件→値」の
-               1文になっているので、先頭の選択欄が「列を選ぶ」と名乗れば足りる
-             ・注記の1行…**titleへ落とす**(§9.234 ①)。消さずに残す。
-           状態(#filterAdhocState)だけは行の中へ移して**必ず文字で出す**
-           (§3)——効いているかどうかは色ではなく言葉で分かる必要がある。 -->
-      <div class="filter-adhoc-row" id="filterAdhocRow" hidden
-           title="登録はしません。打っているあいだだけ効き、一覧を切り替えると入力は消えます（列と比べ方は覚えています）。">
-        <select id="filterAdhocColumn" class="filter-adhoc-col"
-                title="この一覧の列から選びます。選んだ列は次に開いたときも覚えています"></select>
-        <select id="filterAdhocOp" class="filter-adhoc-op" title="選んだ列をどう比べるか"></select>
-        <input id="filterAdhocValue" class="filter-adhoc-value" list="filterAdhocList"
-               autocomplete="off" type="search"
-               title="打つとその場で絞り込みます。Enterですぐ、Escで解除">
-        <datalist id="filterAdhocList"></datalist>
-        <button id="filterAdhocKeep" type="button">条件に残す</button>
-        <button id="filterAdhocClear" type="button" title="入力を消して、この絞り込みを解除します">解除</button>
-        <span class="filter-adhoc-state" id="filterAdhocState"></span>
-        <!-- **閉じる道はその場に**（§9.468、利用者の指摘「一度表示したフィルタ機能も閉じ方が
-             わかりにくかった」）。閉じても効いている絞り込みは残る（入口の札が名乗る）。 -->
-        <button id="filterAdhocClose" class="fb-close" type="button" aria-label="その場フィルタを閉じる"
-                title="閉じます（Esc）。効いている絞り込みはそのまま残ります">✕</button>
-      </div>
-      <div class="filter-body" id="filterBody" hidden>
-        <div class="filter-body-head"><b>条件を作る</b>
-          <button id="filterBodyClose" class="fb-close" type="button" aria-label="条件を作るを閉じる"
-                  title="閉じます（Esc）">✕ 閉じる</button></div>
-        <div class="filter-builder">
-          <label>列<select id="filterColumn"></select></label>
-          <label>比べ方<select id="filterOp"></select></label>
-          <label>値<input id="filterValue" list="filterSuggestList" placeholder="値を入力/候補から選択"><datalist id="filterSuggestList"></datalist></label>
-          <div class="filter-vars" id="filterVarChips" role="group" aria-label="変数を挿入"></div>
-          <div class="filter-builder-actions">
-           <button id="addGenericFilter" type="button" title="この条件を今の一覧へ追加します（保存はしません）">適用</button>
-           <button id="registerGenericFilter" type="button" title="この条件を登録フィルタとして保存します（一覧へは適用しません）">登録</button>
-          </div>
-        </div>
-        <p class="filter-builder-note" id="filterBuilderNote">「適用」は今だけ効かせる／「登録」は次回も使えるように保存する。両方押せます。</p>
-      </div>`;
+       **骨組みの HTML は `index.html` の `<template id="tpl-filter-bar">`**（§9.522・REVIEW 3-7）。
+       以前はここのテンプレートリテラルに書いており、中の注釈にバッククォートを書くと
+       その場で文字列が閉じて画面が組み上がらなかった（§9.211 ③）。 */
+    bar.append(WL.template('filter-bar',{'filter-loading':WL.loader.html(13)}));
+    wireFilterPanels(bar);
+    wireAdhocRow();
+    wireFilterBuilder();
+    wireCondMenu();
+    return bar;
+  }
+  /* 条件を作る・その場フィルタの開け閉め（同時に1つだけ・Esc）。 */
+  function wireFilterPanels(bar){
     // 詳細ビルダー（段階的開示）
     /* 条件を作る／その場フィルタは**同時に1つだけ**開く（§9.468）——2つ重ねて開くと、
        一覧が2つぶん痩せ、どちらを閉じればよいかも分からなくなる。閉じる道は3つ:
@@ -1199,6 +1107,9 @@
     /* その場フィルタ(§9.238 ⑤)。**配線はここで1度だけ**——描き直しのたびに
        付け替えると、打っている最中に欄ごと作り替えることになる(§9.117)。 */
     $('#filterAdhocToggle').onclick=()=>setAdhocOpen(!adhocOpen);
+  }
+  /* その場フィルタの行（列・比べ方・値・残す・解除）。 */
+  function wireAdhocRow(){
     $('#filterAdhocOp').innerHTML=OPS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
     $('#filterAdhocColumn').onchange=()=>{
       adhoc.column=$('#filterAdhocColumn').value;
@@ -1229,6 +1140,9 @@
     }
     $('#filterAdhocKeep').onclick=()=>keepAdhoc();
     $('#filterAdhocClear').onclick=()=>clearAdhoc();
+  }
+  /* 条件を作る窓（列・比べ方・値・変数の札・適用／登録）。 */
+  function wireFilterBuilder(){
     $('#filterOp').innerHTML=OPS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
     $('#filterColumn').onchange=updateFilterSuggestions;
     $('#filterOp').onchange=()=>{$('#filterValue').disabled=noValueOp($('#filterOp').value)};
@@ -1272,6 +1186,9 @@
     ['#filterColumn','#filterOp','#filterValue'].forEach(sel=>{
       const el=$(sel);if(el)el.addEventListener('input',()=>note(NOTE_DEFAULT));
     });
+  }
+  /* プリセットと「条件」の面。 */
+  function wireCondMenu(){
     /* 群を選ぶ／たまにしか使わない入口を畳む（§9.286 ①）。 */
     $('#filterPresetBtn').onclick=e=>openPresetMenu(e.currentTarget);
     $('#filterCondBtn').onclick=()=>toggleCondMenu();
@@ -1284,7 +1201,6 @@
     $('#openFilterPresets').onclick=openFilterPresetModal;
     $('#clearGenericFilters').onclick=clearAllFilters;
     bindTokenSearch();
-    return bar;
   }
   /* 全解除。**入口は2つ（`⋯`の「全解除」と、条件のポップオーバーの
      「全部外す」）だが、処理は1箇所**（§9.163）——2つ持つと片方だけ
