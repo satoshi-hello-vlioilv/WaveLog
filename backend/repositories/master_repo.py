@@ -1353,6 +1353,73 @@ def field_reorder_equipment_allows(stored,equipment):
  if not target:return False
  return any(normalize_equipment_name(x)==target for x in items)
 
+# ------------------------------------------------------------------------
+# この端末ができること（§9.538、利用者の選択 D-6＋D-10「権限の表」）
+#
+# 列の設定（区分・マスタ編集・表示列の編集・編集可否・スケジュール・現場段取り）を
+# 掛け合わせた**実際に効く答え**。判定は既存の窓口（`role_can`／`master_edit_can`／
+# `column_edit_can`／`field_reorder_equipment_list`）を呼ぶだけで、ここで新しい
+# 決まりを作らない。画面（アクセス権限マスタの行を開く・見張りのタブ）はこの答えを
+# 読むだけ——写すと「画面では○なのにサーバーが断る」が作れる。
+#   yes … できる／limited … 条件つき（`note`が条件を言う）／no … できない
+# 並びと群は**ここ1箇所**（鍵・群・名前・短い名前）。
+# ------------------------------------------------------------------------
+PERMISSION_CAPS=(
+ ('master:open','マスタ管理','マスタ管理を開く','マスタを開く'),
+ ('master:field','マスタ管理','現場のマスタを保存する（測定・帳票・設備・予定）','現場のマスタ保存'),
+ ('master:admin','マスタ管理','管理のマスタを保存する（権限・共通設定・接続）','管理のマスタ保存'),
+ ('role:grant','マスタ管理','他の端末の権限区分を変える','区分を変える'),
+ ('presence:view','接続状況','接続状況を見る','接続を見る'),
+ ('presence:disconnect','接続状況','他の端末を切断する','切断する'),
+ ('measure:write','作業','測定の実績を登録する','実績の登録'),
+ ('schedule:write','作業','作業スケジュールを動かす','予定を動かす'),
+ ('field:reorder','作業','現場段取り（予定の並べ替え）','現場段取り'),
+ ('columns:own','一覧の見せ方','表示列を変える（自分の分）','表示列（自分）'),
+ ('columns:common','一覧の見せ方','表示列を変える（みんなの分）','表示列（みんな）'))
+CAP_YES,CAP_LIMITED,CAP_NO='yes','limited','no'
+
+def permission_cap_defs():
+ """画面へ渡す「できること」の並び（鍵・群・名前・短い名前）。"""
+ return [{'key':k,'group':g,'label':l,'short':sh} for k,g,l,sh in PERMISSION_CAPS]
+
+def permission_capabilities(role,master_edit,column_edit,can_edit,can_schedule,can_field_reorder,field_equipment=''):
+ """1行の設定から「できること」を答える。戻りは`PERMISSION_CAPS`の順の`[{key,state,note}]`。
+
+ **マスタ・測定の書込は編集可能モードの端末だけ**（`access_mode`の`_WRITE_ALLOWED_MODES`）——
+ 編集可否が「閲覧のみ」の端末はマスタ編集の段に関係なく書けない。現場段取りも編集可能モードの
+ 端末に足す権限（§3.1.1）なので、編集可否が要る。"""
+ r=normalize_role(role);lv=master_edit_effective(r,master_edit);ce=normalize_column_edit(column_edit)
+ w=bool(can_edit)
+ def st(ok,limited=False,note=''):
+  return (CAP_LIMITED,note) if ok and limited else ((CAP_YES,'') if ok else (CAP_NO,''))
+ eq=field_reorder_equipment_list(field_equipment)
+ grant=w and master_edit_can(lv,'write','admin') and role_can(r,'role:grant',ROLE_OPERATOR)
+ ans={
+  'master:open':st(master_edit_can(lv,'open')),
+  'master:field':st(w and master_edit_can(lv,'write','field')),
+  'master:admin':st(w and master_edit_can(lv,'write','admin')),
+  'role:grant':st(grant,r!=ROLE_DEVELOPER,'下位の区分だけ'),
+  'presence:view':st(role_can(r,'presence:view')),
+  'presence:disconnect':st(role_can(r,'presence:disconnect',ROLE_USER),
+                           not role_can(r,'presence:disconnect',ROLE_DEVELOPER),'開発者は切断できない'),
+  'measure:write':st(w),
+  'schedule:write':st(bool(can_schedule)),
+  'field:reorder':st(w and bool(can_field_reorder) and bool(eq),
+                     bool(eq) and eq[0]!=FIELD_REORDER_ALL,'対象設備だけ'),
+  'columns:own':st(column_edit_can(ce,'own')),
+  'columns:common':st(column_edit_can(ce,'common'))}
+ return [{'key':k,'state':ans[k][0],'note':ans[k][1]} for k,_g,_l,_s in PERMISSION_CAPS]
+
+def permission_watch(cap_rows):
+ """登録した端末の「できること」から、**できる端末の台数**を数える（見張りのタブ）。
+ 1台以下は「その1台が使えなくなると誰もできない」（締め出しの手前）。
+ **登録の無い端末は数えない**——どの端末が当たるかは表から分からない。"""
+ counts={k:0 for k,_g,_l,_s in PERMISSION_CAPS}
+ for caps in cap_rows:
+  for x in caps:
+   if x['state']!=CAP_NO:counts[x['key']]+=1
+ return {'counts':counts,'lone':[k for k,_g,_l,_s in PERMISSION_CAPS if counts[k]<=1]}
+
 def permission_flags(c,login_id,pc_name):
  # ログインID・PC名は汎用的に使えるよう、どちらか一方だけの登録
  # (もう一方は空欄)も許す(register/update側もどちらか一方の入力のみで

@@ -2537,6 +2537,32 @@
    ctx[c.cell]=k.prep?done.get(k.prep):null});
   return ctx;
  }
+ /* ---------- 一覧のタブと行を開く（§9.538、利用者の選択 D-6＋D-10） ----------
+    主役は一覧のまま、補う面を**タブ**（`def.listViews`）と**行の下に開く節**（`def.rowDetail`）で足す。
+    盤は中身を知らない——登録表で名乗る（`registerCell`と同じ作り）:
+      registerListView(種類,{label, badge(ctx)→{text,tone}|null, html(ctx)})
+      registerRowDetail(種類,{html(it,ctx)})
+    ctx＝{meta:一覧の応答, items:表の行}。いま開いているタブ・行はこの端末の画面の間だけ覚える。 */
+ const MM_LIST_VIEWS={},MM_ROW_DETAILS={},mmListViewNow={},mmOpenRows={};
+ WL.mm.registerListView=(kind,h)=>{MM_LIST_VIEWS[kind]=h};
+ WL.mm.registerRowDetail=(kind,h)=>{MM_ROW_DETAILS[kind]=h};
+ const mmViewsOf=def=>(def.listViews||[]).filter(k=>Object.hasOwn(MM_LIST_VIEWS,k));
+ const mmDetailOf=def=>def.rowDetail&&Object.hasOwn(MM_ROW_DETAILS,def.rowDetail)?MM_ROW_DETAILS[def.rowDetail]:null;
+ const mmOpenSet=def=>(mmOpenRows[def.key]=mmOpenRows[def.key]||new Set());
+ const mmCtx=()=>({meta:maintState.meta||{},items:maintState.items||[]});
+ /* タブの帯（1枚目＝一覧）。いま開いているタブの鍵を返す。 */
+ function listTabsHtml(def){
+  const views=mmViewsOf(def);if(!views.length)return {html:'',now:''};
+  const now=views.includes(mmListViewNow[def.key])?mmListViewNow[def.key]:'';
+  const t=def.listTab||{},n=(maintState.items||[]).length,ctx=mmCtx();
+  const tab=(key,label,badge)=>`<button type="button" role="tab" class="mm-ltab${now===key?' is-on':''}" aria-selected="${now===key}" data-ltab="${esc(key)}">`
+   +`${esc(label)}${badge?`<i class="mm-ltab-b${badge.tone?' is-'+esc(badge.tone):''}">${esc(badge.text)}</i>`:''}</button>`;
+  return {now,html:`<div class="mm-ltabs" role="tablist">${tab('',t.label||'一覧',{text:`${n}${t.unit||'件'}`})}`
+   +views.map(k=>tab(k,MM_LIST_VIEWS[k].label,MM_LIST_VIEWS[k].badge?MM_LIST_VIEWS[k].badge(ctx):null)).join('')+`</div>`};
+ }
+ function bindListTabs(def,list){
+  list.querySelectorAll('[data-ltab]').forEach(b=>{b.onclick=()=>{mmListViewNow[def.key]=b.dataset.ltab;renderMaintList()}});
+ }
  /* その列の字（計算の列は登録表・ほかは行の値）。 */
  const mmColText=(c,it,ctx)=>{const k=mmCellOf(c);return k?String(k.text(it,ctx[c.cell])??''):it[c.k]};
  function mmSortItems(def,items){
@@ -2689,7 +2715,13 @@
     +`<b>${esc(label)}</b>${mark?`<i class="mm-th-mark" aria-hidden="true">${mark}</i>`:''}`
     +`<i class="mm-th-grip" aria-hidden="true"></i></span>`;
   }).join('');
-  list.innerHTML=`<div class="mm-row head" style="grid-template-columns:${tmpl}">${headCols}${showAudit?'<span>更新者</span><span>更新日時</span>':''}<span class="mm-act">操作</span></div>`;
+  const tabs=listTabsHtml(def);
+  if(tabs.now){
+   list.innerHTML=tabs.html+`<section class="mm-lview" role="tabpanel">${MM_LIST_VIEWS[tabs.now].html(mmCtx())}</section>`;
+   bindListTabs(def,list);return;
+  }
+  list.innerHTML=tabs.html+`<div class="mm-row head" style="grid-template-columns:${tmpl}">${headCols}${showAudit?'<span>更新者</span><span>更新日時</span>':''}<span class="mm-act">操作</span></div>`;
+  bindListTabs(def,list);
   bindMaintHeadTools(def,list);
   if(!items.length){
    /* 行が無いときは開閉の帯も出さない（畳む対象が無いのにボタンだけ残ると、
@@ -2730,6 +2762,11 @@
     if(foldedNow)return;
    }
    frag.append(maintRowEl(def,it,tmpl,showAudit,ctx));
+   const det=mmDetailOf(def);
+   if(det&&mmOpenSet(def).has(it.id)){
+    const d=document.createElement('div');d.className='mm-rowdetail';d.dataset.rowId=String(it.id);
+    d.innerHTML=det.html(it,mmCtx());frag.append(d);
+   }
   });
   list.append(frag);
  }
@@ -2739,12 +2776,14 @@
   // 列として出さない監査情報(更新者・更新日時)は行のツールチップで補う。
   const audit=`更新者: ${it.updated_by||'-'} / 更新日時: ${fmtDT(it.updated_at)}`;
   row.title=showAudit?'クリックで編集フォームに読み込みます':`クリックで編集\n${audit}`;
-  const cells=def.cols.map(c=>{
+  const det=mmDetailOf(def),open=det&&mmOpenSet(def).has(it.id);
+  const cells=def.cols.map((c,ci)=>{
+   const tw=det&&ci===0?`<button type="button" class="mm-rowtw" aria-expanded="${!!open}" title="${open?'閉じる':'この行の中身を開く'}">${open?'▾':'▸'}</button>`:'';
    const k=mmCellOf(c);
    if(k){const v=mmColText(c,it,ctx),h=k.html?k.html(it,ctx[c.cell]):esc(v);
-    return `<span class="mm-calc" data-cell="${esc(c.cell)}" title="${esc(v)}">${h||'<em class="mm-blank">—</em>'}</span>`}
+    return `<span class="mm-calc" data-cell="${esc(c.cell)}" title="${esc(v)}">${tw}${h||'<em class="mm-blank">—</em>'}</span>`}
    const v=cellText({...c,row:it},it[c.k]);
-   return `<span title="${esc(v)}">${esc(v)||'<em class="mm-blank">—</em>'}</span>`}).join('');
+   return `<span title="${esc(v)}">${tw}${esc(v)||'<em class="mm-blank">—</em>'}</span>`}).join('');
   const acts=def.readOnly?'<em class="mm-blank">—</em>'
     :`<button type="button" class="mm-edit" title="この行の内容を編集します">編集</button>${def.hasDelete?'<button type="button" class="mm-del" title="この行を削除します（確認画面が出ます）">削除</button>':''}`;
   row.innerHTML=`${cells}${showAudit?`<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`:''}<span class="mm-act">${acts}</span>`;
@@ -2756,10 +2795,14 @@
    const f=$('#masterMaintForm');if(f)f.scrollIntoView({block:'nearest'});
   };
   const eb=row.querySelector('.mm-edit');if(eb)eb.onclick=e=>{e.stopPropagation();edit()};
+  /* 行を開く（§9.538）。**押しても編集窓は開かない**（行の押下は編集なので伝えない）。 */
+  const tw=row.querySelector('.mm-rowtw');
+  if(tw)tw.onclick=e=>{e.stopPropagation();const o=mmOpenSet(def);o.has(it.id)?o.delete(it.id):o.add(it.id);renderMaintList()};
   const del=row.querySelector('.mm-del');if(del)del.onclick=e=>{e.stopPropagation();deleteMaint(it)};
   if(!def.readOnly){
    row.onclick=()=>edit();row.ondblclick=()=>edit();
-   row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){if(e.key===' ')e.preventDefault();edit()}};
+   row.onkeydown=e=>{if(e.target.closest('.mm-rowtw'))return;   // 開く印の Enter は開くだけ（§9.538）
+    if(e.key==='Enter'||e.key===' '){if(e.key===' ')e.preventDefault();edit()}};
   }
   return row;
  }

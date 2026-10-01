@@ -626,6 +626,9 @@
       順番なので、この順番は変えない・§9.222 ⑧）。 */
    hint:'この共有のマスタへ繋いでいる端末の一覧です。**区分が開発者・メンテナンス者の端末だけが切断できます**（メンテナンス者は開発者を切断できません）。区分はアクセス権限マスタで決めます。切断された端末は**書き込みだけが止まり**、開いている画面はそのまま残ります（別のPCの操作を横から消さないため）。一定時間で自動的に戻ります。'},
   {group:'system',key:'accessPermission',label:'アクセス権限',icon:'権',endpoint:'/api/access-permission-master',hasDelete:true,
+   /* 主役は端末の登録の一覧。補う面はタブ（見張り）と行の下に開く節（できること）——§9.538、
+      利用者の選択 D-6＋D-10。中身は`master-access.js`が登録表で名乗り、判定はサーバーの`permission_capabilities()`。 */
+   listTab:{label:'端末の登録',unit:'台'},listViews:['permWatch'],rowDetail:'permCaps',
    fields:[{k:'loginId',label:'ログインID',key:true},{k:'pcName',label:'PC名',key:true},
            /* **区分が先**（§9.272）。上位概念なので、細かい可否より前に決める。 */
            /* 並びは**下位から**（決める順。ふだん増やすのは下の区分）。

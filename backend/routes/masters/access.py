@@ -17,6 +17,9 @@ from ...repositories.master_repo import (
  normalize_identity_part,
  access_permission_master_rows,
  ROLES as PERMISSION_ROLES,
+ permission_capabilities,
+ permission_cap_defs,
+ permission_watch,
  ROLE_DEFAULT as PERMISSION_ROLE_DEFAULT,
  normalize_role,
  MASTER_EDIT_LEVELS,
@@ -94,12 +97,18 @@ def access_permission_master_list():
             'columnEdit':normalize_column_edit(r[13] if len(r)>13 else '')} for r in rows]
    # **区分ごとに選べる段はサーバーが答える**（§9.163）——画面へ上限の表を
    # 写すと、上限を1つ直したときに片方だけ古い約束のまま残る。
+   # この端末ができること（§9.538）。**判定はサーバーの1箇所**——行を開く・見張りのタブはこれを読むだけ。
+   for it in items:
+    it['caps']=permission_capabilities(it['role'],it['masterEdit'],it['columnEdit'],it['canEdit']=='編集可',
+                                       it['canSchedule']=='可',it['canFieldReorder']=='可',it['fieldReorderEquipment'])
+   watch=permission_watch([it['caps'] for it in items])
    caps={role:master_edit_options(role) for role in PERMISSION_ROLES}
    bootstrap=not has_admin_role_row(c)
   return jsonify(ok=True,items=items,table=ACCESS_PERMISSION_TABLE,created=not before,empty=len(items)==0,master_path=str(path),
                  roles=list(PERMISSION_ROLES),masterEditLevels=list(MASTER_EDIT_LEVELS),
                  columnEditLevels=list(COLUMN_EDIT_LEVELS),
                  masterEditByRole=caps,
+                 capDefs=permission_cap_defs(),capWatch=watch,
                  # まだ管理者（一般ユーザーより上位）が1人も居ない状態か。
                  # 画面は「最初の1人はいま作れます」と書ける（§4）。
                  roleBootstrap=bootstrap)
