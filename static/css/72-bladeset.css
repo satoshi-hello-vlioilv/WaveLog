@@ -815,71 +815,6 @@ body.bs-mode .bs-shell{display:flex}
 .bs-dzs.is-diff{color:var(--danger)}
 .bs-dz .bs-note{margin-block:var(--space-1)}
 
-/* ---------- 刃選択の盤（§9.380、利用者の指示） ----------
-   決まりを**文として読める**ようにする。条件は「項目 → 比べ方 → 値」の順に
-   1つの札へ収め、札のあいだに「かつ」を置く——表の升目に散らすと、
-   どこまでが1つの決まりなのかを目で囲み直すことになる。 */
-.bp-list{display:flex;flex-direction:column;gap:var(--space-2)}
-.bp-card{border:1px solid var(--card-border);border-radius:var(--radius-md);
-  background:var(--card-bg);padding:var(--space-2) var(--space-3)}
-/* 当たった決まりだけ面で示す（色だけで語らず、札の字でも「この作業はこれ」と言う）。 */
-.bp-card.is-won{border-color:var(--teal);box-shadow:inset 3px 0 0 var(--teal)}
-.bp-card.is-off{opacity:.6}
-.bp-ch{display:flex;align-items:center;gap:var(--space-2);min-height:1.9rem}
-.bp-no{display:inline-grid;place-items:center;min-width:1.5em;height:1.5em;
-  border-radius:var(--radius-xs);background:var(--rs-slate);color:#fff;
-  font-size:var(--fs-sm);font-weight:700}
-.bp-name{font-size:var(--fs-base-sm);color:var(--ink)}
-.bp-won{font-size:var(--fs-sm);font-weight:700;color:var(--teal-dark)}
-.bp-offtag{font-size:var(--fs-sm);color:var(--muted)}
-.bp-cta{margin-inline-start:auto;display:flex;gap:var(--space-1)}
-.bp-cb{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1);
-  padding-block:var(--space-1)}
-.bp-cond{display:inline-flex;align-items:center;gap:4px;padding:2px var(--space-2);
-  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--bg);
-  font-size:var(--fs-sm)}
-.bp-cond b{font-weight:700;color:var(--ink)}
-.bp-cond s{text-decoration:none;color:var(--muted)}
-.bp-cond u{text-decoration:none;font-weight:700;font-variant-numeric:tabular-nums}
-/* 試し欄に値があるときだけ○×が付く。**字と色の両方**で言う（§CLAUDE 3）。 */
-.bp-cond.is-ok{border-color:var(--teal);background:var(--teal-soft)}
-.bp-cond.is-ng{border-color:var(--line);background:var(--bg);opacity:.7}
-.bp-hit{font-style:normal;font-weight:700}
-.bp-hit.is-ok{color:var(--teal-dark)}
-.bp-hit.is-ng{color:var(--muted)}
-.bp-and{font-size:var(--fs-sm);color:var(--muted)}
-.bp-none{font-size:var(--fs-sm);color:var(--warn-fg)}
-.bp-cf{font-size:var(--fs-sm);color:var(--ink-2)}
-.bp-arrow{color:var(--muted);margin-inline-end:4px}
-.bp-grp{font-size:var(--fs-base-sm);color:var(--teal-dark)}
-/* 直す窓。行は「項目→比べ方→値」の左から右（CLAUDE 14 決める順）。 */
-.bp-ed{display:flex;flex-direction:column;gap:var(--space-2)}
-.bp-lb{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm);color:var(--muted)}
-.bp-lb input,.bp-lb select{max-width:var(--w-lg)}
-.bp-rows{display:flex;flex-direction:column;gap:var(--space-1)}
-.bp-row{display:flex;align-items:center;gap:var(--space-1);flex-wrap:wrap}
-.bp-row .bp-f{max-width:var(--w-md)}
-.bp-row .bp-o{max-width:var(--w-sm)}
-.bp-row .bp-v,.bp-row .bp-v2{max-width:var(--w-sm)}
-.bp-row [hidden]{display:none}
-.bp-ck{display:flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm)}
-.bp-eda{display:flex;gap:var(--space-2);align-items:center}
-.bp-del{margin-inline-start:auto;color:var(--danger)}
-/* 試し欄（§9.117「書いた本人が確かめられる」と同じ考え）。 */
-.bp-try{margin-block-start:var(--space-2);padding:var(--space-2);
-  border:1px solid var(--line);border-radius:var(--radius-md);background:var(--bg)}
-.bp-tryh{font-size:var(--fs-sm);font-weight:700;color:var(--ink)}
-.bp-tryh s{text-decoration:none;font-weight:400;color:var(--muted);margin-inline-start:var(--space-2)}
-.bp-tryf{display:flex;flex-wrap:wrap;gap:var(--space-2);margin-block:var(--space-2)}
-.bp-pf{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm)}
-.bp-pf s{text-decoration:none;color:var(--muted)}
-.bp-pf input{max-width:var(--w-sm)}
-.bp-trya{display:flex;align-items:center;gap:var(--space-2)}
-.bp-ans{font-size:var(--fs-sm)}
-.bp-ans.is-idle{color:var(--muted)}
-.bp-ans.is-hit{color:var(--teal-dark);font-weight:700}
-.bp-ans.is-none{color:var(--ink-2)}
-
 /* ---------- 区間の拡大（§9.413） ----------
    模式図の区間を押すと、その区間だけを大きく描いた図が**押した区間の真下**へ
    出る。器は模式図と立体図を載せている `.bs-figmain` なので、図の外へは
@@ -938,115 +873,182 @@ body.bs-mode .bs-shell{display:flex}
 /* 潤滑リングはゴムリングの群の中の1列（§9.472 の続き）。印の紫で「種類が違う」ことを言う。 */
 .bs-g .bs-lubeh .bs-lubedot{margin-inline-end:.2em}
 
-/* ---------- 保持方式マスタの盤（§9.524）——列＝データ・行＝決まり・右端＝保持方式の判定表 ----------
-   見出しのすぐ下が「試す」行（列の真下に値を入れる＝どの列の値かを探させない）。
-   当たった行は左の太い線と地で言い、セルの○×は字でも添える（色だけにしない）。 */
-.hp-state{margin-left:var(--space-2);font-size:var(--fs-sm);color:var(--muted)}
-.hp-state.is-dirty{color:var(--warn-fg);font-weight:700}
-.hp-state.is-seed b{color:var(--ink-2)}
-.hp-wrap{overflow:auto;max-width:100%}
-.hp-table{border-collapse:collapse;width:100%;font-size:var(--tbl-fs)}
-.hp-table th,.hp-table td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
- text-align:left;vertical-align:middle;white-space:nowrap}
-.hp-table thead th{font-weight:700;color:var(--ink-2)}
-.hp-table .hp-no{width:3.5em;text-align:center;color:var(--muted);font-weight:400}
-.hp-col small{margin-left:var(--space-1);font-size:var(--fs-micro);color:var(--muted);font-weight:400}
-.hp-x,.hp-mv{color:var(--muted);height:var(--ctl-h-sm);padding:0 var(--space-1);margin-left:var(--space-1)}
-.hp-table input,.hp-table select{height:var(--ctl-h-sm);font-size:var(--fs-sm);box-sizing:border-box}
-.hp-cell{position:relative;min-width:8em}
-.hp-cell input,.hp-try input{width:100%;min-width:7em}
-.hp-c.is-bad{border-color:var(--danger);box-shadow:0 0 0 1px var(--danger)}
-.hp-cell.is-hit input{border-color:var(--teal)}
-.hp-cell.is-miss input{border-color:var(--warn-fg)}
-.hp-mk{position:absolute;right:calc(var(--space-2) + 4px);top:50%;transform:translateY(-50%);
- font-style:normal;font-size:var(--fs-sm);font-weight:700;pointer-events:none}
-.hp-cell.is-hit .hp-mk{color:var(--teal-dark)}
-.hp-cell.is-miss .hp-mk{color:var(--warn-fg)}
-.hp-try th,.hp-try td{background:var(--surface-2)}
-.hp-ans{font-size:var(--fs-sm)}
-.hp-ans .is-idle{color:var(--muted)}
-.hp-out{width:1%}
-.hp-note input{width:100%;min-width:8em}
-.hp-ops{width:1%}
-.hp-row.is-won th,.hp-row.is-won td{background:var(--teal-soft)}
-.hp-table .hp-row.is-won th.hp-no{box-shadow:inset 3px 0 0 var(--teal);color:var(--teal-dark);font-weight:700}
-.hp-row.is-default th,.hp-row.is-default td{background:var(--surface-2)}
-.hp-row.is-default.is-won th,.hp-row.is-default.is-won td{background:var(--teal-soft)}
-.hp-any{color:var(--ink-2);font-weight:700}
-
-/* ---------- 刃セットの盤（§9.526）——組ごとの「カテゴリ」「使用状態」の2択 ----------
-   札は1つの枠を割った形（§9.247）。選ばれた札の濃さは 90-state.css の束ね規則が持つ。
-   研磨中の行は地を薄い橙にし、右端の字で「選ばれない」と言う（色だけにしない）。 */
-.bss-table{border-collapse:collapse;width:100%;font-size:var(--tbl-fs)}
-.bss-table th,.bss-table td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
- text-align:left;vertical-align:middle;white-space:nowrap}
-.bss-table thead th{font-weight:700;color:var(--ink-2)}
-.bss-group{width:5em;font-weight:700}
-.bss-seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
-.bss-seg button{border:0;border-inline-start:1px solid var(--line);border-radius:0;background:var(--surface);
+/* ---------- 刃組のマスタの盤（§9.529、利用者の指示「すっきり統一感が欲しい」） ----------
+   刃・ゴムリング・刃選択・保持方式が**同じ頭・同じ2ペイン・同じ判定表**を使う（`board-kit.js`・
+   `rule-table.js`）。値はトークンだけ。状態は色だけで言わず、必ず字（札・1行の文）を添える。
+     頭   … 設備 ｜ いまの状態 ｜ 操作（右寄せ）、その下に説明の1行
+     本文 … 左＝一覧（選ぶ・`--bk-list-w`）／右＝選んだ1つの詳細カード */
+.bk-head{display:flex;align-items:center;gap:var(--space-3);min-height:var(--ctl-h)}
+.bk-eq{display:inline-flex;align-items:center;gap:var(--space-2);font-size:var(--fs-sm)}
+.bk-eq s{text-decoration:none;color:var(--muted);font-weight:700}
+.bk-eq select{height:var(--ctl-h-sm);min-width:var(--w-md)}
+.bk-state{font-size:var(--fs-sm);color:var(--ink-2)}
+.bk-state.is-warn{color:var(--warn-fg);font-weight:700}
+.bk-acts{margin-inline-start:auto;display:flex;align-items:center;gap:var(--space-2)}
+.bk-hint{margin:var(--space-2) 0 0;font-size:var(--fs-sm);line-height:1.6;color:var(--muted)}
+.bk-hint b{color:var(--ink-2)}
+.bk-pane{--bk-list-w:18rem;display:grid;grid-template-columns:var(--bk-list-w) minmax(0,1fr);gap:var(--space-3);align-items:start}
+/* 一覧: まとまりを全部縦に。選んだ1つは左の線と地で（字は太字のまま・色だけにしない＝`aria-selected`）。 */
+.bk-list{position:sticky;top:0;display:flex;flex-direction:column;gap:var(--space-2);
+ border:1px solid var(--card-border);border-radius:var(--radius-md);background:var(--card-bg);padding:var(--space-2)}
+.bk-items{display:flex;flex-direction:column;gap:2px}
+.bk-none{margin:0;padding:var(--space-2);font-size:var(--fs-sm);color:var(--muted)}
+.bk-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:var(--space-2);
+ width:100%;padding:var(--space-1) var(--space-2);border:1px solid transparent;border-radius:var(--radius-sm);
+ background:transparent;font:inherit;text-align:left;color:var(--ink);cursor:pointer}
+.bk-item:hover{background:var(--pale)}
+.bk-item.is-on{background:var(--pale);border-color:var(--teal);box-shadow:inset 3px 0 0 var(--teal)}
+.bk-item.is-near .bk-mark{box-shadow:0 0 0 2px var(--warn-fg);border-radius:var(--radius-round)}
+.bk-item.is-hard .bk-mark{box-shadow:0 0 0 2px var(--danger);border-radius:var(--radius-round)}
+.bk-mark{display:inline-flex}
+.bk-tx{display:flex;flex-direction:column;min-width:0;line-height:1.3}
+.bk-tx b{font-size:var(--fs-base-sm);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bk-tx small{font-size:var(--fs-micro);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bk-tags{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.bk-tag{font-style:normal;font-size:var(--fs-micro);font-weight:700;padding:0 var(--space-1);border-radius:var(--radius-xs);
+ border:1px solid var(--line);color:var(--ink-2);white-space:nowrap}
+.bk-tag.is-teal{border-color:var(--teal);color:var(--teal-dark)}
+.bk-tag.is-warn{border-color:var(--warn-fg);color:var(--warn-fg);background:var(--warn-bg)}
+.bk-tag.is-violet{border-color:var(--look-violet);color:var(--look-violet-dark);background:var(--look-violet-pale)}
+.bk-add{height:var(--ctl-h-sm);border:1px dashed var(--line-strong);border-radius:var(--radius-sm);background:transparent;
+ font:inherit;font-size:var(--fs-sm);font-weight:700;color:var(--teal-dark);cursor:pointer}
+.bk-add:hover{background:var(--pale);border-color:var(--teal)}
+/* 詳細カード: 頭（札＋名前＋何に効くか）→ 欄の段 → 表 → 足元（主役は左・消すは右端に離す）。 */
+.bk-card{border:1px solid var(--card-border);border-radius:var(--radius-md);background:var(--card-bg);
+ padding:var(--space-3) var(--space-4);display:flex;flex-direction:column;gap:var(--space-3)}
+.bk-card-h{display:flex;align-items:center;gap:var(--space-3)}
+.bk-card-t{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.bk-card-t h3{margin:0;font-size:var(--fs-lg)}
+.bk-card-t small{font-size:var(--fs-sm);color:var(--muted)}
+.bk-card-f{display:flex;align-items:center;gap:var(--space-2);padding-top:var(--space-2);border-top:1px solid var(--line-soft)}
+.bk-gap{flex:1}
+.bk-danger{color:var(--danger)}
+/* 欄の段: ラベルは上・値は下（1段に横並び）。読み取り専用の値は枠を付けない（§CLAUDE 10）。 */
+.bk-fields{display:flex;flex-wrap:wrap;gap:var(--space-2) var(--space-4)}
+.bk-field{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm)}
+.bk-field>s{text-decoration:none;color:var(--muted);font-weight:700;font-size:var(--fs-micro)}
+.bk-field>span{display:inline-flex;align-items:center;gap:var(--space-1);min-height:var(--ctl-h-sm)}
+.bk-field u{text-decoration:none;color:var(--muted)}
+.bk-field input[type=number]{width:6.5em}
+.bk-field input,.bk-field select{height:var(--ctl-h-sm);font-size:var(--fs-sm);box-sizing:border-box}
+.bk-field.is-ro b{font-size:var(--fs-base-sm);font-variant-numeric:tabular-nums}
+.bk-mini{display:inline-flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm)}
+.bk-mini s{text-decoration:none;color:var(--muted)}
+.bk-mini select{height:var(--ctl-h-sm)}
+/* 2択の札（1つの枠を割った形・§9.247）。選ばれた札の濃さは 90-state.css の束ね規則が持つ。 */
+.bk-seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-sm);overflow:hidden}
+.bk-seg button{border:0;border-inline-start:1px solid var(--line);border-radius:0;background:var(--surface);
  height:var(--ctl-h-sm);padding:0 var(--space-3);font:inherit;font-size:var(--fs-sm);color:var(--ink-2);cursor:pointer}
-.bss-seg button:first-child{border-inline-start:0}
-.bss-seg button:hover:not(:disabled){background:var(--pale);color:var(--teal-dark)}
-.bss-seg button:disabled{cursor:default}
-.bss-blades small{margin-left:var(--space-2);color:var(--muted)}
-.bss-say{white-space:normal;color:var(--ink-2);font-size:var(--fs-sm)}
-.bss-say small{display:block;color:var(--muted);font-size:var(--fs-micro)}
-.bss-row.is-grind th,.bss-row.is-grind td{background:var(--warn-bg)}
-.bss-row.is-grind .bss-say b{color:var(--warn-fg)}
-.bss-note{margin-left:var(--space-2);font-size:var(--fs-sm);color:var(--muted)}
+.bk-seg button:first-child{border-inline-start:0}
+.bk-seg button:hover:not(:disabled){background:var(--pale);color:var(--teal-dark)}
+.bk-seg button:disabled{cursor:default}
+/* 中身の表（刃厚ごと・幅ごと）。数は右揃え・単位は薄く。 */
+.bk-table{border-collapse:collapse;font-size:var(--tbl-fs);align-self:flex-start}
+.bk-table th,.bk-table td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);text-align:left;white-space:nowrap}
+.bk-table thead th{color:var(--muted);font-weight:700;font-size:var(--fs-sm)}
+.bk-table tbody th{text-align:right;min-width:5em;font-variant-numeric:tabular-nums}
+.bk-table u{text-decoration:none;color:var(--muted);margin-left:2px;font-weight:400}
+.bk-table input{width:6em;height:var(--ctl-h-sm);font-size:var(--fs-sm);box-sizing:border-box;text-align:right}
+.bk-table input[type=date]{width:9.5em;text-align:left}
+.bk-table tr.is-off th,.bk-table tr.is-off td{color:var(--muted)}
+.bk-sum th,.bk-sum td{border-bottom:0}
+.bk-low{color:var(--warn-fg);font-size:var(--fs-sm)}
+.bk-x{color:var(--muted);height:var(--ctl-h-sm);padding:0 var(--space-1)}
 
-/* ---------- ゴムリングの盤（§9.528）——上の帯＝登録済みの色・下＝選んだ色のカード ----------
-   見本（`.rb-sw`）の地は**マスタの色コード**（データの値なので style で渡す・トークンではない）。
-   被りは帯の見本の縁で言い（断る＝赤・近い＝橙）、理由はカードの中の字が持つ（色だけにしない）。 */
-.rb-count{margin-left:var(--space-2);font-size:var(--fs-sm);color:var(--ink-2)}
-.rb-strip{display:flex;flex-wrap:wrap;gap:var(--space-1);margin-top:var(--space-2)}
-.rb-none{font-size:var(--fs-sm);color:var(--muted)}
+/* 刃のセットの札（A〜Z）。地はカテゴリ（通常刃＝墨・専用刃＝teal）、研磨中は斜線（字の札も出る）。 */
+.bb-tile{display:inline-grid;place-items:center;width:1.9em;height:1.9em;border-radius:var(--radius-sm);
+ background:var(--rs-slate);color:#fff;font-style:normal;font-weight:800;font-size:var(--fs-base-sm)}
+.bb-tile.is-special{background:var(--teal)}
+.bb-tile.is-grind{background-image:repeating-linear-gradient(135deg,transparent 0 4px,rgba(255,255,255,.35) 4px 7px)}
+.bk-card-h .bb-tile{width:2.4em;height:2.4em;font-size:var(--fs-lg)}
+
+/* ---------- ゴムリングの盤（§9.528 → §9.529 で2ペイン） ----------
+   見本（`.rb-sw`）の地は**マスタの色**（データの値なので style で渡す・トークンではない）。
+   無ければ潤滑リングの紫（サーバーの`RING_LUBE_HEX`と同じ値・被り判定もこの色で比べる）。 */
+.rb-sw{display:inline-block;width:1.1em;height:1.1em;border-radius:var(--radius-round);border:1px solid var(--line-strong);
+ background:var(--sw,var(--look-violet));flex:0 0 auto}
+.rb-sw.is-lube{border-radius:var(--radius-xs)}
+.bk-item .rb-sw{width:1.4em;height:1.4em}
+.bk-card-h .rb-sw{width:2.4em;height:2.4em}
+/* 色名は詳細の頭（いちばん上）。新しい色ではここに焦点が来る（§9.529 ②「色名の欄が見つからない」）。 */
+.rb-name{display:flex;align-items:center;gap:var(--space-2)}
+.rb-name s{text-decoration:none;color:var(--muted);font-size:var(--fs-sm);font-weight:700;white-space:nowrap}
+.rb-name input{height:var(--ctl-h);font-size:var(--fs-lg);font-weight:700;width:12em;box-sizing:border-box}
+.rb-pick input[type=color]{width:3em;padding:0 2px;cursor:pointer}
+.rb-pick code{font-size:var(--fs-micro);color:var(--muted)}
 .rb-chip{display:inline-flex;align-items:center;gap:var(--space-1);height:var(--ctl-h-sm);padding:0 var(--space-2);
  border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--card-bg);font:inherit;font-size:var(--fs-sm);
  color:var(--ink);cursor:pointer}
 .rb-chip:hover{border-color:var(--teal);background:var(--pale)}
 .rb-chip small{color:var(--muted);font-size:var(--fs-micro)}
-.rb-chip.is-on small{color:inherit}
-.rb-chip.is-near{box-shadow:0 0 0 2px var(--warn-fg)}
-.rb-chip.is-hard{box-shadow:0 0 0 2px var(--danger)}
 .rb-chip.is-sm{height:auto;padding:1px var(--space-1)}
-/* 見本の地はマスタの色（`--sw`・データの値を JS が渡す）。無ければ潤滑リングの紫。 */
-.rb-sw{display:inline-block;width:1.1em;height:1.1em;border-radius:var(--radius-round);border:1px solid var(--line-strong);
- background:var(--sw,var(--look-violet));flex:0 0 auto}
-.rb-sw.is-lube{border-radius:var(--radius-xs)}
-.rb-card{border:1px solid var(--card-border);border-radius:var(--radius-md);background:var(--card-bg);
- padding:var(--space-3);max-width:60em}
-.rb-head{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
-.rb-head .rb-sw{width:1.6em;height:1.6em}
-.rb-head h3{margin:0;font-size:var(--fs-lg)}
-.rb-sub{font-size:var(--fs-sm);color:var(--muted)}
-.rb-attrs{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2) var(--space-3)}
-.rb-f{display:inline-flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm)}
-.rb-f s{text-decoration:none;color:var(--ink-2);font-weight:700}
-.rb-f u{text-decoration:none;color:var(--muted)}
-.rb-f input[type=text]{width:8em}
-.rb-f input[type=number]{width:6em}
-.rb-f input,.rb-f select{height:var(--ctl-h-sm);font-size:var(--fs-sm);box-sizing:border-box}
-.rb-pick input[type=color]{width:3em;padding:0 2px;cursor:pointer}
-.rb-pick code{font-size:var(--fs-micro);color:var(--muted)}
-.rb-ro b{min-width:3.5em;text-align:right}
 .rb-free{flex:1 0 100%;display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-1);font-size:var(--fs-sm)}
 .rb-free s{text-decoration:none;color:var(--muted)}
-.rb-check p{margin:var(--space-2) 0 0;font-size:var(--fs-sm);line-height:1.6}
+.rb-check:empty{display:none}
+.rb-check p{margin:0;font-size:var(--fs-sm);line-height:1.6}
 .rb-check .rb-sw{width:.9em;height:.9em;vertical-align:-1px;margin:0 2px}
 .rb-hard{color:var(--danger);font-weight:700}
 .rb-near{color:var(--warn-fg)}
 .rb-ok{color:var(--muted)}
-.rb-table{border-collapse:collapse;margin-top:var(--space-3);font-size:var(--tbl-fs)}
-.rb-table th,.rb-table td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);text-align:left;white-space:nowrap}
-.rb-table thead th{color:var(--ink-2);font-weight:700}
-.rb-table tbody th{text-align:right;min-width:5em}
-.rb-table th u{text-decoration:none;color:var(--muted);margin-left:2px;font-weight:400}
-.rb-table input{width:6em;height:var(--ctl-h-sm);font-size:var(--fs-sm);box-sizing:border-box}
-.rb-sum th,.rb-sum td{border-bottom:0}
-.rb-low{color:var(--warn-fg);font-size:var(--fs-sm)}
-.rb-x{color:var(--muted);height:var(--ctl-h-sm);padding:0 var(--space-1)}
-.rb-foot{display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-3)}
-.rb-gap{flex:1}
-.rb-danger{color:var(--danger)}
+
+/* ---------- 判定表（§9.524 保持方式・§9.529 刃のカテゴリ・刃厚が共有する `rule-table.js`） ----------
+   見出しのすぐ下が「試す」行（列の真下に値を入れる＝どの列の値かを探させない）。列の見出しは
+   名前の下に**出どころ**（ほかのマスタの答え／材料から計算した値／1本目のコイル／仕掛の列）。
+   当たった行は左の太い線と地で言い、セルの○×は字でも添える（色だけにしない）。
+   表の下の「読み」は、いま触っている行を**文で**言う（書き方を覚えていなくても確かめられる）。 */
+.rt{display:flex;flex-direction:column;gap:var(--space-2);margin-bottom:var(--space-4)}
+.rt-h{display:flex;align-items:center;gap:var(--space-2)}
+.rt-step{display:inline-grid;place-items:center;width:1.7em;height:1.7em;border-radius:var(--radius-round);
+ background:var(--rs-slate);color:#fff;font-weight:800;font-size:var(--fs-sm)}
+.rt-h h3{margin:0;font-size:var(--fs-title)}
+.rt-state{font-size:var(--fs-sm);color:var(--muted)}
+.rt-state.is-dirty{color:var(--warn-fg);font-weight:700}
+.rt-acts{margin-inline-start:auto;display:flex;align-items:center;gap:var(--space-2)}
+.rt-addcol{height:var(--ctl-h-sm);max-width:var(--w-lg)}
+.rt-lead{margin:0;font-size:var(--fs-sm);color:var(--muted);line-height:1.6}
+.rt-lead b{color:var(--ink-2)}
+.rt-wrap{overflow:auto;max-width:100%;border:1px solid var(--card-border);border-radius:var(--radius-md);background:var(--card-bg)}
+.rt-table{border-collapse:collapse;width:100%;font-size:var(--tbl-fs)}
+.rt-table th,.rt-table td{padding:var(--space-1) var(--space-2);border-bottom:1px solid var(--line-soft);
+ text-align:left;vertical-align:middle;white-space:nowrap}
+.rt-table thead th{font-weight:700;color:var(--ink-2);vertical-align:bottom}
+.rt-cn{display:flex;align-items:center;gap:var(--space-1)}
+.rt-cn .rt-x{margin-left:auto}
+.rt-col small{display:block;font-size:var(--fs-micro);color:var(--muted);font-weight:400}
+.rt-col[data-g="answer"] small{color:var(--teal-dark)}
+.rt-table .rt-no{width:3.5em;text-align:center;color:var(--muted);font-weight:400}
+.rt-x,.rt-mv{color:var(--muted);height:var(--ctl-h-sm);padding:0 var(--space-1);margin-left:var(--space-1)}
+.rt-table input,.rt-table select{height:var(--ctl-h-sm);font-size:var(--fs-sm);box-sizing:border-box}
+.rt-cell{position:relative;min-width:8em}
+.rt-cell input,.rt-try input,.rt-try select{width:100%;min-width:7em}
+.rt-c.is-bad{border-color:var(--danger);box-shadow:0 0 0 1px var(--danger)}
+.rt-why{display:block;font-size:var(--fs-micro);color:var(--danger);white-space:normal}
+.rt-cell.is-hit input{border-color:var(--teal)}
+.rt-cell.is-miss input{border-color:var(--warn-fg)}
+.rt-mk{position:absolute;right:calc(var(--space-2) + 4px);top:50%;transform:translateY(-50%);
+ font-style:normal;font-size:var(--fs-sm);font-weight:700;pointer-events:none}
+.rt-cell.is-hit .rt-mk{color:var(--teal-dark)}
+.rt-cell.is-miss .rt-mk{color:var(--warn-fg)}
+.rt-try th,.rt-try td{background:var(--surface-2)}
+.rt-ans{font-size:var(--fs-sm)}
+.rt-ans .is-idle{color:var(--muted)}
+.rt-out{width:1%}
+.rt-note input{width:100%;min-width:8em}
+.rt-ops{width:1%}
+.rt-row.is-won th,.rt-row.is-won td{background:var(--teal-soft)}
+.rt-table .rt-row.is-won th.rt-no{box-shadow:inset 3px 0 0 var(--teal);color:var(--teal-dark);font-weight:700}
+.rt-row.is-default th,.rt-row.is-default td{background:var(--surface-2)}
+.rt-row.is-default.is-won th,.rt-row.is-default.is-won td{background:var(--teal-soft)}
+.rt-any{color:var(--ink-2);font-weight:700}
+.rt-read{margin:0;font-size:var(--fs-sm);color:var(--ink-2);line-height:1.6}
+.rt-read s{text-decoration:none;display:inline-block;margin-right:var(--space-2);padding:0 var(--space-1);
+ border-radius:var(--radius-xs);background:var(--surface-2);color:var(--muted);font-size:var(--fs-micro);font-weight:700}
+/* 刃選択の「この作業なら」の帯（2つの表の当たりを1行で）。 */
+.bp-try{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);margin-bottom:var(--space-3);
+ padding:var(--space-2) var(--space-3);border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface-2);
+ font-size:var(--fs-base-sm)}
+.bp-try b{color:var(--teal-dark)}
+.bp-try small{color:var(--muted);font-size:var(--fs-micro);margin-left:2px}
+.bp-try .is-idle{color:var(--muted);font-size:var(--fs-sm)}
+.bp-try .mm-btn-ghost{margin-inline-start:auto}
 }

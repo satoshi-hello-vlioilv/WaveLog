@@ -134,5 +134,78 @@
   isOpen:el=>!!open&&(el?open.family.has(el):true),
   place,
   close(){close()},
+  suggest,
  };
+
+ /* ---------- 入力欄の候補（§9.529。式の欄・判定表のセルが共有する） ----------
+    **焦点は入力欄のまま**で、欄の真下に候補を出す（`WL.popMenu.open()`は項目へ焦点を移す
+    メニューの器なので使わず、見た目だけ`.wl-menu`を名乗る・§9.448）。
+      ・`provider(inp)` が `{items:[{ins,label,args,note,head}], from, to}` か `null` を返す
+        （`from`〜`to`の字を`ins`で置き換える。`head`は見出しの行＝選べない）
+      ・↑↓で選び、Enter／Tab で入れる。Esc で閉じる（押下は受けたと名乗る＝窓は閉じない）
+    以前は式の欄（`list-formula.js`）だけが持っていた。判定表のセルにも同じふるまいを渡すため、
+    **器と鍵盤の扱いをここ1箇所**へ移した（何を候補にするかは呼ぶ側の`provider`）。 */
+ let sgEl=null,sgFor=null,sgItems=[],sgAt=0,sgSpan=null;
+ const escS=t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const pickable=()=>sgItems.map((it,i)=>(it.head?-1:i)).filter(i=>i>=0);
+ function sgClose(){if(sgEl)sgEl.hidden=true;sgFor=null;sgItems=[];sgSpan=null}
+ function sgShow(inp,provider){
+  const got=provider(inp);
+  if(!got||!got.items||!got.items.some(it=>!it.head)){sgClose();return}
+  if(!sgEl){
+   sgEl=document.createElement('div');
+   sgEl.className='wl-menu fx-suggest';sgEl.setAttribute('role','listbox');sgEl.hidden=true;
+   document.body.appendChild(sgEl);
+   sgEl.addEventListener('mousedown',e=>{
+    const li=e.target.closest('[data-i]');if(!li)return;
+    e.preventDefault();sgPick(+li.dataset.i);
+   });
+  }
+  sgFor=inp;sgItems=got.items.slice(0,16);sgSpan=got;sgAt=pickable()[0];
+  sgEl.innerHTML=sgItems.map((it,i)=>(it.head
+   ?`<div class="fx-sg-head" aria-hidden="true">${escS(it.label)}</div>`
+   :`<div role="option" data-i="${i}" class="fx-sg-item${i===sgAt?' is-on':''}">`
+    +`<b>${escS(it.label)}</b>${it.args?`<code>(${escS(it.args)})</code>`:''}${it.note?`<small>${escS(it.note)}</small>`:''}</div>`)).join('');
+  const r=inp.getBoundingClientRect();
+  sgEl.hidden=false;
+  const h=sgEl.offsetHeight,below=r.bottom+4+h<=innerHeight;
+  sgEl.style.left=`${Math.max(EDGE,Math.min(r.left,innerWidth-sgEl.offsetWidth-EDGE))}px`;
+  sgEl.style.top=`${below?r.bottom+4:Math.max(EDGE,r.top-h-4)}px`;
+ }
+ function sgMark(){if(sgEl)sgEl.querySelectorAll('[data-i]').forEach(el=>el.classList.toggle('is-on',+el.dataset.i===sgAt))}
+ function sgPick(i){
+  const it=sgItems[i],inp=sgFor,w=sgSpan;
+  if(!it||it.head||!inp||!w)return;
+  const v=inp.value;
+  const rest=v.slice(w.to);
+  /* 閉じ括弧などが欄にもうあれば二重にしない（`ins`の最後の字と同じ字で続くとき）。 */
+  const tail=it.ins.slice(-1);
+  const dup=/[\])]/.test(tail)&&rest.startsWith(tail);
+  const ins=dup?it.ins.slice(0,-1):it.ins;
+  inp.value=v.slice(0,w.from)+ins+rest;
+  const at=w.from+ins.length+(dup?1:0)-(it.back||0);
+  inp.setSelectionRange(at,at);
+  sgClose();
+  inp.dispatchEvent(new Event('input',{bubbles:true}));
+  if(it.commit)inp.dispatchEvent(new Event('change',{bubbles:true}));
+  inp.focus();
+ }
+ function suggest(inp,provider,opt){
+  if(!inp||inp.dataset.wlSuggest)return;
+  inp.dataset.wlSuggest='1';
+  inp.setAttribute('autocomplete','off');
+  const show=()=>sgShow(inp,provider);
+  inp.addEventListener('input',show);
+  inp.addEventListener('click',show);
+  if(opt&&opt.onFocus)inp.addEventListener('focus',show);
+  inp.addEventListener('blur',()=>setTimeout(()=>{if(sgFor===inp&&document.activeElement!==inp)sgClose()},0));
+  inp.addEventListener('keydown',e=>{
+   if(sgFor!==inp||!sgEl||sgEl.hidden)return;
+   const ok=pickable(),k=ok.indexOf(sgAt);
+   if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+    e.preventDefault();sgAt=ok[(k+(e.key==='ArrowDown'?1:-1)+ok.length)%ok.length];sgMark();
+   }else if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();sgPick(sgAt)}
+   else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();sgClose()}
+  });
+ }
 })();

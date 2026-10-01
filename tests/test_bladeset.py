@@ -71,18 +71,32 @@ for d in (bs.BLADE_DEF, bs.SPACER_DEF, bs.RING_DEF, bs.FINGER_DEF, bs.STANDARD_D
 rec('2度目の`ensure`は何も作らない', bs.ensure_tables(c) == [])
 
 # 往復（渡した鍵だけ書く・§9.212 ②）
-bid, created = bs.blade_upsert(c, 'u', equipment=EQ, name='10mm A', group='A',
+bid, created = bs.blade_upsert(c, 'u', equipment=EQ, group='A',
                                thickness=10, current_dia=318.2, qty=70)
-rec('刃を登録できる', created and bid)
+rec('刃を登録できる（名称は要らない・§9.529）', created and bid)
 bs.blade_upsert(c, 'u', blade_id=bid, current_dia=317.9)
 row = [x for x in bs.blade_rows(c, True, EQ) if x['id'] == bid][0]
-rec('部分更新で他の列が消えない',
-    row['currentDia'] == 317.9 and row['name'] == '10mm A' and row['qty'] == 70,
+rec('部分更新で他の列が消えない・呼び名はセット＋刃厚から作る',
+    row['currentDia'] == 317.9 and row['name'] == 'A 10mm' and row['qty'] == 70 and row['group'] == 'A',
     str(row))
 rec('設備は「すべての設備」を受け付けない（理由つきで断る）',
-    _reject(lambda: bs.blade_upsert(c, 'u', equipment='*', name='x')))
-rec('設備が空なら断る', _reject(lambda: bs.blade_upsert(c, 'u', equipment='', name='x')))
-rec('刃の名称が空なら断る', _reject(lambda: bs.blade_upsert(c, 'u', equipment=EQ, name='')))
+    _reject(lambda: bs.blade_upsert(c, 'u', equipment='*', group='A', thickness=5)))
+rec('設備が空なら断る', _reject(lambda: bs.blade_upsert(c, 'u', equipment='', group='A', thickness=5)))
+# §9.529: 鍵は設備＋セット（A〜Z）＋刃厚の3つ
+rec('§9.529 同じ設備・同じセット・同じ刃厚の2行目は断る',
+    _reject(lambda: bs.blade_upsert(c, 'u', equipment=EQ, group='A', thickness=10, current_dia=300)))
+rec('§9.529 セット名は A〜Z の1字だけ（「あ」「AB」は断る）',
+    _reject(lambda: bs.blade_upsert(c, 'u', equipment=EQ, group='あ', thickness=5))
+    and _reject(lambda: bs.blade_upsert(c, 'u', equipment=EQ, group='AB', thickness=5)))
+rec('§9.529 セット名が無い・刃厚が無いなら断る',
+    _reject(lambda: bs.blade_upsert(c, 'u', equipment=EQ, thickness=5))
+    and _reject(lambda: bs.blade_upsert(c, 'u', equipment=EQ, group='A')))
+b2, _m = bs.blade_upsert(c, 'u', equipment=EQ, group='ａ', thickness=5, current_dia=318)
+rec('§9.529 全角・小文字のセット名は A〜Z へ読む（ａ→A）・同じセットの別の刃厚は登録できる',
+    [x for x in bs.blade_rows(c, True, EQ) if x['id'] == b2][0]['group'] == 'A')
+rec('§9.529 直すときも別の行と同じ3つにはできない（5mm→10mm は断る）',
+    _reject(lambda: bs.blade_upsert(c, 'u', blade_id=b2, thickness=10)))
+bs.blade_delete(c, b2)
 rec('スペーサーの寸法が空なら断る',
     _reject(lambda: bs.spacer_upsert(c, 'u', equipment=EQ, size=None)))
 rec('ゴムリングの色名が空なら断る',
@@ -190,7 +204,11 @@ rec('初期セットの潤滑リングは幅10・外径270・内径240（利用�
 rec('潤滑リングには外径の色の周期を当てない（画面の色は空＝紫のトークン）',
     lubes4 and lubes4[0]['hex'] == '', str(lubes4[0]['hex'] if lubes4 else None))
 # ---- 種類（§9.455）: 画面の呼び名で書ける・送らなければ触らない ----
-lid, _c, _a = bs.ring_upsert(c4, 'u', equipment=EQ, color='潤滑B', od=268, bore=240,
+# 2つ目の潤滑リングは**別の色**を持つ（§9.529: 色コードが空だと1つ目の潤滑リングと同じ紫に見えるので断る）。
+rec('§9.529 2つ目の潤滑リングを色コード空で足すと、1つ目と同じ紫として断る',
+    _reject(lambda: bs.ring_upsert(c4, 'u', equipment=EQ, color='潤滑B', od=268, bore=240,
+                                   width=12, qty=5, lube=True)))
+lid, _c, _a = bs.ring_upsert(c4, 'u', equipment=EQ, color='潤滑C', hex_code='#e25a9e', od=268, bore=240,
                              width=12, qty=5, lube=bs.ring_is_lube('潤滑リング'))
 got = [x for x in bs.ring_rows(c4, True, EQ) if x['id'] == lid][0]
 rec('種類「潤滑リング」で書いた行は潤滑リングとして読める', got['lube'] is True, str(got))
@@ -334,76 +352,70 @@ bs.design_delete(c, did)
 rec('消すと引けなくなる', bs.design_for(c, EQ, 'P1') is None)
 
 # ---------------------------------------------------------------------------
-# 6. 刃選択マスタ（「専用」の刃を選ぶ条件・§9.379）
+# 6. 刃選択マスタ（刃のカテゴリと刃厚の2つの判定表・§9.529）
 # ---------------------------------------------------------------------------
-# 固定するのは「既定は一般」と「当たったときだけ専用」の2点。ここが崩れると、
-# 現場は気づかないまま違う刃で組むことになる。
-rec('状態は3つ（一般／メンテナンス中／専用）',
+# 判定（上から最初に当たった行）は`blade-core.js`の`firstRule()`の1本（網は test_bladesets.js）。
+# ここで固定するのは**置き方**: 未登録は今までの選び方の種／保存は表ごとに丸ごと／既定の行は最後に1つ／
+# 答えの整え方／旧い「専用刃の決まり」をカテゴリの表として読むこと。
+rec('状態は3つ（一般／メンテナンス中／専用）——旧い刃の行を読むためだけに残す',
     bs.BLADE_STATUS == ('一般', 'メンテナンス中', '専用'), str(bs.BLADE_STATUS))
-
-CTX = {'thickness': 1.8, 'coilWidth': 1200, 'strips': 6,
-       'minWidth': 65.0, 'maxWidth': 120.0, 'material': 'SPCC', 'lotNo': 'L-1'}
-rec('決まりが1行も無ければ「一般」（None を返す）', bs.pick_group([], CTX) is None)
-
-pid, pmade = bs.pick_upsert(c, 'u', equipment=EQ, name='厚板は専用',
-                            conditions=[{'field': 'thickness', 'op': 'ge', 'value': '1.6'}],
-                            group='X')
-rec('刃選択の決まりを足せる', pmade and pid)
-rules = bs.pick_rows(c, False, EQ)
-rec('条件が往復する',
-    len(rules) == 1 and rules[0]['conditions'] == [
-        {'field': 'thickness', 'op': 'ge', 'value': '1.6'}], str(rules))
-hit = bs.pick_group(rules, CTX)
-rec('条件に当たると専用の組を返す', hit and hit['group'] == 'X', str(hit))
-rec('当たらなければ「一般」（板厚 1.2 は 1.6 未満）',
-    bs.pick_group(rules, dict(CTX, thickness=1.2)) is None)
-rec('引けない値は当てない（板厚が空なら当たらない）',
-    bs.pick_group(rules, dict(CTX, thickness=None)) is None)
-
-# 同じ行の条件は**全部**満たしたときだけ当たる（AND）
-bs.pick_upsert(c, 'u', row_id=pid, conditions=[
-    {'field': 'thickness', 'op': 'ge', 'value': '1.6'},
-    {'field': 'strips', 'op': 'eq', 'value': '6'}])
-rules = bs.pick_rows(c, False, EQ)
-rec('同じ行の条件はANDで見る（両方そろえば当たる）',
-    (bs.pick_group(rules, CTX) or {}).get('group') == 'X')
-rec('片方だけでは当たらない',
-    bs.pick_group(rules, dict(CTX, strips=4)) is None)
-
-# 範囲・文字
-bs.pick_upsert(c, 'u', row_id=pid, conditions=[
-    {'field': 'minWidth', 'op': 'between', 'value': '60', 'value2': '70'}])
-rec('範囲で当たる', (bs.pick_group(bs.pick_rows(c, False, EQ), CTX) or {}).get('group') == 'X')
-bs.pick_upsert(c, 'u', row_id=pid, conditions=[
-    {'field': 'material', 'op': 'contains', 'value': 'PC'}])
-rec('文字は「含む」で当たる',
-    (bs.pick_group(bs.pick_rows(c, False, EQ), CTX) or {}).get('group') == 'X')
-
-# **条件の無い行は当たらない**（「いつでも当たる行」を書けないこと）
-bs.pick_upsert(c, 'u', row_id=pid, conditions=[])
-rec('条件が空の行は当たらない（既定が静かに崩れない）',
-    bs.pick_group(bs.pick_rows(c, False, EQ), CTX) is None,
-    str(bs.pick_rows(c, False, EQ)))
-
-# 壊れた条件は1件だけ落とす（行ごと消さない）
+T0 = bs.pick_tables(c, EQ)
+rec('§9.529 未登録の2つの表は今までの選び方（通常刃／いちばん厚い刃）',
+    not T0['category']['stored'] and T0['category']['rows'] == [{'conditions': [], 'answer': '通常刃', 'group': '', 'note': ''}]
+    and not T0['thickness']['stored'] and T0['thickness']['rows'][0]['answer'] == bs.PICK_THICKEST, str(T0))
+n = bs.pick_replace(c, 'u', EQ, 'category', [
+    {'conditions': [{'field': 'thickness', 'op': 'ge', 'value': '1.6'}], 'answer': '専用刃', 'group': 'B', 'note': '厚板'},
+    {'conditions': [{'field': 'hold', 'op': 'eq', 'value': 'フィンガー'}], 'answer': '通常刃', 'group': 'B'},
+    {'conditions': [{'field': 'category', 'op': 'eq', 'value': '専用刃'}], 'answer': '専用刃'},
+    {'conditions': [], 'answer': '知らない'}])
+T1 = bs.pick_tables(c, EQ)['category']
+rec('§9.529 カテゴリの表を丸ごと保存できる（既定の行は最後に1つ）',
+    n == 3 and T1['stored'] and [len(r['conditions']) for r in T1['rows']] == [1, 1, 0], str(T1['rows']))
+rec('§9.529 専用刃はセットまで持つ・通常刃はセットを持たない・知らない答えは通常刃',
+    [(r['answer'], r['group']) for r in T1['rows']] == [('専用刃', 'B'), ('通常刃', ''), ('通常刃', '')], str(T1['rows']))
+rec('§9.529 前の表の答え（板押さえ方式）はカテゴリの表で使える／同じ表の答え（刃のカテゴリ）は使えない（落とす）',
+    T1['rows'][1]['conditions'][0]['field'] == 'hold'
+    and not any(c0['field'] == 'category' for r in T1['rows'] for c0 in r['conditions']), str(T1['rows']))
+bs.pick_replace(c, 'u', EQ, 'thickness', [
+    {'conditions': [{'field': 'category', 'op': 'eq', 'value': '専用刃'}], 'answer': '5'},
+    {'conditions': [], 'answer': '10.0'}])
+T2 = bs.pick_tables(c, EQ)['thickness']
+rec('§9.529 刃厚の表はカテゴリの答えも条件に使え、答えは刃厚の数（10.0→10）',
+    [(r['conditions'][0]['field'] if r['conditions'] else '', r['answer']) for r in T2['rows']] == [('category', '5'), ('', '10')],
+    str(T2['rows']))
+rec('§9.529 2つの表は別々に置かれる（カテゴリを保存しても刃厚は消えない）',
+    bs.pick_tables(c, EQ)['category']['stored'] and T2['stored'])
+rec('§9.529 表の名前が違えば断る', _reject(lambda: bs.pick_replace(c, 'u', EQ, 'x', [])))
+rec('§9.529 設備が無ければ断る', _reject(lambda: bs.pick_replace(c, 'u', '', 'category', [])))
+rec('§9.529 未登録に戻すとその表だけ種へ戻る',
+    bs.pick_reset(c, EQ, 'thickness') == 2 and not bs.pick_tables(c, EQ)['thickness']['stored']
+    and bs.pick_tables(c, EQ)['category']['stored'])
+bs.pick_reset(c, EQ, 'category')
+# 旧い「専用刃の決まり」（§9.379〜§9.526: [表]が空・[名称]つき）はカテゴリの表の行として読む。
+bs.BLADEPICK_DEF.insert(c, {'設備名': EQ, '名称': '厚板は専用', '刃の組': 'X', '表示順': 10, '有効': -1,
+                            '条件JSON': '[{"field":"thickness","op":"ge","value":"1.6"}]'}, 'u')
+bs.BLADEPICK_DEF.insert(c, {'設備名': EQ, '名称': '条件なし', '刃の組': 'Y', '表示順': 20, '有効': -1,
+                            '条件JSON': '[]'}, 'u')
+T3 = bs.pick_tables(c, EQ)['category']
+rec('§9.529 旧い決まりはカテゴリの表の行（専用刃・そのセット・名前は備考）として読む',
+    T3['stored'] and [(r['answer'], r['group'], r['note']) for r in T3['rows']] == [('専用刃', 'X', '厚板は専用'), ('通常刃', '', '')],
+    str(T3['rows']))
+rec('§9.529 条件の無い旧い決まりは読まない（1度も当たらなかった行を既定の行と取り違えない）',
+    not any(r['group'] == 'Y' for r in T3['rows']))
+bs.pick_replace(c, 'u', EQ, 'category', T3['rows'])
+rec('§9.529 保存し直すと旧い行は新しい形で書き直される（旧い行は残らない）',
+    all(r['table'] == 'category' and not r['legacy'] for r in bs.pick_rows(c, True, EQ)), str(bs.pick_rows(c, True, EQ)))
+bs.pick_reset(c, EQ, 'category')
+rec('消すと決まりが残らない', bs.pick_rows(c, True, EQ) == [])
 rec('知らない項目・比べ方は1件だけ落とす',
     bs.normalize_pick_conditions([
         {'field': '居ない項目', 'op': 'eq', 'value': '1'},
         {'field': 'thickness', 'op': '知らない', 'value': '1'},
         {'field': 'strips', 'op': 'eq', 'value': '6'}])
     == [{'field': 'strips', 'op': 'eq', 'value': '6'}])
-
-# 上から順に見て**最初に当たった1行**
-bs.pick_upsert(c, 'u', row_id=pid, conditions=[
-    {'field': 'thickness', 'op': 'ge', 'value': '1.0'}], order=1)
-p2, _ = bs.pick_upsert(c, 'u', equipment=EQ, name='あとの行', conditions=[
-    {'field': 'thickness', 'op': 'ge', 'value': '1.0'}], group='Y', order=2)
-rec('先に並ぶ行が勝つ',
-    (bs.pick_group(bs.pick_rows(c, False, EQ), CTX) or {}).get('group') == 'X',
-    str([(r['order'], r['group']) for r in bs.pick_rows(c, False, EQ)]))
-bs.pick_delete(c, pid)
-bs.pick_delete(c, p2)
-rec('消すと決まりが残らない', bs.pick_rows(c, True, EQ) == [])
+rec('§9.529 表ごとに使える項目: 保持方式＝材料だけ／カテゴリ＝＋板押さえ方式・フィンガー材質／刃厚＝＋刃のカテゴリ',
+    [[f['field'] for f in bs.pick_fields_for(o) if f['group'] == 'answer'] for _k, _l, o in bs.PICK_TABLES]
+    == [[], ['hold', 'fingerMaterial'], ['hold', 'fingerMaterial', 'category']])
 
 # ---- 保持方式マスタ（§9.524） ----
 # 登録が無い設備は**今までの決め方の種**（板厚 < 切替板厚 → フィンガー／既定 → ゴムリング）。
@@ -445,10 +457,11 @@ rec('保持方式: 設備が無ければ保存を断る', _reject(lambda: bs.hol
 # 7. 刃セット・フィンガー材質・刃選択の4項目（§9.526、利用者の指示）
 # ---------------------------------------------------------------------------
 c7 = fresh()
-bs.blade_upsert(c7, 'u', equipment=EQ, name='S1', group='S', thickness=10, current_dia=300, status='専用')
-bs.blade_upsert(c7, 'u', equipment=EQ, name='S2', group='S', thickness=15, current_dia=300, status='一般')
-bs.blade_upsert(c7, 'u', equipment=EQ, name='G1', group='G', thickness=10, current_dia=300, status='メンテナンス中')
-bs.blade_upsert(c7, 'u', equipment=EQ, name='N1', group='N', thickness=10, current_dia=300)
+# 旧い刃の行（`状態`つき・§9.379）は表へ直に入れる——保存の口はもう`状態`を書かない（§9.529）。
+bs.ensure_tables(c7)
+for g0, t0, st0 in (('S', 10, '専用'), ('S', 15, '一般'), ('G', 10, 'メンテナンス中'), ('N', 10, None)):
+    bs.BLADE_DEF.insert(c7, {'設備名': EQ, '組': g0, '刃厚': float(t0), '現状径': 300.0, '状態': st0,
+                             '表示順': 10, '有効': -1}, 'u')
 sets = {x['group']: x for x in bs.blade_sets(c7, EQ)}
 rec('刃セット: 刃の組から作る（3組・枚数と刃厚を添える）',
     sorted(sets) == ['G', 'N', 'S'] and sets['S']['blades'] == 2 and sorted(sets['S']['thicknesses']) == [10.0, 15.0],
@@ -466,7 +479,7 @@ rec('刃セット: 同じ組は1行（2度書いても増えない）',
     sum(1 for r in bs.BLADESET_DEF.fetch(c7) if r['組'] == 'N') == 1)
 rec('刃セット: 刃の行もセットのカテゴリ・使用状態を名乗る',
     {(x['name'], x['category'], x['use']) for x in bs.blade_rows(c7, False, EQ) if x['group'] == 'N'}
-    == {('N1', '専用刃', '研磨中')})
+    == {('N 10mm', '専用刃', '研磨中')})
 rec('刃セット: 語彙の外のカテゴリは断る', _reject(lambda: bs.blade_set_update(c7, 'u', EQ, 'N', category='一般')))
 rec('刃セット: 語彙の外の使用状態は断る', _reject(lambda: bs.blade_set_update(c7, 'u', EQ, 'N', use='メンテナンス中')))
 rec('刃セット: 設備が無ければ断る', _reject(lambda: bs.blade_set_update(c7, 'u', '', 'N', use='使用中')))
@@ -495,21 +508,28 @@ rec('フィンガー: 本数だけ直しても材質は変わらない', row['ma
 rec('フィンガー: 材質の語彙はベークライト・アルミニウム（既定が先頭）',
     bs.FINGER_MATERIALS == ('ベークライト', 'アルミニウム') and ctx7['fingerMaterials'] == list(bs.FINGER_MATERIALS))
 
-# 刃選択の条件: 選べるのは4項目。前の項目で書いた決まりも読んで効かせる。
-rec('刃選択: 選べる項目は板押さえ方式・板厚・材質・調質',
-    [f['label'] for f in ctx7['pickFields']] == ['板押さえ方式', '板厚', '材質', '調質'], str(ctx7['pickFields']))
-rec('刃選択: 板押さえ方式は候補から選ぶ（保持方式の顔ぶれ）',
-    ctx7['pickFields'][0].get('kind') == 'choice' and ctx7['pickFields'][0].get('options') == list(bs.HOLD_METHODS))
-rec('刃選択: 前の項目（条数など）の条件も保存で落とさない',
-    bs.normalize_pick_conditions([{'field': 'strips', 'op': 'eq', 'value': '6'},
-                                  {'field': 'hold', 'op': 'eq', 'value': 'フィンガー'},
-                                  {'field': 'temper', 'op': 'eq', 'value': 'H'}])
-    == [{'field': 'strips', 'op': 'eq', 'value': '6'}, {'field': 'hold', 'op': 'eq', 'value': 'フィンガー'},
-        {'field': 'temper', 'op': 'eq', 'value': 'H'}])
-rec('刃選択: 板押さえ方式・調質で当たる（字として比べる）',
-    (bs.pick_group([{'conditions': [{'field': 'hold', 'op': 'eq', 'value': 'フィンガー'},
-                                    {'field': 'temper', 'op': 'eq', 'value': 'H'}], 'group': 'S', 'enabled': True}],
-                   {'hold': 'フィンガー', 'temper': 'H'}) or {}).get('group') == 'S')
+# 刃セットの作る・字を変える・消す（§9.529）
+got = bs.blade_set_create(c7, 'u', EQ, 'k', category='専用刃', use='使用中',
+                          blades=[{'thickness': 10, 'currentDia': 318, 'qty': 5}, {'thickness': 5, 'qty': 3}])
+rec('§9.529 セットを刃厚の行ごと作れる（小文字は A〜Z へ・カテゴリも書く）',
+    got['category'] == '専用刃' and sorted(x['thickness'] for x in bs.blade_rows(c7, True, EQ) if x['group'] == 'K') == [5.0, 10.0])
+rec('§9.529 あるセットの字では作れない・刃厚の無いセットは作れない・同じ刃厚が2つは断る',
+    _reject(lambda: bs.blade_set_create(c7, 'u', EQ, 'K', blades=[{'thickness': 3}]))
+    and _reject(lambda: bs.blade_set_create(c7, 'u', EQ, 'L', blades=[]))
+    and _reject(lambda: bs.blade_set_create(c7, 'u', EQ, 'L', blades=[{'thickness': 3}, {'thickness': 3.0}])))
+bs.pick_replace(c7, 'u', EQ, 'category', [{'conditions': [{'field': 'thickness', 'op': 'ge', 'value': '2'}],
+                                           'answer': '専用刃', 'group': 'K'}])
+n = bs.blade_set_rename(c7, 'u', EQ, 'K', 'm')
+rec('§9.529 セットの字を変えると刃の行・セットの行・刃選択の名指しが同じ字へ',
+    n == 2 and not [x for x in bs.blade_rows(c7, True, EQ) if x['group'] == 'K']
+    and bs.blade_set_of(c7, EQ, 'M')['category'] == '専用刃'
+    and bs.pick_tables(c7, EQ)['category']['rows'][0]['group'] == 'M')
+rec('§9.529 あるセットの字へは変えられない', _reject(lambda: bs.blade_set_rename(c7, 'u', EQ, 'M', 'N')))
+rec('§9.529 刃選択が名指ししているセットは消さない（理由を言う）', _reject(lambda: bs.blade_set_delete(c7, EQ, 'M')))
+bs.pick_reset(c7, EQ, 'category')
+rec('§9.529 セットを消すと刃の行もセットの行も消える',
+    bs.blade_set_delete(c7, EQ, 'M') == 2 and not [x for x in bs.blade_rows(c7, True, EQ) if x['group'] == 'M']
+    and bs.blade_set_of(c7, EQ, 'M')['stored'] is False)
 
 # ---------------------------------------------------------------------------
 # 8. ゴムリングの色（§9.528、利用者の指示「色ごとに外径内径は共通に」「登録した色と被らないように」）
@@ -529,6 +549,19 @@ rec('被り: 標準の10色どうしは注意にならない（最小の色差�
     all(not bs.ring_color_conflicts(c8, EQ, 'x' + n, h, 400, current=n)['near'] for n, h in bs.RING_COLOR_CYCLE))
 rec('被り: 潤滑リングはゴムリングと外径が同じでも断らない（外径で引かない）',
     not [x for x in bs.ring_color_conflicts(c8, EQ, '潤滑2', '', 322, lube=True)['hard'] if x['why'] == 'od'])
+# §9.529 ①（利用者の指摘「色の被り判定の中に潤滑リングが入っていません」）——潤滑リングは色コードが空でも
+# 画面では紫（`RING_LUBE_HEX`）で見えているので、その色で比べる。
+rec('§9.529 被り: 潤滑リングの見えている色（紫）と同じ色のゴムリングは断る',
+    [x['color'] for x in bs.ring_color_conflicts(c8, EQ, '回帰_紫', bs.RING_LUBE_HEX, 299)['hard'] if x['why'] == 'hex'] == ['潤滑'])
+rec('§9.529 被り: 潤滑リングに近い色は注意に出る（色差 < 20）',
+    [x['color'] for x in bs.ring_color_conflicts(c8, EQ, '回帰_紫', '#7552c8', 299)['near']] == ['潤滑'])
+rec('§9.529 被り: 新しい潤滑リング（色コード空）は既にある潤滑リングと同じ色として断る',
+    any(x['why'] == 'hex' for x in bs.ring_color_conflicts(c8, EQ, '潤滑2', '', 268, lube=True)['hard']))
+rec('§9.529 色ごとの一覧は見えている色（tone）を返す（潤滑リングは紫）',
+    [g['tone'] for g in bs.ring_colors(c8, EQ) if g['lube']] == [bs.RING_LUBE_HEX])
+css = (ROOT / 'static/css/00-base.css').read_text(encoding='utf-8')
+rec('§9.529 RING_LUBE_HEX は画面の --look-violet と同じ値（被り判定と見えている色を食い違わせない）',
+    re.search(r'--look-violet:\s*(#[0-9a-fA-F]{6})', css).group(1).lower() == bs.RING_LUBE_HEX)
 rec('被り: 自分自身（直している色）とは比べない', not bs.ring_color_conflicts(c8, EQ, '赤', '#d93a34', 322, current='赤')['hard'])
 rec('被り: 1行ずつの保存（今までの窓）も同じ判定で断る',
     _reject(lambda: bs.ring_upsert(c8, 'u', equipment=EQ, color='新色', hex_code='#010203', od=321, bore=241, width=50)))
@@ -562,7 +595,7 @@ rec('候補: 名前・色・外径のどれも使っていない最初の標準�
 
 # ---- 自己確認: 網が素通りしていない ----
 rec('自己確認: 断る網は、断らない呼び出しでは真にならない',
-    not _reject(lambda: bs.blade_upsert(c, 'u', equipment=EQ, name='自己確認')))
+    not _reject(lambda: bs.blade_upsert(c, 'u', equipment=EQ, group='Q', thickness=7)))
 
 ng = [n for n, ok in R if not ok]
 print(f'\n== {len(R) - len(ng)}/{len(R)} PASS ==')

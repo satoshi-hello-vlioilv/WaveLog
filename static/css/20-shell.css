@@ -1184,6 +1184,8 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
  .fx-sg-item code{font-size:var(--fs-micro);color:var(--muted)}
  .fx-sg-item small{grid-column:1 / -1;font-size:var(--fs-micro);color:var(--muted)}
  .fx-sg-item:hover{background:var(--pale)}
+ /* 候補の見出しの行（選べない・§9.529 判定表のセル）。 */
+ .fx-sg-head{padding:4px var(--space-2) 2px;font-size:var(--fs-micro);font-weight:700;color:var(--muted)}
  /* 選んでいる候補・いまの列の値・開いている「式にする」の見た目は`90-state.css`の束ね規則（§9.353）。 */
  /* 右ペインは中身が増えても縦に流れるだけにする(パネルごと伸ばさない)。 */
  .lc-detail{overflow:auto;min-height:0}

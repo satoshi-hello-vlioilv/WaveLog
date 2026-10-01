@@ -314,45 +314,16 @@
          {k:'fingerMax',label:'フィンガー切替',grow:1},{k:'clearance',label:'クリアランス',grow:1},
          {k:'overlap',label:'ラップ',grow:1},{k:'minDia',label:'刃 限界径',grow:1}],
    hint:'刃組ガイダンスが使う、**このラインの諸元と判定の帯**です。**1設備に1行**で、登録が無い設備では既定値（このアプリが持っている標準値）がそのまま効きます——つまり**登録しなくても刃組ガイダンスは開けます**。ここへ登録するのは、標準値と違うところだけで構いません（空欄で保存した項目は既定値のまま扱います）。行を消すと既定値へ戻るだけで、画面が開けなくなることはありません。'},
+  /* ---------- 刃（§9.529、利用者の指示） ----------
+     「①名称をキーには使わない ②設備、刃の厚さ、セット名(アルファベットから選択)というキーは3つで管理
+      ③カテゴリや使用状態がマスタのモーダルから取り扱いできないので使いやすく再構築」
+     利用者の選択: ゴムリングと同じ「一覧＋詳細の2ペイン」。**専用の盤**（`special:'blade-board'`／
+     `bladeset/blade-board.js`）。前の「刃セット」タブ（§9.526）はこの1枚へ統合した。
+     `endpoint`は刃厚の行の登録・直す・削除に使う（4本のCRUDは`test_crudroutes`が見張る）。 */
   {group:'bladeset',key:'bladesetBlade',label:'刃',icon:'刃',
-   endpoint:'/api/bladeset-blade-master',hasDelete:true,groupBy:'equipment',
-   titleText:'刃 — ナイフの径・刃厚・枚数と、研磨の記録',
-   fields:[{k:'equipment',label:'設備',type:'equipment-select',required:true,key:true,fieldGroup:'① どの設備の刃か',
-            hint:'**刃は設備ごとに実物が違います。**「すべての設備」では登録できません。'},
-           {k:'name',label:'名称',required:true,key:true,fieldGroup:'① どの設備の刃か',
-            hint:'現場での呼び名です（例: 10mm A）。'},
-           {k:'group',label:'組',fieldGroup:'① どの設備の刃か',
-            hint:'1つのセットは**刃厚ちがいの刃をまとめて**持ちます。同じ記号を書いた刃が1組です（例: A）。研磨の記録は刃ごとに持ちます。**カテゴリ（通常刃／専用刃）と使用状態（使用中／研磨中）はセットごと**に「刃セット」で切り替えます。'},
-           {k:'thickness',label:'刃厚',type:'number',step:0.5,min:0,unit:'mm',required:true,key:true,fieldGroup:'② 寸法',
-            hint:'**同じ径でも刃厚が違えば別物**です（所要も別に数えます）。'},
-           {k:'currentDia',label:'現状径',type:'number',step:0.1,min:0,unit:'mm',fieldGroup:'② 寸法',
-            hint:'研磨で減っていく今の径です。再研磨のたびに更新してください。'},
-           {k:'qty',label:'保有枚数',type:'number',step:1,min:0,unit:'枚',fieldGroup:'③ 在庫',},
-           {k:'minQty',label:'下限枚数',type:'number',step:1,min:0,unit:'枚',fieldGroup:'③ 在庫',
-            hint:'これを下回ると刃組ガイダンスの「要確認」に出ます。'},
-           {k:'lastGrind',label:'研磨日',type:'date',fieldGroup:'④ 研磨'},
-           {k:'grindCount',label:'研磨回数',type:'number',step:1,min:0,unit:'回',fieldGroup:'④ 研磨'},
-           /* 【§9.526で外した】「状態」——カテゴリ（通常刃／専用刃）と使用状態（使用中／研磨中）は
-              **セット（組）ごと**に「刃セット」で切り替える（利用者の指示・選択「セットごと」）。 */
-           {k:'note',label:'備考',size:'lg',fieldGroup:'⑤ 管理'},
-           {k:'order',label:'表示順',type:'number',min:0,step:10,fieldGroup:'⑤ 管理',
-            hint:'小さいほど先に出ます。空欄で保存すると今の並びのままです。'},
-           {k:'enabledText',label:'有効',type:'select',options:['有効','無効'],fieldGroup:'⑤ 管理',
-            hint:'「無効」にすると刃組ガイダンスの候補から外れます。**行は消えません。**'}],
-   cols:[{k:'name',label:'名称',grow:2},{k:'group',label:'組',grow:1},
-         {k:'thickness',label:'刃厚',grow:1},{k:'currentDia',label:'現状径',grow:1},
-         {k:'qty',label:'保有枚数',grow:1},{k:'lastGrind',label:'研磨日',grow:1},
-         {k:'category',label:'カテゴリ',grow:1},{k:'use',label:'使用状態',grow:1}],
-   hint:'刃（ナイフ）の諸元です。刃組ガイダンスの「刃セットから呼出」で、ここに登録した径と刃厚をそのまま読み込めます。**1本を見分けるのは「設備＋名称＋刃厚」**——同じ径でも刃厚が違えば別物として数えます。研磨で径が変わったら**現状径・研磨日・回数**を更新してください（使用限界径を下回ると刃組ガイダンスの「要確認」に出ます。限界径は「刃組基準値」で決めます）。'},
-  /* ---------- 刃セット（§9.526、利用者の指示） ----------
-     「刃のセットの使用状態を切り替えられるようにしてください。使用中、研磨中」
-     「カテゴリを追加して通常刃、専用刃の選択も追加してください」（選択: セット（組）ごと）。
-     **専用の盤**（`special:'blade-sets'`／`bladeset/blade-sets.js`）。セットは刃の「組」から作り、
-     札を押すとその場で切り替わる（保存ボタンを持たない）。 */
-  {group:'bladeset',key:'bladesetSets',label:'刃セット',icon:'組',
-   special:'blade-sets',endpoint:'/api/bladeset/blade-sets',groupBy:'equipment',
-   titleText:'刃セット — 組ごとのカテゴリと使用状態',
-   hint:'刃の「組」ごとに、**カテゴリ**（通常刃＝ふつうはこれ／専用刃＝「刃選択」の決まりに当たったときだけ）と**使用状態**（使用中＝選べる／研磨中＝刃組ガイダンスで選ばれない）を切り替えます。札を押すとすぐ保存されます。'},
+   special:'blade-board',endpoint:'/api/bladeset-blade-master',groupBy:'equipment',
+   titleText:'刃 — セット（A〜Z）ごとのカテゴリ・使用状態と、刃厚ごとの径・枚数',
+   hint:'左でセットを選ぶと、右に**カテゴリ**（通常刃／専用刃）・**使用状態**（使用中／研磨中）と**刃厚ごとの径・枚数・研磨の記録**が出ます。1種類の刃は**設備＋セット＋刃厚**で決まります（同じ3つの2行目は登録できません）。'},
   {group:'bladeset',key:'bladesetSpacer',label:'スペーサー',icon:'ス',
    endpoint:'/api/bladeset-spacer-master',hasDelete:true,groupBy:'equipment',
    titleText:'スペーサー（ライナー） — 軸方向の寸法を作る部材',
@@ -401,21 +372,14 @@
    cols:[{k:'material',label:'材質',grow:2},{k:'width',label:'幅',grow:1},
          {k:'qty',label:'保有本数',grow:1},{k:'minQty',label:'下限本数',grow:1}],
    hint:'板押さえ（フィンガー）の在庫です。**フィンガーで保持するかどうかは「保持方式」の表**が決めます（板厚・条数・仕掛の列などの条件）。フィンガーのときは軸をスペーサーだけで構成し（ゴムリングは使いません）、必要な本数をここの在庫と突き合わせます。'},
-  /* ---------- 刃選択（§9.379／§9.380、利用者の指示） ----------
-     「刃マスタの状態は『一般』『メンテナンス中』『専用』の3パターンを準備し、
-       基本的に『一般』のものが選択される。『専用』のものが選択される条件を、
-       設備単位で『刃選択マスタ』を準備し、条件テーブルで組んで設定できるように」
-     「条件テーブルをGUIで組む盤を実装してほしいです。条件は視覚的に直感的に
-       扱えるようにしてください」
-
-     **専用の盤**（`special:'blade-pick'`／`bladeset/blade-pick.js`）。
-     条件は行ごとに数が変わるので汎用のフォームでは組めない——項目・比べ方・値を
-     その場で選び、試し欄に値を入れるとどれが当たるかが出る形にした。
-     並びは**上から順に見て最初に当たった1つ**が効くので、順番そのものが設定。 */
+  /* ---------- 刃選択（§9.379／§9.380 → §9.529、利用者の指示） ----------
+     「刃厚を選ぶテーブルと通常刃か専用刃を選ぶテーブルの2つを準備し…条件テーブルは『保持方式』の
+      選択マスタみたいな条件テーブルの作りが好ましい」。**専用の盤**（`special:'blade-pick'`／
+     `bladeset/blade-pick.js`）。2つの判定表（刃のカテゴリ・刃厚）は保持方式と同じ部品（`rule-table.js`）。 */
   {group:'bladeset',key:'bladesetPick',label:'刃選択',icon:'選',
    special:'blade-pick',endpoint:'/api/bladeset/blade-pick',groupBy:'equipment',
-   titleText:'刃選択 — 「専用」の刃を使う条件',
-   hint:'ふつうは状態が**「一般」**の刃が選ばれます。そこから外れる作業だけをここに書いてください。1行が1つの決まりで、**同じ行の条件はすべて満たしたときだけ**当たり、**上から順に見て最初に当たった1つ**が効きます。「または」は行を分けて書きます。**条件が1つも無い行は当たりません**（「いつでも当たる行」を作れないようにしてあります）。'},
+   titleText:'刃選択 — 刃のカテゴリと刃厚を決める2つの判定表',
+   hint:'刃組ガイダンスが使う刃を、**② 刃のカテゴリ**（通常刃／専用刃とそのセット）→ **③ 刃厚**の2つの判定表で決めます（① 保持方式の答えも条件に使えます）。'},
   /* ---------- 保持方式（§9.524、利用者の指示） ----------
      「フィンガーとゴムリングを選ぶ条件を今は板厚だけで…条件が複雑になるので、
        取得済みデータを列に持つ条件テーブルを組めるようにマスタを追加してください。」
@@ -423,7 +387,7 @@
      右端＝保持方式の判定表。上から順に見て最初に当たった行、最後の行が既定。 */
   {group:'bladeset',key:'bladesetHold',label:'保持方式',icon:'保',
    special:'hold-pick',endpoint:'/api/bladeset/hold-pick',groupBy:'equipment',
-   titleText:'保持方式 — フィンガーとゴムリングを選ぶ条件表',
+   titleText:'保持方式 — フィンガーとゴムリングを選ぶ判定表',
    hint:'板を保持する方式（**フィンガー**／**ゴムリング**）を、板厚・条数・仕掛の列などの条件で決める表です。**上から順に見て最初に当たった行**の方式を使い、どれにも当たらなければ**最後の既定の行**で決めます。登録が無い設備は、刃組基準値の「フィンガー切替 板厚」から作った表で決めます（今までと同じ動き）。'},
   /* ---------- 帳票レイアウト（§9.254 ③、利用者の指示） ----------
      「帳票の表示画面からいける、レイアウト調整画面ですが、これは実質、
@@ -936,7 +900,7 @@
      支える束なので、群として分けたほうが「その画面で何をするか」で読める
      （§9.264）。並びは決める順＝軸に載る順（§CLAUDE 14）。 */
   {key:'bladeset',label:'刃組',hint:'刃組ガイダンスが使う部材と、このラインの諸元',
-   items:['bladesetStandard','bladesetBlade','bladesetSpacer','bladesetRing','bladesetFinger']},
+   items:['bladesetStandard','bladesetBlade','bladesetSpacer','bladesetRing','bladesetFinger','bladesetHold','bladesetPick']},
   {key:'schedule',label:'作業スケジュール',hint:'計画の時間計算に使う設定',
    items:['shiftMaster','loadFactor','stopReason','stopMinutes']},
   {key:'data',label:'データと接続',hint:'どこから読み、どこへ置くか',

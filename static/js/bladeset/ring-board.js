@@ -1,107 +1,112 @@
 /* ============================================================
-   ring-board.js: ゴムリングマスタの盤（§9.528、利用者の指示）
+   ring-board.js: ゴムリングマスタの盤（§9.528 → §9.529 で2ペインへ）
 
    「ゴムリングの管理は、色ごとに外径内径は共通にして、幅毎に本数を管理できるように…
      色はコードではわかりにくいのでカラーピッカーなど直感的に色が判断できるもの、
      今まで登録した色と被らないようにしたいのでそれらの登録状況がわかるもの、
-     色ごとにゴムリングをまとめて表示できるようにしてください。」
-   利用者の選択: 上の帯＝登録済みの色（見本つき）＋選んだ色のカード／同じは断る・近いは注意。
+     色ごとにゴムリングをまとめて表示できるようにしてください。」（§9.528）
+   「①色の被り判定の中に潤滑リングが入っていません。②新規の色を追加する際に色名を付けられません。
+     ③マスタが使いにくい。」（§9.529・②の状況は「色名の欄が見つからない」）
+   利用者の選択（§9.529）: 刃と同じ形——「一覧＋詳細の2ペイン」（`board-kit.js`）。
 
-   ・帯（`#masterMaintForm`）: 登録済みの色を**外径の順に全部**並べる。見本・色名・外径。
-     押すとその色のカード。「＋ 色を足す」は空いている標準の色を最初から入れて開く。
-   ・カード（`#masterMaintList`）: 色（ピッカー）・色名・外径・内径は**1回だけ**（その色の
-     幅ぜんぶに効く）。幅ごとの本数は表の中でその場で直す（欄を離れると保存）。
-   ・被り: 色・色名・外径を触るたびにサーバーへ聞く（`ring_color_conflicts()`の1箇所）。
-     断る被りは保存を止めて理由を字で、近い色は注意として帯の見本にも印を付ける。
+   ・左＝登録済みの色を**外径の順に全部**（見本・色名・外径／内径・幅と本数）。押すとその色。
+     「＋ 色を足す」は空いている標準の色（無ければ登録済みの色からいちばん離れた色）で開く。
+   ・右＝選んだ色: **色名がいちばん上**（新しい色では焦点もここ）→ 色（ピッカー）・外径・内径は
+     **1回だけ**（その色の幅ぜんぶに効く）→ 幅ごとの本数は表の中で直す（欄を離れると保存）。
+   ・被り: 色・色名・外径を触るたびにサーバーへ聞く（`ring_color_conflicts()`の1箇所・潤滑リングも
+     見えている紫で比べる）。断る被りは保存を止めて理由を字で、近い色は注意として一覧の見本にも印。
    ============================================================ */
 (function(){
- const {requireMaintUser,setMaintLoading}=WL.mm;
+ const K=()=>WL.bsKit;
  const NEW='__new';
  const WIDTH_SEED=[50,30,20,15,10];
  const rs={equipment:'',colors:[],cycle:[],suggest:null,nearDe:20,sel:'',draft:null,
-           check:{hard:[],near:[],text:''},busy:false};
+           check:{hard:[],near:[],text:''},busy:false,loaded:false};
  let checkTimer=0,checkSeq=0;
 
  const colorOf=name=>rs.colors.find(g=>g.color===name)||null;
  const num=v=>(String(v??'').trim()===''?null:Number(v));
  const fmt=v=>(v==null||v===''?'—':String(+(+v).toFixed(2)));
  const swatch=(hex,lube)=>`<i class="rb-sw${lube?' is-lube':''}"${hex?` style="--sw:${esc(hex)}"`:''} aria-hidden="true"></i>`;
- const post=(path,body)=>api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const post=(path,body)=>K().post(path,body);
 
  /* ---------- 下書き（カードの中身） ---------- */
  function draftOf(g){
-  if(g)return {current:g.color,color:g.color,hex:g.hex||'',od:g.od,bore:g.bore,lube:!!g.lube};
+  if(g)return {current:g.color,color:g.color,hex:g.hex||g.tone||'',od:g.od,bore:g.bore,lube:!!g.lube};
   const s=rs.suggest||{};
   const ws=[...new Set(rs.colors.filter(x=>!x.lube).flatMap(x=>x.widths.map(w=>w.width)))].sort((a,b)=>b-a);
-  return {current:'',color:s.color||'',hex:s.hex||'#8a3ad9',od:s.od??'',bore:s.bore??'',lube:false,
+  /* 色は**サーバーの候補**（空いている標準の色、無ければ登録済みの色からいちばん離れた色・§9.529）。 */
+  return {current:'',color:s.color||'',hex:s.hex||'#808080',od:s.od??'',bore:s.bore??'',lube:false,
           widths:(ws.length?ws:WIDTH_SEED).map(w=>({width:w,qty:'',minQty:''}))};
  }
  const isDirty=()=>{const d=rs.draft,g=colorOf(d&&d.current);
   return !!d&&(!g||d.color!==g.color||(d.hex||'')!==(g.hex||'')||num(d.od)!==g.od||num(d.bore)!==g.bore)};
 
- /* ---------- 帯（登録済みの色） ---------- */
+ /* ---------- 頭と一覧（登録済みの色） ---------- */
  function renderForm(){
-  const form=document.getElementById('masterMaintForm');if(!form)return;
-  const eqs=(WL.records&&WL.records.equipmentMasterState&&WL.records.equipmentMasterState.items)||[];
-  const opt=eqs.map(e=>`<option value="${esc(e.name)}"${e.name===rs.equipment?' selected':''}>${esc(e.name)}</option>`).join('');
   const rubber=rs.colors.filter(g=>!g.lube).length,lube=rs.colors.length-rubber;
-  form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip new">ゴムリング</span></div>
-   <div class="mm-cd-toolbar"><div class="mm-cd-dbtabs"><select id="rbEq">${opt||'<option value="">設備マスタが未登録です</option>'}</select>
-    <span class="rb-count">登録済みの色 <b>${rubber}色</b>${lube?`＋潤滑リング ${lube}`:''}（外径の大きい順）</span></div>
-    <div class="mm-cd-actions"><button type="button" class="mm-btn-primary sm" id="rbAdd"${rs.equipment?'':' disabled'}>＋ 色を足す</button></div></div>
-   <div class="rb-strip" role="list">${rs.colors.map(chipHtml).join('')||'<span class="rb-none">まだ1色もありません。「＋ 色を足す」から登録してください。</span>'}</div>`;
-  form.onsubmit=ev=>ev.preventDefault();
-  const sel=form.querySelector('#rbEq');
-  if(sel)sel.onchange=async()=>{if(!await leaveOk())return void(sel.value=rs.equipment);rs.equipment=sel.value;rs.sel='';load(true)};
-  form.querySelector('#rbAdd').onclick=async()=>{if(await leaveOk())select(NEW)};
-  form.querySelectorAll('.rb-chip').forEach(b=>{b.onclick=async()=>{if(await leaveOk())select(b.dataset.color)}});
-  paintMarks();
+  K().renderHead(rs,{id:'rbEq',
+   state:rs.loaded?`登録済みの色 <b>${rubber}色</b>${lube?`＋潤滑リング ${lube}`:''}`:'',
+   hint:'1本は<b>色×幅</b>。<b>外径・内径は色ごとに1つ</b>（その色の幅すべてに効く）、本数は幅ごとに表の中で直します（欄を離れるとすぐ保存）。<b>同じ色名・同じ色・同じ外径</b>はほかの色（潤滑リングを含む）と被らせません。',
+   leaveOk,onEquipment:()=>{rs.sel='';load(true)}});
  }
- function chipHtml(g){
-  return `<button type="button" role="listitem" class="rb-chip${g.color===rs.sel?' is-on':''}" data-color="${esc(g.color)}"`
-   +` title="${esc(`${g.color}　外径 ${fmt(g.od)}／内径 ${fmt(g.bore)}　幅 ${g.widths.length}種・${g.total}本`)}">`
-   +`${swatch(g.hex,g.lube)}<b>${esc(g.color)}</b><small>${g.lube?'潤滑 ':''}${fmt(g.od)}</small></button>`;
+ const swOf=g=>swatch(g.tone||g.hex,g.lube);
+ function itemOf(g){
+  return {key:g.color,on:g.color===rs.sel,mark:swOf(g),title:g.color,
+   sub:`外径 ${fmt(g.od)}・${g.total}本`,title2:`${g.color}　外径 ${fmt(g.od)}／内径 ${fmt(g.bore)}　幅 ${g.widths.length}種・${g.total}本`,
+   tags:g.lube?[{text:'潤滑',tone:'violet'}]:[]};
  }
- /* 被りの印は帯の見本へ（断る＝赤の枠・近い＝橙の枠）。字は title とカードの中が持つ。 */
+ /* 被りの印は一覧の見本へ（断る＝赤の枠・近い＝橙の枠）。字は title と詳細の中が持つ。 */
  function paintMarks(){
   const hard=new Set(rs.check.hard.map(x=>x.color)),near=new Set(rs.check.near.map(x=>x.color));
-  document.querySelectorAll('#masterMaintForm .rb-chip').forEach(b=>{
-   b.classList.toggle('is-hard',hard.has(b.dataset.color));
-   b.classList.toggle('is-near',!hard.has(b.dataset.color)&&near.has(b.dataset.color));
+  document.querySelectorAll('#masterMaintList .bk-item[data-bk-key]').forEach(b=>{
+   const k=b.dataset.bkKey;
+   b.classList.toggle('is-hard',hard.has(k));
+   b.classList.toggle('is-near',!hard.has(k)&&near.has(k));
   });
  }
 
  /* ---------- カード（選んだ色） ---------- */
  function select(name){
   rs.sel=name;rs.draft=draftOf(name===NEW?null:colorOf(name));rs.check={hard:[],near:[],text:''};
-  renderForm();renderCard();runCheck();
+  renderCard();runCheck();
+  /* 新しい色は**色名の欄に焦点**（§9.529 ②「色名の欄が見つからない」——名前を付けるところから始める）。 */
+  if(name===NEW){const el=document.querySelector('#masterMaintList [data-k="color"]');if(el){el.focus();el.select()}}
  }
  function renderCard(){
-  const box=document.getElementById('masterMaintList');if(!box)return;
+  renderForm();
+  const box=document.getElementById('masterMaintList');if(!box||!rs.loaded)return;
+  const items=rs.colors.map(itemOf);
+  if(rs.sel===NEW)items.push({key:NEW,on:true,mark:swatch(rs.draft.hex,rs.draft.lube),title:rs.draft.color||'新しい色',sub:'まだ登録していません'});
+  box.innerHTML=K().pane({label:'ゴムリングの色',items,empty:'まだ1色もありません。下の「＋ 色を足す」から登録してください。',
+   add:'＋ 色を足す',detail:cardHtml()});
+  K().wirePane(box,{onPick:async k=>{if(k!==rs.sel&&await leaveOk())select(k)},onAdd:async()=>{if(await leaveOk())select(NEW)}});
+  wireCard(box);paintCheck();paintMarks();
+ }
+ function cardHtml(){
   const d=rs.draft;
-  if(!d){box.innerHTML=`<div class="mm-empty">${rs.colors.length?'上の帯から色を選ぶと、その色の幅と本数が出ます。':'「＋ 色を足す」から最初の色を登録してください。'}</div>`;return}
+  if(!d)return `<div class="mm-empty">${rs.colors.length?'左の一覧から色を選ぶと、その色の幅と本数が出ます。':'「＋ 色を足す」から最初の色を登録してください。'}</div>`;
   const g=colorOf(d.current),isNew=!g;
-  box.innerHTML=`<section class="rb-card${d.lube?' is-lube':''}">
-   <header class="rb-head">${swatch(d.hex,d.lube)}<h3>${isNew?'新しい色':esc(g.color)}</h3>
-    <span class="rb-sub">${isNew?'色・外径・内径を決めて、幅ごとの本数を入れます':`外径・内径は幅 ${g.widths.length}種 すべてで共通`}</span></header>
-   <div class="rb-attrs">${attrsHtml(d,isNew)}</div>
+  return `<article class="bk-card rb-card${d.lube?' is-lube':''}">
+   <header class="bk-card-h">${swatch(d.hex,d.lube)}<div class="bk-card-t">
+    <label class="rb-name"><s>色名${isNew?'（必須）':''}</s><input type="text" data-k="color" value="${esc(d.color)}" placeholder="例: 紫" autocomplete="off"></label>
+    <small>${isNew?'名前・色・外径を決めて、幅ごとの本数を入れます':`外径・内径は幅 ${g.widths.length}種 すべてで共通`}</small></div></header>
+   <div class="bk-fields">${attrsHtml(d,isNew)}</div>
    <div class="rb-check" aria-live="polite"></div>
    ${isNew?newWidthsHtml(d):widthTableHtml(g)}
-   <footer class="rb-foot">${isNew
+   <footer class="bk-card-f">${isNew
     ?'<button type="button" class="mm-btn-primary sm" data-act="create">この色を登録する</button><button type="button" class="mm-btn-ghost sm" data-act="cancel">やめる</button>'
-    :`<button type="button" class="mm-btn-primary sm" data-act="save" disabled>色・外径・内径を保存（${g.widths.length}行）</button>`
-     +`<span class="rb-gap"></span><button type="button" class="mm-btn-ghost sm rb-danger" data-act="delcolor">この色を消す（${g.widths.length}行）</button>`}</footer>
-  </section>`;
-  wireCard(box);paintCheck();
+    :`<button type="button" class="mm-btn-primary sm" data-act="save" disabled>色名・色・外径・内径を保存（${g.widths.length}行）</button>`
+     +`<span class="bk-gap"></span><button type="button" class="mm-btn-ghost sm bk-danger" data-act="delcolor">この色を消す（${g.widths.length}行）</button>`}</footer>
+  </article>`;
  }
  function attrsHtml(d,isNew){
-  const kind=isNew?`<label class="rb-f"><s>種類</s><select data-k="lube"><option value="">ゴムリング</option><option value="1"${d.lube?' selected':''}>潤滑リング</option></select></label>`:'';
+  const kind=isNew?`<label class="bk-field"><s>種類</s><select data-k="lube"><option value="">ゴムリング</option><option value="1"${d.lube?' selected':''}>潤滑リング</option></select></label>`:'';
   const th=num(d.od)!=null&&num(d.bore)!=null?((num(d.od)-num(d.bore))/2).toFixed(2):'—';
-  return `${kind}<label class="rb-f rb-pick"><s>色</s><input type="color" data-k="hex" value="${esc(d.hex||'#8a3ad9')}"><code>${esc(d.hex||'（未設定）')}</code></label>
-   <label class="rb-f"><s>色名</s><input type="text" data-k="color" value="${esc(d.color)}" placeholder="例: 赤" autocomplete="off"></label>
-   <label class="rb-f"><s>外径</s><input type="number" data-k="od" step="0.1" min="0" value="${esc(d.od??'')}"><u>mm</u></label>
-   <label class="rb-f"><s>内径</s><input type="number" data-k="bore" step="1" min="0" value="${esc(d.bore??'')}"><u>mm</u></label>
-   <span class="rb-f rb-ro"><s>肉厚</s><b data-k="th">${th}</b><u>mm</u></span>${isNew?unusedHtml():''}`;
+  return `${kind}<label class="bk-field rb-pick"><s>色</s><span><input type="color" data-k="hex" value="${esc(d.hex||'#808080')}"><code>${esc(d.hex||'（未設定）')}</code></span></label>
+   <label class="bk-field"><s>外径</s><span><input type="number" data-k="od" step="0.1" min="0" value="${esc(d.od??'')}"><u>mm</u></span></label>
+   <label class="bk-field"><s>内径</s><span><input type="number" data-k="bore" step="1" min="0" value="${esc(d.bore??'')}"><u>mm</u></span></label>
+   <span class="bk-field is-ro"><s>肉厚（計算）</s><span><b data-k="th">${th}</b><u>mm</u></span></span>${isNew?unusedHtml():''}`;
  }
  /* まだ使っていない標準の色（外径1mmごとの周期）。押すと色・色名・外径が入る。 */
  function unusedHtml(){
@@ -111,22 +116,22 @@
  }
  function widthTableHtml(g){
   const rows=g.widths.map(w=>`<tr data-id="${w.id}"><th>${fmt(w.width)}<u>mm</u></th>
-   <td><input type="number" class="rb-q" data-f="qty" min="0" step="1" value="${esc(w.qty??'')}" aria-label="幅${fmt(w.width)}の保有本数"></td>
-   <td><input type="number" class="rb-q" data-f="minQty" min="0" step="1" value="${esc(w.minQty??'')}" aria-label="幅${fmt(w.width)}の下限本数"></td>
-   <td class="rb-st">${w.minQty&&w.qty<w.minQty?'<b class="rb-low">下限を下回っています</b>':''}</td>
-   <td><button type="button" class="rb-x" data-act="delwidth" data-id="${w.id}" title="この幅を消す" aria-label="幅${fmt(w.width)}を消す">×</button></td></tr>`).join('');
-  return `<table class="rb-table"><thead><tr><th>幅</th><th>保有本数</th><th>下限本数</th><th></th><th></th></tr></thead>
+   <td><input type="number" class="rb-q" data-f="qty" min="0" step="1" value="${esc(w.qty??'')}" aria-label="幅${fmt(w.width)}の保有本数"><u>本</u></td>
+   <td><input type="number" class="rb-q" data-f="minQty" min="0" step="1" value="${esc(w.minQty??'')}" aria-label="幅${fmt(w.width)}の下限本数"><u>本</u></td>
+   <td class="bk-st">${w.minQty&&w.qty<w.minQty?'<b class="bk-low">下限を下回っています</b>':''}</td>
+   <td><button type="button" class="bk-x" data-act="delwidth" data-id="${w.id}" title="この幅を消す" aria-label="幅${fmt(w.width)}を消す">×</button></td></tr>`).join('');
+  return `<table class="bk-table"><thead><tr><th>幅</th><th>保有本数</th><th>下限本数</th><th></th><th></th></tr></thead>
    <tbody>${rows}</tbody><tfoot><tr><th><input type="number" id="rbNewW" min="0" step="1" placeholder="幅"></th>
    <td><input type="number" id="rbNewQ" min="0" step="1" placeholder="本数"></td><td></td>
    <td><button type="button" class="mm-btn-ghost sm" data-act="addwidth">＋ 幅を足す</button></td><td></td></tr>
-   <tr class="rb-sum"><th>合計</th><td><b>${g.total}本</b></td><td colspan="3"></td></tr></tfoot></table>`;
+   <tr class="bk-sum"><th>合計</th><td><b>${g.total}本</b></td><td colspan="3"></td></tr></tfoot></table>`;
  }
  function newWidthsHtml(d){
-  return `<table class="rb-table"><thead><tr><th>幅</th><th>保有本数</th><th>下限本数</th><th></th></tr></thead><tbody>${
+  return `<table class="bk-table"><thead><tr><th>幅</th><th>保有本数</th><th>下限本数</th><th></th></tr></thead><tbody>${
    d.widths.map((w,i)=>`<tr><th><input type="number" data-nw="${i}" data-f="width" min="0" step="1" value="${esc(w.width)}"><u>mm</u></th>
     <td><input type="number" data-nw="${i}" data-f="qty" min="0" step="1" value="${esc(w.qty)}" placeholder="0"></td>
     <td><input type="number" data-nw="${i}" data-f="minQty" min="0" step="1" value="${esc(w.minQty)}" placeholder="0"></td>
-    <td><button type="button" class="rb-x" data-act="dropnew" data-i="${i}" aria-label="この幅を外す">×</button></td></tr>`).join('')}</tbody>
+    <td><button type="button" class="bk-x" data-act="dropnew" data-i="${i}" aria-label="この幅を外す">×</button></td></tr>`).join('')}</tbody>
    <tfoot><tr><td colspan="4"><button type="button" class="mm-btn-ghost sm" data-act="addnew">＋ 幅の行を足す</button></td></tr></tfoot></table>`;
  }
 
@@ -165,7 +170,9 @@
     const d=rs.draft;
     d[k]=k==='lube'?!!el.value:el.value;d.touched=true;
     if(k==='hex'){const code=el.parentElement.querySelector('code');if(code)code.textContent=el.value;
-     box.querySelectorAll('.rb-head .rb-sw').forEach(s=>{s.style.setProperty('--sw',el.value)})}
+     box.querySelectorAll('.bk-card-h .rb-sw,.bk-item[data-bk-key="__new"] .rb-sw').forEach(s=>{s.style.setProperty('--sw',el.value)})}
+    /* 新しい色の名前は一覧の仮の項目にもその場で映す（描き直さない＝打っている欄の焦点を奪わない）。 */
+    if(k==='color'){const t=box.querySelector('.bk-item[data-bk-key="__new"] b');if(t)t.textContent=el.value||'新しい色'}
     const th=box.querySelector('[data-k="th"]');
     if(th)th.textContent=num(d.od)!=null&&num(d.bore)!=null?((num(d.od)-num(d.bore))/2).toFixed(2):'—';
     paintCheck();runCheck();
@@ -180,7 +187,7 @@
   box.querySelectorAll('[data-act]').forEach(b=>{b.onclick=()=>act(b.dataset.act,b)});
  }
  async function act(a,b){
-  if(a==='cancel'){rs.sel='';rs.draft=null;rs.check={hard:[],near:[],text:''};renderForm();renderCard();return}
+  if(a==='cancel'){select((rs.colors[0]||{}).color||'');return}
   if(a==='addnew'){rs.draft.widths.push({width:'',qty:'',minQty:''});renderCard();return}
   if(a==='dropnew'){rs.draft.widths.splice(+b.dataset.i,1);renderCard();return}
   if(a==='save'||a==='create')return void saveColor(a==='create');
@@ -188,13 +195,7 @@
   if(a==='delwidth')return void delWidth(+b.dataset.id);
   if(a==='delcolor')return void delColor();
  }
- async function guarded(fn,fail){
-  const uid=requireMaintUser();if(uid===null)return false;
-  rs.busy=true;paintCheck();
-  try{await fn(uid);return true}
-  catch(e){await alertModal(fail+'：'+(e&&e.message?e.message:e));return false}
-  finally{rs.busy=false;paintCheck()}
- }
+ const guarded=(fn,fail)=>K().guarded(rs,fn,fail,paintCheck);
  async function saveColor(isNew){
   const d=rs.draft;
   const ok=await guarded(async uid=>{
@@ -206,12 +207,14 @@
   if(ok){rs.sel=d.color;await load(true)}
  }
  async function setCount(id,field,value){
-  await guarded(async uid=>{
+  const ok=await guarded(async uid=>{
    await post('/api/bladeset-ring-master/update',{id,[field]:value===''?0:value,user_id:uid});
-   const g=colorOf(rs.sel),w=g&&g.widths.find(x=>x.id===id);
-   if(w){w[field]=value===''?0:+value;g.total=g.widths.reduce((s,x)=>s+(+x.qty||0),0)}
   },'本数を保存できませんでした');
-  renderForm();renderCard();
+  if(!ok)return void load(true);
+  const g=colorOf(rs.sel),w=g&&g.widths.find(x=>x.id===id);
+  if(w){w[field]=value===''?0:+value;g.total=g.widths.reduce((s,x)=>s+(+x.qty||0),0)}
+  /* 描き直しても焦点は同じ欄へ（Tabで次の欄へ移った人の手を止めない）。 */
+  K().keepFocus(renderCard);
  }
  async function addWidth(){
   const w=document.getElementById('rbNewW').value,q=document.getElementById('rbNewQ').value;
@@ -238,34 +241,21 @@
   }
  }
  /* 直しかけの色を捨てて離れてよいか（保存していない変更があるときだけ聞く）。 */
- async function leaveOk(){
-  const d=rs.draft;
-  if(!d||(d.current?!isDirty():!d.touched))return true;
-  return confirmModal({title:'保存していない変更を捨てる',eyebrow:'ゴムリング',
-   bodyHtml:'<p class="confirm-modal-message">この色に保存していない変更があります。捨てて切り替えますか？</p>',
-   confirmLabel:'捨てて切り替える',cancelLabel:'やめる'});
- }
+ const leaveOk=()=>{const d=rs.draft;return K().leave(!!d&&(d.current?isDirty():!!d.touched),'ゴムリング')};
 
  /* ---------- 読む ---------- */
  async function load(force){
   const box=document.getElementById('masterMaintList');if(!box)return;
-  if(typeof WL.records.loadEquipmentMaster==='function'){
-   try{await WL.records.loadEquipmentMaster(force)}
-   catch(e){WL.quiet.note('設備マスタが読めなくても盤は開く',e)}
-  }
-  const eqs=(WL.records.equipmentMasterState.items)||[];
-  if(!rs.equipment&&eqs.length)rs.equipment=eqs[0].name;
-  if(!rs.equipment){renderForm();box.innerHTML='<div class="mm-empty">設備マスタが未登録です。先に「設備」タブで登録してください。</div>';return}
-  setMaintLoading&&setMaintLoading(true);
-  try{
+  rs.loaded=false;renderForm();
+  if(!await K().prologue(rs,force))return;
+  await K().loading(async()=>{
    const r=await api('/api/bladeset/ring-colors?equipment='+encodeURIComponent(rs.equipment));
-   Object.assign(rs,{colors:r.colors||[],cycle:r.cycle||[],suggest:r.suggest||null,nearDe:r.nearDe||20});
+   Object.assign(rs,{colors:r.colors||[],cycle:r.cycle||[],suggest:r.suggest||null,nearDe:r.nearDe||20,loaded:true});
    if(rs.sel!==NEW&&!colorOf(rs.sel))rs.sel=(rs.colors[0]||{}).color||'';
    rs.draft=rs.sel===NEW?draftOf(null):(rs.sel?draftOf(colorOf(rs.sel)):null);
    rs.check={hard:[],near:[],text:''};
-   renderForm();renderCard();runCheck();
-  }catch(e){box.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e&&e.message?e.message:e)}</div>`}
-  finally{setMaintLoading&&setMaintLoading(false)}
+   renderCard();runCheck();
+  });
  }
  WL.mm.registerSpecial('ring-board',{load});
  WL.ringBoard={state:rs,load,select};
