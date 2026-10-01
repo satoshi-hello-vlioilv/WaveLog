@@ -1059,6 +1059,51 @@ body.bs-mode .bs-shell{display:flex}
 .rt-read{margin:0;font-size:var(--fs-sm);color:var(--ink-2);line-height:1.6}
 .rt-read s{text-decoration:none;display:inline-block;margin-right:var(--space-2);padding:0 var(--space-1);
  border-radius:var(--radius-xs);background:var(--surface-2);color:var(--muted);font-size:var(--fs-micro);font-weight:700}
+/* 当たり得ない条件（§9.534）。橙＝直せる注意（赤は取り消せない操作だけ・§9.338）。字で「当たらない」と言う。 */
+.rt-state.is-warn{color:var(--warn-fg);font-weight:700}
+.rt-cell.is-dead input,.rt-cell.is-deadpart input{border-color:var(--warn-border);background:var(--warn-bg)}
+.rt-deadtag{display:block;font-size:var(--fs-micro);color:var(--warn-fg);font-weight:700}
+.rt-dead{margin-top:var(--space-3);border:1px solid var(--warn-border);border-radius:var(--radius-md);background:var(--surface)}
+.rt-dead>header{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--space-2);padding:var(--space-2) var(--space-3);
+ background:var(--warn-bg);border-radius:var(--radius-md) var(--radius-md) 0 0;font-size:var(--fs-base-sm)}
+.rt-dead>header b{color:var(--warn-fg)}
+.rt-dead>header small{color:var(--ink-2);font-size:var(--fs-sm)}
+/* 左から「いまの条件 → このまま保存すると → 直す案」（する順に並べる・§CLAUDE 14）。 */
+.rt-dead-b{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-3);padding:var(--space-3)}
+.rt-dead-b figure{margin:0}
+.rt-dead-b figcaption,.rt-dead-b h4{margin:0 0 var(--space-1);font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
+.rt-dead-b h4 small{margin-left:var(--space-2);font-weight:400;color:var(--muted);font-size:var(--fs-micro)}
+.rt-line{display:block;width:100%;height:auto}
+.rt-lt{font-size:var(--fs-micro);fill:var(--ink-2)}
+.rt-lt.is-none{fill:var(--warn-fg);font-weight:700}
+.rt-ax{stroke:var(--line-strong);stroke-width:1;fill:none}
+.rt-lb path{stroke:var(--look-blue);stroke-width:6;stroke-linecap:butt}
+.rt-lb circle{stroke:var(--look-blue);stroke-width:2}
+.rt-lb circle.is-in{fill:var(--look-blue)}
+.rt-lb circle.is-out{fill:var(--surface)}
+.rt-lb.is-ok path{stroke:var(--teal)}
+.rt-lb.is-ok circle{stroke:var(--teal)}
+.rt-lb.is-ok circle.is-in{fill:var(--teal)}
+.rt-sv-u{fill:var(--surface-2);stroke:var(--line)}
+.rt-sv-u.is-ok{fill:var(--teal-soft);stroke:var(--teal)}
+.rt-sv-c{fill:var(--look-blue-pale);stroke:var(--look-blue);stroke-width:2}
+.rt-sv-c.is-ok{fill:var(--teal-soft);stroke:var(--teal)}
+.rt-sv-t{font-weight:700;fill:var(--ink)}
+.rt-flow{list-style:none;margin:0 0 var(--space-2);padding:0;display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm)}
+.rt-flow li{display:grid;grid-template-columns:4em minmax(0,1fr) auto;gap:var(--space-2);padding:2px var(--space-2);border-radius:var(--radius-sm);background:var(--surface-2)}
+.rt-flow li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rt-flow li em{font-style:normal;font-weight:700;color:var(--ink-2)}
+.rt-flow li.is-skip{background:var(--warn-bg);color:var(--warn-fg);text-decoration:line-through}
+.rt-flow li.is-skip em{color:var(--warn-fg)}
+.rt-flow li.is-gap{background:none;display:block;color:var(--muted)}
+.rt-then{margin:0;font-size:var(--fs-sm);color:var(--ink-2);line-height:1.6}
+.rt-alt{display:flex;flex-direction:column;align-items:stretch;gap:2px;width:100%;margin-bottom:var(--space-2);
+ padding:var(--space-2);border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);text-align:left;cursor:pointer;
+ font-size:var(--fs-sm);transition:transform .12s,border-color .12s}
+.rt-alt:hover{border-color:var(--teal);transform:translateY(-1px)}
+.rt-alt b{color:var(--teal-dark)}
+.rt-alt small{color:var(--muted);font-size:var(--fs-micro)}
+.rt-alt span{color:var(--ink-2)}
 /* 刃選択の「この作業なら」の帯（2つの表の当たりを1行で）。 */
 .bp-try{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);margin-bottom:var(--space-3);
  padding:var(--space-2) var(--space-3);border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface-2);

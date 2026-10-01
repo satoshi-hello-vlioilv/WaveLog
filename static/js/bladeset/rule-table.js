@@ -48,6 +48,43 @@
         [v=>`/${v}/`,'正規表現に合う']],
  };
 
+ /* 数直線の図（§9.534）。範囲は条件に出てくる数の両側へ4割ずつ広げる。`set`＝`numSet()`の区間の並び。
+    端の●は含む・○は含まない。数の無い組（字の列）は null。 */
+ function numDomain(terms){
+  const v=terms.flatMap(c=>[c.value,c.value2]).filter(x=>x!=null&&x!==''&&isFinite(+x)).map(Number);
+  if(!v.length||terms.some(c=>!BS().numSet(c)))return null;
+  const lo=Math.min(...v),hi=Math.max(...v),pad=(hi-lo||Math.abs(hi)||1)*0.4;
+  return [lo-pad,hi+pad,[...new Set(v)].sort((a,b)=>a-b)];
+ }
+ function lineFig(rows,dom,o={}){
+  const W=340,LW=64,X0=LW+8,X1=W-8,RH=22,H=(rows.length+(o.none?1:0))*RH+24;
+  const x=v=>v<=dom[0]?X0:v>=dom[1]?X1:X0+(v-dom[0])/(dom[1]-dom[0])*(X1-X0);
+  const end=(v,inc,y)=>isFinite(v)&&v>dom[0]&&v<dom[1]?`<circle cx="${x(v).toFixed(1)}" cy="${y}" r="4" class="${inc?'is-in':'is-out'}"/>`:'';
+  const band=(set,y,cls)=>set.map(s=>`<g class="rt-lb ${cls||''}"><path d="M${x(s.lo).toFixed(1)} ${y}H${x(s.hi).toFixed(1)}"/>${end(s.lo,s.li,y)}${end(s.hi,s.hi2,y)}</g>`).join('');
+  let b=rows.map((r,i)=>{const y=12+i*RH;return `<text x="${LW}" y="${y+4}" text-anchor="end" class="rt-lt">${esc(r.label)}</text>${band(r.set,y,r.cls)}`}).join('');
+  if(o.none){const y=12+rows.length*RH;
+   b+=`<text x="${LW}" y="${y+4}" text-anchor="end" class="rt-lt is-none">両方</text><text x="${X0}" y="${y+4}" class="rt-lt is-none">重なり無し——どの値も当たらない</text>`;}
+  const ay=H-16;
+  b+=`<path d="M${X0} ${ay}H${X1}" class="rt-ax"/>`+dom[2].map(v=>`<path d="M${x(v).toFixed(1)} ${ay-3}V${ay+3}" class="rt-ax"/>`
+   +`<text x="${x(v).toFixed(1)}" y="${ay+13}" text-anchor="middle" class="rt-lt">${esc(String(v))}</text>`).join('');
+  return `<svg class="rt-line" viewBox="0 0 ${W} ${H}" role="img" aria-label="数直線">${b}</svg>`;
+ }
+
+ /* 字の列の図（§9.534）。条件1つ＝輪1つ（当たる字の集まり）。`none`＝輪が離れて重ならない（かつ が成り立たない）、
+    `or`＝どの輪に入っても当たる（または）、`all`＝枠ぜんたい（空欄＝問わない）。 */
+ function setFig(labels,mode){
+  const W=340,H=116,cy=54,n=Math.max(1,labels.length),R=Math.min(28,(W-24)/(n*2.6));
+  const gap=mode==='none'?R*0.9:R*0.2,span=n*2*R+(n-1)*gap,x0=(W-span)/2+R;
+  let b=`<rect x="4" y="4" width="${W-8}" height="${H-8}" rx="6" class="rt-sv-u${mode==='all'?' is-ok':''}"/>`
+   +`<text x="12" y="18" class="rt-lt">${mode==='all'?'すべての値が当たる':'すべての値'}</text>`;
+  labels.forEach((l,i)=>{const cx=x0+i*(2*R+gap);
+   b+=`<circle cx="${cx.toFixed(1)}" cy="${cy}" r="${R.toFixed(1)}" class="rt-sv-c${mode==='or'?' is-ok':''}"/>`
+    +`<text x="${cx.toFixed(1)}" y="${cy+4}" text-anchor="middle" class="rt-lt rt-sv-t">${esc(l)}</text>`;
+   if(mode==='none'&&i)b+=`<text x="${(cx-R-gap/2).toFixed(1)}" y="${cy+4}" text-anchor="middle" class="rt-lt is-none">∅</text>`;});
+  if(mode==='none')b+=`<text x="${W/2}" y="${H-10}" text-anchor="middle" class="rt-lt is-none">輪が重ならない——両方に当てはまる値なし</text>`;
+  return `<svg class="rt-line" viewBox="0 0 ${W} ${H}" role="img" aria-label="当たる値の集まり">${b}</svg>`;
+ }
+
  /* 表1枚。**状態（行・列・保存の印）と呼ぶ側の差し込み口（`o`）を持つ組**——盤は答えの列と保存先だけを
     渡す（保持方式・刃のカテゴリ・刃厚が同じ組を使う）。描く・読む・触るは短いメソッドに分ける（§9.522）。 */
  class RuleTable{
@@ -112,12 +149,74 @@
    return `${this.isDefault(r)?'既定':`${i+1}行目`}: ${head} → ${this.o.answerLabel(r)}`;
   }
 
+  /* ---------- 当たり得ない条件（§9.534、利用者の指示「ありえない条件は代替案と登録した場合、どうなるかも含めて
+     視覚化表現があると良いです」） ----------
+     判じるのは`blade-core.js`の`cellDead()`の1箇所（判定と同じ意味）。表の下の盤は左から「いまの条件（数直線）→
+     このまま保存すると（この行を素通りして下の行で決まる）→ 直す案（案ごとの当たる範囲・押すとセルが置き換わる）」。 */
+  deadOf(r,f){const c=this.condsOf(r,f);return c.length>1?BS().cellDead(c,this.kindOf(f)):null}
+  deadCells(r){
+   if(!r||this.isDefault(r))return [];
+   return this.cols.map(f=>({f,d:this.deadOf(r,f)})).filter(x=>x.d&&(x.d.dead||x.d.part));
+  }
+  rowDead(r){return this.deadCells(r).some(x=>x.d.dead)}
+  /* 盤に出す行: いま読んでいる行が当たらない組を持てばその行、無ければ最初の行。 */
+  deadRow(){
+   return this.deadCells(this.rows[this.read]).length?this.read:this.rows.findIndex(r=>this.deadCells(r).length);
+  }
+  deadHtml(){
+   const ri=this.deadRow();if(ri<0)return '';
+   const r=this.rows[ri],{f,d}=this.deadCells(r)[0],ch=d.chains.find(x=>x.dead),label=this.colLabel(f);
+   const dom=numDomain(d.chains.flatMap(x=>x.terms));
+   const fig=ch.num&&dom?lineFig(ch.terms.map(c=>({label:cellText([c]),set:BS().numSet(c)})),dom,{none:true})
+    :setFig(ch.terms.map(c=>cellText([c])),'none');
+   return `<section class="rt-dead" data-r="${ri}" data-f="${esc(f)}" aria-live="polite">
+    <header><b>${ri+1}行目の「${esc(label)}」は${d.dead?'どの値にも当たりません':'一部の組が当たりません'}</b><small>${esc(ch.why)}</small></header>
+    <div class="rt-dead-b"><figure><figcaption>いまの条件</figcaption>${fig}</figure>
+    <div><h4>このまま保存すると</h4>${this.afterHtml(ri,d)}</div>
+    <div><h4>直す案<small>押すとセルが置き換わります</small></h4>${d.alts.map((a,i)=>this.altHtml(r,f,a,i,dom)).join('')}</div></div></section>`;
+  }
+  /* 保存したらどうなるか。行ごと当たらないなら**この行を素通りして下の行で決まる**流れを、行の並びのまま描く。 */
+  afterHtml(ri,d){
+   const ans=this.o.answerLabel(this.rows[ri]);
+   if(!d.dead){
+    const live=d.chains.filter(x=>!x.dead).flatMap(x=>x.terms).map((c,i)=>Object.assign({},c,{or:i?true:undefined}));
+    return `<p class="rt-then">当たらない組は無いのと同じです。このセルは <b>${esc(cellText(live))}</b> としてだけ当たり、答え「${esc(ans)}」は残ります。</p>`;
+   }
+   const tail=this.rows.slice(ri+1),shown=tail.length>4?tail.slice(0,3).concat([tail[tail.length-1]]):tail;
+   const line=(r,skip)=>{const i=this.rows.indexOf(r),def=this.isDefault(r);
+    return `<li class="${skip?'is-skip':def?'is-def':''}"><b>${def?'既定':`${i+1}行目`}</b><span title="${esc(def?'':BS().rowText(r.conditions,this.fields()))}">${esc(def?'どれにも当てはまらないとき':BS().rowText(r.conditions,this.fields()))}</span><em>→ ${esc(this.o.answerLabel(r))}</em></li>`};
+   return `<ol class="rt-flow">${line(this.rows[ri],true)}${tail.length>shown.length?shown.slice(0,3).map(r=>line(r)).join('')+'<li class="is-gap">…</li>'+line(shown[3]):shown.map(r=>line(r)).join('')}</ol>`
+    +`<p class="rt-then">どの作業もこの行を<b>素通り</b>して、下の行で決まります。答え「${esc(ans)}」は<b>使われません</b>。</p>`;
+  }
+  altHtml(r,f,a,i,dom){
+   const set=a.terms.length?BS().cellNumSet(a.terms,this.kindOf(f)):[{lo:-Infinity,li:false,hi:Infinity,hi2:false}];
+   const fig=set&&dom?lineFig([{label:'当たる',set,cls:'is-ok'}],dom)
+    :setFig(a.terms.length?BS().cellDead(a.terms,this.kindOf(f)).chains.map(x=>cellText(x.terms)):[],a.terms.length?'or':'all');
+   return `<button type="button" class="rt-alt" data-alt="${i}"><b>${esc(a.text||'（空欄＝問わない）')}</b><small>${esc(a.how)}</small>${fig}`
+    +`<span>→ ${esc(this.colLabel(f))}が ${esc(a.say)} なら「${esc(this.o.answerLabel(r))}」</span></button>`;
+  }
+  /* 読んでいる行が変わったら盤も差し替える（同じ行なら触らない＝案を押そうとしている手を止めない）。 */
+  paintDead(host){
+   const old=host.querySelector('.rt-dead'),ri=this.deadRow();
+   if(old&&+old.dataset.r===ri)return;
+   const html=this.deadHtml();
+   if(old)old.outerHTML=html;else{const rd=host.querySelector('.rt-read');if(rd)rd.insertAdjacentHTML('afterend',html)}
+   this.wireDead(host);
+  }
+  wireDead(host){
+   host.querySelectorAll('.rt-alt').forEach(b=>{b.onclick=()=>{
+    const p=b.closest('.rt-dead'),ri=+p.dataset.r,f=p.dataset.f,d=this.deadOf(this.rows[ri],f);
+    if(d&&d.alts[+b.dataset.alt])this.setCell(ri,f,d.alts[+b.dataset.alt].text);
+   }});
+  }
+
   /* ---------- 描く ---------- */
   headHtml(){
    const o=this.o;
    const st=this.dirty?'<span class="rt-state is-dirty">保存していない変更があります</span>'
     :this.stored?'<span class="rt-state">登録済み</span>':`<span class="rt-state is-seed">未登録——${o.seedNote}</span>`;
-   return `<header class="rt-h"><h3>${esc(o.label)}</h3>${st}
+   const nd=this.rows.filter(r=>this.rowDead(r)).length;
+   return `<header class="rt-h"><h3>${esc(o.label)}</h3>${st}${nd?`<span class="rt-state is-warn">当たらない決まり ${nd}行</span>`:''}
     <span class="rt-acts"><select class="rt-addcol" aria-label="列（データ）を足す">${this.addColOptions()}</select>
      <button type="button" class="mm-btn-ghost sm" data-rt="addrow">＋ 決まりを足す</button>
      ${this.stored?`<button type="button" class="mm-btn-ghost sm" data-rt="reset" title="この表の登録を消し、${esc(o.seedNote)}へ戻します">未登録に戻す</button>`:''}
@@ -152,7 +251,7 @@
    const body=this.rows.map((r,i)=>this.rowHtml(r,i,hit)).join('');
    const ri=this.read>=0&&this.read<this.rows.length?this.read:(hit?hit.index:0);
    return `<div class="rt-wrap"><table class="rt-table"><thead>${head}${this.probeRowHtml(hit)}</thead><tbody>${body}</tbody></table></div>
-    <p class="rt-read" aria-live="polite"><s>読み</s>${esc(this.sentence(ri))}</p>`;
+    <p class="rt-read" aria-live="polite"><s>読み</s>${esc(this.sentence(ri))}</p>${this.deadHtml()}`;
   }
   probeInput(f){
    const fd=this.fieldOf(f),v=this.o.probe[f]??'';
@@ -165,9 +264,12 @@
    const c=this.condsOf(r,f),mk=this.cellMark(c),bad=(r.bad||{})[f];
    if(bad)return `<td class="rt-cell"><input class="rt-c is-bad" data-r="${i}" data-f="${esc(f)}" value="${esc(bad.text)}"`
     +` title="${esc(bad.why)}" aria-invalid="true"><small class="rt-why">${esc(bad.why)}</small></td>`;
-   return `<td class="rt-cell ${mk}"><input class="rt-c" data-r="${i}" data-f="${esc(f)}" value="${esc(cellText(c))}"`
-    +` placeholder="問わない"${c.length?` title="${esc(sayCell(c,this.colLabel(f)))}"`:''}>`
-    +(mk?`<i class="rt-mk" aria-hidden="true">${mk==='is-hit'?'○':'×'}</i>`:'')+'</td>';
+   /* 当たり得ない組は字で言う（色だけにしない・§CLAUDE 3）。理由と直し方は表の下の盤（`deadHtml()`）。 */
+   const d=this.isDefault(r)?null:this.deadOf(r,f),dw=d&&(d.dead?'当たらない':d.part?'一部当たらない':'');
+   const why=dw?d.chains.filter(x=>x.dead).map(x=>x.why).join('／'):'';
+   return `<td class="rt-cell ${mk}${dw?(d.dead?' is-dead':' is-deadpart'):''}"><input class="rt-c" data-r="${i}" data-f="${esc(f)}" value="${esc(cellText(c))}"`
+    +` placeholder="問わない"${c.length?` title="${esc(sayCell(c,this.colLabel(f))+(why?`（${why}）`:''))}"`:''}>`
+    +(mk?`<i class="rt-mk" aria-hidden="true">${mk==='is-hit'?'○':'×'}</i>`:'')+(dw?`<small class="rt-deadtag">${dw}</small>`:'')+'</td>';
   }
   opsHtml(i){
    return `<button type="button" class="rt-x" data-rt="delrow" data-r="${i}" title="この決まりを消す" aria-label="この決まりを消す">×</button>`;
@@ -253,7 +355,7 @@
    host.querySelectorAll('.rt-row').forEach(tr=>{tr.onmouseenter=()=>{this.read=+tr.dataset.r;this.paintRead(host)}});
    host.querySelectorAll('.rt-ansel').forEach(el=>{el.onchange=()=>{this.o.setAnswer(this.rows[+el.dataset.r],el.value);this.touch();this.render()}});
    host.querySelectorAll('.rt-n').forEach(el=>{el.oninput=()=>this.setNote(host,+el.dataset.r,el.value)});
-   this.wireGrips(host);
+   this.wireGrips(host);this.wireDead(host);
    host.querySelectorAll('.rt-p').forEach(el=>{
     const set=()=>{this.o.probe[el.dataset.p]=el.value;this.o.onProbe?this.o.onProbe():this.render()};
     if(el.tagName==='SELECT')el.onchange=set;else el.oninput=set;
@@ -265,7 +367,7 @@
    if(!this.dirty){this.dirty=true;const h=host.querySelector('.rt-h');if(h){h.outerHTML=this.headHtml();this.wire(host)}}
    this.o.onChange&&this.o.onChange(true);
   }
-  paintRead(host){const p=host.querySelector('.rt-read');if(p)p.innerHTML=`<s>読み</s>${esc(this.sentence(this.read))}`}
+  paintRead(host){const p=host.querySelector('.rt-read');if(p)p.innerHTML=`<s>読み</s>${esc(this.sentence(this.read))}`;this.paintDead(host)}
   /* セルを書いたら条件へ直す。**読めない字はそのセルに理由を出して、前の条件を残す**。 */
   setCell(ri,f,text){
    const r=this.rows[ri];if(!r)return;
@@ -372,6 +474,12 @@
    if(empty&&!await confirmModal({title:'条件の無い決まり',eyebrow:this.o.label,
      bodyHtml:`<p class="confirm-modal-message">条件が1つも無い決まりが ${empty}行あります。条件の無い行は既定の行と同じ意味になるので、保存では落とします。</p>`,
      confirmLabel:'落として保存する',cancelLabel:'やめる'}))return;
+   const dead=this.rows.map((r,i)=>this.rowDead(r)?i:-1).filter(i=>i>=0);
+   if(dead.length&&!await confirmModal({title:'当たらない決まり',eyebrow:this.o.label,
+     bodyHtml:`<p class="confirm-modal-message">${dead.map(i=>`${i+1}行目（→ ${esc(this.o.answerLabel(this.rows[i]))}）`).join('・')}は、`
+      +`当たり得ない条件のため<b>どの作業にも当たりません</b>。保存すると作業はこの行を素通りして下の行で決まり、この答えは使われません。</p>`
+      +'<p class="confirm-modal-message">直す案は表の下に出ています。</p>',
+     confirmLabel:'このまま保存する',cancelLabel:'やめて直す'}))return;
    const last=this.rows[this.rows.length-1];
    const rows=this.rows.filter(r=>(r.conditions||[]).length||r===last)
     .map(r=>Object.assign(this.o.rowOut(r),{conditions:r.conditions||[],note:r.note||''}));

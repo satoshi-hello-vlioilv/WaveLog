@@ -1408,12 +1408,129 @@
   });
   return out;
  }
- function cellHits(terms, ctx, kinds) {
-  const chains = [];
-  (terms || []).forEach((c, i) => { if (!i || c.or) chains.push([]); chains[chains.length - 1].push(c); });
-  return chains.some(ch => ch.every(c => condHits(c, ctx, kinds)));
+ /* セルの条件 → 「かつ」の組の並び（`or`の条件から次の組）。 */
+ function chainsOf(terms) {
+  const out = [];
+  (terms || []).forEach((c, i) => { if (!i || c.or) out.push([]); out[out.length - 1].push(c); });
+  return out;
  }
+ const cellHits = (terms, ctx, kinds) => chainsOf(terms).some(ch => ch.every(c => condHits(c, ctx, kinds)));
  const rowHits = (conds, ctx, kinds) => condGroups(conds).every(g => cellHits(g.terms, ctx, kinds));
+
+ /* ---- 当たり得ない組み合わせ（§9.534、利用者の指示「ありえない条件は代替案と登録した場合、どうなるかも含めて
+    視覚化表現があると良いです」）。セルの「かつ」の組ごとに**同時に成り立つ値があるか**を答える。
+    数は区間の重なり（`numSet`／`meet`）、字は値どうしの食い違い（`textClash`）で見る。判定は`condHits()`と同じ意味
+    ——空の欄は「空」「空でない」にしか当たらない・正規表現は字の値が決まっているときだけ見る（読めなければ当たり得る側）。 */
+ const NUM_ONLY = /^(ge|gt|le|lt|between)$/;
+ /* 数の条件 → 区間の並び（`{lo, li, hi, hi2}`＝下端・下端を含むか・上端・上端を含むか）。数でなければ null。 */
+ function numSet(c) {
+  const a = +c.value, I = (lo, li, hi, hi2) => ({ lo, li, hi, hi2 });
+  if (!isFinite(a)) return null;
+  switch (c.op) {
+   case 'eq': return [I(a, true, a, true)];
+   case 'ne': return [I(-Infinity, false, a, false), I(a, false, Infinity, false)];
+   case 'ge': return [I(a, true, Infinity, false)];
+   case 'gt': return [I(a, false, Infinity, false)];
+   case 'le': return [I(-Infinity, false, a, true)];
+   case 'lt': return [I(-Infinity, false, a, false)];
+   case 'between': { const b = +c.value2; return isFinite(b) ? [I(Math.min(a, b), true, Math.max(a, b), true)] : null; }
+   default: return null;
+  }
+ }
+ /* 2つの区間の並びの重なり（空なら []）。 */
+ const meet = (A, B) => A.flatMap(x => B.map(y => {
+  const lo = Math.max(x.lo, y.lo), hi = Math.min(x.hi, y.hi);
+  return { lo, hi, li: (x.lo === lo ? x.li : true) && (y.lo === lo ? y.li : true),
+           hi2: (x.hi === hi ? x.hi2 : true) && (y.hi === hi ? y.hi2 : true) };
+ })).filter(r => r.lo < r.hi || (r.lo === r.hi && r.li && r.hi2));
+ /* 区間の並びが数ぜんぶを覆うか（「または」にしたら問わないのと同じ、を見分ける）。 */
+ function coversAll(set) {
+  const xs = set.slice().sort((a, b) => a.lo - b.lo || (b.li ? 1 : 0) - (a.li ? 1 : 0));
+  let at = -Infinity, inc = false;
+  for (const r of xs) {
+   if (r.lo > at || (r.lo === at && !inc && !r.li && at !== -Infinity)) return false;
+   if (r.hi > at || (r.hi === at && r.hi2)) { at = r.hi; inc = r.hi2; }
+  }
+  return at === Infinity;
+ }
+ /* 組を数として読むか。数の列は数・字の列は字、仕掛の列（`auto`）は値がみな数で比べ方も数のときだけ数。 */
+ const chainIsNum = (ch, kind) => kind === 'num' ? true : kind !== 'auto' ? false
+  : ch.every(c => (NUM_ONLY.test(c.op) || /^(eq|ne)$/.test(c.op)) && numSet(c));
+ /* 字の組で同時に成り立たない2つ（`[a, b]`）。無ければ null。 */
+ function textClash(ch) {
+  const v = c => String(c.value == null ? '' : c.value).trim();
+  const hits = (c, s) => condHits(Object.assign({}, c, { field: 'x' }), { x: s }, { x: 'text' });
+  const empty = ch.find(c => c.op === 'empty');
+  if (empty) { const o = ch.find(c => c.op !== 'empty'); return o ? [empty, o] : null; }
+  const eqs = ch.filter(c => c.op === 'eq');
+  const eq2 = eqs.find(c => v(c) !== v(eqs[0]));
+  if (eq2) return [eqs[0], eq2];
+  if (eqs.length) { const o = ch.find(c => c.op !== 'eq' && !hits(c, v(eqs[0]))); return o ? [eqs[0], o] : null; }
+  /* 値が決まっていない組: 始まり・終わりの食い違いと、「含む／始まる／終わる」がその否定を抱えている形。 */
+  const rules = [['startsWith', 'startsWith', (x, y) => !x.startsWith(y) && !y.startsWith(x)],
+                 ['endsWith', 'endsWith', (x, y) => !x.endsWith(y) && !y.endsWith(x)],
+                 ['contains', 'notContains', (x, y) => x.includes(y)], ['startsWith', 'notContains', (x, y) => x.includes(y)],
+                 ['endsWith', 'notContains', (x, y) => x.includes(y)], ['startsWith', 'notStartsWith', (x, y) => x.startsWith(y)],
+                 ['endsWith', 'notEndsWith', (x, y) => x.endsWith(y)]];
+  for (const [p, q, bad] of rules)
+   for (const a of ch) for (const b of ch)
+    if (a !== b && a.op === p && b.op === q && bad(v(a), v(b))) return [a, b];
+  return null;
+ }
+ /* 数の組の答え: 重なり（区間の並び）と、空なら空にした2つ。 */
+ function numChain(ch) {
+  let acc = [{ lo: -Infinity, li: false, hi: Infinity, hi2: false }];
+  for (const c of ch) acc = meet(acc, numSet(c));
+  if (acc.length) return { set: acc, pair: null };
+  for (const a of ch) for (const b of ch) if (a !== b && !meet(numSet(a), numSet(b)).length) return { set: [], pair: [a, b] };
+  return { set: [], pair: null };
+ }
+ const asOr = ch => ch.map((c, i) => Object.assign({}, c, i ? { or: true } : { or: undefined }));
+ /* 当たらない組の直し方（多くて2つ）。①「かつ」を「または」に（それで何でも当たるなら「問わない」と言い換える）
+    ②数の上限と下限が逆さなら、そのあいだ（`＜0.6 かつ ＞0.9` → `0.6〜0.9`）。 */
+ function chainAlts(ch, isNum) {
+  const out = [];
+  const either = asOr(ch);
+  const all = isNum ? coversAll(either.flatMap(numSet))
+   : ch.some(a => ch.some(b => b.op === (NEG[a.op] || '') && String(a.value) === String(b.value)));
+  out.push(all ? { terms: [], how: 'このセルを空欄（問わない）にする', all: true }
+               : { terms: either, how: '「かつ」を「または」に（どちらかに当たれば）' });
+  if (isNum && ch.length === 2) {
+   const lo = ch.find(c => /^(gt|ge)$/.test(c.op)), up = ch.find(c => /^(lt|le)$/.test(c.op));
+   if (lo && up && +up.value < +lo.value)
+    out.push({ terms: [{ field: ch[0].field, op: 'between', value: String(up.value), value2: String(lo.value) }],
+               how: `あいだ（${up.value}〜${lo.value}）に当たれば` });
+  }
+  return out;
+ }
+ /* セル1つの診断: `{dead, part, chains:[{terms, dead, why, num, set}], alts:[{terms, text, say, how}]}`。
+    `dead`＝どの組も当たらない（セル＝行が何にも当たらない）／`part`＝一部の組だけ当たらない（その組は無いのと同じ）。
+    案は**最初の当たらない組**を置き換えたセルの条件（ほかの組はそのまま）。 */
+ function cellDead(terms, kind) {
+  const chains = chainsOf(terms).map(ch => {
+   const isNum = chainIsNum(ch, kind);
+   if (isNum) { const r = numChain(ch);
+    const why = r.set.length ? '' : r.pair ? `${termSay(r.pair[0])} と ${termSay(r.pair[1])} が重なりません` : '全部に同時に当たる数がありません';
+    return { terms: ch, num: true, set: r.set, dead: !r.set.length, why }; }
+   const cl = textClash(ch);
+   return { terms: ch, num: false, set: null, dead: !!cl,
+            why: cl ? `「${termSay(cl[0])}」と「${termSay(cl[1])}」を同時に満たす値はありません` : '' };
+  });
+  const bad = chains.findIndex(c => c.dead);
+  const alts = bad < 0 ? [] : chainAlts(chains[bad].terms, chains[bad].num).map(a => {
+   /* 組の頭は「または」で前の組へつなぐ（いちばん頭だけ印なし）。「問わない」の案はセルごと空にする（何かと「または」でも全部当たる）。 */
+   const flat = a.all ? [] : chains.flatMap((c, i) => (i === bad ? a.terms : c.terms).map((x, j) => Object.assign({}, x, { or: j ? x.or : i > 0 })))
+    .map((x, i) => Object.assign({}, x, { or: i && x.or ? true : undefined }));
+   return { terms: flat, text: cellText(flat), say: flat.length ? cellSay(flat) : '問わない（どの値でも当たる）', how: a.how };
+  });
+  return { dead: chains.length > 0 && chains.every(c => c.dead), part: bad >= 0 && !chains.every(c => c.dead), chains, alts };
+ }
+ /* 数のセルの当たる範囲（図に描く・組の重なりの和）。数で読めない組があれば null。 */
+ function cellNumSet(terms, kind) {
+  const chs = chainsOf(terms);
+  if (!chs.length || !chs.every(ch => chainIsNum(ch, kind))) return null;
+  return chs.flatMap(ch => numChain(ch).set);
+ }
 
  /* ---- セルの字 ⇔ 条件（**書き方は1箇所で読む**・判定表の盤と刃組の説明が使う） ----
     数の記号は `>=`・`≧` どちらでも打てる。字の比べ方は `SUS*`（で始まる）・`*304`（で終わる）・`*H5*`（含む）、
@@ -1909,7 +2026,7 @@
   compose, buildRows, endRows, badgeMap, BADGE_TONES, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum, cutFace,
   stripDesign, designByParent, condOf, sameCond, seedFromCond,
-  pickCtx, bladePickCtx, tableFields, bladeChoice, tableReason, pickWord, bladeCategory, condHits, rowHits, condGroups, parseCell, cellText, cellSay, selectable, firstRule, holdPick, holdReason, rowText,
+  pickCtx, bladePickCtx, tableFields, bladeChoice, tableReason, pickWord, bladeCategory, condHits, rowHits, condGroups, cellDead, cellNumSet, numSet, parseCell, cellText, cellSay, selectable, firstRule, holdPick, holdReason, rowText,
   expand, axisRun, materialRun, matShift, spread, tierOf,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP
  };

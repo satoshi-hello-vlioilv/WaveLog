@@ -1,4 +1,4 @@
-# 刃組ガイダンス（242件）
+# 刃組ガイダンス（244件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 当たり得ない組は`cellDead()`の1箇所（数は区間の重なり・字は値の食い違い・判定と同じ意味）。直す案も同じ答えが持つ | `test_holdpick.js` | [§9.534](../../docs/decisions/9.534.md) |
+| 当たらないセルは字で言い、表の下の盤が「いまの条件→保存すると→直す案」を図で描く。保存は確かめてから（止めない） | `test_holdpick.js` | [§9.534](../../docs/decisions/9.534.md) |
 | 一体型の空きは刃の両側へ半分ずつ（`integParts()`の`restA`／`restB`）。作れる2つの差が最小の組は`splitUnits()` | `test_bladesets.js` | [§9.533](../../docs/decisions/9.533.md) |
 | 条件のセルは「かつ／または」で並べる（かつが先に結ぶ）。文法は`parseCell`／`rowHits`の1箇所（表・判定・断りの字） | `test_holdpick.js`・`test_bladeset.py` | [§9.533](../../docs/decisions/9.533.md) |
 | 字の比べ方は`TEXT_OPS`と`BLADEPICK_OPS`（始まる・終わる・含まない・空・正規表現）。`ABC*`／`*ABC`でも書ける | `test_holdpick.js`・`test_bladeset.py` | [§9.533](../../docs/decisions/9.533.md) |
