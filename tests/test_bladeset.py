@@ -626,6 +626,17 @@ rec('§9.531 一体型の色に幅を足すと種類も引き継ぐ', [r['integ'
 rec('§9.531 一体型もゴムリングと外径で被らせない（刃組は色を外径で引く）',
     any(x['why'] == 'od' for x in bs.ring_color_conflicts(c8, EQ, '新しい', '#0a0b0c', 340)['hard']))
 bs.ring_color_delete(c8, EQ, '一体緑')
+# §9.532 一体型の空きの目標・上限と潤滑リングの切り替え（刃組基準値）
+rec('§9.532 既定は空きを作らない・判定しない・潤滑リングは載せない',
+    (bs.STANDARD_DEFAULTS['integGapMin'], bs.STANDARD_DEFAULTS['integGapMax'], bs.STANDARD_DEFAULTS['integLube']) == (0.0, 0.0, False))
+sid = bs.standard_upsert(c8, 'u', equipment=EQ, values={'integGapMin': '2', 'integGapMax': '12', 'integLube': '載せる'})[0]
+row = [x for x in bs.standard_rows(c8, True, EQ)][0]
+rec('§9.532 目標・上限・載せるを保存して読める（呼び名は「載せる／載せない」）',
+    row['integGapMin'] == 2 and row['integGapMax'] == 12 and row['integLube'] is True and row['integLubeText'] == '載せる', str(row))
+bs.standard_upsert(c8, 'u', equipment=EQ, values={'integLube': '載せない'})
+row = [x for x in bs.standard_rows(c8, True, EQ)][0]
+rec('§9.532 「載せない」で切になる（flags.OFF_WORDS に並んでいる）', row['integLube'] is False and row['integLubeText'] == '載せない', str(row))
+bs.standard_delete(c8, sid)
 
 # ---- 自己確認: 網が素通りしていない ----
 rec('自己確認: 断る網は、断らない呼び出しでは真にならない',

@@ -20,9 +20,11 @@
  const fields=()=>def().fields.filter(f=>f.k!=='equipment');
  /* 保存する鍵（選択欄は呼び名の鍵`〜Text`で定義されている——値の鍵は`defaultOf`）。 */
  const keyOf=f=>f.defaultOf||f.k;
+ /* 真偽の欄の字は**その欄の選択肢**（先頭＝入・2つ目＝切）。「できる／できない」を決め打ちしない（§9.532・載せる／載せない）。 */
+ const flagWord=(f,v)=>(f.options||[])[v?0:1]||'';
  const fmtDef=(f,v)=>{
   if(v==null||v==='')return f.k==='centerFromDatum'?'中央':(f.k.startsWith('sideName')?f.k.slice(-2):'—');
-  if(typeof v==='boolean')return v?'できる':'できない';
+  if(typeof v==='boolean')return flagWord(f,v);
   return String(v);
  };
  const stored=f=>{const r=sb.row;if(!r)return null;const v=r[keyOf(f)];return v==null||v===''?null:v};
@@ -42,7 +44,7 @@
   const v=stored(f),d=sb.defaults[keyOf(f)];
   if(f.type==='select'){
    return `<select data-k="${esc(f.k)}" aria-label="${esc(f.label)}"><option value="">既定（${esc(fmtDef(f,d))}）</option>${
-    (f.options||[]).map(o=>{const cur=typeof v==='boolean'?(v?'できる':'できない'):v;
+    (f.options||[]).map(o=>{const cur=typeof v==='boolean'?flagWord(f,v):v;
      return `<option${String(cur??'')===o?' selected':''}>${esc(o)}</option>`}).join('')}</select>`;
   }
   const num=f.type==='number';
@@ -84,7 +86,7 @@
   },'保存できませんでした');
   if(!ok)return void load(true);
   /* 控えを直して塗り直す（読み直さない＝打っている途中の欄を奪わない）。選択欄の呼び名は真偽へ。 */
-  sb.row[key]=value===''?null:(f.type==='number'?+value:(key==='canNakanuki'?value==='できる':value));
+  sb.row[key]=value===''?null:(f.type==='number'?+value:(typeof sb.defaults[key]==='boolean'?value===(f.options||[])[0]:value));
   paintKeep();
  }
  async function resetAll(){

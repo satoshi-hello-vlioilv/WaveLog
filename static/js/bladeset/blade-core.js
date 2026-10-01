@@ -670,10 +670,7 @@
      スペーサーで埋める（寸法は普通のスペーサーで追い込む）。一体型は刃のあいだへぴったり入る形なので
      空きの下限は取らない。潤滑リングは載せない（一体型の上に座る場所が無い——§9.531 分からないこと）。
      `gom`＝一体型（押さえの層・在庫は色×幅）、`spacer`＝残りの普通のスペーサー、`holdRem`＝ゴムが無い長さ。 */
-  if (isRing && hold.integ) {
-   const { got, rest } = integFill(ht, tbl.spacer, total);
-   return { len: total, hold, integ: true, gom: got, spacer: rest, lube: null, rem: rest.rem, holdRem: got.rem };
-  }
+  if (isRing && hold.integ) return integParts(total, hold, ht, tbl.spacer, R);
   const lube = isRing && hold.lube && R.lubeW > 0
    ? { n: 2, w: R.lubeW, od: R.lubeOd, bore: R.lubeBore } : null;
   const room = +(total - (lube ? lube.n * lube.w : 0)).toFixed(3);
@@ -699,31 +696,70 @@
     区間の半分に端数が出た（実測 22/44 面）。作れる長さを上から順に試す（`floor`で次の作れる長さへ）。
     どこまで下げても作れなければ、目いっぱい積んで残りを端数として正直に出す（`spacerGap`が言う）。 */
  const INTEG_TRIES = 400;
- function integFill(it, sp, total) {
-  const top = Math.min(Math.floor(total / FILL_STEP + 1e-9), it.U - 1);
+ /* `limit`＝一体型に使ってよい長さ（区間−潤滑リングの座−空きの目標）、`mid`＝普通のスペーサーと合わせて
+    ちょうどにする長さ（区間−潤滑リングの座）。 */
+ function integFill(it, sp, mid, limit) {
+  const top = Math.min(Math.floor(Math.max(0, limit) / FILL_STEP + 1e-9), it.U - 1);
   for (let v = it.floor[top], n = 0; v > 0 && n < INTEG_TRIES; v = it.floor[v - 1], n++) {
-   const len = +(v * FILL_STEP).toFixed(3), rest = fillWith(sp, total - len);
-   if (rest.rem <= 1e-9) return { got: { out: stackOf(it, v), rem: +(total - len).toFixed(3) }, rest };
+   const len = +(v * FILL_STEP).toFixed(3), rest = fillWith(sp, mid - len);
+   if (rest.rem <= 1e-9) return { got: { out: stackOf(it, v), rem: +(mid - len).toFixed(3) }, rest };
   }
-  const got = fillWith(it, total);
-  return { got, rest: fillWith(sp, got.rem) };
+  const got = fillWith(it, Math.max(0, limit));
+  return { got: { out: got.out, rem: +(mid - (Math.max(0, limit) - got.rem)).toFixed(3) },
+           rest: fillWith(sp, +(mid - (Math.max(0, limit) - got.rem)).toFixed(3)) };
+ }
+ /* 一体型の区間（§9.531→§9.532）。並びは「潤滑リングの座 → 一体型 → 空き（普通のスペーサー）→ 座」。
+    **潤滑リング**（刃組基準値の切り替え・`R.integLube`）を載せるときは、広い側の区間の両端に普通の
+    スペーサーで潤滑リングの幅ぶんの**座**を作り、その上に被せる（ふつうのゴムリング方式と同じ置き方）。
+    **空きの目標**（`integGapMin`）が0なら一体型でちょうど埋め、数値なら一体型を「残り−目標」以内で最大に積む。
+    `spacer`＝座と空きの普通のスペーサーぜんぶ（在庫・所要はここ）、`seat`＝座1つぶん（図が両端に置く）、
+    `rest`＝空きの普通のスペーサー、`holdRem`＝空き（座を除いたゴムの無い長さ）。 */
+ /* 区間の軸の並び（OS側から・§9.531／§9.532）。**図はここを読むだけ**（模式図・拡大図・立体図が同じ並び）。
+    一体型の区間は「座 → 一体型 → 空き → 座」（座は潤滑リングを載せるときだけ）、ほかは普通のスペーサー。 */
+ function axisRun(parts) {
+  const plain = d => expand(d).map(sz => ({ sz, integ: false }));
+  if (!parts.integ) return plain(parts.spacer);
+  const seat = parts.lube ? plain(parts.seat) : [];
+  return seat.concat(expand(parts.gom).map(sz => ({ sz, integ: true })), plain(parts.rest), seat);
+ }
+ function integParts(total, hold, it, sp, R) {
+  let lube = hold.lube && R.lubeW > 0 ? { n: 2, w: R.lubeW, od: R.lubeOd, bore: R.lubeBore } : null;
+  let seat = lube ? fillWith(sp, lube.w) : { out: [], rem: 0 };
+  /* 座を手持ちのスペーサーでちょうどに作れなければ、潤滑リングは載せない（`fit.integSeat`が言う）。 */
+  const seatMiss = !!(lube && seat.rem > 1e-9);
+  if (seatMiss) { lube = null; seat = { out: [], rem: 0 }; }
+  const seatLen = lube ? lube.n * lube.w : 0;
+  const mid = +(total - seatLen).toFixed(3);
+  const gapMin = holdBandOf(R, 'integ').gapMin;
+  const { got, rest } = integFill(it, sp, mid, +(mid - gapMin).toFixed(3));
+  const all = new Map();
+  (lube ? [seat.out, seat.out, rest.out] : [rest.out]).forEach(list => list.forEach(([sz, c]) => all.set(sz, (all.get(sz) || 0) + c)));
+  return { len: total, hold, integ: true, gom: got, lube, seat, rest, seatMiss,
+           spacer: { out: [...all.entries()].filter(([, c]) => c > 0).sort((a, b) => b[0] - a[0]), rem: rest.rem },
+           rem: rest.rem, holdRem: got.rem };
  }
  /* 板押さえの空きの帯（下限〜上限）。**答えは種類ごとにこの1箇所**（§9.462）
     ——ゴムリングは`ringGapMin/Max`、フィンガーは`fingerGapMin/Max`（どちらも
     設備ごとの`刃組基準値`）。上限0は「帯を持たない＝判定しない」。 */
  const BAND_NONE = { gapMin: 0, gapMax: 0 };
- const bandKeys = kind => (kind === 'finger' ? ['fingerGapMin', 'fingerGapMax'] : ['ringGapMin', 'ringGapMax']);
+ const BAND_KEYS = { finger: ['fingerGapMin', 'fingerGapMax'], ring: ['ringGapMin', 'ringGapMax'],
+                     integ: ['integGapMin', 'integGapMax'] };
  function holdBand(M, kind) {
   const P = (M && M.P) || {}, v = k => Math.max(0, num(P[k]) || 0);
-  const [ka, kb] = bandKeys(kind), a = v(ka), b = v(kb);
+  const [ka, kb] = BAND_KEYS[kind] || BAND_KEYS.ring, a = v(ka), b = v(kb);
+  /* 一体型（§9.532）は**目標と上限が別の意味**: 目標0＝空きを作らない、上限0＝判定しない。
+     目標だけ入れたとき上限を目標にそろえると、刻みの都合で少し大きくなった空きまで名指ししてしまう。 */
+  if (kind === 'integ') return { gapMin: a, gapMax: b > 0 ? Math.max(a, b) : 0 };
   return { gapMin: Math.min(a, b || a), gapMax: Math.max(a, b) };
  }
+ /* その押さえの帯の種類（一体型はゴムリングと別の帯・§9.532）。 */
+ const bandKind = hold => (hold.kind === 'finger' ? 'finger' : hold.integ ? 'integ' : 'ring');
  /* `ringRule()`の答えから種類の帯を取り出す（`zoneParts()`は`M`を持たない）。 */
- const holdBandOf = (R, kind) => (kind === 'finger' ? (R.finger || BAND_NONE) : R);
+ const holdBandOf = (R, kind) => (kind === 'finger' ? (R.finger || BAND_NONE) : kind === 'integ' ? (R.integ || BAND_NONE) : R);
  /* ゴムリングの組み方の決まり（§9.454）。**値は設備ごとの`刃組基準値`**
     （既定はサーバーの`STANDARD_DEFAULTS`）。読めない値は0——空きの帯を
     持たない・潤滑リングを入れない、に倒れる（勝手な数で埋めない・§9.231）。 */
- const RING_RULE_NONE = { gapMin: 0, gapMax: 0, finger: BAND_NONE, lubeW: 0, lubeOd: 0, lubeBore: 0,
+ const RING_RULE_NONE = { gapMin: 0, gapMax: 0, finger: BAND_NONE, integ: BAND_NONE, integLube: false, lubeW: 0, lubeOd: 0, lubeBore: 0,
                           lubeHex: '', lubeColor: '', lubeQty: 0 };
  /* 空きの帯は`刃組基準値`、**潤滑リングの寸法と在庫はゴムリングマスタの行**
     （種類＝潤滑リング・§9.455）。行が複数あるときは**表の並びの先頭**（サーバーの
@@ -732,7 +768,9 @@
     `finger`はフィンガーの帯（§9.462）。 */
  function ringRule(M) {
   const L = ((M && M.lubes) || [])[0] || null;
-  return { ...holdBand(M, 'ring'), finger: holdBand(M, 'finger'),
+  return { ...holdBand(M, 'ring'), finger: holdBand(M, 'finger'), integ: holdBand(M, 'integ'),
+           /* 一体型の区間に潤滑リングを載せるか（§9.532・刃組基準値の切り替え）。 */
+           integLube: !!(M && M.P && M.P.integLube),
            lubeW: L ? L.width : 0, lubeOd: L ? L.od : 0, lubeBore: L ? L.bore : 0,
            lubeHex: L ? L.hex : '', lubeColor: L ? L.color : '', lubeQty: L ? L.qty : 0 };
  }
@@ -742,7 +780,7 @@
   const R = ringRule(M), out = [];
   zp.zones.forEach((z, i) => [['上', z.up], ['下', z.lo]].forEach(([ax, p]) => {
    if (!p.hold || !p.gom.out.length) return;
-   const b = holdBandOf(R, p.hold.kind);
+   const b = holdBandOf(R, bandKind(p.hold));
    if (!(b.gapMax > 0)) return;
    const g = p.holdRem;
    /* 一体型は空きを取らずに組む（0が正）ので、下限は見ない——上限を超えた（ゴムの無い長さが長い）面だけ。 */
@@ -817,7 +855,7 @@
     if (finger) return fingerWidthsOf(IX, fmat).length ? { kind: 'finger', mat: fmat } : null;
     if (!ringsOf(IX, integ).length) return null;
     const t = ringType(burr, upper);
-    return { kind: 'ring', integ, ringT: t, od: odOfType(st, M, t), lube: !integ && wide(upper) };
+    return { kind: 'ring', integ, ringT: t, od: odOfType(st, M, t), lube: wide(upper) && (!integ || RULE.integLube) };
    };
    /* 押さえ代の幅を持たせるのは**フローティングシートの側の端だけ**（`A.floatZ`・§9.461）。
       基準面の側は押し付ける側なので0が正。 */
@@ -1104,7 +1142,11 @@
   });
   const fit = { spacerGap: bad, bareHold: bare, holdGap: holdGapFaces(zp, M),
                 /* ゴムリング方式なのに潤滑リングの行が無い（§9.455）——入れられない。 */
-                lubeMissing: !isFinger(st, M) && !isInteg(st, M) && !!(M.rings || []).length && !(M.lubes || []).length,
+                lubeMissing: !isFinger(st, M) && (!isInteg(st, M) || ringRule(M).integLube)
+                 && !!(M.rings || []).length && !(M.lubes || []).length,
+                /* 一体型で潤滑リングの座（普通のスペーサーで潤滑リングの幅）をちょうどに作れなかった面（§9.532）。 */
+                integSeat: zp.zones.flatMap((z, i) => [['上', z.up], ['下', z.lo]]
+                 .filter(([, p]) => p.seatMiss).map(([ax]) => `${i + 1}${ax}`)),
                 /* フローティングシートが押さえる量（上軸・下軸）。0でも正。`side`＝シートの端。 */
                 floatSeat: { up: +(zp.zones[fz].up.rem || 0).toFixed(3),
                              lo: +(zp.zones[fz].lo.rem || 0).toFixed(3),
@@ -1705,7 +1747,7 @@
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum, cutFace,
   stripDesign, designByParent, condOf, sameCond, seedFromCond,
   pickCtx, bladePickCtx, tableFields, bladeChoice, tableReason, pickWord, bladeCategory, condHits, selectable, firstRule, holdPick, holdReason, condText,
-  expand, materialRun, matShift, spread, tierOf,
+  expand, axisRun, materialRun, matShift, spread, tierOf,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP
  };
 })();

@@ -304,6 +304,8 @@ STANDARD_COLUMNS = (
     ('中抜き可', 'INTEGER'), ('屑条幅既定', 'REAL'), ('寸法刻み', 'REAL'),
     ('ゴムリング空き下限', 'REAL'), ('ゴムリング空き上限', 'REAL'),
     ('フィンガー空き下限', 'REAL'), ('フィンガー空き上限', 'REAL'),
+    # スペーサー一体型（§9.532）: 空きの目標・上限と、区間に潤滑リングを載せるか。
+    ('一体型空き目標', 'REAL'), ('一体型空き上限', 'REAL'), ('一体型潤滑', 'INTEGER'),
     ('図の基準原点の位置', 'TEXT'), ('OSの呼び方', 'TEXT'), ('DSの呼び方', 'TEXT'),
     ('備考', 'TEXT'), ('表示順', 'INTEGER'), ('有効', 'INTEGER'),
 )
@@ -354,6 +356,10 @@ STANDARD_DEFAULTS = {
     # 管理範囲を設定できるように」）。**現場の値はまだ聞いていないので0＝判定しない**
     # （勝手な数で埋めない・§9.231）。0のあいだは今までどおり区間いっぱいを狙う。
     'fingerGapMin': 0.0, 'fingerGapMax': 0.0,
+    # スペーサー一体型（§9.532、利用者の指示「空きは作る作らないを空きの目標値を0で設定するか数値を
+    # 入れるかの違いで判断」「潤滑リングはどっちも切り替えて対応できるように」・選択「一体型専用の値」）。
+    # **既定は0＝空きを作らない・潤滑リングは載せない**（§9.531 の組み方のまま）。
+    'integGapMin': 0.0, 'integGapMax': 0.0, 'integLube': False,
     # 図の向き（§9.463、利用者の指示「段取り向きとか図面向きというのをやめて、
     # 基準原点を左、基準原点を右といった形で迷いの少ない呼び方に…既定は基準原点を
     # 右側に表示して、呼び方もマスタから変更できるように」）。
@@ -389,9 +395,14 @@ _STANDARD_MAP = (
     ('ゴムリング空き上限', 'ringGapMax', 'num'),
     ('フィンガー空き下限', 'fingerGapMin', 'num'),
     ('フィンガー空き上限', 'fingerGapMax', 'num'),
+    ('一体型空き目標', 'integGapMin', 'num'), ('一体型空き上限', 'integGapMax', 'num'),
+    ('一体型潤滑', 'integLube', 'flag'),
     ('図の基準原点の位置', 'viewDatumPos', 'pos'),
     ('OSの呼び方', 'sideNameOS', 'text'), ('DSの呼び方', 'sideNameDS', 'text'),
 )
+# 真偽の項目の呼び名（入, 切）。**綴りはここ1箇所**——画面の選択肢（master-defs の options）と同じ字。
+# 切の側は`flags.OFF_WORDS`にも並べる（§9.377）。
+STANDARD_FLAG_WORDS = {'canNakanuki': ('できる', 'できない'), 'integLube': ('載せる', '載せない')}
 # 図の基準原点の位置（§9.463）。**綴りはここ1箇所**。
 VIEW_POSITIONS = ('右', '左')
 
@@ -1066,7 +1077,8 @@ def _standard_row(d):
             # **呼び名も返す**（上の`enabledText`と同じ理由）。既定は
             # 「登録が無い＝基準値の既定に従う」なので、そのときは既定の側を出す。
             fallback = bool(STANDARD_DEFAULTS.get(key))
-            out[key + 'Text'] = 'できる' if (fallback if on is None else on) else 'できない'
+            yes, no = STANDARD_FLAG_WORDS.get(key, ('できる', 'できない'))
+            out[key + 'Text'] = yes if (fallback if on is None else on) else no
         else:
             out[key] = _num(v)
     return out

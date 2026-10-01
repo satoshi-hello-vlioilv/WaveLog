@@ -1,4 +1,4 @@
-# 刃組ガイダンス（233件）
+# 刃組ガイダンス（237件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,12 +10,16 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 一体型の空きは専用の目標・上限（`integGapMin/Max`）。目標0＝空きを作らない・上限0＝判定しない（`holdBand(M,'integ')`） | `test_bladesets.js`・`test_bladeset.py` | [§9.532](../../docs/decisions/9.532.md) |
+| 一体型の潤滑リングは刃組基準値の切り替え（既定は載せない）。載せるときは両端に普通のスペーサーで座を作る（`integParts()`） | `test_bladesets.js` | [§9.532](../../docs/decisions/9.532.md) |
+| 区間の軸の並びは`axisRun()`の1箇所（模式図・拡大図・立体図が読む）。図ごとに並びを組まない | `test_bladesets.js` | [§9.532](../../docs/decisions/9.532.md) |
+| 真偽の項目の呼び名は`STANDARD_FLAG_WORDS`の1箇所。切の側は`flags.OFF_WORDS`にも並べる | `test_bladeset.py`・`test_flags.py` | [§9.532](../../docs/decisions/9.532.md) |
 | 刃組の盤の高さを決めた欄は上下の余白0（土台の余白7px＋枠線で字の席が1行より狭い）。規則は72-bladeset.cssの1つ | `test_partboards.js` | [§9.531](../../docs/decisions/9.531.md) |
 | 判定表の頭・刃組基準値の節に番号を付けない。決める順は矢印と並びが言う | `test_partboards.js` | [§9.531](../../docs/decisions/9.531.md) |
 | スペーサー・フィンガーの在庫表は`stockTable()`の1本。欄を離れると保存・同じ寸法の2行目は作らない | `test_partboards.js` | [§9.531](../../docs/decisions/9.531.md) |
 | 刃組基準値の盤は1設備の全部の欄。顔ぶれは`bladesetStandard.fields`の1箇所・空欄は既定値の薄字 | `test_partboards.js` | [§9.531](../../docs/decisions/9.531.md) |
 | スペーサー一体型はゴムリングの種類（`RING_KINDS`の1箇所）。外径はゴムリングどうしで被らせない | `test_bladeset.py`・`test_ringboard.js` | [§9.531](../../docs/decisions/9.531.md) |
-| 一体型は幅が寸法を作る。区間は`integFill()`（残りをスペーサーでちょうどに作れる最大）。潤滑は載せない | `test_bladesets.js` | [§9.531](../../docs/decisions/9.531.md) |
+| 一体型は幅が寸法を作る。区間は`integFill()`（残りをスペーサーでちょうどに作れる最大）。【§9.532で切り替えに】潤滑 | `test_bladesets.js` | [§9.531](../../docs/decisions/9.531.md) |
 | リングの色を選ぶ側は`ringsOf()`で種類を分ける（一体型の方式でふつうの色を選ばない・逆も） | `test_bladesets.js` | [§9.531](../../docs/decisions/9.531.md) |
 | 判定表は行も列も後から並べ替えられる（掴む札・↑↓／←→）。確定は`dragend`、既定の行は動かさない | `test_holdpick.js` | [§9.530](../../docs/decisions/9.530.md) |
 | 列の並びは表の設定（`[列JSON]`・`table_cols()`の1箇所）。条件の出てくる順から起こさない | `test_bladeset.py`・`test_holdpick.js` | [§9.530](../../docs/decisions/9.530.md) |
