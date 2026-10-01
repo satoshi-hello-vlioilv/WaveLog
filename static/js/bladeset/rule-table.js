@@ -137,7 +137,7 @@
    const o=this.o;
    const st=this.dirty?'<span class="rt-state is-dirty">保存していない変更があります</span>'
     :this.stored?'<span class="rt-state">登録済み</span>':`<span class="rt-state is-seed">未登録——${o.seedNote}</span>`;
-   return `<header class="rt-h"><span class="rt-step">${esc(o.step||'')}</span><h3>${esc(o.label)}</h3>${st}
+   return `<header class="rt-h"><h3>${esc(o.label)}</h3>${st}
     <span class="rt-acts"><select class="rt-addcol" aria-label="列（データ）を足す">${this.addColOptions()}</select>
      <button type="button" class="mm-btn-ghost sm" data-rt="addrow">＋ 決まりを足す</button>
      ${this.stored?`<button type="button" class="mm-btn-ghost sm" data-rt="reset" title="この表の登録を消し、${esc(o.seedNote)}へ戻します">未登録に戻す</button>`:''}

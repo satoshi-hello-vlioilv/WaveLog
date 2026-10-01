@@ -22,7 +22,7 @@
  const outLabel=r=>(matOf(r)?`${r.hold}（${matOf(r)}）`:r.hold);
 
  const table=WL.ruleTable.create({
-  key:'hold',label:'保持方式',step:'1',answerHead:'保持方式',
+  key:'hold',label:'保持方式',answerHead:'保持方式',
   host:()=>document.querySelector('#masterMaintList [data-table="hold"]'),
   fields:()=>hs.fields,groups:()=>hs.groups,sourceCols:()=>hs.sourceCols,valuesOf:f=>valuesOf(f),
   probe:hs.probe,defaultCols:['thickness'],
