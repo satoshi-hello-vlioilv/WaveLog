@@ -46,8 +46,10 @@
 持たない。代わりに `seed_standard_parts()` が「図面の製作数どおりの1式」を
 **明示的に押したときだけ**登録する（マスタ管理の「初期セットを登録」）。
 """
+import colorsys
 import json
 import re
+import unicodedata
 
 from ..db_access import tables
 from ..flags import flag_of, OFF_WORDS
@@ -154,6 +156,25 @@ BLADESET_COLUMNS = (
 )
 BLADESET_DEF = TableDef(BLADESET_TABLE, '刃セットID', BLADESET_COLUMNS,
                         order_by='[設備名],[組],[刃セットID]')
+# 【§9.529】刃1枚の種類を見分けるのは**設備＋セット＋刃厚**の3つ（利用者の指示「名称をキーには
+# 使わない」「設備、刃の厚さ、セット名(アルファベットから選択)というキーは3つで管理」）。
+# セット名は英大文字1字。`名称`の列は**読むだけ**（呼び名はセット＋刃厚から作る・`blade_label()`）。
+BLADE_SET_NAMES = tuple(chr(ord('A') + i) for i in range(26))
+
+
+def blade_set_name(v):
+    """画面・APIから来たセット名を A〜Z の1字へ（全角・小文字も読む）。読めなければ断る。"""
+    t = unicodedata.normalize('NFKC', _txt(v)).upper()
+    if t not in BLADE_SET_NAMES:
+        raise ValueError('セット名は A〜Z から1字選んでください。')
+    return t
+
+
+def blade_label(group, thickness):
+    """刃の呼び名（例: A 10mm）。名称の欄は持たない——鍵の3つ（設備・セット・刃厚）から作る。"""
+    t = _num(thickness)
+    th = '' if t is None else f'{t:g}mm'
+    return (f'{_txt(group) or "（セットなし）"} {th}').strip()
 
 
 # ---------------------------------------------------------------------------
@@ -400,56 +421,58 @@ DESIGN_DEF = TableDef(DESIGN_TABLE, '条設計ID', DESIGN_COLUMNS,
 
 
 # ---------------------------------------------------------------------------
-# 7 刃選択マスタ（「専用」の刃を選ぶ条件）
+# 7 刃選択マスタ（刃のカテゴリと刃厚を選ぶ2つの判定表・§9.529）
 # ---------------------------------------------------------------------------
-# ふつうは「一般」の刃が選ばれる。**そこから外れる作業だけ**をここに書く
-# （§9.379、利用者の指示2）。1行＝1つの決まりで、上から順に見て
-# **最初に当たった1行**が効く（表示ルールマスタと同じ作法）。
+# 利用者の指示（§9.529）:「専用刃を使う条件だけになっていますが、刃厚を選ぶテーブルと通常刃か
+# 専用刃を選ぶテーブルの2つを準備し、5㎜刃か10㎜刃かなど、登録している刃厚を選択対象にできるように。
+# 条件テーブルは『保持方式』の選択マスタみたいな条件テーブルの作りが好ましい。自由に条件設定ができ、
+# 他マスタで設定した項目(例えば板押さえ)も条件に加えられるように。」選択「答えでセットも選べる」。
 #
-# 条件は行ごとに数が変わるので **JSONの配列**で持つ（列にできない）。
-# 形は `[{'field':'thickness','op':'ge','value':'1.6'}, ...]` で、
-# **同じ行の条件は全部満たしたときだけ**当たる（AND）。
-# 「または」は行を分けて書く——1行の中に AND と OR を混ぜると、
-# 読む側が優先順位を推測することになる。
+# 表は**保持方式と同じ判定表**（§9.524）: 1行＝1つの決まり、上から見て**最初に当たった行**、
+# 条件の無い行＝**最後の既定の行**（1つ・消せない）。決める順は **保持方式 → 刃のカテゴリ → 刃厚**
+# で、後ろの表は前の表の答えを条件に使える（`PICK_FIELDS`の`step`）。
+#   刃のカテゴリ … 答え＝通常刃／専用刃。専用刃は**セットも選べる**（`刃の組`。空＝使えるどれでも）
+#   刃厚        … 答え＝登録している刃厚（空＝いちばん厚い刃＝今までの選び方）
+# 1行の列: `[表]`（category／thickness）・`[答え]`・`[刃の組]`・`[条件JSON]`・`[備考]`。
+# 【旧】§9.379〜§9.526 の「専用の刃を選ぶ決まり」（`[表]`が空・`[名称]`つき）は**刃のカテゴリの表の行**
+# として読む（答え＝専用刃・セット＝`[刃の組]`・名前は備考へ）。条件の無い旧い行は1度も当たらなかった
+# ので読まない（既定の行と取り違えない）。
 BLADEPICK_TABLE = '刃選択マスタ'
 BLADEPICK_COLUMNS = (
     ('設備名', 'TEXT'), ('名称', 'TEXT'), ('条件JSON', 'TEXT'),
     ('刃の組', 'TEXT'), ('備考', 'TEXT'), ('表示順', 'INTEGER'), ('有効', 'INTEGER'),
+    ('表', 'TEXT'), ('答え', 'TEXT'),
 )
 BLADEPICK_DEF = TableDef(BLADEPICK_TABLE, '刃選択ID', BLADEPICK_COLUMNS,
                          order_by='[設備名],[表示順],[刃選択ID]')
+PICK_CATEGORY = 'category'
+PICK_THICKNESS = 'thickness'
+# 判定表の顔ぶれ（決める順）。`order`は「前の表の答え」を条件に使えるかを決める。
+PICK_TABLES = (('hold', '保持方式', 1), (PICK_CATEGORY, '刃のカテゴリ', 2), (PICK_THICKNESS, '刃厚', 3))
+PICK_THICKEST = ''          # 刃厚の答えの「いちばん厚い刃」（空の答え）
 
 # 条件に使える項目。**語彙はここだけが持つ**（画面は聞いて出す・§9.163）。
-# `kind` は画面が入力欄の形を決めるためのもの。増やすときは、
-# `pick_context()` が同じ鍵で値を作れることを確かめること。
-# 計算値（ガイダンスが材料から計算して持つもの）。保持方式の条件表の列に使う（§9.524）。
-CALC_FIELDS = (
-    ('thickness', '板厚', 'num'),
-    ('coilWidth', '元コイル幅', 'num'),
-    ('strips', '条数', 'num'),
-    ('minWidth', '条幅（いちばん狭い）', 'num'),
-    ('maxWidth', '条幅（いちばん広い）', 'num'),
+# (鍵, 呼び名, 型, 群, step)——`step`の表の答えなので、それより後ろの表でだけ使える（0＝材料）。
+# 群は列を足すときの見出し（ほかのマスタの答え／材料から計算した値／1本目のコイル）。
+PICK_GROUPS = (('answer', 'ほかのマスタの答え'), ('calc', '材料から計算した値'),
+               ('material', '1本目のコイル（仕掛）'), ('source', '仕掛の列'))
+PICK_FIELDS = (
+    ('hold', '板押さえ方式', 'choice', 'answer', 1),
+    ('fingerMaterial', 'フィンガー材質', 'choice', 'answer', 1),
+    ('category', '刃のカテゴリ', 'choice', 'answer', 2),
+    ('thickness', '板厚', 'num', 'calc', 0),
+    ('coilWidth', '元コイル幅', 'num', 'calc', 0),
+    ('strips', '条数', 'num', 'calc', 0),
+    ('minWidth', '条幅（いちばん狭い）', 'num', 'calc', 0),
+    ('maxWidth', '条幅（いちばん広い）', 'num', 'calc', 0),
+    ('material', '材質', 'text', 'material', 0),
+    ('temper', '調質', 'text', 'material', 0),
+    ('lotNo', 'ロット番号', 'text', 'material', 0),
 )
-# 刃選択の条件に**選べる**項目（§9.526、利用者の指示「板押さえ方式と板厚と材質と調質から
-# 選べるように」・選択「4項目に絞る」）。板押さえ方式は`保持方式マスタ`の答え、材質・調質は
-# 1本目の仕掛の行（製造→オーダーの順）。`kind:'choice'`は候補から選ぶ（`options`）。
-BLADEPICK_FIELDS = (
-    ('hold', '板押さえ方式', 'choice'),
-    ('thickness', '板厚', 'num'),
-    ('material', '材質', 'text'),
-    ('temper', '調質', 'text'),
-)
-# 前に選べた項目。**すでに書いた決まりは読んで効かせる**（新しくは選べない・消さない）。
-BLADEPICK_FIELDS_LEGACY = (
-    ('coilWidth', '元コイル幅', 'num'),
-    ('strips', '条数', 'num'),
-    ('minWidth', '条幅（いちばん狭い）', 'num'),
-    ('maxWidth', '条幅（いちばん広い）', 'num'),
-    ('lotNo', 'ロット番号', 'text'),
-)
-# 比べ方。**表示ルールマスタと同じ綴り**を使う（1つのアプリに2つの
-# 演算子の語彙を作らない）。右辺を持たないものはここには置かない——
-# 「空かどうか」で刃を選ぶことはないため。
+# 計算値（保持方式の表が前から使っていた列・§9.524）。
+CALC_FIELDS = tuple((f, l, k) for f, l, k, g, _s in PICK_FIELDS if g == 'calc')
+_FIELD_KIND = {f: k for f, _l, k, _g, _s in PICK_FIELDS}
+# 比べ方。**表示ルールマスタと同じ綴り**を使う（1つのアプリに2つの演算子の語彙を作らない）。
 BLADEPICK_OPS = (
     ('eq', '＝'), ('ne', '≠'), ('ge', '≧'), ('gt', '＞'),
     ('le', '≦'), ('lt', '＜'), ('between', '範囲'), ('contains', '含む'),
@@ -469,13 +492,20 @@ def is_source_field(field):
             and len(f) <= _SOURCE_FIELD_MAX and not any(ch in f for ch in '[]\r\n\t'))
 
 
-def normalize_pick_conditions(raw, extra_fields=True):
+def pick_fields_for(order):
+    """`order`番目の表で使える項目（前の表の答え＋材料）。画面の「列を足す」の候補。"""
+    return [{'field': f, 'label': l, 'kind': k, 'group': g,
+             **({'options': list(_FIELD_OPTIONS[f])} if f in _FIELD_OPTIONS else {})}
+            for f, l, k, g, st in PICK_FIELDS if st < order]
+
+
+def normalize_pick_conditions(raw, extra_fields=True, order=9):
     """保存できる条件の配列へ整える。**壊れた条件は1件だけ落とす**
     （表示ルールマスタと同じ理由——1つの入力ミスで行ごと消えると、
-    利用者からは「保存したのに戻っている」としか見えない）。"""
+    利用者からは「保存したのに戻っている」としか見えない）。`order`より前の表の答えだけを受ける。"""
     if not isinstance(raw, list):
         return []
-    fields = {f for f, _l, _k in BLADEPICK_FIELDS + BLADEPICK_FIELDS_LEGACY}
+    fields = {f for f, _l, _k, _g, st in PICK_FIELDS if st < order}
     ops = {o for o, _l in BLADEPICK_OPS}
     out = []
     for item in raw:
@@ -494,13 +524,20 @@ def normalize_pick_conditions(raw, extra_fields=True):
 
 
 def _pick_row(d):
+    """1行。`[表]`が空の行は旧い「専用刃の決まり」（刃のカテゴリの表へ読み替える）。"""
     try:
         conds = json.loads(d['条件JSON'] or '[]')
     except (ValueError, TypeError):
         conds = []
-    return {'id': d['刃選択ID'], 'equipment': _txt(d['設備名']),
-            'name': _txt(d['名称']), 'conditions': normalize_pick_conditions(conds),
-            'group': _txt(d['刃の組']), 'note': _txt(d['備考']),
+    table = _txt(d['表'])
+    legacy = not table
+    answer = _txt(d['答え'])
+    if legacy:
+        table, answer = PICK_CATEGORY, BLADE_CAT_SPECIAL
+    return {'id': d['刃選択ID'], 'equipment': _txt(d['設備名']), 'table': table, 'legacy': legacy,
+            'conditions': normalize_pick_conditions(conds),
+            'answer': answer, 'group': _txt(d['刃の組']),
+            'note': _txt(d['備考']) or (_txt(d['名称']) if legacy else ''),
             'order': _int(d['表示順']), 'enabled': _alive(d['有効'])}
 
 
@@ -508,98 +545,86 @@ def pick_rows(c, include_disabled=False, equipment=None):
     return _rows(c, BLADEPICK_DEF, _pick_row, include_disabled, equipment)
 
 
-def _cmp_num(left, op, a, b):
-    """数の比べ方。**読めない値は「当たらない」**——0として比べると、
-    空欄の条件が全部の作業に当たってしまう。"""
-    ln, an = _num(left), _num(a)
-    if ln is None or an is None:
-        return False
-    if op == 'eq':
-        return abs(ln - an) < 1e-9
-    if op == 'ne':
-        return abs(ln - an) >= 1e-9
-    if op == 'ge':
-        return ln >= an - 1e-9
-    if op == 'gt':
-        return ln > an + 1e-9
-    if op == 'le':
-        return ln <= an + 1e-9
-    if op == 'lt':
-        return ln < an - 1e-9
-    if op == 'between':
-        bn = _num(b)
-        if bn is None:
-            return False
-        lo, hi = (an, bn) if an <= bn else (bn, an)
-        return lo - 1e-9 <= ln <= hi + 1e-9
-    return False
+def _pick_answer(table, r, thicknesses=None):
+    """答えを整える。カテゴリ＝通常刃／専用刃（セットは専用刃だけ）、刃厚＝登録の刃厚か空（いちばん厚い刃）。"""
+    if table == PICK_CATEGORY:
+        a = _txt(r.get('answer'))
+        a = a if a in BLADE_CATEGORIES else BLADE_CAT_NORMAL
+        return a, (_txt(r.get('group')) if a == BLADE_CAT_SPECIAL else '')
+    t = _num(r.get('answer'))
+    if t is None or t <= 0:
+        return PICK_THICKEST, ''
+    return '%g' % t, ''
 
 
-def cond_hits(cond, ctx):
-    """条件1つ。**文脈にその項目が無ければ当たらない**（§9.231
-    「引けなかった値を0にしない」）。"""
-    field = cond.get('field')
-    if field not in ctx:
-        return False
-    left = ctx.get(field)
-    if left is None or left == '':
-        return False
-    op = cond.get('op')
-    kind = next((k for f, _l, k in BLADEPICK_FIELDS + BLADEPICK_FIELDS_LEGACY if f == field), 'text')
-    if kind == 'num':
-        return _cmp_num(left, op, cond.get('value'), cond.get('value2'))
-    ls, rs = str(left), str(cond.get('value') or '')
-    if op == 'eq':
-        return ls == rs
-    if op == 'ne':
-        return ls != rs
-    if op == 'contains':
-        return bool(rs) and rs in ls
-    return False
-
-
-def pick_group(rules, ctx):
-    """その作業で使う「専用」の刃の組。**当たらなければ空**＝「一般」を使う。
-
-    上から順に見て**最初に当たった1行**を返す（表示ルールマスタと同じ）。
-    条件が1つも無い行は当たらない扱いにする——「いつでも当たる行」を
-    書けてしまうと、「一般」が既定であるという約束が静かに崩れる。
-    """
-    for r in (rules or []):
-        conds = r.get('conditions') or []
-        if not conds or not r.get('group'):
+def _pick_tidy(table, rows):
+    """決まりの行（条件あり）を上から、**既定行（条件なし）を最後に1つ**（`_hold_tidy()`と同じ約束）。"""
+    order = dict((k, o) for k, _l, o in PICK_TABLES)[table]
+    body, default = [], None
+    for r in rows or []:
+        if not isinstance(r, dict):
             continue
-        if all(cond_hits(x, ctx) for x in conds):
-            return {'group': r['group'], 'rule': r.get('name') or '',
-                    'id': r.get('id')}
-    return None
+        conds = normalize_pick_conditions(r.get('conditions'), True, order)
+        answer, group = _pick_answer(table, r)
+        row = {'conditions': conds, 'answer': answer, 'group': group, 'note': _txt(r.get('note'))[:200]}
+        for k in ('id', 'enabled', 'legacy'):
+            if k in r:
+                row[k] = r[k]
+        if conds:
+            body.append(row)
+        else:
+            default = row
+    seed = _pick_seed(table)[0]
+    return body + [default or seed]
 
 
-def pick_upsert(c, uid, row_id=None, equipment=None, name=None,
-                conditions=None, group=None, note=None, order=None,
-                enabled=None):
-    """1行を足す／直す。条件は必ず `normalize_pick_conditions()` を通す。"""
-    vals = {}
-    if equipment is not None:
-        vals['設備名'] = _txt(equipment)
-    if name is not None:
-        vals['名称'] = _txt(name)
-    if conditions is not None:
-        vals['条件JSON'] = json.dumps(normalize_pick_conditions(conditions),
-                                      ensure_ascii=False)
-    if group is not None:
-        vals['刃の組'] = _txt(group)
-    if note is not None:
-        vals['備考'] = _txt(note)
-    if order is not None:
-        vals['表示順'] = _int(order)
-    if enabled is not None:
-        vals['有効'] = 1 if flag_of(enabled) else 0
-    return _put(c, BLADEPICK_DEF, row_id, vals, uid, _txt(equipment))
+def _pick_seed(table):
+    """登録の無い表。**今までの選び方をそのまま表にしたもの**——カテゴリは通常刃、刃厚はいちばん厚い刃。"""
+    return [{'conditions': [], 'answer': BLADE_CAT_NORMAL if table == PICK_CATEGORY else PICK_THICKEST,
+             'group': '', 'note': ''}]
 
 
-def pick_delete(c, row_id):
-    _delete(c, BLADEPICK_DEF, int(row_id))
+def pick_tables(c, equipment):
+    """その設備の刃選択の2つの表。`{表: {'rows':[...], 'stored':bool}}`（`hold_rows()`と同じ形）。
+    旧い決まりの行（条件あり）はカテゴリの表の上に読み、条件の無い旧い行は読まない。"""
+    eq = _txt(equipment)
+    rows = [r for r in pick_rows(c, False, eq) if not (r['legacy'] and not r['conditions'])]
+    out = {}
+    for table in (PICK_CATEGORY, PICK_THICKNESS):
+        mine = [r for r in rows if r['table'] == table]
+        out[table] = ({'rows': _pick_tidy(table, mine), 'stored': True} if mine
+                      else {'rows': _pick_seed(table), 'stored': False})
+    return out
+
+
+def pick_replace(c, uid, equipment, table, rows):
+    """その設備の1つの表を**丸ごと置き換える**（旧い決まりの行もカテゴリの表として消して書き直す）。"""
+    eq = _check_equipment(equipment)
+    if table not in (PICK_CATEGORY, PICK_THICKNESS):
+        raise ValueError('表は「刃のカテゴリ」か「刃厚」です。')
+    tidy = _pick_tidy(table, rows)
+    pick_reset(c, eq, table, commit=False)
+    for i, r in enumerate(tidy):
+        BLADEPICK_DEF.insert(c, {'設備名': eq, '表': table, '答え': r['answer'],
+                                 '刃の組': r['group'] or None,
+                                 '条件JSON': json.dumps(r['conditions'], ensure_ascii=False),
+                                 '備考': r['note'] or None, '表示順': (i + 1) * 10, '有効': -1}, uid)
+    c.commit()
+    return len(tidy)
+
+
+def pick_reset(c, equipment, table, commit=True):
+    """その表の登録を消して**未登録（今までの選び方）へ戻す**。カテゴリの表は旧い決まりの行も消す。"""
+    eq = _check_equipment(equipment)
+    _ensure(c, BLADEPICK_DEF)
+    n = 0
+    for r in pick_rows(c, True, eq):
+        if r['table'] == table:
+            c.cursor().execute('DELETE FROM [%s] WHERE [刃選択ID]=?' % BLADEPICK_TABLE, [r['id']])
+            n += 1
+    if commit:
+        c.commit()
+    return n
 
 
 # ---------------------------------------------------------------------------
@@ -734,9 +759,11 @@ HOLDPICK_DEF = TableDef(HOLDPICK_TABLE, '保持方式ID', HOLDPICK_COLUMNS,
 HOLD_FINGER = 'フィンガー'
 HOLD_RING = 'ゴムリング'
 HOLD_METHODS = (HOLD_FINGER, HOLD_RING)
-# 条件表の列に使える計算値（仕掛の列は `source.<列名>` で別に足せる）。材質・調質は
-# 仕掛の列そのもの（`source.製造材質` 等）で書く——同じ値の呼び方を2つ作らない。
-HOLD_FIELDS = CALC_FIELDS
+# 条件表の列に使える項目＝**材料**（計算値・1本目のコイルの材質など）。保持方式は最初に決める表なので、
+# ほかの表の答えは使えない（`PICK_TABLES`の order＝1）。仕掛の列は `source.<列名>` で別に足せる。
+HOLD_ORDER = 1
+# 候補から選ぶ項目の顔ぶれ（前の表の答え）。
+_FIELD_OPTIONS = {'hold': HOLD_METHODS, 'fingerMaterial': FINGER_MATERIALS, 'category': BLADE_CATEGORIES}
 
 
 def _hold_row(d):
@@ -747,7 +774,7 @@ def _hold_row(d):
     hold = _txt(d['保持方式'])
     hold = hold if hold in HOLD_METHODS else HOLD_RING
     return {'id': d['保持方式ID'], 'equipment': _txt(d['設備名']),
-            'conditions': normalize_pick_conditions(conds),
+            'conditions': normalize_pick_conditions(conds, True, HOLD_ORDER),
             'hold': hold, 'material': _hold_material(hold, d['フィンガー材質']),
             'note': _txt(d['備考']), 'order': _int(d['表示順']),
             'enabled': _alive(d['有効'])}
@@ -791,7 +818,7 @@ def _hold_tidy(rows):
     for r in rows or []:
         if not isinstance(r, dict):
             continue
-        conds = normalize_pick_conditions(r.get('conditions'), extra_fields=True)
+        conds = normalize_pick_conditions(r.get('conditions'), True, HOLD_ORDER)
         hold = _txt(r.get('hold'))
         hold = hold if hold in HOLD_METHODS else HOLD_RING
         row = {'conditions': conds, 'hold': hold, 'note': _txt(r.get('note'))[:200],
@@ -870,7 +897,7 @@ def _ensure(c, d):
 # ---------------------------------------------------------------------------
 def _blade_row(d):
     return {'id': d['刃ID'], 'equipment': _txt(d['設備名']),
-            'name': _txt(d['名称']), 'group': _txt(d['組']),
+            'name': blade_label(d['組'], d['刃厚']), 'group': _txt(d['組']),
             'thickness': _num(d['刃厚']), 'currentDia': _num(d['現状径']),
             'qty': _int(d['保有枚数']), 'minQty': _int(d['下限枚数']),
             'lastGrind': _txt(d['研磨日']), 'grindCount': _int(d['研磨回数']),
@@ -1059,19 +1086,80 @@ def blade_set_of(c, equipment, group, blades=None):
 
 
 def blade_sets(c, equipment):
-    """その設備の刃セットの一覧（刃の組から作る）。刃の枚数・刃厚の顔ぶれも添える（盤が出す）。"""
-    rows = _rows(c, BLADE_DEF, _blade_row, False, equipment)
+    """その設備の刃セットの一覧（刃の組から作る・A→Z）。セットごとに刃の行（刃厚の大きい順）と
+    合計枚数を添える——盤は1往復で一覧と詳細の両方を描く（§9.529）。"""
+    rows = _rows(c, BLADE_DEF, _blade_row, True, equipment)
     out = {}
     for b in rows:
         g = b['group']
         if g not in out:
-            out[g] = dict(blade_set_of(c, equipment, g, rows), group=g, blades=0, thicknesses=[], names=[])
-        o = out[g]
-        o['blades'] += 1
-        o['names'].append(b['name'])
-        if b['thickness'] is not None and b['thickness'] not in o['thicknesses']:
-            o['thicknesses'].append(b['thickness'])
+            out[g] = dict(blade_set_of(c, equipment, g, rows), group=g, rows=[], thicknesses=[])
+        out[g]['rows'].append(b)
+    for o in out.values():
+        o['rows'].sort(key=lambda b: -(b['thickness'] or 0))
+        o['thicknesses'] = [b['thickness'] for b in o['rows'] if b['thickness'] is not None]
+        o['blades'] = len(o['rows'])
+        o['total'] = sum(b['qty'] or 0 for b in o['rows'] if b['enabled'])
     return [out[g] for g in sorted(out, key=lambda x: (x == '', x))]
+
+
+def blade_set_create(c, uid, equipment, group, category=None, use=None, blades=None):
+    """新しいセットを刃厚の行ごと作る（§9.529）。セット名は空いている A〜Z だけ。"""
+    eq = _check_equipment(equipment)
+    g = blade_set_name(group)
+    if any(x['group'] == g for x in _rows(c, BLADE_DEF, _blade_row, True, eq)):
+        raise ValueError('セット %s はもうあります。別の字を選んでください。' % g)
+    ws = [b for b in (blades or []) if isinstance(b, dict) and _num(b.get('thickness'))]
+    if not ws:
+        raise ValueError('刃厚を1つ以上入れてください（1種類は セット×刃厚 で決まります）。')
+    if len({_num(b['thickness']) for b in ws}) != len(ws):
+        raise ValueError('同じ刃厚が2つあります。刃厚ごとに1行にしてください。')
+    for b in ws:
+        blade_upsert(c, uid, equipment=eq, group=g, thickness=b.get('thickness'),
+                     current_dia=b.get('currentDia'), qty=b.get('qty'), min_qty=b.get('minQty'))
+    if category is not None or use is not None:
+        blade_set_update(c, uid, eq, g, category=category, use=use)
+    return blade_set_of(c, eq, g)
+
+
+def blade_set_rename(c, uid, equipment, group, new_group):
+    """セット名を変える。刃の行・セットの行・刃選択の決まり（セットを名指しした行）を同じ字へ。"""
+    eq = _check_equipment(equipment)
+    old, new = _txt(group), blade_set_name(new_group)
+    if old == new:
+        return 0
+    have = _rows(c, BLADE_DEF, _blade_row, True, eq)
+    if any(x['group'] == new for x in have):
+        raise ValueError('セット %s はもうあります。別の字を選んでください。' % new)
+    mine = [x for x in have if x['group'] == old]
+    if not mine:
+        raise ValueError('変えるセットが見つかりません（ほかの端末で消されたかもしれません）。')
+    for x in mine:
+        BLADE_DEF.update(c, x['id'], {'組': new}, uid)
+    raw = _set_stored(c, eq, old)
+    if raw is not None:
+        BLADESET_DEF.update(c, raw['刃セットID'], {'組': new}, uid)
+    _ensure(c, BLADEPICK_DEF)
+    for r in BLADEPICK_DEF.fetch(c):
+        if _same_eq(_txt(r['設備名']), eq) and _txt(r['刃の組']) == old:
+            BLADEPICK_DEF.update(c, r['刃選択ID'], {'刃の組': new}, uid)
+    c.commit()
+    return len(mine)
+
+
+def blade_set_delete(c, equipment, group):
+    """セットを刃の行ごと消す。**刃選択の決まりが名指ししているセットは消さない**（理由を言う）。"""
+    eq = _check_equipment(equipment)
+    g = _txt(group)
+    refs = [r for r in pick_rows(c, True, eq) if r['group'] == g and r.get('table') == PICK_CATEGORY]
+    if refs:
+        raise ValueError('刃選択の「刃のカテゴリ」の表が専用刃（%s）を%d行で名指ししています。'
+                         '先にその行の答えを変えてから消してください。' % (g, len(refs)))
+    mine = [x for x in _rows(c, BLADE_DEF, _blade_row, True, eq) if x['group'] == g]
+    for x in mine:
+        _delete(c, BLADE_DEF, x['id'])
+    blade_set_reset(c, eq, g)
+    return len(mine)
 
 
 def blade_set_update(c, uid, equipment, group, category=None, use=None):
@@ -1241,23 +1329,40 @@ def _only(vals):
     return {k: v for k, v in vals.items() if v is not None}
 
 
-def blade_upsert(c, uid, equipment=None, name=None, group=None, thickness=None,
+def blade_upsert(c, uid, equipment=None, group=None, thickness=None,
                  current_dia=None, qty=None, min_qty=None, last_grind=None,
-                 grind_count=None, status=None, note=None, order=None,
-                 enabled=None, blade_id=None):
+                 grind_count=None, note=None, order=None, enabled=None, blade_id=None):
+    """刃1種類を書く。**見分けるのは設備＋セット＋刃厚**（§9.529）——同じ3つの2行目は断る
+    （枚数・径はその行で直す）。セット名は A〜Z（`blade_set_name()`）。名称は書かない。"""
     bid = int(blade_id) if str(blade_id or '').strip() else None
     eq = _equipment_for(bid, equipment)
-    nm = _txt(name)
-    if bid is None and not nm:
-        raise ValueError('刃の名称を入力してください。')
-    vals = _only({'設備名': eq, '名称': nm or None, '組': _txt(group) or None,
-                  '刃厚': _num(thickness), '現状径': _num(current_dia),
+    cur = BLADE_DEF.get(c, bid) if bid is not None else None
+    if bid is not None and cur is None:
+        raise ValueError('指定の行が見つかりません。')
+    g = blade_set_name(group) if group is not None else (_txt(cur['組']) if cur else None)
+    if g is None:
+        raise ValueError('セット名（A〜Z）を選んでください。')
+    th = _num(thickness) if thickness is not None else (_num(cur['刃厚']) if cur else None)
+    if th is None or th <= 0:
+        raise ValueError('刃厚（mm）を入力してください。')
+    _blade_key_guard(c, eq or _txt(cur['設備名']), g, th, bid)
+    vals = _only({'設備名': eq, '組': g if group is not None else None,
+                  '刃厚': th if thickness is not None else None, '現状径': _num(current_dia),
                   '保有枚数': _int(qty), '下限枚数': _int(min_qty),
-                  '研磨日': _txt(last_grind) or None, '研磨回数': _int(grind_count),
-                  '状態': _txt(status) or None, '備考': _txt(note) or None,
+                  '研磨日': _txt(last_grind) if last_grind is not None else None,
+                  '研磨回数': _int(grind_count), '備考': _txt(note) if note is not None else None,
                   '表示順': _int(order),
                   '有効': None if enabled is None else (-1 if enabled else 0)})
     return _put(c, BLADE_DEF, bid, vals, uid, eq or _txt(equipment))
+
+
+def _blade_key_guard(c, equipment, group, thickness, blade_id=None):
+    """同じ設備・同じセットの同じ刃厚は1行だけ（§9.529）。"""
+    for x in _rows(c, BLADE_DEF, _blade_row, True, equipment):
+        if x['id'] != blade_id and x['group'] == group and x['thickness'] is not None \
+                and abs(x['thickness'] - thickness) < 1e-9:
+            raise ValueError('セット %s の刃厚 %gmm はもう登録されています。径・枚数はその行で直してください。'
+                             % (group, thickness))
 
 
 def spacer_upsert(c, uid, equipment=None, size=None, qty=None, min_qty=None,
@@ -1397,6 +1502,15 @@ def _align_ring_color(c, ring_id, uid):
 # 見分けにくいほど近い色（CIE76の色差）。標準10色どうしの最小は 29.3（黄と橙）なので、
 # 標準の色どうしでは注意を出さない。
 RING_NEAR_DE = 20.0
+# 潤滑リングの**見えている色**（色コードが空のとき）。画面は`--bs-fig-lube`＝`--look-violet`で塗るので、
+# 被りの判定も同じ色で比べる（§9.529、利用者の指摘「色の被り判定の中に潤滑リングが入っていません」
+# ——色コードが空のまま比べていたので、どの色とも被らないことになっていた）。値はCSSと同じ（網が見る）。
+RING_LUBE_HEX = '#7150c4'
+
+
+def ring_tone(hex_code, lube):
+    """その行が画面で塗られる色。色コードがあればそれ、潤滑リングで空なら`RING_LUBE_HEX`。"""
+    return _hex_norm(hex_code) or (RING_LUBE_HEX if lube else '')
 
 
 def _hex_norm(v):
@@ -1430,7 +1544,8 @@ def ring_colors(c, equipment):
     for r in ring_rows(c, True, equipment):
         g = groups.get(r['color'])
         if g is None:
-            g = groups[r['color']] = {'color': r['color'], 'hex': r['hex'], 'od': r['od'],
+            g = groups[r['color']] = {'color': r['color'], 'hex': r['hex'], 'tone': ring_tone(r['hex'], r['lube']),
+                                      'od': r['od'],
                                       'bore': r['bore'], 'lube': r['lube'], 'widths': []}
         g['widths'].append({k: r[k] for k in ('id', 'width', 'qty', 'minQty', 'enabled', 'note')})
     out = sorted(groups.values(), key=lambda g: (g['lube'], -(g['od'] or 0), g['color']))
@@ -1444,21 +1559,22 @@ def ring_color_conflicts(c, equipment, color, hex_code=None, od=None, lube=False
     """ほかの色との被り。**断る**（`hard`）＝同じ色名・同じ色コード・ゴムリングどうしで同じ外径
     （刃組の計算は色を外径で引くので、同じ外径の2色は取り違える）。**注意**（`near`）＝色差が
     `RING_NEAR_DE`未満。`current`は今直している色の名前（自分とは比べない）。"""
-    name, hx, d = _txt(color), _hex_norm(hex_code), _num(od)
+    # 色は**見えている色**どうしで比べる（潤滑リングは色コードが空でも紫で見えている・`ring_tone()`）。
+    name, hx, d = _txt(color), ring_tone(hex_code, lube), _num(od)
     hard, near = [], []
     for g in ring_colors(c, equipment):
         if current and g['color'] == current:
             continue
-        gh = _hex_norm(g['hex'])
+        gh = g['tone']
         if name and g['color'] == name:
-            hard.append({'color': g['color'], 'hex': g['hex'], 'why': 'name'})
+            hard.append({'color': g['color'], 'hex': gh, 'why': 'name'})
         if hx and gh == hx:
-            hard.append({'color': g['color'], 'hex': g['hex'], 'why': 'hex'})
+            hard.append({'color': g['color'], 'hex': gh, 'why': 'hex'})
         if not lube and not g['lube'] and d is not None and g['od'] is not None and abs(g['od'] - d) < 1e-6:
-            hard.append({'color': g['color'], 'hex': g['hex'], 'why': 'od', 'od': g['od']})
+            hard.append({'color': g['color'], 'hex': gh, 'why': 'od', 'od': g['od']})
         de = ring_color_delta(hx, gh) if hx and gh != hx else None
         if de is not None and de < RING_NEAR_DE:
-            near.append({'color': g['color'], 'hex': g['hex'], 'de': round(de, 1)})
+            near.append({'color': g['color'], 'hex': gh, 'de': round(de, 1)})
     near.sort(key=lambda x: x['de'])
     return {'hard': hard, 'near': near}
 
@@ -1528,19 +1644,35 @@ def ring_color_delete(c, equipment, color):
     return len(rows)
 
 
+def _far_hex(used):
+    """登録済みの色（見えている色）から**いちばん離れた色**。色相を15°ごとに回した候補から選ぶ
+    （§9.529。新しい色を開いたとき、最初から潤滑リングの紫などに寄った色を出さない）。"""
+    best, far = '', -1.0
+    for i in range(24):
+        for lum in (0.42, 0.62):
+            r, g, b = colorsys.hls_to_rgb(i / 24, lum, 0.7)
+            h = '#%02x%02x%02x' % (round(r * 255), round(g * 255), round(b * 255))
+            d = min((ring_color_delta(h, u) for u in used), default=999.0)
+            if d > far:
+                best, far = h, d
+    return best
+
+
 def ring_color_suggest(c, equipment):
     """次に足す色の候補。**標準の周期のうち、名前・色・外径のどれも使っていない最初の色**。
-    全部使っていれば、いちばん小さい外径の1mm下（色は利用者が選ぶ）。"""
+    全部使っていれば、いちばん小さい外径の1mm下と、**登録済みの色からいちばん離れた色**
+    （名前は利用者が付ける）。"""
     used = ring_colors(c, equipment)
     names = {g['color'] for g in used}
-    hexes = {_hex_norm(g['hex']) for g in used}
+    hexes = {g['tone'] for g in used}
     ods = {g['od'] for g in used if not g['lube']}
     for i, (n, h) in enumerate(RING_COLOR_CYCLE):
         od = float(RING_COLOR_TOP_OD - i)
         if n not in names and h not in hexes and od not in ods:
             return {'color': n, 'hex': h, 'od': od, 'bore': float(STANDARD_DEFAULTS['ringBore'])}
     low = min(ods) if ods else float(RING_COLOR_TOP_OD) + 1
-    return {'color': '', 'hex': '', 'od': low - 1, 'bore': float(STANDARD_DEFAULTS['ringBore'])}
+    return {'color': '', 'hex': _far_hex([h for h in hexes if h]), 'od': low - 1,
+            'bore': float(STANDARD_DEFAULTS['ringBore'])}
 
 
 def finger_upsert(c, uid, equipment=None, width=None, qty=None,
@@ -1777,7 +1909,7 @@ def seed_standard_parts(c, uid, equipment, replace=False):
             for tk in SEED_BLADE_THICKNESS:
                 order += 10
                 BLADE_DEF.insert(c, {
-                    '設備名': eq, '名称': '%dmm %s' % (tk, g), '組': g,
+                    '設備名': eq, '組': g,
                     '刃厚': float(tk), '現状径': SEED_BLADE_DIA,
                     '保有枚数': SEED_BLADE_QTY, '下限枚数': 0,
                     '状態': BLADE_GENERAL,
@@ -1853,11 +1985,11 @@ def context(c, equipment):
         'rings': ring_rows(c, False, eq),
         'fingers': finger_rows(c, False, eq),
         'history': history_rows(c, False, eq),
-        'picks': pick_rows(c, False, eq),
+        # 刃選択の2つの表（§9.529）。登録が無ければ今までの選び方の「種」。
+        'pickTables': pick_tables(c, eq),
         # 保持方式の条件表（§9.524）。登録が無ければ今までの決め方の「種」。
         'holds': holds['rows'], 'holdsStored': holds['stored'],
         'holdMethods': list(HOLD_METHODS),
-        'holdFields': [{'field': f, 'label': l, 'kind': k} for f, l, k in HOLD_FIELDS],
         # 台車（§9.424）。**行が無い設備は「台車の登録がない」と言う**
         # ——画面が勝手に A/B を作ると、無い台車の差分を出せてしまう。
         'carriages': carriage_rows(c, False, eq),
@@ -1884,11 +2016,12 @@ def _vocabulary():
         'bladeSpecial': BLADE_SPECIAL,
         'bladeMaint': BLADE_MAINT,
         'fingerShape': dict(FINGER_SHAPE),
-        'pickFields': [dict({'field': f, 'label': l, 'kind': k},
-                            **({'options': list(HOLD_METHODS)} if f == 'hold' else {}))
-                       for f, l, k in BLADEPICK_FIELDS],
-        'pickFieldsLegacy': [{'field': f, 'label': l, 'kind': k}
-                             for f, l, k in BLADEPICK_FIELDS_LEGACY],
+        # 判定表の語彙（§9.529）。決める順（保持方式→刃のカテゴリ→刃厚）と、表ごとに使える項目
+        # （材料＋前の表の答え・`pick_fields_for()`の1箇所）。
+        'pickTableDefs': [{'key': k, 'label': l, 'order': o, 'fields': pick_fields_for(o)}
+                          for k, l, o in PICK_TABLES],
+        'pickGroups': [{'key': k, 'label': l} for k, l in PICK_GROUPS],
+        'pickThickest': PICK_THICKEST,
         'pickOps': [{'op': o, 'label': l, 'two': o in BLADEPICK_OPS_2}
                     for o, l in BLADEPICK_OPS],
         'spacerUses': list(SPACER_USES),
