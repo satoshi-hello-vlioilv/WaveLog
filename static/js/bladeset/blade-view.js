@@ -414,7 +414,7 @@
    const mat = BS().fingerMaterial(st, M);
    if (!M.fingers.some(f => (f.material || BS().fingerMatDefault(M)) === mat)) lack.push(BS().holdLabel(st, M));
   }
-  else if (!M.rings.length) lack.push('ゴムリング');
+  else if (!BS().ringsOf(IX || BS().buildIndex(M), BS().isInteg(st, M)).length) lack.push(BS().holdLabel(st, M));
   if (!M.blades.length) lack.push('刃');
   return lack.join('・');
  }
@@ -661,6 +661,7 @@
 
  function renderStep4(res) {
   const finger = res.finger;
+  if (ringSelKind !== !!BS().isInteg(st, M)) fillRingSelects();
   /* **色はカスタムプロパティで渡す**（§9.350／`test_csslint`）——インラインの
      `background`はどのレイヤより強く、CSSから打ち消せなくなる。
      マスタの色そのものは値なので、器の`--bs-dot`へ入れてCSSが使う。 */
@@ -675,9 +676,10 @@
   panel.querySelectorAll('.bs-chip[data-ring]').forEach(b => { b.disabled = finger; });
   $('#bsHint4').innerHTML = finger
    ? `<span class="bs-ng">フィンガー方式のためゴムリングは使いません。</span>方式はマスタ管理の「保持方式」の条件表で決まります（${esc(BS().holdReason(st, M))}）。`
-   : (IX.ringsByTh.length
-    ? 'バリ方向が反転すると、上軸と下軸で大径・小径が入れ替わります。'
-    : '<span class="bs-ng">この設備のゴムリングが1本も登録されていません。</span>マスタ管理 &gt; 刃組 &gt; ゴムリング で登録してください。');
+   : (BS().ringsOf(IX, ringSelKind).length
+    ? (ringSelKind ? `<b>スペーサー一体型</b>で組みます（幅が軸の寸法になり、外周のゴムが板を押さえる・${esc(BS().holdReason(st, M))}）。` : '')
+      + 'バリ方向が反転すると、上軸と下軸で大径・小径が入れ替わります。'
+    : `<span class="bs-ng">この設備の${ringSelKind ? 'スペーサー一体型のリング' : 'ゴムリング'}が1本も登録されていません。</span>マスタ管理 &gt; 刃組 &gt; ゴムリング で登録してください${ringSelKind ? '（種類「スペーサー一体型」）' : ''}。`);
  }
 
  const ringMeta = od => BS().ringMeta(M, IX, od);
@@ -860,7 +862,9 @@
   /* フローティングシートがこの区間の**始まりの側**（OS端・§9.461）にあるときは、
      スペーサーを基準面の側（刃の側）へ寄せて積み、残りを始まりの側へ空ける。 */
   const lead = floatAt === 'start' ? V.pw(Math.max(0, parts.rem || 0)) * k * d : 0;
-  const fill = partsRun(V, xa + lead, xb, cy, expand(parts.spacer), V.spacerD,
+  /* スペーサー一体型（§9.531）は**身が寸法を作る**ので、軸の並びは「一体型 → 残りのスペーサー」。 */
+  const run = parts.integ ? expand(parts.gom).concat(expand(parts.spacer)) : expand(parts.spacer);
+  const fill = partsRun(V, xa + lead, xb, cy, run, V.spacerD,
                         V.PAL.spacer, V.PAL['spacer-edge'], null, k);
   let svg = fill.svg;
   /* フローティングシートの側の端の残りは押さえる量（§9.457）——端数の色で塞がない。 */
@@ -904,7 +908,8 @@
    a0 = xa + d * lw; b0 = xb - d * lw;
   }
   const slack = Math.max(0, Math.abs(b0 - a0) - widthPx(V, pieces) * s);
-  let at = a0 + d * slack / 2;
+  /* 一体型のゴムは身の上にそのまま載る（区間の始まりから・`fillZone()`の並びと同じ位置）。 */
+  let at = z.integ ? a0 : a0 + d * slack / 2;
   for (const sz of pieces) {
    const w = V.pw(sz) * s;
    if ((at + d * w - b0) * d > 0.6) break;
@@ -1392,9 +1397,10 @@
  function chipBandItems(finger) {
   /* 潤滑リング（§9.454）は**同じ札の中身**として言う——札は3つのまま
      （§9.380）。色は紫で、表と所要の色見本と同じトークン。 */
-  const lw = BS().ringRule(M).lubeW;
+  /* スペーサー一体型（§9.531）は潤滑リングを載せないので「＋潤滑」を言わない（`zoneParts()`と同じ答え）。 */
+  const integ = BS().isInteg(st, M), lw = integ ? 0 : BS().ringRule(M).lubeW;
   const hold = finger ? BS().holdLabel(st, M)
-   : `ゴムリング ${ringWord('big')}／${ringWord('small')}`
+   : `${integ ? BS().holdLabel(st, M) : 'ゴムリング'} ${ringWord('big')}／${ringWord('small')}`
      + (lw > 0 ? `＋潤滑 Φ${BS().ringRule(M).lubeOd}` : '');
   const c = clrUse();
   return [
@@ -1635,7 +1641,8 @@
      端数の色で塞がず（塗らない・破線の枠だけ）、**軸の端の側**（刃から遠い側）へ置く。
      基準面の側の残りは今までどおり「隙間」（0が正・§9.441）で、刃の側へ置く。 */
   const seat = !!(r.end && z0.i === res.A.floatZ && P.rem > 0.001);
-  const core = B.expand(P.spacer).map(mm => ({ mm, kind: 'spacer', name: 'スペーサー' }));
+  const core = (P.integ ? B.expand(P.gom).map(mm => ({ mm, kind: 'spacer', name: 'スペーサー一体型' })) : [])
+   .concat(B.expand(P.spacer).map(mm => ({ mm, kind: 'spacer', name: 'スペーサー' })));
   if (P.rem > 0.001 && !seat) core.push({ mm: P.rem, kind: 'gap', name: '隙間' });
   const run = st.flip ? core.slice().reverse() : core.slice();
   const knife = () => ({ mm: tk, kind: 'knife', name: '刃（厚み）' });
@@ -1716,7 +1723,8 @@
    /* 幅は刻みしかないので区間にぴったり合うとはかぎらない。余りを片側へ
       寄せるとクリアランスのように見えるので、模式図と同じく中央へ置く。 */
    const wsum = list.reduce((a, q) => a + Math.max(1.2, q.mm * S), 0);
-   let at = a0 + Math.max(0, (b0 - a0 - wsum) / 2);
+   /* 一体型のゴムは身の上（`zoomSequence()`の並びで一体型が来る側の端から）。ほかは中央へ。 */
+   let at = P.integ ? (st.flip ? b0 - wsum : a0) : a0 + Math.max(0, (b0 - a0 - wsum) / 2);
    list.forEach(q => {
     const w = Math.max(1.2, q.mm * S);
     q.cx = at + w / 2; q.w = w; q.bd = hb;
@@ -2140,7 +2148,13 @@
   if (rg.length) {
    const kind = res.finger ? 'finger' : 'ring', b = BS().holdBand(M, kind);
    const nm = res.finger ? 'フィンガー' : 'ゴムリング';
-   o += `<div class="bs-alert is-warn"><b>${nm}の空きが ${b.gapMin}〜${b.gapMax}mm に収まらない区間が ${rg.length}面あります</b><br>`
+   /* 一体型（§9.531）の「空き」は**ゴムの無い長さ**（残りを普通のスペーサーで埋めたぶん）。上限だけを見る。 */
+   o += BS().isInteg(st, M)
+    ? `<div class="bs-alert is-warn"><b>スペーサー一体型でゴムの無い長さが ${b.gapMax}mm を超える区間が ${rg.length}面あります</b><br>`
+      + '手持ちの一体型の幅では区間を埋め切れず、残りを普通のスペーサーで埋めました（そこは板を押さえません）。'
+      + '幅の違う一体型を足すか、「刃組基準値」の「板押さえの空き」の上限を確かめてください。<br>'
+      + `${esc(cut(rg, 8))}</div>`
+    : `<div class="bs-alert is-warn"><b>${nm}の空きが ${b.gapMin}〜${b.gapMax}mm に収まらない区間が ${rg.length}面あります</b><br>`
      + '手持ちの幅では、刃のあいだより少し小さく詰め切れませんでした。'
      + `幅の違う${nm}を足すか、「刃組基準値」の「板押さえの空き」を確かめてください。<br>`
      + `${esc(cut(rg, 8))}</div>`;
@@ -2809,8 +2823,12 @@
   sel.value = cur;
   if (sel.selectedIndex < 0) sel.selectedIndex = 0;
  }
+ /* 選べる色は**いまの方式の種類だけ**（§9.531: 一体型の方式なら一体型の色・ゴムリングならふつうの色）。
+    方式は材料で変わるので、描くたびに種類が変わったときだけ作り直す（`ringSelKind`）。 */
+ let ringSelKind = null;
  function fillRingSelects() {
-  const opts = IX.ringsByTh.map(r =>
+  ringSelKind = !!BS().isInteg(st, M);
+  const opts = BS().ringsOf(IX, ringSelKind).map(r =>
    `<option value="${BS().thOf(r)}">${esc(r.color)} ${r.od}（肉厚 ${BS().thOf(r).toFixed(1)}）</option>`).join('');
   $('#bsBigSel').innerHTML = opts;
   $('#bsSmSel').innerHTML = opts;

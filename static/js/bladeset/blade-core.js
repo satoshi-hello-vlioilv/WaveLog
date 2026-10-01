@@ -64,10 +64,13 @@
    .map(x => ({ color: x.color || '', hex: x.hex || '', od: num(x.od),
                 bore: num(x.bore) || num(P.ringBore), width: num(x.width),
                 qty: Math.max(0, num(x.qty) || 0), minQty: num(x.minQty) || 0,
-                lube: !!x.lube }))
+                lube: !!x.lube, integ: !!x.integ && !x.lube }))
    .filter(x => x.od > 0 && x.width > 0);
   /* **潤滑リングは同じ表の別の役目**（§9.455）。区間を埋めるゴムリングの候補に
      混ぜると、幅10の潤滑リングが「ゴムリング10」として積まれてしまうので分ける。 */
+  /* **スペーサー一体型**（§9.531）も色（外径）ごとのリングとして`rings`に入る（`integ`の印つき）。
+     外径はゴムリングどうしで被らない（サーバーの`ring_color_conflicts()`）ので、外径で引いて取り違えない。
+     どちらの種類を使うかは保持方式の答え（`isInteg()`）が決め、`ringsOf()`が分ける。 */
   const rings = ringAll.filter(x => !x.lube), lubes = ringAll.filter(x => x.lube);
   const fingers = (c.fingers || [])
    .map(x => ({ name: x.name || '', width: num(x.width), material: x.material || '',
@@ -131,7 +134,7 @@
      色と幅の2つで、在庫も色×幅で持つ。 */
   const byOd = new Map(), widthsByOd = new Map();
   M.rings.forEach(r => {
-   if (!byOd.has(r.od)) byOd.set(r.od, { color: r.color, hex: r.hex, bore: r.bore, od: r.od });
+   if (!byOd.has(r.od)) byOd.set(r.od, { color: r.color, hex: r.hex, bore: r.bore, od: r.od, integ: !!r.integ });
    const list = widthsByOd.get(r.od) || [];
    const cur = list.find(w => w.sz === r.width);
    if (cur) cur.qty += r.qty; else list.push({ sz: r.width, qty: r.qty });
@@ -191,7 +194,10 @@
  /* 板を保持する方式（フィンガー／ゴムリング）。答えは`holdPick()`の1箇所（§9.524）——
     `保持方式マスタ`の条件表を上から見て、最初に当たった行の方式。 */
  const isFinger = (st, M) => holdPick(st, M).hold === 'フィンガー';
- const holdName = (st, M) => (isFinger(st, M) ? 'フィンガー' : 'ゴムリング');
+ /* スペーサー一体型のリングで組む方式（§9.531、利用者の選択「保持方式の表で選ぶ」）。綴りはサーバーの`HOLD_INTEG`。 */
+ const HOLD_INTEG = 'スペーサー一体型';
+ const isInteg = (st, M) => holdPick(st, M).hold === HOLD_INTEG;
+ const holdName = (st, M) => (isFinger(st, M) ? 'フィンガー' : isInteg(st, M) ? HOLD_INTEG : 'ゴムリング');
  const oppBurr = b => (b === 'down' ? 'up' : 'down');
  const oppRing = t => (t === 'big' ? 'small' : 'big');
  /* 同一条の両側は同じリング。上軸と下軸では大小が入れ替わる。
@@ -223,21 +229,24 @@
  }
  /* 狙いの肉厚に最も近い手持ちリングへ寄せる。**手持ちが無ければ動かさない**
     （0へ倒すと、リングを登録していない設備で押上げが必ず「不適」になる）。 */
- function snapTh(IX, v) {
-  if (!IX.ringsByTh.length) return v;
-  return IX.ringsByTh.reduce((a, r) => (Math.abs(thOf(r) - v) < Math.abs(a - v) ? thOf(r) : a),
-                             thOf(IX.ringsByTh[0]));
+ function snapTh(IX, v, integ) {
+  const list = ringsOf(IX, integ);
+  if (!list.length) return v;
+  return list.reduce((a, r) => (Math.abs(thOf(r) - v) < Math.abs(a - v) ? thOf(r) : a), thOf(list[0]));
  }
+ /* 使う種類の色（外径）だけ（§9.531）。ゴムリング方式ではスペーサー一体型を、一体型の方式では
+    ふつうのゴムリングを選ばない——同じ`rings`に入っているので、選ぶ側は必ずここを通す。 */
+ const ringsOf = (IX, integ) => IX.ringsByTh.filter(r => !!r.integ === !!integ);
  /* 自動のときだけ、狙い値に最も近い手持ちリングへ寄せる。 */
  function recommend(st, M, IX) {
   const P = M.P;
   if (st.bigMode === 'auto') {
-   st.bigTh = snapTh(IX, st.knife / 2 - (num(P.ringBore) || 0) / 2 + (num(P.pushTarget) || 0));
+   st.bigTh = snapTh(IX, st.knife / 2 - (num(P.ringBore) || 0) / 2 + (num(P.pushTarget) || 0), isInteg(st, M));
   }
   if (st.smallMode === 'auto') {
    const targetGap = st.thick - ((num(P.nipMin) || 0) + (num(P.nipMax) || 0)) / 2;
    st.smallTh = snapTh(IX, st.knife - st.ov - ringR(M, st.bigTh) - targetGap
-                           - (num(P.ringBore) || 0) / 2);
+                           - (num(P.ringBore) || 0) / 2, isInteg(st, M));
   }
  }
 
@@ -656,6 +665,15 @@
      残りをゴムリングで埋める。 */
   const R = rule || RING_RULE_NONE;
   const isRing = !!(ht && hold.kind === 'ring');
+  /* **スペーサー一体型**（§9.531、利用者の選択「幅が寸法を作る」）: 一体型の幅が軸の寸法になり、外周の
+     ゴムが板を押さえる。区間を**一体型でちょうどに近く**（超えない最大で）埋め、残りだけを普通の
+     スペーサーで埋める（寸法は普通のスペーサーで追い込む）。一体型は刃のあいだへぴったり入る形なので
+     空きの下限は取らない。潤滑リングは載せない（一体型の上に座る場所が無い——§9.531 分からないこと）。
+     `gom`＝一体型（押さえの層・在庫は色×幅）、`spacer`＝残りの普通のスペーサー、`holdRem`＝ゴムが無い長さ。 */
+  if (isRing && hold.integ) {
+   const { got, rest } = integFill(ht, tbl.spacer, total);
+   return { len: total, hold, integ: true, gom: got, spacer: rest, lube: null, rem: rest.rem, holdRem: got.rem };
+  }
   const lube = isRing && hold.lube && R.lubeW > 0
    ? { n: 2, w: R.lubeW, od: R.lubeOd, bore: R.lubeBore } : null;
   const room = +(total - (lube ? lube.n * lube.w : 0)).toFixed(3);
@@ -675,6 +693,20 @@
      見分けられなくなる。 */
   return { len: total, hold: ht ? hold : null, gom, spacer, lube,
            rem: spacer.rem, holdRem: ht ? gom.rem : 0 };
+ }
+ /* 一体型の積み（§9.531）。**一体型の長さを、残りが普通のスペーサーでちょうどに作れる最大**に取る
+    ——一体型を目いっぱい積むと、残り（クリアランスぶんの0.15mm等）が手持ちのスペーサーで作れず、
+    区間の半分に端数が出た（実測 22/44 面）。作れる長さを上から順に試す（`floor`で次の作れる長さへ）。
+    どこまで下げても作れなければ、目いっぱい積んで残りを端数として正直に出す（`spacerGap`が言う）。 */
+ const INTEG_TRIES = 400;
+ function integFill(it, sp, total) {
+  const top = Math.min(Math.floor(total / FILL_STEP + 1e-9), it.U - 1);
+  for (let v = it.floor[top], n = 0; v > 0 && n < INTEG_TRIES; v = it.floor[v - 1], n++) {
+   const len = +(v * FILL_STEP).toFixed(3), rest = fillWith(sp, total - len);
+   if (rest.rem <= 1e-9) return { got: { out: stackOf(it, v), rem: +(total - len).toFixed(3) }, rest };
+  }
+  const got = fillWith(it, total);
+  return { got, rest: fillWith(sp, got.rem) };
  }
  /* 板押さえの空きの帯（下限〜上限）。**答えは種類ごとにこの1箇所**（§9.462）
     ——ゴムリングは`ringGapMin/Max`、フィンガーは`fingerGapMin/Max`（どちらも
@@ -713,7 +745,8 @@
    const b = holdBandOf(R, p.hold.kind);
    if (!(b.gapMax > 0)) return;
    const g = p.holdRem;
-   if (g < b.gapMin - 1e-6 || g > b.gapMax + 1e-6) out.push(`${i + 1}${ax}（空き ${g.toFixed(2)}mm）`);
+   /* 一体型は空きを取らずに組む（0が正）ので、下限は見ない——上限を超えた（ゴムの無い長さが長い）面だけ。 */
+   if ((!p.integ && g < b.gapMin - 1e-6) || g > b.gapMax + 1e-6) out.push(`${i + 1}${ax}（空き ${g.toFixed(2)}mm）`);
   }));
   return out;
  }
@@ -772,7 +805,7 @@
    }
    return parts;
   };
-  const finger = isFinger(st, M), fmat = finger ? fingerMaterial(st, M) : '';
+  const finger = isFinger(st, M), fmat = finger ? fingerMaterial(st, M) : '', integ = isInteg(st, M);
   const zones = A.zones.map((z, i) => {
    const isEnd = (i === 0 || i === last);
    const burr = z.type === 'end' ? z.burr : z.seg.burr;
@@ -782,9 +815,9 @@
    const wide = upper => z.type === 'strip' && (upper ? z.up > z.lo : z.lo > z.up);
    const mk = upper => {
     if (finger) return fingerWidthsOf(IX, fmat).length ? { kind: 'finger', mat: fmat } : null;
-    if (!IX.widthsByOd.size) return null;
+    if (!ringsOf(IX, integ).length) return null;
     const t = ringType(burr, upper);
-    return { kind: 'ring', ringT: t, od: odOfType(st, M, t), lube: wide(upper) };
+    return { kind: 'ring', integ, ringT: t, od: odOfType(st, M, t), lube: !integ && wide(upper) };
    };
    /* 押さえ代の幅を持たせるのは**フローティングシートの側の端だけ**（`A.floatZ`・§9.461）。
       基準面の側は押し付ける側なので0が正。 */
@@ -803,13 +836,14 @@
   const od = parts.hold && parts.hold.kind === 'ring' ? parts.hold.od : 0;
   const kind = parts.hold ? parts.hold.kind : '';
   const lube = parts.lube ? parts.lube.n : 0;
-  return { len: parts.len, sp, G, od, kind, lube,
+  const integ = !!parts.integ;
+  return { len: parts.len, sp, G, od, kind, lube, integ,
            ringT: parts.hold ? parts.hold.ringT || '' : '', rem: parts.rem,
            holdRem: +(parts.holdRem || 0).toFixed(3),
            /* **板押さえが1本も載らない区間**（§9.441）。端部は設計どおり
               持たないので、ここで言うのは「載るはずなのに空」のときだけ。 */
            bare: !!(kind && !sizeKeys(G).length),
-           sig: `${parts.len.toFixed(2)}|${kind}|${od}|${lube}|${sigOf(sp)}|${sigOf(G)}` };
+           sig: `${parts.len.toFixed(2)}|${kind}${integ ? '+integ' : ''}|${od}|${lube}|${sigOf(sp)}|${sigOf(G)}` };
  }
 
  /* ---- 構成記号（バッジ） ----
@@ -1070,7 +1104,7 @@
   });
   const fit = { spacerGap: bad, bareHold: bare, holdGap: holdGapFaces(zp, M),
                 /* ゴムリング方式なのに潤滑リングの行が無い（§9.455）——入れられない。 */
-                lubeMissing: !isFinger(st, M) && !!(M.rings || []).length && !(M.lubes || []).length,
+                lubeMissing: !isFinger(st, M) && !isInteg(st, M) && !!(M.rings || []).length && !(M.lubes || []).length,
                 /* フローティングシートが押さえる量（上軸・下軸）。0でも正。`side`＝シートの端。 */
                 floatSeat: { up: +(zp.zones[fz].up.rem || 0).toFixed(3),
                              lo: +(zp.zones[fz].lo.rem || 0).toFixed(3),
@@ -1320,7 +1354,8 @@
  const fingerMaterial = (st, M) => holdPick(st, M).material;
  const fingerWidthsOf = (IX, mat) => IX.fingerByMat.get(mat) || [];
  /* 画面に出す保持方式の名前（「フィンガー（アルミニウム）」）。`holdName()`は方式だけ（記録・判定の鍵）。 */
- const holdLabel = (st, M) => { const m = fingerMaterial(st, M); return m ? `${holdName(st, M)}（${m}）` : holdName(st, M); };
+ const holdLabel = (st, M) => { const m = fingerMaterial(st, M);
+  return m ? `${holdName(st, M)}（${m}）` : isInteg(st, M) ? `ゴムリング（${HOLD_INTEG}）` : holdName(st, M); };
  /* 図のフィンガーの色（§9.527、利用者の選択「アルミは青みの銀」）。材質→`--bs-fig-*`の鍵。
     知らない材質は既定の茶。色の値そのものは CSS のトークンが持つ。 */
  const FINGER_TONE = { 'ベークライト': 'finger', 'アルミニウム': 'finger-al' };
@@ -1664,7 +1699,7 @@
  WL.bladeSet = {
   defaultState, clearanceRate, clearanceFor, clearanceUsed, centerOf, datumOf, sideWord, floatStroke, fillWithin, spacerStep, ringRule, holdBand, applyStandards, applyBladePick, standardState,
   normalize, buildIndex, ringMeta, thOf, odFromTh, odOfType, ringType, oppBurr,
-  method, isFinger, holdName, holdLabel, fingerMaterial, fingerMatDefault, fingerTone, contact, recommend, syncOrder, reorder,
+  method, isFinger, isInteg, ringsOf, HOLD_INTEG, holdName, holdLabel, fingerMaterial, fingerMatDefault, fingerTone, contact, recommend, syncOrder, reorder,
   buildSegs, widths, buildLayout, buildFiller, fillWith, planZones,
   compose, buildRows, endRows, badgeMap, BADGE_TONES, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum, cutFace,

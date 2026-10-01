@@ -77,6 +77,9 @@ H.run('test_ringboard: ゴムリングマスタの盤（§9.528）', async ({ pa
   });
   rec('§9.529 ② 新しい色は色名がいちばん上の欄・焦点もそこ・見出しの大きさ（前は3番目・焦点なし・12px）',
       head.index === 0 && head.focused && head.px >= 18, JSON.stringify(head));
+  const kinds = await page.evaluate(() => [...(document.querySelector('.rb-card [data-k="kind"]') || { options: [] }).options].map(o => o.textContent));
+  rec('§9.531 新しい色の種類はゴムリング／潤滑リング／スペーサー一体型から選ぶ',
+      kinds.join('/') === 'ゴムリング/潤滑リング/スペーサー一体型', kinds.join('/'));
   await page.keyboard.type('回帰_あ');
   rec('§9.529 ② 打った色名は一覧の仮の項目にもその場で映る（焦点は欄のまま）',
       await page.evaluate(() => document.querySelector('.bk-item[data-bk-key="__new"] b')?.textContent === '回帰_あ'

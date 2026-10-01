@@ -56,15 +56,15 @@
   },o));
  }
  const T={
-  category:makeTable('category',{label:'刃のカテゴリ',step:'2',answerHead:'刃のカテゴリ',defaultCols:['hold','thickness'],
+  category:makeTable('category',{label:'刃のカテゴリ',answerHead:'刃のカテゴリ',defaultCols:['hold','thickness'],
    seedNote:'すべて通常刃（今までの選び方）',
    lead:'通常刃か専用刃かを決めます。専用刃は<b>セットまで選べます</b>（「どれでも」なら使用中の専用刃のセットを A から順に）。研磨中のセットは選ばれません（「刃」で切り替え）。',
    answers:catChoices,answerOf:r=>`${r.answer||normal()}|${r.group||''}`,answerLabel:catLabel,
    setAnswer:(r,v)=>{const [a,g]=v.split('|');Object.assign(r,{answer:a,group:a===special()?(g||''):''})},
    blankRow:()=>({answer:special(),group:''})}),
-  thickness:makeTable('thickness',{label:'刃厚',step:'3',answerHead:'刃厚',defaultCols:['category','thickness'],
+  thickness:makeTable('thickness',{label:'刃厚',answerHead:'刃厚',defaultCols:['category','thickness'],
    seedNote:'いちばん厚い刃（今までの選び方）',
-   lead:'②で決まったカテゴリのセットから、<b>どの刃厚の刃を使うか</b>を決めます。答えは「刃」に登録している刃厚です。',
+   lead:'刃のカテゴリの表で決まったセットから、<b>どの刃厚の刃を使うか</b>を決めます。答えは「刃」に登録している刃厚です。',
    answers:thChoices,answerOf:r=>String(r.answer||''),answerLabel:thLabel,
    setAnswer:(r,v)=>{r.answer=v},
    blankRow:()=>({answer:String(ps.thicknesses[0]||''),group:''})}),
@@ -80,7 +80,7 @@
  const dirty=()=>T.category.dirty||T.thickness.dirty;
  function renderHead(){
   K().renderHead(ps,{id:'bpEq',
-   hint:'刃組ガイダンスは <b>① 保持方式 → ② 刃のカテゴリ → ③ 刃厚</b> の順に表を見て刃を選びます。どの表も<b>上から見て最初に当たった行</b>の答え（最後の行は既定）。後ろの表は前の表の答えを列に使えます。',
+   hint:'刃組ガイダンスは <b>保持方式 → 刃のカテゴリ → 刃厚</b> の順に表を見て刃を選びます。どの表も<b>上から見て最初に当たった行</b>の答え（最後の行は既定）。後ろの表は前の表の答えを列に使えます。',
    leaveOk:()=>K().leave(dirty(),'刃選択'),onEquipment:()=>load(true)});
  }
  /* 「この作業なら」を1行で（2つの表の当たりを順に）。字は`ruleTable.sentence()`と同じ読み方。 */

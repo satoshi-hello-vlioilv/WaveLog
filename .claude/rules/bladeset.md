@@ -1,4 +1,4 @@
-# 刃組ガイダンス（226件）
+# 刃組ガイダンス（233件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,13 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 刃組の盤の高さを決めた欄は上下の余白0（土台の余白7px＋枠線で字の席が1行より狭い）。規則は72-bladeset.cssの1つ | `test_partboards.js` | [§9.531](../../docs/decisions/9.531.md) |
+| 判定表の頭・刃組基準値の節に番号を付けない。決める順は矢印と並びが言う | `test_partboards.js` | [§9.531](../../docs/decisions/9.531.md) |
+| スペーサー・フィンガーの在庫表は`stockTable()`の1本。欄を離れると保存・同じ寸法の2行目は作らない | `test_partboards.js` | [§9.531](../../docs/decisions/9.531.md) |
+| 刃組基準値の盤は1設備の全部の欄。顔ぶれは`bladesetStandard.fields`の1箇所・空欄は既定値の薄字 | `test_partboards.js` | [§9.531](../../docs/decisions/9.531.md) |
+| スペーサー一体型はゴムリングの種類（`RING_KINDS`の1箇所）。外径はゴムリングどうしで被らせない | `test_bladeset.py`・`test_ringboard.js` | [§9.531](../../docs/decisions/9.531.md) |
+| 一体型は幅が寸法を作る。区間は`integFill()`（残りをスペーサーでちょうどに作れる最大）。潤滑は載せない | `test_bladesets.js` | [§9.531](../../docs/decisions/9.531.md) |
+| リングの色を選ぶ側は`ringsOf()`で種類を分ける（一体型の方式でふつうの色を選ばない・逆も） | `test_bladesets.js` | [§9.531](../../docs/decisions/9.531.md) |
 | 判定表は行も列も後から並べ替えられる（掴む札・↑↓／←→）。確定は`dragend`、既定の行は動かさない | `test_holdpick.js` | [§9.530](../../docs/decisions/9.530.md) |
 | 列の並びは表の設定（`[列JSON]`・`table_cols()`の1箇所）。条件の出てくる順から起こさない | `test_bladeset.py`・`test_holdpick.js` | [§9.530](../../docs/decisions/9.530.md) |
 | 刃1種類は**設備＋セット（A〜Z）＋刃厚**。名称は鍵にしない（`blade_upsert()`が同じ3つの2行目を断る・呼び名は`blade_label()`） | `test_bladeset.py`・`test_bladeboard.js` | [§9.529](../../docs/decisions/9.529.md) |
@@ -41,7 +48,7 @@
 | 潤滑リングは刃組表でも**ゴムリングの群の1列**（独立した列群を持たない）。寸法は見出しの`title` | `test_bladeui.js` | [§9.473](../../docs/decisions/9.473.md) |
 | OS・DSの字は`sideWord()`の1箇所（刃組基準値の呼び方）。鍵（`data-badge`）は素のまま・静的な字は`data-sw` | `test_bladeui.js`・`test_bladeset.py` | [§9.472](../../docs/decisions/9.472.md) |
 | 向きの札は**押した後の図の左右を描く**2択（◆＝基準面・意味は`title`）。大きさは隣の図の札とそろえる | `test_bladeui.js` | [§9.472](../../docs/decisions/9.472.md) |
-| 基準面の切り替えは持たない（実機は駆動側＝DS）。左右の見せ方は「基準原点を左／右」とその呼び方が受け持つ | `test_bladeui.js`・`test_bladeset.py`・`test_stdmodal.js` | [§9.470](../../docs/decisions/9.470.md) |
+| 基準面の切り替えは持たない（実機は駆動側＝DS）。左右の見せ方は「基準原点を左／右」とその呼び方が受け持つ | `test_bladeui.js`・`test_bladeset.py` | [§9.470](../../docs/decisions/9.470.md) |
 | 立体図の台車は**車輪でレールに載る**。甲板は床と面一・下の箱は車輪の内側（`view().rig`の3つが0） | `test_bladeui.js` | [§9.467](../../docs/decisions/9.467.md) |
 | 機体の色は`PAINT`の1箇所（実機の緑・カバーは黄）。フィンガーの押さえのアングルはフィンガー方式の立体図だけ | `test_bladeui.js` | [§9.467](../../docs/decisions/9.467.md) |
 | 刃の間隔は**広い／狭い**（`SPAN_WORD`の1箇所。広い＝製品幅＋クリアランス×2）。ゴムリングの行は大径／小径を字で | `test_bladeui.js` | [§9.466](../../docs/decisions/9.466.md) |
