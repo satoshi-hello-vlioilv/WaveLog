@@ -13,6 +13,7 @@
     ⑤ 刃組ガイダンスが表に従い、説明文が「何行目に当たったか」を言う
     ⑥ 行と列を後から並べ替えられる（掴む札・キー）・列の並びは保存する（§9.530）
     ⑧ 当たり得ない条件を見分け、図・保存したらどうなるか・直す案を出す（§9.534）
+    ⑨ 答えの地図と列の効き目・上の行に覆われて一度も当たらない行の名指し（§9.535）
 
    前（実測）: ② 表現できない（板厚だけ）・③ 当たらない。
    後片付けは finally（「未登録に戻す」＝行を消す）。途中で落ちると表が残り、
@@ -209,7 +210,12 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   await page.fill('.rt-try .rt-p[data-p="thickness"]', '0.7');
   await W.until(page, () => /is-miss/.test(document.querySelector('.rt-row[data-r="0"] .rt-c[data-f="thickness"]')?.closest('td').className || ''), null, { ms: 4000, what: '0.7 は外れる' }).catch(() => {});
   rec('⑦ 試す値 0.7 は当たらない（×）', await page.evaluate(() => /is-miss/.test(document.querySelector('.rt-row[data-r="0"] .rt-c[data-f="thickness"]')?.closest('td').className || '')));
+  /* ⑥の R3（板厚 ＜0.5）は1行目（＜0.6 または ＞0.9）に覆われて一度も当たらない——保存の前に確かめられる（§9.535）。 */
   await page.click('[data-rt="save"]');
+  await page.waitForSelector('#appConfirmModal:not([hidden])', { timeout: 5000 });
+  const ask7 = await page.evaluate(() => document.getElementById('appConfirmModal').textContent);
+  rec('⑦ 上の行に覆われた行（3行目）があると、保存の前に名指しして確かめる（§9.535）', /当たらない決まり/.test(ask7) && /3行目/.test(ask7), ask7.slice(0, 120));
+  await page.click('#appConfirmOk');
   await W.until(page, () => /登録済み/.test(document.querySelector('.rt-state')?.textContent || ''), null, { ms: 10000, what: '組み合わせを保存' });
   const sv7 = await (await fetch(B + '/api/bladeset/hold-pick?equipment=' + encodeURIComponent(EQ))).json();
   const th7 = sv7.rows[0].conditions.filter(c => c.field === 'thickness').map(c => `${c.or ? '|' : ''}${c.op}${c.value}`).join(' ');
@@ -251,6 +257,48 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   await W.until(page, s => document.querySelector(s)?.value === '0.6〜0.9', c7('thickness'), { ms: 4000, what: '案でセルが置き換わる' });
   rec('⑧ 案を押すとセルがその条件に置き換わり、盤と印が消える',
       await page.evaluate(() => !document.querySelector('.rt-dead') && !document.querySelector('.rt-cell.is-dead')));
+
+  /* ---- ⑨ 答えの地図と列の効き目（§9.535、利用者の選択「A-12」）。区切りの格子で全部の場合を数える。
+     前（実測・5列7行の見本）: 上の行に覆われて一度も当たらない行（正解 4行目・5行目）を名指し 0行・地図 0・効き目 0。 ---- */
+  const core9 = await page.evaluate(() => {
+   const Bs = WL.bladeSet, P = (t, f, k) => t ? Bs.parseCell(t, k || 'num').conds.map(c => Object.assign({ field: f }, c)) : [];
+   const rows = [P('>=20', 'strips'), P('0.3〜0.5', 'thickness').concat(P('SUS*', 'material', 'text')), P('<0.6', 'thickness'),
+    P('0.35〜0.45', 'thickness').concat(P('<10', 'strips'), P('SUS304', 'material', 'text')), P('>=1.5', 'thickness').concat(P('>=25', 'strips')),
+    P('C1020', 'material', 'text').concat(P('1/2H', 'temper', 'text')), P('>=1200', 'coilWidth').concat(P('<20', 'strips')), []].map(c => ({ conditions: c }));
+   const fields = [['thickness', 'num'], ['strips', 'num'], ['material', 'text'], ['temper', 'text'], ['coilWidth', 'num']].map(([field, kind]) => ({ field, kind }));
+   const G = Bs.ruleGrid(rows, fields, Object.fromEntries(fields.map(f => [f.field, f.kind])));
+   /* 数え上げの答えと、乱数の点での判定が食い違わないか（点の行が、点の入る場合の行と同じ） */
+   let seed = 5, bad = 0; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280, pick = a => a[Math.floor(rnd() * a.length)];
+   /* 値 → 区間の番号。字の列は「その列の全部の条件への当たり外れ」が同じ組（数え上げと同じ決め方）。 */
+   const kinds = Object.fromEntries(fields.map(f => [f.field, f.kind]));
+   const sig = (f, x) => rows.flatMap(r => r.conditions.filter(c => c.field === f)).map(c => (Bs.rowHits([c], { [f]: x }, kinds) ? 1 : 0)).join('');
+   const iv = (c, v) => { if (!c.num) return c.iv.findIndex(x => sig(c.field, x.reps[0]) === sig(c.field, v)); let j = 0; c.iv.forEach((x, k) => { if (k && v >= x.at) j = k; }); return j; };
+   for (let n = 0; n < 2000; n++) {
+    const ctx = { thickness: +(rnd() * 2.2).toFixed(3), strips: 1 + Math.floor(rnd() * 40), material: pick(['SUS304', 'C1020', 'A5052']), temper: pick(['1/2H', 'H']), coilWidth: 900 + Math.floor(rnd() * 600) };
+    const w = Bs.firstRule(rows, ctx, fields, true).index;
+    const ix = G.cols.map(c => iv(c, ctx[c.field]));
+    if (!G.cases.some(q => q.win === w && q.ix.every((j, k) => j === ix[k]))) bad++;
+   }
+   const eff = Bs.ruleEffect(G).sort((a, b) => b.share - a.share).map(e => e.field);
+   return { shadow: G.shadow.map(s => `${s.index + 1}←${s.by + 1}`).join(','), size: G.size, bad, top: eff[0] };
+  });
+  rec('⑨ 区切りの格子で全部の場合を数え、覆われて当たらない行を名指しする（4行目←2行目・5行目←1行目）', core9.shadow === '4←2,5←1', JSON.stringify(core9));
+  rec('⑨ 数え上げは判定と食い違わない（乱数2000点の当たった行が、その点の入る場合の行）', core9.bad === 0 && core9.top === 'strips', JSON.stringify(core9));
+  /* 画面: 1行目と同じ条件で板厚だけ狭い行を足すと、1行目に覆われて一度も当たらない */
+  const r0 = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.rt-row[data-r="0"] .rt-c')].map(i => [i.dataset.f, i.value])));
+  await page.click('[data-rt="addrow"]'); await page.waitForSelector('.rt-row[data-r="1"] .rt-c[data-f="thickness"]');
+  for (const [f, v] of Object.entries(r0)) { if (!v) continue; const sel = `.rt-row[data-r="1"] .rt-c[data-f="${f}"]`;
+   await page.fill(sel, f === 'thickness' ? '0.7〜0.8' : v); await page.press(sel, 'Tab'); }
+  await W.until(page, () => !!document.querySelector('.rt-map [data-shadow="1"]'), null, { ms: 6000, what: '覆われた行の名指し' });
+  const p9 = await page.evaluate(() => ({ named: document.querySelector('.rt-map [data-shadow="1"]').textContent,
+   tag: document.querySelector('.rt-row[data-r="1"] .rt-out .rt-deadtag')?.textContent || '', cells: document.querySelectorAll('.rt-map .rt-mc').length,
+   eff: document.querySelectorAll('.rt-map [data-eff]').length, head: document.querySelector('.rt-h .rt-state.is-warn')?.textContent || '' }));
+  rec('⑨ 地図と列の効き目が出て、足した行は「一度も当たらない（1行目が先に取る）」と表と地図の両方で言う',
+      p9.cells > 0 && p9.eff > 0 && /1行目/.test(p9.named) && /1行目が先に取る/.test(p9.tag) && /当たらない決まり/.test(p9.head), JSON.stringify(p9));
+  await page.click('.rt-map .rt-mc[data-cx="0"][data-cy="0"]');
+  await W.until(page, () => [...document.querySelectorAll('.rt-try .rt-p')].some(i => i.value !== ''), null, { ms: 4000, what: 'マスを押すと試す行へ' });
+  rec('⑨ 地図のマスを押すと、その区間の値が「試す」の行へ入り、当たる行が出る',
+      await page.evaluate(() => !/値を入れると/.test(document.querySelector('.rt-ans').textContent)));
   rec('コンソールに例外が出ない', errs.length === 0, errs.slice(0, 3).join(' / '));
  } finally {
   await reset();

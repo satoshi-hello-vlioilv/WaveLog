@@ -1104,6 +1104,35 @@ body.bs-mode .bs-shell{display:flex}
 .rt-alt b{color:var(--teal-dark)}
 .rt-alt small{color:var(--muted);font-size:var(--fs-micro)}
 .rt-alt span{color:var(--ink-2)}
+/* 答えの地図と列の効き目（§9.535）。左＝地図（区切りの格子・答えの色・行の番号）、右＝効き目の棒と当たらない行。 */
+.rt-map{margin-top:var(--space-3);border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface)}
+.rt-map>summary{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--space-2);padding:var(--space-2) var(--space-3);cursor:pointer;font-size:var(--fs-base-sm)}
+.rt-map>summary small{color:var(--muted);font-size:var(--fs-sm)}
+.rt-map-b{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:var(--space-3);padding:0 var(--space-3) var(--space-3)}
+.rt-map-b figure{margin:0}
+.rt-msvg{display:block;width:100%;height:auto}
+.rt-msvg .rt-lb{font-weight:800;fill:var(--ink)}
+.rt-hzl{stroke:var(--surface);stroke-width:2.5;opacity:.6}
+.rt-mc{cursor:pointer}
+.rt-mcf{fill:none;stroke:var(--surface);stroke-width:1.5}
+.rt-mc:hover .rt-mcf,.rt-mc:focus .rt-mcf{stroke:var(--ink);stroke-width:2}
+.rt-mc.is-row .rt-mcf{stroke:var(--teal-dark);stroke-width:3.5}
+.rt-mct{font-size:var(--fs-micro);font-weight:800;fill:var(--surface);paint-order:stroke;stroke:var(--ink);stroke-width:2.5px}
+.rt-mcs{font-size:var(--fs-micro);font-weight:800;fill:var(--warn-fg);paint-order:stroke;stroke:var(--surface);stroke-width:3px}
+.rt-mleg{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-3);margin:var(--space-1) 0 0;font-size:var(--fs-sm);color:var(--ink-2)}
+.rt-mleg i{display:inline-block;width:1em;height:1em;border-radius:var(--radius-xs);margin-right:4px;vertical-align:-2px}
+.rt-mleg .rt-mleg-h{color:var(--muted)}
+.rt-eff h4{margin:0 0 var(--space-1);font-size:var(--fs-sm);color:var(--ink-2)}
+.rt-eff h4 small{margin-left:var(--space-2);font-weight:400;color:var(--muted);font-size:var(--fs-micro)}
+.rt-eff-r{display:grid;grid-template-columns:7em minmax(0,1fr) 3em 6.5em;gap:var(--space-2);align-items:center;margin-bottom:4px;font-size:var(--fs-sm)}
+.rt-eff-r b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rt-eff-r em{font-style:normal;color:var(--teal-dark);font-weight:700;font-size:var(--fs-micro);text-align:center}
+.rt-bar{height:12px;border-radius:var(--radius-xs);background:var(--surface-2);overflow:hidden}
+.rt-bar i{display:block;height:100%;background:var(--teal)}
+.rt-shadow{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:var(--fs-sm)}
+.rt-shadow li{padding:3px var(--space-2);border-radius:var(--radius-sm);background:var(--warn-bg);color:var(--warn-fg)}
+.rt-eff .rt-then{margin:var(--space-2) 0}
+.rt-ok{color:var(--ink-2)}
 /* 刃選択の「この作業なら」の帯（2つの表の当たりを1行で）。 */
 .bp-try{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);margin-bottom:var(--space-3);
  padding:var(--space-2) var(--space-3);border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface-2);
