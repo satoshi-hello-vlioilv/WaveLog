@@ -32,9 +32,9 @@
   setAnswer:(r,v)=>{const [hold,material]=v.split('|');Object.assign(r,{hold,material:material||''})},
   blankRow:()=>({hold:hs.methods[0]||'フィンガー',material:''}),
   rowOut:r=>({hold:r.hold,material:matOf(r)}),
-  save:async rows=>{
+  save:async(rows,cols)=>{
    const uid=WL.mm.requireMaintUser();if(uid===null)throw new Error('更新者IDが決まっていません');
-   await K().post('/api/bladeset/hold-pick',{equipment:hs.equipment,rows,user_id:uid});
+   await K().post('/api/bladeset/hold-pick',{equipment:hs.equipment,rows,cols,user_id:uid});
    await load(true);
    showToast&&showToast('保持方式の表を保存しました',`${hs.equipment}・${rows.length}行`,2600);
   },
@@ -81,7 +81,7 @@
    const [c,src]=await Promise.all([api('/api/bladeset/hold-pick?equipment='+encodeURIComponent(hs.equipment)),loadSource()]);
    Object.assign(hs,{fields:c.fields||[],groups:c.groups||[],methods:c.methods||['フィンガー','ゴムリング'],
                      materials:c.fingerMaterials||[],sourceCols:src.columns,samples:src.samples,loaded:true});
-   table.setData((c.rows||[]).map(r=>({conditions:r.conditions||[],hold:r.hold,material:r.material||'',note:r.note||''})),!!c.stored);
+   table.setData((c.rows||[]).map(r=>({conditions:r.conditions||[],hold:r.hold,material:r.material||'',note:r.note||''})),!!c.stored,c.cols);
    render();
   });
  }

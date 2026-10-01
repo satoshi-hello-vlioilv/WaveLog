@@ -452,6 +452,21 @@ rec('保持方式: 行ごとにフィンガー材質を持つ（§9.527）。知
 rec('保持方式: 種の行も材質は空欄（既定）', all(r['material'] == '' for r in bs.hold_seed(0.6)))
 bs.hold_reset(c, EQ)
 rec('保持方式: 設備が無ければ保存を断る', _reject(lambda: bs.hold_replace(c, 'u', '', [])))
+# §9.530 列の並びは表の設定として残す（条件の出てくる順から起こさない）
+bs.hold_replace(c, 'u', EQ, [{'conditions': [{'field': 'strips', 'op': 'ge', 'value': '20'}], 'hold': 'フィンガー'},
+                             {'conditions': [{'field': 'thickness', 'op': 'lt', 'value': '1'}], 'hold': 'フィンガー'}],
+                cols=['thickness', 'coilWidth', 'strips', 'hold', 'thickness', 'source.製造材質'])
+rec('§9.530 保持方式: 保存した列の並び（条件の無い列も・重ねない・この表で使えない列は落とす）で返る',
+    bs.hold_rows(c, EQ)['cols'] == ['thickness', 'coilWidth', 'strips', 'source.製造材質'], str(bs.hold_rows(c, EQ)['cols']))
+bs.hold_replace(c, 'u', EQ, [{'conditions': [{'field': 'strips', 'op': 'ge', 'value': '20'}], 'hold': 'フィンガー'}])
+rec('§9.530 列の並びを送らない保存（前の版）は、条件にある列から並びを起こす',
+    bs.hold_rows(c, EQ)['cols'] == ['strips'], str(bs.hold_rows(c, EQ)['cols']))
+bs.hold_reset(c, EQ)
+bs.pick_replace(c, 'u', EQ, 'thickness', [{'conditions': [{'field': 'thickness', 'op': 'lt', 'value': '2'}], 'answer': '5'}],
+                cols=['category', 'thickness'])
+rec('§9.530 刃選択: 表ごとに列の並びを残す（刃のカテゴリの列は条件が無くても残る）',
+    bs.pick_tables(c, EQ)['thickness']['cols'] == ['category', 'thickness'], str(bs.pick_tables(c, EQ)['thickness']))
+bs.pick_reset(c, EQ, 'thickness')
 
 # ---------------------------------------------------------------------------
 # 7. 刃セット・フィンガー材質・刃選択の4項目（§9.526、利用者の指示）

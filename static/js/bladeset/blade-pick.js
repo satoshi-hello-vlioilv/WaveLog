@@ -42,9 +42,9 @@
    fields:()=>defOf(key).fields,groups:()=>ps.groups,sourceCols:()=>ps.sourceCols,valuesOf:f=>valuesOf(f),
    probe:ps.probe,onProbe:()=>render(),onChange:quiet=>{if(!quiet)paintTry()},
    blankRow:()=>({answer:'',group:''}),rowOut:r=>({answer:r.answer||'',group:r.group||''}),
-   save:async rows=>{
+   save:async(rows,cols)=>{
     const uid=WL.mm.requireMaintUser();if(uid===null)throw new Error('更新者IDが決まっていません');
-    const r=await K().post('/api/bladeset/blade-pick',{equipment:ps.equipment,table:key,rows,user_id:uid});
+    const r=await K().post('/api/bladeset/blade-pick',{equipment:ps.equipment,table:key,rows,cols,user_id:uid});
     await load(true);
     showToast&&showToast(r.message||'保存しました',ps.equipment,2600);
    },
@@ -120,8 +120,8 @@
    Object.assign(ps,{defs:c.defs||[],groups:c.groups||[],sets:(sets.items||[]).filter(x=>x.group),thicknesses:tk,
                      categories:sets.categories||['通常刃','専用刃'],sourceCols:src.columns,samples:src.samples,loaded:true});
    const tb=c.tables||{};
-   T.category.setData((tb.category||{}).rows,(tb.category||{}).stored);
-   T.thickness.setData((tb.thickness||{}).rows,(tb.thickness||{}).stored);
+   T.category.setData((tb.category||{}).rows,(tb.category||{}).stored,(tb.category||{}).cols);
+   T.thickness.setData((tb.thickness||{}).rows,(tb.thickness||{}).stored,(tb.thickness||{}).cols);
    box.innerHTML='';
    render();
   });

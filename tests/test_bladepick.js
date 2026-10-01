@@ -65,7 +65,7 @@ H.run('test_bladepick: 刃選択の2つの判定表（§9.529）', async ({ page
   rec('② カテゴリの表に足せる列: ほかのマスタの答え（フィンガー材質）・材料（板厚以外の計算値・材質・調質…）',
       /ほかのマスタの答え:fingerMaterial/.test(addable[0]) && /材料から計算した値:coilWidth/.test(addable[0]) && /1本目のコイル（仕掛）:material,temper/.test(addable[0])
       && !/category/.test(addable[0]), addable[0]);
-  const heads = await page.evaluate(() => [...document.querySelectorAll('#masterMaintList [data-table="thickness"] .rt-col')].map(th => th.textContent.replace('×', '')));
+  const heads = await page.evaluate(() => [...document.querySelectorAll('#masterMaintList [data-table="thickness"] .rt-col')].map(th => th.querySelector('b').textContent + th.querySelector('small').textContent));
   rec('② 刃厚の表は「刃のカテゴリ」（前の表の答え）を列に持ち、見出しは名前の下に出どころを言う',
       heads.join('/') === '刃のカテゴリほかのマスタの答え/板厚材料から計算した値', heads.join('/'));
 

@@ -1014,10 +1014,22 @@ body.bs-mode .bs-shell{display:flex}
 .rt-table thead th{font-weight:700;color:var(--ink-2);vertical-align:bottom}
 .rt-cn{display:flex;align-items:center;gap:var(--space-1)}
 .rt-cn .rt-x{margin-left:auto}
+.rt-cn .rt-grip{margin-right:0}
 .rt-col small{display:block;font-size:var(--fs-micro);color:var(--muted);font-weight:400}
 .rt-col[data-g="answer"] small{color:var(--teal-dark)}
 .rt-table .rt-no{width:3.5em;text-align:center;color:var(--muted);font-weight:400}
-.rt-x,.rt-mv{color:var(--muted);height:var(--ctl-h-sm);padding:0 var(--space-1);margin-left:var(--space-1)}
+.rt-x{color:var(--muted);height:var(--ctl-h-sm);padding:0 var(--space-1);margin-left:var(--space-1)}
+/* 掴む札（§9.530）。押せる物の見た目にはしない（枠なし）——掴めることはカーソルと乗せたときの地で言う。
+   運んだ先は線で言い（行＝上下・列＝左右）、運んでいる行・列は薄く。 */
+.rt-grip{display:inline-grid;place-items:center;width:1.2em;margin-right:var(--space-1);border-radius:var(--radius-xs);
+ color:var(--muted);cursor:grab;user-select:none;font-size:var(--fs-sm);line-height:1.6}
+.rt-grip:hover,.rt-grip:focus-visible{background:var(--pale);color:var(--teal-dark);outline:none}
+.rt-grip:active{cursor:grabbing}
+.rt-table .rt-row.is-dragging,.rt-table .rt-col.is-dragging{opacity:.45}
+.rt-table .rt-row.is-drop-before>*{box-shadow:inset 0 2px 0 var(--teal)}
+.rt-table .rt-row.is-drop-after>*{box-shadow:inset 0 -2px 0 var(--teal)}
+.rt-table .rt-col.is-drop-before{box-shadow:inset 2px 0 0 var(--teal)}
+.rt-table .rt-col.is-drop-after{box-shadow:inset -2px 0 0 var(--teal)}
 .rt-table input,.rt-table select{height:var(--ctl-h-sm);font-size:var(--fs-sm);box-sizing:border-box}
 .rt-cell{position:relative;min-width:8em}
 .rt-cell input,.rt-try input,.rt-try select{width:100%;min-width:7em}

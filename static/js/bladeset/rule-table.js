@@ -13,6 +13,8 @@
      ・セルの書き方: `< 0.6`・`0.6〜1.0`・`>= 20`・`SUS`・`!= X`・`*SUS*`（含む）。**空欄＝問わない**
      ・セルに入ると**候補**が出る（この列の値＋書き方の見本。↑↓・Enter）。書いた決まりは
        表の下の1行が**文で読み上げる**（「板厚が 0.6 より小さい かつ … → フィンガー」）
+     ・**行も列も後から並べ替えられる**（§9.530）——行は左の番号、列は見出しの「⠿」を掴んで運ぶ
+       （キーなら ↑↓／←→）。列の並びは表の設定として保存する（条件の出てくる順から起こさない）
      ・見出しのすぐ下の「試す」行に値を入れると、当たる行が光り、セルごとに○×が付く。
        「試す」の値は**同じ画面の表どうしで共有**する（刃のカテゴリと刃厚を同じ作業で試す）
 
@@ -87,13 +89,18 @@
   groupWord(f){const g=isSrc(f)?'source':(this.fieldOf(f)||{}).group;return ((this.o.groups()||[]).find(x=>x.key===g)||{}).label||''}
 
   /* ---------- 読む（呼ぶ側の答えを表にする） ---------- */
-  setData(rows,stored){
+  setData(rows,stored,cols){
    this.rows=(rows||[]).map(r=>Object.assign({},r,{conditions:(r.conditions||[]).map(x=>Object.assign({},x))}));
    this.stored=!!stored;this.dirty=false;this.read=-1;
-   /* 列＝表に書いてある項目（上の行・左の条件から順に）。何も無ければ呼ぶ側の既定の列。 */
-   const cols=[];this.rows.forEach(r=>(r.conditions||[]).forEach(x=>{if(!cols.includes(x.field))cols.push(x.field)}));
-   this.cols=cols.length?cols:(this.o.defaultCols||[]).slice();
+   /* 列＝**保存した並び**（§9.530・サーバーの`table_cols()`）。条件にあって並びに無い列は後ろへ。
+      何も無ければ呼ぶ側の既定の列。 */
+   const list=(cols||[]).slice();
+   this.rows.forEach(r=>(r.conditions||[]).forEach(x=>{if(!list.includes(x.field))list.push(x.field)}));
+   this.cols=list.length?list:(this.o.defaultCols||[]).slice();
+   this.sortConds();
   }
+  /* 行の条件を列の並びへそろえる（保存しても読み直しても同じ並びになるように）。 */
+  sortConds(){this.rows.forEach(r=>(r.conditions||[]).sort((a,b)=>this.cols.indexOf(a.field)-this.cols.indexOf(b.field)))}
 
   /* ---------- 試す（同じ画面の表どうしで値を共有する） ---------- */
   probeCtx(){
@@ -149,7 +156,7 @@
   }
   colHeadHtml(f,ci){
    return `<th class="rt-col" data-g="${esc((this.fieldOf(f)||{}).group||(isSrc(f)?'source':''))}">`
-    +`<span class="rt-cn"><b>${esc(this.colLabel(f))}</b>`
+    +`<span class="rt-cn">${this.gripHtml('col',ci,`${this.colLabel(f)}の列`)}<b>${esc(this.colLabel(f))}</b>`
     +`<button type="button" class="rt-x" data-rt="delcol" data-c="${ci}" title="この列を消す" aria-label="${esc(this.colLabel(f))}の列を消す">×</button></span>`
     +`<small>${esc(this.groupWord(f))}</small></th>`;
   }
@@ -183,10 +190,13 @@
     +(mk?`<i class="rt-mk" aria-hidden="true">${mk==='is-hit'?'○':'×'}</i>`:'')+'</td>';
   }
   opsHtml(i){
-   const last=this.rows.length-2;
-   return `<button type="button" class="rt-mv" data-rt="up" data-r="${i}" title="1つ上へ" aria-label="1つ上へ"${i===0?' disabled':''}>▲</button>`
-    +`<button type="button" class="rt-mv" data-rt="down" data-r="${i}" title="1つ下へ" aria-label="1つ下へ"${i>=last?' disabled':''}>▼</button>`
-    +`<button type="button" class="rt-x" data-rt="delrow" data-r="${i}" title="この決まりを消す" aria-label="この決まりを消す">×</button>`;
+   return `<button type="button" class="rt-x" data-rt="delrow" data-r="${i}" title="この決まりを消す" aria-label="この決まりを消す">×</button>`;
+  }
+  /* 掴む札（§9.530）。行は番号の横、列は見出しの名前の前。運ぶのは札だけ（欄を掴んで字を選べなくしない）。 */
+  gripHtml(kind,i,what){
+   const keys=kind==='row'?'↑↓':'←→';
+   return `<span class="rt-grip" draggable="true" tabindex="0" role="button" data-grip="${kind}" data-i="${i}"`
+    +` title="掴んで動かす（${keys}キーでも動きます）" aria-label="${esc(what)}を動かす（${keys}キー）">⠿</span>`;
   }
   rowHtml(r,i,hit){
    const o=this.o,def=this.isDefault(r),won=hit&&hit.index===i;
@@ -195,7 +205,8 @@
    const cur=o.answerOf(r);
    const sel=`<select class="rt-ansel" data-r="${i}" aria-label="${esc(o.answerHead)}">${o.answers(r).map(a=>
     `<option value="${esc(a.v)}"${a.v===cur?' selected':''}>${esc(a.label)}</option>`).join('')}</select>`;
-   return `<tr class="rt-row${def?' is-default':''}${won?' is-won':''}" data-r="${i}"><th class="rt-no">${def?'既定':i+1}</th>${cells}`
+   const no=def?'既定':`${this.gripHtml('row',i,`${i+1}行目の決まり`)}${i+1}`;
+   return `<tr class="rt-row${def?' is-default':''}${won?' is-won':''}" data-r="${i}"><th class="rt-no">${no}</th>${cells}`
     +`<td class="rt-out">${sel}</td><td class="rt-note"><input class="rt-n" data-r="${i}" value="${esc(r.note||'')}" placeholder="—" aria-label="備考"></td>`
     +`<td class="rt-ops">${def?'':this.opsHtml(i)}</td></tr>`;
   }
@@ -203,7 +214,8 @@
   render(){
    const host=this.o.host();if(!host)return;
    const a=document.activeElement,mine=a&&host.contains(a);
-   const key=mine?(a.dataset.p!==undefined?`[data-p="${CSS.escape(a.dataset.p)}"]`
+   const grip=this.refocus;this.refocus=null;
+   const key=grip?`.rt-grip[data-grip="${grip.kind}"][data-i="${grip.i}"]`:mine?(a.dataset.p!==undefined?`[data-p="${CSS.escape(a.dataset.p)}"]`
     :a.dataset.f!==undefined&&a.dataset.r!==undefined?`.rt-c[data-r="${a.dataset.r}"][data-f="${CSS.escape(a.dataset.f)}"]`
     :a.classList.contains('rt-n')?`.rt-n[data-r="${a.dataset.r}"]`:''):'';
    const pos=mine&&typeof a.selectionStart==='number'?a.selectionStart:null;
@@ -257,6 +269,7 @@
    host.querySelectorAll('.rt-row').forEach(tr=>{tr.onmouseenter=()=>{this.read=+tr.dataset.r;this.paintRead(host)}});
    host.querySelectorAll('.rt-ansel').forEach(el=>{el.onchange=()=>{this.o.setAnswer(this.rows[+el.dataset.r],el.value);this.touch();this.render()}});
    host.querySelectorAll('.rt-n').forEach(el=>{el.oninput=()=>this.setNote(host,+el.dataset.r,el.value)});
+   this.wireGrips(host);
    host.querySelectorAll('.rt-p').forEach(el=>{
     const set=()=>{this.o.probe[el.dataset.p]=el.value;this.o.onProbe?this.o.onProbe():this.render()};
     if(el.tagName==='SELECT')el.onchange=set;else el.oninput=set;
@@ -284,7 +297,6 @@
   act(a,ri,ci){
    const moves={
     addrow:()=>this.addRow(),
-    up:()=>this.move(ri,-1),down:()=>this.move(ri,1),
     delrow:()=>{this.rows.splice(ri,1);this.read=-1;this.touch();this.render()},
     delcol:()=>this.delCol(ci),
     save:()=>this.save(),reset:()=>this.reset(),
@@ -297,10 +309,67 @@
    this.read=at;this.touch();this.render();
    const el=this.o.host().querySelector(`.rt-c[data-r="${at}"]`);if(el)el.focus();
   }
-  move(ri,d){
-   const j=ri+d;
-   if(j<0||j>=this.rows.length-1)return;
-   [this.rows[ri],this.rows[j]]=[this.rows[j],this.rows[ri]];this.read=j;this.touch();this.render();
+  /* ---------- 並べ替え（§9.530） ----------
+     行: 既定の行は動かさない（いつも最後）。列: 動かしたら各行の条件も列の並びへそろえる。 */
+  moveRow(from,to){
+   const last=this.rows.length-1;
+   to=Math.max(0,Math.min(to,last-1));
+   if(from===to||from<0||from>=last)return false;
+   const [r]=this.rows.splice(from,1);this.rows.splice(to,0,r);
+   this.read=to;this.touch();return true;
+  }
+  moveCol(from,to){
+   to=Math.max(0,Math.min(to,this.cols.length-1));
+   if(from===to||from<0||from>=this.cols.length)return false;
+   const [f]=this.cols.splice(from,1);this.cols.splice(to,0,f);
+   this.sortConds();this.touch();return true;
+  }
+  /* 運んだ先の位置。行は縦の中ほど、列は見出しの横の中ほどで前後を決める。 */
+  dropIndex(host,kind,ev){
+   const els=kind==='row'?[...host.querySelectorAll('.rt-row:not(.is-default)')]:[...host.querySelectorAll('.rt-col')];
+   const at=els.findIndex(el=>{const r=el.getBoundingClientRect();return kind==='row'?ev.clientY<r.top+r.height/2:ev.clientX<r.left+r.width/2});
+   return at<0?els.length:at;
+  }
+  paintDrop(host,kind,at){
+   host.querySelectorAll('.is-drop-before,.is-drop-after').forEach(el=>el.classList.remove('is-drop-before','is-drop-after'));
+   if(at==null)return;
+   const els=kind==='row'?[...host.querySelectorAll('.rt-row:not(.is-default)')]:[...host.querySelectorAll('.rt-col')];
+   if(at<els.length)els[at].classList.add('is-drop-before');else if(els.length)els[els.length-1].classList.add('is-drop-after');
+  }
+  /* 確定は`dragend`（§9.201: 最後の`dragover`が断った場所で離すと`drop`は起きない）。動いていなければ何もしない。 */
+  wireGrips(host){
+   const table=host.querySelector('.rt-table');if(!table)return;
+   host.querySelectorAll('.rt-grip').forEach(g=>{
+    const kind=g.dataset.grip,i=+g.dataset.i;
+    g.ondragstart=e=>{this.drag={kind,from:i,to:i};e.dataTransfer.effectAllowed='move';
+     try{e.dataTransfer.setData('text/plain',kind+i)}catch(_e){WL.quiet.note('運ぶ物の字を渡せない（並べ替えはそのまま動く）',_e)}
+     (kind==='row'?g.closest('tr'):g.closest('th')).classList.add('is-dragging')};
+    g.ondragend=()=>this.endDrag(host);
+    g.onkeydown=e=>this.gripKey(e,kind,i);
+   });
+   table.ondragover=e=>{
+    const d=this.drag;if(!d)return;
+    e.preventDefault();e.dataTransfer.dropEffect='move';
+    const at=this.dropIndex(host,d.kind,e);
+    d.to=at>d.from?at-1:at;this.paintDrop(host,d.kind,at);
+   };
+   table.ondrop=e=>{if(this.drag){e.preventDefault();this.endDrag(host)}};
+  }
+  endDrag(host){
+   const d=this.drag;this.drag=null;
+   if(!d)return;
+   this.paintDrop(host,d.kind,null);
+   const moved=d.kind==='row'?this.moveRow(d.from,d.to):this.moveCol(d.from,d.to);
+   if(moved)this.refocus={kind:d.kind,i:d.to};
+   this.render();
+  }
+  gripKey(e,kind,i){
+   const step={row:{ArrowUp:-1,ArrowDown:1},col:{ArrowLeft:-1,ArrowRight:1}}[kind][e.key];
+   if(!step)return;
+   e.preventDefault();
+   const to=i+step,moved=kind==='row'?this.moveRow(i,to):this.moveCol(i,to);
+   if(!moved)return;
+   this.refocus={kind,i:to};this.render();
   }
   async delCol(ci){
    const f=this.cols[ci],n=this.rows.filter(r=>this.condOf(r,f)).length;
@@ -323,7 +392,7 @@
    const rows=this.rows.filter(r=>(r.conditions||[]).length||r===last)
     .map(r=>Object.assign(this.o.rowOut(r),{conditions:r.conditions||[],note:r.note||''}));
    this.busy=true;this.render();
-   try{await this.o.save(rows);this.dirty=false}
+   try{await this.o.save(rows,this.cols.slice());this.dirty=false}
    catch(e){await alertModal('保存できませんでした：'+(e&&e.message?e.message:e))}
    finally{this.busy=false;this.render();this.o.onChange&&this.o.onChange()}
   }
