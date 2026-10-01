@@ -959,7 +959,7 @@ body.bs-mode .bs-shell{display:flex}
 .bb-tile{display:inline-grid;place-items:center;width:1.9em;height:1.9em;border-radius:var(--radius-sm);
  background:var(--rs-slate);color:#fff;font-style:normal;font-weight:800;font-size:var(--fs-base-sm)}
 .bb-tile.is-special{background:var(--teal)}
-.bb-tile.is-grind{background-image:repeating-linear-gradient(135deg,transparent 0 4px,rgba(255,255,255,.35) 4px 7px)}
+.bb-tile.is-grind{background-image:repeating-linear-gradient(135deg,transparent 0 4px,color-mix(in srgb,var(--surface) 35%,transparent) 4px 7px)}
 .bk-card-h .bb-tile{width:2.4em;height:2.4em;font-size:var(--fs-lg)}
 
 /* ---------- ゴムリングの盤（§9.528 → §9.529 で2ペイン） ----------

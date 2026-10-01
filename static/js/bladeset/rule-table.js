@@ -69,148 +69,161 @@
   text:[['eq','','と同じ'],['contains','*','を含む'],['ne','≠ ','以外']],
  };
 
- function create(o){
-  const t={key:o.key,label:o.label,rows:[],cols:[],stored:false,dirty:false,read:-1,busy:false};
-  const fields=()=>o.fields()||[];
-  const fieldOf=f=>fields().find(x=>x.field===f)||null;
-  const colLabel=f=>isSrc(f)?String(f).slice(SRC.length):((fieldOf(f)||{}).label||f);
-  const kindOf=f=>((fieldOf(f)||{}).kind)||(isSrc(f)?'auto':'text');
-  const condOf=(row,f)=>(row.conditions||[]).find(c=>c.field===f)||null;
+ /* 表1枚。**状態（行・列・保存の印）と呼ぶ側の差し込み口（`o`）を持つ組**——盤は答えの列と保存先だけを
+    渡す（保持方式・刃のカテゴリ・刃厚が同じ組を使う）。描く・読む・触るは短いメソッドに分ける（§9.522）。 */
+ class RuleTable{
+  constructor(o){
+   this.o=o;
+   Object.assign(this,{key:o.key,label:o.label,rows:[],cols:[],stored:false,dirty:false,read:-1,busy:false});
+  }
+  fields(){return this.o.fields()||[]}
+  fieldOf(f){return this.fields().find(x=>x.field===f)||null}
+  colLabel(f){return isSrc(f)?String(f).slice(SRC.length):((this.fieldOf(f)||{}).label||f)}
+  kindOf(f){return ((this.fieldOf(f)||{}).kind)||(isSrc(f)?'auto':'text')}
+  condOf(row,f){return (row.conditions||[]).find(c=>c.field===f)||null}
   /* 既定の行＝条件の無い行。**足したばかりで条件をまだ書いていない行**（`fresh`）は違う。 */
-  const isDefault=r=>!(r.conditions||[]).length&&!r.fresh;
-  const kinds=()=>Object.fromEntries(fields().map(f=>[f.field,f.kind]));
+  isDefault(r){return !(r.conditions||[]).length&&!r.fresh}
+  kinds(){return Object.fromEntries(this.fields().map(f=>[f.field,f.kind]))}
+  groupWord(f){const g=isSrc(f)?'source':(this.fieldOf(f)||{}).group;return ((this.o.groups()||[]).find(x=>x.key===g)||{}).label||''}
 
   /* ---------- 読む（呼ぶ側の答えを表にする） ---------- */
-  function setData(rows,stored){
-   t.rows=(rows||[]).map(r=>Object.assign({},r,{conditions:(r.conditions||[]).map(x=>Object.assign({},x))}));
-   t.stored=!!stored;t.dirty=false;t.read=-1;
+  setData(rows,stored){
+   this.rows=(rows||[]).map(r=>Object.assign({},r,{conditions:(r.conditions||[]).map(x=>Object.assign({},x))}));
+   this.stored=!!stored;this.dirty=false;this.read=-1;
    /* 列＝表に書いてある項目（上の行・左の条件から順に）。何も無ければ呼ぶ側の既定の列。 */
-   const cols=[];t.rows.forEach(r=>(r.conditions||[]).forEach(x=>{if(!cols.includes(x.field))cols.push(x.field)}));
-   t.cols=cols.length?cols:(o.defaultCols||[]).slice();
+   const cols=[];this.rows.forEach(r=>(r.conditions||[]).forEach(x=>{if(!cols.includes(x.field))cols.push(x.field)}));
+   this.cols=cols.length?cols:(this.o.defaultCols||[]).slice();
   }
 
   /* ---------- 試す（同じ画面の表どうしで値を共有する） ---------- */
-  function probeCtx(){
+  probeCtx(){
    const c={};
    /* **見えている列の値だけ**を読む——消した列の値が裏で効くと、画面に無い条件で答えが変わる。 */
-   t.cols.forEach(f=>{
-    const v=o.probe[f];
+   this.cols.forEach(f=>{
+    const v=this.o.probe[f];
     if(v===undefined||String(v).trim()==='')return;
-    c[f]=kindOf(f)==='num'?Number(v):String(v);
+    c[f]=this.kindOf(f)==='num'?Number(v):String(v);
    });
    return c;
   }
-  const probeFilled=()=>t.cols.some(f=>String(o.probe[f]??'').trim()!=='');
-  function probeHit(){
-   if(!probeFilled())return null;
+  probeFilled(){return this.cols.some(f=>String(this.o.probe[f]??'').trim()!=='')}
+  probeHit(){
+   if(!this.probeFilled())return null;
    /* 書きかけの行（条件なし）は当てない——既定の行と取り違えないように。番号は表の並びのまま。 */
-   return BS().firstRule(t.rows.map(r=>r.fresh&&!(r.conditions||[]).length?Object.assign({},r,{enabled:false}):r),probeCtx(),fields(),true);
+   return BS().firstRule(this.rows.map(r=>r.fresh&&!(r.conditions||[]).length?Object.assign({},r,{enabled:false}):r),this.probeCtx(),this.fields(),true);
   }
-  function cellMark(c){
-   if(!c||!probeFilled())return '';
-   return BS().condHits(c,probeCtx(),kinds())?'is-hit':'is-miss';
+  cellMark(c){
+   if(!c||!this.probeFilled())return '';
+   return BS().condHits(c,this.probeCtx(),this.kinds())?'is-hit':'is-miss';
   }
 
   /* ---------- 文で読む（表の下の1行） ---------- */
-  function sentence(i){
-   const r=t.rows[i];if(!r)return '';
-   const cs=(r.conditions||[]).map(c=>sayCond(c,colLabel(c.field)));
-   const head=isDefault(r)?'どれにも当てはまらないとき':(cs.length?cs.join(' かつ '):'（まだ条件がありません）');
-   return `${isDefault(r)?'既定':`${i+1}行目`}: ${head} → ${o.answerLabel(r)}`;
+  sentence(i){
+   const r=this.rows[i];if(!r)return '';
+   const cs=(r.conditions||[]).map(c=>sayCond(c,this.colLabel(c.field)));
+   const head=this.isDefault(r)?'どれにも当てはまらないとき':(cs.length?cs.join(' かつ '):'（まだ条件がありません）');
+   return `${this.isDefault(r)?'既定':`${i+1}行目`}: ${head} → ${this.o.answerLabel(r)}`;
   }
 
   /* ---------- 描く ---------- */
-  function headHtml(){
-   const st=t.dirty?'<span class="rt-state is-dirty">保存していない変更があります</span>'
-    :t.stored?'<span class="rt-state">登録済み</span>':`<span class="rt-state is-seed">未登録——${o.seedNote}</span>`;
+  headHtml(){
+   const o=this.o;
+   const st=this.dirty?'<span class="rt-state is-dirty">保存していない変更があります</span>'
+    :this.stored?'<span class="rt-state">登録済み</span>':`<span class="rt-state is-seed">未登録——${o.seedNote}</span>`;
    return `<header class="rt-h"><span class="rt-step">${esc(o.step||'')}</span><h3>${esc(o.label)}</h3>${st}
-    <span class="rt-acts"><select class="rt-addcol" aria-label="列（データ）を足す">${addColOptions()}</select>
+    <span class="rt-acts"><select class="rt-addcol" aria-label="列（データ）を足す">${this.addColOptions()}</select>
      <button type="button" class="mm-btn-ghost sm" data-rt="addrow">＋ 決まりを足す</button>
-     ${t.stored?`<button type="button" class="mm-btn-ghost sm" data-rt="reset" title="この表の登録を消し、${esc(o.seedNote)}へ戻します">未登録に戻す</button>`:''}
-     <button type="button" class="mm-btn-primary sm" data-rt="save"${t.dirty&&!t.busy?'':' disabled'}>保存</button></span></header>
-    ${o.lead?`<p class="rt-lead">${o.lead}</p>`:''}`;
+     ${this.stored?`<button type="button" class="mm-btn-ghost sm" data-rt="reset" title="この表の登録を消し、${esc(o.seedNote)}へ戻します">未登録に戻す</button>`:''}
+     <button type="button" class="mm-btn-primary sm" data-rt="save"${this.dirty&&!this.busy?'':' disabled'}>保存</button></span></header>`;
   }
-  function addColOptions(){
-   const used=new Set(t.cols);
-   const groups=(o.groups()||[]).map(g=>{
+  leadHtml(){return this.o.lead?`<p class="rt-lead">${this.o.lead}</p>`:''}
+  addColOptions(){
+   const used=new Set(this.cols);
+   const groups=(this.o.groups()||[]).map(g=>{
     const opts=g.key==='source'
-     ?(o.sourceCols()||[]).filter(n=>!used.has(SRC+n)).map(n=>`<option value="${esc(SRC+n)}">${esc(n)}</option>`).join('')
-     :fields().filter(f=>f.group===g.key&&!used.has(f.field)).map(f=>`<option value="${esc(f.field)}">${esc(f.label)}</option>`).join('');
+     ?(this.o.sourceCols()||[]).filter(n=>!used.has(SRC+n)).map(n=>`<option value="${esc(SRC+n)}">${esc(n)}</option>`).join('')
+     :this.fields().filter(f=>f.group===g.key&&!used.has(f.field)).map(f=>`<option value="${esc(f.field)}">${esc(f.label)}</option>`).join('');
     return opts?`<optgroup label="${esc(g.label)}">${opts}</optgroup>`:'';
    }).join('');
    return '<option value="">＋ 列（データ）を足す</option>'+groups;
   }
-  function tableHtml(){
-   const hit=probeHit();
-   const head=`<tr><th class="rt-no">#</th>${t.cols.map((f,ci)=>`<th class="rt-col" data-g="${esc((fieldOf(f)||{}).group||(isSrc(f)?'source':''))}">`
-    +`<span class="rt-cn"><b>${esc(colLabel(f))}</b>`
-    +`<button type="button" class="rt-x" data-rt="delcol" data-c="${ci}" title="この列を消す" aria-label="${esc(colLabel(f))}の列を消す">×</button></span>`
-    +`<small>${esc(groupWord(f))}</small></th>`).join('')}
-    <th class="rt-out">→ ${esc(o.answerHead)}</th><th class="rt-note">備考</th><th class="rt-ops"></th></tr>`;
-   const probe=`<tr class="rt-try"><th class="rt-no">試す</th>${t.cols.map(f=>`<td>${probeInput(f)}</td>`).join('')}
-    <td class="rt-ans" colspan="3">${!probeFilled()?'<span class="is-idle">値を入れると、当たる行が光ります</span>'
-     :hit?`<b>${esc(o.answerLabel(hit.row))}</b>（${isDefault(hit.row)?'既定の行':`${hit.index+1}行目`}に当たる）`:'<span class="is-idle">当たる行がありません</span>'}</td></tr>`;
-   const body=t.rows.map((r,i)=>rowHtml(r,i,hit)).join('');
-   const ri=t.read>=0&&t.read<t.rows.length?t.read:(hit?hit.index:0);
-   return `<div class="rt-wrap"><table class="rt-table">${'<thead>'+head+probe+'</thead>'}<tbody>${body}</tbody></table></div>
-    <p class="rt-read" aria-live="polite"><s>読み</s>${esc(sentence(ri))}</p>`;
+  colHeadHtml(f,ci){
+   return `<th class="rt-col" data-g="${esc((this.fieldOf(f)||{}).group||(isSrc(f)?'source':''))}">`
+    +`<span class="rt-cn"><b>${esc(this.colLabel(f))}</b>`
+    +`<button type="button" class="rt-x" data-rt="delcol" data-c="${ci}" title="この列を消す" aria-label="${esc(this.colLabel(f))}の列を消す">×</button></span>`
+    +`<small>${esc(this.groupWord(f))}</small></th>`;
   }
-  const groupWord=f=>{const g=isSrc(f)?'source':(fieldOf(f)||{}).group;return ((o.groups()||[]).find(x=>x.key===g)||{}).label||''};
-  function probeInput(f){
-   const fd=fieldOf(f),v=o.probe[f]??'';
+  probeRowHtml(hit){
+   const ans=!this.probeFilled()?'<span class="is-idle">値を入れると、当たる行が光ります</span>'
+    :hit?`<b>${esc(this.o.answerLabel(hit.row))}</b>（${this.isDefault(hit.row)?'既定の行':`${hit.index+1}行目`}に当たる）`:'<span class="is-idle">当たる行がありません</span>';
+   return `<tr class="rt-try"><th class="rt-no">試す</th>${this.cols.map(f=>`<td>${this.probeInput(f)}</td>`).join('')}<td class="rt-ans" colspan="3">${ans}</td></tr>`;
+  }
+  tableHtml(){
+   const hit=this.probeHit();
+   const head=`<tr><th class="rt-no">#</th>${this.cols.map((f,ci)=>this.colHeadHtml(f,ci)).join('')}
+    <th class="rt-out">→ ${esc(this.o.answerHead)}</th><th class="rt-note">備考</th><th class="rt-ops"></th></tr>`;
+   const body=this.rows.map((r,i)=>this.rowHtml(r,i,hit)).join('');
+   const ri=this.read>=0&&this.read<this.rows.length?this.read:(hit?hit.index:0);
+   return `<div class="rt-wrap"><table class="rt-table"><thead>${head}${this.probeRowHtml(hit)}</thead><tbody>${body}</tbody></table></div>
+    <p class="rt-read" aria-live="polite"><s>読み</s>${esc(this.sentence(ri))}</p>`;
+  }
+  probeInput(f){
+   const fd=this.fieldOf(f),v=this.o.probe[f]??'';
    if(fd&&fd.kind==='choice')return `<select class="rt-p" data-p="${esc(f)}">${['<option value="">（問わない）</option>']
     .concat((fd.options||[]).map(x=>`<option value="${esc(x)}"${x===v?' selected':''}>${esc(x)}</option>`)).join('')}</select>`;
-   return `<input class="rt-p" data-p="${esc(f)}" type="${kindOf(f)==='num'?'number':'text'}" step="any" value="${esc(v)}" placeholder="値">`;
+   return `<input class="rt-p" data-p="${esc(f)}" type="${this.kindOf(f)==='num'?'number':'text'}" step="any" value="${esc(v)}" placeholder="値">`;
   }
-  function rowHtml(r,i,hit){
-   const def=isDefault(r),won=hit&&hit.index===i;
-   const last=t.rows.length-2;
-   const cells=def?`<td class="rt-any" colspan="${Math.max(1,t.cols.length)}">どれにも当てはまらないとき</td>`
-    :t.cols.map(f=>{const c=condOf(r,f),mk=cellMark(c),bad=(r.bad||{})[f];
-      /* 読めなかった字は**直すまでそのまま残す**（描き直しで消すと、受け付けたと読める）。 */
-      if(bad)return `<td class="rt-cell"><input class="rt-c is-bad" data-r="${i}" data-f="${esc(f)}" value="${esc(bad.text)}"`
-       +` title="${esc(bad.why)}" aria-invalid="true"><small class="rt-why">${esc(bad.why)}</small></td>`;
-      return `<td class="rt-cell ${mk}"><input class="rt-c" data-r="${i}" data-f="${esc(f)}" value="${esc(cellText(c))}"`
-       +` placeholder="問わない"${c?` title="${esc(sayCond(c,colLabel(f)))}"`:''}>`
-       +(mk?`<i class="rt-mk" aria-hidden="true">${mk==='is-hit'?'○':'×'}</i>`:'')+'</td>'}).join('');
+  /* セル1つ。読めなかった字は**直すまでそのまま残す**（描き直しで消すと、受け付けたと読める）。 */
+  cellHtml(r,i,f){
+   const c=this.condOf(r,f),mk=this.cellMark(c),bad=(r.bad||{})[f];
+   if(bad)return `<td class="rt-cell"><input class="rt-c is-bad" data-r="${i}" data-f="${esc(f)}" value="${esc(bad.text)}"`
+    +` title="${esc(bad.why)}" aria-invalid="true"><small class="rt-why">${esc(bad.why)}</small></td>`;
+   return `<td class="rt-cell ${mk}"><input class="rt-c" data-r="${i}" data-f="${esc(f)}" value="${esc(cellText(c))}"`
+    +` placeholder="問わない"${c?` title="${esc(sayCond(c,this.colLabel(f)))}"`:''}>`
+    +(mk?`<i class="rt-mk" aria-hidden="true">${mk==='is-hit'?'○':'×'}</i>`:'')+'</td>';
+  }
+  opsHtml(i){
+   const last=this.rows.length-2;
+   return `<button type="button" class="rt-mv" data-rt="up" data-r="${i}" title="1つ上へ" aria-label="1つ上へ"${i===0?' disabled':''}>▲</button>`
+    +`<button type="button" class="rt-mv" data-rt="down" data-r="${i}" title="1つ下へ" aria-label="1つ下へ"${i>=last?' disabled':''}>▼</button>`
+    +`<button type="button" class="rt-x" data-rt="delrow" data-r="${i}" title="この決まりを消す" aria-label="この決まりを消す">×</button>`;
+  }
+  rowHtml(r,i,hit){
+   const o=this.o,def=this.isDefault(r),won=hit&&hit.index===i;
+   const cells=def?`<td class="rt-any" colspan="${Math.max(1,this.cols.length)}">どれにも当てはまらないとき</td>`
+    :this.cols.map(f=>this.cellHtml(r,i,f)).join('');
    const cur=o.answerOf(r);
    const sel=`<select class="rt-ansel" data-r="${i}" aria-label="${esc(o.answerHead)}">${o.answers(r).map(a=>
     `<option value="${esc(a.v)}"${a.v===cur?' selected':''}>${esc(a.label)}</option>`).join('')}</select>`;
-   const ops=def?'':`<button type="button" class="rt-mv" data-rt="up" data-r="${i}" title="1つ上へ" aria-label="1つ上へ"${i===0?' disabled':''}>▲</button>`
-    +`<button type="button" class="rt-mv" data-rt="down" data-r="${i}" title="1つ下へ" aria-label="1つ下へ"${i>=last?' disabled':''}>▼</button>`
-    +`<button type="button" class="rt-x" data-rt="delrow" data-r="${i}" title="この決まりを消す" aria-label="この決まりを消す">×</button>`;
    return `<tr class="rt-row${def?' is-default':''}${won?' is-won':''}" data-r="${i}"><th class="rt-no">${def?'既定':i+1}</th>${cells}`
     +`<td class="rt-out">${sel}</td><td class="rt-note"><input class="rt-n" data-r="${i}" value="${esc(r.note||'')}" placeholder="—" aria-label="備考"></td>`
-    +`<td class="rt-ops">${ops}</td></tr>`;
+    +`<td class="rt-ops">${def?'':this.opsHtml(i)}</td></tr>`;
   }
   /* 描き直しても**焦点と字の位置を戻す**（試す・セルを打つたびに表を作り直すため）。 */
-  function render(){
-   const host=o.host();if(!host)return;
+  render(){
+   const host=this.o.host();if(!host)return;
    const a=document.activeElement,mine=a&&host.contains(a);
    const key=mine?(a.dataset.p!==undefined?`[data-p="${CSS.escape(a.dataset.p)}"]`
     :a.dataset.f!==undefined&&a.dataset.r!==undefined?`.rt-c[data-r="${a.dataset.r}"][data-f="${CSS.escape(a.dataset.f)}"]`
     :a.classList.contains('rt-n')?`.rt-n[data-r="${a.dataset.r}"]`:''):'';
    const pos=mine&&typeof a.selectionStart==='number'?a.selectionStart:null;
-   host.innerHTML=headHtml()+tableHtml();
-   wire(host);
-   if(key){const el=host.querySelector(key);if(el){el.focus();if(pos!=null)try{el.setSelectionRange(pos,pos)}catch(_e){WL.quiet.note('数の欄は字の位置を戻せない（焦点だけ戻す）',_e)}}}
+   host.innerHTML=this.headHtml()+this.leadHtml()+this.tableHtml();
+   this.wire(host);
+   const el=key&&host.querySelector(key);
+   if(el){el.focus();if(pos!=null)try{el.setSelectionRange(pos,pos)}catch(_e){WL.quiet.note('数の欄は字の位置を戻せない（焦点だけ戻す）',_e)}}
   }
 
-  /* ---------- 候補（セルに入ると出る・§9.529「サジェスト機能」） ---------- */
-  function suggestFor(inp){
-   const f=inp.dataset.f,kind=kindOf(f),fd=fieldOf(f);
+  /* ---------- 候補（セルに入ると出る・§9.529「サジェスト機能」） ----------
+     「この列の値」（候補から選ぶ項目の顔ぶれ・仕掛の見本・表に書いた値）＋「書き方」の見本。
+     **↑↓で選ぶまで何も選ばない**（`pick:false`）——打ち終えた字を Tab で離れても置き換えない。 */
+  suggestFor(inp){
+   const f=inp.dataset.f,kind=this.kindOf(f),fd=this.fieldOf(f);
    const typed=inp.value.trim();
    const p=parseCell(typed,kind);
    /* 書き終えた条件（記号・範囲・含む）には候補を出さない（読み上げは表の下の1行が言う）。 */
    if(p.cond&&p.cond.op!=='eq'&&typed)return null;
-   const bare=p.cond?(p.cond.op==='between'?p.cond.value:p.cond.value):typed.replace(/^[<>=!≦≧＜＞≠＝*]+/,'').replace(/\*$/,'');
-   const vals=[...new Set([].concat((fd&&fd.options)||[],o.valuesOf?o.valuesOf(f):[],
-     t.rows.map(r=>condOf(r,f)).filter(Boolean).flatMap(c=>c.op==='between'?[c.value,c.value2]:[c.value])).map(String))]
-    .filter(v=>v&&(!bare||v.toLowerCase().includes(bare.toLowerCase())||typed===''))
-    .slice(0,8);
-   const items=[];
-   if(vals.length){items.push({head:true,label:`${colLabel(f)}の値`});
-    vals.forEach(v=>items.push({ins:v,label:v,note:`${colLabel(f)}が ${v}`,commit:true}))}
+   const bare=p.cond?p.cond.value:typed.replace(/^[<>=!≦≧＜＞≠＝*]+/,'').replace(/\*$/,'');
+   const items=this.valueItems(f,fd,bare,typed);
    const tm=TEMPLATES[kind==='num'?'num':'text'].filter(([op])=>!(fd&&fd.kind==='choice'&&!/^(eq|ne)$/.test(op)));
    const v=bare||'値';
    items.push({head:true,label:'書き方（押すと入ります）'});
@@ -221,85 +234,107 @@
    });
    return {items,from:0,to:inp.value.length,pick:false};
   }
+  valueItems(f,fd,bare,typed){
+   const vals=[...new Set([].concat((fd&&fd.options)||[],this.o.valuesOf?this.o.valuesOf(f):[],
+     this.rows.map(r=>this.condOf(r,f)).filter(Boolean).flatMap(c=>c.op==='between'?[c.value,c.value2]:[c.value])).map(String))]
+    .filter(v=>v&&(!bare||v.toLowerCase().includes(bare.toLowerCase())||typed===''))
+    .slice(0,8);
+   if(!vals.length)return [];
+   return [{head:true,label:`${this.colLabel(f)}の値`}].concat(vals.map(v=>({ins:v,label:v,note:`${this.colLabel(f)}が ${v}`,commit:true})));
+  }
 
   /* ---------- 触る ---------- */
-  function touch(){t.dirty=true;o.onChange&&o.onChange()}
-  function wire(host){
-   host.querySelectorAll('[data-rt]').forEach(b=>{b.onclick=()=>act(b.dataset.rt,+b.dataset.r,+b.dataset.c)});
+  touch(){this.dirty=true;this.o.onChange&&this.o.onChange()}
+  wire(host){
+   host.querySelectorAll('[data-rt]').forEach(b=>{b.onclick=()=>this.act(b.dataset.rt,+b.dataset.r,+b.dataset.c)});
    const addc=host.querySelector('.rt-addcol');
-   if(addc)addc.onchange=()=>{if(addc.value&&!t.cols.includes(addc.value)){t.cols.push(addc.value);touch();render()}};
+   if(addc)addc.onchange=()=>{if(addc.value&&!this.cols.includes(addc.value)){this.cols.push(addc.value);this.touch();this.render()}};
    host.querySelectorAll('.rt-c').forEach(el=>{
-    WL.popMenu.suggest(el,suggestFor,{onFocus:true});
-    el.onchange=()=>setCell(+el.dataset.r,el.dataset.f,el.value);
-    el.onfocus=()=>{t.read=+el.dataset.r;paintRead(host)};
+    WL.popMenu.suggest(el,inp=>this.suggestFor(inp),{onFocus:true});
+    el.onchange=()=>this.setCell(+el.dataset.r,el.dataset.f,el.value);
+    el.onfocus=()=>{this.read=+el.dataset.r;this.paintRead(host)};
    });
-   host.querySelectorAll('.rt-row').forEach(tr=>{tr.onmouseenter=()=>{t.read=+tr.dataset.r;paintRead(host)}});
-   host.querySelectorAll('.rt-ansel').forEach(el=>{el.onchange=()=>{o.setAnswer(t.rows[+el.dataset.r],el.value);touch();render()}});
-   host.querySelectorAll('.rt-n').forEach(el=>{el.oninput=()=>{t.rows[+el.dataset.r].note=el.value;if(!t.dirty){t.dirty=true;paintHead(host)}o.onChange&&o.onChange(true)}});
+   host.querySelectorAll('.rt-row').forEach(tr=>{tr.onmouseenter=()=>{this.read=+tr.dataset.r;this.paintRead(host)}});
+   host.querySelectorAll('.rt-ansel').forEach(el=>{el.onchange=()=>{this.o.setAnswer(this.rows[+el.dataset.r],el.value);this.touch();this.render()}});
+   host.querySelectorAll('.rt-n').forEach(el=>{el.oninput=()=>this.setNote(host,+el.dataset.r,el.value)});
    host.querySelectorAll('.rt-p').forEach(el=>{
-    const set=()=>{o.probe[el.dataset.p]=el.value;o.onProbe?o.onProbe():render()};
+    const set=()=>{this.o.probe[el.dataset.p]=el.value;this.o.onProbe?this.o.onProbe():this.render()};
     if(el.tagName==='SELECT')el.onchange=set;else el.oninput=set;
    });
   }
-  function paintRead(host){const p=host.querySelector('.rt-read');if(p)p.innerHTML=`<s>読み</s>${esc(sentence(t.read))}`}
-  function paintHead(host){const h=host.querySelector('.rt-h');if(h)h.outerHTML=headHtml().replace(/<p class="rt-lead">[\s\S]*$/,'');wire(host)}
+  /* 備考は打つそばから写す（表は作り直さない＝打っている欄の焦点を奪わない）。頭の「保存」だけ押せる形へ。 */
+  setNote(host,ri,v){
+   this.rows[ri].note=v;
+   if(!this.dirty){this.dirty=true;const h=host.querySelector('.rt-h');if(h){h.outerHTML=this.headHtml();this.wire(host)}}
+   this.o.onChange&&this.o.onChange(true);
+  }
+  paintRead(host){const p=host.querySelector('.rt-read');if(p)p.innerHTML=`<s>読み</s>${esc(this.sentence(this.read))}`}
   /* セルを書いたら条件へ直す。**読めない字はそのセルに理由を出して、前の条件を残す**。 */
-  function setCell(ri,f,text){
-   const r=t.rows[ri];if(!r)return;
-   const p=parseCell(text,kindOf(f));
-   if(p.error){r.bad=Object.assign(r.bad||{},{[f]:{text,why:p.error}});touch();render();return}
+  setCell(ri,f,text){
+   const r=this.rows[ri];if(!r)return;
+   const p=parseCell(text,this.kindOf(f));
+   if(p.error){r.bad=Object.assign(r.bad||{},{[f]:{text,why:p.error}});this.touch();this.render();return}
    if(r.bad){delete r.bad[f];if(!Object.keys(r.bad).length)delete r.bad}
    r.conditions=(r.conditions||[]).filter(c=>c.field!==f);
    if(p.cond)r.conditions.push(Object.assign({field:f},p.cond));
-   r.conditions.sort((a,b)=>t.cols.indexOf(a.field)-t.cols.indexOf(b.field));
-   delete r.fresh;t.read=ri;
-   touch();render();
+   r.conditions.sort((a,b)=>this.cols.indexOf(a.field)-this.cols.indexOf(b.field));
+   delete r.fresh;this.read=ri;
+   this.touch();this.render();
   }
-  async function act(a,ri,ci){
-   if(a==='addrow'){t.rows.splice(t.rows.length-1,0,Object.assign(o.blankRow(),{conditions:[],note:'',fresh:true}));t.read=t.rows.length-2;touch();render();
-    const el=o.host().querySelector(`.rt-c[data-r="${t.rows.length-2}"]`);if(el)el.focus();return}
-   if(a==='up'||a==='down'){
-    const j=ri+(a==='up'?-1:1);
-    if(j<0||j>=t.rows.length-1)return;
-    [t.rows[ri],t.rows[j]]=[t.rows[j],t.rows[ri]];t.read=j;touch();render();return;
-   }
-   if(a==='delrow'){t.rows.splice(ri,1);t.read=-1;touch();render();return}
-   if(a==='delcol'){
-    const f=t.cols[ci],n=t.rows.filter(r=>condOf(r,f)).length;
-    if(n&&!await confirmModal({title:'列を消す',eyebrow:o.label,
-      bodyHtml:`<p class="confirm-modal-message">「${esc(colLabel(f))}」の条件 ${n}個も一緒に消えます。</p>`,
-      confirmLabel:'消す',cancelLabel:'やめる'}))return;
-    t.cols.splice(ci,1);
-    t.rows.forEach(r=>{r.conditions=(r.conditions||[]).filter(c=>c.field!==f)});
-    touch();render();return;
-   }
-   if(a==='save')return void save();
-   if(a==='reset')return void reset();
+  act(a,ri,ci){
+   const moves={
+    addrow:()=>this.addRow(),
+    up:()=>this.move(ri,-1),down:()=>this.move(ri,1),
+    delrow:()=>{this.rows.splice(ri,1);this.read=-1;this.touch();this.render()},
+    delcol:()=>this.delCol(ci),
+    save:()=>this.save(),reset:()=>this.reset(),
+   };
+   return moves[a]&&moves[a]();
+  }
+  addRow(){
+   const at=this.rows.length-1;
+   this.rows.splice(at,0,Object.assign(this.o.blankRow(),{conditions:[],note:'',fresh:true}));
+   this.read=at;this.touch();this.render();
+   const el=this.o.host().querySelector(`.rt-c[data-r="${at}"]`);if(el)el.focus();
+  }
+  move(ri,d){
+   const j=ri+d;
+   if(j<0||j>=this.rows.length-1)return;
+   [this.rows[ri],this.rows[j]]=[this.rows[j],this.rows[ri]];this.read=j;this.touch();this.render();
+  }
+  async delCol(ci){
+   const f=this.cols[ci],n=this.rows.filter(r=>this.condOf(r,f)).length;
+   if(n&&!await confirmModal({title:'列を消す',eyebrow:this.o.label,
+     bodyHtml:`<p class="confirm-modal-message">「${esc(this.colLabel(f))}」の条件 ${n}個も一緒に消えます。</p>`,
+     confirmLabel:'消す',cancelLabel:'やめる'}))return;
+   this.cols.splice(ci,1);
+   this.rows.forEach(r=>{r.conditions=(r.conditions||[]).filter(c=>c.field!==f)});
+   this.touch();this.render();
   }
   /* 保存できる行（書きかけ・読めないセルを断ってから）。 */
-  async function save(){
-   const bad=t.rows.filter(r=>r.bad).length;
+  async save(){
+   const bad=this.rows.filter(r=>r.bad).length;
    if(bad)return void alertModal(`読めないセルが ${bad}行にあります。赤い枠のセルを直してから保存してください（セルの下に理由が出ています）。`);
-   const empty=t.rows.filter(r=>r.fresh&&!(r.conditions||[]).length).length;
-   if(empty&&!await confirmModal({title:'条件の無い決まり',eyebrow:o.label,
+   const empty=this.rows.filter(r=>r.fresh&&!(r.conditions||[]).length).length;
+   if(empty&&!await confirmModal({title:'条件の無い決まり',eyebrow:this.o.label,
      bodyHtml:`<p class="confirm-modal-message">条件が1つも無い決まりが ${empty}行あります。条件の無い行は既定の行と同じ意味になるので、保存では落とします。</p>`,
      confirmLabel:'落として保存する',cancelLabel:'やめる'}))return;
-   const rows=t.rows.filter(r=>(r.conditions||[]).length||r===t.rows[t.rows.length-1])
-    .map(r=>Object.assign(o.rowOut(r),{conditions:r.conditions||[],note:r.note||''}));
-   t.busy=true;render();
-   try{await o.save(rows);t.dirty=false}
+   const last=this.rows[this.rows.length-1];
+   const rows=this.rows.filter(r=>(r.conditions||[]).length||r===last)
+    .map(r=>Object.assign(this.o.rowOut(r),{conditions:r.conditions||[],note:r.note||''}));
+   this.busy=true;this.render();
+   try{await this.o.save(rows);this.dirty=false}
    catch(e){await alertModal('保存できませんでした：'+(e&&e.message?e.message:e))}
-   finally{t.busy=false;render();o.onChange&&o.onChange()}
+   finally{this.busy=false;this.render();this.o.onChange&&this.o.onChange()}
   }
-  async function reset(){
-   if(!await confirmModal({title:'未登録に戻す',eyebrow:o.label,
-     bodyHtml:`<p class="confirm-modal-message">「${esc(o.label)}」の表の登録を消します。以後は${esc(o.seedNote)}で決めます。</p>`,
+  async reset(){
+   if(!await confirmModal({title:'未登録に戻す',eyebrow:this.o.label,
+     bodyHtml:`<p class="confirm-modal-message">「${esc(this.o.label)}」の表の登録を消します。以後は${esc(this.o.seedNote)}で決めます。</p>`,
      confirmLabel:'未登録に戻す',cancelLabel:'やめる'}))return;
-   try{await o.reset()}catch(e){await alertModal('戻せませんでした：'+(e&&e.message?e.message:e))}
+   try{await this.o.reset()}catch(e){await alertModal('戻せませんでした：'+(e&&e.message?e.message:e))}
   }
-
-  return Object.assign(t,{setData,render,probeHit,sentence,isDefault});
  }
+ const create=o=>new RuleTable(o);
 
  WL.ruleTable={create,parseCell,cellText,sayCond};
 })();
