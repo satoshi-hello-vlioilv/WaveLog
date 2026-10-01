@@ -1,4 +1,4 @@
-# 刃組ガイダンス（247件）
+# 刃組ガイダンス（250件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 刃マスタは3階層を混ぜない: 刃厚の見出し＝今すぐ選べる枚数／1項目（セット×刃厚）＝残り・枚数・研磨の予定／詳細カード＝直す欄だけ | `test_bladeboard.js` | [§9.536](../../docs/decisions/9.536.md) |
+| 見せ方はタイル（既定）と刃厚ごとの一覧の2つ（`VIEWS`の1箇所・端末に覚える）。どちらも`bladeWear()`／`bladeStock()`を読むだけ | `test_bladeboard.js` | [§9.536](../../docs/decisions/9.536.md) |
+| 径ゲージの物差しはサーバーの`wear`（`blade_wear_scale()`）。満タンは刃組基準値の新品径、空なら設備の最大の現状径で、凡例が出どころを言う | `test_bladeset.py`・`test_bladeboard.js` | [§9.536](../../docs/decisions/9.536.md) |
 | 判定表が区別できる値は条件の境目で区切った区間。全部の場合を数えるのは`ruleGrid()`の1箇所（判定は`firstRule()`・上限`GRID_MAX`） | `test_holdpick.js` | [§9.535](../../docs/decisions/9.535.md) |
 | 列の効き目は`ruleEffect()`（その列だけ変えると答えが変わる割合）。地図の軸は効き目の大きい2列、割れるマスは列の名前を字で言う | `test_holdpick.js` | [§9.535](../../docs/decisions/9.535.md) |
 | 上の行に覆われて一度も当たらない行は、表の答えの欄と地図の両方で名指しし、保存の前に確かめる（止めない） | `test_holdpick.js` | [§9.535](../../docs/decisions/9.535.md) |

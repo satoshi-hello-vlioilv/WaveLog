@@ -46,15 +46,15 @@ H.run('test_bladesets: 刃セット・刃選択の4項目・フィンガー材�
   await W.until(page, e => document.querySelector('#bbEq')?.value === e && !!document.querySelector('.bk-card'), EQ, { ms: 10000, what: '設備の刃セット' });
   const g0 = groups[0];
   const cardOf = g => page.evaluate(g => {
-   const it = document.querySelector(`.bk-item[data-bk-key="${g}"]`);
+   const it = document.querySelector(`#masterMaintList [data-bk-key="${g}"]`);   // §9.536: 既定はタイル
    if (!it) return null;
    if (!it.classList.contains('is-on')) return { pick: true };
    const on = k => document.querySelector(`.bk-card .bk-opt.is-on[data-seg="${k}"]`)?.textContent || '';
    return { cat: on('category'), use: on('use'), say: document.querySelector('.bk-card-t small')?.textContent || '',
             tags: [...it.querySelectorAll('.bk-tag')].map(t => t.textContent).join('/') };
   }, g);
-  await page.click(`.bk-item[data-bk-key="${g0}"]`);
-  await W.until(page, g => !!document.querySelector(`.bk-item.is-on[data-bk-key="${g}"]`), g0, { ms: 8000, what: 'セットを選ぶ' });
+  await page.click(`#masterMaintList [data-bk-key="${g0}"]`);
+  await W.until(page, g => !!document.querySelector(`#masterMaintList [data-bk-key="${g}"].is-on`), g0, { ms: 8000, what: 'セットを選ぶ' });
   const r0 = await cardOf(g0);
   rec('① 未登録の組は通常刃・使用中で、「ふつうは…選ばれます」と言う',
       !!r0 && r0.cat === '通常刃' && r0.use === '使用中' && /ふつうは/.test(r0.say) && /未登録/.test(r0.say), JSON.stringify(r0));

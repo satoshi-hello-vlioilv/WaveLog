@@ -650,6 +650,21 @@ rec('§9.533 前方一致・空でない・正規表現を受ける（比べ方�
 rec('§9.533 「または」の印は同じ列の2つ目からだけ残す（列の頭の or は落とす）・空でないは右辺を持たない',
     'or' not in nc[0] and nc[1].get('or') is True and 'or' not in nc[2] and nc[3]['value'] == '', str(nc))
 
+# ---- §9.536 径ゲージの物差し（使用限界径・研磨周期・満タン） ----
+c9 = fresh()
+bs.blade_upsert(c9, 'u', equipment=EQ, group='W', thickness=10, current_dia=318.4)
+bs.blade_upsert(c9, 'u', equipment=EQ, group='X', thickness=10, current_dia=311.0)
+w0 = bs.blade_wear_scale(c9, EQ)
+rec('§9.536 新品径が空なら満タンは設備でいちばん大きい現状径（出どころ max）',
+    bs.STANDARD_DEFAULTS['newDia'] is None and w0['top'] == 318.4 and w0['topFrom'] == 'max' and w0['minDia'] == 305 and w0['grindCycleDays'] == 60, str(w0))
+sid9 = bs.standard_upsert(c9, 'u', equipment=EQ, values={'newDia': '322'})[0]
+w1 = bs.blade_wear_scale(c9, EQ)
+rec('§9.536 新品径を登録すればそれが満タン（出どころ newDia）', w1['top'] == 322 and w1['topFrom'] == 'newDia' and w1['newDia'] == 322, str(w1))
+bs.standard_upsert(c9, 'u', equipment=EQ, values={'newDia': '300'})
+w2 = bs.blade_wear_scale(c9, EQ)
+rec('§9.536 使用限界径より小さい新品径は使わない（現状径の最大へ倒れる）', w2['top'] == 318.4 and w2['topFrom'] == 'max', str(w2))
+bs.standard_delete(c9, sid9)
+
 # ---- 自己確認: 網が素通りしていない ----
 rec('自己確認: 断る網は、断らない呼び出しでは真にならない',
     not _reject(lambda: bs.blade_upsert(c, 'u', equipment=EQ, group='Q', thickness=7)))

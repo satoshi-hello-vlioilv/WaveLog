@@ -293,6 +293,8 @@ STANDARD_COLUMNS = (
     ('軸外径', 'REAL'),
     ('スペーサー外径', 'REAL'), ('リング内径', 'REAL'),
     ('刃使用限界径', 'REAL'), ('研磨周期日', 'INTEGER'),
+    # 刃の新品径（§9.536）: 径ゲージの満タン。空なら設備でいちばん大きい現状径（`blade_wear_scale()`）。
+    ('刃新品径', 'REAL'),
     ('フィンガー切替板厚', 'REAL'), ('刃間隙間上限', 'REAL'),
     ('押上目標', 'REAL'), ('押上下限', 'REAL'), ('押上上限', 'REAL'),
     ('押上不適下限', 'REAL'), ('押上不適上限', 'REAL'),
@@ -331,6 +333,10 @@ STANDARD_DEFAULTS = {
     'shaftDia': 200.0,
     'spacerOD': 240.0, 'ringBore': 241.0,
     'minDia': 305.0, 'grindCycleDays': 60,
+    # 刃の新品径（§9.536、利用者の選択 B-9／B-10「刃の径ゲージ」）。径ゲージの満タン。
+    # **空（None）なら、その設備でいちばん大きい現状径を満タンにする**——新品の径は聞いていないので
+    # 勝手な数で埋めない（§9.231）。どちらで描いたかは画面が字で言う。
+    'newDia': None,
     'fingerMax': 0.6, 'gapMax': 5.0,
     'pushTarget': 0.5, 'pushMin': 0.4, 'pushMax': 0.9,
     'pushHardMin': 0.3, 'pushHardMax': 1.0,
@@ -379,6 +385,7 @@ _STANDARD_MAP = (
     ('軸外径', 'shaftDia', 'num'),
     ('スペーサー外径', 'spacerOD', 'num'), ('リング内径', 'ringBore', 'num'),
     ('刃使用限界径', 'minDia', 'num'), ('研磨周期日', 'grindCycleDays', 'int'),
+    ('刃新品径', 'newDia', 'num'),
     ('フィンガー切替板厚', 'fingerMax', 'num'), ('刃間隙間上限', 'gapMax', 'num'),
     ('押上目標', 'pushTarget', 'num'), ('押上下限', 'pushMin', 'num'),
     ('押上上限', 'pushMax', 'num'), ('押上不適下限', 'pushHardMin', 'num'),
@@ -1198,6 +1205,21 @@ def blade_sets(c, equipment):
         o['blades'] = len(o['rows'])
         o['total'] = sum(b['qty'] or 0 for b in o['rows'] if b['enabled'])
     return [out[g] for g in sorted(out, key=lambda x: (x == '', x))]
+
+
+def blade_wear_scale(c, equipment):
+    """径ゲージの物差し（§9.536）。使用限界径・研磨周期は刃組基準値、満タン（`top`）は**新品径**——
+    登録が無ければ**その設備でいちばん大きい現状径**（`topFrom`='max'）。どちらも使用限界径より
+    大きくなければ`top`は None（棒を描かず、残りの mm だけを言う）。"""
+    v = standard_for(c, equipment)['values']
+    md, nd = _num(v.get('minDia')), _num(v.get('newDia'))
+    dias = [b['currentDia'] for b in _rows(c, BLADE_DEF, _blade_row, False, equipment) if b['currentDia'] is not None]
+    top, frm = None, None
+    if nd is not None and (md is None or nd > md):
+        top, frm = nd, 'newDia'
+    elif dias and (md is None or max(dias) > md):
+        top, frm = max(dias), 'max'
+    return {'minDia': md, 'grindCycleDays': _int(v.get('grindCycleDays')), 'newDia': nd, 'top': top, 'topFrom': frm}
 
 
 def blade_set_create(c, uid, equipment, group, category=None, use=None, blades=None):

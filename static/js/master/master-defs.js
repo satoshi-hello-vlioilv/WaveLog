@@ -300,6 +300,8 @@
            {k:'offsetHardTol',label:'上下の左右差 不適',type:'number',step:0.01,min:0,unit:'mm',fieldGroup:'判定の帯'},
            {k:'minDia',label:'刃 使用限界径',type:'number',step:1,min:0,unit:'mm',fieldGroup:'刃の管理',
             hint:'研磨でここまで小さくなった刃は使えません。刃組ガイダンスの「セット」で警告に出ます。'},
+           {k:'newDia',label:'刃 新品径',type:'number',step:0.1,min:0,unit:'mm',fieldGroup:'刃の管理',
+            hint:'刃マスタの**径ゲージの満タン**です（§9.536）。**空欄なら、この設備でいちばん大きい現状径**を満タンにして描きます（どちらで描いたかは刃マスタの凡例が言います）。'},
            {k:'grindCycleDays',label:'研磨周期',type:'number',step:5,min:0,unit:'日',fieldGroup:'刃の管理'},
            {k:'note',label:'備考',size:'lg',fieldGroup:'刃の管理'},
            /* **図の呼び方と向き**（§9.472、利用者の指示「刃組図の切り替えボタンのラベルだけでなく、
