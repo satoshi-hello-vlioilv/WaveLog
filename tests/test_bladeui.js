@@ -3184,7 +3184,9 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
      const M0 = WL.bladeGuide.masters;
      const R = (conds, group) => ({ conditions: conds, answer: '専用刃', group });
      const DEF = { conditions: [], answer: '通常刃', group: '' };
-     const st0 = { thick: 1.8, lots: [{ name: 'L', w: 50, n: 6, parent: 'L' }], order: [0], src: { 製造材質: 'SPCC' } };
+     /* 条数は並び（`order`）から数える——`syncOrder()`で6条に展開する（手で[0]と書くと1条になる）。 */
+     const st0 = Object.assign(B.defaultState(), { thick: 1.8, lots: [{ name: 'L', w: 50, n: 6, parent: 'L' }], order: [], src: { 製造材質: 'SPCC' } });
+     B.syncOrder(st0);
      const g = (rows, thick) => {
       const M = Object.assign({}, M0, { pickTables: rows ? { category: { stored: true, rows: rows.concat([DEF]) } } : {} });
       const c = B.bladeChoice(Object.assign({}, st0, { thick: thick === undefined ? 1.8 : thick }), M);
