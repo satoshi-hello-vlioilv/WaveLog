@@ -204,7 +204,7 @@ def bladeset_pick_list():
 @bp.post('/api/bladeset/blade-pick')
 @api_guard('刃選択の保存に失敗しました', bad=ValueError)
 def bladeset_pick_save():
- x = body({'equipment': any_, 'table': any_, 'rows': any_, 'reset': any_})
+ x = body({'equipment': any_, 'table': any_, 'rows': any_, 'cols': any_, 'reset': any_})
  table = x.text('table')
  label = dict((k, l) for k, l, _o in bs.PICK_TABLES).get(table, table)
  if x.get('reset') is True:
@@ -213,7 +213,7 @@ def bladeset_pick_save():
  rows = x.get('rows')
  if not isinstance(rows, list):
   return jsonify(error='表の行（rows）がありません。'), 400
- n = _op_read(lambda c: bs.pick_replace(c, request_user_id(x), x.get('equipment'), table, rows))
+ n = _op_read(lambda c: bs.pick_replace(c, request_user_id(x), x.get('equipment'), table, rows, x.get('cols')))
  return jsonify(ok=True, rows=n, message=f'「{label}」の表を保存しました（{n}行）。')
 
 
@@ -264,8 +264,8 @@ def bladeset_sets_save():
 @api_guard('保持方式マスタの読込に失敗しました')
 def bladeset_hold_list():
  eq = _eq()
- got = _op_read(lambda c: bs.hold_rows(c, eq)) if eq else {'rows': [], 'stored': False}
- return jsonify(ok=True, equipment=eq, rows=got['rows'], stored=got['stored'],
+ got = _op_read(lambda c: bs.hold_rows(c, eq)) if eq else {'rows': [], 'stored': False, 'cols': []}
+ return jsonify(ok=True, equipment=eq, rows=got['rows'], stored=got['stored'], cols=got['cols'],
                 methods=list(bs.HOLD_METHODS), fingerMaterials=list(bs.FINGER_MATERIALS),
                 fields=bs.pick_fields_for(bs.HOLD_ORDER), groups=[{'key': k, 'label': l} for k, l in bs.PICK_GROUPS],
                 ops=[{'op': o, 'label': l, 'two': o in bs.BLADEPICK_OPS_2}
@@ -275,7 +275,7 @@ def bladeset_hold_list():
 @bp.post('/api/bladeset/hold-pick')
 @api_guard('保持方式マスタの保存に失敗しました', bad=ValueError)
 def bladeset_hold_save():
- x = body({'equipment': any_, 'rows': any_, 'reset': any_})
+ x = body({'equipment': any_, 'rows': any_, 'cols': any_, 'reset': any_})
  if x.get('reset') is True:
   n = _op_read(lambda c: bs.hold_reset(c, x.get('equipment')))
   return jsonify(ok=True, rows=0, removed=n,
@@ -283,7 +283,7 @@ def bladeset_hold_save():
  rows = x.get('rows')
  if not isinstance(rows, list):
   return jsonify(error='表の行（rows）がありません。'), 400
- n = _op_read(lambda c: bs.hold_replace(c, request_user_id(x), x.get('equipment'), rows))
+ n = _op_read(lambda c: bs.hold_replace(c, request_user_id(x), x.get('equipment'), rows, x.get('cols')))
  return jsonify(ok=True, rows=n, message=f'保持方式の条件表を保存しました（{n}行）。')
 
 

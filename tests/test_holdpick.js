@@ -11,6 +11,7 @@
     ④ 盤: セルの書き方を読む／読めない字は理由を出して残し保存させない／試す行で当たる行が光る／
        保存すると登録・「未登録に戻す」で種へ戻る
     ⑤ 刃組ガイダンスが表に従い、説明文が「何行目に当たったか」を言う
+    ⑥ 行と列を後から並べ替えられる（掴む札・キー）・列の並びは保存する（§9.530）
 
    前（実測）: ② 表現できない（板厚だけ）・③ 当たらない。
    後片付けは finally（「未登録に戻す」＝行を消す）。途中で落ちると表が残り、
@@ -138,6 +139,55 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   rec('④ 「未登録に戻す」で行が消え、切替板厚の種へ戻る', s2.rows.replace(/★/g, '') === '＜ 0.6→フィンガー（ベークライト） / →ゴムリング', JSON.stringify(s2));
   /* 消えた列（条数）の試しの値が裏で効かない——板厚だけの表で、試す行は空なので答えは出さない。 */
   rec('④ 表に無い列の試しの値は効かない（消えた条数の22で当てない）', !/★/.test(s2.rows) && /値を入れると/.test(s2.ans), JSON.stringify(s2));
+  /* ---- ⑥ 行と列の並べ替え（§9.530、利用者の指示「条件テーブルの部分は行や列の並び替えが後からできるように」） ----
+     前（実測）: 列は並べ替えられない（掴む物0）・行は▲▼で1段ずつ（最後を先頭へ3手）・列の並びは
+     条件の出てくる順から起こすので、保存→開き直しで「板厚/条数」が「条数/板厚」へ入れ替わっていた。 */
+  await post('/api/bladeset/hold-pick', { equipment: EQ, user_id: 'test', cols: ['thickness', 'strips'], rows: [
+   { conditions: [{ field: 'strips', op: 'ge', value: '20' }], hold: 'フィンガー', note: 'R1' },
+   { conditions: [{ field: 'thickness', op: 'lt', value: '0.4' }], hold: 'フィンガー', note: 'R2' },
+   { conditions: [{ field: 'thickness', op: 'lt', value: '0.5' }], hold: 'フィンガー', note: 'R3' },
+   { conditions: [], hold: 'ゴムリング' }] });
+  await page.evaluate(() => WL.holdPick.load(true));
+  await W.until(page, () => document.querySelectorAll('.rt-table tbody .rt-row').length === 4, null, { ms: 10000, what: '並べ替えの表' });
+  const order = () => page.evaluate(() => ({
+   rows: [...document.querySelectorAll('.rt-table tbody .rt-n')].map(i => i.value).filter(Boolean).join(','),
+   cols: [...document.querySelectorAll('.rt-table .rt-col b')].map(b => b.textContent).join('/'),
+   dirty: /保存していない/.test(document.querySelector('.rt-state')?.textContent || '') }));
+  const o0 = await order();
+  rec('⑥ 列の並びは保存した並び（板厚/条数）で開く——1行目に無い列も後ろへ回らない', o0.cols === '板厚/条数' && o0.rows === 'R1,R2,R3', JSON.stringify(o0));
+  await page.dragAndDrop('.rt-row[data-r="2"] .rt-grip', '.rt-row[data-r="0"] .rt-no', { targetPosition: { x: 4, y: 2 } });
+  await W.until(page, () => [...document.querySelectorAll('.rt-table tbody .rt-n')].map(i => i.value).filter(Boolean).join(',') === 'R3,R1,R2', null, { ms: 5000, what: '行を運ぶ' }).catch(() => {});
+  const o1 = await order();
+  rec('⑥ 行は番号の横の札を掴んで運べる（最後の決まりを先頭へ1手・前は▲を3回）', o1.rows === 'R3,R1,R2' && o1.dirty, JSON.stringify(o1));
+  /* §9.201: 運んだ結果その行がカーソルの下へ来た状態で離すと`drop`は起きない——`dragend`だけで確定すること。 */
+  const noDrop = await page.evaluate(() => {
+   const g = document.querySelector('.rt-row[data-r="0"] .rt-grip'), tb = document.querySelector('.rt-table');
+   const last = document.querySelector('.rt-row[data-r="2"]').getBoundingClientRect();
+   const dt = new DataTransfer();
+   g.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+   tb.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: last.left + 5, clientY: last.bottom - 2 }));
+   g.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
+   return [...document.querySelectorAll('.rt-table tbody .rt-n')].map(i => i.value).filter(Boolean).join(',');
+  });
+  rec('⑥ drop が起きずに離しても dragend で確定する（§9.201）', noDrop === 'R1,R2,R3', noDrop);
+  rec('⑥ 既定の行はいつも最後（運べない）', await page.evaluate(() => !document.querySelector('.rt-row.is-default .rt-grip')
+    && document.querySelector('.rt-table tbody tr:last-child').classList.contains('is-default')));
+  await page.focus('.rt-col .rt-grip[data-i="1"]');
+  await page.keyboard.press('ArrowLeft');
+  const o2 = await order();
+  const kfocus = await page.evaluate(() => document.activeElement?.matches('.rt-grip[data-grip="col"][data-i="0"]'));
+  rec('⑥ 列は見出しの札で運べ、キー（←→）でも動く・焦点は動いた札についていく', o2.cols === '条数/板厚' && kfocus, JSON.stringify({ o2, kfocus }));
+  await page.focus('.rt-row[data-r="0"] .rt-grip');
+  await page.keyboard.press('ArrowDown');
+  const o3 = await order();
+  rec('⑥ 行もキー（↑↓）で動く', o3.rows === 'R2,R1,R3', JSON.stringify(o3));
+  await page.click('[data-rt="save"]');
+  await W.until(page, () => /登録済み/.test(document.querySelector('.rt-state')?.textContent || ''), null, { ms: 10000, what: '並べ替えを保存' });
+  const sv = await (await fetch(B + '/api/bladeset/hold-pick?equipment=' + encodeURIComponent(EQ))).json();
+  const o4 = await order();
+  rec('⑥ 保存すると行の並びと列の並びが両方残り、開き直しても同じ', sv.cols.join('/') === 'strips/thickness'
+      && sv.rows.map(r => r.note).filter(Boolean).join(',') === 'R2,R1,R3' && o4.cols === '条数/板厚' && o4.rows === 'R2,R1,R3',
+      JSON.stringify({ cols: sv.cols, o4 }));
   rec('コンソールに例外が出ない', errs.length === 0, errs.slice(0, 3).join(' / '));
  } finally {
   await reset();

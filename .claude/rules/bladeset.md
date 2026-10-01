@@ -1,4 +1,4 @@
-# 刃組ガイダンス（224件）
+# 刃組ガイダンス（226件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 判定表は行も列も後から並べ替えられる（掴む札・↑↓／←→）。確定は`dragend`、既定の行は動かさない | `test_holdpick.js` | [§9.530](../../docs/decisions/9.530.md) |
+| 列の並びは表の設定（`[列JSON]`・`table_cols()`の1箇所）。条件の出てくる順から起こさない | `test_bladeset.py`・`test_holdpick.js` | [§9.530](../../docs/decisions/9.530.md) |
 | 刃1種類は**設備＋セット（A〜Z）＋刃厚**。名称は鍵にしない（`blade_upsert()`が同じ3つの2行目を断る・呼び名は`blade_label()`） | `test_bladeset.py`・`test_bladeboard.js` | [§9.529](../../docs/decisions/9.529.md) |
 | 刃セットを作る・字を変える・消すは`/api/bladeset/blade-sets`の1つの口。**刃選択が名指ししているセットは消さない** | `test_bladeset.py`・`test_bladeboard.js` | [§9.529](../../docs/decisions/9.529.md) |
 | 刃選択は判定表3つ（**保持方式 → 刃のカテゴリ → 刃厚**）。後ろの表は前の答えを列にできる。表ごとの項目は`pick_fields_for()`の1箇所 | `test_bladeset.py`・`test_bladepick.js` | [§9.529](../../docs/decisions/9.529.md) |

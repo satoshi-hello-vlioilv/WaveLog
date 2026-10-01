@@ -442,6 +442,8 @@ BLADEPICK_COLUMNS = (
     ('設備名', 'TEXT'), ('名称', 'TEXT'), ('条件JSON', 'TEXT'),
     ('刃の組', 'TEXT'), ('備考', 'TEXT'), ('表示順', 'INTEGER'), ('有効', 'INTEGER'),
     ('表', 'TEXT'), ('答え', 'TEXT'),
+    # 表の列の並び（§9.530・`table_cols()`）。どの行にも同じ値を書き、読むときは最初の行から取る。
+    ('列JSON', 'TEXT'),
 )
 BLADEPICK_DEF = TableDef(BLADEPICK_TABLE, '刃選択ID', BLADEPICK_COLUMNS,
                          order_by='[設備名],[表示順],[刃選択ID]')
@@ -523,6 +525,43 @@ def normalize_pick_conditions(raw, extra_fields=True, order=9):
     return out
 
 
+_COLS_MAX = 40
+
+
+def normalize_cols(raw, order=9):
+    """判定表の列（データ）の並び（§9.530、利用者の指示「条件テーブルは行や列の並び替えが後からできるように」）。
+    **列の並びは表そのものの設定**で、条件の出てくる順からは起こさない——起こすと、1行目に無い列が
+    後ろへ回り、並べ替えた列が保存→開き直しで入れ替わっていた。`order`より前の表の答えと材料・仕掛の列だけ、
+    重ねず、`_COLS_MAX`まで。"""
+    if not isinstance(raw, list):
+        return []
+    fields = {f for f, _l, _k, _g, st in PICK_FIELDS if st < order}
+    out = []
+    for f in raw:
+        f = _txt(f)
+        if (f in fields or is_source_field(f)) and f not in out:
+            out.append(f)
+    return out[:_COLS_MAX]
+
+
+def table_cols(stored, rows, order):
+    """表の列の並び。**保存した並び**を先に、条件にあるのに並びに無い列（前の版で保存した表）を後ろへ足す。"""
+    cols = normalize_cols(stored, order)
+    for r in rows:
+        for c0 in r.get('conditions') or []:
+            if c0['field'] not in cols:
+                cols.append(c0['field'])
+    return cols
+
+
+def _json_list(v):
+    try:
+        x = json.loads(v or '[]')
+    except (ValueError, TypeError):
+        return []
+    return x if isinstance(x, list) else []
+
+
 def _pick_row(d):
     """1行。`[表]`が空の行は旧い「専用刃の決まり」（刃のカテゴリの表へ読み替える）。"""
     try:
@@ -538,6 +577,7 @@ def _pick_row(d):
             'conditions': normalize_pick_conditions(conds),
             'answer': answer, 'group': _txt(d['刃の組']),
             'note': _txt(d['備考']) or (_txt(d['名称']) if legacy else ''),
+            'cols': _json_list(d['列JSON']),
             'order': _int(d['表示順']), 'enabled': _alive(d['有効'])}
 
 
@@ -589,26 +629,31 @@ def pick_tables(c, equipment):
     旧い決まりの行（条件あり）はカテゴリの表の上に読み、条件の無い旧い行は読まない。"""
     eq = _txt(equipment)
     rows = [r for r in pick_rows(c, False, eq) if not (r['legacy'] and not r['conditions'])]
+    orders = dict((k, o) for k, _l, o in PICK_TABLES)
     out = {}
     for table in (PICK_CATEGORY, PICK_THICKNESS):
         mine = [r for r in rows if r['table'] == table]
-        out[table] = ({'rows': _pick_tidy(table, mine), 'stored': True} if mine
-                      else {'rows': _pick_seed(table), 'stored': False})
+        tidy = _pick_tidy(table, mine) if mine else _pick_seed(table)
+        out[table] = {'rows': tidy, 'stored': bool(mine),
+                      'cols': table_cols(mine[0]['cols'] if mine else [], tidy, orders[table])}
     return out
 
 
-def pick_replace(c, uid, equipment, table, rows):
-    """その設備の1つの表を**丸ごと置き換える**（旧い決まりの行もカテゴリの表として消して書き直す）。"""
+def pick_replace(c, uid, equipment, table, rows, cols=None):
+    """その設備の1つの表を**丸ごと置き換える**（旧い決まりの行もカテゴリの表として消して書き直す）。
+    `cols`は列の並び（§9.530）——条件の無い列も並びとして残る。"""
     eq = _check_equipment(equipment)
     if table not in (PICK_CATEGORY, PICK_THICKNESS):
         raise ValueError('表は「刃のカテゴリ」か「刃厚」です。')
     tidy = _pick_tidy(table, rows)
+    order = dict((k, o) for k, _l, o in PICK_TABLES)[table]
+    cj = json.dumps(table_cols(cols, tidy, order), ensure_ascii=False)
     pick_reset(c, eq, table, commit=False)
     for i, r in enumerate(tidy):
         BLADEPICK_DEF.insert(c, {'設備名': eq, '表': table, '答え': r['answer'],
                                  '刃の組': r['group'] or None,
                                  '条件JSON': json.dumps(r['conditions'], ensure_ascii=False),
-                                 '備考': r['note'] or None, '表示順': (i + 1) * 10, '有効': -1}, uid)
+                                 '備考': r['note'] or None, '列JSON': cj, '表示順': (i + 1) * 10, '有効': -1}, uid)
     c.commit()
     return len(tidy)
 
@@ -753,6 +798,8 @@ HOLDPICK_COLUMNS = (
     # フィンガー材質（§9.527、利用者の選択「保持方式の表で決める」）。フィンガーの行だけが持ち、
     # 空欄は既定（`FINGER_MATERIAL_DEFAULT`）。ゴムリングの行では読まない・書かない。
     ('フィンガー材質', 'TEXT'),
+    # 表の列の並び（§9.530・`table_cols()`）。
+    ('列JSON', 'TEXT'),
 )
 HOLDPICK_DEF = TableDef(HOLDPICK_TABLE, '保持方式ID', HOLDPICK_COLUMNS,
                         order_by='[設備名],[表示順],[保持方式ID]')
@@ -777,6 +824,7 @@ def _hold_row(d):
             'conditions': normalize_pick_conditions(conds, True, HOLD_ORDER),
             'hold': hold, 'material': _hold_material(hold, d['フィンガー材質']),
             'note': _txt(d['備考']), 'order': _int(d['表示順']),
+            'cols': _json_list(d['列JSON']),
             'enabled': _alive(d['有効'])}
 
 
@@ -799,9 +847,10 @@ def hold_rows(c, equipment):
     eq = _txt(equipment)
     rows = _rows(c, HOLDPICK_DEF, _hold_row, False, eq)
     if rows:
-        return {'rows': _hold_tidy(rows), 'stored': True}
-    return {'rows': hold_seed(standard_for(c, eq)['values'].get('fingerMax')),
-            'stored': False}
+        tidy = _hold_tidy(rows)
+        return {'rows': tidy, 'stored': True, 'cols': table_cols(rows[0]['cols'], tidy, HOLD_ORDER)}
+    seed = hold_seed(standard_for(c, eq)['values'].get('fingerMax'))
+    return {'rows': seed, 'stored': False, 'cols': table_cols([], seed, HOLD_ORDER)}
 
 
 def _hold_material(hold, material):
@@ -847,21 +896,22 @@ def hold_reset(c, equipment):
     return n
 
 
-def hold_replace(c, uid, equipment, rows):
+def hold_replace(c, uid, equipment, rows, cols=None):
     """その設備の条件表を**丸ごと置き換える**（表は1枚として編集するので）。
-    戻りは保存した行数（既定行を含む）。"""
+    戻りは保存した行数（既定行を含む）。`cols`は列の並び（§9.530）。"""
     eq = _txt(equipment)
     if not eq:
         raise ValueError('設備を選んでください。')
     _ensure(c, HOLDPICK_DEF)
     tidy = _hold_tidy(rows)
+    cj = json.dumps(table_cols(cols, tidy, HOLD_ORDER), ensure_ascii=False)
     cur = c.cursor()
     cur.execute('DELETE FROM [%s] WHERE [設備名]=?' % HOLDPICK_TABLE, [eq])
     for i, r in enumerate(tidy):
         HOLDPICK_DEF.insert(c, {'設備名': eq,
                                 '条件JSON': json.dumps(r['conditions'], ensure_ascii=False),
                                 '保持方式': r['hold'], '備考': r['note'] or None,
-                                'フィンガー材質': r['material'] or None,
+                                'フィンガー材質': r['material'] or None, '列JSON': cj,
                                 '表示順': (i + 1) * 10, '有効': -1}, uid)
     c.commit()
     return len(tidy)
