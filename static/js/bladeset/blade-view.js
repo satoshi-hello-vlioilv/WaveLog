@@ -909,7 +909,7 @@
   }
   const slack = Math.max(0, Math.abs(b0 - a0) - widthPx(V, pieces) * s);
   /* 一体型のゴムは身の上にそのまま載る（区間の始まりから・`fillZone()`の並びと同じ位置）。 */
-  let at = z.integ ? a0 : a0 + d * slack / 2;
+  let at = z.integ ? a0 + d * V.pw(z.lead || 0) * s : a0 + d * slack / 2;
   for (const sz of pieces) {
    const w = V.pw(sz) * s;
    if ((at + d * w - b0) * d > 0.6) break;
@@ -1723,7 +1723,8 @@
       寄せるとクリアランスのように見えるので、模式図と同じく中央へ置く。 */
    const wsum = list.reduce((a, q) => a + Math.max(1.2, q.mm * S), 0);
    /* 一体型のゴムは身の上（`zoomSequence()`の並びで一体型が来る側の端から）。ほかは中央へ。 */
-   let at = P.integ ? (st.flip ? b0 - wsum : a0) : a0 + Math.max(0, (b0 - a0 - wsum) / 2);
+   const lead = (P.lead || 0) * S;
+   let at = P.integ ? (st.flip ? b0 - lead - wsum : a0 + lead) : a0 + Math.max(0, (b0 - a0 - wsum) / 2);
    list.forEach(q => {
     const w = Math.max(1.2, q.mm * S);
     q.cx = at + w / 2; q.w = w; q.bd = hb;

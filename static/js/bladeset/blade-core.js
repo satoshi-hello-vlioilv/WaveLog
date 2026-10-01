@@ -696,31 +696,55 @@
     区間の半分に端数が出た（実測 22/44 面）。作れる長さを上から順に試す（`floor`で次の作れる長さへ）。
     どこまで下げても作れなければ、目いっぱい積んで残りを端数として正直に出す（`spacerGap`が言う）。 */
  const INTEG_TRIES = 400;
- /* `limit`＝一体型に使ってよい長さ（区間−潤滑リングの座−空きの目標）、`mid`＝普通のスペーサーと合わせて
-    ちょうどにする長さ（区間−潤滑リングの座）。 */
- function integFill(it, sp, mid, limit) {
-  const top = Math.min(Math.floor(Math.max(0, limit) / FILL_STEP + 1e-9), it.U - 1);
-  for (let v = it.floor[top], n = 0; v > 0 && n < INTEG_TRIES; v = it.floor[v - 1], n++) {
-   const len = +(v * FILL_STEP).toFixed(3), rest = fillWith(sp, mid - len);
-   if (rest.rem <= 1e-9) return { got: { out: stackOf(it, v), rem: +(mid - len).toFixed(3) }, rest };
+ /* 空きを両側へ広げてよい量（上限が0＝判定しないとき）。**半分ずつにするために空きを広げる**のはここまで。 */
+ const GAP_SPREAD = 20;
+ /* 空き`G`（刻みの数）を両側へ分ける（§9.533）。両側とも手持ちの普通のスペーサーでちょうどに作れる分け方のうち、
+    半分にいちばん近いもの。作れなければ null。 */
+ function splitUnits(sp, G) {
+  if (G === 0) return { a: 0, b: 0, diff: 0 };
+  if (!sp || G >= sp.U) return null;
+  for (let d = 0; d <= G; d++) {
+   const a = (G >> 1) - d, b = G - a;
+   if (a >= 0 && sp.cnt[a] >= 0 && sp.cnt[b] >= 0) return { a, b, diff: b - a };
   }
-  const got = fillWith(it, Math.max(0, limit));
-  return { got: { out: got.out, rem: +(mid - (Math.max(0, limit) - got.rem)).toFixed(3) },
-           rest: fillWith(sp, +(mid - (Math.max(0, limit) - got.rem)).toFixed(3)) };
+  return null;
  }
- /* 一体型の区間（§9.531→§9.532）。並びは「潤滑リングの座 → 一体型 → 空き（普通のスペーサー）→ 座」。
+ /* 一体型の積み（§9.531→§9.533）。`mid`＝普通のスペーサーと合わせてちょうどにする長さ（区間−潤滑リングの座）、
+    `limit`＝一体型に使ってよい長さ（`mid`−空きの目標）、`maxGap`＝空きの上限。
+    **空きを刃の両側へ半分ずつ**（利用者の指示）——作れる一体型の長さを上から順に試し、空きを両側へ
+    ちょうどに分けられる組み方のうち「両側の差がいちばん小さい → 空きが小さい」を取る。目いっぱい積んで
+    片側にまとめると、残り（10.1mm 等）の半分を手持ちのスペーサーで作れず、44面すべてが片側だった。
+    上限までにどう分けても作れなければ、片側へまとめる（§9.532 の組み方）。 */
+ function integFill(it, sp, mid, limit, maxGap) {
+  const top = Math.min(Math.floor(Math.max(0, limit) / FILL_STEP + 1e-9), it.U - 1);
+  let best = null, first = null;
+  for (let v = it.floor[top], n = 0; v > 0 && n < INTEG_TRIES; v = it.floor[v - 1], n++) {
+   const len = +(v * FILL_STEP).toFixed(3), gap = +(mid - len).toFixed(3);
+   if (!first && fillWith(sp, gap).rem <= 1e-9) first = v;
+   if (gap > maxGap + 1e-9) { if (first) break; continue; }
+   const s = splitUnits(sp, Math.round(gap / FILL_STEP));
+   if (s && (!best || s.diff < best.s.diff)) best = { v, s, gap };
+   if (best && best.s.diff <= 1) break;          // 半分ずつ（刻み1つの差まで）を空きの小さい側で見つけた
+  }
+  const piece = v => ({ out: stackOf(it, v), rem: +(mid - v * FILL_STEP).toFixed(3) });
+  if (best) return { got: piece(best.v), restA: { out: stackOf(sp, best.s.a), rem: 0 }, restB: { out: stackOf(sp, best.s.b), rem: 0 } };
+  if (first) return { got: piece(first), restA: { out: [], rem: 0 }, restB: fillWith(sp, +(mid - first * FILL_STEP).toFixed(3)) };
+  const got = fillWith(it, Math.max(0, limit)), g = +(mid - (Math.max(0, limit) - got.rem)).toFixed(3);
+  return { got: { out: got.out, rem: g }, restA: { out: [], rem: 0 }, restB: fillWith(sp, g) };
+ }
+ /* 一体型の区間（§9.531→§9.532→§9.533）。並びは「座 → 空きの半分 → 一体型 → 残りの半分 → 座」。
     **潤滑リング**（刃組基準値の切り替え・`R.integLube`）を載せるときは、広い側の区間の両端に普通の
     スペーサーで潤滑リングの幅ぶんの**座**を作り、その上に被せる（ふつうのゴムリング方式と同じ置き方）。
     **空きの目標**（`integGapMin`）が0なら一体型でちょうど埋め、数値なら一体型を「残り−目標」以内で最大に積む。
     `spacer`＝座と空きの普通のスペーサーぜんぶ（在庫・所要はここ）、`seat`＝座1つぶん（図が両端に置く）、
-    `rest`＝空きの普通のスペーサー、`holdRem`＝空き（座を除いたゴムの無い長さ）。 */
- /* 区間の軸の並び（OS側から・§9.531／§9.532）。**図はここを読むだけ**（模式図・拡大図・立体図が同じ並び）。
-    一体型の区間は「座 → 一体型 → 空き → 座」（座は潤滑リングを載せるときだけ）、ほかは普通のスペーサー。 */
+    `restA`／`restB`＝一体型の手前／後ろの空き（§9.533 半分ずつ）、`holdRem`＝空き（座を除いたゴムの無い長さ）。 */
+ /* 区間の軸の並び（OS側から・§9.531／§9.532／§9.533）。**図はここを読むだけ**（模式図・拡大図・立体図が同じ並び）。
+    一体型の区間は「座 → 空きの半分 → 一体型 → 残りの半分 → 座」（座は潤滑リングを載せるときだけ）、ほかは普通のスペーサー。 */
  function axisRun(parts) {
   const plain = d => expand(d).map(sz => ({ sz, integ: false }));
   if (!parts.integ) return plain(parts.spacer);
   const seat = parts.lube ? plain(parts.seat) : [];
-  return seat.concat(expand(parts.gom).map(sz => ({ sz, integ: true })), plain(parts.rest), seat);
+  return seat.concat(plain(parts.restA), expand(parts.gom).map(sz => ({ sz, integ: true })), plain(parts.restB), seat);
  }
  function integParts(total, hold, it, sp, R) {
   let lube = hold.lube && R.lubeW > 0 ? { n: 2, w: R.lubeW, od: R.lubeOd, bore: R.lubeBore } : null;
@@ -730,13 +754,16 @@
   if (seatMiss) { lube = null; seat = { out: [], rem: 0 }; }
   const seatLen = lube ? lube.n * lube.w : 0;
   const mid = +(total - seatLen).toFixed(3);
-  const gapMin = holdBandOf(R, 'integ').gapMin;
-  const { got, rest } = integFill(it, sp, mid, +(mid - gapMin).toFixed(3));
+  const band = holdBandOf(R, 'integ');
+  const { got, restA, restB } = integFill(it, sp, mid, +(mid - band.gapMin).toFixed(3),
+                                          band.gapMax > 0 ? band.gapMax : band.gapMin + GAP_SPREAD);
   const all = new Map();
-  (lube ? [seat.out, seat.out, rest.out] : [rest.out]).forEach(list => list.forEach(([sz, c]) => all.set(sz, (all.get(sz) || 0) + c)));
-  return { len: total, hold, integ: true, gom: got, lube, seat, rest, seatMiss,
-           spacer: { out: [...all.entries()].filter(([, c]) => c > 0).sort((a, b) => b[0] - a[0]), rem: rest.rem },
-           rem: rest.rem, holdRem: got.rem };
+  (lube ? [seat.out, seat.out, restA.out, restB.out] : [restA.out, restB.out]).forEach(list => list.forEach(([sz, c]) => all.set(sz, (all.get(sz) || 0) + c)));
+  /* `lead`＝一体型の手前の空き（図がゴムを載せ始める位置・座の内側から）。 */
+  const lead = +restA.out.reduce((a, [sz, c]) => a + sz * c, 0).toFixed(3);
+  return { len: total, hold, integ: true, gom: got, lube, seat, restA, restB, lead, seatMiss,
+           spacer: { out: [...all.entries()].filter(([, c]) => c > 0).sort((a, b) => b[0] - a[0]), rem: restB.rem },
+           rem: restB.rem, holdRem: got.rem };
  }
  /* 板押さえの空きの帯（下限〜上限）。**答えは種類ごとにこの1箇所**（§9.462）
     ——ゴムリングは`ringGapMin/Max`、フィンガーは`fingerGapMin/Max`（どちらも
