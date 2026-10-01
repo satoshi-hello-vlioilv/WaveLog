@@ -2521,16 +2521,35 @@
   const n=Number(t.replace(/,/g,''));
   return {empty:false,n:Number.isFinite(n)?n:null,s:t.normalize('NFKC')};
  }
+ /* ---------- 計算で作る列（§9.537、利用者の選択 C-4） ----------
+    `cols`の1列が`cell:'種類'`を名乗ると、値を行の鍵ではなく**登録表の答え**から作る
+    （盤は種類を知らない・拡張は登録表へ）。種類は`WL.mm.registerCell(種類,{prep,text,html,label})`で名乗る:
+      prep(items)    … 表の全行で1回だけ（他の行と比べる列のため）→ ctx
+      text(it,ctx)   … 字（title・並べ替え・検索）／html(it,ctx) … セルの中身（省けば字）
+      label(ctx)     … 見出し（省けば`col.label`） */
+ const MM_CELLS={};
+ WL.mm.registerCell=(kind,h)=>{MM_CELLS[kind]=h};
+ const mmCellOf=c=>c&&c.cell&&Object.hasOwn(MM_CELLS,c.cell)?MM_CELLS[c.cell]:null;
+ function mmCellCtx(def){
+  const items=maintState.items||[],ctx={},done=new Map();   // 同じ prep を名乗る種類は1回だけ数える
+  (def.cols||[]).forEach(c=>{const k=mmCellOf(c);if(!k||Object.hasOwn(ctx,c.cell))return;
+   if(k.prep&&!done.has(k.prep))done.set(k.prep,k.prep(items));
+   ctx[c.cell]=k.prep?done.get(k.prep):null});
+  return ctx;
+ }
+ /* その列の字（計算の列は登録表・ほかは行の値）。 */
+ const mmColText=(c,it,ctx)=>{const k=mmCellOf(c);return k?String(k.text(it,ctx[c.cell])??''):it[c.k]};
  function mmSortItems(def,items){
   const sort=mmViewOf(def).sort;
   if(!sort)return items;
   const col=(def.cols||[]).find(c=>c.k===sort.k);
   if(!col)return items;
   const dir=sort.dir==='desc'?-1:1;
+  const ctx=mmCellCtx(def),sv=it=>mmSortValue(mmCellOf(col)?{[col.k]:mmColText(col,it,ctx)}:it,col);
   /* **安定に並べる**（同点は元の順のまま）。`Array.prototype.sort`は
      仕様上安定だが、比較が0を返さないと崩れるので明示的に添え字で解く。 */
   return items.map((it,i)=>({it,i})).sort((a,b)=>{
-   const x=mmSortValue(a.it,col),y=mmSortValue(b.it,col);
+   const x=sv(a.it),y=sv(b.it);
    if(x.empty!==y.empty)return x.empty?1:-1;      // 空欄は向きによらず最後
    if(!x.empty){
     if(x.n!==null&&y.n!==null&&x.n!==y.n)return (x.n-y.n)*dir;
@@ -2660,13 +2679,14 @@
   /* 見出しは**押すと並べ替え・右端を引くと幅**（§9.250 ⑥）。
      いまの向きは矢印と`aria-sort`の両方で言う（色だけで伝えない・§CLAUDE 3）。 */
   const sort=mmViewOf(def).sort||null;
+  const ctx=mmCellCtx(def);
   const headCols=def.cols.map(c=>{
-   const on=sort&&sort.k===c.k;
+   const on=sort&&sort.k===c.k,k=mmCellOf(c),label=k&&k.label?k.label(ctx[c.cell]):c.label;
    const mark=on?(sort.dir==='desc'?'▼':'▲'):'';
    return `<span class="mm-th" data-col="${esc(c.k)}" role="button" tabindex="0"`
     +` aria-sort="${on?(sort.dir==='desc'?'descending':'ascending'):'none'}"`
-    +` title="${esc(c.label)}｜押すと並べ替え（もう一度で逆順・3回目で元の並び）／右端を引くと幅が変わります">`
-    +`<b>${esc(c.label)}</b>${mark?`<i class="mm-th-mark" aria-hidden="true">${mark}</i>`:''}`
+    +` title="${esc(label)}｜押すと並べ替え（もう一度で逆順・3回目で元の並び）／右端を引くと幅が変わります">`
+    +`<b>${esc(label)}</b>${mark?`<i class="mm-th-mark" aria-hidden="true">${mark}</i>`:''}`
     +`<i class="mm-th-grip" aria-hidden="true"></i></span>`;
   }).join('');
   list.innerHTML=`<div class="mm-row head" style="grid-template-columns:${tmpl}">${headCols}${showAudit?'<span>更新者</span><span>更新日時</span>':''}<span class="mm-act">操作</span></div>`;
@@ -2709,31 +2729,39 @@
     /* 畳んだ群の行は**作らない**（§9.104。隠すだけでは組み直しが重い）。 */
     if(foldedNow)return;
    }
-   const row=document.createElement('div');row.className='mm-row'+(maintState.editing&&maintState.editing.id===it.id?' editing':'');row.style.gridTemplateColumns=tmpl;row.tabIndex=0;row.setAttribute('role','button');
-   // 列として出さない監査情報(更新者・更新日時)は行のツールチップで補う。
-   const audit=`更新者: ${it.updated_by||'-'} / 更新日時: ${fmtDT(it.updated_at)}`;
-   row.title=showAudit?'クリックで編集フォームに読み込みます':`クリックで編集\n${audit}`;
-   const cells=def.cols.map(c=>{const v=cellText({...c,row:it},it[c.k]);
-    return `<span title="${esc(v)}">${esc(v)||'<em class="mm-blank">—</em>'}</span>`}).join('');
-   const acts=def.readOnly?'<em class="mm-blank">—</em>'
-     :`<button type="button" class="mm-edit" title="この行の内容を編集します">編集</button>${def.hasDelete?'<button type="button" class="mm-del" title="この行を削除します（確認画面が出ます）">削除</button>':''}`;
-   row.innerHTML=`${cells}${showAudit?`<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`:''}<span class="mm-act">${acts}</span>`;
-   // 入力項目が多いマスタは編集専用モーダル、少ないマスタは従来どおり
-   // 上部のインラインフォームへ読み込む(ARCHITECTURE.md「マスタ管理の画面形態」、defUsesEditorModal)。
-   const edit=()=>{
-    if(defUsesEditorModal(def)){openMaintEditor(it);return}
-    maintState.editing=Object.assign({},it);renderMaintForm();
-    const f=$('#masterMaintForm');if(f)f.scrollIntoView({block:'nearest'});
-   };
-   const eb=row.querySelector('.mm-edit');if(eb)eb.onclick=e=>{e.stopPropagation();edit()};
-   const del=row.querySelector('.mm-del');if(del)del.onclick=e=>{e.stopPropagation();deleteMaint(it)};
-   if(!def.readOnly){
-    row.onclick=()=>edit();row.ondblclick=()=>edit();
-    row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){if(e.key===' ')e.preventDefault();edit()}};
-   }
-   frag.append(row);
+   frag.append(maintRowEl(def,it,tmpl,showAudit,ctx));
   });
   list.append(frag);
+ }
+ /* 一覧の1行（§9.537 で`renderMaintList`から切り出した）。計算の列は登録表（`MM_CELLS`）が描く。 */
+ function maintRowEl(def,it,tmpl,showAudit,ctx){
+  const row=document.createElement('div');row.className='mm-row'+(maintState.editing&&maintState.editing.id===it.id?' editing':'');row.style.gridTemplateColumns=tmpl;row.tabIndex=0;row.setAttribute('role','button');
+  // 列として出さない監査情報(更新者・更新日時)は行のツールチップで補う。
+  const audit=`更新者: ${it.updated_by||'-'} / 更新日時: ${fmtDT(it.updated_at)}`;
+  row.title=showAudit?'クリックで編集フォームに読み込みます':`クリックで編集\n${audit}`;
+  const cells=def.cols.map(c=>{
+   const k=mmCellOf(c);
+   if(k){const v=mmColText(c,it,ctx),h=k.html?k.html(it,ctx[c.cell]):esc(v);
+    return `<span class="mm-calc" data-cell="${esc(c.cell)}" title="${esc(v)}">${h||'<em class="mm-blank">—</em>'}</span>`}
+   const v=cellText({...c,row:it},it[c.k]);
+   return `<span title="${esc(v)}">${esc(v)||'<em class="mm-blank">—</em>'}</span>`}).join('');
+  const acts=def.readOnly?'<em class="mm-blank">—</em>'
+    :`<button type="button" class="mm-edit" title="この行の内容を編集します">編集</button>${def.hasDelete?'<button type="button" class="mm-del" title="この行を削除します（確認画面が出ます）">削除</button>':''}`;
+  row.innerHTML=`${cells}${showAudit?`<span class="mm-user" title="${esc(it.updated_by||'')}">${esc(it.updated_by||'-')}</span><span class="mm-date">${esc(fmtDT(it.updated_at))}</span>`:''}<span class="mm-act">${acts}</span>`;
+  // 入力項目が多いマスタは編集専用モーダル、少ないマスタは従来どおり
+  // 上部のインラインフォームへ読み込む(ARCHITECTURE.md「マスタ管理の画面形態」、defUsesEditorModal)。
+  const edit=()=>{
+   if(defUsesEditorModal(def)){openMaintEditor(it);return}
+   maintState.editing=Object.assign({},it);renderMaintForm();
+   const f=$('#masterMaintForm');if(f)f.scrollIntoView({block:'nearest'});
+  };
+  const eb=row.querySelector('.mm-edit');if(eb)eb.onclick=e=>{e.stopPropagation();edit()};
+  const del=row.querySelector('.mm-del');if(del)del.onclick=e=>{e.stopPropagation();deleteMaint(it)};
+  if(!def.readOnly){
+   row.onclick=()=>edit();row.ondblclick=()=>edit();
+   row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){if(e.key===' ')e.preventDefault();edit()}};
+  }
+  return row;
  }
  /* 見出しの配線（§9.250 ⑥）。**掴む道具は書き写さない**——列幅は
     `WL.columnWidthGrip`（§9.164）が「掴む→追う→離す→保存」を持っている。 */

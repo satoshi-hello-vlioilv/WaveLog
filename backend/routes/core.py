@@ -98,6 +98,7 @@ JS_FILES=[
  'master/master-report.js',    # マスタ管理: 帳票ブロック・帳票レイアウト
  'master/master-data.js',      # マスタ管理: データと接続・作業スケジュール・管理
  'master/master-opdata.js',    # マスタ管理: 操業データ項目・選択肢・記録した値
+ 'master/master-roll.js',      # マスタ管理: ロールマスタの表の計算の列（1周の長さ・見分けにくい相手・§9.537）
  'list/quality-analysis.js',
  # 紙まわりの共通核（§9.332）。用紙の表・@page・mm換算・下限つき比例配分・
  # 刷り出しの段取りを持つ。**紙を出す3本より先に読むこと。**

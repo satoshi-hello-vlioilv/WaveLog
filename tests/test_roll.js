@@ -333,6 +333,37 @@ run('test_roll: ロールマスタとピッチ判定（§9.239）', async ({page
   });
   rec('開いた直後は①（幅方向）を見せる',paneSize.幅方向が見えている&&paneSize.長手方向は畳んでいる,
       JSON.stringify(paneSize));
+
+  /* ---- 7) ロールマスタの表の計算の列（§9.537、利用者の選択 C-4） ----
+     1周の長さと見分けにくい相手は**判定と同じ計算**（`rollConfusions()`＝`rollMatches()`を通す）。
+     材料: 同じ設備に 1周が重なる2本（Φ250〜240 上・Φ250〜244 下）と、その半分の1周の1本（Φ125）。 */
+  {
+   await mk({equipment:EQ2,name:TAG+'P1',diaMax:250,diaMin:240,contactFace:'上'});
+   await mk({equipment:EQ2,name:TAG+'P2',diaMax:250,diaMin:244,contactFace:'下'});
+   await mk({equipment:EQ2,name:TAG+'S',diaMax:125,contactFace:'上'});
+   const cf=await page.evaluate(tag=>{
+    const rows=[{name:tag+'P1',diaMax:250,diaMin:240},{name:tag+'P2',diaMax:250,diaMin:244},{name:tag+'S',diaMax:125},{name:tag+'F',diaMax:900}];
+    return WL.defect.rollConfusions(rows,2).map(l=>l.map(p=>p.kind+':'+p.roll.name).join(','));
+   },TAG);
+   rec('⑦ 見分けにくい相手: 1周が重なれば direct、半分の1周は divide、遠いロールは無し（判定と同じ計算）',
+       cf[0]===`direct:${TAG}P2,divide:${TAG}S`&&cf[2]===`multi:${TAG}P1,multi:${TAG}P2`&&cf[3]==='',JSON.stringify(cf));
+   await page.evaluate(()=>WL.mm.openMasterMaint());
+   await page.waitForSelector('[data-master="roll"]',{timeout:15000});
+   await page.evaluate(()=>document.querySelector('[data-master="roll"]').click());
+   await W.until(page,n=>[...document.querySelectorAll('#masterMaintList .mm-row:not(.head)')].some(r=>r.textContent.includes(n)),
+     TAG+'P1',{ms:15000,what:'ロールの表に足したロール'});
+   const row=await page.evaluate(n=>{
+    const r=[...document.querySelectorAll('#masterMaintList .mm-row:not(.head)')].find(x=>x.querySelector('span')?.textContent===n);
+    const c=k=>r&&r.querySelector(`.mm-calc[data-cell="${k}"]`);
+    return {lap:c('rollLap')?.textContent,bar:!!c('rollLapBar')?.querySelector('.mm-rl-b.is-up'),
+            chips:[...(c('rollConfuse')?.querySelectorAll('.mm-rc')||[])].map(i=>i.textContent+(i.classList.contains('is-eq')?'!':'')),
+            head:[...document.querySelectorAll('#masterMaintList .mm-row.head .mm-th b')].map(b=>b.textContent)};
+   },TAG+'P1');
+   rec('⑦ 表に「1周の長さ」（π×径MIN〜MAX）と同じ目盛りの帯（当たる面の色）が出る',
+       row.lap==='754〜785.4'&&row.bar&&row.head.includes('1周の長さ')&&row.head.some(h=>/^1周 \d+〜\d+$/.test(h)),JSON.stringify(row));
+   rec('⑦ 見分けにくい相手を札で名指しする（＝ は橙・倍数は灰）',
+       row.chips.includes(`＝ ${TAG}P2（下）!`)&&row.chips.includes(`÷2 ${TAG}S（上）`),JSON.stringify(row.chips));
+  }
   rec('画面の例外が出ていない',errs.length===0,errs.join(' / '));
  }catch(e){
   rec('FATAL',false,String(e&&e.message||e));
