@@ -1,4 +1,4 @@
-# 画面の土台（43件）
+# 画面の土台（44件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 入力欄の候補の器は`WL.popMenu.suggest()`の1箇所。判定表のセルは**↑↓で選ぶまで選ばない**（`pick:false`） | `test_bladepick.js`・`test_formula.js` | [§9.529](../../docs/decisions/9.529.md) |
 | 「画面を印刷」の中身と説明は画面が名乗る（`registerView({print, printHint})`）。名乗らない画面はブラウザの印刷 | `test_screenprint.js` | [§9.525](../../docs/decisions/9.525.md) |
 | 骨組みのHTMLは`index.html`の`<template id="tpl-名前">`、複製は`WL.template()`の1箇所。Jinjaの構文の字を書かない | `test_loadorder.py` | [§9.522](../../docs/decisions/9.522.md) |
 | 状態から組む所は差し込み口`<i data-tpl-slot="名前">`で、JSが名前で渡す。渡し忘れ・余りは名前を言って止まる | `test_loadorder.py` | [§9.522](../../docs/decisions/9.522.md) |

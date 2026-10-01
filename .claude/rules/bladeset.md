@@ -1,4 +1,4 @@
-# 刃組ガイダンス（218件）
+# 刃組ガイダンス（224件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,13 +10,19 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 刃1種類は**設備＋セット（A〜Z）＋刃厚**。名称は鍵にしない（`blade_upsert()`が同じ3つの2行目を断る・呼び名は`blade_label()`） | `test_bladeset.py`・`test_bladeboard.js` | [§9.529](../../docs/decisions/9.529.md) |
+| 刃セットを作る・字を変える・消すは`/api/bladeset/blade-sets`の1つの口。**刃選択が名指ししているセットは消さない** | `test_bladeset.py`・`test_bladeboard.js` | [§9.529](../../docs/decisions/9.529.md) |
+| 刃選択は判定表3つ（**保持方式 → 刃のカテゴリ → 刃厚**）。後ろの表は前の答えを列にできる。表ごとの項目は`pick_fields_for()`の1箇所 | `test_bladeset.py`・`test_bladepick.js` | [§9.529](../../docs/decisions/9.529.md) |
+| 刃の選び方は`bladeChoice()`→`applyBladePick()`、札の字は`pickWord()`。使えない答えは`missing`で言う | `test_bladesets.js`・`test_bladeui.js` | [§9.529](../../docs/decisions/9.529.md) |
+| ゴムリングの被りは**見えている色**（`ring_tone()`）で比べる。潤滑リングの`RING_LUBE_HEX`はCSSの`--look-violet`と同じ値 | `test_bladeset.py`・`test_ringboard.js` | [§9.529](../../docs/decisions/9.529.md) |
+| 刃組のマスタの盤は`board-kit.js`（頭・一覧＋詳細）と`rule-table.js`（判定表）を使う。盤ごとに頭・表を書かない | `test_bladeboard.js`・`test_holdpick.js` | [§9.529](../../docs/decisions/9.529.md) |
 | ゴムリングの色の属性（色名・色コード・外径・内径）は色で1つ。書くのは`ring_color_save()`と`_align_ring_color()`だけ | `test_bladeset.py`・`test_ringboard.js` | [§9.528](../../docs/decisions/9.528.md) |
 | 色の被りは`ring_color_conflicts()`の1箇所: 同じ色名・色コード・（ゴムリングどうしの）外径は断る、色差20未満は注意 | `test_bladeset.py`・`test_ringboard.js` | [§9.528](../../docs/decisions/9.528.md) |
 | フィンガーの材質は**1回の刃組で1つ**。答えは`holdPick()`の`material`（表の行が持つ・空欄は既定） | `test_bladesets.js`・`test_bladeset.py` | [§9.527](../../docs/decisions/9.527.md) |
 | フィンガーの在庫は材質ごとに数える（`fingerWidthsOf()`）。図の色の鍵は`fingerTone()`の1箇所 | `test_bladesets.js` | [§9.527](../../docs/decisions/9.527.md) |
 | 刃のカテゴリ（通常刃／専用刃）と使用状態（使用中／研磨中）は**刃セット（設備＋組）**の1行。刃の行は名乗るだけ | `test_bladeset.py`・`test_bladesets.js` | [§9.526](../../docs/decisions/9.526.md) |
 | 使えるかは`selectable()`の1箇所（研磨中は選ばない）。専用刃は決まりに当たったときだけ・使えなければ`missing` | `test_bladesets.js` | [§9.526](../../docs/decisions/9.526.md) |
-| 刃選択で選べるのは板押さえ方式・板厚・材質・調質。前の項目で書いた決まりは`pickFieldsLegacy`で読み続ける | `test_bladeset.py`・`test_bladesets.js` | [§9.526](../../docs/decisions/9.526.md) |
+| 【§9.529で改めた】刃選択で選べるのは板押さえ方式・板厚・材質・調質。前の項目で書いた決まりは`pickFieldsLegacy`で読み続ける | `test_bladeset.py`・`test_bladesets.js` | [§9.526](../../docs/decisions/9.526.md) |
 | フィンガーは名称を持たない。1本＝設備＋幅＋材質（既定ベークライト）。呼び名は`finger_label()` | `test_bladeset.py`・`test_bladesets.js` | [§9.526](../../docs/decisions/9.526.md) |
 | 保持方式は`保持方式マスタ`の判定表（上から最初の行・最後が既定）。答えは`holdPick()`、未登録は切替板厚の種 | `test_holdpick.js`・`test_bladeset.py` | [§9.524](../../docs/decisions/9.524.md) |
 | 条件表の判定は`firstRule()`の1本（刃選択・保持方式・試す行）。仕掛の列は`source.<列名>`、読む行は`st.src` | `test_holdpick.js` | [§9.524](../../docs/decisions/9.524.md) |
