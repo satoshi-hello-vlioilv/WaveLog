@@ -177,7 +177,7 @@ H.run('test_bladesets: 刃セット・刃選択の4項目・フィンガー材�
     Bs.syncOrder(st);
     const res = Bs.solve(st, M, Bs.buildIndex(M));
     const ods = new Set(integ.map(x => x.od));
-    let zones = 0, exact = 0, other = 0, lube = 0, minGap = Infinity, seatOk = 0;
+    let zones = 0, exact = 0, other = 0, lube = 0, minGap = Infinity, seatOk = 0, sides = 0, diffMax = 0;
     res.zp.zones.forEach(z => [z.up, z.lo].forEach(q => {
      if (!q.hold) return; zones++;
      const w = q.gom.out.reduce((a, [sz, c]) => a + sz * c, 0), sp = q.spacer.out.reduce((a, [sz, c]) => a + sz * c, 0);
@@ -191,8 +191,16 @@ H.run('test_bladesets: 刃セット・刃選択の4項目・フィンガー材�
           && run2.slice(0, k).every(x => !x.integ)) seatOk++;
      }
      if (ods.has(q.hold.od)) minGap = Math.min(minGap, q.holdRem);
+     /* §9.533 空きは一体型の両側へ半分ずつ（並びの一体型の手前と後ろの普通のスペーサー）。 */
+     if (q.integ && q.holdRem > 0) {
+      const r = Bs.axisRun(q), sn = q.lube ? q.seat.out.reduce((a, [, c]) => a + c, 0) : 0;
+      const i0 = r.findIndex(x => x.integ), i1 = r.length - 1 - [...r].reverse().findIndex(x => x.integ);
+      const A = r.slice(sn, i0).reduce((a, x) => a + x.sz, 0), B = r.slice(i1 + 1, r.length - sn).reduce((a, x) => a + x.sz, 0);
+      if (A > 0 && B > 0) sides++;
+      diffMax = Math.max(diffMax, Math.abs(A - B));
+     }
     }));
-    return { label: Bs.holdLabel(st, M), zones, exact, other, lube, seatOk, minGap, gap: res.fit.spacerGap.length,
+    return { label: Bs.holdLabel(st, M), zones, exact, other, lube, seatOk, minGap, sides, diffMax: +diffMax.toFixed(3), gap: res.fit.spacerGap.length,
              need: Object.keys(res.g.ring).map(Number), lubeMissing: res.fit.lubeMissing };
    };
    return { integ: run('スペーサー一体型'), ring: run('ゴムリング'),
@@ -206,6 +214,8 @@ H.run('test_bladesets: 刃セット・刃選択の4項目・フィンガー材�
   rec('§9.532 ⑥ 空きの目標 0（既定）なら空きを作らない（どの面もゴムの無い長さ 0）', ig.integ.minGap === 0, JSON.stringify(ig.integ));
   rec('§9.532 ⑥ 空きの目標 2mm なら、どの面も 2mm 以上の空きを残し、区間長はちょうど（端数0）',
       ig.gap2.minGap >= 2 - 1e-6 && ig.gap2.exact === ig.gap2.zones && ig.gap2.gap === 0, JSON.stringify(ig.gap2));
+  rec('§9.533 ⑥ 空きは一体型の両側へ半分ずつ（どの面も両側にあり、差は 1mm 以内）',
+      ig.gap2.sides === ig.gap2.zones && ig.gap2.diffMax <= 1, JSON.stringify(ig.gap2));
   rec('§9.532 ⑥ 潤滑リングを「載せる」にすると広い側の区間の両端に載り、座は潤滑リングの幅の普通のスペーサー',
       ig.lube.lube > 0 && ig.lube.seatOk === ig.lube.lube && ig.lube.exact === ig.lube.zones && ig.lube.gap === 0, JSON.stringify(ig.lube));
   rec('⑥ ゴムリングの方式では一体型の色を選ばない（同じ表に入っていても取り違えない）',

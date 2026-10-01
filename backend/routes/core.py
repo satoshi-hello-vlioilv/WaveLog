@@ -129,7 +129,8 @@ JS_FILES=[
  'bladeset/blade-board.js',  # 刃組: 刃マスタの盤（セットごとのカテゴリ・使用状態と刃厚ごとの行）
  'bladeset/ring-board.js',   # 刃組: ゴムリングの盤（色ごと・幅ごとの本数）
  'bladeset/stock-board.js',  # 刃組: スペーサー・フィンガーの盤（寸法ごとの在庫をその場で直す）
- 'bladeset/standard-board.js', # 刃組: 刃組基準値の盤（節ごと・既定値を薄字で）
+ 'bladeset/standard-figs.js', # 刃組: 刃組基準値の節ごとの図（standard-board の前）
+ 'bladeset/standard-board.js', # 刃組: 刃組基準値の盤（2ペイン・節ごとの図＋欄）
  'bladeset/blade-3d.js',
  'bladeset/blade-view.js',
  'report/actuals-view.js',

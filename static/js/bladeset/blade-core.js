@@ -112,7 +112,6 @@
            /* 保持方式の条件表（§9.524）。登録が無ければサーバーが今までの決め方の「種」を返す。 */
            holds: (c.holds || []).slice(), holdsStored: !!c.holdsStored,
            holdMethods: (c.holdMethods || []).slice(),
-           pickOps: (c.pickOps || []).slice(),
            equipment: c.equipment || '',
            standardStored: !!c.standardStored,
            bladeStatus: c.bladeStatus || [], spacerUses: c.spacerUses || [],
@@ -696,31 +695,55 @@
     区間の半分に端数が出た（実測 22/44 面）。作れる長さを上から順に試す（`floor`で次の作れる長さへ）。
     どこまで下げても作れなければ、目いっぱい積んで残りを端数として正直に出す（`spacerGap`が言う）。 */
  const INTEG_TRIES = 400;
- /* `limit`＝一体型に使ってよい長さ（区間−潤滑リングの座−空きの目標）、`mid`＝普通のスペーサーと合わせて
-    ちょうどにする長さ（区間−潤滑リングの座）。 */
- function integFill(it, sp, mid, limit) {
-  const top = Math.min(Math.floor(Math.max(0, limit) / FILL_STEP + 1e-9), it.U - 1);
-  for (let v = it.floor[top], n = 0; v > 0 && n < INTEG_TRIES; v = it.floor[v - 1], n++) {
-   const len = +(v * FILL_STEP).toFixed(3), rest = fillWith(sp, mid - len);
-   if (rest.rem <= 1e-9) return { got: { out: stackOf(it, v), rem: +(mid - len).toFixed(3) }, rest };
+ /* 空きを両側へ広げてよい量（上限が0＝判定しないとき）。**半分ずつにするために空きを広げる**のはここまで。 */
+ const GAP_SPREAD = 20;
+ /* 空き`G`（刻みの数）を両側へ分ける（§9.533）。両側とも手持ちの普通のスペーサーでちょうどに作れる分け方のうち、
+    半分にいちばん近いもの。作れなければ null。 */
+ function splitUnits(sp, G) {
+  if (G === 0) return { a: 0, b: 0, diff: 0 };
+  if (!sp || G >= sp.U) return null;
+  for (let d = 0; d <= G; d++) {
+   const a = (G >> 1) - d, b = G - a;
+   if (a >= 0 && sp.cnt[a] >= 0 && sp.cnt[b] >= 0) return { a, b, diff: b - a };
   }
-  const got = fillWith(it, Math.max(0, limit));
-  return { got: { out: got.out, rem: +(mid - (Math.max(0, limit) - got.rem)).toFixed(3) },
-           rest: fillWith(sp, +(mid - (Math.max(0, limit) - got.rem)).toFixed(3)) };
+  return null;
  }
- /* 一体型の区間（§9.531→§9.532）。並びは「潤滑リングの座 → 一体型 → 空き（普通のスペーサー）→ 座」。
+ /* 一体型の積み（§9.531→§9.533）。`mid`＝普通のスペーサーと合わせてちょうどにする長さ（区間−潤滑リングの座）、
+    `limit`＝一体型に使ってよい長さ（`mid`−空きの目標）、`maxGap`＝空きの上限。
+    **空きを刃の両側へ半分ずつ**（利用者の指示）——作れる一体型の長さを上から順に試し、空きを両側へ
+    ちょうどに分けられる組み方のうち「両側の差がいちばん小さい → 空きが小さい」を取る。目いっぱい積んで
+    片側にまとめると、残り（10.1mm 等）の半分を手持ちのスペーサーで作れず、44面すべてが片側だった。
+    上限までにどう分けても作れなければ、片側へまとめる（§9.532 の組み方）。 */
+ function integFill(it, sp, mid, limit, maxGap) {
+  const top = Math.min(Math.floor(Math.max(0, limit) / FILL_STEP + 1e-9), it.U - 1);
+  let best = null, first = null;
+  for (let v = it.floor[top], n = 0; v > 0 && n < INTEG_TRIES; v = it.floor[v - 1], n++) {
+   const len = +(v * FILL_STEP).toFixed(3), gap = +(mid - len).toFixed(3);
+   if (!first && fillWith(sp, gap).rem <= 1e-9) first = v;
+   if (gap > maxGap + 1e-9) { if (first) break; continue; }
+   const s = splitUnits(sp, Math.round(gap / FILL_STEP));
+   if (s && (!best || s.diff < best.s.diff)) best = { v, s, gap };
+   if (best && best.s.diff <= 1) break;          // 半分ずつ（刻み1つの差まで）を空きの小さい側で見つけた
+  }
+  const piece = v => ({ out: stackOf(it, v), rem: +(mid - v * FILL_STEP).toFixed(3) });
+  if (best) return { got: piece(best.v), restA: { out: stackOf(sp, best.s.a), rem: 0 }, restB: { out: stackOf(sp, best.s.b), rem: 0 } };
+  if (first) return { got: piece(first), restA: { out: [], rem: 0 }, restB: fillWith(sp, +(mid - first * FILL_STEP).toFixed(3)) };
+  const got = fillWith(it, Math.max(0, limit)), g = +(mid - (Math.max(0, limit) - got.rem)).toFixed(3);
+  return { got: { out: got.out, rem: g }, restA: { out: [], rem: 0 }, restB: fillWith(sp, g) };
+ }
+ /* 一体型の区間（§9.531→§9.532→§9.533）。並びは「座 → 空きの半分 → 一体型 → 残りの半分 → 座」。
     **潤滑リング**（刃組基準値の切り替え・`R.integLube`）を載せるときは、広い側の区間の両端に普通の
     スペーサーで潤滑リングの幅ぶんの**座**を作り、その上に被せる（ふつうのゴムリング方式と同じ置き方）。
     **空きの目標**（`integGapMin`）が0なら一体型でちょうど埋め、数値なら一体型を「残り−目標」以内で最大に積む。
     `spacer`＝座と空きの普通のスペーサーぜんぶ（在庫・所要はここ）、`seat`＝座1つぶん（図が両端に置く）、
-    `rest`＝空きの普通のスペーサー、`holdRem`＝空き（座を除いたゴムの無い長さ）。 */
- /* 区間の軸の並び（OS側から・§9.531／§9.532）。**図はここを読むだけ**（模式図・拡大図・立体図が同じ並び）。
-    一体型の区間は「座 → 一体型 → 空き → 座」（座は潤滑リングを載せるときだけ）、ほかは普通のスペーサー。 */
+    `restA`／`restB`＝一体型の手前／後ろの空き（§9.533 半分ずつ）、`holdRem`＝空き（座を除いたゴムの無い長さ）。 */
+ /* 区間の軸の並び（OS側から・§9.531／§9.532／§9.533）。**図はここを読むだけ**（模式図・拡大図・立体図が同じ並び）。
+    一体型の区間は「座 → 空きの半分 → 一体型 → 残りの半分 → 座」（座は潤滑リングを載せるときだけ）、ほかは普通のスペーサー。 */
  function axisRun(parts) {
   const plain = d => expand(d).map(sz => ({ sz, integ: false }));
   if (!parts.integ) return plain(parts.spacer);
   const seat = parts.lube ? plain(parts.seat) : [];
-  return seat.concat(expand(parts.gom).map(sz => ({ sz, integ: true })), plain(parts.rest), seat);
+  return seat.concat(plain(parts.restA), expand(parts.gom).map(sz => ({ sz, integ: true })), plain(parts.restB), seat);
  }
  function integParts(total, hold, it, sp, R) {
   let lube = hold.lube && R.lubeW > 0 ? { n: 2, w: R.lubeW, od: R.lubeOd, bore: R.lubeBore } : null;
@@ -730,13 +753,16 @@
   if (seatMiss) { lube = null; seat = { out: [], rem: 0 }; }
   const seatLen = lube ? lube.n * lube.w : 0;
   const mid = +(total - seatLen).toFixed(3);
-  const gapMin = holdBandOf(R, 'integ').gapMin;
-  const { got, rest } = integFill(it, sp, mid, +(mid - gapMin).toFixed(3));
+  const band = holdBandOf(R, 'integ');
+  const { got, restA, restB } = integFill(it, sp, mid, +(mid - band.gapMin).toFixed(3),
+                                          band.gapMax > 0 ? band.gapMax : band.gapMin + GAP_SPREAD);
   const all = new Map();
-  (lube ? [seat.out, seat.out, rest.out] : [rest.out]).forEach(list => list.forEach(([sz, c]) => all.set(sz, (all.get(sz) || 0) + c)));
-  return { len: total, hold, integ: true, gom: got, lube, seat, rest, seatMiss,
-           spacer: { out: [...all.entries()].filter(([, c]) => c > 0).sort((a, b) => b[0] - a[0]), rem: rest.rem },
-           rem: rest.rem, holdRem: got.rem };
+  (lube ? [seat.out, seat.out, restA.out, restB.out] : [restA.out, restB.out]).forEach(list => list.forEach(([sz, c]) => all.set(sz, (all.get(sz) || 0) + c)));
+  /* `lead`＝一体型の手前の空き（図がゴムを載せ始める位置・座の内側から）。 */
+  const lead = +restA.out.reduce((a, [sz, c]) => a + sz * c, 0).toFixed(3);
+  return { len: total, hold, integ: true, gom: got, lube, seat, restA, restB, lead, seatMiss,
+           spacer: { out: [...all.entries()].filter(([, c]) => c > 0).sort((a, b) => b[0] - a[0]), rem: restB.rem },
+           rem: restB.rem, holdRem: got.rem };
  }
  /* 板押さえの空きの帯（下限〜上限）。**答えは種類ごとにこの1箇所**（§9.462）
     ——ゴムリングは`ringGapMin/Max`、フィンガーは`fingerGapMin/Max`（どちらも
@@ -1329,20 +1355,35 @@
     大小・範囲は数として、＝／≠は両方が数に読めれば数として（'1.0' と '1' を同じに）、
     含むは字として。 */
  const asNum = v => (String(v ?? '').trim() === '' ? NaN : Number(v));
+ /* 比べ方（§9.533、利用者の指示「＊＊＊で始まる、＊＊＊で終わるのような前方一致、や後方一致など様々な種類に
+    対応できるように」）。綴りは表示ルールマスタ（`RULE_OPS`）と同じ字。**字の比べ方**はここの表の1箇所。 */
+ const TEXT_OPS = {
+  eq: (l, r) => l === r, ne: (l, r) => l !== r,
+  contains: (l, r) => !!r && l.indexOf(r) >= 0, notContains: (l, r) => !r || l.indexOf(r) < 0,
+  startsWith: (l, r) => !!r && l.startsWith(r), notStartsWith: (l, r) => !r || !l.startsWith(r),
+  endsWith: (l, r) => !!r && l.endsWith(r), notEndsWith: (l, r) => !r || !l.endsWith(r),
+  regex: (l, r) => { try { return !!r && new RegExp(r).test(l); } catch (_e) { return false; } }
+ };
+ /* 右辺を持たない比べ方（空・空でない）。 */
+ const NO_RIGHT = { empty: true, notEmpty: true };
+ const isBlank = v => v === null || v === undefined || String(v).trim() === '';
  function condHits(cond, ctx, kinds) {
   const f = cond && cond.field;
-  if (!f || !(f in ctx)) return false;
+  if (!f) return false;
+  const op = cond.op;
+  /* 空・空でないは**値が無いこと自体**を見る（引けなかった値も「空」）。 */
+  if (NO_RIGHT[op]) return (op === 'empty') === isBlank(ctx[f]);
+  if (!(f in ctx)) return false;
   const left = ctx[f];
   /* **引けなかった値を当てない**（§9.231）。0として比べると、空欄の条件が
      全部の作業に当たってしまう。 */
-  if (left === null || left === undefined || left === '') return false;
-  const op = cond.op;
+  if (isBlank(left)) return false;
   const kind = kinds[f] || (String(f).startsWith('source.')
-   ? (op === 'contains' ? 'text'
+   ? (TEXT_OPS[op] && !/^(eq|ne)$/.test(op) ? 'text'
       : (/^(ge|gt|le|lt|between)$/.test(op) || (isFinite(asNum(left)) && isFinite(asNum(cond.value)))) ? 'num' : 'text')
    : 'text');
   /* `choice`（候補から選ぶ・板押さえ方式）は字として比べる。 */
-  if (kind === 'num') {
+  if (kind === 'num' && !(TEXT_OPS[op] && !/^(eq|ne)$/.test(op))) {
    const l = +left, a = +cond.value;
    if (!isFinite(l) || !isFinite(a)) return false;
    if (op === 'between') {
@@ -1353,11 +1394,250 @@
    return PICK_NUM[op] ? PICK_NUM[op](l, a) : false;
   }
   const ls = String(left).trim(), rs = String(cond.value == null ? '' : cond.value).trim();
-  if (op === 'eq') return ls === rs;
-  if (op === 'ne') return ls !== rs;
-  if (op === 'contains') return !!rs && ls.indexOf(rs) >= 0;
-  return false;
+  return TEXT_OPS[op] ? TEXT_OPS[op](ls, rs) : false;
  }
+ /* **1つのセルの中の組み合わせ**（§9.533、利用者の指示「<0.6かつ>0.9などの組み合わせのパターンも1つのセル内に
+    かけるように」）。条件は並びのまま持ち、`or`が真の条件から「または」の次の組が始まる。読み方は
+    ふつうの式と同じ——**かつ が先**（`A かつ B または C` ＝ `(A かつ B) または C`）。行は列ごとの組の「かつ」。 */
+ function condGroups(conds) {
+  const out = [];
+  (conds || []).forEach(c => {
+   let g = out.find(x => x.field === c.field);
+   if (!g) out.push(g = { field: c.field, terms: [] });
+   g.terms.push(c);
+  });
+  return out;
+ }
+ /* セルの条件 → 「かつ」の組の並び（`or`の条件から次の組）。 */
+ function chainsOf(terms) {
+  const out = [];
+  (terms || []).forEach((c, i) => { if (!i || c.or) out.push([]); out[out.length - 1].push(c); });
+  return out;
+ }
+ const cellHits = (terms, ctx, kinds) => chainsOf(terms).some(ch => ch.every(c => condHits(c, ctx, kinds)));
+ const rowHits = (conds, ctx, kinds) => condGroups(conds).every(g => cellHits(g.terms, ctx, kinds));
+
+ /* ---- 当たり得ない組み合わせ（§9.534、利用者の指示「ありえない条件は代替案と登録した場合、どうなるかも含めて
+    視覚化表現があると良いです」）。セルの「かつ」の組ごとに**同時に成り立つ値があるか**を答える。
+    数は区間の重なり（`numSet`／`meet`）、字は値どうしの食い違い（`textClash`）で見る。判定は`condHits()`と同じ意味
+    ——空の欄は「空」「空でない」にしか当たらない・正規表現は字の値が決まっているときだけ見る（読めなければ当たり得る側）。 */
+ const NUM_ONLY = /^(ge|gt|le|lt|between)$/;
+ /* 数の条件 → 区間の並び（`{lo, li, hi, hi2}`＝下端・下端を含むか・上端・上端を含むか）。数でなければ null。 */
+ function numSet(c) {
+  const a = +c.value, I = (lo, li, hi, hi2) => ({ lo, li, hi, hi2 });
+  if (!isFinite(a)) return null;
+  switch (c.op) {
+   case 'eq': return [I(a, true, a, true)];
+   case 'ne': return [I(-Infinity, false, a, false), I(a, false, Infinity, false)];
+   case 'ge': return [I(a, true, Infinity, false)];
+   case 'gt': return [I(a, false, Infinity, false)];
+   case 'le': return [I(-Infinity, false, a, true)];
+   case 'lt': return [I(-Infinity, false, a, false)];
+   case 'between': { const b = +c.value2; return isFinite(b) ? [I(Math.min(a, b), true, Math.max(a, b), true)] : null; }
+   default: return null;
+  }
+ }
+ /* 2つの区間の並びの重なり（空なら []）。 */
+ const meet = (A, B) => A.flatMap(x => B.map(y => {
+  const lo = Math.max(x.lo, y.lo), hi = Math.min(x.hi, y.hi);
+  return { lo, hi, li: (x.lo === lo ? x.li : true) && (y.lo === lo ? y.li : true),
+           hi2: (x.hi === hi ? x.hi2 : true) && (y.hi === hi ? y.hi2 : true) };
+ })).filter(r => r.lo < r.hi || (r.lo === r.hi && r.li && r.hi2));
+ /* 区間の並びが数ぜんぶを覆うか（「または」にしたら問わないのと同じ、を見分ける）。 */
+ function coversAll(set) {
+  const xs = set.slice().sort((a, b) => a.lo - b.lo || (b.li ? 1 : 0) - (a.li ? 1 : 0));
+  let at = -Infinity, inc = false;
+  for (const r of xs) {
+   if (r.lo > at || (r.lo === at && !inc && !r.li && at !== -Infinity)) return false;
+   if (r.hi > at || (r.hi === at && r.hi2)) { at = r.hi; inc = r.hi2; }
+  }
+  return at === Infinity;
+ }
+ /* 組を数として読むか。数の列は数・字の列は字、仕掛の列（`auto`）は値がみな数で比べ方も数のときだけ数。 */
+ const chainIsNum = (ch, kind) => kind === 'num' ? true : kind !== 'auto' ? false
+  : ch.every(c => (NUM_ONLY.test(c.op) || /^(eq|ne)$/.test(c.op)) && numSet(c));
+ /* 字の組で同時に成り立たない2つ（`[a, b]`）。無ければ null。 */
+ function textClash(ch) {
+  const v = c => String(c.value == null ? '' : c.value).trim();
+  const hits = (c, s) => condHits(Object.assign({}, c, { field: 'x' }), { x: s }, { x: 'text' });
+  const empty = ch.find(c => c.op === 'empty');
+  if (empty) { const o = ch.find(c => c.op !== 'empty'); return o ? [empty, o] : null; }
+  const eqs = ch.filter(c => c.op === 'eq');
+  const eq2 = eqs.find(c => v(c) !== v(eqs[0]));
+  if (eq2) return [eqs[0], eq2];
+  if (eqs.length) { const o = ch.find(c => c.op !== 'eq' && !hits(c, v(eqs[0]))); return o ? [eqs[0], o] : null; }
+  /* 値が決まっていない組: 始まり・終わりの食い違いと、「含む／始まる／終わる」がその否定を抱えている形。 */
+  const rules = [['startsWith', 'startsWith', (x, y) => !x.startsWith(y) && !y.startsWith(x)],
+                 ['endsWith', 'endsWith', (x, y) => !x.endsWith(y) && !y.endsWith(x)],
+                 ['contains', 'notContains', (x, y) => x.includes(y)], ['startsWith', 'notContains', (x, y) => x.includes(y)],
+                 ['endsWith', 'notContains', (x, y) => x.includes(y)], ['startsWith', 'notStartsWith', (x, y) => x.startsWith(y)],
+                 ['endsWith', 'notEndsWith', (x, y) => x.endsWith(y)]];
+  for (const [p, q, bad] of rules)
+   for (const a of ch) for (const b of ch)
+    if (a !== b && a.op === p && b.op === q && bad(v(a), v(b))) return [a, b];
+  return null;
+ }
+ /* 数の組の答え: 重なり（区間の並び）と、空なら空にした2つ。 */
+ function numChain(ch) {
+  let acc = [{ lo: -Infinity, li: false, hi: Infinity, hi2: false }];
+  for (const c of ch) acc = meet(acc, numSet(c));
+  if (acc.length) return { set: acc, pair: null };
+  for (const a of ch) for (const b of ch) if (a !== b && !meet(numSet(a), numSet(b)).length) return { set: [], pair: [a, b] };
+  return { set: [], pair: null };
+ }
+ const asOr = ch => ch.map((c, i) => Object.assign({}, c, i ? { or: true } : { or: undefined }));
+ /* 当たらない組の直し方（多くて2つ）。①「かつ」を「または」に（それで何でも当たるなら「問わない」と言い換える）
+    ②数の上限と下限が逆さなら、そのあいだ（`＜0.6 かつ ＞0.9` → `0.6〜0.9`）。 */
+ function chainAlts(ch, isNum) {
+  const out = [];
+  const either = asOr(ch);
+  const all = isNum ? coversAll(either.flatMap(numSet))
+   : ch.some(a => ch.some(b => b.op === (NEG[a.op] || '') && String(a.value) === String(b.value)));
+  out.push(all ? { terms: [], how: 'このセルを空欄（問わない）にする', all: true }
+               : { terms: either, how: '「かつ」を「または」に（どちらかに当たれば）' });
+  if (isNum && ch.length === 2) {
+   const lo = ch.find(c => /^(gt|ge)$/.test(c.op)), up = ch.find(c => /^(lt|le)$/.test(c.op));
+   if (lo && up && +up.value < +lo.value)
+    out.push({ terms: [{ field: ch[0].field, op: 'between', value: String(up.value), value2: String(lo.value) }],
+               how: `あいだ（${up.value}〜${lo.value}）に当たれば` });
+  }
+  return out;
+ }
+ /* セル1つの診断: `{dead, part, chains:[{terms, dead, why, num, set}], alts:[{terms, text, say, how}]}`。
+    `dead`＝どの組も当たらない（セル＝行が何にも当たらない）／`part`＝一部の組だけ当たらない（その組は無いのと同じ）。
+    案は**最初の当たらない組**を置き換えたセルの条件（ほかの組はそのまま）。 */
+ function cellDead(terms, kind) {
+  const chains = chainsOf(terms).map(ch => {
+   const isNum = chainIsNum(ch, kind);
+   if (isNum) { const r = numChain(ch);
+    const why = r.set.length ? '' : r.pair ? `${termSay(r.pair[0])} と ${termSay(r.pair[1])} が重なりません` : '全部に同時に当たる数がありません';
+    return { terms: ch, num: true, set: r.set, dead: !r.set.length, why }; }
+   const cl = textClash(ch);
+   return { terms: ch, num: false, set: null, dead: !!cl,
+            why: cl ? `「${termSay(cl[0])}」と「${termSay(cl[1])}」を同時に満たす値はありません` : '' };
+  });
+  const bad = chains.findIndex(c => c.dead);
+  const alts = bad < 0 ? [] : chainAlts(chains[bad].terms, chains[bad].num).map(a => {
+   /* 組の頭は「または」で前の組へつなぐ（いちばん頭だけ印なし）。「問わない」の案はセルごと空にする（何かと「または」でも全部当たる）。 */
+   const flat = a.all ? [] : chains.flatMap((c, i) => (i === bad ? a.terms : c.terms).map((x, j) => Object.assign({}, x, { or: j ? x.or : i > 0 })))
+    .map((x, i) => Object.assign({}, x, { or: i && x.or ? true : undefined }));
+   return { terms: flat, text: cellText(flat), say: flat.length ? cellSay(flat) : '問わない（どの値でも当たる）', how: a.how };
+  });
+  return { dead: chains.length > 0 && chains.every(c => c.dead), part: bad >= 0 && !chains.every(c => c.dead), chains, alts };
+ }
+ /* 数のセルの当たる範囲（図に描く・組の重なりの和）。数で読めない組があれば null。 */
+ function cellNumSet(terms, kind) {
+  const chs = chainsOf(terms);
+  if (!chs.length || !chs.every(ch => chainIsNum(ch, kind))) return null;
+  return chs.flatMap(ch => numChain(ch).set);
+ }
+
+ /* ---- セルの字 ⇔ 条件（**書き方は1箇所で読む**・判定表の盤と刃組の説明が使う） ----
+    数の記号は `>=`・`≧` どちらでも打てる。字の比べ方は `SUS*`（で始まる）・`*304`（で終わる）・`*H5*`（含む）、
+    頭に `≠` で「〜ではない」（`≠ *H5*`＝含まない）。`空`／`空でない`、`/正規表現/`。言葉でも書ける（`SUS で始まる`）。
+    組み合わせは `かつ`（`&`）と `または`（`|`）。**読めない字は条件にしない**（理由を字で返す）。 */
+ const OP_SIGNS = [[/^(>=|≧|=>)/, 'ge'], [/^(<=|≦|=<)/, 'le'], [/^(!=|≠|<>|!)/, 'ne'],
+                   [/^(>|＞)/, 'gt'], [/^(<|＜)/, 'lt'], [/^(=|＝)/, 'eq']];
+ const OP_SIGN_TEXT = { ge: '≧ ', le: '≦ ', ne: '≠ ', gt: '＞ ', lt: '＜ ', eq: '' };
+ const NEG = { eq: 'ne', contains: 'notContains', startsWith: 'notStartsWith', endsWith: 'notEndsWith', empty: 'notEmpty' };
+ const OP_WORDS = [['を含まない', 'notContains'], ['で始まらない', 'notStartsWith'], ['で終わらない', 'notEndsWith'],
+                   ['を含む', 'contains'], ['で始まる', 'startsWith'], ['で終わる', 'endsWith'], ['以外', 'ne']];
+ const JOIN_RE = /\s*(かつ|＆|&&?|\band\b|または|｜|\|\|?|\bor\b)\s*/i;
+ /* 正規表現（`/…/`）の中の `|` で割らないよう、先に札へ置き換えてから割る。 */
+ function splitCell(t) {
+  const keep = [];
+  const masked = t.replace(/\/(?:\\.|[^/\\])+\//g, m => `\uE000${keep.push(m) - 1}\uE000`);
+  const parts = masked.split(JOIN_RE);
+  const back = x => x.replace(/\uE000(\d+)\uE000/g, (_m, n) => keep[+n]);
+  const out = [];
+  for (let k = 0; k < parts.length; k += 2) {
+   const join = k ? parts[k - 1] : '';
+   out.push({ text: back(parts[k]).trim(), or: /^(または|｜|\|\|?|or)$/i.test(join) });
+  }
+  return out;
+ }
+ function parseTerm(t, kind) {
+  const numOnly = kind === 'num';
+  if (!t) return { error: '「かつ」「または」の前後に条件を書いてください' };
+  if (/^(空|空欄)$/.test(t)) return { cond: { op: 'empty', value: '' } };
+  if (/^(空でない|空欄でない)$/.test(t)) return { cond: { op: 'notEmpty', value: '' } };
+  const re = t.match(/^\/(.+)\/$/);
+  if (re) {
+   if (numOnly) return { error: 'この列は数なので正規表現は使えません' };
+   try { new RegExp(re[1]); } catch (_e) { return { error: '正規表現として読めません' }; }
+   return { cond: { op: 'regex', value: re[1] } };
+  }
+  const range = t.match(/^(-?[\d.]+)\s*[〜~～]\s*(-?[\d.]+)$/);
+  if (range) {
+   const a = Number(range[1]), b = Number(range[2]);
+   if (!isFinite(a) || !isFinite(b)) return { error: '範囲は「0.6〜1.0」のように数で書いてください' };
+   return { cond: { op: 'between', value: String(a), value2: String(b) } };
+  }
+  /* 頭の ≠ は「〜ではない」。その後ろを読んでから裏返す。 */
+  const neg = t.match(/^(!=|≠|<>)\s*(.+)$/);
+  if (neg) {
+   const inner = parseTerm(neg[2].trim(), kind);
+   if (inner.error) return inner;
+   const op = NEG[inner.cond.op];
+   if (!op) return { error: '≠ の後ろは値・*含む*・始まる*・*終わる・空 のどれかにしてください' };
+   return { cond: Object.assign({}, inner.cond, { op }) };
+  }
+  for (const [w, op] of OP_WORDS) {
+   if (t.endsWith(w) && t.length > w.length) {
+    if (numOnly && op !== 'ne') return { error: 'この列は数なので字の比べ方は使えません' };
+    return { cond: { op, value: t.slice(0, -w.length).replace(/[「」"]/g, '').trim() } };
+   }
+  }
+  const wild = t.match(/^(\*?)([^*]+)(\*?)$/);
+  if (wild && (wild[1] || wild[3])) {
+   if (numOnly) return { error: 'この列は数なので * は使えません（大小か範囲で書いてください）' };
+   const op = wild[1] && wild[3] ? 'contains' : wild[1] ? 'endsWith' : 'startsWith';
+   return { cond: { op, value: wild[2].trim() } };
+  }
+  let op = 'eq', v = t;
+  for (const [rx, o] of OP_SIGNS) { const m = t.match(rx); if (m) { op = o; v = t.slice(m[0].length).trim(); break; } }
+  if (!v) return { error: '比べる値を書いてください' };
+  if ((numOnly || /^(ge|le|gt|lt)$/.test(op)) && !isFinite(Number(v))) return { error: 'この比べ方は数で書いてください' };
+  return { cond: { op, value: v } };
+ }
+ /* セルの字 → 条件の並び（`or`つき）。空欄は `[]`（問わない）。 */
+ function parseCell(text, kind) {
+  const t = String(text || '').trim();
+  if (!t) return { conds: [] };
+  const conds = [];
+  for (const part of splitCell(t)) {
+   const p = parseTerm(part.text, kind);
+   if (p.error) return { error: p.error };
+   conds.push(Object.assign(p.cond, part.or ? { or: true } : {}));
+  }
+  return { conds };
+ }
+ function termText(c, eqSign) {
+  switch (c.op) {
+   case 'between': return `${c.value}〜${c.value2}`;
+   case 'contains': return `*${c.value}*`;
+   case 'startsWith': return `${c.value}*`;
+   case 'endsWith': return `*${c.value}`;
+   case 'notContains': return `≠ *${c.value}*`;
+   case 'notStartsWith': return `≠ ${c.value}*`;
+   case 'notEndsWith': return `≠ *${c.value}`;
+   case 'empty': return '空';
+   case 'notEmpty': return '空でない';
+   case 'regex': return `/${c.value}/`;
+   case 'eq': return (eqSign ? '＝ ' : '') + c.value;
+   default: return (OP_SIGN_TEXT[c.op] ?? '') + c.value;
+  }
+ }
+ /* 条件の並び → セルの字（表に出す字・刃組の説明の字）。 */
+ const cellText = (terms, eqSign) => (terms || []).map((c, i) => (i ? (c.or ? ' または ' : ' かつ ') : '') + termText(c, eqSign)).join('');
+ /* 読み上げ（「0.6 より小さい または 0.9 より大きい」）。候補の説明と表の下の1文が同じ字を使う。 */
+ const OP_SAY = { eq: v => `${v}`, ne: v => `${v} 以外`, ge: v => `${v} 以上`, gt: v => `${v} より大きい`,
+                  le: v => `${v} 以下`, lt: v => `${v} より小さい`, contains: v => `「${v}」を含む`,
+                  notContains: v => `「${v}」を含まない`, startsWith: v => `「${v}」で始まる`, notStartsWith: v => `「${v}」で始まらない`,
+                  endsWith: v => `「${v}」で終わる`, notEndsWith: v => `「${v}」で終わらない`,
+                  empty: () => '空', notEmpty: () => '空でない', regex: v => `正規表現 /${v}/ に合う` };
+ const termSay = c => (c.op === 'between' ? `${c.value}〜${c.value2}（両端を含む）` : (OP_SAY[c.op] || (v => v))(c.value));
+ const cellSay = terms => (terms || []).map((c, i) => (i ? (c.or ? ' または ' : ' かつ ') : '') + termSay(c)).join('');
  /* 条件表を上から見て**最初に当たった行**（`{row, index}`）。表の約束は1つ——
     同じ行の条件はすべて満たしたときだけ当たる。**条件の無い行**は`withDefault`の
     ときだけ「どれにも当たらなかったときの行」として当たる（刃選択は当てない・
@@ -1369,7 +1649,7 @@
   for (let i = 0; i < list.length; i++) {
    if (list[i].enabled === false) continue;   // 番号は表の並びのまま数える（止めた行も1行）
    const cs = list[i].conditions || [];
-   if (!cs.length ? withDefault : cs.every(c => condHits(c, ctx, kinds))) return { row: list[i], index: i };
+   if (!cs.length ? withDefault : rowHits(cs, ctx, kinds)) return { row: list[i], index: i };
   }
   return null;
  }
@@ -1412,17 +1692,17 @@
   }
   const cs = (h.row && h.row.conditions) || [];
   const why = cs.length
-   ? `「保持方式」の${h.index + 1}行目（${cs.map(c => condText(c, tableFields(M, 'hold'), M.pickOps)).join(' かつ ')}）に当たったため`
+   ? `「保持方式」の${h.index + 1}行目（${rowText(cs, tableFields(M, 'hold'))}）に当たったため`
    : '「保持方式」のどの決まりにも当たらないため（最後の既定の行）';
   return why + (h.stored ? '' : '。表は未登録なので、刃組基準値のフィンガー切替板厚から作った表で決めました');
  }
- /* 条件1つを字にする（「板厚 ＜ 0.6」「製造材質 ＝ SUS」）。刃組の説明と条件表の盤が同じ字を使う。 */
- function condText(c, fields, ops) {
-  const f = (fields || []).find(x => x.field === c.field);
-  const name = f ? f.label : String(c.field || '').replace(/^source\./, '');
-  const op = ((ops || []).find(x => x.op === c.op) || {}).label || c.op;
-  return c.op === 'between' ? `${name} ${c.value}〜${c.value2}` : `${name} ${op} ${c.value}`;
+ /* 行の条件を字にする（「板厚 ＜ 0.6 または ＞ 0.9 かつ 製造材質 SUS*」）。セルの字（`cellText()`）に列の名前を添える。
+    刃組の説明と条件表の盤が同じ字を使う。 */
+ function rowText(conds, fields) {
+  const name = f => { const x = (fields || []).find(y => y.field === f); return x ? x.label : String(f || '').replace(/^source\./, ''); };
+  return condGroups(conds).map(g => `${name(g.field)} ${cellText(g.terms, true)}`).join('・');
  }
+
 
  /* ====================== 標準の条件（§9.408、利用者の指示②） ======================
     「刃組の標準の計算値で使用スペーサなど一覧内に関連情報が出るようにしてほしい」
@@ -1561,7 +1841,7 @@
   const cs = (hit.row && hit.row.conditions) || [];
   if (!hit.row) return `「${label}」の表がありません`;
   return (cs.length
-   ? `「${label}」の${hit.index + 1}行目（${cs.map(c => condText(c, tableFields(M, key), M.pickOps)).join(' かつ ')}）に当たったため`
+   ? `「${label}」の${hit.index + 1}行目（${rowText(cs, tableFields(M, key))}）に当たったため`
    : `「${label}」のどの決まりにも当たらないため（最後の既定の行）`) + (hit.stored ? '' : '・表は未登録');
  }
  /* 使う刃を決める（§9.529）。
@@ -1746,7 +2026,7 @@
   compose, buildRows, endRows, badgeMap, BADGE_TONES, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum, cutFace,
   stripDesign, designByParent, condOf, sameCond, seedFromCond,
-  pickCtx, bladePickCtx, tableFields, bladeChoice, tableReason, pickWord, bladeCategory, condHits, selectable, firstRule, holdPick, holdReason, condText,
+  pickCtx, bladePickCtx, tableFields, bladeChoice, tableReason, pickWord, bladeCategory, condHits, rowHits, condGroups, cellDead, cellNumSet, numSet, parseCell, cellText, cellSay, selectable, firstRule, holdPick, holdReason, rowText,
   expand, axisRun, materialRun, matShift, spread, tierOf,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP
  };

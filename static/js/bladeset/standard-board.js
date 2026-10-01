@@ -1,5 +1,5 @@
 /* ============================================================
-   standard-board.js: 刃組基準値の盤（§9.531、利用者の指示）
+   standard-board.js: 刃組基準値の盤（§9.531 → §9.533 で2ペイン＋図、利用者の指示）
 
    「刃組基準値、スペーサー、フィンガーのマスタはもっと使いやすく再設計してください。」
    利用者の選択: 刃組基準値は**節ごとの設定**——既定値を薄字で見せ、欄を離れたら保存。
@@ -11,10 +11,15 @@
 
    欄の顔ぶれ・単位・刻み・説明は**マスタの定義（`master-defs.js`の`bladesetStandard`）の1箇所**
    から読む（盤に書き写さない）。保存は渡した鍵だけを書く口（`standard_upsert()`・§9.212 ②）。
+
+   §9.533（「2ペインで選びながら見ながら設定…その部分が何の調整にどう影響するのか、わかった状態で触れるように」）:
+   左＝節の一覧（何に効くか・変更の数）、右＝選んだ節の**図**（`standard-figs.js`・いま効いている値で描く）と欄。
+   欄に入る・乗ると図の同じ部品が光り、図の部品に乗ると欄が光る。打っている途中の値で図がすぐ動く。
+   本物の台車（断面図・立体図）は刃組ガイダンスが持つので、見本の作業でそこを開く1手を置く。
    ============================================================ */
 (function(){
  const K=()=>WL.bsKit;
- const sb={equipment:'',row:null,defaults:{},busy:false,loaded:false};
+ const sb={equipment:'',row:null,defaults:{},sel:'',busy:false,loaded:false};
  const def=()=>(WL.mm.MASTER_DEFS||[]).find(d=>d.key==='bladesetStandard')||{fields:[]};
  /* 設備は頭が選ぶので欄に出さない。 */
  const fields=()=>def().fields.filter(f=>f.k!=='equipment');
@@ -59,21 +64,65 @@
    +`<span class="sb-c">${ctrlHtml(f).replace('<input ',`<input id="sb_${esc(f.k)}" `).replace('<select ',`<select id="sb_${esc(f.k)}" `)}${f.unit?`<u>${esc(f.unit)}</u>`:''}</span>`
    +`<span class="sb-s">${st}</span>${f.hint?`<small class="sb-h">${WL.mm.hintHtml(f.hint)}</small>`:''}</div>`;
  }
+ const groupsOf=()=>{const out=[];
+  fields().forEach(f=>{const g=f.fieldGroup||'';let x=out.find(y=>y.name===g);if(!x)out.push(x={name:g,list:[]});x.list.push(f)});
+  return out};
+ const changedIn=g=>g.list.filter(f=>stored(f)!=null&&f.k!=='note').length;
+ /* 図が読む「いまの値」——打っている途中の欄 → 登録 → 既定。鍵は欄の鍵でも値の鍵でもよい。 */
+ function valueOf(k){
+  const f=fields().find(x=>x.k===k||keyOf(x)===k);if(!f)return sb.defaults[k];
+  const el=document.querySelector(`#masterMaintList .sb-rows [data-k="${CSS.escape(f.k)}"]`);
+  const typed=el&&el.value!==''?el.value:null;
+  const v=typed!=null?typed:stored(f);
+  if(v==null)return sb.defaults[keyOf(f)];
+  if(typeof sb.defaults[keyOf(f)]==='boolean'&&typeof v==='string')return v===(f.options||[])[0];
+  return v;
+ }
  function render(){
   renderHead();
   const box=document.getElementById('masterMaintList');if(!box||!sb.loaded)return;
-  const groups=[];
-  fields().forEach(f=>{const g=f.fieldGroup||'';let x=groups.find(y=>y.name===g);if(!x)groups.push(x={name:g,list:[]});x.list.push(f)});
-  box.innerHTML=`<div class="sb-grid">${groups.map(g=>{const n=g.list.filter(f=>stored(f)!=null&&f.k!=='note').length;
-   return `<section class="bk-card sb-sec"><h3>${esc(g.name)}${n?`<small>変更 ${n}</small>`:''}</h3>${g.list.map(rowHtml).join('')}</section>`}).join('')}</div>`;
-  box.querySelectorAll('[data-k]').forEach(el=>{el.onchange=()=>save(el.dataset.k,el.value)});
+  const gs=groupsOf(),F=WL.standardFigs;
+  if(!gs.some(g=>g.name===sb.sel))sb.sel=(gs[0]||{}).name||'';
+  const g=gs.find(x=>x.name===sb.sel)||{list:[]};
+  box.innerHTML=K().pane({label:'刃組基準値の節',items:gs.map(x=>{const n=changedIn(x);
+   return {key:x.name,on:x.name===sb.sel,mark:`<i class="sb-ico" aria-hidden="true">${esc(x.name.slice(0,1))}</i>`,title:x.name,
+    sub:F.sayOf(x.name)||`${x.list.length}項目`,tags:n?[{text:`変更 ${n}`,tone:'teal'}]:[]}}),
+   detail:`<article class="bk-card sb-card"><header class="bk-card-h"><div class="bk-card-t"><h3>${esc(g.name)}</h3>
+    <small>${esc(F.sayOf(g.name))}${F.sayOf(g.name)?'。':''}欄に入ると図の同じところが光り、打った値で図が動きます。</small></div>
+    <button type="button" class="mm-btn-ghost sm" id="sbGuide" title="見本の作業（50mm×22条・元板巾1130・板厚1.2）で刃組ガイダンスを開きます">刃組ガイダンスの図で確かめる</button></header>
+    <div class="sb-fig">${F.figOf(g.name,valueOf)||''}</div><div class="sb-rows">${g.list.map(rowHtml).join('')}</div></article>`});
+  K().wirePane(box,{onPick:k=>{sb.sel=k;render()}});
+  wireDetail(box);
+ }
+ /* 欄と図の部品を同じ鍵（`data-k`）で結ぶ。光らせるのは`is-on`の1つ。 */
+ function light(box,k){
+  box.querySelectorAll('.sb-fig [data-k].is-on,.sb-row.is-on').forEach(e=>e.classList.remove('is-on'));
+  if(!k)return;
+  box.querySelectorAll(`.sb-fig [data-k="${CSS.escape(k)}"]`).forEach(e=>e.classList.add('is-on'));
+  const el=box.querySelector(`.sb-rows [data-k="${CSS.escape(k)}"]`);if(el)el.closest('.sb-row').classList.add('is-on');
+ }
+ const paintFig=box=>{const fig=box.querySelector('.sb-fig'),on=(box.querySelector('.sb-fig [data-k].is-on')||{}).dataset;
+  if(fig){fig.innerHTML=WL.standardFigs.figOf(sb.sel,valueOf)||'';if(on)light(box,on.k)}};
+ function wireDetail(box){
+  box.querySelectorAll('.sb-rows [data-k]').forEach(el=>{
+   el.onchange=()=>save(el.dataset.k,el.value);
+   el.oninput=()=>paintFig(box);
+   el.onfocus=()=>light(box,el.dataset.k);
+   el.closest('.sb-row').onmouseenter=()=>light(box,el.dataset.k);
+  });
+  box.querySelector('.sb-rows').onmouseleave=()=>{const a=document.activeElement;light(box,a&&a.dataset&&box.contains(a)?a.dataset.k:'')};
+  const fig=box.querySelector('.sb-fig');
+  if(fig)fig.onmouseover=ev=>{const t=ev.target.closest('[data-k]');if(t)light(box,t.dataset.k)};
   box.querySelectorAll('[data-undo]').forEach(b=>{b.onclick=()=>save(b.dataset.undo,'')});
+  const gd=box.querySelector('#sbGuide');
+  if(gd)gd.onclick=()=>WL.bladeGuide.open({equipment:sb.equipment,seed:{thickness:1.2,originalWidth:1130,
+   lots:[{name:'見本',w:50,n:22,parent:'見本'}],headLot:''}});
  }
  /* 描き直しても焦点は同じ欄へ（Tabで次の欄へ移った人の手を止めない）。 */
  function paintKeep(){
   const a=document.activeElement,k=a&&a.dataset&&a.dataset.k;
   render();
-  const el=k&&document.querySelector(`#masterMaintList [data-k="${CSS.escape(k)}"]`);
+  const el=k&&document.querySelector(`#masterMaintList .sb-rows [data-k="${CSS.escape(k)}"]`);
   if(el){el.focus();try{el.select&&el.select()}catch(_e){WL.quiet.note('選べない欄は焦点だけ戻す',_e)}}
  }
  async function save(k,value){

@@ -607,7 +607,7 @@
                  { x: to - w / 2, y, sz: w, lube: parts.lube });
    a0 = from + w; b0 = to - w;
   }
-  at = parts.integ ? a0 : a0 + Math.max(0, (b0 - a0 - run)) / 2;
+  at = parts.integ ? a0 + (parts.lead || 0) : a0 + Math.max(0, (b0 - a0 - run)) / 2;
   for (const sz of pieces) {
    if (at + sz > b0 + PACK_EPS) break;
    out.ring.push({ x: at + sz / 2, y, sz, hold: parts.hold });

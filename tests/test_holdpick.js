@@ -12,6 +12,7 @@
        保存すると登録・「未登録に戻す」で種へ戻る
     ⑤ 刃組ガイダンスが表に従い、説明文が「何行目に当たったか」を言う
     ⑥ 行と列を後から並べ替えられる（掴む札・キー）・列の並びは保存する（§9.530）
+    ⑧ 当たり得ない条件を見分け、図・保存したらどうなるか・直す案を出す（§9.534）
 
    前（実測）: ② 表現できない（板厚だけ）・③ 当たらない。
    後片付けは finally（「未登録に戻す」＝行を消す）。途中で落ちると表が残り、
@@ -188,6 +189,68 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   rec('⑥ 保存すると行の並びと列の並びが両方残り、開き直しても同じ', sv.cols.join('/') === 'strips/thickness'
       && sv.rows.map(r => r.note).filter(Boolean).join(',') === 'R2,R1,R3' && o4.cols === '条数/板厚' && o4.rows === 'R2,R1,R3',
       JSON.stringify({ cols: sv.cols, o4 }));
+
+  /* ---- ⑦ 1つのセルに組み合わせ・前方一致など（§9.533、利用者の指示「<0.6かつ>0.9などの組み合わせのパターンも
+     1つのセル内に」「＊＊＊で始まる、＊＊＊で終わるのような前方一致、や後方一致など様々な種類」）。
+     前（実測・10通りの書き方）: 正しく判定できた書き方 0/10（組み合わせは「数で書いてください」で断り、
+     SUS* などは字そのものと同じかで比べていた）。 ---- */
+  const c7 = f => `.rt-row[data-r="0"] .rt-c[data-f="${f}"]`;
+  await page.fill(c7('thickness'), '<0.6 または >0.9'); await page.press(c7('thickness'), 'Tab');
+  await W.until(page, s => document.querySelector(s)?.value === '＜ 0.6 または ＞ 0.9', c7('thickness'), { ms: 4000, what: '組み合わせのセル' });
+  await page.focus(c7('thickness'));
+  const read7 = await page.evaluate(() => document.querySelector('.rt-read')?.textContent || '');
+  rec('⑦ 1つのセルに「または」で書け、表の字は記号にそろい、読みは括弧で包む',
+      /板厚が （?（0\.6 より小さい または 0\.9 より大きい）/.test(read7), read7);
+  await page.fill('.rt-try .rt-p[data-p="thickness"]', '1.0');
+  await page.fill('.rt-try .rt-p[data-p="strips"]', '1');
+  await W.until(page, () => !!document.querySelector('.rt-row[data-r="0"] .rt-cell.is-hit'), null, { ms: 4000, what: '試す値で当たる' }).catch(() => {});
+  const hit7 = await page.evaluate(() => ({ th: document.querySelector('.rt-row[data-r="0"] .rt-c[data-f="thickness"]')?.closest('td').className }));
+  rec('⑦ 試す値 1.0 は「＜0.6 または ＞0.9」に当たる（○）', /is-hit/.test(hit7.th || ''), JSON.stringify(hit7));
+  await page.fill('.rt-try .rt-p[data-p="thickness"]', '0.7');
+  await W.until(page, () => /is-miss/.test(document.querySelector('.rt-row[data-r="0"] .rt-c[data-f="thickness"]')?.closest('td').className || ''), null, { ms: 4000, what: '0.7 は外れる' }).catch(() => {});
+  rec('⑦ 試す値 0.7 は当たらない（×）', await page.evaluate(() => /is-miss/.test(document.querySelector('.rt-row[data-r="0"] .rt-c[data-f="thickness"]')?.closest('td').className || '')));
+  await page.click('[data-rt="save"]');
+  await W.until(page, () => /登録済み/.test(document.querySelector('.rt-state')?.textContent || ''), null, { ms: 10000, what: '組み合わせを保存' });
+  const sv7 = await (await fetch(B + '/api/bladeset/hold-pick?equipment=' + encodeURIComponent(EQ))).json();
+  const th7 = sv7.rows[0].conditions.filter(c => c.field === 'thickness').map(c => `${c.or ? '|' : ''}${c.op}${c.value}`).join(' ');
+  rec('⑦ 保存して開き直しても同じ組み合わせ（2つ目に「または」の印）', th7 === 'lt0.6 |gt0.9', th7);
+
+  /* ---- ⑧ 当たり得ない条件（§9.534、利用者の指示「ありえない条件は代替案と登録した場合、どうなるかも含めて視覚化」）。
+     前（実測・20通りのうち当たり得ない12通り）: 見つける 0/12・案 0/12・図 0/12・保存したらどうなるか 0/12。 ---- */
+  const core8 = await page.evaluate(() => {
+   const Bs = WL.bladeSet, T = (t, k) => Bs.parseCell(t, k).conds.map(c => Object.assign({ field: 'f' }, c));
+   const dead = [['<0.6 かつ >0.9', 'num'], ['0.6〜1.0 かつ >2', 'num'], ['1 かつ ≠1', 'num'], ['<0.6 かつ ≧0.6', 'num'],
+                 ['SUS かつ SPCC', 'text'], ['SUS* かつ SPC*', 'text'], ['空 かつ SUS*', 'text'], ['*H5* かつ ≠ *H*', 'text'], ['SUS304 かつ ≠ SUS*', 'text']];
+   const live = [['≧0.6 かつ <1.0', 'num'], ['≦0.6 かつ ≧0.6', 'num'], ['<0.6 または >0.9', 'num'],
+                 ['SUS* かつ *304', 'text'], ['SUS304 かつ SUS*', 'text'], ['*H* かつ ≠ *H5*', 'text']];
+   const miss = dead.filter(([t, k]) => !Bs.cellDead(T(t, k), k).dead).map(x => x[0])
+    .concat(live.filter(([t, k]) => Bs.cellDead(T(t, k), k).dead).map(x => '誤:' + x[0]));
+   const alts = Bs.cellDead(T('<0.6 かつ >0.9', 'num'), 'num').alts.map(a => a.text);
+   const part = Bs.cellDead(T('<0.6 かつ >0.9 または 1.2', 'num'), 'num');
+   return { miss, alts, part: [part.dead, part.part] };
+  });
+  rec('⑧ 当たり得ない組み合わせを見分ける（数・字とも・当たり得る組は誤って言わない）', core8.miss.length === 0, core8.miss.join(' / '));
+  rec('⑧ 直す案は「または」と「あいだ」（＜0.6 かつ ＞0.9）', core8.alts.join(' ／ ') === '＜ 0.6 または ＞ 0.9 ／ 0.6〜0.9', core8.alts.join(' ／ '));
+  rec('⑧ 一部の組だけ当たらないセルは「一部」と言う（セルは当たる）', !core8.part[0] && core8.part[1], JSON.stringify(core8.part));
+  await page.fill(c7('thickness'), '<0.6 かつ >0.9'); await page.press(c7('thickness'), 'Tab');
+  await W.until(page, () => !!document.querySelector('.rt-dead svg'), null, { ms: 4000, what: '当たらない条件の盤' });
+  const p8 = await page.evaluate(() => { const d = document.querySelector('.rt-dead');
+   return { tag: document.querySelector('.rt-row[data-r="0"] .rt-cell.is-dead .rt-deadtag')?.textContent || '',
+            none: /重なり無し/.test(d.querySelector('figure').textContent), then: /素通り/.test(d.textContent) && /使われません/.test(d.textContent),
+            skip: !!d.querySelector('.rt-flow li.is-skip'), alts: [...d.querySelectorAll('.rt-alt b')].map(b => b.textContent),
+            head: document.querySelector('.rt-h .rt-state.is-warn')?.textContent || '' }; });
+  rec('⑧ セルに「当たらない」と字で出て、頭が「当たらない決まり 1行」と言う', p8.tag === '当たらない' && /当たらない決まり 1行/.test(p8.head), JSON.stringify(p8));
+  rec('⑧ 盤は数直線で「重なり無し」・保存するとこの行を素通りして答えが使われないことを描く', p8.none && p8.then && p8.skip, JSON.stringify(p8));
+  await page.click('[data-rt="save"]');
+  await page.waitForSelector('#appConfirmModal:not([hidden])', { timeout: 5000 });
+  const ask8 = await page.evaluate(() => document.getElementById('appConfirmModal').textContent);
+  rec('⑧ 保存の前に、当たらない行と使われない答えを言って確かめる', /当たらない決まり/.test(ask8) && /1行目/.test(ask8) && /使われません/.test(ask8), ask8.slice(0, 120));
+  await page.click('#closeAppConfirm');
+  await W.until(page, () => document.getElementById('appConfirmModal')?.hidden !== false, null, { ms: 4000, what: '確かめの窓を閉じる' });
+  await page.click('.rt-dead .rt-alt[data-alt="1"]');
+  await W.until(page, s => document.querySelector(s)?.value === '0.6〜0.9', c7('thickness'), { ms: 4000, what: '案でセルが置き換わる' });
+  rec('⑧ 案を押すとセルがその条件に置き換わり、盤と印が消える',
+      await page.evaluate(() => !document.querySelector('.rt-dead') && !document.querySelector('.rt-cell.is-dead')));
   rec('コンソールに例外が出ない', errs.length === 0, errs.slice(0, 3).join(' / '));
  } finally {
   await reset();

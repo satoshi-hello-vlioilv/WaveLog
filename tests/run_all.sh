@@ -123,7 +123,9 @@ fi
 
 if [ "$1" = "--smoke" ]; then shift; set -- $SMOKE_TESTS "$@"; fi
 
-mode(){ curl -s -X POST $API/api/access-mode -H 'Content-Type: application/json' -d "{\"mode\":\"$1\"}" >/dev/null; }
+# いまの群のモードを控える（落ちた本を単独で回し直すとき、**その本が走ったモードへ戻す**ため。§9.533）。
+CUR_MODE=""
+mode(){ CUR_MODE="$1"; curl -s -X POST $API/api/access-mode -H 'Content-Type: application/json' -d "{\"mode\":\"$1\"}" >/dev/null; }
 # 「見せ方」の設定(内容欄の項目・列レイアウト)を検証用設備ぶんだけ白紙へ戻す。
 # **これらはマスタDBに残り、実行をまたいで生き延びる。** 共有スケジュールDBは
 # 作業用コピーを作り直す・作業予定は1本ごとにreseedする、と手当てがあるのに
@@ -411,7 +413,7 @@ FATAL: 途中で終了しました (exit $rc)。最後のPASSの直後を見て�
   # 落ちた本を控える。通しの最後に**単独で回し直して切り分ける**（§9.356）——
   # 「通しでだけ落ちる（順番・状態への依存）」と「単独でも落ちる（本物）」は
   # 直し方がまるで違うのに、今までは通しをもう一度回さないと分からなかった。
-  if [ $((f+fatal)) -gt 0 ]; then RETRY="$RETRY$1 $2
+  if [ $((f+fatal)) -gt 0 ]; then RETRY="$RETRY$1 $2 $CUR_MODE
 "; fi
   # **共有状態を残した本をその場で名指しする**（§9.360）。戻すのは次の本の
   # `restore_master`がやるので実害は無いが、**後片付けを忘れた本**はここでしか
@@ -562,8 +564,11 @@ if [ -n "$RETRY" ] && [ -z "$WAVELOG_NO_RETRY" ]; then
   echo
   echo "-- 落ちた本を単独で回し直す（順番・状態への依存かを切り分ける） --"
   ONLY_ORDER=""; REAL=""
-  printf '%s' "$RETRY" | while read -r cmd name; do
+  printf '%s' "$RETRY" | while read -r cmd name m; do
     [ -z "$name" ] && continue
+    # **その本が走ったモードへ戻す**（§9.533）。戻さないと最後の群のモード（schedule）のまま回り、
+    # editモードの群の本はマスタ管理のタブに辿り着けず、どれも「単独でも必ず落ちる」と出ていた。
+    [ -n "$m" ] && mode "$m"
     resetcontent
     resetrecords
     reseed
