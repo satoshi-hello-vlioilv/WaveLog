@@ -121,9 +121,12 @@ JS_FILES=[
  # 立体図（§9.377 追補）。three.js は**同梱せずCDNから遅延読み込み**するので、
  # このファイル自体は小さい。画面（blade-view.js）より先に読み、`WL.bladeSolid`を
  # 名乗らせる——画面は `attach()` を呼ぶだけになる。
- 'bladeset/blade-pick.js',   # 刃組: 刃選択マスタの盤（マスタ管理の専用画面）
+ # 刃組のマスタの盤（§9.529）。共有の作り（頭・2ペイン・判定表）が先、盤が後。
+ 'bladeset/board-kit.js',    # 刃組: 盤の共有の作り（設備の頭・一覧＋詳細の2ペイン・2択の札）
+ 'bladeset/rule-table.js',   # 刃組: 判定表の部品（保持方式・刃のカテゴリ・刃厚が共有）
  'bladeset/hold-pick.js',    # 刃組: 保持方式マスタの盤（フィンガー／ゴムリングの判定表）
- 'bladeset/blade-sets.js',   # 刃組: 刃セットの盤（組ごとのカテゴリ・使用状態）
+ 'bladeset/blade-pick.js',   # 刃組: 刃選択マスタの盤（刃のカテゴリ・刃厚の2つの判定表。hold-pick の後）
+ 'bladeset/blade-board.js',  # 刃組: 刃マスタの盤（セットごとのカテゴリ・使用状態と刃厚ごとの行）
  'bladeset/ring-board.js',   # 刃組: ゴムリングの盤（色ごと・幅ごとの本数）
  'bladeset/blade-3d.js',
  'bladeset/blade-view.js',

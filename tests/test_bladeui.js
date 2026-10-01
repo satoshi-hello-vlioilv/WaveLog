@@ -3176,45 +3176,41 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         await page.evaluate(() => document.body.classList.contains('sc-mode')
           && !document.body.classList.contains('bs-mode')));
 
-    /* ---- 7.5) 刃の選び方（§9.379、利用者の指示2） ----
-       **同じ決まりをサーバーと画面の2箇所が持っている**（サーバーは
-       `bladeset_repo.pick_group`、画面は `blade-core.js` の `pickGroup`）ので、
-       **食い違わないこと**をここで固定する。片方だけ直すと、マスタ管理で
-       見える組と実際に組む刃が静かにずれる。 */
+    /* ---- 7.5) 刃の選び方（§9.379 → §9.529 で「刃のカテゴリ」「刃厚」の2つの判定表） ----
+       判定は`blade-core.js`の`firstRule()`の1本（盤の「試す」も同じ）。表の約束を固定する:
+       上から最初に当たった行／同じ行はAND／最後の既定の行／引けない値・止めた行は当てない。 */
     const pick = await page.evaluate(() => {
      const B = WL.bladeSet;
-     const F = [{ field: 'thickness', kind: 'num' }, { field: 'strips', kind: 'num' },
-                { field: 'material', kind: 'text' }];
-     const R = (conds, group, name) => ({ conditions: conds, group, name: name || '決まり' });
-     const CTX = { thickness: 1.8, strips: 6, material: 'SPCC' };
-     const g = (rules, ctx) => (B.pickGroup(rules, ctx || CTX, F) || {}).group || '';
+     const M0 = WL.bladeGuide.masters;
+     const R = (conds, group) => ({ conditions: conds, answer: '専用刃', group });
+     const DEF = { conditions: [], answer: '通常刃', group: '' };
+     /* 条数は並び（`order`）から数える——`syncOrder()`で6条に展開する（手で[0]と書くと1条になる）。 */
+     const st0 = Object.assign(B.defaultState(), { thick: 1.8, lots: [{ name: 'L', w: 50, n: 6, parent: 'L' }], order: [], src: { 製造材質: 'SPCC' } });
+     B.syncOrder(st0);
+     const g = (rows, thick) => {
+      const M = Object.assign({}, M0, { pickTables: rows ? { category: { stored: true, rows: rows.concat([DEF]) } } : {} });
+      const c = B.bladeChoice(Object.assign({}, st0, { thick: thick === undefined ? 1.8 : thick }), M);
+      return c.category === '専用刃' ? c.group : '';
+     };
      return {
-      none: g([]),
+      none: g(null),
       hit: g([R([{ field: 'thickness', op: 'ge', value: '1.6' }], 'X')]),
-      miss: g([R([{ field: 'thickness', op: 'ge', value: '1.6' }], 'X')],
-              { thickness: 1.2, strips: 6, material: 'SPCC' }),
-      and2: g([R([{ field: 'thickness', op: 'ge', value: '1.6' },
-                  { field: 'strips', op: 'eq', value: '6' }], 'X')]),
-      andNg: g([R([{ field: 'thickness', op: 'ge', value: '1.6' },
-                   { field: 'strips', op: 'eq', value: '4' }], 'X')]),
-      empty: g([R([], 'X')]),
-      first: g([R([{ field: 'thickness', op: 'ge', value: '1.0' }], 'X'),
-                R([{ field: 'thickness', op: 'ge', value: '1.0' }], 'Y')]),
-      blank: g([R([{ field: 'thickness', op: 'ge', value: '1.0' }], 'X')],
-               { thickness: null, strips: 6, material: 'SPCC' }),
-      off: g([Object.assign(R([{ field: 'thickness', op: 'ge', value: '1.0' }], 'X'),
-                            { enabled: false })])
+      miss: g([R([{ field: 'thickness', op: 'ge', value: '1.6' }], 'X')], 1.2),
+      and2: g([R([{ field: 'thickness', op: 'ge', value: '1.6' }, { field: 'strips', op: 'eq', value: '6' }], 'X')]),
+      andNg: g([R([{ field: 'thickness', op: 'ge', value: '1.6' }, { field: 'strips', op: 'eq', value: '4' }], 'X')]),
+      first: g([R([{ field: 'thickness', op: 'ge', value: '1.0' }], 'X'), R([{ field: 'thickness', op: 'ge', value: '1.0' }], 'Y')]),
+      blank: g([R([{ field: 'thickness', op: 'ge', value: '1.0' }], 'X')], null),
+      off: g([Object.assign(R([{ field: 'thickness', op: 'ge', value: '1.0' }], 'X'), { enabled: false })])
      };
     });
-    rec('決まりが無ければ「一般」', pick.none === '', pick.none);
-    rec('条件に当たると「専用」の組になる', pick.hit === 'X', pick.hit);
-    rec('当たらなければ「一般」', pick.miss === '', pick.miss);
+    rec('表が無ければ通常刃', pick.none === '', pick.none);
+    rec('条件に当たると専用刃（そのセット）', pick.hit === 'X', pick.hit);
+    rec('当たらなければ最後の既定の行（通常刃）', pick.miss === '', pick.miss);
     rec('同じ行の条件はANDで見る', pick.and2 === 'X' && pick.andNg === '',
         `${pick.and2}/${pick.andNg}`);
-    rec('条件が空の行は当たらない（既定が静かに崩れない）', pick.empty === '', pick.empty);
     rec('先に並ぶ行が勝つ', pick.first === 'X', pick.first);
     rec('引けない値は当てない（0として比べない）', pick.blank === '', pick.blank);
-    rec('無効にした決まりは当たらない', pick.off === '', pick.off);
+    rec('止めた決まりは当たらない', pick.off === '', pick.off);
     /* 画面は「なぜその刃か」を出す（§CLAUDE 6 出どころを書く）。 */
     const pf = await page.evaluate(() => {
      const e = document.querySelector('#bsFPick');
@@ -3227,7 +3223,8 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
        （上の 7.5）は**通ってしまう**ので、器（`M`）の側も見る。 */
     const ctxKeys = await page.evaluate(() => {
      const M = WL.bladeGuide.masters || {};
-     return { picks: Array.isArray(M.picks), fields: (M.pickFields || []).length,
+     return { picks: !!(M.pickTables && M.pickTables.category && M.pickTables.thickness),
+              fields: (M.pickTableDefs || []).length,
               gen: M.bladeGeneral, sp: M.bladeSpecial, maint: M.bladeMaint,
               shape: !!(M.fingerShape && M.fingerShape.thickness),
               designs: Array.isArray(M.designs),
@@ -3240,8 +3237,8 @@ H.run('test_bladeui: 刃組ガイダンスと設備停止からの遷移（§9.3
         ctxKeys.shape && +ctxKeys.fingerTh > 0, JSON.stringify(ctxKeys));
     rec('条の設計も同じ文脈で届く（測定と同じ行を見る）', ctxKeys.designs);
 
-    rec('刃の選び方を画面に出す（既定は「通常刃」と書く・§9.526）',
-        !!pf && pf.t === '通常刃' && /通常刃/.test(pf.title), JSON.stringify(pf));
+    rec('刃の選び方を画面に出す（既定は「通常刃 セット・刃厚」と書き、根拠は2つの表・§9.529）',
+        !!pf && /^通常刃 [A-Z]・\d+(\.\d+)?mm$/.test(pf.t) && /刃のカテゴリ/.test(pf.title) && /刃厚/.test(pf.title), JSON.stringify(pf));
 
     /* ---- 7.8) 条の設計は、記録すると測定が読む（§9.381、利用者の指示） ----
        「刃組ガイダンスから設定した条の設計は、測定するときにも活かせるように

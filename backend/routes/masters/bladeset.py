@@ -4,9 +4,9 @@
   `POST /api/bladeset/seed`             … 図面どおりの初期セットを登録する
   `/api/bladeset-standard-master`       … 刃組基準値（1設備1行）の4本セット
   `/api/bladeset/history`               … 刃組を終えた記録（台車差分の材料）
-  `/api/bladeset/blade-pick`            … 「専用」の刃を選ぶ条件（3本セット）
+  `/api/bladeset/blade-pick`            … 刃のカテゴリ・刃厚を選ぶ2つの判定表（読む・表ごとに丸ごと保存）
   `/api/bladeset/hold-pick`             … フィンガー／ゴムリングを選ぶ条件表（読む・丸ごと保存）
-  `/api/bladeset/blade-sets`            … 刃セットのカテゴリ・使用状態（読む・1項目ずつ切り替え）
+  `/api/bladeset/blade-sets`            … 刃セット（作る・字を変える・消す・カテゴリと使用状態の切り替え）
 
 **部材（刃・スペーサー・ゴムリング・フィンガー）は `bladeset_parts.py`**。
 分ける境目は「このラインはどういう機械か／いつ何を組んだか」と
@@ -184,18 +184,19 @@ def bladeset_design_delete():
 
 
 # =========================================================================
-# 刃選択（「専用」の刃を選ぶ条件）
+# 刃選択（刃のカテゴリと刃厚を選ぶ2つの判定表・§9.529）
 # =========================================================================
-# 語彙（使える項目・比べ方）は `/api/bladeset/context` が返す。ここは
-# 受付と整形だけで、条件の正しさは `bs.normalize_pick_conditions()` が見る。
+# 表は1枚として編集するので**丸ごと置き換える**（保持方式と同じ）。語彙（表ごとに使える項目・
+# 比べ方）も返す——画面は書き写さない（§9.163）。
 @bp.get('/api/bladeset/blade-pick')
 @api_guard('刃選択マスタの読込に失敗しました')
 def bladeset_pick_list():
  eq = _eq()
  return jsonify(ok=True, equipment=eq,
-                items=_op_read(lambda c: bs.pick_rows(c, True, eq or None)),
-                fields=[{'field': f, 'label': l, 'kind': k}
-                        for f, l, k in bs.BLADEPICK_FIELDS],
+                tables=_op_read(lambda c: bs.pick_tables(c, eq)) if eq else {},
+                defs=[{'key': k, 'label': l, 'order': o, 'fields': bs.pick_fields_for(o)}
+                      for k, l, o in bs.PICK_TABLES],
+                groups=[{'key': k, 'label': l} for k, l in bs.PICK_GROUPS],
                 ops=[{'op': o, 'label': l, 'two': o in bs.BLADEPICK_OPS_2}
                      for o, l in bs.BLADEPICK_OPS])
 
@@ -203,26 +204,17 @@ def bladeset_pick_list():
 @bp.post('/api/bladeset/blade-pick')
 @api_guard('刃選択の保存に失敗しました', bad=ValueError)
 def bladeset_pick_save():
- x = body({'id': any_, 'equipment': any_, 'name': any_, 'conditions': any_,
-           'group': any_, 'note': any_, 'order': any_,
-           'enabled': any_, 'enabledText': any_})
- uid = request_user_id(x)
- new_id, made = _op_read(lambda c: bs.pick_upsert(
-     c, uid, row_id=_rid(x), equipment=x.get('equipment'), name=x.get('name'),
-     conditions=x.get('conditions'), group=x.get('group'), note=x.get('note'),
-     order=x.get('order'), enabled=_enabled(x)))
- return jsonify(ok=True, id=new_id, created=made,
-                message='刃選択の決まりを足しました。' if made else '刃選択の決まりを直しました。')
-
-
-@bp.post('/api/bladeset/blade-pick/delete')
-@api_guard('刃選択の削除に失敗しました')
-def bladeset_pick_delete():
- x = body({'id': any_})
- if x.get('id') in (None, ''):
-  return jsonify(error='削除対象IDがありません。'), 400
- _op_read(lambda c: bs.pick_delete(c, int(x['id'])))
- return jsonify(ok=True, message='刃選択の決まりを消しました。')
+ x = body({'equipment': any_, 'table': any_, 'rows': any_, 'reset': any_})
+ table = x.text('table')
+ label = dict((k, l) for k, l, _o in bs.PICK_TABLES).get(table, table)
+ if x.get('reset') is True:
+  n = _op_read(lambda c: bs.pick_reset(c, x.get('equipment'), table))
+  return jsonify(ok=True, removed=n, message=f'「{label}」の表を未登録へ戻しました（今までの選び方で決めます）。')
+ rows = x.get('rows')
+ if not isinstance(rows, list):
+  return jsonify(error='表の行（rows）がありません。'), 400
+ n = _op_read(lambda c: bs.pick_replace(c, request_user_id(x), x.get('equipment'), table, rows))
+ return jsonify(ok=True, rows=n, message=f'「{label}」の表を保存しました（{n}行）。')
 
 
 # =========================================================================
@@ -235,19 +227,32 @@ def bladeset_sets_list():
  eq = _eq()
  return jsonify(ok=True, equipment=eq,
                 items=_op_read(lambda c: bs.blade_sets(c, eq)) if eq else [],
-                categories=list(bs.BLADE_CATEGORIES), uses=list(bs.BLADE_USES))
+                categories=list(bs.BLADE_CATEGORIES), uses=list(bs.BLADE_USES),
+                setNames=list(bs.BLADE_SET_NAMES))
 
 
 @bp.post('/api/bladeset/blade-sets')
 @api_guard('刃セットの保存に失敗しました', bad=ValueError)
 def bladeset_sets_save():
- x = body({'equipment': any_, 'group': any_, 'category': any_, 'use': any_, 'reset': any_})
+ """セット1つへの操作。`create`（刃厚の行ごと作る）／`rename`（字を変える）／`delete`（行ごと消す）／
+ `reset`（カテゴリ・使用状態の登録を消す）／どれでもなければカテゴリ・使用状態を送った項目だけ書く。"""
+ x = body({'equipment': any_, 'group': any_, 'category': any_, 'use': any_, 'reset': any_,
+           'create': any_, 'blades': any_, 'rename': any_, 'delete': any_})
+ eq, g, uid = x.get('equipment'), x.get('group'), request_user_id(x)
  if x.get('reset'):   # 登録を消して初期値へ（刃の「状態」から起こした値）
-  n = _op_read(lambda c: bs.blade_set_reset(c, x.get('equipment'), x.get('group')))
+  n = _op_read(lambda c: bs.blade_set_reset(c, eq, g))
   return jsonify(ok=True, removed=n, message='刃セットを初期値へ戻しました。')
- got = _op_read(lambda c: bs.blade_set_update(c, request_user_id(x), x.get('equipment'), x.get('group'),
-                                              category=x.get('category'), use=x.get('use')))
- return jsonify(ok=True, set=got, message=f'刃セット「{x.text("group") or "（組なし）"}」を{got["category"]}・{got["use"]}にしました。')
+ if x.get('create'):
+  got = _op_read(lambda c: bs.blade_set_create(c, uid, eq, g, x.get('category'), x.get('use'), x.get('blades')))
+  return jsonify(ok=True, set=got, message=f'セット {bs.blade_set_name(g)} を登録しました。')
+ if x.get('rename') not in (None, ''):
+  n = _op_read(lambda c: bs.blade_set_rename(c, uid, eq, g, x.get('rename')))
+  return jsonify(ok=True, rows=n, message=f'セット {g} を {bs.blade_set_name(x.get("rename"))} に変えました（刃 {n}行）。')
+ if x.get('delete'):
+  n = _op_read(lambda c: bs.blade_set_delete(c, eq, g))
+  return jsonify(ok=True, removed=n, message=f'セット {g} を消しました（刃 {n}行）。')
+ got = _op_read(lambda c: bs.blade_set_update(c, uid, eq, g, category=x.get('category'), use=x.get('use')))
+ return jsonify(ok=True, set=got, message=f'セット {x.text("group") or "（組なし）"}を{got["category"]}・{got["use"]}にしました。')
 
 
 # =========================================================================
@@ -262,7 +267,7 @@ def bladeset_hold_list():
  got = _op_read(lambda c: bs.hold_rows(c, eq)) if eq else {'rows': [], 'stored': False}
  return jsonify(ok=True, equipment=eq, rows=got['rows'], stored=got['stored'],
                 methods=list(bs.HOLD_METHODS), fingerMaterials=list(bs.FINGER_MATERIALS),
-                fields=[{'field': f, 'label': l, 'kind': k} for f, l, k in bs.HOLD_FIELDS],
+                fields=bs.pick_fields_for(bs.HOLD_ORDER), groups=[{'key': k, 'label': l} for k, l in bs.PICK_GROUPS],
                 ops=[{'op': o, 'label': l, 'two': o in bs.BLADEPICK_OPS_2}
                      for o, l in bs.BLADEPICK_OPS])
 

@@ -174,7 +174,7 @@ G['スケジュール'] = ['test_screport', 'test_startwork', 'test_scsync', 'te
 G['実績'] = ['test_actuals', 'test_opsheet', 'test_eqscope']
 # 刃組（§9.377）。**部材マスタ・ガイダンス・設備停止の連携**は1つの仕事なので、
 # どれを触っても3本まとめて回す（計算はサーバー不要の1本、画面は1本）。
-G['刃組'] = ['test_bladeset', 'test_bladeui', 'test_bladepick', 'test_holdpick', 'test_bladesets', 'test_ringboard', 'test_screenprint', 'test_stopeq', 'test_stdmodal']
+G['刃組'] = ['test_bladeset', 'test_bladeui', 'test_bladepick', 'test_holdpick', 'test_bladesets', 'test_ringboard', 'test_bladeboard', 'test_screenprint', 'test_stopeq', 'test_stdmodal']
 G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 'test_eqkind',
                # §9.389: 設備停止の内訳（サブカテゴリ）と時間の選択肢
                'test_stopsub', 'test_stopsubui',
@@ -375,7 +375,9 @@ RULES = [
     ('static/js/bladeset/blade-core.js', g('刃組')),
     ('static/js/bladeset/blade-pick.js', g('刃組', 'マスタ')),
     ('static/js/bladeset/hold-pick.js', g('刃組', 'マスタ')),
-    ('static/js/bladeset/blade-sets.js', g('刃組', 'マスタ')),
+    ('static/js/bladeset/blade-board.js', g('刃組', 'マスタ')),
+    ('static/js/bladeset/board-kit.js', g('刃組', 'マスタ')),
+    ('static/js/bladeset/rule-table.js', g('刃組', 'マスタ')),
     ('static/js/bladeset/ring-board.js', g('刃組', 'マスタ')),
     ('static/js/bladeset/blade-3d.js', g('刃組')),
     ('static/js/bladeset/blade-view.js', g('刃組', 'test_scale', 'test_theme')),

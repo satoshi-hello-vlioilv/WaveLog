@@ -1,373 +1,132 @@
 /* ============================================================
-   blade-pick.js: 刃選択マスタの盤（§9.380、利用者の指示）
+   blade-pick.js: 刃選択マスタの盤（§9.380 → §9.529 で2つの判定表へ）
 
-   「条件テーブルをGUIで組む盤を実装してほしいです。条件は視覚的に直感的に
-     扱えるようにしてください。」
+   利用者の指示（§9.529）:「専用刃を使う条件だけになっていますが、刃厚を選ぶテーブルと通常刃か
+   専用刃を選ぶテーブルの2つを準備し、5㎜刃か10㎜刃かなど、登録している刃厚を選択対象にできるように
+   してください。条件テーブルは『保持方式』の選択マスタみたいな条件テーブルの作りが好ましいです。
+   自由に条件設定ができ、他マスタで設定した項目(例えば板押さえ)も条件に加えられるようにしたいです。
+   条件式の書き方はわかりやすく、サジェスト機能もつけて使いやすく再設計してください。」
+   利用者の選択: 専用刃は**答えでセットも選べる**（専用刃（B）など）。
 
-   ここが答えるのは1つ——**「この作業のとき、どの刃が選ばれるか」**。
-   ふつうはカテゴリが「通常刃」の刃セットで、そこから外れる作業だけをここに書く（§9.379）。
-   条件に選べるのは**板押さえ方式・板厚・材質・調質**の4つ（§9.526、利用者の指示）。
-   前に選べた項目（条数・条幅など）で書いた決まりは読んで効かせる（`legacy`・新しくは選べない）。
-
-   直感的にするために置いたものは3つ:
-     ① 決まりは**文として読める**（「板厚 ≧ 1.6 かつ 条数 ＝ 6 → 専用 X」）
-     ② **試し欄**に値を入れると、どの決まりが当たるかがその場で出る
-        ——書いた本人が確かめられることが要件（§9.117 と同じ考え）
-     ③ 試し欄に値があるときは**条件1つずつに○×が付く**。落ちた決まりは
-        「どの条件で落ちたか」が見えるので、直す場所を探さずに済む
-
-   判定は**書かない**。`blade-core.js` の `pickGroup()`／`condHits()` をそのまま
-   呼ぶ——盤とガイダンスで判定が食い違うと、「盤では当たるのに現場では
-   当たらない」という最も分かりにくい形で壊れる（§9.379）。
+   決める順は **① 保持方式（別のタブ）→ ② 刃のカテゴリ → ③ 刃厚**。後ろの表は前の表の答えを
+   列に使える（②は板押さえ方式・フィンガー材質、③はさらに刃のカテゴリ）。表の作りは保持方式と
+   同じ部品（`rule-table.js`）で、「試す」の値は2つの表で共有する——上の帯が「この作業なら
+   → カテゴリ → 刃厚」を1行で言う。判定は`blade-core.js`の`firstRule()`（ガイダンスと同じ1本）。
    ============================================================ */
 (function(){
- const {requireMaintUser,setMaintLoading}=WL.mm;
- const BS=()=>WL.bladeSet;
- let ps={equipment:'',rules:[],fields:[],legacy:[],ops:[],groups:[],editing:null,probe:{},loaded:false};
+ const K=()=>WL.bsKit;
+ const ps={equipment:'',defs:[],groups:[],sets:[],thicknesses:[],categories:[],sourceCols:[],samples:{},probe:{},loaded:false};
+ const defOf=k=>ps.defs.find(d=>d.key===k)||{fields:[]};
+ const normal=()=>ps.categories[0]||'通常刃',special=()=>ps.categories[1]||'専用刃';
 
- const opLabel=o=>((ps.ops.find(x=>x.op===o)||{}).label||o);
- /* 語彙＝いま選べる項目＋前に選べた項目（書いてある決まりの名前と型を引くため）。 */
- const allFields=()=>ps.fields.concat(ps.legacy);
- const fieldOf=f=>(allFields().find(x=>x.field===f)||null);
- const kindsOf=()=>Object.fromEntries(allFields().map(f=>[f.field,f.kind]));
- /* 候補から選ぶ項目（板押さえ方式）で意味があるのは「＝」「≠」だけ（大小・範囲・含むは当たらない）。 */
- const CHOICE_OPS=['eq','ne'];
- const opsFor=f=>((fieldOf(f)||{}).kind==='choice'?ps.ops.filter(x=>CHOICE_OPS.includes(x.op)):ps.ops);
- const fieldLabel=f=>((fieldOf(f)||{}).label||f);
- const isTwo=o=>!!((ps.ops.find(x=>x.op===o)||{}).two);
+ /* ---------- 答えの列 ---------- */
+ /* 刃のカテゴリ: 通常刃／専用刃（使えるどのセットでも）／専用刃（セット B）…（値は「カテゴリ|セット」）。 */
+ const catChoices=r=>{
+  const out=[{v:`${normal()}|`,label:normal()},{v:`${special()}|`,label:`${special()}（使えるセットのどれでも）`}];
+  ps.sets.forEach(x=>out.push({v:`${special()}|${x.group}`,label:`${special()}（セット ${x.group}）${x.category===special()?'':'※カテゴリが通常刃'}`}));
+  if(r&&r.group&&!ps.sets.some(x=>x.group===r.group))out.push({v:`${special()}|${r.group}`,label:`${special()}（セット ${r.group}・未登録）`});
+  return out;
+ };
+ const catLabel=r=>(r.answer===special()?`${special()}${r.group?`（セット ${r.group}）`:''}`:normal());
+ /* 刃厚: 登録している刃厚（厚い順）＋「いちばん厚い刃」（空＝今までの選び方）。 */
+ const thChoices=r=>{
+  const out=[{v:'',label:'いちばん厚い刃'}].concat(ps.thicknesses.map(t=>({v:String(t),label:`${t}mm`})));
+  if(r&&r.answer&&!out.some(x=>x.v===String(r.answer)))out.push({v:String(r.answer),label:`${r.answer}mm（未登録の刃厚）`});
+  return out;
+ };
+ const thLabel=r=>(r.answer?`${r.answer}mm`:'いちばん厚い刃');
 
- /* 試し欄の値を、判定が読む形（文脈）へ直す。**空欄は「無い」**として渡す
-    ——0で埋めると、空の欄が条件に当たってしまう（§9.231）。 */
- function probeCtx(){
-  const c={};
-  ps.fields.forEach(f=>{
-   const v=ps.probe[f.field];
-   if(v===undefined||v===null||String(v).trim()==='')return;
-   c[f.field]=f.kind==='num'?Number(v):String(v);   // choice（板押さえ方式）は字
-  });
-  return c;
+ function makeTable(key,o){
+  return WL.ruleTable.create(Object.assign({
+   key,host:()=>document.querySelector(`#masterMaintList [data-table="${key}"]`),
+   fields:()=>defOf(key).fields,groups:()=>ps.groups,sourceCols:()=>ps.sourceCols,valuesOf:f=>valuesOf(f),
+   probe:ps.probe,onProbe:()=>render(),onChange:quiet=>{if(!quiet)paintTry()},
+   blankRow:()=>({answer:'',group:''}),rowOut:r=>({answer:r.answer||'',group:r.group||''}),
+   save:async rows=>{
+    const uid=WL.mm.requireMaintUser();if(uid===null)throw new Error('更新者IDが決まっていません');
+    const r=await K().post('/api/bladeset/blade-pick',{equipment:ps.equipment,table:key,rows,user_id:uid});
+    await load(true);
+    showToast&&showToast(r.message||'保存しました',ps.equipment,2600);
+   },
+   reset:async()=>{
+    const uid=WL.mm.requireMaintUser();if(uid===null)return;
+    await K().post('/api/bladeset/blade-pick',{equipment:ps.equipment,table:key,reset:true,user_id:uid});
+    await load(true);
+   },
+  },o));
  }
- const probeFilled=()=>Object.keys(probeCtx()).length>0;
-
- /* 当たった決まり。**判定は blade-core の1箇所**（盤は答えを受け取るだけ）。 */
- function probeHit(){
-  if(!probeFilled())return null;
-  return BS().pickGroup(ps.rules,probeCtx(),allFields());
- }
-
- /* ---------- 描く ---------- */
- function condChipHtml(c,ri,ci,ctx){
-  const two=isTwo(c.op);
-  const val=two?`${esc(c.value||'')} 〜 ${esc(c.value2||'')}`:esc(c.value||'');
-  /* 試し欄に値があるときだけ○×を出す（無いときに灰色の印を並べると、
-     「まだ判定していない」のか「落ちた」のかが読めない）。 */
-  const ok=ctx?BS().condHits(c,ctx,kindsOf()):null;
-  const mark=ctx?`<i class="bp-hit ${ok?'is-ok':'is-ng'}" aria-hidden="true">${ok?'○':'×'}</i>`:'';
-  return `<span class="bp-cond${ctx?(ok?' is-ok':' is-ng'):''}"`
-   +` data-r="${ri}" data-c="${ci}">${mark}`
-   +`<b>${esc(fieldLabel(c.field))}</b><s>${esc(opLabel(c.op))}</s><u>${val}</u></span>`;
- }
-
- function ruleCardHtml(r,i,hit,ctx){
-  const conds=(r.conditions||[]);
-  const body=conds.length
-   ? conds.map((c,ci)=>condChipHtml(c,i,ci,ctx)).join('<span class="bp-and">かつ</span>')
-   : '<span class="bp-none">条件がありません（この決まりは当たりません）</span>';
-  const on=r.enabled!==false;
-  const won=hit&&String(hit.id)===String(r.id);
-  return `<article class="bp-card${won?' is-won':''}${on?'':' is-off'}" data-r="${i}" data-id="${esc(r.id)}">
-   <header class="bp-ch">
-    <span class="bp-no">${i+1}</span>
-    <b class="bp-name">${esc(r.name||'(名前なし)')}</b>
-    ${won?'<span class="bp-won">この作業はこれ</span>':''}
-    ${on?'':'<span class="bp-offtag">使わない</span>'}
-    <span class="bp-cta">
-     <button type="button" class="mm-btn-ghost sm" data-act="up" data-r="${i}" title="ひとつ上へ"${i===0?' disabled':''}>↑</button>
-     <button type="button" class="mm-btn-ghost sm" data-act="down" data-r="${i}" title="ひとつ下へ"${i===ps.rules.length-1?' disabled':''}>↓</button>
-     <button type="button" class="mm-btn-ghost sm" data-act="edit" data-r="${i}">直す</button>
-    </span>
-   </header>
-   <div class="bp-cb">${body}</div>
-   <footer class="bp-cf"><span class="bp-arrow">→</span>
-    ${r.group?`専用刃 <b class="bp-grp">${esc(r.group)}</b> を使う`:'<span class="bp-none">使う刃の組が未設定です</span>'}</footer>
-  </article>`;
+ const T={
+  category:makeTable('category',{label:'刃のカテゴリ',step:'2',answerHead:'刃のカテゴリ',defaultCols:['hold','thickness'],
+   seedNote:'すべて通常刃（今までの選び方）',
+   lead:'通常刃か専用刃かを決めます。専用刃は<b>セットまで選べます</b>（「どれでも」なら使用中の専用刃のセットを A から順に）。研磨中のセットは選ばれません（「刃」で切り替え）。',
+   answers:catChoices,answerOf:r=>`${r.answer||normal()}|${r.group||''}`,answerLabel:catLabel,
+   setAnswer:(r,v)=>{const [a,g]=v.split('|');Object.assign(r,{answer:a,group:a===special()?(g||''):''})},
+   blankRow:()=>({answer:special(),group:''})}),
+  thickness:makeTable('thickness',{label:'刃厚',step:'3',answerHead:'刃厚',defaultCols:['category','thickness'],
+   seedNote:'いちばん厚い刃（今までの選び方）',
+   lead:'②で決まったカテゴリのセットから、<b>どの刃厚の刃を使うか</b>を決めます。答えは「刃」に登録している刃厚です。',
+   answers:thChoices,answerOf:r=>String(r.answer||''),answerLabel:thLabel,
+   setAnswer:(r,v)=>{r.answer=v},
+   blankRow:()=>({answer:String(ps.thicknesses[0]||''),group:''})}),
+ };
+ function valuesOf(f){
+  if(String(f).startsWith('source.'))return ps.samples[f.slice(7)]||[];
+  const fd=(defOf('thickness').fields||[]).find(x=>x.field===f);
+  if(!fd||fd.group!=='material')return [];
+  return Object.entries(ps.samples).filter(([n])=>n.includes(fd.label)).flatMap(([,v])=>v);
  }
 
- /* 直す窓（カードの中でひらく）。行は「項目→比べ方→値」の順で、
-    **決める順に左から右**（§CLAUDE 14）。 */
- function editorHtml(r){
-  /* 前に選べた項目で書いた条件は、その項目も候補に残す（選び直さない限り消えない）。 */
-  const fopt=f=>ps.fields.concat(ps.legacy.filter(x=>x.field===f)).map(x=>`<option value="${esc(x.field)}"${x.field===f?' selected':''}>${esc(x.label)}${ps.fields.includes(x)?'':'（前の項目）'}</option>`).join('');
-  /* 値の欄は項目の型から（`choice`＝候補から選ぶ・板押さえ方式）。 */
-  const vin=(c,ci)=>{
-   const f=fieldOf(c.field);
-   if(f&&f.kind==='choice')return `<select class="bp-v" data-c="${ci}">`
-    +['<option value="">（選んでください）</option>'].concat((f.options||[]).map(o=>`<option value="${esc(o)}"${o===c.value?' selected':''}>${esc(o)}</option>`)).join('')+'</select>';
-   return `<input class="bp-v" data-c="${ci}" type="text" value="${esc(c.value||'')}" placeholder="値">`;
-  };
-  const oopt=(o,f)=>opsFor(f).map(x=>`<option value="${esc(x.op)}"${x.op===o?' selected':''}>${esc(x.label)}</option>`).join('');
-  const gopt=g=>['<option value="">（選んでください）</option>']
-   .concat(ps.groups.map(x=>`<option value="${esc(x.group)}"${x.group===g?' selected':''}>${esc(x.group)}${x.special?'':'（カテゴリが専用刃でない）'}${x.grind?'（研磨中）':''}</option>`)).join('');
-  const rows=(r.conditions||[]).map((c,ci)=>`<div class="bp-row" data-c="${ci}">
-    <select class="bp-f" data-c="${ci}">${fopt(c.field)}</select>
-    <select class="bp-o" data-c="${ci}">${oopt(c.op,c.field)}</select>
-    ${vin(c,ci)}
-    <input class="bp-v2" data-c="${ci}" type="text" value="${esc(c.value2||'')}" placeholder="上限"${isTwo(c.op)?'':' hidden'}>
-    <button type="button" class="mm-btn-ghost sm" data-act="delcond" data-c="${ci}" title="この条件を消す">×</button>
-   </div>`).join('');
-  return `<div class="bp-ed">
-   <label class="bp-lb">この決まりの名前
-    <input id="bpName" type="text" value="${esc(r.name||'')}" placeholder="例: 厚板は専用"></label>
-   <div class="bp-lb">条件（**すべて**満たしたときに当たります）</div>
-   <div class="bp-rows" id="bpRows">${rows||'<p class="bp-none">まだ条件がありません。下の「条件を足す」から足してください。</p>'}</div>
-   <button type="button" class="mm-btn-ghost sm" data-act="addcond">＋ 条件を足す</button>
-   <label class="bp-lb">当たったときに使う刃の組
-    <select id="bpGroup">${gopt(r.group)}</select></label>
-   <label class="bp-ck"><input id="bpOn" type="checkbox"${r.enabled!==false?' checked':''}> この決まりを使う</label>
-   <div class="bp-eda">
-    <button type="button" class="mm-btn-primary sm" data-act="save">保存</button>
-    <button type="button" class="mm-btn-ghost sm" data-act="cancel">やめる</button>
-    ${r.id?'<button type="button" class="mm-btn-ghost sm bp-del" data-act="delete">この決まりを消す</button>':''}
-   </div></div>`;
+ /* ---------- 頭と「試す」の帯 ---------- */
+ const dirty=()=>T.category.dirty||T.thickness.dirty;
+ function renderHead(){
+  K().renderHead(ps,{id:'bpEq',
+   hint:'刃組ガイダンスは <b>① 保持方式 → ② 刃のカテゴリ → ③ 刃厚</b> の順に表を見て刃を選びます。どの表も<b>上から見て最初に当たった行</b>の答え（最後の行は既定）。後ろの表は前の表の答えを列に使えます。',
+   leaveOk:()=>K().leave(dirty(),'刃選択'),onEquipment:()=>load(true)});
  }
-
- /* **描き直しは「編集中の窓を壊さない」**（§9.361・§9.227）。打ちかけの値は
-    まだモデルに入っていないので、窓ごと作り直すと**打った字が消える**——
-    実際にそれで条件の値と刃の組が空のまま保存されかけた（値を`change`で
-    受けており、`change`が来る前に窓が作り直されていた）。
-    なので描き直すのは**編集していないカードだけ**。窓を作り直すのは
-    「条件を足す・消す」のように形が変わるときに限る（`rebuildEditor`）。 */
- function renderList(rebuildEditor){
-  const box=document.getElementById('masterMaintList');if(!box)return;
-  if(!ps.equipment){box.innerHTML='<div class="mm-empty">設備を選んでください。</div>';return}
-  if(!ps.rules.length&&ps.editing===null){
-   box.innerHTML='<div class="mm-empty">まだ決まりがありません。'
-    +'この設備では<b>すべての作業で「通常刃」</b>が選ばれます。<br>'
-    +'そこから外れる作業だけを「＋ 決まりを足す」で書いてください。</div>';
-   return;
+ /* 「この作業なら」を1行で（2つの表の当たりを順に）。字は`ruleTable.sentence()`と同じ読み方。 */
+ function tryHtml(){
+  const c=T.category.probeHit(),t=T.thickness.probeHit();
+  if(!c&&!t)return '<span class="is-idle">表の「試す」行に値を入れると、この作業でどの刃になるかがここに出ます（値は2つの表で共通）</span>';
+  const one=(tb,h,lab)=>h?`<b>${esc(lab(h.row))}</b><small>（${esc(tb.label)}・${tb.isDefault(h.row)?'既定の行':`${h.index+1}行目`}）</small>`
+   :`<span class="is-idle">${esc(tb.label)}: 当たる行なし</span>`;
+  return `この作業なら → ${one(T.category,c,catLabel)} → ${one(T.thickness,t,thLabel)}`
+   +`<button type="button" class="mm-btn-ghost sm" id="bpClear">試す値を空にする</button>`;
+ }
+ function paintTry(){
+  const el=document.querySelector('#masterMaintList .bp-try');if(!el)return;
+  el.innerHTML=tryHtml();
+  const clr=el.querySelector('#bpClear');
+  if(clr)clr.onclick=()=>{Object.keys(ps.probe).forEach(k=>delete ps.probe[k]);render()};
+ }
+ function render(){
+  renderHead();
+  const box=document.getElementById('masterMaintList');if(!box||!ps.loaded)return;
+  /* 試す欄の焦点は表の`render()`が戻すので、器は作り直さず中身だけ描き直す。 */
+  if(!box.querySelector('.bp-try')){
+   box.innerHTML='<div class="bp-try" aria-live="polite"></div><section class="rt" data-table="category"></section><section class="rt" data-table="thickness"></section>';
   }
-  const live=ps.editing!==null&&!rebuildEditor
-   &&box.querySelector(`.bp-card.is-edit[data-r="${ps.editing}"]`);
-  if(live){
-   /* 窓はそのまま。**周りのカードだけ**塗り直す（試し欄の○×が動くため）。 */
-   paintCards();
-   return;
-  }
-  box.innerHTML='<div class="bp-list">'+ps.rules.map((r,i)=>(
-   ps.editing===i?`<article class="bp-card is-edit" data-r="${i}">${editorHtml(r)}</article>`
-                 :cardShell(r,i)
-  )).join('')+'</div>';
-  paintCards();
-  bindList();
- }
- /* カード1枚の器。中身は `paintCards()` が入れる（試し欄を触るたびに
-    ○×が変わるので、中身だけ差し替えられる形にしておく）。 */
- const cardShell=(r,i)=>`<article class="bp-card" data-r="${i}" data-id="${esc(r.id)}"></article>`;
- function paintCards(){
-  const box=document.getElementById('masterMaintList');if(!box)return;
-  const ctx=probeFilled()?probeCtx():null;
-  const hit=probeHit();
-  box.querySelectorAll('.bp-card:not(.is-edit)').forEach(el=>{
-   const i=+el.dataset.r;const r=ps.rules[i];if(!r)return;
-   el.outerHTML=ruleCardHtml(r,i,hit,ctx);
-  });
-  bindList();
+  T.category.render();T.thickness.render();paintTry();
  }
 
- function renderForm(){
-  const form=document.getElementById('masterMaintForm');if(!form)return;
-  const eqs=(WL.records&&WL.records.equipmentMasterState&&WL.records.equipmentMasterState.items)||[];
-  const opt=eqs.map(e=>`<option value="${esc(e.name)}"${e.name===ps.equipment?' selected':''}>${esc(e.name)}</option>`).join('');
-  const hit=probeHit();
-  const pv=f=>(ps.probe[f.field]===undefined?'':ps.probe[f.field]);
-  const probes=ps.fields.map(f=>`<label class="bp-pf"><s>${esc(f.label)}</s>`
-   +(f.kind==='choice'
-    ?`<select data-p="${esc(f.field)}">${['<option value="">（問わない）</option>'].concat((f.options||[]).map(o=>`<option value="${esc(o)}"${o===pv(f)?' selected':''}>${esc(o)}</option>`)).join('')}</select>`
-    :`<input data-p="${esc(f.field)}" type="${f.kind==='num'?'number':'text'}" step="any" value="${esc(pv(f))}">`)
-   +'</label>').join('');
-  const answer=!probeFilled()
-   ? '<span class="bp-ans is-idle">値を入れると、その作業でどの決まりが当たるかが出ます</span>'
-   : (hit?`<span class="bp-ans is-hit">「${esc(hit.rule||'(名前なし)')}」に当たる → <b>専用刃 ${esc(hit.group)}</b></span>`
-         :'<span class="bp-ans is-none">どの決まりにも当たらない → <b>通常刃</b></span>');
-  form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip new">刃選択</span></div>
-   <div class="mm-cd-toolbar">
-    <div class="mm-cd-dbtabs"><select id="bpEq">${opt||'<option value="">設備マスタが未登録です</option>'}</select></div>
-    <div class="mm-cd-actions"><button type="button" class="mm-btn-primary sm" id="bpAdd">＋ 決まりを足す</button></div>
-   </div>
-   <p class="mm-form-hint">ふつうはカテゴリが<b>「通常刃」</b>の刃セットが選ばれます。そこから外れる作業だけをここに書いてください。
-    <b>上から順に見て、最初に当たった1つ</b>が効きます。条件に使えるのは<b>板押さえ方式・板厚・材質・調質</b>です
-    （板押さえ方式は「保持方式」の表の答え、材質・調質は1本目のコイルの仕掛の値）。<b>研磨中</b>のセットは選ばれません（「刃セット」で切り替え）。</p>
-   <div class="bp-try"><div class="bp-tryh">試す<s>この値の作業なら、どれが当たるか</s></div>
-    <div class="bp-tryf">${probes}</div>
-    <div class="bp-trya">${answer}<button type="button" class="mm-btn-ghost sm" id="bpClear">空にする</button></div></div>`;
-  form.onsubmit=ev=>ev.preventDefault();
-  const sel=document.getElementById('bpEq');
-  if(sel)sel.onchange=()=>{ps.equipment=sel.value;ps.editing=null;load(true)};
-  const add=document.getElementById('bpAdd');
-  if(add)add.onclick=()=>{
-   ps.rules.push({id:null,equipment:ps.equipment,name:'',conditions:[],group:'',enabled:true});
-   ps.editing=ps.rules.length-1;renderList(true);
-  };
-  const clr=document.getElementById('bpClear');
-  if(clr)clr.onclick=()=>{ps.probe={};renderForm();renderList()};
-  form.querySelectorAll('[data-p]').forEach(el=>{
-   if(el.tagName==='SELECT'){el.onchange=()=>{ps.probe[el.dataset.p]=el.value;renderForm();renderList()};return}
-   el.oninput=()=>{ps.probe[el.dataset.p]=el.value;renderForm();renderList();
-    const again=document.querySelector(`#masterMaintForm [data-p="${CSS.escape(el.dataset.p)}"]`);
-    if(again){again.focus();try{again.setSelectionRange(again.value.length,again.value.length)}catch(_e){WL.quiet.note('カーソル位置を戻せない（値は入っている）',_e)}}};
-  });
- }
-
- /* ---------- 触る ---------- */
- function bindList(){
-  const box=document.getElementById('masterMaintList');if(!box)return;
-  box.querySelectorAll('[data-act]').forEach(b=>{
-   b.onclick=()=>act(b.dataset.act,b);
-  });
-  const ed=box.querySelector('.bp-card.is-edit');
-  if(!ed)return;
-  /* **打つそばからモデルへ写す**（`input`で受ける）。`change`だけで受けると、
-     欄から出る前に保存を押された値が入らない——実際に条件の値と刃の組が
-     空のまま保存されかけた。写すだけで**窓は作り直さない**。 */
-  ed.querySelectorAll('input,select').forEach(el=>{
-   el.oninput=()=>{readEditor();paintCards()};
-   el.onchange=()=>{
-    readEditor();
-    /* 「範囲」を選んだときだけ上限の欄を出す。**窓ごと作り直さず**、
-       その欄の hidden だけを動かす（打ちかけの値を消さない）。 */
-    /* 項目を変えたら値の欄の形（字／候補）が変わりうる——その行を作り直す（値は写し済み）。 */
-    if(el.classList.contains('bp-f')){renderList(true);return}
-    if(el.classList.contains('bp-o')){
-     const row=el.closest('.bp-row'),v2=row&&row.querySelector('.bp-v2');
-     if(v2)v2.hidden=!isTwo(el.value);
-    }
-    paintCards();
-   };
-  });
- }
- /* 窓の今の値を、編集中の決まりへ写す。**写すだけで描き直さない**
-    （描き直すと打ちかけの字が消える・§9.361）。 */
- function readEditor(){
-  const i=ps.editing;if(i===null)return;
-  const r=ps.rules[i];
-  const nameEl=document.getElementById('bpName');
-  if(nameEl)r.name=nameEl.value;
-  const g=document.getElementById('bpGroup');
-  if(g)r.group=g.value;
-  const on=document.getElementById('bpOn');
-  if(on)r.enabled=on.checked;
-  const rows=document.getElementById('bpRows');
-  if(rows){
-   r.conditions=[...rows.querySelectorAll('.bp-row')].map(row=>{
-    const f=row.querySelector('.bp-f').value;
-    const o0=row.querySelector('.bp-o').value,o=opsFor(f).some(x=>x.op===o0)?o0:'eq';
-    const c={field:f,op:o,value:row.querySelector('.bp-v').value};
-    if(isTwo(o))c.value2=row.querySelector('.bp-v2').value;
-    return c;
-   });
-  }
- }
- async function act(a,btn){
-  const i=+(btn.dataset.r!==undefined?btn.dataset.r:ps.editing);
-  if(a==='edit'){ps.editing=i;renderList(true);return}
-  if(a==='cancel'){
-   /* 保存していない新しい行は、やめたら残さない。 */
-   if(ps.rules[ps.editing]&&!ps.rules[ps.editing].id)ps.rules.splice(ps.editing,1);
-   ps.editing=null;renderList(true);return;
-  }
-  if(a==='addcond'){
-   readEditor();
-   const f=ps.fields[0];
-   ps.rules[ps.editing].conditions.push({field:f?f.field:'',op:'eq',value:''});
-   renderList(true);return;
-  }
-  if(a==='delcond'){
-   readEditor();
-   ps.rules[ps.editing].conditions.splice(+btn.dataset.c,1);
-   renderList(true);return;
-  }
-  if(a==='up'||a==='down')return void move(i,a==='up'?-1:1);
-  if(a==='save')return void save();
-  if(a==='delete')return void remove();
- }
-
- async function post(path,body){
-  return api(path,{method:'POST',headers:{'Content-Type':'application/json'},
-                   body:JSON.stringify(body)});
- }
- async function save(){
-  readEditor();
-  const uid=requireMaintUser();if(uid===null)return;
-  const r=ps.rules[ps.editing];
-  if(!r.name.trim())return void alertModal('この決まりの名前を入れてください。');
-  if(!r.group)return void alertModal('当たったときに使う刃の組を選んでください。');
-  if(!(r.conditions||[]).length)
-   return void alertModal('条件がありません。条件が1つも無い決まりは当たらないので、1つ以上足してください。');
-  try{
-   await post('/api/bladeset/blade-pick',{id:r.id,equipment:ps.equipment,name:r.name,
-     conditions:r.conditions,group:r.group,enabled:r.enabled,user_id:uid});
-   ps.editing=null;await load(true);
-  }catch(e){await alertModal('保存できませんでした：'+(e&&e.message?e.message:e))}
- }
- async function remove(){
-  const r=ps.rules[ps.editing];
-  if(!r||!r.id)return;
-  if(!await confirmModal({title:'この決まりを消す',eyebrow:'刃選択',
-    bodyHtml:`<p class="confirm-modal-message">「${esc(r.name||'(名前なし)')}」を消します。`
-      +'この決まりで選ばれていた作業は、以後<b>通常刃</b>になります。</p>',
-    confirmLabel:'消す',cancelLabel:'やめる'}))return;
-  try{
-   await post('/api/bladeset/blade-pick/delete',{id:r.id});
-   ps.editing=null;await load(true);
-  }catch(e){await alertModal('消せませんでした：'+(e&&e.message?e.message:e))}
- }
- /* 並びは「上から順に見て最初に当たった1つ」が効くので、**順番そのものが設定**。
-    入れ替えたら両方の行の表示順を書き直す（片方だけだと同値で並びが決まらない）。 */
- async function move(i,d){
-  const j=i+d;
-  if(j<0||j>=ps.rules.length)return;
-  const uid=requireMaintUser();if(uid===null)return;
-  const a=ps.rules[i],b=ps.rules[j];
-  ps.rules[i]=b;ps.rules[j]=a;
-  renderList();
-  try{
-   await post('/api/bladeset/blade-pick',{id:b.id,order:(i+1)*10,user_id:uid});
-   await post('/api/bladeset/blade-pick',{id:a.id,order:(j+1)*10,user_id:uid});
-   await load(true);
-  }catch(e){await alertModal('並びを保存できませんでした：'+(e&&e.message?e.message:e));await load(true)}
- }
-
- /* ---------- 読む ---------- */
  async function load(force){
   const box=document.getElementById('masterMaintList');if(!box)return;
-  if(typeof WL.records.loadEquipmentMaster==='function'){
-   try{await WL.records.loadEquipmentMaster(force)}
-   catch(e){WL.quiet.note('設備マスタが読めなくても盤は開く',e)}
-  }
-  const eqs=(WL.records.equipmentMasterState.items)||[];
-  if(!ps.equipment&&eqs.length)ps.equipment=eqs[0].name;
-  renderForm();
-  if(!ps.equipment){box.innerHTML='<div class="mm-empty">設備マスタが未登録です。先に「設備」タブで登録してください。</div>';return}
-  setMaintLoading&&setMaintLoading(true);
-  box.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
-  try{
-   const c=await api('/api/bladeset/context?equipment='+encodeURIComponent(ps.equipment));
-   ps.fields=c.pickFields||[];ps.legacy=c.pickFieldsLegacy||[];ps.ops=c.pickOps||[];
-   ps.rules=(c.picks||[]).map(r=>Object.assign({},r,{conditions:(r.conditions||[]).map(x=>Object.assign({},x))}));
-   /* 刃の組の候補。**カテゴリが専用刃のセットを先に**出し、ほかの組も選べるようにして
-      「先に決まりを書いて、あとでセットを専用刃にする」順でも詰まらないようにする。
-      答えはサーバーの刃セット（§9.526）——刃の行の`状態`は見ない。 */
-   const sp=c.bladeCatSpecial||'専用刃',gr=c.bladeUseGrind||'研磨中';
-   ps.groups=(c.bladeSets||[]).filter(x=>x.group)
-    .map(x=>({group:x.group,special:x.category===sp,grind:x.use===gr}))
-    .sort((a,b)=>(b.special-a.special)||a.group.localeCompare(b.group));
-   ps.loaded=true;
-   renderForm();renderList();
-  }catch(e){
-   box.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e&&e.message?e.message:e)}</div>`;
-  }finally{setMaintLoading&&setMaintLoading(false)}
+  ps.loaded=false;renderHead();
+  if(!await K().prologue(ps,force))return;
+  await K().loading(async()=>{
+   const q=encodeURIComponent(ps.equipment);
+   const [c,sets,src]=await Promise.all([api('/api/bladeset/blade-pick?equipment='+q),api('/api/bladeset/blade-sets?equipment='+q),
+                                       WL.holdPick.loadSource()]);
+   const tk=[...new Set((sets.items||[]).flatMap(x=>x.thicknesses||[]))].sort((a,b)=>b-a);
+   Object.assign(ps,{defs:c.defs||[],groups:c.groups||[],sets:(sets.items||[]).filter(x=>x.group),thicknesses:tk,
+                     categories:sets.categories||['通常刃','専用刃'],sourceCols:src.columns,samples:src.samples,loaded:true});
+   const tb=c.tables||{};
+   T.category.setData((tb.category||{}).rows,(tb.category||{}).stored);
+   T.thickness.setData((tb.thickness||{}).rows,(tb.thickness||{}).stored);
+   box.innerHTML='';
+   render();
+  });
  }
 
  WL.mm.registerSpecial('blade-pick',{load});
- WL.bladePick={state:ps,probeHit,load};
+ WL.bladePick={state:ps,tables:T,load};
 })();

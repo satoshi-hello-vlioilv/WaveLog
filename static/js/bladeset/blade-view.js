@@ -539,22 +539,16 @@
   /* **方式は「自動で決まる」の群だけに出す**——以前はバリ方向の値にも
      並べており、同じことを2箇所で言っていた（§CLAUDE 8）。 */
   $('#bsV1').textContent = B.ALIGN_NAME[st.align];
-  /* **なぜその刃なのか**を出す（§9.379）。既定は「通常刃」で、`刃選択マスタ` の
-     決まりに当たったときだけ「専用刃」になる（§9.526）——出どころを書かないと、利用者には
-     「勝手に別の刃になった」としか見えない（§CLAUDE 6）。 */
+  /* **なぜその刃なのか**を出す（§9.379）。カテゴリと刃厚は「刃選択」の2つの判定表が決める（§9.529）
+     ——出どころを書かないと、利用者には「勝手に別の刃になった」としか見えない（§CLAUDE 6）。
+     字は`pickWord()`の1箇所（画面は組み立てない）。 */
   const pk = $('#bsFPick');
   if (pk) {
-   const p0 = st.pick;
-   pk.textContent = !p0 ? '通常刃'
-    : (p0.missing ? `通常刃（${p0.group} の専用刃が使えない）`
-                  : `専用刃 ${p0.group}`);
-   pk.title = !p0 ? 'カテゴリが「通常刃」で使用中の刃セットから選んでいます。'
-    : (p0.missing
-       ? `決まり「${p0.rule}」に当たりましたが、組 ${p0.group} に使える専用刃が無い`
-         + '（カテゴリが専用刃でない・研磨中・刃が未登録のどれか）ため、通常刃で描いています。'
-       : `決まり「${p0.rule}」に当たったので、組 ${p0.group} の専用刃を使います。`);
-   pk.classList.toggle('is-warn', !!(p0 && p0.missing));
-   pk.classList.toggle('is-pick-on', !!(p0 && !p0.missing));
+   const w = B.pickWord(st, M);
+   pk.textContent = w.text;
+   pk.title = w.title;
+   pk.classList.toggle('is-warn', w.warn);
+   pk.classList.toggle('is-pick-on', w.special);
   }
   $('#bsFMethod').textContent = B.METHOD_NAME[res.method];
   /* 出すのは**組んだ値**。打った値と違えば並べ、理由は`title`で言う（§9.454）。 */
@@ -2758,11 +2752,11 @@
      + `<span class="bs-dia${lim ? ' bs-ng' : ''}">Φ${esc(k.currentDia)}</span>`
      + `<span class="bs-gr">研磨 ${esc(k.lastGrind || '—')}${d !== null ? `（${d}日）` : ''}</span>`
      + `<span class="bs-qt">${esc(k.qty)}枚</span>`
-     + `<button type="button" class="bs-btn is-sm" data-load-blade="${esc(k.name)}">呼出</button></div>`;
+     + `<button type="button" class="bs-btn is-sm" data-load-blade="${esc(k.id)}">呼出</button></div>`;
    }).join('');
    return `<div class="bs-sc${on ? ' is-on' : ''}"><div class="bs-sch">`
-    + `<b>${esc(g.group ? '組 ' + g.group : '（組の指定なし）')}</b>`
-    /* セットのカテゴリ・使用状態（§9.526・切り替えはマスタ管理の「刃セット」）。 */
+    + `<b>${esc(g.group ? 'セット ' + g.group : '（セットなし）')}</b>`
+    /* セットのカテゴリ・使用状態（§9.526・切り替えはマスタ管理の「刃」）。 */
     + `<span class="bs-sb">${esc(setWord(g.items[0]))}</span></div>`
     + `<div class="bs-kl">${rows}</div></div>`;
   }).join('')
@@ -3249,7 +3243,7 @@
   $('#bsSetList').addEventListener('click', e => {
    const b = e.target.closest('[data-load-blade]');
    if (!b) return;
-   loadBlade(M.blades.find(x => x.name === b.dataset.loadBlade));
+   loadBlade(M.blades.find(x => String(x.id) === b.dataset.loadBlade));
    scheduleRender();
   });
   /* 足りないマスタの受け皿 */

@@ -362,8 +362,6 @@
       ・[ を打つと列名の候補（`opt.columns()`が答える。表示名でも元の名前でもよい）
       ・↑↓で選び、Enter／Tab で入れる。Esc で閉じる（押下は受けたと名乗る＝窓は閉じない）
     関数は`name(`まで入れて、引数の形を候補の中に言う（例: extract(x, 正規表現, 組)）。 */
- let sgEl=null,sgFor=null,sgItems=[],sgAt=0,sgSpan=null;
- function sgClose(){if(sgEl)sgEl.hidden=true;sgFor=null;sgItems=[];sgSpan=null}
  function sgWord(inp){
   const v=inp.value,c=inp.selectionStart||0,head=v.slice(0,c);
   const open=head.lastIndexOf('['),close=head.lastIndexOf(']');
@@ -372,9 +370,10 @@
   if(m&&!/['"]/.test(head.slice(-m[0].length-1,-m[0].length)))return {kind:'fn',q:m[0].toLowerCase(),from:c-m[0].length,to:c};
   return null;
  }
- function sgShow(inp,opt){
+ /* 何を候補にするかだけをここが答え、器と鍵盤は`WL.popMenu.suggest()`の1箇所（§9.529）。 */
+ function suggestItems(inp,opt){
   const w=sgWord(inp);
-  if(!w){sgClose();return}
+  if(!w)return null;
   const q=w.q.toLowerCase();
   let items;
   if(w.kind==='fn'){
@@ -385,56 +384,12 @@
    const cols=((opt.columns&&opt.columns())||[]).map(String);
    items=cols.filter(n=>n.toLowerCase().includes(q)).slice(0,40).map(n=>({ins:n+']',label:n,args:'',note:'列'}));
   }
-  if(!items.length||(w.kind==='fn'&&items.length===1&&items[0].label===q)){sgClose();return}
-  if(!sgEl){
-   sgEl=document.createElement('div');
-   sgEl.className='wl-menu fx-suggest';sgEl.setAttribute('role','listbox');sgEl.hidden=true;
-   document.body.appendChild(sgEl);
-   sgEl.addEventListener('mousedown',e=>{
-    const li=e.target.closest('[data-i]');if(!li)return;
-    e.preventDefault();sgPick(+li.dataset.i);
-   });
-  }
-  sgFor=inp;sgItems=items.slice(0,12);sgSpan=w;sgAt=0;
-  sgEl.innerHTML=sgItems.map((it,i)=>`<div role="option" data-i="${i}" class="fx-sg-item${i===sgAt?' is-on':''}">`
-   +`<b>${escHtml(it.label)}</b>${it.args?`<code>(${escHtml(it.args)})</code>`:''}<small>${escHtml(it.note)}</small></div>`).join('');
-  const r=inp.getBoundingClientRect();
-  sgEl.hidden=false;
-  const h=sgEl.offsetHeight,below=r.bottom+4+h<=innerHeight;
-  sgEl.style.left=`${Math.max(6,Math.min(r.left,innerWidth-sgEl.offsetWidth-6))}px`;
-  sgEl.style.top=`${below?r.bottom+4:Math.max(6,r.top-h-4)}px`;
+  if(!items.length||(w.kind==='fn'&&items.length===1&&items[0].label===q))return null;
+  return {items:items.slice(0,12),from:w.from,to:w.to};
  }
- function sgMark(){if(sgEl)sgEl.querySelectorAll('.fx-sg-item').forEach((el,i)=>el.classList.toggle('is-on',i===sgAt))}
- function sgPick(i){
-  const it=sgItems[i],inp=sgFor,w=sgSpan;
-  if(!it||!inp||!w)return;
-  const v=inp.value;
-  /* 列名の候補は、すでに閉じ括弧があれば二重にしない。 */
-  const rest=v.slice(w.to);
-  const ins=it.ins.endsWith(']')&&rest.startsWith(']')?it.ins.slice(0,-1):it.ins;
-  inp.value=v.slice(0,w.from)+ins+rest;
-  const at=w.from+ins.length+(ins!==it.ins?1:0);
-  inp.setSelectionRange(at,at);
-  sgClose();
-  inp.dispatchEvent(new Event('input',{bubbles:true}));
-  inp.focus();
- }
- const escHtml=t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  function suggest(inp,opt){
-  if(!inp||inp.dataset.fxSuggest)return;
-  inp.dataset.fxSuggest='1';
-  inp.setAttribute('autocomplete','off');
   const o=opt||{};
-  inp.addEventListener('input',()=>sgShow(inp,o));
-  inp.addEventListener('click',()=>sgShow(inp,o));
-  inp.addEventListener('blur',()=>setTimeout(()=>{if(sgFor===inp&&document.activeElement!==inp)sgClose()},0));
-  inp.addEventListener('keydown',e=>{
-   if(sgFor!==inp||!sgEl||sgEl.hidden)return;
-   if(e.key==='ArrowDown'||e.key==='ArrowUp'){
-    e.preventDefault();sgAt=(sgAt+(e.key==='ArrowDown'?1:-1)+sgItems.length)%sgItems.length;sgMark();
-   }else if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();sgPick(sgAt)}
-   else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();sgClose()}
-  });
+  WL.popMenu.suggest(inp,el=>suggestItems(el,o));
  }
  window.WL.formula={compile,check,parse,sigs:SIGS,truthy,cmp,MAX_LEN,suggest,
              /* 説明文をパネルとドキュメントで共用する(2箇所に書かない)。 */

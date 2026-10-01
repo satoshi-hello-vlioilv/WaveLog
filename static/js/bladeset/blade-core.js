@@ -78,7 +78,7 @@
                 grindRun: num(x.grindRun), grindDrop: num(x.grindDrop) }))
    .filter(x => x.width > 0);
   const blades = (c.blades || [])
-   .map(x => ({ name: x.name || '', group: x.group || '',
+   .map(x => ({ id: x.id, name: x.name || '', group: x.group || '',
                 thickness: num(x.thickness), currentDia: num(x.currentDia),
                 qty: Math.max(0, num(x.qty) || 0), minQty: num(x.minQty) || 0,
                 lastGrind: x.lastGrind || '', grindCount: num(x.grindCount) || 0,
@@ -93,21 +93,22 @@
   return { P, spacers, rings, lubes, fingers, blades,
            history: (c.history || []).slice(),
            designs: (c.designs || []).slice(),
-           picks: (c.picks || []).slice(),
+           /* 刃選択の2つの判定表（§9.529）。`{category:{rows,stored}, thickness:{rows,stored}}`。 */
+           pickTables: Object.assign({}, c.pickTables || {}),
+           /* 判定表の顔ぶれ（決める順・表ごとに使える項目）。答えはサーバー（`pick_fields_for()`）。 */
+           pickTableDefs: (c.pickTableDefs || []).slice(),
+           pickThickest: c.pickThickest || '',
            /* 台車（§9.424）。**無いときは空の並び**——画面が A/B を作らない。
               呼び名（初期セットの顔ぶれ・台車なしの綴り）はサーバーが持つ。 */
            carriages: (c.carriages || []).slice(),
            carriageSeed: (c.carriageSeed || []).slice(),
            carriageNone: c.carriageNone || '台車なし',
-           pickFields: (c.pickFields || []).slice(),
-           /* 前に選べた項目（§9.526）。書いてある決まりは読んで効かせる（新しくは選べない）。 */
-           pickFieldsLegacy: (c.pickFieldsLegacy || []).slice(),
            bladeSets: (c.bladeSets || []).slice(),
            bladeCatNormal: c.bladeCatNormal || '通常刃', bladeCatSpecial: c.bladeCatSpecial || '専用刃',
            bladeUseOn: c.bladeUseOn || '使用中', bladeUseGrind: c.bladeUseGrind || '研磨中',
            /* 保持方式の条件表（§9.524）。登録が無ければサーバーが今までの決め方の「種」を返す。 */
            holds: (c.holds || []).slice(), holdsStored: !!c.holdsStored,
-           holdMethods: (c.holdMethods || []).slice(), holdFields: (c.holdFields || []).slice(),
+           holdMethods: (c.holdMethods || []).slice(),
            pickOps: (c.pickOps || []).slice(),
            equipment: c.equipment || '',
            standardStored: !!c.standardStored,
@@ -1205,11 +1206,10 @@
    ? ((M && M.bladeCatSpecial) || '専用刃') : ((M && M.bladeCatNormal) || '通常刃');
  }
 
- /* ---------- 「専用」の刃を選ぶ条件（§9.379、利用者の指示2） ----------
-    ふつうは状態が「一般」の刃が選ばれる。そこから外れる作業だけを
-    `刃選択マスタ` に書き、**上から見て最初に当たった1行**が効く。
-    **判定はここ1箇所**——サーバー（`bladeset_repo.pick_group`）と同じ規則を
-    同じ綴りで持ち、画面は答えを受け取るだけにする。 */
+ /* ---------- 判定表の判定（§9.524 保持方式・§9.529 刃のカテゴリ・刃厚） ----------
+    3つの表は同じ作り（上から見て最初に当たった行・最後が既定の行）で、**決める順は
+    保持方式 → 刃のカテゴリ → 刃厚**。後ろの表は前の表の答えを条件に使える。
+    **判定はここ1箇所**——盤の「試す」も刃組ガイダンスも同じ`firstRule()`を通る。 */
  const PICK_NUM = {
   eq: (l, a) => Math.abs(l - a) < 1e-9,
   ne: (l, a) => Math.abs(l - a) >= 1e-9,
@@ -1241,11 +1241,14 @@
   if (src) Object.keys(src).forEach(k => { ctx['source.' + k] = src[k]; });
   return ctx;
  }
- /* 刃選択が読む値＝`pickCtx`＋**板押さえ方式**（`holdPick()`の答え・§9.526）。
-    `holdPick`自身が`pickCtx`を読むので、方式はここで後から足す（`pickCtx`へ入れると回り続ける）。 */
+ /* 刃選択が読む値＝`pickCtx`＋**前の表の答え**（板押さえ方式・フィンガー材質・§9.529）。
+    `holdPick`自身が`pickCtx`を読むので、答えはここで後から足す（`pickCtx`へ入れると回り続ける）。 */
  function bladePickCtx(st, M) {
-  return Object.assign(pickCtx(st, M), { hold: holdPick(st, M).hold });
+  const h = holdPick(st, M);
+  return Object.assign(pickCtx(st, M), { hold: h.hold, fingerMaterial: h.material || null });
  }
+ /* 表ごとに使える項目（`[{field,label,kind,group,options}]`）。答えはサーバーの`pick_fields_for()`。 */
+ const tableFields = (M, key) => (((M && M.pickTableDefs) || []).find(d => d.key === key) || {}).fields || [];
  /* 仕掛の列（`source.*`）は型が決まっていない。**比べ方で読み方を決める**:
     大小・範囲は数として、＝／≠は両方が数に読めれば数として（'1.0' と '1' を同じに）、
     含むは字として。 */
@@ -1279,15 +1282,6 @@
   if (op === 'contains') return !!rs && ls.indexOf(rs) >= 0;
   return false;
  }
- /* 当たった決まり、または `null`（＝「一般」を使う）。**条件が1つも無い行は
-    当たらない**——「いつでも当たる行」を書けると、「一般が既定」という
-    約束が静かに崩れる。 */
- /* 刃選択の語彙＝いま選べる4項目＋前に選べた項目（書いてある決まりの型を引くため・§9.526）。 */
- const pickFieldsAll = M => ((M && M.pickFields) || []).concat((M && M.pickFieldsLegacy) || []);
- function pickGroup(rules, ctx, fields) {
-  const r = firstRule((rules || []).filter(x => x.group), ctx, fields, false);
-  return r ? { group: r.row.group, rule: r.row.name || '', id: r.row.id } : null;
- }
  /* 条件表を上から見て**最初に当たった行**（`{row, index}`）。表の約束は1つ——
     同じ行の条件はすべて満たしたときだけ当たる。**条件の無い行**は`withDefault`の
     ときだけ「どれにも当たらなかったときの行」として当たる（刃選択は当てない・
@@ -1315,7 +1309,7 @@
    const hold = st.thick < fm ? 'フィンガー' : 'ゴムリング';
    return { hold, material: matOf(hold, null), index: -1, stored: false, row: null };
   }
-  const hit = firstRule(rules, pickCtx(st, M), M.holdFields, true);
+  const hit = firstRule(rules, pickCtx(st, M), tableFields(M, 'hold'), true);
   const hold = hit ? hit.row.hold : 'ゴムリング';
   return { hold, material: matOf(hold, hit && hit.row), index: hit ? hit.index : -1,
            stored: !!M.holdsStored, row: hit ? hit.row : null };
@@ -1341,7 +1335,7 @@
   }
   const cs = (h.row && h.row.conditions) || [];
   const why = cs.length
-   ? `「保持方式」の${h.index + 1}行目（${cs.map(c => condText(c, M.holdFields, M.pickOps)).join(' かつ ')}）に当たったため`
+   ? `「保持方式」の${h.index + 1}行目（${cs.map(c => condText(c, tableFields(M, 'hold'), M.pickOps)).join(' かつ ')}）に当たったため`
    : '「保持方式」のどの決まりにも当たらないため（最後の既定の行）';
   return why + (h.stored ? '' : '。表は未登録なので、刃組基準値のフィンガー切替板厚から作った表で決めました');
  }
@@ -1466,30 +1460,74 @@
   if (!(used > 0)) used = step;
   return { want: w, used, step, rounded: Math.abs(used - w) > 1e-6 };
  }
- /* 使う刃を決める（§9.379、利用者の指示2）。
-      ふつう … カテゴリが「通常刃」のセットの刃
-      例外 …… `刃選択マスタ` の条件に当たったら、その組の「専用刃」
-    使用状態が「研磨中」のセットは**どちらでも選ばない**（§9.526・セット＝設備＋組）。
-    決めたら `st.pick` に「なぜその組か」を残す——画面が理由を出せないと、
-    利用者には「勝手に別の刃になった」としか見えない（§CLAUDE 6 出どころを出す）。 */
+ /* 刃のカテゴリと刃厚（§9.529、利用者の指示「刃厚を選ぶテーブルと通常刃か専用刃を選ぶテーブルの2つ」）。
+    `{category, group, thickness, cat:{index,row,stored}, th:{…}}`——どの表の何行目で決まったかも返す
+    （画面が根拠を書く・§CLAUDE 6）。表を持たない材料（古いサーバー・網の手組み）は種と同じ答え
+    （通常刃・いちばん厚い刃）。刃厚の表は**カテゴリの答えも**条件に読める。 */
+ function bladeChoice(st, M) {
+  const T = (M && M.pickTables) || {};
+  const ctx = bladePickCtx(st, M);
+  const one = (key, c) => {
+   const t = T[key] || { rows: [], stored: false };
+   const hit = firstRule(t.rows || [], c, tableFields(M, key), true);
+   return { index: hit ? hit.index : -1, row: hit ? hit.row : null, stored: !!t.stored, n: (t.rows || []).length };
+  };
+  const cat = one('category', ctx);
+  const category = (cat.row && cat.row.answer) || (M && M.bladeCatNormal) || '通常刃';
+  const group = (cat.row && cat.row.group) || '';
+  const th = one('thickness', Object.assign({}, ctx, { category }));
+  const thickness = num(th.row && th.row.answer) || null;      // null＝いちばん厚い刃
+  return { category, group, thickness, cat, th };
+ }
+ /* 表の答えを1文に（「刃のカテゴリ」の2行目（板厚 ≧ 1.6）に当たったため）。刃組の説明と盤が同じ字を使う。 */
+ function tableReason(label, hit, M, key) {
+  const cs = (hit.row && hit.row.conditions) || [];
+  if (!hit.row) return `「${label}」の表がありません`;
+  return (cs.length
+   ? `「${label}」の${hit.index + 1}行目（${cs.map(c => condText(c, tableFields(M, key), M.pickOps)).join(' かつ ')}）に当たったため`
+   : `「${label}」のどの決まりにも当たらないため（最後の既定の行）`) + (hit.stored ? '' : '・表は未登録');
+ }
+ /* 使う刃を決める（§9.529）。
+      ① カテゴリの表の答えのセット（専用刃でセットの指定があればそのセットだけ）で、使用中のもの
+      ② その中から刃厚の表の答えの刃厚（空＝いちばん厚い刃）。セットは A→Z の順に見る
+    当たったのに使える刃が無いときは**黙って落とさない**——理由（`missing`）を持ったまま、①は通常刃、
+    ②はそのカテゴリのいちばん厚い刃で描き、画面が「使えない」と言えるようにする。 */
  function applyBladePick(st, M) {
-  const normal = M.bladeCatNormal || '通常刃', special = M.bladeCatSpecial || '専用刃';
-  const hit = pickGroup(M.picks, bladePickCtx(st, M), pickFieldsAll(M));
-  st.pick = hit ? { group: hit.group, rule: hit.rule } : null;
+  const normal = M.bladeCatNormal || '通常刃';
+  const ch = bladeChoice(st, M);
   const usable = b => b.currentDia && selectable(b, M);
-  const ok = b => usable(b) && (hit
-   ? (bladeCategory(b, M) === special && b.group === hit.group)
-   : bladeCategory(b, M) === normal);
-  let use = (M.blades || []).filter(ok);
-  /* 条件に当たったのに、その組の使える刃が1枚も無い（研磨中を含む）——**黙って通常刃へ
-     落とさない**。理由を持ったまま通常刃で描き、画面が「当たったが刃が無い」と言えるようにする。 */
-  if (hit && !use.length) {
-   st.pick = { group: hit.group, rule: hit.rule, missing: true };
-   use = (M.blades || []).filter(b => usable(b) && bladeCategory(b, M) === normal);
+  const inCat = (b, cat, grp) => bladeCategory(b, M) === cat && (!grp || b.group === grp);
+  let pool = (M.blades || []).filter(b => usable(b) && inCat(b, ch.category, ch.group));
+  const missing = [];
+  if (!pool.length && ch.category !== normal) {
+   missing.push('category');
+   pool = (M.blades || []).filter(b => usable(b) && inCat(b, normal, ''));
   }
-  use = use.sort((a, b) => (b.thickness || 0) - (a.thickness || 0));
-  if (use.length) { st.knife = use[0].currentDia; if (use[0].thickness) st.tk = use[0].thickness; }
+  /* 並び＝厚い順、同じ厚さはセットの A→Z。刃厚が決まっていればその厚さだけを残す。 */
+  const order = (a, b) => ((b.thickness || 0) - (a.thickness || 0)) || String(a.group).localeCompare(String(b.group));
+  let use = ch.thickness ? pool.filter(b => Math.abs((+b.thickness || 0) - ch.thickness) < 1e-6) : pool;
+  if (ch.thickness && !use.length) { missing.push('thickness'); use = pool; }
+  const k = use.slice().sort(order)[0] || null;
+  st.pick = { category: ch.category, group: ch.group, thickness: ch.thickness, missing,
+              set: k ? k.group : '', used: k ? (+k.thickness || null) : null,
+              why: { category: tableReason('刃のカテゴリ', ch.cat, M, 'category'),
+                     thickness: tableReason('刃厚', ch.th, M, 'thickness') } };
+  if (k) { st.knife = k.currentDia; if (k.thickness) st.tk = k.thickness; }
   return st;
+ }
+ /* 選んだ刃の札（「専用刃 B・5mm」）と根拠（`title`）。使えなかった答えは字で言う（`missing`）。 */
+ function pickWord(st, M) {
+  const p = st.pick || { category: (M && M.bladeCatNormal) || '通常刃', missing: [], why: {} };
+  const normal = (M && M.bladeCatNormal) || '通常刃';
+  const miss = p.missing || [];
+  const cat = miss.includes('category') ? normal : p.category;
+  const head = `${cat}${p.set ? ' ' + p.set : ''}${p.used ? '・' + p.used + 'mm' : ''}`;
+  const note = [miss.includes('category') ? `${p.category}${p.group ? '（' + p.group + '）' : ''}が使えない` : '',
+                miss.includes('thickness') ? `${p.thickness}mmが無い` : ''].filter(Boolean).join('・');
+  const title = [`カテゴリ: ${p.category}${p.group ? '（セット ' + p.group + '）' : ''}——${(p.why || {}).category || ''}`,
+                 `刃厚: ${p.thickness ? p.thickness + 'mm' : 'いちばん厚い刃'}——${(p.why || {}).thickness || ''}`]
+   .concat(note ? [`${note}（カテゴリが違う・研磨中・刃が未登録のどれか）ため、${head}で描いています。`] : []).join('\n');
+  return { text: note ? `${head}（${note}）` : head, title, warn: !!note, special: cat !== normal };
  }
  /* 基準値から**既定値**を入れる。**利用者が触った値は上書きしない**のは
     呼ぶ側の責任（画面は設備を開き直したときだけ呼ぶ・§9.361）。 */
@@ -1631,7 +1669,7 @@
   compose, buildRows, endRows, badgeMap, BADGE_TONES, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum, cutFace,
   stripDesign, designByParent, condOf, sameCond, seedFromCond,
-  pickCtx, bladePickCtx, pickFieldsAll, bladeCategory, pickGroup, condHits, selectable, firstRule, holdPick, holdReason, condText,
+  pickCtx, bladePickCtx, tableFields, bladeChoice, tableReason, pickWord, bladeCategory, condHits, selectable, firstRule, holdPick, holdReason, condText,
   expand, materialRun, matShift, spread, tierOf,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP
  };

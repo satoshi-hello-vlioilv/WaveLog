@@ -32,7 +32,7 @@ def bladeset_blade_list():
 
  def fn(c):
   return {'items': bs.blade_rows(c, True, eq or None),
-          'bladeStatus': list(bs.BLADE_STATUS),
+          'setNames': list(bs.BLADE_SET_NAMES),
           'equipments': bs.equipments(c)}
  return jsonify(ok=True, equipment=eq, **_op_read(fn))
 
@@ -42,23 +42,23 @@ def _blade_save(x):
  uid = request_user_id(x)
 
  def fn(c):
-  return bs.blade_upsert(c, uid, equipment=x.get('equipment'),
-                         name=x.get('name'), group=x.get('group'),
+  return bs.blade_upsert(c, uid, equipment=x.get('equipment'), group=x.get('group'),
                          thickness=x.get('thickness'),
                          current_dia=x.get('currentDia'),
                          qty=x.get('qty'), min_qty=x.get('minQty'),
                          last_grind=x.get('lastGrind'),
                          grind_count=x.get('grindCount'),
-                         status=x.get('status'), note=x.get('note'),
+                         note=x.get('note'),
                          order=x.get('order'), enabled=_enabled(x),
                          blade_id=_rid(x))[0]
  return jsonify(ok=True, id=_op_read(fn), message='刃を保存しました。')
 
 
-_BLADE_SPEC = {'id': any_, 'equipment': any_, 'name': any_, 'group': any_,
+# 【§9.529】名称・状態は受けない（鍵は設備＋セット＋刃厚。カテゴリ・使用状態はセットが持つ）。
+_BLADE_SPEC = {'id': any_, 'equipment': any_, 'group': any_,
                'thickness': any_, 'currentDia': any_, 'qty': any_,
                'minQty': any_, 'lastGrind': any_, 'grindCount': any_,
-               'status': any_, 'note': any_, 'order': any_,
+               'note': any_, 'order': any_,
                'enabled': any_, 'enabledText': any_}
 
 
