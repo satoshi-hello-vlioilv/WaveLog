@@ -494,8 +494,13 @@ _FIELD_KIND = {f: k for f, _l, k, _g, _s in PICK_FIELDS}
 BLADEPICK_OPS = (
     ('eq', '＝'), ('ne', '≠'), ('ge', '≧'), ('gt', '＞'),
     ('le', '≦'), ('lt', '＜'), ('between', '範囲'), ('contains', '含む'),
+    # §9.533（利用者の指示「＊＊＊で始まる、＊＊＊で終わるのような前方一致、や後方一致など様々な種類」）。
+    ('startsWith', 'で始まる'), ('endsWith', 'で終わる'), ('notContains', '含まない'),
+    ('notStartsWith', 'で始まらない'), ('notEndsWith', 'で終わらない'),
+    ('empty', '空'), ('notEmpty', '空でない'), ('regex', '正規表現'),
 )
 BLADEPICK_OPS_2 = ('between',)      # 右辺を2つ取るもの
+BLADEPICK_OPS_0 = ('empty', 'notEmpty')   # 右辺を持たないもの
 
 
 # 仕掛の列を条件に使うときの綴り（§9.524）。`source.<列名>`——帳票ブロックの道
@@ -534,9 +539,13 @@ def normalize_pick_conditions(raw, extra_fields=True, order=9):
         if op not in ops or not (field in fields or (extra_fields and is_source_field(field))):
             continue
         cond = {'field': field, 'op': op,
-                'value': _txt(item.get('value'))[:120]}
+                'value': '' if op in BLADEPICK_OPS_0 else _txt(item.get('value'))[:120]}
         if op in BLADEPICK_OPS_2:
             cond['value2'] = _txt(item.get('value2'))[:120]
+        # 1つのセルの中の「または」（§9.533）。真の条件から次の組が始まる——**同じ列の前の条件があるときだけ**
+        # （列の頭の`or`は意味を持たないので落とす）。
+        if item.get('or') is True and any(c['field'] == field for c in out):
+            cond['or'] = True
         out.append(cond)
     return out
 
@@ -2115,8 +2124,6 @@ def _vocabulary():
                           for k, l, o in PICK_TABLES],
         'pickGroups': [{'key': k, 'label': l} for k, l in PICK_GROUPS],
         'pickThickest': PICK_THICKEST,
-        'pickOps': [{'op': o, 'label': l, 'two': o in BLADEPICK_OPS_2}
-                    for o, l in BLADEPICK_OPS],
         'spacerUses': list(SPACER_USES),
         'ringColors': [{'color': c0, 'hex': h,
                         'od': float(RING_COLOR_TOP_OD - i)}

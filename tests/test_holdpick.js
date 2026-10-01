@@ -188,6 +188,31 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   rec('⑥ 保存すると行の並びと列の並びが両方残り、開き直しても同じ', sv.cols.join('/') === 'strips/thickness'
       && sv.rows.map(r => r.note).filter(Boolean).join(',') === 'R2,R1,R3' && o4.cols === '条数/板厚' && o4.rows === 'R2,R1,R3',
       JSON.stringify({ cols: sv.cols, o4 }));
+
+  /* ---- ⑦ 1つのセルに組み合わせ・前方一致など（§9.533、利用者の指示「<0.6かつ>0.9などの組み合わせのパターンも
+     1つのセル内に」「＊＊＊で始まる、＊＊＊で終わるのような前方一致、や後方一致など様々な種類」）。
+     前（実測・10通りの書き方）: 正しく判定できた書き方 0/10（組み合わせは「数で書いてください」で断り、
+     SUS* などは字そのものと同じかで比べていた）。 ---- */
+  const c7 = f => `.rt-row[data-r="0"] .rt-c[data-f="${f}"]`;
+  await page.fill(c7('thickness'), '<0.6 または >0.9'); await page.press(c7('thickness'), 'Tab');
+  await W.until(page, s => document.querySelector(s)?.value === '＜ 0.6 または ＞ 0.9', c7('thickness'), { ms: 4000, what: '組み合わせのセル' });
+  await page.focus(c7('thickness'));
+  const read7 = await page.evaluate(() => document.querySelector('.rt-read')?.textContent || '');
+  rec('⑦ 1つのセルに「または」で書け、表の字は記号にそろい、読みは括弧で包む',
+      /板厚が （?（0\.6 より小さい または 0\.9 より大きい）/.test(read7), read7);
+  await page.fill('.rt-try .rt-p[data-p="thickness"]', '1.0');
+  await page.fill('.rt-try .rt-p[data-p="strips"]', '1');
+  await W.until(page, () => !!document.querySelector('.rt-row[data-r="0"] .rt-cell.is-hit'), null, { ms: 4000, what: '試す値で当たる' }).catch(() => {});
+  const hit7 = await page.evaluate(() => ({ th: document.querySelector('.rt-row[data-r="0"] .rt-c[data-f="thickness"]')?.closest('td').className }));
+  rec('⑦ 試す値 1.0 は「＜0.6 または ＞0.9」に当たる（○）', /is-hit/.test(hit7.th || ''), JSON.stringify(hit7));
+  await page.fill('.rt-try .rt-p[data-p="thickness"]', '0.7');
+  await W.until(page, () => /is-miss/.test(document.querySelector('.rt-row[data-r="0"] .rt-c[data-f="thickness"]')?.closest('td').className || ''), null, { ms: 4000, what: '0.7 は外れる' }).catch(() => {});
+  rec('⑦ 試す値 0.7 は当たらない（×）', await page.evaluate(() => /is-miss/.test(document.querySelector('.rt-row[data-r="0"] .rt-c[data-f="thickness"]')?.closest('td').className || '')));
+  await page.click('[data-rt="save"]');
+  await W.until(page, () => /登録済み/.test(document.querySelector('.rt-state')?.textContent || ''), null, { ms: 10000, what: '組み合わせを保存' });
+  const sv7 = await (await fetch(B + '/api/bladeset/hold-pick?equipment=' + encodeURIComponent(EQ))).json();
+  const th7 = sv7.rows[0].conditions.filter(c => c.field === 'thickness').map(c => `${c.or ? '|' : ''}${c.op}${c.value}`).join(' ');
+  rec('⑦ 保存して開き直しても同じ組み合わせ（2つ目に「または」の印）', th7 === 'lt0.6 |gt0.9', th7);
   rec('コンソールに例外が出ない', errs.length === 0, errs.slice(0, 3).join(' / '));
  } finally {
   await reset();

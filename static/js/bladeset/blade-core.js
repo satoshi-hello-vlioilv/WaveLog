@@ -112,7 +112,6 @@
            /* 保持方式の条件表（§9.524）。登録が無ければサーバーが今までの決め方の「種」を返す。 */
            holds: (c.holds || []).slice(), holdsStored: !!c.holdsStored,
            holdMethods: (c.holdMethods || []).slice(),
-           pickOps: (c.pickOps || []).slice(),
            equipment: c.equipment || '',
            standardStored: !!c.standardStored,
            bladeStatus: c.bladeStatus || [], spacerUses: c.spacerUses || [],
@@ -1356,20 +1355,35 @@
     大小・範囲は数として、＝／≠は両方が数に読めれば数として（'1.0' と '1' を同じに）、
     含むは字として。 */
  const asNum = v => (String(v ?? '').trim() === '' ? NaN : Number(v));
+ /* 比べ方（§9.533、利用者の指示「＊＊＊で始まる、＊＊＊で終わるのような前方一致、や後方一致など様々な種類に
+    対応できるように」）。綴りは表示ルールマスタ（`RULE_OPS`）と同じ字。**字の比べ方**はここの表の1箇所。 */
+ const TEXT_OPS = {
+  eq: (l, r) => l === r, ne: (l, r) => l !== r,
+  contains: (l, r) => !!r && l.indexOf(r) >= 0, notContains: (l, r) => !r || l.indexOf(r) < 0,
+  startsWith: (l, r) => !!r && l.startsWith(r), notStartsWith: (l, r) => !r || !l.startsWith(r),
+  endsWith: (l, r) => !!r && l.endsWith(r), notEndsWith: (l, r) => !r || !l.endsWith(r),
+  regex: (l, r) => { try { return !!r && new RegExp(r).test(l); } catch (_e) { return false; } }
+ };
+ /* 右辺を持たない比べ方（空・空でない）。 */
+ const NO_RIGHT = { empty: true, notEmpty: true };
+ const isBlank = v => v === null || v === undefined || String(v).trim() === '';
  function condHits(cond, ctx, kinds) {
   const f = cond && cond.field;
-  if (!f || !(f in ctx)) return false;
+  if (!f) return false;
+  const op = cond.op;
+  /* 空・空でないは**値が無いこと自体**を見る（引けなかった値も「空」）。 */
+  if (NO_RIGHT[op]) return (op === 'empty') === isBlank(ctx[f]);
+  if (!(f in ctx)) return false;
   const left = ctx[f];
   /* **引けなかった値を当てない**（§9.231）。0として比べると、空欄の条件が
      全部の作業に当たってしまう。 */
-  if (left === null || left === undefined || left === '') return false;
-  const op = cond.op;
+  if (isBlank(left)) return false;
   const kind = kinds[f] || (String(f).startsWith('source.')
-   ? (op === 'contains' ? 'text'
+   ? (TEXT_OPS[op] && !/^(eq|ne)$/.test(op) ? 'text'
       : (/^(ge|gt|le|lt|between)$/.test(op) || (isFinite(asNum(left)) && isFinite(asNum(cond.value)))) ? 'num' : 'text')
    : 'text');
   /* `choice`（候補から選ぶ・板押さえ方式）は字として比べる。 */
-  if (kind === 'num') {
+  if (kind === 'num' && !(TEXT_OPS[op] && !/^(eq|ne)$/.test(op))) {
    const l = +left, a = +cond.value;
    if (!isFinite(l) || !isFinite(a)) return false;
    if (op === 'between') {
@@ -1380,11 +1394,133 @@
    return PICK_NUM[op] ? PICK_NUM[op](l, a) : false;
   }
   const ls = String(left).trim(), rs = String(cond.value == null ? '' : cond.value).trim();
-  if (op === 'eq') return ls === rs;
-  if (op === 'ne') return ls !== rs;
-  if (op === 'contains') return !!rs && ls.indexOf(rs) >= 0;
-  return false;
+  return TEXT_OPS[op] ? TEXT_OPS[op](ls, rs) : false;
  }
+ /* **1つのセルの中の組み合わせ**（§9.533、利用者の指示「<0.6かつ>0.9などの組み合わせのパターンも1つのセル内に
+    かけるように」）。条件は並びのまま持ち、`or`が真の条件から「または」の次の組が始まる。読み方は
+    ふつうの式と同じ——**かつ が先**（`A かつ B または C` ＝ `(A かつ B) または C`）。行は列ごとの組の「かつ」。 */
+ function condGroups(conds) {
+  const out = [];
+  (conds || []).forEach(c => {
+   let g = out.find(x => x.field === c.field);
+   if (!g) out.push(g = { field: c.field, terms: [] });
+   g.terms.push(c);
+  });
+  return out;
+ }
+ function cellHits(terms, ctx, kinds) {
+  const chains = [];
+  (terms || []).forEach((c, i) => { if (!i || c.or) chains.push([]); chains[chains.length - 1].push(c); });
+  return chains.some(ch => ch.every(c => condHits(c, ctx, kinds)));
+ }
+ const rowHits = (conds, ctx, kinds) => condGroups(conds).every(g => cellHits(g.terms, ctx, kinds));
+
+ /* ---- セルの字 ⇔ 条件（**書き方は1箇所で読む**・判定表の盤と刃組の説明が使う） ----
+    数の記号は `>=`・`≧` どちらでも打てる。字の比べ方は `SUS*`（で始まる）・`*304`（で終わる）・`*H5*`（含む）、
+    頭に `≠` で「〜ではない」（`≠ *H5*`＝含まない）。`空`／`空でない`、`/正規表現/`。言葉でも書ける（`SUS で始まる`）。
+    組み合わせは `かつ`（`&`）と `または`（`|`）。**読めない字は条件にしない**（理由を字で返す）。 */
+ const OP_SIGNS = [[/^(>=|≧|=>)/, 'ge'], [/^(<=|≦|=<)/, 'le'], [/^(!=|≠|<>|!)/, 'ne'],
+                   [/^(>|＞)/, 'gt'], [/^(<|＜)/, 'lt'], [/^(=|＝)/, 'eq']];
+ const OP_SIGN_TEXT = { ge: '≧ ', le: '≦ ', ne: '≠ ', gt: '＞ ', lt: '＜ ', eq: '' };
+ const NEG = { eq: 'ne', contains: 'notContains', startsWith: 'notStartsWith', endsWith: 'notEndsWith', empty: 'notEmpty' };
+ const OP_WORDS = [['を含まない', 'notContains'], ['で始まらない', 'notStartsWith'], ['で終わらない', 'notEndsWith'],
+                   ['を含む', 'contains'], ['で始まる', 'startsWith'], ['で終わる', 'endsWith'], ['以外', 'ne']];
+ const JOIN_RE = /\s*(かつ|＆|&&?|\band\b|または|｜|\|\|?|\bor\b)\s*/i;
+ /* 正規表現（`/…/`）の中の `|` で割らないよう、先に札へ置き換えてから割る。 */
+ function splitCell(t) {
+  const keep = [];
+  const masked = t.replace(/\/(?:\\.|[^/\\])+\//g, m => `\uE000${keep.push(m) - 1}\uE000`);
+  const parts = masked.split(JOIN_RE);
+  const back = x => x.replace(/\uE000(\d+)\uE000/g, (_m, n) => keep[+n]);
+  const out = [];
+  for (let k = 0; k < parts.length; k += 2) {
+   const join = k ? parts[k - 1] : '';
+   out.push({ text: back(parts[k]).trim(), or: /^(または|｜|\|\|?|or)$/i.test(join) });
+  }
+  return out;
+ }
+ function parseTerm(t, kind) {
+  const numOnly = kind === 'num';
+  if (!t) return { error: '「かつ」「または」の前後に条件を書いてください' };
+  if (/^(空|空欄)$/.test(t)) return { cond: { op: 'empty', value: '' } };
+  if (/^(空でない|空欄でない)$/.test(t)) return { cond: { op: 'notEmpty', value: '' } };
+  const re = t.match(/^\/(.+)\/$/);
+  if (re) {
+   if (numOnly) return { error: 'この列は数なので正規表現は使えません' };
+   try { new RegExp(re[1]); } catch (_e) { return { error: '正規表現として読めません' }; }
+   return { cond: { op: 'regex', value: re[1] } };
+  }
+  const range = t.match(/^(-?[\d.]+)\s*[〜~～]\s*(-?[\d.]+)$/);
+  if (range) {
+   const a = Number(range[1]), b = Number(range[2]);
+   if (!isFinite(a) || !isFinite(b)) return { error: '範囲は「0.6〜1.0」のように数で書いてください' };
+   return { cond: { op: 'between', value: String(a), value2: String(b) } };
+  }
+  /* 頭の ≠ は「〜ではない」。その後ろを読んでから裏返す。 */
+  const neg = t.match(/^(!=|≠|<>)\s*(.+)$/);
+  if (neg) {
+   const inner = parseTerm(neg[2].trim(), kind);
+   if (inner.error) return inner;
+   const op = NEG[inner.cond.op];
+   if (!op) return { error: '≠ の後ろは値・*含む*・始まる*・*終わる・空 のどれかにしてください' };
+   return { cond: Object.assign({}, inner.cond, { op }) };
+  }
+  for (const [w, op] of OP_WORDS) {
+   if (t.endsWith(w) && t.length > w.length) {
+    if (numOnly && op !== 'ne') return { error: 'この列は数なので字の比べ方は使えません' };
+    return { cond: { op, value: t.slice(0, -w.length).replace(/[「」"]/g, '').trim() } };
+   }
+  }
+  const wild = t.match(/^(\*?)([^*]+)(\*?)$/);
+  if (wild && (wild[1] || wild[3])) {
+   if (numOnly) return { error: 'この列は数なので * は使えません（大小か範囲で書いてください）' };
+   const op = wild[1] && wild[3] ? 'contains' : wild[1] ? 'endsWith' : 'startsWith';
+   return { cond: { op, value: wild[2].trim() } };
+  }
+  let op = 'eq', v = t;
+  for (const [rx, o] of OP_SIGNS) { const m = t.match(rx); if (m) { op = o; v = t.slice(m[0].length).trim(); break; } }
+  if (!v) return { error: '比べる値を書いてください' };
+  if ((numOnly || /^(ge|le|gt|lt)$/.test(op)) && !isFinite(Number(v))) return { error: 'この比べ方は数で書いてください' };
+  return { cond: { op, value: v } };
+ }
+ /* セルの字 → 条件の並び（`or`つき）。空欄は `[]`（問わない）。 */
+ function parseCell(text, kind) {
+  const t = String(text || '').trim();
+  if (!t) return { conds: [] };
+  const conds = [];
+  for (const part of splitCell(t)) {
+   const p = parseTerm(part.text, kind);
+   if (p.error) return { error: p.error };
+   conds.push(Object.assign(p.cond, part.or ? { or: true } : {}));
+  }
+  return { conds };
+ }
+ function termText(c, eqSign) {
+  switch (c.op) {
+   case 'between': return `${c.value}〜${c.value2}`;
+   case 'contains': return `*${c.value}*`;
+   case 'startsWith': return `${c.value}*`;
+   case 'endsWith': return `*${c.value}`;
+   case 'notContains': return `≠ *${c.value}*`;
+   case 'notStartsWith': return `≠ ${c.value}*`;
+   case 'notEndsWith': return `≠ *${c.value}`;
+   case 'empty': return '空';
+   case 'notEmpty': return '空でない';
+   case 'regex': return `/${c.value}/`;
+   case 'eq': return (eqSign ? '＝ ' : '') + c.value;
+   default: return (OP_SIGN_TEXT[c.op] ?? '') + c.value;
+  }
+ }
+ /* 条件の並び → セルの字（表に出す字・刃組の説明の字）。 */
+ const cellText = (terms, eqSign) => (terms || []).map((c, i) => (i ? (c.or ? ' または ' : ' かつ ') : '') + termText(c, eqSign)).join('');
+ /* 読み上げ（「0.6 より小さい または 0.9 より大きい」）。候補の説明と表の下の1文が同じ字を使う。 */
+ const OP_SAY = { eq: v => `${v}`, ne: v => `${v} 以外`, ge: v => `${v} 以上`, gt: v => `${v} より大きい`,
+                  le: v => `${v} 以下`, lt: v => `${v} より小さい`, contains: v => `「${v}」を含む`,
+                  notContains: v => `「${v}」を含まない`, startsWith: v => `「${v}」で始まる`, notStartsWith: v => `「${v}」で始まらない`,
+                  endsWith: v => `「${v}」で終わる`, notEndsWith: v => `「${v}」で終わらない`,
+                  empty: () => '空', notEmpty: () => '空でない', regex: v => `正規表現 /${v}/ に合う` };
+ const termSay = c => (c.op === 'between' ? `${c.value}〜${c.value2}（両端を含む）` : (OP_SAY[c.op] || (v => v))(c.value));
+ const cellSay = terms => (terms || []).map((c, i) => (i ? (c.or ? ' または ' : ' かつ ') : '') + termSay(c)).join('');
  /* 条件表を上から見て**最初に当たった行**（`{row, index}`）。表の約束は1つ——
     同じ行の条件はすべて満たしたときだけ当たる。**条件の無い行**は`withDefault`の
     ときだけ「どれにも当たらなかったときの行」として当たる（刃選択は当てない・
@@ -1396,7 +1532,7 @@
   for (let i = 0; i < list.length; i++) {
    if (list[i].enabled === false) continue;   // 番号は表の並びのまま数える（止めた行も1行）
    const cs = list[i].conditions || [];
-   if (!cs.length ? withDefault : cs.every(c => condHits(c, ctx, kinds))) return { row: list[i], index: i };
+   if (!cs.length ? withDefault : rowHits(cs, ctx, kinds)) return { row: list[i], index: i };
   }
   return null;
  }
@@ -1439,17 +1575,17 @@
   }
   const cs = (h.row && h.row.conditions) || [];
   const why = cs.length
-   ? `「保持方式」の${h.index + 1}行目（${cs.map(c => condText(c, tableFields(M, 'hold'), M.pickOps)).join(' かつ ')}）に当たったため`
+   ? `「保持方式」の${h.index + 1}行目（${rowText(cs, tableFields(M, 'hold'))}）に当たったため`
    : '「保持方式」のどの決まりにも当たらないため（最後の既定の行）';
   return why + (h.stored ? '' : '。表は未登録なので、刃組基準値のフィンガー切替板厚から作った表で決めました');
  }
- /* 条件1つを字にする（「板厚 ＜ 0.6」「製造材質 ＝ SUS」）。刃組の説明と条件表の盤が同じ字を使う。 */
- function condText(c, fields, ops) {
-  const f = (fields || []).find(x => x.field === c.field);
-  const name = f ? f.label : String(c.field || '').replace(/^source\./, '');
-  const op = ((ops || []).find(x => x.op === c.op) || {}).label || c.op;
-  return c.op === 'between' ? `${name} ${c.value}〜${c.value2}` : `${name} ${op} ${c.value}`;
+ /* 行の条件を字にする（「板厚 ＜ 0.6 または ＞ 0.9 かつ 製造材質 SUS*」）。セルの字（`cellText()`）に列の名前を添える。
+    刃組の説明と条件表の盤が同じ字を使う。 */
+ function rowText(conds, fields) {
+  const name = f => { const x = (fields || []).find(y => y.field === f); return x ? x.label : String(f || '').replace(/^source\./, ''); };
+  return condGroups(conds).map(g => `${name(g.field)} ${cellText(g.terms, true)}`).join('・');
  }
+
 
  /* ====================== 標準の条件（§9.408、利用者の指示②） ======================
     「刃組の標準の計算値で使用スペーサなど一覧内に関連情報が出るようにしてほしい」
@@ -1588,7 +1724,7 @@
   const cs = (hit.row && hit.row.conditions) || [];
   if (!hit.row) return `「${label}」の表がありません`;
   return (cs.length
-   ? `「${label}」の${hit.index + 1}行目（${cs.map(c => condText(c, tableFields(M, key), M.pickOps)).join(' かつ ')}）に当たったため`
+   ? `「${label}」の${hit.index + 1}行目（${rowText(cs, tableFields(M, key))}）に当たったため`
    : `「${label}」のどの決まりにも当たらないため（最後の既定の行）`) + (hit.stored ? '' : '・表は未登録');
  }
  /* 使う刃を決める（§9.529）。
@@ -1773,7 +1909,7 @@
   compose, buildRows, endRows, badgeMap, BADGE_TONES, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum, cutFace,
   stripDesign, designByParent, condOf, sameCond, seedFromCond,
-  pickCtx, bladePickCtx, tableFields, bladeChoice, tableReason, pickWord, bladeCategory, condHits, selectable, firstRule, holdPick, holdReason, condText,
+  pickCtx, bladePickCtx, tableFields, bladeChoice, tableReason, pickWord, bladeCategory, condHits, rowHits, condGroups, parseCell, cellText, cellSay, selectable, firstRule, holdPick, holdReason, rowText,
   expand, axisRun, materialRun, matShift, spread, tierOf,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP
  };

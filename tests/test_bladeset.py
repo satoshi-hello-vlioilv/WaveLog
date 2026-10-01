@@ -638,6 +638,18 @@ row = [x for x in bs.standard_rows(c8, True, EQ)][0]
 rec('§9.532 「載せない」で切になる（flags.OFF_WORDS に並んでいる）', row['integLube'] is False and row['integLubeText'] == '載せない', str(row))
 bs.standard_delete(c8, sid)
 
+# ---- §9.533 条件のセルの組み合わせ（または）と比べ方の種類 ----
+nc = bs.normalize_pick_conditions([
+    {'field': 'thickness', 'op': 'lt', 'value': '0.6', 'or': True},
+    {'field': 'thickness', 'op': 'gt', 'value': '0.9', 'or': True},
+    {'field': 'material', 'op': 'startsWith', 'value': 'SUS'},
+    {'field': 'temper', 'op': 'notEmpty', 'value': 'x'},
+    {'field': 'temper', 'op': 'regex', 'value': '^H\\d+$'}], True, 9)
+rec('§9.533 前方一致・空でない・正規表現を受ける（比べ方の語彙は表示ルールと同じ綴り）',
+    [c['op'] for c in nc] == ['lt', 'gt', 'startsWith', 'notEmpty', 'regex'], str(nc))
+rec('§9.533 「または」の印は同じ列の2つ目からだけ残す（列の頭の or は落とす）・空でないは右辺を持たない',
+    'or' not in nc[0] and nc[1].get('or') is True and 'or' not in nc[2] and nc[3]['value'] == '', str(nc))
+
 # ---- 自己確認: 網が素通りしていない ----
 rec('自己確認: 断る網は、断らない呼び出しでは真にならない',
     not _reject(lambda: bs.blade_upsert(c, 'u', equipment=EQ, group='Q', thickness=7)))

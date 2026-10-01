@@ -10,7 +10,8 @@
      ・列＝データ（前の表の答え・材料の計算値・1本目のコイルの値・仕掛の列）、行＝1つの決まり、
        右端＝答え。**上から順に見て、最初に当たった行**の答え。最後の行は「どれにも当てはまらない
        とき」で消せない
-     ・セルの書き方: `< 0.6`・`0.6〜1.0`・`>= 20`・`SUS`・`!= X`・`*SUS*`（含む）。**空欄＝問わない**
+     ・セルの書き方: `< 0.6`・`0.6〜1.0`・`>= 20`・`SUS`・`!= X`・`*SUS*`（含む）・`SUS*`（で始まる）・`*304`（で終わる）・
+       `≠ *H5*`（含まない）・`空`・`/正規表現/`。1つのセルに `かつ`／`または` で組み合わせられる（§9.533）。**空欄＝問わない**
      ・セルに入ると**候補**が出る（この列の値＋書き方の見本。↑↓・Enter）。書いた決まりは
        表の下の1行が**文で読み上げる**（「板厚が 0.6 より小さい かつ … → フィンガー」）
      ・**行も列も後から並べ替えられる**（§9.530）——行は左の番号、列は見出しの「⠿」を掴んで運ぶ
@@ -27,48 +28,24 @@
  const SRC='source.';
  const isSrc=f=>String(f).startsWith(SRC);
 
- /* ---------- セルの字 ⇔ 条件（書き方は1箇所で読む） ----------
-    **読めない字は条件にしない**（理由を字で返す）——黙って落とすと「書いたのに当たらない」になる。 */
- const OP_SIGNS=[[/^(>=|≧|=>)/,'ge'],[/^(<=|≦|=<)/,'le'],[/^(!=|≠|<>)/,'ne'],
-                 [/^(>|＞)/,'gt'],[/^(<|＜)/,'lt'],[/^(=|＝)/,'eq']];
- /* 表に出す字は記号（≧・＜…）。打つときは `>=`・`<` でもよい（`OP_SIGNS`が両方読む）。 */
- const OP_TEXT={ge:'≧ ',le:'≦ ',ne:'≠ ',gt:'＞ ',lt:'＜ ',eq:''};
- /* 読み上げの言い方（「0.6 より小さい」）。候補の説明と表の下の1文が同じ字を使う。 */
- const OP_SAY={eq:v=>`${v}`,ne:v=>`${v} 以外`,ge:v=>`${v} 以上`,gt:v=>`${v} より大きい`,
-               le:v=>`${v} 以下`,lt:v=>`${v} より小さい`,between:(a,b)=>`${a}〜${b}（両端を含む）`,contains:v=>`「${v}」を含む`};
- function parseCell(text,kind){
-  const t=String(text||'').trim();
-  if(!t)return {cond:null};
-  const numOnly=kind==='num';
-  const range=t.match(/^(.+?)\s*[〜~～]\s*(.+)$/);
-  if(range){
-   const a=Number(range[1]),b=Number(range[2]);
-   if(!isFinite(a)||!isFinite(b))return {error:'範囲は「0.6〜1.0」のように数で書いてください'};
-   return {cond:{op:'between',value:String(a),value2:String(b)}};
-  }
-  const like=t.match(/^\*(.+)\*$/);
-  if(like){
-   if(numOnly)return {error:'この列は数なので「含む」は使えません'};
-   return {cond:{op:'contains',value:like[1].trim()}};
-  }
-  let op='eq',v=t;
-  for(const [re,o] of OP_SIGNS){const m=t.match(re);if(m){op=o;v=t.slice(m[0].length).trim();break}}
-  if(!v)return {error:'比べる値を書いてください'};
-  if((numOnly||/^(ge|le|gt|lt)$/.test(op))&&!isFinite(Number(v)))return {error:'この比べ方は数で書いてください'};
-  return {cond:{op,value:v}};
- }
- function cellText(c){
-  if(!c)return '';
-  if(c.op==='between')return `${c.value}〜${c.value2}`;
-  if(c.op==='contains')return `*${c.value}*`;
-  return (OP_TEXT[c.op]??'')+c.value;
- }
- const sayCond=(c,label)=>`${label}が ${c.op==='between'?OP_SAY.between(c.value,c.value2):(OP_SAY[c.op]||(v=>v))(c.value)}`;
+ /* ---------- セルの字 ⇔ 条件 ----------
+    **書き方は`blade-core.js`の1組**（`parseCell`／`cellText`／`cellSay`・§9.533）。刃組の説明の字も同じ1組を使う。
+    1つのセルに「かつ／または」で組み合わせて書ける（`<0.6 または >0.9`）。 */
+ const parseCell=(t,k)=>BS().parseCell(t,k);
+ const cellText=terms=>BS().cellText(terms);
+ const sayCell=(terms,label)=>`${label}が ${BS().cellSay(terms)}`;
 
- /* 書き方の見本（候補の後半）。数の列は大小・範囲、字の列は同じ・含む・以外。 */
+ /* 書き方の見本（候補の後半）。[入れる字, 説明, 続きを打つ, 値を使わない, 見本の字]。`v`＝いま打っている値。字の列は前方一致・後方一致・含む・否定・空・正規表現まで
+    （§9.533「前方一致、や後方一致など様々な種類」）。組み合わせの見本は数の列・字の列とも最後に。 */
  const TEMPLATES={
-  num:[['lt','＜ ','より小さい'],['le','≦ ','以下'],['ge','≧ ','以上'],['gt','＞ ','より大きい'],['between','〜','範囲（両端を含む）'],['ne','≠ ','以外']],
-  text:[['eq','','と同じ'],['contains','*','を含む'],['ne','≠ ','以外']],
+  num:[[v=>`＜ ${v}`,'より小さい'],[v=>`≦ ${v}`,'以下'],[v=>`≧ ${v}`,'以上'],[v=>`＞ ${v}`,'より大きい'],
+       [v=>`${v}〜`,'範囲（両端を含む）',1,0,v=>`${v}〜上限`],[v=>`≠ ${v}`,'以外'],
+       [v=>`＜ ${v} または ＞ `,'どちらかに当たれば（または）',1,0,v=>`＜ ${v} または ＞ 値2`],
+       [v=>`≧ ${v} かつ ＜ `,'両方に当たれば（かつ）',1,0,v=>`≧ ${v} かつ ＜ 値2`]],
+  text:[[v=>v,'と同じ'],[v=>`${v}*`,'で始まる（前方一致）'],[v=>`*${v}`,'で終わる（後方一致）'],[v=>`*${v}*`,'を含む'],
+        [v=>`≠ ${v}`,'以外'],[v=>`≠ *${v}*`,'を含まない'],[v=>`≠ ${v}*`,'で始まらない'],
+        [v=>`${v} または `,'ほかの値でもよい（または）',1,0,v=>`${v} または 値2`],[()=>'空','空欄のとき',0,1],[()=>'空でない','何か入っているとき',0,1],
+        [v=>`/${v}/`,'正規表現に合う']],
  };
 
  /* 表1枚。**状態（行・列・保存の印）と呼ぶ側の差し込み口（`o`）を持つ組**——盤は答えの列と保存先だけを
@@ -82,7 +59,8 @@
   fieldOf(f){return this.fields().find(x=>x.field===f)||null}
   colLabel(f){return isSrc(f)?String(f).slice(SRC.length):((this.fieldOf(f)||{}).label||f)}
   kindOf(f){return ((this.fieldOf(f)||{}).kind)||(isSrc(f)?'auto':'text')}
-  condOf(row,f){return (row.conditions||[]).find(c=>c.field===f)||null}
+  /* その列のセルの条件（並びのまま・`or`つき）。空の配列＝問わない。 */
+  condsOf(row,f){return (row.conditions||[]).filter(c=>c.field===f)}
   /* 既定の行＝条件の無い行。**足したばかりで条件をまだ書いていない行**（`fresh`）は違う。 */
   isDefault(r){return !(r.conditions||[]).length&&!r.fresh}
   kinds(){return Object.fromEntries(this.fields().map(f=>[f.field,f.kind]))}
@@ -119,15 +97,17 @@
    /* 書きかけの行（条件なし）は当てない——既定の行と取り違えないように。番号は表の並びのまま。 */
    return BS().firstRule(this.rows.map(r=>r.fresh&&!(r.conditions||[]).length?Object.assign({},r,{enabled:false}):r),this.probeCtx(),this.fields(),true);
   }
-  cellMark(c){
-   if(!c||!this.probeFilled())return '';
-   return BS().condHits(c,this.probeCtx(),this.kinds())?'is-hit':'is-miss';
+  cellMark(terms){
+   if(!terms.length||!this.probeFilled())return '';
+   return BS().rowHits(terms,this.probeCtx(),this.kinds())?'is-hit':'is-miss';
   }
 
   /* ---------- 文で読む（表の下の1行） ---------- */
   sentence(i){
    const r=this.rows[i];if(!r)return '';
-   const cs=(r.conditions||[]).map(c=>sayCond(c,this.colLabel(c.field)));
+   /* 列どうしは「かつ」。セルの中に「または」があれば括弧で包む（かつ と取り違えない）。 */
+   const cs=BS().condGroups(r.conditions).map(g=>{const t=g.terms,s=BS().cellSay(t);
+    return `${this.colLabel(g.field)}が ${t.some(c=>c.or)?`（${s}）`:s}`});
    const head=this.isDefault(r)?'どれにも当てはまらないとき':(cs.length?cs.join(' かつ '):'（まだ条件がありません）');
    return `${this.isDefault(r)?'既定':`${i+1}行目`}: ${head} → ${this.o.answerLabel(r)}`;
   }
@@ -182,11 +162,11 @@
   }
   /* セル1つ。読めなかった字は**直すまでそのまま残す**（描き直しで消すと、受け付けたと読める）。 */
   cellHtml(r,i,f){
-   const c=this.condOf(r,f),mk=this.cellMark(c),bad=(r.bad||{})[f];
+   const c=this.condsOf(r,f),mk=this.cellMark(c),bad=(r.bad||{})[f];
    if(bad)return `<td class="rt-cell"><input class="rt-c is-bad" data-r="${i}" data-f="${esc(f)}" value="${esc(bad.text)}"`
     +` title="${esc(bad.why)}" aria-invalid="true"><small class="rt-why">${esc(bad.why)}</small></td>`;
    return `<td class="rt-cell ${mk}"><input class="rt-c" data-r="${i}" data-f="${esc(f)}" value="${esc(cellText(c))}"`
-    +` placeholder="問わない"${c?` title="${esc(sayCond(c,this.colLabel(f)))}"`:''}>`
+    +` placeholder="問わない"${c.length?` title="${esc(sayCell(c,this.colLabel(f)))}"`:''}>`
     +(mk?`<i class="rt-mk" aria-hidden="true">${mk==='is-hit'?'○':'×'}</i>`:'')+'</td>';
   }
   opsHtml(i){
@@ -230,25 +210,29 @@
      **↑↓で選ぶまで何も選ばない**（`pick:false`）——打ち終えた字を Tab で離れても置き換えない。 */
   suggestFor(inp){
    const f=inp.dataset.f,kind=this.kindOf(f),fd=this.fieldOf(f);
-   const typed=inp.value.trim();
-   const p=parseCell(typed,kind);
-   /* 書き終えた条件（記号・範囲・含む）には候補を出さない（読み上げは表の下の1行が言う）。 */
-   if(p.cond&&p.cond.op!=='eq'&&typed)return null;
-   const bare=p.cond?p.cond.value:typed.replace(/^[<>=!≦≧＜＞≠＝*]+/,'').replace(/\*$/,'');
-   const items=this.valueItems(f,fd,bare,typed);
-   const tm=TEMPLATES[kind==='num'?'num':'text'].filter(([op])=>!(fd&&fd.kind==='choice'&&!/^(eq|ne)$/.test(op)));
+   const typed=inp.value;
+   /* 「かつ／または」の後ろは**続きの条件**として候補を出す（前の条件は残し、末尾に足す）。 */
+   const cont=typed.match(/^(.*(?:かつ|または|＆|&|｜|\|))\s*([^]*)$/);
+   const head=cont?cont[1].replace(/\s*$/,' '):'',last=(cont?cont[2]:typed).trim();
+   const p=parseCell(last,kind),c=p.conds&&p.conds[0];
+   /* 書き終えた条件（記号・範囲・含む…）には候補を出さない（読み上げは表の下の1行が言う）。 */
+   if(c&&c.op!=='eq'&&last)return null;
+   const bare=c?c.value:last.replace(/^[<>=!≦≧＜＞≠＝*]+/,'').replace(/\*$/,'');
+   const items=this.valueItems(f,fd,bare,last).map(it=>it.head?it:Object.assign(it,{ins:head+it.ins}));
+   const choice=fd&&fd.kind==='choice';
+   const tm=TEMPLATES[kind==='num'?'num':'text'].filter(([mk])=>!choice||/^(≠ )?v?$/.test(mk('v')));
    const v=bare||'値';
    items.push({head:true,label:'書き方（押すと入ります）'});
-   tm.forEach(([op,sign,say])=>{
-    const ins=op==='between'?`${bare||''}〜`:op==='contains'?`*${bare||''}*`:`${sign}${bare||''}`;
-    items.push({ins,label:op==='between'?`${v}〜上限`:op==='contains'?`*${v}*`:`${sign}${v}`,
-     note:op==='between'?`${v} から上限まで（両端を含む）`:`${v} ${say}`,back:op==='contains'?1:0,commit:!!bare&&op!=='between'});
+   tm.forEach(([mk,say,open,fixed,lab])=>{
+    const ins=head+mk(bare||'');
+    items.push({ins,label:(lab||mk)(v),note:fixed?say:`${v} ${say}`,back:/^\*.*\*$/.test(mk('x'))&&!/^≠/.test(mk('x'))?1:0,
+                commit:(!!bare||!!fixed)&&!open});
    });
    return {items,from:0,to:inp.value.length,pick:false};
   }
   valueItems(f,fd,bare,typed){
    const vals=[...new Set([].concat((fd&&fd.options)||[],this.o.valuesOf?this.o.valuesOf(f):[],
-     this.rows.map(r=>this.condOf(r,f)).filter(Boolean).flatMap(c=>c.op==='between'?[c.value,c.value2]:[c.value])).map(String))]
+     this.rows.flatMap(r=>this.condsOf(r,f)).flatMap(c=>c.op==='between'?[c.value,c.value2]:[c.value])).map(String))]
     .filter(v=>v&&(!bare||v.toLowerCase().includes(bare.toLowerCase())||typed===''))
     .slice(0,8);
    if(!vals.length)return [];
@@ -289,7 +273,7 @@
    if(p.error){r.bad=Object.assign(r.bad||{},{[f]:{text,why:p.error}});this.touch();this.render();return}
    if(r.bad){delete r.bad[f];if(!Object.keys(r.bad).length)delete r.bad}
    r.conditions=(r.conditions||[]).filter(c=>c.field!==f);
-   if(p.cond)r.conditions.push(Object.assign({field:f},p.cond));
+   p.conds.forEach(c=>r.conditions.push(Object.assign({field:f},c)));
    r.conditions.sort((a,b)=>this.cols.indexOf(a.field)-this.cols.indexOf(b.field));
    delete r.fresh;this.read=ri;
    this.touch();this.render();
@@ -372,7 +356,7 @@
    this.refocus={kind,i:to};this.render();
   }
   async delCol(ci){
-   const f=this.cols[ci],n=this.rows.filter(r=>this.condOf(r,f)).length;
+   const f=this.cols[ci],n=this.rows.filter(r=>this.condsOf(r,f).length).length;
    if(n&&!await confirmModal({title:'列を消す',eyebrow:this.o.label,
      bodyHtml:`<p class="confirm-modal-message">「${esc(this.colLabel(f))}」の条件 ${n}個も一緒に消えます。</p>`,
      confirmLabel:'消す',cancelLabel:'やめる'}))return;
@@ -405,5 +389,5 @@
  }
  const create=o=>new RuleTable(o);
 
- WL.ruleTable={create,parseCell,cellText,sayCond};
+ WL.ruleTable={create,parseCell,cellText,sayCell};
 })();
