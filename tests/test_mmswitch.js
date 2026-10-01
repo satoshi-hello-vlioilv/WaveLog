@@ -39,10 +39,12 @@ run('test_mmswitch: マスタ管理のタブを切り替えても前のタブの
   await inFlight(/\/api\/operation-item-master/);
   /* **汎用の一覧を持つタブ**を選ぶこと（見るのは「追加が押せる一覧が出るか」）。
      設備停止マスタは§9.397で専用画面（3ペイン）になったので、ここでは使わない
-     ——`.op-bar`を持つ専用画面なので「前のタブの盤が残っている」と誤判定する。 */
+     ——`.op-bar`を持つ専用画面なので「前のタブの盤が残っている」と誤判定する。
+     刃マスタも§9.529で専用の盤（2ペイン）になり「追加」を持たないので使わない（§9.537 で気づいた・
+     それ以来この節は必ず落ちていた）。ロールマスタは汎用の一覧のまま。 */
   const moved=await page.evaluate(()=>{
-   const b=document.querySelector('[data-master="bladesetBlade"]');if(!b)return false;b.click();return true;});
-  rec('刃マスタのタブがある',moved);
+   const b=document.querySelector('[data-master="roll"]');if(!b)return false;b.click();return true;});
+  rec('ロールマスタのタブがある',moved);
 
   // 前のタブの応答（2秒後）が届いたあとまで待つ。
   await idle(600,8000);   // 遅らせた応答（2秒）が届いて取得が静まるまで
@@ -52,7 +54,7 @@ run('test_mmswitch: マスタ管理のタブを切り替えても前のタブの
    追加:!!document.getElementById('masterMaintAdd'),
    前の盤:!!document.querySelector('#masterMaintForm #opEqPick, #masterMaintForm .op-bar'),
   }));
-  rec('見出しは切り替えた先のマスタ',/刃/.test(st.見出し),st.見出し||'なし');
+  rec('見出しは切り替えた先のマスタ',/ロール/.test(st.見出し),st.見出し||'なし');
   rec('前のタブの盤が残っていない',!st.前の盤,JSON.stringify(st));
   /* **「見出しが変わった」だけを見ないこと**——見出しは取りに行く前に書くので、
      上書きされていても必ず通る。中身（押せる「追加」）まで見る。 */

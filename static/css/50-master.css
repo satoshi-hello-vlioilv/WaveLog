@@ -376,6 +376,19 @@
 .mm-row.head{position:sticky;top:0;z-index:2;min-height:42px;background:var(--bg);border-bottom:2px solid #cfdde0;color:var(--ink-2);font-weight:800}
 .mm-row:not(.head){background:#fff;cursor:pointer;transition:background .1s}
 .mm-row:not(.head):nth-child(even){background:var(--surface-2)}
+/* 計算の列（§9.537）。値は登録表が答える（`.mm-calc[data-cell]`）。
+   ロールマスタ: 1周の帯（全行で同じ目盛り・色は当たる面）と見分けにくい相手の札（＝は橙・倍数は灰）。 */
+.mm-row>.mm-calc{min-width:0}
+.mm-calc[data-cell="rollConfuse"]{display:flex;flex-wrap:wrap;gap:2px var(--space-1);padding-block:var(--space-1)}
+.mm-rl{position:relative;display:block;height:10px;background:linear-gradient(var(--line-soft),var(--line-soft)) center/100% 2px no-repeat}
+.mm-rl-b{position:absolute;top:1px;height:8px;min-width:4px;border-radius:var(--radius-xs);background:var(--look-slate)}
+.mm-rl-b.is-pt{width:8px;margin-left:-4px;border-radius:var(--radius-round)}
+.mm-rl-b.is-up{background:var(--look-blue)}
+.mm-rl-b.is-dn{background:var(--look-amber)}
+.mm-rl-b.is-ud{background:var(--look-violet)}
+.mm-rc{font-style:normal;font-size:var(--fs-micro);font-weight:700;white-space:nowrap;padding:0 var(--space-1);
+ border-radius:var(--radius-xs);background:var(--surface-3);color:var(--ink-2)}
+.mm-rc.is-eq{background:var(--warn-bg);color:var(--warn-fg)}
 .mm-row:not(.head):hover{background:#eafafa}
 .mm-row:not(.head):focus-visible{outline:0;box-shadow:inset 0 0 0 2px var(--teal)}
 .mm-row.editing{box-shadow:inset 4px 0 0 var(--teal);background:#eafafa}

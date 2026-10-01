@@ -341,6 +341,8 @@ RULES = [
                                      'test_rlmaster',
                                      # §9.286 (7): 説明文の印は WL.markup() の1箇所
                                      '更新履歴')),
+    # §9.537: ロールマスタの表の計算の列（1周の長さ・見分けにくい相手）。
+    ('static/js/master/master-roll.js', g('test_roll', 'test_rollio', 'test_rollwipe')),
     ('static/js/schedule/calendar-view.js', g('test_uisize', 'test_histdel', 'test_headbar')),
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
     ('static/js/report/report-dashboard.js', g('モーダル', 'test_screport', 'test_headbar', 'test_uisize',

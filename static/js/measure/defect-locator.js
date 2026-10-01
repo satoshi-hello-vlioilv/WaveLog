@@ -1117,6 +1117,19 @@
           hits,skipped,filteredByFace,total:list.length};
  }
 
+ /* 見分けにくいロールの組（§9.537、利用者の選択 C-4）。**`rollMatches()`をそのまま使う**——
+    「このロールが付けた欠陥（1周の帯のどこか＋測りの許容）を判定にかけたら、ほかに当たるロール」。
+    `harmonics`は2（2回に1回・1周に2箇所まで）。同じ設備のロールだけを渡すこと。
+    答えは ロールの位置 → [{roll,kind,n}]（kind は rollMatches と同じ direct／multi／divide）。 */
+ function rollConfusions(rolls,harmonics=2){
+  const list=Array.isArray(rolls)?rolls:[];
+  return list.map(r=>{
+   const b=rollBand(r);if(!b)return [];
+   const p=(b.cLo+b.cHi)/2,tol=(b.cHi-b.cLo)/2/p*100+ROLL_TOL_DEFAULT;
+   const got=rollMatches({pitch:p,tol,face:'',harmonics},list.filter(q=>q!==r));
+   return (got.hits||[]).map(h=>({roll:h.roll,kind:h.kind,n:h.n}));
+  });
+ }
  const ROLL_KIND_LABEL={direct:'直接一致',multi:'倍の間隔',divide:'1周に複数'};
  function rollAnswerHtml(r){
   if(r.error)return `<div class="defect-answer is-empty"><b>${esc(r.error)}</b>
@@ -1360,6 +1373,8 @@
                    /* ② 長手方向（§9.239 ⑥）。**判定は1箇所**なので、
                       画面の外から確かめるときもこの関数を通す。 */
                    setTab,rollMatches,rollEquipment,forgetRolls,
+                   /* ロールマスタの表（§9.537）が1周の長さと見分けにくい相手を引く。 */
+                   rollBand,rollConfusions,rollTol:ROLL_TOL_DEFAULT,
                    /* 紙にも載せる（§9.305 ②-2）。**引くのは控えだけ**で、
                       取りに行くのは`ensureRolls()`（呼ぶ側が取れたときだけ
                       描き直す）。 */

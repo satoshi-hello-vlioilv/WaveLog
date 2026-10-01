@@ -1,4 +1,4 @@
-# 測定画面（98件）
+# 測定画面（100件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -35,6 +35,8 @@
 | ロールを見分けるのは6つ（設備名＋ロール名＋接触面＋径MAX＋径MIN＋備考）で1本 | `test_roll.js`・`test_rollio.py` | [§9.246](../../docs/decisions/9.246.md)・[§9.257](../../docs/decisions/9.257.md) |
 | ロールはまとめて消せる／ファイルの内容そのものに入れ替えられる | `test_rollio.py`・`test_rollwipe.js` | [§9.251](../../docs/decisions/9.251.md) |
 | 手打ちの席が無い形では、設定を押せなくして理由を書く | — | [§9.247](../../docs/decisions/9.247.md) |
+| ロールの見分けにくい相手は`rollConfusions()`の1箇所（`rollMatches()`を通す・倍数2まで・同じ設備の中） | `test_roll.js` | [§9.537](../../docs/decisions/9.537.md) |
+| ロールマスタの表の1周の長さ・帯・見分けにくい相手は`master-roll.js`が計算の列として名乗る（帯は全行で同じ目盛り） | `test_roll.js` | [§9.537](../../docs/decisions/9.537.md) |
 | ロールマスタは1ロール1設備。判定は`WL.defect.rollMatches`の1箇所 | `test_roll.js` | [§9.239](../../docs/decisions/9.239.md) |
 | フィルタは「条件 → その組み合わせ」の2層。バーに出すのは組み合わせだけ | — | [§9.287](../../docs/decisions/9.287.md) |
 | 効いている条件は「アイコン＋件数」の1バッジ。中身はポップオーバー | — | [§9.287](../../docs/decisions/9.287.md) |
