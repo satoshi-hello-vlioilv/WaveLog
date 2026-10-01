@@ -31,6 +31,8 @@
   seedNote:'刃組基準値のフィンガー切替板厚から作った表',
   lead:'板を保持する方式を決める<b>最初の表</b>です。ここの答え（板押さえ方式・フィンガー材質）は「刃選択」の表で条件に使えます。',
   answers:()=>outChoices(),answerOf:r=>`${r.hold}|${matOf(r)}`,answerLabel:outLabel,
+  /* 答えの地図の色は刃組図と同じ（§9.535）: フィンガーは材質の色、ゴムリングは青、一体型は水色。 */
+  answerTone:r=>isFingerHold(r.hold)?`var(--bs-fig-${WL.bladeSet.fingerTone(matOf(r))})`:r.hold===hs.methods[2]?'var(--rs-cyan)':'var(--look-blue)',
   setAnswer:(r,v)=>{const [hold,material]=v.split('|');Object.assign(r,{hold,material:material||''})},
   blankRow:()=>({hold:hs.methods[0]||'フィンガー',material:''}),
   rowOut:r=>({hold:r.hold,material:matOf(r)}),

@@ -1532,6 +1532,104 @@
   return chs.flatMap(ch => numChain(ch).set);
  }
 
+ /* ---- 区切りの格子（§9.535、利用者の選択「A-12 地図＋列の効き目」） ----
+    判定表が区別できる値は、**条件に書いた境目で区切った区間だけ**（板厚 0.40 と 0.41 はどの行にも同じ）。列ごとに
+    区間（数）か字の組（字）へ割り、代表の値の組み合わせを全部試す（判定は`firstRule()`そのもの）。列が増えても
+    場合の数は掛け算で有限——**上の行に覆われて一度も当たらない行**も漏れなく言える。多すぎるときは数えない（`GRID_MAX`）。 */
+ const GRID_MAX = 20000;
+ const fmtV = v => String(+(+v).toFixed(6));
+ /* 数の列: 境目 t1<…<tn で「＜t1／t1〜t2／…／≧tn」。代表は**境目そのもの＋区間の中**（≦と＜の違いも拾う）。 */
+ function numSplits(conds) {
+  const ts = [...new Set(conds.flatMap(c => [c.value, c.value2])
+   .filter(v => v !== '' && v != null && isFinite(+v)).map(Number))].sort((a, b) => a - b);
+  if (!ts.length) return null;
+  const pad = Math.max((ts[ts.length - 1] - ts[0]) / 2, Math.abs(ts[0]) / 2, 1);
+  /* 代表は見せても不自然でない値（試す行へ入れる・0 より大きい境目なら半分）。 */
+  return [{ label: `＜${fmtV(ts[0])}`, reps: [ts[0] > 0 ? ts[0] / 2 : ts[0] - pad], at: -Infinity }].concat(ts.map((t, i) => {
+   const nx = ts[i + 1];
+   return nx == null ? { label: `≧${fmtV(t)}`, reps: [t, t + pad], at: t }
+                     : { label: `${fmtV(t)}〜＜${fmtV(nx)}`, reps: [t, (t + nx) / 2], at: t };
+  }));
+ }
+ /* 字の列: 条件に出てくる値・始まり・終わり・含む字から候補の字を作り、**全部の条件への当たり外れが同じ字**を1つの組にする。
+    候補から選ぶ列（`options`）はその顔ぶれそのもの。組の名前は実在の値→「SUS…」の形→そのほか→（空）。 */
+ const GAP = '＿';
+ function textSplits(conds, options) {
+  if (options && options.length) return options.map(v => ({ label: String(v), reps: [String(v)] }));
+  const v = c => String(c.value == null ? '' : c.value).trim(), cand = new Set(['（そのほか）']), real = new Set();
+  const pre = [], suf = [], mid = [];
+  conds.forEach(c => {
+   const x = v(c);
+   if (/^(eq|ne)$/.test(c.op)) { cand.add(x); real.add(x); }
+   else if (/^(not)?StartsWith$/i.test(c.op)) { pre.push(x); cand.add(x + GAP); }
+   else if (/^(not)?EndsWith$/i.test(c.op)) { suf.push(x); cand.add(GAP + x); }
+   else if (/^(not)?Contains$/i.test(c.op)) { mid.push(x); cand.add(GAP + x + GAP); }
+   else if (NO_RIGHT[c.op]) cand.add('');
+   else if (x) cand.add(x);
+  });
+  pre.forEach(a => suf.forEach(b => cand.add(a + GAP + b)));
+  pre.forEach(a => mid.forEach(b => cand.add(a + b + GAP)));
+  mid.forEach(a => suf.forEach(b => cand.add(GAP + a + b)));
+  const sig = x => conds.map(c => (condHits(Object.assign({}, c, { field: 'x' }), { x }, { x: 'text' }) ? 1 : 0)).join('');
+  const groups = new Map();
+  cand.forEach(x => { const k = sig(x); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(x); });
+  const rank = x => (real.has(x) ? 0 : x === '（そのほか）' ? 2 : x === '' ? 3 : 1);
+  return [...groups.values()].map(xs => { const x = xs.slice().sort((a, b) => rank(a) - rank(b))[0];
+   return { label: x === '' ? '（空）' : x === '（そのほか）' ? 'そのほか' : x.split(GAP).join('…'), reps: [x], rank: rank(x) }; })
+   .sort((a, b) => a.rank - b.rank);
+ }
+ /* 列を数として割るか。数の列は数、字・候補の列は字、仕掛の列（`auto`）は条件がみな数で比べているときだけ数。 */
+ const colIsNum = (cs, kind) => kind === 'num' || (kind !== 'text' && kind !== 'choice'
+  && cs.every(c => NUM_ONLY.test(c.op) || (/^(eq|ne)$/.test(c.op) && numSet(c))));
+ function gridCols(rows, fields, kinds) {
+  const used = [...new Set(rows.flatMap(r => (r.conditions || []).map(c => c.field)))];
+  return used.map(f => {
+   const cs = rows.flatMap(r => (r.conditions || []).filter(c => c.field === f));
+   const fd = (fields || []).find(x => x.field === f) || {}, kind = kinds[f] || fd.kind, num = colIsNum(cs, kind);
+   const iv = num ? numSplits(cs) : textSplits(cs, kind === 'choice' ? fd.options : null);
+   return { field: f, num: !!(num && iv), iv: iv || [{ label: '—', reps: [''] }] };
+  });
+ }
+ /* 表の全部の場合（`{ctx, ix, rx, win}`＝代表の値・区間の番号・代表の番号・当たった行）と、覆われて当たらない行。
+    `rows`は表の並びのまま（`enabled:false`の行は飛ばす・番号は数える）。 */
+ function ruleGrid(rows, fields, kinds) {
+  const list = (rows || []).filter(r => r.enabled !== false), cols = gridCols(list, fields, kinds || {});
+  const size = cols.reduce((n, c) => n * c.iv.reduce((m, x) => m + x.reps.length, 0), 1);
+  if (size > GRID_MAX) return { cols, cases: [], size, max: GRID_MAX, tooMany: true, shadow: [] };
+  const kk = Object.assign({}, kinds); cols.forEach(c => { kk[c.field] = c.num ? 'num' : 'text'; });
+  let acc = [{ ctx: {}, ix: [], rx: [] }];
+  cols.forEach(c => {
+   const nx = [];
+   acc.forEach(a => c.iv.forEach((x, j) => x.reps.forEach((rep, r) =>
+    nx.push({ ctx: Object.assign({}, a.ctx, { [c.field]: rep }), ix: a.ix.concat(j), rx: a.rx.concat(`${j}.${r}`) }))));
+   acc = nx;
+  });
+  const fk = cols.map(c => ({ field: c.field, kind: kk[c.field] }));
+  acc.forEach(q => { q.win = (firstRule(rows, q.ctx, fk, true) || { index: -1 }).index; });
+  const shadow = [];
+  (rows || []).forEach((r, i) => {
+   const cs = r.conditions || [];
+   if (!cs.length || r.enabled === false) return;
+   const mine = acc.filter(q => rowHits(cs, q.ctx, kk));
+   if (!mine.length || mine.some(q => q.win === i)) return;   // 当たり得ない条件は §9.534 が言う
+   const by = {}; mine.forEach(q => { by[q.win] = (by[q.win] || 0) + 1; });
+   shadow.push({ index: i, by: +Object.keys(by).sort((a, b) => by[b] - by[a])[0] });
+  });
+  return { cols, cases: acc, size, shadow };
+ }
+ /* 列の効き目: **その列の値だけを変えると答えが変わる**場合の割合（ほかの列の代表をそろえた組のうち）。
+    `key`＝答え（既定は当たった行）。`cases`を絞れば、地図のマスの中で「どの列で割れるか」にもなる。 */
+ function ruleEffect(G, key, cases) {
+  const k = key || (q => q.win), qs = cases || G.cases;
+  return G.cols.map((c, ci) => {
+   const grp = new Map();
+   qs.forEach(q => { const id = q.rx.filter((_, j) => j !== ci).join('|');
+    if (!grp.has(id)) grp.set(id, new Set()); grp.get(id).add(k(q)); });
+   let n = 0; grp.forEach(s => { if (s.size > 1) n++; });
+   return { field: c.field, n, tot: grp.size, share: grp.size ? n / grp.size : 0 };
+  });
+ }
+
  /* ---- セルの字 ⇔ 条件（**書き方は1箇所で読む**・判定表の盤と刃組の説明が使う） ----
     数の記号は `>=`・`≧` どちらでも打てる。字の比べ方は `SUS*`（で始まる）・`*304`（で終わる）・`*H5*`（含む）、
     頭に `≠` で「〜ではない」（`≠ *H5*`＝含まない）。`空`／`空でない`、`/正規表現/`。言葉でも書ける（`SUS で始まる`）。
@@ -2026,7 +2124,7 @@
   compose, buildRows, endRows, badgeMap, BADGE_TONES, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum, cutFace,
   stripDesign, designByParent, condOf, sameCond, seedFromCond,
-  pickCtx, bladePickCtx, tableFields, bladeChoice, tableReason, pickWord, bladeCategory, condHits, rowHits, condGroups, cellDead, cellNumSet, numSet, parseCell, cellText, cellSay, selectable, firstRule, holdPick, holdReason, rowText,
+  pickCtx, bladePickCtx, tableFields, bladeChoice, tableReason, pickWord, bladeCategory, condHits, rowHits, condGroups, cellDead, cellNumSet, numSet, ruleGrid, ruleEffect, parseCell, cellText, cellSay, selectable, firstRule, holdPick, holdReason, rowText,
   expand, axisRun, materialRun, matShift, spread, tierOf,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP
  };

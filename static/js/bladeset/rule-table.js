@@ -32,6 +32,8 @@
     **書き方は`blade-core.js`の1組**（`parseCell`／`cellText`／`cellSay`・§9.533）。刃組の説明の字も同じ1組を使う。
     1つのセルに「かつ／または」で組み合わせて書ける（`<0.6 または >0.9`）。 */
  const parseCell=(t,k)=>BS().parseCell(t,k);
+ /* 答えの色の並び（記号の色から。赤は最後——異常と読まれる）。 */
+ const ANS_TONES=[0,2,4,6,3,5,7,1];
  const cellText=terms=>BS().cellText(terms);
  const sayCell=(terms,label)=>`${label}が ${BS().cellSay(terms)}`;
 
@@ -210,12 +212,126 @@
    }});
   }
 
+  /* ---------- 答えの地図と列の効き目（§9.535、利用者の選択「A-12 地図＋列の効き目」） ----------
+     数え上げは`blade-core.js`の`ruleGrid()`／`ruleEffect()`の1箇所（判定と同じ）。表が区別できる区間（条件に書いた境目）の
+     組み合わせを全部試し、軸は**効き目の大きい2列**・残りの列は重ねる。割れるマスは「どの列で割れるか」を字で言い、
+     効き目の棒の「軸にする」で軸を替える。マスを押すと試す行へ入る。覆われて一度も当たらない行は名指しする。 */
+  gridRows(){return this.rows.map(r=>r.fresh&&!(r.conditions||[]).length?Object.assign({},r,{enabled:false}):r)}
+  grid(){
+   const key=JSON.stringify([this.rows.map(r=>[r.conditions,this.o.answerLabel(r),!!r.fresh]),this.cols]);
+   if(this._g&&this._g.key===key)return this._g;
+   const G=BS().ruleGrid(this.gridRows(),this.fields(),Object.fromEntries(this.cols.map(f=>[f,this.kindOf(f)])));
+   const ans=q=>q.win<0?'':this.o.answerLabel(this.rows[q.win]);
+   this._g={key,G,ans,eff:G.tooMany?[]:BS().ruleEffect(G,ans).sort((a,b)=>b.share-a.share)};
+   return this._g;
+  }
+  shadowOf(i){return (this.grid().G.shadow||[]).find(s=>s.index===i)||null}
+  rowWord(i){return i<0?'—':this.isDefault(this.rows[i])?'既定':`${i+1}行目`}
+  shadowTag(i){const s=this.shadowOf(i);return s?`<small class="rt-deadtag">一度も当たらない（${this.rowWord(s.by)}が先に取る）</small>`:''}
+  /* 軸: 自分で選んだ列 → 効き目の大きい順で2つまで（効き目0%の列も、ほかに無ければ使う）。 */
+  mapAxes(){
+   const {G,eff}=this.grid(),ax=(this.axes||[]).filter(f=>G.cols.some(c=>c.field===f));
+   eff.forEach(e=>{if(ax.length<2&&!ax.includes(e.field))ax.push(e.field)});
+   return ax.slice(0,2);
+  }
+  /* 答えの色。呼ぶ側が名乗れば（保持方式＝刃組図と同じ色）それ、無ければ表に出てくる順に記号の色から。 */
+  toneOf(label){
+   const r=this.rows.find(x=>this.o.answerLabel(x)===label);
+   const own=r&&this.o.answerTone&&this.o.answerTone(r);if(own)return own;
+   const seen=[...new Set(this.rows.map(x=>this.o.answerLabel(x)))],n=Math.max(0,seen.indexOf(label));
+   return `var(--bs-badge-${ANS_TONES[n%ANS_TONES.length]})`;
+  }
+  mapHtml(){
+   if(!this.cols.length)return '';
+   const {G}=this.grid();if(!G.cols.length)return '';
+   const head=`<summary><b>答えの地図と列の効き目</b><small>条件に書いた境目で区切った区間の組み合わせ ${G.size}通りを全部試した答え</small></summary>`;
+   if(G.tooMany)return `<details class="rt-map" open>${head}<p class="rt-then">組み合わせが ${G.size}通りあり、多すぎるので数えません（${G.max}通りまで）。列か境目を減らすと出ます。</p></details>`;
+   const [X,Y]=this.mapAxes(),cut=f=>{const c=G.cols.find(x=>x.field===f);return c&&c.num?JSON.stringify(c.iv.slice(1).map(x=>x.at)):'[]'};
+   return `<details class="rt-map"${this.mapOpen===false?'':' open'} data-x="${esc(X)}" data-y="${esc(Y||'')}" data-bx='${cut(X)}' data-by='${Y?cut(Y):'[]'}'>${head}
+    <div class="rt-map-b"><figure>${this.mapSvg(X,Y)}${this.legendHtml()}</figure><div class="rt-eff">${this.effHtml(X,Y)}${this.shadowHtml()}</div></div></details>`;
+  }
+  mapSvg(X,Y){
+   const {G}=this.grid(),ci=G.cols.findIndex(c=>c.field===X),cj=Y?G.cols.findIndex(c=>c.field===Y):-1;
+   const cx=G.cols[ci],cy=cj>=0?G.cols[cj]:{iv:[{label:''}]},ny=cy.iv.length;
+   const W=720,L=Y?100:8,T=6,B=34,ch=Math.max(30,Math.min(64,260/ny)),H=T+B+ch*ny,cw=(W-L-4)/cx.iv.length;
+   let g='';
+   cx.iv.forEach((_,a)=>cy.iv.forEach((__,b)=>{g+=this.cellSvg(ci,cj,a,b,[L+a*cw,T+(ny-1-b)*ch,cw,ch],[X,Y])}));
+   cx.iv.forEach((v,a)=>{g+=`<text x="${(L+a*cw+cw/2).toFixed(1)}" y="${H-B+15}" text-anchor="middle" class="rt-lt">${esc(v.label)}</text>`});
+   if(Y)cy.iv.forEach((v,b)=>{g+=`<text x="${L-6}" y="${(T+(ny-1-b)*ch+ch/2+4).toFixed(1)}" text-anchor="end" class="rt-lt">${esc(v.label)}</text>`});
+   g+=`<text x="${W-4}" y="${H-3}" text-anchor="end" class="rt-lt rt-lb">${esc(this.colLabel(X))} →</text>`+(Y?`<text x="2" y="${T+12}" class="rt-lt rt-lb">${esc(this.colLabel(Y))}</text>`:'');
+   const hz=`rt-hz-${esc(this.key)}`;
+   return `<svg class="rt-msvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="答えの地図"><defs><pattern id="${hz}" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 0V7" class="rt-hzl"/></pattern></defs>${g.split('#HZ#').join(hz)}</svg>`;
+  }
+  /* マス1つ: 答えの割合で塗り分け、勝った行の番号、割れるなら「どの列で割れるか」（`ruleEffect()`をマスの中で）。 */
+  cellSvg(ci,cj,a,b,[x0,y0,cw,ch],[X,Y]){
+   const {G,ans}=this.grid(),qs=G.cases.filter(q=>q.ix[ci]===a&&(cj<0||q.ix[cj]===b));
+   const cnt=new Map(),wins=new Set();qs.forEach(q=>{const k=ans(q);cnt.set(k,(cnt.get(k)||0)+1);wins.add(q.win)});
+   const ks=[...cnt.keys()].sort((p,q)=>cnt.get(q)-cnt.get(p)),ws=[...wins].sort((p,q)=>(p<0)-(q<0)||p-q);
+   let o='',off=0;
+   ks.forEach(k=>{const w=cnt.get(k)/qs.length*cw;o+=`<rect x="${(x0+off).toFixed(1)}" y="${y0.toFixed(1)}" width="${(w+0.3).toFixed(1)}" height="${ch.toFixed(1)}" style="fill:${this.toneOf(k)}"/>`;off+=w});
+   const split=ks.length>1?BS().ruleEffect(G,ans,qs).filter(e=>e.n&&e.field!==X&&e.field!==Y).map(e=>this.colLabel(e.field)):[];
+   const say=ks.length>1?(split.length?`${split.join('・')}で割れる`:'境目の値で変わる'):'',lines=this.splitLines(say,split,cw,ch);
+   const rows=ws.length>1?ws.map(i=>i<0?'—':this.isDefault(this.rows[i])?'既定':i+1).join('・'):this.rowWord(ws[0]);
+   const cy=y0+ch/2+4-lines.length*7,xl=G.cols[ci].iv[a].label,yl=cj>=0?`・${G.cols[cj].iv[b].label}`:'';
+   if(ks.length>1)o+=`<rect x="${x0.toFixed(1)}" y="${y0.toFixed(1)}" width="${cw.toFixed(1)}" height="${ch.toFixed(1)}" style="fill:url(#HZ#)"/>`;
+   return `<g class="rt-mc" data-cx="${a}" data-cy="${cj<0?0:b}" data-w="${ws.join(',')}" tabindex="0" role="button">`
+    +`<title>${esc(`${xl}${yl}: ${ks.join('／')}（${rows}）${say?`。${say}`:''}。押すと「試す」の行に入れます`)}</title>${o}`
+    +`<rect x="${x0.toFixed(1)}" y="${y0.toFixed(1)}" width="${cw.toFixed(1)}" height="${ch.toFixed(1)}" class="rt-mcf"/>`
+    +`<text x="${(x0+cw/2).toFixed(1)}" y="${cy.toFixed(1)}" text-anchor="middle" class="rt-mct">${esc(rows)}</text>`
+    +lines.map((t,n)=>`<text x="${(x0+cw/2).toFixed(1)}" y="${(cy+14*(n+1)).toFixed(1)}" text-anchor="middle" class="rt-mcs">${esc(t)}</text>`).join('')+'</g>';
+  }
+  /* 「どの列で割れるか」の字をマスに収める（1行 → 列ごとに縦へ → 「N列で割れる」）。全部はマスの title が言う。 */
+  splitLines(say,split,cw,ch){
+   if(!say)return [];
+   const fit=t=>t.length*11<=cw-8;
+   if(fit(say))return [say];
+   if(split.length>1&&ch>=14*(split.length+2)&&split.every(fit))return split.concat(['で割れる']);
+   const n=`${split.length}列で割れる`;return [fit(n)?n:'割れる'];
+  }
+  legendHtml(){
+   const {G,ans}=this.grid(),seen=[...new Set(G.cases.map(ans))];
+   return `<p class="rt-mleg">${seen.map(k=>`<span><i style="background:${this.toneOf(k)}"></i>${esc(k||'（どれにも当たらない）')}</span>`).join('')}<span class="rt-mleg-h">斜線＝残りの列しだいで答えが変わる</span></p>`;
+  }
+  effHtml(X,Y){
+   const {eff}=this.grid();
+   const rows=eff.map(e=>{const pct=Math.round(e.share*100),on=e.field===X?'横軸':e.field===Y?'縦軸':'';
+    return `<div class="rt-eff-r" data-eff="${esc(e.field)}"><b>${esc(this.colLabel(e.field))}</b><span class="rt-bar"><i style="width:${pct}%"></i></span><span>${pct}%</span>`
+     +(on?`<em>${on}</em>`:`<button type="button" class="mm-btn-ghost sm rt-axbtn" data-axis="${esc(e.field)}">横軸にする</button>`)+'</div>'}).join('');
+   const zero=eff.filter(e=>!e.n).map(e=>this.colLabel(e.field));
+   return `<h4>列の効き目<small>その列の値だけを変えると答えが変わる割合</small></h4>${rows}`
+    +(zero.length?`<p class="rt-then">${esc(zero.join('・'))}は、どの答えも変えていません（列を消しても答えは同じ）。</p>`:'');
+  }
+  shadowHtml(){
+   const sh=this.grid().G.shadow||[];
+   if(!sh.length)return '<p class="rt-then rt-ok">上の行に覆われて一度も当たらない行はありません。</p>';
+   return `<h4>一度も当たらない行</h4><ul class="rt-shadow">${sh.map(s=>`<li data-shadow="${s.index}"><b>${s.index+1}行目</b>（→ ${esc(this.o.answerLabel(this.rows[s.index]))}）`
+    +`——条件に入る場合は全部 <b>${this.rowWord(s.by)}</b> が先に取ります</li>`).join('')}</ul>`;
+  }
+  wireMap(host){
+   host.querySelectorAll('.rt-axbtn').forEach(b=>{b.onclick=()=>{this.axes=[b.dataset.axis,this.mapAxes()[0]];this.render()}});
+   host.querySelectorAll('.rt-mc').forEach(c=>{c.onclick=()=>this.probeCell(+c.dataset.cx,+c.dataset.cy);
+    c.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();this.probeCell(+c.dataset.cx,+c.dataset.cy)}}});
+   const d=host.querySelector('.rt-map');if(d)d.ontoggle=()=>{this.mapOpen=d.open};
+   this.paintMapRow(host);
+  }
+  /* 押したマスの区間の始まりの値を「試す」の行へ（字の組は実在の値のときだけ・形で作った字は入れない）。 */
+  probeCell(a,b){
+   const {G}=this.grid();
+   this.mapAxes().forEach((f,n)=>{const c=G.cols.find(x=>x.field===f),iv=c&&c.iv[n?b:a];if(!iv)return;
+    const rep=iv.reps[0];this.o.probe[f]=c.num?String(+(+rep).toFixed(4)):(iv.rank===0||iv.rank==null?rep:'')});
+   this.o.onProbe?this.o.onProbe():this.render();
+  }
+  /* 読んでいる行が答えを決めるマスに印（表の行と地図を結ぶ）。 */
+  paintMapRow(host){
+   host.querySelectorAll('.rt-mc').forEach(c=>c.classList.toggle('is-row',this.read>=0&&c.dataset.w.split(',').includes(String(this.read))));
+  }
+
   /* ---------- 描く ---------- */
   headHtml(){
    const o=this.o;
    const st=this.dirty?'<span class="rt-state is-dirty">保存していない変更があります</span>'
     :this.stored?'<span class="rt-state">登録済み</span>':`<span class="rt-state is-seed">未登録——${o.seedNote}</span>`;
-   const nd=this.rows.filter(r=>this.rowDead(r)).length;
+   const nd=this.rows.filter((r,i)=>this.rowDead(r)||this.shadowOf(i)).length;
    return `<header class="rt-h"><h3>${esc(o.label)}</h3>${st}${nd?`<span class="rt-state is-warn">当たらない決まり ${nd}行</span>`:''}
     <span class="rt-acts"><select class="rt-addcol" aria-label="列（データ）を足す">${this.addColOptions()}</select>
      <button type="button" class="mm-btn-ghost sm" data-rt="addrow">＋ 決まりを足す</button>
@@ -251,7 +367,7 @@
    const body=this.rows.map((r,i)=>this.rowHtml(r,i,hit)).join('');
    const ri=this.read>=0&&this.read<this.rows.length?this.read:(hit?hit.index:0);
    return `<div class="rt-wrap"><table class="rt-table"><thead>${head}${this.probeRowHtml(hit)}</thead><tbody>${body}</tbody></table></div>
-    <p class="rt-read" aria-live="polite"><s>読み</s>${esc(this.sentence(ri))}</p>${this.deadHtml()}`;
+    <p class="rt-read" aria-live="polite"><s>読み</s>${esc(this.sentence(ri))}</p>${this.deadHtml()}${this.mapHtml()}`;
   }
   probeInput(f){
    const fd=this.fieldOf(f),v=this.o.probe[f]??'';
@@ -289,7 +405,7 @@
     `<option value="${esc(a.v)}"${a.v===cur?' selected':''}>${esc(a.label)}</option>`).join('')}</select>`;
    const no=def?'既定':`${this.gripHtml('row',i,`${i+1}行目の決まり`)}${i+1}`;
    return `<tr class="rt-row${def?' is-default':''}${won?' is-won':''}" data-r="${i}"><th class="rt-no">${no}</th>${cells}`
-    +`<td class="rt-out">${sel}</td><td class="rt-note"><input class="rt-n" data-r="${i}" value="${esc(r.note||'')}" placeholder="—" aria-label="備考"></td>`
+    +`<td class="rt-out">${sel}${this.shadowTag(i)}</td><td class="rt-note"><input class="rt-n" data-r="${i}" value="${esc(r.note||'')}" placeholder="—" aria-label="備考"></td>`
     +`<td class="rt-ops">${def?'':this.opsHtml(i)}</td></tr>`;
   }
   /* 描き直しても**焦点と字の位置を戻す**（試す・セルを打つたびに表を作り直すため）。 */
@@ -355,7 +471,7 @@
    host.querySelectorAll('.rt-row').forEach(tr=>{tr.onmouseenter=()=>{this.read=+tr.dataset.r;this.paintRead(host)}});
    host.querySelectorAll('.rt-ansel').forEach(el=>{el.onchange=()=>{this.o.setAnswer(this.rows[+el.dataset.r],el.value);this.touch();this.render()}});
    host.querySelectorAll('.rt-n').forEach(el=>{el.oninput=()=>this.setNote(host,+el.dataset.r,el.value)});
-   this.wireGrips(host);this.wireDead(host);
+   this.wireGrips(host);this.wireDead(host);this.wireMap(host);
    host.querySelectorAll('.rt-p').forEach(el=>{
     const set=()=>{this.o.probe[el.dataset.p]=el.value;this.o.onProbe?this.o.onProbe():this.render()};
     if(el.tagName==='SELECT')el.onchange=set;else el.oninput=set;
@@ -367,7 +483,7 @@
    if(!this.dirty){this.dirty=true;const h=host.querySelector('.rt-h');if(h){h.outerHTML=this.headHtml();this.wire(host)}}
    this.o.onChange&&this.o.onChange(true);
   }
-  paintRead(host){const p=host.querySelector('.rt-read');if(p)p.innerHTML=`<s>読み</s>${esc(this.sentence(this.read))}`;this.paintDead(host)}
+  paintRead(host){const p=host.querySelector('.rt-read');if(p)p.innerHTML=`<s>読み</s>${esc(this.sentence(this.read))}`;this.paintDead(host);this.paintMapRow(host)}
   /* セルを書いたら条件へ直す。**読めない字はそのセルに理由を出して、前の条件を残す**。 */
   setCell(ri,f,text){
    const r=this.rows[ri];if(!r)return;
@@ -474,10 +590,10 @@
    if(empty&&!await confirmModal({title:'条件の無い決まり',eyebrow:this.o.label,
      bodyHtml:`<p class="confirm-modal-message">条件が1つも無い決まりが ${empty}行あります。条件の無い行は既定の行と同じ意味になるので、保存では落とします。</p>`,
      confirmLabel:'落として保存する',cancelLabel:'やめる'}))return;
-   const dead=this.rows.map((r,i)=>this.rowDead(r)?i:-1).filter(i=>i>=0);
+   const dead=this.rows.map((r,i)=>this.rowDead(r)||this.shadowOf(i)?i:-1).filter(i=>i>=0);
    if(dead.length&&!await confirmModal({title:'当たらない決まり',eyebrow:this.o.label,
      bodyHtml:`<p class="confirm-modal-message">${dead.map(i=>`${i+1}行目（→ ${esc(this.o.answerLabel(this.rows[i]))}）`).join('・')}は、`
-      +`当たり得ない条件のため<b>どの作業にも当たりません</b>。保存すると作業はこの行を素通りして下の行で決まり、この答えは使われません。</p>`
+      +`当たり得ない条件か、上の行に覆われているため<b>どの作業にも当たりません</b>。保存すると作業はこの行を素通りして下の行で決まり、この答えは使われません。</p>`
       +'<p class="confirm-modal-message">直す案は表の下に出ています。</p>',
      confirmLabel:'このまま保存する',cancelLabel:'やめて直す'}))return;
    const last=this.rows[this.rows.length-1];
