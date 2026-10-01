@@ -1079,14 +1079,48 @@ body.bs-mode .bs-shell{display:flex}
 .bk-stock tr.is-off .bk-use{color:var(--muted)}
 .bk-sum small{color:var(--muted);font-size:var(--fs-sm)}
 
-/* ---------- 刃組基準値の盤（§9.531 `standard-board.js`） ----------
-   節のカードを**読む順に2段**へ流す（左の段を上から下→右の段・§CLAUDE 14）。カードの中は1欄1行で、
-   ラベル列は固定幅・右揃え（どの節でも入力の左端が1本・§CLAUDE 9）。説明は入力の下に1行だけ出し、
-   欄に入る（または乗せる）と全部出る（いつも全部出すと31欄ぶんの文で値が埋もれる）。 */
-.sb-grid{columns:2 36rem;column-gap:var(--space-3)}
-.sb-sec{break-inside:avoid;margin:0 0 var(--space-3);gap:0}
-.sb-sec h3{margin:0 0 var(--space-1);font-size:var(--fs-title);display:flex;align-items:baseline;gap:var(--space-2)}
-.sb-sec h3 small{font-size:var(--fs-sm);font-weight:700;color:var(--teal-dark)}
+/* ---------- 刃組基準値の盤（§9.531 → §9.533 で2ペイン＋図 `standard-board.js`／`standard-figs.js`） ----------
+   左＝節の一覧、右＝選んだ節の図と欄。カードの中は1欄1行で、ラベル列は固定幅・右揃え（§CLAUDE 9）。
+   説明は入力の下に1行だけ出し、欄に入る（または乗せる）と全部出る。図と欄は同じ鍵（`data-k`）で光り合う。 */
+.sb-ico{display:inline-grid;place-items:center;width:1.9em;height:1.9em;border-radius:var(--radius-sm);
+ background:var(--pale);color:var(--teal-dark);font-style:normal;font-weight:800;font-size:var(--fs-base-sm)}
+.bk-item.is-on .sb-ico{background:var(--teal);color:var(--surface)}
+.sb-card .bk-card-h{align-items:flex-start}
+.sb-fig{border:1px solid var(--line-soft);border-radius:var(--radius-md);background:var(--surface-2);padding:var(--space-2)}
+.sb-fig:empty{display:none}
+.sb-rows{display:flex;flex-direction:column}
+.sb-row.is-on{background:var(--pale);box-shadow:inset 3px 0 0 var(--teal)}
+/* 図の部品。色は刃組図のトークン（ガイダンスの図と同じ物が同じ色）。光るのは`is-on`の1つ。 */
+.sf{width:100%;height:auto;display:block;max-height:300px}
+.sf-t{font-size:var(--fs-sm);fill:var(--bs-fig-label)}
+.sf-sm{font-size:var(--fs-micro)}
+.sf-big{font-size:var(--fs-title);font-weight:800;fill:var(--bs-fig-ink)}
+.sf-sub{fill:var(--muted)}
+.sf-bad{fill:var(--danger);font-weight:700}
+.sf-shaft{fill:var(--bs-fig-shaft);stroke:var(--bs-fig-shaft-edge)}
+.sf-spacer{fill:var(--bs-fig-spacer);stroke:var(--bs-fig-spacer-edge)}
+.sf-knife{fill:var(--bs-fig-knife);stroke:var(--bs-fig-knife-edge)}
+.sf-knife-o{fill:var(--bs-fig-knife);stroke:var(--bs-fig-knife-edge);opacity:.85}
+.sf-limit{fill:none;stroke:var(--warn-fg);stroke-width:2;stroke-dasharray:6 4}
+.sf-ringbore{fill:none;stroke:var(--bs-fig-label);stroke-dasharray:4 3}
+.sf-fseat{fill:var(--bs-fig-fseat);stroke:var(--bs-fig-fseat-pin)}
+.sf-strip{fill:var(--bs-fig-strip);stroke:var(--bs-fig-strip-edge)}
+.sf-scrap{fill:var(--bs-fig-scrap);stroke:var(--bs-fig-scrap-edge)}
+/* ゴムは青（ガイダンスはゴムリングマスタの色で描く。ここは見本なので赤＝異常と読まれない色）。 */
+.sf-ring,.sf-integ{fill:var(--look-blue);stroke:var(--look-blue-dark)}
+.sf-finger{fill:var(--bs-fig-finger);stroke:var(--bs-fig-ink)}
+.sf-lube{fill:var(--bs-fig-lube);stroke:var(--bs-fig-lube-edge)}
+.sf-axis{stroke:var(--bs-fig-label);fill:none}
+.sf-ok-bg{fill:var(--teal-soft)}
+.sf-warn-bg{fill:var(--warn-bg)}
+.sf-bad-bg{fill:var(--danger-bg)}
+.sf-dim path,.sf-mark path,.sf-tick path{stroke:var(--bs-fig-label);fill:none;stroke-width:1.2}
+.sf-mark path{stroke-dasharray:5 3}
+.sf-target path{stroke:var(--teal-dark);stroke-width:3}
+.sf [data-k]{cursor:default}
+.sf [data-k].is-on:is(rect,circle){stroke:var(--teal);stroke-width:3}
+.sf [data-k].is-on path,.sf path[data-k].is-on{stroke:var(--teal);stroke-width:2.5}
+.sf [data-k].is-on text,.sf text[data-k].is-on{fill:var(--teal-dark);font-weight:800}
 .sb-row{display:grid;grid-template-columns:12em max-content minmax(0,1fr);column-gap:var(--space-3);align-items:center;
  padding:var(--space-1) 0;border-top:1px solid var(--line-soft)}
 .sb-l{text-align:right;font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}

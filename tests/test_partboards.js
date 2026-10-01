@@ -10,6 +10,7 @@
     ① 刃組基準値: 未登録でも、いま効いている値が欄の薄字で全部見える・節の名前に番号が無い
     ② 刃組基準値: 節の中で入力の左端が1本・打って離れると保存され「変更」の札・「既定へ」で空へ戻る
     ③ 刃組基準値: 選ぶ欄は「既定（右）」が選ばれている（保存で固定しない）
+    ⑥ 刃組基準値（§9.533）: 左＝節・右＝図と欄の2ペイン。欄と図の部品は同じ鍵で光り合い、打った値で図が動く
     ④ スペーサー: 寸法の大きい順に全部・保有をその場で直すと保存・下限を割ると橙の札と頭の数
     ⑤ フィンガー: 左に材質（見本は図と同じ色）・材質を選んで幅を足すとその材質で登録される
    後片付けは finally（作った行を消し、直した値を戻す）。 */
@@ -40,31 +41,63 @@ H.run('test_partboards: 刃組基準値・スペーサー・フィンガーの�
   await page.evaluate(() => WL.mm.openMasterMaint());
   await W.until(page, () => !!document.querySelector('[data-master="bladesetStandard"]'), null, { ms: 15000, what: '刃組のタブ' });
 
-  /* ---- ① ② ③ 刃組基準値 ---- */
+  /* ---- ① ② ③ ⑥ 刃組基準値（§9.533 で2ペイン: 左＝節・右＝その節の図と欄） ---- */
   await openBoard(page, 'bladesetStandard', '#masterMaintList .sb-row');
-  const s1 = await page.evaluate(() => {
-   const nums = [...document.querySelectorAll('#masterMaintList .sb-row input[type=number]')];
-   const secs = [...document.querySelectorAll('#masterMaintList .sb-sec')].map(s => ({
-    name: s.querySelector('h3').firstChild.textContent,
-    lefts: new Set([...s.querySelectorAll('.sb-c')].map(c => Math.round(c.getBoundingClientRect().left))).size }));
-   const pos = document.querySelector('[data-k="viewDatumPos"]');
-   const lube = document.querySelector('[data-k="integLubeText"]');
-   return { nums: nums.length, shown: nums.filter(i => /^\d/.test(i.placeholder)).length, secs,
-    integ: { gap: (document.querySelector('[data-k="integGapMin"]') || {}).placeholder, lube: lube && lube.value,
-             lubeOpt: lube && [...lube.options].map(o => o.textContent).join('/') },
-    state: document.querySelector('.bk-state').textContent, pos: pos && pos.value, posOpt: pos && pos.options[0].textContent,
-    shaft: document.querySelector('[data-k="shaftDia"]').placeholder };
-  });
-  rec('① 未登録の設備でも、いま効いている値が欄の薄字で見える（数の欄の9割以上）', s1.shown >= s1.nums * 0.9 && s1.nums >= 25, `${s1.shown}/${s1.nums}`);
-  rec('① 頭が「未登録——すべて既定値」と言う', /未登録/.test(s1.state) && /既定値/.test(s1.state), s1.state);
-  rec('① 節の名前に番号（①②…）が無い', s1.secs.length >= 6 && s1.secs.every(x => !/[①-⑳]/.test(x.name)), s1.secs.map(x => x.name).join('/'));
-  rec('② 節の中で入力の左端が1本にそろう', s1.secs.every(x => x.lefts === 1), s1.secs.map(x => x.lefts).join('/'));
-  rec('§9.532 一体型の空き 目標（既定0）と潤滑リングの切り替え（既定は載せない・載せる／載せない）が出る',
-      s1.integ.gap === '0' && s1.integ.lube === '' && s1.integ.lubeOpt === '既定（載せない）/載せる/載せない', JSON.stringify(s1.integ));
-  rec('③ 選ぶ欄は「既定（右）」が選ばれている（登録の無い値を保存で固定しない）', s1.pos === '' && /既定（右）/.test(s1.posOpt || ''), JSON.stringify(s1));
+  const secNames = await page.evaluate(() => [...document.querySelectorAll('#masterMaintList .bk-item[data-bk-key]')].map(e => e.dataset.bkKey));
+  /* 節を選ぶ（右のカードの見出しがその節になるまで待つ）。 */
+  const pickSec = async name => {
+   await page.click(`#masterMaintList .bk-item[data-bk-key="${name}"]`);
+   await W.until(page, n => ((document.querySelector('#masterMaintList .sb-card h3') || {}).textContent || '') === n, name, { ms: 8000, what: '節 ' + name });
+  };
+  const secs = [];
+  for (const name of secNames) {
+   await pickSec(name);
+   secs.push(await page.evaluate(nm => {
+    const L = document.getElementById('masterMaintList');
+    const nums = [...L.querySelectorAll('.sb-rows input[type=number]')];
+    return { name: nm, nums: nums.length, shown: nums.filter(i => /^\d/.test(i.placeholder)).length,
+     lefts: new Set([...L.querySelectorAll('.sb-c')].map(c => Math.round(c.getBoundingClientRect().left))).size,
+     fig: !!L.querySelector('.sb-fig svg'),
+     keys: L.querySelectorAll('.sb-rows [data-k]').length,
+     linked: [...L.querySelectorAll('.sb-rows [data-k]')].filter(e => L.querySelector(`.sb-fig [data-k="${CSS.escape(e.dataset.k)}"]`)).length };
+   }, name));
+  }
+  const tot = k => secs.reduce((a, x) => a + x[k], 0);
+  rec('① 未登録の設備でも、いま効いている値が欄の薄字で見える（数の欄の9割以上）', tot('shown') >= tot('nums') * 0.9 && tot('nums') >= 25, `${tot('shown')}/${tot('nums')}`);
+  rec('① 節の名前に番号（①②…）が無い', secs.length >= 6 && secs.every(x => !/[①-⑳]/.test(x.name)), secs.map(x => x.name).join('/'));
+  rec('② 節の中で入力の左端が1本にそろう', secs.every(x => x.lefts === 1), secs.map(x => x.lefts).join('/'));
+  rec('⑥ §9.533 左に節の一覧・右に選んだ節の図（6節とも図を持つ）', secs.length >= 6 && secs.every(x => x.fig), secs.map(x => x.name + ':' + x.fig).join('/'));
+  rec('⑥ 欄の9割以上が図の部品と同じ鍵で結ばれている', tot('linked') >= (tot('keys') - 1) * 0.9, `${tot('linked')}/${tot('keys')}`);
 
-  await page.fill('[data-k="shaftDia"]', '210');
-  await page.press('[data-k="shaftDia"]', 'Tab');
+  await pickSec('機械の寸法');
+  const s1 = await page.evaluate(() => ({ state: document.querySelector('.bk-state').textContent,
+   shaft: document.querySelector('.sb-rows [data-k="shaftDia"]').placeholder }));
+  rec('① 頭が「未登録——すべて既定値」と言う', /未登録/.test(s1.state) && /既定値/.test(s1.state), s1.state);
+  /* 欄に入ると図の同じ鍵が光り、打った値で図が動く（保存はまだ）。図の部品に乗ると欄が光る。 */
+  await page.focus('.sb-rows [data-k="arborLen"]');
+  const lit = await page.evaluate(() => [...document.querySelectorAll('.sb-fig [data-k].is-on')].map(e => e.dataset.k));
+  rec('⑥ 欄に入ると図の同じ部品が光る（有効長）', lit.length > 0 && lit.every(k => k === 'arborLen'), lit.join('/'));
+  await page.fill('.sb-rows [data-k="arborLen"]', '1500');
+  const dimTxt = await page.evaluate(() => [...document.querySelectorAll('.sb-fig [data-k="arborLen"] text')].map(e => e.textContent).join('/'));
+  rec('⑥ 打った値で図が動く（保存の前に・有効長 1500）', /1500/.test(dimTxt), dimTxt);
+  await page.fill('.sb-rows [data-k="arborLen"]', '');
+  await page.hover('.sb-fig [data-k="shaftDia"]');
+  rec('⑥ 図の部品に乗ると、効く欄の行が光る（軸外径）',
+      await page.evaluate(() => !!document.querySelector('.sb-row.is-on [data-k="shaftDia"]')));
+  await pickSec('板押さえの空き');
+  const s1b = await page.evaluate(() => { const lube = document.querySelector('.sb-rows [data-k="integLubeText"]');
+   return { gap: (document.querySelector('.sb-rows [data-k="integGapMin"]') || {}).placeholder, lube: lube && lube.value,
+            lubeOpt: lube && [...lube.options].map(o => o.textContent).join('/') }; });
+  rec('§9.532 一体型の空き 目標（既定0）と潤滑リングの切り替え（既定は載せない・載せる／載せない）が出る',
+      s1b.gap === '0' && s1b.lube === '' && s1b.lubeOpt === '既定（載せない）/載せる/載せない', JSON.stringify(s1b));
+  await pickSec('図の呼び方と向き');
+  const s1c = await page.evaluate(() => { const pos = document.querySelector('.sb-rows [data-k="viewDatumPos"]');
+   return { pos: pos && pos.value, posOpt: pos && pos.options[0].textContent }; });
+  rec('③ 選ぶ欄は「既定（右）」が選ばれている（登録の無い値を保存で固定しない）', s1c.pos === '' && /既定（右）/.test(s1c.posOpt || ''), JSON.stringify(s1c));
+  await pickSec('機械の寸法');
+
+  await page.fill('.sb-rows [data-k="shaftDia"]', '210');
+  await page.press('.sb-rows [data-k="shaftDia"]', 'Tab');
   const saved = await W.poll(() => api('/api/bladeset-standard-master?equipment=' + q), r => ((r.items || []).find(x => x.equipment === EQ) || {}).shaftDia === 210);
   stdMade = ((saved.items || []).find(x => x.equipment === EQ) || {}).id || null;
   await W.until(page, () => !!document.querySelector('.sb-row.is-set [data-k="shaftDia"]'), null, { ms: 8000, what: '変更の札' });

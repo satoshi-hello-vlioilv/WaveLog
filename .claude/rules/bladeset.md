@@ -1,4 +1,4 @@
-# 刃組ガイダンス（237件）
+# 刃組ガイダンス（242件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,11 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 一体型の空きは刃の両側へ半分ずつ（`integParts()`の`restA`／`restB`）。作れる2つの差が最小の組は`splitUnits()` | `test_bladesets.js` | [§9.533](../../docs/decisions/9.533.md) |
+| 条件のセルは「かつ／または」で並べる（かつが先に結ぶ）。文法は`parseCell`／`rowHits`の1箇所（表・判定・断りの字） | `test_holdpick.js`・`test_bladeset.py` | [§9.533](../../docs/decisions/9.533.md) |
+| 字の比べ方は`TEXT_OPS`と`BLADEPICK_OPS`（始まる・終わる・含まない・空・正規表現）。`ABC*`／`*ABC`でも書ける | `test_holdpick.js`・`test_bladeset.py` | [§9.533](../../docs/decisions/9.533.md) |
+| 刃組基準値は2ペイン（左＝節・右＝図と欄）。図は`standard-figs.js`、部品は効く欄の鍵を`data-k`で名乗る | `test_partboards.js` | [§9.533](../../docs/decisions/9.533.md) |
+| 図はいま効いている値（打っている途中→登録→既定）で描く。欄は`.sb-rows`の中で引く（図も同じ鍵を名乗る） | `test_partboards.js` | [§9.533](../../docs/decisions/9.533.md) |
 | 一体型の空きは専用の目標・上限（`integGapMin/Max`）。目標0＝空きを作らない・上限0＝判定しない（`holdBand(M,'integ')`） | `test_bladesets.js`・`test_bladeset.py` | [§9.532](../../docs/decisions/9.532.md) |
 | 一体型の潤滑リングは刃組基準値の切り替え（既定は載せない）。載せるときは両端に普通のスペーサーで座を作る（`integParts()`） | `test_bladesets.js` | [§9.532](../../docs/decisions/9.532.md) |
 | 区間の軸の並びは`axisRun()`の1箇所（模式図・拡大図・立体図が読む）。図ごとに並びを組まない | `test_bladesets.js` | [§9.532](../../docs/decisions/9.532.md) |
