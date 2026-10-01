@@ -48,7 +48,10 @@ H.run('test_partboards: 刃組基準値・スペーサー・フィンガーの�
     name: s.querySelector('h3').firstChild.textContent,
     lefts: new Set([...s.querySelectorAll('.sb-c')].map(c => Math.round(c.getBoundingClientRect().left))).size }));
    const pos = document.querySelector('[data-k="viewDatumPos"]');
+   const lube = document.querySelector('[data-k="integLubeText"]');
    return { nums: nums.length, shown: nums.filter(i => /^\d/.test(i.placeholder)).length, secs,
+    integ: { gap: (document.querySelector('[data-k="integGapMin"]') || {}).placeholder, lube: lube && lube.value,
+             lubeOpt: lube && [...lube.options].map(o => o.textContent).join('/') },
     state: document.querySelector('.bk-state').textContent, pos: pos && pos.value, posOpt: pos && pos.options[0].textContent,
     shaft: document.querySelector('[data-k="shaftDia"]').placeholder };
   });
@@ -56,6 +59,8 @@ H.run('test_partboards: 刃組基準値・スペーサー・フィンガーの�
   rec('① 頭が「未登録——すべて既定値」と言う', /未登録/.test(s1.state) && /既定値/.test(s1.state), s1.state);
   rec('① 節の名前に番号（①②…）が無い', s1.secs.length >= 6 && s1.secs.every(x => !/[①-⑳]/.test(x.name)), s1.secs.map(x => x.name).join('/'));
   rec('② 節の中で入力の左端が1本にそろう', s1.secs.every(x => x.lefts === 1), s1.secs.map(x => x.lefts).join('/'));
+  rec('§9.532 一体型の空き 目標（既定0）と潤滑リングの切り替え（既定は載せない・載せる／載せない）が出る',
+      s1.integ.gap === '0' && s1.integ.lube === '' && s1.integ.lubeOpt === '既定（載せない）/載せる/載せない', JSON.stringify(s1.integ));
   rec('③ 選ぶ欄は「既定（右）」が選ばれている（登録の無い値を保存で固定しない）', s1.pos === '' && /既定（右）/.test(s1.posOpt || ''), JSON.stringify(s1));
 
   await page.fill('[data-k="shaftDia"]', '210');

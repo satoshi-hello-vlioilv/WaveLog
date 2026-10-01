@@ -863,7 +863,7 @@
      スペーサーを基準面の側（刃の側）へ寄せて積み、残りを始まりの側へ空ける。 */
   const lead = floatAt === 'start' ? V.pw(Math.max(0, parts.rem || 0)) * k * d : 0;
   /* スペーサー一体型（§9.531）は**身が寸法を作る**ので、軸の並びは「一体型 → 残りのスペーサー」。 */
-  const run = parts.integ ? expand(parts.gom).concat(expand(parts.spacer)) : expand(parts.spacer);
+  const run = BS().axisRun(parts).map(x => x.sz);
   const fill = partsRun(V, xa + lead, xb, cy, run, V.spacerD,
                         V.PAL.spacer, V.PAL['spacer-edge'], null, k);
   let svg = fill.svg;
@@ -1398,7 +1398,7 @@
   /* 潤滑リング（§9.454）は**同じ札の中身**として言う——札は3つのまま
      （§9.380）。色は紫で、表と所要の色見本と同じトークン。 */
   /* スペーサー一体型（§9.531）は潤滑リングを載せないので「＋潤滑」を言わない（`zoneParts()`と同じ答え）。 */
-  const integ = BS().isInteg(st, M), lw = integ ? 0 : BS().ringRule(M).lubeW;
+  const integ = BS().isInteg(st, M), R = BS().ringRule(M), lw = integ && !R.integLube ? 0 : R.lubeW;
   const hold = finger ? BS().holdLabel(st, M)
    : `${integ ? BS().holdLabel(st, M) : 'ゴムリング'} ${ringWord('big')}／${ringWord('small')}`
      + (lw > 0 ? `＋潤滑 Φ${BS().ringRule(M).lubeOd}` : '');
@@ -1641,8 +1641,7 @@
      端数の色で塞がず（塗らない・破線の枠だけ）、**軸の端の側**（刃から遠い側）へ置く。
      基準面の側の残りは今までどおり「隙間」（0が正・§9.441）で、刃の側へ置く。 */
   const seat = !!(r.end && z0.i === res.A.floatZ && P.rem > 0.001);
-  const core = (P.integ ? B.expand(P.gom).map(mm => ({ mm, kind: 'spacer', name: 'スペーサー一体型' })) : [])
-   .concat(B.expand(P.spacer).map(mm => ({ mm, kind: 'spacer', name: 'スペーサー' })));
+  const core = B.axisRun(P).map(x => ({ mm: x.sz, kind: 'spacer', name: x.integ ? 'スペーサー一体型' : 'スペーサー' }));
   if (P.rem > 0.001 && !seat) core.push({ mm: P.rem, kind: 'gap', name: '隙間' });
   const run = st.flip ? core.slice().reverse() : core.slice();
   const knife = () => ({ mm: tk, kind: 'knife', name: '刃（厚み）' });
@@ -2138,6 +2137,10 @@
      + `${esc(cut(fo, 4))}</div>`;
   }
   /* 潤滑リングの行が無い（§9.455）。**入れられないことを言い、足す場所を言う**。 */
+  if ((f.integSeat || []).length) {
+   o += `<div class="bs-alert is-warn"><b>潤滑リングの座を作れない区間が ${f.integSeat.length}面あります</b><br>手持ちの普通のスペーサーで潤滑リングの幅（${BS().ringRule(M).lubeW}mm）ちょうどを作れないので、その区間には潤滑リングを載せていません。`
+     + `潤滑リングと同じ幅のスペーサーを足すか、「刃組基準値」の「一体型の区間の潤滑リング」を確かめてください。<br>${esc(cut(f.integSeat, 8))}</div>`;
+  }
   if (f.lubeMissing) {
    o += '<div class="bs-alert is-warn"><b>潤滑リングを入れられません</b><br>'
      + 'ゴムリングマスタに、種類が「潤滑リング」の行がありません。'
@@ -2149,10 +2152,11 @@
    const kind = res.finger ? 'finger' : 'ring', b = BS().holdBand(M, kind);
    const nm = res.finger ? 'フィンガー' : 'ゴムリング';
    /* 一体型（§9.531）の「空き」は**ゴムの無い長さ**（残りを普通のスペーサーで埋めたぶん）。上限だけを見る。 */
+   const ib = BS().holdBand(M, 'integ');
    o += BS().isInteg(st, M)
-    ? `<div class="bs-alert is-warn"><b>スペーサー一体型でゴムの無い長さが ${b.gapMax}mm を超える区間が ${rg.length}面あります</b><br>`
-      + '手持ちの一体型の幅では区間を埋め切れず、残りを普通のスペーサーで埋めました（そこは板を押さえません）。'
-      + '幅の違う一体型を足すか、「刃組基準値」の「板押さえの空き」の上限を確かめてください。<br>'
+    ? `<div class="bs-alert is-warn"><b>スペーサー一体型の空き（ゴムの無い長さ）が上限 ${ib.gapMax}mm を超える区間が ${rg.length}面あります</b><br>`
+      + `一体型を目標の空き ${ib.gapMin}mm 以上を残して積み、残りを普通のスペーサーで埋めました（そこは板を押さえません）。`
+      + '幅の違う一体型を足すか、「刃組基準値」の「一体型の空き 目標／上限」を確かめてください。<br>'
       + `${esc(cut(rg, 8))}</div>`
     : `<div class="bs-alert is-warn"><b>${nm}の空きが ${b.gapMin}〜${b.gapMax}mm に収まらない区間が ${rg.length}面あります</b><br>`
      + '手持ちの幅では、刃のあいだより少し小さく詰め切れませんでした。'
@@ -2182,7 +2186,7 @@
      1つでもあるときだけ立てる。空きの帯はゴムリング方式のときだけ判定する。 */
   const hasLube = rows.some(r => r.c.lube > 0);
   /* 空きの帯は**いまの方式の板押さえ**のもの（§9.462。フィンガーにも帯がある）。 */
-  const R = { ...BS().ringRule(M), ...BS().holdBand(M, res.finger ? 'finger' : 'ring') };
+  const integ = BS().isInteg(st, M), R = { ...BS().ringRule(M), ...BS().holdBand(M, res.finger ? 'finger' : integ ? 'integ' : 'ring') };
   const ringBand = R.gapMax > 0;
   const holdCell = r => {
    if (!r.c.kind) return '<span class="bs-z">·</span>';
@@ -2191,7 +2195,7 @@
   };
   const holdCls = r => (r.c.bare ? ' is-bad'
    : (ringBand
-      ? (r.c.holdRem < R.gapMin - 1e-6 || r.c.holdRem > R.gapMax + 1e-6 ? ' is-warn' : ' is-zero') : ''));
+      ? ((!integ && r.c.holdRem < R.gapMin - 1e-6) || r.c.holdRem > R.gapMax + 1e-6 ? ' is-warn' : ' is-zero') : ''));
   const num = v => (v ? `<b>${v}</b>` : '<span class="bs-z">·</span>');
   /* **見出しの補足は短く、長い説明はポップオーバーへ**（§9.472 の続き・利用者の指示「列情報の
      サブ情報がやたら長いところは工夫して短く収めるか、長すぎるものはポップオーバーに」）。
@@ -2227,7 +2231,7 @@
           ゴムリングの群の中の1列へ・利用者の指示「ゴムリングのうち潤滑という種類があるような
           形で表現して表をコンパクトに」）。寸法（幅・外径/内径）は見出しの title が持つ。 -->
      ${Gs.length || lubeCol ? `<th colspan="${Gs.length + (res.finger ? 0 : 1) + (lubeCol ? 1 : 0)}" class="bs-sep">${holdLabel}</th>` : ''}
-     ${hasHold ? `<th rowspan="2" class="bs-sep">板押さえの空き${tip('hold', '板押さえの空き')}<small>${ringBand ? `${R.gapMin}〜${R.gapMax} が正` : '埋め切れない幅'}</small></th>` : ''}
+     ${hasHold ? `<th rowspan="2" class="bs-sep">板押さえの空き${tip('hold', '板押さえの空き')}<small>${integ ? `目標 ${R.gapMin}${ringBand ? `・${R.gapMax} まで` : ''}` : ringBand ? `${R.gapMin}〜${R.gapMax} が正` : '埋め切れない幅'}</small></th>` : ''}
      ${hasRem ? '<th rowspan="2" class="bs-sep bs-bad" title="0 でないのは計算の不具合です">スペーサーの端数<small>0 が正</small></th>' : ''}
     </tr>
     <tr><th class="bs-ax bs-sep">上軸</th><th class="bs-ax">下軸</th>

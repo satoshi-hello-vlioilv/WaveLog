@@ -170,30 +170,44 @@ H.run('test_bladesets: 刃セット・刃選択の4項目・フィンガー材�
    const Bs = WL.bladeSet;
    const ctx = await api('/api/bladeset/context?equipment=' + encodeURIComponent(EQ));
    const integ = [330, 300].flatMap((od, i) => [50, 30, 20, 10, 5].map(w => ({ color: '一体' + i, hex: '#2a7f62', od, bore: 241, width: w, qty: 200, integ: true })));
-   const run = hold => {
+   const run = (hold, std) => {
     const M = Bs.normalize(Object.assign({}, ctx, { rings: (ctx.rings || []).concat(integ), holdsStored: true,
-     holds: [{ conditions: [], hold, material: '' }] }));
+     standard: Object.assign({}, ctx.standard || {}, std || {}), holds: [{ conditions: [], hold, material: '' }] }));
     const st = Object.assign(Bs.defaultState(), { thick: 1.2, W: 1130, lots: [{ name: 'L', w: 50, n: 22, parent: 'L' }], order: [] });
     Bs.syncOrder(st);
     const res = Bs.solve(st, M, Bs.buildIndex(M));
     const ods = new Set(integ.map(x => x.od));
-    let zones = 0, exact = 0, other = 0, lube = 0;
+    let zones = 0, exact = 0, other = 0, lube = 0, minGap = Infinity, seatOk = 0;
     res.zp.zones.forEach(z => [z.up, z.lo].forEach(q => {
      if (!q.hold) return; zones++;
      const w = q.gom.out.reduce((a, [sz, c]) => a + sz * c, 0), sp = q.spacer.out.reduce((a, [sz, c]) => a + sz * c, 0);
      if (ods.has(q.hold.od) && w > 0 && Math.abs(w + sp - q.len) < 1e-6) exact++;
      if (!ods.has(q.hold.od)) other++;
-     if (q.lube) lube++;
+     if (q.lube && q.integ) { lube++;
+      /* 座の上に載る（並びの両端が潤滑リングの幅ちょうどの普通のスペーサー）。 */
+      const run2 = Bs.axisRun(q), lw = q.lube.w, sum = (a, b) => a.slice(b[0], b[1]).reduce((s, x) => s + x.sz, 0);
+      const k = q.seat.out.reduce((a, [, c]) => a + c, 0);
+      if (Math.abs(sum(run2, [0, k]) - lw) < 1e-6 && Math.abs(sum(run2, [run2.length - k, run2.length]) - lw) < 1e-6
+          && run2.slice(0, k).every(x => !x.integ)) seatOk++;
+     }
+     if (ods.has(q.hold.od)) minGap = Math.min(minGap, q.holdRem);
     }));
-    return { label: Bs.holdLabel(st, M), zones, exact, other, lube, gap: res.fit.spacerGap.length, need: Object.keys(res.g.ring).map(Number) };
+    return { label: Bs.holdLabel(st, M), zones, exact, other, lube, seatOk, minGap, gap: res.fit.spacerGap.length,
+             need: Object.keys(res.g.ring).map(Number), lubeMissing: res.fit.lubeMissing };
    };
-   return { integ: run('スペーサー一体型'), ring: run('ゴムリング') };
+   return { integ: run('スペーサー一体型'), ring: run('ゴムリング'),
+            gap2: run('スペーサー一体型', { integGapMin: 2 }), lube: run('スペーサー一体型', { integLube: true }) };
   }, EQ);
   rec('⑥ 保持方式の答えが「スペーサー一体型」なら、どの面も一体型の幅＋残りのスペーサーで区間長ちょうど（寸法を作る）',
       ig.integ.zones > 0 && ig.integ.exact === ig.integ.zones && ig.integ.gap === 0, JSON.stringify(ig.integ));
   rec('⑥ 一体型の方式ではふつうのゴムリングを使わず、潤滑リングも載せない',
       ig.integ.other === 0 && ig.integ.lube === 0 && ig.integ.need.every(od => od === 330 || od === 300), JSON.stringify(ig.integ));
   rec('⑥ 画面の名前は「ゴムリング（スペーサー一体型）」', ig.integ.label === 'ゴムリング（スペーサー一体型）', ig.integ.label);
+  rec('§9.532 ⑥ 空きの目標 0（既定）なら空きを作らない（どの面もゴムの無い長さ 0）', ig.integ.minGap === 0, JSON.stringify(ig.integ));
+  rec('§9.532 ⑥ 空きの目標 2mm なら、どの面も 2mm 以上の空きを残し、区間長はちょうど（端数0）',
+      ig.gap2.minGap >= 2 - 1e-6 && ig.gap2.exact === ig.gap2.zones && ig.gap2.gap === 0, JSON.stringify(ig.gap2));
+  rec('§9.532 ⑥ 潤滑リングを「載せる」にすると広い側の区間の両端に載り、座は潤滑リングの幅の普通のスペーサー',
+      ig.lube.lube > 0 && ig.lube.seatOk === ig.lube.lube && ig.lube.exact === ig.lube.zones && ig.lube.gap === 0, JSON.stringify(ig.lube));
   rec('⑥ ゴムリングの方式では一体型の色を選ばない（同じ表に入っていても取り違えない）',
       ig.ring.exact === 0 && ig.ring.need.every(od => od !== 330 && od !== 300), JSON.stringify(ig.ring));
 

@@ -563,7 +563,7 @@
   const expand = BS().expand;
   const pk = D3.pack;
   /* スペーサー一体型（§9.531）は身が寸法を作る——軸の並びは「一体型 → 残りのスペーサー」（模式図と同じ）。 */
-  const all = parts.integ ? expand(parts.gom).concat(expand(parts.spacer)) : expand(parts.spacer);
+  const all = BS().axisRun(parts).map(x => x.sz);
   const want = all.reduce((a, sz) => a + sz, 0);
   /* フローティングシートが区間の**始まりの側**（OS端・§9.461）にあるときは、基準面の側
      （刃の側）へ寄せて積み、残りを始まりの側へ空ける。 */
