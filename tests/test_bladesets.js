@@ -115,19 +115,14 @@ H.run('test_bladesets: 刃セット・刃選択の4項目・フィンガー材�
   rec('§9.529 ② 登録の無い刃厚（7mm）に当たれば、いちばん厚い刃で描いて「7mmが無い」と言う',
       pick.thMissing.tk === 10 && pick.thMissing.pick.missing.includes('thickness') && /7mmが無い/.test(pick.thMissing.word), JSON.stringify(pick.thMissing));
 
-  /* ---- ④ フィンガーの窓 ---- */
+  /* ---- ④ フィンガーの盤（§9.531 で窓から2ペインへ・左＝材質） ---- */
   await page.evaluate(() => document.querySelector('[data-master="bladesetFinger"]')?.click());
-  await W.until(page, () => !!document.getElementById('masterMaintAdd'), null, { ms: 10000, what: '新規のボタン' });
-  await page.click('#masterMaintAdd');
-  const MF = '.mm-editor-modal:not([hidden]) [data-field="material"]';
-  await W.until(page, s => !!document.querySelector(s), MF, { ms: 10000, what: 'フィンガーの窓' });
-  const fg = await page.evaluate(MF => {
-   const m = document.querySelector(MF);
-   return { name: !!document.querySelector('.mm-editor-modal:not([hidden]) [data-field="name"]'),
-            opts: m ? [...m.options].map(o => o.value).filter(Boolean) : [], cur: m ? m.value : null };
-  }, MF);
-  await page.click('#maintEditorClose');
-  rec('④ フィンガーの窓に名称の欄は無い', fg.name === false, JSON.stringify(fg));
+  await W.until(page, () => !!document.querySelector('#masterMaintList .bk-item[data-bk-key]'), null, { ms: 10000, what: 'フィンガーの盤' });
+  const fg = await page.evaluate(() => ({
+   name: !!document.querySelector('#masterMaintList [data-f="name"],#masterMaintList [data-field="name"]'),
+   opts: [...document.querySelectorAll('#masterMaintList .bk-item[data-bk-key]')].map(b => b.dataset.bkKey),
+   cur: (document.querySelector('#masterMaintList .bk-item.is-on') || {}).dataset?.bkKey || null }));
+  rec('④ フィンガーの盤に名称の欄は無い', fg.name === false, JSON.stringify(fg));
   rec('④ 材質はベークライト・アルミニウムから選び、既定はベークライト',
       fg.opts.join('/') === 'ベークライト/アルミニウム' && fg.cur === 'ベークライト', JSON.stringify(fg));
 

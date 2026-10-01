@@ -20,7 +20,8 @@
 /* ---------- 図の色（JSが読み取る） ----------
    **ここが唯一の定義**。`blade-view.js` の `figPalette()` が1回だけ読み、
    SVGの`fill`へ渡す。ゴムリングの色だけは**マスタの値**なので入っていない。 */
-.bs-shell{
+/* 図の色のトークンは刃組のマスタの盤（`#masterMaintList`）でも読む——フィンガーの材質の見本が図と同じ色（§9.531）。 */
+.bs-shell,#masterMaintList{
   /* **軸はスペーサーより暗くする**（§9.416、利用者の指摘「軸の色とスペーサーが
      ほぼ同じ色でわかりにくい」）。以前は軸 `--line`（輝度.553）／スペーサー
      `--rs-slate-border`（.509）で**差が1.1:1しか無く**、模式図では軸のグラデー
@@ -958,7 +959,7 @@ body.bs-mode .bs-shell{display:flex}
    （`--ctl-h-sm`＝字1行＋余白×2）は枠線を数えないので、素の余白7px＋枠線1px×2を引くと字の席が1行より
    2px狭くなり、Windows の字（Yu Gothic UI）は下が切れた。余白を0にすれば字は欄の真ん中に来る。
    刃組の盤の欄はすべてここを通す（盤ごとに書かない）。 */
-:is(.bk-eq,.bk-field,.bk-table,.bk-mini,.bk-grid,.rt,.rb-name) :is(input:not([type=checkbox],[type=radio],[type=color]),select){padding-block:0}
+:is(.bk-eq,.bk-field,.bk-table,.bk-mini,.sb-row,.rt,.rb-name) :is(input:not([type=checkbox],[type=radio],[type=color]),select){padding-block:0}
 
 /* 刃のセットの札（A〜Z）。地はカテゴリ（通常刃＝墨・専用刃＝teal）、研磨中は斜線（字の札も出る）。 */
 .bb-tile{display:inline-grid;place-items:center;width:1.9em;height:1.9em;border-radius:var(--radius-sm);
@@ -1066,4 +1067,42 @@ body.bs-mode .bs-shell{display:flex}
 .bp-try small{color:var(--muted);font-size:var(--fs-micro);margin-left:2px}
 .bp-try .is-idle{color:var(--muted);font-size:var(--fs-sm)}
 .bp-try .mm-btn-ghost{margin-inline-start:auto}
+
+/* ---------- スペーサー・フィンガーの在庫表（§9.531 `stock-board.js`） ----------
+   行の形は2つの盤で同じ（寸法｜保有｜下限｜用途｜状態｜候補に使う｜消す）。足す行は表の足元。 */
+.bk-stockcard{align-items:flex-start}
+.bk-stock td .bk-tag{white-space:nowrap}
+.bk-stock input[type=text]{width:var(--w-md);text-align:left}
+.bk-stock .bk-new th,.bk-stock .bk-new td{border-bottom:0;padding-top:var(--space-2)}
+.bk-table .bk-use input{width:auto;height:auto}
+.bk-use{display:inline-flex;align-items:center;gap:var(--space-1);font-size:var(--fs-sm);color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.bk-stock tr.is-off .bk-use{color:var(--muted)}
+.bk-sum small{color:var(--muted);font-size:var(--fs-sm)}
+
+/* ---------- 刃組基準値の盤（§9.531 `standard-board.js`） ----------
+   節のカードを**読む順に2段**へ流す（左の段を上から下→右の段・§CLAUDE 14）。カードの中は1欄1行で、
+   ラベル列は固定幅・右揃え（どの節でも入力の左端が1本・§CLAUDE 9）。説明は入力の下に1行だけ出し、
+   欄に入る（または乗せる）と全部出る（いつも全部出すと31欄ぶんの文で値が埋もれる）。 */
+.sb-grid{columns:2 36rem;column-gap:var(--space-3)}
+.sb-sec{break-inside:avoid;margin:0 0 var(--space-3);gap:0}
+.sb-sec h3{margin:0 0 var(--space-1);font-size:var(--fs-title);display:flex;align-items:baseline;gap:var(--space-2)}
+.sb-sec h3 small{font-size:var(--fs-sm);font-weight:700;color:var(--teal-dark)}
+.sb-row{display:grid;grid-template-columns:12em max-content minmax(0,1fr);column-gap:var(--space-3);align-items:center;
+ padding:var(--space-1) 0;border-top:1px solid var(--line-soft)}
+.sb-l{text-align:right;font-size:var(--fs-sm);font-weight:700;color:var(--ink-2)}
+.sb-c{display:inline-flex;align-items:center;gap:var(--space-1)}
+.sb-c u{text-decoration:none;color:var(--muted);font-size:var(--fs-sm)}
+.sb-c input,.sb-c select{height:var(--ctl-h-sm);font-size:var(--fs-sm);box-sizing:border-box;width:var(--w-sm)}
+.sb-c input[type=number]{text-align:right}
+.sb-c select{width:var(--w-md)}
+.sb-c input.is-lg{width:24em}
+.sb-c input::placeholder{color:var(--muted);opacity:1}
+.sb-row.is-set .sb-c :is(input,select){border-color:var(--teal);font-weight:700}
+.sb-s{display:inline-flex;align-items:center;gap:var(--space-1)}
+.sb-def{color:var(--muted);font-size:var(--fs-micro)}
+.sb-undo{font-size:var(--fs-sm)}
+.sb-h{grid-column:2/-1;font-size:var(--fs-micro);color:var(--muted);line-height:1.5;
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sb-row:is(:focus-within,:hover) .sb-h{white-space:normal}
+.sb-h b{color:var(--ink-2)}
 }
