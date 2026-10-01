@@ -29,7 +29,8 @@
     **読めない字は条件にしない**（理由を字で返す）——黙って落とすと「書いたのに当たらない」になる。 */
  const OP_SIGNS=[[/^(>=|≧|=>)/,'ge'],[/^(<=|≦|=<)/,'le'],[/^(!=|≠|<>)/,'ne'],
                  [/^(>|＞)/,'gt'],[/^(<|＜)/,'lt'],[/^(=|＝)/,'eq']];
- const OP_TEXT={ge:'>= ',le:'<= ',ne:'!= ',gt:'> ',lt:'< ',eq:''};
+ /* 表に出す字は記号（≧・＜…）。打つときは `>=`・`<` でもよい（`OP_SIGNS`が両方読む）。 */
+ const OP_TEXT={ge:'≧ ',le:'≦ ',ne:'≠ ',gt:'＞ ',lt:'＜ ',eq:''};
  /* 読み上げの言い方（「0.6 より小さい」）。候補の説明と表の下の1文が同じ字を使う。 */
  const OP_SAY={eq:v=>`${v}`,ne:v=>`${v} 以外`,ge:v=>`${v} 以上`,gt:v=>`${v} より大きい`,
                le:v=>`${v} 以下`,lt:v=>`${v} より小さい`,between:(a,b)=>`${a}〜${b}（両端を含む）`,contains:v=>`「${v}」を含む`};
@@ -64,8 +65,8 @@
 
  /* 書き方の見本（候補の後半）。数の列は大小・範囲、字の列は同じ・含む・以外。 */
  const TEMPLATES={
-  num:[['lt','< ','より小さい'],['le','<= ','以下'],['ge','>= ','以上'],['gt','> ','より大きい'],['between','〜','範囲（両端を含む）'],['ne','!= ','以外']],
-  text:[['eq','','と同じ'],['contains','*','を含む'],['ne','!= ','以外']],
+  num:[['lt','＜ ','より小さい'],['le','≦ ','以下'],['ge','≧ ','以上'],['gt','＞ ','より大きい'],['between','〜','範囲（両端を含む）'],['ne','≠ ','以外']],
+  text:[['eq','','と同じ'],['contains','*','を含む'],['ne','≠ ','以外']],
  };
 
  function create(o){
@@ -200,6 +201,8 @@
    const f=inp.dataset.f,kind=kindOf(f),fd=fieldOf(f);
    const typed=inp.value.trim();
    const p=parseCell(typed,kind);
+   /* 書き終えた条件（記号・範囲・含む）には候補を出さない（読み上げは表の下の1行が言う）。 */
+   if(p.cond&&p.cond.op!=='eq'&&typed)return null;
    const bare=p.cond?(p.cond.op==='between'?p.cond.value:p.cond.value):typed.replace(/^[<>=!≦≧＜＞≠＝*]+/,'').replace(/\*$/,'');
    const vals=[...new Set([].concat((fd&&fd.options)||[],o.valuesOf?o.valuesOf(f):[],
      t.rows.map(r=>condOf(r,f)).filter(Boolean).flatMap(c=>c.op==='between'?[c.value,c.value2]:[c.value])).map(String))]
@@ -216,7 +219,7 @@
     items.push({ins,label:op==='between'?`${v}〜上限`:op==='contains'?`*${v}*`:`${sign}${v}`,
      note:op==='between'?`${v} から上限まで（両端を含む）`:`${v} ${say}`,back:op==='contains'?1:0,commit:!!bare&&op!=='between'});
    });
-   return {items,from:0,to:inp.value.length};
+   return {items,from:0,to:inp.value.length,pick:false};
   }
 
   /* ---------- 触る ---------- */

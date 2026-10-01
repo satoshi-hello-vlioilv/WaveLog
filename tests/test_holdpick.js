@@ -58,8 +58,11 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
    });
    const st3 = Object.assign(Bs.defaultState(), { thick: 1, lots: [{ name: 'L', w: 40, n: 4, parent: 'L' }], order: [], src: { 製造材質: 'SUS304' } });
    Bs.syncOrder(st3);
-   out.material = !!Bs.pickGroup([{ conditions: [{ field: 'material', op: 'eq', value: 'SUS304' }], group: 'X', name: '材質' }],
-                                 Bs.pickCtx(st3, M), M.pickFields);
+   /* 刃選択の表（§9.529 で2つの判定表）。材質の条件で専用刃に当たるか。 */
+   const M3 = Object.assign({}, M, { pickTables: { category: { stored: true, rows: [
+    { conditions: [{ field: 'material', op: 'eq', value: 'SUS304' }], answer: '専用刃', group: 'X' },
+    { conditions: [], answer: '通常刃', group: '' }] } } });
+   out.material = Bs.bladeChoice(st3, M3).category === '専用刃';
    return out;
   }, EQ);
   rec('① 登録が無い設備は「未登録」（今までの決め方の種）', j.stored === false, String(j.stored));
@@ -72,42 +75,42 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   await page.evaluate(() => WL.mm.openMasterMaint());
   await W.until(page, () => !!document.querySelector('[data-master="bladesetHold"]'), null, { ms: 15000, what: '保持方式のタブ' });
   await page.evaluate(() => document.querySelector('[data-master="bladesetHold"]').click());
-  await W.until(page, () => !!document.querySelector('.hp-table'), null, { ms: 10000, what: '判定表' });
+  await W.until(page, () => !!document.querySelector('.rt-table'), null, { ms: 10000, what: '判定表' });
   await page.selectOption('#hpEq', { label: EQ });
-  await W.until(page, e => document.querySelector('#hpEq')?.value === e && !!document.querySelector('.hp-table'), EQ, { ms: 10000, what: '設備の判定表' });
+  await W.until(page, e => document.querySelector('#hpEq')?.value === e && !!document.querySelector('.rt-table'), EQ, { ms: 10000, what: '設備の判定表' });
   const shape = () => page.evaluate(() => ({
-   state: document.querySelector('#masterMaintForm .hp-state')?.textContent || '',
-   rows: [...document.querySelectorAll('.hp-table tbody tr')].map(tr => [...tr.querySelectorAll('input.hp-c')].map(i => i.value).join(',')
+   state: document.querySelector('#masterMaintList .rt-state')?.textContent || '',
+   rows: [...document.querySelectorAll('.rt-table tbody tr')].map(tr => [...tr.querySelectorAll('input.rt-c')].map(i => i.value).join(',')
      /* 答えの列は「方式（材質）」の1つの選択（§9.527）。値（方式|材質）でなく選ばれている札の字で見る。 */
-     + '→' + (tr.querySelector('.hp-hold')?.selectedOptions[0]?.textContent || '') + (tr.classList.contains('is-won') ? '★' : '')).join(' / '),
-   ans: document.querySelector('.hp-ans')?.textContent.trim() || '' }));
+     + '→' + (tr.querySelector('.rt-ansel')?.selectedOptions[0]?.textContent || '') + (tr.classList.contains('is-won') ? '★' : '')).join(' / '),
+   ans: document.querySelector('.rt-ans')?.textContent.trim() || '' }));
   const s0 = await shape();
   rec('④ 未登録の設備は、切替板厚から作った表と「未登録」を出す', /未登録/.test(s0.state) && s0.rows === '＜ 0.6→フィンガー（ベークライト） / →ゴムリング', JSON.stringify(s0));
-  await page.selectOption('#hpAddCol', 'strips');
-  await W.until(page, () => /条数/.test(document.querySelector('.hp-table thead')?.textContent || ''), null, { ms: 4000, what: '条数の列' });
-  await page.click('#hpAddRow');
-  await W.until(page, () => document.querySelectorAll('.hp-table tbody tr').length === 3, null, { ms: 4000, what: '決まりの行が増える' });
-  const cell = f => `.hp-table tbody tr:nth-child(2) .hp-c[data-f="${f}"]`;
+  await page.selectOption('.rt-addcol', 'strips');
+  await W.until(page, () => /条数/.test(document.querySelector('.rt-table thead')?.textContent || ''), null, { ms: 4000, what: '条数の列' });
+  await page.click('[data-rt="addrow"]');
+  await W.until(page, () => document.querySelectorAll('.rt-table tbody tr').length === 3, null, { ms: 4000, what: '決まりの行が増える' });
+  const cell = f => `.rt-table tbody tr:nth-child(2) .rt-c[data-f="${f}"]`;
   await page.fill(cell('strips'), '>= 20'); await page.press(cell('strips'), 'Tab');
-  await W.until(page, () => /≧ 20/.test([...document.querySelectorAll('.hp-c')].map(i => i.value).join('|')), null, { ms: 4000, what: 'セルが読まれる' });
+  await W.until(page, () => /≧ 20/.test([...document.querySelectorAll('.rt-c')].map(i => i.value).join('|')), null, { ms: 4000, what: 'セルが読まれる' });
   await page.fill(cell('thickness'), 'abc'); await page.press(cell('thickness'), 'Tab');
-  await W.until(page, () => !!document.querySelector('.hp-c.is-bad'), null, { ms: 4000, what: '読めないセル' });
-  await page.fill('.hp-try .hp-p[data-p="strips"]', '22');
-  await W.until(page, () => /2行目/.test(document.querySelector('.hp-ans')?.textContent || ''), null, { ms: 4000, what: '試す行の答え' });
-  const bad = await page.evaluate(() => { const e = document.querySelector('.hp-c.is-bad'); return e ? `${e.value}｜${e.title}` : ''; });
+  await W.until(page, () => !!document.querySelector('.rt-c.is-bad'), null, { ms: 4000, what: '読めないセル' });
+  await page.fill('.rt-try .rt-p[data-p="strips"]', '22');
+  await W.until(page, () => /2行目/.test(document.querySelector('.rt-ans')?.textContent || ''), null, { ms: 4000, what: '試す行の答え' });
+  const bad = await page.evaluate(() => { const e = document.querySelector('.rt-c.is-bad'); return e ? `${e.value}｜${e.title}` : ''; });
   rec('④ 読めない字は理由を出して、描き直しても残す', /^abc｜.+/.test(bad), bad);
   const s1 = await shape();
   rec('④ 試す行に値を入れると当たる行が光り、答えと行番号を言う',
       /≧ 20→フィンガー（ベークライト）★/.test(s1.rows) && /フィンガー（ベークライト）（2行目に当たる）/.test(s1.ans), JSON.stringify(s1));
-  await page.click('#hpSave');
+  await page.click('[data-rt="save"]');
   await page.waitForSelector('#appConfirmModal:not([hidden])', { timeout: 5000 });
   const refused = await page.evaluate(() => document.getElementById('appConfirmModal').textContent);
   rec('④ 読めないセルがあるうちは保存させない（理由を言う）', /読めないセル/.test(refused), refused.slice(0, 80));
   await page.click('#closeAppConfirm');
   await page.fill(cell('thickness'), ''); await page.press(cell('thickness'), 'Tab');
-  await W.until(page, () => !document.querySelector('.hp-c.is-bad'), null, { ms: 4000, what: '直す' });
-  await page.click('#hpSave');
-  await W.until(page, () => /登録済み/.test(document.querySelector('#masterMaintForm .hp-state')?.textContent || ''), null, { ms: 10000, what: '保存' });
+  await W.until(page, () => !document.querySelector('.rt-c.is-bad'), null, { ms: 4000, what: '直す' });
+  await page.click('[data-rt="save"]');
+  await W.until(page, () => /登録済み/.test(document.querySelector('#masterMaintList .rt-state')?.textContent || ''), null, { ms: 10000, what: '保存' });
   const saved = await page.evaluate(async EQ => {
    const r = await api('/api/bladeset/hold-pick?equipment=' + encodeURIComponent(EQ));
    return JSON.stringify({ stored: r.stored, rows: r.rows.map(x => [x.conditions.map(c => c.field + c.op + c.value).join('&'), x.hold]) });
@@ -126,11 +129,11 @@ H.run('test_holdpick: 保持方式マスタ（§9.524）', async ({ page, rec, i
   /* ---- 「未登録に戻す」 ---- */
   await page.evaluate(() => WL.mm.openMasterMaint());
   await page.evaluate(() => document.querySelector('[data-master="bladesetHold"]').click());
-  await W.until(page, () => !!document.querySelector('#hpReset'), null, { ms: 10000, what: '未登録に戻すのボタン' });
-  await page.click('#hpReset');
+  await W.until(page, () => !!document.querySelector('[data-rt="reset"]'), null, { ms: 10000, what: '未登録に戻すのボタン' });
+  await page.click('[data-rt="reset"]');
   await page.waitForSelector('#appConfirmModal:not([hidden])', { timeout: 5000 });
   await page.click('#appConfirmOk');
-  await W.until(page, () => /未登録/.test(document.querySelector('#masterMaintForm .hp-state')?.textContent || ''), null, { ms: 10000, what: '未登録へ戻る' });
+  await W.until(page, () => /未登録/.test(document.querySelector('#masterMaintList .rt-state')?.textContent || ''), null, { ms: 10000, what: '未登録へ戻る' });
   const s2 = await shape();
   rec('④ 「未登録に戻す」で行が消え、切替板厚の種へ戻る', s2.rows.replace(/★/g, '') === '＜ 0.6→フィンガー（ベークライト） / →ゴムリング', JSON.stringify(s2));
   /* 消えた列（条数）の試しの値が裏で効かない——板厚だけの表で、試す行は空なので答えは出さない。 */

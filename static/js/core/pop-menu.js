@@ -143,6 +143,8 @@
       ・`provider(inp)` が `{items:[{ins,label,args,note,head}], from, to}` か `null` を返す
         （`from`〜`to`の字を`ins`で置き換える。`head`は見出しの行＝選べない）
       ・↑↓で選び、Enter／Tab で入れる。Esc で閉じる（押下は受けたと名乗る＝窓は閉じない）
+      ・`pick:false`を返すと**最初は何も選ばない**（↑↓で選ぶまで Enter／Tab はふつうに効く）
+        ——打ち終えた字（`≧ 20`）を Tab で離れたら、候補に置き換わらずにそのまま残す
     以前は式の欄（`list-formula.js`）だけが持っていた。判定表のセルにも同じふるまいを渡すため、
     **器と鍵盤の扱いをここ1箇所**へ移した（何を候補にするかは呼ぶ側の`provider`）。 */
  let sgEl=null,sgFor=null,sgItems=[],sgAt=0,sgSpan=null;
@@ -161,7 +163,7 @@
     e.preventDefault();sgPick(+li.dataset.i);
    });
   }
-  sgFor=inp;sgItems=got.items.slice(0,16);sgSpan=got;sgAt=pickable()[0];
+  sgFor=inp;sgItems=got.items.slice(0,16);sgSpan=got;sgAt=got.pick===false?-1:pickable()[0];
   sgEl.innerHTML=sgItems.map((it,i)=>(it.head
    ?`<div class="fx-sg-head" aria-hidden="true">${escS(it.label)}</div>`
    :`<div role="option" data-i="${i}" class="fx-sg-item${i===sgAt?' is-on':''}">`
@@ -203,8 +205,12 @@
    if(sgFor!==inp||!sgEl||sgEl.hidden)return;
    const ok=pickable(),k=ok.indexOf(sgAt);
    if(e.key==='ArrowDown'||e.key==='ArrowUp'){
-    e.preventDefault();sgAt=ok[(k+(e.key==='ArrowDown'?1:-1)+ok.length)%ok.length];sgMark();
-   }else if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();sgPick(sgAt)}
+    e.preventDefault();
+    sgAt=k<0?ok[e.key==='ArrowDown'?0:ok.length-1]:ok[(k+(e.key==='ArrowDown'?1:-1)+ok.length)%ok.length];sgMark();
+   }else if(e.key==='Enter'||e.key==='Tab'){
+    if(sgAt<0){sgClose();return}          // 何も選んでいない＝ふつうの Enter／Tab（候補で置き換えない）
+    e.preventDefault();sgPick(sgAt);
+   }
    else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();sgClose()}
   });
  }

@@ -9,11 +9,10 @@
 
    前（実測）: ① セットの切り替え口なし（刃1枚ずつの「状態」3値に混ざっていた）・② 同じ・
    ③ 選べる項目7つ（板押さえ方式・調質は0）・④ 名称が必須で材質の欄なし。
-   固定するのは4つ:
-    ① 盤: 組ごとに札を押すと**その場で保存**され、研磨中の行は「選ばれない」と字で言う
-    ② ガイダンスの選び方: 通常刃・使用中が既定／研磨中は選ばない／専用刃は決まりに当たったときだけ・
-       当たっても使えなければ通常刃へ落として理由を持つ
-    ③ 刃選択の盤: 項目は4つ・板押さえ方式は候補から選ぶ・前の項目の決まりも読める
+   固定するのは4つ（§9.529 で①は「刃」の2ペインへ、②は2つの判定表へ、③は test_bladepick.js へ移した）:
+    ① 盤: セットの札を押すと**その場で保存**され、研磨中は「選ばれない」と字で言う
+    ② ガイダンスの選び方: 未登録は通常刃・使用中のいちばん厚い刃／研磨中は選ばない／専用刃は
+       カテゴリの表に当たったときだけ（セットまで選べる）・刃厚は刃厚の表・使えなければ落として理由を札で
     ④ フィンガーの窓: 名称の欄が無く、材質の選択（既定ベークライト）がある
    後片付けは finally（刃セットを初期値へ・決まりを消す）。 */
 const H = require('./lib/harness.js');
@@ -25,7 +24,7 @@ const post = (p, body) => api(p, { method: 'POST', headers: { 'Content-Type': 'a
 
 H.run('test_bladesets: 刃セット・刃選択の4項目・フィンガー材質（§9.526）', async ({ page, rec, errs }) => {
  let groups = [];
- const madePicks = [], madeFingers = [];
+ const madeFingers = [];
  let holdSaved = false;
  await post('/api/bladeset/seed', { equipment: EQ });
  try {
@@ -37,103 +36,84 @@ H.run('test_bladesets: 刃セット・刃選択の4項目・フィンガー材�
   await W.booted(page);
   await W.until(page, () => !!(window.currentUserId && currentUserId()), null, { ms: 15000, what: '更新者IDが決まる' });
 
-  /* ---- ① 盤 ---- */
+  /* ---- ① 盤（§9.529 で「刃」の2ペインへ統合: 左＝セット・右＝カテゴリ／使用状態と刃厚ごとの行） ---- */
   await page.evaluate(() => WL.mm.openMasterMaint());
-  await W.until(page, () => !!document.querySelector('[data-master="bladesetSets"]'), null, { ms: 15000, what: '刃セットのタブ' });
-  await page.evaluate(() => document.querySelector('[data-master="bladesetSets"]').click());
-  await W.until(page, () => !!document.querySelector('#bssEq'), null, { ms: 10000, what: '刃セットの盤' });
-  await page.selectOption('#bssEq', { label: EQ });
-  await W.until(page, e => document.querySelector('#bssEq')?.value === e && !!document.querySelector('.bss-table'), EQ, { ms: 10000, what: '設備の刃セット' });
+  await W.until(page, () => !!document.querySelector('[data-master="bladesetBlade"]'), null, { ms: 15000, what: '刃のタブ' });
+  rec('① 「刃セット」のタブは「刃」へ統合した（§9.529）', await page.evaluate(() => !document.querySelector('[data-master="bladesetSets"]')));
+  await page.evaluate(() => document.querySelector('[data-master="bladesetBlade"]').click());
+  await W.until(page, () => !!document.querySelector('#bbEq'), null, { ms: 10000, what: '刃の盤' });
+  await page.selectOption('#bbEq', { label: EQ });
+  await W.until(page, e => document.querySelector('#bbEq')?.value === e && !!document.querySelector('.bk-card'), EQ, { ms: 10000, what: '設備の刃セット' });
   const g0 = groups[0];
-  const rowOf = g => page.evaluate(g => {
-   const tr = [...document.querySelectorAll('.bss-row')].find(r => r.querySelector('.bss-group')?.textContent === g);
-   if (!tr) return null;
-   const on = k => tr.querySelector(`.bss-opt.is-on[data-k="${k}"]`)?.textContent || '';
-   return { cat: on('category'), use: on('use'), say: tr.querySelector('.bss-say')?.textContent || '', grind: tr.classList.contains('is-grind') };
+  const cardOf = g => page.evaluate(g => {
+   const it = document.querySelector(`.bk-item[data-bk-key="${g}"]`);
+   if (!it) return null;
+   if (!it.classList.contains('is-on')) return { pick: true };
+   const on = k => document.querySelector(`.bk-card .bk-opt.is-on[data-seg="${k}"]`)?.textContent || '';
+   return { cat: on('category'), use: on('use'), say: document.querySelector('.bk-card-t small')?.textContent || '',
+            tags: [...it.querySelectorAll('.bk-tag')].map(t => t.textContent).join('/') };
   }, g);
-  const r0 = await rowOf(g0);
-  rec('① 未登録の組は通常刃・使用中で、「ふつうはこれが選ばれます」と言う',
-      !!r0 && r0.cat === '通常刃' && r0.use === '使用中' && /ふつうはこれ/.test(r0.say) && /未登録/.test(r0.say), JSON.stringify(r0));
-  const sel = (g, k, v) => `.bss-opt[data-g="${g}"][data-k="${k}"][data-v="${v}"]`;
-  await page.click(sel(g0, 'use', '研磨中'));
-  await W.until(page, g => /研磨中/.test([...document.querySelectorAll('.bss-row')].find(r => r.querySelector('.bss-group')?.textContent === g)
-    ?.querySelector('.bss-opt.is-on[data-k="use"]')?.textContent || ''), g0, { ms: 8000, what: '研磨中へ' });
+  await page.click(`.bk-item[data-bk-key="${g0}"]`);
+  await W.until(page, g => !!document.querySelector(`.bk-item.is-on[data-bk-key="${g}"]`), g0, { ms: 8000, what: 'セットを選ぶ' });
+  const r0 = await cardOf(g0);
+  rec('① 未登録の組は通常刃・使用中で、「ふつうは…選ばれます」と言う',
+      !!r0 && r0.cat === '通常刃' && r0.use === '使用中' && /ふつうは/.test(r0.say) && /未登録/.test(r0.say), JSON.stringify(r0));
+  const sel = (k, v) => `.bk-card .bk-opt[data-seg="${k}"][data-v="${v}"]`;
+  await page.click(sel('use', '研磨中'));
+  await W.until(page, () => /研磨中/.test(document.querySelector('.bk-card .bk-opt.is-on[data-seg="use"]')?.textContent || ''), null, { ms: 8000, what: '研磨中へ' });
   const s1 = (await api('/api/bladeset/blade-sets?equipment=' + encodeURIComponent(EQ))).items.find(x => x.group === g0);
-  const r1 = await rowOf(g0);
+  const r1 = await cardOf(g0);
   rec('① 札を押すとその場で保存される（保存ボタンを持たない）', s1 && s1.use === '研磨中' && s1.stored === true, JSON.stringify(s1));
-  rec('① 研磨中の行は「刃組ガイダンスで選ばれません」と字で言う', r1.grind && /選ばれません/.test(r1.say), JSON.stringify(r1));
-  await page.click(sel(g0, 'category', '専用刃'));
-  await W.until(page, g => /専用刃/.test([...document.querySelectorAll('.bss-row')].find(r => r.querySelector('.bss-group')?.textContent === g)
-    ?.querySelector('.bss-opt.is-on[data-k="category"]')?.textContent || ''), g0, { ms: 8000, what: '専用刃へ' });
+  rec('① 研磨中のセットは「刃組ガイダンスでは選ばれません」と字で言い、一覧にも札が付く',
+      /選ばれません/.test(r1.say) && /研磨中/.test(r1.tags), JSON.stringify(r1));
+  await page.click(sel('category', '専用刃'));
+  await W.until(page, () => /専用刃/.test(document.querySelector('.bk-card .bk-opt.is-on[data-seg="category"]')?.textContent || ''), null, { ms: 8000, what: '専用刃へ' });
   const s2 = (await api('/api/bladeset/blade-sets?equipment=' + encodeURIComponent(EQ))).items.find(x => x.group === g0);
   rec('① カテゴリを変えても使用状態は残る（送った項目だけ書く）', s2 && s2.category === '専用刃' && s2.use === '研磨中', JSON.stringify(s2));
 
-  /* ---- ② ガイダンスの選び方（刃組の計算そのもの） ---- */
+  /* ---- ② ガイダンスの選び方（§9.529: 刃のカテゴリの表 → 刃厚の表） ---- */
   const pick = await page.evaluate(async EQ => {
    const Bs = WL.bladeSet;
    const M = Bs.normalize(await api('/api/bladeset/context?equipment=' + encodeURIComponent(EQ)));
    const blade = (group, tk, category, use) => ({ name: group + tk, group, thickness: tk, currentDia: 300, qty: 1, category, use });
-   const run = (blades, picks) => {
-    const st = Object.assign(Bs.defaultState(), { thick: 1.2, lots: [{ name: 'L', w: 50, n: 22, parent: 'L' }], order: [] });
+   const tb = (rows, def) => ({ stored: true, rows: rows.concat([def]) });
+   const run = (blades, cat, th, thick) => {
+    const st = Object.assign(Bs.defaultState(), { thick: thick || 1.2, lots: [{ name: 'L', w: 50, n: 22, parent: 'L' }], order: [] });
     Bs.syncOrder(st);
-    Bs.applyBladePick(st, Object.assign({}, M, { blades, picks: picks || [], holds: [], holdsStored: false }));
-    return { tk: st.tk, pick: st.pick };
+    Bs.applyBladePick(st, Object.assign({}, M, { blades, holds: [], holdsStored: false, pickTables: {
+     category: cat || { stored: false, rows: [{ conditions: [], answer: '通常刃', group: '' }] },
+     thickness: th || { stored: false, rows: [{ conditions: [], answer: '' }] } } }));
+    return { tk: st.tk, set: st.pick.set, pick: st.pick, word: Bs.pickWord(st, M).text };
    };
-   const rule = [{ conditions: [{ field: 'thickness', op: 'ge', value: '1.0' }], group: 'S', name: '厚い', enabled: true }];
+   const both = [blade('N', 10, '通常刃', '使用中'), blade('N', 5, '通常刃', '使用中'), blade('S', 15, '専用刃', '使用中'), blade('T', 8, '専用刃', '使用中')];
+   const toS = tb([{ conditions: [{ field: 'thickness', op: 'ge', value: '1.0' }], answer: '専用刃', group: 'S' }], { conditions: [], answer: '通常刃', group: '' });
+   const anyS = tb([{ conditions: [{ field: 'thickness', op: 'ge', value: '1.0' }], answer: '専用刃', group: '' }], { conditions: [], answer: '通常刃', group: '' });
    return {
     fromCtx: M.blades.every(b => !!b.category && !!b.use),
-    normal: run([blade('N', 10, '通常刃', '使用中'), blade('S', 15, '専用刃', '使用中')]).tk,
+    normal: run(both).tk,
     grindSkip: run([blade('N', 10, '通常刃', '研磨中'), blade('M', 12, '通常刃', '使用中')]).tk,
-    special: run([blade('N', 10, '通常刃', '使用中'), blade('S', 15, '専用刃', '使用中')], rule),
-    specialGrind: run([blade('N', 10, '通常刃', '使用中'), blade('S', 15, '専用刃', '研磨中')], rule),
-    holdRule: run([blade('N', 10, '通常刃', '使用中'), blade('S', 15, '専用刃', '使用中')],
-                  [{ conditions: [{ field: 'hold', op: 'eq', value: 'ゴムリング' }], group: 'S', name: 'ゴム', enabled: true }]).tk,
-    legacy: run([blade('N', 10, '通常刃', '使用中'), blade('S', 15, '専用刃', '使用中')],
-                [{ conditions: [{ field: 'strips', op: 'ge', value: '20' }], group: 'S', name: '条数', enabled: true }]).tk
+    special: run(both, toS),
+    anySpecial: run(both, anyS).set,
+    specialGrind: run([blade('N', 10, '通常刃', '使用中'), blade('S', 15, '専用刃', '研磨中')], toS),
+    holdRule: run(both, tb([{ conditions: [{ field: 'hold', op: 'eq', value: 'ゴムリング' }], answer: '専用刃', group: 'S' }], { conditions: [], answer: '通常刃', group: '' })).tk,
+    th5: run(both, null, tb([{ conditions: [{ field: 'thickness', op: 'lt', value: '2' }], answer: '5' }], { conditions: [], answer: '' })),
+    thByCat: run(both, toS, tb([{ conditions: [{ field: 'category', op: 'eq', value: '専用刃' }], answer: '15' }], { conditions: [], answer: '5' })).tk,
+    thMissing: run(both, null, tb([], { conditions: [], answer: '7' }))
    };
   }, EQ);
   rec('② 刃の行はサーバーからセットのカテゴリ・使用状態を名乗って届く', pick.fromCtx === true);
-  rec('② 決まりに当たらなければ通常刃・使用中のセット', pick.normal === 10, String(pick.normal));
+  rec('② 表が未登録なら通常刃・使用中のいちばん厚い刃（今までと同じ）', pick.normal === 10, String(pick.normal));
   rec('② 研磨中のセットは選ばない（使用中の通常刃へ）', pick.grindSkip === 12, String(pick.grindSkip));
-  rec('② 決まりに当たれば、その組の専用刃', pick.special.tk === 15 && pick.special.pick && !pick.special.pick.missing, JSON.stringify(pick.special));
-  rec('② 当たっても専用刃が研磨中なら通常刃で描き、理由（missing）を持つ',
-      pick.specialGrind.tk === 10 && pick.specialGrind.pick && pick.specialGrind.pick.missing === true, JSON.stringify(pick.specialGrind));
-  rec('② 板押さえ方式の条件が当たる（1.2mm＝ゴムリング）', pick.holdRule === 15, String(pick.holdRule));
-  rec('② 前の項目（条数）で書いた決まりも効く', pick.legacy === 15, String(pick.legacy));
-
-  /* ---- ③ 刃選択の盤 ---- */
-  const legacy = await post('/api/bladeset/blade-pick', { equipment: EQ, name: '前の条数の決まり', group: g0, user_id: 'test',
-    conditions: [{ field: 'strips', op: 'ge', value: '20' }] });
-  if (legacy && legacy.id) madePicks.push(legacy.id);
-  await page.evaluate(() => document.querySelector('[data-master="bladesetPick"]')?.click());
-  await W.until(page, () => !!document.querySelector('#bpEq'), null, { ms: 10000, what: '刃選択の盤' });
-  await page.selectOption('#bpEq', { label: EQ });
-  await W.until(page, () => !!document.querySelector('.bp-card'), null, { ms: 10000, what: '決まりのカード' });
-  const probe = await page.evaluate(() => ({
-   labels: [...document.querySelectorAll('.bp-pf s')].map(s => s.textContent),
-   hold: [...(document.querySelector('select[data-p="hold"]')?.options || [])].map(o => o.textContent),
-   card: document.querySelector('.bp-card')?.textContent.replace(/\s+/g, ' ') || '' }));
-  rec('③ 試す欄の項目は板押さえ方式・板厚・材質・調質の4つ', probe.labels.join('/') === '板押さえ方式/板厚/材質/調質', probe.labels.join('/'));
-  rec('③ 板押さえ方式は候補から選ぶ（フィンガー・ゴムリング）', /フィンガー/.test(probe.hold.join()) && /ゴムリング/.test(probe.hold.join()), probe.hold.join('/'));
-  rec('③ 前の項目（条数）の決まりも名前つきで読める', /条数/.test(probe.card) && /専用刃/.test(probe.card), probe.card.slice(0, 80));
-  await page.click('.bp-card [data-act="edit"]');
-  await W.until(page, () => !!document.querySelector('.bp-row .bp-f'), null, { ms: 8000, what: '直す窓' });
-  const ed1 = await page.evaluate(() => [...document.querySelector('.bp-row .bp-f').options].map(o => o.textContent));
-  rec('③ 直す窓: 選べる項目は4つ＋その条件の前の項目（消さない）',
-      ed1.length === 5 && ed1.some(t => /条数（前の項目）/.test(t)), ed1.join('/'));
-  await page.selectOption('.bp-row .bp-f', 'hold');
-  await W.until(page, () => document.querySelector('.bp-row .bp-v')?.tagName === 'SELECT', null, { ms: 8000, what: '値の欄が選択になる' });
-  await page.selectOption('.bp-row .bp-v', 'ゴムリング');
-  await page.click('[data-act="save"]');
-  await W.until(page, () => WL.bladePick.state.editing === null, null, { ms: 10000, what: '保存して閉じる' });
-  const savedPick = ((await api('/api/bladeset/blade-pick?equipment=' + encodeURIComponent(EQ))).items || []).find(x => x.id === legacy.id);
-  rec('③ 板押さえ方式の条件で保存できる（比べ方は＝へ寄せる・前の「≧」は候補の項目では当たらない）',
-      !!savedPick && JSON.stringify(savedPick.conditions) === JSON.stringify([{ field: 'hold', op: 'eq', value: 'ゴムリング' }]),
-      JSON.stringify(savedPick && savedPick.conditions));
-  const opsNow = await page.evaluate(() => { document.querySelector('.bp-card [data-act="edit"]').click();
-   return [...(document.querySelector('.bp-row .bp-o')?.options || [])].map(o => o.value); });
-  rec('③ 候補から選ぶ項目の比べ方は「＝」「≠」だけ', opsNow.join('/') === 'eq/ne', opsNow.join('/'));
-  await page.click('[data-act="cancel"]');
+  rec('② カテゴリの表で専用刃（セット S）に当たれば、そのセットの刃・札は「専用刃 S・15mm」',
+      pick.special.tk === 15 && pick.special.set === 'S' && !pick.special.pick.missing.length && pick.special.word === '専用刃 S・15mm', JSON.stringify(pick.special));
+  rec('② 専用刃（どれでも）なら使える専用刃のいちばん厚い刃（S 15mm）', pick.anySpecial === 'S', String(pick.anySpecial));
+  rec('② 当たっても専用刃が研磨中なら通常刃で描き、理由（missing）を札で言う',
+      pick.specialGrind.tk === 10 && pick.specialGrind.pick.missing.includes('category') && /使えない/.test(pick.specialGrind.word), JSON.stringify(pick.specialGrind));
+  rec('② 前の表の答え（板押さえ方式＝ゴムリング）を条件に使える', pick.holdRule === 15, String(pick.holdRule));
+  rec('§9.529 ② 刃厚の表で 5mm に当たれば 5mm の刃（板厚 1.2 < 2）', pick.th5.tk === 5 && pick.th5.word === '通常刃 N・5mm', JSON.stringify(pick.th5));
+  rec('§9.529 ② 刃厚の表は刃のカテゴリの答えも条件に使える（専用刃 → 15mm）', pick.thByCat === 15, String(pick.thByCat));
+  rec('§9.529 ② 登録の無い刃厚（7mm）に当たれば、いちばん厚い刃で描いて「7mmが無い」と言う',
+      pick.thMissing.tk === 10 && pick.thMissing.pick.missing.includes('thickness') && /7mmが無い/.test(pick.thMissing.word), JSON.stringify(pick.thMissing));
 
   /* ---- ④ フィンガーの窓 ---- */
   await page.evaluate(() => document.querySelector('[data-master="bladesetFinger"]')?.click());
@@ -197,9 +177,10 @@ H.run('test_bladesets: 刃セット・刃選択の4項目・フィンガー材�
   rec('⑤ 保持方式の表は行ごとにフィンガー材質を持つ（ゴムリングの行は空）',
       hp.rows[0].material === 'アルミニウム' && hp.rows[1].material === '' && (hp.fingerMaterials || []).length === 2, JSON.stringify(hp.rows));
   await page.evaluate(() => document.querySelector('[data-master="bladesetHold"]')?.click());
+  await W.until(page, () => !!document.querySelector('#hpEq'), null, { ms: 10000, what: '保持方式の盤' });
   await page.selectOption('#hpEq', { label: EQ }).catch(() => {});
-  await W.until(page, () => !!document.querySelector('.hp-table .hp-hold'), null, { ms: 10000, what: '保持方式の表' });
-  const hpOpts = await page.evaluate(() => { const s = document.querySelector('.hp-table .hp-hold');
+  await W.until(page, () => !!document.querySelector('.rt-table .rt-ansel'), null, { ms: 10000, what: '保持方式の表' });
+  const hpOpts = await page.evaluate(() => { const s = document.querySelector('.rt-table .rt-ansel');
    return { opts: [...s.options].map(o => o.textContent), cur: s.options[s.selectedIndex].textContent }; });
   rec('⑤ 表の「→ 保持方式」でフィンガーの材質まで選べ、登録した材質が選ばれている',
       hpOpts.opts.join('/') === 'フィンガー（ベークライト）/フィンガー（アルミニウム）/ゴムリング' && hpOpts.cur === 'フィンガー（アルミニウム）',
@@ -239,7 +220,6 @@ H.run('test_bladesets: 刃セット・刃選択の4項目・フィンガー材�
  } finally {
   if (holdSaved) await post('/api/bladeset/hold-pick', { equipment: EQ, reset: true, user_id: 'test' }).catch(() => {});
   for (const id of madeFingers) await post('/api/bladeset-finger-master/delete', { id }).catch(() => {});
-  for (const id of madePicks) await post('/api/bladeset/blade-pick/delete', { id }).catch(() => {});
   for (const g of groups) await post('/api/bladeset/blade-sets', { equipment: EQ, group: g, reset: true }).catch(() => {});
   const left = ((await api('/api/bladeset/blade-sets?equipment=' + encodeURIComponent(EQ))).items || []).filter(x => x.stored).length;
   rec('後片付け: 刃セットは初期値へ戻る（登録が残らない）', left === 0, String(left));
