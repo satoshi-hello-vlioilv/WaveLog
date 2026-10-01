@@ -173,7 +173,8 @@ def _ring_save(x):
       min_qty=x.get('minQty'), note=x.get('note'),
       order=x.get('order'), enabled=_enabled(x), ring_id=_rid(x),
       # 種類（§9.455）。**呼び名（`lubeText`）を優先**し、送っていなければ触らない。
-      lube=bs.ring_is_lube(text_or(x, 'lube')))
+      # §9.531: `kind`（ゴムリング／潤滑リング／スペーサー一体型）で送れば、それが種類の答え。
+      **_ring_kind(x))
   return rid, aligned
  rid, aligned = _op_read(fn)
  # **そろえた行があったら言う**（§CLAUDE 6。黙って他の行を書き換えない）。
@@ -182,11 +183,19 @@ def _ring_save(x):
                          % aligned) if aligned else 'ゴムリングを保存しました。')
 
 
+def _ring_kind(x):
+ """行の種類の受け方。`kind`の呼び名があればそれ（`ring_kind_flags()`）、無ければ前の`lube`／`lubeText`。"""
+ if x.get('kind'):
+  lube, integ = bs.ring_kind_flags(x.get('kind'))
+  return {'lube': lube, 'integ': integ}
+ return {'lube': bs.ring_is_lube(text_or(x, 'lube'))}
+
+
 _RING_SPEC = {'id': any_, 'equipment': any_, 'color': any_, 'hex': any_,
               'od': any_, 'bore': any_, 'width': any_, 'qty': any_,
               'minQty': any_, 'note': any_, 'order': any_,
               'enabled': any_, 'enabledText': any_,
-              'lube': any_, 'lubeText': any_}
+              'lube': any_, 'lubeText': any_, 'kind': any_}
 
 
 @bp.post('/api/bladeset-ring-master')
@@ -212,6 +221,8 @@ def bladeset_ring_colors():
   return {'colors': bs.ring_colors(c, eq) if eq else [],
           'suggest': bs.ring_color_suggest(c, eq) if eq else None,
           # 標準の色の周期（外径1mmごと）。盤が「まだ使っていない標準色」を出す材料。
+          # 種類の呼び名（§9.531）。画面の選択肢はこの並び（ゴムリング／潤滑リング／スペーサー一体型）。
+          'kinds': list(bs.RING_KINDS),
           'cycle': [{'color': n, 'hex': h, 'od': float(bs.RING_COLOR_TOP_OD - i)}
                     for i, (n, h) in enumerate(bs.RING_COLOR_CYCLE)],
           'nearDe': bs.RING_NEAR_DE}
@@ -219,7 +230,7 @@ def bladeset_ring_colors():
 
 
 _RING_COLOR_SPEC = {'equipment': any_, 'color': any_, 'hex': any_, 'od': any_, 'bore': any_,
-                    'lube': any_, 'current': any_, 'widths': any_, 'delete': any_}
+                    'lube': any_, 'integ': any_, 'current': any_, 'widths': any_, 'delete': any_}
 
 
 @bp.post('/api/bladeset/ring-colors')
@@ -232,7 +243,7 @@ def bladeset_ring_color_save():
  got = _op_read(lambda c: bs.ring_color_save(
      c, request_user_id(x), x.get('equipment'), x.get('color'), hex_code=x.get('hex'),
      od=x.get('od'), bore=x.get('bore'), lube=bool(x.get('lube')), current=x.get('current'),
-     widths=x.get('widths') if isinstance(x.get('widths'), list) else None))
+     widths=x.get('widths') if isinstance(x.get('widths'), list) else None, integ=bool(x.get('integ'))))
  msg = (f'「{got["color"]}」の {got["rows"]}行（幅ぜんぶ）を直しました。' if got['rows']
         else f'「{got["color"]}」を幅 {got["created"]}つで足しました。')
  return jsonify(ok=True, message=msg, **got)

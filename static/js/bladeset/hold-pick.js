@@ -17,9 +17,11 @@
  const isFingerHold=m=>m===(hs.methods[0]||'フィンガー');
  const matOf=r=>(isFingerHold(r.hold)?(r.material||hs.materials[0]||''):'');
  /* 答えの列の選択肢＝保持方式×フィンガー材質（§9.527）。値は「方式|材質」。 */
+ /* スペーサー一体型（§9.531）はゴムリングの1種類なので「ゴムリング（スペーサー一体型）」と読ませる。 */
+ const methodWord=m=>(m===(hs.methods[2]||'スペーサー一体型')?`${hs.methods[1]||'ゴムリング'}（${m}）`:m);
  const outChoices=()=>hs.methods.flatMap(m=>isFingerHold(m)&&hs.materials.length
-  ?hs.materials.map(x=>({v:`${m}|${x}`,label:`${m}（${x}）`})):[{v:`${m}|`,label:m}]);
- const outLabel=r=>(matOf(r)?`${r.hold}（${matOf(r)}）`:r.hold);
+  ?hs.materials.map(x=>({v:`${m}|${x}`,label:`${m}（${x}）`})):[{v:`${m}|`,label:methodWord(m)}]);
+ const outLabel=r=>(matOf(r)?`${r.hold}（${matOf(r)}）`:methodWord(r.hold));
 
  const table=WL.ruleTable.create({
   key:'hold',label:'保持方式',answerHead:'保持方式',

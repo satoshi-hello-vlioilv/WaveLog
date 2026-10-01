@@ -163,6 +163,40 @@ H.run('test_bladesets: 刃セット・刃選択の4項目・フィンガー材�
       calc.al.mats.join() === 'アルミニウム' && calc.blank.mats.join() === 'ベークライト', JSON.stringify([calc.al.mats, calc.blank.mats]));
   rec('⑤ 色の鍵は材質から（知らない材質は既定の茶）', calc.tone.join('/') === 'finger/finger-al/finger', calc.tone.join('/'));
 
+  /* ---- ⑥ スペーサー一体型（§9.531、利用者の指示「このパターンが入ってきた場合でも刃組ガイダンスで組めるように」・
+     選択「幅が寸法を作る」「保持方式の表で選ぶ」）。前（実測）: 方式「スペーサー一体型」はふつうのゴムリングとして
+     組まれ、一体型の行は1面も使われなかった（0/44）。 ---- */
+  const ig = await page.evaluate(async EQ => {
+   const Bs = WL.bladeSet;
+   const ctx = await api('/api/bladeset/context?equipment=' + encodeURIComponent(EQ));
+   const integ = [330, 300].flatMap((od, i) => [50, 30, 20, 10, 5].map(w => ({ color: '一体' + i, hex: '#2a7f62', od, bore: 241, width: w, qty: 200, integ: true })));
+   const run = hold => {
+    const M = Bs.normalize(Object.assign({}, ctx, { rings: (ctx.rings || []).concat(integ), holdsStored: true,
+     holds: [{ conditions: [], hold, material: '' }] }));
+    const st = Object.assign(Bs.defaultState(), { thick: 1.2, W: 1130, lots: [{ name: 'L', w: 50, n: 22, parent: 'L' }], order: [] });
+    Bs.syncOrder(st);
+    const res = Bs.solve(st, M, Bs.buildIndex(M));
+    const ods = new Set(integ.map(x => x.od));
+    let zones = 0, exact = 0, other = 0, lube = 0;
+    res.zp.zones.forEach(z => [z.up, z.lo].forEach(q => {
+     if (!q.hold) return; zones++;
+     const w = q.gom.out.reduce((a, [sz, c]) => a + sz * c, 0), sp = q.spacer.out.reduce((a, [sz, c]) => a + sz * c, 0);
+     if (ods.has(q.hold.od) && w > 0 && Math.abs(w + sp - q.len) < 1e-6) exact++;
+     if (!ods.has(q.hold.od)) other++;
+     if (q.lube) lube++;
+    }));
+    return { label: Bs.holdLabel(st, M), zones, exact, other, lube, gap: res.fit.spacerGap.length, need: Object.keys(res.g.ring).map(Number) };
+   };
+   return { integ: run('スペーサー一体型'), ring: run('ゴムリング') };
+  }, EQ);
+  rec('⑥ 保持方式の答えが「スペーサー一体型」なら、どの面も一体型の幅＋残りのスペーサーで区間長ちょうど（寸法を作る）',
+      ig.integ.zones > 0 && ig.integ.exact === ig.integ.zones && ig.integ.gap === 0, JSON.stringify(ig.integ));
+  rec('⑥ 一体型の方式ではふつうのゴムリングを使わず、潤滑リングも載せない',
+      ig.integ.other === 0 && ig.integ.lube === 0 && ig.integ.need.every(od => od === 330 || od === 300), JSON.stringify(ig.integ));
+  rec('⑥ 画面の名前は「ゴムリング（スペーサー一体型）」', ig.integ.label === 'ゴムリング（スペーサー一体型）', ig.integ.label);
+  rec('⑥ ゴムリングの方式では一体型の色を選ばない（同じ表に入っていても取り違えない）',
+      ig.ring.exact === 0 && ig.ring.need.every(od => od !== 330 && od !== 300), JSON.stringify(ig.ring));
+
   /* 表に登録して、刃組ガイダンスの3つの図で色を見る。 */
   await post('/api/bladeset/hold-pick', { equipment: EQ, user_id: 'test', rows: [
    { conditions: [{ field: 'thickness', op: 'lt', value: '1' }], hold: 'フィンガー', material: 'アルミニウム' },
@@ -178,8 +212,10 @@ H.run('test_bladesets: 刃セット・刃選択の4項目・フィンガー材�
   const hpOpts = await page.evaluate(() => { const s = document.querySelector('.rt-table .rt-ansel');
    return { opts: [...s.options].map(o => o.textContent), cur: s.options[s.selectedIndex].textContent }; });
   rec('⑤ 表の「→ 保持方式」でフィンガーの材質まで選べ、登録した材質が選ばれている',
-      hpOpts.opts.join('/') === 'フィンガー（ベークライト）/フィンガー（アルミニウム）/ゴムリング' && hpOpts.cur === 'フィンガー（アルミニウム）',
+      ['フィンガー（ベークライト）', 'フィンガー（アルミニウム）', 'ゴムリング'].every(o => hpOpts.opts.includes(o)) && hpOpts.cur === 'フィンガー（アルミニウム）',
       JSON.stringify(hpOpts));
+  rec('§9.531 ⑥ 表の「→ 保持方式」で「ゴムリング（スペーサー一体型）」も選べる',
+      hpOpts.opts.includes('ゴムリング（スペーサー一体型）'), JSON.stringify(hpOpts.opts));
 
   await page.evaluate(eq => WL.bladeGuide.open({ equipment: eq, seed: { thickness: 0.5, originalWidth: 1130,
     lots: [{ name: 'FM1', w: 50, n: 22, parent: 'FM1' }], headLot: '' } }), EQ);

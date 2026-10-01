@@ -562,7 +562,8 @@
  function zone(out, from, to, y, parts, floatAt) {
   const expand = BS().expand;
   const pk = D3.pack;
-  const all = expand(parts.spacer);
+  /* スペーサー一体型（§9.531）は身が寸法を作る——軸の並びは「一体型 → 残りのスペーサー」（模式図と同じ）。 */
+  const all = parts.integ ? expand(parts.gom).concat(expand(parts.spacer)) : expand(parts.spacer);
   const want = all.reduce((a, sz) => a + sz, 0);
   /* フローティングシートが区間の**始まりの側**（OS端・§9.461）にあるときは、基準面の側
      （刃の側）へ寄せて積み、残りを始まりの側へ空ける。 */
@@ -606,7 +607,7 @@
                  { x: to - w / 2, y, sz: w, lube: parts.lube });
    a0 = from + w; b0 = to - w;
   }
-  at = a0 + Math.max(0, (b0 - a0 - run)) / 2;
+  at = parts.integ ? a0 : a0 + Math.max(0, (b0 - a0 - run)) / 2;
   for (const sz of pieces) {
    if (at + sz > b0 + PACK_EPS) break;
    out.ring.push({ x: at + sz / 2, y, sz, hold: parts.hold });

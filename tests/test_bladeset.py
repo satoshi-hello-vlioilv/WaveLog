@@ -608,6 +608,25 @@ sug = bs.ring_color_suggest(c8, EQ)
 rec('候補: 名前・色・外径のどれも使っていない最初の標準色（赤は名前が空いたので赤）',
     sug['color'] == '赤' and sug['od'] == 322, str(sug))
 
+# ---- §9.531 スペーサー一体型（ゴムリングの種類・保持方式の答え） ----
+rec('§9.531 種類の呼び名は3つ（ゴムリング／潤滑リング／スペーサー一体型）',
+    bs.RING_KINDS == ('ゴムリング', '潤滑リング', 'スペーサー一体型'))
+rec('§9.531 種類の呼び名を（潤滑, 一体型）へ直す・送っていなければ触らない',
+    bs.ring_kind_flags('スペーサー一体型') == (False, True) and bs.ring_kind_flags('潤滑リング') == (True, False)
+    and bs.ring_kind_flags('') == (None, None))
+rec('§9.531 知らない種類は断る（黙ってゴムリングにしない）', _reject(lambda: bs.ring_kind_flags('一体')))
+rec('§9.531 保持方式の答えに「スペーサー一体型」がある', bs.HOLD_INTEG in bs.HOLD_METHODS)
+got = bs.ring_color_save(c8, 'u', EQ, '一体緑', hex_code='#1f6b4f', od=340, bore=241, integ=True,
+                         widths=[{'width': 50, 'qty': 8}, {'width': 10.05, 'qty': 4}])
+g = [x for x in bs.ring_colors(c8, EQ) if x['color'] == '一体緑'][0]
+rec('§9.531 一体型の色を幅と本数で作れる（幅は細かい寸法も持てる）・色は種類を名乗る',
+    g['integ'] and g['kind'] == 'スペーサー一体型' and not g['lube'] and [w['width'] for w in g['widths']] == [50, 10.05], str(g))
+iid, _c, _a = bs.ring_upsert(c8, 'u', equipment=EQ, color='一体緑', width=20, qty=2)
+rec('§9.531 一体型の色に幅を足すと種類も引き継ぐ', [r['integ'] for r in bs.ring_rows(c8, True, EQ) if r['id'] == iid] == [True])
+rec('§9.531 一体型もゴムリングと外径で被らせない（刃組は色を外径で引く）',
+    any(x['why'] == 'od' for x in bs.ring_color_conflicts(c8, EQ, '新しい', '#0a0b0c', 340)['hard']))
+bs.ring_color_delete(c8, EQ, '一体緑')
+
 # ---- 自己確認: 網が素通りしていない ----
 rec('自己確認: 断る網は、断らない呼び出しでは真にならない',
     not _reject(lambda: bs.blade_upsert(c, 'u', equipment=EQ, group='Q', thickness=7)))

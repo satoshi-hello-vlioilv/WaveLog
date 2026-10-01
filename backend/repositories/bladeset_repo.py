@@ -211,6 +211,11 @@ RING_COLUMNS = (
     # 形も材質もゴムリングで、寸法と役目だけが違う——**同じ表の1行**として持ち、
     # 幅・外径・内径・在庫は同じ欄で決める。真＝潤滑リング。
     ('潤滑リング', 'INTEGER'),
+    # スペーサー一体型（§9.531、利用者の指示「ゴムリングの種類にスペーサー一体型というカテゴリを追加し…
+    # 刃組ガイダンスで組めるように」・選択「幅が寸法を作る」）。スペーサーの身にゴムが付いた1つの部品で、
+    # **幅が軸の寸法になり（スペーサーの役）、外周のゴムが板を押さえる（ゴムリングの役）**。色（外径）ごと・
+    # 幅ごとの在庫はゴムリングと同じ欄で持つ。真＝スペーサー一体型。
+    ('スペーサー一体型', 'INTEGER'),
     ('備考', 'TEXT'), ('表示順', 'INTEGER'), ('有効', 'INTEGER'),
 )
 RING_DEF = TableDef(RING_TABLE, 'ゴムリングID', RING_COLUMNS,
@@ -805,7 +810,9 @@ HOLDPICK_DEF = TableDef(HOLDPICK_TABLE, '保持方式ID', HOLDPICK_COLUMNS,
                         order_by='[設備名],[表示順],[保持方式ID]')
 HOLD_FINGER = 'フィンガー'
 HOLD_RING = 'ゴムリング'
-HOLD_METHODS = (HOLD_FINGER, HOLD_RING)
+# スペーサー一体型のリングで組む（§9.531、利用者の選択「保持方式の表で選ぶ」）。綴りはリングの種類と同じ字。
+HOLD_INTEG = 'スペーサー一体型'
+HOLD_METHODS = (HOLD_FINGER, HOLD_RING, HOLD_INTEG)
 # 条件表の列に使える項目＝**材料**（計算値・1本目のコイルの材質など）。保持方式は最初に決める表なので、
 # ほかの表の答えは使えない（`PICK_TABLES`の order＝1）。仕掛の列は `source.<列名>` で別に足せる。
 HOLD_ORDER = 1
@@ -968,6 +975,23 @@ def _spacer_row(d):
 # 「種類」の呼び名（§9.455）。**綴りはここ1箇所**——画面の選択肢も送り返しも同じ字。
 RING_KIND_RUBBER = 'ゴムリング'
 RING_KIND_LUBE = '潤滑リング'
+RING_KIND_INTEG = 'スペーサー一体型'
+RING_KINDS = (RING_KIND_RUBBER, RING_KIND_LUBE, RING_KIND_INTEG)
+
+
+def ring_kind_flags(kind):
+    """種類の呼び名（`RING_KINDS`）を（潤滑リングか, スペーサー一体型か）へ。送っていなければ (None, None)。
+    知らない呼び名は断る（黙ってゴムリングにしない）。"""
+    k = _txt(kind)
+    if not k:
+        return None, None
+    if k not in RING_KINDS:
+        raise ValueError('種類は「' + '」「'.join(RING_KINDS) + '」のどれかです。')
+    return k == RING_KIND_LUBE, k == RING_KIND_INTEG
+
+
+def ring_kind_word(lube, integ):
+    return RING_KIND_LUBE if lube else (RING_KIND_INTEG if integ else RING_KIND_RUBBER)
 
 
 def ring_is_lube(v):
@@ -980,13 +1004,15 @@ def _ring_row(d):
     od = _num(d['外径'])
     auto = ring_color_of(od)
     lube = bool(d['潤滑リング'])
+    integ = bool(d['スペーサー一体型']) and not lube
     return {'id': d['ゴムリングID'], 'equipment': _txt(d['設備名']),
             # 色名・色コードは**空なら外径から起こす**（§9.163。画面で推測させない）。
             # **潤滑リングは外径の色の周期を当てない**——周期はゴムリングの色で、
             # 潤滑リングは「どのゴムリングとも違う色」（画面のトークン）で出す。
             'color': _txt(d['色名']) or ('潤滑' if lube else auto['color']),
             'hex': _txt(d['色コード']) or ('' if lube else auto['hex']),
-            'lube': lube, 'lubeText': RING_KIND_LUBE if lube else RING_KIND_RUBBER,
+            'lube': lube, 'integ': integ, 'kind': ring_kind_word(lube, integ),
+            'lubeText': RING_KIND_LUBE if lube else RING_KIND_RUBBER,
             'od': od, 'bore': _num(d['内径']), 'width': _num(d['幅']),
             'qty': _int(d['保有本数']), 'minQty': _int(d['下限本数']),
             'note': _txt(d['備考']), 'order': d['表示順'],
@@ -1440,14 +1466,15 @@ def ring_color_state(c, equipment, color):
         return None
     for x in ring_rows(c, True, equipment):
         if x['color'] == name and x['od'] is not None:
-            return {'od': x['od'], 'bore': x['bore'], 'hex': x['hex'], 'lube': x['lube']}
+            return {'od': x['od'], 'bore': x['bore'], 'hex': x['hex'], 'lube': x['lube'],
+                    'integ': x['integ']}
     return None
 
 
 def ring_upsert(c, uid, equipment=None, color=None, hex_code=None, od=None,
                 bore=None, width=None, qty=None, min_qty=None, note=None,
-                order=None, enabled=None, ring_id=None, lube=None):
-    """ゴムリングを1本（＝色×幅）書く。
+                order=None, enabled=None, ring_id=None, lube=None, integ=None):
+    """ゴムリングを1本（＝色×幅）書く。`integ`＝スペーサー一体型（§9.531・`lube`と同じく渡さなければ触らない）。
 
     ■ 色と外径の関係（冒頭の説明）
     ゴムリングは**外周研磨で径が変わり、研磨は色の単位**で行う。だから
@@ -1483,6 +1510,8 @@ def ring_upsert(c, uid, equipment=None, color=None, hex_code=None, od=None,
     diameter, inner = _num(od), _num(bore)
     if known and lube is None and rid is None:
         lube = known['lube']        # 同じ色の幅を足すときは種類も引き継ぐ（潤滑リングの幅違い）
+    if known and integ is None and rid is None:
+        integ = known['integ']      # スペーサー一体型の幅違いも同じ（§9.531）
     is_lube = bool(lube) if lube is not None else bool(
         rid is not None and RING_DEF.get(c, rid) and RING_DEF.get(c, rid)['潤滑リング'])
     if known:
@@ -1510,6 +1539,7 @@ def ring_upsert(c, uid, equipment=None, color=None, hex_code=None, od=None,
                   '保有本数': _int(qty), '下限本数': _int(min_qty),
                   '備考': _txt(note) or None, '表示順': _int(order),
                   '潤滑リング': None if lube is None else (-1 if lube else 0),
+                  'スペーサー一体型': None if integ is None else (-1 if (integ and not lube) else 0),
                   '有効': None if enabled is None else (-1 if enabled else 0)})
     new_id, created = _put(c, RING_DEF, rid, vals, uid, eq or _txt(equipment))
     aligned = _align_ring_color(c, new_id, uid)
@@ -1595,8 +1625,8 @@ def ring_colors(c, equipment):
         g = groups.get(r['color'])
         if g is None:
             g = groups[r['color']] = {'color': r['color'], 'hex': r['hex'], 'tone': ring_tone(r['hex'], r['lube']),
-                                      'od': r['od'],
-                                      'bore': r['bore'], 'lube': r['lube'], 'widths': []}
+                                      'od': r['od'], 'bore': r['bore'], 'lube': r['lube'],
+                                      'integ': r['integ'], 'kind': r['kind'], 'widths': []}
         g['widths'].append({k: r[k] for k in ('id', 'width', 'qty', 'minQty', 'enabled', 'note')})
     out = sorted(groups.values(), key=lambda g: (g['lube'], -(g['od'] or 0), g['color']))
     for g in out:
@@ -1650,8 +1680,8 @@ def _ring_width_guard(c, equipment, color, width, ring_id=None):
 
 
 def ring_color_save(c, uid, equipment, color, hex_code=None, od=None, bore=None,
-                    lube=False, current=None, widths=None):
-    """色1つを書く。`current`があれば**その色の行すべて**の色名・色コード・外径・内径を直す
+                    lube=False, current=None, widths=None, integ=False):
+    """色1つを書く（`integ`＝スペーサー一体型・§9.531。種類は作るときに決め、直すときは変えない）。`current`があれば**その色の行すべて**の色名・色コード・外径・内径を直す
     （名前を変えるときも）。無ければ新しい色を`widths`（幅と本数）で作る。"""
     eq = _check_equipment(equipment)
     name, hx, d, b = _txt(color), _hex_norm(hex_code), _num(od), _num(bore)
@@ -1681,7 +1711,8 @@ def ring_color_save(c, uid, equipment, color, hex_code=None, od=None, bore=None,
         raise ValueError('同じ幅が2つあります。幅ごとに1行にしてください。')
     for w in ws:
         ring_upsert(c, uid, equipment=eq, color=name, hex_code=hx, od=d, bore=b,
-                    width=w.get('width'), qty=w.get('qty'), min_qty=w.get('minQty'), lube=bool(lube))
+                    width=w.get('width'), qty=w.get('qty'), min_qty=w.get('minQty'), lube=bool(lube),
+                    integ=bool(integ) and not lube)
     return {'color': name, 'rows': 0, 'created': len(ws)}
 
 
