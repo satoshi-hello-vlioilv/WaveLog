@@ -1308,6 +1308,43 @@
    ? ((M && M.bladeCatSpecial) || '専用刃') : ((M && M.bladeCatNormal) || '通常刃');
  }
 
+ /* ---------- 刃の径ゲージ（§9.536、利用者の選択 B-9／B-10） ----------
+    1行（セット×刃厚）ぶんの「使用限界径までの残り・研磨の予定・下限割れ」と、刃厚ごとの使える枚数。
+    盤の2つの見せ方（タイル／刃厚の木）は**この答えを読むだけ**（字もここ）。物差しはサーバーの`wear`
+    （使用限界径・研磨周期・満タン）。`today`は 'YYYY-MM-DD'。 */
+ const WEAR_NEAR = 0.25;   // 残りが幅の1/4未満で「残りわずか」（橙）。凡例が同じ数を言う。
+ const dayNo = s => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || '')); return m ? Date.UTC(+m[1], m[2] - 1, +m[3]) / 864e5 : null; };
+ const mdOf = n => { const d = new Date(n * 864e5); return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`; };
+ function bladeWear(row, set, W, today, words) {
+  const w = words || {}, grind = set.use === (w.grind || '研磨中'), special = set.category === (w.special || '専用刃');
+  const cur = row.currentDia == null || row.currentDia === '' ? null : +row.currentDia;
+  const min = W && W.minDia != null ? +W.minDia : null, top = W && W.top != null ? +W.top : null;
+  const left = cur == null || min == null ? null : +(cur - min).toFixed(2);
+  const frac = left == null || top == null || top <= min ? null : Math.max(0, Math.min(1, left / (top - min)));
+  const level = left == null ? null : left <= 0 ? 'out' : (frac != null && frac < WEAR_NEAR ? 'near' : 'ok');
+  let due = { kind: 'none' };
+  if (grind) due = { kind: 'grind' };
+  else if (dayNo(row.lastGrind) != null && W && W.grindCycleDays) {
+   const at = dayNo(row.lastGrind) + +W.grindCycleDays, over = dayNo(today) - at;
+   due = over > 0 ? { kind: 'over', days: over, at: mdOf(at) } : { kind: 'next', days: -over, at: mdOf(at) };
+  }
+  return { left, frac, level, due, grind, special, low: !!(row.minQty && (+row.qty || 0) < +row.minQty),
+           ready: !grind && !special && row.enabled !== false };
+ }
+ /* 研磨の予定の字（`due.kind`→字の1箇所）。研磨中は札が言うので字を持たない（同じ事実を2度出さない）。 */
+ const WEAR_DUE = { over: d => `研磨の予定を${d.days}日過ぎ`, next: d => `次の研磨 ${d.at}`, none: () => '研磨日の記録なし', grind: () => '' };
+ const wearDue = w => WEAR_DUE[w.due.kind](w.due);
+ /* 刃厚ごとのまとまり（L1）。1つのセットが刃厚を2つ持てば、両方の刃厚に1つずつ出る。 */
+ function bladeStock(sets, W, today, words) {
+  const by = new Map();
+  (sets || []).forEach(s => (s.rows || []).forEach(r => {
+   const t = +r.thickness; if (!by.has(t)) by.set(t, { thickness: t, ready: 0, total: 0, items: [] });
+   const g = by.get(t), w = bladeWear(r, s, W, today, words), q = +r.qty || 0;
+   g.items.push({ set: s, row: r, wear: w }); g.total += r.enabled === false ? 0 : q; if (w.ready) g.ready += q;
+  }));
+  return [...by.values()].sort((a, b) => b.thickness - a.thickness);
+ }
+
  /* ---------- 判定表の判定（§9.524 保持方式・§9.529 刃のカテゴリ・刃厚） ----------
     3つの表は同じ作り（上から見て最初に当たった行・最後が既定の行）で、**決める順は
     保持方式 → 刃のカテゴリ → 刃厚**。後ろの表は前の表の答えを条件に使える。
@@ -2124,7 +2161,7 @@
   compose, buildRows, endRows, badgeMap, BADGE_TONES, aggregate, assemblyError,
   judge, bandOf, offsetBand, warnings, solve, snapshot, sizeKeys, sum, cutFace,
   stripDesign, designByParent, condOf, sameCond, seedFromCond,
-  pickCtx, bladePickCtx, tableFields, bladeChoice, tableReason, pickWord, bladeCategory, condHits, rowHits, condGroups, cellDead, cellNumSet, numSet, ruleGrid, ruleEffect, parseCell, cellText, cellSay, selectable, firstRule, holdPick, holdReason, rowText,
+  pickCtx, bladePickCtx, tableFields, bladeChoice, tableReason, pickWord, bladeCategory, condHits, rowHits, condGroups, cellDead, cellNumSet, numSet, ruleGrid, ruleEffect, parseCell, cellText, cellSay, selectable, bladeWear, wearDue, bladeStock, WEAR_NEAR, firstRule, holdPick, holdReason, rowText,
   expand, axisRun, materialRun, matShift, spread, tierOf,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP
  };

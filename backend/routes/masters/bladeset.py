@@ -225,8 +225,10 @@ def bladeset_pick_save():
 @api_guard('刃セットの読込に失敗しました')
 def bladeset_sets_list():
  eq = _eq()
- return jsonify(ok=True, equipment=eq,
-                items=_op_read(lambda c: bs.blade_sets(c, eq)) if eq else [],
+ # 径ゲージの物差し（§9.536）: 使用限界径・研磨周期・新品径は刃組基準値の1箇所から（画面へ書き写さない）。
+ got = _op_read(lambda c: {'items': bs.blade_sets(c, eq), 'wear': bs.blade_wear_scale(c, eq)}) if eq \
+  else {'items': [], 'wear': None}
+ return jsonify(ok=True, equipment=eq, items=got['items'], wear=got['wear'],
                 categories=list(bs.BLADE_CATEGORIES), uses=list(bs.BLADE_USES),
                 setNames=list(bs.BLADE_SET_NAMES))
 

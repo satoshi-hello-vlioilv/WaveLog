@@ -968,6 +968,54 @@ body.bs-mode .bs-shell{display:flex}
 .bb-tile.is-grind{background-image:repeating-linear-gradient(135deg,transparent 0 4px,color-mix(in srgb,var(--surface) 35%,transparent) 4px 7px)}
 .bk-card-h .bb-tile{width:2.4em;height:2.4em;font-size:var(--fs-lg)}
 
+/* ---------- 刃の径ゲージ（§9.536・利用者の選択 B-9／B-10） ----------
+   L1＝刃厚のまとまりの見出し（`.bb-grp-h`）／L2＝1項目（タイル`.bb-card`・行`.bb-row`）／L3＝詳細カード。
+   輪・棒の長さ＝使用限界径までの残り。色は残りの段（ok＝teal・near＝橙・out＝濃い橙）で、札が字でも言う。 */
+.bb-ov{display:flex;flex-direction:column;gap:var(--space-2);margin-bottom:var(--space-3)}
+.bb-legend{margin:0;font-size:var(--fs-sm);color:var(--muted);line-height:1.6}
+.bb-key{display:inline-block;width:.8em;height:.8em;border-radius:var(--radius-xs);vertical-align:-1px;margin:0 var(--space-1) 0 var(--space-2)}
+.bb-key.is-near{background:var(--warn)}
+.bb-key.is-out{background:var(--warn-fg)}
+.bb-grp{display:flex;flex-direction:column;gap:var(--space-1)}
+.bb-grp-h{display:flex;flex-direction:column;gap:var(--space-1);padding-top:var(--space-1)}
+.bb-grp-t{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-2);font-size:var(--fs-sm);color:var(--muted)}
+.bb-grp-t>b{font-size:var(--fs-base-sm);color:var(--ink)}
+.bb-grp-t b{color:var(--ink-2)}
+.bb-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:var(--space-2)}
+.bb-card{display:flex;flex-direction:column;align-items:center;gap:var(--space-1);padding:var(--space-2);
+ border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);font-size:var(--fs-sm);cursor:pointer}
+.bb-card:hover{background:var(--pale);transform:translateY(-1px)}
+.bb-card.is-on{border-color:var(--teal);box-shadow:0 0 0 2px var(--teal-soft);background:var(--pale)}
+.bb-card.is-off{opacity:.6}
+.bb-card-h{display:flex;align-items:center;gap:var(--space-1);flex-wrap:wrap;justify-content:center}
+.bb-card-h .bb-tile{width:1.6em;height:1.6em;font-size:var(--fs-sm)}
+.bb-card small{color:var(--muted);font-size:var(--fs-micro)}
+.bb-over{color:var(--warn-fg);font-weight:800}
+.bb-donut{display:block}
+.bb-ring{fill:none;stroke:var(--surface-2);stroke-width:9}
+.bb-bar .bb-ring{fill:var(--surface-2);stroke:none}
+.bb-arc{fill:none;stroke:var(--teal);stroke-width:9}
+.bb-arc.is-near{stroke:var(--warn)}
+.bb-arc.is-out{stroke:var(--warn-fg)}
+.bb-bar .bb-arc{fill:var(--teal);stroke:none}
+.bb-bar .bb-arc.is-near{fill:var(--warn)}
+.bb-bar .bb-arc.is-out{fill:var(--warn-fg)}
+.bb-dn-s{font-size:var(--fs-tiny);fill:var(--muted);text-anchor:middle}
+.bb-dn-b{font-size:var(--fs-title);font-weight:800;fill:var(--ink);text-anchor:middle}
+.bb-detail:empty{display:none}
+/* 刃厚ごとの一覧（B-9）: 一覧の行に棒と字を1行で入れるので一覧を広く取る。 */
+.bk-pane.bb-tree{--bk-list-w:30rem}
+.bb-row .bk-tx small{display:flex;align-items:center;gap:var(--space-1);white-space:nowrap}
+.bb-row-t{display:flex;align-items:center;gap:var(--space-1);min-width:0}
+.bb-bar{flex:0 0 auto}
+.bb-stk{display:flex;height:18px;border-radius:var(--radius-xs);overflow:hidden;border:1px solid var(--line)}
+.bb-stk-p{display:flex;align-items:center;justify-content:center;min-width:0;padding:0;border:0;border-inline-end:2px solid var(--surface);
+ border-radius:0;overflow:hidden;white-space:nowrap;font-size:var(--fs-tiny);font-weight:800;color:var(--surface);background:var(--look-blue);cursor:pointer}
+.bb-stk-p.is-special{background:var(--surface);color:var(--look-blue-dark);box-shadow:inset 0 0 0 2px var(--look-blue)}
+.bb-stk-p.is-grind{background:repeating-linear-gradient(45deg,var(--surface-2) 0 5px,var(--warn-border) 5px 7px);color:var(--warn-fg)}
+.bb-stk-p.is-off{background:var(--surface-2);color:var(--muted)}
+.bb-stk-p.is-on{outline:3px solid var(--teal-dark);outline-offset:-3px}
+
 /* ---------- ゴムリングの盤（§9.528 → §9.529 で2ペイン） ----------
    見本（`.rb-sw`）の地は**マスタの色**（データの値なので style で渡す・トークンではない）。
    無ければ潤滑リングの紫（サーバーの`RING_LUBE_HEX`と同じ値・被り判定もこの色で比べる）。 */

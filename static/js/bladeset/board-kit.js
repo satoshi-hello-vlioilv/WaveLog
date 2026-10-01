@@ -58,11 +58,13 @@
   return form;
  }
 
- /* 2ペイン。左＝一覧（`items`の項目を全部）、右＝詳細。一覧の下に「足す」の1つ。 */
+ /* 2ペイン。左＝一覧（`items`の項目を全部。まとまりで分けて描く盤は組み上がった`listHtml`）、右＝詳細。
+    一覧の下に「足す」の1つ。`cls`は盤ごとの寸法の名乗り（`--bk-list-w`を宣言し直す）。 */
  function pane(o){
-  return `<div class="bk-pane">
+  const list=o.listHtml!=null?o.listHtml:(o.items||[]).map(itemHtml).join('');
+  return `<div class="bk-pane${o.cls?' '+o.cls:''}">
    <nav class="bk-list" aria-label="${esc(o.label||'一覧')}">
-    <div class="bk-items" role="listbox">${(o.items||[]).map(itemHtml).join('')||`<p class="bk-none">${esc(o.empty||'まだありません')}</p>`}</div>
+    <div class="bk-items" role="listbox">${list||`<p class="bk-none">${esc(o.empty||'まだありません')}</p>`}</div>
     ${o.add?`<button type="button" class="bk-add" data-bk-add>${esc(o.add)}</button>`:''}
    </nav>
    <section class="bk-detail">${o.detail||''}</section></div>`;

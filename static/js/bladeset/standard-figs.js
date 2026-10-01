@@ -131,8 +131,11 @@
 
  /* ---- 刃の管理: 刃の径と使用限界径・研磨周期 ---- */
  function knife(V){
-  const md=n(V('minDia'),305),cy=n(V('grindCycleDays'),60),cx=150,c=110,k=0.36;
-  let o=`<circle cx="${cx}" cy="${c}" r="${(md+20)*k/2}" class="sf-knife-o"/>`
+  const md=n(V('minDia'),305),cy=n(V('grindCycleDays'),60),nd=n(V('newDia'),0),cx=150,c=110,k=0.36;
+  /* 新品径（§9.536）が空なら外の輪は「使用限界径＋20」の見かけの大きさ（値は言わない）。 */
+  const od=nd>md?nd:md+20;
+  let o=`<circle cx="${cx}" cy="${c}" r="${od*k/2}" class="sf-knife-o" data-k="newDia"/>`
+   +t(cx,c-(od*k/2)-8,nd>md?`新品径 Φ${f2(nd)}（径ゲージの満タン）`:'新品径は空欄（いちばん大きい現状径を満タンに）',{a:'middle',k:'newDia'})
    +`<circle cx="${cx}" cy="${c}" r="${md*k/2}" class="sf-limit" data-k="minDia"/>`
    +t(cx,c+(md*k/2)+22,`使用限界径 Φ${f2(md)}（ここまで研磨したら使えない）`,{a:'middle',k:'minDia'});
   o+=t(340,60,`研磨周期 ${f2(cy)} 日`,{k:'grindCycleDays'});
