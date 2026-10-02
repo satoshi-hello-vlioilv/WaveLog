@@ -315,7 +315,10 @@ restore_paths(){
 # `trap ... EXIT` をもう1つ書くと**前のものを上書きする**（パス設定を戻す・
 # ロックを外すが動かなくなる。実際に一度そう書いて気づいた。§9.360）。
 WL_TMP="${TMPDIR:-/tmp}/wavelog_run_$$"; mkdir -p "$WL_TMP"
-trap 'restore_paths; release_lock; rm -rf "$WL_TMP"' EXIT INT TERM
+trap 'restore_paths; release_lock; rm -rf "$WL_TMP"' EXIT
+# **止める合図では止まる**（§9.550）。INT/TERM にも後片付けだけを当てていたので、bash は後片付けのあと
+# **次の本へ進み**、本番へ戻したパスのまま・錠なしで回り続けた（`timeout`で切れたときも同じ）。後片付けは EXIT の1回だけ。
+trap 'exit 130' INT; trap 'exit 143' TERM
 
 save_paths
 # 共有スケジュールDBはテストが書き換える(予定の追加・並べ替え・ロック)ので、
