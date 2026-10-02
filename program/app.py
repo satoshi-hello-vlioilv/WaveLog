@@ -141,7 +141,7 @@ rne_scheduler.start()
 file_cleanup.start()
 
 if __name__=='__main__':
- # 直接 python app.py で起動された場合も、通常の起動経路(Start.vbs /
- # start_app.bat)と同じ処理を通すため server.py へ委譲する。
+ # **開発と網（テスト）のための HTTP の入口**（§9.548）。利用者はデスクトップ版（Start.vbs → WaveLog.exe）
+ # だけを起動する。手順は server.py の1箇所（背景処理は窓口と同じ`services.start()`）。
  from backend.launcher import server
  server.run()

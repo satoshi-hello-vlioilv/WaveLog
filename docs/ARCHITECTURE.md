@@ -34,72 +34,49 @@
 
 ## ディレクトリ構成
 
-起動・停止に関わるファイル(`update.bat`/`start_app.bat`/`stop.bat`/
-`setup_app.py`/`start_app.py`/`process_manager.py`/`loading.html`)と `app.py` は
-**`program/` へまとめる**(§9.404・§9.406)。ルート直下に置くのは毎日の入口
+起動・停止に関わるファイル(`update.bat`/`setup_app.py`/`sidecar.py`/デスクトップ版の本体`WaveLog.exe`)と
+`app.py` は**`program/` へまとめる**(§9.404・§9.406・§9.548)。ルート直下に置くのは毎日の入口
 `Start.vbs` と、動かせない2つ(`.gitignore`/`eslint.config.mjs`)だけ。
-importされるだけの`backend/launcher/guard.py`・`backend/launcher/server.py`を含む
-それ以外のバックエンド
+importされるだけの起動部品（`backend/launcher/`）を含むそれ以外のバックエンド
 ロジックは `backend/` パッケージへ、ローカルDBファイルは `db/` フォルダへ
 まとめている(全体の一覧は `README.md` を参照)。
 
 ## 起動基盤
 
-「起動しない」と「業務機能が動かない」を切り分けて調査できるよう、起動制御と
-業務ロジックを分けている。設計の背景と今後の再編計画は
-`docs/REBUILD_PLAN.md` を参照。
+利用者の起動は**デスクトップ版だけ**（§9.548、利用者の指示「一本化を進めて」）。
+Start.vbs → `program/WaveLog.exe`（手元へ写して起動）→ 窓が子として`program/sidecar.py`を起こし、
+標準入出力で問い合わせる（ポートなし・§9.544〜§9.546）。ブラウザ版の起動の道（待機画面・二重起動の判定・
+タブが0件で終わる見張り・停止スクリプト）は§9.548で外した。HTTP の入口`program/app.py`は**開発と網**のため。
 
 | ファイル | 役割 |
 |---|---|
+| `Start.vbs` | 毎日の入口。`program/WaveLog.exe`を`%LOCALAPPDATA%\WaveLog\desktop\<大きさ-時刻>\`へ写して起動し、program の場所を渡す。起動できなければ理由と次の一手を出す。**直下に残す唯一の入口**(§9.406) |
+| `program/WaveLog.exe` | デスクトップ版の本体（`desktop/`から作る）。**main へは CI（`desktop.yml`の`publish`）が置く**。作った元の指紋は`program/WaveLog.build.json` |
+| `desktop/`（Rust・Tauri） | **デスクトップ版の窓**(§9.546)。窓・1つだけ起動・`/static/`の直配り・Python（`program/sidecar.py`）の監督と起こし直し・外のリンクは Edge。自前の仕組み`wavelog`（`config.DESKTOP_SCHEME`と同じ）。終わり方は Python の片付けの1箇所を通す。起動画面`desktop/splash`は`#appBoot`と同じ色。CI は`.github/workflows/desktop.yml`（Windows・本物の WebView2 の自己診断） |
+| `program/sidecar.py` | **デスクトップ版の窓口**(§9.544)。標準入出力の枠(JSON 1行＋生の本文)で問い合わせを受け、Flaskはそのまま WSGI で呼ぶ。標準出力は枠だけ(何より先に fd 1 を標準エラーへ)。刻印が食い違えば起動前の確認を通す。入力が閉じたら`watchdog._exit()`の同じ片付けを通って終わる |
 | `program/update.bat` | 起動前の確認(§9.225)。**アプリを新しくしたあとに1回**(導入時も1回)。`program/setup_app.py`を実行する。旧名`setup.bat`(§9.405) |
-| `Start.vbs` | 通常起動。コンソールを表示せず `program/start_app.py` を実行する。**直下に残す唯一の入口**(§9.406) |
-| `program/start_app.bat` | 診断起動。コンソールを表示したまま同じ `program/start_app.py` を実行する |
-| `program/stop.bat` | 明示停止。`program/process_manager.py stop` を呼ぶ |
-| `program/setup_app.py` | `update.bat`の中身。確認の実処理は`backend/launcher/setup_check.py`にあり、起動時のフォールバックと共有する |
-| `backend/launcher/setup_check.py` | 起動前の確認一式(部品の導入・バイトコードの事前コンパイル・旧DB取り込み・待機画面の写し)。**update.batと起動時のフォールバックが同じここを通る** |
+| `program/setup_app.py` | `update.bat`の中身。確認の実処理は`backend/launcher/setup_check.py`にあり、窓口と共有する |
+| `backend/launcher/setup_check.py` | 起動前の確認一式(部品の導入・バイトコードの事前コンパイル・旧DB取り込み・外した物の片付け〈`RETIRED`〉)。**update.batと窓口が同じここを通る** |
 | `backend/launcher/ready.py` | 「この端末では確認が済んでいる」刻印(`%LOCALAPPDATA%\WaveLog\runtime\ready.json`)。**速さのための門であって正しさの門ではない**ので、食い違ったら止めずに確認し直す |
-| `program/start_app.py` | Python側の起動開始点。ログ初期化→待機画面を開く→多重起動判定→**刻印が合えば確認を飛ばす**→サーバー起動 |
-| `backend/launcher/guard.py`(旧`launch_guard.py`) | ポートの使用状況と `app_id` の照合による多重起動判定(`OURS`/`FOREIGN`/`UNRESPONSIVE`/`FREE`)、起動中インスタンスの記録。`UNRESPONSIVE`(ポート使用中だがHTTP応答が無い)は自プロセスが重い処理でブロックされている可能性を含むため、即座に別アプリ(`FOREIGN`)と決め付けず`process_manager.py`側でinstance.jsonのapp_root照合による強制終了判断へ委ねる |
-| `backend/launcher/server.py`(旧`server.py`) | Webサーバーの起動のみ。起動監視とWeb処理の境界 |
-| `program/sidecar.py` | **デスクトップ版の窓口**(§9.544・`docs/DESKTOP_MIGRATION_DESIGN.md`)。窓(Tauri)が子として起こし、標準入出力の枠(JSON 1行＋生の本文)で問い合わせる。**ポートを開かない**。Flaskはそのまま WSGI で呼ぶ。標準出力は枠だけ(何より先に fd 1 を標準エラーへ)。入力が閉じたら`watchdog._exit()`の同じ片付けを通って終わる |
-| `backend/launcher/services.py` | 起動したあと裏で回す処理(共有DBの写し・共有スケジュールの見張り・書込役)の開始の1箇所。`server.py`と`sidecar.py`が同じ`start()`を呼ぶ(窓口で振る舞いを変えない)。タブの見張り(`watchdog.start()`)はポート版だけ |
-| `desktop/`（Rust・Tauri） | **デスクトップ版の窓**(§9.546)。窓・1つだけ起動・`/static/`の直配り・Python（`program/sidecar.py`）の監督と起こし直し・外のリンクは Edge。自前の仕組み`wavelog`（`config.DESKTOP_SCHEME`と同じ）。終わり方は Python の片付けの1箇所を通す。起動画面`desktop/splash`は待機画面と同じ色。Start.vbs に引数`desktop`を付けると exe を手元の版ごとのフォルダへ写して起動する。CI は`.github/workflows/desktop.yml`（Windows・本物の WebView2 の自己診断） |
-| `program/process_manager.py` | 対象アプリだけの安全な停止（正常終了要求→記録済みPID。プロセス名では判定しない） |
-| `program/loading.html` | 起動待機画面。サーバーより先に `file://` で開かれ、`/api/ready.js` の応答を待ってからアプリへ遷移する。段階表示は `boot_status.js` を読んで**実際の進捗**を出す。進捗バーはサーバー6段階＋ブラウザ4段階の10段階ぶんで、6/10(60%)まで進めてアプリ側の起動オーバーレイへ引き渡す |
-| `backend/boot_status.py` | 起動の段階を**端末ごとの置き場**(`%LOCALAPPDATA%\WaveLog\runtime\boot_status.js`。§9.225)へ書き出す。待機画面も同じ場所へ写して開くので、共有配置でも端末どうしが混ざらない。サーバー側6段階(`STEPS`)とブラウザ側4段階(`BROWSER_STEPS`)の定義、合計数(`TOTAL_STEPS`)、バージョン番号の供給元。待機画面はまだサーバーが無い状態なので、`<script src>` で読み取れるJSファイルを介す。書き込みに失敗しても起動は止めない。`/api/ready.js` で削除する(`.gitignore`済み) |
-| `templates/index.html` の `#appBoot` / `static/css/95-boot.css` | アプリ内の起動オーバーレイ。待機画面から意匠と段階リストを引き継ぎ、**画面が組み上がるまで本体を見せない**(下記) |
-| `program/_pycache_bootstrap.py` | `.pyc` キャッシュをローカル領域へ逃がす。`sys.pycache_prefix` は最初のimportより前に設定する必要があるため、各エントリポイントの一番最初のimportにする。**5本のいちばん最初のimport**（§9.406で`program/`へ。`program/`の隣に在るので探索先の用意が要らず、先に読むほど`__pycache__`が直下に生えない） |
-| `program/_approot.py` | `program/`の5本が`_pycache_bootstrap`の**次に**通す1行（§9.404）。リポジトリ直下を`sys.path`へ足す——これが無いと`backend`もこの`_pycache_bootstrap`も読めない |
+| `backend/launcher/services.py` | 起動したあと裏で回す処理(共有DBの写し・共有スケジュールの見張り・書込役)の開始の1箇所。窓口と開発・網の入口が同じ`start()`を呼ぶ |
+| `backend/launcher/server.py` | **開発と網の HTTP の入口**（`python3 program/app.py`・127.0.0.1:5029）。利用者の起動の道ではない。止めるのは`/api/shutdown` |
+| `backend/boot_status.py` | 起動の段の顔ぶれ（中身の6段`STEPS`・画面の4段`BROWSER_STEPS`）。アプリ内の起動の覆いと base.js の分母が読む |
+| `templates/index.html` の `#appBoot` / `static/css/95-boot.css` | アプリ内の起動オーバーレイ。**画面が組み上がるまで本体を見せない**(下記) |
+| `program/_pycache_bootstrap.py` | `.pyc` キャッシュをローカル領域へ逃がす。`sys.pycache_prefix` は最初のimportより前に設定する必要があるため、各エントリポイントの一番最初のimportにする。**3本のいちばん最初のimport**（§9.406） |
+| `program/_approot.py` | `program/`の3本が`_pycache_bootstrap`の**次に**通す1行（§9.404）。リポジトリ直下を`sys.path`へ足す——これが無いと`backend`もこの`_pycache_bootstrap`も読めない |
 | `config/local.json` | マスタDB自体の置き場所を決める3項目(`db_dir`/`master_db_path`/`records_db_path`)専用のブートストラップ設定(値をマスタDBの中に保存すると読みに行く先が分からなくなるため、この3つだけは唯一この方式が残る)。未配置なら既定の`db/`のまま。それ以外(`sikalotnow_path`/`sikalotdef_path`等)はパス設定マスタ(下記)へ移行済み |
-| `backend/config.py` | アプリID・表示名・ポート・監視しきい値などアプリ固有値の集約先 |
+| `backend/config.py` | アプリID・表示名・ポート（開発と網の入口・書込役の受け口）などアプリ固有値の集約先 |
 | `backend/paths.py` | `%LOCALAPPDATA%` 配下の解決、共有フォルダー配置の検出、`config/local.json` の読込(`load_local_config`/`configured_path`。マスタDB自体の置き場所を決める3項目専用のブートストラップ設定。それ以外の運用設定はパス設定マスタ(`db_access.py`)へ移行済み) |
 | `backend/logging_setup.py` | ログ初期化。`launcher.log`(起動・停止) と `app.log`(本体) の2系統 |
-| `backend/watchdog.py` | プロセスの生存管理。ハートビート監視・明示停止(`/api/shutdown`) |
+| `backend/watchdog.py` | プロセスの寿命。片付けて終わる`_exit()`の1箇所・明示停止(`/api/shutdown`)・終了ボタン(`/api/app/quit`)・ハートビート（在席と版の知らせ） |
 
-`_pycache_bootstrap.py` は `program/start_app.py`・`program/process_manager.py`・
-`program/setup_app.py`・`program/app.py`・`program/sidecar.py` の5つすべてで、`_approot`の**次に**
-importしている(直接実行され得るのはこの5本。
-`backend/launcher/server.py` はimportされるだけになったので不要になった)。
-単独で起動され得る経路が複数
-あり、1箇所だけに書くと別経路で `.pyc` がアプリ側へ生成されてしまう
-(`program/process_manager.py stop` を単体実行した際にこれが起きることを実測で確認し、
-全エントリポイントへ追加した)。
-
-起動待機画面は `file://` から開かれるため `fetch` ではCORSで応答を読めない。
-生成元をまたいで読み込める script 要素で `/api/ready.js` を叩き、JSONP形式で
-アプリ識別情報を受け取ってから遷移する。これによりブラウザとサーバーの
-どちらが先に立ち上がっても接続エラー画面が出ない。
-
-段階表示も同じ理由で `<script src="boot_status.js">` を介す。以前は**経過秒数
-だけ**で切り替えていたため、5秒を過ぎると何をしていても「接続を確認中」に
-留まり、共有の応答待ちで長引いたときにどこで待たされているのか分からなかった
-(実際に「起動時の『接続を確認中』が長い」という指摘を受けた)。現在は
-`backend/boot_status.py` が実際の段階を書き出す。詳細は
-`docs/decisions/9.47.md`。
+`_pycache_bootstrap.py` は `program/setup_app.py`・`program/app.py`・`program/sidecar.py` の3つすべてで、
+`_approot`の**次に**importしている(直接実行され得るのはこの3本)。
+1箇所だけに書くと別経路で `.pyc` がアプリ側へ生成されてしまう。
 
 ### 起動は「サーバーが応答したら終わり」ではない（起動オーバーレイ）
 
-`/api/ready.js` が応答した時点では、まだ画面は出来ていない。ブラウザが
+中身（Python）が応答した時点では、まだ画面は出来ていない。画面（WebView）が
 17本のJSを読み、権限を確かめ、一覧を取り、そこでようやく完成する。
 実測すると、最初の描画(+85ms)から落ち着く(+451ms)までに**5回**の
 組み替えが起きていた。
@@ -133,9 +110,9 @@ importしている(直接実行され得るのはこの5本。
 - **必ず解除されること**が最優先。段階が終わらなくても8秒で外す
   (画面が出ないまま固まるのは、崩れて見えるより悪い)。`base.js` 自体が
   読めなかった場合の保険も `index.html` に置いてある(12秒)。
-- 段階の一覧は `boot_status.py` / `loading.html` / `index.html` の3箇所に
-  同じものが要る(待機画面は `file://` で開くため共有できない)。
-  `tests/test_boot.py` が3箇所の一致を固定し、`tests/test_bootui.js` が
+- 段階の一覧は `boot_status.py` / `index.html` / base.js の分母に同じものが要る
+  （以前はブラウザ版の待機画面にも要った・§9.548で外した）。
+  `tests/test_boot.py` が一致を固定し、`tests/test_bootui.js` が
   「覆いが外れた後に組み替えが起きていないこと」を実測する。
 
 ## バックエンド構成
@@ -146,7 +123,7 @@ importしている(直接実行され得るのはこの5本。
 | ファイル | 役割 |
 |---|---|
 | `program/app.py` | Flask本体の組み立て。Blueprint登録・キャッシュ無効化ヘッダ・ウォッチドッグ組み込みのみ |
-| `backend/routes/core.py` | トップページ・`/api/build`・`/api/ready.js`・`/api/whoami`・`/api/changelog` |
+| `backend/routes/core.py` | トップページ・`/api/build`・`/api/whoami`・`/api/changelog` |
 | `backend/routes/tables.py` | 汎用DB一覧API(`/api/catalog`・`/api/tables`・`/api/table`・`/api/table-columns`・クエリ結合の引き当て`/api/query-join/keys`・`/api/query-join/resolve`) |
 | `backend/routes/measurement.py` | 測定コンテキスト・マスタ診断・バックアップAPI |
 | `backend/routes/quality.py` | 品質データ分析API(`/api/quality/analysis`) |
@@ -168,7 +145,7 @@ importしている(直接実行され得るのはこの5本。
 | `backend/rne_worker.py` | `rne_extract.extract_one`をサブプロセスとして実行するエントリポイント(`python -m backend.rne_worker`) |
 | `backend/rne_scheduler.py` | 仕掛/品質データのローカル運用(`sikalot_source=local`)時、RNE抽出を定期的に並列実行する背景スレッド |
 
-依存方向は `program/start_app.py → backend.launcher.server → program/app.py → backend.routes.* →
+依存方向は `program/sidecar.py`（デスクトップ版）・`backend.launcher.server`（開発と網）→ `program/app.py` → backend.routes.* →
 backend.repositories.master_repo → backend.db_access`（逆参照なし）。
 `backend.routes.tables`/`backend.routes.measurement` は
 `backend.repositories.master_repo` の読み取り関数(`hidden_columns_for_db`/
@@ -1443,8 +1420,8 @@ return withWaiting({title:'…を読み込んでいます', detail:'…', progre
 
 ### 起動の引き渡しで白い画面を挟まない（CSSは2本、JSは描画のあと）
 
-起動待機画面（`loading.html`、`file://`）からアプリ本体（`http://…`）へ移る
-瞬間、白い画面が一瞬見えていた。ブラウザは前のページの絵をしばらく保持
+起動画面からアプリ本体へ移る瞬間（当時はブラウザ版の待機画面から。いまはデスクトップ版の
+起動画面`desktop/splash`から・§9.548）、白い画面が一瞬見えていた。ブラウザは前のページの絵をしばらく保持
 するが、**次のページが最初の1枚を描くまでが長いと諦めて素の白を映す**。
 
 実測（CDPのスクリーンキャストで「暗い起動画面が出るまで」）:
@@ -1492,7 +1469,7 @@ return withWaiting({title:'…を読み込んでいます', detail:'…', progre
 
 なお起動画面の意匠は**落ち着いた側へ寄せた**。進捗バーを流れていた光の帯を
 やめ、地の光（teal 20%→10% / amber 14%→6%）・影・点滅の振れ幅を下げてある。
-`loading.html` と `95-boot.css` は**同じ見た目を2箇所に書いている**ので、
+`desktop/splash/index.html` と `95-boot.css` は**同じ見た目を2箇所に書いている**ので、
 片方だけ直すと引き継ぎで見た目が飛ぶ。必ず両方直す。
 
 ### どれが「仕掛」でどれが「品質」かは、キーではなく役割が決める
@@ -1599,28 +1576,6 @@ return withWaiting({title:'…を読み込んでいます', detail:'…', progre
 リネーム」にすれば、同一共有内のリネームは不可分なので読み手は必ず完全な
 ファイルを見る。こちらの実装は先方が対応しなくても安全だが、対応があれば
 「写しの見送り」自体が起きなくなる。
-
-### 停止・多重起動の確認はプロキシを経由させない
-
-`stop.bat` が「ポート 5029 は別のアプリが使用しています」と言って停止できず、
-タスクマネージャーから落とすしかない事例があった。ログに残っていたのは
-`{'http_status': 407}` ——407 は Proxy Authentication Required で、
-**`127.0.0.1` 宛ての確認が社内プロキシへ送られていた**。
-
-`urllib` は既定でプロキシ設定を見る。Windowsでは環境変数だけでなく
-**レジストリのIE/Edgeのプロキシ設定まで読む**ため、`ProxyOverride` に
-`<local>` が無い端末ではループバックまで転送される。`probe()` は
-「HTTPで何かが応答した＝別のアプリ」と解釈するので、自分自身が起動して
-いるのに FOREIGN と誤判定していた。
-
-- ループバックへの問い合わせは `guard.urlopen_local()` を使う
-  （`ProxyHandler({})` の専用opener）。`process_manager.py` の
-  `POST /api/shutdown` も同じ経路。
-- 保険として、407/502/503/504 は FOREIGN ではなく `UNRESPONSIVE` にする。
-  「別のアプリがいる証拠」ではなく「届いていない印」だから。
-  UNRESPONSIVE なら停止は記録済みPIDの経路へ進める
-  （`force_stop()` が `instance.json` の `app_root` を照合するので、
-  別フォルダーのアプリを巻き添えにすることはない）。
 
 ### 設備マスタの「区分」（コイル／板）は空欄が既定
 
@@ -1957,7 +1912,7 @@ A4縦は `fit` 倍率が**高さで決まる**（210×297mm を横長の画面�
 
 - **サーバー再起動が必須**: テンプレート/静的ファイルの自動リロードは無効。
   `program/app.py`・`templates`・`static` を変更したら Flask を再起動して確認する
-  (`python3 program/process_manager.py stop` → `python3 -u program/start_app.py`)。プロセス名で
+  (開発と網の入口を`POST /api/shutdown`で止めて`python3 -u program/app.py`で起こし直す)。プロセス名で
   一括終了する `pkill` は、同じPCの他のPythonを巻き添えにするため使わない。
 - **回帰テスト**: `tests/` に常設（実行は `tests/run_all.sh` のみ）。
   接続先が全てSQLiteになったため、仕掛/品質データ(`/api/table` 等)もマスタ

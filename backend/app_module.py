@@ -1,7 +1,7 @@
 """app_module.py: Flask本体（`program/app.py`）を手に入れる1箇所（§9.404）。
 
 `backend`の中から素で`from app import app`と書くと、**入口の隣に在ること**に
-頼ることになる——`program/start_app.py`から起動したときは`program/`が
+頼ることになる——`program/app.py`・`program/sidecar.py`から起動したときは`program/`が
 `sys.path[0]`になるので読めるが、**入口を通らない経路**（テストが`backend`
 だけを読み込む、別の道具から呼ぶ）では`No module named 'app'`で落ちる。
 

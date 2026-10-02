@@ -86,10 +86,10 @@ run('test_appquit: 安全な終了と、書込役が応答しないときの引�
   /* ---- 2) サーバーが「何が起きるか」を答える ---------------------- */
   const facts=await page.evaluate(async()=>await (await fetch('/api/app/quit-check')).json());
   rec('サーバーが終了前の事実を答える',
-      facts.ok===true&&typeof facts.tabs==='number'
-      &&typeof facts.isOwner==='boolean'&&Array.isArray(facts.sessions),
+      facts.ok===true&&typeof facts.isOwner==='boolean'&&Array.isArray(facts.sessions),
       JSON.stringify(facts));
-  rec('開いているタブの数を数えている（1つ以上）',Number(facts.tabs)>=1,String(facts.tabs));
+  /* タブを数える見張りは§9.548で外した（窓を閉じれば窓口の入力が閉じる）。 */
+  rec('タブの数は答えない（ブラウザ版の見張りは外した・§9.548）',!('tabs' in facts),JSON.stringify(facts));
 
   /* ---- 3) 押すと確認が出る（まだ終了しない） ---------------------- */
   await page.click('#appQuit');
@@ -126,34 +126,28 @@ run('test_appquit: 安全な終了と、書込役が応答しないときの引�
   await closed();
   rec('ここまで一度も終了していない',quitCalls===0,`quit=${quitCalls}回`);
 
-  /* ---- 4.5) 終了したらタブも閉じる（§9.409、利用者の指示④） --------
-     「アプリ終了ボタンで終了時、タブに残らず、そのままスッキリ終了させて
-       ください」
-     `window.close()`が通るのは**スクリプトが開いた窓**だけなので、毎日の
-     入口（Start.vbs → 既定のブラウザ）で開いたタブでは断られる端末がある。
-     ここでは**閉じようとすること**と、**断られたときだけ案内が出る**ことを
-     見る（本当に閉じるとこの先のテストが動かないので、`close`は差し替える）。
+  /* ---- 4.5) 終了したら「終わったこと」と次の一手を出す（§9.548） --------
+     デスクトップ版の窓は中身（Python）が終わるのを待って閉じる（§9.546）。閉じるまでのあいだと、
+     窓を持たない開発・網の入口では、画面が**終わったことと次の一手**を言う（黙って何も起きないを残さない）。
+     ブラウザのタブを閉じにいく仕掛け（§9.409）はブラウザ版とともに外した。
      終了の口は上のルートが受け止めるので、サーバーは落ちない。 */
   await page.evaluate(()=>{
    window.__closeTried=0;
-   window.close=()=>{window.__closeTried++};   // 断るブラウザのふり
+   window.close=()=>{window.__closeTried++};
    try{window.measureDirty=false}catch(e){/* 封じた控えには書けないことがある（後片付けなので失敗してよい） */}
   });
   await page.click('#appQuit');
   await page.waitForSelector('#appConfirmModal:not([hidden])',{timeout:10000});
   await page.click('#appConfirmOk');
-  await page.waitForFunction(()=>window.__closeTried>0,null,{timeout:10000});
-  rec('終了したらタブを閉じにいく',quitCalls===1,`quit=${quitCalls}回 close=`
-      +String(await page.evaluate(()=>window.__closeTried)));
   await page.waitForFunction(()=>!document.getElementById('appQuitDone').hidden,
                              null,{timeout:10000});
   const done=await page.evaluate(()=>({
-   文:(document.getElementById('appQuitDone')||{}).innerText.replace(/\s+/g,' ')}));
-  rec('閉じられなかったときだけ案内を出す（黙って何も起きないを残さない）',
-      /終了しました/.test(done.文),done.文.slice(0,60));
-  /* **「閉じました」と言わない**——言った直後に閉じなければ、その字が嘘になる。 */
-  rec('閉じられなかった理由まで書く',/自動で閉じられませんでした/.test(done.文),
-      done.文.slice(0,140));
+   文:(document.getElementById('appQuitDone')||{}).innerText.replace(/\s+/g,' '),
+   close:window.__closeTried}));
+  rec('終了の口を1回だけ叩く',quitCalls===1,`quit=${quitCalls}回`);
+  rec('終わったことと次の一手（起動アイコン）を出す',
+      /終了しました/.test(done.文)&&/起動アイコン/.test(done.文),done.文.slice(0,120));
+  rec('タブを閉じにいかない（窓は窓が閉じる・ブラウザ版の仕掛けは外した）',done.close===0,String(done.close));
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>!document.getElementById('appBoot'),null,{timeout:25000});
 

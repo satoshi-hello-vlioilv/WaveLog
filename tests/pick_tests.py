@@ -223,9 +223,9 @@ G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'tes
 G['見た目'] = ['test_theme', 'test_scale', 'test_fit', 'test_typescale', 'test_density',
                'test_uiux', 'test_headbar', 'test_uisize', 'test_bootui',
                'test_gridhead']
-G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 'test_tabclose',
-             # §9.318: 待機画面が見えなくてもアプリへ辿り着ける（保険・置き場の判定）
-             'test_faststart', 'test_bootopen',
+G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache',
+             # §9.318・§9.496: ほかのプログラムが読むファイルの置き場の判定
+             'test_faststart', 'test_browserdir',
              # §9.410: デスクトップの起動ショートカットとアイコン（入口を作る側）
              'test_shortcut',
              # §9.544: デスクトップ版の窓口（標準入出力・ポートなし）。起動の背景処理を共有する
@@ -507,10 +507,10 @@ RULES = [
     # 書き換えもここが持つので、起動時の解決を見る網も一緒に回す。
     ('backend/storage_layout.py', g('test_storage', 'test_storageui', 'test_setpage',
                                     'test_measstore', 'test_localwork', 'test_mastershare',
-                                    # §9.445・§9.547: 「表示」の節（起動アイコン・起動のしかた）
+                                    # §9.445: 「表示」の節（起動アイコン）
                                     'test_uisize', 'test_setpage')),
     ('backend/routes/rne.py', g('test_datasource', 'test_setpage', 'test_modeguard')),
-    ('backend/routes/core.py', g('起動', 'test_error', 'test_nav', 'test_launchmode')),
+    ('backend/routes/core.py', g('起動', 'test_error', 'test_nav')),
 
     # --- サーバー(その他) --------------------------------------------
     ('backend/access_mode.py', g('権限', '保存の帯', 'test_nav', 'test_crudroutes', 'test_colscope',
@@ -571,10 +571,9 @@ RULES = [
     # 盤はヘッダーの「表示」の節（§9.445）。共通設定は「状態と行き先」だけなので、
     # あちらの網（test_setpage）と「表示」の網（test_uisize）の両方を回す。
     ('backend/desktop_shortcut.py', g('test_shortcut', 'test_setpage', 'test_uisize')),
-    ('backend/launch_mode.py', g('test_launchmode', 'test_uisize', 'test_setpage')),
     ('backend/app_icon.py', g('test_shortcut')),
     # 終わる前の片付けと終了ボタン（§9.301 ②）も watchdog が持つ。
-    ('backend/watchdog.py', g('test_tabclose', 'test_boot', 'test_presence',
+    ('backend/watchdog.py', g('test_boot', 'test_presence',
                               'test_appquit', 'test_scowner', 'test_sidecar')),
     # 在席（§9.272）。権限区分の判定は master_repo 側にあるので「権限」ごと。
     ('backend/presence.py', g('権限')),
@@ -590,19 +589,16 @@ RULES = [
     # --- 起動まわりの直接実行スクリプト --------------------------------
     # `program/`（§9.404）。受け皿の`program/`は**この下**に置く——`hit`は
     # 当たった規則を全部足すので、`program/app.py`は[ALL]のまま残る。
-    ('program/start_app.py', g('起動', 'test_bootreport')),
     ('program/setup_app.py', g('起動')),
     ('program/update.bat', g('起動')),
-    ('program/loading.html', g('起動')),
-    ('program/process_manager.py', g('起動')),
     # デスクトップ版の窓口（§9.544）。枠・答えの一致・閉じたときの片付け
     ('program/sidecar.py', g('起動')),
     ('program/requirements.txt', g('起動', 'test_noaccess')),
     # デスクトップ版の窓（§9.544・Rust）。窓口の枠と起動画面の色を見る網を回す
     # （Rust そのものは cargo test と CI の自己診断・.github/workflows/desktop.yml）。
     ('desktop/', g('test_sidecar', 'test_boot')),
-    # 毎日の入口。引数「desktop」で exe を手元へ写して起こす（§9.546）
-    ('Start.vbs', g('test_faststart', 'test_shortcut', 'test_launchmode')),
+    # 毎日の入口。exe を手元へ写して起こすだけ（§9.546・§9.548）
+    ('Start.vbs', g('test_faststart', 'test_shortcut')),
     ('program/', g('起動')),
 
     # --- ドキュメント --------------------------------------------------

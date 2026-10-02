@@ -60,7 +60,7 @@ fi
 # 互いの状態を触らないことが「純粋」の定義なので、並列にしてよい。
 # **`--pure` はパス設定の差し替えも見せ方の戻しもしない**（差し替えが要る
 # 網は、そもそもここに載っていない）。
-PURE_TESTS="test_apiguard test_assetcache test_atomicio test_body test_bootopen test_bladeset \
+PURE_TESTS="test_apiguard test_assetcache test_atomicio test_body test_browserdir test_bladeset \
 test_changelog test_cleanup test_csslint test_dblayer test_dbmirror \
 test_dbopen test_ddllint test_displayrule test_docindex test_dskeylint \
 test_eqstd test_lfpoints test_error test_eslint test_faststart test_flags \
@@ -68,9 +68,9 @@ test_globallint test_hintlint test_layers test_loadorder test_localwork test_log
 test_mastershare test_noaccess test_patchlint test_pcname test_pick \
 test_presence test_printcore test_pyflakes test_pywarn test_quietlint \
 test_recmirror test_recsplit test_routesplit test_savechip \
-test_scsnapread test_scwatch test_shortcut test_sortpipe test_storage test_tabclose \
+test_scsnapread test_scwatch test_shortcut test_sortpipe test_storage \
 test_tabledef test_workdate test_waitlint test_importlint test_funclen test_stopsub test_schedhist \
-test_portdep test_terminalstore test_launchmode"
+test_portdep test_terminalstore"
 # **`test_tablequery`は1段目に入れない**（§9.369）。サーバーは要らないが
 # **仕掛の実データが要る**——まっさらな取得では読み込み先が既定の共有パス
 # （`\\Nlmsrvngy03\...`）に落ちるので必ず落ちる。1段目の約束は
@@ -228,10 +228,16 @@ server_up(){ curl -s -m 3 -o /dev/null "$API/" 2>/dev/null; }
 # 各テストは自分でfinallyで閉じるが、取りこぼしに備えてランナー側でも掃除する。
 # --user-data-dirで絞るので、Playwrightが起動したものだけが対象。
 reap_browsers(){ pkill -f -- '--user-data-dir=/tmp/playwright_chromiumdev_profile' >/dev/null 2>&1; true; }
+# 網のサーバーは**開発と網の入口**（`program/app.py`・§9.548）。止めるのは`/api/shutdown`（片付けを通る）、
+# 応じなければ同じ入口の名前で止める（ブラウザ版の process_manager・instance.json は外した）。
+stop_server(){
+  curl -s -m 3 -X POST "$API/api/shutdown" >/dev/null 2>&1
+  for _ in $(seq 1 20); do server_up || return 0; sleep 0.5; done
+  pkill -f -- 'program/app.py' >/dev/null 2>&1; sleep 1; true
+}
 restart_server(){
-  ( cd "$ROOT" && python3 program/process_manager.py stop >/dev/null 2>&1 )
-  sleep 1
-  ( cd "$ROOT" && nohup python3 -u program/start_app.py >"$ROOT/tests/server.log" 2>&1 & )
+  stop_server
+  ( cd "$ROOT" && nohup python3 -u program/app.py >"$ROOT/tests/server.log" 2>&1 & )
   for _ in $(seq 1 30); do server_up && return 0; sleep 1; done
   echo "!! サーバーを起動できませんでした ($ROOT/tests/server.log を確認)" >&2
   return 1
@@ -372,11 +378,8 @@ TIMES=""
 run(){
   want "$2" || return 0
   reseed
-  # **1本ごとにサーバーの生存を確かめる。** VER2.12.0でタブを閉じてから
-  # 終了するまでが90秒→8秒になったため、テストがブラウザを閉じてから次の
-  # テストが画面を開くまでに8秒以上あくと、その隙にアプリが自分で終了する
-  # (「開いているタブが0件」の正しい振る舞い)。以前は90秒あったので偶然
-  # 間に合っていただけで、テストを1本足すだけで崩れる。curl 1回で防ぐ。
+  # **1本ごとにサーバーの生存を確かめる**（前の本が`/api/app/quit`を押した・落ちた）。
+  # 以前はブラウザ版の「タブが0件で8秒後に終わる」見張りにも備えていた（§9.548で外した）。
   server_up || restart_server || echo "!! サーバーを起動できないまま $2 を実行します" >&2
   # **見せ方の設定は1本ごとに戻す**（§9.303 ③の追補）。紙の配置は
   # 「触ったら裏で保存」になったので、**組み換えを開いて何か触ったテストは
@@ -541,7 +544,7 @@ for t in test_cols test_listmodal test_split_layout test_sccols; do
 echo "--- サーバー側 ---"
 mode schedule
 for t in test_sclock test_scsession test_scwritespeed test_colscache test_colsripple test_colsave test_opdata test_choicelink test_modeguard test_noaccess test_pcname \
-         test_csslint test_dbopen test_error test_datasource test_dscap test_dskeylint test_dbmirror test_atomicio test_localwork test_displayrule test_eqstd test_lfpoints test_actualmatch test_finishjoin test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_tabclose test_logs test_docindex test_sortpipe test_scwatch test_scowner test_qjoin test_workdate test_scload test_faststart test_bootopen test_rollio test_cleanup test_rawmaster test_recsplit test_colscope test_mastershare test_storage test_recmirror test_srcread test_presence test_roleperm test_savechip test_rbcells test_pywarn test_hintlint test_ddllint test_changelog test_pick test_flags test_apiguard test_tabledef test_loadorder test_scsnapread test_pyflakes test_eslint test_quietlint test_dblayer test_body test_printcore test_routesplit test_layers test_waitlint test_importlint test_funclen test_bladeset test_stopsub test_shortcut test_schedhist test_portdep test_sidecar test_terminalstore test_launchmode; do run python3 $t.py; done
+         test_csslint test_dbopen test_error test_datasource test_dscap test_dskeylint test_dbmirror test_atomicio test_localwork test_displayrule test_eqstd test_lfpoints test_actualmatch test_finishjoin test_crudroutes test_tablequery test_patchlint test_globallint test_assetcache test_logs test_docindex test_sortpipe test_scwatch test_scowner test_qjoin test_workdate test_scload test_faststart test_browserdir test_rollio test_cleanup test_rawmaster test_recsplit test_colscope test_mastershare test_storage test_recmirror test_srcread test_presence test_roleperm test_savechip test_rbcells test_pywarn test_hintlint test_ddllint test_changelog test_pick test_flags test_apiguard test_tabledef test_loadorder test_scsnapread test_pyflakes test_eslint test_quietlint test_dblayer test_body test_printcore test_routesplit test_layers test_waitlint test_importlint test_funclen test_bladeset test_stopsub test_shortcut test_schedhist test_portdep test_sidecar test_terminalstore; do run python3 $t.py; done
 
 # ---- 落ちた本を単独で回し直して切り分ける（§9.356） -------------------
 # 「通しでだけ落ちる」と「単独でも落ちる」は**直し方がまるで違う**:

@@ -209,11 +209,12 @@ try:
     # 「update.batでアップデートの版の表示追加と、古いデータの処理など」
     rt, vis = tmp / 'runtime', tmp / 'visible'
     for d0 in (rt, vis):
-        for n in ('make_shortcut.vbs', 'loading.next.html', 'boot_status.js', 'x.html.tmp'):
+        for n in ('make_shortcut.vbs', 'x.html.tmp'):
             touch(d0 / n, 64, age_days=2)
-        # **残す物**: 起動前確認の刻印・起動中の印・いまブラウザへ渡す待機画面・
-        # 絵（デスクトップのショートカットが指している。作り直すのは作るときだけなので、消すと白紙になる）
-        for n in ('ready.json', 'instance.json', 'loading.html', 'wavelog.ico'):
+        # **残す物**: 起動前確認の刻印・絵（デスクトップのショートカットが指している。作り直すのは
+        # 作るときだけなので、消すと白紙になる）。待機画面・進捗・起動中の印は§9.548で外した
+        # （片付けは setup_check.RETIRED_LOCAL）。
+        for n in ('ready.json', 'wavelog.ico'):
             touch(d0 / n, 64, age_days=2)
     touch(tmp / 'pycache' / 'cpython-312' / 'backend' / 'x.pyc', 64)
     patch()   # **置き場を差し替えてから**（差し替えずに回すと本物の置き場を片付ける）
@@ -229,14 +230,14 @@ try:
     try:
         cat = next((c for c in file_cleanup.survey()['categories'] if c['key'] == 'runtime'), None)
         names = sorted({e['name'] for e in (cat or {}).get('examples', [])})
-        rec('更新で作り直せる起動の部品を数える（補助スクリプト・次の待機画面・進捗・書きかけ）（§9.497）',
-            cat is not None and cat['removable'] == 8 and cat['auto'] is False,
+        rec('更新で作り直せる起動の部品を数える（補助スクリプト・書きかけ）（§9.497）',
+            cat is not None and cat['removable'] == 4 and cat['auto'] is False,
             f"{cat and cat['removable']}件 {names}")
         upd = getattr(file_cleanup, 'run_for_update', None)
         out = upd() if upd else None
         left_rt = sorted(p.name for d0 in (rt, vis) for p in d0.iterdir())
-        rec('更新の片付けは作り直せる部品を消し、刻印・起動中の印・いまの待機画面・絵を残す（§9.497）',
-            out is not None and left_rt == sorted(['instance.json', 'loading.html', 'ready.json', 'wavelog.ico'] * 2), str(left_rt))
+        rec('更新の片付けは作り直せる部品を消し、刻印・絵を残す（§9.497）',
+            out is not None and left_rt == sorted(['ready.json', 'wavelog.ico'] * 2), str(left_rt))
         rec('更新の片付けはバイトコードも消す（直後に update.bat が作り直す）（§9.497）',
             out is not None and not (tmp / 'pycache' / 'cpython-312').exists())
         rec('更新の片付けでも本物のデータは残る（§9.497）',

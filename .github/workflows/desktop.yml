@@ -4,8 +4,7 @@
 #      test_portdep（共有の層は画面のポートを知らない）・test_terminalstore（端末の控え）・
 #      test_sidecar（窓口の答えがポートの版と同じ・閉じたら片付けて終わる）
 # 2. cargo test → cargo build --release
-# 3. 作った exe を Start.vbs の隣に置き、この端末を「デスクトップ版」にして**引数なしの Start.vbs で起こす**
-#    （端末の設定を読む・手元へ写して起動する道そのものを通す・§9.547）。
+# 3. 作った exe を program/ に置き、**Start.vbs で起こす**（手元へ写して起動する道そのものを通す・§9.548）。
 #    窓は WAVELOG_SELFTEST に結果を書いて終わる。結果と exe は Artifacts に置く。
 #
 # 4. **main への push では、通った exe を program/WaveLog.exe として main へ置く**（publish・§9.548）。
@@ -18,9 +17,9 @@ name: desktop
 on:
   push:
     branches: [main]
-    paths: ["desktop/**", "program/**", "backend/**", "static/**", "templates/**", "Start.vbs", "tests/test_launchmode.py", ".github/workflows/desktop.yml"]
+    paths: ["desktop/**", "program/**", "backend/**", "static/**", "templates/**", "Start.vbs", ".github/workflows/desktop.yml"]
   pull_request:
-    paths: ["desktop/**", "program/**", "backend/**", "static/**", "templates/**", "Start.vbs", "tests/test_launchmode.py", ".github/workflows/desktop.yml"]
+    paths: ["desktop/**", "program/**", "backend/**", "static/**", "templates/**", "Start.vbs", ".github/workflows/desktop.yml"]
   workflow_dispatch:
 
 permissions:
@@ -53,7 +52,7 @@ jobs:
       - name: Python の網（Windows）
         run: |
           $ng = 0
-          foreach ($t in "test_portdep", "test_terminalstore", "test_sidecar", "test_launchmode") {
+          foreach ($t in "test_portdep", "test_terminalstore", "test_sidecar") {
             Write-Host "=== $t"
             python "tests/$t.py"
             if ($LASTEXITCODE -ne 0) { $ng++ }
@@ -78,14 +77,11 @@ jobs:
           WAVELOG_PYTHON: python
         run: cargo build --release --locked
 
-      # 起動のしかた（§9.547）: アプリの部品で「この端末はデスクトップ版」と残し、**引数なし**の Start.vbs で起こす
-      # （毎日の起動アイコンと同じ道。Start.vbs が手元の設定を読んで exe を写して起動するところまで通す）。
-      - name: 自己診断（本物の WebView2・ポートなし・端末の設定から）
+      # 毎日の起動アイコンと同じ道（引数なしの Start.vbs）で起こす。Start.vbs は exe を手元へ写して起動するだけ（§9.548）。
+      - name: 自己診断（本物の WebView2・ポートなし・Start.vbs から）
         run: |
           Copy-Item desktop\target\release\WaveLog.exe program\WaveLog.exe
           $env:WAVELOG_SELFTEST = "$env:RUNNER_TEMP\selftest.json"
-          python -c "from backend import launch_mode as m; r = m.write('desktop'); print(r); assert r['ok']"
-          if ($LASTEXITCODE -ne 0) { exit 5 }
           cscript //nologo Start.vbs
           $deadline = (Get-Date).AddSeconds(240)
           while (-not (Test-Path $env:WAVELOG_SELFTEST) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }

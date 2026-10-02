@@ -40,41 +40,30 @@
 
 ## 起動方法
 
-Windows環境では **`Start.vbs` をダブルクリック**します（通常起動）。
-黒いコンソール画面は出ず、ブラウザに起動待機画面が表示され、サーバーの
-準備ができ次第そのままアプリ画面へ切り替わります。必要パッケージが未導入の
-場合は自動でインストールを試みます。
+Windows環境では **`Start.vbs`（またはデスクトップのショートカット）をダブルクリック**します。
+アプリの窓（デスクトップ版・`program/WaveLog.exe`）が開きます。exe はこの PC の
+`%LOCALAPPDATA%\WaveLog\desktop\` へ写してから動くので、共有フォルダの exe を掴みません（更新が詰まらない）。
+画面のポートを開かず、窓を閉じるとアプリも片付けてから終わります（§9.544〜§9.548）。
+**ブラウザ版の起動の道は§9.548で外しました**（起動するのは exe だけ）。
 
 | ファイル | 用途 |
 |---|---|
+| `Start.vbs` | **毎日の入口**。exe を手元へ写して起動します。起動できないときは理由と次にすることを出します |
 | `program/update.bat` | **アプリを新しくしたあとの1回**。導入したときも1回だけ実行します（次回からの起動が速くなります）。押さなくても起動はします |
-| `Start.vbs` | **通常起動**。コンソールを表示せず起動します |
-| `program/start_app.bat` | **診断起動**。起動しない原因を調べたいときに使います（コンソールにエラーがそのまま出ます） |
-| `program/stop.bat` | **明示停止**。このアプリだけを安全に停止します |
+| `program/WaveLog.exe` | デスクトップ版の本体。**main へ取り込まれると CI が自動で作って置きます**（自己診断を通った物だけ）。main の ZIP を落として上書きすれば一緒に届きます |
 
 `program/update.bat` は Python・必要な部品の確認と、**バイトコードの事前用意**を
 この端末の中で行い、済んだ印を残します。毎日の起動はその印を見て確認を
-飛ばすので速くなります（実測 1.18秒 → 0.23秒）。**実行を忘れても起動は
-します**——そのときだけ確認をやり直すので少し遅くなるだけです。
-アプリを共有フォルダーに置いている場合でも、印・バイトコード・作業用の
-ファイルは**その端末の中**（`%LOCALAPPDATA%\WaveLog`）に置かれます。
-
-**デスクトップ版（移行中・ブラウザを使わない版）**: `WaveLog.exe`（CI の Artifacts「WaveLog-desktop-windows」）を
-`Start.vbs` の隣に置き、`Start.vbs` に引数 `desktop` を付けて起動します（ショートカットのリンク先の末尾に ` desktop`）。
-exe はこの PC の `%LOCALAPPDATA%\WaveLog\desktop\` へ写してから動きます（共有フォルダの exe を掴まない）。
-画面のポートを開かず、窓を閉じるとアプリも終わります。測定データと端末の設定はブラウザ版とそろいます（§9.545）。
+飛ばすので速くなります。**実行を忘れても起動はします**——そのときだけ確認を
+やり直すので少し遅くなるだけです。アプリを共有フォルダーに置いている場合でも、
+印・バイトコード・作業用のファイルは**その端末の中**（`%LOCALAPPDATA%\WaveLog`）に置かれます。
 設計は `docs/DESKTOP_MIGRATION_DESIGN.md`。
 
-ブラウザのタブを閉じると、しばらく後にバックエンドも自動的に終了します
-（閉じ忘れによるプロセスの残存を防ぐため）。すぐ止めたい場合は `stop.bat`
-を使ってください（`program/` の中にあります）。
-
-開発時は次でも起動できます。
+開発と網（テスト）のために、同じアプリを HTTP でも立てられます（利用者の起動の道ではありません）。
 
 ```
 pip install flask
-python program/start_app.py   # 通常の起動経路(推奨)
-python program/app.py         # 同じ経路へ委譲されます
+python program/app.py         # 開発と網の入口（127.0.0.1:5029）。止めるのは POST /api/shutdown
 ```
 
 ### ログの場所
@@ -119,26 +108,21 @@ python program/app.py         # 同じ経路へ委譲されます
 ## ディレクトリ構成
 
 ```
-Start.vbs                  通常起動(コンソール非表示)。**毎日の入口はこれ1つ**
+Start.vbs                  毎日の入口(デスクトップ版の exe を手元へ写して起動)。**入口はこれ1つ**
 program/                   実行するものと、その道具だけを置く
   update.bat                 アプリを新しくしたあとに1回(導入時も1回。次回からの起動が速くなる)
-  start_app.bat              診断起動(コンソール表示)
-  stop.bat                   明示停止
   setup_app.py               update.batの中身(確認・部品導入・バイトコードの事前用意・刻印)
-  start_app.py               Python側の起動開始点(刻印を見て確認を飛ばす→多重起動判定→サーバー起動)
-  process_manager.py         対象アプリだけを安全に停止する
-  app.py                     Flask本体・一覧/測定コンテキスト/バックアップ/品質分析API
-  loading.html               起動待機画面(サーバーより先に開かれる)
-  sidecar.py                 デスクトップ版の窓口(標準入出力・ポートを開かない。移行中・docs/DESKTOP_MIGRATION_DESIGN.md)
+  sidecar.py                 デスクトップ版の窓口(標準入出力・ポートを開かない)
+  WaveLog.exe                デスクトップ版の本体(main へは CI が置く)。WaveLog.build.json が作った元
+  app.py                     Flask本体。直接実行すると開発と網の HTTP の入口
   requirements.txt           必要パッケージ
   requirements-dev.txt       開発用の道具(pyflakes等。現場の端末には要らない)
-  _pycache_bootstrap.py      .pycキャッシュをローカル領域へ逃がす(5本のいちばん最初のimport)
+  _pycache_bootstrap.py      .pycキャッシュをローカル領域へ逃がす(3本のいちばん最初のimport)
   _approot.py                その次に通す1行(リポジトリ直下をsys.pathへ足す)
 desktop/                   デスクトップ版の窓(Rust・Tauri)。cargo build で WaveLog.exe を作る(§9.546)
 .gitignore                 直下から動かせない(gitはそのフォルダ以下にしか当てない)
 eslint.config.mjs          直下から動かせない(program/へ移すと規則が1件も当たらない)
-backend/launcher/guard.py  多重起動の防止・起動中インスタンスの記録(旧launch_guard.py)
-backend/launcher/server.py Webサーバーの起動のみ(起動監視とWeb処理の境界。旧server.py)
+backend/launcher/server.py 開発と網（テスト）の HTTP の入口（利用者の起動の道ではない・§9.548）
 config/
   local.example.json         DBパス上書き設定の雛形(コピーしてlocal.jsonに)
 backend/                   Flask本体以外のバックエンドロジック(Pythonパッケージ)

@@ -313,9 +313,8 @@ try:
     presence.refresh_newest(ME, force=True)
     rec('新しい版が見えなくなれば知らせは消える（自分が最新）',
         (presence.version_notice() or {}).get('outdated') is False, str(presence.version_notice()))
-    r = c.post('/api/heartbeat?tab=t-515')
+    r = c.post('/api/heartbeat')
     hb = r.get_json() or {}
-    c.post('/api/heartbeat/close?tab=t-515')
     rec('ハートビートの応答に版の知らせが載る（全区分の端末へ届く道）',
         r.status_code == 200 and hb.get('ok') is True
         and (hb.get('version') or {}).get('latestVersion') == ver, str(hb))

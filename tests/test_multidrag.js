@@ -57,10 +57,8 @@ run('test_multidrag: 選んでからまとめて動かす(§9.177)', async ({pag
   await page.evaluate(()=>{const p=document.getElementById('listColumnPanel');if(p)p.hidden=true});
 
   /* タイムラインのまとめて並べ替えは test_scpick.js が持つ(§9.177)。
-     **1本のテストでモードを切り替えない**——切り替えは再読込を伴い、
-     読み直しのあいだタブが0件になる。重い一覧を読む端で8秒の猶予
-     (CLOSED_GRACE_SEC、§9.98)を跨ぐと、テストの途中でアプリが自分から
-     終了する(実際にそうなった)。 */
+     **1本のテストでモードを切り替えない**——切り替えは再読込を伴い重い（以前はブラウザ版の
+     「タブが0件で終わる」見張りの8秒を跨いでアプリが落ちた・§9.98。見張りは§9.548で外した）。 */
   rec('JSエラーが出ていない',errs.length===0,errs.slice(0,3).join(' / '));
  }catch(e){rec('FATAL',false,String(e&&e.message||e))}
 }, {viewport:{width:1700,height:1000}});

@@ -29,7 +29,7 @@ async function init(){
    restartBox.innerHTML='<b>⚠ 更新が届いています</b>'
     +'<small>アプリを再起動するまで、新しい機能はサーバー側に反映されません'
     +'（保存できない・404と出る場合はこれが原因です）。</small>'
-    +'<small>stop.bat で止めてから Start.vbs で開き直してください。</small>';
+    +'<small>'+WL.RESTART_HOW+'</small>';
    restartBox.title='プログラムのファイルが、いま動いているアプリの起動より後に更新されています。';
   }
   WL.versionNotice.paint();   // 再起動待ちの間は版の知らせを伏せる（§9.515）

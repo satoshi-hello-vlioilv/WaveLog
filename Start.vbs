@@ -1,81 +1,27 @@
 Option Explicit
-' Normal launcher for daily use. Runs start_app.py with no console window.
-' start_app.py opens the waiting screen (loading.html) by itself, so the
-' user still sees the startup status even though this window is hidden.
-' Use start_app.bat instead when you need to see startup errors.
-'
-' Argument "desktop" (section 9.544): start the desktop version (WaveLog.exe,
-' no port) instead of the browser version. The exe is copied to
+' Daily launcher (section 9.548): starts the desktop version only.
+' program\WaveLog.exe (placed on main by CI) is copied to
 ' %LOCALAPPDATA%\WaveLog\desktop\<size-time>\ and started from there: a running
 ' exe holds its file, so starting it straight from the shared (Box) folder
 ' would block that PC's update. The program folder is passed to the exe.
-' If the exe is missing or cannot be copied, the browser version starts.
-'
-' Without an argument (section 9.547) the PC's own choice is used: the newer of
-' %LOCALAPPDATA%\WaveLog\runtime\launch_mode.txt and
-' %USERPROFILE%\.wavelog\runtime\launch_mode.txt ("browser" or "desktop"),
-' written by the app (backend/launch_mode.py). With no file, DEFAULT_MODE.
-' The argument "browser" always starts the browser version.
-Const DEFAULT_MODE = "browser"
-Dim sh, fso, root, target, mode
+' There is no browser version any more: when the exe cannot start, the reason
+' and the next step are shown (no silent fallback).
+Dim sh, fso, root, why
 Set sh = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 root = fso.GetParentFolderName(WScript.ScriptFullName)
 sh.CurrentDirectory = root
-mode = ""
-If WScript.Arguments.Count > 0 Then mode = LCase(WScript.Arguments(0))
-If mode = "" Then mode = SavedMode()
-If mode = "desktop" Then
-  If StartDesktop() Then WScript.Quit 0
-End If
-target = """" & root & "\program\start_app.py"""
+why = StartDesktop()
+If why <> "" Then MsgBox why, 16, "測定伝送システム"
 
-On Error Resume Next
-sh.Run "pythonw.exe " & target, 0, False
-If Err.Number <> 0 Then
-  Err.Clear
-  sh.Run "python.exe " & target, 0, False
-  If Err.Number <> 0 Then
-    MsgBox "Python が見つかりません。Python を導入してから、もう一度お試しください。", 16, "測定伝送システム"
-  End If
-End If
-
-' The PC's own choice (section 9.547): the newer of the two files, else DEFAULT_MODE.
-Function SavedMode()
-  Dim cands, p, best, bestTime, f, ts, word
-  SavedMode = DEFAULT_MODE
-  cands = Array(sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\WaveLog\runtime\launch_mode.txt", _
-                sh.ExpandEnvironmentStrings("%USERPROFILE%") & "\.wavelog\runtime\launch_mode.txt")
-  best = ""
-  On Error Resume Next
-  For Each p In cands
-    If fso.FileExists(p) Then
-      Set f = fso.GetFile(p)
-      If best = "" Then
-        best = p : bestTime = f.DateLastModified
-      ElseIf f.DateLastModified > bestTime Then
-        best = p : bestTime = f.DateLastModified
-      End If
-    End If
-  Next
-  If best = "" Then Exit Function
-  Set ts = fso.OpenTextFile(best, 1)
-  word = LCase(Trim(Replace(ts.ReadLine, vbCr, "")))
-  ts.Close
-  If Err.Number <> 0 Then
-    Err.Clear
-    Exit Function
-  End If
-  If word = "browser" Or word = "desktop" Then SavedMode = word
-End Function
-
-' Copy WaveLog.exe to this PC (one folder per build) and start it. True when started.
+' Copy program\WaveLog.exe to this PC (one folder per build) and start it.
+' Returns "" when started, otherwise the reason and what to do next.
 Function StartDesktop()
   Dim src, f, d, stamp, dir, dst, tmp
-  StartDesktop = False
   src = root & "\program\WaveLog.exe"
   If Not fso.FileExists(src) Then
-    MsgBox "デスクトップ版（WaveLog.exe）が見つかりません。ブラウザ版で起動します。", 48, "測定伝送システム"
+    StartDesktop = "アプリ本体（program\WaveLog.exe）が見つかりません。" & vbCrLf & _
+      "最新の ZIP でアプリのフォルダを上書きしてから、もう一度起動してください。" & vbCrLf & src
     Exit Function
   End If
   Set f = fso.GetFile(src)
@@ -92,17 +38,19 @@ Function StartDesktop()
     fso.MoveFile tmp, dst
   End If
   If Err.Number <> 0 Or Not fso.FileExists(dst) Then
+    StartDesktop = "アプリ本体をこの PC へ写せませんでした（" & Err.Description & "）。" & vbCrLf & _
+      "空き容量と、次の場所へ書き込めるかを確かめてください。" & vbCrLf & dir
     Err.Clear
-    MsgBox "デスクトップ版をこの PC へ写せませんでした。ブラウザ版で起動します。", 48, "測定伝送システム"
     Exit Function
   End If
   sh.Environment("PROCESS")("WAVELOG_PROGRAM_DIR") = root & "\program"
   sh.Run """" & dst & """", 1, False
   If Err.Number <> 0 Then
+    StartDesktop = "アプリ本体を起動できませんでした（" & Err.Description & "）。" & vbCrLf & dst
     Err.Clear
     Exit Function
   End If
-  StartDesktop = True
+  StartDesktop = ""
 End Function
 
 Sub MakeDirs(p)

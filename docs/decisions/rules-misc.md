@@ -7,20 +7,22 @@ CLAUDE.md の規則のうち、決定記録（§9.x）に対応する節を持�
 
 CLAUDE.md には見出しの1行だけを残してある。ここが本文。
 
-- **サーバー再起動**: `program/app.py`/`templates`/`static` を変更したら
-  `python3 program/process_manager.py stop` → `python3 -u program/start_app.py` で再起動してから
-  確認する（自動リロード無効。再起動忘れは過去に誤診断の原因になった）。
-  `pkill`でPythonをプロセス名だけで一括終了しないこと（他のPythonを巻き添えに
-  する。停止は必ず`process_manager.py`経由）。
-- **起動基盤に触るとき**: 起動・停止・監視の処理は `program/start_app.py` /
-  `backend/launcher/guard.py` / `backend/launcher/server.py` /
-  `program/process_manager.py` / `backend/watchdog.py` が所有する。業務APIをこれらへ足さない（逆に`program/app.py`へ起動制御を戻さない）。
+- **サーバー再起動**: `program/app.py`/`templates`/`static` を変更したら、開発と網の入口を
+  `curl -X POST http://127.0.0.1:5029/api/shutdown`（片付けを通る）で止めて`python3 -u program/app.py`で
+  起こし直してから確認する（自動リロード無効。再起動忘れは過去に誤診断の原因になった）。
+  網のランナー（`tests/run_all.sh`の`restart_server`）も同じ手順。
+  `pkill`でPythonをプロセス名だけで一括終了しないこと（他のPythonを巻き添えにする。
+  名前で止めるのは`program/app.py`に絞った最後の手段だけ）。
+  利用者の起動はデスクトップ版だけ（Start.vbs → `program/WaveLog.exe` → `program/sidecar.py`・§9.548）。
+- **起動基盤に触るとき**: 起動・停止の処理は `program/sidecar.py`（デスクトップ版の窓口）/
+  `backend/launcher/services.py`（背景処理）/ `backend/launcher/server.py`（開発と網の入口）/
+  `backend/watchdog.py`（片付けて終わる）と、窓の`desktop/`（Rust）が所有する。業務APIをこれらへ足さない（逆に`program/app.py`へ起動制御を戻さない）。
+  ブラウザ版の起動の道（`start_app.py`・`guard.py`・`process_manager.py`）は§9.548で外した。
   ポート・アプリID・表示名などのアプリ固有値は `backend/config.py` に集約
   してあるので、他ファイルへ直接書かない。`backend/launcher/server.py`の`flask_app.run(...)`から
   **`threaded=True`を外さないこと**（既定のシングルスレッドに戻すと、仕掛/
   品質データ等ネットワーク共有I/Oが不調で1件のリクエストが長時間ブロックした
-  だけで、ハートビート・停止スクリプトの生存確認まで一切応答できなくなり、
-  自動終了もstop.batでの停止も効かなくなる不具合が実際に発生した）。
+  だけで、ハートビート・停止の口まで一切応答できなくなる不具合が実際に発生した）。
   設計の背景と今後の再編計画は `docs/REBUILD_PLAN.md` を参照。
 - **起動オーバーレイ（`#appBoot`）**: 画面が組み上がるまで本体を見せない
   仕掛け。`<html class="app-booting">`の間`static/css/95-boot.css`が
@@ -40,11 +42,11 @@ CLAUDE.md には見出しの1行だけを残してある。ここが本文。
   足すと白い時間が戻るので増やさない。詳細は`docs/ARCHITECTURE.md`。
   **新しく
   「起動時に必ず終わらせたい処理」を足すときだけ`WL.boot.step()`を増やす**
-  ——増やすと`boot_status.py`の`BROWSER_STEPS`・`loading.html`・
-  `index.html`の3箇所の一覧も合わせる必要がある（`tests/test_boot.py`が
-  一致を、`tests/test_bootui.js`が「解除後に組み替えが起きないこと」を固定）。
-  起動待機画面(`loading.html`)は`file://`で開くため外部ファイルを参照できず、
-  意匠を共有できない。**片方だけ直すと引き継ぎで見た目が飛ぶ**ので両方直す。
+  ——増やすと`boot_status.py`の`BROWSER_STEPS`・`index.html`・base.js の分母も
+  合わせる必要がある（`tests/test_boot.py`が一致を、`tests/test_bootui.js`が
+  「解除後に組み替えが起きないこと」を固定）。デスクトップ版の起動画面（`desktop/splash`）は
+  exe に入るので外部ファイルを参照できず、トークンと地を写してある。**片方だけ直すと
+  引き継ぎで見た目が飛ぶ**ので両方直す（以前は待機画面 loading.html が同じ立場だった・§9.548で外した）。
 - **バージョン更新**: 意味のある変更をコミットするたびに
   `backend/changelog_data.py` の `APP_VERSION` を上げ、`CHANGELOG` 先頭へ
   エントリを追記する（新しい順）。
@@ -182,14 +184,6 @@ CLAUDE.md には見出しの1行だけを残してある。ここが本文。
   差し替える。**写す対象は`role=='readonly'`だけ**（マスタ・共有スケジュールは
   自分が書くので写すと反映されない事故になる）。**共有へ触るのは背景スレッド
   だけ**にすること。固定は`tests/test_dbmirror.py`。詳細は`docs/ARCHITECTURE.md`。
-- **ループバック(127.0.0.1)への問い合わせはプロキシを通さない**:
-  `urllib`は既定でプロキシ設定を見る（Windowsでは**レジストリのIE/Edge設定まで**）。
-  社内プロキシのある端末では`127.0.0.1`宛ての生存確認まで転送されて**407**が返り、
-  `guard.probe()`が「別のアプリが応答した」と誤判定して**stop.batで停止できなく
-  なった**（実機で発生。タスクマネージャーから落とすしかない状態）。
-  `guard.urlopen_local()`（`ProxyHandler({})`）を使うこと。407/502/503/504は
-  FOREIGNではなく`UNRESPONSIVE`（＝届いていない）へ倒し、記録済みPIDでの停止へ
-  進めるようにしてある。
 - **参照データを増やすときは`データソースマスタ`の1行**（`db/master.sqlite3`、
   定義は`backend/db_access.py`）: 「RNEから抽出→`.sqlite3`を作る→それを一覧
   として読む」という1本の流れを1行で持つ。**`db_access.DBS`も
@@ -214,21 +208,20 @@ CLAUDE.md には見出しの1行だけを残してある。ここが本文。
   （上記と同じ理由）。詳細は`docs/ARCHITECTURE.md`の「仕掛/品質データの
   ローカル運用」節を参照。
 - **フォルダ構成**: 直接実行されるPythonと、その道連れの資材は
-  **`program/`**へまとめる(`app.py`/`start_app.py`/`setup_app.py`/
-  `process_manager.py`/`loading.html`/`requirements.txt`/
-  `requirements-dev.txt`。§9.404)。リポジトリ直下に残すPythonは
-**1本も無い**(§9.406で`_pycache_bootstrap.py`も移した)。
-  `.bat`3本(`start_app.bat`/`stop.bat`/`update.bat`)も`program/`。
+  **`program/`**へまとめる(`app.py`/`setup_app.py`/`sidecar.py`/`requirements.txt`/
+  `requirements-dev.txt`、デスクトップ版の本体`WaveLog.exe`〈main へは CI が置く〉。§9.404・§9.548)。
+  リポジトリ直下に残すPythonは**1本も無い**(§9.406で`_pycache_bootstrap.py`も移した)。
+  `.bat`は`update.bat`の1本で`program/`。
   ロット問い合わせの自動ログインの拡張(§9.485)は、§9.521 で別のアプリ LotData-Link へ移した（`program/`には無い）。
   直下に残るのは毎日の入口`Start.vbs`と、**移すと黙って効かなくなる**
   `.gitignore`(gitはそのフォルダ以下にしか当てない)・`eslint.config.mjs`
   (`program/`へ移すと規則が1件も当たらないのに**エラーにならない**。
   実測306件→0件・§9.406)の2つだけ。
-  `program/`の4本は`import _pycache_bootstrap`→`import _approot`の順で
+  `program/`の3本は`import _pycache_bootstrap`→`import _approot`の順で
   通す(前者が`.pyc`の置き場、後者がリポジトリ直下を`sys.path`へ足す1箇所)。
   importされるだけの起動部品は`backend/launcher/`へ置く
-  (`guard.py`=旧launch_guard.py、`server.py`)。起動スクリプト
-  (直下の`Start.vbs`と`program/`の`start_app.bat`/`stop.bat`/`update.bat`)は`program\…`を呼ぶ
+  (`services.py`・`server.py`・`setup_check.py`・`ready.py`)。起動スクリプト
+  (直下の`Start.vbs`と`program/`の`update.bat`)は`program\…`を呼ぶ
   ——**CRLF・CP932のまま**触ること(§9.229)。
   それ以外のバックエンドPythonは`backend/`パッケージへ、ローカルDB
   (`master.sqlite3`/`records.sqlite3`、無ければ初回書き込み時に自動生成)は
@@ -259,11 +252,11 @@ CLAUDE.md には見出しの1行だけを残してある。ここが本文。
   ハンドラ側でも権限を二重チェックする。
   詳細は`docs/SCHEDULE_MODE_DESIGN.md`§3を参照。フロント側の入口ガード・
   閲覧データの読み込みは`static/js/core/access-mode.js`(最後に読み込むファイル)が持つ。
-- **start_app.batの文字コード**: `program/`の`.bat`は**CP932(Shift-JIS)で保存する**
+- **update.batの文字コード**: `program/`の`.bat`は**CP932(Shift-JIS)で保存する**
   こと(UTF-8で日本語を含めるとWindowsのcmd.exeが誤読しコマンドが壊れる。
   実際に発生した不具合)。編集時はUTF-8で書いてから
-  `iconv -f UTF-8 -t CP932//TRANSLIT program/start_app.bat -o program/start_app.bat` で変換する。
-  `file program/start_app.bat` が `Non-ISO extended-ASCII text` になっていればCP932。
+  `iconv -f UTF-8 -t CP932//TRANSLIT program/update.bat -o program/update.bat` で変換する。
+  `file program/update.bat` が `Non-ISO extended-ASCII text` になっていればCP932。
   可能な限り非ASCII文字(REMコメント等)は使わず、`マスタ.sqlite3`等の
   実ファイル名の一致に必要な箇所のみ日本語を使う。
 
