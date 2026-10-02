@@ -60,7 +60,7 @@ Function SavedMode()
   Next
   If best = "" Then Exit Function
   Set ts = fso.OpenTextFile(best, 1)
-  word = LCase(Trim(ts.ReadLine))
+  word = LCase(Trim(Replace(ts.ReadLine, vbCr, "")))
   ts.Close
   If Err.Number <> 0 Then
     Err.Clear

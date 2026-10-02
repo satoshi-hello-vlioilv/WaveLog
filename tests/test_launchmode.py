@@ -48,6 +48,7 @@ def main():
         'If mode = "" Then mode = SavedMode()' in vbs and vbs.index('SavedMode()') < vbs.index('If mode = "desktop" Then'))
     rec('2 Start.vbs が受ける字は顔ぶれと同じ', all(f'word = "{k}"' in vbs for k in lm.MODES))
     rec('2 Start.vbs は新しいほうを採る', 'DateLastModified > bestTime' in vbs)
+    rec('2 Start.vbs は行末の余分な CR を落として読む', 'Replace(ts.ReadLine, vbCr, "")' in vbs)
 
     # ---- 3. 書く ----
     rec('3 残していなければ既定', lm.saved() == (None, None) and lm.status('browser')['mode'] == lm.DEFAULT)

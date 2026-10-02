@@ -90,7 +90,9 @@ def write(mode):
  for p in places():
   try:
    p.parent.mkdir(parents=True,exist_ok=True)
-   p.write_text(mode+'\r\n',encoding='utf-8')
+   # **バイトで書く**——`write_text`は Windows で改行を直し、`\r\n`が`\r\r\n`になる
+   # （Start.vbs の ReadLine が`desktop\r`を読み、字が合わずに既定へ倒れる。CI の Windows で踏んだ）。
+   p.write_bytes((mode+'\r\n').encode('ascii'))
   except Exception as e:
    tried.append(f'{p}: {e}')
    continue
