@@ -183,6 +183,13 @@ function openLotDsp(lotNo,castingNo,tab){
  window.open(buildLotDspUrl(lotNo,castingNo,tab),'_blank','noopener');
  copyText(lotNo);
 }
+/* ロット問い合わせの入口（ロットを指定しない）。使用設備の設定③が「ブラウザで開いて確かめる」に使う（§9.550）。
+   窓の中で開いた外のページは、窓（desktop/src/main.rs の open_outside）が PC の既定のブラウザへ渡す。 */
+function openLotDspHome(){window.open(LOT_DSP_BASE,'_blank','noopener')}
+/* デスクトップ版の窓（WebView2）の中か。**答えるのはここだけ**（§9.550）。窓は画面を
+   http://wavelog.localhost/（Windows 以外は wavelog://localhost/）に置く——desktop/src/main.rs の app_base と同じ。
+   開発と網の HTTP の入口（127.0.0.1）は窓ではない。窓の中では Edge の拡張（LotData-Link）が動かない。 */
+function inDesktopShell(){return location.hostname==='wavelog.localhost'||location.protocol==='wavelog:'}
 /* 行の中に置くLotDspの的（§9.460）が名乗る属性。**的が自分のロットを名乗る**
    （`data-lot-dsp`／`data-cast`）ので、押したときの道は下の1本で済む——行ごとに配線しない。
    的の形（字そのもの／横の小さな的）は置く画面が決める。 */
@@ -3051,7 +3058,7 @@ Object.assign(window.WL,{registerView,enterView,withInternalDbSwitch,isInternalD
    ここに載せていない名前（131のうち約80）は、このファイルの中だけのもの。
    ============================================================ */
 window.$=$;window.esc=esc;window.S=S;window.api=api;window.showToast=showToast;window.markDirty=markDirty;window.confirmModal=confirmModal;window.alertModal=alertModal;window.promptModal=promptModal;window.pick=pick;window.setState=setState;window.withUserId=withUserId;window.currentConfiguredEquipment=currentConfiguredEquipment;window.fmtDim=fmtDim;window.lengthIndex=lengthIndex;window.fixedToleranceValue=fixedToleranceValue;window.currentUserId=currentUserId;window.normalizedFieldName=normalizedFieldName;
-WL.base={normalizedLot,durationMs,copyText,statusLabel,statusClass,statusShortLabel,aliases,databaseLabel,designCourseValue,actualCourseValue,residualCourseValue,equipmentIsInDesignCourse,escClosesModal,fetchWhoami,fieldFromRows,fixedMeasurementValue,formatDuration,lotKey,measurementDigits,nextPaint,normalizeCourseText,noteMeasureDevice,openLotDsp,lotDspAttrs,optionFill,qualityText,setActiveNav,setHeaderContext,setUserId,sourceField,sourceValue,toHalfWidth,ttlCache,widthSequence,bindTabs,
+WL.base={normalizedLot,durationMs,copyText,statusLabel,statusClass,statusShortLabel,aliases,databaseLabel,designCourseValue,actualCourseValue,residualCourseValue,equipmentIsInDesignCourse,escClosesModal,fetchWhoami,fieldFromRows,fixedMeasurementValue,formatDuration,lotKey,measurementDigits,nextPaint,normalizeCourseText,noteMeasureDevice,openLotDsp,openLotDspHome,inDesktopShell,lotDspAttrs,optionFill,qualityText,setActiveNav,setHeaderContext,setUserId,sourceField,sourceValue,toHalfWidth,ttlCache,widthSequence,bindTabs,
  LENGTH_SLOTS,
  /* `let` の入れ物は **getter** で載せる（値で載せると古い物が固定される）。
     `measureDirty` は外からも倒す（`records-store` が保存し終えて false に

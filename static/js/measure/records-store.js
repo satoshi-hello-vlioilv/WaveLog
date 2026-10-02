@@ -1817,18 +1817,21 @@ function equipmentSettingsHtml(){
       ログインを二重に押すおそれがあるので「消してから入れる」を先に書く
     - 入っていない: 入れ方の手順 */
 const LOTDATA_LINK_URL='https://github.com/satoshi-hello-vlioilv/LotData-Link';
-function lotdspInstallSteps(){
+/* `done`は手順の最後の1行（入れたあと何が起きるか）。合図が届く画面では「入っています」に変わり、
+   窓の中（§9.550）ではロット問い合わせのログイン画面で分かる——同じ手順で、終わりの確かめ方だけが違う。 */
+function lotdspInstallSteps(done='この窓を開き直すと「入っています」に変わります'){
  return `<ol class="eqset-steps">
    <li>LotData-Link を PC に置く（<code>${esc(LOTDATA_LINK_URL)}</code>。入れ方はその README）</li>
    <li>Edge のアドレス欄に <code>edge://extensions</code> と入れて開き、左の「<b>開発者モード</b>」をオンにする</li>
    <li>「<b>展開して読み込み</b>」を押し、LotData-Link の <code>extension</code> フォルダを選ぶ</li>
-   <li>この窓を開き直すと「入っています」に変わります</li>
+   <li>${done}</li>
   </ol>
   <p class="eqset-help">会社の設定で拡張が読み込めない端末では、手順2か3が押せません。そのときは管理者に確認してください。</p>`;
 }
 function paintLotdspExt(){
  const now=$('#lotdspExtNow'),body=$('#lotdspExtBody');
  if(!now||!body)return;
+ if(WL.base.inDesktopShell()){paintLotdspInShell(now,body);return}
  const ver=document.documentElement.dataset.lotdspExt||'';
  const major=parseInt(ver,10)||0;
  if(major>=2){
@@ -1854,6 +1857,22 @@ function paintLotdspExt(){
  body.innerHTML=`<p class="eqset-lead">VPN でロット問い合わせを開くとログイン画面が出る端末だけ、Edge に
    <b>LotData-Link</b>（ロット問い合わせとアプリをつなぐ拡張）を入れます。入れると、ログイン画面で登録した
    ID・パスワードを入れて自動でログインします。</p>${lotdspInstallSteps()}`;
+}
+/* デスクトップ版の窓の中（§9.550）。拡張は窓（WebView2）の中では動かないので、名乗り（data-lotdsp-ext）は
+   **入っていても来ない**——「入っていません」と言い切ると、入れてある端末で入れ方を探させる。分からないことは
+   分からないと書き、確かめる道（ロット問い合わせを既定のブラウザで開く）を1つだけ押せる形にする。
+   登録・修正は LotData-Link がロット問い合わせの画面の上で受け持つ（WaveLog から拡張の画面は開けない）。 */
+function paintLotdspInShell(now,body){
+ now.className='eqset-now is-instant';now.textContent='この窓からは確かめられません';
+ /* 文の途中で行を折らない（テンプレートの改行は画面で空白になる） */
+ body.innerHTML='<p class="eqset-lead">ロット№を押すと、ロット問い合わせは<b>PC の既定のブラウザ</b>で開きます。'
+  +'自動ログインの <b>LotData-Link</b> は Edge の拡張なので、入っているかはこの窓からは見えません。</p>'
+  +'<button type="button" id="lotdspExtBrowse" class="mm-btn-ghost">ロット問い合わせをブラウザで開いて確かめる</button>'
+  +'<p class="eqset-help">ログインせずに開ければ、そのまま使えます。ログイン画面の上に登録の帯が出たら、そこで登録します。'
+  +'帯が出ずにログインを求められたら、そのブラウザに LotData-Link が入っていません（既定のブラウザが Edge でない PC では効きません）。</p>'
+  +'<details class="lnk-more"><summary>Edge に LotData-Link を入れる手順</summary><div class="lnk-more-body">'
+  +lotdspInstallSteps('Edge でロット問い合わせを開き直すと、ログイン画面の上に登録の帯が出ます')+'</div></details>';
+ $('#lotdspExtBrowse').onclick=()=>WL.base.openLotDspHome();
 }
 function ensureEquipmentSettingsModal(){
  let modal=$('#appSettingsModal');
