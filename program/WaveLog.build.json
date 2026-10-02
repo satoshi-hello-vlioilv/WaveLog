@@ -1,0 +1,8 @@
+{
+ "source": "desktop:c002c9ff6c9bc7e791b938613f3a1074266b6cd4 icon:b66ee6611c396339ea387cda28f53b5ceffc02fc",
+ "commit": "dba9a9ada86a450fbc8f0f49bea9117eb87b1bb7",
+ "version": "2.435.0",
+ "builtAt": "2026-10-02T14:06:46Z",
+ "size": 4469760,
+ "selftest": "20/20"
+}
