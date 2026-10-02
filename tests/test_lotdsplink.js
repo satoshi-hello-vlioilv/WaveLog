@@ -11,6 +11,9 @@
     ② 以前の同梱の拡張（版 1.x）: 「入れ替えが要ります」と、**古い拡張を先に消す**手順（二重ログインを防ぐ）
     ③ LotData-Link（版 2 以上）: 「入っています」と、登録画面を頼むボタン（合図を1回出す）
     ④ 同梱の拡張の置き場を答える口（/api/lotdsp/ext）は残っていない
+    ⑤ デスクトップ版の窓の中（§9.550・宛先 wavelog.localhost）: 拡張は窓の中では動かず名乗りが来ないので、
+       「入っていません」と言い切らない。「この窓からは確かめられません」と、既定のブラウザで開くことを言い、
+       確かめる道を1つ（ロット問い合わせの入口を開く）。登録画面を頼む合図のボタンは出さない（窓の中では誰も聞かない）
    ================================================================ */
 'use strict';
 const fs = require('fs');
@@ -77,4 +80,35 @@ run('test_lotdsplink: 使用設備の設定③と LotData-Link（§9.485・§9.5
   /* ---- ④ 置き場を答える口は無い ---- */
   const code = await page.evaluate(() => fetch('/api/lotdsp/ext').then(r => r.status));
   rec('同梱の拡張の置き場を答える口（/api/lotdsp/ext）は残っていない', code === 404, String(code));
+
+  /* ---- ⑤ デスクトップ版の窓の中（§9.550） ----
+     窓は画面を http://wavelog.localhost/ に置く。Chromium はこの環境のプロキシを起動時に決め、*.localhost を素通しに
+     しないので、その宛先への要求は同じサーバーから取り直して返す（location は wavelog.localhost のまま＝窓と同じ判定）。 */
+  const D = B.replace('127.0.0.1', 'wavelog.localhost');
+  await page.context().route(/^http:\/\/wavelog\.localhost:\d+\//, async r => {
+    await r.fulfill({ response: await r.fetch({ url: r.request().url().replace('wavelog.localhost', '127.0.0.1') }) });
+  });
+  await page.goto(D + '/', { waitUntil: 'domcontentloaded' });
+  await page.evaluate(e => localStorage.setItem('AccessMeasurementConfiguredEquipment', e), EQ);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await W.booted(page);
+  await page.evaluate(() => { window.__opened = []; window.open = (...a) => { window.__opened.push(a.map(String)); return null; }; });
+  await page.click('.hd-chip-equip');
+  await W.until(page, () => /確かめられません/.test((document.getElementById('lotdspExtNow') || {}).textContent || ''),
+    null, { ms: 15000, what: '窓の中の設定③' });
+  s = await read();
+  const shell = await page.evaluate(() => ({ host: location.hostname, desk: WL.base.inDesktopShell(),
+    browse: !!document.getElementById('lotdspExtBrowse') }));
+  rec('窓の中では「入っていません／入っています」と言い切らず「この窓からは確かめられません」（名乗りは来ない）',
+      shell.host === 'wavelog.localhost' && shell.desk && /この窓からは確かめられません/.test(s.now)
+      && !/入っていません|入っています|入れ替え/.test(s.now) && /is-instant/.test(s.cls), JSON.stringify({ now: s.now, cls: s.cls }));
+  rec('既定のブラウザで開くこと・LotData-Link は Edge の拡張であることを言い、入れ方は畳んで残す',
+      /既定のブラウザ/.test(s.body) && /Edge の拡張/.test(s.body) && /edge:\/\/extensions/.test(s.body)
+      && await page.evaluate(() => !!document.querySelector('#lotdspExtBody details.lnk-more:not([open])')), s.body.slice(0, 120));
+  await page.click('#lotdspExtBrowse');
+  const opened = await page.evaluate(() => window.__opened);
+  rec('確かめる道は1つ: 押すとロット問い合わせの入口を開く（窓が既定のブラウザへ渡す）。合図のボタンは出さない',
+      shell.browse && !s.btn && opened.length === 1 && /^http:\/\/nlmfangyweb1a\/LotDspWeb\/#\/lotdsp$/.test(opened[0][0])
+      && opened[0][2] === 'noopener', JSON.stringify(opened));
+  await page.click('#closeAppSettings');
 });

@@ -84,7 +84,10 @@ restore_paths(){
   SAVED_PATHS=""
   restart_server >/dev/null 2>&1
 }
-trap 'restore_paths; release_lock' EXIT INT TERM
+trap 'restore_paths; release_lock' EXIT
+# **止める合図では止まる**（§9.550）。INT/TERM にも後片付けだけを当てていたので、bash は後片付けのあと
+# **次の本へ進み**、本番へ戻したパスのまま・錠なしで回り続けた（`timeout`で切れたときも同じ）。後片付けは EXIT の1回だけ。
+trap 'exit 130' INT; trap 'exit 143' TERM
 
 save_paths
 # **種入れは作業用コピーへ切り替えてから。** 以前はここで先に
