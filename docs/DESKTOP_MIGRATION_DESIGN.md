@@ -1,7 +1,7 @@
 # デスクトップ版への移行（Tauri / Rust / Python）——事前確認と段取り
 
 **状態: P0（事前確認）・P1（Python の窓口・[§9.544](decisions/9.544.md)）・P3（端末の控え・[§9.545](decisions/9.545.md)）・P2（Rust の窓・[§9.546](decisions/9.546.md)）まで済み。**
-本物の WebView2（Windows）の自己診断は CI（`.github/workflows/desktop.yml`）が受け持つ。以下は最初の事前確認。
+本物の WebView2（Windows）の自己診断は CI（`.github/workflows/desktop.yml`）が受け持ち、**20/20 で通った**（数値は§9.546）。以下は最初の事前確認。
 
 利用者の依頼「Defect-Pitch-Analyzer で行ったように、Flask/Python で補っていた部分を
 Tauri/Rust/Python に変換し、ポートによる影響や得意な分野ごとに分けて対応させたい。心配は、データベースの共有管理が

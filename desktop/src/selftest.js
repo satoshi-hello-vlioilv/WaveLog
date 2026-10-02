@@ -37,11 +37,11 @@
     const why = (JSON.parse(bad.text).error || "");
     ok("誤りの答え（400 と日本語の理由）", bad.r.status === 400 && /必須/.test(why), why);
 
-    // 4) 大きな日本語の本文（約 480KB）が往復する——端末の控えの設定へ重ねて読み戻す
+    // 4) 大きな日本語の本文（約 460KB・15.3万字）が往復する——端末の控えの設定へ重ねて読み戻す
     const big = "汚れ位置・発見設備".repeat(17000);
     const put = await get("/api/terminal/settings", json("POST", { values: { wlSelftestBigV1: big } }));
     const back = JSON.parse((await get("/api/terminal/settings")).text);
-    ok("約 480KB の日本語の本文が往復する", put.r.ok && (back.values || {}).wlSelftestBigV1 === big,
+    ok("約 460KB の日本語の本文が往復する", put.r.ok && (back.values || {}).wlSelftestBigV1 === big,
        `${put.r.status} / ${((back.values || {}).wlSelftestBigV1 || "").length}`);
     await get("/api/terminal/settings", json("POST", { values: { wlSelftestBigV1: null } }));
 
