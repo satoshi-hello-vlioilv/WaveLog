@@ -71,7 +71,7 @@ E1 は P1 で網にした（`test_portdep.py`・常に回す）。対象は名�
 4. **ファイルのドロップ。** マスタ管理の取り込み（`master-maint.js`）はエクスプローラーからのドロップを読む。
    Tauri は既定で窓へのファイルのドロップを横取りするので、窓の設定で切る（`dragDropEnabled:false`）。
    `text/uri-list` で渡る道が WebView2 で同じかは**分からない**（実機で確かめる）。
-5. **印刷と保存。**【[§9.551](decisions/9.551.md)で確かめた: Blob の保存・印刷の書類は通る。**添付へページを移す保存は窓の中で始まらない**ので、保存は`saveBlob`／`saveFrom`の1箇所（fetch → Blob）へ寄せた。印刷の窓・ファイルを選ぶ窓は実機で】隠した `<iframe>` からの印刷・`@page` の差し込み・`Blob` の保存・`Content-Disposition` の
+5. **印刷と保存。**【[§9.551](decisions/9.551.md)で確かめた: 1本目の保存はどの形でも通る・人の操作なしの2本目は止まる・印刷の書類は組み上がる。保存は`saveBlob`／`saveFrom`の1箇所（断られても画面が置き換わらない）。印刷の窓・ファイルを選ぶ窓・続けて2回の保存は実機で】隠した `<iframe>` からの印刷・`@page` の差し込み・`Blob` の保存・`Content-Disposition` の
    ダウンロードは、WebView2 でも動く見込みだが、**Windows の実機では確かめていない**（DPA も同じく未確認）。
 6. **クリップボード。** `navigator.clipboard` は安全な文脈でだけ使える。`http://wavelog.localhost` は
    `*.localhost` なので安全な文脈に入る見込み（自己診断で確かめる）。

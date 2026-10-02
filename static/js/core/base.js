@@ -170,10 +170,10 @@ function lotDspField(v){return String(v||'').slice(0,7).padEnd(7,' ')}
 function lotDspLinkKey(lotNo,castingNo){return lotDspField(lotNo)+'   '+lotDspField(castingNo)}
 function buildLotDspUrl(lotNo,castingNo,tab){return `${LOT_DSP_BASE}?linkkey=${encodeURIComponent(lotDspLinkKey(lotNo,castingNo))}&tab=${encodeURIComponent(tab)}`}
 /* ---------- ファイルの保存は**この2つだけ**（§9.551） ----------
-   窓（WebView2）では、窓の宛先（wavelog.localhost）から**添付で返る応答へページを移しても保存が始まらない**
-   （実測: CI の自己診断で保存の始まりが1度も来なかった）。Blob を`a[download]`で落とす道は通る（同じ自己診断で
-   名前どおり・大きさどおりに届いた）ので、中身（Python）が返すファイルも`fetch`で受け取って Blob にしてから落とす。
-   保存先は窓の既定（「ダウンロード」フォルダ・右上に案内が出る）。 */
+   中身（Python）が返すファイルも`fetch`で受け取って Blob にしてから落とす。添付へページを移す形だと、
+   ①断られたとき（JSON の誤りの応答）に**画面がその応答へ置き換わってアプリが消える** ②結果が分からないので
+   「保存しました」も理由も言えない。保存先は窓の既定（「ダウンロード」フォルダ・右上に案内が出る）。
+   どちらの形でも、窓（WebView2）は**人の操作なしに続けて2本目以降を落とすと止める**（自己診断で実測）。 */
 function saveBlob(blob,name){
  const url=URL.createObjectURL(blob);
  const a=document.createElement('a');a.href=url;a.download=name;

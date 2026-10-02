@@ -1,14 +1,13 @@
 /* test_saveio.js: ファイルの保存は WL.base.saveBlob／saveFrom の1箇所（§9.551）
    ================================================================
-   デスクトップ版の窓（WebView2）では、窓の宛先から**添付で返る応答へページを移しても保存が始まらない**
-   （CI の自己診断で実測）。Blob を a[download] で落とす道は通るので、中身（Python）が返すファイルも
-   fetch で受け取って Blob にしてから落とす。窓そのものの確かめは desktop/src/selftest.js（本物の WebView2）、
-   ここはブラウザで「同じ答えを返すか・ページを移さないか・断りを言うか」を見る。
+   中身（Python）が返すファイルも fetch で受け取って Blob にしてから落とす。添付へページを移す形だと、断られたとき
+   画面が JSON の応答へ置き換わってアプリが消え、結果（名前・理由）も言えない。窓そのものの確かめは
+   desktop/src/selftest.js（本物の WebView2）、ここはブラウザで「同じ答えを返すか・ページを移さないか・断りを言うか」を見る。
 
    物差し:
     ① saveFrom: Excel が日本語の名前（filename*）のまま・中身どおり（PK）に、Blob から落ち、ページを移さない
     ② ログの「保存」（data-log-save）を押しても、ページを移さずに Blob から .log が落ちる
-       （落とす元が blob: であること＝窓で通る道。添付へページを移す形はブラウザでは落ちるので、それだけでは見分けられない）
+       （落とす元が blob: であること＝1箇所の道を通ったこと。添付へページを移す形でも落ちるので、それだけでは見分けられない）
     ③ 断られたら（400）理由を言う Error を投げ、ページを移さない
     ④ 保存を自前で書いている所が無い（URL.createObjectURL・a.download は base.js の saveBlob だけ）
    ================================================================ */
@@ -42,7 +41,7 @@ run('test_saveio: ファイルの保存は1箇所（§9.551）', async ({ page, 
   dl = page.waitForEvent('download', { timeout: 15000 });
   await page.click('#lgFiles [data-log-save]');
   d = await dl;
-  /* 落とす元が blob: であること＝窓で通る道を通ったこと（添付へページを移す形はブラウザでは落ちるが、窓では始まらない） */
+  /* 落とす元が blob: であること＝1箇所の道（saveFrom）を通ったこと（添付へページを移す形でも落ちるので見分けられない） */
   rec('ログの「保存」はページを移さず、Blob から .log を落とす', /\.log$/.test(d.suggestedFilename()) && page.url() === home
       && d.url().startsWith('blob:'), JSON.stringify({ suggested: d.suggestedFilename(), url: page.url(), from: d.url().slice(0, 30) }));
 

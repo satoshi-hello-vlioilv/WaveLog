@@ -470,7 +470,7 @@
      <td>${esc(f.name)}</td><td class="lg-num">${num(Math.round(f.size/1024))} KB</td><td class="lg-num">${esc(f.mtime||'')}</td>
      <td><a class="lg-link" href="/api/logs/download?file=${encodeURIComponent(f.name)}" data-log-save title="このログをそのままファイルとして保存します">保存</a></td></tr>`).join('')
    +'</tbody></table>';
-  /* 保存は`WL.base.saveFrom()`の1本（§9.551。窓の中では、添付へページを移す形だと保存が始まらない）。 */
+  /* 保存は`WL.base.saveFrom()`の1本（§9.551。ページを移す形だと、断られたとき画面が JSON に置き換わる）。 */
   box.onclick=e=>{
    const a=e.target.closest('[data-log-save]');if(!a)return;
    e.preventDefault();

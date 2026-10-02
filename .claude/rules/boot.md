@@ -10,7 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
-| 窓の自己診断は保存の2つの道と印刷の書類も見る。保存の受け手（`on_download`）は**自己診断のときだけ**付ける（付けると WebView2 の既定の案内が消える） | — | [§9.551](../../docs/decisions/9.551.md) |
+| 窓の自己診断は保存（1つの画面で1本だけ）と印刷の書類も見る。保存の受け手（`on_download`）は**自己診断のときだけ**付ける（付けると既定の案内が消える） | — | [§9.551](../../docs/decisions/9.551.md) |
 | 利用者の起動はデスクトップ版だけ（Start.vbs → `program/WaveLog.exe`）。HTTP の入口`program/app.py`は開発と網のため | `test_faststart.py` | [§9.548](../../docs/decisions/9.548.md) |
 | main へは CI が exe を置く（`publish`・作った元の指紋で置き直しを決める）。手で作った exe を足さない | — | [§9.548](../../docs/decisions/9.548.md) |
 | 外した物の残りは`setup_check.RETIRED`で片付ける（合図は新しい Start.vbs）。端末の手元の物は`RETIRED_LOCAL` | `test_faststart.py` | [§9.548](../../docs/decisions/9.548.md) |
