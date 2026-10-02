@@ -87,6 +87,12 @@
       }
       return null;
     };
+    //   【実験・§9.551】1本目に元の形（添付へページを移す）を試す。2本目以降は人の操作なしだと止められる疑いがあるため
+    const x0 = document.createElement("a");
+    x0.href = "/api/roll-master/export";
+    document.body.append(x0); x0.click(); x0.remove();
+    const s0 = await saved((r) => r.url.includes("/api/roll-master/export"));
+    ok("【実験】1本目: 添付へページを移す形で Excel が届く", s0 && s0.success, JSON.stringify(s0));
     //   保存の答えは画面の WL.base.saveBlob／saveFrom の1箇所（CSV・フィルタ・列の設定・ログ・Excel の書き出しが通る道）
     //   ① 画面で作ったファイル（Blob）
     const blob = new Blob(["WaveLog 自己診断 保存 ✓\n".repeat(100)], { type: "text/plain;charset=utf-8" });
