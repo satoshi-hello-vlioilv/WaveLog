@@ -337,21 +337,6 @@
 .mm-cd-checkbox{padding:6px 4px;border-radius:var(--radius-sm)}
 .mm-cd-checkbox:hover{background:#eafafa}
 .mm-btn-danger{border:0;background:var(--invalid);color:#fff;cursor:pointer;box-shadow:0 4px 12px #c92c2c40}
-/* 換算係数モデル管理画面(docs/SCHEDULE_MODE_DESIGN.md §6・§9.8)。 */
-.lf-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--gap-inline);padding:var(--pad-card);margin-bottom:12px;background:var(--computed-bg);border:1px solid #9cd6ce;border-radius:var(--radius-sm)}
-.lf-summary small{display:block;color:var(--muted);font-size:var(--fs-micro)}
-.lf-summary b{color:var(--computed-fg);font-size:var(--fs)}
-.lf-override-note{display:block;color:var(--warn-fg,#b06a00);font-size:var(--fs-micro);margin-top:2px}
-.lf-table{display:flex;flex-direction:column;gap:var(--gap-hair)}
-.lf-row{display:grid;grid-template-columns:1.3fr 1.3fr .8fr .6fr 1.1fr 1.2fr;gap:var(--gap-inline);align-items:center;padding:var(--pad-row);border-bottom:1px solid var(--line);font-size:var(--fs-sm)}
-.lf-row-head{font-size:var(--fs-micro);font-weight:800;color:var(--muted);border-bottom:2px solid var(--line)}
-.lf-row-base{background:#fff7e6}
-.lf-row-key{font-weight:700;color:var(--ink)}
-.lf-row-value{font-variant-numeric:tabular-nums}
-.lf-row-n{color:#8a9aa0}
-.lf-row-override input{width:100%;height:28px;padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);border-radius:var(--radius-xs);font-size:var(--fs-sm)}
-.lf-row-actions{display:flex;gap:var(--gap-tight)}
-@media(max-width:900px){.lf-row{grid-template-columns:1fr 1fr}.lf-row-head{display:none}}
 .mm-btn-danger:hover{background:#a82121}
 .mm-import-warning{display:flex;flex-direction:column;gap:var(--space-1);padding:10px 14px;border:1.5px solid #e5b3b3;border-radius:var(--radius-md);background:#fff5f5;color:#8a2323}
 .mm-import-warning b{font-size:var(--fs-base-sm)}
@@ -491,6 +476,80 @@ button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
 .eu-peek p{margin:0 0 var(--space-1);line-height:1.55;color:var(--ink-2)}
 .eu-peek .eu-pw{color:var(--warn-fg)}
 .eu-peek .eu-pgo{margin-top:var(--space-2);color:var(--teal-dark);font-weight:700}
+/* ---------- 換算係数（§9.543、利用者の選択 H-1＋H-5＋H-2） ----------
+   上＝要約の数／左＝見積×実績の散布図と1ロットの積み上げ／右＝係数の効き目と上書き。 */
+.lf-lead{flex:1 1 auto;margin:0 var(--space-3)}
+.lf-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:var(--space-2);margin:0 0 var(--space-1)}
+.lf-kpi{padding:var(--space-1) var(--space-3);border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface)}
+.lf-kpi small{display:block;font-size:var(--fs-micro);color:var(--muted)}
+.lf-kpi b{font-size:var(--fs-lg);font-variant-numeric:tabular-nums;color:var(--ink)}
+.lf-kpi i{margin-left:var(--space-1);font-style:normal;font-size:var(--fs-micro);color:var(--muted)}
+.lf-kpi.is-warn{border-color:var(--warn);background:var(--warn-bg)}
+.lf-src{margin:0 0 var(--space-2);font-size:var(--fs-micro);color:var(--muted)}
+.lf-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:var(--space-3);align-items:start}
+.lf-col{display:flex;flex-direction:column;gap:var(--space-3);min-width:0}
+.lf-box{padding:var(--space-2) var(--space-3);border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface)}
+.lf-box h4{margin:0 0 var(--space-1);font-size:var(--fs-base-sm);color:var(--ink)}
+.lf-box h4 small{margin-left:var(--space-2);font-size:var(--fs-micro);font-weight:400;color:var(--muted)}
+.lf-svg{display:block;width:100%;height:auto;overflow:visible}
+.lf-svg text{font-variant-numeric:tabular-nums}
+.lf-t{font-size:var(--fs-micro);fill:var(--muted)}
+.lf-tl{font-size:var(--fs-sm);fill:var(--ink-2)}
+.lf-th{font-size:var(--fs-sm);font-weight:800;fill:var(--ink)}
+.lf-grid-l{stroke:var(--line-soft);stroke-width:1}
+.lf-band{fill:var(--pale)}
+.lf-eq{stroke:var(--ink-2);stroke-width:1.2;stroke-dasharray:5 4}
+.lf-pt{fill:var(--teal);fill-opacity:.8;cursor:pointer}
+.lf-pt.is-off{fill:var(--warn)}
+.lf-pt.is-out{fill:none;stroke:var(--look-red);stroke-width:1.4}
+.lf-pt.is-sel{fill:var(--look-violet);fill-opacity:1;stroke:var(--surface);stroke-width:1.5}
+.lf-pt.is-hit{stroke:var(--look-green-dark);stroke-width:2.2}
+.lf-key{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-3);margin:var(--space-1) 0 0;font-size:var(--fs-micro);color:var(--muted)}
+.lf-key span{display:inline-flex;align-items:center;gap:var(--space-1)}
+.lf-sw{display:inline-block;width:10px;height:10px;border-radius:var(--radius-round)}
+.lf-sw.is-in{background:var(--teal)}
+.lf-sw.is-off{background:var(--warn)}
+.lf-sw.is-out{box-shadow:inset 0 0 0 1.5px var(--look-red)}
+.lf-sw.is-band{border-radius:var(--radius-xs);background:var(--pale)}
+.lf-empty{margin:0;font-size:var(--fs-sm);color:var(--muted);line-height:1.6}
+.lf-wf{display:flex;flex-direction:column;gap:2px}
+.lf-wrow{display:grid;grid-template-columns:var(--w-xl) minmax(0,1fr) var(--w-md);gap:var(--space-2);align-items:center;font-size:var(--fs-sm);padding:1px 0}
+.lf-wrow>span:first-child{text-align:right;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lf-wrow>span:last-child{font-variant-numeric:tabular-nums;color:var(--ink-2);white-space:nowrap}
+.lf-wrow.is-step{cursor:pointer;border-radius:var(--radius-xs)}
+.lf-wrow.is-step:hover{background:var(--pale)}
+.lf-wrow.is-total>span{font-weight:800;color:var(--ink)}
+.lf-wbar{position:relative;height:16px}
+.lf-wbar b{position:absolute;top:2px;bottom:2px;border-radius:var(--radius-xs)}
+.lf-wbar b.is-base{background:var(--teal)}
+.lf-wbar b.is-up{background:var(--look-red);opacity:.75}
+.lf-wbar b.is-dn{background:var(--look-green)}
+.lf-wbar b.is-flat{background:var(--line-strong)}
+.lf-wbar b.is-total{background:var(--ink-2)}
+.lf-wbar em{position:absolute;top:-2px;bottom:-2px;border-left:2px solid var(--look-violet)}
+.lf-read{margin:var(--space-2) 0 0;font-size:var(--fs-sm);color:var(--ink-2);line-height:1.6}
+.lf-one{stroke:var(--ink-2);stroke-width:1;stroke-dasharray:3 3}
+.lf-ci{stroke:var(--teal);stroke-width:2}
+.lf-dot{fill:var(--teal)}
+.lf-dot.is-thin{fill:var(--surface);stroke:var(--teal);stroke-width:1.5}
+.lf-ov{fill:var(--look-violet);stroke:var(--surface);stroke-width:1}
+.lf-ov.is-draft{fill:none;stroke:var(--look-violet);stroke-width:1.5;stroke-dasharray:2 2}
+.lf-dt{font-size:var(--fs-micro);font-weight:700;fill:var(--look-violet-dark)}
+.lf-hit{fill:transparent;pointer-events:all;cursor:pointer}
+.lf-hit:hover{fill:var(--pale);fill-opacity:.6}
+.lf-hit.is-sel{fill:var(--pale)}
+.lf-dl{display:grid;grid-template-columns:var(--w-md) minmax(0,1fr);gap:var(--space-1) var(--space-2);margin:0;font-size:var(--fs-sm)}
+.lf-dl dt{text-align:right;color:var(--muted)}
+.lf-dl dd{margin:0;color:var(--ink-2)}
+.lf-ovv{color:var(--look-violet-dark)}
+.lf-ovrow{display:flex;gap:var(--space-2);align-items:center}
+.lf-ovrow input{width:var(--w-sm);height:var(--ctl-h-sm);padding:0 var(--ctl-pad-x-xs);border:1px solid var(--line);border-radius:var(--radius-xs);font-size:var(--fs-sm)}
+.lf-prev{margin:var(--space-2) 0 0;font-size:var(--fs-sm);color:var(--ink-2);line-height:1.6}
+.lf-prev:empty{display:none}
+.lf-peek{--menu-w:280px;--menu-w-max:360px;--menu-pad:var(--space-3);font-size:var(--fs-sm)}
+.lf-peek h4{margin:0 0 var(--space-1);font-size:var(--fs-base-sm)}
+.lf-peek p{margin:0 0 var(--space-1);color:var(--ink-2)}
+.lf-peek .lf-pgo{margin-top:var(--space-2);color:var(--teal-dark);font-weight:700}
 .mm-capn{font-variant-numeric:tabular-nums}
 .mm-capn.is-low{background:var(--warn-fg);color:var(--surface);border-radius:var(--radius-xs);padding:0 var(--space-1)}
 .mm-row:not(.head):hover{background:#eafafa}

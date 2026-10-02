@@ -1202,6 +1202,9 @@ for entry in 有効な予定(表示順):
 > **フェーズ8で実装済み**。`load_factor.accuracy()`(フェーズ5から存在、
 > 中央値対数バイアス・MAPE相当を返す)をそのまま返すだけの薄いラッパーで、
 > HTTPで確認済み。
+> **【§9.543で撤回】** `GET /api/schedule/accuracy`と`load_factor.accuracy()`は消した。見積を基準時間T0だけで
+> 代用した粗い指標だったため、ロットごとに本当の見積（`estimate_work()`・上書き込み）と比べる
+> `load_factor.points()`へ置き換え、`GET /api/schedule/load-factors`の応答（`points`・`accuracy`）に載せた。
 
 Blueprint 名は `schedule`(`backend/routes/schedule.py`)。
 非GETは `_WRITE_ALLOWED_MODES` により `schedule` モードのみ許可(§3.3)。
@@ -1226,7 +1229,7 @@ Blueprint 名は `schedule`(`backend/routes/schedule.py`)。
 | POST | `/api/schedule/load-factors/override` | 手動上書きの保存/解除 | schedule |
 | POST | `/api/schedule/load-factors/recalc` | キャッシュ破棄・再計算 | schedule |
 | GET | `/api/schedule/estimate?equipment=&lot=` | 単一ロットの見積(内訳付き) | 全モード |
-| GET | `/api/schedule/accuracy?equipment=SL-1` | 見積 vs 実測の検証指標 | 全モード |
+| GET | ~~`/api/schedule/accuracy?equipment=SL-1`~~ | 【§9.543で撤回】`load-factors`の`points`・`accuracy`へ | — |
 
 ### 8.0 排他制御のエラー応答
 

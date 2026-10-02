@@ -10,7 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
-| 新しいマスタのAPIは`routes/masters/`の段へ足す（`schedule.py`は41ルートで上限・上げられない） | `test_routesplit.py` | [§9.389](../../docs/decisions/9.389.md) |
+| 新しいマスタのAPIは`routes/masters/`の段へ足す（`schedule.py`は40ルートで上限・上げられない） | `test_routesplit.py` | [§9.389](../../docs/decisions/9.389.md) |
 | 「同じ内容をもう1行作る」は**登録とは別のルート**（登録は自然キーで既存行の更新に倒れる） | `test_scstop.js` | [§9.400](../../docs/decisions/9.400.md) |
 | 設定系マスタの開き方は`routes/common.py`の`cfg_read`／`cfg_write_response`の1箇所 | `test_importlint.py` | [§9.389](../../docs/decisions/9.389.md) |
 | 権限区分（開発者／メンテナンス者／一般ユーザー）は「何を触れるか」と別の軸 | — | [§9.272](../../docs/decisions/9.272.md) |

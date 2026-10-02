@@ -347,6 +347,7 @@ RULES = [
     ('static/js/master/master-roll.js', g('test_roll', 'test_rollio', 'test_rollwipe')),
     # §9.538: アクセス権限マスタの見張りのタブと行の「できること」。
     ('static/js/master/master-access.js', g('test_roleui', 'test_roleperm')),
+    ('static/js/master/master-loadfactor.js', g('test_lfui', 'test_lfpoints')),
     ('static/js/master/master-equse.js', g('test_equse', 'test_eqfeature', 'test_measitems')),
     ('static/js/schedule/calendar-view.js', g('test_uisize', 'test_histdel', 'test_headbar')),
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
@@ -479,7 +480,7 @@ RULES = [
     # §9.324 R1: 表の列定義（CREATE・足す・読む・書く）の器。3つのRepoが乗る。
     ('backend/repositories/table_def.py', g('マスタ', '操業データ', '異常位置', 'test_rpmaster',
                                               'test_rpblocks', 'test_rbmodal', 'test_rollio')),
-    ('backend/routes/schedule.py', g('スケジュール', 'test_modeguard', 'test_crudroutes')),
+    ('backend/routes/schedule.py', g('スケジュール', 'test_modeguard', 'test_crudroutes', 'test_lfui')),
     # §9.502: 作業スケジュールの過去履歴（読むだけの口・組み立て）
     ('backend/routes/schedule_history.py', g('test_schedhist', 'test_schistui', 'test_routesplit')),
     ('backend/schedule_history.py', g('test_schedhist', 'test_schistui')),
@@ -549,7 +550,7 @@ RULES = [
     ('backend/schedule_sync.py', g('test_sclock', 'test_scsync', 'test_scwritespeed',
                                    'test_screorder', 'test_atomicio', 'test_scsession',
                                    'test_scwho', 'test_scowner')),
-    ('backend/load_factor.py', g('test_scbalance', 'test_sccat', 'test_screport', 'test_eqstd')),
+    ('backend/load_factor.py', g('test_scbalance', 'test_sccat', 'test_screport', 'test_eqstd', 'test_lfpoints', 'test_lfui')),
     ('backend/records_export.py', g('test_share', 'test_flows', 'test_measstore',
                                     'test_recsplit')),
     ('backend/logging_setup.py', g('ログ')),

@@ -21,6 +21,15 @@ from .quiet import quiet
 
 FACTOR_KEYS=('purposeName','mfgMaterial','mfgTemper','mfgThickness','mfgWidth','mfgLength','boxHorizontalCount','boxVerticalCount','crewSize')
 NUMERIC_FACTORS={'mfgThickness','mfgWidth','mfgLength','boxHorizontalCount','boxVerticalCount'}
+# 因子の呼び名と単位（§9.543）。**画面へ書き写さない**——因子を足したら直すのはここだけ。
+# 名前は元データの列名（`aliases`）に寄せ、測る物の名前で言う。
+FACTOR_LABELS={'purposeName':('用途',''),'mfgMaterial':('材質',''),'mfgTemper':('調質',''),
+               'mfgThickness':('板厚','mm'),'mfgWidth':('板幅','mm'),'mfgLength':('板丈','mm'),
+               'boxHorizontalCount':('条数','条'),'boxVerticalCount':('丈割数','丈'),'crewSize':('作業人数','人')}
+# 見積の帯（§9.543）。予測区間は対数の正規分布で、帯は真ん中の80%（±1.2816σ）。
+BAND_Z=1.2816
+# 1件ごとの点は新しい順にここまで（多すぎると図が塗り潰れ、応答も重くなる）。
+POINTS_MAX=1000
 K_SHRINK=5
 CLIP_LOW=math.log(0.5)
 CLIP_HIGH=math.log(2.0)
@@ -71,7 +80,8 @@ def completed_training_rows(equipment=None):
   if equipment and normalize_equipment_name(eq)!=normalize_equipment_name(equipment):continue
   basic=payload.get('basic') or {}
   settings=payload.get('settings') or {}
-  out.append({'minutes':minutes,'equipment':eq,'basic':basic,'crewSize':settings.get('crewSize')})
+  out.append({'minutes':minutes,'equipment':eq,'basic':basic,'crewSize':settings.get('crewSize'),
+              'lot':str(basic.get('lotNo') or payload.get('lotNo') or ''),'at':start})
  return out
 
 def _record_raw_value(row,key):
@@ -125,18 +135,24 @@ def level_for(key,raw,boundaries_map):
 # ========================================================================
 # 推定(§6.5)
 # ========================================================================
-def _fit(rows):
- """外れ値除去(§6.4)・反復推定(§6.5)を行い、モデル辞書を返す。rowsが空ならNone。"""
- if not rows:return None
+def outlier_flags(rows):
+ """外れ値の判定(§6.4)は**ここ1箇所**: 対数の所要分が中央値から3×1.4826×MADより離れたもの。
+ 推定(`_fit`)と1件ごとの点(`points`)が同じ答えを読む(§9.543)。"""
  logs=[math.log(r['minutes']) for r in rows]
+ if not logs:return []
  med=statistics.median(logs)
  mad=statistics.median([abs(x-med) for x in logs])
  threshold=3*1.4826*mad if mad>0 else None
+ return [threshold is not None and abs(y-med)>threshold for y in logs]
+
+def _fit(rows):
+ """外れ値除去(§6.4)・反復推定(§6.5)を行い、モデル辞書を返す。rowsが空ならNone。"""
+ if not rows:return None
  kept=[];excluded=0
- for r,y in zip(rows,logs):
-  if threshold is not None and abs(y-med)>threshold:
+ for r,out in zip(rows,outlier_flags(rows)):
+  if out:
    excluded+=1;continue
-  kept.append((r,y))
+  kept.append((r,math.log(r['minutes'])))
  if not kept:return None
 
  boundaries={}
@@ -328,23 +344,31 @@ def estimate_work(c,equipment,detail,crew_size=None,memo=None):
          'sigmaLog':round(sigma,3),'basis':model['basis'],
          'base':{'T0':round(t0,1),'n':model['n']},'factors':factors_out}
 
-def accuracy(equipment):
- """§6.9。完了実績のうち、見積が算出できる(=モデルがある)ものについて
- ln(実測/見積)の中央値バイアスとMAPE相当を返す。見積分自体は明細が無いと
- 出せないため、ここでは実績側の対数所要時間と同モデルのT0(基準時間)だけを
- 使った粗い代理指標とする(因子別の細かい突合はUI側でentries[].actualと
- estimateを直接比較する、§8.1)。"""
+def points(c,equipment):
+ """1件ごとの実績と見積(§9.543、利用者の選択 H-1＋H-5＋H-2)。
+
+ 見積は**予定と同じ`estimate_work()`**(手動上書きも効いた値・因子ごとの内訳つき)を、完了実績の
+ 明細へ当てたもの——「いまの係数なら、このロットは何分と見積るか」。外れ値の判定は`outlier_flags()`。
+ 要約(帯に入った数・±20%・実績÷見積の中央値)も**ここで数える**(画面は描くだけ)。
+ 全設備をまとめたモデル(basis='pooled')では外れ値はこの設備の実績だけで判定する(推定とは数え方が違う)。"""
  model=get_model(equipment)
- if model is None:
-  return {'n':0,'medianLogBias':None,'mape':None}
+ if model is None:return {'points':[],'summary':None}
  rows=completed_training_rows(equipment)
- if not rows:
-  return {'n':0,'medianLogBias':None,'mape':None}
- log_biases=[];ape=[]
- for r in rows:
-  est=model['T0']
-  actual=r['minutes']
-  log_biases.append(math.log(actual/est))
-  ape.append(abs(actual-est)/actual)
- return {'n':len(rows),'medianLogBias':round(statistics.median(log_biases),3),
-         'mape':round(statistics.median(ape),3)}
+ memo={};out=[]
+ for r,flag in zip(rows,outlier_flags(rows)):
+  est=estimate_work(c,equipment,r['basic'],crew_size=r.get('crewSize'),memo=memo)
+  out.append({'lot':r.get('lot') or '','at':r.get('at') or '','actual':round(r['minutes'],1),
+              'estimate':est['minutes'],'base':(est.get('base') or {}).get('T0'),
+              'factors':est.get('factors') or [],'basis':est.get('basis'),'outlier':bool(flag)})
+ out.sort(key=lambda p:p['at'],reverse=True)
+ shown=out[:POINTS_MAX]
+ live=[p for p in out if not p['outlier'] and p['estimate']]
+ sigma=model.get('sigmaLog') or 0.0
+ band=math.exp(BAND_Z*sigma) if sigma else None
+ logs=[math.log(p['actual']/p['estimate']) for p in live]
+ summary={'n':len(live),'outliers':len(out)-len(live),'shown':len(shown),'total':len(out),
+          'within20':round(sum(1 for p in live if abs(p['actual']/p['estimate']-1)<=0.2)/len(live),4) if live else None,
+          'ratio':round(math.exp(statistics.median(logs)),4) if logs else None,
+          'band':round(band,4) if band else None,
+          'inBand':sum(1 for x in logs if band and abs(x)<=math.log(band)) if band else None}
+ return {'points':shown,'summary':summary}

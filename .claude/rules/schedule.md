@@ -1,4 +1,4 @@
-# 作業スケジュール（96件）
+# 作業スケジュール（98件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 換算係数の1件ごとの実績と見積・要約は`load_factor.points()`の1箇所（見積は予定と同じ`estimate_work()`） | `test_lfpoints.py`・`test_lfui.js` | [§9.543](../../docs/decisions/9.543.md) |
+| 外れ値の判定は`outlier_flags()`の1箇所（推定と散布図の点が同じ答えを読む） | `test_lfpoints.py` | [§9.543](../../docs/decisions/9.543.md) |
 | 予定を時刻へ置くのは`_Placer`の1箇所。`cursor`が空（稼働帯が尽きた）なら以降は`_unplaced()`——**例外で止めない** | `test_scload.py` | [§9.522](../../docs/decisions/9.522.md) |
 | 実際の時刻を入れてよいかは`_times_allowed()`の1箇所（編集モードは時刻の鍵だけ）。画面は`canEnterTimes`を読む。「時刻入力」は操作の列に必ず出す | `test_sctimesedit.js` | [§9.518](../../docs/decisions/9.518.md) |
 | 区分の列を外しているときは操作の列が「✓完了」「作業中」を字で言う（字は`categoryOf()`）。区分の列があれば出さない | `test_sctimesedit.js` | [§9.518](../../docs/decisions/9.518.md) |

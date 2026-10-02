@@ -1120,8 +1120,14 @@ def load_factor_list():
   return [r for r in rows if not r[1] or normalize_equipment_name(r[1])==normalize_equipment_name(equipment)]
  overrides_rows=_cfg_read(fn)
  model=load_factor.get_model(equipment)
+ # §9.543 1件ごとの実績と見積（散布図・積み上げ）と、その要約。見積は予定と同じ
+ # estimate_work()（上書き込み）なので、上書きを保存し直せば点も動く。
+ pts=_cfg_read(lambda mc:load_factor.points(mc,equipment)) if model else {'points':[],'summary':None}
  return jsonify(ok=True,configured=True,equipment=equipment,
-                model=_load_factor_summary(model,overrides_rows),stale=False)
+                model=_load_factor_summary(model,overrides_rows),
+                points=pts['points'],accuracy=pts['summary'],
+                factorLabels={k:{'label':l,'unit':u} for k,(l,u) in load_factor.FACTOR_LABELS.items()},
+                stale=False)
 
 @bp.post('/api/schedule/load-factors/override')
 def load_factor_override_save():
@@ -1180,16 +1186,6 @@ def estimate_preview():
  result=_cfg_read(lambda mc:load_factor.estimate_work(mc,equipment,detail))
  return jsonify(ok=True,configured=True,equipment=equipment,lot=str(request.args.get('lot') or ''),
                 estimate=result,stale=False)
-
-@bp.get('/api/schedule/accuracy')
-def accuracy():
- # §6.9・§9.8「見積 vs 実測」の指標(中央値バイアス・MAPE相当)。実績データ
- # (共有測定バックアップ)側の読み込みのみで、共有スケジュールDBには触れない
- # ため、_read()のロック/改訂番号サイクルは使わない(GETかつ読み取り専用)。
- equipment=str(request.args.get('equipment') or '').strip()
- if not equipment:return jsonify(error='どの設備の精度を見るか指定してください(equipment)。'),400
- result=load_factor.accuracy(equipment)
- return jsonify(ok=True,equipment=equipment,**result)
 
 # ========================================================================
 # 全設備横断の俯瞰ボード(§9.9、フェーズ9)

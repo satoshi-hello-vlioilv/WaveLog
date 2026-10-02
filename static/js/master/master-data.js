@@ -2,123 +2,15 @@
 /* master-data.js: マスタ管理の専用画面——データと接続・作業スケジュール・管理
    ============================================================
    §9.324 R3 で master-maint.js から切り出した（中身はそのまま）。
-   換算係数（§6/§9.8）・測定データの保存（§9.202）・データ引継ぎ・
+   測定データの保存（§9.202）・データ引継ぎ・
    データ接続（§9.168）・クエリ結合（§9.193）・共通設定（§9.208 ⑨）・
    勤務形態・不要ファイル掃除（§9.249 ①）・テーブル生データ（§9.249 ②）・
    接続状況（§9.272）。
    盤（master-maint.js）から `WL.mm` で受け取り、`registerSpecial` で名乗る。
+   換算係数は §9.543 で `master-loadfactor.js` へ移した（散布図・積み上げ・係数の図）。
    ============================================================ */
 (function(){
  const {CAPABILITY_LABEL,CAPABILITY_ORDER,CAPABILITY_SHORT,allDefs,bindInputHelpers,bindMaintTabs,bindPathFields,closeMaintEditor,ensureMaintEditor,firstVisibleDefKey,fmtDT,hintHtml,loadMaint,maintState,numFieldHtml,numRaw,pageFoldHtml,pageTabsHtml,renderMaintNav,requireMaintUser,setMaintLoading,syncNav}=WL.mm;
- let loadFactorState={equipment:'',configured:true,model:null,accuracy:null};
- function loadFactorBasisLabel(b){return {equipment:'自設備の実績',pooled:'全設備プール(自設備は実績不足)',default:'算出不可(実績なし)'}[b]||b||'-'}
- /* 所要時間の書き方は`WL.duration`の1箇所（§9.341）。 */
- async function loadLoadFactorMaint(force){
-  const list=$('#masterMaintList');if(!list)return;
-  if(typeof WL.records.loadEquipmentMaster==='function'){try{await WL.records.loadEquipmentMaster(force)}catch(e){WL.quiet.note('設備マスタが読めなくても画面表示は継続する',e)}}
-  const opts=WL.records.equipmentMasterState.items||[];
-  if(!loadFactorState.equipment&&opts.length)loadFactorState.equipment=opts[0].name;
-  renderLoadFactorForm();
-  if(!loadFactorState.equipment){list.innerHTML='<div class="mm-empty">設備マスタが未登録です。先に「設備」タブで登録してください。</div>';return}
-  list.innerHTML='<div class="mm-empty">読み込んでいます…</div>';
-  try{
-   const [lf,acc]=await Promise.all([
-    api('/api/schedule/load-factors?equipment='+encodeURIComponent(loadFactorState.equipment)),
-    api('/api/schedule/accuracy?equipment='+encodeURIComponent(loadFactorState.equipment)).catch(()=>null),
-   ]);
-   loadFactorState.configured=!!(lf&&lf.configured);
-   loadFactorState.model=loadFactorState.configured?lf.model:null;
-   loadFactorState.accuracy=acc;
-   renderLoadFactorList();
-  }catch(e){list.innerHTML=`<div class="mm-empty error">読み込みに失敗しました: ${esc(e.message)}</div>`}
- }
- function renderLoadFactorForm(){
-  const form=$('#masterMaintForm');if(!form)return;
-  const opts=WL.records.equipmentMasterState.items||[];
-  const optHtml=opts.map(eq=>`<option value="${esc(eq.name)}"${eq.name===loadFactorState.equipment?' selected':''}>${esc(eq.name)}</option>`).join('');
-  form.innerHTML=`<div class="mm-form-head"><span class="mm-mode-chip new">換算係数モデル</span></div>
-   <div class="mm-cd-toolbar">
-    <div class="mm-cd-dbtabs"><select id="mmLfEquipment">${optHtml||'<option value="">設備マスタが未登録です</option>'}</select></div>
-    <div class="mm-cd-actions"><button type="button" id="mmLfRecalc" class="mm-btn-ghost sm">再計算</button></div>
-   </div>
-   <p class="mm-form-hint">因子ごとの自動算出係数(§6)と手動上書きです。係数を入力して保存すると上書きが有効になり、空欄で保存すると解除されます。「BASE」行は基準時間T0(1件あたりの基準所要分)自体を分単位で上書きします。</p>`;
-  form.onsubmit=ev=>ev.preventDefault();
-  const sel=$('#mmLfEquipment');
-  if(sel)sel.onchange=()=>{loadFactorState.equipment=sel.value;loadLoadFactorMaint(false)};
-  const recalc=$('#mmLfRecalc');
-  if(recalc)recalc.onclick=async()=>{
-   const uid=requireMaintUser();if(uid===null)return;
-   try{
-    setMaintLoading(true,'再計算しています…');
-    await api('/api/schedule/load-factors/recalc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({equipment:loadFactorState.equipment,user_id:uid})});
-    await loadLoadFactorMaint(true);
-    showToast&&showToast('再計算しました','',3200);
-   }catch(e){showToast&&showToast('再計算できませんでした',e.message,6500)}
-   finally{setMaintLoading(false)}
-  };
- }
- function renderLoadFactorList(){
-  const list=$('#masterMaintList');if(!list)return;
-  if(!loadFactorState.configured){list.innerHTML='<div class="mm-empty">スケジュール機能が設定されていません(config/local.jsonのschedule_share_path未設定)。</div>';return}
-  const model=loadFactorState.model;
-  if(!model){list.innerHTML='<div class="mm-empty">この設備の完了実績がまだ無く、係数を算出できません。</div>';return}
-  const acc=loadFactorState.accuracy;
-  const baseOv=(model.overrides||[]).find(o=>o.factor==='BASE');
-  const summary=`<div class="lf-summary">
-   <div><small>基準</small><b>${esc(loadFactorBasisLabel(model.basis))}</b></div>
-   <div><small>基準時間T0</small><b>${WL.duration.text(model.T0)}</b>${baseOv?`<span class="lf-override-note">→ 上書き適用中: ${WL.duration.text(baseOv.coefficient)}</span>`:''}</div>
-   <div><small>実績件数</small><b>${model.n}件${model.excluded?`(外れ値${model.excluded}件除外)`:''}</b></div>
-   <div><small>ばらつき(σ)</small><b>${model.sigmaLog!=null?model.sigmaLog:'-'}</b></div>
-   ${acc&&acc.n?`<div><small>精度: 中央値バイアス</small><b>${acc.medianLogBias>0?'+':''}${acc.medianLogBias}</b></div>
-   <div><small>精度: MAPE相当</small><b>${Math.round((acc.mape||0)*100)}%(n=${acc.n})</b></div>`:''}
-  </div>`;
-  const overrideMap={};
-  (model.overrides||[]).forEach(o=>{overrideMap[o.factor+'\u0000'+(o.level||'')]=o});
-  const baseOverride=overrideMap['BASE\u0000'];
-  const baseRow=`<div class="lf-row lf-row-base">
-   <span class="lf-row-key">BASE</span><span class="lf-row-level">基準時間T0</span>
-   <span class="lf-row-value">${WL.duration.text(model.T0)}</span><span class="lf-row-n">n=${model.n}</span>
-   <span class="lf-row-override"><input type="number" step="0.1" min="0" placeholder="分で上書き" data-lf-factor="BASE" data-lf-level="" value="${baseOverride?baseOverride.coefficient:''}"></span>
-   <span class="lf-row-actions"><button type="button" class="mm-btn-ghost sm" data-lf-save="BASE|">保存</button>${baseOverride?'<button type="button" class="mm-btn-ghost sm" data-lf-clear="BASE|">解除</button>':''}</span>
-  </div>`;
-  const factorRows=(model.factors||[]).map(f=>{
-   const ov=overrideMap[f.key+'\u0000'+f.level];
-   return `<div class="lf-row">
-    <span class="lf-row-key">${esc(f.key)}</span><span class="lf-row-level">${esc(f.level)}</span>
-    <span class="lf-row-value">×${f.value}</span><span class="lf-row-n">n=${f.n}</span>
-    <span class="lf-row-override"><input type="number" step="0.01" min="0" placeholder="係数で上書き" data-lf-factor="${esc(f.key)}" data-lf-level="${esc(f.level)}" value="${ov?ov.coefficient:''}"></span>
-    <span class="lf-row-actions"><button type="button" class="mm-btn-ghost sm" data-lf-save="${esc(f.key)}|${esc(f.level)}">保存</button>${ov?`<button type="button" class="mm-btn-ghost sm" data-lf-clear="${esc(f.key)}|${esc(f.level)}">解除</button>`:''}</span>
-   </div>`;
-  }).join('');
-  list.innerHTML=`${summary}
-   <div class="lf-table">
-    <div class="lf-row lf-row-head"><span>因子</span><span>水準</span><span>係数</span><span>N</span><span>手動上書き</span><span></span></div>
-    ${baseRow}
-    ${factorRows||'<div class="mm-empty">この設備には因子(水準)がありません。</div>'}
-   </div>`;
-  list.querySelectorAll('[data-lf-save]').forEach(btn=>btn.onclick=()=>saveLoadFactorOverride(btn.dataset.lfSave,false));
-  list.querySelectorAll('[data-lf-clear]').forEach(btn=>btn.onclick=()=>saveLoadFactorOverride(btn.dataset.lfClear,true));
- }
- async function saveLoadFactorOverride(key,clear){
-  const uid=requireMaintUser();if(uid===null)return;
-  const [factor,level]=key.split('|');
-  let coefficient=null;
-  if(!clear){
-   const input=document.querySelector(`[data-lf-factor="${CSS.escape(factor)}"][data-lf-level="${CSS.escape(level)}"]`);
-   const raw=input?String(input.value).trim():'';
-   if(!raw){showToast&&showToast('係数(またはBASEは分)を入力してください','',3200);return}
-   coefficient=Number(raw);
-   if(!Number.isFinite(coefficient)){showToast&&showToast('数値を入力してください','',3200);return}
-  }
-  try{
-   setMaintLoading(true,clear?'解除しています…':'保存しています…');
-   await api('/api/schedule/load-factors/override',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({equipment:loadFactorState.equipment,factor,level,coefficient,user_id:uid})});
-   await loadLoadFactorMaint(true);
-   showToast&&showToast(clear?'上書きを解除しました':'上書きを保存しました','',3200);
-  }catch(e){showToast&&showToast('保存できませんでした',e.message,6500)}
-  finally{setMaintLoading(false)}
- }
  /* ---------- 測定データの保存(§9.202、利用者の指示) ----------
     「入力したのに完了へ反映されない」「測定バックアップの設定部分が無い」
     「『DBに同期』の使い方が分からない」は、**3つの置き場の関係が
@@ -4772,7 +4664,6 @@
  /* 盤の登録簿へ名乗る（§9.324 R3）。 */
  WL.mm.registerSpecial('meas-storage',{load:loadMeasStorageMaint});
  WL.mm.registerSpecial('import-backup',{load:loadImportBackupMaint});
- WL.mm.registerSpecial('load-factor',{load:loadLoadFactorMaint});
  WL.mm.registerSpecial('data-source',{load:loadDataSourceMaint,onEditorClose:()=>{dsState.editing=null;renderDataSourceList()}});
  WL.mm.registerSpecial('query-join',{load:loadQueryJoinMaint,onEditorClose:()=>{qjState.editing=null;renderQueryJoinList()}});
  WL.mm.registerSpecial('path-config',{load:loadPathConfigMaint});
