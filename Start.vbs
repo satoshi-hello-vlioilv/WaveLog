@@ -73,7 +73,7 @@ End Function
 Function StartDesktop()
   Dim src, f, d, stamp, dir, dst, tmp
   StartDesktop = False
-  src = root & "\WaveLog.exe"
+  src = root & "\program\WaveLog.exe"
   If Not fso.FileExists(src) Then
     MsgBox "デスクトップ版（WaveLog.exe）が見つかりません。ブラウザ版で起動します。", 48, "測定伝送システム"
     Exit Function

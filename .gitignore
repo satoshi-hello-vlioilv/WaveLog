@@ -60,5 +60,5 @@ db/presence/
 db/test_fixture/devwork/
 .master_snapshot.sqlite3
 
-# デスクトップ版の exe（§9.544）。CI の Artifacts から取り、Start.vbs の隣に置いて使う。リポジトリには入れない
-/WaveLog.exe
+# デスクトップ版の exe は program/WaveLog.exe（§9.548）。**main へは CI が置く**（手で作った物を足さない）。
+# 手元で作った desktop/target/ の物は desktop/.gitignore が除く。

@@ -115,6 +115,8 @@ def main():
         lm.APP_ROOT = pathlib.Path(tempfile.mkdtemp(prefix='wl-noexe-'))
         r = c.post('/api/app/launch-mode', json={'mode': 'desktop'})
         rec('6 exe が無いのにデスクトップ版は 400 と理由', r.status_code == 400 and lm.EXE_NAME in r.get_json()['error'])
+        (d / 'program').mkdir(exist_ok=True)
+        (d / 'program' / lm.EXE_NAME).write_bytes(b'MZ')
         lm.APP_ROOT = d
         r = c.post('/api/app/launch-mode', json={'mode': 'desktop'})
         rec('6 選べば残り、答えにいまの設定が載る', r.status_code == 200 and r.get_json()['mode'] == 'desktop'

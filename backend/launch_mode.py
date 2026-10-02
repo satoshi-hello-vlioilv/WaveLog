@@ -112,8 +112,8 @@ def write(mode):
 
 
 def exe_info(root=None):
- """Start.vbs の隣の WaveLog.exe。無ければ`exists`が偽。"""
- path=Path(root or APP_ROOT)/EXE_NAME
+ """`program/WaveLog.exe`（main へは CI が置く・§9.548）。無ければ`exists`が偽。"""
+ path=Path(root or APP_ROOT/'program')/EXE_NAME
  out={'path':str(path),'exists':False,'size':0,'updatedAt':''}
  try:
   if path.is_file():
@@ -134,7 +134,7 @@ def status(running,root=None):
  why=''
  if not supported:why='起動のしかたを選べるのは Windows だけです（この端末は %s）'%sys.platform
  desktop_why='' if exe['exists'] else \
-  f'{EXE_NAME} が Start.vbs の隣にありません（{exe["path"]}）。置くと選べます'
+  f'{EXE_NAME} がありません（{exe["path"]}）。main の ZIP で上書きすると届きます'
  return {'ok':True,'supported':supported,'why':why,
          'mode':mode or DEFAULT,'saved':bool(mode),'default':DEFAULT,
          'file':str(file or ''),'running':running if running in MODES else '',
