@@ -1,4 +1,4 @@
-# データの置き場と共有（72件）
+# データの置き場と共有（73件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 共有の層（共有の基本部品を読むモジュール）は画面のポート・問い合わせの出どころ（`PORT`・`request.host`…）を読まない | `test_portdep.py` | [§9.544](../../docs/decisions/9.544.md) |
 | 権限を**読むのに書込を要らない**。無い列は空として読み、読めない理由は`permissionError` | `test_roleperm.py` | [§9.523](../../docs/decisions/9.523.md) |
 | 共有の元を見るのは`_remote_stat()`の1箇所。**前は届いていた元**だけ待って取り直す（合計2.5秒まで・`_known_good()`） | `test_dbmirror.py` | [§9.495](../../docs/decisions/9.495.md) |
 | 届かなかった理由は**元の名前とOSの答え**まで残す。早めるのは**自動・届かなくなった最初の1回**だけ（`next_wait_sec()`・`fails`） | `test_dbmirror.py` | [§9.495](../../docs/decisions/9.495.md) |

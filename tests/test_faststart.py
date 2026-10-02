@@ -485,9 +485,9 @@ try:
         crlf = raw.count(b'\r\n')
         rec(f'{name} はCRLF改行（LFだけだとcmd.exeが行の途中から実行する）',
             lf > 0 and lf == crlf, f'LF={lf} CRLF={crlf}')
-    rec('直接実行する4本とその道具は program/ にある（§9.404・§9.406）',
+    rec('直接実行する5本とその道具は program/ にある（§9.404・§9.406・§9.544）',
         all((PROGRAM / n).exists() for n in
-            ('setup_app.py', 'start_app.py', 'app.py', 'process_manager.py',
+            ('setup_app.py', 'start_app.py', 'app.py', 'process_manager.py', 'sidecar.py',
              '_pycache_bootstrap.py', '_approot.py')),
         str(PROGRAM))
     # **リポジトリ直下にPythonは1本も置かない**（§9.406）。`.bat`も同じ

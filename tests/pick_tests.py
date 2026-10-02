@@ -62,7 +62,10 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
           # §9.347 REVIEW 3-15: 固定待ちとハーネスの写しが増えていないか（1秒未満）
           'test_waitlint',
           # §9.349 REVIEW 3-21: 関数の中の import が増えていないか（輪を隠す道）
-          'test_importlint']
+          'test_importlint',
+          # §9.544: 共有の層が画面のポートを知らない（デスクトップ版の前提・1秒未満）。
+          # 共有の基本部品を読むモジュールを**足した側**からは辿れないので常に見る
+          'test_portdep']
 
 # 束ねた呼び名。右辺は実際のテスト名。
 G = {}
@@ -224,7 +227,9 @@ G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 
              # §9.318: 待機画面が見えなくてもアプリへ辿り着ける（保険・置き場の判定）
              'test_faststart', 'test_bootopen',
              # §9.410: デスクトップの起動ショートカットとアイコン（入口を作る側）
-             'test_shortcut']
+             'test_shortcut',
+             # §9.544: デスクトップ版の窓口（標準入出力・ポートなし）。起動の背景処理を共有する
+             'test_sidecar']
 G['接続'] = ['test_mastershare', 'test_storage', 'test_storageui', 'test_recmirror', 'test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
              'test_atomicio', 'test_localwork', 'test_dscap',
              'test_qjoin', 'test_qjoinui',
@@ -563,7 +568,7 @@ RULES = [
     ('backend/app_icon.py', g('test_shortcut')),
     # 終わる前の片付けと終了ボタン（§9.301 ②）も watchdog が持つ。
     ('backend/watchdog.py', g('test_tabclose', 'test_boot', 'test_presence',
-                              'test_appquit', 'test_scowner')),
+                              'test_appquit', 'test_scowner', 'test_sidecar')),
     # 在席（§9.272）。権限区分の判定は master_repo 側にあるので「権限」ごと。
     ('backend/presence.py', g('権限')),
     ('backend/routes/presence.py', g('権限')),
@@ -583,6 +588,8 @@ RULES = [
     ('program/update.bat', g('起動')),
     ('program/loading.html', g('起動')),
     ('program/process_manager.py', g('起動')),
+    # デスクトップ版の窓口（§9.544）。枠・答えの一致・閉じたときの片付け
+    ('program/sidecar.py', g('起動')),
     ('program/requirements.txt', g('起動', 'test_noaccess')),
     ('program/', g('起動')),
 

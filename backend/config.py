@@ -17,6 +17,13 @@ APP_NAME='測定伝送システム'
 HOST='127.0.0.1'
 PORT=5029
 
+# デスクトップ版(§9.544・docs/DESKTOP_MIGRATION_DESIGN.md)の画面の置き場。
+# ポートを開かず、窓(Tauri)が自前の仕組み`wavelog`で受けて標準入出力で渡す。
+# WindowsのWebView2では`http://<仕組み>.localhost/`になる(Tauriの決まり)。
+# **窓(Rust)の側も同じ名前を使う**——食い違うとURLの組み立てがずれる。
+DESKTOP_SCHEME='wavelog'
+DESKTOP_BASE_URL=f'http://{DESKTOP_SCHEME}.localhost/'
+
 # %LOCALAPPDATA% 配下に作るフォルダ名(ログ・実行時ファイルの置き場所)
 LOCAL_DIR_NAME='WaveLog'
 

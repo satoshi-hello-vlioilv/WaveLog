@@ -1,8 +1,8 @@
-# 起動・停止・監視（50件）
+# 起動・停止・監視（52件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
-`program/` の4本・`Start.vbs`・`#appBoot`・更新の刻印・在席の監視
+`program/` の5本・`Start.vbs`・`#appBoot`・更新の刻印・在席の監視・デスクトップ版の窓口
 
 行は**守ることだけ**を書いてある。なぜそうなのか・実測値・撤回した案・踏んだ罠は
 「くわしく」の先（[`docs/decisions/`](../../docs/decisions/README.md)）にある。
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| デスクトップ版の窓口は`program/sidecar.py`（標準入出力の枠・ポートなし）。標準出力は枠だけ。入力が閉じたら`watchdog._exit()`で終わる | `test_sidecar.py` | [§9.544](../../docs/decisions/9.544.md) |
+| 起動の背景処理（写し・見張り・書込役）は`services.start()`の1箇所。タブの見張り（`watchdog.start()`）はポート版だけ | `test_sidecar.py` | [§9.544](../../docs/decisions/9.544.md) |
 | update.bat は**版を最初に言う**（`ready.version_note()`の1箇所・前回の刻印と比べる） | `test_cleanup.py` | [§9.497](../../docs/decisions/9.497.md) |
 | update.bat は確かめる前に作り直せる物を片付ける（`file_cleanup.run_for_update()`）。ショートカットの絵は残す | `test_cleanup.py` | [§9.497](../../docs/decisions/9.497.md) |
 | アプリの外（update.bat）から設定を読むのは`path_config`。**`db_access`を読み込まない**（読み込むと共有マスタの写しを作り直す） | `test_cleanup.py` | [§9.497](../../docs/decisions/9.497.md) |
@@ -20,10 +22,10 @@
 | 刻印のPythonは`python_mark()`でそろえる（`pythonw.exe`＝`python.exe`）。控えた値も読むときにそろえる | `test_faststart.py` | [§9.415](../../docs/decisions/9.415.md) |
 | 再確認の理由は**それだけで読める1文**（`ready.diff()`）。頭に「変わったもの:」を継ぎ足さない・長い道は末尾だけ | `test_faststart.py`・`test_boot.py` | [§9.415](../../docs/decisions/9.415.md) |
 | 版が上がっていないなら「更新」と言わない（`WORK_SETUP`）。言い分けを決めるのはサーバー | `test_boot.py` | [§9.415](../../docs/decisions/9.415.md) |
-| 直接実行する4本とその資材は`program/`。**リポジトリ直下に`.py`も`.bat`も置かない** | `test_faststart.py` | [§9.406](../../docs/decisions/9.406.md) |
+| 直接実行する5本とその資材は`program/`。**リポジトリ直下に`.py`も`.bat`も置かない** | `test_faststart.py` | [§9.406](../../docs/decisions/9.406.md) |
 | 直下に残すのは`Start.vbs`（毎日の入口）と、移すと**黙って効かなくなる**`.gitignore`／`eslint.config.mjs`だけ | `test_faststart.py` | [§9.406](../../docs/decisions/9.406.md) |
 | 直下の孤児`__pycache__`は片付ける。**`.py`が1本も無い**かつ**中身が`.pyc`だけ**のときに限る | `test_faststart.py` | [§9.406](../../docs/decisions/9.406.md) |
-| `program/`の4本は`import _pycache_bootstrap`→`import _approot`の順で通す（置き場が先・探索先が次） | `test_faststart.py` | [§9.406](../../docs/decisions/9.406.md) |
+| `program/`の5本は`import _pycache_bootstrap`→`import _approot`の順で通す（置き場が先・探索先が次） | `test_faststart.py` | [§9.406](../../docs/decisions/9.406.md) |
 | `backend`から素の`from app import app`を書かない。答えは`app_module.flask_app()`の1箇所 | `test_scowner.py` | [§9.404](../../docs/decisions/9.404.md) |
 | ファイルを移すときは見張り（`pick_tests.py`・lintの対象・CI）も一緒に動かす | `test_pick.py` | [§9.404](../../docs/decisions/9.404.md) |
 | 起動画面は待機画面と`#appBoot`が**同じ意匠・同じ色**。更新の有無は同じ場所で言い分ける | `test_boot.py` | [§9.411](../../docs/decisions/9.411.md) |

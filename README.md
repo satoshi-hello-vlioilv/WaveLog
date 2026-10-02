@@ -123,9 +123,10 @@ program/                   実行するものと、その道具だけを置く
   process_manager.py         対象アプリだけを安全に停止する
   app.py                     Flask本体・一覧/測定コンテキスト/バックアップ/品質分析API
   loading.html               起動待機画面(サーバーより先に開かれる)
+  sidecar.py                 デスクトップ版の窓口(標準入出力・ポートを開かない。移行中・docs/DESKTOP_MIGRATION_DESIGN.md)
   requirements.txt           必要パッケージ
   requirements-dev.txt       開発用の道具(pyflakes等。現場の端末には要らない)
-  _pycache_bootstrap.py      .pycキャッシュをローカル領域へ逃がす(4本のいちばん最初のimport)
+  _pycache_bootstrap.py      .pycキャッシュをローカル領域へ逃がす(5本のいちばん最初のimport)
   _approot.py                その次に通す1行(リポジトリ直下をsys.pathへ足す)
 .gitignore                 直下から動かせない(gitはそのフォルダ以下にしか当てない)
 eslint.config.mjs          直下から動かせない(program/へ移すと規則が1件も当たらない)
