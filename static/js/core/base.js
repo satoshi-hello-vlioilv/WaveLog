@@ -169,6 +169,36 @@ const LOT_DSP_BASE='http://nlmfangyweb1a/LotDspWeb/#/lotdsp';
 function lotDspField(v){return String(v||'').slice(0,7).padEnd(7,' ')}
 function lotDspLinkKey(lotNo,castingNo){return lotDspField(lotNo)+'   '+lotDspField(castingNo)}
 function buildLotDspUrl(lotNo,castingNo,tab){return `${LOT_DSP_BASE}?linkkey=${encodeURIComponent(lotDspLinkKey(lotNo,castingNo))}&tab=${encodeURIComponent(tab)}`}
+/* ---------- ファイルの保存は**この2つだけ**（§9.551） ----------
+   窓（WebView2）では、窓の宛先（wavelog.localhost）から**添付で返る応答へページを移しても保存が始まらない**
+   （実測: CI の自己診断で保存の始まりが1度も来なかった）。Blob を`a[download]`で落とす道は通る（同じ自己診断で
+   名前どおり・大きさどおりに届いた）ので、中身（Python）が返すファイルも`fetch`で受け取って Blob にしてから落とす。
+   保存先は窓の既定（「ダウンロード」フォルダ・右上に案内が出る）。 */
+function saveBlob(blob,name){
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement('a');a.href=url;a.download=name;
+ document.body.append(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),4000);
+ return name;
+}
+/* `Content-Disposition`の名前。日本語は`filename*=UTF-8''…`（RFC 5987）にだけ入るので先に読む。 */
+function dispositionName(header){
+ const h=String(header||'');
+ const star=h.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
+ if(star){try{return decodeURIComponent(star[1].trim())}catch(e){WL.quiet.note('保存の名前（filename*）を読めない（素の名前へ倒す）',e)}}
+ const plain=h.match(/filename\s*=\s*"?([^";]+)"?/i);
+ return plain?plain[1].trim():'';
+}
+/* 中身が返すファイルを保存し、**保存した名前を返す**。断られたら理由を言う Error を投げる（ページを移さない）。 */
+async function saveFrom(url,fallback='download'){
+ const r=await fetch(url);
+ if(!r.ok){
+  let why='';
+  try{const j=await r.json();why=j.error||j.message||''}catch(e){WL.quiet.note('断りの本文がJSONでない（状態コードから言い直す）',e)}
+  throw new Error(why||apiErrorMessage(r.status,'',url));
+ }
+ return saveBlob(await r.blob(),dispositionName(r.headers.get('Content-Disposition'))||fallback);
+}
 function copyText(text){
  if(navigator.clipboard&&window.isSecureContext)return navigator.clipboard.writeText(text).catch(()=>copyTextFallback(text));
  copyTextFallback(text);return Promise.resolve();
@@ -3058,7 +3088,7 @@ Object.assign(window.WL,{registerView,enterView,withInternalDbSwitch,isInternalD
    ここに載せていない名前（131のうち約80）は、このファイルの中だけのもの。
    ============================================================ */
 window.$=$;window.esc=esc;window.S=S;window.api=api;window.showToast=showToast;window.markDirty=markDirty;window.confirmModal=confirmModal;window.alertModal=alertModal;window.promptModal=promptModal;window.pick=pick;window.setState=setState;window.withUserId=withUserId;window.currentConfiguredEquipment=currentConfiguredEquipment;window.fmtDim=fmtDim;window.lengthIndex=lengthIndex;window.fixedToleranceValue=fixedToleranceValue;window.currentUserId=currentUserId;window.normalizedFieldName=normalizedFieldName;
-WL.base={normalizedLot,durationMs,copyText,statusLabel,statusClass,statusShortLabel,aliases,databaseLabel,designCourseValue,actualCourseValue,residualCourseValue,equipmentIsInDesignCourse,escClosesModal,fetchWhoami,fieldFromRows,fixedMeasurementValue,formatDuration,lotKey,measurementDigits,nextPaint,normalizeCourseText,noteMeasureDevice,openLotDsp,openLotDspHome,inDesktopShell,lotDspAttrs,optionFill,qualityText,setActiveNav,setHeaderContext,setUserId,sourceField,sourceValue,toHalfWidth,ttlCache,widthSequence,bindTabs,
+WL.base={normalizedLot,durationMs,copyText,statusLabel,statusClass,statusShortLabel,aliases,databaseLabel,designCourseValue,actualCourseValue,residualCourseValue,equipmentIsInDesignCourse,escClosesModal,fetchWhoami,fieldFromRows,fixedMeasurementValue,formatDuration,lotKey,measurementDigits,nextPaint,normalizeCourseText,noteMeasureDevice,openLotDsp,openLotDspHome,inDesktopShell,saveBlob,saveFrom,lotDspAttrs,optionFill,qualityText,setActiveNav,setHeaderContext,setUserId,sourceField,sourceValue,toHalfWidth,ttlCache,widthSequence,bindTabs,
  LENGTH_SLOTS,
  /* `let` の入れ物は **getter** で載せる（値で載せると古い物が固定される）。
     `measureDirty` は外からも倒す（`records-store` が保存し終えて false に

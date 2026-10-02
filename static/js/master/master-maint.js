@@ -1521,10 +1521,13 @@
   if(out)out.onclick=()=>{
    /* サーバーが組み立てた .xlsx をそのまま落とす（`logs.py`のログ保存と
       同じ作法）。**画面側で組み立てない**——列の並びと見出しは
-      `roll_repo.IO_COLUMNS` の1箇所が持つ（書き写すと取り込みと食い違う）。 */
+      `roll_repo.IO_COLUMNS` の1箇所が持つ（書き写すと取り込みと食い違う）。
+      保存は`WL.base.saveFrom()`の1本（§9.551。窓の中ではページを移す形だと保存が始まらない）。
+      **保存できた名前を言う**——以前は成否を待たずに0.9秒後「書き出しました」と言っていた。 */
    say('書き出しています…');
-   location.href=def.endpoint+'/export';
-   setTimeout(()=>say('書き出しました（ブラウザの保存先を確認してください）。','is-ok'),900);
+   WL.base.saveFrom(def.endpoint+'/export','export.xlsx')
+    .then(n=>say(`書き出しました: <b>${esc(n)}</b>（「ダウンロード」フォルダ）`,'is-ok'))
+    .catch(e=>say('書き出せませんでした: '+esc(e.message),'is-bad'));
   };
   const pick=$('#mmXioPick'),file=$('#mmXioFile');
   if(pick&&file)pick.onclick=()=>{file.value='';file.click()};

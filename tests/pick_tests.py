@@ -250,7 +250,7 @@ G['フィルタ'] = ['test_filter', 'test_adhoc', 'test_filterio', 'test_filteru
                  'test_filtergroup', 'test_listbar']
 # §9.316: 起動の状況をアプリから取れる（`/api/boot-report`＋ログ・診断の帯）。
 # 置き場は`paths`が解決した実物を出すので、起動まわりを触ったら一緒に回す。
-G['ログ'] = ['test_logs', 'test_logview', 'test_error', 'test_bootreport']
+G['ログ'] = ['test_logs', 'test_logview', 'test_error', 'test_bootreport', 'test_saveio']
 # §9.286 ⑦: 更新履歴の書き方（印は `**`／バッククォート）と窓の作り。
 # 説明文の印を解くのは `WL.markup()` の1箇所なので、マスタの説明文を
 # 出す画面（test_hintlint / test_maint）も一緒に回す。

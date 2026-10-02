@@ -3786,8 +3786,7 @@
    const q=v=>`"${String(v).replace(/"/g,'""')}"`;
    /* BOMつき（表計算ソフトで開いたとき字化けしない） */
    const blob=new Blob(['﻿'+lines.map(r=>r.map(q).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'});
-   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name+'.csv';
-   document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+   WL.base.saveBlob(blob,name+'.csv');
    return;
   }
   const text=lines.map(r=>r.join('\t')).join('\n');

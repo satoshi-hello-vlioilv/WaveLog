@@ -87,21 +87,19 @@
       }
       return null;
     };
-    //   ① 画面で作ったファイル（Blob・a[download]）——CSV・フィルタ・列の設定・ログの書き出しの道
+    //   保存の答えは画面の WL.base.saveBlob／saveFrom の1箇所（CSV・フィルタ・列の設定・ログ・Excel の書き出しが通る道）
+    //   ① 画面で作ったファイル（Blob）
     const blob = new Blob(["WaveLog 自己診断 保存 ✓\n".repeat(100)], { type: "text/plain;charset=utf-8" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob); a.download = "wl-selftest-保存.txt";
-    document.body.append(a); a.click(); a.remove();
+    WL.base.saveBlob(blob, "wl-selftest-保存.txt");
     const s1 = await saved((x) => x.url.startsWith("blob:"));
     ok("保存: 画面で作ったファイル（Blob）が名前どおり・大きさどおりに届く", s1 && s1.success && s1.bytes === blob.size
        && /wl-selftest-保存.*\.txt$/.test(s1.path || ""), JSON.stringify(s1));
-    //   ② 中身（Python）が添付で返すファイル（Excel・日本語の名前）——Excel の書き出し・ログの保存の道
-    const x = document.createElement("a");
-    x.href = "/api/roll-master/export";
-    document.body.append(x); x.click(); x.remove();
-    const s2 = await saved((r) => r.url.includes("/api/roll-master/export"));
+    //   ② 中身（Python）が添付で返すファイル（Excel・日本語の名前は filename*）。窓の中では添付へページを移しても
+    //      保存が始まらない（§9.551 で実測）ので、saveFrom は fetch で受け取って Blob から落とす
+    const named = await WL.base.saveFrom("/api/roll-master/export", "export.xlsx");
+    const s2 = await saved((r) => r.url.startsWith("blob:") && (r.path || "").includes("ロールマスタ"));
     ok("保存: 中身が添付で返す Excel（日本語の名前）が届く", s2 && s2.success && s2.head === "504b0304"
-       && /ロールマスタ.*\.xlsx$/.test(s2.path || ""), JSON.stringify(s2));
+       && /ロールマスタ.*\.xlsx$/.test(s2.path || "") && /^ロールマスタ_.*\.xlsx$/.test(named), JSON.stringify({ named, s2 }));
 
     // 11) 印刷の書類の組み立て（帳票は見えない iframe へ書いて刷る・report-dashboard の rpPrintFrame と同じ形）
     const fr = document.createElement("iframe");

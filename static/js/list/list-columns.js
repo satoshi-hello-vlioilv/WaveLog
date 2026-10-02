@@ -1708,11 +1708,7 @@ ${detailValueHtml(virt,f)}`;
   renderIo();
  }
  function ioDownload(payload,name){
-  const blob=new Blob([JSON.stringify(payload,null,1)],{type:'application/json'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);a.download=name;
-  document.body.appendChild(a);a.click();
-  requestAnimationFrame(()=>{URL.revokeObjectURL(a.href);a.remove()});
+  WL.base.saveBlob(new Blob([JSON.stringify(payload,null,1)],{type:'application/json'}),name);
  }
  const ioSafe=t=>String(t||'').replace(/[^\w一-龠ぁ-んァ-ヶー]+/g,'_');
  async function runIo(){
