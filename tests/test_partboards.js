@@ -11,8 +11,11 @@
     ② 刃組基準値: 節の中で入力の左端が1本・打って離れると保存され「変更」の札・「既定へ」で空へ戻る
     ③ 刃組基準値: 選ぶ欄は「既定（右）」が選ばれている（保存で固定しない）
     ⑥ 刃組基準値（§9.533）: 左＝節・右＝図と欄の2ペイン。欄と図の部品は同じ鍵で光り合い、打った値で図が動く
-    ④ スペーサー: 寸法の大きい順に全部・保有をその場で直すと保存・下限を割ると橙の札と頭の数
+    ④ スペーサー: 寸法の大きい順に全部・保有をその場で直すと保存・下限の欄は無い（§9.539）
     ⑤ フィンガー: 左に材質（見本は図と同じ色）・材質を選んで幅を足すとその材質で登録される
+    ⑦ スペーサーの在庫の見通し（§9.540、利用者の選択「クリックでE-11、マウスオーバーでE-14」）:
+       札3つ・表の「次に使える」＝保有−稼働中の台車・乗せると図が浮いて表は動かない・押すと全幅で入れ替わる・
+       稼働中の台車に端数を作る寸法を全部載せると、その端数は「作れない」・保有を直すとその場で札が変わる
    後片付けは finally（作った行を消し、直した値を戻す）。 */
 const H = require('./lib/harness.js');
 const W = require('./lib/wait.js');
@@ -31,7 +34,7 @@ H.run('test_partboards: 刃組基準値・スペーサー・フィンガーの�
  await post('/api/bladeset/seed', { equipment: EQ });
  const std0 = ((await api('/api/bladeset-standard-master?equipment=' + q)).items || []).find(x => x.equipment === EQ) || null;
  const sp0 = ((await api('/api/bladeset-spacer-master?equipment=' + q)).items || []).filter(x => x.equipment === EQ);
- const madeFinger = [];
+ const madeFinger = [], madeHist = [];
  let stdMade = null;
  try {
   if (std0) await post('/api/bladeset-standard-master/delete', { id: std0.id });
@@ -149,7 +152,11 @@ H.run('test_partboards: 刃組基準値・スペーサー・フィンガーの�
   rec('⑤ 選んだ材質で幅を足すと、その材質で登録される（アルミニウム 77mm・4本）', !!nf && nf.qty === 4, JSON.stringify(nf));
   await W.until(page, () => !!document.querySelector('.bk-stock tr[data-id]'), null, { ms: 8000, what: '足した行' });
   rec('⑤ 足した行が右の表に出る', await page.evaluate(() => [...document.querySelectorAll('.bk-stock tr[data-id] th')].some(th => /^77/.test(th.textContent))));
+
+  /* ---- ⑦ スペーサーの在庫の見通し（§9.540） ---- */
+  await outlook(page, rec, sp0, madeHist);
  } finally {
+  for (const id of madeHist) { const r = await post('/api/bladeset/history/delete', { id }); if (!r || !r.ok) console.log('  [cleanup] 刃組の記録を消せない', id); }
   /* 後片付け（消せなかったら黙らない・§9.360）。 */
   for (const id of madeFinger) { const r = await post('/api/bladeset-finger-master/delete', { id }); if (!r || !r.ok) console.log('  [cleanup] フィンガーを消せない', id); }
   for (const x of sp0) await post('/api/bladeset-spacer-master/update', { id: x.id, qty: x.qty || 0, user_id: 'test' });
@@ -162,3 +169,53 @@ H.run('test_partboards: 刃組基準値・スペーサー・フィンガーの�
   }
  }
 });
+
+/* ⑦ 見本の刃組記録を2件（組み替えるB台車＝古い・稼働中のA台車＝直前）入れてから盤を開く。
+   記録は記録日時の新しい順に並ぶので、ほかの記録より必ず新しい日付にする（2099年）。
+   小数部が奇数番目（.025・.075…）の端数を作れる寸法は、フィクスチャでは 10.025 の1つだけ——
+   それを稼働中の台車に全部載せると、その端数（20通り）は次の刃組で作れない（正解はここで数える）。 */
+async function outlook(page, rec, sp0, madeHist) {
+ const odd = sp0.filter(x => x.enabled !== false && Math.round(x.size / 0.025) % 2 === 1);
+ rec('⑦ 前提: 奇数番目の端数を作れる寸法は1つ（10.025）', odd.length === 1 && odd[0].size === 10.025, odd.map(x => x.size).join('/'));
+ const s50 = sp0.find(x => x.size === 50), fine = odd[0] || { size: 10.025, qty: 0 };
+ for (const [car, at, spacer] of [['B台車', '2099-12-30 08:00', { 50: 1 }], ['A台車', '2099-12-31 08:00', { [fine.size]: fine.qty, 50: 3 }]]) {
+  const r = await post('/api/bladeset/history', { equipment: EQ, carriage: car, at, note: 'test_partboards ⑦', detail: { spacer, cond: {} }, user_id: 'test' });
+  if (r && r.id) madeHist.push(r.id);
+ }
+ rec('⑦ 見本の刃組記録を2件入れられる', madeHist.length === 2, madeHist.join(','));
+ await openBoard(page, 'bladesetFinger', '#masterMaintList .bk-item[data-bk-key]');
+ await openBoard(page, 'bladesetSpacer', '#masterMaintList .bk-sv[data-sv]');
+ const v = await page.evaluate(sz => {
+  const L = document.getElementById('masterMaintList'), cell = s => L.querySelector(`.bk-stock tr[data-id] [data-calc="free"][data-v]`) && [...L.querySelectorAll('.bk-stock tr[data-id]')]
+   .find(tr => +tr.querySelector('th').firstChild.textContent === s)?.querySelector('[data-calc="free"]')?.dataset.v;
+  return { cards: [...L.querySelectorAll('.bk-sv[data-sv]')].map(e => e.dataset.sv).join('/'), f50: cell(50), fFine: cell(sz),
+   frac: (L.querySelector('.bk-sv[data-sv="frac"]') || {}).textContent || '', legend: (L.querySelector('.bk-legend') || {}).textContent || '',
+   top: Math.round(L.querySelector('.bk-stock tbody tr[data-id]').getBoundingClientRect().top) };
+ }, fine.size);
+ rec('⑦ 札は3つ（次の刃組で使える → 作れる端数 → 使えるぶんの長さ）', v.cards === 'table/frac/len', v.cards);
+ rec('⑦ 表の「次に使える」＝保有−稼働中の台車（50mm・端数を作る寸法）',
+     +v.f50 === (s50.qty || 0) - 3 && +v.fFine === 0, JSON.stringify([v.f50, s50.qty, v.fFine]));
+ rec('⑦ 凡例が稼働中の台車とその記録を名指しする', /稼働中の台車（A台車・12\/31の記録）/.test(v.legend), v.legend.slice(0, 60));
+ rec('⑦ 端数を作る寸法を稼働中の台車に全部載せると、20通りが「作れない」', /20通りは作れない/.test(v.frac.replace(/\s+/g, '')), v.frac);
+ /* 乗せる（本物のマウス移動・§9.398）→ 図が浮く・表は動かない。 */
+ const box = await (await page.$('#masterMaintList .bk-sv[data-sv="frac"]')).boundingBox();
+ await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+ await W.until(page, () => !!document.querySelector('.wl-menu.bk-peek .bk-frac'), null, { ms: 5000, what: '浮いた端数の地図' });
+ const top2 = await page.evaluate(() => Math.round(document.querySelector('#masterMaintList .bk-stock tbody tr[data-id]').getBoundingClientRect().top));
+ rec('⑦ 札に乗せると端数の地図が浮いて出て、表は1pxも動かない', top2 === v.top, `${v.top}→${top2}`);
+ await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+ await W.until(page, () => !!document.querySelector('#masterMaintList .bk-frac.is-full'), null, { ms: 5000, what: '全幅の端数の地図' });
+ const full = await page.evaluate(() => ({ table: !!document.querySelector('#masterMaintList .bk-stock'), peek: !!document.querySelector('.wl-menu.bk-peek'),
+  on: (document.querySelector('#masterMaintList .bk-fc.is-on') || {}).dataset || {}, zero: document.querySelectorAll('#masterMaintList .bk-frac.is-full [data-n="0"]').length }));
+ rec('⑦ 押すと端数の地図が表と入れ替わる（浮いた図は閉じる）', !full.table && !full.peek, JSON.stringify(full));
+ rec('⑦ 全幅では作れないマスが20・最初に選ばれているのは作れない端数', full.zero === 20 && full.on.n === '0' && +full.on.u % 2 === 1, JSON.stringify(full.on));
+ await page.click('#masterMaintList .bk-sv[data-sv="table"]');
+ await W.until(page, () => !!document.querySelector('#masterMaintList .bk-stock tr[data-id]'), null, { ms: 5000, what: '表へ戻る' });
+ /* 保有を直すとその場で札が変わる（図と入力を結ぶ・§CLAUDE 15）。 */
+ const row = `#masterMaintList tr[data-id="${fine.id}"] [data-f="qty"]`;
+ await page.fill(row, String((fine.qty || 0) + 1));
+ await page.press(row, 'Tab');
+ await W.until(page, () => !/作れない/.test((document.querySelector('#masterMaintList .bk-sv[data-sv="frac"]') || {}).textContent || ''), null, { ms: 8000, what: '札が「作れない」をやめる' });
+ rec('⑦ 端数を作る寸法を1枚足すと、その場で「作れない」が消える（保存もされる）',
+     ((await api('/api/bladeset-spacer-master?equipment=' + q)).items || []).some(x => x.id === fine.id && x.qty === (fine.qty || 0) + 1));
+}

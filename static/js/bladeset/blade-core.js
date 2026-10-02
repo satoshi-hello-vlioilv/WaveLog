@@ -547,15 +547,85 @@
   return { out: best.out, rem: Math.max(0, +(want - best.u * FILL_STEP).toFixed(3)) };
  }
 
+ /* ---------- スペーサーの在庫の見通し（§9.540、利用者の選択 E-11＋E-14） ----------
+    盤の3つの札（次の刃組で使える／作れない端数／刃組何回ぶん）と、その図の材料。**画面を知らない**。
+    次に組み替える台車は`nextCarriage()`（直前の記録と違う台車・無ければ台車マスタの顔ぶれ）。 */
+ function nextCarriage(M) {
+  const h = M.history || [], busy = h[0] ? h[0].carriage : '';
+  const names = (M.carriages || []).map(x => String(x.name || '').trim()).filter(Boolean);
+  const seen = h.find(r => r.carriage && r.carriage !== busy);
+  return (seen && seen.carriage) || names.find(n => n !== busy) || busy || names[0] || '';
+ }
+ /* 長さ`len`の区間を、在庫が尽きるまで何か所ちょうどに作れるか（上限`cap`）。積みは刃組ガイダンスと同じ
+    `buildFiller`→`fillWith`、在庫を超える寸法は外して組み直す（`planZones`の`take`と同じ手順）。 */
+ function fillCount(stock, len, cap) {
+  const left = new Map(stock.map(x => [x.sz, x.qty])), blocked = new Set();
+  let n = 0, first = null, table = null, sig = null;
+  while (n < cap) {
+   const items = [...left].filter(([sz, q]) => q > 0 && !blocked.has(sz)).map(([sz, qty]) => ({ sz, qty }));
+   const key = items.map(x => x.sz).join(',');
+   if (key !== sig) { table = buildFiller(items, len + 1); sig = key; }
+   const got = fillWith(table, len);
+   if (got.rem > 1e-9 || !got.out.length) break;
+   const over = got.out.find(([sz, c]) => c > (left.get(sz) || 0));
+   if (over) { blocked.add(over[0]); continue; }
+   got.out.forEach(([sz, c]) => left.set(sz, left.get(sz) - c));
+   if (!first) first = got.out;
+   n++;
+  }
+  return { n, first };
+ }
+ /* 端数の地図は「OUTLOOK_BASE mm台の区間」で数える（刻み`FILL_STEP`ごと・小数部の数だけマスを持つ）。
+    整数の寸法は十分にあるので、効くのは小数部を作る細かい寸法——長さを変えても答えはほぼ変わらない。 */
+ const OUTLOOK_BASE = 50, OUTLOOK_CAP = 40;
+ function fracCells(rows) {
+  const free = rows.map(r => ({ sz: r.size, qty: r.free })), all = rows.map(r => ({ sz: r.size, qty: r.total }));
+  return Array.from({ length: Math.round(1 / FILL_STEP) }, (_, u) => {
+   const len = +(OUTLOOK_BASE + u * FILL_STEP).toFixed(3);
+   const f = fillCount(free, len, OUTLOOK_CAP), a = fillCount(all, len, OUTLOOK_CAP);
+   /* 保有ぜんぶで組める積みのうち、次の刃組で使える数が足りない寸法（作れない理由）。 */
+   const short = (a.first || []).filter(([sz, c]) => ((rows.find(r => r.size === sz) || {}).free || 0) < c).map(([sz]) => sz);
+   return { u, label: (u * FILL_STEP).toFixed(3).slice(1), free: f.n, total: a.n, stack: f.first || a.first || [], short };
+  });
+ }
+ function spacerOutlook(M, IX) {
+  const car = nextCarriage(M), load = carriageLoad(M, car);
+  const rows = [...IX.spacerStock.entries()].sort((a, b) => b[0] - a[0]).map(([sz, x]) => {
+   const s = stockSplit(x.qty, recCount(load.busy, 'spacer', sz), recCount(load.onCar, 'spacer', sz));
+   return { size: sz, use: x.use || '', total: s.total, busy: Math.min(s.busy, s.total), onCar: s.onCar,
+            free: s.free, shelf: s.free - s.onCar };
+  });
+  const add = k => rows.reduce((a, r) => a + r[k], 0), lenOf = (rs, k) => rs.reduce((a, r) => a + r.size * r[k], 0);
+  const uses = [...new Set(rows.map(r => r.use))];
+  const rec = r => (r ? { carriage: r.carriage || '', at: r.at || '' } : null);
+  return { carriage: car, busy: rec(load.busy), onCar: rec(load.onCar), rows,
+           sum: { total: add('total'), busy: add('busy'), onCar: add('onCar'), shelf: add('shelf'), free: add('free') },
+           frac: { base: OUTLOOK_BASE, cap: OUTLOOK_CAP, cells: fracCells(rows) },
+           len: { perSet: 2 * (num(M.P.arborLen) || 0), free: lenOf(rows, 'free'), total: lenOf(rows, 'total'),
+                  byUse: uses.map(u => { const rs = rows.filter(r => r.use === u);
+                   return { use: u, free: lenOf(rs, 'free'), total: lenOf(rs, 'total') }; }) } };
+ }
+
  /* 部材ごとの「いま使える数」。
     ラインは2台の台車を交互に使う。直前の刃組はラインで稼働中なので、そこに
     載っている部材は外せない＝使えない。いま組み替える台車（2回前の構成）に
     載っている部材は、そのまま使えるうえに棚から運ぶ手間もないので優先する。 */
- function stockPlan(st, M, IX) {
-  const h = M.history || [], busy = h[0] || {};
+ /* 台車の載り方（§9.540）。**稼働中＝直前の記録**（外せない）、**組み替える台車に載っている＝その台車の
+    （直前を除く）いちばん新しい記録**（そのまま使える）。刃組ガイダンス（`stockPlan`）とスペーサーの盤
+    （`spacerOutlook`）が**この1箇所**を読む——2つ持つと「盤では使えるのにガイダンスでは足りない」が起きる。 */
+ function carriageLoad(M, carriage) {
+  const h = M.history || [];
   let onCar = null;
-  for (let i = 1; i < h.length; i++) if (h[i].carriage === st.carriage) { onCar = h[i]; break; }
-  const at = (rec, kind, key) => ((rec && rec.detail && rec.detail[kind] && rec.detail[kind][key]) || 0);
+  for (let i = 1; i < h.length; i++) if (h[i].carriage === carriage) { onCar = h[i]; break; }
+  return { busy: h[0] || null, onCar };
+ }
+ const recCount = (rec, kind, key) => ((rec && rec.detail && rec.detail[kind] && rec.detail[kind][key]) || 0);
+ /* 1つの部材の内訳。`free`＝次の刃組で使える数（保有−稼働中）、`onCar`＝そのうち組み替える台車に載っている数。 */
+ const stockSplit = (total, b, c) => ({ total, busy: b, onCar: Math.min(c, Math.max(0, total - b)),
+                                        free: Math.max(0, total - b) });
+ function stockPlan(st, M, IX) {
+  const h = M.history || [], load = carriageLoad(M, st.carriage), busy = load.busy || {}, onCar = load.onCar;
+  const at = recCount;
   const mat = fingerMaterial(st, M);
   /* 記録のフィンガーは**同じ材質のときだけ**数える（材質の無い古い記録は既定の材質）。 */
   const finAt = (rec, sz) => (rec && ((rec.detail || {}).fingerMaterial || fingerMatDefault(M)) === mat
@@ -563,19 +633,16 @@
   const spacer = new Map(), ring = new Map(), finger = new Map(), lube = new Map();
   IX.spacerStock.forEach((x, sz) => {
    const total = x.qty, b = at(busy, 'spacer', sz), c = at(onCar, 'spacer', sz);
-   spacer.set(sz, { total, busy: b, onCar: Math.min(c, Math.max(0, total - b)),
-                    free: Math.max(0, total - b) });
+   spacer.set(sz, stockSplit(total, b, c));
   });
   IX.widthsByOd.forEach((ws, od) => ws.forEach(w => {
    const k = `${od}|${w.sz}`, total = w.qty;
    const b = at(busy, 'ring', k), c = at(onCar, 'ring', k);
-   ring.set(k, { total, busy: b, onCar: Math.min(c, Math.max(0, total - b)),
-                 free: Math.max(0, total - b) });
+   ring.set(k, stockSplit(total, b, c));
   }));
   fingerWidthsOf(IX, mat).forEach(w => {
    const total = w.qty, b = finAt(busy, w.sz), c = finAt(onCar, w.sz);
-   finger.set(w.sz, { total, busy: b, onCar: Math.min(c, Math.max(0, total - b)),
-                      free: Math.max(0, total - b) });
+   finger.set(w.sz, stockSplit(total, b, c));
   });
   /* 潤滑リング（§9.455）。数え方はゴムリングと同じ——稼働中の台車に載っている
      ぶんは使えない。鍵は幅（記録の`detail.lube`と同じ）。 */
@@ -583,8 +650,7 @@
    const k = String(x.width), cur = lube.get(k);
    const total = (cur ? cur.total : 0) + x.qty;
    const b = at(busy, 'lube', k), c = at(onCar, 'lube', k);
-   lube.set(k, { total, busy: b, onCar: Math.min(c, Math.max(0, total - b)),
-                 free: Math.max(0, total - b) });
+   lube.set(k, stockSplit(total, b, c));
   });
   const sig = [st.carriage, busy.at || '-', onCar ? onCar.at : '-',
                M.spacers.length, M.rings.length, M.fingers.length, mat].join('|');
@@ -2145,6 +2211,7 @@
   stripDesign, designByParent, condOf, sameCond, seedFromCond,
   pickCtx, bladePickCtx, tableFields, bladeChoice, tableReason, pickWord, bladeCategory, condHits, rowHits, condGroups, cellDead, cellNumSet, numSet, ruleGrid, ruleEffect, parseCell, cellText, cellSay, selectable, bladeWear, wearDue, bladeStock, WEAR_NEAR, firstRule, holdPick, holdReason, rowText,
   expand, axisRun, materialRun, matShift, spread, tierOf,
+  carriageLoad, nextCarriage, fillCount, spacerOutlook,
   METHOD_NAME, METHOD_DESC, ALIGN_NAME, FILL_STEP
  };
 })();
