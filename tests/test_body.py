@@ -205,27 +205,24 @@ def main():
         Body({'a': str}, {'a': '1', 'user_id': 'u', 'pcName': 'p'}, strict=True).a == '1')
 
     # ---- 4) 網そのものが素通りしないこと ----
-    probe = ROUTES / '_body_probe.py'
-    try:
-        # 3通りの読み方すべてで「宣言に無い」を数えられること。
-        # ①その場で読む ②一度受けて下請けへ渡す ③その場で下請けへ渡す
-        # ——②③は呼び先まで辿らないと、④の呼び名（`text_or`）は展開しないと
-        # 素通りする（どちらも実際に素通りしていた）。
-        probe.write_text(
-            'def _save(x):\n return text_or(x, "c")\n'
-            'def r1():\n x=body({"a": str})\n return x.get("b")\n'
-            'def r2():\n x=body({"a": str})\n return _save(x)\n'
-            'def r3():\n return _save(body({"a": str}))\n', encoding='utf-8')
-        bad = {}
-        for name, (declared, read) in body_calls(ast.parse(probe.read_text(encoding='utf-8'))).items():
-            bad[name] = sorted(read - declared - set(IDENTITY_KEYS))
-        rec('網が「その場で読んだ宣言に無い鍵」を数えている', bad.get('r1') == ['b'], bad.get('r1'))
-        rec('網が「下請けへ渡した先」まで辿る（f(x)）',
-            bad.get('r2') == ['c', 'cText'], bad.get('r2'))
-        rec('網が「その場で下請けへ渡す」も辿る（f(body(...))）',
-            bad.get('r3') == ['c', 'cText'], bad.get('r3'))
-    finally:
-        probe.unlink(missing_ok=True)
+    # 試しの源は**文字列のまま**読む（本物の置き場`backend/routes/`へ書かない・§9.504）。以前はファイルを書いて消して
+    # いたので、並列で回る`test_ddllint`がその一瞬に一覧を取ると、読む前に消えて止まった（§9.549）。
+    # 3通りの読み方すべてで「宣言に無い」を数えられること。
+    # ①その場で読む ②一度受けて下請けへ渡す ③その場で下請けへ渡す
+    # ——②③は呼び先まで辿らないと、④の呼び名（`text_or`）は展開しないと
+    # 素通りする（どちらも実際に素通りしていた）。
+    probe_src = ('def _save(x):\n return text_or(x, "c")\n'
+                 'def r1():\n x=body({"a": str})\n return x.get("b")\n'
+                 'def r2():\n x=body({"a": str})\n return _save(x)\n'
+                 'def r3():\n return _save(body({"a": str}))\n')
+    bad = {}
+    for name, (declared, read) in body_calls(ast.parse(probe_src)).items():
+        bad[name] = sorted(read - declared - set(IDENTITY_KEYS))
+    rec('網が「その場で読んだ宣言に無い鍵」を数えている', bad.get('r1') == ['b'], bad.get('r1'))
+    rec('網が「下請けへ渡した先」まで辿る（f(x)）',
+        bad.get('r2') == ['c', 'cText'], bad.get('r2'))
+    rec('網が「その場で下請けへ渡す」も辿る（f(body(...))）',
+        bad.get('r3') == ['c', 'cText'], bad.get('r3'))
 
 
 if __name__ == '__main__':

@@ -41,7 +41,9 @@
 import ast
 import importlib
 import pathlib
+import shutil
 import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))       # どこから回しても `backend` を引けるように
@@ -83,25 +85,27 @@ def blueprints_in(tree):
                if isinstance(n, ast.Call) and getattr(n.func, 'id', '') == 'Blueprint')
 
 
-def scan(paths):
+def scan(paths, root=ROOT):
+    """`root`はリポジトリの根（網の試しは一時の置き場を渡す・§9.504）。"""
+    routes, masters = root / 'backend' / 'routes', root / 'backend' / 'routes' / 'masters'
     big, own = [], []
     for f in paths:
         tree = ast.parse(f.read_text(encoding='utf-8'))
         n = routes_in(tree)
-        cap = PINNED.get(f.name, (LIMIT, ''))[0] if f.parent == ROUTES else LIMIT
+        cap = PINNED.get(f.name, (LIMIT, ''))[0] if f.parent == routes else LIMIT
         if n > cap:
-            big.append(f'{f.relative_to(ROOT)}:{n}ルート（上限{cap}）')
-        if f.parent == MASTERS and f.name != '_base.py' and blueprints_in(tree):
-            own.append(str(f.relative_to(ROOT)))
+            big.append(f'{f.relative_to(root)}:{n}ルート（上限{cap}）')
+        if f.parent == masters and f.name != '_base.py' and blueprints_in(tree):
+            own.append(str(f.relative_to(root)))
     return big, own
 
 
-def unresolved(paths):
+def unresolved(paths, root=ROOT):
     """解決できない相対import。**関数の中のものまで見る**——読み込み時には
     走らないので、`import backend.routes.masters` が通っても残っている。"""
     bad = []
     for f in paths:
-        pkg = 'backend.' + '.'.join(f.relative_to(ROOT / 'backend').parts[:-1])
+        pkg = 'backend.' + '.'.join(f.relative_to(root / 'backend').parts[:-1])
         pkg = pkg.rstrip('.')
         for n in ast.walk(ast.parse(f.read_text(encoding='utf-8'))):
             if not isinstance(n, ast.ImportFrom) or n.level == 0:
@@ -111,7 +115,7 @@ def unresolved(paths):
             try:
                 m = importlib.import_module(mod)
             except Exception as e:
-                bad.append(f'{f.relative_to(ROOT)}:{n.lineno} {mod} {e.__class__.__name__}')
+                bad.append(f'{f.relative_to(root)}:{n.lineno} {mod} {e.__class__.__name__}')
                 continue
             for a in n.names:
                 if hasattr(m, a.name):
@@ -119,7 +123,7 @@ def unresolved(paths):
                 try:
                     importlib.import_module(mod + '.' + a.name)
                 except Exception:
-                    bad.append(f'{f.relative_to(ROOT)}:{n.lineno} {mod}.{a.name} が無い')
+                    bad.append(f'{f.relative_to(root)}:{n.lineno} {mod}.{a.name} が無い')
     return bad
 
 
@@ -151,20 +155,24 @@ def main():
     rec('相対importが1つ残らず解決する（関数の中まで）', not bad, '; '.join(bad[:6]))
 
     # ---- 網そのものが素通りしないこと（§9.200） ----
-    probe = MASTERS / '_split_probe.py'
+    # 試しのファイルは**一時の置き場**に同じ形の木を作って置く（本物の`backend/routes/masters/`へ書かない・§9.504）。
+    # 本物へ書くと、並列で`backend`を歩く網（`test_ddllint`など）が一瞬だけ在るファイルを掴む（§9.549）。
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix='wl_split_'))
+    probe = tmp / 'backend' / 'routes' / 'masters' / '_split_probe.py'
     try:
+        probe.parent.mkdir(parents=True)
         body = 'from flask import Blueprint\nbp2=Blueprint("x",__name__)\n'
         body += 'def g():\n from ..repositories import master_repo\n return master_repo\n'
         body += ''.join(f'@bp.get("/a{i}")\ndef f{i}():pass\n' for i in range(LIMIT + 1))
         probe.write_text(body, encoding='utf-8')
-        big2, own2 = scan([probe])
+        big2, own2 = scan([probe], tmp)
         rec('網が太った段と自前のBlueprintを実際に数える',
             bool(big2) and bool(own2), (big2, own2))
         # 段が1つ深いので `..repositories` は届かない＝この分割で36件あった形
         rec('網が「1つ足りない相対import」を数える（関数の中でも）',
-            bool(unresolved([probe])), unresolved([probe]))
+            bool(unresolved([probe], tmp)), unresolved([probe], tmp))
     finally:
-        probe.unlink(missing_ok=True)
+        shutil.rmtree(tmp, ignore_errors=True)  # 一時の置き場ごと片付ける
 
 
 if __name__ == '__main__':
