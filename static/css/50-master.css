@@ -1174,6 +1174,15 @@
 /* §9.220 ②③。盤の上で「初期値がある／手打ちできる」が分かるようにする。 */
 .op-chip-initial{background:var(--surface-3);color:var(--ink-2)}
 .op-chip-free{background:var(--warn-bg);color:var(--warn-fg)}
+.op-chip-issue{background:var(--look-red-pale);color:var(--look-red-dark)}
+/* §9.541 F-5。盤のタイルの範囲の1行。端が開いているか（上下限なし）は記号が言う（├…┤／├…→）。 */
+.op-tile-range{display:flex;align-items:center;gap:var(--space-1);font-size:var(--fs-micro);color:var(--ink-3);
+  font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.op-tile-range i{flex:0 0 auto;width:28px;height:6px;border:1px solid var(--look-green);border-width:0 2px;
+  background:var(--look-green-pale)}
+.op-tile-range[data-lo="0"] i{border-left-color:transparent;background:linear-gradient(90deg,transparent,var(--look-green-pale) 45%)}
+.op-tile-range[data-hi="0"] i{border-right-color:transparent;background:linear-gradient(90deg,var(--look-green-pale) 55%,transparent)}
+.op-tile-range[data-lo="0"][data-hi="0"] i{background:linear-gradient(90deg,transparent,var(--look-green-pale),transparent)}
 /* 出どころのチップ（§9.234 ⑦）。カードの面と同じ色でそろえる。 */
 .op-chip-auto{background:var(--computed-bg);color:var(--computed-fg)}
 .op-chip-auto[data-op-auto="preset"]{
@@ -1363,6 +1372,47 @@
 .op-form-nums{gap:var(--space-2)}
 .op-form-nums label{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm)}
 .op-form-nums input{width:var(--w-xs)}
+/* §9.541 F-2 試しに打つ。字（記録される値）→ 数直線（打った値 → 記録される値の矢印）→ 食い違いの札。
+   緑＝そのまま入る・斜線＝端まで戻す・縦線＝刻み・◆＝初期値。欄に入ると図の同じ所が光る（`.is-hot`）。 */
+/* 列（flexの縦積み）の中で**縮ませない**——幅を%で決めたSVGは縮む下限が0なので、行が図より低く潰れて次の行に重なる。 */
+.op-form-row.op-try-row{flex:0 0 auto}
+/* 器は縦積み（block）。横並び（flex の折り返し）の中だと、行の高さを決める時点で%幅のSVGの高さが数えられない。 */
+.op-try-row>.op-form-ctl.op-try{display:flex;flex-direction:column;flex-wrap:nowrap;align-items:stretch;width:100%}
+.op-try{gap:var(--space-1);min-width:0}
+.op-try-in input{width:var(--w-sm)}
+#opdTryOut{display:flex;flex-direction:column;gap:var(--space-1);min-width:0}
+.op-try-say{font-size:var(--fs-sm);color:var(--ink-2)}
+.op-try-say b{font-size:var(--fs-base-sm);color:var(--ink);font-variant-numeric:tabular-nums}
+.op-try-say.is-bad{color:var(--look-red-dark);font-weight:700}
+.op-try-svg{display:block;width:100%;height:auto;overflow:visible}
+.op-try-svg text{font-size:var(--fs-micro);fill:var(--ink-2);font-variant-numeric:tabular-nums}
+.op-try-ok{fill:var(--look-green-pale);stroke:var(--look-green)}
+.op-try-out{fill:url(#opTryHatch)}
+.op-try-hb{fill:var(--look-red-pale)} .op-try-hl{stroke:var(--look-red);stroke-width:1.2}
+.op-try-tick{stroke:var(--look-green-dark);stroke-width:1}
+.op-try-axis{stroke:var(--ink-3);stroke-width:1.2}
+.op-try-end{stroke:var(--ink-2);stroke-width:1.5}
+.op-try-lab{font-weight:700}
+.op-try-init{fill:var(--look-violet);stroke:var(--surface)}
+.op-try-arr{fill:none;stroke:var(--look-green-dark);stroke-width:1.6}
+.op-try-arr.is-bad{stroke:var(--look-red)}
+.op-try-ab{fill:var(--look-red)} .op-try-ag{fill:var(--look-green-dark)}
+.op-try-svg .op-try-mk{fill:var(--look-green-dark);font-weight:700}
+.op-try-svg .op-try-mk.is-bad{fill:var(--look-red-dark)}
+.op-try-svg .op-try-mk.is-typed{font-size:var(--fs-sm);text-decoration:underline}
+.op-try-svg .is-hot.op-try-end,.op-try-svg .is-hot.op-try-tick{stroke:var(--teal);stroke-width:3}
+.op-try-svg .is-hot.op-try-lab{fill:var(--teal-dark)}
+.op-try-svg .is-hot.op-try-init{stroke:var(--teal);stroke-width:2}
+.op-try-key{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-1) var(--space-2);font-size:var(--fs-micro);color:var(--muted)}
+.op-try-key i{display:inline-block;width:.9em;height:.9em;border-radius:var(--radius-xs);vertical-align:-1px}
+.op-try-key i.is-ok{background:var(--look-green-pale);box-shadow:inset 0 0 0 1px var(--look-green)}
+.op-try-key i.is-out{background:var(--look-red-pale);box-shadow:inset 0 0 0 1px var(--look-red)}
+.op-try-key i.is-tick{width:2px;background:var(--look-green-dark)}
+.op-try-key i.is-init{background:var(--look-violet);transform:rotate(45deg);width:.6em;height:.6em}
+.op-try-issues{display:flex;flex-direction:column;gap:2px}
+.op-try-issue{text-align:left;border:0;border-radius:var(--radius-xs);padding:2px var(--space-2);cursor:pointer;
+  background:var(--look-red-pale);color:var(--look-red-dark);font:inherit;font-size:var(--fs-sm);font-weight:700}
+.op-try-issue:hover{text-decoration:underline}
 /* 上下限の出どころ（§9.231 ②）。**出どころと案内は縦に組む**——「設備
    マスタ 最大ライン速度」と「テスト設備Aのいまの値は 350 m/min」は
    1つのことなので、横に離すと目が往復する。器の幅は選択肢の長さから

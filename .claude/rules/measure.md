@@ -1,4 +1,4 @@
-# 測定画面（100件）
+# 測定画面（103件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 打った値の整え方は`WL.opData.settleValue()`の1箇所（マイナス→刻みで丸め→小数桁→上下限）。小数桁が空なら1桁（`ruleText()`と同じ） | `test_oprange.js` | [§9.541](../../docs/decisions/9.541.md) |
+| 数の決まりの食い違いは`WL.opData.ruleIssues()`の1箇所（盤の札・設定窓・初期値の注意が読む）。止めずに言う | `test_oprange.js` | [§9.541](../../docs/decisions/9.541.md) |
+| 設定窓の「試しに打つ」は打っている途中の値で描く。欄に入ると図の同じ所が光り、札を押すと直す欄へ。初期値の食い違いは1か所だけ | `test_oprange.js` | [§9.541](../../docs/decisions/9.541.md) |
 | 公差の答えは`WL.tolerance`の登録表。描いたあとに足すのは`WL.measureHooks`へ登録し、被せない | `test_patchlint.py`・`test_tolscale.js` | [§9.348](../../docs/decisions/9.348.md) |
 | 備考は**列ではなく行**（実測58px→693px）。既定は畳む。畳みは3値（`prtFoldDefault()`） | `test_msteps.js` | [§9.397](../../docs/decisions/9.397.md) |
 | 書くことが増えたら（異常のエッジ形状）**手で畳んだ状態を手放す** | `test_msteps.js` | [§9.397](../../docs/decisions/9.397.md) |

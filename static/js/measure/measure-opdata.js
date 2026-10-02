@@ -228,39 +228,86 @@
      データとして残る。整え方（桁・上下限・見せ方）は同じ道を通す。 */
   const keep=v=>{if(!def.preview)remember(def.name,v)};
   if(!isNumeric(def.type)){keep(rawText(el,el.value));return}
-  const raw=rawText(el,el.value).trim();
-  if(raw===''||raw==='-'||raw==='.'){el.value='';keep('');say(note,'');return}
+  const r=settleValue(rawText(el,el.value),def);
+  if(r.out===null){el.value='';keep('');say(note,r.msgs.join(' ／ '));return}
+  if(r.out===''){el.value='';keep('');say(note,'');return}
+  /* **記録へ入るのは`out`（素の値）／画面に出るのは見せ方を当てた形**。 */
+  putValue(el,r.out);
+  keep(r.out);
+  say(note,r.msgs.join(' ／ '));
+ }
+ /* ---------- 打った値を整える（計算だけ・§9.541で`settle()`から切り出した） ----------
+    順は ①マイナスを外す（正の型）→ ②刻みで丸め（§9.307）→ ③小数桁 → ④上下限まで戻す。
+    **測定画面の`settle()`と設定窓の試し打ち（§9.541 F-2）が同じこの1本を読む**——2つ持つと、
+    窓で確かめた行方と測定画面で実際に入る値が食い違う。`steps`＝段ごとの前後（図が読む）、
+    `msgs`＝直したことの字（§CLAUDE 6 黙って値を変えない）、`out`＝記録される字（''＝空・null＝読めない）。 */
+ const decOf=def=>isInteger(def.type)?0:(Number.isFinite(Number(def.decimals))&&def.decimals!==null&&def.decimals!==''?Number(def.decimals):1);
+ const has=v=>v!==null&&v!==undefined&&v!=='';
+ function settleValue(rawIn,def){
+  const raw=String(rawIn==null?'':rawIn).trim();
+  if(raw===''||raw==='-'||raw==='.')return {out:'',steps:[],msgs:[]};
   let n=Number(raw);
-  if(!Number.isFinite(n)){el.value='';keep('');say(note,'数字として読めなかったので消しました');return}
-  const msgs=[];
-  if(isPositive(def.type)&&n<0){n=Math.abs(n);msgs.push('マイナスは入りません')}
+  if(!Number.isFinite(n))return {out:null,steps:[],msgs:['数字として読めなかったので消しました']};
+  const msgs=[],steps=[];
+  const step=(key,label,from,to)=>steps.push({key,label,from,to,acted:from!==to});
+  if(isPositive(def.type)){
+   const t=n<0?Math.abs(n):n;step('sign','マイナスを外す',n,t);
+   if(n<0)msgs.push('マイナスは入りません');n=t;
+  }
   /* ---------- 入力値の丸め（§9.307、利用者の指摘） ----------
-     「『操業データ項目』の編集内容の中に数値データが選ばれたときに
-      ステップを決めるところで編集可能」——**単位は「刻み」（`def.step`）**で、
-     向きだけを`[丸め方]`が持つ。**専用のマスタは作らない**（重複していた）。
-     **計算は`WL.measureRound`の1箇所**（§9.163。測定表・丈別データと同じ）。
-     **直したことは画面に書く**（§CLAUDE 6）——黙って値が変わると打ち間違いに
-     気づけない。**打っている最中は当てない**（ここは欄を離れたときの道）。 */
+     **単位は「刻み」（`def.step`）**で、向きだけを`[丸め方]`が持つ。
+     **計算は`WL.measureRound`の1箇所**（§9.163。測定表・丈別データと同じ）。 */
   if(def.roundMode&&Number(def.step)>0&&window.WL&&WL.measureRound){
    const r=Number(WL.measureRound.by(n,Number(def.step),def.roundMode));
-   if(Number.isFinite(r)&&r!==n){n=r;msgs.push(`${def.step} 刻みで${def.roundMode}ました`)}
-   else if(Number.isFinite(r))n=r;
+   if(Number.isFinite(r)){
+    step('round',`${def.step} 刻みで${def.roundMode}`,n,r);
+    if(r!==n)msgs.push(`${def.step} 刻みで${def.roundMode}ました`);
+    n=r;
+   }
   }
-  const dec=isInteger(def.type)?0:(Number.isFinite(Number(def.decimals))?Number(def.decimals):1);
+  const dec=decOf(def);
   const fixed=isInteger(def.type)?String(Math.round(n)):n.toFixed(dec);
-  if(def.min!==null&&def.min!==undefined&&Number(fixed)<Number(def.min)){
+  step('dec',isInteger(def.type)?'整数':`小数${dec}桁`,n,Number(fixed));
+  const before=Number(fixed);
+  if(has(def.min)&&Number(fixed)<Number(def.min)){
    n=Number(def.min);msgs.push(`下限 ${def.min} まで戻しました`);
-  }else if(def.max!==null&&def.max!==undefined&&Number(fixed)>Number(def.max)){
+  }else if(has(def.max)&&Number(fixed)>Number(def.max)){
    n=Number(def.max);msgs.push(`上限 ${def.max} まで戻しました`);
   }else{
    n=Number(fixed);
   }
+  step('limit',has(def.min)||has(def.max)?'上下限':'上下限（決めていない）',before,n);
   const out=isInteger(def.type)?String(Math.round(n)):Number(n).toFixed(dec);
   if(out!==raw&&!msgs.length)msgs.push(`小数${dec}桁へそろえました`);
-  /* **記録へ入るのは`out`（素の値）／画面に出るのは見せ方を当てた形**。 */
-  putValue(el,out);
-  keep(out);
-  say(note,msgs.join(' ／ '));
+  return {out,n:Number(out),steps,msgs};
+ }
+ /* ---------- 数の決まりの食い違い（§9.541 F-5、利用者の選択） ----------
+    設定どうしが噛み合わず、**打った値が思ったのと違う値になる**組み合わせ。答えはこの1箇所
+    （設定窓の試し打ちの下・盤のタイルの札・初期値の知らせが同じ答えを読む）。`def`＝**いま効いている**上下限を
+    載せた写し（マスタの`opRuleDef()`）。`field`＝直す欄の鍵（設定窓の欄へ連れて行く）。 */
+ function ruleIssues(def){
+  if(!def||!isNumeric(def.type))return [];
+  const out=[],dec=decOf(def),lo=has(def.min)?Number(def.min):null,hi=has(def.max)?Number(def.max):null;
+  const st=Number(def.step)>0?Number(def.step):null;
+  if(lo!==null&&hi!==null&&lo>hi)out.push({key:'minmax',field:'min',text:`最小 ${lo} が最大 ${hi} より大きい（どの値も上下限へ戻されます）`});
+  if(isPositive(def.type)&&lo!==null&&lo<0)out.push({key:'sign',field:'min',text:`正の型なのに最小が ${lo}（マイナスは打っても外すので、0より下は入りません）`});
+  /* 刻みを小数桁で表せない（0.05 刻みで小数1桁など）——丸めた段が桁でまた動く。 */
+  if(st!==null&&def.roundMode&&Math.abs(st*Math.pow(10,dec)-Math.round(st*Math.pow(10,dec)))>1e-9)
+   out.push({key:'stepdec',field:'step',text:`刻み ${st} を${dec?`小数${dec}桁`:'整数'}で表せません（丸めた段が桁でまた動きます）`});
+  /* 上下限が刻みの段に無い——戻した値が刻みから外れる。 */
+  if(st!==null&&def.roundMode){
+   const off=v=>v!==null&&Math.abs(v/st-Math.round(v/st))>1e-9;
+   if(off(lo))out.push({key:'grid',field:'min',text:`最小 ${lo} は ${st} 刻みの段に無い（戻した値が刻みから外れます）`});
+   if(off(hi))out.push({key:'grid',field:'max',text:`最大 ${hi} は ${st} 刻みの段に無い（戻した値が刻みから外れます）`});
+  }
+  const init=String(def.initial==null?'':def.initial).trim();
+  if(init){
+   const r=settleValue(init,def);
+   if(r.out===null)out.push({key:'initial',field:'initial',text:`初期値「${init}」は数として読めません`});
+   else if(r.out!==''&&Number(r.out)!==Number(init))
+    out.push({key:'initial',field:'initial',text:`初期値 ${init} は打つと ${r.out} に直されます（${r.msgs.join('・')}）`});
+  }
+  return out;
  }
  function say(note,text){
   if(!note)return;
@@ -3641,7 +3688,7 @@
                （`measure-view.js`）に置き場の判定まで書かせると、
                項目が増えるたびに同じ判定が増える。 */
             sourceNotePlace,
-            syncAutoOpen,syncWidgets,previewWidget,ruleText,
+            syncAutoOpen,syncWidgets,previewWidget,ruleText,settleValue,ruleIssues,
             /* 親子の絞り込み（§9.306）。**網から通せるように出す**
                ——`change`は器の中の`<select>`から飛ぶので、実機と同じ道
                （親を選ぶ→子が絞られる）を1本で確かめられるようにする。 */

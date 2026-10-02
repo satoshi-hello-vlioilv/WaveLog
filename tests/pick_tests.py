@@ -77,7 +77,7 @@ G['一覧'] = ['test_nav', 'test_navwords', 'test_popmenu', 'test_listcache', 't
              'test_listbar']
 # 操業データ(§9.215)は測定画面のカード。マスタ管理からも触るので「マスタ」群。
 G['操業データ'] = ['test_opdata', 'test_opui', 'test_msteps', 'test_maint', 'test_crudroutes',
-                   'test_opchoice', 'test_oplimit', 'test_opmother', 'test_opunit',
+                   'test_opchoice', 'test_oplimit', 'test_oprange', 'test_opmother', 'test_opunit',
                    # §9.242 ④: ③「記録した値」も操業データ項目マスタの行から作る
                    'test_opauto', 'test_recvalues',
                    # §9.243: 「記録した値」の配置をD&Dで組む専用のマスタ

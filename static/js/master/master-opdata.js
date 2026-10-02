@@ -31,6 +31,8 @@
     行かせない（利用者の言う「登録の負荷」の正体）。
     ================================================================ */
  const opState={equipment:'',items:[],
+                /* 設定窓の「試しに打つ」の値（§9.541 F-2）。窓を組み直しても残す。 */
+                tryRaw:'',tryHot:'',
                 /* 未保存の変更を持つ項目のid（§9.361）。再読み込みで
                    その1件だけ上書きしないために使う。 */
                 dirty:'',types:[],places:['準備','入力内容'],
@@ -420,6 +422,8 @@
    +(w!=='プルダウン'?`<b class="op-chip op-chip-widget">${esc((OP_WIDGET_NOTE[w]||{}).icon||'')} ${esc(opWidgetLabel(x,w))}</b>`:'')
    +(x.initial?`<b class="op-chip op-chip-initial">初期 ${esc(x.initial)}</b>`:'')
    +(x.freeText?'<b class="op-chip op-chip-free">手打ち可</b>':'')
+   /* §9.541 F-5。数の決まりの食い違いは**字と件数**で言う（中身は札の title と設定窓の試し打ちの下）。 */
+   +((iss=>iss.length?`<b class="op-chip op-chip-issue" title="${esc(iss.map(i=>i.text).join('\n'))}">⚠ 食い違い ${iss.length}</b>`:'')(opRuleIssues(x)))
    /* **色だけで伝えない**（§3）——この設備だけの置き場かどうかは文字で言う。 */
    +(opState.equipment&&x.layoutFrom===opState.equipment
        ?`<b class="op-chip op-chip-scope">この設備だけ</b>`:'')
@@ -430,6 +434,7 @@
         ?((x.autoValueLabel||x.autoValue)+(x.autoValueKnown===false?'（引けません）':''))
         :(x.builtin?'—':x.type||''))}</span>`
    +`<span class="op-tile-span">${span}/${opState.gridCols}</span></span>`
+   +opRangeHtml(x)
    +`<span class="op-tile-gear" aria-hidden="true">設定</span></div>`;
  }
  /* 群の幅の選択肢（§9.226 ③）。**粗く4段だけ**——細かくすると左端の
@@ -1599,23 +1604,125 @@
   return `${hit.label}から引きます。${eq}のいまの値は ${v}${hit.unit?' '+hit.unit:''} です。`;
  }
  function opInitialRangeNote(x){
-  const raw=String(x.initial||'').trim();
-  if(!raw)return '';
-  const n=Number(raw);
-  if(!Number.isFinite(n))
-   return (opFamilyOf(x)==='number')?`「${raw}」は数として読めません`:'';
-  if(opFamilyOf(x)!=='number')return '';
-  /* **出どころを指定した側はそちらの値で見る**（§9.231 ②）。行に書いた
-     数で判定すると、マスタから引いた上限と食い違う警告が出る。 */
-  const lo=opLimitOf(x,'min'),hi=opLimitOf(x,'max');
-  const from=side=>{const src=opLimitSource(side==='min'?x.minFrom:x.maxFrom);
-                    return src?`（${src.label}）`:''};
-  if(lo!==null&&n<lo)return `最小 ${lo}${from('min')} を下回っています`;
-  if(hi!==null&&n>hi)return `最大 ${hi}${from('max')} を上回っています`;
-  if(['整数','正の整数'].includes(x.type)&&!Number.isInteger(n))
-   return '整数の項目なので小数は入りません';
-  if(['正の整数','正の数'].includes(x.type)&&n<0)return '0以上の項目です';
-  return '';
+  if(!String(x.initial||'').trim()||opFamilyOf(x)!=='number')return '';
+  /* **答えは食い違いの判定の1箇所**（§9.541）——前はここで上下限・整数・符号を
+     自前で比べていたので、刻みで丸めた結果や小数桁の食い違いは見ていなかった。 */
+  const hit=opRuleIssues(x).find(i=>i.key==='initial');
+  return hit?hit.text:'';
+ }
+ /* 数の決まりの食い違い（§9.541 F-5）。答えは`WL.opData.ruleIssues()`の1箇所——ここは
+    **いま効いている上下限**（`opRuleDef()`）を載せて渡すだけ。組み込みの欄は数の決まりを持たない。 */
+ function opRuleIssues(x){
+  if(!x||x.builtin||opFamilyOf(x)!=='number'||!(window.WL&&WL.opData&&WL.opData.ruleIssues))return [];
+  return WL.opData.ruleIssues(opRuleDef(x));
+ }
+ /* 盤のタイルの範囲の1行（§9.541 F-5）。端が開いているか（上下限なし・この設備に値が無い）は記号が言う
+    （├…┤／├…→／←…┤）。マスタから引く側は、設備を選んでいなければ「設備ごと」。 */
+ function opRangeHtml(x){
+  if(!x||x.builtin||opFamilyOf(x)!=='number')return '';
+  const d=opRuleDef(x),has=v=>v!==null&&v!==undefined&&v!=='';
+  const side=k=>has(d[k])?String(d[k]):(x[k+'From']?'設備ごと':'');
+  const lo=side('min'),hi=side('max'),round=Number(d.step)>0&&d.roundMode?`・${d.step}刻みで${d.roundMode}`:'';
+  if(!lo&&!hi&&!round)return '';
+  return `<span class="op-tile-range" data-lo="${has(d.min)?1:0}" data-hi="${has(d.max)?1:0}"`
+   +` title="${esc(WL.opData&&WL.opData.ruleText?WL.opData.ruleText(d):'')}"><i aria-hidden="true"></i>`
+   +`${esc(lo||'下限なし')}〜${esc(hi||'上限なし')}${d.unit?' '+esc(d.unit):''}${esc(round)}</span>`;
+ }
+ /* ---------- 試しに打つ（§9.541 F-2、利用者の選択「F-2とF-5の組み合わせ」） ----------
+    打った値が測定画面でどう記録されるかを、**測定画面と同じ`WL.opData.settleValue()`**で答え、数直線に
+    「打った値 → 記録される値」の矢印で描く。範囲の外・刻みの外・マイナスの見本も一緒に（赤＝直される・緑＝そのまま）。
+    欄に入ると図の同じ所が光る（`data-k`）——図と入力を結ぶ（§CLAUDE 15）。 */
+ const opHas=v=>v!==null&&v!==undefined&&v!=='';
+ const opIsPositive=t=>['正の整数','正の数'].includes(t);
+ function opTryExample(x){
+  const d=opRuleDef(x);
+  return opHas(d.max)?String(Number(d.max)*1.1):(opHas(d.min)?String(d.min):'12.34');
+ }
+ /* 見本の値（範囲の外・刻みの外・マイナス）と、打った値。 */
+ function opTryMarks(d,typed){
+  const lo=opHas(d.min)?Number(d.min):null,hi=opHas(d.max)?Number(d.max):null,st=Number(d.step)>0?Number(d.step):null;
+  const span=lo!==null&&hi!==null&&hi>lo?hi-lo:Math.max(Math.abs(lo??hi??1),st||0,1);
+  const dec=Math.min(4,(Number(d.decimals)||0)+1),r=v=>Number(v.toFixed(dec));
+  const vals=[],below=lo!==null?r(lo-span*0.12):null;
+  if(below!==null)vals.push(below);
+  if(hi!==null)vals.push(r(hi+span*0.12));
+  if(st&&d.roundMode&&lo!==null&&(hi===null||lo+st*1.4<hi))vals.push(r(lo+st*1.4));
+  /* マイナスの見本は、最小より下の見本がもうマイナスなら重ねない（同じことを2度描かない）。 */
+  if(opIsPositive(d.type)&&!(below!==null&&below<0))vals.push(-r(lo!==null&&hi!==null?(lo+hi)/2:span/2));
+  const out=vals.filter(v=>v!==typed).map(v=>({from:v,typed:false}));
+  if(typed!==null)out.unshift({from:typed,typed:true});
+  return out.map(m=>{const s2=WL.opData.settleValue(String(m.from),d);return Object.assign(m,{to:s2.n,out:s2.out})})
+   .filter(m=>Number.isFinite(m.to));
+ }
+ function opTrySvg(d,typed){
+  const lo=opHas(d.min)?Number(d.min):null,hi=opHas(d.max)?Number(d.max):null,st=Number(d.step)>0?Number(d.step):null;
+  const init=opHas(d.initial)&&Number.isFinite(Number(d.initial))?Number(d.initial):null;
+  const marks=opTryMarks(d,typed);
+  if(lo===null&&hi===null&&!marks.length)return '';
+  const pts=marks.flatMap(m=>[m.from,m.to]).concat([lo,hi,init]).filter(v=>v!==null&&Number.isFinite(v));
+  let a=Math.min(...pts),b=Math.max(...pts);if(a===b){a-=1;b+=1}
+  const pad=(b-a)*0.06;a-=pad;b+=pad;
+  const W=520,H=116,L=8,R=W-8,y=78,X=v=>L+(v-a)/(b-a)*(R-L);
+  const x0=lo===null?L:X(lo),x1=hi===null?R:X(hi);
+  let g=`<svg class="op-try-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="打った値と記録される値の数直線">`
+   +`<defs><pattern id="opTryHatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">`
+   +`<rect width="6" height="6" class="op-try-hb"/><line x1="0" y1="0" x2="0" y2="6" class="op-try-hl"/></pattern>`
+   +`<marker id="opTryArrB" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" class="op-try-ab"/></marker>`
+   +`<marker id="opTryArrG" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" class="op-try-ag"/></marker></defs>`;
+  if(lo!==null)g+=`<rect class="op-try-out" x="${L}" y="${y-9}" width="${Math.max(0,x0-L)}" height="18"/>`;
+  if(hi!==null)g+=`<rect class="op-try-out" x="${x1}" y="${y-9}" width="${Math.max(0,R-x1)}" height="18"/>`;
+  g+=`<rect class="op-try-ok" x="${x0}" y="${y-9}" width="${Math.max(0,x1-x0)}" height="18"/>`;
+  if(st){const s0=lo??a,s1=hi??b;if((s1-s0)/st<=60)for(let v=Math.ceil(s0/st-1e-9)*st;v<=s1+1e-9;v+=st)
+   g+=`<line class="op-try-tick" data-k="step" x1="${X(v)}" x2="${X(v)}" y1="${y-9}" y2="${y+9}"/>`}
+  g+=`<line class="op-try-axis" x1="${L}" x2="${R}" y1="${y+9}" y2="${y+9}"/>`;
+  const lab=(v,t,k,anchor)=>`<text class="op-try-lab" data-k="${k}" x="${X(v)}" y="${y+23}" text-anchor="${anchor}">${esc(t)}</text>`
+   +`<line class="op-try-end" data-k="${k}" x1="${X(v)}" x2="${X(v)}" y1="${y-13}" y2="${y+13}"/>`;
+  g+=lo!==null?lab(lo,`最小 ${lo}`,'min','middle'):`<text class="op-try-lab" x="${L}" y="${y+23}">← 下限なし</text>`;
+  g+=hi!==null?lab(hi,`最大 ${hi}${d.unit?' '+d.unit:''}`,'max','middle'):`<text class="op-try-lab" x="${R}" y="${y+23}" text-anchor="end">上限なし →</text>`;
+  if(init!==null)g+=`<path class="op-try-init" data-k="initial" d="M${X(init)} ${y+1}l5 6l-5 6l-5-6z"><title>初期値 ${init}</title></path>`;
+  marks.sort((m1,m2)=>m1.from-m2.from).forEach((m,i)=>{
+   const yy=y-16-(i%3)*14,bad=m.out!==String(m.from)&&Number(m.out)!==m.from;
+   g+=`<text class="op-try-mk${bad?' is-bad':''}${m.typed?' is-typed':''}" x="${X(m.from)}" y="${yy-4}" text-anchor="middle">${esc(String(m.from))}→${esc(m.out)}</text>`
+    +(bad?`<path class="op-try-arr is-bad" marker-end="url(#opTryArrB)" d="M${X(m.from)} ${yy} Q${(X(m.from)+X(m.to))/2} ${yy-8} ${X(m.to)} ${y-10}"/>`
+         :`<path class="op-try-arr" marker-end="url(#opTryArrG)" d="M${X(m.from)} ${yy} L${X(m.to)} ${y-10}"/>`);
+  });
+  return g+`</svg>`;
+ }
+ /* 試しに打つの中身（字・図・食い違い）。窓を組み直さずに、ここだけ描き直す。 */
+ function opTryHtml(x,dIn){
+  const O=window.WL&&WL.opData;
+  if(!O||!O.settleValue||opFamilyOf(x)!=='number'||x.builtin)return '';
+  const d=dIn||opRuleDef(x),raw=String(opState.tryRaw||'').trim(),unit=d.unit?' '+d.unit:'';
+  const r=raw?O.settleValue(raw,d):null;
+  const say=!r?'<span class="op-try-say">打つと、測定画面で記録される値と直し方がここに出ます。下の矢印は範囲の外・刻みの外などの見本です。</span>'
+   :r.out===null?`<span class="op-try-say is-bad">${esc(r.msgs.join('・'))}</span>`
+   :`<span class="op-try-say">記録されるのは <b>${esc(r.out)}${esc(unit)}</b>${r.msgs.length?`（${esc(r.msgs.join('・'))}）`:'（打った値のまま）'}</span>`;
+  /* 初期値の食い違いは**初期値の欄の横**が言う（直す欄のそば・`opInitialRangeNote()`）。ここへ並べると2か所になる（§CLAUDE 8）。 */
+  const issues=O.ruleIssues(d).filter(i=>i.key!=='initial');
+  return say+opTrySvg(d,r&&r.out!==null&&r.out!==''?Number(raw):null)
+   +`<span class="op-try-key"><i class="is-ok"></i>そのまま入る<i class="is-out"></i>端まで戻す<i class="is-tick"></i>${Number(d.step)>0?`${esc(d.step)} の刻み`:'刻みなし'}<i class="is-init"></i>初期値</span>`
+   +(issues.length?`<span class="op-try-issues">${issues.map(i=>`<button type="button" class="op-try-issue" data-op-fix="${esc(i.field)}">⚠ ${esc(i.text)}</button>`).join('')}</span>`:'');
+ }
+ /* 欄に入っている間、図の同じ所を光らせる。 */
+ function opTryHot(){
+  document.querySelectorAll('#opdTryOut [data-k]').forEach(el=>el.classList.toggle('is-hot',!!opState.tryHot&&el.dataset.k===opState.tryHot));
+ }
+ const OP_TRY_FIELDS={opdMin:'min',opdMax:'max',opdStep:'step',opdRound:'step',opdInitial:'initial',opdDecimals:'',opdMinFrom:'min',opdMaxFrom:'max'};
+ function bindOpTry(x){
+  const host=$('#opdTryOut');if(!host)return;
+  const redraw=()=>{host.innerHTML=opTryHtml(x,opRuleDef(Object.assign({},x,opFormEdits())));opTryHot()};
+  const tin=$('#opdTryIn');
+  if(tin)tin.oninput=()=>{opState.tryRaw=tin.value;redraw()};
+  Object.keys(OP_TRY_FIELDS).forEach(id=>{const el=$('#'+id);if(!el)return;
+   el.addEventListener('input',redraw);
+   el.addEventListener('focus',()=>{opState.tryHot=OP_TRY_FIELDS[id];opTryHot()});
+   el.addEventListener('blur',()=>{opState.tryHot='';opTryHot()});
+  });
+  /* 食い違いの札を押すと、直す欄へ（探させない・§CLAUDE 2）。 */
+  host.onclick=e=>{const b=e.target.closest('[data-op-fix]');if(!b)return;
+   const el=$('#opd'+({min:'Min',max:'Max',step:'Step',initial:'Initial'}[b.dataset.opFix]||''));
+   if(el&&!el.disabled){el.focus();if(el.select)el.select()}};
+  opTryHot();
  }
 /* ---------- 見せ方（§9.221 ⑦、利用者の指示） ----------
     「単位を出す位置(外上左、外上中央、外上右、内部、外下左、外中央、
@@ -2143,6 +2250,7 @@
      削除は②のタブの中の帯へ移してある。 */
   $('#opModalActions').innerHTML=`<button type="button" id="opdSave" class="mm-btn-primary">保存</button>`;
   bindOpModal(x);
+  bindOpTry(x);   // §9.541 F-2 試しに打つ（数の型だけ・欄が無ければ何もしない）
  }
  /* ---------- 設定窓の段（§9.522・REVIEW 3-22） ----------
     以前は`renderOpModal()`の1本（394行）が見本と3つの塊を組んでいた。見本は`opRenderModalPreview()`、
@@ -2470,6 +2578,10 @@
      ${opLimitFromHtml(x,'min')}
      ${opLimitFromHtml(x,'max')}
     </span></div>
+   <div class="op-form-row op-try-row"><span class="op-form-label">試しに打つ</span>
+    <span class="op-form-ctl op-try"><span class="op-try-in"><input type="text" id="opdTryIn" inputmode="decimal"
+      value="${esc(opState.tryRaw)}" placeholder="例 ${esc(opTryExample(x))}" aria-label="試しに打つ値"></span>
+     <span id="opdTryOut">${opTryHtml(x)}</span></span></div>
    ${help('data','刻みを空にするとどうなるか',
      '<p>小数桁から作ります（整数=1／小数2桁=0.01）。<b>0は「決めていない」</b>として扱います'
      +'——0にすると押しても動かない道具になるためです。</p>')}
