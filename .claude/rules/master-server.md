@@ -1,4 +1,4 @@
-# マスタ（サーバー側）（32件）
+# マスタ（サーバー側）（33件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 換算係数の因子の呼び名と単位は`FACTOR_LABELS`の1箇所（画面へ英字のキーを出さない） | `test_lfpoints.py` | [§9.543](../../docs/decisions/9.543.md) |
 | 外したら何が起き何が残るかはサーバーの語彙（`EQUIPMENT_FEATURE_EFFECTS`・`MEASURE_ITEM_EFFECT`）。画面へ写さない | `test_equse.js` | [§9.542](../../docs/decisions/9.542.md) |
 | 端末ができることは`permission_capabilities()`の1箇所（既存の判定を掛け合わせるだけ）。書込は編集可能モードだけ | `test_roleperm.py` | [§9.538](../../docs/decisions/9.538.md) |
 | 見張りは`permission_watch()`（できる端末の台数・1台以下を名指し）。登録の無い端末は数えない | `test_roleperm.py` | [§9.538](../../docs/decisions/9.538.md) |
