@@ -40,11 +40,13 @@ async function reliablePut(record){
  return own?own(record):reliablePutCore(record);
 }
 async function reliableAllCore(){
+ await terminalSettled();
  const merged=new Map(Object.entries(mirrorRead()));
  try{(await idbAll()).forEach(x=>merged.set(x.id,x))}catch(e){console.warn('IndexedDB list failed, mirror used',e)}
  return [...merged.values()].map(WL.measureView.ensureMeasureShape);
 }
 async function reliableGet(id){
+ await terminalSettled();
  try{const x=await idbGet(id);if(x)return WL.measureView.ensureMeasureShape(x)}catch(e){console.warn('IndexedDB get failed, mirror used',e)}
  const x=mirrorRead()[id];return x?WL.measureView.ensureMeasureShape(x):null;
 }
@@ -53,8 +55,67 @@ async function reliablePutCore(record){
  try{await idbPut(record);idbOK=true}catch(e){console.error('IndexedDB save failed',e)}
  try{mirrorWrite(record);mirrorOK=true}catch(e){console.error('mirror save failed',e)}
  if(!idbOK&&!mirrorOK)throw Error('端末内保存に失敗しました。ブラウザーの保存領域を確認してください。');
+ /* 端末の控えへも書く（§9.545）。**待たない**——届かなくても、次に開いたときの
+    突き合わせ（`reconcileTerminal()`）が手元の新しいほうを送り直す。 */
+ WL.terminalStore?.putRecords([record])?.catch(WL.quiet('端末の控えへ書けない（次に開いたとき送り直す）'));
  return{idbOK,mirrorOK};
 }
+/* ---------- 端末の控えとの突き合わせ（§9.545） ----------
+   ブラウザの保存領域はオリジン・ブラウザごとに別なので、ブラウザ版とデスクトップ版は
+   互いの記録を見られない。開いたときに1回、端末の控え（Python・手元）と記録IDごとに
+   突き合わせ、**更新時刻（`updatedAt`）の新しいほう**を採る。
+    ・控えのほうが新しい／手元に無い → 手元へ入れる（控えへは送り返さない）
+    ・手元のほうが新しい／控えに無い → 控えへ送る（控えへ書けなかった保存の取り戻しも兼ねる）
+    ・控えに「消した」印があり、手元の記録がそれより古い → 手元から消す
+      （**共有のバックアップは消さない**——消したもう一方の窓が済ませている）
+   一覧・1件の読み出しはこれが済むまで待つ（済む前に出すと、あとから記録が増えて見える）。 */
+const TERMINAL_WAIT_MS=4000;
+const TERMINAL_PUSH_CHUNK=10;
+let terminalPromise=null;
+async function reconcileTerminal(){
+ if(!WL.terminalStore?.enabled())return{skipped:true};
+ const remote=await WL.terminalStore.index();
+ if(!remote)return{skipped:true};
+ const local=new Map(Object.entries(mirrorRead()));
+ try{(await idbAll()).forEach(x=>local.set(x.id,x))}catch(e){WL.quiet.note('IndexedDBを読めない（写しで突き合わせる）',e)}
+ const out={pulled:0,pushed:0,removed:0};
+ const want=[];
+ for(const r of remote){
+  const mine=local.get(r.id),at=String(mine?.updatedAt||'');
+  if(r.deletedAt){
+   if(mine&&at<=r.deletedAt){
+    try{await idbDelete(r.id)}catch(e){WL.quiet.note('IndexedDBから消せない（写しからは消す）',e)}
+    try{mirrorDelete(r.id)}catch(e){WL.quiet.note('写しから消せない（次に開いたとき再び消す）',e)}
+    local.delete(r.id);out.removed++;
+   }
+  }else if(!mine||r.updatedAt>at)want.push(r.id);
+ }
+ for(const item of await WL.terminalStore.records(want)){
+  if(!item.record)continue;
+  try{await idbPut(item.record)}catch(e){WL.quiet.note('IndexedDBへ入れられない（写しへは入れる）',e)}
+  try{mirrorWrite(item.record)}catch(e){WL.quiet.note('写しへ入れられない',e)}
+  local.set(item.id,item.record);out.pulled++;
+ }
+ const byId=new Map(remote.map(r=>[r.id,r]));
+ const push=[...local.values()].filter(m=>{
+  const r=byId.get(m.id),at=String(m.updatedAt||'');
+  return !r||(r.deletedAt?at>r.deletedAt:at>r.updatedAt);
+ });
+ for(let i=0;i<push.length;i+=TERMINAL_PUSH_CHUNK){
+  await WL.terminalStore.putRecords(push.slice(i,i+TERMINAL_PUSH_CHUNK));
+  out.pushed+=Math.min(TERMINAL_PUSH_CHUNK,push.length-i);
+ }
+ return out;
+}
+/* 突き合わせが済むのを待つ（時間で見切る——控えが遅くても画面は止めない）。 */
+function terminalSettled(){
+ if(!terminalPromise)return Promise.resolve();
+ return Promise.race([terminalPromise,new Promise(ok=>setTimeout(ok,TERMINAL_WAIT_MS))]);
+}
+terminalPromise=reconcileTerminal().catch(e=>{
+ console.warn('端末の控えと突き合わせられませんでした（ブラウザの保存領域だけで続けます）',e);
+ return{error:String(e&&e.message||e)};
+});
 /* 端末内データの削除。**バックアップ(records.sqlite3)からも必ず消す**。
    以前は端末内(IndexedDB+ミラー)だけを消していたため、バックアップに行が
    残り続けた。作業スケジュールの実績突合はバックアップを見るので、
@@ -104,6 +165,8 @@ window.flushPendingBackupDeletes=flushPendingBackupDeletes;
 async function reliableDelete(id){
  try{await idbDelete(id)}catch(e){console.warn(e)}
  try{mirrorDelete(id)}catch(e){console.warn(e)}
+ /* 端末の控えにも「消した」印を残す（§9.545）。もう一方の窓から記録が戻らないように。 */
+ WL.terminalStore?.deleteRecords([id])?.catch(WL.quiet('端末の控えへ消した印を残せない（次に開いたとき、控えの記録が戻ることがある）'));
  await deleteBackupRows([id]);
  // 実績が消えたのでスケジュールの予定キャッシュも捨てる(次に開いたときに
  // 作業中の表示が残らないようにする)。
@@ -2150,6 +2213,8 @@ WL.records={
  /* 持ち替えた側が「元の道」を呼べるように、核も載せる（§9.352 の `own` は
     丸ごと持つので、元へ委譲する口が無いと数える・遅らせるができない）。 */
  reliableAllCore,reliablePutCore,
+ /* 端末の控えとの突き合わせ（§9.545）。開いたときの1回の結果（pulled/pushed/removed）を返す。 */
+ terminalReconciled:()=>terminalPromise,
  saveLocal,backupRecord,backupAndTrackSync,deleteBackupRows,
  flushPendingBackupDeletes,syncPendingRecords,importRemoteRecord,shareRecord,
  mergedRecords,persistAndTransition,

@@ -7,6 +7,7 @@
 """
 
 from backend import watchdog
+from backend.launcher import services
 from backend.config import HOST, PORT
 from backend.logging_setup import launcher_logger
 
@@ -17,48 +18,10 @@ def run():
  from backend.app_module import flask_app as _app   # 素の`from app import`を書かない（§9.404）
  flask_app=_app()                          # Flaskアプリ本体(業務機能)
  watchdog.start()
- # 共有上の読み取り専用DBを手元へ写す背景処理(§9.89)。共有の更新と読み取りが
- # 重なると正しく読めないため、画面は常に手元の写しを読む。写せなくても
- # 画面は前の写し(または共有)で動くので、ここでの失敗は起動を止めない。
- try:
-  from backend import db_mirror, paths
-  if db_mirror.enabled():
-   db_mirror.start()
-   log.info('共有DBの写し: %d秒ごとに更新します',db_mirror.interval_sec())
-   # 置き場が共有・クラウド同期フォルダーの上なら、写しは自動で手元へ
-   # 逃がしてある(§9.109)。**利用者に設定を求めない**ので、ここは
-   # 「こうしてください」ではなく「こうしました」を残すだけにする。
-   if paths.work_dir_relocated():
-    log.info('作業用ファイル(写し・作業コピー)は手元へ置きます: %s（%s）',
-             paths.work_dir(),paths.work_dir_reason())
- except Exception as e:
-  log.warning('共有DBの写しを開始できませんでした: %s',e)
- # 共有スケジュールの見張り(§9.188)。**読むたびに共有から写すのをやめ**、
- # 改訂番号だけを見て変わったときだけ写す。写せなくても画面は前の写しで
- # 動くので、ここでの失敗は起動を止めない。
- try:
-  from backend import schedule_sync, schedule_watch
-  if schedule_sync.SCHEDULE_SHARE_PATH and schedule_sync.watch_enabled():
-   schedule_watch.start()
-   log.info('共有スケジュールの見張り: %d秒ごとに確かめ、取り込んだら%d秒休みます',
-            schedule_sync.watch_interval_sec(),schedule_sync.watch_pause_sec())
- except Exception as e:
-  log.warning('共有スケジュールの見張りを開始できませんでした: %s',e)
- # 共有スケジュールの持ち主(§9.192→§9.269)。**既定は on**。持ち主になれた
- # 端末だけが小さな受け口をLANへ開く。切ってある現場は今までどおり
- # 各端末が自分で共有へ書く。
- # 見張りは**入れていなくても回す**（1分ごとに設定だけを見る。共有には触らない）。
- # こうしておくと、マスタ管理で入れ切りしたときに再起動を待たなくてよい。
- try:
-  from backend import schedule_owner
-  schedule_owner.start()
-  if schedule_owner.enabled():
-   log.info('共有スケジュールの持ち主機構: 有効（受け口 %s）',
-            ', '.join(schedule_owner.local_urls()))
-  else:
-   log.info('共有スケジュールの持ち主機構: 無効（各端末が自分で共有へ書きます）')
- except Exception as e:
-  log.warning('持ち主機構を開始できませんでした: %s',e)
+ # 写し・見張り・書込役は**窓口によらず同じ**に始める（§9.544）。手順は
+ # `services.start()`の1箇所——デスクトップ版の窓口(program/sidecar.py)も同じ関数を呼ぶ。
+ # ポート版にだけ要るのは上の`watchdog.start()`（タブが0件で終わる見張り）。
+ services.start(log)
  log.info('Webサーバー: 起動します (%s:%s)',HOST,PORT)
  try:
   # threaded=True: 既定(シングルスレッド)のままだと、仕掛/品質データや

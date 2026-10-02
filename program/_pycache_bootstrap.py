@@ -3,7 +3,7 @@
 
 sys.pycache_prefix は、対象のモジュールを1つでもimportする前に設定する
 必要がある。そのため、このファイルを各エントリポイント
-(start_app.py/process_manager.py/server.py/app.py)の最初のimportにする
+(start_app.py/process_manager.py/setup_app.py/app.py/sidecar.py)の最初のimportにする
 ことで、以降に読み込む backend.* などが app.py 側の __pycache__ を
 汚さないようにする。
 

@@ -62,7 +62,10 @@ ALWAYS = ['test_patchlint', 'test_globallint', 'test_dskeylint', 'test_csslint',
           # §9.347 REVIEW 3-15: 固定待ちとハーネスの写しが増えていないか（1秒未満）
           'test_waitlint',
           # §9.349 REVIEW 3-21: 関数の中の import が増えていないか（輪を隠す道）
-          'test_importlint']
+          'test_importlint',
+          # §9.544: 共有の層が画面のポートを知らない（デスクトップ版の前提・1秒未満）。
+          # 共有の基本部品を読むモジュールを**足した側**からは辿れないので常に見る
+          'test_portdep']
 
 # 束ねた呼び名。右辺は実際のテスト名。
 G = {}
@@ -224,7 +227,9 @@ G['起動'] = ['test_boot', 'test_bootui', 'test_bootflash', 'test_assetcache', 
              # §9.318: 待機画面が見えなくてもアプリへ辿り着ける（保険・置き場の判定）
              'test_faststart', 'test_bootopen',
              # §9.410: デスクトップの起動ショートカットとアイコン（入口を作る側）
-             'test_shortcut']
+             'test_shortcut',
+             # §9.544: デスクトップ版の窓口（標準入出力・ポートなし）。起動の背景処理を共有する
+             'test_sidecar']
 G['接続'] = ['test_mastershare', 'test_storage', 'test_storageui', 'test_recmirror', 'test_dbopen', 'test_dbmirror', 'test_datasource', 'test_tablequery',
              'test_atomicio', 'test_localwork', 'test_dscap',
              'test_qjoin', 'test_qjoinui',
@@ -408,7 +413,11 @@ RULES = [
                                         'test_msteps')),
     ('static/js/measure/measure-steps.js', g('測定', '見た目')),   # 段の枠は測定画面全体に効く
     # データ一覧の表示列(§9.162)も持つので、列の網も回す。
-    ('static/js/measure/records-store.js', g('モーダル', 'test_share', 'test_flows', 'test_master',
+    # 端末の控え（§9.545）。画面の側（設定を当てる・記録を運ぶ）とサーバーの側。
+    ('static/js/core/terminal-sync.js', g('test_terminal', 'test_terminalstore', 'test_share', 'test_flows')),
+    ('backend/terminal_store.py', g('test_terminal', 'test_terminalstore')),
+    ('backend/routes/terminal.py', g('test_terminal', 'test_terminalstore', 'test_modeguard')),
+    ('static/js/measure/records-store.js', g('モーダル', 'test_share', 'test_flows', 'test_master', 'test_terminal',
                                      'test_recperm', 'test_reccols', 'test_lcpanel',
                                      # §9.302: 使用設備の候補を「測定」で絞る
                                      'test_eqfeature',
@@ -497,9 +506,11 @@ RULES = [
     # §9.267: 置き場の判定は1箇所（storage_layout）。`config/local.json`の
     # 書き換えもここが持つので、起動時の解決を見る網も一緒に回す。
     ('backend/storage_layout.py', g('test_storage', 'test_storageui', 'test_setpage',
-                                    'test_measstore', 'test_localwork', 'test_mastershare')),
+                                    'test_measstore', 'test_localwork', 'test_mastershare',
+                                    # §9.445・§9.547: 「表示」の節（起動アイコン・起動のしかた）
+                                    'test_uisize', 'test_setpage')),
     ('backend/routes/rne.py', g('test_datasource', 'test_setpage', 'test_modeguard')),
-    ('backend/routes/core.py', g('起動', 'test_error', 'test_nav')),
+    ('backend/routes/core.py', g('起動', 'test_error', 'test_nav', 'test_launchmode')),
 
     # --- サーバー(その他) --------------------------------------------
     ('backend/access_mode.py', g('権限', '保存の帯', 'test_nav', 'test_crudroutes', 'test_colscope',
@@ -560,10 +571,11 @@ RULES = [
     # 盤はヘッダーの「表示」の節（§9.445）。共通設定は「状態と行き先」だけなので、
     # あちらの網（test_setpage）と「表示」の網（test_uisize）の両方を回す。
     ('backend/desktop_shortcut.py', g('test_shortcut', 'test_setpage', 'test_uisize')),
+    ('backend/launch_mode.py', g('test_launchmode', 'test_uisize', 'test_setpage')),
     ('backend/app_icon.py', g('test_shortcut')),
     # 終わる前の片付けと終了ボタン（§9.301 ②）も watchdog が持つ。
     ('backend/watchdog.py', g('test_tabclose', 'test_boot', 'test_presence',
-                              'test_appquit', 'test_scowner')),
+                              'test_appquit', 'test_scowner', 'test_sidecar')),
     # 在席（§9.272）。権限区分の判定は master_repo 側にあるので「権限」ごと。
     ('backend/presence.py', g('権限')),
     ('backend/routes/presence.py', g('権限')),
@@ -583,7 +595,14 @@ RULES = [
     ('program/update.bat', g('起動')),
     ('program/loading.html', g('起動')),
     ('program/process_manager.py', g('起動')),
+    # デスクトップ版の窓口（§9.544）。枠・答えの一致・閉じたときの片付け
+    ('program/sidecar.py', g('起動')),
     ('program/requirements.txt', g('起動', 'test_noaccess')),
+    # デスクトップ版の窓（§9.544・Rust）。窓口の枠と起動画面の色を見る網を回す
+    # （Rust そのものは cargo test と CI の自己診断・.github/workflows/desktop.yml）。
+    ('desktop/', g('test_sidecar', 'test_boot')),
+    # 毎日の入口。引数「desktop」で exe を手元へ写して起こす（§9.546）
+    ('Start.vbs', g('test_faststart', 'test_shortcut', 'test_launchmode')),
     ('program/', g('起動')),
 
     # --- ドキュメント --------------------------------------------------
@@ -609,6 +628,8 @@ RULES = [
     ('tests/setperm.py', [ALL]),
     # `import app` の探索先の答え（§9.404）。18本が読むので全部へ倒す。
     ('tests/apppath.py', [ALL]),
+    # 端末の控えを白紙へ戻す道具（§9.545）。ランナーと土台が1本ごとに呼ぶので全部へ倒す。
+    ('tests/reset_terminal.py', [ALL]),
     ('tests/make_split_fixture.py', g('test_scsplit')),
     ('tests/orphan_lot.js', g('test_audit', 'test_nav', 'test_orphan')),
     ('tests/audit_scale.js', g('test_audit')),

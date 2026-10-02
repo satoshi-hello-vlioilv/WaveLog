@@ -6,8 +6,8 @@
 リポジトリ直下に在るので、そのままでは見つからない。
 
 **答えはここ1箇所。** 各エントリポイント（`app.py`／`start_app.py`／
-`setup_app.py`／`process_manager.py`）がこれをimportする——同じ3行を4箇所へ
-書き写すと、1つ直したときに残りとずれる。
+`setup_app.py`／`process_manager.py`／`sidecar.py`）がこれをimportする——同じ3行を
+5箇所へ書き写すと、1つ直したときに残りとずれる。
 
 読む順は`_pycache_bootstrap`の**次**（§9.406）。あちらは`program/`の隣に
 在るので探索先の用意が要らず、**先に読むほどこのファイル自身の`.pyc`も

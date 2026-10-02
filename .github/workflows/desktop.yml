@@ -1,0 +1,102 @@
+# デスクトップ版（desktop/・Tauri）を Windows で作り、本物の WebView2 で自己診断する（§9.544）。
+#
+# 1. Python の網を Windows で回す（窓口の枠・fd の向け直しは OS で振る舞いが違いうる）
+#      test_portdep（共有の層は画面のポートを知らない）・test_terminalstore（端末の控え）・
+#      test_sidecar（窓口の答えがポートの版と同じ・閉じたら片付けて終わる）
+# 2. cargo test → cargo build --release
+# 3. 作った exe を Start.vbs の隣に置き、この端末を「デスクトップ版」にして**引数なしの Start.vbs で起こす**
+#    （端末の設定を読む・手元へ写して起動する道そのものを通す・§9.547）。
+#    窓は WAVELOG_SELFTEST に結果を書いて終わる。結果と exe は Artifacts に置く。
+#
+# 全件の網はここでは回さない（nets.yml と同じ方針・CLAUDE.md の A）。
+name: desktop
+
+on:
+  push:
+    branches: [main]
+    paths: ["desktop/**", "program/**", "backend/**", "static/**", "templates/**", "Start.vbs", "tests/test_launchmode.py", ".github/workflows/desktop.yml"]
+  pull_request:
+    paths: ["desktop/**", "program/**", "backend/**", "static/**", "templates/**", "Start.vbs", "tests/test_launchmode.py", ".github/workflows/desktop.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python の部品
+        run: python -m pip install -r program/requirements.txt
+
+      - name: Python の網（Windows）
+        run: |
+          $ng = 0
+          foreach ($t in "test_portdep", "test_terminalstore", "test_sidecar", "test_launchmode") {
+            Write-Host "=== $t"
+            python "tests/$t.py"
+            if ($LASTEXITCODE -ne 0) { $ng++ }
+          }
+          exit $ng
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+
+      - name: Rust の網
+        working-directory: desktop
+        env:
+          WAVELOG_PYTHON: python
+        run: cargo test --locked
+
+      - name: exe を作る
+        working-directory: desktop
+        env:
+          WAVELOG_PYTHON: python
+        run: cargo build --release --locked
+
+      # 起動のしかた（§9.547）: アプリの部品で「この端末はデスクトップ版」と残し、**引数なし**の Start.vbs で起こす
+      # （毎日の起動アイコンと同じ道。Start.vbs が手元の設定を読んで exe を写して起動するところまで通す）。
+      - name: 自己診断（本物の WebView2・ポートなし・端末の設定から）
+        run: |
+          Copy-Item desktop\target\release\WaveLog.exe WaveLog.exe
+          $env:WAVELOG_SELFTEST = "$env:RUNNER_TEMP\selftest.json"
+          python -c "from backend import launch_mode as m; r = m.write('desktop'); print(r); assert r['ok']"
+          if ($LASTEXITCODE -ne 0) { exit 5 }
+          cscript //nologo Start.vbs
+          $deadline = (Get-Date).AddSeconds(240)
+          while (-not (Test-Path $env:WAVELOG_SELFTEST) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
+          Wait-Process -Name WaveLog -Timeout 30 -ErrorAction SilentlyContinue
+          $copies = Get-ChildItem "$env:LOCALAPPDATA\WaveLog\desktop" -Recurse -Filter WaveLog.exe -ErrorAction SilentlyContinue
+          Write-Host "手元へ写した exe: $($copies.FullName -join ', ')"
+          Get-ChildItem "$env:LOCALAPPDATA\WaveLog\logs" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "--- $($_.Name)"; Get-Content $_.FullName -Tail 25 -Encoding utf8 }
+          if (-not (Test-Path $env:WAVELOG_SELFTEST)) { Write-Host "結果のファイルがありません"; exit 2 }
+          $r = Get-Content $env:WAVELOG_SELFTEST -Raw -Encoding utf8 | ConvertFrom-Json
+          $r.results | ForEach-Object { Write-Host ("{0}: {1} -- {2}" -f ($(if ($_.ok) { "PASS" } else { "FAIL" }), $_.name, $_.info)) }
+          if ($r.error) { Write-Host "ERROR: $($r.error)" }
+          if (-not $copies) { Write-Host "Start.vbs が exe を手元へ写していません"; exit 3 }
+          if (Get-Process python -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*hostedtoolcache*" }) { Write-Host "Python が残っています（窓を閉じても中身が終わっていない）"; exit 4 }
+          if (-not $r.ok) { exit 1 }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: WaveLog-desktop-windows
+          path: |
+            desktop/target/release/WaveLog.exe
+            ${{ runner.temp }}/selftest.json
+          if-no-files-found: warn

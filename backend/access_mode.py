@@ -97,6 +97,11 @@ _WRITE_ALLOWED_MODES={
 # 一般ユーザー)は「何を触れるか」とは別の軸で、閲覧モードの開発者でも
 # 切断はできる。実際に断るのは`master_repo.role_can()`の1箇所。
 _WRITE_ALLOWED_MODES['presence']={'edit','view','schedule'}
+# 端末の控え(§9.545)。**この端末の手元にしか無い**(共有ではない)ので3モードとも許し、
+# 切断(§9.272)でも塞がない——塞ぐと、共有へ送れないときにこそ要る控えが取れなくなる。
+_WRITE_ALLOWED_MODES['terminal']={'edit','view','schedule'}
+# 切断しても書いてよい段(共有へは書かないもの)。
+_LOCAL_ONLY_BLUEPRINTS={'presence','terminal'}
 # システム系(§9.410)。**宣言が無いと fail-open**（`_guard_write`は
 # `allowed is None`を素通しにする）で、下の`_ENDPOINT_EXTRA_MODES`は
 # 効いているように見えて**一度も効いていなかった**。既定は安全側の`edit`だけに
@@ -196,6 +201,8 @@ _ENDPOINT_EXTRA_MODES={
  # 現場の端末（scheduleモード）・閲覧専用の端末こそ入口のアイコンが要るので、
  # 3モードとも通す（ここを開け忘れると、押しても403で黙って弾かれる）。
  'core.app_shortcut_create':{'edit','view','schedule'},
+ # 起動のしかた（§9.547）もこの端末の起動にしか触らないので同じく3モード。
+ 'core.app_launch_mode_set':{'edit','view','schedule'},
  'masters.filter_preset_register':{'schedule'},
  'masters.filter_preset_delete':{'schedule'},
  'masters.filter_preset_use':{'schedule'},
@@ -563,7 +570,7 @@ def install(app):
   # 冷却時間で自然に解けるので、間違えても直せる。
   if request.endpoint in _SELF_LIFECYCLE_ENDPOINTS:return None  # 自分を閉じる(§9.301 ②)
   rev=revocation_now()
-  if rev is not None and request.blueprint!='presence':
+  if rev is not None and request.blueprint not in _LOCAL_ONLY_BLUEPRINTS:
    return jsonify(error=('この端末は接続を解除されています'
                          f'（{rev.get("by") or "不明"}／{rev.get("byPc") or "不明"}、'
                          f'あと約{max(1,int(rev.get("remainingSec") or 0)//60+1)}分）。'

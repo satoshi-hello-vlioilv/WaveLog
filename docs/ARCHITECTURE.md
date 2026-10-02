@@ -26,6 +26,11 @@
   （Box等）への閲覧用複製＝②が変わったら間隔ごとに丸ごと写す（読むだけ）。
   状態と設定はマスタ管理 >「測定データの保存」の1画面にまとまっている
   （`GET /api/measurement/storage`）。
+  **①は端末の控えへも写す**（§9.545）。ブラウザの保存領域はオリジンとブラウザごとに別で、
+  ブラウザ版（Edge）とデスクトップ版（WebView2）は互いの①を見られないため、Python が
+  `paths.local_root()/terminal/terminal.sqlite3`（`backend/terminal_store.py`）に記録と端末の設定を控え、
+  画面は開いたときに突き合わせる（記録＝`records-store.js`の`reconcileTerminal()`、設定＝
+  `static/js/core/terminal-sync.js`。JS_FILES の先頭で、画面のJSより先に当てる）。
 
 ## ディレクトリ構成
 
@@ -56,12 +61,15 @@ importされるだけの`backend/launcher/guard.py`・`backend/launcher/server.p
 | `program/start_app.py` | Python側の起動開始点。ログ初期化→待機画面を開く→多重起動判定→**刻印が合えば確認を飛ばす**→サーバー起動 |
 | `backend/launcher/guard.py`(旧`launch_guard.py`) | ポートの使用状況と `app_id` の照合による多重起動判定(`OURS`/`FOREIGN`/`UNRESPONSIVE`/`FREE`)、起動中インスタンスの記録。`UNRESPONSIVE`(ポート使用中だがHTTP応答が無い)は自プロセスが重い処理でブロックされている可能性を含むため、即座に別アプリ(`FOREIGN`)と決め付けず`process_manager.py`側でinstance.jsonのapp_root照合による強制終了判断へ委ねる |
 | `backend/launcher/server.py`(旧`server.py`) | Webサーバーの起動のみ。起動監視とWeb処理の境界 |
+| `program/sidecar.py` | **デスクトップ版の窓口**(§9.544・`docs/DESKTOP_MIGRATION_DESIGN.md`)。窓(Tauri)が子として起こし、標準入出力の枠(JSON 1行＋生の本文)で問い合わせる。**ポートを開かない**。Flaskはそのまま WSGI で呼ぶ。標準出力は枠だけ(何より先に fd 1 を標準エラーへ)。入力が閉じたら`watchdog._exit()`の同じ片付けを通って終わる |
+| `backend/launcher/services.py` | 起動したあと裏で回す処理(共有DBの写し・共有スケジュールの見張り・書込役)の開始の1箇所。`server.py`と`sidecar.py`が同じ`start()`を呼ぶ(窓口で振る舞いを変えない)。タブの見張り(`watchdog.start()`)はポート版だけ |
+| `desktop/`（Rust・Tauri） | **デスクトップ版の窓**(§9.546)。窓・1つだけ起動・`/static/`の直配り・Python（`program/sidecar.py`）の監督と起こし直し・外のリンクは Edge。自前の仕組み`wavelog`（`config.DESKTOP_SCHEME`と同じ）。終わり方は Python の片付けの1箇所を通す。起動画面`desktop/splash`は待機画面と同じ色。Start.vbs に引数`desktop`を付けると exe を手元の版ごとのフォルダへ写して起動する。CI は`.github/workflows/desktop.yml`（Windows・本物の WebView2 の自己診断） |
 | `program/process_manager.py` | 対象アプリだけの安全な停止（正常終了要求→記録済みPID。プロセス名では判定しない） |
 | `program/loading.html` | 起動待機画面。サーバーより先に `file://` で開かれ、`/api/ready.js` の応答を待ってからアプリへ遷移する。段階表示は `boot_status.js` を読んで**実際の進捗**を出す。進捗バーはサーバー6段階＋ブラウザ4段階の10段階ぶんで、6/10(60%)まで進めてアプリ側の起動オーバーレイへ引き渡す |
 | `backend/boot_status.py` | 起動の段階を**端末ごとの置き場**(`%LOCALAPPDATA%\WaveLog\runtime\boot_status.js`。§9.225)へ書き出す。待機画面も同じ場所へ写して開くので、共有配置でも端末どうしが混ざらない。サーバー側6段階(`STEPS`)とブラウザ側4段階(`BROWSER_STEPS`)の定義、合計数(`TOTAL_STEPS`)、バージョン番号の供給元。待機画面はまだサーバーが無い状態なので、`<script src>` で読み取れるJSファイルを介す。書き込みに失敗しても起動は止めない。`/api/ready.js` で削除する(`.gitignore`済み) |
 | `templates/index.html` の `#appBoot` / `static/css/95-boot.css` | アプリ内の起動オーバーレイ。待機画面から意匠と段階リストを引き継ぎ、**画面が組み上がるまで本体を見せない**(下記) |
-| `program/_pycache_bootstrap.py` | `.pyc` キャッシュをローカル領域へ逃がす。`sys.pycache_prefix` は最初のimportより前に設定する必要があるため、各エントリポイントの一番最初のimportにする。**4本のいちばん最初のimport**（§9.406で`program/`へ。`program/`の隣に在るので探索先の用意が要らず、先に読むほど`__pycache__`が直下に生えない） |
-| `program/_approot.py` | `program/`の4本が`_pycache_bootstrap`の**次に**通す1行（§9.404）。リポジトリ直下を`sys.path`へ足す——これが無いと`backend`もこの`_pycache_bootstrap`も読めない |
+| `program/_pycache_bootstrap.py` | `.pyc` キャッシュをローカル領域へ逃がす。`sys.pycache_prefix` は最初のimportより前に設定する必要があるため、各エントリポイントの一番最初のimportにする。**5本のいちばん最初のimport**（§9.406で`program/`へ。`program/`の隣に在るので探索先の用意が要らず、先に読むほど`__pycache__`が直下に生えない） |
+| `program/_approot.py` | `program/`の5本が`_pycache_bootstrap`の**次に**通す1行（§9.404）。リポジトリ直下を`sys.path`へ足す——これが無いと`backend`もこの`_pycache_bootstrap`も読めない |
 | `config/local.json` | マスタDB自体の置き場所を決める3項目(`db_dir`/`master_db_path`/`records_db_path`)専用のブートストラップ設定(値をマスタDBの中に保存すると読みに行く先が分からなくなるため、この3つだけは唯一この方式が残る)。未配置なら既定の`db/`のまま。それ以外(`sikalotnow_path`/`sikalotdef_path`等)はパス設定マスタ(下記)へ移行済み |
 | `backend/config.py` | アプリID・表示名・ポート・監視しきい値などアプリ固有値の集約先 |
 | `backend/paths.py` | `%LOCALAPPDATA%` 配下の解決、共有フォルダー配置の検出、`config/local.json` の読込(`load_local_config`/`configured_path`。マスタDB自体の置き場所を決める3項目専用のブートストラップ設定。それ以外の運用設定はパス設定マスタ(`db_access.py`)へ移行済み) |
@@ -69,8 +77,8 @@ importされるだけの`backend/launcher/guard.py`・`backend/launcher/server.p
 | `backend/watchdog.py` | プロセスの生存管理。ハートビート監視・明示停止(`/api/shutdown`) |
 
 `_pycache_bootstrap.py` は `program/start_app.py`・`program/process_manager.py`・
-`program/setup_app.py`・`program/app.py` の4つすべてで、`_approot`の**次に**
-importしている(直接実行され得るのはこの4本。
+`program/setup_app.py`・`program/app.py`・`program/sidecar.py` の5つすべてで、`_approot`の**次に**
+importしている(直接実行され得るのはこの5本。
 `backend/launcher/server.py` はimportされるだけになったので不要になった)。
 単独で起動され得る経路が複数
 あり、1箇所だけに書くと別経路で `.pyc` がアプリ側へ生成されてしまう

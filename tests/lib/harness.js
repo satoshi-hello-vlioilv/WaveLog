@@ -52,6 +52,7 @@ async function run(title,body,opts={}){
  try{
   mode0=await getMode();
   if(opts.mode)await setMode(opts.mode);
+  resetTerminal();   // まっさらなブラウザで始める（単独で回したときも、前に開いた画面の控えを当てない）
   sideSnap=await masterSnapshot(SIDE_EFFECT_TABLES).catch(()=>null);
   b=await chromium.launch({executablePath:exe});
   /* 文脈を1つ作る。`init` は最初の航行より前に走らせる小さな仕込み
@@ -76,6 +77,9 @@ async function run(title,body,opts={}){
   /* 置いた実績は土台が消す（§9.351・§9.360）。**1箇所に置く**——網ごとに
      書き写すと、書き忘れた本だけが無関係な網を落とす形で現れる。 */
   await clearRecords().catch(()=>{});
+  /* 端末の控え（§9.545）も白紙へ。控えは同じ端末のブラウザどうしで設定と記録を揃えるので、
+     残すと次に開く網の**まっさらなはずのブラウザ**へこの網の設定・記録が当たる。 */
+  resetTerminal();
   /* 副作用で育った行も土台が消す（上の`SIDE_EFFECT_TABLES`）。 */
   if(sideSnap)await dropNewMasterRows(sideSnap).catch(()=>{});
   if(mode0&&mode0!=='edit')await setMode(mode0).catch(()=>{});
@@ -89,6 +93,13 @@ async function run(title,body,opts={}){
  console.log(`\n=== SUMMARY ===\n${R.length-ng.length}/${R.length} passed`);
  ng.forEach(x=>console.log(' -',x.n,x.d||''));
  process.exit(fatal?2:(ng.length?1:0));
+}
+/* 端末の控え（§9.545）を白紙へ戻す。製品に消す口は無いので、サーバーと同じ環境で
+   置き場を引いてファイルを消す（`tests/reset_terminal.py`。ランナーも1本ごとに同じものを呼ぶ）。 */
+function resetTerminal(){
+ const cp=require('child_process'),path=require('path');
+ const r=cp.spawnSync(process.env.WAVELOG_PYTHON||'python3',[path.join(__dirname,'..','reset_terminal.py')],{encoding:'utf-8'});
+ if(r.status!==0||(r.stdout||'').trim())console.log('!! 端末の控えを白紙へ戻せませんでした: '+String(r.stdout||r.stderr||r.error||'').slice(0,200));
 }
 /* 後片付け: 触った一覧の列レイアウトを白紙へ戻す（§9.360 の追補）。
    **画面の列を触るとその一覧のレイアウトが保存される**ので、触った網は
@@ -186,4 +197,4 @@ async function restoreLayout(target,l,userId='test'){
  await fetch(B+'/api/column-layout-master',{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify(body)}).catch(()=>{});
 }
-module.exports={run,B,clearLayout,clearRecords,seedRecord,masterRows,masterSnapshot,dropNewMasterRows,snapLayout,restoreLayout};
+module.exports={run,B,resetTerminal,clearLayout,clearRecords,seedRecord,masterRows,masterSnapshot,dropNewMasterRows,snapLayout,restoreLayout};
