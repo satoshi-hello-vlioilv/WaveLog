@@ -130,6 +130,7 @@ JS_FILES=[
  'bladeset/blade-pick.js',   # 刃組: 刃選択マスタの盤（刃のカテゴリ・刃厚の2つの判定表。hold-pick の後）
  'bladeset/blade-board.js',  # 刃組: 刃マスタの盤（セットごとのカテゴリ・使用状態と刃厚ごとの行）
  'bladeset/ring-board.js',   # 刃組: ゴムリングの盤（色ごと・幅ごとの本数）
+ 'bladeset/spacer-outlook.js', # 刃組: スペーサーの在庫の見通し（札・浮く図・全幅の図。stock-board が呼ぶ）
  'bladeset/stock-board.js',  # 刃組: スペーサー・フィンガーの盤（寸法ごとの在庫をその場で直す）
  'bladeset/standard-figs.js', # 刃組: 刃組基準値の節ごとの図（standard-board の前）
  'bladeset/standard-board.js', # 刃組: 刃組基準値の盤（2ペイン・節ごとの図＋欄）

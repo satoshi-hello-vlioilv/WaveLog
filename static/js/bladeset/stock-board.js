@@ -17,18 +17,20 @@
  const total=rows=>rows.filter(x=>x.enabled!==false).reduce((s,x)=>s+(+x.qty||0),0);
 
  /* ---------- 在庫の表（2つの盤が共有） ----------
-    `o`: {dim:'size'|'width', dimLabel, unit, extra?:{f,label,list}, newId} */
+    `o`: {dim:'size'|'width', dimLabel, unit, extra?:{f,label,list}, newId, calc?:[{label,html(x)}]}
+    `calc`＝保有の右に並べる計算の列（読み取り専用・§9.540 の内訳と「次に使える」）。 */
  function stockTable(rows,o){
-  const ex=o.extra;
+  const ex=o.extra,calc=o.calc||[];
   const body=rows.map(x=>`<tr data-id="${x.id}"${x.enabled===false?' class="is-off"':''}>
    <th>${fmt(x[o.dim])}<u>mm</u></th>
    <td><input type="number" data-f="qty" min="0" step="1" value="${esc(x.qty??'')}" aria-label="${fmt(x[o.dim])}mm の保有${o.unit}数"><u>${o.unit}</u></td>
+   ${calc.map(c=>`<td class="bk-calc">${c.html(x)}</td>`).join('')}
    ${ex?`<td><input type="text" data-f="${ex.f}" list="${o.newId}L" value="${esc(x[ex.f]||'')}" placeholder="—" aria-label="${ex.label}"></td>`:''}
    <td class="bk-st">${x.enabled===false?'<i class="bk-tag">候補から外しています</i>':''}</td>
    <td><label class="bk-use" title="外すと刃組ガイダンスが候補に使いません（行は残ります）"><input type="checkbox" data-f="enabled"${x.enabled===false?'':' checked'}>候補に使う</label></td>
    <td><button type="button" class="bk-x" data-act="del" data-id="${x.id}" title="この行を消す" aria-label="${fmt(x[o.dim])}mm を消す">×</button></td></tr>`).join('');
-  const n=1+1+(ex?1:0)+3;
-  return `<table class="bk-table bk-stock"><thead><tr><th>${esc(o.dimLabel)}</th><th>保有</th>${ex?`<th>${esc(ex.label)}</th>`:''}<th></th><th></th><th></th></tr></thead>
+  const n=1+1+calc.length+(ex?1:0)+3;
+  return `<table class="bk-table bk-stock"><thead><tr><th>${esc(o.dimLabel)}</th><th>保有</th>${calc.map(c=>`<th>${esc(c.label)}</th>`).join('')}${ex?`<th>${esc(ex.label)}</th>`:''}<th></th><th></th><th></th></tr></thead>
    <tbody>${body||`<tr><td colspan="${n}" class="bk-none">まだありません。下の行から足してください。</td></tr>`}</tbody>
    <tfoot><tr class="bk-new"><th><input type="number" id="${o.newId}D" min="0" step="any" placeholder="${esc(o.dimLabel)}" aria-label="足す${esc(o.dimLabel)}"><u>mm</u></th>
     <td><input type="number" id="${o.newId}Q" min="0" step="1" placeholder="0" aria-label="足す行の保有${o.unit}数"><u>${o.unit}</u></td>
@@ -71,7 +73,16 @@
  }
 
  /* =================== スペーサー（1枚の在庫表） =================== */
- const sp={equipment:'',rows:[],uses:[],busy:false,loaded:false};
+ /* `ctx`＝刃組ガイダンスと同じ材料（台車の記録・基準値）、`view`＝いま開いている札（§9.540）、`cell`＝選んだ端数（null＝いちばん作りにくい端数）。 */
+ const sp={equipment:'',rows:[],uses:[],busy:false,loaded:false,ctx:null,view:'table',cell:null};
+ /* 在庫の見通し。**いまの表の値で毎回計算する**——保有を直すとその場で札と図が変わる（§CLAUDE 15）。 */
+ function spOutlook(){
+  if(!sp.ctx)return null;
+  try{
+   const B=WL.bladeSet,M=B.normalize(Object.assign({},sp.ctx,{spacers:sp.rows.filter(x=>x.enabled!==false)}));
+   return B.spacerOutlook(M,B.buildIndex(M));
+  }catch(e){WL.quiet.note('在庫の見通しを計算できない（表だけ出す）',e);return null}
+ }
  function spHead(){
   K().renderHead(sp,{id:'spEq',
    state:sp.loaded?`寸法 <b>${sp.rows.length}</b>種・合計 <b>${total(sp.rows)}</b>枚`:'',
@@ -81,9 +92,13 @@
  function spPaint(){
   spHead();
   const box=document.getElementById('masterMaintList');if(!box||!sp.loaded)return;
-  box.innerHTML=`<section class="bk-card bk-stockcard">${stockTable(sp.rows,{dim:'size',dimLabel:'寸法',unit:'枚',newId:'spNew',
-   extra:{f:'use',label:'用途',list:sp.uses}})}</section>`;
-  wireStock(box,sp,{path:'/api/bladeset-spacer-master',dim:'size',dimLabel:'寸法',unit:'枚',newId:'spNew',what:'スペーサー',
+  const O=WL.spacerOutlook,o=spOutlook(),view=o?sp.view:'table';
+  O.closePeek();   // 描き直すと浮いた図の中身は古くなる
+  const table=()=>`<section class="bk-card bk-stockcard">${o?O.legend(o):''}${stockTable(sp.rows,{dim:'size',dimLabel:'寸法',unit:'枚',newId:'spNew',
+   extra:{f:'use',label:'用途',list:sp.uses},calc:o?O.tableCols(o):[]})}</section>`;
+  box.innerHTML=(o?O.bandHtml(o,view):'')+(view==='table'?table():O.viewHtml(view,o,sp.cell));
+  if(o)O.wire(box,o,{onView:v=>{sp.view=v;spPaint()},onCell:u=>{sp.cell=u;spPaint()}});
+  if(view==='table')wireStock(box,sp,{path:'/api/bladeset-spacer-master',dim:'size',dimLabel:'寸法',unit:'枚',newId:'spNew',what:'スペーサー',
    extra:{f:'use'},rows:()=>sp.rows,paint:spPaint,reload:()=>spLoad(true),title:x=>`寸法 ${fmt(x.size)}mm`});
  }
  async function spLoad(force){
@@ -91,9 +106,12 @@
   sp.loaded=false;spHead();
   if(!await K().prologue(sp,force))return;
   await K().loading(async()=>{
-   const r=await api('/api/bladeset-spacer-master?equipment='+encodeURIComponent(sp.equipment));
+   const q=encodeURIComponent(sp.equipment);
+   /* 刃組の材料（台車の記録・基準値）は見通しのためだけに読む。読めなくても表は出す（§9.540）。 */
+   const [r,ctx]=await Promise.all([api('/api/bladeset-spacer-master?equipment='+q),
+    api('/api/bladeset/context?equipment='+q).catch(e=>{WL.quiet.note('刃組の材料が読めない（在庫の見通しを出さない）',e);return null})]);
    Object.assign(sp,{rows:(r.items||[]).filter(x=>x.equipment===sp.equipment).sort((a,b)=>b.size-a.size),
-                     uses:r.spacerUses||[],loaded:true});
+                     uses:r.spacerUses||[],ctx,loaded:true});
    spPaint();
   });
  }

@@ -2756,7 +2756,7 @@
    ? `<div class="bs-alert is-bad"><b>要確認 ${a.length}件</b><br>`
      + `${a.slice(0, 6).map(x => esc(x.text)).join('<br>')}`
      + `${a.length > 6 ? '<br>ほか ' + (a.length - 6) + '件' : ''}</div>`
-   : '<div class="bs-alert is-ok">在庫・研磨・使用限界に要確認はありません。</div>';
+   : '<div class="bs-alert is-ok">研磨・使用限界に要確認はありません。</div>';
   const groups = [];
   M.blades.forEach(k => {
    const g = groups.find(x => x.group === (k.group || ''));
@@ -2788,7 +2788,7 @@
   if (!foot) return;
   if (!a.length) {
    foot.className = 'bs-rail-foot is-ok';
-   foot.innerHTML = '<span>在庫・研磨・使用限界に要確認はありません</span>';
+   foot.innerHTML = '<span>研磨・使用限界に要確認はありません</span>';
    return;
   }
   foot.className = 'bs-rail-foot is-ng';

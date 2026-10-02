@@ -384,6 +384,7 @@ RULES = [
     ('static/js/bladeset/rule-table.js', g('刃組', 'マスタ')),
     ('static/js/bladeset/ring-board.js', g('刃組', 'マスタ')),
     ('static/js/bladeset/stock-board.js', g('刃組', 'マスタ')),
+    ('static/js/bladeset/spacer-outlook.js', g('刃組', 'マスタ')),
     ('static/js/bladeset/standard-board.js', g('刃組', 'マスタ')),
     ('static/js/bladeset/standard-figs.js', g('刃組', 'マスタ')),
     ('static/js/bladeset/blade-3d.js', g('刃組')),

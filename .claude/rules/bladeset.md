@@ -1,4 +1,4 @@
-# 刃組ガイダンス（251件）
+# 刃組ガイダンス（253件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 台車の載り方は`carriageLoad()`の1箇所（稼働中＝直前の記録）。刃組ガイダンスと在庫の盤が同じ答えを読む | `test_partboards.js`・`test_bladeui.js` | [§9.540](../../docs/decisions/9.540.md) |
+| スペーサーの札は3つ（乗せる＝浮く図・押す＝表と入れ替え）。数は`spacerOutlook()`、端数は刃組と同じ積みで数える | `test_partboards.js` | [§9.540](../../docs/decisions/9.540.md) |
 | 部材の在庫は保有だけ。下限は持たない（DBの列は古い版のために残し、読まない・書かない） | `test_bladeset.py`・`test_partboards.js` | [§9.539](../../docs/decisions/9.539.md) |
 | 刃マスタは3階層を混ぜない: 刃厚の見出し＝今すぐ選べる枚数／1項目（セット×刃厚）＝残り・枚数・研磨の予定／詳細カード＝直す欄だけ | `test_bladeboard.js` | [§9.536](../../docs/decisions/9.536.md) |
 | 見せ方はタイル（既定）と刃厚ごとの一覧の2つ（`VIEWS`の1箇所・端末に覚える）。どちらも`bladeWear()`／`bladeStock()`を読むだけ | `test_bladeboard.js` | [§9.536](../../docs/decisions/9.536.md) |
