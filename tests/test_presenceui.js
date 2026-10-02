@@ -237,8 +237,7 @@ run('test_presenceui: 接続状況の画面（§9.272）', async ({page,rec,B,W,
  // ---- ⑧ 古い版の端末への知らせ（§9.515） ------------------------------
  // 本物の応答: ハートビートに版の知らせが載る（区分を問わない道）
  const hbReal=await page.evaluate(async()=>{
-  const r=await fetch('/api/heartbeat?tab=t-ui515',{method:'POST'});const j=await r.json();
-  await fetch('/api/heartbeat/close?tab=t-ui515',{method:'POST'});return j;
+  const r=await fetch('/api/heartbeat',{method:'POST'});return r.json();
  });
  const mine=(await page.evaluate(()=>fetch('/api/build').then(r=>r.json()))).version||'';
  /* 検証用フィクスチャのこの端末は「開発者」で、記録もこの端末だけ——開発者を除くと数える端末が無く、

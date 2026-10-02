@@ -117,7 +117,7 @@ run('test_rbsample: 見本のロットで帳票を見る・試し印刷（§9.25
   try{const sum=await getj('/api/measurement/backup/summary');
       before=(sum.items||sum.rows||[]).length}catch(e){before=null}
 
-  /* **リロードしないこと**——タブが0件になった合図でアプリが落ちる（§9.98）。 */
+  /* **リロードしないこと**——以前はタブが0件になった合図でアプリが落ちた（§9.98。見張りは§9.548で外した）。 */
   await page.addInitScript(eq=>{try{localStorage.setItem('AccessMeasurementConfiguredEquipment',eq)}catch(e){}},EQ);
   await page.goto(B+'/',{waitUntil:'domcontentloaded'});
   await page.waitForSelector('#openMasterMaint',{timeout:20000});

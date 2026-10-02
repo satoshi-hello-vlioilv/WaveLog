@@ -349,10 +349,11 @@ def _scan_work():
 
 
 # 作り直せる起動の部品（§9.497）。**名前で選ぶ**（置き場には残す物も同居しているため）。
-# 入れない物: 起動前確認の刻印（ready.json）・起動中の印（instance.json）・いまブラウザへ渡す
-# 待機画面（loading.html）・ショートカットの絵（wavelog.ico——デスクトップのショートカットが
-# 指しており、作り直すのは作るときだけ。消すと絵が白紙になる）。
-RUNTIME_REGENERABLE = ('make_shortcut.vbs', 'loading.next.html', 'boot_status.js')
+# 入れない物: 起動前確認の刻印（ready.json）・ショートカットの絵（wavelog.ico——デスクトップの
+# ショートカットが指しており、作り直すのは作るときだけ。消すと絵が白紙になる）。
+# ブラウザ版だけが使っていた物（待機画面の写し・進捗・起動中の印）は§9.548で外し、
+# 片付けは`setup_check.RETIRED_LOCAL`が持つ。
+RUNTIME_REGENERABLE = ('make_shortcut.vbs',)
 
 
 def _scan_runtime():
@@ -401,8 +402,8 @@ CATEGORIES = [
   'why': 'いま使っているフォルダ以外を消します。',
   'auto': False, 'scan': _scan_work},
  {'key': 'runtime', 'label': '起動の部品（作り直せるもの）', 'icon': '起',
-  'note': 'ショートカットを作る補助スクリプト・次の起動用の待機画面・起動の進捗です。使うときに作り直されます。',
-  'why': '**自動では消しません。** 押したときと、update.bat で更新したときだけ消します（起動前確認の刻印・起動中の印・いまの待機画面・ショートカットの絵は残します）。',
+  'note': 'ショートカットを作る補助スクリプトです。使うときに作り直されます。',
+  'why': '**自動では消しません。** 押したときと、update.bat で更新したときだけ消します（起動前確認の刻印・ショートカットの絵は残します）。',
   'auto': False, 'scan': _scan_runtime},
  {'key': 'pycache', 'label': 'Pythonのバイトコード', 'icon': '速',
   'note': '起動を速くするための中間ファイルです（手元の置き場と、ソースの隣の `__pycache__`）。消しても動きますが、次の起動が一度だけ遅くなります。',

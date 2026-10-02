@@ -2223,84 +2223,6 @@
    renderShortcutPanel();
   }
  }
- /* ---------- この端末の起動のしかた（§9.547） ----------
-    利用者の指示「最終的にはexe起動に一本化したい」。**決めるのはこの端末だけ**
-    （Start.vbs が引数なしのとき読む手元のファイル・`launch_mode.py`の1箇所）。
-    顔ぶれ・字・選べない理由は**サーバーの答えをそのまま出す**（§9.163）。
-    並びは「どちらで起こすか（2択）→ いま動いている版といつ効くか」（§CLAUDE 2・14）。 */
- const launchState={info:null,error:'',loading:null};
- /* 状態の字は1箇所（「表示」の節と共通設定の両方が名乗る`[data-lm-state]`）。 */
- function launchFace(){
-  if(launchState.error)return {cls:'is-bad',text:launchState.error};
-  const info=launchState.info;
-  if(!info)return {cls:'',text:'確認しています…'};
-  if(!info.supported)return {cls:'is-bad',text:info.why};
-  const lab=k=>((info.modes||[]).find(m=>m.key===k)||{}).label||k;
-  return {cls:'is-done',text:`起動: ${lab(info.mode)}`+(info.saved?'':'（既定）')};
- }
- function launchPanelHtml(){
-  const info=launchState.info;
-  const f=launchFace();
-  if(!info||!info.supported)return `<p class="lnk-state ${f.cls}" data-lm-state>${esc(f.text)}</p>`;
-  const lab=k=>((info.modes||[]).find(m=>m.key===k)||{}).label||k;
-  /* 選べない札は**押す形にしない**（§9.445・§CLAUDE 4）。理由は札の中に書く。 */
-  const opts=(info.modes||[]).map(m=>{
-   const off=m.key==='desktop'&&!info.canDesktop;
-   const cur=m.key===info.mode?' is-current':'';
-   const hint=off?info.desktopWhy:m.hint;
-   return off?`<div class="ui-size-flat" data-launch-off="${esc(m.key)}"><span>${esc(m.label)}</span><small>${esc(hint)}</small></div>`
-    :`<button type="button" class="lm-opt${cur}" data-launch-mode="${esc(m.key)}"><span>${esc(m.label)}</span><small>${esc(hint)}</small></button>`;
-  }).join('');
-  /* **いつ効くかを書く**（§CLAUDE「推測させない」）——選んだ瞬間に窓が替わるわけではない。 */
-  const now=info.running?`いま動いているのは<b>${esc(lab(info.running))}</b>です。`:'';
-  const when=info.running&&info.running!==info.mode
-   ?`次に起動アイコン（Start.vbs）から起動すると<b>${esc(lab(info.mode))}</b>で開きます。`
-   :'起動アイコン（Start.vbs）から起動したときに効きます。';
-  return `<div class="lm" id="lmPanel">${opts}
-   <p class="lnk-where" id="lmWhen">${now}${when}</p></div>`;
- }
- function paintLaunch(){
-  const f=launchFace();
-  document.querySelectorAll('[data-lm-state]').forEach(el=>{
-   el.className='lnk-state'+(f.cls?' '+f.cls:'');el.textContent=f.text;
-  });
-  const host=document.querySelector('[data-look-section="launch"]');
-  if(host)host.innerHTML=launchPanelHtml();
- }
- function loadLaunch(force){
-  if(launchState.loading)return launchState.loading;
-  if(launchState.info&&!force){paintLaunch();return Promise.resolve()}
-  launchState.loading=(async()=>{
-   try{launchState.info=await api('/api/app/launch-mode');launchState.error=''}
-   catch(e){launchState.info=null;launchState.error='起動のしかたを読めませんでした: '+(e&&e.message||e)}
-   launchState.loading=null;paintLaunch();
-  })();
-  return launchState.loading;
- }
- async function setLaunch(mode){
-  try{
-   launchState.info=await api('/api/app/launch-mode',{method:'POST',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});
-   launchState.error='';paintLaunch();
-   const lab=((launchState.info.modes||[]).find(m=>m.key===mode)||{}).label||mode;
-   showToast(`この端末は${lab}で起動します`,'次に起動アイコン（Start.vbs）から起動したときから効きます',4600);
-  }catch(e){
-   showToast('起動のしかたを変えられませんでした',String(e&&e.message||e),6000);
-  }
- }
- WL.lookSettings.register({
-  key:'launch',
-  title:'起動のしかた（この端末）',
-  render(host){
-   host.innerHTML=launchPanelHtml();
-   /* 器は描き直しても同じなので、委譲で1回だけ受ける。 */
-   host.onclick=ev=>{
-    const b=ev.target.closest('[data-launch-mode]');
-    if(b&&!b.classList.contains('is-current'))setLaunch(b.dataset.launchMode);
-   };
-   loadLaunch();
-  },
- });
  /* **ヘッダーの「表示」へ節を名乗る**（§9.444 の口・§9.445）。`when`を持たない
     ＝どの画面・どのモードでも出す——これがこの節の値打ちそのもの。
     作れない端末では盤を伏せ、**理由を字で書く**（§CLAUDE 4）。 */
@@ -2320,13 +2242,12 @@
   /* **1行に収める**（§9.126「中身を減らしたら器も減らす」）——ここは行き先
      なので、章の高さを食わせない（器は728px・`test_setpage.js`が見張る）。 */
   return `<div class="pc-look" id="pcShortcut">
-   <div class="pc-look-head"><b>起動のしかたと起動アイコン</b>
-    <span class="lnk-state" data-lm-state>確認しています…</span>
+   <div class="pc-look-head"><b>デスクトップの起動アイコン</b>
     <span class="lnk-state" data-sc-state>確認しています…</span></div>
    <div class="pc-look-act">
-    <span class="pc-look-lead">ブラウザ版／デスクトップ版の切り替えと、毎日の入口（<b>Start.vbs</b>）へのショートカット。
-     決めるのはヘッダーの「表示」——<b>どのモードからも開けます</b>。</span>
-    <button type="button" class="mm-btn-ghost" id="pcScOpen">「表示」で決める</button>
+    <span class="pc-look-lead">毎日の入口（<b>Start.vbs</b>）へのショートカットを作ります。決めるのはヘッダーの「表示」——
+     <b>どのモードからも開けます</b>。</span>
+    <button type="button" class="mm-btn-ghost" id="pcScOpen">「表示」から作る</button>
    </div>
   </div>`;
  }
@@ -2431,7 +2352,7 @@
      ${numField('schedule_lock_verify_delay_ms','ロック確認までの待機時間','ミリ秒',100,0)}`)}
     ${pageFoldHtml('書く役を1台に絞る',pcNowText('schedule_owner_enabled','on: 1台が書く（既定）'),`
      <p class="mm-field-hint">共有へ<b>実際に書く役を1台に絞る</b>仕掛けです。他のPCは書き込みだけをその1台へLAN内のHTTPで頼み、
-      <b>読みは今までどおり手元の写しから</b>読みます（画面のURLは全員 http://127.0.0.1:5029/ のまま）。
+      <b>読みは今までどおり手元の写しから</b>読みます（画面は今までどおり各PCのデスクトップ版で開きます）。
       <b>持ち主が落ちていても止まりません</b>——頼めなかったPCは自分で共有へ書きます。
       <b>既定で入っています。</b>切ってよいのは、社内規程などで<b>受け口のポートを開けられない</b>ときです
       （切っても動きます——各PCが自分で共有へ書く形に戻るだけです）。</p>
@@ -2556,7 +2477,7 @@
   document.addEventListener('wl:look-change',renderLook);
   /* デスクトップの起動アイコン（§9.445）。**ここは行き先だけ**なので、
      することは「いまの状態を取りに行って塗る」の1つ（盤は「表示」の節）。 */
-  paintShortcut();loadShortcut();loadLaunch();
+  paintShortcut();loadShortcut();
  }
  function onPcJumpClick(ev){
   const form=ev.currentTarget;
@@ -3023,7 +2944,7 @@
   if(badge){
    badge.textContent=pending?`再起動待ち ${pending}件`:'';
    badge.hidden=!pending;
-   badge.title=pending?'保存した値は、サーバーを再起動すると効きます（stop.bat → Start.vbs）。':'';
+   badge.title=pending?'保存した値は、アプリを開き直すと効きます（'+WL.RESTART_HOW+'）':'';
   }
   /* **作り直せるファイルの置き場**(§9.109)と、**マスタDBが同期フォルダーの
      中にあるとき**の注意(§9.192)。どちらも設定ではないが、共有(BOX等)に置いた

@@ -1,6 +1,6 @@
 # デスクトップ版への移行（Tauri / Rust / Python）——事前確認と段取り
 
-**状態: P0（事前確認）・P1（Python の窓口・[§9.544](decisions/9.544.md)）・P3（端末の控え・[§9.545](decisions/9.545.md)）・P2（Rust の窓・[§9.546](decisions/9.546.md)）・端末ごとの起動のしかた（[§9.547](decisions/9.547.md)）まで済み。**
+**状態: P0（事前確認）・P1（Python の窓口・[§9.544](decisions/9.544.md)）・P3（端末の控え・[§9.545](decisions/9.545.md)）・P2（Rust の窓・[§9.546](decisions/9.546.md)）・端末ごとの起動のしかた（[§9.547](decisions/9.547.md)）・**exe 起動への一本化（段3・[§9.548](decisions/9.548.md)）**まで済み。**
 本物の WebView2（Windows）の自己診断は CI（`.github/workflows/desktop.yml`）が受け持ち、**20/20 で通った**（数値は§9.546）。以下は最初の事前確認。
 
 利用者の依頼「Defect-Pitch-Analyzer で行ったように、Flask/Python で補っていた部分を
@@ -88,9 +88,9 @@ E1 は P1 で網にした（`test_portdep.py`・常に回す）。対象は名�
 | P4 | WebView2 で違う所（§4 の 3〜6）と、版の知らせ | 自己診断の項目 |
 | P5 | 配り方と、ブラウザ版との併存。併存を終えたら、ポートのための仕組み（`guard.py`・`process_manager.py`・`loading.html`・ハートビートによる推し量り）を外す | 利用者の確認 |
 
-**exe 起動への一本化**（利用者の指示「最終的にはexe起動に一本化したい」・[§9.547](decisions/9.547.md)）は3段で進める:
-①端末ごとに選べる（既定はブラウザ版・済み）→ ②既定をデスクトップ版に（`launch_mode.DEFAULT`と Start.vbs の`DEFAULT_MODE`の2つを変える）
-→ ③ブラウザ版の起動の道を外す（上の P5）。段を進める合図は利用者が決める。
+**exe 起動への一本化**（利用者の指示「最終的にはexe起動に一本化したい」→「一本化を進めて」・[§9.548](decisions/9.548.md)）: **段3まで済み**。
+利用者の起動はデスクトップ版だけ（Start.vbs → `program/WaveLog.exe`）。exe は main へ入ったときに CI が作って main へ置く（ZIP で一緒に届く）。
+ブラウザ版の起動の道（`start_app.py`・`guard.py`・`process_manager.py`・`loading.html`・タブの見張り）は外し、HTTP の入口は開発と網（テスト）だけに残した。
 
 ## 6. 役割の分け方（得意な分野ごと）
 

@@ -7,15 +7,15 @@
     2. **版は「いま動いているコード」のもの**（/api/build と一致する）
        ——「直したはずの版が実際に動いているか」はここでしか分からない
     3. 置き場は**解決した実際のパス**（設定の綴りではない）
-    4. **「在る」だけで済ませない**——0バイトの写しは「読めない」と言う
-       （§9.314。隔離されて中身が消える形が実際に起きうる）
+    4. **「在る」だけで済ませない**——0バイトのファイルは「読めない」と言う
+       （§9.314。隔離されて中身が消える形が実際に起きうる。材料は起動前確認の刻印）
     5. 直近の起動1回ぶんのログが入り、区切りが無ければそう書く
     6. 画面は開いた時点で取りに行く（押さないと材料が揃わない、にしない）
     7. 読めない置き場は行そのものが目立つ（§3。文字にも出す）
     8. 「まとめてコピー」は**サーバーが作った文章をそのまま**写す
        （画面で組み立て直すと、貼ってもらった文と実物が食い違いうる）
 
-   4は**材料を自分で注ぎ込む**（§9.291 ①）——健全な端末では写しは読めるので、
+   4は**材料を自分で注ぎ込む**（§9.291 ①）——健全な端末では刻印は読めるので、
    そのまま見ても直す前の実装で通ってしまう。終わったら必ず戻す。
    ============================================================ */
 'use strict';
@@ -52,12 +52,13 @@ run('test_bootreport: 起動の状況をアプリから取れる（§9.316）', 
 
  // ---- 3. 置き場は解決した実際のパス ----
  const by=n=>d.places.find(p=>p.label===n);
- const copy=by('待機画面の写し'), root=by('アプリ本体');
- rec('待機画面の写しが解決したパスで出る',
-     !!copy&&/[\\/]runtime[\\/]loading\.html$/.test(copy.path),copy&&copy.path);
- rec('アプリ本体の置き場も出る（写しの元がどこか）',!!root&&!!root.path,root&&root.path);
- rec('見に行く先が一通り並ぶ（ログ・進捗・刻印・作業用・local.json・DB）',
-     ['ログ','起動の進捗','起動前確認の刻印','作業用フォルダ','config/local.json'].every(by)
+ const copy=by('起動前確認の刻印'), root=by('アプリ本体');
+ rec('起動前確認の刻印が解決したパスで出る',
+     !!copy&&/[\\/]runtime[\\/]ready\.json$/.test(copy.path),copy&&copy.path);
+ rec('アプリ本体とデスクトップ版の本体の置き場も出る',!!root&&!!root.path&&!!by('デスクトップ版の本体'),root&&root.path);
+ rec('見に行く先が一通り並ぶ（ログ・刻印・作業用・local.json・DB）。待機画面の写しは無い（§9.548）',
+     ['ログ','起動前確認の刻印','作業用フォルダ','config/local.json'].every(by)
+     && !d.places.some(p=>/待機画面|起動の進捗/.test(p.label))
      && d.places.some(p=>/^DB: /.test(p.label)),
      d.places.map(p=>p.label).join(' / '));
 
@@ -74,13 +75,13 @@ run('test_bootreport: 起動の状況をアプリから取れる（§9.316）', 
   restore=()=>{try{fs.writeFileSync(copy.path,keep)}catch(e){}};
   fs.writeFileSync(copy.path,'');
   const d2=await get('/api/boot-report');
-  const c2=d2.places.find(p=>p.label==='待機画面の写し');
-  rec('中身が空の写しは「読めない」と言う（在る、で済ませない）',
+  const c2=d2.places.find(p=>p.label==='起動前確認の刻印');
+  rec('中身が空のファイルは「読めない」と言う（在る、で済ませない）',
       !!c2&&c2.exists===true&&c2.readable===false,
       c2?('exists='+c2.exists+' readable='+c2.readable+' size='+c2.size):'—');
   // **その行を見ること**——文章まるごとで見ると、たまたま別の置き場が
-  // 読めないだけで通る（`loading.next.html`は無いのがふつう）。
-  const line=(d2.text||'').split('\n').find(l=>/\s待機画面の写し: /.test(l))||'';
+  // 読めないだけで通る。
+  const line=(d2.text||'').split('\n').find(l=>/\s起動前確認の刻印: /.test(l))||'';
   rec('貼れる文章にも「読めない」と出る',/\*\*読めない\*\*/.test(line),line.trim().slice(0,90));
 
   // ---- 7. 読めない置き場は行そのものが目立つ ----
@@ -98,13 +99,13 @@ run('test_bootreport: 起動の状況をアプリから取れる（§9.316）', 
    // **置き場の名前の欄で選ぶこと**——行まるごとを見ると、備考に同じ語を
    // 持つ別の行（runtime）に当たって何も確かめないまま通る。
    const label=r=>((r.children[1]||{}).textContent||'').trim();
-   const hit=rows.find(r=>label(r)==='待機画面の写し');
+   const hit=rows.find(r=>label(r)==='起動前確認の刻印');
    return {rows:rows.length,bad:!!(hit&&hit.classList.contains('is-bad')),
            text:hit?hit.textContent.replace(/\s+/g,' ').slice(0,80):'',
            badCount:rows.filter(r=>r.classList.contains('is-bad')).length,
            env:(document.querySelector('#lgBootBody .lg-facts')||{}).textContent||'',
-           /* 無いのがふつうの置き場（次の起動用の待機画面）は「要確認」にしない（§9.510） */
-           staged:(()=>{const r=rows.find(r=>label(r)==='待機画面（次の起動用）');
+           /* 無いのがふつうの置き場（local.json）は「要確認」にしない（§9.510） */
+           staged:(()=>{const r=rows.find(r=>label(r)==='config/local.json');
              return r?{bad:r.classList.contains('is-bad'),text:(r.children[0]||{}).textContent.trim()}:null})(),
            facts:(document.getElementById('lgFacts')||{}).textContent||''};
   });
@@ -115,7 +116,7 @@ run('test_bootreport: 起動の状況をアプリから取れる（§9.316）', 
   rec('無いのがふつうの置き場は「無し（ふつう）」で、要確認に数えない（偽の警告を出さない）',
       !ui.staged||(ui.staged.bad===false&&/ふつう|あり/.test(ui.staged.text)),JSON.stringify(ui.staged));
   rec('報告の段も読めない置き場を名指しする（点検の段へ1手で行ける）',
-      /置き場\s*\d+か所 要確認.*待機画面の写し/.test(ui.facts.replace(/\s+/g,' ')),
+      /置き場\s*\d+か所 要確認.*起動前確認の刻印/.test(ui.facts.replace(/\s+/g,' ')),
       ui.facts.replace(/\s+/g,' ').slice(-80));
   rec('版は画面にも出る',new RegExp('VER'+String(build.version).replace(/\./g,'\\.')).test(ui.env),ui.env.slice(0,60));
 
@@ -137,11 +138,11 @@ run('test_bootreport: 起動の状況をアプリから取れる（§9.316）', 
 
   restore();restore=null;
   const d3=await get('/api/boot-report');
-  const c3=d3.places.find(p=>p.label==='待機画面の写し');
+  const c3=d3.places.find(p=>p.label==='起動前確認の刻印');
   rec('戻したら「読める」に戻る（後片付け）',!!c3&&c3.readable===true,
       c3?('readable='+c3.readable+' size='+c3.size):'—');
  }else{
-  rec('待機画面の写しを注ぎ込めた',false,'写しが見つかりません: '+(copy&&copy.path));
+  rec('起動前確認の刻印を注ぎ込めた',false,'刻印が見つかりません: '+(copy&&copy.path));
  }
 
  }finally{if(restore){restore();restore=null}}

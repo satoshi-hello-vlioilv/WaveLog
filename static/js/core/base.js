@@ -73,8 +73,10 @@ WL.quiet=(function(){
    丸ごと出ていた**（実機で報告）。読む側に要るのは「何が起きたか」と
    「次に何をすればよいか」なので、状態コードから言い直す。
    生の本文は`err.body`へ残す（診断に要るのは開発時だけ）。 */
+/* 開き直し方は**この1箇所**（§9.548: 起動はデスクトップ版だけ・stop.bat は無い）。 */
+WL.RESTART_HOW='アプリを終了してから（窓を閉じる）、起動アイコン（Start.vbs）で開き直してください。';
 const HTTP_HINT={
- 404:'サーバーにこの機能がありません。アプリを更新したあと再起動していない可能性があります（stop.bat で止めてから Start.vbs で開き直してください）。',
+ 404:'サーバーにこの機能がありません。アプリを更新したあと開き直していない可能性があります（'+WL.RESTART_HOW+'）',
  405:'この操作をサーバーが受け付けませんでした（この画面のモードでは使えない操作かもしれません）。',
  401:'権限がありません。',403:'権限がありません（このモードでは変更できません）。',
  409:'ほかの端末が同時に変更しました。もう一度お試しください。',
@@ -111,7 +113,7 @@ const api=async(u,o)=>{
  const settle=ok=>{clearTimeout(timer);if(armed){const c=chip();if(c)c.autoEnd(ok)}};
  let r;
  try{r=await fetch(u,{cache:'no-store',...opt})}
- catch(error){settle(false);throw Error('サーバーへ接続できません。Flaskアプリが起動中か、ポート5029で開いているか確認してください。詳細: '+(error?.message||String(error)))}
+ catch(error){settle(false);throw Error('アプリの中身（Python）と話せません。終了している可能性があります（'+WL.RESTART_HOW+'）詳細: '+(error?.message||String(error)))}
  const text=await r.text();let j={},parsed=false;
  try{if(text){j=JSON.parse(text);parsed=true}}catch(_){j={}}
  if(!r.ok){
@@ -2232,31 +2234,9 @@ function fixedToleranceValue(kind,value){const n=Number(value);if(!Number.isFini
 /* Final title guard for delayed initialization and browser history restoration. */
 function enforceApplicationTitle(){if(document.title!=='測定伝送システム')document.title='測定伝送システム'}
 enforceApplicationTitle();window.addEventListener('pageshow',enforceApplicationTitle);document.addEventListener('visibilitychange',()=>{if(!document.hidden)enforceApplicationTitle()});
-/* ウォッチドッグ用ハートビート。読み込みのたびに固有IDを発行し、開いている
-   間は定期的にバックエンドへ生存信号を送る。タブを閉じる・別ページへ
-   移動する際はpagehideで即座に終了通知(close)を送り、そのタブが無くなった
-   ことを明示的に伝える。ブラウザを閉じ忘れた場合はサーバー側のウォッチ
-   ドッグがFlaskプロセスを自動終了し、プロセスの残存(ゾンビ化)を防ぐ
-   (サーバー側: backend/config.py EMPTY_GRACE_SEC)。単なる通信瞬断
-   (Wi-Fi切断等)ではタブは消えたことにならないため誤って終了しない
-   (サーバー側: HEARTBEAT_STALE_SEC)。応答は見ないため失敗しても無視する
-   (サーバー再起動中の一時断等)。
-   IDは毎回の読み込みで新規発行し、sessionStorageへは保存しない。
-   sessionStorageはタブの複製・「閉じたタブを開き直す」操作で新しいタブへ
-   コピーされてしまうため、それで保存していると2つのタブが同じIDを共有
-   してしまい、片方だけを閉じても(もう一方が生きているにも関わらず)
-   サーバー側がそのIDを「消えた」と扱ってしまう恐れがある。IDの安定性は
-   リロードをまたいで保つ必要が無い(サーバー側は「1件でも生きているIDが
-   あるか」しか見ておらず、リロードのpagehideで一瞬0件になっても直後の
-   新しいIDのハートビートでEMPTY_GRACE_SEC以内に復帰する)ため、
-   セッションをまたいだ永続化自体が不要だった。 */
-/* **IDは`index.html`の先頭で作って渡ってくる**（§9.284）。あちらは
-   HTMLを読んだ直後に1回名乗る——アプリのJSを読み終えるのを待っていると、
-   重い画面の読み直しで「タブが閉じた」の8秒を使い切ってアプリが終了する。
-   **同じIDを使うこと**——別々に作ると、閉じた通知が片方にしか当たらず
-   「開いたまま」の幽霊が残る。渡って来なければ今までどおりここで作る。 */
-const WATCHDOG_TAB_ID=(typeof window!=='undefined'&&window.__wlTabId)
-  ||(crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random()}`);
+/* ハートビート（15秒ごと）。**在席と版の知らせ**のために送る（§9.272・§9.515）。
+   以前はブラウザ版の「タブが0件で終わる」見張りのためにタブごとのIDを名乗っていたが、
+   §9.548 でブラウザ版の起動の道を外したので名乗らない（終わり方は窓を閉じる・終了ボタン）。 */
 /* ハートビートは「こちらが生きている」ことを伝えるだけでなく、その応答から
    「サーバーが生きているか」も分かる。応答が続けて途絶えたら画面最上部へ
    明示する。サーバーが終了していても画面は普通に見えてしまい、操作して
@@ -2314,8 +2294,8 @@ async function sendHeartbeat(){
   /* いま開いている画面も一緒に伝える（§9.272）。接続状況の一覧が「誰が
      何をしているか」まで出せる。**専用の周期は足さない**——間隔・失敗時の
      扱い・タブを閉じたときの後始末を2つ持つことになる。 */
-  const res=await fetch(`/api/heartbeat?tab=${encodeURIComponent(WATCHDOG_TAB_ID)}`
-   +`&view=${encodeURIComponent(WL.currentView||'')}`,{method:'POST',cache:'no-store',keepalive:true});
+  const res=await fetch(`/api/heartbeat?view=${encodeURIComponent(WL.currentView||'')}`,
+   {method:'POST',cache:'no-store',keepalive:true});
   if(!res.ok)throw Error('HTTP '+res.status);
   heartbeatFailures=0;setConnectionLost(false);
   const body=await res.json().catch(WL.quiet('応答を読めなくても生きている（版の知らせは前のまま）'));
@@ -2335,13 +2315,13 @@ WL.onReady(()=>{
 });
 /* ---------- 安全な終了（§9.301 ②、利用者の指示「そういう意味で安全な
    アプリの終了ボタンも欲しいです」） ----------
-   ただ落とすだけなら`stop.bat`が既にある。「安全」の中身は**片付け**で、
+   「安全」の中身は**片付け**で、
    共有の目印を残したまま落ちると他の端末が期限（既定90秒）まで待たされる:
     ・書込役の目印……その間、書き込みのたびに届かない相手を待つ（§9.301 ①）
     ・編集セッション……その設備が読み取り専用のまま（§9.211 ②）
     ・在席……接続状況に幽霊が残る（§9.272）
    **片付けそのものはサーバーの`watchdog.teardown()`の1箇所**（§9.163）——
-   タブを閉じたときも`stop.bat`のときもここを通るので、手順を2つ持たない。
+   窓を閉じたときも（窓口の入力が閉じる）ここを通るので、手順を2つ持たない。
    画面がするのは「押す前に何が起きるかを見せる」ことと「押したあとに
    終わったと言う」ことだけ。
 
@@ -2350,7 +2330,7 @@ WL.onReady(()=>{
 WL.quitting=false;
 WL.quitApp=async function(){
  if(WL.quitting)return;
- let facts={tabs:0,isOwner:false,sessions:[]};
+ let facts={isOwner:false,sessions:[]};
  try{facts=await api('/api/app/quit-check')}catch(e){WL.quiet.note('分からなくても閉じられる',e)}
  const lines=[];
  if(typeof measureDirty!=='undefined'&&measureDirty)
@@ -2360,7 +2340,6 @@ WL.quitApp=async function(){
  if(facts.isOwner)what.push('このPCは<b>共有への書込役</b>です。役を降りてから閉じるので、他のPCはすぐ次の書込役を立てられます');
  if((facts.sessions||[]).length)what.push('編集中の設備（'+esc(facts.sessions.join('、'))+'）を手放します');
  what.push('接続状況からこのPCを消します');
- if(Number(facts.tabs)>1)what.push('<b>このアプリのタブが'+esc(String(facts.tabs))+'つ開いています。</b>すべて使えなくなります');
  lines.push('<ul class="confirm-modal-list">'+what.map(x=>'<li>'+x+'</li>').join('')+'</ul>');
  const ok=await confirmModal({title:'このPCのWaveLogを終了しますか？',
    eyebrow:'QUIT',confirmLabel:'終了する',cancelLabel:'やめる',danger:true,
@@ -2374,46 +2353,21 @@ WL.quitApp=async function(){
   await api('/api/app/quit',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
  }catch(e){
   /* **失敗したら終了したと言わない**（§3）。押しても何も起きない状態を
-     残さないよう、理由と次の手立て（stop.bat）を出す。 */
+     残さないよう、理由と次の手立て（窓を閉じても同じ片付けを通る）を出す。 */
   WL.quitting=false;
-  showToast&&showToast('終了できませんでした',String(e&&e.message||e)+' / stop.bat から止められます',6000);
+  showToast&&showToast('終了できませんでした',String(e&&e.message||e)+' / 窓を閉じても、同じ片付けをしてから終わります',6000);
   return;
  }
  if(note)note.innerHTML='<ul class="confirm-modal-list">'+what.map(x=>'<li>'+x+'</li>').join('')+'</ul>';
- /* **タブも閉じる**（§9.409、利用者の指示④「アプリ終了ボタンで終了時、
-    タブに残らず、そのままスッキリ終了させてください」）。
-    `window.close()`が通るのは**スクリプトが開いた窓**だけ——毎日の入口
-    （Start.vbs → 既定のブラウザ）で開いたタブは**ブラウザが開いた**ものなので、
-    断られる端末がある。断られたかどうかは**その場では分からない**（閉じられれば
-    この先は1行も動かない）ので、**少し待って生きていたら断られた**と読む。
-    そのときだけ今までの画面を出す（黙って何も起きないのが最悪・§CLAUDE 4）。 */
- closeThisTab(box);
+ /* 窓は中身（Python）が終わるのを待って閉じる（デスクトップ版の窓・§9.546）。閉じるまでの
+    あいだと、窓を持たない開発・網の入口では**終わったことと次の一手**を出す。 */
+ if(box)box.hidden=false;
 };
-/* 閉じてみて、閉じられなかったら案内を出す。**「閉じました」と言わない**
-   ——言った直後に閉じないと、その字そのものが嘘になる。 */
-function closeThisTab(box){
- try{window.close()}catch(e){WL.quiet.note('タブを閉じられない（案内を出す）',e)}
- setTimeout(()=>{
-  /* ここへ来た＝ブラウザが閉じるのを断った。**理由と次の一手**を書く。 */
-  if(box)box.hidden=false;
- },QUIT_CLOSE_WAIT_MS);
-}
-/* 閉じる判断を待つ時間。短いと閉じる直前に案内が一瞬見え、長いと終了後に
-   何も出ない間ができる。描画1回ぶん（16ms）では足りず、実機の破棄まで
-   数十msかかるので、その上を取る。 */
-const QUIT_CLOSE_WAIT_MS=350;
 WL.onReady(()=>{
  const q=document.getElementById('appQuit');
  if(q)q.onclick=()=>WL.quitApp();
  else console.error('終了ボタン(#appQuit)が見つかりません');
 });
-/* pagehideが本来カバーする範囲(bfcache入りも含む)の方が広いはずだが、
-   実機でタブを閉じてもサーバーが終了しない事例があったため、念のため
-   unloadでも同じ終了通知を送る(ブラウザ実装差の保険。同じtab idへの
-   重複DELETE相当の呼び出しになるだけで、副作用は無い)。 */
-function notifyTabClosed(){try{navigator.sendBeacon(`/api/heartbeat/close?tab=${encodeURIComponent(WATCHDOG_TAB_ID)}`)}catch(e){WL.quiet.note('閉じた通知を送れない（監視が0件の猶予で気づく）',e)}}
-window.addEventListener('pagehide',notifyTabClosed);
-window.addEventListener('unload',notifyTabClosed);
 
 /* 左ナビ(aside)の幅をドラッグでリサイズできるようにする。#navResizeHandle
    を<aside>の直後(<main>の前)へ挿入するだけで、.layoutのgrid-template-

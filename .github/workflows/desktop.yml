@@ -4,9 +4,12 @@
 #      test_portdep（共有の層は画面のポートを知らない）・test_terminalstore（端末の控え）・
 #      test_sidecar（窓口の答えがポートの版と同じ・閉じたら片付けて終わる）
 # 2. cargo test → cargo build --release
-# 3. 作った exe を Start.vbs の隣に置き、この端末を「デスクトップ版」にして**引数なしの Start.vbs で起こす**
-#    （端末の設定を読む・手元へ写して起動する道そのものを通す・§9.547）。
+# 3. 作った exe を program/ に置き、**Start.vbs で起こす**（手元へ写して起動する道そのものを通す・§9.548）。
 #    窓は WAVELOG_SELFTEST に結果を書いて終わる。結果と exe は Artifacts に置く。
+#
+# 4. **main への push では、通った exe を program/WaveLog.exe として main へ置く**（publish・§9.548）。
+#    現場は main の ZIP を落として上書きするので、exe も同じ ZIP で届く（exe と Python の組がずれない）。
+#    置くのは「窓の元（desktop/・app_icon.py）が前に置いた exe と違う」ときだけ（program/WaveLog.build.json の指紋）。
 #
 # 全件の網はここでは回さない（nets.yml と同じ方針・CLAUDE.md の A）。
 name: desktop
@@ -14,13 +17,18 @@ name: desktop
 on:
   push:
     branches: [main]
-    paths: ["desktop/**", "program/**", "backend/**", "static/**", "templates/**", "Start.vbs", "tests/test_launchmode.py", ".github/workflows/desktop.yml"]
+    paths: ["desktop/**", "program/**", "backend/**", "static/**", "templates/**", "Start.vbs", ".github/workflows/desktop.yml"]
   pull_request:
-    paths: ["desktop/**", "program/**", "backend/**", "static/**", "templates/**", "Start.vbs", "tests/test_launchmode.py", ".github/workflows/desktop.yml"]
+    paths: ["desktop/**", "program/**", "backend/**", "static/**", "templates/**", "Start.vbs", ".github/workflows/desktop.yml"]
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# main へ続けて入っても、置くのは1本ずつ（後から来たほうが待つ）。
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   windows:
@@ -44,7 +52,7 @@ jobs:
       - name: Python の網（Windows）
         run: |
           $ng = 0
-          foreach ($t in "test_portdep", "test_terminalstore", "test_sidecar", "test_launchmode") {
+          foreach ($t in "test_portdep", "test_terminalstore", "test_sidecar") {
             Write-Host "=== $t"
             python "tests/$t.py"
             if ($LASTEXITCODE -ne 0) { $ng++ }
@@ -69,14 +77,11 @@ jobs:
           WAVELOG_PYTHON: python
         run: cargo build --release --locked
 
-      # 起動のしかた（§9.547）: アプリの部品で「この端末はデスクトップ版」と残し、**引数なし**の Start.vbs で起こす
-      # （毎日の起動アイコンと同じ道。Start.vbs が手元の設定を読んで exe を写して起動するところまで通す）。
-      - name: 自己診断（本物の WebView2・ポートなし・端末の設定から）
+      # 毎日の起動アイコンと同じ道（引数なしの Start.vbs）で起こす。Start.vbs は exe を手元へ写して起動するだけ（§9.548）。
+      - name: 自己診断（本物の WebView2・ポートなし・Start.vbs から）
         run: |
-          Copy-Item desktop\target\release\WaveLog.exe WaveLog.exe
+          Copy-Item desktop\target\release\WaveLog.exe program\WaveLog.exe
           $env:WAVELOG_SELFTEST = "$env:RUNNER_TEMP\selftest.json"
-          python -c "from backend import launch_mode as m; r = m.write('desktop'); print(r); assert r['ok']"
-          if ($LASTEXITCODE -ne 0) { exit 5 }
           cscript //nologo Start.vbs
           $deadline = (Get-Date).AddSeconds(240)
           while (-not (Test-Path $env:WAVELOG_SELFTEST) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
@@ -92,11 +97,68 @@ jobs:
           if (Get-Process python -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*hostedtoolcache*" }) { Write-Host "Python が残っています（窓を閉じても中身が終わっていない）"; exit 4 }
           if (-not $r.ok) { exit 1 }
 
+      # 置く物をまとめる: exe・自己診断の結果・**作った元の指紋**（publish が比べる）。
+      - name: 成果物をまとめる
+        if: always()
+        run: |
+          $out = "$env:RUNNER_TEMP\out"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          if (Test-Path desktop\target\release\WaveLog.exe) { Copy-Item desktop\target\release\WaveLog.exe $out }
+          if (Test-Path "$env:RUNNER_TEMP\selftest.json") { Copy-Item "$env:RUNNER_TEMP\selftest.json" $out }
+          "desktop:$(git rev-parse HEAD:desktop) icon:$(git rev-parse HEAD:backend/app_icon.py)" | Set-Content -NoNewline -Encoding ascii "$out\source.txt"
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: WaveLog-desktop-windows
-          path: |
-            desktop/target/release/WaveLog.exe
-            ${{ runner.temp }}/selftest.json
+          path: ${{ runner.temp }}/out/
           if-no-files-found: warn
+
+  # main へ入ったときだけ、通った exe を main へ置く（§9.548）。書く権限はこの段だけが持つ。
+  publish:
+    needs: windows
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/download-artifact@v4
+        with:
+          name: WaveLog-desktop-windows
+          path: built
+      - name: exe を main へ置く
+        env:
+          BUILT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          built="$(cat built/source.txt)"
+          now="desktop:$(git rev-parse HEAD:desktop) icon:$(git rev-parse HEAD:backend/app_icon.py)"
+          # 作っているあいだに窓の元が変わった——古い exe で上書きしない（後の版が置く）。
+          if [ "$built" != "$now" ]; then echo "窓の元が作った後に変わったので置かない（後の版が置く）"; exit 0; fi
+          have="$(python3 -c "import json;print(json.load(open('program/WaveLog.build.json',encoding='utf-8'))['source'])" 2>/dev/null || true)"
+          if [ "$have" = "$now" ] && [ -f program/WaveLog.exe ]; then echo "同じ元から作った exe がもう置いてある"; exit 0; fi
+          python3 - "$now" "$BUILT_SHA" <<'PY'
+          import json, re, sys, datetime, pathlib, shutil
+          src, sha = sys.argv[1], sys.argv[2]
+          shutil.copyfile('built/WaveLog.exe', 'program/WaveLog.exe')
+          st = json.load(open('built/selftest.json', encoding='utf-8'))
+          ver = re.search(r"APP_VERSION='([^']+)'", open('backend/changelog_data.py', encoding='utf-8').read()).group(1)
+          info = {'source': src, 'commit': sha, 'version': ver,
+                  'builtAt': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                  'size': pathlib.Path('program/WaveLog.exe').stat().st_size,
+                  'selftest': f"{sum(r['ok'] for r in st['results'])}/{len(st['results'])}"}
+          pathlib.Path('program/WaveLog.build.json').write_text(json.dumps(info, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+          print(info)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add program/WaveLog.exe program/WaveLog.build.json
+          git commit -m "デスクトップ版の exe を置く（${BUILT_SHA:0:7} から作った・自己診断を通った物・§9.548）[skip ci]"
+          for i in 1 2 3 4; do
+            git push origin HEAD:main && exit 0
+            sleep $((2 ** i)); git pull --rebase origin main
+          done
+          exit 1

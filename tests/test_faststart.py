@@ -8,39 +8,35 @@
   信じることになる（Pythonの場所も版も端末ごとに違う）。
 - **刻印は速さの門であって正しさの門ではない**。刻印を消しても起動できる
   （その場で確認し直す＝利用者の指示①の自己修復）。
-- **確認の実処理は1箇所**。update.bat と起動時のフォールバックが同じ
+- **確認の実処理は1箇所**。update.bat とデスクトップ版の窓口（`sidecar._prepare()`）が同じ
   `setup_check.run()`を通る——2つ持つと「update.batでは通るのに起動では
   失敗する」が作れる。
-- **進捗ファイル(boot_status.js)と待機画面の写しも端末ごと**。共有へ書くと
-  2台が同時に起動したとき相手の進捗が自分の画面に出る。
+- **毎日の入口（Start.vbs）は exe を手元へ写して起こすだけ**（§9.548）。ブラウザ版の起動の道は無い。
+- **外した物の残り**（上書きコピーで消えずに残る）は、新しい Start.vbs が届いていれば片付ける。
 - update.bat（旧`setup.bat`・§9.405）は **CP932**（UTF-8の日本語だとcmd.exeが誤読する）。
 - 起動スクリプトは **CRLF改行**（LFだけだとcmd.exeが行の途中から実行する）。
 
-**確かめ方の注意**: 刻印を消した状態で「起動できること」まで見ること。
-「刻印が書かれる」だけを見る網は、フォールバックが壊れていても通る。
+**確かめ方の注意**: 刻印を消した状態で「窓口が確認し直して通ること」まで見ること。
+「刻印が書かれる」だけを見る網は、確認し直す道が壊れていても通る。
 ============================================================
 """
 import json
-import os
 import re
 import subprocess
 import sys
-import time
-import urllib.request
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PROGRAM = ROOT / 'program'   # 直接実行する4本の置き場（§9.404）
 sys.path.insert(0, str(ROOT))
-# `import start_app`（下の 5b）が通るように。**本物と同じ探索先**で読む
+# `import sidecar`（下の 8）が通るように。**本物と同じ探索先**で読む
 # ——`program/_approot.py`がリポジトリ直下を足すので、素の名前で読める。
 sys.path.insert(0, str(PROGRAM))
 import _pycache_bootstrap  # noqa: E402,F401 副作用のためのimport（.pycの置き場）
-from backend import boot_status  # noqa: E402
 from backend.launcher import ready, setup_check  # noqa: E402
 from backend.paths import APP_ROOT, local_root  # noqa: E402
 
-API = 'http://127.0.0.1:5029'
 R = []
 
 
@@ -55,32 +51,10 @@ def say(_message, bad=False, quiet=False):
     pass
 
 
-def stop_app():
-    subprocess.run([sys.executable, 'program/process_manager.py', 'stop'], cwd=ROOT,
-                   capture_output=True, timeout=90)
-    time.sleep(1.0)
-
-
-def start_and_time(timeout=90):
-    """起動してトップページが返るまでの秒数。返らなければ None。"""
-    t0 = time.monotonic()
-    subprocess.Popen([sys.executable, '-u', 'program/start_app.py'], cwd=ROOT,
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    while time.monotonic() - t0 < timeout:
-        try:
-            urllib.request.urlopen(API + '/', timeout=1).read(1)
-            return time.monotonic() - t0
-        except Exception:
-            time.sleep(0.05)
-    return None
-
-
 saved_stamp = ready.read()
 try:
     # ---- 1) 置き場は端末ごと（共有側ではない） ----
-    for label, path in (('刻印', ready.stamp_file()),
-                        ('進捗ファイル', boot_status.status_path()),
-                        ('待機画面の写し', setup_check.waiting_page())):
+    for label, path in (('刻印', ready.stamp_file()),):
         # **パスとして中にあるか**で見る（文字列の先頭一致だと `…/app` と `…/apphome` を取り違える）。
         inside_local = Path(path).is_relative_to(local_root())
         inside_app = Path(path).is_relative_to(APP_ROOT)
@@ -161,15 +135,6 @@ try:
     rec('鍵つきでも取れる（画面の題の言い分けに使う）',
         [k for k, _t in ready.diff()] == ['appRoot'], str(ready.diff()))
 
-    # ---- 5) 待機画面の写しは中身が同じ ----
-    src = (PROGRAM / 'loading.html').read_bytes()
-    # 写す先は**次の起動用**（§9.314）なので、実際に使う名前へは
-    # `promote_waiting_page()`で移る。2つで1組。
-    setup_check.copy_waiting_page()
-    setup_check.promote_waiting_page()
-    rec('待機画面の写しは元と同じ中身',
-        setup_check.waiting_page().read_bytes() == src,
-        f'{len(src)}バイト')
     # ---- 5b) `say`の約束は say(m, bad=False, quiet=False)（§9.495） ----
     # 起動の裏の写し直しが渡す`say`が`quiet`を受けず、**写せたのに例外になって**
     # 「起動画面を写せませんでした」と逆のことをログへ残していた（実機のログで見つかった）。
@@ -179,244 +144,17 @@ try:
             if 'quiet' not in m.group(1) and '**' not in m.group(1):
                 bad_say.append(f'{f.name}: lambda{m.group(1)}')
     rec('say=lambda はどれも quiet を受ける（§9.495）', not bad_say, ' / '.join(bad_say) or 'なし')
-    # 相対で読む前提（写しの隣に進捗ファイルを置くのが筋になる）
-    html = src.decode('utf-8')
-    rec('待機画面は進捗ファイルを相対で読む（写しの隣を見る）',
-        "src='boot_status.js" in html or 'src="boot_status.js' in html)
-    rec('写しと進捗ファイルは同じフォルダに置かれる',
-        setup_check.waiting_page().parent == boot_status.status_path().parent,
-        str(setup_check.waiting_page().parent))
-
-    # ---- 5b) 他PCで待機画面が出ない（§9.255 ③、利用者の報告） ----
-    # 「他PCで起動に失敗する（モーダルが出ずエラー画面／loading.html 直クリック
-    #   で復帰）」
-    # 直したのは3つで、**どれが欠けても「何も出ない」に戻る**:
-    #   ① 置き場の解決（`local_root()`）が送出しない＝起動の1行目で死なない
-    #   ② 手元に写しが無くても**本体を読まずに**組み込みの簡易画面で開く
-    #   ③ 手元にもテンポラリにも書けない、を作らない（候補を3段持つ）
-    import tempfile  # noqa: E402
-    from backend import paths as _paths  # noqa: E402
-    import start_app as _start  # noqa: E402
-
-    # ① 置き場が書けなくても**送出しない**。健全な端末の答えは変えない。
-    _keep_root, _keep_env = _paths._LOCAL_ROOT, os.environ.get('LOCALAPPDATA')
-    try:
-        _paths._LOCAL_ROOT = None
-        # **書けない置き場をわざと作る**——既存の「ファイル」を親にすると
-        # `mkdir` は必ず失敗する（移動プロファイル・ポリシーで書けない端末の
-        # 代わり。環境変数にNUL文字は入れられないので、この形で再現する）。
-        blocker = Path(tempfile.gettempdir()) / 'wl-blocker.txt'
-        blocker.write_text('x', encoding='utf-8')
-        os.environ['LOCALAPPDATA'] = str(blocker / 'inside')
-        picked = None
-        raised = ''
-        try:
-            picked = _paths.local_root()
-            _paths.ensure_local_dirs()
-        except Exception as e:
-            raised = f'{type(e).__name__}: {e}'
-        rec('書けない置き場でも送出しない（起動の1行目で死なない）', not raised, raised)
-        rec('書ける場所へ落ちる（一時フォルダーまで候補にする）',
-            picked is not None and os.access(str(picked), os.W_OK), str(picked))
-    finally:
-        try:
-            (Path(tempfile.gettempdir()) / 'wl-blocker.txt').unlink()
-        except Exception:
-            pass
-        _paths._LOCAL_ROOT = _keep_root
-        if _keep_env is None:
-            os.environ.pop('LOCALAPPDATA', None)
-        else:
-            os.environ['LOCALAPPDATA'] = _keep_env
-
-    # ② **本体を読まずに**開ける。写しを消した状態で、本体側の読み出しを
-    #    わざと失敗させても待機画面のパスが返ること（＝直列路に本体が無い）。
-    _page = setup_check.waiting_page()
-    _backup = _page.read_bytes() if _page.exists() else None
-    _real_copy = setup_check.copy_waiting_page
-    try:
-        _page.unlink(missing_ok=True)
-        setup_check.copy_waiting_page = lambda say=None: (_ for _ in ()).throw(
-            OSError('[WinError 59] 予期しないネットワークエラーです。'))
-        _start.setup_check.copy_waiting_page = setup_check.copy_waiting_page
-
-        class _Log:
-            def info(self, *a, **k):
-                pass
-            warning = error = info
-        got = _start._ensure_local_waiting_page(_Log())
-        rec('写しが無く本体も読めなくても、待機画面のパスを返す（②）',
-            got is not None and Path(got).exists(), str(got))
-        rec('そのときは組み込みの簡易画面（目印が付く）',
-            got is not None and _start._is_emergency_page(got), str(got))
-        head = Path(got).read_text(encoding='utf-8', errors='ignore') if got else ''
-        rec('簡易画面もサーバーを待って本体へ移る（http://を直接開かない）',
-            '/api/ready.js' in head and 'location.replace' in head)
-    finally:
-        setup_check.copy_waiting_page = _real_copy
-        _start.setup_check.copy_waiting_page = _real_copy
-        if _backup is not None:
-            _page.write_bytes(_backup)
-    # ③ 候補は3段（渡された置き場 → 手元の runtime → 一時フォルダー）。
-    #    **1つでも欠けると「1つもブラウザが開かない」経路が戻る。**
-    _starter_src = (PROGRAM / 'start_app.py').read_text(encoding='utf-8')
-    rec('書き出し先の候補に一時フォルダーがある（③）',
-        'tempfile.gettempdir()' in _starter_src)
-    # **コメントを落としてから見る**——この行の説明そのものに
-    # `webbrowser.open(app_url())` と書いてあるので、素で探すと必ず当たる。
-    _starter_code = '\n'.join(l for l in _starter_src.splitlines()
-                              if not l.lstrip().startswith('#'))
-    rec('サーバー未起動の http:// を直接開かない',
-        'webbrowser.open(app_url())' not in _starter_code)
-    rec('本体の写し直しは裏で走らせる（起動の直列路に置かない）',
-        '_refresh_waiting_page_later' in _starter_src
-        and 'daemon=True' in _starter_src)
-
-    # ---- 5c) 開いた写しを、その起動のあいだ差し替えない（§9.314） ----
-    # 利用者の報告「他のPCでは起動に失敗して、待機画面が
-    # `ERR_FILE_NOT_FOUND`。**直接そのhtmlをクリックすると正しく起動する**」。
-    # 以前は裏の写し直しが`waiting_page()`＝**いまブラウザへ渡したばかりの
-    # ファイル**を置き換えており、本体（クラウド同期フォルダー）の読み出しが
-    # 遅い端末では、ブラウザが立ち上がっている最中に差し替えが起きていた
-    # （実測: 渡した1ms後ではなく1.2秒後）。手元にアプリを置いた開発機では
-    # 読み出しが一瞬で終わり、差し替えはブラウザが起動する前に済むので
-    # **開発機では一度も再現しない**——これが「自分のPCでは起きない」の正体。
-    # **本体の読み出しをわざと遅くして測ること**——速いままだと、直す前でも
-    # 差し替えが先に終わって通ってしまう（§9.108と同じ「Linuxでは何も
-    # 起きない」の罠）。
-    from backend import atomic_io as _aio  # noqa: E402
-    _page = setup_check.waiting_page()
-    _staged = setup_check.staged_waiting_page()
-    _backup = _page.read_bytes() if _page.exists() else None
-    _real_aio_replace, _real_os_replace = _aio.replace, os.replace
-    _real_read_bytes = Path.read_bytes
-    _real_wb = _start.webbrowser
-    _replaced, _opened = [], {}
-    try:
-        def _slow_read(self):
-            # 本体（共有・クラウド）側の読み出しだけ遅くする。
-            if self.name == 'loading.html' and 'runtime' not in str(self):
-                time.sleep(0.8)
-            return _real_read_bytes(self)
-
-        def _watch_aio(src_, dst_, **kw):
-            _replaced.append((time.monotonic(), str(dst_)))
-            return _real_aio_replace(src_, dst_, **kw)
-
-        def _watch_os(src_, dst_):
-            _replaced.append((time.monotonic(), str(dst_)))
-            return _real_os_replace(src_, dst_)
-
-        class _Browser:
-            @staticmethod
-            def open(uri):
-                _opened['at'] = time.monotonic()
-                _opened['path'] = uri.replace('file://', '')
-                _opened['exists'] = Path(_opened['path']).exists()
-                return True
-
-        Path.read_bytes = _slow_read
-        _aio.replace = _watch_aio
-        setup_check.atomic_io = _aio
-        os.replace = _watch_os
-        _start.webbrowser = _Browser
-
-        class _Log2:
-            def info(self, *a, **k):
-                pass
-            warning = error = info
-        _start.open_waiting_screen(_Log2())
-        time.sleep(2.0)                      # 裏の写し直しが終わるまで
-    finally:
-        Path.read_bytes = _real_read_bytes
-        _aio.replace = _real_aio_replace
-        setup_check.atomic_io = _aio
-        os.replace = _real_os_replace
-        _start.webbrowser = _real_wb
-    rec('待機画面を開いた時点で、そのファイルが在る',
-        bool(_opened.get('exists')), str(_opened.get('path')))
-    _after = [d for t_, d in _replaced
-              if t_ >= _opened.get('at', 0) and d == str(_opened.get('path', ''))]
-    rec('開いた写しは、その起動のあいだ差し替えない（§9.314）',
-        not _after, '差し替え: ' + (' / '.join(_after) or 'なし'))
-    rec('裏の写し直しは「次の起動用」の名前へ書く（§9.314）',
-        any(d == str(_staged) for _t, d in _replaced)
-        or setup_check.waiting_page().read_bytes() == (PROGRAM / 'loading.html').read_bytes(),
-        '書いた先: ' + (' / '.join(sorted({Path(d).name for _t, d in _replaced})) or 'なし'))
-
-    # 開く直前に消えていても、書き直して開く（外の掃除・ウイルス対策の隔離）。
-    # **アプリは動いているのに利用者からは起動失敗にしか見えない**のがこの
-    # 不具合の質の悪さなので、最後にもう一度確かめる。
-    _real_ensure = _start._ensure_local_waiting_page
-    _opened2 = {}
-    try:
-        _gone = setup_check.waiting_page().with_name('loading.gone.html')
-        try:
-            _gone.unlink()
-        except Exception:
-            pass
-        _start._ensure_local_waiting_page = lambda log: _gone
-
-        class _Browser2:
-            @staticmethod
-            def open(uri):
-                _opened2['path'] = uri.replace('file://', '')
-                _opened2['exists'] = Path(_opened2['path']).exists()
-                return True
-        _start.webbrowser = _Browser2
-        _start.open_waiting_screen(_Log2())
-    finally:
-        _start._ensure_local_waiting_page = _real_ensure
-        _start.webbrowser = _real_wb
-    rec('開く直前に写しが消えていたら、書き直して開く（§9.314）',
-        bool(_opened2.get('exists')), str(_opened2.get('path')))
-    # **「在る」だけでは足りない**——隔離されて0バイトになった写しは
-    # `exists()`を通るのにブラウザからは開けない。読めるかで見る。
-    _real_ensure2 = _start._ensure_local_waiting_page
-    _opened3 = {}
-    try:
-        _empty = setup_check.waiting_page().with_name('loading.empty.html')
-        _empty.write_bytes(b'')
-        _start._ensure_local_waiting_page = lambda log: _empty
-
-        class _Browser3:
-            @staticmethod
-            def open(uri):
-                _opened3['path'] = uri.replace('file://', '')
-                try:
-                    _opened3['size'] = Path(_opened3['path']).stat().st_size
-                except Exception:
-                    _opened3['size'] = -1
-                return True
-        _start.webbrowser = _Browser3
-        _start.open_waiting_screen(_Log2())
-    finally:
-        _start._ensure_local_waiting_page = _real_ensure2
-        _start.webbrowser = _real_wb
-        try:
-            _empty.unlink()
-        except Exception:
-            pass
-    rec('中身が空の写しは「開ける」と数えない（§9.314）',
-        _opened3.get('size', 0) > 0, str(_opened3))
-    if _backup is not None:
-        _page.write_bytes(_backup)
-
-    # ---- 6) 確認の実処理は1箇所（起動側に写しを作らない） ----
-    starter = (PROGRAM / 'start_app.py').read_text(encoding='utf-8')
-    rec('起動側にパッケージ導入の写しを作っていない',
-        'pip' not in starter and 'find_spec' not in starter)
-    rec('起動側に旧DB取り込みの写しを作っていない',
-        'マスタ.sqlite3' not in starter)
-    rec('起動側は確認の1箇所を呼ぶ',
-        'setup_check.run(' in starter, '')
+    # ---- 6) 確認の実処理は1箇所（窓口は setup_check.run を呼ぶ） ----
+    sidecar_src = (PROGRAM / 'sidecar.py').read_text(encoding='utf-8')
+    rec('窓口は確認の1箇所（setup_check.run）を呼び、写しを作らない',
+        'setup_check.run(' in sidecar_src and 'pip' not in sidecar_src and 'マスタ.sqlite3' not in sidecar_src)
 
     # ---- 6z) say の作法は1つ（§9.431） ----
     # `setup_check.run()` は「画面に出す／記録だけ」を`quiet`で言い分ける。
     # **渡す側が受けられないと、そこを通った起動が TypeError で止まる**
-    # （update.bat の道と、刻印が食い違ったときの起動の道の2つがある）。
+    # （update.bat の道と、刻印が食い違ったときの窓口の道の2つがある）。
     # 綴りを追いかけるのではなく、**両方の`say`の引数**をここで見る。
-    for name in ('program/setup_app.py', 'program/start_app.py'):
+    for name in ('program/setup_app.py', 'program/sidecar.py'):
         src = (ROOT / name).read_text(encoding='utf-8')
         m = re.search(r'def say\(([^)]*)\)', src)
         rec(f'{name} の say は quiet を受ける（記録だけの行を渡せる）',
@@ -473,9 +211,8 @@ try:
     # 「'after' は、内部コマンドまたは…」が並んだ。**2バイト文字の途中で
     # 切れる**（'ｫませんでした。'）ので、記号や引用符の問題では説明が付かない。
     # ここは**内容ではなく改行そのもの**を見る。
-    # `Start.vbs`だけ直下（毎日の入口）、`.bat`3本は`program/`（§9.406）。
-    for name in ('program/update.bat', 'program/start_app.bat',
-                 'program/stop.bat', 'Start.vbs'):
+    # `Start.vbs`だけ直下（毎日の入口）、`update.bat`は`program/`（§9.406）。
+    for name in ('program/update.bat', 'Start.vbs'):
         f = ROOT / name
         if not f.exists():
             rec(f'{name} がある', False)
@@ -485,11 +222,16 @@ try:
         crlf = raw.count(b'\r\n')
         rec(f'{name} はCRLF改行（LFだけだとcmd.exeが行の途中から実行する）',
             lf > 0 and lf == crlf, f'LF={lf} CRLF={crlf}')
-    rec('直接実行する5本とその道具は program/ にある（§9.404・§9.406・§9.544）',
+    rec('直接実行する3本とその道具は program/ にある（§9.404・§9.406・§9.544・§9.548）',
         all((PROGRAM / n).exists() for n in
-            ('setup_app.py', 'start_app.py', 'app.py', 'process_manager.py', 'sidecar.py',
-             '_pycache_bootstrap.py', '_approot.py')),
+            ('setup_app.py', 'app.py', 'sidecar.py', '_pycache_bootstrap.py', '_approot.py')),
         str(PROGRAM))
+    gone = ('program/start_app.py', 'program/start_app.bat', 'program/stop.bat', 'program/process_manager.py',
+            'program/loading.html', 'backend/launcher/guard.py', 'backend/launch_mode.py')
+    rec('ブラウザ版の起動の道（start_app・process_manager・待機画面・.bat）は置いていない（§9.548）',
+        not any((ROOT / n).exists() for n in gone), ', '.join(n for n in gone if (ROOT / n).exists()))
+    rec('外した物はどれも片付けの一覧（RETIRED）に載っている（上書きコピーで残っても消える）',
+        all(n in setup_check.RETIRED for n in gone), ', '.join(n for n in gone if n not in setup_check.RETIRED))
     # **リポジトリ直下にPythonは1本も置かない**（§9.406）。`.bat`も同じ
     # ——直下に残るのは`Start.vbs`（毎日の入口）と、移すと黙って無効になる
     # 2つ（`.gitignore`／`eslint.config.mjs`。理由は§9.406）だけ。
@@ -498,16 +240,18 @@ try:
     rec('リポジトリ直下に .py / .bat を置かない（§9.406）', not stray, ', '.join(stray))
     rec('Start.vbs は直下のまま（毎日の入口は動かさない）',
         (ROOT / 'Start.vbs').exists())
-    # 引数「desktop」（§9.546）。exe を**手元の版ごとのフォルダへ写して**起動する（Box の上の exe を直に
-    # 起こすと、動いている間ファイルを掴み、その PC の更新が詰まる）。program の場所を渡し、
-    # exe が無い・写せないときはブラウザ版で起動する（入口は Start.vbs の1つのまま）。
+    # 毎日の入口は**デスクトップ版だけ**（§9.546・§9.548）。exe を**手元の版ごとのフォルダへ写して**起動する
+    # （Box の上の exe を直に起こすと、動いている間ファイルを掴み、その PC の更新が詰まる）。
     vbs = (ROOT / 'Start.vbs').read_bytes().decode('cp932')
-    rec('Start.vbs の「desktop」は exe を手元の版ごとのフォルダへ写して起動する（§9.546）',
-        all(w in vbs for w in ('mode = "desktop"', '\\WaveLog\\desktop\\', 'f.Size', 'MoveFile tmp, dst')))
+    rec('Start.vbs は program\\WaveLog.exe を手元の版ごとのフォルダへ写して起動する（§9.546・§9.548）',
+        all(w in vbs for w in ('"\\program\\WaveLog.exe"', '\\WaveLog\\desktop\\', 'f.Size', 'MoveFile tmp, dst')))
     rec('Start.vbs は program の場所を exe へ渡す（WAVELOG_PROGRAM_DIR）',
         '("WAVELOG_PROGRAM_DIR") = root & "\\program"' in vbs)
-    rec('exe が無い・写せないときはブラウザ版で起動する（StartDesktop が偽ならそのまま下へ）',
-        'If StartDesktop() Then WScript.Quit 0' in vbs and vbs.index('If StartDesktop()') < vbs.index('sh.Run "pythonw.exe "'))
+    rec('Start.vbs はブラウザ版を起こさない（start_app.py・pythonw を呼ばない・§9.548）',
+        'start_app.py' not in vbs and 'pythonw' not in vbs)
+    rec('exe が無い・写せない・起こせないときは理由と次の一手を出す（黙ってブラウザ版へ逃げない）',
+        vbs.count('StartDesktop = "') >= 3 and 'MsgBox why' in vbs and 'ZIP' in vbs,
+        '理由 %d個' % vbs.count('StartDesktop = "'))
     # 動かせない2つ。**移すと落ちるのではなく「黙って効かなくなる」**ので、
     # 在ることを機械で押さえる（§9.406の実測: eslint は 306件→0件）。
     rec('.gitignore は直下（gitはそのフォルダ以下にしか当てない）',
@@ -526,10 +270,13 @@ try:
     #   ① 新しいほうが在れば古いほうが消える
     #   ② 新しいほうが**無ければ1バイトも触らない**（更新の途中・混ざった配置）
     _real_root = setup_check.APP_ROOT
+    _real_dirs = (setup_check.runtime_dir, setup_check.browser_dir)
     with tempfile.TemporaryDirectory() as _td:
         fake = Path(_td)
         try:
             setup_check.APP_ROOT = fake
+            (fake / 'rt').mkdir()
+            setup_check.runtime_dir = setup_check.browser_dir = lambda: fake / 'rt'
             (fake / 'program').mkdir()
             (fake / 'program' / 'app.py').write_text('new', encoding='utf-8')
             (fake / 'app.py').write_text('old', encoding='utf-8')          # 片付く
@@ -560,42 +307,63 @@ try:
             (fake / 'なにか.py').write_text('x', encoding='utf-8')
             setup_check.sweep_shared_leftovers()
             rec('直下に .py が在るうちは __pycache__ を触らない（§9.406）', pyc.is_dir())
+            # 外した物（§9.548）。**合図は新しい Start.vbs**（start_app.py を起こさない）。
+            for n in ('program/start_app.py', 'program/loading.html', 'stop.bat', 'backend/launch_mode.py'):
+                (fake / n).parent.mkdir(parents=True, exist_ok=True)
+                (fake / n).write_text('old', encoding='utf-8')
+            (fake / 'Start.vbs').write_bytes(b'sh.Run "pythonw.exe " & root & "\\program\\start_app.py"')
+            setup_check.sweep_shared_leftovers()
+            rec('古い Start.vbs のうちは外した物を1バイトも触らない（届く途中で消さない）',
+                (fake / 'program' / 'start_app.py').exists() and (fake / 'stop.bat').exists())
+            (fake / 'Start.vbs').write_bytes(b'src = root & "\\program\\WaveLog.exe"')
+            setup_check.sweep_shared_leftovers()
+            left = [n for n in ('program/start_app.py', 'program/loading.html', 'stop.bat', 'backend/launch_mode.py')
+                    if (fake / n).exists()]
+            rec('新しい Start.vbs が届いていれば、外した物を片付ける（§9.548）', not left, ', '.join(left))
+            # 期待する名前は**網の側に書く**（製品の一覧をそのまま材料にすると、一覧から抜けた物を見逃す）。
+            local_left = ('loading.html', 'loading.next.html', 'boot_status.js', 'instance.json')
+            for n in local_left:
+                (fake / 'rt' / n).write_text('old', encoding='utf-8')
+            (fake / 'rt' / 'ready.json').write_text('{}', encoding='utf-8')
+            (fake / 'boot_status.js').write_text('old', encoding='utf-8')
+            setup_check.sweep_shared_leftovers()
+            rec('端末の手元に残った待機画面・進捗・起動中の印を片付け、刻印は残す（§9.548）',
+                not any((fake / 'rt' / n).exists() for n in local_left)
+                and (fake / 'rt' / 'ready.json').exists() and not (fake / 'boot_status.js').exists())
         finally:
             setup_check.APP_ROOT = _real_root
+            setup_check.runtime_dir, setup_check.browser_dir = _real_dirs
 
-    # ---- 8) 刻印があっても無くても起動できる ----
-    stop_app()
+    # ---- 8) 刻印があっても無くても窓口は通る（§9.225・§9.544） ----
+    # 刻印は速さの門であって正しさの門ではない。**刻印が無ければ窓口がその場で確認し直す**。
+    import sidecar  # noqa: E402  program/sidecar.py（起動前の確認の道）
+
+    class _W:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, head, body=b''):
+            self.sent.append(head)
+
+    class _L:
+        def __init__(self):
+            self.lines = []
+
+        def info(self, f, *a):
+            self.lines.append(f % a if a else f)
+        warning = info
+
     ready.write()
-    t_fast = start_and_time()
-    rec('刻印があるとき起動できる', t_fast is not None,
-        f'{t_fast*1000:.0f}ms' if t_fast else '起動しなかった')
-    log = (local_root() / 'logs' / 'launcher.log')
-    tail = log.read_text(encoding='utf-8', errors='replace')[-4000:] if log.exists() else ''
-    rec('刻印があるときは確認を飛ばしたとログに残る',
-        '起動前の確認: 済んでいます' in tail)
-
-    stop_app()
+    w, lg = _W(), _L()
+    rec('刻印があるときは確認を飛ばし、そう記録する', sidecar._prepare(w, lg) is True
+        and any('済んでいます' in x for x in lg.lines) and not w.sent, ' / '.join(lg.lines)[:80])
     ready.clear()
-    t_slow = start_and_time()
-    rec('刻印が無くても起動できる（止めずに確認し直す）', t_slow is not None,
-        f'{t_slow*1000:.0f}ms' if t_slow else '起動しなかった')
+    w, lg = _W(), _L()
+    rec('刻印が無くても止めずに確認し直す（窓口が通る）', sidecar._prepare(w, lg) is True, ' / '.join(lg.lines)[:80])
     rec('確認し直したら刻印が書かれる（次回から速い）', ready.ok(), str(ready.mismatch()))
-    tail = log.read_text(encoding='utf-8', errors='replace')[-4000:] if log.exists() else ''
-    rec('確認し直したことをログに残す（黙って遅くしない）',
-        'この起動でまとめて確かめます' in tail)
-
-    # ---- 9) 進捗ファイルは共有へ書かない ----
-    rec('起動しても共有側に進捗ファイルを残さない',
-        not (APP_ROOT / 'boot_status.js').exists(),
-        str(APP_ROOT / 'boot_status.js'))
-
-    # ---- 10) 待機画面の聞き方（体感の取りこぼし） ----
-    html = (PROGRAM / 'loading.html').read_text(encoding='utf-8')
-    m = re.search(r'POLL_FAST_MS\s*=\s*(\d+)', html)
-    rec('待機画面は立ち上がりを細かく聞く（500ms固定にしない）',
-        bool(m) and int(m.group(1)) <= 200, m.group(1) if m else '見つからない')
+    rec('確認し直していることを窓へ知らせる（黙って遅くしない）',
+        any(h.get('event') == 'progress' for h in w.sent), str(len(w.sent)))
 finally:
-    stop_app()
     if saved_stamp:
         try:
             ready.stamp_file().write_text(json.dumps(saved_stamp, ensure_ascii=False),

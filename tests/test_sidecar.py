@@ -233,7 +233,7 @@ def check_teardown(side):
     """E4: 入力を閉じたら、同じ片付けを通って速やかに終わる。"""
     login, pc = current_login_id(), current_pc_name()
     entry = presence._entry_path(presence.terminal_key(login, pc))
-    side.call('POST', '/api/heartbeat', 'tab=sidecar-test')
+    side.call('POST', '/api/heartbeat', '')
     end = time.monotonic() + 10
     while not entry.exists() and time.monotonic() < end:
         time.sleep(0.2)

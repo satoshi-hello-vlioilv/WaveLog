@@ -271,7 +271,7 @@ def boot_places():
  あるかではなく、**どこを見に行っているか**が知りたいことなので。"""
  from .. import paths as P
  from ..config import APP_ID
- from ..launcher import ready, setup_check
+ from ..launcher import ready
  from ..db_access import DBS
  out=[]
  def add(label,fn,note='',optional=False):
@@ -280,16 +280,11 @@ def boot_places():
                                     'mtime':'','readable':None,'note':note,
                                     'error':f'{type(e).__name__}: {e}',
                                     'optional':bool(optional),'bad':True})
- add('アプリ本体',lambda:P.APP_ROOT,'program/start_app.py などの置き場')
- add('本体の待機画面',lambda:P.PROGRAM_DIR/'loading.html','意匠の出どころ（写しの元）')
+ add('アプリ本体',lambda:P.APP_ROOT,'Start.vbs・program/ の置き場')
+ add('デスクトップ版の本体',lambda:P.PROGRAM_DIR/'WaveLog.exe','Start.vbs がこの PC へ写して起動する物（main へは CI が置く）')
  add('ローカル領域',lambda:P.local_root(),'%LOCALAPPDATA%\\'+APP_ID+' 相当。書ける場所を順に探した結果')
  add('ログ',lambda:P.logs_dir())
- add('runtime',lambda:P.runtime_dir(),'待機画面の写し・進捗・刻印の置き場')
- add('待機画面の写し',lambda:setup_check.waiting_page(),
-     '起動時にブラウザへ渡すファイル。'+(P.browser_dir_reason() or ''))
- add('待機画面（次の起動用）',lambda:setup_check.staged_waiting_page(),
-     '§9.314。裏で作り直す先（作り直すときだけ在る）',optional=True)
- add('起動の進捗',lambda:__import__('backend.boot_status',fromlist=['x']).status_path())
+ add('runtime',lambda:P.runtime_dir(),'刻印などの置き場')
  add('起動前確認の刻印',lambda:ready.stamp_file())
  add('作業用フォルダ',lambda:P.work_dir(),P.work_dir_reason() or '')
  add('config/local.json',lambda:P.local_config_path(),
@@ -324,9 +319,6 @@ def boot_environment():
  # 回すので、**こちらは読めるのにブラウザは読めない**——「在ると書いてあるのに
  # ファイルが見つかりません」の唯一の説明になりうる。**実測で言う**（推測しない）。
  try:
-  from ..launcher import setup_check as _sc
-  hidden=P.msix_private_copy(_sc.waiting_page())
-  env['waitingPagePrivateCopy']=str(hidden) if hidden else ''
   env['browserDir']=str(P.browser_dir())
   env['browserDirReason']=P.browser_dir_reason()
  except Exception as e:
@@ -431,12 +423,8 @@ def boot_report_text(env,places,records,found_mark,problems=None):
  L.append(f"ポート    : {env.get('port','')}   作業フォルダ: {env.get('cwd','')}")
  mism=env.get('readyMismatch') or []
  L.append('起動前確認: ' + ('済み（刻印あり）' if not mism else '要確認: '+' / '.join(map(str,mism))))
- priv=env.get('waitingPagePrivateCopy') or ''
- if priv:
-  L.append('！ 待機画面はこのアプリからしか見えない写しです（実体: '+priv+'）。'
-           'ブラウザは元の場所を見るので「ファイルが見つかりません」になります。')
  if env.get('browserDirReason'):
-  L.append('ブラウザが読む置き場: '+str(env.get('browserDir',''))+'（'+str(env['browserDirReason'])+'）')
+  L.append('ほかのプログラムが読む置き場: '+str(env.get('browserDir',''))+'（'+str(env['browserDirReason'])+'）')
  L.append('')
  L.append('---- 置き場（いま見に行っている先） ----')
  for p in places:

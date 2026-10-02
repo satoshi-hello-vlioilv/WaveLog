@@ -573,9 +573,6 @@ button.hd-chip:hover{border-color:var(--teal);background:var(--pale)}
    （どの画面・どのモードからも開ける「表示」の中）に置く。共通設定に残るのは
    いまの状態と行き先だけ（§9.433 と同じ作法）。
    **状態の字は共通設定の面とも共有する**ので、定義はこの1箇所だけに書く。 */
-/* 起動のしかた（§9.547）。札は「文字の大きさ」と同じ選択肢の札（`.access-mode-menu button`）
-   をそのまま使い、器は縦に並べるだけ。 */
-.lm{display:flex;flex-direction:column;gap:calc(var(--space-1) / 2)}
 .lnk{display:flex;flex-direction:column;gap:var(--space-1)}
 /* 状態は**色だけで言わない**（§CLAUDE 3）——字が分類名そのもの。 */
 .lnk-state{margin:0;font-size:var(--fs-micro);font-weight:700;color:var(--muted)}

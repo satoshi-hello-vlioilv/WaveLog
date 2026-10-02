@@ -1,46 +1,35 @@
-"""server.py: Webサーバーの起動のみを担当する。
+"""server.py: **開発と網（テスト）のための HTTP の入口**（§9.548）。利用者の起動の道ではない。
 
-起動監視(多重起動の判定・ブラウザ起動・待機画面)と、Web処理そのものを
-切り離す境界。ここから上(start_app.py / launch_guard.py)は「アプリを
-立ち上げるまで」を、ここから下(app.py / backend/)は「立ち上がった後」を
-担当する。
+利用者が起動するのはデスクトップ版だけ（Start.vbs → WaveLog.exe → `program/sidecar.py`・ポートなし）。
+ブラウザ版の起動の道（待機画面・二重起動の判定・タブが0件で終わる見張り）は§9.548で外した。
+ここは、画面を HTTP で開いて確かめる網（Playwright）と手元の開発のために、**同じアプリを
+同じ背景処理で**立てるだけ: `python3 program/app.py`。止めるのは`POST /api/shutdown`（片付けを通る）。
 """
 
-from backend import watchdog
 from backend.launcher import services
 from backend.config import HOST, PORT
 from backend.logging_setup import launcher_logger
+from backend.paths import ensure_local_dirs
 
 
 def run():
- """ウォッチドッグを開始し、Flaskの開発サーバーを実行する(ブロックする)。"""
+ """Flask の開発サーバーを実行する（ブロックする）。"""
+ ensure_local_dirs()
  log=launcher_logger()
  from backend.app_module import flask_app as _app   # 素の`from app import`を書かない（§9.404）
- flask_app=_app()                          # Flaskアプリ本体(業務機能)
- watchdog.start()
- # 写し・見張り・書込役は**窓口によらず同じ**に始める（§9.544）。手順は
- # `services.start()`の1箇所——デスクトップ版の窓口(program/sidecar.py)も同じ関数を呼ぶ。
- # ポート版にだけ要るのは上の`watchdog.start()`（タブが0件で終わる見張り）。
+ flask_app=_app()
+ # 写し・見張り・書込役は**窓口によらず同じ**に始める（§9.544）。手順は`services.start()`の1箇所
+ # ——デスクトップ版の窓口(program/sidecar.py)も同じ関数を呼ぶ。網の書込役もこれで本番とそろう。
  services.start(log)
- log.info('Webサーバー: 起動します (%s:%s)',HOST,PORT)
+ log.info('開発・網の入口: 起動します (%s:%s)',HOST,PORT)
  try:
-  # threaded=True: 既定(シングルスレッド)のままだと、仕掛/品質データや
-  # スケジュール共有ファイルへのアクセスがネットワーク共有の不調で長時間
-  # ブロックした場合、その間ハートビート(/api/heartbeat)・終了通知
-  # (/api/heartbeat/close)・停止スクリプトの生存確認(/api/build)まで
-  # 一切応答できなくなる(タブを閉じても自動終了せず、stop.batからも
-  # 「別のアプリが使用しています」と誤判定されて停止できない不具合の実例)。
-  # リクエストごとにスレッドを分離し、1件の遅い処理が他のリクエストを
-  # 道連れにしないようにする(各リクエストはDB接続を個別に開くため
-  # スレッド間で共有しない設計、と`_active_tabs`等のロック保護は既存のまま
-  # 安全)。
+  # threaded=True: 1件の遅い問い合わせ（共有の不調）が、ほかの問い合わせ（在席・終了）を
+  # 道連れにしない（リクエストごとにDB接続を個別に開くのでスレッド間で共有しない）。
   flask_app.run(host=HOST,port=PORT,debug=False,threaded=True)
  except OSError as e:
-  # 最も多いのはポート使用中。原因が分かる形で記録して再送出する。
-  log.error('Webサーバー: 起動できませんでした: %s',e)
-  log.error('ポート %s を他のアプリが使用している可能性があります。',PORT)
+  log.error('開発・網の入口: 起動できませんでした: %s（ポート %s を他が使っている可能性）',e,PORT)
   raise
- log.info('Webサーバー: 終了しました')
+ log.info('開発・網の入口: 終了しました')
 
 
 if __name__=='__main__':

@@ -4,10 +4,10 @@
 app.pyから移設。ロジックは変更していない(移動のみ)。
 """
 from flask import Blueprint, render_template, request, jsonify, Response
-import json, os, re, subprocess, time
+import subprocess, time
 
-from ..config import APP_ID, DESKTOP_BASE_URL, PORT
-from .. import app_icon, boot_status, desktop_shortcut, launch_mode, terminal_store
+from ..config import APP_ID, PORT
+from .. import app_icon, desktop_shortcut, terminal_store
 # 更新者IDは名乗るだけ・答えるのは1箇所（§9.276 ③）。**読み込み時に入れる**
 # ——関数の中の import を増やさない（§9.349）。輪は作らない（access_mode は
 # routes を知らない）。
@@ -266,7 +266,6 @@ def _terminal_settings():
 # **サーバー自身に気づかせて画面に出す**。判定は「起動より後に更新された
 # .pyがあるか」の1点。**失敗しても黙って「分からない」にする**
 # ——stat()は共有越しで落ちうるので、これを理由に /api/build を失敗させない
-# (guard.probe()の生存確認にも使われている)。
 # ========================================================================
 _STARTED_AT=time.time()
 def _python_sources():
@@ -298,29 +297,6 @@ def build():
  return jsonify(build='current', version=APP_VERSION, feature='measurement-workflow-current',
                 port=PORT, app_id=APP_ID, restartNeeded=restart, startedAt=_STARTED_AT, **GIT_VERSION)
 
-# ========================================================================
-# 起動完了の確認(待機画面 loading.html 用)
-# loading.htmlはサーバーより先に開かれるためfile://から読み込まれる。
-# file://からhttp://127.0.0.1へのfetchはCORSで応答を読めないが、script要素
-# なら生成元をまたいで読み込めるため、JSONP形式でアプリ識別情報を返す。
-# 待機画面はこれを受け取って初めてアプリ本体へ遷移する。ブラウザとサーバーの
-# どちらが先に立ち上がっても成立するので、起動順序に依存しない。
-# cbはコールバック関数名としてそのままJavaScriptへ埋め込むため、JSの識別子
-# として妥当な文字列以外は拒否する(任意コード混入の防止)。
-# ========================================================================
-_JS_IDENTIFIER=re.compile(r'[A-Za-z_$][A-Za-z0-9_$]*\Z')
-@bp.get('/api/ready.js')
-def ready_js():
- cb=request.args.get('cb','')
- if not _JS_IDENTIFIER.match(cb):return Response('/* invalid callback */',mimetype='application/javascript',status=400)
- info=json.dumps({'app':APP_ID,'ready':True,'version':APP_VERSION,'pid':os.getpid(),'url':f'http://127.0.0.1:{PORT}/'})
- # **待機画面がブラウザで生きている**印（§9.318）。渡したことと見えている
- # ことは別なので、ここへ来たかどうかだけが確かな証拠になる。
- boot_status.note_waiting_seen()
- # ここまで来たら起動は完了している。待機画面の段階表示用に書き出していた
- # 進捗ファイルは役目を終えたので消す(次回起動時に前回の内容が一瞬見えるのを防ぐ)。
- boot_status.clear()
- return Response(f'{cb}({info});',mimetype='application/javascript')
 @bp.get('/api/whoami')
 def whoami():
  # この端末(各測定端末)で実行しているアプリのOSログインユーザー名を返す。
@@ -379,34 +355,6 @@ def app_shortcut_create():
                  linkTarget=out.get('linkTarget') or '',
                  link=out.get('link') or ''),400
  return jsonify(**out)
-
-# ========================================================================
-# この端末の起動のしかた（§9.547、利用者の指示「最終的にはexe起動に一本化したい」）
-# ------------------------------------------------------------------------
-# 判定と置き場は`launch_mode.py`の1箇所。いま動いている版は**問い合わせの宛先**で
-# 分かる（デスクトップ版の窓口は`DESKTOP_BASE_URL`の宛先で組み立てる・§9.544）。
-# この端末の起動にしか触らないので、ショートカットと同じく3モードに開ける。
-# ========================================================================
-_DESKTOP_HOST=DESKTOP_BASE_URL.split('//',1)[-1].strip('/')
-
-def _running():
- return 'desktop' if request.host==_DESKTOP_HOST else 'browser'
-
-@bp.get('/api/app/launch-mode')
-@api_guard('起動のしかたを読めません')
-def app_launch_mode():
- return jsonify(**launch_mode.status(_running()))
-
-@bp.post('/api/app/launch-mode')
-@api_guard('起動のしかたを残せません')
-def app_launch_mode_set():
- x=body({'mode':str},strict=True)
- st=launch_mode.status(_running())
- if not st['supported']:return jsonify(error=st['why']),400
- if x.mode=='desktop' and not st['canDesktop']:return jsonify(error=st['desktopWhy']),400
- out=launch_mode.write(x.mode or '')
- if not out.get('ok'):return jsonify(error=out.get('error')),400
- return jsonify(**launch_mode.status(_running()))
 
 @bp.get('/api/changelog')
 def changelog():

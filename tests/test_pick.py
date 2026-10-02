@@ -83,7 +83,7 @@ def main():
     cases = [
         ('backend/routes/logs.py', ['test_logs', 'test_logview']),
         ('static/js/core/log-view.js', ['test_logview', 'test_logs']),
-        ('backend/watchdog.py', ['test_tabclose']),
+        ('backend/watchdog.py', ['test_appquit', 'test_sidecar']),
         ('backend/schedule_calc.py', ['test_sccat', 'test_scbalance', 'test_scsplit']),
         ('static/css/70-schedule.css', ['test_fit', 'test_sccols']),
         ('backend/repositories/master_repo.py', ['test_master', 'test_crudroutes']),
@@ -119,7 +119,7 @@ def main():
     #     足し合わせにすると`backend/`の受け皿が全backendへ乗り、
     #     `routes/logs.py`を直しただけで起動まわりまで付いてくる。
     #     一度そう書いて17本になった(受け皿を分けて9本)。
-    over = [t for t in ('test_boot', 'test_assetcache', 'test_tabclose') if t in got]
+    over = [t for t in ('test_boot', 'test_assetcache', 'test_bootflash') if t in got]
     rec('受け皿は名指しのあるファイルへ足さない', not over,
         '混ざった: ' + ' '.join(over) if over else f'{len(got)}本')
 

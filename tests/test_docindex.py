@@ -59,6 +59,7 @@ ARCH_ALLOW = {
     'launch_guard.py': '旧名（いまは backend/launcher/guard.py）。「旧」と併記',
     'setup.bat': '旧名（いまは update.bat・§9.405）。「旧名」と併記',
     'count_io.py': 'scratchpad の計測道具。経緯として残す',
+    'program/WaveLog.build.json': 'main へは CI（desktop.yml の publish）が exe と一緒に置く（§9.548）',
     'probe_scale3/4.js': 'scratchpad の計測道具。経緯として残す',
 }
 # capture.js の選択子のうち、値がソースに無くてよい属性（値はマスタの行）。

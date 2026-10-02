@@ -384,8 +384,6 @@
    kv('Python',`${e.pythonVersion||'?'}  ${e.python||''}`),
    kv('ポート',String(e.port||'?')),
    kv('起動前確認',mism.length?mism.join(' / '):'刻印あり',mism.length?['warn','要確認']:['ok','済み'])];
-  if(e.waitingPagePrivateCopy)env.push(kv('待機画面',
-   `このアプリからしか見えない写しです（${e.waitingPagePrivateCopy}）`,['ng','要確認']));
   /* 状態は**語で**言う（§CLAUDE 3）。直すべきかの答えは`p.bad`（サーバーの
      1箇所）。無いのがふつうの置き場は薄く「無し（ふつう）」。 */
   const rows=(d.places||[]).map(p=>{

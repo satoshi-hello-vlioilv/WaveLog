@@ -21,7 +21,7 @@
 モジュールを足せば、ここへ載せ忘れても自動で見張りに入る。
 
 数える印:
-  ・画面の窓口の値: `HOST`・`PORT`・`app_url`（`backend/config.py`）
+  ・画面の窓口の値: `HOST`・`PORT`（`backend/config.py`）
   ・問い合わせの出どころ: `request.host`/`host_url`/`url_root`/`remote_addr`/`origin`
   ・絶対URLを作る: `url_for(..., _external=...)`
   ・ループバックの名前の字: `127.0.0.1`・`localhost`（説明文は数えない）
@@ -46,7 +46,7 @@ def rec(name, ok, detail=''):
 # 共有の基本部品。これ自身と、これを読むモジュールが「共有の層」。
 SHARED_PRIMITIVES = {'atomic_io', 'sqlite_io', 'master_share', 'schedule_sync', 'schedule_owner',
                      'schedule_watch', 'presence', 'db_mirror', 'records_export'}
-UI_NAMES = {'HOST', 'PORT', 'app_url'}
+UI_NAMES = {'HOST', 'PORT'}
 REQUEST_ATTRS = {'host', 'host_url', 'url_root', 'remote_addr', 'origin'}
 LOOPBACK_WORDS = ('127.0.0.1', 'localhost')
 

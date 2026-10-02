@@ -2575,7 +2575,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
  }
  function releaseSessionFire(equipment){
   // タブを閉じる際にも呼ばれるため、確実性を優先してsendBeacon(base.jsの
-  // notifyTabClosedと同じ考え方)を使い、非対応環境ではfetchへフォールバック
+  // 以前のbase.jsの閉じた通知と同じ考え方)を使い、非対応環境ではfetchへフォールバック
   // する。応答は待たない(ベストエフォート)。
   if(!equipment)return;
   try{
@@ -2924,7 +2924,7 @@ const SC_LOCK_WAIT_MAX_MS=4000;
   }
   renderSessionBanner();
  }
- // タブを閉じる時に保持中のセッションを解放する(base.jsのnotifyTabClosedと
+ // タブを閉じる時に保持中のセッションを解放する(以前のbase.jsの閉じた通知と
  // 同じ二重登録方針。pagehideが本来カバーする範囲の方が広いが、ブラウザ
  // 実装差の保険としてunloadでも同じ通知を送る)。
  function releaseSessionOnUnload(){if(scSessionHeldFor)releaseSessionFire(scSessionHeldFor)}
