@@ -65,6 +65,18 @@ rec('デスクトップ版の起動画面のトークンが本体(00-base.css)�
 rec('デスクトップ版の起動画面の地がアプリ内の起動の覆いと同じ指定',
     bool(ground_app) and _decl(SPLASH, ' body', 'background') == ground_app, ground_app[:60])
 
+# --- ⑤ 起動の画面の字は、いまの起動の事実を言う（§9.549、利用者の指示「言い換えてください」） ---
+# ブラウザ版の起動の道は§9.548で外した。起動画面と段の名前に「ブラウザ版」「Webサーバー」「desktop を付けて」が
+# 残ると、利用者は無い道を探す（実際に「ブラウザ版でも開けます」と案内していた）。窓が出す失敗の理由（locate.rs）も見る。
+LOCATE = (ROOT / 'desktop' / 'src' / 'locate.rs').read_text(encoding='utf-8')
+_boot_area = re.search(r'id="appBoot".*?id="connectionLost"', (ROOT / 'templates' / 'index.html').read_text(encoding='utf-8'), re.S).group(0)
+# 行コメントは1行に限る（re.S の . は改行にも当たり、最初の // からファイルの終わりまで消してしまう）
+_strip = lambda t: re.sub(r'<!--.*?-->|/\*.*?\*/|^[ \t]*//[^\n]*', '', t, flags=re.S | re.M)
+_said = _strip(SPLASH) + _strip(_boot_area) + ' '.join(re.findall(r'"([^"]*)"', _strip(LOCATE))) \
+    + ' '.join(label for _, label in boot_status.STEPS + boot_status.BROWSER_STEPS)
+_old = [w for w in ('ブラウザ版', 'Webサーバー', '「desktop」を付け', '「desktop」から') if w in _said]
+rec('起動の画面と段の名前は、無くなったブラウザ版・Webサーバー・引数 desktop を言わない（§9.549）', not _old, '・'.join(_old))
+
 # --- ② 段の顔ぶれが2箇所（boot_status.py / アプリ内の起動の覆い）と base.js で一致する ---
 # ここがずれると、進捗バーの分母と段階リストが食い違って「90%のまま
 # 終わる」「一覧に無い段階が現在になる」といった表示になる(§9.76)。

@@ -19,7 +19,7 @@ pub fn program_dir() -> Result<PathBuf, String> {
     let exe = env::current_exe().map_err(|e| e.to_string())?;
     find_program_from(&exe).ok_or_else(|| {
         format!(
-            "アプリの中身（program フォルダ）が見つかりません。Start.vbs の「desktop」から起動してください。\n探し始めた場所: {}",
+            "アプリの中身（program フォルダ）が見つかりません。アプリのフォルダの Start.vbs（またはデスクトップの起動アイコン）から起動してください。\n探し始めた場所: {}",
             exe.parent().unwrap_or(&exe).display()
         )
     })
@@ -58,7 +58,10 @@ pub fn python() -> Result<Python, String> {
     let cands = python_candidates(env::var_os("WAVELOG_PYTHON").map(PathBuf::from), &path);
     cands.iter().find(|c| exists(&c.exe)).cloned().ok_or_else(|| {
         let tried: Vec<String> = cands.iter().map(|c| format!("  {}", c.exe.display())).collect();
-        format!("Python が見つかりません。ブラウザ版（Start.vbs）と同じ Python を使います。\n探した場所:\n{}", tried.join("\n"))
+        format!(
+            "Python が見つかりません。PATH で最初に見つかる Python を使います（update.bat と同じ）。\n探した場所:\n{}",
+            tried.join("\n")
+        )
     })
 }
 
@@ -68,11 +71,10 @@ fn exists(p: &Path) -> bool {
     std::fs::symlink_metadata(p).is_ok()
 }
 
-/// 探す順（先にあるほど優先）。**ブラウザ版と同じ Python を使う**ことが要る——端末の控え（§9.545）は
-/// Python が書き、Microsoft Store 版の Python は書いた物を自分にしか見えない写しへ回すので、違う Python だと
-/// 2つの版が別々の控えを見る。Start.vbs は PATH の順に最初の `pythonw.exe` を起こすので、ここも
-/// **PATH を前から見て、最初に pythonw.exe がある場所の python.exe**（並べ替えない）。
-/// その前に WAVELOG_PYTHON（Start.vbs が渡す）、後ろに PATH の最初の python.exe と py ランチャー。
+/// 探す順（先にあるほど優先）。**update.bat と同じ Python を使う**ことが要る——起動前の確認の刻印と端末の控え
+/// （§9.545）は Python が書き、Microsoft Store 版の Python は書いた物を自分にしか見えない写しへ回すので、違う Python
+/// だと別々の物を見る。**PATH を前から見て、最初に pythonw.exe がある場所の python.exe**（並べ替えない）。
+/// その前に WAVELOG_PYTHON（指定があれば・開発と CI 用）、後ろに PATH の最初の python.exe と py ランチャー。
 pub fn python_candidates(given: Option<PathBuf>, path: &[PathBuf]) -> Vec<Python> {
     let plain = |exe: PathBuf| Python { exe, args: vec![] };
     let mut out = Vec::new();
@@ -117,9 +119,9 @@ mod tests {
         let a = PathBuf::from("/opt/a");
         let b = PathBuf::from("/opt/b");
         let c = python_candidates(Some(PathBuf::from("/given/python")), &[a.clone(), b.clone()]);
-        assert_eq!(c[0].exe, PathBuf::from("/given/python"), "Start.vbs が渡した Python が先");
+        assert_eq!(c[0].exe, PathBuf::from("/given/python"), "指定された Python（WAVELOG_PYTHON）が先");
         if !cfg!(windows) {
-            assert_eq!(c[1].exe, a.join("python3"), "PATH の順は並べ替えない（ブラウザ版と同じ Python）");
+            assert_eq!(c[1].exe, a.join("python3"), "PATH の順は並べ替えない（update.bat と同じ Python）");
             assert_eq!(c[2].exe, b.join("python3"));
         }
     }

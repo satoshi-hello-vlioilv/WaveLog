@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>測定伝送システム — 起動中</title>
 <!--
-  デスクトップ版の起動画面（exe に入る・§9.544）。ブラウザ版の待機画面（program/loading.html）と
-  **同じ色・同じ地**——トークンと地の指定は写してあり、tests/test_boot.py が3箇所の一致を見張る。
+  デスクトップ版の起動画面（exe に入る・§9.544）。アプリ内の起動の覆い（#appBoot・95-boot.css）と
+  **同じ色・同じ地**——トークンと地の指定は写してあり、tests/test_boot.py が一致を見張る。
   進み具合は窓（Rust）が確かめた事実だけで言う: ① Python を探す ② アプリの中身を起こす ③ 画面を開く。
   窓が splash.step(id, state, detail) / splash.fail(title, detail) を呼ぶ。
 -->
@@ -67,7 +67,7 @@
 <section class="card" aria-labelledby="title">
   <div class="head"><b id="title">測定伝送システムを起動しています</b><span id="lead">準備ができたら、この窓がそのままアプリに切り替わります。</span></div>
   <ol>
-    <li class="now" id="s-python"><span class="mark"></span><span><span class="t">Python を探す</span><span class="d">ブラウザ版（Start.vbs）と同じ Python</span></span><span class="when"></span></li>
+    <li class="now" id="s-python"><span class="mark"></span><span><span class="t">Python を探す</span><span class="d">PATH で最初に見つかる Python（update.bat と同じ）</span></span><span class="when"></span></li>
     <li class="wait" id="s-backend"><span class="mark"></span><span><span class="t">アプリの中身を起こす</span><span class="d">画面と共有DB（ポートは使いません）</span></span><span class="when"></span></li>
     <li class="wait" id="s-open"><span class="mark"></span><span><span class="t">画面を開く</span><span class="d"></span></span><span class="when"></span></li>
   </ol>
@@ -85,8 +85,8 @@
   const HINTS = [
     [/No module named '?flask/i, "Python に Flask が入っていません。program フォルダの update.bat を1回実行してから、開き直してください。"],
     [/No module named/i, "Python に必要な部品が入っていません。program フォルダの update.bat を1回実行してください。"],
-    [/Python が見つかりません/, "ブラウザ版（Start.vbs）が動く PC なら、同じ Python が使えるはずです。Python を入れ直すか、管理者に連絡してください。"],
-    [/program フォルダ|sidecar\.py/, "Start.vbs に「desktop」を付けて起動してください（exe を直接開くと、アプリの中身の場所が分かりません）。"],
+    [/Python が見つかりません/, "Python を入れて PATH に通してから、開き直してください。分からなければ管理者に連絡してください。"],
+    [/program フォルダ|sidecar\.py/, "exe を直接開かず、アプリのフォルダの Start.vbs（またはデスクトップの起動アイコン）から起動してください（exe だけではアプリの中身の場所が分かりません）。"],
     [/版が食い違/, "アプリが更新されています。この窓を閉じて、Start.vbs から開き直してください。"],
     [/秒たっても準備できません/, "PC が混んでいるか、共有フォルダへの接続で止まっています。少し待ってから開き直してください。"],
   ];
@@ -103,7 +103,7 @@
       clearInterval(timer);
       $("#elapsed").textContent = sec() + " 秒";
       $("#title").textContent = title;
-      $("#lead").textContent = "下の理由を確かめてください。ブラウザ版（Start.vbs）でも開けます。";
+      $("#lead").textContent = "下の理由を確かめてください。直したら、この窓を閉じて起動アイコンから開き直してください。";
       document.querySelectorAll("li.now").forEach((li) => (li.className = "bad"));
       const hint = HINTS.find(([re]) => re.test(detail));
       const box = $("#fail");
