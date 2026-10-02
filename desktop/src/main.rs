@@ -24,7 +24,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use tauri::webview::{NewWindowResponse, PageLoadEvent};
+use tauri::webview::{DownloadEvent, NewWindowResponse, PageLoadEvent};
 use tauri::{AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 /// 自前の仕組みの名前。backend/config.py の DESKTOP_SCHEME と同じ（食い違うと URL の組み立てがずれる）。
@@ -109,6 +109,7 @@ fn selftest_finish(app: &AppHandle, result: &serde_json::Value) {
 fn native(app: AppHandle, info: serde_json::Value) -> Native {
     Box::new(move |method, path, body| match (method, path) {
         ("GET", "/__desktop/info") => Some(json_reply(&info)),
+        ("GET", "/__desktop/downloads") => Some(json_reply(&json!(downloads().lock().map(|v| v.clone()).unwrap_or_default()))),
         ("POST", "/__desktop/selftest") => {
             let result: serde_json::Value = serde_json::from_slice(body).unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}));
             selftest_finish(&app, &result);
@@ -148,7 +149,7 @@ fn json_reply(v: &serde_json::Value) -> Reply {
 fn window(app: &AppHandle, label: &str, url: WebviewUrl, splash: Arc<Splash>) -> tauri::Result<WebviewWindow> {
     let handle = app.clone();
     let nav = app.clone();
-    WebviewWindowBuilder::new(app, label, url)
+    let builder = WebviewWindowBuilder::new(app, label, url)
         .title(TITLE)
         .inner_size(1600.0, 1000.0)
         .min_inner_size(1100.0, 700.0)
@@ -188,8 +189,10 @@ fn window(app: &AppHandle, label: &str, url: WebviewUrl, splash: Arc<Splash>) ->
             } else if is_app_url(p.url()) && p.url().path() == "/" && std::env::var_os("WAVELOG_SELFTEST").is_some() {
                 let _ = w.eval(SELFTEST_JS);
             }
-        })
-        .build()
+        });
+    // 自己診断のときだけ保存を記録する（利用者の起動では WebView2 の既定の案内のまま・上の downloads()）
+    let builder = if std::env::var_os("WAVELOG_SELFTEST").is_some() { builder.on_download(|_, ev| record_download(ev)) } else { builder };
+    builder.build()
 }
 
 /// LotDsp など外のページは、いつものブラウザ（Edge）で開く（ログイン・LotData-Link はそちらにある・§9.521）。
@@ -198,6 +201,35 @@ fn open_outside(app: &AppHandle, u: &Url) {
         use tauri_plugin_opener::OpenerExt;
         let _ = app.opener().open_url(u.as_str(), None::<&str>);
     }
+}
+
+/// 保存（ダウンロード）の記録。**自己診断のときだけ**付ける受け手（`record_download`）が書き、
+/// `/__desktop/downloads` が画面の自己診断へ渡す（§9.551）。利用者の起動では受け手を付けない——付けると
+/// WebView2 の既定の保存の案内（右上の小窓）が出なくなる（wry が DownloadStarting の Handled を立てる）。
+fn downloads() -> &'static Mutex<Vec<serde_json::Value>> {
+    static D: OnceLock<Mutex<Vec<serde_json::Value>>> = OnceLock::new();
+    D.get_or_init(Mutex::default)
+}
+
+/// 保存の始まりと終わりを残す（終わりは置いた先・大きさ・先頭4バイト）。保存先は変えない（既定の「ダウンロード」）。
+fn record_download(ev: DownloadEvent<'_>) -> bool {
+    let row = match ev {
+        DownloadEvent::Requested { url, destination } => {
+            json!({"state": "requested", "url": url.as_str(), "path": destination.display().to_string()})
+        }
+        DownloadEvent::Finished { url, path, success } => {
+            let body = path.as_ref().and_then(|p| std::fs::read(p).ok()).unwrap_or_default();
+            let head: String = body.iter().take(4).map(|b| format!("{b:02x}")).collect();
+            json!({"state": "finished", "url": url.as_str(), "path": path.map(|p| p.display().to_string()),
+                   "success": success, "bytes": body.len(), "head": head})
+        }
+        _ => return true,
+    };
+    log(&format!("DOWNLOAD {row}"));
+    if let Ok(mut v) = downloads().lock() {
+        v.push(row);
+    }
+    true
 }
 
 /// 手元へ写した古い版の exe を片付ける（Start.vbs が版ごとのフォルダへ写す・設計書 §7）。
