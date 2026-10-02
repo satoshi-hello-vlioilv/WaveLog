@@ -1,4 +1,4 @@
-# 起動・停止・監視（52件）
+# 起動・停止・監視（56件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,10 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| デスクトップ版の窓は`desktop/`（Rust）。`/static/`だけ直に返し、残り（画面・API・連結 CSS）は Python へ | `test_boot.py`・`test_sidecar.py` | [§9.546](../../docs/decisions/9.546.md) |
+| 窓の Python は PATH の順に最初の`pythonw.exe`がある場所（ブラウザ版と同じ・並べ替えない）。版（`protocol`）が違えば起こさない | `test_sidecar.py` | [§9.546](../../docs/decisions/9.546.md) |
+| Start.vbs の「desktop」は exe を手元の版ごとのフォルダへ写して起動。無い・写せないならブラウザ版 | `test_faststart.py` | [§9.546](../../docs/decisions/9.546.md) |
+| 起動画面（`desktop/splash`）は待機画面と同じトークン・同じ地。アイコンは`app_icon.py`が描く（`.ico`を置かない） | `test_boot.py` | [§9.546](../../docs/decisions/9.546.md) |
 | デスクトップ版の窓口は`program/sidecar.py`（標準入出力の枠・ポートなし）。標準出力は枠だけ。入力が閉じたら`watchdog._exit()`で終わる | `test_sidecar.py` | [§9.544](../../docs/decisions/9.544.md) |
 | 起動の背景処理（写し・見張り・書込役）は`services.start()`の1箇所。タブの見張り（`watchdog.start()`）はポート版だけ | `test_sidecar.py` | [§9.544](../../docs/decisions/9.544.md) |
 | update.bat は**版を最初に言う**（`ready.version_note()`の1箇所・前回の刻印と比べる） | `test_cleanup.py` | [§9.497](../../docs/decisions/9.497.md) |

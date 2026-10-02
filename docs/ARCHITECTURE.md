@@ -63,6 +63,7 @@ importされるだけの`backend/launcher/guard.py`・`backend/launcher/server.p
 | `backend/launcher/server.py`(旧`server.py`) | Webサーバーの起動のみ。起動監視とWeb処理の境界 |
 | `program/sidecar.py` | **デスクトップ版の窓口**(§9.544・`docs/DESKTOP_MIGRATION_DESIGN.md`)。窓(Tauri)が子として起こし、標準入出力の枠(JSON 1行＋生の本文)で問い合わせる。**ポートを開かない**。Flaskはそのまま WSGI で呼ぶ。標準出力は枠だけ(何より先に fd 1 を標準エラーへ)。入力が閉じたら`watchdog._exit()`の同じ片付けを通って終わる |
 | `backend/launcher/services.py` | 起動したあと裏で回す処理(共有DBの写し・共有スケジュールの見張り・書込役)の開始の1箇所。`server.py`と`sidecar.py`が同じ`start()`を呼ぶ(窓口で振る舞いを変えない)。タブの見張り(`watchdog.start()`)はポート版だけ |
+| `desktop/`（Rust・Tauri） | **デスクトップ版の窓**(§9.546)。窓・1つだけ起動・`/static/`の直配り・Python（`program/sidecar.py`）の監督と起こし直し・外のリンクは Edge。自前の仕組み`wavelog`（`config.DESKTOP_SCHEME`と同じ）。終わり方は Python の片付けの1箇所を通す。起動画面`desktop/splash`は待機画面と同じ色。Start.vbs に引数`desktop`を付けると exe を手元の版ごとのフォルダへ写して起動する。CI は`.github/workflows/desktop.yml`（Windows・本物の WebView2 の自己診断） |
 | `program/process_manager.py` | 対象アプリだけの安全な停止（正常終了要求→記録済みPID。プロセス名では判定しない） |
 | `program/loading.html` | 起動待機画面。サーバーより先に `file://` で開かれ、`/api/ready.js` の応答を待ってからアプリへ遷移する。段階表示は `boot_status.js` を読んで**実際の進捗**を出す。進捗バーはサーバー6段階＋ブラウザ4段階の10段階ぶんで、6/10(60%)まで進めてアプリ側の起動オーバーレイへ引き渡す |
 | `backend/boot_status.py` | 起動の段階を**端末ごとの置き場**(`%LOCALAPPDATA%\WaveLog\runtime\boot_status.js`。§9.225)へ書き出す。待機画面も同じ場所へ写して開くので、共有配置でも端末どうしが混ざらない。サーバー側6段階(`STEPS`)とブラウザ側4段階(`BROWSER_STEPS`)の定義、合計数(`TOTAL_STEPS`)、バージョン番号の供給元。待機画面はまだサーバーが無い状態なので、`<script src>` で読み取れるJSファイルを介す。書き込みに失敗しても起動は止めない。`/api/ready.js` で削除する(`.gitignore`済み) |

@@ -498,6 +498,16 @@ try:
     rec('リポジトリ直下に .py / .bat を置かない（§9.406）', not stray, ', '.join(stray))
     rec('Start.vbs は直下のまま（毎日の入口は動かさない）',
         (ROOT / 'Start.vbs').exists())
+    # 引数「desktop」（§9.546）。exe を**手元の版ごとのフォルダへ写して**起動する（Box の上の exe を直に
+    # 起こすと、動いている間ファイルを掴み、その PC の更新が詰まる）。program の場所を渡し、
+    # exe が無い・写せないときはブラウザ版で起動する（入口は Start.vbs の1つのまま）。
+    vbs = (ROOT / 'Start.vbs').read_bytes().decode('cp932')
+    rec('Start.vbs の「desktop」は exe を手元の版ごとのフォルダへ写して起動する（§9.546）',
+        all(w in vbs for w in ('mode = "desktop"', '\\WaveLog\\desktop\\', 'f.Size', 'MoveFile tmp, dst')))
+    rec('Start.vbs は program の場所を exe へ渡す（WAVELOG_PROGRAM_DIR）',
+        '("WAVELOG_PROGRAM_DIR") = root & "\\program"' in vbs)
+    rec('exe が無い・写せないときはブラウザ版で起動する（StartDesktop が偽ならそのまま下へ）',
+        'If StartDesktop() Then WScript.Quit 0' in vbs and vbs.index('If StartDesktop()') < vbs.index('sh.Run "pythonw.exe "'))
     # 動かせない2つ。**移すと落ちるのではなく「黙って効かなくなる」**ので、
     # 在ることを機械で押さえる（§9.406の実測: eslint は 306件→0件）。
     rec('.gitignore は直下（gitはそのフォルダ以下にしか当てない）',

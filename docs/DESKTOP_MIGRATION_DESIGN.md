@@ -1,6 +1,7 @@
 # デスクトップ版への移行（Tauri / Rust / Python）——事前確認と段取り
 
-**状態: P0（事前確認）・P1（Python の窓口・[§9.544](decisions/9.544.md)）・P3（端末の控え・[§9.545](decisions/9.545.md)）まで済み。**以下は最初の事前確認。
+**状態: P0（事前確認）・P1（Python の窓口・[§9.544](decisions/9.544.md)）・P3（端末の控え・[§9.545](decisions/9.545.md)）・P2（Rust の窓・[§9.546](decisions/9.546.md)）まで済み。**
+本物の WebView2（Windows）の自己診断は CI（`.github/workflows/desktop.yml`）が受け持つ。以下は最初の事前確認。
 
 利用者の依頼「Defect-Pitch-Analyzer で行ったように、Flask/Python で補っていた部分を
 Tauri/Rust/Python に変換し、ポートによる影響や得意な分野ごとに分けて対応させたい。心配は、データベースの共有管理が
@@ -46,7 +47,7 @@ Tauri/Rust/Python に変換し、ポートによる影響や得意な分野ご�
 | E2 共有の網 | `test_mastershare`・`test_dbmirror`・`test_presence`・`test_scwatch`・`test_scsnapread`・`test_recmirror`・`test_recsplit`・`test_atomicio`・`test_tabclose`・`test_storage`・`test_localwork`・`test_pcname`（どれもサーバー不要） | **12本・359件合格／0件不合格**（フルスイートは回していない） |
 | E3 窓口の差分（P1） | 本物の子プロセスへパイプで送った答えと、同じアプリへ直接送った答え（状態・種類・本文の指紋） | **11/11 一致・40本同時 40/40**（`test_sidecar.py`） |
 | E4 片付け（P1） | 窓を閉じた（標準入力が閉じた）とき、書込役・編集セッション・在席が片付くか、何秒で終わるか | **0.02秒**で終わり、在席が消え、書込役の目印を手放した（ブラウザ版はタブを閉じてから約8秒） |
-| E5 混在（P2 で測る） | ブラウザ版とデスクトップ版の2台が同じ共有で、書込役の中継・錠・改訂番号の衝突検出を両方向に満たすか | 未測定 |
+| E5 混在（P5 で測る・2台の実機が要る） | ブラウザ版とデスクトップ版の2台が同じ共有で、書込役の中継・錠・改訂番号の衝突検出を両方向に満たすか | 未測定 |
 | E6 引き継ぎ（P3） | 2つの窓（オリジン）のあいだで、未送信の測定データと端末にしか無い設定が欠けずに揃うか | **23/23**（`test_terminal.js`・§9.545） |
 
 E1 は P1 で網にした（`test_portdep.py`・常に回す）。対象は名前で並べず、共有の基本部品を読むモジュールを構文木から集める（25本）——共有へ触るモジュールを足せば自動で見張りに入る。
@@ -81,7 +82,7 @@ E1 は P1 で網にした（`test_portdep.py`・常に回す）。対象は名�
 | --- | --- | --- |
 | P0 ✓ | この事前確認 | E1・E2 |
 | P1 ✓ | Python の窓口 `program/sidecar.py`（標準入出力の枠・ポートを開かない）。背景処理の開始（写し・見張り・書込役）を `backend/launcher/server.py` と共通の1箇所へ。入力が閉じたら `teardown()` | E3・E4・E1 の網 |
-| P2 | Rust の殻 `desktop/`（窓・1つだけ起動・`/static/` の直配り・Python の監督と起こし直し・外のリンクは Edge）。Windows の CI で本物の WebView2 の自己診断 | `cargo test`・自己診断・E5 |
+| P2 ✓ | Rust の殻 `desktop/`（窓・1つだけ起動・`/static/` の直配り・Python の監督と起こし直し・外のリンクは Edge）。Windows の CI で本物の WebView2 の自己診断 | `cargo test`・自己診断・E5 |
 | P3 ✓ | 端末の控え（記録と設定を保存のたびに Python の控えへも写し、開いたときに新しいほうを採る） | E6 |
 | P4 | WebView2 で違う所（§4 の 3〜6）と、版の知らせ | 自己診断の項目 |
 | P5 | 配り方と、ブラウザ版との併存。併存を終えたら、ポートのための仕組み（`guard.py`・`process_manager.py`・`loading.html`・ハートビートによる推し量り）を外す | 利用者の確認 |

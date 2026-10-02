@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "WaveLog",
+  "mainBinaryName": "WaveLog",
+  "version": "1.0.0",
+  "identifier": "local.wavelog.desktop",
+  "build": {
+    "frontendDist": "splash"
+  },
+  "app": {
+    "windows": [],
+    "withGlobalTauri": false,
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["icons/icon.png", "icons/icon.ico"]
+  }
+}

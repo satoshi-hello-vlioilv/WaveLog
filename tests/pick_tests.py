@@ -595,6 +595,11 @@ RULES = [
     # デスクトップ版の窓口（§9.544）。枠・答えの一致・閉じたときの片付け
     ('program/sidecar.py', g('起動')),
     ('program/requirements.txt', g('起動', 'test_noaccess')),
+    # デスクトップ版の窓（§9.544・Rust）。窓口の枠と起動画面の色を見る網を回す
+    # （Rust そのものは cargo test と CI の自己診断・.github/workflows/desktop.yml）。
+    ('desktop/', g('test_sidecar', 'test_boot')),
+    # 毎日の入口。引数「desktop」で exe を手元へ写して起こす（§9.546）
+    ('Start.vbs', g('test_faststart', 'test_shortcut')),
     ('program/', g('起動')),
 
     # --- ドキュメント --------------------------------------------------

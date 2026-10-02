@@ -155,6 +155,17 @@ rec('待機画面とアプリ内オーバーレイの地が同じ指定になっ
     ('同じ: ' + ground_app[:60]) if ground_app == ground_wait
     else 'overlay=%s / wait=%s' % (ground_app[:70], ground_wait[:70]))
 
+# デスクトップ版の起動画面（desktop/splash/index.html・§9.544）も**同じ色・同じ地**。
+# exe に入るので外部CSSを読めず、トークンと地を写してある（3つ目の写し）。片方だけ直すと黙ってずれる。
+SPLASH = (ROOT / 'desktop' / 'splash' / 'index.html').read_text(encoding='utf-8')
+splash_tok = _tokens(SPLASH)
+bad = sorted(k for k, v in splash_tok.items() if k in base_tok and base_tok[k] != v)
+rec('デスクトップ版の起動画面のトークンが本体(00-base.css)・待機画面と一致する(新しい色を足さない)',
+    not bad and len(splash_tok) > 5 and splash_tok == wait_tok,
+    ', '.join('%s %s≠%s' % (k, splash_tok[k], base_tok.get(k)) for k in bad[:4]) or '%d色' % len(splash_tok))
+rec('デスクトップ版の起動画面の地が待機画面・アプリ内オーバーレイと同じ指定',
+    bool(ground_app) and _decl(SPLASH, ' body', 'background') == ground_app)
+
 # --- 段階の一覧が3箇所(Python / 待機画面 / アプリ内オーバーレイ)で一致する ---
 # ここがずれると、進捗バーの分母と段階リストが食い違って「90%のまま
 # 終わる」「一覧に無い段階が現在になる」といった表示になる(§9.76)。
