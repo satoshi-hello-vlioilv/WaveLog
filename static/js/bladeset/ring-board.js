@@ -37,7 +37,7 @@
   const ws=[...new Set(rs.colors.filter(x=>!x.lube).flatMap(x=>x.widths.map(w=>w.width)))].sort((a,b)=>b-a);
   /* 色は**サーバーの候補**（空いている標準の色、無ければ登録済みの色からいちばん離れた色・§9.529）。 */
   return {current:'',color:s.color||'',hex:s.hex||'#808080',od:s.od??'',bore:s.bore??'',lube:false,integ:false,
-          widths:(ws.length?ws:WIDTH_SEED).map(w=>({width:w,qty:'',minQty:''}))};
+          widths:(ws.length?ws:WIDTH_SEED).map(w=>({width:w,qty:''}))};
  }
  const isDirty=()=>{const d=rs.draft,g=colorOf(d&&d.current);
   return !!d&&(!g||d.color!==g.color||(d.hex||'')!==(g.hex||'')||num(d.od)!==g.od||num(d.bore)!==g.bore)};
@@ -120,22 +120,19 @@
  function widthTableHtml(g){
   const rows=g.widths.map(w=>`<tr data-id="${w.id}"><th>${fmt(w.width)}<u>mm</u></th>
    <td><input type="number" class="rb-q" data-f="qty" min="0" step="1" value="${esc(w.qty??'')}" aria-label="幅${fmt(w.width)}の保有本数"><u>本</u></td>
-   <td><input type="number" class="rb-q" data-f="minQty" min="0" step="1" value="${esc(w.minQty??'')}" aria-label="幅${fmt(w.width)}の下限本数"><u>本</u></td>
-   <td class="bk-st">${w.minQty&&w.qty<w.minQty?'<b class="bk-low">下限を下回っています</b>':''}</td>
    <td><button type="button" class="bk-x" data-act="delwidth" data-id="${w.id}" title="この幅を消す" aria-label="幅${fmt(w.width)}を消す">×</button></td></tr>`).join('');
-  return `<table class="bk-table"><thead><tr><th>幅</th><th>保有本数</th><th>下限本数</th><th></th><th></th></tr></thead>
+  return `<table class="bk-table"><thead><tr><th>幅</th><th>保有本数</th><th></th></tr></thead>
    <tbody>${rows}</tbody><tfoot><tr><th><input type="number" id="rbNewW" min="0" step="any" placeholder="幅"></th>
-   <td><input type="number" id="rbNewQ" min="0" step="1" placeholder="本数"></td><td></td>
-   <td><button type="button" class="mm-btn-ghost sm" data-act="addwidth">＋ 幅を足す</button></td><td></td></tr>
-   <tr class="bk-sum"><th>合計</th><td><b>${g.total}本</b></td><td colspan="3"></td></tr></tfoot></table>`;
+   <td><input type="number" id="rbNewQ" min="0" step="1" placeholder="本数"></td>
+   <td><button type="button" class="mm-btn-ghost sm" data-act="addwidth">＋ 幅を足す</button></td></tr>
+   <tr class="bk-sum"><th>合計</th><td><b>${g.total}本</b></td><td></td></tr></tfoot></table>`;
  }
  function newWidthsHtml(d){
-  return `<table class="bk-table"><thead><tr><th>幅</th><th>保有本数</th><th>下限本数</th><th></th></tr></thead><tbody>${
+  return `<table class="bk-table"><thead><tr><th>幅</th><th>保有本数</th><th></th></tr></thead><tbody>${
    d.widths.map((w,i)=>`<tr><th><input type="number" data-nw="${i}" data-f="width" min="0" step="any" value="${esc(w.width)}"><u>mm</u></th>
     <td><input type="number" data-nw="${i}" data-f="qty" min="0" step="1" value="${esc(w.qty)}" placeholder="0"></td>
-    <td><input type="number" data-nw="${i}" data-f="minQty" min="0" step="1" value="${esc(w.minQty)}" placeholder="0"></td>
     <td><button type="button" class="bk-x" data-act="dropnew" data-i="${i}" aria-label="この幅を外す">×</button></td></tr>`).join('')}</tbody>
-   <tfoot><tr><td colspan="4"><button type="button" class="mm-btn-ghost sm" data-act="addnew">＋ 幅の行を足す</button></td></tr></tfoot></table>`;
+   <tfoot><tr><td colspan="3"><button type="button" class="mm-btn-ghost sm" data-act="addnew">＋ 幅の行を足す</button></td></tr></tfoot></table>`;
  }
 
  /* ---------- 被り（サーバーへ聞く） ---------- */
@@ -193,7 +190,7 @@
  }
  async function act(a,b){
   if(a==='cancel'){select((rs.colors[0]||{}).color||'');return}
-  if(a==='addnew'){rs.draft.widths.push({width:'',qty:'',minQty:''});renderCard();return}
+  if(a==='addnew'){rs.draft.widths.push({width:'',qty:''});renderCard();return}
   if(a==='dropnew'){rs.draft.widths.splice(+b.dataset.i,1);renderCard();return}
   if(a==='save'||a==='create')return void saveColor(a==='create');
   if(a==='addwidth')return void addWidth();

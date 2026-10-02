@@ -14,7 +14,8 @@
     ④ 新しいセット: 空いている字（A〜Z）から選び、登録済みの刃厚の顔ぶれで行が並ぶ
     ⑤ セット名を変える・セットを消す
     ⑥ 径ゲージ（§9.536、利用者の選択「B-9とB-10を切り替え表示…デフォルトはB-10」）: 既定はタイル・
-       残り／研磨の予定／下限割れを一覧が言い、詳細カードは言わない（階層を混ぜない）・見せ方はこの端末に覚える
+       残り／研磨の予定を一覧が言い、詳細カードは言わない（階層を混ぜない）・見せ方はこの端末に覚える
+       下限は持たない（§9.539 利用者の指示で項目ごと外した）——一覧にも詳細にも新しいセットにも「下限」が無い
    後片付けは finally（この網が作ったセットを消し、直した値を戻す）。 */
 const H = require('./lib/harness.js');
 const W = require('./lib/wait.js');
@@ -119,7 +120,7 @@ H.run('test_bladeboard: 刃マスタの盤（§9.529）', async ({ page, rec, er
   const MIN = 305, CYC = 60;   // 刃組基準値の既定（テスト設備A は登録なし）
   const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
   await post('/api/bladeset/blade-sets', { equipment: EQ, group: free, create: true, category: '通常刃', use: '使用中',
-   blades: [{ thickness: 7, currentDia: MIN + 1.5, qty: 3, minQty: 10 }], user_id: 'test' });
+   blades: [{ thickness: 7, currentDia: MIN + 1.5, qty: 3 }], user_id: 'test' });
   made.push(free);
   const r6 = (await sets()).find(x => x.group === free).rows[0];
   await post('/api/bladeset-blade-master/update', { id: r6.id, lastGrind: ago(CYC + 5), user_id: 'test' });
@@ -142,10 +143,12 @@ H.run('test_bladeboard: 刃マスタの盤（§9.529）', async ({ page, rec, er
   }, tileSel);
   rec('⑥ 既定の見せ方はタイル（B-10）・凡例が満タンの出どころと使用限界径を言う',
       v6.view === 'タイル' && /使用限界径 Φ305/.test(v6.legend) && /満タン Φ/.test(v6.legend), JSON.stringify([v6.view, v6.legend.slice(0, 60)]));
-  rec('⑥ タイルが残り（使用限界径まで）・残りわずか・下限割れ・研磨の予定の超過を言う',
-      /残り1\.5mm/.test(v6.text) && /残りわずか/.test(v6.text) && /下限割れ/.test(v6.text) && /研磨の予定を5日過ぎ/.test(v6.text) && /is-near/.test(v6.arc), v6.text);
+  rec('⑥ タイルが残り（使用限界径まで）・残りわずか・研磨の予定の超過を言う',
+      /残り1\.5mm/.test(v6.text) && /残りわずか/.test(v6.text) && /研磨の予定を5日過ぎ/.test(v6.text) && /is-near/.test(v6.arc), v6.text);
+  rec('⑥ 下限は持たない（§9.539）——タイルにも詳細カードにも「下限」の字・欄が無い',
+      !/下限/.test(v6.text + v6.card) && !(await page.evaluate(() => document.querySelectorAll('#masterMaintList [data-f="minQty"]').length)), v6.text.slice(0, 80));
   rec('⑥ 詳細カード（L3）は直す欄だけ——残り・研磨の予定・刃厚ごとの枚数を言わない（階層を混ぜない）',
-      !/残り\d|研磨の予定|今すぐ選べる|下限を下回って/.test(v6.card), v6.card.slice(0, 120));
+      !/残り\d|研磨の予定|今すぐ選べる/.test(v6.card), v6.card.slice(0, 120));
   await page.click('#masterMaintForm [data-seg="view"][data-v="刃厚ごとの一覧"]');
   await W.until(page, () => !!document.querySelector('#masterMaintList .bk-pane.bb-tree .bb-row.is-on'), null, { ms: 8000, what: '刃厚ごとの一覧' });
   const v6b = await page.evaluate(g => ({ rows: document.querySelectorAll('#masterMaintList .bb-row').length,

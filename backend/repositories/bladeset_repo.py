@@ -113,6 +113,8 @@ def _enabled_pair(v):
 # 刃は「径」と「刃厚」の2つで別物（同じ径でも刃厚が違えば所要は別に数える）。
 # 研磨は刃ごとに進むので、研磨日・回数は**刃が持つ**（セットではない）。
 BLADE_TABLE = '刃マスタ'
+# `下限枚数`／`下限本数`（刃・スペーサー・ゴムリング・フィンガー）は**読まない・書かない**列（§9.539
+# 利用者の指示「そもそも下限という管理項目が不要」）。古い版が開いても壊れないよう、列そのものは残す。
 BLADE_COLUMNS = (
     ('設備名', 'TEXT'), ('名称', 'TEXT'), ('組', 'TEXT'), ('刃厚', 'REAL'),
     ('現状径', 'REAL'), ('保有枚数', 'INTEGER'), ('下限枚数', 'INTEGER'),
@@ -983,7 +985,7 @@ def _blade_row(d):
     return {'id': d['刃ID'], 'equipment': _txt(d['設備名']),
             'name': blade_label(d['組'], d['刃厚']), 'group': _txt(d['組']),
             'thickness': _num(d['刃厚']), 'currentDia': _num(d['現状径']),
-            'qty': _int(d['保有枚数']), 'minQty': _int(d['下限枚数']),
+            'qty': _int(d['保有枚数']),
             'lastGrind': _txt(d['研磨日']), 'grindCount': _int(d['研磨回数']),
             'status': _txt(d['状態']), 'note': _txt(d['備考']),
             'order': d['表示順'], 'enabled': _alive(d['有効']),
@@ -993,7 +995,7 @@ def _blade_row(d):
 def _spacer_row(d):
     return {'id': d['スペーサーID'], 'equipment': _txt(d['設備名']),
             'size': _num(d['寸法']), 'qty': _int(d['保有枚数']),
-            'minQty': _int(d['下限枚数']), 'use': _txt(d['用途']),
+            'use': _txt(d['用途']),
             'note': _txt(d['備考']), 'order': d['表示順'],
             'enabled': _alive(d['有効']),
             'enabledText': _enabled_pair(d['有効'])[1]}
@@ -1041,7 +1043,7 @@ def _ring_row(d):
             'lube': lube, 'integ': integ, 'kind': ring_kind_word(lube, integ),
             'lubeText': RING_KIND_LUBE if lube else RING_KIND_RUBBER,
             'od': od, 'bore': _num(d['内径']), 'width': _num(d['幅']),
-            'qty': _int(d['保有本数']), 'minQty': _int(d['下限本数']),
+            'qty': _int(d['保有本数']),
             'note': _txt(d['備考']), 'order': d['表示順'],
             'enabled': _alive(d['有効']),
             'enabledText': _enabled_pair(d['有効'])[1]}
@@ -1062,7 +1064,7 @@ def _finger_row(d):
     mat = _finger_material(d['フィンガー材質'])
     return {'id': d['フィンガーID'], 'equipment': _txt(d['設備名']),
             'material': mat, 'name': finger_label(mat, d['幅']), 'width': _num(d['幅']),
-            'qty': _int(d['保有本数']), 'minQty': _int(d['下限本数']),
+            'qty': _int(d['保有本数']),
             'maxThickness': _num(d['適用板厚上限']),
             # 形は「空なら図面の既定」（§9.231 引けなかった値を0にしない）
             'length': _num(d['全長']) or FINGER_SHAPE['length'],
@@ -1235,7 +1237,7 @@ def blade_set_create(c, uid, equipment, group, category=None, use=None, blades=N
         raise ValueError('同じ刃厚が2つあります。刃厚ごとに1行にしてください。')
     for b in ws:
         blade_upsert(c, uid, equipment=eq, group=g, thickness=b.get('thickness'),
-                     current_dia=b.get('currentDia'), qty=b.get('qty'), min_qty=b.get('minQty'))
+                     current_dia=b.get('currentDia'), qty=b.get('qty'))
     if category is not None or use is not None:
         blade_set_update(c, uid, eq, g, category=category, use=use)
     return blade_set_of(c, eq, g)
@@ -1449,7 +1451,7 @@ def _only(vals):
 
 
 def blade_upsert(c, uid, equipment=None, group=None, thickness=None,
-                 current_dia=None, qty=None, min_qty=None, last_grind=None,
+                 current_dia=None, qty=None, last_grind=None,
                  grind_count=None, note=None, order=None, enabled=None, blade_id=None):
     """刃1種類を書く。**見分けるのは設備＋セット＋刃厚**（§9.529）——同じ3つの2行目は断る
     （枚数・径はその行で直す）。セット名は A〜Z（`blade_set_name()`）。名称は書かない。"""
@@ -1467,7 +1469,7 @@ def blade_upsert(c, uid, equipment=None, group=None, thickness=None,
     _blade_key_guard(c, eq or _txt(cur['設備名']), g, th, bid)
     vals = _only({'設備名': eq, '組': g if group is not None else None,
                   '刃厚': th if thickness is not None else None, '現状径': _num(current_dia),
-                  '保有枚数': _int(qty), '下限枚数': _int(min_qty),
+                  '保有枚数': _int(qty),
                   '研磨日': _txt(last_grind) if last_grind is not None else None,
                   '研磨回数': _int(grind_count), '備考': _txt(note) if note is not None else None,
                   '表示順': _int(order),
@@ -1484,7 +1486,7 @@ def _blade_key_guard(c, equipment, group, thickness, blade_id=None):
                              % (group, thickness))
 
 
-def spacer_upsert(c, uid, equipment=None, size=None, qty=None, min_qty=None,
+def spacer_upsert(c, uid, equipment=None, size=None, qty=None,
                   use=None, note=None, order=None, enabled=None, spacer_id=None):
     sid = int(spacer_id) if str(spacer_id or '').strip() else None
     eq = _equipment_for(sid, equipment)
@@ -1492,7 +1494,7 @@ def spacer_upsert(c, uid, equipment=None, size=None, qty=None, min_qty=None,
     if sid is None and (sz is None or sz <= 0):
         raise ValueError('スペーサーの寸法（mm）を入力してください。')
     vals = _only({'設備名': eq, '寸法': sz, '保有枚数': _int(qty),
-                  '下限枚数': _int(min_qty), '用途': _txt(use) or None,
+                  '用途': _txt(use) or None,
                   '備考': _txt(note) or None, '表示順': _int(order),
                   '有効': None if enabled is None else (-1 if enabled else 0)})
     return _put(c, SPACER_DEF, sid, vals, uid, eq or _txt(equipment))
@@ -1515,7 +1517,7 @@ def ring_color_state(c, equipment, color):
 
 
 def ring_upsert(c, uid, equipment=None, color=None, hex_code=None, od=None,
-                bore=None, width=None, qty=None, min_qty=None, note=None,
+                bore=None, width=None, qty=None, note=None,
                 order=None, enabled=None, ring_id=None, lube=None, integ=None):
     """ゴムリングを1本（＝色×幅）書く。`integ`＝スペーサー一体型（§9.531・`lube`と同じく渡さなければ触らない）。
 
@@ -1579,7 +1581,7 @@ def ring_upsert(c, uid, equipment=None, color=None, hex_code=None, od=None,
     _ring_width_guard(c, lookup_eq, name or lookup_name, w, rid)
     vals = _only({'設備名': eq, '色名': name or None, '色コード': tint or None,
                   '外径': diameter, '内径': inner, '幅': w,
-                  '保有本数': _int(qty), '下限本数': _int(min_qty),
+                  '保有本数': _int(qty),
                   '備考': _txt(note) or None, '表示順': _int(order),
                   '潤滑リング': None if lube is None else (-1 if lube else 0),
                   'スペーサー一体型': None if integ is None else (-1 if (integ and not lube) else 0),
@@ -1670,7 +1672,7 @@ def ring_colors(c, equipment):
             g = groups[r['color']] = {'color': r['color'], 'hex': r['hex'], 'tone': ring_tone(r['hex'], r['lube']),
                                       'od': r['od'], 'bore': r['bore'], 'lube': r['lube'],
                                       'integ': r['integ'], 'kind': r['kind'], 'widths': []}
-        g['widths'].append({k: r[k] for k in ('id', 'width', 'qty', 'minQty', 'enabled', 'note')})
+        g['widths'].append({k: r[k] for k in ('id', 'width', 'qty', 'enabled', 'note')})
     out = sorted(groups.values(), key=lambda g: (g['lube'], -(g['od'] or 0), g['color']))
     for g in out:
         g['widths'].sort(key=lambda w: -(w['width'] or 0))
@@ -1754,7 +1756,7 @@ def ring_color_save(c, uid, equipment, color, hex_code=None, od=None, bore=None,
         raise ValueError('同じ幅が2つあります。幅ごとに1行にしてください。')
     for w in ws:
         ring_upsert(c, uid, equipment=eq, color=name, hex_code=hx, od=d, bore=b,
-                    width=w.get('width'), qty=w.get('qty'), min_qty=w.get('minQty'), lube=bool(lube),
+                    width=w.get('width'), qty=w.get('qty'), lube=bool(lube),
                     integ=bool(integ) and not lube)
     return {'color': name, 'rows': 0, 'created': len(ws)}
 
@@ -1800,7 +1802,7 @@ def ring_color_suggest(c, equipment):
 
 
 def finger_upsert(c, uid, equipment=None, width=None, qty=None,
-                  min_qty=None, max_thickness=None, note=None, order=None,
+                  max_thickness=None, note=None, order=None,
                   enabled=None, finger_id=None, material=None):
     """1本を見分けるのは**設備＋幅＋材質**（§9.526・名称は持たない）。同じ組は2行目を作らせない。"""
     fid = int(finger_id) if str(finger_id or '').strip() else None
@@ -1817,7 +1819,7 @@ def finger_upsert(c, uid, equipment=None, width=None, qty=None,
         if x['id'] != fid and x['width'] == w_now and x['material'] == m_now:
             raise ValueError(f'同じ幅・材質のフィンガー（{finger_label(m_now, w_now)}）がこの設備に登録済みです。本数はその行で直してください。')
     vals = _only({'設備名': eq, 'フィンガー材質': mat, '名称': finger_label(m_now, w_now), '幅': _num(width),
-                  '保有本数': _int(qty), '下限本数': _int(min_qty),
+                  '保有本数': _int(qty),
                   '適用板厚上限': _num(max_thickness), '備考': _txt(note) or None,
                   '表示順': _int(order),
                   '有効': None if enabled is None else (-1 if enabled else 0)})
@@ -2035,7 +2037,7 @@ def seed_standard_parts(c, uid, equipment, replace=False):
                 BLADE_DEF.insert(c, {
                     '設備名': eq, '組': g,
                     '刃厚': float(tk), '現状径': SEED_BLADE_DIA,
-                    '保有枚数': SEED_BLADE_QTY, '下限枚数': 0,
+                    '保有枚数': SEED_BLADE_QTY,
                     '状態': BLADE_GENERAL,
                     '表示順': order, '有効': -1}, uid)
                 made['blade'] += 1
@@ -2045,7 +2047,7 @@ def seed_standard_parts(c, uid, equipment, replace=False):
             order += 10
             SPACER_DEF.insert(c, {
                 '設備名': eq, '寸法': float(sz), '保有枚数': int(qty),
-                '下限枚数': 0, '用途': use, '表示順': order, '有効': -1}, uid)
+                '用途': use, '表示順': order, '有効': -1}, uid)
             made['spacer'] += 1
     if not existing['ring']:
         order = 0
@@ -2056,14 +2058,14 @@ def seed_standard_parts(c, uid, equipment, replace=False):
                 RING_DEF.insert(c, {
                     '設備名': eq, '色名': color, '色コード': tint,
                     '外径': od, '内径': float(STANDARD_DEFAULTS['ringBore']),
-                    '幅': float(width), '保有本数': int(qty), '下限本数': 0,
+                    '幅': float(width), '保有本数': int(qty),
                     '潤滑リング': 0, '表示順': order, '有効': -1}, uid)
                 made['ring'] += 1
         order += 10
         RING_DEF.insert(c, {
             '設備名': eq, '色名': SEED_LUBE['color'], '色コード': None,
             '外径': SEED_LUBE['od'], '内径': SEED_LUBE['bore'],
-            '幅': SEED_LUBE['width'], '保有本数': SEED_LUBE['qty'], '下限本数': 0,
+            '幅': SEED_LUBE['width'], '保有本数': SEED_LUBE['qty'],
             '潤滑リング': -1, '表示順': order, '有効': -1}, uid)
         made['ring'] += 1
     if not existing['finger']:
@@ -2073,7 +2075,7 @@ def seed_standard_parts(c, uid, equipment, replace=False):
             FINGER_DEF.insert(c, {
                 '設備名': eq, '名称': finger_label(FINGER_MATERIAL_DEFAULT, width),
                 'フィンガー材質': FINGER_MATERIAL_DEFAULT, '幅': float(width),
-                '保有本数': int(qty), '下限本数': 0,
+                '保有本数': int(qty),
                 '適用板厚上限': float(STANDARD_DEFAULTS['fingerMax']),
                 '全長': FINGER_SHAPE['length'], '厚み': FINGER_SHAPE['thickness'],
                 '研削長': FINGER_SHAPE['grindRun'], '研削量': FINGER_SHAPE['grindDrop'],

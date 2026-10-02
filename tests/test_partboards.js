@@ -120,11 +120,11 @@ H.run('test_partboards: 刃組基準値・スペーサー・フィンガーの�
   await page.press(row + ' [data-f="qty"]', 'Tab');
   const sq = await W.poll(() => api('/api/bladeset-spacer-master?equipment=' + q), r => ((r.items || []).find(x => x.id === t.id) || {}).qty === (t.qty || 0) + 1);
   rec('④ 保有はその場で直すと保存（1手・窓を開かない）', ((sq.items || []).find(x => x.id === t.id) || {}).qty === (t.qty || 0) + 1);
-  await page.fill(row + ' [data-f="minQty"]', String((t.qty || 0) + 50));
-  await page.press(row + ' [data-f="minQty"]', 'Tab');
-  await W.until(page, s => /下限を下回っています/.test((document.querySelector(s) || {}).textContent || ''), row, { ms: 8000, what: '下限割れの札' });
-  rec('④ 下限を割った行は橙の札、頭が「下限割れ 1」と言う',
-      await page.evaluate(() => /下限割れ 1/.test(document.querySelector('.bk-state').textContent) && !!document.querySelector('.bk-stock .bk-tag.is-warn')));
+  /* 下限は持たない（§9.539 利用者の指示「そもそも下限という管理項目が不要」）——欄・列・札・頭の字のどれにも出さない。 */
+  const lo = await page.evaluate(() => ({ f: document.querySelectorAll('#masterMaintList [data-f="minQty"]').length,
+   th: [...document.querySelectorAll('#masterMaintList .bk-stock thead th')].map(x => x.textContent).join('|'),
+   word: /下限/.test((document.getElementById('masterMaintList').textContent || '') + (document.querySelector('.bk-state') || {}).textContent) }));
+  rec('④ スペーサーの表に下限の欄・列・字が無い（§9.539）', !lo.f && !/下限/.test(lo.th) && !lo.word, JSON.stringify(lo));
 
   /* ---- ⑤ フィンガー ---- */
   await openBoard(page, 'bladesetFinger', '#masterMaintList .bk-item[data-bk-key]');
@@ -152,7 +152,7 @@ H.run('test_partboards: 刃組基準値・スペーサー・フィンガーの�
  } finally {
   /* 後片付け（消せなかったら黙らない・§9.360）。 */
   for (const id of madeFinger) { const r = await post('/api/bladeset-finger-master/delete', { id }); if (!r || !r.ok) console.log('  [cleanup] フィンガーを消せない', id); }
-  for (const x of sp0) await post('/api/bladeset-spacer-master/update', { id: x.id, qty: x.qty || 0, minQty: x.minQty || 0, user_id: 'test' });
+  for (const x of sp0) await post('/api/bladeset-spacer-master/update', { id: x.id, qty: x.qty || 0, user_id: 'test' });
   const cur = ((await api('/api/bladeset-standard-master?equipment=' + q)).items || []).find(x => x.equipment === EQ);
   if (cur) await post('/api/bladeset-standard-master/delete', { id: cur.id });
   if (std0) {

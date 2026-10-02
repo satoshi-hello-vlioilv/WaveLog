@@ -15,7 +15,7 @@
    **径ゲージ**（§9.536、利用者の選択「B-9とB-10を切り替え表示できるような形式で…デフォルトはB-10」）。
    情報は3つの階層を混ぜない（利用者の指摘「情報の階層が混ざっているのがダメです」）:
      L1 設備全体 … 刃厚ごとの今すぐ選べる枚数 → **刃厚のまとまりの見出し**
-     L2 セット   … 使用限界径までの残り・枚数と下限・研磨の予定 → **一覧の1項目（タイル／行）**
+     L2 セット   … 使用限界径までの残り・枚数・研磨の予定 → **一覧の1項目（タイル／行）**
      L3 選んだセット … カテゴリ・使用状態・刃厚の行の直す欄 → **詳細カードだけ**（図を持たない）
    見せ方は2つ: タイル（B-10・既定。輪の長さ＝残り・直す欄は下に開く）／刃厚ごとの一覧（B-9。2ペインの木）。
    どちらも`blade-core`の`bladeStock()`／`bladeWear()`を読むだけ。1つのセットが刃厚を2つ持てば両方の刃厚に出る。
@@ -96,10 +96,9 @@
   if(w.special)t.push(['teal',x.category]);
   if(w.grind)t.push(['warn',x.use]);
   if(w.level==='out')t.push(['warn','使用限界']);else if(w.level==='near')t.push(['warn','残りわずか']);
-  if(w.low)t.push(['warn','下限割れ']);
   return t.map(([tone,tx])=>`<i class="bk-tag is-${tone}">${esc(tx)}</i>`).join('');
  }
- const qtyText=r=>`${r.qty||0}枚${r.minQty?`（下限 ${r.minQty}）`:''}`;
+ const qtyText=r=>`${r.qty||0}枚`;
  const dueHtml=w=>{const d=WL.bladeSet.wearDue(w);return d?`<span${w.due.kind==='over'?' class="bb-over"':''}>${esc(d)}</span>`:''};
  const leftText=w=>w.left==null?'径が未入力':`残り ${fmt(w.left)}mm`;
  /* B-10: タイル。輪の長さ＝残り。 */
@@ -149,7 +148,7 @@
   </article>`;
  }
  /* 刃厚ごとの行。欄を離れると保存（1手で終わる操作に保存ボタンを探させない・§9.528と同じ）。 */
- const COLS=[['currentDia','現状径','mm',0.1],['qty','保有枚数','枚',1],['minQty','下限枚数','枚',1],
+ const COLS=[['currentDia','現状径','mm',0.1],['qty','保有枚数','枚',1],
              ['lastGrind','研磨日','',null],['grindCount','研磨回数','回',1]];
  function rowsTable(x){
   const cell=(b,[k,label,unit,step])=>step==null
@@ -175,13 +174,12 @@
     <div class="bk-field"><s>カテゴリ</s>${K().seg({label:'カテゴリ',key:'category',list:bb.categories,cur:d.category})}</div>
     <div class="bk-field"><s>使用状態</s>${K().seg({label:'使用状態',key:'use',list:bb.uses,cur:d.use})}</div>
    </div>
-   <table class="bk-table"><thead><tr><th>刃厚</th><th>現状径</th><th>保有枚数</th><th>下限枚数</th><th></th></tr></thead><tbody>${
+   <table class="bk-table"><thead><tr><th>刃厚</th><th>現状径</th><th>保有枚数</th><th></th></tr></thead><tbody>${
     d.rows.map((r,i)=>`<tr><th><input type="number" data-nr="${i}" data-f="thickness" min="0" step="0.5" value="${esc(r.thickness)}"><u>mm</u></th>
      <td><input type="number" data-nr="${i}" data-f="currentDia" min="0" step="0.1" value="${esc(r.currentDia)}" placeholder="径"><u>mm</u></td>
      <td><input type="number" data-nr="${i}" data-f="qty" min="0" step="1" value="${esc(r.qty)}" placeholder="0"><u>枚</u></td>
-     <td><input type="number" data-nr="${i}" data-f="minQty" min="0" step="1" value="${esc(r.minQty)}" placeholder="0"><u>枚</u></td>
      <td><button type="button" class="bk-x" data-act="dropnew" data-i="${i}" aria-label="この刃厚を外す">×</button></td></tr>`).join('')}</tbody>
-   <tfoot><tr><td colspan="5"><button type="button" class="mm-btn-ghost sm" data-act="addnew">＋ 刃厚の行を足す</button></td></tr></tfoot></table>
+   <tfoot><tr><td colspan="4"><button type="button" class="mm-btn-ghost sm" data-act="addnew">＋ 刃厚の行を足す</button></td></tr></tfoot></table>
    <footer class="bk-card-f"><button type="button" class="mm-btn-primary sm" data-act="create">セット ${esc(d.group)} を登録する</button>
     <button type="button" class="mm-btn-ghost sm" data-act="cancel">やめる</button></footer></article>`;
  }
@@ -193,7 +191,7 @@
    /* 新しいセットは**登録済みの刃厚の顔ぶれ**で行を並べて開く（思い出させない）。径は最も新しいセットの値を薄く見せる代わりに空。 */
    const ths=[...new Set(bb.sets.flatMap(x=>x.thicknesses))].sort((a,b)=>b-a);
    bb.draft={group:freeNames()[0]||'',category:bb.categories[0]||'通常刃',use:bb.uses[0]||'使用中',touched:false,
-             rows:(ths.length?ths:[10,5]).map(t=>({thickness:t,currentDia:'',qty:'',minQty:''}))};
+             rows:(ths.length?ths:[10,5]).map(t=>({thickness:t,currentDia:'',qty:''}))};
   }else bb.draft=null;
   render();
  }
@@ -212,7 +210,7 @@
  }
  async function act(a,b){
   if(a==='cancel'){bb.sel=(bb.sets[0]||{}).group||'';bb.draft=null;render();return}
-  if(a==='addnew'){bb.draft.rows.push({thickness:'',currentDia:'',qty:'',minQty:''});render();return}
+  if(a==='addnew'){bb.draft.rows.push({thickness:'',currentDia:'',qty:''});render();return}
   if(a==='dropnew'){bb.draft.rows.splice(+b.dataset.i,1);render();return}
   if(a==='create')return void create();
   if(a==='addrow')return void addRow();
