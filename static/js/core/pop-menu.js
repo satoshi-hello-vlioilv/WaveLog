@@ -135,7 +135,42 @@
   place,
   close(){close()},
   suggest,
+  peek,closePeek,
  };
+
+ /* ---------- 乗せると浮く面（§9.540で刃組の札に作り、§9.542で設備の使い分けの表と共有） ----------
+    乗せて少し待つと開き、外れて少し待つと閉じる（面の上へ移る間は閉じない）。鍵盤の焦点でも開く。
+    器は`.wl-menu`の1つ（読ませる面なので`role=dialog`）。呼ぶ側が渡すのは中身と置き方だけ:
+      peek(trigger,{key, html(), cls, side:'below'|'above', skip()})
+    `key`が同じ面は開き直さない。`skip()`が真なら開かない（いま開いている札など）。 */
+ const PK={el:null,key:'',open:0,close:0},PK_OPEN_MS=180,PK_CLOSE_MS=160;
+ function closePeek(){clearTimeout(PK.open);clearTimeout(PK.close);if(PK.el)close()}
+ function peekSoon(){clearTimeout(PK.close);PK.close=setTimeout(()=>{if(PK.el)close()},PK_CLOSE_MS)}
+ function peekOpen(trigger,o){
+  clearTimeout(PK.close);
+  const key=String(o.key||'');
+  if((o.skip&&o.skip())||(PK.el&&key&&PK.key===key))return;
+  if(PK.el)close();
+  const el=document.createElement('div');
+  el.className='wl-menu '+(o.cls||'');el.setAttribute('role','dialog');
+  el.innerHTML=o.html();
+  el.onmouseenter=()=>clearTimeout(PK.close);el.onmouseleave=peekSoon;
+  document.body.append(el);PK.el=el;PK.key=key;
+  /* 置くのは乗せた物の**下か上**（横へ出すと、画面の端で寄せたときに乗せている物そのものに被さる・§9.542で踏んだ）。
+     上に出すのは、下に読ませたい物がある面（使い分けの表の下の効き先の図）。 */
+  const r=trigger.getBoundingClientRect();
+  const at=o.side==='above'?{x:r.left,y:r.top-6-el.offsetHeight}:{x:r.left,y:r.bottom+6};
+  WL.popMenu.open(el,{at,owner:trigger,
+   onClose:()=>{el.remove();if(PK.el===el){PK.el=null;PK.key=''}}});
+ }
+ function peek(trigger,o){
+  trigger.addEventListener('mouseenter',()=>{clearTimeout(PK.open);PK.open=setTimeout(()=>peekOpen(trigger,o),PK_OPEN_MS)});
+  trigger.addEventListener('mouseleave',()=>{clearTimeout(PK.open);peekSoon()});
+  /* 焦点で開くのは**鍵盤で来たときだけ**（`:focus-visible`）。押した瞬間の焦点で開くと、離す前に面が被さり、
+     押した物に`click`が届かない（§9.542で踏んだ・右端のセル）。 */
+  trigger.addEventListener('focus',()=>{if(trigger.matches(':focus-visible'))peekOpen(trigger,o)});
+  trigger.addEventListener('blur',peekSoon);
+ }
 
  /* ---------- 入力欄の候補（§9.529。式の欄・判定表のセルが共有する） ----------
     **焦点は入力欄のまま**で、欄の真下に候補を出す（`WL.popMenu.open()`は項目へ焦点を移す

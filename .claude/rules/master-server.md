@@ -1,4 +1,4 @@
-# マスタ（サーバー側）（31件）
+# マスタ（サーバー側）（32件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,7 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 外したら何が起き何が残るかはサーバーの語彙（`EQUIPMENT_FEATURE_EFFECTS`・`MEASURE_ITEM_EFFECT`）。画面へ写さない | `test_equse.js` | [§9.542](../../docs/decisions/9.542.md) |
 | 端末ができることは`permission_capabilities()`の1箇所（既存の判定を掛け合わせるだけ）。書込は編集可能モードだけ | `test_roleperm.py` | [§9.538](../../docs/decisions/9.538.md) |
 | 見張りは`permission_watch()`（できる端末の台数・1台以下を名指し）。登録の無い端末は数えない | `test_roleperm.py` | [§9.538](../../docs/decisions/9.538.md) |
 | 表示列の編集はアクセス権限マスタの1列（3段・既定は編集可）。判定は`column_edit_check()`の1箇所・帳票の紙には掛けない | `test_roleperm.py`・`test_roleui.js` | [§9.512](../../docs/decisions/9.512.md) |

@@ -424,6 +424,73 @@
 .mm-capmx th.l{text-align:left;font-weight:700;color:var(--ink-2)}
 .mm-capmx tr.grp th{background:var(--surface-2);text-align:left;color:var(--muted);font-size:var(--fs-micro)}
 .mm-capmx tr.is-lone th.l{color:var(--warn-fg)}
+/* ---------- 設備の使い分けの表と効き先の図（§9.542、利用者の選択 G-2＋G-4） ----------
+   ●＝使う／点線の○＝外した／—＝効かない。橙＝多数派と違う（色だけで言わない——行の頭の「Nか所」とタブの札）。 */
+.eu-mx{overflow-x:auto}
+.eu-mx table{border-collapse:collapse;width:100%;font-size:var(--fs-sm)}
+.eu-mx th,.eu-mx td{padding:3px var(--space-1);border-bottom:1px solid var(--line-soft);text-align:center;white-space:nowrap}
+.eu-mx thead th{vertical-align:bottom;color:var(--ink-2);font-size:var(--fs-micro);font-weight:700}
+.eu-mx tr.eu-g th{font-size:var(--fs-sm);border-bottom:2px solid var(--line)}
+.eu-mx tr.eu-g small{display:block;font-size:var(--fs-micro);color:var(--muted);font-weight:400}
+.eu-mx .eu-gl{border-left:2px solid var(--line)}
+.eu-mx th.eu-ch{white-space:normal;min-width:4.5em}
+.eu-mx th.eu-name{text-align:left;min-width:var(--w-md)}
+.eu-name button{border:0;background:none;padding:2px 0;font:inherit;font-weight:700;color:var(--ink);cursor:pointer;text-align:left}
+.eu-name button:hover{color:var(--teal-dark);text-decoration:underline}
+.eu-mx tr.is-sel{background:var(--pale)}
+.eu-mx tr.is-sel th.eu-name{box-shadow:inset 3px 0 0 var(--teal)}
+.eu-mx tr.is-sel .eu-name button{color:var(--teal-dark)}
+.eu-mx tr.is-dead .eu-name button{color:var(--muted);text-decoration:line-through}
+.eu-mx th.eu-dh,.eu-mx td.eu-dc{text-align:left;min-width:var(--w-lg)}
+.eu-dc small{margin-left:var(--space-1);color:var(--muted);font-size:var(--fs-micro)}
+.eu-pill{display:inline-block;padding:0 var(--space-1);border-radius:var(--radius-xs);font-size:var(--fs-micro);font-weight:800}
+.eu-pill.is-warn{background:var(--warn-bg);color:var(--warn-fg)}
+.eu-pill.is-ok{background:var(--success-bg);color:var(--success)}
+.eu-pill.is-none{background:var(--surface-2);color:var(--muted)}
+.eu-mx td.is-diff{background:var(--warn-bg);box-shadow:inset 0 0 0 1.5px var(--warn)}
+.eu-dot{display:inline-block;width:18px;height:18px;padding:0;border:1.5px dashed var(--line-strong);border-radius:var(--radius-round);background:var(--surface);vertical-align:middle}
+.eu-dot.is-on{border:0;background:var(--teal);box-shadow:inset 0 0 0 3px var(--surface),0 0 0 1px var(--teal)}
+button.eu-dot{cursor:pointer;transition:transform .12s}
+button.eu-dot:hover{transform:translateY(-1px);border-color:var(--teal)}
+.eu-na{display:inline-block;width:16px;height:2px;background:var(--line);vertical-align:middle}
+.eu-mx tfoot td,.eu-mx tfoot th{border-bottom:0}
+.eu-n{font-size:var(--fs-micro);color:var(--muted)}
+.eu-bar{display:block;height:4px;margin:2px var(--space-1) 0;border-radius:var(--radius-xs);background:var(--line-soft);overflow:hidden}
+.eu-bar b{display:block;height:100%;background:var(--teal)}
+.eu-flowbox{margin-top:var(--space-3)}
+.eu-flow{border:1px solid var(--line);border-radius:var(--radius-md);padding:var(--space-2) var(--space-3)}
+.eu-fcap{margin:0 0 var(--space-2);font-size:var(--fs-sm);color:var(--ink-2)}
+.eu-fcap small{margin-left:var(--space-1);color:var(--muted);font-size:var(--fs-micro)}
+.eu-fl{--eu-wire:var(--space-6);display:grid;grid-template-columns:var(--w-md) minmax(0,1fr);gap:0 var(--eu-wire);align-items:center}
+.eu-eq{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:var(--space-3) var(--space-2);border-radius:var(--radius-md);background:var(--teal);color:var(--surface);text-align:center}
+.eu-eq b{font-size:var(--fs-base-sm)}
+.eu-eq small{font-size:var(--fs-micro)}
+.eu-eq::after{content:'';position:absolute;left:100%;top:50%;width:calc(var(--eu-wire) / 2);border-top:2px solid var(--teal)}
+.eu-lanes{position:relative;display:flex;flex-direction:column;gap:var(--space-2)}
+.eu-lanes::before{content:'';position:absolute;left:calc(var(--eu-wire) / -2);top:var(--space-5);bottom:var(--space-5);border-left:2px solid var(--teal)}
+.eu-lane{position:relative;padding:var(--space-1) var(--space-3);border:1.5px solid var(--teal);border-radius:var(--radius-md);background:var(--surface)}
+.eu-lane::before{content:'';position:absolute;right:100%;top:var(--space-5);width:calc(var(--eu-wire) / 2);border-top:2px solid var(--teal)}
+.eu-lane.is-off{border-style:dashed;border-color:var(--line-strong);background:var(--surface-2)}
+.eu-lane.is-off::before{border-top-style:dashed;border-top-color:var(--line-strong)}
+.eu-lane.is-hot{box-shadow:0 0 0 3px var(--pale)}
+.eu-lh{margin:0;display:flex;gap:var(--space-2);align-items:baseline}
+.eu-lh b{font-size:var(--fs-base-sm);color:var(--ink)}
+.eu-lane.is-off .eu-lh b{color:var(--muted)}
+.eu-lh small{font-size:var(--fs-micro);color:var(--muted)}
+.eu-lw{margin:2px 0;font-size:var(--fs-micro);color:var(--muted);line-height:1.55}
+.eu-lw.is-off{color:var(--look-red-dark);font-weight:700}
+.eu-chips{display:flex;flex-wrap:wrap;gap:var(--space-1) var(--space-3);margin:var(--space-1) 0}
+.eu-ig{display:inline-flex;flex-wrap:wrap;align-items:center;gap:var(--space-1)}
+.eu-ig small{font-size:var(--fs-micro);color:var(--muted)}
+.eu-chip{font-style:normal;padding:0 var(--space-2);border:1px solid var(--line);border-radius:var(--radius-xs);font-size:var(--fs-micro)}
+.eu-chip.is-on{background:var(--pale);border-color:var(--teal);color:var(--teal-dark);font-weight:700}
+.eu-chip.is-off{border-style:dashed;color:var(--muted);text-decoration:line-through}
+.eu-chip.is-hot{outline:2px solid var(--focus);outline-offset:1px}
+.eu-peek{--menu-w:360px;--menu-w-max:440px;--menu-pad:var(--space-3);font-size:var(--fs-sm)}
+.eu-peek h4{margin:0 0 var(--space-1);font-size:var(--fs-base-sm)}
+.eu-peek p{margin:0 0 var(--space-1);line-height:1.55;color:var(--ink-2)}
+.eu-peek .eu-pw{color:var(--warn-fg)}
+.eu-peek .eu-pgo{margin-top:var(--space-2);color:var(--teal-dark);font-weight:700}
 .mm-capn{font-variant-numeric:tabular-nums}
 .mm-capn.is-low{background:var(--warn-fg);color:var(--surface);border-radius:var(--radius-xs);padding:0 var(--space-1)}
 .mm-row:not(.head):hover{background:#eafafa}
