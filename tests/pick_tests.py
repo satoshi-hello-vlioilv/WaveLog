@@ -506,9 +506,11 @@ RULES = [
     # §9.267: 置き場の判定は1箇所（storage_layout）。`config/local.json`の
     # 書き換えもここが持つので、起動時の解決を見る網も一緒に回す。
     ('backend/storage_layout.py', g('test_storage', 'test_storageui', 'test_setpage',
-                                    'test_measstore', 'test_localwork', 'test_mastershare')),
+                                    'test_measstore', 'test_localwork', 'test_mastershare',
+                                    # §9.445・§9.547: 「表示」の節（起動アイコン・起動のしかた）
+                                    'test_uisize', 'test_setpage')),
     ('backend/routes/rne.py', g('test_datasource', 'test_setpage', 'test_modeguard')),
-    ('backend/routes/core.py', g('起動', 'test_error', 'test_nav')),
+    ('backend/routes/core.py', g('起動', 'test_error', 'test_nav', 'test_launchmode')),
 
     # --- サーバー(その他) --------------------------------------------
     ('backend/access_mode.py', g('権限', '保存の帯', 'test_nav', 'test_crudroutes', 'test_colscope',
@@ -569,6 +571,7 @@ RULES = [
     # 盤はヘッダーの「表示」の節（§9.445）。共通設定は「状態と行き先」だけなので、
     # あちらの網（test_setpage）と「表示」の網（test_uisize）の両方を回す。
     ('backend/desktop_shortcut.py', g('test_shortcut', 'test_setpage', 'test_uisize')),
+    ('backend/launch_mode.py', g('test_launchmode', 'test_uisize', 'test_setpage')),
     ('backend/app_icon.py', g('test_shortcut')),
     # 終わる前の片付けと終了ボタン（§9.301 ②）も watchdog が持つ。
     ('backend/watchdog.py', g('test_tabclose', 'test_boot', 'test_presence',
@@ -599,7 +602,7 @@ RULES = [
     # （Rust そのものは cargo test と CI の自己診断・.github/workflows/desktop.yml）。
     ('desktop/', g('test_sidecar', 'test_boot')),
     # 毎日の入口。引数「desktop」で exe を手元へ写して起こす（§9.546）
-    ('Start.vbs', g('test_faststart', 'test_shortcut')),
+    ('Start.vbs', g('test_faststart', 'test_shortcut', 'test_launchmode')),
     ('program/', g('起動')),
 
     # --- ドキュメント --------------------------------------------------

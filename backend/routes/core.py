@@ -6,8 +6,8 @@ app.pyから移設。ロジックは変更していない(移動のみ)。
 from flask import Blueprint, render_template, request, jsonify, Response
 import json, os, re, subprocess, time
 
-from ..config import APP_ID, PORT
-from .. import app_icon, boot_status, desktop_shortcut, terminal_store
+from ..config import APP_ID, DESKTOP_BASE_URL, PORT
+from .. import app_icon, boot_status, desktop_shortcut, launch_mode, terminal_store
 # 更新者IDは名乗るだけ・答えるのは1箇所（§9.276 ③）。**読み込み時に入れる**
 # ——関数の中の import を増やさない（§9.349）。輪は作らない（access_mode は
 # routes を知らない）。
@@ -379,6 +379,34 @@ def app_shortcut_create():
                  linkTarget=out.get('linkTarget') or '',
                  link=out.get('link') or ''),400
  return jsonify(**out)
+
+# ========================================================================
+# この端末の起動のしかた（§9.547、利用者の指示「最終的にはexe起動に一本化したい」）
+# ------------------------------------------------------------------------
+# 判定と置き場は`launch_mode.py`の1箇所。いま動いている版は**問い合わせの宛先**で
+# 分かる（デスクトップ版の窓口は`DESKTOP_BASE_URL`の宛先で組み立てる・§9.544）。
+# この端末の起動にしか触らないので、ショートカットと同じく3モードに開ける。
+# ========================================================================
+_DESKTOP_HOST=DESKTOP_BASE_URL.split('//',1)[-1].strip('/')
+
+def _running():
+ return 'desktop' if request.host==_DESKTOP_HOST else 'browser'
+
+@bp.get('/api/app/launch-mode')
+@api_guard('起動のしかたを読めません')
+def app_launch_mode():
+ return jsonify(**launch_mode.status(_running()))
+
+@bp.post('/api/app/launch-mode')
+@api_guard('起動のしかたを残せません')
+def app_launch_mode_set():
+ x=body({'mode':str},strict=True)
+ st=launch_mode.status(_running())
+ if not st['supported']:return jsonify(error=st['why']),400
+ if x.mode=='desktop' and not st['canDesktop']:return jsonify(error=st['desktopWhy']),400
+ out=launch_mode.write(x.mode or '')
+ if not out.get('ok'):return jsonify(error=out.get('error')),400
+ return jsonify(**launch_mode.status(_running()))
 
 @bp.get('/api/changelog')
 def changelog():

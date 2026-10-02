@@ -1,4 +1,4 @@
-# 起動・停止・監視（56件）
+# 起動・停止・監視（58件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,8 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| この端末の起動のしかたは`launch_mode.py`の1箇所。引数なしの Start.vbs が読み、既定は`DEFAULT`＝`DEFAULT_MODE` | `test_launchmode.py` | [§9.547](../../docs/decisions/9.547.md) |
+| 起動のしかたは Start.vbs から見える2つの置き場の新しいほう（写し・共有の上は使わない）。exe が無ければ選ばせない | `test_launchmode.py`・`test_uisize.js` | [§9.547](../../docs/decisions/9.547.md) |
 | デスクトップ版の窓は`desktop/`（Rust）。`/static/`だけ直に返し、残り（画面・API・連結 CSS）は Python へ | `test_boot.py`・`test_sidecar.py` | [§9.546](../../docs/decisions/9.546.md) |
 | 窓の Python は PATH の順に最初の`pythonw.exe`がある場所（ブラウザ版と同じ・並べ替えない）。版（`protocol`）が違えば起こさない | `test_sidecar.py` | [§9.546](../../docs/decisions/9.546.md) |
 | Start.vbs の「desktop」は exe を手元の版ごとのフォルダへ写して起動。無い・写せないならブラウザ版 | `test_faststart.py` | [§9.546](../../docs/decisions/9.546.md) |
