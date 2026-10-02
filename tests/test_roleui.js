@@ -175,4 +175,43 @@ run('test_roleui: 設備作業者とマスタ編集の段が**画面に効いて
  rec('⑥ 「編集可」なら今までどおりそのまま保存する',JSON.stringify(fullCol.sent)==='["保存"]',JSON.stringify(fullCol.sent));
  await page.unroute(/\/api\/column-layout-master/);
 
+ // ---- ⑦ できること（§9.538、利用者の選択 D-6＋D-10） --------------------------
+ /* 主役は端末の登録の一覧。タブ「できることの見張り」と行を開く（▸）が**サーバーの答え**を描くだけか。
+    **本物の権限へは書かない**（一覧の応答を差し替える）。 */
+ await applyLevel('開発者','編集可');
+ const DEFS=[['master:open','マスタ管理','マスタ管理を開く'],['columns:common','一覧の見せ方','表示列を変える（みんなの分）']]
+  .map(([key,group,label])=>({key,group,label,short:label}));
+ const item=(id,loginId,role,a,b)=>({id,loginId,pcName:'',role,masterEdit:'編集可',masterEditEffective:'編集可',columnEdit:'編集可',
+  canEdit:'編集可',canSchedule:'不可',canFieldReorder:'不可',fieldReorderEquipment:'',
+  caps:[{key:'master:open',state:a,note:''},{key:'columns:common',state:b,note:''}]});
+ await page.route(/\/api\/access-permission-master(\?|$)/,route=>{
+  if(route.request().method()!=='GET')return route.continue();
+  return route.fulfill({json:{ok:true,table:'アクセス権限マスタ',roles:['設備作業者','一般ユーザー','メンテナンス者','開発者'],
+   items:[item(9001,'RTdev','開発者','yes','yes'),item(9002,'RTop','設備作業者','no','no')],
+   capDefs:DEFS,capWatch:{counts:{'master:open':1,'columns:common':1},lone:['master:open','columns:common']}}});
+ });
+ await page.evaluate(()=>{WL.mm.openMasterMaint();document.querySelector('[data-master="accessPermission"]').click()});
+ await W.until(page,()=>document.querySelectorAll('#masterMaintList .mm-rowtw').length===2,null,{ms:10000,what:'行を開く印'});
+ const tabs=await page.evaluate(()=>[...document.querySelectorAll('#masterMaintList [data-ltab]')].map(b=>b.textContent.trim()));
+ rec('⑦ 主役は端末の登録（最初のタブ・台数）で、見張りのタブの札が⚠の数を言う',
+   tabs.length===2&&/端末の登録\s*2台/.test(tabs[0])&&/できることの見張り\s*⚠ 2/.test(tabs[1]),JSON.stringify(tabs));
+ await page.click('#masterMaintList .mm-row:not(.head) .mm-rowtw');
+ await W.until(page,()=>!!document.querySelector('#masterMaintList .mm-rowdetail'),null,{ms:5000,what:'行の下に開く'});
+ const det=await page.evaluate(()=>({id:document.querySelector('.mm-rowdetail').dataset.rowId,
+  marks:[...document.querySelectorAll('.mm-rowdetail .mm-cap')].map(m=>m.textContent),
+  editor:!document.getElementById('maintEditorModal')?.hidden&&!!document.getElementById('maintEditorModal')}));
+ rec('⑦ ▸ で行の下に「できること」が開き、サーバーの答えをそのまま描く（編集の窓は開かない）',
+   det.id==='9001'&&det.marks.join('')==='○○'&&!det.editor,JSON.stringify(det));
+ await page.click('#masterMaintList [data-ltab="permWatch"]');
+ await W.until(page,()=>!!document.querySelector('#masterMaintList .mm-capmx'),null,{ms:5000,what:'見張りのタブ'});
+ const mx=await page.evaluate(()=>({lone:[...document.querySelectorAll('.mm-capmx tr.is-lone th.l')].map(t=>t.textContent),
+  n:[...document.querySelectorAll('.mm-capmx .mm-capn.is-low')].map(t=>t.textContent),
+  warn:(document.querySelector('.mm-lview-warn')||{}).textContent||''}));
+ rec('⑦ 見張り: 1台以下の「できること」を名指しし、台数を塗る（字でも言う）',
+   mx.lone.length===2&&mx.n.join()==='1台,1台'&&/1台以下/.test(mx.warn),JSON.stringify(mx));
+ await page.click('#masterMaintList [data-ltab=""]');
+ await W.until(page,()=>!!document.querySelector('#masterMaintList .mm-row.head'),null,{ms:5000,what:'一覧へ戻る'});
+ rec('⑦ 1枚目のタブで一覧へ戻れる',true);
+ await page.unroute(/\/api\/access-permission-master(\?|$)/);
+
 }, {viewport:{width:1600,height:1000}});

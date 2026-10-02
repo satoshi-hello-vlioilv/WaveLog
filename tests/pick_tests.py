@@ -343,6 +343,8 @@ RULES = [
                                      '更新履歴')),
     # §9.537: ロールマスタの表の計算の列（1周の長さ・見分けにくい相手）。
     ('static/js/master/master-roll.js', g('test_roll', 'test_rollio', 'test_rollwipe')),
+    # §9.538: アクセス権限マスタの見張りのタブと行の「できること」。
+    ('static/js/master/master-access.js', g('test_roleui', 'test_roleperm')),
     ('static/js/schedule/calendar-view.js', g('test_uisize', 'test_histdel', 'test_headbar')),
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
     ('static/js/report/report-dashboard.js', g('モーダル', 'test_screport', 'test_headbar', 'test_uisize',

@@ -389,6 +389,43 @@
 .mm-rc{font-style:normal;font-size:var(--fs-micro);font-weight:700;white-space:nowrap;padding:0 var(--space-1);
  border-radius:var(--radius-xs);background:var(--surface-3);color:var(--ink-2)}
 .mm-rc.is-eq{background:var(--warn-bg);color:var(--warn-fg)}
+/* 一覧のタブと行を開く（§9.538）。タブの札は数（⚠は橙）、行の下の節は一覧の地より一段沈める。 */
+.mm-ltabs{display:flex;gap:2px;border-bottom:2px solid var(--line);margin:0 0 var(--space-2)}
+.mm-ltab{display:inline-flex;align-items:center;gap:var(--space-2);border:0;border-bottom:3px solid transparent;margin-bottom:-2px;
+ background:none;padding:var(--space-2) var(--space-3);font-size:var(--fs-base-sm);font-weight:700;color:var(--muted);border-radius:0}
+.mm-ltab:hover{color:var(--teal-dark);background:var(--pale)}
+.mm-ltab.is-on{color:var(--teal-dark);border-bottom-color:var(--teal)}
+.mm-ltab-b{font-style:normal;font-size:var(--fs-micro);font-weight:800;padding:0 var(--space-1);border-radius:var(--radius-xs);background:var(--surface-2);color:var(--ink-2)}
+.mm-ltab-b.is-warn{background:var(--warn-fg);color:var(--surface)}
+.mm-rowtw{border:0;background:none;padding:0 var(--space-1) 0 0;color:var(--muted);font-size:var(--fs-sm);cursor:pointer}
+.mm-rowtw:hover{color:var(--teal-dark)}
+.mm-rowdetail{padding:var(--space-2) var(--space-3) var(--space-3) var(--space-6);background:var(--surface-2);border-bottom:1px solid var(--line)}
+.mm-capcols{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0 var(--space-4)}
+.mm-capcols h4{margin:0 0 2px;font-size:var(--fs-sm);color:var(--muted)}
+.mm-capli{display:flex;align-items:center;gap:var(--space-2);margin:0;min-height:24px;font-size:var(--fs-sm);color:var(--ink-2)}
+.mm-capli.is-no{color:var(--muted)}
+.mm-capli small{font-size:var(--fs-micro);color:var(--muted)}
+.mm-cap{display:inline-grid;place-items:center;width:20px;height:20px;flex:0 0 auto;border-radius:var(--radius-round);font-weight:800;font-size:var(--fs-sm);line-height:1}
+.mm-cap.is-yes{background:var(--teal);color:var(--surface)}
+.mm-cap.is-limited{background:var(--warn-bg);color:var(--warn-fg);box-shadow:inset 0 0 0 1.5px var(--warn)}
+.mm-cap.is-no{color:var(--line-strong)}
+.mm-roletag{display:inline-block;font-style:normal;padding:0 var(--space-1);border-radius:var(--radius-xs);font-size:var(--fs-micro);font-weight:800;border:1px solid var(--line);background:var(--surface);color:var(--ink-2)}
+.mm-roletag.r3{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+.mm-roletag.r2{background:var(--teal);border-color:var(--teal);color:var(--surface)}
+.mm-roletag.r0{background:var(--surface-2);color:var(--muted)}
+.mm-lview-lead{margin:0 0 var(--space-2);font-size:var(--fs-sm);color:var(--muted);line-height:1.6}
+.mm-lview-warn{margin:var(--space-2) 0 0;font-size:var(--fs-sm);color:var(--warn-fg);font-weight:800}
+.mm-capmx{overflow-x:auto}
+.mm-capmx table{border-collapse:collapse;font-size:var(--fs-sm)}
+.mm-capmx th,.mm-capmx td{padding:3px var(--space-2);border-bottom:1px solid var(--line-soft);text-align:center;white-space:nowrap}
+.mm-capmx thead th{vertical-align:bottom;color:var(--ink-2)}
+.mm-capmx thead small{display:block;font-size:var(--fs-micro);color:var(--muted);font-weight:400;}
+.mm-capmx .n{border-right:2px solid var(--line)}
+.mm-capmx th.l{text-align:left;font-weight:700;color:var(--ink-2)}
+.mm-capmx tr.grp th{background:var(--surface-2);text-align:left;color:var(--muted);font-size:var(--fs-micro)}
+.mm-capmx tr.is-lone th.l{color:var(--warn-fg)}
+.mm-capn{font-variant-numeric:tabular-nums}
+.mm-capn.is-low{background:var(--warn-fg);color:var(--surface);border-radius:var(--radius-xs);padding:0 var(--space-1)}
 .mm-row:not(.head):hover{background:#eafafa}
 .mm-row:not(.head):focus-visible{outline:0;box-shadow:inset 0 0 0 2px var(--teal)}
 .mm-row.editing{box-shadow:inset 4px 0 0 var(--teal);background:#eafafa}

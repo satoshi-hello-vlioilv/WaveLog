@@ -391,6 +391,37 @@ try:
     rec('⑩ マスタ編集が閲覧のみでも、表示列の編集が編集可なら保存できる（別の軸）',
         r.status_code == 200, f'{r.status_code}')
 
+    # ---- ⑪ この端末ができること（§9.538）: 既存の判定の窓口を掛け合わせた答え ----
+    cap = lambda *a: {x['key']: x['state'] for x in mr.permission_capabilities(*a)}
+    keys = [d['key'] for d in mr.permission_cap_defs()]
+    rec('⑪ できることは11項目・並びは PERMISSION_CAPS の1箇所',
+        len(keys) == 11 and keys == [k for k, *_ in mr.PERMISSION_CAPS], str(keys))
+    dev = cap(mr.ROLE_DEVELOPER, '編集可', '編集可', True, True, True, '*')
+    rec('⑪ 開発者・全部可は全部できる（現場段取りは「すべての設備」で条件なし）',
+        set(dev.values()) == {'yes'}, str(dev))
+    mnt = cap(mr.ROLE_MAINTAINER, '編集可', '自分の分だけ', True, False, False, '')
+    rec('⑪ メンテナンス者: 区分を変える・切断は条件つき、みんなの表示列はできない',
+        mnt['role:grant'] == 'limited' and mnt['presence:disconnect'] == 'limited'
+        and mnt['columns:common'] == 'no' and mnt['columns:own'] == 'yes', str(mnt))
+    op = cap(mr.ROLE_OPERATOR, '編集可', '変更不可', True, False, True, '設備A')
+    rec('⑪ 設備作業者はマスタ編集の保存値が編集可でも上限で開けない・接続状況も見られない',
+        op['master:open'] == 'no' and op['presence:view'] == 'no' and op['measure:write'] == 'yes'
+        and op['field:reorder'] == 'limited', str(op))
+    view = cap(mr.ROLE_USER, '編集可', '編集可', False, True, True, '*')
+    rec('⑪ 編集可否が閲覧のみなら、マスタ編集が編集可でもマスタ・実績は書けない（編集可能モードだけが書く）',
+        view['master:open'] == 'yes' and view['master:field'] == 'no' and view['measure:write'] == 'no'
+        and view['field:reorder'] == 'no' and view['schedule:write'] == 'yes', str(view))
+    w = mr.permission_watch([mr.permission_capabilities(*a) for a in (
+        (mr.ROLE_DEVELOPER, '編集可', '編集可', True, True, True, '*'),
+        (mr.ROLE_USER, '部分的編集可', '自分の分だけ', True, True, False, ''))])
+    rec('⑪ 見張り: できる端末の台数と、1台以下の「できること」',
+        w['counts']['columns:common'] == 1 and w['counts']['master:field'] == 2
+        and 'columns:common' in w['lone'] and 'master:field' not in w['lone'], str(w))
+    r = client.get('/api/access-permission-master').get_json()
+    rec('⑪ 一覧の応答に行ごとの caps と capDefs・capWatch が載る（画面は読むだけ）',
+        all(len(it.get('caps', [])) == 11 for it in r['items']) and len(r['capDefs']) == 11
+        and set(r['capWatch']) == {'counts', 'lone'}, str({k: r.get(k) for k in ('capWatch',)}))
+
 finally:
     try:
         conn = sqlite3.connect(db_access.DBS['MASTER']['path'])
