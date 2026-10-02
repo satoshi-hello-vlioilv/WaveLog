@@ -99,6 +99,7 @@ JS_FILES=[
  'master/master-data.js',      # マスタ管理: データと接続・作業スケジュール・管理
  'master/master-opdata.js',    # マスタ管理: 操業データ項目・選択肢・記録した値
  'master/master-roll.js',      # マスタ管理: ロールマスタの表の計算の列（1周の長さ・見分けにくい相手・§9.537）
+ 'master/master-equse.js',     # マスタ管理: 設備の使い分けの表と効き先の図（§9.542）
  'master/master-access.js',    # マスタ管理: アクセス権限の見張りのタブと行の「できること」（§9.538）
  'list/quality-analysis.js',
  # 紙まわりの共通核（§9.332）。用紙の表・@page・mm換算・下限つき比例配分・

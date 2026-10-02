@@ -123,33 +123,16 @@
           {label:'次に使える',html:x=>{const r=by.get(+x.size);return r?`<b data-calc="free" data-v="${r.free}">${r.free}</b>枚`:'—'}}];
  }
 
- /* ---------- 配線: 乗せる＝浮く図／押す＝入れ替え ---------- */
- let peek=null;
- const T={open:0,close:0},OPEN_MS=180,CLOSE_MS=160;
- function closeSoon(){clearTimeout(T.close);T.close=setTimeout(()=>{if(peek)WL.popMenu.close()},CLOSE_MS)}
- function openPeek(card,o){
-  clearTimeout(T.close);
-  if(card.classList.contains('is-on')||(peek&&peek.dataset.sv===card.dataset.sv))return;
-  if(peek)WL.popMenu.close();
-  const el=document.createElement('div');
-  el.className='wl-menu bk-peek';el.setAttribute('role','dialog');el.dataset.sv=card.dataset.sv;
-  el.innerHTML=PEEK[card.dataset.sv](o);
-  el.onmouseenter=()=>clearTimeout(T.close);el.onmouseleave=closeSoon;
-  document.body.append(el);peek=el;
-  const r=card.getBoundingClientRect();
-  WL.popMenu.open(el,{at:{x:r.left,y:r.bottom+6},owner:card,onClose:()=>{el.remove();if(peek===el)peek=null}});
- }
+ /* ---------- 配線: 乗せる＝浮く図／押す＝入れ替え ----------
+    浮く面の開け閉め（待ち時間・面の上へ移る間は閉じない）は`WL.popMenu.peek()`の1箇所（§9.542で共有）。 */
  function wire(box,o,{onView,onCell}){
   box.querySelectorAll('.bk-sv[data-sv]').forEach(card=>{
-   card.onmouseenter=()=>{clearTimeout(T.open);T.open=setTimeout(()=>openPeek(card,o),OPEN_MS)};
-   card.onmouseleave=()=>{clearTimeout(T.open);closeSoon()};
-   card.onfocus=()=>openPeek(card,o);
-   card.onblur=closeSoon;
-   card.onclick=()=>{clearTimeout(T.open);if(peek)WL.popMenu.close();onView(card.dataset.sv)};
+   WL.popMenu.peek(card,{key:card.dataset.sv,cls:'bk-peek',html:()=>PEEK[card.dataset.sv](o),
+    skip:()=>card.classList.contains('is-on')});
+   card.onclick=()=>{WL.popMenu.closePeek();onView(card.dataset.sv)};
   });
   box.querySelectorAll('.bk-frac.is-full [data-u]').forEach(b=>{b.onclick=()=>onCell(+b.dataset.u)});
  }
 
- WL.spacerOutlook={VIEWS,bandHtml,legend,viewHtml,tableCols,wire,
-  closePeek:()=>{clearTimeout(T.open);if(peek)WL.popMenu.close()}};
+ WL.spacerOutlook={VIEWS,bandHtml,legend,viewHtml,tableCols,wire,closePeek:()=>WL.popMenu.closePeek()};
 })();

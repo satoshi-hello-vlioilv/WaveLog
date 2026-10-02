@@ -1,4 +1,4 @@
-# マスタ管理の画面（25件）
+# マスタ管理の画面（28件）
 
 索引: [規則の置き場](README.md)｜入口: [CLAUDE.md](../../CLAUDE.md)
 
@@ -10,6 +10,9 @@
 
 | 守ること | 固定する網 | くわしく |
 | --- | --- | --- |
+| 設備の使い分けは2枚目のタブ（主役は一覧）。多数派・違い・効かないセルは`WL.equipUse.useMatrix()`の1箇所（同数は使う側・どこにも出ない設備は数えない） | `test_equse.js` | [§9.542](../../docs/decisions/9.542.md) |
+| 効き先の図は選んだ設備の機能ごとの1レーン。表のセルに乗せると図の同じ所が光る。セルを押すと1回で保存（読むだけの端末では押す形にしない） | `test_equse.js` | [§9.542](../../docs/decisions/9.542.md) |
+| タブの面の配線は`registerListView`の`wire(section,ctx)`（描いた直後に1回・盤は中身を知らない） | `test_equse.js` | [§9.542](../../docs/decisions/9.542.md) |
 | マスタの1欄は`MM_FIELD_BUILDERS`（型→組み立て関数）の表。型を足すときは表へ1行。鍵は`Object.hasOwn`で引く | `test_maint.js` | [§9.522](../../docs/decisions/9.522.md) |
 | 汎用の表の計算の列は`WL.mm.registerCell()`の登録表（`cols`の1列が`cell:'種類'`を名乗る）。盤は種類を知らない | `test_roll.js` | [§9.537](../../docs/decisions/9.537.md) |
 | 汎用の表のタブと行を開く節は登録表（`registerListView`／`registerRowDetail`）。主役は最初のタブの一覧 | `test_roleui.js` | [§9.538](../../docs/decisions/9.538.md) |

@@ -562,7 +562,10 @@
      見出しの`?`（`more`）から読む（§9.234 ①）。
      欄は**中身の長さから**決める（§CLAUDE 11）——設備名は名前1つ、
      残りは数値なので、規格幅の`sm`/`xs`に収まる。 */
+  /* §9.542（利用者の選択 G-2＋G-4）。主役は1枚目の一覧のまま、2枚目のタブに使い分けの表と効き先の図
+     （`master-equse.js`が`registerListView('eqUse')`で名乗る）。 */
   {group:'equip',key:'equipment',label:'設備',icon:'設',endpoint:'/api/equipment-master',hasDelete:true,
+   listTab:{label:'一覧',unit:'台'},listViews:['eqUse'],
    editorModal:true,titleText:'設備 — この工場のライン',
    hintShort:'1行＝1つの設備です。**行を押すと編集の窓が開きます。**',
    fields:[{k:'name',label:'設備名',required:true,key:true,size:'md',

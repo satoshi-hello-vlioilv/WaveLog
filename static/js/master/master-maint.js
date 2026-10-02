@@ -2540,16 +2540,17 @@
  /* ---------- 一覧のタブと行を開く（§9.538、利用者の選択 D-6＋D-10） ----------
     主役は一覧のまま、補う面を**タブ**（`def.listViews`）と**行の下に開く節**（`def.rowDetail`）で足す。
     盤は中身を知らない——登録表で名乗る（`registerCell`と同じ作り）:
-      registerListView(種類,{label, badge(ctx)→{text,tone}|null, html(ctx)})
+      registerListView(種類,{label, badge(ctx)→{text,tone}|null, html(ctx), wire(section,ctx)})
       registerRowDetail(種類,{html(it,ctx)})
-    ctx＝{meta:一覧の応答, items:表の行}。いま開いているタブ・行はこの端末の画面の間だけ覚える。 */
+    `wire`は描いた直後に1回（押す・乗せるを持つ面だけ・§9.542）。
+    ctx＝{meta:一覧の応答, items:表の行, writable:このタブを保存できるか}。いま開いているタブ・行はこの端末の画面の間だけ覚える。 */
  const MM_LIST_VIEWS={},MM_ROW_DETAILS={},mmListViewNow={},mmOpenRows={};
  WL.mm.registerListView=(kind,h)=>{MM_LIST_VIEWS[kind]=h};
  WL.mm.registerRowDetail=(kind,h)=>{MM_ROW_DETAILS[kind]=h};
  const mmViewsOf=def=>(def.listViews||[]).filter(k=>Object.hasOwn(MM_LIST_VIEWS,k));
  const mmDetailOf=def=>def.rowDetail&&Object.hasOwn(MM_ROW_DETAILS,def.rowDetail)?MM_ROW_DETAILS[def.rowDetail]:null;
  const mmOpenSet=def=>(mmOpenRows[def.key]=mmOpenRows[def.key]||new Set());
- const mmCtx=()=>({meta:maintState.meta||{},items:maintState.items||[]});
+ const mmCtx=()=>({meta:maintState.meta||{},items:maintState.items||[],writable:masterDefWritable(currentDef())});
  /* タブの帯（1枚目＝一覧）。いま開いているタブの鍵を返す。 */
  function listTabsHtml(def){
   const views=mmViewsOf(def);if(!views.length)return {html:'',now:''};
@@ -2717,8 +2718,11 @@
   }).join('');
   const tabs=listTabsHtml(def);
   if(tabs.now){
-   list.innerHTML=tabs.html+`<section class="mm-lview" role="tabpanel">${MM_LIST_VIEWS[tabs.now].html(mmCtx())}</section>`;
-   bindListTabs(def,list);return;
+   const view=MM_LIST_VIEWS[tabs.now],ctx=mmCtx();
+   list.innerHTML=tabs.html+`<section class="mm-lview" role="tabpanel">${view.html(ctx)}</section>`;
+   bindListTabs(def,list);
+   if(view.wire)view.wire(list.querySelector('.mm-lview'),ctx);
+   return;
   }
   list.innerHTML=tabs.html+`<div class="mm-row head" style="grid-template-columns:${tmpl}">${headCols}${showAudit?'<span>更新者</span><span>更新日時</span>':''}<span class="mm-act">操作</span></div>`;
   bindListTabs(def,list);

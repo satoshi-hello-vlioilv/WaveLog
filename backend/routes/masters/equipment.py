@@ -20,10 +20,13 @@ from ...repositories.master_repo import (
  equipment_master_rows,
  EQUIPMENT_FEATURES,
  EQUIPMENT_FEATURE_KEYS,
+ EQUIPMENT_FEATURE_EFFECTS,
  normalize_equipment_features,
  equipment_disabled_features,
  MEASURE_ITEMS,
  MEASURE_ITEM_KEYS,
+ MEASURE_ITEM_EFFECT,
+ MEASURE_ITEM_FEATURE,
  MEASURE_ITEM_DISABLED_COLUMN,
  EQUIPMENT_DISABLED_COLUMN,
  normalize_measure_items,
@@ -113,9 +116,14 @@ def equipment_master_list():
                  equipmentKinds=list(EQUIPMENT_KINDS),
                  # 機能の語彙は**サーバーが答える**（§9.163）——画面へ写すと、
                  # 機能を1つ足したときに直す場所が2つになる。
-                 equipmentFeatures=[{'key':k,'label':l,'note':n} for k,l,n in EQUIPMENT_FEATURES],
+                 equipmentFeatures=[{'key':k,'label':l,'note':n,
+                                     'off':EQUIPMENT_FEATURE_EFFECTS.get(k,('',''))[0],
+                                     'keep':EQUIPMENT_FEATURE_EFFECTS.get(k,('',''))[1]}
+                                    for k,l,n in EQUIPMENT_FEATURES],
                  # 入力内容の語彙も**サーバーが答える**（§9.163）。
                  measureItems=[{'key':k,'label':l,'note':n} for k,l,n in MEASURE_ITEMS],
+                 # 外したら何が起き、何が残るか（§9.542 効き先の図）。
+                 measureItemEffect={'feature':MEASURE_ITEM_FEATURE,'off':MEASURE_ITEM_EFFECT[0],'keep':MEASURE_ITEM_EFFECT[1]},
                  master_path=str(path))
  except Exception as e:return jsonify(error=f'設備マスタ読込失敗: {e}',master_path=str(DBS['MASTER']['path'])),500
 

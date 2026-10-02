@@ -197,7 +197,9 @@ G['マスタ'] = ['test_master', 'test_maint', 'test_stopcat', 'test_stopeq', 't
                # §9.302: 設備の有効・無効を機能別に（測定・作業予定・帳票）
                'test_eqfeature',
                # §9.392: 設備ごとに使う入力内容
-               'test_measitems']
+               'test_measitems',
+               # §9.542: 設備の使い分けの表と効き先の図
+               'test_equse']
 G['測定'] = ['test_course', 'test_tolscale', 'test_defect', 'test_share', 'test_flows',
              # §9.392: 設備ごとに使う入力内容（選択肢とチップから伏せる）
              'test_measitems',
@@ -345,6 +347,7 @@ RULES = [
     ('static/js/master/master-roll.js', g('test_roll', 'test_rollio', 'test_rollwipe')),
     # §9.538: アクセス権限マスタの見張りのタブと行の「できること」。
     ('static/js/master/master-access.js', g('test_roleui', 'test_roleperm')),
+    ('static/js/master/master-equse.js', g('test_equse', 'test_eqfeature', 'test_measitems')),
     ('static/js/schedule/calendar-view.js', g('test_uisize', 'test_histdel', 'test_headbar')),
     # 帳票の塊の組み換え(§9.169)は列レイアウトマスタに載るので列の網も回す。
     ('static/js/report/report-dashboard.js', g('モーダル', 'test_screport', 'test_headbar', 'test_uisize',
